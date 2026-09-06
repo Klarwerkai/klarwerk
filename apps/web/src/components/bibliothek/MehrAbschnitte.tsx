@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link2, Paperclip, X } from "lucide-react";
-import { type ChangeEvent, type ReactNode, useEffect, useRef, useState } from "react";
+import { type ChangeEvent, type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../../api/client";
 import { endpoints } from "../../api/endpoints";
@@ -38,6 +38,7 @@ import {
   SOURCE_ATTACH_HINT_KEYS,
   canAttachExternalResult,
   canSearchExternal,
+  sourceAttachCertainlyDenied,
   sourceAttachHint,
 } from "../../lib/externalAttachGate";
 import { containsExternalUnchecked } from "../../lib/externalProvenance";
@@ -198,7 +199,36 @@ export function MehrAbschnitte({
 
   // ---- Quellen ---------------------------------------------------------------------------------
   const [sourceForm, setSourceForm] = useState<SourceFormInput>({ ...EMPTY_SOURCE_FORM });
-  const sourceGateHint = sourceAttachHint(extStage, sourceForm.url);
+  // ================================================================================================
+  // JOB 3133 · UX-22 — DER HINWEIS VERSPRACH EINEN WEG, DEN DAS FORMULAR NICHT ANBOT.
+  // ================================================================================================
+  //
+  // Auf `blocked`/`search_on_click` sagt der Grund unter dem Formular: eine Quelle ohne Adresse
+  // wird nur als BELEGSTELLE aus einem an diesem Objekt hinterlegten Dokument angenommen. Der
+  // Server kann das (ko-routes.ts:1926-1930 schlägt den Anker in der eigenen Anhangsliste nach) —
+  // das Formular konnte es nicht: es kannte nur Bezeichnung, Adresse, Auszug.
+  //
+  // ANKERFÄHIG ist nur ein Anhang MIT `objectId` (SCRUM-121, api/types.ts:70-80). Ein alter
+  // Inline-Anhang (nur `dataUrl`) liegt zwar am Objekt, aber die Route fände ihn nicht — er darf
+  // deshalb gar nicht zur Wahl stehen. Die Liste kommt aus dem BEREITS GELADENEN Objekt; es
+  // entsteht keine zweite Abfrage und offline bleibt das Feld bedienbar.
+  const ankerAnhaenge = (ko.attachments ?? []).filter((a) => (a.objectId ?? "").trim().length > 0);
+  const sourceAnker = (sourceForm.objectId ?? "").trim();
+  // Der Anker gilt NUR, wenn er auf einen Anhang zeigt, den dieses Objekt wirklich trägt — genau
+  // die Frage, die der Server stellt. Eine großzügigere Vorhersage nähme er gleich darauf zurück.
+  const sourceAnkerGueltig =
+    sourceAnker.length > 0 && ankerAnhaenge.some((a) => a.objectId === sourceAnker);
+  const sourceGateHint = sourceAttachHint(extStage, sourceForm.url, sourceAnkerGueltig);
+  // RUNDE 4 (Codex R3): der GRUND wird bei jedem Hinweis gezeigt, die SPERRE nur dort, wo die
+  // Oberfläche das Urteil des Servers sicher vorhersagt — `sourceAttachCertainlyDenied` begründet,
+  // warum das genau der adresslose Fall ohne Anker ist und warum eine http(s)-Adresse es nicht ist
+  // (der Client kennt die Origin-Allowlist des Betreibers nicht und würde sonst interne Quellen
+  // sperren, die der Server annimmt). Zwei Anzeigen, EIN Urteil: beide hängen an `sourceGateHint`.
+  const sourceGateSperre = sourceAttachCertainlyDenied(sourceGateHint);
+  // Der sichtbare Grund braucht eine Kennung, damit der gesperrte Knopf mit `aria-describedby`
+  // darauf zeigen kann: ein abgewiesener Knopf ohne verbundenen Grund ist eine Sackgasse, keine
+  // Erklärung (externalAttachGate.ts:9-12).
+  const sourceGateHintId = useId();
   const addSource = useMutation({
     mutationFn: () =>
       endpoints.ko.act(id, { action: "add-source", source: toSourcePayload(sourceForm) }),
@@ -612,17 +642,73 @@ export function MehrAbschnitte({
               onChange={(e) => setSourceForm((s) => ({ ...s, excerpt: e.target.value }))}
               placeholder={t("ko.sourceExcerpt")}
             />
+            {/* JOB 3133 · UX-22: DER WEG, DEN DER GRUND DARUNTER NENNT — die Belegstelle aus einem
+                hier hinterlegten Dokument. Ohne ankerfähigen Anhang steht KEIN leeres Auswahlfeld
+                da, sondern der vorhandene Leersatz: ein Feld ohne Inhalt verspräche einen Weg, den
+                dieses Objekt nicht hat („Ehrlichkeit vor Optik"). */}
+            {ankerAnhaenge.length === 0 ? (
+              <p className="text-[12.5px] text-muted">{t("ko.attachmentsEmpty")}</p>
+            ) : (
+              <Field label={t("ko.mehr.anhaenge")}>
+                <select
+                  value={sourceForm.objectId ?? ""}
+                  onChange={(e) => {
+                    const wahl = e.target.value;
+                    const gewaehlt = ankerAnhaenge.find((a) => a.objectId === wahl);
+                    setSourceForm((s) => ({
+                      ...s,
+                      objectId: wahl,
+                      // Eine bereits getippte Bezeichnung bleibt stehen — der Dateiname belegt nur
+                      // ein leeres Feld vor, er überschreibt nie eine Eingabe.
+                      label: s.label.trim().length === 0 && gewaehlt ? gewaehlt.name : s.label,
+                    }));
+                  }}
+                  className="h-10 w-full rounded-input border border-hairline bg-surface px-2 text-sm"
+                >
+                  {/* Sprachneutral: „keine Auswahl" braucht keinen übersetzten Satz. */}
+                  <option value="">—</option>
+                  {ankerAnhaenge.map((a) => (
+                    <option key={a.id} value={a.objectId}>
+                      {a.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            )}
             {/* mega16 A: die Stufe ist eine echte Grenze — der Grund steht VOR dem Absenden da. */}
             {sourceGateHint ? (
-              <output className="block rounded-btn border border-hairline bg-page px-2.5 py-2 text-[11.5px] leading-relaxed text-muted">
+              <output
+                id={sourceGateHintId}
+                className="block rounded-btn border border-hairline bg-page px-2.5 py-2 text-[11.5px] leading-relaxed text-muted"
+              >
                 {t(SOURCE_ATTACH_HINT_KEYS[sourceGateHint].body)}{" "}
                 {t(SOURCE_ATTACH_HINT_KEYS[sourceGateHint].how)}
               </output>
             ) : null}
+            {/* JOB 3133 · UX-22 (N-0047): DER KNOPF KENNT DIE SPERRE JETZT. Bis hierher prüfte er
+                nur `isSourceFormValid` — ein Klick setzte die unzulässige Aktion ab, der Server
+                antwortete 403, und der Nutzer las eine ZWEITE Ablehnung. Bauform wie in JOB 3126
+                abgenommen (s. Abschnitt 12): `aria-disabled` statt `disabled`, damit der Knopf in
+                der Tab-Folge bleibt und der daneben stehende Grund erreichbar ist; der
+                `onClick`-Rumpf steigt bei gesetzter Sperre wirkungslos aus. Das bestehende
+                `disabled` (läuft gerade / kein Titel) bleibt daneben unverändert.
+
+                RUNDE 4 (Codex R3): gesperrt wird nur der SICHER abgewiesene Fall
+                (`sourceGateSperre`), nicht jeder Hinweis. Bei einer http(s)-Adresse weiss die
+                Oberfläche nicht, ob der Betreiber diesen Host als intern eingetragen hat — sie
+                zeigt den Grund, lässt den Nutzer aber entscheiden und den Server prüfen. Sonst
+                nähme sie ihm einen Weg, den er hat. Der Grund bleibt in BEIDEN Fällen verbunden. */}
             <Button
               variant="primary"
+              aria-disabled={sourceGateSperre}
+              {...(sourceGateHint ? { "aria-describedby": sourceGateHintId } : {})}
               disabled={addSource.isPending || !isSourceFormValid(sourceForm)}
-              onClick={() => addSource.mutate()}
+              onClick={() => {
+                if (sourceGateSperre) {
+                  return;
+                }
+                addSource.mutate();
+              }}
             >
               {t("ko.sourceAdd")}
             </Button>

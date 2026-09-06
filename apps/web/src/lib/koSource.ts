@@ -2,10 +2,15 @@
 import type { KoSource } from "../api/types";
 import { DRAFT_LIMITS } from "./draftLimits";
 
+// JOB 3133 · UX-22: `objectId` ist der ANKER einer adresslosen Belegstelle — die `objectId` eines
+// Anhangs, den DIESES Wissensobjekt trägt. Ausdrücklich OPTIONAL: `pages/Capture.tsx` benutzt
+// denselben Typ, und beim Erfassen existiert noch kein hinterlegtes Dokument, an das ein Anker
+// zeigen könnte. Ein Pflichtfeld hätte dort eine Angabe erzwungen, die es nicht geben kann.
 export interface SourceFormInput {
   label: string;
   url: string;
   excerpt: string;
+  objectId?: string;
 }
 
 export const EMPTY_SOURCE_FORM: SourceFormInput = { label: "", url: "", excerpt: "" };
@@ -19,9 +24,17 @@ export function isSourceFormValid(input: SourceFormInput): boolean {
 // ist „schmutzig", sobald IRGENDEIN Feld vom leeren Ausgangswert (EMPTY_SOURCE_FORM) abweicht — auch
 // wenn NUR das optionale URL-/Excerpt-Feld getippt wurde (dann ist es noch nicht `valid`, aber sehr wohl
 // veränderter, verwerfbarer Inhalt). Grundlage des kanonischen Verwerfen-/Navigations-Prädikats.
+//
+// JOB 3133 · UX-22: der ANKER zählt mit. Eine getroffene Anhangswahl ist veränderter, verwerfbarer
+// Inhalt — auch wenn kein einziges Zeichen getippt wurde. Ohne diese Zeile verwürfe der
+// Verwerfen-/Navigationsweg (Capture.tsx:1918/2420) sie STILL, und der Nutzer stünde wieder vor
+// derselben Sperre wie vorher.
 export function isSourceFormDirty(input: SourceFormInput): boolean {
   return (
-    input.label.trim().length > 0 || input.url.trim().length > 0 || input.excerpt.trim().length > 0
+    input.label.trim().length > 0 ||
+    input.url.trim().length > 0 ||
+    input.excerpt.trim().length > 0 ||
+    (input.objectId ?? "").trim().length > 0
   );
 }
 
@@ -103,6 +116,16 @@ export function toAddSourceRequest(source: {
 }
 
 // Payload für die add-source-Aktion (leere Optionalfelder weglassen).
+//
+// JOB 3133 · UX-22 — HIER WAR DIE KETTE UNTERBROCHEN. Der Server kann die verankerte Belegstelle
+// seit mega16 vollständig (`decideExternalAttach`, attach-policy.ts:197-211; die Route schlägt den
+// Anker in der eigenen Anhangsliste nach, ko-routes.ts:1926-1930), und der Vertrag `AddSourceRequest`
+// führt `objectId` seitdem — nur baute genau diese Funktion den Rumpf ohne ihn. Das Bibliotheks-
+// formular sendet ausschließlich hierüber (MehrAbschnitte.tsx:204); der vom Nutzer gewählte Anhang
+// kam deshalb nie beim Server an, und der Hinweis „hängen Sie eine Belegstelle an" führte ins Leere.
+//
+// Leeres Feld weglassen — dieselbe Form wie `toAddSourceRequest`: ein `objectId: ""` wäre eine
+// Behauptung ohne Deckung, die der Server ohnehin in seiner Anhangsliste nicht fände.
 export function toSourcePayload(input: SourceFormInput): AddSourceRequest {
   const payload: AddSourceRequest = { label: input.label.trim() };
   if (input.url.trim()) {
@@ -110,6 +133,9 @@ export function toSourcePayload(input: SourceFormInput): AddSourceRequest {
   }
   if (input.excerpt.trim()) {
     payload.excerpt = input.excerpt.trim();
+  }
+  if ((input.objectId ?? "").trim()) {
+    payload.objectId = (input.objectId ?? "").trim();
   }
   return payload;
 }

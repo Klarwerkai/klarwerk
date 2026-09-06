@@ -58,6 +58,14 @@ export type SourceAttachHint = "public-url" | "unanchored" | null;
  * @param stage    die Admin-Stufe (null = noch nicht geladen → kein Hinweis, keine Panikmeldung)
  * @param url      die im Formular stehende Adresse (leer/ungültig zählt als „keine Adresse")
  * @param anchored ob diese Quelle einen Anker auf ein am KO liegendes Dokument mitbringt
+ *
+ * JOB 3133 · UX-22 — ZUM DRITTEN ARGUMENT, DAS ZWEI JAHRE NIEMAND ÜBERGAB. Die Regel selbst ist
+ * unverändert; falsch war der AUFRUF. Das Bibliotheksformular rief `sourceAttachHint(stage, url)`
+ * mit zwei Argumenten (MehrAbschnitte.tsx:201), also mit dem Vorgabewert `anchored = false` — der
+ * Hinweis „unanchored" konnte dort NIE verschwinden, egal was der Nutzer tat. Wer ihn übergibt,
+ * schuldet eine belegte Angabe: „ein Anhang DIESES Objekts ist gewählt", nicht „im Feld steht
+ * etwas". Der Server prüft ohnehin gegen seine eigene Anhangsliste (ko-routes.ts:1926-1930) — eine
+ * großzügigere Vorhersage wäre eine Erlaubnis, die er gleich darauf zurücknähme.
  */
 export function sourceAttachHint(
   stage: ExternalKnowledgeStage | null | undefined,
@@ -84,6 +92,34 @@ export function sourceAttachHint(
   // Absolute http/https-Adresse: ob der Betreiber sie als intern eingetragen hat, weiß nur der
   // Server. Der Hinweis nennt deshalb die Regel, nicht ein Urteil über genau diesen Host.
   return "public-url";
+}
+
+// ---------------------------------------------------------------------------------------------
+// JOB 3133 · UX-22 RUNDE 4 (Codex R3, Korrekturpflicht 1) — EIN HINWEIS IST KEIN ZULASSUNGSURTEIL.
+//
+// DER FEHLER, DEN DIESE FUNKTION BEHEBT: Runde 3 machte aus JEDEM Hinweis eine harte Knopfsperre.
+// Das war für `unanchored` richtig und für `public-url` falsch. Denn `sourceAttachHint` kennt die
+// Origin-Allowlist des Betreibers NICHT (s. Kommentar oben, Zeile 50-52) und stuft deshalb JEDE
+// absolute http(s)-Adresse als „public-url" ein — auch eine, die der Betreiber ausdrücklich als
+// intern eingetragen hat und die der Server mit 200 annimmt (belegt in
+// tests/app/external-attach-gate-e2e.test.ts:176). Die Sperre nahm dem Nutzer damit einen Weg,
+// den er hat. Gemessen von Codex: Basisstand `{"reach":"internal","calls":1}` gegen Runde 3
+// `{"reach":"internal","ariaDisabled":"true","calls":0}`.
+//
+// DIE UNTERSCHEIDUNG: Nicht „was rät die Oberfläche?", sondern „WEISS sie es?".
+//   · `unanchored` → SIE WEISS ES. Die Adresse ist leer oder nicht speicherbar (das sieht der
+//     Client vollständig), und ob ein Anker gilt, prüft der Aufrufer gegen die Anhangsliste
+//     DIESES Objekts — dieselbe Frage, die `ko-routes.ts:1926-1930` stellt. Client und Server
+//     kommen hier zwingend zum selben Urteil. Absenden hiesse: eine sichere 403 auslösen.
+//   · `public-url` → SIE WEISS ES NICHT. Ob dieser Host in der Allowlist steht, weiss allein der
+//     Server. Der Hinweis bleibt sichtbar (er nennt die Regel, nicht ein Urteil über den Host),
+//     aber die ENTSCHEIDUNG bleibt beim Nutzer und die Prüfung beim Server.
+//
+// Fail-closed bleibt gewahrt: die Grenze zieht weiterhin der Server. Eine Oberfläche, die aus
+// Nichtwissen eine Ablehnung macht, ist nicht vorsichtig, sondern falsch — sie sperrt einen Weg,
+// den der Betreiber freigegeben hat.
+export function sourceAttachCertainlyDenied(hint: SourceAttachHint): boolean {
+  return hint === "unanchored";
 }
 
 // Die i18n-Schlüssel je Hinweis — Text und Weg zur Änderung stehen in i18n.ts (DE/EN/NL).
