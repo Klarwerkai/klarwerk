@@ -77,6 +77,46 @@ export function Zeilenkarte({
   );
 }
 
+// ================================================================================================
+// JOB 3117 · UX-13 — DER UMBRUCHVERTRAG DER ZEILE: DIE EINE STELLE, DIE ÜBER DEN ENGPASS ENTSCHEIDET.
+// ================================================================================================
+//
+// Bis hierher entschied nicht EINE Stelle, sondern vier verstreute Klassen: `truncate` am
+// Label-Träger, `truncate` am inneren Label-Span, `shrink-0` am Wert-Träger und `truncate` am Wert.
+// Ihre Summe war eine Regel, die so niemand aufgeschrieben hätte: der Wert darf NICHT schrumpfen,
+// die Beschriftung gibt ALLES her. Auf einem 320-px-Telefon blieb von „E-Mail" ein „E.." übrig —
+// gemessen 15 px sichtbar bei 40 px Text —, während die Adresse ihre vollen 208 px behielt
+// (Gegenprüfung N-0030, 2026-09-06, Live 1.0.0-beta.1.124). Die Beschriftung trägt die BEDEUTUNG
+// der Zeile; sie zuerst zu opfern war die falsche Reihenfolge.
+//
+// JETZT WIRD NICHTS MEHR GEKÜRZT. Reicht die Breite nicht für Beschriftung UND Wert, rückt der
+// Wert-Block unter die Beschriftung; einzelne zu lange Texte brechen um. Zwei sichtbare Zeilen sind
+// ehrlicher als eine Beschriftung, die niemand lesen kann.
+//
+// WER DAS VERHALTEN ÄNDERN WILL, ÄNDERT HIER — dieser Block ist die eine Stelle. Es gibt keinen
+// zweiten Weg: in dieser Datei kommt weder `truncate` noch `whitespace-nowrap` an einem Textträger
+// vor, und `shrink-0` nur an den unteilbaren Symbolen unten.
+//
+// VIER FLACHE KONSTANTEN, KEIN OBJEKT: der Klassenbindungs-Sammler
+// (`tests/app/mega47-modale-flaechen-sammler.test.tsx:3315-3323`) löst einen lokalen Bezeichner
+// mit literalem Wert auf, einen Eigenschaftszugriff `X.y` aber nicht. Ein Objekt hier hätte sechs
+// Klassenlisten dieser Datei für jeden Klassen-Wächter unsichtbar gemacht (gemessen: 211 → 217
+// unauflösbare Bindungen). Die Bündelung steht im Namen und in diesem Kommentar, nicht in einer
+// Datenstruktur, die den Wächtern die Sicht nimmt.
+
+/** Die Zeile: reicht der Platz nicht, bekommt der Wert-Block eine zweite Zeile (Abstand 4 px). */
+const UMBRUCH_ZEILE = "flex-wrap gap-x-3 gap-y-1";
+/**
+ * Beschriftungs- und Wert-Träger: dürfen schrumpfen (`min-w-0`) und umbrechen (`break-words`),
+ * nie kürzen. `min-w-0` ist dabei nicht kosmetisch — ohne sie käme ein Flex-Kind nie unter seine
+ * Mindestinhaltsbreite, und eine lange Adresse ohne Leerzeichen bräche gar nicht erst um.
+ */
+const UMBRUCH_TRAEGER = "min-w-0 break-words";
+/** Der Wert-Block bleibt rechts, auch wenn er in der zweiten Zeile allein steht. */
+const UMBRUCH_WERT_RECHTS = "ml-auto";
+/** Chevron und Schloss sind unteilbar — sie schrumpfen nicht mit und bleiben immer sichtbar. */
+const UMBRUCH_SYMBOL = "shrink-0";
+
 /**
  * Eine Zeile. Genau eine der drei Ausprägungen:
  *   `onOeffnen`  → Chevron, die ganze Zeile ist ein Knopf in die Detailkarte
@@ -114,29 +154,44 @@ export function Zeile({
       <span
         data-einst="label"
         className={cx(
-          "min-w-0 text-[14px] text-text",
-          vorn ? "flex items-center gap-2.5" : "truncate",
+          UMBRUCH_TRAEGER,
+          "text-[14px] text-text",
+          vorn ? "flex items-center gap-2.5" : null,
         )}
       >
         {vorn}
-        {vorn ? <span className="min-w-0 truncate">{label}</span> : label}
+        {vorn ? <span className={UMBRUCH_TRAEGER}>{label}</span> : label}
       </span>
       <span
         className={cx(
-          "flex shrink-0 items-center gap-1.5 text-[14px]",
+          UMBRUCH_TRAEGER,
+          UMBRUCH_WERT_RECHTS,
+          "flex items-center gap-1.5 text-[14px]",
           ton === "kritisch" ? "text-trust-crit-text" : "text-muted-2",
         )}
       >
         {wert === undefined ? null : (
-          <span data-einst="wert" className="truncate">
+          <span data-einst="wert" className={UMBRUCH_TRAEGER}>
             {wert}
           </span>
         )}
         {steuerung}
         {ohneSymbol || steuerung ? null : onOeffnen ? (
-          <ChevronRight data-einst="chevron" size={13} strokeWidth={2} aria-hidden="true" />
+          <ChevronRight
+            data-einst="chevron"
+            className={UMBRUCH_SYMBOL}
+            size={13}
+            strokeWidth={2}
+            aria-hidden="true"
+          />
         ) : (
-          <Lock data-einst="schloss" size={13} strokeWidth={2} aria-hidden="true" />
+          <Lock
+            data-einst="schloss"
+            className={UMBRUCH_SYMBOL}
+            size={13}
+            strokeWidth={2}
+            aria-hidden="true"
+          />
         )}
       </span>
     </>
@@ -149,7 +204,10 @@ export function Zeile({
         data-einst="zeile"
         data-testid={testId}
         onClick={onOeffnen}
-        className="flex w-full items-center justify-between gap-3 border-b border-hairline px-4 py-[13px] text-left last:border-b-0 hover:bg-hairline-soft"
+        className={cx(
+          UMBRUCH_ZEILE,
+          "flex w-full items-center justify-between border-b border-hairline px-4 py-[13px] text-left last:border-b-0 hover:bg-hairline-soft",
+        )}
       >
         {inhalt}
       </button>
@@ -160,7 +218,10 @@ export function Zeile({
       data-einst="zeile"
       data-testid={testId}
       title={steuerung ? undefined : t("einst.zeile.nurLesbar")}
-      className="flex w-full items-center justify-between gap-3 border-b border-hairline px-4 py-[13px] last:border-b-0"
+      className={cx(
+        UMBRUCH_ZEILE,
+        "flex w-full items-center justify-between border-b border-hairline px-4 py-[13px] last:border-b-0",
+      )}
     >
       {inhalt}
     </div>
