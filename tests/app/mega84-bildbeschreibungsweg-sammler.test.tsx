@@ -1379,8 +1379,21 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // keine Bildbeschreibung an (kein `ANGEBOT_MUSTER`) und trägt keinen eigenen Titel (kein
     // `documentTitle`-Prop) — sie erscheint nur in der Grundmenge. Die zwei Zahlen, an denen
     // Stufe 2 wirklich hängt, bleiben unverändert: `anbieter` 1 und `traeger` 2.
+    //
+    // JOB 3124 · UX-12: unabhängig von JOB 3118 kommt GENAU EIN weiteres Bauteil dazu —
+    // `VorschauHinweis` in `shell/RollenVorschau.tsx`, der Vorschausatz samt Rückweg, den seit
+    // diesem Job auch die Rollen-Sperrkarte (`components/Stage2Notice.tsx`) rendert. Es ist eine
+    // HERAUSLÖSUNG, keine neue Fläche: der Rumpf stand vorher in `RollenVorschau` selbst. Das
+    // Bauteil bietet keine Bildbeschreibung an (kein `ANGEBOT_MUSTER`) und trägt keinen eigenen
+    // Titel (kein `documentTitle`-Prop) — es erscheint nur in der Grundmenge.
+    //
+    // KONFLIKTRUNDE 1 (JOB 3124): NACH DEM REBASE auf JOB 3118 treffen beide unabhängigen
+    // Bauteile (`Datenlagezeile` und `VorschauHinweis`) auf denselben Stand; `komponenten` von
+    // 346 auf 347 NACHGEZOGEN — am eigenen Lauf dieses Arbeitsbaums gemessen, nicht rechnerisch
+    // addiert. Die zwei Zahlen, an denen Stufe 2 wirklich hängt, bleiben unverändert: `anbieter`
+    // 1 und `traeger` 2.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 346,
+      komponenten: 347,
       anbieter: 1,
       traeger: 2,
     });

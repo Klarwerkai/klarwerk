@@ -150,10 +150,10 @@ function inventarAdmin(): Posten[] {
       klick: '[data-testid="zeile-ansicht-rolle"]',
       detail: "detail-ansicht-rolle",
       erwartet: [
-        { text: t("role.short.viewer") },
-        { text: t("role.short.experte") },
-        { text: t("role.short.controller") },
-        { text: t("role.short.admin") },
+        { text: t("role.name.viewer") },
+        { text: t("role.name.experte") },
+        { text: t("role.name.controller") },
+        { text: t("role.name.admin") },
       ],
     },
     {
@@ -536,7 +536,7 @@ const HUELLE_DA = `(async () => {
  * Der Reload-Nachweis ist eine Marke am `window`: ein echter Seitenneuaufbau wirft sie weg. Damit
  * hängt die Aussage „ohne Reload" an einer Tatsache der Sitzung, nicht an einer Vermutung.
  */
-const RUNDWEG = `(async ([kurz, zurueckText, reiter]) => {
+const RUNDWEG = `(async ([rollenname, zurueckText, reiter]) => {
   ${VORSPANN}
   const schritte = [];
   window.__job3065_marke = 'gesetzt';
@@ -554,10 +554,10 @@ const RUNDWEG = `(async ([kurz, zurueckText, reiter]) => {
   schritte.push('Detailkarte offen');
 
   const knopf = [...document.querySelectorAll('[data-testid="detail-ansicht-rolle"] button[aria-pressed]')]
-    .find((b) => norm(b.textContent) === kurz);
-  if (!knopf) return { fehler: 'Rollenknopf „' + kurz + '" nicht in der Detailkarte', schritte };
+    .find((b) => norm(b.textContent) === rollenname);
+  if (!knopf) return { fehler: 'Rollenknopf „' + rollenname + '" nicht in der Detailkarte', schritte };
   knopf.click();
-  schritte.push('Rolle ' + kurz + ' gewählt');
+  schritte.push('Rolle ' + rollenname + ' gewählt');
 
   // 2. Die Vorschau WIRKT: der Rollen-Guard nimmt dem Admin die Seite /admin weg, und die
   //    Admin-Zeile „Einstellungen" verschwindet aus dem Zahnrad.
@@ -815,7 +815,7 @@ describe("JOB 3065 H6 · Funktionsinventar — jede Funktion von gestern ist err
         seiteDa?: boolean;
         ohneReload?: boolean;
         pfadname?: string;
-      }>(fn(RUNDWEG), [t(`role.short.${rolle}`), t("role.backToAdmin"), t("adm.sec.konten")]);
+      }>(fn(RUNDWEG), [t(`role.name.${rolle}`), t("role.backToAdmin"), t("adm.sec.konten")]);
 
       expect(r.fehler, `${rolle}: ${r.fehler} (bis dahin: ${r.schritte.join(" → ")})`).toBeNull();
       expect(r.aufAdmin, `${rolle}: nicht auf /admin, sondern ${r.pfadname}`).toBe(true);

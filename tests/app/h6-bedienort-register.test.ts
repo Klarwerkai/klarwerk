@@ -80,7 +80,11 @@ const REGISTER: Record<string, Eintrag> = {
     grund:
       "Kein zweiter Einstellungsort: die Sperrseite einer Stufe-2-Fläche bietet dem Admin den " +
       "einmaligen Weg (hier freischalten) an der Stelle, an der er ansteht. Kein Umschalter, " +
-      "keine Anzeige eines Zustands.",
+      "keine Anzeige eines Zustands. JOB 3124: die ROLLEN-Sperrkarte (RoleNotice) RENDERT " +
+      "zusaetzlich den Rueckweg aus der Vorschau — sie ruft ihn aber nicht: das Bauteil " +
+      '`VorschauHinweis` und mit ihm der einzige `setRole("admin")`-Aufruf wohnen weiterhin in ' +
+      "`shell/RollenVorschau.tsx` (R4). Deshalb bleibt dieser Eintrag `stufe-2` und es entsteht " +
+      "kein neuer Bedienort.",
   },
 };
 
@@ -261,5 +265,23 @@ describe("JOB 3065 H6 R9 · Bedienort-Register: Ansicht als Rolle und Erweiterte
     expect(rueckweg.map(([f]) => f)).toEqual(["shell/RollenVorschau.tsx"]);
     // Er ruft wirklich `setRole("admin")` — sonst wäre der Eintrag eine Behauptung.
     expect(code("shell/RollenVorschau.tsx")).toMatch(/setRole\(["']admin["']\)/);
+    // JOB 3124: Seit die Sperrkarte denselben Rückweg zeigt, gibt es ZWEI Flächen und weiterhin
+    // GENAU EINEN Aufruf. Wäre der Aufruf mitgewandert (kopiert statt geteilt), stünde hier ein
+    // zweiter Bedienort — deshalb wird die Gegenrichtung mitgeprüft.
+    expect(
+      code("components/Stage2Notice.tsx"),
+      "die Sperrkarte schaltet die Rolle selbst um — der Rückweg gehört in shell/RollenVorschau.tsx",
+    ).not.toMatch(HAKEN_SET_ROLE);
+  });
+
+  it("R5 · das Rollenraster steht nur in den Einstellungen — nicht in shell/**, nicht in components/**", () => {
+    // JOB 3124: die Sperrkarte bekommt einen Rückweg in die EIGENE Rolle. Die naheliegende
+    // Ausweitung wäre, dort gleich das ganze Rollenraster anzubieten — das wäre der zweite
+    // Auswahlort, den R3 für die Hülle längst ausschliesst. Diese Zusicherung zieht dieselbe Linie
+    // um `components/**` und benennt zugleich den EINEN erlaubten Ort.
+    const raster = auswahlorte()
+      .filter((o) => o.was === "rollenraster")
+      .map((o) => o.datei);
+    expect(raster).toEqual(["pages/AdminKontenDetails.tsx"]);
   });
 });

@@ -231,11 +231,15 @@ const INVENTAR: Zeile[] = [
         seite(),
         `() => document.querySelector('[data-testid="detail-ansicht-rolle"]') !== null`,
       );
+      // JOB 3124 UX-12: hier stand bis dahin `role.short.*`. Das Raster nennt die Rolle jetzt mit
+      // demselben Schlüssel wie Übersichtszeile, Vorschauhinweis und Sperrkarte (`role.name.*`) —
+      // ein Name je Rolle. Der Pin zieht mit, die Zusage („die vier Rollen stehen in dieser
+      // Reihenfolge") ist unverändert.
       expect(await texte('[data-testid="detail-ansicht-rolle"] button[aria-pressed]')).toEqual([
-        t("role.short.viewer"),
-        t("role.short.experte"),
-        t("role.short.controller"),
-        t("role.short.admin"),
+        t("role.name.viewer"),
+        t("role.name.experte"),
+        t("role.name.controller"),
+        t("role.name.admin"),
       ]);
       // Und im Zahnrad ist sie wirklich weg — sonst wäre der Umzug nur eine Kopie.
       await zahnradOeffnen();
@@ -275,9 +279,10 @@ const INVENTAR: Zeile[] = [
           seite(),
           `() => document.querySelector('[data-testid="detail-ansicht-rolle"]') !== null`,
         );
-        const kurz = t(`role.short.${rolle}`);
+        // JOB 3124 UX-12: der Knopf trägt jetzt den vollen Rollennamen (vorher die Kurzform).
+        const rollenname = t(`role.name.${rolle}`);
         await seite().click(
-          `[data-testid="detail-ansicht-rolle"] button[aria-pressed]:has-text("${kurz}")`,
+          `[data-testid="detail-ansicht-rolle"] button[aria-pressed]:has-text("${rollenname}")`,
         );
         // Die Vorschau wirkt: der Rollen-Guard nimmt dem Admin die Seite, die Einstellungen sind
         // fort. (Früher wurde hier die Admin-Zeile im Zahnrad geprüft — die Rolle wurde ja dort

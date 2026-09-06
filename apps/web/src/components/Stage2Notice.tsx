@@ -16,6 +16,9 @@ import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { useRole } from "../app/RoleContext";
 import { HOME_ROUTE, type NavItem } from "../app/navigation";
+// JOB 3124 UX-12: DASSELBE Bauteil, das im Zahnrad hängt — nicht eine zweite Kopie des Textes.
+// Der Aufruf `setRole("admin")` bleibt dort; hier wird nur gerendert (s. Kopf von RollenVorschau).
+import { VorschauHinweis } from "../shell/RollenVorschau";
 import { Button, Card } from "./ui";
 
 // Der gemeinsame Rahmen beider Tor-Karten: Symbol, Titel, Erklärung, optionale Handlung und
@@ -24,11 +27,14 @@ function GateFrame({
   icon: Icon,
   title,
   body,
+  hinweis,
   action,
 }: {
   icon: LucideIcon;
   title: string;
   body: string;
+  /** Ein Kasten zwischen Erklärung und Handlungen (JOB 3124: der Vorschauhinweis). */
+  hinweis?: ReactNode;
   action?: ReactNode;
 }): JSX.Element {
   const { t } = useTranslation();
@@ -38,6 +44,7 @@ function GateFrame({
         <Icon size={28} className="mx-auto text-muted-2" aria-hidden />
         <h2 className="mt-3 text-[16px] font-semibold text-ink">{title}</h2>
         <p className="mx-auto mt-1.5 max-w-md text-[13px] leading-relaxed text-muted">{body}</p>
+        {hinweis}
         <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
           {action}
           <Link
@@ -77,6 +84,16 @@ export function Stage2Notice(): JSX.Element {
 // Der Rollenfall: erklärt in Alltagssprache, welche Rolle der Bereich braucht (aus der EINEN
 // Registry, `item.minRole`) und welche Rolle gerade angemeldet ist. Keine Handlung außer dem Weg
 // zurück — es gibt hier nichts, das die Nutzerin selbst einschalten könnte.
+//
+// JOB 3124 UX-12: EINE Ausnahme, und sie nimmt niemandem etwas. Läuft eine Admin-VORSCHAU, ist die
+// Sperre selbst gewollt und jederzeit zurücknehmbar — dann steht hier zusätzlich der Satz „du
+// bleibst Admin" und derselbe Rückweg wie im Zahnrad (`VorschauHinweis`). Das ist KEINE
+// Rollenwahl: es gibt genau einen Knopf, der in die EIGENE Rolle zurückführt, nie ein Rollenraster
+// (das wohnt in den Einstellungen, gehütet von `tests/app/h6-bedienort-register.test.ts` R3/R5).
+//
+// Ohne laufende Vorschau — echte Nicht-Admin-Sitzung, ladende Sitzung, gescheiterte Sitzungsabfrage
+// — gibt `VorschauHinweis` null zurück und die Karte sieht aus wie zuvor. Die Rollen-Erklärung
+// darunter wird in keinem Fall abgeschwächt.
 export function RoleNotice({ item }: { item: NavItem }): JSX.Element {
   const { t } = useTranslation();
   const { role } = useRole();
@@ -88,6 +105,7 @@ export function RoleNotice({ item }: { item: NavItem }): JSX.Element {
         owner: t(`role.name.${item.minRole}`),
         own: t(`role.name.${role}`),
       })}
+      hinweis={<VorschauHinweis flaeche="sperrkarte" />}
     />
   );
 }

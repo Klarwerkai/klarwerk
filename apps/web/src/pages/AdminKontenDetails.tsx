@@ -325,18 +325,43 @@ export function AnsichtAlsRolleDetail({ onZurueck }: { onZurueck: () => void }):
   const { role, setRole } = useRole();
   return (
     <Detailkarte titel={t("role.viewAs")} onZurueck={onZurueck} testId="detail-ansicht-rolle">
-      <div className="grid grid-cols-4 gap-1.5">
+      {/* ============================================================================================
+          JOB 3124 UX-12 · EIN NAME JE ROLLE — UND ER PASST AUCH AUF DIE SCHMALE FLÄCHE.
+          ============================================================================================
+          Bis hierher stand hier die KURZFORM (`role.short.*`: „Viewer", „Contr."), während die Zeile
+          „Ansicht als Rolle" (`pages/Admin.tsx`), das Rollenverzeichnis darunter und die Sperrkarte
+          (`components/Stage2Notice.tsx`) den vollen Namen zeigten (`role.name.*`: „Betrachter",
+          „Controller"). Wer hier „Viewer" wählte, las anderswo einen anderen Wortlaut und konnte die
+          gewählte Rolle nicht wiedererkennen. Die Kurzform ist an dieser Stelle GELÖSCHT, nicht
+          danebengestellt.
+
+          DIE NAMEN SIND LÄNGER, ALSO TRÄGT DAS RASTER SIE ANDERS — und zwar nach einer MESSUNG,
+          nicht nach einer Rechnung (`tests/rollenvorschau-sperre/rollenraster-schmal-chromium.test.ts`,
+          gebaute App in Chromium):
+            · EINE Spalte unterhalb von `sm`. Bei 320 px lässt der Seitenrahmen (200-px-Reiterspalte
+              in `components/einstellungen/Seite.tsx` plus Polster) dem Raster 30 px. Zweispaltig
+              waren die Knöpfe dort 12 px breit und der Text lief bis 10,7 px aus ihnen heraus, dem
+              Nachbarknopf entgegen — gemessen, nicht vermutet. Einspaltig steht jeder Name
+              vollständig im eigenen Knopf. Bei 390 px trägt die eine Spalte 100 statt 47 px, und
+              die Namen brauchen keinen Umbruch mehr.
+            · Zwei Spalten ab `sm`, vier ab `lg` (dort misst `tests/design/h6-funktionsinventar.test.ts`
+              bei 1280 px) — an der breiten Fläche ändert sich nichts.
+          Kein Kürzungsmerkmal an den Knöpfen (kein `truncate`, kein `text-ellipsis`, kein
+          `whitespace-nowrap`), dafür `break-words`: ein Name bricht im Engpass UM statt
+          abgeschnitten zu werden. Gehütet von `tests/rollenvorschau-sperre/rollenraster-namen.test.tsx`
+          (Bauart) und der Chromium-Messung oben (Wirkung bei 320 und 390 px). */}
+      <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 lg:grid-cols-4">
         {ROLES.map((r: Role) => (
           <button
             key={r}
             type="button"
             onClick={() => setRole(r)}
             aria-pressed={role === r}
-            className={`rounded-pill px-1 py-1.5 text-[12px] font-semibold transition-colors ${
+            className={`break-words rounded-pill px-1.5 py-1.5 text-[12px] font-semibold transition-colors ${
               role === r ? "bg-brand text-white" : "bg-hairline-soft text-muted hover:text-text"
             }`}
           >
-            {t(`role.short.${r}`)}
+            {t(`role.name.${r}`)}
           </button>
         ))}
       </div>
