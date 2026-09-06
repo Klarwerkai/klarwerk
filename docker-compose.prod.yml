@@ -61,18 +61,21 @@ services:
       # Client (`OPENAI_DEFAULT_BASE_URL` in services/reasoner/src/model-client.ts, JOB 3090);
       # ein LEERER Wert fällt dort ebenfalls auf die Vorgabe zurück (`|| OPENAI_DEFAULT_BASE_URL`).
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
-      # ACHTUNG, ANBIETER-FALLE (JOB 3097 — GEMELDET STATT GEÄNDERT, weil ungemessen):
-      # REASONER_MODEL gilt für BEIDE Wege. Wer nur OPENAI_API_KEY setzt und das Modell vergisst,
-      # bekommt durch den Vorgabewert unten einen ANTHROPIC-Bezeichner an den OpenAI-Anbieter
-      # geschickt — der Aufruf scheitert dort, statt sauber inaktiv zu bleiben.
-      # Die naheliegende Reparatur `${REASONER_MODEL:-}` ist FALSCH: sie setzt die Variable auf den
-      # LEEREN String, und der Anthropic-Weg liest sie mit `?? "claude-sonnet-4-6"`
-      # (model-client.ts:259) — `??` greift bei "" nicht, das Modell wäre dann leer. Welche Form
-      # beides zugleich löst, hängt daran, was `docker compose config` aus einem Eintrag OHNE Wert
-      # macht; das war in dieser Runde nicht messbar (kein Docker in der Bahn) und die Zeile bleibt
-      # deshalb bewusst UNVERÄNDERT. Bis das gemessen ist gilt: wer OPENAI_API_KEY setzt, setzt
-      # IMMER auch REASONER_MODEL (z. B. gpt-4o-mini).
-      REASONER_MODEL: ${REASONER_MODEL:-claude-sonnet-4-6}
+      # ANBIETER-FALLE (JOB 3097 gemeldet, JOB 3122 GESCHLOSSEN — im Code, nicht nur hier):
+      # REASONER_MODEL gilt für BEIDE Wege. Bis JOB 3122 stand hier der Vorgabewert
+      # `claude-sonnet-4-6`; wer nur OPENAI_API_KEY setzte und das Modell vergass, schickte damit
+      # einen ANTHROPIC-Bezeichner an api.openai.com — ein garantierter 400 bei JEDEM Lauf.
+      # Die offene Frage von JOB 3097 („`${REASONER_MODEL:-}` setzt die Variable auf den LEEREN
+      # String, und `?? \"claude-sonnet-4-6\"` greift bei \"\" nicht") ist beantwortet: der
+      # Anthropic-Weg liest das Modell jetzt mit `?.trim() ||` und fängt den leeren Wert auf
+      # denselben Vorgabewert (services/reasoner/src/model-client.ts, createModelClientFromEnv).
+      # Und der verbliebene Fehlfall sitzt im CODE, nicht in dieser Datei: ein Modellname mit
+      # Präfix `claude-`/`anthropic/` gilt am OpenAI-Weg wie „kein Modell" (openAiCloudClientFromEnv)
+      # — der Lauf geht dann zum Anthropic-Weg statt in einen 400.
+      # ALS EMPFEHLUNG BLEIBT: wer OPENAI_API_KEY setzt, setzt IMMER auch REASONER_MODEL
+      # (z. B. gpt-4o-mini) — sonst bleibt der OpenAI-Weg schlicht inaktiv.
+      # Gehütet von tests/openai-anbieterfalle/.
+      REASONER_MODEL: ${REASONER_MODEL:-}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USER: ${SMTP_USER:-}

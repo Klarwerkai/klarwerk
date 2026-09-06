@@ -23,12 +23,26 @@ export class ModelTimeoutError extends Error {
 }
 
 // Nicht-2xx-Antwort der Modell-API (401/429/500 …) — der Status ist Diagnose-Gold (Quota vs. Key).
+//
+// JOB 3122 (N12d): der Status allein war zu wenig. Ein 400 fällt in keinen der benannten Fälle der
+// nutzerseitigen Ableitung (401/403 = Zugangsdaten, 429 = Kontingent, 5xx = nicht erreichbar) und
+// endete als generisches „model-error" — der Sammelfall OHNE Ursache. Die Begründung, die der
+// Anbieter im selben Atemzug mitschickt (unbekanntes Modell, nicht unterstützter Parameter,
+// abgelehnter Schlüssel), kam dabei bis dahin nie an: der Client warf, BEVOR er den Antwortkörper
+// las. `anbieterGrund` trägt diese Begründung jetzt maschinenlesbar mit — WÖRTLICH zitiert, nie
+// gedeutet, gekappt und geheimnisfrei (die Aufbereitung sitzt an der Fundstelle in model-client.ts).
+// `undefined` heisst ausdrücklich „der Anbieter hat nichts gesagt", nicht „unbekannter Fehler".
+//
+// Die KLASSE ändert sich dadurch NICHT (classifyModelFailure unten liefert unverändert
+// `{ failureClass: "http", status }`) — nur die Auskunft wird reicher.
 export class ModelHttpError extends Error {
   readonly status: number;
-  constructor(message: string, status: number) {
+  readonly anbieterGrund: string | undefined;
+  constructor(message: string, status: number, anbieterGrund?: string) {
     super(message);
     this.name = "ModelHttpError";
     this.status = status;
+    this.anbieterGrund = anbieterGrund;
   }
 }
 

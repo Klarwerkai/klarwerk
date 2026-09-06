@@ -6,6 +6,12 @@ import { ModelEmptyResponseError, ModelHttpError, ModelTimeoutError } from "./mo
 import type { ModelClient } from "./provider-model";
 
 export const CLOUD_API_KEY_ENV = "ANTHROPIC_API_KEY";
+// JOB 3122: der Name der Env, die das Modell für BEIDE Anbieter trägt — und der Vorgabewert, den
+// der Anthropic-Weg dafür kennt. Beides stand vorher als Literal in der Datei; seit dieser Runde
+// wird der Vorgabewert an zwei Stellen gebraucht (die Modellwahl und die Warnzeile der
+// Anbieterfalle unten), und zwei gleichlautende Literale wären zwei Wahrheiten.
+const REASONER_MODEL_ENV = "REASONER_MODEL";
+const ANTHROPIC_DEFAULT_MODEL = "claude-sonnet-4-6";
 // JOB 3090 (Pedis Entscheidung 24, 05.09.): ChatGPT (OpenAI) ist ein EIGENER Cloud-Anbieter neben
 // Anthropic — kein „lokaler LLM" mit fremder Adresse. Die drei Env-Namen sind von Pedi gesetzt und
 // werden nicht umbenannt; die Basis-URL ist eigen, damit ein Azure-/Proxy-Endpunkt möglich bleibt.
@@ -276,7 +282,12 @@ export function createModelClientFromEnv(
   const timeoutMs = parseTimeoutMs(env.REASONER_TIMEOUT_MS);
   return anthropicClient({
     apiKey,
-    model: env.REASONER_MODEL ?? "claude-sonnet-4-6",
+    // JOB 3122: `?? "claude-sonnet-4-6"` griff bei einem LEER gesetzten Eintrag NICHT — `??` fängt
+    // nur `undefined`/`null`. Ein `REASONER_MODEL=` (oder ein Eintrag aus Leerzeichen) ergab damit
+    // ein LEERES Modell im Request. `?.trim() ||` fängt beide Formen auf denselben Vorgabewert und
+    // ist die Voraussetzung dafür, dass die Compose-Zeile den Namen ohne Vorgabewert durchreichen
+    // darf (docker-compose.prod.yml, `${REASONER_MODEL:-}`).
+    model: env.REASONER_MODEL?.trim() || ANTHROPIC_DEFAULT_MODEL,
     ...(timeoutMs !== undefined ? { timeoutMs } : {}),
   });
 }
@@ -379,6 +390,100 @@ function requireChatContent(data: unknown, maxTokens: number, bezeichnung: strin
   });
 }
 
+// ================================================================================================
+// JOB 3122 (N12d) — DIE BEGRÜNDUNG DES ANBIETERS KAM AN UND WURDE WEGGEWORFEN.
+// ================================================================================================
+//
+// Bis hierher warf der Request-Kern bei `!res.ok` sofort — der Antwortkörper wurde erst DANACH
+// gelesen, bei einem 4xx also nie. Der OpenAI-400-Körper (`{"error":{"message":…,"code":…}}`) sagt
+// aber genau das, was in der Vorführung fehlte: unbekanntes Modell, nicht unterstützter Parameter,
+// abgelehnter Schlüssel. Er wird jetzt gelesen, BEVOR geworfen wird.
+//
+// DREI REGELN, DIE DAS ZITAT EINGRENZEN:
+//  1. ZITIERT, NICHT GEDEUTET. Ist kein Grund gewinnbar (leerer Körper, Lesefehler, Antwort ohne
+//     `text()`), bleibt die Meldung EXAKT die bisherige — kein „unbekannter Fehler"-Text.
+//  2. GEHEIMNISFREI. Der Schlüssel verlässt den Prozess nie (FR-RSN-06) — auch nicht als Echo in
+//     der Fehlermeldung eines Anbieters, der ihn zurückzitiert („Incorrect API key provided: sk-…").
+//  3. EINZEILIG UND GEKAPPT. Ein Fehlerkörper kann eine HTML-Seite sein; ins Diagnose-Log gehört ein
+//     Satz, keine Seite.
+const ANBIETER_GRUND_MAX = 200;
+const GEHEIMNIS_MARKE = "[entfernt]";
+
+// Schlüsselartige Zeichenketten. Die Reihenfolge ist Absicht: `Bearer <…>` zuerst, damit ein
+// „Bearer sk-…" als Ganzes fällt und nicht nur sein Rumpf.
+//
+// JOB 3122 RUNDE 2 (bens Korrekturpflicht 1): die erste Fassung verglich nur `[A-Za-z0-9_-]` und
+// endete damit AM MASKIERUNGSZEICHEN. Genau so schickt OpenAI seine Schlüssel-Echos aber zurück:
+// „Incorrect API key provided: sk-proj-********************abcd" bzw. „sk-…abcd". Aus
+// `sk-proj-BEN***SYNTHETIC_TAIL` wurde `[entfernt]***SYNTHETIC_TAIL` — ein SCHLÜSSELAUSSCHNITT blieb
+// stehen, und der ist genau das, was FR-RSN-06 verbietet. Der Zeichenvorrat deckt deshalb auch die
+// Maskierungs- und Base64-Zeichen ab.
+//
+// JOB 3122 RUNDE 3 (bens Korrekturpflicht): die MASKIERUNGSBRÜCKE kannte nur die ASCII-Punktfolge
+// `...`. Der Kommentar behauptete „`…`/`...`" — das EINZELZEICHEN U+2026 stand aber nirgends im
+// Muster, und aus `sk-…BEN_SYNTHETIC_TAIL` wurde `[entfernt]…BEN_SYNTHETIC_TAIL`: derselbe Rest,
+// nur eine Maskierungsform weiter. Beide Schreibweisen sind jetzt AUSFÜHRBAR im Muster, nicht nur
+// im Kommentar.
+//
+// DIE BRÜCKE TRÄGT NUR, WENN AUF BEIDEN SEITEN SCHLÜSSEL STEHT: die Punkte/das Auslassungszeichen
+// werden nur dann mitgetilgt, wenn UNMITTELBAR weiteres Schlüsselmaterial folgt. Ein Satzende bleibt
+// deshalb Auskunft — weder „sk-proj-ABC123XYZ. You can find …" noch „sk-proj-ABC123… siehe Doku"
+// verlieren ihren Erklärungssatz.
+const SCHLUESSEL_RUMPF = "[A-Za-z0-9_*+/=-]";
+const MASKIERUNGSBRUECKE = "(?:\\.{2,}|\\u2026+)";
+const SCHLUESSEL_MUSTER = new RegExp(
+  `\\bsk[-_]${SCHLUESSEL_RUMPF}*(?:${MASKIERUNGSBRUECKE}${SCHLUESSEL_RUMPF}+)*`,
+  "gi",
+);
+
+function tilgeGeheimnisse(text: string): string {
+  return text
+    .replace(/\bBearer\s+\S+/gi, `Bearer ${GEHEIMNIS_MARKE}`)
+    .replace(SCHLUESSEL_MUSTER, GEHEIMNIS_MARKE);
+}
+
+// Aus einem rohen Fremdtext wird eine einzeilige, geheimnisfreie, gekappte Auskunft — oder
+// `undefined`, wenn nichts übrig bleibt (dann sagt der Anbieter eben nichts).
+function kuerzeAnbieterGrund(roh: string): string | undefined {
+  const einzeilig = tilgeGeheimnisse(roh).replace(/\s+/g, " ").trim();
+  if (einzeilig.length === 0) {
+    return undefined;
+  }
+  return einzeilig.length > ANBIETER_GRUND_MAX
+    ? `${einzeilig.slice(0, ANBIETER_GRUND_MAX - 1)}…`
+    : einzeilig;
+}
+
+// Liest den Fehlerkörper und gewinnt daraus den Grund. FAIL-SAFE: dieser Weg darf den Fehlerweg
+// nicht sprengen — jeder Fehlschlag (kein `text()`, abgebrochener Körper, kein JSON) endet in
+// `undefined` bzw. im rohen Text, nie in einem zweiten geworfenen Fehler.
+async function anbieterGrundAusAntwort(res: Response): Promise<string | undefined> {
+  let roh: string;
+  try {
+    roh = await res.text();
+  } catch {
+    return undefined;
+  }
+  if (typeof roh !== "string" || roh.trim().length === 0) {
+    return undefined;
+  }
+  try {
+    const daten = JSON.parse(roh) as { error?: { message?: unknown; code?: unknown } } | null;
+    const fehler = daten?.error;
+    const satz = typeof fehler?.message === "string" ? fehler.message.trim() : "";
+    const code = typeof fehler?.code === "string" ? fehler.code.trim() : "";
+    if (satz && code) {
+      return kuerzeAnbieterGrund(`${satz} (${code})`);
+    }
+    if (satz || code) {
+      return kuerzeAnbieterGrund(satz || code);
+    }
+  } catch {
+    // Kein JSON — dann ist der rohe Text die einzige Auskunft, die es gibt.
+  }
+  return kuerzeAnbieterGrund(roh);
+}
+
 export function openAiCompatibleClient(config: ChatCompletionsModelConfig): ModelClient {
   const fetchFn = config.fetchFn ?? fetch;
   const base = config.baseUrl.replace(/\/+$/, "");
@@ -416,7 +521,18 @@ export function openAiCompatibleClient(config: ChatCompletionsModelConfig): Mode
         signal: controller.signal,
       });
       if (!res.ok) {
-        throw new ModelHttpError(`${bezeichnung} antwortete mit ${res.status}`, res.status);
+        // JOB 3122: DER EINE WURF — und er liest vorher den Körper. Das Präfix
+        // „<Bezeichnung> antwortete mit <Status>" bleibt ZEICHENGLEICH und steht am Anfang, weil
+        // `model-errors.ts` (`/antwortete mit (\d{3})/`) und `services/app/src/ai-check-worker.ts`
+        // den Status genau daraus lesen. Ohne Grund bleibt der Satz karg statt erfunden.
+        const grund = await anbieterGrundAusAntwort(res);
+        throw new ModelHttpError(
+          grund === undefined
+            ? `${bezeichnung} antwortete mit ${res.status}`
+            : `${bezeichnung} antwortete mit ${res.status}: ${grund}`,
+          res.status,
+          grund,
+        );
       }
       const data = await res.json();
       // JOB 3074: NUR MELDEN, WAS DER SERVER WIRKLICH NENNT. Ein lokaler LLM-Server MUSS keinen
@@ -433,7 +549,15 @@ export function openAiCompatibleClient(config: ChatCompletionsModelConfig): Mode
       // JOB 3100 auch für den Bildweg: eine leere Bild-Antwort ist ein Fehler, kein Leerstring.
       return requireChatContent(data, budget, bezeichnung);
     } catch (err) {
-      if (timedOut) {
+      // JOB 3122 RUNDE 2 (bens Korrekturpflicht 2): EIN EMPFANGENER STATUS IST DIE STÄRKERE AUSKUNFT.
+      // Seit das Lesen des Fehlerkörpers (oben) im Fehlerweg liegt, kann das Zeitlimit AUCH DANN noch
+      // zuschlagen, wenn der Status längst da ist: der Anbieter hat mit 400 geantwortet, nur der Körper
+      // tröpfelt. Ohne diese Bedingung überschrieb der Zeitlimit-Zweig genau diesen Fall — aus einem
+      // belegten `ModelHttpError` (Status 400, Klasse „http") wurde ein `ModelTimeoutError` OHNE Status,
+      // und nutzerseitig wurde aus „Anbieter lehnt ab" ein „zu langsam". Ein bereits geworfener
+      // HTTP-Fehler trägt eine gemessene Tatsache und geht deshalb unverändert durch; das Zeitlimit
+      // bleibt für alles zuständig, was VOR einer Statuszeile abbricht.
+      if (timedOut && !(err instanceof ModelHttpError)) {
         throw new ModelTimeoutError(
           `${bezeichnung} überschritt das Zeitlimit von ${timeoutMs} ms`,
           timeoutMs,
@@ -552,6 +676,27 @@ export function createLocalClientFromEnv(
 // Konfiguration: `REASONER_MODEL` hat für Anthropic einen Vorgabewert, für OpenAI wäre jeder
 // geratene Modellname eine Erfindung.
 //
+// JOB 3122 (N12d) — UND EIN ANTHROPIC-BEZEICHNER IST EBENFALLS KEINE OPENAI-KONFIGURATION.
+// `REASONER_MODEL` gilt für BEIDE Wege. Wer nur `OPENAI_API_KEY` setzte und das Modell aus dem
+// Anthropic-Betrieb stehen liess, schickte `claude-…` an api.openai.com — ein garantierter 400 bei
+// JEDEM Lauf, gefolgt von einem Ersatzmodus, dem niemand ansah, warum. Ein solcher Bezeichner gilt
+// hier deshalb wie „kein Modell": der OpenAI-Client entsteht gar nicht, und
+// `createCappedCloudClientFromEnv` fällt auf den Anthropic-Weg zurück, wo der Name hingehört. Die
+// Fläche bleibt dabei ehrlich, weil der Clientname den TATSÄCHLICH arbeitenden Anbieter trägt
+// (`anthropic:` statt `cloud:openai:`, gelesen von `apps/web/src/lib/aiOverview.ts`).
+//
+// VERGLICHEN WERDEN PRÄFIXE, KEINE TEILZEICHENKETTEN: ein echtes OpenAI-Modell, in dessen Namen das
+// Wort zufällig vorkäme, bleibt am OpenAI-Weg. Genau EINE stderr-Zeile erklärt die übergangene
+// Konfiguration — mit den Env-NAMEN und dem Modellnamen, nie mit einem Schlüssel oder einem
+// Schlüsselausschnitt.
+const ANTHROPIC_MODELL_PRAEFIXE = ["claude-", "anthropic/"];
+
+function istAnthropicModell(modell: string): boolean {
+  const name = modell.trim().toLowerCase();
+  return ANTHROPIC_MODELL_PRAEFIXE.some((praefix) => name.startsWith(praefix));
+}
+
+//
 // MODUL-INTERN, absichtlich nicht exportiert: nach außen geht ausschließlich der gecappte Client
 // aus `createCappedCloudClientFromEnv` unten. Wer den rohen Client bekäme, bekäme den Schlüssel und
 // könnte den Vertraulichkeits-Wächter weglassen.
@@ -559,8 +704,19 @@ function openAiCloudClientFromEnv(
   env: Record<string, string | undefined>,
 ): ModelClient | undefined {
   const apiKey = env[OPENAI_API_KEY_ENV]?.trim();
-  const model = env.REASONER_MODEL?.trim();
+  const model = env[REASONER_MODEL_ENV]?.trim();
   if (!apiKey || !model) {
+    return undefined;
+  }
+  if (istAnthropicModell(model)) {
+    // JOB 3122 RUNDE 2 (bens Korrekturpflicht 3): die Zeile sagte „Es arbeitet der Anthropic-Weg." —
+    // eine Zusage, die diese Funktion gar nicht geben kann. Ob dort ein Schlüssel liegt, entscheidet
+    // erst `createModelClientFromEnv` (Env ODER Schlüsselbund); ohne ihn liefert die Fabrik
+    // `undefined`, und es arbeitet NIEMAND, sondern der deterministische Ersatzmodus. Der Satz ist
+    // deshalb an seine Voraussetzung gebunden — die schwächere Aussage statt der starken.
+    process.stderr.write(
+      `[KLARWERK] ${OPENAI_API_KEY_ENV} ist gesetzt, aber ${REASONER_MODEL_ENV}=${model} benennt ein Anthropic-Modell — der OpenAI-Weg bleibt ungenutzt (er würde bei jedem Lauf mit 400 antworten). Es folgt der Anthropic-Weg, SOFERN dort ein Schlüssel vorliegt; sonst bleibt der Cloud-Zugang inaktiv und es arbeitet der deterministische Ersatzmodus. Für ChatGPT gehört ein OpenAI-Modell in ${REASONER_MODEL_ENV} (z. B. gpt-4o-mini).\n`,
+    );
     return undefined;
   }
   const timeoutMs = parseTimeoutMs(env.REASONER_TIMEOUT_MS);
