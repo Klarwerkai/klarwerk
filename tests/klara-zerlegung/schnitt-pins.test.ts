@@ -160,6 +160,12 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // Beide Fassungen überlebten den Einbau, und `An object literal cannot have multiple properties
   // with the same name` (TS1117) hielt `tools/build` rot. Es bleibt genau EIN Eintrag, dieser.
   "tests/design/zielbild-keinwissen-messung.test.ts": "fixture",
+  // JOB 3093 M3 (06.09.2026): „Haben wir das schon?" am ausgelieferten Aufgabenfenster. Die Datei
+  // faehrt das Inline-Skript ueber `createKlaraPanel` (Import der Fixture) mit gefaktem
+  // `/api/check-text` und Word-Markierung — Griff `fixture`, kein Pfadliteral, keine Marken. Nach
+  // einem Schnitt haengt sie an der Fixture. A2 hat die Datei gemeldet (`+ "tests/n1-bestand-im-
+  // panel/bestand-im-panel-mounted.test.ts"`), das Verzeichnis hat sie nicht still aufgenommen.
+  "tests/n1-bestand-im-panel/bestand-im-panel-mounted.test.ts": "fixture",
   // JOB 3062 · H3: die Chromium-Messung des WEB-Blattes `/erfassen`. Sie nennt das Aufgabenfenster
   // nur, um sich davon ABZUGRENZEN (die beiden `zielbild-wissen-erfassen*`-Prüfungen messen
   // taskpane.html, nicht die Web-Seite) — Kommentartreffer des Griffs `pfad`, kein echter Mitfahrer.

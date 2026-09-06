@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
 import type { ConflictService, OverlapService } from "../../../conflicts";
-import type { Confidentiality, KoService } from "../../../knowledge-object";
+import type { Confidentiality, KoService, KoStatus } from "../../../knowledge-object";
 import type { Reasoner } from "../../../reasoner";
 import { authorizesCheckText } from "../addon-principal";
 import { addonRateLimit } from "../addon-rate-limit";
@@ -84,6 +84,43 @@ export interface CheckTextRouteDeps {
 // conflicts, in derselben Form. Beide Werte stammen aus dem Kern (check-text-detection.ts) und damit
 // aus dem bereits geladenen Pool; die Route lädt nichts nach und rät nichts. `null` heißt „der
 // Bestand sagt dazu nichts" (fehlende Kategorie) — kein Platzhalter, kein Standardwert.
+// ==================================================================================================
+// JOB 3093 (M3 „Haben wir das schon?", Pedi 05.09.) — DER TREFFER SAGT, WIE WEIT ER IST UND WO ER LIEGT.
+// ==================================================================================================
+//
+// `koStatus`/`koCategory` sind der ROHE Vertrag aus JOB 3020 (die Web-Anzeige liest ihn, JOB 3045)
+// und bleiben unverändert. ZUSÄTZLICH — nicht stattdessen — trägt jeder Treffer drei Felder, die ein
+// Mensch im Word-Panel ohne Vorwissen lesen kann:
+//   · `pruefstand`  — „validiert" oder „eingereicht". Ein Wissensobjekt ist entweder validiert oder
+//                     offen (`KoStatus`); „offen" heißt: eingereicht, noch nicht geprüft. ENTWÜRFE
+//                     erreichen diese Route nie — sie sind keine Wissensobjekte (services/capture),
+//                     und der Pool entsteht aus Wissensobjekten (Pedi 05.09. 12:03: N1c NEIN).
+//   · `version`     — die Inhaltsversion des Objekts, gelesen am geladenen Pool-Eintrag.
+//   · `fundort`     — Kategorie, der Bereich und der Pfad zum Volltext. Die Bibliothek führt die
+//                     Kategorie unter dem Menü „Bereich" (BibliothekFlaeche.tsx, `BEREICH_KEY =
+//                     "category"`): `bereich` ist deshalb derselbe Wert wie `kategorie`, hier
+//                     ausdrücklich unter dem Namen, den die Bibliothek dem Menschen zeigt — KEINE
+//                     zweite Ableitung. `bibliothekPfad` ist die Detailroute `/wissen/:id`, dieselbe
+//                     Fläche, die die Bibliothek rechts zeigt (pages/Library.tsx).
+// null-Regel wie bei JOB 3020: fehlt dem Bestand die Kategorie, steht `null` — kein Platzhalter.
+type Pruefstand = "validiert" | "eingereicht";
+
+function pruefstandVon(status: KoStatus | null): Pruefstand | null {
+  if (status === "validiert") {
+    return "validiert";
+  }
+  return status === "offen" ? "eingereicht" : null;
+}
+
+function fundortVon(koId: string, koCategory: string | null) {
+  const kategorie = koCategory ?? null;
+  return {
+    kategorie,
+    bereich: kategorie,
+    bibliothekPfad: `/wissen/${encodeURIComponent(koId)}`,
+  };
+}
+
 function toResponse(result: CheckTextResult, note: string | null = null) {
   return {
     duplicates: result.duplicates.map((d) => ({
@@ -95,6 +132,9 @@ function toResponse(result: CheckTextResult, note: string | null = null) {
       rationale: d.rationale ?? null,
       koStatus: d.koStatus,
       koCategory: d.koCategory,
+      pruefstand: pruefstandVon(d.koStatus),
+      version: d.koVersion ?? null,
+      fundort: fundortVon(d.koId, d.koCategory),
       ...(d.snippet !== undefined ? { snippet: d.snippet } : {}),
     })),
     // JOB 1970 RIEGEL 2: bis hierher stand `conflicts: []` FEST — die Antwort behauptete „keine
@@ -111,6 +151,10 @@ function toResponse(result: CheckTextResult, note: string | null = null) {
       rationale: c.rationale ?? null,
       koStatus: c.koStatus,
       koCategory: c.koCategory,
+      // JOB 3093: dieselbe Form wie bei `duplicates` — ein Konflikt hat denselben Fundort-Vertrag.
+      pruefstand: pruefstandVon(c.koStatus),
+      version: c.koVersion ?? null,
+      fundort: fundortVon(c.koId, c.koCategory),
       ...(c.snippet !== undefined ? { snippet: c.snippet } : {}),
     })),
     answer: null,

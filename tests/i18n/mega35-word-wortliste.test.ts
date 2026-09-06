@@ -48,6 +48,16 @@ const OBJEKTAUSSAGEN = [
   "captureDubTrefferGekuerzt",
 ];
 
+// JOB 3093 (M3 „Haben wir das schon?"): EIN weiterer Schlüssel sagt etwas über ein OBJEKT — nicht
+// über die Antwort. Das ist genau die Unterscheidung aus dem Kopf dieser Datei („Aussagen ÜBER EIN
+// OBJEKT, keine Zusage über die Antwort"), unter der „In Prüfung" schon zulässig ist:
+// `bestandNochNichtGeprueft` ist der Prüfstand eines gefundenen Eintrags (Pedis Wortlaut „noch
+// nicht geprüft", CODEX-POC-ENTSCHEIDUNG-1). Die Lagesätze des Bestandswegs (leer/Treffer/
+// gekürzt/Fehler) sind DIESELBEN Schlüssel wie in der Erfassen-Fläche (captureDub*, oben) — kein
+// zweiter Wortlaut. Der Schlüssel steht in der Bestandsliste des Panels, nie in der Antwortkarte,
+// nie in der Quellenzeile. Jeder weitere Schlüssel mit dem Wort bleibt rot.
+const OBJEKTSTAND = ["bestandNochNichtGeprueft"];
+
 // Wortformen, nicht Wortstämme: „In Prüfung" (Objektstatus) bleibt zulässig, „geprüft" nicht.
 const VERBOTEN: { sprache: string; muster: RegExp }[] = [
   { sprache: "de", muster: /gepr(ue|ü)ft/i },
@@ -106,7 +116,7 @@ describe("mega35 B · die Wortliste der Word-Fläche", () => {
   it("„gesichert“ und „geprüft“ stehen NUR im Einstufungshinweis — DE, EN und NL", () => {
     const verstoesse: string[] = [];
     for (const { key, text } of i18nEintraege()) {
-      if (EINSTUFUNG.includes(key) || OBJEKTAUSSAGEN.includes(key)) {
+      if (EINSTUFUNG.includes(key) || OBJEKTAUSSAGEN.includes(key) || OBJEKTSTAND.includes(key)) {
         continue;
       }
       for (const { sprache, muster } of VERBOTEN) {
@@ -154,6 +164,29 @@ describe("mega35 B · die Wortliste der Word-Fläche", () => {
       "Source: {titles} (KLARWERK knowledge, retrieved on {date})",
       "Bron: {titles} (KLARWERK-kennis, opgehaald op {date})",
     ]);
+  });
+
+  it("JOB 3093 · der Objektstand-Schlüssel steht in allen drei Sprachen — und nur DE trägt das Wort", () => {
+    const eintraege = i18nEintraege();
+    for (const key of OBJEKTSTAND) {
+      expect(
+        eintraege.filter((e) => e.key === key),
+        key,
+      ).toHaveLength(3);
+    }
+    // EN/NL kommen ohne die dort verbotenen Wörter aus („reviewed"/„checked", „beoordeeld"/
+    // „nagekeken") — die Ausnahme ist eine deutsche Wortform, keine Lizenz für drei Sprachen.
+    const fremd = eintraege.filter(
+      (e) => OBJEKTSTAND.includes(e.key) && !/gepr(ue|ü)ft/i.test(e.text),
+    );
+    expect(fremd).toHaveLength(2);
+    for (const { key, text } of fremd) {
+      for (const { sprache, muster } of VERBOTEN) {
+        if (sprache !== "de") {
+          expect(muster.test(text), `${key}: ${text}`).toBe(false);
+        }
+      }
+    }
   });
 
   it("die Statusangaben des Wissensobjekts bleiben unangetastet", () => {

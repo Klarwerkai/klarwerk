@@ -201,6 +201,11 @@ function m6FremdeZiele(src: string): string[] {
 //
 // AUSLIEFERUNGSFOLGE für ein installiertes Add-in: KEIN erneutes Sideload. Ein älterer Server ohne
 // die Route antwortet 404 — das Panel liest danach ohnehin `/api/auth/me` neu und zeigt, was ist.
+// JOB 3093 M3 (06.09.2026): KEIN neues Ziel. Der Bestandsweg des Fragen-Reiters („Haben wir das
+// schon?", `bestandPruefen`) ruft `w6DublettenAusCheckText` mit `fetch.bind(window)` — genau wie die
+// Erfassen-Fläche (JOB 3092, `captureDublettenPruefen`). Das Ziel `/api/check-text` steht seit W6 im
+// Weg selbst; ein zweiter Übersetzer mit eigener `fetch(`-Stelle wäre der zweite Weg zur selben
+// Route gewesen. Runde 1 dieses Jobs hatte ihn (12 → 13) — Runde 2 nimmt ihn zurück.
 const BEKANNTE_ABRUFZIELE = 12;
 function m7Abrufmenge(src: string): number {
   return abrufziele(src).length;

@@ -77,9 +77,14 @@ export interface CheckTextInput {
 // `null` IST EINE ECHTE ANTWORT: trägt der Bestand keine Kategorie, steht `null` — kein geratener
 // Wert. Dasselbe gilt für den (konstruktiv unmöglichen) Fall eines Treffers ohne Pool-Eintrag:
 // dann sagt der Fundort nichts, statt etwas zu behaupten.
+//
+// JOB 3093 (M3 „Haben wir das schon?"): die VERSION reist mit — dieselbe Regel, dieselbe Quelle
+// (das bereits geladene Wissensobjekt), dieselbe null-Bedeutung. Das Panel zeigt sie neben dem
+// Prüfstand, damit ein Mensch erkennt, WELCHEN Stand er vor sich hat.
 export interface CheckTextHitOrigin {
   koStatus: KoStatus | null;
   koCategory: string | null;
+  koVersion: number | null;
 }
 
 export type CheckTextDuplicate = DryRunOverlap & CheckTextHitOrigin;
@@ -142,7 +147,12 @@ function transientSubject(input: CheckTextInput): DetectSubject {
 // Bestand wirklich eine trägt — eine leere Zeichenkette ist keine Kategorie, sondern ihr Fehlen.
 function toHitOrigin(ko: KnowledgeObject): CheckTextHitOrigin {
   const category = typeof ko.category === "string" ? ko.category.trim() : "";
-  return { koStatus: ko.status, koCategory: category.length > 0 ? category : null };
+  return {
+    koStatus: ko.status,
+    koCategory: category.length > 0 ? category : null,
+    // JOB 3093: nur eine echte Zahl ist eine Version; alles andere ist „der Bestand sagt nichts".
+    koVersion: typeof ko.version === "number" && Number.isFinite(ko.version) ? ko.version : null,
+  };
 }
 
 // Der gebundene Pool samt Fundort je Kandidat — eine Ladung, zwei Auskünfte. Es wird NICHTS
@@ -246,6 +256,7 @@ function withOrigin<T extends { koId: string }>(
       ...hit,
       koStatus: origin?.koStatus ?? null,
       koCategory: origin?.koCategory ?? null,
+      koVersion: origin?.koVersion ?? null,
     };
   });
 }

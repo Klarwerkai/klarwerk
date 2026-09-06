@@ -508,6 +508,18 @@ const INVENTAR: readonly string[] = [
   // Pfadachse zaehlt `tests/klara-freigabe/` mit — K5 waechst deshalb von 38 auf 39. K2 hat die
   // Datei gemeldet, das Inventar nimmt sie nicht still auf.
   "tests/klara-freigabe/v2-einwilligung-ende-zu-ende.test.ts",
+  // JOB 3093 (06.09.2026), M3 „Haben wir das schon?" (PRIORITAETEN N1 b): der Bestandsweg des
+  // Word-Panels. Zwei Dateien, beide von der Inhaltsachse `taskpane` gefunden — der Server-Test
+  // nennt den Rumpf des Panels und `taskpane.html` im Belegtext, der Panel-Test fuehrt das
+  // ausgelieferte Aufgabenfenster ueber `createKlaraPanel` aus (dazu Achse `komponente`). „klara"
+  // steht nicht im Pfad — der Verzeichnisname war im Auftrag abschliessend vorgegeben —, K5 bleibt
+  // deshalb bei 38. K2 hat beide gemeldet, das Inventar nimmt sie nicht still auf. Sachlich
+  // Klara-Regression: sie halten fest, dass der Treffer Pruefstand („noch nicht geprueft"),
+  // Version und Fundort traegt, dass ein Entwurf NICHT erscheint und erst das Einreichen ihn
+  // sichtbar macht, und dass die Flaeche „nichts gefunden" nur nach einer frischen erfolgreichen
+  // Antwort sagt — ein Fehler heisst „Pruefung nicht moeglich", der letzte Stand bleibt datiert stehen.
+  "tests/n1-bestand-im-panel/fundort-im-server.test.ts",
+  "tests/n1-bestand-im-panel/bestand-im-panel-mounted.test.ts",
   // JOB 3052 D6 (04.09.2026): das Wissensnetz der Web-App gegen das Zielbild Wissensnetz.dc.html,
   // in Chromium gemessen (tests/design/zielbild-wissensnetz.test.ts). Von der Inhaltsachse
   // `palette` gefunden: der statische Leseweg loest die Token `rgb(var(--kw-…))` der gerenderten

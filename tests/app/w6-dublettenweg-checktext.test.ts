@@ -29,6 +29,9 @@ const W_END = "// KW-KLARA-W6-CHECKTEXT-END";
 // „Nichts Vergleichbares gefunden" darf NUR nach einem erfolgreichen Lauf stehen; ein stummes
 // `{treffer: []}` fuer Fehler UND Leere konnte das nicht unterscheiden. `treffer` bleibt in jedem
 // Nicht-Erfolgsfall leer wie bisher (KA3 liest nur `treffer`); `status` bleibt `null`.
+// JOB 3093 (M3 „Haben wir das schon?"): je Treffer additiv `pruefstand`, `version`, `fundort`
+// (gelesen aus den gleichnamigen Feldern der Route, `null` wo nicht geliefert) und ein fuenfter,
+// optionaler Parameter `titel` — der Titel reist als `title` mit, wenn er nichtleer ist.
 type Treffer = {
   id: string;
   title: string;
@@ -37,6 +40,9 @@ type Treffer = {
   relation: string | null;
   koStatus: string | null;
   koCategory: string | null;
+  pruefstand: "validiert" | "eingereicht" | null;
+  version: number | null;
+  fundort: { bereich: string | null; bibliothekPfad: string | null };
 };
 type Lage = "leer" | "treffer" | "fehler" | "zu-kurz";
 type Weg = (
@@ -44,7 +50,15 @@ type Weg = (
   leseText: (grund: string) => unknown,
   fetchFn: (url: string, init: Record<string, unknown>) => Promise<unknown>,
   sprache?: string,
+  titel?: string,
 ) => Promise<{ lage: Lage; gekuerzt?: boolean; treffer: Treffer[] }>;
+
+/** Die drei JOB-3093-Felder, wenn die Route sie nicht liefert. */
+const OHNE_FUNDORT = {
+  pruefstand: null,
+  version: null,
+  fundort: { bereich: null, bibliothekPfad: null },
+} as const;
 
 /** Der ausgelieferte Weg — geschnitten und ausgefuehrt, nicht gelesen. */
 function ausgelieferterWeg(): Weg {
@@ -139,6 +153,7 @@ describe("W6 · der Weg zur Dublettenpruefung", () => {
           relation: "identisch",
           koStatus: "validiert",
           koCategory: "Wartung",
+          ...OHNE_FUNDORT,
         },
         {
           id: "ko-2",
@@ -148,9 +163,79 @@ describe("W6 · der Weg zur Dublettenpruefung", () => {
           relation: "teilweise",
           koStatus: "offen",
           koCategory: null,
+          ...OHNE_FUNDORT,
         },
       ],
     });
+  });
+
+  it("W6-10 · JOB 3093: Pruefstand, Version und Fundort werden GELESEN — und der Titel reist als fuenftes Argument mit", async () => {
+    const { rufe, fetchFn } = sonde({
+      duplicates: [
+        {
+          koId: "ko-1",
+          koTitle: "Vor jeder Wartung an der Presse P2",
+          relation: "identisch",
+          koStatus: "offen",
+          koCategory: "Instandhaltung",
+          pruefstand: "eingereicht",
+          version: 3,
+          fundort: {
+            kategorie: "Instandhaltung",
+            bereich: "Instandhaltung",
+            bibliothekPfad: "/wissen/ko-1",
+          },
+        },
+        // Ein Pfad, der nicht am eigenen Ursprung liegt, ist kein Weg; ein unbekannter Pruefstand
+        // und eine Nicht-Zahl als Version sind `null` — nichts wird erfunden.
+        {
+          koId: "ko-2",
+          koTitle: "Fremd",
+          pruefstand: "geheim",
+          version: "3",
+          fundort: { bereich: "  ", bibliothekPfad: "//boese.example/x" },
+        },
+      ],
+    });
+    const ergebnis = await ausgelieferterWeg()(
+      "bestand",
+      () => LANG,
+      fetchFn,
+      "de",
+      "Ventil vor jeder Wartung drucklos schalten",
+    );
+    const body = JSON.parse(String(rufe[0]?.init.body));
+    expect(body.title).toBe("Ventil vor jeder Wartung drucklos schalten");
+    expect(body.text).toBe(LANG);
+    expect(ergebnis.lage).toBe("treffer");
+    expect(ergebnis.treffer[0]).toMatchObject({
+      id: "ko-1",
+      pruefstand: "eingereicht",
+      version: 3,
+      fundort: { bereich: "Instandhaltung", bibliothekPfad: "/wissen/ko-1" },
+    });
+    expect(ergebnis.treffer[1]).toMatchObject({ id: "ko-2", ...OHNE_FUNDORT });
+    // Ohne fuenftes Argument (Erfassen vor JOB 3093, KA3) und mit leerem Titel: KEIN `title` im Koerper.
+    const ohne = sonde({ duplicates: [] });
+    await ausgelieferterWeg()("tastenruhe", () => LANG, ohne.fetchFn, "de");
+    expect(Object.hasOwn(JSON.parse(String(ohne.rufe[0]?.init.body)), "title")).toBe(false);
+    const leer = sonde({ duplicates: [] });
+    await ausgelieferterWeg()("erfassen", () => LANG, leer.fetchFn, "de", "   ");
+    expect(Object.hasOwn(JSON.parse(String(leer.rufe[0]?.init.body)), "title")).toBe(false);
+  });
+
+  it("W6-11 · JOB 3093 Runde 3: im Fehlerfall reist der HTTP-Status mit — 403 bleibt Lage „fehler“, nie Leere", async () => {
+    const verweigert = async () => ({ ok: false, status: 403, json: async () => ({}) });
+    expect(await ausgelieferterWeg()("bestand", () => LANG, verweigert as never)).toEqual({
+      lage: "fehler",
+      http: 403,
+      treffer: [],
+    });
+    // Ohne Status (kein Antwortobjekt, Werfen) bleibt die Form die bisherige.
+    const wirft = () => Promise.reject(new Error("offline"));
+    expect(await ausgelieferterWeg()("bestand", () => LANG, wirft as never)).toEqual(
+      OHNE("fehler"),
+    );
   });
 
   it("W6-2b · JOB 3092: die LAGE unterscheidet Leere von Fehler — `leer` nur nach erfolgreichem Lauf", async () => {
@@ -205,6 +290,7 @@ describe("W6 · der Weg zur Dublettenpruefung", () => {
           relation: null,
           koStatus: null,
           koCategory: null,
+          ...OHNE_FUNDORT,
         },
       ],
     });

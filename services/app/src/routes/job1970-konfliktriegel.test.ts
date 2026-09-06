@@ -148,6 +148,12 @@ describe("JOB 1970 · die zwei Serverriegel", () => {
       confidence: 0.82,
       method: "model",
       rationale: "Der geprüfte Text erlaubt die Freigabe allein.",
+      // JOB 3093: Prüfstand, Version und Fundort reisen in derselben Form wie bei `duplicates`.
+      // Der Kern-Stub dieser Datei trägt weder Status noch Kategorie noch Version — die Antwort
+      // sagt dann ehrlich `null` (kein Platzhalter) und nennt nur den Pfad zum Objekt.
+      pruefstand: null,
+      version: null,
+      fundort: { kategorie: null, bereich: null, bibliothekPfad: "/wissen/ko-7" },
     });
     // `snippet` wird NICHT erfunden, wenn der Kern keins liefert — dieselbe Regel wie bei duplicates.
     expect(Object.hasOwn(body.conflicts[0], "snippet")).toBe(false);

@@ -1490,7 +1490,56 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // neue Markierungslesung darf einen fehlgeschlagenen Lauf wiederholen. KEIN neues Abrufziel,
     // KEIN Manifest, KEINE CSP, KEIN Recht, dieselbe Nutzlast (Text bleibt auf 8.000 geschnitten —
     // jetzt sichtbar). Kein Sideload noetig.
-    const PIN = "0067c5e9d56e9ed6b97d18f802b9c7c629cb9305850f72d8cbe0eda22eb15110";
+    // JOB 3093 M3 (06.09.2026) — Auslieferungsfolgen, angesetzt auf a5e8fcec… (vor der JOB-3091/3092-
+    // Kette oben, siehe RUECKGABE des urspruenglichen Auftrags):
+    //   · WAS SICH AENDERT: „Haben wir das schon?" (PRIORITAETEN N1 b, Pedi 05.09.). NEU im Markup,
+    //     in der Ruhe unter dem Begriffsbild: `#bestand-block` mit dem Knopf `#bestand-btn`, der
+    //     Ergebnisflaeche `#bestand-ergebnis` (Standzeile `#bestand-stand`, Liste `#bestand-liste`).
+    //     Sichtbar NUR angemeldet UND mit offenem Word-Dokument; im Browser ohne Office bleibt die
+    //     Ruhe unveraendert (zielbild-k1-ruhe / -kein-erklaertext messen ohne Office). Stilregeln
+    //     `#bestand-*` nur mit Palette-Tokens. Woerterbuch: 13 neue Schluessel `bestand*` je Sprache
+    //     (mega35 nimmt `bestandNochNichtGeprueft`/`bestandLeer` als Objektstand-Aussagen aus).
+    //     Skript: Block KW-N1-BESTAND-START/END (`bestandPruefen`, `bestandTextLesen`,
+    //     `bestandTrefferAus`, `bestandZeichnen`, `bestandNeuzeichnen`); zwei Einzeiler-Hooks in
+    //     `updateAskState` und `markOfficeChecked` (Knopf folgt Sitzung und Office-Erkennung).
+    //   · EIN NEUES ABRUFZIEL, bewusst beantwortet (mega69-klara-merkmale, M7 12 -> 13):
+    //     `POST /api/check-text` ueber die Sitzung, ohne `want:"deep"` (deterministisch, kein Modell,
+    //     kein Embedder, Dry-Run). Recht `ko.read` wie `/api/ask`. KEIN Manifest, KEINE CSP-Aenderung,
+    //     kein Fremd-Ursprung, keine neue Office-API.
+    //   · KEINE ZUSICHERUNG WIRD SCHWAECHER: Entwuerfe erscheinen nie (keine Wissensobjekte, Pedi
+    //     05.09. 12:03); „nichts gefunden" steht nur nach einer frischen erfolgreichen Antwort und
+    //     datiert; ein Fehler heisst „Pruefung nicht moeglich"; der letzte Stand bleibt datiert stehen.
+    //   · Gemessen: tests/n1-bestand-im-panel/bestand-im-panel-mounted.test.ts (Panel in jsdom),
+    //     tests/n1-bestand-im-panel/fundort-im-server.test.ts (echte Route).
+    //   · Fuer ein installiertes Add-in: KEIN erneutes Sideload noetig; es holt die Datei beim
+    //     naechsten Oeffnen frisch. Bis der Office-Cache nachzieht, fehlt der Knopf.
+    //
+    // JOB 3093 KONFLIKTRUNDE 1 (06.09.2026) — `git rebase main` traf mit der JOB-3093-Kette (M3,
+    // Bestand-Block oben) auf die inzwischen auf main gelandete JOB-3091/3092-Kette (KA6-Memo,
+    // Herkunfts-/Ungeprueft-Block samt Dublettenweg oben, PIN 0067c5e9…). BEIDE SEITEN BLEIBEN
+    // INHALTLICH ERHALTEN: der KA6-Memo-Block, der Herkunfts-/Ungeprueft-Block samt Dublettenweg aus
+    // JOB 3091/3092 UND der neue Bestand-Block aus JOB 3093 stehen nebeneinander in der
+    // zusammengefuehrten Datei. Kein Markup, kein Skript und kein Woerterbuchschluessel einer Seite
+    // wurde entfernt, um die andere Seite zu erhalten. Der Pin unten ist der frisch aus der
+    // zusammengefuehrten Datei gerechnete Hash, kein uebernommener Wert einer Seite.
+    //   · RUNDE 2 (Tor rot: k1-sitzungslagen „kein Knopf in der Mitte", 3343c3c4… -> 7818aee1…):
+    //     `#bestand-block` steht jetzt NEBEN `#ask-ruhe` (Geschwister, wie die KA3-Karte), nicht in
+    //     der Mitte; er folgt zusaetzlich der Flaechenlage (`kwFlaecheZeichnen`: in Antwort und
+    //     Luecke verborgen). KEIN eigener Uebersetzer und KEIN neues Abrufziel mehr (M7 zurueck auf
+    //     12): der Block ruft `w6DublettenAusCheckText` mit `fetch.bind(window)` wie die Erfassen-
+    //     Flaeche (JOB 3092). W6 traegt dafuer einen fuenften Parameter `titel` (→ `title` im
+    //     Koerper; die Erfassen-Flaeche reicht ihre Zeile „Titel" durch) und je Treffer additiv
+    //     `pruefstand`, `version`, `fundort`. Woerterbuch: nur noch 7 Schluessel `bestand*` je
+    //     Sprache — die Lagesaetze sind die von captureDub* (ein Wortlaut je Lage).
+    //   · RUNDE 3 (BEN: Trefferliste ueberlebte den Benutzerwechsel, 7818aee1… -> a7cbb7da…): der
+    //     Bestandsstand haengt jetzt an der Sitzung. Neu im Block: `bestandSitzung`,
+    //     `bestandSitzungsKennung`, `bestandVerwerfen`, `bestandSitzungMelden`; zwei Einzeiler-
+    //     Hooks (`checkSession` meldet die Identitaet der /api/auth/me-Antwort, `abmelden` verwirft
+    //     beim bestaetigten Logout neben klaraS4Verwerfen); 401/403 auf die Pruefung verwerfen den
+    //     Stand, nennen den Grund (`bestandVerweigert`, ein neuer Schluessel je Sprache) und lesen
+    //     die Sitzung neu. W6 traegt im Fehlerfall den HTTP-Status (`http`), additiv. KEIN neues
+    //     Abrufziel, kein Manifest, keine CSP, keine neue Nutzlast.
+    const PIN = "a7cbb7dae89653124455240a78a02f3e28184fb0d6130907f7c968a00829e605";
     const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
     expect(
       ist,

@@ -226,6 +226,24 @@
     #ka1-terms { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin: 0; padding: 0; list-style: none; }
     #ka1-terms li { padding: 4px 9px; border: 1px solid var(--hairline); border-radius: 8px; background: var(--surface); font-size: 11.5px; color: var(--muted); }
     #ka1-empty { display: none; }
+    /* „Haben wir das schon?" (JOB 3093): der Knopf in der Ruhe; darunter — nur nach einer Frage —
+       die datierte Standzeile und die Trefferliste, linksbuendig. Die Zeilen entstehen zur
+       Laufzeit; sie setzen deshalb KEINE eigene `color` (mega43 B1 kann eine Laufzeitklasse keiner
+       Flaeche zuordnen): Text erbt --text vom Rumpf, Gedaempftes traegt die vorhandene Klasse
+       `muted` (dieselbe Regel wie ueberall im Fenster). Rahmen --hairline auf --surface wie die
+       Begriffe des Begriffsbilds. */
+    #bestand-block { flex: 0 0 auto; margin: 0; padding: 0 16px 8px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+    #bestand-block.hidden { display: none; }
+    #bestand-btn { width: auto; }
+    #bestand-ergebnis { width: 100%; text-align: left; }
+    #bestand-ergebnis.hidden { display: none; }
+    #bestand-stand { margin: 0; }
+    #bestand-liste { margin: 6px 0 0; padding: 0; list-style: none; }
+    #bestand-liste li { margin-top: 6px; padding: 8px 10px; border: 1px solid var(--hairline); border-radius: 8px; background: var(--surface); font-size: 12.5px; }
+    #bestand-liste .bestand-titel { display: block; font-weight: 600; }
+    #bestand-liste .bestand-pruefstand { display: inline-block; margin: 4px 6px 0 0; padding: 1px 7px; border: 1px solid var(--hairline); border-radius: 999px; font-size: 11.5px; }
+    #bestand-liste .bestand-fakten { display: inline-block; margin-top: 4px; }
+    #bestand-liste a { display: block; margin-top: 4px; }
     /* Das Frage-Feld (Ruhe.dc.html Z.33-39): Karte mit 12px Radius, Feld 15px/1.45 mit 52px Platz
        rechts fuer den runden Sendeknopf (32px, rechts 8 / oben 7). Grau, solange nichts da ist;
        Funke dunkel, sobald Text da ist (Klasse `bereit`, updateAskState). Im Antwortzustand ohne
@@ -709,6 +727,22 @@
         <p id="ka1-empty"></p>
       </div>
       <!-- KW-KA1-TERMS-END (Markup) -->
+    </div>
+    <!-- JOB 3093 · N1-BESTAND (Markup) — „Haben wir das schon?" (PRIORITAETEN N1 b). Die Logik
+         steht im Skriptblock KW-N1-BESTAND-START/END; das Markup traegt BEWUSST keine eigene
+         KW-Marke, damit die Marke nicht an zwei Orten je ein Paar aufmacht (tests/klara-zerlegung/
+         marken-skelett.test.ts misst genau solche Bruchstuecke). Der Block steht NEBEN der Ruhe-Mitte,
+         nicht in ihr: die Mitte traegt nur Lupe und den EINEN Satz, kein Knopf (JOB 3056 R4,
+         tests/app/k1-sitzungslagen.test.tsx) — wie die KA3-Karte, die ebenfalls unter #ask-ruhe
+         eingehaengt wird. Sichtbar nur angemeldet, mit offenem Word-Dokument und in der Ruhe
+         (bestandZeichnen); Standzeile und Liste erst nach einer Frage. Kein Erklaertext: ein Knopf,
+         eine datierte Zeile, die Treffer. -->
+    <div id="bestand-block" class="hidden">
+      <button type="button" class="ghost" id="bestand-btn" data-t="bestandCta"></button>
+      <div id="bestand-ergebnis" class="hidden" aria-live="polite">
+        <p id="bestand-stand" class="muted"></p>
+        <ul id="bestand-liste"></ul>
+      </div>
     </div>
     <!-- ========================================================================================
          KW-D2-LUECKE-START — DIE EHRLICHE LUECKE NACH ZIELBILD KeinWissen.dc.html (JOB 3046).
@@ -2754,6 +2788,19 @@
         askStatusPruefung: "In Prüfung",
         askStatusOffen: "Offen",
         askStatusUnknown: "Status unbekannt",
+        // JOB 3093 (M3, PRIORITAETEN N1 b): „Haben wir das schon?" — Knopf, Standzeile, Treffer.
+        // Die Lagesätze (läuft, leer, Treffer, Fehler, zu kurz, gekürzt) sind DIESELBEN wie in der
+        // Erfassen-Fläche (captureDub*, JOB 3092): ein Wortlaut je Lage, nicht zwei. „noch nicht
+        // geprüft" ist der Prüfstand eines OBJEKTS (Pedis Wortlaut), keine Zusage über die
+        // Antwort — mega35 B nimmt diesen einen Schlüssel aus, wie „In Prüfung" dort zulässig ist.
+        bestandCta: "Haben wir das schon?",
+        bestandStand: "Stand {zeit}",
+        bestandKeinText: "Kein lesbarer Text in Word.",
+        bestandVerweigert: "Keine Berechtigung für die Prüfung in dieser Sitzung.",
+        bestandNochNichtGeprueft: "noch nicht geprüft",
+        bestandVersion: "Version {n}",
+        bestandBereich: "Bereich: {bereich}",
+        bestandOeffnen: "In der Bibliothek öffnen",
         askSourceLine: "Quelle: {titles} (KLARWERK-Wissen, Stand {date})",
         askSourceLineRetrieved: "Quelle: {titles} (KLARWERK-Wissen, abgerufen am {date})",
         askInsertTruncatedNote: "Hinweis: Die zugrunde liegende Frage wurde auf {max} Zeichen gekappt.",
@@ -3021,6 +3068,14 @@
         askStatusPruefung: "In review",
         askStatusOffen: "Open",
         askStatusUnknown: "Status unknown",
+        bestandCta: "Do we already have this?",
+        bestandStand: "As of {zeit}",
+        bestandKeinText: "No readable text in Word.",
+        bestandVerweigert: "No permission for the check in this session.",
+        bestandNochNichtGeprueft: "not yet reviewed",
+        bestandVersion: "Version {n}",
+        bestandBereich: "Area: {bereich}",
+        bestandOeffnen: "Open in the library",
         askSourceLine: "Source: {titles} (KLARWERK knowledge, as of {date})",
         askSourceLineRetrieved: "Source: {titles} (KLARWERK knowledge, retrieved on {date})",
         askInsertTruncatedNote: "Note: the underlying question was truncated to {max} characters.",
@@ -3287,6 +3342,14 @@
         askStatusPruefung: "In beoordeling",
         askStatusOffen: "Open",
         askStatusUnknown: "Status onbekend",
+        bestandCta: "Hebben we dit al?",
+        bestandStand: "Stand {zeit}",
+        bestandKeinText: "Geen leesbare tekst in Word.",
+        bestandVerweigert: "Geen rechten voor de controle in deze sessie.",
+        bestandNochNichtGeprueft: "nog niet beoordeeld",
+        bestandVersion: "Versie {n}",
+        bestandBereich: "Gebied: {bereich}",
+        bestandOeffnen: "In de bibliotheek openen",
         askSourceLine: "Bron: {titles} (KLARWERK-kennis, per {date})",
         askSourceLineRetrieved: "Bron: {titles} (KLARWERK-kennis, opgehaald op {date})",
         askInsertTruncatedNote: "Let op: de onderliggende vraag is ingekort tot {max} tekens.",
@@ -4389,6 +4452,9 @@
         .then(function (user) {
           var name = sessionName(user);
           signedIn = name !== null;
+          // JOB 3093 Runde 3: der Bestandsstand („Haben wir das schon?") haengt an DIESER Sitzung —
+          // eine andere oder keine Identitaet verwirft ihn (bestandSitzungMelden).
+          if (typeof bestandSitzungMelden === "function") { bestandSitzungMelden(signedIn ? user : null); }
           if (signedIn) {
             box.className = "status ok";
             box.textContent = t("sessionOk", { name: name });
@@ -4440,6 +4506,9 @@
           knopf.disabled = false;
           if (bestaetigt) {
             klaraS4Verwerfen();
+            // JOB 3093 Runde 3: derselbe Moment fuer den Bestandsstand — ein bestaetigter Logout
+            // verwirft Treffer und laufende Antwort, ein unbestaetigter nichts.
+            if (typeof bestandVerwerfen === "function") { bestandVerwerfen(); }
             sitzungLage = null;
           }
           kwAnsichtSetzen("fragen");
@@ -4617,11 +4686,16 @@
       // `fetch.bind(window)` wie am KA2-Aufruf von performAsk: dieselbe Sitzung, derselbe Ursprung,
       // und die Menge der Abrufziele (mega69-klara-merkmale M7) bleibt, was sie ist — das Ziel
       // `/api/check-text` steht seit W6 im Weg selbst.
+      // JOB 3093: die Zeile „Titel" reist als `title` mit — der Titel, unter dem der Entwurf zum
+      // Eintrag wuerde. Ohne ihn fand der deterministische Pfad nicht einmal den wortgleichen
+      // Absatz (gemessen, fundort-im-server.test.ts K2); der Koerper ist sonst derselbe.
+      var titelFeld = document.getElementById("capture-titel");
       w6DublettenAusCheckText(
         "erfassen",
         function () { return text; },
         fetch.bind(window),
-        askLocale(lang)
+        askLocale(lang),
+        titelFeld ? titelFeld.value : ""
       ).then(function (ergebnis) {
         if (lauf !== captureDublettenLauf) { return; }
         captureDubletten = {
@@ -5486,6 +5560,8 @@
       if (typeof ka6Neuzeichnen === "function" && typeof KA6_ZURUFE !== "undefined") {
         ka6Neuzeichnen();
       }
+      // JOB 3093: „Haben wir das schon?" haengt an derselben Sitzung — der Knopf folgt ihr.
+      if (typeof bestandNeuzeichnen === "function") { bestandNeuzeichnen(); }
       updateInsertState();
     }
 
@@ -5599,6 +5675,8 @@
       document.getElementById("ask-ruhe").className = antwort || luecke ? "hidden" : "";
       document.getElementById("ask-feld").className = antwort ? "antwort" : "";
       kwKopfZeichnen();
+      // JOB 3093: „Haben wir das schon?" gehoert zur Ruhe — in Antwort und Luecke steht es nicht.
+      if (typeof bestandNeuzeichnen === "function") { bestandNeuzeichnen(); }
     }
 
     function kwAnsichtSetzen(name) {
@@ -7021,6 +7099,8 @@
       // war jede Bindung geraten. Das Tor oeffnet genau einmal — ein spaeter Rueckruf nach der
       // Frist findet es offen (AK3).
       klaraS4OfficeGeklaertMelden();
+      // JOB 3093: erst jetzt steht fest, ob es ein Dokument zu lesen gibt — der Knopf folgt.
+      if (typeof bestandNeuzeichnen === "function") { bestandNeuzeichnen(); }
     }
     if (window.Office && Office.onReady) {
       var officeTimer = setTimeout(function () { markOfficeChecked(false); }, OFFICE_READY_TIMEOUT_MS);
@@ -7783,7 +7863,28 @@
     //     Kennung (toResponse, check-text-routes.ts:89) — fehlt sie, ist die Antwort nicht die der
     //     Route: Lage „fehler", auch wenn daneben ein gueltiger Eintrag steht. Eine halb lesbare
     //     Liste ist keine vollstaendige Auswertung, und nur eine vollstaendige darf Leere behaupten.
-    function w6DublettenAusCheckText(grund, leseText, fetchFn, sprache) {
+    // JOB 3093 (M3 „Haben wir das schon?"): der Fundort eines Treffers, GELESEN aus `fundort` der
+    // Route (check-text-routes.ts, `fundortVon`) — `bereich` nur als nichtleerer Text, der Pfad zum
+    // Volltext nur, wenn er am eigenen Ursprung liegt („/…", nicht „//…"): kein fremdes Ziel aus
+    // einer Antwort. Fehlt beides, sagt der Fundort nichts (null), statt etwas zu behaupten.
+    function w6Fundort(d) {
+      var f = d && d.fundort && typeof d.fundort === "object" ? d.fundort : null;
+      var bereich = f && typeof f.bereich === "string" && f.bereich.replace(/^\s+|\s+$/g, "").length > 0
+        ? f.bereich
+        : null;
+      var pfad = f && typeof f.bibliothekPfad === "string" && f.bibliothekPfad.charAt(0) === "/" && f.bibliothekPfad.charAt(1) !== "/"
+        ? f.bibliothekPfad
+        : null;
+      return { bereich: bereich, bibliothekPfad: pfad };
+    }
+
+    // JOB 3093: `titel` ist der FUENFTE, optionale Parameter — der Titel, unter dem der Text als
+    // Eintrag stuende (Erfassen: die Zeile „Titel"; Fragen: `deriveDraftTitleFromSelection`).
+    // GEMESSEN (tests/n1-bestand-im-panel/fundort-im-server.test.ts K2): ohne `title` findet der
+    // deterministische Pfad nicht einmal den wortgleichen Absatz — der Scorer in services/conflicts
+    // wertet einen leeren Titel gegen einen vorhandenen als Deckung 0. Er reist nur mit, wenn er
+    // ein nichtleerer Text ist; jeder Aufruf mit vier Argumenten setzt denselben Koerper ab wie bisher.
+    function w6DublettenAusCheckText(grund, leseText, fetchFn, sprache, titel) {
       return Promise.resolve()
         .then(function () { return typeof leseText === "function" ? leseText(grund) : null; })
         .then(function (text) {
@@ -7792,17 +7893,28 @@
           var schnitt = gekuerzt ? text.slice(0, W6_HOECHSTZEICHEN) : text;
           if (schnitt.trim().length < W6_MINDESTZEICHEN) { return { lage: "zu-kurz", treffer: [] }; }
           if (typeof fetchFn !== "function") { return { lage: "fehler", treffer: [] }; }
+          var koerperDerFrage = {
+            text: schnitt,
+            locale: typeof sprache === "string" && sprache ? sprache : "de",
+            source: "transient-document"
+          };
+          if (typeof titel === "string" && titel.replace(/^\s+|\s+$/g, "").length > 0) {
+            koerperDerFrage.title = titel;
+          }
           return fetchFn("/api/check-text", {
             method: "POST",
             credentials: "include",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-              text: schnitt,
-              locale: typeof sprache === "string" && sprache ? sprache : "de",
-              source: "transient-document"
-            })
+            body: JSON.stringify(koerperDerFrage)
           }).then(function (res) {
-            if (!res || !res.ok) { return { lage: "fehler", treffer: [] }; }
+            if (!res || !res.ok) {
+              // JOB 3093 Runde 3: der HTTP-Status reist im Fehlerfall mit (nur wenn es einen gibt),
+              // damit ein Aufrufer 401/403 — die Sitzung traegt nicht mehr — von einer Stoerung
+              // unterscheiden kann. Die Lage bleibt „fehler": keine Leere, kein Treffer.
+              var fehler = { lage: "fehler", treffer: [] };
+              if (res && typeof res.status === "number") { fehler.http = res.status; }
+              return fehler;
+            }
             return res.json().then(function (koerper) {
               // Ein Koerper ohne `duplicates`-Liste ist keine Antwort der Route — Fehler, nicht Leere.
               if (!koerper || !Array.isArray(koerper.duplicates)) { return { lage: "fehler", treffer: [] }; }
@@ -7822,7 +7934,12 @@
                   deviatesFrom: w6WertungAusRelation(d, titel),
                   relation: w6Feld(d, "relation"),
                   koStatus: w6Feld(d, "koStatus"),
-                  koCategory: w6Feld(d, "koCategory")
+                  koCategory: w6Feld(d, "koCategory"),
+                  // JOB 3093: Pruefstand, Version und Fundort — additiv, gelesen, `null` wo die
+                  // Route nichts liefert. Der Bestandsweg des Fragen-Reiters zeigt sie.
+                  pruefstand: d.pruefstand === "validiert" || d.pruefstand === "eingereicht" ? d.pruefstand : null,
+                  version: typeof d.version === "number" && isFinite(d.version) ? d.version : null,
+                  fundort: w6Fundort(d)
                 });
               }
               return { lage: treffer.length > 0 ? "treffer" : "leer", gekuerzt: gekuerzt, treffer: treffer };
@@ -9244,6 +9361,293 @@
     }
     // KW-KA6-MEMO-END
     // KW-KA6-SCHREIBEN-END
+
+    // KW-N1-BESTAND-START
+    // ============================================================================================
+    // JOB 3093 · M3 — „HABEN WIR DAS SCHON?" DER BESTANDSWEG DES FRAGEN-REITERS (PRIORITAETEN N1 b).
+    // ============================================================================================
+    //
+    // Pedi (05.09.2026, CODEX-POC-ENTSCHEIDUNG-1): er oeffnet sein Dokument in Word und fragt, ob
+    // wir das schon haben. Klara findet den vorhandenen Eintrag — auch den noch nicht validierten —
+    // und zeigt Titel, Pruefstand („noch nicht geprueft"), Version und WO er liegt, mit dem Weg in
+    // die Bibliothek. Entwuerfe erscheinen NICHT (Pedi 05.09. 12:03): sie sind keine
+    // Wissensobjekte und erreichen den Pool der Route nie.
+    //
+    // EIN WEG, ZWEI FLAECHEN. Die Route `POST /api/check-text` erreicht das Panel ueber GENAU EINEN
+    // Uebersetzer: `w6DublettenAusCheckText` (Block KW-KLARA-W6-CHECKTEXT). Die Erfassen-Flaeche
+    // ruft ihn von selbst, sobald eine Markierung steht (JOB 3092, `captureDublettenPruefen`); dieser
+    // Block ruft ihn AUF KLICK mit der Markierung, sonst mit dem Text des ganzen Dokuments. Dieselbe
+    // Sitzung (`fetch.bind(window)`), derselbe Koerper (`source: "transient-document"`, Sprache des
+    // Fensters, Titel), dieselben Lagesaetze (captureDub*), dieselbe Grenze (8.000 Zeichen, gekuerzt
+    // wird gesagt). KEIN `want:"deep"`: der Text bleibt im Haus (deterministischer Pfad, kein Modell,
+    // kein Embedder). Auf dem Sitzungsweg zaehlt der eingereichte Bestand mit (JOB 3020).
+    //
+    // WAS DIESE FLAECHE ZUSAETZLICH ZEIGT — und warum sie neben der Erfassen-Liste steht: die Frage
+    // „haben wir das schon?" stellt Pedi im Fragen-Reiter, mit dem ganzen Dokument, ohne einen
+    // Entwurf anlegen zu wollen. Je Treffer stehen hier Pruefstand („noch nicht geprueft" /
+    // „Validiert"), Version und Bereich mit dem Weg in die Bibliothek — die Felder `pruefstand`,
+    // `version`, `fundort`, die die Route seit JOB 3093 liefert und W6 seither mitliest.
+    //
+    // DER TITEL REIST MIT — nach DERSELBEN Regel wie der Erfassungsweg
+    // (`deriveDraftTitleFromSelection`: erste nichtleere Zeile, 60 Zeichen). GEMESSEN
+    // (tests/n1-bestand-im-panel/fundort-im-server.test.ts K2): ohne Titel findet der
+    // deterministische Pfad nicht einmal den wortgleichen Absatz. Ein Eintrag mit handvergebenem
+    // Titel ist auf diesem Weg NICHT sicher zu finden — das steht in der Rueckgabe, nicht hier als
+    // Versprechen.
+    //
+    // ZUSTANDSMODELL — jede Lage hat ihren Satz, keine erfindet etwas:
+    //   laden, kein Stand        → captureDubLaeuft, Knopf gesperrt
+    //   laden, alter Stand       → alte Liste bleibt, „Stand HH:MM · <captureDubLaeuft>"
+    //   erfolgreich, leer        → captureDubLeer (gekuerzt: captureDubLeerGekuerzt) — NUR nach Erfolg
+    //   erfolgreich, Treffer     → captureDubTreffer(-Gekuerzt) + Titel · Pruefstand · Version · Bereich · Weg
+    //   Fehler, kein Stand       → captureDubFehler (+ Grund, wenn Word nichts Lesbares gab)
+    //   Fehler, alter Stand      → alte Liste bleibt, „Stand HH:MM · <captureDubFehler>"
+    //   zu kurz                  → captureDubZuKurz, kein Ruf (W6)
+    //   offline                  → wie Fehler (W6 faengt das Werfen); das Panel haelt keinen Cache
+    //   nicht angemeldet / kein Word / Antwort- oder Lueckenlage → der Knopf steht nicht im Bild
+    // Ein Stand wird NIE von selbst aufgefrischt; die Zeit an jeder Aussage sagt, wie alt sie ist.
+    // Ein Klick nimmt IMMER den frischen Text aus Word (kein gehaltener Schnappschuss).
+    //
+    // DER STAND GEHOERT DER SITZUNG (Runde 3, BEN): was A gefunden hat, darf B nie sehen. Der Stand
+    // traegt die Sitzungskennung, unter der er entstand (`bestandSitzung`, aus /api/auth/me).
+    // Verworfen — Treffer UND laufende Antwort (Laufnummer) — wird er bei
+    //   · bestaetigtem Logout (abmelden, 2xx — derselbe Moment wie klaraS4Verwerfen),
+    //   · einer anderen oder keiner Identitaet in der naechsten /api/auth/me-Antwort
+    //     (checkSession → bestandSitzungMelden; ein Netzfehler dort verwirft NICHTS, denn ob die
+    //     Sitzung noch besteht, ist dann nicht festgestellt),
+    //   · 401/403 auf die Pruefung selbst (die Sitzung traegt nicht mehr / das Recht fehlt): der
+    //     Satz sagt es, und checkSession liest die Sitzung neu.
+    // Eine Stoerung (5xx, Netz) innerhalb DERSELBEN Sitzung behaelt den datierten Stand (F5).
+    var bestandLetzter = null;   // { treffer: [...], zeit: "HH:MM", gekuerzt: boolean } — der letzte Erfolg
+    var bestandLage = "ruhe";    // ruhe | laden | fehler | zu-kurz
+    var bestandFehlerGrund = "";
+    var bestandLauf = 0;         // Laufnummer: ein spaeter Rueckruf eines aelteren Klicks wird verworfen
+    var bestandSitzung = null;   // Kennung der Sitzung, in der der Stand entstand (null: keine)
+
+    /** Die Kennung eines /api/auth/me-Nutzers — id vor E-Mail vor Name; nichts davon → null. */
+    function bestandSitzungsKennung(user) {
+      if (!user || typeof user !== "object") { return null; }
+      var felder = ["id", "email", "name"];
+      for (var i = 0; i < felder.length; i += 1) {
+        var wert = user[felder[i]];
+        if (typeof wert === "string" && wert.replace(/^\s+|\s+$/g, "").length > 0) {
+          return felder[i] + ":" + wert;
+        }
+      }
+      return null;
+    }
+
+    /** Alles weg, was an der Sitzung hing: Treffer, Lage, Grund — und jede laufende Antwort. */
+    function bestandVerwerfen() {
+      bestandLauf += 1;
+      bestandLetzter = null;
+      bestandLage = "ruhe";
+      bestandFehlerGrund = "";
+      bestandZeichnen();
+    }
+
+    /** checkSession meldet die Identitaet — eine andere oder keine verwirft den Stand. */
+    function bestandSitzungMelden(user) {
+      var kennung = bestandSitzungsKennung(user);
+      if (kennung !== bestandSitzung) {
+        bestandSitzung = kennung;
+        bestandVerwerfen();
+      }
+    }
+
+    function bestandZeit() {
+      var d = new Date();
+      function pad(n) { return n < 10 ? "0" + n : String(n); }
+      return pad(d.getHours()) + ":" + pad(d.getMinutes());
+    }
+
+    /** Die Ruhe ist im Bild (weder Antwort noch Luecke) — dort wohnt dieser Weg. */
+    function bestandRuheSichtbar() {
+      var ruhe = document.getElementById("ask-ruhe");
+      return Boolean(ruhe) && ruhe.className.indexOf("hidden") === -1;
+    }
+
+    /** Der Knopf steht nur mit Sitzung, offenem Word-Dokument und sichtbarer Ruhe. */
+    function bestandSichtbar() {
+      return Boolean(signedIn) && Boolean(officeUsable()) && bestandRuheSichtbar();
+    }
+
+    /**
+     * Der Text der Frage: die Markierung in Word, sonst der Text des ganzen Dokuments. `done(null)`
+     * heisst: es gibt nichts Lesbares (kein Word, kein Dokumentkontext, Word.run fehlt oder wirft).
+     * Frisch gelesen bei JEDEM Klick — ein gehaltener Schnappschuss koennte einen Text meinen, der
+     * so nicht mehr dasteht.
+     */
+    function bestandTextLesen(done) {
+      if (!officeUsable()) { done(null); return; }
+      var ganzesDokument = function () {
+        if (!window.Word || typeof Word.run !== "function") { done(null); return; }
+        Word.run(function (context) {
+          var body = context.document.body;
+          body.load("text");
+          return context.sync().then(function () { done(String(body.text || "")); });
+        }).catch(function () { done(null); });
+      };
+      try {
+        Office.context.document.getSelectedDataAsync(Office.CoercionType.Text, function (r) {
+          var markierung = r && r.status === Office.AsyncResultStatus.Succeeded ? String(r.value || "") : "";
+          if (markierung.replace(/^\s+|\s+$/g, "").length > 0) { done(markierung); return; }
+          ganzesDokument();
+        });
+      } catch (err) {
+        done(null);
+      }
+    }
+
+    function bestandStandzeile(letzter) {
+      var stand = letzter ? t("bestandStand", { zeit: letzter.zeit }) : "";
+      if (bestandLage === "laden") {
+        return stand ? stand + " · " + t("captureDubLaeuft") : t("captureDubLaeuft");
+      }
+      if (bestandLage === "fehler") {
+        if (stand) { return stand + " · " + t("captureDubFehler"); }
+        return t("captureDubFehler") + (bestandFehlerGrund ? " " + bestandFehlerGrund : "");
+      }
+      if (bestandLage === "zu-kurz") {
+        return stand ? stand + " · " + t("captureDubZuKurz") : t("captureDubZuKurz");
+      }
+      if (!letzter) { return ""; }
+      var vars = { zeit: letzter.zeit, max: String(W6_HOECHSTZEICHEN) };
+      if (letzter.treffer.length === 0) {
+        return t(letzter.gekuerzt ? "captureDubLeerGekuerzt" : "captureDubLeer", vars);
+      }
+      return t(letzter.gekuerzt ? "captureDubTrefferGekuerzt" : "captureDubTreffer", vars);
+    }
+
+    function bestandZeichnen() {
+      var block = document.getElementById("bestand-block");
+      var knopf = document.getElementById("bestand-btn");
+      var ergebnis = document.getElementById("bestand-ergebnis");
+      var stand = document.getElementById("bestand-stand");
+      var liste = document.getElementById("bestand-liste");
+      if (!block || !knopf || !ergebnis || !stand || !liste) { return; }
+      block.className = bestandSichtbar() ? "" : "hidden";
+      knopf.disabled = bestandLage === "laden";
+      var letzter = bestandLetzter || null;
+      var zeile = bestandStandzeile(letzter);
+      stand.textContent = zeile;
+      ergebnis.className = zeile ? "" : "hidden";
+      while (liste.firstChild) { liste.removeChild(liste.firstChild); }
+      // Die Liste ist IMMER die des letzten Erfolgs — auch waehrend einer laufenden oder
+      // gescheiterten Wiederholung (die Standzeile sagt dann, wie alt sie ist). Nie geleert.
+      var treffer = letzter ? letzter.treffer : [];
+      for (var i = 0; i < treffer.length; i += 1) {
+        var e = treffer[i];
+        var zeileEl = document.createElement("li");
+        // Reiner Text (`textContent`), kein HTML-Sink: Titel kommen vom Server.
+        var titelEl = document.createElement("span");
+        titelEl.className = "bestand-titel";
+        titelEl.textContent = e.title || e.id;
+        zeileEl.appendChild(titelEl);
+        // Der Pruefstand steht bei JEDEM Treffer — „noch nicht geprueft" verschwindet nie hinter
+        // dem Titel. Validiert benutzt das VORHANDENE Statuswort der Quellenliste; ein Pruefstand,
+        // den die Route nicht liefert, heisst ehrlich „Status unbekannt".
+        var pille = document.createElement("span");
+        pille.className = "muted bestand-pruefstand bestand-pruefstand-" + (e.pruefstand || "unbekannt");
+        pille.textContent = e.pruefstand === "validiert"
+          ? t("askStatusValidiert")
+          : e.pruefstand === "eingereicht" ? t("bestandNochNichtGeprueft") : t("askStatusUnknown");
+        zeileEl.appendChild(pille);
+        // Version und Bereich: nur, was der Bestand wirklich sagt — kein Platzhalter.
+        var fakten = [];
+        if (typeof e.version === "number") { fakten.push(t("bestandVersion", { n: String(e.version) })); }
+        var bereich = e.fundort ? e.fundort.bereich : null;
+        if (bereich) { fakten.push(t("bestandBereich", { bereich: bereich })); }
+        if (fakten.length > 0) {
+          var faktenEl = document.createElement("span");
+          faktenEl.className = "bestand-fakten muted";
+          faktenEl.textContent = fakten.join(" · ");
+          zeileEl.appendChild(faktenEl);
+        }
+        // Der Weg zum Volltext: der Pfad, den der Server nennt, am eigenen Ursprung — neues
+        // Fenster ohne Opener (dasselbe Muster wie die Quellen-Chips und KA3).
+        var pfad = e.fundort ? e.fundort.bibliothekPfad : null;
+        if (pfad) {
+          var weg = document.createElement("a");
+          weg.href = window.location.origin + pfad;
+          weg.target = "_blank";
+          weg.rel = "noopener noreferrer";
+          weg.textContent = t("bestandOeffnen");
+          zeileEl.appendChild(weg);
+        }
+        liste.appendChild(zeileEl);
+      }
+    }
+
+    /** Sprachwechsel, Sitzungswechsel, Office-Erkennung, Flaechenwechsel: derselbe Stand, neu gezeichnet. */
+    function bestandNeuzeichnen() {
+      bestandZeichnen();
+    }
+
+    function bestandPruefen() {
+      if (bestandLage === "laden") { return; }
+      bestandLauf += 1;
+      var lauf = bestandLauf;
+      bestandLage = "laden";
+      bestandFehlerGrund = "";
+      bestandZeichnen();
+      var abschluss = function (lage, grund) {
+        if (lauf !== bestandLauf) { return; }
+        bestandLage = lage;
+        bestandFehlerGrund = grund || "";
+        bestandZeichnen();
+      };
+      try {
+        bestandTextLesen(function (text) {
+          if (typeof text !== "string") { abschluss("fehler", t("bestandKeinText")); return; }
+          // Derselbe Uebersetzer wie die Erfassen-Flaeche; der Titel nach der Erfassungsregel.
+          w6DublettenAusCheckText(
+            "bestand",
+            function () { return text; },
+            fetch.bind(window),
+            askLocale(lang),
+            deriveDraftTitleFromSelection(text)
+          ).then(function (ergebnis) {
+            if (lauf !== bestandLauf) { return; }
+            var lage = ergebnis && typeof ergebnis.lage === "string" ? ergebnis.lage : "fehler";
+            var http = ergebnis && typeof ergebnis.http === "number" ? ergebnis.http : 0;
+            if (lage === "fehler" && (http === 401 || http === 403)) {
+              // Die Sitzung traegt nicht mehr oder das Recht fehlt: was vorher stand, stand fuer
+              // eine andere Lage — verwerfen, den Grund sagen, die Sitzung neu lesen.
+              bestandVerwerfen();
+              bestandLage = "fehler";
+              bestandFehlerGrund = t(http === 401 ? "askAuth" : "bestandVerweigert");
+              bestandZeichnen();
+              if (typeof checkSession === "function") { checkSession(); }
+              return;
+            }
+            if (lage === "treffer" || lage === "leer") {
+              bestandLetzter = {
+                treffer: Array.isArray(ergebnis.treffer) ? ergebnis.treffer : [],
+                zeit: bestandZeit(),
+                gekuerzt: ergebnis.gekuerzt === true
+              };
+              abschluss("ruhe", "");
+              return;
+            }
+            abschluss(lage === "zu-kurz" ? "zu-kurz" : "fehler", "");
+          });
+        });
+      } catch (err) {
+        abschluss("fehler", err && err.message ? err.message : "");
+      }
+    }
+
+    if (document.getElementById("bestand-btn")) {
+      document.getElementById("bestand-btn").addEventListener("click", bestandPruefen);
+      // Der Sprach-Rueckruf laeuft NACH `setLang` (spaeter registriert): `lang` steht schon um.
+      ["de", "en", "nl"].forEach(function (bestandCode) {
+        var knopf = document.getElementById("lang-" + bestandCode);
+        if (knopf) { knopf.addEventListener("click", bestandNeuzeichnen); }
+      });
+      bestandZeichnen();
+    }
+    // KW-N1-BESTAND-END
   </script>
 </body>
 </html>
