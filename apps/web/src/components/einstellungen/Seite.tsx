@@ -1,8 +1,23 @@
 // JOB 3065 H6 — DIE FLÄCHE „EINSTELLUNGEN" (Maßstab: `design/klarwerk/Admin.dc.html`, Z.36-44).
 //
-// Titel oben (26px/650/−0.3px, KEIN Kicker, KEIN Untertitel), links die 200px-Reiterspalte, rechts
-// die Karten. Sonst steht auf der Fläche kein Satz — Pedis Maßstab 04.09.: Apple Pages, Knopf und
-// Feld erklären sich selbst.
+// Titel oben (26px/650/−0.3px, KEIN Kicker, KEIN Untertitel). AB `sm` (640 px): links die
+// 200px-Reiterspalte, rechts die Karten — genau das Zielbild. UNTERHALB von `sm`: die Reiterleiste
+// steht ÜBER dem Inhalt, und der Inhalt bekommt die volle Spaltenbreite.
+//
+// WARUM UNTERHALB ANDERS (JOB 3155 UX-12b): Die feste Breite galt bis hierher bei JEDER Fensterbreite
+// (`w-[200px] shrink-0` in einer Flexzeile ohne Weiche). Der Prüfer von JOB 3124 hat die Folge
+// GEMESSEN, nicht gerechnet — `archiv/3124/runde-4/ben.md:26`: „Gemessen: 320 px → 30 px Raster,
+// drei bis fünf Textzeilen; 390 px → 100 px Raster, jeweils eine Textzeile." Vom Telefon blieben
+// dem Inhalt also rund 30 px, und derselbe Befund verlangte: „Behandle die schmale Reiterspalte als
+// eigenen Layoutauftrag." Die Weiche unten ist dieser Auftrag; gemessen wird sie an der gebauten App
+// in `tests/einstellungen-schmal/ux12b-einstellungen-schmal-chromium.test.ts` (320/390/1280 px,
+// DE und EN, samt Tastaturweg und einer dauerhaft mitlaufenden Gegenprobe auf den alten Vertrag).
+//
+// Es gibt weiterhin GENAU EINEN Ort, der Reiter zeichnet: `Reiterspalte` hier. Kein zweites,
+// „mobiles" Parallelbauteil, keine zweite Einstellungshülle.
+//
+// Sonst steht auf der Fläche kein Satz — Pedis Maßstab 04.09.: Apple Pages, Knopf und Feld
+// erklären sich selbst.
 import type { ReactNode } from "react";
 import { cx } from "../ui";
 
@@ -21,7 +36,13 @@ export function Reiterspalte({
   onWechsel: (id: string) => void;
 }): JSX.Element {
   return (
-    <div data-einst="reiterspalte" className="flex w-[200px] shrink-0 flex-col gap-1">
+    // Schmal: eine umbrechende Leiste über die volle Breite — jeder Reiter bleibt ganz sichtbar und
+    // wandert bei Platzmangel in die nächste Zeile, statt abgeschnitten zu werden. Ab `sm` wieder
+    // die 200-px-Spalte des Zielbilds (`Admin.dc.html`, Z.43), unschrumpfbar wie bisher.
+    <div
+      data-einst="reiterspalte"
+      className="flex w-full flex-row flex-wrap gap-1 sm:w-[200px] sm:shrink-0 sm:flex-col"
+    >
       {reiter.map((r) => (
         <button
           key={r.id}
@@ -74,7 +95,10 @@ export function EinstellungenSeite({
           {titel}
         </h1>
       </div>
-      <div className="flex items-start gap-6">
+      {/* Die Breiten-Weiche (JOB 3155): unterhalb von `sm` untereinander — Reiter oben, Inhalt
+          darunter, jeder über die volle Breite. Ab `sm` unverändert nebeneinander mit 24 px Abstand
+          und oben ausgerichtet. */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:gap-6">
         {reiter && aktiv !== undefined && onWechsel ? (
           <Reiterspalte reiter={reiter} aktiv={aktiv} onWechsel={onWechsel} />
         ) : null}

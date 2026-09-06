@@ -26,8 +26,9 @@
 //   · die Seite bekommt keinen waagerechten Überlauf.
 //
 // DIE GEGENPROBE LÄUFT MIT (Fall S3): dieselbe Messung mit dem Vertrag, der den Schaden macht
-// (`white-space: nowrap`), muss WIEDER rot werden. Ein Test, der auch mit abgeschnittenem Text grün
-// bliebe, misst die falsche Sache.
+// (`white-space: nowrap` samt Engpass, s. Nachtrag JOB 3155 bei der Störung in `MESSEN`), muss
+// WIEDER rot werden. Ein Test, der auch mit abgeschnittenem Text grün bliebe, misst die falsche
+// Sache.
 //
 // ================================================================================================
 // RUNDE 4 — DER TASTATURWEG WIRD JETZT GEGANGEN, NICHT NACHGEBILDET (Fälle T1–T3).
@@ -187,10 +188,23 @@ const MESSEN = `(async ([reiterName, nowrap, breite, timeout]) => {
 
   // 3. Nur für die Gegenprobe S3: den Vertrag einsetzen, der den Schaden macht — und ihn danach
   //    wieder abräumen. Jede Messung ohne Flagge stellt den Auslieferungszustand her.
+  //
+  //    JOB 3155 (UX-12b) — WARUM HIER SEIT DEM 07.09. AUCH EINE BREITE STEHT:
+  //    Der Schaden, den JOB 3124 abgewehrt hat, hatte ZWEI Hälften — den Kürzungsvertrag UND den
+  //    Engpass, in dem er zubiss: die Einstellungshülle liess dem Raster bei 320 px nur 30 px
+  //    (gemessen, archiv/3124/runde-4/ben.md:26). JOB 3155 hat die zweite Hälfte beseitigt; das
+  //    Raster misst bei 320 px jetzt 254 px, und dort passt „Administrator" auch mit nowrap
+  //    einzeilig in den Knopf. Der Kürzungsvertrag ALLEIN kürzte deshalb nichts mehr, und diese
+  //    Gegenprobe wurde grün, ohne dass sich an ihrer Aussage etwas geändert hätte — sie hätte ab
+  //    da nur noch bewiesen, dass der Engpass weg ist, nicht mehr, dass die Messung Zähne hat.
+  //    Die Gegenprobe stellt den Engpass deshalb selbst wieder her: 30 px, genau die gemessene
+  //    Zahl von damals. Sie prüft damit weiter dasselbe wie vorher — würde das Raster den
+  //    Kürzungsvertrag tragen, sähe der Nutzer „Administ…" statt des vollen Namens, und S1 wäre rot.
   for (const b of knoepfe) {
     b.style.whiteSpace = nowrap ? 'nowrap' : '';
     b.style.overflow = nowrap ? 'hidden' : '';
     b.style.textOverflow = nowrap ? 'ellipsis' : '';
+    b.style.maxWidth = nowrap ? '30px' : '';
   }
   await new Promise((r) => requestAnimationFrame(() => r(null)));
 
@@ -445,12 +459,21 @@ describe("JOB 3124 UX-12 · das Rollenraster bei 320 und 390 px, in Chromium gem
     const ueberlaeufe = kaputt.knoepfe.filter((k) => k.scrollWidth > k.clientWidth);
     expect(
       ueberlaeufe.length,
-      "mit white-space:nowrap + ellipsis müsste der Text kürzen — der Test misst sonst die falsche Sache",
+      "mit white-space:nowrap + ellipsis im 30-px-Engpass müsste der Text kürzen — der Test misst sonst die falsche Sache",
     ).toBeGreaterThan(0);
+    // Und die Kürzung ist auch WIRKLICH die, gegen die S1 sich wehrt: sichtbar gekürzt statt
+    // umbrochen. Ohne diese Zeile bewiese die Gegenprobe nur „irgendetwas passt nicht mehr".
+    for (const k of kaputt.knoepfe) {
+      expect(k.whiteSpace, `„${k.text}": die Störung setzte den Kürzungsvertrag nicht`).toBe(
+        "nowrap",
+      );
+      expect(k.textOverflow, `„${k.text}": die Störung setzte die Ellipse nicht`).toBe("ellipsis");
+    }
     // Und der gesunde Zustand kommt zurück, sobald die eingesetzte Störung weg ist.
     const geheilt = await messen(320);
     for (const k of geheilt.knoepfe) {
       expect(k.scrollWidth, `„${k.text}" nach der Gegenprobe`).toBeLessThanOrEqual(k.clientWidth);
+      expect(k.whiteSpace, `„${k.text}": die Störung wurde nicht abgeräumt`).not.toBe("nowrap");
     }
   }, 120_000);
 
