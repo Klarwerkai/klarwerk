@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import {
   useConflicts,
   useDuplicates,
@@ -5,7 +6,15 @@ import {
   useLifecyclePending,
   useValidationBoard,
 } from "../api/hooks";
-import { type HasData, type LoadPhase, groupLoadPhase, isGroupStale } from "../lib/loadingState";
+import {
+  type HasData,
+  type HatStand,
+  type LoadPhase,
+  groupLoadPhase,
+  gruppeVeraltet,
+  isGroupStale,
+  naechsterFristablauf,
+} from "../lib/loadingState";
 import { countUnresolvedConflicts } from "../lib/taskFilters";
 
 // SCRUM-486 E: Jeder Sidebar-Badge trägt neben der Zahl seine ART (i18n-Schlüssel mit {{count}}), damit
@@ -33,6 +42,11 @@ export function navBadgeLabelKey(badgeKey: string): string | undefined {
 // darf weiter stehen), ABER `stale` ist wahr — die Sidebar zeigt die alte Zahl WEITER und daneben einen
 // bedienbaren Störungshinweis mit Wiederholen. Ohne dieses Bit verschwieg die Navigation den gestörten
 // Refetch als stilles „loaded" (bens Blocker).
+// JOB 3113 H1b: `stale` trägt jetzt BEIDE Gründe, aus denen eine Zahl nicht mehr gedeckt ist — der
+// gescheiterte Neuabruf (oben) UND die abgelaufene Frist: ein Cache, den seit `ZAEHLER_FRISCHE_MS`
+// niemand mehr bestätigt hat, ist keine Auskunft über jetzt. `stale` bleibt damit der EINE Träger
+// für „diese Zahl gilt nicht mehr"; die Anzeigeorte (`shell/KopfbandPunkte.tsx`) folgen ihm ohne
+// eigene Regel — eine Regel, drei Orte.
 export interface NavBadge {
   count: number;
   state: LoadPhase;
@@ -53,14 +67,40 @@ export function useNavBadges(): Record<string, NavBadge> {
   // Id-Liste (`api/endpoints.ts:573`) — textfrei, also FUNKE-FIX3 P0 gewahrt: die Shell holt
   // keinen Volltext, nur eine Länge.
   const lifecycle = useLifecyclePending();
+  // ==============================================================================================
+  // JOB 3113 H1b — DIE UHR, DIE GENAU EINMAL SCHLÄGT.
+  // ==============================================================================================
+  //
+  // Damit eine ablaufende Frist überhaupt SICHTBAR wird, muss zum Ablaufzeitpunkt neu gezeichnet
+  // werden — react-query meldet von sich aus nichts, wenn niemand nachfragt. Das geschieht mit
+  // EINEM `setTimeout` auf den nächsten bevorstehenden Ablauf, AUSDRÜCKLICH NICHT mit einem
+  // Sekundenintervall: diese Navigation ist auf jeder Seite gemountet, ein Ticker würde die
+  // gesamte Oberfläche im Takt neu rendern. Der Timer wird beim Abmelden und bei jedem neuen
+  // Stand aufgeräumt (kein Leck, kein zweiter Timer). Ist nichts mehr zu befristen (noch kein
+  // Erfolg, oder alles bereits abgelaufen), läuft gar kein Timer.
+  const jetzt = Date.now();
+  const quellen = [board, conflicts, duplicates, gaps, lifecycle];
+  const naechsterAblauf = naechsterFristablauf(quellen, jetzt);
+  const [, neuZeichnen] = useState(0);
+  useEffect(() => {
+    if (naechsterAblauf === null) {
+      return undefined;
+    }
+    const id = setTimeout(
+      () => neuZeichnen((n) => n + 1),
+      Math.max(0, naechsterAblauf - Date.now()),
+    );
+    return () => clearTimeout(id);
+  }, [naechsterAblauf]);
   // Jede Kennzahl ist atomar mit IHREN Quellen: erst wenn alle Daten haben, wird eine echte Zahl gezeigt;
   // scheitert eine Quelle dauerhaft ohne Daten → state "error". Der Marker bietet Wiederholen (refetch).
-  type NavSource = HasData & { refetch?: () => unknown };
+  type NavSource = HasData & HatStand & { refetch?: () => unknown };
   const badge = (count: number, ...sources: NavSource[]): NavBadge => ({
     count,
     state: groupLoadPhase(sources),
-    // Refetch einer bereits geladenen Zahl gescheitert → gestört, aber Zahl bleibt sichtbar (Stale).
-    stale: isGroupStale(sources),
+    // Zwei Gründe, dieselbe Folge (JOB 3113 H1b): ein gescheiterter Neuabruf einer bereits
+    // geladenen Zahl — ODER eine Zahl, die seit `ZAEHLER_FRISCHE_MS` niemand mehr bestätigt hat.
+    stale: isGroupStale(sources) || gruppeVeraltet(sources, jetzt),
     refetch: () => {
       for (const s of sources) {
         s.refetch?.();

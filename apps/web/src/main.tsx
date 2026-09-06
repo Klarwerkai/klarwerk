@@ -7,6 +7,7 @@ import i18n from "./i18n";
 import "./index.css";
 import { initDesignTheme } from "./lib/designTheme";
 import { bindHtmlLang } from "./lib/htmlLang";
+import { ZAEHLER_FRISCHE_MS } from "./lib/loadingState";
 import { bindSpracheSpeichern } from "./lib/sprachwahl";
 
 // AUFTRAG-mega40 B: gespeicherte Design-Wahl VOR dem ersten Render anwenden (kein Aufblitzen des
@@ -27,8 +28,12 @@ bindHtmlLang(i18n);
 // in den Speicher greifen und Fälle über Dateigrenzen hinweg verkleben.
 bindSpracheSpeichern(i18n);
 
+// JOB 3113 H1b: die Frischefrist steht nur noch an EINER Stelle (`lib/loadingState.ts`). Sie ist
+// hier der `staleTime` — der Zeitpunkt, ab dem react-query die Antwort nicht mehr für frisch hält —
+// und dort die Frist, nach der die Navigation eine ungedeckte Zahl nicht mehr zeigt. Zwei Ausdrücke
+// derselben Zahl wären ein zweites Gehirn; der WERT bleibt unverändert 30 000 ms.
 const queryClient = new QueryClient({
-  defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },
+  defaultOptions: { queries: { staleTime: ZAEHLER_FRISCHE_MS, retry: 1 } },
 });
 
 const root = document.getElementById("root");

@@ -32,6 +32,11 @@ import { MenueZeile } from "./Menue";
 // offline → KEIN Abzeichen: kein „!", kein Ladepunkt, keine alte Zahl. Der Punkt steht dann ohne
 // Zahl. Das gilt für „Prüfen" im Kopfband und für die Zahlen in „Weitere Bereiche" gleichermaßen —
 // eine Regel, zwei Orte.
+//
+// JOB 3113 H1b schließt die dritte Hälfte dieses Satzes: „frisch" heißt seit jetzt auch ZEITLICH
+// frisch. `badge.stale` ist wahr, sobald ein Neuabruf gescheitert ist ODER die letzte Bestätigung
+// die Frist erreicht hat (`app/useNavBadges.ts`, `lib/loadingState.ts`). Hier steht dafür KEINE
+// eigene Rechnung — die Regel wohnt an einer Stelle, diese Datei liest nur ihr Ergebnis.
 
 /** Die Zahl, die ein Abzeichen zeigen darf — oder null (dann gibt es kein Abzeichen). */
 function sichtbarerZaehler(badge: NavBadge | undefined, online: boolean): number | null {

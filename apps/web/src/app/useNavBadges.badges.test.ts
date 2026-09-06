@@ -22,11 +22,21 @@
 //     KLEINERE Zahl als die Seite. Diese Datei behauptet deshalb KEINE vollständige Übereinstimmung.
 //
 // KEIN MOUNT, und das ist begründet: `apps/web` fährt `environment: "node"` (`vite.config.ts:74`),
-// `@testing-library/react`/`jsdom` stehen dort nicht im Paket. `useNavBadges` trägt selbst KEINEN
-// React-Zustand — es ruft Lesehooks und rechnet. Mit gemockten Quellen ist es eine gewöhnliche
-// Funktion und wird genau so aufgerufen. Der RENDERER-Vertrag (reale Sidebar, echte Provider- und
-// Endpointgrenze) ist deshalb NICHT hier, sondern in `tests/app/nav-badges-sidebar-mounted.test.tsx`
-// gepinnt — beide zusammen, nicht eines statt des anderen (BENs Promptverbesserung zu D1).
+// `@testing-library/react`/`jsdom` stehen dort nicht im Paket. Der RENDERER-Vertrag (reale Sidebar,
+// echte Provider- und Endpointgrenze) ist deshalb NICHT hier, sondern in
+// `tests/app/nav-badges-sidebar-mounted.test.tsx` gepinnt — beide zusammen, nicht eines statt des
+// anderen (BENs Promptverbesserung zu D1).
+//
+// JOB 3113 H1b — WAS SICH HIER GEÄNDERT HAT UND WARUM: bis heute stand hier „`useNavBadges` trägt
+// selbst KEINEN React-Zustand" und der Hook wurde als gewöhnliche Funktion aufgerufen. Seit H1b
+// trägt er einen: er muss zum Ablauf der Frischefrist GENAU EINMAL neu zeichnen lassen
+// (`useState` + `useEffect` mit einem `setTimeout`), sonst bliebe eine Zahl stehen, die niemand
+// mehr bestätigt hat. Ein Hook mit Zustand darf nur IM Rendern laufen — deshalb läuft er hier
+// jetzt in einer winzigen Sonde durch den Server-Renderer (node-tauglich, kein jsdom nötig).
+// Gemessen werden unverändert Zahl und Ladezustand; `useEffect` läuft im Server-Renderer nicht,
+// die Frist ist hier also NICHT Gegenstand — die misst `tests/kopfzaehler-frische/`.
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 interface Quelle {
@@ -58,7 +68,18 @@ vi.mock("../api/hooks", () => ({
   useLifecyclePending: () => q.lifecycle,
 }));
 
-import { useNavBadges } from "./useNavBadges";
+import { type NavBadge, useNavBadges } from "./useNavBadges";
+
+/** Die Sonde: ruft den Hook IM Rendern und reicht sein Ergebnis heraus. */
+function badgesLesen(): Record<string, NavBadge> {
+  let ergebnis: Record<string, NavBadge> = {};
+  const Sonde = (): null => {
+    ergebnis = useNavBadges();
+    return null;
+  };
+  renderToStaticMarkup(createElement(Sonde));
+  return ergebnis;
+}
 
 // Drei Konflikte, EINER davon gelöst → zwei ungelöste. Dieselbe Menge trägt beide Zählfälle:
 // im Aufgaben-Badge als Summand 2, im Konflikte-Badge als Gesamtzahl 2 (nicht 3).
@@ -93,7 +114,7 @@ describe("JOB 690 D-019: der Aufgaben-Badge zählt dieselben Quellen wie die Auf
       lifecycle: ["l1", "l2", "l3", "l4"],
       duplicates: [],
     });
-    const badges = useNavBadges();
+    const badges = badgesLesen();
     expect(
       badges.tasks?.count,
       "Der Aufgaben-Badge zählt zu wenig (Board 3 + Lücken 5 + ungelöste Konflikte 2 + Lebenszyklus 4)",
@@ -109,7 +130,7 @@ describe("JOB 690 D-019: der Aufgaben-Badge zählt dieselben Quellen wie die Auf
       lifecycle: [],
       duplicates: [],
     });
-    const badges = useNavBadges();
+    const badges = badgesLesen();
     expect(badges.conflicts?.count, "Der Konflikte-Badge zählt den gelösten Konflikt c3 mit").toBe(
       2,
     );
@@ -123,7 +144,7 @@ describe("JOB 690 D-019: der Aufgaben-Badge zählt dieselben Quellen wie die Auf
       duplicates: [],
       // lifecycle bleibt bewusst `undefined` — die Quelle lädt noch.
     });
-    const badges = useNavBadges();
+    const badges = badgesLesen();
     expect(
       badges.tasks?.state,
       "Ohne Lebenszyklus-Daten muss der Badge im Ladezustand bleiben, nicht eine zu kleine Zahl zeigen",
@@ -138,7 +159,7 @@ describe("JOB 690 D-019: der Aufgaben-Badge zählt dieselben Quellen wie die Auf
       lifecycle: [],
       duplicates: [],
     });
-    const badges = useNavBadges();
+    const badges = badgesLesen();
     expect(badges.tasks?.count).toBe(0);
     expect(badges.tasks?.state).toBe("loaded");
     expect(badges.conflicts?.count).toBe(0);
