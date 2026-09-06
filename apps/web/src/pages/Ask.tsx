@@ -1761,6 +1761,21 @@ export function Ask(): JSX.Element {
                     <p className="text-[11.5px] font-medium text-muted-2">
                       {t("ask.verschlossen.label")}
                     </p>
+                    {/* ============================================================================
+                        JOB 3109 UX-09 §5 — HIER WIRD NICHT GEFILTERT. Die Liste ist GENAU die, die
+                        der Server geschickt hat: keine Rollenabfrage, kein Sortieren, kein
+                        Ausblenden, kein Nachladen. Die Sperre trägt der Server, zweifach und vor
+                        dem Feld: `dropConfidential(prefilteredRaw).filter(verschlossenSicht)`
+                        (services/ask/src/service.ts:829-833), und `verschlossenSicht` ist
+                        `darfSehen(user, ko)` (services/app/src/sichtbarkeit.ts:108-110) — dieselbe
+                        Funktion, die auch den Leseweg des einzelnen Objekts bewacht. DARAUS folgt
+                        der Leselink unten: jeder Titel, der hier steht, gehört zu einem Dokument,
+                        das dieser Mensch ohnehin öffnen darf; der Link spart den Umweg über die
+                        Bibliothekssuche, er öffnet nichts Neues. Wer hier eine Rechteprüfung
+                        „nachrüsten" will, baut eine zweite Wahrheit neben die des Servers — genau
+                        das ist verboten. Fehlt das Feld (älterer Server / Weg ohne Betrachter,
+                        api/types.ts:1190-1191), ist die Liste leer und es steht nichts da.
+                        ============================================================================ */}
                     <ul className="mt-1 space-y-1">
                       {verschlossen.map((h) => (
                         <li
@@ -1768,10 +1783,33 @@ export function Ask(): JSX.Element {
                           className="flex flex-wrap items-center gap-1.5 text-[12px]"
                           data-testid="ask-verschlossen-eintrag"
                         >
-                          <span className="font-medium text-text">{h.title}</span>
+                          {/* JOB 3109 UX-09 §1: derselbe Weg wie die tragenden Quellen oben
+                              (`ask-quellen-chip`, :1202-1206) — ein `<Link>` auf `/wissen/:id` mit
+                              demselben `demoHref`, kein zweiter Linkbauer. §2: der zugängliche Name
+                              sagt, WOHIN er führt; ein Vorleseprogramm liest sonst nur einen
+                              nackten Dokumenttitel vor. Sichtbar bleibt genau der Titel. */}
+                          <Link
+                            to={demoHref(`/wissen/${h.id}`, params)}
+                            data-testid="ask-verschlossen-link"
+                            aria-label={t("ask.verschlossen.lesen", { titel: h.title })}
+                            className="font-medium text-text underline decoration-hairline underline-offset-2 hover:decoration-ink"
+                          >
+                            {h.title}
+                          </Link>
+                          {/* JOB 3109 UX-09 §3 — DER SPERRGRUND OHNE MAUS. Die drei Sätze gab es
+                              schon, sie hingen aber ALLEIN im `title=` und sind damit nur beim
+                              Verweilen mit dem Zeiger erreichbar. Sie stehen jetzt zusätzlich im
+                              zugänglichen Namen der Plakette. `role="note"` ist dabei nicht Zierde:
+                              ein `aria-label` an einem nackten `<span>` (Rolle `generic`) wird von
+                              Vorleseprogrammen ignoriert und wäre ein Name nur auf dem Papier. Das
+                              `title=` bleibt für die Maus stehen — es ist nur nicht mehr der
+                              einzige Träger. Sichtbar bleibt der Kurztext, damit der Wortlaut von
+                              Station 3 (JOB 2623) unverändert lesbar ist. */}
                           {h.freigabeFehlt ? (
                             <span
+                              role="note"
                               title={t("ask.verschlossen.freigabeHint")}
+                              aria-label={t("ask.verschlossen.freigabeHint")}
                               className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold text-trust-warn-text"
                             >
                               {t("ask.verschlossen.freigabe")}
@@ -1779,7 +1817,9 @@ export function Ask(): JSX.Element {
                           ) : null}
                           {h.stufeFehlt ? (
                             <span
+                              role="note"
                               title={t("ask.verschlossen.stufeHint")}
+                              aria-label={t("ask.verschlossen.stufeHint")}
                               className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold text-trust-warn-text"
                             >
                               {t("ask.verschlossen.stufe")}
@@ -1787,7 +1827,9 @@ export function Ask(): JSX.Element {
                           ) : null}
                           {h.volltextFehlt ? (
                             <span
+                              role="note"
                               title={t("ask.verschlossen.volltextHint")}
+                              aria-label={t("ask.verschlossen.volltextHint")}
                               className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold text-trust-warn-text"
                             >
                               {t("ask.verschlossen.volltext")}
@@ -1796,6 +1838,19 @@ export function Ask(): JSX.Element {
                         </li>
                       ))}
                     </ul>
+                    {/* JOB 3109 UX-09 §4: „fachlich freigegeben" und „durfte diese Antwort tragen"
+                        sind zwei verschiedene Fragen. Wer das nicht liest, hält den Leselink für
+                        einen Widerspruch („ich darf es öffnen, aber es war gesperrt?"). EINMAL je
+                        Liste, nicht je Eintrag — je Eintrag wäre derselbe Satz zweimal und läse
+                        sich als Eigenschaft des einzelnen Dokuments. Ist die Liste leer, steht er
+                        nicht da: die bestehende Regel „kein Grund wird erfunden" gilt auch für
+                        diesen Satz. */}
+                    <p
+                      data-testid="ask-verschlossen-trennung"
+                      className="mt-2 text-[11.5px] text-muted-2"
+                    >
+                      {t("ask.verschlossen.trennung")}
+                    </p>
                   </div>
                 ) : null}
                 <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">

@@ -2306,6 +2306,15 @@ const de = {
   "ask.verschlossen.stufeHint": "Für das Dokument ist keine Vertraulichkeitsstufe gesetzt.",
   "ask.verschlossen.volltext": "Kein durchsuchbarer Text",
   "ask.verschlossen.volltextHint": "Von diesem Dokument liegt noch kein durchsuchbarer Text vor.",
+  // JOB 3109 UX-09: der Leselink am Titel. Sichtbar bleibt der Titel; DIESER Satz ist der
+  // zugängliche Name, damit ein Vorleseprogramm sagt, wohin der Link führt, statt nur einen
+  // Dokumenttitel vorzulesen. Er behauptet nichts über eine Berechtigung — wer den Titel hier
+  // liest, darf das Dokument ohnehin öffnen (die Liste entsteht hinter `darfSehen`).
+  "ask.verschlossen.lesen": "Bericht lesen: {{titel}}",
+  // JOB 3109 UX-09: die Trennung, ohne die der Leselink wie ein Widerspruch aussieht. EIN Satz,
+  // einmal je Liste — nicht je Eintrag, sonst läse er sich als Eigenschaft eines Dokuments.
+  "ask.verschlossen.trennung":
+    "Fachlich freigegeben und als Antwortgrundlage verwendbar ist nicht dasselbe: ein freigegebenes Dokument kann hier trotzdem nicht tragen — und ein Dokument, das du öffnen darfst, muss diese Frage nicht beantwortet haben.",
   "ask.contract.verified.title": "Quellengebundene Antwort",
   "ask.contract.verified.body":
     "Diese Antwort stützt sich auf validiertes Wissen aus deiner Wissensbasis — keine generische Chatbot-Antwort.",
@@ -7320,6 +7329,11 @@ const en: typeof de = {
   "ask.verschlossen.stufeHint": "No confidentiality level is set for the document.",
   "ask.verschlossen.volltext": "No searchable text",
   "ask.verschlossen.volltextHint": "No searchable text of this document is available yet.",
+  // JOB 3109 UX-09: accessible name of the read link, and the one sentence that separates
+  // „approved" from „was allowed to carry this answer".
+  "ask.verschlossen.lesen": "Read report: {{titel}}",
+  "ask.verschlossen.trennung":
+    "Approved and usable as a basis for an answer are not the same thing: an approved document may still not carry here — and a document you may open need not have answered this question.",
   "ask.contract.verified.title": "Source-bound answer",
   "ask.contract.verified.body":
     "This answer draws on validated knowledge from your knowledge base — not a generic chatbot answer.",
@@ -11862,6 +11876,11 @@ const nl: typeof de = {
   "ask.verschlossen.stufeHint": "Voor het document is geen vertrouwelijkheidsniveau ingesteld.",
   "ask.verschlossen.volltext": "Geen doorzoekbare tekst",
   "ask.verschlossen.volltextHint": "Van dit document is nog geen doorzoekbare tekst beschikbaar.",
+  // JOB 3109 UX-09: toegankelijke naam van de leeslink en de ene zin die „vrijgegeven" scheidt van
+  // „mocht dit antwoord dragen".
+  "ask.verschlossen.lesen": "Rapport lezen: {{titel}}",
+  "ask.verschlossen.trennung":
+    "Vrijgegeven en bruikbaar als antwoordbasis zijn niet hetzelfde: een vrijgegeven document kan hier toch niet dragen — en een document dat je mag openen, hoeft deze vraag niet te hebben beantwoord.",
   "ask.contract.verified.title": "Brongebonden antwoord",
   "ask.contract.verified.body":
     "Dit antwoord steunt op gevalideerde kennis uit jouw kennisbasis — geen generiek chatbot-antwoord.",
