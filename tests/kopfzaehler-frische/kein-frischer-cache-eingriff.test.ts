@@ -1,12 +1,21 @@
-// JOB 3113 H1b / JOB 3125 H1c: örtliches Schreiben ist keine Serverbestätigung.
+// JOB 3136 H1e: örtliches Schreiben ist keine Serverbestätigung.
 // setQueryData erneuert dataUpdatedAt und kann eine abgelaufene Zahl wieder sichtbar machen.
-// H1c entwertet beim Board-Schreiben im Löschweg die Bestätigung ausdrücklich (updatedAt: 0).
-// BEKANNT ist deshalb leer; die Datei bleibt vollständig in der Erhebung.
-// Der echte Löschweg wird in loeschen-kopfzaehler-mounted.test.tsx gemessen.
-// Der Sammler erkennt literale Schlüssel und updatedAt im Aufruftext (höchstens acht Zeilen),
-// nicht Aliase oder die Richtigkeit des übergebenen Zeitpunkts. Die Laufzeitprobe ergänzt ihn.
+// Seit H1c entzieht der Löschweg die Bestätigung mit updatedAt: 0. NUR dieses Literal im
+// dritten Aufrufargument ist gedeckt; andere Zeitpunkte und fehlende Optionen machen das Tor rot.
+// BEKANNT bleibt leer. Der Sammler liest höchstens acht Zeilen; Schlüssel müssen wörtlich wie
+// ZAEHLER_SCHLUESSEL im ersten Argument stehen. Erhebung und Urteil treffen setQueryData(...) /
+// setQueriesData(...), auch mit Typargumenten, sowie qc.setQueryData(...) und qc?.setQueryData(...)
+// (jeweils beide Methoden). Name und öffnende Klammer bzw. < müssen auf derselben Zeile stehen.
+// Nicht erhoben: Elementzugriffe qc["setQueryData"](...), optionale Aufrufe f?.(...), umbenannte
+// Funktionen und indirekte Aufrufe über .call/.apply/.bind. Kein allgemeiner Datenflussbeweis.
+// Gedeckt ist nur ein direktes Optionsobjekt mit genau einer Eigenschaft updatedAt: 0;
+// zusätzliche Eigenschaften, Spreads, berechnete Namen und andere Null-Ausdrücke sind ungedeckt.
+// Aliasierte Schlüssel werden nicht statisch aufgelöst: Import- und Scope-Auflösung durch eine
+// Textsuche wäre unzuverlässig. Der zusätzliche Laufzeitfall „Alias-unabhängig“ in
+// loeschen-kopfzaehler-mounted.test.tsx misst den echten Schreiber unabhängig vom Schlüsselnamen.
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
+import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
 const WURZEL = join(process.cwd(), "apps/web/src");
@@ -89,16 +98,21 @@ function aufrufText(zeilen: string[], start: number): string {
 }
 
 /** Jeder örtliche Cache-Schreibzugriff im Produkt, mit dem ganzen Aufruf als Zielangabe. */
-function schreibzugriffe(): Fund[] {
+function schreibzugriffe(
+  quellen = dateien(WURZEL).map((pfad) => ({
+    datei: relative(process.cwd(), pfad),
+    text: readFileSync(pfad, "utf8"),
+  })),
+): Fund[] {
   const raus: Fund[] = [];
-  for (const pfad of dateien(WURZEL)) {
-    const zeilen = ohneKommentare(readFileSync(pfad, "utf8")).split("\n");
+  for (const quelle of quellen) {
+    const zeilen = ohneKommentare(quelle.text).split("\n");
     zeilen.forEach((zeile, i) => {
       if (!/\bsetQuer(y|ies)Data\s*[<(]/.test(zeile)) {
         return;
       }
       raus.push({
-        datei: relative(process.cwd(), pfad),
+        datei: quelle.datei,
         zeile: i + 1,
         text: aufrufText(zeilen, i),
       });
@@ -109,18 +123,51 @@ function schreibzugriffe(): Fund[] {
 
 type Zugriff = Fund & { readonly schluessel: string };
 
-/**
- * Auf welche Zählquellen ein Aufruf ohne erhaltenen Zeitpunkt schreibt.
- *
- * Leer heisst: geht die Sache nichts an. Entweder trifft der Aufruf keine der fünf Zählquellen,
- * oder er reicht `{ updatedAt: … }` mit; react-query übernimmt diesen Wert dann als
- * `dataUpdatedAt`, statt JETZT zu setzen, und die Zahl altert weiter wie sie soll.
+/** Nur das direkte Optionsargument mit Literal 0 entzieht die Bestätigung sicher.
+ * Spreads, berechnete Namen und doppelte Eigenschaften können diesen Wert überschreiben.
+ * Der TypeScript-Parser unterscheidet Optionen von Daten/Updatern und 0 von Ausdrücken mit 0.
+ */
+function entziehtBestaetigung(optionen: ts.Expression | undefined): boolean {
+  if (!optionen || !ts.isObjectLiteralExpression(optionen) || optionen.properties.length !== 1) {
+    return false;
+  }
+  const eigenschaft = optionen.properties[0];
+  return (
+    eigenschaft !== undefined &&
+    ts.isPropertyAssignment(eigenschaft) &&
+    (ts.isIdentifier(eigenschaft.name) || ts.isStringLiteral(eigenschaft.name)) &&
+    eigenschaft.name.text === "updatedAt" &&
+    ts.isNumericLiteral(eigenschaft.initializer) &&
+    eigenschaft.initializer.getText() === "0"
+  );
+}
+
+/** Zählquellen ohne ausdrückliche Entwertung. Geprüft wird jeder Cache-Aufruf im Fenster;
+ * Optionen eines benachbarten oder verschachtelten Aufrufs decken den Schreiber nicht.
+ * Schlüsselaliase bleiben eine benannte Grenze der Erhebung, ergänzt durch die Laufzeitprobe.
  */
 function ungedeckteZiele(aufruf: string): string[] {
-  if (/\bupdatedAt\s*:/.test(aufruf)) {
-    return [];
-  }
-  return ZAEHLER_SCHLUESSEL.filter((schluessel) => aufruf.includes(schluessel));
+  const quelle = ts.createSourceFile("aufruf.ts", aufruf, ts.ScriptTarget.Latest, true);
+  const ziele = new Set<string>();
+  const besuchen = (node: ts.Node): void => {
+    if (
+      ts.isCallExpression(node) &&
+      ((ts.isPropertyAccessExpression(node.expression) &&
+        /^setQuer(y|ies)Data$/.test(node.expression.name.text)) ||
+        (ts.isIdentifier(node.expression) && /^setQuer(y|ies)Data$/.test(node.expression.text))) &&
+      !entziehtBestaetigung(node.arguments[2])
+    ) {
+      const ziel = node.arguments[0]?.getText() ?? "";
+      for (const schluessel of ZAEHLER_SCHLUESSEL) {
+        if (ziel.includes(schluessel)) {
+          ziele.add(schluessel);
+        }
+      }
+    }
+    ts.forEachChild(node, besuchen);
+  };
+  besuchen(quelle);
+  return [...ziele];
 }
 
 /** Die Schreibzugriffe des Produkts, die auf eine Zählquelle ungedeckt schreiben. */
@@ -189,9 +236,10 @@ describe("JOB 3113 H1b: kein örtlicher Cache-Eingriff erneuert die Bestätigung
     expect(
       ueberschuss(ungedeckteZugriffe(), BEKANNT),
       "Örtlicher Schreibzugriff auf eine Zählquelle: `setQueryData` setzt `dataUpdatedAt` auf " +
-        "jetzt und lässt damit eine unbestätigte Zahl im Kopfband wieder erscheinen (JOB 3113 " +
-        "H1b). Schreibe mit erhaltenem Zeitpunkt — `setQueryData(key, updater, " +
-        "{ updatedAt: <bisheriger dataUpdatedAt> })` — statt den Eintrag hier zu ergänzen.",
+        "jetzt oder auf einen unbestätigten Zeitpunkt (JOB 3136 H1e). Nur das Literal " +
+        "`{ updatedAt: 0 }` im dritten Argument ist gedeckt: es entzieht die Bestätigung. " +
+        "Date.now(), new Date(), Variablen und fehlende Optionen sind ungedeckt; " +
+        "keine Ausnahme ergänzen.",
     ).toEqual([]);
   });
 
@@ -199,7 +247,7 @@ describe("JOB 3113 H1b: kein örtlicher Cache-Eingriff erneuert die Bestätigung
     expect(
       erledigt(ungedeckteZugriffe(), BEKANNT),
       "Dieser Zugriff schreibt die Zählquelle nicht mehr ungedeckt (Stelle entfernt oder auf " +
-        "einen erhaltenen `updatedAt` umgestellt) — der Eintrag in `BEKANNT` ist damit falsch und " +
+        "`updatedAt: 0` umgestellt) — der Eintrag in `BEKANNT` ist damit falsch und " +
         "gehört gestrichen (H1c). Eine Ausnahmeliste, die nur wächst, ist der Anfang vom Ende " +
         "dieses Wächters.",
     ).toEqual([]);
@@ -249,10 +297,54 @@ describe("JOB 3113 H1b: kein örtlicher Cache-Eingriff erneuert die Bestätigung
   });
 
   // ==============================================================================================
-  // ERKENNUNG EINES ERHALTENEN ZEITPUNKTS
+  // NUR DAS LITERAL 0 ENTZIEHT DIE BESTÄTIGUNG
   // ==============================================================================================
   // Diese Sammlerfälle ersetzen keinen Laufzeitbeleg für den tatsächlichen Zeitstempel.
-  describe("ein Schreibzugriff mit erhaltenem Zeitpunkt gilt als behoben", () => {
+  describe("nur updatedAt: 0 im Optionsargument deckt einen Schreibzugriff", () => {
+    it.each([
+      "qc.setQueryData",
+      "setQueryData",
+      "qc?.setQueryData",
+      "qc.setQueriesData",
+      "setQueriesData",
+      "qc?.setQueriesData",
+    ])("Aufrufform %s: fehlende und falsche Bestätigung werden geurteilt", (form) => {
+      expect(ungedeckteZiele(`${form}(["conflicts"], (i) => i);`)).toEqual(['"conflicts"']);
+      // Dieselben Eingaben durch die echte Erhebung führen: kein Fund darf zwischen
+      // Zeilensammler und Syntaxbaum-Urteil stumm verloren gehen (Ben, Runde 1).
+      for (const typ of ["", "<unknown>"]) {
+        const text = `${form}${typ}(["conflicts"], (i) => i);`;
+        const funde = schreibzugriffe([{ datei: "Probe.tsx", text: `\n${text}` }]);
+        expect(funde).toEqual([{ datei: "Probe.tsx", zeile: 2, text }]);
+        expect(
+          ueberschuss(
+            funde.flatMap((fund) =>
+              ungedeckteZiele(fund.text).map((schluessel) => ({ ...fund, schluessel })),
+            ),
+            [],
+          ),
+        ).toEqual(['Probe.tsx:2 → "conflicts"']);
+      }
+      for (const wert of ["Date.now()", "new Date()", "bisher"]) {
+        expect(
+          ungedeckteZiele(`${form}(["conflicts"], (i) => i, { updatedAt: ${wert} });`),
+        ).toEqual(['"conflicts"']);
+      }
+      expect(ungedeckteZiele(`${form}(["conflicts"], (i) => i, { updatedAt: 0 });`)).toEqual([]);
+    });
+
+    it.each([
+      'qc["setQueryData"](["conflicts"], (i) => i);',
+      'qc.setQueryData?.(["conflicts"], (i) => i);',
+      'schreiben(["conflicts"], (i) => i);',
+      'qc.setQueryData.call(qc, ["conflicts"], (i) => i);',
+      'qc.setQueryData.apply(qc, [["conflicts"], (i) => i]);',
+      'qc.setQueryData.bind(qc)(["conflicts"], (i) => i);',
+      'qc.setQueryData\n(["conflicts"], (i) => i);',
+    ])("benannte Erhebungsgrenze: %s", (text) => {
+      expect(schreibzugriffe([{ datei: "Probe.tsx", text }])).toEqual([]);
+    });
+
     const ohne =
       'qc.setQueriesData({ queryKey: ["validation", "board"] }, (items) => rest(items));';
 
@@ -260,9 +352,65 @@ describe("JOB 3113 H1b: kein örtlicher Cache-Eingriff erneuert die Bestätigung
       expect(ungedeckteZiele(ohne)).toEqual(['"validation", "board"']);
     });
 
-    it("mit `updatedAt` zählt er nicht mehr als ungedeckt", () => {
-      const mit = `${ohne.slice(0, -2)}, { updatedAt: bisher });`;
+    it("mit `updatedAt: 0` zählt er nicht mehr als ungedeckt", () => {
+      const mit = `${ohne.slice(0, -2)}, { updatedAt: 0 });`;
       expect(ungedeckteZiele(mit)).toEqual([]);
+    });
+
+    it.each(["Date.now()", "new Date()", "bisher", "1", "0 + Date.now()", "0 || Date.now()"])(
+      "updatedAt: %s ist keine Entwertung",
+      (wert) => {
+        expect(ungedeckteZiele(`${ohne.slice(0, -2)}, { updatedAt: ${wert} });`)).toEqual([
+          '"validation", "board"',
+        ]);
+      },
+    );
+
+    it.each([
+      "{ updatedAt: 0, ...optionen }",
+      "{ updatedAt: 0, updatedAt: Date.now() }",
+      "{ meta: { updatedAt: 0 } }",
+    ])("verdeckte oder überschriebene Entwertung %s deckt nicht", (optionen) => {
+      expect(ungedeckteZiele(`${ohne.slice(0, -2)}, ${optionen});`)).toEqual([
+        '"validation", "board"',
+      ]);
+    });
+
+    it("updatedAt: 0 in den Daten ist kein Optionsargument", () => {
+      expect(ungedeckteZiele('qc.setQueryData(["conflicts"], { updatedAt: 0 });')).toEqual([
+        '"conflicts"',
+      ]);
+    });
+
+    it("Date.now() meldet Datei und Aufrufzeile", () => {
+      const text = `${ohne.slice(0, -2)}, { updatedAt: Date.now() });`;
+      const funde = ungedeckteZiele(text).map((schluessel) => ({
+        datei: "apps/web/src/pages/Probe.tsx",
+        zeile: 42,
+        text,
+        schluessel,
+      }));
+      expect(ueberschuss(funde, [])).toEqual([
+        'apps/web/src/pages/Probe.tsx:42 → "validation", "board"',
+      ]);
+    });
+
+    it("liest höchstens acht Zeilen und duldet keine Entwertung ausserhalb des Fensters", () => {
+      const zeilen = [
+        "qc.setQueriesData(",
+        '  { queryKey: ["validation", "board"] },',
+        "  (items) => {",
+        "    const rest = items;",
+        "    return rest;",
+        "  },",
+        "",
+        "",
+        "  { updatedAt: 0 },",
+        ");",
+      ];
+      const text = aufrufText(zeilen, 0);
+      expect(text).toBe(zeilen.slice(0, 8).join(" "));
+      expect(ungedeckteZiele(text)).toEqual(['"validation", "board"']);
     });
 
     it("ein Schlüssel, der keine Zählquelle ist, geht den Wächter nichts an", () => {
@@ -275,7 +423,7 @@ describe("JOB 3113 H1b: kein örtlicher Cache-Eingriff erneuert die Bestätigung
       const zeilen = [
         'qc.setQueriesData<KnowledgeObject[]>({ queryKey: ["validation", "board"] }, (items) =>',
         "  withoutKoById(items, id),",
-        "  { updatedAt: bisher },",
+        "  { updatedAt: 0 },",
         ");",
       ];
       expect(ungedeckteZiele(aufrufText(zeilen, 0))).toEqual([]);

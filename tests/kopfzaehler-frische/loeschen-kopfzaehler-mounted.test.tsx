@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 // JOB 3125 H1c: echter Löschweg → gemeinsame Query → echtes Kopfband.
 // Nur die Servergrenze ist ersetzt; der Test schreibt die Zählquelle nie selbst.
-// Frischer und abgelaufener Stand, Erfolg und 404 sowie Neubetreten nach Abruffehler.
+// Frischer und abgelaufener Stand, Erfolg/404, Neubetreten und doppeltes Löschen.
+// JOB 3136 H1e: Alias-unabhängiger Laufzeitbeleg ergänzt die literale Schlüssel-Erhebung.
 // Die Anzeige wird gemessen; Cacheinhalt und Bauart des Bestätigungszeitpunkts bleiben frei.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -18,6 +19,7 @@ const d = vi.hoisted(() => {
     return {
       fn,
       resolve: (v: unknown) => state.resolve(v),
+      antwort: () => state.resolve,
       reject: (e: unknown) => state.reject(e),
     };
   };
@@ -241,19 +243,25 @@ async function knopf(key: string): Promise<void> {
   );
 }
 
-async function loeschenStarten(): Promise<void> {
-  await click(container.querySelector('[data-testid="pruefen-menue-karte"]'));
+async function loeschenStarten(id: "a" | "b" = "a"): Promise<void> {
+  const nummer = id === "a" ? 1 : 2;
+  const vorher = id === "a" ? ["Eintrag a", "Eintrag b", "Eintrag c"] : ["Eintrag b", "Eintrag c"];
+  const menue = container.querySelector('[data-testid="pruefen-menue-karte"]');
+  if (menue?.getAttribute("aria-expanded") !== "true") {
+    await click(menue);
+  }
   await knopf("ko.deleteButton");
-  expect(d.remove.fn).not.toHaveBeenCalled();
+  expect(d.remove.fn).toHaveBeenCalledTimes(nummer - 1);
   await knopf("ko.deleteYes");
-  expect(d.remove.fn).toHaveBeenCalledWith("a");
-  // Ohne Bestätigung verschwindet noch nichts.
-  expect(zeilen()).toEqual(["Eintrag a", "Eintrag b", "Eintrag c"]);
-  expect(d.board.fn).toHaveBeenCalledTimes(1);
+  expect(d.remove.fn).toHaveBeenCalledTimes(nummer);
+  expect(d.remove.fn).toHaveBeenNthCalledWith(nummer, id);
+  // Ohne Bestätigung verschwindet noch nichts, auch nicht beim zweiten Löschen.
+  expect(zeilen()).toEqual(vorher);
+  expect(d.board.fn).toHaveBeenCalledTimes(nummer);
 }
 
-async function loeschenBestaetigen(weg: "erfolg" | "404"): Promise<void> {
-  await loeschenStarten();
+async function loeschenBestaetigen(weg: "erfolg" | "404", id: "a" | "b" = "a"): Promise<void> {
+  await loeschenStarten(id);
   await act(async () => {
     if (weg === "404") {
       d.remove.reject(new ApiError(404, "not_found", "Bereits gelöscht"));
@@ -265,11 +273,12 @@ async function loeschenBestaetigen(weg: "erfolg" | "404"): Promise<void> {
   expect(document.body.textContent).toContain(
     i18n.t(weg === "404" ? "ko.deleteAlreadyGone" : "ko.deleteDone"),
   );
-  expect(d.board.fn).toHaveBeenCalledTimes(2);
+  const rest = id === "a" ? ["b", "c"] : ["c"];
+  expect(d.board.fn).toHaveBeenCalledTimes(id === "a" ? 2 : 3);
   expect(qc.getQueryState(boardKey)?.fetchStatus).toBe("fetching");
-  expect(zeilen()).toEqual(["Eintrag b", "Eintrag c"]);
-  expect(karte()).toBe("Eintrag b");
-  expect(qc.getQueryData<KnowledgeObject[]>(["kos"])?.map((k) => k.id)).toEqual(["b", "c"]);
+  expect(zeilen()).toEqual(rest.map((k) => `Eintrag ${k}`));
+  expect(karte()).toBe(`Eintrag ${rest[0]}`);
+  expect(qc.getQueryData<KnowledgeObject[]>(["kos"])?.map((k) => k.id)).toEqual(rest);
 }
 
 beforeEach(async () => {
@@ -372,6 +381,36 @@ describe.each([
     },
   );
 
+  it("Doppeltes Löschen bei hängendem Abruf: keine Zahl bis zur gültigen Antwort", async () => {
+    await start(alter);
+    await loeschenBestaetigen("erfolg");
+    keineZahl();
+    const ersteAntwort = d.board.antwort();
+    await loeschenBestaetigen("erfolg", "b");
+    keineZahl();
+    reiter("gedaempft", 1);
+    expect(d.remove.fn.mock.calls).toEqual([["a"], ["b"]]);
+
+    // Der durch das zweite Löschen überholte Abruf darf auch bei später Antwort keine Zahl
+    // bestätigen. Erst die danach angeforderte Antwort trägt den neuen Gesamtstand.
+    await act(async () => {
+      ersteAntwort([ko("b"), ko("c")]);
+      await flush();
+    });
+    expect(qc.getQueryState(boardKey)?.fetchStatus).toBe("fetching");
+    expect(zeilen()).toEqual(["Eintrag c"]);
+    keineZahl();
+    await act(async () => {
+      // Zwei neue Einträge: nicht die örtlich berechnete Restzahl 1.
+      d.board.resolve([ko("c"), ko("d"), ko("e")]);
+      await flush();
+    });
+    expect(qc.getQueryState(boardKey)?.fetchStatus).toBe("idle");
+    expect(badge()?.textContent).toBe("3");
+    expect(zeilen()).toEqual(["Eintrag c", "Eintrag d", "Eintrag e"]);
+    reiter("frisch", 3);
+  });
+
   it("bestätigter Leerstand zeigt ebenfalls kein Badge", async () => {
     await start(alter);
     await loeschenBestaetigen("erfolg");
@@ -406,4 +445,25 @@ describe.each([
       expect(badge()?.textContent).toBe("3");
     }
   });
+});
+
+it("Alias-unabhängig: Löschweg entwertet Prüfen und die geteilte Aufgaben-Zählquelle", async () => {
+  await start(1_000);
+  await click(container.querySelector('[data-testid="kopfband-zahnrad"]'));
+  await click(container.querySelector('[data-testid="zahnrad-weitere-bereiche"]'));
+  const aufgaben = (): Element | null =>
+    container.querySelector('[data-testid="bereich-aufgaben"] .kw-menue-wert');
+  expect(container.querySelector('[data-testid="bereich-aufgaben"]')).not.toBeNull();
+  expect(aufgaben()?.textContent).toBe("3");
+  // Servergrenze bleibt die einzige Attrappe. Derselbe Fall kippt auch, wenn der echte
+  // Produktschreiber queryKey: BOARD_KEY statt des Literals verwendet (Gegenprobe H1e).
+  await loeschenBestaetigen("erfolg");
+  keineZahl();
+  expect(aufgaben(), "auch die geteilte Aufgaben-Zahl ist unbestätigt").toBeNull();
+  await act(async () => {
+    d.board.resolve([ko("b"), ko("c"), ko("d"), ko("e")]);
+    await flush();
+  });
+  expect(badge()?.textContent).toBe("4");
+  expect(aufgaben()?.textContent).toBe("4");
 });

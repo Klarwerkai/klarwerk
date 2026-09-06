@@ -94,11 +94,17 @@ export const ZAEHLER_FRISCHE_MS = 30_000;
  * react-query kein zweites Feld, das nur echte Abrufe zählt — die Stelle ist deshalb nur beim
  * SCHREIBER zu schliessen, nicht hier beim Leser.
  *
- * Genau EINE solche Stelle ist im Produkt bekannt: der örtliche Löschschritt der Prüfen-Seite
- * (`pages/Validation.tsx`, `removeDeletedKoFromCaches`). Sie ist offener Rest von JOB 3113 (die
- * Datei gehört zur Laufzeit dieses Auftrags JOB 3112) und wird in H1c umgestellt. Bis dahin hält
- * `tests/kopfzaehler-frische/kein-frischer-cache-eingriff.test.ts` sie fest und sperrt JEDE
- * weitere: ein neuer örtlicher Schreibzugriff auf eine Zählquelle macht das Tor rot.
+ * Seit H1c (1.0.0-beta.1.138) entzieht der örtliche Löschschritt der Prüfen-Seite
+ * (`pages/Validation.tsx`, `removeDeletedKoFromCaches`) die Bestätigung ausdrücklich mit
+ * `{ updatedAt: 0 }`. Erst ein erfolgreicher neuer Board-Abruf bestätigt die Gesamtzahl wieder.
+ * `tests/kopfzaehler-frische/kein-frischer-cache-eingriff.test.ts` erlaubt nur das direkte dritte
+ * Argument `{ updatedAt: 0 }` ohne weitere Eigenschaften. Seine Erhebung reicht höchstens acht
+ * Zeilen und verlangt die literalen Schlüssel in der Schreibweise seines Schlüsselregisters.
+ * Er beurteilt setQueryData/setQueriesData als Bezeichner- und Punktaufruf (auch qc?.Methode),
+ * mit optionalen Typargumenten; Name und ( bzw. < müssen auf derselben Zeile stehen.
+ * Elementzugriffe, optionale Aufrufe f?.(...), umbenannte Funktionen und .call/.apply/.bind
+ * bleiben ausserhalb der Erhebung. Schlüsselaliase werden nicht statisch aufgelöst; der
+ * gemountete Löschtest prüft den echten Löschweg unabhängig vom Schlüsselnamen zur Laufzeit.
  */
 export interface HatStand {
   readonly dataUpdatedAt: number;
