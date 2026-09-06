@@ -3301,6 +3301,13 @@ const de = {
   "lib.lesen.bilder_one": "{{count}} Bild",
   "lib.lesen.bilder_other": "{{count}} Bilder",
   "lib.lesen.fehler": "Der Eintrag ließ sich nicht laden.",
+  // JOB 3108 · UX-03: die Beschriftung der zwei Sprungknöpfe am Berichtskopf. Die Zahl steht IM
+  // Knopf, und bei null steht dort „keine" — der Knopf verschwindet nicht, er führt zum ehrlichen
+  // Leersatz (`ko.sourcesEmpty` / `ko.attachmentsEmpty`).
+  "lib.lesen.sprung.quellen": "Quellen und Belege · {{count}}",
+  "lib.lesen.sprung.quellenLeer": "Quellen und Belege · keine",
+  "lib.lesen.sprung.anhaenge": "Anhänge · {{count}}",
+  "lib.lesen.sprung.anhaengeLeer": "Anhänge · keine",
   // ==============================================================================================
   // AUFTRAG-BASIC-u2 — DIE SUCHE SAGT, WORIN SIE SUCHT.
   // ==============================================================================================
@@ -8163,6 +8170,11 @@ const en: typeof de = {
   "lib.lesen.bilder_one": "{{count}} image",
   "lib.lesen.bilder_other": "{{count}} images",
   "lib.lesen.fehler": "The entry could not be loaded.",
+  // JOB 3108 · UX-03 — see the German entry for the reasoning.
+  "lib.lesen.sprung.quellen": "Sources and evidence · {{count}}",
+  "lib.lesen.sprung.quellenLeer": "Sources and evidence · none",
+  "lib.lesen.sprung.anhaenge": "Attachments · {{count}}",
+  "lib.lesen.sprung.anhaengeLeer": "Attachments · none",
   // AUFTRAG-BASIC-u2 — see the German entry for the finding.
   "lib.allStatus": "All statuses",
   "lib.allTypes": "All knowledge types",
@@ -12701,6 +12713,11 @@ const nl: typeof de = {
   "lib.lesen.bilder_one": "{{count}} afbeelding",
   "lib.lesen.bilder_other": "{{count}} afbeeldingen",
   "lib.lesen.fehler": "Het item kon niet worden geladen.",
+  // JOB 3108 · UX-03 — zie de Duitse regel voor de toelichting.
+  "lib.lesen.sprung.quellen": "Bronnen en bewijs · {{count}}",
+  "lib.lesen.sprung.quellenLeer": "Bronnen en bewijs · geen",
+  "lib.lesen.sprung.anhaenge": "Bijlagen · {{count}}",
+  "lib.lesen.sprung.anhaengeLeer": "Bijlagen · geen",
   // AUFTRAG-BASIC-u2 — zie de Duitse regel voor de bevinding.
   "lib.allStatus": "Alle statussen",
   "lib.allTypes": "Alle kennissoorten",

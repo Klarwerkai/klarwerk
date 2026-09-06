@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link2, Paperclip, X } from "lucide-react";
-import { type ChangeEvent, type ReactNode, useState } from "react";
+import { type ChangeEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../../api/client";
 import { endpoints } from "../../api/endpoints";
@@ -91,27 +91,51 @@ import { Button, Field, TextInput, cx } from "../ui";
 // zehn Abfragen (Belege, Fassungen, Audit, Nachbarschaft, Kopplungen, Verzeichnis, …) nur dann, wenn
 // jemand sie sehen will — auf der Lesefläche selbst kostet „Mehr" nichts.
 
+// ==================================================================================================
+// JOB 3108 · UX-03 — DER AUF/ZU-ZUSTAND WOHNT AB JETZT IN DER MUTTER, NICHT IN JEDER ZEILE.
+// ==================================================================================================
+//
+// Bis zu diesem Auftrag hielt `Abschnitt` sein `offen` in einem EIGENEN `useState`. Damit gab es
+// keinen Weg, einen bestimmten Abschnitt von außen zu öffnen — der Sprung vom Berichtskopf
+// (`BibliothekLesen`, `bib-kopf-spruenge`) scheiterte nicht an einem fehlenden Link, sondern an
+// dieser gekapselten Zustandshaltung. Jetzt trägt `MehrAbschnitte` EINE Menge der offenen
+// Schlüssel, und `Abschnitt` ist gesteuert. Das lokale `useState` ist ERSETZT und nicht daneben
+// belassen: zwei Quellen für denselben Auf/Zu-Zustand wären genau die Drift, gegen die dieses Haus
+// mehrfach angetreten ist.
+
+/** Wohin gesprungen werden soll. `nonce`, damit derselbe Abschnitt zweimal anspringbar bleibt. */
+export interface Sprungziel {
+  schluessel: string;
+  nonce: number;
+}
+
 /**
  * Eine der dreizehn Zeilen. Der Inhalt wird ERST BEIM AUFKLAPPEN gezeichnet (`offen`), nicht nur
  * versteckt: ein `<details>` rendert seine Kinder auch zugeklappt, und dann liefe hinter jeder
  * zugeklappten Zeile ihre Arbeit weiter — Bilder, Nachbarschaftszeichnung, Listen. Zugeklappt steht
  * hier deshalb wirklich nur der Titel.
+ *
+ * GESTEUERT (JOB 3108): `offen` kommt von außen, `aufWechsel` meldet jedes Auf- und Zuklappen
+ * zurück. Am Verhalten der Zeile ändert das nichts — nur daran, WO ihr Zustand liegt.
  */
 function Abschnitt({
   schluessel,
   titel,
+  offen,
+  aufWechsel,
   children,
 }: {
   schluessel: string;
   titel: string;
+  offen: boolean;
+  aufWechsel: (offen: boolean) => void;
   children: ReactNode;
 }): JSX.Element {
-  const [offen, setOffen] = useState(false);
   return (
     <details
       data-bib-abschnitt={schluessel}
       open={offen}
-      onToggle={(e) => setOffen((e.currentTarget as HTMLDetailsElement).open)}
+      onToggle={(e) => aufWechsel((e.currentTarget as HTMLDetailsElement).open)}
       className="border-b border-hairline-soft last:border-0"
     >
       <summary className="flex cursor-pointer list-none items-center justify-between gap-2 py-2.5 text-[13px] text-muted">
@@ -136,7 +160,10 @@ const CONFLICT_TYPES: readonly ConflictType[] = [
 const textareaCls =
   "w-full resize-y rounded-input border border-hairline bg-surface p-2.5 text-sm text-text outline-none focus:border-ink/30";
 
-export function MehrAbschnitte({ ko }: { ko: KnowledgeObject }): JSX.Element {
+export function MehrAbschnitte({
+  ko,
+  sprungZiel,
+}: { ko: KnowledgeObject; sprungZiel?: Sprungziel | undefined }): JSX.Element {
   const { t, i18n } = useTranslation();
   const id = ko.id;
   const { role } = useRole();
@@ -371,10 +398,74 @@ export function MehrAbschnitte({ ko }: { ko: KnowledgeObject }): JSX.Element {
     .reverse();
   const gueltigkeit = validityProtectionView(ko, pending.data ?? [], conflicts.data ?? []);
 
+  // ---- JOB 3108 · UX-03: die EINE Menge der offenen Abschnitte, und der Sprung hinein -----------
+  const [offene, setOffene] = useState<ReadonlySet<string>>(() => new Set<string>());
+  const wurzel = useRef<HTMLDivElement | null>(null);
+  /**
+   * Der Sprung läuft in ZWEI Zügen: erst öffnen, dann hinführen. In EINEM Zug ginge es nicht — im
+   * selben Effekt steht der Abschnitt noch zu, `scrollIntoView` und `focus` träfen ein `<summary>`,
+   * das React erst im nächsten Zeichnen anlegt.
+   */
+  const [hinfuehren, setHinfuehren] = useState<Sprungziel | null>(null);
+
+  const abschnittUmschalten = (schluessel: string, offen: boolean): void => {
+    setOffene((vorher) => {
+      if (vorher.has(schluessel) === offen) {
+        return vorher;
+      }
+      const naechste = new Set(vorher);
+      if (offen) {
+        naechste.add(schluessel);
+      } else {
+        naechste.delete(schluessel);
+      }
+      return naechste;
+    });
+  };
+
+  // Der Effekt hängt an den WERTEN, nicht an der Kennung des Objekts. Deshalb trägt das Sprungziel
+  // einen `nonce`: derselbe Abschnitt muss zweimal hintereinander anspringbar sein (zwischendurch
+  // von Hand zugeklappt), und ohne die zweite, wechselnde Angabe liefe der Effekt dann nicht erneut.
+  const sprungSchluessel = sprungZiel?.schluessel;
+  const sprungNonce = sprungZiel?.nonce;
+  useEffect(() => {
+    if (sprungSchluessel === undefined || sprungNonce === undefined) {
+      return;
+    }
+    // Nur ÖFFNEN, nie schließen: was jemand selbst aufgemacht hat, bleibt offen.
+    setOffene((vorher) =>
+      vorher.has(sprungSchluessel) ? vorher : new Set(vorher).add(sprungSchluessel),
+    );
+    setHinfuehren({ schluessel: sprungSchluessel, nonce: sprungNonce });
+  }, [sprungSchluessel, sprungNonce]);
+
+  useEffect(() => {
+    if (!hinfuehren) {
+      return;
+    }
+    setHinfuehren(null);
+    const ziel = wurzel.current?.querySelector(`[data-bib-abschnitt="${hinfuehren.schluessel}"]`);
+    if (!(ziel instanceof HTMLDetailsElement)) {
+      return;
+    }
+    // Die Existenzprüfung ist kein Zugeständnis an den Prüfstand: `scrollIntoView` fehlt in jsdom
+    // UND in älteren Browsern (dieselbe Vorsicht wie `pages/Ask.tsx:628`).
+    if (typeof ziel.scrollIntoView === "function") {
+      ziel.scrollIntoView({ block: "start" });
+    }
+    // Der Fokus landet im Ziel, nicht nur das Bild: sonst läse ein Vorleseprogramm weiter oben.
+    ziel.querySelector("summary")?.focus();
+  }, [hinfuehren]);
+
   return (
-    <div data-testid="bib-mehr-abschnitte" className="flex flex-col">
+    <div data-testid="bib-mehr-abschnitte" ref={wurzel} className="flex flex-col">
       {/* 1 — Konflikt */}
-      <Abschnitt schluessel="konflikt" titel={t("ko.mehr.konflikt")}>
+      <Abschnitt
+        schluessel="konflikt"
+        titel={t("ko.mehr.konflikt")}
+        offen={offene.has("konflikt")}
+        aufWechsel={(o) => abschnittUmschalten("konflikt", o)}
+      >
         {/* mega29 C1: die Deckung des KI-Laufs schränkt jede Konfliktaussage ein — sie steht
             deshalb hier, direkt bei ihr. */}
         <AiCheckCoverageNotes coverage={ko.aiCheck?.coverage} />
@@ -439,7 +530,12 @@ export function MehrAbschnitte({ ko }: { ko: KnowledgeObject }): JSX.Element {
       </Abschnitt>
 
       {/* 2 — Quellen & Belege */}
-      <Abschnitt schluessel="quellen" titel={t("ko.mehr.quellen")}>
+      <Abschnitt
+        schluessel="quellen"
+        titel={t("ko.mehr.quellen")}
+        offen={offene.has("quellen")}
+        aufWechsel={(o) => abschnittUmschalten("quellen", o)}
+      >
         {(ko.sources ?? []).length === 0 ? (
           <p className="text-[12.5px] text-muted">{t("ko.sourcesEmpty")}</p>
         ) : (
@@ -517,7 +613,12 @@ export function MehrAbschnitte({ ko }: { ko: KnowledgeObject }): JSX.Element {
       </Abschnitt>
 
       {/* 3 — Externes Wissen */}
-      <Abschnitt schluessel="extern" titel={t("ko.mehr.extern")}>
+      <Abschnitt
+        schluessel="extern"
+        titel={t("ko.mehr.extern")}
+        offen={offene.has("extern")}
+        aufWechsel={(o) => abschnittUmschalten("extern", o)}
+      >
         {canEdit && canSearchExternal(extStage) ? (
           <div className="space-y-2">
             {extAttachAllowed ? null : (
@@ -590,7 +691,12 @@ export function MehrAbschnitte({ ko }: { ko: KnowledgeObject }): JSX.Element {
       </Abschnitt>
 
       {/* 4 — Quelle/Beitrag melden */}
-      <Abschnitt schluessel="beitrag" titel={t("ko.mehr.beitrag")}>
+      <Abschnitt
+        schluessel="beitrag"
+        titel={t("ko.mehr.beitrag")}
+        offen={offene.has("beitrag")}
+        aufWechsel={(o) => abschnittUmschalten("beitrag", o)}
+      >
         <div className="space-y-2">
           <textarea
             value={source.contribution}
@@ -615,7 +721,12 @@ export function MehrAbschnitte({ ko }: { ko: KnowledgeObject }): JSX.Element {
       </Abschnitt>
 
       {/* 5 — Provenienz (samt Herkunfts-Kennzeichnungen, Wissensart, Stufe, Autorenübergabe) */}
-      <Abschnitt schluessel="provenienz" titel={t("ko.mehr.provenienz")}>
+      <Abschnitt
+        schluessel="provenienz"
+        titel={t("ko.mehr.provenienz")}
+        offen={offene.has("provenienz")}
+        aufWechsel={(o) => abschnittUmschalten("provenienz", o)}
+      >
         <div className="mb-2 flex flex-wrap items-center gap-1.5">
           <KnowledgeTypeTag type={ko.type} />
           {isDemoKnowledge(ko) ? (
@@ -702,7 +813,12 @@ export function MehrAbschnitte({ ko }: { ko: KnowledgeObject }): JSX.Element {
       </Abschnitt>
 
       {/* 6 — Kopplung und Anlagen */}
-      <Abschnitt schluessel="kopplung" titel={t("ko.mehr.kopplung")}>
+      <Abschnitt
+        schluessel="kopplung"
+        titel={t("ko.mehr.kopplung")}
+        offen={offene.has("kopplung")}
+        aufWechsel={(o) => abschnittUmschalten("kopplung", o)}
+      >
         {couplings.data && couplings.data.length > 0 ? (
           <div className="flex flex-wrap gap-1.5">
             {couplings.data.map((a) => (
@@ -739,7 +855,12 @@ export function MehrAbschnitte({ ko }: { ko: KnowledgeObject }): JSX.Element {
       </Abschnitt>
 
       {/* 7 — Herkunftskette */}
-      <Abschnitt schluessel="herkunftskette" titel={t("ko.mehr.herkunftskette")}>
+      <Abschnitt
+        schluessel="herkunftskette"
+        titel={t("ko.mehr.herkunftskette")}
+        offen={offene.has("herkunftskette")}
+        aufWechsel={(o) => abschnittUmschalten("herkunftskette", o)}
+      >
         <div className="grid grid-cols-2 gap-2 text-[12.5px]">
           <div className="rounded-input bg-page p-2">
             <div className="font-mono text-micro uppercase tracking-wider text-muted-2">
@@ -804,7 +925,12 @@ export function MehrAbschnitte({ ko }: { ko: KnowledgeObject }): JSX.Element {
       </Abschnitt>
 
       {/* 8 — Historie */}
-      <Abschnitt schluessel="historie" titel={t("ko.mehr.historie")}>
+      <Abschnitt
+        schluessel="historie"
+        titel={t("ko.mehr.historie")}
+        offen={offene.has("historie")}
+        aufWechsel={(o) => abschnittUmschalten("historie", o)}
+      >
         <ol className="space-y-3">
           {ko.history.map((h) => (
             <li key={h.version} className="border-l-2 border-hairline pl-3">
@@ -818,7 +944,12 @@ export function MehrAbschnitte({ ko }: { ko: KnowledgeObject }): JSX.Element {
       </Abschnitt>
 
       {/* 9 — Belege (samt Vertrauen, Konsistenz, Frische, Gültigkeit) */}
-      <Abschnitt schluessel="belege" titel={t("ko.mehr.belege")}>
+      <Abschnitt
+        schluessel="belege"
+        titel={t("ko.mehr.belege")}
+        offen={offene.has("belege")}
+        aufWechsel={(o) => abschnittUmschalten("belege", o)}
+      >
         {/* AUFTRAG-mega51 D2 (unverändert übernommen): „Validiert" NEBEN einer 0-Leiste verwirrt —
             Bedingung und Anzeige lesen deshalb DENSELBEN Wert (`confidence`), und bei validiert +
             Sicherheit 0 steht statt der leeren Leiste der nüchterne Hinweis. */}
@@ -966,7 +1097,12 @@ export function MehrAbschnitte({ ko }: { ko: KnowledgeObject }): JSX.Element {
       </Abschnitt>
 
       {/* 10 — Schnappschüsse */}
-      <Abschnitt schluessel="schnappschuesse" titel={t("ko.mehr.schnappschuesse")}>
+      <Abschnitt
+        schluessel="schnappschuesse"
+        titel={t("ko.mehr.schnappschuesse")}
+        offen={offene.has("schnappschuesse")}
+        aufWechsel={(o) => abschnittUmschalten("schnappschuesse", o)}
+      >
         {versions.isLoading ? (
           <p className="text-[12.5px] text-muted">{t("state.loading")}</p>
         ) : versions.isError ? (
@@ -1010,7 +1146,12 @@ export function MehrAbschnitte({ ko }: { ko: KnowledgeObject }): JSX.Element {
       </Abschnitt>
 
       {/* 11 — Kommentare */}
-      <Abschnitt schluessel="kommentare" titel={t("ko.mehr.kommentare")}>
+      <Abschnitt
+        schluessel="kommentare"
+        titel={t("ko.mehr.kommentare")}
+        offen={offene.has("kommentare")}
+        aufWechsel={(o) => abschnittUmschalten("kommentare", o)}
+      >
         {(ko.comments ?? []).length === 0 ? (
           <p className="text-[12.5px] text-muted">{t("ko.commentsEmpty")}</p>
         ) : (
@@ -1044,7 +1185,12 @@ export function MehrAbschnitte({ ko }: { ko: KnowledgeObject }): JSX.Element {
       </Abschnitt>
 
       {/* 12 — Anhänge */}
-      <Abschnitt schluessel="anhaenge" titel={t("ko.mehr.anhaenge")}>
+      <Abschnitt
+        schluessel="anhaenge"
+        titel={t("ko.mehr.anhaenge")}
+        offen={offene.has("anhaenge")}
+        aufWechsel={(o) => abschnittUmschalten("anhaenge", o)}
+      >
         {(ko.attachments ?? []).length === 0 ? (
           <p className="text-[12.5px] text-muted">{t("ko.attachmentsEmpty")}</p>
         ) : (
@@ -1098,7 +1244,12 @@ export function MehrAbschnitte({ ko }: { ko: KnowledgeObject }): JSX.Element {
       </Abschnitt>
 
       {/* 13 — Nachbarschaft */}
-      <Abschnitt schluessel="nachbarschaft" titel={t("ko.mehr.nachbarschaft")}>
+      <Abschnitt
+        schluessel="nachbarschaft"
+        titel={t("ko.mehr.nachbarschaft")}
+        offen={offene.has("nachbarschaft")}
+        aufWechsel={(o) => abschnittUmschalten("nachbarschaft", o)}
+      >
         <KnowledgeNeighborhood key={ko.id} koId={ko.id} koTitle={ko.title} />
       </Abschnitt>
     </div>

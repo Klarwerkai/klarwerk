@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { FileText, Image as ImageIcon, Sparkles } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { FileText, Image as ImageIcon, Paperclip, Sparkles } from "lucide-react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 import { ApiError } from "../../api/client";
@@ -65,7 +65,7 @@ import { ListEditor, TagEditor } from "../editors";
 import { KNOWLEDGE_TYPES } from "../trust";
 import { Button, Field, TextInput, cx } from "../ui";
 import { AuffrischungHinweis } from "./AuffrischungHinweis";
-import { MehrAbschnitte } from "./MehrAbschnitte";
+import { MehrAbschnitte, type Sprungziel } from "./MehrAbschnitte";
 import { Menue, MenuePunkt, MenueTrenner } from "./Menue";
 import { fragenHref } from "./fragen";
 import { type ZustandsTon, zustandsTon } from "./zustand";
@@ -183,6 +183,10 @@ export function BibliothekLesen({
   const [studioApplied, setStudioApplied] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [mehrOffen, setMehrOffen] = useState(false);
+  // JOB 3108 · UX-03: wohin die Sprungzeile am Kopf führt. `nonce`, damit derselbe Abschnitt
+  // zweimal hintereinander anspringbar bleibt (zwischendurch von Hand zugeklappt).
+  const [sprungZiel, setSprungZiel] = useState<Sprungziel | null>(null);
+  const mehrId = useId();
   const [loeschenOffen, setLoeschenOffen] = useState(false);
   const [reworkSavedFor, setReworkSavedFor] = useState<string | null>(null);
   const reworkSaved = reviewReworkContext && reworkSavedFor === koId;
@@ -476,8 +480,31 @@ export function BibliothekLesen({
   // Weg über `libraryUseCta` verzweigte über die Reife und schickte offene Einträge nach
   // `/validierung`; das war die zweite Wahrheit, die dieser Umbau abschafft (Codex an Runde 4).
   const fragen = fragenHref(ko.id, suchtext.trim() || ko.title, ko.confidentiality);
-  const bilder = (ko.attachments ?? []).filter((a) => a.mime.startsWith("image/")).length;
+  // JOB 3108 · UX-03 — EINE Zählung, zwei Ansichten, und keine zweite Wahrheit: beide Zahlen
+  // kommen aus DEMSELBEN `ko.attachments`, in benachbarten Zeilen.
+  //   · Chip: Bilder im Text · Sprung: Anhänge insgesamt.
+  const anhaenge = ko.attachments ?? [];
+  const bilder = anhaenge.filter((a) => a.mime.startsWith("image/")).length;
   const quellen = ko.sources ?? [];
+  /**
+   * Der Sprung vom Kopf in einen Abschnitt hinter „Mehr". Erst aufklappen — `MehrAbschnitte` ist
+   * sonst gar nicht gemountet —, dann das Ziel setzen. Der `nonce` zählt hoch, damit derselbe
+   * Abschnitt auch beim zweiten Mal wieder angesprungen wird.
+   */
+  const springeZu = (schluessel: string): void => {
+    setMehrOffen(true);
+    setSprungZiel((vorher) => ({ schluessel, nonce: (vorher?.nonce ?? 0) + 1 }));
+  };
+  /**
+   * Die Zeile „Mehr" von Hand auf- und zuklappen. Beim ZUKLAPPEN verfällt das Sprungziel: sonst
+   * spränge das nächste Aufklappen ungefragt wieder dorthin und nähme den Fokus mit.
+   */
+  const mehrUmschalten = (): void => {
+    setMehrOffen((v) => !v);
+    if (mehrOffen) {
+      setSprungZiel(null);
+    }
+  };
   const darfLoeschen = role === "admin" || role === "controller" || ko.author === user?.id;
   const fb = latestValidationFeedback(ko.comments);
 
@@ -925,6 +952,39 @@ export function BibliothekLesen({
           </div>
         ) : (
           <>
+            {/* JOB 3108 · UX-03 — DER KOPF SAGT, WO QUELLEN UND ANHÄNGE LIEGEN, UND FÜHRT HIN.
+                Zwei echte `<button>`: damit wirken Tabulator, Eingabe- und Leertaste ohne
+                `tabIndex`-Nachbau. Die Zahl steht IM Knopf, bei null die Leerfassung („keine") —
+                der Knopf bleibt aktiv und führt in den Abschnitt mit dem ehrlichen Leersatz
+                (`ko.sourcesEmpty` / `ko.attachmentsEmpty`). Kein Erklärsatz daneben: der
+                Textmesser (`tests/design/zielbild-h4-kein-erklaertext.test.ts`) zieht Knopftexte
+                ab, freien Text nicht. Und NUR Zahlen — keine Quellentitel, keine Dateinamen. */}
+            <div data-testid="bib-kopf-spruenge" className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                data-testid="bib-sprung-quellen"
+                aria-controls={mehrId}
+                onClick={() => springeZu("quellen")}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-hairline bg-surface px-2.5 py-[5px] text-[12px] font-semibold text-text hover:bg-hairline-soft"
+              >
+                <FileText size={13} aria-hidden className="text-muted" />
+                {quellen.length > 0
+                  ? t("lib.lesen.sprung.quellen", { count: quellen.length })
+                  : t("lib.lesen.sprung.quellenLeer")}
+              </button>
+              <button
+                type="button"
+                data-testid="bib-sprung-anhaenge"
+                aria-controls={mehrId}
+                onClick={() => springeZu("anhaenge")}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-hairline bg-surface px-2.5 py-[5px] text-[12px] font-semibold text-text hover:bg-hairline-soft"
+              >
+                <Paperclip size={13} aria-hidden className="text-muted" />
+                {anhaenge.length > 0
+                  ? t("lib.lesen.sprung.anhaenge", { count: anhaenge.length })
+                  : t("lib.lesen.sprung.anhaengeLeer")}
+              </button>
+            </div>
             <h1
               data-testid="bib-titel"
               data-bib-text="titel"
@@ -1003,12 +1063,15 @@ export function BibliothekLesen({
             </div>
 
             {/* Die EINE Zeile „Mehr" — dahinter die dreizehn Abschnitte, zugeklappt als Vorgabe. */}
-            <div className="rounded-card border border-hairline bg-surface px-4 shadow-tile">
+            <div
+              id={mehrId}
+              className="rounded-card border border-hairline bg-surface px-4 shadow-tile"
+            >
               <button
                 type="button"
                 data-testid="bib-mehr"
                 aria-expanded={mehrOffen}
-                onClick={() => setMehrOffen((v) => !v)}
+                onClick={mehrUmschalten}
                 className="flex w-full items-center justify-between gap-2 py-2.5 text-[13px] font-semibold text-text outline-none"
               >
                 {t("lib.lesen.mehr")}
@@ -1018,7 +1081,7 @@ export function BibliothekLesen({
               </button>
               {mehrOffen ? (
                 <div className="border-t border-hairline-soft">
-                  <MehrAbschnitte ko={ko} />
+                  <MehrAbschnitte ko={ko} sprungZiel={sprungZiel ?? undefined} />
                 </div>
               ) : null}
             </div>
