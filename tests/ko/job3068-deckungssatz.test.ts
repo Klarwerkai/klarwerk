@@ -88,8 +88,16 @@ function mitBefund(deckung: Deckung, lage: Lage = "frisch"): Quelle<readonly Eig
   );
 }
 
+/**
+ * JOB 3098: der Onlinezustand ist an beiden Einstiegen PFLICHT — der Vorgabewert
+ * `ONLINE_WENN_UNGEFRAGT` ist ersatzlos entfallen (`lib/eigeneKollision.ts`). Diese Datei misst die
+ * DECKUNG und hält ihn deshalb konstant auf „online"; was er bewirkt, misst
+ * `tests/kollision-netztrennung/regel-und-netz.test.ts`.
+ */
+const ONLINE = true;
+
 const auskunftMit = (deckung: Deckung, lage: Lage = "frisch") =>
-  eigeneKollisionDetail({ koId: "ko-1", ...leer, befunde: mitBefund(deckung, lage) });
+  eigeneKollisionDetail({ koId: "ko-1", ...leer, befunde: mitBefund(deckung, lage) }, ONLINE);
 
 /**
  * DIE ZAHLENFORM, DIE DER SERVER ZU EINER LAGE WIRKLICH LIEFERT (JOB 3068 R2, bens Befund).
@@ -157,12 +165,15 @@ describe("JOB 3068 · Fall A — die Deckung erreicht die Auskunft", () => {
       decision: null,
       createdAt: "2026-09-01T00:00:00Z",
     };
-    const a = eigeneKollisionDetail({
-      koId: "ko-1",
-      ...leer,
-      konflikte: auffrischbar(quelle<readonly Conflict[]>({ data: [gegenseite] })),
-      befunde: mitBefund({ lage: "vollstaendig", geprueft: 40, bestand: 40 }),
-    });
+    const a = eigeneKollisionDetail(
+      {
+        koId: "ko-1",
+        ...leer,
+        konflikte: auffrischbar(quelle<readonly Conflict[]>({ data: [gegenseite] })),
+        befunde: mitBefund({ lage: "vollstaendig", geprueft: 40, bestand: 40 }),
+      },
+      ONLINE,
+    );
     // Kalibrierung: die Eingabe trägt den fremden Inhalt wirklich.
     expect(JSON.stringify([gegenseite])).toContain("ko-geheim-9");
     const verschriftet = JSON.stringify(a);
@@ -302,12 +313,15 @@ describe("JOB 3068 · Fall C — kein Deckungssatz ohne frische Datengrundlage",
   it("D-9 · auch eine ANDERE schwache Quelle nimmt die Deckung zurück, nicht nur die Signalquelle", () => {
     // Die Deckung hängt an `gesamtlage`, nicht an der Lage der Signalquelle allein: „gegen 40 von 40
     // geprüft" ist eine Aussage über den BESTAND, und ohne aktuellen Bestand ist sie unbelegt.
-    const a = eigeneKollisionDetail({
-      koId: "ko-1",
-      ...leer,
-      befunde: mitBefund(DECKUNG),
-      kos: auffrischbar(quelle<readonly KnowledgeObject[]>({ data: [], fetchStatus: "paused" })),
-    });
+    const a = eigeneKollisionDetail(
+      {
+        koId: "ko-1",
+        ...leer,
+        befunde: mitBefund(DECKUNG),
+        kos: auffrischbar(quelle<readonly KnowledgeObject[]>({ data: [], fetchStatus: "paused" })),
+      },
+      ONLINE,
+    );
     expect(a.lage).toBe<Lage>("pausiert");
     expect(a.deckung).toBeNull();
     expect(a.art).toBe("dublette");
@@ -322,11 +336,14 @@ describe("JOB 3068 · die Ränder", () => {
     // Und das ist kein Versäumnis: `/api/duplicate-signal` liefert je Objekt MIT Befund einen
     // Eintrag; die Deckung hängt an ihm und erzeugt keinen (duplicate-signal.ts:262-264). Über ein
     // Objekt OHNE Befund spricht `/api/ai-check/coverage-summary`, nicht diese Auskunft.
-    const a = eigeneKollisionDetail({
-      koId: "ko-1",
-      ...leer,
-      befunde: auffrischbar(quelle<readonly EigenerBefund[]>({ data: [] })),
-    });
+    const a = eigeneKollisionDetail(
+      {
+        koId: "ko-1",
+        ...leer,
+        befunde: auffrischbar(quelle<readonly EigenerBefund[]>({ data: [] })),
+      },
+      ONLINE,
+    );
     expect(a.art).toBe("keine");
     expect(a.satzKey).toBe("kollision.detail.keine");
     expect(a.deckung).toBeNull();
@@ -336,11 +353,14 @@ describe("JOB 3068 · die Ränder", () => {
     // LEHREN.md JOB 3056 R5: beim Blättern wechselt `koId`. Die Deckung wird je Kennung aus den
     // Daten gelesen (`find(b => b.koId === koId)`) und nie in einen Zustand gespiegelt — die Zahl
     // des vorigen Eintrags kann deshalb nicht am neuen landen.
-    const a = eigeneKollisionDetail({
-      koId: "ko-2",
-      ...leer,
-      befunde: mitBefund({ lage: "vollstaendig", geprueft: 40, bestand: 40 }),
-    });
+    const a = eigeneKollisionDetail(
+      {
+        koId: "ko-2",
+        ...leer,
+        befunde: mitBefund({ lage: "vollstaendig", geprueft: 40, bestand: 40 }),
+      },
+      ONLINE,
+    );
     expect(a.art).toBe("keine");
     expect(a.deckung).toBeNull();
   });
@@ -356,20 +376,26 @@ describe("JOB 3068 · die Ränder", () => {
       dublette: true,
       konflikt: false,
     } as unknown as EigenerBefund;
-    const a = eigeneKollisionDetail({
-      koId: "ko-1",
-      ...leer,
-      befunde: auffrischbar(quelle<readonly EigenerBefund[]>({ data: [alterDraht] })),
-    });
+    const a = eigeneKollisionDetail(
+      {
+        koId: "ko-1",
+        ...leer,
+        befunde: auffrischbar(quelle<readonly EigenerBefund[]>({ data: [alterDraht] })),
+      },
+      ONLINE,
+    );
     expect(a.art).toBe("dublette");
     expect(a.deckung).toBeNull();
   });
 
   it("D-12 · die Startseite trägt keine Deckung — mehrere Objekte haben keine gemeinsame Zahl", () => {
-    const a = eigeneKollisionStart({
-      ...leer,
-      befunde: mitBefund({ lage: "vollstaendig", geprueft: 40, bestand: 40 }),
-    });
+    const a = eigeneKollisionStart(
+      {
+        ...leer,
+        befunde: mitBefund({ lage: "vollstaendig", geprueft: 40, bestand: 40 }),
+      },
+      ONLINE,
+    );
     expect(a.anzahl).toBe(1);
     expect(a.deckung).toBeNull();
   });

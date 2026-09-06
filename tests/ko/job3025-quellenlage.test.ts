@@ -50,7 +50,9 @@ function quelle<T>(over: Partial<Quellenzustand<T>> & { data?: T }): Quellenzust
  * DIESE Datei misst weiterhin, was die VIER Query-Skalare bedeuten — deshalb steht der fünfte hier
  * überall ausdrücklich auf „online". Was offline aus denselben Zeilen wird, ist der Gegenstand von
  * `tests/kollision-netztrennung/regel-und-netz.test.ts` (N-2 fährt dieselben sechs Lagen offline).
- * Er wird bewusst NICHT über einen Vorgabewert versteckt: die Regel selbst kennt keinen.
+ * Er wird bewusst NICHT über einen Vorgabewert versteckt: die Regel selbst kennt keinen. Seit
+ * JOB 3098 (Q6b) gilt das auch für die zwei EINSTIEGE — `ONLINE_WENN_UNGEFRAGT` ist entfallen,
+ * deshalb steht `ONLINE` ab hier auch an jedem `eigeneKollisionDetail`/`eigeneKollisionStart`.
  */
 const ONLINE = true;
 
@@ -253,11 +255,14 @@ const QUELLENNAMEN: readonly Quellenname[] = ["befunde", "konflikte", "kos"];
 
 describe("JOB 3025 · die Detail-Auskunft folgt der Regel", () => {
   it("A-1 · frisch mit Dublette → Befund, kein Datenlage-Vorbehalt", () => {
-    const a = eigeneKollisionDetail({
-      koId: "ko-1",
-      ...leer,
-      befunde: auffrischbar(quelle<readonly EigenerBefund[]>({ data: [BEFUND_DUBLETTE] })),
-    });
+    const a = eigeneKollisionDetail(
+      {
+        koId: "ko-1",
+        ...leer,
+        befunde: auffrischbar(quelle<readonly EigenerBefund[]>({ data: [BEFUND_DUBLETTE] })),
+      },
+      ONLINE,
+    );
     expect(a.art).toBe("dublette");
     expect(a.lage).toBe<Lage>("frisch");
     expect(a.datenlageKey).toBeNull();
@@ -265,7 +270,7 @@ describe("JOB 3025 · die Detail-Auskunft folgt der Regel", () => {
   });
 
   it("A-2 · frisch ohne Befund → die EINZIGE erlaubte Verneinung", () => {
-    const a = eigeneKollisionDetail({ koId: "ko-1", ...leer });
+    const a = eigeneKollisionDetail({ koId: "ko-1", ...leer }, ONLINE);
     expect(a.art).toBe("keine");
     expect(a.satzKey).toBe("kollision.detail.keine");
     expect(a.datenlageKey).toBeNull();
@@ -278,7 +283,7 @@ describe("JOB 3025 · die Detail-Auskunft folgt der Regel", () => {
         continue;
       }
       for (const name of QUELLENNAMEN) {
-        const a = eigeneKollisionDetail({ koId: "ko-1", ...nurEineVerstellt(name, lage) });
+        const a = eigeneKollisionDetail({ koId: "ko-1", ...nurEineVerstellt(name, lage) }, ONLINE);
         expect(a.satzKey, `${name} in ${lage}`).not.toBe("kollision.detail.keine");
         expect(a.datenlageKey, `${name} in ${lage}`).toBe(DATENLAGE_KEY[lage]);
       }
@@ -286,13 +291,16 @@ describe("JOB 3025 · die Detail-Auskunft folgt der Regel", () => {
   });
 
   it("A-4 · ein Cache-Befund verschwindet nicht, er bekommt den Vorbehalt", () => {
-    const a = eigeneKollisionDetail({
-      koId: "ko-1",
-      ...leer,
-      befunde: auffrischbar(
-        quelle<readonly EigenerBefund[]>({ data: [BEFUND_KONFLIKT], fetchStatus: "paused" }),
-      ),
-    });
+    const a = eigeneKollisionDetail(
+      {
+        koId: "ko-1",
+        ...leer,
+        befunde: auffrischbar(
+          quelle<readonly EigenerBefund[]>({ data: [BEFUND_KONFLIKT], fetchStatus: "paused" }),
+        ),
+      },
+      ONLINE,
+    );
     expect(a.art).toBe("konflikt");
     expect(a.datenlageKey).toBe("kollision.lage.pausiert");
     expect(a.weg?.to).toBe("/konflikte");
@@ -311,11 +319,14 @@ describe("JOB 3025 · die Detail-Auskunft folgt der Regel", () => {
       decision: null,
       createdAt: "2026-09-01T00:00:00Z",
     };
-    const a = eigeneKollisionDetail({
-      koId: "ko-1",
-      ...leer,
-      konflikte: auffrischbar(quelle<readonly Conflict[]>({ data: [gegenseite] })),
-    });
+    const a = eigeneKollisionDetail(
+      {
+        koId: "ko-1",
+        ...leer,
+        konflikte: auffrischbar(quelle<readonly Conflict[]>({ data: [gegenseite] })),
+      },
+      ONLINE,
+    );
     // Kalibrierung: die Eingabe trägt den fremden Inhalt wirklich — sonst prüfte A-5 nichts.
     expect(JSON.stringify([gegenseite])).toContain("ko-geheim-9");
     const verschriftet = JSON.stringify(a);
@@ -327,37 +338,40 @@ describe("JOB 3025 · die Detail-Auskunft folgt der Regel", () => {
 
 describe("JOB 3025 · die Start-Auskunft folgt DERSELBEN Regel", () => {
   it("A-6 · frisch mit zwei betroffenen Objekten → Zahl und Art", () => {
-    const a = eigeneKollisionStart({
-      ...leer,
-      befunde: auffrischbar(
-        quelle<readonly EigenerBefund[]>({
-          data: [
-            BEFUND_DUBLETTE,
-            { koId: "ko-2", dublette: false, konflikt: true, deckung: OHNE_DECKUNG },
-          ],
-        }),
-      ),
-    });
+    const a = eigeneKollisionStart(
+      {
+        ...leer,
+        befunde: auffrischbar(
+          quelle<readonly EigenerBefund[]>({
+            data: [
+              BEFUND_DUBLETTE,
+              { koId: "ko-2", dublette: false, konflikt: true, deckung: OHNE_DECKUNG },
+            ],
+          }),
+        ),
+      },
+      ONLINE,
+    );
     expect(a.anzahl).toBe(2);
     expect(a.art).toBe("beides");
     expect(a.datenlageKey).toBeNull();
   });
 
   it("A-7 · frisch ohne Befund → Verneinung; jede andere Lage nimmt sie zurück", () => {
-    expect(eigeneKollisionStart(leer).satzKey).toBe("kollision.start.keine");
+    expect(eigeneKollisionStart(leer, ONLINE).satzKey).toBe("kollision.start.keine");
     for (const lage of LAGE_VON_SCHWACH_NACH_STARK) {
       if (lage === "frisch") {
         continue;
       }
       for (const name of QUELLENNAMEN) {
-        const a = eigeneKollisionStart(nurEineVerstellt(name, lage));
+        const a = eigeneKollisionStart(nurEineVerstellt(name, lage), ONLINE);
         expect(a.satzKey, `${name} in ${lage}`).not.toBe("kollision.start.keine");
       }
     }
   });
 
   it("A-8 · ohne Daten wird auch keine Zahl behauptet", () => {
-    const a = eigeneKollisionStart(nurEineVerstellt("befunde", "erstfehler"));
+    const a = eigeneKollisionStart(nurEineVerstellt("befunde", "erstfehler"), ONLINE);
     expect(a.anzahl).toBe(0);
     expect(a.art).toBe("keine");
     expect(a.satzKey).toBe("kollision.lage.erstfehler");
@@ -378,11 +392,14 @@ describe("JOB 3025 · pausiert OHNE früheren Stand sagt nichts über einen Stan
   });
 
   it("A-11 · kalt und offline → der Satz ohne Stand, und keine Verneinung", () => {
-    const a = eigeneKollisionStart({
-      befunde: auffrischbar(OHNE_DATEN),
-      konflikte: auffrischbar(OHNE_DATEN),
-      kos: auffrischbar(OHNE_DATEN),
-    });
+    const a = eigeneKollisionStart(
+      {
+        befunde: auffrischbar(OHNE_DATEN),
+        konflikte: auffrischbar(OHNE_DATEN),
+        kos: auffrischbar(OHNE_DATEN),
+      },
+      ONLINE,
+    );
     expect(a.lage).toBe<Lage>("pausiert");
     expect(a.datenlageKey).toBe("kollision.lage.pausiertOhneStand");
     expect(a.satzKey).toBe("kollision.lage.pausiertOhneStand");
@@ -391,20 +408,23 @@ describe("JOB 3025 · pausiert OHNE früheren Stand sagt nichts über einen Stan
   });
 
   it("A-12 · mit vollem Zwischenspeicher bleibt es beim Stand-Satz", () => {
-    const a = eigeneKollisionStart(nurEineVerstellt("kos", "pausiert"));
+    const a = eigeneKollisionStart(nurEineVerstellt("kos", "pausiert"), ONLINE);
     expect(a.lage).toBe<Lage>("pausiert");
     expect(a.datenlageKey).toBe("kollision.lage.pausiert");
   });
 
   it("A-13 · EIN Teil-Stand reicht nicht — eine Quelle ohne Daten nimmt den Stand-Satz zurück", () => {
-    const a = eigeneKollisionDetail({
-      koId: "ko-1",
-      ...leer,
-      befunde: auffrischbar(
-        quelle<readonly EigenerBefund[]>({ data: [BEFUND_DUBLETTE], fetchStatus: "paused" }),
-      ),
-      kos: auffrischbar(OHNE_DATEN),
-    });
+    const a = eigeneKollisionDetail(
+      {
+        koId: "ko-1",
+        ...leer,
+        befunde: auffrischbar(
+          quelle<readonly EigenerBefund[]>({ data: [BEFUND_DUBLETTE], fetchStatus: "paused" }),
+        ),
+        kos: auffrischbar(OHNE_DATEN),
+      },
+      ONLINE,
+    );
     // Der Befund aus dem Zwischenspeicher bleibt — er wird eingeordnet, nicht kassiert …
     expect(a.art).toBe("dublette");
     // … aber über den Gesamtstand wird nichts mehr behauptet.
@@ -422,11 +442,14 @@ describe("JOB 3025 · der neue Versuch frischt ALLE drei Quellen auf", () => {
       spur.push(name);
     };
     return {
-      auskunft: eigeneKollisionStart({
-        befunde: auffrischbar(quelle<readonly EigenerBefund[]>({ data: [] }), merke("befunde")),
-        konflikte: auffrischbar(quelle<readonly Conflict[]>({ data: [] }), merke("konflikte")),
-        kos: auffrischbar(quelle<readonly KnowledgeObject[]>({ data: [] }), merke("kos")),
-      }),
+      auskunft: eigeneKollisionStart(
+        {
+          befunde: auffrischbar(quelle<readonly EigenerBefund[]>({ data: [] }), merke("befunde")),
+          konflikte: auffrischbar(quelle<readonly Conflict[]>({ data: [] }), merke("konflikte")),
+          kos: auffrischbar(quelle<readonly KnowledgeObject[]>({ data: [] }), merke("kos")),
+        },
+        ONLINE,
+      ),
       spur,
     };
   }
@@ -449,7 +472,7 @@ describe("JOB 3025 · der neue Versuch frischt ALLE drei Quellen auf", () => {
       frisch: false,
     };
     for (const lage of LAGE_VON_SCHWACH_NACH_STARK) {
-      const a = eigeneKollisionStart(nurEineVerstellt("konflikte", lage));
+      const a = eigeneKollisionStart(nurEineVerstellt("konflikte", lage), ONLINE);
       expect(a.wiederholenMoeglich, `Lage ${lage}`).toBe(erwartet[lage]);
     }
   });

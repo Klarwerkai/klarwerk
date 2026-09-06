@@ -363,6 +363,19 @@ export interface Kollisionsauskunft {
   readonly anzahl: number;
   /** Nur bei `frisch` wahr — nur dann darf hier eine Aussage über den Bestand stehen. */
   readonly bestandGesichert: boolean;
+  /**
+   * Liegt für JEDE der drei Quellen ein früherer Stand vor? (JOB 3098)
+   *
+   * DIE ZWEI FELDER BEANTWORTEN ZWEI VERSCHIEDENE FRAGEN, und ihre Verwechslung ist ein eigener
+   * Fehler: `bestandGesichert` sagt „darf hier eine Aussage ÜBER DEN BESTAND stehen" (nur `frisch`),
+   * `standVorhanden` sagt „gibt es überhaupt etwas, worüber gesprochen werden kann".
+   *
+   * Wer einen VORHANDENEN Befund an `bestandGesichert` hängt, lässt ihn in jeder Lage außer `frisch`
+   * verschwinden — offline also genau dann, wenn die Autorin ihn am wenigsten selbst nachsehen kann.
+   * Das ist A27 rückwärts (:439-441). Wer umgekehrt eine VERNEINUNG an `standVorhanden` hinge,
+   * behauptete „keine Kollision" aus einem alten Zwischenspeicher — der Fehler von JOB 3002.
+   */
+  readonly standVorhanden: boolean;
   /** Der Satz, der an der Stelle steht. */
   readonly satzKey: string;
   /** Der Vorbehalt über die Datenlage. Genau dann `null`, wenn `lage === "frisch"`. */
@@ -438,7 +451,8 @@ function schluss(
   satzKeys: { readonly praefix: string },
   deckung: DeckungsAuskunft | null,
 ): Kollisionsauskunft {
-  const datenlageKey = datenlageKeyFuer(lage, hatFruherenStand(quellen));
+  const standVorhanden = hatFruherenStand(quellen);
+  const datenlageKey = datenlageKeyFuer(lage, standVorhanden);
   // `datenlageKey === null` ist per Bauart genau `lage === "frisch"` — dieselbe Bedingung wie
   // `bestandsaussageErlaubt`. Der Ausdruck sagt deshalb wörtlich: die Verneinung steht da, wo kein
   // Vorbehalt nötig ist, und sonst steht der Vorbehalt.
@@ -449,6 +463,7 @@ function schluss(
     art: a,
     anzahl,
     bestandGesichert: bestandsaussageErlaubt(lage),
+    standVorhanden,
     satzKey,
     datenlageKey,
     wiederholenMoeglich: wiederholenSinnvoll(lage),
@@ -494,25 +509,24 @@ function alleQuellen(q: Kollisionsquellen): readonly Quelle<unknown>[] {
 }
 
 /**
- * WAS GILT, WENN EINE FLÄCHE DEN ONLINEZUSTAND NICHT REICHT — und warum es diesen Fall noch gibt.
+ * JOB 3098 (Q6b) — DER ONLINEZUSTAND IST PFLICHT, AN JEDEM EINSTIEG.
  *
- * `quellenlage()` verlangt den Zustand ohne Ausnahme; die Regel selbst kennt keinen Vorgabewert.
- * Die zwei EINSTIEGE unten haben einen, und das ist eine ehrlich benannte Restschuld, kein Entwurf:
- * es gibt im Produkt einen DRITTEN Aufrufer, `pages/Start.tsx:116`. Er liegt außerhalb der
- * Zielpfade dieses Auftrags (REGELN.md §3) und wird deshalb nicht angefasst.
+ * ABGELÖST WIRD `ONLINE_WENN_UNGEFRAGT = true`, der Vorgabewert der beiden Einstiege unten. Er war
+ * bis hierher als Restschuld begründet: der dritte Aufrufer `pages/Start.tsx` lag außerhalb der
+ * Zielpfade von JOB 3084 und fiel deshalb auf ihn zurück. Die Begründung stimmte, und sie war
+ * trotzdem nur so lange tragbar, wie niemand aus der Auskunft mehr baute als eine Zeile im Fall.
  *
- * WARUM DIESER AUFRUFER TROTZDEM KEINE FALSCHE AUSSAGE MACHT — gemessen, nicht angenommen: er baut
- * aus der Auskunft nur dann eine Zeile in „FÜR DICH", wenn `art !== "keine"` UND `bestandGesichert`
- * gilt (`Start.tsx:121-129`). Eine Verneinung entsteht dort also in keiner Lage; das Schlimmste,
- * was der Vorgabewert dort bewirken kann, ist, dass die Zeile bei einem offline vorliegenden Befund
- * so erscheint wie bisher. Verschwiegen wird nichts, und behauptet wird nichts.
+ * WAS ER WIRKLICH ANRICHTETE — gemessen, nicht vermutet: `lageDerQuellen` rechnete auf der
+ * Startseite dauerhaft mit „online". Innerhalb der `staleTime` von 30 s (`main.tsx:21`) meldet
+ * Query beim Zurückkommen auch kein `paused`, also stand die Lage auf `frisch`, obwohl das Gerät
+ * offline war — Befund R-1585 an der dritten Fläche.
  *
- * `tests/kollision-netztrennung/eine-quelle-waechter.test.ts` hält beides fest: dass die zwei
- * Flächen dieses Auftrags den Zustand WIRKLICH reichen, und dass `Start.tsx` der einzige Aufrufer
- * ohne ihn bleibt.
+ * WARUM DIE ABLÖSUNG UND NICHT NUR DER EINE AUFRUFER: ein Vorgabewert an einer Auskunftsregel ist
+ * die Erlaubnis, den Zustand zu vergessen, und genau das ist dreimal geschehen. Ohne ihn fängt der
+ * Typprüfer den vierten Aufrufer, bevor eine Fläche ihn übersieht. `tests/kollision-netztrennung/
+ * eine-quelle-waechter.test.ts` hält dazu fest, dass es KEINEN Aufrufer ohne Onlinezustand mehr
+ * gibt — nicht mehr, dass es genau einen gibt.
  */
-const ONLINE_WENN_UNGEFRAGT = true;
-
 function lageDerQuellen(q: Kollisionsquellen, online: boolean): Lage {
   // Bewusst mit einem eigenen Pfeil und nicht `.map(quellenlage)`: `Array.map` reicht dem Rückruf
   // als zweites Argument den INDEX. Vor JOB 3084 war das folgenlos (die Funktion nahm nur einen
@@ -541,7 +555,7 @@ function hatFruherenStand(q: Kollisionsquellen): boolean {
  */
 export function eigeneKollisionDetail(
   args: Kollisionsquellen & { readonly koId: string },
-  online = ONLINE_WENN_UNGEFRAGT,
+  online: boolean,
 ): Kollisionsauskunft {
   const lage = lageDerQuellen(args, online);
   const eigener = args.befunde.data?.find((b) => b.koId === args.koId);
@@ -571,10 +585,7 @@ export function eigeneKollisionDetail(
  * kommen getrennt an, und ein Signal-Eintrag mit `konflikt: false` kann durch die frischere
  * Konfliktliste überholt sein. Beides zu lesen ist die vollständigere Auskunft, nicht die doppelte.
  */
-export function eigeneKollisionStart(
-  q: Kollisionsquellen,
-  online = ONLINE_WENN_UNGEFRAGT,
-): Kollisionsauskunft {
+export function eigeneKollisionStart(q: Kollisionsquellen, online: boolean): Kollisionsauskunft {
   const lage = lageDerQuellen(q, online);
   // Bewusst KEIN `?? []`: das ist die Zeile, an der JOB 3002 fünfmal fiel. Fehlende Daten sind
   // hier eine LAGE (oben schon ermittelt), keine leere Liste — die Schleife läuft dann einfach

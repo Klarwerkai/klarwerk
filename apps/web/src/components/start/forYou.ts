@@ -20,6 +20,58 @@
 // zweimal: ein pausierter Abruf (`isPaused`) ist weder „lädt" noch „Fehler", und er muss aus dem
 // tatsächlichen Zustand der Abfrage kommen, nicht aus einer Vermutung. Ohne Daten ist er eine
 // Störung (`gescheitert`), mit Daten eine veraltete Anzeige (`veraltet`) — nie ein stilles Leer.
+//
+// ------------------------------------------------------------------------------------------------
+// JOB 3098 (Q6b) — UND `isPaused` ALLEIN REICHTE NICHT.
+// ------------------------------------------------------------------------------------------------
+//
+// Der Absatz darüber beschrieb bis hierher genau die Lücke, die er selbst nicht schloss: `isPaused`
+// entsteht NUR an einem Abruf, den jemand will. Innerhalb der `staleTime` von 30 s (`main.tsx:21`)
+// will nach dem Zurückkommen auf die Seite niemand einen — die Abfrage steht auf `idle`, `data`
+// liegt vor, und diese Funktion las daraus `frisch`. Dieselbe Lücke hatte `quellenlage()`
+// (`lib/eigeneKollision.ts:99-150`) bis JOB 3084; sie ist dort mit demselben Griff geschlossen
+// worden, aus dem Befund R-1585 heraus (05.09.2026, `https://app.klarwerk.ai`).
+//
+// DER ONLINEZUSTAND IST DESHALB EIN PFLICHTPARAMETER, kein Zusatz mit Vorgabewert: ein Vorgabewert
+// „online" ließe genau den Aufrufer durchgehen, der ihn vergisst — und das war drei Aufträge lang
+// `pages/Start.tsx`. Die Quelle ist `lib/netzzustand.ts` (`onlineManager`, dieselbe, aus der Query
+// sein `paused` ableitet); die Funktion bleibt dabei DOM-frei und ohne React-Abhängigkeit.
+//
+// ES ENTSTEHT KEINE FÜNFTE LAGE. `!online` fällt in die BESTEHENDEN zwei: mit Daten `veraltet`,
+// ohne Daten `gescheitert` — dieselbe Behandlung wie `isPaused`, weil es derselbe Sachverhalt ist
+// (es kann gerade nicht geprüft werden). Dass TanStack Query den einen meldet und den anderen
+// nicht, ist eine Eigenschaft seiner Frist und keine Aussage über den Bestand.
+//
+// ------------------------------------------------------------------------------------------------
+// RESTSCHULD, EHRLICH BENANNT (JOB 3098 Runde 2/3) — DIE LAGE STIMMT, DIE ANZEIGE NOCH NICHT.
+// ------------------------------------------------------------------------------------------------
+//
+// `forYouLage()` beantwortet den Onlinezustand seit JOB 3098 richtig. WAS DIE KARTE DARAUS MACHT,
+// entscheidet sie aber selbst — und dort ist es noch falsch. Ben hat es an der gemounteten Seite
+// gemessen (Runde 1, wörtlich): „online leer laden, Netz trennen, am selben QueryClient neu mounten
+// ergibt wörtlich `Nichts offen.Veraltet – Aktualisierung fehlgeschlagenErneut versuchen`."
+// Drei Fehler in einer Zeile, und KEINER davon steckt in dieser Datei:
+//   1. „Nichts offen." ist eine VERNEINUNG des Bestands aus einem Stand, der nicht mehr gilt. Sie
+//      hängt an `zeigtBestand()` (unten), das für `frisch` UND `veraltet` wahr ist — richtig für
+//      die geholten WERTE (REGELN §7: nie leeren), falsch für die Verneinung. Beides hängt heute
+//      an einem einzigen Merkmal.
+//   2. „Aktualisierung fehlgeschlagen" (`loadstate.stale`) behauptet einen gescheiterten Versuch —
+//      offline hat es gar keinen gegeben; die Abfrage ruht. Die richtigen Sätze bestehen bereits:
+//      `kollision.lage.pausiert` (mit Stand) und `…pausiertOhneStand` (ohne).
+//   3. „Erneut versuchen" verspricht eine Handlung, die ohne Netz nichts bewirken kann (REGELN §7,
+//      Auftrag §9). `lib/eigeneKollision.ts:205-207` (`wiederholenSinnvoll`) trifft dieselbe
+//      Entscheidung für die Kollisionsauskunft seit JOB 3084 richtig.
+//
+// WARUM ES HIER NICHT BEHOBEN IST: alle drei Stellen stehen in `components/start/StartKarten.tsx`
+// (`:113` die Verneinung, `:133-153` Satz und Knopf), und diese Datei liegt AUSSERHALB der
+// Zielpfade von JOB 3098. Ben hat die Aufnahme in seiner Korrekturpflicht 3 ausdrücklich verlangt
+// („dafür `StartKarten.tsx` ausdrücklich in die Zielpfade aufnehmen"); die Vorprüfung des Tors
+// (`takt/schritte.py:822`) hat Runde 2 daran rot gemacht, bevor das Tor überhaupt lief. Der Weg ist
+// damit eine Auftragsentscheidung und keine Bauentscheidung — und ein Vorbau hier wäre toter Code
+// ohne Aufrufer (`tests/capture/aufrufer-waechter.test.ts`).
+//
+// ES ENTSTÜNDE AUCH DANN KEINE FÜNFTE LAGE: die drei Entscheidungen lesen die vier bestehenden
+// Lagen zusammen mit dem Onlinezustand, den `forYouLage` ohnehin schon kennt.
 export type ForYouSeverity = "critical" | "today" | "later";
 
 /**
@@ -27,7 +79,8 @@ export type ForYouSeverity = "critical" | "today" | "later";
  * `gescheitert` — mindestens eine Quelle hat ohne eigene Daten aufgegeben (Fehler oder offline).
  *                 Karte leer, aber die Störung ist sichtbar (Wiederholen-Knopf) — eine Störung
  *                 darf nicht wie Leere aussehen.
- * `frisch`      — alle Quellen haben geantwortet, keine steht in Fehler/Pause. Zeilen + Pille.
+ * `frisch`      — alle Quellen haben geantwortet, keine steht in Fehler/Pause, das Gerät ist online.
+ *                 Zeilen + Pille.
  * `veraltet`    — alle Quellen haben Daten, eine Auffrischung scheiterte oder ruht (offline).
  *                 Die zuletzt erfolgreich geholten Werte bleiben SICHTBAR und werden markiert.
  */
@@ -40,8 +93,16 @@ export interface ForYouQuelle {
   readonly isPaused?: boolean;
 }
 
-export function forYouLage(quellen: readonly ForYouQuelle[]): ForYouLage {
-  const gestoert = (q: ForYouQuelle): boolean => q.isError === true || q.isPaused === true;
+/**
+ * @param online Der Onlinezustand des Geräts, aus `lib/netzzustand.ts`. OHNE Vorgabewert — s. den
+ *   Kopfkommentar: ein Vorgabewert wäre die Erlaubnis, ihn zu vergessen.
+ */
+export function forYouLage(quellen: readonly ForYouQuelle[], online: boolean): ForYouLage {
+  // `!online` steht IN `gestoert` und nicht als eigener Vorabzweig: die Fallunterscheidung „mit
+  // Daten / ohne Daten" darunter ist für offline dieselbe wie für `isPaused`, und zwei Wege zu
+  // demselben Ergebnis wären zwei Wege, die auseinanderlaufen können.
+  const gestoert = (q: ForYouQuelle): boolean =>
+    !online || q.isError === true || q.isPaused === true;
   if (quellen.every((q) => q.data !== undefined)) {
     return quellen.some(gestoert) ? "veraltet" : "frisch";
   }

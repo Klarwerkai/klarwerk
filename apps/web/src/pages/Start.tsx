@@ -20,7 +20,12 @@ import { OverflowMenu } from "../components/start/OverflowMenu";
 import { Seitenblatt } from "../components/start/Seitenblatt";
 import { FuerDichKarte, ZuletztKarte } from "../components/start/StartKarten";
 import { StartPanelInhalt } from "../components/start/StartPanel";
-import { forYouGesamt, forYouLage, forYouZeilen } from "../components/start/forYou";
+import {
+  type ForYouQuelle,
+  forYouGesamt,
+  forYouLage,
+  forYouZeilen,
+} from "../components/start/forYou";
 import {
   START_PANEL_IDS,
   type StartPanelId,
@@ -31,6 +36,9 @@ import { useDiktat } from "../components/start/useDiktat";
 // A27 (OFFEN.md:81) · JOB 3025: DIESELBE Funktion wie auf der Detailseite — ein zweiter
 // Ableitungsweg wäre genau die Drift, an der JOB 3002 Runde 4 fiel.
 import { eigeneKollisionStart } from "../lib/eigeneKollision";
+// JOB 3098 · Q6b: der Onlinezustand wird GEREICHT, nicht gedeutet — aus derselben einen Quelle wie
+// an den zwei Flächen von JOB 3084 (`components/start/StartPanel.tsx:88`).
+import { useNetzOnline } from "../lib/netzzustand";
 import { notificationTarget } from "../lib/notificationTarget";
 import { isStartOrientationFirstRun, markStartOrientationSeen } from "../lib/startOrientation";
 import { buildWorkOverview, learningOpenSteps, workSignalsFrom } from "../lib/workCenter";
@@ -65,6 +73,21 @@ import { buildWorkOverview, learningOpenSteps, workSignalsFrom } from "../lib/wo
 // Zeilen und Pille erst nach einem erfolgreichen frischen Abruf; „lädt" zeigt NICHTS; eine Störung
 // zeigt keinen erfundenen Bestand, aber ihren Wiederholen-Knopf; ein gescheiterter Nachlauf lässt
 // die zuletzt geholten Werte stehen und markiert sie.
+
+/**
+ * EINE Quelle der Karte „FÜR DICH" — und der Typ hält die zwei Enden zusammen (JOB 3098 Runde 2).
+ *
+ * Bens Befund an Runde 1: die Quellenliste war um `eigeneBefunde` und `kos` gewachsen, der
+ * Wiederholen-Weg daneben nicht. Wörtlich: „Nach behobenem Serverfehler erzeugt der Klick jeweils
+ * null Abrufe der betroffenen Quelle." Die Karte konnte also in eine Störung geraten, aus der ihr
+ * eigener Knopf nicht mehr herausführte — ein Knopf, der die Störung nicht behebt, die er anbietet.
+ *
+ * Deshalb steht die Liste jetzt genau EINMAL da (`arbeitsQuellen`), und beide Enden lesen sie:
+ * `forYouLage()` den Zustand, `wiederholen()` das `refetch`. Eine Quelle hinzuzufügen, ohne den Weg
+ * heraus mitzunehmen, ist damit keine Nachlässigkeit mehr, sondern unmöglich.
+ */
+type Arbeitsquelle = ForYouQuelle & { readonly refetch: () => unknown };
+
 export function Start(): JSX.Element {
   const { t } = useTranslation();
   const { role, stufe2 } = useRole();
@@ -90,13 +113,24 @@ export function Start(): JSX.Element {
   const eigeneBefunde = useEigeneBefunde();
   const liveWall = useLiveWall();
 
+  // JOB 3098 · Q6b: EINE Ablesung des Netzes für diese ganze Fläche — die Kollisionsregel und die
+  // Lage der Karte müssen von demselben Zustand sprechen, sonst trüge die Karte die Markierung,
+  // während die Zeile schweigt, oder umgekehrt.
+  const netzOnline = useNetzOnline();
+
   // JOB 1217: der Lernfortschritt gehört nur dann zur Gruppe, wenn es einen Pfad gibt — ohne
   // Pfad-Id bleibt `useLearningProgress` dauerhaft untätig und die Gruppe hinge ewig im Ladezustand.
   const lernfortschrittGehoertDazu = Boolean(learningPath.data?.id);
-  const arbeitsQuellen = lernfortschrittGehoertDazu
-    ? [board, conflicts, pending, gapsSummary, meldungen, learningProgress]
-    : [board, conflicts, pending, gapsSummary, meldungen];
-  const lage = forYouLage(arbeitsQuellen);
+  // JOB 3098 · Q6b, LIEFERUNG 4: `eigeneBefunde` und `kos` stehen hier, weil die Kollisionszeile
+  // ALLEIN aus ihnen entsteht — eine Karte, die Frische behauptet, muss jede Quelle kennen, aus der
+  // eine ihrer Zeilen kommt. Bis hierher fehlten sie: lud die KO-Liste noch oder war der
+  // Signal-Abruf gescheitert, galt die Karte trotzdem als frisch und schrieb „Nichts offen." unter
+  // eine Zeile, die es nur deshalb nicht gab. Dieselbe Regel, aus der `eigeneKollision.ts:485-493`
+  // die KO-Liste in die Gesamtlage der Auskunft nimmt.
+  const arbeitsQuellen: readonly Arbeitsquelle[] = lernfortschrittGehoertDazu
+    ? [board, conflicts, pending, gapsSummary, meldungen, learningProgress, eigeneBefunde, kos]
+    : [board, conflicts, pending, gapsSummary, meldungen, eigeneBefunde, kos];
+  const lage = forYouLage(arbeitsQuellen, netzOnline);
 
   // FUNKE-FIX2 P0: die kritischen Lücken kommen aus dem aggregierten Summary (byPriority.hoch),
   // nicht aus geladenen Gap-Volltexten — kein Fragetext gelangt in den Browser.
@@ -112,14 +146,33 @@ export function Start(): JSX.Element {
   });
 
   // A27 · JOB 3025: die Auskunft über die EIGENEN Objekte. Sie geht als LAGE hinein, nicht als
-  // „Daten oder leer" — und sie wird nur dann zur Zeile, wenn die Lage eine Bestandsaussage trägt.
-  const kollisionsAuskunft = eigeneKollisionStart({
-    befunde: eigeneBefunde,
-    konflikte: conflicts,
-    kos,
-  });
+  // „Daten oder leer" — und sie wird nur dann zur Zeile, wenn ein Befund feststeht.
+  const kollisionsAuskunft = eigeneKollisionStart(
+    {
+      befunde: eigeneBefunde,
+      konflikte: conflicts,
+      kos,
+    },
+    netzOnline,
+  );
+  // JOB 3098 · Q6b, LIEFERUNG 3 — WARUM HIER NICHT MEHR `bestandGesichert` STEHT.
+  //
+  // `bestandGesichert` ist genau `lage === "frisch"`. Sobald die Fläche den Onlinezustand wirklich
+  // reicht, kippt es beim Netzverlust auf `false` — und die Zeile eines BEREITS BEKANNTEN Befunds
+  // wäre still verschwunden. Das ist A27 rückwärts: „eine Kollision, die der Autorin verschwiegen
+  // wird" (`lib/eigeneKollision.ts:439-441`). Der Befund verschwindet nie; er wird eingeordnet —
+  // die Karte trägt dafür die Veraltet-Markierung (`components/start/StartKarten.tsx:133-153`),
+  // die aus derselben Netzablesung entsteht.
+  //
+  // Was `standVorhanden` dagegen wirklich ausschließt, ist die andere Erfindung: eine Zeile OHNE
+  // jeden früheren Stand. Eine Verneinung entsteht HIER in keiner Lage — die Karte zeigt ihre
+  // Zeilen nur, wenn `forYouLage` das erlaubt.
+  //
+  // OFFEN BLEIBT die Verneinung der KARTE („Nichts offen."), die aus einem ruhenden Zwischenspeicher
+  // weiterhin steht: sie hängt an `StartKarten.tsx:113`, außerhalb der Zielpfade dieses Auftrags.
+  // Der Befund und der genaue Griff stehen in `components/start/forYou.ts` unter „RESTSCHULD".
   const kollision =
-    kollisionsAuskunft.art === "keine" || !kollisionsAuskunft.bestandGesichert
+    kollisionsAuskunft.art === "keine" || !kollisionsAuskunft.standVorhanden
       ? null
       : {
           satzKey: kollisionsAuskunft.satzKey,
@@ -158,13 +211,14 @@ export function Start(): JSX.Element {
     })),
     kollision,
   });
+  // JOB 3098 · Q6b RUNDE 2, KORREKTURPFLICHT 1: der Weg heraus führt über GENAU die Quellen, die
+  // hineinführen — dieselbe Liste, keine zweite. `liveWall` steht bewusst nicht darunter: sie trägt
+  // die Karte „ZULETZT" und hat ihren eigenen Weg (s. unten). Ein Wiederholen, das eine fremde
+  // Quelle mitzieht und eine eigene auslässt, war der Fehler, nicht das Versehen.
   const wiederholen = (): void => {
-    void board.refetch();
-    void conflicts.refetch();
-    void pending.refetch();
-    void gapsSummary.refetch();
-    void meldungen.refetch();
-    void liveWall.refetch();
+    for (const quelle of arbeitsQuellen) {
+      void quelle.refetch();
+    }
   };
 
   // ---- Das „…"-Menü ------------------------------------------------------------------------------
@@ -245,7 +299,7 @@ export function Start(): JSX.Element {
               nebenan: „Zuletzt" wäre sonst gestört, weil eine Aufgabenquelle klemmt. Ihr
               Wiederholen-Weg holt entsprechend genau diese eine Abfrage nach. */}
           <ZuletztKarte
-            lage={forYouLage([liveWall])}
+            lage={forYouLage([liveWall], netzOnline)}
             daten={liveWall.data}
             jetzt={new Date()}
             onWiederholen={() => {
