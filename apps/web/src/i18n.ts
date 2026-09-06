@@ -545,6 +545,28 @@ const de = {
   // wirft, muss raten (services/validation/src/board-herkunft.ts:10-18).
   "val.stufe.nichtEingestuft": "nicht eingestuft",
   "val.stufe.auskunftFehlt": "Einstufung nicht in dieser Antwort",
+  // JOB 3112 · V3 (Pedi, Entscheidung 32 vom 06.09.2026): die Stufenfrage beim Freigeben. Sie
+  // FRAGT — sie verlangt nicht. Der Übergeh-Weg steht gleichberechtigt daneben, und die Stufennamen
+  // kommen aus `conf.level.*`; hier wird kein zweiter Wortlaut für dieselbe Sache erfunden.
+  "val.stufenfrage.frage": "Welche Vertraulichkeitsstufe gilt für diesen Eintrag?",
+  "val.stufenfrage.ohneStufe": "Ohne Stufe freigeben",
+  "val.stufenfrage.abbrechen": "Abbrechen",
+  "val.stufenfrage.fehler":
+    "Nicht gespeichert — es wurde nichts freigegeben. Bitte erneut versuchen.",
+  // RUNDE 2 (Ben, Korrekturpflicht 2): der Weg hat zwei Serveraufrufe und damit einen dritten
+  // Ausgang — die Stufe LIEGT, die Freigabe scheiterte. „Nicht gespeichert“ wäre dort schlicht
+  // unwahr; der Zwischenstand bekommt deshalb einen eigenen Wortlaut, der die Stufe beim Namen nennt.
+  "val.stufenfrage.nurNochFreigeben": "Die Stufe ist gespeichert — es fehlt nur noch die Freigabe.",
+  "val.stufenfrage.fehlerNachStufe":
+    "Die Stufe „{{stufe}}“ ist gespeichert. Die Freigabe selbst schlug fehl — der Eintrag ist NICHT freigegeben.",
+  "val.stufenfrage.wiederholen": "Freigabe wiederholen",
+  // JOB 3112 · V3 (2623 D1 §2 Punkt 3): der Paarhinweis auf der Prüfkarte. Er sagt DASS, nie WAS —
+  // Titel und Inhalt der Gegenseite bleiben draußen. Ein Gegensatz-Satz („keine Dublette") ist
+  // ausdrücklich NICHT vorgesehen: `/api/duplicates` liefert nur die sichtbaren Paare.
+  "val.doppel.satz": "Zu diesem Eintrag liegt ein zweites Exemplar im Bestand: {{beziehung}}.",
+  "val.doppel.satzMehrere":
+    "Zu diesem Eintrag liegen {{n}} überschneidende Exemplare im Bestand — stärkste Überschneidung: {{beziehung}}.",
+  "val.doppel.vergleich": "Vergleich öffnen",
   // Bewusst NICHT „Herkunft“: dieses Wort trägt auf derselben Seite schon der Demo-/Eigenes-Filter
   // (`lib.originLabel`). Zwei Sachen, ein Wort — genau die Verwechslung wird hier vermieden.
   "val.herkunft.label": "Erfassungsweg",
@@ -5807,6 +5829,21 @@ const en: typeof de = {
   // OBJECT, „not in this response" one about the RESPONSE — merging them forces the reader to guess.
   "val.stufe.nichtEingestuft": "not classified",
   "val.stufe.auskunftFehlt": "Classification not in this response",
+  // JOB 3112 · V3: the classification question before approving — it asks, it does not demand.
+  "val.stufenfrage.frage": "Which confidentiality level applies to this entry?",
+  "val.stufenfrage.ohneStufe": "Approve without a level",
+  "val.stufenfrage.abbrechen": "Cancel",
+  "val.stufenfrage.fehler": "Not saved — nothing was approved. Please try again.",
+  // Round 2: the third outcome of the two-step path — the level is saved, the approval is not.
+  "val.stufenfrage.nurNochFreigeben": "The level is saved — only the approval is missing.",
+  "val.stufenfrage.fehlerNachStufe":
+    "The level “{{stufe}}” is saved. The approval itself failed — the entry is NOT approved.",
+  "val.stufenfrage.wiederholen": "Retry approval",
+  // JOB 3112 · V3: the pair hint on the review card. It says THAT, never WHAT.
+  "val.doppel.satz": "A second copy of this entry exists in the stock: {{beziehung}}.",
+  "val.doppel.satzMehrere":
+    "{{n}} overlapping copies of this entry exist in the stock — strongest overlap: {{beziehung}}.",
+  "val.doppel.vergleich": "Open comparison",
   "val.herkunft.label": "Capture path",
   "val.herkunft.unbekannt": "Origin unknown",
   "val.herkunft.auskunftFehlt": "Origin not in this response",
@@ -10365,6 +10402,21 @@ const nl: typeof de = {
   // „niet in dit antwoord“ iets over het ANTWOORD — wie ze samenvoegt, laat de lezer gokken.
   "val.stufe.nichtEingestuft": "niet ingedeeld",
   "val.stufe.auskunftFehlt": "Indeling niet in dit antwoord",
+  // JOB 3112 · V3: de vraag naar de vertrouwelijkheidsgraad vóór het vrijgeven — vragen, niet dwingen.
+  "val.stufenfrage.frage": "Welke vertrouwelijkheidsgraad geldt voor dit item?",
+  "val.stufenfrage.ohneStufe": "Vrijgeven zonder graad",
+  "val.stufenfrage.abbrechen": "Annuleren",
+  "val.stufenfrage.fehler": "Niet opgeslagen — er is niets vrijgegeven. Probeer het opnieuw.",
+  // Ronde 2: de derde uitkomst van de tweetrapsweg — de graad staat er, de vrijgave niet.
+  "val.stufenfrage.nurNochFreigeben": "De graad is opgeslagen — alleen de vrijgave ontbreekt nog.",
+  "val.stufenfrage.fehlerNachStufe":
+    "De graad „{{stufe}}“ is opgeslagen. De vrijgave zelf mislukte — het item is NIET vrijgegeven.",
+  "val.stufenfrage.wiederholen": "Vrijgave opnieuw proberen",
+  // JOB 3112 · V3: de paarmelding op de beoordelingskaart. Zij zegt DAT, nooit WAT.
+  "val.doppel.satz": "Van dit item ligt een tweede exemplaar in de voorraad: {{beziehung}}.",
+  "val.doppel.satzMehrere":
+    "Van dit item liggen {{n}} overlappende exemplaren in de voorraad — sterkste overlap: {{beziehung}}.",
+  "val.doppel.vergleich": "Vergelijking openen",
   "val.herkunft.label": "Vastlegroute",
   "val.herkunft.unbekannt": "Herkomst onbekend",
   "val.herkunft.auskunftFehlt": "Herkomst niet in dit antwoord",

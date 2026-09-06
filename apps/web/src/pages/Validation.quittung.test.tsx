@@ -174,6 +174,13 @@ function ko(overrides: Partial<KnowledgeObject> = {}): KnowledgeObject {
     asset: null,
     createdAt: "2026-08-12T00:00:00.000Z",
     history: [],
+    // JOB 3112 · V3: seit der Stufenfrage (Pedi, Entscheidung 32) fragt „Freigeben" bei einem
+    // Objekt OHNE belegte Stufe zuerst nach der Einstufung, statt sofort zu senden. Dieser Prüfstand
+    // misst die QUITTUNG, nicht die Frage — sein Gegenstand ist deshalb ausdrücklich ein bereits
+    // eingestuftes Objekt, das den unveränderten Ein-Klick-Weg nimmt. Die Frage selbst hat ihren
+    // eigenen Prüfstand (`tests/validierung-stufe/`), samt Gegenfall genau dieser Lage.
+    confidentiality: "intern",
+    confidentialityProvenance: "ko",
     ...overrides,
   } as unknown as KnowledgeObject;
 }

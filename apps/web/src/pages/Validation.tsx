@@ -45,8 +45,8 @@ import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
-import { useDirectory, useReasonerStatus, useValidationBoard } from "../api/hooks";
-import type { KnowledgeObject, Verdict } from "../api/types";
+import { useDirectory, useDuplicates, useReasonerStatus, useValidationBoard } from "../api/hooks";
+import type { Confidentiality, KnowledgeObject } from "../api/types";
 import { useSession } from "../app/AuthContext";
 import { useRole } from "../app/RoleContext";
 import { useToast } from "../app/ToastContext";
@@ -112,7 +112,11 @@ import { REVIEW_HELP_TOPICS } from "../lib/reviewHelp";
 import { reviewSignals, reviewWorkView, sortByReviewPriority } from "../lib/reviewSignals";
 import { useAuthorName } from "../lib/useAuthorName";
 import { useReadiness } from "../lib/useReadiness";
-import { boardHasPendingAiCheck, validationAiGate } from "../lib/validationAiGate";
+import {
+  type ValidationAiGate,
+  boardHasPendingAiCheck,
+  validationAiGate,
+} from "../lib/validationAiGate";
 import {
   applyBoardFocusParams,
   boardEmptyKind,
@@ -127,6 +131,8 @@ import {
   withoutKoById,
   withoutKoIds,
 } from "../lib/validationDelete";
+// JOB 3112 · V3: der Paarhinweis auf der Prüfkarte („es gibt ein zweites Exemplar").
+import { doppelhinweis } from "../lib/validationDoppelhinweis";
 import {
   VALIDATION_FACET_CONFIGS,
   VALIDATION_MORE_FILTERS_STORAGE_KEY,
@@ -159,6 +165,17 @@ import {
   reviewFocusLabelKey,
   validationReviewContext,
 } from "../lib/validationReviewContext";
+// JOB 3112 · V3: die Regel der Stufenfrage — gefragt, nicht erzwungen (Pedi, Entscheidung 32).
+import {
+  FreigabeFehler,
+  OHNE_STUFE,
+  STUFENFRAGE_WAHLEN,
+  type StufenAntwort,
+  brauchtStufenfrage,
+  freigabeFehlerUrsache,
+  gespeicherteStufeAusFehler,
+  stufeAusAntwort,
+} from "../lib/validationStufenfrage";
 import { NARROW_QUERY, useMediaQuery } from "../shell/useMediaQuery";
 
 // SCRUM-365: Textfarbe der Entscheidungswirkungen im „?"-Menü (Grün/Gelb/Rot).
@@ -171,11 +188,25 @@ const IMPACT_TEXT_TONE: Record<"pos" | "warn" | "crit", string> = {
 // Wie lange die Quittung im Fußband steht (Auftrag §5.3: „eine Zeile ‚Freigegeben' 3 s im Fuß").
 const QUITTUNG_MS = 3000;
 
+/**
+ * JOB 3112 · V3 — die zwei Wege, auf denen ein Wissensobjekt die Prüffläche FREIGEGEBEN verlässt.
+ * `rate` ist der Knopf „Freigeben" im Fußband (Recht `ko.validate`), `admin` das „Als wahr
+ * kennzeichnen" im „···"-Menü (Recht `users.manage`). Beide bekommen dieselbe Stufenfrage davor;
+ * die Rückfrage („Wirklich?") und die Ablehnung sind ausdrücklich KEINE Freigabe und stehen
+ * deshalb nicht in dieser Aufzählung.
+ */
+type Freigabeweg = "rate" | "admin";
+
 export function Validation(): JSX.Element {
   const { t, i18n } = useTranslation();
   const [params, setSearchParams] = useSearchParams();
   const query = useValidationBoard();
   const users = useDirectory();
+  // JOB 3112 · V3: die Quelle des Paarhinweises. KEIN zusätzlicher Netzabruf — der gemeinsame
+  // Reiterkopf zieht `["duplicates"]` schon für seinen Zähler (`PruefenKopf.tsx:56`), react-query
+  // teilt beide Leser denselben Eintrag. Scheitert er, bleibt `data` `undefined` und es entsteht
+  // KEINE Aussage; scheitert eine AUFFRISCHUNG, bleibt der zuletzt geholte Stand stehen.
+  const duplikate = useDuplicates();
   const { user } = useSession();
   const aiModelActive = aiModelUsable(useReasonerStatus().data);
   const qc = useQueryClient();
@@ -304,11 +335,181 @@ export function Validation(): JSX.Element {
     setAktivId(naechsteId(vars.id));
   };
 
-  const rate = useMutation({
-    mutationFn: ({ id, verdict }: { id: string; title: string; verdict: Verdict }) =>
-      endpoints.ko.act(id, { action: "rate", verdict }),
-    onSuccess: (_data, vars) => nachEntscheidung(vars),
+  // Die offene Stufenfrage: für welchen Eintrag, und auf welchem Weg sie gestellt wurde. `null`
+  // heisst „keine Frage offen". Sie ist ein Bedienschritt auf bereits geladenem Bestand — kommt
+  // eine frische Antwort herein, während sie offen steht, bleibt sie offen: der Mensch entscheidet,
+  // nicht der Abruf.
+  //
+  // RUNDE 3 · BENS KORREKTURPFLICHT: `gespeichert` gehört HIERHER und nicht an den letzten Fehler.
+  // Runde 2 las den Zwischenstand aus `freigabe.error`; die Wiederholung schickt aber `stufe: null`,
+  // und ihr Fehlschlag trug deshalb keine Stufe mehr — die Fläche fiel auf „Nicht gespeichert" und
+  // erneute Stufenwahl zurück, obwohl der Server die Stufe längst hatte. Ein Fehler ist ein
+  // EREIGNIS, kein Gedächtnis. Was der Server bestätigt hat, ist eine Tatsache über den laufenden
+  // VORGANG — und dieselbe Regel wie im Zustandsmodell (§9): eine positive Aussage („es liegt
+  // etwas") verschwindet nie wegen eines Fehlschlags, denn Verschwinden wäre die Entwarnung.
+  const [stufenfrage, setStufenfrage] = useState<{
+    id: string;
+    title: string;
+    weg: Freigabeweg;
+    /** Die vom Server BESTÄTIGTE Stufe dieses Vorgangs. `null` = noch keine kam durch. */
+    gespeichert: Confidentiality | null;
+  } | null>(null);
+
+  // ================================================================================================
+  // JOB 3112 · V3 — DER EINE FREIGABEWEG, MIT DER STUFENFRAGE DAVOR.
+  // ================================================================================================
+  //
+  // WAS HIER BIS ZUM 06.09.2026 STAND: zwei Mutationen, `rate` (Fußband „Freigeben") und
+  // `adminValidate` („Als wahr kennzeichnen"), und beide schickten ihren Aufruf UNMITTELBAR am
+  // Klick. Codex hat an der laufenden 1.116 gemessen, was dabei herauskommt: „Stufenfrage fehlt im
+  // Administratorweg; HTTP 200 validiert/null" (R-0994, Prüfschritt 2). Ein Objekt verliess die
+  // Prüffläche freigegeben und ohne dass irgendjemand nach seiner Einstufung gefragt worden wäre.
+  //
+  // BEIDE ALTEN WEGE SIND ERSETZT, NICHT ERGÄNZT. Es gibt hier keinen Codepfad mehr, der `rate`
+  // mit `verdict: "up"` oder `admin-validate` absetzt, ohne vorher `brauchtStufenfrage` gefragt zu
+  // haben: `freigabeStarten` ist der einzige Eingang, und diese Mutation der einzige Ausgang.
+  //
+  // DIE REIHENFOLGE IST VERBINDLICH: erst die Stufe, dann die Freigabe. Eine Freigabe, deren Stufe
+  // nicht gespeichert wurde, wäre genau der Zustand, den R-0994 beanstandet. `await` heisst hier
+  // deshalb wörtlich: schlägt der erste Aufruf fehl, wirft er, und der zweite läuft nie.
+  //
+  // `stufe: null` ist die Abwesenheit eines Aufrufs, nicht ein Ersatzwert — sie steht für „Ohne
+  // Stufe freigeben", für „trägt schon eine Stufe" UND für die Wiederholung nach einem Teilerfolg.
+  // In allen drei Fällen wird nichts (mehr) eingestuft.
+  //
+  // RUNDE 2 · KORREKTURPFLICHT 2 (Ben): der Weg hat zwei Aufrufe, also drei Ausgänge und nicht zwei.
+  // Der dritte ist der TEILERFOLG — die Stufe liegt am Server, die Freigabe scheiterte. Bisher meldete
+  // die Fläche dafür „Nicht gespeichert"; das war schlicht falsch. Jeder Schritt wirft deshalb einen
+  // `FreigabeFehler`, der mitträgt, was VOR ihm angekommen ist.
+  const freigabe = useMutation({
+    mutationFn: async ({
+      id,
+      weg,
+      stufe,
+    }: { id: string; title: string; weg: Freigabeweg; stufe: Confidentiality | null }) => {
+      if (stufe) {
+        try {
+          await endpoints.ko.act(id, { action: "confidentiality", level: stufe });
+        } catch (e) {
+          // Schritt 1 gescheitert: es liegt NICHTS am Server, und der zweite Aufruf läuft nie.
+          throw new FreigabeFehler("stufe", null, e);
+        }
+      }
+      try {
+        if (weg === "rate") {
+          await endpoints.ko.act(id, { action: "rate", verdict: "up" });
+          return;
+        }
+        await endpoints.ko.act(id, { action: "admin-validate" });
+      } catch (e) {
+        // Schritt 2 gescheitert: `stufe` ist genau dann gespeichert, wenn Schritt 1 überhaupt lief.
+        throw new FreigabeFehler("freigabe", stufe, e);
+      }
+    },
+    onSuccess: (_data, vars) => {
+      setStufenfrage(null);
+      if (vars.weg === "rate") {
+        nachEntscheidung({ id: vars.id, title: vars.title, verdict: "up" });
+        return;
+      }
+      // Der Administratorweg räumt auf wie bisher — derselbe Wortlaut, dieselben vier Schlüssel.
+      setConfirmTrueId(null);
+      for (const key of [["validation"], ["kos"], ["analytics"], ["notifications"]]) {
+        void qc.invalidateQueries({ queryKey: key });
+      }
+      push("success", t("val.markTrueDone"));
+    },
+    onError: (e, vars) => {
+      // TEILERFOLG: die Stufe steht am Server. Der Bestand muss das zeigen, sonst behauptet die
+      // Karte weiter „nicht eingestuft" — eine Aussage, die seit diesem Aufruf nicht mehr stimmt.
+      // Nur hier wird nachgeladen: ohne gespeicherte Stufe hat sich am Server nichts geändert.
+      const neuGespeichert = gespeicherteStufeAusFehler(e);
+      if (neuGespeichert) {
+        invalidate();
+      }
+      // `?? vorher.gespeichert` IST die Korrektur aus Runde 3: eine spätere, erfolglose Wiederholung
+      // meldet `null` — das heisst „bei DIESEM Versuch kam nichts an", nicht „es liegt nichts". Was
+      // einmal bestätigt war, bleibt im Vorgang stehen, bis er abgebrochen oder abgeschlossen wird.
+      setStufenfrage((vorher) =>
+        vorher ? { ...vorher, gespeichert: neuGespeichert ?? vorher.gespeichert } : vorher,
+      );
+      // Der Administratorweg meldete Fehler bisher als Hinweis — das bleibt. Der Fußband-Weg tat es
+      // nie; er bekommt seine Meldung stattdessen AM BLOCK (unten), wo die Frage offen stehen
+      // bleibt. Zwei Meldungen für denselben Fehler wären eine zu viel.
+      // `freigabeFehlerUrsache` schält die Hülle ab: der Mensch soll den Servertext lesen, nicht
+      // den Namen unserer Fehlerklasse.
+      if (vars.weg === "admin") {
+        const roh = freigabeFehlerUrsache(e);
+        push("error", roh instanceof ApiError ? roh.message : t("state.error"));
+      }
+    },
   });
+
+  /**
+   * Der EINZIGE Eingang in eine Freigabe — beide Wege, eine Entscheidung.
+   * Trägt das Objekt schon eine Stufe, bleibt der heutige Weg Zeichen für Zeichen erhalten: ein
+   * Klick, ein Aufruf. Sonst wird gefragt — und nichts geschickt, bis geantwortet ist.
+   */
+  const freigabeStarten = (k: PruefZeile, weg: Freigabeweg): void => {
+    // Die Prüfsperre gilt am Eingang wie im Ablauf (siehe `freigabeSenden`).
+    if (validationAiGate(k.aiCheck, aiModelActive).locked) {
+      return;
+    }
+    if (brauchtStufenfrage(k.auskunft.stufe.lage)) {
+      freigabe.reset();
+      // Ein zweiter Klick auf DENSELBEN Eintrag setzt den Vorgang fort, er beginnt ihn nicht neu:
+      // was der Server bestätigt hat, gilt weiter (Runde 3). Erreichbar, solange die frische Antwort
+      // mit der gespeicherten Stufe noch unterwegs ist und die Zeile darum „nicht eingestuft" sagt.
+      // Ein ANDERER Eintrag ist ein anderer Vorgang und erbt nichts.
+      setStufenfrage((vorher) => ({
+        id: k.id,
+        title: k.title,
+        weg,
+        gespeichert: vorher?.id === k.id ? vorher.gespeichert : null,
+      }));
+      return;
+    }
+    freigabe.mutate({ id: k.id, title: k.title, weg, stufe: null });
+  };
+
+  /**
+   * DER SCHREIBENDE AUSGANG DER OFFENEN FRAGE — und die Stelle, an der die Prüfsperre ein zweites
+   * Mal gilt.
+   *
+   * RUNDE 2 · KORREKTURPFLICHT 1 (Ben): die Sperre `validationAiGate` wurde bisher nur an den
+   * EINSTIEGEN geprüft. Ein bereits geöffneter Folgezustand überlebt aber den Wechsel der Karte auf
+   * `aiCheck.status === "pending"` (real erreichbar: Eintrag failed → Frage geöffnet → „Prüfung
+   * erneut" → pending). React behält `stufenfrage`, der neue Abrufstand schliesst sie nicht — und
+   * die Antwortknöpfe schickten weiter. Genau dieselbe Lücke hatte WP-SHIP9-B3FIX2 schon einmal für
+   * das Begründungsfeld und die Admin-Rückfrage geschlossen
+   * (`tests/validation/ai-gate-lock-followstate-mounted.test.tsx:2-10`); die Stufenfrage ist der
+   * dritte Folgezustand derselben Bauart.
+   *
+   * Der `gate` kommt aus der Zeichnung der Karte und damit aus dem FRISCHEN Zeilenstand — nicht aus
+   * dem Stand, der galt, als die Frage aufging.
+   */
+  const freigabeSenden = (stufe: Confidentiality | null, gate: ValidationAiGate): void => {
+    if (!stufenfrage || gate.locked) {
+      return;
+    }
+    freigabe.mutate({
+      id: stufenfrage.id,
+      title: stufenfrage.title,
+      weg: stufenfrage.weg,
+      stufe,
+    });
+  };
+
+  /** Die Antwort eines Menschen auf die Frage. `STUFENFRAGE_VERTRAG.setztNiemalsSelbst`: was hier
+   *  nicht gewählt wurde, wird auch nicht geschrieben. */
+  const stufenfrageBeantworten = (antwort: StufenAntwort, gate: ValidationAiGate): void =>
+    freigabeSenden(stufeAusAntwort(antwort), gate);
+
+  const stufenfrageAbbrechen = (): void => {
+    setStufenfrage(null);
+    setConfirmTrueId(null);
+    freigabe.reset();
+  };
 
   const reviewWithFeedback = useMutation({
     mutationFn: async ({
@@ -350,18 +551,10 @@ export function Validation(): JSX.Element {
     onError: (e) => push("error", e instanceof ApiError ? e.message : t("state.error")),
   });
 
+  // JOB 3112 · V3: die eigene Mutation `adminValidate` ist ENTFALLEN — „Als wahr kennzeichnen"
+  // läuft über denselben `freigabe`-Ausgang wie das Fußband, samt Stufenfrage davor. Der Zustand
+  // der Rückfrage bleibt: sie tritt nicht an die Stelle der Stufenfrage, sondern steht davor.
   const [confirmTrueId, setConfirmTrueId] = useState<string | null>(null);
-  const adminValidate = useMutation({
-    mutationFn: (id: string) => endpoints.ko.act(id, { action: "admin-validate" }),
-    onSuccess: () => {
-      setConfirmTrueId(null);
-      for (const key of [["validation"], ["kos"], ["analytics"], ["notifications"]]) {
-        void qc.invalidateQueries({ queryKey: key });
-      }
-      push("success", t("val.markTrueDone"));
-    },
-    onError: (e) => push("error", e instanceof ApiError ? e.message : t("state.error")),
-  });
 
   const facetValueLabel = (key: string, value: string): string => {
     switch (key) {
@@ -827,6 +1020,11 @@ export function Validation(): JSX.Element {
     const quellen = k.sources ?? [];
     const bilder = (k.attachments ?? []).filter((a) => a.mime.startsWith("image/"));
     const darfLoeschen = role === "admin" || role === "controller" || k.author === user?.id;
+    // JOB 3112 · V3: der Paarhinweis und die Frage, ob dieser Betrachter den Vergleich betreten
+    // darf. Dieselbe Rollenlesart wie `darfLoeschen` — die Vergleichsfläche selbst trägt
+    // `minRole: "controller"` (`navigation.ts:204`).
+    const doppel = doppelhinweis(k.id, duplikate.data);
+    const darfVergleichen = role === "admin" || role === "controller";
     const punkte = Array.from({ length: Math.max(sig.needed, 1) }, (_, i) => i);
     const quittung = quittungOffen && lastDecision ? reviewOutcome(lastDecision.verdict) : null;
 
@@ -869,7 +1067,14 @@ export function Validation(): JSX.Element {
                 symbol={<MenueSymbol />}
               >
                 {role === "admin" ? (
-                  confirmTrueId === k.id ? (
+                  // JOB 3112 · V3: drei Stufen desselben Weges — Eintrag, Rückfrage, Stufenfrage.
+                  // Die Stufenfrage steht HIER im Menüblatt und nicht im Fußband, obwohl es
+                  // derselbe Ablauf ist: das Blatt legt eine Schließfläche über die ganze Seite
+                  // (`PruefenMenue`, `fixed inset-0 z-30`), und ein Block im Fußband läge darunter
+                  // — der erste Klick auf eine Stufe schlösse nur das Menü. Ein Ablauf, zwei Orte.
+                  stufenfrage?.id === k.id && stufenfrage.weg === "admin" ? (
+                    <div className="px-2.5 py-2">{stufenfrageBlock(gate)}</div>
+                  ) : confirmTrueId === k.id ? (
                     <div className="px-2.5 py-2">
                       <div className="text-[12.5px] font-semibold text-trust-pos-text">
                         {t("val.markTrueConfirm")}
@@ -884,9 +1089,9 @@ export function Validation(): JSX.Element {
                         </button>
                         <button
                           type="button"
-                          disabled={gate.locked || adminValidate.isPending}
+                          disabled={gate.locked || freigabe.isPending}
                           className="text-[12px] font-semibold text-trust-pos-text disabled:opacity-50"
-                          onClick={() => adminValidate.mutate(k.id)}
+                          onClick={() => freigabeStarten(k, "admin")}
                         >
                           {t("val.markTrueYes")}
                         </button>
@@ -1106,6 +1311,41 @@ export function Validation(): JSX.Element {
               </PruefenMehrBlock>
             ) : null}
           </PruefenMehr>
+
+          {/* ---- JOB 3112 · V3: „es gibt ein zweites Exemplar" (2623 D1 §2 Punkt 3) ---------- */}
+          {/* Nur bei belegtem Treffer. Kein Platzhalter beim Laden, KEIN Satz „keine Dublette"
+              bei leerer Antwort: `/api/duplicates` gibt nur die für diesen Betrachter SICHTBAREN
+              Paare heraus (overlap-routes.ts:59) und sichert damit keine Vollständigkeit zu — eine
+              Entwarnung wäre eine Aussage über einen Bestand, den diese Antwort nicht abbildet.
+              Der Satz nennt DASS, nie WAS: Titel und Inhalt der Gegenseite bleiben draussen.
+              `data-text="text"` reiht ihn unter die Texte der Karte ein (wie die Zeilen aus
+              `PruefenZustand`) — er ist eine Auskunft über DIESES Objekt, kein Erklärtext. */}
+          {doppel ? (
+            <p
+              data-testid="pruefen-doppelhinweis"
+              data-text="text"
+              className="rounded-[10px] border border-dashed border-trust-warn-fill/60 bg-page px-3 py-2 text-[12.5px] text-trust-warn-text"
+            >
+              {doppel.anzahl > 1
+                ? t("val.doppel.satzMehrere", {
+                    n: doppel.anzahl,
+                    beziehung: t(doppel.beziehungLabelKey),
+                  })
+                : t("val.doppel.satz", { beziehung: t(doppel.beziehungLabelKey) })}
+              {/* Der Weg zum Vergleich nur für die Rollen, die ihn betreten dürfen
+                  (`navigation.ts:204`, minRole controller) — sonst stünde dort ein toter Link. */}
+              {darfVergleichen ? (
+                <Link
+                  to={`/duplikate/${doppel.eintragId}/vergleich`}
+                  data-testid="pruefen-doppelhinweis-vergleich"
+                  data-text="knopf"
+                  className="ml-2 font-semibold underline-offset-4 hover:underline"
+                >
+                  {t("val.doppel.vergleich")} <span aria-hidden="true">→</span>
+                </Link>
+              ) : null}
+            </p>
+          ) : null}
         </div>
 
         {/* ---- Das Fußband (Pruefen.dc.html Z.58–61) ---------------------------------------- */}
@@ -1131,13 +1371,15 @@ export function Validation(): JSX.Element {
                 disabled={
                   gate.locked ||
                   (gut
-                    ? rate.isPending || reviewWithFeedback.isPending
+                    ? freigabe.isPending || reviewWithFeedback.isPending
                     : reviewWithFeedback.isPending)
                 }
+                // JOB 3112 · V3: „Freigeben" schickt nicht mehr unmittelbar — es geht durch den
+                // einen Eingang, der zuerst `brauchtStufenfrage` fragt. Rückfrage und Ablehnen
+                // bleiben unberührt (Lieferung 4): 2623 D1 §2 spricht von der FREIGABE, und eine
+                // Ablehnung ist kein Anlass, eine Einstufung zu setzen.
                 onClick={() =>
-                  d.verdict === "up"
-                    ? rate.mutate({ id: k.id, title: k.title, verdict: "up" })
-                    : openFeedback(k.id, d.verdict)
+                  d.verdict === "up" ? freigabeStarten(k, "rate") : openFeedback(k.id, d.verdict)
                 }
                 className={cx(
                   "inline-flex items-center gap-[7px] rounded-[10px] px-[20px] py-[10px] text-[14px] leading-tight transition-colors disabled:cursor-not-allowed disabled:opacity-50",
@@ -1200,6 +1442,10 @@ export function Validation(): JSX.Element {
               {t("val.decisionSaved")} — {t(quittung.statusKey)}
             </p>
           ) : null}
+          {/* JOB 3112 · V3: die Stufenfrage des FUSSBAND-Weges — dieselbe Stelle und dieselbe
+              Bauform wie das Begründungsfeld darunter. Der Administratorweg stellt dieselbe Frage
+              in seinem Menüblatt (Begründung dort). */}
+          {stufenfrage?.id === k.id && stufenfrage.weg === "rate" ? stufenfrageBlock(gate) : null}
           {/* Begründungspflicht bleibt: Rückfrage/Ablehnen klappen das Feld hier auf. */}
           {feedback?.id === k.id ? (
             <div data-testid="pruefen-begruendung" className="w-full basis-full pt-2">
@@ -1253,6 +1499,127 @@ export function Validation(): JSX.Element {
             </div>
           ) : null}
         </div>
+      </div>
+    );
+  }
+
+  // ================================================================================================
+  // JOB 3112 · V3 — DIE STUFENFRAGE. EINE BAUFORM, ZWEI AUFRUFSTELLEN, EINE ENTSCHEIDUNG.
+  // ================================================================================================
+  //
+  // Auch sie ist eine ZEICHENFUNKTION und keine innere Komponente — dieselbe Begründung wie bei
+  // `karte` (React hängt einen bei jedem Rendern neu erzeugten Typ ab und neu auf; die offene Frage
+  // ginge bei jedem Tastendruck der Seite verloren).
+  //
+  // SIE LIEST IHREN GEGENSTAND AUS DEM ZUSTAND und nicht aus einem Parameter: welcher Eintrag und
+  // welcher Weg gefragt sind, steht in `stufenfrage`. Damit gibt es die Entscheidung genau einmal —
+  // das Fußband und das Menüblatt zeichnen dieselbe Frage, sie stellen keine zweite.
+  //
+  // WAS SIE NICHT TUT: vorbelegen. Kein Knopf ist gewählt, „intern" ist keine Voreinstellung, und
+  // aus dem Wegklicken entsteht keine Stufe (`STUFENFRAGE_VERTRAG.setztNiemalsSelbst`).
+  //
+  // RUNDE 2 — die Frage trägt jetzt DEN GATE IHRER KARTE (Korrekturpflicht 1) und kennt einen
+  // zweiten Zustand: den TEILERFOLG (Korrekturpflicht 2). Beide kommen von aussen herein, weil beide
+  // an der Zeile hängen und nicht an der Frage.
+  function stufenfrageBlock(gate: ValidationAiGate): JSX.Element {
+    // Liegt die Stufe schon am Server und scheiterte nur die Freigabe, ist die FRAGE beantwortet.
+    // Dann stehen keine Stufenknöpfe mehr da — man wählt nichts zum zweiten Mal —, sondern der
+    // ehrliche Zwischenstand und die Wiederholung des EINEN fehlenden Aufrufs.
+    //
+    // RUNDE 3: gelesen wird der VORGANG (`stufenfrage.gespeichert`) und nicht mehr der letzte
+    // Fehler. Sonst vergässe die zweite gescheiterte Wiederholung, was die erste bestätigt hat.
+    const gespeicherteStufe = stufenfrage?.gespeichert ?? null;
+    // Gesperrt heisst: nichts wird geschrieben. Abbrechen bleibt, es schickt nichts.
+    const schreibenGesperrt = gate.locked || freigabe.isPending;
+    return (
+      <div data-testid="pruefen-stufenfrage" className="w-full basis-full pt-2">
+        <p data-text="text" className="text-[12.5px] font-semibold text-text">
+          {gespeicherteStufe ? t("val.stufenfrage.nurNochFreigeben") : t("val.stufenfrage.frage")}
+        </p>
+        {/* Die offene Frage sagt selbst, warum sie gerade nichts annimmt — der Sperrhinweis des
+            Fußbandes steht im Menüblatt des Administratorwegs nicht zur Verfügung. */}
+        {gate.locked ? (
+          <p
+            data-testid="pruefen-stufenfrage-gesperrt"
+            data-text="text"
+            className="mt-2 text-[11px] font-semibold text-muted"
+          >
+            {t(gate.noteKey)}
+          </p>
+        ) : null}
+        {gespeicherteStufe ? null : (
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            {STUFENFRAGE_WAHLEN.filter((a) => a !== OHNE_STUFE).map((stufe) => (
+              <button
+                key={stufe}
+                type="button"
+                data-text="knopf"
+                data-testid={`pruefen-stufenfrage-wahl-${stufe}`}
+                disabled={schreibenGesperrt}
+                onClick={() => stufenfrageBeantworten(stufe, gate)}
+                className="rounded-[9px] border border-hairline bg-surface px-3 py-1.5 text-[12.5px] font-semibold text-text hover:bg-hairline-soft disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {/* Der VORHANDENE Wortlaut der Stufen (`conf.level.*`) — keine zweite Fassung. */}
+                {t(`conf.level.${stufe}`)}
+              </button>
+            ))}
+          </div>
+        )}
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          {gespeicherteStufe ? (
+            // Die Wiederholung schickt AUSDRÜCKLICH `stufe: null` — genau ein Aufruf. Die Stufe ein
+            // zweites Mal zu schreiben wäre eine Behauptung über einen Server, der sie schon hat.
+            <button
+              type="button"
+              data-text="knopf"
+              data-testid="pruefen-stufenfrage-wiederholen"
+              disabled={schreibenGesperrt}
+              onClick={() => freigabeSenden(null, gate)}
+              className="rounded-[9px] border border-hairline bg-surface px-3 py-1.5 text-[12.5px] font-semibold text-text hover:bg-hairline-soft disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {t("val.stufenfrage.wiederholen")}
+            </button>
+          ) : (
+            // „Gefragt, nicht erzwungen": EIN Klick übergeht die Frage, und es wird nichts gesetzt.
+            <button
+              type="button"
+              data-text="knopf"
+              data-testid="pruefen-stufenfrage-ohne"
+              disabled={schreibenGesperrt}
+              onClick={() => stufenfrageBeantworten(OHNE_STUFE, gate)}
+              className="text-[12px] font-semibold text-muted underline-offset-4 hover:text-text hover:underline disabled:opacity-50"
+            >
+              {t("val.stufenfrage.ohneStufe")}
+            </button>
+          )}
+          <button
+            type="button"
+            data-text="knopf"
+            data-testid="pruefen-stufenfrage-abbrechen"
+            disabled={freigabe.isPending}
+            onClick={stufenfrageAbbrechen}
+            className="text-[12px] font-semibold text-muted hover:text-text disabled:opacity-50"
+          >
+            {t("val.stufenfrage.abbrechen")}
+          </button>
+        </div>
+        {/* Scheitert das Setzen der Stufe (oder die Freigabe selbst), bleibt die Frage OFFEN und
+            sagt es. Kein stilles Weiterlaufen, keine Quittung ohne 2xx (Validation.tsx:31).
+            ZWEI Meldungen, weil es zwei Zustände sind: „nichts gespeichert" ist etwas anderes als
+            „die Stufe liegt, die Freigabe nicht" — die zweite Fassung nennt die Stufe beim Namen. */}
+        {freigabe.isError ? (
+          <p
+            data-testid="pruefen-stufenfrage-fehler"
+            data-text="text"
+            className="mt-2 rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text"
+          >
+            {gespeicherteStufe
+              ? t("val.stufenfrage.fehlerNachStufe", {
+                  stufe: t(`conf.level.${gespeicherteStufe}`),
+                })
+              : t("val.stufenfrage.fehler")}
+          </p>
+        ) : null}
       </div>
     );
   }

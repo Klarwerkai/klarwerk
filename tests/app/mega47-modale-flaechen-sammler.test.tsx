@@ -4324,14 +4324,27 @@ describe("JOB 1181 · Mengenerhalt: der schärfere Sucher verliert nichts", () =
     // NÖTIG — beide D3-Suchrichtungen bleiben bei null unerklärten Restfällen. Gemessen am eigenen
     // Lauf dieses Arbeitsbaums (`vitest run tests/app/mega47-modale-flaechen-sammler.test.tsx`:
     // „expected 458 to be 457"), nicht rechnerisch addiert.
+    //
+    // JOB 3112 (V3): von 458 auf 460 NACHGEZOGEN. Es sind GENAU zwei Quelldateien dazugekommen —
+    // die Regel der Stufenfrage beim Freigeben und die Ableitung des Paarhinweises der Prüfkarte:
+    //
+    //     + apps/web/src/lib/validationStufenfrage.ts
+    //     + apps/web/src/lib/validationDoppelhinweis.ts
+    //
+    // Beide sind wie `netzzustand.ts`, `sprachwahl.ts` und `taskViewState.ts` DOM-freie Helfer
+    // (reine Funktionen und Wertetabellen, kein JSX, kein Modal, kein Portal) und ändern an den
+    // Erhebungen unten nichts; sie zählen hier nur in die Grundgesamtheit. KEINE REGISTRIERUNG
+    // NÖTIG — beide D3-Suchrichtungen bleiben bei null unerklärten Restfällen. Gemessen am eigenen
+    // Lauf dieses Arbeitsbaums („expected 460 to be 458"), nicht rechnerisch addiert.
     expect(
       ALLE_ERHEBUNGEN.length,
       "KONFLIKTRUNDE 2: JOB 3060/3061/3063/3064 (Kopfband, Prüf-, Bibliotheks- und Startflächen) " +
         "plus fünf Erfassen-Quelldateien (JOB 3062) plus zehn Einstellungen-Quelldateien (JOB 3065) " +
         "plus `lib/netzzustand.ts` (JOB 3084) plus `lib/sprachwahl.ts` (JOB 3086) " +
         "plus `lib/taskViewState.ts` (JOB 3101) " +
+        "plus `lib/validationStufenfrage.ts` und `lib/validationDoppelhinweis.ts` (JOB 3112) " +
         "— am eigenen Lauf dieses Arbeitsbaums gemessen, nicht rechnerisch addiert",
-    ).toBe(458);
+    ).toBe(460);
     expect(KANDIDATEN.length, "und sechs Kandidaten").toBeGreaterThanOrEqual(6);
   });
 
