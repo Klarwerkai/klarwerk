@@ -156,6 +156,13 @@ function diktatAnhaengen(bodyHtml: string, text: string): string {
 }
 
 /**
+ * JOB 3114 (UX-05): Die `id` des Erklärsatzes am Vertraulichkeits-Menü. Sie steht als Konstante,
+ * weil sie an ZWEI Stellen dieselbe sein muss — am Satz selbst und im `aria-describedby` des
+ * Menüknopfs. Zwei getippte Zeichenketten wären die Bauform, in der ein Verweis ins Leere zeigt.
+ */
+const BLATT_VERTRAULICHKEIT_HINWEIS_ID = "blatt-vertraulichkeit-hinweis";
+
+/**
  * Die zwei Regeln, mit denen das Blatt den `RichTextEditor` von aussen auf Blatt-Maß bringt.
  * Sie stehen bewusst als benannte Konstante und nicht als Zeichenkette im JSX — was sie tun und
  * warum, steht an ihrer Verwendungsstelle.
@@ -917,7 +924,9 @@ export function Blatt({
   const canAssist = hasAssistInput && !assist.isPending && !busy;
 
   // §5.4: Vertraulichkeit bleibt Pflicht vor dem Einreichen. Ist sie nicht gewählt, bekommt das
-  // Menü einen Rand und den Fokus — KEIN Erklärsatz.
+  // Menü einen Rand, den Fokus — und seit JOB 3114 (UX-05, Befund N-0017) einen Erklärsatz am Feld,
+  // der über `aria-describedby` am Menüknopf hängt. Rand und Fokus allein sind für einen Menschen,
+  // der die Farbe nicht sieht oder den Sprung nicht bemerkt, ein Knopf, der wortlos nichts tut.
   // ==============================================================================================
   // WANN IST DIE VERTRAULICHKEIT „NICHT GEWÄHLT"? (Auftrag §4)
   // ==============================================================================================
@@ -947,6 +956,11 @@ export function Blatt({
   const vertraulichkeitOffen = !vertraulichkeitGewaehlt;
   const [vertraulichkeitMarkiert, setVertraulichkeitMarkiert] = useState(false);
   const vertraulichkeitRef = useRef<HTMLDivElement | null>(null);
+  // JOB 3114 (UX-05): DER HINWEIS IST KEIN ZUSTAND, SONDERN EINE ABLESUNG. Rand (`markiert`),
+  // `aria-invalid` und der Erklärsatz lesen denselben einen Ausdruck — deshalb erlischt der Satz
+  // an JEDER heute schon vorhandenen Rücksetzung (Menüauswahl unten) und braucht keine eigene.
+  // Eine zweite Flagge daneben wäre genau die Bauform, die JOB 3082 hier abgeschafft hat.
+  const vertraulichkeitHinweisSteht = vertraulichkeitMarkiert && vertraulichkeitOffen;
 
   const discardStructureProposal = (): void => {
     setStructureProposal(null);
@@ -1042,7 +1056,9 @@ export function Blatt({
       return;
     }
     // §5.4: fehlt der Inhalt oder die Vertraulichkeit, wird der Versuch nicht still verschluckt —
-    // aber er bekommt auch keinen Erklärsatz: das betroffene Feld wird markiert und fokussiert.
+    // das betroffene Feld wird markiert und fokussiert. JOB 3114 (UX-05): bei der Vertraulichkeit
+    // trägt genau diese Markierung zusätzlich den Erklärsatz an der Wahl (s. Werkzeugzeile). Hier
+    // ändert sich dafür NICHTS: kein zweiter Zustand, keine zweite Bedingung, dieselbe Fokuszeile.
     if (!hasBody || vertraulichkeitOffen) {
       setSubmitValidation(true);
       if (vertraulichkeitOffen) {
@@ -1345,7 +1361,7 @@ export function Blatt({
           ) : null}
         </Menue>
 
-        <div ref={vertraulichkeitRef}>
+        <div ref={vertraulichkeitRef} className="max-w-full">
           <Menue
             name="vertraulichkeit"
             offen={offenesMenue}
@@ -1356,7 +1372,13 @@ export function Blatt({
                 : t("erfassen.werkzeug.vertraulichkeit")
             }
             gerahmt
-            markiert={vertraulichkeitMarkiert && vertraulichkeitOffen}
+            markiert={vertraulichkeitHinweisSteht}
+            // JOB 3114 (UX-05): Der Verweis steht nur, SOLANGE der Satz steht — sonst zeigte
+            // `aria-describedby` auf eine `id`, die es im Dokument nicht gibt.
+            beschriebenVon={
+              vertraulichkeitHinweisSteht ? BLATT_VERTRAULICHKEIT_HINWEIS_ID : undefined
+            }
+            ungueltig={vertraulichkeitHinweisSteht}
           >
             {CONFIDENTIALITY_LEVELS.map((lvl) => (
               <MenueEintrag
@@ -1376,6 +1398,29 @@ export function Blatt({
               </MenueEintrag>
             ))}
           </Menue>
+          {/* ======================================================================================
+              JOB 3114 (UX-05, Befund N-0017) — DER SATZ AM FELD, NICHT NUR DIE FARBE.
+              ======================================================================================
+              Er steht UNTER dem Menü und damit in derselben Hülle, auf die `vertraulichkeitRef`
+              zeigt: Die Fokuszeile in `requestSubmit` sucht dort das ERSTE `<button>` — das ist
+              weiterhin der Menüknopf, denn der Satz ist ein `<span>` und steht dahinter.
+
+              `role="alert"` und nicht bloß Text: Der Fokussprung allein kündigt nichts an; ohne
+              Live-Region liest ein Screenreader den Satz erst, wenn jemand ihn zufällig ansteuert.
+              Genau das hat Codex gemessen — „status/alert sind leer".
+
+              `max-w` und Umbruch, damit die Werkzeugzeile bei 320 px umbricht statt zu schieben
+              (dieselbe Regel wie `flex-wrap` an der Zeile selbst). */}
+          {vertraulichkeitHinweisSteht ? (
+            <span
+              id={BLATT_VERTRAULICHKEIT_HINWEIS_ID}
+              role="alert"
+              data-testid="blatt-vertraulichkeit-hinweis"
+              className="mt-1 block max-w-[260px] break-words text-[12px] leading-snug text-trust-crit-text"
+            >
+              {t("conf.requiredHint")}
+            </span>
+          ) : null}
         </div>
 
         {/* ==========================================================================================
@@ -1776,9 +1821,12 @@ export function Blatt({
             ) : null}
           </div>
 
-          {/* §5.4: Fehlt der Inhalt beim Einreichversuch, bekommt das FELD den Rand — kein
-              Erklärsatz. Dieselbe Sprache wie beim Vertraulichkeits-Menü, damit der Mensch nicht
-              zwei Fehlerbilder lernen muss. */}
+          {/* §5.4: Fehlt der Inhalt beim Einreichversuch, bekommt das FELD den Rand — hier ohne
+              Erklärsatz. Das war bis JOB 3114 auch beim Vertraulichkeits-Menü so; dort trägt die
+              Markierung jetzt zusätzlich einen Satz (UX-05, Befund N-0017). Für den leeren Text ist
+              das NICHT nachgezogen: N-0017 nennt die Vertraulichkeit, und der leere Rahmen sagt
+              anders als eine ungestellte Frage von selbst, was fehlt. Eine eigene Zeile — nicht
+              „dieselbe Sprache". */}
           {/* DAS BLATT IST DER RAHMEN, NICHT DER EDITOR (Mockup Z.46-52). Der `RichTextEditor` bringt
               seine eigene Karte mit (Radius, Haarlinie, Fläche) und schreibt 14,5 px auf 1,5 — auf
               dem Blatt wäre das ein Kasten im Kasten und die falsche Schriftgröße. Die Umgebung

@@ -299,6 +299,13 @@ interface LocalImage {
 const textareaCls =
   "w-full resize-y rounded-input border border-hairline bg-surface p-2.5 text-sm text-text outline-none placeholder:text-muted-2 focus:border-ink/30";
 
+/**
+ * JOB 3114 (UX-05): Die `id` des Erklärsatzes an der Vertraulichkeitswahl. Als Konstante, weil sie
+ * an ZWEI Stellen dieselbe sein muss — am Satz und im `aria-describedby` des `<select>`. Zwei
+ * getippte Zeichenketten wären die Bauform, in der ein Verweis ins Leere zeigt.
+ */
+const CAPTURE_VERTRAULICHKEIT_HINWEIS_ID = "capture-vertraulichkeit-hinweis";
+
 // WP-D7b (Rot-Fix 1): schlanke Dev-Instrumentierung — je Submit-Phase eine performance.now-Spanne als
 // debug-Log (im Browser standardmäßig gefiltert, kein Produktionslärm), damit Pedi/wir die ECHTEN Zeiten
 // sehen und den Kostentreiber (Object-Uploads) belegen können.
@@ -3483,9 +3490,10 @@ export function CaptureArbeitsraum({
     // Sperre vorbeischleust, wäre genau das Schlupfloch, das Codex am lebenden System gefunden hat
     // (Befund R-1560: „Keine Auswahl im ganzen Ablauf … GET KO confidentiality null").
     //
-    // KEIN ERKLÄRSATZ, SONDERN DAS FELD: der Versuch wird nicht still verschluckt — die erweiterten
-    // Felder klappen auf (dort steht die Auswahl), das Feld wird markiert und bekommt den Fokus.
-    // Dieselbe Bauart wie im Blatt (`components/erfassen/Blatt.tsx`, `requestSubmit`).
+    // DER VERSUCH WIRD NICHT STILL VERSCHLUCKT: die erweiterten Felder klappen auf (dort steht die
+    // Auswahl), das Feld wird markiert und bekommt den Fokus. JOB 3114 (UX-05): dieselbe Markierung
+    // zeigt seither auch den Erklärsatz am Feld (s. `vertraulichkeitsWahl`) — hier ändert sich
+    // dafür nichts. Dieselbe Bauart wie im Blatt (`components/erfassen/Blatt.tsx`, `requestSubmit`).
     if (vertraulichkeitOffen) {
       setShowAdvanced(true);
       setVertraulichkeitMarkiert(true);
@@ -3521,6 +3529,12 @@ export function CaptureArbeitsraum({
   // die Zweige `expertView || wizStep === "tell"` und `!expertView && wizStep === "refine"`
   // schliessen einander aus. Und es bleibt EIN Zustand — es gibt keinen zweiten Ort, an dem
   // „gewählt" gesetzt würde.
+  //
+  // JOB 3114 (UX-05, Befund N-0017): DER HINWEIS IST EINE ABLESUNG, KEIN ZUSTAND. Rand,
+  // `aria-invalid` und der Erklärsatz hängen an demselben einen Ausdruck — deshalb erlischt der
+  // Satz an jeder bestehenden Rücksetzung (Auswahl, Einreichen, Speichern, Entwurf laden) und
+  // bekommt keine eigene. Die Funktion rendert an ZWEI einander ausschliessenden Stellen; die
+  // Hinweis-`id` ist damit nie zweimal im Dokument.
   const vertraulichkeitsWahl = (): JSX.Element => (
     <Field label={<span className="inline-flex items-center gap-1">{t("conf.field")}</span>}>
       <select
@@ -3537,10 +3551,18 @@ export function CaptureArbeitsraum({
           setVertraulichkeitMarkiert(false);
         }}
         aria-label={t("conf.field")}
-        // JOB 3082 (Q3 a): der abgewiesene Einreichversuch macht das FELD sichtbar, nicht einen
-        // Erklärsatz daneben. `aria-invalid` trägt dieselbe Aussage für Screenreader — solange die
-        // Wahl offen ist, nicht länger.
+        // JOB 3082 (Q3 a): der abgewiesene Einreichversuch macht das FELD sichtbar. `aria-invalid`
+        // trägt dieselbe Aussage für Screenreader — solange die Wahl offen ist, nicht länger.
+        // JOB 3114 (UX-05): und seither steht der Erklärsatz daneben, technisch zugeordnet über
+        // `aria-describedby`. „Ungültig" allein sagt nicht, was zu tun ist.
         aria-invalid={vertraulichkeitMarkiert && vertraulichkeitOffen}
+        // Der Verweis steht nur, SOLANGE der Satz steht — sonst zeigte er auf eine `id`, die es im
+        // Dokument nicht gibt, und das ist für ein Hilfsmittel schlechter als gar kein Verweis.
+        aria-describedby={
+          vertraulichkeitMarkiert && vertraulichkeitOffen
+            ? CAPTURE_VERTRAULICHKEIT_HINWEIS_ID
+            : undefined
+        }
         className={`h-9 w-full rounded-input border bg-surface px-2 text-[13px] text-text ${
           vertraulichkeitMarkiert && vertraulichkeitOffen
             ? "border-trust-crit-fill ring-1 ring-trust-crit-fill"
@@ -3561,6 +3583,20 @@ export function CaptureArbeitsraum({
           </option>
         ))}
       </select>
+      {/* JOB 3114 (UX-05): `role="alert"` und nicht bloß Text — der Fokussprung allein kündigt
+          nichts an, und Codex hat am lebenden System gemessen: „status/alert sind leer". Ein
+          `<span className="block">` und kein `<p>`: `Field` rendert ein `<label>`, in das ein
+          Absatz nicht gehört. */}
+      {vertraulichkeitMarkiert && vertraulichkeitOffen ? (
+        <span
+          id={CAPTURE_VERTRAULICHKEIT_HINWEIS_ID}
+          role="alert"
+          data-testid="capture-vertraulichkeit-hinweis"
+          className="block break-words text-[12px] leading-snug text-trust-crit-text"
+        >
+          {t("conf.requiredHint")}
+        </span>
+      ) : null}
     </Field>
   );
 

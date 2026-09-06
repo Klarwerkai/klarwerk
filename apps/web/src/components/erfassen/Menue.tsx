@@ -36,6 +36,25 @@ export interface MenueProps {
   titel?: string;
   /** Ein zusätzlicher Rand am Werkzeug — die Pflichtmarkierung der Vertraulichkeit (§5.4). */
   markiert?: boolean;
+  /**
+   * JOB 3114 (UX-05): Die `id` eines Erklärsatzes, der zu DIESEM Werkzeug gehört — sie landet als
+   * `aria-describedby` am Knopf. Ohne sie steht kein Attribut da; ein `aria-describedby`, das auf
+   * nichts zeigt, wäre für ein Hilfsmittel schlechter als gar keines.
+   *
+   * DAS AUSDRÜCKLICHE `| undefined` IST PFLICHT, NICHT KOSMETIK (JOB 3114 R2): Das Tor fährt mit
+   * `exactOptionalPropertyTypes: true` (`tsconfig.json:12`). Unter dieser Regel heisst `x?: string`
+   * „weglassen ODER ein String" — ein AUSGESCHRIEBENES `undefined` ist damit verboten. Genau so
+   * ruft das Blatt aber auf (`beschriebenVon={steht ? ID : undefined}`), und genau so muss es
+   * rufen: der Verweis darf nur stehen, solange der Satz steht. Dieselbe Schreibweise trägt
+   * `CaptureArbeitsraumProps.modus` aus demselben Grund.
+   */
+  beschriebenVon?: string | undefined;
+  /**
+   * JOB 3114 (UX-05): Der Knopf trägt eine offene Pflicht (`aria-invalid`). Nur `true` schreibt das
+   * Attribut — `aria-invalid="false"` an jedem Werkzeug wäre Rauschen im Screenreader.
+   * `| undefined` aus demselben Grund wie oben.
+   */
+  ungueltig?: boolean | undefined;
   /** Der Inhalt der aufklappenden Fläche. */
   children: ReactNode;
   /** Testanker. */
@@ -69,6 +88,8 @@ export function Menue({
   gesperrt = false,
   titel,
   markiert = false,
+  beschriebenVon,
+  ungueltig = false,
   children,
   pruefname,
 }: MenueProps): JSX.Element {
@@ -117,6 +138,8 @@ export function Menue({
         aria-haspopup="menu"
         aria-expanded={istOffen}
         aria-controls={flaecheId}
+        aria-describedby={beschriebenVon ?? undefined}
+        aria-invalid={ungueltig ? true : undefined}
         title={titel ?? undefined}
         data-testid={pruefname ?? `blatt-werkzeug-${name}`}
         onClick={() => setOffen(istOffen ? null : name)}
