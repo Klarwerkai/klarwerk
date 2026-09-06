@@ -42,11 +42,38 @@
 //   · Die Server-Endpunkte, die `bodyHtml` roh annehmen, ERZEUGEN keinen Anker und sollen es auch
 //     nicht: sie sanitisieren autoritativ. Verankert wird im Editor, weil dort beschrieben wird.
 //     Ein nacktes Bild aus einer fremden Quelle bekommt seinen Anker beim ersten Laden.
-//   · Alias und Indirektion entgehen der Erhebung (wie in mega86) — dafür bräuchte es den
-//     Typprüfer, nicht den Syntaxbaum.
+//   · WAS DIE STUFE-2-ERHEBUNG SIEHT, ist gemessen und nicht behauptet: dreizehn Schreibformen,
+//     jede durch einen eingespeisten Fall in Stufe 2 belegt (acht seit JOB 2085 D1, fünf seit
+//     JOB 3119). In der Reihenfolge der Messung `R-0041-bildstruktur-20260906-0500`:
+//     Zuweisung an eine Schreib-Eigenschaft über den Punkt · über ein Literal in der Klammer ·
+//     `appendChild` · `replaceChildren` · `insertNode` · Methodenalias über `bind` ·
+//     Methodenreferenz über `f.call`/`f.apply` · benannter Import eines schreibenden Exports ·
+//     Alias über beliebig viele Bindungen · Namensraum-Import (`import * as h`) · Helferkette
+//     über mehrere Module · dynamischer Schlüssel aus einer auflösbaren `const`-Bindung ·
+//     `Reflect.set` auf eine Schreib-Eigenschaft.
+//   · WAS SIE AUSDRÜCKLICH NICHT SIEHT, und jedes davon steht als eigener Fall in Stufe 2, nicht
+//     nur hier im Kommentar: einen Helfer aus einem PAKET, benannt oder als Namensraum (die
+//     Auflösung folgt allein relativen Pfaden — `OF-2060-2` ist nicht entschieden) · einen
+//     dynamischen Schlüssel, der nicht statisch auflösbar ist (`let`, Zusammensetzung, Parameter;
+//     dort wird nicht geraten, sondern geschwiegen) · eine Importkette jenseits von
+//     `IMPORTKETTEN_TIEFE`.
+//     UND DIE NAMENSTABELLE KENNT KEINE GÜLTIGKEITSBEREICHE (JOB 3119, Runde 2): sie ist flach über
+//     die ganze Datei. Ein Name, der irgendwo darin ein zweites Mal als WERT gebunden wird — die
+//     Formen stehen abschliessend bei `stringKonstanten` und umfassen Deklaration wie Ausdruck
+//     (`function key` und `const f = function key`, `class key` und `const K = class key`) —, gilt
+//     als NICHT auflösbar, auch wenn die Verdeckung an der Schreibstelle gar nicht greift. Der
+//     Irrtum geht damit immer zur schweigenden Seite: lieber eine Stelle unerhoben als eine erfunden.
+//     HIER STAND BIS JOB 3119: „Alias und Indirektion entgehen der Erhebung — dafür bräuchte es
+//     den Typprüfer, nicht den Syntaxbaum." Das war schon seit JOB 2085 D1 falsch und ist mit
+//     diesen dreizehn Formen erledigt: keine von ihnen braucht mehr als den Syntaxbaum. Der Satz
+//     ist gestrichen und nicht ergänzt — zwei Wahrheitsstände über dieselbe Erhebung sind genau
+//     der Fehler, gegen den JOB 1185 D1 weiter unten gebaut wurde.
+//   · Stufe 1 (`leserBefunde`) ist davon UNBERÜHRT und bewusst enger; ihre Grenze steht bei
+//     ihrem eigenen Fall („die vier Auslagerungsformen aus I50 sind NICHT erfasst").
 // JOB 2085 D1: `existsSync`/`dirname`/`resolve` für die einstufige Modulauflösung (I47, zweitens).
+// JOB 3119: `relative` für die MEHRSTUFIGE — jedes Modul löst seine Importe relativ zu sich auf.
 import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { dirname, join, resolve, sep } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { enhanceFiguresForEditing } from "../../apps/web/src/lib/editorFigures";
@@ -471,9 +498,35 @@ const SCHREIB_AUFRUFE = /^(document\.execCommand|.*\.insertAdjacentHTML|fuegeAmC
 //   (4) ALIAS und IMPORTIERTER HELFER — die beiden Formen, die den Punkt definieren.
 //
 // UND EINE BESTANDSAUSSAGE IST DAMIT WIDERLEGT: der Kopf dieser Datei sagte, für Alias und
-// Indirektion „bräuchte es den Typprüfer, nicht den Syntaxbaum". Für die zwei hier gebauten
-// Formen trifft das nicht zu — beide sind ohne Programm und ohne Checker erreichbar. Der
-// Kopfkommentar ist entsprechend korrigiert.
+// Indirektion „bräuchte es den Typprüfer, nicht den Syntaxbaum". Für die hier gebauten Formen
+// trifft das nicht zu — sie sind ohne Programm und ohne Checker erreichbar.
+//
+// ── JOB 3119 (PRIORITAETEN.md I47b): FÜNF WEITERE FORMEN, UND DER KOPF IST WIRKLICH BERICHTIGT ─
+//
+// DIE KORREKTUR OBEN WAR ANGEKÜNDIGT UND NICHT AUSGEFÜHRT: der widerlegte Satz stand bis JOB 3119
+// unverändert im Kopf, während hier „der Kopfkommentar ist entsprechend korrigiert" behauptet
+// wurde. Damit sagte der Wächter weniger, als er kann — derselbe Fehler, gegen den JOB 1185 D1
+// weiter oben gebaut ist, nur in die andere Richtung. Der Kopf trägt jetzt den gemessenen Stand,
+// und diese Zeilen sind seine Vorgeschichte, keine zweite Fassung davon.
+//
+// FÜNF FORMEN KOMMEN HINZU, alle fünf vor dem Bau als `ergebnis: []` gemessen:
+//   (5) ALIAS ÜBER MEHRERE BINDUNGEN — `const b = a`. Die Menge der indirekten Namen wird bis zum
+//       FIXPUNKT fortgeschrieben statt nur eine Ebene tief.
+//   (6) NAMENSRAUM-IMPORT — `import * as h from "./m"; h.write(z)`. Er wird aufgelöst wie ein
+//       benannter Import; welcher Export gemeint ist, sagt erst die Aufrufstelle.
+//   (7) HELFERKETTE über mehrere Module — der importierte Export schreibt nicht selbst, sondern
+//       ruft einen schreibenden Export des nächsten Moduls. Begrenzt durch `IMPORTKETTEN_TIEFE`
+//       und einen Zyklusschutz über besuchte Modul/Export-Paare.
+//   (8) DYNAMISCHER SCHLÜSSEL — `const key = "innerHTML"; z[key] = html`, aber NUR wenn `key`
+//       statisch auflösbar ist. Ein Parameter, eine Zusammensetzung, eine `let`-Bindung bleiben
+//       ungemeldet: eine Erhebung, die rät, ist schlechter als eine, die ihre Grenze hinschreibt.
+//       RUNDE 2 (Befund BEN): das galt in Runde 1 nur für den Namen selbst — ein PARAMETER, der
+//       eine gleichnamige äussere `const` verdeckte, wurde trotzdem über sie aufgelöst.
+//       RUNDE 3 (Befund BEN): und in Runde 2 fehlten die beiden AUSDRUCKSFORMEN, `const f =
+//       function key(){…}` und `const K = class key {…}`. Welche Bindungsformen verdecken, steht
+//       jetzt abschliessend und mit Beleg je Form bei `stringKonstanten`.
+//   (9) `Reflect.set(z, "innerHTML", html)` — dieselbe Wirkung wie (1), aber der Schreibname steht
+//       als Argument da und in keiner Methodenliste.
 //
 // ABGRENZUNG: `setAttribute` ist NICHT aufgenommen. Es setzt Attribute an vorhandenen Knoten und
 // kann kein Bild in den Körper bringen; seine Aufnahme brächte Dutzende Stellen ohne Bildbezug.
@@ -515,24 +568,356 @@ function zeigtAufSchreibmethode(n: ts.Node | undefined): boolean {
   return ts.isPropertyAccessExpression(n) && KNOTEN_METHODEN.has(n.name.text);
 }
 
-/** Enthält die benannte Export-Funktion dieses Moduls selbst eine Schreibform? */
-function exportSchreibt(quelle: string, datei: string, exportName: string): boolean {
-  const { baum } = baumAus(datei, quelle);
-  let gefunden = false;
-  const imRumpf = (k: ts.Node): void => {
-    if (
-      ts.isCallExpression(k) &&
-      ts.isPropertyAccessExpression(k.expression) &&
-      KNOTEN_METHODEN.has(k.expression.name.text)
-    ) {
-      gefunden = true;
+// ── JOB 3119 (PRIORITAETEN.md I47b): DIE TIEFENGRENZE DER HELFERKETTE ─────────────────────────
+//
+// Ein importierter Helfer, der selbst nur einen weiteren importierten Helfer ruft, schreibt
+// MITTELBAR — und war damit bis JOB 3119 unerhoben (Fall `import-helper-zwei-ebenen` der Messung
+// `R-0041-bildstruktur-20260906-0500`). Verfolgt wird die Kette über HÖCHSTENS so viele
+// Modulgrenzen. Die Grenze ist nötig, weil der Zyklusschutz allein nicht genügt: ein azyklisches
+// Modulgeflecht kann beliebig tief sein, und die Erhebung läuft in jedem Testlauf.
+//
+// DIESE ZAHL UND DER FALL „eine Importkette jenseits der Tiefengrenze wird NICHT verfolgt" IN
+// STUFE 2 GEHÖREN ZUSAMMEN: wer sie ändert, ersetzt den Fall, statt ihn anzupassen.
+const IMPORTKETTEN_TIEFE = 3;
+
+/** Ein aufgelöstes Modul: sein Quelltext UND sein Pfad — der Pfad trägt die nächste Auflösung. */
+interface Modulfund {
+  quelle: string;
+  pfad: string;
+}
+
+/**
+ * Ein projektinternes Modul auflösen. NUR relative Pfade — ein Paket unter `node_modules` wird
+ * bewusst NICHT verfolgt (`OF-2060-2`, siehe die Fälle `DIE GRENZE` unten).
+ * JOB 3119: der Fund trägt seinen Pfad mit, damit ein Modul die Spezifizierer SEINER Importe
+ * relativ zu SICH auflösen kann — ohne das endete die Kette nach einer Ebene.
+ */
+function loeseModul(vonDatei: string, spez: string, deck?: Moduldeck): Modulfund | null {
+  if (deck !== undefined) {
+    const quelle = deck[spez];
+    return quelle === undefined ? null : { quelle, pfad: spez };
+  }
+  if (!spez.startsWith(".")) {
+    return null;
+  }
+  const basis = resolve(dirname(join(WURZEL, vonDatei)), spez);
+  for (const endung of [".ts", ".tsx", "/index.ts", "/index.tsx"]) {
+    const pfad = basis + endung;
+    if (existsSync(pfad)) {
+      return { quelle: readFileSync(pfad, "utf8"), pfad: posix(relative(WURZEL, pfad)) };
     }
+  }
+  return null;
+}
+
+// JOB 3119: dieselbe Datei wird auf einer Kette mehrfach erreicht (jeder benannte Import eines
+// Moduls fragt sie erneut). Ein Parse je Inhalt genügt — der Baum wird nur gelesen.
+const BAUM_SPEICHER = new Map<string, ts.SourceFile>();
+
+function baumGeparst(datei: string, quelle: string): ts.SourceFile {
+  const schluessel = `${datei} ${quelle}`;
+  const bekannt = BAUM_SPEICHER.get(schluessel);
+  if (bekannt !== undefined) {
+    return bekannt;
+  }
+  const { baum } = baumAus(datei, quelle);
+  BAUM_SPEICHER.set(schluessel, baum);
+  return baum;
+}
+
+/**
+ * JOB 3119 (Lieferung 4): die statisch auflösbaren Bindungen auf ein Stringliteral.
+ * Auflösbar ist NUR eine `const`-Bindung auf ein Literal, und nur wenn derselbe Name im Baum
+ * nicht noch anders gebunden wird. Alles andere steht als `null` drin und heisst „NICHT
+ * auflösbar" — dort wird nicht geraten, sondern nichts gemeldet.
+ *
+ * JOB 3119 RUNDE 2 (Befund BEN, Korrekturpflicht 1): diese Erhebung KENNT KEINE GÜLTIGKEITSBEREICHE
+ * — sie führt eine flache Namenstabelle über die ganze Datei. Bis hierher las sie nur
+ * Variablendeklarationen; ein Funktionsparameter `key` konnte deshalb eine äussere
+ * `const key = "innerHTML"` VERDECKEN, ohne dass die Tabelle es merkte, und `z[key] = html` galt als
+ * Schreibstelle, obwohl der Wert zur Bauzeit unbekannt ist. Das war genau das Raten, das Lieferung 4
+ * ausschliesst. Die Antwort passt zur flachen Tabelle: eine weitere Bindung desselben Namens trägt
+ * sich als `null` ein, und eine zweite Bindung mit anderem Wert macht den Namen ohnehin unauflösbar.
+ * Die Tabelle irrt damit zur schweigenden Seite: ein verdeckter Name wird lieber gar nicht aufgelöst
+ * als falsch. Der Preis ist eine Schreibstelle, die unerhoben bleibt, wenn irgendwo in derselben
+ * Datei ein gleichnamiger Parameter steht — das ist die richtige Richtung für einen Wächter, der
+ * nicht raten darf.
+ *
+ * JOB 3119 RUNDE 3 (Befund BEN, Korrekturpflicht 1): Runde 2 schrieb hier „JEDE weitere Bindung" und
+ * führte in Wahrheit eine LISTE, in der die beiden Ausdrucksformen fehlten — `const f = function
+ * key(){…}` und `const K = class key {…}` binden `key` in ihrem eigenen Rumpf, und genau dort wurde
+ * er gelesen. Der Fehlalarm blieb also für zwei Schreibweisen bestehen, während der Kommentar
+ * Vollständigkeit behauptete. Die Liste steht jetzt unten vollständig und mit Deklaration UND
+ * Ausdruck nebeneinander; dieser Absatz behauptet keine Vollständigkeit mehr, sondern zeigt auf sie.
+ * Die Formen sind je einzeln durch einen Fall in Stufe 2 belegt (`I47b-4b`, `I47b-4c`).
+ */
+function stringKonstanten(baum: ts.SourceFile): Map<string, string | null> {
+  const aus = new Map<string, string | null>();
+  // Eine zweite Bindung MIT ANDEREM WERT macht den Namen unauflösbar; zweimal derselbe Literalwert
+  // bleibt auflösbar, weil dann jede Verdeckung dasselbe bedeutet.
+  const setze = (name: string, wert: string | null): void => {
+    aus.set(name, aus.has(name) && aus.get(name) !== wert ? null : wert);
+  };
+  // Ein Bindungsname, dessen Wert nicht statisch feststeht — auch jeder Name in einem Muster.
+  const verdecke = (n: ts.BindingName): void => {
+    if (ts.isIdentifier(n)) {
+      setze(n.text, null);
+      return;
+    }
+    for (const el of n.elements) {
+      if (ts.isBindingElement(el)) {
+        verdecke(el.name);
+      }
+    }
+  };
+  const gehe = (k: ts.Node): void => {
+    if (ts.isVariableDeclaration(k)) {
+      if (ts.isIdentifier(k.name)) {
+        // `k.parent` ist die Deklarationsliste — bei einer `catch`-Bindung ist es die Klausel, also
+        // nicht `const`, also `null`. Das ist richtig so.
+        const konstant =
+          ts.isVariableDeclarationList(k.parent) && (k.parent.flags & ts.NodeFlags.Const) !== 0;
+        setze(
+          k.name.text,
+          konstant && k.initializer !== undefined && ts.isStringLiteral(k.initializer)
+            ? k.initializer.text
+            : null,
+        );
+      } else {
+        verdecke(k.name);
+      }
+    } else if (ts.isParameter(k)) {
+      verdecke(k.name);
+    } else if (
+      // Die Formen, die einen WERTNAMEN binden und dabei eine äussere `const` VERDECKEN können.
+      // Die Liste ist als LISTE die Schwachstelle — Runde 2 führte nur die beiden DEKLARATIONEN und
+      // liess die beiden gleichbedeutenden AUSDRUCKSFORMEN offen (Befund BEN, Runde 2). Deklaration
+      // UND Ausdruck stehen deshalb nebeneinander, damit die Lücke nicht wieder zwischen zwei
+      // Schreibweisen desselben Gedankens entsteht. Jede Zeile hat ihren Fall in Stufe 2.
+      //
+      // MASSSTAB FÜR DIE VOLLSTÄNDIGKEIT ist nicht „alles, was einen Namen bindet", sondern „alles,
+      // was VERDECKEN kann": beide Bindungen im GLEICHEN Bereich wären ein Doppelname und damit ein
+      // Übersetzungsfehler, den es im Produkt nicht gibt. Verdecken kann nur, was sich in einen
+      // Funktions- oder Blockrumpf legen lässt — und das sind genau diese fünf. Nicht in der Liste
+      // und deshalb auch ohne Zweig: `namespace key {}` und `import key = require(…)` dürfen nicht
+      // in einem Funktionsrumpf stehen (TS1235) und können folglich nichts verdecken; `interface`,
+      // `type`, Typparameter, Eigenschafts- und Methodennamen sowie `export { x as key }` binden
+      // gar keinen Wertnamen. Ein Zweig ohne belegbaren Fall wäre ungeprüfter Code.
+      ts.isFunctionDeclaration(k) ||
+      ts.isFunctionExpression(k) ||
+      ts.isClassDeclaration(k) ||
+      ts.isClassExpression(k) ||
+      ts.isEnumDeclaration(k)
+    ) {
+      // Nur die Ausdrucksformen dürfen namenlos sein (`const f = function () {}`).
+      if (k.name !== undefined) {
+        setze(k.name.text, null);
+      }
+    } else if (ts.isImportSpecifier(k) || ts.isNamespaceImport(k)) {
+      setze(k.name.text, null);
+    } else if (ts.isImportClause(k) && k.name !== undefined) {
+      setze(k.name.text, null);
+    }
+    ts.forEachChild(k, gehe);
+  };
+  gehe(baum);
+  return aus;
+}
+
+/** Was in EINEM Modul über Namen bekannt ist — die Grundlage jedes Urteils in diesem Modul. */
+interface Umgebung {
+  deck: Moduldeck | undefined;
+  tiefe: number;
+  besucht: ReadonlySet<string>;
+  /** Name → Stringwert, oder `null` für „nicht statisch auflösbar". */
+  konstanten: Map<string, string | null>;
+  /** Namen, deren AUFRUF schreibt: Alias-Ketten und schreibende benannte Importe. */
+  indirekt: Set<string>;
+  /** `import * as h from "./m"` → h → das aufgelöste Modul. */
+  namensraeume: Map<string, Modulfund>;
+}
+
+function umgebungFuer(
+  baum: ts.SourceFile,
+  datei: string,
+  deck: Moduldeck | undefined,
+  tiefe: number,
+  besucht: ReadonlySet<string>,
+): Umgebung {
+  const indirekt = new Set<string>();
+  const namensraeume = new Map<string, Modulfund>();
+  const bindungen: Array<{ name: string; init: ts.Expression | undefined }> = [];
+
+  const sammle = (k: ts.Node): void => {
+    if (ts.isVariableDeclaration(k) && ts.isIdentifier(k.name)) {
+      bindungen.push({ name: k.name.text, init: k.initializer });
+    }
+    // (4b) IMPORT: benannte Importe, deren Export im Zielmodul schreibt — und (JOB 3119,
+    // Lieferung 2) NAMENSRAUM-Importe, deren Modul hier nur gemerkt wird: ob `h.name(…)`
+    // schreibt, entscheidet erst die Aufrufstelle, denn ein Namensraum bringt alle Exporte mit.
     if (
-      ts.isBinaryExpression(k) &&
-      k.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+      tiefe > 0 &&
+      ts.isImportDeclaration(k) &&
+      k.importClause?.namedBindings !== undefined &&
+      ts.isStringLiteral(k.moduleSpecifier)
+    ) {
+      const gebunden = k.importClause.namedBindings;
+      const fund = loeseModul(datei, k.moduleSpecifier.text, deck);
+      if (fund !== null) {
+        if (ts.isNamedImports(gebunden)) {
+          for (const el of gebunden.elements) {
+            const exportName = (el.propertyName ?? el.name).text;
+            if (exportSchreibt(fund, exportName, deck, tiefe - 1, besucht)) {
+              indirekt.add(el.name.text);
+            }
+          }
+        } else {
+          namensraeume.set(gebunden.name.text, fund);
+        }
+      }
+    }
+    ts.forEachChild(k, sammle);
+  };
+  sammle(baum);
+
+  // (4a) ALIAS bis zum FIXPUNKT (JOB 3119, Lieferung 1). Bis hierher galt nur eine Bindung als
+  // indirekt, deren INITIALISIERER selbst auf eine Schreibmethode zeigt — `const b = a` fiel
+  // durch, obwohl `a` bereits als schreibend bekannt war. Jetzt wird die Menge fortgeschrieben,
+  // bis sie sich nicht mehr ändert: das deckt zwei, drei und jede weitere Ebene, und ebenso den
+  // Alias auf einen schreibenden IMPORT (deshalb stehen die Importe oben, vor dem Fixpunkt).
+  let geaendert = true;
+  while (geaendert) {
+    geaendert = false;
+    for (const b of bindungen) {
+      if (indirekt.has(b.name)) {
+        continue;
+      }
+      const zeigt =
+        zeigtAufSchreibmethode(b.init) ||
+        (b.init !== undefined && ts.isIdentifier(b.init) && indirekt.has(b.init.text));
+      if (zeigt) {
+        indirekt.add(b.name);
+        geaendert = true;
+      }
+    }
+  }
+
+  return { deck, tiefe, besucht, konstanten: stringKonstanten(baum), indirekt, namensraeume };
+}
+
+/**
+ * Eine der DIREKTEN Schreibformen — ohne Alias, Import und Namensraum. Diese eine Stelle
+ * beurteilt sowohl den gemessenen Baum als auch den Rumpf jedes verfolgten Helfers: ein zweiter,
+ * engerer Satz Regeln für Helfer wäre genau die Sorte Doppelung, an der ein Weg vorbeiläuft.
+ */
+function istDirekteSchreibform(k: ts.Node, konstanten: Map<string, string | null>): boolean {
+  if (ts.isBinaryExpression(k) && k.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+    // (1) Eigenschaft über den Punkt.
+    if (
       ts.isPropertyAccessExpression(k.left) &&
       SCHREIB_EIGENSCHAFTEN_ERHEBUNG.has(k.left.name.text)
     ) {
+      return true;
+    }
+    // (2) Eigenschaft über einen Schlüssel: unmittelbares Literal ODER (JOB 3119, Lieferung 4)
+    // ein Bezeichner, der im selben Baum eindeutig als `const` auf ein Literal gebunden ist.
+    if (ts.isElementAccessExpression(k.left)) {
+      const schluessel: ts.Expression | undefined = k.left.argumentExpression;
+      const name =
+        schluessel === undefined
+          ? null
+          : ts.isStringLiteral(schluessel)
+            ? schluessel.text
+            : ts.isIdentifier(schluessel)
+              ? (konstanten.get(schluessel.text) ?? null)
+              : null;
+      if (name !== null && SCHREIB_EIGENSCHAFTEN_ERHEBUNG.has(name)) {
+        return true;
+      }
+    }
+  }
+  if (ts.isCallExpression(k) && ts.isPropertyAccessExpression(k.expression)) {
+    // (3) knoteneinfügende Methoden über den Punkt.
+    if (KNOTEN_METHODEN.has(k.expression.name.text)) {
+      return true;
+    }
+    // (5) JOB 3119, Lieferung 5: `Reflect.set(ziel, "innerHTML", html)` — dieselbe Wirkung wie
+    // (1), aber der Schreibname steht als ARGUMENT da und in keiner Methodenliste. `Reflect.get`
+    // und ein `Reflect.set` auf eine andere Eigenschaft bleiben ungemeldet.
+    if (
+      k.expression.name.text === "set" &&
+      ts.isIdentifier(k.expression.expression) &&
+      k.expression.expression.text === "Reflect"
+    ) {
+      const eigenschaft: ts.Expression | undefined = k.arguments[1];
+      if (
+        eigenschaft !== undefined &&
+        ts.isStringLiteral(eigenschaft) &&
+        SCHREIB_EIGENSCHAFTEN_ERHEBUNG.has(eigenschaft.text)
+      ) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/** Schreibt dieser Knoten — direkt, über einen Alias, einen Import oder einen Namensraum? */
+function istSchreibstelle(k: ts.Node, u: Umgebung): boolean {
+  if (istDirekteSchreibform(k, u.konstanten)) {
+    return true;
+  }
+  if (!ts.isCallExpression(k)) {
+    return false;
+  }
+  // (4) Aufruf eines Alias- oder importierten Schreibnamens — direkt `f(…)`.
+  if (ts.isIdentifier(k.expression) && u.indirekt.has(k.expression.text)) {
+    return true;
+  }
+  if (ts.isPropertyAccessExpression(k.expression) && ts.isIdentifier(k.expression.expression)) {
+    const traeger = k.expression.expression.text;
+    const name = k.expression.name.text;
+    // … ODER über `f.call(…)` / `f.apply(…)`. Diese Form hat dieser Wächter beim Bauen selbst
+    // aufgedeckt: sie ist eine PropertyAccessExpression und wäre der Identifier-Prüfung entgangen.
+    if ((name === "call" || name === "apply") && u.indirekt.has(traeger)) {
+      return true;
+    }
+    // … ODER über einen Namensraum: `h.name(…)` gilt, wenn der Export `name` schreibt.
+    const raum = u.namensraeume.get(traeger);
+    if (raum !== undefined && exportSchreibt(raum, name, u.deck, u.tiefe - 1, u.besucht)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Schreibt der benannte Export dieses Moduls — selbst oder über einen weiteren Helfer?
+ * JOB 3119 (Lieferung 3): bis hierher wurde nur der Rumpf des Exports im DIREKT importierten
+ * Modul durchsucht; eine Kette `probe → helfer → tief` blieb unerhoben. Jetzt trägt der Rumpf
+ * dieselbe Umgebung wie jedes andere Modul, also auch dessen eigene Importe — begrenzt durch
+ * `IMPORTKETTEN_TIEFE` und den Zyklusschutz `besucht`.
+ */
+function exportSchreibt(
+  modul: Modulfund,
+  exportName: string,
+  deck: Moduldeck | undefined,
+  tiefe: number,
+  besucht: ReadonlySet<string>,
+): boolean {
+  if (tiefe < 0) {
+    return false;
+  }
+  const schluessel = `${modul.pfad}::${exportName}`;
+  // ZYKLUSSCHUTZ: `a → b → a` bricht hier ab. Kein Fund, kein Absturz, keine Endlosschleife.
+  if (besucht.has(schluessel)) {
+    return false;
+  }
+  const baum = baumGeparst(modul.pfad, modul.quelle);
+  const u = umgebungFuer(baum, modul.pfad, deck, tiefe, new Set([...besucht, schluessel]));
+  let gefunden = false;
+  const imRumpf = (k: ts.Node): void => {
+    if (istSchreibstelle(k, u)) {
       gefunden = true;
     }
     ts.forEachChild(k, imRumpf);
@@ -550,27 +935,6 @@ function exportSchreibt(quelle: string, datei: string, exportName: string): bool
   return gefunden;
 }
 
-/**
- * Ein projektinternes Modul auflösen. NUR relative Pfade — ein Paket unter `node_modules` wird
- * bewusst NICHT verfolgt (`OF-2060-2`, siehe der Fall `DIE GRENZE` unten).
- */
-function loeseModul(vonDatei: string, spez: string, deck?: Moduldeck): string | null {
-  if (deck !== undefined) {
-    return deck[spez] ?? null;
-  }
-  if (!spez.startsWith(".")) {
-    return null;
-  }
-  const basis = resolve(dirname(join(WURZEL, vonDatei)), spez);
-  for (const endung of [".ts", ".tsx", "/index.ts", "/index.tsx"]) {
-    const pfad = basis + endung;
-    if (existsSync(pfad)) {
-      return readFileSync(pfad, "utf8");
-    }
-  }
-  return null;
-}
-
 function erhebeSchreibstellen(vorgabe?: {
   datei: string;
   quelltext: string;
@@ -581,38 +945,7 @@ function erhebeSchreibstellen(vorgabe?: {
   // „sie ist blind" nicht zu unterscheiden. Ohne Vorgabe misst sie unverändert den Editor.
   const datei = vorgabe?.datei ?? EDITOR;
   const { baum } = vorgabe ? baumAus(vorgabe.datei, vorgabe.quelltext) : baumVon(EDITOR);
-
-  // (4a) ALIAS: lokale Bindungen, deren Initialisierer auf eine Schreibmethode zeigt.
-  // (4b) IMPORT: benannte Importe, deren Export im Zielmodul selbst schreibt.
-  const indirekt = new Set<string>();
-  const sammleIndirekte = (k: ts.Node): void => {
-    if (
-      ts.isVariableDeclaration(k) &&
-      ts.isIdentifier(k.name) &&
-      zeigtAufSchreibmethode(k.initializer)
-    ) {
-      indirekt.add(k.name.text);
-    }
-    if (
-      ts.isImportDeclaration(k) &&
-      k.importClause?.namedBindings !== undefined &&
-      ts.isNamedImports(k.importClause.namedBindings) &&
-      ts.isStringLiteral(k.moduleSpecifier)
-    ) {
-      const spez = k.moduleSpecifier.text;
-      const quelle = loeseModul(datei, spez, vorgabe?.deck);
-      if (quelle !== null) {
-        for (const el of k.importClause.namedBindings.elements) {
-          const exportName = (el.propertyName ?? el.name).text;
-          if (exportSchreibt(quelle, spez, exportName)) {
-            indirekt.add(el.name.text);
-          }
-        }
-      }
-    }
-    ts.forEachChild(k, sammleIndirekte);
-  };
-  sammleIndirekte(baum);
+  const u = umgebungFuer(baum, datei, vorgabe?.deck, IMPORTKETTEN_TIEFE, new Set<string>());
 
   const gefunden = new Map<string, boolean>();
   const merke = (k: ts.Node): void => {
@@ -633,46 +966,10 @@ function erhebeSchreibstellen(vorgabe?: {
     );
   };
   const gehe = (k: ts.Node): void => {
-    if (ts.isBinaryExpression(k) && k.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
-      // (1) Eigenschaft über den Punkt — jetzt alle Schreib-Eigenschaften.
-      if (
-        ts.isPropertyAccessExpression(k.left) &&
-        SCHREIB_EIGENSCHAFTEN_ERHEBUNG.has(k.left.name.text)
-      ) {
-        merke(k);
-      }
-      // (2) Eigenschaft über einen Zeichenkettenschlüssel.
-      if (
-        ts.isElementAccessExpression(k.left) &&
-        k.left.argumentExpression !== undefined &&
-        ts.isStringLiteral(k.left.argumentExpression) &&
-        SCHREIB_EIGENSCHAFTEN_ERHEBUNG.has(k.left.argumentExpression.text)
-      ) {
-        merke(k);
-      }
-    }
-    if (ts.isCallExpression(k)) {
-      // (3) knoteneinfügende Methoden über den Punkt.
-      if (
-        ts.isPropertyAccessExpression(k.expression) &&
-        KNOTEN_METHODEN.has(k.expression.name.text)
-      ) {
-        merke(k);
-      }
-      // (4) Aufruf eines Alias- oder importierten Schreibnamens — direkt `f(…)` ODER über
-      // `f.call(…)` / `f.apply(…)`. Die zweite Form hat dieser Wächter beim Bauen selbst
-      // aufgedeckt: sie ist eine PropertyAccessExpression und wäre der Identifier-Prüfung entgangen.
-      if (ts.isIdentifier(k.expression) && indirekt.has(k.expression.text)) {
-        merke(k);
-      }
-      if (
-        ts.isPropertyAccessExpression(k.expression) &&
-        (k.expression.name.text === "call" || k.expression.name.text === "apply") &&
-        ts.isIdentifier(k.expression.expression) &&
-        indirekt.has(k.expression.expression.text)
-      ) {
-        merke(k);
-      }
+    // Die fünf Formen (1)–(5) und die drei Indirektionen stehen in `istSchreibstelle` — derselben
+    // Stelle, die auch jeden verfolgten Helferrumpf beurteilt.
+    if (istSchreibstelle(k, u)) {
+      merke(k);
     }
     if (ts.isCallExpression(k) && SCHREIB_AUFRUFE.test(k.expression.getText(baum))) {
       merke(k);
@@ -1096,6 +1393,277 @@ describe("AUFTRAG-mega88 Block E, Stufe 2: jede Schreibstelle im Körper veranke
       "ein Paketimport wird inzwischen verfolgt — dann ist OF-2060-2 entschieden und dieser Fall " +
         "gehört ersetzt, nicht angepasst",
     ).not.toContain("probe");
+  });
+
+  // ── JOB 3119 (PRIORITAETEN.md I47b): FÜNF FORMEN, AN DENEN DIE ERHEBUNG VORBEISAH ────────────
+  //
+  // Gemessen am unveränderten Sammler (Lauf `R-0041-bildstruktur-20260906-0500`, Quellhash
+  // `6f89b562…`): dreizehn eingespeiste Quelltexte, acht erkannt, fünf mit `ergebnis: []`. Diese
+  // fünf werden hier eingespeist — jeder Positivfall mit seiner Gegenprobe, damit „erkannt" nicht
+  // heisst „meldet alles". Die Gegenproben waren schon vor dem Bau grün und müssen es bleiben.
+
+  it("JOB 3119 · I47b-1: der Alias über MEHRERE Bindungen wird erhoben", () => {
+    expect(
+      eingespeist("const a = ziel.appendChild.bind(ziel); const b = a; b(knoten);"),
+      "der ZWEISTUFIGE Alias entgeht der Erhebung — sie nimmt nur Bindungen auf, deren " +
+        "Initialisierer selbst auf eine Schreibmethode zeigt",
+    ).toContain("probe");
+
+    expect(
+      eingespeist("const a = ziel.appendChild.bind(ziel); const b = a; const c = b; c(knoten);"),
+      "der DREISTUFIGE Alias entgeht der Erhebung — die Menge der indirekten Namen wird nicht bis " +
+        "zum Fixpunkt fortgeschrieben, sondern nur eine Ebene tief",
+    ).toContain("probe");
+
+    // GEGENPROBE: dieselbe Kettenlänge auf einen Wert, der nichts in den Körper bringen kann.
+    expect(
+      eingespeist('const a = ziel.getAttribute.bind(ziel); const b = a; const c = b; c("data-x");'),
+      "eine dreistufige Kette auf `getAttribute` wird als Schreibstelle gemeldet — der Fixpunkt " +
+        "verbreitet sich über die Schreibmethoden hinaus (Fehlalarm)",
+    ).not.toContain("probe");
+  });
+
+  const NAMENSRAUM_DECK = {
+    "./helfer": "export function write(z, html) { z.innerHTML = html; }",
+    "./nurlesen": "export function lieseNur(z) { return z.childNodes.length; }",
+  };
+
+  it("JOB 3119 · I47b-2: der NAMENSRAUM-Import wird aufgelöst wie ein benannter", () => {
+    expect(
+      eingespeist("h.write(ziel, html);", 'import * as h from "./helfer";\n', NAMENSRAUM_DECK),
+      "`import * as h` bleibt unbetrachtet — der Importzweig verlangt benannte Bindungen, und " +
+        "`h.write(…)` wird nur auf `call`/`apply` geprüft",
+    ).toContain("probe");
+
+    // GEGENPROBE: derselbe Weg über einen Namensraum, dessen Export nur LIEST.
+    expect(
+      eingespeist("l.lieseNur(ziel);", 'import * as l from "./nurlesen";\n', NAMENSRAUM_DECK),
+      "ein rein lesender Namensraum-Export wird als Schreibstelle gemeldet — Fehlalarm",
+    ).not.toContain("probe");
+  });
+
+  const KETTEN_DECK = {
+    "./helfer": 'import { tief } from "./tief";\nexport function write(z) { tief(z); }',
+    "./tief": 'export function tief(z) { z.innerHTML = "<img>"; }',
+    "./leserhelfer":
+      'import { liestTief } from "./liesttief";\nexport function nurLesen(z) { return liestTief(z); }',
+    "./liesttief": "export function liestTief(z) { return z.innerHTML; }",
+  };
+
+  it("JOB 3119 · I47b-3: die IMPORT-HELFERKETTE wird über eine weitere Ebene verfolgt", () => {
+    expect(
+      eingespeist("write(ziel);", 'import { write } from "./helfer";\n', KETTEN_DECK),
+      "der importierte Helfer schreibt nicht selbst, sondern ruft einen schreibenden Export des " +
+        "nächsten Moduls — die Erhebung durchsucht nur den Rumpf des direkt importierten Exports",
+    ).toContain("probe");
+
+    // GEGENPROBE: dieselbe Kettenform, deren letztes Glied nur liest.
+    expect(
+      eingespeist("nurLesen(ziel);", 'import { nurLesen } from "./leserhelfer";\n', KETTEN_DECK),
+      "eine Kette, deren letztes Glied nur liest, wird als Schreibstelle gemeldet — Fehlalarm",
+    ).not.toContain("probe");
+  });
+
+  it("JOB 3119 · I47b-4: der AUFLÖSBARE dynamische Schlüssel wird erhoben", () => {
+    expect(
+      eingespeist('const key = "innerHTML"; ziel[key] = html;'),
+      "der über eine `const`-Bindung aufgelöste Schlüssel entgeht der Erhebung — der " +
+        "ElementAccess-Zweig verlangt ein Stringliteral unmittelbar in der Klammer",
+    ).toContain("probe");
+
+    // GEGENPROBEN: nicht statisch auflösbar heisst NICHT gemeldet — geraten wird nicht.
+    expect(
+      eingespeist('let key = "innerHTML"; ziel[key] = html;'),
+      "eine `let`-Bindung wird aufgelöst — sie kann bis zur Zuweisung überschrieben sein, die " +
+        "Erhebung würde raten",
+    ).not.toContain("probe");
+    expect(
+      eingespeist('const key = "inner" + "HTML"; ziel[key] = html;'),
+      "ein zusammengesetzter Schlüssel wird aufgelöst — die Erhebung würde raten",
+    ).not.toContain("probe");
+    expect(
+      eingespeist('const key = "dataset"; ziel[key] = html;'),
+      "ein Schlüssel ausserhalb der Schreib-Eigenschaften wird gemeldet — Fehlalarm",
+    ).not.toContain("probe");
+  });
+
+  it("JOB 3119 R2 · I47b-4b: ein VERDECKENDER Parameter macht den Schlüssel NICHT auflösbar", () => {
+    // BEFUND VON BEN (Runde 1, Korrekturpflicht 1): die Schlüsselauflösung sah nur
+    // Variablendeklarationen. Ein Funktionsparameter GLEICHEN NAMENS verdeckt die äussere `const`,
+    // sein Wert ist zur Bauzeit unbekannt — die Erhebung übernahm trotzdem den Wert der Konstanten
+    // und meldete eine Schreibstelle, die keine sein muss. Das ist genau das Raten, das Lieferung 4
+    // ausschliesst: nicht statisch auflösbar heisst SCHWEIGEN, nicht „nimm den nächstbesten Wert".
+    // Die Schreibstelle liegt im Rumpf von `setze`, also heisst der Fund `setze` und nicht `probe`
+    // (`huelleVon` benennt die nächste umschliessende Funktion). Nur so trägt der Parameter, um den
+    // es geht, denselben Namen wie die Konstante — die Signatur von `probe` steht im Einspeiser fest.
+    expect(
+      eingespeist(
+        'function setze(key) { ziel[key] = html; }\nsetze("innerHTML");',
+        'const key = "innerHTML";\n',
+      ),
+      "ein Parameter, der eine gleichnamige `const` verdeckt, wird über den Namen aufgelöst — die " +
+        "Erhebung rät einen Schlüsselwert, den sie nicht kennt (Fehlalarm)",
+    ).not.toContain("setze");
+
+    // Dieselbe Verdeckung, nur destrukturiert — sie darf nicht durch die Maschen fallen.
+    expect(
+      eingespeist(
+        'function setze({ key }) { ziel[key] = html; }\nsetze({ key: "innerHTML" });',
+        'const key = "innerHTML";\n',
+      ),
+      "ein DESTRUKTURIERTER Parameter verdeckt die gleichnamige `const` nicht — die Erhebung rät",
+    ).not.toContain("setze");
+
+    // KALIBRIERUNG, in DERSELBEN Bauform: ohne Verdeckung bleibt der Schlüssel auflösbar. Ohne
+    // diese Zeile wäre die Schärfung oben auch dann grün, wenn die Auflösung ganz abgeschaltet
+    // würde — oder wenn ein Fund im Rumpf einer inneren Funktion gar nicht mehr erhoben würde.
+    expect(
+      eingespeist(
+        "function setze(wert) { ziel[key] = wert; }\nsetze(html);",
+        'const key = "innerHTML";\n',
+      ),
+      "die eindeutige `const`-Bindung wird nicht mehr aufgelöst — die Schärfung gegen verdeckende " +
+        "Parameter hat Lieferung 4 mit abgeräumt",
+    ).toContain("setze");
+  });
+
+  it("JOB 3119 R3 · I47b-4c: auch ein benannter AUSDRUCK verdeckt — Funktion wie Klasse", () => {
+    // BEFUND VON BEN (Runde 2, Korrekturpflicht 1): Runde 2 nahm Funktions- und KlassenDEKLARATIONEN
+    // in die Verdeckung auf und behauptete „jede weitere Bindung". Die beiden AUSDRUCKSFORMEN fehlten:
+    // `const f = function key() {…}` und `const K = class key {…}` binden ihren Namen INNERHALB ihres
+    // eigenen Rumpfes — genau dort, wo der Schlüssel gelesen wird. Die äussere Konstante wurde
+    // weiterhin eingesetzt, und damit blieb der Fehlalarm für diese zwei Formen bestehen.
+    expect(
+      eingespeist(
+        "const f = function key() { ziel[key] = html; };\nvoid f;",
+        'const key = "innerHTML";\n',
+      ),
+      "ein benannter FUNKTIONSAUSDRUCK verdeckt die gleichnamige `const` nicht — die Erhebung rät " +
+        "einen Schlüsselwert, der im Rumpf die Funktion selbst ist (Fehlalarm)",
+    ).not.toContain("f");
+
+    expect(
+      eingespeist(
+        "const K = class key { schreibe() { ziel[key] = html; } };\nvoid K;",
+        'const key = "innerHTML";\n',
+      ),
+      "ein benannter KLASSENAUSDRUCK verdeckt die gleichnamige `const` nicht — die Erhebung rät",
+    ).not.toContain("probe");
+
+    // Die fünfte Form, die sich in einen Funktionsrumpf legen lässt und dort verdeckt.
+    expect(
+      eingespeist("enum key { A }\nziel[key] = html;", 'const key = "innerHTML";\n'),
+      "ein `enum` GLEICHEN NAMENS im Rumpf verdeckt die äussere `const` nicht — die Erhebung rät",
+    ).not.toContain("probe");
+
+    // KALIBRIERUNG in beiden Bauformen: ohne Namensgleichheit bleibt der Schlüssel auflösbar.
+    expect(
+      eingespeist(
+        "const f = function setze() { ziel[key] = html; };\nvoid f;",
+        'const key = "innerHTML";\n',
+      ),
+      "der Fund im Rumpf eines benannten Funktionsausdrucks entfällt ganz — die Schärfung hat mehr " +
+        "abgeräumt als die Verdeckung",
+    ).toContain("f");
+    expect(
+      eingespeist(
+        "const K = class Setzer { schreibe() { ziel[key] = html; } };\nvoid K;",
+        'const key = "innerHTML";\n',
+      ),
+      "der Fund im Rumpf eines Klassenausdrucks entfällt ganz — die Schärfung hat mehr abgeräumt " +
+        "als die Verdeckung",
+    ).toContain("probe");
+  });
+
+  it("JOB 3119 · I47b-5: `Reflect.set` auf eine Schreib-Eigenschaft wird erhoben", () => {
+    expect(
+      eingespeist('Reflect.set(ziel, "innerHTML", html);'),
+      "`Reflect.set` entgeht der Erhebung — sein Methodenname steht in keiner Liste",
+    ).toContain("probe");
+
+    // GEGENPROBEN: lesend, und schreibend auf eine Eigenschaft ohne Knotenwirkung.
+    expect(
+      eingespeist('Reflect.get(ziel, "innerHTML");'),
+      "`Reflect.get` wird als Schreibstelle gemeldet — Fehlalarm",
+    ).not.toContain("probe");
+    expect(
+      eingespeist('Reflect.set(ziel, "dataset", html);'),
+      "`Reflect.set` auf eine Eigenschaft ausserhalb der Liste wird gemeldet — Fehlalarm",
+    ).not.toContain("probe");
+  });
+
+  // ── JOB 3119: DIE NEUEN GRENZEN, benannt statt verschwiegen ───────────────────────────────────
+
+  it("JOB 3119 · DIE GRENZE: ein NAMENSRAUM aus einem Paket wird NICHT verfolgt", () => {
+    // Dieselbe Grenze wie beim benannten Paketimport oben, nur in der neuen Form: `loeseModul`
+    // folgt ausschliesslich relativen Pfaden, und daran ändert der Namensraum-Zweig nichts.
+    // `OF-2060-2` liegt beim Chef und ist hier NICHT entschieden.
+    //
+    // WIRD ER ROT, ist die Auflösung erweitert oder die Entscheidung gefallen — dann gehört dieser
+    // Fall ERSETZT, nicht angepasst.
+    expect(
+      eingespeist("p.write(ziel, html);", 'import * as p from "ein-paket";\n'),
+      "ein Namensraum aus einem Paket wird inzwischen verfolgt — dann gehört dieser Fall ersetzt, " +
+        "nicht angepasst",
+    ).not.toContain("probe");
+  });
+
+  it("JOB 3119 · DIE GRENZE: eine Importkette jenseits der Tiefengrenze wird NICHT verfolgt", () => {
+    // Die Kette wird über höchstens `IMPORTKETTEN_TIEFE` Modulgrenzen verfolgt. Was dahinter liegt,
+    // bleibt unerhoben — kein Fund, kein Absturz, keine Endlosschleife.
+    //
+    // WIRD DER ZWEITE TEIL ROT, ist die Grenze angehoben — dann gehört dieser Fall ERSETZT, nicht
+    // angepasst: die Zahl in `IMPORTKETTEN_TIEFE` und der Fall müssen zusammen wandern.
+    const stufen = (anzahl: number): Readonly<Record<string, string>> => {
+      const deck: Record<string, string> = {};
+      for (let i = 1; i < anzahl; i += 1) {
+        deck[`./k${i}`] =
+          `import { k${i + 1} } from "./k${i + 1}";\nexport function k${i}(z) { k${i + 1}(z); }`;
+      }
+      deck[`./k${anzahl}`] = `export function k${anzahl}(z) { z.innerHTML = "<img>"; }`;
+      return deck;
+    };
+
+    // KALIBRIERUNG: genau an der Grenze (drei Modulgrenzen) wird noch verfolgt. Ohne diese Zeile
+    // wäre die darunter wertlos — „nicht verfolgt" könnte auch „gar keine Kette verfolgt" heissen.
+    expect(
+      eingespeist("k1(ziel);", 'import { k1 } from "./k1";\n', stufen(3)),
+      "eine Kette GENAU an der Tiefengrenze wird nicht mehr verfolgt — dann ist die Grenze " +
+        "enger als `IMPORTKETTEN_TIEFE` behauptet",
+    ).toContain("probe");
+
+    expect(
+      eingespeist("k1(ziel);", 'import { k1 } from "./k1";\n', stufen(4)),
+      "eine Kette JENSEITS der Tiefengrenze wird verfolgt — dann ist die Grenze angehoben und " +
+        "dieser Fall gehört ersetzt, nicht angepasst",
+    ).not.toContain("probe");
+  });
+
+  it("JOB 3119 R2 · der ZYKLISCHE Import hält die Erhebung an, ohne sie blind zu machen", () => {
+    // BEFUND VON BEN (Runde 1, Prüflücke 6): der Tiefengrenzen-Fall oben ist eine GERADE Kette und
+    // belegt den Zyklusschutz nicht. Hier laufen zwei Module wirklich im Ring. Zwei Aussagen, und
+    // die zweite ist die wichtigere: der Ring bricht ab (kein Absturz, keine Endlosschleife) UND er
+    // verschluckt nicht den Fund, der im Ring liegt. Ein Zyklusschutz, der alles verstummen lässt,
+    // wäre von einem blinden Sammler nicht zu unterscheiden.
+    const RING_DECK = {
+      "./ring1": 'import { ring2 } from "./ring2";\nexport function ring1(z) { ring2(z); }',
+      "./ring2": 'import { ring1 } from "./ring1";\nexport function ring2(z) { ring1(z); }',
+      "./sring1": 'import { sring2 } from "./sring2";\nexport function sring1(z) { sring2(z); }',
+      "./sring2":
+        'import { sring1 } from "./sring1";\nexport function sring2(z) { sring1(z); z.innerHTML = "<img>"; }',
+    };
+
+    expect(
+      eingespeist("ring1(ziel);", 'import { ring1 } from "./ring1";\n', RING_DECK),
+      "ein Ring aus zwei nur weiterreichenden Modulen wird als Schreibstelle gemeldet — der " +
+        "Zyklusschutz erfindet einen Fund",
+    ).not.toContain("probe");
+
+    expect(
+      eingespeist("sring1(ziel);", 'import { sring1 } from "./sring1";\n', RING_DECK),
+      "der Ring verschluckt die Schreibstelle, die IN ihm liegt — der Zyklusschutz bricht zu früh " +
+        "ab und macht die Erhebung blind",
+    ).toContain("probe");
   });
 
   it("die generische Hilfsfunktion wird nur von erhobenen, disponierten Stellen gerufen", () => {
