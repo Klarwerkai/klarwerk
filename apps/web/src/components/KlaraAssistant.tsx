@@ -352,7 +352,7 @@ export function KlaraAssistant(): JSX.Element {
         <section
           data-klara="1"
           aria-label={t("klara.title")}
-          className="fixed bottom-20 right-5 z-40 flex max-h-[68vh] w-[340px] flex-col overflow-hidden rounded-card border border-hairline bg-surface shadow-popover"
+          className="fixed bottom-20 right-5 z-40 flex max-h-[68vh] w-[min(340px,calc(100vw-2.5rem))] flex-col overflow-hidden rounded-card border border-hairline bg-surface shadow-popover"
         >
           <div className="flex items-center justify-between border-b border-hairline px-4 py-3">
             <div>

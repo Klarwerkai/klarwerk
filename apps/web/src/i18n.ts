@@ -688,6 +688,7 @@ const de = {
   "klara.path.import.body":
     "Nach dem Upload hilft Klara künftig beim Ordnen, Klären und Vorbereiten für die Prüfung.",
   "klara.path.import.cta": "Import mit Klara begleiten",
+  "klara.path.helpLink": "Klara hilft dir schon heute in der Web-App — hier geht es zur Hilfe.",
   "klara.path.m365.summary": "Was Klara in Microsoft 365 tun wird",
   "klara.path.m365.body":
     "Klara ist als bidirektionales Add-in für Microsoft 365 geplant. Sie soll Wissen dort aufnehmen, wo du ohnehin arbeitest, es strukturiert für Klarwerk vorbereiten und geprüftes Unternehmenswissen aus Klarwerk direkt in Microsoft 365 bereitstellen — prüfen und entscheiden bleibt bei dir. Verfügbar ist das noch nicht.",
@@ -5984,6 +5985,7 @@ const en: typeof de = {
   "klara.path.import.body":
     "After upload, Klara will help organise, clarify and prepare it for review.",
   "klara.path.import.cta": "Import with Klara",
+  "klara.path.helpLink": "Klara already helps you in the web app — open the help page here.",
   "klara.path.m365.summary": "What Klara will do in Microsoft 365",
   "klara.path.m365.body":
     "Klara is planned as a bidirectional add-in for Microsoft 365. She will pick up knowledge where you already work, prepare it in a structured way for Klarwerk and make reviewed company knowledge from Klarwerk available directly in Microsoft 365 — reviewing and deciding stays with you. This is not available yet.",
@@ -10578,6 +10580,7 @@ const nl: typeof de = {
   "klara.path.import.body":
     "Na het uploaden helpt Klara straks met ordenen, verduidelijken en voorbereiden op beoordeling.",
   "klara.path.import.cta": "Import met Klara begeleiden",
+  "klara.path.helpLink": "Klara helpt je nu al in de webapp — ga hier naar de hulppagina.",
   "klara.path.m365.summary": "Wat Klara in Microsoft 365 gaat doen",
   "klara.path.m365.body":
     "Klara is gepland als bidirectionele add-in voor Microsoft 365. Zij neemt kennis op waar je toch al werkt, bereidt die gestructureerd voor Klarwerk voor en stelt gecontroleerde bedrijfskennis uit Klarwerk rechtstreeks in Microsoft 365 beschikbaar — controleren en beslissen blijft bij jou. Beschikbaar is dit nog niet.",

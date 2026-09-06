@@ -118,6 +118,10 @@ const ACHSEN: Achse[] = [
 // aufgenommen; nachgefuehrt wurde genau dieser eine Eintrag.
 // ------------------------------------------------------------------------------------------------
 const INVENTAR: readonly string[] = [
+  // JOB 3144 UX-16: Webhilfe-Geometrie und erreichbarer Weg aus der Word-Vorschau.
+  // K2 meldete beide neuen Dateien; Namensachse (beide), Komponente (gemounteter Test).
+  "tests/klara-webhilfe-schmal/klara-hilfe-chromium.test.ts",
+  "tests/klara-webhilfe-schmal/word-weg-naechster-schritt.test.tsx",
   "apps/web/src/components/KlaraPathTeaser.test.tsx",
   "services/app/src/klara-answer-explanation.test.ts",
   "services/app/src/routes/addin-static-routes.test.ts",
@@ -780,7 +784,9 @@ describe("JOB 920 · K — das Klara-Regressionsinventar ist ableitbar, nicht be
     // nicht einer Wahl. GEMESSEN, NICHT GESETZT: mit dem neuen Inventareintrag und noch
     // unveraendertem Zaehler meldete der Lauf `expected 39 to be 38`; erst danach wurde diese
     // Zeile angefasst.
-    expect(nurName.length).toBe(39);
+    // JOB 3144: beide neuen Pfade tragen „klara“; vor Nachführung gemessen:
+    // `expected 41 to be 39`. Deshalb 39 -> 41, keine abgeschwächte Mengenzusicherung.
+    expect(nurName.length).toBe(41);
     expect(verfehlt.length).toBeGreaterThanOrEqual(25);
     expect(verfehlt.length + nurName.length).toBe(GEFUNDEN.length);
   });

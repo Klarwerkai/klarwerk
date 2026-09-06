@@ -1,5 +1,6 @@
 import { Sparkles } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { Link } from "react-router-dom";
 
 type KlaraPathSurface = "start" | "capture" | "import";
 
@@ -35,9 +36,9 @@ export function KlaraPathTeaser({ surface }: { surface: KlaraPathSurface }): JSX
           <p className="mt-0.5 max-w-2xl text-[12.5px] leading-relaxed text-muted">
             {t(`klara.path.${surface}.body`)}
           </p>
-          {/* BASIC-338: Erklaerdropdown als natives details/summary — der einzige interaktive
-              Teil des Teasers. Kein Link, kein Startknopf, keine CTA: die Vorschau bleibt
-              `Demnaechst`. Der Text ist flaechenunabhaengig, alle drei Einbindungen erben ihn. */}
+          {/* BASIC-338: natives details/summary für die Word-Vorschau. Pedis Zeile UX-16/N-0042
+              löst das Linkverbot ab: ein gemeinsamer Weg zur heutigen Webhilfe auf allen Flächen.
+              Weiter verboten: Klara-CTA und Verfügbarkeitsbehauptung für das Word-Add-in. */}
           <details className="mt-2">
             <summary className="w-fit cursor-pointer text-[12px] font-medium text-ai marker:text-ai/60">
               {t("klara.path.m365.summary")}
@@ -46,6 +47,12 @@ export function KlaraPathTeaser({ surface }: { surface: KlaraPathSurface }): JSX
               {t("klara.path.m365.body")}
             </p>
           </details>
+          <Link
+            to="/hilfe"
+            className="mt-2 block max-w-2xl text-[12.5px] font-semibold leading-relaxed text-brand-text underline underline-offset-2"
+          >
+            {t("klara.path.helpLink")}
+          </Link>
         </div>
       </div>
     </aside>
