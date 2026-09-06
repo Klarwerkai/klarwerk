@@ -3743,8 +3743,20 @@ describe("JOB 1181 · Klassenbindungen: aufgelöst oder gemeldet, kein dritter Z
     //
     // Sie sind die sichtbare Hälfte von UX-14: unter 760 px trägt EINE Fläche die Breite statt
     // zweier gequetschter Spalten (N-0043). Keine Bindung ist weggefallen.
+    //
+    // JOB 3135 (H6-D1): von 215 auf 216. GENAU EINE Bindung ist DAZUGEKOMMEN, von derselben Bauform
+    // wie die 215 daneben (EIN Zustand entscheidet zwischen zwei festen Klassenketten). Gemessen an
+    // diesem Arbeitsbaum, nicht gerechnet:
+    //
+    //     + components/einstellungen/Abfragehuelle.tsx:171
+    //           `cx(STAND_ZEILE, befund.nichtAktualisiert ? STAND_GESTOERT : STAND_RUHIG)`
+    //
+    // Sie ist die sichtbare Hälfte von H6-D1: die Standzeile einer Detailkarte trägt die Warnfarbe
+    // NUR, wenn die Auffrischung wirklich gestört ist — läuft sie bloß noch, steht dort ruhig
+    // „Stand von <Zeit>". Die drei Klassenketten selbst sind flache Konstanten und deshalb
+    // aufgelöst; offen bleibt allein die Entscheidung dazwischen. Keine Bindung ist weggefallen.
     expect(UNAUFGELOEST.length, "es gibt heute unauflösbare Bindungen — das ist der Befund").toBe(
-      215,
+      216,
     );
     for (const b of UNAUFGELOEST) {
       expect(b.datei, "Meldung ohne Datei").toMatch(/^apps\/web\/src\/.+\.tsx?$/);

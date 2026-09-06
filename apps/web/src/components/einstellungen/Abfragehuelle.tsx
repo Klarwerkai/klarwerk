@@ -12,15 +12,25 @@
 //   lädt ....................... „Wird geladen …"
 //   Fehler ohne Daten .......... „nicht abrufbar" + „Erneut versuchen" (ruft wirklich neu ab)
 //   offline ohne Daten ......... ehrliche Offline-Auskunft + „Erneut versuchen"
-//   Daten + gestörte Auffrischung  Daten BLEIBEN sichtbar, darüber der Stale-Hinweis mit Wiederholen
+//   Daten + laufende Auffrischung  Daten BLEIBEN sichtbar, darüber „Stand von <Zeit>"
+//   Daten + gestörte Auffrischung  Daten BLEIBEN sichtbar, darüber „Stand von <Zeit> ·
+//                                  nicht aktualisiert" mit Wiederholen
 //   Daten ...................... der Inhalt
 //
 // Der Offline-Zustand wird reaktiv aus dem `onlineManager` gelesen (LEHREN 3037 R5, 3044 R2), nicht
 // allein aus `fetchStatus === "paused"`.
+//
+// JOB 3135 H6-D1 — DER STAND STEHT JETZT DABEI, IM WORTLAUT DER ÜBERSICHT.
+// Bis hierher rendert die Hülle bei gestörter Auffrischung den `StaleMarker` („Veraltet –
+// Aktualisierung fehlgeschlagen") OHNE Zeitangabe. Die Zeile eine Ebene höher sagt für denselben
+// Zustand „Stand von 07:24 · nicht aktualisiert" (`Zeilenkarte.tsx:34-47`, live gesehen in
+// R-1563 :56). Derselbe Zustand hatte damit zwei Wortlaute, und der jüngere davon verschwieg, WIE
+// alt der Bestand ist. Die Hülle setzt den Zusatz deshalb aus denselben zwei Schlüsseln zusammen
+// wie die Übersicht (`einst.wert.stand` · `einst.wert.nichtAktualisiert`).
 import { AlertTriangle, RefreshCw } from "lucide-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { StaleMarker } from "../LoadState";
+import { cx } from "../ui";
 import { abfragelage, useIstOnline, wertBefund } from "./zeilenWert";
 
 /** Die Minimalsicht auf eine react-query-Abfrage, die die Hülle braucht. */
@@ -84,6 +94,23 @@ export function Fehlerbox({
   );
 }
 
+// ================================================================================================
+// JOB 3135 H6-D1 · DIE STANDZEILE — EIN ZUSTAND, EIN WORTLAUT.
+// ================================================================================================
+// Vier flache Konstanten statt eines Objekts: der Klassenbindungs-Sammler
+// (`tests/app/mega47-modale-flaechen-sammler.test.tsx`) löst einen lokalen Bezeichner mit literalem
+// Wert auf, einen Eigenschaftszugriff `X.y` aber nicht (dieselbe Begründung wie in
+// `Zeilenkarte.tsx:100-105`).
+/** Der Träger der Zeile: bricht um, trägt Text und Wiederholen nebeneinander. */
+const STAND_ZEILE = "flex flex-wrap items-center gap-2 rounded-btn px-2.5 py-1.5 text-[11.5px]";
+/** Gestört (Fehler oder offline): die Warnfarbe, dieselbe wie am `StaleMarker`. */
+const STAND_GESTOERT = "bg-trust-warn-bg font-semibold text-trust-warn-text";
+/** Nur „Stand von …": die Auffrischung läuft noch — das ist keine Störung und trägt keine Warnfarbe. */
+const STAND_RUHIG = "text-muted-2";
+/** Der Wiederholen-Knopf in der Zeile (Fokus kommt aus der globalen `:focus-visible`-Regel). */
+const STAND_KNOPF =
+  "inline-flex items-center gap-1 rounded-btn px-2 py-0.5 hover:bg-trust-warn-text/10";
+
 export function Abfragehuelle<T>({
   abfrage,
   children,
@@ -113,9 +140,46 @@ export function Abfragehuelle<T>({
     );
   }
   // Daten sind da — sie bleiben SICHTBAR, auch wenn die Auffrischung scheitert oder ruht.
+  //
+  // Der Zusatz entsteht aus DENSELBEN zwei Schlüsseln und in DERSELBEN Reihenfolge wie in der
+  // Übersicht (`Zeilenkarte.tsx:34-47`), damit ein Zustand nicht zwei Wortlaute bekommt:
+  //   Auffrischung läuft ..... „Stand von 07:24"
+  //   Auffrischung gestört ... „Stand von 07:24 · nicht aktualisiert" + Wiederholen
+  // `standMs` ist bereits 0, solange nichts läuft und nichts gestört ist (`zeilenWert.ts:88`) —
+  // im Normalfall steht hier also gar nichts.
+  const zusatz: string[] = [];
+  if (befund.standMs > 0) {
+    zusatz.push(
+      t("einst.wert.stand", {
+        zeit: new Date(befund.standMs).toLocaleTimeString(undefined, {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+      }),
+    );
+  }
+  if (befund.nichtAktualisiert) {
+    zusatz.push(t("einst.wert.nichtAktualisiert"));
+  }
   return (
     <div data-testid={testId} className="space-y-4">
-      {befund.nichtAktualisiert ? <StaleMarker onRetry={erneut} /> : null}
+      {zusatz.length > 0 ? (
+        // <output> trägt implizit role="status" (biome useSemanticElements) — dieselbe Wahl wie am
+        // `StaleMarker`: eine Statusregion, keine Alarmregion (JOB 2064 A18).
+        <output
+          data-einst="stand"
+          className={cx(STAND_ZEILE, befund.nichtAktualisiert ? STAND_GESTOERT : STAND_RUHIG)}
+        >
+          {befund.nichtAktualisiert ? <AlertTriangle size={13} className="shrink-0" /> : null}
+          <span className="flex-1">{zusatz.join(" · ")}</span>
+          {befund.nichtAktualisiert ? (
+            <button type="button" onClick={erneut} className={STAND_KNOPF}>
+              <RefreshCw size={12} />
+              {t("loadstate.error.retry")}
+            </button>
+          ) : null}
+        </output>
+      ) : null}
       {children(abfrage.data as T)}
     </div>
   );

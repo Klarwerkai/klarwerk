@@ -88,115 +88,135 @@ export function NutzerDetail({
     );
   }
 
+  // JOB 3135 H6-D1 R1: HIER STAND DER EINZIGE ABFRAGEGESTÜTZTE ZWEIG DIESER DATEI OHNE HÜLLE.
+  //
+  // Codex hat es live gemessen (R-1563, 06.09. 07:27, Live 1.0.0-beta.1.124): eigenes Kontodetail
+  // öffnen, Browser offline schalten — `navigator.onLine=false`, aber Rolle, E-Mail und alle
+  // Verwaltungsknöpfe standen unverändert da, „ohne Offline-/Stand-/nicht-aktualisiert-Hinweis",
+  // während die Kontenübersicht eine Ebene höher denselben Zustand ausdrücklich als veraltet
+  // markierte. Die Rolle ist eine Tatsachenaussage; ohne frische Grundlage darf sie nicht
+  // unmarkiert dastehen (REGELN §7).
+  //
+  // Die Hülle liegt INNEN, die Karte bleibt außen: der Kartentitel ist die Überschrift dieser
+  // Karte und muss den Rückweg tragen, auch wenn die Auffrischung ruht. Alles andere — E-Mail,
+  // Rolle, Freigeben, Passwort, Löschen — liegt jetzt in der Hülle und trägt deren Auskunft.
   return (
     <Detailkarte titel={nutzer.name} onZurueck={onZurueck} testId="detail-nutzer">
-      <div className="font-mono text-[12px] text-muted-2">{nutzer.email}</div>
+      <Abfragehuelle abfrage={users} testId="huelle-nutzer">
+        {() => (
+          <>
+            <div className="font-mono text-[12px] text-muted-2">{nutzer.email}</div>
 
-      {nutzer.approved ? (
-        <Field label={t("adm.role")}>
-          <select
-            value={nutzer.role}
-            onChange={(e) => setRole.mutate({ id: nutzer.id, role: e.target.value as Role })}
-            className="h-9 rounded-input border border-hairline bg-surface px-2 text-[13px]"
-          >
-            {ROLES.map((r) => (
-              <option key={r} value={r}>
-                {t(`role.name.${r}`)}
-              </option>
-            ))}
-          </select>
-        </Field>
-      ) : (
-        <button
-          type="button"
-          onClick={() => approve.mutate(nutzer.id)}
-          className="rounded-btn bg-trust-pos-bg px-3 py-1.5 text-[12.5px] font-semibold text-trust-pos-text hover:opacity-80"
-        >
-          {t("adm.approve")}
-        </button>
-      )}
+            {nutzer.approved ? (
+              <Field label={t("adm.role")}>
+                <select
+                  value={nutzer.role}
+                  onChange={(e) => setRole.mutate({ id: nutzer.id, role: e.target.value as Role })}
+                  className="h-9 rounded-input border border-hairline bg-surface px-2 text-[13px]"
+                >
+                  {ROLES.map((r) => (
+                    <option key={r} value={r}>
+                      {t(`role.name.${r}`)}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            ) : (
+              <button
+                type="button"
+                onClick={() => approve.mutate(nutzer.id)}
+                className="rounded-btn bg-trust-pos-bg px-3 py-1.5 text-[12.5px] font-semibold text-trust-pos-text hover:opacity-80"
+              >
+                {t("adm.approve")}
+              </button>
+            )}
 
-      <div className="flex flex-wrap items-center gap-2 border-t border-hairline pt-4">
-        <Button
-          variant="ghost"
-          onClick={() => {
-            setResetOffen((v) => !v);
-            setResetPw("");
-            setResetPw2("");
-          }}
-        >
-          <KeyRound size={15} />
-          {t("adm.reset")}
-        </Button>
-        {confirmRemove ? (
-          <span className="inline-flex flex-wrap items-center gap-2 rounded-card border border-hairline bg-page px-2.5 py-1.5">
-            <span className="text-[12px] font-semibold text-text">{t("adm.removeQ")}</span>
-            <Button variant="ghost" onClick={() => setConfirmRemove(false)}>
-              {t("adm.removeKeep")}
-            </Button>
-            <Button
-              variant="danger"
-              disabled={remove.isPending}
-              onClick={() => remove.mutate(nutzer.id)}
-            >
-              {t("adm.removeYes")}
-            </Button>
-          </span>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setConfirmRemove(true)}
-            className="rounded-btn px-3 py-2 text-[12.5px] font-semibold text-muted hover:bg-trust-crit-bg hover:text-trust-crit-text"
-          >
-            {t("adm.remove")}
-          </button>
+            <div className="flex flex-wrap items-center gap-2 border-t border-hairline pt-4">
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setResetOffen((v) => !v);
+                  setResetPw("");
+                  setResetPw2("");
+                }}
+              >
+                <KeyRound size={15} />
+                {t("adm.reset")}
+              </Button>
+              {confirmRemove ? (
+                <span className="inline-flex flex-wrap items-center gap-2 rounded-card border border-hairline bg-page px-2.5 py-1.5">
+                  <span className="text-[12px] font-semibold text-text">{t("adm.removeQ")}</span>
+                  <Button variant="ghost" onClick={() => setConfirmRemove(false)}>
+                    {t("adm.removeKeep")}
+                  </Button>
+                  <Button
+                    variant="danger"
+                    disabled={remove.isPending}
+                    onClick={() => remove.mutate(nutzer.id)}
+                  >
+                    {t("adm.removeYes")}
+                  </Button>
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setConfirmRemove(true)}
+                  className="rounded-btn px-3 py-2 text-[12.5px] font-semibold text-muted hover:bg-trust-crit-bg hover:text-trust-crit-text"
+                >
+                  {t("adm.remove")}
+                </button>
+              )}
+            </div>
+
+            {resetOffen ? (
+              <div className="rounded-input bg-page p-2">
+                {/* SCRUM-455: Passwort + Wiederholung — ein Vertipper würde den Nutzer aussperren. */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <TextInput
+                    type="password"
+                    minLength={8}
+                    placeholder={t("adm.newPassword")}
+                    value={resetPw}
+                    onChange={(e) => setResetPw(e.target.value)}
+                    className="h-9 flex-1"
+                  />
+                  <TextInput
+                    type="password"
+                    minLength={8}
+                    placeholder={t("adm.newPasswordRepeat")}
+                    value={resetPw2}
+                    onChange={(e) => setResetPw2(e.target.value)}
+                    className="h-9 flex-1"
+                  />
+                  <Button
+                    variant="primary"
+                    disabled={reset.isPending || !isPasswordResetValid(resetPw, resetPw2)}
+                    onClick={() => reset.mutate({ id: nutzer.id, password: resetPw })}
+                  >
+                    {t("adm.resetConfirm")}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    onClick={() => {
+                      setResetOffen(false);
+                      setResetPw("");
+                      setResetPw2("");
+                    }}
+                  >
+                    {t("adm.resetCancel")}
+                  </Button>
+                </div>
+                {/* Ehrlicher Grund erst, wenn im Wiederholfeld etwas steht (kein Fehler beim Tippen). */}
+                {passwordRepeatMismatch(resetPw, resetPw2) ? (
+                  <p className="mt-1.5 text-[12px] text-trust-crit-text">
+                    {t("adm.passwordMismatch")}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+          </>
         )}
-      </div>
-
-      {resetOffen ? (
-        <div className="rounded-input bg-page p-2">
-          {/* SCRUM-455: Passwort + Wiederholung — ein Vertipper würde den Nutzer aussperren. */}
-          <div className="flex flex-wrap items-center gap-2">
-            <TextInput
-              type="password"
-              minLength={8}
-              placeholder={t("adm.newPassword")}
-              value={resetPw}
-              onChange={(e) => setResetPw(e.target.value)}
-              className="h-9 flex-1"
-            />
-            <TextInput
-              type="password"
-              minLength={8}
-              placeholder={t("adm.newPasswordRepeat")}
-              value={resetPw2}
-              onChange={(e) => setResetPw2(e.target.value)}
-              className="h-9 flex-1"
-            />
-            <Button
-              variant="primary"
-              disabled={reset.isPending || !isPasswordResetValid(resetPw, resetPw2)}
-              onClick={() => reset.mutate({ id: nutzer.id, password: resetPw })}
-            >
-              {t("adm.resetConfirm")}
-            </Button>
-            <Button
-              variant="ghost"
-              onClick={() => {
-                setResetOffen(false);
-                setResetPw("");
-                setResetPw2("");
-              }}
-            >
-              {t("adm.resetCancel")}
-            </Button>
-          </div>
-          {/* Ehrlicher Grund erst, wenn im Wiederholfeld etwas steht (kein Fehler beim Tippen). */}
-          {passwordRepeatMismatch(resetPw, resetPw2) ? (
-            <p className="mt-1.5 text-[12px] text-trust-crit-text">{t("adm.passwordMismatch")}</p>
-          ) : null}
-        </div>
-      ) : null}
+      </Abfragehuelle>
     </Detailkarte>
   );
 }
