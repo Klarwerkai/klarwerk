@@ -208,6 +208,9 @@ import { importRunRoutes } from "./routes/import-run-routes";
 import { klaraAiRoutes } from "./routes/klara-ai-routes";
 // W3-C (JOB 541 D3): die kanonische Antwort-Erklaerroute und ihr Lesedienst.
 import { klaraAnswerExplanationRoutes } from "./routes/klara-answer-explanation-routes";
+// JOB 3110 (M2b): der Memo-Weg des Word-Panels. Die Route ist seit JOB 3091 gebaut und gemessen;
+// hier — und nur hier — bekommt sie ihren Aufrufer.
+import { type ZurufModell, klaraZurufRoutes } from "./routes/klara-session-routes";
 import { knowledgeCheckRoutes } from "./routes/knowledge-check-routes";
 import { koRoutes } from "./routes/ko-routes";
 import { libraryRoutes } from "./routes/library-routes";
@@ -246,6 +249,16 @@ export interface AppServices {
   // `AppRepos`, weil es wie `searchProjections` ein abgeleiteter Betriebsdatenraum ist — die
   // Dev-Persistenz journaliert ihn bewusst nicht; nach einem Replay ist er schlicht leer.
   klaraSessions: KlaraSessionRepo;
+  /**
+   * JOB 3110 (M2b): DER FORMULIERER DES ZURUFS — dasselbe gecappte Cloud-Modell wie der Reasoner.
+   *
+   * Es steht hier und nicht als zweiter Fabrikaufruf in der Registrierung, weil es genau EINEN Ort
+   * geben muss, an dem für die Cloud `rejectsConfidential: true` gesetzt wird (s. den Kommentar an
+   * `createCappedCloudClientFromEnv` unten): zwei Fabriken wären zwei Egress-Regeln, und die zweite
+   * ist die, die eines Tages vergessen wird. `undefined`, wenn kein Cloud-Schlüssel verdrahtet ist
+   * — dann antwortet der Memo-Weg ehrlich 503 `NO_FORMULIERER` statt mit erfundenem Text.
+   */
+  zurufModell: ZurufModell | undefined;
   audit: AuditService;
   capture: CaptureService;
   ask: AskService;
@@ -532,6 +545,10 @@ export function assembleServices(
     audit,
     reasoner,
     klaraSessions: opts.klaraSessions ?? new InMemoryKlaraSessionRepo(),
+    // JOB 3110 (M2b): DER VORHANDENE gecappte Cloud-Client, weitergereicht — kein zweiter Aufruf
+    // der Fabrik. `ModelClient.complete` erfüllt `ZurufModell` (dieselben vier Parameter); der
+    // Egress-Wächter `rejectsConfidential: true` reist mit, weil es derselbe Client ist.
+    zurufModell: cappedCloud,
     importRuns: repos.importRuns,
     externalSources: repos.externalSources,
     ko,
@@ -1616,6 +1633,21 @@ export function buildApp(
     },
   });
   app.register(klaraAiRoutes({ sessions: klaraSessions }, guards));
+  // JOB 3110 (M2b) — DER MEMO-WEG AUS DEM WORD-PANEL, an DERSELBEN Sitzungsinstanz.
+  //
+  // Bis hierher war die Route (`klara-session-routes.ts:198`) gebaut, gemessen und ausgeliefert,
+  // aber nirgends registriert: der Server antwortete 404, und das Panel sagte genau das. Sie
+  // bekommt DIESELBE `klaraSessions`-Instanz wie `klaraAiRoutes` — eine zweite wäre eine zweite
+  // Wahrheit über denselben Sitzungsbestand, und eine über `POST …/consent` erteilte Zustimmung
+  // wäre auf dem Memo-Weg unsichtbar — und DASSELBE `guards`-Bündel (`ko.read`, wie alle
+  // Klara-Endpunkte): keine neue Sichtbarkeit. Das Modell kommt aus der Komposition
+  // (`services.zurufModell`); fehlt es, antwortet die Route ehrlich 503 `NO_FORMULIERER`.
+  app.register(
+    klaraZurufRoutes(
+      { sessions: klaraSessions, ko: services.ko, modell: services.zurufModell },
+      guards,
+    ),
+  );
 
   // HTTP-Oberfläche der Module. Auth bringt seine eigenen Routen mit; die übrigen
   // Module werden über App-Routen verdrahtet, die den gemeinsamen Guard nutzen.

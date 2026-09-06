@@ -784,18 +784,11 @@ const BEWUSST: readonly Ausnahme[] = [
       "hiermit auf sein Ende, statt zu schlafen. Ein Produktaufrufer waere der alte Fehler: " +
       "eine Route, die auf den Lauf wartet, bevor sie antwortet.",
   },
-  {
-    schluessel: "services/app/src/routes/klara-session-routes.ts::klaraZurufRoutes",
-    grund:
-      "JOB 3091 R2 (06.09.2026), VORLAEUFIG UND SELBSTAUSLAUFEND: die Route `POST /api/klara/" +
-      "sessions/{id}/zuruf` ist gebaut und gemessen (tests/ka6-memo-panel), ihre Registrierung " +
-      "gehoert in `build-app.ts` neben `klaraAiRoutes` — und diese Datei liegt AUSSERHALB der " +
-      "Zielpfade von JOB 3091 (RUECKGABE, ABWEICHUNGEN, Patch woertlich). Ohne diesen Eintrag " +
-      "schickt der Waechterlauf die Runde mechanisch zurueck, bevor ein Pruefer die Luecke sieht. " +
-      "Der Eintrag ist KEIN Freibrief: sobald build-app.ts die Route registriert, hat sie einen " +
-      "Aufrufer, und A3 verlangt die Streichung dieser Zeile. Bis dahin antwortet der Server dem " +
-      "Panel 404, und das Panel sagt genau das (`ka6MemoServerKenntWegNicht`), statt etwas zu tun.",
-  },
+  // JOB 3110 (06.09.2026): Der Eintrag fuer `klara-session-routes.ts::klaraZurufRoutes` ist
+  // GESTRICHEN und nicht umformuliert — er war ausdruecklich selbstauslaufend („sobald build-app.ts
+  // die Route registriert, hat sie einen Aufrufer, und A3 verlangt die Streichung dieser Zeile").
+  // `build-app.ts` registriert sie seit M2b; der Aufrufer ist echt, die Ausnahme hat keinen Traeger
+  // mehr. Waere sie geblieben, haette A3 sie als „nicht mehr zutreffend" gemeldet.
 ];
 
 // ------------------------------------------------------------------------------------------------
