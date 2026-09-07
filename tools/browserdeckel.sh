@@ -5,6 +5,11 @@
 # dem Rest-Aufruf frei; smoke:ui:frisch endet vor dem Playwright-Aufruf (keine Verschachtelung).
 # Der übergebene Befehl darf folglich keinen äußeren Ring und keinen weiteren Deckel nehmen.
 # CI/tools/check/direkte npm-Smokes durchlaufen dieselben inneren Aufrufe ohne äußere Ringe.
+# Ohne gültige PID-Datei läuft ab erster Beobachtung KLARWERK_BROWSERDECKEL_GNADE (Vorgabe 15s),
+# danach versucht rmdir das leere Schloss zu lösen; eine erkannte lebende PID setzt die Frist zurück
+# und wird nie entfernt (F12/F13); einen Halter ohne PID-Datei kann niemand als lebend erkennen.
+# Fehlendes Signalrecht/EPERM ist kein Todesbeleg: nur ESRCH räumt, sonst bleibt die Zeitgrenze.
+# Basisstand: der unmittelbare Elterncommit des Prüfstands (wird beim Einbau gesetzt)
 set -euo pipefail
 art="${1:-}"
 case "$art" in browser|smoke) shift ;; *) echo '✖ Browserdeckel: browser|smoke BEFEHL [ARG…] erwartet' >&2; exit 2 ;; esac
@@ -15,6 +20,13 @@ if [ "$#" = 0 ]; then echo '✖ Browserdeckel: Befehl fehlt' >&2; exit 2; fi
 lock="${KLARWERK_BROWSERDECKEL_LOCK:-/tmp/klarwerk-browserdeckel.lock}"
 timeout="${KLARWERK_BROWSERDECKEL_TIMEOUT:-2700}"
 case "$timeout" in ''|*[!0-9]*) echo '✖ Browserdeckel: Zeitgrenze muss ganze Sekunden enthalten' >&2; exit 2 ;; esac
+# JOB 3199, diese Maschine: fünf Läufe Node-Start + printf (einschließlich Bash-Start) unter
+# drei zusätzlichen CPU-Workern: 29.395416, 28.689875, 31.309625, 29.423292, 28.291500 ms.
+# Höchstwert 31.309625 ms; 15s lassen 14968.690375 ms Abstand. Kein Spitzenlastversprechen.
+gnade="${KLARWERK_BROWSERDECKEL_GNADE:-15}"
+case "$gnade" in ''|*[!0-9]*) echo '✖ Browserdeckel: Gnadenfrist muss ganze Sekunden enthalten' >&2; exit 2 ;; esac
+# Dezimal lesen, auch bei führender Null; keine Bash-Oktalinterpretation von 08/09.
+gnade=$((10#$gnade))
 an=1
 if [ "${KLARWERK_BROWSERDECKEL:-1}" = 0 ]; then
   an=0
@@ -46,6 +58,23 @@ schreibe() {
   node - "$journal" "$protokoll" "$1" "${2:-$kennung}" "${3:-$$}" "${4:-$art}" "$angefragt" "$an" "$gewartet" <<'NODE'
 const fs = require('node:fs');
 const [journal, lokal, ereignis, id, pid, art, angefragt, an, gewartet] = process.argv.slice(2);
+// Nur ein offenes, geschütztes Nehmen darf durch verwaist geschlossen werden. Der Gewinner
+// von rm schreibt; geschlossene/unbekannte Kennungen ergeben nur eine Warnung, keine Historie.
+if (ereignis === 'verwaist') {
+  let offen = false;
+  const bisher = fs.existsSync(journal) ? fs.readFileSync(journal, 'utf8') : '';
+  for (const zeile of bisher.trim().split('\n').filter(Boolean)) {
+    const z = JSON.parse(zeile);
+    if (z.id !== id || z.deckel === false) continue;
+    if (z.ereignis === 'nehmen') offen = true;
+    else if (z.ereignis === 'freigeben' || z.ereignis === 'verwaist') offen = false;
+    else throw new Error('Unbekanntes Browserdeckel-Ereignis');
+  }
+  if (!offen) {
+    console.error(`⚠ Browserdeckel: Kennung ${id} nicht offen — kein verwaist-Eintrag`);
+    process.exit(0);
+  }
+}
 const zeit = Date.now();
 const e = { ereignis, id, pid: Number(pid), art, zeit, angefragt: Number(angefragt),
   gewartetMs: ereignis === 'nehmen' && gewartet === '1' ? zeit - Number(angefragt) : 0, deckel: an === '1' };
@@ -107,23 +136,67 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 if [ "$an" = 1 ]; then
+  ohne_pid_seit=-1
+  letzte_pruefwarnung=''
   while ! mkdir "$lock" 2>/dev/null; do
     gewartet=1
+    gueltige_pid=0; raeumen=0; pid_frist_abgelaufen=0
     halter='unbekannt (PID-Datei fehlt)'; seit='unbekannt'
     for datei in "$lock"/pid-*; do
       [ -f "$datei" ] || continue
       if ! read -r halter seit halterart halterid < "$datei"; then continue; fi
       case "$halter" in ''|*[!0-9]*|0) continue ;; esac
-      if ! kill -0 "$halter" 2>/dev/null; then
+      gueltige_pid=1
+      ohne_pid_seit=-1
+      # Bash liefert bei kill keinen errno als Exitcode. In C-Locale ist nur die eindeutige
+      # ESRCH-Diagnose ein Todesbeleg; EPERM und jede unbekannte Diagnose erhalten das Schloss.
+      # F15–F17 speisen eine Bash-Funktion ein, keinen wirkungslosen PATH-Wrapper.
+      halter_tot=0
+      if lebendfehler=$(LC_ALL=C kill -0 "$halter" 2>&1); then
+        letzte_pruefwarnung=''
+      else
+        case "$lebendfehler" in
+          *'No such process') halter_tot=1 ;;
+          *)
+            grund='unbekannt'
+            case "$lebendfehler" in *'Operation not permitted') grund=EPERM ;; esac
+            if [ "$letzte_pruefwarnung" != "$halter:$lebendfehler" ]; then
+              echo "⚠ Browserdeckel: PID $halter lebt oder unzugänglich ($grund) — warte: $lebendfehler" >&2
+              letzte_pruefwarnung="$halter:$lebendfehler"
+            fi ;;
+        esac
+      fi
+      if [ "$halter_tot" = 1 ]; then
         # Kein rm -rf: von konkurrierenden Aufräumern darf nur der Gewinner die alte PID-Datei
         # entfernen und rmdir versuchen. Sonst könnte der Verlierer einen NEUEN Halter löschen.
         if rm "$datei" 2>/dev/null; then
           echo "ⓘ Browserdeckel verwaist: PID $halter seit $seit (Unix-ms) — aufgeräumt"
-          if [ -n "${halterid:-}" ]; then schreibe verwaist "$halterid" "$halter" "$halterart"; fi
-          rmdir "$lock" 2>/dev/null || true
+          if [ -n "${halterid:-}" ]; then
+            schreibe verwaist "$halterid" "$halter" "$halterart"
+          else
+            echo "⚠ Browserdeckel: PID $halter ohne Kennung — kein verwaist-Eintrag" >&2
+          fi
+          raeumen=1
         fi
       fi
     done
+    if [ "$gueltige_pid" = 0 ] && [ -d "$lock" ]; then
+      halter='unbekannt (PID-Datei fehlt)'; seit='unbekannt'
+      if (( ohne_pid_seit < 0 )); then ohne_pid_seit=$SECONDS; fi
+    fi
+    if (( ohne_pid_seit >= 0 && SECONDS - ohne_pid_seit >= gnade )); then
+      raeumen=1; pid_frist_abgelaufen=1
+    fi
+    # Derselbe rmdir für tote PIDs und abgelaufene PID-Fristen. Eine inzwischen geschriebene
+    # PID-Datei verhindert das Entfernen atomar; weiter warten, niemals rekursiv löschen.
+    if [ "$raeumen" = 1 ] && rmdir "$lock" 2>/dev/null; then
+      if [ "$pid_frist_abgelaufen" = 1 ]; then
+        echo "ⓘ Browserdeckel: PID-Datei nie geschrieben — Frist ${gnade}s abgelaufen, leeres Schloss aufgeräumt"
+        # Keine bekannte Halterkennung, also KEIN verwaist-Ereignis: die Journalleser können
+        # ohne id kein Fenster schließen. Es beginnt erst beim folgenden nehmen ein Fenster.
+      fi
+      ohne_pid_seit=-1
+    fi
     if (( SECONDS >= timeout )); then
       echo "✖ Browserdeckel Zeitgrenze ${timeout}s: PID $halter hält seit $seit (Unix-ms); Abbruch" >&2
       exit 1

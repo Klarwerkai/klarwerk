@@ -171,13 +171,15 @@ describe("JOB 3131 T2 · die Browser-Gruppe ist genau die Menge mit Chromium in 
     // Seine direkte Playwright-Importstelle gehört in die serielle Browser-Gruppe;
     // B1/B3 prüfen die tatsächliche Einordnung, der zusätzliche Namenspin hält den Beleg fest.
     const graph = holeBefund();
-    expect(graph.startdateien.length).toBe(19);
+    // JOB 3199: ein zusätzlicher Start für zwei CDP-Prozessstichproben, seriell, unter 60s.
+    expect(graph.startdateien.length).toBe(20);
     for (const bekannt of [
       "tests/design/h4-harness.ts",
       "tests/design/h6-chromium.ts",
       "tests/design/h1-chromium.ts",
       "tests/profil-schmal/schmal-buehne.ts",
       "tests/m6-import-erklaerweg/klara-importwege-browser.test.tsx",
+      "tests/tor-inventar/chromium-prozesszahl.test.ts",
     ]) {
       expect(graph.startdateien, `${bekannt} startet Chromium und fehlt im Graphen`).toContain(
         bekannt,

@@ -1,5 +1,6 @@
 // JOB 3150: echte Unterprozesse, aber markierte Lastsonden statt Chromium/Servern.
 // V0 misst die heutige Verdrahtung vor dem Bau; F6 kalibriert dieselben Fenster ohne Deckel.
+// Basisstand: der unmittelbare Elterncommit des Prüfstands (wird beim Einbau gesetzt)
 import { spawn } from "node:child_process";
 import {
   copyFileSync,
@@ -56,29 +57,43 @@ setTimeout(() => {
     ...process.env,
     PATH: `${join(ort, "node_modules/.bin")}:${process.env.PATH ?? ""}`,
     SONDE: sonde,
+    ECHTER_NODE: process.execPath,
     SONDENPFAD: ort,
     KLARWERK_BROWSERDECKEL_LOCK: join(ort, "deckel.lock"),
     KLARWERK_BROWSERDECKEL_TIMEOUT: "10",
   };
   delete env.KLARWERK_TESTGRUPPE;
   delete env.KLARWERK_BROWSERDECKEL;
+  delete env.KLARWERK_BROWSERDECKEL_GNADE;
   return { ort, env };
 }
 
 function starte(ort: string, env: NodeJS.ProcessEnv, befehl: string, args: string[] = []) {
   const kind = spawn(befehl, args, { cwd: ort, env, stdio: ["ignore", "pipe", "pipe"] });
   let ausgabe = "";
+  let stderr = "";
   kind.stdout.on("data", (data) => {
     ausgabe += data;
   });
   kind.stderr.on("data", (data) => {
     ausgabe += data;
+    stderr += data;
   });
-  const fertig = new Promise<{ code: number | null; ausgabe: string }>((resolve) => {
-    kind.on("error", (error) => resolve({ code: -1, ausgabe: String(error) }));
-    kind.on("close", (code) => resolve({ code, ausgabe }));
-  });
-  return { kind, fertig };
+  const fertig = new Promise<{ code: number | null; ausgabe: string; stderr: string }>(
+    (resolve) => {
+      kind.on("error", (error) => resolve({ code: -1, ausgabe: String(error), stderr }));
+      kind.on("close", (code) => resolve({ code, ausgabe, stderr }));
+    },
+  );
+  return { kind, fertig, stderr: () => stderr };
+}
+
+async function warteBis(bedingung: () => boolean) {
+  const frist = Date.now() + 5000;
+  while (!bedingung() && Date.now() < frist) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  expect(bedingung(), "Synchronisationspunkt binnen 5s erreicht").toBe(true);
 }
 
 async function paar(verdrahtet: boolean, aus = false) {
@@ -223,6 +238,342 @@ describe("JOB 3150 · Browserdeckel", () => {
     expect(ergebnis.ausgabe).toContain("seit");
     expect(ergebnis.code).not.toBe(0);
     expect(existsSync(join(ort, "smoke.start"))).toBe(false);
+  });
+
+  it("F12 · ein Schloss ohne PID-Datei löst sich nach der Gnadenfrist auf", async () => {
+    const { ort, env } = werk();
+    mkdirSync(env.KLARWERK_BROWSERDECKEL_LOCK);
+    const start = Date.now();
+    const lauf = await starte(
+      ort,
+      { ...env, KLARWERK_BROWSERDECKEL_GNADE: "1", KLARWERK_BROWSERDECKEL_TIMEOUT: "4" },
+      "./tools/browserdeckel.sh",
+      ["smoke", "node", env.SONDE],
+    ).fertig;
+    const gestartet = existsSync(join(ort, "smoke.start"));
+    const wartezeit = gestartet
+      ? Number(readFileSync(join(ort, "smoke.start"), "utf8")) - start
+      : null;
+    console.log(
+      `F12 exit=${lauf.code} smoke.start=${gestartet} gewartetMs=${wartezeit}\n${lauf.ausgabe}`,
+    );
+    expect(lauf.code, lauf.ausgabe).toBe(0);
+    expect(lauf.ausgabe).toContain("ⓘ Browserdeckel");
+    expect(lauf.ausgabe).toContain("PID-Datei nie geschrieben");
+    expect(lauf.ausgabe).toContain("1s");
+    expect(existsSync(env.KLARWERK_BROWSERDECKEL_LOCK)).toBe(false);
+    expect(gestartet).toBe(true);
+    // Ohne Halterkennung gibt es kein erfundenes verwaist-Ereignis.
+    expect(fensterAusProtokoll(`${env.KLARWERK_BROWSERDECKEL_LOCK}.jsonl`)).toHaveLength(1);
+  });
+
+  it("F13 · ein langsamer lebender Halter überlebt auch den Wettlauf vor rmdir", async () => {
+    for (const phase of ["halbe-frist", "vor-rmdir"] as const) {
+      const { ort, env } = werk();
+      const lock = env.KLARWERK_BROWSERDECKEL_LOCK;
+      mkdirSync(lock);
+      const piddatei = join(lock, `pid-${process.pid}`);
+      const pidinhalt = `${process.pid} 1 browser langsamer-halter\n`;
+      const beobachtet = join(ort, "beobachtet");
+      const versuche = join(ort, "entfernversuche");
+      const hook = join(ort, "beobachter.bash");
+      // DEBUG hält nur den Testprozess an der echten Shell-Befehlsgrenze an. Kein Mock des
+      // Dateisystems: auch die Mutation rm -rf führt ihren echten Betriebssystemaufruf aus.
+      // Die erste Phase misst zusätzlich: eine erkannte PID beendet jeden Entfernversuch.
+      writeFileSync(
+        hook,
+        `
+trap 'case "$BASH_COMMAND" in
+  "halter="*) [ -f "$BEOBACHTET" ] || : > "$BEOBACHTET" ;;
+  "rmdir "*|"rm -rf "*)
+    printf "Versuch\\n" >> "$VERSUCHE"
+    if [ "$PHASE" = vor-rmdir ] && [ ! -f "$PIDZIEL" ]; then
+      printf "%s\\n" "$PIDINHALT" > "$PIDZIEL"
+    fi ;;
+esac' DEBUG
+`,
+      );
+      const lauf = starte(
+        ort,
+        {
+          ...env,
+          BASH_ENV: hook,
+          BEOBACHTET: beobachtet,
+          VERSUCHE: versuche,
+          PHASE: phase,
+          PIDZIEL: piddatei,
+          PIDINHALT: pidinhalt.trim(),
+          KLARWERK_BROWSERDECKEL_GNADE: "2",
+          KLARWERK_BROWSERDECKEL_TIMEOUT: "5",
+        },
+        "./tools/browserdeckel.sh",
+        ["smoke", "node", env.SONDE],
+      );
+      let ergebnis: Awaited<typeof lauf.fertig>;
+      try {
+        await warteBis(() => existsSync(beobachtet));
+        if (phase === "halbe-frist") {
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+          writeFileSync(piddatei, pidinhalt);
+        }
+        ergebnis = await lauf.fertig;
+      } finally {
+        lauf.kind.kill("SIGTERM");
+        await lauf.fertig;
+      }
+      console.log(`F13 ${phase} exit=${ergebnis.code}\n${ergebnis.ausgabe}`);
+      expect(ergebnis.code, phase).toBe(1);
+      expect(ergebnis.ausgabe, phase).toContain("Zeitgrenze");
+      expect(ergebnis.ausgabe, phase).toContain(`PID ${process.pid}`);
+      expect(ergebnis.ausgabe, phase).not.toContain("PID-Datei nie geschrieben");
+      expect(existsSync(join(ort, "smoke.start")), phase).toBe(false);
+      expect(readFileSync(piddatei, "utf8").trim(), phase).toBe(pidinhalt.trim());
+      if (phase === "halbe-frist") {
+        expect(existsSync(versuche), "erkannte PID setzt Frist zurück: kein Entfernversuch").toBe(
+          false,
+        );
+      } else {
+        expect(readFileSync(versuche, "utf8"), "Wettlauf tatsächlich ausgeführt").toBe("Versuch\n");
+      }
+    }
+  });
+
+  it("F14 · Messlauf warnt sofort neben geschütztem Halter, danach bleiben Regelläufe grün", async () => {
+    const { ort, env } = werk();
+    const journal = `${env.KLARWERK_BROWSERDECKEL_LOCK}.jsonl`;
+    const freigabe = join(ort, "halter-freigeben");
+    const halter = starte(ort, env, "./tools/browserdeckel.sh", [
+      "browser",
+      "node",
+      "-e",
+      `
+const fs = require('node:fs');
+const intervall = setInterval(() => { if (fs.existsSync(${JSON.stringify(freigabe)})) clearInterval(intervall); }, 20);
+`,
+    ]);
+    let messlauf: ReturnType<typeof starte> | undefined;
+    const weiter = join(ort, "messung-weiter");
+    try {
+      await warteBis(
+        () => existsSync(journal) && readFileSync(journal, "utf8").includes('"ereignis":"nehmen"'),
+      );
+      const bereit = join(ort, "messung-bereit");
+      // Halte den ersten Node-Start vor der Schlossnahme an: die Warnung muss schon jetzt
+      // auf stderr stehen, auch wenn die anschließende Vorbereitung beliebig langsam ist.
+      writeFileSync(
+        join(ort, "node_modules/.bin/node"),
+        `#!/bin/sh
+if [ -n "\${BEREIT:-}" ]; then
+  : > "$BEREIT"
+  while [ ! -f "$WEITER" ]; do sleep 0.02; done
+fi
+exec "$ECHTER_NODE" "$@"
+`,
+        { mode: 0o755 },
+      );
+      messlauf = starte(
+        ort,
+        {
+          ...env,
+          KLARWERK_BROWSERDECKEL: "0",
+          BEREIT: bereit,
+          WEITER: weiter,
+          ECHTER_NODE: process.execPath,
+        },
+        "./tools/browserdeckel.sh",
+        ["smoke", process.execPath, env.SONDE],
+      );
+      await warteBis(() => existsSync(bereit));
+      expect(messlauf.stderr(), "Warnung vor langsamer Vorbereitung/Schlossnahme").toContain(
+        "⚠ Browserdeckel aus — nur für Messungen",
+      );
+      writeFileSync(weiter, "weiter");
+      const messung = await messlauf.fertig;
+      expect(messung.code, messung.ausgabe).toBe(0);
+      expect(messung.stderr).toContain("⚠ Browserdeckel aus — nur für Messungen");
+      const nehmen = readFileSync(journal, "utf8")
+        .trim()
+        .split("\n")
+        .map((zeile) => JSON.parse(zeile) as Ereignis)
+        .find((e) => e.ereignis === "nehmen" && e.art === "smoke");
+      expect(nehmen).toMatchObject({ deckel: false, gewartetMs: 0 });
+    } finally {
+      writeFileSync(weiter, "weiter");
+      writeFileSync(freigabe, "frei");
+      if (messlauf) await messlauf.fertig;
+      await halter.fertig;
+      rmSync(join(ort, "node_modules/.bin/node"), { force: true });
+    }
+    const geschuetzt = await halter.fertig;
+    expect(geschuetzt.code, geschuetzt.ausgabe).toBe(0);
+    expect(ueberlappendePaare(fensterAusProtokoll(journal, true))).toHaveLength(1);
+    const historisch = readFileSync(journal, "utf8");
+    for (let n = 1; n <= 2; n++) {
+      const regel = await starte(ort, env, "./tools/browserdeckel.sh", ["smoke", "true"]).fertig;
+      console.log(`F14 REGELLAUF ${n} exit=${regel.code}`);
+      expect(regel.code, regel.ausgabe).toBe(0);
+    }
+    expect(readFileSync(journal, "utf8").startsWith(historisch)).toBe(true);
+    expect(fensterAusProtokoll(journal)).toHaveLength(3);
+    expect(ueberlappendePaare(fensterAusProtokoll(journal))).toEqual([]);
+    expect(ueberlappendePaare(fensterAusProtokoll(journal, true))).toHaveLength(1);
+  });
+
+  it.each([
+    ["F15", "EPERM", "Operation not permitted"],
+    ["F16", "ESRCH", "No such process"],
+    ["F17", "unbekannt", "unerwarteter Prüfungsfehler"],
+  ] as const)("%s · Lebendprüfung %s: nur ESRCH räumt", async (fall, grund, meldung) => {
+    const { ort, env } = werk();
+    const bereit = join(ort, "halter-bereit");
+    const halter = starte(ort, env, process.execPath, [
+      "-e",
+      `require('node:fs').writeFileSync(${JSON.stringify(bereit)}, 'bereit'); setInterval(() => {}, 1000)`,
+    ]);
+    try {
+      await warteBis(() => existsSync(bereit));
+      const pid = halter.kind.pid as number;
+      if (grund === "ESRCH") {
+        halter.kind.kill("SIGTERM");
+        await halter.fertig;
+        expect(() => process.kill(pid, 0)).toThrow();
+      } else {
+        expect(() => process.kill(pid, 0)).not.toThrow();
+      }
+      const lock = env.KLARWERK_BROWSERDECKEL_LOCK;
+      const journal = `${lock}.jsonl`;
+      const id = `halter-${pid}`;
+      const historie = `${JSON.stringify({ ereignis: "nehmen", id, pid, art: "browser", zeit: 1, gewartetMs: 0, deckel: true })}\n`;
+      mkdirSync(lock);
+      const piddatei = join(lock, `pid-${id}`);
+      const pidinhalt = `${pid} 1 browser ${id}\n`;
+      writeFileSync(piddatei, pidinhalt);
+      writeFileSync(journal, historie);
+      const hook = join(ort, "signalrecht.bash");
+      const aufrufe = join(ort, "kill-aufrufe");
+      // Eine Bash-Funktion überschreibt das Builtin wirklich (PATH allein tut das nicht).
+      // Nur die fremde Halterprüfung wird gestört; Abbau-/Gruppensignale bleiben echte kill.
+      // ESRCH stammt sogar aus dem echten Builtin für den nachweislich beendeten Prozess.
+      writeFileSync(
+        hook,
+        `
+kill() {
+  if [ "$1" = -0 ] && [ "$2" = "$PRUEF_PID" ]; then
+    printf '%s %s\\n' "$1" "$2" >> "$PRUEF_AUFRUFE"
+    if [ "$PRUEF_GRUND" = ESRCH ]; then builtin kill "$@"; return $?; fi
+    builtin kill -0 "$PRUEF_PID" || return 99
+    printf 'kill: (%s) - %s\\n' "$PRUEF_PID" "$PRUEF_MELDUNG" >&2
+    return 1
+  fi
+  builtin kill "$@"
+}
+`,
+      );
+      const lauf = await starte(
+        ort,
+        {
+          ...env,
+          BASH_ENV: hook,
+          PRUEF_PID: String(pid),
+          PRUEF_AUFRUFE: aufrufe,
+          PRUEF_GRUND: grund,
+          PRUEF_MELDUNG: meldung,
+          KLARWERK_BROWSERDECKEL_TIMEOUT: "2",
+        },
+        "./tools/browserdeckel.sh",
+        ["smoke", "node", env.SONDE],
+      ).fertig;
+      console.log(`${fall} ${grund} exit=${lauf.code}\n${lauf.ausgabe}`);
+      expect(readFileSync(aufrufe, "utf8")).toContain(`-0 ${pid}\n`);
+      const text = readFileSync(journal, "utf8");
+      expect(text.startsWith(historie)).toBe(true);
+      if (grund === "ESRCH") {
+        expect(lauf.code, lauf.ausgabe).toBe(0);
+        expect(existsSync(lock)).toBe(false);
+        expect(existsSync(join(ort, "smoke.start"))).toBe(true);
+        expect(text.match(/"ereignis":"verwaist"/g)).toHaveLength(1);
+        expect(ueberlappendePaare(fensterAusProtokoll(journal))).toEqual([]);
+      } else {
+        expect(lauf.code, lauf.ausgabe).toBe(1);
+        expect(lauf.stderr).toContain(`PID ${pid} lebt oder unzugänglich (${grund}) — warte`);
+        expect(lauf.stderr).toContain(meldung);
+        expect(lauf.stderr).toContain("Zeitgrenze 2s");
+        expect(readFileSync(piddatei, "utf8")).toBe(pidinhalt);
+        expect(text).toBe(historie);
+        expect(lauf.ausgabe).not.toContain("verwaist");
+        expect(existsSync(join(ort, "smoke.start"))).toBe(false);
+        expect(() => process.kill(pid, 0)).not.toThrow();
+      }
+    } finally {
+      halter.kind.kill("SIGTERM");
+      await halter.fertig;
+    }
+  });
+
+  it.each(["freigeben", "verwaist", "unbekannt", "Messlauf"])(
+    "F18 · tote PID mit %s im Journal erzeugt kein weiteres verwaist",
+    async (zustand) => {
+      const { ort, env } = werk();
+      const tot = starte(ort, env, process.execPath, ["-e", "process.exit(0)"]);
+      await tot.fertig;
+      const pid = tot.kind.pid as number;
+      expect(() => process.kill(pid, 0)).toThrow();
+      const lock = env.KLARWERK_BROWSERDECKEL_LOCK;
+      const journal = `${lock}.jsonl`;
+      const id = "alter-halter";
+      const nehmen = {
+        ereignis: "nehmen",
+        id,
+        pid,
+        art: "browser",
+        zeit: 1,
+        deckel: zustand !== "Messlauf",
+        gewartetMs: 0,
+      };
+      const historie =
+        zustand === "unbekannt"
+          ? ""
+          : `${JSON.stringify(nehmen)}\n${zustand === "Messlauf" ? "" : `${JSON.stringify({ ...nehmen, ereignis: zustand, zeit: 2 })}\n`}`;
+      if (historie) writeFileSync(journal, historie);
+      mkdirSync(lock);
+      writeFileSync(join(lock, `pid-${id}`), `${pid} 1 browser ${id}\n`);
+      const lauf = await starte(ort, env, "./tools/browserdeckel.sh", ["smoke", "true"]).fertig;
+      console.log(`F18 ${zustand} exit=${lauf.code}\n${lauf.ausgabe}`);
+      expect(lauf.code, lauf.ausgabe).toBe(0);
+      expect(lauf.stderr).toContain(`Kennung ${id} nicht offen — kein verwaist-Eintrag`);
+      expect(existsSync(lock)).toBe(false);
+      const text = readFileSync(journal, "utf8");
+      expect(text.startsWith(historie)).toBe(true);
+      expect(text.slice(historie.length)).not.toContain('"ereignis":"verwaist"');
+      expect(ueberlappendePaare(fensterAusProtokoll(journal))).toEqual([]);
+    },
+  );
+
+  it.each(["falsch", "1.5", "-1"])(
+    "G1 · ungültige Gnadenfrist %s bricht vor dem Befehl ab",
+    async (gnade) => {
+      const { ort, env } = werk();
+      const lauf = await starte(
+        ort,
+        { ...env, KLARWERK_BROWSERDECKEL_GNADE: gnade },
+        "./tools/browserdeckel.sh",
+        ["smoke", "node", env.SONDE],
+      ).fertig;
+      expect(lauf.code).toBe(2);
+      expect(lauf.ausgabe).toContain("Gnadenfrist muss ganze Sekunden enthalten");
+      expect(existsSync(join(ort, "smoke.start"))).toBe(false);
+    },
+  );
+
+  it("G2 · eine Warteschleife und ein gemeinsamer rmdir im Wartepfad", () => {
+    const code = readFileSync(join(WURZEL, "tools/browserdeckel.sh"), "utf8")
+      .split("\n")
+      .filter((line) => !line.trim().startsWith("#"))
+      .join("\n");
+    const warten = code.slice(code.indexOf('if [ "$an" = 1 ]; then'));
+    expect(warten.match(/\bwhile\b/g)).toHaveLength(1);
+    expect(warten.match(/\bmkdir\b/g)).toHaveLength(1);
+    expect(warten.match(/\brmdir\b/g)).toHaveLength(1);
   });
 
   it("F4 · jeder smoke:ui-Name und der Browser-Aufruf tragen den Deckel", () => {
