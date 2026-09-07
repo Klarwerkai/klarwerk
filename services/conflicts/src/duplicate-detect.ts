@@ -63,9 +63,20 @@ function fieldSimilarity(a: string, b: string): number | null {
 // Deterministischer Textdeckungs-Grad 0..1 (4.1): gewichtet je Feld (Titel 0,30 · Aussage 0,40 ·
 // Bedingungen 0,15 · Maßnahmen 0,15), über die tatsächlich vorhandenen Felder RENORMALISIERT.
 // Kategorie/Tags/Anlage fließen NICHT ein (die Zahl bedeutet „Textdeckung", nicht „Themennähe").
+// JOB 3128: Bei exakt gleicher, nichtleerer Aussage UND gleichen Fachfeldern ist der Titel nur
+// eine Benennung und wird ausgelassen. Kein allgemeiner Titelverzicht: Schon ein Unterschied
+// in Aussage, Bedingungen oder Maßnahmen behält die bisherigen Gewichte und Modellschwellen.
 export function lexicalOverlapScore(a: DetectSubject, b: DetectSubject): number {
+  const sameContent =
+    a.statement.trim().length > 0 &&
+    a.statement.trim() === b.statement.trim() &&
+    (["conditions", "measures"] as const).every(
+      (field) =>
+        a[field].length === b[field].length &&
+        a[field].every((value, index) => value.trim() === b[field][index]?.trim()),
+    );
   const fields: { weight: number; sim: number | null }[] = [
-    { weight: 0.3, sim: fieldSimilarity(a.title, b.title) },
+    { weight: 0.3, sim: sameContent ? null : fieldSimilarity(a.title, b.title) },
     { weight: 0.4, sim: fieldSimilarity(a.statement, b.statement) },
     { weight: 0.15, sim: fieldSimilarity(a.conditions.join(" "), b.conditions.join(" ")) },
     { weight: 0.15, sim: fieldSimilarity(a.measures.join(" "), b.measures.join(" ")) },
@@ -269,5 +280,5 @@ export function overlapScorePercent(lexicalScore: number): number {
 // stufe „gleicher Titel, anderer Text". Seit „jeder gegen jeden" (siehe `exhaustiveOverlapCandidacy`
 // oben) gibt es die Stufe „none" nicht mehr, die ein ähnlicher Titel hätte anheben können: Alles
 // unterhalb der deterministischen Schwelle geht ohnehin ans Modell. Der Titel wirkt unverändert
-// weiter — mit Gewicht 0,30 in `lexicalOverlapScore`, über dieselbe Trigramm-Ähnlichkeit.
+// weiter — mit Gewicht 0,30 in `lexicalOverlapScore`, außer bei exakt gleichem Inhalt (JOB 3128).
 // Wer den reinen Titelwert wieder braucht, braucht zuerst wieder eine Stufe, die ihn liest.

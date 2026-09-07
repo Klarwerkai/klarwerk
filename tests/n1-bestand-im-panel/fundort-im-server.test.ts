@@ -20,12 +20,12 @@
 //
 // DER RUMPF IST DER DES PANELS: Text, `locale`, `source: "transient-document"` UND `title` — der
 // Titel nach DERSELBEN Regel, mit der der Word-Erfassungsweg einen Eintrag betitelt
-// (`deriveDraftTitleFromSelection`: erste nichtleere Zeile, 60 Zeichen). GEMESSEN an diesem HEAD:
-// ohne `title` findet der deterministische Pfad nicht einmal den wortgleichen Absatz, weil
-// `lexicalOverlapScore` (services/conflicts/src/duplicate-detect.ts:66-83) einen leeren Titel gegen
-// einen vorhandenen als Deckung 0 wertet — die Titelgewichtung 0,30 fehlt dann immer, und 0,70 liegt
-// unter der Schwelle 0,85. Mit dem Titel derselben Regel ist der aus Word erfasste Eintrag
-// „identisch". Fall K2 hält diese Grenze fest, statt sie zu verschweigen.
+// (`deriveDraftTitleFromSelection`: erste nichtleere Zeile, 60 Zeichen).
+//
+// JOB 3128: Der identische Absatz muss auch mit eigenem gespeicherten Titel und fehlendem oder
+// abweichendem Anfragetitel erreichbar sein. K2 ersetzt den früheren Nichttreffer-Pin; K3 hält
+// fremde und nur ähnliche Inhalte außerhalb der deterministischen Gleichsetzung. Prüfstand,
+// Version und Fundort stammen weiterhin aus dem bestehenden Antwortvertrag von JOB 3093.
 //
 // ENTWÜRFE sind keine Wissensobjekte (services/capture, `POST /api/drafts`); der Pool der
 // Dublettenprüfung entsteht aus Wissensobjekten (`check-text-detection.ts`, `selectPool`). Ein
@@ -299,17 +299,60 @@ describe("JOB 3093 · der Treffer trägt Prüfstand, Version und Fundort", () =>
     expect(res.json().duplicates).toEqual([]);
   });
 
-  it("K2 · die GRENZE, ehrlich gepinnt: OHNE Titel findet der deterministische Pfad denselben Absatz nicht (Scorer wertet leeren Titel als Deckung 0)", async () => {
-    // Das ist KEIN Wunschzustand, sondern der gemessene Stand von services/conflicts (nicht
-    // Zielpfad dieses Auftrags). Das Panel schickt deshalb den Titel derselben Regel mit —
-    // gemessen in bestand-im-panel-mounted.test.ts. Wird der Scorer eines Tages repariert, wird
-    // dieser Fall rot und die Grenze verschwindet aus der Rückgabe — nicht still.
+  it.each([OHNE_TITEL, "", "Unabhängiger Word-Dokumentname"])(
+    "K2 · identischer Absatz mit eigenem Bestandstitel, Anfragetitel %s → Kandidat samt Prüfstand, Version und Fundort",
+    async (title) => {
+      const { app, headers } = await angemeldet();
+      const titel = "Arbeitsanweisung aus der Instandhaltung";
+      const id = await eingereicht(app, headers, { titel });
+      const ko = await app.inject({ method: "GET", url: `/api/kos/${id}`, headers });
+      expect(ko.statusCode).toBe(200);
+      const vorher = ko.json();
+      const res = await habenWirDasSchon(app, headers, ABSATZ, title);
+      expect(res.statusCode).toBe(200);
+      expect(res.json().duplicates).toEqual([
+        expect.objectContaining({
+          koId: id,
+          koTitle: titel,
+          koStatus: "offen",
+          koCategory: "Instandhaltung",
+          relation: "identisch",
+          method: "deterministic",
+          confidence: null,
+          pruefstand: "eingereicht",
+          version: vorher.version,
+          fundort: {
+            kategorie: "Instandhaltung",
+            bereich: "Instandhaltung",
+            bibliothekPfad: `/wissen/${id}`,
+          },
+        }),
+      ]);
+      expect(typeof res.json().duplicates[0].version).toBe("number");
+      expect(res.json().persisted).toBe(false);
+      const nachher = await app.inject({ method: "GET", url: `/api/kos/${id}`, headers });
+      expect(nachher.statusCode).toBe(200);
+      expect(nachher.json()).toEqual(vorher);
+    },
+  );
+
+  it.each<[string, string, string | null]>([
+    ["gleicher Titel, fremder Inhalt", FREMD, "Arbeitsanweisung aus der Instandhaltung"],
+    [
+      "nur gleiche Schlagwörter",
+      "Presse Wartung Hydraulik: Der Einkauf bestellt neue Ersatzteile.",
+      OHNE_TITEL,
+    ],
+    ["andere Bedingung", ABSATZ.replace("Vor jeder Wartung", "Während des Betriebs"), OHNE_TITEL],
+    ["gegenteilige Maßnahme", ABSATZ.replace("abzuschließen", "einzuschalten"), OHNE_TITEL],
+    ["ähnlicher Text, anderer Titel", FRAGE_TEXT, "Unabhängiger Word-Dokumentname"],
+    ["Leerraum", " ".repeat(50), OHNE_TITEL],
+  ])("K3 · %s → kein deterministischer Treffer", async (_fall, text, title) => {
     const { app, headers } = await angemeldet();
-    const id = await eingereicht(app, headers);
-    const ohne = await habenWirDasSchon(app, headers, ABSATZ, OHNE_TITEL);
-    expect(ohne.statusCode).toBe(200);
-    expect(ohne.json().duplicates).toEqual([]);
-    const mit = await habenWirDasSchon(app, headers, ABSATZ);
-    expect(mit.json().duplicates.map((d: Treffer) => d.koId)).toEqual([id]);
+    await eingereicht(app, headers, { titel: "Arbeitsanweisung aus der Instandhaltung" });
+    const res = await habenWirDasSchon(app, headers, text, title);
+    expect(res.statusCode).toBe(200);
+    expect(res.json().duplicates).toEqual([]);
+    expect(res.json().persisted).toBe(false);
   });
 });

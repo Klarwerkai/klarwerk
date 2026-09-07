@@ -60,6 +60,56 @@ function verdict(overrides: Partial<OverlapVerdict> = {}): OverlapVerdict {
 }
 
 describe("Berater-Konzept Duplikate 04.07. (Stufe D1): Erkennungskern", () => {
+  it.each(["", "Anderer Dokumentname"])(
+    "gleicher nichtleerer Inhalt bleibt bei Anfragetitel '%s' deterministisch und symmetrisch",
+    (title) => {
+      const other = subject({ refId: "ko-b", title });
+      expect(lexicalOverlapScore(a, other)).toBe(1);
+      expect(lexicalOverlapScore(other, a)).toBe(1);
+    },
+  );
+
+  it("gleiche befüllte Fachfelder tragen die Titelunabhängigkeit ebenfalls", () => {
+    const stored = subject({ conditions: ["Anlage steht still."], measures: ["Ventil öffnen."] });
+    expect(lexicalOverlapScore(stored, { ...stored, title: "" })).toBe(1);
+  });
+
+  it.each(["conditions", "measures"] as const)(
+    "andere oder fehlende %s werden durch identische Aussage nicht übergangen",
+    (field) => {
+      const stored = subject({ [field]: ["Ventil vollständig öffnen."] });
+      for (const values of [[], ["Ventil vollständig schließen."]]) {
+        const other = subject({ title: "", [field]: values });
+        const score = lexicalOverlapScore(stored, other);
+        expect(exhaustiveOverlapCandidacy(score)).toBe("model");
+        expect(lexicalOverlapScore(other, stored)).toBe(score);
+      }
+    },
+  );
+
+  it("leere Eingaben und bloß gleiche Schlagwörter tragen keinen neuen Treffer", () => {
+    const empty = subject({ title: "", statement: "", tags: ["Pumpe", "Wartung"] });
+    expect(lexicalOverlapScore(empty, empty)).toBe(0);
+    expect(exhaustiveOverlapCandidacy(lexicalOverlapScore(empty, a))).toBe("model");
+    expect(
+      exhaustiveOverlapCandidacy(lexicalOverlapScore(a, { ...cUnrelated, tags: a.tags })),
+    ).toBe("model");
+  });
+
+  it("gleicher Titel mit fremdem Inhalt bleibt Modellfall", () => {
+    expect(
+      exhaustiveOverlapCandidacy(lexicalOverlapScore(a, { ...cUnrelated, title: a.title })),
+    ).toBe("model");
+  });
+
+  it("bloß ähnliche Aussagen behalten das Titelgewicht und benötigen ohne Titel das Modell", () => {
+    const withoutTitle = { ...bNearIdentical, title: "" };
+    expect(exhaustiveOverlapCandidacy(lexicalOverlapScore(a, withoutTitle))).toBe("model");
+    expect(lexicalOverlapScore(a, bNearIdentical)).toBeGreaterThan(
+      lexicalOverlapScore(a, withoutTitle),
+    );
+  });
+
   it("lexicalOverlapScore: leere Felder verwässern nicht (Renormalisierung)", () => {
     // Titel identisch, Aussage nahezu gleich, Bedingungen/Maßnahmen beidseitig leer → hoher Score.
     const score = lexicalOverlapScore(a, bNearIdentical);

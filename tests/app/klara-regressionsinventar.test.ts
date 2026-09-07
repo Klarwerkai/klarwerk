@@ -567,6 +567,9 @@ const INVENTAR: readonly string[] = [
   // still auf; der Eintrag steht hier, damit die Palette-Achse weiterhin JEDEN Leser der
   // Token-Datei sichtbar macht, auch wenn er nicht Klara ist.
   "tests/kontokreis-funke/konto-kreis-traegt-den-funke.test.ts",
+  // JOB 3128: API-Weg des Word-taskpane, ohne Oberflächenmessung. K2 meldet die neue Datei;
+  // sie sichert den Bestandskandidaten trotz abweichendem Titel sowie Status und Dry-Run.
+  "tests/m3-bestand-titel/server-bestand-titel.test.ts",
 ];
 
 // ------------------------------------------------------------------------------------------------
@@ -634,6 +637,9 @@ describe("JOB 920 · K — das Klara-Regressionsinventar ist ableitbar, nicht be
   });
 
   it("K2 · die abgeleitete Menge ist exakt das gepinnte Inventar", () => {
+    expect(INVENTAR.length, "jede Testdatei darf nur einmal im Inventar stehen").toBe(
+      new Set(INVENTAR).size,
+    );
     const neu = GEFUNDEN.filter((p) => !INVENTAR.includes(p));
     const weg = INVENTAR.filter((p) => !GEFUNDEN.includes(p));
     // KEIN Defekt, sondern die Nachfuehrpflicht: wer eine Klara-relevante Testdatei anlegt oder

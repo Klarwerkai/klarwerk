@@ -19,6 +19,9 @@ import { demoKennwort } from "../support/demoZugang";
 //   HARTER AUSGANG (Demo-Seed)  — genau EIN Ruf je Dienst, und zwar der im Haken der Transaktion.
 //   WEICHER AUSGANG (Papierkorb) — genau EIN Ruf je Dienst, und zwar der Nachlauf der Route.
 // Dazu jeweils die WIRKUNG: je Befund genau EIN Abschlussbeleg, nie zwei.
+// JOB 3128 R8: Die Array-LÄNGE zählt Aufrufe; jeder Array-WERT zählt geschlossene Befunde.
+// Beim weichen Ausgang findet die Live-Erkennung jetzt den gleichen Inhalt trotz anderem Titel.
+// Zusammen mit dem direkt angelegten Befund sind dort ZWEI Überschneidungen in EINEM Ruf zu schließen.
 describe("JOB 3066 R4 · F5: DELETE /api/kos/:id räumt auf JEDEM Ausgang genau einmal auf", () => {
   type App = ReturnType<typeof buildApp>;
 
@@ -157,22 +160,51 @@ describe("JOB 3066 R4 · F5: DELETE /api/kos/:id räumt auf JEDEM Ausgang genau 
       ).json().id as string;
     const a = await anlegen("Ventil V3 zuerst");
     const b = await anlegen("Ventil V3 zuerst schliessen");
+    const automatisch = await services.overlaps.unresolved();
+    expect(automatisch).toHaveLength(1);
+    expect(automatisch[0]).toMatchObject({
+      koA: b,
+      koB: a,
+      relation: "identisch",
+      detector: { trigger: "validation", method: "deterministic", lexicalScore: 1 },
+    });
     const { overlap, conflict } = await befundePaar(services, a, b);
+    // createAuto ist ein direkter Insert: Er übernimmt den Live-Befund desselben Paars nicht.
+    expect(overlap.id).not.toBe(automatisch[0]?.id);
+    expect(overlap.pairKey).toBe(automatisch[0]?.pairKey);
+    const vorLoeschung = await services.overlaps.unresolved();
+    expect(vorLoeschung.map((e) => e.id).sort()).toEqual([automatisch[0]?.id, overlap.id].sort());
+    expect(rufe.ueberschneidungen).toEqual([]);
+    expect(rufe.konflikte).toEqual([]);
+    for (const entry of vorLoeschung) {
+      expect(await belege(services, "overlap.withdrawn-own", entry.id)).toHaveLength(0);
+    }
 
     const del = await app.inject({ method: "DELETE", url: `/api/kos/${a}`, headers });
     expect(del.statusCode).toBe(204);
 
     // Kein Purge — der Beitrag liegt im Papierkorb. Aufgeräumt hat der Nachlauf der Route, EINMAL.
     expect(await belege(services, "ko.purged", a)).toHaveLength(0);
-    expect(rufe.ueberschneidungen).toEqual([1]);
+    // Ein zweiter Lauf, selbst mit Rückgabewert 0, verletzt weiterhin den Vertrag.
+    expect(rufe.ueberschneidungen).toHaveLength(1);
+    expect(rufe.ueberschneidungen).toEqual([2]);
+    expect(rufe.konflikte).toHaveLength(1);
     expect(rufe.konflikte).toEqual([1]);
     // JOB 3071: In DIESEM Fall legt derselbe Mensch die Beiträge an, der sie löscht — es ist also
     // eine eigene Rücknahme, und der Überschneidungs-Beleg heisst seither `overlap.withdrawn-own`
     // (services/conflicts/src/overlap-service.ts, Ableitung in `onKoRemoved`). Was dieser Fall
     // misst, ist unverändert: GENAU EIN Abschlussbeleg je Befund, nie zwei. Deshalb steht hier
     // beides — der neue Beleg einmal, der alte kein einziges Mal.
-    expect(await belege(services, "overlap.withdrawn-own", overlap.id)).toHaveLength(1);
-    expect(await belege(services, "overlap.participant-removed", overlap.id)).toHaveLength(0);
+    for (const entry of vorLoeschung) {
+      expect(await belege(services, "overlap.withdrawn-own", entry.id)).toHaveLength(1);
+      expect(await belege(services, "overlap.participant-removed", entry.id)).toHaveLength(0);
+      expect(await services.overlaps.get(entry.id)).toMatchObject({
+        status: "geschlossen",
+        resolution: { reason: "withdrawn_own" },
+      });
+    }
+    expect(await services.overlaps.unresolved()).toEqual([]);
+    expect(await services.conflicts.unresolved()).toEqual([]);
     // Die KONFLIKTseite bleibt bewusst beim systemischen Grund (JOB 3071 §10: `ConflictResolutionReason`
     // führt bereits ein `withdrawn` mit anderer Bedeutung). Die Asymmetrie ist gewollt, nicht vergessen.
     expect(await belege(services, "conflict.participant-removed", conflict.id)).toHaveLength(1);
