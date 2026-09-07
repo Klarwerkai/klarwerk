@@ -493,6 +493,11 @@ export async function createWholeDocumentDraft<TDraft>(
 // Flache Copy-Schlüssel — EINE Quelle für Komponente + Test (Muster CAPTURE_WIZARD_TEXT).
 export const CAPTURE_FILE_TEXT = {
   hint: "capture.file.hint",
+  // JOB 3196 (UX-19): `hint` beschreibt den PUNKTE-Weg („Du wählst aus, was übernommen wird") und
+  // stand bis hierher unter BEIDEN Auswahlkarten. Wer „Ganzes Dokument übernehmen" gewählt hat, las
+  // eine Anleitung für den Weg, den er gerade abgewählt hatte. `hintWhole` ist die Anleitung des
+  // Ganzdokument-Wegs: einlesen → genau ein vollständiger Entwurf → öffnen und prüfen.
+  hintWhole: "capture.file.hintWhole",
   upload: "capture.file.upload",
   replace: "capture.file.replace",
   remove: "capture.file.remove",
@@ -582,6 +587,12 @@ export const CAPTURE_FILE_TEXT = {
   wholeSaved: "capture.file.wholeSaved",
   wholeSourceNote: "capture.file.wholeSourceNote",
   wholeSavedTitle: "capture.file.wholeSavedTitle",
+  // JOB 3196 (UX-19): an dieser Stelle stand ein NACKTER, unübersetzter Entwickler-String
+  // („Frontdoor bereit") direkt im JSX — am lebenden System belegt in
+  // `gespraech/nutzerpruefung/belege/2026-09-06T10-28-01-gegenpruefung-N-0038/16-speicherergebnis.json:9`.
+  // Der Ersatz sagt in Alltagssprache, was der Zustand IST: der Entwurf ist angelegt und zum Öffnen
+  // bereit — ungeprüft und nicht eingereicht. Keine Prüf- oder Freigabebehauptung.
+  wholeSavedBadge: "capture.file.wholeSavedBadge",
   wholeSavedSource: "capture.file.wholeSavedSource",
   wholeOpenDraft: "capture.file.wholeOpenDraft",
   wholeOpenMissing: "capture.file.wholeOpenMissing",
@@ -604,6 +615,11 @@ export const CAPTURE_FILE_TEXT = {
   sourceNote: "capture.file.sourceNote",
   // SCRUM-409 (PMO-FEA-0008-Delta): Import-Quittung + Mehrpunkt-Entwürfe + Zusammenführen.
   loadedStats: "capture.file.loadedStats",
+  // JOB 3196 (UX-19): `loadedStats` endet mit „… und starte die Wissenssuche" — einer Handlung, die
+  // es im Ganzdokument-Modus GAR NICHT gibt (der Suchauftrag-Block hängt an `fileImportMode ===
+  // "points"`). Dateiname und Zeichenzahl bleiben; der nächste Schritt heißt hier „vollständigen
+  // Entwurf anlegen".
+  loadedStatsWhole: "capture.file.loadedStatsWhole",
   saveDraftsCta: "capture.file.saveDraftsCta",
   draftsSaved: "capture.file.draftsSaved",
   draftsPartial: "capture.file.draftsPartial",

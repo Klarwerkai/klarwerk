@@ -264,6 +264,56 @@ import { useAiAvailable } from "../lib/useAiAvailable";
 
 type Mode = CaptureMode;
 
+// ==================================================================================================
+// JOB 3196 R2 — DER MELDUNGSKANAL DES ERFASSENS.
+// ==================================================================================================
+// Der Regelfall ist unverändert eine fertige Zeichenkette: Fehler, Zwischenstände, Erfolgsmeldungen
+// werden an ihrer Stelle gebildet und dort auch gelesen. NEU ist der zweite Fall — ein BEFUND, der
+// erst beim Rendern zu einem Satz wird. Genau ein Befund braucht das heute: die Quittung nach dem
+// Einlesen einer Datei. Sie hängt an zwei Dingen, die sich NACH dem Einlesen noch ändern können —
+// an der gewählten Importart und an der Oberflächensprache — und darf deshalb nicht als fertiger
+// Text im Zustand liegen (bens Befund zu Runde 1).
+/** Ein übersetzbarer Baustein: i18n-Schlüssel plus Platzhalter — nie fertiger Text. */
+interface Textbaustein {
+  key: string;
+  params?: Record<string, unknown>;
+}
+/**
+ * Der Befund „Datei eingelesen": Name und Umfang wie gemessen, dazu die formatabhängigen Zusätze
+ * (Format-Quittung, Seiten-/Folienkappung, Bildverluste, Folienbilder) als Bausteine. Der Satz
+ * daraus entsteht in `meldungText`.
+ */
+interface DateiEingelesen {
+  art: "datei-eingelesen";
+  name: string;
+  chars: number;
+  zusaetze: readonly Textbaustein[];
+}
+type Meldung = string | DateiEingelesen;
+
+/**
+ * Der sichtbare Satz einer Meldung. Für den Befund „Datei eingelesen" wird er HIER gebildet — aus
+ * der aktuell gewählten Importart und der aktuellen Sprache, bei jedem Rendern neu. Das ist die
+ * eine Stelle, an der die Quittung entsteht; es gibt keine zweite.
+ */
+function meldungText(
+  meldung: Meldung | null,
+  importMode: FileImportMode,
+  uebersetze: (key: string, params?: Record<string, unknown>) => string,
+): string | null {
+  if (meldung === null) {
+    return null;
+  }
+  if (typeof meldung === "string") {
+    return meldung;
+  }
+  const kopf = uebersetze(
+    importMode === "whole" ? CAPTURE_FILE_TEXT.loadedStatsWhole : CAPTURE_FILE_TEXT.loadedStats,
+    { name: meldung.name, chars: meldung.chars },
+  );
+  return `${kopf}${meldung.zusaetze.map((z) => ` ${uebersetze(z.key, z.params)}`).join("")}`;
+}
+
 const EMPTY_DRAFT: StructureResult = {
   title: "",
   statement: "",
@@ -695,7 +745,25 @@ export function CaptureArbeitsraum({
   const [confirmExampleSubmit, setConfirmExampleSubmit] = useState(false);
 
   const [err, setErr] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  // ================================================================================================
+  // JOB 3196 R2 (bens Korrekturpflicht 1) — DIE EINLESE-QUITTUNG IST EIN BEFUND, KEIN FERTIGER SATZ.
+  // ================================================================================================
+  // In R1 stand hier ein `string`. Die Quittung des Datei-Einlesens wurde beim Lesen ÜBERSETZT und
+  // fertig abgelegt — mit zwei nachgewiesenen Folgen:
+  //
+  //   (a) Der Modus wurde beim START des Lesevorgangs eingefangen. Wer während einer langsamen
+  //       Extraktion (PDF, PPTX, grosse DOCX) die Importart wechselte, bekam die Quittung des
+  //       ABGEWÄHLTEN Wegs — Anleitung und Quittung widersprachen sich.
+  //   (b) Nach einem Sprachwechsel blieb der deutsche Satz stehen, und der Abgleich „ist das noch
+  //       die Einlese-Quittung?" verglich alten deutschen Text mit neu übersetztem — er traf nie zu,
+  //       also blieb die Quittung auch beim nächsten Moduswechsel unverändert falsch.
+  //
+  // Beides sind Symptome DESSELBEN Fehlers: übersetzter Text als Zustand. Jetzt trägt der Zustand
+  // den BEFUND (Dateiname, Zeichenzahl, die Zusatz-Bausteine als i18n-Schlüssel), und der Satz
+  // entsteht beim Rendern aus der HEUTIGEN Importart und der HEUTIGEN Sprache. Kein eingefangener
+  // Modus, keine Textgleichheit als Kennung, kein zweiter Meldungskanal: fremde Meldungen (Fehler,
+  // Extraktion, Speichern) sind weiterhin schlichte Zeichenketten und überschreiben den Befund.
+  const [notice, setNotice] = useState<Meldung | null>(null);
   // SCRUM-276: nach erfolgreichem Einreichen die ID des gespeicherten KO (für die Success-Card).
   const [savedKoId, setSavedKoId] = useState<string | null>(null);
   // WP-SHIP9-S1 (Pedis B3): der ECHTE Status der Hintergrund-KI-Prüfung des frisch eingereichten
@@ -923,6 +991,11 @@ export function CaptureArbeitsraum({
   const [fileQueue, setFileQueue] = useState<FileDraftQueue | null>(null);
 
   const fail = (e: unknown): void => setErr(e instanceof ApiError ? e.message : t("state.error"));
+
+  // JOB 3196 R2: der sichtbare Text der Meldung — beim Rendern gebildet, aus der HEUTIGEN Importart
+  // und der HEUTIGEN Sprache. Ein zwischenzeitlicher Modus- oder Sprachwechsel wirkt damit sofort,
+  // ohne dass irgendwo ein Zustand nachgeführt werden müsste.
+  const noticeText = meldungText(notice, fileImportMode, (key, params) => t(key, params ?? {}));
 
   // FR-I18N-01: Reasoner-Aufrufe folgen der aktuellen UI-Sprache (Quelleninhalt bleibt original).
   const locale = toReasonerLocale(i18n.language);
@@ -3047,7 +3120,10 @@ export function CaptureArbeitsraum({
       // WP-D5: Hinweis, wenn der PPTX-Folien-Cap griff (nur die ersten N Folien gelesen).
       let pptxTruncatedSlides: number | null = null;
       // WP-D11: ehrliche Bilanz der optionalen Folien-als-Bilder-Konvertierung (auch Fehlerfall).
-      let slidesNote = "";
+      // JOB 3196 R2: als BAUSTEINE (Schlüssel + Zahlen), nicht als fertiger Satz — sonst stünde die
+      // Folien-Bilanz nach einem Sprachwechsel weiter in der alten Sprache neben einer neu
+      // übersetzten Quittung. Reihenfolge und Wortlaut sind unverändert.
+      let slidesNotes: Textbaustein[] = [];
       // WP-D1c: Bild-Bilanz des DOCX-Imports — erst beim Speichern (an den Anhang-Erfolg gekoppelt)
       // gemeldet, NICHT hier (zur Lesezeit ist noch nichts angehängt).
       let imageInfo: {
@@ -3132,7 +3208,7 @@ export function CaptureArbeitsraum({
             if (!outcome.ok) {
               // 503 (Route aus/kein Konverter) kommt schon aus dem LEICHTEN Verfügbarkeits-Check
               // — der große Upload wurde dann NIE gesendet; 429/Timeout/Netz enden hier ebenso.
-              slidesNote = ` ${t(outcome.messageKey)}`;
+              slidesNotes = [{ key: outcome.messageKey }];
             } else {
               const converted = outcome.result;
               const runToken = newImageRunToken();
@@ -3163,18 +3239,19 @@ export function CaptureArbeitsraum({
                 kept,
                 budgeted.bytes,
               );
-              const truncatedPart = converted.truncated
-                ? ` ${t(SLIDE_IMAGES_TEXT.truncated, { max: converted.maxSlides })}`
-                : "";
-              const droppedPart =
-                kept < slidesTotal
-                  ? ` ${t(SLIDE_IMAGES_TEXT.dropped, { count: slidesTotal - kept })}`
-                  : "";
-              slidesNote = ` ${t(SLIDE_IMAGES_TEXT.done, { count: kept })}${truncatedPart}${droppedPart}`;
+              slidesNotes = [
+                { key: SLIDE_IMAGES_TEXT.done, params: { count: kept } },
+                ...(converted.truncated
+                  ? [{ key: SLIDE_IMAGES_TEXT.truncated, params: { max: converted.maxSlides } }]
+                  : []),
+                ...(kept < slidesTotal
+                  ? [{ key: SLIDE_IMAGES_TEXT.dropped, params: { count: slidesTotal - kept } }]
+                  : []),
+              ];
             }
           } catch {
             // Rest-Sicherheit (z. B. Dateilesen) — ehrlich generisch, der Text-Import bleibt.
-            slidesNote = ` ${t(SLIDE_IMAGES_TEXT.failed)}`;
+            slidesNotes = [{ key: SLIDE_IMAGES_TEXT.failed }];
           } finally {
             setSlidesProgress(null);
           }
@@ -3219,21 +3296,23 @@ export function CaptureArbeitsraum({
       // SCRUM-409: ehrliche Import-Quittung — Dateiname + Umfang (Zeichen; Seiten gibt der
       // Text-Extraktor nicht her, also wird auch keine Seitenzahl behauptet).
       // WP-D4: plus formatabhängige Format-Quittung (DOCX: Struktur+Bilder Best-Effort; PDF: nur Text).
-      const formatNote =
+      // JOB 3196 R2: dieselben Sätze in derselben Reihenfolge — nur als Bausteine statt als schon
+      // übersetzter Text (Begründung an `Meldung`, oben in dieser Datei).
+      const formatNotes: Textbaustein[] =
         rich.kind === "docx"
-          ? ` ${t(CAPTURE_FILE_TEXT.importNoteDocx)}`
+          ? [{ key: CAPTURE_FILE_TEXT.importNoteDocx }]
           : rich.kind === "pdf"
-            ? ` ${t(CAPTURE_FILE_TEXT.importNotePdf)}`
+            ? [{ key: CAPTURE_FILE_TEXT.importNotePdf }]
             : rich.kind === "pptx"
-              ? ` ${t(CAPTURE_FILE_TEXT.importNotePptx)}`
-              : "";
+              ? [{ key: CAPTURE_FILE_TEXT.importNotePptx }]
+              : [];
       // WP-D3/WP-D5: bei Seiten-/Folien-Cap ehrlich anhängen, wie viele Seiten/Folien importiert wurden.
-      const truncatedNote =
+      const truncatedNotes: Textbaustein[] =
         pdfTruncatedPages !== null
-          ? ` ${t(CAPTURE_FILE_TEXT.pdfTruncated, { count: pdfTruncatedPages })}`
+          ? [{ key: CAPTURE_FILE_TEXT.pdfTruncated, params: { count: pdfTruncatedPages } }]
           : pptxTruncatedSlides !== null
-            ? ` ${t(CAPTURE_FILE_TEXT.pptxTruncated, { count: pptxTruncatedSlides })}`
-            : "";
+            ? [{ key: CAPTURE_FILE_TEXT.pptxTruncated, params: { count: pptxTruncatedSlides } }]
+            : [];
       // WP-D9b/WP-D9c (Gelb-Fix 2 + ROT-Fix): bildreiner Import — EHRLICHE Variante je nach Ausgang.
       // Sind Bilder wirklich im Beitrag gelandet: „Bilder übernommen — ohne Text keine KI-Vorschläge."
       // Wurden ALLE gedroppt (Budget/Format): NICHT „übernommen" behaupten, sondern klar sagen, dass die
@@ -3242,26 +3321,34 @@ export function CaptureArbeitsraum({
       // „übernommen" wird nur behauptet, wenn wirklich Bilder im Beitrag gelandet sind. Über den
       // Original-Anhang wird hier bewusst NICHTS gesagt: zur Lesezeit ist noch nichts angehängt, und
       // genau diese verfrühte Zusage war der D2-Mangel.
-      const imagesOnlyNote =
+      const imagesOnlyNotes: Textbaustein[] =
         text.trim().length === 0 && imageTransfer && imageTransfer.embeddedImages > 0
-          ? ` ${t(CAPTURE_FILE_TEXT.imagesOnlyNoText)}`
-          : "";
+          ? [{ key: CAPTURE_FILE_TEXT.imagesOnlyNoText }]
+          : [];
       // JOB 513/D3B: die Verlustgründe kommen vollständig aus dem Vertrag — Budget MIT Grenzart und
       // realem Grenzwert, Format, defekte Verweise und Bilder außerhalb des übernommenen Folienbereichs.
       // Der handgeschriebene Zweizeiler davor kannte nur zwei der fünf Gründe und nannte die Grenze nie.
-      const imageLossNote = imageTransfer
+      const imageLossNotes: Textbaustein[] = imageTransfer
         ? imageTransferCauseNotices(imageTransfer)
-            .map((n) => ` ${t(n.key, n.params)}`)
-            .join("")
-        : "";
+        : [];
       // WP-D1c: KEINE „Original im Anhang"-Behauptung zur Lesezeit (noch nichts angehängt) — die
       // ehrliche, anhang-gekoppelte Bild-Meldung folgt beim Speichern (fileWholeDraft.onSuccess).
-      setNotice(
-        `${t(CAPTURE_FILE_TEXT.loadedStats, {
-          name: f.name,
-          chars: text.length,
-        })}${formatNote}${truncatedNote}${imageLossNote}${slidesNote}${imagesOnlyNote}`,
-      );
+      // JOB 3196 R2 (bens Korrekturpflicht 1): hier wird der BEFUND abgelegt, kein Satz. Welcher
+      // Satz daraus wird, entscheidet `meldungText` beim Rendern — mit der Importart und der
+      // Sprache, die DANN gelten. Ein Moduswechsel während dieser (langsamen) Extraktion und ein
+      // Sprachwechsel danach wirken deshalb beide, ohne dass hier etwas nachgeführt wird.
+      setNotice({
+        art: "datei-eingelesen",
+        name: f.name,
+        chars: text.length,
+        zusaetze: [
+          ...formatNotes,
+          ...truncatedNotes,
+          ...imageLossNotes,
+          ...slidesNotes,
+          ...imagesOnlyNotes,
+        ],
+      });
     } catch (error) {
       setFileName(null);
       setNotice(null);
@@ -3302,7 +3389,14 @@ export function CaptureArbeitsraum({
       const res = await runImageOcr(fileImageUrl);
       if (res.status === "success" && res.text.length > 0) {
         setFileText(res.text);
-        setNotice(t(CAPTURE_FILE_TEXT.loadedStats, { name: fileName, chars: res.text.length }));
+        // JOB 3196: derselbe Befund wie beim Datei-Einlesen — auch der OCR-Text bekommt die
+        // Quittung der GEWÄHLTEN Importart, gebildet beim Rendern. Ohne formatabhängige Zusätze.
+        setNotice({
+          art: "datei-eingelesen",
+          name: fileName,
+          chars: res.text.length,
+          zusaetze: [],
+        });
       } else if (res.status === "unavailable") {
         setNotice(null);
         setErr(t("capture.ocrUnavailable"));
@@ -4471,6 +4565,10 @@ export function CaptureArbeitsraum({
                   <ChoiceCards
                     label={t(CAPTURE_FILE_TEXT.importModeLabel)}
                     value={fileImportMode}
+                    // JOB 3196 R2: hier steht wieder NUR der Zustandswechsel. Anleitung UND
+                    // Quittung hängen beide am Rendern (`meldungText`), also wirkt der Wechsel in
+                    // beide Richtungen von selbst — es gibt nichts nachzuführen und keinen
+                    // Textvergleich, der danebengreifen könnte (bens Befund zu Runde 1).
                     onChange={setFileImportMode}
                     options={[
                       {
@@ -4485,8 +4583,19 @@ export function CaptureArbeitsraum({
                       },
                     ]}
                   />
+                  {/* JOB 3196 (UX-19): die Anleitung gehört zu der Importart, die GERADE gewählt
+                    ist. Bis hierher stand unter beiden Karten der Satz des Punkte-Wegs („Du wählst
+                    aus, was übernommen wird") — auch dann, wenn „Ganzes Dokument übernehmen"
+                    gedrückt war (belegt in `24-ganzes-dokument.json:8`). Ein Ausdruck, kein zweiter
+                    Anleitungsknoten. */}
                   <div className="flex items-start gap-1.5 text-[12.5px] leading-relaxed text-muted">
-                    <span className="flex-1">{t(CAPTURE_FILE_TEXT.hint)}</span>
+                    <span className="flex-1">
+                      {t(
+                        fileImportMode === "whole"
+                          ? CAPTURE_FILE_TEXT.hintWhole
+                          : CAPTURE_FILE_TEXT.hint,
+                      )}
+                    </span>
                   </div>
                   {/* WP-D10c (Pedis Wunsch): Infokasten startet zugeklappt — Volltext erst auf Klick
                     (FileFormatInfo: button + aria-expanded, gemountet getestet). */}
@@ -4555,8 +4664,13 @@ export function CaptureArbeitsraum({
                         <div className="text-[12.5px] font-semibold text-trust-pos-text">
                           {t(CAPTURE_FILE_TEXT.wholeSavedTitle)}
                         </div>
-                        <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-pos-text">
-                          Frontdoor bereit
+                        {/* JOB 3196 (UX-19): hier stand der nackte, unübersetzte Entwickler-String
+                          „Frontdoor bereit" — in JEDER Sprache derselbe, und für einen Menschen
+                          bedeutungslos (belegt in `16-speicherergebnis.json:9`). Jetzt sagt der
+                          Kasten in Alltagssprache, was der Zustand IST. Deshalb auch kein
+                          `font-mono uppercase` mehr: das ist ein Satz, kein Systemcode. */}
+                        <span className="rounded-pill bg-page px-2 py-0.5 text-[11px] font-semibold text-trust-pos-text">
+                          {t(CAPTURE_FILE_TEXT.wholeSavedBadge)}
                         </span>
                       </div>
                       <p className="mt-1 text-[12px] leading-relaxed text-trust-pos-text/90">
@@ -5387,9 +5501,9 @@ export function CaptureArbeitsraum({
                   {err}
                 </div>
               ) : null}
-              {notice ? (
+              {noticeText ? (
                 <div className="rounded-btn bg-trust-pos-bg px-3 py-2 text-[12.5px] text-trust-pos-text">
-                  {notice}
+                  {noticeText}
                 </div>
               ) : null}
 
@@ -6016,9 +6130,9 @@ export function CaptureArbeitsraum({
                     {err}
                   </div>
                 ) : null}
-                {notice ? (
+                {noticeText ? (
                   <div className="rounded-btn bg-trust-pos-bg px-3 py-2 text-[12.5px] text-trust-pos-text">
-                    {notice}
+                    {noticeText}
                   </div>
                 ) : null}
 

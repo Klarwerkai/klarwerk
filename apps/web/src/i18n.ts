@@ -1486,6 +1486,11 @@ const de = {
   // ausgewählte Punkte nacheinander im Wizard prüfen/einreichen. Nichts wird automatisch gespeichert.
   "capture.file.hint":
     "Lade ein Dokument hoch — die KI listet auf, welches Wissen darin steckt, jeweils mit wörtlicher Belegstelle. Du wählst aus, was übernommen wird; gespeichert wird nichts automatisch.",
+  // JOB 3196 (UX-19): die Anleitung des GANZDOKUMENT-Wegs. Drei Schritte, die wirklich passieren —
+  // einlesen, EIN vollständiger Entwurf, öffnen und selbst prüfen. Keine KI-Auswahl, keine
+  // Validierung, keine Einreichung: nichts davon findet auf diesem Weg statt.
+  "capture.file.hintWhole":
+    "Lade ein Dokument hoch — Klarwerk liest es ein und legt daraus genau einen Entwurf mit dem gesamten Inhalt an. Danach öffnest du den Entwurf und prüfst ihn selbst; es wird nichts automatisch geprüft oder eingereicht.",
   "capture.file.upload": "Dokument auswählen",
   "capture.file.replace": "Anderes Dokument wählen",
   "capture.file.remove": "Dokument entfernen",
@@ -1610,6 +1615,10 @@ const de = {
   "capture.file.wholeSourceNote":
     "Quelle wird im Entwurf sichtbar vermerkt: {{name}}, gesamtes Dokument. Der Entwurf bleibt offen und ungeprüft.",
   "capture.file.wholeSavedTitle": "Dokument als Entwurf gespeichert",
+  // JOB 3196 (UX-19): Ersatz für den nackten Entwickler-String „Frontdoor bereit". Er sagt, was der
+  // Zustand IST — und behauptet ausdrücklich keinen Prüf- oder Freigabestand.
+  "capture.file.wholeSavedBadge":
+    "Zum Öffnen bereit — der Entwurf ist ungeprüft und nicht eingereicht.",
   "capture.file.wholeSavedSource": "Quelle: {{name}}, gesamtes Dokument.",
   "capture.file.wholeOpenDraft": "Entwurf öffnen",
   "capture.file.wholeOpenMissing":
@@ -1642,6 +1651,10 @@ const de = {
   // SCRUM-409 (PMO-FEA-0008-Delta): Import-Quittung, Mehrpunkt-Entwürfe, Zusammenführen.
   "capture.file.loadedStats":
     "„{{name}}“ eingelesen ({{chars}} Zeichen). Sag optional, wonach gesucht werden soll, und starte die Wissenssuche.",
+  // JOB 3196 (UX-19): dieselbe Quittung für den Ganzdokument-Weg — Umfang unverändert ehrlich,
+  // aber der nächste Schritt ist der, den es hier gibt.
+  "capture.file.loadedStatsWhole":
+    "„{{name}}“ eingelesen ({{chars}} Zeichen). Lege daraus jetzt den Entwurf mit dem gesamten Dokument an.",
   "capture.file.saveDraftsCta": "Als Entwürfe speichern",
   "capture.file.draftsSaved":
     "{{count}} Entwürfe aus „{{name}}“ gespeichert — je mit Quellenvermerk. Du findest sie oben unter „Entwürfe fortsetzen“.",
@@ -6712,6 +6725,10 @@ const en: typeof de = {
   // PMO-FEA-0006: knowledge from file — upload, AI point list with source excerpts, review queue.
   "capture.file.hint":
     "Upload a document — the AI lists the knowledge it contains, each point with a verbatim source excerpt. You choose what to take over; nothing is saved automatically.",
+  // JOB 3196 (UX-19): the guidance for the WHOLE-DOCUMENT path — read in, exactly one draft with the
+  // full content, then open and review it yourself. No AI selection, no validation, no submission.
+  "capture.file.hintWhole":
+    "Upload a document — Klarwerk reads it and creates exactly one draft containing the whole content. You then open the draft and review it yourself; nothing is checked or submitted automatically.",
   "capture.file.upload": "Choose document",
   "capture.file.replace": "Choose another document",
   "capture.file.remove": "Remove document",
@@ -6831,6 +6848,9 @@ const en: typeof de = {
   "capture.file.wholeSourceNote":
     "The draft visibly records the source: {{name}}, whole document. The draft stays open and unreviewed.",
   "capture.file.wholeSavedTitle": "Document saved as draft",
+  // JOB 3196 (UX-19): replaces the bare developer string “Frontdoor bereit”. It states what the
+  // state IS — and deliberately claims no review or approval status.
+  "capture.file.wholeSavedBadge": "Ready to open — the draft is unreviewed and not submitted.",
   "capture.file.wholeSavedSource": "Source: {{name}}, whole document.",
   "capture.file.wholeOpenDraft": "Open draft",
   "capture.file.wholeOpenMissing": "Draft was saved, but could not be opened directly.",
@@ -6859,6 +6879,10 @@ const en: typeof de = {
   // SCRUM-409 (PMO-FEA-0008 delta): import receipt, multi-point drafts, merge.
   "capture.file.loadedStats":
     "“{{name}}” imported ({{chars}} characters). Optionally say what to look for, then start the knowledge search.",
+  // JOB 3196 (UX-19): same receipt for the whole-document path — same honest size, but the next step
+  // is the one that actually exists here.
+  "capture.file.loadedStatsWhole":
+    "“{{name}}” imported ({{chars}} characters). Now create the draft containing the whole document.",
   "capture.file.saveDraftsCta": "Save as drafts",
   "capture.file.draftsSaved":
     "{{count}} drafts saved from “{{name}}” — each with its source note. You can find them above under “Resume drafts”.",
@@ -11322,6 +11346,10 @@ const nl: typeof de = {
   "capture.mode.datei": "Uit bestand",
   "capture.file.hint":
     "Upload een document — de AI toont welke kennis erin zit, telkens met een letterlijke bewijsplaats. Jij kiest wat wordt overgenomen; er wordt niets automatisch opgeslagen.",
+  // JOB 3196 (UX-19): de uitleg van de WEG „hele document" — inlezen, precies één concept met de
+  // volledige inhoud, daarna zelf openen en beoordelen. Geen AI-keuze, geen validatie, geen indiening.
+  "capture.file.hintWhole":
+    "Upload een document — Klarwerk leest het in en maakt er precies één concept van met de volledige inhoud. Daarna open je het concept en beoordeel je het zelf; er wordt niets automatisch gecontroleerd of ingediend.",
   "capture.file.upload": "Document selecteren",
   "capture.file.replace": "Ander document kiezen",
   "capture.file.remove": "Document verwijderen",
@@ -11441,6 +11469,10 @@ const nl: typeof de = {
   "capture.file.wholeSourceNote":
     "De bron wordt zichtbaar vermeld in het concept: {{name}}, volledig document. Het concept blijft open en onbeoordeeld.",
   "capture.file.wholeSavedTitle": "Document als concept opgeslagen",
+  // JOB 3196 (UX-19): vervangt de kale ontwikkelaarsterm „Frontdoor bereit". Zegt wat de toestand
+  // IS — en claimt uitdrukkelijk geen beoordelings- of goedkeuringsstatus.
+  "capture.file.wholeSavedBadge":
+    "Klaar om te openen — het concept is onbeoordeeld en niet ingediend.",
   "capture.file.wholeSavedSource": "Bron: {{name}}, volledig document.",
   "capture.file.wholeOpenDraft": "Concept openen",
   "capture.file.wholeOpenMissing":
@@ -11469,6 +11501,10 @@ const nl: typeof de = {
   "capture.file.sourceNote": "De bron „{{name}}“ wordt bij het kennisobject vermeld.",
   "capture.file.loadedStats":
     "„{{name}}“ ingelezen ({{chars}} tekens). Geef optioneel aan waarnaar gezocht moet worden en start het zoeken naar kennis.",
+  // JOB 3196 (UX-19): dezelfde ontvangstbevestiging voor de weg „hele document" — dezelfde eerlijke
+  // omvang, maar de volgende stap is die welke hier daadwerkelijk bestaat.
+  "capture.file.loadedStatsWhole":
+    "„{{name}}“ ingelezen ({{chars}} tekens). Maak er nu het concept met het volledige document van.",
   "capture.file.saveDraftsCta": "Als concepten opslaan",
   "capture.file.draftsSaved":
     "{{count}} concepten uit „{{name}}“ opgeslagen — elk met bronvermelding. Je vindt ze bovenaan onder „Concepten hervatten“.",
