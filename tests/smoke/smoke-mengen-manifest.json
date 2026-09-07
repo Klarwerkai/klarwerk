@@ -1,9 +1,9 @@
 {
-  "version": 3,
+  "version": 4,
   "erhoben_am": "2026-09-04",
   "erhoben_mit": "npx playwright test --config playwright.smoke.config.ts --list --reporter=json (KLARWERK_SMOKE_MODE=gate)",
   "zweck": "Sollmanifest der Smoke-Mengen je Projekt. Drift (Hinzufuegen, Entfernen, Umbenennen) macht die Mengenpruefung rot.",
-  "gesamt_fallinstanzen": 119,
+  "gesamt_fallinstanzen": 128,
   "projekte": {
     "setup-zustand": {
       "soll": 1,
@@ -18,7 +18,7 @@
       ]
     },
     "chromium": {
-      "soll": 37,
+      "soll": 40,
       "titel": [
         "a18-live-region-browser.spec.ts › KALIBRIERUNG A · die generische CDP-Sitzung gibt Rolle, Ignoriert und die drei Live-Felder wirklich aus",
         "a18-live-region-browser.spec.ts › KALIBRIERUNG B · Playwrights ARIA-Repraesentation nennt dieselbe Rolle, fuehrt aber KEINE Live-Eigenschaft",
@@ -48,6 +48,9 @@
         "ui-smoke.spec.ts › Fragen antwortet ehrlich (Antwort oder Wissenslücke, nie erfunden) @modell",
         "ui-smoke.spec.ts › Fragen ohne Modell: der Weg ist gesperrt und sagt warum",
         "ui-smoke.spec.ts › Kernfluss: Erzählen → Wissensseite → Einreichen @modell",
+        "ui-smoke.spec.ts › UX-20b L1: der JSON-Kasten passt in DE und EN bei 320/390/1280 ins Sichtfenster",
+        "ui-smoke.spec.ts › UX-20b L2: die Vorlage ist mit Maus UND Tastatur erreichbar, vollmarkiert, kopierbar — und sie taugt als Datei",
+        "ui-smoke.spec.ts › UX-20b L3: der Bibliotheks-Export kommt über echtes HTTP und wird vom Import angenommen",
         "ui-smoke.spec.ts › mega47: Filterblatt auf schmalem Gerät ist wirklich bedienbar",
         "ui-smoke.spec.ts › mega48: bei offenem Filterblatt ist KEINE Shell-Fläche mehr erreichbar",
         "ui-smoke.spec.ts › mega49: die Datenlage dieses Laufs ist die zugesagte",
@@ -60,7 +63,7 @@
       ]
     },
     "firefox": {
-      "soll": 37,
+      "soll": 40,
       "titel": [
         "a18-live-region-browser.spec.ts › KALIBRIERUNG A · die generische CDP-Sitzung gibt Rolle, Ignoriert und die drei Live-Felder wirklich aus",
         "a18-live-region-browser.spec.ts › KALIBRIERUNG B · Playwrights ARIA-Repraesentation nennt dieselbe Rolle, fuehrt aber KEINE Live-Eigenschaft",
@@ -90,6 +93,9 @@
         "ui-smoke.spec.ts › Fragen antwortet ehrlich (Antwort oder Wissenslücke, nie erfunden) @modell",
         "ui-smoke.spec.ts › Fragen ohne Modell: der Weg ist gesperrt und sagt warum",
         "ui-smoke.spec.ts › Kernfluss: Erzählen → Wissensseite → Einreichen @modell",
+        "ui-smoke.spec.ts › UX-20b L1: der JSON-Kasten passt in DE und EN bei 320/390/1280 ins Sichtfenster",
+        "ui-smoke.spec.ts › UX-20b L2: die Vorlage ist mit Maus UND Tastatur erreichbar, vollmarkiert, kopierbar — und sie taugt als Datei",
+        "ui-smoke.spec.ts › UX-20b L3: der Bibliotheks-Export kommt über echtes HTTP und wird vom Import angenommen",
         "ui-smoke.spec.ts › mega47: Filterblatt auf schmalem Gerät ist wirklich bedienbar",
         "ui-smoke.spec.ts › mega48: bei offenem Filterblatt ist KEINE Shell-Fläche mehr erreichbar",
         "ui-smoke.spec.ts › mega49: die Datenlage dieses Laufs ist die zugesagte",
@@ -102,7 +108,7 @@
       ]
     },
     "webkit": {
-      "soll": 37,
+      "soll": 40,
       "titel": [
         "a18-live-region-browser.spec.ts › KALIBRIERUNG A · die generische CDP-Sitzung gibt Rolle, Ignoriert und die drei Live-Felder wirklich aus",
         "a18-live-region-browser.spec.ts › KALIBRIERUNG B · Playwrights ARIA-Repraesentation nennt dieselbe Rolle, fuehrt aber KEINE Live-Eigenschaft",
@@ -132,6 +138,9 @@
         "ui-smoke.spec.ts › Fragen antwortet ehrlich (Antwort oder Wissenslücke, nie erfunden) @modell",
         "ui-smoke.spec.ts › Fragen ohne Modell: der Weg ist gesperrt und sagt warum",
         "ui-smoke.spec.ts › Kernfluss: Erzählen → Wissensseite → Einreichen @modell",
+        "ui-smoke.spec.ts › UX-20b L1: der JSON-Kasten passt in DE und EN bei 320/390/1280 ins Sichtfenster",
+        "ui-smoke.spec.ts › UX-20b L2: die Vorlage ist mit Maus UND Tastatur erreichbar, vollmarkiert, kopierbar — und sie taugt als Datei",
+        "ui-smoke.spec.ts › UX-20b L3: der Bibliotheks-Export kommt über echtes HTTP und wird vom Import angenommen",
         "ui-smoke.spec.ts › mega47: Filterblatt auf schmalem Gerät ist wirklich bedienbar",
         "ui-smoke.spec.ts › mega48: bei offenem Filterblatt ist KEINE Shell-Fläche mehr erreichbar",
         "ui-smoke.spec.ts › mega49: die Datenlage dieses Laufs ist die zugesagte",

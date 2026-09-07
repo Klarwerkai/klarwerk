@@ -6,6 +6,18 @@ import { expect, test } from "@playwright/test";
 // einziger Fall Anfragen, und genau das war die Lücke hinter S1.
 import { RUHEFRIST_MS, zaehleAnfragen } from "./support/anfragezaehler";
 import { ensureLoggedIn } from "./support/auth";
+// JOB 3177 (UX-20b): der JSON-Kasten auf /import wird im echten Browser gemessen — die Helfer dazu
+// stehen bei den drei Fällen am ENDE dieser Datei, nicht hier.
+import {
+  JSON_EINGANG,
+  JSON_KASTEN,
+  VORLAGE,
+  VORLAGE_ID,
+  meldungsSpur,
+  oeffneJsonKasten,
+  schalteStufe2Ein,
+  stelleSpracheEin,
+} from "./support/import-json-kasten";
 
 test.describe.configure({ mode: "serial" });
 
@@ -613,4 +625,339 @@ test("mega49: die Datenlage dieses Laufs ist die zugesagte", async ({ page }) =>
         "Prüf-Boards wird bewusst NICHT geprüft — der @modell-Fall füllt es selbst.",
     });
   }
+});
+
+// ==================================================================================================
+// JOB 3177 · UX-20b — DIE DREI RESTE AUS UX-20, IM ECHTEN BROWSER UND ÜBER ECHTES HTTP.
+// ==================================================================================================
+//
+// UX-20 (JOB 3139) hat den JSON-Kasten auf `/import` gebaut: Format, Typliste, Mindestvorlage,
+// Hinweis, Verweis auf den Bibliotheks-Export. Belegt war davon bis hierher nur, was jsdom belegen
+// kann — Parser, Meldungstexte, Struktur. Der Prüfer hat drei Punkte namentlich offen gelassen
+// (`archiv/3139/runde-1/ben.md`, Prüfpunkt 6b und Abschnitt NICHT GEPRÜFT): „echtes
+// Browser-Rendering, echte Zwischenablage und der laufende Server-Export über HTTP". Genau diese
+// drei stehen hier — und keine vierte Sache.
+//
+// WARUM AM ENDE DER DATEI: `mode: "serial"` (:10). Ein roter Fall überspringt ALLE nachfolgenden;
+// an genau dieser Bauform ist in mega49 schon einmal ein Beleg verloren gegangen (:530-534). Neue
+// Fälle gehören deshalb hinter die bestehenden, nicht neben den thematisch nächsten.
+//
+// WARUM OHNE `@modell`: keiner der drei braucht ein Modell. Der Kasten ist statisch, die
+// Zwischenablage ist Browsermechanik, der Export ist eine Datenbankabfrage. Sie laufen damit im
+// hermetischen Tor vollständig mit — und der Mengen-Pin `tests/smoke/tor-ausnahme.test.ts` bleibt
+// bei seinen zwei benannten Ausnahmen, statt still zu wachsen.
+//
+// WAS SIE AM BESTAND ÄNDERN, ehrlich benannt: L2 und L3 reichen eine Datei über den echten
+// Dateieingang ein und legen damit Import-Kandidaten auf dem geteilten Smoke-Server an. Das
+// Prüf-Board (`/validierung`), an dem die Kalibrierung oben hängt, berührt das nicht — ein
+// Import-KANDIDAT ist noch kein Wissensobjekt; er entsteht erst durch eine Freigabe in der
+// Prüfliste, die diese Fälle nicht bedienen. Deshalb stehen sie im geteilten Kontext und brauchen
+// keinen eigenen Server (anders als der Erfassungs-Kernweg, s. `playwright.smoke.config.ts:22-59`).
+
+/** Ein Pixel Toleranz für Teilpixel-Rundung bei fraktionalen Layoutbreiten — wie in `:335-342`. */
+const TOLERANZ_PX = 1;
+/**
+ * Die drei Breiten: ein Schreibtisch, ein heutiges Telefon, das schmalste ernstzunehmende Telefon.
+ *
+ * Die REIHENFOLGE ist Absicht und gehört zur Aussagekraft: von breit nach schmal. Bricht das
+ * Layout, bricht es beim Schmalerwerden — und weil ein Fall an der ERSTEN roten Zusicherung endet,
+ * steht dann im Fehlerbild schwarz auf weiss, dass 1280 und 390 vorher durchgelaufen sind. Andersherum
+ * (schmal zuerst) wäre nach dem ersten Rot offen, ob die breiten Lagen überhaupt noch tragen.
+ */
+const BREITEN = [1280, 390, 320] as const;
+
+test("UX-20b L1: der JSON-Kasten passt in DE und EN bei 320/390/1280 ins Sichtfenster", async ({
+  page,
+}) => {
+  await ensureLoggedIn(page);
+  // Stufe 2 EINMAL einschalten — sie lebt im `localStorage` dieses Kontexts (`lib/stufe2Storage.ts`)
+  // und überdauert damit jeden Seitenwechsel innerhalb dieses Falls, aber keinen anderen Fall.
+  await schalteStufe2Ein(page);
+
+  for (const sprache of ["de", "en"] as const) {
+    await stelleSpracheEin(page, sprache);
+    for (const breite of BREITEN) {
+      const wo = `${sprache} @ ${breite}px`;
+      await page.setViewportSize({ width: breite, height: 900 });
+      await oeffneJsonKasten(page);
+
+      // Verankert wird an den KENNUNGEN, nicht am Anzeigetext: die Sprachhälfte dieses Falls würde
+      // sich sonst selbst treffen (die Falle aus dem Kopfkommentar :100-113). Dass die Sprache
+      // wirklich umgestellt ist, sagt das Dokument selbst.
+      expect(
+        await page.evaluate(() => document.documentElement.lang),
+        `die Seite steht nicht in der eingestellten Sprache (${wo})`,
+      ).toBe(sprache);
+
+      const sicht = await page.evaluate((feldId) => {
+        const feld = document.getElementById(feldId);
+        return {
+          dokScroll: document.documentElement.scrollWidth,
+          dokClient: document.documentElement.clientWidth,
+          feldScroll: feld?.scrollWidth ?? -1,
+          feldClient: feld?.clientWidth ?? -1,
+        };
+      }, VORLAGE_ID);
+
+      // (1) Kein waagerechtes Schieben des ganzen Dokuments.
+      expect(
+        sicht.dokScroll,
+        `waagerechter Überlauf (${wo}): scrollWidth ${sicht.dokScroll} > clientWidth ${sicht.dokClient}`,
+      ).toBeLessThanOrEqual(sicht.dokClient + TOLERANZ_PX);
+
+      // (2) Der Kasten liegt vollständig im Sichtfenster — gemessen am Kastenrechteck, nicht an
+      //     einer CSS-Klasse. Eine Klasse sagt, was gemeint war; das Rechteck sagt, was steht.
+      const kasten = await page.locator(JSON_KASTEN).boundingBox();
+      expect(kasten, `der JSON-Kasten hat kein Kastenrechteck (${wo})`).not.toBeNull();
+      const kastenX = kasten?.x ?? Number.NaN;
+      const kastenBreite = kasten?.width ?? Number.NaN;
+      expect(
+        kastenX,
+        `der JSON-Kasten ragt links hinaus (${wo}): x=${kastenX}`,
+      ).toBeGreaterThanOrEqual(-TOLERANZ_PX);
+      expect(
+        kastenX + kastenBreite,
+        `der JSON-Kasten ragt rechts hinaus (${wo}): x=${kastenX} + Breite=${kastenBreite} > ${sicht.dokClient}`,
+      ).toBeLessThanOrEqual(sicht.dokClient + TOLERANZ_PX);
+
+      // (3) Und das Vorlagenfeld ebenso. Es ist achtzeilig und `font-mono` — genau hier bricht so
+      //     etwas zuerst, und zwar auf zwei Arten: das Feld selbst zu breit …
+      const feld = await page.locator(VORLAGE).boundingBox();
+      expect(feld, `das Vorlagenfeld hat kein Kastenrechteck (${wo})`).not.toBeNull();
+      const feldX = feld?.x ?? Number.NaN;
+      const feldBreite = feld?.width ?? Number.NaN;
+      expect(
+        feldX,
+        `das Vorlagenfeld ragt links hinaus (${wo}): x=${feldX}`,
+      ).toBeGreaterThanOrEqual(-TOLERANZ_PX);
+      expect(
+        feldX + feldBreite,
+        `das Vorlagenfeld ragt rechts hinaus (${wo}): x=${feldX} + Breite=${feldBreite} > ${sicht.dokClient}`,
+      ).toBeLessThanOrEqual(sicht.dokClient + TOLERANZ_PX);
+
+      // … oder sein INHALT breiter als das Feld, sodass der Mensch die Vorlage nur zur Hälfte sieht
+      // und waagerecht in einem Textfeld schieben müsste.
+      expect(
+        sicht.feldScroll,
+        `die Vorlage schiebt im Feld waagerecht (${wo}): scrollWidth ${sicht.feldScroll} > clientWidth ${sicht.feldClient}`,
+      ).toBeLessThanOrEqual(sicht.feldClient + TOLERANZ_PX);
+    }
+  }
+});
+
+// Die Befehlstaste auf macOS, Strg sonst — dieselbe Wahl wie in `word-taskpane-kopieren.spec.ts:36`.
+const MOD = process.platform === "darwin" ? "Meta" : "Control";
+/** Obergrenze der Tab-Schritte: keine geratene Zahl, sondern eine Abbruchbedingung mit Meldung. */
+const MAX_TABS = 200;
+
+test("UX-20b L2: die Vorlage ist mit Maus UND Tastatur erreichbar, vollmarkiert, kopierbar — und sie taugt als Datei", async ({
+  page,
+  browserName,
+}) => {
+  // Zwischenablage-Berechtigungen sind nur in Chromium treiberseitig erteilbar; Firefox und WebKit
+  // verweigern den Zugriff. BENANNTES Überspringen statt stillem Grün — dieselbe Bauform, die diese
+  // Suite schon zweimal begründet hat (:144-149, :158-164, `word-taskpane-kopieren.spec.ts:57-64`).
+  // Ungeprüft bleibt in Firefox/WebKit damit der GESAMTE Fall: Vollmarkierung per Maus und Tastatur,
+  // die Kopie in die Zwischenablage und das Einreichen der kopierten Vorlage als Datei. Der Tor-Lauf
+  // (`smoke:ui:gate`) fährt Chromium, der Fall läuft also in jedem Tor mit.
+  test.skip(
+    browserName !== "chromium",
+    "Zwischenablage nur in Chromium treiberseitig steuerbar — in Firefox/WebKit bliebe Vollmarkierung, Kopie und Datei-Einreichung dieses Falls ungeprüft (benannte Grenze, kein stilles Ueberspringen)",
+  );
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+
+  await ensureLoggedIn(page);
+  await schalteStufe2Ein(page);
+
+  const vorlage = page.locator(VORLAGE);
+  const wert = await vorlage.inputValue();
+  expect(
+    wert.length,
+    "die Vorlage ist leer — alles Weitere wäre eine Aussage über nichts",
+  ).toBeGreaterThan(10);
+
+  // ── MAUSWEG ──────────────────────────────────────────────────────────────────────────────────
+  // Das ist die Zusage von `ImportJsonUpload.tsx:88` (`onFocus … select()`): ein Klick genügt, der
+  // Mensch muss nicht selbst über acht Zeilen ziehen.
+  await vorlage.click();
+  const nachKlick = await vorlage.evaluate((el) => {
+    const feld = el as HTMLTextAreaElement;
+    return { start: feld.selectionStart, ende: feld.selectionEnd, laenge: feld.value.length };
+  });
+  expect(nachKlick.start, "Mausweg: die Markierung beginnt nicht bei 0").toBe(0);
+  expect(nachKlick.ende, "Mausweg: die Markierung reicht nicht bis zum Ende").toBe(
+    nachKlick.laenge,
+  );
+
+  // ── TASTATURWEG ──────────────────────────────────────────────────────────────────────────────
+  // DER STARTPUNKT ist der Seitenanfang unmittelbar nach dem Laden: kein Klick, kein `focus()`.
+  // Das ist wichtig — Chromium merkt sich den zuletzt angeklickten Ort als Startpunkt der
+  // Tab-Reihenfolge; ein Klick irgendwohin würde den Weg abkürzen und der Fall bewiese dann nur,
+  // dass das Feld von seinem Nachbarn aus erreichbar ist. Nach `reload()` beginnt die Reihenfolge
+  // am Dokumentanfang, also dort, wo auch ein Mensch mit der Tastatur beginnt.
+  await page.reload();
+  await expect(vorlage).toBeVisible({ timeout: 15_000 });
+
+  let schritte = 0;
+  let erreicht = false;
+  while (schritte < MAX_TABS && !erreicht) {
+    await page.keyboard.press("Tab");
+    schritte++;
+    erreicht = await page.evaluate((id) => document.activeElement?.id === id, VORLAGE_ID);
+  }
+  expect(
+    erreicht,
+    `Tastaturweg: das Vorlagenfeld ist vom Seitenanfang aus in ${MAX_TABS} Tab-Schritten nicht erreichbar — für Tastaturnutzer ist die Vorlage damit nicht zu holen`,
+  ).toBe(true);
+  test.info().annotations.push({
+    type: "Tastaturweg",
+    description: `Tab-Schritte vom Seitenanfang bis #${VORLAGE_ID}: ${schritte} (Obergrenze ${MAX_TABS})`,
+  });
+
+  // Der Fokus trägt die Vollmarkierung auch auf diesem Weg — sonst hinge die Zusage am Mausklick.
+  const nachTab = await vorlage.evaluate((el) => {
+    const feld = el as HTMLTextAreaElement;
+    return { start: feld.selectionStart, ende: feld.selectionEnd, laenge: feld.value.length };
+  });
+  expect(nachTab.start, "Tastaturweg: die Markierung beginnt nicht bei 0").toBe(0);
+  expect(nachTab.ende, "Tastaturweg: die Markierung reicht nicht bis zum Ende").toBe(
+    nachTab.laenge,
+  );
+
+  // UND DIE GEGENRICHTUNG: einmal weiter (das Feld verlassen), einmal Shift+Tab zurück. Ohne diese
+  // Hälfte wäre „erreichbar" nur für die eine Laufrichtung belegt.
+  await page.keyboard.press("Tab");
+  expect(
+    await page.evaluate((id) => document.activeElement?.id === id, VORLAGE_ID),
+    "Tastaturweg: Tab verlässt das Vorlagenfeld nicht — der Fokus sitzt fest",
+  ).toBe(false);
+  await page.keyboard.press("Shift+Tab");
+  expect(
+    await page.evaluate((id) => document.activeElement?.id === id, VORLAGE_ID),
+    "Tastaturweg: Shift+Tab führt nicht zurück ins Vorlagenfeld",
+  ).toBe(true);
+  const nachShiftTab = await vorlage.evaluate((el) => {
+    const feld = el as HTMLTextAreaElement;
+    return { start: feld.selectionStart, ende: feld.selectionEnd, laenge: feld.value.length };
+  });
+  expect(nachShiftTab.start, "Shift+Tab: die Markierung beginnt nicht bei 0").toBe(0);
+  expect(nachShiftTab.ende, "Shift+Tab: die Markierung reicht nicht bis zum Ende").toBe(
+    nachShiftTab.laenge,
+  );
+
+  // ── ECHTE ZWISCHENABLAGE ─────────────────────────────────────────────────────────────────────
+  // Echter Tastendruck, echte Zwischenablage der Engine — kein nachgebautes `copy`-Ereignis.
+  await page.keyboard.press(`${MOD}+c`);
+  const kopiert = await page.evaluate(() => navigator.clipboard.readText());
+  expect(kopiert, "was in der Zwischenablage liegt, ist nicht die Vorlage").toBe(wert);
+
+  // ── UND DIE VORLAGE TAUGT WIRKLICH ALS DATEI ─────────────────────────────────────────────────
+  // Das ist die Nutzenkette, die den ganzen Kasten rechtfertigt: was da steht, funktioniert auch.
+  // Eingereicht wird der KOPIERTE Text — nicht der gelesene Feldwert —, damit die Kette wirklich
+  // durch die Zwischenablage läuft.
+  const spur = meldungsSpur(page);
+  await page.locator(JSON_EINGANG).setInputFiles({
+    name: "vorlage.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(kopiert, "utf8"),
+  });
+  await expect
+    .poll(() => spur.lesen(), {
+      timeout: 15_000,
+      message: "die kopierte Vorlage wurde nicht angenommen — gemeldet wurde stattdessen",
+    })
+    .toContain("1 Beiträge zur Prüfung eingereiht.");
+});
+
+/**
+ * Die fünf erlaubten Werte für `type` — `lib/importReview.ts:5-11` (`TYPES`).
+ *
+ * Bewusst als Kopie und nicht als Import aus dem Produkt: `tests-smoke` ist eine Sonde AUF das
+ * gebaute Bündel, keine Einheit davon; ein Import zöge Produktmodule in den Testläufer und damit
+ * eine zweite Ladekette neben `apps/web/dist`. Die Kopie kann veralten — das macht diesen Fall aber
+ * nicht falsch grün: die harte Zusage ist das Einreichen der echten Exportdatei weiter unten, und
+ * die geht durch den echten Parser. Diese Liste ist die schnellere, sprechendere Meldung davor.
+ */
+const ERLAUBTE_TYPEN = [
+  "bauchgefuehl",
+  "best_practice",
+  "lernkurve",
+  "technik",
+  "negativwissen",
+] as const;
+/** Die vier Pflichtfelder des Importvertrags — `lib/importReview.ts:15-20` (`FIELD_CHECKS`). */
+const PFLICHTFELDER = ["title", "statement", "category", "type"] as const;
+
+test("UX-20b L3: der Bibliotheks-Export kommt über echtes HTTP und wird vom Import angenommen", async ({
+  page,
+}) => {
+  await ensureLoggedIn(page);
+
+  // ÜBER DIE ECHTE HTTP-SCHICHT DER ANGEMELDETEN SITZUNG: `page.request` teilt sich den Keksbeutel
+  // des Browserkontexts, die Anfrage trägt also dieselbe Sitzung wie ein Klick auf der Seite. Kein
+  // neuer Egress — derselbe Server, den dieser Smoke ohnehin fährt.
+  const antwort = await page.request.get("/api/library/export");
+  const typ = antwort.headers()["content-type"] ?? "";
+  expect(antwort.status(), `Export antwortet nicht mit 200 (content-type: ${typ})`).toBe(200);
+  expect(typ, `Export antwortet nicht als JSON (Status ${antwort.status()})`).toContain(
+    "application/json",
+  );
+  const rumpf = await antwort.text();
+  const daten: unknown = JSON.parse(rumpf);
+  expect(Array.isArray(daten), "der Export ist keine Liste — der Import erwartet ein Array").toBe(
+    true,
+  );
+  const liste = daten as Record<string, unknown>[];
+
+  // DIE DATENLAGE, nach dem Muster des mega49-Falls oben und ohne Wette auf die Reihenfolge: nur ein
+  // Lauf, der sich selbst als geseedet ausweist, darf „mindestens ein Eintrag" behaupten.
+  if (process.env.KLARWERK_SMOKE_SEED !== "1") {
+    test.info().annotations.push({
+      type: "Datenlage",
+      description: `Lauf ohne KLARWERK_SMOKE_SEED: der Export war formal in Ordnung (200, JSON, Array, ${liste.length} Einträge), die INHALTSPRÜFUNG und das Einreichen der Exportdatei haben in DIESEM Lauf NICHT stattgefunden. Belegt wird der Inhaltszweig von npm run smoke:ui:gate:daten.`,
+    });
+    return;
+  }
+
+  expect(
+    liste.length,
+    "geseedeter Lauf, aber der Export ist leer — dann ist die zweite Datenlage keine",
+  ).toBeGreaterThan(0);
+  const erster = liste[0] ?? {};
+  for (const feld of PFLICHTFELDER) {
+    expect(typeof erster[feld], `Exporteintrag 1: Pflichtfeld „${feld}" ist kein Text`).toBe(
+      "string",
+    );
+  }
+  expect(
+    ERLAUBTE_TYPEN,
+    `Exporteintrag 1: type „${String(erster.type)}" steht nicht in der erlaubten Menge`,
+  ).toContain(erster.type);
+
+  // UND JETZT DER NUTZERWEG: genau dieser Rumpf, als Datei, durch den echten Dateieingang. Damit ist
+  // der Satz aus `imp.json.exportPath` („Passende Datei aus dem Bestand …", `i18n.ts:3759-3760`)
+  // eingelöst und nicht nur behauptet.
+  await schalteStufe2Ein(page);
+  const spur = meldungsSpur(page);
+  await page.locator(JSON_EINGANG).setInputFiles({
+    name: "export.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(rumpf, "utf8"),
+  });
+  await expect
+    .poll(() => spur.lesen(), {
+      timeout: 20_000,
+      message:
+        "der eigene Bibliotheks-Export wurde vom Import NICHT angenommen — gemeldet wurde stattdessen",
+    })
+    .toContain(`${liste.length} Beiträge zur Prüfung eingereiht.`);
+
+  // Auch der ERFÜLLTE Zweig sagt laut, was er gemessen hat. Ohne diese Zeile stünde im Bericht eines
+  // geseedeten Laufs nur „passed", und ob der Inhaltszweig wirklich gefahren ist, wäre nur an der
+  // ABWESENHEIT der Anmerkung oben ablesbar — eine Abwesenheit als Beleg ist genau das, was diese
+  // Datei sich abgewöhnt hat (mega59 H3).
+  test.info().annotations.push({
+    type: "Datenlage",
+    description: `geseedeter Lauf: ${liste.length} Einträge über GET /api/library/export geholt, als export.json eingereicht und vom Import angenommen.`,
+  });
 });
