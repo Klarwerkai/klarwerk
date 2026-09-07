@@ -118,6 +118,8 @@ describe("JOB 3131 T2 · der Bestand ueberlebt die Aufteilung in zwei Laeufe", (
     expect(holeBestand().length).toBeGreaterThan(1000);
     expect(holeBrowser().length).toBeGreaterThan(0);
     expect(holeRest().length).toBeGreaterThan(0);
+    // JOB 3229: der neue echte Add-in-Importvertrag muss im regulären Lauf bleiben.
+    expect(holeRest()).toContain("tests/m5c-b-addin-bildunterschriften/route.test.ts");
   });
 
   it("V4 · der Verzeichnisgang der Konfiguration sieht denselben Bestand wie der Collector", () => {

@@ -9,11 +9,7 @@ import JSZip from "jszip";
 // (`docx.ts:1-4`), und `mammoth` löst NUR von dort aus auf (`apps/web/package.json:23`; im
 // Wurzelpaket fehlt es — gemessen in JOB 2613 D3). Eine Kopie hier wäre ein zweiter
 // Extraktionsweg und damit genau der Ablösefall, den Weg B vermeidet.
-import {
-  MAX_INLINE_BODY_HTML_BYTES,
-  extractDocxRich,
-  isDocxDocumentLike,
-} from "../../../../apps/web/src/lib/docx";
+import { extractDocxRich, isDocxDocumentLike } from "../../../../apps/web/src/lib/docx";
 import {
   type CaptureService,
   type Draft,
@@ -929,10 +925,13 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
         // kaputte Datei (415), kein 500. Nur der Entwurfs-Anlage-Fehler darunter bleibt bei
         // `sendError` — der ist wirklich ein Serverfehler.
         let reich: Awaited<ReturnType<typeof extractDocxRich>>;
-        // Das Budget ist dasselbe wie im Konsolenweg (`docx.ts:379`): Bilder, die nicht mehr
-        // hineinpassen, werden EHRLICH gezählt statt still verschluckt.
+        // JOB 3229: derselbe Figure-/Beschriftungsweg wie beim Browser-Import.
+        // Bildbytes unverändert durchreichen, weiterhin OHNE Bildbudget: dessen bisheriges
+        // Argument wirkte ohne mapImage nicht. Es jetzt zu aktivieren würde Bilder verlieren.
+        // "enabled" ist nur der Schalter für wrapImagesInFigures; der Wert wird nie gespeichert.
         const job = docxUmwandeln(puffer as ArrayBuffer, {
-          imageBudgetBytes: MAX_INLINE_BODY_HTML_BYTES,
+          mapImage: async (src) => src,
+          imageCaptionPlaceholder: "enabled",
         });
         docxJob = job;
         let timer: NodeJS.Timeout | null = null;
@@ -968,7 +967,7 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           const bodyHtml = reich.html;
           // WELCHE ZAHL DIE QUELLBILDER NENNT — und warum NICHT `reich.totalImages`:
           // Jenes Feld ist „aus Rueckwaertskompatibilitaet an den Budgetlauf gebunden"
-          // (`docx.ts:657-658`) und bleibt 0, wenn ohne `mapImage` extrahiert wird. Der Vertrag
+          // und bleibt 0, wenn ohne Budget extrahiert wird. Der Vertrag
           // `imageTransfer` dagegen „zaehlt IMMER ehrlich" (ebenda).
           //
           // GEMESSEN, nicht gelesen (JOB 2613 D3, erster Testlauf): Bei einer .docx mit ZWEI
