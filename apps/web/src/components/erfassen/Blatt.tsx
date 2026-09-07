@@ -163,6 +163,13 @@ function diktatAnhaengen(bodyHtml: string, text: string): string {
 const BLATT_VERTRAULICHKEIT_HINWEIS_ID = "blatt-vertraulichkeit-hinweis";
 
 /**
+ * JOB 3141 (CAP-P1): Die `id` des Satzes, der sagt, warum das Blatt gerade nichts annimmt. Aus
+ * demselben Grund eine Konstante wie oben: sie steht am Satz UND im `aria-describedby` des
+ * Titelfeldes — der eine Grund gilt für beide Felder, also darf er nicht zweimal getippt werden.
+ */
+const BLATT_LADEN_HINWEIS_ID = "blatt-laden-hinweis";
+
+/**
  * Die zwei Regeln, mit denen das Blatt den `RichTextEditor` von aussen auf Blatt-Maß bringt.
  * Sie stehen bewusst als benannte Konstante und nicht als Zeichenkette im JSX — was sie tun und
  * warum, steht an ihrer Verwendungsstelle.
@@ -231,7 +238,14 @@ export function Blatt({
     titel: string;
   } | null>(null);
   const [quellBildzahl, setQuellBildzahl] = useState<number | null>(null);
-  const [loadingDraft, setLoadingDraft] = useState(false);
+  // ==============================================================================================
+  // JOB 3141 (CAP-P1) — DAS LADEN BEGINNT MIT DEM ERSTEN BILDAUFBAU, NICHT ERST MIT DEM EFFEKT.
+  // ==============================================================================================
+  // Trägt die Adresse beim Aufbau einen Entwurf, dann WIRD er geholt — der Effekt unten hat auf
+  // diesem Weg keinen Zweig, der das unterliesse. Stünde hier `false`, gäbe es genau einen
+  // Bildaufbau lang eine aufnahmebereite Schreibfläche, deren Inhalt der Ladevorgang unmittelbar
+  // danach ersetzte: das Fenster aus §2 des Auftrags, nur kürzer.
+  const [loadingDraft, setLoadingDraft] = useState(() => resumeDraftId !== null);
   const [err, setErr] = useState<string | null>(null);
   const [staleConflict, setStaleConflict] = useState(false);
   const [reloadNonce, setReloadNonce] = useState(0);
@@ -554,6 +568,18 @@ export function Blatt({
       // das erneute Öffnen DESSELBEN Entwurfs übersprang dann das Laden (bens Messung: richtige
       // Adresse, leeres Blatt, danach `create` statt `update` und ein zweiter Entwurf).
       speicherAdresseRef.current = null;
+      // JOB 3141 (CAP-P1, Lieferung 6): UND HIER ENDET DIE SPERRE. Dieser Zweig ist der eine Ort,
+      // an dem ein LAUFENDES Laden nicht durch sein eigenes `.finally` beendet wird: die Aufräumung
+      // des vorigen Effekts setzt `cancelled = true`, das angehaltene Versprechen kommt also
+      // wortlos nirgends mehr an. Ohne diese Zeile bliebe das Blatt für immer gesperrt — vor JOB
+      // 3141 fiel das kaum auf (nur das Titelfeld war gesperrt), seit die Schreibfläche derselben
+      // Regel folgt, wäre es eine tote Seite. Gemessen in F3b: von `/erfassen?draft=…` mitten im
+      // Laden auf `/erfassen` zurück.
+      //
+      // ES IST KEINE ZWEITE ABSICHERUNG DESSELBEN LOCHS, sondern die Zustandsaussage DIESES
+      // Zweiges: die Adresse nennt keinen Entwurf, es ist also nichts zu laden — und ein Blatt ohne
+      // Ladevorgang ist bereit.
+      setLoadingDraft(false);
       return;
     }
     // ============================================================================================
@@ -584,6 +610,28 @@ export function Blatt({
     const vorherigeKennung = activeDraftId;
     let cancelled = false;
     setLoadingDraft(true);
+    // JOB 3141 (CAP-P1, Lieferung 1 und 4): DER DRITTE EINGABEWEG WIRD MIT ANGEHALTEN. Tastatur und
+    // Einfügen laufen über die Schreibfläche, die es ab jetzt während des Ladens nicht gibt — das
+    // Diktat läuft daran vorbei: sein Rückruf schreibt über `setBodyHtml` unmittelbar in den
+    // Blattzustand (`diktatUmschalten`). Ein weiterlaufendes Diktat hängte also Absätze an einen
+    // Rumpf, den `:645` gleich darauf ersetzt.
+    //
+    // JOB 3141 R2 (bens Korrekturpflicht 1) — GETRENNT WIRD ZUERST, ANGEHALTEN DANACH. Runde 1 rief
+    // nur `stop()`, und das ist nach der Web-Speech-Spezifikation eine Bitte um Abschluss: das
+    // laufende Ergebnis kommt noch. ben hat es gemessen — der Satz landete IM frisch geladenen
+    // Entwurf. Die Reihenfolge hier ist deshalb die ganze Wirkung:
+    //   1. den Merker leeren — ab dieser Zeile führt diese Sitzung das Blatt nicht mehr, und beide
+    //      Rückrufe (`diktatUmschalten`) fallen von selbst durch;
+    //   2. den Läuft-Zustand selbst zurücksetzen — der Rekorder darf ihn nicht mehr melden, also
+    //      muss es der tun, der ihn getrennt hat;
+    //   3. `stop()` — das Mikrofon geht wirklich aus. Was danach noch gemeldet wird, gehört keinem
+    //      Blatt mehr.
+    const getrenntesDiktat = recRef.current;
+    if (getrenntesDiktat) {
+      recRef.current = null;
+      setDiktatLaeuft(false);
+      getrenntesDiktat.stop();
+    }
     setLetzteAktion({ art: "laden" });
     setErr(null);
 
@@ -918,6 +966,40 @@ export function Blatt({
   });
 
   const busy = save.isPending || submit.isPending || loadingDraft || submittedKo !== null;
+
+  // ================================================================================================
+  // JOB 3141 (CAP-P1) — EINE REGEL FÜR TITEL UND RUMPF: NIMMT DAS BLATT GERADE ETWAS AN?
+  // ================================================================================================
+  //
+  // PEDIS BEFUND: Wer `/erfassen?draft=<id>` öffnet und sofort losschreibt, sah seinen Satz
+  // verschwinden — der Ladeweg setzt Titel und Rumpf bedingungslos auf den Serverstand (`:611-612`).
+  // Die Sperre dagegen war HALB da: `disabled={loadingDraft}` am Titelfeld, NICHTS an der
+  // Schreibfläche. Genau diese Ungleichbehandlung ist der Fehler, nicht ihr Fehlen an einer Stelle.
+  //
+  // GEWÄHLT IST WEG B — „Bedienung bis Bereitschaft verhindern", und zwar ganz. Der andere Weg aus
+  // dem Auftrag („frühe Eingaben erhalten") ist geprüft und verworfen: Er müsste entscheiden, was
+  // mit dem gerade geholten Entwurfstext geschieht, dem der eigene Satz gegenübersteht — also
+  // zusammenführen oder eines von beidem verwerfen. Das ist eine Konfliktzusammenführung, und die
+  // ist in §10 ausdrücklich NICHT Teil dieses Auftrags. Ausserdem hinge dann `savedStateRef` (`:625`)
+  // an einem Stand, den der Server nicht kennt: das Blatt hielte den fremden Entwurf für
+  // gespeichert, obwohl es den eigenen Text zeigt — genau die Unwahrheit, die Lieferung 5 verbietet.
+  // Weg B braucht keine dieser Entscheidungen: was nie entstehen konnte, muss auch nicht gerettet
+  // werden.
+  //
+  // DIESE EINE ABLESUNG IST DIE GANZE REGEL. Sie wird an JEDEM Eingabeweg gelesen und nirgends
+  // nachgebaut: Titelfeld (`disabled`), Schreibfläche (sie wird gar nicht erst gerendert),
+  // Diktat-Knopf und Bild-Knopf. Die KI-Wege hängen über `busy` schon daran. Der frühere
+  // Einzelausdruck `disabled={loadingDraft}` am Titelfeld ist damit ERSETZT, nicht ergänzt.
+  //
+  // WARUM DIE SCHREIBFLÄCHE NICHT „NUR" GESPERRT WIRD: `RichTextEditor` ist ein unkontrolliertes
+  // `contentEditable` (`RichTextEditor.tsx:2972`) ohne Sperr-Eingang, und seine Datei liegt nicht in
+  // den Zielpfaden. Die naheliegenden Alternativen sind gemessen und untauglich: ein `inert` oder
+  // `aria-disabled` an einer Hülle ändert in jsdom NICHTS am Tastatur- und Einfügeweg (der Test F2
+  // fügt HTML über den echten `onPaste`-Weg ein und misst, dass es ankommt) — die Sperre wäre also
+  // eine Behauptung, die kein Test halten kann; `pointer-events: none` liesse die Tastatur ganz
+  // offen. Bleibt das VERZÖGERTE MONTIEREN: solange geladen wird, gibt es keinen Editor und damit
+  // keinen Empfänger. Das ist keine halbe Sperre, sondern die vollständige — und sie ist messbar.
+  const blattNimmtAn = !loadingDraft;
   const hasSavableContent = isDraftUpdate || hasBody || hasTitle;
   const canSave = hasSavableContent && !busy;
   const canStructure = hasStructureInput && !structure.isPending && !busy;
@@ -1167,15 +1249,51 @@ export function Blatt({
 
   // ---- Werkzeuge ------------------------------------------------------------------------------
 
+  // ================================================================================================
+  // JOB 3141 R2 (bens Korrekturpflicht 1) — `recRef.current` IST DIE GRENZE, NICHT `stop()`.
+  // ================================================================================================
+  //
+  // BENS MESSUNG an Runde 1, wörtlich: „`stop()` kehrt zurück, Entwurf wird geladen, anschließend
+  // trifft das abschließende Diktatergebnis ein" — Editorinhalt danach: „Vor jedem Anlauf die
+  // Schmierstellen prüfen.BEN verspätetes Ergebnis aus dem alten Blatt". Ein fremder Satz IM
+  // geladenen Entwurf, also schlimmer als der Verlust, den dieser Auftrag schliesst.
+  //
+  // WARUM `stop()` DAS NICHT LEISTEN KANN: Die Web-Speech-Spezifikation sagt zu `stop()` ausdrücklich
+  // zu, dass die laufende Erkennung noch ZU ENDE GEFÜHRT und ihr Ergebnis noch gemeldet wird (§4.1.4;
+  // `end` folgt danach, §4.1.5). `stop()` ist eine Bitte um Abschluss, keine Trennung. Runde 1 hat
+  // eine Bitte für eine Zusage gehalten.
+  //
+  // DIE GRENZE IST DESHALB DIE IDENTITÄT: `recRef.current` ist der Rekorder, der das Blatt GERADE
+  // FÜHRT. Beide Rückrufe fragen zuerst, ob sie das noch sind — der Ladeweg trennt die alte Sitzung,
+  // indem er den Merker leert (`:619` ff.). Danach schreibt sie nichts mehr, gleich wie spät sie
+  // kommt, und gleich ob das Laden gelingt oder scheitert.
+  //
+  // AUCH DAS ENDE FRAGT (`beendet`), und das ist genau der Absender, den `makeRec` seit JOB 3038 R3
+  // mitgibt: Ein spät gemeldetes `end` der ALTEN Sitzung nähme einem inzwischen NEU gestarteten
+  // Diktat sonst den Läuft-Zustand — der Stoppknopf verschwände, während das Mikrofon läuft. Der
+  // Kommentar in `lib/speechDictation.ts:83-98` beschreibt genau diesen Fall; das Blatt liest den
+  // Absender bis hierher nicht.
   const diktatUmschalten = (): void => {
     setOffenesMenue(null);
     if (diktatLaeuft) {
+      // Der Mensch selbst hält an: hier wird NICHT getrennt. Sein Abschlussergebnis gehört ihm und
+      // soll noch ankommen — das ist der Unterschied zum Ladeweg, der ihm den Rumpf wegnimmt.
       recRef.current?.stop();
       return;
     }
     const rec = makeRec(
-      (text) => setBodyHtml((prev) => diktatAnhaengen(prev, text)),
-      () => setDiktatLaeuft(false),
+      (text) => {
+        if (recRef.current !== rec) {
+          return;
+        }
+        setBodyHtml((prev) => diktatAnhaengen(prev, text));
+      },
+      (beendet) => {
+        if (recRef.current !== beendet) {
+          return;
+        }
+        setDiktatLaeuft(false);
+      },
       diktatSprache(i18n.language),
     );
     if (!rec) {
@@ -1246,11 +1364,19 @@ export function Blatt({
       <button
         type="button"
         data-testid="blatt-werkzeug-diktieren"
-        disabled={!diktatMoeglich}
-        title={diktatMoeglich ? undefined : t("capture.diktatUnsupported")}
+        // JOB 3141 (CAP-P1): dieselbe eine Regel. Diktiertes reist über `setBodyHtml` in den Rumpf —
+        // es wäre der eine Eingabeweg, der die fehlende Schreibfläche umginge.
+        disabled={!diktatMoeglich || !blattNimmtAn}
+        title={
+          diktatMoeglich
+            ? blattNimmtAn
+              ? undefined
+              : t("erfassen.laden.nichtBereit")
+            : t("capture.diktatUnsupported")
+        }
         onClick={diktatUmschalten}
         className={`inline-flex items-center gap-1.5 text-[13px] ${
-          !diktatMoeglich
+          !diktatMoeglich || !blattNimmtAn
             ? "text-muted-2 opacity-50"
             : diktatLaeuft
               ? "font-semibold text-text"
@@ -1264,8 +1390,15 @@ export function Blatt({
       <button
         type="button"
         data-testid="blatt-werkzeug-bild"
+        // JOB 3141 (CAP-P1): dieselbe eine Regel. „Bild" löst den Einfügeknopf IM Editor aus
+        // (`bildEinfuegen`); ohne montierten Editor fände der Griff ins Leere und der Knopf täte
+        // wortlos nichts — eine Scheinfläche. Gesperrt sagt er, dass er gerade nicht kann.
+        disabled={!blattNimmtAn}
+        title={blattNimmtAn ? undefined : t("erfassen.laden.nichtBereit")}
         onClick={bildEinfuegen}
-        className="inline-flex items-center gap-1.5 text-[13px] text-muted-2 hover:text-text"
+        className={`inline-flex items-center gap-1.5 text-[13px] ${
+          blattNimmtAn ? "text-muted-2 hover:text-text" : "text-muted-2 opacity-50"
+        }`}
       >
         <SymbolBild />
         {t("erfassen.werkzeug.bild")}
@@ -1761,7 +1894,13 @@ export function Blatt({
             <input
               data-testid="blatt-titel"
               value={title}
-              disabled={loadingDraft}
+              // JOB 3141 (CAP-P1): DIESELBE Ablesung wie die Schreibfläche darunter. Hier stand
+              // `disabled={loadingDraft}` — die eine Hälfte einer Regel, die es nur an diesem Feld
+              // gab. Sie ist ersetzt, nicht ergänzt.
+              disabled={!blattNimmtAn}
+              // Ein gesperrtes Feld schweigt von sich aus. Der Verweis steht nur, solange der Satz
+              // steht — sonst zeigte `aria-describedby` auf eine `id`, die es nicht gibt.
+              aria-describedby={blattNimmtAn ? undefined : BLATT_LADEN_HINWEIS_ID}
               onChange={(event) => changeTitle(event.target.value)}
               onFocus={() => {
                 // Das Menü öffnet, wenn es etwas anzubieten hat: die vier Starter am LEEREN Blatt,
@@ -1844,14 +1983,43 @@ export function Blatt({
               submitValidation && !hasBody ? "rounded-[10px] ring-1 ring-trust-crit-fill" : ""
             }`}
           >
-            <RichTextEditor
-              value={bodyHtml}
-              onChange={changeBodyHtml}
-              placeholder={t("erfassen.platzhalter.text")}
-              captionFormRequest={captionRequest ?? undefined}
-              documentTitle={derivedTitle}
-              onTitelVorschlag={changeTitle}
-            />
+            {/* ======================================================================================
+                JOB 3141 (CAP-P1) — SOLANGE GELADEN WIRD, GIBT ES HIER KEINE SCHREIBFLÄCHE.
+                ======================================================================================
+                Der Grund für diese Bauform steht bei `blattNimmtAn` oben. Kurz: der Editor ist ein
+                unkontrolliertes `contentEditable` ohne Sperr-Eingang, seine Datei ist gesperrt, und
+                eine Hülle mit `inert`/`aria-disabled` hält weder Tastatur noch Einfügen auf. Was
+                nicht montiert ist, nimmt nichts an — und genau das ist hier die Zusage.
+
+                AN SEINER STELLE STEHT DER GRUND, nicht eine leere Fläche: Zustandsmodell §9 verlangt
+                „ausdrücklich nicht bereit mit sichtbarem, übersetztem Grund". `role="status"` sagt
+                ihn auch der Vorlesehilfe an; die `id` trägt zugleich das `aria-describedby` des
+                Titelfeldes, damit BEIDE Felder denselben einen Grund nennen.
+
+                DER EDITOR VERLIERT DABEI NICHTS: Sein Inhalt lebt in `bodyHtml`, nicht in ihm. Nach
+                dem Laden montiert er frisch auf dem geladenen Rumpf — dieselbe Fassung, die er sonst
+                über den Wert-Effekt geschrieben bekäme. */}
+            {blattNimmtAn ? (
+              <RichTextEditor
+                value={bodyHtml}
+                onChange={changeBodyHtml}
+                placeholder={t("erfassen.platzhalter.text")}
+                captionFormRequest={captionRequest ?? undefined}
+                documentTitle={derivedTitle}
+                onTitelVorschlag={changeTitle}
+              />
+            ) : (
+              // `<output>` statt `<p role="status">`: dieselbe Ansage an die Vorlesehilfe, aber als
+              // semantisches Element — so verlangt es die a11y-Regel `useSemanticElements`, und so
+              // steht es schon an der Verlustmeldung der Galerie (`DraftBodyGallery.tsx:52`).
+              <output
+                id={BLATT_LADEN_HINWEIS_ID}
+                data-testid="blatt-nicht-bereit"
+                className="block rounded-[10px] border border-dashed border-hairline px-3 py-6 text-[13px] leading-relaxed text-muted"
+              >
+                {t("erfassen.laden.nichtBereit")}
+              </output>
+            )}
           </div>
 
           {/* Die Galerie steht UNTER dem Text im Blatt (§5.2). */}

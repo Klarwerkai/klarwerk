@@ -3768,8 +3768,21 @@ describe("JOB 1181 · Klassenbindungen: aufgelöst oder gemeldet, kein dritter Z
     // Die Klasse steht bewusst an BEIDEN Elementen und nicht in einem gemeinsamen Attributobjekt:
     // in ein Objekt geschoben sähe dieser Sammler sie gar nicht mehr (gemessen: 215 statt 216) —
     // das wäre ein Vorbeischreiben am Wächter, kein Aufräumen.
+    //
+    // JOB 3141 (CAP-P1): von 217 auf 218. GENAU EINE Bindung ist DAZUGEKOMMEN, von derselben
+    // Bauform wie die 217 daneben (EIN Zustand entscheidet zwischen zwei festen Klassenketten):
+    //
+    //     + components/erfassen/Blatt.tsx:1400 `inline-flex items-center gap-1.5 text-[13px]
+    //           ${blattNimmtAn ? "text-muted-2 hover:text-text" : "text-muted-2 opacity-50"}`
+    //           (das Werkzeug „Bild")
+    //
+    // Sie ist die sichtbare Hälfte der einen Regel aus CAP-P1: solange ein Entwurf geholt wird,
+    // nimmt das Blatt nichts an — und ein gesperrtes Werkzeug sieht auch gesperrt aus. Der
+    // Nachbar „Diktieren" trug diese Bauform schon (er ist eine der 217); er hat nur eine
+    // Bedingung mehr im selben Ausdruck bekommen, also keine zweite Bindung. Keine ist
+    // weggefallen.
     expect(UNAUFGELOEST.length, "es gibt heute unauflösbare Bindungen — das ist der Befund").toBe(
-      217,
+      218,
     );
     for (const b of UNAUFGELOEST) {
       expect(b.datei, "Meldung ohne Datei").toMatch(/^apps\/web\/src\/.+\.tsx?$/);

@@ -4964,6 +4964,13 @@ const de = {
   "fd.confirmDiscard": "Eingabe verwerfen? Nicht gespeicherte Inhalte gehen verloren.",
   "fd.errSaveFailed": "Speichern fehlgeschlagen.",
   "fd.errLoadFailed": "Der Entwurf konnte nicht geladen werden. Es wurde nichts gespeichert.",
+  // JOB 3141 (CAP-P1): Der Satz, der an der Stelle der Schreibfläche steht, solange ein Entwurf
+  // geholt wird — und über `aria-describedby` auch am gesperrten Titelfeld. Er sagt zweierlei, weil
+  // beides zusammen den Menschen nicht ratlos stehen lässt: WAS gerade läuft und WARUM das Blatt so
+  // lange nichts annimmt. Ohne den zweiten Halbsatz wäre eine stumme Fläche nur begründet, nicht
+  // erklärt (Auftrag §8.1).
+  "erfassen.laden.nichtBereit":
+    "Der Entwurf wird geholt. Bis er da ist, nimmt dieses Blatt nichts an — sonst würde der geladene Text dein Geschriebenes überschreiben.",
   "fd.draftStale":
     "Dieser Entwurf wurde inzwischen an anderer Stelle geändert — zum Beispiel in einem zweiten Tab. Dein Stand hier wurde NICHT gespeichert und nichts wurde überschrieben. „Neu laden“ holt die andere Fassung; was du hier getippt hast, geht dabei verloren — kopiere es vorher, wenn du es behalten willst.",
   "fd.draftStaleReload": "Neu laden",
@@ -9736,6 +9743,8 @@ const en: typeof de = {
   "fd.confirmDiscard": "Discard input? Unsaved content will be lost.",
   "fd.errSaveFailed": "Saving failed.",
   "fd.errLoadFailed": "The draft could not be loaded. Nothing was saved.",
+  "erfassen.laden.nichtBereit":
+    "The draft is being fetched. Until it is here, this sheet accepts nothing — otherwise the loaded text would overwrite what you wrote.",
   "fd.draftStale":
     "This draft has since been changed elsewhere — for example in a second tab. Your version here was NOT saved and nothing was overwritten. “Reload” fetches the other version; what you typed here will be lost — copy it first if you want to keep it.",
   "fd.draftStaleReload": "Reload",
@@ -14339,6 +14348,8 @@ const nl: typeof de = {
   "fd.confirmDiscard": "Invoer verwerpen? Niet-opgeslagen inhoud gaat verloren.",
   "fd.errSaveFailed": "Opslaan mislukt.",
   "fd.errLoadFailed": "Het concept kon niet worden geladen. Er is niets opgeslagen.",
+  "erfassen.laden.nichtBereit":
+    "Het concept wordt opgehaald. Tot het er is, neemt dit blad niets aan — anders zou de geladen tekst overschrijven wat jij hebt geschreven.",
   "fd.draftStale":
     "Dit concept is intussen elders gewijzigd — bijvoorbeeld in een tweede tabblad. Jouw versie hier is NIET opgeslagen en er is niets overschreven. „Opnieuw laden“ haalt de andere versie op; wat je hier hebt getypt gaat daarbij verloren — kopieer het eerst als je het wilt bewaren.",
   "fd.draftStaleReload": "Opnieuw laden",
