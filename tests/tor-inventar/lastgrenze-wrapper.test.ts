@@ -42,60 +42,14 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { WURZEL, alsPosix, browserMuster } from "./browser-gruppe";
+import { type Fenster, maxGleichzeitig, ueberlappendePaare } from "./zeitfenster";
 
 // ------------------------------------------------------------------------------------------------
 // Gemeinsames Handwerkszeug: Zeitfenster und ihre Ueberlappung.
 // ------------------------------------------------------------------------------------------------
-
-interface Fenster {
-  readonly datei: string;
-  readonly von: number;
-  readonly bis: number;
-}
-
-/**
- * Die groesste Zahl gleichzeitig offener Fenster — ein Durchgang ueber die Zeitachse.
- *
- * Ein Fenster der Laenge 0 (`von === bis`) zaehlt nie mit: der JSON-Bericht setzt so eines, wenn in
- * einer Datei kein einziger Fall lief (dann faellt `startTime` auf die Startzeit des Berichts
- * zurueck). Solche Fenster duerfen keine Ueberlappung vortaeuschen, deshalb schliesst dieser Gang
- * bei gleicher Zeit ZUERST und oeffnet danach.
- */
-function maxGleichzeitig(fenster: readonly Fenster[]): number {
-  const ereignisse: Array<{ zeit: number; wert: number }> = [];
-  for (const f of fenster) {
-    ereignisse.push({ zeit: f.von, wert: 1 }, { zeit: f.bis, wert: -1 });
-  }
-  ereignisse.sort((a, b) => a.zeit - b.zeit || a.wert - b.wert);
-  let offen = 0;
-  let groesste = 0;
-  for (const e of ereignisse) {
-    offen += e.wert;
-    if (offen > groesste) {
-      groesste = offen;
-    }
-  }
-  return groesste;
-}
-
-/** Die Paare, die sich wirklich ueberschneiden — als Beleg in der Fehlermeldung, nicht als Zahl. */
-function ueberlappendePaare(fenster: readonly Fenster[]): string[] {
-  const paare: string[] = [];
-  for (let i = 0; i < fenster.length; i++) {
-    for (let k = i + 1; k < fenster.length; k++) {
-      const a = fenster[i] as Fenster;
-      const b = fenster[k] as Fenster;
-      if (a.von < b.bis && b.von < a.bis) {
-        paare.push(`${a.datei} [${a.von}–${a.bis}] ∥ ${b.datei} [${b.von}–${b.bis}]`);
-      }
-    }
-  }
-  return paare;
-}
 
 /** Die Zeitfenster je Datei aus Vitests JSON-Bericht. */
 function fensterAusBericht(pfad: string): Fenster[] {
@@ -109,7 +63,8 @@ function fensterAusBericht(pfad: string): Fenster[] {
   }));
 }
 
-const werkbank = mkdtempSync(join(tmpdir(), "klarwerk-lastgrenze-"));
+mkdirSync(join(WURZEL, ".local/run"), { recursive: true });
+const werkbank = mkdtempSync(join(WURZEL, ".local/run/klarwerk-lastgrenze-"));
 afterAll(() => {
   rmSync(werkbank, { recursive: true, force: true });
 });
@@ -126,6 +81,7 @@ const WERK = join(werkbank, "werk");
 mkdirSync(join(WERK, "tools"), { recursive: true });
 copyFileSync(join(WURZEL, "tools", "test"), join(WERK, "tools", "test"));
 chmodSync(join(WERK, "tools", "test"), 0o755);
+copyFileSync(join(WURZEL, "tools/browserdeckel.sh"), join(WERK, "tools/browserdeckel.sh"));
 
 // Ein `npx`, das nichts startet und alles aufschreibt. Es steht in einem eigenen Verzeichnis, das
 // dem PATH VORANGESTELLT wird — `sed`, `tr` und `rm`, die das Skript ebenfalls braucht, kommen
@@ -160,6 +116,8 @@ function fahre(args: readonly string[]): Aufruf[] {
     ...process.env,
     PATH: `${PFADHAKEN}:${process.env.PATH ?? ""}`,
     KLARWERK_ARGV_PROTOKOLL: protokoll,
+    KLARWERK_BROWSERDECKEL_LOCK: join(WERK, "deckel.lock"),
+    KLARWERK_BROWSERDECKEL: "1",
   };
   // Geerbtes aus dem Tor-Lauf wird ausdruecklich entfernt: diese Datei laeuft im Tor als Kind des
   // Aufrufs `rest` und truege sonst dessen Gruppe und Forkzahl in die Messung.

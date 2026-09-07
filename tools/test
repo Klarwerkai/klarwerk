@@ -185,7 +185,7 @@ fi
 # sie vor diesen Zeilen und würde überstimmt. Sieb und Reihenfolge sichern dieselbe Zusage zweimal.
 browser_rc=0
 echo "▶ test 1/2 · browser (Chromium-Dateien, EIN Fork, nacheinander)"
-KLARWERK_TESTGRUPPE=browser npx vitest run \
+KLARWERK_TESTGRUPPE=browser ./tools/browserdeckel.sh browser npx vitest run \
   --config vitest.browser.config.ts \
   ${leerlauf[@]+"${leerlauf[@]}"} ${weiter[@]+"${weiter[@]}"} \
   ${protokoll_flags[@]+"${protokoll_flags[@]}"} \

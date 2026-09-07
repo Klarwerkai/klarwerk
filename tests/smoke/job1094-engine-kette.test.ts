@@ -17,7 +17,7 @@
 //   1. `tools/check`            → ausführbare Shellkommandos (Kommentare und reine Ausgaben raus)
 //   2. das darin gerufene       → `package.json` → scripts[<name>]
 //      npm-Skript
-//   3. die `&&`-Kette           → letztes Glied → `playwright test <args>`
+//   3. die `&&`-Kette           → letztes Glied → optionaler Browserdeckel → `playwright test <args>`
 //   4. `--config` + `--project` → `playwright.smoke.config.ts` → Projekt→Engine
 //
 // Erst am Ende dieser Kette steht eine Enginemenge. `K6` beweist, dass die Auflösung wirklich
@@ -139,6 +139,10 @@ function playwrightArgumente(skriptzeile: string): string[] {
       break;
     }
   }
+  // JOB 3150 R2: nur die bekannte Hülle auflösen, wie im Tor-Ausnahme-Wächter.
+  // Der Deckel reicht die Argumente unverändert durch. Unbekannte Befehle, falsche Halterarten
+  // und bloße Playwright-Erwähnungen bleiben Fehler; K9/K10 sichern beide Richtungen.
+  if (tokens[i] === "./tools/browserdeckel.sh" && tokens[i + 1] === "smoke") i += 2;
   const rest = tokens.slice(i);
   if (rest[0] !== "playwright" || rest[1] !== "test") {
     throw new Error(`kein „playwright test" am Ende der Kette: ${skriptzeile}`);
@@ -251,6 +255,34 @@ const ALLE_ENGINES = ["chromium", "firefox", "webkit"];
 
 // ------------------------------------------------------------------------------------------------
 describe("JOB1094 D2 · K — die Kette von tools/check bis zur Engine", () => {
+  it("K9 · der Browserdeckel erhält sämtliche Playwright-Argumente und die Engine-Auswahl", () => {
+    const aufruf =
+      "playwright test --config playwright.smoke.config.ts --project=chromium --project chromium-zustand --grep-invert @modell";
+    const direkt = playwrightArgumente(`MODE=gate ${aufruf}`);
+    const gedeckelt = playwrightArgumente(
+      `npm run --silent smoke:ui:frisch && MODE=gate ./tools/browserdeckel.sh smoke ${aufruf}`,
+    );
+    expect(gedeckelt).toEqual(direkt);
+    expect(konfigPfad(gedeckelt)).toBe(KONFIG_DATEI);
+    expect(gewaehlteProjekte(gedeckelt)).toEqual(["chromium", "chromium-zustand"]);
+    expect(effektiveEngines(PROJEKTE, gewaehlteProjekte(gedeckelt))).toEqual(["chromium"]);
+    for (const engine of ["firefox", "webkit"]) {
+      const args = playwrightArgumente(
+        `./tools/browserdeckel.sh smoke playwright test --config ${KONFIG_DATEI} --project=${engine}`,
+      );
+      expect(effektiveEngines(PROJEKTE, gewaehlteProjekte(args))).toEqual([engine]);
+    }
+  });
+
+  it.each([
+    "./tools/fremder-wrapper.sh smoke playwright test --config playwright.smoke.config.ts",
+    "./tools/browserdeckel.sh browser playwright test --config playwright.smoke.config.ts",
+    "./tools/browserdeckel.sh smoke echo playwright test --config playwright.smoke.config.ts",
+    "./tools/browserdeckel.sh smoke playwright test --config playwright.smoke.config.ts && echo fertig",
+  ])("K10 · unbekannte oder nur erwähnte Playwright-Ketten bleiben Fehler: %s", (aufruf) => {
+    expect(() => playwrightArgumente(aufruf)).toThrow('kein „playwright test" am Ende der Kette');
+  });
+
   it("K1: das Tor ruft genau EIN npm-Skript, und die Auflösung findet es", () => {
     expect(TOR_SKRIPT, "kein npm-Skript in den Kommandos von tools/check").toBe("smoke:ui:gate");
     // Die Auflösung darf nicht an einer Erwähnung hängen: das Kommando muss wirklich dastehen.

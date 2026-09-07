@@ -121,6 +121,9 @@ function parseGateScript(script: string): { env: Record<string, string>; args: s
     if (!match) break;
     env[match[1] as string] = match[2] as string;
   }
+  // JOB 3150: der gemeinsame Lastdeckel ändert weder Umgebung noch Playwright-Auswahl.
+  // Nur die genaue Hülle abziehen; jeder unbekannte Befehl bleibt ein lauter Parserfehler.
+  if (tokens[i] === "./tools/browserdeckel.sh" && tokens[i + 1] === "smoke") i += 2;
   const rest = tokens.slice(i);
   if (rest[0] !== "playwright" || rest[1] !== "test") {
     throw new Error(
