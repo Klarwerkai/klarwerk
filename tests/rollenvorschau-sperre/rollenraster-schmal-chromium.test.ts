@@ -1,3 +1,4 @@
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 // ================================================================================================
 // JOB 3124 · UX-12 (Runde 2) — DIE SCHMALE FLÄCHE WIRD GEMESSEN, NICHT GERECHNET.
 // ================================================================================================
@@ -47,19 +48,13 @@
 // echte `Leertaste` — an der gebauten Anwendung, im selben Browser wie die Breitenmessung (eine
 // Instanz je Messdatei; s. Kopf von `tests/design/h6-chromium.ts`). Der Weg ist der echte: im
 // Raster „Betrachter" wählen, worauf der Rollen-Guard `/admin` wegnimmt und die Sperrkarte steht.
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import {
-  type Seite,
-  type Stand,
-  beende,
-  fn,
-  schattenLagen,
-  starte,
-  wechsle,
-} from "../design/h6-chromium";
+import { ROLES } from "../../apps/web/src/app/navigation";
+import i18n from "../../apps/web/src/i18n";
+import { type Seite, type Stand, fn, schattenLagen, starte, wechsle } from "../design/h6-chromium";
+import { schliesseChromium } from "../tor-bereitschaft/chromium-abbau";
 
 /** Die vollen Rollennamen (`role.name.*`, de) in der Reihenfolge von `ROLES`. */
-const NAMEN = ["Betrachter", "Experte", "Controller", "Administrator"] as const;
+const NAMEN = ROLES.map((rolle) => i18n.t(`role.name.${rolle}`, { lng: "de" }));
 /** Der Reiter, unter dem die Zeile „Ansicht als Rolle" wohnt (`adm.sec.konten`, de). */
 const REITER = "Konten";
 
@@ -137,7 +132,8 @@ interface Lage {
 }
 
 // ---- In der Seite: die Detailkarte öffnen und messen ---------------------------------------------
-const MESSEN = `(async ([reiterName, nowrap, breite, timeout]) => {
+const MESSEN = `(async ([reiterName, nowrap, breite, timeout, namen]) => {
+  const start = Date.now();
   const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim();
   const warte = async (pruefung, ms = 8000) => {
     const bis = Date.now() + ms;
@@ -174,15 +170,20 @@ const MESSEN = `(async ([reiterName, nowrap, breite, timeout]) => {
     const spalten = raster ? getComputedStyle(raster).gridTemplateColumns.split(' ') : [];
     const breiten = knoepfe.map(b => b.getBoundingClientRect().width);
     const hoehen = knoepfe.map(b => b.getBoundingClientRect().height);
-    return { viewport: window.innerWidth, rasterBreite: raster?.clientWidth ?? 0, spalten, breiten, hoehen };
+    return { namen: knoepfe.map(b => norm(b.textContent)), viewport: window.innerWidth, rasterBreite: raster?.clientWidth ?? 0, spalten, breiten, hoehen };
   };
   if (!(await warte(() => {
     const ist = layout();
     const spalten = breite >= 1024 ? 4 : breite >= 640 ? 2 : 1;
     return ist.viewport === breite && ist.rasterBreite > 0
       && ist.spalten.length === spalten && ist.spalten.every(s => parseFloat(s) > 0)
-      && ist.breiten.length === 4 && ist.breiten.every(b => b > 0) && ist.hoehen.every(h => h > 0);
-  }, timeout))) return Object.assign({ fehler: 'Rollenraster nicht bereit: ' + JSON.stringify(layout()) }, leer);
+      && ist.breiten.length === namen.length && ist.breiten.every(b => b > 0) && ist.hoehen.every(h => h > 0);
+  }, timeout))) {
+    const ist = layout();
+    return Object.assign({ fehler: 'Rollenraster nicht bereit: erwartet ' + namen.length
+      + ' [' + namen.join(', ') + '], gefunden ' + ist.breiten.length + ' [' + ist.namen.join(', ')
+      + '] · ' + (Date.now() - start) + 'ms · letzter Zustand: ' + JSON.stringify(ist) }, leer);
+  }
   await document.fonts.ready;
   const knoepfe = [...karte.querySelectorAll('button[aria-pressed]')];
 
@@ -328,7 +329,7 @@ async function messen(breite: number, nowrap = false, timeout = 8_000): Promise<
     throw new Error(`Bühne steht nicht: ${stand.fehler ?? "unbekannt"}`);
   }
   await (seite as unknown as SeiteMitViewport).setViewportSize({ width: breite, height: 740 });
-  return await seite.evaluate<Messung>(fn(MESSEN), [REITER, nowrap, breite, timeout]);
+  return await seite.evaluate<Messung>(fn(MESSEN), [REITER, nowrap, breite, timeout, NAMEN]);
 }
 
 /** Die Seite roh — die Bühne reicht sie durch, ihr Typ nennt nur, was sie hier braucht. */
@@ -400,7 +401,14 @@ describe("JOB 3124 UX-12 · das Rollenraster bei 320 und 390 px, in Chromium gem
   }, 180_000);
 
   afterAll(async () => {
-    await beende(stand);
+    try {
+      await schliesseChromium(
+        "tests/rollenvorschau-sperre/rollenraster-schmal-chromium.test.ts",
+        stand?.browser,
+      );
+    } finally {
+      await stand?.app?.close();
+    }
   }, 60_000);
 
   it("S0 · die Bühne steht: gebaute App, echtes Backend, Chromium", () => {
@@ -416,7 +424,7 @@ describe("JOB 3124 UX-12 · das Rollenraster bei 320 und 390 px, in Chromium gem
   });
 
   for (const breite of [320, 390]) {
-    it(`S1 · bei ${breite} px stehen alle vier Namen vollständig im Knopf`, () => {
+    it(`S1 · bei ${breite} px stehen alle Rollennamen vollständig im Knopf`, () => {
       const m = messungen.get(breite) as Messung;
       expect(m.knoepfe.map((k) => k.text)).toEqual([...NAMEN]);
       for (const k of m.knoepfe) {

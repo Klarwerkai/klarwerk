@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { expect, it } from "vitest";
-// Derselbe Abbau wie im Original: zugleich die transitive Chromium-Kante für tools/test.
-import { beende } from "../design/h6-chromium";
+// Transitive Chromium-Kante für den vorhandenen Produkt-Collector.
+import "../design/h6-chromium";
 import { t1bAbbau } from "./t1b-original";
 
 const STARTOPTIONEN = {
@@ -18,7 +18,7 @@ const DATEIEN = [
   "tests/rollenvorschau-sperre/rollenraster-schmal-chromium.test.ts",
 ];
 
-/** Echte Vitest-Hooks und echter Chromium-Abbau, nur dessen Bestätigung wird aufgehalten. */
+/** Echte Vitest-Hooks und echtes close(); der Negativfall verliert die Abschlussbestätigung. */
 async function mitProbedateien<T>(
   fehlend: boolean,
   pruefe: (ordner: string, dateien: string[]) => Promise<T>,
@@ -43,32 +43,40 @@ async function mitProbedateien<T>(
       writeFileSync(
         pfad,
         `
-import { beforeAll, afterAll as registriere, it, expect } from "vitest";
+import { beforeAll, afterAll as registriere, it, expect, vi } from "vitest";
+import { schliesseChromium, ABBAU_GRENZE_MS } from ${JSON.stringify(resolve("tests/tor-bereitschaft/chromium-abbau.ts"))};
 import { createRequire } from "node:module";
 const { chromium } = createRequire(import.meta.url)("playwright");
 let echt;
 let fertig = false;
 const browser = { close: async () => {
-  await echt.close();
-  console.log("letzter Zustand: Browser geschlossen, Abschlussbestätigung fehlt");
-  ${fehlend ? "await new Promise(() => {});" : "await new Promise(r => setTimeout(r, 10500));"}
+  ${fehlend ? 'console.log("letzter Zustand: Browser geschlossen, Abschlussbestätigung fehlt"); await new Promise(() => {});' : "await echt.close();"}
   fertig = true;
 } };
 const stand = { browser };
-const beende = ${beende.toString()};
 const afterAll = (callback, timeout) => registriere(async () => {
-  const start = Date.now();
-  try { await callback(); expect(fertig).toBe(true); }
-  finally { console.log("Abbau: " + (Date.now()-start) + "ms; bestätigt=" + fertig); }
-}, ${fehlend ? "Math.min(timeout ?? 10000, 100)" : "timeout"});
+  expect(timeout, "unveränderter Hook-Rahmen").toBe(60000);
+  ${fehlend ? 'vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });' : ""}
+  const start = performance.now();
+  try {
+    const ergebnis = callback().then(() => null, e => e);
+    ${fehlend ? "await vi.advanceTimersByTimeAsync(ABBAU_GRENZE_MS + 1);" : ""}
+    const fehler = await ergebnis;
+    if (fehler) throw fehler;
+    expect(fertig).toBe(true);
+  } finally {
+    console.log("Abbau: " + (performance.now()-start) + "ms; bestätigt=" + fertig);
+    vi.useRealTimers();
+  }
+}, timeout);
 beforeAll(async () => {
   echt = await chromium.launch(${JSON.stringify(STARTOPTIONEN)});
   await echt.newPage();
 }, 60000);
 it(${JSON.stringify(datei)}, async () => {
   expect(echt.isConnected()).toBe(true);
-  // Bei der kurzen Negativfrist ist der reale Abbau vorher fertig: nur die fehlende Bestätigung
-  // darf die Frist reißen, niemals ein unter Last langsames Chromium-close.
+  // Vor der virtuellen Negativuhr ist der reale Abbau fertig. Nur die fehlende Bestätigung
+  // wird gestört; die echte close()-Dauer im Positivlauf bleibt unverfälscht.
   ${fehlend ? "await echt.close();" : ""}
 });
 ${t1bAbbau(datei)}
@@ -111,17 +119,20 @@ async function lauf(fehlend: boolean): Promise<{ code: number; ausgabe: string }
   });
 }
 
-it("beide Original-afterAll warten auf den gezielt verspäteten Chromium-Abschluss", async () => {
+it("beide Original-afterAll messen den echten Chromium-Abschluss", async () => {
   const r = await lauf(false);
   expect(r.ausgabe).toMatch(/Test Files\s+2 passed/);
   expect(r.code).toBe(0);
+  expect(r.ausgabe.match(/Chromium-Abbau · .* · [0-9.]+ms · Grenze/g)).toHaveLength(DATEIEN.length);
 }, 90_000);
 
 it("beide Original-afterAll: dauerhaft fehlender Abschluss bleibt als Dateifehler rot", async () => {
   const r = await lauf(true);
   expect(r.code).toBe(1);
   expect(r.ausgabe).toMatch(/Test Files\s+2 failed/);
-  expect(r.ausgabe).toContain("Hook timed out in 100ms");
+  expect(r.ausgabe).toContain("Abbaugrenze überschritten");
+  expect(r.ausgabe).toContain("close() unbestätigt");
+  for (const datei of DATEIEN) expect(r.ausgabe).toContain(datei);
   expect(r.ausgabe).toContain("Browser geschlossen, Abschlussbestätigung fehlt");
 });
 

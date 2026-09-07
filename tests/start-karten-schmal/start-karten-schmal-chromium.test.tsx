@@ -41,6 +41,7 @@
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { schliesseChromium } from "../tor-bereitschaft/chromium-abbau";
 
 const box = vi.hoisted(() => ({
   wall: {} as unknown,
@@ -418,7 +419,10 @@ beforeAll(async () => {
 
 afterAll(async () => {
   // Eigener Abbaurahmen: der belegte Dateifehler war die 10-s-Hook-Vorgabe, nicht eine Kartenprüfung.
-  await browser?.close();
+  await schliesseChromium(
+    "tests/start-karten-schmal/start-karten-schmal-chromium.test.tsx",
+    browser,
+  );
 }, 60_000);
 
 // ------------------------------------------------------------------------------------------------
@@ -539,26 +543,36 @@ describe("JOB 3118 · B-5 · dieselbe Zusage auf Deutsch und Englisch", () => {
 // JOB 3152: Die echte Query bleibt länger offen als alle bisherigen Flush-Runden zusammen.
 describe("JOB 3152 · Startkarten-Bereitschaft", () => {
   it("wartet auf die gezielt verspätete Livewall-Antwort", async () => {
-    vi.mocked(endpoints.livewall.get).mockImplementationOnce(async () => {
+    const mock = vi.mocked(endpoints.livewall.get);
+    const vorher = mock.getMockImplementation();
+    mock.mockImplementation(async () => {
       await new Promise((resolve) => setTimeout(resolve, 400));
       return WAND as never;
     });
-    const html = await seitenMarkup("de");
-    for (const eintrag of [...ZULETZT, ...MELDUNGEN]) expect(html).toContain(eintrag.title);
+    try {
+      const html = await seitenMarkup("de");
+      for (const eintrag of [...ZULETZT, ...MELDUNGEN]) expect(html).toContain(eintrag.title);
+    } finally {
+      mock.mockReset();
+      if (vorher) mock.mockImplementation(vorher);
+    }
   });
 });
 
 describe("JOB 3152 · fehlender Startkarten-Bestand", () => {
   it("dauerhaft leere Livewall bleibt rot und nennt den letzten Kartenstand", async () => {
-    vi.mocked(endpoints.livewall.get).mockImplementationOnce(
-      async () => ({ ...WAND, saved: [] }) as never,
-    );
+    const mock = vi.mocked(endpoints.livewall.get);
+    const vorher = mock.getMockImplementation();
+    mock.mockImplementation(async () => ({ ...WAND, saved: [] }) as never);
     const start = Date.now();
     let fehler: unknown;
     try {
       await seitenMarkup("de", 200);
     } catch (e) {
       fehler = e;
+    } finally {
+      mock.mockReset();
+      if (vorher) mock.mockImplementation(vorher);
     }
     console.log(
       `Startkarten GEGENPROBE · ${Date.now() - start}ms · erster Fehler/letzter Zustand: ${String(fehler)}`,

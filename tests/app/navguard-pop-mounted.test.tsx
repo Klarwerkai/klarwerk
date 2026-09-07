@@ -30,10 +30,13 @@ let root: ReturnType<typeof createRoot>;
 
 /** Beobachtet genau die ausgelösten Ereignisse, bevor ein Guard sie verschlucken kann.
  * Erwartete Pfade/Indizes werden hier NICHT gefiltert: ein falscher Eintrag muss rot bleiben. */
-async function wartePop(aktion: () => void): Promise<void> {
+async function wartePop(aktion: () => void, anzahl = 1): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     const start = Date.now();
+    let angekommen = 0;
     const fertig = () => {
+      angekommen++;
+      if (angekommen < anzahl) return;
       clearTimeout(timer);
       window.removeEventListener("popstate", fertig, true);
       resolve();
@@ -42,7 +45,7 @@ async function wartePop(aktion: () => void): Promise<void> {
       window.removeEventListener("popstate", fertig, true);
       reject(
         new Error(
-          `popstate kam nicht · ${Date.now() - start}ms · letzter Zustand: ${JSON.stringify({ path: window.location.pathname, state: window.history.state })}`,
+          `popstate kam nicht vollständig · ${angekommen} von ${anzahl} popstate · ${Date.now() - start}ms · letzter Zustand: ${JSON.stringify({ path: window.location.pathname, state: window.history.state })}`,
         ),
       );
     }, 5_000);
@@ -447,7 +450,7 @@ describe("Zurück-Wächter am echten Router", () => {
       await wartePop(() => {
         window.history.go(-1);
         window.history.go(-1);
-      });
+      }, 2);
     });
 
     await warteRouter();

@@ -1,6 +1,9 @@
 import ts from "typescript";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { type Stand, beende, fn, schattenLagen, starte, wechsle } from "../design/h6-chromium";
+import { ROLES } from "../../apps/web/src/app/navigation";
+import i18n from "../../apps/web/src/i18n";
+import { type Stand, fn, schattenLagen, starte, wechsle } from "../design/h6-chromium";
+import { schliesseChromium } from "./chromium-abbau";
 import { t1bQuelle } from "./t1b-original";
 
 const DATEI = "tests/rollenvorschau-sperre/rollenraster-schmal-chromium.test.ts";
@@ -10,6 +13,7 @@ function original(praefix?: string): () => Promise<unknown> {
   const quelle = t1bQuelle(
     DATEI,
     [
+      "NAMEN",
       "REITER",
       "MESSEN",
       "VORSCHAU_STARTEN",
@@ -28,12 +32,12 @@ function original(praefix?: string): () => Promise<unknown> {
     "scope",
     ts.transpile(
       `
-    const { stand, expect, fn, wechsle, schattenLagen } = scope;
+    const { stand, expect, fn, wechsle, schattenLagen, ROLES, i18n } = scope;
     return async () => { ${quelle} ${praefix ? "" : "return await messen(320, false, 200);"} };
   `,
       { target: ts.ScriptTarget.ES2022 },
     ),
-  )({ stand, expect, fn, wechsle, schattenLagen });
+  )({ stand, expect, fn, wechsle, schattenLagen, ROLES, i18n });
 }
 
 describe("JOB 3152 · Originalmessung erkennt dauerhafte Raster- und Tastaturfehler", () => {
@@ -42,7 +46,11 @@ describe("JOB 3152 · Originalmessung erkennt dauerhafte Raster- und Tastaturfeh
     expect(stand.fehler).toBeNull();
   }, 60_000);
   afterAll(async () => {
-    await beende(stand);
+    try {
+      await schliesseChromium("tests/tor-bereitschaft/t1b-raster.test.ts", stand?.browser);
+    } finally {
+      await stand?.app?.close();
+    }
   }, 60_000);
 
   for (const defekt of ["falsche Spaltenzahl", "Raster unsichtbar"] as const) {
