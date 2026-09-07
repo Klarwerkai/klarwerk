@@ -283,6 +283,27 @@ export function meldeModellVerbrauch(eingabeRoh: unknown, ausgabeRoh: unknown): 
   });
 }
 
+// JOB 3239: EIN Meldeweg für belegte Fragmente, ausschließlich mit Metadaten. Anders als der
+// Verbrauch muss dieser Befund auch ohne Lauf-Kontext (Probe, completeRaw) ankommen: deshalb
+// direkt ins Serverlog, ohne zusätzlichen Spur-Merker. Kein Antwort-, Denk-, Prompttext oder Key.
+export function meldeAbgeschnitteneModellantwort(
+  bezeichnung: string,
+  budgetFeld: string,
+  budget: number,
+  finishReason: string,
+  zeichen: number,
+): void {
+  process.stderr.write(
+    `[KLARWERK] Modellantwort abgeschnitten: ${JSON.stringify({
+      bezeichnung,
+      budgetFeld,
+      budget,
+      finish_reason: finishReason,
+      zeichen,
+    })}\n`,
+  );
+}
+
 // Führt fn im Lauf-Kontext von `spur` aus. Alles, was innerhalb von fn (auch über beliebig viele
 // awaits hinweg) durch den Chokepoint geht, trägt sich in GENAU diese Spur ein.
 export function mitModellAufrufSpur<T>(spur: ModellAufrufSpur, fn: () => Promise<T>): Promise<T> {

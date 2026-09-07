@@ -1,5 +1,9 @@
 import { execFileSync } from "node:child_process";
-import { cappedModelClient, meldeModellVerbrauch } from "./model-concurrency";
+import {
+  cappedModelClient,
+  meldeAbgeschnitteneModellantwort,
+  meldeModellVerbrauch,
+} from "./model-concurrency";
 // WP-D10 (Fix 3): typisierte Fehlerklassen (Timeout vs. HTTP-Status) — Meldungstexte unverändert.
 // AUFTRAG-mega18 Block E (SCRUM-544): ModelEmptyResponseError = Antwort ohne Antwortinhalt.
 import { ModelEmptyResponseError, ModelHttpError, ModelTimeoutError } from "./model-errors";
@@ -366,9 +370,8 @@ type BudgetFeld = "max_tokens" | "max_completion_tokens";
 const BUDGET_FELD_VORGABE: BudgetFeld = "max_tokens";
 
 // AUFTRAG-mega18 Block E (SCRUM-544): Antwortform von /chat/completions, so weit sie hier gelesen wird.
-// `finish_reason` wurde bisher gar nicht ausgewertet — genau deshalb war eine am Token-Limit
-// abgeschnittene Antwort von einer echten Antwort nicht unterscheidbar. `reasoning` /
-// `reasoning_content` / `thinking` sind die verbreiteten Felder, in die DENKMODELLE (qwen3,
+// `finish_reason` belegt den Abbruch am Token-Limit. `reasoning` / `reasoning_content` /
+// `thinking` sind die verbreiteten Felder, in die DENKMODELLE (qwen3,
 // DeepSeek-R1 …) ihre Denkphase legen (vLLM/llama.cpp: reasoning_content, neuere Ollama: reasoning
 // bzw. thinking). Sie werden NUR gelesen, um „hat gedacht, aber nichts geantwortet" von „hat nichts
 // geliefert" zu unterscheiden — ihr TEXT ist kein Antwortinhalt und wird NIE als Ergebnis gereicht.
@@ -382,19 +385,24 @@ interface OpenAiChatChoice {
   } | null;
 }
 
+// Fremde Verbrauchswerte bleiben unknown, bis der jeweilige Leser sie geprüft hat.
+interface OpenAiChatUsage {
+  prompt_tokens?: unknown;
+  completion_tokens?: unknown;
+  completion_tokens_details?: { reasoning_tokens?: unknown } | null;
+}
+
 // AUFTRAG-mega18 Block E (SCRUM-544): der EINE Ort, an dem aus der Antwort ein Ergebnis wird.
-// Vorher: `content ?? ""` — fehlender/leerer Inhalt kam als LEERER STRING nach oben und galt still als
-// Ergebnis (kein Fehler, kein unterscheidbarer Zustand). Jetzt: nur echter Inhalt ist ein Ergebnis,
-// alles andere wirft einen typisierten, unterscheidbaren Fehler. NICHT-leerer Inhalt geht unverändert
-// durch — auch wenn finish_reason "length" ist (die extract-Rettung, salvageTruncatedExtract, lebt
-// bewusst von abgeschnittenem, aber vorhandenem JSON).
+// Fehlender/leerer Inhalt wirft einen typisierten, unterscheidbaren Fehler. Nichtleerer Inhalt
+// bleibt als WERT unverändert: salvageTruncatedExtract rettet vorhandenes, abgeschnittenes JSON.
+// JOB 3239: Ein belegter Abbruch wird vor der Rückgabe serverintern gemeldet; ein Fragment geht
+// damit weiterhin zum Aufrufer, aber nicht mehr ohne Auskunft über seine Unvollständigkeit.
 // JOB 3090: `bezeichnung` benennt den Anbieter, der nichts geliefert hat. Vorgabe „Lokaler LLM"
 // (Bestandswortlaut); für ChatGPT steht dort „ChatGPT (OpenAI)". Der maschinenlesbare Teil
 // (`reason`, `finishReason`, `maxTokens`) ist davon unberührt.
 //
-// JOB 3222: `budgetFeld` benennt im Diagnose-Detail das Feld, das WIRKLICH gesendet wurde. Die
-// Regeln darunter (finish_reason-Auswertung, die drei unterscheidbaren Gründe) sind unverändert —
-// nur der Name der Zahl folgt dem Request. „max_tokens=1024" über einen Aufruf, der
+// JOB 3222: `budgetFeld` benennt im Diagnose-Detail das Feld, das WIRKLICH gesendet wurde.
+// Der Name der Zahl folgt dem Request. „max_tokens=1024" über einen Aufruf, der
 // `max_completion_tokens` geschickt hat, wäre eine Aussage über ein Feld, das gar nicht vorkam.
 function requireChatContent(
   data: unknown,
@@ -402,16 +410,36 @@ function requireChatContent(
   bezeichnung: string,
   budgetFeld: BudgetFeld,
 ): string {
-  const choice = (data as { choices?: OpenAiChatChoice[] } | null | undefined)?.choices?.[0];
+  const response = data as
+    | {
+        choices?: OpenAiChatChoice[];
+        usage?: OpenAiChatUsage | null;
+      }
+    | null
+    | undefined;
+  const choice = response?.choices?.[0];
   const message = choice?.message;
   const content = typeof message?.content === "string" ? message.content : "";
+  const finishReason = typeof choice?.finish_reason === "string" ? choice.finish_reason : undefined;
+  const truncated = finishReason === "length";
   if (content.trim().length > 0) {
+    if (truncated) {
+      meldeAbgeschnitteneModellantwort(
+        bezeichnung,
+        budgetFeld,
+        maxTokens,
+        finishReason,
+        content.length,
+      );
+    }
     return content;
   }
-  const finishReason = typeof choice?.finish_reason === "string" ? choice.finish_reason : undefined;
-  const sawReasoning = [message?.reasoning, message?.reasoning_content, message?.thinking].some(
-    (field) => typeof field === "string" && field.trim().length > 0,
-  );
+  const reasoningTokens = response?.usage?.completion_tokens_details?.reasoning_tokens;
+  const sawReasoning =
+    [message?.reasoning, message?.reasoning_content, message?.thinking].some(
+      (field) => typeof field === "string" && field.trim().length > 0,
+    ) ||
+    (typeof reasoningTokens === "number" && reasoningTokens > 0);
   // PII-frei: die Meldung trägt nur Metadaten (Budget, finish_reason) — nie Antwort- oder Denktext.
   const detail = `${budgetFeld}=${maxTokens}, finish_reason=${finishReason ?? "-"}`;
   if (sawReasoning) {
@@ -420,7 +448,7 @@ function requireChatContent(
       { reason: "reasoning-only", finishReason, sawReasoning: true, maxTokens },
     );
   }
-  if (finishReason === "length") {
+  if (truncated) {
     throw new ModelEmptyResponseError(
       `${bezeichnung}: Antwort wurde am Token-Limit abgeschnitten, bevor Antwortinhalt entstand (${detail}).`,
       { reason: "truncated", finishReason, maxTokens },
@@ -588,9 +616,7 @@ export function openAiCompatibleClient(config: ChatCompletionsModelConfig): Mode
       // Textlänge wäre bequem und wäre eine erfundene Zahl. Gemeldet wird VOR
       // `requireChatContent`: eine Antwort ohne Antwortinhalt hat trotzdem Token verbraucht, und
       // genau dieser Fall (Denkphase ohne Ergebnis) ist der teure.
-      const usage = (
-        data as { usage?: { prompt_tokens?: unknown; completion_tokens?: unknown } | null } | null
-      )?.usage;
+      const usage = (data as { usage?: OpenAiChatUsage | null } | null)?.usage;
       meldeModellVerbrauch(usage?.prompt_tokens, usage?.completion_tokens);
       // AUFTRAG-mega18 Block E (SCRUM-544): kein stilles "" mehr — fehlender/leerer Antwortinhalt
       // wirft einen unterscheidbaren Fehler (reasoning-only / truncated / empty). Das gilt seit
@@ -818,7 +844,7 @@ function openAiCloudClientFromEnv(env: Record<string, string | undefined>): Anbi
       // Reasoning UND sichtbare Ausgabe, eine Untergrenze wäre also eine stillschweigende
       // Kostenerhöhung bei einem Anbieter, der pro Token abrechnet — und es liegt kein gemessener
       // Bedarf dafür vor. Verbraucht ein Modell sein Budget im Denken, meldet `requireChatContent`
-      // das ehrlich (200 mit leerem Inhalt → „am Token-Limit abgeschnitten"), statt es zu verstecken.
+      // das bei belegter Denkphase als „reasoning-only“, statt den leeren Inhalt zu verstecken.
       budgetFeld: "max_completion_tokens",
       ...(timeoutMs !== undefined ? { timeoutMs } : {}),
     }),
