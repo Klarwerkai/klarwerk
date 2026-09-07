@@ -1402,8 +1402,20 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // Bildbeschreibung an (kein `ANGEBOT_MUSTER`) und trägt keinen eigenen Titel (kein
     // `documentTitle`-Prop) — sie erscheint nur in der Grundmenge. Die zwei Zahlen, an denen Stufe 2
     // wirklich hängt, bleiben unverändert: `anbieter` 1 und `traeger` 2.
+    //
+    // KONFLIKTRUNDE 1 (JOB 3190 · UX-18): NACH DEM REBASE auf JOB 3134 treffen beide unabhängigen
+    // Herauslösungen (`WahlOptionen` und `TileInhalt`) auf denselben Stand; `komponenten` von 348
+    // auf 349 NACHGEZOGEN — am eigenen Lauf dieses Arbeitsbaums gemessen, nicht rechnerisch
+    // addiert. GENAU EINE weitere Komponente kommt hinzu — `TileInhalt` in
+    // `components/FileTypePicker.tsx`: Icon, Name und Zustands-Badge einer Dateikachel. Es ist eine
+    // HERAUSLÖSUNG, keine neue Fläche: der Rumpf stand vorher direkt in `Tile`, und seit diesem Job
+    // hat die Kachel zwei Erscheinungsformen (`<button>` wie bisher, `<a>` wenn sie auf eine andere
+    // Fläche führt) — ohne das Bauteil stünde derselbe Inhalt zweimal abgeschrieben da. Es bietet
+    // keine Bildbeschreibung an (kein `ANGEBOT_MUSTER`) und trägt keinen eigenen Titel (kein
+    // `documentTitle`-Prop) — es erscheint nur in der Grundmenge. Die zwei Zahlen, an denen Stufe 2
+    // wirklich hängt, bleiben unverändert: `anbieter` 1 und `traeger` 2.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 348,
+      komponenten: 349,
       anbieter: 1,
       traeger: 2,
     });

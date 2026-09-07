@@ -3,9 +3,21 @@
 //
 // GRUNDSATZ (Ehrlichkeit vor Optik): jede Quelle traegt einen EHRLICHEN Zustand.
 //  - "active"       → real nutzbar; loest ueber onActivate den echten, bereits existierenden Fluss aus.
+//  - "elsewhere"    → auf DIESER Flaeche nicht, aber woanders im Produkt wirklich einlesbar. Kein
+//                     Import hier — ein echter Weg dorthin (JOB 3190, siehe unten).
 //  - "unconfigured" → GEBAUT, aber ohne hinterlegten Dienst nicht nutzbar. Kein Import.
 //  - "soon"         → in Arbeit; darf NIE einen Import starten (nur ein ehrlicher Hinweis).
 //  - "planned"      → Vision, noch nicht begonnen; ebenfalls kein Import, nur Aufklaerung.
+//
+// JOB 3190 (UX-18) — WELCHE WAHRHEIT GEMESSEN WIRD UND WELCHE VON HAND STEHT.
+// GEMESSEN wird jeder Zustand, den die ECHTE Importweiche des Erfassens beantworten kann: hat die
+// Kachel einen Importweg (`accept !== null`) und faellt ihr Sample ueber `detectFileKind` auf eine
+// unterstuetzte Art, dann ist dieser Typ wirklich einlesbar — im Erfassen als "active", auf der
+// Import-Flaeche als "elsewhere". VON HAND steht nur, was die Weiche grundsaetzlich nicht messen
+// kann: die ausdrueckliche Aktiv-Zusage der Import-Flaeche fuer JSON (dort laeuft der eine echte
+// Upload dieser Seite), der echte Planwert fuer Excel (kein Extraktionsweg) und `fixedState` fuer
+// das Audio-/Video-Transkript (gebaut, aber ohne Dienst). Alles andere von Hand zu setzen hiesse,
+// eine zweite Wahrheit neben die messbare zu stellen — genau der Fehler, den UX-18 abgeloest hat.
 //
 // AUFTRAG-mega15 Block D (SCRUM-382, Pedis Entscheidung): „unconfigured" ist wegen des
 // Audio-/Video-Transkripts dazugekommen. Die Kachel sagte „geplant" — das war schlicht falsch: das
@@ -19,7 +31,7 @@
 
 import { type FileKind, detectFileKind } from "./extract";
 
-export type SourceState = "active" | "unconfigured" | "soon" | "planned";
+export type SourceState = "active" | "elsewhere" | "unconfigured" | "soon" | "planned";
 
 export interface GallerySource {
   /** Stabile ID — steuert bei "active" den echten Fluss (Argument von onActivate). */
@@ -29,12 +41,16 @@ export interface GallerySource {
   readonly state: SourceState;
 }
 
-// Reihenfolge der Zustaende: aktiv zuerst, dann vorhanden-aber-unkonfiguriert, dann bald, dann geplant.
+// Reihenfolge der Zustaende: aktiv zuerst, dann anderswo verfuegbar, dann vorhanden-aber-
+// unkonfiguriert, dann bald, dann geplant. JOB 3190: "elsewhere" steht direkt hinter "active" und
+// vor "unconfigured", weil es die staerkste Aussage nach "hier nutzbar" ist — die Faehigkeit
+// existiert und ist von hier aus in einem Schritt erreichbar.
 const STATE_RANK: Record<SourceState, number> = {
   active: 0,
-  unconfigured: 1,
-  soon: 2,
-  planned: 3,
+  elsewhere: 1,
+  unconfigured: 2,
+  soon: 3,
+  planned: 4,
 };
 
 /**
@@ -51,6 +67,8 @@ export function orderByState(sources: readonly GallerySource[]): GallerySource[]
 /** Badge-Text je Zustand — IMMER Text (nicht nur Farbe), fuer Barrierefreiheit. */
 export const STATE_BADGE_KEY: Record<SourceState, string> = {
   active: "imp.explore.active",
+  // JOB 3190: das Badge sagt BEIDES in zwei Woertern — dass es die Funktion gibt und wo sie liegt.
+  elsewhere: "imp.gallery.elsewhere",
   unconfigured: "imp.gallery.unconfigured",
   soon: "imp.explore.soon",
   planned: "imp.gallery.planned",
@@ -58,6 +76,10 @@ export const STATE_BADGE_KEY: Record<SourceState, string> = {
 
 /** Ehrlicher Klick-Hinweis je nicht-aktivem Zustand (kein Import, nur Aufklaerung). */
 export const STATE_HINT_KEY: Record<Exclude<SourceState, "active">, string> = {
+  // JOB 3190: der ausgeschriebene Satz zum Badge — er nennt den Weg beim Namen. Auf `/import` ist
+  // die Kachel selbst der Weg (ein Link); wo kein Link angeboten wird, bleibt dieser Satz die
+  // Auskunft. Ein Text, zwei Tueren — keine zweite Wahrheit.
+  elsewhere: "imp.gallery.hintElsewhere",
   unconfigured: "imp.gallery.hintUnconfigured",
   soon: "imp.gallery.hintSoon",
   planned: "imp.gallery.hintPlanned",
@@ -66,6 +88,33 @@ export const STATE_HINT_KEY: Record<Exclude<SourceState, "active">, string> = {
 /** i18n-Schluessel des ehrlichen Hinweises fuer einen Zustand; null fuer "active" (kein Hinweis). */
 export function hintKeyFor(state: SourceState): string | null {
   return state === "active" ? null : STATE_HINT_KEY[state];
+}
+
+// ================================================================================================
+// JOB 3190 · RUNDE 2 — DIE RESTSCHRITTE STEHEN SICHTBAR AN DER KACHEL, NICHT NUR IM `title`.
+// ================================================================================================
+//
+// GEMESSEN (Ben, Runde 1, Chromium): nach Tab+Enter auf der Word-Kachel steht der Browser wirklich
+// auf `/erfassen` — aber der Dateiimport ist dort noch NICHT offen (`capture-file-pick` fehlt;
+// sein Befund: `{"dateiauswahl":false,"dateieingang":true,"dateiwerkzeug":true}`). Er liegt hinter
+// dem Werkzeug „Datei" und dessen Eintrag „Datei importieren".
+//
+// Solange diese zwei Schritte bleiben, darf die Kachel sie nicht verschweigen. Sie standen bis
+// hierher nur im `title` des Links — also nur fuer die Maus und nur beim Verweilen. Jetzt stehen
+// sie SICHTBAR auf der Kachel, in genau dem Wortlaut, den die Zielflaeche traegt
+// (`erfassen.werkzeug.datei` → `erfassen.weg.datei`); `tests/import-einstieg/weg-ins-erfassen.test.tsx`
+// laeuft genau diese angesagten Schritte ab und misst am gemounteten Baum, dass sie hinfuehren.
+//
+// KEIN ERSATZ FUER DEN EINEN SCHRITT, sondern die ehrliche Ansage des heutigen Wegs: der Deep-Link,
+// der den Dateiimport in EINEM Schritt oeffnen wuerde, braucht `components/erfassen/Blatt.tsx`
+// (`ansicht` liest dort keinen Parameter) — kein Zielpfad dieses Auftrags, siehe RUECKGABE.
+const STATE_STEPS_KEY: Partial<Record<SourceState, string>> = {
+  elsewhere: "imp.gallery.elsewhereSteps",
+};
+
+/** Sichtbare Restschritte auf der Zielflaeche; null, wo der Zustand keine kostet. */
+export function stepsKeyFor(state: SourceState): string | null {
+  return STATE_STEPS_KEY[state] ?? null;
 }
 
 // Geteilte ID des bestehenden JSON-Datei-Dialogs — die aktive JSON-Kachel oeffnet genau diesen
@@ -180,18 +229,30 @@ const FILE_SOURCE_DEFS: readonly FileSourceDef[] = [
 
 export type ImportSurface = "capture" | "import";
 
-// IC-7 Import-Review (live): ENGERE, ausdrücklich deklarierte Fähigkeit — nur JSON aktiv, Word/PDF
-// bald, der Rest geplant. Unangetastet gegenüber uxpol1 (bens IC-7-Zustände bleiben).
+// ================================================================================================
+// JOB 3190 (UX-18) — DIE HANDTABELLE IST AUF DAS GESCHRUMPFT, WAS DIE WEICHE NICHT MESSEN KANN.
+// ================================================================================================
+//
+// VORHER standen hier sieben Eintraege, darunter `docx: "soon"` und `pdf: "soon"`. Das war die
+// zweite Wahrheit: die Weiche misst fuer beide „einlesbar", der Dateidialog des Erfassens traegt
+// `.docx` und `.pdf` ausdruecklich (`captureFromFile.ts:64-65`) — und die Fläche, auf der jemand
+// nach dem Weg sucht, sagte „bald". Wer das las, hielt die Funktion fuer nicht gebaut.
+//
+// GEBLIEBEN sind genau zwei Eintraege, und beide sind Aussagen, die aus der Weiche nicht folgen:
+//   · `json-file: "active"` — die ausdrueckliche Zusage DIESER Flaeche. Auf `/import` laeuft ein
+//     echter JSON-Upload; die Weiche wuesste davon nichts (sie kennt nur „extrahiert Text").
+//   · `xlsx: "planned"`     — der echte Planwert. Excel hat keinen Extraktionsweg (`accept: null`),
+//     die Weiche gaebe also ohnehin „nicht einlesbar" — der Eintrag steht hier trotzdem, weil
+//     „geplant" die staerkere, ausdrueckliche Aussage ist und nicht der Rueckfall sein soll.
+// `avtranscript` steht bewusst NICHT hier: sein Zustand ist auf beiden Oberflaechen derselbe und
+// kommt aus `fixedState` (SCRUM-382).
+//
+// Alles Uebrige leitet `fileSourcesForSurface` unten aus derselben Weiche ab, die das Erfassen
+// benutzt. Wer hier wieder einen messbaren Typ von Hand eintraegt, macht
+// `tests/import-einstieg/weiche-statt-handtisch.test.ts` rot.
 const IMPORT_FILE_STATE: Record<string, SourceState> = {
   "json-file": "active",
-  docx: "soon",
-  pdf: "soon",
   xlsx: "planned",
-  pptx: "planned",
-  csv: "planned",
-  ocr: "planned",
-  // avtranscript steht bewusst NICHT hier: sein Zustand ist auf beiden Oberflaechen derselbe und
-  // kommt aus `fixedState` (SCRUM-382).
 };
 
 // Erfassen: eine Kachel ist AKTIV, wenn ihr Sample über die ECHTE Weiche detectFileKind (die
@@ -204,8 +265,25 @@ function captureSupports(def: FileSourceDef): boolean {
   return kind !== "unsupported";
 }
 
-// Die Datei-Galerie EINER Oberfläche — Zustand pro Oberfläche abgeleitet (Erfassen aus der realen
-// Fähigkeit, Import-Review aus der engeren IC-7-Deklaration), Reihenfolge aktiv→bald→geplant.
+/**
+ * Der Zustand EINER Kachel auf der Import-Flaeche.
+ *
+ * JOB 3190: Ableitung statt Handtisch. Die ausdrueckliche Handaussage gewinnt (JSON aktiv, Excel
+ * geplant); fuer alles andere fragt diese Flaeche DIESELBE Weiche wie das Erfassen — kann das
+ * Erfassen die Datei wirklich einlesen, heisst die Kachel `elsewhere` („gibt es, nur nicht hier"),
+ * sonst bleibt sie ehrlich `planned`.
+ */
+function importState(def: FileSourceDef): SourceState {
+  const vonHand = IMPORT_FILE_STATE[def.id];
+  if (vonHand !== undefined) {
+    return vonHand;
+  }
+  return captureSupports(def) ? "elsewhere" : "planned";
+}
+
+// Die Datei-Galerie EINER Oberfläche — Zustand pro Oberfläche aus derselben Weiche abgeleitet
+// (Erfassen: hier nutzbar → „aktiv"; Import-Review: dort nutzbar → „anderswo"), Reihenfolge
+// aktiv→anderswo→nicht konfiguriert→bald→geplant.
 export function fileSourcesForSurface(surface: ImportSurface): GallerySource[] {
   return orderByState(
     FILE_SOURCE_DEFS.map((def) => ({
@@ -217,7 +295,7 @@ export function fileSourcesForSurface(surface: ImportSurface): GallerySource[] {
           ? captureSupports(def)
             ? ("active" as const)
             : ("planned" as const)
-          : (IMPORT_FILE_STATE[def.id] ?? "planned")),
+          : importState(def)),
     })),
   );
 }
@@ -245,6 +323,7 @@ export function openCaptureFileDialog(
   return true;
 }
 
-// PAKET 2 — Dateien der IC-7 Import-Review (bestehende, engere Fähigkeit). Unverändert: JSON aktiv;
-// Word/PDF bald; Excel/PowerPoint/CSV/OCR/Transkript geplant.
+// PAKET 2 — Dateien der IC-7 Import-Review. JOB 3190: JSON aktiv (der echte Upload dieser Fläche);
+// Word/PDF/PowerPoint/Text-CSV/OCR „anderswo verfügbar" (im Erfassen wirklich einlesbar);
+// Transkript nicht konfiguriert; Excel geplant.
 export const FILE_SOURCES: readonly GallerySource[] = fileSourcesForSurface("import");

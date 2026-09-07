@@ -38,7 +38,11 @@ async function mount(): Promise<void> {
   });
 }
 
-const tiles = (): HTMLElement[] => Array.from(container.querySelectorAll("button[data-id]"));
+// JOB 3190 (UX-18): Eine Kachel ist seither entweder ein `<button>` (wie bisher) oder ein `<a>` —
+// letzteres genau dann, wenn sie auf eine andere Fläche des Produkts FÜHRT (Zustand `elsewhere`).
+// Der Selektor fragt deshalb nach dem Merkmal „Kachel" (`[data-id]`) statt nach dem Tag; die
+// Zusagen dieser Datei (was ist sichtbar, was ist eingeklappt) bleiben Wort für Wort dieselben.
+const tiles = (): HTMLElement[] => Array.from(container.querySelectorAll("[data-id]"));
 const tileIds = (): string[] => tiles().map((el) => el.getAttribute("data-id") ?? "");
 const disclosures = (): HTMLElement[] =>
   Array.from(container.querySelectorAll('[data-testid="planned-disclosure"]'));

@@ -90,13 +90,20 @@ describe("FileTypePicker — aktiv löst echten Fluss aus, bald/geplant nie (Ehr
     expect(container.querySelector("output")).toBeNull();
   });
 
-  it("(b) „bald“-Kachel löst KEINEN Import aus und zeigt den ehrlichen Hinweis", () => {
+  // JOB 3190 (UX-18) — NACHGEFÜHRT, NICHT GELOCKERT. Bis hierher stand hier `tile("soon")`: die
+  // Dateikacheln trugen auf `/import` „bald". Genau diese Aussage war falsch (Word und PDF werden
+  // im Erfassen längst eingelesen) und ist durch `elsewhere` abgelöst; unter den Dateikacheln gibt
+  // es kein „bald" mehr. GEPRÜFT WIRD WEITERHIN DASSELBE: eine nicht-aktive Kachel löst KEINEN
+  // Import aus und sagt ehrlich, woran sie ist. Dass sie hier ein Hinweis ist und kein Link, liegt
+  // am Mount OHNE `hrefFor` — die Import-Fläche reicht ein Ziel herein und macht sie zum Weg
+  // (gemessen in `tests/import-einstieg/weg-ins-erfassen.test.tsx`).
+  it("(b) „anderswo verfügbar“-Kachel löst KEINEN Import aus und zeigt den ehrlichen Hinweis", () => {
     act(() => {
-      tile("soon").click();
+      tile("elsewhere").click();
     });
     expect(activated).toEqual([]);
     expect(fetchSpy).not.toHaveBeenCalled();
-    const hint = String(i18n.getResource("de", "translation", "imp.gallery.hintSoon"));
+    const hint = String(i18n.getResource("de", "translation", "imp.gallery.hintElsewhere"));
     expect(container.querySelector("output")?.textContent).toBe(hint);
   });
 

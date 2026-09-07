@@ -17,7 +17,8 @@ import {
 } from "../../apps/web/src/lib/importSourceGallery";
 
 // mega15 Block D: „unconfigured" (gebaut, aber kein Dienst hinterlegt) steht zwischen aktiv und bald.
-const RANK = { active: 0, unconfigured: 1, soon: 2, planned: 3 } as const;
+// JOB 3190 (UX-18): „elsewhere" (anderswo im Produkt wirklich einlesbar) steht direkt hinter aktiv.
+const RANK = { active: 0, elsewhere: 1, unconfigured: 2, soon: 3, planned: 4 } as const;
 
 function isOrdered(sources: readonly GallerySource[]): boolean {
   for (let i = 1; i < sources.length; i++) {
@@ -58,13 +59,20 @@ describe("ic7: Datenmodell Systeme + Dateien", () => {
     expect(isOrdered(FILE_SOURCES)).toBe(true);
   });
 
-  it("enthaelt alle drei Zustandsklassen in beiden Galerien", () => {
-    for (const gallery of [SYSTEM_SOURCES, FILE_SOURCES]) {
-      const states = new Set(gallery.map((s) => s.state));
-      expect(states.has("active")).toBe(true);
-      expect(states.has("soon")).toBe(true);
-      expect(states.has("planned")).toBe(true);
-    }
+  // JOB 3190 (UX-18) — NACHGEFÜHRT: die Dateigalerie kennt kein „bald" mehr. Was dort „bald" hiess,
+  // war eine Falschaussage (Word/PDF werden im Erfassen längst eingelesen) und heisst jetzt
+  // „anderswo verfügbar". Die Systemgalerie ist unberührt und trägt ihr „bald" weiter.
+  it("enthaelt in beiden Galerien mehrere, je zutreffende Zustandsklassen", () => {
+    const systemStates = new Set(SYSTEM_SOURCES.map((s) => s.state));
+    expect(systemStates.has("active")).toBe(true);
+    expect(systemStates.has("soon")).toBe(true);
+    expect(systemStates.has("planned")).toBe(true);
+
+    const fileStates = new Set(FILE_SOURCES.map((s) => s.state));
+    expect(fileStates.has("active")).toBe(true);
+    expect(fileStates.has("elsewhere")).toBe(true);
+    expect(fileStates.has("planned")).toBe(true);
+    expect(fileStates.has("soon"), "keine Dateikachel behauptet noch „bald“").toBe(false);
   });
 
   it("Systeme: Confluence + JSON-Import aktiv; Jira/Word/PDF bald; die geplanten Systeme sind vollstaendig", () => {
@@ -90,15 +98,18 @@ describe("ic7: Datenmodell Systeme + Dateien", () => {
     }
   });
 
-  it("Dateien: JSON aktiv; Word/PDF bald; Excel/PowerPoint/CSV/OCR geplant", () => {
+  // JOB 3190 (UX-18) — NACHGEFÜHRT: der alte Pin hielt genau die Falschaussage fest, um die es
+  // ging. Word, PDF, PowerPoint, Text/CSV und OCR sind im Erfassen wirklich einlesbar; auf
+  // `/import` heissen sie deshalb „anderswo verfügbar". Excel bleibt geplant — dort gibt es
+  // wirklich keinen Extraktionsweg. Die Ableitung selbst misst
+  // `tests/import-einstieg/zustand-aus-der-weiche.test.ts`.
+  it("Dateien: JSON aktiv; Word/PDF/PowerPoint/CSV/OCR anderswo verfuegbar; Excel geplant", () => {
     const byId = new Map(FILE_SOURCES.map((s) => [s.id, s.state]));
     expect(byId.get("json-file")).toBe("active");
-    for (const id of ["docx", "pdf"]) {
-      expect(byId.get(id), id).toBe("soon");
+    for (const id of ["docx", "pdf", "pptx", "csv", "ocr"]) {
+      expect(byId.get(id), id).toBe("elsewhere");
     }
-    for (const id of ["xlsx", "pptx", "csv", "ocr"]) {
-      expect(byId.get(id), id).toBe("planned");
-    }
+    expect(byId.get("xlsx"), "xlsx").toBe("planned");
   });
 
   // AUFTRAG-mega15 Block D (SCRUM-382): das Audio-/Video-Transkript ist NICHT geplant — es ist

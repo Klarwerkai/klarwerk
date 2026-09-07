@@ -3755,8 +3755,21 @@ describe("JOB 1181 · Klassenbindungen: aufgelöst oder gemeldet, kein dritter Z
     // NUR, wenn die Auffrischung wirklich gestört ist — läuft sie bloß noch, steht dort ruhig
     // „Stand von <Zeit>". Die drei Klassenketten selbst sind flache Konstanten und deshalb
     // aufgelöst; offen bleibt allein die Entscheidung dazwischen. Keine Bindung ist weggefallen.
+    // JOB 3190 (UX-18): von 216 auf 217. NETTO GENAU EINE Bindung kommt dazu, und sie ist keine
+    // neue Form: die Dateikachel gibt es seit diesem Job in ZWEI Erscheinungen — als `<button>` wie
+    // bisher und, wenn sie auf eine andere Fläche des Produkts FÜHRT, als echtes `<a>`. Beide
+    // tragen DIESELBE Klassenkette (`TILE_LAYOUT` + der Zustandsteil), sie steht nur zweimal im
+    // Baum. Gemessen an diesem Arbeitsbaum, nicht gerechnet:
+    //
+    //     · components/FileTypePicker.tsx:143  `${TILE_LAYOUT} ${TILE_CLASS[source.state]}`  (<a>)
+    //     · components/FileTypePicker.tsx:149  `${TILE_LAYOUT} ${TILE_CLASS[source.state]}`  (<button>)
+    //
+    // Vorher stand dieselbe Bindung EINMAL an der einen Kachelform. Keine Bindung ist weggefallen.
+    // Die Klasse steht bewusst an BEIDEN Elementen und nicht in einem gemeinsamen Attributobjekt:
+    // in ein Objekt geschoben sähe dieser Sammler sie gar nicht mehr (gemessen: 215 statt 216) —
+    // das wäre ein Vorbeischreiben am Wächter, kein Aufräumen.
     expect(UNAUFGELOEST.length, "es gibt heute unauflösbare Bindungen — das ist der Befund").toBe(
-      216,
+      217,
     );
     for (const b of UNAUFGELOEST) {
       expect(b.datei, "Meldung ohne Datei").toMatch(/^apps\/web\/src\/.+\.tsx?$/);

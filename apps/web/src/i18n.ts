@@ -3502,6 +3502,15 @@ const de = {
   "imp.gallery.unconfigured": "nicht konfiguriert",
   "imp.gallery.hintUnconfigured":
     "Vorhanden, aber nicht nutzbar: für die Transkription ist kein Dienst hinterlegt. Ein Administrator kann ihn in der Verwaltung einrichten.",
+  // JOB 3190 (UX-18): „bald" war für Word und PDF schlicht falsch — dieselbe Datei wird im Erfassen
+  // längst eingelesen. Der Text sagt beides: dass es die Funktion GIBT und WO sie liegt.
+  "imp.gallery.elsewhere": "im Erfassen",
+  "imp.gallery.hintElsewhere":
+    "Dieses Format wird bereits eingelesen — nicht auf dieser Seite, sondern im Erfassen unter Datei → Datei importieren. Diese Seite selbst importiert nur JSON.",
+  // JOB 3190 · RUNDE 2: die Kachel führt auf das Blatt des Erfassens; der Dateiimport liegt dort
+  // noch hinter zwei Schritten (gemessen). Sie stehen im Wortlaut der Zielfläche selbst
+  // (`erfassen.werkzeug.datei` → `erfassen.weg.datei`) und SICHTBAR auf der Kachel.
+  "imp.gallery.elsewhereSteps": "Datei → Datei importieren",
   "imp.gallery.src.confluence": "Confluence",
   "imp.gallery.src.jsonImport": "JSON-Import",
   "imp.gallery.src.jira": "Jira",
@@ -8381,6 +8390,10 @@ const en: typeof de = {
   "imp.gallery.unconfigured": "not configured",
   "imp.gallery.hintUnconfigured":
     "Present, but not usable: no service is configured for transcription. An administrator can set one up in the admin area.",
+  "imp.gallery.elsewhere": "in Capture",
+  "imp.gallery.hintElsewhere":
+    "This format is already being read in — not on this page, but in Capture Knowledge under File → Import file. This page itself imports JSON only.",
+  "imp.gallery.elsewhereSteps": "File → Import file",
   "imp.gallery.src.confluence": "Confluence",
   "imp.gallery.src.jsonImport": "JSON import",
   "imp.gallery.src.jira": "Jira",
@@ -12975,6 +12988,10 @@ const nl: typeof de = {
   "imp.gallery.unconfigured": "niet geconfigureerd",
   "imp.gallery.hintUnconfigured":
     "Aanwezig, maar niet bruikbaar: er is geen dienst ingesteld voor transcriptie. Een beheerder kan die in het beheer inrichten.",
+  "imp.gallery.elsewhere": "in Vastleggen",
+  "imp.gallery.hintElsewhere":
+    "Dit formaat wordt al ingelezen — niet op deze pagina, maar in Kennis vastleggen onder Bestand → Bestand importeren. Deze pagina zelf importeert alleen JSON.",
+  "imp.gallery.elsewhereSteps": "Bestand → Bestand importeren",
   "imp.gallery.src.confluence": "Confluence",
   "imp.gallery.src.jsonImport": "JSON-import",
   "imp.gallery.src.jira": "Jira",
