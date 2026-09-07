@@ -4977,6 +4977,11 @@ const de = {
   "fd.saved.toDrafts": "Meine Entwürfe",
   "fd.toastSubmitted": "Zur Prüfung eingereicht.",
   "fd.confirmDiscard": "Eingabe verwerfen? Nicht gespeicherte Inhalte gehen verloren.",
+  // JOB 3256 (CAP-P1-R): EIGENER SATZ, kein zweckentfremdeter `fd.confirmDiscard`. Der spricht vom
+  // Verwerfen; hier wird ein anderer Entwurf GEÖFFNET, und der Mensch muss wissen, wodurch sein
+  // Text ersetzt wird. Leser: `components/erfassen/Blatt.tsx`, `entwurfOeffnen`.
+  "fd.confirmOpenDraft":
+    "Anderen Entwurf öffnen? Der nicht gespeicherte Inhalt dieses Blatts wird dabei ersetzt.",
   "fd.errSaveFailed": "Speichern fehlgeschlagen.",
   "fd.errLoadFailed": "Der Entwurf konnte nicht geladen werden. Es wurde nichts gespeichert.",
   // JOB 3141 (CAP-P1): Der Satz, der an der Stelle der Schreibfläche steht, solange ein Entwurf
@@ -9769,6 +9774,7 @@ const en: typeof de = {
   "fd.saved.toDrafts": "My drafts",
   "fd.toastSubmitted": "Submitted for review.",
   "fd.confirmDiscard": "Discard input? Unsaved content will be lost.",
+  "fd.confirmOpenDraft": "Open a different draft? Unsaved content on this sheet will be replaced.",
   "fd.errSaveFailed": "Saving failed.",
   "fd.errLoadFailed": "The draft could not be loaded. Nothing was saved.",
   "erfassen.laden.nichtBereit":
@@ -14388,6 +14394,8 @@ const nl: typeof de = {
   "fd.saved.toDrafts": "Mijn concepten",
   "fd.toastSubmitted": "Ter beoordeling ingediend.",
   "fd.confirmDiscard": "Invoer verwerpen? Niet-opgeslagen inhoud gaat verloren.",
+  "fd.confirmOpenDraft":
+    "Een ander concept openen? De niet-opgeslagen inhoud van dit blad wordt vervangen.",
   "fd.errSaveFailed": "Opslaan mislukt.",
   "fd.errLoadFailed": "Het concept kon niet worden geladen. Er is niets opgeslagen.",
   "erfassen.laden.nichtBereit":

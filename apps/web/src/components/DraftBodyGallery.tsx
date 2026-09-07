@@ -35,11 +35,20 @@ export function DraftBodyGallery({
   //
   // GEMESSEN, nicht vermutet (JOB 512 D5, tests/capture/job512-bildverlust-kette-mounted.test.tsx):
   // Solange der debouncte Stand dem aktuellen Body HINTERHERHINKT, ist der Vergleich gegenstandslos.
-  // Beim Laden eines Entwurfs steht `debounced` noch auf dem leeren Anfangswert, während der Body
-  // bereits seine Bilder trägt — der Hinweis meldete dann für ~300 ms einen Verlust, den es nicht
-  // gibt. Ein Hinweis, der aufblitzt und wieder verschwindet, ist schlimmer als keiner: er macht
-  // den Verlust zu einer Zufallsbeobachtung. Deshalb wird NUR verglichen, wenn beide Stände
-  // übereinstimmen — fail-closed wie überall sonst in dieser Kette.
+  // Der Hinweis meldete dann für die Dauer der Pause (300 ms) einen Verlust, den es nicht gibt. Ein
+  // Hinweis, der aufblitzt und wieder verschwindet, ist schlimmer als keiner: er macht den Verlust
+  // zu einer Zufallsbeobachtung. Deshalb wird NUR verglichen, wenn beide Stände übereinstimmen —
+  // fail-closed wie überall sonst in dieser Kette.
+  //
+  // DER ZEITPUNKT, PRÄZISE (JOB 3256 nachgemessen): es ist der AUGENBLICK, IN DEM DAS LADEN FERTIG
+  // WIRD — nicht die Zeit währenddessen. Dort setzt der Ladeweg Rumpf und Quellbildzahl in einem
+  // Zug, während `debounced` noch den Stand davor trägt (am frisch geöffneten Blatt: den leeren
+  // Anfangswert). Gemessen an einem Entwurf mit `sourceImageCount: 2` und EINEM Bild im Rumpf:
+  // ohne diese Bedingung steht unmittelbar nach dem Laden „2 von 2 … fehlen" und 300 ms später
+  // „1 von 2" — zwei Zahlen über denselben Entwurf. Dass die Galerie diesen Augenblick überhaupt
+  // erlebt, liegt daran, dass sie NEBEN der Schreibfläche steht und nicht in ihr: seit JOB 3141
+  // gibt es während des Ladens keinen Editor (`Blatt.tsx`, `blattNimmtAn`), diese Galerie aber
+  // bleibt die ganze Zeit montiert.
   const standAktuell = debounced === bodyHtml;
   const verlust = standAktuell
     ? bildverlust(quellBildzahl, extractBodyImages(debounced).length)

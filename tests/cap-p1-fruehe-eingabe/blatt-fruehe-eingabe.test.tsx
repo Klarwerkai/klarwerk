@@ -26,6 +26,20 @@
 // F5 Vergleichsstand: nach dem Laden ist nichts „ungespeichert", und Sichern ist ein `update`
 // F6 DE/EN/NL für den neuen Satz
 // F7 Diktat: der dritte Eingabeweg wird im Ladefenster ebenfalls angehalten
+//
+// ================================================================================================
+// JOB 3256 (CAP-P1-R) — DIE ZWEITE NAHTSTELLE, die JOB 3141 ausdrücklich offen gelassen hat.
+// ================================================================================================
+// JOB 3141 hat das LADEFENSTER geschlossen. Zwei Handgriffe liegen ausserhalb dieses Fensters und
+// nahmen weiter etwas weg (Prüferwortlaut in AUFTRAG 3256 §2):
+//   (a) einen anderen Entwurf über „…" → „Entwürfe" öffnen — dort beginnt das Laden NACH der
+//       Eingabe, es gab keine Rückfrage;
+//   (b) „Eingabe verwerfen" auf einem Blatt OHNE `?draft` — der Ladeeffekt läuft dort gar nicht,
+//       also trennte NICHTS die Diktatsitzung, und ihr Nachzügler schrieb ins frische Blatt.
+// N1-N8 im dritten Block unten messen beides. Sie brauchen zwei Dinge, die es hier vorher nicht
+// gab: die ADRESSE als Beleg (`adresse-suche`, sonst wäre „abgebrochen" nur ein Bildschirmbefund)
+// und eine Attrappe für `window.confirm` — jsdom liefert dort sonst `undefined`, und das hiesse
+// „abbrechen" für JEDEN dieser Fälle.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const box = vi.hoisted(() => ({
@@ -118,6 +132,7 @@ import {
   MemoryRouter,
   Route,
   Routes,
+  useLocation,
   useNavigate,
 } from "../../apps/web/node_modules/react-router-dom";
 import { AuthProvider } from "../../apps/web/src/app/AuthContext";
@@ -149,14 +164,26 @@ const warten = async (ms: number): Promise<void> => {
   });
 };
 
-/** Ein Weg, den es im Produkt gibt: irgendein Verweis führt zurück auf `/erfassen` OHNE Entwurf. */
+/**
+ * Ein Weg, den es im Produkt gibt: irgendein Verweis führt zurück auf `/erfassen` OHNE Entwurf.
+ *
+ * JOB 3256 (N2): und die ADRESSE, sichtbar gemacht. Der Abbruch der neuen Rückfrage ist nur dann
+ * belegt, wenn die Suchparameter DANACH keinen Entwurf nennen — stünde dort `?draft=<id>`, liefe
+ * der Ladeeffekt trotzdem los und der Abbruch wäre eine Behauptung über den Bildschirm.
+ */
 function Wege(): JSX.Element {
   const gehe = useNavigate();
-  return createElement("button", {
-    type: "button",
-    "data-testid": "nach-erfassen",
-    onClick: () => gehe("/erfassen"),
-  });
+  const ort = useLocation();
+  return createElement(
+    "div",
+    null,
+    createElement("button", {
+      type: "button",
+      "data-testid": "nach-erfassen",
+      onClick: () => gehe("/erfassen"),
+    }),
+    createElement("span", { "data-testid": "adresse-suche" }, ort.search),
+  );
 }
 
 async function mount(url: string): Promise<void> {
@@ -265,6 +292,21 @@ function hinweis(): HTMLElement | null {
   return el instanceof HTMLElement ? el : null;
 }
 
+/**
+ * In das Titelfeld tippen. Es ist ein KONTROLLIERTES React-Feld: ein blosses `feld.value = …`
+ * setzt zwar den DOM-Wert, aber Reacts Wertverfolgung hält das Ereignis danach für unverändert und
+ * schluckt es — der Zustand bliebe leer. Deshalb über den nativen Setter, wie React es selbst tut.
+ */
+async function tippeTitel(text: string): Promise<void> {
+  const feld = titelfeld();
+  const setzer = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+  await act(async () => {
+    setzer?.call(feld, text);
+    feld.dispatchEvent(new Event("input", { bubbles: true }));
+    await flush();
+  });
+}
+
 async function tippeRumpf(html: string): Promise<void> {
   const feld = schreibfeldPflicht();
   await act(async () => {
@@ -317,15 +359,128 @@ async function entwurfSaeen(zusatz: Record<string, unknown> = {}): Promise<strin
   });
 }
 
+/** Die Suchparameter der Adresse — der Beleg, den ein Bildschirmbefund nicht ersetzt (N2). */
+function sucheAdresse(): string {
+  return container.querySelector('[data-testid="adresse-suche"]')?.textContent ?? "";
+}
+
+// ── Die Rückfrage-Attrappe (JOB 3256) ───────────────────────────────────────────────────────────
+// jsdom hat `window.confirm`, aber es ist nicht implementiert und liefert `undefined` — also für
+// jeden Aufrufer „abgebrochen". Ohne diese Attrappe mässen ALLE Fälle unten (auch die alten F7er,
+// die einen Entwurf aus einem beschriebenen Blatt heraus öffnen) den Abbruch statt ihres eigenen
+// Gegenstands. Gesammelt wird der WORTLAUT, nicht nur die Zahl: welcher Satz gefragt wurde, ist
+// Teil der Zusage.
+const echtesConfirm = window.confirm;
+const rueckfragen: string[] = [];
+let rueckfrageAntwort = true;
+
+const TITEL_ZWEIT = "Zweiter Entwurf, ganz anderer Text";
+
 beforeEach(async () => {
   await i18n.changeLanguage("de");
   box.reset();
+  rueckfragen.length = 0;
+  rueckfrageAntwort = true;
+  window.confirm = (frage?: string): boolean => {
+    rueckfragen.push(frage ?? "");
+    return rueckfrageAntwort;
+  };
 });
 
 afterEach(() => {
+  window.confirm = echtesConfirm;
   unmount();
   vi.clearAllMocks();
 });
+
+// ── Das Rekorder-Doppel (JOB 3141 R2, seit JOB 3256 für beide Blöcke) ───────────────────────────
+// KEIN synchrones Ende: `stop()` ist nach Web-Speech §4.1.4 eine Bitte um Abschluss — das laufende
+// Ergebnis kommt noch, `end` folgt danach (§4.1.5). Ein Doppel, das synchron beendet, prüft den
+// eigenen Aufbau. `result` und `end` feuert deshalb der TEST.
+interface Sitzung {
+  onresult: ((e: unknown) => void) | null;
+  onend: (() => void) | null;
+  gestoppt: number;
+}
+let sitzungen: Sitzung[] = [];
+
+class FakeRec {
+  lang = "";
+  continuous = false;
+  interimResults = false;
+  onresult: ((e: unknown) => void) | null = null;
+  onend: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  gestoppt = 0;
+  start(): void {
+    sitzungen.push(this as unknown as Sitzung);
+  }
+  stop(): void {
+    this.gestoppt += 1;
+  }
+}
+
+/** Der Aufbau für jeden Fall, der diktiert. */
+function diktatDoppelAnmelden(): void {
+  sitzungen = [];
+  (globalThis as unknown as { SpeechRecognition: unknown }).SpeechRecognition = FakeRec;
+}
+
+function diktatDoppelAbmelden(): void {
+  (globalThis as unknown as { SpeechRecognition?: unknown }).SpeechRecognition = undefined;
+}
+
+/** Ein (auch verspätetes) Erkennungsergebnis dieser Sitzung. */
+async function spreche(s: Sitzung, text: string): Promise<void> {
+  await act(async () => {
+    s.onresult?.({ resultIndex: 0, results: [[{ transcript: text }]] });
+    await flush();
+  });
+}
+
+/** Das `end` dieser Sitzung — nach der Spezifikation kommt es NACH dem letzten Ergebnis. */
+async function beende(s: Sitzung): Promise<void> {
+  await act(async () => {
+    s.onend?.();
+    await flush();
+  });
+}
+
+async function diktatStarten(): Promise<Sitzung> {
+  const vorher = sitzungen.length;
+  await click(pruefknopf("blatt-werkzeug-diktieren"));
+  expect(sitzungen.length, "Diktat nicht gestartet").toBe(vorher + 1);
+  return sitzungen[sitzungen.length - 1] as Sitzung;
+}
+
+/** Der Eintrag im „…"-Menü, dessen Beschriftung diesen Text enthält. */
+function menueEintrag(text: string): HTMLButtonElement {
+  const el = [...container.querySelectorAll("button")].find((b) =>
+    (b.textContent ?? "").includes(text),
+  );
+  if (!el) {
+    throw new Error(`Menüeintrag „${text}" fehlt`);
+  }
+  return el;
+}
+
+/** „…" → „Entwürfe" aufschlagen und den Knopf zum Entwurf mit diesem Titel zurückgeben. */
+async function entwurfsListeOeffnen(): Promise<void> {
+  await click(pruefknopf("blatt-werkzeug-mehr"));
+  await click(menueEintrag(i18n.t("erfassen.mehr.entwuerfe")));
+}
+
+/** Denselben Weg gehen, den ein Mensch geht: „…" → „Entwürfe" → den Entwurf anklicken. */
+async function entwurfAusListeKlicken(titel: string = TITEL): Promise<void> {
+  await entwurfsListeOeffnen();
+  await click(menueEintrag(titel));
+}
+
+/** „…" → „Eingabe verwerfen". */
+async function eingabeVerwerfen(): Promise<void> {
+  await click(pruefknopf("blatt-werkzeug-mehr"));
+  await click(menueEintrag(i18n.t("fd.discardInput")));
+}
 
 describe("JOB 3141 (CAP-P1): das Ladefenster nimmt nichts an, statt es wegzuwerfen", () => {
   it("F1: während der Entwurfsladung gibt es keine Schreibfläche — und der Grund steht sichtbar da", async () => {
@@ -539,75 +694,22 @@ describe("JOB 3141 (CAP-P1): das Ladefenster nimmt nichts an, statt es wegzuwerf
 // `stop()` gerufen wurde — `result` und `end` feuert der TEST, und zwar genau in den Reihenfolgen,
 // die ben gemessen hat. Ohne diese Trennung war F7 ein Test über den eigenen Aufbau.
 describe("JOB 3141 (CAP-P1): das Diktat wird beim Ladebeginn vom Blatt GETRENNT", () => {
-  interface Sitzung {
-    onresult: ((e: unknown) => void) | null;
-    onend: (() => void) | null;
-    gestoppt: number;
-  }
-  let sitzungen: Sitzung[] = [];
-
-  class FakeRec {
-    lang = "";
-    continuous = false;
-    interimResults = false;
-    onresult: ((e: unknown) => void) | null = null;
-    onend: (() => void) | null = null;
-    onerror: (() => void) | null = null;
-    gestoppt = 0;
-    start(): void {
-      sitzungen.push(this as unknown as Sitzung);
-    }
-    // KEIN synchrones Ende: der Browser führt die laufende Erkennung nach `stop()` noch zu Ende.
-    stop(): void {
-      this.gestoppt += 1;
-    }
-  }
-
-  /** Ein (auch verspätetes) Erkennungsergebnis dieser Sitzung. */
-  async function spreche(s: Sitzung, text: string): Promise<void> {
-    await act(async () => {
-      s.onresult?.({ resultIndex: 0, results: [[{ transcript: text }]] });
-      await flush();
-    });
-  }
-
-  /** Das `end` dieser Sitzung — nach der Spezifikation kommt es NACH dem letzten Ergebnis. */
-  async function beende(s: Sitzung): Promise<void> {
-    await act(async () => {
-      s.onend?.();
-      await flush();
-    });
-  }
-
-  async function diktatStarten(): Promise<Sitzung> {
-    const vorher = sitzungen.length;
-    await click(pruefknopf("blatt-werkzeug-diktieren"));
-    expect(sitzungen.length, "Diktat nicht gestartet").toBe(vorher + 1);
-    return sitzungen[sitzungen.length - 1] as Sitzung;
-  }
-
-  /** Denselben Entwurf über die vorhandene Fläche „…" → „Entwürfe" öffnen — das Laden beginnt. */
+  /**
+   * Denselben Entwurf über die vorhandene Fläche „…" → „Entwürfe" öffnen — das Laden beginnt.
+   *
+   * JOB 3256: dieser Weg fragt seit CAP-P1-R nach, sobald das Blatt ungesicherten Inhalt trägt —
+   * und in F7a/b/c trägt es welchen (der diktierte Satz). Hier wird BEJAHT: diese vier Fälle messen
+   * die TRENNUNG der Sitzung, nicht die Rückfrage. Dass die Rückfrage überhaupt kommt und was sie
+   * bewirkt, messen N1-N3 im Block darunter.
+   */
   async function entwurfOeffnen(): Promise<void> {
-    await click(pruefknopf("blatt-werkzeug-mehr"));
-    const eintrag = [...container.querySelectorAll("button")].find((b) =>
-      (b.textContent ?? "").includes(i18n.t("erfassen.mehr.entwuerfe")),
-    );
-    await click(eintrag as HTMLButtonElement);
-    const entwurf = [...container.querySelectorAll("button")].find((b) =>
-      (b.textContent ?? "").includes(TITEL),
-    );
-    await click(entwurf as HTMLButtonElement);
+    rueckfrageAntwort = true;
+    await entwurfAusListeKlicken();
     expect(box.aufloesen, "Ladeversprechen nicht angehalten").not.toBeNull();
   }
 
-  beforeEach(() => {
-    sitzungen = [];
-    (globalThis as unknown as { SpeechRecognition: unknown }).SpeechRecognition = FakeRec;
-  });
-
-  afterEach(() => {
-    (globalThis as unknown as { SpeechRecognition?: unknown }).SpeechRecognition = undefined;
-  });
+  beforeEach(diktatDoppelAnmelden);
+  afterEach(diktatDoppelAbmelden);
 
   it("F7a: ein Ergebnis WÄHREND der Sperre wird nicht angenommen — der Knopf ist gesperrt, der Entwurf kommt sauber an", async () => {
     await entwurfSaeen();
@@ -722,5 +824,221 @@ describe("JOB 3141 (CAP-P1): das Diktat wird beim Ladebeginn vom Blatt GETRENNT"
     // nicht getrennt.
     await spreche(neu, "Und der letzte Satz");
     expect(schreibfeldPflicht().textContent).toContain("Und der letzte Satz");
+  });
+});
+
+// ================================================================================================
+// JOB 3256 (CAP-P1-R) — DIE ZWEITE NAHTSTELLE: ÖFFNEN UND VERWERFEN.
+// ================================================================================================
+// Beide Handgriffe nahmen bis hierher Geschriebenes weg, ohne zu fragen:
+//
+//   (a) ÖFFNEN. `entwurfOeffnen` bestand aus drei bedingungslosen Zeilen (Menü zu, Ansicht „blatt",
+//       `?draft=<id>`); danach setzte der Ladeeffekt Titel und Rumpf auf den Serverstand. Drei
+//       Bildschirmseiten weiter oben im GLEICHEN Menü fragt „Eingabe verwerfen" bei genau demselben
+//       Verlust sehr wohl nach. Zwei gleichwertige Verluste, ungleich behandelt.
+//   (b) VERWERFEN OHNE `?draft`. Die einzige Stelle, die eine Diktatsitzung wirklich vom Blatt
+//       TRENNT, war der Ladeeffekt — und der läuft nur, wenn die Adresse einen Entwurf nennt. Auf
+//       einem frischen Blatt schrieb der Nachzügler der verworfenen Sitzung also in das gerade
+//       leergeräumte Blatt.
+//
+// N3 und N7 sind die GEGENFÄLLE und müssen vor UND nach der Änderung grün sein: N3 schützt den
+// Ein-Klick-Weg auf ein sauberes Blatt vor einer pauschalen Rückfrage, N7 den manuellen Stopp vor
+// einer pauschalen Stummschaltung.
+describe("JOB 3256 (CAP-P1-R): die zweite Nahtstelle: öffnen und verwerfen", () => {
+  beforeEach(diktatDoppelAnmelden);
+  afterEach(diktatDoppelAbmelden);
+
+  it("N1: ein fremder Entwurf auf beschriebenem Blatt fragt nach — bestätigt lädt er", async () => {
+    await entwurfSaeen();
+    await mount("/erfassen");
+    await tippeRumpf(`<p>${FRUEH}</p>`);
+    expect(schreibfeldPflicht().textContent).toContain(FRUEH);
+    expect(sucheAdresse(), "das Blatt startet ohne Entwurf in der Adresse").toBe("");
+
+    rueckfrageAntwort = true;
+    await entwurfAusListeKlicken();
+
+    // DIE RÜCKFRAGE SELBST, im Wortlaut: sie spricht vom Öffnen, nicht vom Verwerfen.
+    expect(rueckfragen, "keine Rückfrage beim Öffnen eines fremden Entwurfs").toEqual([
+      i18n.t("fd.confirmOpenDraft"),
+    ]);
+    expect(rueckfragen[0]).not.toBe(i18n.t("fd.confirmDiscard"));
+
+    // Bestätigt IST der gewollte Ausgang: der fremde Entwurf steht, der eigene Satz ist weg.
+    const feld = schreibfeldPflicht();
+    expect(feld.textContent).toContain("Schmierstellen");
+    expect(feld.textContent).not.toContain(FRUEH);
+    expect(titelfeld().value).toBe(TITEL);
+    expect(sucheAdresse()).toContain("draft=");
+  });
+
+  it("N2: verneint der Mensch, bleibt alles — Text, Titel, Adresse; nichts wird geholt", async () => {
+    await entwurfSaeen();
+    await mount("/erfassen");
+    await tippeRumpf(`<p>${FRUEH}</p>`);
+    await tippeTitel("Mein eigener Titel");
+    expect(titelfeld().value).toBe("Mein eigener Titel");
+    const geholt = box.zaehler.get;
+    const huelle = container.querySelector('[data-testid="blatt-huelle"]')?.innerHTML ?? "";
+    expect(huelle.length, "Blatthülle nicht gefunden").toBeGreaterThan(0);
+
+    rueckfrageAntwort = false;
+    await entwurfAusListeKlicken();
+
+    expect(rueckfragen, "keine Rückfrage — es gab nichts abzubrechen").toHaveLength(1);
+    // DER ADRESSSTAND IST DER BELEG, nicht der Bildschirm: stünde hier `?draft=<id>`, liefe der
+    // Ladeeffekt trotzdem los und nähme den Satz eine Runde später.
+    expect(sucheAdresse(), "die Adresse trägt trotz Abbruch einen Entwurf").toBe("");
+    expect(box.zaehler.get - geholt, "der fremde Entwurf wurde trotz Abbruch geholt").toBe(0);
+    expect(schreibfeldPflicht().textContent).toContain(FRUEH);
+    expect(titelfeld().value).toBe("Mein eigener Titel");
+    // Und zwar WIRKLICH alles: Rumpf, Titel, Bereich, Vertraulichkeit, offener Entwurf — die ganze
+    // Hülle ist Zeichen für Zeichen dieselbe wie vor dem Klick.
+    expect(
+      container.querySelector('[data-testid="blatt-huelle"]')?.innerHTML,
+      "der Abbruch hat am Blatt etwas verändert",
+    ).toBe(huelle);
+  });
+
+  it("N3: auf einem Blatt ohne ungesicherten Inhalt fragt niemand — der Ein-Klick-Weg bleibt", async () => {
+    await entwurfSaeen();
+    await mount("/erfassen");
+    expect(schreibfeldPflicht().textContent ?? "").not.toContain("Schmierstellen");
+
+    await entwurfAusListeKlicken();
+
+    expect(rueckfragen, "Rückfrage, obwohl es nichts zu verlieren gab").toEqual([]);
+    expect(schreibfeldPflicht().textContent).toContain("Schmierstellen");
+    expect(box.zaehler.get, "der Entwurf wurde nicht in EINEM Schritt geholt").toBe(1);
+    expect(sucheAdresse()).toContain("draft=");
+  });
+
+  it('N4: „Eingabe verwerfen" trennt das Diktat — der Nachzügler erreicht das leere Blatt nicht', async () => {
+    await mount("/erfassen");
+    expect(sucheAdresse(), "dieser Fall braucht ein Blatt OHNE `?draft`").toBe("");
+
+    const alt = await diktatStarten();
+    await spreche(alt, "Gesprochen");
+    expect(schreibfeldPflicht().textContent).toContain("Gesprochen");
+
+    rueckfrageAntwort = true;
+    await eingabeVerwerfen();
+    expect(rueckfragen).toEqual([i18n.t("fd.confirmDiscard")]);
+
+    // Getrennt heisst: Merker leer, Läuft-Zustand zurück, `stop()` gerufen — in dieser Reihenfolge.
+    expect(alt.gestoppt, "die Sitzung wurde beim Verwerfen nicht angehalten").toBe(1);
+    expect(schreibfeldPflicht().textContent).not.toContain("Gesprochen");
+    expect(
+      pruefknopf("blatt-werkzeug-diktieren").className,
+      "der Knopf trägt weiter die Laeuft-Marke",
+    ).not.toContain("font-semibold");
+
+    // DER BEFUND (b), wörtlich: das nachgelieferte Ergebnis der verworfenen Sitzung.
+    await spreche(alt, "BEN verspätetes Ergebnis aus dem alten Blatt");
+    expect(container.textContent ?? "").not.toContain("BEN verspätetes Ergebnis");
+    expect(schreibfeldPflicht().textContent ?? "").not.toContain("Gesprochen");
+  });
+
+  it("N5: danach diktiert es wieder — und das späte Ende der verworfenen Sitzung nimmt der neuen nichts", async () => {
+    await mount("/erfassen");
+    const alt = await diktatStarten();
+    await spreche(alt, "Gesprochen");
+    rueckfrageAntwort = true;
+    await eingabeVerwerfen();
+
+    // Dass hier überhaupt eine ZWEITE Sitzung startet, ist der Beweis, dass der Läuft-Zustand weg
+    // war: stünde er noch, hielte derselbe Klick nur an (`diktatUmschalten`).
+    const neu = await diktatStarten();
+    expect(neu).not.toBe(alt);
+    await spreche(neu, "Neuer Satz nach dem Verwerfen");
+    expect(schreibfeldPflicht().textContent).toContain("Neuer Satz nach dem Verwerfen");
+
+    // Und jetzt meldet die VERWORFENE Sitzung ihr Ende. Nähme sie der neuen den Läuft-Zustand,
+    // verschwände der Stoppweg, während das Mikrofon läuft.
+    await beende(alt);
+    await click(pruefknopf("blatt-werkzeug-diktieren"));
+    expect(sitzungen, "eine dritte Sitzung gestartet statt angehalten").toHaveLength(2);
+    expect(neu.gestoppt, "die laufende Sitzung wurde nicht angehalten").toBe(1);
+  });
+
+  it("N6: Ergebnis WÄHREND der Sperre und danach ein Ladefehler — nichts davon bleibt stehen", async () => {
+    await entwurfSaeen();
+    await mount("/erfassen");
+    const alt = await diktatStarten();
+    await spreche(alt, "Gesprochen");
+
+    box.gebremst = true;
+    rueckfrageAntwort = true;
+    await entwurfAusListeKlicken();
+    expect(box.ablehnen, "Ladeversprechen nicht angehalten").not.toBeNull();
+
+    // DIE UNGEPRÜFTE KETTE: F7a misst das Ergebnis in der Sperre, F7c den Ladefehler — aber nie
+    // beides hintereinander. Im Fehlerpfad gibt es kein `loadedBody`, das ein angenommenes Ergebnis
+    // gleich darauf ersetzte; es bliebe also stehen.
+    await spreche(alt, "BEN verspätetes Ergebnis aus dem alten Blatt");
+    await act(async () => {
+      box.ablehnen?.(new Error("Netz weg"));
+      await flush();
+    });
+
+    const feld = schreibfeldPflicht();
+    expect(feld.textContent, "das Ergebnis aus der Sperre steht im Fehlerpfad").not.toContain(
+      "BEN verspätetes Ergebnis",
+    );
+    // Der eigene Satz von VOR dem Laden gehört ihm und bleibt (bestehendes Verhalten, F7c).
+    expect(feld.textContent).toContain("Gesprochen");
+    expect(container.textContent ?? "").toContain(i18n.t("fd.errLoadFailed"));
+
+    // Und der Fehlerpfad bleibt bedienbar: „Erneut versuchen" holt denselben Entwurf noch einmal.
+    const geholt = box.zaehler.get;
+    box.gebremst = false;
+    await click(pruefknopf("blatt-erneut"));
+    expect(box.zaehler.get, "Wiederholen holt nicht").toBe(geholt + 1);
+    expect(schreibfeldPflicht().textContent).toContain("Schmierstellen");
+  });
+
+  it("N7: wer selbst anhält, bekommt sein Abschlussergebnis noch (Gegenfall zu N4/N5)", async () => {
+    await mount("/erfassen");
+    const alt = await diktatStarten();
+    await spreche(alt, "Gesprochen");
+
+    await click(pruefknopf("blatt-werkzeug-diktieren"));
+    expect(alt.gestoppt, "der manuelle Stopp hält nicht an").toBe(1);
+    expect(sitzungen, "der manuelle Stopp hat eine zweite Sitzung gestartet").toHaveLength(1);
+
+    // HIER WIRD NICHT GETRENNT: der Mensch nimmt sich seinen Rumpf ja nicht weg.
+    await spreche(alt, "Und der letzte Satz");
+    expect(schreibfeldPflicht().textContent).toContain("Und der letzte Satz");
+  });
+
+  it('N8 (§9 „laden"): während des Ladens ist die Liste gesperrt — keine Rückfrage, kein zweiter Abruf', async () => {
+    const kennung = await entwurfSaeen();
+    await box.seed({
+      title: TITEL_ZWEIT,
+      statement: "Ganz anderer Text.",
+      bodyHtml: "<p>Ganz anderer Text.</p>",
+      origin: "frontdoor",
+    });
+    box.gebremst = true;
+    await mount(`/erfassen?draft=${kennung}`);
+    expect(box.aufloesen, "Ladeversprechen nicht angehalten").not.toBeNull();
+    const geholt = box.zaehler.get;
+
+    await entwurfsListeOeffnen();
+    const zweiter = menueEintrag(TITEL_ZWEIT);
+    expect(zweiter.disabled, "die Entwurfsliste nimmt im Ladefenster Klicks an").toBe(true);
+    await click(zweiter);
+
+    // Es gibt in diesem Zustand nichts Ungesichertes zu retten (`blattNimmtAn` ist falsch), also
+    // fragt hier auch nichts — und ein zweites Laden entsteht nicht.
+    expect(rueckfragen).toEqual([]);
+    expect(box.zaehler.get, "ein zweiter Abruf im Ladefenster").toBe(geholt);
+    expect(sucheAdresse()).toContain(kennung);
+
+    await act(async () => {
+      box.aufloesen?.();
+      await flush();
+    });
+    expect(schreibfeldPflicht().textContent).toContain("Schmierstellen");
   });
 });

@@ -555,6 +555,40 @@ export function Blatt({
     setErr(null);
   };
 
+  // ================================================================================================
+  // JOB 3256 (CAP-P1-R, Lieferung 4) — DIE EINE TRENNUNG, DREI AUFRUFER.
+  // ================================================================================================
+  //
+  // WAS EINE TRENNUNG LEISTEN MUSS, hat JOB 3141 R2 gemessen (die Begründung im Langen steht am
+  // Diktat-Werkzeug weiter unten): `stop()` ist nach Web-Speech §4.1.4 eine BITTE um Abschluss —
+  // das laufende Ergebnis kommt noch, `end` folgt danach. Die Grenze ist deshalb der Merker
+  // `recRef.current` (die Identität des Rekorders, der das Blatt gerade FÜHRT), nicht der Anruf.
+  // Die Reihenfolge ist die ganze Wirkung:
+  //   1. den Merker leeren — ab hier fallen beide Rückrufe in `diktatUmschalten` von selbst durch;
+  //   2. den Läuft-Zustand selbst zurücksetzen — der Rekorder darf ihn nicht mehr melden, also muss
+  //      es der tun, der ihn getrennt hat;
+  //   3. `stop()` — das Mikrofon geht aus. Was danach gemeldet wird, gehört keinem Blatt mehr.
+  //
+  // WARUM SIE HIER STEHT UND NICHT DREIMAL (Auftrag 3256, Prüfpunkt 7): bis dahin stand diese Folge
+  // INLINE im Ladeeffekt und war damit an das Ladefenster gebunden. Die zwei anderen Wege, die dem
+  // Blatt seinen Rumpf wegnehmen — einen anderen Entwurf öffnen und „Eingabe verwerfen" —, hatten
+  // sie nicht; auf einem Blatt OHNE `?draft` läuft der Ladeeffekt gar nicht, und der Nachzügler der
+  // verworfenen Sitzung schrieb in das gerade leergeräumte Blatt. Drei Kopien wären drei
+  // Gelegenheiten zum Auseinanderlaufen: der Merker wird im ganzen Blatt an genau EINER Stelle
+  // geleert, nämlich in der ersten Zeile unten.
+  //
+  // NICHT GETRENNT WIRD BEIM MANUELLEN STOPP über den Diktat-Knopf. Wer selbst anhält, nimmt sich
+  // seinen Rumpf ja nicht weg — sein Abschlussergebnis gehört ihm und soll noch ankommen.
+  const diktatVomBlattTrennen = useCallback((): void => {
+    const getrennt = recRef.current;
+    if (!getrennt) {
+      return;
+    }
+    recRef.current = null;
+    setDiktatLaeuft(false);
+    getrennt.stop();
+  }, []);
+
   // biome-ignore lint/correctness/useExhaustiveDependencies: reloadNonce erzwingt das Neuladen nach einem Standkonflikt (JOB 2684 D1)
   useEffect(() => {
     if (!resumeDraftId) {
@@ -619,19 +653,12 @@ export function Blatt({
     // JOB 3141 R2 (bens Korrekturpflicht 1) — GETRENNT WIRD ZUERST, ANGEHALTEN DANACH. Runde 1 rief
     // nur `stop()`, und das ist nach der Web-Speech-Spezifikation eine Bitte um Abschluss: das
     // laufende Ergebnis kommt noch. ben hat es gemessen — der Satz landete IM frisch geladenen
-    // Entwurf. Die Reihenfolge hier ist deshalb die ganze Wirkung:
-    //   1. den Merker leeren — ab dieser Zeile führt diese Sitzung das Blatt nicht mehr, und beide
-    //      Rückrufe (`diktatUmschalten`) fallen von selbst durch;
-    //   2. den Läuft-Zustand selbst zurücksetzen — der Rekorder darf ihn nicht mehr melden, also
-    //      muss es der tun, der ihn getrennt hat;
-    //   3. `stop()` — das Mikrofon geht wirklich aus. Was danach noch gemeldet wird, gehört keinem
-    //      Blatt mehr.
-    const getrenntesDiktat = recRef.current;
-    if (getrenntesDiktat) {
-      recRef.current = null;
-      setDiktatLaeuft(false);
-      getrenntesDiktat.stop();
-    }
+    // Entwurf.
+    //
+    // JOB 3256: die Folge selbst steht seit CAP-P1-R oben in `diktatVomBlattTrennen` — dieselbe
+    // Trennung, die auch das Öffnen eines anderen Entwurfs und „Eingabe verwerfen" rufen. Hier wird
+    // sie nur noch ausgelöst, nicht mehr beschrieben.
+    diktatVomBlattTrennen();
     setLetzteAktion({ art: "laden" });
     setErr(null);
 
@@ -711,7 +738,7 @@ export function Blatt({
     return () => {
       cancelled = true;
     };
-  }, [resumeDraftId, reloadNonce, clearStructureState, clearAssistState, t]);
+  }, [resumeDraftId, reloadNonce, clearStructureState, clearAssistState, diktatVomBlattTrennen, t]);
 
   const structure = useMutation({
     mutationFn: () =>
@@ -1276,8 +1303,11 @@ export function Blatt({
   const diktatUmschalten = (): void => {
     setOffenesMenue(null);
     if (diktatLaeuft) {
-      // Der Mensch selbst hält an: hier wird NICHT getrennt. Sein Abschlussergebnis gehört ihm und
-      // soll noch ankommen — das ist der Unterschied zum Ladeweg, der ihm den Rumpf wegnimmt.
+      // Der Mensch selbst hält an: hier wird NICHT getrennt, also NICHT `diktatVomBlattTrennen`.
+      // Sein Abschlussergebnis gehört ihm und soll noch ankommen — das ist der Unterschied zu den
+      // drei Wegen, die ihm den Rumpf WEGNEHMEN (Laden, einen anderen Entwurf öffnen, „Eingabe
+      // verwerfen"). Dort wäre ein nachgeliefertes Ergebnis eine fremde Beimischung, hier ist es
+      // das Ende seines eigenen Satzes.
       recRef.current?.stop();
       return;
     }
@@ -1314,8 +1344,55 @@ export function Blatt({
     knopf?.click();
   };
 
+  // ================================================================================================
+  // JOB 3256 (CAP-P1-R, Lieferungen 2-4) — ÖFFNEN NIMMT NICHTS MEHR OHNE ZUSTIMMUNG WEG.
+  // ================================================================================================
+  //
+  // WAS HIER VORHER STAND und warum es ERSETZT und nicht umgangen ist: drei bedingungslose Zeilen
+  // (Menü zu, Ansicht „blatt", `?draft=<id>`). Danach lief der Ladeeffekt und setzte Titel und
+  // Rumpf auf den Serverstand — der eigene, ungesicherte Satz war wortlos weg. Drei Bildschirm-
+  // seiten weiter unten fragt „Eingabe verwerfen" im GLEICHEN Menü bei genau demselben Verlust sehr
+  // wohl nach. Dasselbe Blatt behandelte zwei gleichwertige Verluste ungleich.
+  //
+  // WARUM NICHT DER VORHANDENE WÄCHTER, gemessen statt vermutet:
+  //   · `useUnloadGuard` (`app/NavGuardContext.tsx:115-127`) hängt allein am `beforeunload` des
+  //     Browsers. Hier wird kein Dokument entladen, das Ereignis entsteht gar nicht.
+  //   · Der Router-Wächter ist QUELLENBASIERT: `guard()` (`NavGuardContext.tsx:202-212`) wird nur
+  //     von `useGuardedNavigate` und den beiden `Guarded…`-Verweisen gerufen (`:428-519`). Dieser
+  //     Weg ruft keinen davon — er ändert über `useSearchParams` nur die Suchparameter.
+  //   · Und selbst über den Zurück-Wächter griffe er nicht: `shouldBlock` (`:237-242`, „Kante 8")
+  //     verlangt ausdrücklich einen PFADwechsel. Ein reiner Query-Wechsel auf derselben Route ist
+  //     für ihn bewusst KEIN Wechsel — die Seite bleibt eingehängt, durch die Navigation selbst
+  //     geht nichts verloren.
+  // Alle drei Entscheidungen sind richtig und bleiben, wie sie sind (Auftrag §10): der Verlust
+  // entsteht hier nicht durch den Ortswechsel, sondern durch den LADEEFFEKT, der auf den neuen
+  // Parameter reagiert. Deshalb fragt der Auslöser — an derselben Stelle und in derselben Form wie
+  // beim Verwerfen.
+  //
+  // GEFRAGT WIRD NUR, WENN ES ETWAS ZU VERLIEREN GIBT — an `istSchmutzig`, derselben einen
+  // Ablesung, an der schon der Entlade- und der Routenwächter hängen (`useUnloadGuard(istSchmutzig)`
+  // und `isDirty` weiter oben). Eine zweite Schmutzigkeitsrechnung entsteht hier nicht.
+  //
+  // BEWUSST NICHT `hasSavableContent` DAZU, obwohl der Verwerfen-Eintrag beide liest: dort geht es
+  // um „gibt es überhaupt etwas zurückzusetzen", hier um „geht etwas verloren". `hasSavableContent`
+  // ist auch bei einem GESPEICHERTEN, unveränderten Entwurf wahr (`isDraftUpdate`) — die Rückfrage
+  // erschiene dann ausgerechnet auf dem häufigsten Weg, dem Blättern zwischen Entwürfen, und hätte
+  // dort nichts zu melden. Am sauberen Blatt bleibt der Ein-Klick-Weg Zeichen für Zeichen erhalten.
+  //
+  // UND WENN DER MENSCH ZUSTIMMT, IST DER VERLUST SEINE ENTSCHEIDUNG — auch dann, wenn der
+  // Ladeversuch gleich darauf scheitert (der `.catch`-Zweig des Ladeeffekts, etwa ohne Netz) und er
+  // mit einem leeren Blatt dasteht. Die Rückfrage ist rein örtlich und braucht kein Netz; dass
+  // danach nichts mehr da ist,
+  // ist die bestätigte Folge seiner Zusage und kein stiller Verlust. Zusammengeführt wird nichts:
+  // die Begründung dafür steht bei `blattNimmtAn` und gilt hier gleichlautend.
   const entwurfOeffnen = (entwurfId: string): void => {
     setOffenesMenue(null);
+    if (istSchmutzig && !window.confirm(t("fd.confirmOpenDraft"))) {
+      return;
+    }
+    // Lieferung 4: auch dieser Weg nimmt dem Blatt den Rumpf — also gilt für eine laufende
+    // Diktatsitzung dieselbe Trennung wie im Ladeeffekt, und zwar VOR dem Adresswechsel.
+    diktatVomBlattTrennen();
     setAnsicht("blatt");
     setSearchParams({ draft: entwurfId }, { replace: true });
   };
@@ -1605,6 +1682,11 @@ export function Blatt({
                 onClick={() => {
                   setOffenesMenue(null);
                   if (window.confirm(t("fd.confirmDiscard"))) {
+                    // JOB 3256 (CAP-P1-R, Lieferung 5): ERST TRENNEN, DANN LEEREN. `resetForNewEntry`
+                    // räumt den Rumpf; eine laufende Diktatsitzung schrieb bis dahin gleich wieder
+                    // hinein — auf einem Blatt OHNE `?draft` läuft der Ladeeffekt nicht, es gab hier
+                    // also gar keine Trennung. Dieselbe eine Funktion wie dort.
+                    diktatVomBlattTrennen();
                     resetForNewEntry();
                   }
                 }}
@@ -1647,10 +1729,18 @@ export function Blatt({
                     <button
                       key={d.id}
                       type="button"
+                      // JOB 3256 (CAP-P1-R, Zustandsmodell §9 „laden"): dieselbe eine Regel wie am
+                      // Diktat- und am Bild-Werkzeug. Während geladen wird, gibt es hier nichts
+                      // Ungesichertes zu retten (`blattNimmtAn` ist falsch) — ein Klick würde also
+                      // ohne Rückfrage ein ZWEITES Laden anstoßen, während das erste noch läuft.
+                      // Gesperrt sagt der Eintrag, dass er gerade nicht kann, statt es wortlos zu
+                      // tun; den Grund nennt er im selben Satz wie das Blatt darüber.
+                      disabled={!blattNimmtAn}
+                      title={blattNimmtAn ? undefined : t("erfassen.laden.nichtBereit")}
                       onClick={() => entwurfOeffnen(d.id)}
-                      className={`block w-full truncate rounded-[7px] px-2 py-1.5 text-left text-[13px] hover:bg-hairline-soft ${
-                        d.id === activeDraftId ? "font-semibold text-text" : "text-text"
-                      }`}
+                      className={`block w-full truncate rounded-[7px] px-2 py-1.5 text-left text-[13px] ${
+                        blattNimmtAn ? "hover:bg-hairline-soft" : "opacity-50"
+                      } ${d.id === activeDraftId ? "font-semibold text-text" : "text-text"}`}
                     >
                       {d.payload.title || fallbackTitle}
                     </button>
