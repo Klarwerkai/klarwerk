@@ -188,7 +188,9 @@ function inventarAdmin(): Posten[] {
       klick: '[data-testid="zeile-ki-zugaenge"]',
       detail: "detail-ki-zugaenge",
       erwartet: [
-        { text: t("adm.ai.access.cloud") },
+        // JOB 3134: die beiden externen Anbieter stehen als eigene Zeilen in der Zugangsliste.
+        { text: t("adm.ai.access.openai") },
+        { text: t("adm.ai.access.anthropic") },
         { text: t("adm.ai.access.fallback") },
         { text: t("adm.ai.access.local") },
       ],

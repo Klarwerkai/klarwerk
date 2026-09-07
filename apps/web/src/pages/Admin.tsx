@@ -45,7 +45,7 @@ import {
 } from "../components/einstellungen/zeilenWert";
 import { isUserAuditAction } from "../lib/adminForms";
 import { ADMIN_SECTIONS, type AdminSectionId, DEFAULT_ADMIN_SECTION } from "../lib/adminSections";
-import { aiAccessRows } from "../lib/aiOverview";
+import { aiAccessRows, anbieterUndModell } from "../lib/aiOverview";
 import { SECURITY_POINTS } from "../lib/securityStatements";
 import { readinessRows } from "../lib/vipReadiness";
 import {
@@ -361,8 +361,11 @@ export function Admin(): JSX.Element {
                 label={t("adm.ai.title")}
                 wert={wert(
                   aiConfig,
+                  // JOB 3134: derselbe Name wie auf der Karte (JOB 3120: ein Dienst, ein Name) —
+                  // hier stand die rohe Kennung, während die Karte „ChatGPT (OpenAI) · …" sagte.
+                  // `provider`/`model` ist der Anbieter, den die gespeicherte Wahl bestimmt.
                   aiConfig.data
-                    ? `${aiConfig.data.provider} · ${
+                    ? `${anbieterUndModell(aiConfig.data.model ?? aiConfig.data.provider)} · ${
                         aiConfig.data.mode === "model"
                           ? t("adm.ai.modeModel")
                           : t("adm.ai.modeDemo")

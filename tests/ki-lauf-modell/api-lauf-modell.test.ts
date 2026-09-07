@@ -37,11 +37,13 @@ async function umgebung() {
         json: async () => ({ content: [{ type: "text", text: "Geglätteter Satz." }] }),
       }) as unknown as Response) as unknown as typeof fetch,
   );
-  const client = createCappedCloudClientFromEnv(
+  // JOB 3134: die Fabrik liefert beide Anbieter unter ihrem Namen; hier zählt der, den die Env trägt.
+  const clients = createCappedCloudClientFromEnv(
     CLOUD_ENV,
     () => undefined,
     () => false,
   );
+  const client = clients.openai ?? clients.anthropic;
 
   const services = buildServices();
   // EIN Repo für Schreiber (Reasoner) und Leser (ModelRunService) — die Route liest damit wirklich

@@ -1560,6 +1560,31 @@ export const REASONER_TASKS = [
 // Abgeleitet, nicht abgeschrieben — die Union kann nicht mehr hinter der Liste zurückbleiben.
 export type ReasonerTask = (typeof REASONER_TASKS)[number];
 
+// JOB 3134 (KI-WAHL): die beiden externen Anbieter sind eigene Auswahlwerte. Dieselbe Liste wie
+// `services/reasoner/src/types.ts` (`REASONER_CLOUD_ANBIETER`) — hier gehalten und nicht importiert,
+// aus demselben Grund wie `REASONER_TASKS` oben; `tests/ki-anbieterwahl` vergleicht beide Seiten.
+export const REASONER_CLOUD_ANBIETER = ["openai", "anthropic"] as const;
+export type ReasonerCloudAnbieter = (typeof REASONER_CLOUD_ANBIETER)[number];
+
+// Die Auswahlwerte der KI-Karte — genau die, die der Server als AKTIV kennt (`ReasonerAktiveWahl`).
+// `cloud`/`model` sind abgelöst; kommen sie aus einem Altbestand, meldet der Server sie als migriert.
+export type ReasonerAktiveWahl = "auto" | ReasonerCloudAnbieter | "local" | "deterministic";
+
+// Was die Karte über EINEN externen Anbieter erfährt — Metadaten, nie ein Schlüssel. `grund` steht
+// nur, wenn der Anbieter nicht eingerichtet ist (Env-Namen, z. B. „OPENAI_API_KEY fehlt.").
+export interface ReasonerCloudAnbieterStatus {
+  configured: boolean;
+  name?: string;
+  model?: string;
+  grund?: string;
+}
+
+// Welcher abgelöste Wert wohin überführt wurde — nachvollziehbar, nicht still.
+export interface ReasonerWahlMigration {
+  von: "model" | "cloud";
+  nach: ReasonerAktiveWahl;
+}
+
 export interface ReasonerConfigStatus {
   provider: string;
   model?: string;
@@ -1577,7 +1602,24 @@ export interface ReasonerConfigStatus {
   localConfigured: boolean;
   localProvider?: string;
   effectiveProvider: Record<string, "cloud" | "local" | "deterministic">;
+  // JOB 3134: dieselbe Auflösung mit dem NAMEN des externen Anbieters (openai/anthropic) statt der
+  // Stufe „cloud". Optional, weil ein älterer Server sie nicht sendet — dann bleibt es bei der Stufe.
+  effectiveAnbieter?: Record<string, ReasonerCloudAnbieter | "local" | "deterministic">;
+  // JOB 3134: die beiden externen Anbieter einzeln — eingerichtet oder nicht, und warum nicht.
+  cloudProviders?: Record<ReasonerCloudAnbieter, ReasonerCloudAnbieterStatus>;
+  // JOB 3134: der Anbieter hinter „Auto" (der erste eingerichtete); null, wenn keiner eingerichtet.
+  autoAnbieter?: ReasonerCloudAnbieter | null;
+  // JOB 3134: nachvollziehbare Migration abgelöster Werte (`cloud`/`model`) — nur solange die
+  // wirksame Zuordnung daraus besteht.
+  migration?: {
+    global?: ReasonerWahlMigration;
+    perTask: Partial<Record<ReasonerTask, ReasonerWahlMigration>>;
+  };
   persisted: boolean;
+  // SCRUM-525 P.5 (WP-C): Herkunft der wirksamen Zuordnung. Bei "env" ist sie per Deploy-ENV
+  // (KLARWERK_REASONER_POLICY) festgelegt — die Karte sperrt dann die Auswahl und sagt es, statt ein
+  // PUT zu erlauben, das der Server ohnehin mit 409 beantwortet. Optional für ältere Antworten.
+  policySource?: "env" | "db" | "default";
 }
 
 // Key-Test (Pedi 02.07.): Ergebnis des echten Mini-Modellaufrufs (ehrlich, kein Secret).
@@ -1587,6 +1629,9 @@ export interface ReasonerProbeResult {
   mode: "model" | "deterministic";
   detail: string;
   at: string;
+  // JOB 3134: welcher externe Anbieter geprüft wurde (der aus der gespeicherten globalen Wahl);
+  // fehlt es, wurde keiner geprüft und `detail` sagt, warum.
+  anbieter?: ReasonerCloudAnbieter;
 }
 
 // SCRUM-493: End-to-End-Selbsttest der Konflikterkennung (Modell antwortet + liefert kollision).

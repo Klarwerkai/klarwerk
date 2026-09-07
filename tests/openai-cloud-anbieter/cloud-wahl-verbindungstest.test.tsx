@@ -10,19 +10,16 @@
 // Genau diese Naht wird hier gemessen, in einem Stück:
 //
 //   Env (OPENAI_API_KEY, REASONER_MODEL) → createCappedCloudClientFromEnv → ModelProvider →
-//   Reasoner (wie in `services/app/src/build-app.ts:422-433` verdrahtet) → reasoner.configStatus()
-//   (die Quelle der Admin-Sicht, `service.ts:952-977`) → HTTP-Antwort von /api/reasoner/config →
+//   Reasoner (wie in `services/app/src/build-app.ts` verdrahtet) → reasoner.configStatus()
+//   (die Quelle der Admin-Sicht) → HTTP-Antwort von /api/reasoner/config →
 //   gemountete Karte `KiZugaengeDetail` → der Text, den ein Mensch liest.
 //
-// UND: BEN hat belegt, dass F12 unter M2 GRÜN bleibt (F12 zählt Quelltextmuster und kann die
-// Anbieterwahl gar nicht sehen). Die Wahl braucht deshalb einen Nachweis, der unter M2 WIRKLICH
-// rot wird — V1 bis V4 sind dieser Nachweis.
-//
-// PEDIS ENTSCHEIDUNG 25 (05.09., 20:20), hier Fall für Fall geprüft:
-//   (1) nur OPENAI_API_KEY (+ REASONER_MODEL) → der Cloud-Client IST OpenAI        → V1
-//   (2) beide Schlüssel → OpenAI hat Vorrang, Anthropic bleibt konfigurierbar       → V2
-//   (3) die bestehende Admin-Auswahl bleibt; „Cloud/extern" ergibt ChatGPT          → V3
-//       die Übersicht nennt Anbieter UND Modell (REASONER_MODEL = gpt-6-astra)      → V4
+// JOB 3134 (KI-WAHL): Pedis Entscheidung 25 (OpenAI hat Vorrang) ist durch Entscheidung 42 ersetzt —
+// beide Anbieter sind hinterlegt, und PEDI WÄHLT. Was hier bleibt: (1) nur OPENAI_API_KEY → ChatGPT
+// ist der Anbieter hinter „auto"; (2) beide Schlüssel → „auto" nimmt weiterhin OpenAI als Vorgabe,
+// Anthropic ist als EIGENER Wert eingerichtet und wählbar; (3) der abgelöste Wert `cloud` wird
+// migriert und gemeldet; (4) die Karte nennt Anbieter und Modell. Die Wahl selbst und ihre
+// Empfänger misst `tests/ki-anbieterwahl`.
 //
 // HERMETIK: kein Netz, kein echter Schlüssel. EIN `fetch`-Spion bedient beide Welten und
 // unterscheidet sie am Pfad — Modell-API (`json()`) und Web-API (`text()`).
@@ -62,20 +59,28 @@ interface Anfrage {
 }
 
 /**
- * DIE VERDRAHTUNG DES PRODUKTS, Zeile für Zeile nachgebaut aus `build-app.ts:422-433`: gecappter
- * Cloud-Client als primary, gecappter lokaler Client als secondary, deterministisch als fallback.
- * Nachgebaut und nicht importiert, weil `assembleServices` die ganze Repo-Landschaft verlangt; die
- * FÜR DIESE FRAGE tragenden vier Zeilen sind vollständig hier.
+ * DIE VERDRAHTUNG DES PRODUKTS, Zeile für Zeile nachgebaut aus `build-app.ts`: beide gecappten
+ * Cloud-Clients unter ihrem Namen (`cloud`), gecappter lokaler Client als secondary, deterministisch
+ * als fallback. Nachgebaut und nicht importiert, weil `assembleServices` die ganze Repo-Landschaft
+ * verlangt; die FÜR DIESE FRAGE tragenden Zeilen sind vollständig hier.
  */
 function reasonerWieImProdukt(env: Record<string, string | undefined>): Reasoner {
   const cappedCloud = createCappedCloudClientFromEnv(env, KEIN_SCHLUESSELBUND, KEIN_SPEICHERN);
   const cappedLocal = createCappedLocalClientFromEnv(env);
   return new Reasoner(
-    cappedCloud ? new ModelProvider(cappedCloud) : undefined,
+    undefined,
     undefined,
     undefined,
     undefined,
     cappedLocal ? new ModelProvider(cappedLocal) : undefined,
+    undefined,
+    {
+      anbieter: {
+        ...(cappedCloud.openai ? { openai: new ModelProvider(cappedCloud.openai) } : {}),
+        ...(cappedCloud.anthropic ? { anthropic: new ModelProvider(cappedCloud.anthropic) } : {}),
+      },
+      gruende: cappedCloud.gruende,
+    },
   );
 }
 
@@ -158,21 +163,34 @@ describe("JOB 3090 V1–V4: die Anbieterwahl, von der Env bis auf den Bildschirm
     expect(cfg.mode).toBe("model");
     // Ohne lokalen LLM bleibt die zweite Kante ehrlich leer — hier wird nichts umgestellt.
     expect(cfg.localConfigured).toBe(false);
-    // Und was der Admin daraus liest, nennt Anbieter UND Modell.
+    // JOB 3134: der zweite Anbieter ist ehrlich „nicht eingerichtet", mit Grund.
+    expect(cfg.cloudProviders.anthropic.configured).toBe(false);
+    expect(cfg.cloudProviders.anthropic.grund).toContain("ANTHROPIC_API_KEY");
+    // Und was der Admin daraus liest, nennt Anbieter UND Modell — in der Zeile des Anbieters.
     expect(aiAccessRows(cfg)[0]).toEqual({
-      id: "cloud",
+      id: "openai",
       state: "active",
       detail: `ChatGPT (OpenAI) · ${MODELL}`,
     });
+    expect(aiAccessRows(cfg)[1]?.state).toBe("missing");
   });
 
-  it("V2 · beide Schlüssel gesetzt: OpenAI hat Vorrang — Anthropic bleibt nachrangig konfigurierbar", async () => {
+  it("V2 · beide Schlüssel gesetzt: „auto“ nimmt OpenAI als Vorgabe — Anthropic ist eingerichtet und WÄHLBAR", async () => {
     const anfragen = fetchSpion();
     const reasoner = reasonerWieImProdukt(BEIDE_ENV);
     const cfg = reasoner.configStatus();
+    expect(cfg.taskConfig.global).toBe("auto");
+    expect(cfg.autoAnbieter).toBe("openai");
     expect(cfg.provider).toBe(`cloud:openai:${MODELL}`);
     expect(cfg.provider).not.toContain("anthropic");
-    // Der Vorrang ist keine Anzeige-Behauptung: der echte Lauf geht wirklich zu OpenAI.
+    // JOB 3134: der zweite Anbieter ist nicht „nachrangig", sondern eingerichtet — mit eigenem,
+    // gültigem Modell (nie das OpenAI-Modell aus REASONER_MODEL).
+    expect(cfg.cloudProviders.anthropic).toEqual({
+      configured: true,
+      name: "anthropic:claude-sonnet-4-6",
+      model: "claude-sonnet-4-6",
+    });
+    // Die Vorgabe ist keine Anzeige-Behauptung: der echte Lauf geht wirklich zu OpenAI.
     await reasoner.assistText("Ein roher Satz, der geglättet werden soll.", "de");
     const modellAnfragen = anfragen.filter((a) => !a.url.includes("/api/"));
     expect(modellAnfragen).toHaveLength(1);
@@ -183,20 +201,23 @@ describe("JOB 3090 V1–V4: die Anbieterwahl, von der Env bis auf den Bildschirm
     expect(modellAnfragen.some((a) => a.url.includes("anthropic"))).toBe(false);
   });
 
-  it('V3 · die bestehende Admin-Auswahl bleibt: „Cloud/extern" ergibt ChatGPT', async () => {
+  it("V3 · der abgelöste Wert „cloud“ wird auf ChatGPT migriert und gemeldet; die Anbieter sind eigene Werte", async () => {
     const anfragen = fetchSpion();
     const reasoner = reasonerWieImProdukt(BEIDE_ENV);
-    // Die vorhandene Auswahl (KI-Verwaltung v1) wird BENUTZT, nicht ersetzt — kein neuer Schalter.
+    // Ein alter Schreibweg mit `cloud` landet nicht still: er wird migriert UND gemeldet.
     await reasoner.setTaskConfig({ global: "cloud", perTask: {} });
     const cfg = reasoner.configStatus();
-    expect(cfg.taskConfig.global).toBe("cloud");
+    expect(cfg.taskConfig.global).toBe("openai");
+    expect(cfg.migration).toEqual({ global: { von: "cloud", nach: "openai" }, perTask: {} });
     expect(cfg.effectiveProvider.assist).toBe("cloud");
+    expect(cfg.effectiveAnbieter.assist).toBe("openai");
     await reasoner.assistText("Ein roher Satz, der geglättet werden soll.", "de");
     const modellAnfragen = anfragen.filter((a) => !a.url.includes("/api/"));
     expect(modellAnfragen[0]?.url).toBe("https://api.openai.com/v1/chat/completions");
-    // Die Auswahl selbst ist unangetastet: alle Bestandsoptionen bleiben setzbar.
-    await reasoner.setTaskConfig({ global: "deterministic", perTask: { assist: "local" } });
-    expect(reasoner.configStatus().taskConfig.perTask.assist).toBe("local");
+    // Alle Bestandsoptionen bleiben setzbar — und der Anbieter ist jetzt ein eigener Wert.
+    await reasoner.setTaskConfig({ global: "deterministic", perTask: { assist: "anthropic" } });
+    expect(reasoner.configStatus().taskConfig.perTask.assist).toBe("anthropic");
+    expect(reasoner.configStatus().migration).toBeUndefined();
   });
 
   it('V4 · die gemountete Admin-Karte zeigt „ChatGPT (OpenAI) · gpt-6-astra"', async () => {
@@ -209,12 +230,15 @@ describe("JOB 3090 V1–V4: die Anbieterwahl, von der Env bis auf den Bildschirm
     expect(container.querySelector('[data-testid="detail-ki-zugaenge"]')).toBeTruthy();
     expect(text, "die Karte nennt den Anbieter nicht").toContain("ChatGPT (OpenAI)");
     expect(text, "die Karte nennt das Modell aus REASONER_MODEL nicht").toContain(MODELL);
-    // Der externe Anbieter steht in der CLOUD-Zeile, nicht in der Zeile des eigenen Servers.
+    // Der externe Anbieter steht in SEINER Zeile, nicht in der Zeile des eigenen Servers.
     expect(text).not.toContain(`local:${MODELL}`);
     expect(text).not.toContain("cloud:openai:");
+    // JOB 3134: die zweite Anbieterzeile sagt, was fehlt — ohne Modell, ohne Schlüssel.
+    expect(text).toContain("ANTHROPIC_API_KEY");
+    expect(text).not.toContain("test-schluessel");
   });
 
-  it("V4b · ohne Cloud-Schlüssel steht auf der Karte kein Anbietername", async () => {
+  it("V4b · ohne Cloud-Schlüssel steht auf der Karte kein Modell — beide Anbieter „nicht konfiguriert“ mit Grund", async () => {
     await i18n.changeLanguage("de");
     const echterStatus = reasonerWieImProdukt({}).configStatus();
     expect(echterStatus.cloudConfigured).toBe(false);
@@ -224,8 +248,19 @@ describe("JOB 3090 V1–V4: die Anbieterwahl, von der Env bis auf den Bildschirm
     // Erst der Beleg, dass die Karte überhaupt dasteht — sonst wäre jede „nicht enthalten"-Zusage
     // unten geschenkt (eine leere Fläche enthält nie etwas).
     expect(container.querySelector('[data-testid="detail-ki-zugaenge"]')).toBeTruthy();
-    expect(text).toContain(i18n.t("adm.ai.access.cloud"));
-    expect(text).not.toContain("OpenAI");
-    expect(text).not.toContain("Anthropic");
+    expect(text).toContain(i18n.t("adm.ai.access.openai"));
+    expect(text).toContain(i18n.t("adm.ai.access.anthropic"));
+    const zustaende = [...container.querySelectorAll("li")].map(
+      (li) => li.querySelector(".ml-auto")?.textContent ?? "",
+    );
+    expect(zustaende.slice(0, 2)).toEqual([
+      i18n.t("adm.ai.state.missing"),
+      i18n.t("adm.ai.state.missing"),
+    ]);
+    expect(text).toContain("OPENAI_API_KEY");
+    expect(text).toContain("ANTHROPIC_API_KEY");
+    // Kein Modellname, den es nicht gibt.
+    expect(text).not.toContain("gpt-");
+    expect(text).not.toContain("claude-");
   });
 });

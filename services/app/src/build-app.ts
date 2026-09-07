@@ -424,14 +424,14 @@ export function assembleServices(
   // dort zwingend verdrahtet; der rohe Client + der Schlüssel bleiben modul-intern, hier nicht
   // erreichbar). Ohne Schlüssel → undefined (deterministischer Betrieb).
   //
-  // JOB 3090 — WELCHER CLOUD-ANBIETER, in einem Satz: SIND `OPENAI_API_KEY` UND `REASONER_MODEL`
-  // GESETZT, ARBEITET CHATGPT (OPENAI); SONST — UND NUR DANN — DER ANTHROPIC-WEG WIE BISHER; ist
-  // keiner von beiden konfiguriert, bleibt der Cloud-Zugang aus und der deterministische Ersatzmodus
-  // greift unverändert. Die Wahl steht in `createCappedCloudClientFromEnv` (model-client.ts) und
-  // NICHT hier, weil es genau EINEN Ort geben muss, an dem für die Cloud `rejectsConfidential: true`
-  // gesetzt wird — zwei Fabriken hier nebeneinander wären zwei Egress-Regeln, und die zweite ist die,
-  // die eines Tages vergessen wird. Diese Zeile bleibt die Verdrahtung: EIN Cloud-Client, gecappt.
-  // Der lokale Weg darunter ist von der Wahl unberührt (Vorrang und Verhalten unverändert).
+  // JOB 3134 (KI-WAHL, Pedis Entscheidung 42) — BEIDE CLOUD-ANBIETER, GETRENNT VERDRAHTET. Bis
+  // hierher entschied die Fabrik nach einer Vorzugsregel (OpenAI vor Anthropic), WER „die Cloud" ist,
+  // und die Fläche konnte nur „Cloud" wählen. Jetzt liefert dieselbe Fabrik ChatGPT (OpenAI) und
+  // Claude (Anthropic) unter ihrem Namen — je Anbieter ein eigener gecappter Client oder der Grund,
+  // warum keiner entstand —, und WELCHER arbeitet, entscheidet die gespeicherte Wahl im Reasoner.
+  // Die Fabrik bleibt der EINE Ort, an dem für die Cloud `rejectsConfidential: true` gesetzt wird:
+  // zwei Fabriken hier nebeneinander wären zwei Egress-Regeln, und die zweite ist die, die eines
+  // Tages vergessen wird. Der lokale Weg darunter ist von der Wahl unberührt.
   const cappedCloud = createCappedCloudClientFromEnv(
     process.env,
     process.env.KLARWERK_SKIP_KEYCHAIN ? () => undefined : undefined,
@@ -442,7 +442,8 @@ export function assembleServices(
   const cappedLocal = createCappedLocalClientFromEnv();
   // SCRUM-164: ModelRun-Protokoll mitgeben (No-op-fähig); API-Shape des Reasoners unverändert.
   const reasoner = new Reasoner(
-    cappedCloud ? new ModelProvider(cappedCloud) : undefined,
+    // JOB 3134: kein `primary` mehr — die externen Anbieter kommen benannt über `cloud` (unten).
+    undefined,
     undefined,
     repos.modelRuns,
     // SCRUM-386: Presets über das Repo — persistent in Pg bzw. im Dev-Journal der Desktop-App.
@@ -452,7 +453,45 @@ export function assembleServices(
     // SCRUM-525 P.5 (WP6): persistente KI-Zuordnung (Policy) über das Repo — die Admin-Entscheidung
     // überlebt Neustart/Deploy (kein stiller Auto-Fallback). Geladen wird sie beim Serverstart.
     repos.reasonerPolicy,
+    // JOB 3134: beide externen Anbieter unter ihrem Namen, plus der Grund je nicht eingerichtetem.
+    {
+      anbieter: {
+        ...(cappedCloud.openai ? { openai: new ModelProvider(cappedCloud.openai) } : {}),
+        ...(cappedCloud.anthropic ? { anthropic: new ModelProvider(cappedCloud.anthropic) } : {}),
+      },
+      gruende: cappedCloud.gruende,
+    },
   );
+  // JOB 3134: DER FORMULIERER DES ZURUFS FOLGT DER WAHL. Bis hierher war er „der" gecappte
+  // Cloud-Client — jetzt gibt es zwei, und der Memo-Weg darf nicht an einen Anbieter gehen, den
+  // Pedi gerade abgewählt hat. Diese Hülle löst bei JEDEM Aufruf frisch auf, welcher externe
+  // Anbieter die Aufgabe `answer` bedient (dieselbe Auflösung, die Klara-Status und Zustimmung
+  // tragen: `configStatus().effectiveAnbieter.answer`), und reicht den Aufruf an GENAU diesen
+  // gecappten Client weiter — Egress-Wächter und Cap reisen mit, weil es derselbe Client ist. Ist
+  // gerade kein externer Anbieter wirksam, wirft sie einen benannten Fehler statt zu raten; ohne
+  // jeden Cloud-Client bleibt der Formulierer `undefined` (Route: 503 `NO_FORMULIERER`).
+  const zurufModell: ZurufModell | undefined =
+    cappedCloud.openai || cappedCloud.anthropic
+      ? {
+          complete(system, user, confidential, maxTokens) {
+            const anbieter = reasoner.configStatus().effectiveAnbieter.answer;
+            const client =
+              anbieter === "openai"
+                ? cappedCloud.openai
+                : anbieter === "anthropic"
+                  ? cappedCloud.anthropic
+                  : undefined;
+            if (!client) {
+              return Promise.reject(
+                new Error(
+                  `Kein externer Anbieter für die Aufgabe „answer" wirksam (${anbieter}) — der Zuruf wird nicht formuliert.`,
+                ),
+              );
+            }
+            return client.complete(system, user, confidential, maxTokens);
+          },
+        }
+      : undefined;
 
   // Vorab erstellt, da das Management-Modul (SCRUM-120) deren Live-Daten aggregiert.
   // FUNKE-FIX P0 (bens ROT-1): optionales Answer-Receipt-Secret aus ENV — gesetzt für
@@ -545,10 +584,9 @@ export function assembleServices(
     audit,
     reasoner,
     klaraSessions: opts.klaraSessions ?? new InMemoryKlaraSessionRepo(),
-    // JOB 3110 (M2b): DER VORHANDENE gecappte Cloud-Client, weitergereicht — kein zweiter Aufruf
-    // der Fabrik. `ModelClient.complete` erfüllt `ZurufModell` (dieselben vier Parameter); der
-    // Egress-Wächter `rejectsConfidential: true` reist mit, weil es derselbe Client ist.
-    zurufModell: cappedCloud,
+    // JOB 3110 (M2b): DIE VORHANDENEN gecappten Cloud-Clients, weitergereicht — kein zweiter Aufruf
+    // der Fabrik. JOB 3134: hinter der Hülle (oben), die je Aufruf den GEWÄHLTEN Anbieter nimmt.
+    zurufModell,
     importRuns: repos.importRuns,
     externalSources: repos.externalSources,
     ko,
@@ -1620,14 +1658,34 @@ export function buildApp(
       // `answer = local` meldete der Kopf dadurch `internal` MIT dem Cloud-Anbieter.
       // `config.effectiveProvider.answer` ist die taskbezogene Wahrheit, die der Reasoner
       // ohnehin schon führt — sie wird hier durchgereicht, nicht nachgerechnet.
+      //
+      // JOB 3134 (KI-WAHL): DER RESOLVER KENNT DREI MODI, KEINE ANBIETER (`klara-policy.ts`,
+      // ausserhalb der Zielpfade dieses Auftrags). Eine ausdrückliche Anbieterwahl (openai/anthropic)
+      // ist auf der WUNSCHseite „extern" — dort geht sie als `cloud` hinein, damit `adminModeOf`
+      // sie nicht über den Auto-Zweig an `cloudConfigured` hängt und aus „Claude gewählt, nicht
+      // eingerichtet" ein „intern" macht. Der ANBIETER selbst reist über `providerLabel`: nicht der
+      // globale Bevorzugte, sondern der, der die Aufgabe `answer` WIRKLICH bedient — die Zustimmung
+      // bindet damit an den tatsächlichen Empfänger, und ein Anbieterwechsel entwertet sie
+      // (`klaraConfigurationVersion`). `cloudConfigured` ist entsprechend „DIESER Anbieter ist
+      // eingerichtet", damit der Abweichungsgrund `external_not_configured` statt
+      // `policy_incomplete` heisst, wenn Pedi einen Anbieter wählt, der keinen Schlüssel hat.
+      const gewaehlterAnbieter =
+        antwortWahl === "openai" || antwortWahl === "anthropic" ? antwortWahl : null;
+      const antwortAnbieter = config.effectiveAnbieter.answer;
+      const antwortCloud =
+        antwortAnbieter === "openai" || antwortAnbieter === "anthropic"
+          ? config.cloudProviders[antwortAnbieter]
+          : null;
       return {
-        choice: antwortWahl,
+        choice: gewaehlterAnbieter ? "cloud" : antwortWahl,
         source: config.policySource,
         effectiveAnswerProvider: config.effectiveProvider.answer ?? "deterministic",
-        cloudConfigured: config.cloudConfigured,
+        cloudConfigured: gewaehlterAnbieter
+          ? config.cloudProviders[gewaehlterAnbieter].configured
+          : config.cloudConfigured,
         localConfigured: config.localConfigured,
-        providerLabel: config.provider,
-        modelLabel: config.model,
+        providerLabel: antwortCloud?.name ?? config.provider,
+        modelLabel: antwortCloud ? antwortCloud.name : config.model,
         localProviderLabel: config.localProvider,
       };
     },

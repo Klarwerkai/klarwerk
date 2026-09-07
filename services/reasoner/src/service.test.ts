@@ -8,7 +8,7 @@ import {
   Reasoner,
   ReasonerPolicyLockedError,
 } from "./service";
-import type { ReasonerTaskConfig } from "./types";
+import type { ReasonerTaskConfig, ReasonerTaskConfigEingabe } from "./types";
 import type {
   AnswerResult,
   AssistResult,
@@ -582,7 +582,9 @@ describe("SCRUM-525 P.5 (WP6): persistente Reasoner-Policy", () => {
       undefined,
       policyRepo,
     );
-    await before.setTaskConfig({ global: "deterministic", perTask: { structure: "cloud" } });
+    // JOB 3134: die ausdrückliche Anbieterwahl (hier ChatGPT) — der alte Wert `cloud` wäre beim
+    // Speichern migriert worden (s. tests/ki-anbieterwahl).
+    await before.setTaskConfig({ global: "deterministic", perTask: { structure: "openai" } });
 
     // Instanz 2 = „nach dem Neustart": frische Reasoner-Instanz, DASSELBE persistente Repo.
     const after = new Reasoner(
@@ -598,7 +600,7 @@ describe("SCRUM-525 P.5 (WP6): persistente Reasoner-Policy", () => {
     expect(loaded.source).toBe("persisted");
     expect(after.getTaskConfig()).toEqual({
       global: "deterministic",
-      perTask: { structure: "cloud" },
+      perTask: { structure: "openai" },
     });
   });
 
@@ -637,14 +639,16 @@ describe("SCRUM-525 P.5 (WP6): persistente Reasoner-Policy", () => {
 // Präzedenz. Ein steuerbares Fake-Repo simuliert DB-Lese-/Schreibfehler.
 describe("SCRUM-525 P.5 (WP3): Policy-Wiring (write-then-runtime, fail-closed, ENV)", () => {
   class ControllableRepo implements ReasonerPolicyRepo {
-    stored: ReasonerTaskConfig | null = null;
+    // JOB 3134: der Bestand darf noch die abgelösten Werte (`cloud`/`model`) tragen — genau so kommt
+    // eine vor JOB 3134 gespeicherte Zeile aus der Datenbank an; der Reasoner migriert sie beim Laden.
+    stored: ReasonerTaskConfigEingabe | null = null;
     failGet = false;
     failSet = false;
     async get(): Promise<ReasonerTaskConfig | null> {
       if (this.failGet) {
         throw new Error("db read down");
       }
-      return this.stored;
+      return this.stored as ReasonerTaskConfig | null;
     }
     async set(config: ReasonerTaskConfig): Promise<void> {
       if (this.failSet) {
@@ -716,7 +720,13 @@ describe("SCRUM-525 P.5 (WP3): Policy-Wiring (write-then-runtime, fail-closed, E
     const r = makeReasoner(repo);
     const res = await r.loadPersistedPolicy({ envGlobal: "quatsch" });
     expect(res.source).toBe("persisted");
-    expect(r.getTaskConfig().global).toBe("cloud");
+    // JOB 3134: der abgelöste Bestandswert `cloud` wird beim Laden auf den Anbieter überführt, der
+    // unter der alten Vorzugsregel geantwortet hätte (ohne OpenAI: Anthropic) — und das wird gemeldet.
+    expect(r.getTaskConfig().global).toBe("anthropic");
+    expect(r.configStatus().migration).toEqual({
+      global: { von: "cloud", nach: "anthropic" },
+      perTask: {},
+    });
     expect(res.detail).toContain("quatsch"); // ehrlich gemeldet
   });
 
@@ -776,9 +786,9 @@ describe("SCRUM-525 P.5 (WP-C): ENV-Sperre für den Admin-Schreibpfad", () => {
     expect(loaded.source).toBe("default");
     expect(r.configStatus().policySource).toBe("default"); // noch nichts persistiert/env-gesperrt
 
-    const result = await r.setTaskConfig({ global: "cloud", perTask: {} });
-    expect(result.global).toBe("cloud"); // unverändertes Verhalten: der Write greift
-    expect(await repo.get()).toEqual({ global: "cloud", perTask: {} }); // wirklich persistiert
+    const result = await r.setTaskConfig({ global: "openai", perTask: {} });
+    expect(result.global).toBe("openai"); // unverändertes Verhalten: der Write greift
+    expect(await repo.get()).toEqual({ global: "openai", perTask: {} }); // wirklich persistiert
     expect(r.configStatus().policySource).toBe("db"); // Quelle jetzt die gerade gesetzte Admin-Wahl
   });
 

@@ -69,11 +69,12 @@ describe("SCRUM-525 P.5 (WP-C): ENV-Sperre für PUT /api/reasoner/config", () =>
       method: "PUT",
       url: "/api/reasoner/config",
       headers,
-      payload: { global: "cloud", perTask: {} },
+      // JOB 3134: die ausdrückliche Anbieterwahl (`cloud` ist abgelöst und würde migriert).
+      payload: { global: "anthropic", perTask: {} },
     });
     expect(put.statusCode).toBe(200);
     const body = put.json() as { taskConfig: { global: string }; policySource: string };
-    expect(body.taskConfig.global).toBe("cloud");
+    expect(body.taskConfig.global).toBe("anthropic");
     expect(body.policySource).toBe("db");
 
     const afterGet = await app.inject({ method: "GET", url: "/api/reasoner/config", headers });

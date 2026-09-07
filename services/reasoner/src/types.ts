@@ -246,20 +246,83 @@ export type ReasonerTask = (typeof REASONER_TASKS)[number];
 // Server VOLLSTÄNDIG antwortet — ein Tippfehler ist damit ein Typfehler und nicht mehr `undefined`.
 export type ReasonerTaskMap = Record<ReasonerTask, boolean>;
 
+// ================================================================================================
+// JOB 3134 (KI-WAHL, Pedis Entscheidung 42, 06.09.) — DIE BEIDEN EXTERNEN ANBIETER SIND WÄHLBAR.
+// ================================================================================================
+//
+// DER BEFUND: im Dropdown stand „Claude", als aktive KI „ChatGPT". Die Auswahl kannte nur EINEN
+// Cloud-Wert (`cloud`), und WELCHER Anbieter dahinter arbeitete, entschied die Fabrik nach einer
+// Vorzugsregel (OpenAI vor Anthropic), von der die Fläche nichts wusste. Seit diesem Auftrag sind
+// ChatGPT (OpenAI) und Claude (Anthropic) ZWEI Auswahlwerte, und was gewählt ist, bestimmt den
+// Empfänger — ohne Vorzugsregel, ohne heimlichen Wechsel.
+export const REASONER_CLOUD_ANBIETER = ["openai", "anthropic"] as const;
+export type ReasonerCloudAnbieter = (typeof REASONER_CLOUD_ANBIETER)[number];
+// Der lesbare Name je Anbieter für SERVERSEITIGE Sätze (Prüfergebnis, Fehlerzeilen). Die Fläche
+// leitet denselben Namen aus dem Clientnamen ab (`apps/web/src/lib/aiOverview.ts`); dass beide
+// gleich lauten, prüft `tests/ki-anbieterwahl`.
+export const REASONER_CLOUD_ANBIETER_NAME: Readonly<Record<ReasonerCloudAnbieter, string>> = {
+  openai: "ChatGPT (OpenAI)",
+  anthropic: "Claude (Anthropic)",
+};
+
 // KI-Verwaltung (Pedi 02./03.07.): je Aufgabe bewusst wählen.
-//  - "auto"          Cloud → lokal → deterministisch (was verfügbar ist, in dieser Reihenfolge)
-//  - "cloud"         das Cloud-Modell verlangen (ehrlicher Fallback, wenn nicht verfügbar)
+//  - "auto"          Vorgabe-Cloud-Anbieter → lokal → deterministisch (was verfügbar ist, in dieser
+//                    Reihenfolge). Der Vorgabe-Anbieter ist der erste eingerichtete in der Reihenfolge
+//                    von REASONER_CLOUD_ANBIETER — GENAU EIN externer Anbieter je Kette, nie beide.
+//  - "openai"        ChatGPT (OpenAI) verlangen (JOB 3134; ehrlicher deterministischer Ersatz, wenn
+//                    nicht eingerichtet oder gescheitert — nie der andere externe Anbieter)
+//  - "anthropic"     Claude (Anthropic) verlangen (JOB 3134; dieselbe Zusage)
 //  - "local"         den EIGENEN lokalen LLM verlangen (SCRUM-424; ehrlicher Fallback)
-//  - "model"         Alias für "cloud" (Rückwärtskompatibilität)
 //  - "deterministic" bewusst ohne Modell
-export type ReasonerTaskChoice = "auto" | "model" | "cloud" | "local" | "deterministic";
+//
+// ABGELÖST, NUR NOCH ALS EINGABE GEDULDET (JOB 3134): "cloud" und "model" waren „das Cloud-Modell
+// verlangen" ohne Anbieter. Sie werden an jeder Eingangsstelle (Datenbank, Deploy-ENV, Schreibweg)
+// auf den Anbieter migriert, der unter der alten Vorzugsregel geantwortet hätte, und das wird
+// gemeldet (`ReasonerConfigStatus.migration`). Sie stehen NUR deshalb weiter im Typ, weil Leser
+// ausserhalb dieses Moduls (`klara-policy.ts`) sie als Eingabewert kennen; eine gespeicherte oder
+// wirksame Zuordnung trägt sie nach der Normalisierung nie mehr (`ReasonerTaskConfig`).
+export type ReasonerLegacyChoice = "model" | "cloud";
+export type ReasonerAktiveWahl = "auto" | ReasonerCloudAnbieter | "local" | "deterministic";
+export type ReasonerTaskChoice = ReasonerAktiveWahl | ReasonerLegacyChoice;
+
+// Die NACHVOLLZIEHBARE Migration: welcher alte Wert wurde wohin überführt. Sie steht in der
+// Konfigurationsantwort, solange die Laufzeit-Zuordnung aus migrierten Werten besteht, und
+// verschwindet mit der nächsten ausdrücklichen Speicherung (die dann nur noch neue Werte trägt).
+export interface ReasonerWahlMigration {
+  von: ReasonerLegacyChoice;
+  nach: ReasonerAktiveWahl;
+}
+export interface ReasonerPolicyMigration {
+  global?: ReasonerWahlMigration;
+  perTask: Partial<Record<ReasonerTask, ReasonerWahlMigration>>;
+}
+
+// Was die Fläche über EINEN externen Anbieter wissen darf — Metadaten, nie ein Schlüssel.
+// `grund` steht NUR, wenn der Anbieter nicht eingerichtet ist, und nennt die fehlende Voraussetzung
+// mit Env-NAMEN (z. B. „OPENAI_API_KEY fehlt"); ein eingerichteter Anbieter trägt Clientname und
+// Modell, so wie das Laufprotokoll sie später nennt.
+export interface ReasonerCloudAnbieterStatus {
+  configured: boolean;
+  name?: string;
+  model?: string;
+  grund?: string;
+}
 
 // SCRUM-525 P.5 (WP-C): Herkunft der AKTIVEN Policy — "env" (Deploy-ENV KLARWERK_REASONER_POLICY,
 // deklarativ pro Deploy, per Admin-Schreibpfad NICHT änderbar), "db" (persistierte Admin-Wahl) oder
 // "default" (nichts konfiguriert/geladen, inkl. eines fail-closed Ladefehlers — s. Reasoner.setTaskConfig).
 export type ReasonerPolicySource = "env" | "db" | "default";
 
+// Die WIRKSAME Zuordnung: nach der Normalisierung stehen hier nur noch aktive Werte — kein
+// `cloud`, kein `model` (JOB 3134, s. ReasonerLegacyChoice).
 export interface ReasonerTaskConfig {
+  global: ReasonerAktiveWahl;
+  perTask: Partial<Record<ReasonerTask, ReasonerAktiveWahl>>;
+}
+
+// Die EINGABE einer Zuordnung (Schreibweg, Datenbankbestand, Deploy-ENV): darf noch die abgelösten
+// Werte tragen; der Reasoner migriert sie und meldet die Migration.
+export interface ReasonerTaskConfigEingabe {
   global: ReasonerTaskChoice;
   perTask: Partial<Record<ReasonerTask, ReasonerTaskChoice>>;
 }
@@ -281,7 +344,24 @@ export interface ReasonerConfigStatus {
   localProvider?: string;
   // SCRUM-424: welche KI je Aufgabe EFFEKTIV zuerst arbeitet (cloud/lokal/deterministisch).
   effectiveProvider: Record<string, "cloud" | "local" | "deterministic">;
-  // v1 bewusst ohne Persistenz (gilt bis Neustart) — UI zeigt das ehrlich an.
+  // JOB 3134: dieselbe Auflösung, aber mit dem NAMEN des externen Anbieters statt der Stufe —
+  // „extern" sagt nicht, WEM die Texte gezeigt werden. Bei Stufe cloud steht hier openai/anthropic,
+  // sonst derselbe Wert wie in `effectiveProvider`.
+  effectiveAnbieter: Record<string, ReasonerCloudAnbieter | "local" | "deterministic">;
+  // JOB 3134: die beiden externen Anbieter EINZELN — eingerichtet oder nicht, und warum nicht.
+  // `cloudConfigured` oben bleibt „irgendein externer Anbieter ist eingerichtet".
+  cloudProviders: Record<ReasonerCloudAnbieter, ReasonerCloudAnbieterStatus>;
+  // JOB 3134: der Anbieter, auf den „auto" (und die abgelösten Werte) heute aufgelöst werden — der
+  // erste eingerichtete in der Reihenfolge von REASONER_CLOUD_ANBIETER; null, wenn keiner
+  // eingerichtet ist. Die Fläche zeigt ihn neben „Auto", statt ihn raten zu lassen.
+  autoAnbieter: ReasonerCloudAnbieter | null;
+  // JOB 3134: die nachvollziehbare Migration abgelöster Werte (s. ReasonerPolicyMigration) — nur
+  // gesetzt, solange die wirksame Zuordnung aus migrierten Werten besteht.
+  migration?: ReasonerPolicyMigration;
+  // SCRUM-525 P.5 (WP6): die Zuordnung IST persistent (Datenbank, eine Zeile). `true`, sobald die
+  // wirksame Zuordnung aus der Persistenz stammt bzw. gerade dorthin geschrieben wurde; `false` für
+  // den Default vor der ersten Speicherung und für die transiente Deploy-ENV. JOB 3134: der Wert
+  // stand seit SCRUM-525 fest auf `false` (v1-Rest) und die Karte behauptete „gilt bis Neustart".
   persisted: boolean;
   // SCRUM-525 P.5 (WP-C): Herkunft der aktiven Policy — die Admin-UI zeigt bei "env" einen Sperrhinweis
   // (Änderung nur per Deploy/ENV), statt ein PUT zu erlauben, das serverseitig ohnehin 409 liefert.
@@ -483,6 +563,10 @@ export interface ReasonerProbeResult {
   mode: "model" | "deterministic";
   detail: string; // ehrliche Begründung (z. B. "Modell-API antwortete mit 401")
   at: string; // Zeitstempel des Tests (ISO)
+  // JOB 3134: WELCHER externe Anbieter geprüft wurde — der, den die gespeicherte globale Wahl
+  // bestimmt. Fehlt das Feld, wurde kein externer Anbieter geprüft (Wahl lokal/deterministisch oder
+  // nichts eingerichtet); `detail` sagt dann, warum.
+  anbieter?: ReasonerCloudAnbieter;
 }
 
 // PAKET 2 (D-AISTATE, Pedi 23.07.): ehrlicher Erreichbarkeits-Zustand für die Top-Badges — „aktiv"

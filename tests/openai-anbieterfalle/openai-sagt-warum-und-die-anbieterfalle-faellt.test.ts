@@ -16,9 +16,15 @@
 //   `claude-sonnet-4-6` (Code `:279`, Compose `:75`). Wer nur `OPENAI_API_KEY` setzte, schickte
 //   einen ANTHROPIC-Bezeichner an api.openai.com — ein garantierter 400 bei JEDEM Lauf.
 //
-// GEMESSEN WIRD DER ECHTE WEG (wie in `tests/openai-cloud-anbieter/…`): die Umgebungsfabrik
-// `createCappedCloudClientFromEnv`. Nach aussen gibt es keinen anderen Cloud-Client (SCRUM-502 R8);
-// eine Probe am rohen Client wäre grün, während der Wrapper fehlt.
+// GEMESSEN WIRD DER ECHTE WEG (wie in `tests/openai-cloud-anbieter/…`): die Umgebungsfabrik. Nach
+// aussen gibt es keinen anderen Cloud-Client (SCRUM-502 R8); eine Probe am rohen Client wäre grün,
+// während der Wrapper fehlt.
+//
+// JOB 3134 (KI-WAHL): dieselbe Fabrik baut seither BEIDE Anbieter getrennt und liefert sie unter
+// ihrem Namen; die Vorzugsregel „OpenAI vor Anthropic" ist durch Pedis Wahl ersetzt. Für die Fälle
+// hier zählt weiterhin der Client, der OHNE Wahl zuerst arbeitet (`openai ?? anthropic`, die
+// Reihenfolge von `REASONER_CLOUD_ANBIETER`) — genau das leistet `cloudClient` unten. Die Aussagen
+// der Fälle sind unverändert.
 //
 // HERMETIK: kein Netz, kein echter Schlüssel, kein Schlüsselbund. `fetch` ist global ersetzt, die
 // beiden Schlüsselbund-Zugriffe sind ausdrücklich stillgelegt.
@@ -45,7 +51,8 @@ const OPENAI_ENV = {
 };
 
 function cloudClient(env: Record<string, string | undefined>) {
-  return createCappedCloudClientFromEnv(env, KEIN_SCHLUESSELBUND, KEIN_SPEICHERN);
+  const clients = createCappedCloudClientFromEnv(env, KEIN_SCHLUESSELBUND, KEIN_SPEICHERN);
+  return clients.openai ?? clients.anthropic;
 }
 
 interface Fehlantwort {

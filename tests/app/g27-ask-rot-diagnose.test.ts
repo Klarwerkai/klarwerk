@@ -57,12 +57,23 @@ describe("G27 · Diagnose: woher der Cloud-Schlüssel im Testlauf kommt", () => 
       return "sk-ant-test-schluessel";
     });
     expect(befragt.length).toBeGreaterThan(0);
-    expect(client, "mit Schlüsselbund-Treffer entsteht ein Cloud-Client").toBeDefined();
+    // JOB 3134 (KI-WAHL): die Fabrik liefert seit der Anbieterwahl BEIDE gecappten Clients getrennt
+    // (`{ openai, anthropic, gruende }`) statt eines einzigen Clients-oder-undefined. Der
+    // Schlüsselbund bedient nur den Anthropic-Weg; deshalb muss GENAU dieser Client entstehen —
+    // `toBeDefined()` auf der Hülle wäre seit dem Umbau immer wahr und bewiese nichts mehr.
+    expect(
+      client.anthropic,
+      "mit Schlüsselbund-Treffer entsteht ein Cloud-Client (Anthropic)",
+    ).toBeDefined();
+    expect(client.openai, "der Schlüsselbund richtet keinen OpenAI-Client ein").toBeUndefined();
   });
 
   it("ohne Schlüsselbund-Treffer entsteht KEIN Cloud-Client (deterministischer Betrieb)", () => {
     const ohne = createCappedCloudClientFromEnv({} as NodeJS.ProcessEnv, () => undefined);
-    expect(ohne).toBeUndefined();
+    // Beide Anbieter leer — die Hülle nennt je Anbieter nur den Grund (Env-Name), nie einen Wert.
+    expect(ohne.openai).toBeUndefined();
+    expect(ohne.anthropic).toBeUndefined();
+    expect(Object.keys(ohne.gruende).sort()).toEqual(["anthropic", "openai"]);
   });
 
   it("die Kompositionswurzel schaltet den Schlüsselbund NUR über KLARWERK_SKIP_KEYCHAIN ab", async () => {

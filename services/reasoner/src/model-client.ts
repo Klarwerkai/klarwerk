@@ -4,6 +4,9 @@ import { cappedModelClient, meldeModellVerbrauch } from "./model-concurrency";
 // AUFTRAG-mega18 Block E (SCRUM-544): ModelEmptyResponseError = Antwort ohne Antwortinhalt.
 import { ModelEmptyResponseError, ModelHttpError, ModelTimeoutError } from "./model-errors";
 import type { ModelClient } from "./provider-model";
+// JOB 3134: der Anbieterschlüssel der beiden Cloud-Wege (openai | anthropic) und ihr lesbarer Name —
+// EINE Aufzählung in `types.ts`.
+import { REASONER_CLOUD_ANBIETER_NAME, type ReasonerCloudAnbieter } from "./types";
 
 export const CLOUD_API_KEY_ENV = "ANTHROPIC_API_KEY";
 // JOB 3122: der Name der Env, die das Modell für BEIDE Anbieter trägt — und der Vorgabewert, den
@@ -26,7 +29,8 @@ const OPENAI_DEFAULT_BASE_URL = "https://api.openai.com/v1";
 const OPENAI_CLIENT_NAME_PREFIX = "cloud:openai";
 // Anzeigename in Fehlermeldungen. „Lokaler LLM antwortete mit 429" wäre über einen Anbieter in den
 // USA schlicht falsch — dieselbe Klasse Unwahrheit, gegen die dieser Auftrag angetreten ist.
-const OPENAI_BEZEICHNUNG = "ChatGPT (OpenAI)";
+// JOB 3134: derselbe Name wie im Prüfergebnis des Reasoners — EINE Quelle (`types.ts`).
+const OPENAI_BEZEICHNUNG = REASONER_CLOUD_ANBIETER_NAME.openai;
 export const CLOUD_API_KEYCHAIN_SERVICE = "Klarwerk";
 export const CLOUD_API_KEYCHAIN_ACCOUNT = CLOUD_API_KEY_ENV;
 export const LEGACY_CLOUD_API_KEYCHAIN_SERVICE = "KLARWERK-App-Anthropic";
@@ -287,7 +291,9 @@ export function createModelClientFromEnv(
     // ein LEERES Modell im Request. `?.trim() ||` fängt beide Formen auf denselben Vorgabewert und
     // ist die Voraussetzung dafür, dass die Compose-Zeile den Namen ohne Vorgabewert durchreichen
     // darf (docker-compose.prod.yml, `${REASONER_MODEL:-}`).
-    model: env.REASONER_MODEL?.trim() || ANTHROPIC_DEFAULT_MODEL,
+    // JOB 3134: die Regel steht jetzt in `anthropicModellAusEnv` (unten) — ANTHROPIC_MODEL vor dem
+    // gemeinsamen Wert, und der gemeinsame Wert nur, wenn er ein Anthropic-Bezeichner ist.
+    model: anthropicModellAusEnv(env),
     ...(timeoutMs !== undefined ? { timeoutMs } : {}),
   });
 }
@@ -697,62 +703,133 @@ function istAnthropicModell(modell: string): boolean {
 }
 
 //
+// ================================================================================================
+// JOB 3134 (KI-WAHL) — JE ANBIETER EIN EIGENES MODELL, UND EIN GRUND, WENN ER NICHT ENTSTEHT.
+// ================================================================================================
+//
+// `REASONER_MODEL` gilt weiterhin für beide Wege — aber NUR für den, zu dem der Name gehört
+// (dieselbe Präfixregel wie oben: `claude-`/`anthropic/` ist Anthropic, alles andere OpenAI). Wer
+// beide Anbieter hinterlegt und für beide ein eigenes Modell will, setzt `OPENAI_MODEL` bzw.
+// `ANTHROPIC_MODEL`; sie gehen dem gemeinsamen Wert vor. Kein Anbieter bekommt je einen
+// anbieterfremden Bezeichner untergeschoben (P03 Lieferumfang 2).
+//
+// Ein Anbieter, der NICHT entsteht, sagt WARUM — als geheimnisfreier Satz mit Env-NAMEN, den die
+// Fläche neben dem nicht wählbaren Eintrag zeigt (`ReasonerConfigStatus.cloudProviders[…].grund`).
+// Er nennt nie einen Schlüssel, nie einen Schlüsselausschnitt.
+const OPENAI_MODEL_ENV = "OPENAI_MODEL";
+const ANTHROPIC_MODEL_ENV = "ANTHROPIC_MODEL";
+
+// Das Ergebnis EINES Anbieter-Aufbaus: entweder der rohe Client oder der Grund, warum keiner entstand.
+interface AnbieterAufbau {
+  client?: ModelClient;
+  grund?: string;
+}
+
 // MODUL-INTERN, absichtlich nicht exportiert: nach außen geht ausschließlich der gecappte Client
 // aus `createCappedCloudClientFromEnv` unten. Wer den rohen Client bekäme, bekäme den Schlüssel und
 // könnte den Vertraulichkeits-Wächter weglassen.
-function openAiCloudClientFromEnv(
-  env: Record<string, string | undefined>,
-): ModelClient | undefined {
+function openAiCloudClientFromEnv(env: Record<string, string | undefined>): AnbieterAufbau {
   const apiKey = env[OPENAI_API_KEY_ENV]?.trim();
-  const model = env[REASONER_MODEL_ENV]?.trim();
-  if (!apiKey || !model) {
-    return undefined;
+  if (!apiKey) {
+    return { grund: `${OPENAI_API_KEY_ENV} fehlt.` };
+  }
+  const eigenes = env[OPENAI_MODEL_ENV]?.trim();
+  const gemeinsam = env[REASONER_MODEL_ENV]?.trim();
+  const model = eigenes || gemeinsam;
+  if (!model) {
+    return {
+      grund: `Kein OpenAI-Modell: ${OPENAI_MODEL_ENV} (oder ${REASONER_MODEL_ENV}) setzen, z. B. gpt-4o-mini.`,
+    };
   }
   if (istAnthropicModell(model)) {
+    const quelle = eigenes ? OPENAI_MODEL_ENV : REASONER_MODEL_ENV;
     // JOB 3122 RUNDE 2 (bens Korrekturpflicht 3): die Zeile sagte „Es arbeitet der Anthropic-Weg." —
     // eine Zusage, die diese Funktion gar nicht geben kann. Ob dort ein Schlüssel liegt, entscheidet
     // erst `createModelClientFromEnv` (Env ODER Schlüsselbund); ohne ihn liefert die Fabrik
     // `undefined`, und es arbeitet NIEMAND, sondern der deterministische Ersatzmodus. Der Satz ist
     // deshalb an seine Voraussetzung gebunden — die schwächere Aussage statt der starken.
+    // JOB 3134: seit der Anbieterwahl ist Claude nicht mehr die automatische Folge, sondern wählbar.
     process.stderr.write(
-      `[KLARWERK] ${OPENAI_API_KEY_ENV} ist gesetzt, aber ${REASONER_MODEL_ENV}=${model} benennt ein Anthropic-Modell — der OpenAI-Weg bleibt ungenutzt (er würde bei jedem Lauf mit 400 antworten). Es folgt der Anthropic-Weg, SOFERN dort ein Schlüssel vorliegt; sonst bleibt der Cloud-Zugang inaktiv und es arbeitet der deterministische Ersatzmodus. Für ChatGPT gehört ein OpenAI-Modell in ${REASONER_MODEL_ENV} (z. B. gpt-4o-mini).\n`,
+      `[KLARWERK] ${OPENAI_API_KEY_ENV} ist gesetzt, aber ${quelle}=${model} benennt ein Anthropic-Modell — der OpenAI-Weg bleibt ungenutzt (er würde bei jedem Lauf mit 400 antworten). ChatGPT (OpenAI) ist damit nicht eingerichtet; Claude (Anthropic) ist wählbar, SOFERN dort ein Schlüssel vorliegt; sonst bleibt der Cloud-Zugang inaktiv und es arbeitet der deterministische Ersatzmodus. Für ChatGPT gehört ein OpenAI-Modell in ${OPENAI_MODEL_ENV} oder ${REASONER_MODEL_ENV} (z. B. gpt-4o-mini).\n`,
     );
-    return undefined;
+    return {
+      grund: `${quelle}=${model} benennt ein Anthropic-Modell — ${OPENAI_MODEL_ENV} setzen (z. B. gpt-4o-mini).`,
+    };
   }
   const timeoutMs = parseTimeoutMs(env.REASONER_TIMEOUT_MS);
-  return openAiCompatibleClient({
-    baseUrl: env[OPENAI_BASE_URL_ENV]?.trim() || OPENAI_DEFAULT_BASE_URL,
-    model,
-    apiKey,
-    name: `${OPENAI_CLIENT_NAME_PREFIX}:${model}`,
-    bezeichnung: OPENAI_BEZEICHNUNG,
-    // JOB 3100: DIE EINE STELLE, an der der Bildweg freigeschaltet wird. Pedis Entscheidung 6 gilt
-    // auch für Bilder: ist ChatGPT der Cloud-Anbieter, beschreibt ChatGPT auch das Bild — statt dass
-    // der Bildauftrag scheitert und die Reasoner-Kette auf einen Anbieter ausweicht, der laut
-    // derselben Entscheidung gar nicht mehr benutzt werden soll.
-    bildEingang: true,
-    ...(timeoutMs !== undefined ? { timeoutMs } : {}),
-  });
+  return {
+    client: openAiCompatibleClient({
+      baseUrl: env[OPENAI_BASE_URL_ENV]?.trim() || OPENAI_DEFAULT_BASE_URL,
+      model,
+      apiKey,
+      name: `${OPENAI_CLIENT_NAME_PREFIX}:${model}`,
+      bezeichnung: OPENAI_BEZEICHNUNG,
+      // JOB 3100: DIE EINE STELLE, an der der Bildweg freigeschaltet wird. Pedis Entscheidung 6 gilt
+      // auch für Bilder: ist ChatGPT der Cloud-Anbieter, beschreibt ChatGPT auch das Bild — statt dass
+      // der Bildauftrag scheitert und die Reasoner-Kette auf einen Anbieter ausweicht, der laut
+      // derselben Entscheidung gar nicht mehr benutzt werden soll.
+      bildEingang: true,
+      ...(timeoutMs !== undefined ? { timeoutMs } : {}),
+    }),
+  };
+}
+
+// Der Anthropic-Weg mit Grund: `createModelClientFromEnv` (oben) bleibt der Bestandsaufbau, diese
+// Hülle benennt nur, WARUM er leer ausgeht. Der Schlüssel kann aus der Env ODER dem Schlüsselbund
+// kommen — deshalb nennt der Grund beide Orte und keinen Wert.
+function anthropicCloudClientFromEnv(
+  env: Record<string, string | undefined>,
+  keychainLookup: CloudKeyLookup,
+  keychainStore: CloudKeyStore,
+): AnbieterAufbau {
+  const client = createModelClientFromEnv(env, keychainLookup, keychainStore);
+  return client
+    ? { client }
+    : { grund: `${CLOUD_API_KEY_ENV} fehlt (weder ENV noch Schlüsselbund).` };
+}
+
+// Das Modell des Anthropic-Wegs: `ANTHROPIC_MODEL`, sonst der gemeinsame `REASONER_MODEL` — aber nur,
+// wenn er ein Anthropic-Bezeichner IST (spiegelbildlich zur Sperre am OpenAI-Weg) —, sonst der
+// Vorgabewert. Ein `REASONER_MODEL=gpt-4o-mini` erreicht Claude damit nie.
+function anthropicModellAusEnv(env: Record<string, string | undefined>): string {
+  const eigenes = env[ANTHROPIC_MODEL_ENV]?.trim();
+  if (eigenes) {
+    return eigenes;
+  }
+  const gemeinsam = env[REASONER_MODEL_ENV]?.trim();
+  return gemeinsam && istAnthropicModell(gemeinsam) ? gemeinsam : ANTHROPIC_DEFAULT_MODEL;
+}
+
+/**
+ * JOB 3134: BEIDE gecappten Cloud-Clients, getrennt — plus je Anbieter der Grund, wenn er nicht
+ * entstand. Das ist die Rückgabe von `createCappedCloudClientFromEnv`.
+ */
+export interface CappedCloudClients {
+  openai: ModelClient | undefined;
+  anthropic: ModelClient | undefined;
+  /** Nur für NICHT eingerichtete Anbieter gesetzt: der geheimnisfreie Grund mit Env-Namen. */
+  gruende: Partial<Record<ReasonerCloudAnbieter, string>>;
 }
 
 // SCRUM-502 R8 (Encapsulation + Credential-Gating): der EINZIGE Weg, von außerhalb dieses Moduls an
 // einen Cloud-Modell-Client zu kommen. Der ROHE Client (anthropicClient) und der Credential-Zugriff
-// (resolveCloudApiKey/Keychain) bleiben modul-intern und werden NICHT re-exportiert; nach außen wird
-// ausschließlich der GECAPPTE Cloud-Client gereicht — mit zwingendem Egress-Wächter
+// (resolveCloudApiKey/Keychain) bleiben modul-intern und werden NICHT re-exportiert; nach außen werden
+// ausschließlich GECAPPTE Cloud-Clients gereicht — mit zwingendem Egress-Wächter
 // (rejectsConfidential=true) und dem globalen In-Flight-Cap. Ein Aufrufer kann so weder den Schlüssel
-// erlangen noch den Vertraulichkeits-Guard weglassen. Ohne Schlüssel → undefined (deterministischer
-// Betrieb). Die Keychain-Injektionen bleiben für den Desktop-/Skip-Keychain-Pfad durchreichbar.
+// erlangen noch den Vertraulichkeits-Guard weglassen. Die Keychain-Injektionen bleiben für den
+// Desktop-/Skip-Keychain-Pfad durchreichbar.
 //
-// JOB 3090 — DIE ANBIETERWAHL, in einem Satz: SIND OPENAI_API_KEY UND REASONER_MODEL GESETZT,
-// ARBEITET CHATGPT (OPENAI); SONST — UND NUR DANN — DER ANTHROPIC-WEG WIE BISHER. Berechenbar, nicht
-// „was zuerst gefunden wird": bei ZWEI gesetzten Schlüsseln gewinnt immer OpenAI, weil das die
-// ausdrücklich neu getroffene Wahl ist (Pedis Entscheidung 24) und Anthropic laut derselben
-// Entscheidung die ALTERNATIVE bleibt. Ist keiner der beiden Wege konfiguriert, bleibt der
-// Cloud-Zugang inaktiv (undefined) und der deterministische Ersatzmodus greift unverändert.
+// JOB 3134 — DIE VORZUGSREGEL IST WEG. Bis hierher galt (JOB 3090): „sind OPENAI_API_KEY und
+// REASONER_MODEL gesetzt, arbeitet ChatGPT; sonst Anthropic" — der Anthropic-Zweig wurde bei
+// gesetzter OpenAI-Konfiguration gar nicht betreten, und die Fläche konnte Claude nie WÄHLEN, nur
+// bekommen. Jetzt entstehen BEIDE Clients unabhängig voneinander; WELCHER arbeitet, entscheidet die
+// gespeicherte Wahl im Reasoner (`services/reasoner/src/service.ts`, `providerChain`), nicht diese
+// Fabrik. Pedis Entscheidung 42 (06.09.): „Wir können auch gerne beide hinterlegen. Ich werde dann
+// auswählen, welche ich benutzen möchte."
 //
-// Der Anthropic-Zweig wird bei gesetzter OpenAI-Konfiguration GAR NICHT betreten (`??` wertet rechts
-// nur bei `undefined` aus): kein Keychain-Zugriff, keine Fehlzeile auf stderr über einen Schlüssel,
-// den niemand mehr sucht.
+// DER NAME DER FUNKTION BLEIBT (Singular), obwohl sie beide Clients liefert: `services/reasoner/
+// index.ts` reicht genau dieses Symbol nach aussen, und diese Datei liegt ausserhalb der Zielpfade
+// von JOB 3134 (in der Rückgabe unter ABWEICHUNGEN benannt). Die Rückgabeform sagt, was sie ist.
 //
 // EIN Ort, an dem für die Cloud `rejectsConfidential: true` gesetzt wird — für BEIDE Anbieter. Für
 // OpenAI ist die Marke hart und nicht origin-abhängig wie beim lokalen Weg unten: OpenAI ist per
@@ -762,10 +839,20 @@ export function createCappedCloudClientFromEnv(
   env: Record<string, string | undefined> = process.env,
   keychainLookup: CloudKeyLookup = findCloudKeyInKeychain,
   keychainStore: CloudKeyStore = storeCloudKeyInKeychain,
-): ModelClient | undefined {
-  const raw =
-    openAiCloudClientFromEnv(env) ?? createModelClientFromEnv(env, keychainLookup, keychainStore);
-  return raw ? cappedModelClient(raw, { rejectsConfidential: true }) : undefined;
+): CappedCloudClients {
+  const openai = openAiCloudClientFromEnv(env);
+  const anthropic = anthropicCloudClientFromEnv(env, keychainLookup, keychainStore);
+  const gruende: CappedCloudClients["gruende"] = {};
+  if (openai.grund) {
+    gruende.openai = openai.grund;
+  }
+  if (anthropic.grund) {
+    gruende.anthropic = anthropic.grund;
+  }
+  // DIE EINE Egress-Regel, für beide Anbieter — `tests/openai-cloud-anbieter` (F12) zählt sie.
+  const gecappt = (client: ModelClient | undefined): ModelClient | undefined =>
+    client ? cappedModelClient(client, { rejectsConfidential: true }) : undefined;
+  return { openai: gecappt(openai.client), anthropic: gecappt(anthropic.client), gruende };
 }
 
 // D-AISTATE PAKET 1 (bens V1, aistate-fix3): „lokal" ist TECHNISCH begrenzt, nicht nur eine

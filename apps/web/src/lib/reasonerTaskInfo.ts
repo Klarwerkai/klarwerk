@@ -65,12 +65,22 @@ export function aiTaskInfo(config: ReasonerConfigStatus | undefined, task: strin
     };
   }
   if (provider === "cloud") {
+    // JOB 3134: der Modellname DIESER Aufgabe — mit zwei wählbaren Anbietern kann eine Aufgabe
+    // (z. B. answer → Claude) von der globalen Wahl (ChatGPT) abweichen; `config.model` nennt nur
+    // die globale. Der Clientname des je Aufgabe wirksamen Anbieters steht in `cloudProviders`;
+    // fehlt die Auflösung (älterer Server), bleibt es beim globalen Modell.
+    const anbieter = config.effectiveAnbieter?.[task];
+    const eigenes =
+      anbieter === "openai" || anbieter === "anthropic"
+        ? config.cloudProviders?.[anbieter]?.name
+        : undefined;
+    const name = eigenes ?? config.model;
     return {
       mode: "cloud",
       modeLabelKey: AI_TASK_INFO_TEXT.cloud,
       bodyKey: AI_TASK_INFO_TEXT.bodyCloud,
       dsgvo: "external",
-      ...(config.model ? { modelName: config.model } : {}),
+      ...(name ? { modelName: name } : {}),
     };
   }
   if (provider === "deterministic") {

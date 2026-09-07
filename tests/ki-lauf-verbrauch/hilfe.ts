@@ -48,7 +48,9 @@ export function lokalKoerper(content: string | null, usage?: unknown): Record<st
 }
 
 export function cloudClient(): ModelClient | undefined {
-  return createCappedCloudClientFromEnv(CLOUD_ENV, KEIN_SCHLUESSELBUND, KEIN_SPEICHERN);
+  // JOB 3134: die Fabrik liefert beide Anbieter unter ihrem Namen; hier zählt der, den CLOUD_ENV trägt.
+  const clients = createCappedCloudClientFromEnv(CLOUD_ENV, KEIN_SCHLUESSELBUND, KEIN_SPEICHERN);
+  return clients.openai ?? clients.anthropic;
 }
 
 export function lokalerClient(): ModelClient | undefined {

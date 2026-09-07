@@ -1392,8 +1392,18 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // 346 auf 347 NACHGEZOGEN — am eigenen Lauf dieses Arbeitsbaums gemessen, nicht rechnerisch
     // addiert. Die zwei Zahlen, an denen Stufe 2 wirklich hängt, bleiben unverändert: `anbieter`
     // 1 und `traeger` 2.
+    //
+    // JOB 3134 (KI-WAHL, Runde 2): `komponenten` von 347 auf 348 NACHGEZOGEN, am eigenen Lauf
+    // gemessen (das Tor der Runde 1 meldete `expected 348 to be 347`). GENAU EINE Komponente kommt
+    // hinzu — `WahlOptionen` in `pages/AdminKiDetails.tsx`: die EINE Optionsliste der KI-Karte
+    // (Auto, ChatGPT (OpenAI), Claude (Anthropic), Intern, Regelbasiert), die das globale Feld und
+    // jedes Aufgabenfeld gemeinsam rendern, damit die Feinabstimmung nie einen Anbieter kennt, den
+    // das globale Feld nicht kennt. Es ist eine Entdopplung, keine neue Fläche. Sie bietet keine
+    // Bildbeschreibung an (kein `ANGEBOT_MUSTER`) und trägt keinen eigenen Titel (kein
+    // `documentTitle`-Prop) — sie erscheint nur in der Grundmenge. Die zwei Zahlen, an denen Stufe 2
+    // wirklich hängt, bleiben unverändert: `anbieter` 1 und `traeger` 2.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 347,
+      komponenten: 348,
       anbieter: 1,
       traeger: 2,
     });

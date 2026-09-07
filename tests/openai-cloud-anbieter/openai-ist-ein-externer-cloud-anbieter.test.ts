@@ -77,8 +77,12 @@ function fetchSpion(antwort: unknown = { choices: [{ message: { content: "OK" } 
   return anfragen;
 }
 
+// JOB 3134: die Fabrik liefert BEIDE Anbieter unter ihrem Namen (die Vorzugsregel ist durch Pedis
+// Wahl ersetzt). Für die Fälle hier zählt der Client, der OHNE Wahl zuerst arbeitet — die
+// Reihenfolge von `REASONER_CLOUD_ANBIETER` (openai, anthropic).
 function cloudClient(env: Record<string, string | undefined>) {
-  return createCappedCloudClientFromEnv(env, KEIN_SCHLUESSELBUND, KEIN_SPEICHERN);
+  const clients = createCappedCloudClientFromEnv(env, KEIN_SCHLUESSELBUND, KEIN_SPEICHERN);
+  return clients.openai ?? clients.anthropic;
 }
 
 /**
@@ -185,10 +189,15 @@ describe("JOB 3090 F1–F7: der Weg nach OpenAI", () => {
     expect(anfragen[0]?.headers["anthropic-version"]).toBe("2023-06-01");
   });
 
-  it("F7: beide Schlüssel gesetzt → OpenAI arbeitet, der Schlüsselbund wird nicht einmal gefragt", async () => {
+  // JOB 3134: „OpenAI hat Vorrang" gilt nicht mehr — beide Schlüssel ergeben BEIDE Clients, und
+  // welcher arbeitet, entscheidet die gespeicherte Wahl (tests/ki-anbieterwahl). Was hier bleibt:
+  // der OpenAI-Client entsteht mit dem Modell aus REASONER_MODEL, der Anthropic-Client daneben mit
+  // seinem Vorgabewert (kein anbieterfremder Name), und der Schlüsselbund wird nicht gefragt, weil
+  // der Anthropic-Schlüssel in der Env liegt.
+  it("F7: beide Schlüssel gesetzt → beide Clients entstehen, der Schlüsselbund wird nicht einmal gefragt", async () => {
     const anfragen = fetchSpion();
     let schluesselbundGefragt = 0;
-    const client = createCappedCloudClientFromEnv(
+    const clients = createCappedCloudClientFromEnv(
       { ...ANTHROPIC_ENV, ...OPENAI_ENV, REASONER_MODEL: "gpt-4o-mini" },
       () => {
         schluesselbundGefragt += 1;
@@ -196,8 +205,10 @@ describe("JOB 3090 F1–F7: der Weg nach OpenAI", () => {
       },
       KEIN_SPEICHERN,
     );
-    expect(client?.name).toBe("cloud:openai:gpt-4o-mini");
-    await client?.complete("s", "u", false);
+    expect(clients.openai?.name).toBe("cloud:openai:gpt-4o-mini");
+    expect(clients.anthropic?.name).toBe("anthropic:claude-sonnet-4-6");
+    expect(clients.gruende).toEqual({});
+    await clients.openai?.complete("s", "u", false);
     expect(anfragen[0]?.url).toBe("https://api.openai.com/v1/chat/completions");
     expect(schluesselbundGefragt).toBe(0);
   });
@@ -212,18 +223,19 @@ describe("JOB 3090 F8/F9: die Admin-Übersicht nennt den Anbieter ehrlich", () =
       model: "cloud:openai:gpt-4o-mini",
       mode: "model",
     });
+    // JOB 3134: je Anbieter eine eigene Zeile — ChatGPT (OpenAI) ist die erste, Claude die zweite.
     expect(rows[0]).toEqual({
-      id: "cloud",
+      id: "openai",
       state: "active",
       detail: "ChatGPT (OpenAI) · gpt-4o-mini",
     });
     // Ein Mensch erkennt den Anbieter, ohne den Modellnamen deuten zu müssen — und er liest ihn
     // NICHT in der Zeile des eigenen lokalen Servers.
     expect(rows[0]?.detail).toContain("OpenAI");
-    expect(rows[2]).toEqual({ id: "local", state: "planned", detail: null });
+    expect(rows[3]).toEqual({ id: "local", state: "planned", detail: null });
   });
 
-  it("F8b: Anthropic ist in derselben Zeile davon unterscheidbar", () => {
+  it("F8b: Anthropic ist in seiner eigenen Zeile davon unterscheidbar", () => {
     const rows = aiAccessRows({
       configured: true,
       cloudConfigured: true,
@@ -231,8 +243,9 @@ describe("JOB 3090 F8/F9: die Admin-Übersicht nennt den Anbieter ehrlich", () =
       model: "anthropic:claude-sonnet-4-6",
       mode: "model",
     });
-    expect(rows[0]?.detail).toBe("Claude (Anthropic) · claude-sonnet-4-6");
-    expect(rows[0]?.detail).not.toContain("OpenAI");
+    expect(rows[1]?.detail).toBe("Claude (Anthropic) · claude-sonnet-4-6");
+    expect(rows[1]?.detail).not.toContain("OpenAI");
+    expect(rows[0]?.state).toBe("missing");
   });
 
   it("F8c: eine unbekannte Kennung wird wörtlich gezeigt, nicht geraten", () => {
@@ -251,10 +264,11 @@ describe("JOB 3090 F8/F9: die Admin-Übersicht nennt den Anbieter ehrlich", () =
       localConfigured: true,
       localProvider: "local:Qwen3-32B-AWQ",
     });
-    // Kein Anbietername ohne Schlüssel: das wäre eine Aussage über eine Verbindung, die es nicht gibt.
-    expect(rows[0]).toEqual({ id: "cloud", state: "missing", detail: null });
-    expect(rows[2]).toEqual({ id: "local", state: "available", detail: "local:Qwen3-32B-AWQ" });
-    expect(rows.map((r) => r.id)).toEqual(["cloud", "fallback", "local"]);
+    // Kein Modellname ohne Schlüssel: das wäre eine Aussage über eine Verbindung, die es nicht gibt.
+    expect(rows[0]).toEqual({ id: "openai", state: "missing", detail: null });
+    expect(rows[1]).toEqual({ id: "anthropic", state: "missing", detail: null });
+    expect(rows[3]).toEqual({ id: "local", state: "available", detail: "local:Qwen3-32B-AWQ" });
+    expect(rows.map((r) => r.id)).toEqual(["openai", "anthropic", "fallback", "local"]);
   });
 });
 

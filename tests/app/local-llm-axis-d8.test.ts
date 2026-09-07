@@ -28,8 +28,10 @@ describe("Block D8: lokaler LLM-Test bleibt auf der lokalen Achse", () => {
     expect(client).toContain('CLOUD_API_KEY_ENV = "ANTHROPIC_API_KEY"');
   });
 
-  it("recordReachability wird pro Provider getrennt geführt (cloud/local isoliert)", () => {
-    expect(svc).toContain('this.recordReachability((await this.probe()).ok, "cloud")');
+  it("recordReachability wird pro Provider getrennt geführt (je Cloud-Anbieter/local isoliert)", () => {
+    // JOB 3134: die Cloud-Kante ist je ANBIETER geführt (`probe(anbieter)`), nicht mehr als eine
+    // gemeinsame „cloud"-Kante — die lokale Achse bleibt davon getrennt.
+    expect(svc).toContain("this.recordReachability((await this.probe(anbieter)).ok, anbieter)");
     expect(svc).toContain('this.recordReachability((await this.probeLocal()).ok, "local")');
   });
 });

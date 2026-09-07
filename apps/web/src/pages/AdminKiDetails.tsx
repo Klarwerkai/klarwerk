@@ -10,12 +10,22 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
-import type { ExternalKnowledgeStage } from "../api/types";
+import type {
+  ExternalKnowledgeStage,
+  ReasonerCloudAnbieter,
+  ReasonerConfigStatus,
+} from "../api/types";
 import { useToast } from "../app/ToastContext";
 import { Abfragehuelle } from "../components/einstellungen/Abfragehuelle";
 import { Detailkarte } from "../components/einstellungen/Detailkarte";
 import { Button, Field, TextInput } from "../components/ui";
-import { type AiAccessState, aiAccessRows, anbieterUndModell } from "../lib/aiOverview";
+import {
+  type AiAccessState,
+  aiAccessRows,
+  anbieterAusClientName,
+  anbieterName,
+  anbieterUndModell,
+} from "../lib/aiOverview";
 // AUFTRAG kimodus-live: Topbar-/Status-Queries nach dem Übernehmen live invalidieren.
 import { invalidateAiState } from "../lib/aiStateInvalidate";
 import { parseNeededValidations } from "../lib/reviewerMinimum";
@@ -50,6 +60,77 @@ const ACCESS_STATE_TONE: Record<AiAccessState, string> = {
   planned: "bg-page text-muted-2",
 };
 
+// ================================================================================================
+// JOB 3134 (KI-WAHL, Pedis Entscheidung 42) — DIE AUSWAHL NENNT DIE ANBIETER, UND SIE BESTIMMT SIE.
+// ================================================================================================
+//
+// DER BEFUND: im Dropdown stand „Extern · Cloud-LLM (Claude)", in der Statuszeile „ChatGPT" — der
+// Auswahlwert `cloud` kannte keinen Anbieter, und WER dahinter arbeitete, entschied der Server nach
+// einer Vorzugsregel. Jetzt sind ChatGPT (OpenAI) und Claude (Anthropic) ZWEI Einträge, je mit dem
+// Modell aus der Serverkonfiguration; ein nicht eingerichteter Anbieter steht ausgegraut da und sagt,
+// was fehlt (Env-Name, nie ein Schlüssel). Der Name kommt aus derselben Ableitung wie Statuszeile
+// und Zugangsliste (`lib/aiOverview`), damit die drei Stellen nicht auseinanderlaufen können.
+
+/** Die Auswahlwerte in Anzeige-Reihenfolge — die beiden Anbieter zwischen Auto und Intern. */
+const ANBIETER_WAHL: readonly ReasonerCloudAnbieter[] = ["openai", "anthropic"];
+
+/** Ein Zuordnungs-Entwurf gleicht dem gesendeten, wenn er dieselben Einträge trägt. */
+function gleichePerTask(a: Record<string, string>, b: Record<string, string>): boolean {
+  const ka = Object.keys(a).sort();
+  const kb = Object.keys(b).sort();
+  return ka.length === kb.length && ka.every((k, i) => k === kb[i] && a[k] === b[k]);
+}
+
+/**
+ * Die Optionen für ein Auswahlfeld (global oder je Aufgabe) — EINE Liste für beide, damit die
+ * Feinabstimmung nie einen Anbieter kennt, den das globale Feld nicht kennt (und umgekehrt).
+ */
+function WahlOptionen({ konfig }: { konfig: ReasonerConfigStatus }): JSX.Element {
+  const { t } = useTranslation();
+  const autoName = konfig.autoAnbieter ? anbieterName(konfig.autoAnbieter) : null;
+  // Älterer Server ohne `cloudProviders`: nur der EINE genannte Cloud-Client ist bekannt.
+  const genannt = konfig.cloudConfigured
+    ? anbieterAusClientName(konfig.model ?? konfig.provider)
+    : undefined;
+  return (
+    <>
+      <option value="auto">
+        {autoName
+          ? `${t("adm.ai.choice.auto")} — ${t("adm.ai.choice.autoMit", { name: autoName })}`
+          : t("adm.ai.choice.auto")}
+      </option>
+      {ANBIETER_WAHL.map((anbieter) => {
+        const status = konfig.cloudProviders?.[anbieter];
+        const eingerichtet = status ? status.configured : genannt === anbieter;
+        const name = anbieterName(anbieter);
+        if (!eingerichtet) {
+          return (
+            <option key={anbieter} value={anbieter} disabled>
+              {t("adm.ai.choice.anbieterUnavailable", { name })}
+            </option>
+          );
+        }
+        const clientName = status?.name ?? konfig.model ?? konfig.provider;
+        return (
+          <option key={anbieter} value={anbieter}>
+            {t("adm.ai.choice.anbieter", { name: anbieterUndModell(clientName) })}
+          </option>
+        );
+      })}
+      {/* Pedi 05.07. (VIP): interne Option immer SICHTBAR — deaktiviert, solange kein
+        eigener LLM verbunden ist. */}
+      {konfig.localConfigured ? (
+        <option value="local">{t("adm.ai.choice.local")}</option>
+      ) : (
+        <option value="local" disabled>
+          {t("adm.ai.choice.localUnavailable")}
+        </option>
+      )}
+      <option value="deterministic">{t("adm.ai.choice.deterministic")}</option>
+    </>
+  );
+}
+
 export function KiDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element {
   const { t } = useTranslation();
   const qc = useQueryClient();
@@ -61,21 +142,47 @@ export function KiDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element 
   const [showAiDetail, setShowAiDetail] = useState(false);
   const effGlobal = aiGlobal ?? aiConfig.data?.taskConfig.global ?? "auto";
   const effPerTask = aiPerTask ?? aiConfig.data?.taskConfig.perTask ?? {};
+  // SCRUM-525 P.5 (WP-C): per Deploy-ENV festgelegt → die Karte sperrt die Auswahl und sagt es.
+  const gesperrt = aiConfig.data?.policySource === "env";
+  // Key-Test (Pedi 02.07.): echter Mini-Modellaufruf; Ergebnis bleibt sichtbar stehen — bis die
+  // Zuordnung gespeichert wird (JOB 3134): danach gälte es für einen anderen Anbieter.
+  const aiTest = useMutation({ mutationFn: () => endpoints.reasoner.test() });
   const aiSave = useMutation({
-    mutationFn: () => endpoints.reasoner.updateConfig({ global: effGlobal, perTask: effPerTask }),
-    onSuccess: () => {
+    // JOB 3134: der Entwurf wird als PAYLOAD mitgegeben, nicht aus dem Zustand gelesen — nur so
+    // weiss der Erfolgsfall unten, WAS gesendet wurde.
+    mutationFn: (payload: { global: string; perTask: Record<string, string> }) =>
+      endpoints.reasoner.updateConfig(payload),
+    onSuccess: (_daten, payload) => {
       void qc.invalidateQueries({ queryKey: ["reasonerConfig"] });
       // AUFTRAG kimodus-live: die Topbar-Badges hängen an EIGENEN Queries — ohne diese
       // Invalidierung springt die Topbar erst nach Hard-Reload auf den neuen Modus.
       invalidateAiState(qc);
-      setAiGlobal(null);
-      setAiPerTask(null);
+      // JOB 3134: NUR den Entwurf verwerfen, der gesendet wurde. Eine WÄHREND des Speicherns
+      // geänderte Wahl bliebe sonst still verloren (P03 Nachweis C) — sie bleibt als
+      // „nicht gespeichert" stehen.
+      setAiGlobal((aktuell) => (aktuell === null || aktuell === payload.global ? null : aktuell));
+      setAiPerTask((aktuell) =>
+        aktuell === null || gleichePerTask(aktuell, payload.perTask) ? null : aktuell,
+      );
+      // JOB 3134: ein altes Prüfergebnis gilt nicht für die neue Zuordnung — weg damit, bis neu
+      // geprüft wird (P03 Lieferumfang 3).
+      aiTest.reset();
       push("success", t("adm.ai.saved"));
     },
+    // Bei Speicherfehler bleibt der Entwurf stehen (Hinweis „nicht gespeichert") und der Server
+    // behält den alten Stand — die Statuszeile zeigt weiter die gespeicherte Zuordnung.
     onError: (e) => push("error", e instanceof ApiError ? e.message : t("state.error")),
   });
-  // Key-Test (Pedi 02.07.): echter Mini-Modellaufruf; Ergebnis bleibt sichtbar stehen.
-  const aiTest = useMutation({ mutationFn: () => endpoints.reasoner.test() });
+  /** Der lesbare Name eines Auswahlwerts — für Hinweise neben dem Feld. */
+  const wahlName = (wahl: string): string => {
+    if (wahl === "openai" || wahl === "anthropic") {
+      return anbieterName(wahl);
+    }
+    if (wahl === "auto" || wahl === "local" || wahl === "deterministic") {
+      return t(`adm.ai.choice.${wahl}`);
+    }
+    return wahl;
+  };
   // SCRUM-428: separater Key-Test für den eigenen lokalen LLM.
   const aiTestLocal = useMutation({ mutationFn: () => endpoints.reasoner.testLocal() });
   // SCRUM-493/494: End-to-End-Selbsttests der Konflikt- und Duplikat-Erkennung.
@@ -109,7 +216,7 @@ export function KiDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element 
                 der Cloud-Zeile (`aiOverview.ts:69`), damit beide Stellen nicht auseinanderlaufen
                 können. Der Betriebsweg (`mode`) bleibt eine EIGENE Aussage daneben — ein Dienst ist
                 kein Modus. */}
-              <p className="text-[12.5px] text-muted">
+              <p data-testid="ki-status" className="text-[12.5px] text-muted">
                 {t("adm.ai.status", {
                   provider: anbieterUndModell(konfig.model ?? konfig.provider),
                   mode: konfig.mode === "model" ? t("adm.ai.modeModel") : t("adm.ai.modeDemo"),
@@ -250,34 +357,80 @@ export function KiDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element 
                 {t("adm.ai.testFail", { detail: t("state.error") })}
               </p>
             ) : null}
+            {/* SCRUM-525 P.5 (WP-C): per Deploy-ENV festgelegt — die Auswahl ist gesperrt, und die
+              Karte sagt, WELCHE Variable das tut (ein PUT liefert ohnehin 409). */}
+            {gesperrt ? (
+              <output
+                data-testid="ki-env-gesperrt"
+                className="block rounded-btn bg-trust-warn-bg px-2.5 py-1.5 text-[12px] text-trust-warn-text"
+              >
+                {t("adm.ai.envLocked")}
+              </output>
+            ) : null}
+            {/* JOB 3134: ein abgelöster Wert (`cloud`/`model`) aus dem Bestand wurde beim Laden auf
+              einen Anbieter überführt — sichtbar, nicht still; „übernehmen" schreibt den neuen Wert. */}
+            {konfig.migration ? (
+              <p
+                data-testid="ki-migration"
+                className="rounded-btn bg-trust-warn-bg px-2.5 py-1.5 text-[12px] text-trust-warn-text"
+              >
+                {[
+                  ...(konfig.migration.global
+                    ? [
+                        t("adm.ai.migrated", {
+                          von: konfig.migration.global.von,
+                          nach: wahlName(konfig.migration.global.nach),
+                        }),
+                      ]
+                    : []),
+                  ...Object.entries(konfig.migration.perTask).map(
+                    ([task, m]) =>
+                      `${t(`adm.ai.task.${task}`)}: ${t("adm.ai.migrated", {
+                        von: m.von,
+                        nach: wahlName(m.nach),
+                      })}`,
+                  ),
+                ].join(" · ")}
+              </p>
+            ) : null}
             <div className="grid gap-2 sm:grid-cols-2">
               <label className="block text-[11.5px] font-semibold text-muted">
                 {t("adm.ai.global")}
                 <select
+                  data-testid="ki-wahl-global"
                   value={effGlobal}
+                  disabled={gesperrt}
                   onChange={(e) => setAiGlobal(e.target.value)}
-                  className="mt-1 h-9 w-full rounded-input border border-hairline bg-surface px-2 text-[13px] font-normal text-text"
+                  className="mt-1 h-9 w-full rounded-input border border-hairline bg-surface px-2 text-[13px] font-normal text-text disabled:opacity-60"
                 >
-                  <option value="auto">{t("adm.ai.choice.auto")}</option>
-                  <option value="cloud">{t("adm.ai.choice.cloud")}</option>
-                  {/* Pedi 05.07. (VIP): interne Option immer SICHTBAR — deaktiviert, solange kein
-                    eigener LLM verbunden ist. */}
-                  {aiConfig.data?.localConfigured ? (
-                    <option value="local">{t("adm.ai.choice.local")}</option>
-                  ) : (
-                    <option value="local" disabled>
-                      {t("adm.ai.choice.localUnavailable")}
-                    </option>
-                  )}
-                  <option value="deterministic">{t("adm.ai.choice.deterministic")}</option>
+                  <WahlOptionen konfig={konfig} />
                 </select>
               </label>
             </div>
+            {/* JOB 3134: abweichende Aufgaben stehen AUSGESCHRIEBEN unter dem globalen Feld — ein
+              globales „aktiv" darf keine Aufgabe verstecken, die an einen anderen Anbieter geht. */}
+            {Object.keys(konfig.taskConfig.perTask).length > 0 ? (
+              <p data-testid="ki-abweichungen" className="text-[12px] text-muted">
+                {t("adm.ai.deviation", {
+                  list: Object.entries(konfig.taskConfig.perTask)
+                    .map(([task, wahl]) => `${t(`adm.ai.task.${task}`)} → ${wahlName(wahl)}`)
+                    .join(" · "),
+                })}
+              </p>
+            ) : null}
             {/* AUFTRAG kimodus-live (Variante b): kein doppeldeutiger Zustand — geänderte, noch nicht
-              übernommene Auswahl sagt es; nach dem Übernehmen steht „Übernommen ✓". */}
+              übernommene Auswahl sagt es; nach dem Übernehmen steht „Übernommen ✓".
+              JOB 3134: und sie sagt, WAS gewählt ist und WAS bis dahin aktiv bleibt. */}
             {aiGlobal !== null || aiPerTask !== null ? (
-              <output className="block rounded-btn bg-trust-warn-bg px-2.5 py-1.5 text-[12px] font-semibold text-trust-warn-text">
-                {t("adm.ai.dirtyHint")}
+              <output
+                data-testid="ki-ungespeichert"
+                className="block rounded-btn bg-trust-warn-bg px-2.5 py-1.5 text-[12px] font-semibold text-trust-warn-text"
+              >
+                {t("adm.ai.dirtyHint")}{" "}
+                {t("adm.ai.dirtyActive", {
+                  gewaehlt: wahlName(effGlobal),
+                  aktiv: anbieterUndModell(konfig.model ?? konfig.provider),
+                })}
               </output>
             ) : aiSave.isSuccess ? (
               <output className="block rounded-btn bg-trust-pos-bg px-2.5 py-1.5 text-[12px] font-semibold text-trust-pos-text">
@@ -313,39 +466,38 @@ export function KiDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element 
                             : "bg-page text-muted-2"
                         }`}
                       >
-                        {/* SCRUM-424: ehrlich zeigen, WELCHE KI zuerst arbeitet. */}
+                        {/* SCRUM-424: ehrlich zeigen, WELCHE KI zuerst arbeitet. JOB 3134: mit
+                          dem Anbieternamen — „extern" sagt nicht, wem die Texte gezeigt werden. */}
                         {t(
-                          `adm.ai.eff.${aiConfig.data?.effectiveProvider[task] ?? "deterministic"}`,
+                          `adm.ai.eff.${
+                            konfig.effectiveAnbieter?.[task] ??
+                            konfig.effectiveProvider[task] ??
+                            "deterministic"
+                          }`,
                         )}
                       </span>
                     </span>
                     <select
+                      data-testid={`ki-wahl-${task}`}
                       value={effPerTask[task] ?? ""}
-                      onChange={(e) =>
-                        setAiPerTask({
-                          ...effPerTask,
-                          ...(e.target.value
-                            ? { [task]: e.target.value }
-                            : (() => {
-                                const cp = { ...effPerTask };
-                                delete cp[task];
-                                return cp;
-                              })()),
-                        })
-                      }
-                      className="mt-1 h-9 w-full rounded-input border border-hairline bg-surface px-2 text-[13px] font-normal text-text"
+                      disabled={gesperrt}
+                      onChange={(e) => {
+                        // JOB 3134 (Codex-Nachtrag, AdminKiDetails.tsx:325–334): „wie global" muss
+                        // den Schlüssel WIRKLICH entfernen. Vorher wurde erst der ganze alte Stand
+                        // übernommen und dann eine Kopie ohne den Schlüssel HINEINGEMISCHT — der
+                        // alte Eintrag blieb erhalten, die Ausnahme war nie weg.
+                        const naechster = { ...effPerTask };
+                        if (e.target.value) {
+                          naechster[task] = e.target.value;
+                        } else {
+                          delete naechster[task];
+                        }
+                        setAiPerTask(naechster);
+                      }}
+                      className="mt-1 h-9 w-full rounded-input border border-hairline bg-surface px-2 text-[13px] font-normal text-text disabled:opacity-60"
                     >
                       <option value="">{t("adm.ai.choice.inherit")}</option>
-                      <option value="auto">{t("adm.ai.choice.auto")}</option>
-                      <option value="cloud">{t("adm.ai.choice.cloud")}</option>
-                      {aiConfig.data?.localConfigured ? (
-                        <option value="local">{t("adm.ai.choice.local")}</option>
-                      ) : (
-                        <option value="local" disabled>
-                          {t("adm.ai.choice.localUnavailable")}
-                        </option>
-                      )}
-                      <option value="deterministic">{t("adm.ai.choice.deterministic")}</option>
+                      <WahlOptionen konfig={konfig} />
                     </select>
                   </label>
                 ))}
@@ -354,8 +506,8 @@ export function KiDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element 
             <div className="flex flex-wrap items-center gap-2">
               <Button
                 variant="primary"
-                disabled={aiSave.isPending || (aiGlobal === null && aiPerTask === null)}
-                onClick={() => aiSave.mutate()}
+                disabled={gesperrt || aiSave.isPending || (aiGlobal === null && aiPerTask === null)}
+                onClick={() => aiSave.mutate({ global: effGlobal, perTask: effPerTask })}
               >
                 <Sparkles size={14} />
                 {t("adm.ai.save")}

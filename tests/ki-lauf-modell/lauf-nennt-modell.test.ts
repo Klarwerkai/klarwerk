@@ -160,10 +160,16 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+// JOB 3134: die Fabrik liefert beide Anbieter unter ihrem Namen; hier zählt der, den CLOUD_ENV trägt.
+function cloudClientAusEnv(): ModelClient | undefined {
+  const clients = createCappedCloudClientFromEnv(CLOUD_ENV, KEIN_SCHLUESSELBUND, KEIN_SPEICHERN);
+  return clients.openai ?? clients.anthropic;
+}
+
 describe("JOB 3036: der Lauf nennt das echte Modell", () => {
   it("M1 Cloud-Lauf: model ist der reine Modellbezeichner, provider bleibt der Clientname", async () => {
     cloudAntwortet("Geglätteter Satz.");
-    const client = createCappedCloudClientFromEnv(CLOUD_ENV, KEIN_SCHLUESSELBUND, KEIN_SPEICHERN);
+    const client = cloudClientAusEnv();
     const datensatz = await laufUndDatensatz(new ModelProvider(client));
 
     expect(datensatz.status).toBe("success");
@@ -209,7 +215,7 @@ describe("JOB 3036: der Lauf nennt das echte Modell", () => {
 
   it("M5 Modell versucht, gescheitert, deterministisch geantwortet: kein model, aber fallback", async () => {
     cloudScheitert();
-    const client = createCappedCloudClientFromEnv(CLOUD_ENV, KEIN_SCHLUESSELBUND, KEIN_SPEICHERN);
+    const client = cloudClientAusEnv();
     const datensatz = await laufUndDatensatz(new ModelProvider(client));
 
     expect(datensatz.status).toBe("success");
@@ -221,7 +227,7 @@ describe("JOB 3036: der Lauf nennt das echte Modell", () => {
 
   it("M6 alle Provider gescheitert: der Fehler-Datensatz nennt das zuletzt versuchte Modell", async () => {
     cloudScheitert();
-    const client = createCappedCloudClientFromEnv(CLOUD_ENV, KEIN_SCHLUESSELBUND, KEIN_SPEICHERN);
+    const client = cloudClientAusEnv();
     const datensatz = await laufUndDatensatz(
       new ModelProvider(client),
       providerOhneModellnamen("ersatz-faellt-aus", async () => {
@@ -251,11 +257,7 @@ describe("JOB 3036: der Lauf nennt das echte Modell", () => {
 
   it("M8 kein Anbieter-Präfix im Modellfeld — weder Cloud noch lokal", async () => {
     cloudAntwortet("Geglätteter Satz.");
-    const cloud = await laufUndDatensatz(
-      new ModelProvider(
-        createCappedCloudClientFromEnv(CLOUD_ENV, KEIN_SCHLUESSELBUND, KEIN_SPEICHERN),
-      ),
-    );
+    const cloud = await laufUndDatensatz(new ModelProvider(cloudClientAusEnv()));
     expect(cloud.model).not.toMatch(/^(anthropic|local):/);
 
     vi.unstubAllGlobals();

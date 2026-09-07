@@ -1074,11 +1074,21 @@ const de = {
   "adm.ai.global": "Global (Standard für alle Einsätze)",
   "adm.ai.choice.inherit": "— wie global —",
   "adm.ai.choice.auto": "Auto (Modell wenn verfügbar)",
-  "adm.ai.choice.model": "Modell verlangen",
-  "adm.ai.choice.cloud": "Extern · Cloud-LLM (Claude)",
+  // JOB 3134 (KI-WAHL): die beiden externen Anbieter sind eigene Einträge; der Name und das Modell
+  // kommen aus der Serverkonfiguration (`{{name}}` = „ChatGPT (OpenAI) · gpt-4o-mini"). Der alte
+  // Eintrag „Extern · Cloud-LLM (Claude)" nannte fest Claude, während ChatGPT antwortete.
+  "adm.ai.choice.anbieter": "Extern · {{name}}",
+  "adm.ai.choice.anbieterUnavailable": "Extern · {{name}} (nicht eingerichtet)",
+  "adm.ai.choice.autoMit": "derzeit {{name}}",
   "adm.ai.choice.local": "Intern · eigener LLM (On-Prem)",
   "adm.ai.choice.localUnavailable": "Intern · eigener LLM (nicht verbunden)",
   "adm.ai.choice.deterministic": "Deterministisch (ohne Modell)",
+  "adm.ai.envLocked":
+    "Die KI-Zuordnung ist per Deploy-Konfiguration (KLARWERK_REASONER_POLICY) festgelegt und kann hier nicht geändert werden.",
+  "adm.ai.migrated":
+    "Alter Wert „{{von}}“ wurde auf {{nach}} überführt — bitte prüfen und „Zuordnung übernehmen“ klicken.",
+  "adm.ai.dirtyActive": "Gewählt: {{gewaehlt}} · bis zum Übernehmen bleibt aktiv: {{aktiv}}.",
+  "adm.ai.deviation": "Abweichend vom Standard: {{list}}",
   "adm.ai.task.structure": "Strukturieren",
   "adm.ai.task.assist": "Schreib-Palette (KI-Hilfe)",
   "adm.ai.task.interview": "Geführtes Interview",
@@ -1090,6 +1100,8 @@ const de = {
   "adm.ai.effModel": "Modell",
   "adm.ai.effDet": "deterministisch",
   "adm.ai.eff.cloud": "extern",
+  "adm.ai.eff.openai": "extern · ChatGPT (OpenAI)",
+  "adm.ai.eff.anthropic": "extern · Claude (Anthropic)",
   "adm.ai.eff.local": "intern",
   "adm.ai.eff.deterministic": "deterministisch",
   "adm.ai.save": "Zuordnung übernehmen",
@@ -1098,8 +1110,10 @@ const de = {
   "adm.ai.saved": "KI-Zuordnung übernommen.",
   "adm.ai.dirtyHint": "Noch nicht übernommen — „Zuordnung übernehmen“ klicken.",
   "adm.ai.applied": "Übernommen ✓",
+  // JOB 3134: die Zuordnung IST seit SCRUM-525 persistent — der alte Satz („gilt bis zum Neustart")
+  // widersprach dem Server.
   "adm.ai.persistNote":
-    "Gilt bis zum nächsten Neustart der App — dauerhafte Speicherung und lokale Modelle kommen mit dem Voll-Ausbau (PMO-Eintrag).",
+    "Wird auf dem Server gespeichert und gilt ab der nächsten Anfrage — auch nach Neuladen, Neuanmeldung und Neustart.",
   // SCRUM-386: kundeneigene KI-Assist-Funktionen (Presets) — Admin pflegt, Palette zeigt allen.
   "adm.presets.title": "Eigene KI-Funktionen",
   "adm.presets.help":
@@ -1203,8 +1217,9 @@ const de = {
   // SCRUM-413: „Verfügbare KIs" — ehrliche Übersicht aller Zugänge (Metadaten, keine Secrets).
   "adm.ai.accessTitle": "Verfügbare KIs",
   "adm.ai.accessHelp":
-    "Zeigt alle KI-Zugänge dieser Instanz mit ehrlichem Status: das konfigurierte Cloud-Modell (Schlüssel nur serverseitig), den deterministischen Ersatzmodus, der ohne Modell einspringt, und den geplanten lokalen LLM-Server aus Team 2. Welcher Zugang je Einsatz wirklich wirkt, steht oben in der KI-Verwaltung (Spalte „wirkt“).",
-  "adm.ai.access.cloud": "Cloud-Modell",
+    "Zeigt alle KI-Zugänge dieser Instanz mit ehrlichem Status: die beiden externen Anbieter ChatGPT (OpenAI) und Claude (Anthropic) einzeln (Schlüssel nur serverseitig; „Aktiv“ ist der in der KI-Verwaltung gewählte, „Bereit“ ein eingerichteter, nicht gewählter), den deterministischen Ersatzmodus, der ohne Modell einspringt, und den geplanten lokalen LLM-Server aus Team 2. Welcher Zugang je Einsatz wirklich wirkt, steht oben in der KI-Verwaltung.",
+  "adm.ai.access.openai": "ChatGPT (OpenAI)",
+  "adm.ai.access.anthropic": "Claude (Anthropic)",
   "adm.ai.access.fallback": "Deterministischer Ersatzmodus",
   "adm.ai.access.local": "Lokaler LLM-Server (Team 2)",
   "adm.ai.accessNote":
@@ -6329,11 +6344,18 @@ const en: typeof de = {
   "adm.ai.global": "Global (default for all uses)",
   "adm.ai.choice.inherit": "— same as global —",
   "adm.ai.choice.auto": "Auto (model when available)",
-  "adm.ai.choice.model": "Require model",
-  "adm.ai.choice.cloud": "External · cloud LLM (Claude)",
+  "adm.ai.choice.anbieter": "External · {{name}}",
+  "adm.ai.choice.anbieterUnavailable": "External · {{name}} (not set up)",
+  "adm.ai.choice.autoMit": "currently {{name}}",
   "adm.ai.choice.local": "Internal · own LLM (on-prem)",
   "adm.ai.choice.localUnavailable": "Internal · own LLM (not connected)",
   "adm.ai.choice.deterministic": "Deterministic (no model)",
+  "adm.ai.envLocked":
+    "The AI mapping is fixed by the deployment configuration (KLARWERK_REASONER_POLICY) and cannot be changed here.",
+  "adm.ai.migrated":
+    "Old value “{{von}}” was carried over to {{nach}} — please check and click “Apply mapping”.",
+  "adm.ai.dirtyActive": "Selected: {{gewaehlt}} · until applied, still active: {{aktiv}}.",
+  "adm.ai.deviation": "Differs from the default: {{list}}",
   "adm.ai.task.structure": "Structuring",
   "adm.ai.task.assist": "Writing palette (AI help)",
   "adm.ai.task.interview": "Guided interview",
@@ -6345,6 +6367,8 @@ const en: typeof de = {
   "adm.ai.effModel": "model",
   "adm.ai.effDet": "deterministic",
   "adm.ai.eff.cloud": "external",
+  "adm.ai.eff.openai": "external · ChatGPT (OpenAI)",
+  "adm.ai.eff.anthropic": "external · Claude (Anthropic)",
   "adm.ai.eff.local": "internal",
   "adm.ai.eff.deterministic": "deterministic",
   "adm.ai.save": "Apply mapping",
@@ -6354,7 +6378,7 @@ const en: typeof de = {
   "adm.ai.dirtyHint": "Not applied yet — click “Apply mapping”.",
   "adm.ai.applied": "Applied ✓",
   "adm.ai.persistNote":
-    "Applies until the next app restart — persistent storage and local models arrive with the full build-out (PMO entry).",
+    "Stored on the server and applies from the next request on — also after reloading, signing in again and restarting.",
   // SCRUM-386: customer-defined AI assist functions (presets) — admin manages, palette shows all.
   "adm.presets.title": "Custom AI functions",
   "adm.presets.help":
@@ -6445,8 +6469,9 @@ const en: typeof de = {
   // SCRUM-413: "Available AIs" — honest overview of all accesses (metadata, no secrets).
   "adm.ai.accessTitle": "Available AIs",
   "adm.ai.accessHelp":
-    "Shows all AI accesses of this instance with their honest status: the configured cloud model (key stays server-side), the deterministic fallback that steps in without a model, and the planned local LLM server from team 2. Which access actually applies per task is shown above in the AI management section.",
-  "adm.ai.access.cloud": "Cloud model",
+    "Shows all AI accesses of this instance with their honest status: the two external providers ChatGPT (OpenAI) and Claude (Anthropic) individually (keys stay server-side; “Active” is the one selected in AI management, “Ready” one that is set up but not selected), the deterministic fallback that steps in without a model, and the planned local LLM server from team 2. Which access actually applies per task is shown above in the AI management section.",
+  "adm.ai.access.openai": "ChatGPT (OpenAI)",
+  "adm.ai.access.anthropic": "Claude (Anthropic)",
   "adm.ai.access.fallback": "Deterministic fallback",
   "adm.ai.access.local": "Local LLM server (team 2)",
   "adm.ai.accessNote":
@@ -10922,11 +10947,18 @@ const nl: typeof de = {
   "adm.ai.global": "Globaal (standaard voor alle taken)",
   "adm.ai.choice.inherit": "— zoals globaal —",
   "adm.ai.choice.auto": "Auto (model indien beschikbaar)",
-  "adm.ai.choice.model": "Model vereisen",
-  "adm.ai.choice.cloud": "Extern · cloud-LLM (Claude)",
+  "adm.ai.choice.anbieter": "Extern · {{name}}",
+  "adm.ai.choice.anbieterUnavailable": "Extern · {{name}} (niet ingericht)",
+  "adm.ai.choice.autoMit": "momenteel {{name}}",
   "adm.ai.choice.local": "Intern · eigen LLM (on-prem)",
   "adm.ai.choice.localUnavailable": "Intern · eigen LLM (niet verbonden)",
   "adm.ai.choice.deterministic": "Deterministisch (zonder model)",
+  "adm.ai.envLocked":
+    "De AI-toewijzing is vastgelegd via de deploy-configuratie (KLARWERK_REASONER_POLICY) en kan hier niet worden gewijzigd.",
+  "adm.ai.migrated":
+    "Oude waarde „{{von}}” is overgezet naar {{nach}} — controleer en klik op ‘Toewijzing toepassen’.",
+  "adm.ai.dirtyActive": "Gekozen: {{gewaehlt}} · tot het toepassen blijft actief: {{aktiv}}.",
+  "adm.ai.deviation": "Afwijkend van de standaard: {{list}}",
   "adm.ai.task.structure": "Structureren",
   "adm.ai.task.assist": "Schrijfpalet (AI-hulp)",
   "adm.ai.task.interview": "Begeleid interview",
@@ -10938,6 +10970,8 @@ const nl: typeof de = {
   "adm.ai.effModel": "Model",
   "adm.ai.effDet": "deterministisch",
   "adm.ai.eff.cloud": "extern",
+  "adm.ai.eff.openai": "extern · ChatGPT (OpenAI)",
+  "adm.ai.eff.anthropic": "extern · Claude (Anthropic)",
   "adm.ai.eff.local": "intern",
   "adm.ai.eff.deterministic": "deterministisch",
   "adm.ai.save": "Toewijzing toepassen",
@@ -10947,7 +10981,7 @@ const nl: typeof de = {
   "adm.ai.dirtyHint": "Nog niet toegepast — klik op ‘Toewijzing toepassen’.",
   "adm.ai.applied": "Toegepast ✓",
   "adm.ai.persistNote":
-    "Geldt tot de volgende herstart van de app — permanente opslag en lokale modellen komen met de volledige uitbouw (PMO-vermelding).",
+    "Wordt op de server opgeslagen en geldt vanaf de volgende aanvraag — ook na herladen, opnieuw aanmelden en herstart.",
   "adm.presets.title": "Eigen AI-functies",
   "adm.presets.help":
     "Het AI-palet in de editor biedt fabrieksfuncties (Helderder, Structureren, Uitbreiden, Spelling, Opmaken). Hier leg je EXTRA, eigen functies voor je organisatie aan — een naam voor de knop en de instructie die de AI krijgt (bijv. „Vat samen voor de dienstoverdracht in 5 steekwoorden”). De instructie is in het palet bij het ?-teken open zichtbaar; zoals altijd geldt: de AI doet alleen een voorstel ter voorbeeld, overnemen doe je bewust met een klik. Fabrieksfuncties kun je niet verwijderen.",
@@ -11038,8 +11072,9 @@ const nl: typeof de = {
     "Wordt op de server opgeslagen en overleeft de herstart; sleutels en modellen blijven daardoor onaangeroerd.",
   "adm.ai.accessTitle": "Beschikbare AI's",
   "adm.ai.accessHelp":
-    "Toont alle AI-toegangen van deze instantie met een eerlijke status: het geconfigureerde cloud-model (sleutel alleen aan de serverkant), de deterministische vervangmodus die zonder model inspringt, en de geplande lokale LLM-server van Team 2. Welke toegang per taak echt werkt, staat boven in het AI-beheer (kolom „werkt”).",
-  "adm.ai.access.cloud": "Cloud-model",
+    "Toont alle AI-toegangen van deze instantie met een eerlijke status: de twee externe aanbieders ChatGPT (OpenAI) en Claude (Anthropic) afzonderlijk (sleutels alleen aan de serverkant; ‘Actief’ is de in het AI-beheer gekozen, ‘Klaar’ een ingerichte maar niet gekozen), de deterministische vervangmodus die zonder model inspringt, en de geplande lokale LLM-server van Team 2. Welke toegang per taak echt werkt, staat boven in het AI-beheer.",
+  "adm.ai.access.openai": "ChatGPT (OpenAI)",
+  "adm.ai.access.anthropic": "Claude (Anthropic)",
   "adm.ai.access.fallback": "Deterministische vervangmodus",
   "adm.ai.access.local": "Lokale LLM-server (Team 2)",
   "adm.ai.accessNote":

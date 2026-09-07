@@ -88,7 +88,8 @@ function matrixAdmin(): Quelle[] {
       reiter: t("adm.sec.ki"),
       zeile: '[data-testid="zeile-ki-zugaenge"]',
       behaelter: "detail-ki-zugaenge",
-      inhalt: t("adm.ai.access.cloud"),
+      // JOB 3134: die Cloud-Zeile ist zwei Anbieterzeilen gewichen; die erste heisst ChatGPT (OpenAI).
+      inhalt: t("adm.ai.access.openai"),
     },
     {
       id: "Eigene Funktionen · /api/reasoner/assist-presets",

@@ -146,9 +146,15 @@ async function karteMounten(
 async function leseZugangsDetail(): Promise<string> {
   const container = await karteMounten(KiZugaengeDetail);
   expect(container.querySelector('[data-testid="detail-ki-zugaenge"]')).toBeTruthy();
-  const cloudZeile = container.querySelectorAll("li")[0];
-  const detail = cloudZeile?.querySelector(".font-mono")?.textContent ?? "";
-  expect(detail, "die Cloud-Zeile nennt gar kein Detail").not.toBe("");
+  // JOB 3134: je Anbieter eine Zeile — die des EINGERICHTETEN Anbieters ist die, die ein Detail
+  // (Anbieter · Modell) trägt; die andere sagt „nicht konfiguriert" ohne Modell.
+  // Das Detail ist der `text-muted-2`-Monospace-Span; die Zustandspille daneben ist ebenfalls
+  // Monospace, aber `uppercase` — sie zählt nicht.
+  const cloudZeile = [...container.querySelectorAll("li")].find((li) =>
+    li.querySelector("span.font-mono.text-muted-2"),
+  );
+  const detail = cloudZeile?.querySelector("span.font-mono.text-muted-2")?.textContent ?? "";
+  expect(detail, "keine Anbieterzeile nennt ein Detail").not.toBe("");
   // Sofort wieder abbauen: die zweite Karte wird gleich gemountet, und eine noch lebende erste
   // Karte würde ihre späten Zustandswechsel außerhalb von `act` melden.
   const eintrag = gemountet.pop();
@@ -222,8 +228,12 @@ describe("JOB 3120 A1–A3: Statuszeile und Zugangsliste nennen denselben Dienst
     const text = karte.textContent ?? "";
     // Ehrlichkeit vor Optik: lieber eine rohe Kennung als ein falscher Anbietername.
     expect(text).toContain(statuszeileMit(UNBEKANNT));
-    expect(text).not.toContain("(OpenAI)");
-    expect(text).not.toContain("(Anthropic)");
+    // JOB 3134: die Auswahlliste nennt die beiden Anbieter IMMER (als wählbare bzw. ausgegraute
+    // Einträge) — die Zusage „nichts geraten" gilt der STATUSZEILE, und die wird hier gezielt gelesen.
+    const status = karte.querySelector('[data-testid="ki-status"]')?.textContent ?? "";
+    expect(status).toContain(UNBEKANNT);
+    expect(status).not.toContain("(OpenAI)");
+    expect(status).not.toContain("(Anthropic)");
   });
 });
 
@@ -358,7 +368,11 @@ describe("JOB 3120 C1: ohne Cloud-Konfiguration wird kein Anbieter behauptet", (
         mode: i18n.t("adm.ai.modeDemo"),
       }),
     );
-    expect(text).not.toContain("(OpenAI)");
-    expect(text).not.toContain("(Anthropic)");
+    // JOB 3134: die Auswahlliste nennt beide Anbieter als (ausgegraute) Einträge — die Zusage
+    // „kein Anbieter behauptet" gilt der STATUSZEILE.
+    const status = karte.querySelector('[data-testid="ki-status"]')?.textContent ?? "";
+    expect(status).toContain("deterministic");
+    expect(status).not.toContain("(OpenAI)");
+    expect(status).not.toContain("(Anthropic)");
   });
 });

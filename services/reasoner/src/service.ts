@@ -53,8 +53,13 @@ import type {
   InterviewResult,
   JudgeFailure,
   KnowledgeRef,
+  ReasonerAktiveWahl,
+  ReasonerCloudAnbieter,
+  ReasonerCloudAnbieterStatus,
   ReasonerConfigStatus,
+  ReasonerLegacyChoice,
   ReasonerLocale,
+  ReasonerPolicyMigration,
   ReasonerPolicySource,
   ReasonerProbeResult,
   ReasonerReachability,
@@ -62,10 +67,14 @@ import type {
   ReasonerTask,
   ReasonerTaskChoice,
   ReasonerTaskConfig,
+  ReasonerTaskConfigEingabe,
   ReasonerTaskMap,
+  ReasonerWahlMigration,
   Relevanztext,
   StructureResult,
 } from "./types";
+// JOB 3134 (KI-WAHL): die beiden externen Anbieter als Aufzählung und ihr lesbarer Name.
+import { REASONER_CLOUD_ANBIETER, REASONER_CLOUD_ANBIETER_NAME } from "./types";
 
 // SCRUM-525 P.5 (WP-C): Befund 3(a) — eine per Deploy-ENV gesetzte Policy (KLARWERK_REASONER_POLICY)
 // ist eine bewusste, deklarative Vorgabe des Deploys; sie darf NICHT still von einem Admin-Schreibpfad
@@ -96,13 +105,46 @@ export const LOAD_FAILURE_FALLBACK_POLICY: ReasonerTaskConfig = {
   perTask: {},
 };
 
+// JOB 3134: die AKTIVEN Werte plus die beiden ABGELÖSTEN (`model`, `cloud`), die an jeder
+// Eingangsstelle noch angenommen, aber sofort migriert werden (s. `migriereWahl`).
 const VALID_CHOICES: readonly ReasonerTaskChoice[] = [
   "auto",
-  "model",
-  "cloud",
+  "openai",
+  "anthropic",
   "local",
   "deterministic",
+  "model",
+  "cloud",
 ];
+
+const LEGACY_CHOICES: readonly ReasonerLegacyChoice[] = ["model", "cloud"];
+
+function istAbgeloesteWahl(choice: ReasonerTaskChoice): choice is ReasonerLegacyChoice {
+  return (LEGACY_CHOICES as readonly string[]).includes(choice);
+}
+
+// JOB 3134: die Kante des Erreichbarkeits-Speichers — je externer Anbieter eine, dazu die lokale.
+type ReachKante = ReasonerCloudAnbieter | "local";
+
+// Die beiden externen Provider, so wie die Kompositionswurzel sie verdrahtet — plus je Anbieter der
+// Grund, wenn keiner entstand (`createCappedCloudClientFromEnv`, model-client.ts).
+export interface ReasonerCloudAnbindung {
+  anbieter: Partial<Record<ReasonerCloudAnbieter, ReasonerProvider>>;
+  gruende?: Partial<Record<ReasonerCloudAnbieter, string>>;
+}
+
+// Der Anbieter eines Cloud-Providers, gelesen aus dem Clientnamen — DERSELBE Vertrag, den die Fläche
+// liest (`apps/web/src/lib/aiOverview.ts`): `cloud:openai:<modell>` bzw. `anthropic:<modell>`, gesetzt
+// von der Stelle, die die Verbindung wirklich aufbaut (model-client.ts).
+function anbieterAusName(name: string): ReasonerCloudAnbieter | undefined {
+  if (name.startsWith("cloud:openai:")) {
+    return "openai";
+  }
+  if (name.startsWith("anthropic:")) {
+    return "anthropic";
+  }
+  return undefined;
+}
 
 // WP-BILD-1c: die EINE Task-Liste für Policy-Validierung und KI-Verwaltungs-Anzeige (vorher drei
 // Inline-Kopien). "describe" = KI-Bildbeschreibungs-Vorschlag (nur mit Vision-fähigem Cloud-Client).
@@ -232,7 +274,13 @@ function parseFirstJsonObject(raw: string): unknown | null {
 // FR-RSN-06: der KI-Schlüssel lebt ausschließlich im Provider (serverseitig),
 // der Reasoner reicht ihn nie nach außen — Status/Ergebnisse enthalten keinen Schlüssel.
 export class Reasoner {
-  private readonly primary: ReasonerProvider;
+  // JOB 3134 (KI-WAHL): die externen Anbieter EINZELN, unter ihrem Namen. Bis hierher gab es genau
+  // einen `primary`, und WER das war, hatte die Fabrik nach einer Vorzugsregel entschieden. Jetzt
+  // steht je Anbieter ein Provider (oder keiner), und die gespeicherte Wahl bestimmt, welcher in
+  // die Kette kommt — nie beide in derselben Kette (kein heimlicher Wechsel).
+  private readonly cloud: Record<ReasonerCloudAnbieter, ReasonerProvider | undefined>;
+  // Warum ein Anbieter NICHT eingerichtet ist — geheimnisfreier Satz mit Env-Namen, aus der Fabrik.
+  private readonly cloudGruende: Partial<Record<ReasonerCloudAnbieter, string>>;
   // SCRUM-424: der eigene lokale LLM als zweites echtes Backend (Cloud + lokal). Ohne
   // Angabe = deterministischer Fallback (dann gibt es effektiv nur Cloud + Ersatzmodus).
   private readonly secondary: ReasonerProvider;
@@ -254,13 +302,19 @@ export class Reasoner {
   // unerreichbarer Cloud + erreichbarem Local fälschlich als nutzbar erschien. Die per-Task-Karte
   // (publicStatus.tasks) wertet jetzt GENAU die Kette der Task gegen die Kanten-Zustände aus.
   private static readonly REACHABILITY_TTL_MS = 60_000;
-  private readonly reachabilityCache: {
-    cloud: { at: number; reachable: boolean } | null;
-    local: { at: number; reachable: boolean } | null;
-  } = { cloud: null, local: null };
+  // JOB 3134: eine Kante je externem Anbieter (statt einer gemeinsamen „cloud"-Kante) plus die lokale.
+  private readonly reachabilityCache: Record<
+    ReachKante,
+    { at: number; reachable: boolean } | null
+  > = { openai: null, anthropic: null, local: null };
   private reachabilityProbeInFlight = false;
 
   constructor(
+    // Der EINE Cloud-Provider des Bestands (vor JOB 3134). Weiterhin angenommen, damit die
+    // positionalen Aufrufe unverändert bleiben; sein Anbieter wird aus dem Clientnamen gelesen
+    // (`anbieterAusName`), und ein Provider OHNE erkennbaren Anbieter gilt als Anthropic — der Weg,
+    // den `primary` seit FR-RSN-02 bis JOB 3090 ausschliesslich bedeutete. Wer beide Anbieter
+    // verdrahtet, nutzt `cloud` (unten) und lässt diesen Parameter leer.
     primary?: ReasonerProvider,
     fallback: ReasonerProvider = new DeterministicProvider(),
     modelRuns?: ModelRunRepo,
@@ -271,8 +325,23 @@ export class Reasoner {
     // SCRUM-525 P.5 (WP6): optionales Policy-Repo. Als LETZTER Parameter — bestehende positionale
     // Aufrufe bleiben unverändert. Ohne Repo → In-Memory (Policy lebt nur für die Prozesslaufzeit).
     policyRepo?: ReasonerPolicyRepo,
+    // JOB 3134: BEIDE externen Anbieter unter ihrem Namen (Kompositionswurzel). Schliesst `primary`
+    // aus — zwei Wege an dieselbe Kette wären zwei Wahrheiten darüber, wer die Cloud ist.
+    cloud?: ReasonerCloudAnbindung,
   ) {
-    this.primary = primary ?? fallback;
+    if (cloud && primary) {
+      throw new Error(
+        "Reasoner: entweder `primary` (Bestand) oder `cloud` (JOB 3134), nicht beides.",
+      );
+    }
+    this.cloud = { openai: undefined, anthropic: undefined };
+    if (cloud) {
+      this.cloud.openai = cloud.anbieter.openai;
+      this.cloud.anthropic = cloud.anbieter.anthropic;
+    } else if (primary && primary !== fallback) {
+      this.cloud[anbieterAusName(primary.name) ?? "anthropic"] = primary;
+    }
+    this.cloudGruende = { ...(cloud?.gruende ?? {}) };
     this.secondary = secondary ?? fallback;
     this.fallback = fallback;
     this.modelRuns = modelRuns;
@@ -294,8 +363,15 @@ export class Reasoner {
     return this.presetRepo.list();
   }
 
-  private usingPrimary(): boolean {
-    return this.primary.isAvailable() && this.primary !== this.fallback;
+  // JOB 3134: der Provider EINES externen Anbieters — nur, wenn er verdrahtet und verfügbar ist.
+  private cloudProvider(anbieter: ReasonerCloudAnbieter): ReasonerProvider | undefined {
+    const provider = this.cloud[anbieter];
+    return provider && provider !== this.fallback && provider.isAvailable() ? provider : undefined;
+  }
+
+  // Ist IRGENDEIN externer Anbieter verdrahtet & verfügbar? (Bis JOB 3134 hiess das `usingPrimary`.)
+  private usingAnyCloud(): boolean {
+    return REASONER_CLOUD_ANBIETER.some((anbieter) => this.cloudProvider(anbieter) !== undefined);
   }
 
   // SCRUM-424: ist der eigene lokale LLM verdrahtet & verfügbar (kein Alias auf den Fallback)?
@@ -303,29 +379,72 @@ export class Reasoner {
     return this.secondary.isAvailable() && this.secondary !== this.fallback;
   }
 
+  // JOB 3134: der Anbieter, auf den „auto" (und die abgelösten Werte `cloud`/`model`) aufgelöst
+  // werden — der ERSTE eingerichtete in der Reihenfolge von REASONER_CLOUD_ANBIETER. Das ist genau
+  // die Reihenfolge, nach der die alte Fabrik entschied (OpenAI vor Anthropic); sie ist jetzt
+  // sichtbar (`configStatus().autoAnbieter`) und mit einer ausdrücklichen Wahl überstimmbar.
+  private vorgabeAnbieter(): ReasonerCloudAnbieter | undefined {
+    return REASONER_CLOUD_ANBIETER.find((anbieter) => this.cloudProvider(anbieter) !== undefined);
+  }
+
+  // Welchen externen Anbieter eine Wahl MEINT — unabhängig davon, ob er eingerichtet ist. Eine
+  // ausdrückliche Wahl meint sich selbst (auch wenn der Anbieter fehlt: dann bleibt die Kette ohne
+  // Cloud, und der Grund steht in `cloudProviders`); `auto` meint den Vorgabe-Anbieter; lokal und
+  // deterministisch meinen keinen.
+  private anbieterFuerWahl(choice: ReasonerTaskChoice): ReasonerCloudAnbieter | undefined {
+    switch (choice) {
+      case "openai":
+      case "anthropic":
+        return choice;
+      case "auto":
+      case "cloud":
+      case "model":
+        return this.vorgabeAnbieter();
+      default:
+        return undefined;
+    }
+  }
+
+  // Der verfügbare Cloud-Provider einer Wahl — oder keiner.
+  private cloudFuerWahl(choice: ReasonerTaskChoice): ReasonerProvider | undefined {
+    const anbieter = this.anbieterFuerWahl(choice);
+    return anbieter ? this.cloudProvider(anbieter) : undefined;
+  }
+
+  // Unter welchem Anbieter ein Provider verdrahtet ist — für Kanten, Labels und das Protokoll.
+  private anbieterVon(provider: ReasonerProvider): ReasonerCloudAnbieter | undefined {
+    return REASONER_CLOUD_ANBIETER.find((anbieter) => this.cloud[anbieter] === provider);
+  }
+
+  private kanteVon(provider: ReasonerProvider): ReachKante {
+    return this.anbieterVon(provider) ?? "local";
+  }
+
   // SCRUM-424: geordnete Provider-Kette je Aufgabe aus der bewussten Zuordnung.
-  //  - "auto"                Cloud → lokal → deterministisch (verfügbare in dieser Reihenfolge)
-  //  - "cloud"/"model"       Cloud (dann deterministisch)
+  //  - "auto"                Vorgabe-Anbieter → lokal → deterministisch (verfügbare in dieser Reihenfolge)
+  //  - "openai"/"anthropic"  GENAU dieser Anbieter (dann deterministisch) — JOB 3134
   //  - "local"               lokaler LLM (dann deterministisch)
   //  - "deterministic"       nur deterministisch
   // Der deterministische Fallback ist IMMER das letzte Glied (FR-RSN-04, antwortet stets).
+  // JOB 3134 — KEIN HEIMLICHER WECHSEL: in KEINER Kette stehen zwei externe Anbieter. Scheitert
+  // der gewählte (400/401/429/Netz), folgt der lokale LLM (nur bei `auto`) oder der deterministische
+  // Ersatz — ehrlich als Ersatz gekennzeichnet (`demo`, `fallbackReason`) —, nie der andere externe
+  // Anbieter.
   // SCRUM-502 Schicht 2: `confidential` = der Eingabetext (KO/Draft) ist vertraulich → die Cloud
-  // (this.primary) wird aus der Kette GENOMMEN. Vertraulicher Text verlässt den Server nie extern;
-  // es bleibt der lokale LLM (falls verdrahtet) und/oder der deterministische Fallback. Die
-  // Durchsetzung liegt hier zentral am Routing, damit kein Aufrufer sie vergessen kann.
-  private providerChain(task: ModelRunTask, confidential = false): ReasonerProvider[] {
-    const choice = this.choiceFor(task);
+  // wird aus der Kette GENOMMEN. Vertraulicher Text verlässt den Server nie extern; es bleibt der
+  // lokale LLM (falls verdrahtet) und/oder der deterministische Fallback. Die Durchsetzung liegt
+  // hier zentral am Routing, damit kein Aufrufer sie vergessen kann — für BEIDE externen Anbieter.
+  private chainForChoice(choice: ReasonerAktiveWahl, confidential = false): ReasonerProvider[] {
     const chain: ReasonerProvider[] = [];
     if (choice !== "deterministic") {
-      if (
-        !confidential &&
-        (choice === "auto" || choice === "cloud" || choice === "model") &&
-        this.usingPrimary()
-      ) {
-        chain.push(this.primary);
+      if (!confidential && choice !== "local") {
+        const cloud = this.cloudFuerWahl(choice);
+        if (cloud) {
+          chain.push(cloud);
+        }
       }
       // SCRUM-502 Round 4 (P1): vertraulich schließt die Cloud aus, ABER der lokale LLM (on-prem, kein
-      // externer Egress) darf einspringen — auch bei expliziter cloud/model-Wahl. So degradiert
+      // externer Egress) darf einspringen — auch bei expliziter Anbieterwahl. So degradiert
       // vertraulicher Text nicht unnötig auf „deterministisch", wenn ein lokales Modell verdrahtet ist.
       // aistate-fix3 (bens V1): „lokal" nur, wenn der Secondary vertraulichkeits-tauglich ist
       // (bestätigte On-Prem-Origin, rejectsConfidential()!==true) — ein fremd verdrahteter Endpunkt
@@ -342,48 +461,82 @@ export class Reasoner {
     return chain;
   }
 
-  // Welche KI läuft je Aufgabe EFFEKTIV zuerst (für die ehrliche Anzeige).
+  private providerChain(task: ModelRunTask, confidential = false): ReasonerProvider[] {
+    return this.chainForChoice(this.choiceFor(task), confidential);
+  }
+
+  // Welche KI läuft je Aufgabe EFFEKTIV zuerst (für die ehrliche Anzeige) — die STUFE.
   private providerLabelFor(task: ModelRunTask): "cloud" | "local" | "deterministic" {
+    const anbieter = this.effectiveAnbieterFor(task);
+    return anbieter === "local" || anbieter === "deterministic" ? anbieter : "cloud";
+  }
+
+  // JOB 3134: dieselbe Auflösung mit dem NAMEN des externen Anbieters — „extern" sagt nicht, wem
+  // die Texte gezeigt werden.
+  private effectiveAnbieterFor(
+    task: ModelRunTask,
+  ): ReasonerCloudAnbieter | "local" | "deterministic" {
     const first = this.providerChain(task)[0];
-    if (first === this.primary && this.usingPrimary()) {
-      return "cloud";
+    if (!first || first === this.fallback) {
+      return "deterministic";
     }
     if (first === this.secondary && this.usingSecondary()) {
       return "local";
     }
-    return "deterministic";
+    return this.anbieterVon(first) ?? "deterministic";
   }
 
   // Key-Test (Pedi 02.07.): ehrlicher Echtaufruf statt Anzeige-Vermutung. Ohne Modell
   // klarer Befund; Fehler werden benannt (z. B. 401 = Schlüssel ungültig), nie geraten.
   // Kein Fallback-Umweg: der Test prüft GENAU den konfigurierten Modellzugang.
-  async probe(): Promise<ReasonerProbeResult> {
+  //
+  // JOB 3134: geprüft wird der Anbieter, den die GESPEICHERTE globale Wahl bestimmt — nicht „der
+  // erste verfügbare". Ist keiner gewählt (lokal/deterministisch) oder der gewählte nicht
+  // eingerichtet, sagt das Ergebnis genau das, statt still einen anderen zu prüfen. Mit `anbieter`
+  // prüft die Erreichbarkeits-Sonde (unten) gezielt EINE Kante.
+  async probe(anbieter?: ReasonerCloudAnbieter): Promise<ReasonerProbeResult> {
     const at = new Date().toISOString();
-    if (!this.usingPrimary() || typeof this.primary.probe !== "function") {
+    const gewaehlt = anbieter ?? this.anbieterFuerWahl(this.taskConfig.global);
+    if (!gewaehlt) {
       return {
         ok: false,
         provider: this.fallback.name,
         mode: "deterministic",
-        detail: "Kein Modell konfiguriert — es läuft der deterministische Ersatzmodus.",
+        detail: this.usingAnyCloud()
+          ? `Kein externer Anbieter gewählt (global: ${this.taskConfig.global}) — es wurde keiner geprüft.`
+          : "Kein Modell konfiguriert — es läuft der deterministische Ersatzmodus.",
         at,
       };
     }
+    const provider = this.cloudProvider(gewaehlt);
+    if (!provider || typeof provider.probe !== "function") {
+      return {
+        ok: false,
+        provider: this.fallback.name,
+        mode: "deterministic",
+        detail: `${REASONER_CLOUD_ANBIETER_NAME[gewaehlt]} ist nicht eingerichtet: ${this.cloudStatus(gewaehlt).grund ?? "kein Client verdrahtet."}`,
+        at,
+        anbieter: gewaehlt,
+      };
+    }
     try {
-      await this.primary.probe();
+      await provider.probe();
       return {
         ok: true,
-        provider: this.primary.name,
+        provider: provider.name,
         mode: "model",
         detail: "Modell hat geantwortet.",
         at,
+        anbieter: gewaehlt,
       };
     } catch (error) {
       return {
         ok: false,
-        provider: this.primary.name,
+        provider: provider.name,
         mode: "model",
         detail: error instanceof Error ? error.message : String(error),
         at,
+        anbieter: gewaehlt,
       };
     }
   }
@@ -424,12 +577,24 @@ export class Reasoner {
 
   // D-AISTATE PAKET 3 (bens V4): Kanten-Zustand aus dem per-Provider-Cache (frisch → letzter echter
   // Befund; sonst "unverified" — kein Fake-Grau beim Start).
-  private providerReachability(kind: "cloud" | "local"): "unverified" | "active" | "unreachable" {
-    const cache = this.reachabilityCache[kind];
+  private providerReachability(kante: ReachKante): "unverified" | "active" | "unreachable" {
+    const cache = this.reachabilityCache[kante];
     if (!cache || Date.now() - cache.at > Reasoner.REACHABILITY_TTL_MS) {
       return "unverified";
     }
     return cache.reachable ? "active" : "unreachable";
+  }
+
+  // JOB 3134: die Kanten, die WIRKLICH verdrahtet sind — je eingerichteter externer Anbieter eine,
+  // dazu die lokale. Erreichbarkeit wird je Anbieter geführt, nicht je Stufe.
+  private verdrahteteKanten(): ReachKante[] {
+    const kanten: ReachKante[] = REASONER_CLOUD_ANBIETER.filter(
+      (anbieter) => this.cloudProvider(anbieter) !== undefined,
+    );
+    if (this.usingSecondary()) {
+      kanten.push("local");
+    }
+    return kanten;
   }
 
   // PAKET 2 (D-AISTATE): synchroner GLOBALER Erreichbarkeits-Zustand für die Badges — NUR aus dem
@@ -440,13 +605,7 @@ export class Reasoner {
     if (!this.usingAnyModel()) {
       return "none";
     }
-    const states: ("unverified" | "active" | "unreachable")[] = [];
-    if (this.usingPrimary()) {
-      states.push(this.providerReachability("cloud"));
-    }
-    if (this.usingSecondary()) {
-      states.push(this.providerReachability("local"));
-    }
+    const states = this.verdrahteteKanten().map((kante) => this.providerReachability(kante));
     if (states.includes("active")) {
       return "active";
     }
@@ -463,13 +622,11 @@ export class Reasoner {
     if (!this.usingAnyModel() || this.reachabilityProbeInFlight) {
       return;
     }
-    const isFresh = (kind: "cloud" | "local"): boolean => {
-      const cache = this.reachabilityCache[kind];
+    const isFresh = (kante: ReachKante): boolean => {
+      const cache = this.reachabilityCache[kante];
       return cache !== null && Date.now() - cache.at <= Reasoner.REACHABILITY_TTL_MS;
     };
-    const cloudStale = this.usingPrimary() && !isFresh("cloud");
-    const localStale = this.usingSecondary() && !isFresh("local");
-    if (!cloudStale && !localStale) {
+    if (this.verdrahteteKanten().every(isFresh)) {
       return;
     }
     this.reachabilityProbeInFlight = true;
@@ -480,12 +637,17 @@ export class Reasoner {
 
   // Echte Mini-Aufrufe (probe/probeLocal) — D-AISTATE PAKET 3 (bens V4): JEDE konfigurierte Kante
   // wird einzeln geprobt und einzeln gecacht (vorher: „irgendein Modell erreichbar" global).
+  // JOB 3134: je eingerichteter externer Anbieter GEZIELT seine Kante (`probe(anbieter)`), nicht
+  // „die Cloud" — sonst hinge die Erreichbarkeit von Claude am Befund von ChatGPT.
   private async runReachabilityProbe(): Promise<void> {
-    if (this.usingPrimary()) {
+    for (const anbieter of REASONER_CLOUD_ANBIETER) {
+      if (!this.cloudProvider(anbieter)) {
+        continue;
+      }
       try {
-        this.recordReachability((await this.probe()).ok, "cloud");
+        this.recordReachability((await this.probe(anbieter)).ok, anbieter);
       } catch {
-        this.recordReachability(false, "cloud");
+        this.recordReachability(false, anbieter);
       }
     }
     if (this.usingSecondary()) {
@@ -499,18 +661,18 @@ export class Reasoner {
 
   // Auffrischen aus einem beliebigen echten Erreichbarkeits-Befund (Probe ODER realer Task-Ausgang).
   // Ohne Kanten-Angabe (Bestands-Aufrufer) wird der Befund auf ALLE konfigurierten Kanten gelegt —
-  // das alte globale Verhalten bleibt für diese Aufrufer erhalten.
-  recordReachability(reachable: boolean, provider?: "cloud" | "local"): void {
+  // das alte globale Verhalten bleibt für diese Aufrufer erhalten. JOB 3134: die Bestandsangabe
+  // "cloud" meint ALLE eingerichteten externen Anbieter; ein Anbietername meint genau seine Kante.
+  recordReachability(reachable: boolean, provider?: ReachKante | "cloud"): void {
     const stamp = { at: Date.now(), reachable };
-    if (provider) {
-      this.reachabilityCache[provider] = stamp;
-      return;
-    }
-    if (this.usingPrimary()) {
-      this.reachabilityCache.cloud = stamp;
-    }
-    if (this.usingSecondary()) {
-      this.reachabilityCache.local = stamp;
+    const kanten =
+      provider === undefined
+        ? this.verdrahteteKanten()
+        : provider === "cloud"
+          ? this.verdrahteteKanten().filter((kante) => kante !== "local")
+          : [provider];
+    for (const kante of kanten) {
+      this.reachabilityCache[kante] = stamp;
     }
   }
 
@@ -525,28 +687,69 @@ export class Reasoner {
   // ENV-Override aktiv ist (dann lehnt setTaskConfig Schreibversuche ab, s. ReasonerPolicyLockedError).
   // Startwert "default", bis loadPersistedPolicy() (Boot) oder ein erfolgreiches setTaskConfig sie setzt.
   private policySource: ReasonerPolicySource = "default";
+  // JOB 3134: die nachvollziehbare Migration der zuletzt übernommenen Zuordnung — gesetzt, wenn sie
+  // abgelöste Werte (`cloud`/`model`) trug; sonst undefined. Steht in `configStatus().migration`.
+  private migration: ReasonerPolicyMigration | undefined;
 
   getTaskConfig(): ReasonerTaskConfig {
     return { global: this.taskConfig.global, perTask: { ...this.taskConfig.perTask } };
   }
 
+  // JOB 3134: wohin ein abgelöster Wert wandert — auf den Anbieter, der unter der alten Vorzugsregel
+  // GEANTWORTET HÄTTE: OpenAI, wenn eingerichtet, sonst der Anthropic-Weg (so entschied
+  // `createCappedCloudClientFromEnv` bis JOB 3122: `openAi… ?? anthropic…`). Nachvollziehbar, nicht
+  // still: der Weg steht in `migration`, bis die nächste ausdrückliche Speicherung ihn ablöst.
+  private migrationsZiel(): ReasonerCloudAnbieter {
+    return this.cloudProvider("openai") ? "openai" : "anthropic";
+  }
+
+  private migriereWahl(choice: ReasonerTaskChoice): {
+    wahl: ReasonerAktiveWahl;
+    migration?: ReasonerWahlMigration;
+  } {
+    if (istAbgeloesteWahl(choice)) {
+      const nach = this.migrationsZiel();
+      return { wahl: nach, migration: { von: choice, nach } };
+    }
+    return { wahl: choice };
+  }
+
   // Validiert eine Policy und normalisiert sie (nur bekannte Tasks/Choices). Wirft bei Ungültigem.
-  private normalizeTaskConfig(next: ReasonerTaskConfig): ReasonerTaskConfig {
-    const valid: ReasonerTaskChoice[] = ["auto", "model", "cloud", "local", "deterministic"];
+  // JOB 3134: migriert dabei die abgelösten Werte und gibt die Migration zurück — für JEDE
+  // Eingangsstelle dieselbe Regel (Schreibweg, Datenbank, Deploy-ENV).
+  private normalizeTaskConfig(next: ReasonerTaskConfigEingabe): {
+    config: ReasonerTaskConfig;
+    migration: ReasonerPolicyMigration | undefined;
+  } {
     const tasks = REASONER_TASKS;
-    if (!valid.includes(next.global)) {
+    if (!isValidReasonerChoice(next.global)) {
       throw new Error("Ungültige globale KI-Zuordnung.");
+    }
+    const global = this.migriereWahl(next.global);
+    const migration: ReasonerPolicyMigration = { perTask: {} };
+    let migriert = false;
+    if (global.migration) {
+      migration.global = global.migration;
+      migriert = true;
     }
     const perTask: ReasonerTaskConfig["perTask"] = {};
     for (const task of tasks) {
       const c = next.perTask?.[task];
       if (c === undefined) continue;
-      if (!valid.includes(c)) {
+      if (!isValidReasonerChoice(c)) {
         throw new Error(`Ungültige KI-Zuordnung für Aufgabe '${task}'.`);
       }
-      perTask[task] = c;
+      const wahl = this.migriereWahl(c);
+      perTask[task] = wahl.wahl;
+      if (wahl.migration) {
+        migration.perTask[task] = wahl.migration;
+        migriert = true;
+      }
     }
-    return { global: next.global, perTask };
+    return {
+      config: { global: global.wahl, perTask },
+      migration: migriert ? migration : undefined,
+    };
   }
 
   // SCRUM-525 P.5 (WP6 + WP3-Batch3): setzt die Policy UND PERSISTIERT sie. WRITE-THEN-RUNTIME: erst
@@ -556,13 +759,16 @@ export class Reasoner {
   // SCRUM-525 P.5 (WP-C): Befund 3(a) — solange die aktive Policy aus der Deploy-ENV stammt, lehnt dieser
   // Schreibpfad ab (ReasonerPolicyLockedError, von der Route auf 409 gemappt), STATT sie sofort im
   // laufenden Prozess UND in der DB zu überschreiben. Kein stilles Aushebeln der ENV-Deploy-Garantie.
-  async setTaskConfig(next: ReasonerTaskConfig): Promise<ReasonerTaskConfig> {
+  // JOB 3134: persistiert werden NUR aktive Werte — ein abgelöster Eingabewert wird vorher migriert
+  // und die Migration in der Antwort gemeldet (`configStatus().migration`).
+  async setTaskConfig(next: ReasonerTaskConfigEingabe): Promise<ReasonerTaskConfig> {
     if (this.policySource === "env") {
       throw new ReasonerPolicyLockedError();
     }
     const normalized = this.normalizeTaskConfig(next); // wirft bei Ungültigem, bevor irgendetwas passiert
-    await this.policyRepo.set(normalized); // ZUERST persistieren …
-    this.taskConfig = normalized; // … Laufzeit erst nach erfolgreichem Write
+    await this.policyRepo.set(normalized.config); // ZUERST persistieren …
+    this.taskConfig = normalized.config; // … Laufzeit erst nach erfolgreichem Write
+    this.migration = normalized.migration;
     this.policySource = "db"; // die Laufzeit-Policy ist jetzt die gerade persistierte Admin-Wahl.
     return this.getTaskConfig();
   }
@@ -584,7 +790,10 @@ export class Reasoner {
     const envRaw = opts?.envGlobal?.trim();
     if (envRaw) {
       if (isValidReasonerChoice(envRaw)) {
-        this.taskConfig = { global: envRaw, perTask: {} };
+        // JOB 3134: auch der Deploy-Wert wird migriert (`cloud` → Vorgabe-Anbieter) und gemeldet.
+        const normalized = this.normalizeTaskConfig({ global: envRaw, perTask: {} });
+        this.taskConfig = normalized.config;
+        this.migration = normalized.migration;
         // SCRUM-525 P.5 (WP-C): merkt sich den ENV-Ursprung fürs restliche Prozessleben — setTaskConfig
         // lehnt Admin-Schreibversuche ab, solange dieser Zustand gilt (bis zum nächsten Neustart ohne ENV).
         this.policySource = "env";
@@ -606,11 +815,12 @@ export class Reasoner {
     config: ReasonerTaskConfig;
     detail?: string;
   }> {
-    let stored: ReasonerTaskConfig | null;
+    let stored: ReasonerTaskConfigEingabe | null;
     try {
       stored = await this.policyRepo.get();
     } catch (err) {
       this.taskConfig = clone(LOAD_FAILURE_FALLBACK_POLICY);
+      this.migration = undefined;
       // SCRUM-525 P.5 (WP-C): ein Ladefehler ist KEIN ENV-Override — der Schreibpfad bleibt offen, damit
       // ein Admin die Zuordnung setzen kann, sobald die DB wieder erreichbar ist (s. auch server.ts-Log,
       // das hier bewusst KEINE automatische Wiederherstellung mehr verspricht).
@@ -623,16 +833,22 @@ export class Reasoner {
     }
     if (stored) {
       // Defensive Normalisierung: auch ein (theoretisch) fremd-manipulierter Datensatz wird geprüft.
-      this.taskConfig = this.normalizeTaskConfig(stored);
+      // JOB 3134: ein Bestand mit `cloud`/`model` wird hier MIGRIERT (in der Laufzeit, gemeldet in
+      // `configStatus().migration`) — die Datenbank bleibt unberührt, bis eine ausdrückliche
+      // Speicherung den neuen Wert schreibt (Boot schreibt nie in die DB).
+      const normalized = this.normalizeTaskConfig(stored);
+      this.taskConfig = normalized.config;
+      this.migration = normalized.migration;
       this.policySource = "db";
       return { source: "persisted", config: this.getTaskConfig() };
     }
     this.taskConfig = clone(DEFAULT_REASONER_POLICY);
+    this.migration = undefined;
     this.policySource = "default";
     return { source: "default", config: this.getTaskConfig() };
   }
 
-  private choiceFor(task: ModelRunTask): ReasonerTaskChoice {
+  private choiceFor(task: ModelRunTask): ReasonerAktiveWahl {
     return this.taskConfig.perTask[task] ?? this.taskConfig.global;
   }
 
@@ -812,39 +1028,46 @@ export class Reasoner {
   // SCRUM-424: ein echtes Modell ist verfügbar, wenn Cloud ODER lokal verdrahtet ist.
   // Das aktive Anzeige-Modell bevorzugt die Cloud (Rückwärtskompatibilität), sonst lokal.
   private usingAnyModel(): boolean {
-    return this.usingPrimary() || this.usingSecondary();
+    return this.usingAnyCloud() || this.usingSecondary();
   }
 
   // WP-SHIP9-S1 (bens W2-Auflage aus BERICHT-w2check): taskbezogene Ursachenbestimmung — wertet
   // GENAU die Routing-Entscheidung aus, mit der providerChain(task, confidential) die Cloud-Kante
-  // setzt (choiceFor(task) cloud-geeignet UND Cloud-Primary verdrahtet). Ein globales
+  // setzt (choiceFor(task) meint einen Anbieter UND der ist verdrahtet). Ein globales
   // usingAnyModel() reicht bewusst NICHT: eine deterministische Task-Policy, eine local-Policy
   // ohne lokales Modell und der fail-closed Policy-Ladefehler (LOAD_FAILURE_FALLBACK_POLICY →
   // deterministic) dürfen NIE als Vertraulichkeitsblockade erscheinen.
   private cloudExcludedByConfidentiality(task: ModelRunTask, confidential: boolean): boolean {
-    if (!confidential || !this.usingPrimary()) {
-      return false;
-    }
-    const choice = this.choiceFor(task);
-    return choice === "auto" || choice === "cloud" || choice === "model";
+    return confidential && this.cloudFuerWahl(this.choiceFor(task)) !== undefined;
+  }
+
+  // JOB 3134 R3 (bens Korrekturpflicht 1): die aufgabenlosen Wege (Konflikt-/Dublettenurteil,
+  // Weltwissen, Status) lesen DIESELBE Kette wie jede Aufgabe — die der gespeicherten globalen
+  // Wahl, ohne das deterministische Schlussglied. Bis Runde 2 stand hier `judgeCloud()`, das bei
+  // fehlendem gewähltem Client auf den Vorgabe-Anbieter zurückfiel: „Claude gewählt, Anthropic nicht
+  // eingerichtet" schickte Weltwissen und Konfliktprüfung an OpenAI — genau der heimliche Wechsel,
+  // den Pflichtlieferung 5 ausschließt. Jetzt gibt es EINEN Auswahlweg (`chainForChoice`): fehlt
+  // der gewählte Anbieter, bleibt die Kette ohne externen Anbieter, und der Ausgang sagt „no-model".
+  private globaleKette(confidential = false): ReasonerProvider[] {
+    return this.chainForChoice(this.taskConfig.global, confidential).filter(
+      (provider) => provider !== this.fallback,
+    );
   }
 
   private activeModelProvider(): ReasonerProvider {
-    if (this.usingPrimary()) {
-      return this.primary;
-    }
-    if (this.usingSecondary()) {
-      return this.secondary;
-    }
-    return this.fallback;
+    return this.globaleKette()[0] ?? this.fallback;
   }
 
-  // FR-RSN-05: server-echte Statusanzeige (aktiv, wenn IRGENDEIN Modell verfügbar ist).
+  // FR-RSN-05: server-echte Statusanzeige. JOB 3134 R3: „aktiv" heißt, dass die GEWÄHLTE Kette
+  // ein Modell trägt — nicht, dass irgendein Modell verdrahtet ist. Vorher meldete `active: true`
+  // mit `provider: deterministic`, sobald ein nicht gewählter Anbieter eingerichtet war; die
+  // KI-Prüfung (ai-check-worker) hätte dann Paare geprüft, die kein Urteil bekommen können.
   status(): ReasonerStatus {
-    const active = this.usingAnyModel();
+    const aktiv = this.activeModelProvider();
+    const active = aktiv !== this.fallback;
     return {
       active,
-      provider: this.activeModelProvider().name,
+      provider: aktiv.name,
       mode: active ? "model" : "deterministic",
     };
   }
@@ -872,9 +1095,7 @@ export class Reasoner {
     if (chainModels.length === 0) {
       return false; // Aufgabe bewusst deterministisch gestellt bzw. kein Modell verdrahtet
     }
-    return chainModels.some(
-      (p) => this.providerReachability(p === this.primary ? "cloud" : "local") !== "unreachable",
-    );
+    return chainModels.some((p) => this.providerReachability(this.kanteVon(p)) !== "unreachable");
   }
 
   // ==============================================================================================
@@ -913,13 +1134,12 @@ export class Reasoner {
   // Laufzeitfehler mit lokalem/deterministischem Rückfall erzeugt keine abrechenbare Antwort.
   // Der Oberflächen-Wortlaut sagt deshalb „kann … auslösen" (i18n `ai.costHint`), nie „startet".
   private taskBillable(task: ModelRunTask): boolean {
-    if (!this.usingPrimary()) {
-      return false; // keine Cloud verdrahtet → nichts an dieser Installation kostet etwas
+    // JOB 3134: das Cloud-Glied DIESER Kette (höchstens eines) und die Erreichbarkeit SEINER Kante.
+    const cloud = this.providerChain(task).find((p) => this.anbieterVon(p) !== undefined);
+    if (!cloud) {
+      return false; // keine Cloud verdrahtet bzw. diese Aufgabe lokal oder deterministisch gestellt
     }
-    if (!this.providerChain(task).includes(this.primary)) {
-      return false; // diese Aufgabe ist lokal oder deterministisch gestellt
-    }
-    return this.providerReachability("cloud") !== "unreachable";
+    return this.providerReachability(this.kanteVon(cloud)) !== "unreachable";
   }
 
   // D-AISTATE PAKET 3 (bens V4, 23.07.): zusätzlich eine ABSTRAKTE per-Task-Nutzbarkeitskarte
@@ -939,7 +1159,7 @@ export class Reasoner {
     const active = this.usingAnyModel();
     return {
       active,
-      mode: this.usingPrimary() ? "cloud" : this.usingSecondary() ? "local" : "deterministic",
+      mode: this.usingAnyCloud() ? "cloud" : this.usingSecondary() ? "local" : "deterministic",
       reachable: this.reachabilityState(),
       tasks: aufgabenKarte((task) => this.taskModelUsable(task)),
       // AUFTRAG-mega67 BLOCK G: kostet ein Klick auf DIESE Aufgabe wirklich Geld? (s. taskBillable)
@@ -949,14 +1169,35 @@ export class Reasoner {
 
   // SCRUM-166: read-only Provider-/Model-Konfiguration. Nur Metadaten — keine Secrets,
   // keine Prompt-/Antwortinhalte. Ohne konfiguriertes Modell ehrlich Demo-Modus.
+  // JOB 3134: was die Fläche über EINEN externen Anbieter erfährt — eingerichtet (Clientname und
+  // Modell, wie sie später im Laufprotokoll stehen) oder nicht (der Grund aus der Fabrik).
+  private cloudStatus(anbieter: ReasonerCloudAnbieter): ReasonerCloudAnbieterStatus {
+    const provider = this.cloudProvider(anbieter);
+    if (provider) {
+      const model = provider.modelName?.();
+      return { configured: true, name: provider.name, ...(model ? { model } : {}) };
+    }
+    return {
+      configured: false,
+      grund: this.cloudGruende[anbieter] ?? "nicht eingerichtet (kein Client verdrahtet).",
+    };
+  }
+
   configStatus(): ReasonerConfigStatus {
     const configured = this.usingAnyModel();
-    const activeModel = this.activeModelProvider();
+    // JOB 3134: „AKTIVE KI" IST, WAS DIE GESPEICHERTE GLOBALE WAHL BESTIMMT — nicht „der erste
+    // verfügbare Anbieter". Bis hierher stand hier `activeModelProvider()` (Cloud vor lokal, egal
+    // was gewählt war): genau der Widerspruch „Dropdown Claude, aktiv ChatGPT", den Pedi meldete.
+    // Jetzt ist es das erste Glied der Kette der globalen Wahl; ist das der Ersatzmodus (Wahl
+    // deterministisch, oder gewählter Anbieter nicht eingerichtet), steht das hier auch — mit
+    // `mode: "demo"`, obwohl `configured` (irgendein Modell ist verdrahtet) wahr sein kann.
+    const aktiv = this.chainForChoice(this.taskConfig.global)[0] ?? this.fallback;
+    const aktivIstModell = aktiv !== this.fallback;
     return {
-      provider: configured ? activeModel.name : this.fallback.name,
-      ...(configured ? { model: activeModel.name } : {}),
+      provider: aktivIstModell ? aktiv.name : this.fallback.name,
+      ...(aktivIstModell ? { model: aktiv.name } : {}),
       configured,
-      mode: configured ? "model" : "demo",
+      mode: aktivIstModell ? "model" : "demo",
       fallbackAvailable: true,
       // mega52 D1: Niederländisch ist eine eigene Reasoner-Sprache und wird hier ehrlich gemeldet.
       supportsLocales: ["de", "en", "nl"],
@@ -964,13 +1205,24 @@ export class Reasoner {
       taskConfig: this.getTaskConfig(),
       effective: Object.fromEntries(REASONER_TASKS.map((task) => [task, this.effectiveFor(task)])),
       // SCRUM-424: der eigene lokale LLM + welche KI je Aufgabe zuerst arbeitet.
-      cloudConfigured: this.usingPrimary(),
+      cloudConfigured: this.usingAnyCloud(),
       localConfigured: this.usingSecondary(),
       ...(this.usingSecondary() ? { localProvider: this.secondary.name } : {}),
       effectiveProvider: Object.fromEntries(
         REASONER_TASKS.map((task) => [task, this.providerLabelFor(task)]),
       ),
-      persisted: false,
+      // JOB 3134: dieselbe Auflösung mit Anbieternamen, die beiden Anbieter einzeln, der
+      // Vorgabe-Anbieter hinter „auto" und die nachvollziehbare Migration abgelöster Werte.
+      effectiveAnbieter: Object.fromEntries(
+        REASONER_TASKS.map((task) => [task, this.effectiveAnbieterFor(task)]),
+      ),
+      cloudProviders: {
+        openai: this.cloudStatus("openai"),
+        anthropic: this.cloudStatus("anthropic"),
+      },
+      autoAnbieter: this.vorgabeAnbieter() ?? null,
+      ...(this.migration ? { migration: this.migration } : {}),
+      persisted: this.policySource === "db",
       // SCRUM-525 P.5 (WP-C): additive Eigenschaft — zeigt der Admin-UI, ob die Zuordnung per Deploy-ENV
       // gesperrt ist ("env", PUT liefert 409), aus der DB stammt ("db") oder (noch) Default ist.
       policySource: this.policySource,
@@ -1458,8 +1710,10 @@ export class Reasoner {
   // Modelle (Cloud → lokal) können das; ohne Modell ehrlich leer (demo=true, kein Erfinden).
   // Das Ergebnis ist IMMER extern/ungeprüft; die Freigabe (Stufe „offen") prüft die Route.
   async enrichPublic(query: string, locale: ReasonerLocale = "de"): Promise<EnrichResult> {
-    for (const provider of [this.primary, this.secondary]) {
-      if (provider === this.fallback || !provider.isAvailable() || !provider.enrichPublic) {
+    // JOB 3134 R3: die Kette der GEWÄHLTEN globalen Wahl (s. globaleKette) — nie ein anderer
+    // externer Anbieter, auch nicht, wenn der gewählte fehlt.
+    for (const provider of this.globaleKette()) {
+      if (!provider.isAvailable() || !provider.enrichPublic) {
         continue;
       }
       try {
@@ -1500,22 +1754,13 @@ export class Reasoner {
     providers: ReasonerProvider[];
     confidentialExcluded: boolean;
   } {
-    const providers: ReasonerProvider[] = [];
-    let confidentialExcluded = false;
-    if (this.usingPrimary()) {
-      if (confidential) {
-        confidentialExcluded = true;
-      } else {
-        providers.push(this.primary);
-      }
-    }
-    if (this.usingSecondary()) {
-      if (confidential && this.secondary.rejectsConfidential?.() === true) {
-        confidentialExcluded = true;
-      } else {
-        providers.push(this.secondary);
-      }
-    }
+    // JOB 3134 R3: EXAKT die Kette des zentralen Chokepoints für die globale Wahl (s. globaleKette)
+    // — kein zweiter Auswahlweg mehr. Ausgeschlossen GENAU wegen der Vertraulichkeit ist, was in
+    // derselben Kette ohne das Paar-Bit stünde, mit ihm aber fehlt (Cloud, oder ein nicht
+    // bestätigter Secondary).
+    const providers = this.globaleKette(confidential);
+    const confidentialExcluded =
+      confidential && this.globaleKette(false).some((provider) => !providers.includes(provider));
     return { providers, confidentialExcluded };
   }
 
@@ -1676,8 +1921,10 @@ export class Reasoner {
   // SCRUM-167: select bleibt synchron (reines Keyword-Ranking, kein Modell-/Netzaufruf).
   // ModelRun wird fire-and-forget protokolliert; demo=true, kein Fallback-Pfad. Nur Metadaten.
   select(question: string, candidates: readonly KnowledgeRef[]): KnowledgeRef[] {
-    const usePrimary = this.usingPrimary();
-    const provider = usePrimary ? this.primary : this.fallback;
+    // JOB 3134 R3 (bens Korrekturpflicht 2): das erste Glied der Kette DER AUFGABE `select` — mit
+    // Aufgabenabweichung und Zurücksetzen —, damit der Laufdatensatz denselben Anbieter nennt wie
+    // `configStatus().effectiveAnbieter.select`. Bis Runde 2 las `select()` nur die globale Wahl.
+    const provider = this.providerChain("select")[0] ?? this.fallback;
     const startedAt = new Date().toISOString();
     try {
       const result = provider.select(question, candidates);
