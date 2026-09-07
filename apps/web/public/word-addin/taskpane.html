@@ -10418,6 +10418,9 @@
     //     „nicht belastbar: <Grund> — m von n Quellen ohne belastbares Urteil" (Runde 6)
     //   konflikt                                                     — die Karte mit beiden Stellen
     //   leer (`gelaufen === true`, keine Treffer)                    — „Keine Abweichung … (geprueft <Zeit>)"
+    //   neu geoeffneter Entwurf (JOB 3174)                           — „Fuer diesen Entwurf liegt keine
+    //     frische Pruefung … vor" AM ENTWURF, mit dem Weg, sie zu starten; nie Leere, nie „keine
+    //     Abweichung". Die Doppelungen der Antwort stehen in JEDER Lage als eigene Aussage daneben.
     // „Keine Abweichung" steht also NUR nach einer erfolgreichen, frischen Prüfung mit gelaufenem
     // Modell, das fuer JEDE vorgelegte Quelle ein Urteil geliefert hat, das der Konfliktdienst gelten
     // liess (`gelaufen` ist seit Runde 6 „belastbar gelaufen", check-text-routes.ts). Ging nur der
@@ -10482,6 +10485,17 @@
         ka7StandAusfall: ", {m} davon ohne belastbares Urteil",
         ka7EinreichOffen: "Offener Widerspruch zu „{titel}“ — du kannst trotzdem einreichen; die Regelung bleibt unverändert.",
         ka7EinreichGesendet: "Bewusst eingereicht mit offenem Widerspruch zu „{titel}“ — die Regelung bleibt unverändert, bis jemand entscheidet.",
+        ka7DoppelungEine: "Das gibt es schon — der Bestand führt dazu bereits einen Eintrag:",
+        ka7DoppelungMehrere: "Das gibt es schon — der Bestand führt dazu bereits {n} Einträge:",
+        ka7DoppelungAuchKonflikt: "Dein Text widerspricht diesem Eintrag zugleich — er steht oben bei den Abweichungen.",
+        ka7ZeileAuchDoppelung: "Diesen Eintrag gibt es zu deinem Text schon — er steht unten bei den Doppelungen.",
+        ka7EntwurfOhnePruefung: "Keine frische Prüfung",
+        ka7EntwurfOhneWiderspruch: "Kein Widerspruch · {zeit}",
+        ka7EntwurfOhneQuelle: "Keine Vergleichsquelle · {zeit}",
+        ka7EntwurfOhneWiderspruchTeil: "Teilabgleich · kein Widerspruch · {zeit}",
+        ka7EntwurfPruefenCta: "Jetzt gegen die Regelungen prüfen",
+        ka7EntwurfLaeuft: "Prüfung läuft …",
+        ka7EntwurfMenuText: "Klara kann deinen markierten Text mit den freigegebenen Regelungen abgleichen und zeigt Abweichungen an. Ein Befund gilt nur für die laufende Sitzung: Nach dem Schließen des Fensters steht am Entwurf wieder „Keine frische Prüfung“, bis du den Abgleich erneut startest. Dabei wird nichts gespeichert und nichts an deinem Text verändert.",
       },
       en: {
         ka7Cta: "Does this match the rule?",
@@ -10529,6 +10543,17 @@
         ka7StandAusfall: ", {m} of them without a reliable verdict",
         ka7EinreichOffen: "Open contradiction with “{titel}” — you can still submit; the rule stays unchanged.",
         ka7EinreichGesendet: "Submitted deliberately with an open contradiction with “{titel}” — the rule stays unchanged until someone decides.",
+        ka7DoppelungEine: "This already exists — the knowledge base already holds one entry on it:",
+        ka7DoppelungMehrere: "This already exists — the knowledge base already holds {n} entries on it:",
+        ka7DoppelungAuchKonflikt: "Your text also contradicts this entry — it is listed above under the deviations.",
+        ka7ZeileAuchDoppelung: "An entry like your text already exists — it is listed below under the duplicates.",
+        ka7EntwurfOhnePruefung: "No fresh check",
+        ka7EntwurfOhneWiderspruch: "No contradiction · {zeit}",
+        ka7EntwurfOhneQuelle: "No comparable source · {zeit}",
+        ka7EntwurfOhneWiderspruchTeil: "Part checked · no contradiction · {zeit}",
+        ka7EntwurfPruefenCta: "Check against the rules now",
+        ka7EntwurfLaeuft: "Check running …",
+        ka7EntwurfMenuText: "Klara can compare your selected text with the released rules and shows deviations. A finding only lasts for the current session: once the pane is closed, the draft says “No fresh check” again until you start the comparison anew. Nothing is stored and nothing in your text is changed.",
       },
       nl: {
         ka7Cta: "Past dit bij de regeling?",
@@ -10576,6 +10601,17 @@
         ka7StandAusfall: ", {m} daarvan zonder betrouwbaar oordeel",
         ka7EinreichOffen: "Open tegenstrijdigheid met “{titel}” — je kunt toch indienen; de regeling blijft ongewijzigd.",
         ka7EinreichGesendet: "Bewust ingediend met een open tegenstrijdigheid met “{titel}” — de regeling blijft ongewijzigd tot iemand beslist.",
+        ka7DoppelungEine: "Dat bestaat al — het bestand heeft hier al één vermelding over:",
+        ka7DoppelungMehrere: "Dat bestaat al — het bestand heeft hier al {n} vermeldingen over:",
+        ka7DoppelungAuchKonflikt: "Je tekst spreekt deze vermelding tegelijk tegen — die staat hierboven bij de afwijkingen.",
+        ka7ZeileAuchDoppelung: "Zo'n vermelding bestaat al bij je tekst — die staat hieronder bij de doublures.",
+        ka7EntwurfOhnePruefung: "Geen actuele controle",
+        ka7EntwurfOhneWiderspruch: "Geen tegenstrijdigheid · {zeit}",
+        ka7EntwurfOhneQuelle: "Geen vergelijkbare bron · {zeit}",
+        ka7EntwurfOhneWiderspruchTeil: "Deels · geen tegenstrijdigheid · {zeit}",
+        ka7EntwurfPruefenCta: "Nu tegen de regelingen controleren",
+        ka7EntwurfLaeuft: "Controle loopt …",
+        ka7EntwurfMenuText: "Klara kan je geselecteerde tekst met de vrijgegeven regelingen vergelijken en toont afwijkingen. Een bevinding geldt alleen voor de lopende sessie: na het sluiten van het venster staat er bij het concept weer “Geen actuele controle”, tot je de vergelijking opnieuw start. Er wordt niets opgeslagen en niets in je tekst gewijzigd.",
       },
     };
 
@@ -10659,34 +10695,97 @@
       }
     }
 
+    // ------------------------------------------------------------------------------------------
+    // JOB 3174 (M4b, Lieferung 3) — DAS TREFFERVERHAELTNIS: DOPPELUNG IST KEINE ABWEICHUNG.
+    // ------------------------------------------------------------------------------------------
+    // Die Route fuehrt ZWEI Listen, in derselben Trefferform (check-text-routes.ts `toResponse`):
+    // `conflicts` (Widerspruch/ueberholt, gekennzeichnet durch `type` aus ConflictType) und
+    // `duplicates` (Doppelungen, gekennzeichnet durch `relation`). Bis hierher legte das Panel JEDEN
+    // Eintrag aus `conflicts` unbesehen unter das Wort „Abweichung" und las `duplicates" gar nicht —
+    // „das haben wir schon" und „das widerspricht" waren dieselbe Aussage. Jetzt:
+    //   · nur ein Eintrag mit BEKANNTEM Konflikttyp erzeugt die Aussage „Abweichung";
+    //   · ein Eintrag, den die Route als Doppelung kennzeichnet, wandert in die Doppelungsliste. Die
+    //     beiden Woerter dafuer stehen in services/conflicts/src/detect.ts:158-160 (das Urteil nennt
+    //     die Relation `doppelung`, der dort geplante eigene Konflikttyp heisst `duplicate`) — es
+    //     wird keines erfunden;
+    //   · ein FEHLENDER oder unbekannter Typ ist unauswertbar → Lage „fehler". Dieselbe Haerteregel
+    //     wie beim Treffer ohne Kennung: nicht raten;
+    //   · derselbe Eintrag in BEIDEN Listen wird als beides genannt — in beiden Listen, mit
+    //     Querverweis, nie auf eine der beiden Aussagen verkuerzt.
+    // Der Prueflauf (`konfliktpruefung`) sagt weiter nur etwas ueber die KONFLIKTpruefung; die
+    // Doppelungen des deterministischen Wegs stehen unabhaengig davon.
+    var KA7_KONFLIKT_TYPEN = { truth: true, experience: true, context: true, temporal: true, role: true };
+    var KA7_DOPPELUNG_TYPEN = { doppelung: true, duplicate: true };
+
+    /** Titel, Version, Pruefstand — in `duplicates` UND `conflicts` dieselbe Form (JOB 3020/3093). */
+    function ka7Treffer(eintrag, id) {
+      return {
+        id: id,
+        title: ka7Text(eintrag.koTitle) || id,
+        pruefstand: KA7_PRUEFSTAND_KEYS[eintrag.pruefstand] ? eintrag.pruefstand : null,
+        version: typeof eintrag.version === "number" && isFinite(eintrag.version) ? eintrag.version : null,
+      };
+    }
+
+    /** Eine Doppelung: der Treffer plus die Beziehung, im Wortlaut der Erfassen-Flaeche (W6). */
+    function ka7Doppelung(eintrag, id) {
+      var d = ka7Treffer(eintrag, id);
+      d.relation = typeof eintrag.relation === "string" && W6_RELATION_KEYS[eintrag.relation]
+        ? eintrag.relation
+        : null;
+      d.auchKonflikt = false;
+      return d;
+    }
+
     /**
-     * Die Antwort der Route → der Stand. GELESEN, nie hergeleitet: ein Koerper ohne `conflicts`-Liste
-     * oder ohne `konfliktpruefung` ist keine Antwort dieser Route (Lage „fehler"); ein Treffer ohne
-     * Kennung macht die ganze Liste unauswertbar (Lehre JOB 3092 R1). Ein Konflikt wird in JEDER Lage
-     * genannt, wenn die Route einen fuehrt; die Leere nur, wenn die Konfliktpruefung wirklich lief.
+     * Die Antwort der Route → der Stand. GELESEN, nie hergeleitet: ein Koerper ohne `conflicts`- oder
+     * `duplicates`-Liste oder ohne `konfliktpruefung` ist keine Antwort dieser Route (Lage „fehler");
+     * ein Treffer ohne Kennung oder ohne Verhaeltnis macht die ganze Liste unauswertbar (Lehre JOB
+     * 3092 R1, JOB 3174). Ein Konflikt wird in JEDER Lage genannt, wenn die Route einen fuehrt; die
+     * Leere nur, wenn die Konfliktpruefung wirklich lief.
      */
     function ka7Uebersetzen(koerper) {
-      if (!koerper || !Array.isArray(koerper.conflicts) ||
+      if (!koerper || !Array.isArray(koerper.conflicts) || !Array.isArray(koerper.duplicates) ||
           !koerper.konfliktpruefung || typeof koerper.konfliktpruefung !== "object" ||
           typeof koerper.konfliktpruefung.gelaufen !== "boolean") {
         return { lage: "fehler" };
       }
       var pruefung = koerper.konfliktpruefung;
       var konflikte = [];
-      for (var i = 0; i < koerper.conflicts.length; i += 1) {
+      var doppelungen = [];
+      var i;
+      for (i = 0; i < koerper.conflicts.length; i += 1) {
         var c = koerper.conflicts[i];
         var id = c && typeof c.koId === "string" ? c.koId : "";
         if (!id) { return { lage: "fehler" }; }
+        var typ = typeof c.type === "string" ? c.type : "";
+        // Ohne Verhaeltnis keine Aussage: weder „Abweichung" noch „das gibt es schon".
+        if (!typ) { return { lage: "fehler" }; }
+        if (KA7_DOPPELUNG_TYPEN[typ]) { doppelungen.push(ka7Doppelung(c, id)); continue; }
+        if (!KA7_KONFLIKT_TYPEN[typ]) { return { lage: "fehler" }; }
         var stellen = c.stellen && typeof c.stellen === "object" ? c.stellen : null;
-        konflikte.push({
-          id: id,
-          title: ka7Text(c.koTitle) || id,
-          pruefstand: KA7_PRUEFSTAND_KEYS[c.pruefstand] ? c.pruefstand : null,
-          version: typeof c.version === "number" && isFinite(c.version) ? c.version : null,
-          eigen: stellen ? ka7Text(stellen.eigen) : null,
-          quelle: stellen ? ka7Text(stellen.quelle) : null,
-          grund: ka7Text(c.rationale),
-        });
+        var k = ka7Treffer(c, id);
+        k.eigen = stellen ? ka7Text(stellen.eigen) : null;
+        k.quelle = stellen ? ka7Text(stellen.quelle) : null;
+        k.grund = ka7Text(c.rationale);
+        k.auchDoppelung = false;
+        konflikte.push(k);
+      }
+      for (i = 0; i < koerper.duplicates.length; i += 1) {
+        var dup = koerper.duplicates[i];
+        var dupId = dup && typeof dup.koId === "string" ? dup.koId : "";
+        if (!dupId) { return { lage: "fehler" }; }
+        doppelungen.push(ka7Doppelung(dup, dupId));
+      }
+      var konfliktIds = {};
+      for (i = 0; i < konflikte.length; i += 1) { konfliktIds[konflikte[i].id] = true; }
+      var doppelIds = {};
+      for (i = 0; i < doppelungen.length; i += 1) {
+        doppelIds[doppelungen[i].id] = true;
+        if (konfliktIds[doppelungen[i].id]) { doppelungen[i].auchKonflikt = true; }
+      }
+      for (i = 0; i < konflikte.length; i += 1) {
+        if (doppelIds[konflikte[i].id]) { konflikte[i].auchDoppelung = true; }
       }
       var kandidaten = typeof pruefung.kandidaten === "number" ? pruefung.kandidaten : 0;
       var ausgefallen = typeof pruefung.ausgefallen === "number" ? pruefung.ausgefallen : 0;
@@ -10695,12 +10794,12 @@
       var verworfen = typeof pruefung.verworfen === "number" ? pruefung.verworfen : 0;
       var zahlen = { kandidaten: kandidaten, ausgefallen: ausgefallen, verworfen: verworfen };
       if (konflikte.length > 0) {
-        return { lage: "konflikt", konflikte: konflikte, kandidaten: kandidaten, ausgefallen: ausgefallen, verworfen: verworfen, belastbar: pruefung.gelaufen === true, grund: ka7Text(pruefung.grund) };
+        return { lage: "konflikt", konflikte: konflikte, doppelungen: doppelungen, kandidaten: kandidaten, ausgefallen: ausgefallen, verworfen: verworfen, belastbar: pruefung.gelaufen === true, grund: ka7Text(pruefung.grund) };
       }
       if (pruefung.gelaufen === true) {
-        return { lage: "leer", konflikte: [], kandidaten: kandidaten, ausgefallen: ausgefallen, verworfen: verworfen, belastbar: true };
+        return { lage: "leer", konflikte: [], doppelungen: doppelungen, kandidaten: kandidaten, ausgefallen: ausgefallen, verworfen: verworfen, belastbar: true };
       }
-      return { lage: "nicht_geprueft", konflikte: [], grund: ka7Text(pruefung.grund), kandidaten: kandidaten, ausgefallen: ausgefallen, verworfen: verworfen, belastbar: false, zahlen: zahlen };
+      return { lage: "nicht_geprueft", konflikte: [], doppelungen: doppelungen, grund: ka7Text(pruefung.grund), kandidaten: kandidaten, ausgefallen: ausgefallen, verworfen: verworfen, belastbar: false, zahlen: zahlen };
     }
 
     function ka7Setzen(stand) {
@@ -10882,6 +10981,14 @@
       entscheidung.id = "ka7-entscheidung";
       entscheidung.className = "hidden";
       karte.appendChild(entscheidung);
+      // JOB 3174 (Lieferung 3): die Doppelungen — eine EIGENE, benannte Aussage unter der Abweichung.
+      var doppelSatz = document.createElement("p");
+      doppelSatz.id = "ka7-doppelung-satz";
+      doppelSatz.className = "hidden";
+      karte.appendChild(doppelSatz);
+      var doppelListe = document.createElement("ul");
+      doppelListe.id = "ka7-doppelung-liste";
+      karte.appendChild(doppelListe);
       var stand = document.createElement("p");
       stand.id = "ka7-stand";
       stand.className = "muted hidden";
@@ -10934,6 +11041,14 @@
         grund.textContent = k.grund;
         zeile.appendChild(grund);
       }
+      // JOB 3174: derselbe Eintrag steht auch in der Doppelungsliste — beides, nicht eines davon.
+      if (k.auchDoppelung) {
+        zeile.setAttribute("data-doppelung", "1");
+        var auch = document.createElement("p");
+        auch.className = "ka7-auch-doppelung";
+        auch.textContent = t("ka7ZeileAuchDoppelung");
+        zeile.appendChild(auch);
+      }
       // Runde 7: eine uebernommene, nicht aufgefrischte Zeile sagt das — mit der Uhrzeit ihres Befunds.
       if (k.vorbehaltZeit) {
         zeile.setAttribute("data-vorbehalt", "1");
@@ -10941,6 +11056,38 @@
         vorbehalt.className = "ka7-vorbehalt status warn";
         vorbehalt.textContent = t("ka7ZeileVorbehalt", { zeit: ka7Uhrzeit(k.vorbehaltZeit) });
         zeile.appendChild(vorbehalt);
+      }
+      return zeile;
+    }
+
+    /**
+     * Eine Zeile der Doppelungsliste: „Das gibt es schon" — Titel (Link auf den Volltext), Version,
+     * Pruefstand und die Beziehung im Wortlaut der Erfassen-Flaeche (W6_RELATION_KEYS, kein zweiter
+     * Wortlaut fuer dieselbe Aussage). Ein Treffer, der ZUGLEICH Konflikt ist, sagt auch das.
+     */
+    function ka7DoppelungZeile(d) {
+      var zeile = document.createElement("li");
+      zeile.setAttribute("data-quelle", d.id);
+      var kopf = document.createElement("p");
+      kopf.className = "ka7-doppelung-quelle";
+      var weg = document.createElement("a");
+      weg.href = koDetailUrl(window.location.origin, d.id);
+      weg.target = "_blank";
+      weg.rel = "noopener noreferrer";
+      weg.textContent = d.title;
+      kopf.appendChild(weg);
+      var teile = [];
+      teile.push(d.version === null ? t("ka7VersionUnbekannt") : t("ka7Version", { v: String(d.version) }));
+      teile.push(d.pruefstand ? t(KA7_PRUEFSTAND_KEYS[d.pruefstand]) : t("askStatusUnknown"));
+      if (d.relation) { teile.push(t(W6_RELATION_KEYS[d.relation])); }
+      kopf.appendChild(document.createTextNode(" · " + teile.join(" · ")));
+      zeile.appendChild(kopf);
+      if (d.auchKonflikt) {
+        zeile.setAttribute("data-konflikt", "1");
+        var auch = document.createElement("p");
+        auch.className = "ka7-auch-konflikt";
+        auch.textContent = t("ka7DoppelungAuchKonflikt");
+        zeile.appendChild(auch);
       }
       return zeile;
     }
@@ -10968,10 +11115,15 @@
       var satz = document.getElementById("ka7-satz");
       var liste = document.getElementById("ka7-liste");
       var entscheidung = document.getElementById("ka7-entscheidung");
+      var doppelSatz = document.getElementById("ka7-doppelung-satz");
+      var doppelListe = document.getElementById("ka7-doppelung-liste");
       var stand = document.getElementById("ka7-stand");
-      if (!karte || !satz || !liste || !entscheidung || !stand) { return; }
+      if (!karte || !satz || !liste || !entscheidung || !doppelSatz || !doppelListe || !stand) { return; }
       karte.setAttribute("aria-label", t("ka7Label"));
       while (liste.firstChild) { liste.removeChild(liste.firstChild); }
+      while (doppelListe.firstChild) { doppelListe.removeChild(doppelListe.firstChild); }
+      doppelSatz.textContent = "";
+      doppelSatz.className = "hidden";
       entscheidung.textContent = "";
       entscheidung.className = "hidden";
       stand.textContent = "";
@@ -11062,6 +11214,20 @@
         stand.textContent = ka7StandSatz(befund);
         stand.className = "muted";
       }
+      // JOB 3174 (Lieferung 3): die Doppelungen des ANGEZEIGTEN Standes — des frueheren Befunds,
+      // solange er die Karte traegt, sonst des frischen. Sie stehen unter der Abweichung, als eigene
+      // Aussage („Das gibt es schon"), nie unter dem Wort Abweichung.
+      var anzeige = befund || s;
+      var doppel = anzeige && Array.isArray(anzeige.doppelungen) ? anzeige.doppelungen : [];
+      if (doppel.length > 0) {
+        doppelSatz.textContent = doppel.length === 1
+          ? t("ka7DoppelungEine")
+          : t("ka7DoppelungMehrere", { n: String(doppel.length) });
+        doppelSatz.className = "";
+        for (var d = 0; d < doppel.length; d += 1) {
+          doppelListe.appendChild(ka7DoppelungZeile(doppel[d]));
+        }
+      }
       satz.className = satzClass;
       karte.className = "card";
     }
@@ -11071,8 +11237,31 @@
     // vor dem Senden („du kannst trotzdem einreichen") und nach dem Senden („bewusst eingereicht") —
     // und NUR, wenn die Markierung dort dieselbe ist, die geprueft wurde: ein Widerspruch zu einem
     // anderen Text waere eine Behauptung ohne Grundlage. Nichts wird blockiert, nichts geaendert.
+    //
+    // JOB 3174 (M4b, Lieferung 2) — DER WIEDER GEOEFFNETE ENTWURF SAGT, WAS GILT.
+    // Der Befund lebt ausschliesslich im Arbeitsspeicher dieser Panelinstanz (`ka7Stand`); das Panel
+    // speichert nichts (kein localStorage, kein sessionStorage, keine Add-in-Einstellung — Zeilen
+    // 1462 und 3656-3657 dieser Datei). Es gibt also KEINEN bestehenden entwurfsgebundenen
+    // Speicherweg, und es wird auch keiner erfunden (Weg b des Auftrags): schliesst und oeffnet Pedi
+    // das Fenster, ist der Befund fort — und statt der bisherigen LEERE traegt der Entwurf jetzt
+    // seinen PRUEFSTAND als kurze Beschriftung („Keine frische Pruefung"), samt Weg, sie zu starten
+    // (derselbe Aufruf wie der Knopf im Fragen-Reiter, ka7Pruefen — kein zweiter Pfad). Denselben
+    // Pruefstand traegt jeder Entwurf, dessen Pruefung gescheitert ist oder nie lief. Niemals steht
+    // dort „keine Abweichung" ohne erfolgreichen frischen Lauf.
     // ------------------------------------------------------------------------------------------
     function ka7EinreichHinweisElement() {
+      // RUNDE 3: der lange Satz wohnt im „?"-Menue der Erfassen-Flaeche — dort, wo diese Flaeche
+      // ihre Erklaertexte haelt (JOB 3057 K2 §5a). `data-t` traegt ihn durch den Sprachwechsel
+      // (renderStatics uebersetzt jedes [data-t]).
+      var menue = document.getElementById("capture-mehr");
+      if (menue && !document.getElementById("ka7-mehr-hinweis")) {
+        var erklaerung = document.createElement("p");
+        erklaerung.id = "ka7-mehr-hinweis";
+        erklaerung.className = "muted";
+        erklaerung.setAttribute("data-t", "ka7EntwurfMenuText");
+        erklaerung.textContent = t("ka7EntwurfMenuText");
+        menue.appendChild(erklaerung);
+      }
       var vorhanden = document.getElementById("ka7-einreich-hinweis");
       if (vorhanden) { return vorhanden; }
       var anker = document.getElementById("capture-ergebnis");
@@ -11081,29 +11270,99 @@
       p.id = "ka7-einreich-hinweis";
       p.className = "hidden";
       anker.parentNode.insertBefore(p, anker.nextSibling);
+      var knopf = document.createElement("button");
+      knopf.type = "button";
+      knopf.id = "ka7-einreich-pruefen";
+      knopf.className = "hidden";
+      knopf.addEventListener("click", ka7Pruefen);
+      anker.parentNode.insertBefore(knopf, p.nextSibling);
       return p;
     }
 
     function ka7EinreichHinweisZeichnen() {
       var el = ka7EinreichHinweisElement();
       if (!el) { return; }
+      var knopf = document.getElementById("ka7-einreich-pruefen");
+      var verbergen = function () {
+        el.className = "hidden";
+        el.textContent = "";
+        if (knopf) { knopf.className = "hidden"; knopf.textContent = ""; }
+      };
       var s = ka7Stand;
       // Runde 6: der Hinweis haengt am BEFUND, nicht am fluechtigen Stand — bei laufender oder
       // gescheiterter Wiederholung bleibt er, mit Vorbehalt (Codex R5, Korrekturpflicht 2).
       var befund = ka7Befund(s);
-      if (!befund || typeof captureAbsaetze !== "function") {
-        el.className = "hidden";
-        el.textContent = "";
-        return;
-      }
-      var geprueft = captureAbsaetze(befund.text).join("\n");
+      if (typeof captureAbsaetze !== "function") { verbergen(); return; }
       var gesendet = typeof captureErgebnis !== "undefined" && captureErgebnis;
       var aktuell = gesendet
         ? (typeof captureGesendet === "string" ? captureGesendet : "")
         : (Array.isArray(captureMarkierung) ? captureMarkierung.join("\n") : "");
-      if (geprueft.length === 0 || geprueft !== aktuell) {
-        el.className = "hidden";
-        el.textContent = "";
+      // Ohne Entwurf gibt es nichts zu sagen — weder einen Widerspruch noch eine fehlende Pruefung.
+      if (aktuell.length === 0) { verbergen(); return; }
+      var geprueft = befund ? captureAbsaetze(befund.text).join("\n") : "";
+      if (!befund || geprueft.length === 0 || geprueft !== aktuell) {
+        // ==========================================================================================
+        // RUNDE 3 (BEN R2, Korrekturpflicht 1) — DER PRUEFSTAND DIESES ENTWURFS, IN VIER WORTEN.
+        // ==========================================================================================
+        // Runde 1 stellte hier einen ganzen Satz hin (72 Zeichen) — Pedis Textmesser fuer die
+        // Erfassen-Flaeche wurde rot (JOB 3057 K2 §5.7: ausser Beschriftungen kein Satz, hoechstens
+        // 40 Zeichen). Runde 2 versteckte die Aussage stattdessen, sobald die KI-Weiche zu war; das
+        // nahm dem Entwurf genau die Auskunft, um die es geht. Jetzt beides zugleich:
+        //   · auf der FLAECHE steht eine kurze BESCHRIFTUNG — „Keine frische Pruefung",
+        //     „Pruefung laeuft …" oder „Kein Widerspruch · HH:MM", jede unter 40 Zeichen. Sie steht
+        //     IMMER, auch ohne KI-Freigabe: der Pruefstand ist eine Tatsache ueber diesen Entwurf,
+        //     keine Werbung fuer eine Funktion;
+        //   · der LANGE Satz (was der Abgleich tut, dass ein Befund nur die Sitzung ueberlebt)
+        //     wohnt im „?"-Menue (#ka7-mehr-hinweis) — dort, wo diese Flaeche ihre Erklaertexte
+        //     haelt (§5a);
+        //   · der KNOPF erscheint nur, wenn die KI-Weiche fuer dieses Dokument offen ist. Ohne sie
+        //     gaebe es nichts zu starten — ein Weg ins Leere waere Optik statt Ehrlichkeit; die
+        //     Karte im Fragen-Reiter sagt in ihrer eigenen Lage, was fehlt.
+        // Kein Grundsatz mehr auf der Flaeche: „Pruefung nicht moeglich: die KI hat kein
+        // verwertbares Urteil geliefert" ist ein Satz, kein Etikett — er steht auf der Karte.
+        var fuerDiesen = !!s && typeof s.text === "string" &&
+          captureAbsaetze(s.text).join("\n") === aktuell;
+        // Ein Entwurf, fuer den gar keine Pruefung moeglich ist (zu kurz, abgemeldet, kein Word),
+        // bekommt keinen Pruefstand angeheftet, den niemand herstellen kann.
+        if (!signedIn || !officeUsable() ||
+            aktuell.replace(/^\s+|\s+$/g, "").length < W6_MINDESTZEICHEN) {
+          verbergen();
+          return;
+        }
+        var weg = false;
+        var kurz;
+        if (fuerDiesen && s.lage === "laeuft") {
+          kurz = t("ka7EntwurfLaeuft");
+        } else if (fuerDiesen && s.lage === "leer") {
+          // NUR nach einem belastbar gelaufenen Lauf ohne Treffer (ka7Uebersetzen: `gelaufen` true)
+          // — die einzige Lage, in der eine Verneinung belegt ist, mit der Uhrzeit ihres Laufs.
+          // RUNDE 5 (BEN R4, Korrekturpflicht 1): die Verneinung reicht GENAU SO WEIT wie der Lauf.
+          // Die Route meldet auch bei null vorgelegten Quellen `gelaufen: true` — der Lauf fand nur
+          // nichts zu vergleichen. „Kein Widerspruch" waere dann eine Sachauskunft ueber einen
+          // Bestand, den niemand befragt hat. Und wurde nur der Anfang der Markierung vorgelegt
+          // (`gekuerzt`, ueber W6_HOECHSTZEICHEN), gilt die Verneinung nur fuer diesen Teil.
+          // Dieselbe Dreiteilung wie auf der Karte (ka7Zeichnen, Lage „leer") — kein zweiter Massstab.
+          // RUNDE 6 (Tor R5, tests/i18n/mega35-word-wortliste.test.ts:149): der Teil-Kurzstatz hiess
+          // „Teil geprueft · kein Widerspruch" und brach damit den Wortlistenvertrag der Word-Flaeche
+          // (mega35 B: „geprueft" steht NUR im Einstufungshinweis und in den dort einzeln benannten
+          // Vorgangsaussagen). Statt die Ausnahmeliste zu verlaengern, sagt die Beschriftung dasselbe
+          // mit dem EIGENEN Wort dieses Blocks: „Teilabgleich" (ka7Label „Abgleich mit der Regelung").
+          var zeitKurz = ka7Uhrzeit(s.zeit);
+          kurz = s.kandidaten === 0
+            ? t("ka7EntwurfOhneQuelle", { zeit: zeitKurz })
+            : s.gekuerzt
+              ? t("ka7EntwurfOhneWiderspruchTeil", { zeit: zeitKurz })
+              : t("ka7EntwurfOhneWiderspruch", { zeit: zeitKurz });
+        } else {
+          kurz = t("ka7EntwurfOhnePruefung");
+          weg = ka7ExterneKi().lage === "erlaubt";
+        }
+        el.textContent = kurz;
+        el.className = "muted";
+        if (knopf) {
+          knopf.textContent = weg ? t("ka7EntwurfPruefenCta") : "";
+          knopf.className = weg ? "ghost" : "hidden";
+        }
         return;
       }
       var titel = [];
@@ -11123,6 +11382,9 @@
       }
       el.textContent = text;
       el.className = "status warn";
+      // Ein Befund fuer diesen Entwurf liegt vor — der Weg zur Pruefung ist der Knopf im
+      // Fragen-Reiter, hier braucht es keinen zweiten.
+      if (knopf) { knopf.className = "hidden"; knopf.textContent = ""; }
     }
 
     // ------------------------------------------------------------------------------------------
@@ -11166,6 +11428,17 @@
         var ka7CaptureBestand = renderCapture;
         renderCapture = function () {
           ka7CaptureBestand.apply(this, arguments);
+          ka7EinreichHinweisZeichnen();
+        };
+      }
+      // JOB 3174 R2: die KI-Weiche entscheidet, ob am Entwurf ueberhaupt etwas stehen darf (s.
+      // ka7EinreichHinweisZeichnen). Sie wird ASYNCHRON aufgeloest — `renderKlaraS4` ist die EINE
+      // Stelle, an der jeder S4-Zustandswechsel ankommt; danach folgt der Hinweis. Das Original
+      // laeuft zuerst und unveraendert.
+      if (typeof renderKlaraS4 === "function") {
+        var ka7S4Bestand = renderKlaraS4;
+        renderKlaraS4 = function () {
+          ka7S4Bestand.apply(this, arguments);
           ka7EinreichHinweisZeichnen();
         };
       }

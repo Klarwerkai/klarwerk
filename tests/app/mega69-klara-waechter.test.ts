@@ -1576,6 +1576,60 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     //     aufgefrischt: …"). Vier Schluessel je Sprache dazu (ka7ZeileVorbehalt, ka7KopfVorbehalt,
     //     ka7EinreichVorbehaltTeil, ka7VorbehaltEintrag). Kein neues Abrufziel, kein Manifest, keine
     //     CSP, kein Schreibweg; gemessen: konfliktkarte-mounted P15/P15b/P15c.
+    // ============================================================================================
+    // JOB 3174 M4b (07.09.2026) — Auslieferungsfolgen der drei Nachtraege am KA7-Block:
+    // ============================================================================================
+    //   · WAS SICH AENDERT: NUR der KA7-Block (KW-KA7-KONFLIKT-START/END), kein Markup im Rumpf,
+    //     kein Stil, kein neues Abrufziel (M7 bleibt 13), kein Manifest, keine CSP, kein Schreibweg
+    //     in Word, KEIN Speicherweg (weiterhin kein localStorage/sessionStorage/roamingSettings).
+    //   · (1) DOPPELUNG IST KEINE ABWEICHUNG: `ka7Uebersetzen` liest jetzt auch `duplicates` (Teil
+    //     des Antwortvertrags der Route, check-text-routes.ts `toResponse`) und prueft bei jedem
+    //     `conflicts`-Eintrag das Trefferverhaeltnis `type`. Bekannter Konflikttyp → „Abweichung";
+    //     `doppelung`/`duplicate` (die beiden Woerter aus services/conflicts/src/detect.ts:158-160)
+    //     → Doppelungsliste; fehlender oder unbekannter Typ → Lage „fehler" (nicht raten, wie beim
+    //     Treffer ohne Kennung). Ein Koerper OHNE `duplicates` ist keine Antwort dieser Route mehr →
+    //     „Pruefung nicht moeglich", nie „keine Abweichung". Die Karte traegt dafuer zwei neue
+    //     Stellen (#ka7-doppelung-satz, #ka7-doppelung-liste), erzeugt zur Laufzeit wie der Rest;
+    //     die Beziehung steht im Wortlaut der Erfassen-Flaeche (W6_RELATION_KEYS), kein zweiter.
+    //   · (2) DER WIEDER GEOEFFNETE ENTWURF: der Einreich-Hinweis (#ka7-einreich-hinweis) sagt jetzt
+    //     auch, wenn fuer den Entwurf KEINE frische Pruefung vorliegt — samt dem Grund, den der
+    //     Stand fuer ihn nennt — und bekommt einen Knopf daneben (#ka7-einreich-pruefen), der
+    //     `ka7Pruefen` ruft: derselbe Aufruf wie der Knopf im Fragen-Reiter, KEIN zweiter Pfad zur
+    //     Route und kein zusaetzliches Abrufziel. Ein Entwurf ohne moegliche Pruefung (zu kurz,
+    //     abgemeldet, kein Word) und ein frischer, belastbar leerer Lauf schweigen wie bisher.
+    //     RUNDE 2 (Tor-Befund tests/design/zielbild-k2-kein-erklaertext.test.ts, T1-T4 und K rot):
+    //     Runde 1 stellte einen 72-Zeichen-SATZ auf eine Flaeche, die Pedi wortlos haelt (JOB 3057
+    //     K2 §5.7). Runde 2 versteckte die Aussage stattdessen bei geschlossener KI-Weiche — und
+    //     nahm dem Entwurf damit genau die Auskunft, um die es geht (BEN R2, Korrekturpflicht 1).
+    //     RUNDE 3, so steht es jetzt:
+    //       · auf der FLAECHE eine kurze BESCHRIFTUNG unter 40 Zeichen — „Keine frische Pruefung",
+    //         „Pruefung laeuft …" oder, nach einem belastbar leeren Lauf, „Kein Widerspruch · HH:MM".
+    //         Sie steht IMMER, auch ohne KI-Freigabe: der Pruefstand ist eine Tatsache ueber diesen
+    //         Entwurf. Gemessen in Chromium (zielbild-k2-kein-erklaertext T1) und gemountet (P17e:
+    //         jede Beschriftung in DE/EN/NL unter 40).
+    //       · der LANGE Satz im „?"-Menue (#ka7-mehr-hinweis, zur Laufzeit an #capture-mehr
+    //         angehaengt, `data-t` traegt ihn durch den Sprachwechsel) — dort, wo diese Flaeche ihre
+    //         Erklaertexte haelt (§5a). Gemessen: P17d.
+    //       · der KNOPF nur bei offener KI-Weiche (`ka7ExterneKi() === "erlaubt"`); sonst gaebe es
+    //         nichts zu starten. Gemessen: P17c (erlaubt / verweigert / noch ungeklaert).
+    //       · KEIN Grundsatz mehr auf der Flaeche („Pruefung nicht moeglich: …" ist ein Satz und
+    //         steht auf der Karte im Fragen-Reiter, wo er immer stand).
+    //     Damit die Weiche nach ihrer ASYNCHRONEN Aufloesung ankommt, folgt der Hinweis zusaetzlich
+    //     `renderKlaraS4` (Wrapper wie KA6, Zeile ~9459: Original zuerst und unveraendert).
+    //     T1 des Textmessers ist nachgefuehrt: EIN Eintrag mehr, `beschriftung:#ka7-einreich-hinweis`
+    //     — als Beschriftung, nicht mit eigener Rolle, damit die 40-Zeichen-Regel FUER ihn gilt.
+    //   · (3) Die Zeitprobe ist ein TEST-Nachtrag (P16 ersetzt P15c); der Ausliefercode dazu bleibt
+    //     unveraendert (`ka7Vereinigen`, `kopie.vorbehaltZeit = alt.vorbehaltZeit || vorher.zeit`).
+    //   · NEUN Woerterbuchschluessel je Sprache dazu aus den Runden 1-4 (Runde 5 unten legt zwei
+    //     weitere nach): (ka7DoppelungEine, ka7DoppelungMehrere,
+    //     ka7DoppelungAuchKonflikt, ka7ZeileAuchDoppelung, ka7EntwurfOhnePruefung,
+    //     ka7EntwurfOhneWiderspruch, ka7EntwurfPruefenCta, ka7EntwurfLaeuft, ka7EntwurfMenuText).
+    //     Die Pruefstands- und Beziehungssaetze in der Doppelungsliste nutzen die BESTEHENDEN
+    //     Schluessel; die Gruende eines Laufs stehen nur auf der Karte, nicht am Entwurf.
+    //   · Gemessen: konfliktkarte-mounted P16/P17/P17b/P17c/P17d/P17e/P18/P18b/P18c/P18d (und
+    //     P10b/P14, die den kurzen Pruefstand statt der bisherigen Leere pruefen); in Chromium
+    //     zusaetzlich zielbild-k2-kein-erklaertext, zielbild-k2-erfassen, k2-funktionsinventar und
+    //     die vier K1-Zielbilder.
     //   · EIN Abrufziel mehr (M7 12 → 13, bewusst beantwortet in mega69-klara-merkmale.test.ts):
     //     `POST /api/check-text` in der TIEFEN Stufe — derselbe Pfad wie der W6-Weg, aber mit
     //     `want: "deep"` und `confidentiality: "intern"`, NUR nach der KA4-Weiche (Einwilligung fuer
@@ -1626,7 +1680,53 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // „gecontroleerd" als Zusage-Wort verbietet (dieselbe Loesung wie 3092/3094: EN/NL ohne das
     // Wort, DE „(geprueft <Zeit>)" als registrierte Vorgangsaussage). Kein Markup, kein Skript,
     // kein Abrufziel, kein Manifest geaendert. KEIN Sideload noetig.
-    const PIN = "29c03b18bbed8323395420c0277a602a983ceaeed1f51265342e26ec0eccdf29";
+    //
+    // JOB 3174 KONFLIKTRUNDE 1 (07.09.2026, 29c03b18… -> f7408633…) — `git rebase main` traf mit
+    // der JOB-3174-Kette (M4b, drei Nachtraege am KA7-Block oben: Doppelung, wiedergeoeffneter
+    // Entwurf, Zeitprobe) auf die inzwischen auf main gelandete JOB-3096-Kette (M5, Bildblock,
+    // Kommentar direkt oben). BEIDE SEITEN BLEIBEN INHALTLICH ERHALTEN: der M4b-Nachtrag aus JOB
+    // 3174 UND der M5-Bildblock aus JOB 3096 stehen nebeneinander in der zusammengefuehrten Datei;
+    // git hat taskpane.html selbst konfliktfrei zusammengefuehrt (nur der Pin-Kommentar hier war
+    // strittig). Kein Markup, kein Skript und kein Woerterbuchschluessel einer Seite wurde entfernt,
+    // um die andere Seite zu erhalten. Der Pin unten ist der frisch aus der zusammengefuehrten Datei
+    // gerechnete Hash, kein uebernommener Wert einer Seite.
+    // JOB 3174 RUNDE 5 (BEN R4, Korrekturpflicht 1) — DER PIN WANDERT EIN LETZTES MAL IN DIESEM
+    // JOB. VORHERHASH taskpane.html:
+    // `378b3fb4f48fc52c37907cecf59af35d5f4a0d0ecec223e61b6e3ed7d10b69e4`.
+    // Auslieferungsfolgen bewusst geprueft: geaendert wurde NUR der Kurzstatus am Entwurf
+    // (#ka7-einreich-hinweis) in der Lage „leer" — er machte aus JEDEM leeren Lauf „Kein
+    // Widerspruch · HH:MM", auch wenn null Quellen vorgelegt waren (die Route meldet dann
+    // `gelaufen: true, kandidaten: 0`) oder nur der Anfang der Markierung geprueft wurde
+    // (`gekuerzt`). Das war eine Sachauskunft ueber einen Bestand, den niemand befragt hat.
+    // Jetzt traegt der Kurzstatus dieselbe Dreiteilung wie die Karte seit JOB 3094
+    // (ka7LeerOhneQuelle / ka7LeerGekuerzt / ka7Leer): „Keine Vergleichsquelle · HH:MM",
+    // „Teil geprueft · kein Widerspruch · HH:MM", „Kein Widerspruch · HH:MM". ZWEI
+    // Woerterbuchschluessel je Sprache dazu (ka7EntwurfOhneQuelle,
+    // ka7EntwurfOhneWiderspruchTeil), beide als BESCHRIFTUNG unter 40 Zeichen in DE/EN/NL
+    // (P17e). KEIN neues Abrufziel (M7 bleibt 13), kein Markup, kein Stil, kein Manifest, keine
+    // CSP, kein neues Recht, kein Speicherweg und keine geaenderte Nutzlast — es wird nur MEHR
+    // aus dem ohnehin gehaltenen Stand (`kandidaten`, `gekuerzt`) gelesen. Ein installiertes
+    // Add-in braucht KEIN erneutes Sideload; es holt die Datei beim naechsten Oeffnen frisch.
+    // Gemessen: konfliktkarte-mounted P17f (null Quellen, Karte UND Entwurf, DE/EN), P17g
+    // (gekuerzt), P17b (der unveraenderte Regelfall), P17e (Laengen in DE/EN/NL).
+    // JOB 3174 RUNDE 6 (Tor R5 rot an tests/i18n/mega35-word-wortliste.test.ts:149) — DER PIN
+    // WANDERT WEGEN EINES EINZIGEN WORTES. VORHERHASH taskpane.html:
+    // `902b7d0d05da4a0879eb17c983536cf54fde5b0357e971021f55b33853c757bf`.
+    // Auslieferungsfolgen bewusst geprueft: geaendert wurde AUSSCHLIESSLICH der deutsche Wortlaut
+    // EINES Schluessels — ka7EntwurfOhneWiderspruchTeil, „Teil geprueft · kein Widerspruch · {zeit}"
+    // → „Teilabgleich · kein Widerspruch · {zeit}". Grund: die Word-Flaeche haelt seit AUFTRAG-mega35
+    // B einen Wortlistenvertrag — „geprueft"/„gesichert" (und die englischen/niederlaendischen
+    // Entsprechungen) stehen NUR im Einstufungshinweis und in den dort EINZELN benannten
+    // Vorgangsaussagen (ka7Leer, ka7LeerGekuerzt, ka7LeerOhneQuelle, captureDub*, m5Bild*). Die
+    // Ausnahmeliste wurde NICHT verlaengert und die Schutzregel NICHT aufgeweicht: die Beschriftung
+    // sagt dasselbe mit dem eigenen Wort dieses Blocks („Abgleich", ka7Label). EN und NL sind
+    // unveraendert (ihre verbotenen Woerter sind „verified"/„assured" bzw.
+    // „gecontroleerd"/„gewaarborgd" — keines kam vor). KEIN Verhalten, KEINE Weiche, KEINE Zahl,
+    // KEIN Abrufziel, KEIN Markup, KEIN Stil, KEIN Manifest, KEINE CSP, KEIN Speicherweg geaendert;
+    // ein installiertes Add-in braucht KEIN erneutes Sideload.
+    // Gemessen: mega35-word-wortliste (vorher rot mit genau diesem Schluessel, danach gruen),
+    // konfliktkarte-mounted P17g (neuer Wortlaut) und P17e (Laenge UND Wortliste in DE/EN/NL).
+    const PIN = "aceff50d093b8d48129e795429b6d8019c8a6280aae01a3577a816674e633457";
     const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
     expect(
       ist,

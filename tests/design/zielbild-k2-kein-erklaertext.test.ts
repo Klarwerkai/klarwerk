@@ -131,6 +131,15 @@ describe.runIf(zielbildDa)(
           "dubletten:#capture-dubletten-satz",
           "markierung:p.capture-absatz",
           "markierung:p.capture-absatz",
+          // JOB 3174 M4b (KA7): der PRUEFSTAND dieses Entwurfs gegen die freigegebenen Regelungen
+          // — „Keine frische Pruefung", „Pruefung laeuft …" oder „Kein Widerspruch · HH:MM". Der
+          // Befund von KA7 lebt nur in der laufenden Sitzung; ohne diese Zeile stuende nach dem
+          // Wiederoeffnen des Fensters gar nichts mehr da und die Leere liesse sich als „alles in
+          // Ordnung" lesen. Anders als die Dublettenauskunft bekommt sie KEINE eigene Rolle: sie ist
+          // eine BESCHRIFTUNG und haelt die 40-Zeichen-Regel dieses Auftrags ein (oben `verstoesse`
+          // und die Laengenprobe in tests/ka7-konflikt-im-panel/konfliktkarte-mounted.test.ts P17e).
+          // Der lange Erklaertext dazu wohnt im „?"-Menue (#ka7-mehr-hinweis, Fall T4).
+          "beschriftung:#ka7-einreich-hinweis",
           "beschriftung:span",
           "feldwert:#capture-titel",
           "knopf:#send-btn",
@@ -139,12 +148,19 @@ describe.runIf(zielbildDa)(
         ].sort(),
       );
       const beschriftungen = traeger.filter((t) => t.rolle === "beschriftung").map((t) => t.text);
-      expect(beschriftungen).toEqual([wort("de", "captureTitleLabel")]);
+      // In Dokumentordnung: der KA7-Pruefstand steht an der Markierungskarte (nach
+      // #capture-ergebnis), die Feldbeschriftung „Titel" darunter. Der KA7-Wortlaut steht hier
+      // woertlich, nicht ueber `wort()`: `woerterbuch()` liest die ERSTE `de: {`-Tabelle der Seite
+      // (STRINGS); die KA7-Saetze wohnen in der eigenen Tabelle KA7_TEXTE und sind dort nicht zu
+      // finden. Derselbe Wortlaut ist in konfliktkarte-mounted.test.ts P17/P17c gepinnt.
+      expect(beschriftungen).toEqual(["Keine frische Prüfung", wort("de", "captureTitleLabel")]);
       // Der Erklaertext von heute ist NICHT sichtbar (er wohnt im „?“-Menue, Fall T4).
       const sichtbarerText = traeger.map((t) => t.text).join("\n");
       for (const key of ["sendHint", "sendImagesNote", "sendReviewNote", "scopePagesHint"]) {
         expect(sichtbarerText, key).not.toContain(wort("de", key));
       }
+      // JOB 3174: derselbe Massstab fuer den neuen Erklaertext — er steht im Menue, nicht hier.
+      expect(sichtbarerText).not.toContain("Ein Befund gilt nur für die laufende Sitzung");
     });
 
     it("T2 · Fehlerfall 413: dazu kommt GENAU EIN Satz (`#send-status`) und GENAU EIN Knopf — nicht mehr", async () => {

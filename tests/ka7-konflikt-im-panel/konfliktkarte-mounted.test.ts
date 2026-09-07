@@ -31,6 +31,10 @@ const STELLE_QUELLE = "an zwei Tagen pro Woche";
 // Vertragsformen wie in job2621-panel-wahrheiten.test.ts (kein erfundener Serverdialekt). Die
 // Frist der Auflösung liegt in der Zukunft — eine abgelaufene verwirft das Panel ganz (JOB 3056 R8).
 const IN_FUENF_MINUTEN = () => new Date(Date.now() + 5 * 60_000).toISOString();
+// JOB 3174 P16: die Uhr läuft im Test wirklich weiter (drei Minutenwechsel). Eine Auflösung, die
+// dabei abliefe, würde das Panel verwerfen (`ka7ExterneKi` → „gesperrt") und der Fall messe den
+// Ablauf statt der Befundzeit. Deshalb dort eine Frist, die über den ganzen Lauf trägt.
+const IN_EINER_STUNDE = () => new Date(Date.now() + 60 * 60_000).toISOString();
 const SITZUNG = {
   sessionId: "sess-vom-server",
   tenantId: "t1",
@@ -46,7 +50,7 @@ const SITZUNG = {
   closed: false,
   resolution: { resolutionId: "res-1", effectiveMode: "external", executionAllowed: true },
 };
-function aufloesung(granted: boolean, executionAllowed = true) {
+function aufloesung(granted: boolean, executionAllowed = true, frist = IN_FUENF_MINUTEN()) {
   return {
     resolutionId: "res-1",
     mode: "external",
@@ -61,7 +65,7 @@ function aufloesung(granted: boolean, executionAllowed = true) {
     executionAllowed,
     blockedReason: executionAllowed ? null : "external_not_migrated",
     resolvedAt: "2026-09-06T12:00:00.000Z",
-    expiresAt: IN_FUENF_MINUTEN(),
+    expiresAt: frist,
     policyVersion: "p1",
     configurationVersion: "c1",
   };
@@ -107,6 +111,9 @@ let panel: KlaraPanel | null = null;
 afterEach(() => {
   panel?.restore();
   panel = null;
+  // JOB 3174 P16 stellt die Uhr (nur `Date`, nicht die Timer — die Fixture wartet auf echte).
+  // Zurückgestellt wird IMMER, damit kein anderer Fall die Zeit des vorigen erbt.
+  vi.useRealTimers();
 });
 
 interface Aufbau {
@@ -115,6 +122,10 @@ interface Aufbau {
   executionAllowed?: boolean;
   selection?: string;
   checkTextWirft?: boolean;
+  /** Ablauf der KI-Auflösung; nur P16 braucht eine, die über echte Minutenwechsel trägt. */
+  frist?: string;
+  /** Eine ANDERE Antwort auf `/api/klara/ai-status` — für den Fall „Sitzungsstand nicht aufgelöst". */
+  aiStatus?: FakeReplyInit;
 }
 
 function aufbauen(opt: Aufbau): KlaraPanel {
@@ -123,10 +134,16 @@ function aufbauen(opt: Aufbau): KlaraPanel {
     FakeReplyInit | ((url: string, init: Record<string, unknown> | undefined) => FakeReplyInit)
   > = {
     "/api/klara/sessions": reply(200, SITZUNG),
-    "/api/klara/ai-status": reply(
-      200,
-      aufloesung(opt.granted ?? true, opt.executionAllowed ?? true),
-    ),
+    "/api/klara/ai-status":
+      opt.aiStatus ??
+      reply(
+        200,
+        aufloesung(
+          opt.granted ?? true,
+          opt.executionAllowed ?? true,
+          opt.frist ?? IN_FUENF_MINUTEN(),
+        ),
+      ),
     "/api/check-text": (_url, init) => {
       if (opt.checkTextWirft) {
         throw new Error("offline");
@@ -441,7 +458,15 @@ describe("KA7 · Einreichen mit offenem Konflikt (Lieferung 4)", () => {
     };
     panel.setTab("capture");
     await panel.flush();
-    expect(panel.q("#ka7-einreich-hinweis")?.className ?? "hidden").toContain("hidden");
+    // JOB 3174 (Lieferung 2): der BEFUND wandert nicht mit — der Hinweis nennt weder die Regelung
+    // noch „trotzdem einreichen". Statt der bisherigen Leere steht der Prüfstand DIESES Entwurfs,
+    // als kurze Beschriftung (Runde 3), mit einem erreichbaren Weg zur Prüfung.
+    const hinweis = panel.text("#ka7-einreich-hinweis");
+    expect(hinweis).not.toContain("Homeoffice-Regelung");
+    expect(hinweis).not.toContain("trotzdem einreichen");
+    expect(hinweis).not.toContain("Keine Abweichung");
+    expect(hinweis).toBe("Keine frische Prüfung");
+    expect(panel.q("#ka7-einreich-pruefen")?.className).not.toContain("hidden");
   });
 });
 
@@ -655,7 +680,14 @@ describe("KA7 · Runde 6 — nicht belastbare Prüfung und erhaltener Befund", (
     expect(panel.q("#ka7-entscheidung")?.className).toContain("hidden");
     panel.setTab("capture");
     await panel.flush();
-    expect(panel.q("#ka7-einreich-hinweis")?.className ?? "hidden").toContain("hidden");
+    // JOB 3174 (Lieferung 2): kein früherer Befund an DIESEM Entwurf — statt Leere sein Prüfstand,
+    // als kurze Beschriftung. Der GRUND („Prüfung nicht möglich") steht auf der Karte, nicht hier:
+    // er ist ein Satz und kein Etikett (Runde 3, JOB 3057 K2 §5.7).
+    const hinweis = panel.text("#ka7-einreich-hinweis");
+    expect(hinweis).not.toContain("Homeoffice-Regelung");
+    expect(hinweis).not.toContain("Befund von");
+    expect(hinweis).toBe("Keine frische Prüfung");
+    expect(hinweis).not.toContain("Prüfung nicht möglich");
   });
 });
 
@@ -798,20 +830,466 @@ describe("KA7 · Runde 7 — Teil-Ausfall mit neuen Treffern", () => {
     expect(hinweis).not.toContain("Homeoffice-Regelung");
     expect(hinweis).not.toContain("Nicht aufgefrischt");
   });
+});
 
-  it("P15c · zweiter Fehlschlag in Folge: A behält die Uhrzeit seines URSPRÜNGLICHEN Befunds", async () => {
-    panel = aufbauen({ checkText: erstAundBDannNurB(NICHT_BELASTBAR_TEIL) });
+// ================================================================================================
+// JOB 3174 · M4b — DREI LÜCKEN, DIE EIN MENSCH IM ALLTAG MERKT.
+// ================================================================================================
+//   P16 Die Uhr läuft zwischen den Wiederholungen WIRKLICH weiter. P15c (bis Runde 7) klickte
+//       dreimal in derselben Minute — die Mutation `kopie.vorbehaltZeit = vorher.zeit` (statt
+//       `alt.vorbehaltZeit || vorher.zeit`) blieb dabei grün, weil alle Zeiten gleich waren. P16
+//       ERSETZT ihn (die schwache Fassung steht nicht neben der starken).
+//   P17 Fenster zu, Fenster auf: der Befund lebt nur im Arbeitsspeicher dieser Panelinstanz. Statt
+//       spurloser Leere trägt der Entwurf seinen Prüfstand — als kurze Beschriftung, mit dem Weg.
+//   P18 Doppelung ist keine Abweichung: „das haben wir schon" und „das widerspricht" sind zwei
+//       Aussagen, nicht ein Wort.
+// ================================================================================================
+
+/**
+ * Runde 3: Pedis Maßstab für die Fläche „Erfassen“ (JOB 3057 K2 §5.7, gemessen in Chromium von
+ * `tests/design/zielbild-k2-kein-erklaertext.test.ts`): außer Beschriftungen steht dort kein Satz,
+ * und eine Beschriftung ist höchstens 40 Zeichen lang. Dieselbe Zahl steht hier, damit der gemountete
+ * Lauf sie schon meldet, bevor der Browser sie misst.
+ */
+const GRENZE_K2 = 40;
+
+/**
+ * Runde 4 (Tor-Befund „rest=1“, zwei unbehandelte Ablehnungen): `setLang` ruft im Panel
+ * `checkSession()` — also einen ECHTEN Abruf an `/api/auth/me`, dessen Promise-Kette danach
+ * `renderSitzungsflaeche` ruft und dort `document.getElementById(...).className` setzt. Wird die
+ * Fixture zurückgesetzt (`restore()` räumt den Rumpf ab), bevor die Kette durchgelaufen ist, findet
+ * sie ihre Stellen nicht mehr und wirft in einem `.then`: „TypeError: Cannot set properties of null
+ * (setting 'className')“ — ein Fehler ohne Testfall, der den ganzen Lauf rot macht, obwohl jede
+ * Zusicherung hält. Deshalb wird nach JEDEM Sprachwechsel gewartet, bis das Panel zur Ruhe gekommen
+ * ist; erst dann darf zurückgesetzt oder der Fall beendet werden.
+ */
+async function spracheWechseln(p: KlaraPanel, code: string): Promise<void> {
+  p.setLang(code);
+  await p.flush();
+}
+
+/** Die Minute, die auf der Karte stünde, wenn sie JETZT geschrieben würde. */
+function minuteJetzt(): string {
+  const d = new Date();
+  const p = (n: number) => (n < 10 ? `0${n}` : String(n));
+  return `${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+describe("KA7 · JOB 3174 M4b — Zeit, Wiederöffnen, Doppelung", () => {
+  it("P16 · drei Wiederholungen über echte Minutenwechsel: A behält die Uhrzeit seines URSPRÜNGLICHEN Befunds — auf der Karte und am Entwurf, DE und EN", async () => {
+    // Nur `Date` wird gestellt; die Timer bleiben echt, weil `panel.flush()` auf ihnen wartet.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-07T09:00:00.000Z"));
+    panel = aufbauen({
+      checkText: erstAundBDannNurB(NICHT_BELASTBAR_TEIL),
+      frist: IN_EINER_STUNDE(),
+    });
     await panel.flush();
     await pruefenKlicken(panel);
-    const zeitVorher = panel.text("#ka7-stand").match(/\d{2}:\d{2}/)?.[0];
+    const zeitDesBefunds = minuteJetzt();
+    expect(panel.text("#ka7-stand")).toContain(zeitDesBefunds);
+    expect(zeilenKennungen()).toEqual(["regel-1", "regel-2"]);
+
+    // Drei Wiederholungen, jede in einer ANDEREN Minute als der Befund und als die vorige.
+    const minuten: string[] = [];
+    for (let i = 0; i < 3; i += 1) {
+      vi.setSystemTime(new Date(Date.now() + 61_000 + i * 1_000));
+      minuten.push(minuteJetzt());
+      await pruefenKlicken(panel);
+      const a = panel.q('#ka7-liste li[data-quelle="regel-1"]');
+      expect(a?.getAttribute("data-vorbehalt"), `Wiederholung ${i + 1}`).toBe("1");
+      // DAS ist die Probe: die Zeile nennt die Zeit des ERSTEN Befunds, nicht die dieses Versuchs.
+      expect(a?.textContent, `Wiederholung ${i + 1}`).toContain(`Befund von ${zeitDesBefunds}`);
+      expect(a?.textContent, `Wiederholung ${i + 1}`).not.toContain(`Befund von ${minuten[i]}`);
+      expect(
+        panel.q('#ka7-liste li[data-quelle="regel-2"]')?.getAttribute("data-vorbehalt"),
+      ).toBeNull();
+    }
+    expect(checkTextRufe(panel)).toHaveLength(4);
+    // Drei wirklich verschiedene Minuten, alle verschieden von der Befundminute.
+    expect(new Set([...minuten, zeitDesBefunds]).size).toBe(4);
+
+    // Der Einreichhinweis am Entwurf nennt dieselbe ursprüngliche Zeit — DE …
+    panel.setTab("capture");
+    await panel.flush();
+    expect(panel.text("#ka7-einreich-hinweis")).toContain(
+      `Nicht aufgefrischt: „Homeoffice-Regelung“ (Befund von ${zeitDesBefunds})`,
+    );
+    // … und EN (Codex R7: „Der Originalstand muss einschließlich englischem Einreichhinweis grün
+    // bleiben" — die Übersetzung darf die Zeit nicht auf den letzten Versuch kippen).
+    await spracheWechseln(panel, "en");
+    expect(panel.text("#ka7-einreich-hinweis")).toContain(
+      `Not refreshed: “Homeoffice-Regelung” (finding from ${zeitDesBefunds})`,
+    );
+    expect(panel.q('#ka7-liste li[data-quelle="regel-1"]')?.textContent).toContain(
+      `Finding from ${zeitDesBefunds}`,
+    );
+    for (const minute of minuten) {
+      expect(panel.text("#ka7-einreich-hinweis")).not.toContain(`finding from ${minute}`);
+    }
+  });
+
+  it("P17 · Entwurf wiederöffnen: der Befund ist fort — der Entwurf sagt es und bietet den Weg zur Prüfung (DE/EN)", async () => {
+    panel = aufbauen({ checkText: reply(200, antwort([konflikt()])) });
+    await panel.flush();
     await pruefenKlicken(panel);
+    panel.setTab("capture");
+    await panel.flush();
+    expect(panel.text("#ka7-einreich-hinweis")).toContain("trotzdem einreichen");
+
+    // Fenster zu, Fenster auf: eine NEUE Panelinstanz auf DERSELBEN Markierung. Der Befund lebte
+    // nur im Arbeitsspeicher (taskpane.html: kein localStorage, kein sessionStorage) — er ist fort.
+    panel.restore();
+    panel = aufbauen({ checkText: reply(200, antwort([konflikt()])) });
+    await panel.flush();
+    panel.setTab("capture");
+    await panel.flush();
+    expect(panel.q("#ka7-liste li")).toBeNull();
+    // Nicht Leere, nicht „keine Abweichung": der Prüfstand dieses Entwurfs — als kurze
+    // BESCHRIFTUNG unter 40 Zeichen (Runde 3, JOB 3057 K2 §5.7), nicht als Satz.
+    const hinweis = panel.q("#ka7-einreich-hinweis");
+    expect(hinweis?.className).not.toContain("hidden");
+    expect(panel.text("#ka7-einreich-hinweis")).toBe("Keine frische Prüfung");
+    expect(panel.text("#ka7-einreich-hinweis").length).toBeLessThanOrEqual(GRENZE_K2);
+    // Und ein erreichbarer Weg, sie zu starten — derselbe Aufruf wie der Knopf im Fragen-Reiter.
+    const knopf = panel.q("#ka7-einreich-pruefen");
+    expect(knopf, "der Weg zur Prüfung fehlt am Entwurf").not.toBeNull();
+    expect(knopf?.className).not.toContain("hidden");
+    expect(knopf?.textContent).toBe("Jetzt gegen die Regelungen prüfen");
+    await spracheWechseln(panel, "en");
+    expect(panel.text("#ka7-einreich-hinweis")).toBe("No fresh check");
+    expect(panel.q("#ka7-einreich-pruefen")?.textContent).toBe("Check against the rules now");
+    await spracheWechseln(panel, "de");
+
+    // Der Weg trägt: ein Klick startet die Prüfung, der Befund steht danach wieder am Entwurf.
+    knopf?.click();
+    await panel.flush();
+    expect(checkTextRufe(panel)).toHaveLength(1);
+    expect(panel.text("#ka7-einreich-hinweis")).toContain("Homeoffice-Regelung");
+    expect(panel.text("#ka7-einreich-hinweis")).toContain("trotzdem einreichen");
+    expect(panel.q("#ka7-einreich-pruefen")?.className).toContain("hidden");
+  });
+
+  it("P17b · nach belastbar leerem Lauf trägt der Entwurf „Kein Widerspruch · HH:MM“ — die einzige belegte Verneinung, mit Uhrzeit", async () => {
+    panel = aufbauen({
+      checkText: reply(200, antwort([], { gelaufen: true, grund: null, kandidaten: 2 })),
+    });
+    await panel.flush();
     await pruefenKlicken(panel);
-    expect(checkTextRufe(panel)).toHaveLength(3);
-    const a = panel.q('#ka7-liste li[data-quelle="regel-1"]');
-    expect(a?.getAttribute("data-vorbehalt")).toBe("1");
-    expect(a?.textContent).toContain(`Befund von ${zeitVorher}`);
-    expect(
-      panel.q('#ka7-liste li[data-quelle="regel-2"]')?.getAttribute("data-vorbehalt"),
-    ).toBeNull();
+    panel.setTab("capture");
+    await panel.flush();
+    const hinweis = panel.text("#ka7-einreich-hinweis");
+    expect(hinweis).toMatch(/^Kein Widerspruch · \d{2}:\d{2}$/);
+    expect(hinweis.length).toBeLessThanOrEqual(GRENZE_K2);
+    // Kein Weg mehr nötig: es liegt ein frischer Lauf vor.
+    expect(panel.q("#ka7-einreich-pruefen")?.className ?? "hidden").toContain("hidden");
+    // Der ausführliche Satz steht auf der Karte — genau einmal, mit Uhrzeit.
+    expect(panel.text("#ka7-satz")).toContain("Keine Abweichung zu geprüften Quellen gefunden");
+    await spracheWechseln(panel, "en");
+    expect(panel.text("#ka7-einreich-hinweis")).toMatch(/^No contradiction · \d{2}:\d{2}$/);
+  });
+
+  // ==============================================================================================
+  // Runde 5 (BEN R4, Korrekturpflicht 1). „Kein Widerspruch" ist eine SACHAUSSAGE über den
+  // Bestand — sie braucht mindestens eine vorgelegte Quelle. Die Route liefert auch bei null
+  // Kandidaten `gelaufen: true` (check-text-routes.ts: der Lauf FAND nur nichts zu vergleichen);
+  // die Karte unterschied das seit JOB 3094 (ka7LeerOhneQuelle, taskpane.html:11176), der
+  // Kurzstatus am Entwurf nicht — er machte aus „nichts zu vergleichen" eine Entwarnung.
+  // ==============================================================================================
+  it("P17f · null vorgelegte Quellen: der Entwurf sagt „Keine Vergleichsquelle · HH:MM“ — keine Entwarnung, auf Karte UND Entwurf, DE und EN", async () => {
+    panel = aufbauen({
+      checkText: reply(200, antwort([], { gelaufen: true, grund: null, kandidaten: 0 })),
+    });
+    await panel.flush();
+    await pruefenKlicken(panel);
+    // Die Karte sagt es seit JOB 3094 — unverändert.
+    expect(panel.text("#ka7-satz")).toContain("Kein vergleichbarer Eintrag im Bestand gefunden");
+    panel.setTab("capture");
+    await panel.flush();
+    const hinweis = panel.text("#ka7-einreich-hinweis");
+    expect(hinweis).toMatch(/^Keine Vergleichsquelle · \d{2}:\d{2}$/);
+    expect(hinweis.length).toBeLessThanOrEqual(GRENZE_K2);
+    // Die Verneinung darf nirgends stehen: kein vorgelegter Eintrag belegt sie.
+    expect(hinweis).not.toContain("Kein Widerspruch");
+    await spracheWechseln(panel, "en");
+    const en = panel.text("#ka7-einreich-hinweis");
+    expect(en).toMatch(/^No comparable source · \d{2}:\d{2}$/);
+    expect(en.length).toBeLessThanOrEqual(GRENZE_K2);
+    expect(en).not.toContain("No contradiction");
+    await spracheWechseln(panel, "de");
+  });
+
+  it("P17g · gekürzte Markierung: der Kurzstatus trägt den eingeschränkten Prüfumfang mit — nicht „Kein Widerspruch“ für den ganzen Text", async () => {
+    // Über der Grenze der Route (W6_HOECHSTZEICHEN = 8000): nur der Anfang ging in den Abgleich.
+    const lang = `${MEMO} `.repeat(200);
+    expect(lang.length).toBeGreaterThan(8000);
+    panel = aufbauen({
+      selection: lang,
+      checkText: reply(200, antwort([], { gelaufen: true, grund: null, kandidaten: 2 })),
+    });
+    await panel.flush();
+    await pruefenKlicken(panel);
+    expect(panel.text("#ka7-satz")).toContain(
+      "Keine Abweichung in den ersten 8000 Zeichen gefunden",
+    );
+    panel.setTab("capture");
+    await panel.flush();
+    const hinweis = panel.text("#ka7-einreich-hinweis");
+    // Runde 6: „Teilabgleich", nicht „Teil geprüft" — das Wort „geprüft" gehört auf der Word-Fläche
+    // dem Einstufungshinweis (tests/i18n/mega35-word-wortliste.test.ts). Der Block hat ein eigenes
+    // Wort für seinen Vorgang: „Abgleich" (ka7Label „Abgleich mit der Regelung").
+    expect(hinweis).toMatch(/^Teilabgleich · kein Widerspruch · \d{2}:\d{2}$/);
+    expect(hinweis).not.toMatch(/gepr(ue|ü)ft/i);
+    expect(hinweis.length).toBeLessThanOrEqual(GRENZE_K2);
+    await spracheWechseln(panel, "en");
+    const en = panel.text("#ka7-einreich-hinweis");
+    expect(en).toMatch(/^Part checked · no contradiction · \d{2}:\d{2}$/);
+    expect(en.length).toBeLessThanOrEqual(GRENZE_K2);
+    await spracheWechseln(panel, "de");
+  });
+
+  // ==============================================================================================
+  // Runde 3 (BEN R2, Korrekturpflicht 1). Runde 1 stellte einen 72-Zeichen-Satz auf die Fläche
+  // „Erfassen“ (Pedis Textmesser rot); Runde 2 versteckte die Aussage, sobald die KI-Weiche zu war
+  // — und nahm dem Entwurf damit genau die Auskunft, um die es geht. Jetzt: die kurze Beschriftung
+  // steht IMMER (erlaubt, verweigert, noch ungeklärt), der lange Satz wohnt im „?“-Menü, und nur
+  // der KNOPF hängt an der Weiche — ein Weg, den es nicht gibt, wird nicht versprochen.
+  // ==============================================================================================
+  it("P17c · der Prüfstand steht bei ERLAUBTER, VERWEIGERTER und NOCH UNGEKLÄRTER KI-Freigabe — kurz, DE und EN; nur der Knopf hängt an der Weiche", async () => {
+    const lagen: { name: string; opt: Partial<Aufbau>; weg: boolean }[] = [
+      { name: "erlaubt", opt: {}, weg: true },
+      { name: "verweigert", opt: { granted: false }, weg: false },
+      { name: "ungeklärt", opt: { aiStatus: reply(503, { error: "UNAVAILABLE" }) }, weg: false },
+    ];
+    for (const lage of lagen) {
+      panel = aufbauen({ checkText: reply(200, antwort([konflikt()])), ...lage.opt });
+      await panel.flush();
+      panel.setTab("capture");
+      await panel.flush();
+      const el = panel.q("#ka7-einreich-hinweis");
+      expect(el?.className, lage.name).not.toContain("hidden");
+      expect(panel.text("#ka7-einreich-hinweis"), lage.name).toBe("Keine frische Prüfung");
+      expect(panel.text("#ka7-einreich-hinweis").length, lage.name).toBeLessThanOrEqual(GRENZE_K2);
+      await spracheWechseln(panel, "en");
+      expect(panel.text("#ka7-einreich-hinweis"), lage.name).toBe("No fresh check");
+      expect(panel.text("#ka7-einreich-hinweis").length, lage.name).toBeLessThanOrEqual(GRENZE_K2);
+      await spracheWechseln(panel, "de");
+      const knopf = panel.q("#ka7-einreich-pruefen")?.className ?? "hidden";
+      if (lage.weg) {
+        expect(knopf, lage.name).not.toContain("hidden");
+      } else {
+        // Ohne offene Weiche gäbe es nichts zu starten — die Karte im Fragen-Reiter sagt, was fehlt.
+        expect(knopf, lage.name).toContain("hidden");
+      }
+      // Erst zur Ruhe kommen lassen, dann abbauen: ein Abruf, der nach dem Abbau zurückkommt,
+      // fände sein DOM nicht mehr (s. `spracheWechseln`).
+      await panel.flush();
+      panel.restore();
+      panel = null;
+    }
+  });
+
+  it("P17d · der LANGE Satz wohnt im „?“-Menü — dort steht er, auf der Fläche nie (DE/EN/NL)", async () => {
+    panel = aufbauen({ checkText: reply(200, antwort([konflikt()])) });
+    await panel.flush();
+    panel.setTab("capture");
+    await panel.flush();
+    // Er hängt im Menü, nicht an der Markierungskarte.
+    const imMenue = panel.q("#capture-mehr #ka7-mehr-hinweis");
+    expect(imMenue, "der Erklärtext fehlt im „?“-Menü").not.toBeNull();
+    for (const sprache of ["de", "en", "nl"] as const) {
+      await spracheWechseln(panel, sprache);
+      const lang = panel.text("#ka7-mehr-hinweis");
+      expect(lang.length, sprache).toBeGreaterThan(GRENZE_K2);
+      expect(lang, sprache).toBe(panel.t("ka7EntwurfMenuText"));
+      // Und auf der Fläche selbst steht davon nichts.
+      expect(panel.text("#ka7-einreich-hinweis").length, sprache).toBeLessThanOrEqual(GRENZE_K2);
+    }
+    await spracheWechseln(panel, "de");
+    // Das Menü ist zu, solange niemand auf „?“ klickt — der Erklärtext steht nicht im Sichtfeld.
+    expect(panel.q("#capture-mehr")?.className).toContain("hidden");
+    panel.q("#capture-mehr-btn")?.click();
+    expect(panel.q("#capture-mehr")?.className).not.toContain("hidden");
+    expect(panel.text("#ka7-mehr-hinweis")).toContain("Keine frische Prüfung");
+  });
+
+  it("P17e · jede kurze Beschriftung dieses Auftrags bleibt in DE, EN und NL unter der K2-Grenze — und hält die Wortliste der Word-Fläche", async () => {
+    // Runde 6 (Tor R5): die Kurzstatus stehen auf der Word-Fläche und unterliegen damit AUCH dem
+    // Wortlistenvertrag aus tests/i18n/mega35-word-wortliste.test.ts — „geprüft"/„gesichert",
+    // „verified"/„assured", „gecontroleerd"/„gewaarborgd" gehören dem Einstufungshinweis. Der
+    // globale Wächter dort fängt jeden neuen Schlüssel; hier steht die Regel neben den Sätzen, die
+    // sie betrifft, damit die nächste Runde sie nicht erst im Tor findet.
+    const VERBOTEN = [
+      /gepr(ue|ü)ft/i,
+      /gesichert/i,
+      /verified/i,
+      /assured/i,
+      /gecontroleerd/i,
+      /gewaarborgd/i,
+    ];
+    panel = aufbauen({ checkText: reply(200, antwort([konflikt()])) });
+    await panel.flush();
+    for (const sprache of ["de", "en", "nl"] as const) {
+      await spracheWechseln(panel, sprache);
+      const kurz: string[] = [];
+      for (const key of ["ka7EntwurfOhnePruefung", "ka7EntwurfLaeuft", "ka7EntwurfPruefenCta"]) {
+        expect(panel.t(key).length, `${sprache}.${key}`).toBeLessThanOrEqual(GRENZE_K2);
+        kurz.push(panel.t(key));
+      }
+      for (const key of [
+        "ka7EntwurfOhneWiderspruch",
+        // Runde 5 (BEN R4): die beiden Kurzstatus, die den Prüfumfang ehrlich halten.
+        "ka7EntwurfOhneQuelle",
+        "ka7EntwurfOhneWiderspruchTeil",
+      ]) {
+        expect(panel.t(key, { zeit: "14:32" }).length, `${sprache}.${key}`).toBeLessThanOrEqual(
+          GRENZE_K2,
+        );
+        kurz.push(panel.t(key, { zeit: "14:32" }));
+      }
+      for (const satz of kurz) {
+        for (const muster of VERBOTEN) {
+          expect(muster.test(satz), `${sprache}: „${satz}" gegen ${muster.source}`).toBe(false);
+        }
+      }
+    }
+    panel.setLang("de");
+  });
+});
+
+// ================================================================================================
+// P18 · DOPPELUNG IST KEINE ABWEICHUNG.
+// ================================================================================================
+// Die Route führt zwei Listen: `conflicts` (Trefferverhältnis in `type`, ConflictType) und
+// `duplicates` (Doppelungen, Verhältnis in `relation`). Bis JOB 3174 las das Panel nur `conflicts`
+// und legte JEDEN Eintrag unter das Wort „Abweichung".
+const DOPPELUNG = {
+  koId: "regel-9",
+  koTitle: "Urlaubsregelung",
+  relation: "identisch",
+  confidence: 0.9,
+  method: "deterministic",
+  rationale: null,
+  koStatus: "validiert",
+  koCategory: "Personal",
+  pruefstand: "validiert",
+  version: 2,
+};
+
+function antwortMit(
+  duplicates: unknown[],
+  conflicts: unknown[],
+  konfliktpruefung: unknown = { gelaufen: true, grund: null, kandidaten: 1 },
+) {
+  return { duplicates, conflicts, answer: null, note: null, persisted: false, konfliktpruefung };
+}
+
+describe("KA7 · JOB 3174 — Doppelung und Konflikt sind zwei Aussagen", () => {
+  it("P18 · ein Treffer, den die Route als Doppelung kennzeichnet, erzeugt KEINE Abweichung — er heißt „Das gibt es schon“", async () => {
+    // Ein Eintrag in `conflicts` mit dem Verhältnis einer Doppelung (services/conflicts/src/
+    // detect.ts:158-160: das Urteil nennt sie `doppelung`, der geplante eigene Typ `duplicate`).
+    panel = aufbauen({
+      checkText: reply(
+        200,
+        antwortMit(
+          [],
+          [{ ...konflikt(), koId: "regel-9", koTitle: "Urlaubsregelung", type: "doppelung" }],
+        ),
+      ),
+    });
+    await panel.flush();
+    await pruefenKlicken(panel);
+    const satz = panel.text("#ka7-satz");
+    expect(satz).not.toContain("Abweichung gefunden");
+    expect(satz).not.toContain("widerspricht");
+    expect(panel.q("#ka7-liste li")).toBeNull();
+    expect(panel.text("#ka7-doppelung-satz")).toContain("Das gibt es schon");
+    const zeile = panel.q('#ka7-doppelung-liste li[data-quelle="regel-9"]');
+    expect(zeile, "die Doppelung fehlt in der Doppelungsliste").not.toBeNull();
+    expect(zeile?.textContent).toContain("Urlaubsregelung");
+    expect(zeile?.getAttribute("data-konflikt")).toBeNull();
+  });
+
+  it("P18b · die eigene Doppelungsliste der Route wird gelesen — Titel, Version, Prüfstand und Beziehung, DE und EN", async () => {
+    panel = aufbauen({ checkText: reply(200, antwortMit([DOPPELUNG], [])) });
+    await panel.flush();
+    await pruefenKlicken(panel);
+    // Der Leersatz bleibt richtig: eine Doppelung IST keine Abweichung.
+    expect(panel.text("#ka7-satz")).toContain("Keine Abweichung zu geprüften Quellen gefunden");
+    expect(panel.q("#ka7-liste li")).toBeNull();
+    expect(panel.text("#ka7-doppelung-satz")).toBe(
+      "Das gibt es schon — der Bestand führt dazu bereits einen Eintrag:",
+    );
+    const zeile = panel.q('#ka7-doppelung-liste li[data-quelle="regel-9"]');
+    expect(zeile?.textContent).toContain("Urlaubsregelung");
+    expect(zeile?.textContent).toContain("Version 2");
+    expect(zeile?.textContent).toContain("Validiert");
+    // Die Beziehung im Wortlaut der Erfassen-Fläche (W6_RELATION_KEYS) — kein zweiter Wortlaut.
+    expect(zeile?.textContent).toContain(panel.t("captureDubIdentisch"));
+    expect(panel.q("#ka7-doppelung-liste li a")?.href).toContain("regel-9");
+    await spracheWechseln(panel, "en");
+    expect(panel.text("#ka7-doppelung-satz")).toBe(
+      "This already exists — the knowledge base already holds one entry on it:",
+    );
+    expect(panel.q('#ka7-doppelung-liste li[data-quelle="regel-9"]')?.textContent).toContain(
+      "Validated",
+    );
+  });
+
+  it("P18c · ein Treffer, der BEIDES ist, wird als beides genannt — in beiden Listen, mit Querverweis", async () => {
+    panel = aufbauen({
+      checkText: reply(
+        200,
+        antwortMit(
+          [{ ...DOPPELUNG, koId: "regel-1", koTitle: "Homeoffice-Regelung" }],
+          [konflikt()],
+        ),
+      ),
+    });
+    await panel.flush();
+    await pruefenKlicken(panel);
+    expect(panel.text("#ka7-satz")).toContain("Abweichung gefunden");
+    const alsKonflikt = panel.q('#ka7-liste li[data-quelle="regel-1"]');
+    expect(alsKonflikt?.getAttribute("data-doppelung")).toBe("1");
+    expect(alsKonflikt?.textContent).toContain("bei den Doppelungen");
+    const alsDoppelung = panel.q('#ka7-doppelung-liste li[data-quelle="regel-1"]');
+    expect(alsDoppelung, "der Treffer fehlt in der Doppelungsliste").not.toBeNull();
+    expect(alsDoppelung?.getAttribute("data-konflikt")).toBe("1");
+    expect(alsDoppelung?.textContent).toContain("bei den Abweichungen");
+  });
+
+  it("P18d · fehlendes oder unbekanntes Trefferverhältnis: „Prüfung nicht möglich“ — nicht geraten, weder Abweichung noch Doppelung", async () => {
+    // Ohne `type` sagt die Antwort nicht, WAS der Treffer ist.
+    const ohneTyp: Record<string, unknown> = { ...konflikt() };
+    delete ohneTyp.type;
+    panel = aufbauen({ checkText: reply(200, antwortMit([], [ohneTyp])) });
+    await panel.flush();
+    await pruefenKlicken(panel);
+    expect(panel.text("#ka7-satz")).toContain("Prüfung nicht möglich");
+    expect(panel.q("#ka7-liste li")).toBeNull();
+    expect(panel.q("#ka7-doppelung-liste li")).toBeNull();
+    panel.restore();
+
+    // Ein Verhältnis, das dieses Panel nicht kennt, wird nicht in eine der beiden Aussagen gepresst.
+    panel = aufbauen({
+      checkText: reply(200, antwortMit([], [{ ...konflikt(), type: "was-auch-immer" }])),
+    });
+    await panel.flush();
+    await pruefenKlicken(panel);
+    expect(panel.text("#ka7-satz")).toContain("Prüfung nicht möglich");
+    expect(panel.q("#ka7-liste li")).toBeNull();
+    panel.restore();
+
+    // Ein Körper ohne die Doppelungsliste ist keine Antwort dieser Route — kein Leersatz daraus.
+    panel = aufbauen({
+      checkText: reply(200, {
+        conflicts: [],
+        konfliktpruefung: { gelaufen: true, grund: null, kandidaten: 1 },
+      }),
+    });
+    await panel.flush();
+    await pruefenKlicken(panel);
+    expect(panel.text("#ka7-satz")).toContain("Prüfung nicht möglich");
+    expect(panel.text("#ka7-satz")).not.toContain("Keine Abweichung");
   });
 });
