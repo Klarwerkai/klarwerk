@@ -26,6 +26,12 @@ import {
 } from "../../apps/web/node_modules/@tanstack/react-query";
 import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
+// JOB 3194 R4: `ImportExplore` liest und schreibt seine Adresse jetzt über den Router
+// (`useLocation`/`useNavigate`) — der Rückkehrpunkt des Erklärwegs darf keinen History-Eintrag ohne
+// Router-Stempel erzeugen (`tests/app/navguard-history-authority.test.ts`, Kante 1). Diese Montage
+// war die letzte ohne Router; sie bekommt dieselbe Umgebung wie die Nachbarn
+// (`import-source-selection-mounted.test.tsx:88`, `job2683-d2-erkunden-flaeche.test.tsx:86`).
+import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
 import "../../apps/web/src/i18n";
 // WP-SHIP8-CLOSE-2 (bens F2): ECHTE ApiError-Klasse (client-Modul ist NICHT gemockt) — die
 // Fehlerpfade in runApply prüfen per instanceof.
@@ -96,10 +102,14 @@ function mount(): void {
         QueryClientProvider,
         { client: qc },
         createElement(
-          ImportCockpitProvider,
-          null,
-          createElement(ImportStepperBar),
-          createElement(ImportExplore),
+          MemoryRouter,
+          { initialEntries: ["/import"] },
+          createElement(
+            ImportCockpitProvider,
+            null,
+            createElement(ImportStepperBar),
+            createElement(ImportExplore),
+          ),
         ),
       ),
     );

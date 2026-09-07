@@ -8,8 +8,9 @@
 // WP-IC-PAKET-1 (Teil 4): „davon bereits importiert"-Zeile aus dem Quell-Referenz-Abgleich.
 import { useMutation } from "@tanstack/react-query";
 import { Images, Loader2, Search, Users } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { type MouseEvent as ReactMouseEvent, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useLocation, useNavigate } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import type { ImportExploreResponse } from "../api/types";
@@ -278,6 +279,46 @@ function ExploreMap({
   );
 }
 
+// JOB 3194 (M6b) — DER RÜCKWEG AUS DER ERKLÄRSEITE MUSS WIRKLICH HIER LANDEN.
+//
+// Die Erklärseite `public/demonstration/importwege.html` zeigt mit ihrem Rückweg-Link auf
+// `/import#import-source-gallery`. Beim Vollaufruf dieser Adresse gibt es den Anker beim Parsen des
+// Dokuments NOCH NICHT: `/import` lädt sein Seitenmodul erst nach (`routes.tsx`,
+// `lazy(() => import("./pages/Stufe2"))`), die Galerie entsteht also nach dem Ankersprung des
+// Browsers. Gemessen im Ausgangszustand (JOB 3194, gebaute App in Chromium): der Anker lag bei
+// 1440×900 bei 982 px, bei 390×844 bei 1208 px — beide Male unter dem Fenster —, und der Fokus stand
+// auf `body`. Der Sprung wird deshalb hier nachgeholt, sobald die Galerie WIRKLICH montiert ist.
+//
+// Die Kennung selbst gehört der Galerie (`ImportSourceGallery.tsx`, `id="import-source-gallery"`)
+// und wird hier nur GELESEN — nie über Struktur oder Position gesucht.
+const GALERIE_ANKER = "import-source-gallery";
+
+// JOB 3194 RUNDE 3 (BENs Befund) — UND DASSELBE FÜR DAS BROWSER-ZURÜCK.
+//
+// Der Ankersprung oben trägt nur, wenn die Adresse den Anker führt. Wer `/import` GEWÖHNLICH aufruft
+// (ohne Anker), von dort auf die Erklärseite geht und dann Browser-Zurück drückt, landet auf genau
+// diesem gewöhnlichen Verlaufseintrag — ohne Anker, also ohne Sprung. Gemessen: Galerie bei 982 px
+// (1440×900) bzw. 1208 px (390×844), Fokus auf `body`.
+//
+// Die Lösung setzt an der URSACHE an, nicht am Symptom: Wer die Fläche über den Erklärlink DER
+// GALERIE verlässt, war bei der Galerie — also bekommt der Verlaufseintrag, den er zurücklässt, in
+// diesem Moment den Anker. Das Zurück führt danach auf `/import#import-source-gallery`, und es
+// greift derselbe, bereits belegte Weg. Kein zweiter Mechanismus, kein neuer Speicher, kein Raten
+// über die Herkunft: der Rückkehrpunkt wird nur dann gesetzt, wenn der Mensch WIRKLICH über diesen
+// Link hinausgeht.
+//
+// GESCHRIEBEN WIRD DIE ADRESSE AUSSCHLIESSLICH ÜBER DEN ROUTER (`useNavigate`, `{ replace: true }`).
+//
+// Runde 3 rief hier `window.history.replaceState` direkt auf. Das war falsch, und der Wächter
+// `tests/app/navguard-history-authority.test.ts` (Kante 1) hat es gefangen: Der Router stempelt bei
+// jedem push/replace seinen `history.state.idx`; ein von Hand erzeugter Eintrag trägt diesen Stempel
+// NICHT, und React Router warnt, dass ein späteres POP auf so einen Eintrag STILL scheitert
+// (`router.js:1579`). Genau daran hängt der Zurück-Wächter der Anwendung (`app/NavGuardContext.tsx`,
+// `app/navHistory.ts`) — der Rückweg der Erklärseite hätte den Zurück-Schutz der ganzen App
+// beschädigen können. Über `navigate` bleibt der Index gestempelt und es gibt eine Autorität für die
+// Adresse, nicht zwei.
+const ERKLAERSEITE_PFAD = "/demonstration/importwege.html";
+
 function Stat({ label, value }: { label: string; value: string }): JSX.Element {
   return (
     <div className="rounded-card border border-hairline bg-page px-3 py-2">
@@ -309,6 +350,73 @@ export function ImportExplore(): JSX.Element {
       mapRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
     }
   }, [explore.data, reach]);
+
+  // JOB 3194 (M6b): der nachgeholte Ankersprung (siehe GALERIE_ANKER oben).
+  // Bedingungen, jede mit Absicht:
+  //  · NUR wenn genau dieser Anker im `location.hash` steht — ein gewöhnlicher Aufruf von `/import`
+  //    verschiebt keinen Fokus (sonst wäre es Fokusklau).
+  //  · GENAU EINMAL je Ankeraufruf (`gesprungen`), nicht bei jeder Neuzeichnung.
+  //  · Erst wenn die Galerie montiert ist: der Effekt läuft nach dem ersten Zeichnen dieser Fläche,
+  //    und die Galerie wird von derselben Fläche unbedingt gezeichnet (kein Sprung ins Leere).
+  // Der Zustand der Erkundung (lädt / leer / Fehler / Cache) spielt dabei keine Rolle: die Galerie
+  // steht in jedem dieser Zustände, und dieser Sprung sagt über Daten nichts aus.
+  // GESCHRIEBEN wird die Adresse ausschließlich über den Router (siehe ERKLAERSEITE_PFAD oben).
+  // GELESEN wird zweimal, und zwar bewusst aus zwei Quellen: der Klickweg unten fragt den Ort des
+  // ROUTERS (er navigiert gleich selbst und muss dessen Sicht treffen), der Ankersprung darüber
+  // fragt `window.location` (er beschreibt den Zustand des DOKUMENTS beim ersten Zeichnen — genau
+  // die Adresse, mit der der Browser diese Seite geöffnet hat). Lesen ist frei; die Wächterregel
+  // aus `tests/app/navguard-history-authority.test.ts` betrifft nur das Schreiben und Bewegen.
+  const navigate = useNavigate();
+  const ort = useLocation();
+  const galerieRef = useRef<HTMLDivElement | null>(null);
+  const gesprungen = useRef(false);
+  useEffect(() => {
+    if (gesprungen.current || window.location.hash !== `#${GALERIE_ANKER}`) {
+      return;
+    }
+    const ziel = galerieRef.current?.querySelector<HTMLElement>(`#${GALERIE_ANKER}`);
+    if (!ziel) {
+      return;
+    }
+    gesprungen.current = true;
+    // Ein Abschnitt ist von sich aus nicht fokussierbar. `tabindex="-1"` macht ihn zum Sprungziel,
+    // OHNE ihn in die Tabulatorreihenfolge zu nehmen — das übliche Sprungmarken-Muster. Gesetzt
+    // wird das Attribut hier und nicht in der Galerie, weil der Sprung diesem Weg gehört und die
+    // Galerie ohne ihn unverändert bleibt.
+    if (!ziel.hasAttribute("tabindex")) {
+      ziel.setAttribute("tabindex", "-1");
+    }
+    ziel.scrollIntoView({ block: "start" });
+    ziel.focus({ preventScroll: true });
+  }, []);
+
+  // JOB 3194 R4: den Rückkehrpunkt setzen, BEVOR der Browser die Seite verlässt (siehe
+  // ERKLAERSEITE_PFAD oben) — über den Router, mit `replace`, damit kein zusätzlicher
+  // Verlaufseintrag entsteht und der Index gestempelt bleibt.
+  // Nur bei einem Klick, der wirklich navigiert: ein Klick mit Zusatztaste oder mittlerer Maustaste
+  // öffnet einen neuen Tab und lässt diese Seite stehen; dann wäre eine geänderte Adresse eine
+  // Behauptung über einen Weg, den niemand gegangen ist.
+  const merkeRueckkehrpunkt = (ereignis: ReactMouseEvent<HTMLDivElement>): void => {
+    if (ereignis.defaultPrevented || ereignis.button !== 0) {
+      return;
+    }
+    if (ereignis.metaKey || ereignis.ctrlKey || ereignis.shiftKey || ereignis.altKey) {
+      return;
+    }
+    const link = (ereignis.target as Element).closest("a");
+    if (link?.getAttribute("href") !== ERKLAERSEITE_PFAD) {
+      return;
+    }
+    if (ort.hash === `#${GALERIE_ANKER}`) {
+      return;
+    }
+    // Pfad und Abfrage werden ausdrücklich mitgegeben: ein reines `{ hash }` würde einen
+    // vorhandenen Abfrageteil verwerfen (react-router `resolveTo`).
+    navigate(
+      { pathname: ort.pathname, search: ort.search, hash: `#${GALERIE_ANKER}` },
+      { replace: true },
+    );
+  };
 
   // AUFTRAG-ic7-import-vision: Klick auf eine AKTIVE Galerie-Kachel loest den echten, bereits
   // existierenden Fluss aus — Confluence die READ-ONLY Erkundung, JSON den bestehenden Datei-Dialog
@@ -343,7 +451,7 @@ export function ImportExplore(): JSX.Element {
           aktive Kacheln loesen den echten, bestehenden Fluss aus: Confluence startet die READ-ONLY
           Erkundung, JSON oeffnet den bestehenden Datei-Dialog. „bald"/„geplant" zeigen nur einen
           ehrlichen Hinweis — kein Import, kein Formular, kein Fortschritt. */}
-      <div className="mt-2 pl-8">
+      <div className="mt-2 pl-8" ref={galerieRef} onClickCapture={merkeRueckkehrpunkt}>
         <ImportSourceGallery onActivate={handleActivate} />
       </div>
 

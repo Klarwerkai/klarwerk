@@ -174,13 +174,22 @@ describe("JOB 3131 T2 · die Browser-Gruppe ist genau die Menge mit Chromium in 
     // B1/B3 prüfen die tatsächliche Einordnung, der zusätzliche Namenspin hält den Beleg fest.
     const graph = holeBefund();
     // JOB 3199: ein zusätzlicher Start für zwei CDP-Prozessstichproben, seriell, unter 60s.
-    expect(graph.startdateien.length).toBe(20);
+    // JOB 3194 (M6b): eine weitere eigene Startstelle — der Rückfall-Wächter der Erklärseite.
+    // Er MUSS Playwright selbst starten: er serviert eine umgeformte Fassung der ausgelieferten
+    // Bytes (Regeln mit `:has(` entfernt) über eine eigene Routenweiche und kann deshalb nicht auf
+    // dem gemeinsamen Prüfstand `h6-chromium.ts` reiten, der die gebaute App aus `dist` bedient.
+    // Die Last bleibt klein: EIN Browser, vier Fälle, im eigenen Lauf unter 0,3 s.
+    // Die beiden anderen neuen M6b-Dateien (`rueckweg-echte-route-chromium.test.ts`,
+    // `rundweg-tastatur-chromium.test.ts`) fahren über `h6-chromium.ts` und sind KEINE neuen
+    // Startstellen — sie tauchen hier bewusst nicht auf.
+    expect(graph.startdateien.length).toBe(21);
     for (const bekannt of [
       "tests/design/h4-harness.ts",
       "tests/design/h6-chromium.ts",
       "tests/design/h1-chromium.ts",
       "tests/profil-schmal/schmal-buehne.ts",
       "tests/m6-import-erklaerweg/klara-importwege-browser.test.tsx",
+      "tests/m6-import-erklaerweg/rueckfall-ohne-has.test.tsx",
       "tests/tor-inventar/chromium-prozesszahl.test.ts",
     ]) {
       expect(graph.startdateien, `${bekannt} startet Chromium und fehlt im Graphen`).toContain(

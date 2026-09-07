@@ -100,6 +100,23 @@ const REGISTER: Eintrag[] = [
     ],
   },
   {
+    // JOB 3194 · M6b: der Rückfall-Wächter liest dieselbe Präsentationsseite, misst aber einen
+    // anderen Gegenstand als die beiden Nachbarn — den Zustand OHNE `:has()`.
+    waechter: "tests/m6-import-erklaerweg/rueckfall-ohne-has.test.tsx",
+    teildeckung: "importwege-rueckfall-ohne-has",
+    aussage:
+      "Stellt an den AUSGELIEFERTEN Bytes den Zustand eines Browsers ohne `:has()` her (Regeln mit " +
+      "`:has(` entfernt, `@supports not selector(:has(*))` als wahr) und misst, dass dann alle " +
+      "sechs Schritte, beide Sprachen, beide Quellen und der Rückfall-Hinweis lesbar sind — bei " +
+      "1440×900 und 390×844. Deckt NUR diesen Rückfall: kein Kontrast, kein App-Thema, keine " +
+      "Aussage über den `:has()`-Weg selbst (den misst der Browser-Wächter daneben).",
+    beleg: [
+      { was: "die ausgelieferten Bytes statt der Quelldatei", muster: /rawPayload/ },
+      { was: "die nachgestellte Bedingung", muster: /@supports not selector\(:has\(\*\)\)/ },
+      { was: "echte Browsergeometrie", muster: /getBoundingClientRect/ },
+    ],
+  },
+  {
     waechter: "tests/app/mega40-theme-invarianz.test.ts",
     teildeckung: "theme-invarianz",
     aussage:

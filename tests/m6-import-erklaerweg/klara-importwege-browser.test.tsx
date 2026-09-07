@@ -7,7 +7,6 @@ import { type Browser, type BrowserContext, type Page, chromium } from "playwrig
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { registerSecurityHeaders } from "../../services/app/src/security-headers";
 import { registerWebStatic } from "../../services/app/src/web-static";
-import { registerGalleryFixture } from "./gallery-fixture";
 
 const origin = "https://klarwerk.test";
 const path = "/demonstration/importwege.html";
@@ -21,16 +20,21 @@ const errors: string[] = [];
 beforeAll(async () => {
   await registerSecurityHeaders(app);
   await registerWebStatic(app, resolve("apps/web/public"));
-  registerGalleryFixture(app);
   await app.ready();
-  browser = await chromium.launch({ headless: true });
+  browser = await chromium.launch({
+    // JOB 3194: dieselben Sparflaggen wie der gemeinsame Prüfstand (`tests/design/h6-chromium.ts`).
+    // Im Gesamttor laufen mehrere Browsermessungen gleichzeitig; ohne sie startet dieser Browser in
+    // der Bahn-Sandkiste gar nicht erst (Mach-Port verweigert).
+    headless: true,
+    args: ["--no-sandbox", "--disable-gpu", "--single-process", "--no-zygote"],
+  });
   context = await browser.newContext();
   // Alle Requests werden erfasst, unbekannte Ziele abgebrochen; kein Socket/echter API-Dienst.
   await context.route("**/*", async (route) => {
     const request = route.request();
     requests.push(`${request.method()} ${request.url()}`);
     const url = new URL(request.url());
-    if (url.origin !== origin || ![path, "/import"].includes(url.pathname)) {
+    if (url.origin !== origin || url.pathname !== path) {
       await route.abort();
       return;
     }
@@ -85,6 +89,9 @@ for (const viewport of [
             expect(await page.locator("[data-example-notice]").innerText()).toContain(
               lang === "de" ? "Fiktive Demonstrationsdaten" : "Fictional demonstration data",
             );
+            // JOB 3194 (M6b): Der Rückfall-Hinweis gehört NUR dem Browser ohne `:has()`. Hier kann
+            // der Browser umschalten — die Auskunft „alles steht gleichzeitig" wäre schlicht falsch.
+            expect(await page.locator("[data-fallback-notice]").isVisible()).toBe(false);
             const geometry = await page.evaluate(() => {
               const visible = [
                 ...document.querySelectorAll<HTMLElement>(
@@ -156,18 +163,12 @@ it("native Tastatur: Tab, Pfeile und sichtbarer Fokus; Schritte/Quelle bleiben b
   expect(await page.locator("#step-panel-6 h2").innerText()).toBe("Mit Klara nutzen");
 });
 
-it("Galerie → Erklärweg → Browser-Zurück sowie expliziter Rückweg treffen den Galerie-Anker", async () => {
-  await page.goto(`${origin}/import`);
-  await page.getByRole("link", { name: "Jira / Confluence →" }).click();
-  expect(page.url()).toBe(`${origin}${path}`);
-  await select("step-4");
-  await select("language-en");
-  await page.goBack();
-  expect(page.url()).toBe(`${origin}/import`);
-  expect(await page.locator("#import-source-gallery").isVisible()).toBe(true);
-  await page.goForward();
-  await page.locator("a[data-return]").focus();
-  await page.keyboard.press("Enter");
-  await page.waitForURL(`${origin}/import#import-source-gallery`);
-  expect(await page.locator("#import-source-gallery").isVisible()).toBe(true);
-});
+// JOB 3194 (M6b) — HIER STAND DER RUNDWEG GEGEN DIE SSR-FIXTURE.
+//
+// Der Fall „Galerie → Erklärweg → Browser-Zurück sowie expliziter Rückweg treffen den Galerie-Anker"
+// (bis 07.09.2026 an dieser Stelle) prüfte den Rückweg gegen `gallery-fixture.tsx` — eine Seite, die
+// NUR den Zielabschnitt ausliefert und nichts nachlädt. Dort traf der Anker immer, auch als die echte
+// Route ihn verfehlte (gemessen: Anker 982 px unter dem Fenster, Fokus auf `body`). Zwei Wahrheiten
+// über denselben Weg bleiben nicht stehen: den Rückweg belegen jetzt AUSSCHLIESSLICH
+// `rueckweg-echte-route-chromium.test.ts` und `rundweg-tastatur-chromium.test.ts` an der ECHTEN,
+// gebauten Route. Diese Datei misst weiterhin die statische Erklärseite selbst.
