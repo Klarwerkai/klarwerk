@@ -431,6 +431,8 @@ const de = {
   // PAKET 1 (D-AISTATE, Pedi 23.07.): ehrlicher Hinweis am HART ausgegrauten KI-Knopf, wenn für die
   // Aufgabe kein Modell nutzbar ist — kein stiller Fallback, der „KI läuft" vortäuscht.
   "ai.unavailable.hint": "KI nicht verfügbar — für diese Aufgabe ist kein Modell aktiv.",
+  "ai.statusUnknown.hint":
+    "KI-Status unbekannt — der Statusabruf ist fehlgeschlagen. Deshalb bleibt die KI-Antwort vorsorglich gesperrt.",
   "provenance.original": "ursprünglich",
   "uikit.sampleStatement": "Druckabfall an Presse P2 sitzt meist an Ventil V4, nicht an der Pumpe.",
   "state.loading": "Lädt …",
@@ -5796,6 +5798,8 @@ const en: typeof de = {
   "reasoner.taskInfo.dsgvoExternalBody":
     "Uses an external cloud provider — GDPR compliance depends on the data processing agreement (DPA) with the provider.",
   "ai.unavailable.hint": "AI unavailable — no model is active for this task.",
+  "ai.statusUnknown.hint":
+    "AI status unknown — the status request failed. The AI answer remains blocked as a precaution.",
   "provenance.original": "originally",
   "uikit.sampleStatement": "Pressure loss on press P2 usually sits at valve V4, not at the pump.",
   "state.loading": "Loading …",
@@ -10429,6 +10433,8 @@ const nl: typeof de = {
   "reasoner.taskInfo.dsgvoExternalBody":
     "Maakt gebruik van een externe cloudaanbieder — de AVG-conformiteit hangt af van de verwerkersovereenkomst met de aanbieder.",
   "ai.unavailable.hint": "AI niet beschikbaar — voor deze taak is geen model actief.",
+  "ai.statusUnknown.hint":
+    "AI-status onbekend — het ophalen van de status is mislukt. Daarom blijft het AI-antwoord uit voorzorg geblokkeerd.",
   "provenance.original": "oorspronkelijk",
   "uikit.sampleStatement": "Drukverlies bij pers P2 zit meestal aan ventiel V4, niet aan de pomp.",
   "state.loading": "Laden …",

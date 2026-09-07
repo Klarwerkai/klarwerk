@@ -12,7 +12,6 @@ import { useToast } from "../app/ToastContext";
 // `billable` der Aufgabe „answer", nicht mehr als unbedingter eigener Wortlaut.
 import { AiCostHint } from "../components/AiCostHint";
 import { AiGeneratedNotice } from "../components/AiGeneratedNotice";
-import { AiUnavailableHint } from "../components/AiUnavailableHint";
 import { AnswerSourceDetails } from "../components/AnswerSourceDetails";
 import { DemoBanner } from "../components/DemoBanner";
 import { HelpTip } from "../components/HelpTip";
@@ -410,6 +409,7 @@ export function Ask(): JSX.Element {
   // PAKET 1 (D-AISTATE, Pedi 23.07.): die KI-Antwort (Reasoner-Task „answer") ohne nutzbares Modell
   // HART ausgrauen — kein stiller deterministischer Fallback, der „KI antwortet" vortäuscht.
   const answerAi = useAiAvailable("answer");
+  const aiHintKey = answerAi.statusUnknown ? "ai.statusUnknown.hint" : "ai.unavailable.hint";
   // AUFTRAG-mega69 B1: kann ein Klick auf DIESE Aufgabe („answer") wirklich etwas kosten? Dieselbe
   // zentrale Ableitung (deriveAiBillable) wie an allen anderen Auslösestellen; ohne Auskunft
   // schweigt der Hinweis (AiCostHint rendert nur bei `true`).
@@ -946,7 +946,7 @@ export function Ask(): JSX.Element {
           // PAKET 1 (D-AISTATE): hart ausgrauen, wenn kein Modell für „answer" nutzbar ist.
           // E2E-018: zusätzlich sperren, solange die Frage leer/Whitespace-only ist.
           disabled={ask.isPending || !answerAi.available || q.trim().length === 0}
-          title={!answerAi.available ? t("ai.unavailable.hint") : undefined}
+          title={!answerAi.available ? t(aiHintKey) : undefined}
           className="grid h-[34px] w-[34px] shrink-0 place-items-center rounded-[50%] bg-ink text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
         >
           <span className="sr-only">{t("ask.submit")}</span>
@@ -967,7 +967,9 @@ export function Ask(): JSX.Element {
         {answerAi.available && emptyAttempted && q.trim().length === 0 ? t("ask.emptyHint") : ""}
       </output>
       <span className="order-3 -mt-2 block">
-        <AiUnavailableHint show={!answerAi.available} />
+        {!answerAi.available ? (
+          <p className="mt-1.5 text-[12px] text-muted-2">{t(aiHintKey)}</p>
+        ) : null}
       </span>
 
       {/* WP-UX-WOW-1 U2/U3 (statt SCRUM-265-Statik): ehrliche Beispiel-Chips. Antwort-Beispiele

@@ -10,12 +10,15 @@
 // Gruppierung, Ask/Klara, Extraktion) werden hier gesteuert.
 import type { ReasonerStatus, ReasonerTask } from "../api/types";
 
+// JOB 3220: Ein Statusfehler ohne Daten wird durch einen erfolgreichen Refetch aufgelöst.
+// `statusUnknown` erklärt nur die bestehende Sperre; der Zustand lockert sie NICHT.
 export interface AiAvailability {
   // true = für diese Aufgabe ist ein nutzbares Modell vorhanden (Cloud/Lokal), LLM-Aktion erlaubt.
   available: boolean;
   // Solange noch kein Status vorliegt: NICHT vorschnell ausgrauen (kein Flackern) — die Aktion
   // bleibt bedienbar, bis der echte Zustand da ist.
   isLoading: boolean;
+  statusUnknown: boolean;
 }
 
 // PAKET 3 (D-AISTATE, bens V4): ehrliche per-Aufgabe-Verfügbarkeit AUS dem öffentlichen Status.

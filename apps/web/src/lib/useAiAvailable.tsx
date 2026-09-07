@@ -17,9 +17,13 @@ export function useAiAvailable(task: ReasonerTask): AiAvailability {
   const status = useReasonerStatus();
   // „lädt" nur, solange noch kein Status vorliegt — dann NICHT vorschnell ausgrauen (kein Flackern).
   const isLoading = status.isLoading && !status.data;
+  // JOB 3220: Nur ohne erfolgreiche Daten ist der Status unbekannt. Scheitert eine Auffrischung,
+  // bleibt die letzte erfolgreiche Auskunft maßgeblich: ein Netzwackler verwirft keinen bekannten
+  // Modellzustand. Der nächste erfolgreiche Refetch löst den Fehlerzustand wieder auf.
+  const statusUnknown = status.isError && !status.data;
   // PAKET 3 (bens V4): Kommentar und Verhalten in Einklang — WÄHREND des Ladens bleibt die Aktion
   // bedienbar (available=true), erst der echte Status entscheidet. Danach die ehrliche per-Task-
   // Ableitung (aktiv + erreichbar + Task-Policy) aus dem öffentlichen Status.
   const available = isLoading ? true : deriveAiAvailable(status.data, task);
-  return { available, isLoading };
+  return { available, isLoading, statusUnknown };
 }
