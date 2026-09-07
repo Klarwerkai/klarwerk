@@ -15,10 +15,19 @@
 type MammothInput = { arrayBuffer: ArrayBuffer; buffer?: Uint8Array };
 type MammothResult = { value: string; messages: unknown[] };
 
+// JOB 3210/M5c: die EINZIGE Option, die dieses Modul der Engine mitgibt — die Stilkarte, mit der
+// Word-Beschriftungsabsätze überhaupt erst unterscheidbar werden (s. DOCX_CAPTION_STYLE_MAP).
+// mammoth HÄNGT eine übergebene Karte an seine Standardkarte an (`includeDefaultStyleMap`, Vorgabe
+// an) — Überschriften, Listen und Links bleiben also unberührt. Gemessen, nicht angenommen: der
+// Sondenlauf 07.09. lieferte mit derselben Karte weiterhin `<h1>Kapitel eins</h1>`.
+export interface DocxConvertOptions {
+  styleMap?: readonly string[];
+}
+
 // Injizierbarer Engine-Vertrag (Muster PdfEngine in ./pdf): Tests nutzen einen Fake,
 // der Browser-Wrapper lädt das echte mammoth lazy.
 export interface DocxEngine {
-  convertToHtml(input: MammothInput): Promise<MammothResult>;
+  convertToHtml(input: MammothInput, options?: DocxConvertOptions): Promise<MammothResult>;
   extractRawText(input: MammothInput): Promise<MammothResult>;
 }
 
@@ -271,6 +280,406 @@ export function newImageRunToken(): string {
 // Bare data:image-<img> (mammoth-Ausgabe) — zum Umhüllen in <figure> mit Fußnoten-Anker.
 const IMG_WRAP_RE = /<img\b[^>]*\bsrc="data:image\/[a-zA-Z0-9.+-]+;base64,[^"]*"[^>]*>/gi;
 
+// ================================================================================================
+// JOB 3210 · M5c — WORD-BILDUNTERSCHRIFTEN ÜBERLEBEN DEN DOCX-IMPORT
+// ================================================================================================
+//
+// DER BEFUND (Codex, Paket M5-DOCX-BILDUNTERSCHRIFTEN-20260907, gemessen an der freigegebenen
+// BAADER-Arbeitskopie, Entwurf 35605815-…): zehn Bilder kamen an, die Beschriftungen „Figure 1:
+// Profiles" bis „Figure 9: Transitions, key surfaces" ebenfalls — aber als GEWÖHNLICHE NACHBAR-
+// ABSÄTZE, und alle zehn `figcaption` waren LEER. Damit findet die Bildsuche (M5/JOB 3095), die
+// ihre Suchtexte aus `figcaption` ableitet (`services/structure/src/captions.ts`), kein einziges
+// dieser Bilder über seine Originalbeschriftung.
+//
+// WARUM DIE BESCHRIFTUNG BIS HIERHER VERLORENGING, und zwar schon eine Stufe früher als in
+// `wrapImagesInFigures`: mammoths Standard-Stilkarte kennt Überschriften, Listen und Links — die
+// Word-Beschriftungsvorlage kennt sie NICHT. Ein Beschriftungsabsatz kommt deshalb als nacktes
+// `<p>Figure 1: Profiles</p>` an, ununterscheidbar von jedem anderen Satz. GEMESSEN im Sondenlauf
+// 07.09. an einer echten .docx mit `w:pStyle` auf einen Stil mit `w:name="caption"`:
+//
+//     ohne Stilkarte   <p><img …/></p><p> </p><p>Figure 1: Profiles</p>
+//     mit  Stilkarte   <p><img …/></p><p> </p><p class="kw-docx-caption">Figure 1: Profiles</p>
+//
+// Ohne diese Karte bliebe nur Ratewerk am Fliesstext. Mit ihr steht die WORD-STRUKTUR da, und die
+// Zuordnung wird eine Frage der Nachbarschaft statt eine Frage der Textähnlichkeit.
+
+/** Die Marke, die die Stilkarte auf einen Word-Beschriftungsabsatz setzt. Verlässt das Modul nie. */
+const CAPTION_MARKER_CLASS = "kw-docx-caption";
+
+/**
+ * Die Stilkarte für mammoth: welche Word-Formatvorlage ist eine Bildbeschriftung.
+ *
+ * `p[style-name='…']` trifft den NAMEN aus `word/styles.xml`, `p.…` die KENNUNG (`w:styleId`).
+ * Beide stehen hier, weil beide vorkommen: Word schreibt für die eingebaute Beschriftungsvorlage
+ * den kanonischen OOXML-Namen `caption` — auch in einer deutschen Oberfläche, wo der Anwender
+ * „Beschriftung" liest —, während fremd erzeugte Dokumente (Konverter, Vorlagensammlungen) eigene
+ * Vorlagen mitbringen.
+ *
+ * GROSS-/KLEINSCHREIBUNG IST NICHT EGAL: mammoths Namensvergleich ist zeichengenau — die
+ * Standardkarte führt `p[style-name='Heading 1']` UND `p[style-name='heading 1']` nebeneinander,
+ * genau deshalb. Beide Schreibweisen stehen hier ebenso.
+ *
+ * EHRLICHE GRENZE, sie gehört in die Rückgabe und nicht in eine Fussnote: Diese Liste ist
+ * ABSCHLIESSEND. Eine Vorlage mit einem hier nicht genannten Namen (etwa eine hauseigene
+ * „FigTitle") wird NICHT als Beschriftung erkannt. Für sie greift nur noch der zweite Weg unten
+ * (der nummerierte „Figure n:"-Absatz), und wo auch der nicht greift, bleibt die Fussnote leer —
+ * wie heute. Erfunden wird nichts.
+ */
+const DOCX_CAPTION_STYLE_MAP: readonly string[] = [
+  // Die eingebaute Word-Vorlage, über ihren OOXML-Namen (beide Schreibweisen).
+  `p[style-name='caption'] => p.${CAPTION_MARKER_CLASS}:fresh`,
+  `p[style-name='Caption'] => p.${CAPTION_MARKER_CLASS}:fresh`,
+  // Dieselbe Vorlage über ihre Kennung — und die lokalisierten Kennungen, die ältere Word-Fassungen
+  // wirklich schreiben.
+  `p.Caption => p.${CAPTION_MARKER_CLASS}:fresh`,
+  `p.Beschriftung => p.${CAPTION_MARKER_CLASS}:fresh`,
+  `p.Bildunterschrift => p.${CAPTION_MARKER_CLASS}:fresh`,
+  `p.Onderschrift => p.${CAPTION_MARKER_CLASS}:fresh`,
+  // Und dieselben Namen, falls ein Dokument sie als eigene Vorlage führt.
+  `p[style-name='Beschriftung'] => p.${CAPTION_MARKER_CLASS}:fresh`,
+  `p[style-name='Bildunterschrift'] => p.${CAPTION_MARKER_CLASS}:fresh`,
+  `p[style-name='Onderschrift'] => p.${CAPTION_MARKER_CLASS}:fresh`,
+];
+
+/**
+ * Der ZWEITE Erkennungsweg: der nummerierte Beschriftungsabsatz, den Word beim Einfügen einer
+ * Beschriftung erzeugt („Figure 1: Profiles", „Abbildung 2 – Schraubverbindung").
+ *
+ * WAS HIER BEWUSST GEFORDERT WIRD, und warum jede Lockerung schadet: nach der Nummer MUSS ein
+ * Beschriftungstrenner stehen — Doppelpunkt, Punkt, Gedankenstrich, Tabulator — oder der Absatz
+ * endet. EIN LEERZEICHEN GENÜGT NICHT. Sonst wäre der Fliesstextsatz „Figure 4 shows the profile
+ * of the frame." eine Beschriftung, und der Satz landete als erfundene Bildunterschrift in der
+ * Fussnote. Das ist der Unterschied zwischen „Beschriftung erkannt" und „Nachbartext übernommen",
+ * und §5.2 des Auftrags verbietet Letzteres ausdrücklich.
+ *
+ * DIE NUMMER WIRD NIE ZUR ZUORDNUNG BENUTZT — nur zur ERKENNUNG, dass dieser Absatz eine
+ * Beschriftung ist. Welches Bild sie meint, entscheidet allein die Nachbarschaft (s. u.). Das
+ * Demodokument hat zehn Bilder und neun Legenden; „Bildnummer gleich Figure-Nummer" wäre dort ab
+ * dem zehnten Bild schlicht falsch.
+ */
+const NUMBERED_CAPTION_RE =
+  /^(?:figure|fig\.?|abbildung|abb\.?|bild|afbeelding|afb\.?)\s*\d+(?:[.-]\d+)*[a-z]?\s*(?:[:.\t–—-]|$)/i;
+
+/** Elemente ohne Schlusskante — der Blockgang darf für sie keine suchen. */
+const VOID_TAGS = new Set(["img", "br", "hr", "input", "meta", "link", "source", "col", "area"]);
+
+type BlockArt = "bild" | "leer" | "beschriftung" | "anderes";
+
+interface HtmlBlock {
+  readonly tag: string;
+  /** Anfang der Öffnungskante im Rumpf. */
+  readonly start: number;
+  /** Hinter der Schlusskante. */
+  readonly end: number;
+  readonly art: BlockArt;
+  /** Bei `art === "bild"`: die 1-basierten Bildnummern dieses Blocks (Zählung wie `wrapImagesInFigures`). */
+  readonly bilder: readonly number[];
+  /** Bei `art === "beschriftung"`: der Inhalt der Beschriftung, im Wortlaut samt Auszeichnung. */
+  readonly beschriftung: string;
+}
+
+/** Der sichtbare Text eines Ausschnitts: Marken raus, Leerraum vereinheitlicht. */
+function blockText(html: string): string {
+  return html
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Die Blöcke der OBERSTEN Ebene, in Dokumentreihenfolge.
+ *
+ * Warum eigenhändig und nicht über einen Parser: dieses Modul ist ausdrücklich DOM-frei (Kopf der
+ * Datei) und muss im Node-Typecheck ohne DOM-lib laufen. Gleichnamige Verschachtelung wird
+ * mitgezählt (`<ul><li><ul>…`), damit eine innere Liste den Block nicht vorzeitig schliesst.
+ *
+ * Die Annahme „`<` und `>` kommen in Attributwerten nicht vor" ist im Werk bereits die tragende
+ * (`services/structure/src/captions.ts`: „base64 kann kein `<` enthalten"): mammoth maskiert
+ * `&<>"` in Attributwerten, und base64 kennt beide Zeichen nicht.
+ */
+function topLevelBlocks(html: string): { tag: string; start: number; end: number }[] {
+  const raus: { tag: string; start: number; end: number }[] = [];
+  let i = 0;
+  while (i < html.length) {
+    const lt = html.indexOf("<", i);
+    if (lt < 0) {
+      break;
+    }
+    const kante = /^<([a-zA-Z][a-zA-Z0-9]*)/.exec(html.slice(lt, lt + 24));
+    const tag = kante?.[1]?.toLowerCase();
+    if (tag === undefined) {
+      i = lt + 1;
+      continue;
+    }
+    const openEnd = html.indexOf(">", lt);
+    if (openEnd < 0) {
+      break;
+    }
+    if (VOID_TAGS.has(tag) || html[openEnd - 1] === "/") {
+      raus.push({ tag, start: lt, end: openEnd + 1 });
+      i = openEnd + 1;
+      continue;
+    }
+    const kanten = new RegExp(`</?${tag}\\b`, "gi");
+    kanten.lastIndex = openEnd + 1;
+    let tiefe = 1;
+    let ende = -1;
+    let treffer: RegExpExecArray | null;
+    // biome-ignore lint/suspicious/noAssignInExpressions: Standard-Regex-Iteration.
+    while ((treffer = kanten.exec(html)) !== null) {
+      tiefe += treffer[0][1] === "/" ? -1 : 1;
+      if (tiefe === 0) {
+        const schluss = html.indexOf(">", treffer.index);
+        ende = schluss < 0 ? html.length : schluss + 1;
+        break;
+      }
+    }
+    if (ende < 0) {
+      // Unabgeschlossen — der Rest ist ein Block, und die Schleife endet. Nichts wird geraten.
+      raus.push({ tag, start: lt, end: html.length });
+      break;
+    }
+    raus.push({ tag, start: lt, end: ende });
+    i = ende;
+  }
+  return raus;
+}
+
+/** Trägt die Öffnungskante dieses Absatzes die Beschriftungsmarke der Stilkarte? */
+function hasCaptionMarker(openTag: string): boolean {
+  return new RegExp(`\\bclass\\s*=\\s*"[^"]*\\b${CAPTION_MARKER_CLASS}\\b`, "i").test(openTag);
+}
+
+/**
+ * Die Marke wieder entfernen — sie ist Werkzeug dieses Schrittes und kein Inhalt des Rumpfes.
+ * Bleibt nach dem Streichen keine Klasse übrig, fällt das Attribut ganz weg; `<p >` wird wieder
+ * `<p>`, damit ein Rumpf ohne Beschriftungen zeichengleich zur mammoth-Ausgabe bleibt.
+ */
+function stripCaptionMarker(openTag: string): string {
+  return openTag
+    .replace(/\bclass\s*=\s*"([^"]*)"/i, (_ganz: string, wert: string): string => {
+      const rest = wert
+        .split(/\s+/)
+        .filter((c) => c !== "" && c !== CAPTION_MARKER_CLASS)
+        .join(" ");
+      return rest === "" ? "" : `class="${rest}"`;
+    })
+    .replace(/\s+>/, ">")
+    .replace(/\s{2,}/g, " ");
+}
+
+// ================================================================================================
+// DIE ZUORDNUNGSREGEL — sie steht hier ganz, weil sie die eigentliche Leistung dieses Jobs ist.
+// ================================================================================================
+//
+// EIN BILDLAUF ist eine ununterbrochene Folge aus Bildblöcken und Leerabsätzen mit mindestens einem
+// Bild. Leerabsätze trennen also NICHT (Auftrag §5.2, gemessener BAADER-Fall: Bild, Leerabsatz,
+// „Figure 1: Profiles"); jeder andere Absatz trennt sehr wohl.
+//
+// EINE BESCHRIFTUNG hat höchstens zwei Anwärter: den Bildlauf unmittelbar davor und den unmittelbar
+// danach. Beide zählen IMMER. Es gibt keine Vorzugsseite und keine dokumentweite „Ausrichtung", aus
+// der eine Seite gewönne.
+//
+// WARUM NICHT (Korrekturpflicht 1 des Prüfers zu Runde 1, und Präzisierung der Steuerung vom
+// 07.09. 08:35/08:51): Runde 1 zählte, auf welcher Seite ihres Bildes die EINDEUTIGEN Beschriftungen
+// eines Dokuments stehen, und liess diese Mehrheit eine Legende ZWISCHEN zwei Bildern entscheiden.
+// Der Prüfer hat den Fall nachgestellt — drei eindeutige Beschriftungen, danach Bild–Legende–Bild —
+// und bekam eine gefüllte Fussnote und `ambiguous: 0`, wo beide Fussnoten leer und zwei Bilder offen
+// hätten sein müssen. Eine Konvention, die anderswo im Dokument gilt, ist KEIN Beleg dafür, zu
+// welchem Bild DIESE Legende gehört: sie ist eine Vermutung, und §5.2 verbietet Vermutungen. Das
+// BAADER-Original enthält solche Folgen wirklich (Bild–Legende–Bild bei „Bolted connection" und bei
+// Figure 7–9), und dort wäre die Mehrheitsantwort in der Bildsuche eine falsche Herkunftsangabe —
+// teurer als gar keine.
+//
+// ZUGEORDNET WIRD NUR BEI DREIFACHER EINDEUTIGKEIT:
+//   · die Beschriftung hat GENAU EINEN Anwärter (auf der anderen Seite steht kein Bildlauf),
+//   · dieser Lauf trägt GENAU EIN Bild,
+//   · und GENAU EINE Beschriftung wählt ihn.
+// Sonst bleibt die Fussnote leer, und die betroffenen Bilder werden als `captionsAmbiguous`
+// gezählt. Zwei Bilder unter einer gemeinsamen Legende laufen genau hier auf — beide bleiben leer.
+//
+// WAS AUSDRÜCKLICH NICHT GESCHIEHT: keine Zuordnung über die Figure-NUMMER, keine über blosse
+// Textähnlichkeit, keine über die dokumentweite Konvention, keine erfundene Beschriftung. Zehn
+// Bilder mit neun Legenden bleiben zehn Bilder mit neun Legenden.
+//
+// DER PREIS, offen benannt: eine ununterbrochene Kette Bild–Legende–Bild–Legende ohne trennenden
+// Fliesstext liefert GAR KEINE Zuordnung, obwohl ein Mensch sie läse. Das ist gewollt. Der ehrliche
+// Zustand ist „unklar, Fussnote leer" (sichtbar am Platzhalter des Editors und an
+// `captionsAmbiguous`), nicht „wahrscheinlich dieses Bild".
+
+interface Bildlauf {
+  readonly bilder: readonly number[];
+  /** Blockindex des ersten und letzten Blocks dieses Laufs. */
+  readonly von: number;
+  readonly bis: number;
+}
+
+export interface DocxCaptionPlan {
+  /** Der Rumpf ohne die zugeordneten Beschriftungsabsätze und ohne die Stilmarke. */
+  readonly html: string;
+  /** Bildnummer (1-basiert, Zählung von `wrapImagesInFigures`) → Beschriftung im Wortlaut. */
+  readonly captions: ReadonlyMap<number, string>;
+  /** Bilder, die eine Originalbeschriftung bekommen haben. */
+  readonly assigned: number;
+  /** Bilder mit Beschriftungs-Anwärter, die mangels Eindeutigkeit LEER bleiben. */
+  readonly ambiguous: number;
+}
+
+/**
+ * Ordnet Word-Beschriftungsabsätze ihren Bildern zu und nimmt sie aus dem Fliesstext.
+ *
+ * ENTFERNT ODER VERSCHOBEN? Verschoben. Der Auftrag verlangt beides zugleich (§5.1): der Absatz
+ * darf weder DOPPELT dastehen (Fussnote und Absatz) noch STILL VERSCHWINDEN. Eine zugeordnete
+ * Beschriftung verlässt deshalb den Fliesstext und steht im Wortlaut in der `figcaption` desselben
+ * Bildes — an derselben Stelle des Dokuments, sichtbar, einmal. Eine NICHT zugeordnete
+ * Beschriftung bleibt unangetastet, wo sie ist.
+ *
+ * Läuft auf der ROHEN mammoth-Ausgabe, VOR `wrapImagesInFigures` — die Bildnummern sind exakt die,
+ * die dort vergeben werden (dieselbe Marke `IMG_WRAP_RE`, dieselbe Regel „bereits verankerte Bilder
+ * überspringen").
+ */
+export function planDocxImageCaptions(html: string): DocxCaptionPlan {
+  // Eigene Regex-Instanz: `IMG_WRAP_RE` wird anderswo mit `replace` gefahren, ein geteilter
+  // `lastIndex` zwischen zwei Lesern wäre ein Fehler, den niemand sucht.
+  const bildMarke = new RegExp(IMG_WRAP_RE.source, "gi");
+  // Bildnummer je Fundstelle im Rumpf — die Zählung von `wrapImagesInFigures`, zeichengleich.
+  const bildStellen: { start: number; nummer: number }[] = [];
+  let n = 0;
+  let treffer: RegExpExecArray | null;
+  // biome-ignore lint/suspicious/noAssignInExpressions: Standard-Regex-Iteration.
+  while ((treffer = bildMarke.exec(html)) !== null) {
+    if (/\bdata-image-id\s*=/i.test(treffer[0])) {
+      continue; // schon verankert — `wrapImagesInFigures` zählt es ebenfalls nicht
+    }
+    n += 1;
+    bildStellen.push({ start: treffer.index, nummer: n });
+  }
+
+  const roh = topLevelBlocks(html);
+  const bloecke: HtmlBlock[] = roh.map((b) => {
+    const inhalt = html.slice(b.start, b.end);
+    const bilder = bildStellen
+      .filter((s) => s.start >= b.start && s.start < b.end)
+      .map((s) => s.nummer);
+    if (bilder.length > 0) {
+      return { ...b, art: "bild" as const, bilder, beschriftung: "" };
+    }
+    const text = blockText(inhalt);
+    if (b.tag !== "p") {
+      return { ...b, art: "anderes" as const, bilder: [], beschriftung: "" };
+    }
+    if (text === "") {
+      return { ...b, art: "leer" as const, bilder: [], beschriftung: "" };
+    }
+    const openEnd = html.indexOf(">", b.start);
+    const openTag = html.slice(b.start, openEnd + 1);
+    const istBeschriftung = hasCaptionMarker(openTag) || NUMBERED_CAPTION_RE.test(text);
+    if (!istBeschriftung) {
+      return { ...b, art: "anderes" as const, bilder: [], beschriftung: "" };
+    }
+    const schlussAnfang = html.lastIndexOf("<", b.end - 1);
+    return {
+      ...b,
+      art: "beschriftung" as const,
+      bilder: [],
+      beschriftung: html.slice(openEnd + 1, schlussAnfang),
+    };
+  });
+
+  // ── Die Bildläufe: maximale Folgen aus Bild- und Leerblöcken mit mindestens einem Bild. ────────
+  const laeufe: Bildlauf[] = [];
+  const laufJeBlock = new Map<number, number>(); // Blockindex → Laufindex
+  for (let i = 0; i < bloecke.length; ) {
+    if (bloecke[i]?.art !== "bild" && bloecke[i]?.art !== "leer") {
+      i += 1;
+      continue;
+    }
+    let j = i;
+    const bilder: number[] = [];
+    while (j < bloecke.length && (bloecke[j]?.art === "bild" || bloecke[j]?.art === "leer")) {
+      bilder.push(...(bloecke[j]?.bilder ?? []));
+      j += 1;
+    }
+    if (bilder.length > 0) {
+      const index = laeufe.length;
+      laeufe.push({ bilder, von: i, bis: j - 1 });
+      for (let k = i; k < j; k += 1) {
+        laufJeBlock.set(k, index);
+      }
+    }
+    i = j;
+  }
+
+  const laufVor = (blockIndex: number): number | undefined => laufJeBlock.get(blockIndex - 1);
+  const laufNach = (blockIndex: number): number | undefined => laufJeBlock.get(blockIndex + 1);
+
+  // ── Die Anwärter je Beschriftung: beide Nachbarläufe, ungewichtet. ────────────────────────────
+  // Keine Einengung, keine Vorzugsseite. Eine Beschriftung zwischen zwei Bildläufen behält BEIDE
+  // Anwärter und fällt damit unten durch die Eindeutigkeitsprüfung. Das ist gewollt: „ich weiss es
+  // nicht" ist eine ehrliche Antwort, eine geratene Herkunft ist es nicht.
+  const beschriftungen = bloecke
+    .map((b, i) => ({ block: b, index: i }))
+    .filter((e) => e.block.art === "beschriftung");
+  const anwaerter = new Map<number, number[]>(); // Beschriftungs-Blockindex → Laufindizes
+  for (const e of beschriftungen) {
+    const liste = [laufVor(e.index), laufNach(e.index)].filter((x): x is number => x !== undefined);
+    if (liste.length > 0) {
+      anwaerter.set(e.index, liste);
+    }
+  }
+
+  // ── Die Zuordnung: dreifache Eindeutigkeit, sonst nichts. ─────────────────────────────────────
+  const waehlerJeLauf = new Map<number, number[]>(); // Laufindex → Beschriftungs-Blockindizes
+  for (const [blockIndex, laufIndizes] of anwaerter) {
+    for (const l of laufIndizes) {
+      waehlerJeLauf.set(l, [...(waehlerJeLauf.get(l) ?? []), blockIndex]);
+    }
+  }
+
+  const captions = new Map<number, string>();
+  const verbraucht = new Set<number>(); // Beschriftungs-Blockindizes, die in eine figcaption wandern
+  let ambiguous = 0;
+  for (const [laufIndex, waehler] of waehlerJeLauf) {
+    const lauf = laeufe[laufIndex];
+    const bildNummer = lauf?.bilder[0];
+    const einzigerWaehler = waehler[0];
+    const eindeutig =
+      lauf !== undefined &&
+      lauf.bilder.length === 1 &&
+      bildNummer !== undefined &&
+      waehler.length === 1 &&
+      einzigerWaehler !== undefined &&
+      (anwaerter.get(einzigerWaehler) ?? []).length === 1;
+    if (eindeutig && einzigerWaehler !== undefined && bildNummer !== undefined) {
+      const text = bloecke[einzigerWaehler]?.beschriftung ?? "";
+      captions.set(bildNummer, text);
+      verbraucht.add(einzigerWaehler);
+    } else {
+      ambiguous += lauf?.bilder.length ?? 0;
+    }
+  }
+
+  // ── Der neue Rumpf: zugeordnete Beschriftungsabsätze raus, Stilmarke überall weg. ─────────────
+  const teile: string[] = [];
+  let cursor = 0;
+  for (let i = 0; i < bloecke.length; i += 1) {
+    const b = bloecke[i];
+    if (b === undefined || b.art !== "beschriftung") {
+      continue;
+    }
+    teile.push(html.slice(cursor, b.start));
+    if (!verbraucht.has(i)) {
+      const openEnd = html.indexOf(">", b.start);
+      const openTag = html.slice(b.start, openEnd + 1);
+      teile.push(stripCaptionMarker(openTag), html.slice(openEnd + 1, b.end));
+    }
+    cursor = b.end;
+  }
+  teile.push(html.slice(cursor));
+
+  return { html: teile.join(""), captions, assigned: captions.size, ambiguous };
+}
+
 // WP-BILD-1a/1b: jedes eingebettete Inline-Bild bekommt eine Bild-Fußnote. Aus <img> wird
 //   <figure><img … data-image-id="kw-img-<runToken>-N"><figcaption data-image-id="kw-img-<runToken>-N">…
 // WP-BILD-1b (bens Auflage 2, beidseitige Verankerung): NICHT nur die figcaption trägt die ID, sondern auch
@@ -290,10 +699,17 @@ const IMG_WRAP_RE = /<img\b[^>]*\bsrc="data:image\/[a-zA-Z0-9.+-]+;base64,[^"]*"
 // LADEN eines Vordertür-Entwurfs (frontDoorBodyFromDraft): dort können DOCX-/PPTX-verankerte
 // figures neben unverankerten Klara-Bildern stehen, und ein zweiter Anker um einen ersten wäre
 // eine geschachtelte figure mit doppelter Kennung.
+// JOB 3210/M5c: `captions` ist die einzige Quelle für einen NICHT leeren Fussnoteninhalt beim
+// Umhüllen — die Originalbeschriftung aus Word, zugeordnet von `planDocxImageCaptions`, geschlüsselt
+// nach genau der Nummer `n`, die hier vergeben wird. OHNE dieses Argument bleibt jede Fussnote leer,
+// wie seit WP-D10. Das ist keine Feinheit: `frontDoorBodyFromDraft` (captureFrontDoor.ts) ruft diese
+// Funktion beim LADEN eines gespeicherten Entwurfs ohne `captions` — von Hand gepflegte Fussnoten
+// werden dadurch nie überschrieben, und ein bereits verankertes Bild wird ohnehin übersprungen.
 export function wrapImagesInFigures(
   html: string,
   _captionPlaceholder: string,
   runToken: string = newImageRunToken(),
+  captions?: ReadonlyMap<number, string>,
 ): string {
   let n = 0;
   return html.replace(IMG_WRAP_RE, (imgTag) => {
@@ -304,7 +720,8 @@ export function wrapImagesInFigures(
     const id = `${IMAGE_ID_PREFIX}${runToken}-${n}`;
     // Dieselbe ID zusätzlich am <img> verankern (beidseitig auffindbar).
     const anchoredImg = imgTag.replace(/^<img/i, `<img data-image-id="${id}"`);
-    return `<figure>${anchoredImg}<figcaption data-image-id="${id}"></figcaption></figure>`;
+    const caption = captions?.get(n) ?? "";
+    return `<figure>${anchoredImg}<figcaption data-image-id="${id}">${caption}</figcaption></figure>`;
   });
 }
 
@@ -609,6 +1026,19 @@ export interface DocxRichResult {
   // JOB 513/D2: der gemeinsame, maschinenlesbare Bildtransfer-Vertrag (identisch im PPTX-Weg). Die
   // bestehenden Felder darueber bleiben unveraendert bedient — der Vertrag ist rein additiv.
   imageTransfer: ImageTransferContract;
+  // ── JOB 3210/M5c ──────────────────────────────────────────────────────────────────────────────
+  // Bilder, die eine vorhandene Word-Beschriftung im Wortlaut in ihre `figcaption` bekommen haben.
+  captionsAssigned: number;
+  // Bilder, zu denen ein Beschriftungs-Anwärter danebenstand, deren Zuordnung aber NICHT eindeutig
+  // war — sie bleiben leer. Bilder ganz OHNE Anwärter stehen hier ausdrücklich NICHT drin: „keine
+  // Beschriftung vorhanden" und „Beschriftung vorhanden, aber mehrdeutig" sind zwei verschiedene
+  // Wahrheiten, und nur die zweite ist eine offene Frage.
+  //
+  // BEIDE ZÄHLER SIND INTERN. Sie werden am Ergebnis der Zuordnung gemessen, also VOR der
+  // Byte-Notbremse — ein Bild, das das Budget später fallen lässt, nimmt seine Beschriftung mit und
+  // bleibt hier gezählt. Sie sind KEINE Nutzeranzeige und keine UI-Abnahme; die sichtbare Zeile
+  // dazu ist M5c-UI (PRIORITAETEN.md) und ausdrücklich nicht Teil dieses Auftrags.
+  captionsAmbiguous: number;
 }
 
 // WP-D1: strukturerhaltende Extraktion (HTML + Klartext in EINEM Durchgang über die Engine).
@@ -630,7 +1060,15 @@ export async function extractDocxRich(
 ): Promise<DocxRichResult> {
   const engine = opts.engine ?? (await defaultEngine());
   const input = mammothInput(buffer);
-  const htmlResult = await engine.convertToHtml(input);
+  // JOB 3210/M5c: Die Stilkarte wird GENAU DANN mitgegeben, wenn dieser Lauf auch Bild-Fussnoten
+  // baut — nur dann gibt es eine `figcaption`, in die eine Beschriftung wandern könnte, und nur
+  // dann räumt `planDocxImageCaptions` die Marke danach wieder weg. Ein Lauf ohne Fussnoten sieht
+  // die Marke also nie und bleibt zeichengleich zu vorher.
+  const beschriftungenErkennen = Boolean(opts.mapImage) && Boolean(opts.imageCaptionPlaceholder);
+  const htmlResult = await engine.convertToHtml(
+    input,
+    beschriftungenErkennen ? { styleMap: DOCX_CAPTION_STYLE_MAP } : undefined,
+  );
   const textResult = await engine.extractRawText(input);
   let html = mapDocxHeadings(htmlResult.value.trim());
   const documentText = textResult.value.trim();
@@ -663,14 +1101,24 @@ export async function extractDocxRich(
   // sondern die Wahrheit dieses Pfads: mammoth liefert bereits eingebettete data:image-Quellen, es gibt
   // hier weder Rohbyte-Vorfilter noch eine Summengrenze. Genau deshalb ist die Grenzart wichtig.
   let budgetDrops: ImageBudgetDrop[] = [];
+  let captionsAssigned = 0;
+  let captionsAmbiguous = 0;
   if (opts.mapImage) {
     // WP-BILD-1a: VOR dem Budget umhüllen, damit das Budget die figure/figcaption-Bytes mitzählt und
     // eine Notbremse das ganze figure-Element droppt (Bild + Fußnote gemeinsam).
     if (opts.imageCaptionPlaceholder) {
+      // JOB 3210/M5c: erst zuordnen, dann umhüllen. Der Plan nimmt die zugeordneten
+      // Beschriftungsabsätze aus dem Fliesstext und reicht sie nach Bildnummer weiter — die
+      // Fussnote entsteht damit gleich GEFÜLLT und nicht leer und später nachgetragen.
+      const plan = planDocxImageCaptions(html);
+      html = plan.html;
+      captionsAssigned = plan.assigned;
+      captionsAmbiguous = plan.ambiguous;
       html = wrapImagesInFigures(
         html,
         opts.imageCaptionPlaceholder,
         opts.imageRunToken ?? newImageRunToken(),
+        plan.captions,
       );
     }
     if (opts.imageBudgetBytes !== undefined) {
@@ -709,6 +1157,8 @@ export async function extractDocxRich(
     compressedImages,
     droppedImages,
     htmlOverflow,
+    captionsAssigned,
+    captionsAmbiguous,
     // Format- und Defektverluste kennt der DOCX-Weg nicht: mammoth liefert bereits eingebettete
     // data:image-Quellen, es gibt keine Rels-Aufloesung und keine Formatablehnung beim Import (der
     // Sanitizer entscheidet spaeter serverseitig). Diese realen Unterschiede zum PPTX-Weg werden mit 0

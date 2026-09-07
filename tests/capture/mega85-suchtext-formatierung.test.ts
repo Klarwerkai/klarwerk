@@ -25,6 +25,7 @@ import { join, sep } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { Draft, KnowledgeObject } from "../../apps/web/src/api/types";
 import { extractBodyImages } from "../../apps/web/src/lib/bodyImages";
+import { planDocxImageCaptions } from "../../apps/web/src/lib/docx";
 import { filterDrafts } from "../../apps/web/src/lib/draftListView";
 import { buildDuplicateCompareSections } from "../../apps/web/src/lib/duplicateCompare";
 import { koPreviewText } from "../../apps/web/src/lib/koPreview";
@@ -103,6 +104,15 @@ const URTEILE: Record<string, string> = {
   "apps/web/src/lib/wordAddin.ts": "unkritisch: Inline-Tags spurlos, Block-Enden → Zeilenumbruch",
   "services/external-search/src/wikipedia.ts":
     "ausserhalb: reduziert Wikipedia-Snippets, nie Fussnote/Fliesstext eines Wissensobjekts — und Inline-Tags ohnehin spurlos",
+  // JOB 3210/M5c. `blockText` reduziert einen Absatz NICHT zu Suchtext und nicht zu Anzeigetext:
+  // sein Ergebnis wird ausschliesslich zweierlei gefragt — „ist dieser Absatz leer?" und „beginnt
+  // er wie eine Word-Beschriftung?". Der gespeicherte Wortlaut kommt NICHT von hier: die
+  // zugeordnete Beschriftung wandert als roher Inhalt in die `figcaption`, Auszeichnung inklusive.
+  // Die Reduktion setzt für jedes Tag ein Leerzeichen und kollabiert danach — sie kann also
+  // Zwischenraum ERZEUGEN, wie an den mega84-Lesern. Für BEIDE Fragen ist das folgenlos, und der
+  // Fall darunter fährt es, statt es zu glauben.
+  "apps/web/src/lib/docx.ts":
+    "unkritisch: reduziert nur zur ERKENNUNG (leer? Beschriftung?), nie zu Such- oder Anzeigetext",
 };
 
 describe("mega85 Block A · Stufe 1+2: die Grundmenge wird erhoben, jeder Fund hat ein Urteil", () => {
@@ -252,6 +262,29 @@ describe("mega85 Block A · Stufe 3: die unkritischen Funde sind wirklich unkrit
 
   it("wordAddin: Inline-Tags verschwinden spurlos (Urteil „unkritisch“ gefahren)", () => {
     expect(wordHtmlToPlainText(BODY_MIT)).toBe(wordHtmlToPlainText(BODY_OHNE));
+  });
+
+  it("docx: eine ausgezeichnete Beschriftung wird gleich erkannt und im Wortlaut behalten (Urteil gefahren)", () => {
+    // JOB 3210/M5c. Zwei Rümpfe, dieselbe Beschriftung — einmal ausgezeichnet, einmal nicht.
+    // Geprüft werden beide Hälften des Urteils:
+    //   (1) ERKENNUNG: die Zuordnung fällt identisch aus, obwohl `blockText` bei der
+    //       ausgezeichneten Fassung Zwischenraum erzeugt („Figure 1 : Profiles").
+    //   (2) WORTLAUT: in der `figcaption` steht der ROHE Inhalt des Absatzes, die Auszeichnung
+    //       also erhalten — der reduzierte Text landet nirgends im Rumpf.
+    const bild = '<img src="data:image/png;base64,QQ==">';
+    const ohne = planDocxImageCaptions(`<p>${bild}</p><p>Figure 1: Profiles</p>`);
+    const mit = planDocxImageCaptions(`<p>${bild}</p><p><strong>Figure 1</strong>: Profiles</p>`);
+    expect(
+      mit.assigned,
+      "Die ausgezeichnete Beschriftung wird nicht mehr als Beschriftung erkannt — " +
+        "der Zwischenraum der Reduktion hat die Erkennung verstellt.",
+    ).toBe(ohne.assigned);
+    expect(mit.assigned).toBe(1);
+    expect(ohne.captions.get(1)).toBe("Figure 1: Profiles");
+    expect(
+      mit.captions.get(1),
+      "Der Wortlaut kommt aus der Reduktion statt aus dem Absatz — die Auszeichnung ist weg",
+    ).toBe("<strong>Figure 1</strong>: Profiles");
   });
 
   it("die mega84-Leser bleiben geschlossen (Regressionsschutz für die drei bereits grünen)", () => {

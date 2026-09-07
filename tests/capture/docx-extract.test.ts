@@ -12,6 +12,7 @@ import {
   wholeDocumentDraftPayload,
 } from "../../apps/web/src/lib/captureFromFile";
 import {
+  type DocxConvertOptions,
   type DocxEngine,
   extractDocxRich,
   extractDocxText,
@@ -111,6 +112,24 @@ function engineFuer(html: string, text: string): DocxEngine {
   return {
     convertToHtml: async () => ({ value: html, messages: [] }),
     extractRawText: async () => ({ value: text, messages: [] }),
+  };
+}
+
+/** Dieselbe Engine, die zusätzlich mitschreibt, WAS ihr `extractDocxRich` mitgibt. */
+function mitschreibendeEngine(
+  html: string,
+  text: string,
+): { engine: DocxEngine; optionen: (DocxConvertOptions | undefined)[] } {
+  const optionen: (DocxConvertOptions | undefined)[] = [];
+  return {
+    optionen,
+    engine: {
+      convertToHtml: async (_input, options) => {
+        optionen.push(options);
+        return { value: html, messages: [] };
+      },
+      extractRawText: async () => ({ value: text, messages: [] }),
+    },
   };
 }
 
@@ -292,5 +311,56 @@ describe("JOB 1115 · A5 · am echten Produktpfad bis hinter den Server-Sanitize
     });
     expect(payload.bodyHtml ?? "").toContain(KOPFZEILE);
     expect(koerperVorErsterUeberschrift(payload.bodyHtml ?? "")).not.toContain("<p>en</p>");
+  });
+});
+
+// ================================================================================================
+// JOB 3210 · M5c — DIE STILKARTE IST TEIL DES ENGINE-VERTRAGS, UND SIE GILT NUR EINEM ZWEIG
+// ================================================================================================
+//
+// Bis hierher gab `extractDocxRich` der Engine NICHTS mit; mammoths Standardkarte kennt die
+// Word-Beschriftungsvorlage nicht, und ein Beschriftungsabsatz kam als nacktes `<p>` an. Seit M5c
+// reicht dieses Modul eine Stilkarte durch — aber NUR in dem Lauf, der auch Bild-Fussnoten baut.
+// Sonst stünde die interne Erkennungsmarke in einem Rumpf, den niemand mehr aufräumt.
+//
+// Gemessen wird am ENGINE-VERTRAG, nicht am Quelltext: die injizierte Engine schreibt mit, was sie
+// wirklich bekommt. Das ist dieselbe Vorrichtung, mit der diese Datei seit JOB 1115 arbeitet.
+// Was die Karte im echten mammoth bewirkt und wie zugeordnet wird, steht in
+// `tests/m5-docx-bildunterschriften/` — dort mit echten .docx-Dateien statt einer Attrappe.
+describe("JOB 3210 · M5c · die Beschriftungs-Stilkarte erreicht die Engine", () => {
+  it("mit Bild-Fussnoten bekommt die Engine die Karte — und sie nennt die Word-Vorlage", async () => {
+    const { engine, optionen } = mitschreibendeEngine(
+      `<h1>Titel</h1><img src="data:image/png;base64,QQ==">`,
+      "Titel",
+    );
+    await extractDocxRich(new ArrayBuffer(4), {
+      engine,
+      mapImage: async (s) => s,
+      imageCaptionPlaceholder: "x",
+    });
+    const karte = optionen[0]?.styleMap ?? [];
+    expect(karte.length, "Die Engine bekam gar keine Stilkarte").toBeGreaterThan(0);
+    // Der OOXML-Name der eingebauten Word-Beschriftungsvorlage muss darin vorkommen — ohne ihn
+    // wäre die Karte da und träfe nichts.
+    expect(karte.some((z) => z.includes("style-name='caption'"))).toBe(true);
+  });
+
+  it("ohne Bild-Fussnoten bekommt die Engine KEINE Karte", async () => {
+    // Die Gegenprobe. Ohne sie wäre der Fall darüber auch dann grün, wenn die Karte in JEDEM Lauf
+    // mitginge — und die Erkennungsmarke landete in Rümpfen, aus denen sie niemand entfernt.
+    const { engine, optionen } = mitschreibendeEngine("<p>Nur Text.</p>", "Nur Text.");
+    await extractDocxRich(new ArrayBuffer(4), { engine, mapImage: async (s) => s });
+    expect(optionen[0], "Ein Lauf ohne Bild-Fussnoten bekam trotzdem eine Stilkarte").toBe(
+      undefined,
+    );
+  });
+
+  it("eine Engine ohne Options-Parameter läuft unverändert weiter", async () => {
+    // Rückwärtskompatibilität des Vertrags: der zusätzliche Parameter ist optional, und jede
+    // bestehende Attrappe (`engineFuer`, oben) ignoriert ihn folgenlos.
+    const { html } = await extractDocxRich(new ArrayBuffer(4), {
+      engine: engineFuer("<p>Ein Satz mit Punkt.</p>", "Ein Satz mit Punkt."),
+    });
+    expect(html).toBe("<p>Ein Satz mit Punkt.</p>");
   });
 });
