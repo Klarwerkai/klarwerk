@@ -1,0 +1,7 @@
+{
+  "extensionName": { "message": "Klara · Browser" },
+  "extensionDescription": {
+    "message": "Bewusst markierten Webseitentext als ungeprüften Entwurf in Klarwerk bewahren."
+  },
+  "capture": { "message": "In Klarwerk übernehmen" }
+}

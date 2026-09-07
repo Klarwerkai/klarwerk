@@ -113,6 +113,18 @@ interface Ausnahme {
 
 const NICHT_ANGESEHEN: readonly Ausnahme[] = [
   {
+    muster: /^extensions\/klara-browser\/types\.d\.ts$/,
+    grund:
+      "JOB 3203 R3 · GELESEN: reine Deklarationen fuer den lokalen Browser-Zustand, " +
+      "Panel-Nachrichten, den verwendeten Login-/Entwurfs-Drahtvertrag und Chrome-APIs. " +
+      "Payload/Wire spiegeln Felder aus services/capture/src/types.ts und services/auth/src/routes.ts " +
+      "(bodyHtml, pendingSources, Vertraulichkeit, Token/Nutzer); keine ausfuehrbaren Formular-, " +
+      "Quellen- oder Vertraulichkeits-Bloecke der bewachten Capture-/Bibliotheksflaechen. " +
+      "Die Vertragskompatibilitaet prueft tests/klara-browser/package.test.ts gegen echte " +
+      "Login-/POST-/GET-Routen, den lokalen JS-Typgebrauch extensions/klara-browser/tsconfig.json. " +
+      "Nur diese Deklarationsdatei ist ausgenommen, kein Erweiterungsbaum und keine weiteren Typdateien.",
+  },
+  {
     muster: /^tests\//,
     grund: "Pruefwerk, kein Produkt. Der Waechter misst die Flaeche, nicht seine eigene Sippe.",
   },
