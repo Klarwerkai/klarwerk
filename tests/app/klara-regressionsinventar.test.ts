@@ -570,6 +570,15 @@ const INVENTAR: readonly string[] = [
   // JOB 3128: API-Weg des Word-taskpane, ohne Oberflächenmessung. K2 meldet die neue Datei;
   // sie sichert den Bestandskandidaten trotz abweichendem Titel sowie Status und Dry-Run.
   "tests/m3-bestand-titel/server-bestand-titel.test.ts",
+  // JOB 3096 · M5 (07.09.2026): das Bild aus dem Bestand im Word-Panel, am VOLLSTAENDIGEN
+  // Aufgabenfenster in jsdom (Bauform memo-panel-mounted / word-addin-ask): „Bild dazu?" auf die
+  // Markierung → GET /api/library/images?q=… mit Sitzung → Karten mit Bild, Unterschrift, Herkunft →
+  // NULL Schreibaufrufe vor dem Klick → EIN Word.run mit Bild, Unterschrift-Absatz und
+  // Herkunftszeile; ehrliche Leere nur nach frischer 200, Fehler nie als Leere, 401/403 und Logout
+  // verwerfen den Stand, DE/EN gleichwertig. Achse `taskpane` (nennt und laedt die Datei); „klara"
+  // steht nicht im Pfad — der Verzeichnisname war im Auftrag abschliessend vorgegeben —, K5 bleibt
+  // unveraendert. K2 hat sie gemeldet, das Inventar nimmt sie nicht still auf.
+  "tests/m5-bild-im-panel/bild-vorschlag-mounted.test.ts",
 ];
 
 // ------------------------------------------------------------------------------------------------

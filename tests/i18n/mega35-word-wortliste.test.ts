@@ -57,6 +57,16 @@ const OBJEKTAUSSAGEN = [
   "ka7Leer",
   "ka7LeerGekuerzt",
   "ka7LeerOhneQuelle",
+  // JOB 3096 (M5 „Bild dazu?“): zwei Lagesätze der Bildsuche tragen „(geprüft {zeit})“ — der
+  // Zeitstempel `geprueft` der GELAUFENEN Route GET /api/library/images (der Server sagt, WANN er
+  // den Bestand gelesen hat), dieselbe Vorgangsklasse wie captureDubLeer/ka7Leer. Der Wortlaut
+  // „Kein Bild mit dieser Beschreibung (geprüft <Zeit>)“ ist Auftrag 3096 §5.3; er steht NUR nach
+  // einer frischen 200 mit gültigem Vertrag (mounted P4/P8), nie nach einem Fehler, nie als Zusage
+  // über ein Bild oder eine Antwort. EN/NL kommen ohne die dort verbotenen Wörter aus (checked,
+  // nagekeken); Herkunftszeile und Karte nutzen für den Prüfstand die vorhandenen Statusschlüssel
+  // (askStatusValidiert/-Offen), kein zweiter Wortlaut.
+  "m5BildTitel",
+  "m5BildLeer",
 ];
 
 // JOB 3093 (M3 „Haben wir das schon?"): EIN weiterer Schlüssel sagt etwas über ein OBJEKT — nicht

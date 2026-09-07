@@ -8164,6 +8164,730 @@
     });
     // KW-KA3-KARTEN-END
 
+    // KW-M5-BILD-START
+    // ============================================================================================
+    // JOB 3096 · M5 — „HAST DU EIN BILD DAZU?" DAS BILD AUS DEM BESTAND IM WORD-PANEL.
+    // ============================================================================================
+    //
+    // Pedi (05.09.2026, CODEX-POC-ENTSCHEIDUNG-1, Entscheidung 4): er markiert in Word
+    // „Schraubverbindungen am Profil", klickt „Bild dazu?", Klara zeigt die Treffer aus dem Bestand
+    // (Bild, Unterschrift, Herkunft), er waehlt eines — und ERST dieser zweite Klick fuegt Bild,
+    // Unterschrift und Herkunftszeile in Word ein. Nichts wird erfunden, kein Bild ohne Herkunft.
+    //
+    // DER SERVERWEG ist die Route aus JOB 3095, `GET /api/library/images?q=<Markierung>&limit=20`
+    // (services/app/src/routes/library-routes.ts, Vertrag `LibraryImageSearchResponse` in
+    // apps/web/src/api/types.ts: `treffer[]`, `geprueft`, `gedeckelt`; je Treffer imageId, koId,
+    // koTitel, version, pruefstand, caption, name, gefundenUeber, thumbnailUrl). Die Rechte fallen
+    // DORT (Trim, `sichtbareFuer`, `darfSehen` am vollen Objekt) — dieses Panel filtert nichts nach
+    // und zeigt genau das, was die Sitzung sehen darf.
+    //
+    // DER DREIZEHNTE ABRUF (`m5Abruf`, die bewusste Antwort steht in
+    // tests/app/mega69-klara-merkmale.test.ts beim Zaehler): EINE `fetch(`-Stelle fuer zwei Ziele
+    // derselben Herkunft — die Bildsuche (JSON) und, erst beim Einfuegen, die Bildbytes eines
+    // `/api/objects/<id>/raw`-Treffers (Blob → Base64). Beide reisen mit der Sitzung
+    // (`credentials: "include"`), beide mit eigener Frist (AbortController). Kein neuer Ursprung,
+    // kein neues Recht (`ko.read` wie die Bibliothek), kein Manifest-Wechsel.
+    //
+    // WORD (WordApi 1.1, wie das Manifest — s. den mega74-Kommentar in wordAddin.ts):
+    //   `Range.paragraphs` + `load("items")` → letzter Absatz der Markierung →
+    //   `Paragraph.insertParagraph("", After)` (der Bildabsatz) →
+    //   `Paragraph.insertInlinePictureFromBase64(base64, End)` →
+    //   `insertParagraph(<Unterschrift>, After)` (nur wenn es eine gibt) →
+    //   `insertParagraph(<Herkunftszeile>, After)`.
+    //   Ein Bild ist ein Blockelement: es steht NACH dem Absatz, in dem der Cursor/die Markierung
+    //   liegt, nie mitten in einem Satz. Kein `setSelectedDataAsync`-Rueckfall — der traegt nur
+    //   Text. `Range.insertInlinePictureFromBase64` (WordApi 1.2) und `getFirst()` (1.3) sind
+    //   bewusst gemieden.
+    //
+    // DAS ZUSTANDSMODELL (§9 des Auftrags), jede Lage ein eigener Satz:
+    //   laden                 → m5BildSucht (ein frueherer Stand bleibt sichtbar)
+    //   erfolgreich leer      → m5BildLeer „Kein Bild … (geprueft <Zeit>)" — NUR nach frischer 200
+    //   Treffer               → Karten; `gedeckelt: true` → zusaetzlich m5BildGedeckelt
+    //   Fehler (5xx, Netz, Frist, kaputter Koerper)
+    //                         → m5BildFehler „Suche nicht moeglich (<Grund>)"; ein frueherer Stand
+    //                           bleibt mit m5BildFehlerAltStand „Stand von <Zeit> · Auffrischung
+    //                           fehlgeschlagen" stehen (Lehre JOB 3027/3025/3037)
+    //   offline               → wie Fehler, Grund „keine Verbindung", ohne Abruf
+    //   401 / 403             → askAuth bzw. m5BildGrundVerweigert — und der Stand FAELLT
+    //   keine Markierung      → m5BildKeineMarkierung, kein Abruf
+    // Beschaedigte Trefferdaten (ein Treffer ohne Herkunft, ohne Bildquelle) sind eine
+    // FEHLGESCHLAGENE Suche, keine erfolgreiche Leere (Lehre JOB 3092 R1).
+    //
+    // DER STAND GEHOERT DER SITZUNG (Lehre JOB 3093 R2): was A gefunden hat, darf B nie sehen.
+    // Verworfen — Treffer UND laufende Antwort (Laufnummer) — wird er bei
+    //   · bestaetigtem Logout (`klaraS4Verwerfen`, derselbe Moment wie der S4-Stand),
+    //   · einer anderen oder keiner Identitaet in der naechsten /api/auth/me-Antwort (`sessionName`
+    //     wird nur auf dem ERFOLGSWEG von checkSession gerufen — ein Netzfehler dort verwirft
+    //     nichts, denn ob die Sitzung noch besteht, ist dann nicht festgestellt),
+    //   · 401/403 auf die Suche selbst.
+    //
+    // KEIN Timer, KEIN Autostart, KEIN Fokusraub: gesucht wird auf Klick, eingefuegt auf Klick.
+    // Markup und Karte entstehen zur Laufzeit in der Ruhe der Fragen-Flaeche (#ask-ruhe) —
+    // dieselbe Bauform wie KA3 (`ka3KarteElement`) und das Memo (JOB 3091): sie kommen und gehen
+    // mit der Ruhe, ohne dass der Cursor in Word etwas davon merkt.
+    var M5_BILD_TEXTE = {
+      de: {
+        m5BildCta: "Bild dazu?",
+        m5BildLabel: "Bilder aus dem Bestand",
+        m5BildKeineMarkierung: "Markiere in Word den Satz, zu dem du ein Bild suchst — dann frag noch einmal.",
+        m5BildSucht: "Klara sucht im Bestand nach „{q}“ …",
+        m5BildTitel: "Bilder aus dem Bestand zu „{q}“ — geprüft {zeit}",
+        m5BildLeer: "Kein Bild mit dieser Beschreibung im Bestand (geprüft {zeit}): „{q}“.",
+        m5BildGedeckelt: "Mehr Treffer als angezeigt — grenze die Markierung ein.",
+        m5BildFehler: "Suche nicht möglich ({grund}).",
+        m5BildFehlerAltStand: "Stand von {zeit} · Auffrischung fehlgeschlagen ({grund}).",
+        m5BildGrundNetz: "keine Verbindung",
+        m5BildGrundFrist: "Zeitüberschreitung",
+        m5BildGrundServer: "Server antwortet {status}",
+        m5BildGrundDaten: "unvollständige Antwort",
+        m5BildGrundVerweigert: "kein Zugriff auf den Bestand",
+        m5BildOhneBeschreibung: "ohne Beschreibung",
+        m5BildBenennung: "Benennung: {name}",
+        m5BildGefunden: "Gefunden über: {felder}",
+        m5BildFeldBeschreibung: "Beschreibung",
+        m5BildFeldName: "Benennung",
+        m5BildHerkunftZeile: "Quelle: {titel}, Stand v{version}, Prüfstand {stufe}",
+        m5BildAnsehen: "Ansehen",
+        m5BildEinfuegen: "In Word einfügen",
+        m5BildEinfuegtBusy: "Wird eingefügt …",
+        m5BildEinfuegtOk: "Eingefügt — Bild, Unterschrift und Herkunft stehen zusammen.",
+        m5BildEinfuegtOkOhne: "Eingefügt — Bild und Herkunft stehen zusammen (keine Unterschrift im Bestand).",
+        m5BildEinfuegtFehlerBild: "Einfügen nicht möglich: das Bild konnte nicht geladen werden ({grund}).",
+        m5BildEinfuegtFehlerPosition: "Einfügen nicht möglich: keine Absatzposition in Word gefunden.",
+      },
+      en: {
+        m5BildCta: "Any picture for this?",
+        m5BildLabel: "Pictures from the knowledge base",
+        m5BildKeineMarkierung: "Select the sentence in Word you want a picture for — then ask again.",
+        m5BildSucht: "Klara is searching the knowledge base for “{q}” …",
+        m5BildTitel: "Pictures from the knowledge base for “{q}” — checked {zeit}",
+        m5BildLeer: "No picture with this description in the knowledge base (checked {zeit}): “{q}”.",
+        m5BildGedeckelt: "More hits than shown — narrow the selection.",
+        m5BildFehler: "Search not possible ({grund}).",
+        m5BildFehlerAltStand: "As of {zeit} · refresh failed ({grund}).",
+        m5BildGrundNetz: "no connection",
+        m5BildGrundFrist: "timeout",
+        m5BildGrundServer: "server answered {status}",
+        m5BildGrundDaten: "incomplete answer",
+        m5BildGrundVerweigert: "no access to the knowledge base",
+        m5BildOhneBeschreibung: "no description",
+        m5BildBenennung: "Name: {name}",
+        m5BildGefunden: "Found via: {felder}",
+        m5BildFeldBeschreibung: "description",
+        m5BildFeldName: "name",
+        m5BildHerkunftZeile: "Source: {titel}, version v{version}, review status {stufe}",
+        m5BildAnsehen: "Open",
+        m5BildEinfuegen: "Insert into Word",
+        m5BildEinfuegtBusy: "Inserting …",
+        m5BildEinfuegtOk: "Inserted — picture, caption and source stay together.",
+        m5BildEinfuegtOkOhne: "Inserted — picture and source stay together (no caption in the knowledge base).",
+        m5BildEinfuegtFehlerBild: "Cannot insert: the picture could not be loaded ({grund}).",
+        m5BildEinfuegtFehlerPosition: "Cannot insert: no paragraph position found in Word.",
+      },
+      nl: {
+        m5BildCta: "Afbeelding hierbij?",
+        m5BildLabel: "Afbeeldingen uit de kennisbank",
+        m5BildKeineMarkierung: "Markeer in Word de zin waarbij je een afbeelding zoekt — en vraag dan opnieuw.",
+        m5BildSucht: "Klara zoekt in de kennisbank naar „{q}” …",
+        m5BildTitel: "Afbeeldingen uit de kennisbank bij „{q}” — nagekeken {zeit}",
+        m5BildLeer: "Geen afbeelding met deze beschrijving in de kennisbank (nagekeken {zeit}): „{q}”.",
+        m5BildGedeckelt: "Meer treffers dan getoond — beperk de markering.",
+        m5BildFehler: "Zoeken niet mogelijk ({grund}).",
+        m5BildFehlerAltStand: "Stand van {zeit} · vernieuwen mislukt ({grund}).",
+        m5BildGrundNetz: "geen verbinding",
+        m5BildGrundFrist: "time-out",
+        m5BildGrundServer: "server antwoordt {status}",
+        m5BildGrundDaten: "onvolledig antwoord",
+        m5BildGrundVerweigert: "geen toegang tot de kennisbank",
+        m5BildOhneBeschreibung: "zonder beschrijving",
+        m5BildBenennung: "Naam: {name}",
+        m5BildGefunden: "Gevonden via: {felder}",
+        m5BildFeldBeschreibung: "beschrijving",
+        m5BildFeldName: "naam",
+        m5BildHerkunftZeile: "Bron: {titel}, stand v{version}, controlestatus {stufe}",
+        m5BildAnsehen: "Bekijken",
+        m5BildEinfuegen: "In Word invoegen",
+        m5BildEinfuegtBusy: "Wordt ingevoegd …",
+        m5BildEinfuegtOkOhne: "Ingevoegd — afbeelding en bron staan bij elkaar (geen onderschrift in de kennisbank).",
+        m5BildEinfuegtOk: "Ingevoegd — afbeelding, onderschrift en bron staan bij elkaar.",
+        m5BildEinfuegtFehlerBild: "Invoegen niet mogelijk: de afbeelding kon niet worden geladen ({grund}).",
+        m5BildEinfuegtFehlerPosition: "Invoegen niet mogelijk: geen alineapositie in Word gevonden.",
+      },
+    };
+    // In das VORHANDENE Woerterbuch einhaengen — kein zweites Nachschlagewerk, kein eigenes `t()`
+    // (dasselbe Muster wie KA3/KA6).
+    for (var m5Sprache in M5_BILD_TEXTE) {
+      if (Object.prototype.hasOwnProperty.call(M5_BILD_TEXTE, m5Sprache) && STRINGS[m5Sprache]) {
+        var m5Tabelle = M5_BILD_TEXTE[m5Sprache];
+        for (var m5Schluessel in m5Tabelle) {
+          if (Object.prototype.hasOwnProperty.call(m5Tabelle, m5Schluessel)) {
+            STRINGS[m5Sprache][m5Schluessel] = m5Tabelle[m5Schluessel];
+          }
+        }
+      }
+    }
+
+    var M5_BILD_LIMIT = 20;
+    var M5_BILD_FRIST_MS = 15000;        // die Route liest Ruempfe — laenger als die 5 s der Anmeldung
+    var M5_BILD_SUCHWORT_MAX = 200;      // die Markierung als Suchwort: ein Satz, kein Kapitel
+
+    var m5Lage = "ruhe";                 // ruhe | laden | ergebnis | fehler | keine-markierung
+    var m5Stand = null;                  // { q, treffer, geprueft, gedeckelt } — die letzte erfolgreiche Antwort
+    var m5FehlerGrund = "";              // der Satz zum Fehler (bereits uebersetzt)
+    var m5Lauf = 0;                      // Laufnummer: ein spaeter Rueckruf eines aelteren Klicks wird verworfen
+    var m5Sitzung = null;                // Kennung der Sitzung, in der der Stand entstand
+    var m5EinfuegeStatus = {};           // imageId → { ton, text } der letzten Einfuege-Meldung
+    var m5EinfuegenLaeuft = null;        // imageId, solange ein Einfuegen laeuft
+
+    /** Das Suchwort aus der Markierung: Zeilen und Mehrfach-Leerraum zu einem Satz, gedeckelt. */
+    function m5Suchwort(markierung) {
+      var text = typeof markierung === "string" ? markierung : "";
+      text = text.replace(/\s+/g, " ").replace(/^\s+|\s+$/g, "");
+      return text.length > M5_BILD_SUCHWORT_MAX ? text.slice(0, M5_BILD_SUCHWORT_MAX).replace(/\s+$/, "") : text;
+    }
+
+    /** HH:MM aus der ISO-Pruefzeit des Servers — die Datengrundlage jeder Aussage der Karte. */
+    function m5Zeit(iso) {
+      var d = new Date(iso);
+      if (Number.isNaN(d.getTime())) { return String(iso); }
+      function pad(n) { return n < 10 ? "0" + n : String(n); }
+      return pad(d.getHours()) + ":" + pad(d.getMinutes());
+    }
+
+    /** Die Kennung eines /api/auth/me-Nutzers — id vor E-Mail vor Name; nichts davon → null. */
+    function m5SitzungsKennung(user) {
+      if (!user || typeof user !== "object") { return null; }
+      var felder = ["id", "email", "name"];
+      for (var i = 0; i < felder.length; i += 1) {
+        var wert = user[felder[i]];
+        if (typeof wert === "string" && wert.replace(/^\s+|\s+$/g, "").length > 0) {
+          return felder[i] + ":" + wert;
+        }
+      }
+      return null;
+    }
+
+    /** Alles weg, was an der Sitzung hing: Stand, Lage, Grund, Einfuege-Meldungen — und jede laufende Antwort. */
+    function m5Verwerfen() {
+      m5Lauf += 1;
+      m5Stand = null;
+      m5Lage = "ruhe";
+      m5FehlerGrund = "";
+      m5EinfuegeStatus = {};
+      m5EinfuegenLaeuft = null;
+      m5Zeichnen();
+    }
+
+    /** checkSession meldet die Identitaet (ueber `sessionName`) — eine andere oder keine verwirft den Stand. */
+    function m5SitzungMelden(user) {
+      var kennung = m5SitzungsKennung(user);
+      if (kennung !== m5Sitzung) {
+        m5Sitzung = kennung;
+        m5Verwerfen();
+      }
+    }
+
+    /**
+     * DER EINE ABRUF dieses Blocks — Suche und Bildbytes, dieselbe Herkunft, dieselbe Sitzung,
+     * eigene Frist. Liefert die rohe Antwort; wer sie liest (JSON oder Blob), entscheidet der Aufrufer.
+     */
+    function m5Abruf(pfad) {
+      var controller = new AbortController();
+      var frist = setTimeout(function () {
+        try { controller.abort(); } catch (e) { /* bereits beendet */ }
+      }, M5_BILD_FRIST_MS);
+      return fetch(pfad, { credentials: "include", signal: controller.signal }).then(
+        function (res) { clearTimeout(frist); return res; },
+        function (err) {
+          clearTimeout(frist);
+          if (err && err.name === "AbortError") {
+            var f = new Error("frist"); f.m5Frist = true; throw f;
+          }
+          throw err;
+        }
+      );
+    }
+
+    /** Ein Treffer ist nur ein Treffer, wenn Bild UND Herkunft da sind — sonst ist die Antwort beschaedigt. */
+    function m5TrefferPruefen(roh) {
+      if (!roh || typeof roh !== "object") { return null; }
+      var quelleOk = typeof roh.thumbnailUrl === "string" &&
+        (/^data:image\/(png|jpe?g|gif|webp|bmp);base64,/i.test(roh.thumbnailUrl) ||
+          (roh.thumbnailUrl.charAt(0) === "/" && roh.thumbnailUrl.charAt(1) !== "/"));
+      if (!quelleOk) { return null; }
+      if (typeof roh.imageId !== "string" || roh.imageId.length === 0) { return null; }
+      if (typeof roh.koId !== "string" || roh.koId.length === 0) { return null; }
+      if (typeof roh.koTitel !== "string" || roh.koTitel.length === 0) { return null; }
+      if (typeof roh.version !== "number" || !Number.isFinite(roh.version)) { return null; }
+      if (typeof roh.pruefstand !== "string" || roh.pruefstand.length === 0) { return null; }
+      if (typeof roh.caption !== "string") { return null; }
+      var felder = [];
+      if (Array.isArray(roh.gefundenUeber)) {
+        for (var i = 0; i < roh.gefundenUeber.length; i += 1) {
+          if (roh.gefundenUeber[i] === "beschreibung" || roh.gefundenUeber[i] === "name") {
+            felder.push(roh.gefundenUeber[i]);
+          }
+        }
+      }
+      return {
+        imageId: roh.imageId,
+        koId: roh.koId,
+        koTitel: roh.koTitel,
+        version: roh.version,
+        pruefstand: roh.pruefstand,
+        caption: roh.caption.replace(/^\s+|\s+$/g, ""),
+        name: typeof roh.name === "string" && roh.name.replace(/^\s+|\s+$/g, "").length > 0 ? roh.name : null,
+        gefundenUeber: felder,
+        thumbnailUrl: roh.thumbnailUrl,
+      };
+    }
+
+    /** Der Antwortkoerper der Route — oder null, wenn er nicht der Vertrag ist. */
+    function m5AntwortPruefen(koerper) {
+      if (!koerper || typeof koerper !== "object" || !Array.isArray(koerper.treffer)) { return null; }
+      if (typeof koerper.geprueft !== "string" || koerper.geprueft.length === 0) { return null; }
+      var treffer = [];
+      for (var i = 0; i < koerper.treffer.length; i += 1) {
+        var t1 = m5TrefferPruefen(koerper.treffer[i]);
+        if (t1 === null) { return null; }
+        treffer.push(t1);
+      }
+      return { treffer: treffer, geprueft: koerper.geprueft, gedeckelt: koerper.gedeckelt === true };
+    }
+
+    function m5StufeText(stufe) {
+      return ASK_STATUS_KEYS[stufe] ? t(ASK_STATUS_KEYS[stufe]) : String(stufe);
+    }
+
+    /** Die Herkunftszeile — dieselbe Zeile auf der Karte und im Dokument (EIN Bauer). */
+    function m5Herkunftszeile(treffer) {
+      return t("m5BildHerkunftZeile", {
+        titel: treffer.koTitel,
+        version: String(treffer.version),
+        stufe: m5StufeText(treffer.pruefstand),
+      });
+    }
+
+    /** Die Ruhe ist im Bild (weder Antwort noch Luecke) — dort wohnt dieser Weg. */
+    function m5RuheSichtbar() {
+      var ruhe = document.getElementById("ask-ruhe");
+      return Boolean(ruhe) && ruhe.className.indexOf("hidden") === -1;
+    }
+
+    /** Der Weg steht nur mit Sitzung, offenem Word-Dokument und sichtbarer Ruhe. */
+    function m5Sichtbar() {
+      return Boolean(signedIn) && Boolean(officeUsable()) && m5RuheSichtbar();
+    }
+
+    // -------------------------------------------------------------------------------------------
+    // Markup zur Laufzeit: Knopf und Karte NEBEN der Ruhe-Mitte, nicht in ihr — die Mitte traegt
+    // nur Lupe und den EINEN Satz, kein Knopf (JOB 3056 R4, tests/app/k1-sitzungslagen.test.tsx);
+    // derselbe Ort wie die KA3-Karte (unter #ask-ruhe eingehaengt).
+    // -------------------------------------------------------------------------------------------
+    function m5BlockElement() {
+      var vorhanden = document.getElementById("m5-bild-block");
+      if (vorhanden) { return vorhanden; }
+      var block = document.createElement("div");
+      block.id = "m5-bild-block";
+      block.className = "hidden";
+      var knopf = document.createElement("button");
+      knopf.type = "button";
+      knopf.id = "m5-bild-btn";
+      knopf.className = "ghost";
+      block.appendChild(knopf);
+      var karte = document.createElement("div");
+      karte.id = "m5-bild-karte";
+      karte.className = "card hidden";
+      karte.setAttribute("role", "region");
+      karte.setAttribute("aria-live", "polite");
+      block.appendChild(karte);
+      var anker = document.getElementById("ask-ruhe");
+      if (anker && anker.parentNode) {
+        anker.parentNode.insertBefore(block, anker.nextSibling);
+      } else {
+        document.body.appendChild(block);
+      }
+      return block;
+    }
+
+    function m5KnopfElement() {
+      m5BlockElement();
+      return document.getElementById("m5-bild-btn");
+    }
+
+    function m5KarteElement() {
+      m5BlockElement();
+      return document.getElementById("m5-bild-karte");
+    }
+
+    function m5Absatz(karte, klasse, text) {
+      var p = document.createElement("p");
+      if (klasse) { p.className = klasse; }
+      p.textContent = text;
+      karte.appendChild(p);
+      return p;
+    }
+
+    /** Eine Trefferkarte: Bild, Unterschrift (oder „ohne Beschreibung"), Benennung, Herkunft, Weg, Knopf. */
+    function m5TrefferZeichnen(karte, treffer) {
+      var figur = document.createElement("figure");
+      figur.setAttribute("data-m5-treffer", treffer.imageId);
+      figur.style.margin = "12px 0 0";
+      figur.style.paddingTop = "10px";
+      figur.style.borderTop = "1px solid var(--hairline)";
+      var bild = document.createElement("img");
+      bild.src = treffer.thumbnailUrl;
+      bild.alt = treffer.name || treffer.caption || "";
+      bild.loading = "lazy";
+      bild.style.display = "block";
+      bild.style.maxWidth = "100%";
+      bild.style.maxHeight = "160px";
+      bild.style.height = "auto";
+      figur.appendChild(bild);
+      var unterschrift = document.createElement("figcaption");
+      if (treffer.caption.length > 0) {
+        unterschrift.textContent = treffer.caption;
+      } else {
+        unterschrift.className = "muted";
+        unterschrift.textContent = t("m5BildOhneBeschreibung");
+      }
+      unterschrift.style.marginTop = "6px";
+      figur.appendChild(unterschrift);
+      if (treffer.name) {
+        m5Absatz(figur, "muted", t("m5BildBenennung", { name: treffer.name }));
+      }
+      var herkunft = m5Absatz(figur, "muted", m5Herkunftszeile(treffer) + " — ");
+      var weg = document.createElement("a");
+      weg.href = koDetailUrl(window.location.origin, treffer.koId);
+      weg.target = "_blank";
+      weg.rel = "noopener noreferrer";
+      weg.textContent = t("m5BildAnsehen");
+      herkunft.appendChild(weg);
+      if (treffer.gefundenUeber.length > 0) {
+        var namen = [];
+        for (var i = 0; i < treffer.gefundenUeber.length; i += 1) {
+          namen.push(t(treffer.gefundenUeber[i] === "name" ? "m5BildFeldName" : "m5BildFeldBeschreibung"));
+        }
+        m5Absatz(figur, "muted", t("m5BildGefunden", { felder: namen.join(", ") }));
+      }
+      var knopf = document.createElement("button");
+      knopf.type = "button";
+      knopf.className = "primary";
+      knopf.setAttribute("data-m5-einfuegen", treffer.imageId);
+      knopf.textContent = t("m5BildEinfuegen");
+      knopf.disabled = !officeUsable() || m5EinfuegenLaeuft !== null;
+      if (!officeUsable()) { knopf.title = t("noOffice"); }
+      knopf.addEventListener("click", function () { m5Einfuegen(treffer); });
+      figur.appendChild(knopf);
+      var status = m5EinfuegeStatus[treffer.imageId];
+      if (m5EinfuegenLaeuft === treffer.imageId) {
+        m5Absatz(figur, "muted", t("m5BildEinfuegtBusy"));
+      } else if (status) {
+        m5Absatz(figur, "status " + status.ton, status.text);
+      }
+      karte.appendChild(figur);
+    }
+
+    /** Zeichnen. Kein Fokuseingriff, kein Scrollen — der Cursor in Word bleibt, wo er ist. */
+    function m5Zeichnen() {
+      var block = m5BlockElement();
+      var knopf = m5KnopfElement();
+      knopf.textContent = t("m5BildCta");
+      var frei = m5Sichtbar();
+      // Der ganze Weg steht nur mit Sitzung, Word und sichtbarer Ruhe im Bild (wie der KA3-Block);
+      // der Knopf traegt den Grund zusaetzlich am Attribut, falls er programmatisch erreicht wird.
+      block.className = frei ? "" : "hidden";
+      knopf.disabled = !frei || m5Lage === "laden";
+      knopf.title = !officeUsable() ? t("noOffice") : !signedIn ? t("askAuth") : "";
+      var karte = m5KarteElement();
+      karte.setAttribute("aria-label", t("m5BildLabel"));
+      while (karte.firstChild) { karte.removeChild(karte.firstChild); }
+      if (m5Lage === "ruhe" || !frei) {
+        karte.className = "card hidden";
+        return;
+      }
+      karte.className = "card";
+      if (m5Lage === "keine-markierung") {
+        m5Absatz(karte, "status warn", t("m5BildKeineMarkierung"));
+        return;
+      }
+      if (m5Lage === "laden") {
+        m5Absatz(karte, "muted", t("m5BildSucht", { q: m5StandOderLaufQ() }));
+      }
+      if (m5Lage === "fehler") {
+        if (m5Stand) {
+          m5Absatz(karte, "status warn", t("m5BildFehlerAltStand", { zeit: m5Zeit(m5Stand.geprueft), grund: m5FehlerGrund }));
+        } else {
+          m5Absatz(karte, "status warn", t("m5BildFehler", { grund: m5FehlerGrund }));
+        }
+        var erneut = document.createElement("button");
+        erneut.type = "button";
+        erneut.id = "m5-bild-erneut";
+        erneut.className = "ghost";
+        erneut.textContent = t("retryCta");
+        erneut.disabled = !frei;
+        erneut.addEventListener("click", m5Suchen);
+        karte.appendChild(erneut);
+      }
+      if (!m5Stand) { return; }
+      var kopf = document.createElement("p");
+      kopf.textContent = t("m5BildTitel", { q: m5Stand.q, zeit: m5Zeit(m5Stand.geprueft) });
+      kopf.style.fontWeight = "600";
+      karte.appendChild(kopf);
+      if (m5Stand.treffer.length === 0) {
+        m5Absatz(karte, "muted", t("m5BildLeer", { zeit: m5Zeit(m5Stand.geprueft), q: m5Stand.q }));
+        return;
+      }
+      for (var i = 0; i < m5Stand.treffer.length; i += 1) {
+        m5TrefferZeichnen(karte, m5Stand.treffer[i]);
+      }
+      if (m5Stand.gedeckelt) {
+        m5Absatz(karte, "muted", t("m5BildGedeckelt"));
+      }
+    }
+
+    var m5LaufendesSuchwort = "";
+    function m5StandOderLaufQ() {
+      return m5LaufendesSuchwort || (m5Stand ? m5Stand.q : "");
+    }
+
+    /** Die Markierung — frisch aus Word bei JEDEM Klick, nie ein gehaltener Schnappschuss. */
+    function m5MarkierungLesen(done) {
+      if (!officeUsable()) { done(""); return; }
+      try {
+        Office.context.document.getSelectedDataAsync(Office.CoercionType.Text, function (result) {
+          done(result && result.status === Office.AsyncResultStatus.Succeeded ? String(result.value || "") : "");
+        });
+      } catch (e) {
+        done("");
+      }
+    }
+
+    function m5FehlerSetzen(lauf, grund) {
+      if (lauf !== m5Lauf) { return; }
+      m5Lage = "fehler";
+      m5FehlerGrund = grund;
+      m5LaufendesSuchwort = "";
+      m5Zeichnen();
+    }
+
+    /** Der Klick: Markierung lesen → Suchwort → Abruf → Lage. */
+    function m5Suchen() {
+      if (!m5Sichtbar() || m5Lage === "laden") { return; }
+      m5Lauf += 1;
+      var lauf = m5Lauf;
+      m5MarkierungLesen(function (markierung) {
+        if (lauf !== m5Lauf) { return; }
+        var q = m5Suchwort(markierung);
+        if (q.length === 0) {
+          m5Lage = "keine-markierung";
+          m5Zeichnen();
+          return;
+        }
+        if (typeof navigator !== "undefined" && navigator.onLine === false) {
+          m5FehlerSetzen(lauf, t("m5BildGrundNetz"));
+          return;
+        }
+        m5Lage = "laden";
+        m5LaufendesSuchwort = q;
+        m5Zeichnen();
+        m5Abruf("/api/library/images?q=" + encodeURIComponent(q) + "&limit=" + M5_BILD_LIMIT)
+          .then(function (res) {
+            if (lauf !== m5Lauf) { return; }
+            if (!res || typeof res.status !== "number") {
+              m5FehlerSetzen(lauf, t("m5BildGrundDaten"));
+              return;
+            }
+            if (res.status === 401 || res.status === 403) {
+              // Die Sitzung traegt nicht mehr / das Recht fehlt: der Stand faellt, der Satz sagt es,
+              // und checkSession liest die Sitzung neu.
+              m5Verwerfen();
+              m5Lage = "fehler";
+              m5FehlerGrund = t(res.status === 401 ? "askAuth" : "m5BildGrundVerweigert");
+              m5Zeichnen();
+              if (typeof checkSession === "function") { checkSession(); }
+              return;
+            }
+            if (!res.ok) {
+              m5FehlerSetzen(lauf, t("m5BildGrundServer", { status: String(res.status) }));
+              return;
+            }
+            return res.json().then(
+              function (koerper) {
+                if (lauf !== m5Lauf) { return; }
+                var stand = m5AntwortPruefen(koerper);
+                if (stand === null) {
+                  m5FehlerSetzen(lauf, t("m5BildGrundDaten"));
+                  return;
+                }
+                m5Stand = { q: q, treffer: stand.treffer, geprueft: stand.geprueft, gedeckelt: stand.gedeckelt };
+                m5Lage = "ergebnis";
+                m5FehlerGrund = "";
+                m5LaufendesSuchwort = "";
+                m5EinfuegeStatus = {};
+                m5Zeichnen();
+              },
+              function () { m5FehlerSetzen(lauf, t("m5BildGrundDaten")); }
+            );
+          })
+          .catch(function (err) {
+            if (lauf !== m5Lauf) { return; }
+            m5FehlerSetzen(lauf, t(err && err.m5Frist ? "m5BildGrundFrist" : "m5BildGrundNetz"));
+          });
+      });
+    }
+
+    // -------------------------------------------------------------------------------------------
+    // Einfuegen — nur auf Klick, ein Word.run, Bild + Unterschrift + Herkunft.
+    // -------------------------------------------------------------------------------------------
+
+    /** Die Bildbytes als reines Base64: aus der data-URL geschnitten oder ueber die Sitzung geladen. */
+    function m5BildBase64(treffer) {
+      var data = /^data:image\/[a-z0-9.+-]+;base64,([\s\S]+)$/i.exec(treffer.thumbnailUrl);
+      if (data) { return Promise.resolve(data[1].replace(/\s+/g, "")); }
+      return m5Abruf(treffer.thumbnailUrl).then(function (res) {
+        if (!res || !res.ok) {
+          var f = new Error("http"); f.m5Grund = t("m5BildGrundServer", { status: String(res && res.status) }); throw f;
+        }
+        var typ = res.headers && typeof res.headers.get === "function" ? String(res.headers.get("content-type") || "") : "";
+        if (typ && !/^image\//i.test(typ)) {
+          var k = new Error("kein-bild"); k.m5Grund = t("m5BildGrundDaten"); throw k;
+        }
+        // Bytes → Base64 ohne FileReader (der ist im Word-Webview und in jsdom unterschiedlich
+        // streng mit fremden Blobs); `btoa` in Stuecken, damit auch grosse Bilder nicht am
+        // Argumentlimit von `String.fromCharCode` scheitern.
+        return res.arrayBuffer().then(function (puffer) {
+          var bytes = new Uint8Array(puffer);
+          if (bytes.length === 0) {
+            var d = new Error("leer"); d.m5Grund = t("m5BildGrundDaten"); throw d;
+          }
+          var binaer = "";
+          for (var i = 0; i < bytes.length; i += 8192) {
+            binaer += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192));
+          }
+          return btoa(binaer);
+        });
+      }, function (err) {
+        var g = new Error("netz"); g.m5Grund = t(err && err.m5Frist ? "m5BildGrundFrist" : "m5BildGrundNetz"); throw g;
+      });
+    }
+
+    /** EIN Word.run (WordApi 1.1): Bildabsatz nach dem letzten Absatz der Markierung, Unterschrift, Herkunft. */
+    function m5InWordEinfuegen(base64, treffer) {
+      var NACH = (window.Word && Word.InsertLocation && Word.InsertLocation.after) || "After";
+      var ENDE = (window.Word && Word.InsertLocation && Word.InsertLocation.end) || "End";
+      return Word.run(function (context) {
+        var absaetze = context.document.getSelection().paragraphs;
+        absaetze.load("items");
+        return context.sync().then(function () {
+          var items = absaetze.items || [];
+          if (items.length === 0) {
+            var p = new Error("position"); p.m5Position = true; throw p;
+          }
+          var letzter = items[items.length - 1];
+          var bildAbsatz = letzter.insertParagraph("", NACH);
+          bildAbsatz.insertInlinePictureFromBase64(base64, ENDE);
+          var danach = bildAbsatz;
+          if (treffer.caption.length > 0) {
+            danach = danach.insertParagraph(treffer.caption, NACH);
+          }
+          danach.insertParagraph(m5Herkunftszeile(treffer), NACH);
+          return context.sync();
+        });
+      });
+    }
+
+    function m5EinfuegeMeldung(imageId, ton, text) {
+      m5EinfuegeStatus[imageId] = { ton: ton, text: text };
+    }
+
+    function m5Einfuegen(treffer) {
+      if (m5EinfuegenLaeuft !== null) { return; }
+      if (!officeUsable() || !window.Word || typeof Word.run !== "function") {
+        m5EinfuegeMeldung(treffer.imageId, "warn", t("noOffice"));
+        m5Zeichnen();
+        return;
+      }
+      var lauf = m5Lauf;
+      m5EinfuegenLaeuft = treffer.imageId;
+      m5Zeichnen();
+      m5BildBase64(treffer)
+        .then(function (base64) {
+          if (lauf !== m5Lauf) { return; }
+          return m5InWordEinfuegen(base64, treffer).then(function () {
+            m5EinfuegeMeldung(treffer.imageId, "ok", t(treffer.caption.length > 0 ? "m5BildEinfuegtOk" : "m5BildEinfuegtOkOhne"));
+          });
+        })
+        .catch(function (err) {
+          if (lauf !== m5Lauf) { return; }
+          if (err && err.m5Grund) {
+            m5EinfuegeMeldung(treffer.imageId, "warn", t("m5BildEinfuegtFehlerBild", { grund: err.m5Grund }));
+          } else if (err && err.m5Position) {
+            m5EinfuegeMeldung(treffer.imageId, "warn", t("m5BildEinfuegtFehlerPosition"));
+          } else {
+            var detail = err && err.message ? err.message : String(err == null ? "" : err);
+            m5EinfuegeMeldung(treffer.imageId, "warn",
+              classifyInsertError(detail) === "permission"
+                ? t("askInsertNoPermission")
+                : t("askInsertFail", { detail: detail || "Word-API" }));
+          }
+        })
+        .then(function () {
+          if (m5EinfuegenLaeuft === treffer.imageId) { m5EinfuegenLaeuft = null; }
+          m5Zeichnen();
+        });
+    }
+
+    if (typeof document !== "undefined" && document.getElementById("ask-ruhe")) {
+      m5KnopfElement().addEventListener("click", m5Suchen);
+      m5Zeichnen();
+      ["de", "en", "nl"].forEach(function (code) {
+        var knopf = document.getElementById("lang-" + code);
+        if (knopf) { knopf.addEventListener("click", m5Zeichnen); }
+      });
+      // Der Knopf folgt Sitzung und Office — `updateAskState` ist die Stelle, an der beides
+      // zusammenlaeuft (checkSession → updateSendState → updateAskState; markOfficeChecked ebenso).
+      // Wrapper wie bei renderAskSources/renderAskOutcome: Original zuerst, danach der Nachtrag.
+      if (typeof updateAskState === "function") {
+        var m5UpdateAskStateBestand = updateAskState;
+        updateAskState = function () {
+          var ergebnis = m5UpdateAskStateBestand.apply(this, arguments);
+          m5Zeichnen();
+          return ergebnis;
+        };
+      }
+      // Die Ruhe kommt und geht mit Antwort und Luecke (`kwFlaecheZeichnen`) — der Weg folgt ihr.
+      if (typeof kwFlaecheZeichnen === "function") {
+        var m5FlaecheBestand = kwFlaecheZeichnen;
+        kwFlaecheZeichnen = function () {
+          var ergebnis = m5FlaecheBestand.apply(this, arguments);
+          m5Zeichnen();
+          return ergebnis;
+        };
+      }
+      // Die Identitaet: `sessionName` wird in checkSession NUR auf dem Erfolgsweg mit dem Nutzer
+      // aus /api/auth/me gerufen (null bei 401/403). Eine andere oder keine Identitaet verwirft den
+      // Stand; ein Netzfehler erreicht diese Stelle nicht und verwirft nichts.
+      if (typeof sessionName === "function") {
+        var m5SessionNameBestand = sessionName;
+        sessionName = function (user) {
+          var name = m5SessionNameBestand.apply(this, arguments);
+          m5SitzungMelden(name !== null ? user : null);
+          return name;
+        };
+      }
+      // Ein bestaetigter Logout verwirft den Stand im selben Moment wie den S4-Stand.
+      if (typeof klaraS4Verwerfen === "function") {
+        var m5S4VerwerfenBestand = klaraS4Verwerfen;
+        klaraS4Verwerfen = function () {
+          var ergebnis = m5S4VerwerfenBestand.apply(this, arguments);
+          m5Verwerfen();
+          return ergebnis;
+        };
+      }
+    }
+    // KW-M5-BILD-END
+
     // KW-KA6-SCHREIBEN-START
     // ============================================================================================
     // JOB 1153 · KA6 STUFE 1 — DIE SCHREIBFLAECHE. VORSCHLAG STATT SCHREIBEN.

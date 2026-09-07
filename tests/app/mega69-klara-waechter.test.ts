@@ -1590,7 +1590,43 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     //   · Fuer ein installiertes Add-in: KEIN erneutes Sideload noetig; es holt die Datei beim
     //     naechsten Oeffnen frisch. Ein aelterer Server ohne `konfliktpruefung` fuehrt zur Lage
     //     „Pruefung nicht moeglich", nie zu „keine Abweichung".
-    const PIN = "241dde4eccb8c958b3da94e40a12c6943379a7e7f1736bd508885a65aeca68b6";
+    //
+    // ============================================================================================
+    // JOB 3096 · M5 (07.09.2026) — DER PIN WANDERT WEGEN DES BILDES AUS DEM BESTAND. VORHERHASH
+    // taskpane.html (Basis 1.103, fc4173d, vor der JOB-3079/3091-3094-Kette oben):
+    // a5e8fcec7f194e6372aced2f3339cc155ece2072a32615faa455606517f637ba
+    // ============================================================================================
+    //   · EIN neuer Skriptblock KW-M5-BILD-START/END zwischen KW-KA3-KARTEN-END und
+    //     KW-KA6-SCHREIBEN-START: „Bild dazu?" — Knopf und Karte entstehen zur Laufzeit als
+    //     #m5-bild-block NEBEN der Ruhe-Mitte (unter #ask-ruhe eingehaengt wie die KA3-Karte; die
+    //     Mitte selbst bleibt Lupe + EIN Satz, k1-sitzungslagen gruen). KEIN Markup-, KEIN
+    //     Stilblock-Hunk; Farben nur ueber vorhandene Klassen `card`, `ghost`, `primary`, `muted`,
+    //     `status`, Inline-Stile ohne Farbliteral. Woerterbuch M5_BILD_TEXTE (de/en/nl) haengt sich
+    //     in STRINGS ein wie KA3/KA6.
+    //   · Abrufziel: EIN neues `fetch(` (`m5Abruf`) fuer `GET /api/library/images` und, erst beim
+    //     Einfuegen, `GET /api/objects/<id>/raw` — die bewusste Antwort (CSP/Recht/Manifest/Nutzlast)
+    //     steht in mega69-klara-merkmale.test.ts beim Zaehler (13 → 14 nach diesem Rebase).
+    //   · Word: `Word.run` mit WordApi 1.1 (`Range.paragraphs`, `Paragraph.insertParagraph`,
+    //     `Paragraph.insertInlinePictureFromBase64`); kein Manifestwechsel, KEIN Sideload noetig.
+    //   · Drei Wrapper (Original zuerst, Nachtrag danach): `updateAskState` (Knopfzustand),
+    //     `sessionName` (Identitaet → Stand verwerfen), `klaraS4Verwerfen` (Logout → verwerfen).
+    //   Gemessen: tests/m5-bild-im-panel/bild-vorschlag-mounted.test.ts (16 Faelle).
+    //
+    // JOB 3096 KONFLIKTRUNDE 1 (07.09.2026) — `git rebase main` traf mit der JOB-3096-Kette (M5,
+    // Bildblock oben) auf die inzwischen auf main gelandete JOB-3094-Kette (KA7, Konfliktkarte
+    // oben, PIN 241dde4e…). BEIDE SEITEN BLEIBEN INHALTLICH ERHALTEN: der KA7-Konfliktkarten-Block
+    // aus JOB 3094 UND der M5-Bildblock aus JOB 3096 stehen nebeneinander in der zusammengefuehrten
+    // Datei. Kein Markup, kein Skript und kein Woerterbuchschluessel einer Seite wurde entfernt, um
+    // die andere Seite zu erhalten. Der Pin unten ist der frisch aus der zusammengefuehrten Datei
+    // gerechnete Hash, kein uebernommener Wert einer Seite.
+    //
+    // JOB 3096 RUNDE 2 (07.09.2026, 56ebdf6b… -> 29c03b18…): NUR ZWEI NIEDERLAENDISCHE WOERTERBUCH-
+    // WERTE GEAENDERT — `m5BildTitel`/`m5BildLeer` (nl) sagen „nagekeken {zeit}" statt
+    // „gecontroleerd {zeit}", weil die Wortliste der Word-Flaeche (tests/i18n/mega35-word-wortliste)
+    // „gecontroleerd" als Zusage-Wort verbietet (dieselbe Loesung wie 3092/3094: EN/NL ohne das
+    // Wort, DE „(geprueft <Zeit>)" als registrierte Vorgangsaussage). Kein Markup, kein Skript,
+    // kein Abrufziel, kein Manifest geaendert. KEIN Sideload noetig.
+    const PIN = "29c03b18bbed8323395420c0277a602a983ceaeed1f51265342e26ec0eccdf29";
     const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
     expect(
       ist,

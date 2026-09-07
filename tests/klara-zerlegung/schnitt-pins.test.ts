@@ -263,6 +263,11 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // Kein Griff im engeren Sinn: die Testwurzel-Hilfe nennt den Pfad nur in ihrem Beispiel. Sie
   // steht hier, weil der Griff `pfad` bewusst textbreit ist — s. seine Beschreibung.
   "tests/support/repoPfad.ts": "pfad",
+  // JOB 3096 M5 (07.09.2026): das Bild aus dem Bestand am vollstaendigen Aufgabenfenster (Bauform
+  // memo-panel-mounted / word-addin-ask.test.ts): laedt die Datei ueber den Pfad und liest die
+  // Schluessel aus M5_BILD_TEXTE — Griff `pfad`. A2 hat sie gemeldet, das Verzeichnis hat sie nicht
+  // still aufgenommen.
+  "tests/m5-bild-im-panel/bild-vorschlag-mounted.test.ts": "pfad",
 };
 
 // ------------------------------------------------------------------------------------------------

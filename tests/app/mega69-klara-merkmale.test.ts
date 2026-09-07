@@ -236,7 +236,43 @@ function m6FremdeZiele(src: string): string[] {
 // AUSLIEFERUNGSFOLGE für ein installiertes Add-in: KEIN erneutes Sideload. Ein älterer Server ohne
 // `konfliktpruefung` in der Antwort führt zur Lage „Prüfung nicht möglich" — nie zu „keine
 // Abweichung" (konfliktkarte-mounted P3).
-const BEKANNTE_ABRUFZIELE = 13;
+//
+// ================================================================================================
+// JOB 3096 M5 (07.09.2026) — DIE BEWUSSTE ANTWORT ZUM VIERZEHNTEN ABRUFZIEL (13 → 14).
+// ================================================================================================
+//
+// DAS NEUE ZIEL: `m5Abruf` (Block KW-M5-BILD, „Bild dazu?"), EINE `fetch(`-Stelle für zwei Pfade
+// derselben Herkunft: `GET /api/library/images?q=<Markierung>&limit=20` (die Bildsuche aus JOB 3095,
+// JSON) und — erst beim Klick „In Word einfügen" — `GET /api/objects/<id>/raw` (die Bytes eines
+// Bestandsbildes, Blob → Base64 für `insertInlinePictureFromBase64`). Ein Treffer mit `data:`-Quelle
+// braucht den zweiten Pfad nicht.
+//
+//   · CSP:      unverändert. `connect-src 'self'` deckt beide Pfade (eigene Adresse); die Vorschau
+//               im Panel zeigt `img-src 'self' data:` (security-headers.ts:31) — beide Bildquellen
+//               der Route sind damit gedeckt, kein neuer Ursprung.
+//   · Recht:    keines zusätzlich. Die Route verlangt `ko.read` in der Sitzung wie die Bibliothek;
+//               die Sichtbarkeit fällt serverseitig (Trim, `sichtbareFuer`, `darfSehen` am vollen
+//               Objekt, library-routes.ts) — das Panel filtert nichts nach. `/api/objects/<id>/raw`
+//               ist der bestehende Anhangsweg mit seiner bestehenden Prüfung.
+//   · Manifest: unverändert. Word-seitig nur WordApi 1.1: `Range.paragraphs`/`load("items")`,
+//               `Paragraph.insertParagraph`, `Paragraph.insertInlinePictureFromBase64` — kein
+//               `Range.insertInlinePictureFromBase64` (1.2), kein `getFirst()` (1.3). Keine neue
+//               Domain, keine neue Berechtigung (ReadWriteDocument besteht seit dem Einfügen).
+//   · Nutzlast: hinaus geht NUR das Suchwort (die Markierung, auf 200 Zeichen gedeckelt, als
+//               Query) — kein Dokumenttext, kein Modell, kein Egress. Herein kommen Treffer und
+//               beim Einfügen die Bildbytes.
+//   · Frequenz: einmal je Klick auf „Bild dazu?" bzw. „In Word einfügen". Kein Intervall, kein
+//               Autostart. Gemessen: tests/m5-bild-im-panel/bild-vorschlag-mounted.test.ts P0/P2.
+//
+// AUSLIEFERUNGSFOLGE für ein installiertes Add-in: KEIN erneutes Sideload. Ein älterer Server ohne
+// die Route antwortet 404 → Lage „Suche nicht möglich (Server antwortet 404)", nie „kein Bild".
+//
+// JOB 3096 KONFLIKTRUNDE 1 (07.09.2026) — `git rebase main` traf mit der JOB-3096-Kette (M5,
+// Bildblock oben) auf die inzwischen auf main gelandete JOB-3094-Kette (KA7, Konfliktkarte oben,
+// 12 → 13). BEIDE SEITEN BLEIBEN ERHALTEN: der KA7-Block bleibt beim dreizehnten Abrufziel, der
+// M5-Bildblock kommt als vierzehntes Ziel hinzu (13 → 14) — der Wert, den die REBASE-HINWEIS der
+// ursprünglichen Fassung bereits vorgesehen hatte.
+const BEKANNTE_ABRUFZIELE = 14;
 function m7Abrufmenge(src: string): number {
   return abrufziele(src).length;
 }
