@@ -351,7 +351,11 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/knowledge/check": { protection: "ko.read" },
   // SCRUM-491 Slice 5 (check-text-routes.ts): Session-Zweig erzwingt ko.read; der Add-on-Zweig verlangt
   // checktext.validated (Hook + Handler). Nur bei KLARWERK_ADDON_API registriert.
-  "POST /api/check-text": { protection: "ko.read" },
+  // JOB 3216 (M3c): der Sitzungszweig entscheidet seit den Quellenfunden ZUSÄTZLICH je Zeile —
+  // `sichtbarkeitsfilterFuer` (und derselbe Trim wie die Bibliothekssuche) begrenzt, aus welchem
+  // fremden Volltext ein Ausschnitt ausgegeben werden darf. Dieselbe Lage und dieselbe Eintragung
+  // wie bei `POST /api/ask` oben; der Add-on-Zweig derselben Route führt das Prädikat NICHT.
+  "POST /api/check-text": { protection: "ko.read", zeilenrecht: ["sichtbarkeitsfilterFuer"] },
   "GET /api/gaps/summary": { protection: "ko.read" },
   "GET /api/gaps": { protection: "ko.read" },
   "PUT /api/gaps/:id": { protection: "ko.assign" },

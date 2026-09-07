@@ -237,6 +237,17 @@ describe("W6 · DER FEHLSTAND — der leere Vektorspeicher wird NICHT gemeldet",
     // JOB 3094 (KA7): `konfliktpruefung` kam hinzu. Es sagt, ob die KONFLIKTPRÜFUNG lief (Modell,
     // vorgelegte Quellen) — NICHT, ob der Vektorspeicher trug. Über die Abruftiefe der
     // Kandidatenwahl sagt weiterhin kein Feld etwas; der Befund dieser Datei steht.
+    //
+    // JOB 3216 (M3c): drei weitere Felder kamen hinzu — `sourceHits`, `sourceHitsTruncated` und
+    // `quellenfund`. Sie beantworten eine ANDERE Frage: ob eine Passage schon im gespeicherten
+    // VOLLTEXT eines Bestandsobjekts steht, und ob die VOLLTEXTSUCHE gelaufen ist. Über die
+    // ABRUFTIEFE DER KANDIDATENWAHL — den Gegenstand dieser Datei — sagen sie nichts:
+    //   · `quellenfund.gelaufen` bezieht sich auf die Suchprojektion, nicht auf den Vektorspeicher;
+    //   · `sourceHitsTruncated` meldet den Deckel der QUELLENFUNDE, nicht den der Duplikatsuche;
+    //   · in beiden Läufen dieses Falls (Speicher voll / Speicher leer) sind sie identisch — die
+    //     Zeile darunter misst genau das und wäre sonst rot.
+    // Der Befund dieser Datei steht damit unverändert: es gibt weiterhin KEIN Feld, an dem ein
+    // Add-in die semantische Degradierung festmachen könnte.
     expect(Object.keys(leer).sort()).toEqual([
       "answer",
       "conflicts",
@@ -244,7 +255,16 @@ describe("W6 · DER FEHLSTAND — der leere Vektorspeicher wird NICHT gemeldet",
       "konfliktpruefung",
       "note",
       "persisted",
+      "quellenfund",
+      "sourceHits",
+      "sourceHitsTruncated",
     ]);
+    // JOB 3216: dieselbe Ununterscheidbarkeit wie bei `konfliktpruefung` und `note` — die drei
+    // neuen Felder sind in beiden Reichweiten gleich und tragen den Befund deshalb mit, statt ihn
+    // zu entkräften.
+    expect(leer.sourceHits).toEqual(voll.sourceHits);
+    expect(leer.sourceHitsTruncated).toEqual(voll.sourceHitsTruncated);
+    expect(leer.quellenfund).toEqual(voll.quellenfund);
     expect(leer.konfliktpruefung).toEqual(voll.konfliktpruefung);
     // JOB 3020: der Traeger des Befundes ist die UNUNTERSCHEIDBARKEIT, nicht der Wert `null`. Beide
     // Antworten tragen jetzt denselben Hinweis über den geprüften BESTAND — über die ABRUFTIEFE

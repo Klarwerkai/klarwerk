@@ -9,7 +9,12 @@ import {
 import type { EmbeddingProvider, EmbeddingStore } from "../../embedding";
 import type { KnowledgeObject, KoService } from "../../knowledge-object";
 import { ModelCapacityError } from "../../reasoner";
-import { checkText } from "./check-text-detection";
+import {
+  type CheckTextResult,
+  type CheckTextSourceHit,
+  type Quellenfundlage,
+  checkText,
+} from "./check-text-detection";
 import type { SemanticPrefilter } from "./duplicate-detection";
 
 // SCRUM-491 Slice 4 (+ ben-Review-Fix): side-effect-freier Dry-Run-Kern. Prüft transienten Freitext
@@ -43,12 +48,53 @@ function mkKo(id: string, status: "validiert" | "offen", statement: string): Kno
 // Fake sich selbst begrenzen, wäre jede „Bounding"-Assertion tautologisch. Stattdessen messen die
 // Tests, was der ORCHESTRATOR tatsächlich lädt/anfordert: kein list(), get() nur je topK-Treffer,
 // und findCandidates mit dem harten limit.
+//
+// JOB 3216: der Fake trägt jetzt AUCH den gemeinsamen Suchvertrag (`findSearchHits`,
+// `listForSearch`, `effectiveSearchDocumentOf`) — sonst wäre der Quellenfund in diesen Fällen
+// stumm und die Zusicherungen darüber wertlos. Der Suchtext eines Seed-Objekts ist Titel, Aussage
+// und ein optionales Feld `suchtext`, das den GESPEICHERTEN VOLLTEXT stellt (im echten Produkt
+// kommt er aus der Suchprojektion, die den sichtbaren Text des `bodyHtml` mitführt).
+function suchtextVon(k: KnowledgeObject): string {
+  const volltext = (k as unknown as { suchtext?: string }).suchtext ?? "";
+  return [k.title, k.statement, volltext].filter((teil) => teil.length > 0).join("\n");
+}
+
 function koService(seed: KnowledgeObject[]) {
   const list = vi.fn(async () => seed);
   const findCandidates = vi.fn(async (_q: { terms: readonly string[]; limit: number }) => seed);
   const get = vi.fn(async (id: string) => seed.find((k) => k.id === id));
-  const ko = { list, findCandidates, get } as unknown as KoService;
-  return { ko, list, findCandidates, get };
+  // Zusammenhängende Enthaltenheit — dieselbe Auslegung wie `matchEffectiveSearchDocument`
+  // (knowledge-object/src/effective-search-document.ts: `lower.includes(term)`).
+  const findSearchHits = vi.fn(async (q: { terms: readonly string[]; limit?: number }) =>
+    seed
+      .filter((k) =>
+        q.terms.some((term) => suchtextVon(k).toLowerCase().includes(term.toLowerCase())),
+      )
+      .slice(0, q.limit ?? seed.length)
+      .map((k) => ({ koId: k.id, koVersion: 1 })),
+  );
+  const listForSearch = vi.fn(async () => seed);
+  const effectiveSearchDocumentOf = vi.fn(async (id: string) => {
+    const k = seed.find((x) => x.id === id);
+    return k === undefined ? undefined : { koId: id, searchText: suchtextVon(k) };
+  });
+  const ko = {
+    list,
+    findCandidates,
+    get,
+    findSearchHits,
+    listForSearch,
+    effectiveSearchDocumentOf,
+  } as unknown as KoService;
+  return {
+    ko,
+    list,
+    findCandidates,
+    get,
+    findSearchHits,
+    listForSearch,
+    effectiveSearchDocumentOf,
+  };
 }
 
 // Fake-Prefilter mit Spy-Embedder/-Store: beweist, ob (und wann) Text an den Embedder geht.
@@ -322,5 +368,220 @@ describe("SCRUM-502: check-text schließt vertrauliche KOs aus (beide Stufen)", 
     );
     expect(result.duplicates).toHaveLength(1);
     expect(result.duplicates[0]?.koId).toBe("v3");
+  });
+});
+
+// ================================================================================================
+// JOB 3216 · M3c — DER QUELLENFUND AM KERN: was nur ein Fake belegen kann.
+// ================================================================================================
+//
+// Die Fälle am ECHTEN HTTP-Weg mit ECHTEN Objekten stehen in tests/m3-dokumentweg. HIER stehen die
+// fünf Lagen, für die ein Fake das einzige ehrliche Mittel ist:
+//
+//   Q1  eine Datenquelle, die LOCKERER trifft, als der Vertrag es zulässt (Tokenmenge statt
+//       zusammenhängender Zeichenkette). Kein heutiger Adapter tut das — aber der Vertrag darf
+//       nicht davon abhängen, dass keiner es je tut. Genau das misst dieser Fall.
+//   Q2  dass der Quellenfund KEIN Urteil bewegt: dieselbe Eingabe, einmal mit und einmal ohne
+//       Quellenfund, muss dieselben `duplicates` liefern.
+//   Q3  dass die Sichtbarkeitsentscheidung der Route wirklich greift.
+//   Q4  dass eine WERFENDE Suche als solche gemeldet wird und die Dublettenprüfung nicht mitreißt.
+//   Q5  dass die drei harten Poolausschlüsse hier dieselben sind wie beim Dublettenpool.
+const ABSATZ =
+  "Die zulaessige Kombination aus Werkzeugsatz und Kuehlmittelmenge wird vor dem Chargenwechsel " +
+  "freigegeben und im Anlagenbuch vermerkt.";
+
+/**
+ * RUNDE 2: `CheckTextResult` führt die drei Quellenfund-Felder OPTIONAL — der Vertrag §5.4 sagt
+ * „fehlt = leer", und ein fremder Erzeuger darf sie weglassen. `checkText` SELBST setzt sie immer.
+ * Genau das prüft dieser Helfer, bevor er verengt: fehlte eines, wäre nicht der Vertrag zu weit,
+ * sondern der Kern kaputt — und die Fälle unten würden es sonst mit `?? []` stillschweigend
+ * überdecken.
+ */
+function quellenfundVon(result: CheckTextResult) {
+  expect(result.sourceHits, "checkText liefert sourceHits immer").toBeDefined();
+  expect(result.quellenfund, "checkText liefert quellenfund immer").toBeDefined();
+  expect(result.sourceHitsTruncated, "checkText liefert sourceHitsTruncated immer").toBeDefined();
+  return {
+    hits: result.sourceHits as CheckTextSourceHit[],
+    lage: result.quellenfund as Quellenfundlage,
+    gedeckelt: result.sourceHitsTruncated as boolean,
+  };
+}
+
+/** Ein Seed-Objekt mit gespeichertem Volltext, dessen Kerntext den Absatz NICHT trägt. */
+function mitVolltext(id: string, volltext: string, extra: Record<string, unknown> = {}) {
+  return {
+    ...mkKo(id, "validiert", "Profile werden regelmaessig ueberprueft."),
+    version: 3,
+    suchtext: volltext,
+    ...extra,
+  } as unknown as KnowledgeObject;
+}
+
+describe("JOB 3216: Quellenfund — Vertrag, Trennung, Rechte, Ausfall", () => {
+  it("Q1 · eine Datenquelle, die nur Tokens trifft, erzeugt KEINEN Quellenfund", async () => {
+    // Der Störtext trägt JEDES Wort des Absatzes — aber nicht den Absatz. Eine Datenquelle, die
+    // auf Tokenmenge träfe, lieferte ihn als Kandidaten; die Nachprüfung am Suchtext verwirft ihn.
+    const stoertext = ABSATZ.split(" ").reverse().join(" ");
+    const seed = [mitVolltext("s1", stoertext)];
+    const suchtextEines = (k: KnowledgeObject) => (k as unknown as { suchtext: string }).suchtext;
+    const lockererTreffer = vi.fn(async (q: { terms: readonly string[] }) => {
+      const woerter = (q.terms[0] ?? "").toLowerCase().split(" ");
+      return seed
+        .filter((k) => woerter.every((w) => suchtextEines(k).toLowerCase().includes(w)))
+        .map((k) => ({ koId: k.id, koVersion: 1 }));
+    });
+    const ko = {
+      list: vi.fn(async () => seed),
+      findCandidates: vi.fn(async () => seed),
+      get: vi.fn(async (id: string) => seed.find((k) => k.id === id)),
+      findSearchHits: lockererTreffer,
+      listForSearch: vi.fn(async () => seed),
+      effectiveSearchDocumentOf: vi.fn(async (id: string) => {
+        const k = seed.find((x) => x.id === id);
+        return k === undefined ? undefined : { koId: id, searchText: suchtextEines(k) };
+      }),
+    } as unknown as KoService;
+    const result = await checkText(
+      { text: ABSATZ },
+      { ko, overlaps: new OverlapService({ repo: new InMemoryOverlapRepo() }) },
+    );
+    // Die Datenquelle HAT geliefert — das ist die Voraussetzung des Falls, sonst misst er nichts.
+    expect(lockererTreffer).toHaveBeenCalled();
+    expect(await lockererTreffer({ terms: [ABSATZ] })).toHaveLength(1);
+    // Und der Kern hat verworfen.
+    const quellen = quellenfundVon(result);
+    expect(quellen.hits).toEqual([]);
+    expect(quellen.lage.gelaufen).toBe(true);
+    expect(quellen.lage.geprueft).toBe(1);
+  });
+
+  it("Q1b · derselbe Absatz zusammenhängend im Volltext → Quellenfund mit voller Deckung", async () => {
+    const { ko } = koService([mitVolltext("s2", `Vorspann. ${ABSATZ} Nachspann.`)]);
+    const result = await checkText(
+      { text: ABSATZ },
+      { ko, overlaps: new OverlapService({ repo: new InMemoryOverlapRepo() }) },
+    );
+    const { hits } = quellenfundVon(result);
+    expect(hits).toHaveLength(1);
+    expect(hits[0]?.refId).toBe("s2");
+    expect(hits[0]?.coverage).toBe("full");
+    expect(hits[0]?.gedeckteZeichen).toBe(ABSATZ.length);
+    expect(hits[0]?.passageZeichen).toBe(ABSATZ.length);
+    expect(hits[0]?.koVersion).toBe(3);
+    expect(hits[0]?.fundstelle).toContain(ABSATZ);
+  });
+
+  it("Q2 · der Quellenfund bewegt KEIN Dublettenurteil (mit und ohne: gleiche duplicates)", async () => {
+    // Der Unterschied zwischen beiden Läufen liegt AUSSCHLIESSLICH im gespeicherten Volltext des
+    // ZWEITEN Objekts — sein Kerntext (Titel, Aussage) ist in beiden Läufen derselbe. Der
+    // Kandidatenpool der Dublettenprüfung kann sich dadurch nicht bewegen; der Quellenfund schon.
+    const kern = mkKo("v1", "validiert", TEXT_IDENTISCH);
+    const mit = koService([kern, mitVolltext("s9", `Vorspann. ${TEXT_IDENTISCH} Nachspann.`)]);
+    const ohne = koService([kern, mitVolltext("s9", "Voellig anderer gespeicherter Inhalt.")]);
+    const eingabe = { text: TEXT_IDENTISCH, title: "Pumpe entlüften" };
+    const a = await checkText(eingabe, {
+      ko: mit.ko,
+      overlaps: new OverlapService({ repo: new InMemoryOverlapRepo() }),
+    });
+    const b = await checkText(eingabe, {
+      ko: ohne.ko,
+      overlaps: new OverlapService({ repo: new InMemoryOverlapRepo() }),
+    });
+    expect(quellenfundVon(a).hits.map((h) => h.refId)).toEqual(["v1", "s9"]);
+    expect(quellenfundVon(b).hits.map((h) => h.refId)).toEqual(["v1"]);
+    // Das Urteil ist in beiden Läufen dasselbe — Feld für Feld.
+    expect(a.duplicates).toEqual(b.duplicates);
+    expect(a.conflicts).toEqual(b.conflicts);
+    expect(a.duplicates).toHaveLength(1);
+    expect(a.duplicates[0]?.koId).toBe("v1");
+  });
+
+  it("Q3 · die Sichtbarkeitsentscheidung der Route schließt ein Objekt aus", async () => {
+    const { ko } = koService([mitVolltext("s3", ABSATZ)]);
+    const gemeinsam = { ko, overlaps: new OverlapService({ repo: new InMemoryOverlapRepo() }) };
+    const offen = await checkText({ text: ABSATZ }, gemeinsam);
+    expect(quellenfundVon(offen).hits.map((h) => h.refId)).toEqual(["s3"]);
+    const gefiltert = quellenfundVon(
+      await checkText({ text: ABSATZ }, { ...gemeinsam, quellenSichtbar: (k) => k.id !== "s3" }),
+    );
+    expect(gefiltert.hits).toEqual([]);
+    expect(gefiltert.lage.geprueft).toBe(0);
+  });
+
+  it("Q4 · wirft die Suche, sagt die Antwort das — und die Dublettenprüfung läuft weiter", async () => {
+    const seed = [mkKo("v1", "validiert", TEXT_IDENTISCH)];
+    const ko = {
+      list: vi.fn(async () => seed),
+      findCandidates: vi.fn(async () => seed),
+      get: vi.fn(async (id: string) => seed.find((k) => k.id === id)),
+      findSearchHits: vi.fn(async () => {
+        throw new Error("Suchprojektion nicht freigegeben");
+      }),
+      listForSearch: vi.fn(async () => seed),
+      effectiveSearchDocumentOf: vi.fn(async () => undefined),
+    } as unknown as KoService;
+    const result = await checkText(
+      { text: TEXT_IDENTISCH, title: "Pumpe entlüften" },
+      { ko, overlaps: new OverlapService({ repo: new InMemoryOverlapRepo() }) },
+    );
+    const quellen = quellenfundVon(result);
+    expect(quellen.lage).toEqual({
+      gelaufen: false,
+      grund: "suche_nicht_verfuegbar",
+      geprueft: 0,
+    });
+    expect(quellen.hits).toEqual([]);
+    // Die Kerntextprüfung ist davon unberührt — sie hat ihr Duplikat.
+    expect(result.duplicates).toHaveLength(1);
+  });
+
+  it("Q4b · RUNDE 2 · wirft irgendein SPÄTERER Schritt, kippt er die Antwort ebenfalls nicht", async () => {
+    // Runde 1 fing nur `findSearchHits` ab. Dieser Fall setzt den Fehler dahinter — an
+    // `listForSearch` — und belegt, dass das Netz um den GANZEN Lauf liegt und nicht um einen Aufruf.
+    const seed = [mkKo("v1", "validiert", TEXT_IDENTISCH)];
+    const ko = {
+      list: vi.fn(async () => seed),
+      findCandidates: vi.fn(async () => seed),
+      get: vi.fn(async (id: string) => seed.find((k) => k.id === id)),
+      findSearchHits: vi.fn(async () => [{ koId: "v1", koVersion: 1 }]),
+      listForSearch: vi.fn(async () => {
+        throw new Error("Datenquelle nicht erreichbar");
+      }),
+      effectiveSearchDocumentOf: vi.fn(async () => undefined),
+    } as unknown as KoService;
+    const result = await checkText(
+      { text: TEXT_IDENTISCH, title: "Pumpe entlüften" },
+      { ko, overlaps: new OverlapService({ repo: new InMemoryOverlapRepo() }) },
+    );
+    expect(quellenfundVon(result).lage).toEqual({
+      gelaufen: false,
+      grund: "suche_nicht_verfuegbar",
+      geprueft: 0,
+    });
+    expect(result.duplicates).toHaveLength(1);
+  });
+
+  it("Q5 · Poolregeln gelten auch hier: offen (ohne Schalter), Demobestand, vertraulich", async () => {
+    const seed = [
+      mitVolltext("offen1", ABSATZ, { status: "offen" }),
+      mitVolltext("demo1", ABSATZ, { demoSeed: true }),
+      mitVolltext("vertr1", ABSATZ, { confidentiality: "vertraulich" }),
+      mitVolltext("ok1", ABSATZ),
+    ];
+    const { ko } = koService(seed);
+    const gemeinsam = { ko, overlaps: new OverlapService({ repo: new InMemoryOverlapRepo() }) };
+    const ohneSchalter = await checkText({ text: ABSATZ }, gemeinsam);
+    expect(quellenfundVon(ohneSchalter).hits.map((h) => h.refId)).toEqual(["ok1"]);
+    // Mit `includeUnvalidated` (Menschenweg) kommt das OFFENE dazu — und nur das.
+    const mitSchalter = await checkText(
+      { text: ABSATZ },
+      { ...gemeinsam, includeUnvalidated: true },
+    );
+    expect(
+      quellenfundVon(mitSchalter)
+        .hits.map((h) => h.refId)
+        .sort(),
+    ).toEqual(["offen1", "ok1"]);
   });
 });

@@ -14,9 +14,19 @@ import type {
 import type { JudgeFailure, Reasoner } from "../../../reasoner";
 import { authorizesCheckText } from "../addon-principal";
 import { addonRateLimit } from "../addon-rate-limit";
-import { type CheckTextConflict, type CheckTextResult, checkText } from "../check-text-detection";
+import {
+  type CheckTextConflict,
+  type CheckTextResult,
+  type CheckTextSourceHit,
+  checkText,
+} from "../check-text-detection";
 import type { SemanticPrefilter } from "../duplicate-detection";
-import type { Guards } from "../http";
+import type { Guards, SessionUser } from "../http";
+import {
+  type SqlSichtbarkeitstrim,
+  sichtbarkeitsfilterFuer,
+  sqlSichtbarkeitFuer,
+} from "../sichtbarkeit";
 import { classifyProvenanceConfidential } from "./reasoner-routes";
 
 // SCRUM-491 Slice 5/6: POST /api/check-text gegen den VALIDIERTEN Bestand, KEINE Persistenz
@@ -338,6 +348,41 @@ async function mitStellen(
   );
 }
 
+// ==================================================================================================
+// JOB 3216 · M3c — DER QUELLENFUND AM DRAHT: EIN EIGENER TREFFERTYP, KEIN ZWEITES DUBLETTENURTEIL.
+// ==================================================================================================
+//
+// Was hier hinausgeht, ist die Antwort auf eine ANDERE Frage als `duplicates`. Ein Duplikat sagt
+// „dieselbe Wissensaussage liegt schon vor" — geurteilt am Kerntext (K0-2). Ein Quellenfund sagt
+// nur „diese Passage steht schon im Volltext von ‚<Titel>'", mit der Fundstelle daneben. Die
+// Wortwahl trennt beide bewusst: der Panel-Auftrag (M3b Teil 2) hat damit gar nicht erst die
+// Möglichkeit, aus einem Quellenfund eine Dublettenmeldung zu machen.
+//
+// `pruefstand` und `fundort` haben DIESELBE Form wie bei `duplicates` (JOB 3093) und entstehen aus
+// DENSELBEN zwei Funktionen — ein Panel liest den Prüfstand eines Treffers überall gleich.
+//
+// ABWÄRTSKOMPATIBEL: die Felder sind additiv. Ein Client, der sie nicht kennt (das ausgelieferte
+// Word-Fenster von heute), liest weiter `duplicates`/`conflicts` und merkt nichts.
+function toSourceHitResponse(hit: CheckTextSourceHit) {
+  return {
+    refId: hit.refId,
+    koTitle: hit.koTitle,
+    koStatus: hit.koStatus,
+    koCategory: hit.koCategory,
+    pruefstand: pruefstandVon(hit.koStatus),
+    version: hit.koVersion,
+    fundort: fundortVon(hit.refId, hit.koCategory),
+    // `full` = die ganze gewählte Passage steht zusammenhängend im Suchtext; `partial` = nur der
+    // Ausschnitt, mit dem gesucht wurde. Die zwei Zahlen daneben machen das nachrechenbar.
+    coverage: hit.coverage,
+    gedeckteZeichen: hit.gedeckteZeichen,
+    passageZeichen: hit.passageZeichen,
+    fundstelle: hit.fundstelle,
+    quelle: hit.quelle,
+    anhang: hit.anhang,
+  };
+}
+
 function toResponse(
   result: CheckTextResult,
   konflikte: readonly KonfliktMitStellen[],
@@ -387,6 +432,26 @@ function toResponse(
     answer: null,
     note,
     persisted: false,
+    // ============================================================================================
+    // JOB 3216 (M3c) — DIE ZUGABE STEHT HINTEN, UND SIE IST GEGEN EIN FEHLENDES FELD GEWAPPNET.
+    // ============================================================================================
+    //
+    // WARUM AM ENDE: die sechs Felder des bestehenden Vertrags (`duplicates`, `conflicts`,
+    // `konfliktpruefung`, `answer`, `note`, `persisted`) behalten damit ihre Reihenfolge im
+    // serialisierten Rumpf Zeichen für Zeichen. Ein Alt-Client, der die Antwort der Reihe nach
+    // liest, sieht bis `persisted` exakt dasselbe wie vorher.
+    //
+    // WARUM MIT `??`: `CheckTextResult` führt die drei Felder OPTIONAL (§5.4 „fehlt = leer", und
+    // die Begründung samt gemessener Fundstelle steht am Typ). Fehlt die Auskunft, wird sie NICHT
+    // erfunden: die Liste ist leer, `sourceHitsTruncated` false, und `quellenfund` sagt ehrlich
+    // „nicht gelaufen" mit Grund — nicht etwa „gelaufen, nichts gefunden".
+    sourceHits: (result.sourceHits ?? []).map(toSourceHitResponse),
+    sourceHitsTruncated: result.sourceHitsTruncated ?? false,
+    quellenfund: result.quellenfund ?? {
+      gelaufen: false,
+      grund: "suche_nicht_verfuegbar",
+      geprueft: 0,
+    },
   };
 }
 
@@ -408,6 +473,58 @@ async function resolveCheckedTextConfidential(
     backstop = { found: stored !== undefined, level: stored?.confidentiality ?? null };
   }
   return classifyProvenanceConfidential(body.source, body.confidentiality, backstop);
+}
+
+// JOB 3216: der angemeldete Mensch, den `preValidation` bereits festgestellt hat, muss den Handler
+// erreichen — die Sichtbarkeitsentscheidung für die Quellenfunde hängt an Rolle und Kennung.
+//
+// WARUM EINE WeakMap UND KEIN ZWEITER GUARD-AUFRUF: `requirePermission` ein zweites Mal zu rufen
+// hieße, dieselbe Sitzung zweimal aufzulösen — und zwischen beiden Aufrufen könnte sie ablaufen,
+// so dass der Handler mit einem anderen Ergebnis arbeitete als das Tor davor. Es ist derselbe
+// Request, also dieselbe Antwort. WARUM KEIN `decorateRequest`: das ist Sache der Kompositions-
+// wurzel (`build-app.ts:1454`), und die ist in diesem Auftrag nicht Zielpfad.
+// Die Einträge hängen am Request-Objekt und verschwinden mit ihm — kein Wachstum über die Zeit.
+const SITZUNGSNUTZER = new WeakMap<object, SessionUser>();
+
+/** Was der Kern für die Quellenfunde an Sichtbarkeit bekommt — beide Linien oder ein hartes Nein. */
+interface Quellensicht {
+  quellenSichtbar?: (ko: KnowledgeObject) => boolean;
+  quellenTrim?: SqlSichtbarkeitstrim;
+}
+
+// ==================================================================================================
+// JOB 3216 RUNDE 2 — DIE ABLEITUNG DER SICHTBARKEIT DARF DIE ANTWORT NICHT KIPPEN, UND SIE DARF
+// AUCH NICHT STILL AUFMACHEN.
+// ==================================================================================================
+//
+// DER BEFUND AUS RUNDE 1 (Tor, 23 rote Fälle in vier Bestandsdateien): `sqlSichtbarkeitFuer` liest
+// die Rolle SOFORT (`can(user.role, "ko.validate")`), und `can` schlägt bei einer Rolle, die die
+// Rechtematrix nicht kennt, mit einem TypeError fehl (`ROLE_PERMISSIONS[role].includes`,
+// services/rbac/src/policy.ts:22). Aus dem Handler wurde damit ein 500 — für JEDEN Aufruf, auch
+// wenn er mit Quellenfunden nichts zu tun hatte. Die neue Zugabe hat die alte Zusage gekippt.
+//
+// ZWEI RICHTUNGEN, und die zweite ist die wichtigere:
+//  · Sie darf NICHT WERFEN. Deshalb der Fangarm.
+//  · Sie darf im Fehlerfall NICHT WEITER ÖFFNEN. Ein fehlendes Prädikat wäre kein Schutz, sondern
+//    sein Wegfall — also steht dort ein Prädikat, das NICHTS durchlässt (`() => false`), und der
+//    Quellenfund bleibt leer. Das ist fail-closed: über einen Betrachter, über den die
+//    Rechtematrix nichts sagen kann, wird kein fremder Volltext ausgegeben.
+//
+// Der Add-in-Weg (kein angemeldeter Mensch) ist davon UNBERÜHRT: er bekommt wie bisher keine der
+// beiden Linien, und für ihn ist der Pool ohnehin enger (nur Validiertes, kein Demo-Seed, nichts
+// Vertrauliches — `istPoolKandidat` im Kern).
+function quellensichtVon(nutzer: SessionUser | undefined): Quellensicht {
+  if (!nutzer) {
+    return {};
+  }
+  try {
+    return {
+      quellenSichtbar: sichtbarkeitsfilterFuer(nutzer),
+      quellenTrim: sqlSichtbarkeitFuer(nutzer),
+    };
+  } catch {
+    return { quellenSichtbar: () => false };
+  }
 }
 
 export function checkTextRoutes(deps: CheckTextRouteDeps, guards: Guards): FastifyPluginAsync {
@@ -453,6 +570,8 @@ export function checkTextRoutes(deps: CheckTextRouteDeps, guards: Guards): Fasti
           if (!user) {
             return reply;
           }
+          // JOB 3216: derselbe Mensch, denselben Request weiter unten — s. `SITZUNGSNUTZER`.
+          SITZUNGSNUTZER.set(request, user);
         },
       },
       async (request, reply) => {
@@ -481,9 +600,34 @@ export function checkTextRoutes(deps: CheckTextRouteDeps, guards: Guards): Fasti
         // authentifizierten Weg, den der Client nicht wählen kann.
         const istAddon = request.authContext?.authKind === "addon";
         const includeUnvalidated = !istAddon;
+        // ==========================================================================================
+        // JOB 3216 — DIE QUELLENFUNDE ERBEN DIE SICHTBARKEITSREGEL DER BIBLIOTHEK, WÖRTLICH.
+        // ==========================================================================================
+        //
+        // Ein Quellenfund liefert einen AUSSCHNITT AUS DEM GESPEICHERTEN VOLLTEXT eines fremden
+        // Objekts. Damit ist er derselbe Egress wie `GET /api/library/search` und bekommt dieselben
+        // zwei Linien: `sqlSichtbarkeitFuer` wirkt an der Datenquelle auf der Grundmenge (Papierkorb
+        // UND Sichtbarkeit, vor jedem Deckel), `sichtbarkeitsfilterFuer` ist die zweite Linie
+        // darüber (G-SHADOW: `oldAllowed ∧ newAllowed`). Beide entstehen aus derselben einen Stelle,
+        // an der „darf dieser Mensch dieses Objekt sehen" beantwortet wird (`sichtbarkeit.ts`).
+        //
+        // AM ADD-IN-WEG GIBT ES KEINEN ANGEMELDETEN MENSCHEN, also auch keine der beiden Linien.
+        // Das lockert nichts: für den Add-in-Pfad ist der Pool ohnehin enger (nur Validiertes,
+        // kein Demo-Seed, nichts Vertrauliches — `istPoolKandidat` im Kern), und diese Regel greift
+        // auf BEIDEN Wegen. Ein Sitzungsnutzer, den preValidation nicht festgestellt hat, kann hier
+        // nicht ankommen; fehlt er trotzdem, gilt dasselbe engere Pool-Tor.
+        //
+        // RUNDE 2: die Ableitung selbst wohnt in `quellensichtVon` — dort steht, warum sie weder
+        // werfen noch im Fehlerfall öffnen darf.
+        const quellenSicht = quellensichtVon(SITZUNGSNUTZER.get(request));
         // Stufe-1-Deps: OHNE Judge/Prefilter → rein deterministisch (kein Modell, kein embed). Für
         // want fehlend / != "deep" bleibt das byte-identisch zu Slice 5.
-        const stage1Deps = { ko: deps.ko, overlaps: deps.overlaps, includeUnvalidated };
+        const stage1Deps = {
+          ko: deps.ko,
+          overlaps: deps.overlaps,
+          includeUnvalidated,
+          ...quellenSicht,
+        };
         // SCRUM-502 R4/R5: Herkunft/Stufe des GEPRÜFTEN Textes bestimmen (fail-safe). Der Text ist
         // immer transient (Paste/Upload) → seine Stufe kommt aus der draft/transient-document-
         // Deklaration; eine koId ist nur hebender Backstop, nie Freigabe-Anker. Fehlt das Signal

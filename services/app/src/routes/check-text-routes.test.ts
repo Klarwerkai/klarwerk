@@ -139,6 +139,90 @@ describe("SCRUM-491 Slice 5: POST /api/check-text (Flag AN)", () => {
     expect(kos.json()).toHaveLength(1); // nur das Seed-KO, kein transientes angelegt
   });
 
+  // ================================================================================================
+  // JOB 3216 RUNDE 2 — DER BESTEHENDE ANTWORTVERTRAG, GEPINNT STATT BEHAUPTET.
+  // ================================================================================================
+  //
+  // WARUM DIESER FALL EXISTIERT: Runde 1 hat behauptet, `sourceHits` sei „additiv", und das Tor hat
+  // gezeigt, dass die Behauptung nicht gemessen war — vier Bestandsdateien und 23 Fälle gingen an
+  // dieser Route kaputt. Eine Zugabe, deren Unschädlichkeit niemand pinnt, ist keine Zugabe.
+  //
+  // DER PIN HAT DREI TEILE, und der dritte ist der eigentliche:
+  //   1 die SECHS Felder des Altvertrags stehen VORNE und in unveränderter Reihenfolge — gemessen
+  //     an der Reihenfolge der Schlüssel im serialisierten Rumpf, nicht an einer sortierten Menge;
+  //   2 nach dem Entfernen der drei neuen Felder ist der Rumpf FELD FÜR FELD der alte;
+  //   3 die drei neuen Felder heißen genau so und sind die EINZIGEN neuen.
+  // Fällt Punkt 2, hat jemand am Altvertrag gedreht — gleich, was er sonst gebaut hat.
+  const ALTVERTRAG_FELDER = [
+    "duplicates",
+    "conflicts",
+    "konfliktpruefung",
+    "answer",
+    "note",
+    "persisted",
+  ];
+  const NEUE_FELDER = ["sourceHits", "sourceHitsTruncated", "quellenfund"];
+
+  it("JOB 3216 · der Altvertrag der Antwort ist unverändert — die Quellenfunde stehen daneben", async () => {
+    const { app, headers } = await loggedInApp();
+    const seedId = await seedValidated(app, headers, SEED_STMT);
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/check-text",
+      headers,
+      payload: { text: CHECK_STMT, title: "Pumpe entlüften" },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as Record<string, unknown>;
+    const schluessel = Object.keys(body);
+
+    // 1 · Die sechs alten Felder stehen vorne, in genau dieser Reihenfolge.
+    expect(schluessel.slice(0, ALTVERTRAG_FELDER.length)).toEqual(ALTVERTRAG_FELDER);
+    // 3 · Und dahinter stehen genau die drei neuen — keine vierte stille Zugabe.
+    expect(schluessel.slice(ALTVERTRAG_FELDER.length)).toEqual(NEUE_FELDER);
+
+    // 2 · Ohne die drei neuen Felder ist der Rumpf der alte, Feld für Feld. Die erwarteten Werte
+    // sind die des Stands VOR diesem Auftrag (deterministischer Weg, ein validiertes Seed-Objekt
+    // mit nahezu gleichem Kerntext, kein Modell, kein Konfliktdienst) — nachgemessen mit
+    // zurückgenommener Route-Zugabe, s. GEGENPROBEN der Rückgabe.
+    const ohneZugabe: Record<string, unknown> = { ...body };
+    for (const feld of NEUE_FELDER) {
+      delete ohneZugabe[feld];
+    }
+    expect(ohneZugabe).toEqual({
+      duplicates: [
+        {
+          koId: seedId,
+          koTitle: "Pumpe entlüften",
+          relation: "identisch",
+          confidence: null,
+          method: "deterministic",
+          rationale: null,
+          koStatus: "validiert",
+          koCategory: "Wartung",
+          pruefstand: "validiert",
+          version: 1,
+          fundort: {
+            kategorie: "Wartung",
+            bereich: "Wartung",
+            bibliothekPfad: `/wissen/${seedId}`,
+          },
+        },
+      ],
+      conflicts: [],
+      konfliktpruefung: {
+        gelaufen: false,
+        grund: "nicht_angefordert",
+        kandidaten: 0,
+        ausgefallen: 0,
+        verworfen: 0,
+      },
+      answer: null,
+      note: "Auch noch nicht validierte Einträge wurden mitgeprüft.",
+      persisted: false,
+    });
+  });
+
   it("deterministischer Pfad → kein Inhalts-Audit: der transiente Text landet NIRGENDS", async () => {
     const { app, headers } = await loggedInApp();
     await seedValidated(app, headers, SEED_STMT);
@@ -344,11 +428,41 @@ function mkKo(id: string, statement: string, confidentiality?: string): Knowledg
   } as unknown as KnowledgeObject;
 }
 
+// JOB 3216: der Fake trägt jetzt auch den gemeinsamen Suchvertrag, den der Quellenfund benutzt.
+// `suchtext` am Seed-Objekt stellt den gespeicherten Volltext (im Produkt die Suchprojektion).
+function suchtextVon(k: KnowledgeObject): string {
+  const volltext = (k as unknown as { suchtext?: string }).suchtext ?? "";
+  return [k.title, k.statement, volltext].filter((teil) => teil.length > 0).join("\n");
+}
+
 function fakeKo(seed: KnowledgeObject[]) {
   const list = vi.fn(async () => seed);
   const findCandidates = vi.fn(async () => seed);
   const get = vi.fn(async (id: string) => seed.find((k) => k.id === id));
-  return { ko: { list, findCandidates, get } as unknown as KoService };
+  const findSearchHits = vi.fn(async (q: { terms: readonly string[]; limit?: number }) =>
+    seed
+      .filter((k) =>
+        q.terms.some((term) => suchtextVon(k).toLowerCase().includes(term.toLowerCase())),
+      )
+      .slice(0, q.limit ?? seed.length)
+      .map((k) => ({ koId: k.id, koVersion: 1 })),
+  );
+  const listForSearch = vi.fn(async () => seed);
+  const effectiveSearchDocumentOf = vi.fn(async (id: string) => {
+    const k = seed.find((x) => x.id === id);
+    return k === undefined ? undefined : { koId: id, searchText: suchtextVon(k) };
+  });
+  return {
+    ko: {
+      list,
+      findCandidates,
+      get,
+      findSearchHits,
+      listForSearch,
+      effectiveSearchDocumentOf,
+    } as unknown as KoService,
+    findSearchHits,
+  };
 }
 
 function spyPrefilter(hits: Array<{ id: string }>) {
@@ -388,9 +502,13 @@ const teilweiseVerdict: OverlapVerdict = {
 const VERTRAULICH_HINWEIS = "nur deterministisch geprüft";
 
 // Fake-Guard: autorisiert den Session-Pfad (preValidation) ohne echte Sessions.
+// JOB 3216: MIT Rolle. Der Handler leitet aus dem festgestellten Menschen die Sichtbarkeits-
+// entscheidung für die Quellenfunde ab (`sichtbarkeitsfilterFuer`/`sqlSichtbarkeitFuer`), und die
+// fragt die Rechtematrix nach der Rolle. Ein rollenloser Nutzer ist im Produkt nicht erreichbar —
+// ein Fake ohne Rolle hätte also eine Lage gemessen, die es nicht gibt.
 const fakeGuards = {
-  requireUser: async () => ({ id: "u1" }),
-  requirePermission: async () => ({ id: "u1" }),
+  requireUser: async () => ({ id: "u1", role: "experte" }),
+  requirePermission: async () => ({ id: "u1", role: "experte" }),
 } as unknown as Guards;
 
 async function stage2App(
