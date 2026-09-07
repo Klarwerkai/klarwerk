@@ -8,8 +8,10 @@
 // react-query-Hooks, der echte `AuthProvider`/`RoleProvider`, das echte `MehrAbschnitte`.
 //
 // Damit ist ein „Aufruf" im Test wirklich ein Aufruf und kein simulierter Erfolg: der Spion zählt
-// die HTTP-Anfragen und hält ihre Rümpfe fest. Ein Formular, das den Anker nicht sendet, kann
-// diesen Prüfstand nicht bestehen.
+// die HTTP-Anfragen, hält ihre Rümpfe fest und — seit JOB 3178 · UX-22b — auch den Status, mit dem
+// sie beantwortet wurden. Ein Formular, das den Anker nicht sendet, kann diesen Prüfstand nicht
+// bestehen; und eine Ablehnung, die der Server ausspricht, ist ab jetzt an ihrem Code messbar und
+// nicht nur an ihrer Folge (`Anfrage.status`, ben.md JOB 3133 R4 §6).
 //
 // Dieser Helfer ist KEINE Testdatei (`vitest.config.ts:include` nimmt nur `*.test.{ts,tsx}`); er
 // wird von `formular-haengt-belegstelle-an.test.tsx` und `kein-anker-ohne-anhang.test.tsx`
@@ -38,6 +40,15 @@ export interface Anfrage {
   method: string;
   pfad: string;
   rumpf: unknown;
+  /**
+   * JOB 3178 · UX-22b — der Status, mit dem DIESE Anfrage beantwortet wurde.
+   *
+   * `null` heisst „noch keine Antwort" und nicht „0": der Eintrag entsteht VOR dem Aufruf, damit
+   * eine Anfrage, deren Antwort nie kommt, trotzdem gezählt wird. Erst danach wird der Status
+   * ergänzt. Nur bei `montierenGegenServer` ist er eine MESSUNG (er kommt aus der echten Route);
+   * bei `montieren` ist er der Status der erfundenen Antwort und darf für nichts einstehen.
+   */
+  status: number | null;
 }
 
 export interface Prüfstand {
@@ -149,11 +160,14 @@ export async function montieren(
     const pfad = String(url);
     const method = init?.method ?? "GET";
     const rohRumpf = init?.body;
-    anfragen.push({
+    // Der Eintrag entsteht VOR dem Aufruf und bleibt in der Liste, auch wenn keine Antwort käme.
+    const eintrag: Anfrage = {
       method,
       pfad,
       rumpf: typeof rohRumpf === "string" ? JSON.parse(rohRumpf) : undefined,
-    });
+      status: null,
+    };
+    anfragen.push(eintrag);
     const antwort = (daten: unknown): Response =>
       ({
         ok: true,
@@ -162,34 +176,44 @@ export async function montieren(
         text: async () => JSON.stringify(daten),
       }) as unknown as Response;
 
-    if (pfad === "/api/auth/status") {
-      return antwort({ needsSetup: false, oidcEnabled: false });
-    }
-    if (pfad === "/api/auth/me") {
-      return antwort({ id: "u1", name: "Eva", email: "e@x.de", role: "admin" });
-    }
-    if (pfad === "/api/external/policy") {
-      return antwort({ stage });
-    }
-    if (pfad === `/api/kos/${KO_ID}/neighbors`) {
-      return antwort({ center: KO_ID, neighbors: [], excludedTags: [], limit: 8 });
-    }
-    if (pfad === "/api/directory") {
-      return antwort([{ id: "u1", name: "Eva" }]);
-    }
-    if (pfad === "/api/upload-limits") {
-      return antwort({ maxAttachments: 8, maxAttachmentBytes: 20000000 });
-    }
-    if (pfad === `/api/kos/${KO_ID}` && method === "PUT") {
-      // Der Server ANTWORTET mit dem Objekt — was er damit tut, misst dieser Prüfstand nicht;
-      // gemessen wird, WAS die Fläche schickt.
-      return antwort(ko);
-    }
-    if (pfad === "/api/kos") {
-      return antwort([ko]);
-    }
-    // Alles Übrige ist eine Liste (Belege, Fassungen, Audit, Konflikte, Lebenszyklus …).
-    return antwort([]);
+    const erfundeneAntwort = (): Response => {
+      if (pfad === "/api/auth/status") {
+        return antwort({ needsSetup: false, oidcEnabled: false });
+      }
+      if (pfad === "/api/auth/me") {
+        return antwort({ id: "u1", name: "Eva", email: "e@x.de", role: "admin" });
+      }
+      if (pfad === "/api/external/policy") {
+        return antwort({ stage });
+      }
+      if (pfad === `/api/kos/${KO_ID}/neighbors`) {
+        return antwort({ center: KO_ID, neighbors: [], excludedTags: [], limit: 8 });
+      }
+      if (pfad === "/api/directory") {
+        return antwort([{ id: "u1", name: "Eva" }]);
+      }
+      if (pfad === "/api/upload-limits") {
+        return antwort({ maxAttachments: 8, maxAttachmentBytes: 20000000 });
+      }
+      if (pfad === `/api/kos/${KO_ID}` && method === "PUT") {
+        // Der Server ANTWORTET mit dem Objekt — was er damit tut, misst dieser Prüfstand nicht;
+        // gemessen wird, WAS die Fläche schickt.
+        return antwort(ko);
+      }
+      if (pfad === "/api/kos") {
+        return antwort([ko]);
+      }
+      // Alles Übrige ist eine Liste (Belege, Fassungen, Audit, Konflikte, Lebenszyklus …).
+      return antwort([]);
+    };
+
+    const res = erfundeneAntwort();
+    // ACHTUNG: hier steht IMMER 200, weil dieser Spion seine Antworten selbst erfindet. Das ist
+    // keine Messung eines Servers — wer einen echten Statuscode braucht, nimmt
+    // `montierenGegenServer`. Nachgezogen wird das Feld nur, damit es nicht zwei `Anfrage`-Formen
+    // gibt (JOB 3178 · UX-22b).
+    eintrag.status = res.status;
+    return res;
   }) as typeof fetch;
 
   return flaecheAufbauen(ko, KO_ID, anfragen);
@@ -305,13 +329,18 @@ export async function montierenGegenServer(
     const method = init?.method ?? "GET";
     const rohRumpf = init?.body;
     const rumpf = typeof rohRumpf === "string" ? JSON.parse(rohRumpf) : undefined;
-    anfragen.push({ method, pfad, rumpf });
+    // Erst eintragen, dann fragen: eine Anfrage, deren Antwort nie käme, bliebe so trotzdem
+    // gezählt (JOB 3178 · UX-22b).
+    const eintrag: Anfrage = { method, pfad, rumpf, status: null };
+    anfragen.push(eintrag);
     const res = await app.inject({
       method,
       url: pfad,
       headers,
       ...(rumpf === undefined ? {} : { payload: rumpf }),
     });
+    // Der wirklich beobachtete Statuscode der ECHTEN Route — das ist eine Messung.
+    eintrag.status = res.statusCode;
     return {
       ok: res.statusCode >= 200 && res.statusCode < 300,
       status: res.statusCode,
