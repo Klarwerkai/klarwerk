@@ -167,13 +167,17 @@ describe("JOB 3131 T2 · die Browser-Gruppe ist genau die Menge mit Chromium in 
     // 18 Dateien mit `require("playwright")`. Sie ist statisch erhoben, dieser Graph laeuft ueber
     // den Syntaxbaum — zwei Wege, ein Ergebnis. Die Zahl steht hier bewusst als PIN: eine neue
     // Startstelle ist eine Entscheidung ueber die Tor-Last und soll gesehen werden.
+    // JOB 3138: dazu kommt der statische DE/EN-Erklärweg (ein Browser, vier Fälle).
+    // Seine direkte Playwright-Importstelle gehört in die serielle Browser-Gruppe;
+    // B1/B3 prüfen die tatsächliche Einordnung, der zusätzliche Namenspin hält den Beleg fest.
     const graph = holeBefund();
-    expect(graph.startdateien.length).toBe(18);
+    expect(graph.startdateien.length).toBe(19);
     for (const bekannt of [
       "tests/design/h4-harness.ts",
       "tests/design/h6-chromium.ts",
       "tests/design/h1-chromium.ts",
       "tests/profil-schmal/schmal-buehne.ts",
+      "tests/m6-import-erklaerweg/klara-importwege-browser.test.tsx",
     ]) {
       expect(graph.startdateien, `${bekannt} startet Chromium und fehlt im Graphen`).toContain(
         bekannt,

@@ -1,0 +1,497 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>KLARWERK · Jira / Confluence</title>
+  <!-- Native Auswahlfelder: keine Skripte, kein Import, mit der produktiven CSP nutzbar. -->
+  <style>
+    :root { color-scheme: light; font-family: system-ui, sans-serif; color: #173133; background: #fafbf8; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    main { max-width: 1440px; min-height: 100vh; min-height: 100svh; margin: auto; padding: 28px 40px; }
+    h1 { font-size: clamp(26px, 3vw, 38px); line-height: 1.15; max-width: 1050px; margin: 22px 0 12px; }
+    h2 { font-size: 28px; line-height: 1.2; margin: 8px 0 16px; }
+    p { margin: 0 0 14px; line-height: 1.55; }
+    a { color: #15634f; text-underline-offset: 4px; }
+    a:focus-visible, .choice:focus-visible + label { outline: 3px solid #174caf; outline-offset: 4px; }
+    .toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
+    fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+    legend { font-size: 16px; font-weight: 650; padding: 0; margin-bottom: 10px; }
+    .language { display: flex; gap: 8px; }
+    .language legend { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+    .choice { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+    label { display: block; padding: 10px 14px; border: 1px solid #a8bcb2; border-radius: 12px; cursor: pointer; font-size: 16px; line-height: 1.4; background: white; overflow-wrap: anywhere; }
+    .choice:checked + label { border-color: #15634f; background: #e6eee8; box-shadow: inset 0 0 0 1px #15634f; }
+    .notice { color: #35634c; font-weight: 650; margin: 0; }
+    .intro { color: #435d56; max-width: 1050px; }
+    .sources { margin-top: 22px; }
+    .source-options { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .source-options strong, .source-options .description { display: block; }
+    .description { color: #435d56; margin-top: 4px; }
+    .steps { margin-top: 24px; }
+    .step-options { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
+    .number { display: block; color: #15634f; font-weight: 750; margin-bottom: 5px; }
+    .step-panel { display: none; margin-top: 20px; padding: 26px; background: white; border: 1px solid #cbd5cd; border-radius: 18px; }
+    .panel-grid { display: grid; grid-template-columns: 1fr 1.15fr; gap: 28px; align-items: start; }
+    .panel-grid > * { min-width: 0; }
+    .example { background: #eff4f0; border-radius: 12px; padding: 20px; overflow-wrap: anywhere; }
+    .example > :last-child { margin-bottom: 0; }
+    .kicker { color: #35634c; font-weight: 650; }
+    dl { margin: 0; } code { font: inherit; }
+    dl > div + div { margin-top: 12px; }
+    dt { font-weight: 650; font-size: 16px; }
+    dd { margin: 3px 0 0; font-size: 16px; line-height: 1.45; }
+    .case + .case { border-top: 1px solid #a8bcb2; padding-top: 14px; }
+    .case strong { display: block; margin-bottom: 5px; }
+    footer { margin-top: 20px; font-size: 16px; color: #435d56; }
+    .en, .source-jira { display: none; }
+    body:has(#language-en:checked) .de { display: none; }
+    body:has(#language-en:checked) .en { display: inline; }
+    body:has(#source-jira:checked) .source-confluence { display: none; }
+    body:has(#source-jira:checked) .source-jira { display: block; }
+    body:has(#step-1:checked) #step-panel-1 { display: block; }
+    body:has(#step-2:checked) #step-panel-2 { display: block; }
+    body:has(#step-3:checked) #step-panel-3 { display: block; }
+    body:has(#step-4:checked) #step-panel-4 { display: block; }
+    body:has(#step-5:checked) #step-panel-5 { display: block; }
+    body:has(#step-6:checked) #step-panel-6 { display: block; }
+
+    @media (max-width: 700px) {
+      main { padding: 20px; }
+      .source-options { grid-template-columns: 1fr; }
+      .step-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .step-options label { padding: 10px; }
+      .number { display: inline; margin-right: 6px; }
+      .panel-grid { grid-template-columns: 1fr; gap: 14px; }
+      .step-panel { padding: 18px; }
+      .example { padding: 16px; }
+      h2 { font-size: 26px; }
+    }
+  </style>
+</head>
+<body>
+<main>
+<div class="toolbar">
+<a data-return href="/import#import-source-gallery">
+<span class="de" lang="de">← Zur Import-Galerie</span>
+<span class="en" lang="en">← Back to import gallery</span>
+</a>
+<fieldset class="language">
+<legend>
+<span class="de" lang="de">Sprache</span>
+<span class="en" lang="en">Language</span>
+</legend>
+<input class="choice" type="radio" id="language-de" name="language" checked>
+<label for="language-de">
+<span lang="de">DE</span>
+</label>
+<input class="choice" type="radio" id="language-en" name="language">
+<label for="language-en">
+<span lang="en">EN</span>
+</label>
+</fieldset>
+</div>
+<h1>
+<span class="de" lang="de">Aus Jira und Confluence wird nutzbares Wissen</span>
+<span class="en" lang="en">Turn Jira and Confluence content into usable knowledge</span>
+</h1>
+<p class="notice" data-example-notice>
+<span class="de" lang="de">Ablaufbeispiel / kein Live-Import · Fiktive Demonstrationsdaten</span>
+<span class="en" lang="en">Process example / not a live import · Fictional demonstration data</span>
+</p>
+<p class="intro">
+<span class="de" lang="de">Sechs Schritte zeigen den vorgesehenen Weg. Jede Auswahl ändert nur dieses Ablaufbild. Es wird nichts importiert, gespeichert oder von KI erzeugt.</span>
+<span class="en" lang="en">Six steps explain the intended process. Each selection only changes this diagram. Nothing is imported, saved or generated by AI.</span>
+</p>
+<fieldset class="sources">
+<legend>
+<span class="de" lang="de">1. Ein Beispiel wählen</span>
+<span class="en" lang="en">1. Choose an example</span>
+</legend>
+<div class="source-options">
+<input class="choice" type="radio" id="source-confluence" name="source" checked>
+<label for="source-confluence">
+<strong>Confluence</strong>
+<span class="description">
+<span class="de" lang="de">Seite + Unterseite + Anhang · Adapter vorhanden</span>
+<span class="en" lang="en">Page + child page + attachment · Adapter available</span>
+</span>
+</label>
+<input class="choice" type="radio" id="source-jira" name="source">
+<label for="source-jira">
+<strong>
+<span class="de" lang="de">Jira · Konzept</span>
+<span class="en" lang="en">Jira · Concept</span>
+</strong>
+<span class="description">
+<span class="de" lang="de">Vorgang + dokumentierte Lösung · noch kein Importweg</span>
+<span class="en" lang="en">Issue + documented resolution · import not available yet</span>
+</span>
+</label>
+</div>
+</fieldset>
+<fieldset class="steps">
+<legend>
+<span class="de" lang="de">2. Einen Schritt ansehen · Tastatur: Tab und Pfeiltasten</span>
+<span class="en" lang="en">2. Explore a step · Keyboard: Tab and arrow keys</span>
+</legend>
+<div class="step-options">
+<input class="choice" type="radio" id="step-1" name="step" checked>
+<label for="step-1">
+<span class="number">01</span>
+<span class="de" lang="de">Auswählen</span>
+<span class="en" lang="en">Select</span>
+</label>
+<input class="choice" type="radio" id="step-2" name="step">
+<label for="step-2">
+<span class="number">02</span>
+<span class="de" lang="de">Ansehen</span>
+<span class="en" lang="en">Preview</span>
+</label>
+<input class="choice" type="radio" id="step-3" name="step">
+<label for="step-3">
+<span class="number">03</span>
+<span class="de" lang="de">Herkunft erhalten</span>
+<span class="en" lang="en">Keep provenance</span>
+</label>
+<input class="choice" type="radio" id="step-4" name="step">
+<label for="step-4">
+<span class="number">04</span>
+<span class="de" lang="de">Vergleichen</span>
+<span class="en" lang="en">Compare</span>
+</label>
+<input class="choice" type="radio" id="step-5" name="step">
+<label for="step-5">
+<span class="number">05</span>
+<span class="de" lang="de">Fachlich prüfen</span>
+<span class="en" lang="en">Review</span>
+</label>
+<input class="choice" type="radio" id="step-6" name="step">
+<label for="step-6">
+<span class="number">06</span>
+<span class="de" lang="de">Mit Klara nutzen</span>
+<span class="en" lang="en">Use with Klara</span>
+</label>
+</div>
+</fieldset>
+<section class="step-panel" id="step-panel-1" aria-labelledby="step-title-1">
+<div class="panel-grid">
+<div>
+<p class="kicker">01 / 06</p>
+<h2 id="step-title-1">
+<span class="de" lang="de">Auswählen</span>
+<span class="en" lang="en">Select</span>
+</h2>
+<p>
+<span class="de" lang="de">Projekt oder Bereich festlegen. Nur ausgewählte Inhalte würden anschließend angesehen.</span>
+<span class="en" lang="en">Choose a project or space. Only selected content would then be previewed.</span>
+</p>
+</div>
+<div class="source-jira example">
+<p class="kicker">
+<span class="de" lang="de">Projekt „Service“ · DEMO-42</span>
+<span class="en" lang="en">Project “Service” · DEMO-42</span>
+</p>
+<p>
+<span class="de" lang="de">Fiktiver Vorgang: Pumpe startet nicht. Die dokumentierte Lösung gehört zum Vorgang.</span>
+<span class="en" lang="en">Fictional issue: Pump does not start. The documented resolution belongs to the issue.</span>
+</p>
+</div>
+<div class="source-confluence example">
+<p class="kicker">
+<span class="de" lang="de">Bereich „Service“ · Wartungsanleitung</span>
+<span class="en" lang="en">Space “Service” · Maintenance guide</span>
+</p>
+<p>
+<span class="de" lang="de">Fiktive Seite mit der Unterseite „Pumpenprüfung“ und dem Anhang Checklist.pdf.</span>
+<span class="en" lang="en">Fictional page with the child page “Pump inspection” and the attachment Checklist.pdf.</span>
+</p>
+</div>
+</div>
+</section>
+<section class="step-panel" id="step-panel-2" aria-labelledby="step-title-2">
+<div class="panel-grid">
+<div>
+<p class="kicker">02 / 06</p>
+<h2 id="step-title-2">
+<span class="de" lang="de">Ansehen</span>
+<span class="en" lang="en">Preview</span>
+</h2>
+<p>
+<span class="de" lang="de">Inhalte vor einer Übernahme ansehen: Was steht tatsächlich in der Quelle, und was gehört dazu?</span>
+<span class="en" lang="en">Preview content before any transfer: What does the source actually say, and what belongs with it?</span>
+</p>
+</div>
+<div class="source-jira example">
+<dl>
+<div>
+<dt>
+<span class="de" lang="de">Vorgang</span>
+<span class="en" lang="en">Issue</span>
+</dt>
+<dd>
+<span class="de" lang="de">DEMO-42 · Pumpe startet nicht</span>
+<span class="en" lang="en">DEMO-42 · Pump does not start</span>
+</dd>
+</div>
+<div>
+<dt>
+<span class="de" lang="de">Dokumentierte Lösung</span>
+<span class="en" lang="en">Documented resolution</span>
+</dt>
+<dd>
+<span class="de" lang="de">Filter reinigen, dann den Neustart prüfen.</span>
+<span class="en" lang="en">Clean the filter, then check the restart.</span>
+</dd>
+</div>
+<div>
+<dt>
+<span class="de" lang="de">Quellenstatus</span>
+<span class="en" lang="en">Source status</span>
+</dt>
+<dd>
+<span class="de" lang="de">Erledigt · Wissensstatus: ungeprüfter Kandidat</span>
+<span class="en" lang="en">Resolved · Knowledge status: unreviewed candidate</span>
+</dd>
+</div>
+</dl>
+</div>
+<div class="source-confluence example">
+<dl>
+<div>
+<dt>
+<span class="de" lang="de">Seite / Unterseite</span>
+<span class="en" lang="en">Page / child page</span>
+</dt>
+<dd>
+<span class="de" lang="de">Wartungsanleitung / Pumpenprüfung</span>
+<span class="en" lang="en">Maintenance guide / Pump inspection</span>
+</dd>
+</div>
+<div>
+<dt>
+<span class="de" lang="de">Anhang</span>
+<span class="en" lang="en">Attachment</span>
+</dt>
+<dd>
+<span class="de" lang="de">Checklist.pdf · Prüfliste: Filter alle 30 Tage kontrollieren.</span>
+<span class="en" lang="en">Checklist.pdf · Checklist: inspect the filter every 30 days.</span>
+</dd>
+</div>
+<div>
+<dt>
+<span class="de" lang="de">Inhalt</span>
+<span class="en" lang="en">Content</span>
+</dt>
+<dd>
+<span class="de" lang="de">Seite und Anhang getrennt ansehen; ein Anhang kann einen anderen Stand haben.</span>
+<span class="en" lang="en">Preview page and attachment separately; an attachment may reflect a different revision.</span>
+</dd>
+</div>
+</dl>
+</div>
+</div>
+</section>
+<section class="step-panel" id="step-panel-3" aria-labelledby="step-title-3">
+<div class="panel-grid">
+<div>
+<p class="kicker">03 / 06</p>
+<h2 id="step-title-3">
+<span class="de" lang="de">Herkunft erhalten</span>
+<span class="en" lang="en">Keep provenance</span>
+</h2>
+<p>
+<span class="de" lang="de">Die Herkunft bleibt nachvollziehbar: Original-Link, Version, Zugriff und Wissensstatus gehören zum Inhalt. Die Beispieladressen sind absichtlich nicht aufrufbar.</span>
+<span class="en" lang="en">Provenance stays traceable: original link, version, access and knowledge status belong with the content. The example addresses are intentionally not clickable.</span>
+</p>
+<p>
+<span class="de" lang="de">Eingeschränkt bleibt eingeschränkt: Team Service → KLARWERK: Team Service. Eine Übernahme darf den Leserkreis nicht erweitern oder die Einstufung senken.</span>
+<span class="en" lang="en">Restricted stays restricted: Service team → KLARWERK: Service team. A transfer must not widen the audience or lower the classification.</span>
+</p>
+</div>
+<div class="source-jira example">
+<dl>
+<div>
+<dt>
+<span class="de" lang="de">Original-Link (Beispiel)</span>
+<span class="en" lang="en">Original link (example)</span>
+</dt>
+<dd>
+<code>https://example.invalid/jira/DEMO-42</code>
+</dd>
+</div>
+<div>
+<dt>
+<span class="de" lang="de">Version / Wissensstatus</span>
+<span class="en" lang="en">Version / knowledge status</span>
+</dt>
+<dd>
+<span class="de" lang="de">Fassung 3 · ungeprüfter Kandidat</span>
+<span class="en" lang="en">Revision 3 · unreviewed candidate</span>
+</dd>
+</div>
+<div>
+<dt>
+<span class="de" lang="de">Zugriff / Einstufung</span>
+<span class="en" lang="en">Access / classification</span>
+</dt>
+<dd>
+<span class="de" lang="de">Nur Team Service · Vertraulich</span>
+<span class="en" lang="en">Only the Service team · Confidential</span>
+</dd>
+</div>
+</dl>
+</div>
+<div class="source-confluence example">
+<dl>
+<div>
+<dt>
+<span class="de" lang="de">Original-Link (Beispiel)</span>
+<span class="en" lang="en">Original link (example)</span>
+</dt>
+<dd>
+<code>https://example.invalid/confluence/service</code>
+</dd>
+</div>
+<div>
+<dt>
+<span class="de" lang="de">Version / Wissensstatus</span>
+<span class="en" lang="en">Version / knowledge status</span>
+</dt>
+<dd>
+<span class="de" lang="de">Seite v4 · Anhang v2 · ungeprüfter Kandidat</span>
+<span class="en" lang="en">Page v4 · attachment v2 · unreviewed candidate</span>
+</dd>
+</div>
+<div>
+<dt>
+<span class="de" lang="de">Zugriff / Einstufung</span>
+<span class="en" lang="en">Access / classification</span>
+</dt>
+<dd>
+<span class="de" lang="de">Nur Team Service · Vertraulich</span>
+<span class="en" lang="en">Only the Service team · Confidential</span>
+</dd>
+</div>
+</dl>
+</div>
+</div>
+</section>
+<section class="step-panel" id="step-panel-4" aria-labelledby="step-title-4">
+<div class="panel-grid">
+<div>
+<p class="kicker">04 / 06</p>
+<h2 id="step-title-4">
+<span class="de" lang="de">Vergleichen</span>
+<span class="en" lang="en">Compare</span>
+</h2>
+<p>
+<span class="de" lang="de">Ähnlichkeit ist keine Übereinstimmung. Doppelung und Widerspruch werden getrennt sichtbar; die Quellen stehen nebeneinander.</span>
+<span class="en" lang="en">Similarity does not mean agreement. Duplicates and conflicts are shown separately, with sources side by side.</span>
+</p>
+<p>
+<span class="de" lang="de">Keine automatische Wahrheitsentscheidung: Eine fachlich verantwortliche Person vergleicht Geltungsbereich, Versionen und Belege.</span>
+<span class="en" lang="en">No automatic truth decision: A subject expert compares scope, versions and evidence.</span>
+</p>
+</div>
+<div class="example">
+<div class="case">
+<strong>
+<span class="de" lang="de">Doppelung · dieselbe Aussage</span>
+<span class="en" lang="en">Duplicate · the same statement</span>
+</strong>
+<p>
+<span class="de" lang="de">DEMO-42: „Filter reinigen, dann Neustart prüfen.“ Eine Wartungsnotiz beschreibt denselben Ablauf. Beide Herkünfte bleiben nachvollziehbar.</span>
+<span class="en" lang="en">DEMO-42: “Clean the filter, then check the restart.” A maintenance note describes the same procedure. Both origins remain traceable.</span>
+</p>
+</div>
+<div class="case">
+<strong>
+<span class="de" lang="de">Widerspruch · verschiedene Aussagen</span>
+<span class="en" lang="en">Conflict · different statements</span>
+</strong>
+<p>
+<span class="de" lang="de">Checklist.pdf: „Alle 30 Tage prüfen.“ Eine zweite Anleitung sagt „alle 90 Tage“. Dieser Unterschied braucht Klärung, keine stille Auswahl.</span>
+<span class="en" lang="en">Checklist.pdf: “Inspect every 30 days.” A second guide says “every 90 days”. This difference needs clarification, never a silent choice.</span>
+</p>
+</div>
+</div>
+</div>
+</section>
+<section class="step-panel" id="step-panel-5" aria-labelledby="step-title-5">
+<div class="panel-grid">
+<div>
+<p class="kicker">05 / 06</p>
+<h2 id="step-title-5">
+<span class="de" lang="de">Fachlich prüfen</span>
+<span class="en" lang="en">Review</span>
+</h2>
+<p>
+<span class="de" lang="de">Kandidat → Entwurf → Freigabe</span>
+<span class="en" lang="en">Candidate → draft → approval</span>
+</p>
+<p>
+<span class="de" lang="de">Ein erledigter Vorgang ist noch keine fachlich freigegebene Aussage.</span>
+<span class="en" lang="en">A resolved issue is not automatically an approved knowledge statement.</span>
+</p>
+</div>
+<div class="example">
+<p>
+<span class="de" lang="de">Eine fachlich verantwortliche Person prüft die Belege, klärt Widersprüche und entscheidet über die Freigabe. Bis dahin bleibt der Inhalt ungeprüft.</span>
+<span class="en" lang="en">A subject expert reviews the evidence, resolves conflicts and decides on approval. Until then, the content remains unreviewed.</span>
+</p>
+<p>
+<span class="de" lang="de">Im Ablaufbeispiel bleibt der Wissensstatus „Kandidat“. Hier wird keine Freigabe erteilt.</span>
+<span class="en" lang="en">In this process example, the knowledge status stays “candidate”. No approval is granted here.</span>
+</p>
+</div>
+</div>
+</section>
+<section class="step-panel" id="step-panel-6" aria-labelledby="step-title-6">
+<div class="panel-grid">
+<div>
+<p class="kicker">06 / 06</p>
+<h2 id="step-title-6">
+<span class="de" lang="de">Mit Klara nutzen</span>
+<span class="en" lang="en">Use with Klara</span>
+</h2>
+<p>
+<span class="de" lang="de">Antwort mit Quelle und Prüfstand — nur innerhalb der eigenen Zugriffsrechte. Ungeprüftes Wissen muss als ungeprüft erkennbar bleiben.</span>
+<span class="en" lang="en">Answer with source and review status — only within your access rights. Unreviewed knowledge must remain identifiable as unreviewed.</span>
+</p>
+</div>
+<div class="example">
+<p class="kicker">
+<span class="de" lang="de">So könnte eine Quellenangabe aussehen:</span>
+<span class="en" lang="en">A source reference could look like this:</span>
+</p>
+<div class="source-jira example">
+<p>
+<span class="de" lang="de">DEMO-42 · Fassung 3 · Kandidat, ungeprüft · Team Service</span>
+<span class="en" lang="en">DEMO-42 · Revision 3 · Candidate, unreviewed · Service team</span>
+</p>
+</div>
+<div class="source-confluence example">
+<p>
+<span class="de" lang="de">Wartungsanleitung · Seite v4 / Checklist.pdf v2 · Kandidat, ungeprüft · Team Service</span>
+<span class="en" lang="en">Maintenance guide · Page v4 / Checklist.pdf v2 · Candidate, unreviewed · Service team</span>
+</p>
+</div>
+<p>
+<span class="de" lang="de">Keine erzeugte Antwort, keine Freigabe. Es wird nichts gespeichert; eine KI speichert nie automatisch.</span>
+<span class="en" lang="en">No generated answer, no approval. Nothing is saved; AI never saves automatically.</span>
+</p>
+</div>
+</div>
+</section>
+<footer>
+<p>
+<span class="de" lang="de">KLARWERK / Klara · Vorführung. Dieser Erklärweg ist keine Abnahme eines echten Jira-Imports.</span>
+<span class="en" lang="en">KLARWERK / Klara · Presentation. This walkthrough does not establish acceptance of a real Jira import.</span>
+</p>
+</footer>
+</main>
+</body>
+</html>

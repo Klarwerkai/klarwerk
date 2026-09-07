@@ -27,7 +27,7 @@ export function ImportSourceGallery({
 }): JSX.Element {
   const { t } = useTranslation();
   return (
-    <div className="space-y-4">
+    <div id="import-source-gallery" className="space-y-4">
       <FileTypePicker
         title={t("imp.gallery.systemsTitle")}
         sources={SYSTEM_SOURCES}
@@ -36,6 +36,12 @@ export function ImportSourceGallery({
         collapsePlanned
         plannedStorageKey={GALLERY_SYSTEMS_PLANNED_STORAGE_KEY}
       />
+      <a
+        href="/demonstration/importwege.html"
+        className="inline-block rounded text-sm text-muted underline underline-offset-4 hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4"
+      >
+        {t("imp.gallery.src.jira")} / {t("imp.gallery.src.confluence")} →
+      </a>
       <FileTypePicker
         title={t("imp.gallery.filesTitle")}
         sources={FILE_SOURCES}

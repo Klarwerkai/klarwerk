@@ -122,6 +122,9 @@ const INVENTAR: readonly string[] = [
   // K2 meldete beide neuen Dateien; Namensachse (beide), Komponente (gemounteter Test).
   "tests/klara-webhilfe-schmal/klara-hilfe-chromium.test.ts",
   "tests/klara-webhilfe-schmal/word-weg-naechster-schritt.test.tsx",
+  // JOB 3138: eigenständiger Import-Erklärweg; keine Abnahme eines echten Jira-Imports.
+  "tests/m6-import-erklaerweg/klara-importwege-dom.test.tsx",
+  "tests/m6-import-erklaerweg/klara-importwege-browser.test.tsx",
   "apps/web/src/components/KlaraPathTeaser.test.tsx",
   "services/app/src/klara-answer-explanation.test.ts",
   "services/app/src/routes/addin-static-routes.test.ts",
@@ -790,7 +793,11 @@ describe("JOB 920 · K — das Klara-Regressionsinventar ist ableitbar, nicht be
     // Zeile angefasst.
     // JOB 3144: beide neuen Pfade tragen „klara“; vor Nachführung gemessen:
     // `expected 41 to be 39`. Deshalb 39 -> 41, keine abgeschwächte Mengenzusicherung.
-    expect(nurName.length).toBe(41);
+    // JOB 3138 KONFLIKTRUNDE 1 (07.09.2026, Rebase auf a50b23f mit gelandetem JOB 3144):
+    // die zwei Import-Erklärweg-Prüfungen tragen ebenfalls „klara“ im Pfad und kommen zu
+    // den 41 aus JOB 3144 hinzu. Vereinigung beider Nachführungen; nach dem Merge gemessen:
+    // `expected 43 to be 41`. Deshalb 41 -> 43.
+    expect(nurName.length).toBe(43);
     expect(verfehlt.length).toBeGreaterThanOrEqual(25);
     expect(verfehlt.length + nurName.length).toBe(GEFUNDEN.length);
   });

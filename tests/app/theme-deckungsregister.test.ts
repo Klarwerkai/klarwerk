@@ -46,6 +46,9 @@ const TESTS = join(WURZEL, "tests");
 
 /** Die Datei, die der Sammler sucht — der Gegenstand, um den es geht. */
 const GEGENSTAND = "styles/modern.css";
+// JOB 3138: die unabhängige Präsentation trägt CSS in ihrem vollständigen HTML-Dokument.
+// Dessen Leser werden ebenfalls erhoben, damit neue CSS-Wächter nicht unregistriert bleiben.
+const PRAESENTATION = "public/demonstration/importwege.html";
 
 /**
  * Die eigene Datei nimmt sich aus. Sie nennt `styles/modern.css` als SUCHBEGRIFF, sie liest die
@@ -74,6 +77,28 @@ type Eintrag = {
 };
 
 const REGISTER: Eintrag[] = [
+  {
+    waechter: "tests/m6-import-erklaerweg/klara-importwege-dom.test.tsx",
+    teildeckung: "importwege-css-umschaltung",
+    aussage:
+      "Prüft die berechnete Sichtbarkeit der Sprach-, Quellen- und Schrittauswahl im vollständigen Dokument. Keine Geometrie-, Kontrast- oder Tastaturmessung.",
+    beleg: [
+      { was: "die berechnete CSS-Kaskade", muster: /getComputedStyle/ },
+      { was: "die gewählte Sprache", muster: /#language-/ },
+      { was: "die gewählten Schritte", muster: /#step-panel-/ },
+    ],
+  },
+  {
+    waechter: "tests/m6-import-erklaerweg/klara-importwege-browser.test.tsx",
+    teildeckung: "importwege-browser-layout",
+    aussage:
+      "Misst Umbruch, Schriftgröße, sichtbaren Tastaturfokus und Sprachsichtbarkeit bei 1440×900 und 390×844 in Chromium. Kein Nachweis einer produktiven Importfähigkeit oder eines freigegebenen App-Themas.",
+    beleg: [
+      { was: "echte Browsergeometrie", muster: /getBoundingClientRect/ },
+      { was: "native Tastaturbedienung", muster: /keyboard\.press/ },
+      { was: "berechneter Fokus", muster: /outlineWidth/ },
+    ],
+  },
   {
     waechter: "tests/app/mega40-theme-invarianz.test.ts",
     teildeckung: "theme-invarianz",
@@ -204,7 +229,7 @@ function testDateienUnter(dir: string): string[] {
   return raus;
 }
 
-/** Jeder Test, der modern.css zum Gegenstand hat — eingesammelt, nicht aufgezählt. */
+/** Jeder Leser der registrierten Stilquellen — eingesammelt, nicht aufgezählt. */
 function waechterUeberModernCss(): string[] {
   const raus: string[] = [];
   for (const pfad of testDateienUnter(TESTS)) {
@@ -212,7 +237,8 @@ function waechterUeberModernCss(): string[] {
     if (kurz === SELBST) {
       continue;
     }
-    if (readFileSync(pfad, "utf8").includes(GEGENSTAND)) {
+    const quelle = readFileSync(pfad, "utf8");
+    if (quelle.includes(GEGENSTAND) || quelle.includes(PRAESENTATION)) {
       raus.push(kurz);
     }
   }
@@ -327,7 +353,7 @@ describe("JOB 974 · R — das Deckungsregister der Theme-Wächter", () => {
     }
     const zeilen = REGISTER.map((e) => `  ${e.teildeckung.padEnd(24)} ${e.waechter}`).join("\n");
     console.log(
-      `\nJOB 974 D3 — Deckungsregister (${REGISTER.length} Wächter über ${GEGENSTAND}):\n${zeilen}\n  OHNE DECKUNG (Quelle ${V2_QUELLE} fehlt): ${OHNE_DECKUNG.join(", ")}\n`,
+      `\nJOB 974 D3 — Deckungsregister (${REGISTER.length} Wächter über ${GEGENSTAND} und ${PRAESENTATION}):\n${zeilen}\n  OHNE DECKUNG (Quelle ${V2_QUELLE} fehlt): ${OHNE_DECKUNG.join(", ")}\n`,
     );
   });
 
