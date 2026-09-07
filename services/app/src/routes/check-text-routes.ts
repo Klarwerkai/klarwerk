@@ -27,6 +27,7 @@ import {
   sichtbarkeitsfilterFuer,
   sqlSichtbarkeitFuer,
 } from "../sichtbarkeit";
+import { type Ka4Freigabepruefer, ka4Freigabe, klaraBindungVorhanden } from "./ask-routes";
 import { classifyProvenanceConfidential } from "./reasoner-routes";
 
 // SCRUM-491 Slice 5/6: POST /api/check-text gegen den VALIDIERTEN Bestand, KEINE Persistenz
@@ -62,15 +63,17 @@ const bodySchema = {
     locale: { type: "string" },
     want: { type: "string" },
     // SCRUM-502 Schicht 2 (Round 3): Herkunft des GEPRÜFTEN Textes (fail-safe). Optional im Schema,
-    // damit Alt-Clients (z. B. das Add-in) NICHT 400 bekommen — fehlt/ungültig → im Handler
-    // vertraulich → deterministisch-only (kein Embedder/Cloud-Judge), nie unbemerkter Cloud-Egress.
+    // damit Alt-Clients (z. B. das Add-in) NICHT 400 bekommen; die gemeinsame Regel entscheidet.
     source: { type: "string" },
     koId: { type: "string" },
     confidentiality: { type: "string" },
+    nichtEingestuft: { type: "boolean" },
   },
 } as const;
 
 export interface CheckTextRouteDeps {
+  // Ohne Verdrahtung in build-app.ts bleibt jede Klara-gebundene Anfrage fail-closed.
+  ka4?: Ka4Freigabepruefer;
   ko: KoService;
   overlaps: OverlapService;
   // Stufe 2 (want:"deep"): Modell-Urteil + semantischer Vorfilter. Der Prefilter ist env-gegated
@@ -455,13 +458,12 @@ function toResponse(
   };
 }
 
-// SCRUM-502 Round 4: der GEPRÜFTE Text ist immer transient (Paste/Upload). Die Stufe kommt aus der
-// aktuellen draft/transient-document-Deklaration; eine koId ist NUR ein hebender Backstop, nie ein
-// Freigabe-Anker für frei gelieferten Text. Fehlt/ungültig → fail-safe vertraulich. Gleiche reine
-// Regel wie der Reasoner.
+// N11b: Nicht eingestufter Text erreicht die Cloud nur bei want:"deep" und bestätigter
+// KA4-Dokumentzustimmung; eine gespeicherte vertrauliche Stufe sperrt weiterhin.
 async function resolveCheckedTextConfidential(
-  body: { source?: string; koId?: string; confidentiality?: string },
+  body: { source?: string; koId?: string; confidentiality?: string; nichtEingestuft?: unknown },
   ko: KoService,
+  dokumentZustimmung: boolean,
 ): Promise<boolean> {
   let backstop = { found: false } as { found: boolean; level?: Confidentiality | null };
   if (
@@ -472,7 +474,10 @@ async function resolveCheckedTextConfidential(
     const stored = await ko.get(body.koId);
     backstop = { found: stored !== undefined, level: stored?.confidentiality ?? null };
   }
-  return classifyProvenanceConfidential(body.source, body.confidentiality, backstop);
+  return classifyProvenanceConfidential(body.source, body.confidentiality, backstop, {
+    dokumentZustimmung,
+    nichtEingestuft: body.nichtEingestuft,
+  });
 }
 
 // JOB 3216: der angemeldete Mensch, den `preValidation` bereits festgestellt hat, muss den Handler
@@ -539,6 +544,7 @@ export function checkTextRoutes(deps: CheckTextRouteDeps, guards: Guards): Fasti
         source?: string;
         koId?: string;
         confidentiality?: string;
+        nichtEingestuft?: unknown;
       };
     }>(
       "/api/check-text",
@@ -628,14 +634,25 @@ export function checkTextRoutes(deps: CheckTextRouteDeps, guards: Guards): Fasti
           includeUnvalidated,
           ...quellenSicht,
         };
-        // SCRUM-502 R4/R5: Herkunft/Stufe des GEPRÜFTEN Textes bestimmen (fail-safe). Der Text ist
-        // immer transient (Paste/Upload) → seine Stufe kommt aus der draft/transient-document-
-        // Deklaration; eine koId ist nur hebender Backstop, nie Freigabe-Anker. Fehlt das Signal
-        // (z. B. Alt-Add-in) → vertraulich. Vertraulich sperrt Embedder UND Cloud-Judge: die Deep-
-        // Prüfung fällt auf den DETERMINISTISCHEN Pfad zurück (findet weiter Textduplikate — NICHT
-        // „fest false"), plus ehrlicher Hinweis. Der Text verlässt den Prozess nie extern.
+        // Der vertrauliche Rückfall bleibt deterministisch; weder Judge noch Embedder erhalten Text.
         const wantDeep = request.body.want === "deep";
-        const confidential = await resolveCheckedTextConfidential(request.body, deps.ko);
+        const gebunden = klaraBindungVorhanden(request.headers);
+        const actorId = istAddon
+          ? request.authContext?.principal?.id
+          : SITZUNGSNUTZER.get(request)?.id;
+        const dokumentZustimmung =
+          gebunden &&
+          typeof actorId === "string" &&
+          (await ka4Freigabe(
+            deps.ka4,
+            request.headers,
+            actorId,
+            request.log,
+            "check-text.ka4.dokument-consent",
+          ));
+        const confidential =
+          (gebunden && !dokumentZustimmung) ||
+          (await resolveCheckedTextConfidential(request.body, deps.ko, dokumentZustimmung));
         const deepAllowed = wantDeep && !confidential;
         // JOB 3094 (KA7): der Mitschnitt dieses Laufs — Urteile je Quellen-Kerntext, Zähler, Ausfall.
         const konfliktlauf = neuerKonfliktlauf();

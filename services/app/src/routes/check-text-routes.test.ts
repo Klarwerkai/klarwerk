@@ -3,10 +3,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { InMemoryOverlapRepo, OverlapService, type OverlapVerdict } from "../../../conflicts";
 import type { EmbeddingProvider, EmbeddingStore } from "../../../embedding";
 import type { KnowledgeObject, KoService } from "../../../knowledge-object";
-import { ModelCapacityError, ModelProvider, Reasoner } from "../../../reasoner";
+import {
+  InMemoryKlaraSessionRepo,
+  ModelCapacityError,
+  ModelProvider,
+  Reasoner,
+} from "../../../reasoner";
 import { buildApp, buildServices, modelBusyErrorHandler } from "../build-app";
 import type { SemanticPrefilter } from "../duplicate-detection";
 import type { Guards } from "../http";
+import { KlaraSessionService } from "../services/klara-session-service";
+import type { Ka4Freigabepruefer } from "./ask-routes";
 import { checkTextRoutes } from "./check-text-routes";
 
 // SCRUM-491 Slice 5/6: POST /api/check-text, hinter KLARWERK_ADDON_API. Sichert: Flag AUS = Endpunkt
@@ -513,6 +520,7 @@ const fakeGuards = {
 
 async function stage2App(
   seed: KnowledgeObject[] = [mkKo("v2", TEXT_MITTEL), mkKo("noise", "völlig anderer inhalt hier")],
+  ka4?: Ka4Freigabepruefer,
 ) {
   const repo = new InMemoryOverlapRepo();
   const { prefilter, embed } = spyPrefilter([{ id: "v2" }]);
@@ -525,7 +533,13 @@ async function stage2App(
   const app = Fastify();
   await app.register(
     checkTextRoutes(
-      { ko, overlaps: new OverlapService({ repo }), reasoner, semanticPrefilter: prefilter },
+      {
+        ko,
+        overlaps: new OverlapService({ repo }),
+        reasoner,
+        semanticPrefilter: prefilter,
+        ...(ka4 ? { ka4 } : {}),
+      },
       fakeGuards,
     ),
   );
@@ -893,4 +907,78 @@ describe("SCRUM-498 B2 (Fix): Embed-Cap-Überlauf (deep) → 503 über den echte
     expect(res.statusCode).toBe(200);
     expect(judgeDuplicate).toHaveBeenCalled(); // lexikalischer Pool → Judge lief
   });
+});
+
+// Route mit echtem Sitzungsdienst. Z1 in tests/n11b-zustimmung-macht-intern misst zusätzlich
+// die Verdrahtung in buildApp; diese Fälle isolieren Judge, Embedder und fehlenden Prüfer.
+describe("N11b: Word-Riegel mit realem KA4-Dienst", () => {
+  it.each(["erteilt", "fehlt", "fremd", "unvollständig", "dienst-fehlt"])(
+    "Dokumentzustimmung %s",
+    async (lage) => {
+      const dienst = new KlaraSessionService({
+        repo: new InMemoryKlaraSessionRepo(),
+        policy: () => ({
+          choice: "cloud",
+          source: "db",
+          effectiveAnswerProvider: "cloud",
+          cloudConfigured: true,
+          localConfigured: false,
+          providerLabel: "anthropic",
+          modelLabel: "claude",
+        }),
+      });
+      const session = await dienst.createSession("u1", "instance-1", {
+        kind: "saved",
+        hostDocumentId: "doc-1",
+      });
+      if (lage !== "fehlt") {
+        const consent = await dienst.grantConsent(session.sessionId, {
+          actorId: "u1",
+          addinInstanceId: "instance-1",
+          documentContextId: session.documentContextId,
+        });
+        expect(consent.consentState).toBe("granted");
+      }
+      const { app, embed, judgeDuplicate } = await stage2App(
+        undefined,
+        lage === "dienst-fehlt" ? undefined : dienst,
+      );
+      try {
+        const response = await app.inject({
+          method: "POST",
+          url: "/api/check-text",
+          headers: {
+            "x-klara-session": session.sessionId,
+            "x-klara-instance": lage === "unvollständig" ? "" : "instance-1",
+            "x-klara-document": lage === "fremd" ? "fremd" : session.documentContextId,
+          },
+          payload: {
+            text: TEXT_IDENTISCH,
+            want: "deep",
+            source: "transient-document",
+            confidentiality: "vertraulich",
+            nichtEingestuft: true,
+          },
+        });
+        expect(response.statusCode).toBe(200);
+        if (lage === "erteilt") {
+          expect(embed).toHaveBeenCalled();
+          expect(judgeDuplicate).toHaveBeenCalled();
+          expect(response.json().konfliktpruefung).toMatchObject({
+            gelaufen: false,
+            grund: "kein_konfliktdienst",
+          });
+        } else {
+          expect(embed).not.toHaveBeenCalled();
+          expect(judgeDuplicate).not.toHaveBeenCalled();
+          expect(response.json().konfliktpruefung).toMatchObject({
+            gelaufen: false,
+            grund: "vertraulich",
+          });
+        }
+      } finally {
+        await app.close();
+      }
+    },
+  );
 });

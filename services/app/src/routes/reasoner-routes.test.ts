@@ -65,3 +65,56 @@ describe("SCRUM-502 Round 4: classifyProvenanceConfidential (an den Text gebunde
     expect(classifyProvenanceConfidential("bogus", "vertraulich", NONE)).toBe(true);
   });
 });
+
+describe("N11b: Zustimmung ist ein zusätzlicher Eingang der reinen Regel", () => {
+  const backstop = { found: true, level: "intern" } as const;
+  it("bestätigte Zustimmung hebt fehlende/ungültige Einstufung für beide Textquellen", () => {
+    for (const source of ["draft", "transient-document"]) {
+      for (const declared of [undefined, null, "", "falsch", 0, {}]) {
+        expect(
+          classifyProvenanceConfidential(source, declared, backstop, { dokumentZustimmung: true }),
+        ).toBe(false);
+        expect(classifyProvenanceConfidential(source, declared, backstop)).toBe(true);
+      }
+    }
+  });
+  it("nur der boolesche Marker hebt gewaschenes vertraulich, streng bleibt immer gesperrt", () => {
+    expect(
+      classifyProvenanceConfidential("draft", "vertraulich", backstop, {
+        dokumentZustimmung: true,
+        nichtEingestuft: true,
+      }),
+    ).toBe(false);
+    for (const nichtEingestuft of [undefined, false, "true", 1]) {
+      expect(
+        classifyProvenanceConfidential("draft", "vertraulich", backstop, {
+          dokumentZustimmung: true,
+          nichtEingestuft,
+        }),
+      ).toBe(true);
+    }
+    expect(
+      classifyProvenanceConfidential("draft", "streng_vertraulich", backstop, {
+        dokumentZustimmung: true,
+        nichtEingestuft: true,
+      }),
+    ).toBe(true);
+  });
+  it("Zustimmung ersetzt weder sichere Quelle noch den hebenden Bestandswert", () => {
+    for (const source of [undefined, "ko", "unbekannt"]) {
+      expect(
+        classifyProvenanceConfidential(source, undefined, backstop, { dokumentZustimmung: true }),
+      ).toBe(true);
+    }
+    for (const level of ["vertraulich", "streng_vertraulich"] as const) {
+      expect(
+        classifyProvenanceConfidential(
+          "draft",
+          undefined,
+          { found: true, level },
+          { dokumentZustimmung: true },
+        ),
+      ).toBe(true);
+    }
+  });
+});

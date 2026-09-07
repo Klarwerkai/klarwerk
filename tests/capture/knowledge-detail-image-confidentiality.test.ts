@@ -30,9 +30,12 @@ describe("KnowledgeDetail Bild-Vertraulichkeit", () => {
       confidentiality: "intern",
       koId: "ko-intern",
     });
+    // N11b ergänzt nur Herkunftsinformation: der sichere Bild-Lade-Fallback bleibt separat gepinnt.
+    expect(draftProvenance(undefined, "ko-loading").confidentiality).toBe("vertraulich");
     expect(draftProvenance(undefined, "ko-loading")).toEqual({
       source: "draft",
       confidentiality: "vertraulich",
+      nichtEingestuft: true,
       koId: "ko-loading",
     });
   });

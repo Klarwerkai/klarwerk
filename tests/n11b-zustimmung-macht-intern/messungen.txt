@@ -1,0 +1,235 @@
+JOB 3244 · Runde 3 · eigene Messungen dieser Sitzung; Ergebniszeilen wörtlich.
+Red-first: Bestandswächter unverändert rot gemessen, dann Bild-Egress-Test geschrieben und rot gemessen.
+G1 lässt unabhängige Riegel intakt; G3 prüft Anker und G4 Dokumentzustimmung getrennt.
+G5 prüft die Text/Bild-Grenze; G6 zeigt die ungeschwächte Wirkung beider Bild-Fallback-Wächter.
+Alle Mutationen wurden vor dem Abschlusslauf hashgleich zurückgenommen.
+
+[red]
+ FAIL  tests/capture/draft-save-fullstate-mounted.test.tsx > JOB 504 D2: Bild-Provenienz des fortgesetzten Entwurfs > FEHLENDES Feld bleibt fail-closed — „vertraulich“, niemals „intern“
+AssertionError: expected { source: 'draft', …(3) } to deeply equal { source: 'draft', …(2) }
+ FAIL  tests/capture/knowledge-detail-image-confidentiality.test.ts > KnowledgeDetail Bild-Vertraulichkeit > lässt nicht vertrauliche Dokumente frei und behält den sicheren Lade-Fallback
+AssertionError: expected { source: 'draft', …(3) } to deeply equal { source: 'draft', …(2) }
+ FAIL  tests/klara-zerlegung/schnitt-pins.test.ts > JOB 3014 · A — die Mitfahrer der Zerlegung, abgeleitet statt behauptet > A2 · die abgeleitete Menge ist exakt das gepinnte Verzeichnis
+AssertionError: neu im Baum, aber nicht gepinnt — Verzeichnis nachfuehren: expected [ Array(1) ] to deeply equal []
+ Test Files  3 failed (3)
+      Tests  3 failed | 11 passed (14)
+
+[bild-red]
+ FAIL  tests/n11b-zustimmung-macht-intern/zustimmung.test.ts > N11b R3: Dokumentzustimmung stuft ausschließlich Text herab > B1 Bildquelle draft: fehlend, ungültig und Marker bleiben mit und ohne Zustimmung gesperrt
+ FAIL  tests/n11b-zustimmung-macht-intern/zustimmung.test.ts > N11b R3: Dokumentzustimmung stuft ausschließlich Text herab > B1 Bildquelle transient-document: fehlend, ungültig und Marker bleiben mit und ohne Zustimmung gesperrt
+AssertionError: expected { text: 'Eine Pumpe.', …(4) } to match object { text: null, demo: true, …(1) }
+ Test Files  1 failed (1)
+      Tests  2 failed | 1 passed | 25 skipped (28)
+
+[G1]
+Befehl: KLARWERK_SKIP_KEYCHAIN=1 npx vitest run --poolOptions.threads.maxThreads=4 --reporter=verbose tests/n11b-zustimmung-macht-intern/zustimmung.test.ts services/app/src/routes/reasoner-routes.test.ts -t 'Z3|Z4|Z7|bestätigte Zustimmung hebt'
+Mutation: services/app/src/routes/reasoner-routes.ts:52: dokumentZustimmung !== true || isConfidential(backstop.level ?? null) -> isConfidential(backstop.level ?? null)
+ × services/app/src/routes/reasoner-routes.test.ts > N11b: Zustimmung ist ein zusätzlicher Eingang der reinen Regel > bestätigte Zustimmung hebt fehlende/ungültige Einstufung für beide Textquellen
+ ✓ tests/n11b-zustimmung-macht-intern/zustimmung.test.ts > N11b: bestätigte Dokumentzustimmung am echten Router > Z3 Ohne Zustimmung: Reasoner vertraulich, kein Egress
+ ✓ tests/n11b-zustimmung-macht-intern/zustimmung.test.ts > N11b: bestätigte Dokumentzustimmung am echten Router > Z3 Ohne Zustimmung: Word vertraulich, kein Egress
+ ✓ tests/n11b-zustimmung-macht-intern/zustimmung.test.ts > N11b: bestätigte Dokumentzustimmung am echten Router > Z4 Fremde Bindung 'x-klara-session': 'Reasoner' ohne Egress
+ ✓ tests/n11b-zustimmung-macht-intern/zustimmung.test.ts > N11b: bestätigte Dokumentzustimmung am echten Router > Z4 Fremde Bindung 'x-klara-session': 'Word' ohne Egress
+ ✓ tests/n11b-zustimmung-macht-intern/zustimmung.test.ts > N11b: bestätigte Dokumentzustimmung am echten Router > Z4 Fremde Bindung 'x-klara-document': 'Reasoner' ohne Egress
+ ✓ tests/n11b-zustimmung-macht-intern/zustimmung.test.ts > N11b: bestätigte Dokumentzustimmung am echten Router > Z4 Fremde Bindung 'x-klara-document': 'Word' ohne Egress
+ ✓ tests/n11b-zustimmung-macht-intern/zustimmung.test.ts > N11b: bestätigte Dokumentzustimmung am echten Router > Z4 Fremde Bindung 'x-klara-instance': 'Reasoner' ohne Egress
+ ✓ tests/n11b-zustimmung-macht-intern/zustimmung.test.ts > N11b: bestätigte Dokumentzustimmung am echten Router > Z4 Fremde Bindung 'x-klara-instance': 'Word' ohne Egress
+ ✓ tests/n11b-zustimmung-macht-intern/zustimmung.test.ts > N11b: bestätigte Dokumentzustimmung am echten Router > Z7 Draft ohne auflösbaren Anker undefined bleibt vertraulich
+ ✓ tests/n11b-zustimmung-macht-intern/zustimmung.test.ts > N11b: bestätigte Dokumentzustimmung am echten Router > Z7 Draft ohne auflösbaren Anker nicht-gespeichert bleibt vertraulich
+ FAIL  services/app/src/routes/reasoner-routes.test.ts > N11b: Zustimmung ist ein zusätzlicher Eingang der reinen Regel > bestätigte Zustimmung hebt fehlende/ungültige Einstufung für beide Textquellen
+AssertionError: expected false to be true // Object.is equality
+ Test Files  1 failed | 1 passed (2)
+      Tests  1 failed | 10 passed | 28 skipped (39)
+Exit: 1
+Zurückgenommen: services/app/src/routes/reasoner-routes.ts SHA256 vorher=83cbb5410db71b2b93265f715bcd701737f2401f3a3c78ba19b973a3b913f415 nachher=83cbb5410db71b2b93265f715bcd701737f2401f3a3c78ba19b973a3b913f415
+
+[G2]
+Befehl: KLARWERK_SKIP_KEYCHAIN=1 npx vitest run --poolOptions.threads.maxThreads=4 --reporter=verbose tests/n11b-zustimmung-macht-intern/zustimmung.test.ts -t 'Z1|Z2'
+Mutation: services/app/src/routes/reasoner-routes.ts:52: dokumentZustimmung !== true || isConfidential(backstop.level ?? null) -> true || isConfidential(backstop.level ?? null)
+ × tests/n11b-zustimmung-macht-intern/zustimmung.test.ts > N11b: bestätigte Dokumentzustimmung am echten Router > Z1 Word: Zustimmung öffnet den tiefen Zweig für nicht eingestuften Text
+ × tests/n11b-zustimmung-macht-intern/zustimmung.test.ts > N11b: bestätigte Dokumentzustimmung am echten Router > Z1 Modellfehler nach Zustimmung: kein falsches gelaufen und kein Vertraulichkeitsgrund
+ × tests/n11b-zustimmung-macht-intern/zustimmung.test.ts > N11b: bestätigte Dokumentzustimmung am echten Router > Z2 Reasoner: Zustimmung und auflösbarer Anker öffnen den Cloud-Weg
+ × tests/n11b-zustimmung-macht-intern/zustimmung.test.ts > N11b: bestätigte Dokumentzustimmung am echten Router > Z2 Web-Versand: der unveränderte serialisierte Rumpf erreicht den echten Router
+ × tests/n11b-zustimmung-macht-intern/zustimmung.test.ts > Z2 ohne Marker: fehlendes Drahtfeld öffnet nur bei bestätigter Zustimmung
+ FAIL  tests/n11b-zustimmung-macht-intern/zustimmung.test.ts > N11b: bestätigte Dokumentzustimmung am echten Router > Z1 Word: Zustimmung öffnet den tiefen Zweig für nicht eingestuften Text
+AssertionError: expected 'vertraulich' not to be 'vertraulich' // Object.is equality
+ FAIL  tests/n11b-zustimmung-macht-intern/zustimmung.test.ts > N11b: bestätigte Dokumentzustimmung am echten Router > Z1 Modellfehler nach Zustimmung: kein falsches gelaufen und kein Vertraulichkeitsgrund
+AssertionError: expected { gelaufen: false, …(4) } to match object { gelaufen: false, …(1) }
+ FAIL  tests/n11b-zustimmung-macht-intern/zustimmung.test.ts > N11b: bestätigte Dokumentzustimmung am echten Router > Z2 Reasoner: Zustimmung und auflösbarer Anker öffnen den Cloud-Weg
+AssertionError: expected { …(2) } to match object { demo: false, …(1) }
+ FAIL  tests/n11b-zustimmung-macht-intern/zustimmung.test.ts > N11b: bestätigte Dokumentzustimmung am echten Router > Z2 Web-Versand: der unveränderte serialisierte Rumpf erreicht den echten Router
+AssertionError: expected { …(2) } to match object { demo: false, …(1) }
+ FAIL  tests/n11b-zustimmung-macht-intern/zustimmung.test.ts > Z2 ohne Marker: fehlendes Drahtfeld öffnet nur bei bestätigter Zustimmung
+AssertionError: expected true to be false // Object.is equality
+ Test Files  1 failed (1)
+      Tests  5 failed | 23 skipped (28)
+Exit: 1
+Zurückgenommen: services/app/src/routes/reasoner-routes.ts SHA256 vorher=83cbb5410db71b2b93265f715bcd701737f2401f3a3c78ba19b973a3b913f415 nachher=83cbb5410db71b2b93265f715bcd701737f2401f3a3c78ba19b973a3b913f415
+
+[G3]
+Befehl: KLARWERK_SKIP_KEYCHAIN=1 npx vitest run --poolOptions.threads.maxThreads=4 --reporter=verbose tests/n11b-zustimmung-macht-intern/zustimmung.test.ts -t Z7
+Mutation: services/app/src/routes/reasoner-routes.ts:179: if (source === "draft" && !ankerAufgeloest) -> if (false && source === "draft" && !ankerAufgeloest)
+ × tests/n11b-zustimmung-macht-intern/zustimmung.test.ts > N11b: bestätigte Dokumentzustimmung am echten Router > Z7 Draft ohne auflösbaren Anker undefined bleibt vertraulich
+ × tests/n11b-zustimmung-macht-intern/zustimmung.test.ts > N11b: bestätigte Dokumentzustimmung am echten Router > Z7 Draft ohne auflösbaren Anker nicht-gespeichert bleibt vertraulich
+ FAIL  tests/n11b-zustimmung-macht-intern/zustimmung.test.ts > N11b: bestätigte Dokumentzustimmung am echten Router > Z7 Draft ohne auflösbaren Anker undefined bleibt vertraulich
+ FAIL  tests/n11b-zustimmung-macht-intern/zustimmung.test.ts > N11b: bestätigte Dokumentzustimmung am echten Router > Z7 Draft ohne auflösbaren Anker nicht-gespeichert bleibt vertraulich
+AssertionError: expected false to be true // Object.is equality
+ Test Files  1 failed (1)
+      Tests  2 failed | 26 skipped (28)
+Exit: 1
+Zurückgenommen: services/app/src/routes/reasoner-routes.ts SHA256 vorher=83cbb5410db71b2b93265f715bcd701737f2401f3a3c78ba19b973a3b913f415 nachher=83cbb5410db71b2b93265f715bcd701737f2401f3a3c78ba19b973a3b913f415
+
+[G4]
+Befehl: KLARWERK_SKIP_KEYCHAIN=1 npx vitest run --poolOptions.threads.maxThreads=4 --reporter=verbose tests/n11b-zustimmung-macht-intern/zustimmung.test.ts -t 'Z3|Z4|Z7'
+Mutation: services/app/src/routes/reasoner-routes.ts:146: gesamten KA4-Ausdruck durch const dokumentZustimmung = true; ersetzt
+Mutation: services/app/src/routes/check-text-routes.ts:643: gesamten KA4-Ausdruck durch const dokumentZustimmung = true; ersetzt
+ × tests/n11b-zustimmung-macht-intern/zustimmung.test.ts > N11b: bestätigte Dokumentzustimmung am echten Router > Z3 Ohne Zustimmung: Reasoner vertraulich, kein Egress
+ × tests/n11b-zustimmung-macht-intern/zustimmung.test.ts > N11b: bestätigte Dokumentzustimmung am echten Router > Z3 Ohne Zustimmung: Word vertraulich, kein Egress
+ × tests/n11b-zustimmung-macht-intern/zustimmung.test.ts > N11b: bestätigte Dokumentzustimmung am echten Router > Z4 Fremde Bindung 'x-klara-session': 'Reasoner' ohne Egress
+ × tests/n11b-zustimmung-macht-intern/zustimmung.test.ts > N11b: bestätigte Dokumentzustimmung am echten Router > Z4 Fremde Bindung 'x-klara-session': 'Word' ohne Egress
+ × tests/n11b-zustimmung-macht-intern/zustimmung.test.ts > N11b: bestätigte Dokumentzustimmung am echten Router > Z4 Fremde Bindung 'x-klara-document': 'Reasoner' ohne Egress
+ × tests/n11b-zustimmung-macht-intern/zustimmung.test.ts > N11b: bestätigte Dokumentzustimmung am echten Router > Z4 Fremde Bindung 'x-klara-document': 'Word' ohne Egress
+ × tests/n11b-zustimmung-macht-intern/zustimmung.test.ts > N11b: bestätigte Dokumentzustimmung am echten Router > Z4 Fremde Bindung 'x-klara-instance': 'Reasoner' ohne Egress
+ × tests/n11b-zustimmung-macht-intern/zustimmung.test.ts > N11b: bestätigte Dokumentzustimmung am echten Router > Z4 Fremde Bindung 'x-klara-instance': 'Word' ohne Egress
+ ✓ tests/n11b-zustimmung-macht-intern/zustimmung.test.ts > N11b: bestätigte Dokumentzustimmung am echten Router > Z7 Draft ohne auflösbaren Anker undefined bleibt vertraulich
+ ✓ tests/n11b-zustimmung-macht-intern/zustimmung.test.ts > N11b: bestätigte Dokumentzustimmung am echten Router > Z7 Draft ohne auflösbaren Anker nicht-gespeichert bleibt vertraulich
+ FAIL  tests/n11b-zustimmung-macht-intern/zustimmung.test.ts > N11b: bestätigte Dokumentzustimmung am echten Router > Z3 Ohne Zustimmung: Reasoner vertraulich, kein Egress
+AssertionError: expected false to be true // Object.is equality
+ FAIL  tests/n11b-zustimmung-macht-intern/zustimmung.test.ts > N11b: bestätigte Dokumentzustimmung am echten Router > Z3 Ohne Zustimmung: Word vertraulich, kein Egress
+AssertionError: expected null to be 'vertraulich' // Object.is equality
+ FAIL  tests/n11b-zustimmung-macht-intern/zustimmung.test.ts > N11b: bestätigte Dokumentzustimmung am echten Router > Z4 Fremde Bindung 'x-klara-session': 'Reasoner' ohne Egress
+ FAIL  tests/n11b-zustimmung-macht-intern/zustimmung.test.ts > N11b: bestätigte Dokumentzustimmung am echten Router > Z4 Fremde Bindung 'x-klara-document': 'Reasoner' ohne Egress
+ FAIL  tests/n11b-zustimmung-macht-intern/zustimmung.test.ts > N11b: bestätigte Dokumentzustimmung am echten Router > Z4 Fremde Bindung 'x-klara-instance': 'Reasoner' ohne Egress
+AssertionError: expected false to be true // Object.is equality
+ FAIL  tests/n11b-zustimmung-macht-intern/zustimmung.test.ts > N11b: bestätigte Dokumentzustimmung am echten Router > Z4 Fremde Bindung 'x-klara-session': 'Word' ohne Egress
+ FAIL  tests/n11b-zustimmung-macht-intern/zustimmung.test.ts > N11b: bestätigte Dokumentzustimmung am echten Router > Z4 Fremde Bindung 'x-klara-document': 'Word' ohne Egress
+ FAIL  tests/n11b-zustimmung-macht-intern/zustimmung.test.ts > N11b: bestätigte Dokumentzustimmung am echten Router > Z4 Fremde Bindung 'x-klara-instance': 'Word' ohne Egress
+AssertionError: expected null to be 'vertraulich' // Object.is equality
+ Test Files  1 failed (1)
+      Tests  8 failed | 2 passed | 18 skipped (28)
+Exit: 1
+Zurückgenommen: services/app/src/routes/reasoner-routes.ts SHA256 vorher=83cbb5410db71b2b93265f715bcd701737f2401f3a3c78ba19b973a3b913f415 nachher=83cbb5410db71b2b93265f715bcd701737f2401f3a3c78ba19b973a3b913f415
+Zurückgenommen: services/app/src/routes/check-text-routes.ts SHA256 vorher=7918622ce28f68b83f619337eff564b4bf107f168932b31aee4e982e28ab0039 nachher=7918622ce28f68b83f619337eff564b4bf107f168932b31aee4e982e28ab0039
+
+[G5-Bild]
+Befehl: KLARWERK_SKIP_KEYCHAIN=1 npx vitest run --poolOptions.threads.maxThreads=4 --reporter=verbose tests/n11b-zustimmung-macht-intern/zustimmung.test.ts -t 'B1|B2'
+Mutation: services/app/src/routes/reasoner-routes.ts:156: dokumentZustimmung: bindung.inhalt === "text" && dokumentZustimmung -> dokumentZustimmung
+ × tests/n11b-zustimmung-macht-intern/zustimmung.test.ts > N11b R3: Dokumentzustimmung stuft ausschließlich Text herab > B1 Bildquelle draft: fehlend, ungültig und Marker bleiben mit und ohne Zustimmung gesperrt
+ × tests/n11b-zustimmung-macht-intern/zustimmung.test.ts > N11b R3: Dokumentzustimmung stuft ausschließlich Text herab > B1 Bildquelle transient-document: fehlend, ungültig und Marker bleiben mit und ohne Zustimmung gesperrt
+ ✓ tests/n11b-zustimmung-macht-intern/zustimmung.test.ts > N11b R3: Dokumentzustimmung stuft ausschließlich Text herab > B2 Bildkalibrierung: ausdrücklich intern öffnet nur mit Zustimmung oder ohne Klara-Bindung
+ FAIL  tests/n11b-zustimmung-macht-intern/zustimmung.test.ts > N11b R3: Dokumentzustimmung stuft ausschließlich Text herab > B1 Bildquelle draft: fehlend, ungültig und Marker bleiben mit und ohne Zustimmung gesperrt
+ FAIL  tests/n11b-zustimmung-macht-intern/zustimmung.test.ts > N11b R3: Dokumentzustimmung stuft ausschließlich Text herab > B1 Bildquelle transient-document: fehlend, ungültig und Marker bleiben mit und ohne Zustimmung gesperrt
+AssertionError: expected { text: 'Eine Pumpe.', …(4) } to match object { text: null, demo: true, …(1) }
+ Test Files  1 failed (1)
+      Tests  2 failed | 1 passed | 25 skipped (28)
+Exit: 1
+Zurückgenommen: services/app/src/routes/reasoner-routes.ts SHA256 vorher=83cbb5410db71b2b93265f715bcd701737f2401f3a3c78ba19b973a3b913f415 nachher=83cbb5410db71b2b93265f715bcd701737f2401f3a3c78ba19b973a3b913f415
+
+[G6-Bildfallback]
+Befehl: KLARWERK_SKIP_KEYCHAIN=1 npx vitest run --poolOptions.threads.maxThreads=4 --reporter=verbose tests/capture/draft-save-fullstate-mounted.test.tsx tests/capture/knowledge-detail-image-confidentiality.test.ts -t 'FEHLENDES|Lade-Fallback'
+Mutation: apps/web/src/lib/reasonerProvenance.ts:13: : "vertraulich"; -> : "intern";
+ × tests/capture/knowledge-detail-image-confidentiality.test.ts > KnowledgeDetail Bild-Vertraulichkeit > lässt nicht vertrauliche Dokumente frei und behält den sicheren Lade-Fallback
+ × tests/capture/draft-save-fullstate-mounted.test.tsx > JOB 504 D2: Bild-Provenienz des fortgesetzten Entwurfs > FEHLENDES Feld bleibt fail-closed — „vertraulich“, niemals „intern“ 332ms
+ FAIL  tests/capture/draft-save-fullstate-mounted.test.tsx > JOB 504 D2: Bild-Provenienz des fortgesetzten Entwurfs > FEHLENDES Feld bleibt fail-closed — „vertraulich“, niemals „intern“
+AssertionError: expected { source: 'draft', …(3) } to deeply equal { source: 'draft', …(3) }
+ FAIL  tests/capture/knowledge-detail-image-confidentiality.test.ts > KnowledgeDetail Bild-Vertraulichkeit > lässt nicht vertrauliche Dokumente frei und behält den sicheren Lade-Fallback
+AssertionError: expected 'intern' to be 'vertraulich' // Object.is equality
+ Test Files  2 failed (2)
+      Tests  2 failed | 8 skipped (10)
+Exit: 1
+Zurückgenommen: apps/web/src/lib/reasonerProvenance.ts SHA256 vorher=df4e866f0fe5301088503902db379a9b3f347fa6b9fbd7e5a98730c23bea2403 nachher=df4e866f0fe5301088503902db379a9b3f347fa6b9fbd7e5a98730c23bea2403
+
+[abschluss]
+ ✓ tests/klara-zerlegung/schnitt-pins.test.ts (4 tests) 9ms
+ ✓ tests/security/mega74-lesewege-sammler.test.ts (13 tests) 8ms
+ ✓ tests/security/nebenweg-feldredaktion.test.ts (17 tests) 98ms
+ ✓ tests/security/385-list-trim-vor-pagination.test.ts (16 tests) 13ms
+ ✓ tests/ka4-freischaltung/ka4-einwilligung-wirkt.test.ts (13 tests) 314ms
+ ✓ tests/security/mega76-schutz-erzwungen.test.ts (9 tests) 104ms
+ ✓ tests/security/380-trim-vor-pagination.test.ts (17 tests) 6ms
+ ✓ tests/security/bindung-vergleicht-nicht-sich-selbst.test.ts (22 tests) 5ms
+ ✓ tests/security/mega82-importeur-handelt.test.ts (3 tests) 1137ms
+ ✓ tests/security/w5-konflikt-am-draht.test.ts (6 tests) 1210ms
+ ✓ tests/security/mega80-kennung-ist-kein-leserecht.test.ts (7 tests) 1401ms
+ ✓ tests/security/import-guard-kausal-403.test.ts (12 tests) 1434ms
+ ✓ tests/security/f0688-schluessel-api-nur-validiert.test.ts (7 tests) 1475ms
+ ✓ tests/security/vip2-gate.test.ts (18 tests) 1778ms
+ ✓ tests/security/job1178-restore-drahttest.test.ts (4 tests) 1428ms
+ ✓ tests/ka5/markierung-kein-egress.test.ts (7 tests) 12ms
+ ✓ tests/security/mega78-traeger-nachweis.test.ts (8 tests) 2339ms
+ ✓ services/app/src/routes/check-text-routes.test.ts (37 tests) 2781ms
+ ✓ tests/security/w-anhang-cachevertrag.test.ts (11 tests) 2875ms
+ ✓ tests/security/g10-herkunft-zentrum-vertraulich.test.ts (7 tests) 6ms
+ ✓ tests/security/job1174-matrix-kopplung-rollenimplizite-lesewege.test.ts (4 tests) 9ms
+ ✓ tests/security/mega80-altbestand-feststellung.test.ts (12 tests) 48ms
+ ✓ tests/n11b-zustimmung-macht-intern/zustimmung.test.ts (28 tests) 3593ms
+ ✓ tests/security/log-keine-inhalte.test.ts (9 tests) 1022ms
+ ✓ tests/security/job2675-sanitizer-attribut-escape.test.ts (10 tests) 585ms
+ ✓ services/app/src/routes/ask-routes-ka4-einwilligung.test.ts (7 tests) 958ms
+ ✓ tests/security/mega80-verfasser-buergt-nicht-fuer-geerbtes.test.ts (4 tests) 1207ms
+ ✓ tests/ask/mega61-vertraulich-kein-cloud-kontext.test.ts (6 tests) 76ms
+ ✓ tests/security/mega77-ungeprueft-zaehler-weg.test.ts (3 tests) 740ms
+ ✓ tests/uebernahme-standard-intern/confluence-ohne-beschraenkung-ist-intern.test.ts (7 tests) 14ms
+ ✓ tests/security/job2065-geladener-bestand-vertraulich.test.ts (6 tests) 1527ms
+ ✓ tests/security/mega76-aggregate-vertraulich.test.ts (8 tests) 1819ms
+ ✓ tests/security/w9-lifecycle-pending-sichtbarkeit.test.ts (8 tests) 7ms
+ ✓ tests/security/g6-export-teilmenge-der-lesemenge.test.ts (4 tests) 1124ms
+ ✓ tests/security/mega76-anhang-herkuenfte.test.ts (6 tests) 1515ms
+ ✓ tests/security/g26-matrix-laufzeit.test.ts (4 tests) 1086ms
+ ✓ tests/security/ka5-zehnte-bindung-addin-instanz.test.ts (6 tests) 22ms
+ ✓ tests/security/g8-medien-analyse-existenzorakel.test.ts (5 tests) 1351ms
+ ✓ tests/security/g1-pruefboard-vertraulich.test.ts (5 tests) 1472ms
+ ✓ tests/security/job605-anhang-widerruf-inprocess.test.ts (5 tests) 1322ms
+ ✓ tests/vertraulichkeit-intern/explizit-intern-ueberlebt.test.ts (5 tests) 5ms
+ ✓ tests/security/job972-pair-aktion-existenzleck.test.ts (3 tests) 981ms
+ ✓ tests/security/mega74-lesepfad-vertraulich.test.ts (7 tests) 2429ms
+ ✓ services/app/src/routes/knowledge-check-routes.test.ts (7 tests) 253ms
+ ✓ tests/security/objects-auth-vor-parsing.test.ts (6 tests) 1183ms
+ ✓ tests/security/g7b-lifecycle-pending-vertraulich.test.ts (5 tests) 1516ms
+ ✓ tests/security/job1170-herkunft-zentrum-vertraulich.test.ts (3 tests) 1109ms
+ ✓ tests/security/instanzidentitaet-nicht-von-aussen.test.ts (6 tests) 6ms
+ ✓ tests/security/mega74-anhang-vertraulich.test.ts (5 tests) 1337ms
+ ✓ tests/security/audit-forensics-analyze.test.ts (3 tests) 6ms
+ ✓ tests/security/b52e-native-ausnahme-am-kandidaten.test.ts (3 tests) 5ms
+ ✓ tests/security/egress-chokepoint.test.ts (2 tests) 385ms
+ ✓ tests/security/mega35-audit-kommentar-ehrlichkeit.test.ts (9 tests) 69ms
+ ✓ tests/security/job1172-import-accept-voreinstufung.test.ts (2 tests) 696ms
+ ✓ tests/security/mega74-nebenwege-vertraulich.test.ts (5 tests) 1292ms
+ ✓ tests/security/g6-export-formate-vertraulich.test.ts (5 tests) 995ms
+ ✓ tests/security/g7-lifecycle-couplings-vertraulich.test.ts (5 tests) 1227ms
+ ✓ tests/security/mega78-offene-luecken-zaehler.test.ts (2 tests) 770ms
+ ✓ services/app/src/routes/reasoner-routes.test.ts (11 tests) 20ms
+ ✓ tests/security/audit-forensics-readonly.test.ts (5 tests) 6ms
+ ✓ tests/security/job1993-schema-literale-sind-gueltiges-sql.test.ts (3 tests) 6ms
+Web: 2/2 Rümpfe confidentiality="vertraulich", 2/2 Marker (endpoints.ts).
+Word W6: 1/1 Rumpf ohne confidentiality, ohne want:deep, ohne Klara-Kopfzeilen.
+Word KA7: 1/1 Rumpf want="deep", confidentiality="intern", ohne Klara-Kopfzeilen.
+ ✓ tests/n11b-zustimmung-macht-intern/einstiege.test.ts (3 tests) 9ms
+ ✓ tests/ka5/markierung-fundstelle-bleibt.test.ts (3 tests) 251ms
+ ✓ apps/web/src/lib/reasonerProvenance.test.ts (6 tests) 7ms
+ ✓ tests/security/job2531-fremder-entwurf-in-eigener-liste.test.ts (2 tests) 536ms
+ ✓ tests/security/route-guard-audit.test.ts (8 tests) 5ms
+ ✓ tests/security/egress-encapsulation.test.ts (3 tests) 3ms
+ ✓ tests/app/reasoner-describe-route.test.ts (8 tests) 851ms
+ ✓ tests/security/library-export-egress.test.ts (3 tests) 473ms
+ ✓ tests/capture/knowledge-detail-image-confidentiality.test.ts (3 tests) 3ms
+ ✓ tests/capture/draft-save-fullstate-mounted.test.tsx (7 tests) 2054ms
+ Test Files  71 passed (71)
+      Tests  533 passed (533)
+
+[waechter]
+ ✓ tests/app/mega69-klara-waechter.test.ts (6 tests) 16ms
+ ✓ tests/smoke/dist-frische.test.ts (17 tests) 8ms
+ ✓ tests/app/theme-deckungsregister.test.ts (7 tests) 191ms
+ ✓ tests/smoke/tor-ausnahme.test.ts (3 tests) 2115ms
+ ✓ tests/app/klara-regressionsinventar.test.ts (6 tests) 2302ms
+ ✓ tests/capture/aufrufer-waechter.test.ts (6 tests) 37133ms
+ Test Files  6 passed (6)
+      Tests  45 passed (45)
+
+[statisch]
+npx tsc --noEmit -p tsconfig.json → keine Ausgabe, Exit 0
+npx biome check services/app/src/routes/reasoner-routes.ts tests/n11b-zustimmung-macht-intern/zustimmung.test.ts tests/capture/draft-save-fullstate-mounted.test.tsx tests/capture/knowledge-detail-image-confidentiality.test.ts tests/klara-zerlegung/schnitt-pins.test.ts
+Checked 5 files in 52ms. No fixes applied.
+npx depcruise --config .dependency-cruiser.cjs services
+✔ no dependency violations found (475 modules, 1691 dependencies cruised)
+git diff --check → keine Ausgabe, Exit 0

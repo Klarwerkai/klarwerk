@@ -396,12 +396,17 @@ describe("JOB 504 D2: Bild-Provenienz des fortgesetzten Entwurfs", () => {
     await mount();
     await resumeSavedDraft();
     // JOB 2692 D2: der fortgesetzte Entwurf reist jetzt MIT seiner Kennung (`draftId`) — der
-    // Server laedt daraus die gespeicherte Stufe. Der Provenance-Wert traegt deshalb drei Felder.
+    // Server laedt daraus die gespeicherte Stufe. N11b ergänzt den Textmarker, ohne die
+    // Bild-Einstufung zu senken; der Bild-Router ignoriert ihn auch mit Dokumentzustimmung.
     expect(describeProvenance.last).toEqual({
       source: "draft",
       confidentiality: "vertraulich",
+      nichtEingestuft: true,
       draftId: "d-seed",
     });
+    expect((describeProvenance.last as { confidentiality?: string }).confidentiality).toBe(
+      "vertraulich",
+    );
     expect((describeProvenance.last as { confidentiality?: string }).confidentiality).not.toBe(
       "intern",
     );

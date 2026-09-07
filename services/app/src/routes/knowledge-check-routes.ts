@@ -11,11 +11,8 @@ import { classifyProvenanceConfidential } from "./reasoner-routes";
 // (requirePermission("ko.read") → vom routeGuardAudit erfasst, kein Blindspot). never block: bei einem
 // Fehler ehrlicher Status statt 5xx.
 //
-// SCRUM-527 (WP3 — voller Provenienz-Vertrag): der Freitext bekommt denselben fail-safe Herkunfts-/
-// Vertraulichkeitsvertrag wie /api/check-text. Fehlende/ungültige Klassifikation = VERTRAULICH → KEIN
-// Judge (kein Cloud-/Modell-Egress des Freitexts); der Endpoint liefert dann nur similar + status
-// "pending". NUR ein sicher als nicht-vertraulich klassifizierter Freitext (draft/transient-document mit
-// expliziter Stufe, koId nur hebender Backstop) UND ein verfügbares Modell erhalten den Widerspruchs-Judge.
+// N11b: Dieser Browser-Editor hat keine verdrahtete Dokumentzustimmung; nicht eingestufter Text
+// erreicht hier weiterhin keine Cloud, sondern nur similar und status "pending".
 export interface KnowledgeCheckRouteDeps {
   ko: KoService;
   conflicts: ConflictService;
@@ -23,11 +20,9 @@ export interface KnowledgeCheckRouteDeps {
   guards: Guards;
 }
 
-// Fail-safe Herkunftsauflösung (identische reine Regel wie /api/check-text): der Freitext ist immer
-// transient (Editor-Entwurf) → seine Stufe kommt aus der draft/transient-document-Deklaration; eine koId
-// ist NUR ein hebender Backstop, nie ein Freigabe-Anker. Fehlt/ungültig → fail-safe vertraulich.
+// Dieselbe reine Herkunftsregel; koId bleibt ausschließlich hebender Backstop.
 async function resolveDraftConfidential(
-  body: { source?: string; koId?: string; confidentiality?: string },
+  body: { source?: string; koId?: string; confidentiality?: string; nichtEingestuft?: unknown },
   ko: KoService,
 ): Promise<boolean> {
   let backstop = { found: false } as { found: boolean; level?: Confidentiality | null };
@@ -39,7 +34,10 @@ async function resolveDraftConfidential(
     const stored = await ko.get(body.koId);
     backstop = { found: stored !== undefined, level: stored?.confidentiality ?? null };
   }
-  return classifyProvenanceConfidential(body.source, body.confidentiality, backstop);
+  return classifyProvenanceConfidential(body.source, body.confidentiality, backstop, {
+    dokumentZustimmung: false,
+    nichtEingestuft: body.nichtEingestuft,
+  });
 }
 
 export function knowledgeCheckRoutes(deps: KnowledgeCheckRouteDeps): FastifyPluginAsync {
@@ -47,7 +45,13 @@ export function knowledgeCheckRoutes(deps: KnowledgeCheckRouteDeps): FastifyPlug
     app.post<{
       // source/koId/confidentiality optional (kein Schema) — Alt-Clients ohne diese Felder bekommen
       // fail-safe „vertraulich" (kein Egress), nie 400.
-      Body: { text?: string; source?: string; koId?: string; confidentiality?: string };
+      Body: {
+        text?: string;
+        source?: string;
+        koId?: string;
+        confidentiality?: string;
+        nichtEingestuft?: unknown;
+      };
     }>("/api/knowledge/check", async (request, reply) => {
       const user = await deps.guards.requirePermission("ko.read", request, reply);
       if (!user) {

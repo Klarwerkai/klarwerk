@@ -582,6 +582,9 @@ const INVENTAR: readonly string[] = [
   // steht nicht im Pfad — der Verzeichnisname war im Auftrag abschliessend vorgegeben —, K5 bleibt
   // unveraendert. K2 hat sie gemeldet, das Inventar nimmt sie nicht still auf.
   "tests/m5-bild-im-panel/bild-vorschlag-mounted.test.ts",
+  // JOB 3244: gemessene Word-/Editor-Rümpfe und Dokumentzustimmung am echten Router.
+  "tests/n11b-zustimmung-macht-intern/einstiege.test.ts",
+  "tests/n11b-zustimmung-macht-intern/zustimmung.test.ts",
 ];
 
 // ------------------------------------------------------------------------------------------------

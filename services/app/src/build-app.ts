@@ -2039,6 +2039,7 @@ export function buildApp(
     app.register(
       checkTextRoutes(
         {
+          ka4: klaraSessions,
           ko: services.ko,
           overlaps: services.overlaps,
           conflicts: services.conflicts,

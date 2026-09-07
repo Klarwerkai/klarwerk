@@ -111,14 +111,16 @@ export type KoFilter = { type?: string; status?: string; category?: string; tag?
 export type ReasonerProvenance = {
   source: "draft" | "transient-document";
   confidentiality: Confidentiality;
+  nichtEingestuft?: true;
   koId?: string;
   draftId?: string;
 };
 
-function provenanceFields(p: ReasonerProvenance): Record<string, string> {
+function provenanceFields(p: ReasonerProvenance): Record<string, string | true> {
   return {
     source: p.source,
     confidentiality: p.confidentiality,
+    ...(p.nichtEingestuft === true ? { nichtEingestuft: true as const } : {}),
     ...(p.koId ? { koId: p.koId } : {}),
     ...(p.draftId ? { draftId: p.draftId } : {}),
   };

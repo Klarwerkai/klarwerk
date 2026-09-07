@@ -93,6 +93,8 @@ const GRIFFE: Array<{
 // Nachführpflicht, kein Defekt: wer einen neuen Griff an `taskpane.html` anlegt, gehört hierher.
 // ------------------------------------------------------------------------------------------------
 const MITFAHRER: Readonly<Record<string, string>> = {
+  // N11b: Versandmessung liest das Word-Fenster und führt den W6-Block entlang seiner Marke aus.
+  "tests/n11b-zustimmung-macht-intern/einstiege.test.ts": "pfad,marken",
   "tests/app/csp-upgrade-insecure-requests.test.ts": "pfad",
   "tests/app/g24-ki-kennzeichnung-laufzeitpruefung.test.ts": "pfad,marken",
   "tests/app/job2551-bildverlust-satz-mounted.test.ts": "pfad",

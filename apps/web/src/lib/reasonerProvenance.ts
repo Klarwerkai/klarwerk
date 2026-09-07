@@ -1,8 +1,5 @@
-// SCRUM-502 R6: EIN gemeinsamer, fail-safe Helfer für die Vertraulichkeit eines Modell-Aktions-
-// INHALTS (Draft/Editor-Text/Upload). Grundprinzip: eine Stufe ist ENTWEDER explizit vorhanden und
-// gültig, ODER es gilt fail-safe „vertraulich". NIEMALS still auf „intern" defaulten, NIEMALS die
-// Stufe des Containers/Ziel-KOs erben. ALLE Eintrittspunkte, die einer Modell-Aktion eine Stufe
-// zuweisen, laufen durch diesen Helfer — so kann ein neuer Pfad die Klassifikation nicht vergessen.
+// N11b: Fehlende/ungültige Einstufung bleibt im Feld vertraulich und trägt zusätzlich
+// nichtEingestuft; nur bestätigte Dokumentzustimmung darf serverseitig intern daraus machen.
 import type { ReasonerProvenance } from "../api/endpoints";
 import type { Confidentiality } from "../api/types";
 
@@ -29,6 +26,9 @@ export function draftProvenance(
   return {
     source: "draft",
     confidentiality: failSafeConfidentiality(declared),
+    ...(declared !== "intern" && declared !== "vertraulich" && declared !== "streng_vertraulich"
+      ? { nichtEingestuft: true as const }
+      : {}),
     ...(koId ? { koId } : {}),
     ...(draftId ? { draftId } : {}),
   };
@@ -43,6 +43,9 @@ export function documentProvenance(
   return {
     source: "transient-document",
     confidentiality: failSafeConfidentiality(declared),
+    ...(declared !== "intern" && declared !== "vertraulich" && declared !== "streng_vertraulich"
+      ? { nichtEingestuft: true as const }
+      : {}),
     ...(koId ? { koId } : {}),
   };
 }

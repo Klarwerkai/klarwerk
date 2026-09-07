@@ -131,3 +131,20 @@ describe("POST /api/knowledge/check — Provenienz-Vertrag (WP3)", () => {
     expect(res.json().status).toBe("pending");
   });
 });
+
+it("N11b: ohne verdrahtete Dokumentzustimmung bleibt der zusätzliche Marker wirkungslos", async () => {
+  const { app, judgeConflict } = await appWith({ active: true, verdict: conflictVerdict });
+  try {
+    const response = await post(app, {
+      text: DRAFT,
+      source: "draft",
+      confidentiality: "vertraulich",
+      nichtEingestuft: true,
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().status).toBe("pending");
+    expect(judgeConflict).not.toHaveBeenCalled();
+  } finally {
+    await app.close();
+  }
+});

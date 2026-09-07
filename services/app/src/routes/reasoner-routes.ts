@@ -25,18 +25,9 @@ function normalizeLocale(value: unknown): ReasonerLocale {
   return value === "en" ? "en" : "de";
 }
 
-// SCRUM-502 Round 4 (ben-Review): die Einstufung ist an den VERARBEITETEN TEXT gebunden, nicht an
-// eine lose koId. Round 3 ehrte `source:"ko"` und stufte nach der GESPEICHERTEN KO-Stufe ein —
-// verarbeitete aber frei gelieferten Text. Damit konnte ein fremdes/internes KO als Freigabe-Anker
-// für beliebigen (vertraulichen) Text dienen (Editor-Text, Upload). Round 4:
-//   - Gültige Quellen für client-gelieferten Text: "draft" (Editor/getippt) und "transient-document"
-//     (Upload). Beide tragen die AKTUELLE Stufe EXPLIZIT (inkl. "intern"); fehlt/ungültig → fail-safe.
-//   - Eine mitgelieferte koId ist NUR ein Backstop, der die Stufe HEBEN darf (Schutz vor Downgrade
-//     eines gespeichert-vertraulichen KOs), NIEMALS senken → sie kann nie als falscher Freigabe-Anker
-//     dienen (ein internes/fremdes KO hebt nichts).
-//   - Eine bloße `source:"ko"` (loser Anker für frei gelieferten Text) wird NICHT mehr geehrt →
-//     fail-safe vertraulich. (Ein künftiger digest-/versionsgebundener Pfad könnte sie re-aktivieren.)
-// `backstop` ist das Ergebnis eines optionalen koId-Loads (found=false → kein Backstop).
+// N11b: Nicht eingestufter draft/transient-document-Text erreicht die Cloud nur mit bestätigter
+// KA4-Dokumentzustimmung; gespeicherte Vertraulichkeit und der Draft-Ankerriegel bleiben wirksam.
+// koId/draftId heben ausschließlich die Stufe; source:"ko" gibt frei gelieferten Text nie frei.
 export type StoredLookup = { found: boolean; level?: Confidentiality | null };
 
 const CLIENT_TEXT_SOURCES = new Set(["draft", "transient-document"]);
@@ -45,11 +36,20 @@ export function classifyProvenanceConfidential(
   source: unknown,
   declared: unknown,
   backstop: StoredLookup,
+  {
+    dokumentZustimmung = false,
+    nichtEingestuft,
+  }: {
+    dokumentZustimmung?: boolean;
+    nichtEingestuft?: unknown;
+  } = {},
 ): boolean {
   if (typeof source === "string" && CLIENT_TEXT_SOURCES.has(source)) {
-    // Explizite, gültige AKTUELLE Stufe des Textes ist Pflicht — fehlt/ungültig → fail-safe.
-    if (declared !== "intern" && declared !== "vertraulich" && declared !== "streng_vertraulich") {
-      return true;
+    const ohneEinstufung =
+      (declared !== "intern" && declared !== "vertraulich" && declared !== "streng_vertraulich") ||
+      (declared === "vertraulich" && nichtEingestuft === true);
+    if (ohneEinstufung) {
+      return dokumentZustimmung !== true || isConfidential(backstop.level ?? null);
     }
     // Backstop hebt nur: ein gespeichert-vertrauliches KO (via koId) macht auch als "intern"
     // deklarierten Text vertraulich; ein internes/unbekanntes KO senkt nie eine Deklaration.
@@ -80,6 +80,8 @@ export interface ReasonerRoutesDeps {
 // JOB 2692 D1: was die Route über den Aufruf weiß, das der reinen Regel fehlt — Entwurfskennung,
 // handelnder Nutzer, Kopfzeilen (Klara-Bindung) und das Protokoll. Kein Inhalt reist hier mit.
 type Aufrufbindung = {
+  inhalt: "text" | "bild";
+  nichtEingestuft?: unknown;
   draftId: unknown;
   actorId: string;
   headers: Record<string, unknown>;
@@ -110,50 +112,9 @@ export const DESCRIBE_BODY_LIMIT = 8 * 1024 * 1024; // 8 MiB
 export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): FastifyPluginAsync {
   const { reasoner, ask, externalKnowledge, ko, capture, ka4 } = deps;
 
-  // SCRUM-502 Round 4: die Stufe kommt aus der AKTUELLEN Text-Deklaration (draft/transient-document).
-  // Eine koId wird — falls mitgeliefert — NUR als hebender Backstop geladen (Downgrade-Schutz), nie
-  // als Freigabe-Anker. Die reine Regel entscheidet fail-safe.
-  //
-  // mega26 Block A: DERSELBE eine Load beantwortet jetzt zwei Fragen — die Vertraulichkeit
-  // (unverändert, `classifyProvenanceConfidential` bleibt die reine, getestete Regel) UND den
-  // Subjektbezug des Modelllaufs. Kein zweiter Datenbankzugriff, keine geänderte Ladebedingung.
-  //
-  // WICHTIG für die Ehrlichkeit des Subjekts: `subject.id` ist die Kennung des GEFUNDENEN KOs aus
-  // dem Bestand (`stored.id`), NIE die vom Client gelieferte Zeichenkette. Eine unbekannte oder
-  // frei erfundene koId erzeugt damit KEINEN Subjektbezug — sie kann weder einen falschen Bezug
-  // vortäuschen noch beliebigen Text ins Protokoll tragen.
-  //
-  // ==============================================================================================
-  // JOB 2692 D1 (Review-Befund 17) — DIE GESPEICHERTE STUFE HEBT. SIE SENKT NIE.
-  // ==============================================================================================
-  //
-  // BIS 2692 zählte bei `source:"draft"` allein die Client-Deklaration: Der Entwurf, aus dem der
-  // Text stammt, wurde nie geladen — ein Aufruf, der „intern" behauptete, bekam die Cloud, auch
-  // wenn der Entwurf als „vertraulich" gespeichert war. Dasselbe galt für die Bildbeschreibung,
-  // die über die Bestandsfassade `resolveConfidential` DIESELBE Stelle durchläuft (die Fassade ist
-  // nur ein Rumpf um `resolveProvenance`; sie hat keine eigene Regel, deshalb ist sie erweiterbar,
-  // ohne einen Aufrufer zu ändern — beide Punkte des Auftrags landen an EINER Stelle).
-  //
-  // JETZT: eine mitgelieferte `draftId` wird — wie die `koId` — geladen, und die im Entwurf
-  // gespeicherte Stufe ist ein zweiter HEBENDER Backstop. Regeln, unverändert aus Round 4:
-  //   * hebt nur: gespeichert „vertraulich"/„streng_vertraulich" macht auch „intern" deklarierten
-  //     Text vertraulich; ein interner, unbekannter oder stufenloser Entwurf senkt NIE;
-  //   * keine Sichtbarkeitsprüfung, wie bei der koId: die Stufe wird nur zum HEBEN gelesen und
-  //     verlässt den Server nicht — ein Entwurf, den der Aufrufer nicht sehen dürfte, kann ihm
-  //     dadurch nur die Cloud nehmen, nie etwas geben;
-  //   * was eine FEHLENDE Stufe bedeutet, entscheidet diese Stelle NICHT (offene Frage bei Pedi,
-  //     E-VERTRAULICHKEIT-OHNE-STUFE-20260828): `confidentiality` undefined im Entwurf → kein
-  //     Backstop, die Deklaration des Clients gilt wie bisher.
-  //
-  // UND DER KA4-RIEGEL (Pedis Weiche vom 18.08.2026: „Externe KI mit Dokumenttext: JA, aber nie
-  // still. Je Dokument eine ausdrückliche Einwilligung"): Trägt die Anfrage eine Klara-Bindung
-  // (mindestens eine der drei Kopfzeilen), entscheidet ALLEIN das bestehende Ausführungstor
-  // (`ka4Freigabe`, dieselbe Funktion wie auf /api/ask), ob die Cloud erreicht werden darf. Ohne
-  // bestätigte Einwilligung — fehlender Dienst, unvollständige Bindung, fremde Sitzung, Fehler,
-  // `erlaubt:false` — gilt der Aufruf als vertraulich: kein Egress. Fail-closed in jeder Richtung.
-  // Eine Anfrage OHNE Bindung ist der Konsolen-Normalfall (Capture, Studio, Detail) und bleibt
-  // byteweise wie vor 2692: Dort gibt es kein Dokument im Sinne von KA4, über das eingewilligt
-  // werden könnte; der Vertraulichkeitsfilter darüber trägt unverändert.
+  // Ein Load je Anker liefert die hebende Stufe und den echten Subjektbezug. Keine frei
+  // gelieferte Kennung wird als gefundenes Subjekt ausgegeben. Ohne Klara-Bindung bleibt der
+  // Konsolenvertrag erhalten; mit Bindung schließen fehlender Dienst, Fehler und Ablehnung.
   const resolveProvenance = async (
     source: unknown,
     koId: unknown,
@@ -181,7 +142,20 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
         };
       }
     }
-    let confidential = classifyProvenanceConfidential(source, declared, backstop);
+    const gebunden = klaraBindungVorhanden(bindung.headers);
+    const dokumentZustimmung =
+      gebunden &&
+      (await ka4Freigabe(
+        ka4,
+        bindung.headers,
+        bindung.actorId,
+        bindung.log,
+        "reasoner.ka4.dokument-consent",
+      ));
+    let confidential = classifyProvenanceConfidential(source, declared, backstop, {
+      dokumentZustimmung: bindung.inhalt === "text" && dokumentZustimmung,
+      nichtEingestuft: bindung.nichtEingestuft,
+    });
     // ==========================================================================================
     // JOB 2692 D2 — OHNE AUFLÖSBAREN ANKER GILT „draft" ALS VERTRAULICH.
     // ==========================================================================================
@@ -205,16 +179,8 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
     if (source === "draft" && !ankerAufgeloest) {
       confidential = true;
     }
-    // JOB 2692 D1: der KA4-Riegel — nur bei Klara-Bindung, dort ohne Ausnahme.
-    if (!confidential && klaraBindungVorhanden(bindung.headers)) {
-      const erlaubt = await ka4Freigabe(
-        ka4,
-        bindung.headers,
-        bindung.actorId,
-        bindung.log,
-        "reasoner.ka4.dokument-consent",
-      );
-      confidential = !erlaubt;
+    if (gebunden && !dokumentZustimmung) {
+      confidential = true;
     }
     return {
       confidential,
@@ -248,14 +214,12 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
         // SCRUM-451: Ergebnis-Sprache für 'extract' — "system" (Default, UI-Sprache) oder
         // "source" (Sprache des Dokuments, nichts übersetzen).
         outputLanguage?: "system" | "source";
-        // SCRUM-502 Round 4: Herkunft des VERARBEITETEN Textes. Da die Reasoner-Aktionen immer
-        // client-gelieferten Text bearbeiten, sind nur die Text-Quellen gültig: `draft` (Editor/
-        // getippt) und `transient-document` (Upload) — beide mit AKTUELLER `confidentiality` (Pflicht,
-        // inkl. "intern"). Optionale `koId` ist NUR ein hebender Backstop (Downgrade-Schutz), nie ein
-        // Freigabe-Anker. Fehlt/ungültig → fail-safe vertraulich.
+        // Herkunft des verarbeiteten Textes; die gemeinsame Regel bewertet die Deklaration.
+        // koId bleibt ein ausschließlich hebender Backstop.
         source?: "draft" | "transient-document";
         koId?: string;
         confidentiality?: Confidentiality;
+        nichtEingestuft?: unknown;
         // JOB 2692 D1: Kennung des gespeicherten Entwurfs, aus dem der Text/das Bild stammt — nur
         // ein hebender Backstop (die gespeicherte Stufe hebt, senkt nie), nie ein Freigabe-Anker.
         draftId?: string;
@@ -275,7 +239,9 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
           request.body.koId,
           request.body.confidentiality,
           {
+            inhalt: "text",
             draftId: request.body.draftId,
+            nichtEingestuft: request.body.nichtEingestuft,
             actorId: user.id,
             headers: request.headers,
             log: request.log,
@@ -320,7 +286,9 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
           request.body.koId,
           request.body.confidentiality,
           {
+            inhalt: "text",
             draftId: request.body.draftId,
+            nichtEingestuft: request.body.nichtEingestuft,
             actorId: user.id,
             headers: request.headers,
             log: request.log,
@@ -340,7 +308,9 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
           request.body.koId,
           request.body.confidentiality,
           {
+            inhalt: "text",
             draftId: request.body.draftId,
+            nichtEingestuft: request.body.nichtEingestuft,
             actorId: user.id,
             headers: request.headers,
             log: request.log,
@@ -384,7 +354,9 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
           request.body.koId,
           request.body.confidentiality,
           {
+            inhalt: "text",
             draftId: request.body.draftId,
+            nichtEingestuft: request.body.nichtEingestuft,
             actorId: user.id,
             headers: request.headers,
             log: request.log,
@@ -428,11 +400,12 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
       Body: {
         dataUrl?: string;
         locale?: "de" | "en";
-        // SCRUM-502 Round 4: gleiche Provenienz-Regeln wie der Text-Dispatcher — vertrauliche
-        // Entwürfe erreichen die Cloud (den einzigen Vision-Client) nie.
+        // Bild-Einstufungen bleiben fail-closed: Dokumentzustimmung hebt hier weder eine
+        // fehlende Stufe noch den Textmarker; ausdrückliches intern behält den KA4-Riegel.
         source?: "draft" | "transient-document";
         koId?: string;
         confidentiality?: Confidentiality;
+        nichtEingestuft?: unknown;
         // JOB 2692 D1: Kennung des gespeicherten Entwurfs, aus dem der Text/das Bild stammt — nur
         // ein hebender Backstop (die gespeicherte Stufe hebt, senkt nie), nie ein Freigabe-Anker.
         draftId?: string;
@@ -479,7 +452,9 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
           request.body.koId,
           request.body.confidentiality,
           {
+            inhalt: "bild",
             draftId: request.body.draftId,
+            nichtEingestuft: request.body.nichtEingestuft,
             actorId: user.id,
             headers: request.headers,
             log: request.log,
