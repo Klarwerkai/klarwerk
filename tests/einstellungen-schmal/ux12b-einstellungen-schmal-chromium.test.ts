@@ -1,5 +1,11 @@
 // ================================================================================================
-// JOB 3155 · UX-12b — DIE EINSTELLUNGEN AUF DEM TELEFON: GEMESSEN, NICHT GERECHNET.
+// JOB 3175 · UX-12c — UNABHÄNGIGE DE/EN-MESSUNGEN DER SCHMALEN EINSTELLUNGEN.
+// Arbeitsbasis VOR dem externen Rebase: a50b23f9b23f695e4821603ee2b6596699741706.
+// Der unmittelbare Elterncommit des Prüfstands NACH dem Rebase ist hier noch nicht bekannt;
+// vor der Abnahme nachführen (keine Gleichsetzung mit dieser Arbeitsbasis).
+// Letzte grüne Auslieferung JOB 3155: 1.0.0-beta.1.153, Archiv-LIVE laut
+// gespraech/CODEX-ANTWORT-79.md:7. Hiesiger Quellstand: 1.0.0-beta.1.155.
+// Ohne apps/web/dist gibt es ausdrücklich keine gemessene Browser-/Auslieferungsversion.
 // ================================================================================================
 //
 // WARUM ES DIESE DATEI GIBT. Der Prüfer von JOB 3124 hat den Rest, den dieser Auftrag schliesst,
@@ -20,28 +26,23 @@
 // wie `tests/rollenvorschau-sperre/rollenraster-schmal-chromium.test.ts`. Kein jsdom für eine
 // Breitenaussage: jsdom hat keine Layout-Maschine, jede Zahl daraus wäre erfunden.
 //
-//   S1  320 px, DE — die Inhaltsspalte misst mindestens 240 px (75 % des Fensters) statt ~30 px.
-//   S2  390 px, DE — mindestens 292 px statt ~100 px.
-//   S3  320 px, DE — kein seitlicher Überlauf; jeder Reiter ganz lesbar, ≥ 40 px hoch, ohne
-//       Ellipse, ohne Überlappung, und der letzte Reiter ohne Mausrad erreichbar.
-//   S4  320 px, EN — dieselbe Messung mit den längeren englischen Beschriftungen.
-//   S5  1280 px, DE — die 200-px-Reiterspalte steht weiterhin LINKS NEBEN dem Inhalt. Dieser Fall
-//       ist HEUTE GRÜN und ist die Sperre gegen „schmal repariert, breit kaputt".
-//   S6  320/390 px, DE — das Rollenraster aus JOB 3124 an derselben Stelle nachgemessen: die
-//       Zusage von damals darf sich nicht verschlechtern, nur verbessern.
-//   T1  320 px, DE — echte `Tab`-Anschläge des Browsers durch alle Reiter in den Inhalt, und
-//       `Shift+Tab` zurück. Ohne diesen Fall wäre „Reiterspalte schmal ausblenden" eine grüne
-//       Halbheit.
-//   G   320 px — DIE GEGENPROBE LÄUFT DAUERHAFT MIT: der alte Vertrag (`width: 200px;
-//       flex-shrink: 0` an der Reiterspalte, `flex-direction: row; flex-wrap: nowrap` an der
-//       Elternzeile) wird per `style` wieder eingesetzt, und S1 MUSS dann wieder rot werden.
-//       Ein Test, der auch mit dem alten Layout grün bliebe, misst die falsche Sache.
+//   S1/S2/S3/S4: unabhängige Paare 320/360/390 px × DE/EN, jeweils ≥ 75 % Inhalt.
+//   S5: unveränderte 200-px-Spalte links bei 1280 px DE. B1/B2: Weiche 639/640 px DE.
+//   S6: Rollenraster der Admin-Einstellungen bei 320/390 px × DE/EN; die Rollensperre
+//       selbst gehört weiterhin ausschließlich tests/rollenvorschau-sperre (JOB 3173).
+//   T1: Tab durch vier namentlich geprüfte Reiter in den Inhalt, Shift+Tab zurück, DE/EN.
+//   L1: echter page.reload() trägt EN und die Rückkehr DE, bei 320/360/390 px.
+//   R1–R4: Laufzeitstörungen am ORIGINALDOM aus Seite.tsx, mit geprüftem Rückbau:
+//       alte 200-px-Zeile, immer schmale Weiche, tabindex=-1, DE-Messung im EN-Speicher.
+//       Sie prüfen dauerhaft die Ablehnung durch dieselben Zusicherungen. Für eine rote
+//       Vitest-Ausgabe ohne Teständerung: KLARWERK_UX12C_GEGENPROBE=R1 (bzw. R2/R3/R4)
+//       und -t 'R1' (bzw. R2/R3/R4); die erkannte Assertion wird dann weitergeworfen.
 //
 // EIN BROWSER, EINE INSTANZ JE DATEI (s. Kopf von `tests/design/h6-chromium.ts`), und jeder Hook,
 // der Browser oder App auf- oder abbaut, bekommt einen EIGENEN Zeitrahmen — Vitest gibt Hooks sonst
 // 10 s, unabhängig von `testTimeout`, und die Datei wird rot, obwohl jede Prüfung grün ist
 // (Lehre JOB 3130 R5).
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   type Seite,
   type Stand,
@@ -54,12 +55,20 @@ import {
 
 /** Die vier Reiter der Adminfläche (`adm.sec.*`), in der Reihenfolge von `ADMIN_SECTIONS`. */
 const REITER_DE = ["Konten", "KI", "Daten", "Sicherheit"] as const;
-/** Dieselben vier auf Englisch — sie sind länger und hüten Lieferung 3 und 4 gegen die Länge. */
+/** Dieselben vier auf Englisch (`adm.sec.*`). */
 const REITER_EN = ["Accounts", "AI", "Data", "Security"] as const;
 /** Der Reiter, unter dem die Zeile „Ansicht als Rolle" wohnt (`adm.sec.konten`, de). */
 const RASTER_REITER = "Konten";
 /** Die vollen Rollennamen (`role.name.*`, de) in der Reihenfolge von `ROLES` — JOB 3124. */
 const ROLLEN = ["Betrachter", "Experte", "Controller", "Administrator"] as const;
+/** Englischer Reiter der Rollenvorschau (`adm.sec.konten`, en). */
+const RASTER_REITER_EN = "Accounts";
+/** Volle englische Rollennamen (`role.name.*`, en), Reihenfolge von `ROLES`. */
+const ROLLEN_EN = ["Viewer", "Expert", "Controller", "Administrator"] as const;
+type Sprache = "de" | "en";
+type Messschluessel = `${number}/${Sprache}`;
+type Stoerung = "alt" | "schmal" | null;
+const REITER = { de: REITER_DE, en: REITER_EN } as const;
 /** Der Sprachschalter des Produkts (`apps/web/src/lib/sprachwahl.ts:23`). */
 const SPRACHE_STORAGE_KEY = "kw.sprache";
 
@@ -101,6 +110,7 @@ interface Messung {
 }
 
 interface Rastermass {
+  sprache: string;
   fehler: string | null;
   viewport: number;
   dokumentScrollWidth: number;
@@ -177,10 +187,13 @@ const MESSEN = `(async ([stoerung]) => {
   if (zeile === null) return Object.assign({ fehler: 'die Aufteilungszeile fehlt' }, leer);
 
   // Der alte Vertrag, an genau denselben Elementen — oder sein Abräumen.
-  leisteVor.style.width = stoerung ? '200px' : '';
-  leisteVor.style.flexShrink = stoerung ? '0' : '';
-  zeile.style.flexDirection = stoerung ? 'row' : '';
-  zeile.style.flexWrap = stoerung ? 'nowrap' : '';
+  leisteVor.style.width = stoerung === 'alt' ? '200px' : stoerung === 'schmal' ? '100%' : '';
+  leisteVor.style.flexShrink = stoerung === 'alt' ? '0' : '';
+  leisteVor.style.flexDirection = stoerung === 'schmal' ? 'row' : '';
+  leisteVor.style.flexWrap = stoerung === 'schmal' ? 'wrap' : '';
+  zeile.style.flexDirection = stoerung === 'alt' ? 'row' : stoerung === 'schmal' ? 'column' : '';
+  zeile.style.flexWrap = stoerung === 'alt' ? 'nowrap' : '';
+  zeile.style.alignItems = stoerung === 'schmal' ? 'stretch' : '';
   await rahmen();
 
   // Frisch greifen: der Eingriff oben rendert nichts neu, aber gemessen wird, was JETZT im
@@ -233,7 +246,7 @@ const MESSEN_RASTER = `(async ([reiterName]) => {
     }
     return pruefung();
   };
-  const leer = { viewport: window.innerWidth, dokumentScrollWidth: 0, rasterBreite: 0, knoepfe: [] };
+  const leer = { sprache: document.documentElement.lang, viewport: window.innerWidth, dokumentScrollWidth: 0, rasterBreite: 0, knoepfe: [] };
 
   // Dieselbe Ruhe wie in MESSEN, aus demselben Grund: nach einem Breitenwechsel über 900 px baut
   // die Hülle sich neu auf, und der zuerst gegriffene Knoten haengt danach nicht mehr im Dokument.
@@ -293,6 +306,7 @@ const MESSEN_RASTER = `(async ([reiterName]) => {
     fehler: null,
     viewport: window.innerWidth,
     dokumentScrollWidth: document.documentElement.scrollWidth,
+    sprache: document.documentElement.lang,
     rasterBreite: knoepfe[0].parentElement.clientWidth,
     knoepfe: mass,
   };
@@ -300,6 +314,7 @@ const MESSEN_RASTER = `(async ([reiterName]) => {
 
 /** Was gerade den Fokus hat — der Beleg, dass die Tabreihenfolge wirklich dort ankommt. */
 interface Fokus {
+  name: string;
   tag: string;
   text: string;
   /** Der Index dieses Elements in `[data-einst="reiter"]` — `-1`, wenn es kein Reiter ist. */
@@ -310,10 +325,11 @@ interface Fokus {
 }
 const FOKUS = `() => {
   const a = document.activeElement;
-  if (!a) return { tag: '', text: '', reiterIndex: -1, imInhalt: false, boxShadow: '' };
+  if (!a) return { name: '', tag: '', text: '', reiterIndex: -1, imInhalt: false, boxShadow: '' };
   const reiter = [...document.querySelectorAll('[data-einst="reiter"]')];
   const spalte = document.querySelector('[data-einst="spalte"]');
   return {
+    name: a.getAttribute('aria-label') || a.querySelector('[data-einst="label"]')?.textContent.trim() || (a.textContent || '').trim(),
     tag: a.tagName.toLowerCase(),
     text: (a.textContent || '').replace(/\\s+/g, ' ').trim(),
     reiterIndex: reiter.indexOf(a),
@@ -329,39 +345,112 @@ const RING_OHNE_FOKUS = `() => {
 }`;
 
 let stand: Stand;
-const messungen = new Map<number, Messung>();
-const raster = new Map<number, Rastermass>();
+const messungen = new Map<Messschluessel, Messung>();
+const raster = new Map<Messschluessel, Rastermass>();
+const schluessel = (breite: number, sprache: Sprache): Messschluessel => `${breite}/${sprache}`;
 
 /** Die Seite roh — die Bühne reicht sie durch, ihr Typ nennt nur, was hier gebraucht wird. */
 function seiteRoh(): Seite & SeiteMitViewport & SeiteMitTastatur {
   const seite = stand.seite;
-  if (seite === null) {
+  if (seite === null || stand.fehler !== null) {
     throw new Error(`Bühne steht nicht: ${stand.fehler ?? "unbekannt"}`);
   }
   return seite as unknown as Seite & SeiteMitViewport & SeiteMitTastatur;
 }
 
-async function messen(breite: number, stoerung = false): Promise<Messung> {
-  const seite = seiteRoh();
-  await seite.setViewportSize({ width: breite, height: 740 });
-  return await seite.evaluate<Messung>(fn(MESSEN), [stoerung]);
+/** Jede Aufnahme UND jeder Speicherabruf prüft die tatsächliche Sprache und Breite. */
+function pruefeZuordnung(
+  m: { fehler: string | null; viewport: number; sprache: string },
+  breite: number,
+  sprache: Sprache,
+): void {
+  expect(m.fehler, `Messung ${schluessel(breite, sprache)}`).toBeNull();
+  expect(m.viewport, "falsche Messbreite im Speicher").toBe(breite);
+  expect(
+    m.sprache,
+    `die Sprachwahl griff nicht: ${schluessel(breite, sprache)} enthält ${m.sprache}`,
+  ).toBe(sprache);
 }
 
-async function messeRaster(breite: number): Promise<Rastermass> {
+async function messen(
+  breite: number,
+  sprache: Sprache,
+  stoerung: Stoerung = null,
+): Promise<Messung> {
   const seite = seiteRoh();
   await seite.setViewportSize({ width: breite, height: 740 });
-  return await seite.evaluate<Rastermass>(fn(MESSEN_RASTER), [RASTER_REITER]);
+  const m = await seite.evaluate<Messung>(fn(MESSEN), [stoerung]);
+  pruefeZuordnung(m, breite, sprache);
+  return m;
 }
 
-/** Die Sprachwahl des Produkts setzen und neu laden (`tests/profil-schmal/schmal-buehne.ts:226`). */
-async function setzeSprache(sprache: string): Promise<void> {
+async function messwert(breite: number, sprache: Sprache): Promise<Messung> {
+  const key = schluessel(breite, sprache);
+  const m = messungen.get(key) ?? (await messen(breite, sprache));
+  pruefeZuordnung(m, breite, sprache);
+  messungen.set(key, m);
+  return m;
+}
+
+async function messeRaster(breite: number, sprache: Sprache): Promise<Rastermass> {
+  const key = schluessel(breite, sprache);
+  const seite = seiteRoh();
+  await seite.setViewportSize({ width: breite, height: 740 });
+  const r =
+    raster.get(key) ??
+    (await seite.evaluate<Rastermass>(fn(MESSEN_RASTER), [
+      sprache === "de" ? RASTER_REITER : RASTER_REITER_EN,
+    ]));
+  pruefeZuordnung(r, breite, sprache);
+  raster.set(key, r);
+  return r;
+}
+
+/** Produktschlüssel setzen, anschließend neuer Dokumentaufbau über die echte Route. */
+async function setzeSprache(sprache: Sprache): Promise<void> {
   await seiteRoh().evaluate<null>(
-    fn(
-      "([schluessel, wert]) => { try { localStorage.setItem(schluessel, wert); } catch (e) {} return null; }",
-    ),
+    fn("([schluessel, wert]) => { localStorage.setItem(schluessel, wert); return null; }"),
     [SPRACHE_STORAGE_KEY, sprache],
   );
   await wechsle(stand, "/admin", '[data-einst="seite"]');
+  await pruefeSprache(sprache);
+}
+
+async function pruefeSprache(sprache: Sprache): Promise<void> {
+  const seite = seiteRoh();
+  const ist = await seite.evaluate<{
+    sprache: string;
+    gespeichert: string | null;
+    reiter: string[];
+  }>(
+    fn(`() => ({
+    sprache: document.documentElement.lang,
+    gespeichert: localStorage.getItem('${SPRACHE_STORAGE_KEY}'),
+    reiter: [...document.querySelectorAll('[data-einst="reiter"]')].map(b => b.textContent.trim()),
+  })`),
+  );
+  expect(ist.sprache, "die Sprachwahl griff nicht").toBe(sprache);
+  expect(ist.gespeichert, "die gespeicherte Sprachwahl stimmt nicht").toBe(sprache);
+  expect(ist.reiter, "die sichtbaren Reiter tragen die falsche Sprache").toEqual([
+    ...REITER[sprache],
+  ]);
+  expect(stand.seitenfehler, "die Seite hat selbst Fehler geworfen").toEqual([]);
+}
+
+/** Jeder Fall baut selbst auf und belegt im finally den DE-Rückweg, auch nach roter Assertion. */
+async function inSprache(
+  breite: number,
+  sprache: Sprache,
+  pruefung: () => Promise<void>,
+): Promise<void> {
+  const seite = seiteRoh();
+  try {
+    await seite.setViewportSize({ width: breite, height: 740 });
+    await setzeSprache(sprache);
+    await pruefung();
+  } finally {
+    await setzeSprache("de");
+  }
 }
 
 /** Überlappen sich zwei Kästen? (Berührung an der Kante zählt nicht.) */
@@ -375,7 +464,7 @@ function protokoll(m: Messung): string {
     `  Viewport ${m.viewport} px (lang=${m.sprache}) · Inhaltsspalte ${m.spalteBreite} px ` +
       `(${Math.round((m.spalteBreite / m.viewport) * 100)} % des Fensters), ${Math.round(m.spalteRect.hoehe)} px hoch`,
     `  Reiterleiste ${m.leisteBreite} px · scrollWidth ${m.leisteScrollWidth} px · overflow-x ${m.leisteOverflowX}`,
-    `  document.scrollWidth ${m.dokumentScrollWidth} px`,
+    `  document.scrollWidth ${m.dokumentScrollWidth} px · Überlauf ${Math.max(0, m.dokumentScrollWidth - m.viewport)} px`,
     ...m.reiter.map(
       (r) =>
         `    „${r.text}" — ${Math.round(r.rect.breite)}×${Math.round(r.rect.hoehe)} px, ` +
@@ -386,7 +475,7 @@ function protokoll(m: Messung): string {
 
 function rasterProtokoll(r: Rastermass): string {
   return [
-    `  Viewport ${r.viewport} px · Rollenraster ${r.rasterBreite} px`,
+    `  Viewport ${r.viewport} px (lang=${r.sprache}) · Rollenraster ${r.rasterBreite} px`,
     ...r.knoepfe.map(
       (k) =>
         `    „${k.text}" — ${Math.round(k.rect.breite)} px, client ${k.clientWidth} px, ` +
@@ -455,190 +544,372 @@ function pruefeSchmaleFlaeche(m: Messung, beschriftungen: readonly string[]): vo
   ).toBe(true);
 }
 
-describe("JOB 3155 UX-12b · die Einstellungen bei 320 und 390 px, in Chromium gemessen", () => {
+/** S5-Vertrag, auch für den gemessenen Umschaltpunkt bei 640 px. */
+function pruefeBreiteFlaeche(m: Messung): void {
+  expect(
+    m.leisteBreite,
+    `bei ${m.viewport} px: Reiterspalte ${m.leisteBreite} px statt 200 px`,
+  ).toBe(200);
+  expect(
+    m.leisteRect.rechts,
+    `bei ${m.viewport} px steht die Reiterspalte nicht LINKS vom Inhalt`,
+  ).toBeLessThanOrEqual(m.spalteRect.x + 1);
+  expect(
+    Math.abs(m.leisteRect.y - m.spalteRect.y),
+    "Reiterspalte und Inhalt haben nicht dieselbe Oberkante",
+  ).toBeLessThanOrEqual(1);
+  expect(
+    m.dokumentScrollWidth,
+    `die breite Seite läuft waagerecht über (${m.dokumentScrollWidth} px)`,
+  ).toBeLessThanOrEqual(m.viewport + 1);
+}
+
+function pruefeRaster(r: Rastermass, sprache: Sprache): void {
+  expect(r.knoepfe.map((k) => k.text)).toEqual([...(sprache === "de" ? ROLLEN : ROLLEN_EN)]);
+  expect(
+    r.dokumentScrollWidth,
+    "das geöffnete Rollenraster erzeugt Dokumentüberlauf",
+  ).toBeLessThanOrEqual(r.viewport + 1);
+  for (const k of r.knoepfe) {
+    expect(k.whiteSpace, `„${k.text}": white-space verhindert den Umbruch`).not.toBe("nowrap");
+    expect(k.textOverflow, `„${k.text}": text-overflow kürzt`).not.toBe("ellipsis");
+    expect(
+      k.scrollWidth,
+      `„${k.text}" läuft aus dem Knopf: scrollWidth ${k.scrollWidth} > clientWidth ${k.clientWidth}`,
+    ).toBeLessThanOrEqual(k.clientWidth);
+  }
+  for (let i = 0; i < r.knoepfe.length; i++) {
+    for (let j = i + 1; j < r.knoepfe.length; j++) {
+      const a = r.knoepfe[i] as Rastermass["knoepfe"][number];
+      const b = r.knoepfe[j] as Rastermass["knoepfe"][number];
+      expect(ueberlappt(a.rect, b.rect), `„${a.text}" und „${b.text}" überlappen sich`).toBe(false);
+    }
+  }
+  // JOB 3124: 30 px bei 320, 100 px bei 390 — nur Verbesserung erlaubt, in beiden Sprachen.
+  const vorher = r.viewport === 320 ? 30 : 100;
+  expect(
+    r.rasterBreite,
+    `das Rollenraster ist bei ${r.viewport} px auf ${r.rasterBreite} px geschrumpft (JOB 3124 mass ${vorher} px)`,
+  ).toBeGreaterThanOrEqual(vorher);
+}
+
+function logMessung(fall: string, m: Messung): void {
+  console.log(`JOB 3175 · ${fall}:\n${protokoll(m)}`);
+}
+
+/** Die erste Inhaltszeile ist das vom echten Backend angelegte Konto Pedi (starte). */
+async function tastaturweg(sprache: Sprache): Promise<void> {
+  const reiter: readonly string[] = REITER[sprache];
+  const seite = seiteRoh();
+  await seite.waitForFunction(
+    fn(
+      `() => [...document.querySelectorAll('[data-testid="flaeche-nutzer"] button [data-einst="label"]')].some(el => el.textContent === 'Pedi')`,
+    ),
+  );
+  const ohneFokus = await seite.evaluate<string>(fn(RING_OHNE_FOKUS));
+  const gesehen: string[] = [];
+  const schritt = async (taste: string): Promise<Fokus> => {
+    await seite.keyboard.press(taste);
+    const f = await seite.evaluate<Fokus>(fn(FOKUS));
+    console.log(`JOB 3175 · T1 ${sprache} · ${taste}: ${JSON.stringify(f)}`);
+    return f;
+  };
+  let inhalt: Fokus | undefined;
+  for (let i = 0; i < 60; i++) {
+    const f = await schritt("Tab");
+    if (f.reiterIndex >= 0) {
+      const soll = REITER[sprache][gesehen.length];
+      expect(f.text, `Tab erreicht Reiter „${soll}" nicht; Fokus: „${f.text}"`).toBe(soll);
+      expect(f.tag, `„${soll}" ist kein fokussierter Knopf`).toBe("button");
+      expect(
+        schattenLagen(f.boxShadow).length,
+        `„${soll}" zeichnet keinen sichtbaren Fokusring`,
+      ).toBeGreaterThan(schattenLagen(ohneFokus).length);
+      gesehen.push(f.text);
+    } else if (f.imInhalt) {
+      inhalt = f;
+      break;
+    }
+  }
+  for (const name of REITER[sprache]) {
+    expect(
+      gesehen,
+      `Tab erreicht Reiter „${name}" nicht; letzter Fokus: „${inhalt?.text ?? "kein Inhalt"}"`,
+    ).toContain(name);
+  }
+  expect(gesehen).toEqual([...REITER[sprache]]);
+  expect(inhalt?.tag, "Tab kommt nicht auf dem Inhaltsknopf Pedi an").toBe("button");
+  expect(inhalt?.name, "Tab kommt nicht auf dem Inhaltsknopf Pedi an").toBe("Pedi");
+  // Jeden Rückwärtsschritt benennen und prüfen, bis wieder der erste Reiter erreicht ist.
+  for (const name of [...REITER[sprache]].reverse()) {
+    const f = await schritt("Shift+Tab");
+    expect(f.text, `Shift+Tab erreicht Reiter „${name}" nicht; Fokus: „${f.text}"`).toBe(name);
+    expect(f.reiterIndex).toBe(reiter.indexOf(name));
+    expect(
+      schattenLagen(f.boxShadow).length,
+      `„${name}" zeichnet rückwärts keinen Fokusring`,
+    ).toBeGreaterThan(schattenLagen(ohneFokus).length);
+  }
+}
+
+/** Echter Browser-Reload, einschließlich Nachweis des ausgetauschten Dokuments. */
+async function neuLaden(sprache: Sprache): Promise<void> {
+  const seite = seiteRoh() as ReturnType<typeof seiteRoh> & {
+    reload(opts: { waitUntil: string; timeout: number }): Promise<unknown>;
+  };
+  await seite.evaluate(fn('() => { document.documentElement.dataset.ux12cVorReload = "ja"; }'));
+  await seite.reload({ waitUntil: "load", timeout: 60_000 });
+  await seite.waitForFunction(
+    fn("() => document.querySelectorAll('[data-einst=\"reiter\"]').length === 4"),
+  );
+  expect(
+    await seite.evaluate(fn("() => document.documentElement.dataset.ux12cVorReload ?? null")),
+    "Reload hat das Dokument nicht ersetzt",
+  ).toBeNull();
+  expect(
+    await seite.evaluate(fn('() => performance.getEntriesByType("navigation")[0].type')),
+    "kein echter Browser-Reload",
+  ).toBe("reload");
+  await pruefeSprache(sprache);
+}
+
+/** Nur die erwartete fachliche Assertion zählt; Bühnenfehler dürfen keine Gegenprobe bestehen. */
+async function erwarteRot(
+  id: string,
+  pruefung: () => void | Promise<void>,
+  meldung: RegExp,
+): Promise<void> {
+  let fehler: unknown;
+  try {
+    await pruefung();
+  } catch (e) {
+    fehler = e;
+  }
+  expect(fehler, `${id}: die Störung wurde nicht erkannt`).toBeInstanceOf(Error);
+  expect(String(fehler), `${id}: falscher Rotgrund`).toMatch(meldung);
+  console.log(`JOB 3175 · ${id} ROT: ${String(fehler)}`);
+  if (process.env.KLARWERK_UX12C_GEGENPROBE === id) throw fehler;
+}
+
+describe("JOB 3175 UX-12c · unabhängige DE/EN-Einstellungen in Chromium", () => {
   beforeAll(async () => {
     stand = await starte("/admin", '[data-einst="seite"]', 320, 740);
-    if (stand.fehler === null) {
-      messungen.set(320, await messen(320));
-      messungen.set(390, await messen(390));
-      messungen.set(1280, await messen(1280));
-      raster.set(320, await messeRaster(320));
-      raster.set(390, await messeRaster(390));
-    }
   }, 240_000);
 
   afterAll(async () => {
     await beende(stand);
   }, 60_000);
 
-  it("S0 · die Bühne steht: gebaute App, echtes Backend, Chromium", () => {
-    expect(stand.fehler, "Chromium-Bühne kam nicht hoch").toBeNull();
+  afterEach(async () => {
+    // Zusätzlich zum finally: keine EN-Vererbung an den nächsten Fall, kein später Seitenfehler.
+    if (stand.seite !== null && stand.fehler === null) await pruefeSprache("de");
     expect(stand.seitenfehler, "die Seite hat selbst Fehler geworfen").toEqual([]);
-    for (const breite of [320, 390, 1280]) {
-      const m = messungen.get(breite);
-      expect(m?.fehler, `Messung bei ${breite} px`).toBeNull();
-      expect(m?.viewport, `Viewport bei ${breite} px`).toBe(breite);
-      // eslint-disable-next-line no-console -- die Messwerte sind der Beleg der Rückgabe
-      console.log(`JOB 3155 · Einstellungshülle gemessen:\n${protokoll(m as Messung)}`);
+  }, 60_000);
+
+  it("S0 · die Bühne steht: gebaute App, echtes Backend, Chromium", async () => {
+    expect(stand.fehler, "Chromium-Bühne kam nicht hoch").toBeNull();
+    await setzeSprache("de");
+    console.log(`JOB 3175 · Chromium ${stand.version}`);
+  });
+
+  for (const sprache of ["de", "en"] as const) {
+    for (const breite of [320, 360, 390] as const) {
+      const fall =
+        sprache === "en"
+          ? `S4-EN${breite}`
+          : breite === 320
+            ? "S1/S3"
+            : breite === 390
+              ? "S2"
+              : "S360-DE";
+      it(`${fall} · ${breite} px ${sprache}: ≥ 75 % Inhalt, kein Überlauf, vier vollständig lesbare Reiter`, async () => {
+        await inSprache(breite, sprache, async () => {
+          const m = await messwert(breite, sprache);
+          logMessung(fall, m);
+          pruefeSchmaleFlaeche(m, REITER[sprache]);
+          expect(m.reiter.length, "vier Reiter — keiner darf schmal verschwinden").toBe(4);
+          expect(m.spalteBreite).toBeGreaterThanOrEqual(breite === 390 ? 292 : breite * 0.75);
+        });
+      }, 120_000);
     }
-  });
-
-  it("S1 · bei 320 px bekommt die Inhaltsspalte mindestens 240 px (heute ~30 px)", () => {
-    const m = messungen.get(320) as Messung;
-    expect(m.sprache, "S1 misst die deutsche Fläche").toBe("de");
-    pruefeSchmaleFlaeche(m, REITER_DE);
-    expect(m.spalteBreite).toBeGreaterThanOrEqual(240);
-  });
-
-  it("S2 · bei 390 px bekommt die Inhaltsspalte mindestens 292 px (heute ~100 px)", () => {
-    const m = messungen.get(390) as Messung;
-    pruefeSchmaleFlaeche(m, REITER_DE);
-    expect(m.spalteBreite).toBeGreaterThanOrEqual(292);
-  });
-
-  it("S3 · bei 320 px läuft nichts über, jeder Reiter ist lesbar, treffbar und ganz da", () => {
-    const m = messungen.get(320) as Messung;
-    // pruefeSchmaleFlaeche trägt die Zusicherungen; hier steht der Fall, der sie benennt.
-    pruefeSchmaleFlaeche(m, REITER_DE);
-    expect(m.reiter.length, "vier Reiter — keiner darf schmal verschwinden").toBe(4);
-  });
-
-  it("S4 · dieselbe Messung auf Englisch: die längeren Beschriftungen brechen nichts", async () => {
-    try {
-      await setzeSprache("en");
-      expect(stand.fehler, "die Adminansicht kam auf Englisch nicht hoch").toBeNull();
-      const m = await messen(320);
-      expect(m.fehler, "EN-Messung bei 320 px").toBeNull();
-      expect(m.sprache, "die Sprachwahl griff nicht").toBe("en");
-      // eslint-disable-next-line no-console -- der Beleg der Rückgabe
-      console.log(`JOB 3155 · Einstellungshülle EN gemessen:\n${protokoll(m)}`);
-      pruefeSchmaleFlaeche(m, REITER_EN);
-      expect(m.spalteBreite).toBeGreaterThanOrEqual(240);
-    } finally {
-      // Kein Fall erbt die fremde Sprache — auch dann nicht, wenn dieser hier rot geworden ist.
-      await setzeSprache("de");
+    for (const breite of [320, 390] as const) {
+      it(`S6 · ${breite} px ${sprache}: das Rollenraster trägt alle vollen Namen ungekürzt`, async () => {
+        await inSprache(breite, sprache, async () => {
+          const r = await messeRaster(breite, sprache);
+          // Frische Hüllenmessung bei geöffneter Detailkarte, keine Zahl vom anderen Zustand.
+          logMessung("S6", await messen(breite, sprache));
+          console.log(`JOB 3175 · S6:\n${rasterProtokoll(r)}`);
+          pruefeRaster(r, sprache);
+        });
+      }, 120_000);
     }
-  }, 120_000);
-
-  it("S5 · bei 1280 px bleibt die 200-px-Reiterspalte links neben dem Inhalt", () => {
-    const m = messungen.get(1280) as Messung;
-    expect(m.leisteBreite, "die breite Fläche hat ihre 200-px-Reiterspalte verloren").toBe(200);
-    expect(
-      m.leisteRect.rechts,
-      "die Reiterspalte steht bei 1280 px nicht mehr LINKS vom Inhalt",
-    ).toBeLessThanOrEqual(m.spalteRect.x + 1);
-    expect(
-      Math.abs(m.leisteRect.y - m.spalteRect.y),
-      "Reiterspalte und Inhalt haben bei 1280 px nicht mehr dieselbe Oberkante",
-    ).toBeLessThanOrEqual(1);
-    expect(
-      m.dokumentScrollWidth,
-      `die breite Seite läuft waagerecht über (${m.dokumentScrollWidth} px)`,
-    ).toBeLessThanOrEqual(1280 + 1);
-  });
-
-  for (const breite of [320, 390] as const) {
-    it(`S6 · bei ${breite} px trägt das Rollenraster aus JOB 3124 seine Namen weiterhin ungekürzt`, () => {
-      const r = raster.get(breite) as Rastermass;
-      expect(r.fehler, `Rastermessung bei ${breite} px`).toBeNull();
-      expect(r.viewport).toBe(breite);
-      // eslint-disable-next-line no-console -- Lieferung 7: die Zahlen gehören in die Rückgabe
-      console.log(`JOB 3155 · Rollenraster nachgemessen:\n${rasterProtokoll(r)}`);
-      expect(r.knoepfe.map((k) => k.text)).toEqual([...ROLLEN]);
-      for (const k of r.knoepfe) {
-        expect(k.whiteSpace, `„${k.text}": white-space verhindert den Umbruch`).not.toBe("nowrap");
-        expect(k.textOverflow, `„${k.text}": text-overflow kürzt`).not.toBe("ellipsis");
-        expect(
-          k.scrollWidth,
-          `„${k.text}" läuft aus dem Knopf: scrollWidth ${k.scrollWidth} > clientWidth ${k.clientWidth}`,
-        ).toBeLessThanOrEqual(k.clientWidth);
-      }
-      for (let i = 0; i < r.knoepfe.length; i++) {
-        for (let j = i + 1; j < r.knoepfe.length; j++) {
-          const a = r.knoepfe[i] as Rastermass["knoepfe"][number];
-          const b = r.knoepfe[j] as Rastermass["knoepfe"][number];
-          expect(ueberlappt(a.rect, b.rect), `„${a.text}" und „${b.text}" überlappen sich`).toBe(
-            false,
-          );
-        }
-      }
-      // Die Zusage von JOB 3124 darf sich nur VERBESSERN: gemessen wurden damals 30 px (320 px)
-      // und 100 px (390 px) Rasterbreite (`archiv/3124/runde-4/ben.md:26`).
-      const vorher = breite === 320 ? 30 : 100;
-      expect(
-        r.rasterBreite,
-        `das Rollenraster ist bei ${breite} px auf ${r.rasterBreite} px geschrumpft (JOB 3124 mass ${vorher} px)`,
-      ).toBeGreaterThanOrEqual(vorher);
-    });
+    it(`T1 · 320 px ${sprache}: Tab durch alle Reiter in den Inhalt, Shift+Tab zurück, sichtbarer Fokus`, async () => {
+      await inSprache(320, sprache, async () => {
+        logMessung("T1", await messen(320, sprache));
+        await tastaturweg(sprache);
+      });
+    }, 120_000);
   }
 
-  it("T1 · bei 320 px führt Tab durch jeden Reiter in den Inhalt, Shift+Tab wieder zurück", async () => {
-    const seite = seiteRoh();
-    await seite.setViewportSize({ width: 320, height: 740 });
-    // Frischer Aufbau: die Tabreihenfolge soll aus dem Nichts starten, nicht dort, wo eine
-    // vorherige Messung den Fokus liegen liess.
-    await wechsle(stand, "/admin", '[data-einst="seite"]');
-    expect(stand.fehler, "die Adminansicht kam nach dem Neuladen nicht hoch").toBeNull();
-    const ohneFokus = await seite.evaluate<string>(fn(RING_OHNE_FOKUS));
+  for (const breite of [639, 640, 1280] as const) {
+    const fall = breite === 639 ? "B1" : breite === 640 ? "B2" : "S5";
+    it(`${fall} · ${breite} px de: ${breite === 639 ? "Reiterleiste über dem Inhalt" : "200-px-Reiterspalte links neben dem Inhalt"}`, async () => {
+      await inSprache(breite, "de", async () => {
+        const m = await messwert(breite, "de");
+        logMessung(fall, m);
+        if (breite === 639) pruefeSchmaleFlaeche(m, REITER_DE);
+        else pruefeBreiteFlaeche(m);
+      });
+    }, 120_000);
+  }
 
-    const gesehen: number[] = [];
-    let inhaltNach = -1;
-    let ringLagen = 0;
-    for (let i = 1; i <= 60 && inhaltNach < 0; i++) {
-      await seite.keyboard.press("Tab");
-      const f = await seite.evaluate<Fokus>(fn(FOKUS));
-      if (f.reiterIndex >= 0) {
-        gesehen.push(f.reiterIndex);
-        ringLagen = Math.max(ringLagen, schattenLagen(f.boxShadow).length);
-        continue;
-      }
-      if (gesehen.length > 0 && f.imInhalt) {
-        inhaltNach = i;
-      }
-    }
-    expect(
-      gesehen,
-      "Tab erreicht nicht jeden Reiter in Lesereihenfolge — das wäre die Halbheit: Reiterleiste schmal ausgeblendet",
-    ).toEqual([0, 1, 2, 3]);
-    expect(
-      inhaltNach,
-      "nach dem letzten Reiter kam die Tabreihenfolge nicht im Inhalt an (`schritte === -1`)",
-    ).toBeGreaterThan(0);
-    // Der Fokusring kommt aus der globalen Regel (`apps/web/src/index.css`, Scheibe D-024) — hier
-    // wird gemessen, dass er wirklich zeichnet, statt es zu behaupten.
-    expect(
-      ringLagen,
-      `ein fokussierter Reiter zeichnet keinen sichtbaren Ring (ohne Fokus: ${ohneFokus})`,
-    ).toBeGreaterThan(schattenLagen(ohneFokus).length);
+  for (const breite of [320, 360, 390] as const) {
+    it(`L1 · ${breite} px: echter Reload trägt EN und die Rückkehr DE`, async () => {
+      await inSprache(breite, "en", async () => {
+        await neuLaden("en");
+        const en = await messen(breite, "en");
+        logMessung("L1 Reload EN", en);
+        pruefeSchmaleFlaeche(en, REITER_EN);
+        await setzeSprache("de");
+        await neuLaden("de");
+        const de = await messen(breite, "de");
+        logMessung("L1 Reload DE", de);
+        pruefeSchmaleFlaeche(de, REITER_DE);
+        // Beide Objekte stammen aus eigenen Dokumenten; auch ihr Inhalt muss sich unterscheiden.
+        expect(en).not.toBe(de);
+        expect(en.reiter.map((r) => r.text)).not.toEqual(de.reiter.map((r) => r.text));
+      });
+    }, 180_000);
+  }
 
-    await seite.keyboard.press("Shift+Tab");
-    const zurueck = await seite.evaluate<Fokus>(fn(FOKUS));
-    expect(zurueck.reiterIndex, "Shift+Tab führt nicht zum letzten Reiter zurück").toBe(3);
-    // eslint-disable-next-line no-console -- der Beleg der Rückgabe
-    console.log(
-      `JOB 3155 · Tastaturweg bei 320 px: Reiter in Lesereihenfolge ${gesehen.join(", ")} · ` +
-        `Inhalt nach ${inhaltNach} Anschlägen · Ring ${ringLagen} Lage(n)`,
-    );
+  // G aus JOB 3155 lebt in R1 bei 320/de fort, mit derselben Störung und Breitenzusage.
+  for (const [breite, sprache] of [
+    [320, "de"],
+    [360, "de"],
+    [360, "en"],
+    [390, "en"],
+  ] as const) {
+    it(`R1 · ${breite} px ${sprache}: die alte 200-px-Zeile macht die Spaltenzusage rot`, async () => {
+      await inSprache(breite, sprache, async () => {
+        const vorher = await messen(breite, sprache);
+        pruefeSchmaleFlaeche(vorher, REITER[sprache]);
+        try {
+          const kaputt = await messen(breite, sprache, "alt");
+          logMessung("R1 Störung", kaputt);
+          await erwarteRot(
+            "R1",
+            () => pruefeSchmaleFlaeche(kaputt, REITER[sprache]),
+            /die Inhaltsspalte misst bei \d+ px nur \d+ px/,
+          );
+        } finally {
+          const danach = await messen(breite, sprache);
+          pruefeSchmaleFlaeche(danach, REITER[sprache]);
+          expect(danach.spalteBreite, "R1: Breite nach Rücknahme verändert").toBe(
+            vorher.spalteBreite,
+          );
+        }
+      });
+    }, 120_000);
+  }
+
+  it("R2 · immer schmal: 639 px bleibt grün, 640 px verliert die linke Reiterspalte", async () => {
+    await inSprache(639, "de", async () => {
+      try {
+        const schmal = await messen(639, "de", "schmal");
+        logMessung("R2 Störung 639", schmal);
+        pruefeSchmaleFlaeche(schmal, REITER_DE);
+      } finally {
+        pruefeSchmaleFlaeche(await messen(639, "de"), REITER_DE);
+      }
+      const vorher = await messen(640, "de");
+      pruefeBreiteFlaeche(vorher);
+      try {
+        const kaputt = await messen(640, "de", "schmal");
+        logMessung("R2 Störung 640", kaputt);
+        await erwarteRot(
+          "R2",
+          () => pruefeBreiteFlaeche(kaputt),
+          /bei 640 px: Reiterspalte \d+ px statt 200 px/,
+        );
+      } finally {
+        const danach = await messen(640, "de");
+        pruefeBreiteFlaeche(danach);
+        expect(danach.spalteBreite, "R2: Breite nach Rücknahme verändert").toBe(
+          vorher.spalteBreite,
+        );
+      }
+    });
   }, 120_000);
 
-  it("G · Gegenprobe: mit dem alten Vertrag (200 px, nowrap) wird S1 wieder rot", async () => {
-    const kaputt = await messen(320, true);
-    expect(kaputt.fehler, "Gegenprobenmessung").toBeNull();
-    expect(
-      kaputt.spalteBreite,
-      `mit width:200px + flex-wrap:nowrap müsste die Inhaltsspalte unter 240 px fallen — sie misst ${kaputt.spalteBreite} px. Der Test misst sonst die falsche Sache.`,
-    ).toBeLessThan(240);
-    // eslint-disable-next-line no-console -- der Beleg, dass die Gegenprobe wirklich greift
-    console.log(
-      `JOB 3155 · Gegenprobe G bei 320 px: Inhaltsspalte ${kaputt.spalteBreite} px (alter Vertrag)`,
-    );
+  it("R3 · 320 px en: tabindex=-1 macht den englischen Tastaturweg rot und nennt Accounts", async () => {
+    await inSprache(320, "en", async () => {
+      const seite = seiteRoh();
+      try {
+        await seite.evaluate(
+          fn(
+            `() => document.querySelectorAll('[data-einst="reiter"]').forEach(b => b.setAttribute('tabindex', '-1'))`,
+          ),
+        );
+        expect(
+          await seite.evaluate(
+            fn(
+              `() => [...document.querySelectorAll('[data-einst="reiter"]')].map(b => b.getAttribute('tabindex'))`,
+            ),
+          ),
+        ).toEqual(["-1", "-1", "-1", "-1"]);
+        await erwarteRot("R3", () => tastaturweg("en"), /Tab erreicht Reiter „Accounts" nicht/);
+      } finally {
+        await seite.evaluate(
+          fn(
+            `() => document.querySelectorAll('[data-einst="reiter"]').forEach(b => b.removeAttribute('tabindex'))`,
+          ),
+        );
+        expect(
+          await seite.evaluate(
+            fn(
+              `() => [...document.querySelectorAll('[data-einst="reiter"]')].map(b => b.getAttribute('tabindex'))`,
+            ),
+          ),
+        ).toEqual([null, null, null, null]);
+        await setzeSprache("en");
+        await tastaturweg("en");
+      }
+    });
+  }, 180_000);
 
-    // Und der gesunde Zustand kommt zurück, sobald der Eingriff weg ist.
-    const geheilt = await messen(320);
-    expect(geheilt.fehler).toBeNull();
-    expect(
-      geheilt.spalteBreite,
-      "nach der Gegenprobe kam die volle Breite nicht zurück",
-    ).toBeGreaterThanOrEqual(240);
-  }, 120_000);
+  for (const art of ["Hülle", "Raster"] as const) {
+    it(`R4 · 390 px ${art}: die EN-Sprachkarte lehnt eine echte DE-Messung ab`, async () => {
+      await inSprache(390, "de", async () => {
+        const de = await messen(390, "de");
+        const deRaster = await messeRaster(390, "de");
+        await setzeSprache("en");
+        const key = schluessel(390, "en");
+        const vorher = messungen.get(key);
+        const rasterVorher = raster.get(key);
+        try {
+          // Historischer Erbfall: ECHTE DE-Zahlen unter dem angeforderten EN-Schlüssel.
+          // Keine erfundenen Messwerte und keine ausgetauschte Übersetzungstabelle.
+          if (art === "Hülle") messungen.set(key, de);
+          else raster.set(key, deRaster);
+          await erwarteRot(
+            "R4",
+            async () => {
+              if (art === "Hülle") await messwert(390, "en");
+              else await messeRaster(390, "en");
+            },
+            /die Sprachwahl griff nicht: 390\/en enthält de/,
+          );
+        } finally {
+          if (vorher) messungen.set(key, vorher);
+          else messungen.delete(key);
+          if (rasterVorher) raster.set(key, rasterVorher);
+          else raster.delete(key);
+          expect(messungen.get(key), "R4: Hüllenspeicher nicht wiederhergestellt").toBe(vorher);
+          expect(raster.get(key), "R4: Rasterspeicher nicht wiederhergestellt").toBe(rasterVorher);
+          logMessung("R4 Rücknahme EN", await messen(390, "en"));
+          pruefeZuordnung(await messeRaster(390, "en"), 390, "en");
+        }
+      });
+    }, 180_000);
+  }
 });
