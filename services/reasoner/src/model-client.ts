@@ -336,7 +336,34 @@ export interface ChatCompletionsModelConfig {
   // LLM schicken, dessen Bildfähigkeit niemand zugesagt hat — statt dort ehrlich zu scheitern.
   // Gesetzt wird das Feld an genau EINER Stelle: `openAiCloudClientFromEnv`.
   bildEingang?: boolean;
+  // JOB 3222: WELCHES FELD das Antwortbudget trägt (Begründung im Block unter dieser
+  // Schnittstelle, bei der Typdeklaration `BudgetFeld`). Ohne Angabe
+  // `max_tokens` — der Bestandsvertrag des EIGENEN lokalen Servers, byteweise unverändert. Gesetzt
+  // wird es an genau EINER Stelle: `openAiCloudClientFromEnv` (Konfigurationsart cloud:openai).
+  budgetFeld?: BudgetFeld;
 }
+
+// ================================================================================================
+// JOB 3222 (KI-OPENAI-400) — DAS ANTWORTBUDGET HEISST NICHT AN JEDER GEGENSTELLE GLEICH.
+// ================================================================================================
+//
+// Live gemessen (Codex a4e82a81, 07.09., Konfiguration `cloud:openai:gpt-6-astra`): der Ein-Wort-
+// Ping des Admin-Tests bekam HTTP 400, und dank JOB 3122 stand der Grund wörtlich dabei —
+// „Unsupported parameter: 'max_tokens' is not supported with this model. Use
+// 'max_completion_tokens' instead. (unsupported_parameter)". `max_completion_tokens` ist bei OpenAI
+// die Obergrenze EINSCHLIESSLICH der Reasoning-Tokens; `max_tokens` gilt dort als veraltet.
+//
+// Bei einem EIGENEN lokalen OpenAI-kompatiblen Server (vLLM, llama.cpp, Ollama, LM Studio) ist es
+// umgekehrt: dort trägt `max_tokens`, und ein neuer Name wäre ein neuer 400. Es gibt also nicht
+// EINEN richtigen Parameter, sondern einen JE KONFIGURATIONSART — und genau daran, VOR dem Aufruf,
+// wird er entschieden.
+//
+// AUSDRÜCKLICH NICHT so: keine Heuristik über den Fehlertext des Anbieters und keine Verhandlung
+// (erst das eine Feld, bei 400 das andere). Ein geratener zweiter Versuch verdoppelt jeden
+// Fehlerfall, verschiebt das Zeitlimit und macht aus einem klaren Befund eine Vermutung. Ein 400
+// bleibt deshalb ein Fehler mit Grund (JOB 3122), auch dieser.
+type BudgetFeld = "max_tokens" | "max_completion_tokens";
+const BUDGET_FELD_VORGABE: BudgetFeld = "max_tokens";
 
 // AUFTRAG-mega18 Block E (SCRUM-544): Antwortform von /chat/completions, so weit sie hier gelesen wird.
 // `finish_reason` wurde bisher gar nicht ausgewertet — genau deshalb war eine am Token-Limit
@@ -364,7 +391,17 @@ interface OpenAiChatChoice {
 // JOB 3090: `bezeichnung` benennt den Anbieter, der nichts geliefert hat. Vorgabe „Lokaler LLM"
 // (Bestandswortlaut); für ChatGPT steht dort „ChatGPT (OpenAI)". Der maschinenlesbare Teil
 // (`reason`, `finishReason`, `maxTokens`) ist davon unberührt.
-function requireChatContent(data: unknown, maxTokens: number, bezeichnung: string): string {
+//
+// JOB 3222: `budgetFeld` benennt im Diagnose-Detail das Feld, das WIRKLICH gesendet wurde. Die
+// Regeln darunter (finish_reason-Auswertung, die drei unterscheidbaren Gründe) sind unverändert —
+// nur der Name der Zahl folgt dem Request. „max_tokens=1024" über einen Aufruf, der
+// `max_completion_tokens` geschickt hat, wäre eine Aussage über ein Feld, das gar nicht vorkam.
+function requireChatContent(
+  data: unknown,
+  maxTokens: number,
+  bezeichnung: string,
+  budgetFeld: BudgetFeld,
+): string {
   const choice = (data as { choices?: OpenAiChatChoice[] } | null | undefined)?.choices?.[0];
   const message = choice?.message;
   const content = typeof message?.content === "string" ? message.content : "";
@@ -376,7 +413,7 @@ function requireChatContent(data: unknown, maxTokens: number, bezeichnung: strin
     (field) => typeof field === "string" && field.trim().length > 0,
   );
   // PII-frei: die Meldung trägt nur Metadaten (Budget, finish_reason) — nie Antwort- oder Denktext.
-  const detail = `max_tokens=${maxTokens}, finish_reason=${finishReason ?? "-"}`;
+  const detail = `${budgetFeld}=${maxTokens}, finish_reason=${finishReason ?? "-"}`;
   if (sawReasoning) {
     throw new ModelEmptyResponseError(
       `${bezeichnung} lieferte nur eine Denkphase (reasoning) ohne Antwortinhalt (${detail}).`,
@@ -495,6 +532,9 @@ export function openAiCompatibleClient(config: ChatCompletionsModelConfig): Mode
   const base = config.baseUrl.replace(/\/+$/, "");
   const timeoutMs = config.timeoutMs ?? DEFAULT_MODEL_TIMEOUT_MS;
   const bezeichnung = config.bezeichnung ?? "Lokaler LLM";
+  // JOB 3222: EINMAL entschieden, danach unveränderlich — die Konfigurationsart bestimmt das Feld,
+  // nicht die Antwort des Anbieters.
+  const budgetFeld: BudgetFeld = config.budgetFeld ?? BUDGET_FELD_VORGABE;
   // JOB 3100: GEMEINSAMER REQUEST-KERN für Text- UND Bildaufruf — genau wie `postMessages` auf der
   // Anthropic-Kante (s. o.). Text und Bild unterscheiden sich beim OpenAI-Vertrag AUSSCHLIESSLICH in
   // der Form von `messages`; alles andere (Zeitlimit, Bearer, res.ok, Verbrauchsmeldung,
@@ -521,7 +561,9 @@ export function openAiCompatibleClient(config: ChatCompletionsModelConfig): Mode
         },
         body: JSON.stringify({
           model: config.model,
-          max_tokens: budget,
+          // JOB 3222: GENAU EIN Budgetfeld je Anfrage, benannt von der Konfigurationsart. Nicht
+          // beide nebeneinander: OpenAI weist `max_tokens` mit 400 zurück, statt es zu übergehen.
+          [budgetFeld]: budget,
           messages,
         }),
         signal: controller.signal,
@@ -553,7 +595,7 @@ export function openAiCompatibleClient(config: ChatCompletionsModelConfig): Mode
       // AUFTRAG-mega18 Block E (SCRUM-544): kein stilles "" mehr — fehlender/leerer Antwortinhalt
       // wirft einen unterscheidbaren Fehler (reasoning-only / truncated / empty). Das gilt seit
       // JOB 3100 auch für den Bildweg: eine leere Bild-Antwort ist ein Fehler, kein Leerstring.
-      return requireChatContent(data, budget, bezeichnung);
+      return requireChatContent(data, budget, bezeichnung, budgetFeld);
     } catch (err) {
       // JOB 3122 RUNDE 2 (bens Korrekturpflicht 2): EIN EMPFANGENER STATUS IST DIE STÄRKERE AUSKUNFT.
       // Seit das Lesen des Fehlerkörpers (oben) im Fehlerweg liegt, kann das Zeitlimit AUCH DANN noch
@@ -769,6 +811,15 @@ function openAiCloudClientFromEnv(env: Record<string, string | undefined>): Anbi
       // der Bildauftrag scheitert und die Reasoner-Kette auf einen Anbieter ausweicht, der laut
       // derselben Entscheidung gar nicht mehr benutzt werden soll.
       bildEingang: true,
+      // JOB 3222: DIE EINE STELLE, an der die Konfigurationsart „cloud:openai" ihren eigenen
+      // Budgetparameter setzt. Live belegt (Codex a4e82a81): mit `max_tokens` antwortete
+      // `gpt-6-astra` auf JEDEN Aufruf mit 400 — auch auf den Ein-Wort-Ping des Admin-Tests.
+      // Ausdrücklich KEIN `maxTokensFloor` daneben: `max_completion_tokens` deckelt bei OpenAI
+      // Reasoning UND sichtbare Ausgabe, eine Untergrenze wäre also eine stillschweigende
+      // Kostenerhöhung bei einem Anbieter, der pro Token abrechnet — und es liegt kein gemessener
+      // Bedarf dafür vor. Verbraucht ein Modell sein Budget im Denken, meldet `requireChatContent`
+      // das ehrlich (200 mit leerem Inhalt → „am Token-Limit abgeschnitten"), statt es zu verstecken.
+      budgetFeld: "max_completion_tokens",
       ...(timeoutMs !== undefined ? { timeoutMs } : {}),
     }),
   };
