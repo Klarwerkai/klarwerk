@@ -129,6 +129,12 @@ describe("JOB 3131 T2 · der Bestand ueberlebt die Aufteilung in zwei Laeufe", (
     expect(holeRest()).toContain("tests/m3-dokumentweg-panel/quellenfund-im-panel.test.tsx");
     // JOB 3243 R2: der Wirkungsnachweis am echten Router gehört in denselben regulären Lauf.
     expect(holeRest()).toContain("tests/m3-dokumentweg-panel/w6-anschluss-echte-route.test.ts");
+    // JOB 3290: dieselbe Klasse wie der Pin darüber — der gemountete Prüfen-Filter ist eine
+    // .tsx-Datei OHNE JSX (jsdom, `createElement`, kein Chromium). Sie trägt den Sollvertrag zum
+    // Volltextfilter (`it.fails`) UND die Bindung der Beschriftung an das tatsächliche Verhalten;
+    // fiele sie still aus beiden Gruppen, bliebe der Befund aus Codex' Beleg
+    // 38-pruefen-volltext-ende.png ungedeckt und die Beschriftung ohne Wächter.
+    expect(holeRest()).toContain("tests/pruefen-volltext/pruefen-brett-gemountet.test.tsx");
   });
 
   it("V4 · der Verzeichnisgang der Konfiguration sieht denselben Bestand wie der Collector", () => {

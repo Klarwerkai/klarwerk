@@ -2816,7 +2816,25 @@ const de = {
   "val.kicker": "Validation Board",
   "val.intro":
     "Peer-Bewertung grün / gelb / rot. Ab der Schwelle (Standard 3× grün, 0× rot) gilt ein Objekt als validiert.",
-  "val.filter": "Volltext filtern …",
+  // ==============================================================================================
+  // JOB 3290 — HIER STAND „Volltext filtern …", UND DAS WAR MEHR, ALS DAS FELD KANN.
+  // ==============================================================================================
+  //
+  // Der Filter des Prüfbretts durchsucht Titel, Kernaussage, Bedingungen, Maßnahmen, Kategorie und
+  // Schlagwörter — NICHT den ausführlichen Inhalt (`apps/web/src/lib/validationFilters.ts`,
+  // `haystack`). Codex hat den Schaden gemessen (review26-bibliothek-pruefen 1/2, Beleg
+  // 38-pruefen-volltext-ende.png): der Endmarker `ENDE-REV26-065813` steht im Inhalt, die
+  // Bibliothek findet ihn, dieses Feld zweimal nicht — 0 Treffer. Und weil die Beschriftung
+  // „Volltext" versprach, war das Ergebnis nicht deutbar: fehlt die Marke, oder liest das Feld sie
+  // nur nicht? Genau diese Frage soll eine Beschriftung beantworten, nicht aufwerfen.
+  //
+  // DIE BESCHRIFTUNG NENNT DESHALB IHRE GRENZE, bis der Filter sie nicht mehr hat. Das ist die
+  // ausdrücklich vorgesehene Auflage des Auftrags („ist der Umfang bewusst enger, sagt die
+  // Beschriftung das"), keine Notlösung — und sie ist an das VERHALTEN gebunden, nicht an eine
+  // Meinung: `tests/pruefen-volltext/pruefen-brett-gemountet.test.tsx` (C4) misst zuerst, ob der
+  // Filter den Inhalt findet, und leitet daraus ab, was hier stehen MUSS. Wird der Inhalt eines
+  // Tages durchsucht, wird dieser Fall rot und verlangt die Rückkehr zu „Volltext filtern …".
+  "val.filter": "Filtern (ohne ausführlichen Inhalt) …",
   "val.filterAllTypes": "Alle Wissensarten",
   "val.filterAllCategories": "Alle Kategorien",
   "val.filterAllTags": "Alle Tags",
@@ -7904,7 +7922,8 @@ const en: typeof de = {
   "val.kicker": "Validation board",
   "val.intro":
     "Peer rating green / amber / red. At the threshold (default 3× green, 0× red) an object is validated.",
-  "val.filter": "Filter full text …",
+  // JOB 3290: names the same limit as the German label — the detailed content is not searched.
+  "val.filter": "Filter (without detailed content) …",
   "val.filterAllTypes": "All knowledge types",
   "val.filterAllCategories": "All categories",
   "val.filterAllTags": "All tags",
@@ -12557,7 +12576,9 @@ const nl: typeof de = {
   "val.kicker": "Validation Board",
   "val.intro":
     "Peer-beoordeling groen / geel / rood. Vanaf de drempel (standaard 3× groen, 0× rood) geldt een object als gevalideerd.",
-  "val.filter": "Volledige tekst filteren …",
+  // JOB 3290: noemt dezelfde grens als het Duitse/Engelse label — de uitgebreide inhoud wordt
+  // niet doorzocht.
+  "val.filter": "Filteren (zonder uitgebreide inhoud) …",
   "val.filterAllTypes": "Alle kennissoorten",
   "val.filterAllCategories": "Alle categorieën",
   "val.filterAllTags": "Alle tags",
