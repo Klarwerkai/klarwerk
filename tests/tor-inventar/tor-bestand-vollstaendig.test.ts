@@ -120,6 +120,9 @@ describe("JOB 3131 T2 · der Bestand ueberlebt die Aufteilung in zwei Laeufe", (
     expect(holeRest().length).toBeGreaterThan(0);
     // JOB 3229: der neue echte Add-in-Importvertrag muss im regulären Lauf bleiben.
     expect(holeRest()).toContain("tests/m5c-b-addin-bildunterschriften/route.test.ts");
+    // JOB 3267 (Q1): die Quellenwahrheit der Antwort ist ein jsdom-Lauf ohne Chromium — sie gehört
+    // in den regulären Aufruf und darf nicht still aus beiden Gruppen fallen.
+    expect(holeRest()).toContain("tests/q1-quellen-wahrheit/quellenwahrheit-mounted.test.tsx");
   });
 
   it("V4 · der Verzeichnisgang der Konfiguration sieht denselben Bestand wie der Collector", () => {

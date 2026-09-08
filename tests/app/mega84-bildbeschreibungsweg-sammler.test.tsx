@@ -1414,8 +1414,31 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // keine Bildbeschreibung an (kein `ANGEBOT_MUSTER`) und trägt keinen eigenen Titel (kein
     // `documentTitle`-Prop) — es erscheint nur in der Grundmenge. Die zwei Zahlen, an denen Stufe 2
     // wirklich hängt, bleiben unverändert: `anbieter` 1 und `traeger` 2.
+    //
+    // JOB 3267 · Q1 (Runde 4): `komponenten` von 349 auf 351 NACHGEZOGEN — am eigenen Lauf dieses
+    // Arbeitsbaums gemessen (der Test meldete zuerst `expected 351 to be 349`), nicht gerechnet.
+    // GENAU ZWEI Bauteile kommen hinzu, beide in `pages/Ask.tsx`:
+    //
+    //     + `VerwendungsPlakette` (Ask.tsx:228) — die Plakette „verwendet · nicht verwendet ·
+    //       Zuordnung unbekannt", die der Quellenchip UND die Quellenliste rendern.
+    //     + `PruefstandPlakette` (Ask.tsx:277) — dieselbe Bauform für die ZWEITE Aussage, den
+    //       Prüfstand („Offen"/„Validiert").
+    //
+    // Es sind HERAUSLÖSUNGEN, keine neuen Flächen: der Rumpf stand vorher zweimal abgeschrieben in
+    // der Karte und im Blatt. Sie sind der Weg, auf dem dieser Job die Auflage des
+    // Klassenbindungs-Wächters erfüllt (mega47, JOB 1181): je Zustand ein eigener Zweig mit fester
+    // Klassenkette statt eines berechneten `TON[zustand]` — ausgeschrieben an beiden Stellen wäre
+    // dasselbe Gerüst viermal abgetippt. Gemessen an diesem Arbeitsbaum trägt `pages/Ask.tsx` damit
+    // fünf Komponenten (`VerwendungsPlakette`, `PruefstandPlakette`, `MehrFlaechenInfo`,
+    // `MehrLueckenInfo`, `Ask`) statt drei.
+    //
+    // Für DIESEN Sammler gibt es nichts aufzulösen — er zählt. Keines der beiden Bauteile bietet
+    // eine Bildbeschreibung an (kein `ANGEBOT_MUSTER`) und keines trägt einen eigenen Titel (kein
+    // `documentTitle`-Prop); sie erscheinen nur in der Grundmenge. Die zwei Zahlen, an denen Stufe 2
+    // wirklich hängt, sind unverändert: `anbieter` 1 und `traeger` 2 (so gemeldet im selben Lauf:
+    // „351 Komponenten · 1 Anbieter · 2 Traeger").
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 349,
+      komponenten: 351,
       anbieter: 1,
       traeger: 2,
     });

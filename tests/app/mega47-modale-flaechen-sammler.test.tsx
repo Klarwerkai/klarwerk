@@ -3781,8 +3781,33 @@ describe("JOB 1181 · Klassenbindungen: aufgelöst oder gemeldet, kein dritter Z
     // Nachbar „Diktieren" trug diese Bauform schon (er ist eine der 217); er hat nur eine
     // Bedingung mehr im selben Ausdruck bekommen, also keine zweite Bindung. Keine ist
     // weggefallen.
+    // JOB 3267 (Q1): von 218 auf 217. GENAU EINE Bindung FÄLLT WEG, und sie fällt nicht aus der
+    // Erhebung, sondern aus der MELDUNG: sie ist ab jetzt auflösbar. Gemessen an diesem Arbeitsbaum,
+    // in Ask.tsx allein 13 offene vorher → 12 offene nachher, nicht gerechnet:
+    //
+    //     − pages/Ask.tsx:1603 (Basisstand) `shrink-0 rounded-pill … ${s.carrying ?
+    //           "bg-trust-pos-bg text-trust-pos-text" : "bg-hairline-soft text-muted-2"}`
+    //           — das alte zweiwertige Attributionskennzeichen der Quellenliste.
+    //
+    // An seine Stelle treten FÜNF Bindungen, die der Sammler ERFASST UND AUFLÖST (`offen: []`):
+    // Ask.tsx:246/258/269 (`VerwendungsPlakette`, je ein Zweig für verwendet · nicht verwendet ·
+    // Zuordnung unbekannt) und Ask.tsx:292/303 (`PruefstandPlakette`, validiert · sonst). Jede
+    // schreibt `className={`${PLAKETTE} ${TON_…}`}` — zwei Bezeichner, beide mit literalem Wert in
+    // derselben Datei, also vollständig auflösbar. Der Zustand entscheidet über den ZWEIG, nicht
+    // über den Klassennamen; berechnete Klassennamen (`TON[zustand]`) gibt es hier nicht mehr.
+    //
+    // WARUM SO (Steuerung, Nachführung 08.09. 01:10): Runde 1 hatte `${VERWENDUNG_TON[s.verwendung]}`
+    // geschrieben und damit ZWEI neue unauflösbare Bindungen erzeugt (218 → 220). Der Auftrag war,
+    // die Klassen auflösbar zu schreiben statt den Pin hochzusetzen. Das ist geschehen — und weil
+    // dabei auch das alte Ternär verschwindet, sinkt der Stand um eins.
+    //
+    // KEIN VORBEISCHREIBEN: die fünf Bindungen stehen in `ALLE_BINDUNGEN` (gemessen: mit den echten
+    // Klassenketten in `aufgeloest`), nicht daneben. Wer die Klassen in ein Attributobjekt oder in
+    // ein blosses `className="…"` ohne Ausdruck schöbe, nähme sie dem Sammler ganz weg — dann wäre
+    // dieser Zählstand geschönt. Die Erhaltungszusage oben (aufgelöst + offen == alle) hält beides
+    // zusammen.
     expect(UNAUFGELOEST.length, "es gibt heute unauflösbare Bindungen — das ist der Befund").toBe(
-      218,
+      217,
     );
     for (const b of UNAUFGELOEST) {
       expect(b.datei, "Meldung ohne Datei").toMatch(/^apps\/web\/src\/.+\.tsx?$/);

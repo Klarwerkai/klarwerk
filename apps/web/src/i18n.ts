@@ -2309,12 +2309,27 @@ const de = {
     "Die zuerst genannten Quellen haben die Antwort getragen; die übrigen wurden herangezogen, aber nicht verwendet.",
   "ask.attribution.unknown":
     "Welche dieser Quellen die Antwort getragen hat, ließ sich nicht zuordnen — die KI hat keine verwertbaren Quellenverweise geliefert. Die Liste zeigt deshalb alle herangezogenen Quellen ohne Kennzeichen, und ein „Hat geholfen“ ist hier nicht möglich.",
-  "ask.attribution.carrying.badge": "trägt",
+  // JOB 3267 Q1 — DREI ZUSTÄNDE, DREI WÖRTER, UND EIN VIERTES FÜR DEN PRÜFSTAND.
+  // Bis hierher gab es zwei Wörter („trägt"/„angesehen") für eine Frage, die drei Antworten hat;
+  // der dritte Zustand („wir wissen es nicht") stand nur als Satz ÜBER der Liste und fehlte an der
+  // einzelnen Quelle. Und der Prüfstand einer Quelle (offen/validiert) borgte sich das Wort der
+  // Nichtverwendung — die Ursache des Befunds aus der Vorführung (Codex 037f24c7, Ask.tsx:1208).
+  // Die Wörter heißen deshalb ab hier, was sie meinen, und der Prüfstand hat sein eigenes.
+  "ask.attribution.carrying.badge": "verwendet",
   "ask.attribution.carrying.hint":
-    "Diese Quelle trägt die Antwort: Die KI hat sich im Antworttext ausdrücklich auf sie berufen.",
-  "ask.attribution.consulted.badge": "angesehen",
+    "Verwendet: Die KI hat sich im Antworttext ausdrücklich auf diese Quelle berufen — ihre Fußnote steht im Text.",
+  "ask.attribution.consulted.badge": "nicht verwendet",
   "ask.attribution.consulted.hint":
-    "Herangezogen, aber nicht verwendet: Diese Quelle stand der KI zur Verfügung, kommt im Antworttext aber nicht vor.",
+    "Betrachtet, nicht verwendet: Diese Quelle stand der KI zur Verfügung; im Antworttext steht keine Fußnote zu ihr.",
+  "ask.attribution.unclear.badge": "unbekannt",
+  "ask.attribution.unclear.hint":
+    "Zuordnung unbekannt: Ob diese Quelle die Antwort getragen hat, lässt sich nicht belegen — die KI hat dazu keine verwertbare oder eine widersprüchliche Zuordnung geliefert.",
+  // Der PRÜFSTAND ist eine andere Frage als die Verwendung: „geprüft?" statt „verwendet?".
+  // `{{stand}}` trägt das kanonische Statuswort (`status.*`), damit hier kein zweites Vokabular
+  // für dieselben Zustände entsteht.
+  "ask.pruefstand.hint":
+    "Prüfstand dieser Quelle: {{stand}}. Das sagt nichts darüber, ob die Antwort sie verwendet hat.",
+  "ask.pruefstand.unbekannt": "Prüfstand unbekannt",
   // Paket 4 (nacht24): Quellen wie im Dokument — Status/Trust je Quelle + Auszug im Original-Format.
   "answerSource.trust": "Vertrauen {{n}}",
   "answerSource.excerptShow": "Auszug im Dokument-Format anzeigen",
@@ -7444,12 +7459,20 @@ const en: typeof de = {
     "The sources listed first carried the answer; the rest were consulted but not used.",
   "ask.attribution.unknown":
     "Which of these sources carried the answer could not be determined — the AI returned no usable source references. The list therefore shows all consulted sources without a marker, and “This helped” is not available here.",
-  "ask.attribution.carrying.badge": "carried",
+  // JOB 3267 Q1 — three states, three words, plus a fourth for the review status (see the German
+  // entry for the finding this fixes).
+  "ask.attribution.carrying.badge": "used",
   "ask.attribution.carrying.hint":
-    "This source carried the answer: the AI referred to it explicitly in the answer text.",
-  "ask.attribution.consulted.badge": "consulted",
+    "Used: the AI referred to this source explicitly in the answer text — its footnote is in the text.",
+  "ask.attribution.consulted.badge": "not used",
   "ask.attribution.consulted.hint":
-    "Consulted but not used: this source was available to the AI but does not appear in the answer text.",
+    "Consulted, not used: this source was available to the AI; no footnote in the answer text refers to it.",
+  "ask.attribution.unclear.badge": "unknown",
+  "ask.attribution.unclear.hint":
+    "Attribution unknown: whether this source carried the answer cannot be shown — the AI returned no usable, or a contradictory, attribution.",
+  "ask.pruefstand.hint":
+    "Review status of this source: {{stand}}. This says nothing about whether the answer used it.",
+  "ask.pruefstand.unbekannt": "Review status unknown",
   // Packet 4 (nacht24): sources like the document — status/trust per source + original-format excerpt.
   "answerSource.trust": "Trust {{n}}",
   "answerSource.excerptShow": "Show excerpt in document format",
@@ -12071,12 +12094,20 @@ const nl: typeof de = {
     "De eerstgenoemde bronnen hebben het antwoord gedragen; de overige zijn geraadpleegd maar niet gebruikt.",
   "ask.attribution.unknown":
     "Welke van deze bronnen het antwoord gedragen heeft, was niet toe te wijzen — de AI leverde geen bruikbare bronverwijzingen. De lijst toont daarom alle geraadpleegde bronnen zonder markering, en „Heeft geholpen” is hier niet mogelijk.",
-  "ask.attribution.carrying.badge": "draagt",
+  // JOB 3267 Q1 — drie toestanden, drie woorden, plus een vierde voor de toetsingsstand
+  // (zie de Duitse ingang voor de bevinding die hiermee is verholpen).
+  "ask.attribution.carrying.badge": "gebruikt",
   "ask.attribution.carrying.hint":
-    "Deze bron draagt het antwoord: de AI heeft er zich in de antwoordtekst uitdrukkelijk op beroepen.",
-  "ask.attribution.consulted.badge": "geraadpleegd",
+    "Gebruikt: de AI heeft zich in de antwoordtekst uitdrukkelijk op deze bron beroepen — haar voetnoot staat in de tekst.",
+  "ask.attribution.consulted.badge": "niet gebruikt",
   "ask.attribution.consulted.hint":
-    "Geraadpleegd maar niet gebruikt: deze bron was beschikbaar voor de AI maar komt niet voor in de antwoordtekst.",
+    "Geraadpleegd, niet gebruikt: deze bron was beschikbaar voor de AI; in de antwoordtekst staat geen voetnoot naar haar.",
+  "ask.attribution.unclear.badge": "onbekend",
+  "ask.attribution.unclear.hint":
+    "Toewijzing onbekend: of deze bron het antwoord gedragen heeft, is niet aan te tonen — de AI leverde daarvoor geen bruikbare of een tegenstrijdige toewijzing.",
+  "ask.pruefstand.hint":
+    "Toetsingsstand van deze bron: {{stand}}. Dat zegt niets over de vraag of het antwoord haar gebruikt heeft.",
+  "ask.pruefstand.unbekannt": "Toetsingsstand onbekend",
   // Pakket 4 (nacht24): bronnen zoals in het document — status/trust per bron + fragment in origineel formaat.
   "answerSource.trust": "Vertrouwen {{n}}",
   "answerSource.excerptShow": "Fragment in documentformaat tonen",

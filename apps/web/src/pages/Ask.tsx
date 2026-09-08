@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowRight, ArrowUp, Copy, FileText, Loader2, Mic, ThumbsUp } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
@@ -54,6 +54,9 @@ import { stepsBeyondSources, stepsWorthShowing } from "../lib/askSteps";
 import { answerReviewGuard } from "../lib/askView";
 import { captureGapHref, gapPrivacyNoticeKey } from "../lib/captureFromGap";
 import { demoHref, isDemoContext } from "../lib/demoPilotPath";
+// JOB 3267 Q1: der Prüfstand einer Quelle kommt aus der EINEN Ableitung, die auch Bibliothek und
+// KO-Detail lesen (JOB 3072 N4) — kein zweites Statusvokabular an der Fragenfläche.
+import { anzeigestatusAus } from "../lib/displayStatus";
 // AUFTRAG-mega33 A: die EINE effektive Antwort-Einstufung — Quelle jeder Einstufungs-Anzeige.
 import { conflictKnowledge, effectiveAnswer } from "../lib/effectiveAnswer";
 import { helpfulDisabled, helpfulLabel } from "../lib/helpfulSignal";
@@ -86,6 +89,223 @@ const EXPECT_TONE: Record<AskExpectationTone, string> = {
   answer: "bg-trust-pos-bg text-trust-pos-text",
   gap: "bg-trust-warn-bg text-trust-warn-text",
 };
+
+// ================================================================================================
+// JOB 3267 · Q1 — ZWEI FRAGEN, ZWEI ANTWORTEN: „VERWENDET?" IST NICHT „GEPRÜFT?".
+// ================================================================================================
+//
+// DER BEFUND (Codex 037f24c7, Live 1.174, m2-homeoffice-browser-en.json). Die englische Antwort
+// übernahm die Homeoffice-Regel samt Fußnote 1 — und der einzige Quelllink sagte im Tooltip
+// „Consulted but not used". Die Ursache war NICHT die Attribution: der gelbe Punkt am Chip zeigt
+// einen PRÜFSTAND (`validated === false`), und er bekam bedingungslos den Hinweis der
+// NICHTVERWENDUNG (`ask.attribution.consulted.hint`) — ohne `carrying` auch nur anzusehen. Zwei
+// verschiedene Fragen teilten sich ein Wort, und das Wort war für die tragende Quelle falsch.
+//
+// AB HIER SIND ES DREI ZUSTÄNDE, und der dritte ist der wichtige:
+//
+//   verwendet       Der Server nennt diese Quelle in `citedSources` (→ `carrying`).
+//   nichtVerwendet  Der Server hat eine TRAGFÄHIGE Zuordnung geliefert, diese Quelle steht nicht
+//                   darin — UND im Antworttext ist kein Referenzanker zu ihr gerendert.
+//   unbekannt       Alles andere: keine/leere Zuordnung (alter Server, Modell ohne verwertbare
+//                   Marke) ODER ein WIDERSPRUCH — im Text steht eine gerenderte Fußnote zu dieser
+//                   Quelle, die Zuordnung nennt sie aber nicht.
+//
+// WARUM DER WIDERSPRUCH NICHT ZU „NICHT VERWENDET" WIRD, sondern zu „unbekannt": eine sichtbare
+// Fußnote ist für den Leser eine Verwendung. Sagt die Auskunft daneben „nicht verwendet",
+// widerspricht die Seite sich selbst — genau der Fehler, den dieser Auftrag beseitigt. Umgekehrt
+// wäre „verwendet" eine Behauptung, die die Zuordnung nicht deckt. Bleibt die ehrliche dritte
+// Aussage. Sie ist ERREICHBAR und kein Papierfall: liefert der Server `citedSources` mit
+// Kennungen, die in `sources` nicht vorkommen, ist `tragend` undefiniert, `AntwortText` fällt auf
+// die Marken AUS DEM TEXT zurück (lib/answerMarkdown.ts, „DER DECKUNGSRÜCKFALL") — und die Chips
+// sagten bis hierher pauschal „angesehen".
+//
+// EINE FEHLENDE FUSSNOTE ALLEIN BEWEIST NICHTS (Codex 65f00f4e). Sie macht aus einer tragfähigen
+// „nicht genannt"-Zuordnung kein „unbekannt" — sonst wäre der Deckungsrückfall (tragende Quelle
+// ohne Klammer im Text) nicht mehr darstellbar. Deshalb steht die Fußnote nur auf der Seite des
+// WIDERSPRUCHS, nie als eigener Beweis.
+//
+// KEINE ZIFFERN- ODER TEXTHEURISTIK: die Zuordnung läuft über den GERENDERTEN Anker
+// (`sup[data-fussnote]`, gemessen am DOM) und die Stelle der Quell-ID in `result.sources` — dieselbe
+// Nummer, die der Chip trägt. Der Rohtext wird nicht durchsucht.
+type Verwendung = "verwendet" | "nichtVerwendet" | "unbekannt";
+
+// NICHTLEER IST NICHT TRAGFÄHIG (Ben, Runde 2 · Korrekturpflicht 1). `citationState` prüft nur, ob
+// `citedSources` überhaupt etwas enthält. Nennt der Server ausschliesslich Kennungen, die zu KEINER
+// Quelle dieser Antwort gehören, war das bis hierher „attributed" — und jede Quelle ohne Anker hiess
+// „nicht verwendet", obwohl keine einzige Kennung auflösbar ist. Das ist eine Negativaussage ohne
+// Beleg. Tragfähig ist die Zuordnung erst, wenn MINDESTENS EINE genannte Kennung eine Stelle in
+// `result.sources` hat — genau die Bedingung, die `tragendeNummern` (JOB 3064) schon zieht; sie wird
+// hier gelesen und nicht ein zweites Mal gerechnet. Eine gemischte Liste (eine gültige Kennung, eine
+// fremde) bleibt tragfähig: die Zuordnung ist dann nachweislich lesbar, und die fremde Kennung sagt
+// über die übrigen Zeilen nichts — deren Anker entscheidet weiter (der Widerspruchsfall unten).
+function verwendungsZustand(lage: {
+  /** Tragfähig = mindestens eine genannte Kennung ist eine Quelle dieser Antwort. */
+  zuordnungTragfaehig: boolean;
+  /** Diese Quelle steht in `citedSources` (aus `attributeSources`). */
+  carrying: boolean;
+  /** Die Chip-Nummer (Stelle in `result.sources`, 1-basiert); 0 = nicht auflösbar. */
+  nummer: number;
+  /** Wurden die gerenderten Marken schon gemessen? Vorher gibt es keine Grundlage. */
+  gemessen: boolean;
+  /** Die Nummern, die im Antworttext WIRKLICH als Fußnote stehen. */
+  marken: ReadonlySet<number>;
+}): Verwendung {
+  if (!lage.gemessen || !lage.zuordnungTragfaehig) {
+    return "unbekannt";
+  }
+  if (lage.carrying) {
+    return "verwendet";
+  }
+  // Ohne auflösbare Nummer lässt sich kein Anker gegen diese Quelle prüfen — dann wird die
+  // Negativaussage nicht behauptet.
+  if (lage.nummer < 1) {
+    return "unbekannt";
+  }
+  // DIE KONSISTENZREGEL, UND WAS SIE HEUTE WIRKLICH IST — ein ZWEITES Schloss, kein erstes.
+  //
+  // Steht im Antworttext eine gerenderte Fußnote zu dieser Quelle, während die Zuordnung sie nicht
+  // nennt, widerspräche „nicht verwendet" dem, was der Leser sieht. Dann gilt die schwächere,
+  // wahre Aussage.
+  //
+  // EHRLICH GEMESSEN (R3): mit dem heutigen Textsatz kann dieser Fall die Fläche nicht erreichen.
+  // `markiereFussnoten` (lib/answerMarkdown.ts:229–230) setzt eine Marke nur, wenn ihre Nummer in
+  // `tragend` steht — und `tragend` ist genau dann gesetzt, wenn die Zuordnung tragfähig ist. Über
+  // dieser Zeile ist sie das; also gehört jede gerenderte Marke einer genannten Quelle, und die
+  // Bedingung ist heute nie wahr. Sie bleibt trotzdem stehen: sie ist die Absicherung gegen eine
+  // Änderung an einem Textsatz, der NICHT dieser Fläche gehört. Der laufende Wächter dafür ist Q7
+  // in `tests/q1-quellen-wahrheit` — er misst die gerenderten Marken gegen das Wort am Chip über
+  // alle Lagen und wird rot, sobald der Textsatz eine nicht genannte Marke durchlässt.
+  return lage.marken.has(lage.nummer) ? "unbekannt" : "nichtVerwendet";
+}
+
+/** Das Wort am Chip und in der Quellenliste — je Zustand genau eines, DE/EN/NL. */
+const VERWENDUNG_BADGE: Record<Verwendung, string> = {
+  verwendet: "ask.attribution.carrying.badge",
+  nichtVerwendet: "ask.attribution.consulted.badge",
+  unbekannt: "ask.attribution.unclear.badge",
+};
+
+/** Die ganze Aussage — Tooltip und zugänglicher Name. */
+const VERWENDUNG_HINWEIS: Record<Verwendung, string> = {
+  verwendet: "ask.attribution.carrying.hint",
+  nichtVerwendet: "ask.attribution.consulted.hint",
+  unbekannt: "ask.attribution.unclear.hint",
+};
+
+/**
+ * Die Anker der Quellenliste. `ask-source-carrying`/`ask-source-consulted` bleiben WÖRTLICH
+ * erhalten (`tests/app/job2703-ask-trefferliste-und-panel.test.tsx:227` misst daran); neu ist
+ * allein der dritte Zustand.
+ */
+const VERWENDUNG_ANKER: Record<Verwendung, string> = {
+  verwendet: "ask-source-carrying",
+  nichtVerwendet: "ask-source-consulted",
+  unbekannt: "ask-source-unclear",
+};
+
+// ================================================================================================
+// DIE PLAKETTEN — JE ZUSTAND EIN AUSGESCHRIEBENER ZWEIG MIT FESTEN KLASSENKETTEN.
+// ================================================================================================
+//
+// WARUM AUSGESCHRIEBEN UND KEIN `TON[zustand]` (Steuerung, Nachführung 08.09. 01:10). Der
+// Klassenbindungs-Wächter (`tests/app/mega47-modale-flaechen-sammler.test.tsx`, JOB 1181) löst eine
+// `className` genau dann auf, wenn ihre Bestandteile im Baum als Zeichenketten oder als Bezeichner
+// mit literalem Wert dastehen. `${TON[s.verwendung]}` ist ein BERECHNETER Klassenname: der Wächter
+// sieht die Bindung, kann sie nicht auflösen und muss sie melden — Runde 1 hat den Pin damit von 218
+// auf 220 getrieben. Hier entscheidet stattdessen ein `if` über den ZWEIG, und in jedem Zweig steht
+// die Klassenkette aus zwei Konstanten, die beide wörtlich in dieser Datei stehen.
+//
+// KEIN VORBEISCHREIBEN AM WÄCHTER, und der Unterschied ist messbar: die `className` bleibt ein
+// Ausdruck am Element (`className={...}`), der Sammler erfasst sie weiter als Bindung und trägt sie
+// jetzt AUFGELÖST mit ihren echten Klassen. Ein Attributobjekt oder ein blosses `className="…"`
+// verschwände dagegen ganz aus seiner Erhebung — das wäre die Umgehung, die der Wächterkommentar
+// benennt. Gegengemessen in der Rückgabe: die Bindungen stehen in `ALLE_BINDUNGEN` mit `offen: []`.
+const PLAKETTE = "shrink-0 rounded-pill px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase";
+const TON_TRAGEND = "bg-trust-pos-bg text-trust-pos-text";
+const TON_ANGESEHEN = "bg-hairline-soft text-muted-2";
+const TON_UNKLAR = "bg-page text-muted-2";
+
+function VerwendungsPlakette({
+  zustand,
+  anker,
+  titel,
+  wort,
+}: {
+  zustand: Verwendung;
+  /** `data-testid` — am Chip fest, in der Quellenliste der Anker aus `VERWENDUNG_ANKER`. */
+  anker: string;
+  titel: string;
+  wort: string;
+}): JSX.Element {
+  if (zustand === "verwendet") {
+    return (
+      <span
+        data-testid={anker}
+        data-verwendung="verwendet"
+        title={titel}
+        className={`${PLAKETTE} ${TON_TRAGEND}`}
+      >
+        {wort}
+      </span>
+    );
+  }
+  if (zustand === "nichtVerwendet") {
+    return (
+      <span
+        data-testid={anker}
+        data-verwendung="nichtVerwendet"
+        title={titel}
+        className={`${PLAKETTE} ${TON_ANGESEHEN}`}
+      >
+        {wort}
+      </span>
+    );
+  }
+  return (
+    <span
+      data-testid={anker}
+      data-verwendung="unbekannt"
+      title={titel}
+      className={`${PLAKETTE} ${TON_UNKLAR}`}
+    >
+      {wort}
+    </span>
+  );
+}
+
+/** Dieselbe Bauart für die ZWEITE Aussage: der Prüfstand, mit eigener Farbe und eigenem Wort. */
+function PruefstandPlakette({
+  stand,
+  titel,
+  wort,
+}: {
+  stand: string | null;
+  titel: string;
+  wort: string;
+}): JSX.Element {
+  if (stand === "validiert") {
+    return (
+      <span
+        data-testid="ask-source-pruefstand"
+        data-pruefstand="validiert"
+        title={titel}
+        className={`${PLAKETTE} ${TON_TRAGEND}`}
+      >
+        {wort}
+      </span>
+    );
+  }
+  return (
+    <span
+      data-testid="ask-source-pruefstand"
+      data-pruefstand={stand ?? "unbekannt"}
+      title={titel}
+      className={`${PLAKETTE} ${TON_UNKLAR}`}
+    >
+      {wort}
+    </span>
+  );
+}
 
 // SCRUM-289: Ask-Führung — quellengebunden antworten, offene Quellen prüfen lassen.
 const GUIDE_TONE: Record<KnowledgeGuidanceTone, string> = {
@@ -449,7 +669,10 @@ export function Ask(): JSX.Element {
   // Reihenfolge und ohne Kennzeichen; der Hinweis darüber sagt dann warum. Eine Quelle, eine Regel
   // (lib/askCitedSources.ts) — Desktop, Mobil und Export lesen dieselbe.
   const answerSources = attributeSources(effective?.sources ?? [], result?.citedSources);
-  const attribution = citationState(result?.citedSources);
+  // NUR die Rohauskunft „hat der Server überhaupt etwas gemeldet?". Sie ist bewusst so benannt,
+  // seit sie NICHT mehr die Anzeige steuert: was die Fläche sagt, hängt an `zuordnungTragfaehig`
+  // (unten) — nichtleer ist kein Beleg (Ben, Runde 2).
+  const attributionRoh = citationState(result?.citedSources);
   // JOB 3064 · KORREKTURPFLICHT 1 (Ben, Runde 9): DIE TRAGENDEN QUELLEN ALS CHIP-NUMMERN.
   //
   // Bis hierher band die Antwortkarte ihre Fussnoten allein aus dem, was im Antworttext stand. Der
@@ -462,7 +685,7 @@ export function Ask(): JSX.Element {
   // gemeldete Quelle eine Stelle in `sources`, bleibt sie `undefined` — dann gibt es keine Zusage,
   // gegen die man messen könnte, und es gilt die alte Regel aus dem Text.
   const tragendeNummern = ((): number[] | undefined => {
-    if (attribution !== "attributed" || !result) {
+    if (attributionRoh !== "attributed" || !result) {
       return undefined;
     }
     const nummern = (result.citedSources ?? [])
@@ -470,6 +693,15 @@ export function Ask(): JSX.Element {
       .filter((n) => n > 0);
     return nummern.length > 0 ? nummern : undefined;
   })();
+  // JOB 3267 R3 · KORREKTURPFLICHT 1 (Ben, Runde 2) — DIE EINE FRAGE: TRÄGT DIE ZUORDNUNG?
+  //
+  // `tragendeNummern` ist genau dann gesetzt, wenn mindestens eine gemeldete Kennung eine Stelle in
+  // `result.sources` hat. Das ist dieselbe Prüfung, die die Quellenauskunft braucht — deshalb steht
+  // sie hier EINMAL und wird von Chip, Quellenliste, Hinweistext und Export gemeinsam gelesen. Bens
+  // Gegenfall (`citedSources: ["ko-gibt-es-nicht"]`, zwei vorhandene Quellen) lief bis hierher als
+  // „attributed" durch und liess beide Quellen „nicht verwendet" heissen; ab hier ist er das, was er
+  // ist: keine verwertbare Zuordnung, also „Zuordnung unbekannt".
+  const zuordnungTragfaehig = tragendeNummern !== undefined;
   const checkCaveat = effective?.caveat ?? null;
   const conflictCaveat = effective?.conflictCaveat ?? null;
   // AUFTRAG-mega53 B6 (beim Bauen des Sammlers gefunden, über ben's vier Stellen hinaus): der
@@ -702,12 +934,74 @@ export function Ask(): JSX.Element {
   // ausgewiesen (Status/Trust/Nutzbarkeit). Markdown wird erst beim Klick gebaut (frischer Zeitstempel).
   const { push } = useToast();
   const kosById = new Map((kos.data ?? []).map((k) => [k.id, k]));
+  // ==============================================================================================
+  // JOB 3267 Q1 — DIE GERENDERTEN FUSSNOTEN, AM DOM GEMESSEN.
+  // ==============================================================================================
+  // Die Konsistenzregel darf sich nicht auf eine ZWEITE Rechnung stützen, welche Marken wohl
+  // entstehen werden (`markiereFussnoten` noch einmal aufrufen wäre genau das, und es liefe still
+  // weg, sobald `AntwortText` seine Regeln ändert). Gemessen wird deshalb, was WIRKLICH im Baum
+  // steht — derselbe Anker, an dem `tests/design/zielbild-h5-fragen.test.ts` (V18) die Marken in
+  // Chromium abliest.
+  //
+  // `useLayoutEffect` OHNE Abhängigkeitsliste: die Messung soll jedem Renderdurchlauf folgen
+  // (neuer Antworttext, neue Zuordnung, geöffnetes Blatt), und sie muss VOR dem Bild fallen —
+  // sonst zeigte die Fläche für einen Frame „unbekannt" und korrigierte sich danach. Keine
+  // Schleife: der Zustand ist ein Schlüssel-String, und ein gleicher Wert lässt React abbrechen.
+  const antwortRef = useRef<HTMLDivElement | null>(null);
+  const [markenSchluessel, setMarkenSchluessel] = useState<string | null>(null);
+  useLayoutEffect(() => {
+    const wurzel = antwortRef.current;
+    const naechster =
+      wurzel === null
+        ? null
+        : [...wurzel.querySelectorAll(".ask-answer-body sup[data-fussnote]")]
+            .map((e) => Number(e.getAttribute("data-fussnote")))
+            .filter((n) => Number.isInteger(n) && n > 0)
+            .sort((a, b) => a - b)
+            .join(",");
+    setMarkenSchluessel((vorher) => (vorher === naechster ? vorher : naechster));
+  });
+  const gerenderteMarken = new Set(
+    (markenSchluessel ?? "")
+      .split(",")
+      .filter((s) => s !== "")
+      .map(Number),
+  );
+  // ==============================================================================================
+  // JOB 3267 Q1 — EINE AUSKUNFT JE QUELLE, VON CHIP, LISTE UND EXPORT GEMEINSAM GELESEN.
+  // ==============================================================================================
+  // Vorher entschied jede der drei Stellen für sich, was sie über eine Quelle sagt — und genau so
+  // konnte der Punkt am Chip etwas anderes behaupten als die Plakette in der Liste. Ab hier fällt
+  // die Entscheidung einmal. Der PRÜFSTAND kommt aus `anzeigestatusAus` (die Ableitung der
+  // Bibliothek), die VERWENDUNG aus `verwendungsZustand` — zwei Felder, weil es zwei Fragen sind.
+  const quellenAuskunft = answerSources.map((s) => {
+    const ko = kosById.get(s.id);
+    const nummer = result ? result.sources.indexOf(s.id) + 1 : 0;
+    const stand = ko ? anzeigestatusAus(ko, { konflikt: s.conflictLimited }).status : null;
+    const standWort = stand ? t(`status.${stand}`) : t("ask.pruefstand.unbekannt");
+    return {
+      ...s,
+      nummer,
+      verwendung: verwendungsZustand({
+        zuordnungTragfaehig,
+        carrying: s.carrying,
+        nummer,
+        gemessen: markenSchluessel !== null,
+        marken: gerenderteMarken,
+      }),
+      pruefstand: stand,
+      pruefstandWort: standWort,
+      // Der Satz am gelben Punkt und an der Prüfstand-Plakette: er sagt, was er zeigt, und sagt
+      // ausdrücklich dazu, dass er über die Verwendung NICHTS aussagt.
+      pruefstandHinweis: t("ask.pruefstand.hint", { stand: standWort }),
+    };
+  });
   const buildExport = (): { markdown: string; filename: string } | null => {
     if (!result?.answered || !effective) {
       return null;
     }
     const generatedAt = new Date().toISOString();
-    const sources = answerSources.map((s) => {
+    const sources = quellenAuskunft.map((s) => {
       const ko = kosById.get(s.id);
       return {
         // JOB 502 (Klara-Export, Quellidentität): die Kennung, mit der diese Seite direkt darunter
@@ -723,16 +1017,17 @@ export function Ask(): JSX.Element {
         ...(s.usability ? { usabilityLabel: t(useReadiness(s.usability).labelKey) } : {}),
         // AUFTRAG-mega62 Block E (Register F29): das Kennzeichen reist jetzt MIT. Bis mega61 wurde
         // hier nur die Reihenfolge exportiert — tragende Quellen standen oben, aber nichts sagte
-        // das, und im Markdown sah eine nur konsultierte Quelle aus wie eine tragende. Bei
-        // UNBEKANNTER Zuordnung bleibt das Feld bewusst leer (genau wie die Plakette unten): eine
-        // erfundene Einordnung wäre schlimmer als keine.
-        ...(attribution === "attributed"
-          ? {
-              attributionLabel: t(
-                s.carrying ? "ask.attribution.carrying.badge" : "ask.attribution.consulted.badge",
-              ),
-            }
-          : {}),
+        // das, und im Markdown sah eine nur konsultierte Quelle aus wie eine tragende.
+        // JOB 3267 Q1: das Kennzeichen ist jetzt der DREIWERTIGE Zustand, also auch „unbekannt" für
+        // die einzelne widersprüchliche Quelle. Die Gesamtbedingung bleibt bewusst stehen: ist die
+        // Zuordnung INSGESAMT nicht tragfähig, trägt keine Zeile ein Kennzeichen — und genau daran
+        // erkennt `buildAnswerMarkdown` (answerExport.ts:164), dass es den Erklärsatz
+        // `attributionUnknown` ÜBER die Liste setzen muss. Ein Wort je Zeile und der Satz darüber
+        // wären zwei Aussagen zur selben Sache.
+        // R3 (Ben): geprüft wird die TRAGFÄHIGKEIT, nicht mehr die blosse Nichtleerheit — sonst
+        // trüge der Export bei einer unauflösbaren Zuordnung „nicht verwendet" in die Datei, die das
+        // Haus verlässt.
+        ...(zuordnungTragfaehig ? { attributionLabel: t(VERWENDUNG_BADGE[s.verwendung]) } : {}),
       };
     });
     const markdown = buildAnswerMarkdown({
@@ -761,9 +1056,7 @@ export function Ask(): JSX.Element {
           task: t("ai.task.answer"),
           date: generatedAt.slice(0, 10),
         }),
-        ...(attribution === "attributed"
-          ? {}
-          : { attributionUnknown: t("ask.attribution.unknown") }),
+        ...(zuordnungTragfaehig ? {} : { attributionUnknown: t("ask.attribution.unknown") }),
       },
     });
     return { markdown, filename: answerExportFilename(generatedAt) };
@@ -1153,7 +1446,12 @@ export function Ask(): JSX.Element {
               // nicht die Begründung, sondern ihr Ort.
               // AUFTRAG-mega52: stabiler Anker des ERGEBNISBEREICHS fuer die Browser-Sonde.
               // JOB 3064 §5: Maße aus `Fragen.dc.html` Z.39/40/44 (Polster, Radius, 17 px/1.6).
-              <div className="flex flex-col gap-[22px]">
+              // JOB 3267 Q1: der Messpunkt für die gerenderten Fussnoten. Der Haken sitzt HIER und
+              // nicht um `AntwortText`: die Karte darunter zählt ihr Kommentar-/Quelltextbudget
+              // bis `<AiGeneratedNotice` (mega62 E1, 2000 Zeichen ab `className="print-area`), und
+              // ein Wrapper drinnen zehrte davon. Gemessen wird ohnehin gezielt über
+              // `.ask-answer-body sup[data-fussnote]`.
+              <div ref={antwortRef} className="flex flex-col gap-[22px]">
                 <Card
                   // `!rounded-[14px]`: `Card` bringt `rounded-card` (13px) mit, und beide Klassen
                   // stehen dann am selben Element — welche gewinnt, entschiede die Reihenfolge im
@@ -1188,13 +1486,12 @@ export function Ask(): JSX.Element {
                     Quelle UNBEKANNT (das Wissensobjekt liegt der Fläche nicht vor), steht KEIN
                     Punkt — „unbekannt" ist etwas anderes als „in Ordnung", und die volle Auskunft
                     dazu steht im Info-Blatt unter „Mehr". */}
-                  {answerSources.length > 0 ? (
+                  {quellenAuskunft.length > 0 ? (
                     <div
                       data-testid="ask-quellen-chips"
                       className="flex flex-wrap gap-2 border-t border-hairline pt-3.5"
                     >
-                      {answerSources.map((s) => {
-                        const nummer = result.sources.indexOf(s.id) + 1;
+                      {quellenAuskunft.map((s) => {
                         const punkt = s.conflictLimited
                           ? "bg-trust-crit-fill"
                           : s.validated === false
@@ -1207,14 +1504,29 @@ export function Ask(): JSX.Element {
                             data-testid="ask-quellen-chip"
                             className="inline-flex items-center gap-1.5 rounded-[8px] border border-hairline bg-page px-2.5 py-[5px] hover:border-ink/30"
                           >
+                            {/* JOB 3267 Q1 — DER PUNKT SAGT, WAS ER ZEIGT.
+                              Bis hierher trug er beim gelben Fall bedingungslos
+                              `ask.attribution.consulted.hint` und behauptete damit eine
+                              NICHTVERWENDUNG, obwohl er einen PRÜFSTAND zeigt — der Befund der
+                              Vorführung (die tragende Quelle war offen, also gelb). Er nennt
+                              jetzt den Prüfstand mit seinem eigenen Wort; die Verwendung steht
+                              daneben in der Plakette. `role="img"` + `aria-label`, damit die
+                              Auskunft nicht allein am `title` hängt. */}
                             {punkt ? (
                               <span
                                 data-testid="ask-quellen-chip-punkt"
-                                title={t(
+                                data-pruefstand={s.pruefstand ?? undefined}
+                                role="img"
+                                aria-label={
                                   s.conflictLimited
-                                    ? "conflict.impact.hint"
-                                    : "ask.attribution.consulted.hint",
-                                )}
+                                    ? t("conflict.impact.hint")
+                                    : s.pruefstandHinweis
+                                }
+                                title={
+                                  s.conflictLimited
+                                    ? t("conflict.impact.hint")
+                                    : s.pruefstandHinweis
+                                }
                                 className={`h-2 w-2 shrink-0 rounded-full ${punkt}`}
                               />
                             ) : (
@@ -1226,8 +1538,19 @@ export function Ask(): JSX.Element {
                               />
                             )}
                             <span className="text-[12px] font-semibold text-text">
-                              {nummer > 0 ? `${nummer} · ${s.label}` : s.label}
+                              {s.nummer > 0 ? `${s.nummer} · ${s.label}` : s.label}
                             </span>
+                            {/* Die Verwendungsauskunft AM CHIP, wo der Mensch die Quelle sieht —
+                              nicht erst hinter „Mehr". Sie steht NACH dem Titel: die Chipform
+                              „n · Titel" ist gepinnt (`zielbild-h5-fragen.test.ts` V9/V18), und
+                              ein Wort davor würde sie brechen. Das kurze Wort ist sichtbar, die
+                              ganze Aussage steht im Tooltip. */}
+                            <VerwendungsPlakette
+                              zustand={s.verwendung}
+                              anker="ask-quellen-chip-verwendung"
+                              titel={t(VERWENDUNG_HINWEIS[s.verwendung])}
+                              wort={t(VERWENDUNG_BADGE[s.verwendung])}
+                            />
                           </Link>
                         );
                       })}
@@ -1386,8 +1709,11 @@ export function Ask(): JSX.Element {
                     einer bloß angesehenen Quelle. Der Vertrauenswert ist ein QUELLENBEZOGENER
                     Wert; ohne bekannte tragende Quelle gibt es ihn nicht. Es steht hier bewusst
                     auch keine 0: 0 wäre die Behauptung „nichts wert", und behauptet wird gerade
-                    nichts. Der Balken kommt zurück, sobald eine Marke da ist. */}
-                          {attribution === "unattributed" ? (
+                    nichts. Der Balken kommt zurück, sobald eine Marke da ist.
+                    JOB 3267 R3: „Marke da" heisst TRAGFÄHIG. Eine Marke, die auf keine Quelle
+                    dieser Antwort zeigt, ist keine — sonst stünde die Zahl einer bloss angesehenen
+                    Quelle neben einer Zuordnung, die nichts trägt. Genau der Fehler von B2. */}
+                          {!zuordnungTragfaehig ? (
                             <span
                               data-testid="ask-trust-unattributed"
                               className="rounded-pill border border-hairline px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-muted-2"
@@ -1557,8 +1883,11 @@ export function Ask(): JSX.Element {
                       Liefert das Modell keine oder unbrauchbare Fußnotenmarken, wird NICHT geraten
                       und NICHT stillschweigend auf alle Quellen zurückgefallen. Stattdessen steht
                       hier, dass die Zuordnung nicht möglich war — und keine Zeile unten trägt ein
-                      Kennzeichen. „Unbekannt" ist eine andere Aussage als „keine". */}
-                            {attribution === "unattributed" ? (
+                      Kennzeichen. „Unbekannt" ist eine andere Aussage als „keine".
+                      JOB 3267 R3 (Ben, Korrekturpflicht 1): die Reissleine zieht auch, wenn die
+                      Zuordnung zwar DA ist, aber ausschliesslich fremde Kennungen nennt — auch dann
+                      war sie nicht möglich, und die Zeilen unten sagen „Zuordnung unbekannt". */}
+                            {!zuordnungTragfaehig ? (
                               <p
                                 data-testid="ask-attribution-unknown"
                                 className="mt-1.5 rounded-card border border-hairline bg-page px-2.5 py-1.5 text-[12px] leading-relaxed text-muted"
@@ -1574,7 +1903,7 @@ export function Ask(): JSX.Element {
                     SCRUM-300: je Quelle die kanonische Nutzbarkeit (gleiche Sprache wie KO-Detail/
                     Library) + Demo-Kontext am Link weitertragen (kein Auto-Use). */}
                             <ul className="mt-1.5 space-y-1.5">
-                              {answerSources.map((s) => (
+                              {quellenAuskunft.map((s) => (
                                 <li
                                   key={s.id}
                                   className="flex flex-wrap items-center gap-x-2 gap-y-1"
@@ -1587,32 +1916,29 @@ export function Ask(): JSX.Element {
                                     <span className="text-text">{s.label}</span>
                                   </Link>
                                   {/* AUFTRAG-mega52 A3: das Kennzeichen, das die Liste erst zu einer Aussage
-                            macht. Tragende Quellen stehen oben und heißen so; die übrigen heißen,
-                            was sie sind — angesehen, nicht verwendet. Bei unbekannter Zuordnung
-                            trägt KEINE Zeile ein Kennzeichen (der Hinweis oben sagt warum). */}
-                                  {attribution === "attributed" ? (
-                                    <span
-                                      data-testid={
-                                        s.carrying ? "ask-source-carrying" : "ask-source-consulted"
-                                      }
-                                      title={t(
-                                        s.carrying
-                                          ? "ask.attribution.carrying.hint"
-                                          : "ask.attribution.consulted.hint",
-                                      )}
-                                      className={`shrink-0 rounded-pill px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase ${
-                                        s.carrying
-                                          ? "bg-trust-pos-bg text-trust-pos-text"
-                                          : "bg-hairline-soft text-muted-2"
-                                      }`}
-                                    >
-                                      {t(
-                                        s.carrying
-                                          ? "ask.attribution.carrying.badge"
-                                          : "ask.attribution.consulted.badge",
-                                      )}
-                                    </span>
-                                  ) : null}
+                            macht. JOB 3267 Q1: es trägt jetzt DREI Zustände statt zwei und steht
+                            deshalb an JEDER Zeile — auch bei unbekannter Zuordnung, wo bis hierher
+                            gar nichts stand und der Leser die leere Stelle mit dem Satz oben
+                            zusammenreimen musste. Dieselbe Auskunft wie am Chip, aus derselben
+                            Rechnung (`quellenAuskunft`). */}
+                                  <VerwendungsPlakette
+                                    zustand={s.verwendung}
+                                    anker={VERWENDUNG_ANKER[s.verwendung]}
+                                    titel={t(VERWENDUNG_HINWEIS[s.verwendung])}
+                                    wort={t(VERWENDUNG_BADGE[s.verwendung])}
+                                  />
+                                  {/* JOB 3267 Q1 (Lieferung 3): DER PRÜFSTAND, MIT EIGENEM WORT.
+                            Er stand bisher nur als Farbpunkt am Chip und indirekt in der
+                            Nutzbarkeit — „Offen"/„Validiert" selbst sagte die Fragenfläche nie.
+                            Genau diese Trennung ist der Kern des Auftrags: „verwendet" beantwortet
+                            nicht „geprüft", und keine Regel gilt als freigegeben, weil ein Text
+                            das Wort trägt. Das Wort kommt aus `status.*`, also demselben
+                            Vokabular wie Bibliothek und KO-Detail. */}
+                                  <PruefstandPlakette
+                                    stand={s.pruefstand}
+                                    titel={s.pruefstandHinweis}
+                                    wort={s.pruefstandWort}
+                                  />
                                   {s.usability ? (
                                     <span
                                       title={t(useReadiness(s.usability).hintKey)}
