@@ -283,8 +283,14 @@ describe("mega51 A3 · Stufe 3 — die Rollenfrage wird an derselben Registry be
       (rolle) =>
         `${rolle}: ${eindeutig.filter((z) => !routePathAllows(z, rolle as Role)).join(" ")}`,
     );
+    // JOB 3266 (D1) NACHGEFÜHRT, nicht gelockert: Die Startseite trägt seit diesem Auftrag den
+    // benannten Zugang „Meine Entwürfe" auf `/erfassen?entwuerfe=1`. Er ist ein WEITERES Ziel mit
+    // demselben Gate wie `/erfassen` (minRole „experte") und steht deshalb in genau derselben
+    // Zeile wie `/erfassen` und `/erfassen?demo=stage1` — für „viewer" eine Lage, für alle anderen
+    // Rollen unverändert ein Weg. Dass er als Lage wirklich kein Link ist, misst der gemountete
+    // Fall A3 in `tests/d1-meine-entwuerfe/start-zugang-meine-entwuerfe.test.tsx`.
     expect(matrix).toEqual([
-      "viewer: /aufgaben /erfassen /erfassen?demo=stage1 /konflikte /lebenszyklus /risiko /validierung /validierung?demo=stage1",
+      "viewer: /aufgaben /erfassen /erfassen?demo=stage1 /erfassen?entwuerfe=1 /konflikte /lebenszyklus /risiko /validierung /validierung?demo=stage1",
       "experte: /konflikte /lebenszyklus /risiko /validierung /validierung?demo=stage1",
       "controller: ",
       "admin: ",

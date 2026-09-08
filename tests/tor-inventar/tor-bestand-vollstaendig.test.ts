@@ -185,8 +185,18 @@ describe("JOB 3131 T2 · die Browser-Gruppe ist genau die Menge mit Chromium in 
     // Die beiden anderen neuen M6b-Dateien (`rueckweg-echte-route-chromium.test.ts`,
     // `rundweg-tastatur-chromium.test.ts`) fahren über `h6-chromium.ts` und sind KEINE neuen
     // Startstellen — sie tauchen hier bewusst nicht auf.
-    expect(graph.startdateien.length).toBe(21);
+    // JOB 3266 R2 (D1): eine weitere eigene Startstelle — der Schmalmesser des Entwurfszugangs
+    // (`tests/d1-meine-entwuerfe/zugang-schmal-chromium.test.ts`). Er MUSS Playwright selbst
+    // starten: er verstellt das Fenster (390 und 1280 px), setzt die Sprachwahl im Speicher des
+    // Produkts und bedient echte Tastatur und Maus. Der gemeinsame Prüfstand `h3-blatt-buehne.ts`
+    // fährt fest auf 1280 px und reicht weder `setViewportSize` noch `keyboard` heraus; ihn dafür
+    // umzubauen hiesse, drei fremde Messungen anzufassen. Anlass ist bens Befund an Runde 1: bei
+    // 390 px lag die Entwurfsliste bei x = −237 px, also ausserhalb des Fensters — eine Klasse, die
+    // kein jsdom-Fall sehen kann (dort gibt es kein Layout und keinen Zeilenumbruch).
+    // Die Last bleibt klein: EIN Browser, EINE Seite, elf Fälle, im eigenen Lauf 4,2 s.
+    expect(graph.startdateien.length).toBe(22);
     for (const bekannt of [
+      "tests/d1-meine-entwuerfe/zugang-schmal-chromium.test.ts",
       "tests/design/h4-harness.ts",
       "tests/design/h6-chromium.ts",
       "tests/design/h1-chromium.ts",

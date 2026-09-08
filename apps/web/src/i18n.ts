@@ -5025,6 +5025,10 @@ const de = {
   "erfassen.werkzeug.bereich": "Bereich",
   "erfassen.werkzeug.vertraulichkeit": "Vertraulichkeit",
   "erfassen.werkzeug.hilfe": "?",
+  // JOB 3266 (D1): der NAME des „…"-Werkzeugs. Er steht nicht auf der Fläche (dort bleibt das
+  // Symbol), sondern als `aria-label` am Knopf — bis hierher war er für Tastatur und Screenreader
+  // eine namenlose Schaltfläche.
+  "erfassen.werkzeug.mehr": "Mehr",
   "erfassen.weg.datei": "Datei importieren",
   "erfassen.weg.interview": "Interview führen",
   "erfassen.weg.formular": "Formular (Experten)",
@@ -9816,6 +9820,7 @@ const en: typeof de = {
   "erfassen.werkzeug.bereich": "Area",
   "erfassen.werkzeug.vertraulichkeit": "Confidentiality",
   "erfassen.werkzeug.hilfe": "?",
+  "erfassen.werkzeug.mehr": "More",
   "erfassen.weg.datei": "Import file",
   "erfassen.weg.interview": "Run interview",
   "erfassen.weg.formular": "Form (experts)",
@@ -14445,6 +14450,7 @@ const nl: typeof de = {
   "erfassen.werkzeug.bereich": "Gebied",
   "erfassen.werkzeug.vertraulichkeit": "Vertrouwelijkheid",
   "erfassen.werkzeug.hilfe": "?",
+  "erfassen.werkzeug.mehr": "Meer",
   "erfassen.weg.datei": "Bestand importeren",
   "erfassen.weg.interview": "Interview voeren",
   "erfassen.weg.formular": "Formulier (experts)",

@@ -51,6 +51,9 @@ import { CLEARED_DRAFT_BODY_HTML } from "../../lib/draftBody";
 import { dominantCategory, pickExampleKo } from "../../lib/intakeExample";
 import { INTAKE_STARTERS, type IntakeStarter } from "../../lib/intakeStarters";
 import { deriveIntakeSuggestion } from "../../lib/intakeSuggestion";
+// JOB 3266 (D1): dasselbe Datumsformat wie überall sonst in der Oberfläche — und dieselbe
+// Ehrlichkeit: ein fehlender oder unlesbarer Zeitwert wird `null`, nicht ein erfundenes Datum.
+import { formatKoTimestamp } from "../../lib/koDates";
 import { toReasonerLocale } from "../../lib/reasonerLocale";
 import { draftProvenance } from "../../lib/reasonerProvenance";
 import { isEmptyHtml } from "../../lib/richText";
@@ -1397,6 +1400,48 @@ export function Blatt({
     setSearchParams({ draft: entwurfId }, { replace: true });
   };
 
+  // ==============================================================================================
+  // JOB 3266 (D1) — DIE EINE HANDBEWEGUNG, DIE DIE ENTWURFSLISTE AUFKLAPPT.
+  // ==============================================================================================
+  // Drei Auslöser führen zu DERSELBEN Fläche: das benannte Werkzeug „Meine Entwürfe" der
+  // Werkzeugzeile, der Weg in der Bestätigungszeile nach dem Sichern (JOB 3106) und die Adresse
+  // `?entwuerfe=1`, mit der die Startseite hierher führt. Sie stehen deshalb nicht dreimal
+  // nebeneinander: eine zweite Auffassung davon, was „Entwürfe zeigen" heisst, wäre genau die
+  // Drift, an der die Fläche später auseinanderliefe.
+  //
+  // SIE ÖFFNET NUR — sie lädt nichts, sie setzt keine Kennung, sie fasst den Blattinhalt nicht an.
+  // Das Öffnen eines Entwurfs bleibt `entwurfOeffnen` oben, der eine Weg über die Adresse.
+  const entwuerfeAufklappen = useCallback((): void => {
+    setOffenesMenue("mehr");
+    setMehrFlaeche("entwuerfe");
+  }, []);
+
+  // ==============================================================================================
+  // JOB 3266 (D1) — VON DER STARTSEITE HIERHER, MIT OFFENER LISTE.
+  // ==============================================================================================
+  // PEDIS BEFUND (Vorführung 07.09.): Der gespeicherte Entwurf war beim späteren Besuch nicht zu
+  // finden. Die Startseite trägt seit diesem Auftrag den benannten Zugang „Meine Entwürfe"; er
+  // führt auf `/erfassen?entwuerfe=1`, und dieses Zeichen ist der Öffnungsbefehl für die Liste.
+  //
+  // WARUM EIN ADRESSZEICHEN UND KEINE ZWEITE LISTE AUF START: Die Titel, ihr Pool, der
+  // Eigentumsfilter des Servers und der Weg ins Blatt liegen HIER. Eine zweite Liste auf der
+  // Startseite wäre ein zweiter Abruf, ein zweiter Leerzustand und ein zweiter Öffnungsweg —
+  // dreimal dieselbe Zusage, die auseinanderlaufen kann.
+  //
+  // EINMAL, NICHT BEI JEDEM BILDAUFBAU: Der Merker hält fest, dass dieser Aufbau den Befehl schon
+  // ausgeführt hat. Ohne ihn klappte die Liste bei jedem Zustandswechsel wieder auf und der Mensch
+  // könnte sie nicht schliessen. Die Adresse selbst bleibt stehen: sie beschreibt, womit diese
+  // Seite geöffnet wurde, und ein „Zurück" darauf tut wieder dasselbe.
+  const entwuerfeBefehlRef = useRef(false);
+  const entwuerfeBefehl = searchParams.get("entwuerfe") === "1";
+  useEffect(() => {
+    if (!entwuerfeBefehl || entwuerfeBefehlRef.current) {
+      return;
+    }
+    entwuerfeBefehlRef.current = true;
+    entwuerfeAufklappen();
+  }, [entwuerfeBefehl, entwuerfeAufklappen]);
+
   // Was das Titel-Menü zu bieten hat: die vier Starter nur am wirklich leeren Blatt (so misst es
   // `h3-funktionsinventar.test.ts`: genau vier Einträge), den Vorschlag, sobald es einen gibt.
   const starterZeigen = !title && !hasBody;
@@ -1643,6 +1688,31 @@ export function Blatt({
             die Werkzeugzeile fünf zusätzliche gerahmte Knöpfe — „Entwürfe · Anhänge · Status ·
             Beispiel · Klara" — und wäre genau das Gegenteil dessen, was Pedi verlangt hat. Ein
             Untermenü hat EINEN Zugang; was dahinter liegt, liegt DAHINTER. */}
+        {/* ==========================================================================================
+            JOB 3266 (D1) — DER DAUERHAFTE, BENANNTE ZUGANG ZU DEN EIGENEN ENTWÜRFEN.
+            ==========================================================================================
+            PEDI, Vorführung 07.09.: Er hatte ein Dokument importiert und als Entwurf gesichert —
+            und fand es beim nächsten Besuch nicht wieder. Der Weg gab es (im „…"-Menü), aber er
+            trug kein Wort: ein Symbolknopf, hinter dem sich fünf Flächen verbergen.
+
+            DIESES WERKZEUG IST DAS WORT DAZU. Es steht IMMER da — nicht nur nach einer Sicherung
+            wie die Bestätigungszeile unten (JOB 3106), die ihren Weg nur so lange nennt, wie
+            gerade etwas gesichert wurde. Wer den Zugang braucht, hat in aller Regel NICHTS gerade
+            gesichert; er kommt neu auf die Seite.
+
+            ES ÖFFNET DIE VORHANDENE FLÄCHE, ES BAUT KEINE ZWEITE: derselbe Aufruf wie die
+            Bestätigungszeile (`entwuerfeAufklappen`), dieselbe Liste im „…"-Menü daneben. Ein
+            zweiter Ort für dieselben Titel wäre ein zweiter Zustand — und der wäre irgendwann der
+            falsche. */}
+        <button
+          type="button"
+          data-testid="blatt-werkzeug-entwuerfe"
+          onClick={entwuerfeAufklappen}
+          className="inline-flex items-center gap-1.5 text-[13px] text-muted-2 hover:text-text"
+        >
+          {t("fd.saved.toDrafts")}
+        </button>
+
         <Menue
           name="mehr"
           offen={offenesMenue}
@@ -1653,6 +1723,10 @@ export function Blatt({
             }
           }}
           wort=""
+          // JOB 3266 (D1): Der Knopf trägt nur ein Symbol — sein NAME steht deshalb hier, übersetzt
+          // (DE „Mehr", EN „More"). Bis hierher meldete ein Screenreader eine namenlose
+          // Schaltfläche, und Pedi las auf der Fläche nichts, was ihm sagte, was dahinter liegt.
+          beschriftung={t("erfassen.werkzeug.mehr")}
           symbol={<SymbolMehr />}
           gerahmt
         >
@@ -1716,35 +1790,105 @@ export function Blatt({
                       {t("fd.draftOpen")}
                     </p>
                   ) : null}
+                  {/* JOB 3266 (D1): Die drei Lagen tragen je einen eigenen Anker und ihren eigenen
+                      Satz — „lädt", „leer" und „gestört" sind drei verschiedene Auskünfte und
+                      dürfen nicht als dieselbe stille Fläche enden. Ein Fehler zeigt zusätzlich
+                      seinen Rückweg: ohne ihn wäre die Liste nach einem Netzabriss eine
+                      Sackgasse. */}
                   {drafts.isLoading ? (
-                    <p className="text-[12.5px] text-muted">{t("state.loading")}</p>
+                    <p data-testid="blatt-entwuerfe-laedt" className="text-[12.5px] text-muted">
+                      {t("state.loading")}
+                    </p>
                   ) : null}
                   {drafts.isError ? (
-                    <p className="text-[12.5px] text-muted">{t("state.error")}</p>
+                    <p data-testid="blatt-entwuerfe-fehler" className="text-[12.5px] text-muted">
+                      {t("state.error")}
+                      <button
+                        type="button"
+                        data-testid="blatt-entwuerfe-erneut"
+                        onClick={() => {
+                          void drafts.refetch();
+                        }}
+                        className="ml-2 font-semibold underline"
+                      >
+                        {t("erfassen.erneutVersuchen")}
+                      </button>
+                    </p>
                   ) : null}
                   {(drafts.data ?? []).length === 0 && !drafts.isLoading && !drafts.isError ? (
-                    <p className="text-[12.5px] text-muted">{t("erfassen.entwuerfe.keine")}</p>
+                    <p data-testid="blatt-entwuerfe-leer" className="text-[12.5px] text-muted">
+                      {t("erfassen.entwuerfe.keine")}
+                    </p>
                   ) : null}
-                  {(drafts.data ?? []).map((d) => (
-                    <button
-                      key={d.id}
-                      type="button"
-                      // JOB 3256 (CAP-P1-R, Zustandsmodell §9 „laden"): dieselbe eine Regel wie am
-                      // Diktat- und am Bild-Werkzeug. Während geladen wird, gibt es hier nichts
-                      // Ungesichertes zu retten (`blattNimmtAn` ist falsch) — ein Klick würde also
-                      // ohne Rückfrage ein ZWEITES Laden anstoßen, während das erste noch läuft.
-                      // Gesperrt sagt der Eintrag, dass er gerade nicht kann, statt es wortlos zu
-                      // tun; den Grund nennt er im selben Satz wie das Blatt darüber.
-                      disabled={!blattNimmtAn}
-                      title={blattNimmtAn ? undefined : t("erfassen.laden.nichtBereit")}
-                      onClick={() => entwurfOeffnen(d.id)}
-                      className={`block w-full truncate rounded-[7px] px-2 py-1.5 text-left text-[13px] ${
-                        blattNimmtAn ? "hover:bg-hairline-soft" : "opacity-50"
-                      } ${d.id === activeDraftId ? "font-semibold text-text" : "text-text"}`}
-                    >
-                      {d.payload.title || fallbackTitle}
-                    </button>
-                  ))}
+                  {(drafts.data ?? []).map((d) => {
+                    // Einmal gelesen, einmal entschieden: ob das Datum steht und was dort steht,
+                    // ist dieselbe Frage — zwei Aufrufe wären zwei Antworten auf sie.
+                    const datum = formatKoTimestamp(d.updatedAt, i18n.language);
+                    return (
+                      <button
+                        key={d.id}
+                        type="button"
+                        data-testid="blatt-entwurf-eintrag"
+                        // WELCHEN Entwurf diese Zeile öffnet, steht an ihr selbst — dieselbe Kennung,
+                        // die gleich in die Adresse geht. Ohne sie liesse sich „der Titel öffnet
+                        // GENAU diesen Entwurf" nur behaupten, nicht messen.
+                        data-entwurf={d.id}
+                        // JOB 3256 (CAP-P1-R, Zustandsmodell §9 „laden"): dieselbe eine Regel wie am
+                        // Diktat- und am Bild-Werkzeug. Während geladen wird, gibt es hier nichts
+                        // Ungesichertes zu retten (`blattNimmtAn` ist falsch) — ein Klick würde also
+                        // ohne Rückfrage ein ZWEITES Laden anstoßen, während das erste noch läuft.
+                        // Gesperrt sagt der Eintrag, dass er gerade nicht kann, statt es wortlos zu
+                        // tun; den Grund nennt er im selben Satz wie das Blatt darüber.
+                        disabled={!blattNimmtAn}
+                        title={blattNimmtAn ? undefined : t("erfassen.laden.nichtBereit")}
+                        onClick={() => entwurfOeffnen(d.id)}
+                        className={`block w-full rounded-[7px] px-2 py-1.5 text-left text-[13px] ${
+                          blattNimmtAn ? "hover:bg-hairline-soft" : "opacity-50"
+                        } ${d.id === activeDraftId ? "font-semibold text-text" : "text-text"}`}
+                      >
+                        {/* ==========================================================================
+                            JOB 3266 R3 (bens Korrekturpflicht 2) — DER TITEL STEHT GANZ DA.
+                            ==========================================================================
+                            Hier stand `truncate` (`white-space: nowrap`, `overflow: hidden`,
+                            `text-overflow: ellipsis`). Bens Messung: 506 px Text auf 262 px Fläche
+                            bei 320 px Fenster — der Titel brach mit Auslassungspunkten ab, und zwar
+                            AM ENDE. Genau dort stehen aber die Wörter, die zwei Entwürfe desselben
+                            Vorhabens unterscheiden („… Ausgabe Nord 2026" gegen „… Süd 2026"). Eine
+                            Liste, in der zwei Zeilen gleich aussehen, ist keine Auswahl.
+
+                            `break-words` (`overflow-wrap: break-word`) statt einer festen Zeile: Der
+                            Titel bricht wie gewöhnlicher Text um, und ein einzelnes überlanges Wort
+                            (eine Kennung, ein Dateiname ohne Leerzeichen) bricht innerhalb statt
+                            über den Rand hinauszuschieben. Die Höhe darf wachsen — die Liste ist
+                            genau dafür rollbar (`MenueFlaeche`, `max-h-[420px] overflow-auto`).
+
+                            Der Anker `…-eintrag-titel` ist der Messpunkt des Lesbarkeitsmessers
+                            (`tests/d1-meine-entwuerfe/zugang-schmal-chromium.test.ts`): er vergleicht
+                            `scrollWidth`/`scrollHeight` gegen die sichtbare Fläche. Ohne benannten
+                            Knoten müsste der Messer raten, welches Kind der Titel ist. */}
+                        <span
+                          data-testid="blatt-entwurf-eintrag-titel"
+                          className="block break-words"
+                        >
+                          {d.payload.title || fallbackTitle}
+                        </span>
+                        {/* JOB 3266 (D1), Lieferung 3: das DATUM neben dem Titel — bei mehreren
+                          Entwürfen desselben Vorhabens ist der Titel allein nicht unterscheidbar.
+                          Es ist der Stand, den der Server führt (`updatedAt`), gelesen mit
+                          derselben Funktion wie jedes andere Datum der Oberfläche. Fehlt oder
+                          bricht der Wert, steht KEINE Zeile da statt eines erfundenen Datums —
+                          das ist die Zusage von `formatKoTimestamp` selbst. */}
+                        {datum ? (
+                          <span
+                            data-testid="blatt-entwurf-eintrag-datum"
+                            className="mt-0.5 block text-[11.5px] font-normal text-muted"
+                          >
+                            {datum}
+                          </span>
+                        ) : null}
+                      </button>
+                    );
+                  })}
                 </MenueFlaeche>
               ) : null}
               {mehrFlaeche === "anhaenge" ? (
@@ -2378,10 +2522,9 @@ export function Blatt({
               <button
                 type="button"
                 data-testid="blatt-entwurf-gespeichert-entwuerfe"
-                onClick={() => {
-                  setOffenesMenue("mehr");
-                  setMehrFlaeche("entwuerfe");
-                }}
+                // JOB 3266 (D1): derselbe Aufruf wie das benannte Werkzeug oben — ein Weg, eine
+                // Fläche. Vorher stand die Handbewegung hier ein zweites Mal ausgeschrieben.
+                onClick={entwuerfeAufklappen}
                 className="ml-2 font-semibold underline"
               >
                 {t("fd.saved.toDrafts")}
