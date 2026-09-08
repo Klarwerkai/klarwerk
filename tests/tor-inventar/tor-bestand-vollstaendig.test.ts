@@ -135,6 +135,19 @@ describe("JOB 3131 T2 · der Bestand ueberlebt die Aufteilung in zwei Laeufe", (
     // fiele sie still aus beiden Gruppen, bliebe der Befund aus Codex' Beleg
     // 38-pruefen-volltext-ende.png ungedeckt und die Beschriftung ohne Wächter.
     expect(holeRest()).toContain("tests/pruefen-volltext/pruefen-brett-gemountet.test.tsx");
+    // JOB 3268 (D1-R): der Versionshinweis im alten Tab ist eine gemountete jsdom-Messung ohne
+    // Chromium — dieselbe Bauform (`.tsx` ohne eigenen Browser), die oben schon einmal still aus
+    // einem Lauf zu fallen drohte. Der Pin hält sie im regulären Aufruf fest.
+    expect(holeRest()).toContain(
+      "tests/d1r-neue-version-im-alten-tab/versionshinweis-mounted.test.tsx",
+    );
+    // JOB 3268 R2: der Pin gegen den echten Serverwert („unbekannt“ ist keine neue Version) ist
+    // ebenfalls eine `.tsx`-Datei OHNE JSX — sie trägt die Endung nur, weil die Wurzel-Typprüfung
+    // Node-rein ist (`tsconfig.json:23-27`) und der geprüfte Baustein `document` benutzt. Genau
+    // diese Bauform fällt still aus einem Lauf, wenn ein Muster nur auf `.test.ts` zielt.
+    expect(holeRest()).toContain(
+      "tests/d1r-neue-version-im-alten-tab/unbekannt-ist-keine-version.test.tsx",
+    );
   });
 
   it("V4 · der Verzeichnisgang der Konfiguration sieht denselben Bestand wie der Collector", () => {

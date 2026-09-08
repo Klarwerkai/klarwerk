@@ -1454,8 +1454,18 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // `ANGEBOT_MUSTER`) und trägt keinen eigenen Titel (kein `documentTitle`-Prop) — es erscheint
     // nur in der Grundmenge. Die zwei Zahlen, an denen Stufe 2 wirklich hängt, bleiben unverändert:
     // `anbieter` 1 und `traeger` 2.
+    //
+    // KONFLIKTRUNDE 3 (JOB 3268 · D1-R): NACH DEM REBASE auf JOB 3277/DEMOPAKET-ADVISOR trifft die
+    // unabhängige NEUE Fläche `VersionsHinweis` in `components/VersionsHinweis.tsx` auf denselben
+    // Stand; `komponenten` von 353 auf 354 NACHGEZOGEN — am eigenen Lauf dieses Arbeitsbaums
+    // gemessen, nicht rechnerisch addiert. `VersionsHinweis` ist die eine ruhige Zeile, mit der ein
+    // seit Stunden offener Tab erfährt, dass eine neue Version ausgeliefert ist, samt Knopf „Neu
+    // laden" (Pedis Befund vom 08.09.), keine Herauslösung. Für DIESEN Sammler ändert sie nichts:
+    // sie zeigt kein Bild, bietet keine Bildbeschreibung an (kein `ANGEBOT_MUSTER`) und trägt keinen
+    // eigenen Titel (kein `documentTitle`-Prop) — sie erscheint nur in der Grundmenge. Die zwei
+    // Zahlen, an denen Stufe 2 wirklich hängt, sind unverändert: `anbieter` 1 und `traeger` 2.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 353,
+      komponenten: 354,
       anbieter: 1,
       traeger: 2,
     });

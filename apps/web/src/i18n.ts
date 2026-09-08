@@ -18,6 +18,11 @@ const de = {
   "app.subtitle": "Reasoning System",
   "app.staleBundle":
     "Eine neue Version der App ist verfügbar — bitte die Seite neu laden (Cmd+R bzw. Strg+R).",
+  // JOB 3268 (D1-R): ZWEI verschiedene Zustände, zwei verschiedene Sätze. Der Satz darüber gehört
+  // zum GESCHEITERTEN Nachladen eines Programmstücks (`lib/staleChunk.ts`), dieser hier zur alten
+  // Oberfläche, die einwandfrei weiterläuft und nur nicht mehr die aktuelle ist.
+  "version.neu.hinweis": "Neue Version verfügbar",
+  "version.neu.neuLaden": "Neu laden",
   "nav.group.workspace": "Arbeitsbereich",
   "nav.group.quality": "Qualität & Pflege",
   "nav.group.control": "Steuerung",
@@ -5602,6 +5607,8 @@ const en: typeof de = {
   "app.subtitle": "Reasoning System",
   "app.staleBundle":
     "A new version of the app is available — please reload the page (Cmd+R or Ctrl+R).",
+  "version.neu.hinweis": "New version available",
+  "version.neu.neuLaden": "Reload",
   "nav.group.workspace": "Workspace",
   "nav.group.quality": "Quality & Upkeep",
   "nav.group.control": "Control",
@@ -10304,6 +10311,8 @@ const nl: typeof de = {
   "app.subtitle": "Reasoning System",
   "app.staleBundle":
     "Er is een nieuwe versie van de app beschikbaar — laad de pagina opnieuw (Cmd+R of Ctrl+R).",
+  "version.neu.hinweis": "Nieuwe versie beschikbaar",
+  "version.neu.neuLaden": "Opnieuw laden",
   "nav.group.workspace": "Werkruimte",
   "nav.group.quality": "Kwaliteit & onderhoud",
   "nav.group.control": "Aansturing",

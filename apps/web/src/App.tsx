@@ -23,6 +23,10 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 // JOB 3030: die Ladefläche wohnt seit dem Nachladen der Seiten in components/Splash.tsx — dieselbe
 // Fläche für den Anmeldeweg hier und für den Suspense-Rückfall in routes.tsx.
 import { Splash } from "./components/Splash";
+// JOB 3268 (D1-R): der Hinweis auf eine neue Lieferung. Er steht hier und nicht in der Shell, weil
+// er JEDE Lage betrifft — auch den Anmeldeweg, die Rechtsseiten und die shell-lose Route /mobile:
+// ein Tab, der seit Stunden offen ist, ist auf allen dreien gleich alt.
+import { VersionsHinweis } from "./components/VersionsHinweis";
 // AUFTRAG-mega61 Block A: die beiden Rechtsseiten liegen VOR dem Anmeldetor, wie /reset und
 // /sso/callback — deshalb hier und nicht in routes.tsx (das läuft erst innerhalb der Shell).
 import { LegalScreen, legalPageForPath, useRechtsseitenTor } from "./legal/LegalPages";
@@ -105,6 +109,10 @@ export default function App(): JSX.Element {
               <ErrorBoundary>
                 <Gate />
               </ErrorBoundary>
+              {/* JOB 3268 (D1-R): INNERHALB des Ungespeichert-Wächters, weil der Knopf „Neu laden"
+                  genau dessen Frage stellt — und AUSSERHALB der Fehlergrenze, damit der Ausweg zur
+                  neuen Version auch dann noch dasteht, wenn die Seite darunter abgestürzt ist. */}
+              <VersionsHinweis />
             </NavGuardProvider>
           </ImageDescribeProvider>
         </ToastProvider>
