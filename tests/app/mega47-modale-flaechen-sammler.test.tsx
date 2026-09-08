@@ -3806,8 +3806,30 @@ describe("JOB 1181 · Klassenbindungen: aufgelöst oder gemeldet, kein dritter Z
     // ein blosses `className="…"` ohne Ausdruck schöbe, nähme sie dem Sammler ganz weg — dann wäre
     // dieser Zählstand geschönt. Die Erhaltungszusage oben (aufgelöst + offen == alle) hält beides
     // zusammen.
+    // JOB 3288 (IMPORT-VOLLTEXT): von 217 auf 219. GENAU ZWEI Bindungen kommen dazu, beide von
+    // derselben Bauform wie die 217 daneben (EIN Zustand entscheidet zwischen zwei festen
+    // Klassenketten, wie `cx(STAND_ZEILE, … ? STAND_GESTOERT : STAND_RUHIG)` aus JOB 3135).
+    // Gemessen an diesem Arbeitsbaum, nicht gerechnet — der Sammler meldet sie mit Ort und
+    // Ausdruck, und die beiden aufgelösten Ketten stehen jeweils vollständig in `aufgeloest`:
+    //
+    //     + pages/Stufe2.tsx:520  `cx("transition-transform", offen && "rotate-180")`
+    //       (der Pfeil am Aufklapper „Ganzen importierten Text anzeigen"; offen: `offen`)
+    //     + pages/Stufe2.tsx:533  `cx("prose-kw text-[12.5px] leading-relaxed text-muted",
+    //           gekuerzt && "max-h-64 overflow-hidden")`
+    //       (die Deckelung des Volltextes; offen: `gekuerzt`)
+    //
+    // WARUM NICHT AUFLÖSBAR GESCHRIEBEN (die Auflage aus JOB 3267): Bei beiden entscheidet der
+    // Zustand über den ZWEIG, nicht über den Klassennamen — berechnete Klassennamen (`TON[zustand]`)
+    // gibt es hier nicht. Aufgelöst würde der Sammler sie erst, wenn der Zustand ganz aus dem
+    // `className`-Ausdruck verschwände; dann stünde die Kürzung nicht mehr an der Stelle, an der
+    // sie gilt. Beide Klassenketten sind vollständig literal und werden vom Sammler auch so
+    // gelesen; offen bleibt allein die Entscheidung dazwischen.
+    //
+    // KEIN VORBEISCHREIBEN: Beide Bindungen stehen in `ALLE_BINDUNGEN`. Wer die Deckelung in ein
+    // Attributobjekt oder in ein blosses `className="…"` schöbe, nähme sie dem Sammler ganz weg —
+    // dann wäre dieser Zählstand geschönt. Keine Bindung ist weggefallen.
     expect(UNAUFGELOEST.length, "es gibt heute unauflösbare Bindungen — das ist der Befund").toBe(
-      217,
+      219,
     );
     for (const b of UNAUFGELOEST) {
       expect(b.datei, "Meldung ohne Datei").toMatch(/^apps\/web\/src\/.+\.tsx?$/);

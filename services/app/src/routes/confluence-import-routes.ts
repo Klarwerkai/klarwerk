@@ -379,6 +379,140 @@ async function fuehreLaufAus(
   }
 }
 
+// ================================================================================================
+// JOB 3288 · LIEFERUNG 3 — DER SELEKTIVIMPORT BEKOMMT ENDLICH EINE KENNUNG.
+// ================================================================================================
+//
+// DER BEFUND (Codex, 1.188): 110 Seiten erkundet, 36 ausgewaehlt, 36 eingereiht — und der Kopf der
+// Importseite sagte weiter „Ein erfolgreich abgeschlossener Import ist bisher nicht festgehalten."
+// Das war keine Anzeigeschwaeche, sondern die Wahrheit ueber die Ablage: `/apply` legte NIE einen
+// `ImportRun` an. Nur der Gesamtlauf (`POST /api/admin/import/confluence`) tat das. Ein Import, der
+// keine Spur hinterlaesst, ist spaeter nicht nachweisbar — genau die Luecke, die KW-S4-26 §133 fuer
+// den Gesamtlauf geschlossen hat.
+//
+// EIN LAUF JE UEBERNAHME-AUFRUF, und das ist eine Entscheidung, keine Nachlaessigkeit: Die Flaeche
+// schickt die Auswahl in BATCHES (`ImportGroups.tsx`, `buildBatches`), damit der Fortschritt ehrlich
+// waechst. Ein Lauf ueber alle Batches haette eine Kennung gebraucht, die der Client mitschickt —
+// also einen zweiten Vertrag an einer Datei ausserhalb dieses Auftrags. Was hier steht, ist
+// stattdessen genau das, was der Aufruf WIRKLICH getan hat: sein Auftrag, seine Zahlen, sein
+// Ausgang. Die Antwort nennt die Kennung (`importId`), damit der Aufrufer sie lesen kann.
+//
+// KEIN GEGENSEITIGER AUSSCHLUSS mit dem Gesamtlauf (`laufregister`/409): Batches desselben
+// Selektivimports wuerden sich sonst gegenseitig sperren. Der Gesamtlauf bleibt unberuehrt.
+//
+// NEVER BLOCK: Faellt die Laufablage aus, wird das GEMELDET und der Import laeuft weiter. Ein
+// Uebernahmelauf, der wegen eines Ablagefehlers keine Spur bekommt, ist schlecht; 36 verlorene
+// Seiten waeren schlimmer.
+
+/** Was der Uebernahme-Aufruf getan hat — die vier Ausgaenge, aus dem Zaehlwerk der Schleife. */
+interface Uebernahmebilanz {
+  readonly beauftragt: number;
+  readonly eingereiht: number;
+  readonly bereitsInQueue: number;
+  readonly gescheitert: number;
+  readonly nichtGefunden: number;
+}
+
+/**
+ * Der Abschlussstatus einer Uebernahme.
+ *
+ * `PARTIAL`, sobald eine Seite scheiterte ODER eine beauftragte Id nicht mehr auffindbar war:
+ * beides heisst, dass der Auftrag dieses Aufrufs NICHT vollstaendig erfuellt wurde. Dieselbe Regel
+ * wie `abschlussStatus` fuer den Gesamtlauf, nur mit dem zweiten Grund, den es dort nicht gibt.
+ */
+function uebernahmeStatus(bilanz: Uebernahmebilanz): ImportRunStatus {
+  return bilanz.gescheitert > 0 || bilanz.nichtGefunden > 0 ? "PARTIAL" : "COMPLETED";
+}
+
+/**
+ * Die Zaehler der Uebernahme — und warum `notFound` unter `itemsFailed` steht.
+ *
+ * Die vier Ausgaenge der Schleife sind DISJUNKT und decken jede beauftragte Id genau einmal ab;
+ * `itemsCreated + itemsSkipped + itemsFailed === itemsTotal` gilt deshalb exakt (der Test haelt es
+ * fest). Waere `notFound` nirgends gezaehlt, waere die Summe kleiner als der Auftrag und jede
+ * Fortschrittsanzeige daraus wuerde „laeuft noch" lesen, obwohl der Lauf zu Ende ist.
+ *
+ * Eine nicht mehr auffindbare Seite IST fuer den Lauf ein gescheitertes Element — sie wurde
+ * beauftragt und nicht uebernommen. Der Unterschied zwischen „Verarbeitung scheiterte" und „Id war
+ * nicht (mehr) in der Auswahl" geht dabei nicht verloren: die Antwort des Aufrufs fuehrt beide
+ * Gruende weiterhin GETRENNT (`failed[]` mit Grund je Id, `notFound[]`).
+ *
+ * `itemsBound` ist belegbar 0 — die REVIEW-INVARIANTE laesst den Import nur Kandidaten anlegen,
+ * nie ein Wissensobjekt binden.
+ */
+function uebernahmeZaehler(bilanz: Uebernahmebilanz): ImportRun["counters"] {
+  return {
+    itemsTotal: bilanz.beauftragt,
+    itemsCreated: bilanz.eingereiht,
+    itemsBound: 0,
+    itemsSkipped: bilanz.bereitsInQueue,
+    itemsFailed: bilanz.gescheitert + bilanz.nichtGefunden,
+  };
+}
+
+/**
+ * Legt den Uebernahmelauf an — VOR dem ersten Schreibeffekt (§133) — und gibt seine Kennung.
+ *
+ * `null` heisst „ohne Spur weitermachen": entweder gibt es keine Laufablage (Bestandstests, die
+ * diese Routen ohne `importRuns` bauen — dann bleibt es beim Verhalten vor 3288), oder die Ablage
+ * hat den Lauf abgelehnt. Der zweite Fall wird geloggt, nicht verschwiegen.
+ */
+async function legeUebernahmelaufAn(
+  importRuns: ImportRunRepo | undefined,
+  beauftragt: number,
+  log: FastifyBaseLogger,
+): Promise<string | null> {
+  if (!importRuns) {
+    return null;
+  }
+  const importId = randomUUID();
+  const lauf: ImportRun = {
+    importId,
+    sourceSystem: "confluence",
+    externalId: null,
+    sourceScope: laufScope(),
+    requestedSourceVersion: null,
+    status: "QUEUED",
+    sourceRecordId: null,
+    startedAt: new Date().toISOString(),
+    completedAt: null,
+    failureCode: null,
+    failureReason: null,
+    counters: {
+      itemsTotal: beauftragt,
+      itemsCreated: 0,
+      itemsBound: 0,
+      itemsSkipped: 0,
+      itemsFailed: 0,
+    },
+  };
+  try {
+    await importRuns.insertIfAbsent(lauf);
+    return importId;
+  } catch (err) {
+    warne(log, "Uebernahmelauf anlegen", err);
+    return null;
+  }
+}
+
+/** Schreibt den Ausgang der Uebernahme fort. Ein Ablagefehler bricht den Import NICHT ab. */
+async function schliesseUebernahmelauf(
+  importRuns: ImportRunRepo | undefined,
+  importId: string | null,
+  fortschritt: Parameters<ImportRunRepo["advance"]>[1],
+  log: FastifyBaseLogger,
+): Promise<void> {
+  if (!importRuns || importId === null) {
+    return;
+  }
+  try {
+    await importRuns.advance(importId, fortschritt);
+  } catch (err) {
+    // Der Lauf bleibt dann sichtbar in QUEUED stehen — haengend statt spurlos, wie beim Gesamtlauf.
+    warne(log, `Uebernahmelauf schreiben (${importId})`, err);
+  }
+}
+
 /**
  * JOB 2691 D1: der Snapshot der Erkundung traegt KEINEN Volltext mehr. Metadaten und der
  * Klartext (`statement`) reichen fuer Erkunden, Auswaehlen und Gruppieren; `bodyHtml` — das
@@ -943,6 +1077,9 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
           });
           return reply;
         }
+        // JOB 3288: die Kennung dieser Uebernahme — ausserhalb des `try`, damit auch der
+        // Fehlerausgang sie kennt und den Lauf nicht in QUEUED stehen laesst.
+        let uebernahmelauf: string | null = null;
         try {
           const criteria = sanitizeCriteria(request.body?.criteria);
           const rawIds = Array.isArray(request.body?.includeIds) ? request.body.includeIds : [];
@@ -1001,6 +1138,13 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
           let alreadyQueued = 0;
           const failed: { id: string; reason: string }[] = [];
           const notFound: string[] = [];
+          // JOB 3288: DIE KENNUNG VOR DEM ERSTEN SCHREIBEFFEKT. Ab hier kann diese Uebernahme
+          // Kandidaten anlegen — von hier an ist sie eine Tatsache und traegt einen Lauf.
+          uebernahmelauf = await legeUebernahmelaufAn(
+            deps.importRuns,
+            includeIds.length,
+            request.log,
+          );
           for (const id of includeIds) {
             // F3: außerhalb der Vorschau-Auswahl → ehrlich als notFound (kein stiller Import).
             if (allowedIds !== null && !allowedIds.has(id)) {
@@ -1046,11 +1190,56 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
               failed.push({ id, reason: err instanceof Error ? err.name : "unknown" });
             }
           }
-          reply.code(200).send({ imported, updates, alreadyQueued, failed, notFound });
+          // JOB 3288: der Ausgang dieses Aufrufs, an seiner Kennung festgehalten.
+          const bilanz: Uebernahmebilanz = {
+            beauftragt: includeIds.length,
+            eingereiht: imported,
+            bereitsInQueue: alreadyQueued,
+            gescheitert: failed.length,
+            nichtGefunden: notFound.length,
+          };
+          await schliesseUebernahmelauf(
+            deps.importRuns,
+            uebernahmelauf,
+            {
+              status: uebernahmeStatus(bilanz),
+              completedAt: new Date().toISOString(),
+              counters: uebernahmeZaehler(bilanz),
+            },
+            request.log,
+          );
+          reply.code(200).send({
+            imported,
+            updates,
+            alreadyQueued,
+            failed,
+            notFound,
+            // Rein ADDITIV: die Kennung dieser Uebernahme, lesbar ueber
+            // `GET /api/admin/import/runs/:importId`. Fehlt sie, gibt es keinen Lauf — kein
+            // Platzhalter, keine erfundene Id.
+            ...(uebernahmelauf !== null ? { importId: uebernahmelauf } : {}),
+          });
           return reply;
         } catch (err) {
           warne(request.log, "Uebernahme", err);
+          // JOB 3288: ein abgebrochener Aufruf hinterlaesst KEINEN ewig wartenden Lauf. Was bis
+          // hierher wirklich eingereiht wurde, ist unbekannt (der Fehler kann mitten in der
+          // Schleife liegen) — deshalb steht am Lauf der Ausgang FAILED mit Grund und NICHT eine
+          // erfundene Zahl. Die Zaehler bleiben, was zuletzt geschrieben wurde.
           const grenze = confluenceGrenze(err); // JOB 2683 D2
+          await schliesseUebernahmelauf(
+            deps.importRuns,
+            uebernahmelauf,
+            {
+              status: "FAILED",
+              completedAt: new Date().toISOString(),
+              failureCode: grenze ? grenze.error : "APPLY_FAILED",
+              failureReason: sanitizeImportFailureReason(
+                err instanceof Error ? err.message : "Confluence-Übernahme fehlgeschlagen.",
+              ),
+            },
+            request.log,
+          );
           if (grenze) {
             reply.code(grenze.status).send({ error: grenze.error, message: grenze.message });
             return reply;

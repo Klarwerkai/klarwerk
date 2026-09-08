@@ -1464,8 +1464,23 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // sie zeigt kein Bild, bietet keine Bildbeschreibung an (kein `ANGEBOT_MUSTER`) und trägt keinen
     // eigenen Titel (kein `documentTitle`-Prop) — sie erscheint nur in der Grundmenge. Die zwei
     // Zahlen, an denen Stufe 2 wirklich hängt, sind unverändert: `anbieter` 1 und `traeger` 2.
+    //
+    // KONFLIKTRUNDE 1 (JOB 3288 · IMPORT-VOLLTEXT): NACH DEM REBASE auf JOB 3268/D1-R trifft die
+    // unabhängige NEUE Fläche IMPORT-VOLLTEXT auf denselben Stand; `komponenten` von 354 auf 356
+    // NACHGEZOGEN — am eigenen Lauf dieses Arbeitsbaums gemessen, nicht rechnerisch addiert. GENAU
+    // ZWEI Bauteile kommen hinzu, beide in `pages/Stufe2.tsx`:
+    //
+    //     + `ImportVolltextAufklapper` (Stufe2.tsx:496) — der aufklappbare ganze Seitentext auf
+    //       der Prüfkarte; er hält seinen Auf-/Zu-Zustand und die „Mehr anzeigen"-Entscheidung
+    //       je Karte, ist also eine eigene Komponente und kein Ausdruck in der Karte.
+    //     + `ImportQuellzeile` (Stufe2.tsx:576) — Titel, Raum und der Link zur Confluence-Quelle.
+    //
+    // Für DIESEN Sammler gibt es nichts aufzulösen — er zählt. Keines der beiden Bauteile bietet
+    // eine Bildbeschreibung an (kein `ANGEBOT_MUSTER`) und keines trägt einen eigenen Titel (kein
+    // `documentTitle`-Prop); sie erscheinen nur in der Grundmenge. Die zwei Zahlen, an denen
+    // Stufe 2 wirklich hängt, bleiben unverändert: `anbieter` 1 und `traeger` 2.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 354,
+      komponenten: 356,
       anbieter: 1,
       traeger: 2,
     });

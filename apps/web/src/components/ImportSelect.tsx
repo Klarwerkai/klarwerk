@@ -812,6 +812,18 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
                       void qc.invalidateQueries({ queryKey: ["kos"] });
                       void qc.invalidateQueries({ queryKey: ["library"] });
                       void qc.invalidateQueries({ queryKey: ["validation"] });
+                      // JOB 3288 (BEN, Runde 3+4): DER KOPF DERSELBEN SEITE. Seit Lieferung 3
+                      // hinterlässt jede Übernahme einen `ImportRun`
+                      // (`confluence-import-routes.ts:1143`), und der Zugangskasten oben liest
+                      // daraus die Zeile „Zuletzt erfolgreich abgeschlossener Import"
+                      // (`import-access-service.ts:90` → `findLastSuccessAt`). Diese Zeile ist die
+                      // EINZIGE Stelle, an der der Selektivimport überhaupt sichtbar wird — und
+                      // ohne diese Zeile blieb sie im offenen Fenster auf „ist bisher nicht
+                      // festgehalten" stehen, während der Server den Abschluss längst kannte. Pedi
+                      // hatte genau das vor sich (Codex-Livebefund df052186, 36 Seiten importiert).
+                      // Sie gehört hierher und nicht an den Kopf: WER etwas bewirkt hat, frischt
+                      // auf — dieselbe Regel wie bei den vier Zeilen darüber.
+                      void qc.invalidateQueries({ queryKey: ["import-access", "confluence"] });
                     }}
                   />
                 );

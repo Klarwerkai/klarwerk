@@ -3952,6 +3952,21 @@ const de = {
   "ext.recommendation.output-ready": "Für Output nutzbar",
   "ext.recommendation.unknown": "unbekannt",
   "imp.duplicate": "Dublette",
+  // JOB 3288 · IMPORT-VOLLTEXT: Volltext und Quelle auf der Prüfkarte, vor „Annehmen".
+  "imp.fullText.show": "Ganzen importierten Text anzeigen",
+  "imp.fullText.hide": "Ganzen Text ausblenden",
+  "imp.fullText.label": "Vollständiger importierter Inhalt",
+  "imp.fullText.missing":
+    "Für diesen Beitrag wurde kein Volltext übertragen — hier steht nur die Kernaussage.",
+  "imp.fullText.more": "Mehr anzeigen",
+  "imp.fullText.less": "Weniger anzeigen",
+  "imp.fullText.truncated": "Gekürzt angezeigt — „Mehr anzeigen“ zeigt den ganzen Text.",
+  "imp.source.open": "Quelle öffnen",
+  "imp.source.newTab": "öffnet einen neuen Tab",
+  "imp.source.space": "Raum {{name}}",
+  "imp.source.unlinkable":
+    "Die gespeicherte Quelladresse ist keine sichere Webadresse — sie ist deshalb nicht anklickbar.",
+  "imp.source.none": "Zu diesem Beitrag ist keine Quelladresse gespeichert.",
   "imp.note": "Notiz",
   "imp.accept": "Annehmen",
   "imp.reject": "Ablehnen",
@@ -5525,7 +5540,10 @@ const de = {
   "w2.run.heading": "Lauf",
   // F-0140 / K-20 (JOB 2970 D1): die zwei Texte der Lauf-Fläche auf der Import-Seite.
   "w2.run.start": "Import starten",
-  "w2.run.idle": "Kein Lauf gestartet. Der Startknopf legt einen an; sein Zustand steht dann hier.",
+  // JOB 3288: Diese Kachel kennt NUR den Gesamtlauf, den dieses Fenster gestartet hat. Der alte
+  // Satz („Kein Lauf gestartet.") las sich als Aussage über den Bestand und war es nie.
+  "w2.run.idle":
+    "In diesem Fenster wurde kein Gesamtlauf gestartet. Der Startknopf legt einen an; sein Zustand steht dann hier. Ein Import über „Auswahl übernehmen“ wird ebenfalls festgehalten, erscheint aber nicht hier, sondern oben in der Zeile „Zuletzt erfolgreich abgeschlossener Import“.",
   // JOB 2970 D2: Fortschritt als Zahl — die Zähler kommen fertig vom Server.
   "w2.run.progress": "{{verarbeitet}} von {{gesamt}} Elementen verarbeitet",
   "w2.run.status.QUEUED": "In der Warteschlange",
@@ -8909,6 +8927,21 @@ const en: typeof de = {
   "ext.recommendation.output-ready": "Ready for output",
   "ext.recommendation.unknown": "unknown",
   "imp.duplicate": "Duplicate",
+  // JOB 3288 · IMPORT-VOLLTEXT: full text and source on the review card, before “Accept”.
+  "imp.fullText.show": "Show full imported text",
+  "imp.fullText.hide": "Hide full text",
+  "imp.fullText.label": "Full imported content",
+  "imp.fullText.missing":
+    "No full text was transferred for this contribution — only the key statement is available here.",
+  "imp.fullText.more": "Show more",
+  "imp.fullText.less": "Show less",
+  "imp.fullText.truncated": "Shown shortened — “Show more” reveals the whole text.",
+  "imp.source.open": "Open source",
+  "imp.source.newTab": "opens a new tab",
+  "imp.source.space": "Space {{name}}",
+  "imp.source.unlinkable":
+    "The stored source address is not a safe web address — it is therefore not clickable.",
+  "imp.source.none": "No source address is stored for this contribution.",
   "imp.note": "Note",
   "imp.accept": "Accept",
   "imp.reject": "Reject",
@@ -10241,7 +10274,8 @@ const en: typeof de = {
   "w2.result.heading": "Import result",
   "w2.run.heading": "Run",
   "w2.run.start": "Start import",
-  "w2.run.idle": "No run started. The start button creates one; its state then appears here.",
+  "w2.run.idle":
+    "No full run was started in this window. The start button creates one; its state then appears here. An import via “Import selection” is recorded too, but appears in the “Last successfully completed import” line above rather than here.",
   "w2.run.progress": "{{verarbeitet}} of {{gesamt}} items processed",
   "w2.run.status.QUEUED": "Queued",
   "w2.run.status.FETCHING": "Fetching the source",
@@ -13596,6 +13630,21 @@ const nl: typeof de = {
   "ext.recommendation.output-ready": "Bruikbaar voor output",
   "ext.recommendation.unknown": "onbekend",
   "imp.duplicate": "Duplicaat",
+  // JOB 3288 · IMPORT-VOLLTEXT: volledige tekst en bron op de controlekaart, vóór „Aannemen".
+  "imp.fullText.show": "Volledige geïmporteerde tekst tonen",
+  "imp.fullText.hide": "Volledige tekst verbergen",
+  "imp.fullText.label": "Volledige geïmporteerde inhoud",
+  "imp.fullText.missing":
+    "Voor deze bijdrage is geen volledige tekst overgedragen — hier staat alleen de kernuitspraak.",
+  "imp.fullText.more": "Meer tonen",
+  "imp.fullText.less": "Minder tonen",
+  "imp.fullText.truncated": "Ingekort weergegeven — „Meer tonen” laat de hele tekst zien.",
+  "imp.source.open": "Bron openen",
+  "imp.source.newTab": "opent een nieuw tabblad",
+  "imp.source.space": "Ruimte {{name}}",
+  "imp.source.unlinkable":
+    "Het opgeslagen bronadres is geen veilig webadres — het is daarom niet aanklikbaar.",
+  "imp.source.none": "Voor deze bijdrage is geen bronadres opgeslagen.",
   "imp.note": "Notitie",
   "imp.accept": "Aannemen",
   "imp.reject": "Afwijzen",
@@ -14938,7 +14987,7 @@ const nl: typeof de = {
   "w2.run.heading": "Uitvoering",
   "w2.run.start": "Import starten",
   "w2.run.idle":
-    "Geen uitvoering gestart. De startknop maakt er een aan; de status verschijnt dan hier.",
+    "In dit venster is geen volledige uitvoering gestart. De startknop maakt er een aan; de status verschijnt dan hier. Een import via „Selectie overnemen” wordt ook vastgelegd, maar verschijnt niet hier: hij staat hierboven in de regel „Laatste succesvol afgeronde import”.",
   "w2.run.progress": "{{verarbeitet}} van {{gesamt}} elementen verwerkt",
   "w2.run.status.QUEUED": "In de wachtrij",
   "w2.run.status.FETCHING": "Bron wordt opgehaald",

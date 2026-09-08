@@ -204,4 +204,22 @@ describe("WP-IC-PAKET-1 Teil 1: Altbestand-ANZEIGE dekodiert — und rendert wei
       expect(read(rel), rel).not.toContain("dangerouslySetInnerHTML");
     }
   });
+
+  // JOB 3288 · NACHGEFUEHRT, NICHT GELOCKERT. Seit diesem Job rendert `Stufe2.tsx` sehr wohl HTML:
+  // die Prüfkarte zeigt vor „Annehmen" den ganzen importierten Seitentext. Der Fall oben blieb
+  // dabei formal grün — Stufe2 benutzt den gemeinsamen `SanitizedHtml` und keinen rohen
+  // React-HTML-Knoten —, aber er sah diesen neuen Renderweg gar nicht. Damit der Wächter nicht
+  // zahnlos an einer wahren Zusage vorbeiläuft, steht hier, WAS Stufe2 als HTML rendern darf:
+  // ausschliesslich `befund.html`, also das `bodyHtml` des Kandidaten aus `importVolltextBefund`.
+  // Die dekodierten TEXT-Felder (`title`, `statement`) bleiben React-Textknoten — die Zusage des
+  // Falls oben, jetzt an der Fundstelle selbst gemessen statt an einer verbotenen Zeichenkette.
+  it("Stufe2 rendert HTML NUR über SanitizedHtml und NUR aus dem bodyHtml des Kandidaten", () => {
+    const stufe2 = read("apps/web/src/pages/Stufe2.tsx");
+    const sinks = stufe2.match(/<SanitizedHtml[\s\S]*?html=\{([^}]*)\}/g) ?? [];
+    // Ein leerer Sammler wäre ein grüner Sammler: der Volltext-Aufklapper MUSS gefunden werden.
+    expect(sinks.length, "kein SanitizedHtml mehr in Stufe2 — der Volltext ist weg").toBe(1);
+    expect(sinks[0]).toContain("html={befund.html}");
+    // Und keine der beiden dekodierten Textstellen wandert in einen HTML-Sink.
+    expect(stufe2).not.toMatch(/html=\{[^}]*displayImportText/);
+  });
 });

@@ -1,5 +1,16 @@
 import { onlineManager, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowDown, ArrowUp, Building2, Copy, Download, FileText, Printer, X } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  Building2,
+  ChevronDown,
+  Copy,
+  Download,
+  ExternalLink,
+  FileText,
+  Printer,
+  X,
+} from "lucide-react";
 import { type ChangeEvent, type DragEvent, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate } from "react-router-dom";
@@ -42,9 +53,11 @@ import { ImportJsonUpload } from "../components/ImportJsonUpload";
 import { ImportCockpitProvider, ImportStepperBar } from "../components/ImportStepper";
 import { KlaraPathTeaser } from "../components/KlaraPathTeaser";
 import { KoSummaryDisclosure } from "../components/KoSummaryDisclosure";
+// JOB 3288: derselbe Allowlist-Renderweg wie die Bibliothek — kein zweiter HTML-Sink.
+import { SanitizedHtml } from "../components/SanitizedHtml";
 // F-0140 / K-20: derselbe Zustandsbanner, den der Ergebnis-View schon benutzt — kein zweiter.
 import { RunStateBanner } from "../components/confluence-import/RunStateBanner";
-import { Button, Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
+import { Button, Card, PageHeader, QueryState, SectionLabel, cx } from "../components/ui";
 import { CAPITAL_SECTIONS, sectionAnchor, sectionHref } from "../lib/capitalSections";
 import { deriveStatus } from "../lib/displayStatus";
 import { analyzeEvidenceFreshness } from "../lib/evidenceFreshness";
@@ -65,6 +78,9 @@ import {
 } from "../lib/importCandidateStatus";
 import { importRunStateView } from "../lib/importResultView";
 import { ImportParseError, importParseNotice, parseImportItems } from "../lib/importReview";
+// JOB 3288: Volltext-Befund und Quellangabe eines Import-Kandidaten — laufzeitgeprüft, weil der
+// Client-Typ `ImportItemInput` diese Drahtfelder (noch) nicht führt (Begründung dort).
+import { importQuellangabe, importVolltextBefund } from "../lib/importTextVolltext";
 // AUFTRAG-ic7-import-vision: geteilte ID des JSON-Dialogs (aktive JSON-Kachel der Quellen-Galerie).
 import { knowledgeHealth } from "../lib/knowledgeHealth";
 import { buildKnowledgeOsHints } from "../lib/knowledgeOsHints";
@@ -413,6 +429,23 @@ export function ImportRunPanel(): JSX.Element {
         </Button>
       </div>
       <div className="mt-2">
+        {/* JOB 3288 (Codex-Livebefund df052186): Hier stand „Kein Lauf gestartet." Pedi hatte
+            gerade 36 Seiten selektiv importiert und las den Satz als Aussage über den BESTAND —
+            als hätte nie ein Import stattgefunden. Diese Kachel kennt aber nur den Gesamtlauf, den
+            DIESES Fenster gestartet hat (`importId` ist lokaler Zustand, kein Serverwissen).
+            Der Satz sagt jetzt genau das und verweist auf die Zeile, die den Bestand wirklich
+            kennt: „Zuletzt erfolgreich abgeschlossener Import" im Zugangskasten darüber
+            (`imp.access.lastConnected`, gespeist aus `importRuns.findLastSuccessAt("confluence")`).
+            Dass der Selektivimport dort ANKOMMT, misst
+            `tests/import-volltext/selektivimport-hat-eine-lauf-kennung.test.ts` (L4) am echten
+            Server; dass die Zeile ihn ZEIGT, misst
+            `tests/import-volltext/kopf-zeigt-den-selektivimport.test.tsx` (K2) am echten DOM; und
+            dass sie das OHNE Neuladen tut — direkt nach „Auswahl übernehmen", im selben offenen
+            Fenster —, misst K3 derselben Datei über den echten Rückruf aus
+            `ImportSelect.tsx` (`onApplied`, seit BEN Runde 4 auch die Zugangsabfrage).
+            Der Satz enthält deshalb KEINE Einschränkung mehr: er verspricht genau so viel, wie
+            gemessen ist. Fiele die Zugangs-Auffrischung wieder weg, wird K3 rot — nicht der Satz
+            still falsch. */}
         {importId === null ? (
           <p data-testid="f0140-idle" className="text-[12.5px] text-muted">
             {t("w2.run.idle")}
@@ -446,6 +479,142 @@ export function ImportRunPanel(): JSX.Element {
         )}
       </div>
     </Card>
+  );
+}
+
+// ================================================================================================
+// JOB 3288 · LIEFERUNG 1 — DER GANZE IMPORTIERTE TEXT, VOR DEM „ANNEHMEN".
+// ================================================================================================
+//
+// GESCHLOSSEN, NICHT OFFEN. Die Kernaussage steht bei offenen Fällen bereits aufgeklappt da; der
+// Volltext ist der zweite Blick, nicht der erste — 36 vollständige Confluence-Seiten untereinander
+// wären keine Prüffläche mehr. Der Inhalt wird deshalb ERST BEIM AUFKLAPPEN in den Baum gehängt
+// (nicht per CSS versteckt): eine Karte im Ruhezustand trägt den Volltext auch nicht unsichtbar,
+// worauf sich `tests/library/job2703-datenweg-review-queue-mounted.test.tsx` (G5) ausdrücklich
+// verlässt.
+//
+// SICHER GERENDERT WIE IN DER BIBLIOTHEK: derselbe `SanitizedHtml` wie die Leseansicht eines
+// Wissensobjekts (`BibliothekLesen.tsx:1002`) — der einzige HTML-Sink des Produkts, Eingabe durch
+// die Allowlist von `richText.sanitizeHtml`. Kein zweiter Renderweg, kein eigener Sanitizer, und
+// hier steht bewusst KEIN roher React-HTML-Knoten: `tests/structure/html-entities.test.ts` verbietet
+// ihn auf allen drei Import-Anzeigeflächen und prüft dort zugleich, dass diese Datei HTML nur über
+// `SanitizedHtml` und nur aus `befund.html` (dem `bodyHtml` des Kandidaten) rendert — nie aus den
+// dekodierten Textfeldern `title`/`statement`.
+function ImportVolltextAufklapper({ item }: { item: unknown }): JSX.Element {
+  const { t } = useTranslation();
+  const [offen, setOffen] = useState(false);
+  const [ganz, setGanz] = useState(false);
+  const befund = importVolltextBefund(item);
+  if (befund.art === "ohne-volltext") {
+    // Kein Aufklapper ins Leere: der Satz sagt, dass es hier nichts zu entfalten GIBT — und dass
+    // die Kernaussage darüber alles ist, was diese Karte trägt.
+    return (
+      <p data-testid="imp-volltext-fehlt" className="text-[11.5px] leading-relaxed text-muted-2">
+        {t("imp.fullText.missing")}
+      </p>
+    );
+  }
+  const gekuerzt = befund.lang && !ganz;
+  return (
+    <div>
+      <button
+        type="button"
+        aria-expanded={offen}
+        data-testid="imp-volltext-schalter"
+        onClick={() => setOffen((o) => !o)}
+        className="inline-flex items-center gap-1 text-[11.5px] font-semibold text-muted hover:text-text"
+      >
+        <ChevronDown size={13} className={cx("transition-transform", offen && "rotate-180")} />
+        {offen ? t("imp.fullText.hide") : t("imp.fullText.show")}
+      </button>
+      {offen ? (
+        <div
+          data-testid="imp-volltext"
+          className="mt-1 rounded-card border border-hairline bg-page px-3 py-2"
+        >
+          <span className="mb-0.5 block font-mono text-[9.5px] font-semibold uppercase tracking-wide text-muted-2">
+            {t("imp.fullText.label")}
+          </span>
+          <SanitizedHtml
+            html={befund.html}
+            className={cx(
+              "prose-kw text-[12.5px] leading-relaxed text-muted",
+              // Die zwei Klassen SIND die Kürzung. Beide werden in der Gegenprobe einzeln
+              // zurückgebaut; ohne sie steht der ganze Text da und der Hinweis unten wäre eine
+              // Behauptung ohne Sachverhalt.
+              gekuerzt && "max-h-64 overflow-hidden",
+            )}
+          />
+          {befund.lang ? (
+            <div className="mt-1.5 flex flex-wrap items-center gap-2 border-t border-hairline pt-1.5">
+              <button
+                type="button"
+                data-testid="imp-volltext-mehr"
+                onClick={() => setGanz((g) => !g)}
+                className="text-[11.5px] font-semibold text-ai hover:underline"
+              >
+                {ganz ? t("imp.fullText.less") : t("imp.fullText.more")}
+              </button>
+              {/* NIE GEKUERZT OHNE HINWEIS: der Satz steht genau dann da, wenn wirklich gekürzt
+                  ist — nicht als Dauerfußnote. */}
+              {gekuerzt ? (
+                <span data-testid="imp-volltext-gekuerzt" className="text-[11.5px] text-muted-2">
+                  {t("imp.fullText.truncated")}
+                </span>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+// ================================================================================================
+// JOB 3288 · LIEFERUNG 2 — WOHER DIESER BEITRAG KOMMT, AUF DER KARTE.
+// ================================================================================================
+//
+// UX-24-MUSTER (JOB 3179): Ein Link, der den Tab wechselt, KUENDIGT DAS SICHTBAR AN — als echter
+// Text neben dem Link, nicht nur als `title` und nicht nur für Screenreader.
+//
+// DREI FAELLE, DREI SAETZE (siehe `importQuellangabe`): klickbar, gespeichert-aber-unsicher,
+// gar nicht vorhanden. Die unsichere Adresse wird GEZEIGT, aber nie klickbar — dieselbe zweite
+// Verteidigungslinie wie überall am Klickpfad (`safeHttpUrl`).
+function ImportQuellzeile({ item }: { item: unknown }): JSX.Element {
+  const { t } = useTranslation();
+  const quelle = importQuellangabe(item);
+  const beschriftung = [
+    quelle.titel,
+    quelle.raum ? t("imp.source.space", { name: quelle.raum }) : null,
+  ]
+    .filter((s): s is string => !!s)
+    .join(" · ");
+  return (
+    <p
+      data-testid="imp-quelle"
+      className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11.5px] leading-relaxed text-muted-2"
+    >
+      {quelle.href !== null ? (
+        <>
+          <a
+            href={quelle.href}
+            target="_blank"
+            rel="noreferrer"
+            data-testid="imp-quelle-link"
+            className="inline-flex items-center gap-1 font-semibold text-ai hover:underline"
+          >
+            <ExternalLink size={12} aria-hidden="true" />
+            {t("imp.source.open")}
+          </a>
+          <span data-testid="imp-quelle-neuertab">{t("imp.source.newTab")}</span>
+        </>
+      ) : quelle.rohUrl !== null ? (
+        <span data-testid="imp-quelle-unsicher">{t("imp.source.unlinkable")}</span>
+      ) : (
+        <span data-testid="imp-quelle-fehlt">{t("imp.source.none")}</span>
+      )}
+      {beschriftung.length > 0 ? <span>{beschriftung}</span> : null}
+    </p>
   );
 }
 
@@ -674,15 +843,25 @@ export function ImportReview(): JSX.Element {
                       </span>
                       <span className="font-mono text-[11px] text-muted-2">{c.item.category}</span>
                     </div>
-                    {/* WP-SHIP9-S2 Paket 3 (E2): die Kernaussage sitzt hinter dem Kurzvorschau-
+                    {/* WP-SHIP9-S2 Paket 3 (E2): die KERNAUSSAGE sitzt hinter dem Kurzvorschau-
                         Aufklapper (konsistent mit Bibliothek/Validierung). Bei aktiven Fällen
-                        („neu") standardmäßig offen — der Prüfer verliert keinen Klick; der ehrliche
-                        Volltext (dekodiert) wird durchgereicht, nicht die gedeckelte Vorschau. */}
+                        („neu") standardmäßig offen — der Prüfer verliert keinen Klick; die
+                        Kernaussage wird ungedeckelt durchgereicht (dekodiert), nicht auf ~240
+                        Zeichen gekürzt.
+                        JOB 3288: Der Kommentar behauptete hier bis 1.188 „der ehrliche Volltext"
+                        — das war falsch. `statement` ist seit JOB 2703 der ERSTE ABSATZ der Seite
+                        (mapper.ts:155-160); der Volltext steht seither ungenutzt in `bodyHtml`.
+                        Er hat jetzt seinen eigenen Aufklapper eine Zeile tiefer. */}
                     <KoSummaryDisclosure
                       source={c.item}
                       text={displayImportText(c.item.statement, c.item.textCodec)}
                       defaultOpen={isOpenImportCandidate(c.status)}
                     />
+                    {/* JOB 3288 · Lieferung 1+2: der GANZE importierte Seitentext und die Quelle —
+                        beides VOR „Annehmen" erreichbar, beides aus dem bereits geladenen
+                        Kandidaten (kein zweiter Abruf). */}
+                    <ImportVolltextAufklapper item={c.item} />
+                    <ImportQuellzeile item={c.item} />
                     {c.note ? (
                       <p className="text-[12px] text-trust-warn-text">
                         {t("imp.note")}: {c.note}
