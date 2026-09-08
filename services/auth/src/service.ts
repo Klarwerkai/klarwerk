@@ -565,9 +565,25 @@ export class AuthService {
         "Der letzte aktive Admin kann nicht herabgestuft werden — sonst wäre niemand mehr verwaltungsberechtigt.",
       );
     }
+    // JOB 3140 (UX-11): DIE ALTE ROLLE WIRD GESPEICHERT, BEVOR SIE ÜBERSCHRIEBEN WIRD.
+    //
+    // Bis hierher schrieb der Eintrag nur `{ role }` — die NEUE Rolle. Die alte stand eine Zeile
+    // darüber noch als `user.role` im Speicher und war danach unwiederbringlich weg. Ein
+    // Prüfprotokoll, das „auf Controller gesetzt" sagt, ohne zu sagen, WOVON, beantwortet die
+    // eigentliche Frage nicht. Dasselbe gilt für die Namen: beide Objekte sind hier bereits geladen
+    // (`actor` aus requireUser oben, `user` direkt darüber), es kostet also KEINE zusätzliche
+    // Abfrage — und der Name von DAMALS bleibt auch dann lesbar, wenn das Konto später gelöscht
+    // oder umbenannt wird. Nachträglich anreichern lässt sich das nie: der Bestand behält seine
+    // Lücke und zeigt sie ehrlich als „nicht gespeichert" (apps/web/src/lib/auditEventDetail.ts).
+    const previousRole = user.role;
     user.role = role;
     await this.users.update(user);
-    await this.record(actorId, "user.role-change", userId, { role });
+    await this.record(actorId, "user.role-change", userId, {
+      role,
+      previousRole,
+      actorName: actor.name,
+      targetName: user.name,
+    });
     return toPublic(user);
   }
 

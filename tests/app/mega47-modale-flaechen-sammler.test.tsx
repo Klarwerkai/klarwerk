@@ -4264,8 +4264,10 @@ describe("JOB 1181 · Mengenerhalt: der schärfere Sucher verliert nichts", () =
     // sprachwahl.ts persistiert /profil (i18n.ts liest lng, main.tsx schreibt an der Wurzel).
     // JOB 3101: taskViewState.ts erhält Aufgabenfilter/Listenstelle über Öffnen und Browser-Zurück
     // mit URLSearchParams/Positionsspeicher. JOB 3112: validationStufenfrage.ts trägt die Stufenfrage
-    // beim Freigeben, validationDoppelhinweis.ts den Paarhinweis. Diese fünf lib-Helfer sind DOM-frei,
-    // ohne JSX/Modal/Portal; keine Flächenregistrierung nötig (beide D3-Suchrichtungen unten).
+    // beim Freigeben, validationDoppelhinweis.ts den Paarhinweis. JOB 3140: auditEventDetail.ts
+    // wertet einen Protokolleintrag zu beschrifteten Detailzeilen aus (WER wem WELCHE Rolle gab,
+    // statt drei roher Kennungen). Diese sechs lib-Helfer sind DOM-frei, ohne JSX/Modal/Portal;
+    // keine Flächenregistrierung nötig (beide D3-Suchrichtungen unten).
     const sammler = ALLE_ERHEBUNGEN.map((e) => e.quelle.datei).sort();
     const baum = erhebeBestand(WURZEL, WEB_SRC).sort();
     const sammlerMenge = new Set(sammler);

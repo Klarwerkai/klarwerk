@@ -6,10 +6,11 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 // Auskunft über den Zustand des Hauses und lebt deshalb als Zeile „Bereitschaft" unter Sicherheit
 // weiter — mit derselben Checkliste, denselben Quellen und demselben Druckknopf.
 import { Printer, ShieldCheck } from "lucide-react";
+import { Fragment, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
-import { useAnalytics, useAudit, useValidationBoard } from "../api/hooks";
+import { useAnalytics, useAudit, useDirectory, useValidationBoard } from "../api/hooks";
 import { useToast } from "../app/ToastContext";
 import { StaleMarker } from "../components/LoadState";
 import { Abfragehuelle, Fehlerbox } from "../components/einstellungen/Abfragehuelle";
@@ -21,6 +22,13 @@ import {
   wertBefund,
 } from "../components/einstellungen/zeilenWert";
 import { Button } from "../components/ui";
+import { auditActionLabel } from "../lib/auditAction";
+import {
+  type DetailZeile,
+  type VerzeichnisLage,
+  auditEventDetail,
+  verzeichnisNamen,
+} from "../lib/auditEventDetail";
 import { type AuditVerifyTone, auditVerifyView } from "../lib/auditVerifyState";
 import { SECURITY_POINTS } from "../lib/securityStatements";
 import { type ReadinessTone, readinessRows } from "../lib/vipReadiness";
@@ -62,14 +70,85 @@ function DruckKnopf(): JSX.Element {
 }
 
 /**
+ * JOB 3140 (UX-11): der Wert einer Detailzeile — reiner Text, kein Bedienelement.
+ *
+ * Drei Formen, drei Bedeutungen: ein Wert; eine Kennung mit dem GRUND, warum kein Name danebensteht;
+ * oder die ehrliche Auskunft „nicht gespeichert". Welche davon gilt, entscheidet
+ * `lib/auditEventDetail.ts` — hier wird nur gerendert. Die Kennung bleibt in jeder Form lesbar
+ * (monospace, kleiner): sie beherrscht die Zeile nicht mehr, verschwindet aber auch nicht.
+ */
+function DetailWert({ zeile }: { zeile: DetailZeile }): JSX.Element {
+  const { t } = useTranslation();
+  if (zeile.kind === "missing") {
+    return <span className="italic text-muted-2">{t("audit.detail.notStored")}</span>;
+  }
+  return (
+    <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
+      {zeile.kind === "text" ? (
+        <span className="text-text">{zeile.valueKey ? t(zeile.valueKey) : zeile.value}</span>
+      ) : null}
+      {/* JOB 3140 R2: der Hinweis steht NUR da, wenn es einen gibt. Ein Objektziel (`ko.created`
+          & Co.) trägt seine Kennung ohne jede Aussage über ein Konto — kein leerer Kursivrest. */}
+      {zeile.hinweisKey === undefined ? null : (
+        <span className="italic text-muted-2">{t(zeile.hinweisKey)}</span>
+      )}
+      {zeile.id === undefined ? null : (
+        <span className="truncate font-mono text-[10.5px] text-muted-2">{zeile.id}</span>
+      )}
+    </span>
+  );
+}
+
+/**
  * SCRUM-432 (Pedi 03.07., VIP-Investor): das hash-verkettete Prüfprotokoll.
  * AUFTRAG-mega15 Block A: die Texte behaupten keine Unveränderbarkeit — belegbar ist die
  * Prüfbarkeit (s. tests/app/chain-claims.test.ts).
+ *
+ * JOB 3140 (UX-11): DREI ROHE KENNUNGEN WERDEN EIN SATZ. Bis hierher standen je Eintrag der rohe
+ * Aktionscode und zwei UUIDs nebeneinander, ohne Beschriftung — welche Kennung die ausführende und
+ * welche die betroffene ist, stand nirgends, und `payload` wurde gar nicht gelesen. Jetzt trägt
+ * jeder Eintrag beschriftete Zeilen: Ereignis (über den bestehenden `auditActionLabel`), ausgeführt
+ * von, betroffen, und beim Rollenwechsel Rolle vorher/nachher.
+ *
+ * Das Verzeichnis (`useDirectory`, für JEDEN Angemeldeten — nicht `/api/users`, das Adminrecht
+ * verlangt und einem Controller die Fläche nähme) ist eine NACHRANGIGE Quelle: es hängt außerhalb
+ * der `Abfragehuelle` und kann die Karte deshalb weder blockieren noch in einen Fehlerzustand
+ * zwingen. Sein Zustand wird über dasselbe Modell gelesen wie jede Einstellungszeile
+ * (`zeilenWert.ts`) und als Lage an `auditEventDetail` gereicht — damit die Tatsachenaussage
+ * „Konto nicht mehr vorhanden" nur aus einer erfolgreichen, frischen Antwort entstehen kann.
  */
 export function PruefprotokollDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element {
   const { t } = useTranslation();
   const { push } = useToast();
   const audit = useAudit();
+  const verzeichnisAbfrage = useDirectory();
+  const online = useIstOnline();
+  const verzeichnisLage = abfragelage(verzeichnisAbfrage, online);
+  const verzeichnisBefund = wertBefund(verzeichnisLage, null);
+  const verzeichnisDaten = verzeichnisAbfrage.data;
+  const verzeichnisLaeuft = verzeichnisLage.laeuft;
+  const verzeichnisVeraltet = verzeichnisBefund.nichtAktualisiert;
+  const verzeichnis: VerzeichnisLage = useMemo(() => {
+    if (verzeichnisBefund.art === "laedt") {
+      return { art: "laedt" };
+    }
+    if (verzeichnisBefund.art === "fehler" || verzeichnisBefund.art === "offline") {
+      return { art: "nichtAbrufbar" };
+    }
+    return {
+      art: "geladen",
+      namen: verzeichnisNamen(verzeichnisDaten),
+      // JOB 3140 R2 (BENs Korrekturpflicht 2) — DREI LAGEN, NICHT ZWEI.
+      //
+      // Bis hierher stand hier `frisch: !nichtAktualisiert`. `nichtAktualisiert` meint aber
+      // ausschließlich „Auffrischung GESCHEITERT oder ruht" (`zeilenWert.ts:93`). Eine LAUFENDE
+      // Auffrischung ist beides nicht — und trotzdem ist der sichtbare Bestand dann der ALTE aus
+      // dem Zwischenspeicher. BENs Messung: 60 s alter, leerer Bestand mit ausstehender Antwort
+      // zeigte „Konto nicht mehr vorhanden", während das Konto in der laufenden Antwort steht.
+      // Deshalb entscheidet jetzt auch `laeuft` mit; belegt ist das Fehlen erst danach.
+      stand: verzeichnisVeraltet ? "veraltet" : verzeichnisLaeuft ? "laeuftNach" : "frisch",
+    };
+  }, [verzeichnisBefund.art, verzeichnisVeraltet, verzeichnisLaeuft, verzeichnisDaten]);
   // SCRUM-439: aktive Integritätsprüfung der Audit-Kette — echte Verifikation statt Aussage.
   const verifyAudit = useMutation({
     mutationFn: () => endpoints.audit.verify(),
@@ -131,15 +210,29 @@ export function PruefprotokollDetail({ onZurueck }: { onZurueck: () => void }): 
                 ) : (
                   <div className="divide-y divide-hairline">
                     {recent.map((e) => (
-                      <div key={e.seq} className="flex items-center gap-3 py-2 text-[12.5px]">
+                      <div key={e.seq} data-audit-eintrag={e.seq} className="py-2 text-[12.5px]">
                         <span className="font-mono text-[11px] text-muted-2">
                           {new Date(e.at).toLocaleString()}
                         </span>
-                        <span className="font-semibold text-text">{e.action}</span>
-                        <span className="truncate text-[11.5px] text-muted">{e.target}</span>
-                        <span className="ml-auto truncate font-mono text-[11px] text-muted-2">
-                          {e.actor}
-                        </span>
+                        {/* Beschriftungsliste statt Spaltenreihe: erst die Beschriftung sagt, wer
+                            wer ist. Reiner Text — kein Tabstopp, kein Bedienelement. */}
+                        <dl className="mt-1 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-3 gap-y-0.5">
+                          <dt className="text-[11.5px] text-muted-2">{t("audit.detail.event")}</dt>
+                          <dd
+                            data-audit-zeile="audit.detail.event"
+                            className="min-w-0 font-semibold text-text"
+                          >
+                            {auditActionLabel(e.action, t)}
+                          </dd>
+                          {auditEventDetail(e, verzeichnis).map((zeile) => (
+                            <Fragment key={zeile.labelKey}>
+                              <dt className="text-[11.5px] text-muted-2">{t(zeile.labelKey)}</dt>
+                              <dd data-audit-zeile={zeile.labelKey} className="min-w-0 text-muted">
+                                <DetailWert zeile={zeile} />
+                              </dd>
+                            </Fragment>
+                          ))}
+                        </dl>
                       </div>
                     ))}
                   </div>

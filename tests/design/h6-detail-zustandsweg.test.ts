@@ -226,6 +226,61 @@ function matrixAdmin(): Quelle[] {
   ];
 }
 
+/**
+ * JOB 3140 (UX-11) — DIE ZWEITE SORTE QUELLE: NACHRANGIG.
+ *
+ * Die Matrix oben kennt bis hierher nur TRAGENDE Quellen: fällt eine aus, sagt die Karte „nicht
+ * abrufbar" und bietet den Ausweg. Mit dem Prüfprotokoll kommt eine Quelle dazu, für die genau das
+ * FALSCH wäre: `/api/directory` liefert nur die Namen zu den Kennungen. Fällt sie aus, bleibt das
+ * Protokoll vollständig lesbar — es fehlen die Namen, und das sagt die Fläche ehrlich.
+ *
+ * Der Beleg ist deshalb spiegelbildlich zu `pruefeQuelle`: KEINE Fehlerbox, kein stehendes
+ * Ladewort, der Inhalt der tragenden Quelle bleibt stehen, an der Stelle des Namens steht die
+ * SCHWÄCHERE Auskunft — und die starke Tatsachenaussage („Konto nicht mehr vorhanden") fällt
+ * ausdrücklich NICHT, weil sie eine erfolgreiche Antwort voraussetzt (Auftrag 3140 §9).
+ */
+interface NachrangigeQuelle {
+  id: string;
+  pfad: string;
+  reiter: string;
+  zeile: string;
+  behaelter: string;
+  /** Was trotz der Störung dasteht — die tragende Quelle trägt weiter. */
+  inhalt: string;
+  /** Die ehrliche, schwächere Auskunft an der Stelle des fehlenden Wertes. */
+  schwach: string;
+  /** Die starke Aussage, die ohne Beleg NICHT fallen darf. */
+  verboten: string;
+  /**
+   * Der ZWISCHENZUSTAND, der vergehen muss, bevor gemessen wird. Solange die nachrangige Abfrage
+   * noch läuft (react-query wiederholt), steht hier ehrlich „Name wird geladen" — das ist RICHTIG
+   * und nicht der Endzustand. Gewartet wird auf sein Verschwinden, nicht auf das erwartete
+   * Ergebnis: der Test wartet damit auf die Ruhe, nicht auf seine eigene Erwartung.
+   */
+  zwischen: string;
+  /** Was nach der Erholung wirklich dasteht — ein positiver Beleg, keine bloße Abwesenheit. */
+  erholt: string;
+}
+
+function matrixNachrangig(): NachrangigeQuelle[] {
+  return [
+    {
+      id: "Prüfprotokoll · /api/directory (nachrangig, JOB 3140)",
+      pfad: "/api/directory",
+      reiter: t("adm.sec.sicherheit"),
+      zeile: '[data-testid="zeile-pruefprotokoll"]',
+      behaelter: "detail-pruefprotokoll",
+      inhalt: t("adm.sich.verify.button"),
+      schwach: t("audit.detail.nameUnavailable"),
+      verboten: t("audit.detail.accountGone"),
+      zwischen: t("audit.detail.nameLoading"),
+      // Der Prüfstand richtet sich mit dem Admin „Pedi" ein (h6-chromium.ts); seine Anmeldung ist
+      // der erste Protokolleintrag, also steht sein Name nach der Erholung als Ausführender da.
+      erholt: "Pedi",
+    },
+  ];
+}
+
 function matrixProfil(): Quelle[] {
   return [
     {
@@ -296,6 +351,48 @@ const ERNEUT = `(async (behaelter) => {
   knopf.click();
   await new Promise((r) => setTimeout(r, 600));
   return true;
+})`;
+
+/**
+ * JOB 3140: dieselbe Öffnung, aber OHNE auf einen Fehlerzustand zu warten — bei einer nachrangigen
+ * Quelle darf es keinen geben. Gewartet wird stattdessen darauf, dass das Ladewort verschwindet:
+ * erst danach ist ablesbar, was die Karte wirklich sagt.
+ */
+const OEFFNE_UND_LIES_OHNE_FEHLERWARTEN = `(async ([reiter, zeile, behaelter, zwischen]) => {
+  const warte = async (pruefung, ms = 15000) => {
+    const bis = Date.now() + ms;
+    while (Date.now() < bis) { if (pruefung()) return true; await new Promise((r) => setTimeout(r, 50)); }
+    return pruefung();
+  };
+  const zurueck = document.querySelector('[data-einst="zurueck"]');
+  if (zurueck) { zurueck.click(); await warte(() => document.querySelector('[data-einst="detail"]') === null, 4000); }
+  if (reiter) {
+    const r = [...document.querySelectorAll('[data-einst="reiter"]')].find((b) => (b.textContent||'').trim() === reiter);
+    if (!r) return { fehler: 'Reiter fehlt: ' + reiter };
+    r.click();
+    await warte(() => r.getAttribute('aria-pressed') === 'true', 4000);
+  }
+  const z = document.querySelector(zeile);
+  if (!z) return { fehler: 'Zeile fehlt: ' + zeile };
+  z.click();
+  const auf = await warte(() => document.querySelector('[data-testid="' + behaelter + '"]') !== null, 10000);
+  if (!auf) return { fehler: 'Karte ging nicht auf: ' + behaelter };
+  const karte0 = () => document.querySelector('[data-testid="' + behaelter + '"]');
+  await warte(() => { const k = karte0(); return k !== null && k.querySelector('[data-einst="laedt"]') === null; }, 15000);
+  // Die nachrangige Abfrage darf noch laufen — dann steht ihr Ladewort in der Zeile. Gewartet wird
+  // auf sein VERSCHWINDEN, nicht auf ein bestimmtes Ergebnis.
+  if (zwischen) {
+    await warte(() => { const k = karte0(); return k !== null && !(k.textContent || '').includes(zwischen); }, 25000);
+  }
+  const karte = karte0();
+  const box = karte ? karte.querySelector('[data-einst="abfrage-fehler"]') : null;
+  return {
+    fehler: null,
+    hatFehlerbox: box !== null,
+    fehlerText: box ? (box.textContent || '').replace(/\\s+/g, ' ').trim() : '',
+    laedt: karte ? karte.querySelector('[data-einst="laedt"]') !== null : false,
+    text: karte ? (karte.textContent || '').replace(/\\s+/g, ' ').trim() : '',
+  };
 })`;
 
 interface Lage {
@@ -383,6 +480,50 @@ describe("JOB 3065 H6 R3 · Endpunkt-Matrix der Detailkarten — 503 am gebauten
       [q.behaelter, q.inhalt],
       { timeout: 20_000 },
     );
+  }
+
+  /** JOB 3140: der spiegelbildliche Beleg für eine NACHRANGIGE Quelle. */
+  async function pruefeNachrangig(q: NachrangigeQuelle, seitenPfad: string): Promise<void> {
+    const s = stand as Stand;
+    expect(s.fehler, "Seite nicht gemountet").toBeNull();
+
+    // 1 — Störung setzen und mit leerem Zwischenspeicher neu aufbauen.
+    s.stoerung = q.pfad;
+    await neuLaden(seitenPfad, '[data-einst="seite"]');
+    const lage = await (s.seite as NonNullable<Stand["seite"]>).evaluate<Lage>(
+      fn(OEFFNE_UND_LIES_OHNE_FEHLERWARTEN),
+      [q.reiter, q.zeile, q.behaelter, q.zwischen],
+    );
+    expect(lage.fehler, `${q.id}: ${lage.fehler}`).toBeNull();
+
+    // 2 — Die Karte bleibt benutzbar: keine Fehlerbox, kein stehendes Ladewort, Inhalt da.
+    expect(lage.hatFehlerbox, `${q.id}: die nachrangige Quelle hat die Karte gesperrt`).toBe(false);
+    expect(lage.laedt, `${q.id}: die Karte hängt im Ladewort`).toBe(false);
+    expect(lage.text, `${q.id}: der Inhalt der tragenden Quelle fehlt`).toContain(q.inhalt);
+
+    // 3 — An der Stelle des fehlenden Wertes die SCHWÄCHERE Auskunft, nie die starke.
+    expect(lage.text, `${q.id}: die ehrliche Auskunft fehlt`).toContain(q.schwach);
+    expect(lage.text, `${q.id}: starke Tatsachenaussage ohne Beleg`).not.toContain(q.verboten);
+
+    // 4 — Störung vorbei: die Karte holt die Namen von selbst nach, ohne Zutun der lesenden Person.
+    s.stoerung = null;
+    await neuLaden(seitenPfad, '[data-einst="seite"]');
+    const heil = await (s.seite as NonNullable<Stand["seite"]>).evaluate<Lage>(
+      fn(OEFFNE_UND_LIES_OHNE_FEHLERWARTEN),
+      [q.reiter, q.zeile, q.behaelter, q.zwischen],
+    );
+    expect(heil.fehler, `${q.id} (erholt): ${heil.fehler}`).toBeNull();
+    expect(heil.text, `${q.id}: der echte Name fehlt nach der Erholung`).toContain(q.erholt);
+    expect(
+      heil.text,
+      `${q.id}: die schwache Auskunft steht noch da, obwohl die Quelle wieder geht`,
+    ).not.toContain(q.schwach);
+  }
+
+  for (const quelle of matrixNachrangig()) {
+    it(`N · ${quelle.id}`, async () => {
+      await pruefeNachrangig(quelle, "/admin");
+    }, 120_000);
   }
 
   it("K · KALIBRIERUNG: ohne Störung gibt es in keiner Karte einen Fehlerzustand", async () => {
@@ -497,6 +638,12 @@ describe("JOB 3065 H6 R3 · Endpunkt-Matrix der Detailkarten — 503 am gebauten
     "endpoints.ko.trash": "/api/kos/trash",
     useUsers: "/api/users",
     useAudit: "/api/audit",
+    // JOB 3140 (UX-11): die NACHRANGIGE Quelle des Prüfprotokolls — die Namen zu den Kennungen.
+    // Bewusst `/api/directory` (jeder Angemeldete) und nicht `/api/users` (Admin): das Protokoll
+    // steht auch einem Controller offen, und die Fläche darf ihm nicht wegbrechen. Ihr Fall in
+    // dieser Matrix ist `N · Prüfprotokoll · /api/directory` — spiegelbildlich zu den tragenden
+    // Quellen, weil ihr Ausfall ausdrücklich KEINEN Fehlerzustand erzeugen darf.
+    useDirectory: "/api/directory",
     useAnalytics: "/api/analytics",
     useValidationBoard: "/api/validation/board",
     useMyImpact: "/api/me/impact",
@@ -540,7 +687,11 @@ describe("JOB 3065 H6 R3 · Endpunkt-Matrix der Detailkarten — 503 am gebauten
     expect(unbekannt, `Abfragequelle ohne Pfad-Zuordnung: ${unbekannt.join(" · ")}`).toEqual([]);
 
     // (2) Jeder daraus abgeleitete Pfad steht als Fall in der Matrix.
-    const inMatrix = new Set([...matrixAdmin(), ...matrixProfil()].map((q) => q.pfad));
+    // JOB 3140: die nachrangigen Quellen zählen mit — sie haben einen eigenen, spiegelbildlichen
+    // Fall (`N · …`), aber sie sind genauso wenig ungemessen erlaubt wie eine tragende.
+    const inMatrix = new Set(
+      [...matrixAdmin(), ...matrixNachrangig(), ...matrixProfil()].map((q) => q.pfad),
+    );
     const ohneFall = [...new Set(gefunden.map((g) => QUELLE_PFAD[g.quelle] ?? ""))].filter(
       (p) => p !== "" && !inMatrix.has(p),
     );

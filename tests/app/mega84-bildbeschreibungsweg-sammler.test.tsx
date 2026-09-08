@@ -1479,8 +1479,19 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // eine Bildbeschreibung an (kein `ANGEBOT_MUSTER`) und keines trägt einen eigenen Titel (kein
     // `documentTitle`-Prop); sie erscheinen nur in der Grundmenge. Die zwei Zahlen, an denen
     // Stufe 2 wirklich hängt, bleiben unverändert: `anbieter` 1 und `traeger` 2.
+    //
+    // KONFLIKTRUNDE 6 (JOB 3140 · UX-11): NACH DEM REBASE auf JOB 3288/IMPORT-VOLLTEXT trifft die
+    // unabhängige HERAUSLÖSUNG `DetailWert` in `pages/AdminSicherheitDetails.tsx` auf denselben
+    // Stand; `komponenten` von 356 auf 357 NACHGEZOGEN — am eigenen Lauf dieses Arbeitsbaums
+    // gemessen (der Test meldete `expected 357 to equal 356`), nicht rechnerisch addiert.
+    // `DetailWert` ist der Wert einer Detailzeile des Prüfprotokolls in seinen drei Formen (Wert ·
+    // Kennung mit Grund · „nicht gespeichert"). Es ist eine HERAUSLÖSUNG aus der Zeilenschleife,
+    // keine neue Fläche, und reiner Text ohne Bedienelement. Es bietet keine Bildbeschreibung an
+    // (kein `ANGEBOT_MUSTER`) und trägt keinen eigenen Titel (kein `documentTitle`-Prop) — es
+    // erscheint nur in der Grundmenge. Die zwei Zahlen, an denen Stufe 2 wirklich hängt, bleiben
+    // unverändert: `anbieter` 1 und `traeger` 2.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 356,
+      komponenten: 357,
       anbieter: 1,
       traeger: 2,
     });
