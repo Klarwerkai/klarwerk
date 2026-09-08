@@ -7,6 +7,11 @@ import {
   mitModellAufrufSpur,
 } from "../../services/reasoner/src/model-concurrency";
 import { ModelEmptyResponseError } from "../../services/reasoner/src/model-errors";
+import {
+  EXTRACT_MAX_TOKENS,
+  ModelProvider,
+  parseExtractResponse,
+} from "../../services/reasoner/src/provider-model";
 
 const FRAGMENT = ' \n{"points":[{"text":"Halb ä';
 const BILD = "data:image/png;base64,AAAA";
@@ -84,6 +89,113 @@ describe("JOB 3239 · ein Fragment ist serverintern als abgeschnitten bekannt", 
     const { client, anfragen } = baueClient(antwort(FRAGMENT, "length"));
     await expect(client.complete("sys", "user", false)).resolves.toBe(FRAGMENT);
     expect(anfragen).toHaveLength(1);
+  });
+
+  it("G1: zwei aufeinanderfolgende Aufrufe desselben Clients ergeben genau zwei eigene Meldungen", async () => {
+    const fragmente = [FRAGMENT, `${FRAGMENT} noch ein Stück`];
+    const payload = antwort(FRAGMENT, "length");
+    const { client, anfragen } = baueClient(payload);
+    for (const fragment of fragmente) {
+      payload.choices[0]!.message.content = fragment;
+      await expect(client.complete("sys", "user", false)).resolves.toBe(fragment);
+    }
+    expect(anfragen).toHaveLength(2);
+    expect(meldungen.length).toBe(2);
+    for (const [index, fragment] of fragmente.entries()) {
+      expect(meldungen[index]?.startsWith(PRAEFIX)).toBe(true);
+      expect(JSON.parse(meldungen[index]?.slice(PRAEFIX.length) ?? "null")).toEqual({
+        bezeichnung: "Testanbieter",
+        budgetFeld: "max_completion_tokens",
+        budget: anfragen[index]?.max_completion_tokens,
+        finish_reason: "length",
+        zeichen: fragment.length,
+      });
+    }
+  });
+
+  it.each(["content_filter", "tool_calls", "LENGTH", "Length"])(
+    "G2: fremdes finish_reason=%s lässt den Inhalt unverändert und den Ausgang leer",
+    async (finishReason) => {
+      const payload = antwort(FRAGMENT, finishReason);
+      Object.assign(payload.choices[0]!.message, {
+        reasoning: "synthetischer Denktext",
+        reasoning_content: "weitere synthetische Gedanken",
+        thinking: "synthetisches Denken",
+      });
+      const { client, anfragen } = baueClient(payload);
+      await expect(
+        client.complete("synthetischer Systemtext", "synthetischer Nutzertext", false),
+      ).resolves.toBe(FRAGMENT);
+      expect(anfragen).toHaveLength(1);
+      expect(meldungen).toEqual([]);
+      expect(meldungen.join("")).not.toMatch(/synthetisch|Halb|points|reasoning|thinking/);
+    },
+  );
+
+  it("G3: der echte Extract-Rettungsweg erhält Punkte und Unvollständigkeit bei einem gemeldeten Fragment", async () => {
+    const dokument = "Die Pumpe wird täglich geprüft. Das Ventil bleibt geschlossen.";
+    const punkte = [
+      {
+        title: "Pumpe prüfen",
+        summary: "Tägliche Prüfung der Pumpe.",
+        sourceExcerpt: "Die Pumpe wird täglich geprüft.",
+      },
+      {
+        title: "Ventil geschlossen halten",
+        summary: "Das Ventil bleibt geschlossen.",
+        sourceExcerpt: "Das Ventil bleibt geschlossen.",
+      },
+    ];
+    const unbelegt = {
+      title: "Unbelegter Punkt",
+      summary: "Darf nicht gerettet werden.",
+      sourceExcerpt: "Die Anlage wird morgen ersetzt.",
+    };
+    const fragment = `{"points":[${[...punkte, unbelegt].map((p) => JSON.stringify(p)).join(",")},{"title":"Abgerissen`;
+    // Belegt die Voraussetzung für den echten catch-/salvage-Zweig, ohne ihn zu ersetzen.
+    expect(() => parseExtractResponse(fragment, dokument)).toThrow(SyntaxError);
+    const payload = antwort(fragment, "stop");
+    const { client, anfragen } = baueClient(payload);
+    const provider = new ModelProvider(client);
+    const ohneMeldung = await provider.extract(dokument);
+    expect(ohneMeldung).toEqual({
+      points: punkte,
+      note: "Hinweis: Ein Teil des Dokuments konnte nicht vollständig verarbeitet werden — diese Liste ist möglicherweise unvollständig. Jeder angezeigte Punkt trägt weiterhin eine geprüfte Belegstelle.",
+      demo: false,
+    });
+    expect(meldungen).toEqual([]);
+    payload.choices[0]!.finish_reason = "length";
+    const mitMeldung = await provider.extract(dokument);
+    expect(mitMeldung).toEqual(ohneMeldung);
+    expect(anfragen).toHaveLength(2);
+    expect(anfragen[1]?.max_completion_tokens).toBe(EXTRACT_MAX_TOKENS);
+    expect(anfragen[1]?.messages).toEqual([
+      { role: "system", content: expect.any(String) },
+      { role: "user", content: dokument },
+    ]);
+    expect(meldungen).toHaveLength(1);
+    expect(meldungen[0]?.startsWith(PRAEFIX)).toBe(true);
+    expect(JSON.parse(meldungen[0]?.slice(PRAEFIX.length) ?? "null")).toEqual({
+      bezeichnung: "Testanbieter",
+      budgetFeld: "max_completion_tokens",
+      budget: anfragen[1]?.max_completion_tokens,
+      finish_reason: "length",
+      zeichen: fragment.length,
+    });
+  });
+
+  it("G4: ein Leerraum-Fragment wirft truncated und erzeugt keine Abschnitt-Meldung", async () => {
+    const { client, anfragen } = baueClient(antwort("   \n", "length"));
+    const fehler: unknown = await client.complete("sys", "user", false).catch((e: unknown) => e);
+    expect(fehler).toBeInstanceOf(ModelEmptyResponseError);
+    expect(fehler).toMatchObject({
+      reason: "truncated",
+      finishReason: "length",
+      sawReasoning: false,
+      maxTokens: anfragen[0]?.max_completion_tokens,
+    });
+    expect(anfragen).toHaveLength(1);
+    expect(meldungen).toEqual([]);
   });
 
   it.each(["stop", undefined, null])(

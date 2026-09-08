@@ -48,9 +48,9 @@ export class ModelHttpError extends Error {
 
 // AUFTRAG-mega18 Block E (SCRUM-544): WARUM eine Modellantwort ohne Antwortinhalt ankam. Drei
 // unterscheidbare Wege, die vorher alle im selben stillen "" endeten:
-//  - "reasoning-only": das Modell hat GEDACHT (eigenes Feld reasoning/reasoning_content/thinking),
-//    aber keinen Antwortinhalt geliefert (Denkmodelle wie qwen3 verbrauchen ihr Budget im Denken).
-//    Der Denk-TEXT ist KEIN Antwortinhalt und wird nie als Ergebnis weitergegeben — nur der Zustand.
+//  - "reasoning-only": kein Antwortinhalt, aber Denkphase belegt durch reasoning/reasoning_content/
+//    thinking oder usage.completion_tokens_details.reasoning_tokens > 0 (model-client.ts:437-442).
+//    Der Denk-TEXT wird nie als Ergebnis weitergegeben — nur der Zustand.
 //  - "truncated": die Antwort brach am Token-Limit ab (finish_reason "length"), bevor Inhalt entstand.
 //  - "empty": Inhalt fehlt/ist leer bzw. die Antwortform weicht ab (kein choices/message/content).
 export type ModelEmptyReason = "reasoning-only" | "truncated" | "empty";
