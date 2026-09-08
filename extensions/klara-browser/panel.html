@@ -10,42 +10,56 @@
   </head>
   <body>
     <main>
-      <header><div><span class="brand">Klara<span aria-hidden="true">.</span></span><p data-i18n="purpose"></p></div>
-        <label><span data-i18n="language"></span><select id="language"><option value="de">Deutsch</option><option value="en">English</option></select></label>
+      <!-- JOB 3278 · CHR-01: die Kopfzeile wie Klara in Word — links die Wortmarke, rechts die eine
+           Bedienung dieser Fläche. Kein Untertitel, kein Satz. -->
+      <header>
+        <span class="brand">Klara</span>
+        <label class="sprache"><span data-i18n="language"></span><select id="language"><option value="de">Deutsch</option><option value="en">English</option></select></label>
       </header>
       <p class="badge" data-i18n="unreviewed"></p>
-      <p id="pending-capture" class="hint" data-i18n="pendingCapture" hidden></p>
       <p id="status" role="status" aria-live="polite" tabindex="-1"></p>
       <button type="button" id="refresh" data-i18n="refresh"></button>
-      <section aria-labelledby="account-title">
-        <h2 id="account-title" data-i18n="account"></h2>
-        <p id="account"></p>
-        <p class="hint">https://app.klarwerk.ai</p>
-        <form id="login-form">
-          <label for="email" data-i18n="email"></label><input id="email" type="email" autocomplete="username" required maxlength="320" />
-          <label for="password" data-i18n="password"></label><input id="password" type="password" autocomplete="off" required maxlength="1024" />
-          <button type="submit" id="login" data-i18n="login"></button>
-        </form>
-        <button type="button" id="logout" data-i18n="logout" hidden></button>
-      </section>
-      <section id="preview" aria-labelledby="preview-title" hidden>
-        <h2 id="preview-title" data-i18n="preview"></h2>
-        <p id="source-changed" class="hint" data-i18n="sourceChanged" hidden></p>
-        <dl><dt data-i18n="page"></dt><dd id="page"></dd><dt data-i18n="source"></dt><dd id="source"></dd><dt data-i18n="captured"></dt><dd id="captured"></dd></dl>
-        <p class="hint" data-i18n="sourceHint"></p>
-        <label for="title" data-i18n="title"></label><input id="title" maxlength="90" />
-        <label for="context" data-i18n="context"></label><textarea id="context" maxlength="4000" rows="3"></textarea>
-        <label for="confidentiality" data-i18n="confidentiality"></label>
-        <select id="confidentiality"><option value="" data-i18n="open"></option><option value="intern" data-i18n="internal"></option><option value="vertraulich" data-i18n="confidential"></option><option value="streng_vertraulich" data-i18n="strict"></option></select>
-        <p class="hint" data-i18n="classificationHint"></p>
-        <h3 data-i18n="original"></h3><pre id="text" tabindex="0"></pre>
-        <p class="hint" data-i18n="summaryHint"></p>
-        <label class="confirm"><input type="checkbox" id="confirm" /><span data-i18n="confirm"></span></label>
-        <div class="actions"><button type="button" id="save" class="primary" data-i18n="save" disabled></button><button type="button" id="cancel" data-i18n="cancel"></button></div>
-      </section>
-      <p><a id="open" target="_blank" rel="noopener noreferrer" hidden data-i18n="openDraft"></a></p>
-      <p class="hint" data-i18n="webSession"></p>
-      <footer><p data-i18n="instructions"></p><p data-i18n="sessionHint"></p></footer>
+      <div class="inhalt">
+        <!-- CHR-02, Pflichtlieferung 4: im Ruhezustand steht NUR das Symbol; der eine Satz (≤ 60
+             Zeichen) steht oben in #status. Alle erklärenden Absätze hängen an der Vorschau bzw.
+             am gespeicherten Entwurf und erscheinen erst dort. -->
+        <div id="rest" hidden>
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 6h16"></path><path d="M4 11h16"></path><path d="M4 16h10"></path><path d="M4 21h6"></path></svg>
+        </div>
+        <p id="pending-capture" class="hint" data-i18n="pendingCapture" hidden></p>
+        <section aria-labelledby="account-title">
+          <h2 id="account-title" data-i18n="account"></h2>
+          <p id="account"></p>
+          <p class="hint">https://app.klarwerk.ai</p>
+          <form id="login-form">
+            <label for="email" data-i18n="email"></label><input id="email" type="email" autocomplete="username" required maxlength="320" />
+            <label for="password" data-i18n="password"></label><input id="password" type="password" autocomplete="off" required maxlength="1024" />
+            <button type="submit" id="login" data-i18n="login"></button>
+          </form>
+          <button type="button" id="logout" data-i18n="logout" hidden></button>
+        </section>
+        <section id="preview" aria-labelledby="preview-title" hidden>
+          <h2 id="preview-title" data-i18n="preview"></h2>
+          <p id="source-changed" class="hint" data-i18n="sourceChanged" hidden></p>
+          <dl><dt data-i18n="page"></dt><dd id="page"></dd><dt data-i18n="source"></dt><dd id="source"></dd><dt data-i18n="captured"></dt><dd id="captured"></dd></dl>
+          <p class="hint" data-i18n="sourceHint"></p>
+          <label for="title" data-i18n="title"></label><input id="title" maxlength="90" />
+          <label for="context" data-i18n="context"></label><textarea id="context" maxlength="4000" rows="3"></textarea>
+          <label for="confidentiality" data-i18n="confidentiality"></label>
+          <select id="confidentiality"><option value="" data-i18n="open"></option><option value="intern" data-i18n="internal"></option><option value="vertraulich" data-i18n="confidential"></option><option value="streng_vertraulich" data-i18n="strict"></option></select>
+          <p class="hint" data-i18n="classificationHint"></p>
+          <h3 data-i18n="original"></h3><pre id="text" tabindex="0"></pre>
+          <p class="hint" data-i18n="summaryHint"></p>
+          <label class="confirm"><input type="checkbox" id="confirm" /><span data-i18n="confirm"></span></label>
+          <div class="actions"><button type="button" id="save" class="primary" data-i18n="save" disabled></button><button type="button" id="cancel" data-i18n="cancel"></button></div>
+          <p class="hint" data-i18n="instructions"></p>
+          <p class="hint" data-i18n="sessionHint"></p>
+        </section>
+        <section id="done" hidden>
+          <p><a id="open" target="_blank" rel="noopener noreferrer" data-i18n="openDraft"></a></p>
+          <p class="hint" data-i18n="webSession"></p>
+        </section>
+      </div>
     </main>
   </body>
 </html>

@@ -1,80 +1,15 @@
 import { createRequire } from "node:module";
-import { setImmediate } from "node:timers";
 import { afterEach, describe, expect, it } from "vitest";
 import { pages } from "./fixtures";
-import { harness, read } from "./harness";
+import { read } from "./harness";
+// JOB 3278: der gemountete Prüfstand wohnt jetzt in `panel-dom.ts` und wird von dieser Datei UND
+// von `seitenleiste.test.ts` benutzt — ein Aufbau, nicht zwei.
+import { mount, schliesseFenster, windows } from "./panel-dom";
 
 const { JSDOM } = createRequire(import.meta.url)("jsdom") as {
   JSDOM: new (html: string, options: object) => { window: Window & typeof globalThis };
 };
-const windows: (Window & typeof globalThis)[] = [];
-afterEach(() => {
-  for (const window of windows.splice(0)) window.close();
-});
-async function mount() {
-  let draft: Record<string, unknown> | null = null;
-  const requests: string[] = [];
-  const h = harness(async (url, options) => {
-    requests.push(String(url));
-    if (String(url).endsWith("/login"))
-      return Response.json({
-        token: "fixture-session-secret",
-        user: { id: "person-a", email: "a@example.test" },
-      });
-    if (options?.method === "POST")
-      draft = {
-        id: "draft-test",
-        originalAuthor: "person-a",
-        payload: JSON.parse(String(options.body)),
-      };
-    return Response.json(draft, { status: options?.method === "POST" ? 201 : 200 });
-  });
-  await h.capture();
-  const dom = new JSDOM(read("panel.html"), {
-    url: "https://extension-view.invalid/panel.html",
-    runScripts: "outside-only",
-  });
-  windows.push(dom.window);
-  const win = dom.window;
-  const pending: Promise<unknown>[] = [];
-  const messages: unknown[] = [];
-  Object.defineProperty(win, "chrome", {
-    value: {
-      runtime: {
-        sendMessage: (message: unknown) => {
-          messages.push(message);
-          const job = h.sendRaw(message);
-          pending.push(job);
-          return job;
-        },
-      },
-      storage: { onChanged: { addListener: () => {} } },
-    },
-  });
-  win.eval(read("i18n.js"));
-  win.eval(read("panel.js"));
-  // A real response and its render microtask, never an arbitrary sleep.
-  const settle = async () => {
-    await new Promise<void>((done) => setImmediate(done));
-    while (pending.length) {
-      await Promise.all(pending.splice(0));
-      await new Promise<void>((done) => setImmediate(done));
-    }
-  };
-  await settle();
-  const el = (id: string) => win.document.getElementById(id) as HTMLInputElement;
-  const input = (id: string, value: string) => {
-    el(id).value = value;
-    el(id).dispatchEvent(new win.Event("input", { bubbles: true }));
-  };
-  const login = async () => {
-    input("email", "a@example.test");
-    input("password", "fixture-password");
-    el("login-form").dispatchEvent(new win.Event("submit", { bubbles: true, cancelable: true }));
-    await settle();
-  };
-  return { ...h, win, el, input, settle, login, requests, messages };
-}
+afterEach(schliesseFenster);
 
 describe("Klara · echte HTML- und Skript-Einstiege im DOM", () => {
   it("Inhaltsskript liest ausschließlich die echte Markierung mit Umlauten, Zeilenumbrüchen und fremdem HTML als Text", () => {

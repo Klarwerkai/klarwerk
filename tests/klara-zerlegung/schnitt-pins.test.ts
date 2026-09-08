@@ -284,6 +284,17 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // Schluessel aus M5_BILD_TEXTE — Griff `pfad`. A2 hat sie gemeldet, das Verzeichnis hat sie nicht
   // still aufgenommen.
   "tests/m5-bild-im-panel/bild-vorschlag-mounted.test.ts": "pfad",
+  // JOB 3278 CHR-01 (08.09.2026): der Gestaltungsvertrag der Chrome-Seitenleiste. Auftrag §5.2
+  // verlangt „Kopfzeile wie Klara in Word" — und zwar geprüft, nicht behauptet. Die Datei liest
+  // `taskpane.html` deshalb über ihr Pfadliteral (Zeile 44) und hält dessen INHALT gegen
+  // `panel.css`: D2 verlangt, dass jeder Ausnahmewert der Leiste wörtlich auch in Klara/Word steht
+  // (Zeile 300), D4 vergleicht Wortmarke, Kopfpolsterung und Fokusring Wert für Wert (Zeilen 335,
+  // 339, 341). Ein echter Mitfahrer, kein Kommentartreffer: wandern diese Regeln bei einem Schnitt
+  // in eine Geschwisterdatei, liest der Vergleich ins Leere und die Leiste dürfte still von Klara
+  // abdriften — genau der Befund, mit dem Pedi diesen Auftrag ausgelöst hat. Griff `pfad`; Marken
+  // schneidet sie keine, die Panel-Fixture importiert sie nicht. A2 hat sie gemeldet, das
+  // Verzeichnis nimmt sie nicht still auf.
+  "tests/klara-browser/seitenleiste.test.ts": "pfad",
 };
 
 // ------------------------------------------------------------------------------------------------

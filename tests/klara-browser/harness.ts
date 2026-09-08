@@ -18,11 +18,20 @@ export function harness(fetcher: typeof fetch, data: Record<string, unknown> = {
     url: "https://www.perplexity.ai/search/test",
     title: "Testchat",
   };
-  const opened: string[] = [];
+  // JOB 3278 · CHR-02: die Leiste wird nicht mehr als Tab geöffnet, sondern über die Side-Panel-
+  // API. `spuren` hält die REIHENFOLGE der Chrome-Aufrufe fest — daran hängt die Zusicherung, dass
+  // `sidePanel.open` VOR dem ersten Speicherzugriff läuft und die Klickgeste damit nicht verwirkt.
+  const panelOpens: number[] = [];
+  const behaviors: unknown[] = [];
+  const spuren: string[] = [];
   const menus: unknown[] = [];
   const session = {
-    get: async () => structuredClone(data),
+    get: async () => {
+      spuren.push("storage.get");
+      return structuredClone(data);
+    },
     set: async (values: Record<string, unknown>) => {
+      spuren.push("storage.set");
       Object.assign(data, structuredClone(values));
     },
     clear: async () => {
@@ -46,16 +55,24 @@ export function harness(fetcher: typeof fetch, data: Record<string, unknown> = {
       removeAll: async () => {},
     },
     action: { onClicked: event("action") },
+    // Bewusst OHNE `setOptions`: eine tabgebundene Leiste würde die ursprüngliche Quelle beim
+    // Tabwechsel verlieren. Ruft der Worker es doch, stirbt der Lauf hier statt still zu bestehen.
+    sidePanel: {
+      open: async ({ tabId }: { tabId: number }) => {
+        spuren.push("sidePanel.open");
+        panelOpens.push(tabId);
+      },
+      setPanelBehavior: async (options: unknown) => {
+        behaviors.push(options);
+      },
+    },
     tabs: {
       onActivated: event("activated"),
       onUpdated: event("updated"),
-      create: async ({ url }: { url: string }) => {
-        opened.push(url);
-        return { id: 90 };
-      },
     },
     scripting: {
       executeScript: async (options: unknown) => {
+        spuren.push("scripting.executeScript");
         expect(options).toEqual({ target: { tabId: 7 }, files: ["selection.js"] });
         return [{ result: structuredClone(selected) }];
       },
@@ -97,7 +114,9 @@ export function harness(fetcher: typeof fetch, data: Record<string, unknown> = {
     sendRaw,
     capture,
     data,
-    opened,
+    panelOpens,
+    behaviors,
+    spuren,
     menus,
     listeners,
     selected,

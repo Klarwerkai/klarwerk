@@ -15,6 +15,50 @@
   /** @param {string} key */
   const t = (key) =>
     globalThis.KLARA_TEXT[language][key] ?? globalThis.KLARA_TEXT[language].storage_error;
+  // JOB 3278 · Pflichtlieferung 4: der Ton der EINEN Zustandszeile. Er ist eine Tabelle und keine
+  // Heuristik über den Text — „gespeichert" ist grün, jedes gescheiterte Speichern rot mit Grund,
+  // jeder Zwischen- und Hinweiszustand gelb. Ruhe, Vorschau und ein sauberer Abbruch tragen KEINE
+  // Fläche; sie sind kein Ereignis. Der Test verlangt, dass diese vier Mengen zusammen jeden
+  // Zustandstext abdecken — ein neuer Text ohne Ton ist rot, nicht still neutral.
+  const TON = {
+    ok: ["saved", "logged_out"],
+    crit: [
+      "expired",
+      "denied",
+      "conflict",
+      "too_large",
+      "rate_limited",
+      "server_error",
+      "rejected",
+      "invalid_form",
+      "uncertain",
+      "verify_failed",
+      "operation_limit",
+      "storage_error",
+      "invalid_message",
+      "forbidden_sender",
+      "capture_failed",
+      "logged_out_local",
+    ],
+    warn: [
+      "saving",
+      "busy",
+      "unsupported",
+      "empty",
+      "selection_too_large",
+      "source_changed",
+      "cancelled_uncertain",
+      "account_changed",
+      "stale_preview",
+      "logout_first",
+    ],
+    "": ["no_selection", "preview", "previewState", "previewEdited", "cancelled"],
+  };
+  /** @param {string} status */
+  const ton = (status) =>
+    Object.keys(TON).find((klasse) =>
+      /** @type {Record<string, string[]>} */ (TON)[klasse].includes(status),
+    ) ?? "crit";
   const form = () => ({
     title: $("title").value,
     context: $("context").value,
@@ -50,6 +94,8 @@
     $("status").textContent = t(
       next.status === "preview" ? (next.attempted ? "previewEdited" : "previewState") : next.status,
     );
+    $("status").className = ton(next.status);
+    $("rest").hidden = Boolean(next.selection);
     $("pending-capture").hidden = !next.pendingCapture;
     $("account").textContent = next.user?.email ?? t("signedOut");
     $("login-form").hidden = Boolean(next.user);
@@ -74,7 +120,7 @@
       loadedId = null;
       $("confirm").checked = false;
     }
-    $("open").hidden = !(next.status === "saved" && next.link);
+    $("done").hidden = !(next.status === "saved" && next.link);
     $("open").removeAttribute("href");
     if (next.status === "saved" && next.link) {
       const url = new URL(next.link);

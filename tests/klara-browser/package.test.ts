@@ -97,8 +97,11 @@ describe("KLARA-BROWSER B0 · ausgeliefertes Paket", () => {
     const manifest = JSON.parse(read("manifest.json"));
     expect(manifest.manifest_version).toBe(3);
     expect(manifest.host_permissions).toEqual(["https://app.klarwerk.ai/*"]);
+    // JOB 3278 · CHR-02: `sidePanel` ist HINZUGEKOMMEN, damit Klara neben der Seite stehen kann
+    // statt in einem eigenen Tab. Bewusst nachgeführt und weiterhin abschliessend gepinnt — dies
+    // ist der Wächter gegen schleichende Rechteausweitung, deshalb bleibt die Liste vollständig.
     expect(manifest.permissions.sort()).toEqual(
-      ["activeTab", "contextMenus", "scripting", "storage"].sort(),
+      ["activeTab", "contextMenus", "scripting", "sidePanel", "storage"].sort(),
     );
     expect(read(manifest.background.service_worker)).toContain("onMessage.addListener");
     expect(manifest.content_scripts).toBeUndefined();

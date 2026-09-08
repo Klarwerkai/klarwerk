@@ -363,7 +363,6 @@
       // Never overwrite a pending selection with another tab's content.
       if (state.work) {
         await chrome.storage.session.set({ pendingCapture: true });
-        await chrome.tabs.create({ url: chrome.runtime.getURL("panel.html") });
         return;
       }
       const source = info?.frameUrl ?? info?.pageUrl ?? tab?.url;
@@ -419,16 +418,41 @@
         }
       }
       await chrome.storage.session.set({ captureStatus: status, pendingCapture: false });
-      await chrome.tabs.create({ url: chrome.runtime.getURL("panel.html") });
     } finally {
       captureBusy = false;
     }
   }
-  chrome.action.onClicked.addListener((tab) => capture(tab));
-  chrome.contextMenus.onClicked.addListener((info, tab) =>
-    info.menuItemId === "capture" ? capture(tab, info) : undefined,
-  );
+  // JOB 3278 · CHR-02. The panel lives BESIDE the page in Chrome's side panel, never in a tab of
+  // its own: the source page stays visible and usable while its selection is reviewed.
+  //
+  // WHY THIS CALL RUNS FIRST, BEFORE ANY await. `chrome.sidePanel.open()` is gesture-bound —
+  // Chrome rejects it once the click that carried the gesture has been handed back to the event
+  // loop. Reading session storage first (`read()` awaits `setAccessLevel` and `get`) would spend
+  // exactly that gesture, and the panel would silently never appear. So: open, then capture.
+  //
+  // NO setOptions ANYWHERE. The panel is registered globally in the manifest (`side_panel`), which
+  // is what keeps it open across tab switches and keeps it showing the ORIGINALLY captured source.
+  // A per-tab `setOptions({ tabId })` would tie it to one tab and undo exactly that.
+  /** @param {{id?: number} | undefined} tab */
+  function openPanel(tab) {
+    if (tab?.id === undefined) return;
+    void chrome.sidePanel.open({ tabId: tab.id }).catch(() => {});
+  }
+  chrome.action.onClicked.addListener((tab) => {
+    openPanel(tab);
+    return capture(tab);
+  });
+  chrome.contextMenus.onClicked.addListener((info, tab) => {
+    if (info.menuItemId !== "capture") return undefined;
+    openPanel(tab);
+    return capture(tab, info);
+  });
   chrome.runtime.onInstalled.addListener(async () => {
+    // Explicitly FALSE, and it must stay false: with `openPanelOnActionClick: true` Chrome opens
+    // the panel itself and `action.onClicked` never fires — the icon would open an empty panel and
+    // capture nothing. We open the panel ourselves in the listener above and capture in the same
+    // gesture.
+    await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false });
     await chrome.contextMenus.removeAll();
     chrome.contextMenus.create({
       id: "capture",

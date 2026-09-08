@@ -115,8 +115,14 @@ declare global {
         { result?: { text: string; title: string; url: string } }[]
       >;
     };
+    // JOB 3278 · CHR-02: the panel is a side panel, so the worker no longer creates tabs. Only
+    // `open` and `setPanelBehavior` are declared — `setOptions` is deliberately absent, because a
+    // per-tab panel would lose the original source on a tab switch.
+    sidePanel: {
+      open(options: { tabId: number }): Promise<void>;
+      setPanelBehavior(options: { openPanelOnActionClick: boolean }): Promise<void>;
+    };
     tabs: {
-      create(options: { url: string }): Promise<Tab>;
       onActivated: Event<(info: { tabId: number }) => void>;
       onUpdated: Event<(tabId: number, info: { url?: string }) => void>;
     };

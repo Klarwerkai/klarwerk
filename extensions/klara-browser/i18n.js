@@ -2,7 +2,6 @@
 /** @type {Record<string, Record<string, string>>} */
 globalThis.KLARA_TEXT = {
   de: {
-    purpose: "Ausgewählten Text bewahren",
     language: "Sprache",
     pendingCapture:
       "Es ist bereits eine Vorschau offen. Die neue Auswahl wurde nicht übernommen. Zuerst diese Auswahl verwerfen und danach die neue Passage erneut markieren.",
@@ -45,7 +44,9 @@ globalThis.KLARA_TEXT = {
     sessionHint:
       "Bis zur Bestätigung bleibt die Auswahl nur flüchtig in dieser Browsersitzung. Browserneustart, Erweiterungs-Neuladen oder Abmelden löscht sie. Keine automatische Speicherung, kein KI-Aufruf.",
     signedOut: "Nicht angemeldet",
-    no_selection: "Keine Auswahl. Markiere Text auf einer normalen HTTP(S)-Webseite.",
+    // JOB 3278 · Pflichtlieferung 4: im Ruhezustand steht GENAU EINE Zeile, höchstens 60 Zeichen.
+    // Die ausführliche Anleitung (Schlüssel `instructions`) hängt jetzt an der Vorschau.
+    no_selection: "Keine Auswahl. Text markieren, dann Rechtsklick.",
     previewState: "Vorschau bereit. Es wurde noch nichts übermittelt.",
     previewEdited:
       "Vorschau bereit. Änderungen erzeugen beim Speichern einen neuen Vorgang; ein früherer Entwurf bleibt bestehen.",
@@ -98,7 +99,6 @@ globalThis.KLARA_TEXT = {
     forbidden_sender: "Unzulässiger Absender.",
   },
   en: {
-    purpose: "Keep selected text",
     language: "Language",
     pendingCapture:
       "A preview is already open. The new selection was not captured. Discard this selection first, then select the new passage again.",
@@ -141,7 +141,7 @@ globalThis.KLARA_TEXT = {
     sessionHint:
       "Until confirmation, the selection stays temporarily in this browser session. Restarting the browser, reloading the extension or signing out clears it. No automatic saving or AI calls.",
     signedOut: "Not signed in",
-    no_selection: "No selection. Select text on a normal HTTP(S) webpage.",
+    no_selection: "No selection. Select text, then right-click.",
     previewState: "Preview ready. Nothing has been sent yet.",
     previewEdited:
       "Preview ready. Saving changes starts a new operation; any earlier draft remains.",

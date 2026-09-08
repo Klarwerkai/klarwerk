@@ -121,6 +121,10 @@ const INVENTAR: readonly string[] = [
   // JOB 3203: ladbares Browser-Paket und echte Vorschau-Skripte; K2 meldete beide Pfade.
   "tests/klara-browser/package.test.ts",
   "tests/klara-browser/panel.test.tsx",
+  // JOB 3278 CHR-01/02/03: die Seitenleiste selbst — Manifestvertrag, Gestenreihenfolge beim
+  // Öffnen, Herkunft jeder Farbe und die eine Ruhezeile. K2 meldete den Pfad; `panel-dom.ts` ist
+  // Werkzeug und keine Prüfung und steht deshalb bewusst NICHT hier.
+  "tests/klara-browser/seitenleiste.test.ts",
   // JOB 3144 UX-16: Webhilfe-Geometrie und erreichbarer Weg aus der Word-Vorschau.
   // K2 meldete beide neuen Dateien; Namensachse (beide), Komponente (gemounteter Test).
   "tests/klara-webhilfe-schmal/klara-hilfe-chromium.test.ts",
@@ -837,7 +841,10 @@ describe("JOB 920 · K — das Klara-Regressionsinventar ist ableitbar, nicht be
     // den 41 aus JOB 3144 hinzu. Vereinigung beider Nachführungen; nach dem Merge gemessen:
     // `expected 43 to be 41`. Deshalb 41 -> 43.
     // JOB 3203: zwei neue Tests unter klara-browser; vor Nachführung: expected 45 to be 43.
-    expect(nurName.length).toBe(45);
+    // JOB 3278: eine neue Prüfung unter klara-browser (`seitenleiste.test.ts`), die „klara“ im
+    // Pfad trägt. GEMESSEN, NICHT GESETZT: mit dem Inventareintrag und noch unverändertem Zähler
+    // meldete der Lauf `expected 46 to be 45`; erst danach wurde diese Zeile angefasst.
+    expect(nurName.length).toBe(46);
     expect(verfehlt.length).toBeGreaterThanOrEqual(25);
     expect(verfehlt.length + nurName.length).toBe(GEFUNDEN.length);
   });
