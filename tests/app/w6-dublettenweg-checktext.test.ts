@@ -51,7 +51,12 @@ type Weg = (
   fetchFn: (url: string, init: Record<string, unknown>) => Promise<unknown>,
   sprache?: string,
   titel?: string,
-) => Promise<{ lage: Lage; gekuerzt?: boolean; treffer: Treffer[] }>;
+) => Promise<{
+  lage: Lage;
+  gekuerzt?: boolean;
+  treffer: Treffer[];
+  quellenfund?: { gelaufen: boolean; treffer: unknown[]; mehr: boolean };
+}>;
 
 /** Die drei JOB-3093-Felder, wenn die Route sie nicht liefert. */
 const OHNE_FUNDORT = {
@@ -77,6 +82,37 @@ function ausgelieferterWeg(): Weg {
 
 /** Ein Nicht-Erfolg: leere Treffer und die benannte Lage. */
 const OHNE = (lage: Lage): { lage: Lage; treffer: Treffer[] } => ({ lage, treffer: [] });
+
+// ================================================================================================
+// JOB 3243 (M3c-UI) — DAS VIERTE FELD DES ERFOLGSWEGS: `quellenfund`.
+// ================================================================================================
+//
+// Der Weg traegt seit dieser Runde auf dem ERFOLGSWEG zusaetzlich die Lage der Volltextsuche —
+// gelesen aus `quellenfund` und `sourceHits` der Route (check-text-routes.ts:448-454, seit JOB
+// 3216). Es ist eine ADDITIVE Zugabe: `lage`, `gekuerzt` und `treffer` bleiben zeichengleich, und
+// die Nicht-Erfolgswege (`fehler`, `zu-kurz`) tragen das Feld unveraendert NICHT.
+//
+// LEHRE JOB 3128 R8 — die alte Zusage wird NICHT auf den neuen Wert umgeschrieben. `ohneQuellenfund`
+// prueft zuerst, dass ausser den bisher gepinnten Feldern und genau diesem einen NICHTS
+// dazugekommen ist (die Form bleibt vollstaendig und exakt gepinnt), und reicht dann exakt die
+// Form weiter, die die Zellen unten seit JOB 3092/3093 erwarten — Wort fuer Wort unveraendert.
+// Die neue Zusage steht daneben, in einer eigenen Erwartung.
+//
+// `{gelaufen: false, …}` ist die ABWAERTSKOMPATIBLE Lage: die Sonden dieser Datei antworten wie ein
+// Server ohne die JOB-3216-Felder, und dann heisst es „nicht durchsucht" — nie „nichts gefunden".
+const QUELLENFUND_OFFEN = { gelaufen: false, treffer: [], mehr: false };
+
+function ohneQuellenfund(ergebnis: Record<string, unknown>): Record<string, unknown> {
+  expect(
+    Object.keys(ergebnis).filter(
+      (k) => !["lage", "gekuerzt", "treffer", "quellenfund"].includes(k),
+    ),
+    "ein weiteres Feld ist in die Vertragsform gerutscht — die Form ist exakt gepinnt",
+  ).toEqual([]);
+  const rest: Record<string, unknown> = { ...ergebnis };
+  Reflect.deleteProperty(rest, "quellenfund");
+  return rest;
+}
 
 const LANG = "Ventil vor jeder Wartung drucklos schalten und gegen Wiedereinschalten sichern.";
 
@@ -141,7 +177,7 @@ describe("W6 · der Weg zur Dublettenpruefung", () => {
     });
     const ergebnis = await ausgelieferterWeg()("tastenruhe", () => LANG, fetchFn);
 
-    expect(ergebnis).toEqual({
+    expect(ohneQuellenfund(ergebnis)).toEqual({
       lage: "treffer",
       gekuerzt: false,
       treffer: [
@@ -167,6 +203,9 @@ describe("W6 · der Weg zur Dublettenpruefung", () => {
         },
       ],
     });
+    // JOB 3243, die neue Zusage getrennt daneben: eine Antwort ohne die JOB-3216-Felder heisst
+    // „nicht durchsucht" — nicht „nichts gefunden".
+    expect(ergebnis.quellenfund).toEqual(QUELLENFUND_OFFEN);
   });
 
   it("W6-10 · JOB 3093: Pruefstand, Version und Fundort werden GELESEN — und der Titel reist als fuenftes Argument mit", async () => {
@@ -240,11 +279,13 @@ describe("W6 · der Weg zur Dublettenpruefung", () => {
 
   it("W6-2b · JOB 3092: die LAGE unterscheidet Leere von Fehler — `leer` nur nach erfolgreichem Lauf", async () => {
     const { fetchFn } = sonde({ duplicates: [] });
-    expect(await ausgelieferterWeg()("tastenruhe", () => LANG, fetchFn)).toEqual({
+    const ergebnis = await ausgelieferterWeg()("tastenruhe", () => LANG, fetchFn);
+    expect(ohneQuellenfund(ergebnis)).toEqual({
       lage: "leer",
       gekuerzt: false,
       treffer: [],
     });
+    expect(ergebnis.quellenfund).toEqual(QUELLENFUND_OFFEN);
   });
 
   it("W6-3 · `status` bleibt null — die Dublettenpruefung fuehrt kein Statusfeld", async () => {
@@ -278,7 +319,9 @@ describe("W6 · der Weg zur Dublettenpruefung", () => {
     );
     // Ein gueltiger Eintrag ohne Titel und Beziehung bleibt ein Treffer — mit ehrlich `null`.
     const duenn = sonde({ duplicates: [{ koId: "ko-3" }] });
-    expect(await ausgelieferterWeg()("tastenruhe", () => LANG, duenn.fetchFn)).toEqual({
+    expect(
+      ohneQuellenfund(await ausgelieferterWeg()("tastenruhe", () => LANG, duenn.fetchFn)),
+    ).toEqual({
       lage: "treffer",
       gekuerzt: false,
       treffer: [
@@ -304,10 +347,12 @@ describe("W6 · der Weg zur Dublettenpruefung", () => {
     const { rufe, fetchFn } = sonde({ duplicates: [] });
     const ergebnis = await ausgelieferterWeg()("tastenruhe", () => lang, fetchFn);
     expect(JSON.parse(String(rufe[0]?.init.body)).text.length).toBe(8000);
-    expect(ergebnis).toEqual({ lage: "leer", gekuerzt: true, treffer: [] });
+    expect(ohneQuellenfund(ergebnis)).toEqual({ lage: "leer", gekuerzt: true, treffer: [] });
     // Ein Text innerhalb der Grenze ist NICHT gekuerzt.
     const kurz = sonde({ duplicates: [] });
-    expect(await ausgelieferterWeg()("tastenruhe", () => LANG, kurz.fetchFn)).toEqual({
+    expect(
+      ohneQuellenfund(await ausgelieferterWeg()("tastenruhe", () => LANG, kurz.fetchFn)),
+    ).toEqual({
       lage: "leer",
       gekuerzt: false,
       treffer: [],

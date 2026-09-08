@@ -244,6 +244,27 @@
     #bestand-liste .bestand-pruefstand { display: inline-block; margin: 4px 6px 0 0; padding: 1px 7px; border: 1px solid var(--hairline); border-radius: 999px; font-size: 11.5px; }
     #bestand-liste .bestand-fakten { display: inline-block; margin-top: 4px; }
     #bestand-liste a { display: block; margin-top: 4px; }
+    /* JOB 3243 · M3c-UI — DER QUELLENFUND: EIN EIGENER BEREICH UNTER DER STANDZEILE, NIE IN DER
+       DUBLETTENLISTE. Dieselben Bausteine wie oben (Rahmen --hairline auf --surface, `muted` fuer
+       Gedaempftes) und aus demselben Grund KEINE eigene `color`: die Zeilen entstehen zur Laufzeit,
+       und mega43 B1 kann eine Laufzeitklasse keiner Flaeche zuordnen. Der Bereich ist einklappbar
+       (Auftrag §8.7: mehr Inhalt im Panel) — der Schalter klappt NUR die Liste, die Lagezeile
+       bleibt immer im Bild, damit „nicht durchsucht" nicht unter einem zugeklappten Deckel
+       verschwindet. */
+    #quellenfund-block { width: 100%; text-align: left; margin-top: 4px; }
+    #quellenfund-block.hidden { display: none; }
+    #quellenfund-stand { margin: 0; cursor: pointer; }
+    /* Ohne Treffer klappt nichts auf: der Griff verschwindet, die Lagezeile bleibt. */
+    #quellenfund-block[data-leer] > summary { list-style: none; cursor: default; }
+    #quellenfund-block[data-leer] > summary::-webkit-details-marker { display: none; }
+    #quellenfund-liste { margin: 6px 0 0; padding: 0; list-style: none; }
+    #quellenfund-liste li { margin-top: 6px; padding: 8px 10px; border: 1px solid var(--hairline); border-radius: 8px; background: var(--surface); font-size: 12.5px; }
+    #quellenfund-liste .quellenfund-titel { display: block; font-weight: 600; }
+    #quellenfund-liste .quellenfund-pruefstand { display: inline-block; margin: 4px 6px 0 0; padding: 1px 7px; border: 1px solid var(--hairline); border-radius: 999px; font-size: 11.5px; }
+    #quellenfund-liste .quellenfund-fakten { display: inline-block; margin-top: 4px; }
+    #quellenfund-liste details { margin-top: 4px; }
+    #quellenfund-liste .quellenfund-ausschnitt { margin: 4px 0 0; white-space: pre-wrap; }
+    #quellenfund-liste a { display: block; margin-top: 4px; }
     /* Das Frage-Feld (Ruhe.dc.html Z.33-39): Karte mit 12px Radius, Feld 15px/1.45 mit 52px Platz
        rechts fuer den runden Sendeknopf (32px, rechts 8 / oben 7). Grau, solange nichts da ist;
        Funke dunkel, sobald Text da ist (Klasse `bereit`, updateAskState). Im Antwortzustand ohne
@@ -743,6 +764,19 @@
         <p id="bestand-stand" class="muted"></p>
         <ul id="bestand-liste"></ul>
       </div>
+      <!-- JOB 3243 · M3c-UI (Markup) — DER QUELLENFUND, GETRENNT VON DUBLETTE UND KONFLIKT.
+           Die Route liefert seit JOB 3216 `sourceHits` (Passage steht im VOLLTEXT eines Objekts) —
+           eine ANDERE Aussage als `duplicates` (dieselbe Wissensaussage liegt vor). Deshalb ein
+           EIGENER Behaelter unter der Standzeile und nicht eine weitere Zeile in #bestand-liste:
+           eine gemeinsame Liste waere die Vermischung, die check-text-routes.ts:352-359 ausdruecklich
+           ausschliesst. Die Logik steht im Skriptblock KW-N1-BESTAND-START/END (wie das Markup von
+           JOB 3093 traegt dieser Kasten BEWUSST keine eigene KW-Marke — sonst machte dieselbe Marke
+           an zwei Orten je ein Paar auf, was tests/klara-zerlegung/marken-skelett.test.ts misst).
+           Verborgen, solange nichts zu sagen ist: in der Ruhe steht hier kein Zeichen. -->
+      <details id="quellenfund-block" class="hidden" open aria-live="polite">
+        <summary id="quellenfund-stand" class="muted"></summary>
+        <ul id="quellenfund-liste"></ul>
+      </details>
     </div>
     <!-- ========================================================================================
          KW-D2-LUECKE-START — DIE EHRLICHE LUECKE NACH ZIELBILD KeinWissen.dc.html (JOB 3046).
@@ -2801,6 +2835,17 @@
         bestandVersion: "Version {n}",
         bestandBereich: "Bereich: {bereich}",
         bestandOeffnen: "In der Bibliothek öffnen",
+        // JOB 3243 (M3c-UI): der QUELLENFUND — andere Aussage als die Dublette; das Wort „Dublette"
+        // kommt nicht vor, der Weg zur Quelle nutzt `bestandOeffnen` (EIN Wortlaut). „durchsucht"
+        // statt „geprüft" (so der Auftrag §5.1/§5.2): mega35-word-wortliste.test.ts:82 verbietet
+        // „geprüft" ausserhalb ihrer Schlüssel und ist nicht Zielpfad — genauer ist es auch.
+        quellenfundTreffer: "Quellenfund im Volltext ({n}):",
+        quellenfundLeer: "Kein Quellenfund im durchsuchten Bestand.",
+        quellenfundOffen: "Quellenfund nicht durchsucht.",
+        quellenfundGekappt: "Nicht vollständig durchsucht — mehr Kandidaten als durchsucht.",
+        quellenfundSatz: "Diese Passage steht im Volltext von „{titel}“.",
+        quellenfundTeil: "Teilübereinstimmung ({n} von {m} Zeichen)",
+        quellenfundStelle: "Fundstelle",
         askSourceLine: "Quelle: {titles} (KLARWERK-Wissen, Stand {date})",
         askSourceLineRetrieved: "Quelle: {titles} (KLARWERK-Wissen, abgerufen am {date})",
         askInsertTruncatedNote: "Hinweis: Die zugrunde liegende Frage wurde auf {max} Zeichen gekappt.",
@@ -3076,6 +3121,13 @@
         bestandVersion: "Version {n}",
         bestandBereich: "Area: {bereich}",
         bestandOeffnen: "Open in the library",
+        quellenfundTreffer: "Source hit in the full text ({n}):",
+        quellenfundLeer: "No source hit in the searched holdings.",
+        quellenfundOffen: "Source hit not searched.",
+        quellenfundGekappt: "Not searched completely — more candidates than searched.",
+        quellenfundSatz: "This passage is in the full text of “{titel}”.",
+        quellenfundTeil: "Partial match ({n} of {m} characters)",
+        quellenfundStelle: "Location",
         askSourceLine: "Source: {titles} (KLARWERK knowledge, as of {date})",
         askSourceLineRetrieved: "Source: {titles} (KLARWERK knowledge, retrieved on {date})",
         askInsertTruncatedNote: "Note: the underlying question was truncated to {max} characters.",
@@ -3350,6 +3402,13 @@
         bestandVersion: "Versie {n}",
         bestandBereich: "Gebied: {bereich}",
         bestandOeffnen: "In de bibliotheek openen",
+        quellenfundTreffer: "Bronvondst in de volledige tekst ({n}):",
+        quellenfundLeer: "Geen bronvondst in het doorzochte bestand.",
+        quellenfundOffen: "Bronvondst niet doorzocht.",
+        quellenfundGekappt: "Niet volledig doorzocht — meer kandidaten dan doorzocht.",
+        quellenfundSatz: "Deze passage staat in de volledige tekst van „{titel}“.",
+        quellenfundTeil: "Gedeeltelijke overeenkomst ({n} van {m} tekens)",
+        quellenfundStelle: "Vindplaats",
         askSourceLine: "Bron: {titles} (KLARWERK-kennis, per {date})",
         askSourceLineRetrieved: "Bron: {titles} (KLARWERK-kennis, opgehaald op {date})",
         askInsertTruncatedNote: "Let op: de onderliggende vraag is ingekort tot {max} tekens.",
@@ -7878,6 +7937,29 @@
       return { bereich: bereich, bibliothekPfad: pfad };
     }
 
+    // JOB 3243 (M3c-UI) — DER QUELLENFUND AUS DER ANTWORT, IN DREI GETRENNTEN LAGEN. Eine
+    // durchsuchte Abwesenheit braucht BEIDES (Runde 3, BEN): `quellenfund.gelaufen === true` UND
+    // eine wirklich gelieferte `sourceHits`-LISTE. Fehlt eins davon, steht `gelaufen` auf false
+    // oder traegt ein Fund keine Kennung (JOB 3092 R2), heisst es „nicht durchsucht" — UNGEZEIGT.
+    function w6Zahl(w) { return typeof w === "number" && isFinite(w) ? w : null; }
+    function w6Quellenfundlage(koerper) {
+      var offen = { gelaufen: false, treffer: [], mehr: false };
+      var lage = koerper && koerper.quellenfund && typeof koerper.quellenfund === "object" ? koerper.quellenfund : null;
+      if (!lage || lage.gelaufen !== true || !Array.isArray(koerper.sourceHits)) { return offen; }
+      var roh = koerper.sourceHits;
+      var treffer = [];
+      for (var i = 0; i < roh.length; i += 1) {
+        var h = roh[i];
+        if (!h || typeof h.refId !== "string" || h.refId.length === 0) { return offen; }
+        treffer.push({ id: h.refId, title: typeof h.koTitle === "string" ? h.koTitle : "",
+          pruefstand: h.pruefstand === "validiert" || h.pruefstand === "eingereicht" ? h.pruefstand : null,
+          coverage: h.coverage === "full" || h.coverage === "partial" ? h.coverage : null,
+          gedeckteZeichen: w6Zahl(h.gedeckteZeichen), passageZeichen: w6Zahl(h.passageZeichen),
+          fundstelle: w6Feld(h, "fundstelle"), fundort: w6Fundort(h) });
+      }
+      return { gelaufen: true, treffer: treffer, mehr: koerper.sourceHitsTruncated === true };
+    }
+
     // JOB 3093: `titel` ist der FUENFTE, optionale Parameter — der Titel, unter dem der Text als
     // Eintrag stuende (Erfassen: die Zeile „Titel"; Fragen: `deriveDraftTitleFromSelection`).
     // GEMESSEN (tests/n1-bestand-im-panel/fundort-im-server.test.ts K2): ohne `title` findet der
@@ -7896,15 +7978,28 @@
           var koerperDerFrage = {
             text: schnitt,
             locale: typeof sprache === "string" && sprache ? sprache : "de",
-            source: "transient-document"
+            source: "transient-document",
+            // JOB 3243 Lieferung 6: DER MARKER. Dieser Weg stuft nie ein — er schickt kein
+            // `confidentiality`, und ein fehlendes Feld hiess dem Server fail-safe „vertraulich".
+            // Der Marker sagt, was der Fall ist: NICHT EINGESTUFT. Der Server entscheidet daraus.
+            nichtEingestuft: true
           };
           if (typeof titel === "string" && titel.replace(/^\s+|\s+$/g, "").length > 0) {
             koerperDerFrage.title = titel;
           }
+          // Die Klara-Bindung reist NUR VOLLSTAENDIG mit (`klaraBindungVorhanden`, ask-routes.ts):
+          // eine halbe Bindung — die Instanz-Id steht beim Laden, Sitzung und Dokument erst nach
+          // POST /api/klara/sessions — traegt keine Zustimmung und stiesse nur den Fail-closed-Zweig
+          // an. Ohne sie ist der Kopf zeichengleich mit dem von JOB 3093.
+          var kopfzeilen = { "content-type": "application/json" };
+          var bindung = typeof klaraS4Header === "function" ? klaraS4Header() : null;
+          if (bindung && bindung["x-klara-session"] && bindung["x-klara-instance"] && bindung["x-klara-document"]) {
+            for (var b in bindung) { kopfzeilen[b] = bindung[b]; }
+          }
           return fetchFn("/api/check-text", {
             method: "POST",
             credentials: "include",
-            headers: { "content-type": "application/json" },
+            headers: kopfzeilen,
             body: JSON.stringify(koerperDerFrage)
           }).then(function (res) {
             if (!res || !res.ok) {
@@ -7942,7 +8037,9 @@
                   fundort: w6Fundort(d)
                 });
               }
-              return { lage: treffer.length > 0 ? "treffer" : "leer", gekuerzt: gekuerzt, treffer: treffer };
+              // JOB 3243: der Quellenfund reist ADDITIV mit — eigene Lage NEBEN `treffer`, nie darin.
+              return { lage: treffer.length > 0 ? "treffer" : "leer", gekuerzt: gekuerzt,
+                treffer: treffer, quellenfund: w6Quellenfundlage(koerper) };
             });
           });
         })
@@ -10262,44 +10359,87 @@
       var treffer = letzter ? letzter.treffer : [];
       for (var i = 0; i < treffer.length; i += 1) {
         var e = treffer[i];
-        var zeileEl = document.createElement("li");
-        // Reiner Text (`textContent`), kein HTML-Sink: Titel kommen vom Server.
-        var titelEl = document.createElement("span");
-        titelEl.className = "bestand-titel";
-        titelEl.textContent = e.title || e.id;
-        zeileEl.appendChild(titelEl);
-        // Der Pruefstand steht bei JEDEM Treffer — „noch nicht geprueft" verschwindet nie hinter
-        // dem Titel. Validiert benutzt das VORHANDENE Statuswort der Quellenliste; ein Pruefstand,
-        // den die Route nicht liefert, heisst ehrlich „Status unbekannt".
-        var pille = document.createElement("span");
-        pille.className = "muted bestand-pruefstand bestand-pruefstand-" + (e.pruefstand || "unbekannt");
-        pille.textContent = e.pruefstand === "validiert"
-          ? t("askStatusValidiert")
-          : e.pruefstand === "eingereicht" ? t("bestandNochNichtGeprueft") : t("askStatusUnknown");
-        zeileEl.appendChild(pille);
         // Version und Bereich: nur, was der Bestand wirklich sagt — kein Platzhalter.
         var fakten = [];
         if (typeof e.version === "number") { fakten.push(t("bestandVersion", { n: String(e.version) })); }
-        var bereich = e.fundort ? e.fundort.bereich : null;
-        if (bereich) { fakten.push(t("bestandBereich", { bereich: bereich })); }
-        if (fakten.length > 0) {
-          var faktenEl = document.createElement("span");
-          faktenEl.className = "bestand-fakten muted";
-          faktenEl.textContent = fakten.join(" · ");
-          zeileEl.appendChild(faktenEl);
+        if (e.fundort && e.fundort.bereich) { fakten.push(t("bestandBereich", { bereich: e.fundort.bereich })); }
+        liste.appendChild(bestandZeile("bestand", e, fakten, null));
+      }
+      quellenfundZeichnen();
+    }
+
+    function bestandKnoten(tag, klasse, text) {
+      var el = document.createElement(tag);
+      if (klasse) { el.className = klasse; }
+      el.textContent = text;
+      return el;
+    }
+
+    /** EINE Trefferzeile fuer BEIDE Listen (JOB 3243 R2), reiner Text (kein HTML-Sink): Kopftext,
+     *  Pruefstand-Pille, gedaempfte Zusaetze, Zusatzknoten, Weg zum Volltext; `praefix` waehlt nur
+     *  die Stilklassen. GEMEINSAM, weil Dublettentreffer und Quellenfund sich in der AUSSAGE
+     *  unterscheiden, nicht im Aufbau — sonst zwei Wortlaute fuer denselben Pruefstand. */
+    function bestandZeile(praefix, e, zusaetze, extra) {
+      var zeileEl = document.createElement("li");
+      zeileEl.appendChild(bestandKnoten("span", praefix + "-titel",
+        praefix === "bestand" ? (e.title || e.id) : t("quellenfundSatz", { titel: e.title || e.id })));
+      zeileEl.appendChild(bestandKnoten("span",
+        "muted " + praefix + "-pruefstand " + praefix + "-pruefstand-" + (e.pruefstand || "unbekannt"),
+        e.pruefstand === "validiert" ? t("askStatusValidiert")
+          : e.pruefstand === "eingereicht" ? t("bestandNochNichtGeprueft") : t("askStatusUnknown")));
+      if (zusaetze.length > 0) { zeileEl.appendChild(bestandKnoten("span", praefix + "-fakten muted", zusaetze.join(" · "))); }
+      if (extra) { zeileEl.appendChild(extra); }
+      // Weg zum Volltext: der Pfad des Servers am eigenen Ursprung, neues Fenster ohne Opener
+      // (Muster der Quellen-Chips und KA3). EIN Wortlaut fuer beide Listen.
+      var pfad = e.fundort ? e.fundort.bibliothekPfad : null;
+      if (pfad) {
+        var weg = bestandKnoten("a", "", t("bestandOeffnen"));
+        weg.href = window.location.origin + pfad;
+        weg.target = "_blank";
+        weg.rel = "noopener noreferrer";
+        zeileEl.appendChild(weg);
+      }
+      return zeileEl;
+    }
+
+    // JOB 3243 · M3c-UI — DER QUELLENFUND IM BILD: EIN EIGENER KASTEN, DREI EHRLICHE LAGEN.
+    // Die Antwort ist hier NICHT „Dublette", sondern „Diese Passage steht im Volltext von X" — nie
+    // fachliche Gleichheit. Deshalb ein eigener Kasten, nie eine Zeile in #bestand-liste (die
+    // Trennung aus check-text-routes.ts:352-359 bleibt bis in die Flaeche stehen). Die drei Lagen
+    // von `w6Quellenfundlage` bekommen je einen eigenen Satz; der Deckel (`mehr`) haengt an BEIDEN
+    // gelaufenen Lagen, denn auch „kein Fund" gilt dann nur fuer das Durchsuchte. IM BILD nur mit
+    // einem Stand — sonst waere „nicht durchsucht" eine Aussage ueber einen nie gelaufenen Vorgang;
+    // scheitert eine ERNEUTE Pruefung, bleibt der letzte Fund stehen (§7). EINGEKLAPPT nativ
+    // (<details>, §8.7): die Lagezeile IST das <summary>; ohne Treffer blendet `data-leer` aus.
+    function quellenfundZeichnen() {
+      var block = document.getElementById("quellenfund-block");
+      var stand = document.getElementById("quellenfund-stand");
+      var liste = document.getElementById("quellenfund-liste");
+      if (!block || !stand || !liste) { return; }
+      var letzter = bestandLetzter || null;
+      block.className = bestandSichtbar() && letzter ? "" : "hidden";
+      while (liste.firstChild) { liste.removeChild(liste.firstChild); }
+      var lage = letzter && letzter.quellenfund && typeof letzter.quellenfund === "object" ? letzter.quellenfund : null;
+      var gelaufen = Boolean(lage) && lage.gelaufen === true;
+      var treffer = gelaufen && Array.isArray(lage.treffer) ? lage.treffer : [];
+      var saetze = !letzter ? [] : [!gelaufen ? t("quellenfundOffen")
+        : treffer.length === 0 ? t("quellenfundLeer") : t("quellenfundTreffer", { n: String(treffer.length) })];
+      if (gelaufen && lage.mehr === true) { saetze.push(t("quellenfundGekappt")); }
+      stand.textContent = saetze.join(" ");
+      if (treffer.length > 0) { block.removeAttribute("data-leer"); } else { block.setAttribute("data-leer", ""); }
+      for (var i = 0; i < treffer.length; i += 1) {
+        var e = treffer[i];
+        // `partial` wird BENANNT, mit den zwei Zahlen der Route; `full` sagt der Satz darueber schon.
+        var teil = e.coverage === "partial" && e.gedeckteZeichen !== null && e.passageZeichen !== null;
+        var zusaetze = teil ? [t("quellenfundTeil", { n: String(e.gedeckteZeichen), m: String(e.passageZeichen) })] : [];
+        // Die Fundstelle zum Aufklappen — nativ, ohne eigenen Zustand. Ohne Ausschnitt kein Griff.
+        var kasten = null;
+        if (e.fundstelle) {
+          kasten = document.createElement("details");
+          kasten.appendChild(bestandKnoten("summary", "", t("quellenfundStelle")));
+          kasten.appendChild(bestandKnoten("p", "quellenfund-ausschnitt muted", e.fundstelle));
         }
-        // Der Weg zum Volltext: der Pfad, den der Server nennt, am eigenen Ursprung — neues
-        // Fenster ohne Opener (dasselbe Muster wie die Quellen-Chips und KA3).
-        var pfad = e.fundort ? e.fundort.bibliothekPfad : null;
-        if (pfad) {
-          var weg = document.createElement("a");
-          weg.href = window.location.origin + pfad;
-          weg.target = "_blank";
-          weg.rel = "noopener noreferrer";
-          weg.textContent = t("bestandOeffnen");
-          zeileEl.appendChild(weg);
-        }
-        liste.appendChild(zeileEl);
+        liste.appendChild(bestandZeile("quellenfund", e, zusaetze, kasten));
       }
     }
 
@@ -10349,7 +10489,9 @@
               bestandLetzter = {
                 treffer: Array.isArray(ergebnis.treffer) ? ergebnis.treffer : [],
                 zeit: bestandZeit(),
-                gekuerzt: ergebnis.gekuerzt === true
+                gekuerzt: ergebnis.gekuerzt === true,
+                // JOB 3243: der Quellenfund gehoert zu DIESEM Stand — er altert und faellt mit ihm.
+                quellenfund: ergebnis.quellenfund || { gelaufen: false, treffer: [], mehr: false }
               };
               abschluss("ruhe", "");
               return;

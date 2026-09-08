@@ -534,6 +534,24 @@ const INVENTAR: readonly string[] = [
   // Antwort sagt — ein Fehler heisst „Pruefung nicht moeglich", der letzte Stand bleibt datiert stehen.
   "tests/n1-bestand-im-panel/fundort-im-server.test.ts",
   "tests/n1-bestand-im-panel/bestand-im-panel-mounted.test.ts",
+  // JOB 3243 (08.09.2026), M3c-UI „Quellenfund im Panel": derselbe Bestandsweg, eine zweite
+  // Aussage. Von den Achsen `taskpane` (der Kopf nennt `apps/web/public/word-addin/taskpane.html`
+  // als das Gemessene) und `komponente` (die Datei fuehrt das ausgelieferte Aufgabenfenster ueber
+  // `createKlaraPanel` aus) gefunden. „klara" steht nicht im Pfad — das Verzeichnis war im Auftrag
+  // §4 abschliessend vorgegeben —, K5 bleibt deshalb bei 45. K2 hat die Datei gemeldet, das
+  // Inventar nimmt sie nicht still auf. Sachlich Klara-Regression: sie haelt fest, dass ein
+  // Quellenfund NIE in der Dublettenliste erscheint, dass „kein Quellenfund" nur mit
+  // `quellenfund.gelaufen === true` dasteht und ein fehlendes Feld „nicht durchsucht" heisst, und
+  // dass eine verspaetete Antwort nach dem Logout nichts wiederbelebt.
+  "tests/m3-dokumentweg-panel/quellenfund-im-panel.test.tsx",
+  // JOB 3243 RUNDE 2 (08.09.2026): der W6-Anschluss am ECHTEN Router — der ausgelieferte
+  // `w6DublettenAusCheckText` setzt seinen Rumpf und seine Klara-Kopfzeilen gegen
+  // `buildApp(buildServices())` ab, mit und ohne bestaetigte Dokumentzustimmung. Von der Achse
+  // `taskpane` gefunden (die Datei nennt und schneidet `taskpane.html`). „klara" steht nicht im
+  // Pfad, K5 bleibt bei 45. Sachlich Klara-Regression: sie haelt fest, dass der Bestandsweg auch
+  // mit Zustimmung KEINEN Cloudweg oeffnet (er fordert nie `want:"deep"` an) und dass die
+  // Einstufung des nicht eingestuften Textes an der Klara-Bindung haengt, nicht am Marker allein.
+  "tests/m3-dokumentweg-panel/w6-anschluss-echte-route.test.ts",
   // JOB 3052 D6 (04.09.2026): das Wissensnetz der Web-App gegen das Zielbild Wissensnetz.dc.html,
   // in Chromium gemessen (tests/design/zielbild-wissensnetz.test.ts). Von der Inhaltsachse
   // `palette` gefunden: der statische Leseweg loest die Token `rgb(var(--kw-…))` der gerenderten

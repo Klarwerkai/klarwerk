@@ -168,6 +168,20 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // einem Schnitt haengt sie an der Fixture. A2 hat die Datei gemeldet (`+ "tests/n1-bestand-im-
   // panel/bestand-im-panel-mounted.test.ts"`), das Verzeichnis hat sie nicht still aufgenommen.
   "tests/n1-bestand-im-panel/bestand-im-panel-mounted.test.ts": "fixture",
+  // JOB 3243 M3c-UI (08.09.2026): der Quellenfund am ausgelieferten Aufgabenfenster. Dieselbe
+  // Technik wie die Zeile darueber (`createKlaraPanel` mit gefaktem `/api/check-text`) — Griff
+  // `fixture`; dazu nennt ihr Kopfkommentar `apps/web/public/word-addin/taskpane.html` als das
+  // Gemessene, was der Griff `pfad` bewusst textbreit mitnimmt. A2 hat die Datei gemeldet
+  // (`+ "tests/m3-dokumentweg-panel/quellenfund-im-panel.test.tsx"`), das Verzeichnis hat sie
+  // nicht still aufgenommen.
+  "tests/m3-dokumentweg-panel/quellenfund-im-panel.test.tsx": "pfad,fixture",
+  // JOB 3243 RUNDE 2: der W6-Anschluss am ECHTEN Router. Die Datei nennt `taskpane.html` ueber sein
+  // Pfadliteral (Griff `pfad`) und schneidet `w6DublettenAusCheckText` an der Schnittmarke
+  // KW-KLARA-W6-CHECKTEXT-END heraus (Griff `marken`) — beides echte Griffe, keine Fixture: sie
+  // baut kein Panel, sondern reicht den abgesetzten Rumpf an `buildApp(buildServices())` weiter.
+  // A2 hat sie gemeldet (erst als `neu`, dann mit `+ marken`), das Verzeichnis hat sie nicht still
+  // aufgenommen.
+  "tests/m3-dokumentweg-panel/w6-anschluss-echte-route.test.ts": "pfad,marken",
   // JOB 3062 · H3: die Chromium-Messung des WEB-Blattes `/erfassen`. Sie nennt das Aufgabenfenster
   // nur, um sich davon ABZUGRENZEN (die beiden `zielbild-wissen-erfassen*`-Prüfungen messen
   // taskpane.html, nicht die Web-Seite) — Kommentartreffer des Griffs `pfad`, kein echter Mitfahrer.

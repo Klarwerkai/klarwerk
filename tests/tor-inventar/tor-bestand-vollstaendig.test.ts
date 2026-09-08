@@ -123,6 +123,12 @@ describe("JOB 3131 T2 · der Bestand ueberlebt die Aufteilung in zwei Laeufe", (
     // JOB 3267 (Q1): die Quellenwahrheit der Antwort ist ein jsdom-Lauf ohne Chromium — sie gehört
     // in den regulären Aufruf und darf nicht still aus beiden Gruppen fallen.
     expect(holeRest()).toContain("tests/q1-quellen-wahrheit/quellenwahrheit-mounted.test.tsx");
+    // JOB 3243: der Quellenfund im Panel ist eine .tsx-Datei OHNE JSX (jsdom, kein Chromium). Genau
+    // solche Dateien fallen still aus einem Lauf, wenn ein `include`- oder Gruppenmuster nur auf
+    // `.test.ts` zielt — dieser Pin macht das sichtbar, statt es dem Zufall zu überlassen.
+    expect(holeRest()).toContain("tests/m3-dokumentweg-panel/quellenfund-im-panel.test.tsx");
+    // JOB 3243 R2: der Wirkungsnachweis am echten Router gehört in denselben regulären Lauf.
+    expect(holeRest()).toContain("tests/m3-dokumentweg-panel/w6-anschluss-echte-route.test.ts");
   });
 
   it("V4 · der Verzeichnisgang der Konfiguration sieht denselben Bestand wie der Collector", () => {

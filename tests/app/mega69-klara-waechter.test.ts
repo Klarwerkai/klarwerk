@@ -1726,7 +1726,70 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // ein installiertes Add-in braucht KEIN erneutes Sideload.
     // Gemessen: mega35-word-wortliste (vorher rot mit genau diesem Schluessel, danach gruen),
     // konfliktkarte-mounted P17g (neuer Wortlaut) und P17e (Laenge UND Wortliste in DE/EN/NL).
-    const PIN = "aceff50d093b8d48129e795429b6d8019c8a6280aae01a3577a816674e633457";
+    //
+    // JOB 3243 KONFLIKTRUNDE 1 (08.09.2026, f7408633… -> 8a2c5e06…) — `git rebase main` traf mit
+    // der JOB-3243-Kette (M3c-UI, Quellenfund-Block im Panel) auf die inzwischen auf main gelandete
+    // JOB-3174-Kette (M4b, KA7-Kurzstatus-Nachtraege oben, PIN aceff50d…). BEIDE SEITEN BLEIBEN
+    // INHALTLICH ERHALTEN: der M4b-Nachtrag aus JOB 3174 UND der M3c-Quellenfund-Block aus JOB 3243
+    // stehen nebeneinander in der zusammengefuehrten Datei; git hat taskpane.html selbst
+    // konfliktfrei zusammengefuehrt (nur der Pin-Kommentar hier war strittig). Kein Markup, kein
+    // Skript und kein Woerterbuchschluessel einer Seite wurde entfernt, um die andere Seite zu
+    // erhalten. Der Pin unten ist der frisch aus der zusammengefuehrten Datei gerechnete Hash, kein
+    // uebernommener Wert einer Seite.
+    // JOB 3243 · M3c-UI (08.09.2026, 29c03b18… -> 6907b9ca…) — AUSLIEFERUNGSFOLGEN GEPRUEFT, BEVOR
+    // DER PIN WANDERTE. Geaendert wurden Markup, Stilregeln, Woerterbuch und EIN Skriptblock:
+    //   · Markup: EIN neuer Kasten `#quellenfund-block` (Stand, Liste) INNERHALB des vorhandenen
+    //     `#bestand-block`, verborgen bis zum ersten erfolgreichen Lauf. Keine neue KW-Marke (das
+    //     3093-Markup traegt aus demselben Grund keine — marken-skelett misst genau solche
+    //     Bruchstuecke). In der Ruhe steht kein Zeichen mehr im Bild als vorher, deshalb bleiben die
+    //     Textmesser K1/K2 unberuehrt.
+    //   · Stil: `#quellenfund-*`-Regeln im Muster der `#bestand-*`-Regeln daneben — Rahmen
+    //     `--hairline` auf `--surface`, Gedaempftes ueber die vorhandene Klasse `muted`, KEINE
+    //     eigene `color` und kein Farbliteral (mega43 B1 kann eine Laufzeitklasse keiner Flaeche
+    //     zuordnen; deshalb dieselbe Zurueckhaltung wie bei JOB 3093).
+    //   · Woerterbuch: sieben neue Schluessel je Sprache (`quellenfund*`), keiner entfernt. Sie
+    //     sagen „durchsucht" statt „geprueft" — die Wortliste der Word-Flaeche verbietet „geprueft"
+    //     ausserhalb ihrer eingetragenen Schluessel (tests/i18n/mega35-word-wortliste.test.ts), und
+    //     die Datei ist nicht Zielpfad von JOB 3243. Dieselbe Loesung wie JOB 3096 R2 fuer NL.
+    //   · Skript: `w6Quellenfundlage`/`w6Zahl` im Block KW-KLARA-W6-CHECKTEXT sowie
+    //     `quellenfundZeichnen` und die zwei gemeinsamen Zeilenbauer `bestandZeile`/`bestandKnoten`
+    //     im Block KW-N1-BESTAND — KEIN neuer Block, KEINE neue Marke.
+    //   · ABRUFZIELE UNVERAENDERT: kein neues `fetch(`. Der bestehende Ruf an `/api/check-text`
+    //     traegt jetzt zusaetzlich `nichtEingestuft: true` im Rumpf und — NUR bei vollstaendiger
+    //     Klara-Bindung — die drei bereits vergebenen Kopfzeilen x-klara-session/-instance/
+    //     -document, die dasselbe Fenster an `/api/klara/*` seit W1-KLARA-KOPF-CONSENT-06 schickt.
+    //     Same-Origin, dieselbe Sitzung, kein neuer Fremd-Ursprung, keine CSP-Folge.
+    //   KEIN Manifest, KEIN neuer Endpunkt, KEIN neues Recht: ein installiertes Add-in braucht
+    //   deshalb KEIN erneutes Sideload; es holt die Datei beim naechsten Oeffnen frisch vom Server.
+    //
+    // JOB 3243 RUNDE 2 (08.09.2026, 8a2c5e06… -> 0196530d…) — DER ZEILENDECKEL DES INLINE-SKRIPTS.
+    // Tor R1 war rot an `tests/klara-zerlegung/schnittflaechen.test.ts` B3 („expected 10660 to be
+    // less than 10500"). Geaendert wurde deshalb NUR die Bauform, nicht die Zusage:
+    //   · der eigene Ein-/Ausklapp-Knopf ist entfallen; `#quellenfund-block` IST jetzt ein
+    //     `<details open>` mit der Lagezeile als `<summary>` — nativ, ohne eigenen Zustand, ohne
+    //     Klick-Rueckruf und ohne die zwei Woerterbuchschluessel dafuer. Ohne Treffer blendet das
+    //     Attribut `data-leer` den Griff per Stilregel aus (kein Dreieck ohne Inhalt).
+    //   · die Trefferzeilen BEIDER Listen entstehen jetzt in EINER Funktion (`bestandZeile`), die
+    //     Textknoten in `bestandKnoten` — vorher zwei Kopien mit je eigener Pruefstand-Pille und
+    //     eigenem Weg in die Bibliothek. Deshalb entfallen auch `quellenfundOeffnen` (der Sprung
+    //     nutzt `bestandOeffnen`, EIN Wortlaut), `quellenfundGanz` und `quellenfundTeilOhneZahl`.
+    //   Kein Endpunkt, kein Recht, keine Nutzlast und kein Manifest beruehrt; die Klassennamen
+    //   `quellenfund-satz`/`-deckung` heissen jetzt `quellenfund-titel`/`-fakten` (Stilregeln
+    //   mitgefuehrt). Gemessen: B3 gruen bei 10494 Zeilen (6 unter der Schranke — P11/JOB 3227,
+    //   der Schnitt, ist damit faellig), tests/m3-dokumentweg-panel (24 Faelle in zwei Dateien).
+    //
+    // JOB 3243 RUNDE 3 (08.09.2026, 0196530d… -> ee6ff2ac…) — BENs KORREKTURPFLICHT 1, EINE ZEILE
+    // LOGIK. `w6Quellenfundlage` ersetzte ein FEHLENDES oder falsch typisiertes `sourceHits` durch
+    // `[]` und gab es mit `gelaufen: true` als durchsuchte Abwesenheit aus — „Kein Quellenfund im
+    // durchsuchten Bestand." ueber einer Liste, die der Server nie geliefert hat. Jetzt verlangt die
+    // Bedingung BEIDES (`gelaufen === true` UND `Array.isArray(sourceHits)`); alles andere heisst
+    // „nicht durchsucht". KEINE Anzeige-, Markup-, Stil- oder Woerterbuchaenderung, kein Endpunkt,
+    // kein Recht, keine Nutzlast, kein Manifest — ein installiertes Add-in braucht KEIN Sideload.
+    // Das Inline-Skript schrumpft dabei um eine Zeile (10494 -> 10493, B3 weiter gruen).
+    // Gemessen: tests/m3-dokumentweg-panel (29 Faelle; Q9a vier Formen des fehlenden Arrays, Q9b
+    // die Kalibrierung dagegen), vor der Korrektur woertlich rot mit
+    // „expected 'Kein Quellenfund im durchsuchten Best…' to be 'Quellenfund nicht durchsucht.'".
+    const PIN = "ee6ff2ac12befb70115d5dc023f39870305d70020c3fc7262fa4fba0bbad44a3";
     const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
     expect(
       ist,
