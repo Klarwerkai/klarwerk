@@ -124,14 +124,81 @@ export const JSON_UPLOAD_INPUT_ID = "imp-json-upload-input";
 // IDs der aktiven JSON-Kacheln (Systeme + Dateien) — beide zeigen auf denselben echten Upload.
 export const JSON_SOURCE_IDS = ["json", "json-file"] as const;
 
-// PAKET 1 — Systeme. aktiv: Confluence · JSON-Import (bestehend). bald: Jira · Word · PDF.
-// geplant: SharePoint · MS Teams · Google Drive · DMS · PLM · ServiceNow · SAP · Notion · Slack · E-Mail.
+// ================================================================================================
+// JOB 3235 (UX-18-R2) — DIE SYSTEMKACHEL HIESS WIE EINE DATEI UND SAGTE ETWAS ANDERES ALS SIE.
+// ================================================================================================
+//
+// DAS PROBLEM. „Systeme" und „Dateien" stehen auf `/import` UNTEREINANDER auf derselben Flaeche
+// (`ImportSourceGallery.tsx:75-96`). Hier standen `word-sys` als „Word-Datei · bald" und `pdf-sys`
+// als „PDF-Datei · bald" — direkt ueber der Dateikachel „Word (.docx) · im Erfassen". Zweimal
+// derselbe Formatname, zwei verschiedene Aussagen ueber dieselbe Sache. Genau die zweite Wahrheit,
+// die JOB 3190 in der Dateigruppe abgeschafft hat (Kopfkommentar bei IMPORT_FILE_STATE unten), nur
+// eine Gruppe hoeher stehengeblieben. Die Schluesselnamen sagten es selbst: die SYSTEM-Kachel hiess
+// `…src.wordFile` — sie war nach einer Datei benannt.
+//
+// DIE MESSUNG ZUERST (Lieferung 1). Fuer Word und PDF gibt es DREI verschiedene Wege, und sie
+// wurden einzeln am Quelltext nachgesehen, bevor hier ein Wort geaendert wurde:
+//
+//  (a) DATEI EINLESEN — gibt es, im Erfassen. Die Weiche ist `detectFileKind`
+//      (`extract.ts:20` fuer `.pdf`, `:23-24` fuer `.docx`); der Dateidialog des Erfassens traegt
+//      beide Formate ausdruecklich (`captureFromFile.ts:65`, `:97-98`). Genau das leitet die
+//      Dateigruppe unten ab (`captureSupports` → `importState`) und nennt es „im Erfassen".
+//      Das ist die Aussage der DATEIKACHEL — und sie bleibt unveraendert.
+//
+//  (b) WORD-ADD-IN (Klara) — gibt es, gebaut und ausgeliefert. Es liegt vor als
+//      `apps/web/public/word-addin/taskpane.html`, wird unter der festen Adresse
+//      `/word-addin/taskpane.html` ausgeliefert (`services/app/src/web-static.ts:49`), und das
+//      Manifest `docs/word-addin/klara-manifest.xml` zeigt genau dorthin. Mit einem Word-Dokument
+//      tut es Folgendes: es liest das GANZE Dokument (`taskpane.html:5340-5352`, `body.text` +
+//      `body.getHtml()` in EINEM `context.sync`), schickt die `.docx`-Bytes an
+//      `POST /api/drafts/from-docx` (`taskpane.html:5265`; Serverseite
+//      `services/app/src/routes/capture-routes.ts:878`) und legt daraus einen Entwurf mit der
+//      Herkunft `word_addin` an (`taskpane.html:5041`; der Chip dazu in
+//      `components/bibliothek/MehrAbschnitte.tsx:857`). Fuer Word gibt es also einen wirklich
+//      gebauten Weg IN Klarwerk hinein — er liegt aber weder auf dieser Seite noch im Erfassen,
+//      sondern in Word. FUER PDF GIBT ES NICHTS VERGLEICHBARES: unter `apps/web/public/` liegt
+//      genau ein Panel-Verzeichnis, `word-addin/`.
+//      DESHALB BEHAUPTET HIER KEINE KACHEL UND KEIN TEXT, es gaebe fuer Word nichts (Lieferung 5).
+//
+//  (c) EIGENSTAENDIGE QUELLENANBINDUNG (Konnektor wie Confluence) — gibt es NICHT, und das ist an
+//      vier benannten Stellen nachgesehen, nicht bloss „nicht gefunden":
+//        1. `services/` — ein Quellsystem hat ein eigenes Modul. Confluence hat eines
+//           (`services/confluence/src/` mit `adapter.ts`, `rest-client.ts`, `storage.ts`,
+//           `credential-state.ts`). Ein `services/word` oder `services/pdf` existiert nicht.
+//        2. `services/app/src/feature-flags.ts` — das `SCHALTER_REGISTRY` ist die EINE Stelle, an
+//           der eine Quelle geschaltet wird. Einziger Quell-Schalter dort: `confluenceImport`.
+//        3. `services/app/src/build-app.ts:548` und `:2182` — die EINE Stelle, an der
+//           Konnektor-Routen registriert werden. Registriert wird nur `confluenceImportRoutes`.
+//        4. `services/app/src/routes/` — dort liegt genau eine Konnektor-Routendatei,
+//           `confluence-import-routes.ts`.
+//
+// WAS DARAUS FOLGT (Lieferungen 2 und 4).
+//  · NAME: Die Systemkacheln heissen nicht mehr nach einer Datei, sondern nach dem Weg, den sie
+//    meinen — der Anbindung an eine Word-/PDF-Dokumentquelle. Die alten Schluessel
+//    `imp.gallery.src.wordFile`/`…pdfFile` sind ENTFERNT, nicht danebengelassen.
+//  · ZUSTAND: „bald" heisst „in Arbeit". Messung (c) belegt fuer Word und PDF keine begonnene
+//    Anbindung — kein Modul, kein Schalter, keine Route. Also `planned`, nicht `soon`. Beide
+//    Kacheln wandern damit in den eingeklappten „In Planung"-Bereich; die Aufklappzeile der
+//    Systemgruppe zaehlt danach 12 statt 10.
+//  · JIRA BLEIBT „bald", und zwar belegt: `build-app.ts:548` nennt als naechste Quelle ausdruecklich
+//    „kuenftig: || jiraEnabled || …". Word und PDF stehen dort nicht.
+//  · KEIN WIDERSPRUCH ZUR DATEIKACHEL: „Word-Dokumentquelle (Anbindung) · geplant" und
+//    „Word-Datei (.docx) · im Erfassen" sind zwei Aussagen ueber zwei verschiedene Wege, nicht
+//    zwei Aussagen ueber denselben.
+//
+// Gehalten wird das von `tests/quellenkachel-umfang/` — dort darf kein Name einer Systemkachel
+// denselben Kern haben wie der einer Dateikachel, in JEDER gefuehrten Sprache.
+//
+// PAKET 1 — Systeme. aktiv: Confluence · JSON-Import (bestehend). bald: Jira. geplant: Word- und
+// PDF-Dokumentquelle · SharePoint · MS Teams · Google Drive · DMS · PLM · ServiceNow · SAP ·
+// Notion · Slack · E-Mail.
 export const SYSTEM_SOURCES: readonly GallerySource[] = orderByState([
   { id: "confluence", labelKey: "imp.gallery.src.confluence", state: "active" },
   { id: "json", labelKey: "imp.gallery.src.jsonImport", state: "active" },
   { id: "jira", labelKey: "imp.gallery.src.jira", state: "soon" },
-  { id: "word-sys", labelKey: "imp.gallery.src.wordFile", state: "soon" },
-  { id: "pdf-sys", labelKey: "imp.gallery.src.pdfFile", state: "soon" },
+  // IDs unveraendert: `FileTypePicker.tsx:62/:64` fuehrt Icon-Eintraege unter genau diesen Namen.
+  { id: "word-sys", labelKey: "imp.gallery.src.wordSource", state: "planned" },
+  { id: "pdf-sys", labelKey: "imp.gallery.src.pdfSource", state: "planned" },
   { id: "sharepoint", labelKey: "imp.gallery.src.sharepoint", state: "planned" },
   { id: "teams", labelKey: "imp.gallery.src.teams", state: "planned" },
   { id: "gdrive", labelKey: "imp.gallery.src.gdrive", state: "planned" },
@@ -182,6 +249,9 @@ const FILE_SOURCE_DEFS: readonly FileSourceDef[] = [
     sample: { name: "a.json" },
   },
   { id: "csv", labelKey: "imp.gallery.file.csv", accept: ACCEPT_TEXT, sample: { name: "a.csv" } },
+  // JOB 3235: die zwei Kacheln, die eine Schwester in der Systemgruppe haben. Der SCHLUESSEL bleibt
+  // (sie meinen weiter genau die Datei), der TEXT sagt jetzt ausdruecklich „Datei" — gegenueber der
+  // „Anbindung" eine Zeile hoeher. Zustand und Verdrahtung bleiben abgeleitet und unangetastet.
   {
     id: "docx",
     labelKey: "imp.gallery.file.docx",

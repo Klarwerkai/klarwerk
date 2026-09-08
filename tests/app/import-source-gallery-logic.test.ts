@@ -75,14 +75,21 @@ describe("ic7: Datenmodell Systeme + Dateien", () => {
     expect(fileStates.has("soon"), "keine Dateikachel behauptet noch „bald“").toBe(false);
   });
 
-  it("Systeme: Confluence + JSON-Import aktiv; Jira/Word/PDF bald; die geplanten Systeme sind vollstaendig", () => {
+  // JOB 3235 (UX-18-R2) — NACHGEFÜHRT: `word-sys` und `pdf-sys` heissen nicht mehr „bald".
+  // „Bald" heisst „in Arbeit"; gemessen wurde, dass es fuer Word und PDF keine begonnene
+  // QUELLENANBINDUNG gibt — kein Modul unter `services/`, kein Eintrag im `SCHALTER_REGISTRY`
+  // (`services/app/src/feature-flags.ts`), keine registrierte Route (`build-app.ts:548`, `:2182`),
+  // keine Routendatei unter `services/app/src/routes/`. Die Belege stehen im Kopfkommentar bei
+  // SYSTEM_SOURCES. JIRA BLEIBT „bald", und zwar belegt: `build-app.ts:548` nennt es ausdruecklich
+  // als naechste Quelle („kuenftig: || jiraEnabled || …"), Word und PDF stehen dort nicht.
+  it("Systeme: Confluence + JSON-Import aktiv; Jira bald; Word-/PDF-Quelle und die uebrigen geplant", () => {
     const byId = new Map(SYSTEM_SOURCES.map((s) => [s.id, s.state]));
     expect(byId.get("confluence")).toBe("active");
     expect(byId.get("json")).toBe("active");
-    for (const id of ["jira", "word-sys", "pdf-sys"]) {
-      expect(byId.get(id), id).toBe("soon");
-    }
+    expect(byId.get("jira"), "jira").toBe("soon");
     for (const id of [
+      "word-sys",
+      "pdf-sys",
       "sharepoint",
       "teams",
       "gdrive",
