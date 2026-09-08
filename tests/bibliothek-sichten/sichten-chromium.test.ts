@@ -1,5 +1,6 @@
 // P04: gebaute Produktseite, echte Tastatur, berechnetes Layout. Keine CSS-Kopie.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { SPRACHE_STORAGE_KEY } from "../../apps/web/src/lib/sprachwahl";
 import { type H4Stand, ORIGIN, type Seite, fn, h4Stand } from "../design/h4-harness";
 
 interface KeyboardPage extends Seite {
@@ -160,4 +161,98 @@ describe("P04 · Name und Eingabe bei 360/1440 px (Chromium)", () => {
     },
     60_000,
   );
+
+  it("UX-29 C · Hinweis bei 320/390 px in DE/EN ohne Überlauf; Name und Speichern bleiben erreichbar", async () => {
+    const page = stand.seite as KeyboardPage;
+    for (const width of [320, 390]) {
+      for (const language of ["de", "en"]) {
+        await page.setViewportSize({ width, height: 740 });
+        await page.evaluate<void>(
+          fn(`({ key, language }) => {
+          localStorage.setItem(key, language);
+          for (const key of Object.keys(localStorage)) {
+            if (key.startsWith('klarwerk.library.views.')) localStorage.removeItem(key);
+          }
+        }`),
+          { key: SPRACHE_STORAGE_KEY, language },
+        );
+        await page.goto(`${ORIGIN}/bibliothek?raum=meine`, { waitUntil: "load" });
+        await page.waitForFunction(fn(`() => document.querySelector('[data-testid="bib-zeile"]')`));
+        await enter('[data-testid="bib-liste-menue"]');
+        await summary(language === "de" ? "Sicht speichern" : "Save view");
+        await page.keyboard.press("Tab");
+        await page.keyboard.type("UX-29 C");
+        await page.keyboard.press("Tab");
+        await page.keyboard.press("Enter");
+        await enter('[data-testid="bib-liste-menue"]');
+        await summary(language === "de" ? "Sichten" : "Views");
+        const hint = await page.evaluate<{
+          text: string;
+          lines: number;
+          overflow: number;
+          within: boolean;
+          visible: boolean;
+        }>(
+          fn(`() => {
+          const el = document.querySelector('[data-testid="bib-sichten-hinweis"]');
+          if (!el) throw new Error('Speicherhinweis fehlt');
+          const menu = el.closest('[role="menu"]');
+          const m = menu.getBoundingClientRect();
+          const r = el.getBoundingClientRect();
+          const range = document.createRange(); range.selectNodeContents(el);
+          const lines = [...range.getClientRects()];
+          const style = getComputedStyle(el);
+          return { text: el.textContent, lines: lines.length,
+            overflow: el.scrollWidth - el.clientWidth,
+            within: r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight &&
+              lines.every(l => l.left >= Math.max(r.left, m.left) && l.right <= Math.min(r.right, m.right) && l.top >= Math.max(r.top, m.top) && l.bottom <= Math.min(r.bottom, m.bottom)),
+            visible: style.display !== 'none' && style.visibility !== 'hidden' &&
+              el.closest('details').open && !el.closest('[hidden], [aria-hidden="true"]') };
+        }`),
+        );
+        expect(hint.text).toContain(
+          language === "de" ? "nur in diesem Browser" : "only in this browser",
+        );
+        expect(hint.text).toContain(
+          language === "de" ? "Fenstergröße beginnt neu" : "window size starts over",
+        );
+        expect(hint.lines).toBeGreaterThan(1);
+        expect(hint.overflow).toBeLessThanOrEqual(1);
+        expect(hint.within).toBe(true);
+        expect(hint.visible).toBe(true);
+        // Mit offenem Hinweis wird die Liste per Tab erreicht, auch wenn das Menü rollen muss.
+        await page.keyboard.press("Tab");
+        expect(
+          await page.evaluate<string>(
+            fn("() => document.activeElement.lastElementChild.textContent.trim()"),
+          ),
+        ).toBe("UX-29 C");
+        await summary(language === "de" ? "Sicht speichern" : "Save view");
+        await page.keyboard.press("Tab");
+        expect(await page.evaluate<string>(fn("() => document.activeElement.id"))).toBe(
+          "bib-sichtname",
+        );
+        await page.keyboard.type("Weiter");
+        await page.keyboard.press("Tab");
+        const save = await page.evaluate<{ focused: string; reachable: boolean }>(
+          fn(`() => {
+          const el = document.activeElement; const r = el.getBoundingClientRect();
+          const m = el.closest('[role="menu"]').getBoundingClientRect();
+          return { focused: el.dataset.testid,
+            reachable: !el.disabled && r.width > 0 && r.height > 0 && r.left >= 0 && r.right <= innerWidth &&
+              r.top >= Math.max(0, m.top) && r.bottom <= Math.min(innerHeight, m.bottom) &&
+              el.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)) };
+        }`),
+        );
+        expect(save.focused).toBe("bib-sicht-speichern");
+        expect(save.reachable).toBe(true);
+        await page.keyboard.press("Enter");
+        expect(await page.evaluate<string>(fn("() => document.activeElement.dataset.testid"))).toBe(
+          "bib-liste-menue",
+        );
+        console.info(`UX-29 C ${width}px ${language}: ${JSON.stringify({ hint, save })}`);
+      }
+    }
+    expect(stand.seitenfehler).toEqual([]);
+  }, 60_000);
 });

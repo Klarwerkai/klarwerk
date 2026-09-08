@@ -3305,6 +3305,17 @@ const de = {
   "lib.views.namePlaceholder": "Name der Sicht",
   "lib.views.save": "Sicht speichern",
   "lib.views.remove": "Sicht löschen",
+  "lib.views.storageHint":
+    "Sichten bleiben nur in diesem Browser. {{ownership}} Sie werden nicht auf dem Server gespeichert und nicht auf andere Geräte oder Browser übertragen. Wer Browserdaten löscht, löscht auch die Sichten. Gespeichert: {{dimensions}}. Nicht gespeichert: Sortierung und Fenstergröße („Mehr laden“). Die Sortierung bleibt beim Aufrufen unverändert; die Fenstergröße beginnt neu.",
+  "lib.views.ownershipSignedIn": "Sie gehören zu deiner aktuellen Anmeldung.",
+  "lib.views.ownershipAnon":
+    "Ohne Anmeldung gilt die Liste für alle, die diesen Browser ohne Anmeldung benutzen.",
+  "lib.views.dimension.q": "Suchbegriff",
+  "lib.views.dimension.facetSel": "Filterauswahl",
+  "lib.views.dimension.range": "Zeitraum",
+  "lib.views.dimension.groupBy": "Gruppierung",
+  "lib.views.dimension.segment": "Segment",
+  "lib.views.dimension.scope": "Bereich",
   "imp.select.deselectLang": "Alle {{lang}} abwählen · {{n}}",
   // SCRUM-486 (nacht24 Paket 3): EINE ruhige Befund-Darstellung — WAS, Erkennungsweg (ehrlich),
   // beide Seiten verlinkt, Gruppierung je Beitrag.
@@ -8303,6 +8314,17 @@ const en: typeof de = {
   "lib.views.namePlaceholder": "View name",
   "lib.views.save": "Save view",
   "lib.views.remove": "Delete view",
+  "lib.views.storageHint":
+    "Views stay only in this browser. {{ownership}} They are not stored on the server and not transferred to other devices or browsers. Clearing browser data also deletes the views. Saved: {{dimensions}}. Not saved: sort order and window size (“Load more”). The sort order stays unchanged when loading a view; the window size starts over.",
+  "lib.views.ownershipSignedIn": "They belong to your current sign-in.",
+  "lib.views.ownershipAnon":
+    "Without a sign-in, the list is shared by everyone using this browser without signing in.",
+  "lib.views.dimension.q": "Search term",
+  "lib.views.dimension.facetSel": "Filter selection",
+  "lib.views.dimension.range": "Date range",
+  "lib.views.dimension.groupBy": "Grouping",
+  "lib.views.dimension.segment": "Segment",
+  "lib.views.dimension.scope": "Scope",
   "imp.select.deselectLang": "Deselect all {{lang}} · {{n}}",
   // SCRUM-486 (nacht24 packet 3): one calm finding view — what, detection path (honest),
   // both sides linked, grouped per contribution.
@@ -12929,6 +12951,17 @@ const nl: typeof de = {
   "lib.views.namePlaceholder": "Naam van de weergave",
   "lib.views.save": "Weergave opslaan",
   "lib.views.remove": "Weergave verwijderen",
+  "lib.views.storageHint":
+    "Weergaven blijven alleen in deze browser. {{ownership}} Ze worden niet op de server opgeslagen en niet overgedragen naar andere apparaten of browsers. Wie browsergegevens wist, wist ook de weergaven. Opgeslagen: {{dimensions}}. Niet opgeslagen: sortering en venstergrootte (“Meer laden”). De sortering blijft bij het laden ongewijzigd; de venstergrootte begint opnieuw.",
+  "lib.views.ownershipSignedIn": "Ze horen bij je huidige aanmelding.",
+  "lib.views.ownershipAnon":
+    "Zonder aanmelding geldt de lijst voor iedereen die deze browser zonder aanmelding gebruikt.",
+  "lib.views.dimension.q": "Zoekterm",
+  "lib.views.dimension.facetSel": "Filterselectie",
+  "lib.views.dimension.range": "Periode",
+  "lib.views.dimension.groupBy": "Groepering",
+  "lib.views.dimension.segment": "Segment",
+  "lib.views.dimension.scope": "Bereik",
   "imp.select.deselectLang": "Alle {{lang}} deselecteren · {{n}}",
   // SCRUM-486 (nacht24 pakket 3): één rustige bevindingsweergave — wat, detectiepad (eerlijk),
   // beide kanten gelinkt, gegroepeerd per bijdrage.

@@ -18,6 +18,16 @@ export type LibrarySavedViewState = {
   scope: LibraryScope;
 };
 
+// UX-29 C: Jede gespeicherte Dimension muss auch im sichtbaren Speicherhinweis vorkommen.
+export const LIBRARY_SAVED_VIEW_DIMENSIONS = {
+  q: "lib.views.dimension.q",
+  facetSel: "lib.views.dimension.facetSel",
+  range: "lib.views.dimension.range",
+  groupBy: "lib.views.dimension.groupBy",
+  segment: "lib.views.dimension.segment",
+  scope: "lib.views.dimension.scope",
+} as const satisfies Record<keyof LibrarySavedViewState, string>;
+
 // P04: Alt-Sichten ohne Segment/Geltungsbereich verwenden die Seitenstandards alle/alle.
 // Das schränkt keine alte Treffermenge nachträglich ein; „alle“ umfasst ausschließlich die
 // serverseitig erlaubten Inhalte. Freie Ortskennungen werden nie als Scope übernommen.

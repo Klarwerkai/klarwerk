@@ -65,6 +65,7 @@ import {
 } from "../../lib/libraryOwnScope";
 import { EMPTY_LIBRARY_FILTER, buildLibraryQuery } from "../../lib/libraryQuery";
 import {
+  LIBRARY_SAVED_VIEW_DIMENSIONS,
   readLibrarySavedViewState,
   sameLibrarySavedViewState,
 } from "../../lib/librarySavedViewState";
@@ -1307,6 +1308,21 @@ export function BibliothekFlaeche({
                       </p>
                     ) : null}
                     <MenueUntermenue beschriftung={t("lib.menue.sichten")}>
+                      <p
+                        data-testid="bib-sichten-hinweis"
+                        className="px-2.5 py-1.5 text-[13px] leading-snug text-text whitespace-normal [overflow-wrap:anywhere]"
+                      >
+                        {t("lib.views.storageHint", {
+                          ownership: t(
+                            viewsUserId === "anon"
+                              ? "lib.views.ownershipAnon"
+                              : "lib.views.ownershipSignedIn",
+                          ),
+                          dimensions: Object.values(LIBRARY_SAVED_VIEW_DIMENSIONS)
+                            .map((key) => t(key))
+                            .join(", "),
+                        })}
+                      </p>
                       {savedViews.map((v) => (
                         <MenuePunkt
                           key={v.name}
@@ -1342,7 +1358,9 @@ export function BibliothekFlaeche({
                             }
                           }}
                         >
-                          {t("lib.views.remove")}
+                          <span className="block whitespace-normal [overflow-wrap:anywhere]">
+                            {t("lib.views.remove")} · {activeView}
+                          </span>
                         </MenuePunkt>
                       ) : null}
                     </MenueUntermenue>
