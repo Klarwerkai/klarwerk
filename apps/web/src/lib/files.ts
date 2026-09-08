@@ -165,6 +165,10 @@ export function downscaleImageDataUrl(
 // geführt — komprimiert BEHALTEN, solange sie passen; nur als Notbremse weggelassen. So sprengt ein
 // bildreiches DOCX das Draft-Speichern nie (totalImages/droppedImages melden ehrlich).
 // WP-BILD-1a: der lokalisierte Fußnoten-Platzhalter wird injiziert (der DOM-freie Kern kennt kein i18n).
+// JOB 3254/M5c-UI (R2): hier kommt KEIN zweiter lokalisierter Text hinzu. Die Mehrdeutigkeit einer
+// Word-Beschriftung verlässt den Kern als BILDKENNUNG (`DocxRichResult.captionsAmbiguousImageIds`),
+// nicht als Anzeigetext im Rumpf — ein Attribut mit Text überlebte die beiden Sanitizer nicht und
+// darf es auch nicht (Runde 1, gemessen). Diese Signatur bleibt deshalb unverändert.
 export async function readDocxRich(
   file: File,
   imageCaptionPlaceholder?: string,

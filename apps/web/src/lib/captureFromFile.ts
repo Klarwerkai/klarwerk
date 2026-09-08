@@ -546,6 +546,12 @@ export const CAPTURE_FILE_TEXT = {
   imagesBudgetTotalImages: "capture.file.imagesBudgetTotalImages",
   // WP-BILD-1a (Pedi 20.07.): ehrlicher Startwert der Bild-Fußnote — noch keine (KI-)Beschreibung.
   imageCaptionPlaceholder: "capture.file.imageCaptionPlaceholder",
+  // JOB 3254/M5c-UI: die Beschriftungsbilanz des DOCX-Imports. DREI Schlüssel und nicht einer, weil
+  // eine Null nie genannt wird (Nullregel, siehe `beschriftungsBilanzBausteine`): „0 unklar"
+  // behauptete eine Messung, die niemanden betrifft.
+  captionsBalance: "capture.file.captionsBalance",
+  captionsBalanceAssigned: "capture.file.captionsBalanceAssigned",
+  captionsBalanceAmbiguous: "capture.file.captionsBalanceAmbiguous",
   // WP-D1d: Bilder komprimiert BEHALTEN, Original im Anhang (Anhang WIRKLICH gelungen).
   imagesKept: "capture.file.imagesKept",
   // WP-D1d: einige komprimiert, einige als Notbremse weggelassen — Original im Anhang gesichert.
@@ -690,6 +696,41 @@ export function importImageNotice(input: ImportImageNoticeInput): ImportImageNot
     key: input.dropped > 0 ? CAPTURE_FILE_TEXT.imagesLost : CAPTURE_FILE_TEXT.imagesNoOriginal,
     params,
   };
+}
+
+// ==================================================================================================
+// JOB 3254/M5c-UI — DIE BESCHRIFTUNGSBILANZ DER IMPORT-QUITTUNG.
+// ==================================================================================================
+// Sie steht hier und nicht in `pages/Capture.tsx`: die Schlüssel gehören zu `CAPTURE_FILE_TEXT`
+// (EINE Quelle für Komponente und Test), und dieses Modul ist die Stelle, an der die übrigen
+// Import-Bausteine entstehen (`importImageNotice`, `imageTransferSummary`). Ein zweiter Bauort für
+// dieselbe Sorte Satz wäre eine zweite Auslegung derselben Regel.
+//
+// BAUSTEIN, NIE FERTIGER SATZ: Schlüssel plus die beiden Zahlen. Den Satz bildet allein `meldungText`
+// beim Rendern (JOB 3196 R2) — nur so nimmt ein Sprachwechsel NACH dem Einlesen ihn mit.
+//
+// DIE NULLREGEL, und sie gilt für beide Hälften gleich: eine Zahl, die 0 ist, wird nicht genannt.
+// Sind beide 0 — ein Dokument ohne Word-Beschriftungen —, entsteht GAR KEIN Baustein: über
+// Beschriftungen ist dann nichts zu sagen, und „0 übernommen · 0 unklar" wäre Rauschen, das eine
+// Messung vortäuscht, die niemanden betrifft.
+//
+// Die Rückgabe ist eine LISTE (leer oder einelementig), damit der Aufrufer sie wie jede andere
+// Zusatzgruppe der Quittung einstreuen kann, ohne auf `null` zu prüfen.
+export function beschriftungsBilanzBausteine(
+  assigned: number,
+  ambiguous: number,
+): { key: string; params?: Record<string, unknown> }[] {
+  if (assigned <= 0 && ambiguous <= 0) {
+    return [];
+  }
+  const params = { assigned, ambiguous };
+  if (assigned <= 0) {
+    return [{ key: CAPTURE_FILE_TEXT.captionsBalanceAmbiguous, params }];
+  }
+  if (ambiguous <= 0) {
+    return [{ key: CAPTURE_FILE_TEXT.captionsBalanceAssigned, params }];
+  }
+  return [{ key: CAPTURE_FILE_TEXT.captionsBalance, params }];
 }
 
 // ---------------------------------------------------------------------------

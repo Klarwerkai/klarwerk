@@ -187,6 +187,26 @@
   content: attr(data-kw-placeholder);
   @apply not-italic text-muted-2;
 }
+/* JOB 3254 (M5c-UI): eine Fußnote, die LEER GEBLIEBEN IST, OBWOHL das Dokument eine Beschriftung
+   daneben hatte, sagt genau das — statt wie ein Bild ohne Beschriftung auszusehen. Der Text steht im
+   Attribut data-kw-beschriftung-mehrdeutig, das NUR editorseitig gesetzt wird (RUNDE 2:
+   enhanceFiguresForEditing, an der Fußnote, deren data-image-id in den Kennungen des laufenden
+   Imports steht — der Rumpf selbst trägt es nie, er ginge durch beide Sanitizer); beide Sanitizer
+   strippen es beim Speichern (figcaption erlaubt ausschließlich data-image-id) — dieselbe Bauform
+   wie der Platzhalter und wie data-kw-nicht-zugeordnet darunter.
+   DERSELBE ::before-PLATZ wie der Platzhalter, nicht ein zweiter daneben: es sind zwei Antworten auf
+   dieselbe Frage („warum steht hier nichts?"), und nur eine kann wahr sein. Die höhere Spezifität
+   (zwei Attribute) gewinnt gegen die Platzhalter-Regel darüber — anderer TEXT, nicht nur andere
+   Farbe. Sobald der Mensch etwas hineinschreibt, ist die Fußnote nicht mehr :empty und die
+   Kennzeichnung verschwindet wie der Platzhalter auch. Warn-Tönung aus den vorhandenen Tokens
+   (mega40 H2: keine neuen Farbwerte) — es ist eine offene Frage, keine Einladung. */
+.prose-kw figcaption[data-kw-caption-open][data-kw-beschriftung-mehrdeutig]:empty {
+  @apply border-l-2 border-l-trust-warn-fill bg-trust-warn-bg;
+}
+.prose-kw figcaption[data-kw-caption-open][data-kw-beschriftung-mehrdeutig]:empty::before {
+  content: attr(data-kw-beschriftung-mehrdeutig);
+  @apply not-italic font-semibold text-trust-warn-text;
+}
 /* JOB 3041 (Register I50, VIERTENS): eine Bildbeschreibung, die zu KEINEM Bild gehört (Stufe 3 in
    editorFigures.ts), sagt es selbst. Der Text steht im Attribut data-kw-nicht-zugeordnet, das die
    Verankerung NUR editorseitig setzt und beide Sanitizer beim Speichern strippen (figcaption erlaubt

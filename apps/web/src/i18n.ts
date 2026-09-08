@@ -1567,6 +1567,14 @@ const de = {
   "capture.file.imagesBudgetTotalImages":
     "Grenze „Bildersumme“: {{count}} Bild(er) hätten die Gesamtgröße aller Bilder gesprengt (höchstens {{limitBytes}} Byte; gebraucht wurden {{actualBytes}}).",
   "capture.file.imageCaptionPlaceholder": "Noch keine Bildbeschreibung",
+  // JOB 3254 (M5c-UI): die Bilanz der Word-Bildunterschriften. Drei Sätze, weil eine Null nie
+  // genannt wird — „0 unklar" behauptete eine Messung, die niemanden betrifft (Nullregel).
+  "capture.file.captionsBalance":
+    "{{assigned}} Bildunterschrift(en) aus dem Dokument übernommen · {{ambiguous}} nicht eindeutig zuordenbar (leer gelassen).",
+  "capture.file.captionsBalanceAssigned":
+    "{{assigned}} Bildunterschrift(en) aus dem Dokument übernommen.",
+  "capture.file.captionsBalanceAmbiguous":
+    "{{ambiguous}} Bildunterschrift(en) im Dokument gefunden, aber nicht eindeutig zuordenbar (leer gelassen).",
   "capture.file.imagesKept":
     "{{kept}} Bilder übernommen, davon {{compressed}} für die Textansicht komprimiert; das unveränderte Original liegt im Anhang.",
   "capture.file.imagesKeptDropped":
@@ -1968,6 +1976,10 @@ const de = {
   // JOB 3055: IM Formular kann der Autor die Zuordnung seit heute herstellen. Die zwei Sätze hier
   // bleiben trotzdem wörtlich, wie sie sind: sie beschreiben den ZUSTAND der Fußnote, nicht das
   // Angebot dahinter — und der Zustand ist unverändert „gehört noch keinem Bild".
+  // JOB 3254 (M5c-UI): die zweite Antwort auf „warum steht hier nichts?". Sie sagt, dass eine
+  // Beschriftung im Dokument STAND und bewusst nicht geraten wurde — das ist der Unterschied
+  // zwischen „hier fehlt etwas" und „hier ist eine offene Frage, die nur du beantworten kannst".
+  "editor.captionAmbiguous": "Beschriftung im Dokument, aber nicht eindeutig zuordenbar",
   "editor.captionUnassigned": "noch keinem Bild zugeordnet",
   "editor.captionUnassignedLabel":
     "Bildbeschreibung, noch keinem Bild zugeordnet — öffnet das Beschreibungsformular",
@@ -6848,6 +6860,11 @@ const en: typeof de = {
   "capture.file.imagesBudgetTotalImages":
     "Limit “total images”: {{count}} image(s) would have exceeded the combined size of all images (at most {{limitBytes}} bytes; {{actualBytes}} were needed).",
   "capture.file.imageCaptionPlaceholder": "No image description yet",
+  "capture.file.captionsBalance":
+    "{{assigned}} image caption(s) taken from the document · {{ambiguous}} not clearly assignable (left empty).",
+  "capture.file.captionsBalanceAssigned": "{{assigned}} image caption(s) taken from the document.",
+  "capture.file.captionsBalanceAmbiguous":
+    "{{ambiguous}} image caption(s) found in the document but not clearly assignable (left empty).",
   "capture.file.imagesKept":
     "{{kept}} images imported, {{compressed}} of them compressed for the text view; the unchanged original is in the attachment.",
   "capture.file.imagesKeptDropped":
@@ -7215,6 +7232,7 @@ const en: typeof de = {
   "editor.imageSearch.useLabel": "Use image “{{caption}}” with caption and provenance",
   "editor.imageSearch.close": "Close",
   "editor.captionPlaceholder": "✎ Add image description …",
+  "editor.captionAmbiguous": "Caption in the document, but not clearly assignable",
   "editor.captionUnassigned": "not linked to an image yet",
   "editor.captionUnassignedLabel":
     "Image description, not linked to an image yet — opens the description form",
@@ -11495,6 +11513,12 @@ const nl: typeof de = {
   "capture.file.imagesBudgetTotalImages":
     "Grens „som van alle afbeeldingen”: {{count}} afbeelding(en) zouden de totale omvang van alle afbeeldingen hebben overschreden (hoogstens {{limitBytes}} byte; nodig waren {{actualBytes}}).",
   "capture.file.imageCaptionPlaceholder": "Nog geen afbeeldingsbeschrijving",
+  "capture.file.captionsBalance":
+    "{{assigned}} afbeeldingsonderschrift(en) uit het document overgenomen · {{ambiguous}} niet eenduidig toe te wijzen (leeg gelaten).",
+  "capture.file.captionsBalanceAssigned":
+    "{{assigned}} afbeeldingsonderschrift(en) uit het document overgenomen.",
+  "capture.file.captionsBalanceAmbiguous":
+    "{{ambiguous}} afbeeldingsonderschrift(en) in het document gevonden, maar niet eenduidig toe te wijzen (leeg gelaten).",
   "capture.file.imagesKept":
     "{{kept}} afbeeldingen overgenomen, waarvan {{compressed}} gecomprimeerd voor de tekstweergave; het ongewijzigde origineel zit in de bijlage.",
   "capture.file.imagesKeptDropped":
@@ -11864,6 +11888,7 @@ const nl: typeof de = {
   "editor.imageSearch.useLabel": "Afbeelding „{{caption}}” met onderschrift en herkomst overnemen",
   "editor.imageSearch.close": "Sluiten",
   "editor.captionPlaceholder": "✎ Afbeeldingsbeschrijving toevoegen …",
+  "editor.captionAmbiguous": "Onderschrift in het document, maar niet eenduidig toe te wijzen",
   "editor.captionUnassigned": "nog niet aan een afbeelding gekoppeld",
   "editor.captionUnassignedLabel":
     "Afbeeldingsbeschrijving, nog niet aan een afbeelding gekoppeld — opent het beschrijvingsformulier",

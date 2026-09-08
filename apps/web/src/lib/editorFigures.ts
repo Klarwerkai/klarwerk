@@ -107,6 +107,66 @@ export const CAPTION_OPEN_ATTR = "data-kw-caption-open";
 export const CAPTION_UNASSIGNED_ATTR = "data-kw-nicht-zugeordnet";
 
 // ==================================================================================================
+// JOB 3254/M5c-UI (RUNDE 2) — „BESCHRIFTUNG WAR DA, ABER NICHT EINDEUTIG" IST KEINE FEHLENDE ANGABE
+// ==================================================================================================
+//
+// JOB 3210 lässt bei Mehrdeutigkeit bewusst NICHT raten. Diese Entscheidung war unsichtbar: eine
+// Fussnote, die WEGEN Mehrdeutigkeit leer blieb, sah Zeichen für Zeichen aus wie die Fussnote eines
+// Bildes, zu dem das Dokument nie eine Beschriftung hatte. Der Mensch las „hier fehlt etwas", wo
+// „hier ist eine offene Frage, die nur du beantworten kannst" gemeint war.
+//
+// Das Attribut trägt den lokalisierten Kennzeichnungstext als WERT; das CSS rendert ihn bei leerer
+// Fussnote als `::before` (`index.css`) — dieselbe Bauform wie `CAPTION_UNASSIGNED_ATTR` darüber und
+// aus demselben Grund: der Text ist eine ANSICHT auf einen Zustand, nie Inhalt. Er kann nicht
+// gespeichert werden, weil die Sanitizer-Allowlist für `figcaption` genau ein Attribut kennt
+// (`data-image-id`, richText.ts und services/structure) — daran wird nichts geändert.
+export const CAPTION_AMBIGUOUS_ATTR = "data-kw-beschriftung-mehrdeutig";
+
+// ── DER TRANSPORT, UND WARUM ER NICHT IM RUMPF LIEGT ──────────────────────────────────────────────
+//
+// RUNDE 1 schrieb die Marke beim Import in das HTML. Sie kam nie an: der Weg /erfassen schickt das
+// importierte HTML durch den SERVER-Sanitizer (`services/capture`) und der Editor sanitisiert jede
+// Fassung von aussen ein zweites Mal (`RichTextEditor.tsx:632`). Beide strippen jedes figcaption-
+// Attribut ausser `data-image-id` — richtig so, und es bleibt so.
+//
+// Was den Rundgang überlebt, ist die BILDKENNUNG. `extractDocxRich` liefert deshalb die Kennungen
+// der mehrdeutig leer gebliebenen Fussnoten (`captionsAmbiguousImageIds`), die Erfassen-Fläche legt
+// sie hier ab, und `enhanceFiguresForEditing` setzt das Attribut am lebenden Editor-DOM — NACH jeder
+// Sanitisierung, an genau der Fussnote mit dieser Kennung.
+//
+// WARUM EIN MODULZUSTAND UND KEIN PROP: der Editor, der das importierte Dokument zeigt, steht nicht
+// dort, wo die Datei gelesen wird. Gelesen wird im Arbeitsraum (`pages/Capture.tsx`), gezeigt wird
+// im Blatt (`components/erfassen/Blatt.tsx`) nach dem Sichern des Entwurfs — dazwischen liegen eine
+// Serverfahrt und ein Seitenwechsel. Ein Prop müsste durch beide Flächen gereicht werden; ein
+// Kontext müsste ÜBER beiden hängen. Beide Dateien gehören nicht zu diesem Auftrag, und ein Zustand,
+// den `RichTextEditor` selbst liest, kommt ohne sie aus.
+//
+// WARUM DAS NICHT AN EIN FREMDES BILD GERATEN KANN: die Kennung trägt das Import-Token dieses einen
+// Lesevorgangs (`kw-img-<token>-N`, `docx.ts:newImageRunToken`). Ein Eintrag aus einem früheren
+// Import kann auf kein Bild eines anderen Dokuments passen — er findet einfach nichts.
+//
+// WAS ER AUSDRÜCKLICH NICHT IST: gespeicherter Zustand. Er lebt im Speicher dieses einen
+// Seitenlebens. Wer neu lädt, sieht die Kennzeichnung nicht mehr — das ist die benannte Grenze
+// (§10: die Marke darf nicht gespeichert werden), und der dauerhafte Beleg des Imports ist die
+// Beschriftungsbilanz der Quittung.
+let mehrdeutigeFussnoten: ReadonlySet<string> = new Set<string>();
+
+/**
+ * Die Bildkennungen, deren Fussnote WEGEN Mehrdeutigkeit leer geblieben ist — für die laufende
+ * Ansicht. ERSETZT, nie ergänzt: jeder Lesevorgang ist die ganze Wahrheit über sein Dokument, und
+ * eine Sammlung über mehrere Importe hinweg wäre eine Aussage, die kein Dokument je gemacht hat.
+ * Mit leerer Liste gerufen löscht sie die Auskunft — genau das tut die Fläche, bevor sie liest.
+ */
+export function merkeMehrdeutigeFussnoten(bildkennungen: Iterable<string>): void {
+  mehrdeutigeFussnoten = new Set(bildkennungen);
+}
+
+/** Was gerade gilt. Leer, solange kein Import mit mehrdeutiger Beschriftung gelaufen ist. */
+export function mehrdeutigeFussnotenJetzt(): ReadonlySet<string> {
+  return mehrdeutigeFussnoten;
+}
+
+// ==================================================================================================
 // AUFTRAG-mega88 Block B — DIE BILDSTRUKTUR-INVARIANTE. EINE STELLE, DIE ALLE WEGE DURCHLAUFEN.
 // ==================================================================================================
 //
@@ -1629,12 +1689,19 @@ export function ordneFussnoteZu(
 // endgültig — der Editor konnte sie gar nicht auffangen. Sie ist ab jetzt die Liste der Trennungen
 // dieses Laufs (leer, wenn nichts getrennt wurde). Diese Funktion bleibt der EINZIGE Aufrufer von
 // `ensureImageAnchors` in diesem Modul; ein zweiter Lauf wäre eine zweite Zählung derselben Sache.
+// JOB 3254/M5c-UI (R2): die Mehrdeutigkeit einer Word-Beschriftung ist im Editor-DOM nicht
+// nachprüfbar — sie ist eine Tatsache des importierten Dokuments. Sie kommt deshalb als ARGUMENT
+// herein: die Bildkennungen aus dem Importplan plus der lokalisierte Satz dazu. Gebunden wird an
+// `data-image-id` und an nichts sonst; damit kann die Kennzeichnung weder beim Umhüllen noch beim
+// Flachmachen noch beim Verschieben von Fussnoten an ein anderes Bild wandern, und der
+// Sprachwechsel-Effekt in `RichTextEditor.tsx` frischt ihren Text ohne eigene Verdrahtung auf.
 export function enhanceFiguresForEditing(
   root: EditableFigureRoot,
   captionPlaceholder?: string,
   captionLabel?: string,
   captionUnassigned?: string,
   captionUnassignedLabel?: string,
+  mehrdeutig?: { readonly bildkennungen: ReadonlySet<string>; readonly text: string },
 ): KennungsTrennung[] {
   // AUFTRAG-mega88 Block B/C: ZUERST die Invariante. Sie läuft INNERHALB dieser Funktion und nicht
   // neben ihr, damit kein Aufrufer sie vergessen kann — und weil der Editor sie an genau einer
@@ -1689,6 +1756,20 @@ export function enhanceFiguresForEditing(
     // (index.css) rendert ihn bei :empty als ::before. Der Sanitizer strippt das Attribut beim Speichern.
     if (captionPlaceholder !== undefined) {
       caption.setAttribute("data-kw-placeholder", captionPlaceholder);
+    }
+    // JOB 3254 (R2): die Kennzeichnung „Beschriftung war da, aber nicht eindeutig" — gebunden an
+    // die Bildkennung dieser Fussnote. Der `else`-Zweig ist Pflicht und nicht Beiwerk: er räumt eine
+    // Kennzeichnung weg, die nicht mehr gilt (anderes Dokument, zugeordnete Fussnote), statt sich
+    // auf ihr Nichtvorhandensein zu verlassen — dieselbe Regel wie bei `CAPTION_UNASSIGNED_ATTR`.
+    const bildkennung = caption.getAttribute("data-image-id");
+    if (
+      mehrdeutig !== undefined &&
+      bildkennung !== null &&
+      mehrdeutig.bildkennungen.has(bildkennung)
+    ) {
+      caption.setAttribute(CAPTION_AMBIGUOUS_ATTR, mehrdeutig.text);
+    } else {
+      caption.removeAttribute(CAPTION_AMBIGUOUS_ATTR);
     }
   }
   return trennungen;

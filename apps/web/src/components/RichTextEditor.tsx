@@ -57,6 +57,10 @@ import {
   // siehe die Begründung an `emit()`.
   ensureImageAnchors,
   imageForCaption,
+  // JOB 3254 (M5c-UI, R2): welche Bildunterschriften des laufenden Imports mehrdeutig leer geblieben
+  // sind. Nicht als Prop: der Editor, der das importierte Dokument zeigt, steht hinter einer
+  // Serverfahrt und einem Seitenwechsel (Begründung an der Ablage in `editorFigures.ts`).
+  mehrdeutigeFussnotenJetzt,
   // JOB 3055 (PRIORITAETEN.md V7): die Gesichter EINER Antwort auf die Frage „darf diese
   // Beschreibung an dieses Bild". Die Fläche baut sie nicht nach; sie ruft sie — die Liste für die
   // Knöpfe, den Grund für den Satz, der bei null Kandidaten dasteht.
@@ -732,12 +736,21 @@ export function RichTextEditor({
       // nimmt der Sprachwechsel-Effekt unten sie ohne eigene Verdrahtung mit — ein zweiter Aufruf
       // von `enhanceFiguresForEditing` wäre genau die Vergesslichkeit, gegen die es diese eine
       // Stelle gibt (gezählt in `tests/capture/editor-figure-caption.test.ts`).
+      // JOB 3254 (R2): die mehrdeutig leer gebliebenen Bildunterschriften des laufenden Imports
+      // gehen durch DIESELBE Stelle — damit nimmt der Sprachwechsel-Effekt unten ihren Text ohne
+      // eigene Verdrahtung mit. Die KENNUNGEN kommen aus dem Importplan (`docx.ts` →
+      // `pages/Capture.tsx` → `merkeMehrdeutigeFussnoten`) und werden hier NICHT erhoben; gelesen
+      // wird bei jedem Lauf frisch, weil sich der Import ändern kann, ohne dass `t` sich ändert.
       return enhanceFiguresForEditing(
         el,
         t("editor.captionPlaceholder"),
         t(CAPTION_AI_TEXT.captionOpenLabel),
         t("editor.captionUnassigned"),
         t("editor.captionUnassignedLabel"),
+        {
+          bildkennungen: mehrdeutigeFussnotenJetzt(),
+          text: t("editor.captionAmbiguous"),
+        },
       );
     },
     [t],

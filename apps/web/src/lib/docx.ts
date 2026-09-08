@@ -521,6 +521,13 @@ export interface DocxCaptionPlan {
   readonly captions: ReadonlyMap<number, string>;
   /** Bilder, die eine Originalbeschriftung bekommen haben. */
   readonly assigned: number;
+  /**
+   * JOB 3254/M5c-UI: WELCHE Bilder das sind, nicht nur WIE VIELE. Die Zahl allein konnte nur eine
+   * Bilanz tragen; die Fläche am einzelnen Bild braucht die Menge. Sie entsteht an DERSELBEN Stelle
+   * wie der Zähler (ein Lauf, der die dreifache Eindeutigkeit verfehlt) — eine zweite Erhebung wäre
+   * eine zweite Wahrheit über denselben Sachverhalt. `ambiguous` ist ab jetzt ihre Größe.
+   */
+  readonly ambiguousImages: ReadonlySet<number>;
   /** Bilder mit Beschriftungs-Anwärter, die mangels Eindeutigkeit LEER bleiben. */
   readonly ambiguous: number;
 }
@@ -638,7 +645,10 @@ export function planDocxImageCaptions(html: string): DocxCaptionPlan {
 
   const captions = new Map<number, string>();
   const verbraucht = new Set<number>(); // Beschriftungs-Blockindizes, die in eine figcaption wandern
-  let ambiguous = 0;
+  // JOB 3254: die MENGE statt eines Summanden. Die Läufe dieser Schleife sind paarweise verschieden
+  // (`waehlerJeLauf` ist nach Laufindex geschlüsselt) und ihre Bildnummern damit disjunkt — die Größe
+  // dieser Menge ist zeichengleich die Summe, die hier bis JOB 3210 gezählt wurde.
+  const ambiguousImages = new Set<number>();
   for (const [laufIndex, waehler] of waehlerJeLauf) {
     const lauf = laeufe[laufIndex];
     const bildNummer = lauf?.bilder[0];
@@ -655,7 +665,9 @@ export function planDocxImageCaptions(html: string): DocxCaptionPlan {
       captions.set(bildNummer, text);
       verbraucht.add(einzigerWaehler);
     } else {
-      ambiguous += lauf?.bilder.length ?? 0;
+      for (const nummer of lauf?.bilder ?? []) {
+        ambiguousImages.add(nummer);
+      }
     }
   }
 
@@ -677,7 +689,13 @@ export function planDocxImageCaptions(html: string): DocxCaptionPlan {
   }
   teile.push(html.slice(cursor));
 
-  return { html: teile.join(""), captions, assigned: captions.size, ambiguous };
+  return {
+    html: teile.join(""),
+    captions,
+    assigned: captions.size,
+    ambiguousImages,
+    ambiguous: ambiguousImages.size,
+  };
 }
 
 // WP-BILD-1a/1b: jedes eingebettete Inline-Bild bekommt eine Bild-Fußnote. Aus <img> wird
@@ -705,11 +723,36 @@ export function planDocxImageCaptions(html: string): DocxCaptionPlan {
 // wie seit WP-D10. Das ist keine Feinheit: `frontDoorBodyFromDraft` (captureFrontDoor.ts) ruft diese
 // Funktion beim LADEN eines gespeicherten Entwurfs ohne `captions` — von Hand gepflegte Fussnoten
 // werden dadurch nie überschrieben, und ein bereits verankertes Bild wird ohnehin übersprungen.
+// ================================================================================================
+// JOB 3254/M5c-UI (RUNDE 2) — DIE MEHRDEUTIGKEIT VERLÄSST DIESES MODUL ALS KENNUNG, NICHT ALS TEXT
+// ================================================================================================
+//
+// RUNDE 1 hat hier ein data-Attribut mit dem lokalisierten Kennzeichnungstext IN DEN RUMPF
+// geschrieben — dieselbe Bauform wie `data-kw-placeholder`. Gemessen wurde damals nur, dass beide
+// Sanitizer es strippen; nicht gemessen wurde, dass der reale Weg /erfassen GENAU DURCH sie führt:
+// das importierte HTML geht zuerst an den Server (`Capture.tsx` → `services/capture/src/service.ts`)
+// und der Editor sanitisiert jede Fassung von aussen ein zweites Mal (`RichTextEditor.tsx:632`).
+// Die Marke erreichte den Menschen also nie. Ein Rumpf, der sie überlebt, gäbe es nur ohne
+// Sanitizer — und das ist kein Ausweg, sondern der Schaden.
+//
+// DESHALB TRÄGT DER RUMPF SIE NICHT MEHR. Was dieses Modul liefert, ist die Menge der BILDKENNUNGEN
+// (`captionsAmbiguousImageIds`) — dieselben `data-image-id`-Werte, die es hier unten vergibt. Sie
+// stehen in der Sanitizer-Allowlist für `figcaption` und überleben deshalb Speichern, Laden und
+// beide Sanitizer unverändert. Der Text dazu entsteht erst im Editor (`editorFigures.ts`,
+// `CAPTION_AMBIGUOUS_ATTR`), am lebenden DOM, an genau der Fussnote mit dieser Kennung.
+//
+// Der Rumpf bleibt damit BUCHSTÄBLICH zeichengleich zu vor diesem Auftrag — nicht „solange ein
+// Argument fehlt", sondern immer. Es gibt keinen zweiten Zeichenketten-Eingang mehr.
 export function wrapImagesInFigures(
   html: string,
   _captionPlaceholder: string,
   runToken: string = newImageRunToken(),
   captions?: ReadonlyMap<number, string>,
+  // JOB 3254 R2: WELCHE Kennung diese Funktion dem wievielten Bild gegeben hat. Der Aufrufer leitet
+  // die Kennung damit nicht selbst ab (`kw-img-<token>-N` ein zweites Mal zusammenzusetzen wäre eine
+  // zweite Wahrheit, die bei jedem übersprungenen, schon verankerten Bild auseinanderliefe) —
+  // sie kommt aus der einen Stelle, die sie vergibt. Ohne Rückruf ändert sich nichts.
+  jeBild?: (bildNummer: number, bildkennung: string) => void,
 ): string {
   let n = 0;
   return html.replace(IMG_WRAP_RE, (imgTag) => {
@@ -718,6 +761,7 @@ export function wrapImagesInFigures(
     }
     n += 1;
     const id = `${IMAGE_ID_PREFIX}${runToken}-${n}`;
+    jeBild?.(n, id);
     // Dieselbe ID zusätzlich am <img> verankern (beidseitig auffindbar).
     const anchoredImg = imgTag.replace(/^<img/i, `<img data-image-id="${id}"`);
     const caption = captions?.get(n) ?? "";
@@ -1034,11 +1078,29 @@ export interface DocxRichResult {
   // Beschriftung vorhanden" und „Beschriftung vorhanden, aber mehrdeutig" sind zwei verschiedene
   // Wahrheiten, und nur die zweite ist eine offene Frage.
   //
-  // BEIDE ZÄHLER SIND INTERN. Sie werden am Ergebnis der Zuordnung gemessen, also VOR der
+  // BEIDE ZÄHLER WERDEN ANGEZEIGT (JOB 3254/M5c-UI — die Zeile, auf die dieser Kommentar bis heute
+  // als „nicht Teil dieses Auftrags" verwies; die frühere Aussage „KEINE Nutzeranzeige" gilt nicht
+  // mehr). Sie bilden die Beschriftungsbilanz der Import-Quittung (`captureFromFile.ts`,
+  // `beschriftungsBilanzBausteine`) und sind damit eine UI-Abnahme: wer sie ändert, ändert einen
+  // sichtbaren Satz. Gemessen werden sie unverändert am Ergebnis der Zuordnung, also VOR der
   // Byte-Notbremse — ein Bild, das das Budget später fallen lässt, nimmt seine Beschriftung mit und
-  // bleibt hier gezählt. Sie sind KEINE Nutzeranzeige und keine UI-Abnahme; die sichtbare Zeile
-  // dazu ist M5c-UI (PRIORITAETEN.md) und ausdrücklich nicht Teil dieses Auftrags.
+  // bleibt hier gezählt.
   captionsAmbiguous: number;
+  // JOB 3254/M5c-UI (R2): WELCHE Bilder das sind — die `data-image-id`-Werte ihrer Fussnoten, in
+  // Dokumentreihenfolge. Die Zahl darüber trägt die Bilanz der Quittung, diese Liste trägt die
+  // Aussage AM EINZELNEN BILD; ohne sie wäre „zwei sind unklar" eine Angabe, die der Mensch keinem
+  // Bild zuordnen kann.
+  //
+  // KENNUNGEN UND KEIN TEXT, und das ist der Kern der Runde 2: die Kennung steht in der
+  // Sanitizer-Allowlist für `figcaption` und überlebt Speichern und Laden; ein Anzeigetext täte das
+  // nicht und dürfte es auch nicht (er ist eine Ansicht auf einen Zustand, nie Inhalt). Wer sie
+  // anzeigt, ist der Editor (`editorFigures.ts`) — dieses Modul kennt weder DOM noch i18n.
+  //
+  // Leer bei jedem Lauf ohne Bild-Fussnoten und bei jedem Dokument ohne mehrdeutige Beschriftung.
+  // Ein Bild, das die Byte-Notbremse danach fallen lässt, steht weiter drin: die Liste ist eine
+  // Aussage über die ZUORDNUNG, nicht über den Verbleib im Rumpf — findet der Editor die Kennung
+  // nicht, zeigt er nichts.
+  captionsAmbiguousImageIds: readonly string[];
 }
 
 // WP-D1: strukturerhaltende Extraktion (HTML + Klartext in EINEM Durchgang über die Engine).
@@ -1103,6 +1165,9 @@ export async function extractDocxRich(
   let budgetDrops: ImageBudgetDrop[] = [];
   let captionsAssigned = 0;
   let captionsAmbiguous = 0;
+  // JOB 3254 R2: die Kennungen der mehrdeutig leer gebliebenen Fussnoten. Sie entstehen erst beim
+  // Umhüllen — vorher gibt es die Fussnote und damit ihre Kennung noch gar nicht.
+  let captionsAmbiguousImageIds: string[] = [];
   if (opts.mapImage) {
     // WP-BILD-1a: VOR dem Budget umhüllen, damit das Budget die figure/figcaption-Bytes mitzählt und
     // eine Notbremse das ganze figure-Element droppt (Bild + Fußnote gemeinsam).
@@ -1114,12 +1179,22 @@ export async function extractDocxRich(
       html = plan.html;
       captionsAssigned = plan.assigned;
       captionsAmbiguous = plan.ambiguous;
+      // JOB 3254 R2: die Bildnummern des Plans werden hier zu Bildkennungen — an derselben Stelle,
+      // die sie vergibt, und für dieselbe Menge, aus der auch `captionsAmbiguous` entsteht. Die
+      // Unterscheidung „kein Anwärter" gegen „Anwärter, nicht eindeutig" wird NICHT neu getroffen.
+      const ambiguousIds: string[] = [];
       html = wrapImagesInFigures(
         html,
         opts.imageCaptionPlaceholder,
         opts.imageRunToken ?? newImageRunToken(),
         plan.captions,
+        (bildNummer, bildkennung) => {
+          if (plan.ambiguousImages.has(bildNummer)) {
+            ambiguousIds.push(bildkennung);
+          }
+        },
       );
+      captionsAmbiguousImageIds = ambiguousIds;
     }
     if (opts.imageBudgetBytes !== undefined) {
       const budgeted = await applyInlineImageBudget(html, opts.mapImage, opts.imageBudgetBytes);
@@ -1159,6 +1234,7 @@ export async function extractDocxRich(
     htmlOverflow,
     captionsAssigned,
     captionsAmbiguous,
+    captionsAmbiguousImageIds,
     // Format- und Defektverluste kennt der DOCX-Weg nicht: mammoth liefert bereits eingebettete
     // data:image-Quellen, es gibt keine Rels-Aufloesung und keine Formatablehnung beim Import (der
     // Sanitizer entscheidet spaeter serverseitig). Diese realen Unterschiede zum PPTX-Weg werden mit 0

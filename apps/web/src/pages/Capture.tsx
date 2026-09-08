@@ -124,6 +124,9 @@ import {
   type SelectableExtractPoint,
   type WholeDocumentSourceKind,
   advanceFileQueue,
+  // JOB 3254/M5c-UI: die Beschriftungsbilanz des DOCX-Imports als Baustein — sie entsteht dort, wo
+  // auch die übrigen Import-Bausteine entstehen, nicht hier.
+  beschriftungsBilanzBausteine,
   buildFileQueue,
   currentQueuePoint,
   draftFromPoint,
@@ -190,6 +193,10 @@ import { draftTitle } from "../lib/draftForm";
 import { DRAFT_LIMITS } from "../lib/draftLimits";
 import { studioSaveConfidence } from "../lib/editorApplySafety";
 import { EDITOR_BLOCKS } from "../lib/editorBlocks";
+// JOB 3254/M5c-UI (R2): die Ablage, aus der der Editor erfährt, WELCHE Bildunterschriften des
+// laufenden Imports mehrdeutig leer geblieben sind. Transient und an die Bildkennung gebunden —
+// die Begründung, warum es kein Prop und kein Kontext ist, steht dort.
+import { merkeMehrdeutigeFussnoten } from "../lib/editorFigures";
 import { editorImagesFromLocalImages } from "../lib/editorImages";
 // AUFTRAG-mega14 Block D (SCRUM-414): dieselbe Anhängen-Regel wie Prüfbereich und Server.
 import {
@@ -3100,6 +3107,10 @@ export function CaptureArbeitsraum({
     setFileImageTransfer(null);
     setFileOriginal(null);
     fileOriginalRef.current = { ref: null };
+    // JOB 3254/M5c-UI: die Kennzeichnung am einzelnen Bild gehört zum GERADE gelesenen Dokument.
+    // Sie wird hier gelöscht und nicht am Ende gesetzt-oder-nicht: bricht das Einlesen ab oder ist
+    // es kein DOCX, darf keine Kennzeichnung des vorigen Laufs stehen bleiben (Lehre JOB 3239).
+    merkeMehrdeutigeFussnoten([]);
     setErr(null);
     setFileName(f.name);
     setFileBusy(true);
@@ -3124,6 +3135,9 @@ export function CaptureArbeitsraum({
       // Folien-Bilanz nach einem Sprachwechsel weiter in der alten Sprache neben einer neu
       // übersetzten Quittung. Reihenfolge und Wortlaut sind unverändert.
       let slidesNotes: Textbaustein[] = [];
+      // JOB 3254/M5c-UI: die Beschriftungsbilanz des DOCX-Imports — ebenfalls als Baustein und aus
+      // demselben Grund. Leer bei jedem anderen Format und bei jedem Dokument ohne Word-Beschriftung.
+      let captionNotes: Textbaustein[] = [];
       // WP-D1c: Bild-Bilanz des DOCX-Imports — erst beim Speichern (an den Anhang-Erfolg gekoppelt)
       // gemeldet, NICHT hier (zur Lesezeit ist noch nichts angehängt).
       let imageInfo: {
@@ -3154,6 +3168,17 @@ export function CaptureArbeitsraum({
         const docx = await readDocxRich(f, t(CAPTURE_FILE_TEXT.imageCaptionPlaceholder));
         text = docx.text;
         rich = { html: docx.html, kind: "docx" };
+        // JOB 3254: die Zahlen der Zuordnung erreichen ab hier die Oberfläche. Sie stehen NEBEN der
+        // Bild-Bilanz, nicht darin: eine leer gebliebene Fussnote ist kein Bildverlust.
+        captionNotes = beschriftungsBilanzBausteine(docx.captionsAssigned, docx.captionsAmbiguous);
+        // JOB 3254/M5c-UI (R2): und die zweite, feinere Auskunft — WELCHE Bilder es sind. Sie reist
+        // als BILDKENNUNG, nicht als Text im Rumpf: der Rumpf geht durch den Server-Sanitizer und
+        // ein zweites Mal durch den des Editors, die Kennung überlebt beide (`data-image-id`), ein
+        // Anzeigetext nicht — und darf es auch nicht. Der Editor macht daraus die sichtbare
+        // Kennzeichnung an genau dieser Fussnote (`editorFigures.ts`).
+        //
+        // Es wird ERSETZT, nicht ergänzt: die Auskunft gilt für das Dokument dieses Lesevorgangs.
+        merkeMehrdeutigeFussnoten(docx.captionsAmbiguousImageIds);
         imageInfo = {
           total: docx.totalImages,
           compressed: docx.compressedImages,
@@ -3345,6 +3370,9 @@ export function CaptureArbeitsraum({
           ...formatNotes,
           ...truncatedNotes,
           ...imageLossNotes,
+          // JOB 3254: nach den Bildverlusten und vor den Folien — die Beschriftungsbilanz ist eine
+          // eigene Aussage, keine Ergänzung der Bild-Bilanz.
+          ...captionNotes,
           ...slidesNotes,
           ...imagesOnlyNotes,
         ],
