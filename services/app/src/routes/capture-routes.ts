@@ -639,6 +639,8 @@ export interface CaptureRoutesDeps {
    * Aufbau, kein zweiter Weg durch das Programm.
    */
   docxUmwandlung?: typeof extractDocxRich | undefined;
+  /** JOB 3249: einsetzbare Umwandlungsfrist; im Betrieb unverändert 30 Sekunden. */
+  docxUmwandlungTimeoutMs?: number | undefined;
   /**
    * JOB 2671 D3 — die Grenzen der Vorpruefung, einsetzbar aus demselben Grund wie
    * `docxUmwandlung`: Der adversariale Nachweis braucht eine niedrige Schranke, sonst muesste er
@@ -685,6 +687,7 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
   const { capture, ko, validation, notifyAssignment, semanticPrefilter, aiCheckWorker } = deps;
   // JOB 2671 D2: EINE Entscheidung, beim Aufbau getroffen — nicht bei jeder Anfrage neu.
   const docxUmwandeln = deps.docxUmwandlung ?? extractDocxRich;
+  const docxUmwandlungTimeoutMs = deps.docxUmwandlungTimeoutMs ?? DOCX_UMWANDLUNG_TIMEOUT_MS;
   const docxGrenzen = deps.docxGrenzen ?? DOCX_GRENZEN_VORGABE;
 
   // WP-D1d (bens ROT-Fix 3): AUTH VOR BODY-PARSING. Fastify parst den Body (bis DRAFTS_BODY_LIMIT) in
@@ -936,7 +939,7 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
         docxJob = job;
         let timer: NodeJS.Timeout | null = null;
         const timeout = new Promise<"timeout">((resolve) => {
-          timer = setTimeout(() => resolve("timeout"), DOCX_UMWANDLUNG_TIMEOUT_MS);
+          timer = setTimeout(() => resolve("timeout"), docxUmwandlungTimeoutMs);
           timer.unref?.();
         });
         try {

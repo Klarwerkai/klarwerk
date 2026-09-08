@@ -2,11 +2,14 @@
 // Der Browser-Vergleich nutzt denselben Importkern; Canvas-Downscale wird unter Node
 // durch Identität ersetzt. Keine Messung des echten Word-Panels oder von Chromium.
 import { randomBytes } from "node:crypto";
+import { setTimeout as pause } from "node:timers/promises";
 import JSZip from "jszip";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { wholeDocumentDraftPayload } from "../../apps/web/src/lib/captureFromFile";
 import { MAX_INLINE_BODY_HTML_BYTES, extractDocxRich } from "../../apps/web/src/lib/docx";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
+import type { CaptureRoutesDeps } from "../../services/app/src/routes/capture-routes";
+import { imageCaptionEntries } from "../../services/structure/src/captions";
 import {
   type Absatz,
   PNG_BLAU,
@@ -43,8 +46,13 @@ describe("JOB 3229 · Add-in-Bildunterschriften bis zum frischen GET", () => {
   let app: ReturnType<typeof buildApp>;
   let headers: { authorization: string; "content-type": string };
 
-  beforeEach(async () => {
-    app = buildApp(buildServices());
+  async function starten(
+    optionen: Pick<CaptureRoutesDeps, "docxUmwandlung" | "docxUmwandlungTimeoutMs"> = {},
+  ) {
+    // buildApp reicht die Dienste per Spread an captureRoutes weiter: echte Anmeldung
+    // und echte Route auch mit eingesetzter Umwandlungsfrist.
+    const dienste = { ...buildServices(), ...optionen };
+    app = buildApp(dienste);
     const zugang = { name: "Admin", email: "m5cb@x.de", password: "secret123" };
     const registriert = await app.inject({
       method: "POST",
@@ -55,7 +63,9 @@ describe("JOB 3229 · Add-in-Bildunterschriften bis zum frischen GET", () => {
     const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: zugang });
     expect(login.statusCode).toBe(200);
     headers = { authorization: `Bearer ${login.json().token}`, "content-type": "application/json" };
-  });
+  }
+
+  beforeEach(() => starten());
 
   afterEach(async () => {
     await app.close();
@@ -121,6 +131,19 @@ describe("JOB 3229 · Add-in-Bildunterschriften bis zum frischen GET", () => {
       expect(payload.bodyHtml.split(text)).toHaveLength(2);
       expect(payload.bodyHtml).not.toContain(`<p>${text}</p>`);
     }
+  });
+
+  it("K1 · die gespeicherte A1-Beschriftung erreicht die Bildsuchableitung", async () => {
+    const { bytes } = await baueDocx([
+      { art: "beschriftung", text: PROFILE },
+      { art: "bild", png: PNG_ROT },
+    ]);
+    const { payload } = await importieren(bytes);
+    const eintraege = imageCaptionEntries(payload.bodyHtml);
+    expect(eintraege.map((eintrag) => eintrag.text)).toEqual([PROFILE]);
+    const bildId = /<img\b[^>]*data-image-id="([^"]+)"/.exec(payload.bodyHtml)?.[1];
+    expect(bildId).toMatch(/^kw-img-[a-z0-9]+-1$/);
+    expect(eintraege[0]?.imageId).toBe(bildId);
   });
 
   it("A3 · dieselben Bytes liefern über Browser-POST und Add-in-POST dieselben Beschriftungen", async () => {
@@ -241,6 +264,79 @@ describe("JOB 3229 · Add-in-Bildunterschriften bis zum frischen GET", () => {
     expect(bildquellen(payload.bodyHtml)).toEqual([]);
     expect(antwort).toMatchObject({ imagesEmbedded: 0, imagesTotal: 1, imagesDropped: 0 });
     expect(payload.sourceImageCount).toBe(1);
+  });
+
+  it("W2 · die zugeordnete EMF-Beschriftung bleibt als gefüllte Waise erhalten", async () => {
+    const { bytes } = await baueDocx([
+      { art: "beschriftung", text: "Figure 1: X" },
+      { art: "bild", png: PNG_ROT },
+    ]);
+    // Der gemeinsame Bauer kennt PNG; derselbe Content-Type-Umbau wie in W1
+    // führt die echte EMF-Ablehnung des Sanitizers herbei.
+    const zip = await JSZip.loadAsync(bytes);
+    const typen = await zip.file("[Content_Types].xml")?.async("string");
+    expect(typen).toContain('ContentType="image/png"');
+    zip.file(
+      "[Content_Types].xml",
+      (typen ?? "").replace('ContentType="image/png"', 'ContentType="image/x-emf"'),
+    );
+    zip.file("word/media/bild1.png", Buffer.from("0100000058000000", "hex"));
+    const emf = await zip.generateAsync({ type: "nodebuffer", compression: "STORE" });
+    const roh = await extractDocxRich(alsPuffer(emf));
+    expect(roh.html).toContain("data:image/x-emf;base64,");
+    const { payload, antwort } = await importieren(emf);
+    expect(fussnoten(payload.bodyHtml)).toEqual(["Figure 1: X"]);
+    expect(payload.bodyHtml).toMatch(
+      /^<p><figure data-image-id="(kw-img-[a-z0-9]+-1)"><figcaption data-image-id="\1">Figure 1: X<\/figcaption><\/figure><\/p>$/,
+    );
+    expect(payload.bodyHtml).not.toMatch(/<img\b/);
+    expect(payload.bodyHtml.split("Figure 1: X")).toHaveLength(2);
+    expect(antwort).toMatchObject({ imagesEmbedded: 0, imagesTotal: 1, imagesDropped: 0 });
+    expect(payload.sourceImageCount).toBe(1);
+  });
+
+  it("T1 · die Umwandlungsfrist antwortet 503 und hinterlässt auch nach Abschluss keinen Entwurf", async () => {
+    const { bytes } = await baueDocx([
+      { art: "beschriftung", text: PROFILE },
+      { art: "bild", png: PNG_ROT },
+    ]);
+    let umwandlung: ReturnType<typeof extractDocxRich> | undefined;
+    await app.close();
+    await starten({
+      docxUmwandlungTimeoutMs: 0,
+      docxUmwandlung: (puffer, opts) => {
+        // Echte Extraktion mit unveränderten Routenoptionen. Der kurze Aufschub
+        // lässt die 0-ms-Frist unabhängig von mammoths Laufzeit zuerst ablaufen.
+        umwandlung = pause(20).then(() => extractDocxRich(puffer, opts));
+        return umwandlung;
+      },
+    });
+    const post = await app.inject({
+      method: "POST",
+      url: "/api/drafts/from-docx",
+      headers,
+      payload: JSON.stringify({ name: "profile.docx", data: bytes.toString("base64") }),
+    });
+    try {
+      expect(post.statusCode).toBe(503);
+      expect(post.headers["retry-after"]).toBe("30");
+      expect(post.json()).toEqual({
+        error: "BUSY",
+        message: "Die Umwandlung dauert zu lange — bitte spaeter erneut.",
+      });
+      const liste = await app.inject({ method: "GET", url: "/api/drafts", headers });
+      expect(liste.statusCode).toBe(200);
+      expect(liste.json()).toEqual([]);
+    } finally {
+      // Kein offener Hintergrundlauf, auch wenn die Status-Gegenprobe rot wird.
+      await umwandlung;
+    }
+    expect(umwandlung).toBeDefined();
+    const reich = await umwandlung;
+    expect(fussnoten(reich?.html ?? "")).toEqual([PROFILE]);
+    const nachAbschluss = await app.inject({ method: "GET", url: "/api/drafts", headers });
+    expect(nachAbschluss.statusCode).toBe(200);
+    expect(nachAbschluss.json()).toEqual([]);
   });
 
   it("Z1 · ohne Bilder sind alle Bilanzwerte null und es entsteht keine figure", async () => {
