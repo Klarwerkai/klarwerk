@@ -3,6 +3,10 @@ import {
   type ReasonerProvider,
   answerStanding,
   deterministicInterview,
+  // JOB 3298: DIESELBE Zerlegung, die das Relevanzmaß benutzt — der Auszug wird nach der GLEICHEN
+  // Wortauffassung gewählt, nach der die Quelle überhaupt Kandidat wurde. Eine zweite Tokenisierung
+  // wäre eine zweite Wahrheit darüber, was ein Wort der Frage ist.
+  queryTokens,
   selectCandidates,
   sourceLabel,
 } from "./provider";
@@ -160,8 +164,8 @@ function structureSystem(locale: ReasonerLocale): string {
 function answerSystem(locale: ReasonerLocale): string {
   const base = taskInstruction(
     locale,
-    `Beantworte die Frage NUR auf Basis der nummerierten Quellen. Erfinde keine Fakten, Zahlen, Ursachen oder Maßnahmen und ergänze kein allgemeines Weltwissen. Dehne keine Quelle über ihre tatsächliche Aussage hinaus. Reichen die Quellen nicht, antworte AUSSCHLIESSLICH mit dem Wort ${ABSAGE_MARKE} — ohne weiteren Text, rate nicht. Erfinde keine Zitate. PFLICHT: Setze hinter JEDE Aussage, die auf eine Quelle zurückgeht, deren Nummer als Fußnotenmarke in eckigen Klammern, z. B. [1] oder [2][3]. Verwende AUSSCHLIESSLICH die vorgegebenen Quellennummern und markiere nur Quellen, die du wirklich benutzt hast.`,
-    `Answer ONLY based on the numbered sources. Do not invent facts, numbers, causes or measures, and do not add general world knowledge. Do not overstate or stretch a source beyond what it actually says. If the sources are not enough, reply ONLY with the word ${ABSAGE_MARKE} — no other text, do not guess. Never fabricate quotes. MANDATORY: after EVERY statement that comes from a source, put that source's number as a footnote marker in square brackets, e.g. [1] or [2][3]. Use ONLY the given source numbers and mark only sources you actually used.`,
+    `Beantworte die Frage NUR auf Basis der nummerierten Quellen. Erfinde keine Fakten, Zahlen, Ursachen oder Maßnahmen und ergänze kein allgemeines Weltwissen. Dehne keine Quelle über ihre tatsächliche Aussage hinaus. Reichen die Quellen nicht, antworte AUSSCHLIESSLICH mit dem Wort ${ABSAGE_MARKE} — ohne weiteren Text, rate nicht. Erfinde keine Zitate. Zu einer Quelle kann ein Feld „Dokumenttext (Auszug)" stehen: das sind wörtliche Sätze aus DERSELBEN Quelle und gehören zu deren Nummer — sie sind gleichwertige Grundlage, und du darfst wörtlich daraus übernehmen. Setze einen Satz aus dem Auszug nie mit einem anderen Satz zusammen. PFLICHT: Setze hinter JEDE Aussage, die auf eine Quelle zurückgeht, deren Nummer als Fußnotenmarke in eckigen Klammern, z. B. [1] oder [2][3]. Verwende AUSSCHLIESSLICH die vorgegebenen Quellennummern und markiere nur Quellen, die du wirklich benutzt hast.`,
+    `Answer ONLY based on the numbered sources. Do not invent facts, numbers, causes or measures, and do not add general world knowledge. Do not overstate or stretch a source beyond what it actually says. If the sources are not enough, reply ONLY with the word ${ABSAGE_MARKE} — no other text, do not guess. Never fabricate quotes. A source may carry a field "Document text (excerpt)": these are verbatim sentences from the SAME source and belong to its number — they are equally valid grounding and you may copy from them verbatim. Never merge a sentence from the excerpt with another sentence. MANDATORY: after EVERY statement that comes from a source, put that source's number as a footnote marker in square brackets, e.g. [1] or [2][3]. Use ONLY the given source numbers and mark only sources you actually used.`,
   );
   return `${base} ${outputLanguageRule(locale)}`;
 }
@@ -436,6 +440,157 @@ export function quellSegmente(ref: KnowledgeRef): string[][] {
     }
   }
   return segmente;
+}
+
+// ================================================================================================
+// JOB 3298 · ASK-VOLLTEXT — DIE REGEL STEHT IM DOKUMENTTEXT, ALSO GEHÖRT SIE IN DEN ANTWORTKONTEXT.
+// ================================================================================================
+//
+// DER BEFUND (Codex b65c00b4, Freitagsvorführung A02/A06/W1). Seit G27 (JOB 1565 D1) trägt ein Ref
+// den Dokumenttext (`bodyText`, aus der Suchprojektion), und seit JOB 2614 D3 reicht der Ask-Dienst
+// ihn wirklich durch. Er wirkte aber NUR auf zwei Dinge: auf das Relevanzmaß (`refMatchText`) und
+// auf die Zitatprüfung (`quellSegmente`). Der Text, den das Modell zu sehen bekam, war unverändert
+// `[i] Titel: Aussage`. Folge auf der importierten Confluence-Seite C02, deren Aussage nur der
+// DEMO-Hinweis ist und deren Regel („30 calendar days") im Fließtext steht: die Quelle wird
+// GEFUNDEN, das Modell sieht die Regel nie — es sagt strukturiert ab (ABSAGE_MARKE) oder antwortet
+// ohne die Regel. Wissen im Haus, unerreichbar an der letzten Kante.
+//
+// WAS HIER ENTSTEHT: je Quelle ein AUSZUG aus ihrem Dokumenttext — die Sätze, die mit der Frage
+// Inhaltstoken teilen —, der im Grounding als EIGENES Feld neben der Kernaussage steht.
+//
+// DREI ZUSAGEN, die den Auszug tragen (jede ist unten ein Testfall):
+//
+//  1. WÖRTLICH UND SATZGANZ. Der Auszug besteht aus GANZEN Sätzen des Dokumenttexts, unverändert.
+//     Er wird nicht normalisiert (`zitatWoerter` wäre für den Menschen unlesbar: „ueberdruck") und
+//     nicht umformuliert. Damit ist jeder Auszug-Satz Zeichen für Zeichen ein Satz, den
+//     `quellSegmente` aus demselben `bodyText` schneidet — ein Zitat aus dem Auszug ist folglich
+//     ein Ausschnitt EINES Segments DERSELBEN Quelle und besteht die Prüfung D4 unverändert. Die
+//     Segmentregel wird NICHT gelockert: sie bekommt nur endlich Material, das sie decken kann.
+//  2. NUR AUS DEM DOKUMENTTEXT. Titel und Aussage stehen ohnehin im Grounding; sie hier zu
+//     wiederholen kostete Kontext ohne Gewinn. Bildfußnoten (`captionTexts`) bleiben bewusst
+//     draußen — sie sind ein eigener Weg und ein eigener Auftrag (Rest in der Rückgabe).
+//  3. GEDECKELT, UND ZWAR ZWEIFACH. Der Dokumenttext kommt aus der Suchprojektion und darf dort bis
+//     zu MAX_SEARCH_TEXT_LENGTH (200.000 Zeichen) lang sein; `DEFAULT_TOP_K` ist 8. Ungedeckelt
+//     wären das 1,6 Mio. Zeichen je Frage im Prompt. Die Zahlen unten sind deshalb hart.
+//
+// DIE ZAHLEN, UND WARUM GENAU DIESE:
+//  · 3 SÄTZE je Quelle: eine Regel besteht in diesen Dokumenten aus der Regel, ihrer Bedingung und
+//    ihrer Folge. Bei 1 fiele die Bedingung weg (Pedis „30 calendar days" ohne „after delivery"),
+//    ab 4 kippt der Auszug in ein Abschriftverfahren, das die Auswahl nicht mehr trifft.
+//  · 600 ZEICHEN je Quelle: 3 Sätze zu je ~200 Zeichen — die Länge eines normalen Fachsatzes in
+//    diesem Bestand. Der Deckel schneidet also nur, was ohnehin überlang ist.
+//  · 2400 ZEICHEN insgesamt: der Bezugspunkt ist das einzige vergleichbare Server-Budget im Haus,
+//    MAX_IMAGE_CONTEXT_LENGTH = 1500 Zeichen für EINEN mitgereichten Dokument-Kontext. Für bis zu
+//    acht Quellen ist das Vierfache je Quelle unvertretbar, das Anderthalbfache insgesamt ist es
+//    nicht: 2400 Zeichen sind rund 600 Tokens, gegen ein Antwortbudget von 1024 Tokens und ein
+//    bisheriges Grounding von acht Titel/Aussage-Zeilen (gemessen 300–2000 Zeichen). Der Prompt
+//    wächst im schlimmsten Fall etwa auf das Doppelte — das ist der Preis, und er steht in der
+//    Rückgabe. Ein Gesamtdeckel UND ein Quelldeckel, weil der Quelldeckel allein bei acht Quellen
+//    4800 Zeichen zuließe und der Gesamtdeckel allein eine einzige Quelle alles verbrauchen ließe.
+export const AUSZUG_MAX_SAETZE = 3;
+export const AUSZUG_MAX_ZEICHEN_JE_QUELLE = 600;
+export const AUSZUG_MAX_ZEICHEN_GESAMT = 2400;
+
+/**
+ * Kürzt auf höchstens `deckel` Zeichen, ohne ein Wort zu zerschneiden.
+ *
+ * Warum die Wortgrenze: ein halbes Wort („30 calendar da") wäre zwar weiterhin ein zulässiger
+ * ANFANG des Quellsegments — die Deckungsprüfung bliebe also sicher —, aber das Modell würde es
+ * zitieren und die Prüfung fiele auf den Quellwortlaut zurück. Der Schnitt an der Wortgrenze
+ * kostet nichts und nimmt diesen Fehlweg heraus. Gibt es im Deckel gar keine Leerstelle, bleibt
+ * der harte Schnitt: er ist die sichere Richtung (ein Zitat daraus fällt zurück, es hält nie mehr).
+ */
+function kuerzeAufWortgrenze(text: string, deckel: number): string {
+  if (text.length <= deckel) {
+    return text;
+  }
+  const roh = text.slice(0, deckel);
+  const letzte = roh.lastIndexOf(" ");
+  return (letzte > 0 ? roh.slice(0, letzte) : roh).trim();
+}
+
+/**
+ * Der Auszug EINER Quelle: die Sätze ihres Dokumenttexts, die mit der Frage Inhaltstoken teilen.
+ *
+ * AUSWAHL nach Wortüberdeckung (verschiedene gemeinsame Inhaltstoken, wie überall in diesem Modul
+ * gezählt), bei Gleichstand entscheidet die frühere Stelle im Dokument — die Reihenfolge ist damit
+ * TOTAL und der Auszug für dieselbe Frage und denselben Text immer derselbe. AUSGEGEBEN wird in
+ * Dokumentreihenfolge: der Mensch liest die Sätze so, wie sie im Dokument stehen.
+ *
+ * Ein Satz OHNE gemeinsames Token kommt nicht in den Auszug. Das ist die Grenze, die den Auszug von
+ * einer Abschrift trennt: mitgegeben wird, was zur Frage gehört, nicht der Anfang des Dokuments.
+ */
+export function dokumentAuszug(
+  frage: string,
+  ref: KnowledgeRef,
+  deckelZeichen: number = AUSZUG_MAX_ZEICHEN_JE_QUELLE,
+): string[] {
+  const body = ref.bodyText?.trim() ?? "";
+  const budget = Math.min(deckelZeichen, AUSZUG_MAX_ZEICHEN_JE_QUELLE);
+  if (body.length === 0 || budget <= 0) {
+    return [];
+  }
+  const frageWoerter = new Set(queryTokens(frage));
+  if (frageWoerter.size === 0) {
+    return [];
+  }
+  const bewertet = saetze(body)
+    .map((satz, stelle) => ({
+      satz,
+      stelle,
+      treffer: new Set(queryTokens(satz).filter((w) => frageWoerter.has(w))).size,
+    }))
+    .filter((x) => x.treffer > 0)
+    .sort((a, b) => (b.treffer === a.treffer ? a.stelle - b.stelle : b.treffer - a.treffer))
+    .slice(0, AUSZUG_MAX_SAETZE);
+  const genommen: { satz: string; stelle: number }[] = [];
+  let verbraucht = 0;
+  for (const { satz, stelle } of bewertet) {
+    // Das Trennzeichen zwischen zwei Sätzen zählt mit — sonst überschritte der zusammengesetzte
+    // Auszug den Deckel um genau die Zahl seiner Fugen.
+    const kosten = satz.length + (genommen.length > 0 ? 1 : 0);
+    if (verbraucht + kosten <= budget) {
+      genommen.push({ satz, stelle });
+      verbraucht += kosten;
+      continue;
+    }
+    if (genommen.length === 0) {
+      // Der bestbewertete Satz allein sprengt den Deckel: gekürzt ist er mehr wert als gar nichts.
+      const gekuerzt = kuerzeAufWortgrenze(satz, budget);
+      if (gekuerzt.length > 0) {
+        genommen.push({ satz: gekuerzt, stelle });
+      }
+      break;
+    }
+  }
+  return genommen.sort((a, b) => a.stelle - b.stelle).map((x) => x.satz);
+}
+
+/**
+ * Die Auszüge ALLER Quellen unter dem Gesamtdeckel — Quelle für Quelle in Rangfolge, weil der
+ * bestgerankte Treffer sein Budget zuerst bekommen soll. Ist das Gesamtbudget aufgebraucht, tragen
+ * die hinteren Quellen keinen Auszug; sie stehen weiterhin mit Titel und Aussage im Grounding
+ * (nichts verschwindet, es kommt nur nichts hinzu).
+ */
+export function dokumentAuszuege(
+  frage: string,
+  refs: readonly KnowledgeRef[],
+): Map<string, string> {
+  const auszuege = new Map<string, string>();
+  let uebrig = AUSZUG_MAX_ZEICHEN_GESAMT;
+  for (const ref of refs) {
+    if (uebrig <= 0) {
+      break;
+    }
+    const gewaehlt = dokumentAuszug(frage, ref, Math.min(AUSZUG_MAX_ZEICHEN_JE_QUELLE, uebrig));
+    if (gewaehlt.length === 0) {
+      continue;
+    }
+    const text = gewaehlt.join(" ");
+    auszuege.set(ref.id, text);
+    uebrig -= text.length;
+  }
+  return auszuege;
 }
 
 // AUFTRAG-mega52 A2 — DIE MARKEN ZURÜCKLESEN.
@@ -919,6 +1074,10 @@ const LABELS: Record<ReasonerLocale, Record<string, string>> = {
     priorAnswers: "Bisherige Antworten",
     guiding: "Leitfrage",
     none: "(noch keine)",
+    // JOB 3298: die Beschriftung des Dokumenttext-Auszugs im Grounding. Sie ist ein EIGENES Feld
+    // und nicht an die Aussage angehängt — der Leser des Prompts (das Modell) soll sehen, dass hier
+    // Quelltext steht, den es zitieren darf, und nicht eine zweite Kernaussage.
+    excerpt: "Dokumenttext (Auszug)",
   },
   en: {
     question: "Question",
@@ -926,6 +1085,7 @@ const LABELS: Record<ReasonerLocale, Record<string, string>> = {
     priorAnswers: "Previous answers",
     guiding: "Guiding question",
     none: "(none yet)",
+    excerpt: "Document text (excerpt)",
   },
   // mega52 D1: Niederländisch ist eine eigene Reasoner-Sprache — der Compiler verlangt diesen
   // Zweig jetzt, statt ihn stillschweigend auf Deutsch fallen zu lassen.
@@ -935,6 +1095,7 @@ const LABELS: Record<ReasonerLocale, Record<string, string>> = {
     priorAnswers: "Eerdere antwoorden",
     guiding: "Leidende vraag",
     none: "(nog geen)",
+    excerpt: "Documenttekst (fragment)",
   },
 };
 
@@ -1470,7 +1631,19 @@ export class ModelProvider implements ReasonerProvider {
     }
     const client = this.requireClient();
     const labels = LABELS[locale];
-    const grounding = relevant.map((r, i) => `[${i + 1}] ${r.title}: ${r.statement}`).join("\n");
+    // JOB 3298: DER ANTWORTKONTEXT TRÄGT JETZT AUCH DEN DOKUMENTTEXT — als eigenes, beschriftetes
+    // Feld unter DERSELBEN Quellennummer. Bis heute stand hier ausschließlich `Titel: Aussage`; eine
+    // Regel, die nur im Fließtext steht, erreichte das Modell nie (Begründung und Deckel bei
+    // `dokumentAuszuege`). Die Nummerierung, die Reihenfolge und die Zeile selbst bleiben unverändert
+    // — ein Ref ohne passenden Auszug sieht Zeichen für Zeichen aus wie vorher.
+    const auszuege = dokumentAuszuege(question, relevant);
+    const grounding = relevant
+      .map((r, i) => {
+        const zeile = `[${i + 1}] ${r.title}: ${r.statement}`;
+        const auszug = auszuege.get(r.id);
+        return auszug ? `${zeile}\n    ${labels.excerpt}: ${auszug}` : zeile;
+      })
+      .join("\n");
     const answerText = (
       await client.complete(
         answerSystem(locale),
