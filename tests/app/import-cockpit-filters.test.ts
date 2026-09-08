@@ -78,7 +78,10 @@ describe("WP-IC-PAKET-1 Teil 3: klickbare Filter-Chips + Zeitraum + Live-Aktuali
     expect(src).toContain("chip.spaces.length > 0 ? { spaces: chip.spaces }");
     // Live: bereits geöffnete Vorschau aktualisiert sich bei Filter-Änderungen (debounced).
     expect(src).toContain("const criteriaKey = JSON.stringify(");
-    expect(src).toContain("setTimeout(() => mutateRef.current(), 350)");
+    // JOB 3356: die Vorschau-Mutation nimmt jetzt eine OPTIONALE Kriterienmenge entgegen (der
+    // Titelweg reicht `titleFallback.criteria` herein). Die Live-Aktualisierung ist unverändert
+    // dieselbe — sie ruft ausdrücklich ohne Übergabe, also mit `undefined` („wie bisher").
+    expect(src).toContain("setTimeout(() => mutateRef.current(undefined), 350)");
   });
 
   it("Teil 4: Vorschau markiert Importiertes und wählt es standardmäßig AB (wieder anwählbar)", () => {

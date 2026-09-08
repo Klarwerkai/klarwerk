@@ -1116,6 +1116,10 @@ export interface ImportSelectCriteria {
   themes?: string[];
   authors?: string[];
   keywords?: string[];
+  // JOB 3356 (IMPORT-FREITEXT-TITEL): Substring-Match NUR im Titel (Spiegel von
+  // services/library-analytics/src/select.ts). Engeres Geschwister von `keywords`, das auch das
+  // Statement durchsucht — beide bleiben nebeneinander, keines löst das andere ab.
+  titleContains?: string[];
   yearFrom?: number;
   yearTo?: number;
   // WP-IC-PAKET-1 (Teil 3): Quell-Container-Filter (Space).
@@ -1168,6 +1172,16 @@ export interface ImportSelectResponse {
   // Ursache); es gelten dann sichtbar NUR die Klick-Filter.
   inferenceStatus?: "ok" | "unavailable";
   fallbackReason?: string;
+  // JOB 3356 (IMPORT-FREITEXT-TITEL): der deterministische Titelbefund zum gestellten Satz — nur
+  // gesetzt, wenn ein Satz gestellt war, dann aber IMMER (auch bei `matched: 0`, denn „auch im
+  // Titel steht das nirgends" ist die Auskunft, die Bedienhürde von fehlender Quelle trennt).
+  // `criteria` ist die fertige Kriterienmenge für den Umschaltknopf — die Fläche erfindet keine.
+  // Fehlt das Feld (älterer Server), bleibt die Fläche stumm; sie behauptet nie eine Titelzahl.
+  titleFallback?: {
+    query: string;
+    matched: number;
+    criteria: ImportSelectCriteria;
+  };
 }
 
 export type KnowledgeClass =

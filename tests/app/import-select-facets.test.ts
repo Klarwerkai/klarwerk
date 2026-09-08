@@ -245,7 +245,9 @@ describe("B5 · Auswahl- und Übernahme-Semantik bleibt unverändert", () => {
 
   it("latest-wins, Live-Aktualisierung und candidateIdOf-Weitergabe bleiben verdrahtet", () => {
     expect(src).toContain("latestRef.current.isCurrent(requestId)");
-    expect(src).toContain("setTimeout(() => mutateRef.current(), 350)");
+    // JOB 3356: nachgeführt auf die neue Aufrufform — die Vorschau-Mutation nimmt eine OPTIONALE
+    // Kriterienmenge (Titelweg); die Live-Aktualisierung übergibt ausdrücklich nichts.
+    expect(src).toContain("setTimeout(() => mutateRef.current(undefined), 350)");
     expect(src).toContain("selectedCandidateIds={selectedCandidateIds}");
     expect(src).toContain("checkedRows[index] === true && entry.id");
   });

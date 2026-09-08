@@ -18,6 +18,12 @@ export interface SelectCriteria {
   themes?: string[];
   authors?: string[]; // Autor-Filter (Autor muss einer sein)
   keywords?: string[]; // Stichworte → Substring-Match in Titel/Statement (mind. eines)
+  // JOB 3356 (IMPORT-FREITEXT-TITEL): das ENGERE Geschwister von `keywords` — Substring-Match
+  // AUSSCHLIESSLICH im (kanonisierten) Titel, nie im Statement. Es löst `keywords` NICHT ab: wer
+  // „Pumpe" irgendwo im Text sucht, nimmt weiter `keywords`; wer die Seite meint, die den Text im
+  // TITEL trägt, nimmt `titleContains`. Wäre auch das Statement dabei, wäre es ein zweites
+  // `keywords` und der Titelbefund der Auswahlfläche eine Behauptung ohne eigene Bedeutung.
+  titleContains?: string[];
   yearFrom?: number; // Jahr-Untergrenze (aus updatedAt)
   yearTo?: number; // Jahr-Obergrenze (aus updatedAt)
   // WP-IC-PAKET-1 (Teil 3): Quell-Container-Filter (Space; sourceScope, sonst category).
@@ -80,6 +86,9 @@ export function sanitizeCriteria(raw: unknown): SelectCriteria {
   const themes = cleanStrings(rec.themes);
   const authors = cleanStrings(rec.authors);
   const keywords = cleanStrings(rec.keywords);
+  // JOB 3356: derselbe Weg wie jede andere Textliste — was kein Text-Array ist (z. B. `42`),
+  // fällt hier weg statt zu werfen; ein Client-Unsinn endet in einem fehlenden Feld, nicht in 500.
+  const titleContains = cleanStrings(rec.titleContains);
   const spaces = cleanStrings(rec.spaces);
   const yearFrom = cleanYear(rec.yearFrom);
   const yearTo = cleanYear(rec.yearTo);
@@ -88,6 +97,7 @@ export function sanitizeCriteria(raw: unknown): SelectCriteria {
     ...(themes.length > 0 ? { themes } : {}),
     ...(authors.length > 0 ? { authors } : {}),
     ...(keywords.length > 0 ? { keywords } : {}),
+    ...(titleContains.length > 0 ? { titleContains } : {}),
     ...(spaces.length > 0 ? { spaces } : {}),
     ...(yearFrom !== undefined ? { yearFrom } : {}),
     ...(yearTo !== undefined ? { yearTo } : {}),
@@ -172,6 +182,18 @@ function matchesKeywords(item: ImportItem, keywords: readonly string[]): boolean
   return keywords.some((kw) => haystack.includes(kw.toLowerCase()));
 }
 
+// JOB 3356 (IMPORT-FREITEXT-TITEL): Substring-Vergleich NUR gegen den kanonisierten Titel —
+// dieselbe geteilte Kanonisierung wie `matchesKeywords` (canonicalImportText, kein zweiter
+// Vergleichsweg), aber OHNE `statement`. Mehrere Einträge wirken wie bei `keywords` als „mindestens
+// einer"; gegenüber den anderen Kriterienarten bleibt es UND (s. filterImportItems).
+function matchesTitleContains(item: ImportItem, titles: readonly string[]): boolean {
+  if (titles.length === 0) {
+    return true;
+  }
+  const haystack = canonicalImportText(item, item.title).toLowerCase();
+  return titles.some((needle) => haystack.includes(needle.toLowerCase()));
+}
+
 // IC-3: reine, deterministische Filterung + Deckelung. Reihenfolge = Eingabereihenfolge (stabil).
 export function filterImportItems(
   items: readonly ImportItem[],
@@ -181,6 +203,7 @@ export function filterImportItems(
   const authors = new Set((criteria.authors ?? []).map((a) => a.toLowerCase()));
   const spaces = new Set((criteria.spaces ?? []).map((s) => s.toLowerCase()));
   const keywords = criteria.keywords ?? [];
+  const titleContains = criteria.titleContains ?? [];
   // WP-IC-PAKET-1 (Teil 2): abgeleitete Titel-Themen der label-losen Items — NUR berechnet, wenn ein
   // Themen-Filter aktiv ist; identische Ableitung wie summarizeImportItems (deterministisch, kein
   // Drift): Titel gehen wie dort KANONISIERT in die Ableitung (1e), und die Klassifikation
@@ -204,7 +227,10 @@ export function filterImportItems(
       matchesAuthors(item, authors) &&
       matchesSpaces(item, spaces) &&
       matchesYears(item, criteria.yearFrom, criteria.yearTo) &&
-      matchesKeywords(item, keywords),
+      matchesKeywords(item, keywords) &&
+      // JOB 3356: dieselbe UND-Semantik wie die übrigen Kriterienarten — ein Titelkriterium
+      // ERWEITERT eine Auswahl nie, es grenzt sie ein.
+      matchesTitleContains(item, titleContains),
   );
   const limit = criteria.limit;
   const selected = limit !== undefined && limit > 0 ? passing.slice(0, limit) : [...passing];

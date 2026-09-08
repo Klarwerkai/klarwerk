@@ -157,6 +157,75 @@ export function confluenceGrenze(
 export const SELECT_PROMPT_MAX_CHARS = 500;
 const SELECT_LOCALES = ["de", "en"] as const;
 
+// ================================================================================================
+// JOB 3356 (IMPORT-FREITEXT-TITEL) — DER SATZ, DER GENAU EINE SEITE MEINTE, UND „0 TREFFER" BEKAM.
+// ================================================================================================
+//
+// Live gemessen (Codex-Livebefund 311b601a auf 1.201): der exakte Seitentitel
+// `[DEMO T06] Restoring a customer file` im Freitext-Feld wurde vom Modell als Thema
+// „Customer file restoration" gedeutet; `filterImportItems` verknüpft alle Kriterienarten mit UND,
+// also fiel die Menge auf 0 — obwohl die Seite im Snapshot lag. Die Fläche schwieg über beides.
+//
+// DIESE ZÄHLUNG IST DAS GEGENGEWICHT, NICHT DIE KORREKTUR DER KI: sie läuft MODELLFREI auf dem
+// bereits geladenen Snapshot (kein zweiter Confluence-Abruf, kein Modellaufruf, keine Berührung des
+// Vertraulichkeitsvertrags) und beantwortet genau eine Frage: wie viele Seiten tragen den
+// eingegebenen Text im TITEL? Sie ändert die Vorschau NICHT — die bleibt, was die KI-Deutung ergab.
+//
+// WELCHER TEXT GESUCHT WIRD: zuerst der getrimmte Satz selbst. Findet der nichts und steckt im Satz
+// eine in Klammern oder Anführungszeichen gesetzte Teilzeichenkette (der Mensch schreibt „finde mir
+// «[DEMO T06] …»"), gilt zusätzlich die LÄNGSTE davon. Die Reihenfolge ist bewusst so: der Wortlaut
+// des Menschen kommt zuerst, die Verkürzung ist die zweite Chance — nie umgekehrt, sonst antwortete
+// die Zahl auf etwas anderes als das, was er eingegeben hat, obwohl sein eigener Wortlaut getroffen
+// hätte. Welcher Text gezählt wurde, steht als `query` in der Antwort und in der Anzeige.
+const KLAMMER_MUSTER: readonly RegExp[] = [
+  /\[([^\]]+)\]/g,
+  /\(([^)]+)\)/g,
+  /"([^"]+)"/g,
+  /„([^“]+)“/g,
+  /»([^«]+)«/g,
+  /«([^»]+)»/g,
+  /'([^']+)'/g,
+];
+
+function laengsteEingeklammerteTeilkette(satz: string): string | null {
+  let laengste: string | null = null;
+  for (const muster of KLAMMER_MUSTER) {
+    for (const treffer of satz.matchAll(muster)) {
+      const inhalt = (treffer[1] ?? "").trim();
+      if (inhalt.length > 0 && (laengste === null || inhalt.length > laengste.length)) {
+        laengste = inhalt;
+      }
+    }
+  }
+  return laengste;
+}
+
+interface TitelBefund {
+  query: string;
+  matched: number;
+}
+
+// Der deterministische Titelbefund zum Freitext-Satz. `zaehle` ist die EINE Zählfunktion der
+// Auswahl (filterImportItems mit `titleContains`) — hier entsteht kein zweiter Titelvergleich.
+// Bewusst NICHT exportiert: der einzige Aufrufer ist die Select-Route in dieser Datei, und ein
+// Export ohne Aufrufer außerhalb der Tests wäre ungeprüfte Oberfläche (Aufrufer-Wächter).
+function titelBefund(satz: string, zaehle: (query: string) => number): TitelBefund | null {
+  const getrimmt = satz.trim();
+  if (getrimmt.length === 0) {
+    return null; // kein Satz gestellt → nichts zu sagen (kein Platzhalter, keine erfundene Zahl)
+  }
+  const ersterBefund = { query: getrimmt, matched: zaehle(getrimmt) };
+  if (ersterBefund.matched > 0) {
+    return ersterBefund;
+  }
+  const innen = laengsteEingeklammerteTeilkette(getrimmt);
+  if (innen === null || innen === getrimmt) {
+    return ersterBefund; // auch die 0 ist eine Auskunft: „auch im Titel steht das nirgends"
+  }
+  const zweiterBefund = { query: innen, matched: zaehle(innen) };
+  return zweiterBefund.matched > 0 ? zweiterBefund : ersterBefund;
+}
+
 // WP-SAMMEL20-FIX (bens Fix 6a): PII-freie Fehlerklasse einer nicht lesbaren Quell-Seite für die
 // Erkundungs-Antwort — nie die rohe Fehlermeldung (die könnte Quell-/Infrastruktur-Details tragen).
 function failedPageClasses(failed: readonly { errorClass?: string }[]): string[] {
@@ -874,6 +943,14 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
         // Effektiv genutzte Kriterien: Klick-Kriterien haben Vorrang, KI ergänzt nur Fehlendes.
         const criteria: SelectCriteria = { ...derived.criteria, ...clickCriteria };
         const { selected, matched, limited } = filterImportItems(items, criteria);
+        // JOB 3356: der deterministische Titelbefund NEBEN der KI-Deutung — auf demselben schon
+        // geladenen Snapshot, mit derselben Filterfunktion (kein zweiter Vergleichsweg), ohne
+        // Modell und ohne Egress. Er ändert `criteria`, `matched` und `preview` NICHT: die Vorschau
+        // bleibt genau die, die der Mensch angefordert hat (keine stille Ausweitung).
+        const befund = titelBefund(
+          prompt,
+          (query) => filterImportItems(items, { titleContains: [query] }).matched,
+        );
         // WP-IC-PAKET-1 (Teil 4, IC-6a): jeden Vorschau-Eintrag ehrlich markieren (Quell-Referenz-
         // Abgleich, je Request frisch); `alreadyImported`/`alreadyQueued` zählen die markierten
         // Einträge der Vorschau (WP-SHIP9-S1b: zwei getrennte Kennzeichen, s. importStatusFor).
@@ -910,6 +987,24 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
                 ...(derived.fallbackReason !== null
                   ? { fallbackReason: derived.fallbackReason }
                   : {}),
+              }
+            : {}),
+          // JOB 3356: der Titelbefund reist NUR mit, wenn ein Satz gestellt war — und dann IMMER,
+          // auch bei `matched: 0`. Gerade die 0 ist die wertvollere Auskunft: sie unterscheidet die
+          // Bedienhürde („die Seite ist da, die Deutung traf sie nicht") von der fehlenden Quelle
+          // („dieser Text steht auf keiner geladenen Seite im Titel"). `criteria` ist genau die
+          // Kriterienmenge, mit der die Fläche den Titelweg auslösen kann — der unveränderte Deckel
+          // des ursprünglichen Aufrufs reist mit, damit der Umschaltknopf keine neue Menge erfindet.
+          ...(befund !== null
+            ? {
+                titleFallback: {
+                  query: befund.query,
+                  matched: befund.matched,
+                  criteria: {
+                    titleContains: [befund.query],
+                    ...(criteria.limit !== undefined ? { limit: criteria.limit } : {}),
+                  },
+                },
               }
             : {}),
         });

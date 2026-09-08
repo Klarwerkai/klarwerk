@@ -3645,6 +3645,24 @@ const de = {
   "imp.select.critYears": "Jahre",
   "imp.select.critLimit": "Limit",
   "imp.select.critSpaces": "Bereiche",
+  // JOB 3356 (IMPORT-FREITEXT-TITEL): der Titelweg, wenn die KI-Deutung des Satzes 0 Treffer hat.
+  "imp.select.critTitle": "Titel enthält",
+  "imp.select.titleFallbackInterpreted":
+    "So hat die KI deinen Satz gedeutet (Kriterien oben) — dazu passt keine der geladenen Seiten.",
+  "imp.select.titleFallbackFound_one": "1 Seite trägt „{{query}}“ im Titel.",
+  "imp.select.titleFallbackFound_other": "{{count}} Seiten tragen „{{query}}“ im Titel.",
+  // Runde 2: die Angaben gehören zum vorherigen Lauf — sichtbar zugeordnet statt still veraltet.
+  "imp.select.titleFallbackStale": "Ergebnis für: „{{query}}“.",
+  "imp.select.titleFallbackStalePending":
+    "Die neue Vorschau läuft noch — die Angaben unten stammen vom vorherigen Lauf.",
+  "imp.select.titleFallbackStaleError":
+    "Die neue Vorschau ist fehlgeschlagen — die Angaben unten stammen vom vorherigen Lauf.",
+  "imp.select.titleFallbackStaleChanged":
+    "Der Satz im Feld ist inzwischen ein anderer — die Angaben unten stammen vom vorherigen Lauf.",
+  "imp.select.titleFallbackNone":
+    "Auch im Titel steht „{{query}}“ auf keiner der geladenen Seiten.",
+  "imp.select.titleFallbackCta_one": "Diese 1 Seite zeigen",
+  "imp.select.titleFallbackCta_other": "Diese {{count}} Seiten zeigen",
   "imp.select.yearFrom": "von (Jahr)",
   "imp.select.yearTo": "bis (Jahr)",
   // WP-IC-PAKET-1 (Teil 4, IC-6a): Import-Status + Auswahl in der Vorschau.
@@ -8645,6 +8663,23 @@ const en: typeof de = {
   "imp.select.critYears": "Years",
   "imp.select.critLimit": "Limit",
   "imp.select.critSpaces": "Spaces",
+  // JOB 3356 (IMPORT-FREITEXT-TITEL): die Vorführung läuft auf Englisch — DE und EN sind
+  // Abnahmebedingung, NL folgt der Wörterbuch-Parität.
+  "imp.select.critTitle": "Title contains",
+  "imp.select.titleFallbackInterpreted":
+    "This is how the AI read your sentence (criteria above) — none of the loaded pages match it.",
+  "imp.select.titleFallbackFound_one": "1 page carries “{{query}}” in its title.",
+  "imp.select.titleFallbackFound_other": "{{count}} pages carry “{{query}}” in their title.",
+  "imp.select.titleFallbackStale": "Result for: “{{query}}”.",
+  "imp.select.titleFallbackStalePending":
+    "The new preview is still running — the figures below are from the previous run.",
+  "imp.select.titleFallbackStaleError":
+    "The new preview failed — the figures below are from the previous run.",
+  "imp.select.titleFallbackStaleChanged":
+    "The sentence in the field is a different one now — the figures below are from the previous run.",
+  "imp.select.titleFallbackNone": "“{{query}}” is not in the title of any loaded page either.",
+  "imp.select.titleFallbackCta_one": "Show that 1 page",
+  "imp.select.titleFallbackCta_other": "Show those {{count}} pages",
   "imp.select.yearFrom": "from (year)",
   "imp.select.yearTo": "to (year)",
   "imp.select.alreadyImported": "{{n}} already imported",
@@ -13346,6 +13381,23 @@ const nl: typeof de = {
   "imp.select.critYears": "Jaren",
   "imp.select.critLimit": "Limiet",
   "imp.select.critSpaces": "Ruimtes",
+  // JOB 3356 (IMPORT-FREITEXT-TITEL): Parität zum deutschen Wörterbuch (typeof de).
+  "imp.select.critTitle": "Titel bevat",
+  "imp.select.titleFallbackInterpreted":
+    "Zo heeft de AI je zin gelezen (criteria hierboven) — geen van de geladen pagina's past daarbij.",
+  "imp.select.titleFallbackFound_one": "1 pagina draagt „{{query}}“ in de titel.",
+  "imp.select.titleFallbackFound_other": "{{count}} pagina's dragen „{{query}}“ in de titel.",
+  "imp.select.titleFallbackStale": "Resultaat voor: „{{query}}“.",
+  "imp.select.titleFallbackStalePending":
+    "De nieuwe voorvertoning loopt nog — de cijfers hieronder komen uit de vorige run.",
+  "imp.select.titleFallbackStaleError":
+    "De nieuwe voorvertoning is mislukt — de cijfers hieronder komen uit de vorige run.",
+  "imp.select.titleFallbackStaleChanged":
+    "De zin in het veld is inmiddels een andere — de cijfers hieronder komen uit de vorige run.",
+  "imp.select.titleFallbackNone":
+    "Ook in de titel staat „{{query}}“ op geen van de geladen pagina's.",
+  "imp.select.titleFallbackCta_one": "Deze 1 pagina tonen",
+  "imp.select.titleFallbackCta_other": "Deze {{count}} pagina's tonen",
   "imp.select.yearFrom": "van (jaar)",
   "imp.select.yearTo": "tot (jaar)",
   "imp.select.alreadyImported": "{{n}} al geïmporteerd",

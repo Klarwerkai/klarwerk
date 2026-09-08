@@ -124,6 +124,12 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
   // latest-wins-Guard gesetzt — select.data (letzte SETTLED Mutation) könnte eine ältere, später
   // fertig gewordene Antwort sein und Vorschau + checkedRows rückwärts überschreiben.
   const [preview, setPreview] = useState<ImportSelectResponse | null>(null);
+  // JOB 3356 (Runde 2, BEN-Korrekturpflicht 1): DER SATZ, DER ZU DIESER ANTWORT GEFÜHRT HAT.
+  // Ohne ihn konnte die Fläche nicht sagen, WOZU die angezeigte Deutung und die Titelzahl gehören —
+  // nach einer laufenden oder gescheiterten Folgeanfrage standen beide unverändert da und lasen sich
+  // wie eine Aussage über den Satz, der gerade im Feld steht. Er wird NUR aus einer erfolgreichen
+  // Antwort gesetzt (zusammen mit `preview`, im selben latest-wins-Zweig) — nie aus dem Eingabefeld.
+  const [previewPrompt, setPreviewPrompt] = useState("");
   const latestRef = useRef(createLatestWins());
   // WP-SHIP9-S2 Paket 2 (D3–D7): Ansichts-Zustand der Trefferliste (Suche/Filter-Chip/Ausblenden/
   // Gruppierung). Rein für die DARSTELLUNG — die Auswahl selbst bleibt in checkedRows (Originalindex).
@@ -188,25 +194,41 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
     };
   };
 
-  const select = useMutation<{ requestId: number; data: ImportSelectResponse }>({
-    mutationFn: async () => {
+  // JOB 3356 (IMPORT-FREITEXT-TITEL): die Vorschau kann jetzt mit EINER fertigen Kriterienmenge
+  // angefordert werden — genau der Weg des Titel-Knopfs. Wird sie übergeben, gilt sie ALLEIN und der
+  // Satz reist NICHT mit: sonst käme die KI-Deutung (Thema) über UND wieder dazu und der Titelweg
+  // fände dasselbe Nichts. Ohne Übergabe bleibt alles wie bisher (Satz + Klick-Filter).
+  const select = useMutation<
+    { requestId: number; data: ImportSelectResponse; gesendeterSatz: string },
+    unknown,
+    // `undefined` = „wie bisher" (Satz + Klick-Filter); nur der Titelweg reicht eine fertige
+    // Kriterienmenge herein. Bewusst nicht `void` im Vertrag: das erlaubte zwar den argumentlosen
+    // Aufruf, ist aber `lint/suspicious/noConfusingVoidType` — die Aufrufer übergeben deshalb
+    // ausdrücklich `undefined`.
+    ImportSelectCriteria | undefined
+  >({
+    mutationFn: async (override) => {
       // ROT-3: jeder Start zieht eine Request-ID; nur die zuletzt gestartete darf anwenden.
       const requestId = latestRef.current.begin();
+      // JOB 3356 R2: der GESENDETE Satz reist mit der Antwort zurück — die Anzeige darf ihre
+      // Zuordnung nicht aus dem Eingabefeld ableiten, das sich inzwischen geändert haben kann.
+      const gesendeterSatz = override ? "" : prompt.trim();
       const data = await endpoints.admin.import.select({
-        prompt: prompt.trim(),
-        criteria: buildCriteria(),
+        prompt: gesendeterSatz,
+        criteria: override ?? buildCriteria(),
         // WP-SAMMEL20-FIX (bens Fix 3): locale explizit mitgeben (Route-Schema: de/en).
         locale: toReasonerLocale(i18n.language),
         // WP-VIP2-GATE-2 (bens Fix 1): die Eigeneinstufung reist IMMER mit (Pflichtfeld).
         promptConfidential,
       });
-      return { requestId, data };
+      return { requestId, data, gesendeterSatz };
     },
-    onSuccess: ({ requestId, data }) => {
+    onSuccess: ({ requestId, data, gesendeterSatz }) => {
       if (!latestRef.current.isCurrent(requestId)) {
         return; // ältere Antwort — verwerfen, die neuere Vorschau bleibt stehen
       }
       setPreview(data);
+      setPreviewPrompt(gesendeterSatz);
       // WP-SHIP9-S1b: auch Vorgemerktes startet abgewählt (Queue-Schutz), bleibt aber anwählbar.
       setCheckedRows(
         data.preview.map((entry) => entry.alreadyImported !== true && entry.alreadyQueued !== true),
@@ -238,20 +260,53 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
       return;
     }
     lastCriteriaKeyRef.current = criteriaKey;
-    const timer = setTimeout(() => mutateRef.current(), 350);
+    const timer = setTimeout(() => mutateRef.current(undefined), 350);
     return () => clearTimeout(timer);
   }, [criteriaKey]);
 
+  // JOB 3356: `summarizeSelectCriteria` (apps/web/src/lib/importExplore.ts) kennt `titleContains`
+  // nicht und liegt ausserhalb der Zielpfade dieses Auftrags. Die Zeile entsteht deshalb hier — und
+  // wird in DIESELBE Liste gehängt, nicht in einen zweiten Kasten daneben: ohne sie stünde nach dem
+  // Titel-Klick „Keine Eingrenzung — alles würde passen." über einer titelgefilterten Liste.
+  const titleCriteriaLine =
+    preview && (preview.criteria.titleContains?.length ?? 0) > 0
+      ? `${t("imp.select.critTitle")}: ${(preview.criteria.titleContains ?? []).join(", ")}`
+      : null;
   const criteriaLines = preview
-    ? summarizeSelectCriteria(preview.criteria, {
-        themes: t("imp.select.critThemes"),
-        authors: t("imp.select.critAuthors"),
-        keywords: t("imp.select.critKeywords"),
-        years: t("imp.select.critYears"),
-        limit: t("imp.select.critLimit"),
-        spaces: t("imp.select.critSpaces"),
-      })
+    ? [
+        ...summarizeSelectCriteria(preview.criteria, {
+          themes: t("imp.select.critThemes"),
+          authors: t("imp.select.critAuthors"),
+          keywords: t("imp.select.critKeywords"),
+          years: t("imp.select.critYears"),
+          limit: t("imp.select.critLimit"),
+          spaces: t("imp.select.critSpaces"),
+        }),
+        ...(titleCriteriaLine ? [titleCriteriaLine] : []),
+      ]
     : [];
+
+  // JOB 3356: der Titelbefund zeigt sich GENAU dann, wenn die Vorschau leer ist und ein Satz
+  // gestellt war (nur dann sendet der Server das Feld). Er stammt IMMER aus einer erfolgreichen
+  // Antwort — `preview` ist der latest-wins-Stand der letzten 200er-Antwort; ein Fehler oder ein
+  // laufender Nachschlag erzeugt hier nie eine Zahl (Zustandsmodell des Auftrags).
+  const titleFallback =
+    preview !== null && preview.preview.length === 0 ? preview.titleFallback : undefined;
+  // JOB 3356 (Runde 2, BEN-Korrekturpflicht 1 + Nachführung der Steuerung 08.09. 22:21):
+  // WÄHREND EINE FOLGEANFRAGE LÄUFT ODER GESCHEITERT IST, GILT KEINE ALTE TITELAUSSAGE ALS AKTUELL.
+  // Der Kasten wird deshalb nicht geleert (die zuletzt erfolgreich geholte Auskunft bleibt lesbar —
+  // Zustandsmodell „Cache mit gescheiterter Auffrischung"), sondern sichtbar dem Satz zugeordnet,
+  // der sie erzeugt hat, mit dem Grund daneben. Der Umschaltknopf verschwindet dabei: er würde auf
+  // eine Zahl umstellen, die gerade keine geprüfte Grundlage mehr hat.
+  // Der dritte Fall (der Mensch hat den Satz im Feld geändert, aber noch nicht angefordert) ist
+  // dieselbe Lage aus demselben Grund und läuft über dieselbe eine Regel — kein zweiter Weg.
+  const titleFallbackGrund: "pending" | "error" | "changed" | null = select.isPending
+    ? "pending"
+    : select.isError
+      ? "error"
+      : previewPrompt !== prompt.trim()
+        ? "changed"
+        : null;
 
   const errorMessage = select.error instanceof ApiError ? select.error.message : t("state.error");
   const alreadyImportedCount = preview?.alreadyImported ?? 0;
@@ -525,7 +580,7 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
         <Button
           variant={preview ? "outline" : "primary"}
           disabled={select.isPending}
-          onClick={() => select.mutate()}
+          onClick={() => select.mutate(undefined)}
         >
           {select.isPending ? (
             <Loader2 size={15} className="animate-spin" />
@@ -590,6 +645,52 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
           ) : (
             <p className="mt-1.5 text-[11.5px] text-muted-2">{t("imp.select.critAll")}</p>
           )}
+
+          {/* JOB 3356 (IMPORT-FREITEXT-TITEL): 0 Treffer nach einem Satz ist kein stilles Nichts.
+              Hier stehen drei Aussagen, jede an ihrer eigenen Voraussetzung:
+              (a) WIE die KI den Satz gedeutet hat — nur wenn sie überhaupt gedeutet hat
+                  (inferenceStatus "ok"); bei Ausfall behauptet die Fläche das NICHT, dort gilt der
+                  Hinweis-Kasten oben (nur Klick-Filter). Die Deutung selbst steht in den
+                  Kriterien-Zeilen darüber; hier wird kein zweiter Weg dafür gebaut.
+              (b) die deterministische Titelzahl zum eigenen Wortlaut — auch die 0 wird gesagt.
+              (c) der Knopf auf GENAU die Kriterien des Servers (titleFallback.criteria), nie auf die
+                  KI-Kriterien. Er greift nur auf Druck: ohne ihn bleibt die Vorschau die, die der
+                  Mensch angefordert hat.
+              Runde 2: läuft eine Folgeanfrage oder ist sie gescheitert (bzw. steht im Feld inzwischen
+              ein anderer Satz), steht ZUERST die Zuordnung „Ergebnis für: <alter Satz>" samt Grund —
+              und der Knopf verschwindet. Nichts wird geleert, aber nichts Altes gibt sich als neu. */}
+          {titleFallback ? (
+            <div className="mt-1.5 rounded-btn border border-hairline bg-surface px-3 py-2 text-[12px] text-text">
+              {titleFallbackGrund !== null ? (
+                <p className="font-semibold text-muted">
+                  {t("imp.select.titleFallbackStale", { query: previewPrompt })}{" "}
+                  {titleFallbackGrund === "pending"
+                    ? t("imp.select.titleFallbackStalePending")
+                    : titleFallbackGrund === "error"
+                      ? t("imp.select.titleFallbackStaleError")
+                      : t("imp.select.titleFallbackStaleChanged")}
+                </p>
+              ) : null}
+              {preview.inferenceStatus === "ok" ? (
+                <p className="mt-1">{t("imp.select.titleFallbackInterpreted")}</p>
+              ) : null}
+              <p className="mt-1">
+                {titleFallback.matched > 0
+                  ? t("imp.select.titleFallbackFound", {
+                      count: titleFallback.matched,
+                      query: titleFallback.query,
+                    })
+                  : t("imp.select.titleFallbackNone", { query: titleFallback.query })}
+              </p>
+              {titleFallback.matched > 0 && titleFallbackGrund === null ? (
+                <div className="mt-2">
+                  <Button variant="outline" onClick={() => select.mutate(titleFallback.criteria)}>
+                    {t("imp.select.titleFallbackCta", { count: titleFallback.matched })}
+                  </Button>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
 
           {/* Vorschau-Liste mit Auswahl (Teil 4): bereits Importiertes markiert + standardmäßig abgewählt.
               AUFTRAG-mega27 Block B: darüber KEINE eigene Filterzeile mehr, sondern DIESELBE
