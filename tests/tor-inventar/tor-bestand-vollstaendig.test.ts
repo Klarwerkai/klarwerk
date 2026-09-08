@@ -148,6 +148,13 @@ describe("JOB 3131 T2 · der Bestand ueberlebt die Aufteilung in zwei Laeufe", (
     expect(holeRest()).toContain(
       "tests/d1r-neue-version-im-alten-tab/unbekannt-ist-keine-version.test.tsx",
     );
+    // JOB 3338 (ISO-HILFE): dieselbe Bauform noch einmal — die gemountete Hilfe ist eine `.tsx`
+    // OHNE JSX (jsdom, `createElement`, kein Chromium). Sie trägt den EINZIGEN Beleg dafür, dass
+    // Pedis Suchbegriffe („9001", „2701") auf der echten Seite eine lesbare Erklärung zeigen;
+    // fiele sie still aus beiden Gruppen, bliebe die Freitagsvorführung ungedeckt.
+    expect(holeRest()).toContain("tests/iso-hilfe/iso-hilfe-flaeche.test.tsx");
+    // Der DOM-freie Zwilling dazu (Lieferung, Alias, Quellen, Wortlaut) gehört in denselben Lauf.
+    expect(holeRest()).toContain("tests/iso-hilfe/iso-wortlaut.test.ts");
   });
 
   it("V4 · der Verzeichnisgang der Konfiguration sieht denselben Bestand wie der Collector", () => {
