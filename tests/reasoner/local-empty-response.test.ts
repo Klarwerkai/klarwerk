@@ -145,13 +145,31 @@ describe("SCRUM-544: der leere Zustand kommt ehrlich oben an, ohne Aufrufer zu z
     }
   });
 
-  it("Reasoner: leere lokale Antwort → deterministischer Ersatzmodus statt leerem Ergebnis (kein Absturz)", async () => {
+  // JOB 3276 (KI-ASSIST-LEER) — DIESER FALL HAT SEINE ANTWORT GEÄNDERT, UND ZWAR BEGRÜNDET.
+  //
+  // Bis hierher galt: leere lokale Antwort → der deterministische Ersatz antwortet, Hauptsache es
+  // kommt etwas (`res.text.length > 0`). Genau dieses „etwas" hat Codex am 08.09. live als Befund
+  // aufgeschrieben: bei `assist` KANN der Ersatz nichts als Leerraum glätten und einen Punkt
+  // setzen — der Nutzer bekam seinen eigenen Text mitsamt Rechtschreibfehlern als „KI-Vorschlag".
+  // Ein Ergebnis, das keines ist, ist schlechter als eine Meldung. Der Absturzschutz, um den es
+  // dieser Datei geht, bleibt geprüft: es fliegt kein `TypeError`, sondern ein benannter Zustand
+  // mit Grund (die Fläche zeigt ihn wörtlich an, s. tests/ki-assist-leer).
+  it("Reasoner: leere lokale Antwort → ehrliche Meldung mit Grund statt geglättetem Original", async () => {
     const reasoner = new Reasoner(
       new ModelProvider(localClient({ choices: [{ message: { content: "" } }] })),
     );
-    const res = await reasoner.assistText("Pumpe bei über 80 Grad abschalten", "de");
-    expect(res.demo).toBe(true); // ehrlicher Ersatz — nicht das stille ""
-    expect(res.text.length).toBeGreaterThan(0);
+
+    const fehler = await reasoner
+      .assistText("Pumpe bei über 80 Grad abschalten", "de")
+      .catch((e: unknown) => e);
+
+    expect(fehler).toBeInstanceOf(Error);
+    expect((fehler as Error).message).toContain("Die KI hat keine Antwort geliefert");
+    // Der Grund ist die Auskunft des Clients (Bezeichnung + Metadaten) — kein stilles "" und kein
+    // Originaltext. Er kommt aus DEMSELBEN Chokepoint, den diese Datei prüft.
+    expect((fehler as Error).message).toContain("Lokaler LLM lieferte keinen Antwortinhalt");
+    expect((fehler as Error).message).toMatch(/max_tokens=\d+/);
+    expect((fehler as Error).message).not.toContain("Pumpe bei über 80 Grad");
   });
 
   it("Key-Test (probe) meldet die leere Antwort als NICHT ok — vorher galt sie als 'hat geantwortet'", async () => {

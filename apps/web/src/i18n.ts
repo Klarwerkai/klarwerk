@@ -2219,7 +2219,12 @@ const de = {
   "capture.ivReadStop": "Stopp",
   "capture.ivDictNa": "Diktat ist in diesem Browser nicht verfügbar — bitte tippen.",
   "capture.ivModel": "KI-Modell",
-  "capture.ivFallback": "Deterministischer Fallback",
+  // JOB 3276 (Codex-Nutzerbefund 08.09.): „Deterministischer Fallback" sagt einem Menschen nichts —
+  // Pedi sah eine sichtbare OpenAI-Anzeige und daneben dieses Wort. Hier steht jetzt in Alltags-
+  // sprache, WAS er vor sich hat (feste Ersatzfragen) und WARUM, soweit die Fläche es weiß: der
+  // genaue Grund (Statuscode, finish_reason, leere Antwort) steht serverseitig im Laufprotokoll,
+  // die Antwort des Servers trägt ihn nicht mit.
+  "capture.ivFallback": "Feste Ersatzfragen, ohne Antwort der KI",
   "capture.ivQ.title": "Worum geht es? Formuliere eine kurze Kernaussage.",
   "capture.ivQ.statement": "Beschreibe die Erfahrung/Aussage genauer.",
   "capture.ivQ.conditions": "Unter welchen Bedingungen gilt das? Eine pro Zeile.",
@@ -7505,7 +7510,8 @@ const en: typeof de = {
   "capture.ivReadStop": "Stop",
   "capture.ivDictNa": "Dictation is not available in this browser — please type.",
   "capture.ivModel": "AI model",
-  "capture.ivFallback": "Deterministic fallback",
+  // JOB 3276: s. die deutsche Fassung — Alltagssprache statt „Deterministic fallback".
+  "capture.ivFallback": "Fixed backup questions, no AI answer",
   "capture.ivQ.title": "What is it about? Write a short core statement.",
   "capture.ivQ.statement": "Describe the experience/statement in more detail.",
   "capture.ivQ.conditions": "Under which conditions does it apply? One per line.",
@@ -12218,7 +12224,8 @@ const nl: typeof de = {
   "capture.ivReadStop": "Stop",
   "capture.ivDictNa": "Dicteren is in deze browser niet beschikbaar — typ het alsjeblieft.",
   "capture.ivModel": "AI-model",
-  "capture.ivFallback": "Deterministische fallback",
+  // JOB 3276: s. die deutsche Fassung — Alltagssprache statt „Deterministische fallback".
+  "capture.ivFallback": "Vaste reservevragen, geen antwoord van de AI",
   "capture.ivQ.title": "Waar gaat het over? Formuleer een korte kernuitspraak.",
   "capture.ivQ.statement": "Beschrijf de ervaring/uitspraak nauwkeuriger.",
   "capture.ivQ.conditions": "Onder welke voorwaarden geldt dit? Eén per regel.",

@@ -82,12 +82,17 @@ describe("mega26 Block A: Laufkontext des Modelllaufs (wer/woran)", () => {
     return { app, repo, services, admin, adminId, experte, koId: ko.json().id as string };
   }
 
+  // JOB 3276: der erwartete Ausgang ist wählbar. Grund: ein assist-Lauf OHNE Modell endet seit
+  // diesem Auftrag nicht mehr mit dem geglätteten Originaltext (200), sondern mit einer ehrlichen
+  // Meldung (tests/ki-assist-leer). GESCHRIEBEN wird der Datensatz in beiden Fällen — und genau um
+  // ihn geht es hier.
   async function laufe(
     { app, admin }: Pick<Umgebung, "app" | "admin">,
     payload: Record<string, unknown>,
+    erwarteterStatus = 200,
   ) {
     const res = await app.inject({ method: "POST", url: "/api/reasoner", headers: admin, payload });
-    expect(res.statusCode).toBe(200);
+    expect(res.statusCode, res.body).toBe(erwarteterStatus);
     return res;
   }
 
@@ -150,7 +155,8 @@ describe("mega26 Block A: Laufkontext des Modelllaufs (wer/woran)", () => {
     const env = await umgebung();
     const gemeinsam = { source: "draft", confidentiality: "intern", koId: env.koId } as const;
     await laufe(env, { task: "extract", text: DOKUMENT, ...gemeinsam });
-    await laufe(env, { task: "assist", text: DOKUMENT, ...gemeinsam });
+    // Ohne Modell gibt es bei assist keinen Vorschlag mehr, sondern die ehrliche Meldung (JOB 3276).
+    await laufe(env, { task: "assist", text: DOKUMENT, ...gemeinsam }, 500);
 
     expect((await laufZu(env, "extract")).actor).toBe(env.adminId);
     expect((await laufZu(env, "assist")).actor).toBeUndefined();

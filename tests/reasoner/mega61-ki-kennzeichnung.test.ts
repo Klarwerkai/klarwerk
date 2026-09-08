@@ -16,7 +16,7 @@
 // verloren, und niemand wüsste mehr, warum sie einmal getroffen wurde.
 import { describe, expect, it } from "vitest";
 import { KI_ERZEUGENDE_AUFGABEN, aiGeneratedMark } from "../../services/model-runs";
-import { Reasoner } from "../../services/reasoner";
+import { ModelProvider, Reasoner } from "../../services/reasoner";
 
 // Ohne Provider läuft ausschließlich der deterministische Rückfall — kein Modell, kein Egress.
 // Genau das prüft die Betriebsmodus-Angabe unten mit ab.
@@ -70,8 +70,21 @@ describe("mega61 F2 · die ausgenommenen Aufgaben tragen die Kennzeichnung NICHT
     expect((res as { aiGenerated?: unknown }).aiGenerated).toBeUndefined();
   });
 
+  // JOB 3276: dieser Fall braucht ein antwortendes Modell. Ohne eines gibt es bei `assist` kein
+  // Ergebnis mehr, das man auf die Kennzeichnung prüfen könnte — der deterministische Ersatz gibt
+  // dort nur den Eingabetext zurück, und das ist seit JOB 3276 eine ehrliche Meldung statt eines
+  // Vorschlags (tests/ki-assist-leer). Geprüft bleibt exakt dieselbe Zusage: assist trägt KEINE
+  // KI-Kennzeichnung, auch dann nicht, wenn wirklich ein Modell gearbeitet hat.
   it("assist — formuliert vorhandenen Text um", async () => {
-    const res = await reasoner().assistText("Ventil schließen.", "de");
+    const mitModell = new Reasoner(
+      new ModelProvider({
+        name: "anthropic:testmodell",
+        complete: async () => "Das Ventil ist bei Überdruck zu schließen.",
+      }),
+    );
+
+    const res = await mitModell.assistText("Ventil schließen.", "de");
+    expect(res.demo).toBe(false);
     expect((res as { aiGenerated?: unknown }).aiGenerated).toBeUndefined();
   });
 

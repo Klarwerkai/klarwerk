@@ -5,6 +5,12 @@ import { buildApp, buildServices } from "../../services/app/src/build-app";
 import { ModelProvider, Reasoner } from "../../services/reasoner";
 
 const TEXT = "Nach dem Anfahren zehn Sekunden warten, dann die Pumpe entlüften.";
+// JOB 3276: die Antwort, die dieses Test-Modell auf eine Überarbeitung gibt. Sie war bis hierher
+// der EINGABETEXT — und genau das ist seit JOB 3276 kein Vorschlag mehr, sondern eine ehrliche
+// Meldung (`tests/ki-assist-leer`). Dieser Test misst den EGRESS-Weg („hat die Cloud den Text
+// gesehen?"), nicht die Güte der Überarbeitung; sein Modell verhält sich deshalb wie ein Modell,
+// das wirklich etwas tut. Die Zusagen der Fälle unten bleiben Wort für Wort dieselben.
+const UEBERARBEITET = "Nach dem Anfahren zehn Sekunden warten und die Pumpe danach entlüften.";
 const apps: ReturnType<typeof buildApp>[] = [];
 beforeEach(() => vi.stubEnv("KLARWERK_ADDON_API", "1"));
 afterEach(async () => {
@@ -40,7 +46,7 @@ async function aufbauen(zustimmen = true, modellfehler = false) {
             zitat_b: "Pumpe entlüften",
           });
         }
-        return TEXT;
+        return UEBERARBEITET;
       },
     }),
   );
@@ -102,19 +108,32 @@ async function aufbauen(zustimmen = true, modellfehler = false) {
   return { services, app, headers, binding, gesehen, bilder, koId: ko.json().id as string };
 }
 type Aufbau = Awaited<ReturnType<typeof aufbauen>>;
+// JOB 3276: der Ausgang „keine Cloud" hat bei `assist` seit diesem Auftrag ZWEI Formen, und beide
+// sagen dasselbe, worum es hier geht — es hat KEINE Cloud-KI an diesem Text gearbeitet:
+//   · 200 mit `demo: true`, wenn der deterministische Ersatz wirklich etwas beitragen konnte,
+//   · die ehrliche Meldung, wenn er nur den Eingabetext zurückgäbe (tests/ki-assist-leer).
+// Früher gab es nur die erste Form, weil der Ersatz IMMER „etwas" lieferte — den Originaltext.
+// Der Helfer bildet beide Formen auf dieselbe Auskunft ab und prüft die Meldung dabei mit; die
+// Fälle unten bleiben damit Wort für Wort das, was sie waren.
 async function reasoner(
   a: Aufbau,
   provenance: object = draftProvenance(undefined, a.koId),
   binding = a.binding,
-) {
+): Promise<{ demo: boolean }> {
   const response = await a.app.inject({
     method: "POST",
     url: "/api/reasoner",
     headers: { ...a.headers, ...binding, "content-type": "application/json" },
     payload: { task: "assist", text: TEXT, ...provenance },
   });
-  expect(response.statusCode, response.body).toBe(200);
-  return response.json();
+  if (response.statusCode !== 200) {
+    const koerper = response.json() as { message?: unknown };
+    expect(String(koerper.message), response.body).toContain("Die KI hat keine Antwort geliefert");
+    // Und der geschützte Text steht in keiner Fehlerantwort.
+    expect(response.body).not.toContain(TEXT);
+    return { demo: true };
+  }
+  return response.json() as { demo: boolean };
 }
 async function word(
   a: Aufbau,
@@ -150,7 +169,7 @@ describe("N11b: bestätigte Dokumentzustimmung am echten Router", () => {
   });
   it("Z2 Reasoner: Zustimmung und auflösbarer Anker öffnen den Cloud-Weg", async () => {
     const a = await aufbauen();
-    expect(await reasoner(a)).toMatchObject({ demo: false, text: TEXT });
+    expect(await reasoner(a)).toMatchObject({ demo: false, text: UEBERARBEITET });
     expect(a.gesehen.length).toBeGreaterThan(0);
     expect(a.gesehen.join("\n")).toContain(TEXT);
   });
@@ -177,7 +196,7 @@ describe("N11b: bestätigte Dokumentzustimmung am echten Router", () => {
       undefined,
       draftProvenance(undefined, a.koId),
     );
-    expect(response).toMatchObject({ demo: false, text: TEXT });
+    expect(response).toMatchObject({ demo: false, text: UEBERARBEITET });
     expect(a.gesehen.join("\n")).toContain(TEXT);
   });
   it.each(["Reasoner", "Word"])("Z3 Ohne Zustimmung: %s vertraulich, kein Egress", async (weg) => {

@@ -25,7 +25,15 @@
 // Betrieb gar nicht entstehen kann, wird sie ausdrücklich gescriptet und das steht am Fall dabei
 // (W3; die Begründung im Kopf von `h3-blatt-buehne.ts`).
 import { existsSync } from "node:fs";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import * as appModul from "../../services/app/src/build-app";
+import {
+  DeterministicProvider,
+  type ModelClient,
+  ModelProvider,
+  Reasoner,
+  cappedModelClient,
+} from "../../services/reasoner";
 import { type Buehne, MOCKUP, ORIGIN, buehneAufbauen, fn } from "./h3-blatt-buehne";
 
 const mockupDa = existsSync(MOCKUP);
@@ -458,12 +466,13 @@ describe.runIf(mockupDa)("JOB 3062 · H3 · R6 · Wirkungsnachweise am gebauten 
   //   3. Der Klick schickt EXAKT DENSELBEN Request los — bei der KI-Hilfe mit derselben Anweisung.
   //      Dafür schneidet die Seite jeden `/api/reasoner`-Rumpf mit; verglichen werden die Rümpfe.
   //
-  // Der Abriss ist derselbe wie in W5: `fetch` wird für genau EINEN Aufruf hart abgewiesen
-  // (`TypeError: Failed to fetch`), danach ist der echte Weg wieder in Kraft.
-  const KI_ABRISS_UND_MITSCHNITT = `() => {
+  // W6 bricht wie W5 genau einen Fetch ab. W7 schneidet nur mit: dort entsteht
+  // der erste Fehler im Modellclient und durchläuft den echten Serverfehlerweg.
+  const KI_ABRISS_UND_MITSCHNITT = `(abbrechen) => {
     const echt = window.fetch;
     window.__ki = [];
-    let einmal = true;
+    window.__kiAntworten = [];
+    let einmal = abbrechen;
     window.fetch = (u, o) => {
       const url = typeof u === 'string' ? u : (u && u.url) || '';
       if (url.indexOf('/api/reasoner') !== -1 && o && o.method === 'POST') {
@@ -473,7 +482,12 @@ describe.runIf(mockupDa)("JOB 3062 · H3 · R6 · Wirkungsnachweise am gebauten 
           return Promise.reject(new TypeError('Failed to fetch'));
         }
       }
-      return echt(u, o);
+      return echt(u, o).then(async (antwort) => {
+        if (url.indexOf('/api/reasoner') !== -1 && o && o.method === 'POST') {
+          window.__kiAntworten.push({ status: antwort.status, body: await antwort.clone().json() });
+        }
+        return antwort;
+      });
     };
   }`;
 
@@ -503,20 +517,32 @@ describe.runIf(mockupDa)("JOB 3062 · H3 · R6 · Wirkungsnachweise am gebauten 
     const erneut = karte.querySelector('[data-testid="blatt-ki-erneut"]');
     if (!erneut) return { gefunden: true, karte: kartenText, erneut: false };
     erneut.click();
+    // JOB 3276: gewartet wird auf DAS ERGEBNIS der Wiederholung, nicht nur auf einen Vorschlag.
+    // Der Klick leert beide Karten (onMutate); was danach steht, ist die Antwort auf die Handlung —
+    // ein Vorschlag ODER eine Meldung. Wer nur auf den Vorschlag wartet, misst die Meldung als
+    // „nichts passiert".
+    await warte(120);
     let vorschlag = null;
+    let fehlerDanach = null;
     for (let i = 0; i < 60; i++) {
       vorschlag = document.querySelector('[data-testid="blatt-ki-vorschlag"]');
-      if (vorschlag) break;
+      fehlerDanach = document.querySelector('[data-testid="blatt-ki-fehler"]');
+      if (vorschlag || fehlerDanach) break;
       await warte(100);
     }
+    const feld = document.querySelector('[data-testid="blatt-text"] [role=textbox]');
     return {
       gefunden: true,
       karte: kartenText,
       erneut: true,
       lageDaneben: lageDaneben ? (lageDaneben.textContent || '').trim() : null,
       vorschlagDa: vorschlag !== null,
-      fehlerWeg: document.querySelector('[data-testid="blatt-ki-fehler"]') === null,
+      vorschlagText: vorschlag ? (vorschlag.textContent || '').replace(/\\s+/g, ' ').trim() : null,
+      fehlerDanach: fehlerDanach ? (fehlerDanach.textContent || '').replace(/\\s+/g, ' ').trim() : null,
+      fehlerWeg: fehlerDanach === null,
+      blattText: feld ? (feld.textContent || '').replace(/\\s+/g, ' ').trim() : null,
       rumpfe: window.__ki,
+      antworten: window.__kiAntworten,
     };
   }`;
 
@@ -526,18 +552,62 @@ describe.runIf(mockupDa)("JOB 3062 · H3 · R6 · Wirkungsnachweise am gebauten 
     erneut?: boolean;
     lageDaneben?: string | null;
     vorschlagDa?: boolean;
+    vorschlagText?: string | null;
+    fehlerDanach?: string | null;
     fehlerWeg?: boolean;
+    blattText?: string | null;
     rumpfe?: string[];
+    antworten?: { status: number; body: { text?: string; demo?: boolean; message?: string } }[];
   }
 
-  async function kiFehlerfall(eintrag: string): Promise<KiLage> {
+  async function kiFehlerfall(eintrag: string, modell?: ModelClient): Promise<KiLage> {
+    // JOB 3276 R4: nur die Modellantwort ist vorgegeben. Der echte ModelProvider, Reasoner,
+    // Fastify-Endpunkt und das gebaute Blatt verarbeiten Fehler und Wiederholung selbst.
+    const services = modell ? appModul.buildServices() : undefined;
+    if (services && modell) {
+      services.reasoner = new Reasoner(
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        new ModelProvider(
+          cappedModelClient(
+            {
+              ...modell,
+              // Der Verfügbarkeitstest beim Start ist unabhängig von den zwei Assist-Versuchen.
+              complete: (...args) =>
+                args[1] === "ping" ? Promise.resolve("OK") : modell.complete(...args),
+            },
+            { rejectsConfidential: false },
+          ),
+        ),
+      );
+      // Lokales Testmodell: der interne Text bleibt auf dem dafür zugelassenen Weg.
+      // Nur Assist bekommt die Antwortfolge; Hintergrundprüfungen verbrauchen sie nicht.
+      await services.reasoner.setTaskConfig({
+        global: "deterministic",
+        perTask: { assist: "local" },
+      });
+    }
+    const aufbau = services
+      ? vi.spyOn(appModul, "buildServices").mockReturnValueOnce(services)
+      : undefined;
     const b = await buehneAufbauen("/erfassen");
     try {
       expect(b.fehler).toBeNull();
       expect(await b.seite.evaluate<string>(fn(SCHREIBEN), SATZ)).toContain("Dosierwert");
-      await b.seite.evaluate(fn(KI_ABRISS_UND_MITSCHNITT));
+      if (modell) {
+        expect(
+          await b.seite.evaluate<boolean>(fn(MENUE_WAEHLEN), [
+            "blatt-werkzeug-vertraulichkeit",
+            "Öffentlich-intern",
+          ]),
+        ).toBe(true);
+      }
+      await b.seite.evaluate(fn(KI_ABRISS_UND_MITSCHNITT), modell === undefined);
       return await b.seite.evaluate<KiLage>(fn(KI_FEHLER_UND_WIEDERHOLUNG), eintrag);
     } finally {
+      aufbau?.mockRestore();
       await b.schliessen();
     }
   }
@@ -569,8 +639,18 @@ describe.runIf(mockupDa)("JOB 3062 · H3 · R6 · Wirkungsnachweise am gebauten 
     // wiederholen." Bei der KI-Hilfe ist die Handlung die ANWEISUNG im Rumpf — „Klarer" und
     // „Erweitern" gehen über denselben Endpunkt und unterscheiden sich nur dort. Ein
     // Wiederholknopf, der „Erweitern" statt „Klarer" schickte, wäre von aussen nicht zu sehen.
-    it("W7 · „Klarer“ scheitert einmal — die Wiederholung schickt wieder „Klarer“, nicht irgendetwas", async () => {
-      const r = await kiFehlerfall("Klarer");
+    it("W7a · „Klarer“ scheitert einmal — die Wiederholung zeigt den veränderten Modellvorschlag", async () => {
+      const vorschlag =
+        "Nach dem Schichtwechsel an Linie L4 zehn Minuten warten, dann den Dosierwert anpassen.";
+      const complete = vi
+        .fn<ModelClient["complete"]>()
+        .mockRejectedValueOnce(new Error("Testanbieter antwortete mit HTTP 503"))
+        .mockResolvedValueOnce(vorschlag);
+      const r = await kiFehlerfall("Klarer", {
+        name: "local:w7-test",
+        model: "w7-test",
+        complete,
+      });
       expect(r.gefunden, "„Klarer“ steht nicht im KI-Menü").toBe(true);
       expect(r.karte, "der KI-Fehler steht in keiner Vorschlagskarte").not.toBeNull();
       expect(r.erneut, "der erste KI-Fehler bietet keinen Wiederholweg an").toBe(true);
@@ -585,7 +665,56 @@ describe.runIf(mockupDa)("JOB 3062 · H3 · R6 · Wirkungsnachweise am gebauten 
       expect(zweit.instruction, "die Wiederholung nahm eine ANDERE KI-Handlung").toBe(
         erst.instruction,
       );
+
       expect(r.vorschlagDa, "die geglückte Wiederholung brachte keinen Vorschlag").toBe(true);
+      expect(r.vorschlagText).toContain(vorschlag);
+      expect(r.vorschlagText).not.toContain(SATZ);
+      expect(r.fehlerDanach).toBeNull();
+      expect(complete).toHaveBeenCalledTimes(2);
+      expect(complete.mock.calls[1]).toEqual(complete.mock.calls[0]);
+      expect(complete.mock.calls[1]?.[0]).toContain(erst.instruction);
+      expect(complete.mock.calls[1]?.[1]).toBe(SATZ);
+      expect(r.antworten?.map((antwort) => antwort.status)).toEqual([500, 200]);
+      expect(r.antworten?.[1]?.body).toEqual({ text: vorschlag, demo: false });
+      expect(r.fehlerWeg, "die Fehlerkarte blieb nach der geglückten Wiederholung stehen").toBe(
+        true,
+      );
+      // Und das ist keine Behauptung, sondern nachgesehen: der Absatz im Blatt ist unangetastet.
+      expect(r.blattText, "der eigene Text hat sich bei alldem verändert").toBe(SATZ);
+    }, 180_000);
+
+    it("W7b · unveränderte Modellantwort und Ersatz bleiben ein ehrlicher Nichtvorschlag", async () => {
+      const complete = vi
+        .fn<ModelClient["complete"]>()
+        .mockRejectedValueOnce(new Error("Testanbieter antwortete mit HTTP 503"))
+        .mockResolvedValueOnce(SATZ);
+      // Der Ersatz selbst bleibt echt; diese Eingabe wird durch ihn nicht verändert.
+      expect(await new DeterministicProvider().assistText(SATZ)).toEqual({
+        text: SATZ,
+        demo: true,
+      });
+      const r = await kiFehlerfall("Klarer", {
+        name: "local:w7-test",
+        model: "w7-test",
+        complete,
+      });
+      expect(r.gefunden).toBe(true);
+      expect(r.erneut).toBe(true);
+      expect(r.rumpfe).toHaveLength(2);
+      expect(r.rumpfe?.[1]).toBe(r.rumpfe?.[0]);
+      expect(complete).toHaveBeenCalledTimes(2);
+      expect(r.vorschlagDa).toBe(false);
+      expect(r.vorschlagText).toBeNull();
+      expect(r.fehlerWeg).toBe(false);
+      expect(r.fehlerDanach).toContain("Originaltext bleibt unverändert");
+      expect(r.blattText).toBe(SATZ);
+      // Blatt.tsx zeigt seinen eigenen Fehlersatz. Der genaue Grund wird am echten
+      // Antwortvertrag geprüft, den das Expertenformular wörtlich anzeigen kann.
+      expect(r.antworten?.map((antwort) => antwort.status)).toEqual([500, 500]);
+      expect(r.antworten?.[1]?.body.message).toBe(
+        "Die KI hat keine Änderungen vorgeschlagen. Grund: local:w7-test (w7-test) gab den Text unverändert zurück.",
+      );
+      expect(r.antworten?.[1]?.body.text).toBeUndefined();
     }, 180_000);
   });
 });

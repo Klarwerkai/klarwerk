@@ -49,6 +49,11 @@ describe("SCRUM-424: zwei KI-Backends (Cloud + lokaler LLM)", () => {
     expect(res.demo).toBe(false); // echtes Modell, kein deterministischer Ersatz
   });
 
+  // JOB 3276: die Aufgabe dieses Falls ist `structure` statt `assist`. Der Fall prüft die KETTE
+  // („beide Modelle aus → der deterministische Ersatz antwortet"), und die ist aufgabenunabhängig.
+  // `assist` hat seit JOB 3276 einen eigenen Vertrag: sein deterministischer Ersatz kann inhaltlich
+  // nichts, deshalb gibt es dort keinen Ersatz-Vorschlag, sondern eine ehrliche Meldung
+  // (tests/ki-assist-leer). Beides nebeneinander zu prüfen hieße, zwei Zusagen in einen Fall zu legen.
   it("fallen BEIDE Modelle aus, bleibt der deterministische Ersatzmodus (nie ein Absturz)", async () => {
     const r = new Reasoner(
       new ModelProvider(cloud(boom)),
@@ -57,7 +62,7 @@ describe("SCRUM-424: zwei KI-Backends (Cloud + lokaler LLM)", () => {
       undefined,
       new ModelProvider({ name: "local:x", complete: async () => boom() }),
     );
-    const res = await r.assistText("nur roher Text", "de");
+    const res = await r.structure("nur roher Text", "de");
     expect(res.demo).toBe(true); // deterministischer Ersatz hat geantwortet
   });
 

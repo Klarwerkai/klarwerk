@@ -230,6 +230,97 @@ function importSelectSystem(locale: ReasonerLocale): string {
   return `${base} ${outputLanguageRule(locale)}`;
 }
 
+// ================================================================================================
+// JOB 3276 (KI-ASSIST-LEER) — WANN IST EIN „VORSCHLAG" EINER?
+// ================================================================================================
+//
+// Verglichen wird der INHALT, nicht die Zeichenkette. Ein Vergleich auf Gleichheit der Zeichen
+// hätte den gemessenen Fall NICHT gefangen: der deterministische Ersatz gibt „notirt anzahl" als
+// „Notirt anzahl." zurück — eine andere Zeichenkette, derselbe Text, dieselben Fehler. Genau das
+// stand am 08.09. als „KI-Vorschlag" auf dem Bildschirm.
+//
+// Die Normalform tilgt deshalb GENAU das, was der Ersatz zu leisten vermag (Leerraum, Groß-/
+// Kleinschreibung, Schlusszeichen) — und nichts darüber hinaus. Ein Ersatz, der eines Tages
+// wirklich umformuliert, kommt damit durch; ein kosmetischer nicht.
+function assistInhaltsform(text: string): string {
+  return text
+    .replace(/\s+/gu, " ")
+    .trim()
+    .replace(/[.!?…]+$/u, "")
+    .trim()
+    .toLowerCase();
+}
+
+function istEchterVorschlag(original: string, vorschlag: string): boolean {
+  const neu = assistInhaltsform(vorschlag);
+  return neu.length > 0 && neu !== assistInhaltsform(original);
+}
+
+// ================================================================================================
+// JOB 3276 RUNDE 3 — DASSELBE FÜR DAS MODELL, ABER MIT ANDEREM MASSSTAB.
+// ================================================================================================
+//
+// Codex' Vorprüfung R2 (08.09. 16:30) hat den zweiten Weg gemessen: das Modell antwortet NICHT
+// leer, sondern gibt den Text unverändert zurück — und der ging bis hierher als „KI-Vorschlag"
+// hinaus. Für den Menschen ist das derselbe Betrug wie der geglättete Ersatz: er klickt
+// „Rechtschreibung", bekommt „notirt" zurück und glaubt, es sei geprüft.
+//
+// DER MASSSTAB IST HIER ABER EIN ANDERER als beim deterministischen Ersatz. Der Ersatz KANN nur
+// Groß-/Kleinschreibung und Schlusszeichen; deshalb zählt beides bei ihm nicht als Leistung. Ein
+// MODELL, das genau diese Fehler korrigiert („der ventil schließen" → „Der Ventil schließen."), hat
+// dagegen wirklich gearbeitet — bei ihm wird nur der Leerraum normalisiert, sonst nichts.
+// Codex' Wortlaut: „echte Korrekturen an Satzzeichen/Großschreibung bleiben ein gültiger Vorschlag
+// (Vergleich normalisiert nur Whitespace)".
+function modellInhaltsform(text: string): string {
+  return text.replace(/\s+/gu, " ").trim();
+}
+
+function istEchterModellVorschlag(original: string, vorschlag: string): boolean {
+  const neu = modellInhaltsform(vorschlag);
+  return neu.length > 0 && neu !== modellInhaltsform(original);
+}
+
+// Die Meldung, die der Mensch liest, wenn es keinen Vorschlag gibt. DE/EN gleichwertig (die
+// Vorführung am 11.09. läuft auf Englisch); NL folgt der Hausregel der übrigen ehrlichen
+// Servermeldungen (z. B. der extract-Note) und bekommt den deutschen Satz.
+//
+// SIE NENNT IMMER EINEN GRUND. Ohne Grund wäre sie zwar ehrlich, aber unbrauchbar: „Es hat nicht
+// geklappt" sagt niemandem, ob der Schlüssel fehlt, das Modell abgewiesen hat oder das Budget im
+// Denken aufging. Der Grund ist die Fehlermeldung des Modells (Metadaten: Anbieter, Status,
+// finish_reason, Budget) — sie trägt nie Text des Nutzers.
+function vertraulichkeitsGrund(locale: ReasonerLocale): string {
+  return locale === "en"
+    ? "The text is classified as confidential — the cloud AI must not process it."
+    : "Der Text ist als vertraulich eingestuft — die Cloud-KI darf ihn nicht verarbeiten.";
+}
+
+function assistOhneVorschlagMeldung(locale: ReasonerLocale, modellFehler: string | null): string {
+  const grund = modellFehler?.trim();
+  if (locale === "en") {
+    return `The AI returned no answer. Reason: ${
+      grund && grund.length > 0
+        ? grund
+        : "No AI model answered; the deterministic fallback would only have returned the original text."
+    }`;
+  }
+  return `Die KI hat keine Antwort geliefert. Grund: ${
+    grund && grund.length > 0
+      ? grund
+      : "Kein KI-Modell hat geantwortet; die deterministische Ersatzform hätte nur den Originaltext zurückgegeben."
+  }`;
+}
+
+// JOB 3276 R3: DIE ZWEITE, SCHWÄCHERE LAGE — und sie braucht ihren eigenen Satz. „Die KI hat keine
+// Antwort geliefert" wäre hier schlicht unwahr: sie HAT geantwortet, sie hatte nur nichts zu ändern.
+// Wer „Rechtschreibung" auf einen fehlerfreien Satz klickt, soll genau das erfahren und nicht einen
+// Ausfall vermuten (Codex-Vorprüfung R2: „ehrlich ‚Keine Änderungen vorgeschlagen‘ … statt ‚KI
+// antwortete nicht‘"). Der Grund trägt Anbieter/Modell — nie den Text des Nutzers.
+function assistOhneAenderungMeldung(locale: ReasonerLocale, grund: string): string {
+  return locale === "en"
+    ? `The AI proposed no changes. Reason: ${grund}`
+    : `Die KI hat keine Änderungen vorgeschlagen. Grund: ${grund}`;
+}
+
 // IC-3: erstes JSON-Objekt aus einer Modell-Antwort robust herausschneiden (geschwätzige Prosa/Code-
 // Fences toleriert). Kein Treffer/kein gültiges JSON → null (der Aufrufer nutzt dann leere Kriterien).
 function parseFirstJsonObject(raw: string): unknown | null {
@@ -863,6 +954,18 @@ export class Reasoner {
   // Metadaten, kein Prompt-/Antworttext). Der erste Provider, der OHNE Fehler antwortet,
   // gewinnt; jeder Fehler fällt still zum nächsten Glied. Das letzte Glied (deterministisch)
   // antwortet immer, daher ist der Erfolg garantiert.
+  // JOB 3276: aus den gesammelten Versuchsfehlern EINE Protokollzeile. Einzeilig (ein Fehlerkörper
+  // kann Zeilenumbrüche tragen) und gekappt — ins Protokoll gehört ein Satz, keine Seite. Die
+  // Kappung ist sichtbar (…), damit niemand eine abgeschnittene Meldung für die ganze hält.
+  private static readonly VERSUCHSFEHLER_MAX = 500;
+
+  private static versuchsfehlerZeile(fehler: readonly string[]): string {
+    const zeile = fehler.join(" · ").replace(/\s+/gu, " ").trim();
+    return zeile.length > Reasoner.VERSUCHSFEHLER_MAX
+      ? `${zeile.slice(0, Reasoner.VERSUCHSFEHLER_MAX - 1)}…`
+      : zeile;
+  }
+
   private async runTask<T extends { demo: boolean }>(
     task: ModelRunTask,
     locale: ReasonerLocale,
@@ -888,6 +991,22 @@ export class Reasoner {
     // antwortet. Sie im Erfolgsdatensatz wegzulassen hieße, dem Lauf einen Teil seines Verbrauchs
     // abzuschreiben, den jemand tatsächlich zahlt.
     let laufVerbrauch: ModellVerbrauch | undefined;
+    // ============================================================================================
+    // JOB 3276 — EIN GESCHEITERTER VERSUCH, DEM EIN ERFOLG FOLGT, VERSCHWAND AUS DEM PROTOKOLL.
+    // ============================================================================================
+    // Gemessen von Codex am 08.09.: das Interview zeigte nach sichtbarer OpenAI-Anzeige alle drei
+    // Fragen als „Deterministischer Fallback" — und das Laufprotokoll schrieb dazu einen Datensatz
+    // mit status „success", ohne ein Wort darüber, WARUM das Modell nicht geantwortet hat. Der
+    // Fehler war passiert, bezahlt und spurlos.
+    //
+    // KEIN ZWEITER DATENSATZ JE VERSUCH: ein Lauf ist ein Datensatz (JOB 3074 R2 — die
+    // Doppelzählung dort hat 84/14 statt 42/7 gemeldet). Die Ursache steht deshalb IM Datensatz des
+    // Laufs, mit Anbieter und Modell davor, damit sie zuzuordnen ist.
+    //
+    // NUR METADATEN: gesammelt wird die Meldung des Modellfehlers (Status, finish_reason, Budget,
+    // Anbieterbegründung) — nie Prompt- oder Antworttext. Und gekappt, weil ein Fehlerkörper auch
+    // eine ganze Seite sein kann.
+    const versuchsfehler: string[] = [];
     for (let i = 0; i < chain.length; i++) {
       const provider = chain[i];
       if (!provider) {
@@ -937,6 +1056,11 @@ export class Reasoner {
             // JOB 3074: nur, wenn wirklich ein Verbrauch gemeldet wurde. Fehlt er, FEHLT das Feld —
             // kein Nullwert, keine Schätzung (services/model-runs/src/types.ts).
             ...(laufVerbrauch ? { verbrauch: laufVerbrauch } : {}),
+            // JOB 3276: der Lauf ist gelungen — aber nicht am ersten Glied. Was auf dem Weg dorthin
+            // scheiterte, steht hier, sonst nirgends. Kein gescheiterter Versuch → kein Feld.
+            ...(versuchsfehler.length > 0
+              ? { error: Reasoner.versuchsfehlerZeile(versuchsfehler) }
+              : {}),
           },
           context,
         );
@@ -951,7 +1075,15 @@ export class Reasoner {
         lastError = err;
         // JOB 3036 R2: auch hier zählt nur der wirklich erfolgte Aufruf. Ein Provider, der vor dem
         // Client-Aufruf an etwas anderem gescheitert ist, hat kein Modell versucht.
-        lastModel = (spur.gerufen ? provider.modelName?.() : undefined) ?? lastModel;
+        const versuchsModell = spur.gerufen ? provider.modelName?.() : undefined;
+        lastModel = versuchsModell ?? lastModel;
+        // JOB 3276: Anbieter, Modell, Grund — die drei Auskünfte, die einen Ausfall zuordenbar
+        // machen. Sie stehen im Erfolgsdatensatz unten, falls ein späteres Glied noch antwortet.
+        versuchsfehler.push(
+          `${provider.name}${versuchsModell ? ` (${versuchsModell})` : ""}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
         // JOB 3074: was dieser Versuch bis zu seinem Scheitern verbraucht hat, ist bezahlt und wird
         // nicht verworfen — ein Modellaufruf, der eine Antwort ohne Antwortinhalt zurückbekommt,
         // ist der teure Fall, nicht der billige. Ist der Verbrauch oben schon übernommen worden
@@ -1498,7 +1630,30 @@ export class Reasoner {
     return this.fallback.answer(question, context, locale, false, relevanz);
   }
 
-  // FR-RSN-03: Text präzisieren; Modellfehler → deterministischer Fallback.
+  // FR-RSN-03: Text präzisieren.
+  //
+  // ==============================================================================================
+  // JOB 3276 (KI-ASSIST-LEER) — DER ERSATZ ANTWORTET NUR, WENN ER WIRKLICH ETWAS KANN.
+  // ==============================================================================================
+  //
+  // Bis hierher lief assist wie jede andere Aufgabe durch die Kette: scheitert das Modell,
+  // antwortet der deterministische Ersatz. Bei assist ist dessen ganze Leistung aber Leerraum
+  // glätten, groß schreiben und einen Punkt setzen (`provider.ts`, DeterministicProvider.
+  // assistText) — INHALTLICH gibt er den Eingabetext zurück. Als „Vorschlag" gereicht ist das
+  // genau das, was Codex am 08.09. gemessen und Pedi im Editor gesehen hat: „Rechtschreibung"
+  // liefert den eigenen Text samt Fehlern zurück, im Expertenformular ohne jeden Hinweis.
+  //
+  // Die Regel ist deshalb ein VERGLEICH und kein pauschales Nein: liefert der Ersatz einen wirklich
+  // anderen INHALT, ist das ein Vorschlag und geht (als `demo: true`) hinaus. Gibt er nur den
+  // Eingabetext in anderer Schreibung zurück, gibt es keinen Vorschlag — und dann sagt der Dienst
+  // das, mit dem Grund, den er kennt.
+  //
+  // WARUM EIN FEHLER UND KEIN ERGEBNIS MIT LEEREM TEXT: die Aufrufer (`AiAssistBox`, die Vorschau
+  // im Haupteditor) zeigen JEDEN zurückgegebenen Text als Vorschlag mit „Ersetzen"-Schalter. Ein
+  // leerer Text wäre dort eine leere Vorschau mit scharfem Ersetzen-Schalter — unerklärt und
+  // gefährlich. Der Fehlerweg dagegen hat auf beiden Flächen bereits eine sichtbare Meldung:
+  // `AiAssistBox` zeigt den Satz des Servers wörtlich an (ApiError.message), der Haupteditor seine
+  // eigene Fehlerzeile. Diese Abweichung von der wörtlichen Auftragsvorlage steht in der Rückgabe.
   async assistText(
     text: string,
     locale: ReasonerLocale = "de",
@@ -1506,10 +1661,78 @@ export class Reasoner {
     // SCRUM-502 Schicht 2: vertraulicher Draft/KO → Cloud aus der Kette.
     confidential = false,
   ): Promise<AssistResult> {
+    // Der Grund des zuletzt gescheiterten Modells — er ist die Auskunft, die die Meldung trägt.
+    let modellFehler: string | null = null;
+    // Und das Ergebnis eines Modells, das in DIESEM Lauf bereits geantwortet hat. Die Kette wird
+    // auch dann am nächsten Glied fortgesetzt, wenn nicht der Modellaufruf, sondern das
+    // PROTOKOLLSCHREIBEN danach scheitert (runTask, JOB 3074 R2). Einen fertigen Vorschlag des
+    // Modells wegen eines Protokollproblems wegzuwerfen wäre falsch — und die Meldung „Kein
+    // KI-Modell hat geantwortet" wäre dann schlicht unwahr.
+    let modellErgebnis: AssistResult | null = null;
+    // JOB 3276 R3: der Grund für die SCHWÄCHERE Lage — ein Modell hat geantwortet, aber nichts
+    // geändert. Er entscheidet am Ende, welcher der beiden ehrlichen Sätze dasteht.
+    let modellOhneAenderung: string | null = null;
     return this.runTask(
       "assist",
       locale,
-      (p) => p.assistText(text, locale, instruction, confidential),
+      async (provider) => {
+        if (provider !== this.fallback) {
+          try {
+            const ergebnis = await provider.assistText(text, locale, instruction, confidential);
+            // Ein unverändert zurückgegebener Text ist kein Vorschlag — auch dann nicht, wenn ein
+            // echtes Modell ihn geschickt hat (Codex-Vorprüfung R2). Er wird deshalb NICHT gemerkt
+            // (`modellErgebnis` bleibt leer) und der Versuch zählt als gescheitert: vielleicht kann
+            // das nächste Glied etwas. Kann es das nicht, steht am Ende der ehrliche Satz.
+            if (text.trim().length > 0 && !istEchterModellVorschlag(text, ergebnis.text)) {
+              const modell = provider.modelName?.();
+              const grund =
+                locale === "en"
+                  ? "returned the text unchanged."
+                  : "gab den Text unverändert zurück.";
+              modellOhneAenderung = `${provider.name}${modell ? ` (${modell})` : ""} ${grund}`;
+              throw new Error(modellOhneAenderung);
+            }
+            modellErgebnis = ergebnis;
+            return ergebnis;
+          } catch (err) {
+            modellFehler = err instanceof Error ? err.message : String(err);
+            throw err;
+          }
+        }
+        if (modellErgebnis !== null) {
+          return modellErgebnis;
+        }
+        const ersatz = await this.fallback.assistText(text, locale, instruction);
+        // Ohne Eingabetext gibt es nichts zu überarbeiten und nichts zu melden — der Bestandsweg
+        // (leeres Ergebnis) bleibt unverändert, statt einen Ausfall zu behaupten, den es nicht gibt.
+        if (text.trim().length === 0) {
+          return ersatz;
+        }
+        if (istEchterVorschlag(text, ersatz.text)) {
+          return ersatz;
+        }
+        // JOB 3276 R3: HAT ein Modell geantwortet und nur nichts geändert, ist „Die KI hat keine
+        // Antwort geliefert" unwahr. Dann steht der schwächere, aber richtige Satz da. Er gewinnt
+        // auch dann, wenn ein SPÄTERES Glied zusätzlich ausgefallen ist: die Frage des Menschen
+        // lautet „warum sehe ich keinen Vorschlag", und die Antwort darauf ist die Antwort des
+        // Modells, nicht der Ausfall daneben.
+        if (modellOhneAenderung !== null) {
+          throw new Error(assistOhneAenderungMeldung(locale, modellOhneAenderung));
+        }
+        // Die Cloud kann auch OHNE Fehler ausgefallen sein: ist der Text vertraulich eingestuft,
+        // nimmt providerChain sie aus der Kette, bevor irgendetwas gerufen wird (SCRUM-502).
+        // „Kein KI-Modell hat geantwortet" wäre da zwar wahr, aber die schwächere Auskunft — der
+        // Mensch soll erfahren, dass seine EINSTUFUNG die Ursache ist und nicht ein Ausfall.
+        throw new Error(
+          assistOhneVorschlagMeldung(
+            locale,
+            modellFehler ??
+              (this.cloudExcludedByConfidentiality("assist", confidential)
+                ? vertraulichkeitsGrund(locale)
+                : null),
+          ),
+        );
+      },
       confidential,
     );
   }

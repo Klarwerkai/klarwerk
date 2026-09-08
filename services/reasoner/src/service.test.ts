@@ -298,8 +298,13 @@ describe("Reasoner", () => {
     expect(res.demo).toBe(true);
     const structured = await reasoner.structure("Pumpe alle 200h schmieren.");
     expect(structured.demo).toBe(true);
-    const assisted = await reasoner.assistText("pumpe schmieren");
-    expect(assisted.demo).toBe(true);
+    // JOB 3276: bei assist ist der stabile Betrieb NICHT mehr ein geglättetes Original — der
+    // deterministische Ersatz kann dort inhaltlich nichts. Stabil heißt hier: ein benannter
+    // Zustand mit Grund statt eines erfundenen Vorschlags (und kein Absturz der Kette).
+    const assistFehler = await reasoner.assistText("pumpe schmieren").catch((e: unknown) => e);
+    expect(assistFehler).toBeInstanceOf(Error);
+    expect((assistFehler as Error).message).toContain("Die KI hat keine Antwort geliefert");
+    expect((assistFehler as Error).message).toContain("Netzfehler");
     // SCRUM-132: auch Interview fällt deterministisch zurück, klar als demo markiert.
     const iv = await reasoner.interview(["Kernaussage", "Bedingung", "Maßnahme"]);
     expect(iv.demo).toBe(true);
@@ -1013,12 +1018,20 @@ describe("SCRUM-502 Schicht 2: Vertraulichkeit routet an der Cloud vorbei", () =
     const cloud = recordingProvider("cloud", calls);
     const reasoner = new Reasoner(cloud, new DeterministicProvider());
 
-    const assist = await reasoner.assistText("Geheimer Text.", "de", undefined, true);
+    // JOB 3276: assist liefert in dieser Lage keinen „Vorschlag" mehr — es gibt keinen. Die
+    // Vertraulichkeit nimmt die Cloud aus der Kette, und der deterministische Ersatz könnte nur
+    // den Geheimtext geglättet zurückgeben. Der Nutzer bekommt stattdessen die ehrliche Meldung,
+    // und sie nennt die EINSTUFUNG als Ursache statt eines Ausfalls, den es nicht gab.
+    const assist = await reasoner
+      .assistText("Geheimer Text.", "de", undefined, true)
+      .catch((e) => e);
     const interview = await reasoner.interview(["Geheime Antwort."], "de", true);
     const extract = await reasoner.extract("Geheimes Dokument.", "de", undefined, false, true);
 
     expect(calls).toEqual([]); // KEIN Cloud-Aufruf über alle drei Aktionen
-    expect(assist.demo).toBe(true);
+    expect(assist).toBeInstanceOf(Error);
+    expect((assist as Error).message).toContain("als vertraulich eingestuft");
+    expect((assist as Error).message).not.toContain("Geheimer Text");
     expect(interview.demo).toBe(true);
     expect(extract.demo).toBe(true);
   });

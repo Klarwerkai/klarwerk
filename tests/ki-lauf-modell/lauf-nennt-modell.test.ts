@@ -99,14 +99,22 @@ function providerOhneModellnamen(name: string, assist: () => Promise<string>): R
 
 // Ein Lauf über den ECHTEN Weg (Reasoner.assistText → runTask → recordRun) und der daraus
 // geschriebene Datensatz. `fehlerErlaubt` deckt den Fall, in dem die ganze Kette scheitert (M6).
+// JOB 3276: die AUFGABE ist seit diesem Auftrag wählbar. Grund: `assist` liefert nicht mehr
+// stillschweigend den Eingabetext, wenn kein Modell antwortet — endet die Kette dort beim
+// deterministischen Ersatz, ist das jetzt ein ehrlicher Fehler (tests/ki-assist-leer). Die Aussage
+// dieser Datei (welches MODELL nennt der Datensatz?) ist aufgabenunabhängig; die zwei Fälle, die
+// deterministisch ENDEN (M3, M5), fahren deshalb `structure` — dessen deterministisches Ergebnis
+// ist ein echtes.
 async function laufUndDatensatz(
   primary: ReasonerProvider | undefined,
   fallback: ReasonerProvider = new DeterministicProvider(),
+  aufgabe: (reasoner: Reasoner) => Promise<unknown> = (reasoner) =>
+    reasoner.assistText("Roher Satz, der geglättet werden soll.", "de"),
 ): Promise<ModelRunRecord> {
   const repo = new InMemoryModelRunRepo();
   const reasoner = new Reasoner(primary, fallback, repo);
   try {
-    await reasoner.assistText("Roher Satz, der geglättet werden soll.", "de");
+    await aufgabe(reasoner);
   } catch {
     // M6: die ganze Kette scheitert — der FEHLER-Datensatz ist genau das, was hier geprüft wird.
   }
@@ -192,7 +200,9 @@ describe("JOB 3036: der Lauf nennt das echte Modell", () => {
   });
 
   it("M3 rein deterministischer Lauf: das Feld model FEHLT (kein Ersatzwert)", async () => {
-    const datensatz = await laufUndDatensatz(undefined);
+    const datensatz = await laufUndDatensatz(undefined, new DeterministicProvider(), (reasoner) =>
+      reasoner.structure("Pumpe alle 200 Betriebsstunden schmieren.", "de"),
+    );
 
     expect(datensatz.status).toBe("success");
     expect(datensatz.demo).toBe(true);
@@ -216,7 +226,11 @@ describe("JOB 3036: der Lauf nennt das echte Modell", () => {
   it("M5 Modell versucht, gescheitert, deterministisch geantwortet: kein model, aber fallback", async () => {
     cloudScheitert();
     const client = cloudClientAusEnv();
-    const datensatz = await laufUndDatensatz(new ModelProvider(client));
+    const datensatz = await laufUndDatensatz(
+      new ModelProvider(client),
+      new DeterministicProvider(),
+      (reasoner) => reasoner.structure("Pumpe alle 200 Betriebsstunden schmieren.", "de"),
+    );
 
     expect(datensatz.status).toBe("success");
     expect(datensatz.fallback).toBe(true);

@@ -1,3 +1,7 @@
+import { AsyncLocalStorage } from "node:async_hooks";
+// JOB 3276: die leere Modellantwort im assist-Pfad ist ein Fehler mit Grund — dieselbe typisierte
+// Klasse, die der HTTP-Chokepoint (model-client.ts) wirft, damit die Kette EINE Fehlerart kennt.
+import { ModelEmptyResponseError } from "./model-errors";
 import {
   DEFAULT_TOP_K,
   type ReasonerProvider,
@@ -1016,6 +1020,95 @@ function assistGuidance(locale: ReasonerLocale, instruction: string): string {
     : `Wende diese Bearbeitungs-Anweisung nur auf die Formulierung an (keine neuen Fakten): ${instruction}`;
 }
 
+// ================================================================================================
+// JOB 3276 (KI-ASSIST-LEER) — DAS ANTWORTBUDGET EINER ÜBERARBEITUNG HÄNGT AN DER EINGABE.
+// ================================================================================================
+//
+// Der assist-Aufruf fuhr mit dem Bestandsbudget des Clients (1024 Token). Für einen kurzen Satz an
+// einem klassischen Modell reicht das. Für `gpt-6-astra` reicht es nicht: bei OpenAI deckelt
+// `max_completion_tokens` REASONING UND sichtbare Ausgabe ZUSAMMEN (JOB 3222). Ein Denkmodell
+// verbraucht das Budget in seiner Denkphase, die Antwort bleibt leer — HTTP 200, kein Inhalt.
+// Genau diesen Zustand hat Codex am 08.09. live gemessen.
+//
+// DIE RECHNUNG, und warum sie so aussieht:
+//  · Die Ausgabe einer Überarbeitung ist etwa so lang wie die Eingabe. Der Faktor 2 ist der
+//    Sicherheitsabstand nach oben (Erweitern/Strukturieren wird länger, nicht kürzer).
+//  · Dazu die RESERVE für die Denkphase, die bei OpenAI aus demselben Topf kommt.
+//  · 4 Zeichen je Token ist die grobe, anerkannte Faustregel für europäische Sprachen. Sie ist
+//    ABSICHTLICH eine Schätzung: ein echter Tokenizer je Anbieter wäre eine zweite Wahrheit über
+//    fremde Modelle, und die Zahl muss nur GROSS GENUG sein, nicht exakt.
+//  · Der DECKEL ist der Bestandswert der teuersten Aufgabe (extract fährt 16384). Ohne ihn
+//    bezahlte ein sehr langer Text ein Budget, das kein Aufrufer je gedeckt hat — bei einem
+//    Anbieter, der je Token abrechnet.
+//
+// WAS HIER NICHT GEMESSEN IST (Korrekturpflicht aus JOB 3239, LEHREN.md): der TATSÄCHLICHE
+// Mindestbedarf von `gpt-6-astra` an einem echten Aufruf. Gemessen ist der GESENDETE Request
+// (tests/ki-assist-leer/assist-budget-und-anweisung.test.ts), nicht die Antwort eines echten
+// Anbieters. Die Anhebung ist deshalb begründet und gedeckelt, aber sie ist keine Zusage, dass
+// das Denkbudget im Betrieb reicht — bleibt die Antwort leer, sagt der Fehlerweg es weiterhin
+// mit Grund (finish_reason, Budget), statt einen Vorschlag zu erfinden.
+const ASSIST_ZEICHEN_JE_TOKEN = 4;
+const ASSIST_BUDGET_RESERVE = 1024;
+const ASSIST_BUDGET_MINDEST = 1024;
+const ASSIST_BUDGET_DECKEL = 16384;
+
+function assistAntwortBudget(text: string): number {
+  const eingabeToken = Math.ceil(text.trim().length / ASSIST_ZEICHEN_JE_TOKEN);
+  const gebraucht = eingabeToken * 2 + ASSIST_BUDGET_RESERVE;
+  return Math.min(ASSIST_BUDGET_DECKEL, Math.max(ASSIST_BUDGET_MINDEST, gebraucht));
+}
+
+// ================================================================================================
+// JOB 3276 RUNDE 3 — EIN FRAGMENT MUSS DER AUFRUFER ERKENNEN KÖNNEN.
+// ================================================================================================
+//
+// DER BEFUND (Codex-Vorprüfung R2, 08.09. 16:30): `finish_reason: length` MIT Inhalt wird im
+// Chokepoint zwar serverintern gemeldet (JOB 3239) — das Fragment geht danach aber als ganz
+// normale Antwort zum Aufrufer. Für extract ist das richtig so (`salvageTruncatedExtract` rettet
+// abgeschnittenes JSON). Für assist ist es gefährlich: ein am Token-Limit abgerissener Satz stünde
+// als „Vorschlag" mit scharfem „Ersetzen"-Schalter da und schnitte dem Menschen das Ende seines
+// eigenen Textes ab. Genau die Klasse Unwahrheit, gegen die dieser Auftrag angetreten ist.
+//
+// WARUM EINE LAUF-SPUR UND KEIN ZWEITER PARAMETER AN `complete`: der Weg vom Aufrufer zum Client
+// führt durch `cappedModelClient` (`model-concurrency.ts`) — eine Datei außerhalb der ZIELPFADE
+// dieses Auftrags. Ein Schalter am Aufruf käme dort nicht durch, und ein stillschweigend verlorener
+// Schalter wäre schlimmer als keiner. Die Spur reist dagegen durch JEDE Zwischenschicht, weil sie am
+// Kontext hängt und nicht am Argument — dasselbe Muster, das `modellAufrufSpur` (model-concurrency)
+// für den Verbrauch schon fährt.
+//
+// SIE STEHT IN DIESER DATEI und nicht im Chokepoint, weil die einzige Abhängigkeitsrichtung
+// zwischen beiden bereits besteht (model-client → provider-model); andersherum wäre es ein Zyklus.
+// Sie trägt NUR Metadaten (Budgetfeld, Budget, finish_reason, Zeichenzahl), nie Antwort- oder
+// Nutzertext.
+export interface ModellAbbruchBefund {
+  budgetFeld: string;
+  budget: number;
+  finishReason: string;
+  zeichen: number;
+}
+
+const abbruchSpur = new AsyncLocalStorage<{ abbruch: ModellAbbruchBefund | null }>();
+
+/**
+ * Führt `fn` aus und meldet mit, ob eine Antwort DARIN am Token-Limit abgeschnitten wurde, OBWOHL
+ * sie Inhalt trug. Ohne diese Klammer bleibt alles wie bisher: das Fragment geht unverändert durch.
+ */
+export async function mitAbbruchBefund<T>(
+  fn: () => Promise<T>,
+): Promise<{ wert: T; abbruch: ModellAbbruchBefund | null }> {
+  const spur: { abbruch: ModellAbbruchBefund | null } = { abbruch: null };
+  const wert = await abbruchSpur.run(spur, fn);
+  return { wert, abbruch: spur.abbruch };
+}
+
+/** Der Vermerk am Chokepoint. Ohne laufende Spur ein No-op. */
+export function vermerkeAbbruch(befund: ModellAbbruchBefund): void {
+  const spur = abbruchSpur.getStore();
+  if (spur) {
+    spur.abbruch = befund;
+  }
+}
+
 // PMO-FEA-0006 / G-2: Wissens-Extraktion aus Dokumenttext — anti-halluzinatorischer
 // System-Prompt. Jeder Punkt MUSS mit einem wörtlichen Auszug belegt sein; die Auszüge
 // werden zusätzlich serverseitig gegen den Dokumenttext geprüft (parseExtractResponse).
@@ -1479,8 +1572,46 @@ export class ModelProvider implements ReasonerProvider {
     const system = guidance
       ? `${assistSystem(locale)}\n${assistGuidance(locale, guidance)}`
       : assistSystem(locale);
-    const improved = (await client.complete(system, text, confidential)).trim();
-    return { text: improved || text.trim(), demo: false };
+    // JOB 3276: das Budget richtet sich nach der Eingabe (s. assistAntwortBudget) — ein Denkmodell
+    // braucht Kopfraum für Denken UND Antwort, sonst kommt eine 200er-Antwort ohne Inhalt zurück.
+    const budget = assistAntwortBudget(text);
+    // JOB 3276 R3: der Aufruf läuft in der Abbruch-Spur — ein Fragment (finish_reason=length MIT
+    // Inhalt) kommt damit als BEFUND hier an und nicht als scheinbar vollständiger Vorschlag.
+    const { wert: roh, abbruch } = await mitAbbruchBefund(() =>
+      client.complete(system, text, confidential, budget),
+    );
+    const improved = roh.trim();
+    // ============================================================================================
+    // JOB 3276 — `improved || text.trim()` WAR DIE LÜGE, DIE PEDI GESEHEN HAT.
+    // ============================================================================================
+    // Eine leere Modellantwort wurde damit zum EINGABETEXT, ausgewiesen mit `demo: false` — also
+    // als Arbeit des Modells. Im Expertenformular stand danach der unveränderte Text mitsamt
+    // seiner Rechtschreibfehler da, ohne jeden Hinweis. Ein Vorschlag, den es nie gab.
+    //
+    // Leer heißt ab hier: FEHLER. Er trägt (wie der Chokepoint in `model-client.ts`) nur
+    // Metadaten — Modell und Budget —, nie den Text des Nutzers. Was daraus wird, entscheidet die
+    // Kette in `service.ts`: ein anderes Modell, ein Ersatz, der wirklich etwas kann, oder eine
+    // ehrliche Meldung. Nur eines nicht mehr: das Original als Vorschlag.
+    if (improved.length === 0) {
+      throw new ModelEmptyResponseError(
+        `${client.model ?? client.name} lieferte keinen überarbeiteten Text (assist, Budget ${budget}).`,
+        { reason: "empty", maxTokens: budget },
+      );
+    }
+    // ============================================================================================
+    // JOB 3276 R3 — EIN ABGERISSENER SATZ IST KEIN VORSCHLAG.
+    // ============================================================================================
+    // Ein Fragment sieht aus wie eine Antwort und ist eine halbe. Es als Vorschlag zu reichen wäre
+    // hier besonders teuer: der Mensch drückt „Ersetzen" und verliert das Ende seines Absatzes.
+    // Also derselbe Fehlerweg wie beim leeren Abbruch, mit demselben Grund im Wortlaut
+    // (`finish_reason=length`, Budgetfeld und Budget) — die Kette entscheidet danach weiter.
+    if (abbruch !== null) {
+      throw new ModelEmptyResponseError(
+        `${client.model ?? client.name}: Antwort wurde am Token-Limit abgeschnitten (assist, ${abbruch.budgetFeld}=${abbruch.budget}, finish_reason=${abbruch.finishReason}).`,
+        { reason: "truncated", finishReason: abbruch.finishReason, maxTokens: abbruch.budget },
+      );
+    }
+    return { text: improved, demo: false };
   }
 
   // SCRUM-132: Modell formuliert nur die nächste Frage; Abschluss + Draft-Verdichtung

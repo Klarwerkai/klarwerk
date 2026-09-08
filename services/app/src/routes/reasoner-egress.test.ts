@@ -58,7 +58,15 @@ describe("SCRUM-502 R6: /api/reasoner egress (echter complete-Spy)", () => {
       headers,
       payload: { task: "assist", text: DOC, source: "draft" }, // fehlt Stufe → fail-safe vertraulich
     });
-    expect(res.statusCode).toBe(200);
+    // JOB 3276: der Text kommt NICHT an die Cloud — daran hat sich nichts geändert, und das ist die
+    // Zusage dieses Falls. Geändert hat sich, was der Nutzer dann sieht: früher der geglättete
+    // Originaltext als „KI-Vorschlag", jetzt die ehrliche Meldung mit der Einstufung als Grund
+    // (tests/ki-assist-leer). Deshalb kein 200 mehr — und der geschützte Text bleibt im Server.
+    expect(res.statusCode).not.toBe(200);
+    expect(String((res.json() as { message?: unknown }).message)).toContain(
+      "als vertraulich eingestuft",
+    );
+    expect(res.body).not.toContain(DOC);
     expect(complete).not.toHaveBeenCalled();
   });
 

@@ -7,7 +7,11 @@ import {
 // WP-D10 (Fix 3): typisierte Fehlerklassen (Timeout vs. HTTP-Status) — Meldungstexte unverändert.
 // AUFTRAG-mega18 Block E (SCRUM-544): ModelEmptyResponseError = Antwort ohne Antwortinhalt.
 import { ModelEmptyResponseError, ModelHttpError, ModelTimeoutError } from "./model-errors";
-import type { ModelClient } from "./provider-model";
+// JOB 3276 R3: der Vermerk für ein Fragment, das der Aufrufer AUSWERTEN können muss (s.
+// `mitAbbruchBefund` in provider-model.ts). Er steht dort und nicht hier, weil die einzige
+// Abhängigkeitsrichtung zwischen beiden Dateien schon besteht (model-client → provider-model);
+// andersherum wäre es ein Zyklus (dependency-cruiser, no-circular).
+import { type ModelClient, vermerkeAbbruch } from "./provider-model";
 // JOB 3134: der Anbieterschlüssel der beiden Cloud-Wege (openai | anthropic) und ihr lesbarer Name —
 // EINE Aufzählung in `types.ts`.
 import { REASONER_CLOUD_ANBIETER_NAME, type ReasonerCloudAnbieter } from "./types";
@@ -431,6 +435,15 @@ function requireChatContent(
         finishReason,
         content.length,
       );
+      // JOB 3276 R3: dieselbe Tatsache zusätzlich für den Aufrufer, der sie AUSWERTEN will
+      // (s. mitAbbruchBefund). Ohne laufende Spur ein No-op — das Fragment geht dann wie bisher
+      // unverändert durch, damit extract sein abgeschnittenes JSON weiterhin retten kann.
+      vermerkeAbbruch({
+        budgetFeld,
+        budget: maxTokens,
+        finishReason,
+        zeichen: content.length,
+      });
     }
     return content;
   }

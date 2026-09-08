@@ -45,14 +45,21 @@ function stelleFetch(koerper: () => unknown): void {
   vi.stubGlobal("fetch", (async () => alsAntwort(koerper())) as unknown as typeof fetch);
 }
 
+// JOB 3276: die AUFGABE ist seit diesem Auftrag wählbar. Grund: `assist` liefert nicht mehr
+// stillschweigend den Eingabetext, wenn kein Modell antwortet — ein REIN deterministischer
+// assist-Lauf endet jetzt ehrlich als Fehler (tests/ki-assist-leer). Die Aussage dieser Datei
+// (Verbrauch: gemessen oder gar nicht) ist aufgabenunabhängig; der eine Fall ohne jedes Modell
+// (V3b) fährt deshalb `structure`, dessen deterministisches Ergebnis ein echtes ist.
 async function laufUndDatensatz(
   primary: ReasonerProvider | undefined,
   fallback: ReasonerProvider = new DeterministicProvider(),
+  aufgabe: (reasoner: Reasoner) => Promise<unknown> = (reasoner) =>
+    reasoner.assistText("Roher Satz, der geglättet werden soll.", "de"),
 ): Promise<ModelRunRecord> {
   const repo = new InMemoryModelRunRepo();
   const reasoner = new Reasoner(primary, fallback, repo);
   try {
-    await reasoner.assistText("Roher Satz, der geglättet werden soll.", "de");
+    await aufgabe(reasoner);
   } catch {
     // V3c: die ganze Kette scheitert — der FEHLER-Datensatz ist genau das, was hier geprüft wird.
   }
@@ -90,7 +97,9 @@ describe("JOB 3074 V3: das Fehlen des Verbrauchs ist eine Aussage", () => {
   });
 
   it("V3b · rein deterministischer Lauf: kein Modell, kein Verbrauch, kein Ersatzwert", async () => {
-    const datensatz = await laufUndDatensatz(undefined);
+    const datensatz = await laufUndDatensatz(undefined, new DeterministicProvider(), (reasoner) =>
+      reasoner.structure("Pumpe alle 200 Betriebsstunden schmieren.", "de"),
+    );
 
     expect(datensatz.status).toBe("success");
     expect(datensatz.demo).toBe(true);
