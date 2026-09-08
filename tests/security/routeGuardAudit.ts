@@ -566,6 +566,14 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "GET /api/admin/demo-seed": { protection: "users.manage" },
   "POST /api/admin/demo-seed": { protection: "users.manage" },
   "DELETE /api/admin/demo-seed": { protection: "users.manage" },
+  // JOB 3277 (DEMOPAKET-ADVISOR): der paketbezogene Weg neben dem Gesamt-Purge. Dieselbe Schranke
+  // wie oben, und zwar auch für die LESENDE Übersicht: sie nennt, wie viele Bausteine eines
+  // Demopakets in dieser Instanz liegen und wie viele davon bearbeitet wurden — Verwaltungswissen.
+  "GET /api/admin/demo-packages": { protection: "users.manage" },
+  "GET /api/admin/demo-packages/:id/preview": { protection: "users.manage" },
+  "POST /api/admin/demo-packages/:id/load": { protection: "users.manage" },
+  "POST /api/admin/demo-packages/:id/reset": { protection: "users.manage" },
+  "DELETE /api/admin/demo-packages/:id": { protection: "users.manage" },
   // Pedi 05.07. (Beta): Werksreset — Verfügbarkeit lesen + ausführen, beides nur Nutzerverwaltung.
   "GET /api/admin/factory-reset": { protection: "users.manage" },
   "POST /api/admin/factory-reset": { protection: "users.manage" },

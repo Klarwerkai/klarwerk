@@ -1,6 +1,16 @@
 import type { FastifyPluginAsync } from "fastify";
 import type { AuditService } from "../../../audit";
 import { type ExampleLoadServices, examplePackage, loadExamplePackage } from "../example-packages";
+// JOB 3277: der paketbezogene Weg (wählen · laden · zurücksetzen · entfernen) — additiv neben
+// WP-B6, siehe Kopf von example-packages/demo-pakete.ts.
+import {
+  type DemoPackageServices,
+  demoPackage,
+  demoPaketUebersicht,
+  demoPaketVorschau,
+  entferneDemoPaket,
+  ladeDemoPaket,
+} from "../example-packages/demo-pakete";
 import { type FactoryReset, factoryResetUnavailable } from "../factory-reset";
 // AUFTRAG-mega64 Block A: der Betriebsschalter für das Demodaten-Laden — dieselbe eine Wahrheit,
 // aus der auch GET /api/features antwortet (mega46 F).
@@ -132,6 +142,136 @@ export function adminRoutes(
           ...(services.audit ? { audit: services.audit } : {}),
         };
         reply.code(200).send(await loadExamplePackage(deps, pkg, user.id));
+      },
+    );
+
+    // ==========================================================================================
+    // JOB 3277 — DEMOPAKETE: DER PAKETBEZOGENE WEG NEBEN DEM GESAMT-PURGE.
+    // ==========================================================================================
+    //
+    // Vor der Vorführung wählt der Betrieb EIN Paket, liest Beschreibung und Umfang, lädt es,
+    // führt vor und setzt danach GENAU DIESES Paket zurück oder entfernt es. Der bestehende
+    // Gesamt-Purge (DELETE /api/admin/demo-seed) bleibt zeichengleich und nimmt das Paket weiter
+    // mit (die Bausteine tragen `demoSeed`); neu ist, dass es auch EINZELN geht.
+    //
+    // DER SCHUTZ IST DERSELBE wie an jeder Route dieser Datei: `users.manage`. Vier Wege, vier
+    // Prüfungen — keine Route ohne Guard, auch die lesende nicht (die Übersicht verrät den
+    // Bestand einer Instanz).
+    const demoPaketDienste = (): DemoPackageServices => ({
+      ko: services.ko,
+      validation: services.validation,
+      conflicts: services.conflicts,
+      overlaps: services.overlaps,
+      ...(services.audit ? { audit: services.audit } : {}),
+    });
+
+    // LESEND: was es gibt, was es enthält, was davon gerade geladen bzw. bearbeitet ist.
+    app.get("/api/admin/demo-packages", async (request, reply) => {
+      const user = await guards.requirePermission("users.manage", request, reply);
+      if (!user) {
+        return;
+      }
+      reply.code(200).send(await demoPaketUebersicht(services.ko));
+    });
+
+    // VORSCHAU: GENAU die Objekte, die der gewählte Handgriff anfassen würde — mit ihren IDs,
+    // ihrer Art, ihrem Lauf und dem, was an ihnen abweicht. Sie steht VOR den beiden schreibenden
+    // Handgriffen, weil ein Eingriff, dessen Umfang man erst hinterher sieht, kein Vorführwerkzeug
+    // ist, sondern ein Risiko (Nachführung 08.09. 07:50).
+    //
+    // `aktion` IST PFLICHTBESTANDTEIL DER FRAGE, nicht eine Verzierung: Zurücksetzen stellt die
+    // sechs Bausteine her, Entfernen löscht sie. Eine Vorschau ohne Aktion müsste sich für einen
+    // der beiden Pläne entscheiden und wäre für den anderen falsch — in Runde 3 war sie das
+    // (Bens Befund: „wird hergestellt (6)" unmittelbar vor der endgültigen Löschung). Ein
+    // unbekannter Wert wird ABGEWIESEN und nicht still auf einen der beiden gedreht.
+    app.get<{ Params: { id: string }; Querystring: { aktion?: string } }>(
+      "/api/admin/demo-packages/:id/preview",
+      async (request, reply) => {
+        const user = await guards.requirePermission("users.manage", request, reply);
+        if (!user) {
+          return;
+        }
+        const pkg = demoPackage(request.params.id);
+        if (!pkg) {
+          reply.code(404).send({ error: "UNKNOWN_PACKAGE", message: "Unbekanntes Demopaket." });
+          return;
+        }
+        const aktion = request.query.aktion ?? "zuruecksetzen";
+        if (aktion !== "zuruecksetzen" && aktion !== "entfernen") {
+          reply.code(400).send({
+            error: "UNKNOWN_ACTION",
+            message: "Unbekannte Aktion — erlaubt sind zuruecksetzen und entfernen.",
+          });
+          return;
+        }
+        reply.code(200).send(await demoPaketVorschau(services.ko, pkg, aktion));
+      },
+    );
+
+    // LADEN und ZURÜCKSETZEN unterscheiden sich in genau einer Entscheidung: ob ein bereits
+    // vorhandener, BEARBEITETER Baustein angefasst wird. Das Laden fasst ihn nicht an (wiederholtes
+    // Laden ändert nie still einen Text), das Zurücksetzen stellt den Ausgangstext wieder her.
+    //
+    // BEIDE ROUTEN STEHEN AUSGESCHRIEBEN DA — wörtlicher Pfad, eigene Rechteprüfung IM Rumpf —,
+    // obwohl eine Schleife oder ein gemeinsamer Rumpf kürzer wäre. Der Grund ist gemessen, nicht
+    // ästhetisch, und beide Sparfassungen sind daran gescheitert:
+    //   · SCHLEIFE mit `/api/admin/demo-packages/:id/${pfad}`: der Lesewege-Sammler
+    //     (`tests/security/mega74-lesewege-sammler.test.ts`) liest die Registrierungen aus dem
+    //     Syntaxbaum und kann einen ZUSAMMENGESETZTEN Pfad nicht auflösen — beide Routen fehlten
+    //     in beiden Sicherheitsregistern, also verdrahtet, aber unbeurteilt.
+    //   · GEMEINSAMER RUMPF mit ausgelagerter `requirePermission`: das RBAC-Audit
+    //     (`tests/security/route-guard-audit.test.ts`) liest den Rumpf der Registrierung und
+    //     stufte beide Routen als ÖFFENTLICH ein. Sie waren geschützt — beweisbar war es nicht.
+    // Geteilt wird deshalb, was ohne Beweislast geteilt werden kann: `ladeDemoPaket` selbst.
+    app.post<{ Params: { id: string } }>(
+      "/api/admin/demo-packages/:id/load",
+      async (request, reply) => {
+        const user = await guards.requirePermission("users.manage", request, reply);
+        if (!user) {
+          return;
+        }
+        const pkg = demoPackage(request.params.id);
+        if (!pkg) {
+          reply.code(404).send({ error: "UNKNOWN_PACKAGE", message: "Unbekanntes Demopaket." });
+          return;
+        }
+        reply.code(200).send(await ladeDemoPaket(demoPaketDienste(), pkg, user.id, "laden"));
+      },
+    );
+
+    app.post<{ Params: { id: string } }>(
+      "/api/admin/demo-packages/:id/reset",
+      async (request, reply) => {
+        const user = await guards.requirePermission("users.manage", request, reply);
+        if (!user) {
+          return;
+        }
+        const pkg = demoPackage(request.params.id);
+        if (!pkg) {
+          reply.code(404).send({ error: "UNKNOWN_PACKAGE", message: "Unbekanntes Demopaket." });
+          return;
+        }
+        reply
+          .code(200)
+          .send(await ladeDemoPaket(demoPaketDienste(), pkg, user.id, "zuruecksetzen"));
+      },
+    );
+
+    // ENTFERNEN, paketbezogen: nur die Bausteine dieses Pakets und die Konflikte/Doppelungen, die
+    // an ihnen hängen. Andere Demodaten und echte Nutzerdaten bleiben stehen.
+    app.delete<{ Params: { id: string } }>(
+      "/api/admin/demo-packages/:id",
+      async (request, reply) => {
+        const user = await guards.requirePermission("users.manage", request, reply);
+        if (!user) {
+          return;
+        }
+        const pkg = demoPackage(request.params.id);
+        if (!pkg) {
+          reply.code(404).send({ error: "UNKNOWN_PACKAGE", message: "Unbekanntes Demopaket." });
+          return;
+        }
+        reply.code(200).send(await entferneDemoPaket(demoPaketDienste(), pkg, user.id));
       },
     );
 

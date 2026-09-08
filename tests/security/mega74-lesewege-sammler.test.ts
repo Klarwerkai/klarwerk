@@ -276,6 +276,22 @@ const REGISTER: Record<string, Eintrag> = {
     grund: "Personen-Matching hinter Schalter; ko.assign = controller/admin.",
   },
   "GET /api/admin/demo-seed": { urteil: "KURATORENTOR", recht: "users.manage", grund: "Admin." },
+  // JOB 3277: die Demopaket-Übersicht nennt Beschreibung, Umfang und den GEZÄHLTEN Stand
+  // (geladen/bearbeitet) — kein Wissensinhalt, aber Verwaltungswissen über diese Instanz.
+  "GET /api/admin/demo-packages": {
+    urteil: "KURATORENTOR",
+    recht: "users.manage",
+    grund: "Admin.",
+  },
+  // JOB 3277 R2: die Vorschau vor dem Zurücksetzen/Entfernen. Sie gibt — anders als die Übersicht
+  // darüber — TITEL von Wissensobjekten aus (je zugeordnetem Objekt Kennung, Art, Lauf, Titel);
+  // `KEIN_KO_INHALT` wäre hier also unwahr. Sie ist ausschliesslich über `users.manage` erreichbar,
+  // nachgemessen in tests/demopaket-advisor/register-und-tiefer-reset.test.ts (403 ohne das Recht).
+  "GET /api/admin/demo-packages/:id/preview": {
+    urteil: "KURATORENTOR",
+    recht: "users.manage",
+    grund: "Admin; Titel zugeordneter Paketobjekte.",
+  },
   "GET /api/admin/factory-reset": {
     urteil: "KURATORENTOR",
     recht: "users.manage",
@@ -474,6 +490,12 @@ const REGISTER: Record<string, Eintrag> = {
     "DELETE /api/admin/demo-seed": "users.manage.",
     "POST /api/admin/sim-corpus": "users.manage.",
     "POST /api/admin/examples/load": "users.manage.",
+    // JOB 3277: Demopakete — laden/zurücksetzen/entfernen, je Paket. Die Antwort trägt AUSSCHLIESSLICH
+    // Zähler des eigenen Laufs (created/updated/skipped/removed) und keinen Inhalt eines
+    // Wissensobjekts; die Schranke ist dieselbe wie beim Gesamt-Purge.
+    "POST /api/admin/demo-packages/:id/load": "users.manage.",
+    "POST /api/admin/demo-packages/:id/reset": "users.manage.",
+    "DELETE /api/admin/demo-packages/:id": "users.manage.",
     "POST /api/admin/factory-reset": "users.manage.",
     "POST /api/admin/import/confluence": "users.manage.",
     "POST /api/admin/import/confluence/explore": "users.manage.",

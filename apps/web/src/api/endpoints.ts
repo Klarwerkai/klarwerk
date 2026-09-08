@@ -17,6 +17,9 @@ import type {
   Conflict,
   ConflictSelfTestResult,
   ConflictType,
+  DemoPackageListResponse,
+  DemoPackagePreview,
+  DemoPackageResult,
   DemoSeedResult,
   DescribeImageResult,
   Draft,
@@ -721,6 +724,18 @@ export const endpoints = {
       api.del<{ kos: number; conflicts: number; duplicates: number; gaps: number; users: number }>(
         "/admin/demo-seed",
       ),
+    // JOB 3277: Demopakete — wählen, laden, zurücksetzen, PAKETBEZOGEN entfernen. Vier Wege neben
+    // dem Gesamt-Purge oben, der bestehen bleibt und die Pakete weiterhin mitnimmt.
+    demoPackages: {
+      list: () => api.get<DemoPackageListResponse>("/admin/demo-packages"),
+      // Die Aktion reist MIT: die Vorschau des Zurücksetzens und die des Entfernens sind
+      // verschiedene Pläne (herstellen gegen löschen), und die Fläche darf sie nicht verwechseln.
+      preview: (id: string, aktion: "zuruecksetzen" | "entfernen") =>
+        api.get<DemoPackagePreview>(`/admin/demo-packages/${id}/preview?aktion=${aktion}`),
+      load: (id: string) => api.post<DemoPackageResult>(`/admin/demo-packages/${id}/load`),
+      reset: (id: string) => api.post<DemoPackageResult>(`/admin/demo-packages/${id}/reset`),
+      remove: (id: string) => api.del<DemoPackageResult>(`/admin/demo-packages/${id}`),
+    },
     // Pedi 05.07. (Beta): Werksreset — Verfügbarkeit (nur Desktop/Dev) + Ausführen (löscht alles,
     // beendet das Programm; nächster Start = Ersteinrichtung).
     factoryResetStatus: () => api.get<{ available: boolean }>("/admin/factory-reset"),

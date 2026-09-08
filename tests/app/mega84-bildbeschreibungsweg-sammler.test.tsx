@@ -1445,8 +1445,17 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // an (kein `ANGEBOT_MUSTER`) und trägt keinen eigenen Titel (kein `documentTitle`-Prop) — sie
     // erscheint nur in der Grundmenge. Die zwei Zahlen, an denen Stufe 2 wirklich hängt, bleiben
     // unverändert: `anbieter` 1 und `traeger` 2.
+    //
+    // JOB 3277 (DEMOPAKET-ADVISOR): `komponenten` von 352 auf 353 NACHGEZOGEN — am eigenen Lauf
+    // dieses Arbeitsbaums gemessen (der Test meldete `expected 353 to equal 352`), nicht gerechnet.
+    // GENAU EIN Bauteil kommt hinzu: `DemoPackages` in `components/ExamplePackages.tsx` — der
+    // Kasten, in dem ein Demopaket gewählt, geladen, zurückgesetzt und paketweise entfernt wird.
+    // Es ist eine eigene Fläche, aber keine Bildfläche: es bietet keine Bildbeschreibung an (kein
+    // `ANGEBOT_MUSTER`) und trägt keinen eigenen Titel (kein `documentTitle`-Prop) — es erscheint
+    // nur in der Grundmenge. Die zwei Zahlen, an denen Stufe 2 wirklich hängt, bleiben unverändert:
+    // `anbieter` 1 und `traeger` 2.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 352,
+      komponenten: 353,
       anbieter: 1,
       traeger: 2,
     });

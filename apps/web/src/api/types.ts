@@ -1456,6 +1456,86 @@ export interface ExampleLoadResponse {
   conflicts?: { created: number; skipped: number; failed: number };
 }
 
+// JOB 3277: Demopakete — auswählbar, mit Beschreibung und Umfang VOR dem Laden, paketbezogen
+// zurücksetzbar und entfernbar. Der Drahtvertrag entspricht `DemoPackageUebersicht` bzw.
+// `DemoPackageResult` in services/app/src/example-packages/demo-pakete.ts.
+export interface DemoPackageTextDto {
+  de: string;
+  en: string;
+  nl: string;
+}
+
+export interface DemoPackageInfo {
+  id: string;
+  /** Sprache der Paketinhalte (nicht die der Oberfläche). */
+  language: string;
+  /** Der Vertrag sagt es, die Fläche sagt es weiter: erfundene Demodaten. */
+  fictional: boolean;
+  title: DemoPackageTextDto;
+  description: DemoPackageTextDto;
+  /** Umfang: so viele Objekte legt das Paket an. */
+  items: number;
+  areas: string[];
+  /** GEZÄHLTER Stand: so viele Objekte des Pakets liegen gerade im Bestand — Dubletten mitgezählt. */
+  loaded: number;
+  /** Davon überzählig (zwei Objekte auf denselben Baustein). */
+  duplicates: number;
+  /** Davon vom Ausgangszustand abweichend — was ein „Zurücksetzen" wiederherstellen würde. */
+  edited: number;
+  /** Davon mit Paketlauf-Registereintrag, und wie viele Läufe im Bestand vertreten sind. */
+  registered: number;
+  runs: number;
+}
+
+export interface DemoPackageListResponse {
+  packages: DemoPackageInfo[];
+}
+
+export interface DemoPackageResult {
+  package: string;
+  /** `run_id` dieses Handgriffs; beim Entfernen `null`. */
+  run: string | null;
+  created: number;
+  updated: number;
+  skipped: number;
+  removed: number;
+  /** JOB 3277 R3: davon zugeordnete Nicht-Bausteine (Import-/Entwurfsobjekte der Vorführung). */
+  removedAssigned: number;
+  registered: number;
+  duplicates: number;
+  skippedInTrash: number;
+  closedConflicts: number;
+  closedDuplicates: number;
+  failures: { key: string; grund: string }[];
+}
+
+/**
+ * JOB 3277 R2/R3: die Vorschau vor dem Zurücksetzen/Entfernen — ALLE zugeordneten Objekte, jedes
+ * mit seiner Behandlung und dem Grund. `art: null` heisst „nicht registriert" (Altbestand); solche
+ * Objekte werden trotzdem behandelt, deshalb stehen sie mit ihrer Kennung in derselben Liste.
+ */
+export interface DemoPackagePreviewEntry {
+  id: string;
+  art: string | null;
+  run: string | null;
+  key: string | null;
+  title: string;
+  behandlung: "wiederherstellen" | "entfernen";
+  grund: "baustein" | "dublette" | "zugeordnet";
+  abweichungen: string[];
+}
+
+export interface DemoPackagePreview {
+  package: string;
+  /** JOB 3277 R4: die Aktion, deren Plan hier steht — Zurücksetzen und Entfernen unterscheiden sich. */
+  aktion: "zuruecksetzen" | "entfernen";
+  runs: string[];
+  counts: Record<string, number>;
+  entries: DemoPackagePreviewEntry[];
+  /** Wie viele Bausteine neu angelegt würden. Beim Entfernen immer 0. */
+  missing: number;
+}
+
 export interface SlideConvertResponse {
   slides: string[];
   slideCount: number;
