@@ -111,3 +111,10 @@ export function meldungsSpur(page: Page): { lesen: () => Promise<string> } {
     },
   };
 }
+
+/** Ganze Statusmeldungen vergleichen: „11 Beiträge“ darf die Zusage für 1 nicht erfüllen. */
+export function meldetGenauZaehler(spur: string, anzahl: number): boolean {
+  return spur
+    .split(" | ")
+    .some((meldung) => meldung === `${anzahl} Beiträge zur Prüfung eingereiht.`);
+}

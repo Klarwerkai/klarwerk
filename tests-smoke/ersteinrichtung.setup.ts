@@ -101,7 +101,11 @@ test("Ersteinrichtung legt den Admin an und landet im Arbeitsbereich", async ({ 
   // ist genau deshalb nicht gebaut.
   if (process.env.KLARWERK_SMOKE_SEED === "1") {
     await page.getByRole("button", { name: "Daten", exact: true }).click();
-    await page.getByRole("button", { name: "Demodaten laden" }).click();
+    await page.getByTestId("zeile-demodaten").click();
+    await page
+      .getByTestId("detail-demodaten")
+      .getByRole("button", { name: "Demodaten laden", exact: true })
+      .click();
     // HARTE Zusicherung, kein „falls es klappt": der Server ist frisch, also MUSS geladen werden.
     // Käme „Übersprungen", wäre die Datenlage eine andere als angenommen — und das soll krachen.
     await expect(page.getByText(/Demodaten geladen:/)).toBeVisible({ timeout: 30_000 });

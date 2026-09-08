@@ -13,6 +13,7 @@ import {
   JSON_KASTEN,
   VORLAGE,
   VORLAGE_ID,
+  meldetGenauZaehler,
   meldungsSpur,
   oeffneJsonKasten,
   schalteStufe2Ein,
@@ -861,12 +862,26 @@ test("UX-20b L2: die Vorlage ist mit Maus UND Tastatur erreichbar, vollmarkiert,
     mimeType: "application/json",
     buffer: Buffer.from(kopiert, "utf8"),
   });
+  expect(
+    meldetGenauZaehler("11 Beiträge zur Prüfung eingereiht.", 1),
+    "Zähler-Selbstprüfung: 11 erfüllt nicht 1",
+  ).toBe(false);
+  expect(
+    meldetGenauZaehler("1 Beiträge zur Prüfung eingereiht.", 1),
+    "Zähler-Selbstprüfung: 1 erfüllt 1",
+  ).toBe(true);
   await expect
-    .poll(() => spur.lesen(), {
-      timeout: 15_000,
-      message: "die kopierte Vorlage wurde nicht angenommen — gemeldet wurde stattdessen",
-    })
-    .toContain("1 Beiträge zur Prüfung eingereiht.");
+    .poll(
+      async () => {
+        const meldungen = await spur.lesen();
+        return meldetGenauZaehler(meldungen, 1) ? true : meldungen;
+      },
+      {
+        timeout: 15_000,
+        message: "die kopierte Vorlage wurde nicht angenommen — gemeldet wurde stattdessen",
+      },
+    )
+    .toBe(true);
 });
 
 /**
@@ -904,9 +919,10 @@ test("UX-20b L3: der Bibliotheks-Export kommt über echtes HTTP und wird vom Imp
   );
   const rumpf = await antwort.text();
   const daten: unknown = JSON.parse(rumpf);
-  expect(Array.isArray(daten), "der Export ist keine Liste — der Import erwartet ein Array").toBe(
-    true,
-  );
+  expect(
+    Array.isArray(daten),
+    `der Export ist keine Liste — der Import erwartet ein Array (Status ${antwort.status()}, content-type: ${typ})`,
+  ).toBe(true);
   const liste = daten as Record<string, unknown>[];
 
   // DIE DATENLAGE, nach dem Muster des mega49-Falls oben und ohne Wette auf die Reihenfolge: nur ein
@@ -945,12 +961,18 @@ test("UX-20b L3: der Bibliotheks-Export kommt über echtes HTTP und wird vom Imp
     buffer: Buffer.from(rumpf, "utf8"),
   });
   await expect
-    .poll(() => spur.lesen(), {
-      timeout: 20_000,
-      message:
-        "der eigene Bibliotheks-Export wurde vom Import NICHT angenommen — gemeldet wurde stattdessen",
-    })
-    .toContain(`${liste.length} Beiträge zur Prüfung eingereiht.`);
+    .poll(
+      async () => {
+        const meldungen = await spur.lesen();
+        return meldetGenauZaehler(meldungen, liste.length) ? true : meldungen;
+      },
+      {
+        timeout: 20_000,
+        message:
+          "der eigene Bibliotheks-Export wurde vom Import NICHT angenommen — gemeldet wurde stattdessen",
+      },
+    )
+    .toBe(true);
 
   // Auch der ERFÜLLTE Zweig sagt laut, was er gemessen hat. Ohne diese Zeile stünde im Bericht eines
   // geseedeten Laufs nur „passed", und ob der Inhaltszweig wirklich gefahren ist, wäre nur an der

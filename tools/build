@@ -6,20 +6,28 @@ cd "$(dirname "$0")/.."
 # ==================================================================================================
 #
 # DER BEFUND (bens GELB aus sammel57): Seit mega59 fuhr DIESES Skript den Web-Typprüfer. Die
-# GitHub-CI ruft aber `npm run build` (.github/workflows/ci.yml), und das Wurzelskript war weiter
+# GitHub-CI rief damals `npm run build` (.github/workflows/ci.yml), und das Wurzelskript war weiter
 # nur `tsc --noEmit` über `services` und `tests`; der Docker-Build fährt ohnehin nur `vite build`,
 # und `vite build` typprüft nicht. Lokal war das Tor also STRENGER als in der CI — genau die Sorte
 # „bei mir war es grün", die niemand nachvollziehen kann.
 #
 # DIE LÖSUNG, UND WARUM DIESE: Die drei Typprüfläufe stehen jetzt in `npm run build`
-# (package.json), und dieses Skript RUFT SIE AUF, statt sie zu wiederholen. Damit gibt es genau
-# EINE Definition des Typtors, und sie liegt dort, wo die CI sie ohnehin abholt. Der umgekehrte Weg
-# — die CI ruft `./tools/check` — wäre schlechter: die CI fährt ihre Schritte einzeln, damit ein
-# roter Schritt beim Namen genannt wird, und der UI-Smoke aus `tools/check` gehört dort nicht hin.
+# (package.json), und dieses Skript RUFT SIE AUF, statt sie zu wiederholen. Diese drei Läufe haben
+# dort ihre gemeinsame Definition; die neue Smoke-Grenze steht unten bei JOB 3218. Seit JOB 1080
+# ruft die CI außerdem `./tools/check` auf und fährt damit auch den hermetischen UI-Smoke.
 #
 # BEWUSST KEIN `references`-Umbau der Wurzel-Konfiguration: sie ist absichtlich Node-rein, ohne DOM
 # und ohne JSX. Der Web-Typecheck braucht beides und bringt es in seiner EIGENEN Config mit.
 npm run --silent build
+
+# JOB 3218: tests-smoke fiel durch alle drei Includes: tsconfig.json:19 (services/tests),
+# tsconfig.tests-tsx.json:17 (tests/**/*.tsx und tests/types/**/*.d.ts),
+# apps/web/tsconfig.json:22 (src). Eigene Config, weil Browser-Sonden DOM-Typen brauchen,
+# die Node-reine Wurzel aber nicht. Grenze: npm run build allein fährt diesen Lauf noch NICHT;
+# package.json gehört JOB 3201. Nachfolge: dort einreihen und diesen Aufruf dorthin verlegen.
+# Die heutige GitHub-CI (.github/workflows/ci.yml:44-45) fährt bereits ./tools/check und damit
+# diesen Lauf; npm run build war ihr früherer Weg (siehe JOB 1080 in tools/check).
+npx tsc --noEmit -p tsconfig.tests-smoke.json
 
 # AUFTRAG-mega8 Block B: echter Produktions-Build der Oberfläche — derselbe Befehl, den der
 # webbuild-Stage im Dockerfile fährt. Vorher lief im Gate NUR tsc; ein Bündel-Fehler von rollup
