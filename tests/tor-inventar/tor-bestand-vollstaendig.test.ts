@@ -155,6 +155,13 @@ describe("JOB 3131 T2 · der Bestand ueberlebt die Aufteilung in zwei Laeufe", (
     expect(holeRest()).toContain("tests/iso-hilfe/iso-hilfe-flaeche.test.tsx");
     // Der DOM-freie Zwilling dazu (Lieferung, Alias, Quellen, Wortlaut) gehört in denselben Lauf.
     expect(holeRest()).toContain("tests/iso-hilfe/iso-wortlaut.test.ts");
+    // JOB 3279: der Umfangs-, Bilder- und Herkunftsnachweis der Browser-Leiste fährt jsdom und
+    // ein echtes Fastify, aber KEIN Chromium — er gehört in den regulären Aufruf und darf nicht
+    // still aus beiden Gruppen fallen.
+    expect(holeRest()).toContain("tests/klara-browser/artikel.test.tsx");
+    // JOB 3279 R2: der Wiederöffnungsnachweis mountet echte React-Bauteile unter jsdom — auch er
+    // startet KEIN Chromium und gehört in den regulären Aufruf.
+    expect(holeRest()).toContain("tests/klara-browser/wiederoeffnen.test.tsx");
   });
 
   it("V4 · der Verzeichnisgang der Konfiguration sieht denselben Bestand wie der Collector", () => {

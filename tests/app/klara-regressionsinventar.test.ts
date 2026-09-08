@@ -125,6 +125,13 @@ const INVENTAR: readonly string[] = [
   // Öffnen, Herkunft jeder Farbe und die eine Ruhezeile. K2 meldete den Pfad; `panel-dom.ts` ist
   // Werkzeug und keine Prüfung und steht deshalb bewusst NICHT hier.
   "tests/klara-browser/seitenleiste.test.ts",
+  // JOB 3279: Umfangswahl, Bilder mit Bildunterschrift und die eingefrorene Herkunft; K2 meldete
+  // den Pfad (Achse `name`). `panel-mount.tsx` ist Werkzeug und keine Prüfung und steht deshalb
+  // bewusst NICHT hier.
+  "tests/klara-browser/artikel.test.tsx",
+  // JOB 3279 R2: der Wiederöffnungsnachweis im echten Klarwerk-Client (SanitizedHtml und
+  // DraftBodyGallery). K2 meldete den Pfad (Achse `name`).
+  "tests/klara-browser/wiederoeffnen.test.tsx",
   // JOB 3144 UX-16: Webhilfe-Geometrie und erreichbarer Weg aus der Word-Vorschau.
   // K2 meldete beide neuen Dateien; Namensachse (beide), Komponente (gemounteter Test).
   "tests/klara-webhilfe-schmal/klara-hilfe-chromium.test.ts",
@@ -844,7 +851,10 @@ describe("JOB 920 · K — das Klara-Regressionsinventar ist ableitbar, nicht be
     // JOB 3278: eine neue Prüfung unter klara-browser (`seitenleiste.test.ts`), die „klara“ im
     // Pfad trägt. GEMESSEN, NICHT GESETZT: mit dem Inventareintrag und noch unverändertem Zähler
     // meldete der Lauf `expected 46 to be 45`; erst danach wurde diese Zeile angefasst.
-    expect(nurName.length).toBe(46);
+    // JOB 3279 KONFLIKTRUNDE 1: `artikel.test.tsx` kommt bei der Vereinigung beider Nachführungen
+    // hinzu (ebenfalls „klara“ im Pfad). GEMESSEN, NICHT GESETZT: siehe RUECKGABE.
+    // JOB 3279 R2: der Wiederöffnungsnachweis kommt hinzu; vor Nachführung: expected 48 to be 47.
+    expect(nurName.length).toBe(48);
     expect(verfehlt.length).toBeGreaterThanOrEqual(25);
     expect(verfehlt.length + nurName.length).toBe(GEFUNDEN.length);
   });

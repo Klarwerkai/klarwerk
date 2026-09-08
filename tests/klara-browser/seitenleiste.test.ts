@@ -146,7 +146,8 @@ describe("JOB 3278 · CHR-02 — die Leiste steht neben der Seite, nicht an ihre
   it("A · das Manifest führt die Seitenleiste, ihr Recht und die neue Fassung", () => {
     expect(MANIFEST.side_panel).toEqual({ default_path: "panel.html" });
     expect(MANIFEST.permissions).toContain("sidePanel");
-    expect(MANIFEST.version).toBe("0.2.0");
+    // JOB 3279 (Pflichtlieferung 5): dieselbe Fassung, eine Stufe weiter.
+    expect(MANIFEST.version).toBe("0.3.0");
     // Side Panel gibt es ab Chrome 114; das Paket verlangt ohnehin schon 120.
     expect(Number(MANIFEST.minimum_chrome_version)).toBeGreaterThanOrEqual(114);
     // Kein neuer Host, keine Dauerrechte — der Auftrag verbietet beides ausdrücklich.
@@ -352,11 +353,21 @@ describe("JOB 3278 · CHR-03 — Vorschau, Zustände und beide Sprachen", () => 
     h.el("confirm").dispatchEvent(new h.win.Event("change"));
     h.el("save").click();
     await h.settle();
+    // JOB 3279 (Pedi 08.09., 14:22/14:33): Deutsch ist jetzt der Standard der Leiste; die
+    // Browsersprache entscheidet nicht mehr. Dieser Fall las die englische Meldung bisher nur,
+    // WEIL jsdom „en-US" meldet — er stellt die Sprache deshalb ausdrücklich um. Geprüft wird
+    // unverändert der englische Nutzerweg (Vorführung 11.09.), jetzt aber bewusst statt zufällig.
+    h.sprache("en");
     expect(h.el("status").textContent).toContain("Saved as an unreviewed draft");
     const gesendet = h.koerper.find((k) => k.url.endsWith("/api/drafts"))?.body;
     expect(gesendet, "es wurde nichts gesendet").toBeTruthy();
     // Der Originaltext der Vorschau IST die gesendete Kernaussage — kein gekürzter Zwilling.
-    expect(h.el("text").textContent).toBe(String(gesendet?.statement));
+    // JOB 3279 KONFLIKTRUNDE 1: `#text` (ein `<pre>` mit NUR dem Originaltext) ist dem gebauten
+    // Baum `#content` gewichen, der denselben Baum wie `bodyHtml` malt (bytegenauer Beleg dafür:
+    // `tests/klara-browser/artikel.test.tsx` A7) — die Kernaussage (`statement`) steckt darin,
+    // ist aber nicht mehr mit dem ganzen Baum identisch. `plain()` löst die `<br>` wieder in
+    // Zeilenumbrüche auf, wie `panel.js` sie beim Malen erzeugt.
+    expect(h.plain("content")).toContain(String(gesendet?.statement));
     const koerper = String(gesendet?.bodyHtml);
     for (const feld of ["page", "source", "captured"]) {
       const angezeigt = h.el(feld).textContent ?? "";
@@ -410,10 +421,27 @@ describe("JOB 3278 · CHR-03 — Vorschau, Zustände und beide Sprachen", () => 
     );
     // Zustandstexte sind genau die Schlüssel, die KEIN Beschriftungsknoten trägt. `signedOut` steht
     // im Kontofeld und ist ebenfalls keine Zustandszeile.
+    // JOB 3279: `scopeEmpty`, `chars` und `images` baut `panel.js` in den Umfangshinweis
+    // (`info-${mode}`) hinein, und `gap_*` in die Lückenliste (`#gaps`) — beides über `t()` in
+    // einem Textbaustein, nie als eigener `data-i18n`-Knoten. Auch sie sind keine Zustandszeile.
     // Fehlte `de` ganz, bliebe die Menge leer — die Zusicherung „mehr als 20" darunter macht genau
     // das rot, statt dass F2 still über einem leeren Wortschatz grün liefe.
+    // JOB 3279 R2: `scopeNone` steht aus demselben Grund hier — `panel.js` setzt es in das
+    // Umfangsfeld (`#scope-value`), wenn noch keine Wahl getroffen ist. Auch das ist eine
+    // Beschriftung, keine Zustandszeile. Die zugehörige HINWEISzeile `scopeChoose` trägt dagegen
+    // einen eigenen `data-i18n`-Knoten und fällt deshalb ohnehin nicht in diese Menge.
+    const KEINE_ZUSTANDSZEILE = new Set([
+      "signedOut",
+      "scopeEmpty",
+      "scopeNone",
+      "chars",
+      "images",
+    ]);
     const zustaende = Object.keys(texte.de ?? {}).filter(
-      (schluessel) => !beschriftungen.has(schluessel) && schluessel !== "signedOut",
+      (schluessel) =>
+        !beschriftungen.has(schluessel) &&
+        !KEINE_ZUSTANDSZEILE.has(schluessel) &&
+        !schluessel.startsWith("gap_"),
     );
     expect(zustaende.length, "keine Zustandstexte gefunden — F2 misst dann nichts").toBeGreaterThan(
       20,

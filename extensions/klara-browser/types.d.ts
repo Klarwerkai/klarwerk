@@ -1,4 +1,34 @@
 export type Form = { title: string; context: string; confidentiality: string };
+/**
+ * JOB 3279 · CHR-05: was NICHT mitgekommen ist. `kind` ist ein festes Schlüsselwort (beide
+ * Sprachen und der Entwurfskörper leiten ihre Beschriftung daraus ab), `detail` nennt die
+ * betroffene Adresse oder Zahl. Erfundene Freitexte aus der Seite gibt es hier nicht.
+ */
+export type Gap = { kind: string; detail: string };
+/**
+ * JOB 3279 · der übernommene Inhalt als BAUM, nicht als HTML-Zeichenkette. Genau ein Baum füttert
+ * beides: die Vorschau in der Leiste (panel.js baut ihn mit createElement) und den Entwurfskörper
+ * (worker.js schreibt ihn als HTML). Damit kann die Vorschau nicht etwas anderes zeigen als das
+ * Gespeicherte — es gibt keine zweite Quelle, aus der sie schöpfen könnte.
+ * Textknoten tragen `tag: "#text"`.
+ */
+export type Piece = {
+  tag: string;
+  text?: string;
+  attrs?: Record<string, string>;
+  children?: Piece[];
+};
+/** Ein wählbarer Umfang: Markierung, Artikel oder zugängliche Seite. */
+export type Variant = {
+  available: boolean;
+  text: string;
+  nodes: Piece[];
+  gaps: Gap[];
+  images: number;
+};
+/** Die drei bewussten Umfänge. Ein vierter entsteht nicht aus Versehen. */
+export type Mode = "selection" | "article" | "page";
+export type Variants = Record<Mode, Variant>;
 export type Selection = {
   text: string;
   title: string;
@@ -10,6 +40,9 @@ export type Auth = { id: string; email: string; token: string };
 export type Work = {
   id: string;
   selection: Selection;
+  variants: Variants;
+  /** JOB 3279 R2: `""` heisst „noch nicht gewaehlt" — nie stillschweigend die ganze Seite. */
+  mode: Mode | "";
   form: Form;
   owner: string | null;
   operations: { id: string; owner: string; fingerprint: string }[];
@@ -27,6 +60,11 @@ export type View = {
   status: string;
   captureId?: string;
   selection?: Selection | undefined;
+  variants?: Variants | undefined;
+  mode?: Mode | "" | undefined;
+  aiChat?: boolean;
+  preview?: Piece[] | undefined;
+  gaps?: Gap[] | undefined;
   form?: Form | undefined;
   user?: { id: string; email: string } | undefined;
   link?: string | undefined;
@@ -37,6 +75,7 @@ export type View = {
 export type Message = {
   type: string;
   captureId?: string;
+  mode?: string;
   form?: Form;
   email?: string;
   password?: string;
@@ -56,6 +95,13 @@ export type Wire = {
   payload?: Partial<Payload>;
 };
 export type ConfirmedDraft = Wire & { id: string };
+/** Das Ergebnis des Inhaltsskripts — Seitendaten, also niemals ungeprüft weiterverwendet. */
+export type CaptureResult = {
+  text: string;
+  title: string;
+  url: string;
+  variants?: Partial<Record<string, unknown>>;
+};
 type Tab = { id?: number; url?: string; title?: string };
 type Click = {
   menuItemId: string | number;
@@ -88,12 +134,23 @@ declare global {
         clear(): Promise<void>;
         setAccessLevel(options: { accessLevel: "TRUSTED_CONTEXTS" }): Promise<void>;
       };
+      /**
+       * JOB 3279 (Pedi 08.09., Vorführung live umschaltbar): NUR die Sprachwahl der Leiste.
+       * Kein Inhalt, keine Auswahl, keine Anmeldung — die bleiben flüchtig in `session`.
+       */
+      local: {
+        get(defaults: { language: string | null }): Promise<{ language?: string | null }>;
+        set(values: { language: string }): Promise<void>;
+      };
       onChanged: Event<
         (
           changes: {
             auth?: { newValue?: Auth };
             work?: { newValue?: Work };
             sourceChangedId?: { newValue?: string };
+            /** JOB 3279 R2: das Erfassungsergebnis und die wartende Übernahme melden sich mit. */
+            captureStatus?: { newValue?: string | null };
+            pendingCapture?: { newValue?: boolean };
           },
           area: string,
         ) => void
@@ -112,7 +169,7 @@ declare global {
     };
     scripting: {
       executeScript(options: { target: { tabId: number }; files: string[] }): Promise<
-        { result?: { text: string; title: string; url: string } }[]
+        { result?: CaptureResult }[]
       >;
     };
     // JOB 3278 · CHR-02: the panel is a side panel, so the worker no longer creates tabs. Only

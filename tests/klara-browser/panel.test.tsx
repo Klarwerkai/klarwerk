@@ -1,16 +1,21 @@
 import { createRequire } from "node:module";
 import { afterEach, describe, expect, it } from "vitest";
+import type { Variants } from "../../extensions/klara-browser/types";
 import { pages } from "./fixtures";
 import { read } from "./harness";
-// JOB 3278: der gemountete Prüfstand wohnt jetzt in `panel-dom.ts` und wird von dieser Datei UND
-// von `seitenleiste.test.ts` benutzt — ein Aufbau, nicht zwei.
-import { mount, schliesseFenster, windows } from "./panel-dom";
+import { mount, windows as panelWindows } from "./panel-dom";
+
+/** Was das echte Inhaltsskript zurückgibt — hier vollständig getippt, nicht als `unknown`. */
+type CaptureResult = { text: string; title: string; url: string; variants: Variants };
 
 const { JSDOM } = createRequire(import.meta.url)("jsdom") as {
   JSDOM: new (html: string, options: object) => { window: Window & typeof globalThis };
 };
-afterEach(schliesseFenster);
-
+const windows: (Window & typeof globalThis)[] = [];
+afterEach(() => {
+  for (const window of windows.splice(0)) window.close();
+  for (const window of panelWindows.splice(0)) window.close();
+});
 describe("Klara · echte HTML- und Skript-Einstiege im DOM", () => {
   it("Inhaltsskript liest ausschließlich die echte Markierung mit Umlauten, Zeilenumbrüchen und fremdem HTML als Text", () => {
     const dom = new JSDOM(
@@ -25,8 +30,21 @@ describe("Klara · echte HTML- und Skript-Einstiege im DOM", () => {
     const range = dom.window.document.createRange();
     range.selectNodeContents(p);
     dom.window.getSelection()?.addRange(range);
-    const result = dom.window.eval(read("selection.js"));
-    expect(result).toEqual({ text, title: "Quelle", url: "https://www.perplexity.ai/search/test" });
+    const result = dom.window.eval(read("selection.js")) as CaptureResult;
+    // JOB 3279: das Skript liefert jetzt zusätzlich die drei wählbaren Umfänge. Die Enge des
+    // alten `toEqual` bleibt: der Schlüsselsatz ist gepinnt, und die MARKIERUNG trägt weiterhin
+    // ausschließlich das Markierte — nicht die Nachbarschaft und nicht das Passwortfeld.
+    expect(Object.keys(result).sort()).toEqual(["text", "title", "url", "variants"]);
+    expect({ text: result.text, title: result.title, url: result.url }).toEqual({
+      text,
+      title: "Quelle",
+      url: "https://www.perplexity.ai/search/test",
+    });
+    expect(result.variants.selection.text).toBe(text);
+    expect(JSON.stringify(result.variants.selection)).not.toContain("NICHT GEWÄHLT");
+    expect(JSON.stringify(result.variants)).not.toContain("VERBORGEN");
+    // Die zugängliche Seite ist ein ANDERER Umfang und sieht den Nachbarabsatz — bewusst.
+    expect(JSON.stringify(result.variants.page)).toContain("NICHT GEWÄHLT");
     expect(dom.window.document.body.textContent).toContain("NICHT GEWÄHLT");
   });
   it.each(pages)("$name: echtes Inhaltsskript liest ausschließlich markierten DOM-Text", (page) => {
@@ -42,16 +60,20 @@ describe("Klara · echte HTML- und Skript-Einstiege im DOM", () => {
     const range = dom.window.document.createRange();
     range.selectNodeContents(chosen);
     dom.window.getSelection()?.addRange(range);
-    expect(dom.window.eval(read("selection.js"))).toEqual({
+    const result = dom.window.eval(read("selection.js")) as CaptureResult;
+    expect({ text: result.text, title: result.title, url: result.url }).toEqual({
       text: page.text,
       title: page.title,
       url: page.url,
     });
+    expect(result.variants.selection.text).toBe(page.text);
+    expect(JSON.stringify(result.variants.selection)).not.toContain("NICHT GEWÄHLT");
+    expect(JSON.stringify(result.variants)).not.toContain("VERBORGEN");
   });
   it("DE/EN: volle Vorschau, Text statt HTML, bewusste Bestätigung und wirkender Entwurfslink", async () => {
     const h = await mount();
-    expect(h.el("text").textContent).toBe(h.selected.text);
-    expect(h.el("text").querySelector("script")).toBeNull();
+    expect(h.plain("content")).toContain(h.selected.text);
+    expect(h.el("content").querySelector("script")).toBeNull();
     expect(h.el("confidentiality").value).toBe("");
     expect(h.el("save").disabled).toBe(true);
     for (const language of ["de", "en"]) {
@@ -61,7 +83,7 @@ describe("Klara · echte HTML- und Skript-Einstiege im DOM", () => {
       expect(h.el("save").textContent).toBe(
         language === "de" ? "Bewusst als Entwurf speichern" : "Confirm and save draft",
       );
-      expect(h.el("text").textContent).toBe(h.selected.text);
+      expect(h.plain("content")).toContain(h.selected.text);
       expect(h.win.document.body.textContent).not.toContain("Perplexity");
       expect(h.win.document.body.textContent).toContain(
         language === "de" ? "HTTP(S)-Webseite" : "HTTP(S) webpage",

@@ -520,6 +520,14 @@ describe("KLARA-BROWSER B0 · ausgeliefertes Paket", () => {
         DRAFTS_BODY_LIMIT,
       );
       expect(String(body?.statement)).toHaveLength(200000);
+      // JOB 3279: die Kernaussage allein beweist nichts über den KÖRPER. Genau dort kürzte ein
+      // Deckel je Textknoten die größte zulässige Übernahme still von 200.000 auf 20.000 Zeichen
+      // — gemessen, nicht vermutet. Der Körper muss den ganzen Text tragen.
+      expect(String(body?.bodyHtml), "Der Entwurfskörper wurde still gekürzt").toContain(
+        "&quot;&lt;&amp;😀".repeat(2000),
+      );
+      // 40.000 × „&quot;&lt;&amp;😀" sind 680.000 UTF-16-Einheiten allein für den Inhalt.
+      expect(String(body?.bodyHtml).length).toBeGreaterThan(680000);
     } finally {
       await h.app.close();
     }

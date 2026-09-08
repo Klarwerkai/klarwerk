@@ -1,7 +1,7 @@
 {
   "extensionName": { "message": "Klara · Browser" },
   "extensionDescription": {
-    "message": "Keep explicitly selected webpage text as an unreviewed draft in Klarwerk."
+    "message": "Keep a selection, an article or the accessible page as an unreviewed draft in Klarwerk."
   },
   "capture": { "message": "Capture in Klarwerk" }
 }
