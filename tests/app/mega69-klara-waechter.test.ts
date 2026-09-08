@@ -1789,7 +1789,121 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // Gemessen: tests/m3-dokumentweg-panel (29 Faelle; Q9a vier Formen des fehlenden Arrays, Q9b
     // die Kalibrierung dagegen), vor der Korrektur woertlich rot mit
     // „expected 'Kein Quellenfund im durchsuchten Best…' to be 'Quellenfund nicht durchsucht.'".
-    const PIN = "ee6ff2ac12befb70115d5dc023f39870305d70020c3fc7262fa4fba0bbad44a3";
+    // ============================================================================================
+    // JOB 3281 · WORD-VERGLEICH (08.09.2026, ee6ff2ac… -> s. PIN unten) — AUSLIEFERUNGSFOLGEN
+    // BEWUSST GEPRUEFT, BEVOR DER PIN WANDERTE.
+    // ============================================================================================
+    //   · WAS SICH AENDERT: NUR das Skript, EIN neuer Block `KW-WORDVERGLEICH-START` …
+    //     `KW-WORDVERGLEICH-END` am Ende des Inline-Skripts (hinter `KW-KA7-KONFLIKT-END`). KEIN
+    //     Markup-Byte und KEIN Stil-Byte geaendert: die neuen Elemente entstehen im Skript
+    //     (`#wv-block` mit `#wv-btn`, `#wv-abbrechen`, `#wv-entfernen` und der Karte `#wv-karte`
+    //     mit `#wv-stand`, `#wv-legende`, `#wv-liste`), eingehaengt hinter `#ka7-block` — genau
+    //     die Bauform, die JOB 3094 fuer die Konfliktkarte gewaehlt hat. Der Block ist verborgen,
+    //     solange nicht angemeldet, kein Word-Dokument offen oder die Ruhe nicht im Bild ist; die
+    //     Textmesser K1/K2 sehen ihn deshalb nicht.
+    //   · WOERTERBUCH: 38 neue Schluessel je Sprache (`wv*`, Tabelle WV_TEXTE, eingehaengt wie
+    //     KA6_MEMO_TEXTE/KA7_TEXTE); KEIN bestehender Schluessel geaendert oder entfernt. Sie
+    //     sagen „abgeglichen"/„durchsucht" statt „geprueft" — die Wortliste der Word-Flaeche
+    //     (tests/i18n/mega35-word-wortliste.test.ts) verbietet das Wort ausserhalb ihrer
+    //     eingetragenen Schluessel, und die Ausnahmeliste dort wurde NICHT verlaengert.
+    //   · ABRUFZIELE UNVERAENDERT: KEIN neues `fetch(`. Der Absatzvergleich laeuft ueber den
+    //     BESTEHENDEN Uebersetzer `w6DublettenAusCheckText` mit einem hereingereichten `fetchFn`
+    //     (`fetch.bind(window)`, wie `bestandPruefen` es seit JOB 3093 tut) — same-origin,
+    //     dieselbe Sitzung, derselbe Endpunkt `/api/check-text`, dieselben Kopfzeilen.
+    //     mega69-klara-merkmale M6/M7 bleiben gruen (gemessen).
+    //   · GEAENDERTE NUTZLAST, UND ZWAR NUR IM FREIGEGEBENEN FALL: der Rumpf traegt zusaetzlich
+    //     `want: "deep"` — AUSSCHLIESSLICH dann, wenn `ka7ExterneKi()` „erlaubt" sagt, also die
+    //     KA4-Einwilligung fuer DIESES Dokument vorliegt und die Ausfuehrung freigegeben ist.
+    //     Das ist derselbe eine Riegel, den JOB 3094 fuer den Konfliktabgleich gebaut hat; ein
+    //     zweiter waere ein zweiter Weg zur selben Entscheidung. Ohne Einwilligung geht der Rumpf
+    //     zeichengleich wie der Bestandsweg hinaus, und das Fenster sagt, dass Rot in diesem Lauf
+    //     nicht entstehen kann. FREQUENZ: ein Abruf je nicht-leerem Absatz, nur auf Klick,
+    //     abbrechbar; kein Intervall, kein Autostart, kein Speicher.
+    //   · WORD-SEITIG NEU, benannt: `Word.run` mit `body.paragraphs`,
+    //     `load("items/text,items/font/highlightColor")`, dem SCHREIBEN von
+    //     `paragraph.font.highlightColor` und `paragraph.getRange().select()`. Das ist WordApi 1.1
+    //     bzw. 1.2 (`Paragraph.getRange`) — keine neue Berechtigung: `ReadWriteDocument` besteht
+    //     seit dem Einfuegeweg. Es wird KEIN Text geschrieben: kein `insertText`, kein
+    //     `insertHtml`, kein `insertParagraph`, kein `insertOoxml`, kein `setSelectedDataAsync`
+    //     (gehalten von tests/app/word-addin-wortvergleich.test.ts V2 an den Bytes).
+    //   · FARBEN: die vier Word-Namen `BrightGreen`/`Yellow`/`Turquoise`/`Red`. KEIN Farbliteral,
+    //     kein `rgb(`, keine neue Stilregel — die Werkbank-Palette (mega43 B1) bleibt die eine
+    //     Farbwahrheit, und die Legende nennt die Farbnamen als Text statt ein Kaestchen zu malen,
+    //     das ohnehin nicht traefe, was Word im Dokument setzt.
+    //   · IDENTITAET EINES ABSATZES ist (Text-Hash + Vorkommen), nicht der Hash und nicht die
+    //     Nummer: zwei woertlich gleiche Absaetze sind zwei Posten und zwei Stellen. Geschrieben
+    //     wird nur auf einen Absatz OHNE Hervorhebung oder mit genau der Farbe, die Klara selbst
+    //     zuletzt gesetzt hat — geprueft beim Lesen UND unmittelbar vor dem Schreiben. Gemerkt wird
+    //     erst nach bestaetigtem `sync`; scheitert er, steht keine Farbe im Dokument, und das Panel
+    //     bietet auch keine Ruecknahme dafuer an (Ben 08.09.).
+    //   · KEIN Manifest, KEIN neuer Endpunkt, KEIN neues Recht (`ko.read` wie alle Klara-Wege),
+    //     KEINE geaenderte CSP, kein Fremd-Ursprung, kein `localStorage`/Cookie.
+    //   · Fuer ein installiertes Add-in: KEIN erneutes Sideload noetig; es holt die Datei beim
+    //     naechsten Oeffnen frisch vom Server. Ein AELTERER Server ohne `sourceHits`/
+    //     `konfliktpruefung` fuehrt nicht zu falschen Farben: fehlende Felder heissen „nicht
+    //     durchsucht"/„nicht abgeglichen" und damit KEINE Farbe (Faelle B2/B5).
+    //   · GEMESSEN: tests/word-vergleich (32 Faelle in drei Dateien),
+    //     tests/app/word-addin-wortvergleich.test.ts (6 Faelle), tests/i18n/mega35-word-wortliste,
+    //     tests/app/mega43-klara-werkbank-palette, tests/app/mega69-klara-merkmale,
+    //     tests/klara-zerlegung (marken-skelett, probeschnitt), tests/m3-dokumentweg-panel,
+    //     tests/design/zielbild-k1-kein-erklaertext (Ruhe weiterhin 50 Zeichen — der Block ist
+    //     verborgen), tests/design/zielbild-k2-kein-erklaertext, tests/design/k1-/k2-funktionsinventar.
+    //
+    // JOB 3281 · RUNDE 3 (08.09.2026) — AUSLIEFERUNGSFOLGEN ERNEUT GEPRUEFT, BEVOR DER PIN WANDERTE.
+    // VORHERHASH taskpane.html: `0c5340595b47dc26455380bbd34a8ec762e59a4486560e2fba0438fe0606702a`.
+    //
+    // ANLASS: Codex-Vorpruefung R2 (`4f344967`) hatte statisch zwei Stellen abgeleitet, an denen
+    // ein UEBERHOLTER Lauf den Zustand des LAUFENDEN Laufs anfasst. Beide sind jetzt gemessen und
+    // geschlossen (tests/word-vergleich/zwei-laeufe-und-spaete-antworten.test.ts, 6 Faelle).
+    //
+    // GEAENDERT WURDEN AUSSCHLIESSLICH FUENF STELLEN IM VERGLEICHSBLOCK — keine neue Flaeche, kein
+    // neues Wort, kein neues DOM-Element, kein neues Abrufziel:
+    //   · die drei Ausstiege eines ueberholten Laufs (`wvPruefen`-Rueckruf, `wvSchritt`, die
+    //     `.then`-Kette am Absatz) setzen `wvLaeuft` nicht mehr auf `false`, sondern steigen stumm
+    //     aus. Die Fahne gehoert dem Lauf mit der aktuellen Kennung; jede Stelle, die `wvLauf`
+    //     erhoeht, setzt sie selbst.
+    //   · `wvSchluss` prueft die Kennung VOR dem Raeumen der Fahne (vorher danach).
+    //   · `wvSchluss` zeichnet, BEVOR der Schreiblauf beginnt. Ohne das stand im Fenster weiter
+    //     „Absatz n von n …" mit sichtbarem Abbruchknopf, solange Word den bestaetigenden `sync`
+    //     nicht zurueckgab — ein Knopf, der nichts mehr tut. Sichtbare Folge: nach dem letzten
+    //     Absatz wird der Startknopf frei und der Abbruchknopf verschwindet, auch wenn die Farben
+    //     noch unterwegs sind; scheitert der Schreiblauf, ergaenzt `wvFarbenFehler` den Standsatz
+    //     wie bisher.
+    //   · `wvSchreibfehler` wird nur noch fuer den AKTUELLEN Lauf gesetzt. Die Merkliste dagegen
+    //     bleibt ungefiltert: was Word bestaetigt hat, steht wirklich im Dokument und muss
+    //     zuruecknehmbar bleiben, auch wenn inzwischen ein neuer Vergleich laeuft.
+    //
+    // KEIN neuer Woerterbuch-Schluessel, KEIN neues `fetch(`, KEIN Manifest, KEINE geaenderte CSP,
+    // kein neues Recht, keine neue Word-API. Die Frequenz bleibt „ein Abruf je nicht-leerem
+    // Absatz, nur auf Klick". Ein installiertes Add-in braucht KEIN erneutes Sideload.
+    // GEMESSEN: tests/word-vergleich (38 Faelle in vier Dateien), tests/app/word-addin (150 Faelle
+    // in sieben Dateien), Waechterlauf (Inventar, Inhalts-Pin, Aufrufer, Theme, Frische, Tor).
+    //
+    // JOB 3281 · RUNDE 4 (08.09.2026) — AUSLIEFERUNGSFOLGEN ERNEUT GEPRUEFT, BEVOR DER PIN WANDERTE.
+    // VORHERHASH taskpane.html: `77cc166fc1d5c4f5e9b88e0a58efea9abb1be95f4fe25355a1d37372989c9e71`.
+    //
+    // ANLASS: Ben (Pruefung der Runde 3) hat einen Ablauf gemessen, den Runde 3 offen liess. Die
+    // Runde-3-Absicherung greift, WENN der bestaetigende Schreib-`sync` haengt — da stehen Klaras
+    // Farben schon im Dokument. Einen `sync` FRUEHER, beim Laden der Absaetze fuers Faerben, gab es
+    // keine Kennungspruefung: haengt er, laeuft der naechste Vergleich vollstaendig durch, und der
+    // ueberholte Lauf faerbt danach seine Kategorien darueber. Sichtbar wurde das als Widerspruch
+    // zwischen Fenster („Ähnlich") und Dokument („Turquoise").
+    //
+    // GEAENDERT WURDE GENAU EINE STELLE: der Schreib-Rueckruf in `wvSchluss` steigt stumm aus, wenn
+    // die Laufkennung nicht mehr die aktuelle ist — vor dem ersten Schreibvorgang. Ein ueberholter
+    // Lauf schreibt damit nichts und merkt nichts vor. Sichtbare Folge: die Farben des LAUFENDEN
+    // Vergleichs bleiben stehen, und das Fenster beschreibt weiterhin genau das Dokument.
+    //   · Die Merkliste bleibt weiter ungefiltert (Runde 3): was Word einem fertigen Lauf bestaetigt
+    //     hat, steht wirklich im Dokument und bleibt zuruecknehmbar — das ist die Gegenrichtung und
+    //     wird eigens gemessen (Z6, Z7b).
+    //
+    // KEIN neues DOM-Element, KEIN neues Wort, KEIN neuer Woerterbuch-Schluessel, KEIN neues
+    // `fetch(`, KEIN Manifest, KEINE geaenderte CSP, kein neues Recht, keine neue Word-API. Die
+    // Frequenz bleibt „ein Abruf je nicht-leerem Absatz, nur auf Klick". Ein installiertes Add-in
+    // braucht KEIN erneutes Sideload.
+    // GEMESSEN: tests/word-vergleich (40 Faelle in vier Dateien), tests/app/word-addin (150 Faelle
+    // in sieben Dateien), Waechterlauf (Inventar, Inhalts-Pin, Aufrufer, Theme, Frische, Tor).
+    const PIN = "a83c661194ca024ba9501d0a21af428a5f9aff1e7ad04a3b7d8a297216bda77b";
     const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
     expect(
       ist,

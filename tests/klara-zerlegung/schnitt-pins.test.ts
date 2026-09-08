@@ -93,6 +93,19 @@ const GRIFFE: Array<{
 // Nachführpflicht, kein Defekt: wer einen neuen Griff an `taskpane.html` anlegt, gehört hierher.
 // ------------------------------------------------------------------------------------------------
 const MITFAHRER: Readonly<Record<string, string>> = {
+  // JOB 3281 (WORD-VERGLEICH): der Vertragsblock liest die ausgelieferte Datei und schneidet sie
+  // entlang der Marke KW-WORDVERGLEICH; die drei ausführenden Prüfungen und ihre Bühne hängen an
+  // `createKlaraPanel`. A2 hat alle fünf gemeldet, das Verzeichnis nimmt sie nicht still auf.
+  "tests/app/word-addin-wortvergleich.test.ts": "pfad,zusammengesetzt,marken",
+  "tests/word-vergleich/absatzvergleich-mounted.test.ts": "fixture",
+  "tests/word-vergleich/merkliste-und-ruecknahme.test.ts": "fixture",
+  "tests/word-vergleich/vorkommen-und-fremdfarben.test.ts": "fixture",
+  // Runde 3: zwei Laeufe, die sich ueberholen, und der verzoegerte Schreib-`sync`. Haengt wie die
+  // drei darueber an `createKlaraPanel` (`fixture`) und nennt zusaetzlich den ausgelieferten Pfad
+  // im Kopfkommentar, weil der Befund dort verortet ist (`pfad`) — GEMESSEN, nicht gesetzt: mit
+  // „fixture" allein meldete A2 `der Griff hat sich geaendert`.
+  "tests/word-vergleich/zwei-laeufe-und-spaete-antworten.test.ts": "pfad,fixture",
+  "tests/word-vergleich/word-buehne.ts": "pfad,fixture",
   // N11b: Versandmessung liest das Word-Fenster und führt den W6-Block entlang seiner Marke aus.
   "tests/n11b-zustimmung-macht-intern/einstiege.test.ts": "pfad,marken",
   "tests/app/csp-upgrade-insecure-requests.test.ts": "pfad",

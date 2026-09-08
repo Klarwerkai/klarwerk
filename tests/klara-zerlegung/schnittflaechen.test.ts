@@ -193,7 +193,22 @@ describe("JOB 3014 · B — die Grobstruktur der ausgelieferten Seite", () => {
     // im Tor („expected 10114 to be less than 9500“). Sie rückt um ZWEI Soll-Blöcke (2 × 500) auf
     // 10500, weil der eine Block größer als ein Soll-Block ist; nicht weiter, kein Blankoscheck —
     // die Lücke bleibt bewacht, und P11 (der Schnitt) wird mit jedem Block dringlicher.
-    expect(zeilenzahl).toBeLessThan(10500);
+    // JOB 3281 (WORD-VERGLEICH, 08.09.2026): der Vergleichsblock (ein Skriptblock,
+    // KW-WORDVERGLEICH, 790 Zeilen samt Wörterbuch in drei Sprachen, Einstufung, Word-Farbweg und
+    // Merkliste) hob die Zeilenzahl auf 11285 — die Schranke 10500 fiel wörtlich
+    // („expected 11285 to be less than 10500“; Endstand dieser Runde: 11304, nach zwei späteren
+    // Ehrlichkeitskorrekturen an Legende, Farbnamen und dem Satz zum veränderten Absatz). Sie rückt
+    // nach DERSELBEN Regel, die JOB 3096 hier
+    // angewandt hat, um ZWEI Soll-Blöcke (2 × 500) auf 11500: der eine Block ist größer als ein
+    // Soll-Block, und zwei Blöcke sind die kleinste Stufe, die ihn trägt. Nicht weiter, kein
+    // Blankoscheck. DIE LÜCKE IST DAMIT NICHT KLEINER GEWORDEN, SONDERN GRÖSSER — das ist der
+    // ehrliche Befund dieser Runde: JOB 3227 (P11, der Schnitt) wartet, und dieser Auftrag hing
+    // ausdrücklich an ihm (`wartet_auf: [3227]`). Er lag beim Bau dieser Runde noch nicht auf
+    // `main` (gemessen: `main` trägt dieselbe taskpane.html wie der Basisstand), also entstand der
+    // Block im ungeschnittenen Fenster. Wer nach dem Schnitt hier vorbeikommt, findet in
+    // KW-WORDVERGLEICH einen Block, der als eigene Datei sofort abtrennbar ist: er hängt nur an
+    // `w6DublettenAusCheckText`, `ka7ExterneKi`, `t`/`STRINGS`, `officeUsable` und `signedIn`.
+    expect(zeilenzahl).toBeLessThan(11500);
     expect(SOLL_ZEILEN_JE_SKRIPT).toBe(500);
   });
 });

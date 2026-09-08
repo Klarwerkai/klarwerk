@@ -162,6 +162,19 @@ describe("JOB 3131 T2 · der Bestand ueberlebt die Aufteilung in zwei Laeufe", (
     // JOB 3279 R2: der Wiederöffnungsnachweis mountet echte React-Bauteile unter jsdom — auch er
     // startet KEIN Chromium und gehört in den regulären Aufruf.
     expect(holeRest()).toContain("tests/klara-browser/wiederoeffnen.test.tsx");
+    // JOB 3281 (WORD-VERGLEICH): der Absatzvergleich wohnt in einem NEUEN Verzeichnis
+    // (`tests/word-vergleich/`). Genau dabei fällt eine Datei still aus beiden Gruppen, wenn ein
+    // `include`- oder Gruppenmuster den neuen Baum nicht trifft — beide Läufe sind jsdom, kein
+    // Chromium, also gehören sie in den regulären Aufruf. Die Bühne daneben (`word-buehne.ts`)
+    // ist bewusst KEIN Pin: sie ist ein Helfer, keine Laufeinheit, und wird vom Collector
+    // richtigerweise nicht eingesammelt.
+    expect(holeRest()).toContain("tests/word-vergleich/absatzvergleich-mounted.test.ts");
+    expect(holeRest()).toContain("tests/word-vergleich/merkliste-und-ruecknahme.test.ts");
+    expect(holeRest()).toContain("tests/app/word-addin-wortvergleich.test.ts");
+    // JOB 3281 R2: zwei weitere Läufe im selben neuen Verzeichnis, aus demselben Grund gepinnt —
+    // Vorkommen/Fremdfarben-Nachweis und der Nachweis zweier Läufe mit spät eintreffenden Antworten.
+    expect(holeRest()).toContain("tests/word-vergleich/vorkommen-und-fremdfarben.test.ts");
+    expect(holeRest()).toContain("tests/word-vergleich/zwei-laeufe-und-spaete-antworten.test.ts");
   });
 
   it("V4 · der Verzeichnisgang der Konfiguration sieht denselben Bestand wie der Collector", () => {

@@ -118,6 +118,18 @@ const ACHSEN: Achse[] = [
 // aufgenommen; nachgefuehrt wurde genau dieser eine Eintrag.
 // ------------------------------------------------------------------------------------------------
 const INVENTAR: readonly string[] = [
+  // JOB 3281 WORD-VERGLEICH: der Vertragsblock an der ausgelieferten Datei und die drei
+  // ausfuehrenden Pruefungen des Absatzvergleichs. K2 hat alle vier gemeldet; keine traegt
+  // „klara" im Pfad — sie kommen ueber die Achse `taskpane` herein, also genau ueber den blinden
+  // Fleck der Namenssuche, den K5 zaehlt.
+  "tests/app/word-addin-wortvergleich.test.ts",
+  "tests/word-vergleich/absatzvergleich-mounted.test.ts",
+  "tests/word-vergleich/merkliste-und-ruecknahme.test.ts",
+  "tests/word-vergleich/vorkommen-und-fremdfarben.test.ts",
+  // Runde 3 desselben Jobs: zwei Laeufe, die sich ueberholen, und der verzoegerte Schreib-`sync`
+  // (Codex-Vorpruefung R2). Auch diese Datei traegt „klara" nirgends im Pfad und kommt ueber die
+  // Achse `taskpane` herein — dieselbe Lage wie die drei darueber.
+  "tests/word-vergleich/zwei-laeufe-und-spaete-antworten.test.ts",
   // JOB 3203: ladbares Browser-Paket und echte Vorschau-Skripte; K2 meldete beide Pfade.
   "tests/klara-browser/package.test.ts",
   "tests/klara-browser/panel.test.tsx",
