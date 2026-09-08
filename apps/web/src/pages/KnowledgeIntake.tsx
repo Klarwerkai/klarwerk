@@ -31,8 +31,12 @@ export function KnowledgeIntake(): JSX.Element {
   return (
     <Blatt
       startText={startText}
-      arbeitsraum={({ modus, onEntwurfInsBlatt }) => (
-        <CaptureArbeitsraum modus={modus} onEntwurfInsBlatt={onEntwurfInsBlatt} />
+      arbeitsraum={({ modus, onEntwurfInsBlatt, onZurueckInsBlatt }) => (
+        <CaptureArbeitsraum
+          modus={modus}
+          onEntwurfInsBlatt={onEntwurfInsBlatt}
+          onZurueckInsBlatt={onZurueckInsBlatt}
+        />
       )}
     />
   );

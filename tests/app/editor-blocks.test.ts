@@ -4,7 +4,6 @@ import {
   EDITOR_BLOCKS,
   type EditorBlock,
   editorBlockClass,
-  editorBlockHtml,
   editorBlockLabelKey,
 } from "../../apps/web/src/lib/editorBlocks";
 
@@ -32,9 +31,11 @@ describe("SCRUM-314: editorBlocks", () => {
     expect(editorBlockClass("success")).toBe("panel panel-success");
   });
 
-  it("Insert-HTML nutzt genau die erlaubten Block-Klassen (sanitizer-konform)", () => {
-    for (const block of EDITOR_BLOCKS) {
-      expect(editorBlockHtml(block)).toBe(`<div class="panel panel-${block}"><p>…</p></div>`);
-    }
-  });
+  // JOB 3282 (EDITOR-R26): Der Fall „Insert-HTML" ist HIER ERSATZLOS ENTFERNT, weil sein Prüfling
+  // entfernt ist. `editorBlockHtml` war das Snippet für `exec("insertHTML", …)` — der Weg, auf dem
+  // Codex am 08.09. drei der vier Blocktypen verlor. Der Block entsteht jetzt als echter Knoten
+  // (`lib/editorBlockInsert.ts`); gemessen wird er dort, wo er wirkt: am montierten Editor in
+  // `tests/editor-r26/link-und-bloecke-mounted.test.tsx` (B1–B3) und am Einfügeort selbst in
+  // `tests/editor-r26/blockeinfuegung.test.tsx`. Ein Test auf eine Zeichenkette, die niemand mehr
+  // einfügt, wäre genau die Attrappe, gegen die Auftrag §8.2 steht.
 });

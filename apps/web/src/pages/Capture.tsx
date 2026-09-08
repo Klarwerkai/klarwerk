@@ -15,7 +15,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { type FollowUpsRecorded, endpoints } from "../api/endpoints";
 import { useDirectory, useDrafts, useGaps, useReasonerStatus } from "../api/hooks";
@@ -488,11 +488,23 @@ export interface CaptureArbeitsraumProps {
   modus?: Mode | undefined;
   /** Der Arbeitsraum hat einen Entwurf gesichert — das Blatt übernimmt ihn (Auftrag §5.2). */
   onEntwurfInsBlatt?: ((entwurfId: string) => void) | undefined;
+  /**
+   * JOB 3282 (EDITOR-R26): Der Import wurde ABGEBROCHEN — die Fläche geht ans Blatt zurück.
+   * Belegter Befund (Codex, 08.09.): „Nach Abbrechen blieb /erfassen auch neun Sekunden später
+   * ohne Editor stehen." Die Begründung in voller Länge steht am Gegenstück in `Blatt.tsx`
+   * (`ArbeitsraumFabrik.onZurueckInsBlatt`).
+   *
+   * HIER OPTIONAL, dort Pflicht — und das ist kein Widerspruch: Diese Komponente wird auch OHNE
+   * Blatt montiert (die gemounteten Prüfstände tun es, `Capture.arbeitsraum.test.tsx`). Ohne
+   * Rückweg bleibt es beim bisherigen Verhalten: räumen und auf der Route bleiben.
+   */
+  onZurueckInsBlatt?: (() => void) | undefined;
 }
 
 export function CaptureArbeitsraum({
   modus,
   onEntwurfInsBlatt,
+  onZurueckInsBlatt,
   // KEIN Vorgabewert `= {}` an dieser Stelle: mit ihm wird der Prop-Parameter OPTIONAL, und
   // `createElement(CaptureArbeitsraum, { modus })` leitet dann keinen Prop-Typ mehr her — TypeScript
   // fällt auf die Zeichenketten-Überladung zurück und meldet „'modus' does not exist in type
@@ -512,6 +524,10 @@ export function CaptureArbeitsraum({
   // fragen. Jeder Weg, der die Erfassungsseite wirklich VERLÄSST, läuft über `guardedNavigate` bzw.
   // `GuardedLink`. Begründung je Fundstelle steht am jeweiligen Aufruf.
   const navigate = useNavigate();
+  // JOB 3282 (EDITOR-R26): die Adresse, auf der dieser Arbeitsraum WIRKLICH steht — `/erfassen`,
+  // `/erfassen/vordertuer` oder `/erfassen/neu`, jeweils mit ihrer Abfrage. Der Abbruch des
+  // Dateiimports räumt den `state` des Verlaufseintrags und lässt sie sonst unverändert.
+  const location = useLocation();
   const guardedNavigate = useGuardedNavigate();
 
   // PAKET 1 (D-AISTATE, Pedi 23.07.): ehrliche KI-Verfügbarkeit je Aufgabe — hart ausgrauen der
@@ -2439,8 +2455,22 @@ export function CaptureArbeitsraum({
     setWizStep("tell");
     // AUFTRAG-mega12 Block A: NICHT umgestellt, mit Absicht. `cancelFileImport` IST das bewusste
     // Verwerfen: der Zustand ist eine Zeile darüber schon geräumt, es kann nichts mehr verloren gehen,
-    // und die Route bleibt `/erfassen`. Ein Wächter würde nach dem Verwerfen ein zweites Mal fragen.
-    navigate("/erfassen", { replace: true, state: null });
+    // und die Route bleibt dieselbe. Ein Wächter würde nach dem Verwerfen ein zweites Mal fragen.
+    //
+    // JOB 3282 (EDITOR-R26): DIE ADRESSE BLEIBT, WAS SIE IST — vorher stand hier fest `"/erfassen"`.
+    // Das ist zweimal falsch gewesen, seit das Blatt den Arbeitsraum trägt: auf
+    // `/erfassen/vordertuer` und `/erfassen/neu` warf der Abbruch den Menschen auf eine ANDERE
+    // Adresse, und ein `?draft=…` fiel dabei weg — der eben noch fortgesetzte Entwurf war nicht
+    // mehr der, in den das nächste Speichern schriebe (es entstünde ein zweiter). Geräumt wird,
+    // was geräumt werden soll: der `state` des Verlaufseintrags. Pfad und Abfrage bleiben.
+    navigate(
+      { pathname: location.pathname, search: location.search },
+      { replace: true, state: null },
+    );
+    // Und die Fläche geht ans Blatt zurück, wenn eines da ist. Ohne diese Zeile blieb `/erfassen`
+    // nach dem Abbruch ohne Schreibfeld stehen (Codex, 08.09.) — der Zustand war geräumt, aber die
+    // ANSICHT gehört dem Blatt, und es erfuhr nichts davon.
+    onZurueckInsBlatt?.();
     window.setTimeout(() => {
       window.scrollTo({ top: 0, behavior: "smooth" });
     }, 0);
@@ -6304,8 +6334,12 @@ export function CaptureArbeitsraum({
 export function Capture(): JSX.Element {
   return (
     <Blatt
-      arbeitsraum={({ modus, onEntwurfInsBlatt }) => (
-        <CaptureArbeitsraum modus={modus} onEntwurfInsBlatt={onEntwurfInsBlatt} />
+      arbeitsraum={({ modus, onEntwurfInsBlatt, onZurueckInsBlatt }) => (
+        <CaptureArbeitsraum
+          modus={modus}
+          onEntwurfInsBlatt={onEntwurfInsBlatt}
+          onZurueckInsBlatt={onZurueckInsBlatt}
+        />
       )}
     />
   );

@@ -320,7 +320,15 @@ describe("KW-W2-01: Ganzdokument-Import als bewusster Entwurf", () => {
     expect(captureSource).toContain("setFileName(null)");
     expect(captureSource).toContain('setFileImportMode("points")');
     expect(captureSource).toContain("setCaptureWorkspaceOpen(false)");
-    expect(captureSource).toContain('navigate("/erfassen", { replace: true, state: null })');
+    // JOB 3282 (EDITOR-R26): Der Pin auf die FESTE Adresse `"/erfassen"` ist hier weg, und das ist
+    // kein Nachgeben, sondern die Korrektur einer falschen Zusage. Seit JOB 3062 trägt DAS BLATT
+    // diesen Arbeitsraum, und es steht auf drei Adressen (`/erfassen`, `/erfassen/vordertuer`,
+    // `/erfassen/neu`), jede davon mit einem möglichen `?draft=…`. Ein fester Sprung nach
+    // `/erfassen` warf den Menschen auf zwei davon woanders hin und nahm ihm die Entwurfskennung.
+    // Was der Abbruch WIRKLICH zusagt — den `state` des Verlaufseintrags räumen, die Adresse sonst
+    // stehen lassen —, steht jetzt hier. Gemessen wird es an der Fläche in
+    // `tests/editor-r26/erfassen-rueckwege-mounted.test.tsx` (C2).
+    expect(captureSource).toContain("{ replace: true, state: null }");
     expect(captureSource).toContain('window.scrollTo({ top: 0, behavior: "smooth" })');
     expect(captureSource).toContain("CAPTURE_FILE_TEXT.cancel");
   });
@@ -346,7 +354,14 @@ describe("KW-W2-01: Ganzdokument-Import als bewusster Entwurf", () => {
     expect(clearSource).toContain("setFileWholeDraftSaved(null)");
     expect(clearSource).toContain('setFileImportMode("points")');
     expect(cancelSource).toContain("setCaptureWorkspaceOpen(false)");
-    expect(cancelSource).toContain('navigate("/erfassen", { replace: true, state: null })');
+    // JOB 3282 (EDITOR-R26): dieselbe Korrektur wie im Fall darüber — Pfad und Abfrage der
+    // aktuellen Adresse bleiben, geräumt wird der `state`.
+    expect(cancelSource).toContain("pathname: location.pathname");
+    expect(cancelSource).toContain("search: location.search");
+    expect(cancelSource).toContain("{ replace: true, state: null }");
+    // Und der Rückweg zur Schreibfläche gehört ausdrücklich zum Abbruch: ohne ihn blieb /erfassen
+    // ohne Editor stehen (Codex, 08.09.).
+    expect(cancelSource).toContain("onZurueckInsBlatt?.()");
     expect(cancelSource).toContain('window.scrollTo({ top: 0, behavior: "smooth" })');
     expect(cancelSource).not.toContain("fileWholeDraft.mutate");
     expect(cancelSource).not.toContain("extract.mutate");

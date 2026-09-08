@@ -19,7 +19,8 @@ export function editorBlockClass(block: EditorBlock): string {
   return `panel panel-${block}`;
 }
 
-// HTML-Snippet zum Einfügen über exec("insertHTML", …). Leerer Absatz als Platzhalter (wie zuvor).
-export function editorBlockHtml(block: EditorBlock): string {
-  return `<div class="${editorBlockClass(block)}"><p>…</p></div>`;
-}
+// JOB 3282 (EDITOR-R26): `editorBlockHtml` ist ERSATZLOS GESTRICHEN, nicht danebengelegt. Es war
+// das Snippet für `exec("insertHTML", …)` — genau der Weg, auf dem Codex am 08.09. drei der vier
+// Blocktypen verloren hat (Liste bzw. vorhandener Block als Einfügekontext). Der Block entsteht
+// jetzt als echter Knoten in `editorBlockInsert.ts`; zwei Wege, einen Block zu bauen, wären zwei
+// Wahrheiten über dasselbe.

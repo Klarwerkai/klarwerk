@@ -114,6 +114,22 @@ export type ArbeitsraumFabrik = (args: {
   modus: ArbeitsraumModus;
   /** Der Arbeitsraum hat einen Entwurf gesichert — das Blatt übernimmt ihn und kommt zurück. */
   onEntwurfInsBlatt: (entwurfId: string) => void;
+  /**
+   * JOB 3282 (EDITOR-R26): Der Arbeitsraum ist ABGEBROCHEN worden und hat nichts mehr zu zeigen —
+   * das Blatt nimmt die Fläche zurück.
+   *
+   * DER BELEGTE BEFUND (Codex, Nutzerprüfung review26-ki-editor, 08.09., Live 1.185): „Nach
+   * Abbrechen blieb /erfassen auch neun Sekunden später ohne Editor stehen." Der Weg dorthin:
+   * `arbeitsraumOeffnen("datei")` setzt die Ansicht auf „datei", und ab da rendert das Blatt seinen
+   * Arbeitsraum statt seines Schreibfeldes. „Abbrechen" räumte darin den Import-Zustand — aber die
+   * ANSICHT gehört dem Blatt, und niemand sagte ihm Bescheid. Zurück kam man nur über die Adresse.
+   *
+   * DAS IST PFLICHT UND NICHT OPTIONAL: Drei Seiten reichen den Arbeitsraum herein (`Capture`,
+   * `CaptureFrontDoor`, `KnowledgeIntake`). Wäre der Rückweg optional, hätte ihn eine davon
+   * vergessen können — genau die Klasse, an der `documentTitle` im `RichTextEditor` schon einmal
+   * hing. So zählt der Compiler die Einbindungen selbst auf.
+   */
+  onZurueckInsBlatt: () => void;
 }) => ReactNode;
 
 type Ansicht = "blatt" | ArbeitsraumModus;
@@ -1452,6 +1468,15 @@ export function Blatt({
     setAnsicht(modus);
   };
 
+  // JOB 3282 (EDITOR-R26): der Rückweg zum Schreibfeld, wenn der Arbeitsraum abgebrochen wurde.
+  // Er fasst den Blattinhalt NICHT an: Titel, Rumpf und Entwurfskennung leben in diesem Bauteil,
+  // das während der Arbeitsraum-Ansicht montiert bleibt. Zurückzukommen heisst deshalb wirklich
+  // „unverändert weiterschreiben" und nicht „neu laden".
+  const arbeitsraumSchliessen = (): void => {
+    setOffenesMenue(null);
+    setAnsicht("blatt");
+  };
+
   // ---- Werkzeugzeile ---------------------------------------------------------------------------
 
   const werkzeugzeile = (
@@ -2049,6 +2074,7 @@ export function Blatt({
           {arbeitsraum({
             modus: ansicht,
             onEntwurfInsBlatt: entwurfOeffnen,
+            onZurueckInsBlatt: arbeitsraumSchliessen,
           })}
         </div>
       </div>

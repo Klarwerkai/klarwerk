@@ -110,6 +110,8 @@ export function Menue({
   const istOffen = offen === name;
   const huelle = useRef<HTMLDivElement | null>(null);
   const flaeche = useRef<HTMLDivElement | null>(null);
+  // JOB 3282 (EDITOR-R26): Das Werkzeug selbst — Escape gibt ihm den Fokus zurück (s. unten).
+  const werkzeug = useRef<HTMLButtonElement | null>(null);
   const flaecheId = useId();
 
   // ==============================================================================================
@@ -203,9 +205,33 @@ export function Menue({
         setOffen(null);
       }
     };
+    // ==========================================================================================
+    // JOB 3282 (EDITOR-R26) — ESCAPE GIBT DEN FOKUS ZURÜCK, SONST ENDET DER TASTATURWEG IM NICHTS.
+    // ==========================================================================================
+    //
+    // DER BELEGTE BEFUND (Codex, Nutzerprüfung review26-ki-editor, 08.09., Live 1.185, Schritt
+    // „Bedienbarkeit bei 390 Pixeln und Tastatur"): „Enter öffnet das fokussierte KI-Menü, Pfeil ab
+    // lässt Fokus auf KI, Tab erreicht Struktur vorschlagen. Escape schließt, stellt den Fokus aber
+    // nicht zum KI-Knopf zurück."
+    //
+    // WAS DAS FÜR DIE TASTATUR HEISST: Der Fokus stand auf einem Eintrag INNERHALB der Fläche. Mit
+    // dem Schliessen verschwindet dieser Knoten aus dem Dokument, und der Fokus fällt auf `body`
+    // zurück. Der nächste Tabulator beginnt damit wieder ganz vorne auf der Seite — wer das Menü
+    // nur ansehen und wieder verlassen wollte, verliert seine Stelle in der Werkzeugzeile. Der Weg
+    // hinein (Enter auf dem Werkzeug) hat also keinen Weg zurück.
+    //
+    // DIE RÜCKGABE STEHT HIER UND NICHT AN DEN ACHT AUFRUFERN: Öffnen, Schliessen, Klick nach
+    // aussen und Escape sind seit JOB 3062 EINE Mechanik in dieser Datei (s. Kopf). Jedes Menü der
+    // Zeile — Datei, KI, Bereich, Vertraulichkeit, „?", „…" — erbt sie damit, und keines kann sie
+    // vergessen.
+    //
+    // NUR BEI ESCAPE, NICHT BEIM KLICK NACH AUSSEN: Ein Klick sagt selbst, wohin der Fokus gehört
+    // (dorthin, wo geklickt wurde). Ihn auf das Werkzeug zurückzureissen nähme dem Menschen die
+    // Stelle, die er gerade angefasst hat.
     const beiTaste = (ereignis: KeyboardEvent): void => {
       if (ereignis.key === "Escape") {
         setOffen(null);
+        werkzeug.current?.focus();
       }
     };
     document.addEventListener("mousedown", beiKlick);
@@ -227,6 +253,7 @@ export function Menue({
   return (
     <div className="relative" ref={huelle}>
       <button
+        ref={werkzeug}
         type="button"
         disabled={gesperrt}
         aria-haspopup="menu"

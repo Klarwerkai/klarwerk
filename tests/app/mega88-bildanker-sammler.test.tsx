@@ -1013,8 +1013,25 @@ const SCHREIB_DISPOSITION: Readonly<Record<string, SchreibDisposition>> = {
   // enthält keine Schreibform mehr, die Funktion enthält sie. Die Zusage ist unverändert
   // `koerper` — und sie ist erfüllt, der Rumpf ruft `verankereFiguren(el)`.
   schreibeFremdfassung: "koerper",
-  exec: "koerper", // Werkzeugleiste, Bild aus Anhängen, Link, Block
-  insertHtmlReliable: "koerper", // lokale Dateiauswahl, Drop, Einfügen
+  // JOB 3282 (EDITOR-R26): Link UND Block gehen nicht mehr hierüber — `exec` trägt jetzt die
+  // Auszeichnungs- und Struktur-Befehle des Browsers (fett, kursiv, Überschriften, Listen) und das
+  // Einfügen von Bild/Datei aus den Anhängen. Die Zusage bleibt `koerper`, der Rumpf ruft die
+  // Verankerung.
+  exec: "koerper", // Werkzeugleiste (fett/kursiv/Listen/Überschriften), Bild und Datei aus Anhängen
+  insertHtmlReliable: "koerper", // lokale Dateiauswahl, Drop, Einfügen, Link
+  // ── JOB 3282 (EDITOR-R26): DER BLOCK SCHREIBT JETZT SELBST ───────────────────────────────────
+  //
+  // Bis hierher lief das Einfügen eines Info-/Hinweis-/Warnung-/Erfolg-Blocks über `exec` und war
+  // damit von DESSEN Disposition gedeckt. `execCommand("insertHTML")` durfte den `div`-Container
+  // in einer Liste oder in einem vorhandenen Block aber auflösen — Codex hat am 08.09. live drei
+  // von vier Typen dabei verloren. `addBlock` baut den Block deshalb selbst als Knoten
+  // (`lib/editorBlockInsert.ts`) und ist damit eine eigene Schreibstelle im Beitragskörper.
+  //
+  // `koerper` und die Pflicht daraus ist erfüllt: der Rumpf ruft `verankereFiguren(el)`, denselben
+  // Abschluss wie `insertHtmlReliable`. Ein Block bringt zwar von sich aus kein Bild mit — aber die
+  // Verankerung hängt hier nicht am Inhalt DIESER Einfügung, sondern daran, dass der Körper nach
+  // JEDER Schreibstelle die Invariante erfüllt (I47).
+  addBlock: "koerper",
   captionFormat: "formularfeld", // fett/kursiv/Umbruch im Beschreibungsfeld
   "useEffect[captionFieldEpoch]": "formularfeld", // Befüllen des Feldes beim Öffnen
   emit: "emissionspuffer", // JOB 2060 D4: abgekoppelte Kopie, verankert, berührt den Editor nicht

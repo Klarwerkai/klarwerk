@@ -207,14 +207,6 @@ const FREMDE: readonly Fremdrelation[] = [
   // als eigener Eintrag, weil sie seit JOB 3063 keinen Doppelungspartner mehr hatte — eine
   // Doppelung weniger, nicht eine verschwiegene.
   {
-    dritt: "apps/web/src/lib/captureFromFile.ts",
-    groessen: [36, 36],
-    was:
-      "GEMESSEN: zwei `FirstStatement`-Bloecke zu je 36 Knoten, die `Capture` an zwei Stellen " +
-      "(1128 und 1174) mit dem Auslese-Helfer teilt — dieselben zwei, die auch in " +
-      "`BodyExtractPanel` stehen.",
-  },
-  {
     dritt: "apps/web/src/pages/CaptureFrontDoor.tsx",
     // JOB 3062 · H3: der EINZIGE Rest der frueheren Erfassungs-Doppelung (siehe den Block oben).
     // `Capture.tsx:5988` und `CaptureFrontDoor.tsx:22` sind die zwei duennen Adressen, die dasselbe
@@ -228,13 +220,27 @@ const FREMDE: readonly Fremdrelation[] = [
     // groesster Block 35; die Messung sortiert absteigend nach dem groessten Block je Datei, und
     // 36 steht vor 35. Verschoben ist nur die REIHENFOLGE der Eintraege — keine Groesse, kein
     // Eintrag, kein Satz. Beide Register-Zeilen sind am eigenen Lauf nachgemessen.
-    groessen: [36],
+    // JOB 3282 (EDITOR-R26): 36 → 42 Knoten. Die Fabrik reicht dem Arbeitsraum seit diesem Auftrag
+    // einen dritten Wert herein (`onZurueckInsBlatt` — der Rueckweg zum Schreibfeld nach einem
+    // abgebrochenen Import, Codex-Befund vom 08.09.). Die Huelle ist damit sechs Knoten groesser;
+    // ihre GLEICHHEIT ueber die drei Adressen ist unveraendert der Zweck des Eintrags, und sie ist
+    // jetzt sogar erzwungen: der Wert ist im Fabriktyp PFLICHT, eine Adresse kann ihn nicht mehr
+    // vergessen. Am eigenen Lauf nachgemessen (42, `Capture.tsx:6306 · CaptureFrontDoor.tsx:22`).
+    groessen: [42],
     was:
       "GELESEN: die zwei duennen Routen-Huellen, die DASSELBE Blatt rendern — `<Blatt " +
-      "arbeitsraum={({ modus, onEntwurfInsBlatt }) => <CaptureArbeitsraum … />} />`. Die alte, " +
-      "sieben Bloecke grosse Parallelitaet zweier Erfassungsflaechen (Vertraulichkeit/Egress, " +
-      "Bildbeschreibungs-Bitte) ist mit JOB 3062 aufgeloest; uebrig ist die absichtliche " +
-      "Gleichheit der beiden Adressen.",
+      "arbeitsraum={({ modus, onEntwurfInsBlatt, onZurueckInsBlatt }) => <CaptureArbeitsraum … />} />`. " +
+      "Die alte, sieben Bloecke grosse Parallelitaet zweier Erfassungsflaechen " +
+      "(Vertraulichkeit/Egress, Bildbeschreibungs-Bitte) ist mit JOB 3062 aufgeloest; uebrig ist " +
+      "die absichtliche Gleichheit der beiden Adressen.",
+  },
+  {
+    dritt: "apps/web/src/lib/captureFromFile.ts",
+    groessen: [36, 36],
+    was:
+      "GEMESSEN: zwei `FirstStatement`-Bloecke zu je 36 Knoten, die `Capture` an zwei Stellen " +
+      "(1128 und 1174) mit dem Auslese-Helfer teilt — dieselben zwei, die auch in " +
+      "`BodyExtractPanel` stehen.",
   },
   // Die Datei ist mit dem Wegfall von `vhelp` (42 Knoten) in der Reihenfolge nach hinten gerutscht:
   // die Messung sortiert nach dem groessten Block je Datei, und der ist hier jetzt 35 — seit dem
@@ -330,6 +336,22 @@ const FREMDE: readonly Fremdrelation[] = [
     was:
       "GEMESSEN: derselbe Fehler-Toast `fail` (26 Knoten) für Freigeben, Rolle ändern, Passwort " +
       "zurücksetzen und Löschen — Wort für Wort der Block aus `AdminDatenDetails` und `Mobile`.",
+  },
+  {
+    // JOB 3282 (EDITOR-R26): NEU, und aus demselben Grund gewachsen wie `CaptureFrontDoor.tsx`
+    // weiter oben. Die DRITTE Adresse auf dasselbe Blatt (`/erfassen/neu`) reicht dieselbe Fabrik
+    // herein; mit dem dritten Wert (`onZurueckInsBlatt`) ist ihre Pfeilfunktion gross genug, dass
+    // die Messung sie sieht. Sie war vorher nicht kleiner GEDACHT, nur kleiner GESCHRIEBEN.
+    //
+    // NICHT AUFGELOEST, und das ist dieselbe Entscheidung wie dort: Die drei Adressen MUESSEN sich
+    // hier gleichen — liefe eine anders, zeigte sie eine andere Flaeche. Ein gemeinsamer Helfer
+    // waere eine vierte Stelle, die dasselbe sagt. Der Eintrag steht dafuer, dass eine EINSEITIGE
+    // Aenderung auffaellt.
+    dritt: "apps/web/src/pages/KnowledgeIntake.tsx",
+    groessen: [26],
+    was:
+      "GEMESSEN: die Arbeitsraum-Fabrik der dritten Adresse `/erfassen/neu` (26 Knoten, geteilt " +
+      "mit `Capture.tsx:6309`) — dieselbe Pfeilfunktion, die auch `CaptureFrontDoor.tsx` fuehrt.",
   },
   {
     dritt: "apps/web/src/pages/Mobile.tsx",

@@ -35,12 +35,8 @@ import {
   titelVorschlagAusErgebnis,
 } from "../lib/captionAiSuggest";
 import { collectImageContext } from "../lib/captionContext";
-import {
-  EDITOR_BLOCKS,
-  type EditorBlock,
-  editorBlockHtml,
-  editorBlockLabelKey,
-} from "../lib/editorBlocks";
+import { fuegeBlockEin } from "../lib/editorBlockInsert";
+import { EDITOR_BLOCKS, type EditorBlock, editorBlockLabelKey } from "../lib/editorBlocks";
 import {
   EDITOR_DROP_KEYS,
   isInsertableImageMime,
@@ -177,13 +173,24 @@ const IMAGE_SCALE_OPTIONS: Array<{ value: ImageScaleValue; label: string }> = [
 // Umbruch-Knopfes). Zwei Kopien wären zwei Wahrheiten — genau das, wogegen mega50 angetreten ist.
 // Das Verhalten für den Body ist unverändert; das Anhängen von `verankereFiguren`/`emit` bleibt beim
 // Aufrufer, weil es Body-Sache ist und die Fußnote nichts damit zu tun hat.
-function fuegeAmCursorEin(el: HTMLElement, html: string): void {
+//
+// JOB 3282 (EDITOR-R26), der dritte Parameter: EIN MITGEBRACHTER BEREICH SCHLÄGT DIE LEBENDE
+// AUSWAHL. Er ist der Grund, warum der Linkdialog die Auswahl nicht mehr verdoppelt. Zwischen
+// „Link" und „Einfügen" liegen zwei Eingabefelder; was der Browser danach für ausgewählt hält, ist
+// eine Einfügemarke und nicht mehr die Markierung des Menschen. `el.focus()` holt sie nicht
+// zurück. Das Ergebnis war der belegte Befund: der markierte Text blieb stehen UND der Link mit
+// demselben Text kam daneben. Mit dem beim Öffnen des Dialogs gesicherten Bereich ist der Fall
+// entschieden, bevor irgendeine Engine mitredet — `deleteContents()` unten nimmt genau das weg,
+// was der Mensch markiert hatte.
+function fuegeAmCursorEin(el: HTMLElement, html: string, bereich?: Range | null): void {
+  const gemerkt = bereich && el.contains(bereich.commonAncestorContainer) ? bereich : null;
   el.focus();
   const sel = window.getSelection();
   const caret =
-    sel && sel.rangeCount > 0 && el.contains(sel.getRangeAt(0).commonAncestorContainer)
+    gemerkt ??
+    (sel && sel.rangeCount > 0 && el.contains(sel.getRangeAt(0).commonAncestorContainer)
       ? sel.getRangeAt(0)
-      : null;
+      : null);
   if (caret) {
     // Cursor liegt im Ziel → genau dort einfügen (Drop/Einfügen mit gültiger Auswahl).
     caret.deleteContents();
@@ -1701,12 +1708,14 @@ export function RichTextEditor({
   // keinen gültigen Cursor mehr; execCommand griff dann ins Leere → das Bild erschien nicht und
   // landete auch nicht im Entwurf. Wir fügen daher direkt per Range ein: am Cursor, wenn er im
   // Editor liegt, sonst am Ende des Inhalts. emit() sanitisiert wie gehabt beim Rausschreiben.
-  const insertHtmlReliable = (html: string): void => {
+  // JOB 3282 (EDITOR-R26): `bereich` ist der beim Öffnen eines Dialogs gesicherte Bereich des
+  // Autors. Ohne ihn bleibt das Verhalten Zeichen für Zeichen wie bisher (Bild, Datei, Paste).
+  const insertHtmlReliable = (html: string, bereich?: Range | null): void => {
     const el = ref.current;
     if (!el || !html) {
       return;
     }
-    fuegeAmCursorEin(el, html);
+    fuegeAmCursorEin(el, html, bereich);
     // WP-D7b (Gelb-Fix 2): frisch eingefügte Bild-Fußnoten sofort editierbar verankern (Editor fokussiert).
     // JOB 3051: bringt der eingefügte Ausschnitt eine schon vergebene Kennung mit, wird die Trennung
     // über DIESELBE Anzeige gemeldet wie beim Laden — kein zweiter Kanal für denselben Sachverhalt.
@@ -1797,14 +1806,49 @@ export function RichTextEditor({
       : d.toLocaleTimeString(i18n.language, { hour: "2-digit", minute: "2-digit" });
   };
 
+  // ── JOB 3282 · EDITOR-R26 ────────────────────────────────────────────────────────────────────
+  //
+  // DER BEREICH IM RUMPF, so wie er JETZT ist — geklont, damit er den Fokuswechsel überlebt. Anders
+  // als `gemerkteAuswahl` (Bildbeschreibung) zählt hier auch eine ZUSAMMENGEFALLENE Marke: für die
+  // Blöcke ist „wo steht der Mensch" die Frage, nicht „was hat er markiert".
+  const rumpfBereich = (): Range | null => {
+    const el = ref.current;
+    const sel = window.getSelection();
+    if (!el || !sel || sel.rangeCount === 0) {
+      return null;
+    }
+    const bereich = sel.getRangeAt(0);
+    return el.contains(bereich.commonAncestorContainer) ? bereich.cloneRange() : null;
+  };
+
+  // Der Bereich, den der Link ersetzen soll. Gesichert im Moment des Öffnens — danach nehmen die
+  // beiden Eingabefelder des Dialogs den Fokus, und die Markierung des Menschen ist nicht mehr das,
+  // was der Browser für ausgewählt hält (der belegte Befund vom 08.09.).
+  const linkBereich = useRef<Range | null>(null);
+
   const openLinkPanel = (): void => {
     setShowImages(false);
-    setShowLink((s) => !s);
     setLinkErr(null);
-    const selected = window.getSelection()?.toString().trim() ?? "";
+    const oeffnet = !showLink;
+    setShowLink(oeffnet);
+    if (!oeffnet) {
+      // Zugeklappt heisst zurückgenommen: ein Bereich, den niemand mehr sieht, darf beim nächsten
+      // Öffnen nicht stillschweigend weiterwirken.
+      linkBereich.current = null;
+      return;
+    }
+    const bereich = rumpfBereich();
+    linkBereich.current = bereich;
+    // Die Beschriftung kommt aus DEMSELBEN Bereich, der gleich ersetzt wird — nicht aus einer
+    // beliebigen Auswahl irgendwo auf der Seite.
+    const selected = bereich && !bereich.collapsed ? bereich.toString().trim() : "";
     if (selected && !linkLabel) {
       setLinkLabel(selected);
     }
+  };
+  const schliesseLinkPanel = (): void => {
+    setShowLink(false);
+    linkBereich.current = null;
   };
   const addLink = (): void => {
     const html = editorLinkHtml({ url: linkUrl, label: linkLabel });
@@ -1812,14 +1856,46 @@ export function RichTextEditor({
       setLinkErr(t("editor.linkInvalid"));
       return;
     }
-    exec("insertHTML", html);
+    // NICHT MEHR `exec("insertHTML", …)`: dieser Weg fügt an der Einfügemarke ein und liess den
+    // markierten Text stehen — die Verdopplung. Der gesicherte Bereich wird ERSETZT (in
+    // `fuegeAmCursorEin`: `deleteContents()` und dann der Link), der Text steht also genau einmal.
+    insertHtmlReliable(html, linkBereich.current);
+    linkBereich.current = null;
     setShowLink(false);
     setLinkUrl("");
     setLinkLabel("");
     setLinkErr(null);
   };
   // SCRUM-314: vier sichtbare Blocktypen statt eines generischen Panels (sichere, statische Klassen).
-  const addBlock = (block: EditorBlock): void => exec("insertHTML", editorBlockHtml(block));
+  //
+  // JOB 3282 (EDITOR-R26): Der Block wird als eigenständiger ABSCHNITT hinter den Abschnitt gesetzt,
+  // in dem die Marke steht (`lib/editorBlockInsert.ts`) — nicht mehr über `execCommand("insertHTML")`
+  // an die Marke selbst. In einer Liste oder in einem vorhandenen Block durfte die Engine den
+  // `div`-Container dort auflösen; übrig blieb der Platzhalter oder ein Span, und nach dem Reload
+  // fehlte der Typ. Die Begründung in voller Länge steht in der neuen Datei.
+  const addBlock = (block: EditorBlock): void => {
+    const bereich = rumpfBereich();
+    const el = ref.current;
+    if (!el) {
+      return;
+    }
+    el.focus();
+    const huelle = fuegeBlockEin(el, block, bereich);
+    // Die Marke landet AUF dem Platzhalter: der nächste Anschlag ersetzt ihn, statt neben ihm zu
+    // stehen. Ohne das müsste der Mensch das „…" erst selbst wegräumen.
+    const absatz = huelle.firstElementChild;
+    const sel = window.getSelection();
+    if (absatz && sel) {
+      const nach = document.createRange();
+      nach.selectNodeContents(absatz);
+      sel.removeAllRanges();
+      sel.addRange(nach);
+    }
+    // Derselbe Abschluss wie auf jedem anderen Einfügeweg (`insertHtmlReliable`): Fussnoten
+    // verankern, Trennungen melden, den neuen Stand nach oben geben.
+    uebernimmTrennungen(verankereFiguren(el));
+    emit();
+  };
   const addImage = (img: EditorImage): void => {
     setShowImages(false);
     const html = img.objectId
@@ -2036,7 +2112,17 @@ export function RichTextEditor({
             >
               1.
             </button>
-            <button type="button" title={t("editor.link")} className={tb} onClick={openLinkPanel}>
+            <button
+              type="button"
+              data-testid="editor-link-open"
+              title={t("editor.link")}
+              className={tb}
+              // JOB 3282 (EDITOR-R26): dieselbe Vorrichtung wie an den Formatier-Knöpfen der
+              // Bildbeschreibung — der Fokuswechsel wird schon bei `mousedown` unterbunden, die
+              // Markierung im Rumpf bleibt am Leben und `openLinkPanel` findet sie.
+              onMouseDown={haltAuswahl}
+              onClick={openLinkPanel}
+            >
               <LinkIcon size={14} />
             </button>
             {sep}
@@ -2157,8 +2243,13 @@ export function RichTextEditor({
               <button
                 key={block}
                 type="button"
+                data-testid={`editor-block-${block}`}
                 title={t(editorBlockLabelKey(block))}
                 className={`inline-flex h-8 items-center rounded-btn border bg-surface px-2 text-[12px] font-semibold hover:bg-hairline-soft ${BLOCK_BTN_CLASS[block]}`}
+                // JOB 3282 (EDITOR-R26): wie am Link-Knopf — die Einfügemarke des Rumpfes muss den
+                // Klick überleben, sonst weiss `addBlock` nicht, HINTER WELCHEN Abschnitt der Block
+                // gehört, und landet am Ende statt an der Stelle, an der der Mensch steht.
+                onMouseDown={haltAuswahl}
                 onClick={() => addBlock(block)}
               >
                 {t(editorBlockLabelKey(block))}
@@ -2213,6 +2304,7 @@ export function RichTextEditor({
             <label className="block text-[11.5px] font-semibold text-muted">
               {t("editor.linkUrl")}
               <input
+                data-testid="editor-link-url"
                 value={linkUrl}
                 onChange={(e) => {
                   setLinkUrl(e.target.value);
@@ -2225,6 +2317,7 @@ export function RichTextEditor({
             <label className="block text-[11.5px] font-semibold text-muted">
               {t("editor.linkLabel")}
               <input
+                data-testid="editor-link-label"
                 value={linkLabel}
                 onChange={(e) => setLinkLabel(e.target.value)}
                 placeholder={t("editor.linkLabelPlaceholder")}
@@ -2232,12 +2325,12 @@ export function RichTextEditor({
               />
             </label>
             <div className="flex gap-2">
-              <Button variant="ghost" onClick={addLink}>
+              <Button variant="ghost" data-testid="editor-link-insert" onClick={addLink}>
                 {t("editor.linkInsert")}
               </Button>
               <button
                 type="button"
-                onClick={() => setShowLink(false)}
+                onClick={schliesseLinkPanel}
                 className="text-[12px] font-semibold text-muted hover:text-text"
               >
                 {t("editor.linkCancel")}
