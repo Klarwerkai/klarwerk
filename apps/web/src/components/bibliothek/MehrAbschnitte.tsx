@@ -150,6 +150,29 @@ function Abschnitt({
   );
 }
 
+// UX-24: Ein Ladefehler gehört zur konkreten Vorschau. Der key am Aufrufer setzt den
+// Fehlerzustand zurück, sobald eine andere Vorschau geliefert wird.
+function AnhangVorschau({ src }: { src: string | undefined }): JSX.Element {
+  const { t } = useTranslation();
+  const [fehlgeschlagen, setFehlgeschlagen] = useState(false);
+  return (
+    <span className="flex min-h-20 items-center justify-center rounded-card border border-hairline bg-page p-2">
+      {src && !fehlgeschlagen ? (
+        <img
+          src={src}
+          alt=""
+          onError={() => setFehlgeschlagen(true)}
+          className="h-auto max-h-48 w-full object-contain"
+        />
+      ) : (
+        <span className="text-center text-[12px] text-muted">
+          {t("ko.attachmentPreviewUnavailable")}
+        </span>
+      )}
+    </span>
+  );
+}
+
 const CONFLICT_TYPES: readonly ConflictType[] = [
   "truth",
   "experience",
@@ -393,15 +416,9 @@ export function MehrAbschnitte({
   // das technische Mittel, nicht ein zweiter, unsichtbarer Weg zur selben Aktion.
   const dateiFeld = useRef<HTMLInputElement | null>(null);
   const openAttachment = (a: { dataUrl?: string; objectId?: string }): void => {
-    if (a.objectId) {
-      const href = objectRawHref(a.objectId);
-      if (href) {
-        window.open(href, "_blank", "noopener");
-      }
-      return;
-    }
-    if (a.dataUrl) {
-      window.open(a.dataUrl, "_blank", "noopener");
+    const href = objectRawHref(a.objectId) || a.dataUrl;
+    if (href) {
+      window.open(href, "_blank", "noopener");
     }
   };
 
@@ -1299,32 +1316,46 @@ export function MehrAbschnitte({
           <p className="text-[12.5px] text-muted">{t("ko.attachmentsEmpty")}</p>
         ) : (
           <div className="grid grid-cols-3 gap-2">
-            {(ko.attachments ?? []).map((a) => (
-              <div key={a.id} className="group relative">
-                <button
-                  type="button"
-                  className="block w-full"
-                  onClick={() => openAttachment(a)}
-                  title={a.name}
-                >
-                  <img
-                    src={a.thumbnail ?? a.dataUrl ?? ""}
-                    alt={a.name}
-                    className="h-20 w-full rounded-card border border-hairline object-cover"
-                  />
-                </button>
-                {canEdit ? (
+            {(ko.attachments ?? []).map((a) => {
+              const kannOeffnen = Boolean(objectRawHref(a.objectId) || a.dataUrl);
+              const hinweis = t(
+                kannOeffnen ? "ko.attachmentOpenNewTab" : "ko.attachmentOriginalUnavailable",
+              );
+              const vorschau = a.thumbnail || a.dataUrl;
+              return (
+                <div key={a.id} className="min-w-0">
                   <button
                     type="button"
-                    aria-label={t("ko.attachmentRemove")}
-                    onClick={() => detach.mutate(a.id)}
-                    className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-ink/70 text-white opacity-0 transition-opacity group-hover:opacity-100"
+                    className="block w-full text-left"
+                    aria-label={`${a.name} — ${hinweis}`}
+                    aria-disabled={!kannOeffnen}
+                    onClick={() => {
+                      // Wie beim Upload: fokussierbar bleiben, fehlenden Weg vor dem Aufruf abfangen.
+                      if (!kannOeffnen) {
+                        return;
+                      }
+                      openAttachment(a);
+                    }}
                   >
-                    <X size={12} />
+                    <AnhangVorschau key={vorschau} src={vorschau} />
+                    <span className="mt-1 block truncate text-[12px] text-text" title={a.name}>
+                      {a.name}
+                    </span>
+                    <span className="mt-0.5 block text-[12px] text-muted">{hinweis}</span>
                   </button>
-                ) : null}
-              </div>
-            ))}
+                  {canEdit ? (
+                    <button
+                      type="button"
+                      aria-label={t("ko.attachmentRemove")}
+                      onClick={() => detach.mutate(a.id)}
+                      className="ml-auto mt-1 grid h-5 w-5 place-items-center rounded-full bg-ink/70 text-white"
+                    >
+                      <X size={12} />
+                    </button>
+                  ) : null}
+                </div>
+              );
+            })}
           </div>
         )}
         {canEdit ? (
