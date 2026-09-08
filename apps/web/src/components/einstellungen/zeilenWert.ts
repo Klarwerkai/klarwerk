@@ -42,7 +42,7 @@ export interface WertBefund {
   readonly wert: string | null;
   /** Sichtbarer Bestand aus einem älteren Abruf → Stand nennen. 0 = kein Zusatz. */
   readonly standMs: number;
-  /** Die Auffrischung ist gescheitert oder ruht — der Bestand ist nicht aktuell. */
+  /** Die Auffrischung ist gestört oder seit der Störung noch nicht erfolgreich nachgeholt. */
   readonly nichtAktualisiert: boolean;
 }
 
@@ -71,9 +71,16 @@ export function abfragelage(
  *
  * `wert` ist der fachliche Wert AUS den Daten (null, wenn die Daten fehlen); `leer` sagt, ob die
  * erfolgreiche Antwort inhaltlich leer war. Eine positive Aussage entsteht ausschließlich aus
- * `hatDaten` — nie aus einem Vorgabewert.
+ * `hatDaten` — nie aus einem Vorgabewert. `standBeiStoerung` hält der Aufrufer, bis ein
+ * neuerer erfolgreicher Datenstand vorliegt; der Online-Wechsel allein ist kein Fortschritt.
+ * Ohne dieses optionale Gedächtnis bleibt der Vertrag bestehender Zeilen unverändert.
  */
-export function wertBefund(lage: Abfragelage, wert: string | null, leer = false): WertBefund {
+export function wertBefund(
+  lage: Abfragelage,
+  wert: string | null,
+  leer = false,
+  standBeiStoerung: number | null = null,
+): WertBefund {
   if (!lage.hatDaten) {
     if (lage.pausiert) {
       return { art: "offline", wert: null, standMs: 0, nichtAktualisiert: false };
@@ -84,7 +91,8 @@ export function wertBefund(lage: Abfragelage, wert: string | null, leer = false)
     return { art: "laedt", wert: null, standMs: 0, nichtAktualisiert: false };
   }
   // Daten sind da: sie bleiben sichtbar, auch wenn die Auffrischung scheitert oder ruht.
-  const gestoert = lage.fehler || lage.pausiert;
+  const gestoert =
+    lage.fehler || lage.pausiert || (standBeiStoerung !== null && lage.standMs <= standBeiStoerung);
   const standMs = gestoert || lage.laeuft ? lage.standMs : 0;
   return {
     art: leer ? "leer" : "wert",

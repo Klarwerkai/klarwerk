@@ -25,9 +25,8 @@
 //      kein Sturz in den Fehlerzustand, solange Daten da sind.
 //   C  Der Fokus überlebt: das Erscheinen der Markierung stiehlt ihn nicht, und der Knopf ist mit
 //      der Tastatur erreichbar.
-//   D  Die Gegenrichtung: Wiederverbindung nimmt die Markierung von selbst zurück (siehe Kopf des
-//      Falls — der ursprünglich beauftragte Ablauf „online schalten, DANN klicken" ist an der
-//      gebauten Kette nicht messbar, weil die Markierung dann schon weg ist).
+//   D  Die Gegenrichtung bei sofort veraltetem Cache: Wiederverbindung holt erfolgreich nach.
+//      Die produktive Frist und noch offene Antworten deckt frischefrist-nachholung.test.tsx.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../apps/web/src/api/endpoints", () => ({
@@ -273,16 +272,13 @@ describe("JOB 3135 H6-D1 · C: die Markierung stiehlt den Fokus nicht", () => {
 });
 
 // ================================================================================================
-// D · DIE GEGENRICHTUNG — UND WARUM DER BEAUFTRAGTE ABLAUF SO NICHT MESSBAR IST
+// D · DIE GEGENRICHTUNG BEI SOFORT VERALTETEM CACHE
 // ================================================================================================
 //
-// Der Auftrag (§6, zweiter roter Fall) verlangte: offline schalten, dann `setOnline(true)`, dann
-// auf „Erneut versuchen" klicken. An der gebauten Kette gibt es diesen Klick nicht mehr: die
-// Markierung hängt an `nichtAktualisiert = fehler || pausiert` (`zeilenWert.ts:87`), und mit der
-// Wiederverbindung fällt `pausiert` weg — die Markierung ist samt Knopf schon fort, BEVOR geklickt
-// werden könnte. Das ist das ehrliche Verhalten (nichts ist mehr gestört), und es ist genau das,
-// was dieser Fall festhält. Der Klick selbst wird deshalb dort gemessen, wo es ihn wirklich gibt:
-// an der gescheiterten Auffrischung (Fall B).
+// Dieser Bestandsfall setzt keine staleTime und beantwortet den automatischen Abruf sofort.
+// Er belegt deshalb ausschließlich die erfolgreiche automatische Nachholung. JOB 3180 ersetzt
+// die frühere Behauptung, der Online-Wechsel allein dürfe die Markierung entfernen: mit der
+// produktiven Frischefrist bleibt der manuelle Weg nach kurzer Unterbrechung weiterhin nötig.
 describe("JOB 3135 H6-D1 · D: die Wiederverbindung nimmt die Markierung von selbst zurück", () => {
   it("nach setOnline(true) steht kein nicht-aktualisiert mehr, und es wird wirklich neu abgerufen", async () => {
     await mitOffenemDetail();

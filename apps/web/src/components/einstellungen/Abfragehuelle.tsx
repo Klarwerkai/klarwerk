@@ -28,7 +28,7 @@
 // alt der Bestand ist. Die Hülle setzt den Zusatz deshalb aus denselben zwei Schlüsseln zusammen
 // wie die Übersicht (`einst.wert.stand` · `einst.wert.nichtAktualisiert`).
 import { AlertTriangle, RefreshCw } from "lucide-react";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { cx } from "../ui";
 import { abfragelage, useIstOnline, wertBefund } from "./zeilenWert";
@@ -122,7 +122,17 @@ export function Abfragehuelle<T>({
 }): JSX.Element {
   const { t } = useTranslation();
   const online = useIstOnline();
-  const befund = wertBefund(abfragelage(abfrage, online), null);
+  const [standBeiStoerung, setStandBeiStoerung] = useState<number | null>(null);
+  const befund = wertBefund(abfragelage(abfrage, online), null, false, standBeiStoerung);
+  // JOB 3180: genau hier wohnt das Gedächtnis. Der reine Befund entscheidet, ob die
+  // Episode noch offen ist. Synchron vor dem Rendern nachführen, damit kein Effekt erst
+  // nach einem unmarkierten Bild die Störung merkt (auch unter StrictMode).
+  const gemerkterStand = befund.nichtAktualisiert
+    ? (standBeiStoerung ?? abfrage.dataUpdatedAt)
+    : null;
+  if (gemerkterStand !== standBeiStoerung) {
+    setStandBeiStoerung(gemerkterStand);
+  }
   const erneut = (): void => void abfrage.refetch();
 
   if (befund.art === "laedt") {
@@ -145,8 +155,8 @@ export function Abfragehuelle<T>({
   // Übersicht (`Zeilenkarte.tsx:34-47`), damit ein Zustand nicht zwei Wortlaute bekommt:
   //   Auffrischung läuft ..... „Stand von 07:24"
   //   Auffrischung gestört ... „Stand von 07:24 · nicht aktualisiert" + Wiederholen
-  // `standMs` ist bereits 0, solange nichts läuft und nichts gestört ist (`zeilenWert.ts:88`) —
-  // im Normalfall steht hier also gar nichts.
+  // Ohne laufende Auffrischung oder offene Störung ist `standMs` 0 — nach einem erfolgreich
+  // nachgeholten Abruf steht hier wie beim Erstabruf also gar nichts.
   const zusatz: string[] = [];
   if (befund.standMs > 0) {
     zusatz.push(
