@@ -9,6 +9,13 @@
 # danach versucht rmdir das leere Schloss zu lösen; eine erkannte lebende PID setzt die Frist zurück
 # und wird nie entfernt (F12/F13); einen Halter ohne PID-Datei kann niemand als lebend erkennen.
 # Fehlendes Signalrecht/EPERM ist kein Todesbeleg: nur ESRCH räumt, sonst bleibt die Zeitgrenze.
+# Rückweg: lebende Halter geben selbst frei; tote, unzugängliche Halter (EPERM) warten bis zur
+# vollen Zeitgrenze. Automatisch löst das niemand: Halterzustand außerhalb der Sandkiste prüfen,
+# alle beteiligten Läufe beenden, dann die alte PID-Datei entfernen und das leere Schloss lösen.
+# Vorhandene unlesbare/unbrauchbare PID-Dateien entfernt automatisch niemand; auch nach der
+# Gnadenfrist bleibt rmdir erfolglos, bis zur Zeitgrenze. Rückweg: nach derselben Halterprüfung
+# und dem Beenden aller beteiligten Läufe die defekte Datei entfernen, dann rmdir am Schloss.
+# Gnadenfrist 0 schaltet das Wartefenster für ein Schloss ohne PID-Datei aus (mit Startwarnung).
 # Basisstand: der unmittelbare Elterncommit des Prüfstands (wird beim Einbau gesetzt)
 set -euo pipefail
 art="${1:-}"
@@ -27,6 +34,9 @@ gnade="${KLARWERK_BROWSERDECKEL_GNADE:-15}"
 case "$gnade" in ''|*[!0-9]*) echo '✖ Browserdeckel: Gnadenfrist muss ganze Sekunden enthalten' >&2; exit 2 ;; esac
 # Dezimal lesen, auch bei führender Null; keine Bash-Oktalinterpretation von 08/09.
 gnade=$((10#$gnade))
+if [ "$gnade" = 0 ]; then
+  echo '⚠ Browserdeckel: Gnadenfrist 0s — ein Schloss ohne PID-Datei wird ohne Wartefenster entfernt; nur für Messungen' >&2
+fi
 an=1
 if [ "${KLARWERK_BROWSERDECKEL:-1}" = 0 ]; then
   an=0
@@ -127,7 +137,15 @@ aufraeumen() {
   if [ "$genommen" = 1 ]; then schreibe freigeben || rc=1; fi
   if [ "$besitzt" = 1 ]; then
     rm -f "$piddatei"
-    rmdir "$lock" || rc=1
+    # Wie bei kill: nur die eindeutige Diagnose in C-Locale rechtfertigt die Ausnahme.
+    if rmdirfehler=$(LC_ALL=C rmdir "$lock" 2>&1); then
+      :
+    else
+      case "$rmdirfehler" in
+        *'Directory not empty') echo "⚠ Browserdeckel: Schloss nicht leer: $lock — Exitcode $rc bleibt erhalten" >&2 ;;
+        *) echo "$rmdirfehler" >&2; rc=1 ;;
+      esac
+    fi
   fi
   exit "$rc"
 }
@@ -141,11 +159,14 @@ if [ "$an" = 1 ]; then
   while ! mkdir "$lock" 2>/dev/null; do
     gewartet=1
     gueltige_pid=0; raeumen=0; pid_frist_abgelaufen=0
-    halter='unbekannt (PID-Datei fehlt)'; seit='unbekannt'
+    halter='unbekannt'; seit='unbekannt'
+    pidgrund='PID-Datei fehlt'
     for datei in "$lock"/pid-*; do
       [ -f "$datei" ] || continue
-      if ! read -r halter seit halterart halterid < "$datei"; then continue; fi
-      case "$halter" in ''|*[!0-9]*|0) continue ;; esac
+      if ! read -r halter seit halterart halterid < "$datei"; then
+        pidgrund="PID-Datei unlesbar: $datei"; continue
+      fi
+      case "$halter" in ''|*[!0-9]*|0) pidgrund="PID-Datei unbrauchbar: $datei"; continue ;; esac
       gueltige_pid=1
       ohne_pid_seit=-1
       # Bash liefert bei kill keinen errno als Exitcode. In C-Locale ist nur die eindeutige
@@ -181,7 +202,7 @@ if [ "$an" = 1 ]; then
       fi
     done
     if [ "$gueltige_pid" = 0 ] && [ -d "$lock" ]; then
-      halter='unbekannt (PID-Datei fehlt)'; seit='unbekannt'
+      halter="unbekannt ($pidgrund)"; seit='unbekannt'
       if (( ohne_pid_seit < 0 )); then ohne_pid_seit=$SECONDS; fi
     fi
     if (( ohne_pid_seit >= 0 && SECONDS - ohne_pid_seit >= gnade )); then
@@ -191,7 +212,9 @@ if [ "$an" = 1 ]; then
     # PID-Datei verhindert das Entfernen atomar; weiter warten, niemals rekursiv löschen.
     if [ "$raeumen" = 1 ] && rmdir "$lock" 2>/dev/null; then
       if [ "$pid_frist_abgelaufen" = 1 ]; then
-        echo "ⓘ Browserdeckel: PID-Datei nie geschrieben — Frist ${gnade}s abgelaufen, leeres Schloss aufgeräumt"
+        fristgrund="$pidgrund"
+        if [ "$fristgrund" = 'PID-Datei fehlt' ]; then fristgrund='PID-Datei nie geschrieben'; fi
+        echo "ⓘ Browserdeckel: $fristgrund — Frist ${gnade}s abgelaufen, leeres Schloss aufgeräumt"
         # Keine bekannte Halterkennung, also KEIN verwaist-Ereignis: die Journalleser können
         # ohne id kein Fenster schließen. Es beginnt erst beim folgenden nehmen ein Fenster.
       fi

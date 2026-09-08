@@ -3,6 +3,7 @@
 // Basisstand: der unmittelbare Elterncommit des Prüfstands (wird beim Einbau gesetzt)
 import { spawn } from "node:child_process";
 import {
+  chmodSync,
   copyFileSync,
   existsSync,
   mkdirSync,
@@ -203,18 +204,47 @@ describe("JOB 3150 · Browserdeckel", () => {
     console.log(readFileSync(join(lauf.ort, ".local/run/browserdeckel.jsonl"), "utf8"));
   });
 
-  it("F2 · eine tote PID wird laut aufgeräumt", async () => {
+  it.each([
+    ["F2a", true],
+    ["F2b", false],
+  ] as const)("%s · tote PID mit Kennung=%s wird laut aufgeräumt", async (_fall, mitKennung) => {
     const { ort, env } = werk();
     const tot = starte(ort, env, "node", ["-e", "process.exit(0)"]);
     await tot.fertig;
     const pid = tot.kind.pid as number;
     expect(() => process.kill(pid, 0)).toThrow();
-    mkdirSync(env.KLARWERK_BROWSERDECKEL_LOCK);
-    writeFileSync(join(env.KLARWERK_BROWSERDECKEL_LOCK, `pid-${pid}`), `${pid} 1 browser\n`);
+    const lock = env.KLARWERK_BROWSERDECKEL_LOCK;
+    const id = "f2-halter";
+    mkdirSync(lock);
+    writeFileSync(join(lock, `pid-${pid}`), `${pid} 1 browser${mitKennung ? ` ${id}` : ""}\n`);
+    if (mitKennung) {
+      writeFileSync(
+        `${lock}.jsonl`,
+        `${JSON.stringify({ ereignis: "nehmen", id, pid, art: "browser", zeit: 1, deckel: true, gewartetMs: 0 })}\n`,
+      );
+    }
     const lauf = await starte(ort, env, "./tools/browserdeckel.sh", ["smoke", "true"]).fertig;
+    const verwaist = readFileSync(`${lock}.jsonl`, "utf8")
+      .trim()
+      .split("\n")
+      .map((zeile) => JSON.parse(zeile) as Ereignis)
+      .filter((e) => e.ereignis === "verwaist");
+    if (mitKennung) {
+      expect(lauf.ausgabe).toContain(
+        `ⓘ Browserdeckel verwaist: PID ${pid} seit 1 (Unix-ms) — aufgeräumt`,
+      );
+      expect(verwaist).toHaveLength(1);
+      expect(verwaist[0]?.id).toBe(id);
+      expect(lauf.stderr).not.toContain("ohne Kennung");
+    } else {
+      expect(lauf.stderr).toContain(
+        `⚠ Browserdeckel: PID ${pid} ohne Kennung — kein verwaist-Eintrag`,
+      );
+      expect(verwaist).toHaveLength(0);
+    }
     expect(lauf.code, lauf.ausgabe).toBe(0);
-    expect(lauf.ausgabe).toContain("verwaist");
-    expect(existsSync(env.KLARWERK_BROWSERDECKEL_LOCK)).toBe(false);
+    expect(existsSync(lock)).toBe(false);
+    expect(ueberlappendePaare(fensterAusProtokoll(`${lock}.jsonl`))).toEqual([]);
   });
 
   it("F3 · lebende PID: Zeitgrenze bricht laut ab, der Befehl startet nie", async () => {
@@ -548,6 +578,259 @@ kill() {
       expect(ueberlappendePaare(fensterAusProtokoll(journal))).toEqual([]);
     },
   );
+
+  it.each([
+    ["unbrauchbar", "abc 1 browser\n"],
+    ["unlesbar", ""],
+  ])(
+    "F19 · vorhandene PID-Datei %s bleibt mit ehrlicher Zeitgrenze erhalten",
+    async (grund, inhalt) => {
+      const { ort, env } = werk();
+      const lock = env.KLARWERK_BROWSERDECKEL_LOCK;
+      mkdirSync(lock);
+      const datei = join(lock, "pid-defekt");
+      writeFileSync(datei, inhalt);
+      const lauf = await starte(
+        ort,
+        { ...env, KLARWERK_BROWSERDECKEL_GNADE: "0", KLARWERK_BROWSERDECKEL_TIMEOUT: "1" },
+        "./tools/browserdeckel.sh",
+        ["smoke", "node", env.SONDE],
+      ).fertig;
+      expect(lauf.code, lauf.ausgabe).toBe(1);
+      expect(existsSync(lock)).toBe(true);
+      expect(readFileSync(datei, "utf8")).toBe(inhalt);
+      expect(existsSync(join(ort, "smoke.start"))).toBe(false);
+      expect(lauf.stderr).toContain(`PID-Datei ${grund}: ${datei}`);
+      expect(lauf.ausgabe).not.toMatch(/PID-Datei fehlt|PID-Datei nie geschrieben/);
+    },
+  );
+
+  it.each(["0", "15"])(
+    "F20 · fehlende PID-Datei bleibt unterscheidbar bei Gnade %s",
+    async (gnade) => {
+      const { ort, env } = werk();
+      const lock = env.KLARWERK_BROWSERDECKEL_LOCK;
+      mkdirSync(lock);
+      const lauf = await starte(
+        ort,
+        { ...env, KLARWERK_BROWSERDECKEL_GNADE: gnade, KLARWERK_BROWSERDECKEL_TIMEOUT: "2" },
+        "./tools/browserdeckel.sh",
+        ["smoke", "true"],
+      ).fertig;
+      expect(lauf.code, lauf.ausgabe).toBe(gnade === "0" ? 0 : 1);
+      expect(lauf.ausgabe).toContain(
+        gnade === "0" ? "PID-Datei nie geschrieben" : "PID-Datei fehlt",
+      );
+      expect(lauf.ausgabe).not.toMatch(/PID-Datei unlesbar|PID-Datei unbrauchbar/);
+    },
+  );
+
+  it("F21 · Gnadenfrist 0 warnt auf stderr und räumt bei der ersten Beobachtung", async () => {
+    const { ort, env } = werk();
+    const lock = env.KLARWERK_BROWSERDECKEL_LOCK;
+    mkdirSync(lock);
+    const hook = join(ort, "beobachtung.bash");
+    const beobachtet = join(ort, "beobachtungen");
+    writeFileSync(
+      hook,
+      `trap 'case "$BASH_COMMAND" in "gueltige_pid=0"*) printf "beobachtet\\n" >> "$BEOBACHTET" ;; esac' DEBUG\n`,
+    );
+    const lauf = await starte(
+      ort,
+      { ...env, BASH_ENV: hook, BEOBACHTET: beobachtet, KLARWERK_BROWSERDECKEL_GNADE: "00" },
+      "./tools/browserdeckel.sh",
+      ["smoke", "true"],
+    ).fertig;
+    expect(lauf.code, lauf.ausgabe).toBe(0);
+    expect(existsSync(lock)).toBe(false);
+    expect(lauf.ausgabe).toContain("Frist 0s abgelaufen, leeres Schloss aufgeräumt");
+    // Eine Schleifenbeobachtung; eine reine Zeitmessung könnte zusätzliche Runden übersehen.
+    expect(readFileSync(beobachtet, "utf8")).toBe("beobachtet\n");
+    expect(lauf.stderr).toContain(
+      "⚠ Browserdeckel: Gnadenfrist 0s — ein Schloss ohne PID-Datei wird ohne Wartefenster entfernt; nur für Messungen",
+    );
+  });
+
+  it.each([0, 7])("F22 · Fremddatei erhält den Befehls-Exitcode %s mit Warnung", async (code) => {
+    const { ort, env } = werk();
+    const lock = env.KLARWERK_BROWSERDECKEL_LOCK;
+    const lauf = await starte(ort, env, "./tools/browserdeckel.sh", [
+      "smoke",
+      "node",
+      "-e",
+      `require('node:fs').writeFileSync(process.env.KLARWERK_BROWSERDECKEL_LOCK + '/fremd', 'fremd'); process.exit(${code})`,
+    ]).fertig;
+    expect(lauf.code, lauf.ausgabe).toBe(code);
+    expect(lauf.stderr).toContain(`⚠ Browserdeckel: Schloss nicht leer: ${lock}`);
+    expect(readFileSync(join(lock, "fremd"), "utf8")).toBe("fremd");
+    expect(fensterAusProtokoll(`${lock}.jsonl`)).toHaveLength(1);
+  });
+
+  it.each(["Betriebssystem", "Permission denied", "unbekannter Fehler"])(
+    "F23 · anderer rmdir-Fehler bleibt Exit 1: %s",
+    async (diagnose) => {
+      const { ort, env } = werk();
+      const parent = join(ort, "schloss-eltern");
+      mkdirSync(parent);
+      const lock = join(parent, "deckel.lock");
+      const hook = join(ort, "rmdir.bash");
+      writeFileSync(
+        hook,
+        `rmdir() { printf 'rmdir: %s: %s\\n' "$1" "$DIAGNOSE" >&2; return 1; }\n`,
+      );
+      try {
+        const lauf = await starte(
+          ort,
+          {
+            ...env,
+            KLARWERK_BROWSERDECKEL_LOCK: lock,
+            ...(diagnose === "Betriebssystem" ? {} : { BASH_ENV: hook, DIAGNOSE: diagnose }),
+          },
+          "./tools/browserdeckel.sh",
+          [
+            "smoke",
+            "node",
+            "-e",
+            diagnose === "Betriebssystem"
+              ? `require('node:fs').chmodSync(require('node:path').dirname(process.env.KLARWERK_BROWSERDECKEL_LOCK), 0o555)`
+              : "process.exit(0)",
+          ],
+        ).fertig;
+        console.log(`F23 ${diagnose} exit=${lauf.code}\n${lauf.stderr}`);
+        expect(lauf.code, lauf.ausgabe).toBe(1);
+        expect(lauf.stderr).toContain(
+          diagnose === "Betriebssystem" ? "Permission denied" : diagnose,
+        );
+        expect(existsSync(lock)).toBe(true);
+      } finally {
+        chmodSync(parent, 0o755);
+      }
+    },
+  );
+
+  it("F24 · zwei Wartende entfernen dieselbe tote PID genau einmal und schreiben ein verwaist", async () => {
+    const { ort, env } = werk();
+    const tot = starte(ort, env, process.execPath, ["-e", "process.exit(0)"]);
+    await tot.fertig;
+    const pid = tot.kind.pid as number;
+    expect(() => process.kill(pid, 0)).toThrow();
+    const lock = env.KLARWERK_BROWSERDECKEL_LOCK;
+    const id = "gemeinsamer-toter";
+    mkdirSync(lock);
+    const datei = join(lock, `pid-${id}`);
+    writeFileSync(datei, `${pid} 1 browser ${id}\n`);
+    const journal = `${lock}.jsonl`;
+    const historie = `${JSON.stringify({ ereignis: "nehmen", id, pid, art: "browser", zeit: 1, deckel: true, gewartetMs: 0 })}\n`;
+    writeFileSync(journal, historie);
+    const hook = join(ort, "wettlauf.bash");
+    const lesesperre = join(ort, "lesesperre.cjs");
+    // Beide lesen dieselbe echte PID-Datei vor rm. Der Verlierer erreicht entweder sleep
+    // oder (Mutation M4) ebenfalls den Journalleser. Dessen echte erste Lektüre halten wir
+    // VOR der Rückgabe an: M4 liest so zweimal ein offenes Fenster, statt zufällig vom
+    // zusätzlichen Journalfilter verdeckt zu werden. Keine Daten/Ergebnisse werden ersetzt.
+    writeFileSync(
+      hook,
+      `
+rm() {
+  if [ "$1" = "$PIDZIEL" ]; then
+    : > "$SONDENPFAD/rm-$LAUF"
+    while [ ! -f "$SONDENPFAD/rm-frei" ]; do command sleep 0.02; done
+    if command rm "$@"; then printf 'entfernt\\n' >> "$SONDENPFAD/entfernt"; return 0; else return 1; fi
+  fi
+  command rm "$@"
+}
+sleep() {
+  if [ "$1" = 0.1 ] && [ -f "$SONDENPFAD/rm-$LAUF" ]; then
+    : > "$SONDENPFAD/weiter-$LAUF"
+    while [ ! -f "$SONDENPFAD/lesen-frei" ]; do command sleep 0.02; done
+  fi
+  command sleep "$@"
+}
+node() {
+  if [ "\${4:-}" = verwaist ]; then command node --require "$LESESPERRE" "$@"; else command node "$@"; fi
+}
+`,
+    );
+    writeFileSync(
+      lesesperre,
+      `
+const fs = require('node:fs');
+const lesen = fs.readFileSync;
+let erstes = true;
+fs.readFileSync = function(datei, ...args) {
+  const text = lesen.call(this, datei, ...args);
+  if (erstes && datei === process.env.KLARWERK_BROWSERDECKEL_LOCK + '.jsonl') {
+    erstes = false;
+    fs.writeFileSync(process.env.SONDENPFAD + '/weiter-' + process.env.LAUF, 'gelesen');
+    const bis = Date.now() + 10000;
+    while (!fs.existsSync(process.env.SONDENPFAD + '/lesen-frei')) {
+      if (Date.now() > bis) throw new Error('Journal-Lesesperre nicht freigegeben');
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
+    }
+  }
+  return text;
+};
+`,
+    );
+    const laeufe = ["a", "b"].map((lauf) =>
+      starte(
+        ort,
+        { ...env, BASH_ENV: hook, PIDZIEL: datei, LESESPERRE: lesesperre, LAUF: lauf },
+        "./tools/browserdeckel.sh",
+        ["smoke", "true"],
+      ),
+    );
+    try {
+      await warteBis(() => ["a", "b"].every((lauf) => existsSync(join(ort, `rm-${lauf}`))));
+      writeFileSync(join(ort, "rm-frei"), "frei");
+      await warteBis(() => ["a", "b"].every((lauf) => existsSync(join(ort, `weiter-${lauf}`))));
+      writeFileSync(join(ort, "lesen-frei"), "frei");
+      const ergebnisse = await Promise.all(laeufe.map((lauf) => lauf.fertig));
+      const text = readFileSync(journal, "utf8");
+      const verwaist = text
+        .trim()
+        .split("\n")
+        .map((z) => JSON.parse(z) as Ereignis)
+        .filter((e) => e.ereignis === "verwaist" && e.id === id);
+      expect(verwaist, "genau ein verwaist für den gemeinsamen Toten").toHaveLength(1);
+      for (const e of ergebnisse) expect(e.code, e.ausgabe).toBe(0);
+      expect(readFileSync(join(ort, "entfernt"), "utf8")).toBe("entfernt\n");
+      expect(text.startsWith(historie)).toBe(true);
+      expect(existsSync(datei)).toBe(false);
+      expect(existsSync(lock)).toBe(false);
+      expect(ueberlappendePaare(fensterAusProtokoll(journal))).toEqual([]);
+    } finally {
+      writeFileSync(join(ort, "rm-frei"), "frei");
+      writeFileSync(join(ort, "lesen-frei"), "frei");
+      for (const lauf of laeufe) lauf.kind.kill("SIGTERM");
+      await Promise.all(laeufe.map((lauf) => lauf.fertig));
+    }
+  });
+
+  it.each([
+    ["unbrauchbar", "abc\n"],
+    ["unlesbar", ""],
+  ])("F25 · Fristmeldung erhält den beobachteten Grund %s im Wettlauf", async (grund, inhalt) => {
+    const { ort, env } = werk();
+    const lock = env.KLARWERK_BROWSERDECKEL_LOCK;
+    mkdirSync(lock);
+    const datei = join(lock, "pid-defekt");
+    writeFileSync(datei, inhalt);
+    const hook = join(ort, "frist.bash");
+    // Ein Dritter entfernt die defekte Datei zwischen Beobachtung und echtem rmdir.
+    writeFileSync(hook, `rmdir() { command rm -f "$PIDZIEL"; command rmdir "$@"; }\n`);
+    const lauf = await starte(
+      ort,
+      { ...env, BASH_ENV: hook, PIDZIEL: datei, KLARWERK_BROWSERDECKEL_GNADE: "0" },
+      "./tools/browserdeckel.sh",
+      ["smoke", "true"],
+    ).fertig;
+    expect(lauf.code, lauf.ausgabe).toBe(0);
+    expect(lauf.ausgabe).toContain(
+      `ⓘ Browserdeckel: PID-Datei ${grund}: ${datei} — Frist 0s abgelaufen, leeres Schloss aufgeräumt`,
+    );
+    expect(lauf.ausgabe).not.toMatch(/PID-Datei fehlt|PID-Datei nie geschrieben/);
+  });
 
   it.each(["falsch", "1.5", "-1"])(
     "G1 · ungültige Gnadenfrist %s bricht vor dem Befehl ab",
