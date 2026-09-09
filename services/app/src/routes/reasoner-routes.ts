@@ -8,6 +8,9 @@ import {
 } from "../../../external-search";
 import { type Confidentiality, type KoService, isConfidential } from "../../../knowledge-object";
 import {
+  // JOB 3353 B: der EINE Fehlertyp, den der Reasoner wirft, wenn er GEMESSEN hat, dass die
+  // Vertraulichkeit den Lauf ohne Anbieter gelassen hat. Nur er wird hier typisiert beantwortet.
+  ConfidentialCloudBlockedError,
   MAX_DESCRIBE_IMAGE_DATAURL_CHARS,
   type ModelRunSubject,
   type Reasoner,
@@ -109,6 +112,135 @@ function hoehereStufe(
 // Fastify; die Routen-Validierung meldet den 5-MB-Bild-Deckel zusätzlich mit ehrlicher Begründung.
 export const DESCRIBE_BODY_LIMIT = 8 * 1024 * 1024; // 8 MiB
 
+// ================================================================================================
+// JOB 3353 · B — „DIE CLOUD DARF NICHT" IST EINE REGEL, KEINE STÖRUNG.
+// ================================================================================================
+//
+// DER LIVEBEFUND (Codex 21:57 und 22:17, 1.202/1.203): „KI → Rechtschreibung" im Erfassen-Blatt
+// endete in HTTP 500 mit einer Meldung, die den Grund zwar TRUG („The text is classified as
+// confidential — the cloud AI must not process it."), aber als Serverfehler. Die Fläche kann einen
+// 500 nur als „irgendwas ist kaputt" anzeigen — Pedi sah die generische Karte `fd.errAssist` und
+// hatte keinen Weg vorwärts, obwohl es genau einen gibt (sichern, umstufen, lokale KI).
+//
+// EIN 500 IST DIE FALSCHE AUSKUNFT, und zwar wörtlich: er sagt „mein Fehler", während der Server
+// eine ABSICHTLICHE Schutzregel durchgesetzt hat (JOB 2692 D2). Der Zustand ist nicht kaputt, er
+// ist ENTSCHIEDEN. Dafür gibt es 409: der Aufruf steht im Widerspruch zum Zustand der Ressource,
+// und der Aufrufer kann den Zustand ändern.
+//
+// WAS HIER NICHT GESCHIEHT — die Grenze, die den Eingriff ungefährlich macht:
+//  · KEINE Lockerung. `resolveProvenance` entscheidet unverändert, was vertraulich ist; diese
+//    Zeilen lesen das Ergebnis, sie stimmen nicht darüber ab.
+//  · KEIN Kurzschluss VOR dem Versuch. Ein vertraulicher Text, für den ein LOKALES Modell oder der
+//    deterministische Weg zuständig ist, läuft weiter durch und bekommt seine Antwort — sonst
+//    nähme dieser Auftrag der Meldung genau den Ausweg, den sie selbst nennt („lokale KI").
+//    Die typisierte Antwort entsteht erst, wenn der Lauf OHNE Ergebnis geblieben ist.
+//  · KEINE Umdeutung fremder Fehler, und KEIN Umkehrschluss. Ein Zeitlimit, ein HTTP-Fehler, ein
+//    Netzproblem, eine unbrauchbare Antwort, ein gescheiterter LOKALER Anbieter, ein schlichter
+//    Programmfehler: alles das bleibt, was es ist. Typisiert wird ausschliesslich der POSITIV
+//    belegte Fall, und den belegt nicht diese Datei, sondern der Lauf selbst
+//    (`ConfidentialCloudBlockedError`, services/reasoner/src/service.ts — dort stehen die drei
+//    Bedingungen, unter denen er entsteht).
+//
+// DIE MELDUNG KOMMT VOM SERVER, in DE und EN nach dem `locale` des Requests. Absicht: die
+// Fläche soll den Grund AUSSPRECHEN können, ohne dass jeder Aufrufer die drei Fälle nachbaut —
+// und `apps/web/src/i18n.ts` ist für andere Jobs reserviert, bekommt also keine neuen Schlüssel.
+export const CONFIDENTIAL_CLOUD_BLOCKED = "CONFIDENTIAL_CLOUD_BLOCKED";
+
+/**
+ * WARUM die Cloud gesperrt ist — die drei unterscheidbaren Fälle, jeder mit eigenem nächsten Schritt.
+ *  · `unsaved_draft` — `source:"draft"` ohne auflösbaren Anker (JOB 2692 D2). Der Mensch sichert.
+ *  · `backstop`      — der GESPEICHERTE Stand des Ankers ist vertraulich und hebt. Der Mensch stuft
+ *                      das gespeicherte Objekt um, nicht das Formular.
+ *  · `declared`      — die Einstufung dieses Aufrufs (oder ihr Fehlen, fail-safe) sperrt; ebenso der
+ *                      KA4-Riegel ohne Dokumentzustimmung. Der Mensch stuft hier um.
+ */
+export type VertraulichGrund = "unsaved_draft" | "declared" | "backstop";
+
+/**
+ * Der anzeigbare Satz je Grund, in der Sprache des Requests. Kein Nutzertext, keine Kennung.
+ *
+ * DE UND EN, und das ist vollständig: diese Route normalisiert JEDE Sprachangabe auf genau diese
+ * zwei (`normalizeLocale`, Zeile 27 — „FR-I18N-01: nur DE/EN"). Ein niederländischer Satz stünde
+ * hier als Zweig, den kein Aufruf erreichen kann; er sähe nach Abdeckung aus und wäre keine. Öffnet
+ * FR-I18N-01 die Route eines Tages für „nl", gehört er hierher — zusammen mit dem Aufruf, der ihn
+ * auslöst.
+ *
+ * JEDER DER DREI SÄTZE NENNT DIE EINSTUFUNG, auch der des nicht gesicherten Entwurfs (Runde 3,
+ * gemessen an reasoner-egress.test.ts:66). Das ist keine Rücksicht auf einen Test, sondern die Sache
+ * selbst: OHNE auflösbaren Anker GILT der Text als vertraulich (JOB 2692 D2, fail-closed) — genau
+ * deshalb fällt die Cloud aus der Kette. Ein Satz, der nur „erst nach dem Sichern" sagt, verschweigt
+ * die Regel, die gerade gegriffen hat, und liest sich wie eine technische Laune. Der Weg vorwärts
+ * steht in jedem der drei Sätze, denn ohne ihn wäre die Meldung nur eine höflichere Sackgasse.
+ */
+function cloudGesperrtMeldung(locale: ReasonerLocale, grund: VertraulichGrund): string {
+  if (locale === "en") {
+    return grund === "unsaved_draft"
+      ? "Unsaved draft: without a saved state the text counts as classified as confidential — the cloud AI must not process it. Save the draft (its classification is checked then), or choose the local AI."
+      : grund === "backstop"
+        ? "The saved entry is classified as confidential — the cloud AI must not process it. Change the classification of the saved entry, or choose the local AI."
+        : "This text is classified as confidential — the cloud AI must not process it. Change the classification, or choose the local AI.";
+  }
+  return grund === "unsaved_draft"
+    ? "Nicht gesicherter Entwurf: ohne gesicherten Stand gilt der Text als vertraulich eingestuft — die Cloud-KI darf ihn nicht bearbeiten. Entwurf sichern (die Einstufung wird dann geprüft) oder lokale KI wählen."
+    : grund === "backstop"
+      ? "Der gespeicherte Beitrag ist als vertraulich eingestuft — die Cloud-KI darf ihn nicht bearbeiten. Einstufung des gespeicherten Beitrags ändern oder lokale KI wählen."
+      : "Dieser Text ist als vertraulich eingestuft — die Cloud-KI darf ihn nicht bearbeiten. Einstufung ändern oder lokale KI wählen.";
+}
+
+/**
+ * War es die Vertraulichkeitssperre?
+ *
+ * DIESE FRAGE BEANTWORTET DIE ROUTE NICHT SELBST, und das ist der Kern der Sache (Codex 73217c82).
+ * Ein Umkehrschluss aus der Fehlerklasse — „was `classifyModelFailure` nicht einordnen kann, wird
+ * schon die Sperre gewesen sein" — deckt auch den Programmfehler eines lokalen Anbieters ab und
+ * schickte den Menschen zum Umstufen eines Textes, an dem nichts einzustufen war. Eine falsche
+ * Erklärung ist schlimmer als gar keine.
+ *
+ * Der POSITIVE Beleg kommt vom Lauf selbst: `ConfidentialCloudBlockedError` wirft der Reasoner nur,
+ * wenn er gemessen hat, dass der Lauf vertraulich war, in seiner Kette kein Modell-Anbieter stand
+ * und ohne die Vertraulichkeit einer darin gestanden hätte (services/reasoner/src/service.ts). Alles
+ * andere — Zeitlimit, Statuscode, unbrauchbare Antwort, gescheiterter LOKALER Anbieter, schlichter
+ * Programmfehler — fällt hier durch und endet unverändert im bisherigen Fehlerweg.
+ */
+function istVertraulichkeitsSperre(error: unknown): boolean {
+  return error instanceof ConfidentialCloudBlockedError;
+}
+
+/**
+ * Führt den Lauf aus und antwortet — mit dem Ergebnis (200) oder, wenn er an der
+ * Vertraulichkeitssperre ohne Ergebnis blieb, mit der typisierten 409.
+ *
+ * ALLES ANDERE FÄLLT DURCH, unverändert: ein Fehler, der nicht beide Bedingungen erfüllt, wird
+ * weitergeworfen und endet wie bisher im zentralen Fehlerweg. Dieser Helfer verschluckt nichts.
+ */
+async function sendeOderSperre<T>(
+  reply: { code: (n: number) => { send: (body: unknown) => unknown } },
+  locale: ReasonerLocale,
+  provenienz: { confidential: boolean; grund?: VertraulichGrund },
+  lauf: () => Promise<T>,
+): Promise<void> {
+  try {
+    reply.code(200).send(await lauf());
+  } catch (error) {
+    if (!provenienz.confidential || !istVertraulichkeitsSperre(error)) {
+      throw error;
+    }
+    const grund = provenienz.grund ?? "declared";
+    // `error` UND `code` tragen denselben Wert, und das ist Absicht, keine Doppelung aus Versehen:
+    // das Fehlerschema des Hauses ist `{error, message}` (services/app/src/http.ts), und NUR das
+    // `error`-Feld erreicht die Fläche — der Client bildet es auf `ApiError.code` ab
+    // (apps/web/src/api/client.ts:37). Stünde die Kennung allein im Zusatzfeld `code`, könnte das
+    // Blatt die Sperre nicht von einem beliebigen Konflikt unterscheiden und zeigte wieder die
+    // generische Karte. `code` steht daneben, weil der Auftrag ihn beim Namen nennt.
+    reply.code(409).send({
+      error: CONFIDENTIAL_CLOUD_BLOCKED,
+      code: CONFIDENTIAL_CLOUD_BLOCKED,
+      reason: grund,
+      message: cloudGesperrtMeldung(locale, grund),
+    });
+  }
+}
+
 export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): FastifyPluginAsync {
   const { reasoner, ask, externalKnowledge, ko, capture, ka4 } = deps;
 
@@ -120,7 +252,14 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
     koId: unknown,
     declared: unknown,
     bindung: Aufrufbindung,
-  ): Promise<{ confidential: boolean; subject?: ModelRunSubject }> => {
+  ): Promise<{
+    confidential: boolean;
+    subject?: ModelRunSubject;
+    // JOB 3353 B: WARUM vertraulich — nur gesetzt, wenn `confidential` gilt. Er wird ausschließlich
+    // für die anzeigbare Meldung gelesen und geht in KEINE Entscheidung ein; die Regel selbst
+    // steht unverändert unten.
+    grund?: VertraulichGrund;
+  }> => {
     let backstop: StoredLookup = { found: false };
     let subject: ModelRunSubject | undefined;
     const clientText = typeof source === "string" && CLIENT_TEXT_SOURCES.has(source);
@@ -182,9 +321,22 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
     if (gebunden && !dokumentZustimmung) {
       confidential = true;
     }
+    // JOB 3353 B: der Grund wird aus GENAU DEN Fakten abgeleitet, die oben entschieden haben —
+    // nichts wird zweitgerechnet. Reihenfolge nach dem nächsten Schritt des Menschen: fehlt der
+    // Anker, ist Sichern der Weg (und die Einstufung wird danach ohnehin geprüft); trägt der
+    // GESPEICHERTE Stand die Stufe, gehört sie dort geändert; sonst war es die Einstufung dieses
+    // Aufrufs — dorthin fällt auch der KA4-Riegel, denn er wirkt wie eine fehlende Zustimmung zu
+    // DIESEM Text und wird an derselben Stelle entschieden.
+    const grund: VertraulichGrund =
+      source === "draft" && !ankerAufgeloest
+        ? "unsaved_draft"
+        : backstop.found && isConfidential(backstop.level ?? null)
+          ? "backstop"
+          : "declared";
     return {
       confidential,
       ...(subject ? { subject } : {}),
+      ...(confidential ? { grund } : {}),
     };
   };
 
@@ -234,7 +386,7 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
       const locale = normalizeLocale(request.body.locale);
       if (task === "structure") {
         // SCRUM-502 Schicht 2: vertraulicher Draft/KO → Cloud aus der Kette (lokal/deterministisch).
-        const confidential = await resolveConfidential(
+        const provenienz = await resolveProvenance(
           request.body.source,
           request.body.koId,
           request.body.confidentiality,
@@ -247,7 +399,11 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
             log: request.log,
           },
         );
-        reply.code(200).send(await reasoner.structure(text ?? "", locale, confidential));
+        // JOB 3353 B: derselbe Weg wie bisher; NUR der Ausgang „vertraulich und kein Anbieter
+        // übrig" bekommt statt eines 500 seine typisierte Antwort (Begründung am Dateikopf).
+        await sendeOderSperre(reply, locale, provenienz, () =>
+          reasoner.structure(text ?? "", locale, provenienz.confidential),
+        );
         return;
       }
       if (task === "ask") {
@@ -281,7 +437,7 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
       }
       if (task === "assist") {
         // FR-RSN-03 / SCRUM-312: Text präzisieren/glätten, optional mit Bearbeitungs-Anweisung.
-        const confidential = await resolveConfidential(
+        const provenienz = await resolveProvenance(
           request.body.source,
           request.body.koId,
           request.body.confidentiality,
@@ -294,11 +450,15 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
             log: request.log,
           },
         );
-        reply
-          .code(200)
-          .send(
-            await reasoner.assistText(text ?? "", locale, request.body.instruction, confidential),
-          );
+        // JOB 3353 B: DIES IST DER AUFRUF, den Codex live gemessen hat (21:57, HTTP 500 in 86 ms).
+        await sendeOderSperre(reply, locale, provenienz, () =>
+          reasoner.assistText(
+            text ?? "",
+            locale,
+            request.body.instruction,
+            provenienz.confidential,
+          ),
+        );
         return;
       }
       if (task === "interview") {

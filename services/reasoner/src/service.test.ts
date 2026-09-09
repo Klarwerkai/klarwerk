@@ -3,6 +3,7 @@ import { InMemoryModelRunRepo } from "../../model-runs";
 import { DeterministicProvider, INTERVIEW_QUESTIONS, type ReasonerProvider } from "./provider";
 import { InMemoryReasonerPolicyRepo, type ReasonerPolicyRepo } from "./reasoner-policy";
 import {
+  ConfidentialCloudBlockedError,
   DEFAULT_REASONER_POLICY,
   LOAD_FAILURE_FALLBACK_POLICY,
   Reasoner,
@@ -1030,6 +1031,10 @@ describe("SCRUM-502 Schicht 2: Vertraulichkeit routet an der Cloud vorbei", () =
 
     expect(calls).toEqual([]); // KEIN Cloud-Aufruf über alle drei Aktionen
     expect(assist).toBeInstanceOf(Error);
+    // JOB 3353 B: derselbe Satz wie bisher — er ist der des Bestands und wird nicht umformuliert.
+    // NEU ist allein, dass der Fehler jetzt auch EINGEORDNET ist: an diesem Typ, und nur an ihm,
+    // erkennt die Route die Sperre und antwortet mit 409 statt 500 (reasoner-routes.ts).
+    expect(assist).toBeInstanceOf(ConfidentialCloudBlockedError);
     expect((assist as Error).message).toContain("als vertraulich eingestuft");
     expect((assist as Error).message).not.toContain("Geheimer Text");
     expect(interview.demo).toBe(true);

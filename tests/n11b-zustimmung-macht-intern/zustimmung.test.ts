@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { endpoints } from "../../apps/web/src/api/endpoints";
 import { documentProvenance, draftProvenance } from "../../apps/web/src/lib/reasonerProvenance";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
+// JOB 3353 B: die Kennung der typisierten Sperrantwort — aus der EINEN Quelle, nicht getippt.
+import { CONFIDENTIAL_CLOUD_BLOCKED } from "../../services/app/src/routes/reasoner-routes";
 import { ModelProvider, Reasoner } from "../../services/reasoner";
 
 const TEXT = "Nach dem Anfahren zehn Sekunden warten, dann die Pumpe entlüften.";
@@ -108,15 +110,33 @@ async function aufbauen(zustimmen = true, modellfehler = false) {
   return { services, app, headers, binding, gesehen, bilder, koId: ko.json().id as string };
 }
 type Aufbau = Awaited<ReturnType<typeof aufbauen>>;
-// JOB 3276: der Ausgang „keine Cloud" hat bei `assist` seit diesem Auftrag ZWEI Formen, und beide
-// sagen dasselbe, worum es hier geht — es hat KEINE Cloud-KI an diesem Text gearbeitet:
-//   · 200 mit `demo: true`, wenn der deterministische Ersatz wirklich etwas beitragen konnte,
-//   · die ehrliche Meldung, wenn er nur den Eingabetext zurückgäbe (tests/ki-assist-leer).
-// Früher gab es nur die erste Form, weil der Ersatz IMMER „etwas" lieferte — den Originaltext.
-// Der Helfer bildet beide Formen auf dieselbe Auskunft ab und prüft die Meldung dabei mit; die
-// Fälle unten bleiben damit Wort für Wort das, was sie waren.
+// JOB 3276: „keine Cloud" ist bei `assist` kein 200 mit geglättetem Originaltext mehr — ein Ersatz,
+// der nur den Eingabetext zurückgibt, war ein Scheinvorschlag (tests/ki-assist-leer). Seither endet
+// dieser Weg in einer ehrlichen Meldung, und seit JOB 3353 in einer typisierten Antwort.
+//
+// JOB 3353 B, RUNDE 4 — JEDER FALL SAGT VORHER, WAS ER ERWARTET.
+//
+// BENs Befund an Runde 3, und er trifft zu: der Helfer nahm die typisierte Sperre ODER den
+// generischen 3276-Satz an, je nachdem was kam. Das ist eine ALTERNATIVE, keine Verschärfung — wer
+// den typisierten Wurf entfernt, bekommt wieder den 500 mit dem alten Satz, und der Helfer nickt ihn
+// durch. Die Rückgabe der Runde 3 hat das Gegenteil behauptet; das war falsch.
+//
+// JETZT VERLANGT JEDER AUFRUF EINE ANGABE, und sie ist ein Pflichtargument — ein Fall, der nichts
+// sagt, kompiliert nicht:
+//   · "cloud"                → 200, die Cloud hat wirklich gearbeitet,
+//   · "unsaved_draft" | "declared" | "backstop"
+//                            → 409 mit `CONFIDENTIAL_CLOUD_BLOCKED` und GENAU diesem Grund.
+// Der Grund ist Teil der Zusage, nicht Beiwerk: er sagt dem Menschen, WAS er ändern muss, und drei
+// verschiedene Sperren dürfen nicht dieselbe Prüfung bestehen.
+//
+// Was in beiden Formen unverändert weiter geprüft wird, ist die Sache dieses Tests: der geschützte
+// Text steht in keiner Fehlerantwort, und die Fälle unten zählen daneben den Cloud-Spion (`gesehen`).
+type SperrGrund = "unsaved_draft" | "declared" | "backstop";
 async function reasoner(
   a: Aufbau,
+  // Die Erwartung steht VORN und ohne Vorgabewert: sie ist die Aussage des Falles, nicht sein
+  // Beiwerk — und so verlangt sie der Compiler von jedem Aufruf.
+  erwartet: "cloud" | SperrGrund,
   provenance: object = draftProvenance(undefined, a.koId),
   binding = a.binding,
 ): Promise<{ demo: boolean }> {
@@ -126,14 +146,21 @@ async function reasoner(
     headers: { ...a.headers, ...binding, "content-type": "application/json" },
     payload: { task: "assist", text: TEXT, ...provenance },
   });
-  if (response.statusCode !== 200) {
-    const koerper = response.json() as { message?: unknown };
-    expect(String(koerper.message), response.body).toContain("Die KI hat keine Antwort geliefert");
-    // Und der geschützte Text steht in keiner Fehlerantwort.
-    expect(response.body).not.toContain(TEXT);
-    return { demo: true };
+  if (erwartet === "cloud") {
+    expect(response.statusCode, response.body).toBe(200);
+    return response.json() as { demo: boolean };
   }
-  return response.json() as { demo: boolean };
+  // Der Sperrfall hat GENAU EINE zulässige Form. Ein 500, ein Zeitlimit, ein Absturz oder ein 409
+  // mit dem falschen Grund macht den Fall rot — „kein Egress" darf nie aus einem Ausfall abgeleitet
+  // werden, und ein falscher Grund schickt den Menschen an die falsche Stelle.
+  expect(response.statusCode, response.body).toBe(409);
+  const koerper = response.json() as { message?: unknown; code?: unknown; reason?: unknown };
+  expect(koerper.code, response.body).toBe(CONFIDENTIAL_CLOUD_BLOCKED);
+  expect(koerper.reason, response.body).toBe(erwartet);
+  expect(String(koerper.message).length).toBeGreaterThan(0);
+  // Und der geschützte Text steht in keiner Fehlerantwort.
+  expect(response.body).not.toContain(TEXT);
+  return { demo: true };
 }
 async function word(
   a: Aufbau,
@@ -169,7 +196,10 @@ describe("N11b: bestätigte Dokumentzustimmung am echten Router", () => {
   });
   it("Z2 Reasoner: Zustimmung und auflösbarer Anker öffnen den Cloud-Weg", async () => {
     const a = await aufbauen();
-    expect(await reasoner(a)).toMatchObject({ demo: false, text: UEBERARBEITET });
+    expect(await reasoner(a, "cloud")).toMatchObject({
+      demo: false,
+      text: UEBERARBEITET,
+    });
     expect(a.gesehen.length).toBeGreaterThan(0);
     expect(a.gesehen.join("\n")).toContain(TEXT);
   });
@@ -204,7 +234,8 @@ describe("N11b: bestätigte Dokumentzustimmung am echten Router", () => {
     if (weg === "Word") {
       expect((await word(a)).konfliktpruefung.grund).toBe("vertraulich");
     } else {
-      expect((await reasoner(a)).demo).toBe(true);
+      // Der Anker ist auflösbar (internes KO), gesperrt hat die fehlende Zustimmung → `declared`.
+      expect((await reasoner(a, "declared")).demo).toBe(true);
     }
     expect(a.gesehen).toEqual([]);
   });
@@ -218,7 +249,7 @@ describe("N11b: bestätigte Dokumentzustimmung am echten Router", () => {
     if (weg === "Word") {
       expect((await word(a, undefined, fremd)).konfliktpruefung.grund).toBe("vertraulich");
     } else {
-      expect((await reasoner(a, undefined, fremd)).demo).toBe(true);
+      expect((await reasoner(a, "declared", undefined, fremd)).demo).toBe(true);
     }
     expect(a.gesehen).toEqual([]);
   });
@@ -226,7 +257,8 @@ describe("N11b: bestätigte Dokumentzustimmung am echten Router", () => {
     "Z5 Explizit %s bleibt trotz Zustimmung vertraulich",
     async (level) => {
       const a = await aufbauen();
-      expect((await reasoner(a, draftProvenance(level, a.koId))).demo).toBe(true);
+      // Hier ist die EINSTUFUNG dieses Aufrufs die Ursache — genau das sagt `declared`.
+      expect((await reasoner(a, "declared", draftProvenance(level, a.koId))).demo).toBe(true);
       expect(
         (await word(a, { source: "transient-document", confidentiality: level })).konfliktpruefung
           .grund,
@@ -239,7 +271,7 @@ describe("N11b: bestätigte Dokumentzustimmung am echten Router", () => {
     async (source) => {
       const a = await aufbauen();
       const provenance = { source, koId: a.koId };
-      expect((await reasoner(a, provenance)).demo).toBe(true);
+      expect((await reasoner(a, "declared", provenance)).demo).toBe(true);
       expect((await word(a, provenance)).konfliktpruefung.grund).toBe("vertraulich");
       expect(a.gesehen).toEqual([]);
     },
@@ -248,17 +280,22 @@ describe("N11b: bestätigte Dokumentzustimmung am echten Router", () => {
     "Z7 Draft ohne auflösbaren Anker %s bleibt vertraulich",
     async (koId) => {
       const a = await aufbauen();
-      expect((await reasoner(a, draftProvenance(undefined, koId))).demo).toBe(true);
+      // KEIN auflösbarer Anker (JOB 2692 D2) — der Mensch sichert, also `unsaved_draft`.
+      expect((await reasoner(a, "unsaved_draft", draftProvenance(undefined, koId))).demo).toBe(
+        true,
+      );
       expect(a.gesehen).toEqual([]);
     },
   );
   it("Z8 Ohne Klara-Bindung: alter Konsolenvertrag bleibt", async () => {
     const a = await aufbauen();
     const ungebunden = {} as Aufbau["binding"];
-    expect((await reasoner(a, undefined, ungebunden)).demo).toBe(true);
+    expect((await reasoner(a, "declared", undefined, ungebunden)).demo).toBe(true);
     expect((await word(a, undefined, ungebunden)).konfliktpruefung.grund).toBe("vertraulich");
     expect(a.gesehen).toEqual([]);
-    expect((await reasoner(a, draftProvenance("intern", a.koId), ungebunden)).demo).toBe(false);
+    expect((await reasoner(a, "cloud", draftProvenance("intern", a.koId), ungebunden)).demo).toBe(
+      false,
+    );
     expect(a.gesehen.length).toBeGreaterThan(0);
   });
 });
@@ -336,7 +373,11 @@ it("Bestands-Backstop: gespeichert vertrauliches KO hebt trotz Zustimmung und Ma
   });
   expect(response.statusCode).toBe(201);
   a.gesehen.length = 0;
-  expect((await reasoner(a, draftProvenance(undefined, response.json().id))).demo).toBe(true);
+  // Der Anker ist auflösbar, aber der GESPEICHERTE Stand trägt die Stufe → `backstop`: umgestuft
+  // wird das gespeicherte Objekt, nicht das Formular.
+  expect((await reasoner(a, "backstop", draftProvenance(undefined, response.json().id))).demo).toBe(
+    true,
+  );
   expect(
     (await word(a, { source: "transient-document", koId: response.json().id })).konfliktpruefung
       .grund,
@@ -346,7 +387,7 @@ it("Bestands-Backstop: gespeichert vertrauliches KO hebt trotz Zustimmung und Ma
 
 it("Z2 ohne Marker: fehlendes Drahtfeld öffnet nur bei bestätigter Zustimmung", async () => {
   const a = await aufbauen();
-  expect((await reasoner(a, { source: "draft", koId: a.koId })).demo).toBe(false);
+  expect((await reasoner(a, "cloud", { source: "draft", koId: a.koId })).demo).toBe(false);
   expect(a.gesehen.length).toBeGreaterThan(0);
 });
 
@@ -358,7 +399,13 @@ it.each(["intern", "vertraulich"] as const)(
       { title: "Entwurf", statement: TEXT, confidentiality: level },
       "n11b-autor",
     );
-    const response = await reasoner(a, draftProvenance(undefined, undefined, draft.id));
+    // Der Entwurf ist GESPEICHERT, die Kennung reist mit: bei „intern" arbeitet die Cloud, bei
+    // „vertraulich" hebt der gespeicherte Stand → `backstop` (nicht `unsaved_draft`, der Anker ist da).
+    const response = await reasoner(
+      a,
+      level === "vertraulich" ? "backstop" : "cloud",
+      draftProvenance(undefined, undefined, draft.id),
+    );
     expect(response.demo).toBe(level === "vertraulich");
     expect(a.gesehen.length > 0).toBe(level === "intern");
   },
@@ -367,7 +414,9 @@ it.each(["intern", "vertraulich"] as const)(
 it("Unvollständige Bindung sperrt auch ausdrücklich internen Text", async () => {
   const a = await aufbauen();
   const binding = { ...a.binding, "x-klara-instance": "" };
-  expect((await reasoner(a, draftProvenance("intern", a.koId), binding)).demo).toBe(true);
+  expect((await reasoner(a, "declared", draftProvenance("intern", a.koId), binding)).demo).toBe(
+    true,
+  );
   expect(
     (await word(a, { source: "transient-document", confidentiality: "intern" }, binding))
       .konfliktpruefung.grund,

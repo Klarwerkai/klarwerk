@@ -1097,6 +1097,12 @@ export const ERLAUBTE_FEHLERTYPEN: ReadonlySet<string> = new Set([
   "BestandsresetGesperrtError",
   "BestandsresetLaeuftError",
   "CaptureError",
+  // JOB 3353 B: aus `services/reasoner/src/service.ts` — der Lauf, den die Vertraulichkeit ohne
+  // zulässigen Anbieter gelassen hat. ENTSCHEIDUNG: der Name darf ins Protokoll. Er ist die
+  // Betriebsauskunft, die den Unterschied zwischen „Schutzregel hat gegriffen" und „etwas ist
+  // kaputt" überhaupt erst nachlesbar macht — und er trägt, wie die Nachbarn hier, ausschliesslich
+  // seinen Klassennamen, keinen Nutzertext.
+  "ConfidentialCloudBlockedError",
   "ConfidentialEgressError",
   "ConflictError",
   // JOB 2702 D1: aus JOB 2683 (Confluence-Zeitgrenzen, services/confluence/src/rest-client.ts:75) —

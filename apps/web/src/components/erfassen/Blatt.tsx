@@ -152,6 +152,33 @@ function fehlerMeldung(err: unknown, rueckfall: string): string {
   return err instanceof Error ? err.message : rueckfall;
 }
 
+// ================================================================================================
+// JOB 3353 · B — DIE GESPERRTE CLOUD IST KEIN „irgendwas ist schiefgegangen".
+// ================================================================================================
+//
+// GEMESSEN (Codex 21:57, Live 1.202): „KI → Rechtschreibung" endete in der generischen Karte
+// `fd.errAssist`. Der Server hatte den Grund die ganze Zeit gewusst — der Text galt als vertraulich,
+// die Cloud-KI durfte ihn nicht bearbeiten —, aber er reiste als 500, und ein 500 heisst für die
+// Fläche „kaputt". Pedi stand vor einer Karte ohne Weg, obwohl es drei gibt: sichern, umstufen,
+// lokale KI wählen.
+//
+// JETZT typisiert die Route diesen einen Ausgang (409, `CONFIDENTIAL_CLOUD_BLOCKED`) und liefert den
+// anzeigbaren Satz gleich mit, in der Sprache des Requests. Hier wird er nur noch DURCHGEREICHT.
+//
+// WARUM DIE KENNUNG HIER GETIPPT UND NICHT IMPORTIERT IST: keine Datei unter `apps/web/src` darf
+// aus `services/` importieren (Wächter, belegt in `apps/web/src/auth/job2686-sso-klick-mounted.test.tsx:38`).
+// Die Zeichenkette ist der Drahtvertrag; ihre eine Quelle steht in
+// `services/app/src/routes/reasoner-routes.ts` (`CONFIDENTIAL_CLOUD_BLOCKED`). Dass beide Seiten
+// dieselbe meinen, misst der gemountete Test in `tests/ask-c02/`, nicht ein Kommentar.
+//
+// NUR DIESE EINE KENNUNG. Jeder andere Fehler — Zeitlimit, Modellstörung, Netz — behält seinen
+// bisherigen Satz; die Fläche deutet nichts um, was der Server nicht ausdrücklich benannt hat.
+const CLOUD_GESPERRT_CODE = "CONFIDENTIAL_CLOUD_BLOCKED";
+
+function kiFehlerMeldung(err: unknown, rueckfall: string): string {
+  return err instanceof ApiError && err.code === CLOUD_GESPERRT_CODE ? err.message : rueckfall;
+}
+
 // JOB 2705 (R2-23 b), unverändert übernommen: Der LADEPFAD meldet einen LADEFEHLER. Eine fachliche
 // Servermeldung gewinnt; alles Technische („Failed to fetch") bekommt den ehrlichen Satz.
 function ladeFehlerMeldung(err: unknown, rueckfall: string): string {
@@ -765,7 +792,21 @@ export function Blatt({
 
   const structure = useMutation({
     mutationFn: () =>
-      endpoints.reasoner.structure(structureInput, locale, draftProvenance(confidentiality)),
+      endpoints.reasoner.structure(
+        structureInput,
+        locale,
+        // JOB 3353 A (Codex-Messung 21:57/22:17 auf 1.202/1.203): HIER FEHLTE DIE KENNUNG. Der
+        // Server behandelt `source:"draft"` OHNE auflösbaren Anker fail-closed als vertraulich
+        // (JOB 2692 D2, reasoner-routes.ts `resolveProvenance`) — die Cloud fällt dann aus der
+        // Providerkette, und seit JOB 3276 gibt es dafür keinen Scheinvorschlag mehr, sondern
+        // einen Fehler. Gemessen: HTTP 500 in 86 ms, „The text is classified as confidential",
+        // OHNE Modellaufruf, AUCH bei einem gespeicherten, als „intern" eingestuften Entwurf
+        // (?draft=618ba277…). Die Fläche kannte die Kennung die ganze Zeit — sie gab sie nur an
+        // dieser einen Stelle nicht weiter (Zeile 2087 tut es längst richtig).
+        // DIE SCHUTZREGEL BLEIBT UNANGETASTET: ohne gespeicherten Entwurf ist `activeDraftId`
+        // null, es wird kein Anker mitgeschickt, und der Server entscheidet weiter fail-closed.
+        draftProvenance(confidentiality, undefined, activeDraftId ?? undefined),
+      ),
     onMutate: () => {
       // JOB 3062 R7: HIER und nicht am Menüeintrag — dann merkt sich das Blatt die Handlung auch
       // dann, wenn „Erneut versuchen" sie auslöst, und der Auslöser steht nur an einer Stelle.
@@ -782,8 +823,11 @@ export function Blatt({
       setStructureProposal(proposal);
       setStructureErr(null);
     },
-    onError: () => {
-      setStructureErr(t(FRONT_DOOR_STRUCTURING_UNAVAILABLE_KEY));
+    onError: (e: unknown) => {
+      // JOB 3353 B: die typisierte Sperrmeldung des Servers statt „Strukturieren nicht verfügbar" —
+      // sie sagt, WAS zu tun ist. Alles andere behält den bisherigen Satz (Begründung bei
+      // `kiFehlerMeldung`).
+      setStructureErr(kiFehlerMeldung(e, t(FRONT_DOOR_STRUCTURING_UNAVAILABLE_KEY)));
     },
   });
 
@@ -793,7 +837,10 @@ export function Blatt({
         assistInput,
         locale,
         t(assistActionInstructionKey(action)),
-        draftProvenance(confidentiality),
+        // JOB 3353 A: dieselbe fehlende Kennung wie bei `structure` eine Ebene höher — und dies
+        // ist der Aufruf, den Codex live gemessen hat (POST /api/reasoner, task assist, Payload
+        // ohne draftId/koId). Begründung und Grenzen stehen dort.
+        draftProvenance(confidentiality, undefined, activeDraftId ?? undefined),
       ),
     onMutate: (action: AssistAction) => {
       // Die KONKRETE Handlung, nicht „KI": sie ist es, die wiederholt werden muss.
@@ -810,8 +857,10 @@ export function Blatt({
       setAssistProposal({ ...proposal, action });
       setAssistErr(null);
     },
-    onError: () => {
-      setAssistErr(t("fd.errAssist"));
+    onError: (e: unknown) => {
+      // JOB 3353 B: DIES ist die Karte, die Codex live gesehen hat. Trägt der Fehler die Kennung
+      // der Vertraulichkeitssperre, steht jetzt der Grund des Servers darin.
+      setAssistErr(kiFehlerMeldung(e, t("fd.errAssist")));
     },
   });
 

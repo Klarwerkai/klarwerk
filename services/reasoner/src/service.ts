@@ -92,6 +92,57 @@ export class ReasonerPolicyLockedError extends Error {
   }
 }
 
+// ================================================================================================
+// JOB 3353 · B — DER LAUF SAGT SELBST, DASS DIE VERTRAULICHKEIT IHN LEER GELASSEN HAT.
+// ================================================================================================
+//
+// WARUM ES DIESEN TYP GIBT (Codex 73217c82, Vorprüfung R2): Runde 2 hatte den Fall in der ROUTE
+// erraten — „ein Fehler, den `classifyModelFailure` nicht einordnen kann, wird schon die Sperre
+// gewesen sein". Das ist kein Beleg, sondern ein Umkehrschluss: ein Programmfehler in einem lokalen
+// Anbieter fällt in dieselbe Klasse und hätte dem Menschen erzählt, er solle eine Einstufung
+// ändern, die mit dem Fehler nichts zu tun hat. Eine falsche Erklärung ist schlimmer als gar keine.
+//
+// DIE AUSKUNFT GEHÖRT DORTHIN, WO SIE ENTSTEHT. Nur `runTask` weiss, welche Anbieter in der Kette
+// standen, warum die Cloud fehlte und ob am Ende etwas herauskam. Dieser Fehler wird deshalb GENAU
+// DANN geworfen, wenn beides gemessen zutrifft (`runTask`, Ende der Kette):
+//   1. in der Kette stand kein einziger Modell-Anbieter — nur der deterministische Ersatz, UND
+//   2. `cloudExcludedByConfidentiality(task, confidential)`: der Lauf war vertraulich UND für DIESE
+//      Aufgabe ist ein Cloud-Anbieter verdrahtet und policy-seitig zuständig — die Cloud fehlte also
+//      wegen der Vertraulichkeit und nicht, weil ohnehin keine da war.
+// Das ist dasselbe Maß, mit dem `structure`/`describe`/`groupCandidates` seit WP-SHIP9-S1/S2 ihre
+// Ursache „confidential" von „no-model" trennen.
+//
+// Fehlt eine der beiden Bedingungen, bleibt es der Fehler, der es war. Insbesondere ein LOKALER
+// Anbieter, der in der Kette stand und scheiterte, ergibt nie diesen Typ: dann war die Cloud zwar
+// aus, aber es gab einen zulässigen Antwortgeber, und sein Scheitern ist eine Störung.
+//
+// ER ERFINDET KEINEN ZWEITEN WORTLAUT (Runde 3, gemessen an service.test.ts:1033 und
+// tests/n11b-…/zustimmung.test.ts:131). JOB 3276 hat für genau diese Lage bereits den ehrlichen,
+// zweisprachigen Satz gebaut — „Die KI hat keine Antwort geliefert. Grund: Der Text ist als
+// vertraulich eingestuft …" (`assistOhneVorschlagMeldung` + `vertraulichkeitsGrund`). Runde 2 hat
+// ihn hier überschrieben und damit zwei Fassungen derselben Tatsache erzeugt; drei bestehende
+// Zusagen wurden rot, und die schlechtere Fassung stand vorn. Jetzt ÜBERNIMMT dieser Typ die
+// Meldung seiner Ursache und fügt nur die Einordnung hinzu. Er hat nur dort einen eigenen Satz, wo
+// es keine Ursache gibt.
+//
+// ER TRÄGT KEINEN NUTZERTEXT: die übernommene Meldung stammt aus derselben geprüften Quelle
+// (Metadaten, nie Eingabetext), und die Aufgabe ist ein Wort aus geschlossener Menge.
+export class ConfidentialCloudBlockedError extends Error {
+  readonly task: ModelRunTask;
+  readonly ursache: unknown;
+  constructor(task: ModelRunTask, ursache?: unknown) {
+    const geerbt = ursache instanceof Error ? ursache.message.trim() : "";
+    super(
+      geerbt.length > 0
+        ? geerbt
+        : `Vertraulicher Text (${task}): die Cloud-KI ist ausgeschlossen, und es stand kein zulässiger Anbieter zur Verfügung — der Lauf blieb ohne Ergebnis.`,
+    );
+    this.name = "ConfidentialCloudBlockedError";
+    this.task = task;
+    this.ursache = ursache;
+  }
+}
+
 // SCRUM-525 P.5 (WP6): der DEFINIERTE Default der KI-Zuordnung, wenn nichts persistiert ist. Exportiert,
 // damit Aufrufer/Tests den Default benennen können (kein magisches, verstecktes "auto").
 export const DEFAULT_REASONER_POLICY: ReasonerTaskConfig = { global: "auto", perTask: {} };
@@ -1113,6 +1164,20 @@ export class Reasoner {
       },
       context,
     );
+    // JOB 3353 B: WAR ES DIE VERTRAULICHKEIT? Gemessen, nicht vermutet — und mit DEMSELBEN Maß, das
+    // `structure`, `describe` und `groupCandidates` seit WP-SHIP9-S1/S2 verwenden, um genau diese
+    // Ursache von „no-model"/„model-error" zu trennen: kein Modell in der (gefilterten) Kette UND
+    // `cloudExcludedByConfidentiality`. Eine zweite Auffassung davon, was eine Vertraulichkeits-
+    // blockade ist, gibt es damit nicht.
+    //
+    // Der Unterschied zu den drei genannten Wegen ist nur der AUSGANG: die liefern ein
+    // deterministisches Ergebnis mit `fallbackReason: "confidential"`. Wo es kein ehrliches Ergebnis
+    // gibt — der Lauf ist hier ohne eines geblieben —, ist der typisierte Fehler die einzige Form,
+    // in der dieselbe Auskunft den Aufrufer erreicht.
+    const ohneModellInKette = chain.every((p) => p === this.fallback);
+    if (ohneModellInKette && this.cloudExcludedByConfidentiality(task, confidential)) {
+      throw new ConfidentialCloudBlockedError(task, lastError);
+    }
     throw lastError ?? new Error("Kein Provider verfügbar.");
   }
 

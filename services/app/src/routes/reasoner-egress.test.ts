@@ -62,10 +62,16 @@ describe("SCRUM-502 R6: /api/reasoner egress (echter complete-Spy)", () => {
     // Zusage dieses Falls. Geändert hat sich, was der Nutzer dann sieht: früher der geglättete
     // Originaltext als „KI-Vorschlag", jetzt die ehrliche Meldung mit der Einstufung als Grund
     // (tests/ki-assist-leer). Deshalb kein 200 mehr — und der geschützte Text bleibt im Server.
-    expect(res.statusCode).not.toBe(200);
-    expect(String((res.json() as { message?: unknown }).message)).toContain(
-      "als vertraulich eingestuft",
-    );
+    //
+    // JOB 3353 B: die Meldung hat jetzt zusätzlich einen STATUS und eine KENNUNG. „Nicht 200" allein
+    // wäre eine schwache Zusage — ein Absturz erfüllt sie auch. Geprüft wird deshalb die benannte
+    // Form: 409 mit `CONFIDENTIAL_CLOUD_BLOCKED` und dem Grund `unsaved_draft` (draft OHNE Anker,
+    // JOB 2692 D2). Der Satz nennt die Einstufung unverändert — sie ist die Regel, die greift.
+    expect(res.statusCode).toBe(409);
+    const koerper = res.json() as { code?: unknown; reason?: unknown; message?: unknown };
+    expect(koerper.code).toBe("CONFIDENTIAL_CLOUD_BLOCKED");
+    expect(koerper.reason).toBe("unsaved_draft");
+    expect(String(koerper.message)).toContain("als vertraulich eingestuft");
     expect(res.body).not.toContain(DOC);
     expect(complete).not.toHaveBeenCalled();
   });

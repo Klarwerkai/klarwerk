@@ -20,7 +20,7 @@ import {
   type Relevanztext,
   type ZuordnungsPaar,
   queryTokens,
-  selectCandidates,
+  waehleKandidaten,
 } from "../../reasoner";
 import { TRUST_MAX } from "../../validation";
 import { gapCompareKey, normalizeGapQuestion } from "./gap-text";
@@ -277,6 +277,37 @@ export function zugeordneteSuchterme(
   }
   return paare;
 }
+
+// ================================================================================================
+// JOB 3353 · ASK-C02 — TOR 1 VERLIERT DEN VALIDIERTEN ZWILLING NICHT, BEVOR TOR 2 IHN SIEHT.
+// ================================================================================================
+//
+// GEMESSEN (tests/ask-c02/befund.test.ts, Fall M2): Die Confluence-Kopie von C02 trägt als
+// Kernaussage den Fiktionshinweis („Fictional demonstration material prepared for Advisor ICT …").
+// Gegen Pedis LANGE Frage („In the fictional Advisor ICT demo data, what is the standard invoice
+// payment period? …") misst sie 6 gemeinsame Inhaltstoken, das validierte Paketobjekt desselben
+// Titels nur 2 — vier der sechs kommen aus dem RAHMEN der Frage, nicht aus der Sache. Die relative
+// Regel in `selectCandidates` (`keywordScore · 2 > bestScore`) stuft das validierte Objekt damit
+// als Mitläufer ein und entfernt es HIER, an Tor 1. Was Tor 1 wegwirft, kann Tor 2 nicht mehr
+// abwägen: der geprüfte Stand ist still verloren, bevor irgendjemand ihn gegen die Kopie halten
+// konnte.
+//
+// DIE ARBEITSTEILUNG BLEIBT DIE ANGESCHRIEBENE (Zeile 47: „die finale, präzise Status-/Trust-/
+// Relevanz-Sortierung + Top-K macht der Reasoner"): Tor 1 ist die WOHLFEILE Vorauswahl und
+// ENTSCHEIDET nichts. Es hört hier deshalb nur auf, einen validierten Zwilling wegzuwerfen; welcher
+// der beiden vorn steht und was zitiert wird, entscheidet unverändert Tor 2 (`waehleKandidaten`
+// in `reasoner/src/provider-model.ts`, wo auch die Begründung der Zwillingsregel steht).
+//
+// DIE GRENZEN, wie an Tor 2 und aus denselben Gründen: kein neuer Titel (nur ein Objekt, dessen
+// Titelkern schon unter den Gewählten steht, kommt zurück), keine gelockerte Sichtbarkeit
+// (`dropConfidential`/`validatedOnly` haben lange vorher entschieden — `refs` enthält nur, was
+// hinausgehen DARF), und der Deckel `DEFAULT_TOP_K` bleibt der alte.
+//
+// EINE FASSUNG, NICHT ZWEI (Runde 2, Codex 6338b57f Befund 2). Runde 1 hatte die Titelnormalisierung
+// hier nachgebaut, weil `services/reasoner/index.ts` sie nicht nach außen gab und ein Tiefimport die
+// Modulgrenze bräche. Der Nachbau war genau das, wovor dieses Haus warnt: ein Test, der zwei Kopien
+// gegeneinander hält, misst nicht das Produkt. Jetzt exportiert der Reasoner `waehleKandidaten`, und
+// BEIDE Tore rufen dieselbe Funktion — es gibt keine zweite Auffassung davon, was ein Zwilling ist.
 
 // SCRUM-115: Lücken ohne gespeicherte Priorität (Altdaten) erhalten beim Lesen
 // den sicheren Default "mittel" — keine stille undefined-Priorität nach außen.
@@ -751,7 +782,9 @@ export class AskService {
     // Rangfolge und jedes Paar höchstens einmal (Begründung an `rankCandidates`/`ueberschneidung`).
     // Dasselbe Datum geht zwei Zeilen weiter an Tor 2 — ein Objekt, das nur über die Entsprechung
     // trifft, überlebt damit beide oder keines, aber nie nur das erste.
-    const candidates = selectCandidates(question, refs, DEFAULT_TOP_K, relevanz);
+    // JOB 3353: `waehleKandidaten` IST `selectCandidates` plus die Zwillingsregel — dieselbe
+    // Funktion, die Tor 2 ruft (Begründung und Grenzen dort, `reasoner/src/provider-model.ts`).
+    const candidates = waehleKandidaten(question, refs, DEFAULT_TOP_K, relevanz);
     // SCRUM-490 R2 (B1): Add-on-Pfad → RETRIEVAL-ONLY (kein Modell-/Embedder-Egress des Dokumenttexts).
     // Sonst der übliche Reasoner-Weg (Session-Pfad unverändert).
     // AUFTRAG-mega61 BLOCK G — DAS ZWEITE NETZ, AUS DEM KONTEXT ABGELEITET.

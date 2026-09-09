@@ -6,6 +6,10 @@ export {
   isValidReasonerChoice,
   // SCRUM-525 P.5 (WP-C): eigener Fehlertyp für den Admin-Schreibpfad, wenn ein ENV-Override aktiv ist.
   ReasonerPolicyLockedError,
+  // JOB 3353 B: der GEMESSENE Ausgang „vertraulich, Cloud ausgeschlossen, kein zulässiger Anbieter".
+  // Die Route bildet AUSSCHLIESSLICH diesen Typ auf 409/CONFIDENTIAL_CLOUD_BLOCKED ab — jeder andere
+  // Fehler bleibt, was er ist (Begründung am Typ selbst).
+  ConfidentialCloudBlockedError,
   // WP-BILD-1c: die eine Task-Liste + der Bild-Daten-Deckel des describe-Aufrufs (Route/Tests).
   REASONER_TASKS,
   MAX_DESCRIBE_IMAGE_DATAURL_CHARS,
@@ -72,6 +76,10 @@ export {
   normalizeCandidateGroups,
   catchAllGroupTitle,
   MAX_GROUP_TITLE_LENGTH,
+  // JOB 3353 R2: die EINE Kandidatenwahl mit Zwillingsregel. Sie wird von BEIDEN Toren gerufen —
+  // vom Fragedienst (Tor 1, `ask/src/service.ts`) und von `ModelProvider.answer` (Tor 2). Vor
+  // Runde 2 stand die Titelnormalisierung dafür zweimal im Haus; hier ist sie einmal.
+  waehleKandidaten,
 } from "./src/provider-model";
 // SCRUM-502 R8 (Encapsulation + Credential-Gating): nach außen NUR die GECAPPTEN Client-Factories.
 // Die rohen Clients (anthropicClient/openAiCompatibleClient), ihre Config-Typen und die

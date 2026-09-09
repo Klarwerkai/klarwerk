@@ -597,6 +597,215 @@ export function dokumentAuszuege(
   return auszuege;
 }
 
+// ================================================================================================
+// JOB 3353 · ASK-C02 — ZWEI GEMESSENE FEHLER AN DER LETZTEN KANTE.
+// ================================================================================================
+//
+// DER LIVEBEFUND (Codex d1710126 / a2c15bbf auf 1.201, Freitagsvorführung). Pedi fragt lang:
+// „In the fictional Advisor ICT demo data, what is the standard invoice payment period? Answer in
+// English and cite the stored source. If the sources disagree, say so rather than choosing
+// silently." Klara antwortet AUSSCHLIESSLICH mit dem DEMO-Hinweis der Confluence-Kopie von C02,
+// Vertrauenswert 0, und das validierte Paketobjekt desselben Titels ist gar nicht erst dabei.
+// Fragt Pedi KURZ („What is the standard invoice due date?"), kommt die vollständige Regel aus dem
+// Paketobjekt. Dieselbe Wissenslage, zwei Frageformen, zwei Antworten.
+//
+// DIE MESSUNG (tests/ask-c02/befund.test.ts, Fälle M1–M4 — die Zahlen unten stammen von dort und
+// sind dort nachgerechnet, nicht abgeschrieben):
+//
+//   M1  DER AUSZUG IST NICHT DER FEHLER. `queryTokens` führt „invoices" und „invoice" beide auf
+//       „invoic"; der Auszug für C02 enthält bei BEIDEN Frageformen den Satz mit den 30 Kalender-
+//       tagen. Die Ausgangsthese des Auftrags („leer wegen Flexion") ist damit gemessen WIDERLEGT,
+//       und die dort vorgeschlagene Normalisierung wird deshalb NICHT gebaut (Auftrag §
+//       Nachführung: „Keine Reparatur auf Verdacht").
+//
+//   M2  DIE RAHMENWÖRTER DER FRAGE WERFEN DAS VALIDIERTE OBJEKT HERAUS. Die Confluence-Kopie trägt
+//       als Kernaussage den Fiktionshinweis („Fictional demonstration material prepared for Advisor
+//       ICT …"). Gegen die LANGE Frage misst sie deshalb 6 gemeinsame Inhaltstoken (standard,
+//       invoic UND fictional, advisor, ict, demo), das validierte Paketobjekt nur 2. Die relative
+//       Regel `meetsRelevanceThreshold` (2·2 > 6 ist falsch) stuft das validierte Objekt als
+//       Mitläufer ein und entfernt es. Gegen die KURZE Frage stehen beide bei 4 und beide bleiben.
+//       Die vier Zusatzpunkte kommen also NICHT aus der Sache, sondern aus dem RAHMEN, in dem
+//       gefragt wurde — und sie treffen die Quelle, die den Rahmen im Text trägt.
+//
+//   M3  DER DECKUNGSRÜCKFALL GIBT DEN HINWEIS AUS. Das Modell bekommt den Regelsatz im Auszug und
+//       formuliert ihn um („The standard invoice payment period is 30 calendar days …") — eine
+//       Paraphrase, und die Zitatprüfung lässt keine Paraphrase durch (gemessen: `gedeckt=false`,
+//       der wörtliche Satz dagegen `true`). Der Rückfall gab bis heute `carrying[0].statement`
+//       aus und meldete `answered: true`. Bei der Confluence-Kopie IST diese Kernaussage der
+//       Fiktionshinweis — genau der Livetext.
+//
+// WAS DARAUS FOLGT, und nur das: zwei eng begrenzte Regeln. Die Zitatprüfung selbst, die Zusagen
+// aus JOB 3298 (wörtlich, satzganz, gedeckelt), die Sichtbarkeitsregeln und `selectCandidates`
+// bleiben unangetastet.
+
+// ------------------------------------------------------------------------------------------------
+// JOB 3353 R2 (Codex 6338b57f, Befund 1) — EINE KLAMMER IST NOCH KEINE HERKUNFTSMARKE.
+// ------------------------------------------------------------------------------------------------
+//
+// RUNDE 1 ENTFERNTE JEDE führende Klammergruppe. Codex hat den Preis benannt, und er ist zu hoch:
+// „[NL] Invoice due date" und „[DE] Invoice due date" wären damit Zwillinge geworden, ebenso
+// „[Router A] Reset" und „[Router B] Reset" — ein sachfremder validierter Stand hätte sich vor den
+// richtigen geschoben. Ein Klammerpräfix trägt im Bestand BEIDES: Herkunft UND Geltungsbereich.
+// Nur das erste darf wegfallen.
+//
+// DIE LISTE IST DESHALB AUFGEZÄHLT UND BELEGT, nicht gemustert. Zwei Marken, zwei Fundstellen:
+//   · `[Beispiel] `  — `EXAMPLE_TITLE_PREFIX` (services/app/src/example-packages.ts:19). Der
+//                      Ladeweg setzt sie vor JEDEN Titel eines Demopakets; sie sagt „aus einem
+//                      Paket geladen" und nichts über die Sache.
+//   · `[DEMO …] `    — der Titelpräfix der Demo-Seiten des Confluence-Raums, im Livebefund als
+//                      „[DEMO C02] Standard invoice due date" gemessen (Codex d1710126). Der Teil
+//                      hinter DEMO ist der Seitenschlüssel des Raums, also ebenfalls Herkunft.
+//
+// WER EINE DRITTE MARKE AUFNIMMT, nennt hier ihre Fundstelle im Produkt. Ohne Fundstelle gehört
+// ein Präfix zum Titel — im Zweifel bleibt es stehen, und die beiden Objekte sind KEINE Zwillinge.
+// Das ist die sichere Richtung: ein nicht erkannter Zwilling kostet die Vorreihung, ein falsch
+// erkannter stellt einen sachfremden Stand nach vorn.
+const HERKUNFTSMARKE = /^\s*\[(?:beispiel|demo(?:\s[^\]]*)?)\]\s*/i;
+
+/**
+ * Der Titelkern: der Titel OHNE eine führende, BELEGTE Herkunftsmarke (Liste oben).
+ *
+ * „[Beispiel] Standard invoice due date" und „[DEMO C02] Standard invoice due date" fallen damit
+ * auf denselben Kern — sie sind dieselbe Seite in zwei Herkünften. „[NL] Invoice due date" und
+ * „[DE] Invoice due date" fallen NICHT zusammen: `NL`/`DE` steht in keiner Fundstelle und gilt
+ * darum als Teil des Titels. Entfernt wird höchstens EINE Marke; was danach kommt, bleibt stehen.
+ */
+export function titelkern(titel: string): string {
+  return titel.replace(HERKUNFTSMARKE, "").trim().toLowerCase();
+}
+
+/**
+ * JOB 3353 · DIE ZWILLINGSREGEL — ein validiertes Objekt verliert seinen Platz nicht an die
+ * unvalidierte Kopie desselben Titels.
+ *
+ * WAS SIE TUT, in einem Satz: unter Kandidaten mit DEMSELBEN Titelkern steht der validierte vorn,
+ * und ein validierter Zwilling eines gewählten Kandidaten wird wieder aufgenommen, wenn die
+ * relative Regel ihn als Mitläufer entfernt hat (M2).
+ *
+ * WAS SIE AUSDRÜCKLICH NICHT TUT — das ist die Grenze, die sie ungefährlich macht:
+ *  · Sie holt KEINEN neuen Titel herein. Nur ein Objekt, dessen Titelkern schon unter den
+ *    gewählten Kandidaten steht, kann zurückkommen. Welche Titel überhaupt zur Frage gehören,
+ *    entscheidet unverändert allein `selectCandidates`.
+ *  · Sie ändert KEINE Sichtbarkeitsregel. `validatedOnly` und `dropConfidential` haben lange vor
+ *    dieser Zeile entschieden, welche Objekte überhaupt Kandidat sein dürfen (ask/src/service.ts);
+ *    hier steht nur noch, in welcher Reihenfolge die Übriggebliebenen dem Modell vorliegen.
+ *  · Sie hebt den Deckel nicht an. `topK` bleibt `topK`; ein zurückgeholter Zwilling nimmt den
+ *    Platz des schwächsten Mitläufers ein, der Prompt wächst um kein Zeichen.
+ *
+ * WARUM „validiert vorn" und nicht „nur der validierte": zwei Objekte gleichen Titels können
+ * inhaltlich auseinandergehen (die Kopie ist der Import, das Paketobjekt der freigegebene Stand).
+ * Die Kopie zu VERSCHWEIGEN hieße, einen möglichen Widerspruch zu unterschlagen — und die Frage
+ * „If the sources disagree, say so" wäre nicht mehr beantwortbar. Beide bleiben also im Kontext;
+ * nur die Rangfolge sagt, welcher der geprüfte Stand ist.
+ */
+export function waehleKandidaten(
+  frage: string,
+  kontext: readonly KnowledgeRef[],
+  topK: number = DEFAULT_TOP_K,
+  relevanz: Relevanztext = [],
+): KnowledgeRef[] {
+  const gewaehlt = selectCandidates(frage, kontext, topK, relevanz);
+  const kerne = new Set(gewaehlt.map((r) => titelkern(r.title)));
+  const gewaehlteIds = new Set(gewaehlt.map((r) => r.id));
+  const nachzuegler = kontext.filter(
+    (r) => !gewaehlteIds.has(r.id) && r.status === "validiert" && kerne.has(titelkern(r.title)),
+  );
+  if (nachzuegler.length === 0 && gewaehlt.every((r) => r.status === "validiert")) {
+    // Nichts zurückzuholen und nichts umzuordnen — die Auswahl geht Zeichen für Zeichen unverändert
+    // hinaus. Das ist der Normalfall und er kostet nichts.
+    return gewaehlt;
+  }
+  // Ausgabe in der Rangfolge der gewählten Kandidaten; beim ERSTEN Auftreten eines Titelkerns
+  // kommen seine validierten Zwillinge davor. Damit bleibt die Ordnung total und stabil.
+  const geordnet: KnowledgeRef[] = [];
+  const gesetzt = new Set<string>();
+  const erledigteKerne = new Set<string>();
+  for (const ref of gewaehlt) {
+    const kern = titelkern(ref.title);
+    if (!erledigteKerne.has(kern)) {
+      erledigteKerne.add(kern);
+      for (const zwilling of [...nachzuegler, ...gewaehlt]) {
+        if (
+          zwilling.status === "validiert" &&
+          titelkern(zwilling.title) === kern &&
+          !gesetzt.has(zwilling.id)
+        ) {
+          gesetzt.add(zwilling.id);
+          geordnet.push(zwilling);
+        }
+      }
+    }
+    if (!gesetzt.has(ref.id)) {
+      gesetzt.add(ref.id);
+      geordnet.push(ref);
+    }
+  }
+  return geordnet.slice(0, topK);
+}
+
+/**
+ * JOB 3353 · DER DECKUNGSRÜCKFALL SAGT NIE ETWAS, DAS DIE FRAGE NICHT BERÜHRT.
+ *
+ * Die Reihenfolge ist die ganze Regel, und sie ist nach ABNEHMENDEM Fragebezug geordnet:
+ *
+ *  1. DER AUSZUG. Die Sätze des Dokumenttexts, die diese Frage ausgewählt hat — wörtlich, satzganz
+ *     und aus DERSELBEN Quelle. Er ist per Konstruktion ein Ausschnitt eines Segments dieser Quelle
+ *     (JOB 3298, Zusage 1) und besteht die Deckungsprüfung deshalb selbst; und er ist das einzige
+ *     Material auf dieser Kante, dessen Bezug zur Frage GEMESSEN ist. Bei C02 ist das der Satz mit
+ *     den 30 Kalendertagen — genau die Auskunft, die Pedi verlangt hat.
+ *  2. DIE KERNAUSSAGE — unverändert wie bisher. Trägt die Quelle keinen Dokumenttext, ist sie das
+ *     einzige Material, das sie hat, und JOB 2659 hat sie genau dafür an diese Stelle gesetzt.
+ *  3. NICHTS. Bleibt auch die Kernaussage leer, wird nichts behauptet: `answered: false`, dieselbe
+ *     ehrliche Wissenslücke wie ohne Kandidaten. Bis heute ging in diesem Fall die leere
+ *     Zeichenkette als beantwortete Frage hinaus.
+ *
+ * Geprüft wird QUELLE FÜR QUELLE in Rangfolge: hat die bestgerankte zitierte Quelle keinen Auszug,
+ * darf die zweite ihn liefern, statt dass der Rückfall am ersten Kandidaten endet.
+ *
+ * ------------------------------------------------------------------------------------------------
+ * WAS HIER BEWUSST NICHT STEHT, UND DIE MESSUNG DAZU (Auftrag, Nachführung: „dieser Ersatz darf NIE
+ * eine Kernaussage als Antwort ausgeben, die die Frage nicht beantwortet").
+ *
+ * Der naheliegende Zusatz wäre ein Tor auf Schritt 2: die Kernaussage nur ausgeben, wenn sie
+ * `MIN_ANSWER_SUBSTANCE` Inhaltstoken mit der Frage teilt. Er ist gebaut, gemessen und wieder
+ * ENTFERNT worden, weil die Messung ihn widerlegt (die Zahlen stehen in
+ * `tests/ask-c02/befund.test.ts`, Fall M5):
+ *
+ *   Frage „Was tun mit Ventil A in Anlage 7?" · Aussage „Pruefen Sie Ventil A. Schliessen Sie
+ *   Ventil B."                                                → 1 gemeinsames Token („ventil")
+ *   Frage „In the fictional Advisor ICT demo data, …" · Aussage „DEMO notice: content imported for
+ *   the demonstration."                                       → 1 gemeinsames Token („demo")
+ *
+ * Der richtige Rückfall (JOB 2659 G1/H1: der Mensch liest die Quelle statt der falschen Zuordnung)
+ * und der falsche (ein Herkunftshinweis als Antwort) sind an diesem Maß NICHT unterscheidbar — das
+ * Tor hätte 15 bestehende Fälle rot gemacht, darunter BENs Pflichtfälle. Ein Maß, das beide trennt,
+ * hat dieses Haus nicht; eines zu erfinden hieße, Codex' Netz für einen Verdacht zu lockern.
+ *
+ * Was den Livefall STATTDESSEN schließt, ist Schritt 1 und nur er: eine importierte Confluence-Seite
+ * trägt IMMER ihren Dokumenttext (`bodyText` aus der Suchprojektion), also gewinnt der Auszug, und
+ * der Hinweis kommt nie zum Zug (Fall A5). Der ungedeckte Rest — eine Quelle OHNE Dokumenttext,
+ * deren Kernaussage ein reiner Hinweis ist — steht als benannte Prüflücke in der Rückgabe. Im
+ * Bestand der Vorführung gibt es ihn nicht.
+ * ------------------------------------------------------------------------------------------------
+ */
+export function rueckfallAntwort(
+  frage: string,
+  tragend: readonly KnowledgeRef[],
+): { ref: KnowledgeRef; text: string } | null {
+  for (const ref of tragend) {
+    const auszug = dokumentAuszug(frage, ref);
+    if (auszug.length > 0) {
+      return { ref, text: auszug.join(" ") };
+    }
+  }
+  for (const ref of tragend) {
+    if (ref.statement.trim().length > 0) {
+      return { ref, text: ref.statement };
+    }
+  }
+  return null;
+}
+
 // AUFTRAG-mega52 A2 — DIE MARKEN ZURÜCKLESEN.
 //
 // Der Prompt nummerierte die Quellen seit SCRUM-366; gelesen hat sie nie jemand. Hier passiert
@@ -1745,7 +1954,11 @@ export class ModelProvider implements ReasonerProvider {
     // gedeckelte, relevant gerankte Quellenmenge (kein blindes Durchreichen aller KOs).
     // JOB 3049: dieselbe eine Auswahlfunktion wie im deterministischen Weg, jetzt mit demselben
     // Relevanztext — sonst fiele hier wieder, was Tor 1 gerade durchgelassen hat.
-    const relevant = selectCandidates(question, context, DEFAULT_TOP_K, relevanz);
+    // JOB 3353 (M2): DIESELBE Auswahl wie bisher, danach die Zwillingsregel — ein validiertes
+    // Objekt verliert seinen Platz nicht an die unvalidierte Kopie desselben Titels, nur weil die
+    // Rahmenwörter der Frage in deren Herkunftshinweis stehen. Kein neuer Titel, kein größerer
+    // Deckel, keine gelockerte Sichtbarkeit (Begründung und Grenzen bei `waehleKandidaten`).
+    const relevant = waehleKandidaten(question, context, DEFAULT_TOP_K, relevanz);
     // FR-RSN-03: ohne belastbares Wissen keine Rateantwort — Modell wird gar nicht erst befragt.
     const best = relevant[0];
     if (!best) {
@@ -1836,13 +2049,31 @@ export class ModelProvider implements ReasonerProvider {
     // der herangezogenen Kandidaten (B3, mega52: was `sources` bedeutet, ändert dieser Auftrag nicht).
     const deckung = pruefeDeckung(answerText, relevant);
     if (!deckung.gedeckt) {
-      const rueckfall = carrying[0] as KnowledgeRef;
+      // JOB 3353 (M3): HIER STAND `answer: carrying[0].statement` OHNE JEDE BEDINGUNG — und das war
+      // der Livetext der Vorführung: bei der Confluence-Kopie von C02 ist diese Kernaussage der
+      // Fiktionshinweis, und er ging als beantwortete Frage hinaus. Jetzt entscheidet
+      // `rueckfallAntwort`, WAS überhaupt tragfähig ist (Auszug vor Kernaussage vor gar nichts).
+      const rueckfall = rueckfallAntwort(question, carrying);
+      if (!rueckfall) {
+        // Nichts, was die Frage berührt: dieselbe ehrliche Wissenslücke wie ohne Kandidaten. Der
+        // Modelltext geht weiterhin NICHT hinaus (Befund 4 aus JOB 2659 bleibt geschlossen).
+        return {
+          answered: false,
+          answer: null,
+          knowledgeClass: "unbekannt",
+          trust: 0,
+          sources: [],
+          citedSources: [],
+          steps: [],
+          demo: false,
+        };
+      }
       return {
         answered: true,
-        answer: rueckfall.statement,
-        ...answerStanding([rueckfall]),
+        answer: rueckfall.text,
+        ...answerStanding([rueckfall.ref]),
         sources: relevant.map((r) => r.id),
-        citedSources: [rueckfall.id],
+        citedSources: [rueckfall.ref.id],
         steps: relevant.map((r) => ({
           description: sourceLabel(r.title, locale),
           sourceId: r.id,
