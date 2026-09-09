@@ -82,7 +82,7 @@
 // (`playwright.smoke.config.ts`). Was hier entsteht, sieht keine andere Sonde — nicht weil die
 // Reihenfolge günstig ist, sondern weil es einen anderen Bestand betrifft.
 //
-// KEIN `mode: "serial"`: Die drei Fälle sind voneinander unabhängig, jeder meldet sich selbst an
+// KEIN `mode: "serial"`: Die Fälle sind voneinander unabhängig, jeder meldet sich selbst an
 // und navigiert selbst. Serielle Kopplung hat in mega49 einen einzigen Timeout in sechs weitere
 // Fehlschläge verwandelt — diese Bauform wird hier nicht wiederholt.
 //
@@ -90,6 +90,32 @@
 // vergleicht die DIFFERENZ zwischen vollem Lauf und Tor-Lauf gegen die erlaubte Ausnahmemenge.
 // Ein Fall ohne Marke steht in beiden Listen, die Differenz bleibt unverändert, die Ausnahmemenge
 // wächst nicht.
+// JOB 3257 · NATIVE ZWISCHENABLAGE (Fälle 6–8).
+// Jeder Fall vergibt clipboard-read und clipboard-write mit context.grantPermissions nur für
+// die Origin seiner angemeldeten Seite. navigator.clipboard.writeText füllt die echte Chromium-
+// Zwischenablage; readText kalibriert den Inhalt, ControlOrMeta+V löst das native Einfügen aus.
+// Das sind Berechtigungen des jeweiligen Testkontexts; playwright.smoke.config.ts bleibt gleich.
+// Genau ein gemeinsamer Tastaturhelfer, kein synthetisches paste-Ereignis, kein execCommand.
+// Die drei zusätzlichen Fälle sind im Sollmanifest tests/smoke/smoke-mengen-manifest.json
+// registriert: chromium-zustand wächst von sechs auf neun Fälle, die Gesamtmenge von 128 auf 131.
+// Mengen- UND Titelvergleich bleiben verpflichtend; neue Fälle brauchen beide Nachführungen.
+//
+// GRENZE: Playwright kann das native Kontextmenü (kein DOM) nicht bedienen. Die Tastatur erreicht
+// beim Rumpf denselben onPaste-Empfänger mit anderer Auslösung; Kontextmenü-Einfügen ist NICHT
+// geprüft. RichTextEditor.tsx:1925–1952 lässt Klartext jedoch bewusst dem Browser-Default; das
+// Titelfeld in Blatt.tsx:2128–2138 benutzt diesen Empfänger gar nicht. G1 (Handler entfernen →
+// Fälle 6 UND 7 rot) ist deshalb keine tragfähige Gegenprobe für diese Klartextfälle.
+//
+// Fall 8 hält Blatt.tsx:2236 (nicht montiert) und :2134 (Titel gesperrt) während ERFOLGREICHEN
+// Ladens. Kein Beleg für Ladefehler, Cache/Auffrischung, offline, Mikrofon, Spracherkenner oder
+// andere Browser. Nach dem Laden werden Rumpf, Titel und vollständig gerenderte Seite geprüft.
+// Die zusätzliche Abwesenheit WÄHREND des Ladens hält auch kurz angenommenen, danach vom
+// Serverstand überschriebenen Text fest: allein die Abwesenheit DANACH würde G2 nicht erkennen.
+//
+// BESTAND: Fälle 3 und 8 finden ihre identische Probe über GET /api/drafts wieder. Nur wenn sie
+// fehlt, entsteht sie über den bisherigen UI-Weg aus Fall 3. Auch einzeln und nach einem Worker-
+// Neustart braucht Fall 8 keinen zweiten Entwurf; keine serielle Testabhängigkeit. Fall 3 prüft
+// weiterhin das Sichern, bei vorhandener Probe als Aktualisierung. Fall 4 bleibt unverändert.
 import { expect, test } from "@playwright/test";
 import { ensureLoggedIn } from "./support/auth";
 
@@ -107,6 +133,9 @@ const T = {
   validierungOeffnen: "Validierung öffnen", // fd.openValidation
   neuerEintrag: "Neuer Eintrag", // fd.newEntry
   intern: "Öffentlich-intern", // conf.level.intern
+  titel: "Titel", // erfassen.platzhalter.titel
+  nichtBereit:
+    "Der Entwurf wird geholt. Bis er da ist, nimmt dieses Blatt nichts an — sonst würde der geladene Text dein Geschriebenes überschreiben.", // erfassen.laden.nichtBereit
 } as const;
 
 /**
@@ -240,13 +269,33 @@ test("DEMO-UX-V1 · Entwurf und Einreichen stehen nebeneinander und sind untersc
 // Sprung auf eine andere Fläche, die alte Zusage dieses Falls) UND die Kennung darin (die neue).
 // Ein Produkt, das wieder wegspringt, fällt hier auf; eines, das die Kennung wieder verliert,
 // ebenfalls.
-test("DEMO-UX-V1 · Entwurf sichern legt beiseite und hält Blatt und Inhalt", async ({ page }) => {
+const ENTWURFSPROBE =
+  "DEMO-UX-V1 Entwurfsprobe: Vor dem Anfahren der Linie L4 den Druck am Ventil V2 prüfen.";
+
+async function findeEntwurfsprobe(page: import("@playwright/test").Page): Promise<string | null> {
+  const antwort = await page.request.get("/api/drafts");
+  expect(antwort.ok(), "die echte Entwurfsliste muss erfolgreich geladen sein").toBe(true);
+  const entwuerfe: { id: string; payload: { bodyHtml?: string | null } }[] = await antwort.json();
+  const proben = entwuerfe.filter((draft) => draft.payload.bodyHtml?.includes(ENTWURFSPROBE));
+  expect(
+    proben.length,
+    "Fälle 3 und 8 dürfen keinen zweiten Probeentwurf anlegen",
+  ).toBeLessThanOrEqual(1);
+  const probe = proben[0];
+  return probe ? `${VORDERTUER}?draft=${encodeURIComponent(probe.id)}` : null;
+}
+
+async function sichereEntwurfsprobe(page: import("@playwright/test").Page): Promise<string> {
   await oeffneBlatt(page);
 
   const editor = page.locator(EDITOR).first();
   await expect(editor).toBeVisible({ timeout: 10_000 });
-  const probe =
-    "DEMO-UX-V1 Entwurfsprobe: Vor dem Anfahren der Linie L4 den Druck am Ventil V2 prüfen.";
+  const vorhanden = await findeEntwurfsprobe(page);
+  if (vorhanden) {
+    await page.goto(vorhanden);
+    await expect(editor).toContainText(ENTWURFSPROBE);
+  }
+  const probe = ENTWURFSPROBE;
   await editor.fill(probe);
 
   const entwurf = entwurfKnopf(page);
@@ -267,6 +316,11 @@ test("DEMO-UX-V1 · Entwurf sichern legt beiseite und hält Blatt und Inhalt", a
   await expect(editor).toContainText(probe);
   // Und ausdrücklich NICHT das Einreich-Bild — Speichern ist kein Einreichen.
   await expect(page.getByText(T.eingereicht)).toHaveCount(0);
+  return page.url();
+}
+
+test("DEMO-UX-V1 · Entwurf sichern legt beiseite und hält Blatt und Inhalt", async ({ page }) => {
+  await sichereEntwurfsprobe(page);
 });
 
 // ------------------------------------------------------------------------------------------------
@@ -342,3 +396,137 @@ for (const sicht of [
     ).toBeLessThanOrEqual(ueberlauf.client + 1);
   });
 }
+
+/** Kontextberechtigung und Kalibrierung vor jedem nativen Einfügefall. */
+async function fuelleZwischenablage(
+  page: import("@playwright/test").Page,
+  text: string,
+): Promise<void> {
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"], {
+    origin: new URL(page.url()).origin,
+  });
+  await page.bringToFront();
+  await page.evaluate((inhalt) => navigator.clipboard.writeText(inhalt), text);
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(text);
+}
+
+/** Einziger Einfügeweg der Datei: native Tastatur. */
+async function fuegeNativEin(page: import("@playwright/test").Page): Promise<void> {
+  await page.keyboard.press("ControlOrMeta+V");
+}
+
+// FALL 6 — RichTextEditor.tsx:1925–1952 (Klartext-Default), Blatt.tsx:1033–1034 (canSave).
+test("DEMO-UX-V1 · Fall 6: natives Einfügen erreicht Rumpf und Entwurf-Knopf", async ({ page }) => {
+  await oeffneBlatt(page);
+  const editor = page.locator(EDITOR).first();
+  await expect(editor).toBeVisible();
+  await expect(editor).toHaveText("");
+  await expect(entwurfKnopf(page)).toBeDisabled();
+  const probe = "CAP-P1-R2 Rumpf: Vor dem Anfahren den Ventildruck prüfen.";
+  await fuelleZwischenablage(page, probe);
+  await editor.click();
+  await expect(editor).toBeFocused();
+  await fuegeNativEin(page);
+  await expect(editor).toHaveText(probe);
+  await expect(entwurfKnopf(page)).toBeEnabled();
+});
+
+// FALL 7 — Blatt.tsx:2138 (onChange → changeTitle); eigener nativer input-Empfänger.
+test("DEMO-UX-V1 · Fall 7: natives Einfügen erreicht das Titelfeld", async ({ page }) => {
+  await oeffneBlatt(page);
+  const titel = page.getByRole("textbox", { name: T.titel, exact: true });
+  await expect(titel).toBeVisible();
+  await expect(titel).toBeEnabled();
+  await expect(titel).toHaveValue("");
+  const probe = "CAP-P1-R2 Titel aus der Zwischenablage";
+  await fuelleZwischenablage(page, probe);
+  await titel.click();
+  await expect(titel).toBeFocused();
+  await fuegeNativEin(page);
+  await expect(titel).toHaveValue(probe);
+});
+
+// FALL 8 — Blatt.tsx:2236/:2249–2255 (Rumpf/Grund), :2134 (Titel), :689–690 (Serverstand).
+test("DEMO-UX-V1 · Fall 8: natives Einfügen verpufft während der Entwurf lädt", async ({
+  page,
+}) => {
+  await oeffneBlatt(page);
+  await expect(page.locator(EDITOR).first()).toBeVisible();
+  const adresse = (await findeEntwurfsprobe(page)) ?? (await sichereEntwurfsprobe(page));
+  const id = new URL(adresse, page.url()).searchParams.get("draft");
+  expect(id).toBeTruthy();
+  const abruf = `/api/drafts/${encodeURIComponent(id ?? "")}`;
+  const probe = "CAP-P1-R2 DARF WÄHREND LADEN NIRGENDS ANKOMMEN";
+  await fuelleZwischenablage(page, probe);
+
+  let freigeben = (): void => {};
+  const freigabe = new Promise<void>((resolve) => {
+    freigeben = resolve;
+  });
+  let antwortWartet = false;
+  let geladenerTitel = "";
+  await page.route(`**${abruf}`, async (route) => {
+    expect(route.request().method()).toBe("GET");
+    const antwort = await route.fetch();
+    expect(antwort.ok(), "Fall 8 braucht eine erfolgreiche echte Ladeantwort").toBe(true);
+    const entwurf: { payload: { title?: string | null } } = await antwort.json();
+    geladenerTitel = entwurf.payload.title ?? "";
+    antwortWartet = true;
+    // Drei Sekunden Mindestfenster; zusätzlich hält die Freigabe den Zustand bis zum Ende der
+    // Bedienung offen. Kein Schlaf als Bereitschaftsbeleg: unten zählen Antwort und DOM-Zustand.
+    await Promise.all([freigabe, new Promise((resolve) => setTimeout(resolve, 3_000))]);
+    antwortWartet = false;
+    await route.fulfill({ response: antwort });
+  });
+
+  try {
+    await page.goto(adresse);
+    await expect(
+      einreichenKnopf(page),
+      "Kalibrierung: das geladene Blatt ist gemountet",
+    ).toBeVisible();
+    await expect
+      .poll(() => antwortWartet, { message: "G3: echte Ladeantwort wird zurückgehalten" })
+      .toBe(true);
+    const hinweis = page.getByTestId("blatt-nicht-bereit");
+    const titel = page.getByRole("textbox", { name: T.titel, exact: true });
+    // Soft: auch unter G2 werden beide Einfügeversuche ausgeführt, nicht am fehlenden Satz abgebrochen.
+    await expect.soft(hinweis).toBeVisible();
+    await expect.soft(hinweis).toHaveText(T.nichtBereit);
+    await expect.soft(page.locator("[contenteditable]")).toHaveCount(0);
+    await expect.soft(titel).toBeDisabled();
+
+    // Derselbe Ort: normal der Ladehinweis, unter G2 die versehentlich montierte Schreibfläche.
+    await page
+      .getByTestId("blatt-text")
+      .locator(`${EDITOR}, [data-testid="blatt-nicht-bereit"]`)
+      .first()
+      .click();
+    await fuegeNativEin(page);
+    await expect.soft(page.locator("body")).not.toContainText(probe);
+    // force klickt auch auf das gesperrte native input; der Browser muss den Fokus verweigern.
+    await titel.click({ force: true });
+    await fuegeNativEin(page);
+    await expect.soft(titel).not.toHaveValue(new RegExp(probe));
+    expect(
+      antwortWartet,
+      "G3: das Ladefenster muss beide Einfügeversuche vollständig umfassen",
+    ).toBe(true);
+
+    const abgeschlossen = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === abruf && response.request().method() === "GET",
+    );
+    freigeben();
+    expect((await abgeschlossen).ok()).toBe(true);
+    await expect(hinweis).toHaveCount(0);
+    await expect(page.locator(EDITOR).first()).toHaveText(ENTWURFSPROBE);
+    await expect(titel).toBeEnabled();
+    await expect(titel).toHaveValue(geladenerTitel);
+    await expect(page.locator("body")).not.toContainText(probe);
+    await expect(titel).not.toHaveValue(new RegExp(probe));
+  } finally {
+    freigeben();
+    await page.unrouteAll({ behavior: "wait" });
+  }
+});
