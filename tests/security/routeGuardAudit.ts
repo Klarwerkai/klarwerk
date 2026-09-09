@@ -229,6 +229,10 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/admin/import/cleanup": { protection: "users.manage" },
   // WP-B6: kuratierte Beispielpakete für die VIP-2-Tester (admin-routes).
   "POST /api/admin/examples/load": { protection: "users.manage" },
+  // JOB 3326: die Admin-Aktion „Übersetzungen für Paket laden" — dieselbe Tür wie das Laden eines
+  // Beispielpakets. Sie liest den ganzen Bestand, um Anker zuzuordnen, und schreibt ausschliesslich
+  // in `lesevarianten`; ein weicheres Recht wäre eine Bestandsauskunft durch die Hintertür.
+  "POST /api/admin/lesevarianten/laden": { protection: "users.manage" },
   "GET /api/analytics/impact": {
     protection: "ko.read",
     zeilenrecht: ["sichtbarkeitsfilterFuer"],
@@ -253,6 +257,11 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // ohne das seit mega74 zusätzlich wirkende `darfSehen` (provenance-routes.ts:105, Registrierung :89).
   "GET /api/kos/:id/provenance": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
   "GET /api/evidence": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
+  // JOB 3326: die Lesevariante trägt Titel und Inhalt des Objekts in einer anderen Sprache. Wäre
+  // sie leichter zu bekommen als das Original, wäre sie der Umweg um die Sichtbarkeitsregel — sie
+  // fährt deshalb GENAU DIESELBE Entscheidung wie `GET /api/kos/:id` bzw. `GET /api/kos`.
+  "GET /api/kos/:id/lesevariante/:lang": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
+  "GET /api/lesevarianten": { protection: "ko.read", zeilenrecht: ["sichtbareFuer"] },
   "POST /api/kos": { protection: "ko.create" },
   // AUFTRAG-mega19 Block B: die Erstanlage AUS Dokumenten (Inhalt + Anker + Belegstellen in EINEM
   // Vorgang). Dasselbe Basisrecht wie das gewöhnliche Einreichen — die Route ist eine ENGERE Tür

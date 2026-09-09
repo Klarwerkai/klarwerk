@@ -18,27 +18,13 @@
 //
 // Der Sammler prüft alle drei Sprachen, denn eine Übersetzung ist genauso ein Rechtstext wie das
 // Original. Er prüft über die BAUFORM: JEDER Schlüssel unter `notice.` in JEDER Sprache.
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+// Der Bestand kommt aus dem zusammengesetzten Wörterbuch (JOB 3326 R5,
+// `tests/support/i18nBestand.ts`) — die Bauform-Prüfung „JEDER Schlüssel unter `notice.`" trifft
+// damit auch Schlüssel, die aus einem ausgelagerten Block eingespreadet werden.
 import { describe, expect, it } from "vitest";
+import { alleSprachbestaende } from "../support/i18nBestand";
 
-const quelle = readFileSync(join(__dirname, "..", "..", "apps", "web", "src", "i18n.ts"), "utf8");
-
-function objekt(marker: string): Record<string, string> {
-  const start = quelle.indexOf(marker);
-  if (start < 0) {
-    throw new Error(`Marker nicht gefunden: ${marker}`);
-  }
-  const auf = quelle.indexOf("{", start);
-  const zu = quelle.indexOf("\n};", auf);
-  return new Function(`return (${quelle.slice(auf, zu + 2)})`)() as Record<string, string>;
-}
-
-const SPRACHEN: Record<string, Record<string, string>> = {
-  de: objekt("const de = {"),
-  en: objekt("const en: typeof de = {"),
-  nl: objekt("const nl: typeof de = {"),
-};
+const SPRACHEN: Record<string, Record<string, string>> = alleSprachbestaende();
 
 // Die verbotenen Wörter je Sprache — samt der Wortstämme, damit auch „einwilligen",
 // „zugestimmt", „consented" oder „toestemming" auffallen und nicht nur die Grundform.

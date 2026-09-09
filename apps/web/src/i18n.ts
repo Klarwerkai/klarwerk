@@ -1,5 +1,8 @@
 import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
+// JOB 3326 R4: die Texte der Lesevariante wohnen bei ihrer Funktion, damit diese Woerterbuchdatei
+// unter dem 1-MiB-Deckel von Biome bleibt. Messung und Begruendung: `lib/lesevariante.ts`.
+import { lesevarianteTexteDe, lesevarianteTexteEn, lesevarianteTexteNl } from "./lib/lesevariante";
 import { gespeicherteSprache } from "./lib/sprachwahl";
 
 // Zweisprachigkeit DE/EN (G-8). Strings über Keys; Ressourcen wachsen je Screen.
@@ -2579,6 +2582,9 @@ const de = {
   "ko.preview.show": "Kurzvorschau",
   "ko.preview.hide": "Vorschau schließen",
   "ko.preview.label": "Vorschau",
+  // JOB 3326 · LESEVARIANTE — die Texte stehen in `lib/lesevariante.ts`, weil diese Datei sonst
+  // ueber den 1-MiB-Deckel von Biome waechst (Begruendung und Messung dort, R4).
+  ...lesevarianteTexteDe,
   "ko.createdByName": "von {{name}}",
   "ko.gallery": "Bildergalerie",
   "ko.galleryCount": "Bild {{n}} von {{m}}",
@@ -7813,6 +7819,8 @@ const en: typeof de = {
   "ko.preview.show": "Quick preview",
   "ko.preview.hide": "Close preview",
   "ko.preview.label": "Preview",
+  // JOB 3326 · reading variant — the texts live in `lib/lesevariante.ts` (see the reasoning there).
+  ...lesevarianteTexteEn,
   "ko.createdByName": "by {{name}}",
   "ko.gallery": "Image gallery",
   "ko.galleryCount": "Image {{n}} of {{m}}",
@@ -12557,6 +12565,8 @@ const nl: typeof de = {
   "ko.preview.show": "Snel voorbeeld",
   "ko.preview.hide": "Voorbeeld sluiten",
   "ko.preview.label": "Voorbeeld",
+  // JOB 3326 · leesvariant — de teksten staan in `lib/lesevariante.ts` (toelichting daar).
+  ...lesevarianteTexteNl,
   "ko.createdByName": "door {{name}}",
   "ko.gallery": "Afbeeldingengalerij",
   "ko.galleryCount": "Afbeelding {{n}} van {{m}}",

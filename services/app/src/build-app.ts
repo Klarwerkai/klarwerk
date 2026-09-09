@@ -185,6 +185,12 @@ import {
   tokenFromRequest,
 } from "./http";
 import { impactReport } from "./impact";
+// WP-D11: PPTX-Folien → PNG (Route + injizierbarer Konverter).
+import {
+  InMemoryLesevariantenRepo,
+  type LesevariantenRepo,
+  PgLesevariantenRepo,
+} from "./lesevarianten";
 import { sanitizeLogText } from "./log-sanitize";
 import { makeAssignmentNotifier } from "./notify";
 // AUFTRAG-mega20 Block C: die modulübergreifende Referenzprüfung lebt in services/app (s. Datei).
@@ -213,6 +219,7 @@ import { klaraAnswerExplanationRoutes } from "./routes/klara-answer-explanation-
 import { type ZurufModell, klaraZurufRoutes } from "./routes/klara-session-routes";
 import { knowledgeCheckRoutes } from "./routes/knowledge-check-routes";
 import { koRoutes } from "./routes/ko-routes";
+import { lesevariantenRoutes } from "./routes/lesevarianten-routes";
 import { libraryRoutes } from "./routes/library-routes";
 import { lifecycleRoutes } from "./routes/lifecycle-routes";
 import { livewallRoutes } from "./routes/livewall-routes";
@@ -236,7 +243,6 @@ import { AnswerExplanationService } from "./services/answer-explanation";
 import { ImportAccessService } from "./services/import-access-service";
 import { KlaraSessionService } from "./services/klara-session-service";
 import { type AnhangQuellen, sichtbarkeitsfilterFuer } from "./sichtbarkeit";
-// WP-D11: PPTX-Folien → PNG (Route + injizierbarer Konverter).
 import { type SlideConverter, createSofficeSlideConverter } from "./slide-converter";
 
 // Composition-Root des modularen Monolithen: verdrahtet ALLE Module zu EINER App.
@@ -249,6 +255,12 @@ export interface AppServices {
   // `AppRepos`, weil es wie `searchProjections` ein abgeleiteter Betriebsdatenraum ist — die
   // Dev-Persistenz journaliert ihn bewusst nicht; nach einem Replay ist er schlicht leer.
   klaraSessions: KlaraSessionRepo;
+  // JOB 3326: die Ablage der Lesevarianten (gekennzeichnete Leseübersetzungen). Als eigenes Feld
+  // neben `klaraSessions` und ausdrücklich NICHT in `AppRepos`: sie ist ein danebenliegender
+  // Lese-Datenraum über dem Bestand, kein eigener Bestand. Die Dev-Persistenz journaliert sie
+  // deshalb nicht — nach einem Replay ist sie leer, und die Admin-Aktion „Übersetzungen laden"
+  // stellt sie idempotent wieder her (die Lieferung liegt als Datei im Auslieferungsstand).
+  lesevarianten: LesevariantenRepo;
   /**
    * JOB 3110 (M2b): DER FORMULIERER DES ZURUFS — dasselbe gecappte Cloud-Modell wie der Reasoner.
    *
@@ -400,6 +412,9 @@ export function assembleServices(
     // W1 S4: gesetzt nur von `buildPgServices` (echter Pool). Ohne Injektion die
     // In-Memory-Ablage — derselbe Vertrag, andere Haltbarkeit; beide werden getrennt geprüft.
     klaraSessions?: KlaraSessionRepo;
+    // JOB 3326: gesetzt nur von `buildPgServices` (echter Pool) — ohne Injektion die In-Memory-
+    // Ablage. Derselbe Vertrag, andere Haltbarkeit; beide werden getrennt geprüft.
+    lesevarianten?: LesevariantenRepo;
     // W1 Weg A (Auftrag 143): `answerSnapshots` stand hier als Option, mit dem benannten Preis,
     // dass der Beleg nicht durch das Dev-Journal lief. Die Restgrenze ist geschlossen — das Repo
     // liegt jetzt in `AppRepos` und kommt wie jedes andere aus `repos.`.
@@ -584,6 +599,8 @@ export function assembleServices(
     audit,
     reasoner,
     klaraSessions: opts.klaraSessions ?? new InMemoryKlaraSessionRepo(),
+    // JOB 3326: die Lesevarianten-Ablage — Postgres, wenn injiziert, sonst im Speicher.
+    lesevarianten: opts.lesevarianten ?? new InMemoryLesevariantenRepo(),
     // JOB 3110 (M2b): DIE VORHANDENEN gecappten Cloud-Clients, weitergereicht — kein zweiter Aufruf
     // der Fabrik. JOB 3134: hinter der Hülle (oben), die je Aufruf den GEWÄHLTEN Anbieter nimmt.
     zurufModell,
@@ -853,6 +870,9 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // W1 S4: Klara-Sitzungen und Zustimmungen liegen in DERSELBEN Datenbank wie der
       // Bestand — kein zweiter Dienst, keine kundenübergreifende Ablage.
       klaraSessions: new PgKlaraSessionRepo(pool),
+      // JOB 3326: die Lesevarianten liegen in DERSELBEN Datenbank wie der Bestand (dedizierte
+      // Kundeninstanz = ein Datenraum) — kein zweiter Dienst, keine kundenübergreifende Ablage.
+      lesevarianten: new PgLesevariantenRepo(pool),
     },
   );
 }
@@ -1691,6 +1711,19 @@ export function buildApp(
     },
   });
   app.register(klaraAiRoutes({ sessions: klaraSessions }, guards));
+  // JOB 3326: die Lesevarianten — Übersicht, Einzelabruf und die Admin-Ladeaktion. Sie bekommen
+  // DIESELBE Ablage-Instanz, die auch `koRoutes` oben durchgereicht wird; eine zweite wäre ein
+  // zweiter Wahrheitsort über dieselbe Übersetzung.
+  app.register(
+    lesevariantenRoutes(
+      {
+        ko: services.ko,
+        lesevarianten: services.lesevarianten,
+        ...(services.audit ? { audit: services.audit } : {}),
+      },
+      guards,
+    ),
+  );
   // JOB 3110 (M2b) — DER MEMO-WEG AUS DEM WORD-PANEL, an DERSELBEN Sitzungsinstanz.
   //
   // Bis hierher war die Route (`klara-session-routes.ts:198`) gebaut, gemessen und ausgeliefert,
@@ -1851,6 +1884,10 @@ export function buildApp(
           process.env.KLARWERK_INTERNAL_SOURCE_ORIGINS,
         ),
         audit: services.audit,
+        // JOB 3326: der Detailabruf reicht die vorhandene Lesevariante MIT — dieselbe Ablage, die
+        // die Lesevarianten-Routen benutzen, keine zweite. Das Original selbst bleibt unberührt:
+        // die Variante tritt als eigenes Feld daneben, nie an die Stelle eines KO-Feldes.
+        lesevarianten: services.lesevarianten,
         // Weg 3 (Feature-Flag): semantischer Vorfilter (undefined = Default „jeder gegen jeden").
         semanticPrefilter,
         // WP-SUBMIT-ASYNC: Prüf-Job-Vermerk + Hintergrund-Worker statt synchroner Erkennung.

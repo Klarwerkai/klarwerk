@@ -212,6 +212,9 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   { stufe: "VALIDATION_SETTINGS_SCHEMA", risiko: "ADDITIV" },
   { stufe: "EXTERNAL_KNOWLEDGE_SCHEMA", risiko: "ADDITIV" },
   { stufe: "UPLOAD_LIMITS_SCHEMA", risiko: "ADDITIV" },
+  // JOB 3326: die Lesevarianten-Tabelle. Rein additiv (`CREATE TABLE IF NOT EXISTS`, kein ALTER,
+  // kein DROP, kein DELETE, kein Fremdschlüssel) und wiederholbar.
+  { stufe: "LESEVARIANTEN_SCHEMA", risiko: "ADDITIV" },
 ];
 
 /**

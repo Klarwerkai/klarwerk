@@ -1550,6 +1550,78 @@ export interface DemoPackagePreview {
   missing: number;
 }
 
+// ================================================================================================
+// JOB 3326 · LESEVARIANTE — DIE GEKENNZEICHNETE LESEÜBERSETZUNG.
+// ================================================================================================
+//
+// Sie steht NEBEN dem Wissensobjekt und nie an seiner Stelle: `Ko.title`/`Ko.statement` bleiben das
+// Original, auch wenn eine Variante vorliegt. Wer die Variante zeigt, sagt es sichtbar dazu
+// („Übersetzung · Original: EN") und bietet den Weg zurück zum Original an.
+
+/** Die schmale Fassung für Listen und Vorschauen — ohne Fließtext. */
+export interface LesevarianteKurz {
+  koId: string;
+  /** Sprache der Übersetzung. */
+  lang: string;
+  /** Sprache des ORIGINALS. Ist sie gleich der Oberflächensprache, wird die Variante nicht gezeigt. */
+  originalLanguage: string;
+  title: string;
+  statement: string;
+  /** z. B. `lokale Lieferung advisor-ict-en-v1` — keine Cloudübersetzung, kein Modellaufruf. */
+  herkunft: string;
+  /** Der Übersetzungsstand. Eine Variante ist NIE Freigabegegenstand. */
+  status: string;
+  /**
+   * Das Original hat sich seit dem Ablegen dieser Übersetzung geändert (serverseitig gemessen,
+   * nicht geraten). Ein erneutes Laden derselben Übersetzung nimmt dieses Kennzeichen NICHT weg.
+   */
+  originalGeaendert: boolean;
+  /**
+   * Ob die Zuordnung „diese Übersetzung gehört zu diesem Original" gegen den gelieferten
+   * Quellabdruck BELEGT werden konnte. `unbestaetigt` heisst: der Beleg fehlt — nicht, dass die
+   * Übersetzung falsch wäre. Die Fläche sagt es, statt es zu verschweigen.
+   */
+  quellabgleich: "bestaetigt" | "unbestaetigt";
+  updatedAt: string;
+}
+
+/** Die volle Fassung für die Leseansicht. */
+export interface Lesevariante extends LesevarianteKurz {
+  bodyHtml: string;
+  sourceBodySha256: string | null;
+  originalSha256: string;
+  uebersetzungSha256: string;
+}
+
+export interface LesevariantenUebersicht {
+  lang: string;
+  eintraege: LesevarianteKurz[];
+}
+
+/** Bilanz der Admin-Aktion „Übersetzungen für Paket laden" — idempotent, ehrlich gezählt. */
+export interface LesevariantenLadeBilanz {
+  paket: string;
+  records: number;
+  sprachen: string[];
+  /** DATENSÄTZE mit mindestens einem gefundenen Wissensobjekt. */
+  zugeordnet: number;
+  /** OBJEKTE mit einer Variante — ein Datensatz kann zwei bedienen (Confluence-Kopie + Baustein). */
+  objekte: number;
+  ueberConfluence: number;
+  ueberPaketschluessel: number;
+  neu: number;
+  aktualisiert: number;
+  /** Objekte, deren Übersetzungstext sich in diesem Lauf wirklich geändert hat. */
+  textGeaendert: string[];
+  /** Datensätze ohne Wissensobjekt im Bestand — BENANNT, nicht nur gezählt. */
+  nichtZugeordnet: string[];
+  /** Objekte, deren Original nach diesem Lauf nicht mehr zur Übersetzung passt (Warnung steht). */
+  originalGeaendert: string[];
+  quellabgleichBestaetigt: number;
+  quellabgleichUnbestaetigt: number;
+  ohneText: string[];
+}
+
 export interface SlideConvertResponse {
   slides: string[];
   slideCount: number;

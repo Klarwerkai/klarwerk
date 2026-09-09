@@ -22,22 +22,13 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { alleSprachbestaende } from "../support/i18nBestand";
 
 const WURZEL = join(__dirname, "..", "..");
-const quelle = readFileSync(join(WURZEL, "apps", "web", "src", "i18n.ts"), "utf8");
 
-function objekt(marker: string): Record<string, string> {
-  const start = quelle.indexOf(marker);
-  const auf = quelle.indexOf("{", start);
-  const zu = quelle.indexOf("\n};", auf);
-  return new Function(`return (${quelle.slice(auf, zu + 2)})`)() as Record<string, string>;
-}
-
-const SPRACHEN: Record<string, Record<string, string>> = {
-  de: objekt("const de = {"),
-  en: objekt("const en: typeof de = {"),
-  nl: objekt("const nl: typeof de = {"),
-};
+// JOB 3326 R5: der Sprachbestand kommt aus dem zusammengesetzten Wörterbuch
+// (`tests/support/i18nBestand.ts`), nicht mehr aus einem Textschnitt der Quelldatei.
+const SPRACHEN: Record<string, Record<string, string>> = alleSprachbestaende();
 
 // Das Geld-Wort je Sprache. Bewusst der Wortstamm, damit auch eine Umformulierung noch trägt.
 const GELD: Record<string, string> = { de: "kostenpflichtig", en: "chargeable", nl: "betaalde" };

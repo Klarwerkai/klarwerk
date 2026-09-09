@@ -1,0 +1,1067 @@
+{
+  "schema_version": 1,
+  "package_id": "advisor-ict-en-v1",
+  "updated_at": "2026-09-08T14:26:12+02:00",
+  "languages": ["de", "en"],
+  "notice": {
+    "de": "Fiktives Vorführmaterial für Advisor ICT. Diese internen Abläufe und Kundendaten sind erfunden und beschreiben keine tatsächlichen Regeln von Advisor.",
+    "en": "Fictional demonstration material prepared for Advisor ICT. These are invented internal procedures and customer details, not statements of actual Advisor policy."
+  },
+  "rule": "Reading variants, not independent evidence or new approvals. Do not import this translation catalogue as knowledge.",
+  "records": [
+    {
+      "key": "S01",
+      "semantic_id": "S01",
+      "original_language": "en",
+      "confluence_id": "25067523",
+      "confluence_url": "https://klarwerk.atlassian.net/wiki/spaces/K/pages/25067523/DEMO+S01+Customer+brief+Harbor+Field+Services",
+      "source_body_sha256": "4b48691d63375999a6e6227b6cc7b337c3ab10ffc6d6dd03b5f6504729a73673",
+      "translation_status": "draft_translation_not_business_approval",
+      "en": {
+        "title": "Customer brief: Harbor Field Services",
+        "paragraphs": [
+          "Harbor Field Services is a fictional customer with 25 office users and one branch. It wants a reliable Microsoft 365 workplace, guest Wi-Fi and a clear route to support.",
+          "The account manager records the requested outcome, the current problem and the person authorised to approve the purchase. A request is not an accepted order.",
+          "The first delivery covers the agreed workplace setup and branch network handover. Later improvements need their own scope decision."
+        ]
+      },
+      "de": {
+        "title": "Kundenprofil: Harbor Field Services",
+        "paragraphs": [
+          "Harbor Field Services ist ein fiktiver Kunde mit 25 Büronutzern und einer Niederlassung. Gewünscht sind ein zuverlässiger Microsoft-365-Arbeitsplatz, Gäste-WLAN und ein klarer Zugang zum Support.",
+          "Der Kundenbetreuer hält das gewünschte Ergebnis, das aktuelle Problem und die zum Kauf berechtigte Person fest. Eine Anfrage ist kein angenommener Auftrag.",
+          "Die erste Lieferung umfasst die vereinbarte Arbeitsplatzeinrichtung und die Übergabe des Niederlassungsnetzes. Spätere Verbesserungen benötigen eine eigene Entscheidung über den Umfang."
+        ]
+      }
+    },
+    {
+      "key": "S02",
+      "semantic_id": "S02",
+      "original_language": "en",
+      "confluence_id": "24674315",
+      "confluence_url": "https://klarwerk.atlassian.net/wiki/spaces/K/pages/24674315/DEMO+S02+Named+customer+contact",
+      "source_body_sha256": "1da4be1010e4637dac228eda187a50c1495ade7dc8886e4042e6ce696e52cf02",
+      "translation_status": "draft_translation_not_business_approval",
+      "en": {
+        "title": "Named customer contact",
+        "paragraphs": [
+          "Every new customer receives a named service contact before handover.",
+          "The welcome message gives the contact name and the support route. If the contact changes, the customer receives an updated message.",
+          "Record that the welcome message was sent. Do not mark the handover complete solely because a message was drafted."
+        ]
+      },
+      "de": {
+        "title": "Benannter Ansprechpartner für den Kunden",
+        "paragraphs": [
+          "Jeder neue Kunde erhält vor der Übergabe einen namentlich benannten Service-Ansprechpartner.",
+          "Die Willkommensnachricht nennt den Ansprechpartner und den Supportweg. Bei einem Wechsel erhält der Kunde eine aktualisierte Nachricht.",
+          "Dokumentiere den tatsächlichen Versand der Willkommensnachricht. Markiere die Übergabe nicht allein deshalb als abgeschlossen, weil eine Nachricht entworfen wurde."
+        ]
+      }
+    },
+    {
+      "key": "S03",
+      "semantic_id": "S03",
+      "original_language": "en",
+      "confluence_id": "24969219",
+      "confluence_url": "https://klarwerk.atlassian.net/wiki/spaces/K/pages/24969219/DEMO+S03+Preparing+a+clear+proposal",
+      "source_body_sha256": "54cd65ef1dafe8377b801b02051e0bcf26d6255eba411f45f6db61f4baa4fe8e",
+      "translation_status": "draft_translation_not_business_approval",
+      "en": {
+        "title": "Preparing a clear proposal",
+        "paragraphs": [
+          "A proposal states the customer outcome, included work, exclusions and the next decision. Use plain language and explain unfamiliar terms.",
+          "For Harbor Field Services, separate workplace setup, branch network work and ongoing support. A price estimate must not be described as a signed agreement.",
+          "Check the commercial approval rules before promising work outside the agreed scope."
+        ]
+      },
+      "de": {
+        "title": "Ein verständliches Angebot vorbereiten",
+        "paragraphs": [
+          "Ein Angebot nennt das Kundenziel, enthaltene Leistungen, Ausschlüsse und die nächste Entscheidung. Verwende einfache Sprache und erkläre unbekannte Begriffe.",
+          "Trenne bei Harbor Field Services Arbeitsplatzeinrichtung, Arbeiten am Niederlassungsnetz und laufenden Support. Eine Kostenschätzung darf nicht als unterschriebene Vereinbarung dargestellt werden.",
+          "Prüfe die kaufmännischen Freigaberegeln, bevor Leistungen außerhalb des vereinbarten Umfangs zugesagt werden."
+        ]
+      }
+    },
+    {
+      "key": "S04",
+      "semantic_id": "S04",
+      "original_language": "en",
+      "confluence_id": "25264129",
+      "confluence_url": "https://klarwerk.atlassian.net/wiki/spaces/K/pages/25264129/DEMO+S04+Support+hours+for+the+standard+package",
+      "source_body_sha256": "9ef99f908b909b2be119a460065c855bcfe6ceb252c2bebc381c6bffb3bcaef4",
+      "translation_status": "draft_translation_not_business_approval",
+      "en": {
+        "title": "Support hours for the standard package",
+        "paragraphs": [
+          "The standard support package operates Monday to Friday, 09:00 to 17:00, excluding agreed public holidays.",
+          "These hours describe availability of the service desk. They are not a guaranteed resolution time.",
+          "Any extended-hours commitment must be written into the customer agreement before it is promised."
+        ]
+      },
+      "de": {
+        "title": "Supportzeiten des Standardpakets",
+        "paragraphs": [
+          "Das Standard-Supportpaket gilt montags bis freitags von 09:00 bis 17:00 Uhr, ausgenommen vereinbarte Feiertage.",
+          "Diese Zeiten beschreiben die Erreichbarkeit des Service-Desks. Sie sind keine garantierte Zeit bis zur Problemlösung.",
+          "Eine Zusage erweiterter Supportzeiten muss vor ihrer Erteilung schriftlich in der Kundenvereinbarung stehen."
+        ]
+      }
+    },
+    {
+      "key": "S05",
+      "semantic_id": "S05",
+      "original_language": "en",
+      "confluence_id": "24543256",
+      "confluence_url": "https://klarwerk.atlassian.net/wiki/spaces/K/pages/24543256/DEMO+S05+Proposal+validity",
+      "source_body_sha256": "6b9dd7fab81cd1e8e6fe0b914d1ae02fc12dd311a532ea70365dc230974b4f99",
+      "translation_status": "draft_translation_not_business_approval",
+      "en": {
+        "title": "Proposal validity",
+        "paragraphs": [
+          "A standard proposal remains valid for 30 calendar days from its issue date.",
+          "After that period, the account manager checks scope and pricing before issuing an updated version. Keep the earlier version for traceability.",
+          "For this demo, no real price list or commercial commitment is being offered."
+        ]
+      },
+      "de": {
+        "title": "Gültigkeit eines Angebots",
+        "paragraphs": [
+          "Ein Standardangebot gilt 30 Kalendertage ab seinem Ausstellungsdatum.",
+          "Danach prüft der Kundenbetreuer Umfang und Preis, bevor eine aktualisierte Fassung erstellt wird. Bewahre die frühere Fassung zur Nachvollziehbarkeit auf.",
+          "Für diese Vorführung werden keine echte Preisliste und keine kaufmännische Verpflichtung angeboten."
+        ]
+      }
+    },
+    {
+      "key": "S06",
+      "semantic_id": "S06",
+      "original_language": "en",
+      "confluence_id": "25296897",
+      "confluence_url": "https://klarwerk.atlassian.net/wiki/spaces/K/pages/25296897/DEMO+S06+Sales-to-delivery+handover",
+      "source_body_sha256": "0e55a284844374e240cfd0223a40f616d5f3579f815664e1df9c225ff5ae62a3",
+      "translation_status": "draft_translation_not_business_approval",
+      "en": {
+        "title": "Sales-to-delivery handover",
+        "paragraphs": [
+          "Before scheduling delivery, the account manager transfers the accepted scope, customer contact and known exclusions to the delivery lead.",
+          "The delivery lead acknowledges the handover and records any missing information. An unsigned proposal is not evidence of customer acceptance.",
+          "Keep the original acceptance reference with the customer record so another colleague can find it."
+        ]
+      },
+      "de": {
+        "title": "Übergabe vom Vertrieb an die Umsetzung",
+        "paragraphs": [
+          "Bevor die Umsetzung terminiert wird, übergibt der Kundenbetreuer den angenommenen Umfang, den Kundenkontakt und bekannte Ausschlüsse an den Umsetzungsverantwortlichen.",
+          "Der Umsetzungsverantwortliche bestätigt die Übergabe und dokumentiert fehlende Informationen. Ein nicht unterschriebenes Angebot ist kein Nachweis der Kundenannahme.",
+          "Bewahre den ursprünglichen Annahmenachweis beim Kundenvorgang auf, damit ein anderer Kollege ihn finden kann."
+        ]
+      }
+    },
+    {
+      "key": "S07",
+      "semantic_id": "S07",
+      "original_language": "en",
+      "confluence_id": "24969227",
+      "confluence_url": "https://klarwerk.atlassian.net/wiki/spaces/K/pages/24969227/DEMO+S07+Customer+introduction+note",
+      "source_body_sha256": "2019f3d58c637f602a8058c2f063ea336dc7235bd3f2d1e169190e8a1f33754e",
+      "translation_status": "draft_translation_not_business_approval",
+      "en": {
+        "title": "Customer introduction note",
+        "paragraphs": [
+          "Before the service is handed over, assign a specific support contact to each new customer.",
+          "Introduce that person in the welcome message and explain how to request help. Tell the customer when the assigned person changes.",
+          "Record the actual message delivery rather than treating a prepared draft as a completed introduction."
+        ]
+      },
+      "de": {
+        "title": "Vorstellung des Kundenkontakts",
+        "paragraphs": [
+          "Weise jedem neuen Kunden vor der Serviceübergabe eine bestimmte Person als Supportkontakt zu.",
+          "Stelle diese Person in der Willkommensnachricht vor und erläutere, wie Hilfe angefordert wird. Informiere den Kunden, wenn die zugeordnete Person wechselt.",
+          "Dokumentiere die tatsächliche Zustellung der Nachricht, statt einen vorbereiteten Entwurf als abgeschlossene Vorstellung zu behandeln."
+        ]
+      }
+    },
+    {
+      "key": "S08",
+      "semantic_id": "S08",
+      "original_language": "en",
+      "confluence_id": "24838162",
+      "confluence_url": "https://klarwerk.atlassian.net/wiki/spaces/K/pages/24838162/DEMO+S08+Welcome-message+checklist",
+      "source_body_sha256": "1da4be1010e4637dac228eda187a50c1495ade7dc8886e4042e6ce696e52cf02",
+      "translation_status": "draft_translation_not_business_approval",
+      "en": {
+        "title": "Welcome-message checklist",
+        "paragraphs": [
+          "Every new customer receives a named service contact before handover.",
+          "The welcome message gives the contact name and the support route. If the contact changes, the customer receives an updated message.",
+          "Record that the welcome message was sent. Do not mark the handover complete solely because a message was drafted."
+        ]
+      },
+      "de": {
+        "title": "Checkliste für die Willkommensnachricht",
+        "paragraphs": [
+          "Jeder neue Kunde erhält vor der Übergabe einen namentlich benannten Service-Ansprechpartner.",
+          "Die Willkommensnachricht nennt den Ansprechpartner und den Supportweg. Bei einem Wechsel erhält der Kunde eine aktualisierte Nachricht.",
+          "Dokumentiere den tatsächlichen Versand der Willkommensnachricht. Markiere die Übergabe nicht allein deshalb als abgeschlossen, weil eine Nachricht entworfen wurde."
+        ]
+      }
+    },
+    {
+      "key": "S09",
+      "semantic_id": "S09",
+      "original_language": "en",
+      "confluence_id": "25100322",
+      "confluence_url": "https://klarwerk.atlassian.net/wiki/spaces/K/pages/25100322/DEMO+S09+Harbor+proposal+support+commitment",
+      "source_body_sha256": "62ea3b1a99756d257f4e9edfa5a64e3093df5b3aceb9f65c5c236b9cd0104636",
+      "translation_status": "draft_translation_not_business_approval",
+      "en": {
+        "title": "Harbor proposal: support commitment",
+        "paragraphs": [
+          "The standard support package for Harbor Field Services operates every day, including weekends, from 09:00 to 17:00.",
+          "This proposal uses the standard package and includes no signed extended-hours exception. The account manager has not recorded customer acceptance.",
+          "Delivery must compare the proposed commitment with the current service description before issuing the final offer."
+        ]
+      },
+      "de": {
+        "title": "Harbor-Angebot: Supportzusage",
+        "paragraphs": [
+          "Das Standard-Supportpaket für Harbor Field Services gilt täglich, einschließlich der Wochenenden, von 09:00 bis 17:00 Uhr.",
+          "Dieses Angebot verwendet das Standardpaket und enthält keine unterschriebene Ausnahme für erweiterte Zeiten. Der Kundenbetreuer hat keine Annahme durch den Kunden dokumentiert.",
+          "Die Umsetzung muss die angebotene Zusage mit der aktuellen Leistungsbeschreibung vergleichen, bevor das endgültige Angebot erstellt wird."
+        ]
+      }
+    },
+    {
+      "key": "S10",
+      "semantic_id": "S10",
+      "original_language": "en",
+      "confluence_id": "25198607",
+      "confluence_url": "https://klarwerk.atlassian.net/wiki/spaces/K/pages/25198607/DEMO+S10+Preparing+a+customer+demonstration",
+      "source_body_sha256": "b8f5ee9e9430391124d217a599871aea60f89987d4175d0df0f7146a917cbfc3",
+      "translation_status": "draft_translation_not_business_approval",
+      "en": {
+        "title": "Preparing a customer demonstration",
+        "paragraphs": [
+          "Use fictional records and explain which steps are proposals, which are existing instructions and which have evidence of completion.",
+          "Demonstrate one customer journey from request to handover. Give the audience time to open a source and inspect an actual result.",
+          "Do not describe a prepared example answer as a live system result."
+        ]
+      },
+      "de": {
+        "title": "Eine Kundenvorführung vorbereiten",
+        "paragraphs": [
+          "Verwende fiktive Datensätze und erkläre, welche Schritte Vorschläge sind, welche bestehende Anweisungen und für welche ein Abschlussnachweis vorliegt.",
+          "Zeige einen Kundenweg von der Anfrage bis zur Übergabe. Gib dem Publikum Zeit, eine Quelle zu öffnen und ein tatsächliches Ergebnis anzusehen.",
+          "Bezeichne eine vorbereitete Beispielantwort nicht als live erzeugtes Systemergebnis."
+        ]
+      }
+    },
+    {
+      "key": "S11",
+      "semantic_id": "S11",
+      "original_language": "en",
+      "confluence_id": "24772620",
+      "confluence_url": "https://klarwerk.atlassian.net/wiki/spaces/K/pages/24772620/DEMO+S11+Customer+permission+for+a+reference",
+      "source_body_sha256": "9e9054d59d3a8d92d9d325e685b3822accb2c969b1c2cfcabde4b5172ba08aa6",
+      "translation_status": "draft_translation_not_business_approval",
+      "en": {
+        "title": "Customer permission for a reference",
+        "paragraphs": [
+          "Obtain written permission before using a real customer name or logo as a public reference.",
+          "Record the approved wording and permitted channels. Permission for a private discussion is not permission for publication.",
+          "The Harbor Field Services example is fictional and uses no real customer logo."
+        ]
+      },
+      "de": {
+        "title": "Kundenerlaubnis für eine Referenz",
+        "paragraphs": [
+          "Hole eine schriftliche Erlaubnis ein, bevor ein echter Kundenname oder ein Logo als öffentliche Referenz verwendet wird.",
+          "Dokumentiere den freigegebenen Wortlaut und die erlaubten Kanäle. Eine Erlaubnis für ein privates Gespräch ist keine Erlaubnis zur Veröffentlichung.",
+          "Das Beispiel Harbor Field Services ist fiktiv und verwendet kein echtes Kundenlogo."
+        ]
+      }
+    },
+    {
+      "key": "S12",
+      "semantic_id": "S12",
+      "original_language": "en",
+      "confluence_id": "24969246",
+      "confluence_url": "https://klarwerk.atlassian.net/wiki/spaces/K/pages/24969246/DEMO+S12+Keeping+useful+AI+suggestions",
+      "source_body_sha256": "2828b59fbff93ab9fe6dde5e9eae70884931e1d7c64fc2ee40e593577ed8a93e",
+      "translation_status": "draft_translation_not_business_approval",
+      "en": {
+        "title": "Keeping useful AI suggestions",
+        "paragraphs": [
+          "A useful AI-generated suggestion may be saved with its source and capture date for later consideration.",
+          "Label it as an unreviewed suggestion. Do not present its recommendations as an approved customer agreement or a completed action.",
+          "Retain enough context for a colleague to understand the question that produced the suggestion."
+        ]
+      },
+      "de": {
+        "title": "Nützliche KI-Vorschläge erhalten",
+        "paragraphs": [
+          "Ein nützlicher KI-Vorschlag darf mit seiner Quelle und dem Erfassungsdatum zur späteren Prüfung gespeichert werden.",
+          "Kennzeichne ihn als ungeprüften Vorschlag. Stelle seine Empfehlungen nicht als freigegebene Kundenvereinbarung oder abgeschlossene Handlung dar.",
+          "Bewahre genügend Kontext auf, damit ein Kollege die Frage versteht, aus der der Vorschlag entstand."
+        ]
+      }
+    },
+    {
+      "key": "C01",
+      "semantic_id": "C01",
+      "original_language": "en",
+      "confluence_id": "25133064",
+      "confluence_url": "https://klarwerk.atlassian.net/wiki/spaces/K/pages/25133064/DEMO+C01+Approval+of+additional+work",
+      "source_body_sha256": "08c450a58823862379f7d000f5b7785b763fdb2094e2c70b6f3ce5e8b2a62888",
+      "translation_status": "draft_translation_not_business_approval",
+      "en": {
+        "title": "Approval of additional work",
+        "paragraphs": [
+          "Additional work requires written customer approval before delivery starts.",
+          "The approval record identifies the scope, the agreed price basis and the authorised customer representative.",
+          "If the approval cannot be found, report the evidence gap. A colleague saying that approval is likely is not sufficient."
+        ]
+      },
+      "de": {
+        "title": "Freigabe zusätzlicher Leistungen",
+        "paragraphs": [
+          "Zusätzliche Leistungen benötigen eine schriftliche Kundenfreigabe, bevor die Umsetzung beginnt.",
+          "Der Freigabenachweis nennt den Umfang, die vereinbarte Preisgrundlage und den bevollmächtigten Kundenvertreter.",
+          "Wenn die Freigabe nicht auffindbar ist, melde die Nachweislücke. Die Aussage eines Kollegen, eine Freigabe sei wahrscheinlich, reicht nicht aus."
+        ]
+      }
+    },
+    {
+      "key": "C02",
+      "semantic_id": "C02",
+      "original_language": "en",
+      "confluence_id": "24903695",
+      "confluence_url": "https://klarwerk.atlassian.net/wiki/spaces/K/pages/24903695/DEMO+C02+Standard+invoice+due+date",
+      "source_body_sha256": "4e2362b587b8dbc0cef35b14ac1a594c18c56cc456467be46017ce9309115521",
+      "translation_status": "draft_translation_not_business_approval",
+      "en": {
+        "title": "Standard invoice due date",
+        "paragraphs": [
+          "Standard invoices are due 30 calendar days after the invoice date.",
+          "An alternative due date applies only when a customer-specific agreement explicitly records it.",
+          "Keep the agreed terms with the order. Do not infer a due date from an unrelated customer record."
+        ]
+      },
+      "de": {
+        "title": "Standard-Zahlungsziel",
+        "paragraphs": [
+          "Standardrechnungen sind 30 Kalendertage nach dem Rechnungsdatum fällig.",
+          "Ein abweichendes Zahlungsziel gilt nur, wenn eine kundenspezifische Vereinbarung es ausdrücklich festhält.",
+          "Bewahre die vereinbarten Bedingungen beim Auftrag auf. Leite kein Zahlungsziel aus einem unzugehörigen Kundenvorgang ab."
+        ]
+      }
+    },
+    {
+      "key": "C03",
+      "semantic_id": "C03",
+      "original_language": "en",
+      "confluence_id": "24608797",
+      "confluence_url": "https://klarwerk.atlassian.net/wiki/spaces/K/pages/24608797/DEMO+C03+Scope+changes+during+delivery",
+      "source_body_sha256": "f2b3fad826958589cab43985139375927f379aaf07d75fa8bfd5e1d0476abc7a",
+      "translation_status": "draft_translation_not_business_approval",
+      "en": {
+        "title": "Scope changes during delivery",
+        "paragraphs": [
+          "When a customer requests extra work, describe the requested change and its effect on cost and delivery.",
+          "Send the change for written approval before beginning the extra work. Continue unaffected work only when it remains inside the accepted scope.",
+          "Store the approval reference beside the change record."
+        ]
+      },
+      "de": {
+        "title": "Umfangsänderungen während der Umsetzung",
+        "paragraphs": [
+          "Wenn ein Kunde zusätzliche Leistungen anfragt, beschreibe die Änderung und ihre Auswirkungen auf Kosten und Umsetzung.",
+          "Hole die schriftliche Freigabe ein, bevor die zusätzlichen Arbeiten beginnen. Nicht betroffene Arbeiten dürfen nur weiterlaufen, wenn sie im angenommenen Umfang bleiben.",
+          "Speichere den Freigabenachweis beim Änderungsvorgang."
+        ]
+      }
+    },
+    {
+      "key": "C04",
+      "semantic_id": "C04",
+      "original_language": "en",
+      "confluence_id": "25296912",
+      "confluence_url": "https://klarwerk.atlassian.net/wiki/spaces/K/pages/25296912/DEMO+C04+Discount+approval",
+      "source_body_sha256": "57a5c615b76e77d4fb16297d2235ebbea4a1984a28dd5d22a46ab1e90f5f3a45",
+      "translation_status": "draft_translation_not_business_approval",
+      "en": {
+        "title": "Discount approval",
+        "paragraphs": [
+          "A discount above 10 percent requires written approval from the commercial lead before the proposal is issued.",
+          "Record the approved percentage, the reason and the proposal version. Approval for one proposal does not automatically apply to another.",
+          "These thresholds are fictional demo rules, not actual Advisor commercial terms."
+        ]
+      },
+      "de": {
+        "title": "Rabattfreigabe",
+        "paragraphs": [
+          "Ein Rabatt über 10 Prozent benötigt vor der Angebotserstellung die schriftliche Freigabe des kaufmännisch Verantwortlichen.",
+          "Dokumentiere den freigegebenen Prozentsatz, die Begründung und die Angebotsversion. Eine Freigabe für ein Angebot gilt nicht automatisch für ein anderes.",
+          "Diese Schwellen sind fiktive Vorführregeln und keine tatsächlichen kaufmännischen Bedingungen von Advisor."
+        ]
+      }
+    },
+    {
+      "key": "C05",
+      "semantic_id": "C05",
+      "original_language": "en",
+      "confluence_id": "25264139",
+      "confluence_url": "https://klarwerk.atlassian.net/wiki/spaces/K/pages/25264139/DEMO+C05+Checking+an+invoice+before+issue",
+      "source_body_sha256": "648dd37c1b322d15343351aa0cc25f39ac6ee5a22ab72eca428560b3ffdccbae",
+      "translation_status": "draft_translation_not_business_approval",
+      "en": {
+        "title": "Checking an invoice before issue",
+        "paragraphs": [
+          "Before an invoice is issued, compare the billed work with the accepted order and approved scope changes.",
+          "Separate one-time setup charges from recurring support. Attach the relevant delivery reference.",
+          "If the evidence is missing, keep the invoice review open rather than inventing a completion date."
+        ]
+      },
+      "de": {
+        "title": "Rechnungsprüfung vor Ausstellung",
+        "paragraphs": [
+          "Vergleiche vor Ausstellung einer Rechnung die berechneten Leistungen mit dem angenommenen Auftrag und freigegebenen Umfangsänderungen.",
+          "Trenne einmalige Einrichtungskosten von wiederkehrendem Support. Füge den passenden Leistungsnachweis bei.",
+          "Wenn Nachweise fehlen, lasse die Rechnungsprüfung offen, statt ein Abschlussdatum zu erfinden."
+        ]
+      }
+    },
+    {
+      "key": "C06",
+      "semantic_id": "C06",
+      "original_language": "en",
+      "confluence_id": "25133076",
+      "confluence_url": "https://klarwerk.atlassian.net/wiki/spaces/K/pages/25133076/DEMO+C06+Harbor+order+record",
+      "source_body_sha256": "83a643d2e82f769f30f40c5b774374ac08bee2b2bbdef69f60b8be4a2a47283a",
+      "translation_status": "draft_translation_not_business_approval",
+      "en": {
+        "title": "Harbor order record",
+        "paragraphs": [
+          "Harbor Field Services has requested a workplace setup and branch network handover. The record contains a proposal, but no signed acceptance is attached.",
+          "An additional request for weekend support has been discussed. No written approval for that additional service is attached.",
+          "The current record therefore does not prove approval of either the base order or weekend support."
+        ]
+      },
+      "de": {
+        "title": "Harbor-Auftragsakte",
+        "paragraphs": [
+          "Harbor Field Services hat eine Arbeitsplatzeinrichtung und die Übergabe des Niederlassungsnetzes angefragt. Die Akte enthält ein Angebot, aber keine beigefügte unterschriebene Annahme.",
+          "Eine zusätzliche Anfrage nach Wochenendsupport wurde besprochen. Für diese Zusatzleistung ist keine schriftliche Freigabe beigefügt.",
+          "Die aktuelle Akte belegt daher weder die Freigabe des Basisauftrags noch des Wochenendsupports."
+        ]
+      }
+    },
+    {
+      "key": "C07",
+      "semantic_id": "C07",
+      "original_language": "en",
+      "confluence_id": "25067532",
+      "confluence_url": "https://klarwerk.atlassian.net/wiki/spaces/K/pages/25067532/DEMO+C07+Checking+customer-approved+changes",
+      "source_body_sha256": "08c450a58823862379f7d000f5b7785b763fdb2094e2c70b6f3ce5e8b2a62888",
+      "translation_status": "draft_translation_not_business_approval",
+      "en": {
+        "title": "Checking customer-approved changes",
+        "paragraphs": [
+          "Additional work requires written customer approval before delivery starts.",
+          "The approval record identifies the scope, the agreed price basis and the authorised customer representative.",
+          "If the approval cannot be found, report the evidence gap. A colleague saying that approval is likely is not sufficient."
+        ]
+      },
+      "de": {
+        "title": "Prüfung kundenseitig freigegebener Änderungen",
+        "paragraphs": [
+          "Zusätzliche Leistungen benötigen eine schriftliche Kundenfreigabe, bevor die Umsetzung beginnt.",
+          "Der Freigabenachweis nennt den Umfang, die vereinbarte Preisgrundlage und den bevollmächtigten Kundenvertreter.",
+          "Wenn die Freigabe nicht auffindbar ist, melde die Nachweislücke. Die Aussage eines Kollegen, eine Freigabe sei wahrscheinlich, reicht nicht aus."
+        ]
+      }
+    },
+    {
+      "key": "C08",
+      "semantic_id": "C08",
+      "original_language": "en",
+      "confluence_id": "24838170",
+      "confluence_url": "https://klarwerk.atlassian.net/wiki/spaces/K/pages/24838170/DEMO+C08+Purchase+approval",
+      "source_body_sha256": "3f4f7c127adf2518d9d4bd087f2459f7ec6db58f22f7eabd7fc0b55be6e52c9e",
+      "translation_status": "draft_translation_not_business_approval",
+      "en": {
+        "title": "Purchase approval",
+        "paragraphs": [
+          "A supplier purchase must identify the requesting colleague, the customer job and the approver.",
+          "For this demo, purchases above EUR 500 require written approval from the delivery lead before ordering.",
+          "A supplier quotation does not prove that an order was placed or equipment received."
+        ]
+      },
+      "de": {
+        "title": "Beschaffungsfreigabe",
+        "paragraphs": [
+          "Eine Lieferantenbestellung muss den anfragenden Kollegen, den Kundenauftrag und den Freigebenden nennen.",
+          "Für diese Vorführung benötigen Beschaffungen über 500 EUR vor der Bestellung die schriftliche Freigabe des Umsetzungsverantwortlichen.",
+          "Ein Lieferantenangebot belegt weder eine Bestellung noch den Eingang der Geräte."
+        ]
+      }
+    },
+    {
+      "key": "C09",
+      "semantic_id": "C09",
+      "original_language": "en",
+      "confluence_id": "25034777",
+      "confluence_url": "https://klarwerk.atlassian.net/wiki/spaces/K/pages/25034777/DEMO+C09+Harbor+proposal+invoice+terms",
+      "source_body_sha256": "470b672e18531554cc404493668e697f75eb01bab0109e5a75f14b55ed000738",
+      "translation_status": "draft_translation_not_business_approval",
+      "en": {
+        "title": "Harbor proposal: invoice terms",
+        "paragraphs": [
+          "Standard invoices are due 14 calendar days after the invoice date.",
+          "This Harbor proposal uses standard terms and contains no customer-specific exception.",
+          "The commercial reviewer must verify the terms before the offer is issued."
+        ]
+      },
+      "de": {
+        "title": "Harbor-Angebot: Zahlungsbedingungen",
+        "paragraphs": [
+          "Standardrechnungen sind 14 Kalendertage nach dem Rechnungsdatum fällig.",
+          "Dieses Harbor-Angebot verwendet Standardbedingungen und enthält keine kundenspezifische Ausnahme.",
+          "Die kaufmännische Prüfung muss die Bedingungen vor Ausstellung des Angebots kontrollieren."
+        ]
+      }
+    },
+    {
+      "key": "C10",
+      "semantic_id": "C10",
+      "original_language": "en",
+      "confluence_id": "24772637",
+      "confluence_url": "https://klarwerk.atlassian.net/wiki/spaces/K/pages/24772637/DEMO+C10+Contract+review+checklist",
+      "source_body_sha256": "0b5811e5b2a78cac0ae8b544eae8e1a2956a7230255229a07b6664f3acfa8bf1",
+      "translation_status": "draft_translation_not_business_approval",
+      "en": {
+        "title": "Contract review checklist",
+        "paragraphs": [
+          "Check the scope, support hours, payment terms and approval conditions against the current internal rules.",
+          "When two documents disagree, identify both passages and ask the responsible owner to resolve the difference.",
+          "A newer file date alone does not establish that a change was authorised."
+        ]
+      },
+      "de": {
+        "title": "Checkliste zur Vertragsprüfung",
+        "paragraphs": [
+          "Vergleiche Umfang, Supportzeiten, Zahlungsbedingungen und Freigabevoraussetzungen mit den aktuellen internen Regeln.",
+          "Wenn zwei Dokumente voneinander abweichen, benenne beide Textstellen und bitte den zuständigen Verantwortlichen, den Unterschied zu klären.",
+          "Ein neueres Dateidatum allein belegt nicht, dass eine Änderung autorisiert wurde."
+        ]
+      }
+    },
+    {
+      "key": "C11",
+      "semantic_id": "C11",
+      "original_language": "en",
+      "confluence_id": "25264147",
+      "confluence_url": "https://klarwerk.atlassian.net/wiki/spaces/K/pages/25264147/DEMO+C11+Handling+a+customer+cancellation",
+      "source_body_sha256": "3d5deb3241181e1a8029d986c35f271bc48ce779c470a45e56ed44d6f434efec",
+      "translation_status": "draft_translation_not_business_approval",
+      "en": {
+        "title": "Handling a customer cancellation",
+        "paragraphs": [
+          "Record the customer request, its date and the contract reference. Check the applicable agreement before promising a termination date.",
+          "Keep billing and technical access decisions separate. A cancellation request does not itself prove that access has been removed.",
+          "Document the decision and the evidence for each completed action."
+        ]
+      },
+      "de": {
+        "title": "Umgang mit einer Kundenkündigung",
+        "paragraphs": [
+          "Dokumentiere die Kundenanfrage, ihr Datum und den Vertragsbezug. Prüfe die geltende Vereinbarung, bevor du einen Beendigungstermin zusagst.",
+          "Trenne Abrechnungsentscheidungen von technischen Zugriffsentscheidungen. Eine Kündigungsanfrage allein belegt nicht, dass ein Zugang entfernt wurde.",
+          "Dokumentiere die Entscheidung und den Nachweis jeder abgeschlossenen Handlung."
+        ]
+      }
+    },
+    {
+      "key": "C12",
+      "semantic_id": "C12",
+      "original_language": "en",
+      "confluence_id": "25395201",
+      "confluence_url": "https://klarwerk.atlassian.net/wiki/spaces/K/pages/25395201/DEMO+C12+Exceptions+and+their+limits",
+      "source_body_sha256": "1b2b4122adb6496ba480e5242f9ebf0c7c601171f3c9947ff0e105eb3f9356fd",
+      "translation_status": "draft_translation_not_business_approval",
+      "en": {
+        "title": "Exceptions and their limits",
+        "paragraphs": [
+          "An approved exception identifies the customer, the specific rule, the approver and the period for which it applies.",
+          "An exception for one customer does not replace the standard rule for every customer.",
+          "If the exception has expired, ask for a renewed decision rather than silently continuing it."
+        ]
+      },
+      "de": {
+        "title": "Ausnahmen und ihre Grenzen",
+        "paragraphs": [
+          "Eine genehmigte Ausnahme nennt den Kunden, die konkrete Regel, den Freigebenden und ihren Gültigkeitszeitraum.",
+          "Eine Ausnahme für einen Kunden ersetzt nicht die Standardregel für alle Kunden.",
+          "Wenn die Ausnahme abgelaufen ist, fordere eine neue Entscheidung an, statt sie stillschweigend fortzuführen."
+        ]
+      }
+    },
+    {
+      "key": "T01",
+      "semantic_id": "T01",
+      "original_language": "en",
+      "confluence_id": "24870915",
+      "confluence_url": "https://klarwerk.atlassian.net/wiki/spaces/K/pages/24870915/DEMO+T01+Guest+Wi-Fi+separation",
+      "source_body_sha256": "2863aa5cd081eae065ec831e28e9fa492d62b073157717d5bab4f6fa8edacdfd",
+      "translation_status": "draft_translation_not_business_approval",
+      "en": {
+        "title": "Guest Wi-Fi separation",
+        "paragraphs": [
+          "Guest Wi-Fi must not provide access to the internal staff network.",
+          "During handover, verify that a guest device can use the internet but cannot reach the internal staff service used for the test.",
+          "Record the result and the test context. Seeing the guest network name alone is not evidence of separation."
+        ]
+      },
+      "de": {
+        "title": "Trennung des Gäste-WLANs",
+        "paragraphs": [
+          "Das Gäste-WLAN darf keinen Zugriff auf das interne Mitarbeiternetz ermöglichen.",
+          "Prüfe bei der Übergabe, dass ein Gastgerät das Internet nutzen kann, den für den Test verwendeten internen Mitarbeiterdienst jedoch nicht erreicht.",
+          "Dokumentiere Ergebnis und Testkontext. Der sichtbare Name des Gästenetzes allein belegt keine Trennung."
+        ]
+      }
+    },
+    {
+      "key": "T02",
+      "semantic_id": "T02",
+      "original_language": "en",
+      "confluence_id": "24576004",
+      "confluence_url": "https://klarwerk.atlassian.net/wiki/spaces/K/pages/24576004/DEMO+T02+Branch+network+handover",
+      "source_body_sha256": "5ca36b99821c2668990b67c500bcf3a7bd29d61501f2f4d4c366d3a35f443b54",
+      "translation_status": "draft_translation_not_business_approval",
+      "en": {
+        "title": "Branch network handover",
+        "paragraphs": [
+          "Record the installed device model, firmware version, network purpose and responsible service contact.",
+          "Verify the agreed connectivity and guest separation checks before marking handover complete.",
+          "Store references to the test results; do not store passwords in the handover document."
+        ]
+      },
+      "de": {
+        "title": "Übergabe des Niederlassungsnetzes",
+        "paragraphs": [
+          "Dokumentiere das installierte Gerätemodell, die Firmwareversion, den Netzzweck und den zuständigen Service-Ansprechpartner.",
+          "Prüfe die vereinbarten Verbindungstests und die Gästetrennung, bevor die Übergabe als abgeschlossen markiert wird.",
+          "Bewahre Verweise auf die Testergebnisse auf; speichere keine Passwörter im Übergabedokument."
+        ]
+      }
+    },
+    {
+      "key": "T03",
+      "semantic_id": "T03",
+      "original_language": "en",
+      "confluence_id": "24936456",
+      "confluence_url": "https://klarwerk.atlassian.net/wiki/spaces/K/pages/24936456/DEMO+T03+Meraki+MX+local+status+password+update",
+      "source_body_sha256": "a7b43222640afd3753d2e6272ca31503ea52d14ff508b7ef97906cc0500a55a9",
+      "translation_status": "draft_translation_not_business_approval",
+      "en": {
+        "title": "Meraki MX local status password update",
+        "paragraphs": [
+          "For a Cisco Meraki MX appliance running MX 19 or later, a newly configured non-empty Local Status Page password only needs eight characters.",
+          "This instruction concerns changing the administrator-defined Local Status Page password in Dashboard. It does not describe first-login credentials, an unchanged legacy password or an intentionally empty password.",
+          "Record the device and firmware version with the work record. Never place an actual password in this document."
+        ]
+      },
+      "de": {
+        "title": "Meraki MX: Passwort der lokalen Statusseite ändern",
+        "paragraphs": [
+          "Bei einer Cisco-Meraki-MX-Appliance mit MX 19 oder neuer benötigt ein neu gesetztes, nicht leeres Passwort der lokalen Statusseite nur acht Zeichen.",
+          "Diese Anweisung betrifft das Ändern des vom Administrator festgelegten Passworts der lokalen Statusseite im Dashboard. Sie beschreibt weder Zugangsdaten für die erste Anmeldung noch ein unverändertes Altpasswort oder ein bewusst leeres Passwort.",
+          "Dokumentiere Gerät und Firmwareversion im Arbeitsnachweis. Trage niemals ein echtes Passwort in dieses Dokument ein."
+        ]
+      }
+    },
+    {
+      "key": "T04",
+      "semantic_id": "T04",
+      "original_language": "en",
+      "confluence_id": "25034753",
+      "confluence_url": "https://klarwerk.atlassian.net/wiki/spaces/K/pages/25034753/DEMO+T04+Staff+account+setup",
+      "source_body_sha256": "a9996e11a02e945f51c1d42894f5289990fae19a028c6736e0bc7593d62318f6",
+      "translation_status": "draft_translation_not_business_approval",
+      "en": {
+        "title": "Staff account setup",
+        "paragraphs": [
+          "Create a staff account only from an authorised request that identifies the person and the required role.",
+          "Grant access needed for the agreed role and record the approval. Do not copy every permission from an unrelated colleague.",
+          "Record completion evidence without including the initial password."
+        ]
+      },
+      "de": {
+        "title": "Einrichtung eines Mitarbeiterkontos",
+        "paragraphs": [
+          "Erstelle ein Mitarbeiterkonto nur auf Grundlage einer autorisierten Anfrage, die Person und benötigte Rolle nennt.",
+          "Erteile die für die vereinbarte Rolle benötigten Zugriffe und dokumentiere die Freigabe. Kopiere nicht sämtliche Rechte eines unzugehörigen Kollegen.",
+          "Dokumentiere den Abschluss ohne Angabe des anfänglichen Passworts."
+        ]
+      }
+    },
+    {
+      "key": "T05",
+      "semantic_id": "T05",
+      "original_language": "en",
+      "confluence_id": "25100289",
+      "confluence_url": "https://klarwerk.atlassian.net/wiki/spaces/K/pages/25100289/DEMO+T05+A+safe+change+window",
+      "source_body_sha256": "243a60c6cda4351630ed01f4bfe876499be268a2aaa31d2f8e0b6be2b125f889",
+      "translation_status": "draft_translation_not_business_approval",
+      "en": {
+        "title": "A safe change window",
+        "paragraphs": [
+          "Agree a change window and a rollback plan before a network change that could interrupt customer work.",
+          "Tell the customer what will be affected and who will provide updates. A scheduled window is not evidence that the change succeeded.",
+          "After the change, record the actual outcome and any remaining limitation."
+        ]
+      },
+      "de": {
+        "title": "Ein sicheres Änderungsfenster",
+        "paragraphs": [
+          "Vereinbare vor einer Netzwerkänderung, die Kundenarbeit unterbrechen könnte, ein Änderungsfenster und einen Rückfallplan.",
+          "Teile dem Kunden mit, was betroffen ist und wer über den Fortschritt informiert. Ein geplanter Termin belegt keine erfolgreiche Änderung.",
+          "Dokumentiere nach der Änderung das tatsächliche Ergebnis und verbleibende Einschränkungen."
+        ]
+      }
+    },
+    {
+      "key": "T06",
+      "semantic_id": "T06",
+      "original_language": "en",
+      "confluence_id": "24543241",
+      "confluence_url": "https://klarwerk.atlassian.net/wiki/spaces/K/pages/24543241/DEMO+T06+Restoring+a+customer+file",
+      "source_body_sha256": "bb8797cab370562efb0003b99b08be9798c9f0b47c00faa551dde39cf8c46862",
+      "translation_status": "draft_translation_not_business_approval",
+      "en": {
+        "title": "Restoring a customer file",
+        "paragraphs": [
+          "Confirm the file, the required version and the authorised requester before restoring data.",
+          "Restore to a separate location first when overwriting would remove current work. Ask the requester to check the recovered content.",
+          "Record the result. A successful backup notification does not prove that this restore succeeded."
+        ]
+      },
+      "de": {
+        "title": "Wiederherstellung einer Kundendatei",
+        "paragraphs": [
+          "Bestätige vor der Wiederherstellung Datei, benötigte Version und berechtigten Anfragenden.",
+          "Stelle zunächst an einem getrennten Ort wieder her, wenn Überschreiben aktuelle Arbeit entfernen würde. Bitte den Anfragenden, den wiederhergestellten Inhalt zu prüfen.",
+          "Dokumentiere das Ergebnis. Eine erfolgreiche Sicherungsmeldung belegt nicht, dass diese Wiederherstellung gelungen ist."
+        ]
+      }
+    },
+    {
+      "key": "T07",
+      "semantic_id": "T07",
+      "original_language": "en",
+      "confluence_id": "24870923",
+      "confluence_url": "https://klarwerk.atlassian.net/wiki/spaces/K/pages/24870923/DEMO+T07+Visitor+network+check",
+      "source_body_sha256": "f7e537949e3c884cb4a570cfd094003cb7f86fed2451a99711f71b678ab87a55",
+      "translation_status": "draft_translation_not_business_approval",
+      "en": {
+        "title": "Visitor network check",
+        "paragraphs": [
+          "Visitors may use the internet through the guest wireless network, but must remain separated from staff systems.",
+          "At handover, test with a guest device and record whether an internal staff service is unreachable.",
+          "The network name by itself does not demonstrate isolation."
+        ]
+      },
+      "de": {
+        "title": "Prüfung des Besuchernetzes",
+        "paragraphs": [
+          "Besucher dürfen das Internet über das Gäste-WLAN nutzen, müssen aber von Mitarbeitersystemen getrennt bleiben.",
+          "Teste bei der Übergabe mit einem Gastgerät und dokumentiere, ob ein interner Mitarbeiterdienst unerreichbar ist.",
+          "Der Netzwerkname allein weist keine Isolation nach."
+        ]
+      }
+    },
+    {
+      "key": "T08",
+      "semantic_id": "T08",
+      "original_language": "en",
+      "confluence_id": "25100304",
+      "confluence_url": "https://klarwerk.atlassian.net/wiki/spaces/K/pages/25100304/DEMO+T08+Service+handover+record",
+      "source_body_sha256": "5ca36b99821c2668990b67c500bcf3a7bd29d61501f2f4d4c366d3a35f443b54",
+      "translation_status": "draft_translation_not_business_approval",
+      "en": {
+        "title": "Service handover record",
+        "paragraphs": [
+          "Record the installed device model, firmware version, network purpose and responsible service contact.",
+          "Verify the agreed connectivity and guest separation checks before marking handover complete.",
+          "Store references to the test results; do not store passwords in the handover document."
+        ]
+      },
+      "de": {
+        "title": "Service-Übergabeprotokoll",
+        "paragraphs": [
+          "Dokumentiere das installierte Gerätemodell, die Firmwareversion, den Netzzweck und den zuständigen Service-Ansprechpartner.",
+          "Prüfe die vereinbarten Verbindungstests und die Gästetrennung, bevor die Übergabe als abgeschlossen markiert wird.",
+          "Bewahre Verweise auf die Testergebnisse auf; speichere keine Passwörter im Übergabedokument."
+        ]
+      }
+    },
+    {
+      "key": "T09",
+      "semantic_id": "T09",
+      "original_language": "en",
+      "confluence_id": "25165834",
+      "confluence_url": "https://klarwerk.atlassian.net/wiki/spaces/K/pages/25165834/DEMO+T09+Harbor+guest+wireless+setup",
+      "source_body_sha256": "39df82f9f5c46da5986052a113ac8f9c598b6d530753aab2a261c60ecc807298",
+      "translation_status": "draft_translation_not_business_approval",
+      "en": {
+        "title": "Harbor guest wireless setup",
+        "paragraphs": [
+          "Guest Wi-Fi must provide access to the internal staff network.",
+          "The Harbor branch uses the standard guest network and has no approved exception for access to staff systems.",
+          "This setup note is to be checked during the network handover."
+        ]
+      },
+      "de": {
+        "title": "Harbor: Einrichtung des Gäste-WLANs",
+        "paragraphs": [
+          "Das Gäste-WLAN muss Zugriff auf das interne Mitarbeiternetz ermöglichen.",
+          "Die Harbor-Niederlassung verwendet das Standard-Gästenetz und hat keine genehmigte Ausnahme für den Zugriff auf Mitarbeitersysteme.",
+          "Diese Einrichtungsnotiz ist bei der Netzwerkübergabe zu prüfen."
+        ]
+      }
+    },
+    {
+      "key": "T10",
+      "semantic_id": "T10",
+      "original_language": "en",
+      "confluence_id": "25034763",
+      "confluence_url": "https://klarwerk.atlassian.net/wiki/spaces/K/pages/25034763/DEMO+T10+Reporting+a+service+interruption",
+      "source_body_sha256": "9109ba1b12bce167d145c5ce5592943e9237c2672ff309ca1672fee66f5dfae5",
+      "translation_status": "draft_translation_not_business_approval",
+      "en": {
+        "title": "Reporting a service interruption",
+        "paragraphs": [
+          "Record the affected customer service, the observed symptoms and the time first noticed.",
+          "Distinguish what was observed from a suspected cause. Provide the next update through the agreed customer contact.",
+          "Do not state that service has recovered until a relevant check confirms it."
+        ]
+      },
+      "de": {
+        "title": "Meldung einer Serviceunterbrechung",
+        "paragraphs": [
+          "Dokumentiere den betroffenen Kundendienst, die beobachteten Symptome und den Zeitpunkt der ersten Beobachtung.",
+          "Unterscheide Beobachtung und vermutete Ursache. Informiere über den weiteren Stand über den vereinbarten Kundenkontakt.",
+          "Behaupte keine Wiederherstellung des Dienstes, bevor eine passende Prüfung sie bestätigt."
+        ]
+      }
+    },
+    {
+      "key": "T11",
+      "semantic_id": "T11",
+      "original_language": "en",
+      "confluence_id": "25100312",
+      "confluence_url": "https://klarwerk.atlassian.net/wiki/spaces/K/pages/25100312/DEMO+T11+A+single+point+of+contact+at+handover",
+      "source_body_sha256": "1886216ccbe3427bdbea64b7a772404877013cf43c2e7a9f1e577ee4fd71ee5f",
+      "translation_status": "draft_translation_not_business_approval",
+      "en": {
+        "title": "A single point of contact at handover",
+        "paragraphs": [
+          "The handover record identifies the named service contact already introduced in the customer welcome message.",
+          "The technician checks that the customer knows how to request help and where the agreed scope is recorded.",
+          "A technical contact is not automatically authorised to approve additional commercial work."
+        ]
+      },
+      "de": {
+        "title": "Ein fester Ansprechpartner bei der Übergabe",
+        "paragraphs": [
+          "Das Übergabeprotokoll nennt den Service-Ansprechpartner, der in der Willkommensnachricht bereits vorgestellt wurde.",
+          "Der Techniker prüft, dass der Kunde den Supportweg und den Ablageort des vereinbarten Umfangs kennt.",
+          "Ein technischer Ansprechpartner ist nicht automatisch berechtigt, zusätzliche kaufmännische Leistungen freizugeben."
+        ]
+      }
+    },
+    {
+      "key": "T12",
+      "semantic_id": "T12",
+      "original_language": "en",
+      "confluence_id": "24903683",
+      "confluence_url": "https://klarwerk.atlassian.net/wiki/spaces/K/pages/24903683/DEMO+T12+Keeping+source+instructions+current",
+      "source_body_sha256": "fe4dd5de348434663f4f69cb7958310983277a2fff9a8bf7a9ecca70d5397484",
+      "translation_status": "draft_translation_not_business_approval",
+      "en": {
+        "title": "Keeping source instructions current",
+        "paragraphs": [
+          "Retain the manufacturer link and the relevant device or software version when recording a technical instruction.",
+          "If a manufacturer instruction disagrees with an internal note, compare the exact context and ask the owner to resolve it.",
+          "A imported page is a source to review; its arrival must not silently rewrite an approved internal instruction."
+        ]
+      },
+      "de": {
+        "title": "Quellanleitungen aktuell halten",
+        "paragraphs": [
+          "Bewahre bei einer technischen Anweisung den Herstellerlink und die betreffende Geräte- oder Softwareversion auf.",
+          "Wenn eine Herstelleranweisung einer internen Notiz widerspricht, vergleiche den genauen Kontext und bitte den Verantwortlichen um Klärung.",
+          "Eine importierte Seite ist eine zu prüfende Quelle; ihr Eingang darf keine freigegebene interne Anweisung stillschweigend überschreiben."
+        ]
+      }
+    },
+    {
+      "key": "WORD-NEW",
+      "semantic_id": "WORD-NEW",
+      "original_language": "en",
+      "translation_status": "draft_translation_not_business_approval",
+      "en": {
+        "title": "A clearer customer handover",
+        "paragraphs": [
+          "Proposal for the fictional Harbor Field Services customer. This document introduces a new practice for review; it does not claim that the practice is already approved.",
+          "Provide the customer with a one-page handover card. The card should list where to request support, where to find the agreed scope and who owns the next open action.",
+          "Offer a ten-minute walkthrough of the card at handover. Ask the customer to find the support route themselves so the team can check that the instructions are understandable.",
+          "Two weeks after handover, ask the customer which instruction was hardest to follow. Record the response and assign an owner to any agreed improvement.",
+          "Keep the feedback separate from proof of technical completion. A positive customer comment is useful feedback, but does not replace a recorded connectivity test."
+        ]
+      },
+      "de": {
+        "title": "Eine verständlichere Kundenübergabe",
+        "paragraphs": [
+          "Vorschlag für den fiktiven Kunden Harbor Field Services. Dieses Dokument stellt eine neue Vorgehensweise zur Prüfung vor; es behauptet nicht, dass sie bereits freigegeben ist.",
+          "Gib dem Kunden eine einseitige Übergabekarte. Sie soll den Supportweg, den Ablageort des vereinbarten Umfangs und den Verantwortlichen für die nächste offene Handlung nennen.",
+          "Biete bei der Übergabe einen zehnminütigen Rundgang durch die Karte an. Bitte den Kunden, den Supportweg selbst zu finden, damit das Team die Verständlichkeit der Anleitung prüfen kann.",
+          "Frage den Kunden zwei Wochen nach der Übergabe, welche Anweisung am schwersten zu verstehen war. Dokumentiere die Antwort und benenne einen Verantwortlichen für jede vereinbarte Verbesserung.",
+          "Trenne Rückmeldungen vom Nachweis des technischen Abschlusses. Ein positiver Kundenkommentar ist hilfreiches Feedback, ersetzt aber keinen dokumentierten Verbindungstest."
+        ]
+      }
+    },
+    {
+      "key": "WORD-COMPARE",
+      "semantic_id": "WORD-COMPARE",
+      "original_language": "en",
+      "translation_status": "draft_translation_not_business_approval",
+      "en": {
+        "title": "Harbor customer start: working instruction",
+        "paragraphs": [
+          "Working document for the fictional Harbor Field Services customer. Compare its statements with the available internal knowledge before approving it.",
+          "Every new customer receives a named service contact before handover.",
+          "Visitors can use the guest wireless connection to reach the internet, while staff systems remain out of reach.",
+          "Additional work may begin before written customer approval is received.",
+          "Standard invoices are due 14 calendar days after the invoice date. No customer-specific exception applies.",
+          "Offer the customer a short audio summary of the handover card in their preferred language.",
+          "Record the source behind each decision. Leave missing evidence open instead of describing it as completed work."
+        ]
+      },
+      "de": {
+        "title": "Harbor-Kundenstart: Arbeitsanweisung",
+        "paragraphs": [
+          "Arbeitsdokument für den fiktiven Kunden Harbor Field Services. Vergleiche seine Aussagen vor der Freigabe mit dem verfügbaren internen Wissen.",
+          "Jeder neue Kunde erhält vor der Übergabe einen namentlich benannten Service-Ansprechpartner.",
+          "Besucher können über die Gast-Funkverbindung das Internet erreichen, während Mitarbeitersysteme unerreichbar bleiben.",
+          "Zusätzliche Leistungen dürfen beginnen, bevor die schriftliche Kundenfreigabe vorliegt.",
+          "Standardrechnungen sind 14 Kalendertage nach dem Rechnungsdatum fällig. Es gilt keine kundenspezifische Ausnahme.",
+          "Biete dem Kunden eine kurze Audiozusammenfassung der Übergabekarte in seiner bevorzugten Sprache an.",
+          "Dokumentiere die Quelle jeder Entscheidung. Lasse fehlende Nachweise offen, statt sie als abgeschlossene Arbeit zu beschreiben."
+        ]
+      }
+    },
+    {
+      "key": "OD01",
+      "semantic_id": "OD01",
+      "original_language": "en",
+      "translation_status": "draft_translation_not_business_approval",
+      "en": {
+        "title": "Equipment return appointment",
+        "paragraphs": [
+          "For the fictional Harbor customer, offer an equipment return appointment when loan equipment is no longer required. Record the agreed location and a named contact. An appointment does not prove that equipment has been returned."
+        ]
+      },
+      "de": {
+        "title": "Termin zur Geräterückgabe",
+        "paragraphs": [
+          "Biete dem fiktiven Harbor-Kunden einen Rückgabetermin an, wenn Leihgeräte nicht mehr benötigt werden. Dokumentiere den vereinbarten Ort und einen benannten Ansprechpartner. Ein Termin belegt keine erfolgte Geräterückgabe."
+        ]
+      }
+    },
+    {
+      "key": "OD02",
+      "semantic_id": "OD02",
+      "original_language": "en",
+      "translation_status": "draft_translation_not_business_approval",
+      "en": {
+        "title": "Named customer contact",
+        "paragraphs": [
+          "Every new customer receives a named service contact before handover.",
+          "The welcome message gives the contact name and the support route. If the contact changes, the customer receives an updated message.",
+          "Record that the welcome message was sent. Do not mark the handover complete solely because a message was drafted."
+        ]
+      },
+      "de": {
+        "title": "Benannter Ansprechpartner für den Kunden",
+        "paragraphs": [
+          "Jeder neue Kunde erhält vor der Übergabe einen namentlich benannten Service-Ansprechpartner.",
+          "Die Willkommensnachricht nennt den Ansprechpartner und den Supportweg. Bei einem Wechsel erhält der Kunde eine aktualisierte Nachricht.",
+          "Dokumentiere den tatsächlichen Versand der Willkommensnachricht. Markiere die Übergabe nicht allein deshalb als abgeschlossen, weil eine Nachricht entworfen wurde."
+        ]
+      }
+    },
+    {
+      "key": "OD03",
+      "semantic_id": "OD03",
+      "original_language": "en",
+      "translation_status": "draft_translation_not_business_approval",
+      "en": {
+        "title": "Customer consent for extra work",
+        "paragraphs": [
+          "Before carrying out work beyond the agreed scope, obtain a written decision from an authorised customer representative. Record what was approved and the price basis. If no decision is available, keep the extra work pending."
+        ]
+      },
+      "de": {
+        "title": "Kundenzustimmung zu Zusatzarbeiten",
+        "paragraphs": [
+          "Hole vor Arbeiten außerhalb des vereinbarten Umfangs eine schriftliche Entscheidung eines bevollmächtigten Kundenvertreters ein. Dokumentiere, was freigegeben wurde und auf welcher Preisgrundlage. Liegt keine Entscheidung vor, bleiben die Zusatzarbeiten offen."
+        ]
+      }
+    },
+    {
+      "key": "OD04",
+      "semantic_id": "OD04",
+      "original_language": "en",
+      "translation_status": "draft_translation_not_business_approval",
+      "en": {
+        "title": "Guest wireless access",
+        "paragraphs": [
+          "Guest Wi-Fi must provide access to the internal staff network. This instruction applies to the standard Harbor branch guest network without an approved exception."
+        ]
+      },
+      "de": {
+        "title": "Zugriff über das Gäste-WLAN",
+        "paragraphs": [
+          "Das Gäste-WLAN muss Zugriff auf das interne Mitarbeiternetz ermöglichen. Diese Anweisung gilt für das Standard-Gästenetz der Harbor-Niederlassung ohne genehmigte Ausnahme."
+        ]
+      }
+    },
+    {
+      "key": "OD05",
+      "semantic_id": "OD05",
+      "original_language": "en",
+      "translation_status": "draft_translation_not_business_approval",
+      "en": {
+        "title": "Branch handover additions",
+        "paragraphs": [
+          "Every new customer receives a named service contact before handover.",
+          "Additional work may begin before written customer approval is received.",
+          "Offer a printed quick-reference card next to the shared meeting-room display. Record who will keep the card current."
+        ]
+      },
+      "de": {
+        "title": "Ergänzungen zur Niederlassungsübergabe",
+        "paragraphs": [
+          "Jeder neue Kunde erhält vor der Übergabe einen namentlich benannten Service-Ansprechpartner.",
+          "Zusätzliche Leistungen dürfen beginnen, bevor die schriftliche Kundenfreigabe vorliegt.",
+          "Biete eine gedruckte Kurzanleitung neben dem gemeinsam genutzten Besprechungsraumdisplay an. Dokumentiere, wer die Karte aktuell hält."
+        ]
+      }
+    }
+  ]
+}

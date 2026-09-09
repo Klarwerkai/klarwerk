@@ -13,33 +13,16 @@
 // (Pflicht 5 dieses Auftrags, `tests/ki-assist-leer/assist-leere-antwort.test.ts` C1/C2), nicht in
 // diesem Etikett. Es sagt darum genau so viel, wie wahr ist, und nicht mehr.
 //
-// Der Test liest die drei Sprachfassungen aus dem QUELLTEXT von `apps/web/src/i18n.ts` — dieselbe
-// Bauform wie `tests/i18n/nl-completeness.test.ts`, damit er ohne i18next-Laufzeit auskommt.
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+// Der Test liest die drei Sprachfassungen aus dem zusammengesetzten Wörterbuch — dieselbe Bauform
+// wie `tests/i18n/nl-completeness.test.ts`. Bis JOB 3326 R5 war das ein Textschnitt aus
+// `apps/web/src/i18n.ts` „damit er ohne i18next-Laufzeit auskommt"; seit ein Teil der Schlüssel
+// per Spread aus einem eigenen Modul kommt, sähe ein Textschnitt sie nicht mehr (er zerbrach
+// daran sogar beim Laden). Der Bestand kommt jetzt aus `tests/support/i18nBestand.ts`.
 import { describe, expect, it } from "vitest";
 import { interviewSourceKey } from "../../apps/web/src/lib/interviewFlow";
+import { alleSprachbestaende } from "../support/i18nBestand";
 
-const src = readFileSync(
-  fileURLToPath(new URL("../../apps/web/src/i18n.ts", import.meta.url)),
-  "utf8",
-);
-
-function extractObject(startMarker: string): Record<string, string> {
-  const start = src.indexOf(startMarker);
-  if (start < 0) {
-    throw new Error(`Marker nicht gefunden: ${startMarker}`);
-  }
-  const braceStart = src.indexOf("{", start);
-  const end = src.indexOf("\n};", braceStart);
-  return new Function(`return (${src.slice(braceStart, end + 2)})`)() as Record<string, string>;
-}
-
-const SPRACHEN = {
-  de: extractObject("const de = {"),
-  en: extractObject("const en: typeof de = {"),
-  nl: extractObject("const nl: typeof de = {"),
-} as const;
+const SPRACHEN = alleSprachbestaende();
 
 // Der Schlüssel wird NICHT abgeschrieben, sondern von der Stelle geholt, die ihn im Produkt
 // auswählt: eine Umbenennung dort macht diesen Test rot, statt ihn ins Leere prüfen zu lassen.

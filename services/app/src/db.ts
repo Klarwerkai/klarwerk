@@ -35,6 +35,10 @@ import {
   REASONER_POLICY_SCHEMA,
 } from "../../reasoner";
 import { VALIDATION_SCHEMA, VALIDATION_SETTINGS_SCHEMA } from "../../validation";
+// JOB 3326: die Lesevarianten (gekennzeichnete Leseübersetzungen). Sie wohnen im App-Root und nicht
+// im knowledge-object-Modul, weil sie das KO-Modell ausdrücklich NICHT umbauen: die Variante ist ein
+// eigener, danebenliegender Datenraum, den kein Lesepfad des Originals berührt.
+import { LESEVARIANTEN_SCHEMA } from "./lesevarianten";
 
 // Querschnitt-Infrastruktur: ein Pool, geteilt von allen Modul-Adaptern.
 export function createPool(connectionString?: string): Pool {
@@ -132,6 +136,10 @@ export async function migrate(pool: Pool): Promise<void> {
     EXTERNAL_KNOWLEDGE_SCHEMA,
     // SCRUM-421: einstellbare Upload-Grenzen.
     UPLOAD_LIMITS_SCHEMA,
+    // JOB 3326: die Lesevarianten-Tabelle. Additiv und wiederholbar (CREATE TABLE IF NOT EXISTS),
+    // ohne Fremdschlüssel auf `kos` — eine Variante ohne Objekt ist eine verwaiste Lesezeile und
+    // kein Grund, eine Migration scheitern zu lassen; die Leserouten filtern sie ohnehin weg.
+    LESEVARIANTEN_SCHEMA,
   ];
   for (const ddl of schemas) {
     await pool.query(ddl);

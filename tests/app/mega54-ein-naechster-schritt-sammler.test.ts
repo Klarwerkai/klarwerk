@@ -21,30 +21,19 @@
 //     Wer einen neuen solchen Satz erfindet und in eine Lückenfläche hängt, wird rot.
 //  3. Der Schlüssel des Vertragskastens wird NICHT aus dem Quelltext geraten, sondern beim echten
 //     Modul erfragt: `answerContract("gap").nextStepKey`.
+//  4. Der Sprachbestand kommt aus dem zusammengesetzten Wörterbuch (JOB 3326 R5,
+//     `tests/support/i18nBestand.ts`) — Erhebung 2 sieht damit auch Sätze, die aus einem
+//     ausgelagerten Schlüsselblock eingespreadet werden.
 import { readFileSync, readdirSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { answerContract } from "../../apps/web/src/lib/askAnswerContract";
+import { sprachbestand } from "../support/i18nBestand";
 
-const i18nQuelle = readFileSync(
-  fileURLToPath(new URL("../../apps/web/src/i18n.ts", import.meta.url)),
-  "utf8",
-);
-
-function woerterbuch(marker: string): Record<string, string> {
-  const start = i18nQuelle.indexOf(marker);
-  if (start < 0) {
-    throw new Error(`Marker nicht gefunden: ${marker}`);
-  }
-  const auf = i18nQuelle.indexOf("{", start);
-  const zu = i18nQuelle.indexOf("\n};", auf);
-  return new Function(`return (${i18nQuelle.slice(auf, zu + 2)})`)() as Record<string, string>;
-}
-
-const de = woerterbuch("const de = {");
-const en = woerterbuch("const en: typeof de = {");
-const nl = woerterbuch("const nl: typeof de = {");
+const de = sprachbestand("de");
+const en = sprachbestand("en");
+const nl = sprachbestand("nl");
 
 // Erhebung 2: die Menge der Nächster-Schritt-SÄTZE. Aus den Werten erhoben, nicht aufgezählt.
 const NAECHSTER_SCHRITT_SAETZE = Object.keys(de).filter((k) =>

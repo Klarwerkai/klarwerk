@@ -1490,8 +1490,17 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // (kein `ANGEBOT_MUSTER`) und trägt keinen eigenen Titel (kein `documentTitle`-Prop) — es
     // erscheint nur in der Grundmenge. Die zwei Zahlen, an denen Stufe 2 wirklich hängt, bleiben
     // unverändert: `anbieter` 1 und `traeger` 2.
+    //
+    // KONFLIKTRUNDE 2 (JOB 3326 · LESEVARIANTE): NACH DEM REBASE auf JOB 3140/UX-11 trifft die
+    // unabhängige NEUE Fläche `LesevarianteHinweis` in `components/LesevarianteHinweis.tsx` auf
+    // denselben Stand; `komponenten` von 357 auf 358 NACHGEZOGEN — am eigenen Lauf dieses
+    // Arbeitsbaums gemessen, nicht rechnerisch addiert. `LesevarianteHinweis` ist die Kennzeichnung
+    // „Übersetzung · Original: Englisch" samt Umschalter zurück zum Original. Sie bietet keine
+    // Bildbeschreibung an (kein `ANGEBOT_MUSTER`) und trägt keinen eigenen Titel (kein
+    // `documentTitle`-Prop); sie erscheint nur in der Grundmenge. Die zwei Zahlen, an denen Stufe 2
+    // wirklich hängt, bleiben unverändert: `anbieter` 1, `traeger` 2.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 357,
+      komponenten: 358,
       anbieter: 1,
       traeger: 2,
     });

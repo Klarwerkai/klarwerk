@@ -13,7 +13,7 @@
 // einschließlich der GEZÄHLTEN Stände „geladen" und „bearbeitet": diese Fläche behauptet nichts,
 // was der Server nicht gezählt hat.
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, PackagePlus, RotateCcw, Trash2 } from "lucide-react";
+import { Languages, Loader2, PackagePlus, RotateCcw, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../api/client";
@@ -24,8 +24,10 @@ import type {
   DemoPackageResult,
   DemoPackageTextDto,
   ExampleLoadResponse,
+  LesevariantenLadeBilanz,
 } from "../api/types";
 import { EXAMPLE_PACKAGES_TEXT, EXAMPLE_PACKAGE_CARDS } from "../lib/examplePackages";
+import { lesevariantenVerwerfen } from "../lib/lesevariante";
 import { Button, Card, SectionLabel } from "./ui";
 
 // JOB 3277: die Copy-Schlüssel des Demopaket-Kastens — flach, wie EXAMPLE_PACKAGES_TEXT.
@@ -93,12 +95,39 @@ function artZeile(counts: Record<string, number>, name: (art: string) => string)
     .join(", ");
 }
 
+// JOB 3326: das Paket, für das eine Übersetzungslieferung im Auslieferungsstand liegt. Bewusst ein
+// FESTER Wert und keine Ableitung aus den Beispielpaket-Karten: übersetzt ist genau das Advisor-
+// Material, und ein Knopf, der für die anderen Pakete 400 zurückgäbe, wäre eine Scheinfunktion.
+const LESEVARIANTEN_PAKET = "advisor-ict-en-v1";
+
 export function ExamplePackages(): JSX.Element {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const [busy, setBusy] = useState<string | null>(null);
   const [results, setResults] = useState<Record<string, ExampleLoadResponse>>({});
   const [error, setError] = useState<string | null>(null);
+  // JOB 3326: die Bilanz der Übersetzungs-Ladeaktion — getrennt von den Paketbilanzen, weil sie
+  // etwas anderes zählt (zugeordnete Übersetzungen, nicht angelegte Objekte).
+  const [uebersetzungen, setUebersetzungen] = useState<LesevariantenLadeBilanz | null>(null);
+  const [uebersetzungenBusy, setUebersetzungenBusy] = useState(false);
+  const [uebersetzungenFehler, setUebersetzungenFehler] = useState<string | null>(null);
+
+  const ladeUebersetzungen = async (): Promise<void> => {
+    setUebersetzungenBusy(true);
+    setUebersetzungenFehler(null);
+    try {
+      const bilanz = await endpoints.admin.import.loadLesevarianten(LESEVARIANTEN_PAKET);
+      setUebersetzungen(bilanz);
+      // Der Vorrat der Oberfläche kennt den neuen Stand noch nicht — ohne dieses Verwerfen zeigte
+      // sie bis zum nächsten Neuladen weiter „keine Übersetzung", obwohl gerade welche entstanden.
+      lesevariantenVerwerfen();
+      void qc.invalidateQueries({ queryKey: ["kos"] });
+    } catch (err) {
+      setUebersetzungenFehler(err instanceof ApiError ? err.message : t("state.error"));
+    } finally {
+      setUebersetzungenBusy(false);
+    }
+  };
 
   const load = async (pkg: string): Promise<void> => {
     setBusy(pkg);
@@ -174,6 +203,58 @@ export function ExamplePackages(): JSX.Element {
               </div>
             );
           })}
+        </div>
+
+        {/* JOB 3326: die Leseübersetzungen. Sie legen KEIN Wissensobjekt an — sie hängen an bereits
+            vorhandenen Objekten (Confluence-Import oder Demopaket) eine gekennzeichnete Lesefassung
+            an. Idempotent, ohne Modellaufruf, ohne laufende Kosten. */}
+        <div
+          data-testid="lesevarianten-laden"
+          className="mt-4 rounded-card border border-hairline bg-page p-3"
+        >
+          <p className="text-[13.5px] font-semibold text-text">{t("lesevariante.laden.title")}</p>
+          <p className="mt-0.5 text-[12.5px] text-muted">{t("lesevariante.laden.hint")}</p>
+          {uebersetzungenFehler ? (
+            <p className="mt-2 rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text">
+              {uebersetzungenFehler}
+            </p>
+          ) : null}
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <Button
+              variant="ghost"
+              disabled={uebersetzungenBusy}
+              onClick={() => void ladeUebersetzungen()}
+            >
+              {uebersetzungenBusy ? (
+                <Loader2 size={15} className="animate-spin" />
+              ) : (
+                <Languages size={15} />
+              )}
+              {uebersetzungenBusy ? t("lesevariante.laden.busy") : t("lesevariante.laden.button")}
+            </Button>
+            {uebersetzungen ? (
+              <span data-testid="lesevarianten-bilanz" className="text-[12.5px] text-muted">
+                {t("lesevariante.laden.result", {
+                  zugeordnet: uebersetzungen.zugeordnet,
+                  // Ein Datensatz kann ZWEI Objekte bedienen (Confluence-Kopie + Paketbaustein) —
+                  // eine Zahl allein hätte diese Lage nicht sagen können.
+                  objekte: uebersetzungen.objekte,
+                  neu: uebersetzungen.neu,
+                  aktualisiert: uebersetzungen.aktualisiert,
+                  unbestaetigt: uebersetzungen.quellabgleichUnbestaetigt,
+                })}
+              </span>
+            ) : null}
+          </div>
+          {/* EHRLICH: was kein Wissensobjekt gefunden hat, wird BENANNT und nicht verschwiegen. */}
+          {uebersetzungen && uebersetzungen.nichtZugeordnet.length > 0 ? (
+            <p data-testid="lesevarianten-offen" className="mt-2 text-[12px] text-muted-2">
+              {t("lesevariante.laden.unmatched", {
+                count: uebersetzungen.nichtZugeordnet.length,
+                keys: uebersetzungen.nichtZugeordnet.join(", "),
+              })}
+            </p>
+          ) : null}
         </div>
       </Card>
       <DemoPackages />

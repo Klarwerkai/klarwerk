@@ -13,31 +13,14 @@
 // `legal.tbd.hausbank` mit einem ausgedachten Namen wird rot, ohne dass jemand an diesen Test
 // denken muss.
 //
-// Er liest die Sprachblöcke aus der Quelldatei — dasselbe Verfahren wie
+// Er liest den vollständigen Sprachbestand — dasselbe Verfahren wie
 // tests/i18n/nl-completeness.test.ts, und aus demselben Grund: so sieht er ALLE Schlüssel, nicht
-// nur die, an die ein Aufrufer gedacht hat.
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+// nur die, an die ein Aufrufer gedacht hat (JOB 3326 R5: über `tests/support/i18nBestand.ts` aus
+// dem zusammengesetzten Wörterbuch, seit ein Teil der Schlüssel per Spread eingebunden wird).
 import { describe, expect, it } from "vitest";
+import { alleSprachbestaende } from "../support/i18nBestand";
 
-const quelle = readFileSync(join(__dirname, "..", "..", "apps", "web", "src", "i18n.ts"), "utf8");
-
-function objekt(marker: string): Record<string, string> {
-  const start = quelle.indexOf(marker);
-  if (start < 0) {
-    throw new Error(`Marker nicht gefunden: ${marker}`);
-  }
-  const auf = quelle.indexOf("{", start);
-  const zu = quelle.indexOf("\n};", auf);
-  // Reines Objektliteral mit erhaltenem Escaping → sicher auswertbar.
-  return new Function(`return (${quelle.slice(auf, zu + 2)})`)() as Record<string, string>;
-}
-
-const SPRACHEN: Record<string, Record<string, string>> = {
-  de: objekt("const de = {"),
-  en: objekt("const en: typeof de = {"),
-  nl: objekt("const nl: typeof de = {"),
-};
+const SPRACHEN: Record<string, Record<string, string>> = alleSprachbestaende();
 
 describe("mega61 A4 · der Sammler über die noch offenen Angaben", () => {
   it("die Erhebung greift überhaupt", () => {

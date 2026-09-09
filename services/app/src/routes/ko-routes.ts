@@ -53,6 +53,7 @@ import { wissensnetzMetrikFuer } from "../../../wissensnetz";
 import type { AiCheckWorker } from "../ai-check-worker";
 import { type SemanticPrefilter, indexKoForDuplicatePrefilter } from "../duplicate-detection";
 import { type Guards, type SessionUser, sendError } from "../http";
+import { type LesevariantenRepo, mitAenderungsauskunft } from "../lesevarianten";
 import type { AssignmentNotifier } from "../notify";
 import { darfSehen, sichtbareFuer, sqlSichtbarkeitFuer } from "../sichtbarkeit";
 
@@ -86,6 +87,11 @@ export interface KoRoutesDeps {
   // sie leer — dann ist jede Adresse öffentlich und der Auslieferungszustand der geschlossene.
   internalSourceOrigins: readonly string[];
   audit?: AuditService;
+  // JOB 3326: die Ablage der Lesevarianten. OPTIONAL — direkt konstruierte Routen-Tests ohne sie
+  // liefern das Objekt schlicht ohne Übersetzungsfeld, was der ehrliche Zustand ist. Sie wird NUR
+  // GELESEN und ausschliesslich als eigenes Feld NEBEN das Objekt gesetzt; kein KO-Feld wird
+  // ersetzt, überschrieben oder umgeschrieben.
+  lesevarianten?: LesevariantenRepo | undefined;
   // Weg 3 (Feature-Flag): semantischer Vorfilter der Duplikat-Erkennung. Nur gesetzt, wenn aktiviert.
   semanticPrefilter?: SemanticPrefilter | undefined;
   // WP-SUBMIT-ASYNC (Pedis R3): In-Process-Worker der Hintergrund-KI-Prüfung. Optional (direkt
@@ -562,6 +568,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
     externalPolicy,
     internalSourceOrigins,
     audit,
+    lesevarianten,
     semanticPrefilter,
     aiCheckWorker,
     draftPromotion,
@@ -896,10 +903,24 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
       // Anzeigestufe wird aus dem bereits geladenen Objekt und dem Pruefstand abgeleitet — sie
       // fragt nichts, was der Betrachter nicht ohnehin sehen darf, und sie tritt NEBEN `status`,
       // nicht an seine Stelle. Was fuer sie nicht erhoben wurde, steht in `anzeigestatusHerkunft`.
+      // JOB 3326: die LESEVARIANTEN treten als eigenes Feld daneben — `title`, `statement` und
+      // `bodyHtml` des Objekts bleiben WÖRTLICH das Original. Genau das ist die Zusage dieses Jobs:
+      // die Übersetzung ist eine zweite Lesart, nie eine zweite Wahrheit. Wer dieses Feld nicht
+      // kennt (Word-Add-in, Export, ältere Oberfläche), liest weiter genau das, was er bisher las.
+      // Fehlt die Verdrahtung oder gibt es keine Variante, fehlt das Feld ganz — kein leeres
+      // Objekt, das sich als „geprüft, nichts da" lesen liesse.
+      const varianten = (await lesevarianten?.forKo(item.id)) ?? [];
       reply.code(200).send({
         ...item,
         ...discloseConfidentiality(item.confidentiality),
         ...discloseDisplayStatus(item, await anzeigestatusEingaengeFuer(item)),
+        ...(varianten.length > 0
+          ? {
+              lesevarianten: Object.fromEntries(
+                varianten.map((v) => [v.lang, mitAenderungsauskunft(v, item)]),
+              ),
+            }
+          : {}),
       });
     });
 

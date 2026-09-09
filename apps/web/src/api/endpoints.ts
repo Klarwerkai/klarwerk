@@ -56,6 +56,9 @@ import type {
   KnowledgeObject,
   KoVersionSnapshot,
   LearningPath,
+  Lesevariante,
+  LesevariantenLadeBilanz,
+  LesevariantenUebersicht,
   LibraryImageSearchResponse,
   LiveWall,
   ManagementSnapshot,
@@ -839,7 +842,21 @@ export const endpoints = {
       // WP-B6: EIN kuratiertes Beispielpaket laden (idempotent).
       loadExamples: (pkg: string) =>
         api.post<ExampleLoadResponse>("/admin/examples/load", { package: pkg }),
+      // JOB 3326: die Leseübersetzungen EINES Pakets aus der lokalen Lieferung laden. Idempotent
+      // (zweites Laden aktualisiert), legt KEIN Wissensobjekt an und ruft KEIN Modell.
+      loadLesevarianten: (pkg: string) =>
+        api.post<LesevariantenLadeBilanz>("/admin/lesevarianten/laden", { package: pkg }),
     },
+  },
+  // JOB 3326: die Leseübersetzungen. Die Übersicht trägt Titel/Kernaussage für Listen und
+  // Vorschauen; den Fließtext holt die Leseansicht gezielt je Objekt.
+  lesevarianten: {
+    uebersicht: (lang: string) =>
+      api.get<LesevariantenUebersicht>(`/lesevarianten?lang=${encodeURIComponent(lang)}`),
+    fuerKo: (koId: string, lang: string) =>
+      api.get<Lesevariante>(
+        `/kos/${encodeURIComponent(koId)}/lesevariante/${encodeURIComponent(lang)}`,
+      ),
   },
   // AUFTRAG-mega46 Block F: „welche Schalter stehen" — die EINE Auskunft, Ja/Nein je Schalter.
   // Sie ersetzt das Raten am 404 (siehe analytics.expertise): Eine Fläche, die gar nicht gerendert

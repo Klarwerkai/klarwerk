@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { alleSprachbestaende } from "../support/i18nBestand";
 
 // AUFTRAG-PRO-375 · Terminologie-Vertrag „On-Premise Enterprise AI" (Terminologie V1 §1).
 //
@@ -28,15 +29,14 @@ import { describe, expect, it } from "vitest";
 
 const BEGRIFF = "On-Premise Enterprise AI";
 
-const i18nSrc = readFileSync(
-  fileURLToPath(new URL("../../apps/web/src/i18n.ts", import.meta.url)),
-  "utf8",
-);
 const addinSrc = readFileSync(
   fileURLToPath(new URL("../../apps/web/public/word-addin/taskpane.html", import.meta.url)),
   "utf8",
 );
 
+// Der Textschnitt bleibt für das Word-Add-in (`taskpane.html` trägt ein reines `var STRINGS = {…}`
+// ohne Importe). Der i18n-Bestand kommt seit JOB 3326 R5 aus dem zusammengesetzten Wörterbuch —
+// ein Textschnitt sähe die per Spread eingebundenen Schlüssel nicht mehr.
 function objektAus(src: string, marker: string, ende: string): Record<string, unknown> {
   const start = src.indexOf(marker);
   if (start < 0) {
@@ -53,11 +53,7 @@ function objektAus(src: string, marker: string, ende: string): Record<string, un
   >;
 }
 
-const i18n: Record<string, Record<string, string>> = {
-  de: objektAus(i18nSrc, "const de = {", "\n};") as Record<string, string>,
-  en: objektAus(i18nSrc, "const en: typeof de = {", "\n};") as Record<string, string>,
-  nl: objektAus(i18nSrc, "const nl: typeof de = {", "\n};") as Record<string, string>,
-};
+const i18n: Record<string, Record<string, string>> = alleSprachbestaende();
 const STRINGS = objektAus(addinSrc, "var STRINGS = {", "\n    };") as unknown as Record<
   string,
   Record<string, string>

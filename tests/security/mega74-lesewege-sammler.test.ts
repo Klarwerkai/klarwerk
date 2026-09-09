@@ -125,6 +125,26 @@ const REGISTER: Record<string, Eintrag> = {
   "GET /api/kos/:id/versions": { urteil: "PRAEDIKAT", grund: "Block B — Voll-Snapshots." },
   "GET /api/kos/:id/evidence": { urteil: "PRAEDIKAT", grund: "Block B — Belegzitate." },
   "GET /api/evidence": { urteil: "PRAEDIKAT", grund: "Block B — Index je Trägerobjekt aufgelöst." },
+  // JOB 3326 · LESEVARIANTE. Die beiden Leserouten geben Titel/Kernaussage/Inhalt eines
+  // Wissensobjekts in einer anderen Sprache aus — also KO-Inhalt. Sie fahren deshalb dasselbe
+  // Prädikat wie ihr Original: `darfSehen` am Einzelobjekt (lesevarianten-routes.ts, Route
+  // `/api/kos/:id/lesevariante/:lang`) und `sichtbareFuer` + SQL-Trim über der Grundmenge, deren
+  // Kennungen die Übersicht überhaupt erst passieren dürfen (Route `/api/lesevarianten`).
+  "GET /api/kos/:id/lesevariante/:lang": {
+    urteil: "PRAEDIKAT",
+    grund: "JOB 3326 — darfSehen am Objekt, 404 statt Variante.",
+  },
+  "GET /api/lesevarianten": {
+    urteil: "PRAEDIKAT",
+    grund: "JOB 3326 — sichtbareFuer + sqlSichtbarkeitFuer über der Grundmenge.",
+  },
+  // Die Ladeaktion gibt keinen KO-Inhalt aus: ihre Antwort ist eine Bilanz aus Zahlen und den
+  // Paketschlüsseln der Lieferung (`nichtZugeordnet`) — keine Titel, keine Kennungen des Bestands.
+  "POST /api/admin/lesevarianten/laden": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "JOB 3326 — Antwort ist eine Zählbilanz plus Lieferschlüssel (lesevarianten.ts, LadeBilanz).",
+  },
   "GET /api/library/search": { urteil: "PRAEDIKAT", grund: "Block B — Titel/Kernaussage." },
   // JOB 3095 · M5: Bilder anhand Beschreibung/Benennung. Die Kandidaten laufen durch denselben
   // SQL-Trim und `sichtbareFuer` wie die Bibliothekssuche; der Rumpf jedes Treffers wird zusätzlich
