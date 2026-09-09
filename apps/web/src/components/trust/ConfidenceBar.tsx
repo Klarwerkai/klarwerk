@@ -26,9 +26,9 @@ export function ConfidenceBar({
   // mehr versehentlich hineinlaufen — wer das Wort will, sagt es ausdrücklich (Ask.tsx tut das,
   // aber nur bei belegter Einstufung). Die Übersetzungen bleiben unangetastet.
   showLabel?: boolean;
-  // SCRUM-513 (WP2): lesbare Prozent-Sprache statt/zusätzlich zur Rohzahl — „84 % sicher". Additiv;
-  // ohne die Prop bleibt die Darstellung exakt wie bisher (Rohzahl + Qualitätswort). Bei percentPhrase
-  // ersetzt die Sprach-Fassung die bare Zahl (nie „nur Rohzahl", G-2/A-4).
+  // UX-27: Prozent-Sprache benennt den Prüfstand. Ohne die Prop bleibt der sichtbare
+  // Text unverändert (Rohzahl, optionales Qualitätswort). Der zugängliche Name benennt
+  // in beiden Varianten denselben Prüfstand.
   percentPhrase?: boolean;
 }): JSX.Element {
   const { t } = useTranslation();

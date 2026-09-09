@@ -30,7 +30,7 @@ describe("KoReadView — VIP-Sichtvertrag", () => {
     const html = renderMarkup(<KoReadView ko={fullKo()} />);
     expect(html).toContain("Ventil bei Überdruck schließen"); // WAS gilt (Titel)
     expect(html).toContain("Bei Überdruck Ventil X manuell schließen."); // Aussage
-    expect(html).toContain("84 % sicher"); // WIE sicher (nicht nur Rohzahl)
+    expect(html).toContain("Prüfstand: 84 %"); // WELCHER PRÜFSTAND (nicht nur Rohzahl)
   });
 
   it("Zone 2: Beleg sichtbar mit KLICKBARER Quelle + Quelldatum + Freigabe", () => {
@@ -99,7 +99,7 @@ describe("KoReadView — VIP-Sichtvertrag", () => {
     const en = renderMarkup(<KoReadView ko={fullKo()} />);
     expect(en).toContain("Evidence");
     expect(en).toContain("Release");
-    expect(en).toContain("84 % confident");
+    expect(en).toContain("Review status: 84 %");
     expect(en).not.toContain("Beleg");
     await setLanguage("nl");
     const nl = renderMarkup(<KoReadView ko={fullKo()} />);

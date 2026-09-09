@@ -1156,20 +1156,22 @@ export function MehrAbschnitte({
           )}
         </div>
         {/* SCRUM-359 / AG-05 / PI-K2: Trust ist ein Review-/Evidenzsignal, KEINE Wahrheitsgarantie —
-            die Einordnung steht dort, wo die Zahl steht, und bleibt aufklappbar. */}
+            die Grundaussage steht ohne Klick bei der Zahl; nur die Vertiefung ist aufklappbar. */}
         {(() => {
           const ex = trustExplainer({ trustBand: koOverview(ko).trustBand, usability });
           return (
-            <details className="mb-2 text-[12px] text-muted">
-              <summary className="cursor-pointer select-none text-muted-2">
-                {t(ex.titleKey)}
-              </summary>
-              <p className="mt-1 leading-relaxed">{t(ex.metaKey)}</p>
-              <p className="mt-1 leading-relaxed">{t(ex.bandKey)}</p>
-              {ex.reviewHintKey ? (
-                <p className="mt-1 leading-relaxed text-trust-warn-text">{t(ex.reviewHintKey)}</p>
-              ) : null}
-            </details>
+            <>
+              <p className="mb-2 text-[12px] leading-relaxed text-muted">{t(ex.metaKey)}</p>
+              <details className="mb-2 text-[12px] text-muted">
+                <summary className="cursor-pointer select-none text-muted-2">
+                  {t(ex.titleKey)}
+                </summary>
+                <p className="mt-1 leading-relaxed">{t(ex.bandKey)}</p>
+                {ex.reviewHintKey ? (
+                  <p className="mt-1 leading-relaxed text-trust-warn-text">{t(ex.reviewHintKey)}</p>
+                ) : null}
+              </details>
+            </>
           );
         })()}
         <dl className="mb-3 space-y-1.5 text-[12.5px]">
@@ -1204,62 +1206,74 @@ export function MehrAbschnitte({
           </div>
         </dl>
         {/* SCRUM-168/175/170: Konsistenz, Frische und Gruppierung nach Fassung — nur bei
-            erfolgreich geladenen Belegen, sonst wäre jede Zahl eine Behauptung. */}
-        {!evidence.isLoading && !evidence.isError
+            erfolgreich geladenem Bestand, auch bei gescheiterter Auffrischung.
+            Ein offline pausierter Erstabruf ist noch kein Bestand. */}
+        {abfrageMitBestand(evidence).isSuccess
           ? (() => {
               const consistency = analyzeEvidenceConsistency(ko, evidence.data ?? []);
               const fresh = analyzeEvidenceFreshness({ kos: [ko], evidence: evidence.data ?? [] })
                 .rows[0];
               const byVersion = groupEvidenceByVersion(evidence.data ?? [], versions.data ?? []);
               return (
-                <div className="mb-3 space-y-1.5 font-mono text-[10.5px] text-muted-2">
-                  <div>
-                    {t(`ko.evCons.status.${consistency.status}`)} ·{" "}
-                    {t("ko.evCons.counts", {
-                      sources: String(consistency.sourceCount),
-                      attachments: String(consistency.attachmentCount),
-                      evidence: String(consistency.evidenceCount),
-                    })}
-                  </div>
-                  {consistency.findings.length > 0 ? (
-                    <ul className="space-y-1">
-                      {consistency.findings.map((f) => (
-                        <li key={`${f.kind}:${f.ref}`} className="break-words">
-                          {t(`ko.evCons.finding.${f.kind}`)} — {f.label}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : null}
+                <>
                   {fresh ? (
-                    <div>
-                      {t(evidenceFreshnessLabelKey(fresh.status))} ·{" "}
-                      {t("ko.evFresh.counts", {
-                        version: String(fresh.version),
-                        current: String(fresh.currentCount),
-                        older: String(fresh.olderCount),
-                      })}
-                    </div>
+                    <dl className="mb-3 text-[12.5px]">
+                      <div className="flex flex-wrap items-baseline justify-between gap-2">
+                        <dt className="text-muted">{t("ko.evFresh.title")}</dt>
+                        <dd className="text-text">
+                          {t(evidenceFreshnessLabelKey(fresh.status))}
+                          <span className="ml-2 font-mono text-[10.5px] text-muted-2">
+                            {t("ko.evFresh.counts", {
+                              version: String(fresh.version),
+                              current: String(fresh.currentCount),
+                              older: String(fresh.olderCount),
+                            })}
+                          </span>
+                        </dd>
+                      </div>
+                    </dl>
                   ) : null}
-                  {byVersion.groups.map((g) => (
-                    <div key={g.version}>
-                      {t("ko.evVer.version", { n: String(g.version) })} ·{" "}
-                      {t("ko.evVer.counts", {
-                        sources: String(g.sourceCount),
-                        attachments: String(g.attachmentCount),
-                      })}
-                      {g.latestAt
-                        ? ` · ${t("ko.evVer.latest", { at: new Date(g.latestAt).toLocaleDateString(i18n.language) })}`
-                        : ""}
-                    </div>
-                  ))}
-                  {byVersion.versionsWithoutEvidence.length > 0 ? (
+                  <div className="mb-3 space-y-1.5 font-mono text-[10.5px] text-muted-2">
                     <div>
-                      {t("ko.evVer.without", {
-                        versions: byVersion.versionsWithoutEvidence.map((v) => `v${v}`).join(", "),
+                      {t(`ko.evCons.status.${consistency.status}`)} ·{" "}
+                      {t("ko.evCons.counts", {
+                        sources: String(consistency.sourceCount),
+                        attachments: String(consistency.attachmentCount),
+                        evidence: String(consistency.evidenceCount),
                       })}
                     </div>
-                  ) : null}
-                </div>
+                    {consistency.findings.length > 0 ? (
+                      <ul className="space-y-1">
+                        {consistency.findings.map((f) => (
+                          <li key={`${f.kind}:${f.ref}`} className="break-words">
+                            {t(`ko.evCons.finding.${f.kind}`)} — {f.label}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                    {byVersion.groups.map((g) => (
+                      <div key={g.version}>
+                        {t("ko.evVer.version", { n: String(g.version) })} ·{" "}
+                        {t("ko.evVer.counts", {
+                          sources: String(g.sourceCount),
+                          attachments: String(g.attachmentCount),
+                        })}
+                        {g.latestAt
+                          ? ` · ${t("ko.evVer.latest", { at: new Date(g.latestAt).toLocaleDateString(i18n.language) })}`
+                          : ""}
+                      </div>
+                    ))}
+                    {byVersion.versionsWithoutEvidence.length > 0 ? (
+                      <div>
+                        {t("ko.evVer.without", {
+                          versions: byVersion.versionsWithoutEvidence
+                            .map((v) => `v${v}`)
+                            .join(", "),
+                        })}
+                      </div>
+                    ) : null}
+                  </div>
+                </>
               );
             })()
           : null}

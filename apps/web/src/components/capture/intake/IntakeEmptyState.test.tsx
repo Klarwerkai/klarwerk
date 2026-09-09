@@ -65,7 +65,7 @@ describe("IntakeEmptyState", () => {
     const html = renderMarkup(<IntakeEmptyState example={ko} onStart={() => {}} />);
     expect(html).toContain("Pumpe entlüften");
     expect(html).toContain('href="https://ex.com/q"');
-    expect(html).toContain("84 % sicher");
+    expect(html).toContain("Prüfstand: 84 %");
   });
 
   it("ohne Beispiel (null) → KEIN aufgedrängtes Muster, nur Frage + Chips", () => {

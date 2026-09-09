@@ -56,7 +56,7 @@ describe("SourceEvidence", () => {
     );
     expect(html).toContain('href="https://ex.com/h"');
     expect(html).toContain("2026"); // Quelldatum sichtbar
-    expect(html).toContain("84 % sicher"); // lesbare Konfidenz-Sprache
+    expect(html).toContain("Prüfstand: 84 %"); // lesbare Prüfstand-Sprache
   });
 
   it("compact: einzeilige Belegzeile mit +N-weitere-Hinweis bei mehreren Quellen", () => {
@@ -69,7 +69,7 @@ describe("SourceEvidence", () => {
       />,
     );
     expect(html).toContain("+2 weitere");
-    expect(html).toContain("90 % sicher");
+    expect(html).toContain("Prüfstand: 90 %");
   });
 
   it("ohne Quelle → ehrlicher Leerzustand statt leerer Fläche", () => {
@@ -87,13 +87,16 @@ describe("SourceEvidence", () => {
   it("niedrige vs. hohe Konfidenz spiegeln sich in der %-Sprache", () => {
     const low = renderMarkup(<SourceEvidence sources={[makeSource()]} confidence={42} />);
     const high = renderMarkup(<SourceEvidence sources={[makeSource()]} confidence={95} />);
-    expect(low).toContain("42 % sicher");
-    expect(high).toContain("95 % sicher");
+    expect(low).toContain("Prüfstand: 42 %");
+    expect(high).toContain("Prüfstand: 95 %");
   });
 
   it("ohne Konfidenz-Prop → keine erfundene Zahl", () => {
     const html = renderMarkup(<SourceEvidence sources={[makeSource()]} date={null} />);
-    expect(html).not.toContain("% sicher");
+    // UX-27: „Prüfstand:" trägt jetzt BEIDE Ausgaben der ConfidenceBar — den sichtbaren Kurztext
+    // und den zugänglichen Namen (title/aria-label). Der Ausschluss greift damit strenger als der
+    // frühere auf „% sicher", der den aria-Namen „Sicherheit: n von 100" durchgelassen hätte.
+    expect(html).not.toContain("Prüfstand:");
   });
 
   it("i18n: Belegschicht-Labels folgen der Sprache (DE → EN → NL)", async () => {
@@ -102,7 +105,7 @@ describe("SourceEvidence", () => {
     await setLanguage("en");
     const en = renderMarkup(<SourceEvidence {...props} />);
     expect(en).toContain("no source on file");
-    expect(en).toContain("80 % confident");
+    expect(en).toContain("Review status: 80 %");
     await setLanguage("nl");
     const nl = renderMarkup(<SourceEvidence {...props} />);
     expect(nl).toContain("geen bron vastgelegd");

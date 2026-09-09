@@ -157,7 +157,9 @@ describe("mega51 G2 · Trust — die Scheibe ist in mega52 geschnitten", () => {
     // `ask.checkCaveat.unattributed`. Die Scheibe bleibt damit geschnitten — kein deutscher oder
     // niederländischer Anzeigewert ist zurückgekommen. Den Beweis dafür führt weiterhin
     // `tests/app/mega52-vertrauenswert-sammler.test.ts` über die WERTE.
-    expect(zaehlung).toEqual(["de: 27", "en: 91", "nl: 28"]);
+    // UX-27: Titel und Meta-Erklärung heißen auf EN jetzt „review status“; zwei sichtbare
+    // Trust-Nennungen entfallen. Keine Änderung an Bezeichnern oder Berechnungen.
+    expect(zaehlung).toEqual(["de: 27", "en: 89", "nl: 28"]);
   });
 });
 

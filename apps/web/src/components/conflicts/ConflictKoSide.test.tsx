@@ -22,7 +22,7 @@ describe("ConflictKoSide", () => {
     expect(html).toContain("Ventil sofort schließen");
     expect(html).toContain("Bei Überdruck sofort schließen.");
     expect(html).toContain('href="https://a.example/quelle"'); // klickbare Quelle
-    expect(html).toContain("88 % sicher"); // Konfidenz als lesbare Sprache
+    expect(html).toContain("Prüfstand: 88 %"); // Prüfstand als lesbare Sprache
   });
 
   it("ohne KO → ehrlicher Entfernt-Zustand mit Herkunfts-ID (kein Fake)", () => {

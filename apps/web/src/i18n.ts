@@ -337,9 +337,9 @@ const de = {
   "quality.preliminary": "Vorläufig",
   "quality.reliable": "Belastbar",
   "quality.assured": "Gesichert",
-  "evidence.percentSure": "{{pct}} % sicher",
+  "evidence.percentSure": "Prüfstand: {{pct}} %",
   // AUFTRAG-mega51 BLOCK D1: der Balken sagt jetzt, WAS er zeigt (title + aria-label).
-  "evidence.confidenceLabel": "Sicherheit: {{pct}} von 100",
+  "evidence.confidenceLabel": "Prüfstand: {{pct}} von 100",
   "evidence.sourceDate": "Quelle vom {{date}}",
   "evidence.noDate": "kein Quelldatum",
   "evidence.noSource": "keine Quelle hinterlegt",
@@ -2627,9 +2627,9 @@ const de = {
   "ko.ovSources_other": "{{count}} Quellen",
   "ko.ovAttachments_one": "{{count}} Anhang",
   "ko.ovAttachments_other": "{{count}} Anhänge",
-  "trust.explain.title": "Was bedeutet Vertrauen?",
+  "trust.explain.title": "Wie ist der Prüfstand einzuordnen?",
   "trust.explain.meta":
-    "Vertrauen ist ein Review-/Evidenzsignal aus Peer-Bewertungen (0–99) — kein Versprechen, dass die Aussage wahr ist.",
+    "Der Prüfstand ist ein Review-/Evidenzsignal — keine Wahrheitsaussage über den Inhalt.",
   "trust.explain.band.high":
     "Hohes Vertrauen: mehrfach positiv geprüft. Trotzdem mit eigenem Urteil nutzen.",
   "trust.explain.band.mid":
@@ -2908,7 +2908,7 @@ const de = {
   "ko.evVer.counts": "Quellen {{sources}} · Anhänge {{attachments}}",
   "ko.evVer.latest": "zuletzt {{at}}",
   "ko.evVer.without": "Ohne Beleg: {{versions}}",
-  "ko.evFresh.title": "Evidence-Aktualität",
+  "ko.evFresh.title": "Belegaktualität",
   "ko.evFresh.current": "aktuell belegt",
   "ko.evFresh.outdated": "nur ältere Versionen",
   "ko.evFresh.missing": "Evidence fehlt",
@@ -6029,8 +6029,8 @@ const en: typeof de = {
   "quality.preliminary": "Preliminary",
   "quality.reliable": "Reliable",
   "quality.assured": "Assured",
-  "evidence.percentSure": "{{pct}} % confident",
-  "evidence.confidenceLabel": "Confidence: {{pct}} of 100",
+  "evidence.percentSure": "Review status: {{pct}} %",
+  "evidence.confidenceLabel": "Review status: {{pct}} of 100",
   "evidence.sourceDate": "Source dated {{date}}",
   "evidence.noDate": "no source date",
   "evidence.noSource": "no source on file",
@@ -7956,9 +7956,9 @@ const en: typeof de = {
   "ko.ovSources_other": "{{count}} sources",
   "ko.ovAttachments_one": "{{count}} attachment",
   "ko.ovAttachments_other": "{{count}} attachments",
-  "trust.explain.title": "What does Trust mean?",
+  "trust.explain.title": "How should I interpret the review status?",
   "trust.explain.meta":
-    "Trust is a review/evidence signal from peer ratings (0–99) — not a promise that the statement is true.",
+    "The review status is a review/evidence signal — not a statement about the truth of the content.",
   "trust.explain.band.high":
     "High trust: positively reviewed several times. Still apply your own judgement.",
   "trust.explain.band.mid":
