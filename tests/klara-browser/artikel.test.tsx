@@ -49,7 +49,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Variants } from "../../extensions/klara-browser/types";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
-import { harness, read } from "./harness";
+import { harness, read, verfahren } from "./harness";
 import { mount, windows as panelWindows } from "./panel-dom";
 
 const { JSDOM } = createRequire(import.meta.url)("jsdom") as {
@@ -158,7 +158,9 @@ async function realApp() {
     const url = String(input);
     calls.push(url);
     const response = await app.inject({
-      method: options?.method === "POST" ? "POST" : "GET",
+      // JOB 3280: durchgereicht statt verengt — seit CHR-07 gibt es `PUT /api/drafts/:id`, und
+      // eine Brücke, die ihn als GET absetzt, misst den Aktualisierungsweg nicht.
+      method: verfahren(options),
       url: new URL(url).pathname,
       headers: options?.headers as Record<string, string>,
       ...(options?.body !== undefined ? { payload: String(options.body) } : {}),

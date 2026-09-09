@@ -16,7 +16,10 @@
   let busy = false;
   let queue = Promise.resolve();
   /** @type {import("./types").Mode[]} */
-  const MODES = ["selection", "article", "page"];
+  const MODES = ["selection", "article", "page", "clipboard"];
+  /** Die zwei Sprachen der Leiste — und die einzigen, die im Öffnen-Link stehen dürfen. */
+  const SPRACHEN = ["de", "en"];
+  const DRAFT_ID = /^[\w-]{1,128}$/;
   // Dieselbe Tagmenge wie im Entwurfskörper (worker.js ALLOWED). Die Vorschau baut den Baum mit
   // createElement — kein HTML aus der Seite wird je als Markup gedeutet.
   /** @type {Record<string, string[]>} */
@@ -54,8 +57,9 @@
   // Fläche; sie sind kein Ereignis. Der Test verlangt, dass diese vier Mengen zusammen jeden
   // Zustandstext abdecken — ein neuer Text ohne Ton ist rot, nicht still neutral.
   const TON = {
-    ok: ["saved", "logged_out"],
+    ok: ["saved", "updated", "logged_out"],
     crit: [
+      "clipboard_denied",
       "expired",
       "denied",
       "conflict",
@@ -84,8 +88,24 @@
       "account_changed",
       "stale_preview",
       "logout_first",
+      // JOB 3280: drei Lagen mit einem klaren nächsten Schritt — sie sind kein Ausfall, sondern
+      // eine Nachfrage. Gelb, nicht rot; und keine von ihnen hat etwas gesendet.
+      "clipboard_empty",
+      "classification_locked",
+      "origin_missing",
+      // JOB 3280 R3: der Inhalt steht still, bis die unklare Anlage geklärt ist. Nichts ging
+      // verloren und nichts wurde gesendet — eine Nachfrage, kein Ausfall.
+      "unresolved_create",
     ],
-    "": ["no_selection", "preview", "previewState", "previewEdited", "cancelled"],
+    "": [
+      "no_selection",
+      "preview",
+      "previewState",
+      "previewEdited",
+      "previewUnresolved",
+      "previewSameDraft",
+      "cancelled",
+    ],
   };
   /** @param {string} status */
   const ton = (status) =>
@@ -96,6 +116,7 @@
     title: $("title").value,
     context: $("context").value,
     confidentiality: $("confidentiality").value,
+    origin: $("origin").value,
   });
   /** @param {HTMLElement} target */
   function clear(target) {
@@ -136,13 +157,18 @@
       // JOB 3279 R2: ohne gewählten Umfang gibt es nichts zu speichern. Der Knopf bleibt gesperrt,
       // bis die Wahl getroffen ist — statt still die ganze Seite mitzunehmen.
       !next.mode ||
+      // JOB 3280: eingefügter Text ohne Herkunftsangabe wird nicht gespeichert. Dieselbe Grenze
+      // zieht der Worker (`payload`, `origin_missing`) — hier ist sie nur sichtbar, nicht neu.
+      (next.mode === "clipboard" && !$("origin").value) ||
       !$("confirm").checked ||
       !$("title").value.trim() ||
-      next.status === "saved";
+      next.status === "saved" ||
+      next.status === "updated";
     for (const id of [
       "title",
       "context",
       "confidentiality",
+      "origin",
       "confirm",
       "cancel",
       "refresh",
@@ -150,9 +176,23 @@
       "login",
     ])
       $(id).disabled = busy;
+    // JOB 3280 R3: solange eine Anlage unklar ist, steht der INHALT still — Einfügen, das Textfeld
+    // und die Umfangswahl sind gesperrt, die Angaben daneben nicht. Der Worker zieht dieselbe
+    // Grenze (`unresolved_create`); hier ist sie nur sichtbar, damit niemand vergeblich klickt —
+    // und niemand die Zwischenablage freigibt, deren Inhalt danach abgewiesen würde.
+    const ungeklaert = next.unresolvedCreate === true;
+    for (const id of ["paste", "clipboard"]) $(id).disabled = busy || !next.selection || ungeklaert;
     for (const mode of MODES)
-      $(`mode-${mode}`).disabled = busy || !next.variants?.[mode]?.available;
+      $(`mode-${mode}`).disabled = busy || !next.variants?.[mode]?.available || ungeklaert;
   }
+  /** Der Wirt einer Adresse, oder die Adresse selbst — nie ein geratener Name. @param {string} url */
+  const wirt = (url) => {
+    try {
+      return new URL(url).hostname;
+    } catch {
+      return url;
+    }
+  };
   /** @param {import("./types").View} next */
   function render(next) {
     current = next;
@@ -160,8 +200,28 @@
     $("language").value = language;
     for (const node of document.querySelectorAll("[data-i18n]"))
       node.textContent = t(node.getAttribute("data-i18n") ?? "");
+    // JOB 3280 · CHR-06: ist der offene Tab wirklich ein KI-Chat, steht sein NAME in der Wahl —
+    // abgelesen vom Host des erfassten Tabs, nicht geraten. Ist er es nicht, bleibt die
+    // allgemeine Beschriftung stehen; ein „(ChatGPT)" über einer beliebigen Seite wäre erfunden.
+    $("origin-ki").textContent =
+      next.aiChat === true && next.selection
+        ? `${t("originKiChat")} (${wirt(next.selection.url)})`
+        : t("originKiChat");
     $("status").textContent = t(
-      next.status === "preview" ? (next.attempted ? "previewEdited" : "previewState") : next.status,
+      next.status === "preview"
+        ? // JOB 3280: gibt es zu dieser Übernahme schon einen Entwurf, ist der Satz „Änderungen
+          // erzeugen einen neuen Vorgang" falsch geworden — sie gehen jetzt in denselben Entwurf.
+          next.draftId
+          ? "previewSameDraft"
+          : // JOB 3280 R3: ist die Anlage unklar, sagt die Zeile GENAU DAS — und was das nächste
+            // Sichern damit tut. „Ein neuer Vorgang" wäre hier falsch: es wird zuerst der alte
+            // wiederholt und die Änderung geht danach in denselben Entwurf.
+            next.unresolvedCreate === true
+            ? "previewUnresolved"
+            : next.attempted
+              ? "previewEdited"
+              : "previewState"
+        : next.status,
     );
     $("status").className = ton(next.status);
     $("rest").hidden = Boolean(next.selection);
@@ -180,7 +240,10 @@
           )
         : t("scopeNone");
       $("scope-none").hidden = Boolean(next.mode);
-      $("ai-chat").hidden = next.aiChat !== true;
+      // JOB 3280: die Chat-Kennzeichnung gilt der SEITE. Bei eingefügtem Text sagt sie nichts über
+      // den Inhalt aus — dort trägt die Herkunftsangabe die Aussage, und nur sie.
+      $("ai-chat").hidden = next.aiChat !== true || next.mode === "clipboard";
+      $("origin-box").hidden = next.mode !== "clipboard";
       $("source-changed").hidden = !next.sourceChanged;
       for (const mode of MODES) {
         const variant = next.variants?.[mode];
@@ -209,6 +272,10 @@
         next.form?.title,
         next.form?.context,
         next.form?.confidentiality,
+        // JOB 3280: der eingefügte Text und seine Herkunft stehen im Entwurfskörper — ändert sich
+        // einer von beiden, ist die gezeichnete Vorschau nicht mehr das Gespeicherte.
+        next.form?.origin,
+        next.variants?.clipboard?.text,
       ].join(" ");
       if (mark !== drawn) {
         clear($("content"));
@@ -219,11 +286,14 @@
         $("title").value = next.form?.title ?? "";
         $("context").value = next.form?.context ?? "";
         $("confidentiality").value = next.form?.confidentiality ?? "";
+        $("origin").value = next.form?.origin ?? "";
+        $("clipboard").value = next.variants?.clipboard?.text ?? "";
         $("confirm").checked = false;
         loadedId = next.captureId;
       }
     } else {
-      for (const id of ["title", "context", "confidentiality"]) $(id).value = "";
+      for (const id of ["title", "context", "confidentiality", "origin", "clipboard"])
+        $(id).value = "";
       for (const id of ["page", "source", "captured", "scope-value"]) $(id).textContent = "";
       clear($("content"));
       clear($("gaps"));
@@ -231,19 +301,62 @@
       loadedId = null;
       $("confirm").checked = false;
     }
-    $("done").hidden = !(next.status === "saved" && next.link);
+    // JOB 3280 · CHR-07: DER LINK GEHÖRT ZU EINEM BESTÄTIGTEN STAND, SONST GAR NICHT.
+    //
+    // `link` kommt nur aus einem frisch nachgelesenen Entwurf (`view()` im Worker). `draftId` sagt
+    // nur, DASS es einen gibt. Gibt es einen, stimmt der Stand hier aber nicht mit ihm überein,
+    // steht die Rückfrage da statt eines Links auf eine überholte Fassung.
+    const href = next.link ? oeffnenLink(next.link, language) : null;
+    const offen = Boolean(next.draftId) && !href;
     $("open").removeAttribute("href");
-    if (next.status === "saved" && next.link) {
-      const url = new URL(next.link);
-      if (
-        url.origin === "https://app.klarwerk.ai" &&
-        url.pathname === "/capture/frontdoor" &&
-        [...url.searchParams.keys()].join() === "draft" &&
-        !url.hash
-      )
-        $("open").setAttribute("href", url.href);
-    }
+    if (href) $("open").setAttribute("href", href);
+    $("open").hidden = !href;
+    $("open-stale").hidden = !offen;
+    $("done").hidden = !href && !offen;
     controls(next);
+  }
+  /**
+   * JOB 3280 (Codex-Nachführung 08.09. 21:19) — DIE LINKPRÜFUNG BLEIBT ENG.
+   *
+   * Erlaubt sind GENAU dieser Host, GENAU dieser Pfad und GENAU zwei Schlüssel: `draft` (Pflicht,
+   * Kennungsform) und `lang` (nur `de` oder `en`). Kein Fragment, kein doppelter Schlüssel, kein
+   * dritter Name. Die Sprache wird nicht durchgereicht, sondern hier neu gesetzt — die Leiste weiss
+   * als Einzige, welche gerade gewählt ist.
+   *
+   * WAS `lang` HEUTE BEWIRKT: nichts. Auf diesem Stand liest die Vollapp den Parameter nirgends
+   * (`apps/web/src/components/erfassen/Blatt.tsx:216` liest `draft`, sonst niemand etwas), die
+   * Sprache kommt dort aus `localStorage` (`apps/web/src/lib/sprachwahl.ts`). Der Parameter ist die
+   * HÄLFTE des Vertrags mit JOB 3323 (APP-SPRACHSCHALTER) und behauptet nichts: kein Text in dieser
+   * Leiste sagt, dass Klarwerk in der gewählten Sprache aufgeht.
+   * @param {string} link @param {string} sprache @returns {string | null}
+   */
+  function oeffnenLink(link, sprache) {
+    let url;
+    try {
+      url = new URL(String(link));
+    } catch {
+      return null;
+    }
+    if (
+      url.origin !== "https://app.klarwerk.ai" ||
+      url.pathname !== "/capture/frontdoor" ||
+      url.hash
+    )
+      return null;
+    const schluessel = [...url.searchParams.keys()];
+    if (
+      new Set(schluessel).size !== schluessel.length ||
+      schluessel.some((name) => name !== "draft" && name !== "lang")
+    )
+      return null;
+    const draft = url.searchParams.get("draft") ?? "";
+    const mitgeliefert = url.searchParams.get("lang");
+    if (!DRAFT_ID.test(draft) || (mitgeliefert !== null && !SPRACHEN.includes(mitgeliefert)))
+      return null;
+    const ziel = new URL(url.origin + url.pathname);
+    ziel.searchParams.set("draft", draft);
+    ziel.searchParams.set("lang", SPRACHEN.includes(sprache) ? sprache : "de");
+    return ziel.href;
   }
   /** @param {import("./types").Message} message @param {boolean} lock */
   function send(message, lock = true) {
@@ -287,12 +400,56 @@
       $("confirm").checked = false;
       void send({ type: "mode", captureId: current.captureId, mode });
     });
-  for (const id of ["title", "context", "confidentiality"])
+  for (const id of ["title", "context", "confidentiality", "origin"])
     $(id).addEventListener("input", () => {
       $("confirm").checked = false;
       controls();
       void send({ type: "edit", captureId: current.captureId, form: form() }, false);
     });
+  // ================================================================================================
+  // JOB 3280 · CHR-06 — DIE ZWISCHENABLAGE WIRD GENAU EINMAL GELESEN: HIER, AUF KLICK.
+  // ================================================================================================
+  //
+  // `navigator.clipboard.readText()` steht in dieser Datei GENAU EINMAL, und zwar in diesem
+  // Klickzuhörer. Kein Aufruf beim Laden, keiner beim Fokuswechsel, keiner im Takt — ein
+  // Dauerleser der Zwischenablage wäre ein Mitleser fremder Passwörter. Das Manifest trägt
+  // deshalb auch KEIN `clipboardRead`: ohne Dauerrecht fragt Chrome beim ersten Mal nach.
+  //
+  // Wird die Erlaubnis verweigert oder ist die Ablage leer, sagt die Zustandszeile das und der
+  // bereits eingefügte Text bleibt unangetastet stehen.
+  $("paste").addEventListener("click", async () => {
+    if (busy || $("paste").disabled) return;
+    let text = "";
+    try {
+      text = await navigator.clipboard.readText();
+    } catch {
+      // Der Link bleibt: am gespeicherten Entwurf hat sich nichts geändert, es wurde gar nichts
+      // gesendet. Ihn hier wegzunehmen wäre eine Folge ohne Ursache.
+      render({ ...current, status: "clipboard_denied" });
+      return;
+    }
+    if (!text.trim()) {
+      render({ ...current, status: "clipboard_empty" });
+      return;
+    }
+    $("clipboard").value = text;
+    // Ein anderer Inhalt ist eine andere Übernahme: die Bestätigung verfällt und muss neu erfolgen.
+    $("confirm").checked = false;
+    // Die Herkunft wird VORGESCHLAGEN, nicht gesetzt: ein KI-Chat im offenen Tab ist ein Hinweis,
+    // kein Beleg. Steht schon eine Wahl da, bleibt sie — der Vorschlag überschreibt nie.
+    if (!$("origin").value && current.aiChat === true) $("origin").value = "ki_chat";
+    void send({ type: "clipboard", captureId: current.captureId, text }).then(() =>
+      send({ type: "edit", captureId: current.captureId, form: form() }, false),
+    );
+  });
+  $("clipboard").addEventListener("input", () => {
+    $("confirm").checked = false;
+    controls();
+    void send(
+      { type: "clipboard", captureId: current.captureId, text: $("clipboard").value },
+      false,
+    );
+  });
   $("login-form").addEventListener("submit", (event) => {
     event.preventDefault();
     if (busy) return;

@@ -1,4 +1,10 @@
-export type Form = { title: string; context: string; confidentiality: string };
+/**
+ * JOB 3280 · CHR-06: `origin` ist die HERKUNFTSANGABE der Person zum eingefügten Text
+ * (`"" | "ki_chat" | "web" | "eigen"`). Sie ist eine Aussage, keine Messung — der Browser sieht
+ * die Zwischenablage erst im Augenblick des Einfügens. Für die Umfänge aus JOB 3278/3279 bleibt
+ * sie leer und erscheint nicht im Entwurfskörper.
+ */
+export type Form = { title: string; context: string; confidentiality: string; origin: string };
 /**
  * JOB 3279 · CHR-05: was NICHT mitgekommen ist. `kind` ist ein festes Schlüsselwort (beide
  * Sprachen und der Entwurfskörper leiten ihre Beschriftung daraus ab), `detail` nennt die
@@ -26,8 +32,12 @@ export type Variant = {
   gaps: Gap[];
   images: number;
 };
-/** Die drei bewussten Umfänge. Ein vierter entsteht nicht aus Versehen. */
-export type Mode = "selection" | "article" | "page";
+/**
+ * Die bewussten Umfänge. Einer entsteht nicht aus Versehen.
+ * JOB 3280 · CHR-06: `clipboard` kommt NUR durch einen Klick auf „Aus Zwischenablage einfügen"
+ * zustande — die Seite liefert ihn nie, und er ist nie Vorbelegung nach einer Erfassung.
+ */
+export type Mode = "selection" | "article" | "page" | "clipboard";
 export type Variants = Record<Mode, Variant>;
 export type Selection = {
   text: string;
@@ -47,6 +57,23 @@ export type Work = {
   owner: string | null;
   operations: { id: string; owner: string; fingerprint: string }[];
   status: string;
+  /**
+   * JOB 3280 R3: DIE ANLAGE, DEREN AUSGANG UNKLAR IST — Schlüssel, Abdruck und die Fassung, die
+   * hinausging. Sie steht hier, sobald eine Sendung beginnt, und geht erst wieder weg, wenn ein
+   * Entwurf bestätigt ist oder die Antwort eine Anlage ausschliesst. Nur mit der Fassung lässt sie
+   * sich zeichengleich wiederholen; ohne sie wäre der einzige Ausweg ein zweiter Entwurf.
+   */
+  pendingCreate: { id: string; fingerprint: string; form: Form } | null;
+  /**
+   * JOB 3280 · CHR-07: der EINE Entwurf, der zu dieser Übernahme gehört. Anders als `receipt`
+   * überlebt er jede Bearbeitung — er ist die Zusicherung „ein Vorgang, ein Entwurf". Nur
+   * Verwerfen, Abmelden und ein Kontowechsel nehmen ihn weg.
+   */
+  draftId: string | null;
+  /** Der zuletzt gesehene Stand dieses Entwurfs (`expectedUpdatedAt` beim nächsten PUT). */
+  updatedAt: string | null;
+  /** Die Einstufung, die SERVERSEITIG steht — sie kann von hier aus nicht geleert werden. */
+  savedLevel: string;
   receipt: string | null;
 };
 export type State = {
@@ -71,12 +98,18 @@ export type View = {
   sourceChanged?: boolean;
   attempted?: boolean;
   pendingCapture?: boolean;
+  /** JOB 3280: DASS ein Entwurf existiert — ohne Adresse. Der Link entsteht nur aus `link`. */
+  draftId?: string;
+  /** JOB 3280 R3: DASS eine Anlage unklar ist — und der Inhalt deshalb bis zur Klärung still steht. */
+  unresolvedCreate?: boolean;
 };
 export type Message = {
   type: string;
   captureId?: string;
   mode?: string;
-  form?: Form;
+  form?: Partial<Form>;
+  /** JOB 3280 · CHR-06: der eingefügte und in der Leiste bearbeitete Text. */
+  text?: string;
   email?: string;
   password?: string;
 };
@@ -84,7 +117,13 @@ export type Payload = {
   title: string;
   statement: string;
   bodyHtml: string;
-  pendingSources: { label: string; url: string; excerpt: string; sourceProvider: string }[];
+  /**
+   * JOB 3280: `url` ist OPTIONAL. Beim eingefügten Text gibt es keine belegbare Quelladresse; der
+   * offene Tab ist nicht die Quelle. Ein Feld, das dann leer BLIEBE, wäre ehrlicher als eines,
+   * das die falsche Adresse trägt — und der Serververtrag lässt es weg
+   * (`services/capture/src/types.ts:56-63`, `url?`).
+   */
+  pendingSources: { label: string; url?: string; excerpt: string; sourceProvider: string }[];
   confidentiality?: string;
 };
 export type Wire = {
@@ -92,6 +131,8 @@ export type Wire = {
   user?: { id?: string; email?: string };
   id?: string;
   originalAuthor?: string;
+  /** JOB 3280: der Stand des Entwurfs — Grundlage von `expectedUpdatedAt` beim nächsten PUT. */
+  updatedAt?: string;
   payload?: Partial<Payload>;
 };
 export type ConfirmedDraft = Wire & { id: string };

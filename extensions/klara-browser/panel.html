@@ -50,8 +50,26 @@
             <label class="choice"><input type="radio" name="mode" id="mode-selection" value="selection" /><span><span data-i18n="modeSelection"></span> <span class="hint" id="info-selection"></span></span></label>
             <label class="choice"><input type="radio" name="mode" id="mode-article" value="article" /><span><span data-i18n="modeArticle"></span> <span class="hint" id="info-article"></span></span></label>
             <label class="choice"><input type="radio" name="mode" id="mode-page" value="page" /><span><span data-i18n="modePage"></span> <span class="hint" id="info-page"></span></span></label>
+            <!-- JOB 3280 · CHR-06: der vierte Umfang. Er ist erst wählbar, wenn etwas eingefügt
+                 wurde — die Taste darunter ist der einzige Weg, ihn zu füllen. -->
+            <label class="choice"><input type="radio" name="mode" id="mode-clipboard" value="clipboard" /><span><span data-i18n="modeClipboard"></span> <span class="hint" id="info-clipboard"></span></span></label>
             <p id="scope-none" class="hint warn" data-i18n="scopeChoose" hidden></p>
             <p class="hint" data-i18n="scopeHint"></p>
+          </fieldset>
+          <!-- JOB 3280 · CHR-06 — DIE ZWISCHENABLAGE WIRD NUR AUF KLICK GELESEN.
+               Kein Dauerrecht im Manifest (`clipboardRead` steht dort BEWUSST nicht), also fragt
+               Chrome beim ersten Mal selbst. Der eingefügte Text steht danach in einem Feld, das
+               Pedi bearbeiten kann — die Vorschau darunter zieht mit. -->
+          <fieldset id="clipboard-box">
+            <legend data-i18n="clipboardTitle"></legend>
+            <p class="hint" data-i18n="clipboardHint"></p>
+            <button type="button" id="paste" data-i18n="paste"></button>
+            <label for="clipboard" data-i18n="clipboardText"></label><textarea id="clipboard" maxlength="200000" rows="6"></textarea>
+            <div id="origin-box" hidden>
+              <label for="origin" data-i18n="originLabel"></label>
+              <select id="origin"><option value="" data-i18n="originNone"></option><option value="ki_chat" id="origin-ki" data-i18n="originKiChat"></option><option value="web" data-i18n="originWeb"></option><option value="eigen" data-i18n="originEigen"></option></select>
+              <p class="hint" data-i18n="originHintClip"></p>
+            </div>
           </fieldset>
           <label for="title" data-i18n="title"></label><input id="title" maxlength="90" />
           <label for="context" data-i18n="context"></label><textarea id="context" maxlength="4000" rows="3"></textarea>
@@ -70,7 +88,11 @@
           <p class="hint" data-i18n="sessionHint"></p>
         </section>
         <section id="done" hidden>
-          <p><a id="open" target="_blank" rel="noopener noreferrer" data-i18n="openDraft"></a></p>
+          <p><a id="open" target="_blank" rel="noopener noreferrer" data-i18n="openDraft" hidden></a></p>
+          <!-- JOB 3280 · CHR-07: die klare Rückfrage. Es gibt einen Entwurf, aber der Stand in der
+               Leiste ist nicht der gespeicherte — der Link erscheint erst wieder, wenn beides
+               übereinstimmt. Ein Link auf einen veralteten Stand wäre die stillste Art zu lügen. -->
+          <p id="open-stale" class="hint warn" data-i18n="openStale" hidden></p>
           <p class="hint" data-i18n="webSession"></p>
         </section>
       </div>

@@ -25,7 +25,29 @@ export const plainVariants = (text: string): Variants => ({
     : { available: false, text, nodes: [], gaps: [], images: 0 },
   article: { available: false, text: "", nodes: [], gaps: [], images: 0 },
   page: { available: false, text: "", nodes: [], gaps: [], images: 0 },
+  // JOB 3280: die SEITE liefert diesen Umfang nie — er entsteht ausschliesslich durch das
+  // Einfügen aus der Zwischenablage. Er steht hier leer, damit das Doppel dieselbe Gestalt hat
+  // wie das, was `cleanVariants` im Worker daraus macht.
+  clipboard: { available: false, text: "", nodes: [], gaps: [], images: 0 },
 });
+
+/**
+ * JOB 3280 R2 · Das HTTP-Verfahren einer Anfrage, begrenzt auf die drei, die der Worker überhaupt
+ * kennt (`worker.js`, `methods`). Ein viertes wäre ein Fehler im Prüfling und kein Fall für eine
+ * Umschreibung im Prüfstand.
+ *
+ * WARUM DIE STELLE HIER STEHT UND NICHT DREIMAL IM BAUM: Runde 1 hat sie in `package.test.ts`,
+ * `zwischenablage.test.ts` und `artikel.test.tsx` je einzeln geschrieben — und die dritte Kopie kam
+ * als `String(options.method)` heraus. `app.inject` verlangt `HTTPMethods`, nicht `string`; die
+ * Wurzelkonfiguration prüft `.tsx` gar nicht (`tsconfig.json` schliesst sie aus), also fiel es erst
+ * im Tor auf, in `tsconfig.tests-tsx.json`. Eine Definition kann nicht auseinanderlaufen.
+ */
+export function verfahren(options: RequestInit | undefined): "GET" | "POST" | "PUT" {
+  const roh = options?.method ?? "GET";
+  if (roh !== "GET" && roh !== "POST" && roh !== "PUT")
+    throw new Error(`unerwartetes Verfahren: ${roh}`);
+  return roh;
+}
 
 type Selected = { text: string; url: string; title: string; variants?: Variants };
 

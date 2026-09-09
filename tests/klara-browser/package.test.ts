@@ -5,7 +5,7 @@ import { buildApp, buildServices } from "../../services/app/src/build-app";
 import { DRAFTS_BODY_LIMIT } from "../../services/app/src/routes/capture-routes";
 import { DRAFT_LIMITS } from "../../services/capture";
 import { pages } from "./fixtures";
-import { harness, read } from "./harness";
+import { harness, read, verfahren } from "./harness";
 const { JSDOM } = createRequire(import.meta.url)("jsdom") as {
   JSDOM: new (
     html: string,
@@ -47,7 +47,11 @@ async function setup(selection?: { text: string; url: string; title: string }) {
     calls.push({ url, body });
     if (forced) return new Response("{}", { status: forced });
     const response = await app.inject({
-      method: options?.method === "POST" ? "POST" : "GET",
+      // JOB 3280: das Verfahren wird DURCHGEREICHT, nicht auf POST/GET verengt. Seit CHR-07 gibt
+      // es einen dritten Weg (`PUT /api/drafts/:id`), und eine Brücke, die ihn still als GET
+      // absetzt, hätte den ganzen Aktualisierungsweg an der echten Route vorbeigeführt. Die drei
+      // sind abschliessend: der Worker kennt genau diese Verfahren (`worker.js`, `methods`).
+      method: verfahren(options),
       url: new URL(url).pathname,
       headers: options?.headers as Record<string, string>,
       // Preserve the actual wire body so Fastify's JSON parser catches malformed logout requests.
@@ -261,6 +265,69 @@ describe("KLARA-BROWSER B0 · ausgeliefertes Paket", () => {
       await h.app.close();
     }
   });
+  // ==============================================================================================
+  // JOB 3280 · RUNDE 3 (bens Korrekturpflicht 1) — DER UNKLARE VORGANG WIRD GEKLÄRT, NICHT UMGANGEN.
+  // ==============================================================================================
+  //
+  // DER BEFUND aus Runde 2: der Fall darüber wiederholt nur die UNVERÄNDERTE Fassung. Wer nach dem
+  // Antwortverlust ein Wort änderte, bekam einen neuen Abdruck, einen neuen Vorgangsschlüssel und
+  // damit einen ZWEITEN Entwurf — der Schutz „ein Vorgang, ein Entwurf" hing an einer Antwort, die
+  // ankommen musste. Hier wird beides zusammen gemessen: Verlust, Neustart, DANN die Änderung.
+  it("Antwortverlust, Neustart und danach GEÄNDERT gespeichert: genau ein Entwurf", async () => {
+    const h = await setup();
+    const geaendert = { ...save, form: { ...save.form, title: "Nach dem Aussetzer geändert" } };
+    try {
+      h.loseNext();
+      expect((await h.send(save)).status).toBe("uncertain");
+      // Der Worker startet neu — der unklare Vorgang lebt allein im flüchtigen Speicher.
+      const neu = harness(h.fetcher, h.data);
+      expect((await neu.send({ type: "edit", form: geaendert.form })).status).toBe("preview");
+      expect((await neu.send(geaendert)).status).toBe("updated");
+
+      // Zwei Anlagen gingen hinaus, aber ZEICHENGLEICH und mit demselben Schlüssel: der Server
+      // erkennt dieselbe Wiederholung und legt nichts Zweites an.
+      const posts = h.calls.filter((c) => c.url.endsWith("/api/drafts"));
+      expect(posts).toHaveLength(2);
+      expect(posts[1]?.body).toEqual(posts[0]?.body);
+      const token = (h.data.auth as { token: string }).token;
+      const bestand = (
+        await h.app.inject({
+          method: "GET",
+          url: "/api/drafts",
+          headers: { authorization: `Bearer ${token}` },
+        })
+      ).json() as { id: string; payload: { title: string } }[];
+      expect(bestand, "es entstand ein zweiter Entwurf").toHaveLength(1);
+      expect(bestand[0]?.payload.title).toBe("Nach dem Aussetzer geändert");
+      const puts = h.calls.filter((c) => c.url.endsWith(`/api/drafts/${bestand[0]?.id}`));
+      expect(puts).toHaveLength(1);
+    } finally {
+      await h.app.close();
+    }
+  });
+  // Und der Inhalt bleibt bis zur Klärung stehen: eine ANDERE Fassung liesse sich nicht mehr als
+  // derselbe Vorgang wiederholen — der Ausweg wäre wieder ein zweiter Entwurf.
+  it("solange die Anlage unklar ist, wird der Inhalt nicht verändert und nichts gesendet", async () => {
+    const h = await setup();
+    try {
+      h.loseNext();
+      expect((await h.send(save)).status).toBe("uncertain");
+      const vorher = h.calls.length;
+      expect((await h.send({ type: "mode", mode: "page" })).status).toBe("unresolved_create");
+      expect((await h.send({ type: "clipboard", text: "Etwas ganz anderes" })).status).toBe(
+        "unresolved_create",
+      );
+      expect(h.calls.length, "eine gesperrte Änderung ging trotzdem ins Netz").toBe(vorher);
+      const work = h.data.work as { mode: string; variants: { clipboard: { text: string } } };
+      expect(work.mode).toBe("selection");
+      expect(work.variants.clipboard.text).toBe("");
+      // Nach der Klärung ist der Inhalt wieder frei — und die Änderung geht in denselben Entwurf.
+      expect((await h.send(save)).status).toBe("saved");
+      expect((await h.send({ type: "clipboard", text: "Jetzt erlaubt" })).status).toBe("preview");
+    } finally {
+      await h.app.close();
+    }
+  });
   it("unzulässiger Absender und allgemeiner Netzauftrag erreichen kein Netzwerk", async () => {
     let requests = 0;
     const h = harness(async () => {
@@ -312,17 +379,48 @@ describe("KLARA-BROWSER B0 · ausgeliefertes Paket", () => {
       await h.app.close();
     }
   });
-  it("Doppelklick blockiert den zweiten POST; Änderung beginnt einen neuen Vorgang, Rückänderung findet den alten", async () => {
+  // ==============================================================================================
+  // JOB 3280 · CHR-07 — ABGELÖST: „Änderung beginnt einen neuen Vorgang" GILT NICHT MEHR.
+  // ==============================================================================================
+  //
+  // Dieser Fall pinnte bis 3279 das Gegenteil: eine Änderung nach dem Sichern erzeugte einen neuen
+  // Abdruck, einen neuen Vorgangsschlüssel und damit einen ZWEITEN Entwurf im Bestand; die
+  // Rückänderung fand den ersten Schlüssel wieder. Genau das ist der „stille Zweitentwurf", den
+  // CHR-07 beseitigt. Der alte Fall ist deshalb ERSETZT, nicht daneben stehen geblieben — er misst
+  // jetzt, was an seine Stelle getreten ist: ein Vorgang, ein Entwurf, jede weitere Fassung per PUT.
+  it("Doppelklick blockiert den zweiten POST; jede weitere Fassung geht per PUT in DENSELBEN Entwurf", async () => {
     const h = await setup();
     try {
       const [a, b] = await Promise.all([h.send(save), h.send(save)]);
       expect([a.status, b.status].sort()).toEqual(["busy", "saved"]);
-      expect(h.calls.filter((c) => c.url.endsWith("/api/drafts"))).toHaveLength(1);
-      await h.send({ ...save, form: { ...save.form, context: "Andere Notiz" } });
-      await h.send(save);
-      const posts = h.calls.filter((c) => c.url.endsWith("/api/drafts"));
-      expect(posts[1]?.body.operationId).not.toBe(posts[0]?.body.operationId);
-      expect(posts[2]?.body.operationId).toBe(posts[0]?.body.operationId);
+      const anlagen = () => h.calls.filter((c) => c.url.endsWith("/api/drafts"));
+      expect(anlagen()).toHaveLength(1);
+      const kennung = new URL(String(a.link ?? b.link)).searchParams.get("draft");
+      expect(kennung).toBeTruthy();
+
+      // Änderung → Rückänderung → noch eine Änderung: kein einziger weiterer POST.
+      expect(
+        (await h.send({ ...save, form: { ...save.form, context: "Andere Notiz" } })).status,
+      ).toBe("updated");
+      expect((await h.send(save)).status).toBe("updated");
+      expect(
+        (await h.send({ ...save, form: { ...save.form, title: "Dritter Titel" } })).status,
+      ).toBe("updated");
+      expect(anlagen(), "eine Änderung hat einen zweiten Entwurf angelegt").toHaveLength(1);
+
+      // Und die Aktualisierungen gingen alle auf DIESE eine Kennung — ohne Vorgangsschlüssel im
+      // Rumpf, der sonst als Nutzlast im gespeicherten Entwurf läge.
+      const puts = h.calls.filter((c) => c.url.endsWith(`/api/drafts/${kennung}`));
+      expect(puts).toHaveLength(3);
+      expect(puts.map((c) => "operationId" in c.body)).toEqual([false, false, false]);
+
+      // Der Bestand ist der Beweis: EIN Entwurf, mit dem zuletzt gesendeten Titel.
+      const headers = { authorization: `Bearer ${(h.data.auth as { token: string }).token}` };
+      const bestand = (
+        await h.app.inject({ method: "GET", url: "/api/drafts", headers })
+      ).json() as { id: string; payload: { title: string } }[];
+      expect(bestand.map((d) => d.id)).toEqual([kennung]);
+      expect(bestand[0]?.payload.title).toBe("Dritter Titel");
     } finally {
       await h.app.close();
     }
@@ -580,6 +678,127 @@ describe("KLARA-BROWSER B0 · ausgeliefertes Paket", () => {
         "/api/auth/login",
         "/api/drafts",
       ]);
+    } finally {
+      await h.app.close();
+    }
+  });
+});
+
+// ==================================================================================================
+// JOB 3280 · RUNDE 4 — EINE ABGEWIESENE WIEDERHOLUNG KLÄRT DIE ERSTE SENDUNG NICHT.
+// ==================================================================================================
+//
+// DER BEFUND AUS RUNDE 3 (ben, gemessen; von Codex vorher statisch vorhergesagt): `anlegen()` führte
+// für den Erstversuch UND die Wiederholung dieselbe Fehlerbereinigung. Eine 429 auf die WIEDERHOLUNG
+// löschte damit den festgehaltenen Vorgang — obwohl sie über den Ausgang der verlorenen ERSTEN
+// Sendung nichts aussagt. Die nächste Bearbeitung erzeugte wieder einen neuen Vorgangsschlüssel und
+// damit den zweiten Entwurf: `to have a length of 1 but got 2`.
+//
+// Die drei Fälle stammen wörtlich aus der Reproduktion des Prüfers
+// (/tmp/ben-3280-r3-replay-test.txt); ergänzt sind die Typangaben, die dieses Repo verlangt, der
+// 401-Fall mit Wiederanmeldung (Nachführung der Steuerung, Runde 4) und die Zählung der
+// Vorgangsschlüssel, die ben nur protokolliert hatte.
+describe("JOB 3280 R4 · Antwortverlust und abgewiesene Wiederholung", () => {
+  const bestand = async (h: Awaited<ReturnType<typeof setup>>) =>
+    (
+      await h.app.inject({
+        method: "GET",
+        url: "/api/drafts",
+        headers: { authorization: `Bearer ${(h.data.auth as { token: string }).token}` },
+      })
+    ).json() as { id: string; payload: { title: string } }[];
+  /** Die Vorgangsschlüssel, die WIRKLICH hinausgingen — mehr als einer heisst: zwei Anlagen. */
+  const schluessel = (h: Awaited<ReturnType<typeof setup>>) =>
+    new Set(h.calls.filter((c) => c.url.endsWith("/api/drafts")).map((c) => c.body.operationId));
+
+  it.each([false, true])(
+    "a · 429 beim Replay; Neustart=%s; Bestand bleibt eins",
+    async (restart) => {
+      const h = await setup();
+      try {
+        h.loseNext();
+        expect((await h.send(save)).status).toBe("uncertain");
+        const worker = restart ? harness(h.fetcher, h.data) : h;
+        h.force(429);
+        expect((await worker.send(save)).status).toBe("rate_limited");
+        h.force(0);
+        const changed = { ...save, form: { ...save.form, title: "Nach Replay-429 geändert" } };
+        await worker.send({ type: "edit", form: changed.form });
+        expect((await worker.send(changed)).status).toBe("updated");
+        const drafts = await bestand(h);
+        expect(drafts, "Antwortverlust + Replay-429 erzeugt einen zweiten Entwurf").toHaveLength(1);
+        expect(drafts[0]?.payload.title).toBe(changed.form.title);
+        expect(schluessel(h).size, "eine zweite Anlage mit neuem Vorgangsschlüssel").toBe(1);
+      } finally {
+        await h.app.close();
+      }
+    },
+  );
+  // Der 401-Fall: die Sitzung fällt AUF DER WIEDERHOLUNG weg. Auch das sagt über die erste Sendung
+  // nichts — nach der Wiederanmeldung desselben Kontos läuft dieselbe Wiederholung weiter.
+  it("b · 401 beim Replay, danach Wiederanmeldung desselben Kontos: Bestand bleibt eins", async () => {
+    const h = await setup();
+    try {
+      h.loseNext();
+      expect((await h.send(save)).status).toBe("uncertain");
+      h.force(401);
+      expect((await h.send(save)).status).toBe("expired");
+      expect(h.data.auth).toBeNull();
+      h.force(0);
+      await h.send({
+        type: "login",
+        email: "browser@example.test",
+        password: "test-password-3203",
+      });
+      const changed = { ...save, form: { ...save.form, title: "Nach Replay-401 geändert" } };
+      await h.send({ type: "edit", form: changed.form });
+      expect((await h.send(changed)).status).toBe("updated");
+      const drafts = await bestand(h);
+      expect(drafts, "Antwortverlust + Replay-401 erzeugt einen zweiten Entwurf").toHaveLength(1);
+      expect(drafts[0]?.payload.title).toBe(changed.form.title);
+      expect(schluessel(h).size).toBe(1);
+    } finally {
+      await h.app.close();
+    }
+  });
+  it("c · auch eine zweite verlorene Antwort erhält genau einen Entwurf", async () => {
+    const h = await setup();
+    try {
+      h.loseNext();
+      expect((await h.send(save)).status).toBe("uncertain");
+      h.loseNext();
+      expect((await h.send(save)).status).toBe("uncertain");
+      const changed = { ...save, form: { ...save.form, title: "Nach zweimaligem Verlust" } };
+      await h.send({ type: "edit", form: changed.form });
+      expect((await h.send(changed)).status).toBe("updated");
+      const drafts = await bestand(h);
+      expect(drafts).toHaveLength(1);
+      expect(drafts[0]?.payload.title).toBe(changed.form.title);
+      expect(schluessel(h).size).toBe(1);
+    } finally {
+      await h.app.close();
+    }
+  });
+  // Der AUSWEG, ohne den die Inhaltssperre eine Falle wäre: weist der Server die Wiederholung
+  // dauerhaft ab (hier: bleibende 429), bleibt der Vorgang unklar — Verwerfen ist möglich, und es
+  // behauptet NICHT, damit sei der vielleicht angelegte Entwurf weg.
+  it("d · bleibt die Wiederholung abgewiesen, ist Verwerfen möglich und sagt die Wahrheit", async () => {
+    const h = await setup();
+    try {
+      h.loseNext();
+      expect((await h.send(save)).status).toBe("uncertain");
+      h.force(429);
+      expect((await h.send(save)).status).toBe("rate_limited");
+      expect((await h.send(save)).status).toBe("rate_limited");
+      const vorher = h.calls.length;
+      expect((await h.send({ type: "cancel" })).status).toBe("cancelled_uncertain");
+      expect(h.data.work).toBeNull();
+      expect(h.calls.length, "Verwerfen hat etwas ins Netz geschickt").toBe(vorher);
+      h.force(0);
+      // Der Entwurf, den die erste Sendung angelegt hat, steht weiter im Bestand — genau das sagt
+      // die Meldung. Gelöscht hat die Leiste ihn nicht; das kann nur Klarwerk selbst.
+      const drafts = await bestand(h);
+      expect(drafts).toHaveLength(1);
     } finally {
       await h.app.close();
     }

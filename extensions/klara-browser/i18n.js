@@ -31,6 +31,19 @@ globalThis.KLARA_TEXT = {
     modeSelection: "Markierung",
     modeArticle: "Artikel (Hauptinhalt der Seite)",
     modePage: "Zugängliche Seite",
+    modeClipboard: "Zwischenablage (eingefügter Text)",
+    clipboardTitle: "Aus der Zwischenablage übernehmen",
+    clipboardHint:
+      "Klara liest die Zwischenablage nur bei einem Klick auf diese Taste — nie beim Öffnen und nie im Hintergrund. Beim ersten Mal fragt der Browser um Erlaubnis.",
+    paste: "Aus Zwischenablage einfügen",
+    clipboardText: "Eingefügter Text (bearbeitbar)",
+    originLabel: "Herkunft des eingefügten Textes",
+    originNone: "Bitte wählen",
+    originKiChat: "KI-Chat, ungeprüft",
+    originWeb: "Webseite, ungeprüft",
+    originEigen: "Eigener Text, ungeprüft",
+    originHintClip:
+      "Der Browser sieht nur den Text, nicht seine Herkunft. Diese Angabe stammt von Ihnen und steht als solche im Entwurf. Die Adresse des offenen Tabs wird als Tab benannt, nicht als Quelle.",
     scopeHint:
       "Der Umfang wird bewusst gewählt und nie von selbst ausgeweitet. „Zugängliche Seite“ ist alles, was ohne Nachladen lesbar ist — nicht jede geschützte, eingebettete oder erst später geladene Ressource.",
     scopeEmpty: "nicht vorhanden",
@@ -73,6 +86,8 @@ globalThis.KLARA_TEXT = {
     save: "Bewusst als Entwurf speichern",
     cancel: "Auswahl verwerfen",
     openDraft: "Entwurf in Klarwerk öffnen",
+    openStale:
+      "Zu dieser Übernahme gibt es bereits einen Entwurf, aber der Stand hier ist nicht der gespeicherte. Bitte bestätigen und speichern: die Änderungen gehen in denselben Entwurf, es entsteht keine zweite Kopie. Danach erscheint der Link wieder.",
     webSession:
       "Klarwerk im Web benötigt gegebenenfalls eine eigene Anmeldung mit demselben Konto. Der Link enthält kein Sitzungstoken.",
     instructions:
@@ -84,11 +99,30 @@ globalThis.KLARA_TEXT = {
     // Die ausführliche Anleitung (Schlüssel `instructions`) hängt jetzt an der Vorschau.
     no_selection: "Keine Auswahl. Text markieren, dann Rechtsklick.",
     previewState: "Vorschau bereit. Es wurde noch nichts übermittelt.",
+    // JOB 3280 R3: dieser Satz gilt nur noch, wo ein früherer Versuch ABGEWIESEN wurde — dabei
+    // entstand nichts. Der unklare Ausgang hat seine eigene Zeile (`previewUnresolved`); ihn hier
+    // mitzumeinen hiesse, einen Entwurf zu behaupten, von dem niemand weiss, ob es ihn gibt.
     previewEdited:
-      "Vorschau bereit. Änderungen erzeugen beim Speichern einen neuen Vorgang; ein früherer Entwurf bleibt bestehen.",
+      "Vorschau bereit. Ein früherer Versuch wurde abgewiesen; dabei wurde nichts angelegt. Änderungen erzeugen beim Speichern einen neuen Vorgang.",
+    previewUnresolved:
+      "Vorschau bereit. Ein Speicherversuch ist unbestätigt — es kann bereits einen Entwurf dazu geben. Das nächste Speichern wiederholt zuerst genau diese Sendung und legt die Änderungen dann in denselben Entwurf. Bis dahin bleiben Umfang und eingefügter Text unverändert stehen.",
+    previewSameDraft:
+      "Vorschau bereit. Änderungen gehen beim Speichern in denselben Entwurf — kein zweiter Entwurf.",
+    clipboard_denied:
+      "Die Zwischenablage wurde nicht freigegeben. Bitte die Nachfrage des Browsers erlauben und erneut einfügen. Es wurde nichts gelesen.",
+    clipboard_empty:
+      "Die Zwischenablage enthielt keinen Text. Bitte in der Quelle kopieren und erneut einfügen.",
+    classification_locked:
+      "Eine bereits gespeicherte Einstufung kann von hier nicht auf „Offen“ zurückgenommen werden. Bitte eine Stufe wählen oder den Entwurf in Klarwerk öffnen. Es wurde nichts gesendet.",
+    origin_missing:
+      "Bitte die Herkunft des eingefügten Textes angeben. Ohne diese Angabe wird nichts gespeichert.",
+    unresolved_create:
+      "Ein Speicherversuch ist unbestätigt: Umfang und eingefügter Text bleiben unverändert, bis er geklärt ist. Bitte erneut speichern — dieselbe Sendung wird wiederholt, es entsteht kein zweiter Entwurf. Es wurde nichts gesendet und nichts verworfen.",
     saving: "Vorgang läuft. Bitte warten.",
     busy: "Ein Vorgang läuft bereits. Bitte warten und anschließend erneut versuchen.",
     saved: "Als ungeprüfter Entwurf gespeichert; vollständigen Inhalt bestätigt.",
+    updated:
+      "Änderungen im selben Entwurf gespeichert; vollständigen Inhalt bestätigt. Es entstand kein zweiter Entwurf.",
     expired:
       "Sitzung fehlt oder ist abgelaufen. Bitte erneut anmelden. Die Auswahl bleibt flüchtig erhalten.",
     uncertain:
@@ -98,7 +132,7 @@ globalThis.KLARA_TEXT = {
     denied:
       "Zugriff abgelehnt (403). Konto-Freigabe oder Berechtigung prüfen. Die Auswahl bleibt erhalten.",
     conflict:
-      "Vorgangskonflikt (409). Entwürfe in Klarwerk prüfen. Unveränderter Inhalt behält seinen Schlüssel; Änderungen beginnen einen neuen Vorgang.",
+      "Konflikt (409). Der Entwurf wurde inzwischen an anderer Stelle geändert, oder der Vorgangsschlüssel passt nicht. Nichts wurde überschrieben: bitte den Entwurf in Klarwerk prüfen.",
     too_large:
       "Ladung zu groß (Grenze: 5 MiB UTF-8-JSON). Kleineren Umfang wählen; nichts wird still gekürzt.",
     selection_too_large:
@@ -162,6 +196,19 @@ globalThis.KLARA_TEXT = {
     modeSelection: "Selection",
     modeArticle: "Article (main page content)",
     modePage: "Accessible page",
+    modeClipboard: "Clipboard (pasted text)",
+    clipboardTitle: "Capture from the clipboard",
+    clipboardHint:
+      "Klara reads the clipboard only when you click this button — never on opening and never in the background. The browser asks for permission the first time.",
+    paste: "Paste from clipboard",
+    clipboardText: "Pasted text (editable)",
+    originLabel: "Origin of the pasted text",
+    originNone: "Please choose",
+    originKiChat: "AI chat, unverified",
+    originWeb: "Web page, unverified",
+    originEigen: "Own text, unverified",
+    originHintClip:
+      "The browser sees the text, not where it came from. This statement is yours and is recorded as such in the draft. The open tab's address is named as a tab, not as the source.",
     scopeHint:
       "The scope is chosen deliberately and is never widened on its own. “Accessible page” means everything readable without further loading — not every protected, embedded or later-loaded resource.",
     scopeEmpty: "not available",
@@ -204,6 +251,8 @@ globalThis.KLARA_TEXT = {
     save: "Confirm and save draft",
     cancel: "Discard selection",
     openDraft: "Open draft in Klarwerk",
+    openStale:
+      "A draft already exists for this capture, but what you see here is not what is saved. Please confirm and save: the changes go into the same draft, no second copy is created. The link reappears afterwards.",
     webSession:
       "Klarwerk on the web may require a separate sign-in with the same account. The link contains no session token.",
     instructions:
@@ -214,10 +263,24 @@ globalThis.KLARA_TEXT = {
     no_selection: "No selection. Select text, then right-click.",
     previewState: "Preview ready. Nothing has been sent yet.",
     previewEdited:
-      "Preview ready. Saving changes starts a new operation; any earlier draft remains.",
+      "Preview ready. An earlier attempt was rejected; nothing was created by it. Saving changes starts a new operation.",
+    previewUnresolved:
+      "Preview ready. One save attempt is unconfirmed — a draft for it may already exist. Saving next repeats exactly that request first and then writes your changes into the same draft. Until then the scope and the pasted text stay unchanged.",
+    previewSameDraft:
+      "Preview ready. Saving changes writes into the same draft — no second draft is created.",
+    clipboard_denied:
+      "Clipboard access was not granted. Please allow the browser prompt and paste again. Nothing was read.",
+    clipboard_empty: "The clipboard held no text. Copy it in the source and paste again.",
+    classification_locked:
+      "A classification that has already been saved cannot be reset to “Open” from here. Please choose a level or open the draft in Klarwerk. Nothing was sent.",
+    origin_missing: "Please state the origin of the pasted text. Without it nothing is saved.",
+    unresolved_create:
+      "One save attempt is unconfirmed: the scope and the pasted text stay unchanged until it is resolved. Please save again — the same request is repeated, so no second draft is created. Nothing was sent and nothing was discarded.",
     saving: "Operation in progress. Please wait.",
     busy: "An operation is already running. Please wait, then try again.",
     saved: "Saved as an unreviewed draft; complete content confirmed.",
+    updated:
+      "Changes saved into the same draft; complete content confirmed. No second draft was created.",
     expired:
       "Session missing or expired. Sign in again. Your selection remains temporarily available.",
     uncertain:
@@ -227,7 +290,7 @@ globalThis.KLARA_TEXT = {
     denied:
       "Access denied (403). Check account approval or permissions. Your selection is retained.",
     conflict:
-      "Operation conflict (409). Check drafts in Klarwerk. Unchanged content retains its key; changes start a new operation.",
+      "Conflict (409). The draft was changed elsewhere in the meantime, or the operation key does not match. Nothing was overwritten: please check the draft in Klarwerk.",
     too_large:
       "Payload too large (limit: 5 MiB UTF-8 JSON). Choose a smaller scope; nothing is silently truncated.",
     selection_too_large:

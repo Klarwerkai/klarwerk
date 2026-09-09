@@ -175,6 +175,11 @@ describe("JOB 3131 T2 · der Bestand ueberlebt die Aufteilung in zwei Laeufe", (
     // Vorkommen/Fremdfarben-Nachweis und der Nachweis zweier Läufe mit spät eintreffenden Antworten.
     expect(holeRest()).toContain("tests/word-vergleich/vorkommen-und-fremdfarben.test.ts");
     expect(holeRest()).toContain("tests/word-vergleich/zwei-laeufe-und-spaete-antworten.test.ts");
+    // JOB 3280: der Zwischenablage- und Entwurfsnachweis fährt jsdom, eine echte Zwischenablage
+    // im Fenster und ein echtes Fastify, aber KEIN Chromium. Er trägt den einzigen Beleg dafür,
+    // dass die Leiste nur auf Klick liest und dass ein Vorgang genau einen Entwurf erzeugt —
+    // fiele er still aus beiden Gruppen, wäre die Freitagsvorführung (A04/A07) ungedeckt.
+    expect(holeRest()).toContain("tests/klara-browser/zwischenablage.test.ts");
   });
 
   it("V4 · der Verzeichnisgang der Konfiguration sieht denselben Bestand wie der Collector", () => {

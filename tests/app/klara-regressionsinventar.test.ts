@@ -144,6 +144,11 @@ const INVENTAR: readonly string[] = [
   // JOB 3279 R2: der Wiederöffnungsnachweis im echten Klarwerk-Client (SanitizedHtml und
   // DraftBodyGallery). K2 meldete den Pfad (Achse `name`).
   "tests/klara-browser/wiederoeffnen.test.tsx",
+  // JOB 3280 CHR-06/07: die Zwischenablage auf Klick (genau einmal, nie beim Aufbau) und der EINE
+  // Entwurf je Vorgang — Sichern per POST, jede weitere Fassung per PUT auf dieselbe Kennung,
+  // dazwischen die Rückfrage statt eines Links auf den überholten Stand. K2 meldete den Pfad
+  // (Achse `name`, `tests/klara-browser/`), das Inventar nimmt ihn nicht still auf.
+  "tests/klara-browser/zwischenablage.test.ts",
   // JOB 3144 UX-16: Webhilfe-Geometrie und erreichbarer Weg aus der Word-Vorschau.
   // K2 meldete beide neuen Dateien; Namensachse (beide), Komponente (gemounteter Test).
   "tests/klara-webhilfe-schmal/klara-hilfe-chromium.test.ts",
@@ -866,7 +871,10 @@ describe("JOB 920 · K — das Klara-Regressionsinventar ist ableitbar, nicht be
     // JOB 3279 KONFLIKTRUNDE 1: `artikel.test.tsx` kommt bei der Vereinigung beider Nachführungen
     // hinzu (ebenfalls „klara“ im Pfad). GEMESSEN, NICHT GESETZT: siehe RUECKGABE.
     // JOB 3279 R2: der Wiederöffnungsnachweis kommt hinzu; vor Nachführung: expected 48 to be 47.
-    expect(nurName.length).toBe(48);
+    // JOB 3280: `zwischenablage.test.ts` liegt unter `tests/klara-browser/` und trägt „klara“
+    // damit im PFAD. GEMESSEN, NICHT GESETZT: mit dem Inventareintrag und noch unverändertem
+    // Zähler meldete der Lauf `expected 49 to be 48`; erst danach wurde diese Zeile angefasst.
+    expect(nurName.length).toBe(49);
     expect(verfehlt.length).toBeGreaterThanOrEqual(25);
     expect(verfehlt.length + nurName.length).toBe(GEFUNDEN.length);
   });

@@ -13,8 +13,14 @@
   const MAX_PIECES = 6000;
   const MAX_PIECE_DEPTH = 14;
   const MAX_GAPS = 21;
-  /** @type {import("./types").Mode[]} */
-  const MODES = ["selection", "article", "page"];
+  /**
+   * JOB 3280 · CHR-06: `clipboard` ist der VIERTE Umfang, kein Sonderweg daneben. Er entsteht
+   * ausschliesslich durch einen Klick auf „Aus Zwischenablage einfügen" — die Seite liefert ihn
+   * nie mit, und er ist nie Vorbelegung. Damit läuft die eingefügte Antwort durch dieselbe
+   * Umfangswahl, dieselbe Vorschau und denselben Speicherweg wie jede andere Übernahme.
+   * @type {import("./types").Mode[]}
+   */
+  const MODES = ["selection", "article", "page", "clipboard"];
   const ready = chrome.storage.session.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" });
   let busy = false;
   let captureBusy = false;
@@ -80,7 +86,21 @@
     selection: "Markierung / Selection",
     article: "Artikel / Article",
     page: "Zugängliche Seite / Accessible page",
+    clipboard: "Zwischenablage / Clipboard",
   };
+  /**
+   * JOB 3280 · CHR-06: die HERKUNFT eingefügten Textes ist eine ANGABE DER PERSON, keine Messung.
+   * Der Browser sieht die Zwischenablage erst im Augenblick des Einfügens und weiss nicht, woher
+   * ihr Inhalt stammt. Deshalb steht im Entwurfskörper ausdrücklich, WER das behauptet — und die
+   * Adresse daneben ist der offene Tab, nicht die Quelle des Textes.
+   * @type {Record<string, string>}
+   */
+  const ORIGIN_TEXT = {
+    ki_chat: "KI-Chat, ungeprüft / AI chat, unverified",
+    web: "Webseite, ungeprüft / Web page, unverified",
+    eigen: "Eigener Text, ungeprüft / Own text, unverified",
+  };
+  const ORIGINS = ["", "ki_chat", "web", "eigen"];
   // Chat-KI-Seiten. Der Vergleich ist Host-genau oder echte Unterdomäne — „www.perplexity.ai.evil.test"
   // ist damit KEINE Chat-KI, sondern eine fremde Seite, die so heißen möchte.
   const AI_HOSTS = [
@@ -255,6 +275,33 @@
       selection: cleanVariant(source.selection),
       article: cleanVariant(source.article),
       page: cleanVariant(source.page),
+      // Die SEITE liefert diesen Umfang nie mit — er entsteht allein durch das Einfügen. Er wird
+      // hier trotzdem gebaut, damit die Leiste ihn von Anfang an als „nicht vorhanden" anzeigen
+      // kann statt als fehlendes Feld.
+      clipboard: cleanVariant(source.clipboard),
+    };
+  }
+  /**
+   * JOB 3280 · CHR-06: der eingefügte Text als Umfang. Absätze trennt eine LEERZEILE; einfache
+   * Zeilenumbrüche bleiben im Absatz (`serialize` macht `<br>` daraus, die Vorschau ebenso).
+   * Der Text wird NICHT als Markup gedeutet — er kommt aus der Zwischenablage und ist Fremddatum
+   * wie jeder Seiteninhalt. Wird an der Grenze gekürzt, sagt die Lückenliste das ausdrücklich.
+   * @param {string} raw @returns {import("./types").Variant}
+   */
+  function clipboardVariant(raw) {
+    const text = raw.slice(0, MAX_SELECTION);
+    const nodes = text
+      .split(/\r?\n[ \t]*\r?\n/)
+      .map((teil) => teil.trim())
+      .filter((teil) => teil.length > 0)
+      .slice(0, MAX_PIECES)
+      .map(para);
+    return {
+      available: nodes.length > 0,
+      text,
+      nodes,
+      gaps: raw.length > text.length ? [{ kind: "truncated", detail: String(raw.length) }] : [],
+      images: 0,
     };
   }
   /** @param {unknown} value @returns {value is import("./types").Mode} */
@@ -279,6 +326,7 @@
   function bodyPieces(work, form) {
     const s = work.selection;
     const variant = chosen(work);
+    const clip = work.mode === "clipboard";
     const provenance = `Browser / ${new URL(s.url).hostname}`;
     /** @type {Record<string, string>} */
     const classifications = {
@@ -292,14 +340,38 @@
       { tag: "h2", children: [words(form.title)] },
       para(`${provenance} · Ungeprüfter Entwurf / Unreviewed draft`),
     ];
-    if (aiChat(s.url)) out.push(para("KI-Chat, ungeprüft / AI chat, unverified"));
+    // JOB 3280: bei eingefügtem Text steht die ANGABE DER PERSON an der Stelle, an der sonst die
+    // gemessene Kennzeichnung der Seite steht — und die Adresse heisst dann „Tab", nicht „Quelle".
+    // Eine Zwischenablage kann von überall kommen; die Seite daneben zu benennen wäre eine
+    // Herkunftsbehauptung, für die es keinen Beleg gibt.
+    if (clip)
+      out.push(
+        para(
+          `Herkunft (Angabe der Person) / Origin (stated by the person): ${originText(work, form)}`,
+        ),
+        para(
+          "Aus der Zwischenablage eingefügt; der Browser kann die Herkunft nicht prüfen / Pasted from the clipboard; the browser cannot verify its origin",
+        ),
+      );
+    else if (aiChat(s.url)) out.push(para("KI-Chat, ungeprüft / AI chat, unverified"));
     out.push(
       para(`Seite / Page: ${s.title}`),
-      para(`Ursprüngliche Quelle / Original source: ${s.url}`),
+      clip
+        ? // JOB 3280 R2 (Codex 3683da57): die Zeile hiess „Offener Tab beim Einfügen" und nannte
+          // dabei `s.url` — die Adresse der ERFASSUNG. Wer nach der Übernahme den Tab wechselt und
+          // erst dann einfügt, bekam damit eine Behauptung über einen Augenblick, den niemand
+          // gemessen hat. Der Tab beim Einfügen wäre neu zu messen; das ginge nur mit dem Recht
+          // `tabs` (die Leiste hat es nicht, und `activeTab` gilt nur zur Klickgeste am Symbol).
+          // Also steht hier jetzt der Augenblick, der WIRKLICH belegt ist — derselbe, den die
+          // Zeile „Erfasst" darunter datiert.
+          para(`Bei der Erfassung verwendeter Tab / Tab used at capture: ${s.url}`)
+        : para(`Ursprüngliche Quelle / Original source: ${s.url}`),
       para(`Erfasst / Captured: ${s.capturedAt}`),
       para(`Umfang / Scope: ${SCOPE_TEXT[work.mode] ?? SCOPE_TEXT[""]}`),
       para(`Vertraulichkeit / Confidentiality: ${classifications[form.confidentiality]}`),
-      para("Quellseite, kein unabhängiger Beleg / Source page, not independent evidence"),
+      clip
+        ? para("Eingefügter Text, kein unabhängiger Beleg / Pasted text, not independent evidence")
+        : para("Quellseite, kein unabhängiger Beleg / Source page, not independent evidence"),
     );
     if (variant.images > 0)
       out.push(
@@ -322,6 +394,29 @@
     return out;
   }
 
+  /**
+   * Die Herkunftsangabe im Klartext. Nennt der Mensch einen KI-Chat UND ist der offene Tab
+   * wirklich einer, steht dessen Name dabei — abgelesen vom Host, nicht erfunden.
+   * @param {import("./types").Work} work @param {import("./types").Form} form
+   */
+  function originText(work, form) {
+    const base = ORIGIN_TEXT[form.origin] ?? "Nicht angegeben / Not stated";
+    return form.origin === "ki_chat" && aiChat(work.selection.url)
+      ? `${base} (${new URL(work.selection.url).hostname})`
+      : base;
+  }
+  /**
+   * JOB 3280: das Formular in EINER Gestalt. `origin` ist an der Nachrichtengrenze optional — die
+   * Wege aus JOB 3278/3279 kennen das Feld nicht und sollen unverändert weiterlaufen —, im
+   * gespeicherten Zustand ist es immer vorhanden. Ein fehlendes Feld heisst „nicht angegeben".
+   * @param {Partial<import("./types").Form> | undefined} form @returns {import("./types").Form}
+   */
+  const einheitlich = (form) => ({
+    title: form?.title ?? "",
+    context: form?.context ?? "",
+    confidentiality: form?.confidentiality ?? "",
+    origin: form?.origin ?? "",
+  });
   /** @param {import("./types").Work} work @param {import("./types").Form | undefined} form @returns {import("./types").Payload} */
   function payload(work, form) {
     if (
@@ -331,24 +426,38 @@
       form.title.length > 90 ||
       typeof form.context !== "string" ||
       form.context.length > 4000 ||
-      !["", "intern", "vertraulich", "streng_vertraulich"].includes(form.confidentiality)
+      !["", "intern", "vertraulich", "streng_vertraulich"].includes(form.confidentiality) ||
+      !ORIGINS.includes(form.origin)
     )
       throw new Error("invalid_form");
     const s = work.selection;
+    const clip = work.mode === "clipboard";
     const variant = chosen(work);
     if (!variant.available) throw new Error("empty");
+    // Eingefügter Text OHNE Herkunftsangabe wird nicht gespeichert: der Entwurfskörper trüge sonst
+    // „Nicht angegeben" an der einzigen Stelle, die über die Herkunft überhaupt etwas sagen kann.
+    if (clip && !form.origin) throw new Error("origin_missing");
     const provenance = `Browser / ${new URL(s.url).hostname}`;
     return {
       title: form.title,
       statement: variant.text,
       bodyHtml: serialize(bodyPieces(work, form)),
       pendingSources: [
-        {
-          label: provenance,
-          url: s.url,
-          excerpt: variant.text.slice(0, EXCERPT),
-          sourceProvider: "Browser",
-        },
+        // Beim eingefügten Text FEHLT die Adresse bewusst. Der offene Tab ist nicht die Quelle;
+        // ihn hier einzutragen hiesse, in der Quellenliste von Klarwerk eine Herkunft zu
+        // behaupten, die niemand gemessen hat. Er steht im Körper, ausdrücklich als Tab benannt.
+        clip
+          ? {
+              label: "Zwischenablage / Clipboard",
+              excerpt: variant.text.slice(0, EXCERPT),
+              sourceProvider: "Browser",
+            }
+          : {
+              label: provenance,
+              url: s.url,
+              excerpt: variant.text.slice(0, EXCERPT),
+              sourceProvider: "Browser",
+            },
       ],
       ...(form.confidentiality ? { confidentiality: form.confidentiality } : {}),
     };
@@ -386,15 +495,26 @@
             form: w.form,
             sourceChanged: state.sourceChangedId === w.id,
             attempted: w.operations.length > 0,
+            // JOB 3280 R3: DASS eine Anlage unklar ist. Die Leiste hält daran den Inhalt still und
+            // sagt, was das nächste Sichern tun wird — sie behauptet dabei keinen Entwurf.
+            unresolvedCreate: Boolean(w.pendingCreate),
+            // JOB 3280 · CHR-07: DASS es einen Entwurf gibt, ist eine andere Aussage als „er ist
+            // bestätigt und dieser Link führt hin". Die Kennung reist deshalb ohne Adresse mit —
+            // die Leiste sagt damit „hier liegen ungesicherte Änderungen", baut aber keinen Link
+            // daraus. Der entsteht weiter NUR aus einem frisch nachgelesenen Entwurf, unten.
+            ...(w.draftId ? { draftId: w.draftId } : {}),
             // A stored receipt alone never produces a success claim or usable link.
-            ...(w.status === "saved" && status === "saved" && w.receipt
+            // JOB 3280: `updated` ist derselbe bestätigte Zustand wie `saved`, nur die zweite
+            // Fassung — er trägt denselben Link auf DIESELBE Kennung.
+            ...(w.status === "saved" && ["saved", "updated"].includes(status ?? "") && w.receipt
               ? { link: `${HOST}/capture/frontdoor?draft=${encodeURIComponent(w.receipt)}` }
               : {}),
           }
         : {}),
     };
   }
-  /** @param {"login" | "logout" | "save" | "read"} kind @param {import("./types").Auth | null} auth @param {object | null} [body] @param {string} [id] @returns {Promise<import("./types").Wire | null>} */
+  const DRAFT_ID = /^[\w-]{1,128}$/;
+  /** @param {"login" | "logout" | "save" | "read" | "update"} kind @param {import("./types").Auth | null} auth @param {object | null} [body] @param {string} [id] @returns {Promise<import("./types").Wire | null>} */
   async function api(kind, auth, body, id) {
     // Fixed operation table. No URL/method/headers from messages or page data.
     const paths = {
@@ -402,11 +522,19 @@
       logout: "/api/auth/logout",
       save: "/api/drafts",
       read: `/api/drafts/${encodeURIComponent(id ?? "")}`,
+      // JOB 3280 · CHR-07: derselbe Entwurf, zweite Fassung. PUT statt eines zweiten POST — genau
+      // das ist der Unterschied zwischen „ein Vorgang" und „zwei Entwürfe im Bestand".
+      update: `/api/drafts/${encodeURIComponent(id ?? "")}`,
     };
-    if (!Object.hasOwn(paths, kind) || (kind === "read" && !/^[\w-]{1,128}$/.test(id ?? "")))
+    /** @type {Record<string, string>} */
+    const methods = { login: "POST", logout: "POST", save: "POST", read: "GET", update: "PUT" };
+    if (
+      !Object.hasOwn(paths, kind) ||
+      ((kind === "read" || kind === "update") && !DRAFT_ID.test(id ?? ""))
+    )
       throw new Error("invalid_message");
     const response = await fetch(HOST + paths[kind], {
-      method: kind === "read" ? "GET" : "POST",
+      method: methods[kind] ?? "POST",
       credentials: "omit",
       redirect: "error",
       cache: "no-store",
@@ -457,6 +585,14 @@
       "verify_failed",
       "operation_limit",
       "empty",
+      // JOB 3280: eingefügter Text ohne Herkunftsangabe, und die Einstufung, die von hier aus
+      // nicht mehr zurückgenommen werden kann. Beide sind Nutzerlagen mit einem klaren nächsten
+      // Schritt — sie dürfen nicht als „uncertain" verschwinden.
+      "origin_missing",
+      "classification_locked",
+      // JOB 3280 R3: die unklare Erstanlage, die sich nicht mehr zeichengleich wiederholen lässt.
+      // Sie ist eine Nutzerlage mit klarem nächsten Schritt und darf nicht als „uncertain" enden.
+      "unresolved_create",
     ];
     const status = known.includes(code) ? code : "uncertain";
     if (status === "expired") await chrome.storage.session.set({ auth: null });
@@ -473,17 +609,22 @@
    * @param {string | undefined} html
    */
   const anchorless = (html) => String(html ?? "").replace(/ data-image-id="[^"]*"/g, "");
-  /** @param {import("./types").Wire | null} draft @param {import("./types").Work} work @param {import("./types").Payload} sent @param {string} owner @returns {draft is import("./types").ConfirmedDraft} */
-  function matches(draft, work, sent, owner) {
+  /**
+   * JOB 3280: verglichen wird gegen das GESENDETE, nicht gegen die Quelle im Zustand. Beim
+   * eingefügten Text trägt die Quellenzeile bewusst KEINE Adresse (s. `payload`) — ein Vergleich
+   * gegen `work.selection.url` hätte dort auf einer Adresse bestanden, die gar nicht mitging.
+   * @param {import("./types").Wire | null} draft @param {import("./types").Payload} sent @param {string} owner @returns {draft is import("./types").ConfirmedDraft}
+   */
+  function matches(draft, sent, owner) {
     return (
       Boolean(draft) &&
       draft !== null &&
-      /^[\w-]{1,128}$/.test(draft.id ?? "") &&
+      DRAFT_ID.test(draft.id ?? "") &&
       draft.originalAuthor === owner &&
       anchorless(draft.payload?.bodyHtml) === anchorless(sent.bodyHtml) &&
       draft.payload?.title === sent.title &&
       draft.payload?.confidentiality === sent.confidentiality &&
-      draft.payload?.pendingSources?.[0]?.url === work.selection.url
+      draft.payload?.pendingSources?.[0]?.url === sent.pendingSources[0]?.url
     );
   }
   async function stateView() {
@@ -492,9 +633,16 @@
       if (!state.auth) return view(state, "expired");
       try {
         const draft = await api("read", state.auth, null, state.work.receipt);
-        if (!matches(draft, state.work, payload(state.work, state.work.form), state.auth.id))
+        if (!matches(draft, payload(state.work, state.work.form), state.auth.id))
           throw new Error("verify_failed");
+        // JOB 3280: das frisch Nachgelesene ist der Stand, auf dem die nächste Fassung aufsetzt.
+        // Ohne diese Zeile liefe der Vorgangsschutz (`expectedUpdatedAt`) nach einem verlorenen
+        // PUT auf einen veralteten Wert und meldete einen Konflikt, den es nicht gibt.
+        state.work.draftId = draft.id;
+        state.work.updatedAt = typeof draft.updatedAt === "string" ? draft.updatedAt : null;
+        state.work.savedLevel = draft.payload?.confidentiality ?? "";
         state.work.status = "saved";
+        await put(state.work);
         return view(state, "saved");
       } catch (error) {
         return failure(state, error);
@@ -510,7 +658,9 @@
     if (
       !message ||
       typeof message !== "object" ||
-      !["state", "login", "logout", "edit", "mode", "save", "cancel"].includes(message.type)
+      !["state", "login", "logout", "edit", "mode", "clipboard", "save", "cancel"].includes(
+        message.type,
+      )
     )
       return { status: "invalid_message" };
     if (message.type === "state") {
@@ -520,6 +670,7 @@
         return await stateView();
       } finally {
         busy = false;
+        void nachholen();
       }
     }
     if (busy || captureBusy) return view(await read(), "busy");
@@ -529,6 +680,7 @@
       return await mutate(message, state);
     } finally {
       busy = false;
+      void nachholen();
     }
   }
   /** @param {import("./types").Message} message @param {import("./types").State} state @returns {Promise<import("./types").View>} */
@@ -589,6 +741,19 @@
         });
         return view(await read(), uncertain ? "cancelled_uncertain" : "cancelled");
       }
+      // ==========================================================================================
+      // JOB 3280 R3 — SOLANGE EINE ANLAGE UNKLAR IST, STEHT DER INHALT STILL.
+      // ==========================================================================================
+      //
+      // Der unklare Vorgang wird durch WIEDERHOLUNG geklärt (`aufloesen`), und wiederholen heisst
+      // zeichengleich: nur dieselbe Ladung unter demselben Schlüssel beantwortet der Server mit
+      // demselben Entwurf statt mit einem zweiten. Ein anderer Umfang oder ein anderer eingefügter
+      // Text machte genau das unmöglich — und der einzige verbliebene Ausweg wäre wieder eine
+      // zweite Anlage. Also bleibt der Inhalt stehen, sichtbar und vollständig; die ANGABEN
+      // (Titel, Kontext, Einstufung, Herkunft) bleiben bearbeitbar, denn sie gehen nach der
+      // Klärung per PUT in denselben Entwurf.
+      if ((message.type === "mode" || message.type === "clipboard") && state.work.pendingCreate)
+        return view(state, "unresolved_create");
       if (message.type === "mode") {
         // Der Umfang wird bewusst gewählt und nie automatisch ausgeweitet: ein Umfang ohne
         // Inhalt bleibt unwählbar, statt eine leere Übernahme zu erlauben.
@@ -596,6 +761,25 @@
         if (!isMode(wanted) || !state.work.variants?.[wanted]?.available)
           return view(state, "invalid_message");
         state.work.mode = wanted;
+        state.work.receipt = null;
+        state.work.status = "preview";
+        await put(state.work);
+        return view(state, "preview");
+      }
+      if (message.type === "clipboard") {
+        // JOB 3280 · CHR-06: der eingefügte und danach BEARBEITETE Text. Er kommt ausschliesslich
+        // über diese Nachricht herein — der Worker liest die Zwischenablage nie selbst; er hat in
+        // einem Service Worker gar keinen Zugriff darauf, und das soll so bleiben.
+        if (typeof message.text !== "string" || message.text.length > MAX_SELECTION)
+          throw new Error("invalid_form");
+        const variant = clipboardVariant(message.text);
+        state.work.variants = { ...state.work.variants, clipboard: variant };
+        // Leerer Text nimmt den Umfang wieder weg, statt eine leere Übernahme wählbar zu lassen.
+        state.work.mode = variant.available
+          ? "clipboard"
+          : state.work.mode === "clipboard"
+            ? ""
+            : state.work.mode;
         state.work.receipt = null;
         state.work.status = "preview";
         await put(state.work);
@@ -609,27 +793,45 @@
           typeof message.form.context !== "string" ||
           message.form.context.length > 4000 ||
           !["", "intern", "vertraulich", "streng_vertraulich"].includes(
-            message.form.confidentiality,
-          )
+            message.form.confidentiality ?? "",
+          ) ||
+          !ORIGINS.includes(message.form.origin ?? "")
         )
           throw new Error("invalid_form");
-        state.work.form = /** @type {import("./types").Form} */ (message.form);
+        state.work.form = einheitlich(message.form);
         state.work.receipt = null;
         state.work.status = "preview";
         await put(state.work);
         return view(state, "preview");
       }
-      const sent = payload(state.work, message.form);
+      const gewollt = einheitlich(message.form);
+      const sent = payload(state.work, gewollt);
       if (!state.auth) return view(state, "expired");
       if (state.work.owner && state.work.owner !== state.auth.id)
         return view(state, "account_changed");
-      const fingerprint = Array.from(
-        new Uint8Array(
-          await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(sent))),
-        ),
-      )
-        .map((b) => b.toString(16).padStart(2, "0"))
-        .join("");
+      // ==========================================================================================
+      // JOB 3280 · CHR-07 — DIE ZWEITE FASSUNG GEHT IN DENSELBEN ENTWURF.
+      // ==========================================================================================
+      //
+      // Bis hierher legte JEDES Speichern einen neuen Entwurf an: eine Änderung erzeugte einen
+      // neuen Abdruck, der neue Abdruck einen neuen Vorgangsschlüssel, und der Server sah einen
+      // zweiten POST. Wer nach dem Sichern noch ein Wort am Titel änderte, hatte zwei Entwürfe zu
+      // einem Vorgang im Bestand — und „In Klarwerk öffnen" führte zum ERSTEN.
+      //
+      // Sobald ein Entwurf zu dieser Übernahme existiert, ist der Weg deshalb `PUT` auf seine
+      // Kennung. Kein `operationId` im Rumpf: der PUT-Weg mischt den Rumpf in den Entwurf
+      // (`capture/src/service.ts` mergeDraftPayload), der Schlüssel läge sonst als Nutzlast im
+      // gespeicherten Entwurf. Er wird auch nicht gebraucht — ein wiederholtes PUT mit demselben
+      // Inhalt ist von sich aus derselbe Vorgang.
+      //
+      // R3 (bens Korrekturpflicht aus Runde 2): DAS GILT AUCH, WENN DIE ERSTE ANTWORT VERLOREN
+      // GING. Bis hierher hing der Schutz an einer Kennung, die es nur mit Antwort gab: blieb sie
+      // aus, erzeugte die nächste Bearbeitung einen neuen Abdruck, einen neuen Vorgangsschlüssel —
+      // und damit den zweiten Entwurf, den CHR-07 gerade abschaffen sollte. Der unklare Vorgang
+      // wird deshalb ZUERST geklärt, bevor irgendetwas Neues hinausgeht.
+      if (state.work.pendingCreate) return await aufloesen(state, gewollt, sent, state.auth);
+      if (state.work.draftId) return await aktualisiere(state, gewollt, sent, state.auth);
+      const fingerprint = await abdruck(sent);
       let operation = state.work.operations.find(
         (op) => op.fingerprint === fingerprint && op.owner === state.auth?.id,
       );
@@ -641,21 +843,167 @@
       const body = { ...sent, operationId: operation.id };
       if (new TextEncoder().encode(JSON.stringify(body)).byteLength > MAX_BYTES)
         throw new Error("too_large");
-      state.work.form = /** @type {import("./types").Form} */ (message.form);
+      state.work.form = gewollt;
       state.work.owner = state.auth.id;
       state.work.status = "saving";
       state.work.receipt = null;
       // Persist BEFORE sending; suspension/response loss must retain the operation key.
+      // JOB 3280 R3: und nicht nur den Schlüssel, sondern den GANZEN unklaren Vorgang — Schlüssel,
+      // Abdruck und die Fassung, die hinausgeht. Nur damit lässt er sich später zeichengleich
+      // wiederholen; ein Schlüssel ohne seine Ladung ist nicht wiederholbar.
+      state.work.pendingCreate = { id: operation.id, fingerprint, form: gewollt };
       await put(state.work);
-      const draft = await api("save", state.auth, body);
-      if (!matches(draft, state.work, sent, state.auth.id)) throw new Error("verify_failed");
+      const draft = await anlegen(state.work, state.auth, body, "erstversuch");
+      if (!matches(draft, sent, state.auth.id)) throw new Error("verify_failed");
       state.work.receipt = draft.id;
+      // JOB 3280: ab hier GEHÖRT dieser Übernahme ein Entwurf. Die Kennung überlebt jede weitere
+      // Änderung — nur Verwerfen, Abmelden oder ein Kontowechsel nehmen sie wieder weg.
+      state.work.draftId = draft.id;
+      // Der Vorgang ist geklärt: er hat einen Entwurf und braucht keine Wiederholung mehr.
+      state.work.pendingCreate = null;
+      state.work.updatedAt = typeof draft.updatedAt === "string" ? draft.updatedAt : null;
+      state.work.savedLevel = gewollt.confidentiality;
       state.work.status = "saved";
       await put(state.work);
       return view(state, "saved");
     } catch (error) {
       return failure(state, error);
     }
+  }
+  /**
+   * Der Abdruck einer Ladung — der Beweis, dass eine Wiederholung wirklich DIESELBE Sendung ist.
+   * @param {import("./types").Payload} sent @returns {Promise<string>}
+   */
+  async function abdruck(sent) {
+    const hash = await crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(JSON.stringify(sent)),
+    );
+    return Array.from(new Uint8Array(hash))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+  }
+  /**
+   * Antworten, die eine Anlage AUSSCHLIESSEN: der Server hat abgewiesen, bevor etwas entstand
+   * (400/401/403/413/429). Alles andere — Netz weg, Zeitablauf, 5xx, 409 — lässt offen, ob
+   * geschrieben wurde.
+   */
+  const OHNE_ANLAGE = ["rejected", "expired", "denied", "too_large", "rate_limited"];
+  /**
+   * JOB 3280 R3: DER EINE WEG, AUF DEM EIN ENTWURF ANGELEGT WIRD — Erstversuch wie Wiederholung.
+   *
+   * R4 (bens Korrekturpflicht aus Runde 3, von Codex vorher statisch vorhergesagt) — DIE ABWEISUNG
+   * DES ERSTVERSUCHS KLÄRT IHN, DIE ABWEISUNG DER WIEDERHOLUNG KLÄRT GAR NICHTS.
+   *
+   * Bis hierher führten beide dieselbe Bereinigung: eine 429 auf die WIEDERHOLUNG löschte den
+   * festgehaltenen Vorgang. Sie sagt aber nur, dass DIESE Anfrage abgewiesen wurde — über den
+   * Ausgang der vorher verlorenen Sendung sagt sie nichts. Der Zustand galt danach als geklärt, die
+   * nächste Bearbeitung nahm wieder den Anlageweg mit neuem Schlüssel, und der zweite Entwurf war
+   * zurück (ben, gemessen: `to have a length of 1 but got 2`).
+   *
+   * Deshalb: NUR der Erstversuch klärt sich durch seine eigene Abweisung — er ist die einzige
+   * Sendung dieses Vorgangs, und wenn der Server sie abweist, ist nichts entstanden. Eine
+   * abgewiesene Wiederholung lässt den Vorgang stehen: unklar bleibt unklar, die Inhaltssperre
+   * bleibt, und die Wiederholung ist weiterhin möglich (nach 401 nach erneuter Anmeldung). Geklärt
+   * wird er allein durch eine eindeutige Auskunft des Servers — die angelegte Kennung.
+   * @param {import("./types").Work} work @param {import("./types").Auth} auth @param {object} body
+   * @param {"erstversuch" | "wiederholung"} art
+   */
+  async function anlegen(work, auth, body, art) {
+    try {
+      return await api("save", auth, body);
+    } catch (error) {
+      if (
+        art === "erstversuch" &&
+        OHNE_ANLAGE.includes(error instanceof Error ? error.message : "")
+      ) {
+        work.pendingCreate = null;
+        await put(work);
+      }
+      throw error;
+    }
+  }
+  /**
+   * JOB 3280 R3 · DER UNKLARE VORGANG WIRD GEKLÄRT, BEVOR ETWAS NEUES ENTSTEHT.
+   *
+   * Wiederholt wird die verlorene Sendung ZEICHENGLEICH und unter ihrem Schlüssel. Der Server
+   * beantwortet dieselbe Wiederholung mit demselben Entwurf (`createDraftVorgang`, 200 statt 201);
+   * kam die erste Sendung nie an, legt er sie jetzt an (201). Beide Wege enden bei EINEM Entwurf,
+   * und erst danach geht die gewollte Fassung per PUT dort hinein.
+   *
+   * Stimmt der Abdruck der Wiederholung nicht mit dem festgehaltenen überein, wird NICHTS gesendet:
+   * eine andere Ladung unter demselben Schlüssel bekäme 409, eine andere unter neuem Schlüssel wäre
+   * der zweite Entwurf. Dann steht die Lage da, statt still eine von beiden zu wählen.
+   * @param {import("./types").State} state @param {import("./types").Form} gewollt
+   * @param {import("./types").Payload} sent @param {import("./types").Auth} auth
+   * @returns {Promise<import("./types").View>}
+   */
+  async function aufloesen(state, gewollt, sent, auth) {
+    const work = state.work;
+    const offen = work?.pendingCreate;
+    if (!work || !offen) throw new Error("uncertain");
+    const wieder = payload(work, offen.form);
+    if ((await abdruck(wieder)) !== offen.fingerprint) throw new Error("unresolved_create");
+    work.status = "saving";
+    work.receipt = null;
+    await put(work);
+    const draft = await anlegen(work, auth, { ...wieder, operationId: offen.id }, "wiederholung");
+    if (!matches(draft, wieder, auth.id)) throw new Error("verify_failed");
+    work.draftId = draft.id;
+    work.receipt = draft.id;
+    work.updatedAt = typeof draft.updatedAt === "string" ? draft.updatedAt : null;
+    work.savedLevel = offen.form.confidentiality;
+    work.pendingCreate = null;
+    work.status = "saved";
+    await put(work);
+    // War die gewollte Fassung genau die geklärte, ist hier Schluss — kein PUT ohne Änderung.
+    if (JSON.stringify(sent) === JSON.stringify(wieder)) return view(state, "saved");
+    return await aktualisiere(state, gewollt, sent, auth);
+  }
+  /**
+   * JOB 3280 · CHR-07: die zweite und jede weitere Fassung DESSELBEN Entwurfs.
+   * @param {import("./types").State} state @param {import("./types").Form} form
+   * @param {import("./types").Payload} sent @param {import("./types").Auth} auth
+   * @returns {Promise<import("./types").View>}
+   */
+  async function aktualisiere(state, form, sent, auth) {
+    const work = state.work;
+    if (!work?.draftId) throw new Error("uncertain");
+    // DIE EINE LAGE, DIE DER PUT-WEG NICHT KANN, UND SIE WIRD BENANNT.
+    //
+    // `PUT /api/drafts/:id` mischt (mergeDraftPayload): ein NICHT mitgeschicktes Feld behält seinen
+    // Altwert, und `confidentiality: ""` ist am Serverschema keine Stufe, sondern ein Formfehler
+    // (capture/src/draft-payload-schema.ts:108-114). Eine einmal gespeicherte Einstufung lässt sich
+    // von hier aus also nicht auf „Offen" zurücknehmen. Statt sie still stehen zu lassen und dabei
+    // „gespeichert" zu melden, bricht der Weg hier ab und sagt, wo es geht: in Klarwerk selbst.
+    if (!form.confidentiality && work.savedLevel) throw new Error("classification_locked");
+    if (new TextEncoder().encode(JSON.stringify(sent)).byteLength > MAX_BYTES)
+      throw new Error("too_large");
+    work.form = form;
+    work.owner = auth.id;
+    work.status = "saving";
+    // Die Kennung bleibt stehen, wo sonst `null` steht: geht die Antwort verloren, kann „Status
+    // erneut prüfen" den Entwurf nachlesen und entscheiden, ob das PUT angekommen ist. Der Link
+    // entsteht daraus NICHT — `view()` gibt ihn nur bei bestätigtem `saved`.
+    work.receipt = work.draftId;
+    await put(work);
+    const draft = await api(
+      "update",
+      auth,
+      // `expectedUpdatedAt` ist der Stand, den DIESE Leiste zuletzt gesehen hat. Hat inzwischen
+      // jemand denselben Entwurf in Klarwerk bearbeitet, gibt es 409 statt eines stillen
+      // Überschreibens (capture/src/service.ts pruefeStand).
+      { ...sent, ...(work.updatedAt ? { expectedUpdatedAt: work.updatedAt } : {}) },
+      work.draftId,
+    );
+    if (!matches(draft, sent, auth.id) || draft.id !== work.draftId)
+      throw new Error("verify_failed");
+    work.receipt = draft.id;
+    work.updatedAt = typeof draft.updatedAt === "string" ? draft.updatedAt : null;
+    work.savedLevel = form.confidentiality;
+    work.status = "saved";
+    await put(work);
+    return view(state, "updated");
   }
   chrome.runtime.onMessage.addListener((message, sender, respond) => {
     if (sender.id !== chrome.runtime.id || sender.url !== chrome.runtime.getURL("panel.html")) {
@@ -665,9 +1013,33 @@
     dispatch(message).then(respond, () => respond({ status: "storage_error" }));
     return true;
   });
+  // ================================================================================================
+  // JOB 3280 (Codex 4368959e, Rest aus 3279 R3) — EINE ERFASSUNG WIRD NIE STILL VERWORFEN.
+  // ================================================================================================
+  //
+  // DER BEFUND: `capture()` stieg bei `busy || captureBusy` wortlos aus. Wer den Rechtsklick
+  // benutzt, während die Leiste gerade den Zustand abfragt oder speichert, verlor die Übernahme
+  // vollständig — kein Inhalt, keine Meldung, nichts. Das Fenster ist klein, aber genau in ihm
+  // liegt der Aufbau der Leiste (die letzte Zeile von `panel.js` fragt mit Sperre ab).
+  //
+  // Der Wunsch wird deshalb GEMERKT und nach dem laufenden Vorgang genau einmal nachgeholt —
+  // dieselbe Bauform wie `nachholen()`/`erledigt()` in der Leiste. Nur der ZULETZT geäusserte
+  // Wunsch wird behalten: zwei Übernahmen hintereinander sind eine Absichtsänderung, keine
+  // Warteschlange, und die zweite ist die gemeinte.
+  /** @type {{tab: {id?: number, url?: string, title?: string} | undefined, info: {frameUrl?: string, pageUrl?: string, frameId?: number, selectionText?: string} | undefined} | null} */
+  let gemerkt = null;
+  async function nachholen() {
+    const wartend = gemerkt;
+    if (!wartend || busy || captureBusy) return;
+    gemerkt = null;
+    await capture(wartend.tab, wartend.info);
+  }
   /** @param {{id?: number, url?: string, title?: string} | undefined} tab @param {{frameUrl?: string, pageUrl?: string, frameId?: number, selectionText?: string}} [info] */
   async function capture(tab, info) {
-    if (captureBusy || busy) return;
+    if (captureBusy || busy) {
+      gemerkt = { tab, info };
+      return;
+    }
     captureBusy = true;
     try {
       const state = await read();
@@ -732,10 +1104,16 @@
                   title: s.title.slice(0, 90) || "Browser",
                   context: "",
                   confidentiality: "",
+                  // JOB 3280: die Herkunft ist eine ANGABE, keine Vorbelegung der Maschine. Die
+                  // Leiste schlägt sie beim Einfügen vor; hier steht sie leer.
+                  origin: "",
                 },
                 operations: [],
                 status,
-
+                pendingCreate: null,
+                draftId: null,
+                updatedAt: null,
+                savedLevel: "",
                 receipt: null,
               });
             }
@@ -747,6 +1125,7 @@
       await chrome.storage.session.set({ captureStatus: status, pendingCapture: false });
     } finally {
       captureBusy = false;
+      await nachholen();
     }
   }
   // JOB 3278 · CHR-02. The panel lives BESIDE the page in Chrome's side panel, never in a tab of

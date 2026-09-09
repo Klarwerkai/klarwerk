@@ -103,8 +103,11 @@ describe("Klara · echte HTML- und Skript-Einstiege im DOM", () => {
     await h.settle();
     expect(h.requests.filter((u) => u.endsWith("/api/drafts"))).toHaveLength(1);
     expect(h.el("status").textContent).toContain("Saved as an unreviewed draft");
+    // JOB 3280 (Pedi 08.09. 14:22, Nachführung im Auftrag): der Link trägt die AKTUELLE Sprache
+    // der Leiste mit — hier steht sie auf EN, weil die Schleife oben zuletzt auf EN gestellt hat.
+    // Was die Vollapp heute daraus macht, steht im Kommentar bei `oeffnenLink` in panel.js.
     expect(h.el("open").getAttribute("href")).toBe(
-      "https://app.klarwerk.ai/capture/frontdoor?draft=draft-test",
+      "https://app.klarwerk.ai/capture/frontdoor?draft=draft-test&lang=en",
     );
     expect(h.win.document.documentElement.outerHTML).not.toContain("fixture-session-secret");
   });

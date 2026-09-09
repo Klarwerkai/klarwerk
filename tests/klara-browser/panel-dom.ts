@@ -4,6 +4,7 @@
 // ist er hierher gezogen und wird von beiden Dateien benutzt, nicht nachgebaut.
 import { createRequire } from "node:module";
 import { setImmediate } from "node:timers";
+import type { View } from "../../extensions/klara-browser/types";
 import { harness, read } from "./harness";
 
 /**
@@ -55,7 +56,12 @@ export interface Fenster {
    * Deutsch) — genau deshalb muss ein Fall lesen können, was jsdom hier meldet, sonst prüfte er
    * die Ablösung gegen eine Annahme statt gegen den gemessenen Wert.
    */
-  navigator: { language: string };
+  /**
+   * `clipboard` ist die Zwischenablage des BROWSERS. jsdom hat keine; `mount()` setzt sie, damit
+   * ein Fall messen kann, WIE OFT und WANN die Leiste sie liest. Der Prüfling bekommt dabei die
+   * echte Schnittstelle vorgesetzt (`navigator.clipboard.readText`), keinen eigenen Umweg.
+   */
+  navigator: { language: string; clipboard?: { readText(): Promise<string> } };
   Event: new (typ: string, init?: { bubbles?: boolean; cancelable?: boolean }) => unknown;
   KeyboardEvent: new (
     typ: string,
@@ -107,6 +113,22 @@ export async function mount(
      * eigenen Sperre.
      */
     haltErsteAntwort?: boolean;
+    /**
+     * JOB 3280 · CHR-06: was `navigator.clipboard.readText()` liefert — ein Text, oder ein Fehler
+     * (verweigerte Erlaubnis). `undefined` heisst „dieser Browser hat gar keine Zwischenablage".
+     * Jeder Aufruf wird gezählt; `leseZaehler()` ist der Beleg für „genau einmal, nur auf Klick".
+     */
+    zwischenablage?: { text?: string; fehler?: boolean };
+    /**
+     * JOB 3280 · CHR-07: eine ANTWORT ANSTELLE DES WORKERS — nur für die Linkprüfung der Leiste.
+     *
+     * Der Prüfling ist hier die LEISTE, nicht der Worker: `panel.js` prüft jede Adresse, bevor sie
+     * ein `href` wird, und genau diese Sperre lässt sich am echten Worker nicht messen — er baut
+     * ausschliesslich saubere Adressen (`encodeURIComponent` über eine geprüfte Kennung). Die
+     * Sperre soll aber auch dann halten, wenn die Nachricht NICHT von ihm käme. Der Prüfling
+     * selbst wird dabei nicht ersetzt; er bekommt nur eine andere Nachricht vorgesetzt.
+     */
+    antwortet?: (message: unknown) => Promise<View> | undefined;
   } = {},
 ) {
   let draft: Record<string, unknown> | null = null;
@@ -154,7 +176,7 @@ export async function mount(
           messages.push(message);
           // Der Worker antwortet SOFORT — auf den Zustand von jetzt. Zugestellt wird die Antwort
           // aber erst nach `freigeben()`; genau so veraltet sie unterwegs.
-          const roh = h.sendRaw(message);
+          const roh = optionen.antwortet?.(message) ?? h.sendRaw(message);
           const halten = gehalten !== null && erste;
           erste = false;
           const job = halten ? gehalten.then(() => roh) : roh;
@@ -180,6 +202,20 @@ export async function mount(
       },
     },
   });
+  // JOB 3280: die Zwischenablage steht VOR dem Laden von `panel.js` bereit — sonst könnte ein
+  // Lesen beim Aufbau gar nicht auffallen, und Fall (a) prüfte nichts.
+  const gelesen: number[] = [];
+  if (optionen.zwischenablage)
+    Object.defineProperty(win.navigator, "clipboard", {
+      configurable: true,
+      value: {
+        readText: async () => {
+          gelesen.push(Date.now());
+          if (optionen.zwischenablage?.fehler) throw new Error("NotAllowedError");
+          return optionen.zwischenablage?.text ?? "";
+        },
+      },
+    });
   win.eval(read("i18n.js"));
   win.eval(read("panel.js"));
   // A real response and its render microtask, never an arbitrary sleep.
@@ -253,5 +289,7 @@ export async function mount(
     koerper,
     messages,
     gemerkt,
+    /** Wie oft die Leiste die Zwischenablage bisher gelesen hat. */
+    leseZaehler: () => gelesen.length,
   };
 }

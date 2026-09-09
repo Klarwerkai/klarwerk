@@ -147,7 +147,8 @@ describe("JOB 3278 · CHR-02 — die Leiste steht neben der Seite, nicht an ihre
     expect(MANIFEST.side_panel).toEqual({ default_path: "panel.html" });
     expect(MANIFEST.permissions).toContain("sidePanel");
     // JOB 3279 (Pflichtlieferung 5): dieselbe Fassung, eine Stufe weiter.
-    expect(MANIFEST.version).toBe("0.3.0");
+    // JOB 3280 (Pflichtlieferung 4): und noch eine — Zwischenablage und derselbe Entwurf.
+    expect(MANIFEST.version).toBe("0.4.0");
     // Side Panel gibt es ab Chrome 114; das Paket verlangt ohnehin schon 120.
     expect(Number(MANIFEST.minimum_chrome_version)).toBeGreaterThanOrEqual(114);
     // Kein neuer Host, keine Dauerrechte — der Auftrag verbietet beides ausdrücklich.
@@ -473,8 +474,9 @@ describe("JOB 3278 · CHR-03 — Vorschau, Zustände und beide Sprachen", () => 
     await h.settle();
     expect(h.el("status").className).toBe("ok");
     expect(h.el("done").hasAttribute("hidden")).toBe(false);
+    // JOB 3280: die Leiste steht hier auf ihrer Vorgabe Deutsch, also `lang=de`.
     expect(h.el("open").getAttribute("href")).toBe(
-      "https://app.klarwerk.ai/capture/frontdoor?draft=draft-test",
+      "https://app.klarwerk.ai/capture/frontdoor?draft=draft-test&lang=de",
     );
   });
 });
