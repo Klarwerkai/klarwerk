@@ -29,6 +29,10 @@ import type { ValidationService } from "../../../validation";
 import type { AiCheckWorker } from "../ai-check-worker";
 import { type SemanticPrefilter, indexKoForDuplicatePrefilter } from "../duplicate-detection";
 import { type Guards, type SessionUser, sendError } from "../http";
+// JOB 3400: die serverseitige Bildableitung des Add-in-Imports (sharp). Sie liegt in `services/app`
+// und nicht in `apps/web/src/lib/docx.ts`, weil sie ein Serverpaket braucht — `docx.ts` ist
+// ausdrücklich DOM- UND paketfrei gehalten, damit der Browser denselben Kern nutzen kann.
+import { bildVerkleinerung, bildausfaelleVermerken } from "../import/bildverkleinerung";
 import type { AssignmentNotifier } from "../notify";
 
 // AUFTRAG-mega19 Block B: EXPORTIERT, damit die Composition-Root den Entwurfs-Zugang der
@@ -929,11 +933,20 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
         // `sendError` — der ist wirklich ein Serverfehler.
         let reich: Awaited<ReturnType<typeof extractDocxRich>>;
         // JOB 3229: derselbe Figure-/Beschriftungsweg wie beim Browser-Import.
-        // Bildbytes unverändert durchreichen, weiterhin OHNE Bildbudget: dessen bisheriges
-        // Argument wirkte ohne mapImage nicht. Es jetzt zu aktivieren würde Bilder verlieren.
         // "enabled" ist nur der Schalter für wrapImagesInFigures; der Wert wird nie gespeichert.
+        //
+        // JOB 3400 — DIE BILDBYTES GEHEN NICHT MEHR ROH DURCH. `mapImage` ist genau die Stelle, an
+        // der der Browser sein Canvas-Downscale einhängt; serverseitig steht kein Canvas zur
+        // Verfügung, deshalb `bildVerkleinerung` (services/app/src/import/bildverkleinerung.ts).
+        // Es gibt danach GENAU EINEN Bildweg hier — die frühere Identitätsabbildung
+        // `async (src) => src` ist ersetzt, nicht daneben stehen geblieben.
+        //
+        // `imageBudgetBytes` bleibt WEITERHIN ungesetzt, und das ist keine Nachlässigkeit: der
+        // Budgetzweig (docx.ts:1199-1216) LÄSST überzählige Bilder WEG, statt sie zu verkleinern.
+        // Verkleinern ist das Ziel, Weglassen war nie eines.
+        const verkleinerung = bildVerkleinerung();
         const job = docxUmwandeln(puffer as ArrayBuffer, {
-          mapImage: async (src) => src,
+          mapImage: verkleinerung.mapImage,
           imageCaptionPlaceholder: "enabled",
         });
         docxJob = job;
@@ -966,8 +979,37 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
             clearTimeout(timer);
           }
         }
+        // JOB 3400 — DER AUSFALL WIRD BENANNT, NICHT GESCHLUCKT.
+        //
+        // ZUERST DIE WICHTIGSTE TATSACHE, und sie ist gemessen (Fälle F und G in
+        // tests/m5c-b-bildbudget/grenzfaelle.test.ts): ES WIRD NICHTS ABGEWIESEN. Ein Bild, das
+        // nicht abgeleitet werden konnte — defekt, unbekanntes Format, jenseits einer Grenze —
+        // behält seine ORIGINALQUELLE und steht zeichengleich im Entwurf, so wie es ohne diesen
+        // Durchgang dort gestanden hätte. Es gibt also keine stille Abweisung, weil es überhaupt
+        // keine Abweisung gibt.
+        //
+        // Was der Nutzer bisher sah, sieht er unverändert: `imagesTotal` gegen `imagesEmbedded`
+        // meldet weiterhin jeden ECHTEN Verlust (der Sanitizer verwirft z. B. EMF), und das Panel
+        // baut daraus seinen Bilder-Satz (`taskpane.html`, `bilderSatz`).
+        //
+        // NEU und deshalb nicht nur im Protokoll: ob ein Bild verkleinert wurde oder seine Quelle
+        // behalten hat, steht ab jetzt IN DER ANTWORT (`imagesShrunk`, `imagesKeptOriginal`,
+        // `imageSkipReasons`, s. unten). Ein Protokolleintrag allein wäre für den Menschen am
+        // Bildschirm unsichtbar gewesen — genau der Einwand des Prüfers.
+        //
+        // UND SEIT RUNDE 3 AUCH IM ENTWURF SELBST, an dem Bild, um das es geht: Die drei Felder
+        // oben sind eine SUMME und mit der Antwort vorbei. Wer den Entwurf morgen öffnet, sieht
+        // sonst nur ein Bild, das vielleicht angezeigt wird und vielleicht nicht.
+        // `bildausfaelleVermerken` hängt den Grund in das `<figure>` des betroffenen Bildes —
+        // gemessen in tests/m5c-b-bildbudget/ausfallhinweis.test.ts (H1: der Hinweis steht am
+        // defekten Bild und NICHT am heilen daneben; H3: die Fussnote bleibt leer, statt den
+        // Hinweis aufzunehmen). Ohne Ausfall ist das HTML zeichengleich zu vorher.
+        const bildbericht = verkleinerung.bericht;
+        if (bildbericht.uebersprungen.length > 0) {
+          request.log.warn({ ...bildbericht }, "docx-bildverkleinerung-uebersprungen");
+        }
         try {
-          const bodyHtml = reich.html;
+          const bodyHtml = bildausfaelleVermerken(reich.html, bildbericht.ausfaelle);
           // WELCHE ZAHL DIE QUELLBILDER NENNT — und warum NICHT `reich.totalImages`:
           // Jenes Feld ist „aus Rueckwaertskompatibilitaet an den Budgetlauf gebunden"
           // und bleibt 0, wenn ohne Budget extrahiert wird. Der Vertrag
@@ -1016,6 +1058,14 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
             imagesEmbedded: eingebettet,
             imagesTotal: quellbilder,
             imagesDropped: reich.imageTransfer.droppedImageBudget,
+            // JOB 3400: die Bildableitung sagt in DERSELBEN Antwort, was sie getan und was sie
+            // gelassen hat. Die drei Felder sind eine Zerlegung von `imagesTotal`, keine zweite
+            // Bilanz: verkleinert + Quelle behalten = gesehene Bilder. `imageSkipReasons` nennt je
+            // behaltenem Bild den Grund beim Namen („schon-klein-genug" ist etwas anderes als
+            // „nicht-dekodierbar", und der Unterschied gehört nicht ins Protokoll allein).
+            imagesShrunk: bildbericht.verkleinert,
+            imagesKeptOriginal: bildbericht.uebersprungen.length,
+            imageSkipReasons: bildbericht.uebersprungen,
           });
         } catch (error) {
           sendError(reply, error);

@@ -4,6 +4,9 @@
 import { randomBytes } from "node:crypto";
 import { setTimeout as pause } from "node:timers/promises";
 import JSZip from "jszip";
+// JOB 3400: nur zum PRÜFEN — die Ableitung wird dekodiert, um sie Pixel gegen Pixel mit dem
+// Quellbild zu vergleichen (B2). Der Test erzeugt damit nichts, er liest nach.
+import sharp from "sharp";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { wholeDocumentDraftPayload } from "../../apps/web/src/lib/captureFromFile";
 import { MAX_INLINE_BODY_HTML_BYTES, extractDocxRich } from "../../apps/web/src/lib/docx";
@@ -221,25 +224,69 @@ describe("JOB 3229 · Add-in-Bildunterschriften bis zum frischen GET", () => {
     );
   });
 
-  it("B2 · Wahl b: auch über dem bisherigen Scheinbudget bleibt das Bild erhalten", async () => {
-    // Gültiges großes PNG aus der PNG-Signatur plus einem unbekannten ancillary-Chunk
-    // ist unnötig: mammoth und Sanitizer reichen Bildbytes durch und decodieren sie nicht.
-    // Hier messen wir genau diesen Bytevertrag; keine Aussage über die Darstellbarkeit.
+  it("B2 · Wahl b: auch über dem bisherigen Scheinbudget bleibt das BILD erhalten", async () => {
+    // ============================================================================================
+    // JOB 3400 — DIE ERWARTUNG WURDE PRÄZISIERT, NICHT GELOCKERT (Steuerung 09.09. 15:3x).
+    // ============================================================================================
+    // Die Zusage dieses Falls ist und bleibt „Wahl b": ein Quellbild weit über dem alten
+    // Scheinbudget wird NICHT weggelassen. Bis JOB 3400 wurde das an der ROHGRÖSSE gemessen —
+    // `bodyHtml` musste grösser als 3,5 MB bleiben. Diese Messung war nie die Zusage, sie war ihr
+    // damaliger Nebeneffekt: der Add-in-Weg reichte Bildbytes unverändert durch.
+    //
+    // Seit JOB 3400 leitet der Server ab (`services/app/src/import/bildverkleinerung.ts`), und die
+    // Rohgrösse ist dadurch KEIN Mass für Erhalt mehr — im Gegenteil: gemessen 09.09. sank
+    // `bodyHtml` hier von über 3,5 MB auf 324 Bytes, weil die 3,5 MB Zufallsbytes hinter `IEND`
+    // gar kein Bildinhalt sind. Eine Grössenerwartung würde jetzt genau das Falsche verlangen.
+    //
+    // Gemessen wird deshalb, was WIRKLICH erhalten bleiben muss: das Bild ist da (eine `img` mit
+    // eingebetteter Quelle), es zeigt DASSELBE BILD (gleiche Kantenlängen, gleiche Farbe, Pixel
+    // gegen Pixel), seine Fussnote hängt weiter daran, und die Bilanz meldet keinen Verlust.
     const bild = Buffer.concat([
       Buffer.from(PNG_ROT, "base64"),
       randomBytes(MAX_INLINE_BODY_HTML_BYTES),
     ]).toString("base64");
     const { bytes } = await baueDocx([{ art: "bild", png: bild }]);
+    // Die Voraussetzung des Falls bleibt gemessen: die QUELLE liegt über dem alten Scheinbudget.
     const vorher = await extractDocxRich(alsPuffer(bytes), {
       imageBudgetBytes: MAX_INLINE_BODY_HTML_BYTES,
     });
     expect(Buffer.byteLength(vorher.html)).toBeGreaterThan(MAX_INLINE_BODY_HTML_BYTES);
+
     const { payload, antwort } = await importieren(bytes);
-    expect(Buffer.byteLength(payload.bodyHtml)).toBeGreaterThan(MAX_INLINE_BODY_HTML_BYTES);
-    expect(bildquellen(payload.bodyHtml)).toEqual(bildquellen(vorher.html));
+    // 1. Das Bild ist nicht weggelassen worden.
+    const quellen = bildquellen(payload.bodyHtml);
+    expect(quellen, "Das Bild wurde weggelassen statt abgeleitet").toHaveLength(1);
+    expect(quellen[0]).toMatch(/^data:image\/(png|jpe?g|gif|webp);base64,/i);
     expect(antwort).toMatchObject({ imagesEmbedded: 1, imagesTotal: 1, imagesDropped: 0 });
+
+    // 2. Es zeigt DASSELBE BILD. Quelle und Ableitung werden dekodiert und verglichen — Format und
+    //    Bytezahl dürfen sich unterscheiden, der Bildinhalt nicht.
+    const rumpf = /base64,([\s\S]*)$/.exec(quellen[0] ?? "")?.[1] ?? "";
+    const abgeleitet = await sharp(Buffer.from(rumpf, "base64")).raw().toBuffer({
+      resolveWithObject: true,
+    });
+    const original = await sharp(Buffer.from(PNG_ROT, "base64")).raw().toBuffer({
+      resolveWithObject: true,
+    });
+    expect(
+      [abgeleitet.info.width, abgeleitet.info.height],
+      "Die Ableitung hat andere Kantenlängen als das Quellbild",
+    ).toEqual([original.info.width, original.info.height]);
+    for (let kanal = 0; kanal < 3; kanal += 1) {
+      // Die Ableitung ist verlustbehaftet; eine kleine Abweichung je Farbkanal ist erlaubt, ein
+      // anderes Bild nicht.
+      expect(
+        Math.abs((abgeleitet.data[kanal] ?? 0) - (original.data[kanal] ?? 0)),
+        `Farbkanal ${kanal} weicht ab — es ist nicht mehr dasselbe Bild`,
+      ).toBeLessThanOrEqual(8);
+    }
+
+    // 3. Die Fussnote hängt weiter an genau diesem Bild.
+    const kennung = /<img\b[^>]*data-image-id="([^"]+)"/.exec(payload.bodyHtml)?.[1];
+    expect(kennung).toMatch(/^kw-img-[a-z0-9]+-1$/);
+    expect(payload.bodyHtml).toContain(`<figcaption data-image-id="${kennung}">`);
     console.log(
-      `B2: Grenze=${MAX_INLINE_BODY_HTML_BYTES}, HTML=${Buffer.byteLength(payload.bodyHtml)} Bytes; Bilanz=1/1/0`,
+      `B2: Quelle=${Buffer.byteLength(vorher.html)} Bytes, gespeichert=${Buffer.byteLength(payload.bodyHtml)} Bytes; Bild identisch; Bilanz=1/1/0`,
     );
   });
 
@@ -258,8 +305,14 @@ describe("JOB 3229 · Add-in-Bildunterschriften bis zum frischen GET", () => {
     const roh = await extractDocxRich(alsPuffer(emf));
     expect(roh.html).toContain("data:image/x-emf;base64,");
     const { payload, antwort } = await importieren(emf);
+    // JOB 3400 R3 — DIE WAISE IST NICHT MEHR STUMM, und das ist der Punkt: Ein EMF ist für die
+    // Bildableitung nicht lesbar (Ausfall), und der Sanitizer wirft es danach ersatzlos weg. Bisher
+    // stand hier eine leere figure ohne ein Wort dazu — genau Pedis Befund „nur Fussnoten kommen
+    // an". Jetzt steht der Grund an Ort und Stelle. Die Erwartung ist deshalb NICHT gelockert,
+    // sondern um den Hinweis ERGÄNZT: Anker, leere Fussnote und der fehlende `<img>` stehen
+    // unverändert in derselben Zeile.
     expect(payload.bodyHtml).toMatch(
-      /^<p><figure data-image-id="(kw-img-[a-z0-9]+-1)"><figcaption data-image-id="\1"><\/figcaption><\/figure><\/p>$/,
+      /^<p><figure data-image-id="(kw-img-[a-z0-9]+-1)"><div class="panel panel-warning"><p>Dieses Bild konnte beim Import nicht gelesen werden[^<]*<\/p><\/div><figcaption data-image-id="\1"><\/figcaption><\/figure><\/p>$/,
     );
     expect(bildquellen(payload.bodyHtml)).toEqual([]);
     expect(antwort).toMatchObject({ imagesEmbedded: 0, imagesTotal: 1, imagesDropped: 0 });
@@ -286,8 +339,11 @@ describe("JOB 3229 · Add-in-Bildunterschriften bis zum frischen GET", () => {
     expect(roh.html).toContain("data:image/x-emf;base64,");
     const { payload, antwort } = await importieren(emf);
     expect(fussnoten(payload.bodyHtml)).toEqual(["Figure 1: X"]);
+    // JOB 3400 R3: derselbe Hinweis wie in W1 — und die zugeordnete Beschriftung steht davon
+    // UNBERÜHRT in ihrer eigenen `figcaption`. Der Hinweis kriecht nicht in die Fussnote; das prüft
+    // `fussnoten(...)` eine Zeile darüber und die Zerlegung darunter ein zweites Mal.
     expect(payload.bodyHtml).toMatch(
-      /^<p><figure data-image-id="(kw-img-[a-z0-9]+-1)"><figcaption data-image-id="\1">Figure 1: X<\/figcaption><\/figure><\/p>$/,
+      /^<p><figure data-image-id="(kw-img-[a-z0-9]+-1)"><div class="panel panel-warning"><p>Dieses Bild konnte beim Import nicht gelesen werden[^<]*<\/p><\/div><figcaption data-image-id="\1">Figure 1: X<\/figcaption><\/figure><\/p>$/,
     );
     expect(payload.bodyHtml).not.toMatch(/<img\b/);
     expect(payload.bodyHtml.split("Figure 1: X")).toHaveLength(2);
