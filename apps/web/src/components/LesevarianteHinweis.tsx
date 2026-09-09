@@ -11,17 +11,26 @@
 // (lib/lesevariante.ts). Hier steht nur, wie die Entscheidung aussieht.
 import { Languages } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import type { LesevarianteKurz } from "../api/types";
+import type { LesevarianteKennzeichnung } from "../api/types";
 
 // Die Kennzeichnung trägt bewusst KEINE von aussen gesetzte Klassenkette: sie soll überall gleich
 // aussehen, und ein durchgereichtes `className` wäre eine im Quelltext nicht auflösbare Bindung
 // (der Flächen-Sammler in `tests/app/mega47-modale-flaechen-sammler.test.tsx` zählt genau die).
+//
+// JOB 3363: DIE PROPS SIND VERENGT, NICHT ERWEITERT. Bis hierher verlangte dieser Baustein eine
+// vollständige `LesevarianteKurz` — samt `koId`, `lang`, `title`, `statement`, `updatedAt`. Gelesen
+// hat er davon nie mehr als `originalLanguage`, `herkunft`, `quellabgleich` und `originalGeaendert`.
+// Die Prüfkarte in Stufe 2 zeigt die Variante eines noch NICHT angenommenen Kandidaten: dort gibt es
+// keine `koId`, und eine erfundene wäre eine Kennung, die auf nichts zeigt. Statt einer zweiten
+// Kennzeichnungsfläche daneben (oder eines `as`, das die Lücke überstreicht) verlangt der Baustein
+// jetzt genau das, was er benutzt — `LesevarianteKennzeichnung`. Die beiden Verbraucher aus JOB 3326
+// (Detailansicht, Bibliotheks-Lesefläche) übergeben unverändert ihre volle Variante.
 export function LesevarianteHinweis({
   variante,
   zeigtOriginal,
   onUmschalten,
 }: {
-  variante: LesevarianteKurz;
+  variante: LesevarianteKennzeichnung;
   /** Der Leser hat „Original anzeigen" gewählt — dann steht hier die Gegenrichtung. */
   zeigtOriginal: boolean;
   onUmschalten: () => void;

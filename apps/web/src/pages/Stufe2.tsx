@@ -11,7 +11,7 @@ import {
   Printer,
   X,
 } from "lucide-react";
-import { type ChangeEvent, type DragEvent, useState, useSyncExternalStore } from "react";
+import { type ChangeEvent, type DragEvent, useEffect, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
@@ -33,6 +33,7 @@ import {
   useReasonerConfig,
 } from "../api/hooks";
 import type {
+  ImportCandidate,
   ImportItemInput,
   ManagementSnapshot,
   OutputDocument,
@@ -53,6 +54,8 @@ import { ImportJsonUpload } from "../components/ImportJsonUpload";
 import { ImportCockpitProvider, ImportStepperBar } from "../components/ImportStepper";
 import { KlaraPathTeaser } from "../components/KlaraPathTeaser";
 import { KoSummaryDisclosure } from "../components/KoSummaryDisclosure";
+// JOB 3363: dieselbe Kennzeichnung wie auf `/wissen/:id` und in der Bibliothek — ein Baustein.
+import { LesevarianteHinweis } from "../components/LesevarianteHinweis";
 // JOB 3288: derselbe Allowlist-Renderweg wie die Bibliothek — kein zweiter HTML-Sink.
 import { SanitizedHtml } from "../components/SanitizedHtml";
 // F-0140 / K-20: derselbe Zustandsbanner, den der Ergebnis-View schon benutzt — kein zweiter.
@@ -92,6 +95,9 @@ import {
   formatEur,
 } from "../lib/knowledgeValuation";
 import { koLabel } from "../lib/koLabel";
+// JOB 3363: die Leseübersetzung eines noch NICHT angenommenen Kandidaten — live über die echte
+// Kandidaten-Kennung aufgelöst, ohne KO-Kennung, ohne Schreibvorgang.
+import { sprachcode, useFrischeKandidatenLesevariante } from "../lib/lesevariante";
 import {
   formatiereDauer,
   formatiereTokenzahl,
@@ -618,6 +624,212 @@ function ImportQuellzeile({ item }: { item: unknown }): JSX.Element {
   );
 }
 
+// ================================================================================================
+// JOB 3363 · LESEVARIANTE-PRUEFKARTE — DIE PRÜFKARTE EINES NOCH NICHT ANGENOMMENEN KANDIDATEN.
+// ================================================================================================
+//
+// WARUM DIE KARTE EIN EIGENES BAUTEIL IST: Der Haken `useFrischeKandidatenLesevariante` gehört
+// GENAU EINMAL je Karte gerufen — Hooks laufen nicht in einer `map`-Rückruffunktion, und drei
+// kleine Bauteile (Titel, Kernaussage, Hinweis) wären drei Abrufe für dieselbe Auskunft. Es ist
+// eine HERAUSLÖSUNG aus der Kartenschleife, keine neue Fläche: das gerenderte Ergebnis ist
+// zeichengleich das bisherige, ergänzt um die Kennzeichnung.
+//
+// WAS ÜBERSETZT WIRD UND WAS AUSDRÜCKLICH NICHT:
+//   · TITEL und KERNAUSSAGE zeigen die Leseübersetzung, wenn es eine gibt und die Oberfläche in
+//     einer anderen Sprache steht als das Original — mit dem Hinweis-Baustein darüber.
+//   · DER GANZE IMPORTIERTE SEITENTEXT (`ImportVolltextAufklapper`) und die QUELLZEILE bleiben das
+//     ORIGINAL. Sie sind der Prüfgegenstand: wer entscheidet, ob dieser Beitrag in den Bestand
+//     darf, entscheidet über den Originaltext, nicht über eine Lesefassung.
+//   · PRÜFEN, ANNEHMEN, ABLEHNEN, NACHFRAGEN sind unberührt. Der Abruf der Variante schreibt
+//     nichts; der Kandidat bleibt „neu" und ohne KO-Kennung.
+function ImportKandidatKarte({
+  c,
+  reviewLaeuft,
+  onReview,
+  noteOffen,
+  onNoteUmschalten,
+  note,
+  setNote,
+}: {
+  c: ImportCandidate;
+  reviewLaeuft: boolean;
+  onReview: (v: { id: string; action: ReviewAction; note?: string }) => void;
+  noteOffen: boolean;
+  onNoteUmschalten: () => void;
+  note: string;
+  setNote: (wert: string) => void;
+}): JSX.Element {
+  const { t, i18n } = useTranslation();
+  const sprache = sprachcode(i18n.language);
+  const lage = useFrischeKandidatenLesevariante(c.id, sprache);
+  const variante = lage.zustand === "da" ? lage.variante : undefined;
+  const [zeigtOriginal, setZeigtOriginal] = useState(false);
+  // Der Sprachwechsel setzt die Wahl „Original anzeigen" zurück: sie gehörte zur vorherigen
+  // Anzeige. Dieselbe Regel wie auf `/wissen/:id` (KnowledgeDetail.tsx).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `sprache` ist der AUSLÖSER, nicht eine gelesene Größe.
+  useEffect(() => {
+    setZeigtOriginal(false);
+  }, [sprache]);
+  const zeigtUebersetzung = variante !== undefined && !zeigtOriginal;
+  // WP-IC-PAKET-1 (Teil 1) + 1c (ROT-2): Altbestand-Kandidaten (OHNE Decode-Marker) wurden mit
+  // rohen HTML-Entities gespeichert — nur DANN fürs Rendern dekodieren. Der Übersetzungstext kommt
+  // aus der Lieferung und ist kanonisch; er läuft nicht durch den Altbestand-Dekoder.
+  const titel = zeigtUebersetzung
+    ? variante.title
+    : displayImportText(c.item.title, c.item.textCodec);
+  const kernaussage = zeigtUebersetzung
+    ? variante.statement
+    : displayImportText(c.item.statement, c.item.textCodec);
+  return (
+    <Card className="space-y-2">
+      {/* Die Kennzeichnung steht ÜBER dem Titel, den sie betrifft — derselbe Baustein wie auf
+          `/wissen/:id` und in der Bibliothek, in keiner zweiten Fassung. Ohne Variante steht hier
+          nichts. */}
+      {variante ? (
+        <LesevarianteHinweis
+          variante={variante}
+          zeigtOriginal={zeigtOriginal}
+          onUmschalten={() => setZeigtOriginal((v) => !v)}
+        />
+      ) : null}
+      {/* Der Abruf ist gescheitert (Netz, Zugriff, Serverfehler). Dann steht der ORIGINALtext da —
+          und dass die Übersetzung fehlt, wird gesagt statt verschwiegen. „Es gibt keine
+          Übersetzung" ist dieser Fall ausdrücklich NICHT. */}
+      {lage.zustand === "fehlt" ? (
+        <p data-testid="imp-lesevariante-fehler" className="text-[12px] text-trust-warn-text">
+          {t("lesevariante.abrufFehler")}
+        </p>
+      ) : null}
+      <div className="flex flex-wrap items-center gap-2">
+        <span
+          className={`rounded-pill px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase ${importCandidateStatusTone(
+            c.status,
+          )}`}
+        >
+          {t(importCandidateStatusKey(c.status))}
+        </span>
+        {(() => {
+          // SCRUM-91: kompakte, ehrlich abgeleitete Befund-Badges.
+          const f = candidateFindings(c);
+          return (
+            <>
+              {f.duplicate ? (
+                <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-trust-warn-text">
+                  {t("ext.finding.duplicate")}
+                </span>
+              ) : null}
+              {f.missingInfo ? (
+                <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-trust-warn-text">
+                  {t("ext.finding.missingInfo")}
+                </span>
+              ) : null}
+              {f.infoRequested ? (
+                <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-muted">
+                  {t("ext.finding.infoRequested")}
+                </span>
+              ) : null}
+              {f.acceptedKo ? (
+                <span className="rounded-pill bg-trust-pos-bg px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-trust-pos-text">
+                  {t("ext.finding.acceptedKo")}
+                </span>
+              ) : null}
+              {/* JOB 3116 (Q2c): WORAUF dieser Wiederimport getroffen ist — mit der
+                  Kennung des betroffenen Objekts. Beide Abzeichen ERSETZEN eines der
+                  bisherigen (Papierkorb statt „Dublette", Wiederverwendung statt
+                  „KO erzeugt"); die Ablösung fällt in `candidateFindings`, damit hier
+                  kein zweiter Weg entsteht, der dieselbe Sache anders benennt. Sie
+                  stehen nur da, wenn der Befund die Kennung wirklich trägt. */}
+              {f.imPapierkorb ? (
+                <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-trust-warn-text">
+                  {t("ext.finding.inTrash", { id: f.imPapierkorb.koId })}
+                </span>
+              ) : null}
+              {f.wiederverwendet ? (
+                <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-muted">
+                  {t("ext.finding.reusedKo", { id: f.wiederverwendet.koId })}
+                </span>
+              ) : null}
+              {f.rejected ? (
+                <span className="rounded-pill bg-trust-crit-bg px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-trust-crit-text">
+                  {t("ext.finding.rejected")}
+                </span>
+              ) : null}
+            </>
+          );
+        })()}
+        {/* Weiterhin reiner React-TEXT-Knoten, nie HTML (XSS-neutral, keine Server-Migration). */}
+        <span
+          data-testid="imp-kandidat-titel"
+          className="min-w-0 flex-1 truncate text-[13.5px] font-medium text-text"
+        >
+          {titel}
+        </span>
+        <span className="font-mono text-[11px] text-muted-2">{c.item.category}</span>
+      </div>
+      {/* WP-SHIP9-S2 Paket 3 (E2): die KERNAUSSAGE sitzt hinter dem Kurzvorschau-
+          Aufklapper (konsistent mit Bibliothek/Validierung). Bei aktiven Fällen
+          („neu") standardmäßig offen — der Prüfer verliert keinen Klick; die
+          Kernaussage wird ungedeckelt durchgereicht (dekodiert), nicht auf ~240
+          Zeichen gekürzt.
+          JOB 3288: Der Kommentar behauptete hier bis 1.188 „der ehrliche Volltext"
+          — das war falsch. `statement` ist seit JOB 2703 der ERSTE ABSATZ der Seite
+          (mapper.ts:155-160); der Volltext steht seither ungenutzt in `bodyHtml`.
+          Er hat jetzt seinen eigenen Aufklapper eine Zeile tiefer. */}
+      <KoSummaryDisclosure
+        source={c.item}
+        text={kernaussage}
+        defaultOpen={isOpenImportCandidate(c.status)}
+      />
+      {/* JOB 3288 · Lieferung 1+2: der GANZE importierte Seitentext und die Quelle —
+          beides VOR „Annehmen" erreichbar, beides aus dem bereits geladenen
+          Kandidaten (kein zweiter Abruf). JOB 3363: beide bleiben das ORIGINAL. */}
+      <ImportVolltextAufklapper item={c.item} />
+      <ImportQuellzeile item={c.item} />
+      {c.note ? (
+        <p className="text-[12px] text-trust-warn-text">
+          {t("imp.note")}: {c.note}
+        </p>
+      ) : null}
+
+      {isOpenImportCandidate(c.status) ? (
+        <div className="flex flex-wrap items-center gap-2 border-t border-hairline pt-2">
+          <Button
+            variant="primary"
+            disabled={reviewLaeuft}
+            onClick={() => onReview({ id: c.id, action: "accept" })}
+          >
+            {t("imp.accept")}
+          </Button>
+          <Button disabled={reviewLaeuft} onClick={() => onReview({ id: c.id, action: "reject" })}>
+            {t("imp.reject")}
+          </Button>
+          <Button variant="ghost" onClick={onNoteUmschalten}>
+            {t("imp.info")}
+          </Button>
+        </div>
+      ) : null}
+
+      {noteOffen ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder={t("imp.notePlaceholder")}
+            className="h-9 flex-1 rounded-input border border-hairline bg-surface px-3 text-sm outline-none focus:border-ink/30"
+          />
+          <Button
+            variant="primary"
+            disabled={reviewLaeuft || note.trim().length === 0}
+            onClick={() => onReview({ id: c.id, action: "info", note: note.trim() })}
+          >
+            {t("imp.infoSend")}
+          </Button>
+        </div>
+      ) : null}
+    </Card>
+  );
+}
+
 // SCRUM-108/116/FE-LIB-04: JSON-Re-Import mit echter Source-Review-Queue.
 export function ImportReview(): JSX.Element {
   const { t } = useTranslation();
@@ -776,145 +988,19 @@ export function ImportReview(): JSX.Element {
             ) : (
               <div className="space-y-2">
                 {candidates.map((c) => (
-                  <Card key={c.id} className="space-y-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span
-                        className={`rounded-pill px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase ${importCandidateStatusTone(
-                          c.status,
-                        )}`}
-                      >
-                        {t(importCandidateStatusKey(c.status))}
-                      </span>
-                      {(() => {
-                        // SCRUM-91: kompakte, ehrlich abgeleitete Befund-Badges.
-                        const f = candidateFindings(c);
-                        return (
-                          <>
-                            {f.duplicate ? (
-                              <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-trust-warn-text">
-                                {t("ext.finding.duplicate")}
-                              </span>
-                            ) : null}
-                            {f.missingInfo ? (
-                              <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-trust-warn-text">
-                                {t("ext.finding.missingInfo")}
-                              </span>
-                            ) : null}
-                            {f.infoRequested ? (
-                              <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-muted">
-                                {t("ext.finding.infoRequested")}
-                              </span>
-                            ) : null}
-                            {f.acceptedKo ? (
-                              <span className="rounded-pill bg-trust-pos-bg px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-trust-pos-text">
-                                {t("ext.finding.acceptedKo")}
-                              </span>
-                            ) : null}
-                            {/* JOB 3116 (Q2c): WORAUF dieser Wiederimport getroffen ist — mit der
-                                Kennung des betroffenen Objekts. Beide Abzeichen ERSETZEN eines der
-                                bisherigen (Papierkorb statt „Dublette", Wiederverwendung statt
-                                „KO erzeugt"); die Ablösung fällt in `candidateFindings`, damit hier
-                                kein zweiter Weg entsteht, der dieselbe Sache anders benennt. Sie
-                                stehen nur da, wenn der Befund die Kennung wirklich trägt. */}
-                            {f.imPapierkorb ? (
-                              <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-trust-warn-text">
-                                {t("ext.finding.inTrash", { id: f.imPapierkorb.koId })}
-                              </span>
-                            ) : null}
-                            {f.wiederverwendet ? (
-                              <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-muted">
-                                {t("ext.finding.reusedKo", { id: f.wiederverwendet.koId })}
-                              </span>
-                            ) : null}
-                            {f.rejected ? (
-                              <span className="rounded-pill bg-trust-crit-bg px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-trust-crit-text">
-                                {t("ext.finding.rejected")}
-                              </span>
-                            ) : null}
-                          </>
-                        );
-                      })()}
-                      {/* WP-IC-PAKET-1 (Teil 1) + 1c (ROT-2): Altbestand-Kandidaten (OHNE Decode-Marker)
-                        wurden mit rohen HTML-Entities gespeichert — nur DANN fürs Rendern dekodieren;
-                        markierte Kandidaten sind kanonisch. Weiterhin reiner React-TEXT-Knoten, nie
-                        HTML (XSS-neutral, keine Server-Migration). */}
-                      <span className="min-w-0 flex-1 truncate text-[13.5px] font-medium text-text">
-                        {displayImportText(c.item.title, c.item.textCodec)}
-                      </span>
-                      <span className="font-mono text-[11px] text-muted-2">{c.item.category}</span>
-                    </div>
-                    {/* WP-SHIP9-S2 Paket 3 (E2): die KERNAUSSAGE sitzt hinter dem Kurzvorschau-
-                        Aufklapper (konsistent mit Bibliothek/Validierung). Bei aktiven Fällen
-                        („neu") standardmäßig offen — der Prüfer verliert keinen Klick; die
-                        Kernaussage wird ungedeckelt durchgereicht (dekodiert), nicht auf ~240
-                        Zeichen gekürzt.
-                        JOB 3288: Der Kommentar behauptete hier bis 1.188 „der ehrliche Volltext"
-                        — das war falsch. `statement` ist seit JOB 2703 der ERSTE ABSATZ der Seite
-                        (mapper.ts:155-160); der Volltext steht seither ungenutzt in `bodyHtml`.
-                        Er hat jetzt seinen eigenen Aufklapper eine Zeile tiefer. */}
-                    <KoSummaryDisclosure
-                      source={c.item}
-                      text={displayImportText(c.item.statement, c.item.textCodec)}
-                      defaultOpen={isOpenImportCandidate(c.status)}
-                    />
-                    {/* JOB 3288 · Lieferung 1+2: der GANZE importierte Seitentext und die Quelle —
-                        beides VOR „Annehmen" erreichbar, beides aus dem bereits geladenen
-                        Kandidaten (kein zweiter Abruf). */}
-                    <ImportVolltextAufklapper item={c.item} />
-                    <ImportQuellzeile item={c.item} />
-                    {c.note ? (
-                      <p className="text-[12px] text-trust-warn-text">
-                        {t("imp.note")}: {c.note}
-                      </p>
-                    ) : null}
-
-                    {isOpenImportCandidate(c.status) ? (
-                      <div className="flex flex-wrap items-center gap-2 border-t border-hairline pt-2">
-                        <Button
-                          variant="primary"
-                          disabled={review.isPending}
-                          onClick={() => review.mutate({ id: c.id, action: "accept" })}
-                        >
-                          {t("imp.accept")}
-                        </Button>
-                        <Button
-                          disabled={review.isPending}
-                          onClick={() => review.mutate({ id: c.id, action: "reject" })}
-                        >
-                          {t("imp.reject")}
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          onClick={() => {
-                            setNoteId((id) => (id === c.id ? null : c.id));
-                            setNote("");
-                          }}
-                        >
-                          {t("imp.info")}
-                        </Button>
-                      </div>
-                    ) : null}
-
-                    {noteId === c.id ? (
-                      <div className="flex flex-wrap items-center gap-2">
-                        <input
-                          value={note}
-                          onChange={(e) => setNote(e.target.value)}
-                          placeholder={t("imp.notePlaceholder")}
-                          className="h-9 flex-1 rounded-input border border-hairline bg-surface px-3 text-sm outline-none focus:border-ink/30"
-                        />
-                        <Button
-                          variant="primary"
-                          disabled={review.isPending || note.trim().length === 0}
-                          onClick={() =>
-                            review.mutate({ id: c.id, action: "info", note: note.trim() })
-                          }
-                        >
-                          {t("imp.infoSend")}
-                        </Button>
-                      </div>
-                    ) : null}
-                  </Card>
+                  <ImportKandidatKarte
+                    key={c.id}
+                    c={c}
+                    reviewLaeuft={review.isPending}
+                    onReview={(v) => review.mutate(v)}
+                    noteOffen={noteId === c.id}
+                    onNoteUmschalten={() => {
+                      setNoteId((id) => (id === c.id ? null : c.id));
+                      setNote("");
+                    }}
+                    note={note}
+                    setNote={setNote}
+                  />
                 ))}
               </div>
             )

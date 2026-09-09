@@ -188,6 +188,20 @@ describe("JOB 3131 T2 · der Bestand ueberlebt die Aufteilung in zwei Laeufe", (
     // Tor nach Build und Tests an der Zeile „Size of ./apps/web/src/i18n.ts … exceeds configured
     // maximum". Fällt die Datei aus beiden Gruppen, zahlt das der nächste Textjob, nicht dieser.
     expect(holeRest()).toContain("tests/lesevariante/i18n-groessendeckel.test.ts");
+    // JOB 3363: dieselbe Klasse wie die Pins weiter oben — eine `.tsx`-Datei in einem NEUEN
+    // Verzeichnis (`tests/lesevariante-pruefkarte/`), jsdom mit echtem Fastify, kein Chromium.
+    // Genau diese Bauform fällt still aus beiden Gruppen, wenn ein `include`- oder Gruppenmuster
+    // den neuen Baum nicht trifft. Sie trägt den EINZIGEN Beleg dafür, dass die Prüfkarte in
+    // Stufe 2 die Leseübersetzung eines noch nicht angenommenen Kandidaten zeigt — und dass der
+    // Kandidat dabei unverändert bleibt.
+    expect(holeRest()).toContain("tests/lesevariante-pruefkarte/pruefkarte-mounted.test.tsx");
+    expect(holeRest()).toContain("tests/lesevariante-pruefkarte/kandidatenvariante-route.test.ts");
+    // JOB 3363 R2: derselbe Grund wie beim Pin für JOB 3364 eine Zeile weiter oben — nicht die
+    // Bauform, die aus einem Muster fällt, sondern ein Wächter, dessen Verlust UNSICHTBAR wäre.
+    // Diese Datei hält die Sprachsperre fest, an der Runde 1 mit reproduzierbarem HTTP 500 zerbrach
+    // (BEN: `…/lesevariante/original_language`). Läuft sie nicht mehr, ist sie grün und der Weg
+    // zurück in die Serverausnahme wieder offen.
+    expect(holeRest()).toContain("tests/lesevariante-pruefkarte/sprachsperre.test.ts");
   });
 
   it("V4 · der Verzeichnisgang der Konfiguration sieht denselben Bestand wie der Collector", () => {

@@ -327,6 +327,18 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "KEIN_KO_INHALT",
     grund: "Import-Kandidaten sind noch keine Wissensobjekte; DTO hält Interna zurück (:63).",
   },
+  // JOB 3363 · die Leseübersetzung EINES Kandidaten. DASSELBE Urteil wie die Zeile darüber, und aus
+  // demselben Grund: ein Import-Kandidat ist noch kein Wissensobjekt (`koId` ist null, bis jemand
+  // annimmt), also gibt diese Route keinen KO-Inhalt aus. Ausgegeben wird der Text der LOKALEN
+  // LIEFERUNG (`example-packages/advisor-ict-v1.lokalisierung.json`) zu genau dem Herkunftsanker,
+  // den der Kandidat selbst führt — kein Bestandstext, keine Bestandskennung. Die Auflösung setzt
+  // ZUERST den geladenen Kandidaten voraus (`kandidaten.findById`); ohne ihn antwortet die Route
+  // 404, es gibt also keinen Weg, die Lieferung mit einer frei gewählten Quellkennung zu befragen.
+  "GET /api/library/import/candidates/:id/lesevariante/:lang": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "JOB 3363 — Text der lokalen Lieferung zum Anker des Kandidaten; kein Wissensobjekt, keine koId.",
+  },
   // --- Gaps: eigener Sichtbarkeitsvertrag ----------------------------------------------------
   "GET /api/gaps": {
     urteil: "DIENST_FILTERT",

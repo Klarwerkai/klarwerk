@@ -262,6 +262,15 @@ export interface AppServices {
   // stellt sie idempotent wieder her (die Lieferung liegt als Datei im Auslieferungsstand).
   lesevarianten: LesevariantenRepo;
   /**
+   * JOB 3363: die Ablage der Import-Kandidaten — DIESELBE Instanz, die `LibraryService` bekommt.
+   * Sie steht hier, weil die Lesevarianten-Routen einen einzelnen Kandidaten nachschlagen müssen
+   * (die Prüfkarte fragt über die Kandidaten-Kennung), `LibraryService` seine Ablage aber privat
+   * hält und nur die ganze Warteschlange herausgibt. Eine zweite Instanz wäre ein zweiter
+   * Wahrheitsort über denselben Kandidaten; ein Umweg über `listImportCandidates()` wäre ein
+   * Vollscan je Karte.
+   */
+  candidates: CandidateRepo;
+  /**
    * JOB 3110 (M2b): DER FORMULIERER DES ZURUFS — dasselbe gecappte Cloud-Modell wie der Reasoner.
    *
    * Es steht hier und nicht als zweiter Fabrikaufruf in der Registrierung, weil es genau EINEN Ort
@@ -645,6 +654,8 @@ export function assembleServices(
     // Pedi 04.07.: Schwellen-Repo direkt durchreichen (Routen + Duplikat-Erkennung nutzen es).
     overlapSettings: repos.overlapSettings,
     library,
+    // JOB 3363: dieselbe Kandidaten-Ablage, die `library` oben bekommen hat — kein zweiter Bestand.
+    candidates: repos.candidates,
     // SCRUM-117: Output Factory — stateless, nur validierte KOs als Quelle.
     output: new OutputService({ koService: ko }),
     // SCRUM-120: Management/Kapital — stateless, aggregiert echte Live-Daten.
@@ -1720,11 +1731,15 @@ export function buildApp(
   // JOB 3326: die Lesevarianten — Übersicht, Einzelabruf und die Admin-Ladeaktion. Sie bekommen
   // DIESELBE Ablage-Instanz, die auch `koRoutes` oben durchgereicht wird; eine zweite wäre ein
   // zweiter Wahrheitsort über dieselbe Übersetzung.
+  // JOB 3363: dazu der Kandidatenbestand der Prüfkarte — ebenfalls DIESELBE Instanz, die
+  // `LibraryService` bedient (`services.candidates` ist `repos.candidates`). Ohne sie hätte die
+  // Prüfkarten-Route keinen echten Kandidaten und müsste einen erfinden.
   app.register(
     lesevariantenRoutes(
       {
         ko: services.ko,
         lesevarianten: services.lesevarianten,
+        kandidaten: services.candidates,
         ...(services.audit ? { audit: services.audit } : {}),
       },
       guards,

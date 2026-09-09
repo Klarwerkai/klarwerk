@@ -22,6 +22,8 @@
 // teuerste Sorte Fehler: der Nutzer läse etwas anderes, als das Objekt sagt.
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { Pool } from "pg";
 import type { AuditService } from "../../audit";
 import type { KnowledgeObject } from "../../knowledge-object";
@@ -82,6 +84,18 @@ const gelesen = new Map<string, LokalisierungsPaket>();
  * Quelltext ausführt (`tsx services/app/src/server.ts`) und ein `process.cwd()` je nach Aufrufer
  * woanders steht.
  *
+ * JOB 3363: DIE AUFLÖSUNG LÄUFT ÜBER `fileURLToPath` UND NICHT MEHR ÜBER `new URL(rel, base)`.
+ * Gemessen, nicht vermutet: unter jsdom ist `globalThis.URL` die whatwg-url-Fassung von jsdom, und
+ * die löst eine `file:`-Basis gegen die Dokumentadresse auf —
+ *
+ *     new URL("./example-packages/x", "file:///…/lesevarianten.ts")
+ *       → "http://localhost:3000/…/x"
+ *
+ * — worauf `readFileSync` mit `ENOENT: open '/services/app/src/example-packages/…'` abbrach. Jeder
+ * gemountete Test, der den ECHTEN Server fährt (die Prüfkarte tut genau das), lief damit ins Leere.
+ * `fileURLToPath` aus `node:url` wird von jsdom nicht überschrieben und ist die vorgesehene
+ * Umrechnung; im Serverbetrieb ist das Ergebnis dasselbe wie vorher.
+ *
  * Unbekanntes Paket → `undefined`. Kein Rückfall auf ein anderes Paket: eine falsche Übersetzung
  * wäre schlimmer als gar keine.
  */
@@ -94,10 +108,25 @@ export function lokalisierungsPaket(packageId: string): LokalisierungsPaket | un
   if (zwischenstand) {
     return zwischenstand;
   }
-  const roh = readFileSync(new URL(`./example-packages/${datei}`, import.meta.url), "utf8");
+  const roh = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "example-packages", datei),
+    "utf8",
+  );
   const paket = JSON.parse(roh) as LokalisierungsPaket;
   gelesen.set(packageId, paket);
   return paket;
+}
+
+/**
+ * ALLE Lieferungen, die dieses Repo kennt — aus DERSELBEN festen Liste `PAKETE`, über DIESELBE
+ * Lesefunktion (also mit demselben Prozesscache). Sie wird gebraucht, wo kein Paket genannt ist:
+ * ein Import-Kandidat trägt seine Herkunft (Provider + Quellkennung), aber keine Paket-Kennung.
+ * Eine zweite Liste hier wäre die zweite Wahrheit darüber, was geladen werden darf.
+ */
+export function alleLokalisierungsPakete(): LokalisierungsPaket[] {
+  return Object.keys(PAKETE)
+    .map((id) => lokalisierungsPaket(id))
+    .filter((p): p is LokalisierungsPaket => p !== undefined);
 }
 
 // ================================================================================================
@@ -179,6 +208,70 @@ export function originalAbdruck(
   return createHash("sha256")
     .update(`${ko.title}\n${ko.statement}\n${ko.bodyHtml ?? ""}`, "utf8")
     .digest("hex");
+}
+
+// ================================================================================================
+// JOB 3363 R2 · DER SPRACHWERT IST EINGABE — DIE EINE STELLE, DIE IHN IN DIE LIEFERUNG LÄSST.
+// ================================================================================================
+//
+// WAS FALSCH WAR, gemessen von BEN an der echten App: Beide Lesestellen dieser Datei griffen mit
+// `record[lang as "de" | "en" | "nl"]` in den Datensatz. Die Typbehauptung ist zur Laufzeit NICHTS,
+// und `:lang` kommt aus der Adresszeile. Damit traf
+//
+//     …/lesevariante/original_language  → das echte Feld des Datensatzes (die Zeichenkette „en")
+//     …/lesevariante/constructor        → den Prototyp (eine Funktion)
+//
+// beides wahrheitswertig, also lief der Code weiter bis `text.paragraphs.length` und warf:
+// HTTP 500, reproduzierbar. Eine Serverausnahme ist keine Antwort — und sie sagt dem Fragenden
+// nebenbei, welche Zeichenketten im Datensatz existieren.
+//
+// DIE SPERRE HAT ZWEI ZÄHNE, und beide werden gebraucht:
+//
+//   1. DIE LIEFERUNG SAGT, WAS EINE SPRACHE IST. `paket.languages` ist die geführte Liste („de",
+//      „en"); was nicht darin steht, ist keine Sprache — auch dann nicht, wenn der Datensatz
+//      zufällig ein gleichnamiges Feld trägt. Das schliesst Datensatzfelder UND Prototypschlüssel
+//      in EINEM Schritt aus, ohne eine zweite Verbotsliste zu pflegen, die man vergessen kann.
+//   2. DER FUND MUSS EIN TEXT SEIN. Auch innerhalb der geführten Sprachen wird geprüft, was
+//      wirklich dasteht (`title` als Zeichenkette, `paragraphs` als Feld von Zeichenketten) —
+//      eine kaputte Lieferung ergibt dann „kein Text", nicht eine geworfene Ausnahme mitten in
+//      einer Antwort. Das deckt zugleich Prototypschlüssel ab, falls eine Lieferung eines Tages
+//      eine Sprache namens `constructor` oder `__proto__` führt: was von dort käme, ist eine
+//      Funktion oder `Object.prototype` und besteht diese Prüfung nicht.
+//
+// KEIN DRITTER ZAHN. Ein zusätzliches `Object.hasOwn(record, sprache)` stand hier zwischenzeitlich
+// und ist wieder RAUS: gemessen ändert es an keinem einzigen Fall etwas (die Gegenprobe blieb
+// grün), weil Zahn 2 jeden Prototypwert ohnehin verwirft — und `JSON.parse` liefert schlichte
+// Objekte, deren Prototyp nie einen formgültigen Text trägt. Eine Verteidigung, die nie
+// entscheidet, ist keine; sie steht nur da und lässt den Leser glauben, sie täte etwas.
+//
+// SIE STEHT EINMAL. Ladeweg (`ladeLesevarianten`) und Kandidatenauflösung (`kandidatenLesevariante`)
+// rufen dieselbe Funktion; zwei Auslegungen davon, welcher Sprachwert in die Lieferung darf, wären
+// genau die zweite Wahrheit, die beim nächsten Befund nur an einer Stelle nachgeführt wird.
+export function textFuerSprache(
+  paket: Pick<LokalisierungsPaket, "languages">,
+  record: LokalisierungsRecord,
+  sprache: string,
+): LokalisierungsText | undefined {
+  // ZAHN 1: nur eine von der Lieferung GEFÜHRTE Sprache darf überhaupt nachschlagen.
+  if (!paket.languages.includes(sprache)) {
+    return undefined;
+  }
+  const fund = (record as unknown as Record<string, unknown>)[sprache];
+  // ZAHN 2: es muss ein Text in der Form der Lieferung sein.
+  return istLokalisierungsText(fund) ? fund : undefined;
+}
+
+/** Trägt dieser Wert wirklich Titel und Absätze — oder ist er nur zufällig vorhanden? */
+function istLokalisierungsText(wert: unknown): wert is LokalisierungsText {
+  if (typeof wert !== "object" || wert === null) {
+    return false;
+  }
+  const t = wert as Partial<LokalisierungsText>;
+  return (
+    typeof t.title === "string" &&
+    Array.isArray(t.paragraphs) &&
+    t.paragraphs.every((p) => typeof p === "string")
+  );
 }
 
 /** Der Abdruck der gelieferten ÜBERSETZUNG — Titel und Absätze in der Form der Lieferung. */
@@ -657,7 +750,11 @@ export async function ladeLesevarianten(
       if (lang === record.original_language) {
         continue;
       }
-      const text = record[lang as "de" | "en" | "nl"];
+      // JOB 3363 R2: DIESELBE Sperre wie an der Kandidatenroute. Hier kommt `lang` zwar aus
+      // `paket.languages`, ist also schon kontrolliert — aber die Frage „welcher Wert darf in den
+      // Datensatz?" wird an EINER Stelle beantwortet, nicht an der, die gerade auffiel. Ein
+      // Datensatz mit kaputtem Textfeld zählt jetzt als „ohne Text" statt eine Ausnahme zu werfen.
+      const text = textFuerSprache(paket, record, lang);
       if (!text || text.paragraphs.length === 0) {
         bilanz.ohneText.push(`${record.key}/${lang}`);
         continue;
@@ -732,4 +829,132 @@ export async function ladeLesevarianten(
     },
   });
   return bilanz;
+}
+
+// ================================================================================================
+// JOB 3363 · DIE LESEÜBERSETZUNG EINES NOCH NICHT ANGENOMMENEN KANDIDATEN.
+// ================================================================================================
+//
+// WARUM ES DAFÜR KEINE GESPEICHERTE ZEILE GIBT — UND KEINE GEBEN DARF. Alles oben in dieser Datei
+// hängt am WISSENSOBJEKT: Primärschlüssel `ko_id + lang`, Original-Abdruck aus `ko.title/statement/
+// bodyHtml`, Änderungsauskunft gegen genau dieses Objekt. Ein Import-Kandidat der Prüfkarte ist
+// aber noch KEIN Wissensobjekt — `koId` ist `null`, bis jemand „Annehmen" drückt
+// (`library-analytics/src/service.ts`). Ihm eine Zeile mit erfundener KO-Kennung zu geben, hiesse
+// entweder ein Wissensobjekt zu erfinden oder die Ablage zu belügen; beides wäre in der Vorführung
+// genau der Betrug, den dieser Auftrag ausschliesst.
+//
+// DIE ANTWORT IST DESHALB EINE REINE AUFLÖSUNG, KEIN SCHREIBVORGANG: Provider und Quellkennung des
+// Kandidaten werden gegen dieselben Anker gehalten wie beim Laden am Wissensobjekt — `ankerFuer`
+// und `providerPasst`, nicht eine zweite Fassung davon. Es entsteht nichts, es ändert sich nichts;
+// die Auskunft lebt genau so lange wie der Aufruf.
+//
+// WAS SIE NICHT BEANTWORTEN KANN, sagt sie auch nicht: „Original seit der Übersetzung geändert" ist
+// eine Aussage ÜBER EINEN ZEITPUNKT — den, an dem die Übersetzung abgelegt wurde. Für einen
+// Kandidaten gibt es diesen Zeitpunkt nicht, also gibt es die Aussage hier nicht (und darum trägt
+// `KandidatenLesevariante` das Feld `originalGeaendert` ausdrücklich NICHT). Der Quellabgleich
+// dagegen ist beantwortbar: er vergleicht den gelieferten Abdruck mit dem Text, der vorliegt.
+
+/**
+ * Die Herkunft eines Import-Kandidaten, so schmal wie die Frage: Provider und Quellkennung. Genau
+ * die zwei Felder, die `ImportItem` führt (`library-analytics/src/types.ts`) und die den Anker
+ * bilden. Bewusst kein `ImportItem` im Vertrag: diese Datei entscheidet über Übersetzungen, nicht
+ * über Importe.
+ */
+export interface Kandidatenherkunft {
+  provider?: string | null | undefined;
+  externalId?: string | null | undefined;
+}
+
+/**
+ * Die live aufgelöste Variante eines Kandidaten. Sie trägt DIESELBEN Kennzeichnungsfelder wie die
+ * gespeicherte (`originalLanguage`, `herkunft`, `status`, `quellabgleich`) — und ausdrücklich
+ * KEINE `koId`, weil es keine gibt.
+ */
+export interface KandidatenLesevariante {
+  lang: string;
+  originalLanguage: string;
+  title: string;
+  statement: string;
+  /**
+   * Der übersetzte Fließtext, in derselben entschärften `<p>`-Form wie am Wissensobjekt.
+   *
+   * DIE PRÜFKARTE ZEIGT IHN HEUTE NICHT (Auftrag §5.2 nennt Titel und Kernaussage): der GANZE
+   * importierte Seitentext bleibt dort das ORIGINAL, weil er der Prüfgegenstand ist — wer
+   * entscheidet, ob dieser Beitrag in den Bestand darf, entscheidet über den Originaltext. Er steht
+   * trotzdem in der Antwort (Auftrag §5.1 „title/statement/body"), und der Client benutzt ihn als
+   * Tragfähigkeitsprüfung: eine abgeschnittene Antwort ohne Fließtext gilt als keine Variante,
+   * genau wie am Wissensobjekt.
+   */
+  bodyHtml: string;
+  /** `lokale Lieferung <package_id>` — dieselbe Herkunftsangabe wie an der gespeicherten Variante. */
+  herkunft: string;
+  /** Der Übersetzungsstand aus der Lieferung. Die Variante ist NIE Freigabegegenstand. */
+  status: string;
+  quellabgleich: Quellabgleich;
+  /** Der Datensatzschlüssel der Lieferung, aus dem dieser Text stammt — Herkunft im Klartext. */
+  recordKey: string;
+}
+
+/**
+ * Löst die Leseübersetzung eines Kandidaten aus der lokalen Lieferung auf — oder `undefined`.
+ *
+ * DREI GRÜNDE FÜR `undefined`, alle ehrlich:
+ *   · der Kandidat trägt gar keine Quellkennung (dann gibt es nichts anzuknüpfen),
+ *   · kein Datensatz der Lieferung führt diesen Anker BEIM PASSENDEN PROVIDER,
+ *   · die gewünschte Sprache ist die Originalsprache des Datensatzes oder er trägt dort keinen Text.
+ *
+ * DER LETZTE FALL IST DER WICHTIGE: die Lieferung führt zu jedem Datensatz AUCH das englische
+ * Original. Es als „Übersetzung · Herkunft: lokale Lieferung … · keine Freigabe" auszugeben, wäre
+ * eine falsche Auskunft über den Originaltext. In die Originalsprache gibt es keine Leseübersetzung
+ * — und die Fläche zeigt dann schlicht das Original ohne Hinweis.
+ */
+export function kandidatenLesevariante(
+  lang: string,
+  herkunft: Kandidatenherkunft,
+  original: Pick<KnowledgeObject, "statement">,
+): KandidatenLesevariante | undefined {
+  const externalId = herkunft.externalId?.trim();
+  if (!externalId) {
+    return undefined;
+  }
+  const sprache = lang.trim();
+  for (const paket of alleLokalisierungsPakete()) {
+    for (const record of paket.records) {
+      // DIESELBE Ankerbildung und DERSELBE Providervergleich wie beim Laden am Wissensobjekt.
+      const passt = ankerFuer(paket.package_id, record).some(
+        (anker) =>
+          anker.externalId === externalId &&
+          providerPasst(anker.provider, herkunft.provider ?? null),
+      );
+      if (!passt) {
+        continue;
+      }
+      if (sprache === record.original_language) {
+        return undefined;
+      }
+      // JOB 3363 R2 (BEN): der Sprachwert kommt aus der Adresszeile und darf den Datensatz nur
+      // über diese eine Sperre erreichen — s. `textFuerSprache`. Alles, was die Lieferung nicht als
+      // Sprache führt, ist hier schlicht „keine Variante": 404, kein Text, keine Ausnahme.
+      const text = textFuerSprache(paket, record, sprache);
+      if (!text || text.paragraphs.length === 0) {
+        return undefined;
+      }
+      return {
+        lang: sprache,
+        originalLanguage: record.original_language,
+        title: text.title,
+        statement: text.paragraphs[0] ?? "",
+        bodyHtml: absaetzeZuHtml(text.paragraphs),
+        herkunft: `lokale Lieferung ${paket.package_id}`,
+        status: record.translation_status,
+        // DIESELBE Prüfung wie am Wissensobjekt: der gelieferte Quellabdruck gegen den Text, der
+        // wirklich vorliegt. Bei einer importierten Confluence-Seite ist das die vom Import
+        // erzeugte Kernaussage — dort schlägt der Vergleich fehl, und das heisst dann
+        // „unbestaetigt": der Beleg fehlt, die Übersetzung ist deshalb nicht falsch.
+        quellabgleich: quellabgleichFuer(record, original),
+        recordKey: record.key,
+      };
+    }
+  }
+  return undefined;
 }

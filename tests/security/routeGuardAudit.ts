@@ -429,6 +429,16 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/library/import/candidates": { protection: "ko.create" },
   "GET /api/library/import/candidates": { protection: "ko.read" },
   "PUT /api/library/import/candidates/:id": { protection: "ko.validate" },
+  // JOB 3363: die Leseübersetzung eines noch NICHT angenommenen Kandidaten (Prüfkarte, Stufe 2).
+  // DASSELBE Recht wie die Warteschlange eine Zeile darüber und KEIN Zeilenrecht daneben — genau
+  // wie dort: Import-Kandidaten sind eine Prüffläche und kein KO-Bestand, sie tragen weder
+  // Vertraulichkeitsstufe noch Eigentümer, und `listImportCandidates` filtert deshalb nicht. Diese
+  // Route zeigt nichts, was die Queue nicht zeigt: denselben Kandidatentext, nur übersetzt. Ein
+  // WEICHERES Recht wäre eine Bestandsauskunft durch die Hintertür; ein STRENGERES wäre eine
+  // Fläche, die dem Prüfer den übersetzten Titel derselben Karte vorenthält, die er gerade liest.
+  // Gemessen: `kandidatenvariante-route.test.ts` (K6) fährt beide Routen ohne Anmeldung im selben
+  // Fall gegeneinander.
+  "GET /api/library/import/candidates/:id/lesevariante/:lang": { protection: "ko.read" },
   "GET /api/analytics": { protection: "ko.read", zeilenrecht: ["sichtbarkeitsfilterFuer"] },
   "GET /api/analytics/busfactor": {
     protection: "ko.read",

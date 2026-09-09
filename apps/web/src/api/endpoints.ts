@@ -52,6 +52,7 @@ import type {
   ImportSelectCriteria,
   ImportSelectResponse,
   InterviewResult,
+  KandidatenLesevariante,
   KnowledgeCheckResult,
   KnowledgeObject,
   KoVersionSnapshot,
@@ -856,6 +857,13 @@ export const endpoints = {
     fuerKo: (koId: string, lang: string) =>
       api.get<Lesevariante>(
         `/kos/${encodeURIComponent(koId)}/lesevariante/${encodeURIComponent(lang)}`,
+      ),
+    // JOB 3363: die Prüfkarte in Stufe 2. Sie fragt über die KANDIDATEN-Kennung — der Server löst
+    // daraus Provider und Quellkennung auf. Es gibt bewusst keinen Weg, die Lieferung mit einer
+    // frei gewählten Quellkennung zu befragen.
+    fuerKandidat: (kandidatId: string, lang: string) =>
+      api.get<KandidatenLesevariante>(
+        `/library/import/candidates/${encodeURIComponent(kandidatId)}/lesevariante/${encodeURIComponent(lang)}`,
       ),
   },
   // AUFTRAG-mega46 Block F: „welche Schalter stehen" — die EINE Auskunft, Ja/Nein je Schalter.

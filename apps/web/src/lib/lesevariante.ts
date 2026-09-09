@@ -20,7 +20,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
-import type { Lesevariante, LesevarianteKurz } from "../api/types";
+import type { KandidatenLesevariante, Lesevariante, LesevarianteKurz } from "../api/types";
 
 // ================================================================================================
 // DIE TEXTE DIESER FUNKTION — und WARUM sie hier stehen und nicht in `i18n.ts` (JOB 3326 R4).
@@ -327,14 +327,36 @@ export function useLesevariante(koId: string | undefined): LesevarianteKurz | un
 // bewusst gewählte Tausch — die frühere Ersparnis war genau die Quelle beider Befunde. Der Vorrat
 // bleibt für die LISTEN-Vorschau (`KoSummaryDisclosure`), wo ein Abruf je Zeile ein Anfragesturm
 // wäre und wo keine Warnung hängt.
-export type LesevariantenLage =
-  /** Für dieses Objekt gibt es in dieser Sprache keine Übersetzung — kein Hinweis, kein Vorbehalt. */
+//
+// JOB 3363: DIESELBE LAGE, ZWEI GEGENSTÄNDE. Die Prüfkarte in Stufe 2 zeigt Kandidaten, die noch
+// KEIN Wissensobjekt sind — sie haben keine `koId`, also greift `useFrischeLesevariante` für sie
+// nicht. Der Zustandsraum, die Anfragegeneration, die Regel „in der Originalsprache nicht
+// übersetzt zeigen" und die Unterscheidung „es gibt keine" gegen „der Abruf ist gescheitert" sind
+// aber Wort für Wort dieselben. Deshalb ist der Typ über die Variante GENERISCH und darunter steht
+// EIN Haken, der beide Quellen bedient — kein zweiter, der dieselben vier Fälle noch einmal
+// auslegt und beim nächsten Befund nur an einer Stelle nachgeführt wird.
+export type LesevariantenLage<V = Lesevariante> =
+  /** Für diesen Gegenstand gibt es in dieser Sprache keine Übersetzung — kein Hinweis, kein Vorbehalt. */
   | { zustand: "aus" }
   /** Der Abruf läuft. Es steht noch NICHTS Übersetztes da (auch nichts Altes). */
   | { zustand: "laedt" }
-  | { zustand: "da"; variante: Lesevariante }
+  | { zustand: "da"; variante: V }
   /** Der Abruf ist gescheitert (kein Zugriff, Netz, Serverfehler) — die Fläche sagt es. */
   | { zustand: "fehlt" };
+
+/**
+ * WOFÜR die Übersetzung geholt wird — der Endpunkt und die Frage „ist diese Antwort lesbar?".
+ * Alles danach (Zustandsraum, Anfragegeneration, Sprachregel, Fehlerunterscheidung) ist gleich.
+ *
+ * ES GIBT GENAU ZWEI, UND SIE SIND MODULKONSTANTEN. Damit ist die Abruffunktion bei jedem Rendern
+ * DIESELBE — eine je Aufruf neu gebildete Funktion in der Abhängigkeitsliste des Effekts löste
+ * einen Abruf je Rendern aus. Und weil `lesbar` ein Typprädikat der jeweiligen Art ist, entsteht
+ * die Verengung im Haken ohne ein einziges `as`.
+ */
+interface Variantenart<V extends { originalLanguage: string }> {
+  hole(id: string, lang: string): Promise<unknown>;
+  lesbar(antwort: unknown): antwort is V;
+}
 
 /**
  * Trägt diese Antwort wirklich eine LESBARE Variante? Geprüft werden genau die Felder, die die
@@ -346,6 +368,20 @@ export type LesevariantenLage =
  * dann steht das Original da. Wissenslücke statt Erfindung.
  */
 function istLesbareVariante(antwort: unknown): antwort is Lesevariante {
+  return tragfaehig(antwort);
+}
+
+/**
+ * Die vier Felder, ohne die KEINE Fläche etwas Übersetztes zeigen darf: die Originalsprache (sonst
+ * stünde da „Übersetzung · Original: UNDEFINED"), Titel, Kernaussage und Fließtext.
+ *
+ * JOB 3363: DIESELBE Prüfung gilt für die Kandidatenvariante. Sie trägt dieselben vier Felder
+ * (Auftrag §5.1 „title/statement/body"); die Prüfkarte ZEIGT den Fließtext zwar nicht — dort bleibt
+ * der ganze importierte Seitentext das Original, weil er der Prüfgegenstand ist —, aber eine
+ * abgeschnittene Antwort ist auch hier keine Variante. Eine zweite, schwächere Fassung dieser
+ * Prüfung daneben wäre die zweite Auslegung derselben Frage.
+ */
+function tragfaehig(antwort: unknown): boolean {
   const v = antwort as Partial<Lesevariante> | null;
   return (
     typeof v === "object" &&
@@ -358,27 +394,45 @@ function istLesbareVariante(antwort: unknown): antwort is Lesevariante {
   );
 }
 
+/** JOB 3363: dieselbe Tragfähigkeit, anderer Gegenstand — s. `tragfaehig`. */
+function istLesbareKandidatenvariante(antwort: unknown): antwort is KandidatenLesevariante {
+  return tragfaehig(antwort);
+}
+
+/** Die Übersetzung eines WISSENSOBJEKTS — volle Fassung mit Fließtext. */
+const KO_VARIANTE: Variantenart<Lesevariante> = {
+  hole: (id, lang) => endpoints.lesevarianten.fuerKo(id, lang),
+  lesbar: istLesbareVariante,
+};
+
+/** JOB 3363 · Die live aufgelöste Übersetzung eines noch nicht angenommenen Kandidaten. */
+const KANDIDATEN_VARIANTE: Variantenart<KandidatenLesevariante> = {
+  hole: (id, lang) => endpoints.lesevarianten.fuerKandidat(id, lang),
+  lesbar: istLesbareKandidatenvariante,
+};
+
 /**
- * Die Übersetzung EINES Objekts, frisch geholt. `koId` und `uiSprache` bestimmen die Anfrage; jeder
- * Wechsel verwirft die vorherige Antwort über eine eigene Anfragegeneration (dieselbe Regel wie im
- * Vorrat: eine verspätete Antwort auf ein anderes Objekt darf nie schreiben).
+ * Die Übersetzung EINES Gegenstands, frisch geholt. Art, Kennung und `uiSprache` bestimmen die
+ * Anfrage; jeder Wechsel verwirft die vorherige Antwort über eine eigene Anfragegeneration (eine
+ * verspätete Antwort auf ein anderes Objekt darf nie schreiben).
  */
-export function useFrischeLesevariante(
-  koId: string | undefined,
+function useFrischeVariante<V extends { originalLanguage: string }>(
+  art: Variantenart<V>,
+  id: string | undefined,
   uiSprache: string,
-): LesevariantenLage {
-  const [lage, setLage] = useState<LesevariantenLage>({ zustand: "aus" });
+): LesevariantenLage<V> {
+  const [lage, setLage] = useState<LesevariantenLage<V>>({ zustand: "aus" });
   const laufende = useRef(0);
   useEffect(() => {
     const meine = ++laufende.current;
-    if (!koId) {
+    if (!id) {
       setLage({ zustand: "aus" });
       return;
     }
     setLage({ zustand: "laedt" });
-    let angefragt: Promise<Lesevariante>;
+    let angefragt: Promise<unknown>;
     try {
-      angefragt = endpoints.lesevarianten.fuerKo(koId, uiSprache);
+      angefragt = art.hole(id, uiSprache);
     } catch {
       setLage({ zustand: "fehlt" });
       return;
@@ -391,7 +445,7 @@ export function useFrischeLesevariante(
         // Dieselbe eine Regel wie überall: in der Originalsprache wird nicht übersetzt gezeigt.
         // Und eine Antwort, die keine lesbare Variante trägt, ist keine.
         setLage(
-          istLesbareVariante(variante) && anzuzeigendeVariante(variante, uiSprache)
+          art.lesbar(variante) && anzuzeigendeVariante(variante, uiSprache)
             ? { zustand: "da", variante }
             : { zustand: "aus" },
         );
@@ -405,6 +459,28 @@ export function useFrischeLesevariante(
         const ohneVariante = fehler instanceof ApiError && fehler.code === "NO_LESEVARIANTE";
         setLage(ohneVariante ? { zustand: "aus" } : { zustand: "fehlt" });
       });
-  }, [koId, uiSprache]);
+  }, [art, id, uiSprache]);
   return lage;
+}
+
+/** Die Übersetzung eines WISSENSOBJEKTS (`/wissen/:id`, Bibliotheks-Lesefläche). */
+export function useFrischeLesevariante(
+  koId: string | undefined,
+  uiSprache: string,
+): LesevariantenLage {
+  return useFrischeVariante(KO_VARIANTE, koId, uiSprache);
+}
+
+/**
+ * JOB 3363: Die Übersetzung eines noch NICHT angenommenen Import-KANDIDATEN (Prüfkarte, Stufe 2).
+ *
+ * Gefragt wird über die Kandidaten-Kennung; Provider und Quellkennung löst der SERVER auf. Der
+ * Abruf ändert am Kandidaten nichts — er nimmt ihn nicht an, verschiebt keinen Status und legt
+ * kein Wissensobjekt an.
+ */
+export function useFrischeKandidatenLesevariante(
+  kandidatId: string | undefined,
+  uiSprache: string,
+): LesevariantenLage<KandidatenLesevariante> {
+  return useFrischeVariante(KANDIDATEN_VARIANTE, kandidatId, uiSprache);
 }

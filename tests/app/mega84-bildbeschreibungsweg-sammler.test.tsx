@@ -1527,8 +1527,19 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // eine Bildbeschreibung an (kein `ANGEBOT_MUSTER`) und keines trägt einen eigenen Titel (kein
     // `documentTitle`-Prop); sie erscheinen nur in der Grundmenge. Die zwei Zahlen, an denen
     // Stufe 2 wirklich hängt, bleiben unverändert: `anbieter` 1 und `traeger` 2.
+    //
+    // KONFLIKTRUNDE 1 (JOB 3363 · LESEVARIANTE-PRUEFKARTE): NACH DEM REBASE auf JOB 3357/IMPORT-
+    // LAUFKENNUNG trifft die unabhängige NEUE Fläche LESEVARIANTE-PRUEFKARTE auf denselben Stand;
+    // `komponenten` von 361 auf 362 NACHGEZOGEN, am eigenen Lauf dieses Arbeitsbaums gemessen,
+    // nicht rechnerisch addiert. Das eine Bauteil ist `ImportKandidatKarte` in `pages/Stufe2.tsx`;
+    // es ist eine HERAUSLÖSUNG aus der Kartenschleife (der Haken
+    // `useFrischeKandidatenLesevariante` braucht eine eigene Komponente je Karte), keine neue
+    // Fläche — das gerenderte Ergebnis ist das bisherige plus die Kennzeichnung. Es bietet keine
+    // Bildbeschreibung an (kein `ANGEBOT_MUSTER`) und trägt keinen eigenen Titel (kein
+    // `documentTitle`-Prop); es erscheint nur in der Grundmenge. Die zwei Zahlen, an denen Stufe 2
+    // wirklich hängt, bleiben unverändert: `anbieter` 1, `traeger` 2.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 361,
+      komponenten: 362,
       anbieter: 1,
       traeger: 2,
     });

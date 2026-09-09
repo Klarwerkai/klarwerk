@@ -1596,6 +1596,60 @@ export interface LesevarianteKurz {
   updatedAt: string;
 }
 
+// ================================================================================================
+// JOB 3363 · DIE KENNZEICHNUNG — DAS, WAS JEDE VARIANTE ÜBER SICH SAGEN MUSS.
+// ================================================================================================
+//
+// Der Hinweis-Baustein (`components/LesevarianteHinweis.tsx`) verlangte bis hierher eine vollständige
+// `LesevarianteKurz` — mitsamt `koId`. Für einen noch nicht angenommenen Import-Kandidaten gibt es
+// die nicht, und eine erfundene wäre genau die Sorte Zahl, die sich später als Verweis ausgibt.
+// Der Baustein braucht sie auch nie: er zeigt Originalsprache, Herkunft, den Freigabe-Satz und die
+// zwei Vorbehalte. GENAU DIESE Felder stehen hier — damit dieselbe Kennzeichnung über einer
+// gespeicherten KO-Variante UND über einer live aufgelösten Kandidatenvariante stehen kann, ohne
+// zweite UI-Logik und ohne `as`-Umgehung.
+export type LesevarianteKennzeichnung = Pick<
+  LesevarianteKurz,
+  "originalLanguage" | "herkunft" | "quellabgleich"
+> & {
+  /**
+   * OPTIONAL, und das ist die Aussage: „Das Original hat sich seit der Übersetzung geändert" hängt
+   * an einem Zeitpunkt — dem, an dem die Übersetzung abgelegt wurde. Eine Kandidatenvariante wird
+   * bei jedem Blick neu aus der Lieferung aufgelöst; für sie gibt es diesen Zeitpunkt nicht, also
+   * gibt es die Aussage nicht. Fehlt das Feld, steht der Vorbehalt nicht da — behauptet wird damit
+   * nichts, weder das eine noch das andere.
+   */
+  originalGeaendert?: boolean;
+};
+
+/**
+ * JOB 3363 · Die LIVE aufgelöste Leseübersetzung eines Import-Kandidaten der Prüfkarte (Stufe 2).
+ *
+ * Sie trägt bewusst KEINE `koId`: der Kandidat ist noch kein Wissensobjekt (`koId` ist dort `null`,
+ * bis jemand „Annehmen" drückt). Sie wird auch nicht gespeichert — der Server löst sie bei jedem
+ * Abruf aus der lokalen Lieferung auf, über den echten Kandidaten und dessen Herkunftsanker.
+ */
+export interface KandidatenLesevariante {
+  lang: string;
+  /** Sprache des ORIGINALS. Ist sie gleich der Oberflächensprache, wird die Variante nicht gezeigt. */
+  originalLanguage: string;
+  title: string;
+  statement: string;
+  /**
+   * Der übersetzte Fließtext. Die Prüfkarte ZEIGT ihn nicht: dort bleibt der ganze importierte
+   * Seitentext das Original, weil er der Prüfgegenstand ist. Er dient als Tragfähigkeitsprüfung —
+   * eine abgeschnittene Antwort ohne Fließtext gilt als keine Variante (`lib/lesevariante.ts`).
+   */
+  bodyHtml: string;
+  /** z. B. `lokale Lieferung advisor-ict-en-v1` — keine Cloudübersetzung, kein Modellaufruf. */
+  herkunft: string;
+  /** Der Übersetzungsstand aus der Lieferung. Eine Variante ist NIE Freigabegegenstand. */
+  status: string;
+  /** Wie bei der gespeicherten Variante: ist die Zuordnung gegen den Quellabdruck BELEGT? */
+  quellabgleich: "bestaetigt" | "unbestaetigt";
+  // KEIN `originalGeaendert`: die Aussage ist für eine live aufgelöste Variante nicht beantwortbar
+  // (s. `LesevarianteKennzeichnung`). Sie fehlt deshalb, statt mit `false` gefüllt zu werden.
+}
+
 /** Die volle Fassung für die Leseansicht. */
 export interface Lesevariante extends LesevarianteKurz {
   bodyHtml: string;
