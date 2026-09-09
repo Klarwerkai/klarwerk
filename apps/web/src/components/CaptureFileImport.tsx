@@ -20,6 +20,13 @@ import { detectFileKind } from "../lib/extract";
 import { fileSourcesForSurface, openCaptureFileDialog } from "../lib/importSourceGallery";
 import { FileTypePicker } from "./FileTypePicker";
 import { UploadLimitsHint } from "./UploadLimitsHint";
+import type { ArbeitsraumModus } from "./erfassen/Blatt";
+
+/**
+ * JOB 3378 (UX-18-M1): Der Modus, dessen Wegziel der Auswahlknopf unten ist. Nur ein TYP-Import —
+ * zur Laufzeit entsteht daraus keine Kante nach `Blatt.tsx`, der Bau bleibt unverändert.
+ */
+const WEGZIEL_DATEI: ArbeitsraumModus = "datei";
 
 export interface CaptureFileImportProps {
   // Der ECHTE Extraktions-Pfad des Erfassens (Capture.onExtractFile). Wird ausgelöst, wenn der
@@ -123,6 +130,21 @@ export function CaptureFileImport({ onExtractFile }: CaptureFileImportProps): JS
         <button
           type="button"
           data-testid="capture-file-pick"
+          // ====================================================================================
+          // JOB 3378 (UX-18-M1) — DIESER KNOPF IST DAS ZIEL DES WEGES „datei".
+          // ====================================================================================
+          // Wer über `/erfassen?weg=datei` hier ankommt (die Import-Kachel von `/import`), sucht
+          // GENAU DIESEN Knopf. Bei 390 px lag er nach dem Mausklick vollständig oberhalb des
+          // Fensters, weil der Bildlauf von `/import` mitkommt (Messung und Begründung stehen im
+          // Weg-Fokus-Effekt von `components/erfassen/Blatt.tsx`).
+          //
+          // HIER STEHT NUR DIE AUSZEICHNUNG, KEIN BILDLAUF. Ein `scrollIntoView` an dieser Stelle
+          // spränge auch beim Menüweg und beim Wiederaufnehmen eines Entwurfs, wo niemand darum
+          // gebeten hat. WANN gescrollt wird, entscheidet allein das Blatt (nur nach dem
+          // Deep-Link); WELCHES Element gemeint ist, sagt der Arbeitsraum — also diese Zeile.
+          // Der Wert ist als `ArbeitsraumModus` getippt: fiele „datei" aus dieser Menge, hielte
+          // der Compiler die Auszeichnung an.
+          data-wegziel={WEGZIEL_DATEI}
           onClick={openFileDialog}
           className="rounded-btn border border-hairline bg-page px-3 py-1.5 text-[12.5px] font-semibold text-ink transition-colors hover:border-brand hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand/40"
         >

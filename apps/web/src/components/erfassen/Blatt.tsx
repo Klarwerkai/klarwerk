@@ -110,6 +110,20 @@ import { BLATT_WEGE, BLATT_WEG_PARAMETER, blattWegAusAdresse, blattWegLabelKey }
 
 export type ArbeitsraumModus = "interview" | "datei" | "formular";
 
+/**
+ * JOB 3378 (UX-18-M1): Womit ein Arbeitsraum SEIN Wegziel auszeichnet — den Bedienknopf, den ein
+ * über die Adresse hergekommener Mensch als nächsten Schritt sucht. Der Wert ist der Modus
+ * (`ArbeitsraumModus`), damit ein Arbeitsraum mit mehreren Modi je Modus ein eigenes Ziel benennen
+ * kann.
+ *
+ * BEWUSST NICHT EXPORTIERT: der Name muss auf der anderen Seite ohnehin als JSX-Attributliteral
+ * stehen (`data-wegziel="datei"` in `components/CaptureFileImport.tsx`) — ein Import brächte dort
+ * nichts, weil ein berechneter Attributname in JSX nicht typgeprüft werden kann. Es ist dieselbe
+ * Lage wie bei `data-testid`. Die Bindung hält stattdessen der TYP: die auszeichnende Stelle
+ * schreibt ihren Wert als `ArbeitsraumModus`, und dieser Typ kommt aus genau dieser Datei.
+ */
+const BLATT_WEGZIEL = "data-wegziel";
+
 export type ArbeitsraumFabrik = (args: {
   modus: ArbeitsraumModus;
   /** Der Arbeitsraum hat einen Entwurf gesichert — das Blatt übernimmt ihn und kommt zurück. */
@@ -1632,6 +1646,72 @@ export function Blatt({
   // ein Griff auf ein Dateifeld verböte sich ohnehin, er öffnete ein Betriebssystemfenster, das
   // niemand bestellt hat. Nur nach dem Deep-Link, nicht nach dem Menüklick: dort steht der Fokus
   // schon in der Nähe, und ihn zu versetzen wäre ein Griff, den der Mensch nicht gemacht hat.
+  //
+  // ==============================================================================================
+  // JOB 3378 (UX-18-M1) — UND DER ANGEKÜNDIGTE NÄCHSTE SCHRITT KOMMT MIT INS BILD.
+  // ==============================================================================================
+  //
+  // DER BEFUND, im echten Chromium bei 390×720 gemessen (JOB 3299 R3, in JOB 3378 R1 nachgemessen):
+  // nach dem MAUSKLICK auf die Word-Kachel von `/import` lag „Datei auswählen" vollständig oberhalb
+  // des Fensters — DE `top=-93,875 / bottom=-61,125`, EN `top=-129,0625 / bottom=-96,3125`. Der
+  // Mensch stand auf einer Seite, deren angekündigten nächsten Schritt er nicht sah. (Der deutsche
+  // Wert schwankt um 35 px — je nachdem, wie weit die Plattform vor dem Klick zur Kachel scrollen
+  // musste, wurde auch `-128,875` gemessen. „Vollständig oberhalb" gilt in beiden Fällen.)
+  //
+  // DIE URSACHE IST GEMESSEN, NICHT VERMUTET. Das Fenster scrollt in dieser Anwendung gar nicht
+  // (`window.scrollY` durchgehend 0); der scrollende Knoten ist `<main>`, und er ÜBERLEBT den
+  // Seitenwechsel. Auf `/import` steht die Word-Kachel bei 390 px unter dem Falz (`top=1765`), ein
+  // echter Mausklick muss also erst dorthin scrollen — und auf `/erfassen` steht `main.scrollTop`
+  // unverändert bei 1073 (DE) bzw. 1064 (EN). Der Tastaturweg fiel deshalb nicht auf: sein
+  // Weitertabben scrollt den Knopf durch echte Bedienung selbst ins Bild.
+  //
+  // WARUM `flaeche.focus()` DAS NICHT SCHON ERLEDIGT — auch das ist gemessen: der Aufruf löst
+  // KEINEN Bildlauf aus (Bildlaufstand und Knopflage sind davor und danach identisch), und das ist
+  // richtig so. Die Fläche ist 2100 px hoch und überspannt den 664 px hohen Scrollbereich
+  // vollständig; für sie ist nichts hineinzuscrollen. Aus demselben Grund reicht auch ein Bildlauf
+  // AUF die Fläche nicht: der Auswahlknopf liegt 746 px (DE) bzw. 707 px (EN) unter ihrer
+  // Oberkante, also selbst dann noch ausserhalb, wenn ihre Oberkante am oberen Rand stünde.
+  //
+  // DESHALB WIRD DAS ZIEL DES WEGES GESCROLLT, und nicht die Fläche. WELCHES Element das ist, sagt
+  // wieder der Arbeitsraum und nicht das Blatt — genau wie beim Fokus zwei Absätze höher: das Ziel
+  // meldet sich selbst mit `data-wegziel="<modus>"` (heute genau eine Stelle: der Knopf „Datei
+  // auswählen" in `components/CaptureFileImport.tsx`). Das Blatt kennt nur die Regel „nach dem
+  // Deep-Link steht das Ziel im Bild"; es kennt kein `capture-file-pick`.
+  //
+  // GESCROLLT WIRD NUR, WENN DIE ZUSAGE VERLETZT IST, und die Bedingung ist die Zusage selbst
+  // (`top >= 0` und `bottom <= innerHeight`) — kein Näherungsmass. Steht der Knopf schon im Bild,
+  // geschieht nichts; das ist am Desktop der Regelfall.
+  //
+  // DIESELBE ZURÜCKHALTUNG WIE BEIM FOKUS, und sie steht in derselben Bedingung: `wegFokusOffenRef`
+  // ist nur nach dem Deep-Link gesetzt. Nach dem Menüklick springt nichts — dort hat der Mensch
+  // seinen Bildlauf selbst eingestellt. Ein `scrollIntoView` im Knopf selbst wäre die naheliegende,
+  // ärmere Antwort gewesen: es spränge auch beim Menüweg und beim Wiederaufnehmen eines Entwurfs.
+  //
+  // DAS ZIEL IST IN DIESEM BILDAUFBAU NOCH NICHT DA, und das ist gemessen und nicht vermutet: der
+  // Arbeitsraum startet auf `freitext` (`pages/Capture.tsx:555`, ausdrücklich begründet) und
+  // übernimmt den gewünschten Modus erst in einem EIGENEN Effekt. In dem Bildaufbau, in dem das
+  // Blatt hier seinen Fokus setzt, gibt es den Knopf „Datei auswählen" also noch gar nicht — die
+  // erste Fassung dieses Griffes scrollte deshalb ins Leere (`main.scrollTop` blieb bei 1073).
+  //
+  // GEWARTET WIRD AUF DAS ZIEL, NICHT AUF EINE ZAHL VON BILDAUFBAUTEN. Die Wache fragt genau das,
+  // worauf es ankommt — ist das Ziel da? — und endet an zwei ehrlichen Stellen: beim ersten
+  // Treffer, und wenn diese Ansicht geht (Aufräumen des Effekts).
+  //
+  // EINE FRIST STAND HIER SCHON EINMAL, ein `requestAnimationFrame`, das die Wache „spätestens mit
+  // dem nächsten Bildaufbau" beenden sollte — und sie ist gemessen gescheitert: in Gegenprobe G3
+  // dieses Auftrags gewann sie auf dem MENÜweg das Rennen gegen den Arbeitsraum. Der Bildlauf fiel
+  // dort still aus, und der Wächterfall N konnte einen erzwungenen Bildlauf gar nicht mehr sehen.
+  // Eine geratene Frist gegen einen Bildaufbau ist kein Bauteil, sondern ein Zufall.
+  //
+  // WAS DAFÜR IN KAUF GENOMMEN WIRD, ausdrücklich: „interview" und „formular" zeichnen heute kein
+  // Wegziel aus; wird einer von ihnen über die Adresse geöffnet, beobachtet die Wache seine Fläche,
+  // bis die Ansicht wechselt. Das kostet je Mutationsbündel eine `querySelector`-Abfrage und keinen
+  // Bildlauf. Der umgekehrte Fehler — ein Ziel, das nach Fristende erscheint und den Menschen ohne
+  // seinen nächsten Schritt stehen lässt — wäre der teurere.
+  //
+  // DIE EXISTENZPRÜFUNGEN SIND KEIN ZUGESTÄNDNIS AN DEN PRÜFSTAND: jsdom bringt `scrollIntoView`
+  // nicht mit (`Ask.tsx:860`, `MehrAbschnitte.tsx:518` sichern sich aus demselben Grund so ab), und
+  // die gemounteten Wege dieser Fläche laufen dort.
   useEffect(() => {
     if (!wegFokusOffenRef.current || ansicht === "blatt") {
       return;
@@ -1642,6 +1722,36 @@ export function Blatt({
     }
     wegFokusOffenRef.current = false;
     flaeche.focus();
+
+    const insBild = (): boolean => {
+      const ziel = flaeche.querySelector(`[${BLATT_WEGZIEL}="${ansicht}"]`);
+      if (ziel === null || typeof ziel.scrollIntoView !== "function") {
+        return false;
+      }
+      // GEFRAGT WIRD DIE ZUSAGE SELBST, nicht ein Näherungswert: steht der Knopf schon ganz im
+      // Fenster, geschieht NICHTS. Am Desktop ist das der Regelfall, und ein Sprung wäre dort ein
+      // Griff, den niemand gemacht hat.
+      const kasten = ziel.getBoundingClientRect();
+      if (kasten.top >= 0 && kasten.bottom <= window.innerHeight) {
+        return true;
+      }
+      // UND SONST MIT LUFT: `center` statt `nearest`. Gemessen in Gegenprobe G2 dieses Auftrags —
+      // wenn `nearest` den Knopf an die UNTERKANTE legt, schiebt ihn das Nachwachsen des
+      // Arbeitsraums (Schriften, die Kachelliste darunter) wieder hinaus: er stand danach bei
+      // `bottom=764,875` gegen `innerHeight=720`. Aus der Mitte heraus trägt die Zusage auch das.
+      ziel.scrollIntoView({ block: "center" });
+      return true;
+    };
+    if (insBild() || typeof MutationObserver !== "function") {
+      return;
+    }
+    const wache = new MutationObserver(() => {
+      if (insBild()) {
+        wache.disconnect();
+      }
+    });
+    wache.observe(flaeche, { childList: true, subtree: true });
+    return () => wache.disconnect();
   }, [ansicht]);
 
   // ---- Werkzeugzeile ---------------------------------------------------------------------------

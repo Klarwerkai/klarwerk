@@ -343,7 +343,61 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
     // erschien — der Mensch hätte sie sonst nicht gesehen. Auf dem Blatt steht sie direkt
     // unter dem Text, im Sichtfeld; ein Sprung wäre eine Bewegung ohne Not. Damit fällt auch
     // die Fehlerklasse weg, wegen der WP-UX-WOW-1 U8 das `?.()` einführen musste.
-    expect(pageSource).not.toContain("scrollIntoView");
+    //
+    // ============================================================================================
+    // NACHGEFÜHRT DURCH JOB 3378 (UX-18-M1) — DIE AUSSAGE BLEIBT, DAS WORT REICHT NICHT MEHR.
+    // ============================================================================================
+    // Bis hierher stand hier `not.toContain("scrollIntoView")`. Das war so lange dasselbe wie die
+    // Aussage darüber, wie es in dieser Datei GENAU EINEN denkbaren Bildlauf gab. Seit JOB 3378
+    // gibt es einen zweiten, und er hat mit dem Vorschlag nichts zu tun: nach dem Deep-Link
+    // `/erfassen?weg=<modus>` holt das Blatt das WEGZIEL des Arbeitsraums ins Bild, weil der
+    // Bildlauf von `/import` mitkommt und „Datei auswählen" bei 390 px sonst oberhalb des Fensters
+    // liegt (gemessen: DE `top=-93,875`, EN `top=-129,0625`; belegt in
+    // `tests/import-mausziel/dateiauswahl-im-bild-chromium.test.ts`).
+    //
+    // Gepinnt wird deshalb die EMPFÄNGERMENGE statt des Wortes: jeder Bildlauf dieser Datei geht
+    // auf `ziel` — das Wegziel — und auf nichts anderes. Käme der Vorschlags-Scroll zurück (oder
+    // irgendein anderer Sprung), stünde hier ein zweiter Empfänger, und der Fall wird rot. Das ist
+    // näher an der Zusage als das Wort und lässt sich nicht durch Umbenennen umgehen.
+    //
+    // RUNDE 2, NACH BENS GEGENPROBE (09.09.): DIE ERSTE FASSUNG DIESES PINS WAR ZU ENG.
+    // Sie las nur `x.scrollIntoView(` und übersah den OPTIONALEN Aufruf `x.scrollIntoView?.(…)` —
+    // ausgerechnet die Schreibweise, die der alte Vorschlags-Scroll hatte (`?.()`, s. oben). BEN hat
+    // das mit einer echten Mutation belegt: ein zusätzliches `flaeche.scrollIntoView?.({block:"start"})`
+    // im Weg-Effekt liess beide nachgeführten Wächter grün. Das `not.toContain("scrollIntoView")`
+    // davor hätte es gesehen — eine Nachführung darf nicht weniger erkennen als das, was sie ablöst.
+    //
+    // DESHALB WIRD JETZT ABGEZÄHLT STATT GESUCHT: jede Erwähnung von `scrollIntoView` im CODE
+    // (Kommentarzeilen zählen nicht mit, sie tragen kein Verhalten) muss entweder ein erkannter
+    // Aufruf sein oder die Existenzprüfung darüber. Was an beiden Mustern vorbeigeht — Klammerzugriff
+    // `el["scrollIntoView"]()`, `call/apply/bind`, eine Alias-Bindung — macht die Summe ungleich und
+    // den Fall rot, ohne dass für jede denkbare Schreibweise ein eigenes Muster nötig wäre.
+    const blattCode = pageSource
+      .split("\n")
+      .filter((zeile) => !/^\s*(?:\/\/|\*|\/\*)/.test(zeile))
+      .join("\n");
+    // Aufrufe in JEDER Form: `a.scrollIntoView(`, `a?.scrollIntoView(`, `a.scrollIntoView?.(`,
+    // `a?.scrollIntoView?.(` — festgehalten wird der Empfänger davor.
+    const empfaenger = [
+      ...blattCode.matchAll(/([A-Za-z_$][\w$]*)\s*\??\.\s*scrollIntoView\s*(?:\?\.)?\s*\(/g),
+    ].map((m) => m[1]);
+    // Existenzprüfungen (`typeof x.scrollIntoView !== "function"`) sind erlaubt und werden getrennt
+    // gezählt; jsdom bringt die Methode nicht mit, deshalb steht sie im Blatt.
+    const existenzpruefungen = [
+      ...blattCode.matchAll(
+        /typeof\s+[A-Za-z_$][\w$]*\s*\??\.\s*scrollIntoView(?!\s*(?:\?\.)?\s*\()/g,
+      ),
+    ].length;
+    const erwaehnungen = [...blattCode.matchAll(/scrollIntoView/g)].length;
+    expect(
+      erwaehnungen,
+      `scrollIntoView im Code von Blatt.tsx: ${erwaehnungen} Erwähnungen, davon ${empfaenger.length} erkannte Aufrufe (${empfaenger.join(", ")}) und ${existenzpruefungen} Existenzprüfungen — der Rest geht an diesem Wächter vorbei`,
+    ).toBe(empfaenger.length + existenzpruefungen);
+    expect(empfaenger, `Bildlauf-Empfänger in Blatt.tsx: ${empfaenger.join(", ")}`).toEqual([
+      "ziel",
+    ]);
+    // Und der alte Anker des Vorschlags-Scrolls ist wirklich fort, nicht nur stumm gestellt.
+    expect(pageSource).not.toContain("proposalRef");
     expect(pageSource).toContain("discardStructureProposal");
     expect(pageSource).toContain("discardAssistProposal");
     expect(pageSource).toContain("fd.originalUnchanged");

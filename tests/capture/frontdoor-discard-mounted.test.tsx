@@ -211,7 +211,44 @@ describe("WP-UX-WOW-1 U8: „Vorschlag verwerfen“ friert nicht mehr ein", () =
     expect(frontdoor).toContain("discardProposal");
     // (2) Der Scroll ist WIRKLICH weg und nicht nur umbenannt — sonst stünde eine ungesicherte
     //     Fassung des alten Effekts da (der Fehler, gegen den (1) einmal gebaut wurde).
-    expect(frontdoor).not.toContain("scrollIntoView");
+    //
+    //     NACHGEFÜHRT DURCH JOB 3378 (UX-18-M1): Bis hierher stand hier
+    //     `not.toContain("scrollIntoView")`. Seit JOB 3378 hat das Blatt einen Bildlauf, der mit
+    //     dem Vorschlag nichts zu tun hat — nach dem Deep-Link `/erfassen?weg=<modus>` holt es das
+    //     WEGZIEL des Arbeitsraums ins Bild (der Bildlauf von `/import` kommt mit, und
+    //     „Datei auswählen" lag bei 390 px sonst oberhalb des Fensters; gemessen in
+    //     `tests/import-mausziel/dateiauswahl-im-bild-chromium.test.ts`). Gepinnt wird deshalb die
+    //     EMPFÄNGERMENGE statt des Wortes: es gibt genau einen Bildlauf, und er geht auf das
+    //     Wegziel. Der Vorschlags-Scroll käme als zweiter Empfänger zurück und würde rot.
+    //
+    //     RUNDE 2, NACH BENS GEGENPROBE (09.09.): Die erste Fassung las nur `x.scrollIntoView(` und
+    //     übersah damit den OPTIONALEN Aufruf `x.scrollIntoView?.(…)` — ausgerechnet die
+    //     Schreibweise des alten Vorschlags-Scrolls. Belegt mit einer Mutation: ein zusätzliches
+    //     `flaeche.scrollIntoView?.({ block: "start" })` liess beide Wächter grün, obwohl das
+    //     abgelöste `not.toContain("scrollIntoView")` es gesehen hätte. Jetzt wird ABGEZÄHLT: jede
+    //     Erwähnung im Code (ohne Kommentarzeilen) ist entweder ein erkannter Aufruf — in jeder
+    //     Aufrufform — oder die Existenzprüfung darüber; alles andere macht die Summe ungleich.
+    const blattCode = frontdoor
+      .split("\n")
+      .filter((zeile) => !/^\s*(?:\/\/|\*|\/\*)/.test(zeile))
+      .join("\n");
+    const empfaenger = [
+      ...blattCode.matchAll(/([A-Za-z_$][\w$]*)\s*\??\.\s*scrollIntoView\s*(?:\?\.)?\s*\(/g),
+    ].map((m) => m[1]);
+    const existenzpruefungen = [
+      ...blattCode.matchAll(
+        /typeof\s+[A-Za-z_$][\w$]*\s*\??\.\s*scrollIntoView(?!\s*(?:\?\.)?\s*\()/g,
+      ),
+    ].length;
+    const erwaehnungen = [...blattCode.matchAll(/scrollIntoView/g)].length;
+    expect(
+      erwaehnungen,
+      `scrollIntoView im Code von Blatt.tsx: ${erwaehnungen} Erwähnungen, davon ${empfaenger.length} erkannte Aufrufe (${empfaenger.join(", ")}) und ${existenzpruefungen} Existenzprüfungen — der Rest geht an diesem Wächter vorbei`,
+    ).toBe(empfaenger.length + existenzpruefungen);
+    expect(empfaenger, `Bildlauf-Empfänger in Blatt.tsx: ${empfaenger.join(", ")}`).toEqual([
+      "ziel",
+    ]);
+    expect(frontdoor).not.toContain("proposalRef");
     const editor = readFileSync(
       resolve(process.cwd(), "apps/web/src/components/RichTextEditor.tsx"),
       "utf8",
