@@ -15,6 +15,18 @@
 // die Kachel sagt die Restschritte SICHTBAR an, und der Test läuft genau die angesagten Schritte
 // ab (Wortlaut aus der Kachel gelesen, nicht im Test getippt).
 //
+// ================================================================================================
+// JOB 3341 (UX-18-R1) — NACHGEFÜHRT: DIE GRENZE VON RUNDE 2 IST GEFALLEN.
+// ================================================================================================
+//
+// Die drei Fälle unten (GRENZE · ANSAGE · die angesagten Schritte) hielten den Zustand fest, den
+// Ben gemessen hatte. Runde 2 hat dazu ausdrücklich hingeschrieben: „Wird sie es eines Tages in
+// EINEM Schritt, wird dieser Fall rot — und gehört dann gestrichen, gemeinsam mit der Wegzeile auf
+// der Kachel." Genau das ist eingetreten. Die Fälle sind deshalb NICHT gelöscht, sondern
+// UMGEDREHT: sie prüfen jetzt denselben Gegenstand am neuen, wahren Zustand — die Dateiauswahl
+// steht nach EINEM Klick da, die Kachel sagt keine Restschritte mehr an, und der alte Menüweg ist
+// nicht abgelöst, sondern nur nicht mehr der einzige.
+//
 // GEMESSEN AN DEN ECHTEN FLÄCHEN, NICHT AN EINER FIXTURE: gemountet wird `AppRoutes` — der echte
 // Router des Produkts, mit dem echten Rollen-Gate — an einem echten Fastify-Server (`fetch` →
 // `app.inject`), angemeldet als Admin, Stufe 2 eingeschaltet. `/import` ist damit die wirkliche
@@ -50,6 +62,12 @@ import { AuthProvider } from "../../apps/web/src/app/AuthContext";
 import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
+import { ALL_ITEMS } from "../../apps/web/src/app/navigation";
+import {
+  BLATT_WEGE,
+  BLATT_WEG_DATEI,
+  BLATT_WEG_PARAMETER,
+} from "../../apps/web/src/components/erfassen/wege";
 import i18n from "../../apps/web/src/i18n";
 import { AppRoutes } from "../../apps/web/src/routes";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
@@ -288,83 +306,106 @@ describe("JOB 3190 · R3 — von der Kachel auf `/import` bis zum Dateiimport de
     expect(wordZiel?.startsWith("/")).toBe(true);
   });
 
+  // JOB 3341 (UX-18-R1): der gemountete Beleg für Lieferung 3 — die Kachel trägt den Weg IN der
+  // Adresse. Beide Hälften sind gelesen und nicht getippt: der Pfad kommt aus der Registry
+  // (`ALL_ITEMS`, Eintrag `erfassen`), der Wert aus `BLATT_WEGE` über `wege.ts`. Verglichen wird
+  // deshalb gegen genau diese zwei Quellen und nicht gegen „/erfassen?weg=datei".
+  it("und sie trägt den Weg mit: Pfad aus der Registry, Wert aus den Blatt-Wegen", async () => {
+    await mount();
+    const ziel = new URL(kachel("docx").getAttribute("href") ?? "", "http://klarwerk.test");
+    expect(ziel.pathname, "der Pfad stammt nicht aus der Registry").toBe(
+      ALL_ITEMS.find((item) => item.id === "erfassen")?.path,
+    );
+    expect(ziel.searchParams.get(BLATT_WEG_PARAMETER), "die Kachel nennt keinen Weg").toBe(
+      BLATT_WEG_DATEI,
+    );
+    // Und der genannte Wert ist wirklich einer der Wege des Menüs „Datei ▾" — keine Erfindung.
+    expect(BLATT_WEGE).toContain(BLATT_WEG_DATEI);
+  });
+
   it("ein Klick führt WIRKLICH auf die Erfassen-Fläche — gemessen am gemounteten Baum", async () => {
     await mount();
     const gefolgt = await klick(kachel("docx"));
     // Nichts hat den Klick abgefangen: im Browser folgt die Plattform hier dem Link.
     expect(gefolgt, "der Klick wurde abgefangen — dann führt der Link nirgends hin").toBe(true);
     // Die Zielfläche steht da — gemessen am Baum, nicht an einer Adresse.
+    //
+    // JOB 3341 (UX-18-R1): gewartet wird auf die WERKZEUGZEILE des Erfassens und nicht mehr auf das
+    // Schreibfeld-Blatt. Sie ist der Marker, der beide Ansichten dieser Fläche trägt (Blatt UND
+    // Arbeitsraum, `Blatt.tsx`); seit der Kachel-Deep-Link den Arbeitsraum aufmacht, wäre
+    // `[data-testid="blatt"]` die Messung einer Ansicht statt der Fläche.
     await warteAuf(
-      () => container.querySelector('[data-testid="blatt"]') !== null,
-      "das Blatt des Erfassens",
+      () => container.querySelector('[data-testid="blatt-werkzeugzeile"]') !== null,
+      "die Erfassen-Fläche",
     );
     // Und die Import-Galerie ist weg: es ist wirklich eine andere Fläche, kein Beiwerk daneben.
     expect(container.querySelector("#import-source-gallery")).toBeNull();
   });
 
   // ==============================================================================================
-  // R3/B · RUNDE 2 — WAS DER KLICK WIRKLICH ERREICHT, UND WAS ER NICHT ERREICHT.
+  // R3/B · JOB 3341 (UX-18-R1) — WAS DER KLICK JETZT ERREICHT, UND WAS ER DAMIT ABLÖST.
   // ==============================================================================================
   //
-  // Runde 1 hat an dieser Stelle ZWEI zusätzliche Klicks eingeschoben und danach „erreicht"
-  // gemeldet. Bens Browsermessung hat den Unterschied benannt:
-  //     BEN ZIELZUSTAND {"dateiauswahl":false,"dateieingang":true,"dateiwerkzeug":true}
-  // Die Kachel landet auf dem Blatt des Erfassens — der Dateiimport liegt dort noch hinter zwei
-  // Schritten. Die drei folgenden Fälle messen genau das, in dieser Reihenfolge: die GRENZE, die
-  // ANSAGE, und dass die angesagten Schritte wirklich hinführen. Der eine Schritt zum Dateiimport
-  // bräuchte einen Deep-Link in `components/erfassen/Blatt.tsx` (dort liest `ansicht` keinen
-  // Parameter) — kein Zielpfad dieses Auftrags; er steht als REST in der Rückgabe.
-  it("GRENZE: der Klick landet auf dem Blatt — der Dateiimport ist dort noch NICHT offen", async () => {
+  // Bis Runde 2 stand hier die GRENZE: der Klick landete auf dem Blatt, der Dateiimport lag hinter
+  // zwei Schritten, und die Kachel sagte sie an. Die drei folgenden Fälle sind dieselben drei,
+  // umgedreht — der Gegenstand ist unverändert, nur die Wahrheit darüber ist eine andere:
+  //   · ERREICHT   — nach EINEM Klick steht die Dateiauswahl da (vorher: sie fehlte),
+  //   · KEINE ANSAGE — die Kachel sagt keine Restschritte mehr an (vorher: sie musste es),
+  //   · NICHT ABGELÖST — der Menüweg „Datei ▾" → „Datei importieren" führt weiterhin hin.
+  it("ERREICHT: EIN Klick, und der Dateiimport steht offen — ohne einen weiteren Griff", async () => {
     await mount();
     await klick(kachel("docx"));
     await warteAuf(
-      () => container.querySelector('[data-testid="blatt"]') !== null,
-      "das Blatt des Erfassens",
+      () => container.querySelector('[data-testid="capture-file-pick"]') !== null,
+      "die Dateiauswahl des Erfassens",
     );
-    // Das ist der ehrliche Befund, nicht ein Wunsch: die Dateiauswahl ist noch nicht montiert.
-    // Wird sie es eines Tages in EINEM Schritt, wird dieser Fall rot — und gehört dann gestrichen,
-    // gemeinsam mit der Wegzeile auf der Kachel.
+    // Der Eingang trägt wirklich die Formate, um die es auf der Kachel ging.
+    const eingang = container.querySelector('input[type="file"]');
+    expect(eingang, "der Dateieingang des Erfassens fehlt").not.toBeNull();
+    expect(eingang?.getAttribute("accept")).toContain(".docx");
+    expect(eingang?.getAttribute("accept")).toContain(".pdf");
+    // Es ist wirklich der Arbeitsraum des Blattes und nicht die Import-Fläche mit Beiwerk daneben.
+    expect(container.querySelector('[data-testid="blatt-arbeitsraum"]')).not.toBeNull();
+    expect(container.querySelector("#import-source-gallery")).toBeNull();
+    // Und dort trägt die Word-Kachel den Zustand, um den es geht: hier ist sie wirklich aktiv.
+    expect(kachel("docx").getAttribute("data-state")).toBe("active");
+  });
+
+  it("KEINE ANSAGE: die Kachel sagt keine Restschritte mehr an — es gibt keine", async () => {
+    await mount();
+    // Eine Wegbeschreibung, die nicht mehr stimmt, wäre die zweite Wahrheit, die JOB 3190/3235 auf
+    // dieser Fläche abgeschafft haben. Gemessen wird deshalb über ALLE Kacheln, nicht nur über die
+    // eine — auch eine vergessene anderswo wäre eine.
     expect(
-      container.querySelector('[data-testid="capture-file-pick"]'),
-      "der Dateiimport wäre in einem Schritt offen — dann ist die Wegzeile auf der Kachel überflüssig",
-    ).toBeNull();
-    // Und was DA ist, ist das Werkzeug, das die Kachel ansagt.
-    expect(container.querySelector('[data-testid="blatt-werkzeug-datei"]')).not.toBeNull();
+      container.querySelectorAll("#import-source-gallery [data-tile-steps]").length,
+      "auf der Galerie steht noch eine Restschritt-Zeile",
+    ).toBe(0);
+    // Was die Kachel weiterhin sagt, ist der ORT — Badge und ausgeschriebener Satz sind unberührt.
+    expect(kachel("docx").textContent).toContain(i18n.t("imp.gallery.elsewhere"));
+    expect(kachel("docx").getAttribute("title")).toBe(i18n.t("imp.gallery.hintElsewhere"));
+    // Und dieser Satz nennt die zwei Schritte nicht mehr mit: er wäre sonst die Ansage im `title`,
+    // die Runde 2 gerade deshalb auf die Kachel geholt hatte.
+    expect(i18n.t("imp.gallery.hintElsewhere")).not.toContain(i18n.t("erfassen.weg.datei"));
   });
 
-  it("ANSAGE: die Restschritte stehen SICHTBAR auf der Kachel, nicht nur im `title`", async () => {
+  it("NICHT ABGELÖST: der Weg über „Datei ▾“ führt weiterhin zum Dateiimport", async () => {
     await mount();
-    const zeile = kachel("docx").querySelector("[data-tile-steps]");
-    expect(zeile, "die Kachel sagt die Restschritte nicht sichtbar an").toBeInstanceOf(HTMLElement);
-    // Kein `sr-only`, kein `hidden`: der Satz steht im Fluss der Kachel.
-    expect((zeile as HTMLElement).className).not.toContain("sr-only");
-    expect((zeile as HTMLElement).className).not.toContain("hidden");
-    // Und er ist im WORTLAUT der Zielfläche gehalten — nicht in einer zweiten Erfindung.
-    expect((zeile?.textContent ?? "").trim()).toBe(
-      `${i18n.t("erfassen.werkzeug.datei")} → ${i18n.t("erfassen.weg.datei")}`,
-    );
-    // Eine Kachel ohne Restweg trägt keine solche Zeile (JSON ist hier aktiv).
-    expect(kachel("json-file").querySelector("[data-tile-steps]")).toBeNull();
-  });
-
-  it("GENAU die angesagten Schritte führen wirklich zum Dateiimport", async () => {
-    await mount();
-    // Die Schritte werden AUS DER KACHEL GELESEN, nicht im Test noch einmal getippt: so kann die
-    // Ansage nicht von dem abweichen, was der Test danach abläuft.
-    const angesagt = (kachel("docx").querySelector("[data-tile-steps]")?.textContent ?? "")
-      .split("→")
-      .map((s) => s.trim());
-    expect(angesagt.length, "die Wegzeile nennt keine zwei Schritte").toBe(2);
-    const [werkzeugWort, eintragWort] = angesagt as [string, string];
-
     await klick(kachel("docx"));
     await warteAuf(
-      () => container.querySelector('[data-testid="blatt"]') !== null,
-      "das Blatt des Erfassens",
+      () => container.querySelector('[data-testid="capture-file-pick"]') !== null,
+      "die Dateiauswahl des Erfassens",
     );
+    // Zurück auf das Blatt — der Rückweg aus JOB 3282. Danach steht der alte Weg zur Prüfung offen.
+    const abbrechen = [...container.querySelectorAll("button")].find((el) =>
+      (el.textContent ?? "").includes("Abbrechen"),
+    );
+    expect(abbrechen, "kein „Abbrechen“ im Dateiimport").toBeInstanceOf(HTMLElement);
+    await klick(abbrechen as HTMLElement);
+    expect(container.querySelector('[data-testid="blatt-arbeitsraum"]')).toBeNull();
 
     // Schritt 1 — das Werkzeug wird über SEIN SICHTBARES WORT gefunden, nicht über eine testid:
-    // damit belegt der Fall, dass die Ansage auf der Zielfläche wirklich so heisst.
+    // damit belegt der Fall, dass es auf der Zielfläche wirklich so heisst.
+    const werkzeugWort = i18n.t("erfassen.werkzeug.datei");
     const werkzeug = [
       ...container.querySelectorAll('[data-testid="blatt-werkzeugzeile"] button'),
     ].find((el) => (el.textContent ?? "").trim() === werkzeugWort);
@@ -372,29 +413,29 @@ describe("JOB 3190 · R3 — von der Kachel auf `/import` bis zum Dateiimport de
     await klick(werkzeug as HTMLElement);
 
     // Schritt 2 — derselbe Griff im geöffneten Menü.
+    const eintragWort = i18n.t("erfassen.weg.datei");
     const eintrag = [...container.querySelectorAll('[role="menuitem"]')].find(
       (el) => (el.textContent ?? "").trim() === eintragWort,
     );
     expect(eintrag, `kein Menüeintrag „${eintragWort}“`).toBeInstanceOf(HTMLElement);
     await klick(eintrag as HTMLElement);
 
-    // GEMESSEN AM BAUM: der sichtbare Knopf der Dateiauswahl, der versteckte Eingang mit seinem
-    // `accept` und die Dateityp-Kacheln des Erfassens sind da.
-    expect(container.querySelector('[data-testid="capture-file-pick"]')).not.toBeNull();
-    const eingang = container.querySelector('input[type="file"]');
-    expect(eingang, "der Dateieingang des Erfassens fehlt").not.toBeNull();
-    expect(eingang?.getAttribute("accept")).toContain(".docx");
-    expect(eingang?.getAttribute("accept")).toContain(".pdf");
-    // Und dort trägt die Word-Kachel den Zustand, um den es geht: hier ist sie wirklich aktiv.
-    expect(kachel("docx").getAttribute("data-state")).toBe("active");
+    expect(
+      container.querySelector('[data-testid="capture-file-pick"]'),
+      "der alte Weg ist mit abgeräumt worden — abgelöst wird nur die Behauptung, er sei der einzige",
+    ).not.toBeNull();
   });
 
   it("der Rückweg besteht: die Import-Fläche ist über die Historie wieder da", async () => {
     await mount();
     await klick(kachel("docx"));
+    // JOB 3341: derselbe Marker wie oben — und zugleich die Gegenprobe zur Adressbereinigung. Der
+    // Weg-Parameter wird mit `replace` entfernt, der Eintrag `/erfassen?weg=datei` ist danach
+    // `/erfassen`; EIN Schritt zurück muss deshalb weiterhin auf `/import` führen und nicht auf
+    // eine Zwischenadresse.
     await warteAuf(
-      () => container.querySelector('[data-testid="blatt"]') !== null,
-      "das Blatt des Erfassens",
+      () => container.querySelector('[data-testid="capture-file-pick"]') !== null,
+      "die Dateiauswahl des Erfassens",
     );
     // Ein Schritt zurück in der Historie — das, was der Browser-Zurück-Knopf tut.
     await act(async () => {

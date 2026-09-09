@@ -80,7 +80,7 @@ import {
   SymbolMikrofon,
 } from "./Symbole";
 import { BLATT_HILFE_THEMEN } from "./hilfe";
-import { BLATT_WEGE, blattWegLabelKey } from "./wege";
+import { BLATT_WEGE, BLATT_WEG_PARAMETER, blattWegAusAdresse, blattWegLabelKey } from "./wege";
 
 // ================================================================================================
 // JOB 3062 · H3 — EIN BLATT WIE IN PAGES.
@@ -240,6 +240,10 @@ export function Blatt({
     "entwuerfe" | "anhaenge" | "status" | "beispiel" | "klara" | null
   >(null);
   const [ansicht, setAnsicht] = useState<Ansicht>("blatt");
+  // JOB 3341 (UX-18-R1): die Arbeitsraum-Fläche, damit der Fokus ihr nach einem Deep-Link folgen
+  // kann. Sie ist NUR programmatisch fokussierbar (`tabIndex={-1}`) — der Tab-Lauf der Seite bleibt
+  // damit genau der, der er war.
+  const arbeitsraumRef = useRef<HTMLDivElement | null>(null);
   // Der stille Chip unter dem Blatt: zu = eine Zeile, offen = die bestehende Live-Zone (JOB 3045).
   const [liveOffen, setLiveOffen] = useState(false);
 
@@ -1463,10 +1467,15 @@ export function Blatt({
   const starterZeigen = !title && !hasBody;
   const titelMenueHatEtwas = starterZeigen || titelVorschlag !== null;
 
-  const arbeitsraumOeffnen = (modus: ArbeitsraumModus): void => {
+  // JOB 3341 (UX-18-R1): `useCallback` — nicht aus Sparsamkeit, sondern weil der Deep-Link-Effekt
+  // unten diesen EINEN Öffnungsweg als Abhängigkeit führt. Eine bei jedem Bildaufbau neu gebaute
+  // Funktion machte den Effekt bei jedem Zustandswechsel wieder fällig. Ein zweiter Öffnungspfad
+  // wäre die Alternative gewesen — und genau die zweite Auffassung davon, was „Arbeitsraum öffnen"
+  // heisst, die dieses Bauteil nicht bekommen soll.
+  const arbeitsraumOeffnen = useCallback((modus: ArbeitsraumModus): void => {
     setOffenesMenue(null);
     setAnsicht(modus);
-  };
+  }, []);
 
   // JOB 3282 (EDITOR-R26): der Rückweg zum Schreibfeld, wenn der Arbeitsraum abgebrochen wurde.
   // Er fasst den Blattinhalt NICHT an: Titel, Rumpf und Entwurfskennung leben in diesem Bauteil,
@@ -1476,6 +1485,115 @@ export function Blatt({
     setOffenesMenue(null);
     setAnsicht("blatt");
   };
+
+  // ==============================================================================================
+  // JOB 3341 (UX-18-R1) — DER EINE SCHRITT VON DER IMPORT-KACHEL IN DIE DATEIAUSWAHL.
+  // ==============================================================================================
+  //
+  // Die Adresse `/erfassen?weg=datei` nennt einen Weg des Menüs „Datei ▾"; welche Werte gelten und
+  // wie ein unbekannter behandelt wird, steht an EINER Stelle (`./wege.ts`) und nicht hier.
+  // Geöffnet wird über `arbeitsraumOeffnen` — dasselbe, das der Menüeintrag ruft. Ein zweiter
+  // Öffnungsweg hiesse: zwei Auffassungen davon, was danach gilt (offenes Menü, Ansicht, Rückweg).
+  //
+  // GENAU EINMAL, und danach ist der Parameter WEG. Beides ist nötig, und zwar für zwei
+  // verschiedene Dinge:
+  //   · Der Merker sorgt dafür, dass kein späterer Zustandswechsel den Arbeitsraum erneut aufreisst.
+  //   · Das Entfernen aus der Adresse sorgt dafür, dass „Abbrechen" (`arbeitsraumSchliessen`, der
+  //     Rückweg aus JOB 3282) wirklich das Blatt zeigt — stünde `?weg=datei` noch da, wäre der
+  //     Abbruch nur ein Bildaufbau lang sichtbar. Und es hält den Browser-Rückweg sauber: mit
+  //     `replace` wird der Eintrag `/erfassen?weg=datei` durch `/erfassen` ERSETZT, ein „Zurück"
+  //     führt also weiterhin auf `/import` und nicht auf eine Zwischenadresse.
+  //
+  // NUR DIESER EINE PARAMETER FÄLLT. Die anderen Wege dieser Fläche schreiben `setSearchParams({})`
+  // — das ist dort richtig, weil sie die Adresse wirklich leeren wollen. Hier wäre es falsch:
+  // `?draft=…` (der fortgesetzte Entwurf), `?entwuerfe=1` und `?demo=…` gehören nicht diesem
+  // Auftrag, und ein Deep-Link darf sie nicht mitnehmen.
+  // ==============================================================================================
+  // RUNDE 2 (Codex fc454b48) — UND ER WARTET, WENN DIE ADRESSE ZUGLEICH EINEN ENTWURF NENNT.
+  // ==============================================================================================
+  //
+  // DER BEFUND: `/erfassen?draft=<nicht ladbar>&weg=datei` riss den Arbeitsraum SOFORT auf. Dessen
+  // früher return (`:2132`) liefert eine eigene Fläche und kommt an `BlattLage` (`:2633`) gar nicht
+  // mehr vorbei — der Ladefehler des Entwurfs setzt aber nur `setErr` (`:753`). Ergebnis: der
+  // Mensch stand im Dateiimport, und dass sein fortgesetzter Entwurf gar nicht geladen wurde, sagte
+  // ihm niemand. Genau das verbietet §9 des Auftrags: „der Arbeitsraum überdeckt sie nicht".
+  //
+  // DIE ANTWORT IST WARTEN, NICHT ZWEITMELDEN. Die Meldung ein zweites Mal in den Arbeitsraum zu
+  // hängen wäre eine zweite Fläche für dieselbe Lage — und der Wiederholknopf stünde dann neben
+  // einem Dateiimport, mit dem er nichts zu tun hat. Der Weg ist stattdessen AUFGESCHOBEN, solange
+  // die Adresse eine offene Frage über ihren Entwurf hat:
+  //   · Solange geladen wird, ist noch nichts entschieden — der Arbeitsraum wartet.
+  //   · Ist das Laden gescheitert, bleibt das Blatt das Blatt: es zeigt die Ladefehlermeldung und
+  //     ihren Wiederholweg (`blatt-lage`, `blatt-erneut`). Der Befehl bleibt dabei in der Adresse
+  //     STEHEN, er ist ja nicht ausgeführt — gelingt „Erneut versuchen" (`:1234`, `reloadNonce`),
+  //     fällt die Bedingung, und der eine Schritt geht doch noch zu Ende. Ein Wegwerfen des Wunsches
+  //     wäre die bequemere, aber ärmere Antwort.
+  //   · Ist der Entwurf da, öffnet der Arbeitsraum ÜBER dem geladenen Blatt — „Abbrechen" gibt
+  //     danach ein Blatt mit Inhalt zurück und nicht ein leeres.
+  //
+  // OHNE `?draft=` ändert sich nichts: `resumeDraftId` ist dann `null`, die Bedingung ist wahr, und
+  // der Weg läuft wie bisher beim ersten Bildaufbau. Das ist der Fall der Import-Kachel (E1–E5).
+  //
+  // ==============================================================================================
+  // RUNDE 3 (Codex 63d4453e) — GEFRAGT WIRD NACH DEM ERGEBNIS, NICHT NACH ZWEI LAUFMERKERN.
+  // ==============================================================================================
+  //
+  // DER BEFUND: Runde 2 setzte die Bedingung aus `loadingDraft || err !== null` zusammen. Beide
+  // Merker beschreiben den LAUF, nicht seinen Ausgang, und zwischen ihnen klafft genau ein Render:
+  // „Erneut versuchen" (`:1234`) löscht `err` und erhöht `reloadNonce`; im Render unmittelbar
+  // danach ist `err` schon null, `loadingDraft` aber noch false — der Ladeeffekt (`:669`) setzt es
+  // erst im Effektlauf DIESES Renders, und der Weg-Effekt hier las aus demselben Render bereits
+  // „geklärt". Er riss den Arbeitsraum auf, während der zweite Abruf noch lief; scheiterte auch
+  // dieser, verschwand die Meldung wieder darunter. Gemessen in `einschritt-mounted.test.tsx` Z11:
+  // `AssertionError: der Arbeitsraum ist aufgegangen, während der zweite Abruf noch läuft`.
+  //
+  // DIE ANTWORT IST EIN ERGEBNIS STATT ZWEIER FLAGGEN. Gefragt wird jetzt genau das, worauf der Weg
+  // wirklich wartet: LIEGT DER ENTWURF, DEN DIE ADRESSE NENNT, WIRKLICH IM BLATT? Das sagt
+  // `activeDraftId` — der Ladeweg setzt ihn bei Erfolg auf die geladene Kennung (`:708`) und bei
+  // Misserfolg auf `null` (`:752`). Diese Aussage kennt kein Zwischenfenster: solange der Abruf
+  // läuft, ist sie unverändert falsch, und sie wird erst wahr, wenn der Entwurf da ist. Ein
+  // zusätzliches `setLoadingDraft(true)` im Wiederholweg wäre die andere mögliche Antwort gewesen —
+  // aber es schriebe den Ladezustand an einer ZWEITEN Stelle und sicherte dieselbe Lücke doppelt;
+  // keine der beiden Hälften liesse sich dann noch einzeln messen (dieselbe Erwägung wie `:658`).
+  //
+  // WARUM DAS DEN SPEICHERWEG NICHT BREMST: schreibt `save.onSuccess` die frisch gesicherte Kennung
+  // in die Adresse (`:869`), ist `activeDraftId` bereits dieselbe — die Bedingung ist sofort wahr,
+  // und der Ladeeffekt läuft dort ohnehin nicht (`speicherAdresseRef`, `:662`).
+  const wegBefehlRef = useRef(false);
+  const wegFokusOffenRef = useRef(false);
+  const wegBefehl = blattWegAusAdresse(searchParams.get(BLATT_WEG_PARAMETER));
+  const entwurfGeklaert = resumeDraftId === null || activeDraftId === resumeDraftId;
+  useEffect(() => {
+    if (wegBefehl === null || wegBefehlRef.current || !entwurfGeklaert) {
+      return;
+    }
+    wegBefehlRef.current = true;
+    wegFokusOffenRef.current = true;
+    arbeitsraumOeffnen(wegBefehl as ArbeitsraumModus);
+    const ohneWeg = new URLSearchParams(searchParams);
+    ohneWeg.delete(BLATT_WEG_PARAMETER);
+    setSearchParams(ohneWeg, { replace: true });
+  }, [wegBefehl, entwurfGeklaert, arbeitsraumOeffnen, searchParams, setSearchParams]);
+
+  // Der Fokus geht MIT. Ein Weg, der über die Adresse eine neue Fläche aufmacht, lässt den Fokus
+  // sonst auf `body` zurück — wer mit Tab und Enter hergekommen ist, müsste die halbe Seite noch
+  // einmal durchtabben (dieselbe Klasse wie JOB 3282 D: „Escape … stellt den Fokus nicht zurück").
+  // Gesetzt wird er auf die Arbeitsraum-FLÄCHE selbst (`tabIndex={-1}`, also nicht im Tab-Lauf):
+  // welcher Bedienknopf darin der erste ist, entscheidet der Arbeitsraum und nicht das Blatt — und
+  // ein Griff auf ein Dateifeld verböte sich ohnehin, er öffnete ein Betriebssystemfenster, das
+  // niemand bestellt hat. Nur nach dem Deep-Link, nicht nach dem Menüklick: dort steht der Fokus
+  // schon in der Nähe, und ihn zu versetzen wäre ein Griff, den der Mensch nicht gemacht hat.
+  useEffect(() => {
+    if (!wegFokusOffenRef.current || ansicht === "blatt") {
+      return;
+    }
+    const flaeche = arbeitsraumRef.current;
+    if (flaeche === null) {
+      return;
+    }
+    wegFokusOffenRef.current = false;
+    flaeche.focus();
+  }, [ansicht]);
 
   // ---- Werkzeugzeile ---------------------------------------------------------------------------
 
@@ -2069,7 +2187,14 @@ export function Blatt({
         {werkzeugzeile}
         <div
           data-testid="blatt-arbeitsraum"
-          className="min-h-[60vh] flex-grow rounded-t-[14px] border border-hairline bg-surface px-9 py-8 shadow-tile"
+          ref={arbeitsraumRef}
+          // JOB 3341 (UX-18-R1): −1 heisst „nicht im Tab-Lauf, aber programmatisch fokussierbar".
+          // Der Fokusring steht an `focus:` und nicht an `focus-visible:`: gesetzt wird der Fokus
+          // hier von der Anwendung, und ein programmatischer Fokus erfüllt `:focus-visible` in
+          // Chromium nicht zuverlässig — die Anzeige wäre dann genau in dem Fall unsichtbar, für
+          // den sie da ist.
+          tabIndex={-1}
+          className="min-h-[60vh] flex-grow rounded-t-[14px] border border-hairline bg-surface px-9 py-8 shadow-tile focus:outline focus:outline-2 focus:outline-offset-2"
         >
           {arbeitsraum({
             modus: ansicht,

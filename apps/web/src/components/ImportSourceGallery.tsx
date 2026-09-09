@@ -18,13 +18,22 @@
 // dass es die Funktion nicht gibt. Jetzt sagt die Kachel „im Erfassen" — und sie IST der Weg
 // dorthin: ein echtes `<a>` auf die Erfassen-Route, mit Maus, Tab/Enter und Browser-Rückweg.
 //
-// WIE WEIT SIE TRÄGT, STEHT AUF IHR (Runde 2). Der Klick landet auf dem BLATT des Erfassens; der
-// Dateiimport liegt dort noch hinter „Datei" → „Datei importieren" — gemessen im Browser
-// (`kachel-schmal-chromium.test.ts`, Fall B4: `{"dateiauswahl":false,"dateieingang":true,
-// "dateiwerkzeug":true}`). Diese zwei Schritte stehen deshalb SICHTBAR auf der Kachel, im Wortlaut
-// der Zielfläche. Ein Deep-Link, der den Dateiimport in EINEM Schritt öffnete, müsste
-// `components/erfassen/Blatt.tsx` lesen lassen (`ansicht` kennt dort keinen Parameter) — das ist
-// kein Zielpfad dieses Auftrags und steht als Rest in der Rückgabe.
+// JOB 3341 (UX-18-R1) — DIE ZWEI RESTSCHRITTE SIND WEG, ALSO STEHEN SIE AUCH NICHT MEHR AUF IHR.
+//
+// Runde 2 sagte die Restschritte SICHTBAR an, weil es sie gab: der Klick landete auf dem BLATT des
+// Erfassens, der Dateiimport lag dahinter — gemessen im Browser, Bens Befund
+// `{"dateiauswahl":false,"dateieingang":true,"dateiwerkzeug":true}`. Die Ansage war ehrlich, aber
+// sie war eine Wegbeschreibung und kein Weg.
+//
+// JETZT TRÄGT DIE KACHEL DEN WEG SELBST: ihr Ziel ist die Erfassen-Route MIT dem Adressparameter
+// aus `components/erfassen/wege.ts`, und das Blatt öffnet damit beim Aufbau den vorhandenen
+// Dateiimport-Arbeitsraum — über dasselbe `arbeitsraumOeffnen`, das der Menüeintrag ruft. Ein
+// Klick, ein Enter, und die Dateiauswahl steht da. Die Ansage der zwei Schritte ist deshalb
+// ENTFERNT und nicht danebengelassen: eine Wegbeschreibung, die nicht mehr stimmt, ist eine zweite
+// Wahrheit — dieselbe, die JOB 3190/3235 auf dieser Fläche abgeschafft haben.
+//
+// KEIN NEUER IMPORT, AUCH JETZT NICHT: geöffnet wird genau der Arbeitsraum, den „Datei ▾" → „Datei
+// importieren" öffnet. Der alte Weg bleibt, er ist nur nicht mehr der einzige.
 //
 // KEIN NEUER IMPORT. Die Kachel öffnet keinen Dialog, setzt kein `accept`, ruft keinen Konnektor —
 // sie navigiert auf den VORHANDENEN Weg. `onActivate` bleibt weiterhin den aktiven Kacheln
@@ -42,6 +51,7 @@ import { useTranslation } from "react-i18next";
 import { ALL_ITEMS } from "../app/navigation";
 import { FILE_SOURCES, type GallerySource, SYSTEM_SOURCES } from "../lib/importSourceGallery";
 import { FileTypePicker, systemIcon } from "./FileTypePicker";
+import { BLATT_WEG_DATEI, BLATT_WEG_PARAMETER } from "./erfassen/wege";
 
 // AUFTRAG-mega32 BLOCK G: der Auf-/Zu-Zustand wird JE BROWSER gemerkt, wie bei „Weitere Filter" in
 // der Bibliothek. Zwei Schlüssel — Systeme und Dateien sind zwei getrennte Gruppen, und wer die eine
@@ -57,9 +67,20 @@ const GALLERY_FILES_PLANNED_STORAGE_KEY = "klarwerk.import.gallery.files.planned
 const ERFASSEN_ROUTE: string | null =
   ALL_ITEMS.find((item) => item.id === "erfassen")?.path ?? null;
 
+/**
+ * JOB 3341 (UX-18-R1): dieselbe Route, MIT dem Weg, den die Dateikacheln meinen. Beide Teile sind
+ * gelesen und nicht getippt — die Route aus der Registry, der Wegwert aus `BLATT_WEGE` über
+ * `wege.ts`. Fehlt einer von beiden, gibt es weiterhin kein Ziel und damit keinen Link; die Kachel
+ * bleibt der Knopf mit dem ehrlichen Hinweis (fail-closed, unverändert).
+ */
+const ERFASSEN_DATEI_ZIEL: string | null =
+  ERFASSEN_ROUTE !== null && BLATT_WEG_DATEI !== null
+    ? `${ERFASSEN_ROUTE}?${BLATT_WEG_PARAMETER}=${encodeURIComponent(BLATT_WEG_DATEI)}`
+    : null;
+
 /** Nur „anderswo verfügbar" führt weg von hier — jeder andere Zustand behält sein Verhalten. */
 function erfassenZielFuer(source: GallerySource): string | null {
-  return source.state === "elsewhere" ? ERFASSEN_ROUTE : null;
+  return source.state === "elsewhere" ? ERFASSEN_DATEI_ZIEL : null;
 }
 
 export function ImportSourceGallery({

@@ -31,6 +31,17 @@
 //  · Die gewählte Sprache wird BELEGT (`document.documentElement.lang`), nicht angenommen.
 //  · Desktop mit ZWEI Stützstellen: 640 px (die `sm`-Kante) und 1280 px.
 //
+// NACHGEFÜHRT DURCH JOB 3341 (UX-18-R1) — ZWEI ERWARTUNGEN, DER REST UNVERÄNDERT:
+// Der Weg von der Kachel in die Dateiauswahl ist seit JOB 3341 EINER. Damit sind genau die zwei
+// Aussagen dieser Datei unwahr geworden, die die alte Grenze festhielten, und nur sie:
+//  · R4 „die Wegzeile steht … wirklich auf der Word-Kachel" → jetzt: KEINE Kachel trägt mehr eine
+//    (die Ansage ist ersatzlos entfallen, weil es nichts mehr anzusagen gibt).
+//  · B4 „nach Enter fehlt die Dateiauswahl noch" → jetzt: sie steht nach Enter da, in denselben drei
+//    Zahlen gemessen. Der alte Menüweg wird im selben Fall weiter abgelaufen — er ist NICHT abgelöst.
+// Die Geometrie (R4/R5/D1, 320/360/390/640/1280, DE und EN), der Tab-Lauf (B1) und der
+// Browser-Rückweg (B2/B3) sind unberührt. Die Wegzeilen-Messung in `MESSEN`/`pruefeSchmal` bleibt
+// stehen: sie ist ab jetzt der Wächter, dass keine wieder auftaucht.
+//
 // AUSGANGSMESSUNG (07.09.2026, mit der alten Kachel: eine Zeile, `truncate`, `grid-cols-2`) —
 // alle NEUN schmalen Fälle rot, wörtlich unter anderem:
 //     /import 320/de · docx: Name und Zustand überlappen: expected true to be false
@@ -64,8 +75,9 @@ interface Kachelmass {
   nameDargestellt: number;
   badge: Rechteck;
   /**
-   * RUNDE 2: die sichtbare Wegzeile („Datei → Datei importieren") der `elsewhere`-Kachel. `null`
-   * bei jeder Kachel, deren Weg keine Restschritte kostet — die trägt keine.
+   * RUNDE 2: die sichtbare Wegzeile der Kachel. `null` bei jeder Kachel, deren Weg keine
+   * Restschritte kostet — die trägt keine.
+   * JOB 3341: das ist seither JEDE Kachel; die Messung bleibt als Wächter, dass es so bleibt.
    */
   schritte: (Rechteck & { natuerlich: number; dargestellt: number; text: string }) | null;
 }
@@ -286,15 +298,35 @@ describe("JOB 3190 · die Dateikachel bei 320/360/390 px", () => {
     expect(m.kacheln.find((k) => k.id === "docx")?.zustand).toBe("elsewhere");
   });
 
-  it("R4 · die Wegzeile steht bei 320 px in DE UND EN wirklich auf der Word-Kachel", async () => {
-    // Sie ist die Ansage, an der Runde 2 hängt — also wird sie gemessen und nicht angenommen.
+  // ==============================================================================================
+  // R4 · NACHGEFÜHRT DURCH JOB 3341 (UX-18-R1) — DIE WEGZEILE IST WEG, WEIL DER WEG WEG IST.
+  // ==============================================================================================
+  //
+  // BIS JOB 3341 stand hier das Gegenteil, und es war damals wahr: die Word-Kachel MUSSTE bei 320 px
+  // in DE und EN „Datei → Datei importieren" tragen, weil genau diese zwei Schritte nach dem Klick
+  // noch zu gehen waren. JOB 3190 Runde 2 hat den Fall selbst mit dem Vorbehalt versehen, dass er
+  // fällt, sobald der Weg einer wird.
+  //
+  // SEIT JOB 3341 ist er einer (`einschritt-chromium.test.ts`, E1–E3): die Kachel führt über
+  // `/erfassen?weg=datei` direkt in die Dateiauswahl. Eine Wegzeile wäre ab hier keine Hilfe mehr,
+  // sondern eine unwahre Wegbeschreibung neben einem funktionierenden Weg. Die GEOMETRISCHE Aussage
+  // von R4 (Name und Zustand getrennt lesbar, nichts gekürzt, nichts überlappt, bei 320/360/390 in
+  // beiden Sprachen) ist unberührt und wird von `pruefeSchmal` weiter über alle Kacheln gefahren;
+  // dass diese Messung eine Wegzeile MITMESSEN würde, wenn eine da wäre, steht dort unverändert.
+  it("R4 · bei 320 px trägt in DE UND EN keine Kachel mehr eine Wegzeile (JOB 3341)", async () => {
     for (const sprache of ["de", "en"] as const) {
       const m = await messen(320, sprache, "import");
       const word = m.kacheln.find((k) => k.id === "docx");
-      const erwartet = `${i18n.getFixedT(sprache)("erfassen.werkzeug.datei")} → ${i18n.getFixedT(sprache)("erfassen.weg.datei")}`;
-      expect(word?.schritte?.text, `320/${sprache}: Wegzeile der Word-Kachel`).toBe(erwartet);
-      // Und keine Kachel ohne Restweg trägt eine: JSON ist hier aktiv.
-      expect(m.kacheln.find((k) => k.id === "json-file")?.schritte).toBeNull();
+      // Die Kachel ist da und weiterhin `elsewhere` — „gibt es, dort drüben" gilt unverändert.
+      expect(word?.zustand, `320/${sprache}: die Word-Kachel fehlt`).toBe("elsewhere");
+      const alt = `${i18n.getFixedT(sprache)("erfassen.werkzeug.datei")} → ${i18n.getFixedT(sprache)("erfassen.weg.datei")}`;
+      expect(
+        word?.schritte?.text ?? null,
+        `320/${sprache}: die Kachel sagt noch „${alt}“ an — der Weg ist aber einer`,
+      ).toBeNull();
+      // Und keine ANDERE trägt eine: gemessen über die ganze gemessene Menge, nicht über die eine.
+      const mitZeile = m.kacheln.filter((k) => k.schritte !== null).map((k) => k.id);
+      expect(mitZeile, `320/${sprache}: Kacheln mit Wegzeile: ${mitZeile.join(",")}`).toEqual([]);
     }
   });
 
@@ -398,29 +430,40 @@ describe("JOB 3190 · die Dateikachel bei 320/360/390 px", () => {
   });
 
   // ==============================================================================================
-  // B4 · RUNDE 2 — DER ZIELZUSTAND, DEN BEN GEMESSEN HAT: SO WEIT TRÄGT DIE KACHEL WIRKLICH.
+  // B4 · NACHGEFÜHRT DURCH JOB 3341 (UX-18-R1) — DIESELBEN DREI ZAHLEN, DIE ERSTE STEHT JETZT AUF
+  // `true`.
   // ==============================================================================================
   //
-  // Sein Befund an Runde 1, im echten Browser nach Tab+Enter:
+  // BENS BEFUND an JOB 3190 Runde 1, im echten Browser nach Tab+Enter:
   //     BEN ZIELZUSTAND {"dateiauswahl":false,"dateieingang":true,"dateiwerkzeug":true}
-  // Genau diese drei Zahlen misst dieser Fall jetzt selbst — ERST die Grenze (die Dateiauswahl ist
-  // nach Enter noch NICHT offen), DANN der Weg, den die Kachel dafür SICHTBAR ansagt. Der Test
-  // tippt die zwei Schritte nicht, er liest sie aus der Kachel: was dort steht, wird abgelaufen.
-  it("B4 · nach Enter fehlt die Dateiauswahl noch — und genau die angesagten Schritte öffnen sie", async () => {
+  // Runde 2 dieses Tests schrieb diese Grenze fest und lief danach die zwei Schritte ab, die die
+  // Kachel SICHTBAR ansagte. JOB 3341 hebt die Grenze auf: die Kachel führt über
+  // `/erfassen?weg=datei` in EINEM Schritt in die Dateiauswahl, und die Ansage ist damit ersatzlos
+  // entfallen (R4 oben). Der Fall misst deshalb DIESELBE Sonde weiter — sie ist der ganze Beleg —,
+  // erwartet aber jetzt `dateiauswahl: true` nach Enter, ohne einen weiteren Griff.
+  //
+  // WEGGEWORFEN WIRD NICHTS: der Tastaturbeleg (Enter auf der fokussierten Kachel) bleibt, die
+  // Breite 390 px bleibt, die `accept`-Prüfung des Eingangs bleibt — und der ALTE Menüweg
+  // („Datei ▾" → „Datei importieren") wird weiter abgelaufen, nur an seiner richtigen Stelle: nach
+  // „Abbrechen", vom Blatt aus. Auftrag §7 löst ausdrücklich nur die BEHAUPTUNG ab, er sei der
+  // einzige — nicht den Weg. Seine zwei Wörter kommen jetzt aus i18n statt von der Kachel; das ist
+  // dieselbe Quelle, aus der die Fläche sie rendert, und nicht ein im Test getippter Wortlaut.
+  it("B4 · nach Enter steht die Dateiauswahl da (ein Schritt) — der Menüweg trägt daneben weiter", async () => {
     if (!stand) {
       throw new Error("Chromium-Prüfstand fehlt");
     }
     const { seite } = stand;
+    const de = i18n.getFixedT("de");
     await seite.setViewportSize({ width: 390, height: 720 });
     await oeffneFlaeche(seite, "import", "de");
-    // Die Ansage der Kachel — aus der Fläche gelesen, bevor sie verlassen wird.
-    const angesagt = await seite.evaluate<string>(
-      fn(
-        `() => (document.querySelector('[data-id="docx"] [data-tile-steps]')?.textContent || '').trim()`,
+    // Die Kachel sagt nichts mehr an — der Beleg dafür steht hier, an der Stelle, an der der Test
+    // die Ansage früher GELESEN hat.
+    expect(
+      await seite.evaluate<number>(
+        fn(`() => document.querySelectorAll('[data-id="docx"] [data-tile-steps]').length`),
       ),
-    );
-    const schritte = angesagt.split("→").map((s) => s.trim());
-    expect(schritte.length, `die Wegzeile nennt keine zwei Schritte: „${angesagt}“`).toBe(2);
+      "die Word-Kachel trägt noch eine Wegzeile",
+    ).toBe(0);
 
     await seite.evaluate(fn(`() => document.querySelector('[data-id="docx"]').focus()`));
     await seite.keyboard.press("Enter");
@@ -429,7 +472,12 @@ describe("JOB 3190 · die Dateikachel bei 320/360/390 px", () => {
       undefined,
       { timeout: 30_000 },
     );
-    // DIE GRENZE, in Bens eigenen drei Zahlen.
+    await seite.waitForFunction(
+      fn(`() => !!document.querySelector('[data-testid="capture-file-pick"]')`),
+      undefined,
+      { timeout: 30_000 },
+    );
+    // DIE AUFGEHOBENE GRENZE, in Bens eigenen drei Zahlen.
     const zielzustand = await seite.evaluate<Record<string, boolean>>(
       fn(`() => ({
         dateiauswahl: !!document.querySelector('[data-testid="capture-file-pick"]'),
@@ -437,14 +485,36 @@ describe("JOB 3190 · die Dateikachel bei 320/360/390 px", () => {
         dateiwerkzeug: !!document.querySelector('[data-testid="blatt-werkzeug-datei"]'),
       })`),
     );
-    console.info(`JOB 3190 · B4 ZIELZUSTAND nach Enter: ${JSON.stringify(zielzustand)}`);
-    expect(zielzustand.dateiwerkzeug, "das angesagte Werkzeug fehlt").toBe(true);
+    console.info(`JOB 3190/3341 · B4 ZIELZUSTAND nach Enter: ${JSON.stringify(zielzustand)}`);
+    expect(zielzustand.dateiwerkzeug, "das Dateiwerkzeug fehlt").toBe(true);
+    expect(zielzustand.dateieingang, "der Dateieingang fehlt").toBe(true);
     expect(
       zielzustand.dateiauswahl,
-      "die Dateiauswahl wäre in einem Schritt offen — dann ist die Wegzeile auf der Kachel überflüssig",
-    ).toBe(false);
+      "Bens Zahl steht immer noch auf false — der eine Schritt ist keiner",
+    ).toBe(true);
+    // Und der Eingang trägt wirklich die Formate, um die es auf der Kachel ging.
+    const accept = await seite.evaluate<string>(
+      fn(`() => document.querySelector('input[type="file"]')?.getAttribute('accept') || ''`),
+    );
+    expect(accept).toContain(".docx");
+    expect(accept).toContain(".pdf");
 
-    // DER ANGESAGTE WEG, über die SICHTBAREN Wörter der Zielfläche gefunden.
+    // DER ALTE MENÜWEG IST NICHT ABGELÖST. Zurück aufs Blatt, dann dieselben zwei Griffe wie bisher
+    // — über die SICHTBAREN Wörter der Fläche gefunden, so wie ein Mensch sie fände.
+    await seite.evaluate(
+      fn(`(wort) => {
+        const knopf = [...document.querySelectorAll('button')]
+          .find((el) => (el.textContent || '').trim() === wort);
+        if (!knopf) { throw new Error('kein Knopf „' + wort + '“ im Dateiimport'); }
+        knopf.click();
+      }`),
+      String(de("capture.file.cancel")),
+    );
+    await seite.waitForFunction(
+      fn(`() => !document.querySelector('[data-testid="capture-file-pick"]')`),
+      undefined,
+      { timeout: 30_000 },
+    );
     await seite.evaluate(
       fn(`(wort) => {
         const knopf = [...document.querySelectorAll('[data-testid="blatt-werkzeugzeile"] button')]
@@ -452,7 +522,7 @@ describe("JOB 3190 · die Dateikachel bei 320/360/390 px", () => {
         if (!knopf) { throw new Error('kein Werkzeug „' + wort + '“ auf dem Blatt'); }
         knopf.click();
       }`),
-      schritte[0],
+      String(de("erfassen.werkzeug.datei")),
     );
     await seite.evaluate(
       fn(`(wort) => {
@@ -461,18 +531,12 @@ describe("JOB 3190 · die Dateikachel bei 320/360/390 px", () => {
         if (!eintrag) { throw new Error('kein Menüeintrag „' + wort + '“'); }
         eintrag.click();
       }`),
-      schritte[1],
+      String(de("erfassen.weg.datei")),
     );
     await seite.waitForFunction(
       fn(`() => !!document.querySelector('[data-testid="capture-file-pick"]')`),
       undefined,
       { timeout: 30_000 },
     );
-    // Und der Eingang dort trägt wirklich die Formate, um die es auf der Kachel ging.
-    const accept = await seite.evaluate<string>(
-      fn(`() => document.querySelector('input[type="file"]')?.getAttribute('accept') || ''`),
-    );
-    expect(accept).toContain(".docx");
-    expect(accept).toContain(".pdf");
   });
 });

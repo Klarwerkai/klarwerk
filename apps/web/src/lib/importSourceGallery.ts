@@ -91,26 +91,27 @@ export function hintKeyFor(state: SourceState): string | null {
 }
 
 // ================================================================================================
-// JOB 3190 · RUNDE 2 — DIE RESTSCHRITTE STEHEN SICHTBAR AN DER KACHEL, NICHT NUR IM `title`.
+// JOB 3341 · UX-18-R1 — DAS REGISTER DER RESTSCHRITTE IST LEER, WEIL ES KEINE MEHR GIBT.
 // ================================================================================================
 //
-// GEMESSEN (Ben, Runde 1, Chromium): nach Tab+Enter auf der Word-Kachel steht der Browser wirklich
-// auf `/erfassen` — aber der Dateiimport ist dort noch NICHT offen (`capture-file-pick` fehlt;
-// sein Befund: `{"dateiauswahl":false,"dateieingang":true,"dateiwerkzeug":true}`). Er liegt hinter
-// dem Werkzeug „Datei" und dessen Eintrag „Datei importieren".
+// WAS HIER STAND UND WARUM ES GING. JOB 3190 Runde 2 trug hier `elsewhere: "imp.gallery.
+// elsewhereSteps"` — „Datei → Datei importieren". Das war die ehrliche Ansage eines wirklich
+// vorhandenen Restwegs: Bens Browsermessung an Runde 1 fand nach Tab+Enter auf der Word-Kachel
+// `{"dateiauswahl":false,"dateieingang":true,"dateiwerkzeug":true}`, der Dateiimport lag also
+// hinter dem Werkzeug „Datei" und seinem Eintrag „Datei importieren".
 //
-// Solange diese zwei Schritte bleiben, darf die Kachel sie nicht verschweigen. Sie standen bis
-// hierher nur im `title` des Links — also nur fuer die Maus und nur beim Verweilen. Jetzt stehen
-// sie SICHTBAR auf der Kachel, in genau dem Wortlaut, den die Zielflaeche traegt
-// (`erfassen.werkzeug.datei` → `erfassen.weg.datei`); `tests/import-einstieg/weg-ins-erfassen.test.tsx`
-// laeuft genau diese angesagten Schritte ab und misst am gemounteten Baum, dass sie hinfuehren.
+// DIESEN RESTWEG GIBT ES NICHT MEHR. Die Kachel traegt jetzt den Adressparameter aus
+// `components/erfassen/wege.ts`; das Blatt oeffnet damit beim Aufbau den vorhandenen
+// Dateiimport-Arbeitsraum. Eine Ansage, die zwei Schritte nennt, waere ab hier schlicht falsch —
+// deshalb ist der Schluessel `imp.gallery.elsewhereSteps` ENTFERNT und nicht danebengelassen
+// (dieselbe Regel, die JOB 3235 auf `imp.gallery.src.wordFile` angewandt hat).
 //
-// KEIN ERSATZ FUER DEN EINEN SCHRITT, sondern die ehrliche Ansage des heutigen Wegs: der Deep-Link,
-// der den Dateiimport in EINEM Schritt oeffnen wuerde, braucht `components/erfassen/Blatt.tsx`
-// (`ansicht` liest dort keinen Parameter) — kein Zielpfad dieses Auftrags, siehe RUECKGABE.
-const STATE_STEPS_KEY: Partial<Record<SourceState, string>> = {
-  elsewhere: "imp.gallery.elsewhereSteps",
-};
+// WARUM DIE MECHANIK BLEIBT, OBWOHL DAS REGISTER LEER IST: ihre Aufrufstelle liegt in
+// `components/FileTypePicker.tsx` (`:29`, `:101`, `:127-131`), und diese Datei ist von JOB 3341
+// ausdruecklich ausgenommen (Auftrag §10). Sie samt Aufrufstelle zu entfernen ist der naechste
+// Schritt und steht als REST in der Rueckgabe. Was hier steht, ist keine Behauptung ins Blaue: das
+// leere Register sagt genau, was zutrifft — KEIN Zustand kostet derzeit Restschritte.
+const STATE_STEPS_KEY: Partial<Record<SourceState, string>> = {};
 
 /** Sichtbare Restschritte auf der Zielflaeche; null, wo der Zustand keine kostet. */
 export function stepsKeyFor(state: SourceState): string | null {

@@ -25,3 +25,41 @@ export const BLATT_WEGE: readonly CaptureMode[] = [
 export function blattWegLabelKey(mode: CaptureMode): string {
   return `erfassen.weg.${mode}`;
 }
+
+// ================================================================================================
+// JOB 3341 · UX-18-R1 — DIE ADRESSE DARF EINEN DIESER WEGE NENNEN.
+// ================================================================================================
+//
+// WOZU. Wer auf `/import` die Word-Kachel anklickt, wollte eine Datei einlesen. Er landete bis
+// hierher auf dem leeren Blatt und musste dort noch zweimal weiter („Datei ▾" → „Datei
+// importieren") — gemessen im Browser, Bens Befund an JOB 3190:
+// `{"dateiauswahl":false,"dateieingang":true,"dateiwerkzeug":true}`. Diese zwei Schritte standen
+// deshalb sichtbar auf der Kachel. Jetzt gibt es sie nicht mehr: die Adresse nennt den Weg, und das
+// Blatt öffnet ihn beim Aufbau über GENAU dasselbe `arbeitsraumOeffnen`, das auch das Menü ruft.
+//
+// EIN ORT FÜR NAMEN UND WERTMENGE, und die Wertmenge ist ABGELEITET aus `BLATT_WEGE` und nicht ein
+// zweites Mal getippt: ein neuer Erzählweg im Menü ist damit ohne Nacharbeit auch adressierbar, und
+// ein Weg, der aus dem Menü verschwindet, verschwindet zugleich aus der Adresse. Eine zweite Liste
+// wäre genau die Stelle, an der beide Auffassungen auseinanderliefen.
+//
+// FAIL-CLOSED. Ein unbekannter, leerer oder fehlender Wert ergibt „kein Weg": das Blatt bleibt das
+// Blatt. Keine Fehlermeldung — die Adresse ist keine Eingabe des Menschen, sondern ein Angebot;
+// was daran nicht verstanden wird, wird ignoriert und nicht beklagt. Und keine erfundene Ansicht:
+// `Ansicht` kennt nur „blatt" und die drei Arbeitsraum-Modi, sonst nichts.
+export const BLATT_WEG_PARAMETER = "weg";
+
+/**
+ * Der rohe Adresswert → ein Weg des Menüs, oder `null`. Der Vergleich läuft über `BLATT_WEGE`
+ * selbst, nicht über eine getippte Aufzählung.
+ */
+export function blattWegAusAdresse(roh: string | null | undefined): CaptureMode | null {
+  return BLATT_WEGE.find((weg) => weg === roh) ?? null;
+}
+
+/**
+ * Der Weg „Datei importieren" — der, den die Dateikacheln der Import-Galerie meinen. Er wird über
+ * dieselbe Abbildung geholt, die auch die Adresse liest: fällt „datei" eines Tages aus
+ * `BLATT_WEGE`, steht hier `null`, die Kachel trägt dann keinen Parameter mehr und führt wie früher
+ * auf das Blatt — statt auf einen Weg zu zeigen, den das Menü nicht mehr kennt.
+ */
+export const BLATT_WEG_DATEI: CaptureMode | null = blattWegAusAdresse("datei");
