@@ -1429,6 +1429,17 @@ export interface ImportApplyResponse {
   alreadyQueued: number;
   failed: { id: string; reason: string }[];
   notFound: string[];
+  /**
+   * JOB 3357 · L1 — DIE KENNUNG DES ÜBERNAHMELAUFS. ADDITIV, OPTIONAL, OHNE ERSATZWERT.
+   *
+   * Der Server sendet sie GENAU DANN, wenn er zu dieser Übernahme wirklich einen Lauf geführt hat
+   * (`services/app/src/routes/confluence-import-routes.ts`, Apply-Route:
+   * `...(uebernahmelauf !== null ? { importId: uebernahmelauf } : {})`); lesbar ist der Lauf danach
+   * über `GET /api/admin/import/runs/:importId`. FEHLT das Feld, heißt das „kein Lauf" — diese
+   * Aussage wird sichtbar benannt und darf nie zu einem Platzhalter, einem Strich oder einer
+   * erfundenen Kennung werden (`tests/import-lauf-kennung/ohne-lauf-keine-kennung.test.tsx`).
+   */
+  importId?: string;
 }
 
 // WP-D-CLEAN: zweistufiges Testdaten-Aufräumen — Vorschau (Zähler, nichts passiert) bzw. Bilanz.

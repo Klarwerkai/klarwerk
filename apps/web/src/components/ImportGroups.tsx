@@ -10,6 +10,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
+// JOB 3357: der BESTEHENDE Lesehaken der Laufakte — derselbe, den die Lauf-Kachel der Import-Seite
+// fährt (`pages/Stufe2.tsx`, `const lauf = useImportRun(importId)`). Kein eigener Abruf, kein
+// zweiter Schlüssel, kein zweiter Nachfragetakt.
+import { useImportRun } from "../api/hooks";
 import type { ImportApplyResponse, ImportGroupResponse, ImportSelectCriteria } from "../api/types";
 import { displayImportText } from "../lib/htmlEntities";
 import {
@@ -30,6 +34,7 @@ import {
   selectionCounts,
   toggleCandidate,
 } from "../lib/importGroups";
+import { importRunStateView } from "../lib/importResultView";
 import { koLabel } from "../lib/koLabel";
 import { toReasonerLocale } from "../lib/reasonerLocale";
 import { AiCostHint } from "./AiCostHint";
@@ -37,7 +42,9 @@ import { AiGeneratedNotice } from "./AiGeneratedNotice";
 // WP-COCKPIT-LINIE: Schritt-Überschriften (4 Gruppen freigeben · 5 Übernehmen & Bilanz) +
 // Meilenstein-Meldungen an die Schritt-Leiste.
 import { ImportStepHeading, useReportImportStage, useRewindImportStage } from "./ImportStepper";
-import { Button } from "./ui";
+// JOB 3357: der vorhandene Zustandsrenderer des Laufs — benutzt, nicht nachgebaut (Auftrag §7).
+import { RunStateBanner } from "./confluence-import/RunStateBanner";
+import { Button, cx } from "./ui";
 
 // Präsentationsteil (kontrolliert, ohne Netz) — separat exportiert für den Mounted-Test.
 export function GroupApprovalPanel({
@@ -188,6 +195,202 @@ export function GroupApprovalPanel({
   );
 }
 
+// ================================================================================================
+// JOB 3357 — DER LAUF DIESER ÜBERNAHME: KENNUNG, AUSGANG, ZÄHLER.
+// ================================================================================================
+//
+// DER BEFUND (Codex-Live 311b601a auf 1.201, nach einem echten Selektivimport):
+// „Eine konkrete Laufkennung wird weiterhin nicht sichtbar angeboten; Uhrzeit und Ergebniszähler
+// funktionieren jetzt praktisch." Die Kennung war da — der Server schickt sie seit JOB 3288 mit —,
+// nur nahm sie im Client niemand entgegen. Pedi konnte den Lauf, den er gerade gefahren hatte,
+// nicht benennen: nicht im Gespräch, nicht im Protokoll, nicht gegenüber dem Prüfer.
+//
+// EINE KENNUNG ALLEIN GENÜGT NICHT. Eine nackte UUID beantwortet die Frage nicht, die man
+// wirklich hat („ist der Lauf durch, und wie ist er ausgegangen?"). Deshalb steht neben der
+// Kennung der AUSGANG — gelesen über den vorhandenen Haken `useImportRun`, dargestellt im
+// vorhandenen `RunStateBanner`, gezählt mit dem vorhandenen Satz `w2.run.progress`. Kein zweiter
+// Abrufweg, kein zweites Vokabular: die Lauf-Kachel derselben Seite sagt dieselben Worte.
+//
+// WARUM ZWEI KOMPONENTEN UND NICHT ZWEI ZWEIGE IM RENDER: der Haken darf nur feuern, wenn es
+// wirklich eine Kennung gibt. Als eigenes Bauteil, das nur mit vorhandener Kennung überhaupt
+// gemountet wird, ist das baulich sicher — nicht bloß per `enabled` verabredet. Ohne Kennung
+// entsteht dadurch auch keine react-query-Abhängigkeit dieser Fläche.
+
+// Die Textschlüssel dieses Blocks. Sie stehen HIER und nicht in `lib/importGroups.ts`, weil dort
+// keine Zeile dieses Auftrags liegt (Zielpfade); das Präfix `imp.groups.` bleibt dasselbe.
+const IMPORT_GROUPS_RUN_TEXT = {
+  heading: "imp.groups.runHeading",
+  idLabel: "imp.groups.runIdLabel",
+  call: "imp.groups.runCall",
+  idNone: "imp.groups.runIdNone",
+  outcomeLoading: "imp.groups.runOutcomeLoading",
+  outcomeUnavailable: "imp.groups.runOutcomeUnavailable",
+  // Der Vorbehalt ist EIN Satz („das ist nicht der aktuelle Stand") plus der GRUND. Getrennte
+  // Vollsätze je Grund hatten den Fehler, dass jeder Grund seine eigene Kennzeichnung mitbringen
+  // musste — und der Grund, den Runde 1 nicht kannte (ausgesetzt), brachte eben keine mit.
+  outcomeStale: "imp.groups.runOutcomeStale",
+  staleFailed: "imp.groups.runOutcomeStaleFailed",
+  stalePaused: "imp.groups.runOutcomeStalePaused",
+  staleRefreshing: "imp.groups.runOutcomeRefreshing",
+  outcomeOffline: "imp.groups.runOutcomeOffline",
+} as const;
+
+/** Der Ausgang GENAU EINES Laufs. Wird nur gerendert, wenn eine Kennung vorliegt. */
+function LaufAusgang({ importId }: { importId: string }): JSX.Element {
+  const { t } = useTranslation();
+  const lauf = useImportRun(importId);
+  const akte = lauf.data;
+  // AUSGESETZT (`fetchStatus: "paused"`) IST WEDER LADEN NOCH FEHLER — und genau daran ist die
+  // erste Runde dieses Auftrags gescheitert (Prüferbefund BEN, JOB 3357 R1: offline gemessen
+  // `{"status":"success","fetchStatus":"paused"}`, während die Fläche den alten Ausgang unmarkiert
+  // stehen ließ). react-query setzt bei fehlender Verbindung KEIN `isError` und KEIN `isFetching`:
+  // die Abfrage wartet. Wer nur diese zwei Flaggen liest, hält den ausgesetzten Fall für „ruhig und
+  // aktuell" — die schlimmste der drei Lesarten, weil sie eine Frischezusage macht, die niemand
+  // geprüft hat. `isPaused` wird deshalb VOR beiden anderen gefragt: es beschreibt, was gerade
+  // wirklich der Fall ist (es läuft kein Versuch), während ein `isError` aus einem früheren Versuch
+  // nur noch Vergangenheit ist.
+  if (!akte) {
+    // Noch nie erfolgreich gelesen. Drei verschiedene Lagen, drei verschiedene Sätze — und in
+    // KEINER davon eine Aussage über den Ausgang: „unbekannt" ist weder Erfolg noch Misserfolg.
+    return (
+      <p data-testid="imp-groups-run-outcome" className="mt-1.5 text-[12px] text-muted-2">
+        {lauf.isPaused
+          ? t(IMPORT_GROUPS_RUN_TEXT.outcomeOffline)
+          : lauf.isError
+            ? t(IMPORT_GROUPS_RUN_TEXT.outcomeUnavailable)
+            : t(IMPORT_GROUPS_RUN_TEXT.outcomeLoading)}
+      </p>
+    );
+  }
+  // GELESEN, nie hergeleitet — dieselbe reine Ableitung, die auch die Lauf-Kachel speist.
+  const zustand = importRunStateView(akte.status);
+  // Warum der Gezeigte nicht der aktuelle Stand ist — oder `null`, wenn er es ist. `isPaused` steht
+  // VORNE: es beschreibt die Gegenwart (es läuft kein Versuch), während ein `isError` aus einem
+  // früheren Versuch nur Vergangenheit ist. `dringend` trennt „da wartet etwas auf mich" von
+  // „das erledigt sich gerade von selbst" — Farbe als zweite Spur, der Satz sagt es ohnehin.
+  const vorbehalt: { grund: string; dringend: boolean } | null = lauf.isPaused
+    ? { grund: IMPORT_GROUPS_RUN_TEXT.stalePaused, dringend: true }
+    : lauf.isError
+      ? { grund: IMPORT_GROUPS_RUN_TEXT.staleFailed, dringend: true }
+      : lauf.isFetching
+        ? { grund: IMPORT_GROUPS_RUN_TEXT.staleRefreshing, dringend: false }
+        : null;
+  // Der Ton des Vorbehalts steht als EIGENER lokaler Wert da und nicht im `className`-Ausdruck.
+  // Grund ist der Klassenbindungs-Sammler (`tests/app/mega47-modale-flaechen-sammler.test.tsx`):
+  // er löst Bezeichner auf, die in DIESER Datei einen literalen Wert haben, und meldet alles
+  // andere als offen. Als `cx("mt-1 text-[12px]", vorbehalt.dringend ? … : …)` geschrieben war die
+  // Bindung unauflösbar (der Sammler zählte 220 statt 219 offener Bindungen); so geschrieben sind
+  // BEIDE Klassenketten für ihn lesbar. Das ist die Auflage aus JOB 3267 — die Klassen auflösbar
+  // schreiben, nicht den Zählstand hochsetzen. KEIN VORBEISCHREIBEN: die Bindung bleibt eine
+  // Bindung im `className`-Ausdruck und steht weiter in `ALLE_BINDUNGEN`; sie wandert nur von
+  // „offen" nach „aufgelöst", weil hier nichts mehr zu raten ist.
+  const vorbehaltTon = vorbehalt?.dringend === true ? "text-trust-warn-text" : "text-muted-2";
+  return (
+    <div data-testid="imp-groups-run-outcome" className="mt-1.5">
+      <RunStateBanner
+        state={zustand}
+        failureCode={akte.failureCode}
+        failureReason={akte.failureReason}
+      />
+      {/* Fortschritt als Zahl, fertig vom Server gezählt: angelegt + gebunden + übersprungen +
+          gescheitert sind zusammen genau die Elemente, die der Lauf hinter sich hat. */}
+      <p className="mt-1 text-[12.5px] text-muted">
+        {t("w2.run.progress", {
+          verarbeitet:
+            akte.counters.itemsCreated +
+            akte.counters.itemsBound +
+            akte.counters.itemsSkipped +
+            akte.counters.itemsFailed,
+          gesamt: akte.counters.itemsTotal,
+        })}
+      </p>
+      {/* Ein alter Stand bleibt STEHEN (nichts wird geleert), aber er wird nicht als frisch
+          ausgegeben. Die KENNZEICHNUNG ist bei allen drei Gründen dieselbe — sie ist die Aussage,
+          auf die es ankommt —, der GRUND steht daneben, weil „wartet auf die Verbindung",
+          „fehlgeschlagen" und „läuft gerade" verschiedene Lagen sind. Ohne Verbindung (`isPaused`)
+          ist der Vorbehalt PFLICHT: sonst stünde der zuletzt gelesene Ausgang unmarkiert da, als
+          wäre er der aktuelle (Prüferbefund R1). */}
+      {vorbehalt !== null ? (
+        <p
+          data-testid="imp-groups-run-outcome-stale"
+          className={cx("mt-1 text-[12px]", vorbehaltTon)}
+        >
+          {t(IMPORT_GROUPS_RUN_TEXT.outcomeStale)} {t(vorbehalt.grund)}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Die Läufe dieses Durchlaufs — einer je erfolgreich übertragenem Stapel, in Aufrufreihenfolge.
+ *
+ * KEINE ZUSAMMENFASSUNG ZU EINER: `runApply` schneidet die Auswahl in Stapel und ruft die
+ * Übernahme je Stapel einmal auf; der Server legt dabei je Aufruf einen EIGENEN Lauf an. Zwei
+ * Kennungen sind zwei Vorgänge mit zwei Akten, und eine Fläche, die daraus eine machte, würde
+ * einen echten Vorgang verschweigen.
+ *
+ * Ein `null` in der Liste heißt: diese Antwort kam an und trug KEINE Kennung — der Server hat für
+ * diesen Aufruf keinen Lauf geführt. Antworten, die gar nicht ankamen (Transportfehler), stehen
+ * hier überhaupt nicht; nach ihnen weiß niemand, was der Server getan hat, und es wird deshalb
+ * auch nichts behauptet.
+ */
+function LaufKennungen({
+  kennungen,
+}: { kennungen: readonly (string | null)[] }): JSX.Element | null {
+  const { t } = useTranslation();
+  if (kennungen.length === 0) {
+    return null;
+  }
+  // Der Listenschlüssel trägt die Position voran: zwei Stapel können dieselbe (oder gar keine)
+  // Kennung liefern, und React zöge gleich beschlüsselte Zeilen sonst zusammen.
+  const zeilen = kennungen.map((importId, i) => ({
+    key: `${i + 1}-${importId ?? "ohne-lauf"}`,
+    nummer: i + 1,
+    importId,
+  }));
+  const letzte = [...zeilen].reverse().find((z) => z.importId !== null)?.importId ?? null;
+  return (
+    <div data-testid="imp-groups-run" className="mt-2 border-t border-hairline pt-2">
+      <p className="text-[12px] font-semibold text-text">{t(IMPORT_GROUPS_RUN_TEXT.heading)}</p>
+      <ul className="mt-1 space-y-1 text-[12.5px] text-text">
+        {zeilen.map((zeile) => (
+          <li key={zeile.key}>
+            {zeile.importId === null ? (
+              // Ehrlich, nicht hübsch: kein Strich, kein leerer Platz, keine erfundene Kennung.
+              <span data-testid="imp-groups-run-id-none" className="text-muted">
+                {zeilen.length > 1
+                  ? `${t(IMPORT_GROUPS_RUN_TEXT.call, { n: zeile.nummer })}: `
+                  : ""}
+                {t(IMPORT_GROUPS_RUN_TEXT.idNone)}
+              </span>
+            ) : (
+              <>
+                <span className="text-muted">
+                  {zeilen.length > 1
+                    ? `${t(IMPORT_GROUPS_RUN_TEXT.call, { n: zeile.nummer })} · `
+                    : ""}
+                  {t(IMPORT_GROUPS_RUN_TEXT.idLabel)}:{" "}
+                </span>
+                {/* `select-all` + `break-all`: der Wert ist zum Vorlesen UND zum Abschreiben da.
+                    Bewusst KEIN `truncate` — eine halbe Kennung ist keine Kennung. */}
+                <span
+                  data-testid="imp-groups-run-id"
+                  className="select-all break-all font-mono text-[12px] text-text"
+                >
+                  {zeile.importId}
+                </span>
+              </>
+            )}
+          </li>
+        ))}
+      </ul>
+      {/* Der Ausgang gehört zum ZULETZT gelaufenen — das ist der, nach dem gerade gefragt wird. */}
+      {letzte !== null ? <LaufAusgang importId={letzte} /> : null}
+    </div>
+  );
+}
+
 export function ImportGroups({
   criteria,
   selectedCandidateIds,
@@ -204,7 +407,7 @@ export function ImportGroups({
   // „alle passenden". Leere Menge → der Weiter-Knopf ist deaktiviert (kein Lauf über alles).
   selectedCandidateIds: readonly string[];
   // PAKET 1 (D-AISTATE, Pedi 23.07.): ist die KI-Gruppierung (Task „group") nutzbar? Als PROP (nicht
-  // Hook), damit die Komponente ohne QueryClient-Provider isoliert testbar bleibt; der Eltern-Kontext
+  // Hook), damit die Komponente bis zur Bilanz ohne QueryClient-Provider testbar bleibt; der Eltern-Kontext
   // reicht die echte Verfügbarkeit ein. WICHTIG: der Knopf wird NICHT ausgegraut — die deterministische
   // Themen-Gruppierung bleibt ein voller, nutzbarer Kernablauf (Ergebnis ehrlich „Ohne KI gruppiert").
   // Ohne Modell kündigt nur ein Vor-Hinweis an, dass ohne KI gruppiert wird. Default true (kein Test-Bruch).
@@ -232,8 +435,15 @@ export function ImportGroups({
   // Auswahl, um `groupingStale` bilden zu können.
   onGrouped?: () => void;
   // AUFTRAG-mega9 Block E-5 (KW-E2E-009): Die Übernahme ist durch. Der Eltern-Kontext frischt die
-  // Review-/Bilanz-Abfragen GEMEINSAM auf. Bewusst als Callback: diese Komponente bleibt ohne
-  // react-query-Abhängigkeit (dokumentierte Entscheidung an jumpToReview).
+  // Review-/Bilanz-Abfragen GEMEINSAM auf. Bewusst als Callback und nicht über einen eigenen
+  // Query-Client-Griff in dieser Fläche (dokumentierte Entscheidung, gepinnt in
+  // `tests/library/import-apply-invalidate.test.ts`).
+  //
+  // JOB 3357 — WAS SICH DARAN GEÄNDERT HAT, UND WAS NICHT: Die Bilanz liest seit diesem Auftrag
+  // die Laufakte über den bestehenden Lesehaken `useImportRun` und hängt damit MITTELBAR an
+  // react-query — aber nur in dem Zweig, der wirklich eine Laufkennung hat (`LaufAusgang`). Die
+  // Entscheidung oben bleibt unberührt: diese Fläche hält weiterhin keinen QueryClient und macht
+  // nichts selbst ungültig; das tut nach wie vor allein der Eltern-Kontext über diesen Rückruf.
   onApplied?: () => void;
 }): JSX.Element {
   const { i18n, t } = useTranslation();
@@ -243,6 +453,13 @@ export function ImportGroups({
   const [busy, setBusy] = useState<"group" | "apply" | null>(null);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [runState, setRunState] = useState<ApplyRunState>(EMPTY_APPLY_RUN);
+  // JOB 3357: die Kennungen der Läufe dieses Durchlaufs, EIN Eintrag je angekommener Antwort, in
+  // Aufrufreihenfolge; `null` = die Antwort kam an und trug keine Kennung (kein Lauf geführt).
+  //
+  // BEWUSST EIGENER ZUSTAND statt eines Felds in `ApplyRunState`: dessen `ApplyBatchResult` wohnt
+  // in `lib/importGroups.ts` und kennt die Kennung nicht. Sie dort aus einem Wert zu lesen, den
+  // der Typ nicht führt, wäre eine stille Annahme — hier steht sie als das da, was sie ist.
+  const [laufKennungen, setLaufKennungen] = useState<(string | null)[]>([]);
   const [bilanz, setBilanz] = useState<ImportBilanz | null>(null);
   const [error, setError] = useState<string | null>(null);
   // WP-REST18 (bens Fix 2): der Snapshot hinter data.snapshotToken wurde serverseitig verdrängt —
@@ -285,7 +502,9 @@ export function ImportGroups({
 
   // WP-SHIP9-S2 (D6): Sprung zur Review-Queue (klappt die standardmäßig eingeklappte Verlaufs-Sektion
   // auf). Der Zähler kommt ehrlich aus der gerade abgeschlossenen Bilanz (dieser Lauf), nicht aus einem
-  // zusätzlichen Query — so bleibt ImportGroups ohne react-query-Abhängigkeit.
+  // zusätzlichen Query — der Zähler dieses Knopfes braucht keinen Serveraufruf.
+  // (JOB 3357 hat einen Lesehaken für die LAUFAKTE hinzugefügt; dieser Zähler bleibt davon
+  // unberührt und stammt weiterhin allein aus der Bilanz dieses Laufs.)
   const jumpToReview = (): void => {
     const el =
       typeof document !== "undefined" ? document.getElementById("import-review-queue") : null;
@@ -300,6 +519,7 @@ export function ImportGroups({
     setError(null);
     setBilanz(null);
     setRunState(EMPTY_APPLY_RUN);
+    setLaufKennungen([]);
     setSnapshotExpired(false);
     try {
       const response = await endpoints.admin.import.group({
@@ -342,6 +562,9 @@ export function ImportGroups({
     const results = [...prior.results];
     const attempted = [...prior.attempted];
     const transportFailed = [...prior.transportFailed];
+    // Dieselbe Fortschreibungsregel wie bei `results`: beim Wiederholen des Restes werden die
+    // Kennungen der Vorläufe mitgenommen, ein frischer Lauf beginnt bei null.
+    const kennungen: (string | null)[] = idsOverride ? [...laufKennungen] : [];
     try {
       for (const batch of buildBatches(ids)) {
         attempted.push(...batch);
@@ -356,6 +579,13 @@ export function ImportGroups({
             selectedCandidateIds: [...selectedCandidateIds],
           });
           results.push(result);
+          // JOB 3357: Die Kennung dieses Aufrufs, so wie sie ankam. Fehlt sie, wird `null`
+          // vermerkt — ausdrücklich „kein Lauf", nie ein Platzhalter und nie ein Weglassen.
+          kennungen.push(
+            typeof result.importId === "string" && result.importId.length > 0
+              ? result.importId
+              : null,
+          );
         } catch (err) {
           // WP-REST18 (bens Fix 2): SNAPSHOT_EXPIRED ist KEIN Transportfehler — der alte Token
           // liefe bei jedem Wiederholen wieder in den 409. Lauf kontrolliert beenden, kompletten
@@ -364,6 +594,7 @@ export function ImportGroups({
             setData(null);
             setSelection({});
             setRunState(EMPTY_APPLY_RUN);
+            setLaufKennungen([]);
             setBilanz(null);
             setSnapshotExpired(true);
             // WP-SHIP8-CLOSE-2 (bens F2): kein hängendes „applying" — die Gruppen sind weg,
@@ -387,6 +618,7 @@ export function ImportGroups({
     }
     const nextRun: ApplyRunState = { results, attempted, transportFailed };
     setRunState(nextRun);
+    setLaufKennungen(kennungen);
     setBilanz(aggregateBilanz(data.candidates, selection, nextRun));
     // WP-SHIP8-CLOSE-2 (bens F2): der Haken auf Schritt 5 kommt NUR bei einem Lauf ohne
     // Transportfehler (inkl. der aus Vorläufen mitgeschleppten — deren Ids bleiben ehrlich
@@ -591,6 +823,12 @@ export function ImportGroups({
                 ))}
               </ul>
             ) : null}
+            {/* JOB 3357: der Lauf, den diese Bilanz gerade gefahren hat — Kennung, Ausgang,
+                Zähler. Er steht NACH den Zahlen und VOR den Knöpfen: er ist eine Auskunft über
+                das Geschehene, keine Handlung. Die Reihenfolge der Handlungsangebote
+                („Rest übernehmen" · „Weiter zum Import-Review") bleibt dadurch unverändert —
+                der Fluss hat weiterhin genau EINEN Primär-CTA je Zustand. */}
+            <LaufKennungen kennungen={laufKennungen} />
             {bilanz.notAttempted.length > 0 ? (
               <div className="mt-2">
                 <Button

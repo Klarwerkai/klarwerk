@@ -3800,6 +3800,27 @@ const de = {
   "imp.groups.regroup": "Neu gruppieren",
   // AUFTRAG-mega9 Block E-4 (KW-E2E-008): ehrlicher Name nach einer Auswahländerung.
   "imp.groups.refreshGrouping": "Gruppierung aktualisieren",
+  // JOB 3357 (Codex-Livebefund 311b601a auf 1.201): „Eine konkrete Laufkennung wird weiterhin nicht
+  // sichtbar angeboten." Der Server führt den Lauf und schickt seine Kennung mit; die Bilanz nennt
+  // sie ab jetzt, samt Ausgang aus der Laufakte. Der Ausgang selbst spricht das Vokabular der
+  // Lauf-Kachel (`w2.run.*`) — dieselbe Sache, dieselben Worte.
+  "imp.groups.runHeading": "Lauf dieser Übernahme",
+  "imp.groups.runIdLabel": "Lauf-Kennung",
+  "imp.groups.runCall": "Aufruf {{n}}",
+  // Ehrlichkeit vor Optik: „kein Lauf" wird gesagt, nicht durch einen Strich angedeutet.
+  "imp.groups.runIdNone": "Für diesen Aufruf hat der Server keinen Lauf geführt.",
+  "imp.groups.runOutcomeLoading": "Der Ausgang dieses Laufs wird geladen …",
+  "imp.groups.runOutcomeUnavailable":
+    "Der Ausgang dieses Laufs ist gerade nicht abrufbar. Die Kennung oben bleibt gültig.",
+  // Der Vorbehalt: EIN Satz für „nicht der aktuelle Stand", danach der Grund. Ohne Verbindung
+  // wartet die Abfrage — sie läuft nicht und ist nicht gescheitert; genau dieser Grund fehlte in
+  // Runde 1, und der alte Ausgang stand deshalb unmarkiert da (Prüferbefund R1).
+  "imp.groups.runOutcomeStale": "Stand der letzten erfolgreichen Abfrage — nicht der aktuelle.",
+  "imp.groups.runOutcomeStaleFailed": "Die Auffrischung ist fehlgeschlagen.",
+  "imp.groups.runOutcomeStalePaused": "Ohne Verbindung wartet die Auffrischung.",
+  "imp.groups.runOutcomeRefreshing": "Die Auffrischung läuft gerade.",
+  "imp.groups.runOutcomeOffline":
+    "Keine Verbindung — der Ausgang dieses Laufs wurde noch nicht gelesen. Die Kennung oben bleibt gültig.",
   // WP-COCKPIT-LINIE: geführte Fünf-Schritte-Leiste + eingeklappter Verlauf (einfache Sprache).
   "imp.step.barLabel": "Import in fünf Schritten",
   "imp.step.source": "Quelle",
@@ -8829,6 +8850,20 @@ const en: typeof de = {
     "The data behind this grouping has expired — the import was stopped and the selection reset. Please group again.",
   "imp.groups.regroup": "Group again",
   "imp.groups.refreshGrouping": "Refresh grouping",
+  // JOB 3357: the run identifier of this import, plus its outcome from the server's run record.
+  "imp.groups.runHeading": "Run of this import",
+  "imp.groups.runIdLabel": "Run ID",
+  "imp.groups.runCall": "Call {{n}}",
+  "imp.groups.runIdNone": "The server did not record a run for this call.",
+  "imp.groups.runOutcomeLoading": "Loading the outcome of this run …",
+  "imp.groups.runOutcomeUnavailable":
+    "The outcome of this run cannot be retrieved right now. The ID above remains valid.",
+  "imp.groups.runOutcomeStale": "State from the last successful query — not the current one.",
+  "imp.groups.runOutcomeStaleFailed": "The refresh failed.",
+  "imp.groups.runOutcomeStalePaused": "Without a connection the refresh is waiting.",
+  "imp.groups.runOutcomeRefreshing": "A refresh is running right now.",
+  "imp.groups.runOutcomeOffline":
+    "No connection — the outcome of this run has not been read yet. The ID above remains valid.",
   // WP-COCKPIT-LINIE: guided five-step bar + collapsed history (plain language).
   "imp.step.barLabel": "Import in five steps",
   "imp.step.source": "Source",
@@ -13568,6 +13603,20 @@ const nl: typeof de = {
     "De gegevensbasis van deze groepering is inmiddels verlopen — de overname is gestopt en de selectie teruggezet. Groepeer opnieuw.",
   "imp.groups.regroup": "Opnieuw groeperen",
   "imp.groups.refreshGrouping": "Groepering bijwerken",
+  // JOB 3357: het kenmerk van deze overname plus de uitkomst uit het uitvoeringsdossier.
+  "imp.groups.runHeading": "Uitvoering van deze overname",
+  "imp.groups.runIdLabel": "Uitvoeringskenmerk",
+  "imp.groups.runCall": "Aanroep {{n}}",
+  "imp.groups.runIdNone": "Voor deze aanroep heeft de server geen uitvoering vastgelegd.",
+  "imp.groups.runOutcomeLoading": "De uitkomst van deze uitvoering wordt geladen …",
+  "imp.groups.runOutcomeUnavailable":
+    "De uitkomst van deze uitvoering is nu niet op te vragen. Het kenmerk hierboven blijft geldig.",
+  "imp.groups.runOutcomeStale": "Stand van de laatste geslaagde opvraging — niet de actuele.",
+  "imp.groups.runOutcomeStaleFailed": "Het bijwerken is mislukt.",
+  "imp.groups.runOutcomeStalePaused": "Zonder verbinding wacht het bijwerken.",
+  "imp.groups.runOutcomeRefreshing": "Het bijwerken loopt op dit moment.",
+  "imp.groups.runOutcomeOffline":
+    "Geen verbinding — de uitkomst van deze uitvoering is nog niet gelezen. Het kenmerk hierboven blijft geldig.",
   // WP-COCKPIT-LINIE: begeleide vijf-stappen-balk + ingeklapte geschiedenis (eenvoudige taal).
   "imp.step.barLabel": "Import in vijf stappen",
   "imp.step.source": "Bron",

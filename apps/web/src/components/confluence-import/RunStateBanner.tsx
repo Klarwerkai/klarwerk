@@ -8,7 +8,24 @@
 //
 // `PARTIAL` und `FAILED` erscheinen NIE als Erfolg (Auftrag §5). Diese Datei entscheidet das nicht
 // selbst: sie zeigt, was `importRunStateView` aus dem Serverwert abgeleitet hat.
+//
+// ================================================================================================
+// JOB 3357 — EINE ÜBERSCHRIFT-KENNUNG JE INSTANZ, NICHT EINE FÜR ALLE.
+// ================================================================================================
+//
+// Bis hierher stand die Überschrift-Kennung (id sowie aria-labelledby) FEST in dieser Datei —
+// beide Male derselbe Wert `w2-run-heading`. Das trug, solange es genau eine
+// Lauf-Fläche gab. Seit JOB 3357 zeigt auch die Bilanz der Übernahme (`components/ImportGroups.tsx`)
+// den Ausgang ihres Laufs über GENAU DIESEN Banner — und beide Flächen wohnen auf derselben Seite
+// (`pages/Stufe2.tsx`: `<ImportRunPanel />` oben, weiter unten über
+// `ImportExplore → ImportSelect → ImportGroups` die Bilanz).
+//
+// Zwei Abschnitte mit derselben `id` sind kein Schönheitsfehler: `aria-labelledby` löst dann für
+// BEIDE auf die ERSTE Überschrift auf, und die zweite Fläche trägt eine fremde Beschriftung. Die
+// Kennung kommt deshalb aus `useId()` — je Instanz eine eigene, ohne dass ein Aufrufer daran
+// denken muss. `data-testid` bleibt unverändert; es ist keine Kennung und darf sich wiederholen.
 import { AlertTriangle, CheckCircle2, Clock, HelpCircle, XCircle } from "lucide-react";
+import { useId } from "react";
 import { useTranslation } from "react-i18next";
 import type { ImportRunStateView, ImportRunTone } from "../../lib/importResultView";
 import { cx } from "../ui";
@@ -51,16 +68,18 @@ export function RunStateBanner({
 }: RunStateBannerProps): JSX.Element {
   const { t } = useTranslation();
   const ton = TON[state.tone] ?? TON.warn;
+  // Je Instanz eigen (s. Kopf): zwei Banner auf einer Seite dürfen sich keine Kennung teilen.
+  const ueberschriftId = useId();
   return (
     <section
-      aria-labelledby="w2-run-heading"
+      aria-labelledby={ueberschriftId}
       data-testid="w2-run"
       data-run-tone={state.tone}
       data-run-success={String(state.success)}
       data-run-running={String(state.running)}
       className={cx("rounded-card border border-hairline p-4", ton)}
     >
-      <h2 id="w2-run-heading" className="sr-only">
+      <h2 id={ueberschriftId} className="sr-only">
         {t("w2.run.heading")}
       </h2>
       <p className="flex flex-wrap items-center gap-2 text-sm font-semibold">

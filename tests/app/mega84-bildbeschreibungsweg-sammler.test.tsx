@@ -1509,8 +1509,26 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // `ANGEBOT_MUSTER`) und trägt keinen eigenen Titel (kein `documentTitle`-Prop); es erscheint nur
     // in der Grundmenge. Die zwei Zahlen, an denen Stufe 2 wirklich hängt, bleiben unverändert:
     // `anbieter` 1, `traeger` 2.
+    //
+    // KONFLIKTRUNDE 2 (JOB 3357 · IMPORT-LAUFKENNUNG): NACH DEM REBASE auf JOB 3362/LESEVARIANTE-
+    // FLAECHEN trifft die unabhängige NEUE Fläche IMPORT-LAUFKENNUNG auf denselben Stand;
+    // `komponenten` von 359 auf 361 NACHGEZOGEN — am eigenen Lauf dieses Arbeitsbaums gemessen,
+    // nicht rechnerisch addiert. GENAU ZWEI Bauteile kommen hinzu, beide in
+    // `components/ImportGroups.tsx`:
+    //
+    //     + `LaufAusgang` — Status, Fehlercode/-grund und Zähler EINES Übernahmelaufs, gelesen
+    //       über den bestehenden Haken `useImportRun`. Eigene Komponente und kein Ausdruck in der
+    //       Bilanz, weil der Haken NUR mit vorhandener Kennung überhaupt feuern darf; das ist als
+    //       eigenes Bauteil baulich sicher statt bloß verabredet.
+    //     + `LaufKennungen` — die Kennungen dieses Durchlaufs in Aufrufreihenfolge, samt dem
+    //       ehrlichen Satz für den Fall, dass der Server keinen Lauf geführt hat.
+    //
+    // Für DIESEN Sammler gibt es nichts aufzulösen — er zählt. Keines der beiden Bauteile bietet
+    // eine Bildbeschreibung an (kein `ANGEBOT_MUSTER`) und keines trägt einen eigenen Titel (kein
+    // `documentTitle`-Prop); sie erscheinen nur in der Grundmenge. Die zwei Zahlen, an denen
+    // Stufe 2 wirklich hängt, bleiben unverändert: `anbieter` 1 und `traeger` 2.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 359,
+      komponenten: 361,
       anbieter: 1,
       traeger: 2,
     });
