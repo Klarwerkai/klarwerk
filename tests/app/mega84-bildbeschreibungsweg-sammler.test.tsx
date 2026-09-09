@@ -1538,8 +1538,20 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // Bildbeschreibung an (kein `ANGEBOT_MUSTER`) und trägt keinen eigenen Titel (kein
     // `documentTitle`-Prop); es erscheint nur in der Grundmenge. Die zwei Zahlen, an denen Stufe 2
     // wirklich hängt, bleiben unverändert: `anbieter` 1, `traeger` 2.
+    //
+    // JOB 3390 (LADEFEHLER-ALTER-TAB): `komponenten` von 362 auf 363 NACHGEZOGEN — am eigenen Lauf
+    // dieses Arbeitsbaums gemessen (der Test meldete `expected { komponenten: 363, … } to deeply
+    // equal { komponenten: 362, … }`), nicht gerechnet. GENAU EIN Bauteil kommt hinzu:
+    // `NeueVersionAngebot` in `components/VersionsHinweis.tsx` — der Satz „eine neue Version ist
+    // da" samt Knopf „Neu laden" in seinen zwei Formen (Überlagerung des Versionswächters ·
+    // Karte im Seitenfluss, wenn die Fehlergrenze einen gescheiterten Nachlade-Import fängt). Es
+    // ist eine HERAUSLÖSUNG aus `VersionsHinweis`, keine neue Fläche: die Überlagerung rendert
+    // zeichengleich wie vorher, und die zweite Fundstelle benutzt dasselbe Bauteil, statt den Text
+    // abzuschreiben. Es bietet keine Bildbeschreibung an (kein `ANGEBOT_MUSTER`) und trägt keinen
+    // eigenen Titel (kein `documentTitle`-Prop) — es erscheint nur in der Grundmenge. Die zwei
+    // Zahlen, an denen Stufe 2 wirklich hängt, bleiben unverändert: `anbieter` 1, `traeger` 2.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 362,
+      komponenten: 363,
       anbieter: 1,
       traeger: 2,
     });

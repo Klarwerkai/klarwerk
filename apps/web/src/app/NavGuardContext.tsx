@@ -104,6 +104,22 @@ export function useNavGuard(): NavGuardValue {
   return value;
 }
 
+// JOB 3390 (LADEFEHLER-ALTER-TAB): DERSELBE Wächter, nur ohne Zusicherung — für die eine Stelle, die
+// nicht selbst abstürzen darf.
+//
+// `useNavGuard` oben WIRFT bewusst, und das bleibt so: jeder gewöhnliche Aufrufer sitzt garantiert
+// unter `NavGuardProvider` (`App.tsx:107`), und ein stilles `null` wäre dort ein Entwurfsschutz, der
+// einfach nicht greift — der lauteste Fehler ist der beste. Die Fehlergrenze
+// (`components/ErrorBoundary.tsx`) ist die AUSNAHME: sie ist die letzte Auffanglinie, und wirft sie
+// beim Rendern ihrer eigenen Karte, ist genau die weisse Seite zurück, gegen die sie gebaut wurde —
+// diesmal ohne eine Grenze darüber, die das noch fangen könnte.
+//
+// OHNE ANBIETER GEHT NICHTS VERLOREN: ohne ihn kann sich auch kein `DirtyGuard` angemeldet haben
+// (`setGuard` ist nur über diesen Kontext erreichbar). Der Aufrufer darf dann also direkt handeln.
+export function useNavGuardOptional(): NavGuardValue | null {
+  return useContext(NavGuardCtx);
+}
+
 // AUFTRAG-mega11 Block B-1 (bens SB-2): EINE Mechanik für die Warnung beim Neuladen/Tab-Schließen.
 // `/erfassen` hatte sie (Capture.tsx), die Vordertür nicht — derselbe Datenverlust, zwei Seiten, und
 // eine davon ungeschützt. Statt den Effekt ein zweites Mal abzuschreiben (und beim nächsten Mal ein
