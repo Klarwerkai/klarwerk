@@ -2558,6 +2558,35 @@
         sendImagesDropped: "{n} Bilder waren zu groß und fehlen im Entwurf.",
         sendImagesDroppedOne: "1 Bild war zu groß und fehlt im Entwurf.",
         sendImagesBoth: "{n} Bilder fehlen im Entwurf — {a} hat Word nicht herausgegeben, {b} waren zu groß.",
+        // JOB 3438: die Bildbilanz des Dokument-Wegs. Der Server verkleinert seit JOB 3400 und sagt
+        // in DERSELBEN Antwort, was er getan und was er gelassen hat; hier wird es lesbar. Einzahl
+        // und Mehrzahl getrennt (JOB 2551) — auch je Seite, weil „1 Bilder" kein Satz ist.
+        //
+        // JEDER SATZ SPRICHT VON DER VERARBEITUNG, NICHT VOM ENTWURF (JOB 3438 R2, BEN §5): der
+        // Bericht des Verkleinerers belegt, was er getan hat — er belegt NICHT, dass ein Bild im
+        // gespeicherten Entwurf steht. Darum „wurde verkleinert" / „musste nicht verkleinert werden"
+        // und nie „blieb in Originalgröße", was einen Erhalt behauptete, den diese Zahl nicht deckt.
+        sendImagesShrunkOne: "1 Bild wurde verkleinert.",
+        sendImagesShrunkMany: "{n} Bilder wurden verkleinert.",
+        // Die ERFOLGE unter den Übersprungenen: heil, es war nur nichts zu tun.
+        sendImagesKeptOne: "1 Bild musste nicht verkleinert werden.",
+        sendImagesKeptMany: "{n} Bilder mussten nicht verkleinert werden.",
+        // Nur wenn die Gründe FEHLEN, die Zahl aber da ist: die neutrale Tatsache, ohne zu behaupten,
+        // ob das gut oder schlecht war.
+        sendImagesNotShrunkOne: "1 Bild wurde nicht verkleinert.",
+        sendImagesNotShrunkMany: "{n} Bilder wurden nicht verkleinert.",
+        // NUR die drei echten Ausfälle (bildverkleinerung.ts:141-144) kommen hier an; „schon-klein-
+        // genug", „ableitung-nicht-kleiner" und „keine-data-quelle" sind Erfolge und bleiben still.
+        // Die Zahl sagt, AUF WIE VIELE Bilder der Ausfall zutrifft (JOB 3438 R2, BEN §6).
+        sendImagesFailedOne: "Bei 1 Bild schlug die Verkleinerung fehl: {liste}.",
+        sendImagesFailedMany: "Bei {n} Bildern schlug die Verkleinerung fehl: {liste}.",
+        sendImageFailTooBig: "zu groß",
+        sendImageFailUnreadable: "nicht lesbar",
+        sendImageFailTimeout: "Zeitgrenze erreicht",
+        // Der Server kann neuer sein als dieses ausgelieferte Fenster: ein Grund ohne Wort steht MIT
+        // SEINER KENNUNG da — und wird dabei NICHT als Ausfall behauptet.
+        sendImagesUnknownOne: "Bei 1 Bild nennt der Server einen Grund, den diese Fassung nicht kennt: {liste}.",
+        sendImagesUnknownMany: "Bei {n} Bildern nennt der Server Gründe, die diese Fassung nicht kennt: {liste}.",
         sendBusy: "Sende ...",
         sendOk: "Entwurf gesendet",
         sendAuth: "Nicht angemeldet — bitte zuerst bei KLARWERK anmelden.",
@@ -2938,6 +2967,20 @@
         sendImagesDropped: "{n} images were too large and are missing from the draft.",
         sendImagesDroppedOne: "1 image was too large and is missing from the draft.",
         sendImagesBoth: "{n} images are missing from the draft — Word did not release {a}, {b} were too large.",
+        // JOB 3438: the image balance of the document path (see the German block for the reasoning).
+        sendImagesShrunkOne: "1 image was resized.",
+        sendImagesShrunkMany: "{n} images were resized.",
+        sendImagesKeptOne: "1 image did not need resizing.",
+        sendImagesKeptMany: "{n} images did not need resizing.",
+        sendImagesNotShrunkOne: "1 image was not resized.",
+        sendImagesNotShrunkMany: "{n} images were not resized.",
+        sendImagesFailedOne: "Resizing failed for 1 image: {liste}.",
+        sendImagesFailedMany: "Resizing failed for {n} images: {liste}.",
+        sendImageFailTooBig: "too large",
+        sendImageFailUnreadable: "not readable",
+        sendImageFailTimeout: "time limit reached",
+        sendImagesUnknownOne: "For 1 image the server gave a reason this version does not know: {liste}.",
+        sendImagesUnknownMany: "For {n} images the server gave reasons this version does not know: {liste}.",
         sendBusy: "Sending ...",
         sendOk: "Draft sent",
         sendAuth: "Not signed in — please sign in to KLARWERK first.",
@@ -3220,6 +3263,20 @@
         sendImagesDropped: "{n} afbeeldingen waren te groot en ontbreken in het concept.",
         sendImagesDroppedOne: "1 afbeelding was te groot en ontbreekt in het concept.",
         sendImagesBoth: "{n} afbeeldingen ontbreken in het concept — {a} heeft Word niet vrijgegeven, {b} waren te groot.",
+        // JOB 3438: de afbeeldingsbalans van het documentpad (zie het Duitse blok voor de redenering).
+        sendImagesShrunkOne: "1 afbeelding is verkleind.",
+        sendImagesShrunkMany: "{n} afbeeldingen zijn verkleind.",
+        sendImagesKeptOne: "1 afbeelding hoefde niet te worden verkleind.",
+        sendImagesKeptMany: "{n} afbeeldingen hoefden niet te worden verkleind.",
+        sendImagesNotShrunkOne: "1 afbeelding is niet verkleind.",
+        sendImagesNotShrunkMany: "{n} afbeeldingen zijn niet verkleind.",
+        sendImagesFailedOne: "Verkleinen mislukte bij 1 afbeelding: {liste}.",
+        sendImagesFailedMany: "Verkleinen mislukte bij {n} afbeeldingen: {liste}.",
+        sendImageFailTooBig: "te groot",
+        sendImageFailUnreadable: "niet leesbaar",
+        sendImageFailTimeout: "tijdslimiet bereikt",
+        sendImagesUnknownOne: "Bij 1 afbeelding noemt de server een reden die deze versie niet kent: {liste}.",
+        sendImagesUnknownMany: "Bij {n} afbeeldingen noemt de server redenen die deze versie niet kent: {liste}.",
         sendBusy: "Versturen ...",
         sendOk: "Concept verstuurd",
         sendAuth: "Niet aangemeld — meld je eerst aan bij KLARWERK.",
@@ -3562,7 +3619,12 @@
       var raw = (STRINGS[lang] && STRINGS[lang][key]) || STRINGS.de[key] || key;
       if (vars) {
         Object.keys(vars).forEach(function (k) {
-          raw = raw.replace("{" + k + "}", vars[k]);
+          // JOB 3438 R2 (BEN): der Wert wird WOERTLICH eingesetzt. Als Zeichenkette uebergeben
+          // deutet `String.replace` im ERSATZ die Muster `$&`, `$$`, `` $` `` und `$'` — aus einer
+          // Server-Kennung „ein-$&-grund" wuerde dann „ein-{liste}-grund". Seit JOB 3438 reichen wir
+          // fremde Kennungen durch diese Stelle; eine Ersetzungsfunktion kennt keine Muster.
+          var wert = String(vars[k]);
+          raw = raw.replace("{" + k + "}", function () { return wert; });
         });
       }
       return raw;
@@ -4676,7 +4738,7 @@
         kicker.textContent = "";
         leer.className = "hidden";
         ergebnis.className = "";
-        var satz = captureErgebnis.bilder ? t(captureErgebnis.bilder.key, captureErgebnis.bilder.vars) : "";
+        var satz = bilderText(captureErgebnis.bilder);
         document.getElementById("capture-bilder-satz").textContent = satz;
         bilder.className = satz ? "" : "hidden";
       } else {
@@ -4926,6 +4988,183 @@
       return bilderSatz(prepared.usedHtml ? prepared.undeliveredImages : 0, prepared.droppedImages);
     }
 
+    // ============================================================================================
+    // JOB 3438 — WAS MIT DEN BILDERN GESCHAH: DIE ANTWORT DER ROUTE WIRD LESBAR.
+    // ============================================================================================
+    //
+    // Seit JOB 3400 verkleinert der Server die Bilder eines .docx-Imports und nennt in DERSELBEN
+    // Antwort `imagesShrunk`, `imagesKeptOriginal` und `imageSkipReasons`
+    // (capture-routes.ts:1066-1068). Das Fenster las davon nichts — es fuetterte den zweiten Platz
+    // von `bilderSatz` buchstaeblich mit `0`. Hier wird die Auskunft gelesen; die ANZEIGESTELLE
+    // bleibt dieselbe (`zeigeEntwurfsErgebnis` → `#capture-bilder-satz`), es gibt keinen neuen Block.
+    //
+    // DIE TRENNUNG ERFOLG/AUSFALL IST DER KERN, nicht Kosmetik (bildverkleinerung.ts:133-144):
+    // „schon-klein-genug", „ableitung-nicht-kleiner" und „keine-data-quelle" sind ERFOLGE — das Bild
+    // ist heil, es war nur nichts zu tun. Wer sie als Problem meldet, hat bei jedem zweiten Dokument
+    // eine Warnung und macht die drei echten Faelle unsichtbar.
+    var BILD_AUSFALL_WORTE = {
+      "eingabe-zu-gross": "sendImageFailTooBig",
+      "nicht-dekodierbar": "sendImageFailUnreadable",
+      "zeitgrenze": "sendImageFailTimeout"
+    };
+    var BILD_ERFOLG_GRUENDE = ["keine-data-quelle", "schon-klein-genug", "ableitung-nicht-kleiner"];
+
+    /** Eine gelieferte, nicht-negative Zahl — sonst `null` (= unbekannt, erzeugt keine Aussage). */
+    function bildZahl(wert) {
+      return typeof wert === "number" && isFinite(wert) && wert >= 0 ? wert : null;
+    }
+
+    // DIE ZERLEGUNG DER UEBERSPRUNGENEN — der Kern der Korrektur aus Runde 1 (BEN §1, HINWEIS.md).
+    //
+    // `imagesKeptOriginal` ist NICHT die Zahl der Probleme: es ist schlicht die LAENGE von
+    // `uebersprungen` (capture-routes.ts:1067-1068), und diese Liste mischt Erfolge und Ausfaelle.
+    // Ein Satz „3 Bilder wurden nicht verkleinert" ist deshalb pauschal, wenn zwei davon einfach
+    // schon klein genug waren und nur eines wirklich zerbrach. Die LISTE traegt den Befund je Bild
+    // — sie ist die Grundlage, nicht die Summe. Jedes uebersprungene Bild landet in GENAU EINEM
+    // Eimer: Erfolg, Ausfall oder unbekannt.
+    //
+    // Fehlt die Liste ganz, ist die Zusammensetzung unbekannt: dann steht nur die neutrale Zahl da
+    // (`sendImagesNotShrunk*`), die weder Erfolg noch Schaden behauptet — Wissensluecke statt
+    // Erfindung. Ein Eintrag, der keine nicht-leere Zeichenkette ist, kann der getippte Server
+    // (`Uebersprungsgrund`, bildverkleinerung.ts:119-131) nicht erzeugen; er zaehlt nirgends mit.
+    function bildgruendeZerlegen(gruende) {
+      var erfolge = 0;
+      var ausfallAnzahl = 0;
+      var ausfallKeys = [];
+      var ausfallZahl = {};
+      var unbekanntAnzahl = 0;
+      var kennungen = [];
+      var kennungZahl = {};
+      for (var i = 0; i < gruende.length; i += 1) {
+        var g = gruende[i];
+        if (typeof g !== "string" || g.length === 0) { continue; }
+        if (BILD_ERFOLG_GRUENDE.indexOf(g) >= 0) { erfolge += 1; continue; }
+        if (Object.prototype.hasOwnProperty.call(BILD_AUSFALL_WORTE, g)) {
+          var wortKey = BILD_AUSFALL_WORTE[g];
+          ausfallAnzahl += 1;
+          if (ausfallKeys.indexOf(wortKey) < 0) { ausfallKeys.push(wortKey); ausfallZahl[wortKey] = 0; }
+          ausfallZahl[wortKey] += 1;
+        } else {
+          unbekanntAnzahl += 1;
+          if (kennungen.indexOf(g) < 0) { kennungen.push(g); kennungZahl[g] = 0; }
+          kennungZahl[g] += 1;
+        }
+      }
+      return {
+        erfolge: erfolge,
+        ausfallAnzahl: ausfallAnzahl,
+        ausfallKeys: ausfallKeys,
+        ausfallZahl: ausfallZahl,
+        unbekanntAnzahl: unbekanntAnzahl,
+        kennungen: kennungen,
+        kennungZahl: kennungZahl
+      };
+    }
+
+    // Die Bilanz als Folge EIGENSTAENDIGER Saetze, jeder mit seiner eigenen Grundlage:
+    // verkleinert (aus `imagesShrunk`) · nicht noetig (Erfolge der Liste) · fehlgeschlagen (Ausfaelle
+    // der Liste, MIT Zahl) · unbekannter Grund (MIT Kennung, ausdruecklich kein Ausfall).
+    // Faellt eine Grundlage weg, faellt genau ihr Satz weg — es wird nie „0 Bilder verkleinert"
+    // behauptet, weil ein Feld fehlte, und nie ein Ausfall behauptet, weil eine Zahl da war.
+    // Uebersetzt wird ERST beim Anzeigen (`bilderText`), damit ein Sprachwechsel mitzieht.
+    function bildbilanzTeile(draft) {
+      var teile = [];
+      var verkleinert = bildZahl(draft.imagesShrunk);
+      if (verkleinert === 1) { teile.push({ key: "sendImagesShrunkOne", vars: {} }); }
+      else if (verkleinert > 1) { teile.push({ key: "sendImagesShrunkMany", vars: { n: String(verkleinert) } }); }
+
+      if (!Array.isArray(draft.imageSkipReasons)) {
+        var uebersprungen = bildZahl(draft.imagesKeptOriginal);
+        if (uebersprungen === 1) { teile.push({ key: "sendImagesNotShrunkOne", vars: {} }); }
+        else if (uebersprungen > 1) { teile.push({ key: "sendImagesNotShrunkMany", vars: { n: String(uebersprungen) } }); }
+        return teile;
+      }
+
+      var z = bildgruendeZerlegen(draft.imageSkipReasons);
+      if (z.erfolge === 1) { teile.push({ key: "sendImagesKeptOne", vars: {} }); }
+      else if (z.erfolge > 1) { teile.push({ key: "sendImagesKeptMany", vars: { n: String(z.erfolge) } }); }
+      if (z.ausfallAnzahl === 1) {
+        teile.push({ key: "sendImagesFailedOne", vars: {}, grundKeys: z.ausfallKeys, grundZahl: z.ausfallZahl });
+      } else if (z.ausfallAnzahl > 1) {
+        teile.push({
+          key: "sendImagesFailedMany",
+          vars: { n: String(z.ausfallAnzahl) },
+          grundKeys: z.ausfallKeys,
+          grundZahl: z.ausfallZahl
+        });
+      }
+      if (z.unbekanntAnzahl === 1) {
+        teile.push({ key: "sendImagesUnknownOne", vars: {}, kennungen: z.kennungen, grundZahl: z.kennungZahl });
+      } else if (z.unbekanntAnzahl > 1) {
+        teile.push({
+          key: "sendImagesUnknownMany",
+          vars: { n: String(z.unbekanntAnzahl) },
+          kennungen: z.kennungen,
+          grundZahl: z.kennungZahl
+        });
+      }
+      return teile;
+    }
+
+    // DIE EINE STELLE, die im .docx-Weg den Bilder-Befund bildet — Verlusthinweis (unveraendert,
+    // aus imagesTotal gegen imagesEmbedded) ZUERST, denn er ist der schwerere Befund, dahinter die
+    // Bildbilanz. Kein zweiter Zweig „mit oder ohne Bilanz": es gibt genau diesen Befund oder keinen.
+    function docxBilderBefund(draft) {
+      var gesamt = typeof draft.imagesTotal === "number" ? draft.imagesTotal : 0;
+      var da = typeof draft.imagesEmbedded === "number" ? draft.imagesEmbedded : 0;
+      var verlust = bilderSatz(gesamt > da ? gesamt - da : 0, 0);
+      var teile = bildbilanzTeile(draft);
+      if (!verlust && teile.length === 0) { return null; }
+      return {
+        key: verlust ? verlust.key : null,
+        vars: verlust ? verlust.vars : null,
+        teile: teile
+      };
+    }
+
+    // Der SICHTBARE Text eines Bilder-Befunds — EIN Wortlaut, EINE Stelle, in der Sprache des
+    // Fensters. Ein Befund ohne `teile` (der Auswahl-/Word.run-Weg ueber `bilderBilanz`) ergibt
+    // genau den Satz, den er heute schon ergibt.
+    function bilderText(bilder) {
+      if (!bilder) { return ""; }
+      var stuecke = [];
+      if (bilder.key) { stuecke.push(t(bilder.key, bilder.vars)); }
+      var teile = Array.isArray(bilder.teile) ? bilder.teile : [];
+      for (var i = 0; i < teile.length; i += 1) {
+        var teil = teile[i];
+        var vars = teil.vars || {};
+        if (Array.isArray(teil.grundKeys)) {
+          vars = kopieMitListe(vars, teil.grundKeys, teil.grundZahl, true);
+        } else if (Array.isArray(teil.kennungen)) {
+          // Die Kennung des Servers steht WOERTLICH da — sie zu uebersetzen hiesse, ein Wort zu
+          // erfinden, das diese Fassung nicht hat.
+          vars = kopieMitListe(vars, teil.kennungen, teil.grundZahl, false);
+        }
+        stuecke.push(t(teil.key, vars));
+      }
+      return stuecke.join(" ");
+    }
+
+    // Die Grundliste EINES Satzes: jeder Grund hoechstens einmal, in der Reihenfolge der Antwort,
+    // und — trifft er auf mehrere Bilder zu — mit seiner Zahl davor. Ohne diese Zahl sagte der Satz
+    // „Bei 4 Bildern schlug die Verkleinerung fehl: Zeitgrenze erreicht, zu groß, nicht lesbar" und
+    // liesse offen, welcher Grund die vierte Haelfte traegt (JOB 3438 R2, BEN §6). „2× " ist die
+    // Zaehlschreibweise selbst, kein Wort — sie steht in DE, EN und NL gleich und gehoert deshalb
+    // nicht ins Woerterbuch; die GRUENDE dahinter sind uebersetzt (`uebersetzen`), die KENNUNGEN
+    // eines unbekannten Grundes ausdruecklich nicht.
+    function kopieMitListe(vars, eintraege, zahlen, uebersetzen) {
+      var stuecke = [];
+      for (var i = 0; i < eintraege.length; i += 1) {
+        var wort = uebersetzen ? t(eintraege[i]) : eintraege[i];
+        var k = zahlen && zahlen[eintraege[i]] ? zahlen[eintraege[i]] : 1;
+        stuecke.push(k > 1 ? String(k) + "× " + wort : wort);
+      }
+      var kopie = {};
+      Object.keys(vars).forEach(function (name) { kopie[name] = vars[name]; });
+      kopie.liste = stuecke.join(", ");
+      return kopie;
+    }
+
     // Erfolg (§5.3): die Karte wird EINE Zeile „Entwurf gesendet" mit Link „Oeffnen" — und nur im
     // Fall der Bilder-Satz mit Link „In KLARWERK ergaenzen" auf denselben Entwurf.
     //
@@ -4940,7 +5179,7 @@
       if (signatur !== captureMarkierung.join("\n")) {
         captureErgebnis = null;
         renderCapture();
-        var satz = bilder ? t(bilder.key, bilder.vars) : "";
+        var satz = bilderText(bilder);
         showSendStatus("ok", t("sendOk") + (satz ? " " + satz : ""), "open", url);
         return;
       }
@@ -5368,11 +5607,10 @@
         .then(function (draft) {
           if (!draft || !sendeLaufAktuell(lauf)) { return; }
           hideSendStatus();
-          var gesamt = typeof draft.imagesTotal === "number" ? draft.imagesTotal : 0;
-          var da = typeof draft.imagesEmbedded === "number" ? draft.imagesEmbedded : 0;
-          // NIE mehr behaupten als angekommen ist: fehlt etwas, sagt es der EINE Bilder-Satz —
-          // mit der Zahl aus der Serverantwort, nie geraten.
-          zeigeEntwurfsLink(draft.id, bilderSatz(gesamt > da ? gesamt - da : 0, 0), gesendeteMarkierung);
+          // NIE mehr behaupten als angekommen ist, und nie weniger: `docxBilderBefund` liest die
+          // Bildzahlen DIESER Antwort — Verlust, Verkleinerung, behaltene Originale und die echten
+          // Ausfaelle — und ist die EINZIGE Stelle, die den Bilder-Satz dieses Wegs bildet.
+          zeigeEntwurfsLink(draft.id, docxBilderBefund(draft), gesendeteMarkierung);
         })
         .catch(function (err) {
           if (!sendeLaufAktuell(lauf)) { return; }

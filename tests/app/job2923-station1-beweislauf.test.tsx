@@ -343,10 +343,26 @@ describe("JOB 2923 · D1 · Station 1: Ist-Stand-Beweislauf an zwei echten Word-
     });
     const { text, klasse } = await meldungImPanel(panel, METAFILE);
 
+    // JOB 3438 — NACHGEFUEHRT, WEIL DIE ZEILE JETZT MEHR SAGT, NICHT WENIGER.
+    //
+    // Bis hierher stand hier `toBe(sendImagesMissing)`: der Verlustsatz war der GANZE Inhalt der
+    // Zeile. Seit JOB 3438 liest `sendeDocxDatei` auch die Bildbilanz derselben Antwort
+    // (`imagesShrunk`/`imagesKeptOriginal`/`imageSkipReasons`, seit JOB 3400 in der Route). An
+    // DIESEM echten Metafile-Dokument gemessen (kein Nachbau, der Körper kommt aus der Route):
+    //     „Word hat 2 Bilder nicht herausgegeben — der Text ist vollständig.
+    //      2 Bilder blieben in Originalgröße. Nicht verkleinert: nicht lesbar."
+    // Der Verlustsatz ist WORTGLEICH geblieben und steht ZUERST — das prüfen die zwei Zeilen unten
+    // getrennt. Der Rest ist die neue, ebenfalls wahre Auskunft; sie zu verbieten hiesse, dem
+    // Menschen die Antwort auf „warum?" wieder wegzunehmen.
+    const verlustsatz = panel.t("sendImagesMissing", { n: String(fehlend) });
     expect(
       text,
       `In #capture-bilder-satz steht nichts von fehlenden Bildern. Gesehen: ${JSON.stringify(text)}`,
-    ).toBe(panel.t("sendImagesMissing", { n: String(fehlend) }));
+    ).toContain(verlustsatz);
+    expect(
+      text.indexOf(verlustsatz),
+      "der Verlusthinweis steht nicht an erster Stelle — er ist der schwerere Befund",
+    ).toBe(0);
     // JOB 3057 K2: die Zeile ist SICHTBAR (nicht `hidden`) und steht neben der Ergebniszeile —
     // der Verlust verschwindet nicht im Erfolg.
     expect(klasse, "Der Bilder-Satz ist verborgen — der Verlust verschwindet im Erfolg").toBe("");
@@ -367,10 +383,20 @@ describe("JOB 2923 · D1 · Station 1: Ist-Stand-Beweislauf an zwei echten Word-
     });
     const { text, klasse } = await meldungImPanel(panel, NUR_PNG);
 
-    // JOB 3057 K2: ohne Verlust gibt es KEINEN Bilder-Satz — die Zeile ist leer und verborgen,
-    // die Ergebniszeile steht trotzdem.
-    expect(text, "Die Fehlmeldung erscheint auch ohne Verlust").toBe("");
-    expect(klasse, "Die Bilder-Zeile ist ohne Verlust sichtbar").toBe("hidden");
+    // JOB 3057 K2: ohne Verlust gibt es KEINE VERLUSTMELDUNG. Das ist und bleibt die Aussage
+    // dieses Falls — er ist die Gegenmutation zu B4.
+    //
+    // JOB 3438 — NACHGEFUEHRT: die Zeile ist nicht mehr leer, weil sie jetzt die Bildbilanz trägt
+    // („2 Bilder blieben in Originalgröße." an DIESEM echten PNG-Dokument). Geprüft wird deshalb
+    // die Abwesenheit der Verlustaussage, nicht die Abwesenheit jedes Satzes — sonst hielte dieser
+    // Fall fest, dass das Panel über Bilder schweigt, und genau das war der behobene Mangel.
+    expect(text, "Die Fehlmeldung erscheint auch ohne Verlust").not.toContain(
+      "nicht herausgegeben",
+    );
+    expect(text, "Die Fehlmeldung erscheint auch ohne Verlust").not.toContain("fehlen im Entwurf");
+    // Was hier steht, ist die Bilanz — und die nennt kein Problem.
+    expect(text, "Ohne Ausfall darf kein Grund dastehen").not.toContain("Nicht verkleinert:");
+    expect(klasse, "Die Bilder-Zeile trägt die Bilanz und ist deshalb sichtbar").toBe("");
     expect(panel.q("#capture-ergebnis")?.className).toBe("");
 
     protokoll.push(`Panel-Meldung (PNG) · #capture-bilder-satz: ${JSON.stringify(text)}`);

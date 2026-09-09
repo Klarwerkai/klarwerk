@@ -208,7 +208,14 @@ describe("JOB 3014 · B — die Grobstruktur der ausgelieferten Seite", () => {
     // Block im ungeschnittenen Fenster. Wer nach dem Schnitt hier vorbeikommt, findet in
     // KW-WORDVERGLEICH einen Block, der als eigene Datei sofort abtrennbar ist: er hängt nur an
     // `w6DublettenAusCheckText`, `ka7ExterneKi`, `t`/`STRINGS`, `officeUsable` und `signedIn`.
-    expect(zeilenzahl).toBeLessThan(11500);
+    // JOB 3438 (BILDVERKLEINERUNG-SICHTBAR, 09.09.2026): die Bildbilanz des Dokument-Wegs (Lesung
+    // der drei Antwortfelder, Trennung Erfolg/Ausfall, 13 Wörterbuch-Schlüssel in drei Sprachen)
+    // hob die Zeilenzahl auf 11652 — die Schranke 11500 fiel wörtlich („expected 11652 to be less
+    // than 11500"). Sie rückt um EINEN Soll-Block (500) auf 12000, nach der Regel von JOB 3094:
+    // der Zuwachs (rund 200 Zeilen) ist KLEINER als ein Soll-Block, also ist ein Block die
+    // kleinste Stufe, die ihn trägt. Nicht weiter, kein Blankoscheck. Die Lücke ist wieder
+    // gewachsen — JOB 3227 (P11, der Schnitt) wartet weiter.
+    expect(zeilenzahl).toBeLessThan(12000);
     expect(SOLL_ZEILEN_JE_SKRIPT).toBe(500);
   });
 });

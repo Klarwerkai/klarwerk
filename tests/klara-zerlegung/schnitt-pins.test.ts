@@ -93,6 +93,11 @@ const GRIFFE: Array<{
 // Nachführpflicht, kein Defekt: wer einen neuen Griff an `taskpane.html` anlegt, gehört hierher.
 // ------------------------------------------------------------------------------------------------
 const MITFAHRER: Readonly<Record<string, string>> = {
+  // JOB 3438 (BILDVERKLEINERUNG-SICHTBAR): die Bildbilanz des Dokument-Wegs. Der gemountete Fall
+  // hängt an `createKlaraPanel` und nennt den ausgelieferten Pfad im Kopf; die Wörterbuchprobe
+  // liest die Datei direkt. A2 hat beide gemeldet, das Verzeichnis nimmt sie nicht still auf.
+  "tests/addin-bildbilanz/bildbilanz-im-panel.test.ts": "pfad,fixture",
+  "tests/addin-bildbilanz/bildbilanz-woerterbuch.test.ts": "pfad",
   // JOB 3281 (WORD-VERGLEICH): der Vertragsblock liest die ausgelieferte Datei und schneidet sie
   // entlang der Marke KW-WORDVERGLEICH; die drei ausführenden Prüfungen und ihre Bühne hängen an
   // `createKlaraPanel`. A2 hat alle fünf gemeldet, das Verzeichnis nimmt sie nicht still auf.

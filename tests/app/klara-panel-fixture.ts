@@ -141,10 +141,58 @@ interface FakeOfficeResult {
   value: string;
 }
 
-function buildFakeOffice(selectionHtml: string, selectionText: string): Record<string, unknown> {
+/**
+ * JOB 3438: die `.docx`, die `Office.context.document.getFileAsync` herausgibt.
+ *
+ * NUR WENN DIESES FELD GESETZT IST, kennt der Office-Fake `getFileAsync` und `Office.FileType`
+ * ueberhaupt. Ohne es fehlen beide — genau der Zustand, in dem `holeGanzeDatei`
+ * (taskpane.html:5266-5275) sofort auf `beiFehlschlag()` faellt und der alte Weg
+ * (`readWholeDocument`) uebernimmt. So verhaelt sich die Fixture ohne die Option unveraendert.
+ */
+export interface FakeDocxDatei {
+  /**
+   * Die Bytes der Datei. Ohne Angabe die vier Zip-Kopfbytes einer `.docx` — der INHALT ist fuer
+   * den gemessenen Weg gleichgueltig, die Route ist ein Fake; die Bytes belegen nur, dass wirklich
+   * etwas eingesammelt und base64-kodiert wurde.
+   */
+  bytes?: number[];
+  /**
+   * Bytes je Scheibe. Ohne Angabe gilt die `sliceSize`, die das Panel selbst mitgibt
+   * (WORD_ADDIN_SLICE_BYTES, 1 MiB) — dann ist es EINE Scheibe. Ein kleiner Wert erzwingt das
+   * mehrscheibige Einsammeln.
+   */
+  scheibenBytes?: number;
+}
+
+interface FakeDateiHandhabe {
+  sliceCount: number;
+  getSliceAsync(
+    index: number,
+    callback: (r: { status: string; value: { data: number[] } | null }) => void,
+  ): void;
+  closeAsync(callback: (r: { status: string }) => void): void;
+}
+
+function buildFakeOffice(
+  selectionHtml: string,
+  selectionText: string,
+  docx: FakeDocxDatei | undefined,
+): Record<string, unknown> {
   const coercion = { Html: "html", Text: "text" };
   const asyncStatus = { Succeeded: "succeeded", Failed: "failed" };
-  return {
+  const dokument: Record<string, unknown> = {
+    getSelectedDataAsync: (type: string, callback: (result: FakeOfficeResult) => void): void => {
+      if (type === coercion.Html) {
+        callback({ status: asyncStatus.Succeeded, value: selectionHtml });
+        return;
+      }
+      // JOB 3057 K2: der TEXT-Zugriff speist die Markierungskarte (und die Frage-Herkunft).
+      // Grundwert bleibt leer — bestehende Faelle stellen keine Textmarkierung und sollen
+      // durch die Karte nicht ploetzlich eine bekommen.
+      callback({ status: asyncStatus.Succeeded, value: selectionText });
+    },
+  };
+  const office: Record<string, unknown> = {
     CoercionType: coercion,
     AsyncResultStatus: asyncStatus,
     // Das Panel erkennt Office ueber `Office.onReady` MIT Frist; ein synchroner Rueckruf ist der
@@ -152,24 +200,40 @@ function buildFakeOffice(selectionHtml: string, selectionText: string): Record<s
     onReady: (callback: () => void): void => {
       callback();
     },
-    context: {
-      document: {
-        getSelectedDataAsync: (
-          type: string,
-          callback: (result: FakeOfficeResult) => void,
-        ): void => {
-          if (type === coercion.Html) {
-            callback({ status: asyncStatus.Succeeded, value: selectionHtml });
-            return;
-          }
-          // JOB 3057 K2: der TEXT-Zugriff speist die Markierungskarte (und die Frage-Herkunft).
-          // Grundwert bleibt leer — bestehende Faelle stellen keine Textmarkierung und sollen
-          // durch die Karte nicht ploetzlich eine bekommen.
-          callback({ status: asyncStatus.Succeeded, value: selectionText });
-        },
-      },
-    },
+    context: { document: dokument },
   };
+  if (docx !== undefined) {
+    const bytes = docx.bytes ?? [0x50, 0x4b, 0x03, 0x04];
+    const fileType = { Compressed: "compressed", Text: "text" };
+    office.FileType = fileType;
+    dokument.getFileAsync = (
+      typ: string,
+      optionen: { sliceSize?: number } | undefined,
+      callback: (r: { status: string; value: FakeDateiHandhabe | null }) => void,
+    ): void => {
+      // Ein anderer Dateityp ist nicht der Weg dieses Panels — ehrlich fehlschlagen statt
+      // stillschweigend dieselbe Datei liefern.
+      if (typ !== fileType.Compressed) {
+        callback({ status: asyncStatus.Failed, value: null });
+        return;
+      }
+      const groesse = Math.max(1, docx.scheibenBytes ?? optionen?.sliceSize ?? bytes.length);
+      const datei: FakeDateiHandhabe = {
+        sliceCount: Math.max(1, Math.ceil(bytes.length / groesse)),
+        getSliceAsync: (index, cb): void => {
+          cb({
+            status: asyncStatus.Succeeded,
+            value: { data: bytes.slice(index * groesse, (index + 1) * groesse) },
+          });
+        },
+        closeAsync: (cb): void => {
+          cb({ status: asyncStatus.Succeeded });
+        },
+      };
+      callback({ status: asyncStatus.Succeeded, value: datei });
+    };
+  }
+  return office;
 }
 
 // ---- Die Fixture --------------------------------------------------------------------------------
@@ -186,6 +250,13 @@ export interface KlaraPanelOptions {
   selectionText?: string;
   /** false = Seite im normalen Browser (kein Office) — der ehrliche Nicht-Word-Zustand. */
   withOffice?: boolean;
+  /**
+   * JOB 3438: schaltet `getFileAsync`/`Office.FileType` im Office-Fake FREI (Vorgabe: aus). Erst
+   * damit erreicht `sendDocument()` den `.docx`-Weg (`holeGanzeDatei` → `sendeDocxDatei` →
+   * `POST /api/drafts/from-docx`); ohne die Option faellt das Panel wie bisher auf
+   * `readWholeDocument` zurueck. Siehe `FakeDocxDatei`.
+   */
+  docxDatei?: FakeDocxDatei;
 }
 
 export interface KlaraPanel {
@@ -322,6 +393,7 @@ export function createKlaraPanel(options: KlaraPanelOptions = {}): KlaraPanel {
     const office = buildFakeOffice(
       options.selectionHtml ?? "<html><body><p>Ventil entlasten vor der Wartung</p></body></html>",
       options.selectionText ?? "",
+      options.docxDatei,
     );
     globals.Office = office;
     globals.window.Office = office;

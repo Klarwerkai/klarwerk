@@ -1931,7 +1931,52 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // erneutes Sideload — der Stempel-Mechanismus traegt die neue Fassung wie bisher.
     // GEMESSEN: tests/ki-fragment-sichtbar (35 Faelle in drei Dateien, davon 11 am geladenen
     // Fenster), Waechterlauf (Inventar, Inhalts-Pin, Aufrufer, Theme, Frische, Tor).
-    const PIN = "01a4c863dbf90a84008a61242dbf18fbbd9232589941064ea378a2a348d4c820";
+    //
+    // JOB 3438 · BILDVERKLEINERUNG-SICHTBAR (09.09.2026) — AUSLIEFERUNGSFOLGEN GEPRUEFT, BEVOR DER
+    // PIN WANDERTE. VORHERHASH taskpane.html: `01a4c863dbf90a84008a61242dbf18fbbd9232589941064ea378a2a348d4c820`.
+    //
+    // ANLASS: Der Server verkleinert die Bilder eines .docx-Imports seit JOB 3400 und nennt in
+    // DERSELBEN Antwort `imagesShrunk`, `imagesKeptOriginal` und `imageSkipReasons`
+    // (capture-routes.ts:1066-1068). Das Fenster las davon nichts — es fuetterte den zweiten Platz
+    // von `bilderSatz` buchstaeblich mit `0`. Pedi konnte im Panel nicht sehen, WARUM ein Bild
+    // unscharf oder im Original blieb.
+    //
+    // GEAENDERT WURDE IM FENSTER GENAU DREIERLEI:
+    //   · 13 neue Woerterbuch-Schluessel in ALLEN DREI Sprachen (de/en/nl): `sendImagesShrunk*`
+    //     (verkleinert), `sendImagesKept*` (uebersprungen, weil nichts zu tun war),
+    //     `sendImagesNotShrunk*` (uebersprungen, Zusammensetzung unbekannt), `sendImagesFailed*`
+    //     (Ausfaelle MIT ihrer Zahl), `sendImagesUnknown*` (ein Grund, den diese Fassung nicht
+    //     kennt) und die drei Ausfallwoerter — je Einzahl und Mehrzahl (JOB-2551-Regel).
+    //     KEIN vorhandener Schluessel wurde umformuliert; `sendImages*` (Verlusthinweis) bleibt
+    //     woertlich und im Verhalten unveraendert.
+    //   · Fuenf neue reine Rechenfunktionen im Skript (`bildZahl`, `bildgruendeZerlegen`,
+    //     `bildbilanzTeile`, `docxBilderBefund`, `bilderText`, dazu die Listenhilfe
+    //     `kopieMitListe`) plus zwei Datentabellen (`BILD_AUSFALL_WORTE`, `BILD_ERFOLG_GRUENDE`).
+    //     Sie LESEN nur, was der Server ohnehin sendet.
+    //   · Zwei Anzeigestellen rufen statt `t(bilder.key, bilder.vars)` jetzt `bilderText(bilder)`
+    //     (`renderCapture`, `zeigeEntwurfsErgebnis`) — derselbe Satz fuer einen Befund ohne
+    //     `teile`, also byte-gleich fuer den Auswahl-/Word.run-Weg.
+    // KEIN neues DOM-Element, KEINE neue Flaeche, KEINE neue Stilregel: die Auskunft erscheint in
+    // der VORHANDENEN Zeile `#capture-bilder-satz`.
+    //
+    // RUNDE 2 (BEN) HAT ZUSAETZLICH `t()` BERUEHRT — die EINE Textstelle des ganzen Fensters:
+    // der Wert wird jetzt ueber eine Ersatzfunktion statt ueber eine Ersatz-ZEICHENKETTE eingesetzt.
+    // AUSLIEFERUNGSFOLGE GEPRUEFT: fuer jeden Wert ohne `$` ist das Ergebnis BYTEGLEICH (nur die
+    // Muster `$&`, `$$`, `` $` `` und `$'` verhielten sich vorher anders — und die kamen erst mit
+    // den durchgereichten Server-Kennungen dieses Jobs ueberhaupt vor). Der ganze Bestand an
+    // Panel-Tests (tests/app, tests/m3-dokumentweg-panel, tests/klara-zerlegung, tests/i18n) laeuft
+    // unveraendert gruen, also aendert die Stelle fuer bestehende Texte nichts.
+    //
+    // KEIN neues `fetch(`, KEIN neues Abrufziel, KEIN geaenderter Anfragekoerper (der Weg bleibt
+    // `POST /api/drafts/from-docx` mit `{name, data, title?}`), KEIN Manifest, KEINE geaenderte CSP,
+    // kein neues Recht, keine neue Word-API (`getFileAsync` war schon da), keine geaenderte
+    // Frequenz. Die Nutzlast waechst um NICHTS; gelesen werden drei Felder, die der Server seit
+    // JOB 3400 ohnehin sendet. Ein installiertes Add-in braucht KEIN erneutes Sideload — der
+    // Stempel-Mechanismus traegt die neue Fassung wie bisher.
+    // GEMESSEN: tests/addin-bildbilanz (33 Faelle in zwei Dateien, davon 27 am geladenen Fenster),
+    // tests/app/job2923 B4/B5 am ECHTEN Antwortkoerper der Route, Waechterlauf (Inventar,
+    // Inhalts-Pin, Aufrufer, Theme, Frische, Tor).
+    const PIN = "be4c3b38cf03104bd08a3ab61cd561202ce7cd284e90adbb20984dcc297a7fcc";
     const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
     expect(
       ist,

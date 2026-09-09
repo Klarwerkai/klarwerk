@@ -118,6 +118,11 @@ const ACHSEN: Achse[] = [
 // aufgenommen; nachgefuehrt wurde genau dieser eine Eintrag.
 // ------------------------------------------------------------------------------------------------
 const INVENTAR: readonly string[] = [
+  // JOB 3438 BILDVERKLEINERUNG-SICHTBAR: die Bildbilanz des Dokument-Wegs im Aufgabenfenster —
+  // der gemountete Fall am ausgelieferten Panel und die Woerterbuchprobe der neuen Schluessel.
+  // K2 hat beide gemeldet; keine traegt „klara" im Pfad, sie kommen ueber die Achse `taskpane`.
+  "tests/addin-bildbilanz/bildbilanz-im-panel.test.ts",
+  "tests/addin-bildbilanz/bildbilanz-woerterbuch.test.ts",
   // JOB 3281 WORD-VERGLEICH: der Vertragsblock an der ausgelieferten Datei und die drei
   // ausfuehrenden Pruefungen des Absatzvergleichs. K2 hat alle vier gemeldet; keine traegt
   // „klara" im Pfad — sie kommen ueber die Achse `taskpane` herein, also genau ueber den blinden
