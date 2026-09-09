@@ -930,6 +930,16 @@ export function Blatt({
     },
     onSuccess: (draft, _variablen, kontext) => {
       setActiveDraftId(draft.id);
+      // JOB 3408 (KI-UEBERNAHME-SPEICHERN): DER VORGANG IST VORBEI, ALSO IST DIE SPERRE VORBEI.
+      // `saveRequestedRef` schützt EINEN laufenden Schreibvorgang vor einem zweiten Auslöser im
+      // selben Augenblick — sie ist Doppelklick-Schutz, keine Zustandswahrheit (wie bei Titel,
+      // Rumpf und Bereich, `:559-561`). Der Fehlerweg unten löst sie längst; hier fehlte sie, und
+      // deshalb blieb nach einem ERFOLGREICHEN Sichern jede Änderung ohne Tastatureingabe still
+      // gesperrt — Codex hat es am 09.09. gegen LIVE 1.229 gemessen: sichern, KI-Rechtschreibung
+      // übernehmen, wieder sichern → kein zweiter Aufruf, der Server trug weiter den Tippfehler.
+      // Der Schutz bleibt vollständig: solange der Vorgang läuft, steht die Sperre (und der Knopf
+      // trägt sie sichtbar über `busy` → `canSave`).
+      saveRequestedRef.current = false;
       saveOperationRef.current = null;
       loadedUpdatedAtRef.current = draft.updatedAt ?? null;
       setStaleConflict(false);
