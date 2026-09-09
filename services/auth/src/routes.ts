@@ -1,7 +1,8 @@
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
 import type { Mailer } from "../../notifications";
+import { type Sprache, meldung } from "./meldungen";
 import { HINWEIS_TEXT_VERSION, hinweisFaellig } from "./notice";
-import { type OidcProvider, createPkcePair, randomToken } from "./oidc";
+import { type OidcProvider, OidcUnreachableError, createPkcePair, randomToken } from "./oidc";
 import { LoginRateLimiter } from "./rate-limit";
 import type { AuthService } from "./service";
 import { AuthError, type AuthErrorCode, type PublicUser, type Role } from "./types";
@@ -90,12 +91,36 @@ function tokenFromRequest(request: FastifyRequest): string | undefined {
   return readCookie(request, SESSION_COOKIE);
 }
 
-function sendError(reply: FastifyReply, error: unknown): void {
+// Genau eine Lesestelle für den Kopf; jeder Fehlerpfad löst erst beim Senden auf.
+// Regionalvarianten, Prioritäten und ausgeschlossene Sprachen (q=0) werden beachtet.
+function sprache(request: FastifyRequest): Sprache {
+  const kopf = request.headers["accept-language"] ?? "";
+  let gewaehlt: Sprache = "de";
+  let prioritaet = 0;
+  for (const eintrag of kopf.split(",")) {
+    const treffer = /^([a-z]+)(?:-[a-z0-9]+)*(?:\s*;\s*q=(0(?:\.\d{0,3})?|1(?:\.0{0,3})?))?$/i.exec(
+      eintrag.trim(),
+    );
+    const code = treffer?.[1]?.toLowerCase();
+    const gewicht = Number(treffer?.[2] ?? 1);
+    if ((code === "de" || code === "en" || code === "nl") && gewicht > prioritaet) {
+      gewaehlt = code;
+      prioritaet = gewicht;
+    }
+  }
+  return gewaehlt;
+}
+
+function sendError(reply: FastifyReply, error: unknown, sprache: Sprache): void {
   if (error instanceof AuthError) {
-    reply.code(STATUS_BY_CODE[error.code]).send({ error: error.code, message: error.message });
+    const schluessel = error instanceof OidcUnreachableError ? "OIDC_UNREACHABLE" : error.message;
+    reply.code(STATUS_BY_CODE[error.code]).send({
+      error: error.code,
+      message: meldung(schluessel, sprache),
+    });
     return;
   }
-  reply.code(500).send({ error: "INTERNAL", message: "Unerwarteter Fehler." });
+  reply.code(500).send({ error: "INTERNAL", message: meldung("INTERNAL", sprache) });
 }
 
 // WP-VIP2-GATE (bens P1): Selbstregistrierung ist ein öffentlicher Schreibpfad und deshalb
@@ -153,7 +178,10 @@ export function authRoutes(
       const token = tokenFromRequest(request);
       const user = token ? await service.authenticate(token) : undefined;
       if (!user) {
-        reply.code(401).send({ error: "INVALID_CREDENTIALS", message: "Nicht angemeldet." });
+        reply.code(401).send({
+          error: "INVALID_CREDENTIALS",
+          message: meldung("NOT_SIGNED_IN", sprache(request)),
+        });
         return undefined;
       }
       return user;
@@ -169,7 +197,9 @@ export function authRoutes(
         return undefined;
       }
       if (user.role !== "admin") {
-        reply.code(403).send({ error: "FORBIDDEN", message: "Adminrecht erforderlich." });
+        reply
+          .code(403)
+          .send({ error: "FORBIDDEN", message: meldung("ADMIN_REQUIRED", sprache(request)) });
         return undefined;
       }
       return user;
@@ -183,7 +213,7 @@ export function authRoutes(
         if (!selfRegistrationEnabled()) {
           reply.code(403).send({
             error: "REGISTRATION_DISABLED",
-            message: "Registrierung nur per Einladung.",
+            message: meldung("REGISTRATION_DISABLED", sprache(request)),
           });
           return;
         }
@@ -194,7 +224,7 @@ export function authRoutes(
           reply.header("Retry-After", String(limit.retryAfterSeconds));
           reply.code(429).send({
             error: "RATE_LIMITED",
-            message: "Zu viele Registrierungen. Bitte später erneut versuchen.",
+            message: meldung("REGISTRATION_RATE_LIMITED", sprache(request)),
           });
           return;
         }
@@ -207,19 +237,21 @@ export function authRoutes(
           password?: unknown;
         };
         if (typeof body.name !== "string" || body.name.trim().length === 0) {
-          reply.code(400).send({ error: "BAD_REQUEST", message: "Name ist erforderlich." });
+          reply
+            .code(400)
+            .send({ error: "BAD_REQUEST", message: meldung("NAME_REQUIRED", sprache(request)) });
           return;
         }
         if (typeof body.email !== "string" || !/.+@.+\..+/.test(body.email.trim())) {
           reply
             .code(400)
-            .send({ error: "BAD_REQUEST", message: "Gültige E-Mail ist erforderlich." });
+            .send({ error: "BAD_REQUEST", message: meldung("EMAIL_REQUIRED", sprache(request)) });
           return;
         }
         if (typeof body.password !== "string" || body.password.length < 8) {
           reply
             .code(400)
-            .send({ error: "WEAK_PASSWORD", message: "Passwort muss mindestens 8 Zeichen haben." });
+            .send({ error: "WEAK_PASSWORD", message: meldung("WEAK_PASSWORD", sprache(request)) });
           return;
         }
         try {
@@ -230,7 +262,7 @@ export function authRoutes(
           });
           reply.code(201).send(user);
         } catch (error) {
-          sendError(reply, error);
+          sendError(reply, error, sprache(request));
         }
       },
     );
@@ -247,7 +279,7 @@ export function authRoutes(
           reply.header("Retry-After", String(limit.retryAfterSeconds));
           reply.code(429).send({
             error: "RATE_LIMITED",
-            message: "Zu viele Anmeldeversuche. Bitte später erneut versuchen.",
+            message: meldung("LOGIN_RATE_LIMITED", sprache(request)),
           });
           return;
         }
@@ -269,7 +301,7 @@ export function authRoutes(
           if (error instanceof AuthError && error.code === "INVALID_CREDENTIALS") {
             loginLimiter.registerFailure(limiterKey);
           }
-          sendError(reply, error);
+          sendError(reply, error, sprache(request));
         }
       },
     );
@@ -315,7 +347,7 @@ export function authRoutes(
           due: hinweisFaellig(vermerk.acknowledgedVersion),
         });
       } catch (error) {
-        sendError(reply, error);
+        sendError(reply, error, sprache(request));
       }
     });
 
@@ -332,7 +364,7 @@ export function authRoutes(
           due: false,
         });
       } catch (error) {
-        sendError(reply, error);
+        sendError(reply, error, sprache(request));
       }
     });
 
@@ -349,7 +381,7 @@ export function authRoutes(
           reply.header("set-cookie", clearSessionCookie());
           reply.code(204).send();
         } catch (error) {
-          sendError(reply, error);
+          sendError(reply, error, sprache(request));
         }
       },
     );
@@ -399,7 +431,7 @@ export function authRoutes(
           reply.header("Retry-After", String(resetLimit.retryAfterSeconds));
           reply.code(429).send({
             error: "RATE_LIMITED",
-            message: "Zu viele Versuche. Bitte später erneut versuchen.",
+            message: meldung("RESET_RATE_LIMITED", sprache(request)),
           });
           return;
         }
@@ -409,7 +441,7 @@ export function authRoutes(
           reply.code(204).send();
         } catch (error) {
           recoveryLimiter.registerFailure(resetKey); // ungültiges/abgelaufenes Token zählt als Versuch
-          sendError(reply, error);
+          sendError(reply, error, sprache(request));
         }
       },
     );
@@ -417,9 +449,11 @@ export function authRoutes(
     // FR-AUTH-07: SSO-Start — Authorization-Code-Flow mit PKCE (S256). Erzeugt
     // state/nonce/code_verifier, legt sie kurzlebig als HttpOnly-Cookies ab und
     // leitet zum IdP weiter. Kein Implicit, kein id_token im Browser-Fragment.
-    app.get("/api/auth/oidc/start", async (_request, reply) => {
+    app.get("/api/auth/oidc/start", async (request, reply) => {
       if (!options.oidc) {
-        reply.code(501).send({ error: "OIDC_DISABLED", message: "SSO ist nicht konfiguriert." });
+        reply
+          .code(501)
+          .send({ error: "OIDC_DISABLED", message: meldung("OIDC_DISABLED", sprache(request)) });
         return;
       }
       const state = randomToken(16);
@@ -440,7 +474,9 @@ export function authRoutes(
       "/api/auth/oidc",
       async (request, reply) => {
         if (!options.oidc) {
-          reply.code(501).send({ error: "OIDC_DISABLED", message: "SSO ist nicht konfiguriert." });
+          reply
+            .code(501)
+            .send({ error: "OIDC_DISABLED", message: meldung("OIDC_DISABLED", sprache(request)) });
           return;
         }
         const stateCookie = readCookie(request, OIDC_STATE_COOKIE);
@@ -459,7 +495,10 @@ export function authRoutes(
           request.body.state !== stateCookie
         ) {
           reply.header("set-cookie", clearFlow);
-          reply.code(400).send({ error: "OIDC_INVALID", message: "SSO-Status ungültig." });
+          reply.code(400).send({
+            error: "OIDC_INVALID",
+            message: meldung("OIDC_STATE_INVALID", sprache(request)),
+          });
           return;
         }
         try {
@@ -476,10 +515,13 @@ export function authRoutes(
         } catch (error) {
           reply.header("set-cookie", clearFlow);
           if (error instanceof AuthError) {
-            sendError(reply, error);
+            sendError(reply, error, sprache(request));
             return;
           }
-          reply.code(401).send({ error: "OIDC_INVALID", message: "SSO-Anmeldung fehlgeschlagen." });
+          reply.code(401).send({
+            error: "OIDC_INVALID",
+            message: meldung("OIDC_LOGIN_FAILED", sprache(request)),
+          });
         }
       },
     );
@@ -492,7 +534,7 @@ export function authRoutes(
       try {
         reply.code(200).send(await service.approveUser(request.params.id, admin.id));
       } catch (error) {
-        sendError(reply, error);
+        sendError(reply, error, sprache(request));
       }
     });
 
@@ -507,7 +549,7 @@ export function authRoutes(
           await service.resetPassword(request.params.id, request.body.password, admin.id);
           reply.code(204).send();
         } catch (error) {
-          sendError(reply, error);
+          sendError(reply, error, sprache(request));
         }
       },
     );
@@ -521,7 +563,7 @@ export function authRoutes(
         await service.deleteUser(request.params.id, admin.id);
         reply.code(204).send();
       } catch (error) {
-        sendError(reply, error);
+        sendError(reply, error, sprache(request));
       }
     });
 
@@ -540,7 +582,7 @@ export function authRoutes(
         if (!(await service.needsSetup())) {
           reply
             .code(409)
-            .send({ error: "ALREADY_SETUP", message: "Instanz ist bereits eingerichtet." });
+            .send({ error: "ALREADY_SETUP", message: meldung("ALREADY_SETUP", sprache(request)) });
           return;
         }
         try {
@@ -552,7 +594,7 @@ export function authRoutes(
           reply.header("set-cookie", sessionCookie(token));
           reply.code(201).send({ user, token });
         } catch (error) {
-          sendError(reply, error);
+          sendError(reply, error, sprache(request));
         }
       },
     );
@@ -597,23 +639,27 @@ export function authRoutes(
         };
         const roles: Role[] = ["viewer", "experte", "controller", "admin"];
         if (typeof body.name !== "string" || body.name.trim().length === 0) {
-          reply.code(400).send({ error: "BAD_REQUEST", message: "Name ist erforderlich." });
+          reply
+            .code(400)
+            .send({ error: "BAD_REQUEST", message: meldung("NAME_REQUIRED", sprache(request)) });
           return;
         }
         if (typeof body.email !== "string" || !/.+@.+\..+/.test(body.email.trim())) {
           reply
             .code(400)
-            .send({ error: "BAD_REQUEST", message: "Gültige E-Mail ist erforderlich." });
+            .send({ error: "BAD_REQUEST", message: meldung("EMAIL_REQUIRED", sprache(request)) });
           return;
         }
         if (typeof body.password !== "string" || body.password.length < 8) {
           reply
             .code(400)
-            .send({ error: "WEAK_PASSWORD", message: "Passwort muss mindestens 8 Zeichen haben." });
+            .send({ error: "WEAK_PASSWORD", message: meldung("WEAK_PASSWORD", sprache(request)) });
           return;
         }
         if (body.role !== undefined && !roles.includes(body.role as Role)) {
-          reply.code(400).send({ error: "BAD_REQUEST", message: "Unbekannte Rolle." });
+          reply
+            .code(400)
+            .send({ error: "BAD_REQUEST", message: meldung("UNKNOWN_ROLE", sprache(request)) });
           return;
         }
         try {
@@ -629,7 +675,7 @@ export function authRoutes(
           }
           reply.code(201).send(user);
         } catch (error) {
-          sendError(reply, error);
+          sendError(reply, error, sprache(request));
         }
       },
     );
@@ -662,7 +708,7 @@ export function authRoutes(
           reply.code(204).send();
         }
       } catch (error) {
-        sendError(reply, error);
+        sendError(reply, error, sprache(request));
       }
     });
 
@@ -675,7 +721,7 @@ export function authRoutes(
         await service.deleteUser(request.params.id, admin.id);
         reply.code(204).send();
       } catch (error) {
-        sendError(reply, error);
+        sendError(reply, error, sprache(request));
       }
     });
   };

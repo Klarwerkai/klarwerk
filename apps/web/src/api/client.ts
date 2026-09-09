@@ -1,3 +1,6 @@
+import i18n from "i18next";
+import { gespeicherteSprache } from "../lib/sprachwahl";
+
 // Typisierter API-Client gegen die Modul-Endpunkte (gleiche Origin, /api).
 // Cookie-Session (kw_session) wird mitgesendet. Fehler werden auf das
 // Backend-Schema {error, message} gemappt (siehe services/app/src/http.ts).
@@ -17,6 +20,7 @@ const BASE = "/api";
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
+  headers.set("Accept-Language", i18n.language || gespeicherteSprache());
   if (init?.body && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }

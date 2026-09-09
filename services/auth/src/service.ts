@@ -1,6 +1,7 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import type { AuditService } from "../../audit";
 import type { TxContext } from "../../db-tx";
+import type { Meldungsschluessel } from "./meldungen";
 import type { OidcClaims } from "./oidc";
 import { hashPassword, verifyPassword } from "./password";
 import {
@@ -150,10 +151,10 @@ export class AuthService {
   // FR-AUTH-01 (erstes Konto = Admin) + FR-AUTH-02 (Selbstregistrierung, gesperrt bis Freigabe).
   async register(input: RegisterInput): Promise<PublicUser> {
     if (input.password.length < MIN_PASSWORD_LENGTH) {
-      throw new AuthError("WEAK_PASSWORD", "Passwort muss mindestens 8 Zeichen haben.");
+      throw new AuthError("WEAK_PASSWORD", "WEAK_PASSWORD" satisfies Meldungsschluessel);
     }
     if (await this.users.findByEmail(input.email)) {
-      throw new AuthError("EMAIL_TAKEN", "E-Mail ist bereits vergeben.");
+      throw new AuthError("EMAIL_TAKEN", "EMAIL_TAKEN" satisfies Meldungsschluessel);
     }
     const { salt, hash } = await hashPassword(input.password);
     const base = {
@@ -183,10 +184,13 @@ export class AuthService {
   async login(input: LoginInput): Promise<{ token: string; user: PublicUser }> {
     const user = await this.users.findByEmail(input.email);
     if (!user || !(await verifyPassword(input.password, user.passwordSalt, user.passwordHash))) {
-      throw new AuthError("INVALID_CREDENTIALS", "E-Mail oder Passwort falsch.");
+      throw new AuthError(
+        "INVALID_CREDENTIALS",
+        "INVALID_CREDENTIALS" satisfies Meldungsschluessel,
+      );
     }
     if (!user.approved) {
-      throw new AuthError("NOT_APPROVED", "Konto ist noch nicht freigegeben.");
+      throw new AuthError("NOT_APPROVED", "NOT_APPROVED" satisfies Meldungsschluessel);
     }
     const token = this.genToken();
     // Token-at-Rest: nur der Hash wird persistiert; der Klartext geht ausschliesslich an den Client.
@@ -221,10 +225,7 @@ export class AuthService {
     }
     if (!account) {
       if (!autoProvision) {
-        throw new AuthError(
-          "NOT_APPROVED",
-          "Kein Konto für diese E-Mail. Bitte vom Admin anlegen lassen.",
-        );
+        throw new AuthError("NOT_APPROVED", "OIDC_ACCOUNT_MISSING" satisfies Meldungsschluessel);
       }
       const base = {
         id: this.genId(),
@@ -258,7 +259,7 @@ export class AuthService {
       await this.record(account.id, "user.oidc-provisioned", account.id);
     }
     if (!account.approved) {
-      throw new AuthError("NOT_APPROVED", "Konto ist noch nicht freigegeben.");
+      throw new AuthError("NOT_APPROVED", "NOT_APPROVED" satisfies Meldungsschluessel);
     }
     // JOB 2686 (R2-8): der Rollenabgleich, VOR der Sitzung — sonst traegt die frische Sitzung noch
     // die alte, zu hohe Rolle.
@@ -479,7 +480,7 @@ export class AuthService {
   async acknowledgeNotice(userId: string, version: string): Promise<PublicUser> {
     const user = await this.users.findById(userId);
     if (!user) {
-      throw new AuthError("NOT_FOUND", "Konto nicht gefunden.");
+      throw new AuthError("NOT_FOUND", "ACCOUNT_NOT_FOUND" satisfies Meldungsschluessel);
     }
     const updated: User = {
       ...user,
@@ -504,7 +505,7 @@ export class AuthService {
   ): Promise<{ acknowledgedAt?: string; acknowledgedVersion?: string }> {
     const user = await this.users.findById(userId);
     if (!user) {
-      throw new AuthError("NOT_FOUND", "Konto nicht gefunden.");
+      throw new AuthError("NOT_FOUND", "ACCOUNT_NOT_FOUND" satisfies Meldungsschluessel);
     }
     return {
       ...(user.noticeAckAt ? { acknowledgedAt: user.noticeAckAt } : {}),
@@ -551,19 +552,13 @@ export class AuthService {
     const actor = await this.requireUser(actorId);
     // FR-RBAC-03: injizierte Regel durchsetzen (u. a. kein Selbst-Entzug der Admin-Rolle).
     if (!this.canChangeRolePolicy({ id: actor.id, role: actor.role }, userId, role)) {
-      throw new AuthError(
-        "FORBIDDEN",
-        "Rollenänderung nicht erlaubt: Ein Admin kann sich die Admin-Rolle nicht selbst entziehen.",
-      );
+      throw new AuthError("FORBIDDEN", "SELF_DEMOTION_FORBIDDEN" satisfies Meldungsschluessel);
     }
     const user = await this.requireUser(userId);
     // SCRUM-443 (Last-Admin-Schutz): der letzte aktive Admin darf nicht herabgestuft werden —
     // sonst gäbe es niemanden mehr mit Verwaltungsrecht (System ausgesperrt).
     if (user.role === "admin" && role !== "admin" && (await this.isLastApprovedAdmin(userId))) {
-      throw new AuthError(
-        "FORBIDDEN",
-        "Der letzte aktive Admin kann nicht herabgestuft werden — sonst wäre niemand mehr verwaltungsberechtigt.",
-      );
+      throw new AuthError("FORBIDDEN", "LAST_ADMIN_DEMOTION" satisfies Meldungsschluessel);
     }
     // JOB 3140 (UX-11): DIE ALTE ROLLE WIRD GESPEICHERT, BEVOR SIE ÜBERSCHRIEBEN WIRD.
     //
@@ -590,7 +585,7 @@ export class AuthService {
   // FR-AUTH-06: Admin-Passwort-Reset; bestehende Sitzungen des Nutzers werden ungültig.
   async resetPassword(userId: string, newPassword: string, actorId: string): Promise<void> {
     if (newPassword.length < MIN_PASSWORD_LENGTH) {
-      throw new AuthError("WEAK_PASSWORD", "Passwort muss mindestens 8 Zeichen haben.");
+      throw new AuthError("WEAK_PASSWORD", "WEAK_PASSWORD" satisfies Meldungsschluessel);
     }
     const user = await this.requireUser(userId);
     const { salt, hash } = await hashPassword(newPassword);
@@ -605,11 +600,14 @@ export class AuthService {
   // Andere Sitzungen werden ungültig; die aktuelle bleibt erhalten (Caller setzt sie neu, falls nötig).
   async changePassword(userId: string, oldPassword: string, newPassword: string): Promise<void> {
     if (newPassword.length < MIN_PASSWORD_LENGTH) {
-      throw new AuthError("WEAK_PASSWORD", "Passwort muss mindestens 8 Zeichen haben.");
+      throw new AuthError("WEAK_PASSWORD", "WEAK_PASSWORD" satisfies Meldungsschluessel);
     }
     const user = await this.requireUser(userId);
     if (!(await verifyPassword(oldPassword, user.passwordSalt, user.passwordHash))) {
-      throw new AuthError("INVALID_CREDENTIALS", "Aktuelles Passwort ist falsch.");
+      throw new AuthError(
+        "INVALID_CREDENTIALS",
+        "CURRENT_PASSWORD_INCORRECT" satisfies Meldungsschluessel,
+      );
     }
     const { salt, hash } = await hashPassword(newPassword);
     user.passwordSalt = salt;
@@ -641,7 +639,7 @@ export class AuthService {
   // FR-AUTH-08: Reset einlösen — Token muss gültig (nicht abgelaufen) sein.
   async resetPasswordWithToken(token: string, newPassword: string): Promise<void> {
     if (newPassword.length < MIN_PASSWORD_LENGTH) {
-      throw new AuthError("WEAK_PASSWORD", "Passwort muss mindestens 8 Zeichen haben.");
+      throw new AuthError("WEAK_PASSWORD", "WEAK_PASSWORD" satisfies Meldungsschluessel);
     }
     const stored = hashTokenAtRest(token);
     // WP-VIP2-GATE-2 (bens Fix 2): Dual-Read auch fuer Reset-Tokens — erst der Hash, bei Miss
@@ -661,7 +659,10 @@ export class AuthService {
       if (entry) {
         await this.resetTokens.delete(stored); // abgelaufen → beim Zugriff aufraeumen
       }
-      throw new AuthError("INVALID_CREDENTIALS", "Reset-Token ungültig oder abgelaufen.");
+      throw new AuthError(
+        "INVALID_CREDENTIALS",
+        "RESET_TOKEN_INVALID" satisfies Meldungsschluessel,
+      );
     }
     const user = await this.requireUser(entry.userId);
     const { salt, hash } = await hashPassword(newPassword);
@@ -678,10 +679,7 @@ export class AuthService {
   async deleteUser(userId: string, actorId: string): Promise<void> {
     const user = await this.requireUser(userId);
     if (user.role === "admin" && user.approved && (await this.isLastApprovedAdmin(userId))) {
-      throw new AuthError(
-        "FORBIDDEN",
-        "Der letzte aktive Admin kann nicht gelöscht werden — sonst wäre niemand mehr verwaltungsberechtigt.",
-      );
+      throw new AuthError("FORBIDDEN", "LAST_ADMIN_DELETION" satisfies Meldungsschluessel);
     }
     await this.users.delete(userId);
     await this.sessions.deleteByUser(userId);
@@ -716,7 +714,7 @@ export class AuthService {
   private async requireUser(userId: string): Promise<User> {
     const user = await this.users.findById(userId);
     if (!user) {
-      throw new AuthError("NOT_FOUND", "Nutzer nicht gefunden.");
+      throw new AuthError("NOT_FOUND", "USER_NOT_FOUND" satisfies Meldungsschluessel);
     }
     return user;
   }
