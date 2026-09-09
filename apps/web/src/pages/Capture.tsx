@@ -153,7 +153,7 @@ import {
 import { gapContextDraft, readGapId, resolveGapQuestion } from "../lib/captureFromGap";
 import { CAPTURE_FRONT_DOOR_ROUTE } from "../lib/captureFrontDoor";
 import { captureReadiness } from "../lib/captureReadiness";
-import { originForSave, resumeTargetForDraft } from "../lib/captureResume";
+import { type DraftOrigin, originForSave, resumeTargetForDraft } from "../lib/captureResume";
 // SCRUM-408: externe Quellen schon beim Erfassen — Warteliste + add-source beim Einreichen.
 import {
   type PendingSource,
@@ -549,6 +549,12 @@ export function CaptureArbeitsraum({
   const gapId = readGapId(params);
   const gaps = useGaps();
   const gapContext = resolveGapQuestion(gapId, gaps.data);
+  // JOB 3414: die Entwurfskennung der ADRESSE — abgeleitet aus demselben `params` wie `gapId`
+  // (kein zweites `useSearchParams()`, keine eigene Zerlegung von `location.search`). Es ist
+  // derselbe Abfrageschlüssel, den das Blatt liest (Blatt.tsx: `searchParams.get("draft")`);
+  // dass diese Seite ihn NICHT las, war der ganze Befund — s. den Ladeweg weiter unten.
+  // Leerwert ⇒ null: `?draft=` ohne Inhalt ist keine Kennung.
+  const adressEntwurfId = params.get("draft")?.trim() || null;
 
   // JOB 3062 · H3: BEWUSST NICHT `modus ?? "freitext"`. Der Anfangswert darf den vom Blatt
   // gewünschten Modus nicht vorwegnehmen — sonst überspringt der Abgleich weiter unten seinen
@@ -849,6 +855,11 @@ export function CaptureArbeitsraum({
   const [videoBusy, setVideoBusy] = useState<string | null>(null);
   // SCRUM-113 / FE-CAP-07: aktuell fortgesetzter Entwurf (null = neuer Entwurf).
   const [draftId, setDraftId] = useState<string | null>(null);
+  // JOB 3414: läuft gerade der Ladeversuch des Adress-Entwurfs (s. Ladeweg weiter unten)? Solange
+  // er läuft, ist das Formular in seinem bisherigen Zustand SICHTBAR (nichts wird geleert), sagt
+  // aber, dass es lädt — und das Speicher-Tor bleibt zu: ein Zwischenstand darf nicht hinausgehen,
+  // solange noch offen ist, in WELCHEN Entwurf er ginge.
+  const [entwurfLaedt, setEntwurfLaedt] = useState(false);
   // JOB 2684 D2 (R2-17): der Stand (`updatedAt`) des fortgesetzten Entwurfs, den DIESE Seite zuletzt
   // gesehen hat. Er reist beim Speichern und beim Einreichen als `expectedUpdatedAt` mit — derselbe
   // Weg, den die Vordertür seit D1 geht (CaptureFrontDoor.tsx). Ein Ref, kein State: er ändert die
@@ -2153,7 +2164,13 @@ export function CaptureArbeitsraum({
   // Bugfix (Pedi 04.07.): ein Entwurf öffnet sich WIEDER DORT, wo er entstand — ein einfacher
   // (nur Text) Entwurf im Erzähl-Feld (Freitext), ein strukturierter im Experten-Formular.
   // Vorher landete jeder Entwurf im Formular (fremde Darstellung, verwirrend).
-  const loadDraft = (d: Draft): void => {
+  //
+  // JOB 3414: `zielWunsch` ist der AUSDRÜCKLICHE Moduswunsch des Menschen. Er kommt nur von dem
+  // einen Weg, an dem der Mensch die Ansicht selbst gewählt hat („Datei ▾" → „Formular (Experten)"
+  // bei offenem `?draft=`), und er schlägt dort den gespeicherten Herkunfts-Marker. Der Marker
+  // selbst bleibt unangetastet (SCRUM-457): ohne diesen Parameter entscheidet weiterhin
+  // `resumeTargetForDraft` allein — der „Fortsetzen"-Weg der Entwurfsliste ändert sich um nichts.
+  const loadDraft = (d: Draft, zielWunsch?: DraftOrigin): void => {
     setErr(null);
     setCaptureWorkspaceOpen(true);
     // JOB 3106 (UX-01): wer einen Entwurf fortsetzt, arbeitet nicht mehr an der letzten Sicherung
@@ -2174,7 +2191,7 @@ export function CaptureArbeitsraum({
     const p = d.payload;
     // SCRUM-457: nicht mehr aus dem Inhalt raten — der gespeicherte Herkunfts-Marker entscheidet
     // (Alt-Entwürfe ohne Marker: Rückfall-Heuristik in resumeTargetForDraft).
-    const target = resumeTargetForDraft(p);
+    const target = zielWunsch ?? resumeTargetForDraft(p);
     if (target === "frontdoor") {
       // AUFTRAG-mega12 Block A: UMGESTELLT. Das Öffnen eines FREMDEN Entwurfs verlässt `/erfassen`
       // und würde die laufende, ungespeicherte Eingabe still überschreiben — genau der Verlustpfad
@@ -2281,7 +2298,12 @@ export function CaptureArbeitsraum({
       setIvAnswer(iv.answer);
       setIvResult(iv.result);
       setIvStarted(iv.started);
-      if (!iv.result || !isInterviewDone(iv.result)) {
+      // JOB 3414: der Fortschritt kommt IMMER zurück (nichts geht verloren) — die ANSICHT wechselt
+      // nur dann von selbst ins Interview, wenn der Mensch keine ausdrücklich gewählt hat. Sonst
+      // stünde er nach „Formular (Experten)" im Interview, und der Modus-Abgleich weiter unten
+      // (`modus !== mode` ⇒ `switchMode`) schöbe die Fläche gleich darauf zurück — dabei räumt
+      // `switchMode("interview" → …)` genau den eben wiederhergestellten Interviewzustand.
+      if (!zielWunsch && (!iv.result || !isInterviewDone(iv.result))) {
         setMode("interview");
       }
     }
@@ -2668,6 +2690,122 @@ export function CaptureArbeitsraum({
   useUnloadGuard(isCaptureDirty);
 
   // ============================================================================================
+  // JOB 3414 — WER SEINEN ENTWURF OFFEN HAT, FINDET IHN AUCH IM EXPERTEN-FORMULAR.
+  // ============================================================================================
+  //
+  // DER BEFUND (Codex, 09.09., an Live 1.203). Das Blatt löst `?draft=<id>` seit langem auf
+  // (Blatt.tsx: `searchParams.get("draft")` → `setActiveDraftId`). Diese Seite tat es NICHT: sie
+  // hielt zwar `params`, fragte aber nie nach `draft`. Wer mit offenem Entwurf über „Datei ▾" →
+  // „Formular (Experten)" wechselte, kam über `switchMode("formular")` herein — und `loadDraft`
+  // lief auf diesem Weg NIE. Also blieb `draftId` null.
+  //
+  // DER SCHADEN WAR NICHT DIE LEERE FLÄCHE, SONDERN DAS SPEICHERN. Ohne `draftId` ist
+  // `isDraftUpdate` falsch, `saveDraft` ruft `drafts.create` statt `drafts.update` — der Mensch
+  // hatte danach ZWEI Entwürfe, ohne je einen zweiten gewollt zu haben, und die Rückmeldung sagte
+  // „Entwurf gespeichert" statt „Entwurf aktualisiert". Das ist derselbe stille Verlust wie bei
+  // `cancelFileImport` (s. dort): eine Adresse, die die Fläche nicht liest, ist eine Zusage, die
+  // sie nicht hält.
+  //
+  // DREI DINGE, DIE DIESER WEG NICHT TUT:
+  //  · Er legt KEINEN zweiten Füllweg an: gefüllt wird über `loadDraft` — dieselbe Funktion, die
+  //    „Fortsetzen" benutzt, nur mit dem ausdrücklichen Zielwunsch „expert" (s. dort). Damit
+  //    kommen Metadaten, Anker, Quellen, Interviewfortschritt und `loadedUpdatedAtRef` genauso
+  //    zurück wie beim Fortsetzen; die Konflikterkennung (`staleConflict`) greift unverändert.
+  //  · Er legt KEINEN zweiten Modus-Einstieg an: der Modus kommt weiter aus `switchMode`
+  //    (Begründung beim Modus-Abgleich unten); dieser Effekt liest ihn nur.
+  //  · Er ÜBERSCHREIBT NICHTS. Gefragt wird das kanonische Dirty-Prädikat `isCaptureDirty` — genau
+  //    das, an dem auch Verwerfen-Knopf und Navigationswache hängen. Trägt die Fläche irgendetwas
+  //    (Rohtext, Formularinhalt, Anhänge, laufendes Interview, geänderte Metadaten) oder ist schon
+  //    ein Entwurf fortgesetzt, wird NICHT geladen.
+  //
+  // WARUM REFS STATT ABHÄNGIGKEITEN: der Effekt darf je Kennung GENAU EINMAL laufen (Auftrag §5.3)
+  // — ein Sprachwechsel, ein erneutes Rendern oder ein Wechsel Formular → Freitext → Formular
+  // startet ihn nicht neu; dafür sorgt `versuchteKennungenRef`. Die Sperrgründe hängen dagegen an
+  // Zuständen, die sich WÄHREND des Ladens ändern können. Läge `isCaptureDirty` in der
+  // Abhängigkeitsliste, würde jeder Tastendruck den Effekt neu anwerfen; stünde er nur in der
+  // Closure, wäre er beim Eintreffen der Antwort veraltet. Das Ref trägt beides: den heutigen
+  // Wert, vor dem Holen UND beim Eintreffen geprüft.
+  //
+  // ZU DEN NAMEN HIER (Lehre aus Runde 2, Tor rot): der Umlaut-Wächter
+  // `tests/app/ux-wow-polish.test.ts` (U7) liest diese Datei als EINEN Text und verbietet darin die
+  // ASCII-Ersatzschreibung von „Entwürfe" — er unterscheidet nicht zwischen Anzeige-String und
+  // Bezeichner, und er kann es auch nicht. Ein Ref, das dieses Wort in Ersatzschreibung im Namen
+  // trug, hat ihn deshalb rot gemacht, obwohl kein Mensch den Namen je zu sehen bekam. Bezeichner
+  // in dieser Datei tragen darum entweder echte Umlaute oder Wörter, die keine brauchen
+  // (`versuchteKennungenRef`, `nochDieNeueste`). Wer die Regel hier erklärt, darf die verbotene
+  // Form auch nicht zitieren — dieser Kommentar hat den Wächter beim ersten Versuch selbst gerissen.
+  //
+  // RUNDE 2 (bens Korrekturpflicht 1) — EINE ANTWORT GILT NUR, SOLANGE IHRE FRAGE NOCH GILT.
+  // Runde 1 prüfte beim Eintreffen NUR die Sperrgründe, nicht die Frage. Wer die Adresse wechselte,
+  // während die erste Antwort noch unterwegs war, bekam die zuerst EINTREFFENDE zu sehen — und beim
+  // Speichern zu schreiben: die alte Antwort füllte die Felder und setzte `draftId`, die richtige
+  // lief danach in genau diese Sperre und verpuffte. Sichtbarer Titel und gespeicherte Kennung
+  // gehörten dann zu einem Entwurf, den die Adresse gar nicht mehr nannte — dieselbe stille
+  // Verwechslung, die dieser Block eigentlich beseitigen sollte, nur eine Ebene tiefer.
+  //
+  // Deshalb hängt jede Antwort ab hier an ZWEI Bedingungen:
+  //  · Sie ist die NEUESTE Anfrage (`ladeNummerRef`). Ist sie es nicht, schweigt sie ganz — sie
+  //    fasst nicht einmal den Ladezustand an, denn den führt jetzt die jüngere Anfrage.
+  //  · Die Fläche fragt noch dasselbe (`ladeFrageRef`): dieselbe Kennung in der Adresse, weiterhin
+  //    Experten-Ansicht. Hat der Mensch inzwischen die Ansicht gewechselt oder die Kennung aus der
+  //    Adresse genommen, gilt SEIN letzter Wille, nicht die verspätete Antwort — der Ladezustand
+  //    wird beendet, aber weder Inhalt noch Kennung noch eine Fehlermeldung kommen an.
+  const versuchteKennungenRef = useRef(new Set<string>());
+  const ladeSperreRef = useRef(false);
+  ladeSperreRef.current = isCaptureDirty || draftId !== null;
+  const ladeNummerRef = useRef(0);
+  const ladeFrageRef = useRef<{ id: string | null; expert: boolean }>({ id: null, expert: false });
+  ladeFrageRef.current = { id: adressEntwurfId, expert: isExpertMode(mode) };
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `loadDraft`/`fail` werden bei jedem Render neu erzeugt; der Ladeweg hängt am Moduswunsch und an der Adresse, nicht an ihrer Identität. Die Sperrgründe stehen bewusst im Ref darüber.
+  useEffect(() => {
+    if (!isExpertMode(mode) || !adressEntwurfId) {
+      return;
+    }
+    if (versuchteKennungenRef.current.has(adressEntwurfId) || ladeSperreRef.current) {
+      return;
+    }
+    versuchteKennungenRef.current.add(adressEntwurfId);
+    const meineNummer = ++ladeNummerRef.current;
+    /** Führt DIESE Anfrage noch den Ladezustand — oder ist längst eine jüngere unterwegs? */
+    const nochDieNeueste = (): boolean => ladeNummerRef.current === meineNummer;
+    /** Und fragt die Fläche noch dasselbe? */
+    const nochGefragt = (): boolean =>
+      ladeFrageRef.current.id === adressEntwurfId && ladeFrageRef.current.expert;
+    setEntwurfLaedt(true);
+    endpoints.drafts.get(adressEntwurfId).then(
+      (d) => {
+        if (!nochDieNeueste()) {
+          return;
+        }
+        setEntwurfLaedt(false);
+        // Zwischen Anfrage und Antwort kann der Mensch zu tippen begonnen haben oder
+        // weitergezogen sein. Sein Text und sein zuletzt geäußerter Wunsch wiegen schwerer als der
+        // geholte Entwurf: dann bleibt die Fläche, wie sie ist, und `draftId` bleibt leer — lieber
+        // ein zweiter Entwurf als ein überschriebener Gedanke oder eine fremde Kennung.
+        if (!nochGefragt() || ladeSperreRef.current) {
+          return;
+        }
+        loadDraft(d, "expert");
+      },
+      (e) => {
+        // Gelöscht, fremd, Netz: EIN Satz über den vorhandenen Fehlerweg. `draftId` bleibt null —
+        // ein Speichern legt dann einen neuen Entwurf an, statt in einen Entwurf zu schreiben,
+        // den diese Seite nie gesehen hat. Der Satz kommt aber nur, wenn er noch zur Lage gehört:
+        // der Fehlschlag einer überholten Anfrage ist keine Auskunft über das, was der Mensch
+        // gerade offen hat.
+        if (!nochDieNeueste()) {
+          return;
+        }
+        setEntwurfLaedt(false);
+        if (!nochGefragt()) {
+          return;
+        }
+        fail(e);
+      },
+    );
+  }, [mode, adressEntwurfId]);
+
+  // ============================================================================================
   // AUFTRAG-mega22 Block F — DIE EINE SPEICHER-TORFUNKTION.
   // ============================================================================================
   //
@@ -2712,8 +2850,15 @@ export function CaptureArbeitsraum({
     if (resumeAnchorsMissing.length > 0) {
       return { erlaubt: false, grund: t("capture.anchorsMissingNext") };
     }
+    // JOB 3414: LAUFENDER LADEVERSUCH. Noch ist offen, ob gleich ein gespeicherter Entwurf in
+    // dieses Formular kommt — ein Speichern jetzt ginge in einen NEUEN Entwurf und stünde eine
+    // Sekunde später neben dem geladenen. Solange die Antwort aussteht, geht nichts hinaus; der
+    // Grund ist derselbe Satz, den die Fläche daneben zeigt.
+    if (entwurfLaedt) {
+      return { erlaubt: false, grund: t("state.loading") };
+    }
     return { erlaubt: true, grund: null };
-  }, [resumeAnchorsMissing, t]);
+  }, [resumeAnchorsMissing, entwurfLaedt, t]);
 
   // Bug (Pedi 04.07./05.07.): In-App-Seitenwechsel (Menü, Command-Palette) fängt jetzt der Navigations-
   // Wächter ab — Nachfrage „Bleiben · Verwerfen · Entwurf speichern", bevor Inhalt verloren geht.
@@ -3862,12 +4007,24 @@ export function CaptureArbeitsraum({
   // Aussage (der Server lehnt Leeres zusätzlich ab). Im INTERVIEWWEG zählen beantwortete Turns mit
   // (mega9 Block C / KW-E2E-003) — sie SIND sicherbarer Inhalt, und ohne sie war der sichere
   // Abbruch mitten im Interview unmöglich.
+  //
+  // JOB 3414 RUNDE 2 (bens Korrekturpflicht 2): EIN GELADENER ENTWURF IST IMMER SPEICHERBAR.
+  // Die Angebotsfrage „ist überhaupt etwas getippt?" ist die richtige Frage für ein FRISCHES
+  // Formular — für ein Formular, das gerade einen vorhandenen Entwurf führt, ist sie die falsche.
+  // Auftrag §9 nennt den Zustand ausdrücklich: „erfolgreich leer" (der Entwurf existiert, seine
+  // Felder sind leer) ⇒ Felder leer, aber `draftId` gesetzt und „Speichern" AKTUALISIERT. Ohne
+  // diese Zeile stand der Mensch vor seinem eigenen, gerade geladenen Entwurf und kam nicht mehr
+  // an ihn heran: der Knopf blieb grau, obwohl es sehr wohl etwas zu schreiben gab (Metadaten,
+  // Vertraulichkeit, Prüferwahl — und der Server setzt für den Titel ohnehin den Ersatztitel ein,
+  // s. `saveDraft`). Es entsteht dabei KEIN zweiter Entwurf: `draftId` ist gesetzt, also
+  // aktualisiert `saveDraft` genau den geladenen.
   const canSaveDraft =
     speicherTor.erlaubt &&
     (raw.trim().length > 0 ||
       (draft?.statement.trim().length ?? 0) > 0 ||
       (draft?.title.trim().length ?? 0) > 0 ||
-      hasSavableInterviewProgress);
+      hasSavableInterviewProgress ||
+      draftId !== null);
   // AUFTRAG-mega5 Block A (bens Verlustpfad 3): der MANUELLE „Als Entwurf speichern"-Knopf leerte
   // Bilder/Dokumente nach dem Erfolg still (:1274-1275 im geprüften Stand). Jetzt verlangt er bei
   // nicht sicherbaren Inhalten erst die ausdrückliche, namentliche Bestätigung — gespeichert wird
@@ -5613,6 +5770,15 @@ export function CaptureArbeitsraum({
                     </Button>
                   </div>
                 </div>
+              ) : null}
+              {/* JOB 3414: der laufende Ladeversuch des Adress-Entwurfs. Er LEERT nichts — die
+                Felder bleiben, wie sie sind; der Satz sagt nur, dass noch etwas unterwegs ist,
+                und derselbe Zustand hält währenddessen das Speicher-Tor zu (s. `speicherTor`).
+                <output> trägt implizit role="status" (biome useSemanticElements). */}
+              {entwurfLaedt ? (
+                <output className="block rounded-btn bg-surface-2 px-3 py-2 text-[12.5px] text-muted">
+                  {t("state.loading")}
+                </output>
               ) : null}
               {err ? (
                 <div className="rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text">
