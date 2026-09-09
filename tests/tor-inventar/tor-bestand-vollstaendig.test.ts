@@ -202,6 +202,14 @@ describe("JOB 3131 T2 · der Bestand ueberlebt die Aufteilung in zwei Laeufe", (
     // (BEN: `…/lesevariante/original_language`). Läuft sie nicht mehr, ist sie grün und der Weg
     // zurück in die Serverausnahme wieder offen.
     expect(holeRest()).toContain("tests/lesevariante-pruefkarte/sprachsperre.test.ts");
+    // JOB 3384 (UX-26): dieselbe Bauform wie die Pins darueber — eine `.tsx`-Datei in einem NEUEN
+    // Verzeichnis (`tests/ux26-herkunft-belege/`), jsdom mit echtem i18next, kein Chromium. Sie
+    // traegt den EINZIGEN Beleg dafuer, dass die Herkunftskette fachliche Namen statt
+    // Programmbrocken zeigt und dass beide Leerstaende (Ereignisse, Belege) etwas sagen. Faellt sie
+    // still aus beiden Gruppen, waere sie gruen und der Weg zurueck zu „ask query" offen.
+    expect(holeRest()).toContain(
+      "tests/ux26-herkunft-belege/herkunft-belege-verstaendlich.test.tsx",
+    );
   });
 
   it("V4 · der Verzeichnisgang der Konfiguration sieht denselben Bestand wie der Collector", () => {

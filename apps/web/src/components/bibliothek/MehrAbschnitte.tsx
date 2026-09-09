@@ -554,11 +554,20 @@ export function MehrAbschnitte({
   // JOB 3272 · UX-25: der Weg von der Belegkarte zum Original — über GENAU das Werk oben. Der
   // Zähler ist der `nonce`-Vertrag aus `:491-493`: derselbe Anhang muss zweimal hintereinander
   // anspringbar sein, auch wenn der Abschnitt dazwischen von Hand zugeklappt wurde.
+  //
+  // JOB 3384 · UX-26: dieselbe Funktion führt jetzt auch OHNE Anker in einen Abschnitt (der Weg aus
+  // dem leeren Belegabschnitt zum Quellenformular). Sie ist dafür VERALLGEMEINERT, nicht kopiert:
+  // ein zweiter Sprungweg neben diesem wäre genau die Doppelung, gegen die UX-03 und UX-25
+  // angetreten sind — und er liefe unweigerlich am `nonce`-Vertrag vorbei.
   const sprungZaehler = useRef(0);
-  const zumAnhangSpringen = (anhangId: string): void => {
+  const zumAbschnittSpringen = (schluessel: string, anhangId?: string): void => {
     sprungZaehler.current += 1;
-    abschnittUmschalten("anhaenge", true);
-    setHinfuehren({ schluessel: "anhaenge", nonce: sprungZaehler.current, anhangId });
+    abschnittUmschalten(schluessel, true);
+    setHinfuehren({
+      schluessel,
+      nonce: sprungZaehler.current,
+      ...(anhangId ? { anhangId } : {}),
+    });
   };
 
   return (
@@ -1056,19 +1065,43 @@ export function MehrAbschnitte({
             <div className="text-text">{lineage.relatedCount}</div>
           </div>
         </div>
-        {auditEvents.length > 0 ? (
-          <ul className="mt-2 space-y-1">
-            {auditEvents.map((e) => (
-              <li key={e.seq} className="flex items-center gap-2 text-[11.5px] text-muted">
-                <span className="font-mono text-muted-2">
-                  {new Date(e.at).toLocaleDateString(i18n.language)}
-                </span>
-                <span className="font-semibold text-text">{auditActionLabel(e.action, t)}</span>
-                <span className="ml-auto font-mono text-muted-2">{nameOf(e.actor)}</span>
-              </li>
-            ))}
-          </ul>
-        ) : null}
+        {/* JOB 3384 · UX-26 — AUS DEM STUMMEN `null` WIRD EIN ZUSTAND.
+            Bis hierher stand hier `auditEvents.length > 0 ? <ul> : null`: bei null Ereignissen
+            erschien GAR NICHTS — kein Satz, kein Grund, kein Unterschied zwischen „noch nichts
+            verzeichnet", „wird noch geladen" und „der Abruf ist gescheitert". Die Trennung wird
+            NICHT neu erfunden: sie ist die der Nachbarabschnitte (`:1315-1320`) und die des
+            Belegabschnitts (`:1243-1251`), und die Regel für den überlebenden Bestand wohnt in
+            `abfrageMitBestand` / `AuffrischungHinweis` (JOB 3034/3063/3272) — hier wird sie nur
+            aufgerufen.
+            EIN GESCHEITERTER ABRUF IST KEIN BEWEIS FÜR LEERE: der Leersatz steht ausschliesslich
+            im Erfolgszweig. Nach einer gescheiterten AUFFRISCHUNG bleibt der zuletzt geholte Stand
+            samt Hinweis stehen (REGELN Punkt 7). */}
+        <AuffrischungHinweis query={audit} />
+        {((): JSX.Element => {
+          const ereignisLage = abfrageMitBestand(audit);
+          return ereignisLage.isLoading ? (
+            <p className="mt-2 text-[12.5px] text-muted">{t("state.loading")}</p>
+          ) : ereignisLage.isError ? (
+            <p className="mt-2 text-[12.5px] text-danger">{t("state.error")}</p>
+          ) : auditEvents.length === 0 ? (
+            <p className="mt-2 text-[12.5px] text-muted">{t("ko.lineageEventsEmpty")}</p>
+          ) : (
+            <ul className="mt-2 space-y-1">
+              {auditEvents.map((e) => (
+                <li key={e.seq} className="flex items-center gap-2 text-[11.5px] text-muted">
+                  <span className="font-mono text-muted-2">
+                    {new Date(e.at).toLocaleDateString(i18n.language)}
+                  </span>
+                  {/* Der fachliche Name des Ereignisses — die EINE Beschriftungsfunktion
+                      (`auditAction.ts:16`), die bei unbekanntem Code auf ihre neutrale
+                      Humanisierung zurückfällt. Es entsteht keine zweite daneben. */}
+                  <span className="font-semibold text-text">{auditActionLabel(e.action, t)}</span>
+                  <span className="ml-auto font-mono text-muted-2">{nameOf(e.actor)}</span>
+                </li>
+              ))}
+            </ul>
+          );
+        })()}
         {/* mega70 B3: `/graph` verlangt `admin` — die gesperrte Fassung verliert Link und Pfeil. */}
         <RoleLink
           to="/graph"
@@ -1248,7 +1281,31 @@ export function MehrAbschnitte({
           ) : belegLage.isError ? (
             <p className="text-[12.5px] text-danger">{t("state.error")}</p>
           ) : belegZeilen.length === 0 ? (
-            <p className="text-[12.5px] text-muted">{t("ko.evidenceEmpty")}</p>
+            // JOB 3384 · UX-26 — DER LEERSTAND NENNT EINEN WEG, DER FÜR DIESE ROLLE WIRKLICH TRÄGT.
+            // Der Weg ist GEMESSEN, nicht erfunden: `addSource` legt zu jeder Quelle einen
+            // Belegdatensatz an (`knowledge-object/src/service.ts:2864-2874`, `kind: "source"`) —
+            // aus diesem Schritt entsteht also wirklich der erste Beleg. Der Anhang-Upload täte es
+            // auch, verlangt aber zusätzlich eine Datei; deshalb führt der Satz zum kürzeren Weg.
+            // FÜR `viewer` STEHT DER SATZ ALLEIN: das Quellenformular hängt an `canEdit` (`:684`).
+            // Ein Knopf, der dorthin führte, endete vor einem Abschnitt ohne Formular — dieselbe
+            // Sackgasse, die UX-25 an der Belegkarte beseitigt hat (`:1294-1295`).
+            <>
+              <p className="text-[12.5px] text-muted">{t("ko.evidenceEmpty")}</p>
+              {canEdit ? (
+                <button
+                  type="button"
+                  data-bib-beleg-leer-weg="quellen"
+                  // Der zugängliche Name nennt das Ziel UND was daraus entsteht — Muster `:1285`.
+                  aria-label={`${t("ko.evidenceEmptyCta")} — ${t("ko.evidenceEmptyCtaHint")}`}
+                  onClick={() => zumAbschnittSpringen("quellen")}
+                  className="mt-1.5 inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-muted hover:text-text"
+                >
+                  {/* Zierde, kein Name. */}
+                  <Link2 size={13} aria-hidden />
+                  {t("ko.evidenceEmptyCta")}
+                </button>
+              ) : null}
+            </>
           ) : (
             <ul className="space-y-2.5">
               {belegZeilen.map((ev) => {
@@ -1283,7 +1340,7 @@ export function MehrAbschnitte({
                         // Der zugängliche Name nennt den Beleg UND den Zweck — sonst hörte ein
                         // Vorleseprogramm bei mehreren Karten dreimal dasselbe Wort (Muster `:1330`).
                         aria-label={`${ev.title} — ${t("ko.evidenceToOriginalHint")}`}
-                        onClick={() => zumAnhangSpringen(original.anhangId)}
+                        onClick={() => zumAbschnittSpringen("anhaenge", original.anhangId)}
                         className="mt-1.5 inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-muted hover:text-text"
                       >
                         {/* Zierde, kein Name. */}

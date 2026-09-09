@@ -407,6 +407,32 @@ const de = {
   "audit.action.ko_returned_to_owner": "An Eigentümer zurückgegeben",
   "audit.action.ko_source_added": "Quelle hinzugefügt",
   "audit.action.ko_source_removed": "Quelle entfernt",
+  // ================================================================================================
+  // JOB 3384 (UX-26): DIE ACHT KO-EREIGNISSE, DIE DIE HERKUNFTSKETTE ALS PROGRAMMBROCKEN ZEIGTE.
+  // ================================================================================================
+  //
+  // Die Herkunftskette (`MehrAbschnitte.tsx:1066`) beschriftet jede Zeile über `auditActionLabel`.
+  // Fehlt der Schlüssel, greift dort der sprachunabhängige Rückfall („Trenner → Leerzeichen",
+  // `auditAction.ts:18`) — genau daraus entstand Pedis „ask query" (Nutzungsprüfung 06.09., N-0053).
+  //
+  // GEMESSEN, NICHT GERATEN: aufgenommen ist nur, was der Dienst nachweislich MIT DEM KO ALS ZIEL
+  // schreibt — denn nur solche Ereignisse zeigt `koAuditEvents` (`koLineage.ts:12-14`, Filter
+  // `target === ko.id`). Jede Zeile nennt ihre Schreibstelle. Ereignisse mit anderem Ziel
+  // (`conflict.*` → Konflikt-Id, `overlap.*` → Überschneidungs-Id, `*.settings.set` → "settings",
+  // `library.import` → "library", `demoPackage.*`/`examples.load`/`lesevarianten.load` → Paket-Id)
+  // erscheinen hier nie und bekommen deshalb bewusst KEINEN Schlüssel: ein Name für ein Ereignis,
+  // das diese Fläche nicht zeigt, wäre eine Behauptung ohne Beleg.
+  //
+  // Der Rückfall in `auditAction.ts:18` bleibt und wird NICHT entfernt: er ist die ehrliche Antwort
+  // auf einen Code, den niemand vorhergesehen hat.
+  "audit.action.ask_query": "Frage gestellt",
+  "audit.action.answer_helpful": "Antwort als hilfreich bewertet",
+  "audit.action.ko_document_appended": "Dokument angefügt",
+  "audit.action.ko_ownership": "Zuständigkeiten geändert",
+  "audit.action.ko_ownership_role": "Zuständigkeit einer Rolle geändert",
+  "audit.action.ko_tags_changed": "Schlagwörter geändert",
+  "audit.action.ko_create_followup_failed": "Nacharbeit nach dem Anlegen fehlgeschlagen",
+  "audit.action.ko_create_rollback_failed": "Rücknahme des Anlegens fehlgeschlagen",
   // JOB 3140 (UX-11): Die Nutzer-Aktionen des Prüfprotokolls hatten bis hierher KEINEN einzigen
   // Schlüssel — `audit.action.*` gab es nur für Wissensobjekte. Jede Rollenänderung, jede Anmeldung
   // erschien deshalb als roher Code („user.role-change"). Benannt wird genau, was
@@ -2753,6 +2779,14 @@ const de = {
   "ko.lineageChanges_other": "{{count}} Änderungen",
   "ko.lineageRelated": "Verwandt",
   "ko.lineageAudit": "Letzte Ereignisse",
+  // JOB 3384 · UX-26: der Leerzustand der Herkunftskette. Bis hierher stand bei null Ereignissen
+  // GAR NICHTS da (`MehrAbschnitte.tsx:1059`, `… : null`) — kein Satz, kein Grund.
+  //
+  // DER SATZ BEHAUPTET AUSDRÜCKLICH NICHT, es sei nie etwas geschehen. Er sagt „hier … verzeichnet"
+  // und meint damit genau das, was diese Fläche wissen kann: das Prüfprotokoll, soweit es abgerufen
+  // wurde und für die eigene Rolle sichtbar ist. Ein „an diesem Objekt ist nichts passiert" wäre
+  // eine Tatsachenaussage ohne Voraussetzung (REGELN Punkt 7).
+  "ko.lineageEventsEmpty": "Für dieses Objekt sind hier keine Ereignisse verzeichnet.",
   "ko.lineageGraphLink": "Im Wissensgraph ansehen",
   // AUFTRAG-mega68: die Nachbarschafts-Sicht ersetzt die SCRUM-130-Liste („Verwandte
   // Wissensobjekte") — gleiche Frage, jetzt aus der begrenzten Server-Auskunft mit sichtbarem
@@ -2790,9 +2824,30 @@ const de = {
   "ko.transferDone": "Autor übergeben. Originalautor bleibt sichtbar.",
   "ko.history": "Versionen",
   "ko.evidenceTitle": "Evidenz",
-  "ko.evidenceEmpty": "Noch keine separaten Evidence-Records vorhanden.",
-  "ko.evidenceKind.source": "Quelle",
-  "ko.evidenceKind.attachment": "Anhang",
+  // ================================================================================================
+  // JOB 3384 · UX-26 — ORIGINAL UND BELEGDATENSATZ HEISSEN AB HIER VERSCHIEDEN.
+  // ================================================================================================
+  //
+  // Die Art-Beschriftung sagte „Quelle" bzw. „Anhang" — dieselben Wörter, mit denen die Fläche das
+  // ORIGINAL benennt (Abschnitt 2 „Quellen und Belege", Abschnitt 12 „Anhänge"). Wer die Belegkarte
+  // las, sah damit zweimal denselben Namen für zwei verschiedene Dinge: den NACHWEIS und die Sache,
+  // auf die er zeigt. Jetzt nennt die Zeile, WAS die Karte ist (ein Beleg) und WORAUF sie zeigt —
+  // und der Knopf darunter („Original anzeigen") benennt weiterhin die Sache selbst. Zwei Namen,
+  // zwei Dinge. Der Sachinhalt (`record.label` vom Server) wird dabei nicht angetastet.
+  //
+  // `ko.evidenceEmpty` sagte „Noch keine separaten Evidence-Records vorhanden." — ein Satz aus der
+  // Programmsprache, ohne Weg. Der neue Satz ist deutsch und bekommt an der Fläche einen Weg
+  // (`MehrAbschnitte.tsx`, Abschnitt 9), der für die eigene Rolle wirklich trägt.
+  "ko.evidenceEmpty": "Für dieses Objekt ist noch kein Beleg verzeichnet.",
+  "ko.evidenceEmptyCta": "Quelle anlegen",
+  // Der Weg ist GEMESSEN, nicht behauptet: `addSource` legt zur Quelle einen Belegdatensatz an
+  // (`services/knowledge-object/src/service.ts:2864-2874`, `kind: "source"`). Deshalb entsteht aus
+  // diesem Schritt wirklich der erste Beleg — und deshalb ist er der nächste Schritt und nicht der
+  // Anhang-Upload, der zusätzlich eine Datei verlangt.
+  "ko.evidenceEmptyCtaHint":
+    "Im Abschnitt „Quellen und Belege“ anlegen — daraus entsteht der erste Beleg",
+  "ko.evidenceKind.source": "Beleg zu einer Quelle",
+  "ko.evidenceKind.attachment": "Beleg zu einem Anhang",
   // JOB 3272 · UX-25: der Weg von der Belegkarte zum Original — und der ehrliche Satz, wenn das
   // Original nicht mehr an diesem Objekt hängt (dann steht dort KEIN Knopf, der ins Leere führte).
   "ko.evidenceToOriginal": "Original anzeigen",
@@ -2801,18 +2856,23 @@ const de = {
   "ko.evCons.title": "Evidence-Konsistenz",
   "ko.evCons.status.ok": "stimmig",
   "ko.evCons.status.warning": "prüfen",
-  "ko.evCons.counts": "Quellen {{sources}} · Anhänge {{attachments}} · Evidence {{evidence}}",
+  // JOB 3384 · UX-26: das englische „Evidence" stand hier als HAUPTAUSSAGE in der deutschen
+  // Anzeige — und zwar an Stellen, die Abschnitt 9 wirklich zeichnet (`MehrAbschnitte.tsx:1185`,
+  // `:1195`, `:1224`). „Beleg" ist dasselbe Ding in Pedis Sprache; es geht keine Information
+  // verloren, nur der Programmbrocken. Die Titelschlüssel darüber (`…title`, `…allOk`) bleiben
+  // unverändert: sie werden von keiner Fläche dieses Auftrags gezeichnet.
+  "ko.evCons.counts": "Quellen {{sources}} · Anhänge {{attachments}} · Belege {{evidence}}",
   "ko.evCons.allOk": "Quellen, Anhänge und Evidence sind deckungsgleich.",
-  "ko.evCons.finding.source-without-evidence": "Quelle ohne Evidence",
-  "ko.evCons.finding.attachment-without-evidence": "Anhang ohne Evidence",
-  "ko.evCons.finding.evidence-without-source": "Evidence ohne Quelle",
-  "ko.evCons.finding.evidence-without-attachment": "Evidence ohne Anhang",
-  "ko.evCons.finding.legacy-inline-attachment": "Legacy-Inline-Anhang (ohne Evidence)",
+  "ko.evCons.finding.source-without-evidence": "Quelle ohne Beleg",
+  "ko.evCons.finding.attachment-without-evidence": "Anhang ohne Beleg",
+  "ko.evCons.finding.evidence-without-source": "Beleg ohne Quelle",
+  "ko.evCons.finding.evidence-without-attachment": "Beleg ohne Anhang",
+  "ko.evCons.finding.legacy-inline-attachment": "Alter Inline-Anhang (ohne Beleg)",
   "ko.evVer.title": "Evidence nach Version",
   "ko.evVer.version": "v{{n}}",
   "ko.evVer.counts": "Quellen {{sources}} · Anhänge {{attachments}}",
   "ko.evVer.latest": "zuletzt {{at}}",
-  "ko.evVer.without": "Ohne Evidence: {{versions}}",
+  "ko.evVer.without": "Ohne Beleg: {{versions}}",
   "ko.evFresh.title": "Evidence-Aktualität",
   "ko.evFresh.current": "aktuell belegt",
   "ko.evFresh.outdated": "nur ältere Versionen",
@@ -6006,6 +6066,16 @@ const en: typeof de = {
   "audit.action.ko_returned_to_owner": "Returned to owner",
   "audit.action.ko_source_added": "Source added",
   "audit.action.ko_source_removed": "Source removed",
+  // JOB 3384 (UX-26) — s. die Begründung im deutschen Block. Alle drei Sprachen werden bedient
+  // (E50d: „ALLES sichtbar DE↔EN"), von Hand geschrieben, nicht über einen Dienst geholt.
+  "audit.action.ask_query": "Question asked",
+  "audit.action.answer_helpful": "Answer rated helpful",
+  "audit.action.ko_document_appended": "Document appended",
+  "audit.action.ko_ownership": "Responsibilities changed",
+  "audit.action.ko_ownership_role": "Responsibility for one role changed",
+  "audit.action.ko_tags_changed": "Tags changed",
+  "audit.action.ko_create_followup_failed": "Follow-up after creation failed",
+  "audit.action.ko_create_rollback_failed": "Rollback after creation failed",
   // JOB 3140 (UX-11) — see the German block for the reasoning.
   "audit.action.user_role_change": "Role changed",
   "audit.action.user_approve": "Account approved",
@@ -8004,6 +8074,9 @@ const en: typeof de = {
   "ko.lineageChanges_other": "{{count}} changes",
   "ko.lineageRelated": "Related",
   "ko.lineageAudit": "Recent events",
+  // JOB 3384 · UX-26 — s. die Begründung im deutschen Block: „recorded here", nicht „nothing
+  // happened".
+  "ko.lineageEventsEmpty": "No events are recorded here for this object.",
   "ko.lineageGraphLink": "View in knowledge graph",
   "nb.title": "Knowledge network — neighbourhood",
   "nb.hint":
@@ -8030,9 +8103,14 @@ const en: typeof de = {
   "ko.transferDone": "Author transferred. Original author stays visible.",
   "ko.history": "Versions",
   "ko.evidenceTitle": "Evidence",
-  "ko.evidenceEmpty": "No separate evidence records yet.",
-  "ko.evidenceKind.source": "Source",
-  "ko.evidenceKind.attachment": "Attachment",
+  // JOB 3384 · UX-26 — s. die Begründung im deutschen Block: der Belegdatensatz und die Sache,
+  // auf die er zeigt, tragen ab hier verschiedene Namen.
+  "ko.evidenceEmpty": "No evidence has been recorded for this object yet.",
+  "ko.evidenceEmptyCta": "Add a source",
+  "ko.evidenceEmptyCtaHint":
+    "Add it in the “Sources and evidence” section — that creates the first evidence record",
+  "ko.evidenceKind.source": "Evidence for a source",
+  "ko.evidenceKind.attachment": "Evidence for an attachment",
   "ko.evidenceToOriginal": "Show original",
   "ko.evidenceToOriginalHint": "Show the original in the “Attachments” section",
   "ko.evidenceOriginalDetached": "Original no longer attached to this object",
@@ -10783,6 +10861,15 @@ const nl: typeof de = {
   "audit.action.ko_returned_to_owner": "Terug naar eigenaar",
   "audit.action.ko_source_added": "Bron toegevoegd",
   "audit.action.ko_source_removed": "Bron verwijderd",
+  // JOB 3384 (UX-26) — s. die Begründung im deutschen Block.
+  "audit.action.ask_query": "Vraag gesteld",
+  "audit.action.answer_helpful": "Antwoord als nuttig beoordeeld",
+  "audit.action.ko_document_appended": "Document toegevoegd",
+  "audit.action.ko_ownership": "Verantwoordelijkheden gewijzigd",
+  "audit.action.ko_ownership_role": "Verantwoordelijkheid van één rol gewijzigd",
+  "audit.action.ko_tags_changed": "Trefwoorden gewijzigd",
+  "audit.action.ko_create_followup_failed": "Nawerk na het aanmaken mislukt",
+  "audit.action.ko_create_rollback_failed": "Terugdraaien van het aanmaken mislukt",
   // JOB 3140 (UX-11) — zie het Duitse blok voor de toelichting.
   "audit.action.user_role_change": "Rol gewijzigd",
   "audit.action.user_approve": "Account vrijgegeven",
@@ -12769,6 +12856,8 @@ const nl: typeof de = {
   "ko.lineageChanges_other": "{{count}} wijzigingen",
   "ko.lineageRelated": "Verwant",
   "ko.lineageAudit": "Laatste gebeurtenissen",
+  // JOB 3384 · UX-26 — s. die Begründung im deutschen Block.
+  "ko.lineageEventsEmpty": "Voor dit object zijn hier geen gebeurtenissen vastgelegd.",
   "ko.lineageGraphLink": "Bekijken in de kennisgraaf",
   "nb.title": "Kennisnetwerk — buurt",
   "nb.hint":
@@ -12795,27 +12884,33 @@ const nl: typeof de = {
   "ko.transferDone": "Auteur overgedragen. Oorspronkelijke auteur blijft zichtbaar.",
   "ko.history": "Versies",
   "ko.evidenceTitle": "Bewijs",
-  "ko.evidenceEmpty": "Nog geen aparte Evidence-records aanwezig.",
-  "ko.evidenceKind.source": "Bron",
-  "ko.evidenceKind.attachment": "Bijlage",
+  // JOB 3384 · UX-26 — s. die Begründung im deutschen Block.
+  "ko.evidenceEmpty": "Voor dit object is nog geen bewijs vastgelegd.",
+  "ko.evidenceEmptyCta": "Bron toevoegen",
+  "ko.evidenceEmptyCtaHint":
+    "Toevoegen in het gedeelte ‘Bronnen en bewijs’ — daaruit ontstaat het eerste bewijs",
+  "ko.evidenceKind.source": "Bewijs voor een bron",
+  "ko.evidenceKind.attachment": "Bewijs voor een bijlage",
   "ko.evidenceToOriginal": "Origineel tonen",
   "ko.evidenceToOriginalHint": "Het origineel tonen in het gedeelte ‘Bijlagen’",
   "ko.evidenceOriginalDetached": "Origineel hangt niet meer aan dit object",
   "ko.evCons.title": "Evidence-consistentie",
   "ko.evCons.status.ok": "kloppend",
   "ko.evCons.status.warning": "controleren",
-  "ko.evCons.counts": "Bronnen {{sources}} · Bijlagen {{attachments}} · Evidence {{evidence}}",
+  // JOB 3384 · UX-26: auch hier stand das englische „Evidence" als Hauptaussage — s. den deutschen
+  // Block. Gleiche Sache, niederländisches Wort.
+  "ko.evCons.counts": "Bronnen {{sources}} · Bijlagen {{attachments}} · Bewijs {{evidence}}",
   "ko.evCons.allOk": "Bronnen, bijlagen en evidence komen volledig overeen.",
-  "ko.evCons.finding.source-without-evidence": "Bron zonder evidence",
-  "ko.evCons.finding.attachment-without-evidence": "Bijlage zonder evidence",
-  "ko.evCons.finding.evidence-without-source": "Evidence zonder bron",
-  "ko.evCons.finding.evidence-without-attachment": "Evidence zonder bijlage",
-  "ko.evCons.finding.legacy-inline-attachment": "Legacy-inline-bijlage (zonder evidence)",
+  "ko.evCons.finding.source-without-evidence": "Bron zonder bewijs",
+  "ko.evCons.finding.attachment-without-evidence": "Bijlage zonder bewijs",
+  "ko.evCons.finding.evidence-without-source": "Bewijs zonder bron",
+  "ko.evCons.finding.evidence-without-attachment": "Bewijs zonder bijlage",
+  "ko.evCons.finding.legacy-inline-attachment": "Oude inline-bijlage (zonder bewijs)",
   "ko.evVer.title": "Evidence per versie",
   "ko.evVer.version": "v{{n}}",
   "ko.evVer.counts": "Bronnen {{sources}} · Bijlagen {{attachments}}",
   "ko.evVer.latest": "laatst {{at}}",
-  "ko.evVer.without": "Zonder evidence: {{versions}}",
+  "ko.evVer.without": "Zonder bewijs: {{versions}}",
   "ko.evFresh.title": "Evidence-actualiteit",
   "ko.evFresh.current": "actueel onderbouwd",
   "ko.evFresh.outdated": "alleen oudere versies",
