@@ -2,6 +2,7 @@
 // V0 misst die heutige Verdrahtung vor dem Bau; F6 kalibriert dieselben Fenster ohne Deckel.
 // Basisstand: der unmittelbare Elterncommit des Prüfstands (wird beim Einbau gesetzt)
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   chmodSync,
   copyFileSync,
@@ -9,8 +10,10 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   renameSync,
   rmSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
@@ -708,7 +711,7 @@ kill() {
     },
   );
 
-  it("F24 · zwei Wartende entfernen dieselbe tote PID genau einmal und schreiben ein verwaist", async () => {
+  async function toterWettlauf(fall: string, weitereRunde: boolean, toteSperren = false) {
     const { ort, env } = werk();
     const tot = starte(ort, env, process.execPath, ["-e", "process.exit(0)"]);
     await tot.fertig;
@@ -722,32 +725,80 @@ kill() {
     const journal = `${lock}.jsonl`;
     const historie = `${JSON.stringify({ ereignis: "nehmen", id, pid, art: "browser", zeit: 1, deckel: true, gewartetMs: 0 })}\n`;
     writeFileSync(journal, historie);
+    if (toteSperren) {
+      const praefix = `${journal}.verwaist-${createHash("sha256").update(id).digest("hex")}`;
+      for (const [n, inhalt] of [String(pid), ""].entries()) {
+        const pfad = `${praefix}.${n}`;
+        writeFileSync(pfad, inhalt);
+        utimesSync(pfad, new Date(0), new Date(0));
+      }
+    }
     const hook = join(ort, "wettlauf.bash");
     const lesesperre = join(ort, "lesesperre.cjs");
-    // Beide lesen dieselbe echte PID-Datei vor rm. Der Verlierer erreicht entweder sleep
-    // oder (Mutation M4) ebenfalls den Journalleser. Dessen echte erste Lektüre halten wir
-    // VOR der Rückgabe an: M4 liest so zweimal ein offenes Fenster, statt zufällig vom
-    // zusätzlichen Journalfilter verdeckt zu werden. Keine Daten/Ergebnisse werden ersetzt.
+    // Nur Zeitsteuerung: keine geänderten Exitcodes, kein rm -f. Die vorgestarteten
+    // Node-Schreiber treffen sich zusätzlich vor dem echten Produktcode. Auch ein
+    // Ausbau von sperren() durchläuft genau dieselbe Barriere.
     writeFileSync(
       hook,
       `
+vor_entfernen() {
+  : > "$SONDENPFAD/rm-$LAUF"
+  while [ ! -f "$SONDENPFAD/rm-frei" ]; do :; done
+}
+entfernergebnis() {
+  printf '%s %s\\n' "$LAUF" "$1" >> "$SONDENPFAD/entfernungen"
+  if [ "$1" != 0 ]; then : > "$SONDENPFAD/verloren-$LAUF"; fi
+  return "$1"
+}
 rm() {
   if [ "$1" = "$PIDZIEL" ]; then
-    : > "$SONDENPFAD/rm-$LAUF"
-    while [ ! -f "$SONDENPFAD/rm-frei" ]; do command sleep 0.02; done
-    if command rm "$@"; then printf 'entfernt\\n' >> "$SONDENPFAD/entfernt"; return 0; else return 1; fi
+    vor_entfernen
+    local rc=0
+    command rm "$@" || rc=$?
+    entfernergebnis "$rc"
+    return $?
   fi
   command rm "$@"
 }
+mkdir() {
+  local rc=0
+  command mkdir "$@" || rc=$?
+  if [ "$1" = "$KLARWERK_BROWSERDECKEL_LOCK" ] && [ -f "$SONDENPFAD/verloren-$LAUF" ]; then
+    printf '%s %s\\n' "$LAUF" "$rc" >> "$SONDENPFAD/runden"
+    : > "$SONDENPFAD/runde-$LAUF"
+  fi
+  return "$rc"
+}
 sleep() {
   if [ "$1" = 0.1 ] && [ -f "$SONDENPFAD/rm-$LAUF" ]; then
+    if [ "$WEITERE_RUNDE" = 1 ] && [ -f "$SONDENPFAD/verloren-$LAUF" ] && [ ! -f "$SONDENPFAD/runde-$LAUF" ]; then
+      return 0
+    fi
     : > "$SONDENPFAD/weiter-$LAUF"
-    while [ ! -f "$SONDENPFAD/lesen-frei" ]; do command sleep 0.02; done
+    while [ ! -f "$SONDENPFAD/lesen-frei" ]; do :; done
   fi
   command sleep "$@"
 }
 node() {
-  if [ "\${4:-}" = verwaist ]; then command node --require "$LESESPERRE" "$@"; else command node "$@"; fi
+  if [ "\${3:-}" = "$PIDZIEL" ]; then
+    vor_entfernen
+    local rc=0
+    command node --require "$LESESPERRE" "$@" || rc=$?
+    entfernergebnis "$rc"
+    return $?
+  fi
+  if [ "\${4:-}" = verwaist ]; then
+    vor_entfernen
+    printf '%s\\n' "$LAUF" >> "$SONDENPFAD/schreiber"
+    local rc=0
+    command node --require "$LESESPERRE" "$@" || rc=$?
+    # Der Vorstand entfernt in einem eigenen Node-Aufruf; dessen Ergebnis ist schon
+    # erfasst. Der neue gemeinsame Aufruf führt die PID-Datei als elftes Argument mit.
+    if [ "\${11:-}" = "$PIDZIEL" ]; then entfernergebnis "$rc"; return $?; fi
+    return "$rc"
+  else
+    command node "$@"
+  fi
 }
 `,
     );
@@ -756,6 +807,22 @@ node() {
       `
 const fs = require('node:fs');
 const lesen = fs.readFileSync;
+const unlink = fs.unlinkSync;
+fs.unlinkSync = function(datei, ...args) {
+  let ergebnis = 'OK';
+  try { return unlink.call(this, datei, ...args); }
+  catch (error) { ergebnis = error.code; throw error; }
+  finally {
+    if (datei === process.env.PIDZIEL) fs.appendFileSync(process.env.SONDENPFAD + '/unlink-ergebnisse', process.env.LAUF + ' ' + ergebnis + '\\n');
+  }
+};
+fs.writeFileSync(process.env.SONDENPFAD + '/unlink-' + process.env.LAUF, 'bereit');
+const frist = Date.now() + 10000;
+while (!fs.existsSync(process.env.SONDENPFAD + '/unlink-frei')) {
+  if (Date.now() > frist) throw new Error('Entferner nicht freigegeben');
+}
+const start = BigInt(lesen(process.env.SONDENPFAD + '/unlink-frei', 'utf8'));
+while (process.hrtime.bigint() < start) {}
 let erstes = true;
 fs.readFileSync = function(datei, ...args) {
   const text = lesen.call(this, datei, ...args);
@@ -765,7 +832,6 @@ fs.readFileSync = function(datei, ...args) {
     const bis = Date.now() + 10000;
     while (!fs.existsSync(process.env.SONDENPFAD + '/lesen-frei')) {
       if (Date.now() > bis) throw new Error('Journal-Lesesperre nicht freigegeben');
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
     }
   }
   return text;
@@ -775,7 +841,14 @@ fs.readFileSync = function(datei, ...args) {
     const laeufe = ["a", "b"].map((lauf) =>
       starte(
         ort,
-        { ...env, BASH_ENV: hook, PIDZIEL: datei, LESESPERRE: lesesperre, LAUF: lauf },
+        {
+          ...env,
+          BASH_ENV: hook,
+          PIDZIEL: datei,
+          LESESPERRE: lesesperre,
+          LAUF: lauf,
+          WEITERE_RUNDE: weitereRunde ? "1" : "0",
+        },
         "./tools/browserdeckel.sh",
         ["smoke", "true"],
       ),
@@ -783,7 +856,15 @@ fs.readFileSync = function(datei, ...args) {
     try {
       await warteBis(() => ["a", "b"].every((lauf) => existsSync(join(ort, `rm-${lauf}`))));
       writeFileSync(join(ort, "rm-frei"), "frei");
+      await warteBis(() => ["a", "b"].every((lauf) => existsSync(join(ort, `unlink-${lauf}`))));
+      writeFileSync(join(ort, "unlink-start"), String(process.hrtime.bigint() + 20_000_000n));
+      renameSync(join(ort, "unlink-start"), join(ort, "unlink-frei"));
       await warteBis(() => ["a", "b"].every((lauf) => existsSync(join(ort, `weiter-${lauf}`))));
+      // Noch vor Freigabe des Journals: F24b muss einen fehlgeschlagenen nächsten
+      // mkdir des Verlierers belegen. Spätere erfolgreiche Schlossnahmen zählen nicht.
+      const runden = existsSync(join(ort, "runden"))
+        ? readFileSync(join(ort, "runden"), "utf8")
+        : "";
       writeFileSync(join(ort, "lesen-frei"), "frei");
       const ergebnisse = await Promise.all(laeufe.map((lauf) => lauf.fertig));
       const text = readFileSync(journal, "utf8");
@@ -792,20 +873,242 @@ fs.readFileSync = function(datei, ...args) {
         .split("\n")
         .map((z) => JSON.parse(z) as Ereignis)
         .filter((e) => e.ereignis === "verwaist" && e.id === id);
+      const entfernungen = readFileSync(join(ort, "entfernungen"), "utf8").trim().split("\n");
+      const schreiber = readFileSync(join(ort, "schreiber"), "utf8").trim().split("\n");
+      const unlinkErgebnisse = readFileSync(join(ort, "unlink-ergebnisse"), "utf8")
+        .trim()
+        .split("\n");
+      console.log(
+        `${fall} aufraeumversuche=${JSON.stringify(entfernungen)} unlink=${JSON.stringify(unlinkErgebnisse)} schreiber=${JSON.stringify(schreiber)} verwaist=${verwaist.length} weitereRunde=${JSON.stringify(runden)}`,
+      );
       expect(verwaist, "genau ein verwaist für den gemeinsamen Toten").toHaveLength(1);
-      for (const e of ergebnisse) expect(e.code, e.ausgabe).toBe(0);
-      expect(readFileSync(join(ort, "entfernt"), "utf8")).toBe("entfernt\n");
+      for (const e of ergebnisse) {
+        expect(e.code, e.ausgabe).toBe(0);
+        expect(
+          e.stderr.replace(
+            `⚠ Browserdeckel: Kennung ${id} nicht offen — kein verwaist-Eintrag\n`,
+            "",
+          ),
+        ).toBe("");
+      }
+      expect(entfernungen.length).toBeGreaterThanOrEqual(2);
+      expect(entfernungen.filter((e) => e.endsWith(" 0"))).toHaveLength(1);
+      expect(unlinkErgebnisse).toHaveLength(1);
+      expect(unlinkErgebnisse[0]).toMatch(/^[ab] OK$/);
+      const verlierer = entfernungen.find((e) => !e.endsWith(" 0"))?.split(" ")[0];
+      if (weitereRunde) {
+        expect(verlierer).toBeDefined();
+        expect(runden).toBe(`${verlierer} 1\n`);
+      } else expect(runden).toBe("");
       expect(text.startsWith(historie)).toBe(true);
       expect(existsSync(datei)).toBe(false);
       expect(existsSync(lock)).toBe(false);
+      expect(readdirSync(ort).filter((name) => name.includes(".verwaist-"))).toEqual([]);
       expect(ueberlappendePaare(fensterAusProtokoll(journal))).toEqual([]);
     } finally {
       writeFileSync(join(ort, "rm-frei"), "frei");
       writeFileSync(join(ort, "lesen-frei"), "frei");
+      writeFileSync(join(ort, "unlink-frei"), "0");
       for (const lauf of laeufe) lauf.kind.kill("SIGTERM");
       await Promise.all(laeufe.map((lauf) => lauf.fertig));
     }
+  }
+
+  it.each([
+    ["F24", false],
+    ["F24b", true],
+  ] as const)(
+    "%s · zwei Wartende schließen denselben Toten genau einmal (weitere Runde: %s)",
+    (fall, weitereRunde) => toterWettlauf(fall, weitereRunde),
+  );
+
+  it("F24c · 40 echte Wettläufe verletzen die Journalzusicherung keinmal", async () => {
+    const fehler: string[] = [];
+    for (let n = 1; n <= 40; n++) {
+      try {
+        await toterWettlauf(`F24c Runde ${n}`, false);
+      } catch (error) {
+        fehler.push(`Runde ${n}: ${String(error)}`);
+      }
+    }
+    console.log(`F24c: ${fehler.length} von 40 Runden verletzten die Zusicherung`);
+    expect(fehler.join("\n")).toBe("");
+  }, 120_000);
+
+  it.each(Array.from({ length: 30 }, (_, n) => n + 1))(
+    "F24h · Wiederholungsbeleg %i von 30 ohne Wiederholung fehlgeschlagener Fälle",
+    (runde) => toterWettlauf(`F24h ${runde}/30`, false),
+  );
+
+  it("F24g · wx entscheidet in 200 Runden mit zwei vorgestarteten Prozessen exklusiv", async () => {
+    const { ort, env } = werk();
+    const code = `const fs = require('node:fs');
+const [ort, lauf] = process.argv.slice(1);
+for (let n = 0; n < 400; n++) {
+  fs.writeFileSync(ort + '/bereit-' + lauf, 'bereit');
+  const frist = Date.now() + 10000;
+  while (!fs.existsSync(ort + '/start-' + n)) {
+    if (Date.now() > frist) throw new Error('Startbarriere abgelaufen');
+  }
+  const start = BigInt(fs.readFileSync(ort + '/start-' + n, 'utf8'));
+  while (process.hrtime.bigint() < start) {}
+  let ergebnis = 'OK';
+  try {
+    if (n < 200) fs.unlinkSync(ort + '/ziel');
+    else fs.closeSync(fs.openSync(ort + '/ziel', 'wx'));
+  } catch (error) { ergebnis = error.code; }
+  const fertig = ort + '/fertig-' + n + '-' + lauf;
+  fs.writeFileSync(fertig + '.tmp', ergebnis);
+  fs.renameSync(fertig + '.tmp', fertig);
+}`;
+    const kinder = ["a", "b"].map((lauf) =>
+      starte(ort, env, process.execPath, ["-e", code, ort, lauf]),
+    );
+    const doppelt: [number, number] = [0, 0];
+    try {
+      await warteBis(() => ["a", "b"].every((lauf) => existsSync(join(ort, `bereit-${lauf}`))));
+      for (let n = 0; n < 400; n++) {
+        if (n < 200) writeFileSync(join(ort, "ziel"), "ziel");
+        else rmSync(join(ort, "ziel"), { force: true });
+        writeFileSync(join(ort, "start.tmp"), String(process.hrtime.bigint() + 10_000_000n));
+        renameSync(join(ort, "start.tmp"), join(ort, `start-${n}`));
+        await warteBis(() =>
+          ["a", "b"].every((lauf) => existsSync(join(ort, `fertig-${n}-${lauf}`))),
+        );
+        const ergebnisse = ["a", "b"].map((lauf) =>
+          readFileSync(join(ort, `fertig-${n}-${lauf}`), "utf8"),
+        );
+        if (ergebnisse.every((e) => e === "OK")) doppelt[n < 200 ? 0 : 1]++;
+        if (n >= 200) expect(ergebnisse.sort(), `wx Runde ${n - 199}`).toEqual(["EEXIST", "OK"]);
+      }
+      for (const kind of kinder) expect((await kind.fertig).code).toBe(0);
+      console.log(
+        `F24g zwei vorgestartete Prozesse an enger Barriere: unlink beide erfolgreich = ${doppelt[0]} von 200; wx beide erfolgreich = ${doppelt[1]} von 200`,
+      );
+    } finally {
+      for (const kind of kinder) kind.kind.kill("SIGTERM");
+      await Promise.all(kinder.map((kind) => kind.fertig));
+    }
   });
+
+  it("F24d · zwei Wartende übernehmen tote und leere abgelaufene Sperren ohne ABA", async () => {
+    await toterWettlauf("F24d", true, true);
+  });
+
+  it("F24e · Journalfehler gibt die Sperre frei und lässt die PID für den Wiederanlauf stehen", async () => {
+    const { ort, env } = werk();
+    const tot = starte(ort, env, process.execPath, ["-e", "process.exit(0)"]);
+    await tot.fertig;
+    const pid = tot.kind.pid as number;
+    const id = "journalfehler";
+    const lock = env.KLARWERK_BROWSERDECKEL_LOCK;
+    mkdirSync(lock);
+    const datei = join(lock, `pid-${id}`);
+    writeFileSync(datei, `${pid} 1 browser ${id}\n`);
+    const journal = `${lock}.jsonl`;
+    const historie = `${JSON.stringify({ ereignis: "nehmen", id, pid, art: "browser", zeit: 1, deckel: true, gewartetMs: 0 })}\n`;
+    writeFileSync(journal, historie);
+    const hook = join(ort, "fehler.cjs");
+    writeFileSync(
+      hook,
+      `const fs = require('node:fs');
+const append = fs.appendFileSync;
+fs.appendFileSync = function(pfad, text, ...args) {
+  if (String(text).includes('"ereignis":"verwaist"')) throw new Error('ABSICHTLICHER JOURNALFEHLER');
+  return append.call(this, pfad, text, ...args);
+};`,
+    );
+    const fehler = await starte(
+      ort,
+      { ...env, NODE_OPTIONS: `--require=${hook}` },
+      "./tools/browserdeckel.sh",
+      ["smoke", "true"],
+    ).fertig;
+    expect(fehler.code).toBe(1);
+    expect(fehler.stderr).toContain("ABSICHTLICHER JOURNALFEHLER");
+    expect(readFileSync(journal, "utf8")).toBe(historie);
+    expect(existsSync(datei)).toBe(true);
+    expect(readdirSync(ort).filter((name) => name.includes(".verwaist-"))).toEqual([]);
+    const neu = await starte(ort, env, "./tools/browserdeckel.sh", ["smoke", "true"]).fertig;
+    expect(neu.code, neu.ausgabe).toBe(0);
+    expect(readFileSync(journal, "utf8").match(/"ereignis":"verwaist"/g)).toHaveLength(1);
+    expect(ueberlappendePaare(fensterAusProtokoll(journal))).toEqual([]);
+  });
+
+  it.each(["lebend", "initialisierung"] as const)(
+    "F24f · abgelaufene Sperre: %s",
+    async (phase) => {
+      const { ort, env } = werk();
+      const tot = starte(ort, env, process.execPath, ["-e", "process.exit(0)"]);
+      await tot.fertig;
+      const pid = tot.kind.pid as number;
+      const id = "angehaltener-schreiber";
+      const lock = env.KLARWERK_BROWSERDECKEL_LOCK;
+      mkdirSync(lock);
+      const datei = join(lock, `pid-${id}`);
+      writeFileSync(datei, `${pid} 1 browser ${id}\n`);
+      const journal = `${lock}.jsonl`;
+      const historie = `${JSON.stringify({ ereignis: "nehmen", id, pid, art: "browser", zeit: 1, deckel: true, gewartetMs: 0 })}\n`;
+      writeFileSync(journal, historie);
+      const sperre = `${journal}.verwaist-${createHash("sha256").update(id).digest("hex")}.0`;
+      if (phase === "lebend") {
+        writeFileSync(sperre, String(process.pid));
+        utimesSync(sperre, new Date(0), new Date(0));
+        const lauf = await starte(
+          ort,
+          { ...env, KLARWERK_BROWSERDECKEL_TIMEOUT: "1" },
+          "./tools/browserdeckel.sh",
+          ["smoke", "true"],
+        ).fertig;
+        expect(lauf.code).toBe(1);
+        expect(lauf.stderr).toContain("Zeitgrenze 1s");
+        expect(readFileSync(journal, "utf8")).toBe(historie);
+        expect(readFileSync(sperre, "utf8")).toBe(String(process.pid));
+        expect(existsSync(datei)).toBe(true);
+        return;
+      }
+      const hook = join(ort, "anhalten.cjs");
+      const bereit = join(ort, "bereit");
+      const frei = join(ort, "frei");
+      writeFileSync(
+        hook,
+        `const fs = require('node:fs');
+const open = fs.openSync;
+fs.openSync = function(pfad, ...args) {
+  const fd = open.call(this, pfad, ...args);
+  if (pfad === ${JSON.stringify(sperre)}) {
+    fs.writeFileSync(${JSON.stringify(bereit)}, 'bereit');
+    const frist = Date.now() + 10000;
+    while (!fs.existsSync(${JSON.stringify(frei)})) {
+      if (Date.now() > frist) throw new Error('Initialisierung nicht freigegeben');
+    }
+  }
+  return fd;
+};`,
+      );
+      const alt = starte(
+        ort,
+        { ...env, NODE_OPTIONS: `--require=${hook}` },
+        "./tools/browserdeckel.sh",
+        ["smoke", "true"],
+      );
+      try {
+        await warteBis(() => existsSync(bereit));
+        utimesSync(sperre, new Date(0), new Date(0));
+        const neu = await starte(ort, env, "./tools/browserdeckel.sh", ["smoke", "true"]).fertig;
+        expect(neu.code, neu.ausgabe).toBe(0);
+        writeFileSync(frei, "frei");
+        const ergebnis = await alt.fertig;
+        expect(ergebnis.code).toBe(1);
+        expect(ergebnis.stderr).toContain("Journal-Sperre vor Initialisierung abgelaufen");
+        expect(readFileSync(journal, "utf8").match(/"ereignis":"verwaist"/g)).toHaveLength(1);
+        expect(ueberlappendePaare(fensterAusProtokoll(journal))).toEqual([]);
+      } finally {
+        writeFileSync(frei, "frei");
+        await alt.fertig;
+      }
+    },
+  );
 
   it.each([
     ["unbrauchbar", "abc\n"],

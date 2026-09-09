@@ -9,6 +9,7 @@
 # danach versucht rmdir das leere Schloss zu lösen; eine erkannte lebende PID setzt die Frist zurück
 # und wird nie entfernt (F12/F13); einen Halter ohne PID-Datei kann niemand als lebend erkennen.
 # Fehlendes Signalrecht/EPERM ist kein Todesbeleg: nur ESRCH räumt, sonst bleibt die Zeitgrenze.
+# JOB 3376: wx serialisiert PID-Prüfung, Journalabschluss und Entfernen (lokal 0/200 Doppelerfolge).
 # Rückweg: lebende Halter geben selbst frei; tote, unzugängliche Halter (EPERM) warten bis zur
 # vollen Zeitgrenze. Automatisch löst das niemand: Halterzustand außerhalb der Sandkiste prüfen,
 # alle beteiligten Läufe beenden, dann die alte PID-Datei entfernen und das leere Schloss lösen.
@@ -64,31 +65,102 @@ kind=""
 # Atomare JSONL-Zeilen (ein appendFileSync je Ereignis). Bei JEDEM Freigeben wird nachgerechnet,
 # also auch NACH dem letzten Smoke, der zeitlich hinter dem Vitest-Messfall liegt.
 # Ein offenes Fenster bleibt offen: beim nächsten Nehmen fällt jede Überschneidung auf.
+# verwaist hält dafür eine wx-Sperre je Kennung; unlink ist keine Gewinnerentscheidung (169/200 doppelt).
 schreibe() {
-  node - "$journal" "$protokoll" "$1" "${2:-$kennung}" "${3:-$$}" "${4:-$art}" "$angefragt" "$an" "$gewartet" <<'NODE'
+  node - "$journal" "$protokoll" "$1" "${2:-$kennung}" "${3:-$$}" "${4:-$art}" "$angefragt" "$an" "$gewartet" "${5:-}" <<'NODE'
 const fs = require('node:fs');
-const [journal, lokal, ereignis, id, pid, art, angefragt, an, gewartet] = process.argv.slice(2);
-// Nur ein offenes, geschütztes Nehmen darf durch verwaist geschlossen werden. Der Gewinner
-// von rm schreibt; geschlossene/unbekannte Kennungen ergeben nur eine Warnung, keine Historie.
-if (ereignis === 'verwaist') {
-  let offen = false;
-  const bisher = fs.existsSync(journal) ? fs.readFileSync(journal, 'utf8') : '';
-  for (const zeile of bisher.trim().split('\n').filter(Boolean)) {
-    const z = JSON.parse(zeile);
-    if (z.id !== id || z.deckel === false) continue;
-    if (z.ereignis === 'nehmen') offen = true;
-    else if (z.ereignis === 'freigeben' || z.ereignis === 'verwaist') offen = false;
-    else throw new Error('Unbekanntes Browserdeckel-Ereignis');
-  }
-  if (!offen) {
-    console.error(`⚠ Browserdeckel: Kennung ${id} nicht offen — kein verwaist-Eintrag`);
-    process.exit(0);
+const [journal, lokal, ereignis, id, pid, art, angefragt, an, gewartet, piddatei] = process.argv.slice(2);
+// Eine Kennung hat eine Sperrenfolge. Tote Vorgänger werden NICHT gelöscht: zwei
+// Aufräumer könnten sonst die frisch übernommene Sperre des anderen entfernen (ABA).
+// Erst nach geschlossenem Journalfenster dürfen die Vorgänger verschwinden.
+const sperrbasis = journal + '.verwaist-' + require('node:crypto').createHash('sha256').update(id).digest('hex');
+// JOB 3376, lokal: 200 wx-Initialisierungen (open/fstat/write/close), Maximum
+// 0.143083 ms. 15s geben 14999.856917 ms Abstand für die leere Initialisierungsphase;
+// das ist kein Lastversprechen. Ein initialisierter lebender Besitzer läuft ohne Lease.
+const fristMs = 15000;
+let generation = 0;
+let sperre;
+function sperren() {
+  for (;;) {
+    const pfad = sperrbasis + '.' + generation;
+    let fd;
+    try { fd = fs.openSync(pfad, 'wx'); }
+    catch (error) {
+      if (error.code !== 'EEXIST') throw error;
+      try {
+        // Alter VOR dem Besitzer lesen: ein noch leerer, abgelaufener Erzeuger darf
+        // nach seiner Fortsetzung nicht mehr eintreten (Prüfung unten).
+        if (Date.now() - fs.statSync(pfad).mtimeMs >= fristMs) {
+          const besitzer = Number(fs.readFileSync(pfad, 'utf8'));
+          let tot = !Number.isSafeInteger(besitzer) || besitzer <= 0;
+          if (!tot) {
+            try { process.kill(besitzer, 0); }
+            catch (error) { if (error.code === 'ESRCH') tot = true; }
+          }
+          if (tot) { generation++; continue; }
+        }
+      } catch (error) { if (error.code !== 'ENOENT') throw error; }
+      return false;
+    }
+    const geboren = fs.fstatSync(fd).mtimeMs;
+    try { fs.writeFileSync(fd, String(process.pid)); }
+    finally { fs.closeSync(fd); }
+    // Ein bei der Initialisierung angehaltener Erzeuger ist nach Ablauf ausgeschlossen.
+    // Sein Marker bleibt als Vorgänger liegen; ein lebender initialisierter Besitzer
+    // wird dagegen NIE nach Alter enteignet. Fehler im Abschnitt geben im finally frei.
+    if (Date.now() - geboren >= fristMs) throw new Error('Browserdeckel: Journal-Sperre vor Initialisierung abgelaufen');
+    sperre = pfad;
+    return true;
   }
 }
-const zeit = Date.now();
-const e = { ereignis, id, pid: Number(pid), art, zeit, angefragt: Number(angefragt),
-  gewartetMs: ereignis === 'nehmen' && gewartet === '1' ? zeit - Number(angefragt) : 0, deckel: an === '1' };
-fs.appendFileSync(journal, JSON.stringify(e) + '\n');
+let e;
+function anhaengen() {
+  if (ereignis === 'verwaist') {
+    let offen = false;
+    const bisher = fs.existsSync(journal) ? fs.readFileSync(journal, 'utf8') : '';
+    for (const zeile of bisher.trim().split('\n').filter(Boolean)) {
+      const z = JSON.parse(zeile);
+      if (z.id !== id || z.deckel === false) continue;
+      if (z.ereignis === 'nehmen') offen = true;
+      else if (z.ereignis === 'freigeben' || z.ereignis === 'verwaist') offen = false;
+      else throw new Error('Unbekanntes Browserdeckel-Ereignis');
+    }
+    if (!offen) {
+      console.error(`⚠ Browserdeckel: Kennung ${id} nicht offen — kein verwaist-Eintrag`);
+      return false;
+    }
+  }
+  const zeit = Date.now();
+  e = { ereignis, id, pid: Number(pid), art, zeit, angefragt: Number(angefragt),
+    gewartetMs: ereignis === 'nehmen' && gewartet === '1' ? zeit - Number(angefragt) : 0, deckel: an === '1' };
+  fs.appendFileSync(journal, JSON.stringify(e) + '\n');
+  return true;
+}
+if (ereignis === 'verwaist') {
+  if (!sperren()) process.exit(3);
+  let geschlossen = false;
+  try {
+    // Ein Konkurrent hat diesen Halter bereits vollständig bearbeitet. Insbesondere
+    // darf der Verlierer danach kein rmdir gegen ein neues Schloss versuchen.
+    if (!fs.existsSync(piddatei)) process.exitCode = 3;
+    else {
+      anhaengen();
+      geschlossen = true;
+      fs.unlinkSync(piddatei);
+    }
+  } finally {
+    try { fs.unlinkSync(sperre); }
+    catch (error) { if (error.code !== 'ENOENT') throw error; }
+    if (geschlossen) {
+      for (let n = 0; n < generation; n++) {
+        try { fs.unlinkSync(sperrbasis + '.' + n); }
+        catch (error) { if (error.code !== 'ENOENT') throw error; }
+      }
+    }
+  }
+  if (process.exitCode === 3) process.exit(3);
+  if (!e) process.exit(0);
+} else anhaengen();
 const text = fs.readFileSync(journal, 'utf8');
 // rename verhindert halbe Schnappschüsse bei einem gleichzeitig lesenden Vitest.
 const tmp = lokal + '.' + process.pid;
@@ -188,16 +260,20 @@ if [ "$an" = 1 ]; then
         esac
       fi
       if [ "$halter_tot" = 1 ]; then
-        # Kein rm -rf: von konkurrierenden Aufräumern darf nur der Gewinner die alte PID-Datei
-        # entfernen und rmdir versuchen. Sonst könnte der Verlierer einen NEUEN Halter löschen.
-        if rm "$datei" 2>/dev/null; then
+        # Nur wx entscheidet über den Journalabschluss; erst danach wird die PID-Datei
+        # entfernt. Exit 3 bedeutet: bereits bearbeitet, also auch kein rmdir-Recht.
+        rc=0
+        if [ -n "${halterid:-}" ]; then
+          schreibe verwaist "$halterid" "$halter" "$halterart" "$datei" || rc=$?
+        else
+          node -e 'try { require("node:fs").unlinkSync(process.argv[1]); } catch { process.exit(3); }' "$datei" 2>/dev/null || rc=$?
+          if [ "$rc" = 0 ]; then echo "⚠ Browserdeckel: PID $halter ohne Kennung — kein verwaist-Eintrag" >&2; fi
+        fi
+        if [ "$rc" = 0 ]; then
           echo "ⓘ Browserdeckel verwaist: PID $halter seit $seit (Unix-ms) — aufgeräumt"
-          if [ -n "${halterid:-}" ]; then
-            schreibe verwaist "$halterid" "$halter" "$halterart"
-          else
-            echo "⚠ Browserdeckel: PID $halter ohne Kennung — kein verwaist-Eintrag" >&2
-          fi
           raeumen=1
+        elif [ "$rc" != 3 ]; then
+          exit "$rc"
         fi
       fi
     done
