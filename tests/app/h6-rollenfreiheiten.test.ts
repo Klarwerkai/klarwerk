@@ -18,6 +18,7 @@ import { ROLES, type Role } from "../../apps/web/src/app/navigation";
 import {
   BEWACHTE_EINTRAEGE,
   STICHWORT_JE_EINTRAG,
+  WORT_ORDNUNG,
   eintraegeFuer,
   freiheitenSchluessel,
   kiWahlFrei,
@@ -92,5 +93,45 @@ describe("JOB 3065 H6 · Rollen-Freiheiten", () => {
       expect(i18n.t("einst.rollen.kiWahl")).not.toBe("einst.rollen.kiWahl");
     }
     await i18n.changeLanguage("de");
+  });
+
+  // ==============================================================================================
+  // JOB 3416 · DIE ANDERE RICHTUNG DER ABSICHERUNG.
+  // ==============================================================================================
+  //
+  // Fall 1 bewacht die SCHLÜSSEL von `STICHWORT_JE_EINTRAG` (jeder Eintrag hat ein Stichwort). Die
+  // WERTE bewachte bisher niemand — und genau dort entstand der Schaden: `freiheitenSchluessel`
+  // endet mit `WORT_ORDNUNG.filter(…)`, also fällt ein Wert, den die Ordnung nicht führt, STILL
+  // heraus. Kein Fehler, kein rotes Licht, nur eine Freiheit weniger auf der Karte. So wurde bei
+  // der Umbenennung der Verwaltungsthemen (JOB 3337) der Wert `adm.sec.daten` zur Leiche: fünf
+  // Einträge zeigten auf einen Reiter, den es nicht mehr gab.
+  //
+  // Der Fall misst am IMPORTIERTEN Objekt und an der importierten Ordnung — nicht an Zeichenketten
+  // im Dateitext, die auch in einem Kommentar stehen könnten (Lehre aus JOB 3401).
+  it("4 NICHT STILL VERALTEN · jedes Stichwort zeigt auf einen Reiter, den es wirklich gibt", () => {
+    const ordnung = new Set(WORT_ORDNUNG);
+    // Kalibrierung: die Ordnung ist gefüllt — sonst wäre jeder Wert „tot" und der Fall wertlos.
+    expect(ordnung.size).toBeGreaterThan(6);
+    // Die Ordnung endet auf den Themen der Verwaltung; sie werden gelesen, nicht abgeschrieben.
+    for (const abschnitt of ADMIN_SECTIONS) {
+      expect(ordnung.has(abschnitt.labelKey), abschnitt.id).toBe(true);
+    }
+
+    const tot: string[] = [];
+    for (const [id, wort] of Object.entries(STICHWORT_JE_EINTRAG)) {
+      // `null` = dieser Eintrag beschreibt keine Freiheit; `@einstellungen` löst sich in die Themen
+      // auf. Alles andere MUSS ein Wort sein, das die Ordnung wirklich führt.
+      if (wort === null || wort === "@einstellungen" || ordnung.has(wort)) {
+        continue;
+      }
+      tot.push(`${id} → ${wort} ist kein Reiter mehr`);
+    }
+    expect(
+      tot,
+      "totes Stichwort in STICHWORT_JE_EINTRAG: dieser Wert steht nicht in WORT_ORDNUNG und fällt " +
+        "in freiheitenSchluessel() still heraus — die ROLLEN-Karte verschweigt die Freiheit, ohne " +
+        'dass etwas rot wird. Erlaubt sind null, "@einstellungen" und die Wörter der Ordnung ' +
+        "(zuletzt die labelKeys aus ADMIN_SECTIONS in lib/adminSections.ts).",
+    ).toEqual([]);
   });
 });

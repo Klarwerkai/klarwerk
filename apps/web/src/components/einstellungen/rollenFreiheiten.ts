@@ -11,9 +11,13 @@
 // Controllers), und ein Eintrag darf ausdrücklich KEINS haben (`null`): Start, Hilfe und Profil hat
 // jede Rolle, sie beschreiben keine Freiheit.
 //
-// DIE ABSICHERUNG: Die Zuordnung ist VOLLSTÄNDIG über alle bewachten Einträge. Kommt in
-// `navigation.ts` ein Eintrag hinzu, fehlt hier sein Stichwort und
-// `tests/app/h6-rollenfreiheiten.test.ts` wird rot — die Karte kann also nicht still veralten.
+// DIE ABSICHERUNG, in BEIDE Richtungen (`tests/app/h6-rollenfreiheiten.test.ts`):
+//   · Kommt in `navigation.ts` ein Eintrag hinzu, fehlt hier sein Stichwort → Fall 1 wird rot.
+//   · Zeigt ein Stichwort auf einen Reiter, den es nicht mehr gibt, → Fall 4 wird rot (JOB 3416).
+//     Diese Richtung fehlte: `freiheitenSchluessel` filtert gegen `WORT_ORDNUNG`, ein Wort ohne
+//     Reiter fiel dort STILL heraus. So verlor die Karte bei der Umbenennung der Verwaltungsthemen
+//     (JOB 3337) unbemerkt fünf Verweise auf den entfallenen Sammelreiter.
+// Die Karte kann also nicht still veralten.
 import { ALL_ITEMS, EXTRA_GUARDED_ITEMS, type Role, roleAllows } from "../../app/navigation";
 import { ADMIN_SECTIONS } from "../../lib/adminSections";
 
@@ -45,18 +49,27 @@ export const STICHWORT_JE_EINTRAG: Record<string, string | null> = {
   conflictCompare: "einst.rollen.wort.konflikte",
   duplikate: "einst.rollen.wort.duplikate",
   duplicateCompare: "einst.rollen.wort.duplikate",
-  // Admin — die Auswertungen und die Stufe-2-Flächen arbeiten alle am eigenen Datenbestand.
-  analytics: "adm.sec.daten",
-  output: "adm.sec.daten",
-  import: "adm.sec.daten",
-  graph: "adm.sec.daten",
-  kapital: "adm.sec.daten",
+  // Admin — die Auswertungen und die Stufe-2-Flächen gehören zum Thema „Berichte und Analyse", der
+  // Import zu „Quellen und Daten". Beleg sind die Abschnittskommentare an `ADMIN_SECTIONS`
+  // (`lib/adminSections.ts`, Einträge `berichte` und `quellen`); der frühere Sammelreiter `daten`
+  // trug beides zugleich und ist mit JOB 3337 entfallen.
+  analytics: "adm.sec.berichte",
+  output: "adm.sec.berichte",
+  import: "adm.sec.quellen",
+  graph: "adm.sec.berichte",
+  kapital: "adm.sec.berichte",
   // Der Eintrag „/admin" IST diese Fläche — seine Freiheiten sind ihre Reiter (adminSections.ts).
   admin: "@einstellungen",
 };
 
-/** Feste Reihenfolge der Stichwörter (sonst entschiede die Reihenfolge der Navigation). */
-const WORT_ORDNUNG: readonly string[] = [
+/**
+ * Feste Reihenfolge der Stichwörter (sonst entschiede die Reihenfolge der Navigation).
+ *
+ * Exportiert seit JOB 3416, damit `tests/app/h6-rollenfreiheiten.test.ts` die Ordnung LESEN kann,
+ * statt sie abzuschreiben. Sie bleibt die EINZIGE Ordnung: `freiheitenSchluessel` filtert weiter
+ * gegen genau diese Konstante, im Test entsteht keine Kopie.
+ */
+export const WORT_ORDNUNG: readonly string[] = [
   "einst.rollen.wort.fragen",
   "einst.rollen.wort.lesen",
   "einst.rollen.wort.erfassen",
