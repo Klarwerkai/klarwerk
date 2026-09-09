@@ -31,6 +31,7 @@
     "lineWidth": 100
   },
   "files": {
+    "maxSize": 2097152,
     "ignore": [
       "**/dist",
       "**/test-results",

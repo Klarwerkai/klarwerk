@@ -180,6 +180,14 @@ describe("JOB 3131 T2 · der Bestand ueberlebt die Aufteilung in zwei Laeufe", (
     // dass die Leiste nur auf Klick liest und dass ein Vorgang genau einen Entwurf erzeugt —
     // fiele er still aus beiden Gruppen, wäre die Freitagsvorführung (A04/A07) ungedeckt.
     expect(holeRest()).toContain("tests/klara-browser/zwischenablage.test.ts");
+    // JOB 3364: dieser Pin steht aus einem ANDEREN Grund als die Pins darüber — die Datei ist eine
+    // gewöhnliche `.test.ts` in einem vorhandenen Baum, also nicht die Bauform, die still aus einem
+    // Muster fällt. Gepinnt ist sie, weil ihr Verlust UNSICHTBAR wäre: sie ist die einzige
+    // Frühwarnung vor Biomes Größendeckel (`files.maxSize`, 2 MiB), und ein Wächter, der nicht mehr
+    // läuft, warnt nicht — er ist grün. Der Preis dafür steht fest: JOB 3326 R3 verlor ein volles
+    // Tor nach Build und Tests an der Zeile „Size of ./apps/web/src/i18n.ts … exceeds configured
+    // maximum". Fällt die Datei aus beiden Gruppen, zahlt das der nächste Textjob, nicht dieser.
+    expect(holeRest()).toContain("tests/lesevariante/i18n-groessendeckel.test.ts");
   });
 
   it("V4 · der Verzeichnisgang der Konfiguration sieht denselben Bestand wie der Collector", () => {
