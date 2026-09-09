@@ -1,5 +1,11 @@
 import Fastify from "fastify";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  anlegen,
+  aufbau as dokumentAufbau,
+  loginCookie,
+  validieren,
+} from "../../../../tests/m3-dokumentweg/harness";
 import { InMemoryOverlapRepo, OverlapService, type OverlapVerdict } from "../../../conflicts";
 import type { EmbeddingProvider, EmbeddingStore } from "../../../embedding";
 import type { KnowledgeObject, KoService } from "../../../knowledge-object";
@@ -981,4 +987,180 @@ describe("N11b: Word-Riegel mit realem KA4-Dienst", () => {
       }
     },
   );
+});
+
+// M3c-R: K1–K6 aus tests/ka7-konflikt-im-panel/konflikt-strukturiert.test.ts.
+// Echte Login-Antwort, Sitzungsauflösung, Rechte, KO- und Konfliktdienst; nur das Modellurteil
+// ist kontrolliert. Solche Fälle gehören laut Dokumentweg-Harness in die Routensuite.
+const VERTRAGSFAELLE = ["K1", "K2", "K3", "K4", "K5", "K6"] as const;
+const ZUSATZFELDER = ["sourceHits", "sourceHitsTruncated", "quellenfund"];
+const ALTFELDER = ["duplicates", "conflicts", "konfliktpruefung", "answer", "note", "persisted"];
+
+async function vertragsAntworten(fall: (typeof VERTRAGSFAELLE)[number]) {
+  process.env.KLARWERK_ADDON_API = "1";
+  const { app, services, autor, admin } = await dokumentAufbau();
+  try {
+    const cookie = await loginCookie(app, "autor@m3c.test", "geheim12345");
+    expect(Object.keys(cookie)).toEqual(["cookie"]);
+    const text = "Homeoffice ist für alle Beschäftigten an drei Tagen pro Woche möglich.";
+    if (fall !== "K6") {
+      const id = await anlegen(app, autor, {
+        title: "Homeoffice-Regelung",
+        statement: "Homeoffice ist für alle Beschäftigten an zwei Tagen pro Woche möglich.",
+        // Neben dem Konflikt ein echter Quellenfund: der Vollvergleich darf nicht nur [] vergleichen.
+        bodyHtml: `<p>${text}</p>`,
+        type: "best_practice",
+        category: "Personal",
+        neededValidations: 1,
+      });
+      await validieren(app, admin, id);
+    }
+    const judge = vi.spyOn(services.reasoner, "judgeConflictOutcome").mockResolvedValue(
+      fall === "K5"
+        ? { verdict: null, failure: "no-model" }
+        : {
+            verdict: {
+              relation: "widerspruch",
+              older: null,
+              confidence: 0.95,
+              begruendung: "A erlaubt drei Tage, B zwei.",
+              zitat_a: "an drei Tagen pro Woche",
+              zitat_b: "an zwei Tagen pro Woche",
+            },
+          },
+    );
+    const duplicate = vi.spyOn(services.reasoner, "judgeDuplicate").mockResolvedValue(null);
+    const payload = {
+      text,
+      title: "Homeoffice-Regelung",
+      locale: "de",
+      ...(fall === "K3" ? {} : { want: "deep" }),
+      source: "transient-document",
+      confidentiality: fall === "K4" ? "vertraulich" : "intern",
+    };
+    try {
+      const bearerAntwort = await app.inject({
+        method: "POST",
+        url: "/api/check-text",
+        headers: autor,
+        payload,
+      });
+      const cookieAntwort = await app.inject({
+        method: "POST",
+        url: "/api/check-text",
+        headers: cookie,
+        payload,
+      });
+      return {
+        bearer: {
+          status: bearerAntwort.statusCode,
+          body: bearerAntwort.json() as Record<string, unknown>,
+        },
+        cookie: {
+          status: cookieAntwort.statusCode,
+          body: cookieAntwort.json() as Record<string, unknown>,
+        },
+      };
+    } finally {
+      judge.mockRestore();
+      duplicate.mockRestore();
+    }
+  } finally {
+    await app.close();
+  }
+}
+
+describe.each(VERTRAGSFAELLE)("M3c-R · Cookie/Bearer-Vertrag · %s", (fall) => {
+  it("a · Statuscode gleich: 200", async () => {
+    const { bearer, cookie } = await vertragsAntworten(fall);
+    expect(cookie.status).toBe(bearer.status);
+    expect(cookie.status).toBe(200);
+  });
+
+  it("b · Feldreihenfolge gleich und vollständig", async () => {
+    const { bearer, cookie } = await vertragsAntworten(fall);
+    expect(Object.keys(cookie.body)).toEqual(Object.keys(bearer.body));
+    expect(Object.keys(cookie.body)).toEqual([...ALTFELDER, ...ZUSATZFELDER]);
+  });
+
+  it("c · Altvertrag nach Entfernung ALLER drei Zusatzfelder gleich", async () => {
+    const { bearer, cookie } = await vertragsAntworten(fall);
+    const alt = (body: Record<string, unknown>) => {
+      const ohne = { ...body };
+      for (const feld of ZUSATZFELDER) {
+        delete ohne[feld];
+      }
+      return ohne;
+    };
+    expect(alt(cookie.body)).toEqual(alt(bearer.body));
+  });
+
+  it("d · vollständiger Vertrag mit Quellenfund UND konkreter K-Lage gleich", async () => {
+    const { bearer, cookie } = await vertragsAntworten(fall);
+    expect(cookie.body).toEqual(bearer.body);
+    expect(cookie.body.sourceHits).toHaveLength(fall === "K6" ? 0 : 1);
+    expect(cookie.body.sourceHitsTruncated).toBe(false);
+    expect(cookie.body.quellenfund).toEqual({
+      gelaufen: true,
+      grund: null,
+      geprueft: fall === "K6" ? 0 : 1,
+    });
+    const erwartet = {
+      gelaufen: ["K1", "K2", "K6"].includes(fall),
+      grund:
+        fall === "K3"
+          ? "nicht_angefordert"
+          : fall === "K4"
+            ? "vertraulich"
+            : fall === "K5"
+              ? "kein_modell"
+              : null,
+      kandidaten: ["K1", "K2", "K5"].includes(fall) ? 1 : 0,
+      ausgefallen: fall === "K5" ? 1 : 0,
+      verworfen: 0,
+    };
+    expect(cookie.body.konfliktpruefung).toEqual(erwartet);
+    if (fall === "K1" || fall === "K2") {
+      expect(cookie.body.conflicts).toEqual([
+        expect.objectContaining({
+          stellen: { eigen: "an drei Tagen pro Woche", quelle: "an zwei Tagen pro Woche" },
+          koTitle: "Homeoffice-Regelung",
+          pruefstand: "validiert",
+          confidence: 0.95,
+        }),
+      ]);
+    } else {
+      expect(cookie.body.conflicts).toEqual([]);
+    }
+    if (fall === "K4") {
+      expect(cookie.body.note).toContain("deterministisch");
+    }
+  });
+});
+
+it("M3c-R · fehlt set-cookie trotz erfolgreichem Login, bricht der Cookie-Helfer ab", async () => {
+  const app = buildApp(buildServices());
+  app.addHook("onSend", async (request, reply, payload) => {
+    if (request.url === "/api/auth/login") {
+      reply.removeHeader("set-cookie");
+    }
+    return payload;
+  });
+  try {
+    const registered = await app.inject({
+      method: "POST",
+      url: "/api/auth/register",
+      payload: {
+        name: "Cookieprobe",
+        email: "cookie@test.de",
+        password: "geheim12345",
+      },
+    });
+    expect(registered.statusCode).toBe(201);
+    await expect(loginCookie(app, "cookie@test.de", "geheim12345")).rejects.toThrow(
+      "Anmeldung ohne gültiges set-cookie-Sitzungscookie; Cookie-Test abgebrochen.",
+    );
+  } finally {
+    await app.close();
+  }
 });

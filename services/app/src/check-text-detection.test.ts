@@ -585,3 +585,67 @@ describe("JOB 3216: Quellenfund — Vertrag, Trennung, Rechte, Ausfall", () => {
     ).toEqual(["offen1", "ok1"]);
   });
 });
+
+// Ist-Stand, kein Sollwert. OFFEN: BEN 3216 R2 (archiv/3216/runde-2/ben.md:30):
+// „diese Suchgrenze bleibt ausdrücklich offen". Ein zulässiger Quellenfund hinter Rang 200
+// wird heute still weggelassen; sourceHitsTruncated meldet das nicht und DARF es nicht melden,
+// weil das Feld laut check-text-detection.ts:184-186 nie über verborgene Objekte Auskunft geben
+// soll. Wer dieses Verhalten ändert, ändert eine bewusste Grenze — dieser Test macht die Änderung
+// sichtbar, er segnet sie nicht ab. Q1b bleibt der unveränderte Gegenfall mit wenigen Treffern.
+it("Q6 · OFFEN: Pg-Deckel vor Rechtefilter lässt den zulässigen Quellenfund auf Rang 201 still aus", async () => {
+  // Alle ersten 201 sind validiert: Offene kämen nach Pg-Ausgabeordnung erst DAHINTER.
+  // Deshalb sind die 199 unzulässigen Zeilen abwechselnd vertraulich und Demo-Seed.
+  const verboten = Array.from({ length: 199 }, (_, i) =>
+    mitVolltext(`verborgen-${String(i).padStart(3, "0")}`, ABSATZ, {
+      trust: 100,
+      ...(i % 2 === 0 ? { confidentiality: "vertraulich" } : { demoSeed: true }),
+    }),
+  );
+  const amDeckel = mitVolltext("sichtbar-200", ABSATZ, { trust: 1 });
+  const dahinter = mitVolltext("sichtbar-201", ABSATZ, { trust: null });
+  // Absichtlich verkehrte Eingangsordnung: der Fake muss wirklich sortieren.
+  const seed = [
+    mitVolltext("offen", ABSATZ, { status: "offen", trust: 200 }),
+    dahinter,
+    amDeckel,
+    ...verboten.reverse(),
+  ];
+  const { ko, findSearchHits, effectiveSearchDocumentOf } = koService(seed);
+  findSearchHits.mockImplementation(async (q) =>
+    seed
+      .filter((k) =>
+        q.terms.some((term) => suchtextVon(k).toLowerCase().includes(term.toLowerCase())),
+      )
+      // search-projection-repo-pg.ts:662: validiert DESC, trust DESC NULLS LAST, ko_id.
+      .sort(
+        (a, b) =>
+          Number(b.status === "validiert") - Number(a.status === "validiert") ||
+          (b.trust ?? Number.NEGATIVE_INFINITY) - (a.trust ?? Number.NEGATIVE_INFINITY) ||
+          a.id.localeCompare(b.id),
+      )
+      .slice(0, q.limit ?? seed.length)
+      .map((k) => ({ koId: k.id, koVersion: k.version })),
+  );
+  const result = await checkText(
+    { text: ABSATZ },
+    {
+      ko,
+      overlaps: new OverlapService({ repo: new InMemoryOverlapRepo() }),
+    },
+  );
+  const { hits, lage, gedeckelt } = quellenfundVon(result);
+  expect(hits.map((h) => h.refId)).toEqual([amDeckel.id]);
+  expect(hits.map((h) => h.refId)).not.toContain(dahinter.id);
+  expect(hits[0]?.fundstelle).toContain(ABSATZ);
+  expect(gedeckelt).toBe(false);
+  expect(lage).toEqual({ gelaufen: true, grund: null, geprueft: 1 });
+  expect(findSearchHits).toHaveBeenCalledTimes(1);
+  expect(findSearchHits).toHaveBeenCalledWith({ terms: [ABSATZ], limit: 200 });
+  const geliefert: Awaited<ReturnType<KoService["findSearchHits"]>> | undefined =
+    await findSearchHits.mock.results[0]?.value;
+  expect(geliefert).toHaveLength(200);
+  expect(geliefert?.slice(0, 199).every((h) => h.koId.startsWith("verborgen-"))).toBe(true);
+  expect(geliefert?.[199]?.koId).toBe(amDeckel.id);
+  expect(effectiveSearchDocumentOf).toHaveBeenCalledTimes(1);
+  expect(effectiveSearchDocumentOf).toHaveBeenCalledWith(amDeckel.id);
+});

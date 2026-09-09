@@ -15,7 +15,9 @@ import { expect } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 
 export type App = ReturnType<typeof buildApp>;
-export type Auth = { authorization: string };
+export type Auth =
+  | { authorization: string; cookie?: never }
+  | { cookie: string; authorization?: never };
 
 /** Der längere der beiden Sätze — der charakteristische Ausschnitt. */
 export const S1 =
@@ -40,7 +42,7 @@ export function langerBody(text: string): string {
   return `<p>${FUELLER}</p><p>${text}</p>`;
 }
 
-export async function login(app: App, email: string, password: string): Promise<Auth> {
+async function loginAntwort(app: App, email: string, password: string) {
   const res = await app.inject({
     method: "POST",
     url: "/api/auth/login",
@@ -49,14 +51,36 @@ export async function login(app: App, email: string, password: string): Promise<
   if (res.statusCode !== 200) {
     throw new Error(`Anmeldung ${email} fehlgeschlagen: ${res.statusCode} ${res.body}`);
   }
+  return res;
+}
+
+export async function login(app: App, email: string, password: string): Promise<Auth> {
+  const res = await loginAntwort(app, email, password);
   return { authorization: `Bearer ${res.json().token}` };
+}
+
+/** Ausschließlich das Sitzungscookie der Login-Antwort; kein Rückfall auf den Token im Rumpf. */
+export async function loginCookie(
+  app: App,
+  email: string,
+  password: string,
+): Promise<{ cookie: string; authorization?: never }> {
+  const res = await loginAntwort(app, email, password);
+  const gesetzt = res.headers["set-cookie"];
+  const kopf = Array.isArray(gesetzt) ? gesetzt[0] : gesetzt;
+  const cookie = kopf?.split(";")[0]?.trim();
+  if (!cookie || !/^[^=;]+=[^;]+$/.test(cookie)) {
+    throw new Error("Anmeldung ohne gültiges set-cookie-Sitzungscookie; Cookie-Test abgebrochen.");
+  }
+  return { cookie };
 }
 
 /**
  * Ein Aufbau mit Admin und zwei Experten. Der Endpunkt hängt am Flag `KLARWERK_ADDON_API`; die
  * Suiten setzen es selbst und stellen die Umgebung danach wieder her.
  */
-export async function aufbau() {
+export async function aufbau(anmeldeweg: "bearer" | "cookie" = "bearer") {
+  const anmelden = anmeldeweg === "cookie" ? loginCookie : login;
   const services = buildServices();
   const app = buildApp(services);
   await app.inject({
@@ -64,7 +88,7 @@ export async function aufbau() {
     url: "/api/auth/register",
     payload: { name: "Admin", email: "admin@m3c.test", password: "geheim12345" },
   });
-  const admin = await login(app, "admin@m3c.test", "geheim12345");
+  const admin = await anmelden(app, "admin@m3c.test", "geheim12345");
   for (const email of ["autor@m3c.test", "fremd@m3c.test"]) {
     const res = await app.inject({
       method: "POST",
@@ -76,8 +100,8 @@ export async function aufbau() {
       throw new Error(`Konto ${email} nicht angelegt: ${res.statusCode} ${res.body}`);
     }
   }
-  const autor = await login(app, "autor@m3c.test", "geheim12345");
-  const fremd = await login(app, "fremd@m3c.test", "geheim12345");
+  const autor = await anmelden(app, "autor@m3c.test", "geheim12345");
+  const fremd = await anmelden(app, "fremd@m3c.test", "geheim12345");
   return { app, services, admin, autor, fremd };
 }
 

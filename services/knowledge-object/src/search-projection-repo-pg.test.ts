@@ -170,6 +170,40 @@ describe("G27: PgKoSearchProjectionRepo — Schreibwege", () => {
 });
 
 describe("G27: PgKoSearchProjectionRepo — die Standardsuche", () => {
+  it("M3c-R · PostgreSQL begrenzt die Vorgabesuche auf 200 VOR jedem Rechtefilter", async () => {
+    const { pool, calls } = fakePool();
+    await new PgKoSearchProjectionRepo(pool).findActive({
+      terms: ["Portioniereinheit"],
+      limit: 200,
+    });
+    expect(suchAbfragen(calls)).toHaveLength(1);
+    const { sql, params } = suchAbfragen(calls)[0] as { sql: string; params: unknown[] };
+    const limits = [...sql.matchAll(/\bLIMIT\s+\$(\d+)/gi)];
+    expect(limits).toHaveLength(1);
+    expect(sql.match(/\bLIMIT\b/gi)).toHaveLength(1);
+    expect(params[Number(limits[0]?.[1]) - 1]).toBe(200);
+    expect(sql.replace(/\s+/g, " ").trim()).toMatch(
+      /ORDER BY \(k.status='validiert'\) DESC, \(k.data->>'trust'\)::int DESC NULLS LAST, p.ko_id LIMIT \$\d+$/,
+    );
+    expect(sql.match(/\bORDER BY\b/gi)).toHaveLength(1);
+    // Bestandsausdrücke: repo-pg.ts (generierte Sichtbarkeitsspalten aus JSON-Feldern),
+    // app/src/sichtbarkeit.ts (confidentiality_key/author_key im SQL-Trim),
+    // types.ts KnowledgeObject.demoSeed und check-text-detection.ts istPoolKandidat.
+    // deletedAt gehört zum Lifecycle und IST bereits im JOIN; es ist kein Rechtefilter.
+    // Feldnamen statt nur einer SQL-Schreibweise erkennen auch ->, ->> und andere Aliase.
+    for (const ausdruck of [
+      "confidentiality",
+      "confidentiality_key",
+      "demoSeed",
+      "author",
+      "author_key",
+    ]) {
+      expect(sql, `Vorgabesuche enthält bereits Rechtebedingung: ${ausdruck}`).not.toContain(
+        ausdruck,
+      );
+    }
+  });
+
   it("joint auf die AKTIVE KO-Version, schließt Getrashtes aus und ist parametrisiert", async () => {
     const { pool, calls } = fakePool([
       {
