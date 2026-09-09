@@ -1,9 +1,9 @@
 {
-  "version": 5,
-  "erhoben_am": "2026-09-08",
+  "version": 6,
+  "erhoben_am": "2026-09-09",
   "erhoben_mit": "npx playwright test --config playwright.smoke.config.ts --list --reporter=json (KLARWERK_SMOKE_MODE=gate)",
   "zweck": "Sollmanifest der Smoke-Mengen je Projekt. Drift (Hinzufuegen, Entfernen, Umbenennen) macht die Mengenpruefung rot.",
-  "gesamt_fallinstanzen": 131,
+  "gesamt_fallinstanzen": 140,
   "projekte": {
     "setup-zustand": {
       "soll": 1,
@@ -18,7 +18,7 @@
       ]
     },
     "chromium": {
-      "soll": 40,
+      "soll": 43,
       "titel": [
         "a18-live-region-browser.spec.ts › KALIBRIERUNG A · die generische CDP-Sitzung gibt Rolle, Ignoriert und die drei Live-Felder wirklich aus",
         "a18-live-region-browser.spec.ts › KALIBRIERUNG B · Playwrights ARIA-Repraesentation nennt dieselbe Rolle, fuehrt aber KEINE Live-Eigenschaft",
@@ -43,6 +43,9 @@
         "navguard-back-probe.spec.ts › Kante 4: Vorwärts nach „Hier bleiben\" funktioniert unverändert",
         "navguard-back-probe.spec.ts › Kante 6: Speicherfehler bleibt am Ausgangsort, URL und Verlauf unverändert",
         "navguard-back-probe.spec.ts › Kante 7: zwei aufeinanderfolgende bewachte Seiten übergeben die Zuständigkeit sauber",
+        "nutzungshinweis-buehne.spec.ts › Diagnose: erst nach dem Kopfband-Klick erscheinender Nutzungshinweis verliert das Ziel nicht",
+        "nutzungshinweis-buehne.spec.ts › Diagnose: offener Nutzungshinweis lässt den Kopfband-Klick navigieren",
+        "nutzungshinweis-buehne.spec.ts › Diagnose: serverseitig bestätigter Nutzungshinweis bleibt nach Neuladen erledigt",
         "smoke-umgebung.spec.ts › Umgebung des Smoke-Servers ist die zugesagte",
         "ui-smoke.spec.ts › Alle Kernrouten rendern (keine weiße Seite)",
         "ui-smoke.spec.ts › Fragen antwortet ehrlich (Antwort oder Wissenslücke, nie erfunden) @modell",
@@ -63,7 +66,7 @@
       ]
     },
     "firefox": {
-      "soll": 40,
+      "soll": 43,
       "titel": [
         "a18-live-region-browser.spec.ts › KALIBRIERUNG A · die generische CDP-Sitzung gibt Rolle, Ignoriert und die drei Live-Felder wirklich aus",
         "a18-live-region-browser.spec.ts › KALIBRIERUNG B · Playwrights ARIA-Repraesentation nennt dieselbe Rolle, fuehrt aber KEINE Live-Eigenschaft",
@@ -88,6 +91,9 @@
         "navguard-back-probe.spec.ts › Kante 4: Vorwärts nach „Hier bleiben\" funktioniert unverändert",
         "navguard-back-probe.spec.ts › Kante 6: Speicherfehler bleibt am Ausgangsort, URL und Verlauf unverändert",
         "navguard-back-probe.spec.ts › Kante 7: zwei aufeinanderfolgende bewachte Seiten übergeben die Zuständigkeit sauber",
+        "nutzungshinweis-buehne.spec.ts › Diagnose: erst nach dem Kopfband-Klick erscheinender Nutzungshinweis verliert das Ziel nicht",
+        "nutzungshinweis-buehne.spec.ts › Diagnose: offener Nutzungshinweis lässt den Kopfband-Klick navigieren",
+        "nutzungshinweis-buehne.spec.ts › Diagnose: serverseitig bestätigter Nutzungshinweis bleibt nach Neuladen erledigt",
         "smoke-umgebung.spec.ts › Umgebung des Smoke-Servers ist die zugesagte",
         "ui-smoke.spec.ts › Alle Kernrouten rendern (keine weiße Seite)",
         "ui-smoke.spec.ts › Fragen antwortet ehrlich (Antwort oder Wissenslücke, nie erfunden) @modell",
@@ -108,7 +114,7 @@
       ]
     },
     "webkit": {
-      "soll": 40,
+      "soll": 43,
       "titel": [
         "a18-live-region-browser.spec.ts › KALIBRIERUNG A · die generische CDP-Sitzung gibt Rolle, Ignoriert und die drei Live-Felder wirklich aus",
         "a18-live-region-browser.spec.ts › KALIBRIERUNG B · Playwrights ARIA-Repraesentation nennt dieselbe Rolle, fuehrt aber KEINE Live-Eigenschaft",
@@ -133,6 +139,9 @@
         "navguard-back-probe.spec.ts › Kante 4: Vorwärts nach „Hier bleiben\" funktioniert unverändert",
         "navguard-back-probe.spec.ts › Kante 6: Speicherfehler bleibt am Ausgangsort, URL und Verlauf unverändert",
         "navguard-back-probe.spec.ts › Kante 7: zwei aufeinanderfolgende bewachte Seiten übergeben die Zuständigkeit sauber",
+        "nutzungshinweis-buehne.spec.ts › Diagnose: erst nach dem Kopfband-Klick erscheinender Nutzungshinweis verliert das Ziel nicht",
+        "nutzungshinweis-buehne.spec.ts › Diagnose: offener Nutzungshinweis lässt den Kopfband-Klick navigieren",
+        "nutzungshinweis-buehne.spec.ts › Diagnose: serverseitig bestätigter Nutzungshinweis bleibt nach Neuladen erledigt",
         "smoke-umgebung.spec.ts › Umgebung des Smoke-Servers ist die zugesagte",
         "ui-smoke.spec.ts › Alle Kernrouten rendern (keine weiße Seite)",
         "ui-smoke.spec.ts › Fragen antwortet ehrlich (Antwort oder Wissenslücke, nie erfunden) @modell",

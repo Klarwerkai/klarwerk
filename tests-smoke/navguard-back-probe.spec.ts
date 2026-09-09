@@ -54,8 +54,9 @@
 // der Adresse.
 //
 // Aufruf: npm run smoke:ui (erwartet gebautes apps/web/dist).
-import { type Page, expect, test } from "@playwright/test";
+import type { Page } from "@playwright/test";
 import { ensureLoggedIn } from "./support/auth";
+import { expect, test } from "./support/nav-diagnose-fixture";
 
 test.describe.configure({ mode: "serial" });
 
