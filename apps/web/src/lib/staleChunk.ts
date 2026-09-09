@@ -20,6 +20,31 @@ export const STALE_BUNDLE_KEY = "app.staleBundle";
 // Ein GENERISCHER Error aus echter Parse-Logik (mammoth/fflate/pdfjs — z. B. ZIP-Struktur kaputt)
 // erfüllt KEINES der Kriterien: er trägt weder den Chunk-Namen noch ist er ein TypeError mit
 // import()-Formulierung — er bleibt IMMER ein Parse-Fehler mit Ursache, nie „bitte neu laden".
+// ------------------------------------------------------------------------------------------------
+// JOB 3423 · NAVIGATION-CHUNK-STAND — DIE ANNAHME „name === TypeError" IST JETZT GEMESSEN.
+// ------------------------------------------------------------------------------------------------
+//
+// Pedis Fall vom 09.09.2026 20:4x: alter Tab, Klick auf „Duplikate", und statt der ruhigen Karte
+// stand die generische da — „Failed to fetch dynamically imported module:
+// https://app.klarwerk.ai/assets/Duplicates-CIbJ3zEu.js". Codex' Auslieferungsbefund (20:47): genau
+// dieses Stück antwortet HTTP 404 mit `text/plain`, während `GET /` auf einen anderen Namen zeigt.
+//
+// DIE FRAGE, DIE DARAN HING: die Bedingung `error.name === "TypeError"` (unten) war eine ANNAHME
+// über die Fehlerklasse des Browsers. Sie war nirgends gemessen — jsdom führt keine Modul-Skripte
+// aus, und der vorhandene Fall A3 baute sich sein Fehlerobjekt selbst.
+//
+// GEMESSEN (echtes Chromium, `tests/ladefehler-alter-tab/echter-ladefehler-chromium.test.ts`, vier
+// Serverantworten: 404 `text/plain` — Codex' Fall —, 404 `text/html`, 200 `text/html` als
+// SPA-Rückfall und abgebrochene Verbindung): ALLE VIER ergeben `name: "TypeError"` mit
+// `message: "Failed to fetch dynamically imported module: <adresse>"`. Die Bedingung greift also;
+// die Erkennung wurde deshalb NICHT erweitert — eine Erweiterung ohne roten Fall wäre Erfindung.
+// Ändert ein Browser-Update den Wortlaut, wird jener Prüfstand rot, statt dass hier still
+// danebengegriffen wird.
+//
+// WAS DIE ERKENNUNG WEITERHIN AUSDRÜCKLICH NICHT EINSCHLIESST: einen gewöhnlichen `Error` mit der
+// Import-Formulierung im Text (Gegenprobe `tests/capture/stale-chunk.test.ts:56`) und jeden
+// Parse-Fehler der Lesepfade — auch an der Fehlergrenze (Gegenproben A9 in
+// `tests/ladefehler-alter-tab/ladefehler-zeigt-neue-version.test.tsx`).
 const IMPORT_TYPEERROR_RE =
   /failed to fetch dynamically imported module|error loading dynamically imported module|importing a module script failed/i;
 const VITE_PRELOAD_RE = /unable to preload/i;

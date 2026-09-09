@@ -290,8 +290,23 @@ describe("JOB 3131 T2 · die Browser-Gruppe ist genau die Menge mit Chromium in 
     // starten: er verstellt das Fenster (320/360/390 px) und bedient echte Tasten; kein bestehender
     // Prüfstand reicht beides für diese Fläche heraus. Die Last bleibt klein: EIN Browser, EINE
     // Seite, vierzehn Fälle, im eigenen Lauf 2,1 s, Abbau 5,89 ms.
-    expect(graph.startdateien.length).toBe(23);
+    // JOB 3423 (NAVIGATION-CHUNK-STAND): ZWEI weitere eigene Startstellen, beide in
+    // `tests/ladefehler-alter-tab/`. Sie MÜSSEN Playwright selbst starten, weil die Frage, die sie
+    // beantworten, in jsdom gar nicht gestellt werden kann: jsdom führt keine Modul-Skripte aus und
+    // hat keinen Netzstapel, also weiss es nicht, WELCHES Fehlerobjekt ein Browser wirft, wenn ein
+    // Chunk nach einer Veröffentlichung weg ist (`error.name === "TypeError"` war bis hierher eine
+    // ungemessene Annahme in `apps/web/src/lib/staleChunk.ts`).
+    //   · `echter-ladefehler-chromium.test.ts` misst `name`/`message` an vier Serverantworten —
+    //     EIN Browser, EINE Seite, ohne `dist`, im eigenen Lauf 0,6 s.
+    //   · `pedis-fall-chromium.test.ts` fährt Pedis Klick in der gebauten App — EIN Browser, EINE
+    //     Seite. Der gemeinsame Prüfstand `h1-chromium.ts` trägt ihn nicht: dessen `strecke()`
+    //     verlangt das Zielbild `design/klarwerk/Main.dc.html` (h1-chromium.ts:172-174), das dem
+    //     Cloud-Prüfstand nicht vorliegt, und reicht weder eine eigene Route-Regel für ein
+    //     gesperrtes Stück noch `addInitScript` für den `vite:preloadError`-Mitschnitt heraus.
+    expect(graph.startdateien.length).toBe(25);
     for (const bekannt of [
+      "tests/ladefehler-alter-tab/echter-ladefehler-chromium.test.ts",
+      "tests/ladefehler-alter-tab/pedis-fall-chromium.test.ts",
       "tests/ux25-beleg-zum-original/belegkarte-schmal-chromium.test.tsx",
       "tests/d1-meine-entwuerfe/zugang-schmal-chromium.test.ts",
       "tests/design/h4-harness.ts",

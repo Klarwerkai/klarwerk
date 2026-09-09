@@ -26,6 +26,22 @@
 //          bleiben" lädt nicht, „Verwerfen" lädt genau einmal.
 //   A6     OHNE `NavGuardProvider` → die Grenze stürzt nicht selbst ab; der Knopf lädt direkt neu.
 //   A7     Nichts lädt von selbst: nach Zeitvorlauf und erneutem Render ist der Zähler 0.
+//
+// ------------------------------------------------------------------------------------------------
+// JOB 3423 · NAVIGATION-CHUNK-STAND — A8: DERSELBE WEG, ABER MIT DEM GEMESSENEN FEHLEROBJEKT.
+// ------------------------------------------------------------------------------------------------
+//
+// DIE LÜCKE IN A3: er fährt den echten WEG (`lazy()` → `<Suspense>` → Fehlergrenze), wirft darin
+// aber `ladefehler()` — ein Objekt, das DIESER TEST baut. Damit steht und fällt A3 mit der Annahme,
+// der Browser werfe genau das. Geprüft war diese Annahme nirgends; Pedis Fall vom 09.09. fiel durch
+// genau diese Lücke, und die Frage „was wirft der Browser wirklich?" liess sich hier nicht stellen:
+// jsdom führt keine Modul-Skripte aus.
+//
+// A8 nimmt deshalb die in einem ECHTEN Chromium gemessenen Paare (`gemessene-browserfehler.ts`,
+// gemessen von `echter-ladefehler-chromium.test.ts` an vier Serverantworten, darunter Codex'
+// 404/`text/plain`) und schickt JEDES davon durch denselben echten Weg. Der Prüfstand daneben
+// (`pedis-fall-chromium.test.ts`) fährt zusätzlich die ganze gebaute App im Browser — A8 ist der
+// schnelle Fall, der bei jeder Änderung an der Fehlergrenze mitläuft.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -46,6 +62,7 @@ import { ErrorBoundary } from "../../apps/web/src/components/ErrorBoundary";
 import { Splash } from "../../apps/web/src/components/Splash";
 import i18n from "../../apps/web/src/i18n";
 import { STALE_BUNDLE_KEY } from "../../apps/web/src/lib/staleChunk";
+import { GEMESSENE_LADEFEHLER, MESSADRESSE, nachbau } from "./gemessene-browserfehler";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -361,4 +378,70 @@ describe("JOB 3390 · der Ladefehler im alten Tab zeigt die Neu-laden-Karte", ()
       ersatz.zurueck();
     }
   });
+
+  // JOB 3423: nicht EIN gebautes Objekt, sondern JEDES gemessene — und durch den echten Weg.
+  for (const gemessen of GEMESSENE_LADEFEHLER) {
+    it(`A8 (${gemessen.lage}): das im Browser gemessene Objekt führt zur ruhigen Karte`, async () => {
+      const Seite = lazy(() => Promise.reject(nachbau(gemessen)));
+      await mounten(
+        createElement(
+          NavGuardProvider,
+          null,
+          createElement(
+            Suspense,
+            { fallback: createElement(Splash) },
+            createElement(ErrorBoundary, null, createElement(Seite)),
+          ),
+        ),
+      );
+
+      expect(
+        karte(),
+        `${gemessen.antwort} → ${gemessen.name}: ${gemessen.message} landet in der generischen Karte`,
+      ).not.toBeNull();
+      expect(text()).toContain(i18n.t(STALE_BUNDLE_KEY));
+      expect(neuLadenKnopf().textContent?.trim()).toBe(i18n.t("version.neu.neuLaden"));
+      expect(text(), "die generische Fehlerkarte steht daneben").not.toContain(
+        i18n.t("error.title"),
+      );
+      // Die Chunk-Adresse gehört in die Konsole, nicht vor den Menschen.
+      expect(text()).not.toContain(MESSADRESSE);
+      expect(text(), "„Lädt …“ wäre jetzt eine Lüge").not.toContain(i18n.t("state.loading"));
+    });
+  }
+
+  // JOB 3423 · DIE ZWEITE GEGENPROBE, AN DER GRENZE STATT NUR AM ERKENNER. `tests/capture/
+  // stale-chunk.test.ts:47-51` prüft diese Fehler als Werte; hier laufen sie durch DENSELBEN Weg
+  // wie A8 (`lazy()` → `<Suspense>` → Fehlergrenze). Ein Lesefehler aus mammoth/fflate/pdfjs darf
+  // nie „bitte neu laden" sagen — er hat eine Ursache, und die gehört in die Detailzeile.
+  const PARSEFEHLER = [
+    "End of central directory record signature not found",
+    "Could not find main document part",
+    "invalid zip data",
+  ];
+  for (const grund of PARSEFEHLER) {
+    it(`A9 (${grund}): ein Parse-Fehler behält die generische Karte samt Detailzeile`, async () => {
+      const Seite = lazy(() => Promise.reject(new Error(grund)));
+      await mounten(
+        createElement(
+          NavGuardProvider,
+          null,
+          createElement(
+            Suspense,
+            { fallback: createElement(Splash) },
+            createElement(ErrorBoundary, null, createElement(Seite)),
+          ),
+        ),
+      );
+
+      expect(
+        karte(),
+        `„${grund}“ wird als neue Version ausgegeben — das wäre eine Lüge über die Ursache`,
+      ).toBeNull();
+      expect(text()).toContain(i18n.t("error.title"));
+      expect(text(), "die ehrliche Detailzeile ist weg").toContain(
+        `${i18n.t("error.detail")}: ${grund}`,
+      );
+    });
+  }
 });
