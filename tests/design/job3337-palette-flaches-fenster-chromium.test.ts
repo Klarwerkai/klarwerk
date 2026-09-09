@@ -102,18 +102,33 @@ const LAGE = fn(`() => {
   };
 }`);
 
-/** Die Palette frisch öffnen — über das echte Kürzel, nicht über einen Testhaken. */
-async function paletteOeffnen(): Promise<void> {
+/**
+ * Nach dem Mounten der Startseite einmal Control+k über die echte Tastatur drücken, dann auf das
+ * fokussierte Suchfeld warten (CommandPalette.tsx:140 setzt den Fokus zeitversetzt). `body`
+ * existiert schon vor den useEffect-Zuhörern (CommandPalette.tsx:128–129).
+ */
+async function paletteOeffnen(fenster = { width: BREITE, height: HOEHE }): Promise<void> {
   const seite = seiteRoh();
-  await seite.setViewportSize({ width: BREITE, height: HOEHE });
-  await wechsle(stand, "/start", "body");
+  await seite.setViewportSize(fenster);
+  await wechsle(stand, "/start", '[data-testid="page-start"]');
   expect(stand.fehler, "die Seite kam nicht hoch").toBeNull();
-  await seite.evaluate(fn(`() => window.dispatchEvent(new Event('open-command-palette'))`));
-  await seite.waitForFunction(
-    fn(`() => document.querySelector('[data-cmd="suchfeld"]') !== null`),
-    undefined,
-    { timeout: 15_000 },
-  );
+  await seite.keyboard.press("Control+k");
+  await seite
+    .waitForFunction(
+      fn(`() => {
+        const suchfeld = document.querySelector('[data-cmd="suchfeld"]');
+        return suchfeld !== null && document.activeElement === suchfeld;
+      }`),
+      undefined,
+      { timeout: 15_000 },
+    )
+    .catch((ursache: unknown) => {
+      if (!(ursache instanceof Error) || ursache.name !== "TimeoutError") throw ursache;
+      throw new Error(
+        "Die Palette hat auf das echte Kürzel Control+k nicht bedienbar geöffnet (Suchfeld fehlt oder hat keinen Fokus), obwohl die Startseite stand.",
+        { cause: ursache },
+      );
+    });
 }
 
 describe("JOB 3337 · L · die Liste „Gehe zu …“ passt ins flache Fenster", () => {
@@ -196,14 +211,7 @@ describe("JOB 3337 · L · die Liste „Gehe zu …“ passt ins flache Fenster"
 
   it("L3 · KALIBRIERUNG: bei hohem Fenster bleibt die gewohnte Listenhöhe erhalten", async () => {
     const seite = seiteRoh();
-    await seite.setViewportSize({ width: 1280, height: 900 });
-    await wechsle(stand, "/start", "body");
-    await seite.evaluate(fn(`() => window.dispatchEvent(new Event('open-command-palette'))`));
-    await seite.waitForFunction(
-      fn(`() => document.querySelector('[data-cmd="suchfeld"]') !== null`),
-      undefined,
-      { timeout: 15_000 },
-    );
+    await paletteOeffnen({ width: 1280, height: 900 });
     const lage = await seite.evaluate<Lage>(LAGE);
     // 320 px ist die gewollte Obergrenze (`max-h-80`). Sie soll NICHT verschwunden sein — sonst
     // hätte die Reparatur die Liste auf hohen Bildschirmen unbemerkt wachsen lassen.
