@@ -56,9 +56,9 @@ const ACHSEN: Achse[] = [
   {
     kennung: "name",
     wo: "pfad",
-    muster: /klara/i,
+    muster: /klara|^tests\/browser-doku\//i,
     zweck:
-      "Das D2-Verfahren: Dateiname traegt „klara“. Bleibt drin, damit die Zahl der davon " +
+      "Das D2-Verfahren: Dateiname traegt „klara“ oder liegt unter browser-doku. Bleibt drin, damit die Zahl der davon " +
       "verfehlten Dateien messbar bleibt.",
     positiv: "tests/help/klara-registry.test.ts",
     gegenprobe: "tests/app/mega40-token-disziplin.test.ts",
@@ -135,6 +135,8 @@ const INVENTAR: readonly string[] = [
   "tests/dok1-export-wahrheit/faq-export-rollenausnahme.test.ts",
   "tests/dok1-export-wahrheit/faq-anzeigeweg.test.tsx",
   // JOB 3203: ladbares Browser-Paket und echte Vorschau-Skripte; K2 meldete beide Pfade.
+  // JOB 3413: browser-doku ist der Dokumentationsvertrag des Browser-Pakets (Achse name).
+  "tests/browser-doku/anleitung-stand.test.ts",
   "tests/klara-browser/package.test.ts",
   "tests/klara-browser/panel.test.tsx",
   // JOB 3278 CHR-01/02/03: die Seitenleiste selbst — Manifestvertrag, Gestenreihenfolge beim
@@ -918,7 +920,8 @@ describe("JOB 920 · K — das Klara-Regressionsinventar ist ableitbar, nicht be
     // JOB 3366: `tests/ki-fragment-sichtbar/flaeche-klara-panel.test.ts` trägt „klara“ im PFAD und
     // wird von keiner Inhaltsachse gefunden. GEMESSEN, NICHT GESETZT: mit dem Inventareintrag und
     // noch unverändertem Zähler meldete der Lauf `expected 50 to be 49`.
-    expect(nurName.length).toBe(50);
+    // JOB 3413: der Dokumentationswächter unter browser-doku ergänzt die Namensachse.
+    expect(nurName.length).toBe(51);
     expect(verfehlt.length).toBeGreaterThanOrEqual(25);
     expect(verfehlt.length + nurName.length).toBe(GEFUNDEN.length);
   });
