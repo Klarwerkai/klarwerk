@@ -1903,7 +1903,35 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // braucht KEIN erneutes Sideload.
     // GEMESSEN: tests/word-vergleich (40 Faelle in vier Dateien), tests/app/word-addin (150 Faelle
     // in sieben Dateien), Waechterlauf (Inventar, Inhalts-Pin, Aufrufer, Theme, Frische, Tor).
-    const PIN = "a83c661194ca024ba9501d0a21af428a5f9aff1e7ad04a3b7d8a297216bda77b";
+    //
+    // JOB 3366 · KI-FRAGMENT-SICHTBAR (09.09.2026) — AUSLIEFERUNGSFOLGEN GEPRUEFT, BEVOR DER PIN
+    // WANDERTE. VORHERHASH taskpane.html: `a83c661194ca024ba9501d0a21af428a5f9aff1e7ad04a3b7d8a297216bda77b`.
+    //
+    // ANLASS: Eine am Token-Limit abgeschnittene Modellantwort sah im Panel aus wie eine ganze.
+    // Der Abbruch war seit JOB 3239 serverintern bekannt und stand seit JOB 3276 R3 als Lauf-Spur
+    // fuer den Aufrufer bereit — nur las ihn auf dem Antwortweg niemand.
+    //
+    // GEAENDERT WURDE IM FENSTER GENAU DREIERLEI:
+    //   · EIN neues DOM-Element `<p id="ask-fragment">` in der Antwortkarte, Geschwister des
+    //     Ungeprueft-Satzes, mit zwei Stilregeln (Masse wie `#ask-ungeprueft`, Farbe `--warn-text`).
+    //   · EIN neuer Woerterbuch-Schluessel `askFragment` in ALLEN DREI Sprachen (de/en/nl),
+    //     wortgleich mit `ai.truncated.hint` der Web-App.
+    //   · `performAsk` LIEST das bereits gesendete Antwortfeld `result.abgeschnitten` (Beweislast-
+    //     Umkehr wie bei `citedSources`: nur ein Objekt mit nichtleerem `finishReason` gilt) und
+    //     traegt es am Ergebnis NUR MIT, wenn es eine Tatsache ist (`{ abgeschnitten: true }`, sonst
+    //     gar kein Feld — der Spiegel-Vertrag mit `apps/web/src/lib/wordAddin.ts` bleibt damit an
+    //     jedem nicht abgeschnittenen Ergebnis gleich, word-addin-ask.test.ts Teil 3).
+    //     `renderAskFragment` fuellt bzw. leert das Element — gerufen aus renderAskOutcome,
+    //     setLang und resetAskResult, also an denselben drei Stellen wie renderAskUngeprueft.
+    //
+    // KEIN neues `fetch(`, KEIN neues Abrufziel, KEIN geaenderter Anfragekoerper (der Weg bleibt
+    // `POST /api/ask` mit `mode: "retrieval-only"`), KEIN Manifest, KEINE geaenderte CSP, kein
+    // neues Recht, keine neue Word-API, keine geaenderte Frequenz. Die Nutzlast waechst um NICHTS;
+    // gelesen wird ein Feld, das der Server ohnehin sendet. Ein installiertes Add-in braucht KEIN
+    // erneutes Sideload — der Stempel-Mechanismus traegt die neue Fassung wie bisher.
+    // GEMESSEN: tests/ki-fragment-sichtbar (35 Faelle in drei Dateien, davon 11 am geladenen
+    // Fenster), Waechterlauf (Inventar, Inhalts-Pin, Aufrufer, Theme, Frische, Tor).
+    const PIN = "01a4c863dbf90a84008a61242dbf18fbbd9232589941064ea378a2a348d4c820";
     const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
     expect(
       ist,

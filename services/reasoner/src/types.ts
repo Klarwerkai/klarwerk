@@ -105,6 +105,38 @@ export interface AnswerStep {
   snippet: string | null; // FR-ASK-06: konkrete Belegstelle/Textstelle der Quelle.
 }
 
+// ================================================================================================
+// JOB 3366 · KI-FRAGMENT-SICHTBAR — DER ABBRUCH IST EINE TATSACHE DES ANBIETERS, KEIN VERDACHT.
+// ================================================================================================
+//
+// JOB 3239 hat `finish_reason: "length"` MIT Inhalt am HTTP-Chokepoint erkannt und serverintern
+// gemeldet; JOB 3276 R3 hat denselben Befund zusätzlich als Lauf-Spur hinterlegt
+// (`vermerkeAbbruch` / `mitAbbruchBefund`, provider-model.ts) — für den Aufrufer, der ihn
+// AUSWERTEN will. Bis JOB 3366 hat ihn nur `assistText` ausgewertet; auf dem Antwort- und dem
+// Extraktionsweg ging das Fragment als scheinbar vollständige Auskunft an den Menschen.
+//
+// DIESES FELD IST DER TRANSPORT AN DIE FLÄCHE. Drei Zusagen, jede ist ein Testfall
+// (tests/ki-fragment-sichtbar):
+//  1. ANWESENHEIT IST DIE AUSSAGE. Gesetzt heißt „der Anbieter hat den Abbruch gemeldet"; fehlend
+//     heißt „nicht gemeldet". Es gibt kein `false` und keine positive Gegenaussage — „vollständig"
+//     wird nirgends behauptet, weil niemand es festgestellt hat.
+//  2. NIE GERATEN. Der Wert entsteht AUSSCHLIESSLICH aus `finish_reason` des Anbieters, nie aus
+//     der Länge, dem letzten Zeichen oder der Form des Antworttexts.
+//  3. NUR METADATEN. Budgetfeld, Budget, finish_reason und Zeichenzahl — nie Antwort-, Denk- oder
+//     Prompttext, nie ein Schlüssel. Dieselbe Grenze, die der Serverlog-Weg seit JOB 3239 hält.
+//
+// Der Antworttext selbst bleibt davon UNBERÜHRT und zeichengleich (JOB 3239, Fall A2).
+export interface AbbruchBefund {
+  /** Der Wortlaut des Anbieterfelds, das den Abbruch belegt — heute immer `"length"`. */
+  finishReason: string;
+  /** Der NAME der gesendeten Budgetzahl (`max_tokens` / `max_completion_tokens`), JOB 3222. */
+  budgetFeld: string;
+  /** Die Budgetzahl, die WIRKLICH im Request stand. */
+  budget: number;
+  /** Die Länge des gelieferten Fragments in Zeichen — nie sein Inhalt. */
+  zeichen: number;
+}
+
 export interface AnswerResult {
   answered: boolean;
   answer: string | null;
@@ -135,6 +167,11 @@ export interface AnswerResult {
   // unverändert ohne sie. Deshalb hier optional — die Zusage „immer gesetzt" gilt ab dem
   // Dienst und ist genau dort getestet.
   aiGenerated?: AiGeneratedMark;
+  // JOB 3366: der belegte Abbruchbefund DIESER Antwort (Vertrag und Grenzen bei `AbbruchBefund`).
+  // Gesetzt NUR, wenn der ausgelieferte `answer`-Text der abgeschnittene MODELLTEXT ist. Gibt der
+  // Deckungsrückfall stattdessen den Wortlaut einer Quelle aus (JOB 2659/3353/3365), fehlt das Feld:
+  // dieser Text ist vollständig, und ein Unvollständigkeits-Hinweis daran wäre eine Falschaussage.
+  abgeschnitten?: AbbruchBefund;
 }
 
 export interface StructureResult {
@@ -200,6 +237,12 @@ export interface ExtractResult {
   points: ExtractedPoint[];
   note: string | null; // ehrliche Erklärung, wenn keine Punkte geliefert werden können
   demo: boolean; // true = deterministischer Fallback (kein Modell)
+  // JOB 3366: derselbe belegte Abbruchbefund wie am Antwortvertrag. Er ist hier NICHT dasselbe wie
+  // `note`: `note` sagt „ein Abschnitt liess sich nicht auswerten" und leitet das aus einem
+  // gescheiterten JSON-Parser AB; dieses Feld ist die Meldung des ANBIETERS, dass sein Budget
+  // aufgebraucht war. Bei mehreren Abschnitten steht der Befund des ZULETZT abgeschnittenen —
+  // die Aussage „mindestens ein Abschnitt riss am Limit ab" ist damit vollständig gedeckt.
+  abgeschnitten?: AbbruchBefund;
 }
 
 export interface ReasonerStatus {

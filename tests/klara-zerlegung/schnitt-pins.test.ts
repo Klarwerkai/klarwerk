@@ -308,6 +308,14 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // schneidet sie keine, die Panel-Fixture importiert sie nicht. A2 hat sie gemeldet, das
   // Verzeichnis nimmt sie nicht still auf.
   "tests/klara-browser/seitenleiste.test.ts": "pfad",
+  // JOB 3366 KI-FRAGMENT-SICHTBAR (09.09.2026): der Fragment-Hinweis im Panel wird am GELADENEN
+  // Fenster gemessen — die Datei liest `taskpane.html` über ihr Pfadliteral, schneidet daraus
+  // Markup und Inline-Skript und führt beides aus. Ein echter Mitfahrer: wandert das Skript bei
+  // einem Schnitt in eine eigene Datei, lädt dieser Prüfstand ein Fenster ohne Verhalten und wäre
+  // still grün. Griff `pfad`; KW-Marken schneidet sie keine (sie nimmt das ganze Skript), die
+  // Panel-Fixture importiert sie nicht. A2 hat sie gemeldet, das Verzeichnis nimmt sie nicht
+  // still auf.
+  "tests/ki-fragment-sichtbar/flaeche-klara-panel.test.ts": "pfad",
 };
 
 // ------------------------------------------------------------------------------------------------

@@ -2493,6 +2493,18 @@ const de = {
     "Keine Quelle passt sicher genug zu dieser Frage, um eine Antwort zu tragen. Das heißt nicht zwingend, dass das Wissen fehlt — vielleicht steht es nur unter anderen Wörtern in der Basis. Beides ist eine Lücke, die ihr schließen könnt, kein Fehler.",
   "ask.contract.trustNote":
     "Vertrauen und Nutzbarkeit zeigen, wie belastbar eine Quelle ist — kein Wahrheitsversprechen.",
+  // ==============================================================================================
+  // JOB 3366 · KI-FRAGMENT-SICHTBAR — DER EINE SATZ AN EINER ABGESCHNITTENEN ANTWORT.
+  // ==============================================================================================
+  // Er steht NUR, wenn der Anbieter den Abbruch am Token-Limit gemeldet hat (Feld `abgeschnitten`,
+  // apps/web/src/api/types.ts). Es gibt keinen Gegensatz-Satz: „vollständig" behauptet niemand,
+  // weil es niemand festgestellt hat. Der Satz sagt die TATSACHE (am Längenlimit abgebrochen) und
+  // ihre Folge (kann unvollständig sein) — er verspricht keine Abhilfe, denn es gibt keine:
+  // nachgeladen wird nichts, das Budget bleibt unverändert (Auftrag §10).
+  // EIN Schlüssel für alle drei Flächen (/fragen, Erfassen, und wortgleich im Word-Panel), damit
+  // derselbe Zustand nicht in drei Fassungen auseinanderläuft.
+  "ai.truncated.hint":
+    "Diese Antwort wurde am Längenlimit abgeschnitten und kann unvollständig sein.",
   // AUFTRAG-mega38 BLOCK F: „8 Quellen" las sich als „acht Quellen tragen diese Antwort".
   // Gedeckt ist nur „acht wurden herangezogen" — s. den Kommentar bei `ask.sources`.
   "ask.contract.sumTotal_one": "{{count}} Quelle herangezogen",
@@ -7773,6 +7785,8 @@ const en: typeof de = {
     "No source matches this question closely enough to carry an answer. That does not necessarily mean the knowledge is missing — it may simply be recorded under different words. Either way it's a gap you can close, not an error.",
   "ask.contract.trustNote":
     "Trust and usability show how reliable a source is — not a guarantee of truth.",
+  // JOB 3366: der Satz an einer abgeschnittenen KI-Antwort (Begründung im deutschen Block).
+  "ai.truncated.hint": "This answer was cut off at the length limit and may be incomplete.",
   "ask.contract.sumTotal_one": "{{count}} source consulted",
   "ask.contract.sumTotal_other": "{{count}} sources consulted",
   "ask.contract.sumValidated": "{{count}} validated",
@@ -12538,6 +12552,8 @@ const nl: typeof de = {
     "Geen enkele bron past nauw genoeg bij deze vraag om een antwoord te dragen. Dat betekent niet per se dat de kennis ontbreekt — misschien staat ze alleen onder andere woorden in de basis. Hoe dan ook is het een hiaat dat jullie kunnen dichten, geen fout.",
   "ask.contract.trustNote":
     "Vertrouwen en bruikbaarheid tonen hoe betrouwbaar een bron is — geen belofte van waarheid.",
+  // JOB 3366: der Satz an einer abgeschnittenen KI-Antwort (Begründung im deutschen Block).
+  "ai.truncated.hint": "Dit antwoord is bij de lengtelimiet afgebroken en kan onvolledig zijn.",
   "ask.contract.sumTotal_one": "{{count}} bron geraadpleegd",
   "ask.contract.sumTotal_other": "{{count}} bronnen geraadpleegd",
   "ask.contract.sumValidated": "{{count}} gevalideerd",

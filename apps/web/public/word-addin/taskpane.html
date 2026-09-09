@@ -588,6 +588,10 @@
     #ask-ungeprueft.hidden { display: none; }
     #ask-gap-ungeprueft { margin: 0 16px; font-size: 13px; line-height: 1.4; text-align: center; color: var(--text); }
     #ask-gap-ungeprueft.hidden { display: none; }
+    /* JOB 3366: der Fragment-Satz. Dieselben Masse wie der Ungeprueft-Satz daneben — er ist eine
+       Auskunft zur Antwort, keine Fehlerkarte, und traegt deshalb die Warnfarbe der Statuszeilen. */
+    #ask-fragment { margin: 0; font-size: 12.5px; line-height: 1.4; color: var(--warn-text); }
+    #ask-fragment.hidden { display: none; }
     /* JOB 3092 S6 (W6): die Dublettenauskunft in der Markierungskarte — vor dem Einreichen. */
     #capture-dubletten { margin: 0; font-size: 12.5px; line-height: 1.45; color: var(--muted); }
     #capture-dubletten.hidden { display: none; }
@@ -841,6 +845,11 @@
              was der Server als vorhanden, aber ungeprueft meldet (Feld `ungeprueft`, JOB 1591). -->
         <div id="ask-herkunft" class="hidden"></div>
         <p id="ask-ungeprueft" class="hidden"></p>
+        <!-- JOB 3366 (KI-FRAGMENT-SICHTBAR): der Satz an einer am Token-Limit ABGESCHNITTENEN
+             Antwort. Er steht NUR, wenn der Server den Abbruch gemeldet hat (`result.abgeschnitten`,
+             gelesen in performAsk, gesetzt in renderAskFragment) — nie aus dem Text geraten und nie
+             als Gegenaussage „vollstaendig". Das Antwortfeld darueber bleibt unangetastet. -->
+        <p id="ask-fragment" class="hidden"></p>
         <p class="muted" id="ask-answer-edit-hint" data-t="askAnswerEditHint"></p>
         <!-- mega81 BLOCK A: die KI-Kennzeichnung ist an das serverseitige `aiGenerated`-Signal
              GEBUNDEN — auf dem retrieval-only-Weg nie sichtbar, auf einem Modellweg von selbst. -->
@@ -1627,6 +1636,16 @@
                 if (typeof cid === "string" && cid.trim().length > 0) { cited.push(cid); }
               }
             }
+            // JOB 3366 (KI-FRAGMENT-SICHTBAR): der belegte Abbruchbefund des Servers. GELESEN,
+            // nie hergeleitet — dieselbe Beweislast-Umkehr wie bei `citedSources` darueber: das
+            // Feld muss ein Objekt sein UND `finishReason` als nichtleere Zeichenkette tragen,
+            // sonst gilt es als NICHT gemeldet. Ein aelterer Server sendet es gar nicht; das fuehrt
+            // in den bisherigen Zustand (kein Satz), nie in die Entwarnung „vollstaendig".
+            var abgeschnitten = false;
+            var befund = result ? result.abgeschnitten : null;
+            if (befund && typeof befund === "object" && typeof befund.finishReason === "string" && befund.finishReason.length > 0) {
+              abgeschnitten = true;
+            }
             var firstStep = result && Array.isArray(result.steps) ? result.steps[0] : undefined;
             var snippet =
               firstStep && typeof firstStep.snippet === "string" && firstStep.snippet.trim().length > 0
@@ -1658,7 +1677,12 @@
               answer.trim().length > 0 &&
               sources.length > 0
             ) {
-              return {
+              // JOB 3366: die Tatsache reist NUR MIT, WENN SIE EINE IST. Ein `abgeschnitten: false`
+              // an jeder Antwort waere die positive Gegenaussage „vollstaendig", die §9 verbietet —
+              // und es machte den Spiegel-Vertrag mit `apps/web/src/lib/wordAddin.ts` an JEDEM
+              // Ergebnis ungleich statt nur an den abgeschnittenen (word-addin-ask.test.ts, Teil 3).
+              var fragmentFeld = abgeschnitten ? { abgeschnitten: true } : {};
+              return Object.assign(fragmentFeld, {
                 kind: "answered",
                 // WP-UX-WOW-1 U1: Klartext im Panel UND im eingefuegten Text.
                 answer: stripAskAnswerMarkdown(answer),
@@ -1676,7 +1700,7 @@
                 // G24: geprueft statt gecastet — siehe KW-KLARA-AI-MARK-* weiter unten.
                 aiGenerated: istKiKennzeichnung(result.aiGenerated),
                 ungeprueft: ungeprueft,
-              };
+              });
             }
             // AUFTRAG-mega77 BLOCK A: die Wissensluecke ist wieder eine reine Wissensluecke — der
             // Antwortkoerper wird hier NICHT mehr nach einer Bestandszahl durchsucht.
@@ -2790,6 +2814,9 @@
         askHerkunftKeinBeleg: "Dafür habe ich keinen Beleg.",
         askUngeprueftEins: "Dazu gibt es einen Eintrag, der noch nicht geprüft ist: {titel}",
         askUngeprueftMehrere: "Dazu gibt es {n} Einträge, die noch nicht geprüft sind: {titel}",
+        // JOB 3366: wortgleich mit `ai.truncated.hint` der Web-App (apps/web/src/i18n.ts) — derselbe
+        // Zustand darf nicht in zwei Fassungen auseinanderlaufen. Es gibt keinen Gegensatz-Satz.
+        askFragment: "Diese Antwort wurde am Längenlimit abgeschnitten und kann unvollständig sein.",
         captureDubLaeuft: "Dublettenprüfung läuft …",
         captureDubLeer: "Nichts Vergleichbares gefunden (geprüft {zeit}).",
         captureDubTreffer: "Dazu gibt es schon Vergleichbares (geprüft {zeit}):",
@@ -3086,6 +3113,7 @@
         askHerkunftKeinBeleg: "I have no evidence for this.",
         askUngeprueftEins: "There is one entry on this that has not been reviewed yet: {titel}",
         askUngeprueftMehrere: "There are {n} entries on this that have not been reviewed yet: {titel}",
+        askFragment: "This answer was cut off at the length limit and may be incomplete.",
         captureDubLaeuft: "Duplicate check running …",
         captureDubLeer: "Nothing comparable found (checked {zeit}).",
         captureDubTreffer: "Comparable entries already exist (checked {zeit}):",
@@ -3367,6 +3395,7 @@
         askHerkunftKeinBeleg: "Hiervoor heb ik geen bewijs.",
         askUngeprueftEins: "Hierover is één item dat nog niet is beoordeeld: {titel}",
         askUngeprueftMehrere: "Hierover zijn {n} items die nog niet zijn beoordeeld: {titel}",
+        askFragment: "Dit antwoord is bij de lengtelimiet afgebroken en kan onvolledig zijn.",
         captureDubLaeuft: "Dubbelcontrole loopt …",
         captureDubLeer: "Niets vergelijkbaars gevonden (nagekeken {zeit}).",
         captureDubTreffer: "Er bestaat al iets vergelijkbaars (nagekeken {zeit}):",
@@ -3595,6 +3624,7 @@
       renderAskEvidence();
       renderAskHerkunft(); // JOB 3092 S6: Herkunftszeilen und Ungeprueft-Satz in der neuen Sprache
       renderAskUngeprueft();
+      renderAskFragment(); // JOB 3366: derselbe gehaltene Zustand, neuer Text
       refreshAnswerToggleLabel(); // klara1b: „mehr/weniger anzeigen" in der neuen Sprache
       renderCapture(); // JOB 3057 K2: Kicker, Ergebniszeile und Bilder-Satz in der neuen Sprache
       renderCaptureDubletten(); // JOB 3092 S6: die Dublettenauskunft — gehaltener Stand, neuer Text
@@ -5577,6 +5607,7 @@
       // VORIGEN Antwort neben der naechsten waere eine Falschaussage.
       renderAskHerkunft();
       renderAskUngeprueft();
+      renderAskFragment(); // JOB 3366: kein Fragment-Satz einer frueheren Antwort bleibt stehen
       // AUFTRAG-mega36 B3: ein Rueckfalltext einer FRUEHEREN Antwort darf nie stehen bleiben.
       hideCopyFallback();
       // JOB 3004 D1: die Chip-Reihe faengt von vorn an. JOB 3056: „Mehr" faellt zu, der
@@ -6128,6 +6159,28 @@
     }
 
     // ============================================================================================
+    // JOB 3366 · KI-FRAGMENT-SICHTBAR — DER SATZ AN EINER ABGESCHNITTENEN ANTWORT.
+    // ============================================================================================
+    //
+    // Bauform wie `renderAskUngeprueft` daneben, und aus demselben Grund: ein FESTES Element wird
+    // gefuellt und ein-/ausgeblendet, gelesen wird `currentAskOutcome`. Damit nimmt der
+    // Sprachwechsel den Satz mit (setLang ruft diese Funktion), und die Rueckstellung
+    // (resetAskResult) raeumt ihn weg — ein Fragment-Hinweis der VORIGEN Antwort neben der
+    // naechsten waere eine Falschaussage.
+    //
+    // ER STEHT NUR IN DER ANTWORTKARTE. In der Wissensluecke gibt es keinen Text, ueber den er
+    // etwas sagen koennte; im Fehler-, Frist- und Zeitfall ebenso wenig. Es gibt KEINE positive
+    // Gegenaussage: entweder der Satz oder gar nichts.
+    function renderAskFragment() {
+      var el = document.getElementById("ask-fragment");
+      if (!el) { return; }
+      var outcome = currentAskOutcome;
+      var zeigen = !!(outcome && outcome.kind === "answered" && outcome.abgeschnitten === true);
+      el.textContent = zeigen ? t("askFragment") : "";
+      el.className = zeigen ? "" : "hidden";
+    }
+
+    // ============================================================================================
     // JOB 3056 Runde 4 (Codex Pflicht 1) — DIE FUSSNOTENZIFFERN IM ANTWORTTEXT (Main.dc.html Z.28).
     // ============================================================================================
     //
@@ -6342,6 +6395,7 @@
         // beide an derselben Stelle wie die Einstufung, damit der Sprachwechsel sie mitnimmt.
         renderAskHerkunft();
         renderAskUngeprueft();
+        renderAskFragment(); // JOB 3366: der Satz an einer abgeschnittenen Antwort
         // AUFTRAG-mega35 A1: das Feld traegt NUR den Antwortkoerper — das ist der Teil, der der
         // Nutzerin gehoert. Einstufung und Quellen-Zeile werden NICHT vorbefuellt und deshalb auch
         // nicht nachgetragen; sie entstehen erst im Moment des Kopierens/Einfuegens

@@ -177,14 +177,28 @@ interface Fremdrelation {
  * gemessen ist, steht als Messung da, und was gelesen ist, als Lesung.
  */
 const FREMDE: readonly Fremdrelation[] = [
+  // JOB 3366 (KI-FRAGMENT-SICHTBAR): DIE 27 IST WEG, UND ZWAR ABSICHTLICH — MIT BENANNTEM PREIS.
+  //
+  // Der 27-Knoten-Block war der Erfolgszweig des Extraktionslaufs: vier Anweisungen
+  // (`setErr(null)`, eine Meldung zuruecksetzen, Punkte setzen, `note` setzen), in `Capture.tsx`
+  // und in `BodyExtractPanel.tsx` Wort fuer Wort dieselben. `Capture.tsx` hat jetzt eine FUENFTE:
+  // `setFileAbgeschnitten(r.abgeschnitten ?? null)` — der belegte Abbruchbefund des Anbieters, aus
+  // dem der sichtbare Fragment-Hinweis entsteht. Damit ist der Block kein Zwilling mehr.
+  //
+  // DIE ANDERE SEITE WURDE NICHT VERGESSEN, SIE WAR VERBOTEN: `BodyExtractPanel.tsx` steht NICHT in
+  // den ZIELPFADEN von JOB 3366 (dessen §4 ist abschliessend). Der Befund ist deshalb in der
+  // Rueckgabe unter ABWEICHUNGEN gemeldet: dieselbe Extraktionsantwort wird dort weiterhin ohne
+  // Fragment-Hinweis gezeigt, obwohl der Server das Feld auch dorthin sendet. Wer das nachzieht,
+  // stellt die 27 wieder her — und traegt sie hier wieder ein.
   {
     dritt: "apps/web/src/components/BodyExtractPanel.tsx",
-    groessen: [199, 36, 36, 33, 29, 29, 29, 28, 27],
+    groessen: [199, 36, 36, 33, 29, 29, 29, 28],
     was:
       "GELESEN: die Punkteliste nach dem Auslesen — dieselbe `<ul>` mit Auswahlkaestchen, " +
       "denselben `CAPTURE_FILE_TEXT`-Schluesseln und demselben `togglePoint`; nur der Setter " +
       "heisst anders (`setFilePoints` gegen `setPoints`), was der Fingerabdruck bewusst ignoriert. " +
-      "Dazu der OCR-nicht-verfuegbar-Zweig und die Vertraulichkeits-Auswahlliste.",
+      "Dazu der OCR-nicht-verfuegbar-Zweig und die Vertraulichkeits-Auswahlliste. Der frueher " +
+      "hier gepinnte 27-Knoten-Erfolgszweig ist mit JOB 3366 einseitig gewachsen (Kommentar oben).",
   },
   {
     dritt: "apps/web/src/pages/Ask.tsx",

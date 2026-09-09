@@ -20,6 +20,7 @@ import { ApiError } from "../api/client";
 import { type FollowUpsRecorded, endpoints } from "../api/endpoints";
 import { useDirectory, useDrafts, useGaps, useReasonerStatus } from "../api/hooks";
 import type {
+  AbbruchBefund,
   Confidentiality,
   Draft,
   DraftPayload,
@@ -1011,6 +1012,10 @@ export function CaptureArbeitsraum({
   const [confirmSaveDrafts, setConfirmSaveDrafts] = useState(false);
   const purgeUnselectedRef = useRef(false);
   const [fileNote, setFileNote] = useState<string | null>(null);
+  // JOB 3366 (KI-FRAGMENT-SICHTBAR): der belegte Abbruchbefund des LETZTEN Extraktionslaufs.
+  // Er kommt als Serverfeld (`ExtractResult.abgeschnitten`) und wird nie aus der Punkteliste oder
+  // der `note` erraten. `null` heißt „nicht gemeldet", nicht „vollständig".
+  const [fileAbgeschnitten, setFileAbgeschnitten] = useState<AbbruchBefund | null>(null);
   const [fileQueue, setFileQueue] = useState<FileDraftQueue | null>(null);
 
   const fail = (e: unknown): void => setErr(e instanceof ApiError ? e.message : t("state.error"));
@@ -1019,6 +1024,42 @@ export function CaptureArbeitsraum({
   // und der HEUTIGEN Sprache. Ein zwischenzeitlicher Modus- oder Sprachwechsel wirkt damit sofort,
   // ohne dass irgendwo ein Zustand nachgeführt werden müsste.
   const noticeText = meldungText(notice, fileImportMode, (key, params) => t(key, params ?? {}));
+
+  // ==============================================================================================
+  // JOB 3366 R2 — DER HINWEIS GEHÖRT DER ANGEZEIGTEN ANTWORT, NICHT DER SITZUNG.
+  // ==============================================================================================
+  // Runde 1 hängte den Hinweis ALLEIN am Befund `fileAbgeschnitten`, während das Ergebnis daneben
+  // eine eigene Sichtbarkeit hatte. Damit stand der Satz „diese Antwort ist unvollständig" auch
+  // dann noch da, wenn es die Antwort auf der Fläche gar nicht mehr gab (bens Befund zu Runde 1,
+  // zweimal nachgestellt): im Ganzdokument-Weg, wo aus der Extraktion nichts gezeigt wird, und
+  // nach dem Sichern ALLER Punkte, wo die Liste geräumt wird (Z. 1217). Eine Aussage über nichts.
+  //
+  // Jetzt hängt der Hinweis an DEMSELBEN Zustand wie das Ergebnis, über das er etwas sagt. Er fällt
+  // und steht mit ihm — ohne dass an den fünf Räum-Stellen (Z. 1217, 1464, 1928, 2746, 3150) je ein
+  // Flag nachgeführt werden müsste; genau dieses Nachführen wurde in Runde 1 vergessen und wäre an
+  // der nächsten Räum-Stelle wieder vergessen worden.
+  //
+  // `filePoints !== null` und nicht `.length > 0`: ein Lauf ohne Punkte zeigt statt der Liste den
+  // Satz an ihrer Stelle (`fileNote`) — auch das ist das ANGEZEIGTE Ergebnis dieses Laufs, und die
+  // Tatsache „am Limit abgeschnitten" erklärt es. `null` heißt dagegen: es liegt kein Ergebnis vor
+  // (noch keines geholt, oder geräumt).
+  const extraktErgebnisSichtbar = fileImportMode === "points" && filePoints !== null;
+  const fragmentHinweisSichtbar = extraktErgebnisSichtbar && fileAbgeschnitten !== null;
+
+  // JOB 3366: DER BELEGTE ABBRUCH GEHT DER GLEICHLAUTENDEN ABLEITUNG VOR.
+  // `fileNote` sagt bei vorhandenen Punkten „diese Liste ist möglicherweise unvollständig" und
+  // leitet das aus einem gescheiterten JSON-Parser AB (provider-model.ts, `anyIncomplete`). Meldet
+  // der Anbieter den Abbruch selbst, steht die BELEGTE Tatsache da und nicht die Ableitung daneben
+  // — zwei Sätze über dieselbe Lage wären einer zu viel.
+  // NUR bei vorhandenen Punkten: bei leerer Liste sagt `note` etwas ANDERES („keine Punkte mit
+  // belegbarer Textstelle gefunden"), und dieser Satz weicht nicht, sonst ginge eine Tatsache
+  // verloren. Ohne Befund bleibt `fileNote` ohnehin unverändert zuständig (etwa „ohne Modell keine
+  // Extraktion").
+  // Die Entscheidung steht HIER und nicht in der Bedingung am Element: der Kasten unten ist Wort
+  // für Wort derselbe wie in `BodyExtractPanel.tsx` (bewachte Fremddoppelung, JOB 2476 W1/F1) und
+  // bleibt es.
+  const fileNoteSichtbar =
+    fragmentHinweisSichtbar && filePoints !== null && filePoints.length > 0 ? null : fileNote;
 
   // FR-I18N-01: Reasoner-Aufrufe folgen der aktuellen UI-Sprache (Quelleninhalt bleibt original).
   const locale = toReasonerLocale(i18n.language);
@@ -1129,6 +1170,9 @@ export function CaptureArbeitsraum({
       setNotice(null);
       setFilePoints(selectablePoints(r.points));
       setFileNote(r.note);
+      // JOB 3366: der Befund gehört zu DIESEM Lauf. Ein Lauf ohne Meldung setzt ihn zurück — der
+      // Hinweis eines früheren Laufs neben einer neuen Punkteliste wäre eine Falschaussage.
+      setFileAbgeschnitten(r.abgeschnitten ?? null);
     },
     onError: fail,
   });
@@ -1310,6 +1354,7 @@ export function CaptureArbeitsraum({
         typeof draft.id === "string" && draft.id.trim().length > 0 ? draft.id : null;
       setFilePoints(null);
       setFileNote(null);
+      setFileAbgeschnitten(null);
       setFileQueue(null);
       setFileWholeDraftSaved({
         id: savedDraftId,
@@ -2302,6 +2347,7 @@ export function CaptureArbeitsraum({
     setConfirmSaveDrafts(false);
     purgeUnselectedRef.current = false;
     setFileNote(null);
+    setFileAbgeschnitten(null);
     setFileQueue(null);
     setFileWholeDraftSaved(null);
   };
@@ -3128,6 +3174,7 @@ export function CaptureArbeitsraum({
     }
     setFilePoints(null);
     setFileNote(null);
+    setFileAbgeschnitten(null);
     setFileQueue(null);
     setFileWholeDraftSaved(null);
     setFileImageUrl(null);
@@ -4875,13 +4922,26 @@ export function CaptureArbeitsraum({
                       )}
                     </div>
                   ) : null}
-                  {/* Ehrlicher Hinweis vom Server (z. B. „ohne Modell keine Extraktion") — KEINE Fake-Punkte. */}
-                  {fileNote ? (
-                    <p className="rounded-btn bg-trust-warn-bg px-3 py-2 text-[12.5px] text-trust-warn-text">
-                      {fileNote}
+                  {/* JOB 3366 R2: der belegte Abbruch des Anbieters — sichtbar GENAU SOLANGE das
+                    Ergebnis sichtbar ist, über das er etwas sagt (Begründung bei
+                    `fragmentHinweisSichtbar`). Darunter der ehrliche Hinweis vom Server (z. B.
+                    „ohne Modell keine Extraktion") — KEINE Fake-Punkte. */}
+                  {fragmentHinweisSichtbar ? (
+                    <p
+                      data-testid="capture-abgeschnitten"
+                      className="rounded-btn bg-trust-warn-bg px-3 py-2 text-[12.5px] text-trust-warn-text"
+                    >
+                      {t("ai.truncated.hint")}
                     </p>
                   ) : null}
-                  {fileImportMode === "points" && filePoints && filePoints.length > 0 ? (
+                  {fileNoteSichtbar ? (
+                    <p className="rounded-btn bg-trust-warn-bg px-3 py-2 text-[12.5px] text-trust-warn-text">
+                      {fileNoteSichtbar}
+                    </p>
+                  ) : null}
+                  {/* JOB 3366 R2: dieselbe Grundlage wie der Hinweis darüber — die Liste und die
+                    Aussage über sie stehen und fallen gemeinsam. */}
+                  {extraktErgebnisSichtbar && filePoints && filePoints.length > 0 ? (
                     <div className="space-y-2 border-t border-hairline pt-3">
                       <SectionLabel>{t(CAPTURE_FILE_TEXT.pointsTitle)}</SectionLabel>
                       <p className="text-[11.5px] leading-relaxed text-muted-2">

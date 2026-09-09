@@ -1467,6 +1467,16 @@ export function Ask(): JSX.Element {
                     tragend={tragendeNummern}
                     className="ask-answer-body text-[17px] leading-[1.6] text-text"
                   />
+                  {/* JOB 3366: nur bei belegtem Abbruch (Serverfeld), nie geraten. Begründung an
+                    `AbbruchBefund` in api/types.ts. */}
+                  {result.abgeschnitten ? (
+                    <p
+                      data-testid="ask-abgeschnitten"
+                      className="m-0 rounded-btn bg-trust-warn-bg px-3 py-2 text-[12.5px] leading-relaxed text-trust-warn-text"
+                    >
+                      {t("ai.truncated.hint")}
+                    </p>
+                  ) : null}
                   {/* mega62 Block E: der KI-Satz gehört IN die Druckfläche (sonst fehlt er im PDF).
                     D-047: er folgt UNMITTELBAR auf die Antwort statt ihr voranzugehen — Artikel 50
                     verlangt die Kennzeichnung an der erzeugten Ausgabe, nicht vor ihr. Wortlaut,

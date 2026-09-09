@@ -153,6 +153,11 @@ const INVENTAR: readonly string[] = [
   // dazwischen die Rückfrage statt eines Links auf den überholten Stand. K2 meldete den Pfad
   // (Achse `name`, `tests/klara-browser/`), das Inventar nimmt ihn nicht still auf.
   "tests/klara-browser/zwischenablage.test.ts",
+  // JOB 3366 KI-FRAGMENT-SICHTBAR: der Fragment-Hinweis am geladenen Aufgabenfenster — eine am
+  // Token-Limit abgeschnittene Antwort wird im Panel als unvollständig gekennzeichnet. K2 meldete
+  // den Pfad (Achse `name`, `flaeche-klara-panel`); die zwei Geschwisterdateien desselben Jobs
+  // (Vertrag, Web-Flächen) tragen „klara" nicht und gehören folgerichtig nicht in diese Menge.
+  "tests/ki-fragment-sichtbar/flaeche-klara-panel.test.ts",
   // JOB 3144 UX-16: Webhilfe-Geometrie und erreichbarer Weg aus der Word-Vorschau.
   // K2 meldete beide neuen Dateien; Namensachse (beide), Komponente (gemounteter Test).
   "tests/klara-webhilfe-schmal/klara-hilfe-chromium.test.ts",
@@ -878,7 +883,10 @@ describe("JOB 920 · K — das Klara-Regressionsinventar ist ableitbar, nicht be
     // JOB 3280: `zwischenablage.test.ts` liegt unter `tests/klara-browser/` und trägt „klara“
     // damit im PFAD. GEMESSEN, NICHT GESETZT: mit dem Inventareintrag und noch unverändertem
     // Zähler meldete der Lauf `expected 49 to be 48`; erst danach wurde diese Zeile angefasst.
-    expect(nurName.length).toBe(49);
+    // JOB 3366: `tests/ki-fragment-sichtbar/flaeche-klara-panel.test.ts` trägt „klara“ im PFAD und
+    // wird von keiner Inhaltsachse gefunden. GEMESSEN, NICHT GESETZT: mit dem Inventareintrag und
+    // noch unverändertem Zähler meldete der Lauf `expected 50 to be 49`.
+    expect(nurName.length).toBe(50);
     expect(verfehlt.length).toBeGreaterThanOrEqual(25);
     expect(verfehlt.length + nurName.length).toBe(GEFUNDEN.length);
   });

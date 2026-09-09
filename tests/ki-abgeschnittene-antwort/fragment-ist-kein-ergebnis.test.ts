@@ -166,7 +166,27 @@ describe("JOB 3239 · ein Fragment ist serverintern als abgeschnitten bekannt", 
     expect(meldungen).toEqual([]);
     payload.choices[0]!.finish_reason = "length";
     const mitMeldung = await provider.extract(dokument);
-    expect(mitMeldung).toEqual(ohneMeldung);
+    // ============================================================================================
+    // JOB 3366 · NACHGEFÜHRT — HIER STAND `toEqual(ohneMeldung)`, ALSO „VOLLSTÄNDIG IDENTISCH".
+    // ============================================================================================
+    // Das war die Zusage von JOB 3239: der Befund bleibt serverintern, das Ergebnis ändert sich um
+    // kein Feld. JOB 3366 hebt genau diese eine Zusage auf — und nur sie: der Befund reist jetzt
+    // ZUSÄTZLICH als maschinenlesbares Feld `abgeschnitten` mit, damit die Erfassen-Fläche das
+    // Fragment kennzeichnen kann. Was JOB 3239 wirklich schützt, gilt unverändert weiter und wird
+    // deshalb hier WEITER FELDWEISE geprüft: die geretteten Punkte und die abgeleitete `note` sind
+    // Zeichen für Zeichen dieselben wie ohne Meldung, und der unbelegte Punkt bleibt draußen.
+    expect(mitMeldung.points).toEqual(ohneMeldung.points);
+    expect(mitMeldung.note).toBe(ohneMeldung.note);
+    expect(mitMeldung.demo).toBe(ohneMeldung.demo);
+    expect(ohneMeldung.abgeschnitten).toBeUndefined();
+    expect(mitMeldung.abgeschnitten).toEqual({
+      finishReason: "length",
+      budgetFeld: "max_completion_tokens",
+      budget: EXTRACT_MAX_TOKENS,
+      zeichen: fragment.length,
+    });
+    // Das Feld trägt NUR Metadaten — kein Dokument-, Antwort- oder Prompttext.
+    expect(JSON.stringify(mitMeldung.abgeschnitten)).not.toMatch(/Pumpe|Ventil|Anlage|Abgerissen/);
     expect(anfragen).toHaveLength(2);
     expect(anfragen[1]?.max_completion_tokens).toBe(EXTRACT_MAX_TOKENS);
     expect(anfragen[1]?.messages).toEqual([

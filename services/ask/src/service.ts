@@ -823,9 +823,18 @@ export class AskService {
     // answered=true mit leeren sources → als ehrliche Leer-Antwort behandeln (nie eine Quelle vortäuschen).
     // mega52 A3: wird der Treffer hier zur ehrlichen Leer-Antwort herabgestuft, fällt auch die
     // Zuordnung weg — eine tragende Quelle ohne Antwort gibt es nicht.
+    // JOB 3366: fällt der Treffer hier zur ehrlichen Leer-Antwort zurück, fällt AUCH der
+    // Abbruchbefund weg. Er ist eine Aussage ÜBER einen ausgelieferten Antworttext („dieser Text
+    // ist unvollständig"); ohne Text gibt es nichts, worüber er etwas sagen könnte, und die
+    // Lückenkarte trüge sonst einen Hinweis auf eine Antwort, die es nicht gibt. Alles andere
+    // reist unverändert weiter: der Befund des Reasoners geht als Feld an den API-Vertrag
+    // (`apps/web/src/api/types.ts`) und von dort an die drei Flächen.
+    // Das Feld wird WEGGELASSEN, nicht auf `undefined` gesetzt: `exactOptionalPropertyTypes` ist
+    // an, und „fehlt" ist auch am Draht die Aussage (JSON kennt kein `undefined`).
+    const { abgeschnitten: _abgeschnittenVerworfen, ...rawOhneAbbruch } = rawResult;
     const resultCore =
       rawResult.answered && rawResult.sources.length === 0
-        ? { ...rawResult, answered: false, answer: null, citedSources: [] }
+        ? { ...rawOhneAbbruch, answered: false, answer: null, citedSources: [] }
         : rawResult;
     // WP-RETEST7 R5: Fundstellen-Kennzeichnung — eine Quelle, deren Frage-Treffer AUSSCHLIESSLICH
     // aus den Bild-Fußnoten stammt (kein Term in Titel/Aussage), wird als Caption-Fund markiert;

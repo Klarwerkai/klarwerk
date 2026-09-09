@@ -15,6 +15,7 @@ import {
   sourceLabel,
 } from "./provider";
 import type {
+  AbbruchBefund,
   AnswerResult,
   AssistResult,
   CandidateGroup,
@@ -1431,6 +1432,29 @@ export function vermerkeAbbruch(befund: ModellAbbruchBefund): void {
   }
 }
 
+/**
+ * JOB 3366 — DIE EINE UMRECHNUNG VOM LAUFVERMERK IN DAS VERTRAGSFELD.
+ *
+ * Kein Befund → ein LEERES Objekt, das per Spread nichts hinterlässt: das Feld FEHLT dann, statt
+ * als `undefined` im Vertrag zu stehen. Das ist der Unterschied, den §9 verlangt — es gibt den
+ * Hinweis oder gar nichts, nie eine positive Gegenaussage „vollständig".
+ *
+ * Sie steht hier, damit ALLE Wege (answer, helpAnswer, extract) dasselbe Feld aus derselben
+ * Quelle bilden; zwei Umrechnungen wären zwei Auffassungen davon, was ein Abbruch ist.
+ */
+function abbruchFeld(abbruch: ModellAbbruchBefund | null): { abgeschnitten?: AbbruchBefund } {
+  return abbruch === null
+    ? {}
+    : {
+        abgeschnitten: {
+          finishReason: abbruch.finishReason,
+          budgetFeld: abbruch.budgetFeld,
+          budget: abbruch.budget,
+          zeichen: abbruch.zeichen,
+        },
+      };
+}
+
 // PMO-FEA-0006 / G-2: Wissens-Extraktion aus Dokumenttext — anti-halluzinatorischer
 // System-Prompt. Jeder Punkt MUSS mit einem wörtlichen Auszug belegt sein; die Auszüge
 // werden zusätzlich serverseitig gegen den Dokumenttext geprüft (parseExtractResponse).
@@ -1802,17 +1826,22 @@ export class ModelProvider implements ReasonerProvider {
     const client = this.requireClient();
     const labels = LABELS[locale];
     const grounding = context.map((r, i) => `[${i + 1}] ${r.title}: ${r.statement}`).join("\n");
-    const answerText = (
-      await client.complete(
+    // JOB 3366: dieselbe Abbruch-Spur wie im Antwortweg — die generierende Hilfe ist der zweite
+    // Weg, auf dem ein Mensch den MODELLTEXT selbst zu lesen bekommt.
+    const { wert: rohHilfe, abbruch } = await mitAbbruchBefund(() =>
+      client.complete(
         helpAnswerSystem(locale),
         `${labels.question}: ${question}\n\n${labels.sources}:\n${grounding}`,
         // Hilfe-Kontext ist kuratierte Produkt-Hilfe (keine KOs/Kundendaten) → nicht vertraulich.
         false,
-      )
-    ).trim();
+      ),
+    );
+    const answerText = rohHilfe.trim();
     return {
       answered: answerText.length > 0,
       answer: answerText.length > 0 ? answerText : null,
+      // Ohne Text gibt es keine Antwort, über die der Hinweis etwas sagen könnte (§9 „laden").
+      ...(answerText.length > 0 ? abbruchFeld(abbruch) : {}),
       knowledgeClass: "ungeprueft",
       trust: 0,
       sources: context.map((r) => r.id),
@@ -1998,11 +2027,20 @@ export class ModelProvider implements ReasonerProvider {
     const seen = new Set<string>();
     let anyIncomplete = false;
     let hardFailure = false;
+    // JOB 3366: der belegte Abbruchbefund des Anbieters — je Abschnitt erhoben, weil jeder Abschnitt
+    // ein eigener Modellaufruf ist. Gehalten wird der ZULETZT gemeldete; die Aussage, die daraus an
+    // der Fläche wird, lautet „mindestens ein Abschnitt riss am Limit ab" und ist damit gedeckt.
+    let abbruch: ModellAbbruchBefund | null = null;
     for (const chunk of chunks) {
       if (points.length >= MAX_EXTRACT_POINTS) {
         break;
       }
-      const raw = await client.complete(system, chunk, confidential, EXTRACT_MAX_TOKENS);
+      const { wert: raw, abbruch: abschnittAbbruch } = await mitAbbruchBefund(() =>
+        client.complete(system, chunk, confidential, EXTRACT_MAX_TOKENS),
+      );
+      if (abschnittAbbruch !== null) {
+        abbruch = abschnittAbbruch;
+      }
       let chunkPoints: ExtractedPoint[];
       try {
         chunkPoints = parseExtractResponse(raw, chunk);
@@ -2049,6 +2087,8 @@ export class ModelProvider implements ReasonerProvider {
             ? "No knowledge points with a verifiable source excerpt were found in this document."
             : "In diesem Dokument wurden keine Wissenspunkte mit belegbarer Textstelle gefunden.",
       demo: false,
+      // JOB 3366: die Meldung des ANBIETERS, getrennt von der abgeleiteten `note` darüber.
+      ...abbruchFeld(abbruch),
     };
   }
 
@@ -2101,8 +2141,10 @@ export class ModelProvider implements ReasonerProvider {
         return auszug ? `${zeile}\n    ${labels.excerpt}: ${auszug}` : zeile;
       })
       .join("\n");
-    const answerText = (
-      await client.complete(
+    // JOB 3366: der Aufruf läuft in der Abbruch-Spur (JOB 3276 R3). Ein Fragment (finish_reason
+    // `length` MIT Inhalt) kommt damit als BEFUND hier an; der Text selbst bleibt unangetastet.
+    const { wert: rohAntwort, abbruch } = await mitAbbruchBefund(() =>
+      client.complete(
         answerSystem(locale),
         `${labels.question}: ${question}\n\n${labels.sources}:\n${grounding}`,
         // AUFTRAG-mega61 Block G: hier stand hart `false`, begründet mit „Ask-Antwortkontext ist
@@ -2110,8 +2152,9 @@ export class ModelProvider implements ReasonerProvider {
         // Garantie im Code — und sie machte den Egress-Wächter am Chokepoint auf diesem Weg
         // wirkungslos. Jetzt kommt der Wert von dort, wo der Kontext entsteht.
         confidential,
-      )
-    ).trim();
+      ),
+    );
+    const answerText = rohAntwort.trim();
     // JOB 2659 D1 (Befund 7): EINE ABSAGE IST EINE ABSAGE. Das Modell sagt strukturiert, dass die
     // Quellen nicht reichen — das ist keine Antwort, sondern eine Wissenslücke (`answered:false`,
     // der Ask-Dienst legt daraus den Gap an). Bisher ging derselbe Satz als Fließtext-Antwort hinaus.
@@ -2206,6 +2249,11 @@ export class ModelProvider implements ReasonerProvider {
     return {
       answered: true,
       answer: answerText,
+      // JOB 3366: HIER und nur hier — dies ist der einzige Ausgang, der den MODELLTEXT ausliefert.
+      // Die Rückfallausgänge oben geben den Wortlaut einer Quelle aus (vollständig) oder gar keine
+      // Antwort; ein Unvollständigkeits-Hinweis an ihnen wäre eine Aussage über einen Text, den
+      // niemand zu sehen bekommt.
+      ...abbruchFeld(abbruch),
       ...answerStanding(carrying),
       // Unverändert: alle HERANGEZOGENEN Kandidaten. Was `sources` bedeutet, ändert dieser Auftrag
       // nicht (B3) — sie bleiben die vollständige Transparenzliste, aber sie sind nicht mehr die

@@ -1198,6 +1198,20 @@ export interface AnswerStep {
   snippet: string | null;
 }
 
+// JOB 3366 (KI-FRAGMENT-SICHTBAR): der belegte Abbruchbefund des Anbieters — Spiegel von
+// `services/reasoner/src/types.ts` (`AbbruchBefund`), wo Vertrag und Grenzen ausführlich stehen.
+//
+// ANWESENHEIT IST DIE AUSSAGE: gesetzt = „der Anbieter hat den Abbruch am Token-Limit gemeldet",
+// fehlend = „nicht gemeldet". Ein älterer Server sendet das Feld nicht und führt damit in genau
+// den bisherigen Zustand (kein Hinweis) — nie in eine Entwarnung, denn „vollständig" wird nirgends
+// behauptet. Die Fläche errät den Zustand NIE aus dem Antworttext (Länge, abgebrochener Satz).
+export interface AbbruchBefund {
+  finishReason: string;
+  budgetFeld: string;
+  budget: number;
+  zeichen: number;
+}
+
 export interface AnswerResult {
   answered: boolean;
   answer: string | null;
@@ -1215,6 +1229,8 @@ export interface AnswerResult {
   // Antwort ohne verwertbare Marken (A5): „Zuordnung nicht möglich", nie ein stiller Rückfall auf
   // alle. `undefined` und `[]` bedeuten hier dasselbe — UNBEKANNT, nicht „keine".
   citedSources?: string[];
+  // JOB 3366: gesetzt, wenn der ausgelieferte Antworttext am Token-Limit abgeschnitten wurde.
+  abgeschnitten?: AbbruchBefund;
 }
 
 // JOB 2626 D1: ein Dokument, das die Frage traf, aber nicht antworten konnte — mit den Toren,
@@ -1916,6 +1932,10 @@ export interface ExtractResult {
   points: ExtractedPoint[];
   note: string | null;
   demo: boolean;
+  // JOB 3366: der belegte Abbruchbefund des Anbieters. Er ist NICHT `note`: `note` leitet die
+  // Unvollständigkeit aus einem gescheiterten JSON-Parser ab, dieses Feld ist die Meldung des
+  // Anbieters selbst. Ist es gesetzt, zeigt die Fläche den belegten Hinweis statt der Ableitung.
+  abgeschnitten?: AbbruchBefund;
 }
 
 // SCRUM-426: Public-KI-Anreicherung (Modellwissen) — extern/ungeprüft; leer + demo=true ohne Modell.
