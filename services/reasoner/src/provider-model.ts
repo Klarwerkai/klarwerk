@@ -806,6 +806,119 @@ export function rueckfallAntwort(
   return null;
 }
 
+// ================================================================================================
+// JOB 3365 · ASK-C02-KONFLIKT — DER RÜCKFALL WÄHLT NICHT STILL EINE VON ZWEI AUSKÜNFTEN.
+// ================================================================================================
+//
+// DER BEFUND (Codex 8950be7a/b9949f58, 09.09.; JOB 3353 R4, REST 2 — dort gemessen und ausdrücklich
+// NICHT grün festgeschrieben). Im Bestand der Vorführung stehen zwei nachvollziehbar abweichende
+// Fristen: der freigegebene Stand sagt 30 Kalendertage, die importierte Confluence-Kopie 45. Pedis
+// Frage verlangt wörtlich „If the sources disagree, say so rather than choosing silently". Sagt das
+// Modell daraufhin einen freien Satz ÜBER die Quellen („The sources disagree …"), verwirft ihn
+// `pruefeDeckung` zu Recht — ein Nachlauf ohne Marke ist von keiner Quelle gedeckt. Danach griff
+// `rueckfallAntwort` und gab die 30 Tage aus, `answered:true`, EINE Quelle. Der belegte Widerspruch
+// verschwand auf der letzten Kante, und zwar STILL: dem Leser sah man nicht an, dass überhaupt
+// etwas abzuwägen war.
+//
+// WARUM DAS EIN FEHLER IST UND NICHT NUR UNSCHÖN: der Rückfall greift GENAU DANN, wenn der
+// Modelltext verworfen wurde. In diesem Augenblick gibt es keine belastbare Aussage mehr darüber,
+// WELCHE Quelle die Frage beantwortet — die einzige, die es je gab, ist gerade durchgefallen. Eine
+// davon als vollständige Antwort auszugeben, ist die stille Wahl, die die Frage verboten hat.
+//
+// WAS HIER ENTSTEHT, und nur das: der Rückfall sieht nach, ob eine ANDERE herangezogene Quelle zu
+// DERSELBEN Frage einen ANDEREN Wortlaut trägt. Trägt sie einen, wird nichts mehr gewählt; die
+// Antwort nennt beide Quellen mit ihrem Wortlaut und sagt, dass die Frage damit nicht geklärt ist.
+//
+// DIE VIER GRENZEN, die das ungefährlich machen:
+//  · KEINE LOCKERUNG DER ZITATPRÜFUNG. `pruefeDeckung` läuft unverändert, der Modelltext geht
+//    weiterhin nicht hinaus, und jeder ausgegebene Satz ist WÖRTLICH der Auszug einer Quelle
+//    (JOB 3298, Zusage 1) oder ihre Kernaussage — kein Zeichen davon ist formuliert.
+//  · KEIN C02-SONDERFALL. Es steht kein Titel, kein Schlüssel, keine Zahl und keine Einheit in
+//    dieser Regel. Sie kennt nur „zwei Auszüge zu derselben Frage sind nicht derselbe Text".
+//  · KEINE BEHAUPTUNG ÜBER DIE SACHE. Gemessen ist, dass die Wortlaute VERSCHIEDEN sind — nicht,
+//    dass sie sich widersprechen (sie könnten einander auch ergänzen). Der Begleitsatz sagt genau
+//    das und nicht mehr; er nennt die Frage „nicht geklärt", statt einen Widerspruch zu behaupten.
+//    Ein Maß für „widerspricht" hat dieses Haus nicht, und eines zu erfinden hieße, aus zwei
+//    verschiedenen Sätzen eine Tatsache abzuleiten, die niemand belegt hat.
+//  · KEIN FEHLALARM BEI EINIGKEIT. Verglichen wird über `zitatWoerter`, also normalisiert:
+//    Zwillinge mit demselben Dokumenttext (der Normalfall — dieselbe Seite als Paketobjekt und als
+//    Import) liefern denselben Auszug, fallen zusammen und ändern gar nichts. Dann bleibt der
+//    Rückfall Zeichen für Zeichen der Rückfall aus JOB 3353.
+//
+// UND DIE EINSTUFUNG FOLGT MIT: `answerStanding` rechnet ab jetzt über ALLE genannten Quellen. Eine
+// offene Kopie in der Herleitung macht die Antwort „ungeprüft" mit Vertrauenswert 0 — was sie ist.
+// Die alte Form gab „gesichert, 90" aus, obwohl die andere Hälfte der Auskunft ungeprüft war.
+
+/** Der Vergleichsschlüssel zweier Auskünfte: derselbe Wortlaut, unabhängig von Schreibung und Leerraum. */
+function auskunftSchluessel(text: string): string {
+  return zitatWoerter(text).join(" ");
+}
+
+/**
+ * Der Begleitsatz vor den Wortlauten. Er behauptet zwei Dinge, und beide sind gemessen: die
+ * Wortlaute der Quellen sind verschieden, und deshalb ist hier nichts entschieden.
+ */
+const UNGEKLAERT: Record<ReasonerLocale, string> = {
+  de: "Die herangezogenen Quellen sagen dazu Verschiedenes. Diese Frage ist damit nicht geklärt — hier steht, was jede Quelle im Wortlaut sagt:",
+  en: "The sources consulted say different things about this. The question is therefore not settled — here is what each source says, verbatim:",
+  nl: "De geraadpleegde bronnen zeggen hier iets verschillends over. De vraag is daarmee niet beslecht — dit is wat elke bron letterlijk zegt:",
+};
+
+/**
+ * JOB 3365 · DER RÜCKFALLSTAND — eine Auskunft, oder alle, aber nie eine STILL gewählte.
+ *
+ * Schritt 1 ist unverändert `rueckfallAntwort` (Auszug vor Kernaussage vor gar nichts, JOB 3353).
+ * Schritt 2 ist neu und ist die ganze Änderung: jede WEITERE herangezogene Quelle, deren Auszug zu
+ * dieser Frage einen anderen Wortlaut trägt, kommt dazu — in der Rangfolge des Kontexts, ohne
+ * Dubletten. Bleibt nach Schritt 2 nur eine Auskunft übrig (der Normalfall), ist das Ergebnis
+ * byteweise das der alten Form: derselbe Text, dieselbe eine Quelle.
+ *
+ * Der Vergleich läuft ausdrücklich gegen den AUSZUG der anderen Quelle und nicht gegen ihre
+ * Kernaussage: der Auszug ist das einzige Material auf dieser Kante, dessen Bezug zur Frage
+ * GEMESSEN ist (JOB 3353, Kommentar bei `rueckfallAntwort`). Eine Kernaussage ohne Fragebezug —
+ * etwa ein Fiktions- oder Herkunftshinweis — hätte hier sonst einen „Widerspruch" erzeugt, den es
+ * nicht gibt.
+ */
+export function rueckfallStand(
+  frage: string,
+  tragend: readonly KnowledgeRef[],
+  kontext: readonly KnowledgeRef[],
+  locale: ReasonerLocale,
+): { refs: KnowledgeRef[]; text: string } | null {
+  const gewaehlt = rueckfallAntwort(frage, tragend);
+  if (!gewaehlt) {
+    return null;
+  }
+  const gesehen = new Set([auskunftSchluessel(gewaehlt.text)]);
+  const weitere: { ref: KnowledgeRef; text: string }[] = [];
+  for (const ref of kontext) {
+    if (ref.id === gewaehlt.ref.id) {
+      continue;
+    }
+    const auszug = dokumentAuszug(frage, ref);
+    if (auszug.length === 0) {
+      continue;
+    }
+    const text = auszug.join(" ");
+    const schluessel = auskunftSchluessel(text);
+    if (gesehen.has(schluessel)) {
+      continue;
+    }
+    gesehen.add(schluessel);
+    weitere.push({ ref, text });
+  }
+  if (weitere.length === 0) {
+    return { refs: [gewaehlt.ref], text: gewaehlt.text };
+  }
+  const stimmen = [gewaehlt, ...weitere];
+  return {
+    refs: stimmen.map((s) => s.ref),
+    // Absatzweise (Leerzeile), weil die Fläche den Antworttext als Markdown rendert: so steht jede
+    // Quelle für sich, statt dass zwei Auskünfte zu einem Fließtext verschmelzen.
+    text: [UNGEKLAERT[locale], ...stimmen.map((s) => `${s.ref.title}: ${s.text}`)].join("\n\n"),
+  };
+}
+
 // AUFTRAG-mega52 A2 — DIE MARKEN ZURÜCKLESEN.
 //
 // Der Prompt nummerierte die Quellen seit SCRUM-366; gelesen hat sie nie jemand. Hier passiert
@@ -2053,7 +2166,12 @@ export class ModelProvider implements ReasonerProvider {
       // der Livetext der Vorführung: bei der Confluence-Kopie von C02 ist diese Kernaussage der
       // Fiktionshinweis, und er ging als beantwortete Frage hinaus. Jetzt entscheidet
       // `rueckfallAntwort`, WAS überhaupt tragfähig ist (Auszug vor Kernaussage vor gar nichts).
-      const rueckfall = rueckfallAntwort(question, carrying);
+      // JOB 3365: und `rueckfallStand` entscheidet, ob überhaupt EINE Auskunft ausgegeben werden
+      // darf. Trägt eine andere herangezogene Quelle zu dieser Frage einen anderen Wortlaut, wird
+      // nicht mehr still gewählt — beide stehen mit ihrer Quelle da (Begründung am Funktionskopf).
+      // `relevant` und nicht `carrying` ist die Bezugsgröße: die Markenwahl des Modells stammt aus
+      // dem Text, der eben verworfen wurde, und trägt hier nichts mehr.
+      const rueckfall = rueckfallStand(question, carrying, relevant, locale);
       if (!rueckfall) {
         // Nichts, was die Frage berührt: dieselbe ehrliche Wissenslücke wie ohne Kandidaten. Der
         // Modelltext geht weiterhin NICHT hinaus (Befund 4 aus JOB 2659 bleibt geschlossen).
@@ -2071,9 +2189,12 @@ export class ModelProvider implements ReasonerProvider {
       return {
         answered: true,
         answer: rueckfall.text,
-        ...answerStanding([rueckfall.ref]),
+        // JOB 3365: über ALLE genannten Quellen. Steht eine offene Kopie in der Herleitung, ist die
+        // Antwort ungeprüft — die alte Form rechnete auf der einen gewählten Quelle und hätte hier
+        // „gesichert" ausgewiesen, obwohl die andere Hälfte der Auskunft ungeprüft ist.
+        ...answerStanding(rueckfall.refs),
         sources: relevant.map((r) => r.id),
-        citedSources: [rueckfall.ref.id],
+        citedSources: rueckfall.refs.map((r) => r.id),
         steps: relevant.map((r) => ({
           description: sourceLabel(r.title, locale),
           sourceId: r.id,
