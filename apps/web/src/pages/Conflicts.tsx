@@ -272,6 +272,38 @@ export function Conflicts(): JSX.Element {
       origin.quoteB ?? "",
     ]);
     const offen = c.status !== "geloest";
+    // ------------------------------------------------------------------------------------------
+    // JOB 3406 · KONFLIKTBESCHREIBUNG-SICHTBAR — der von Hand erfasste Satz, genau einmal.
+    // ------------------------------------------------------------------------------------------
+    // WAS FEHLTE: `description` ist ein PFLICHTfeld am Konflikt (services/conflicts/src/types.ts:57)
+    // und trägt beim MANUELL angelegten Konflikt das Einzige, was erklärt, WARUM ein Mensch die zwei
+    // Aussagen für widersprüchlich hielt. Der Altstand `c4a166ba` zeigte ihn (dort :371-372); seit
+    // dem Umbau auf das Kartenpaar las ihn niemand mehr. Was seither an seiner Stelle stand, ist
+    // NICHT dieselbe Auskunft: `origin.rationale` entsteht ausschliesslich im Zweig
+    // `origin === "auto" && detector` (lib/conflictBoard.ts:28-38) — der manuelle Zweig gibt dort
+    // systematisch nichts zurück.
+    //
+    // WARUM AUSSERHALB BEIDER KARTEN: der Satz beschreibt den WIDERSPRUCH, nicht eine der beiden
+    // Seiten (anders als Zitat, Quellen, Bedingungen, die je Karte stehen). Im `mehr()` einer Karte
+    // stünde er zwangsläufig zweimal und behauptete ausserdem, jemand habe SEITE A beschrieben.
+    // Deshalb flach unter der Kopfzeile: eine Stelle, ohne Aufklappen lesbar (Vorführung).
+    //
+    // WARUM DER AUTOMATISCHE FALL IHN NICHT ZEIGT — gemessen, nicht vorsichtshalber: bei der
+    // Erkennung schreibt `service.ts:404` `autoDescription(verdict)`, und `detect.ts:216-227` bildet
+    // daraus wörtlich „Automatisch erkannt: " + `verdict.begruendung`. Genau diese `begruendung`
+    // steht als `detector.rationale` (`service.ts:391`) bereits im „Mehr". Der automatische Zweig
+    // hätte hier also denselben Satz ein zweites Mal — mit fest deutschem Vorspann, eingefroren in
+    // der Sprache des Erkennungslaufs. Das wäre keine zusätzliche Auskunft, sondern eine verdoppelte;
+    // die Fläche des automatischen Falls bleibt deshalb Zeichen für Zeichen die alte — festgehalten
+    // vom Umriss-Pin in `tests/conflict-description/beschreibung-sichtbar.test.tsx` (F3).
+    //
+    // WARUM DER RIEGEL HIER UND NICHT NUR AM SERVER: `sichtbarkeit.ts:486` leert `description` bei
+    // Redaktion bereits am Draht. Die Anzeige verlässt sich NICHT darauf — ein Riegel, der nur bei
+    // artigem Server hält, ist keiner (JOB 1125).
+    //
+    // Leer oder nur Zwischenraum heisst: gar nichts. Kein Rahmen, keine Beschriftung und ausdrücklich
+    // KEIN Satz über die Abwesenheit — Nichtwissen wird nicht zu einer Auskunft.
+    const beschreibung = redigiert || origin.isAuto ? "" : (c.description ?? "").trim();
 
     const mehr = (seite: "a" | "b"): JSX.Element => {
       const ko = seite === "a" ? pair.a : pair.b;
@@ -466,6 +498,22 @@ export function Conflicts(): JSX.Element {
             </span>
           ) : null}
         </PruefenPaarZeile>
+
+        {/* Ohne Beschriftung — und das ist eine Entscheidung, keine Lücke: es gibt keinen
+            bestehenden Schlüssel, der „der bei der Anlage erfasste Satz" sachlich richtig benennt
+            (`con.autoWhy` = „Begründung" gehört dem automatischen Befund und würde die zwei
+            Auskünfte gerade vermischen), und `i18n.ts` ist Zielpfad zweier laufender Aufträge.
+            Eine Beschriftung, deren Wortlaut nicht passt, ist schlechter als keine — der Altstand
+            `c4a166ba` zeigte den Absatz ebenfalls unbeschriftet. `whitespace-pre-line` hält
+            mehrzeilig Erfasstes lesbar; der Text bleibt Text (React entschärft Markup selbst). */}
+        {beschreibung ? (
+          <p
+            data-testid="konflikt-beschreibung"
+            className="whitespace-pre-line text-[13.5px] leading-relaxed text-muted"
+          >
+            {beschreibung}
+          </p>
+        ) : null}
 
         <PruefenPaar>
           <PruefenPaarKarte
