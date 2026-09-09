@@ -56,9 +56,16 @@
             <p id="scope-none" class="hint warn" data-i18n="scopeChoose" hidden></p>
             <p class="hint" data-i18n="scopeHint"></p>
           </fieldset>
-          <!-- JOB 3280 · CHR-06 — DIE ZWISCHENABLAGE WIRD NUR AUF KLICK GELESEN.
-               Kein Dauerrecht im Manifest (`clipboardRead` steht dort BEWUSST nicht), also fragt
-               Chrome beim ersten Mal selbst. Der eingefügte Text steht danach in einem Feld, das
+          <!-- JOB 3280 · CHR-06 / JOB 3412 — DIE ZWISCHENABLAGE WIRD NUR AUF KLICK GELESEN.
+               Keine Pflichtberechtigung im Manifest: `clipboardRead` steht dort ausschliesslich
+               unter `optional_permissions`. Kein Lesen der Zwischenablage ohne Klick — der Klick
+               auf `#paste` fragt das Recht an; ohne Klick wird weder gefragt noch gelesen. Ein
+               erteiltes optionales Recht kann bestehen bleiben (Chrome verwaltet es, bis der
+               Mensch es entzieht); „kein Dauerrecht" stand hier bis Runde 2 und war falsch.
+               Wird es nicht erteilt, nennt `#status` den Griff, der nachweislich trägt — in dieses
+               Feld klicken und mit Cmd+V bzw. Strg+V einfügen. Der frühere Satz an dieser Stelle
+               („also fragt Chrome beim ersten Mal selbst") war durch die Liveprobe vom 09.09.
+               widerlegt und ist deshalb weg. Der eingefügte Text steht danach in einem Feld, das
                Pedi bearbeiten kann — die Vorschau darunter zieht mit. -->
           <fieldset id="clipboard-box">
             <legend data-i18n="clipboardTitle"></legend>

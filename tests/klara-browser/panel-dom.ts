@@ -114,11 +114,24 @@ export async function mount(
      */
     haltErsteAntwort?: boolean;
     /**
-     * JOB 3280 · CHR-06: was `navigator.clipboard.readText()` liefert — ein Text, oder ein Fehler
-     * (verweigerte Erlaubnis). `undefined` heisst „dieser Browser hat gar keine Zwischenablage".
-     * Jeder Aufruf wird gezählt; `leseZaehler()` ist der Beleg für „genau einmal, nur auf Klick".
+     * JOB 3280 · CHR-06: was `navigator.clipboard.readText()` liefert — ein Text, oder ein Fehler.
+     * `undefined` heisst „dieser Browser hat gar keine Zwischenablage". Jeder Aufruf wird gezählt;
+     * `leseZaehler()` ist der Beleg für „genau einmal, nur auf Klick".
+     *
+     * JOB 3412: `fehlerName` trennt die beiden Fehlerlagen, die die Leiste unterscheiden MUSS.
+     * Vorgabe ist `NotAllowedError` — der Name, mit dem der Browser „darf nicht" meldet (auch bei
+     * fehlendem Fokus). Jeder andere Name ist ein sonstiger Ausfall.
      */
-    zwischenablage?: { text?: string; fehler?: boolean };
+    zwischenablage?: { text?: string; fehler?: boolean; fehlerName?: string };
+    /**
+     * JOB 3412 · `chrome.permissions` — DAS OPTIONALE RECHT, gestellt wie der Browser es stellt.
+     *
+     * `erteilt` ist die Antwort auf `permissions.request(...)`; Vorgabe `true`, weil das der
+     * normale Weg ist und alle älteren Fälle ihn brauchen. `fehlt: true` nimmt die Schnittstelle
+     * ganz weg — der Browser, der die Anfrage nicht kennt. `wirft: true` lässt die Anfrage
+     * scheitern (z. B. Recht gar nicht als optional deklariert).
+     */
+    recht?: { erteilt?: boolean; fehlt?: boolean; wirft?: boolean };
     /**
      * JOB 3280 · CHR-07: eine ANTWORT ANSTELLE DES WORKERS — nur für die Linkprüfung der Leiste.
      *
@@ -169,8 +182,22 @@ export async function mount(
       })
     : null;
   let erste = true;
+  // JOB 3412: Die Rechteanfrage ist BROWSERVERHALTEN und wird deshalb hier gestellt, nicht im
+  // Prüfling umgangen. Aufgezeichnet wird, WAS angefragt wurde — daran hängt die Zusicherung
+  // „genau `clipboardRead`, und nur auf Klick".
+  const angefragt: { permissions: string[] }[] = [];
+  const permissions = optionen.recht?.fehlt
+    ? undefined
+    : {
+        request: async (anfrage: { permissions: string[] }) => {
+          angefragt.push(anfrage);
+          if (optionen.recht?.wirft) throw new Error("nicht anforderbar");
+          return optionen.recht?.erteilt !== false;
+        },
+      };
   Object.defineProperty(win, "chrome", {
     value: {
+      ...(permissions ? { permissions } : {}),
       runtime: {
         sendMessage: (message: unknown) => {
           messages.push(message);
@@ -211,7 +238,14 @@ export async function mount(
       value: {
         readText: async () => {
           gelesen.push(Date.now());
-          if (optionen.zwischenablage?.fehler) throw new Error("NotAllowedError");
+          if (optionen.zwischenablage?.fehler) {
+            // Der Browser wirft eine `DOMException` mit sprechendem NAMEN. Nachgestellt wird genau
+            // dieser Name — er ist die einzige Angabe, an der die Leiste „darf nicht" von „ging
+            // schief" unterscheiden kann.
+            const fehler = new Error("Zwischenablage nicht gelesen");
+            fehler.name = optionen.zwischenablage.fehlerName ?? "NotAllowedError";
+            throw fehler;
+          }
           return optionen.zwischenablage?.text ?? "";
         },
       },
@@ -291,5 +325,7 @@ export async function mount(
     gemerkt,
     /** Wie oft die Leiste die Zwischenablage bisher gelesen hat. */
     leseZaehler: () => gelesen.length,
+    /** JOB 3412: welche Rechte die Leiste bisher angefragt hat, in der Reihenfolge der Anfragen. */
+    rechteAnfragen: () => angefragt.map((a) => a.permissions),
   };
 }

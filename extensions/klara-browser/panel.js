@@ -59,7 +59,10 @@
   const TON = {
     ok: ["saved", "updated", "logged_out"],
     crit: [
-      "clipboard_denied",
+      // JOB 3412: der Sammelausgang `clipboard_denied` ist ERSETZT. Was übrig bleibt, ist ein
+      // echter Ausfall: die Leiste durfte lesen und es ging trotzdem schief. Der Fall „darf nicht
+      // lesen" ist kein Ausfall mehr, sondern eine Nachfrage mit gangbarem Weg — er steht unten.
+      "clipboard_failed",
       "expired",
       "denied",
       "conflict",
@@ -91,6 +94,10 @@
       // JOB 3280: drei Lagen mit einem klaren nächsten Schritt — sie sind kein Ausfall, sondern
       // eine Nachfrage. Gelb, nicht rot; und keine von ihnen hat etwas gesendet.
       "clipboard_empty",
+      // JOB 3412: „Klara darf die Zwischenablage nicht lesen" ist gelb, nicht rot — es ist kein
+      // Ausfall, sondern eine Nachfrage mit einem Griff, der nachweislich funktioniert (Cmd+V in
+      // das Feld). Nichts ging verloren, nichts wurde gesendet.
+      "clipboard_manual",
       "classification_locked",
       "origin_missing",
       // JOB 3280 R3: der Inhalt steht still, bis die unklare Anlage geklärt ist. Nichts ging
@@ -407,25 +414,87 @@
       void send({ type: "edit", captureId: current.captureId, form: form() }, false);
     });
   // ================================================================================================
-  // JOB 3280 · CHR-06 — DIE ZWISCHENABLAGE WIRD GENAU EINMAL GELESEN: HIER, AUF KLICK.
+  // JOB 3280 · CHR-06 / JOB 3412 — DIE ZWISCHENABLAGE WIRD GENAU EINMAL GELESEN: HIER, AUF KLICK.
   // ================================================================================================
   //
   // `navigator.clipboard.readText()` steht in dieser Datei GENAU EINMAL, und zwar in diesem
   // Klickzuhörer. Kein Aufruf beim Laden, keiner beim Fokuswechsel, keiner im Takt — ein
-  // Dauerleser der Zwischenablage wäre ein Mitleser fremder Passwörter. Das Manifest trägt
-  // deshalb auch KEIN `clipboardRead`: ohne Dauerrecht fragt Chrome beim ersten Mal nach.
+  // Dauerleser der Zwischenablage wäre ein Mitleser fremder Passwörter.
   //
-  // Wird die Erlaubnis verweigert oder ist die Ablage leer, sagt die Zustandszeile das und der
-  // bereits eingefügte Text bleibt unangetastet stehen.
+  // WAS HIER BIS JOB 3412 FALSCH STAND. Der Kommentar sagte: „Das Manifest trägt deshalb auch KEIN
+  // `clipboardRead`: ohne Dauerrecht fragt Chrome beim ersten Mal nach." Die Liveprobe vom 09.09.
+  // (`gespraech/arbeitsfenster-20260909/CHATGPT-ABNAHME.md`) widerlegt beide Hälften des Satzes: es
+  // kam KEIN Dialog, und Cmd+V im selben Feld fügte den Text unmittelbar danach ein. Am Bestand
+  // abzulesen war auch der Grund — `manifest.json` führte `clipboardRead` weder fest NOCH optional,
+  // es gab also gar kein Recht, über das Chrome hätte fragen können. Der Klick scheiterte still,
+  // und die Leiste gab dem Menschen einen Rat, den er nicht befolgen konnte.
+  //
+  // WAS JETZT GESCHIEHT, alles in DERSELBEN Klickgeste:
+  //   1. `chrome.permissions.request({ permissions: ["clipboardRead"] })` fragt das OPTIONALE Recht
+  //      an (`manifest.json`, `optional_permissions`). Die Zusage dazu lautet GENAU SO: keine
+  //      Pflichtberechtigung im Manifest; kein Lesen der Zwischenablage ohne Klick. Ein erteiltes
+  //      optionales Recht kann bestehen bleiben — Chrome verwaltet es weiter, bis der Mensch es
+  //      entzieht, und ein späterer `request` darf deshalb sofort `true` liefern, ohne Dialog
+  //      (developer.chrome.com/docs/extensions/reference/api/permissions). „Kein Dauerrecht" stand
+  //      hier bis Runde 2 und war falsch: optional sagt etwas über die ANFRAGE, nichts über die
+  //      DAUER. Was die Erweiterung zusichern kann, ist der Klick davor — und der steht hier.
+  //   2. Ist es erteilt (oder schon vorhanden), wird gelesen.
+  //   3. Sonst nennt die Zeile den Weg, der nachweislich funktioniert: in das Textfeld klicken und
+  //      Cmd+V bzw. Strg+V drücken. Kein Verweis auf einen Dialog, dessen Erscheinen niemand
+  //      zusichern kann.
+  //
+  // DREI AUSGÄNGE, DREI SÄTZE, KEINER MEINT EINEN ANDEREN MIT: `clipboard_manual` (darf nicht
+  // lesen), `clipboard_empty` (durfte, fand aber nichts), `clipboard_failed` (durfte, ging schief).
+  // In allen dreien bleiben eingefügter Text, Umfang, Herkunftswahl und Öffnen-Link unangetastet.
+  /**
+   * Das optionale Recht, angefragt in der Klickgeste. `true` heisst „erteilt" — auch dann, wenn es
+   * schon vorlag; Chrome fragt in dem Fall gar nicht erst.
+   *
+   * WARUM DIE TYPZUSICHERUNG HIER STEHT und nicht in `types.d.ts`, wo die übrige
+   * Chrome-Schnittstelle beschrieben ist: diese Datei liegt ausserhalb der Zielpfade von JOB 3412
+   * (in der Rückgabe unter ABWEICHUNGEN genannt). Die Zusicherung ist deshalb eng auf genau diesen
+   * einen Aufruf begrenzt.
+   *
+   * Ein fehlender Zweig ist KEIN Fehler, sondern der Fall „dieser Browser kennt die Anfrage nicht";
+   * er führt in denselben ehrlichen Satz wie eine Ablehnung.
+   * @returns {Promise<boolean>}
+   */
+  async function darfLesen() {
+    const rechte =
+      /** @type {{ permissions?: { request(anfrage: { permissions: string[] }): Promise<boolean> } }} */ (
+        /** @type {unknown} */ (chrome)
+      ).permissions;
+    if (!rechte) return false;
+    try {
+      return (await rechte.request({ permissions: ["clipboardRead"] })) === true;
+    } catch {
+      return false;
+    }
+  }
   $("paste").addEventListener("click", async () => {
     if (busy || $("paste").disabled) return;
+    // Der Öffnen-Link bleibt in JEDEM der drei Ausgänge stehen: am gespeicherten Entwurf hat sich
+    // nichts geändert, es wurde gar nichts gesendet. Ihn wegzunehmen wäre eine Folge ohne Ursache.
+    // Ebenso bleiben der bereits eingefügte Text, der gewählte Umfang und die Herkunftswahl —
+    // `render()` schreibt die Felder nur bei einer ANDEREN Übernahme neu (`loadedId`).
+    if (!(await darfLesen())) {
+      render({ ...current, status: "clipboard_manual" });
+      return;
+    }
     let text = "";
     try {
       text = await navigator.clipboard.readText();
-    } catch {
-      // Der Link bleibt: am gespeicherten Entwurf hat sich nichts geändert, es wurde gar nichts
-      // gesendet. Ihn hier wegzunehmen wäre eine Folge ohne Ursache.
-      render({ ...current, status: "clipboard_denied" });
+    } catch (fehler) {
+      // Der NAME des Fehlers trennt die beiden Ausgänge, nicht seine Bauart (`instanceof` griffe
+      // über eine Fensterrealm-Grenze hinweg ins Leere). `NotAllowedError` heisst „darf gerade
+      // nicht" — das deckt auch die nicht fokussierte Leiste mit ab, und beide Lagen löst derselbe
+      // Griff: in das Feld klicken (das gibt ihm den Fokus) und einfügen. Jeder ANDERE Name heisst
+      // „ging schief" und bekommt seinen eigenen Satz, statt als Verweigerung ausgegeben zu werden.
+      const name = /** @type {{ name?: unknown }} */ (fehler)?.name;
+      render({
+        ...current,
+        status: name === "NotAllowedError" ? "clipboard_manual" : "clipboard_failed",
+      });
       return;
     }
     if (!text.trim()) {

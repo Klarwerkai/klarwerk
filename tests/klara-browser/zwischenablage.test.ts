@@ -186,8 +186,16 @@ describe("JOB 3280 · CHR-06 — die Zwischenablage wird nur auf Klick gelesen",
     expect(davor.slice(davor.lastIndexOf('addEventListener("'))).toContain(
       'addEventListener("click"',
     );
-    // Kein Dauerrecht im Manifest: ohne `clipboardRead` fragt Chrome bei jedem neuen Konto nach.
+    // KEINE PFLICHTBERECHTIGUNG im Manifest — das bleibt die Zusage dieses Falls. Über die DAUER
+    // eines erteilten optionalen Rechts sagt er nichts: das bleibt bestehen, bis der Mensch es
+    // entzieht (Runde 2, BEN — „kein Dauerrecht" stand hier und war falsch).
+    // JOB 3412 (Nachführung): der Satz „ohne `clipboardRead` fragt Chrome bei jedem neuen Konto
+    // nach" stand hier und war falsch; die Liveprobe vom 09.09. zeigte keinen Dialog. Seither trägt
+    // das Manifest das Recht ausdrücklich als OPTIONALES, das der Klick anfragt. Die Zusicherung
+    // wird dadurch nicht schwächer, sondern genauer: `permissions` bleibt frei davon, und dass es
+    // genau ein optionales ist, misst `tests/browser-extension/einfuegen-ehrlich.test.tsx` (F5).
     expect(JSON.parse(read("manifest.json")).permissions).not.toContain("clipboardRead");
+    expect(JSON.parse(read("manifest.json")).optional_permissions).toEqual(["clipboardRead"]);
   });
 
   it("B · der Text ist bearbeitbar, und bei einem ChatGPT-Tab ist die Herkunft vorbelegt", async () => {
@@ -319,10 +327,17 @@ describe("JOB 3280 · CHR-07 — ein Vorgang, ein Entwurf, derselbe Link", () =>
     const verweigert = await leiste({ fehler: true });
     verweigert.el("paste").click();
     await verweigert.settle();
+    // JOB 3412 (Nachführung, nicht Abschwächung): bis hierher stand hier „Die Zwischenablage wurde
+    // nicht freigegeben. Bitte die Nachfrage des Browsers erlauben" — ein Rat auf einen Dialog, der
+    // in der Liveprobe vom 09.09. nie erschien. Die Zusage des Falls ist dieselbe geblieben (die
+    // Lage wird BENANNT und der Text bleibt stehen), nur ist der genannte nächste Schritt jetzt der,
+    // der nachweislich funktioniert. Rot → gelb aus demselben Grund: eine Lage mit einem gangbaren
+    // Griff ist eine Nachfrage, kein Ausfall (`panel.js`, Tontabelle `TON`).
     expect(verweigert.el("status").textContent).toContain(
-      "Die Zwischenablage wurde nicht freigegeben",
+      "Bitte in das Feld „Eingefügter Text“ klicken und mit Cmd+V (Windows und Linux: Strg+V) einfügen",
     );
-    expect(verweigert.el("status").className).toBe("crit");
+    expect(verweigert.el("status").textContent).not.toContain("Nachfrage");
+    expect(verweigert.el("status").className).toBe("warn");
 
     const view = await leiste({ echt: true });
     await anmelden(view);

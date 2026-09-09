@@ -33,8 +33,11 @@ globalThis.KLARA_TEXT = {
     modePage: "Zugängliche Seite",
     modeClipboard: "Zwischenablage (eingefügter Text)",
     clipboardTitle: "Aus der Zwischenablage übernehmen",
+    // JOB 3412: „Beim ersten Mal fragt der Browser um Erlaubnis." stand hier und war eine
+    // Zusicherung über etwas, das die Leiste nicht in der Hand hat. Jetzt steht da, was die Leiste
+    // TUT (das Recht anfragen) und was bleibt, wenn es nicht erteilt wird.
     clipboardHint:
-      "Klara liest die Zwischenablage nur bei einem Klick auf diese Taste — nie beim Öffnen und nie im Hintergrund. Beim ersten Mal fragt der Browser um Erlaubnis.",
+      "Klara liest die Zwischenablage nur bei einem Klick auf diese Taste — nie beim Öffnen und nie im Hintergrund. Der Klick fragt das Recht „Zwischenablage lesen“ an. Wird es nicht erteilt, lässt sich der Text unten von Hand einfügen.",
     paste: "Aus Zwischenablage einfügen",
     clipboardText: "Eingefügter Text (bearbeitbar)",
     originLabel: "Herkunft des eingefügten Textes",
@@ -108,8 +111,14 @@ globalThis.KLARA_TEXT = {
       "Vorschau bereit. Ein Speicherversuch ist unbestätigt — es kann bereits einen Entwurf dazu geben. Das nächste Speichern wiederholt zuerst genau diese Sendung und legt die Änderungen dann in denselben Entwurf. Bis dahin bleiben Umfang und eingefügter Text unverändert stehen.",
     previewSameDraft:
       "Vorschau bereit. Änderungen gehen beim Speichern in denselben Entwurf — kein zweiter Entwurf.",
-    clipboard_denied:
-      "Die Zwischenablage wurde nicht freigegeben. Bitte die Nachfrage des Browsers erlauben und erneut einfügen. Es wurde nichts gelesen.",
+    // JOB 3412: `clipboard_denied` ist ERSATZLOS gestrichen. Sein Satz verwies auf eine Nachfrage
+    // des Browsers, die nachweislich nicht erscheint, und meinte ausserdem jeden Lesefehler mit.
+    // An seine Stelle treten zwei getrennte, wahre Sätze: einer nennt den Griff, der wirklich
+    // funktioniert, der andere benennt einen Ausfall als Ausfall.
+    clipboard_manual:
+      "Klara darf die Zwischenablage nicht lesen. Bitte in das Feld „Eingefügter Text“ klicken und mit Cmd+V (Windows und Linux: Strg+V) einfügen. Es wurde nichts gelesen und nichts gesendet.",
+    clipboard_failed:
+      "Die Zwischenablage konnte nicht gelesen werden. Bitte erneut versuchen; hilft das nicht, den Text mit Cmd+V (Windows und Linux: Strg+V) in das Feld „Eingefügter Text“ einfügen. Es wurde nichts gelesen und nichts gesendet.",
     clipboard_empty:
       "Die Zwischenablage enthielt keinen Text. Bitte in der Quelle kopieren und erneut einfügen.",
     classification_locked:
@@ -199,7 +208,7 @@ globalThis.KLARA_TEXT = {
     modeClipboard: "Clipboard (pasted text)",
     clipboardTitle: "Capture from the clipboard",
     clipboardHint:
-      "Klara reads the clipboard only when you click this button — never on opening and never in the background. The browser asks for permission the first time.",
+      "Klara reads the clipboard only when you click this button — never on opening and never in the background. The click asks for the “read clipboard” permission. If it is not granted, you can paste the text below by hand.",
     paste: "Paste from clipboard",
     clipboardText: "Pasted text (editable)",
     originLabel: "Origin of the pasted text",
@@ -268,8 +277,10 @@ globalThis.KLARA_TEXT = {
       "Preview ready. One save attempt is unconfirmed — a draft for it may already exist. Saving next repeats exactly that request first and then writes your changes into the same draft. Until then the scope and the pasted text stay unchanged.",
     previewSameDraft:
       "Preview ready. Saving changes writes into the same draft — no second draft is created.",
-    clipboard_denied:
-      "Clipboard access was not granted. Please allow the browser prompt and paste again. Nothing was read.",
+    clipboard_manual:
+      "Klara is not allowed to read the clipboard. Please click into the “Pasted text” field and paste with Cmd+V (Windows and Linux: Ctrl+V). Nothing was read and nothing was sent.",
+    clipboard_failed:
+      "The clipboard could not be read. Please try again; if that does not help, paste the text into the “Pasted text” field with Cmd+V (Windows and Linux: Ctrl+V). Nothing was read and nothing was sent.",
     clipboard_empty: "The clipboard held no text. Copy it in the source and paste again.",
     classification_locked:
       "A classification that has already been saved cannot be reset to “Open” from here. Please choose a level or open the draft in Klarwerk. Nothing was sent.",
