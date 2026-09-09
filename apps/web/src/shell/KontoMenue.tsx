@@ -4,6 +4,10 @@ import { useLocation } from "react-router-dom";
 import { useSession } from "../app/AuthContext";
 import { useGuardedNavigate } from "../app/NavGuardContext";
 import { useRole } from "../app/RoleContext";
+// JOB 3323: der Sprachschalter der Hülle. Er wohnt in DIESER Liste und nicht im Kopfband selbst,
+// weil `KontoEintraege` der eine Baustein ist, den BEIDE Orte rendern — das Konto-Menü im breiten
+// wie im schmalen Kopfband und der Off-Canvas-Drawer (DrawerMenue.tsx). Ein Ort, jede Seite.
+import { SprachSchalter } from "../components/SprachSchalter";
 import { DarstellungWahl } from "./Darstellung";
 import { Meldungen, type MeldungenZustand, useMeldungenZustand } from "./Meldungen";
 import { MenueFlaeche, MenueTrenner, MenueZeile, useMenue } from "./Menue";
@@ -60,6 +64,11 @@ export function KontoEintraege({
         {t("topbar.mobile")}
       </MenueZeile>
       <DarstellungWahl />
+      {/* JOB 3323: die Sprache steht neben der Darstellung — beide sind Einstellungen der Fläche,
+          keine Navigation. Sie steht VOR „Profil", weil sie den Zweck von „Profil" für diesen einen
+          Fall ersetzt: wer nur die Sprache wechseln will, muss die Szene nicht mehr verlassen. Die
+          Zeile „Sprache" auf /profil bleibt unverändert bestehen (JOB 3065 H6). */}
+      <SprachSchalter />
       <MenueZeile to="/profil" aktiv={location.pathname === "/profil"} testid="konto-profil">
         {t("nav.profile")}
       </MenueZeile>

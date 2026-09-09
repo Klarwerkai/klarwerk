@@ -18,7 +18,10 @@ import { ZahnradMenue } from "./ZahnradMenue";
 //
 // Was NICHT mehr hier steht, hat einen benannten Ort (Auftrag 5a/5b): Mobil, Design, Meldungen und
 // Abmelden im Konto-Menü; Hilfe, Status, Rechtliches, Version, Seitenhilfe und Weitere Bereiche im
-// Zahnrad-Menü; Sprache auf /profil. Der sichtbare Text dieser Leiste sind genau die Wörter
+// Zahnrad-Menü; Sprache auf /profil — und seit JOB 3323 ZUSÄTZLICH im Konto-Menü
+// (`components/SprachSchalter.tsx`), damit der Wechsel aus jeder laufenden Szene erreichbar ist.
+// Sichtbar wird er erst mit dem aufgeklappten Menü; der sichtbare Text der geschlossenen Leiste
+// bleibt deshalb unverändert. Der sichtbare Text dieser Leiste sind genau die Wörter
 // KLARWERK, Start, Fragen, Bibliothek, Erfassen, Prüfen und der Platzhalter Suchen
 // (tests/design/zielbild-h1-kein-erklaertext.test.ts).
 //

@@ -12,6 +12,11 @@
 //    ist seit `e686f93` weg, es ist heute nur noch `Profile.tsx`. Die Lehre bleibt: der nächste
 //    Umschalter käme sonst mit einer zweiten Wahrheit. Dieselbe Lehre wie bei designTheme.ts —
 //    und aus demselben Grund wohnt auch das SCHREIBEN der Wahl an der Wurzel (`sprachwahl.ts`).
+//    JOB 3323 (08.09.2026) hat den nächsten Umschalter gebracht — `components/SprachSchalter.tsx`
+//    im Konto-Menü der Hülle, erreichbar aus jeder laufenden Szene — und genau NICHTS an dieser
+//    Datei geändert: er ruft `i18n.changeLanguage` wie die beiden anderen, die eine Bindung an der
+//    Wurzel trägt ihn mit. Das ist der Beleg dafür, dass die Lehre oben trägt; hätte jeder
+//    Umschalter seine eigene Bindung, stünden hier jetzt drei.
 //  · KEINE Normalisierung des Sprachcodes: `i18n.language` ist weiterhin immer exakt „de" | „en" |
 //    „nl". Der tragende Grund ist seit JOB 3086 nicht mehr das feste `lng`, sondern die Prüfung:
 //    die gespeicherte Wahl wird gegen ERLAUBTE_SPRACHEN (unten) geprüft, BEVOR sie `lng` wird, und
@@ -56,6 +61,61 @@ export type I18nLike = {
 // dort ist die NORMALISIERUNG ausgeschlossen (aus `de-DE` würde `de`), nicht die Prüfung. `de-DE`
 // wird deshalb nicht zurechtgebogen, sondern gar nicht erst geschrieben.
 export const ERLAUBTE_SPRACHEN: readonly string[] = ["de", "en", "nl"];
+
+// ==================================================================================================
+// JOB 3323 — DER EINTRITT MIT SPRACHE (`?lang=…`), aus JOB 3280.
+// ==================================================================================================
+//
+// Klara (das Word-Add-in) verlinkt einen gesicherten Entwurf als
+// `/capture/frontdoor?draft=<id>&lang=en|de` (JOB 3280). Wer aus einem englischen Word kommt, soll
+// die Anwendung auf Englisch vorfinden — und zwar SOFORT, nicht nach einem sichtbaren Umschlag.
+//
+// DESHALB WIRD DAS HIER GELESEN UND IN `i18n.ts` ALS `lng` GESETZT, nicht in einem Effekt der
+// Oberfläche. Ein Effekt liefe erst NACH dem ersten Zeichnen: die Seite stünde einen Wimpernschlag
+// auf Deutsch da und spränge dann um. Als Startwert gibt es diesen Sprung nicht.
+//
+// DIE ADRESSE SELBST WIRD NICHT ANGETASTET: `?draft=<id>` bleibt stehen, wird von hier weder
+// gelesen noch entfernt, und `Blatt.tsx` findet ihn beim Aufbau wie bisher (`searchParams.get`).
+//
+// DER PARAMETER IST FÜR DEN TEST DA. Ohne Argument liest die Funktion die laufende Adresse — so
+// ruft `i18n.ts` sie. Mit Argument ist sie eine reine Funktion und ohne Browser prüfbar.
+
+// ==================================================================================================
+// DER LINKVERTRAG — WAS EIN FREMDER LINK SAGEN DARF. NICHT DASSELBE WIE „WAS DIE APP KANN".
+// ==================================================================================================
+//
+// JOB 3323 RUNDE 3, bens Korrekturpflicht 1. Runde 2 hat hier `ERLAUBTE_SPRACHEN` benutzt und damit
+// auch `?lang=nl` angenommen — mit dem Argument, eine zweite Liste wäre eine zweite Wahrheit. Das
+// war falsch, und zwar zweifach:
+//   · VERBINDLICH: die Nachführung 2026-09-09T00:21 (aus JOB 3280) vereinbart „nur zulässige Werte
+//     de|en". Eine Vorgabe wird nicht durch eine Bauüberlegung überstimmt.
+//   · SACHLICH: es sind ZWEI VERSCHIEDENE TATSACHEN, nicht eine doppelt aufgeschriebene.
+//     `ERLAUBTE_SPRACHEN` sagt, was die ANWENDUNG kann (de|en|nl — was unter /profil und im
+//     Konto-Menü wählbar ist). Diese Liste hier sagt, was ein LINK VON AUSSEN setzen darf. Das ist
+//     eine Schnittstellenzusage gegenüber Klara und darf enger sein: Klara schickt genau diese
+//     beiden Werte, und was von aussen kommt, wird eng geprüft und nicht großzügig ausgelegt.
+//
+// DASS DIE BEIDEN LISTEN NICHT AUSEINANDERLAUFEN, ist gemessen und nicht gehofft: der Teilmengenfall
+// in `tests/app-sprachschalter/standard-und-gespeicherte-wahl.test.tsx` (E3) hält fest, dass jeder
+// Wert hier auch in `ERLAUBTE_SPRACHEN` steht. Ein `fr` liesse sich also nicht still eintragen.
+//
+// Kommt Klara eines Tages mit Niederländisch, ist das eine Zeile — und eine Entscheidung, die dann
+// jemand trifft, statt sie hier vorweggenommen zu finden.
+export const EINTRITT_SPRACHEN: readonly string[] = ["de", "en"];
+
+// Was NICHT im Linkvertrag steht (`?lang=nl`, `?lang=xx`, leer, fehlend), gilt als nicht gesagt:
+// die Vorgabe bleibt stehen, es gibt keinen Absturz und keine Zurechtbiegung — dieselbe Regel wie
+// in `applyHtmlLang` und `gespeicherteSprache`. Ein ignoriertes `lang` nimmt dem Eintritt NICHTS
+// ausser der Sprache: `?draft=<id>` wird weiterhin geöffnet.
+export function sprachAusEintritt(suche?: string): string | null {
+  const roh =
+    suche ?? (globalThis as unknown as { location?: { search?: string } }).location?.search ?? "";
+  const wert = new URLSearchParams(roh).get("lang");
+  if (wert === null || !EINTRITT_SPRACHEN.includes(wert)) {
+    return null;
+  }
+  return wert;
+}
 
 // Setzt das EINE Wurzel-Attribut. Zwei No-ops, beide bewusst:
 //  · kein Dokument (node-Testumgebung, DOM-freier Renderpfad) → nichts tun, nie ein Absturz;

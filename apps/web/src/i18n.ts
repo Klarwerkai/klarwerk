@@ -1,5 +1,6 @@
 import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
+import { sprachAusEintritt } from "./lib/htmlLang";
 // JOB 3326 R4: die Texte der Lesevariante wohnen bei ihrer Funktion, damit diese Woerterbuchdatei
 // unter dem 1-MiB-Deckel von Biome bleibt. Messung und Begruendung: `lib/lesevariante.ts`.
 import { lesevarianteTexteDe, lesevarianteTexteEn, lesevarianteTexteNl } from "./lib/lesevariante";
@@ -15423,7 +15424,18 @@ const nl: typeof de = {
 
 void i18n.use(initReactI18next).init({
   resources: { de: { translation: de }, en: { translation: en }, nl: { translation: nl } },
-  lng: gespeicherteSprache(),
+  // JOB 3323 (Nachführung aus JOB 3280): DIE ADRESSE SCHLÄGT DIE GESPEICHERTE WAHL — aber nur,
+  // wenn sie eine Sprache des LINKVERTRAGS nennt (`EINTRITT_SPRACHEN` = de|en, htmlLang.ts). Der
+  // Eintritt aus Klara (`/capture/frontdoor?draft=<id>&lang=en`) bestimmt so die Sprache DIESES
+  // Aufrufs, ohne dass jemand erst umschalten muss; ohne `?lang` und bei JEDEM nicht vereinbarten
+  // Wert — auch bei `nl`, das die Anwendung zwar kann, der Link aber nicht setzen darf — bleibt es
+  // Zeichen für Zeichen beim bisherigen Verhalten. Die Reihenfolge ist die Rangfolge: Adresse,
+  // dann gespeicherte Wahl, dann die Vorgabe „de" (in `gespeicherteSprache`).
+  //
+  // BEWUSST NICHT GESPEICHERT: `lng` löst kein `languageChanged` aus, `bindSpracheSpeichern`
+  // (`lib/sprachwahl.ts`) schreibt also nichts. Ein Link aus Word ist der Wunsch für DIESEN
+  // Aufruf, keine Wahl für diesen Browser — er soll die Wahl unter /profil nicht überschreiben.
+  lng: sprachAusEintritt() ?? gespeicherteSprache(),
   fallbackLng: "de",
   interpolation: { escapeValue: false },
 });

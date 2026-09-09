@@ -1561,8 +1561,22 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // Bild, bieten keine Bildbeschreibung an (kein `ANGEBOT_MUSTER`) und tragen keinen eigenen Titel
     // (kein `documentTitle`-Prop) — sie erscheinen nur in der Grundmenge. Die zwei Zahlen, an denen
     // Stufe 2 wirklich hängt, sind unverändert: `anbieter` 1 und `traeger` 2.
+    //
+    // KONFLIKTRUNDE 1 (JOB 3323 · APP-SPRACHSCHALTER): NACH DEM REBASE auf JOB 3337/ADMIN-NAVIGATION
+    // trifft die unabhängige NEUE Fläche APP-SPRACHSCHALTER auf denselben Stand; `komponenten` von
+    // 365 auf 366 NACHGEZOGEN — am eigenen Lauf dieses Arbeitsbaums gemessen, nicht rechnerisch
+    // addiert. GENAU EIN Bauteil kommt hinzu: `SprachSchalter` in der neuen Datei
+    // `components/SprachSchalter.tsx` — die DE/EN/NL-Zeile im Konto-Menü der Hülle, mit der sich
+    // die Sprache aus jeder laufenden Szene wechseln lässt. Die zweite Funktion der Datei,
+    // `istAktiv`, wird NICHT mitgezählt: `alsKomponente` (oben, :453) verlangt einen
+    // Großbuchstaben am Namensanfang. GEGENPROBE dazu, gemessen statt behauptet: mit der
+    // Deklaration kleingeschrieben meldet dieser Fall wieder 365 und ist grün — die +1 ist genau
+    // dieses Bauteil und kein zweiter Fund, der sich hinter derselben Zahl versteckt.
+    // Es bietet keine Bildbeschreibung an (kein `ANGEBOT_MUSTER`) und trägt keinen eigenen Titel
+    // (kein `documentTitle`-Prop) — es erscheint nur in der Grundmenge. Die zwei Zahlen, an denen
+    // Stufe 2 wirklich hängt, bleiben unverändert: `anbieter` 1 und `traeger` 2.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 365,
+      komponenten: 366,
       anbieter: 1,
       traeger: 2,
     });

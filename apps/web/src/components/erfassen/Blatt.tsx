@@ -317,6 +317,35 @@ export function Blatt({
   // JOB 3106 (UX-01): der Merker des Speicherweges für den Ladeeffekt — `<kennung>#<reloadNonce>`.
   // Seine Begründung steht am Ladeeffekt, wo er gelesen wird.
   const speicherAdresseRef = useRef<string | null>(null);
+  // ================================================================================================
+  // JOB 3323 R2 — DIE ÜBERSETZUNG DARF DEN LADEEFFEKT NICHT AUSLÖSEN.
+  // ================================================================================================
+  // Der Ladeeffekt braucht `t` an genau einer Stelle: der FEHLERTEXT, wenn das Holen scheitert.
+  // Stünde `t` deshalb in seinen Abhängigkeiten, wäre jeder Sprachwechsel ein Ladebefehl — react-
+  // i18next gibt bei jedem Wechsel eine neue `t`-Identität heraus, und die Bewachung darüber
+  // (`speicherAdresseRef`) greift beim ÖFFNEN eines Entwurfs nicht: sie wird erst nach eigenem
+  // Speichern gesetzt. Gemessen (JOB 3323 R2, `tests/app-sprachschalter/gespeicherter-entwurf.test.tsx`):
+  // ein gespeicherter Entwurf wurde beim Sprachwechsel ein zweites Mal geholt, und die Antwort
+  // setzte Titel, Rumpf und Vertraulichkeit auf den Serverstand zurück — die ungesicherte Arbeit
+  // war weg. Genau das verbietet der Auftrag („ohne Verlust von Entwurf").
+  //
+  // WARUM EIN REF UND KEIN `getFixedT`: die Meldung soll in der Sprache stehen, die BEIM EINTREFFEN
+  // DES FEHLERS gilt, nicht in der vom Start des Ladevorgangs. `getFixedT("de")` fröre sie ein —
+  // gemessen in JOB 3323 R3: mit `getFixedT("de")` meldet der Fall unten „Der Entwurf konnte nicht
+  // geladen werden", obwohl die Oberfläche längst englisch ist. Das Ref trägt dagegen immer die
+  // aktuelle Übersetzung und ist trotzdem stabil — es löst keinen Ladevorgang aus.
+  //
+  // EHRLICH DAZU, WAS DAS REF NICHT LEISTET (Runde 3, gemessen statt angenommen): Ein einfach
+  // eingeschlossenes `t` aus einem früheren Render übersetzt EBENFALLS aktuell — react-i18next
+  // reicht an die lebende Instanz durch, nur die IDENTITÄT von `t` wechselt. Für die Sprache wäre
+  // ein `t` hier also gleichwertig; der Grund für das Ref ist allein die STABILITÄT (es darf nicht
+  // in die Abhängigkeiten unten, sonst lädt der Effekt neu). Der Fall unten unterscheidet deshalb
+  // `tRef` von `getFixedT`, NICHT von `t` — das ist geprüft und hier festgehalten, damit niemand
+  // dem Ref eine Wirkung zuschreibt, die es nicht hat.
+  const tRef = useRef(t);
+  useEffect(() => {
+    tRef.current = t;
+  }, [t]);
   const bodyNieGeliefertRef = useRef(false);
   const savedStateRef = useRef<{
     title: string;
@@ -786,12 +815,12 @@ export function Blatt({
         // nicht mitnehmen — die eigene bleibt aktiv, die Adresse wird zurückgesetzt, die Meldung
         // reist als Toast (ein zweiter Lauf würde ein `setErr` sofort wieder löschen).
         if (vorherigeKennung && vorherigeKennung !== resumeDraftId) {
-          push("error", ladeFehlerMeldung(e, t("fd.errLoadFailed")));
+          push("error", ladeFehlerMeldung(e, tRef.current("fd.errLoadFailed")));
           setSearchParams({ draft: vorherigeKennung }, { replace: true });
           return;
         }
         setActiveDraftId(null);
-        setErr(ladeFehlerMeldung(e, t("fd.errLoadFailed")));
+        setErr(ladeFehlerMeldung(e, tRef.current("fd.errLoadFailed")));
       })
       .finally(() => {
         if (!cancelled) {
@@ -802,7 +831,10 @@ export function Blatt({
     return () => {
       cancelled = true;
     };
-  }, [resumeDraftId, reloadNonce, clearStructureState, clearAssistState, diktatVomBlattTrennen, t]);
+    // JOB 3323 R2: `t` steht hier BEWUSST NICHT (Begründung an `tRef`, oben). Die übrigen vier
+    // sind stabil (`useCallback` mit leerer Liste bzw. Zustandswerte) — dieser Effekt läuft damit
+    // genau dann, wenn sich die Entwurfskennung oder die Laderunde ändert, und sonst nie.
+  }, [resumeDraftId, reloadNonce, clearStructureState, clearAssistState, diktatVomBlattTrennen]);
 
   const structure = useMutation({
     mutationFn: () =>
