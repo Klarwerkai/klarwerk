@@ -1,0 +1,7 @@
+{
+  "apps/web/src/pages/Capture.tsx": "64402470a3c6e8138cb5b60239416d0869aa2903f6034fea268f21509be19581",
+  "apps/web/src/lib/captureFromFile.ts": "6e2eb7bf08b05de3726412bea1ac64d09f6830477c5d6c609722145f863d0c21",
+  "apps/web/src/i18n.ts": "8b88599c6af317871cdd9d0f88780ce331e2eddbed7b2cae585de83bb3ca924e",
+  "tests/import-anleitung-modus/anleitung-folgt-der-importart-mounted.test.tsx": "7f74b331aedca14cfe4707739dd6e79bd9434ca37ed054890c7032250177140c",
+  "tests/import-anleitung-modus/tastatur-importart-chromium.test.ts": "1c4b492776d5447d9ce30bca05f088cb2068137a44f5c8fd40cab2cfbfa3d112"
+}
