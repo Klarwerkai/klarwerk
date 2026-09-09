@@ -68,9 +68,17 @@ describe("WP-UX-WOW-1 U4: Bibliothek-Karten lesbar", () => {
     // `white-space: nowrap; overflow: hidden; text-overflow: ellipsis`). Zwei Zeilen wären hier
     // eine andere Fläche. Die Zusage von U4 — „der Volltext geht nicht verloren" — bleibt: er
     // steht im `title`, und die volle Fassung steht rechts auf der Lesefläche.
+    //
+    // JOB 3362 (LESEVARIANTE-FLAECHEN) — DIE PRÜFUNG IST NACHGEFÜHRT UND DABEI SCHÄRFER GEWORDEN.
+    // Der Zeilentitel liegt jetzt im Bauteil `ZeilenTitel`, weil er bei vorliegender Leseübersetzung
+    // den ÜBERSETZTEN Text zeigt (`zeile.titel` ist dort der Posten). Genau deshalb genügt die alte
+    // Zeichenkette nicht mehr — und genau deshalb ist die Zusage von U4 hier wichtiger als vorher:
+    // im `title` steht weiterhin der ORIGINALtitel, nicht die Übersetzung. Die alte Prüfung hätte
+    // eine Fläche durchgehen lassen, die `title={uebersetzt.title}` schreibt.
     const liste = read("apps/web/src/components/bibliothek/BibliothekListe.tsx");
     expect(liste).toContain("truncate");
-    expect(liste).toContain("title={p.titel}");
+    expect(liste).toContain("title={zeile.titel}");
+    expect(liste).not.toContain("title={uebersetzt.title}");
   });
 
   it("Autor-Zeile trägt den Volltext im title-Attribut", () => {

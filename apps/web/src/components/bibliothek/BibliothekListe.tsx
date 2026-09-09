@@ -1,7 +1,8 @@
-import { Search } from "lucide-react";
+import { Languages, Search } from "lucide-react";
 import { type ReactNode, type UIEvent, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { CONF_TONE_CLASS, type ConfidentialityTone } from "../../lib/confidentiality";
+import { useLesevariante } from "../../lib/lesevariante";
 import { cx } from "../ui";
 import { BIB_SEGMENTE, type BibSegment, type ZustandsTon, amListenende } from "./zustand";
 
@@ -52,6 +53,70 @@ export interface BibGruppenkopf {
 }
 
 export type BibListenPosten = BibZeile | BibGruppenkopf;
+
+// ==================================================================================================
+// JOB 3362 · LESEVARIANTE-FLAECHEN — DER ZEILENTITEL STEHT IN DER LESESPRACHE.
+// ==================================================================================================
+//
+// Liegt für dieses Wissensobjekt eine Leseübersetzung in der Oberflächensprache vor, trägt die Zeile
+// den übersetzten Titel — mit derselben Kennzeichnung wie überall sonst („Übersetzung · Original:
+// Englisch"). Die ENTSCHEIDUNG darüber fällt nicht hier, sondern an der einen Stelle aus JOB 3326
+// (`lib/lesevariante.ts`, `useLesevariante` → `anzuzeigendeVariante`): andere Sprache als das
+// Original, Variante vorhanden — sonst `undefined`, und dann steht das Original ohne jeden Hinweis
+// da. Diese Datei zeichnet nur, sie entscheidet nichts.
+//
+// WARUM DIE KURZFORM UND NICHT DER BAUSTEIN `LesevarianteHinweis`: die Zeile IST ein `<button>`, und
+// der Baustein trägt seinen Umschalter „Original anzeigen" als zweiten `<button>` darin. Ein Knopf im
+// Knopf ist im DOM nicht erlaubt und mit der Tastatur nicht erreichbar. Die Zeile trägt die
+// Kennzeichnung deshalb als reinen Text — in DERSELBEN Bauform wie die Kurzvorschau
+// (`KoSummaryDisclosure.tsx:75-84`), mit denselben Schlüsseln aus JOB 3326 und ohne einen zweiten
+// Wortlaut. Der Weg zum Original ist die Lesefläche rechts, die den vollen Baustein samt Umschalter
+// zeigt.
+//
+// DAS ORIGINAL BLEIBT WAHRHEIT, und zwar messbar: `title=` am Titel führt weiter den ORIGINALtitel
+// (der Werkzeugtipp an der abgeschnittenen Zeile), und Suche, Reihung und Gruppierung entstehen
+// unverändert in `BibliothekFlaeche.tsx` aus `ko.title` — diese Datei bekommt `posten` fertig
+// gereicht und ändert daran nichts.
+function ZeilenTitel({ zeile, gewaehlt }: { zeile: BibZeile; gewaehlt: boolean }): JSX.Element {
+  const { t } = useTranslation();
+  const variante = useLesevariante(zeile.id);
+  // Eine Variante OHNE Titel ist für diese Zeile keine: dann steht das Original da, ohne
+  // Kennzeichnung. Ein leerer Titel mit dem Vermerk „Übersetzung" wäre die Behauptung einer
+  // Übersetzung, die man nicht lesen kann.
+  const uebersetzt = variante && variante.title.trim().length > 0 ? variante : undefined;
+  // Dieselbe Regel wie im Hinweis-Baustein (`LesevarianteHinweis.tsx:32-37`): der Sprachname kommt
+  // aus der Übersetzungsfläche; ein unbekannter Code wird als Code gezeigt und nicht erfunden.
+  const sprachname = (code: string): string => {
+    const schluessel = `lesevariante.sprache.${code}`;
+    const name = t(schluessel);
+    return name === schluessel ? code.toUpperCase() : name;
+  };
+  return (
+    <>
+      <span
+        data-bib-text="zeile-titel"
+        title={zeile.titel}
+        className={cx(
+          "block truncate text-[14px] text-text",
+          gewaehlt ? "font-semibold" : "font-medium",
+        )}
+      >
+        {uebersetzt ? uebersetzt.title : zeile.titel}
+      </span>
+      {uebersetzt ? (
+        <span
+          data-testid="bib-zeile-uebersetzung"
+          className="flex items-center gap-1 text-[11px] font-semibold text-muted-2"
+        >
+          <Languages size={12} aria-hidden="true" className="shrink-0" />
+          {t("lesevariante.badge.uebersetzung", {
+            sprache: sprachname(uebersetzt.originalLanguage),
+          })}
+        </span>
+      ) : null}
+    </>
+  );
+}
 
 export function BibliothekListe({
   q,
@@ -262,16 +327,9 @@ export function BibliothekListe({
                 className={cx("mt-1.5 h-2 w-2 shrink-0 rounded-[50%]", PUNKT_TON[p.ton])}
               />
               <span className="flex min-w-0 flex-col gap-[3px]">
-                <span
-                  data-bib-text="zeile-titel"
-                  title={p.titel}
-                  className={cx(
-                    "block truncate text-[14px] text-text",
-                    p.id === gewaehlt ? "font-semibold" : "font-medium",
-                  )}
-                >
-                  {p.titel}
-                </span>
+                {/* JOB 3362: der Titel in der Lesesprache, wenn es eine Übersetzung gibt — samt
+                    Kennzeichnung. Die Begründung steht am Bauteil selbst. */}
+                <ZeilenTitel zeile={p} gewaehlt={p.id === gewaehlt} />
                 <span data-bib-text="zeile-meta" className="block text-[12px] text-muted">
                   {`${p.bereich} · ${p.zustandWort}`}
                 </span>

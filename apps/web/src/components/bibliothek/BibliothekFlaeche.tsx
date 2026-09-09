@@ -1651,6 +1651,12 @@ export function BibliothekFlaeche({
                 // unverändert `standQuelle`: WO er steht, hat sich geändert, DASS er genau einmal
                 // steht, nicht.
                 hinweisSchonGesagt={standQuelle !== null}
+                // JOB 3362: dieselbe Regel eine Zeile tiefer, für die übersetzte Lesart. Auf
+                // `/wissen/:id` — und nur dort ist `vorgewaehlt` gesetzt — steht sie seit JOB 3326
+                // schon über dieser Fläche (`pages/KnowledgeDetail.tsx`); dann schweigt die
+                // Lesefläche dazu und fragt sie auch nicht ein zweites Mal ab. Auf `/bibliothek`
+                // gibt es diese Karte nicht, und die Lesefläche trägt die Übersetzung selbst.
+                lesevarianteSchonGesagt={vorgewaehlt !== undefined}
                 // JOB 3104 · UX-02: die gelöschte Wahl verlässt die ADRESSE — sonst zeigte sie nach
                 // dem Löschen auf eine tote Kennung, und die Fläche sagte ihrem eigenen Nutzer „Der
                 // Eintrag ließ sich nicht laden.". Wer selbst gelöscht hat, weiß, was er getan hat;

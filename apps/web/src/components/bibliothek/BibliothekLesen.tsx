@@ -32,6 +32,7 @@ import { studioSaveConfidence } from "../../lib/editorApplySafety";
 import { EDITOR_BLOCKS } from "../../lib/editorBlocks";
 import { eigeneKollisionDetail } from "../../lib/eigeneKollision";
 import { formatKoTimestamp } from "../../lib/koDates";
+import { sprachcode, useFrischeLesevariante } from "../../lib/lesevariante";
 import type { MatchField } from "../../lib/librarySearch";
 import { useNetzOnline } from "../../lib/netzzustand";
 import { toReasonerLocale } from "../../lib/reasonerLocale";
@@ -58,6 +59,7 @@ import { EditorAttachmentContext } from "../EditorAttachmentContext";
 import { EditorContentQuality } from "../EditorContentQuality";
 import { KnowledgeInputStudio } from "../KnowledgeInputStudio";
 import { KoRevisionSummary } from "../KoRevisionSummary";
+import { LesevarianteHinweis } from "../LesevarianteHinweis";
 import { RichTextEditor } from "../RichTextEditor";
 import { RoleLink } from "../RoleLink";
 import { SanitizedHtml } from "../SanitizedHtml";
@@ -140,6 +142,7 @@ export function BibliothekLesen({
   treffer,
   onGeloescht,
   hinweisSchonGesagt,
+  lesevarianteSchonGesagt,
 }: {
   koId: string;
   // Der Text aus dem Suchfeld — er belegt die Frage auf der Fragen-Seite vor (5a: die frühere Karte
@@ -153,6 +156,20 @@ export function BibliothekLesen({
   // es nicht. Es ist EINE Aussage über EINE Fläche; zweimal derselbe Satz wäre die zweite Auslegung
   // derselben Tatsache (und `stufe-im-klartext` misst auf `/wissen/:id` genau einen).
   hinweisSchonGesagt: boolean;
+  // ================================================================================================
+  // JOB 3362 · LESEVARIANTE-FLAECHEN — DIESELBE REGEL WIE BEIM AUFFRISCHUNGSSATZ: GENAU EINMAL.
+  // ================================================================================================
+  // Auf `/wissen/:id` steht die übersetzte Leseansicht seit JOB 3326 SCHON über dieser Fläche
+  // (`pages/KnowledgeDetail.tsx:90-113`, eigene Karte mit Hinweis und Umschalter). Zeigte die
+  // Lesefläche sie dort ein zweites Mal, stünde dieselbe Übersetzung zweimal untereinander, mit zwei
+  // Umschaltern, die verschiedene Dinge tun — und der frische Abruf liefe zweimal je Öffnen.
+  // Der Aufrufer sagt deshalb, ob die Aussage schon dasteht; dann schweigt diese Fläche dazu UND
+  // fragt gar nicht erst (`koId: undefined` ⇒ kein GET, s. `useFrischeLesevariante`).
+  //
+  // WARUM NICHT DIE KARTE IN `KnowledgeDetail` ENTFERNEN — das wäre der bessere Weg und ist als
+  // Restschuld benannt: `pages/KnowledgeDetail.tsx` gehört nicht zu den Zielpfaden dieses Auftrags
+  // (REGELN §3). Die Kennzeichnung ist an beiden Orten dieselbe (`LesevarianteHinweis`).
+  lesevarianteSchonGesagt?: boolean | undefined;
 }): JSX.Element {
   const { t, i18n } = useTranslation();
   const [params] = useSearchParams();
@@ -202,6 +219,32 @@ export function BibliothekLesen({
   } | null>(null);
   // SCRUM-417: der Deep-Link `?edit=1` öffnet den Bearbeiten-Modus genau EINMAL je Eintrag.
   const autoEditDone = useRef(false);
+
+  // ================================================================================================
+  // JOB 3362 · LESEVARIANTE-FLAECHEN — DIE LESEFLÄCHE LIEST IN DER LESESPRACHE.
+  // ================================================================================================
+  //
+  // Derselbe Weg wie auf `/wissen/:id` (JOB 3326 R3): ein FRISCHER Abruf je Öffnen, kein Vorrat.
+  // Was hier steht, stammt ausschliesslich aus dieser einen Antwort — die ausgeschriebene Begründung
+  // (zwei gemessene Befunde) steht in `lib/lesevariante.ts`. Der Vorrat bleibt der LISTE links
+  // vorbehalten, wo ein Abruf je Zeile ein Anfragesturm wäre.
+  //
+  // ÜBERSETZT WERDEN GENAU DREI DINGE: Titel, Kernaussage und Fließtext. Alles andere auf dieser
+  // Fläche — Kennung, Bereich, Zustandspille, Vertraulichkeit, Quellen, Anhänge, Prüfung, Freigabe,
+  // Historie, der Weg nach „Fragen" — bleibt WÖRTLICH am Original. Das Bearbeiten-Formular sieht die
+  // Übersetzung nie: `startEdit` liest `ko`, und gespeichert wird immer das Original.
+  const sprache = sprachcode(i18n.language);
+  const leselage = useFrischeLesevariante(lesevarianteSchonGesagt ? undefined : koId, sprache);
+  const lesevariante = leselage.zustand === "da" ? leselage.variante : undefined;
+  const [zeigtOriginal, setZeigtOriginal] = useState(false);
+  // Ein Sprachwechsel setzt die Wahl „Original anzeigen" zurück — sie gehörte zur vorherigen
+  // Anzeige. `koId` steht mit in den Abhängigkeiten, obwohl die Fläche diese Komponente je Eintrag
+  // mit `key={koId}` neu montiert: die Rücksetzung soll nicht davon abhängen, dass ein Aufrufer
+  // diesen Schlüssel setzt.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `sprache`/`koId` sind der AUSLÖSER, nicht gelesene Größen.
+  useEffect(() => {
+    setZeigtOriginal(false);
+  }, [sprache, koId]);
 
   const invalidate = (): void => {
     void qc.invalidateQueries({ queryKey: ["ko", koId] });
@@ -428,6 +471,11 @@ export function BibliothekLesen({
     // Laden: leere Fläche. Ein Wort hier wäre der Erklärtext, den diese Seite abschafft.
     return <div data-testid="bib-lesen" className="w-[720px] max-w-full py-9" />;
   }
+
+  // JOB 3362: WAS in der Lesespalte steht — die Übersetzung oder das Original. EINE Ableitung, von
+  // Titel und Fließtext gemeinsam gelesen; `undefined` heisst „das Original". Der Leser hat mit
+  // „Original anzeigen" das letzte Wort, und ohne Variante gibt es diese Frage gar nicht.
+  const gelesen = zeigtOriginal ? undefined : lesevariante;
 
   const impact =
     conflicts.data === undefined
@@ -952,6 +1000,27 @@ export function BibliothekLesen({
           </div>
         ) : (
           <>
+            {/* JOB 3362: die Kennzeichnung steht ÜBER dem Titel, den sie betrifft — mit dem
+                Umschalter zurück zum Original. Derselbe Baustein wie auf `/wissen/:id` und in
+                keiner zweiten Fassung. Ohne Variante steht hier nichts. */}
+            {lesevariante ? (
+              <LesevarianteHinweis
+                variante={lesevariante}
+                zeigtOriginal={zeigtOriginal}
+                onUmschalten={() => setZeigtOriginal((v) => !v)}
+              />
+            ) : null}
+            {/* Der Abruf ist gescheitert (Netz, Zugriff, Serverfehler). Dann steht das ORIGINAL da —
+                und dass die Übersetzung fehlt, wird gesagt statt verschwiegen. „Es gibt keine
+                Übersetzung" ist dieser Fall ausdrücklich NICHT (s. `useFrischeLesevariante`). */}
+            {leselage.zustand === "fehlt" ? (
+              <p
+                data-testid="bib-lesevariante-fehler"
+                className="text-[12.5px] text-trust-warn-text"
+              >
+                {t("lesevariante.abrufFehler")}
+              </p>
+            ) : null}
             {/* JOB 3108 · UX-03 — DER KOPF SAGT, WO QUELLEN UND ANHÄNGE LIEGEN, UND FÜHRT HIN.
                 Zwei echte `<button>`: damit wirken Tabulator, Eingabe- und Leertaste ohne
                 `tabIndex`-Nachbau. Die Zahl steht IM Knopf, bei null die Leerfassung („keine") —
@@ -990,14 +1059,25 @@ export function BibliothekLesen({
               data-bib-text="titel"
               className="text-[24px] font-[650] leading-[1.3] tracking-[-0.3px] text-text"
             >
-              {ko.title}
+              {gelesen ? gelesen.title : ko.title}
             </h1>
             <div
               data-testid="bib-text"
               data-bib-text="text"
               className="text-[15.5px] leading-[1.7] text-text"
             >
-              {ko.bodyHtml ? (
+              {/* JOB 3362: die übersetzte Lesart des FLIESSTEXTS. Die Bildergalerie darunter bleibt
+                  dem Original vorbehalten: sie ist der Weg zum Bearbeiten der Bildunterschriften,
+                  und bearbeitet wird immer das Original (ein Klick auf „Original anzeigen" führt
+                  hin). Fehlt der übersetzte Fließtext, steht die übersetzte Kernaussage da —
+                  dieselbe Reihenfolge wie beim Original. */}
+              {gelesen ? (
+                gelesen.bodyHtml ? (
+                  <SanitizedHtml html={gelesen.bodyHtml} className="prose-kw" />
+                ) : (
+                  <p>{gelesen.statement}</p>
+                )
+              ) : ko.bodyHtml ? (
                 <>
                   <SanitizedHtml html={ko.bodyHtml} className="prose-kw" />
                   <BodyImageGallery

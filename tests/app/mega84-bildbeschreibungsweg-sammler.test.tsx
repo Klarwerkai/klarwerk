@@ -1499,8 +1499,18 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // Bildbeschreibung an (kein `ANGEBOT_MUSTER`) und trägt keinen eigenen Titel (kein
     // `documentTitle`-Prop); sie erscheint nur in der Grundmenge. Die zwei Zahlen, an denen Stufe 2
     // wirklich hängt, bleiben unverändert: `anbieter` 1, `traeger` 2.
+    //
+    // JOB 3362 (LESEVARIANTE-FLAECHEN): dieselbe Gattung, ein Bauteil weiter — `ZeilenTitel` in
+    // `components/bibliothek/BibliothekListe.tsx`; `komponenten` von 358 auf 359 NACHGEZOGEN, am
+    // eigenen Lauf dieses Arbeitsbaums gemessen (der Test meldete `expected 359 to equal 358`),
+    // nicht rechnerisch addiert. `ZeilenTitel` ist der Titel EINER Listenzeile in der Lesesprache;
+    // es ist eine HERAUSLÖSUNG aus der Zeilenschleife (der Haken `useLesevariante` braucht eine
+    // eigene Komponente je Zeile), keine neue Fläche. Es bietet keine Bildbeschreibung an (kein
+    // `ANGEBOT_MUSTER`) und trägt keinen eigenen Titel (kein `documentTitle`-Prop); es erscheint nur
+    // in der Grundmenge. Die zwei Zahlen, an denen Stufe 2 wirklich hängt, bleiben unverändert:
+    // `anbieter` 1, `traeger` 2.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 358,
+      komponenten: 359,
       anbieter: 1,
       traeger: 2,
     });
