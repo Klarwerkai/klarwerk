@@ -171,14 +171,17 @@ export type VertraulichGrund = "unsaved_draft" | "declared" | "backstop";
  * deshalb fällt die Cloud aus der Kette. Ein Satz, der nur „erst nach dem Sichern" sagt, verschweigt
  * die Regel, die gerade gegriffen hat, und liest sich wie eine technische Laune. Der Weg vorwärts
  * steht in jedem der drei Sätze, denn ohne ihn wäre die Meldung nur eine höflichere Sackgasse.
+ * EN nennt die Regel direkt und ohne Klammern: „treated as confidential“ beim ungesicherten
+ * Entwurf, „classified as confidential“ bei gespeicherter oder hier gesetzter Einstufung.
+ * Sichern ermöglicht die erneute Einstufungsprüfung; es verspricht keine Cloud-Freigabe.
  */
 function cloudGesperrtMeldung(locale: ReasonerLocale, grund: VertraulichGrund): string {
   if (locale === "en") {
     return grund === "unsaved_draft"
-      ? "Unsaved draft: without a saved state the text counts as classified as confidential — the cloud AI must not process it. Save the draft (its classification is checked then), or choose the local AI."
+      ? "Unsaved draft: this text is treated as confidential, so the cloud AI cannot process it. Save the draft so its classification can be checked, or choose the local AI."
       : grund === "backstop"
-        ? "The saved entry is classified as confidential — the cloud AI must not process it. Change the classification of the saved entry, or choose the local AI."
-        : "This text is classified as confidential — the cloud AI must not process it. Change the classification, or choose the local AI.";
+        ? "The saved entry is classified as confidential, so the cloud AI cannot process this text. Change the classification of the saved entry, or choose the local AI."
+        : "This text is classified as confidential, so the cloud AI cannot process it. Change the classification here, or choose the local AI.";
   }
   return grund === "unsaved_draft"
     ? "Nicht gesicherter Entwurf: ohne gesicherten Stand gilt der Text als vertraulich eingestuft — die Cloud-KI darf ihn nicht bearbeiten. Entwurf sichern (die Einstufung wird dann geprüft) oder lokale KI wählen."
