@@ -25,7 +25,11 @@ import { useRole } from "../../app/RoleContext";
 import { useToast } from "../../app/ToastContext";
 import { auditActionLabel } from "../../lib/auditAction";
 import { objectRawHref } from "../../lib/bodyFileLink";
-import { CONFIDENTIALITY_LEVELS, confidentialityOf } from "../../lib/confidentiality";
+import {
+  CONFIDENTIALITY_LEVELS,
+  abfrageMitBestand,
+  confidentialityOf,
+} from "../../lib/confidentiality";
 import { conflictImpact, conflictLimitedUsability } from "../../lib/conflictImpact";
 import { isDemoKnowledge } from "../../lib/demoKnowledge";
 import { deriveStatus } from "../../lib/displayStatus";
@@ -44,7 +48,7 @@ import {
 import { containsExternalUnchecked } from "../../lib/externalProvenance";
 import { toSourcePayload as externalToSourcePayload } from "../../lib/externalSearch";
 import { fileToThumbDataUrl, readFileAsDataUrl } from "../../lib/files";
-import { evidenceRows } from "../../lib/koEvidence";
+import { belegOriginal, evidenceRows } from "../../lib/koEvidence";
 import { koAuditEvents, lineageSummary } from "../../lib/koLineage";
 import { koOverview } from "../../lib/koOverview";
 import {
@@ -73,6 +77,7 @@ import { RoleLink } from "../RoleLink";
 import { UploadLimitsHint } from "../UploadLimitsHint";
 import { ConfidenceBar, KnowledgeTypeTag, ProvenanceLine } from "../trust";
 import { Button, Field, TextInput, cx } from "../ui";
+import { AuffrischungHinweis } from "./AuffrischungHinweis";
 
 // ==================================================================================================
 // JOB 3063 · H4 — „MEHR": DIE DREIZEHN ABSCHNITTE, ZUGEKLAPPT ALS VORGABE.
@@ -104,10 +109,18 @@ import { Button, Field, TextInput, cx } from "../ui";
 // belassen: zwei Quellen für denselben Auf/Zu-Zustand wären genau die Drift, gegen die dieses Haus
 // mehrfach angetreten ist.
 
-/** Wohin gesprungen werden soll. `nonce`, damit derselbe Abschnitt zweimal anspringbar bleibt. */
+/**
+ * Wohin gesprungen werden soll. `nonce`, damit derselbe Abschnitt zweimal anspringbar bleibt.
+ *
+ * JOB 3272 · UX-25: dazu kommt OPTIONAL, WELCHES Element im Abschnitt den Fokus bekommt
+ * (`data-bib-anhang`). Ohne diese Angabe bleibt es beim Verhalten des Kopfzugangs (UX-03): der
+ * Fokus landet auf dem `<summary>` des Abschnitts. Der Sprung selbst ist derselbe — es gibt keinen
+ * zweiten Sprungweg.
+ */
 export interface Sprungziel {
   schluessel: string;
   nonce: number;
+  anhangId?: string;
 }
 
 /**
@@ -493,6 +506,7 @@ export function MehrAbschnitte({
   // von Hand zugeklappt), und ohne die zweite, wechselnde Angabe liefe der Effekt dann nicht erneut.
   const sprungSchluessel = sprungZiel?.schluessel;
   const sprungNonce = sprungZiel?.nonce;
+  const sprungAnhang = sprungZiel?.anhangId;
   useEffect(() => {
     if (sprungSchluessel === undefined || sprungNonce === undefined) {
       return;
@@ -501,8 +515,12 @@ export function MehrAbschnitte({
     setOffene((vorher) =>
       vorher.has(sprungSchluessel) ? vorher : new Set(vorher).add(sprungSchluessel),
     );
-    setHinfuehren({ schluessel: sprungSchluessel, nonce: sprungNonce });
-  }, [sprungSchluessel, sprungNonce]);
+    setHinfuehren({
+      schluessel: sprungSchluessel,
+      nonce: sprungNonce,
+      ...(sprungAnhang ? { anhangId: sprungAnhang } : {}),
+    });
+  }, [sprungSchluessel, sprungNonce, sprungAnhang]);
 
   useEffect(() => {
     if (!hinfuehren) {
@@ -518,9 +536,30 @@ export function MehrAbschnitte({
     if (typeof ziel.scrollIntoView === "function") {
       ziel.scrollIntoView({ block: "start" });
     }
+    // JOB 3272 · UX-25: Der Fokus landet auf dem BENANNTEN Element, wenn eines mitkam — sonst wie
+    // seit UX-03 auf dem Abschnittskopf. EINE Regel, nicht zwei: ein Sprung, der nur aufklappt und
+    // den Nutzer dann unter vielen Anhängen suchen lässt, ist genau die Zumutung, die UX-25
+    // beseitigt. Gesucht wird über die Anker, nicht über einen zusammengesetzten Selektor:
+    // Anhangskennungen sind fremde Zeichenketten, und `CSS.escape` ist nicht überall da.
+    const anker = hinfuehren.anhangId;
+    const benannt = anker
+      ? Array.from(ziel.querySelectorAll<HTMLElement>("[data-bib-anhang]")).find(
+          (e) => e.dataset.bibAnhang === anker,
+        )
+      : undefined;
     // Der Fokus landet im Ziel, nicht nur das Bild: sonst läse ein Vorleseprogramm weiter oben.
-    ziel.querySelector("summary")?.focus();
+    (benannt ?? ziel.querySelector("summary"))?.focus();
   }, [hinfuehren]);
+
+  // JOB 3272 · UX-25: der Weg von der Belegkarte zum Original — über GENAU das Werk oben. Der
+  // Zähler ist der `nonce`-Vertrag aus `:491-493`: derselbe Anhang muss zweimal hintereinander
+  // anspringbar sein, auch wenn der Abschnitt dazwischen von Hand zugeklappt wurde.
+  const sprungZaehler = useRef(0);
+  const zumAnhangSpringen = (anhangId: string): void => {
+    sprungZaehler.current += 1;
+    abschnittUmschalten("anhaenge", true);
+    setHinfuehren({ schluessel: "anhaenge", nonce: sprungZaehler.current, anhangId });
+  };
 
   return (
     <div data-testid="bib-mehr-abschnitte" ref={wurzel} className="flex flex-col">
@@ -1191,30 +1230,79 @@ export function MehrAbschnitte({
               );
             })()
           : null}
-        {evidence.isLoading ? (
-          <p className="text-[12.5px] text-muted">{t("state.loading")}</p>
-        ) : evidence.isError ? (
-          <p className="text-[12.5px] text-danger">{t("state.error")}</p>
-        ) : evidenceRows(evidence.data ?? []).length === 0 ? (
-          <p className="text-[12.5px] text-muted">{t("ko.evidenceEmpty")}</p>
-        ) : (
-          <ul className="space-y-2.5">
-            {evidenceRows(evidence.data ?? []).map((ev) => (
-              <li key={ev.key} className="rounded-input border border-hairline bg-surface p-2.5">
-                <div className="text-[13px] font-semibold text-text">{ev.title}</div>
-                <div className="mt-1 font-mono text-[10.5px] text-muted-2">
-                  {t(`ko.evidenceKind.${ev.kind}`)} · {nameOf(ev.createdBy)} ·{" "}
-                  {new Date(ev.createdAt).toLocaleDateString(i18n.language)}
-                </div>
-                {ev.meta.length > 0 ? (
-                  <div className="mt-1 font-mono text-[10px] text-muted-2">
-                    {ev.meta.join(" · ")}
-                  </div>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        )}
+        {/* JOB 3272 · RUNDE 2 — BEN, Prüflücke 6: SCHEITERT DIE AUFFRISCHUNG, BLEIBEN DIE BELEGE
+            STEHEN. Vorher stand hier `evidence.isError ? <Fehler>` ohne Blick auf den Bestand: nach
+            einem gescheiterten HINTERGRUNDabruf (react-query: `isError` UND `data` zugleich) fielen
+            alle Belegkarten samt Weg zum Original weg und wurden durch eine Fehlerzeile ersetzt —
+            genau der Fehler aus REGELN Punkt 7 und Abschnitt 9 des Auftrags. Die Regel dafür ist
+            NICHT hier neu erfunden: `abfrageMitBestand` und `AuffrischungHinweis` (JOB 3034/3063)
+            sind der eine Ort, an dem dieses Haus sie hält. Ein ERSTabruf ohne Bestand bleibt der
+            Fehlerfall — dann gibt es nichts zu zeigen, und es entsteht auch kein „Original nicht
+            mehr an diesem Objekt" aus einem Abrufscheitern. */}
+        <AuffrischungHinweis query={evidence} />
+        {((): JSX.Element => {
+          const belegLage = abfrageMitBestand(evidence);
+          const belegZeilen = evidenceRows(belegLage.data ?? []);
+          return belegLage.isLoading ? (
+            <p className="text-[12.5px] text-muted">{t("state.loading")}</p>
+          ) : belegLage.isError ? (
+            <p className="text-[12.5px] text-danger">{t("state.error")}</p>
+          ) : belegZeilen.length === 0 ? (
+            <p className="text-[12.5px] text-muted">{t("ko.evidenceEmpty")}</p>
+          ) : (
+            <ul className="space-y-2.5">
+              {belegZeilen.map((ev) => {
+                // JOB 3272 · UX-25: die EINE Zuordnungsregel (koEvidence.ts) entscheidet, ob hier ein
+                // Weg, ein ehrlicher Satz oder nichts steht. Die Anhangsliste kommt aus dem BEREITS
+                // geladenen Objekt — keine zweite Abfrage, und offline bleibt die Aussage tragfähig
+                // (dieselbe Begründung wie beim Quellenanker, `:236-238`).
+                const original = belegOriginal(ev, ko.attachments ?? []);
+                return (
+                  <li
+                    key={ev.key}
+                    className="rounded-input border border-hairline bg-surface p-2.5"
+                  >
+                    {/* Der Belegname bricht um, statt abzuschneiden: sein unterscheidendes Ende ist
+                      oft der Dateiname (Lehre JOB 3266 R2/R3). */}
+                    <div className="break-words text-[13px] font-semibold text-text">
+                      {ev.title}
+                    </div>
+                    <div className="mt-1 font-mono text-[10.5px] text-muted-2">
+                      {t(`ko.evidenceKind.${ev.kind}`)} · {nameOf(ev.createdBy)} ·{" "}
+                      {new Date(ev.createdAt).toLocaleDateString(i18n.language)}
+                    </div>
+                    {ev.meta.length > 0 ? (
+                      <div className="mt-1 font-mono text-[10px] text-muted-2">
+                        {ev.meta.join(" · ")}
+                      </div>
+                    ) : null}
+                    {original.art === "vorhanden" ? (
+                      <button
+                        type="button"
+                        data-bib-beleg-sprung={ev.key}
+                        // Der zugängliche Name nennt den Beleg UND den Zweck — sonst hörte ein
+                        // Vorleseprogramm bei mehreren Karten dreimal dasselbe Wort (Muster `:1330`).
+                        aria-label={`${ev.title} — ${t("ko.evidenceToOriginalHint")}`}
+                        onClick={() => zumAnhangSpringen(original.anhangId)}
+                        className="mt-1.5 inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-muted hover:text-text"
+                      >
+                        {/* Zierde, kein Name. */}
+                        <Paperclip size={13} aria-hidden />
+                        {t("ko.evidenceToOriginal")}
+                      </button>
+                    ) : original.art === "fehlt" ? (
+                      // KEIN Knopf und kein `aria-disabled`-Knopf: ein Weg, der ins Leere führt, ist
+                      // eine Sackgasse. Der Satz sagt statt dessen, was der Fall ist (N-0052).
+                      <p className="mt-1.5 text-[12px] text-muted">
+                        {t("ko.evidenceOriginalDetached")}
+                      </p>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
+          );
+        })()}
       </Abschnitt>
 
       {/* 10 — Schnappschüsse */}
@@ -1326,6 +1414,9 @@ export function MehrAbschnitte({
                 <div key={a.id} className="min-w-0">
                   <button
                     type="button"
+                    // JOB 3272 · UX-25: der ANKER, über den ein Beleg genau diesen Anhang anspringt.
+                    // Rein additiv — Name, `aria-disabled` und der Öffnen-Weg bleiben, wie sie sind.
+                    data-bib-anhang={a.id}
                     className="block w-full text-left"
                     aria-label={`${a.name} — ${hinweis}`}
                     aria-disabled={!kannOeffnen}

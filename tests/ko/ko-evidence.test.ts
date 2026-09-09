@@ -30,10 +30,12 @@ describe("koEvidence", () => {
       }),
     ]);
     expect(rows.map((r) => r.key)).toEqual(["new", "old"]);
+    // JOB 3272 · UX-25: die rohe Kennung `object:<id>` ist als Anzeigetext ERSETZT — den Weg zum
+    // Original bietet jetzt die Belegkarte an (`belegOriginal`, s. `apps/web/src/lib/koEvidence.test.ts`).
     expect(rows[0]).toMatchObject({
       kind: "attachment",
       title: "Foto",
-      meta: ["v2", "image/jpeg", "object:obj-1"],
+      meta: ["v2", "image/jpeg"],
     });
   });
 

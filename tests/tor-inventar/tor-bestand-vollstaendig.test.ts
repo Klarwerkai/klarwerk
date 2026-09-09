@@ -273,8 +273,18 @@ describe("JOB 3131 T2 · die Browser-Gruppe ist genau die Menge mit Chromium in 
     // 390 px lag die Entwurfsliste bei x = −237 px, also ausserhalb des Fensters — eine Klasse, die
     // kein jsdom-Fall sehen kann (dort gibt es kein Layout und keinen Zeilenumbruch).
     // Die Last bleibt klein: EIN Browser, EINE Seite, elf Fälle, im eigenen Lauf 4,2 s.
-    expect(graph.startdateien.length).toBe(22);
+    // JOB 3272 R2 (UX-25): eine weitere eigene Startstelle — der Schmalmesser der Belegkarte
+    // (`tests/ux25-beleg-zum-original/belegkarte-schmal-chromium.test.tsx`). Anlass ist BENs Befund
+    // an Runde 1 (Prüflücke 6): der gemountete Fall prüfte KLASSENNAMEN (`not.toContain("truncate")`)
+    // statt tatsächlicher Breiten, und jsdom kann das auch gar nicht — dort gibt es kein Layout und
+    // keine Textrechtecke. Dazu kommt die Taste selbst: jsdom führt für einen `<button>` keine
+    // Vorgabehandlung auf `keydown` aus, ein `Enter` bewirkt dort nichts. Er MUSS Playwright selbst
+    // starten: er verstellt das Fenster (320/360/390 px) und bedient echte Tasten; kein bestehender
+    // Prüfstand reicht beides für diese Fläche heraus. Die Last bleibt klein: EIN Browser, EINE
+    // Seite, vierzehn Fälle, im eigenen Lauf 2,1 s, Abbau 5,89 ms.
+    expect(graph.startdateien.length).toBe(23);
     for (const bekannt of [
+      "tests/ux25-beleg-zum-original/belegkarte-schmal-chromium.test.tsx",
       "tests/d1-meine-entwuerfe/zugang-schmal-chromium.test.ts",
       "tests/design/h4-harness.ts",
       "tests/design/h6-chromium.ts",
