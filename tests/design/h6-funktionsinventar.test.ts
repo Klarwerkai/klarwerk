@@ -158,8 +158,14 @@ function inventarAdmin(): Posten[] {
     },
     {
       zeile5a: 9,
-      id: "Erweiterte Module · Stufe 2 (vorher Sidebar) → Konten → Zeile → Schalter",
-      reiter: t("adm.sec.konten"),
+      // JOB 3337: „Erweiterte Module" wohnt unter „System" — die Vorlage von Codex führt es dort
+      // neben der Bereitschaft („System: Bereitschaft, Erweiterte Module, Werkseinstellungen").
+      // Genau darauf zeigt auch der Hinweis unter einem ausgeschalteten Bereich („Einschalten unter
+      // System · Erweiterte Module"); stünde der Schalter weiter unter „Benutzer und Rollen", ginge
+      // dieser Weg ins Leere. Die ZUSAGE dieses Postens ist unverändert: es gibt ihn, und er ist
+      // ein echter Schalter.
+      id: "Erweiterte Module · Stufe 2 (vorher Sidebar) → System → Zeile → Schalter",
+      reiter: t("adm.sec.system"),
       klick: "",
       erwartet: [{ selektor: '[data-testid="zeile-stufe2"] input[type="checkbox"]' }],
     },
@@ -268,7 +274,8 @@ function inventarAdmin(): Posten[] {
     {
       zeile5a: 16,
       id: "Demodaten laden / entfernen → Daten → Zeile → zwei Knöpfe",
-      reiter: t("adm.sec.daten"),
+      // JOB 3337: die Demodaten haben ein eigenes Thema („Vorführdaten"), der Reiter „Daten" ist weg.
+      reiter: t("adm.sec.vorfuehrdaten"),
       klick: '[data-testid="zeile-demodaten"]',
       detail: "detail-demodaten",
       erwartet: [{ text: t("adm.seedButton") }, { text: t("adm.purgeButton") }],
@@ -277,7 +284,8 @@ function inventarAdmin(): Posten[] {
     {
       zeile5a: 17,
       id: "Werkseinstellungen → Daten → Zeile → Knopf mit Bestätigung",
-      reiter: t("adm.sec.daten"),
+      // JOB 3337: Werkseinstellungen stehen unter „System", in einem eigenen Abschnitt.
+      reiter: t("adm.sec.system"),
       klick: '[data-testid="zeile-werkseinstellungen"]',
       detail: "detail-werkseinstellungen",
       // In dieser Instanz ist der Werksreset nicht verfügbar (kein Desktop-Betrieb) — dann MUSS die
@@ -288,7 +296,8 @@ function inventarAdmin(): Posten[] {
     {
       zeile5a: 18,
       id: "Papierkorb → Daten → Zeile (Wert = Anzahl) → Detailkarte → Liste",
-      reiter: t("adm.sec.daten"),
+      // JOB 3337: der Papierkorb gehört zu „Quellen und Daten".
+      reiter: t("adm.sec.quellen"),
       klick: '[data-testid="zeile-papierkorb"]',
       detail: "detail-papierkorb",
       erwartet: [{ text: t("adm.trash.empty") }],
@@ -297,7 +306,8 @@ function inventarAdmin(): Posten[] {
     {
       zeile5a: 19,
       id: "Audit-Liste → Daten → Zeile → Detailkarte → Liste",
-      reiter: t("adm.sec.daten"),
+      // JOB 3337: Benutzeränderungen sind ein Nachweis und stehen bei den Nachweisen.
+      reiter: t("adm.sec.sicherheit"),
       klick: '[data-testid="zeile-audit"]',
       detail: "detail-audit",
       erwartet: [{ einesVon: ["auth.", "user.", t("adm.auditEmpty")] }],
@@ -328,7 +338,8 @@ function inventarAdmin(): Posten[] {
     {
       zeile5a: 22,
       id: "VIP-Bereitschaft mit Quellen und Druck (vorher fünfter Reiter) → Sicherheit → Zeile",
-      reiter: t("adm.sec.sicherheit"),
+      // JOB 3337: die Bereitschaft ist eine Auskunft über den Zustand des Hauses → „System".
+      reiter: t("adm.sec.system"),
       klick: '[data-testid="zeile-bereitschaft"]',
       detail: "detail-bereitschaft",
       erwartet: [
@@ -356,7 +367,7 @@ function inventarAdmin(): Posten[] {
     {
       zeile5a: 7,
       id: "Einmalkennwörter nach Seed → Daten → Demodaten → LADEN → Liste mit Zugängen",
-      reiter: t("adm.sec.daten"),
+      reiter: t("adm.sec.vorfuehrdaten"),
       klick: '[data-testid="zeile-demodaten"]',
       detail: "detail-demodaten",
       innenKlick: t("adm.seedButton"),
@@ -603,30 +614,48 @@ const RUNDWEG = `(async ([rollenname, zurueckText, reiter]) => {
  *   Stufe-2-Schalter   = sichtbares Kontrollkästchen, das „Erweiterte Module · Stufe 2" beschriftet
  * Jeder Treffer kommt mit CSS-Pfad zurück: eine Zahl ohne Ort wäre nicht auflösbar.
  */
-const ZAEHLUNG = `(async ([viewAs, stage2, reiter]) => {
+// JOB 3337: die beiden Bedienorte wohnen jetzt in ZWEI Themen — „Ansicht als Rolle" unter
+// „Benutzer und Rollen", „Erweiterte Module" unter „System" (Vorlage von Codex, Tabelle „Innerhalb
+// der Verwaltung"). Deshalb bekommt die Zählung zwei Reiter statt einem und zählt jeden Ort in
+// SEINEM Thema. Die Aussage bleibt dieselbe und wird sogar schärfer: ein zweiter Ort im jeweils
+// anderen Thema (oder im Zahnrad) fiele weiterhin auf.
+const ZAEHLUNG = `(async ([viewAs, stage2, reiterAnsicht, reiterSchalter]) => {
   ${VORSPANN}
-  await zahnradZu();
-  const zurueckOben = document.querySelector('[data-einst="zurueck"]');
-  if (zurueckOben) { zurueckOben.click(); await warte(() => document.querySelector('[data-einst="detail"]') === null, 4000); }
-  if (!(await reiterWaehlen(reiter))) return { fehler: 'Reiter „' + reiter + '" nicht gefunden' };
-  if (!(await zahnradAuf())) return { fehler: 'Zahnrad-Menü ging nicht auf' };
-  const alle = [...document.querySelectorAll('*')];
-  const ansicht = alle.filter((el) => sichtbar(el) && norm(el.textContent) === viewAs
-    && ![...el.children].some((c) => norm(c.textContent) === viewAs));
-  const schalter = [...document.querySelectorAll('input[type="checkbox"]')].filter((el) => {
+  const zaehleAnsicht = () => {
+    const alle = [...document.querySelectorAll('*')];
+    return alle.filter((el) => sichtbar(el) && norm(el.textContent) === viewAs
+      && ![...el.children].some((c) => norm(c.textContent) === viewAs));
+  };
+  const zaehleSchalter = () => [...document.querySelectorAll('input[type="checkbox"]')].filter((el) => {
     if (!sichtbar(el)) return false;
     const eigen = norm(el.getAttribute('aria-label'));
     const umschliessend = norm(el.closest('label') ? el.closest('label').textContent : '');
     return eigen === stage2 || umschliessend === stage2;
   });
-  const ergebnis = {
-    fehler: null,
-    menueOffen: document.querySelector('${ZAHNRAD_MENUE}') !== null,
-    ansicht: ansicht.map(pfad),
-    schalter: schalter.map(pfad),
-  };
   await zahnradZu();
-  return ergebnis;
+  const zurueckOben = document.querySelector('[data-einst="zurueck"]');
+  if (zurueckOben) { zurueckOben.click(); await warte(() => document.querySelector('[data-einst="detail"]') === null, 4000); }
+
+  if (!(await reiterWaehlen(reiterAnsicht))) return { fehler: 'Reiter „' + reiterAnsicht + '" nicht gefunden' };
+  if (!(await zahnradAuf())) return { fehler: 'Zahnrad-Menü ging nicht auf' };
+  const menueOffen = document.querySelector('${ZAHNRAD_MENUE}') !== null;
+  const ansicht = zaehleAnsicht().map(pfad);
+  const schalterImKontenThema = zaehleSchalter().map(pfad);
+  await zahnradZu();
+
+  if (!(await reiterWaehlen(reiterSchalter))) return { fehler: 'Reiter „' + reiterSchalter + '" nicht gefunden' };
+  if (!(await zahnradAuf())) return { fehler: 'Zahnrad-Menü ging nicht auf (2)' };
+  const schalter = zaehleSchalter().map(pfad);
+  const ansichtImSystemThema = zaehleAnsicht().map(pfad);
+  await zahnradZu();
+
+  return {
+    fehler: null,
+    menueOffen,
+    // Die Summe über BEIDE Themen — ein zweiter Ort im jeweils anderen zählt mit.
+    ansicht: [...ansicht, ...ansichtImSystemThema],
+    schalter: [...schalterImKontenThema, ...schalter],
+  };
 })`;
 
 /** In der Seite: Reiter wählen, Posten öffnen, ggf. innen weiterklicken, Erwartungen prüfen. */
@@ -853,7 +882,12 @@ describe("JOB 3065 H6 · Funktionsinventar — jede Funktion von gestern ist err
       menueOffen?: boolean;
       ansicht?: string[];
       schalter?: string[];
-    }>(fn(ZAEHLUNG), [t("role.viewAs"), t("role.stage2"), t("adm.sec.konten")]);
+    }>(fn(ZAEHLUNG), [
+      t("role.viewAs"),
+      t("role.stage2"),
+      t("adm.sec.konten"),
+      t("adm.sec.system"),
+    ]);
 
     expect(z.fehler).toBeNull();
     // Kalibrierung der Zählung: bei geschlossenem Menü wäre ein zweiter Ort im Zahnrad unsichtbar,

@@ -371,11 +371,33 @@ export function AnsichtAlsRolleDetail({ onZurueck }: { onZurueck: () => void }):
           abgeschnitten zu werden. Gehütet von `tests/rollenvorschau-sperre/rollenraster-namen.test.tsx`
           (Bauart) und der Chromium-Messung oben (Wirkung bei 320 und 390 px). */}
       <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 lg:grid-cols-4">
+        {/* ============================================================================================
+            JOB 3337 · EINE FREMDE ROLLE SCHLIESST DIESE KARTE — WEIL SIE SIE WEGNIMMT.
+            ============================================================================================
+            Seit die Verwaltung ihren Zustand in der Adresse trägt (`/admin?bereich=…&detail=…`),
+            überlebt eine offene Karte das Neuladen, den Zurück-Knopf — und eben auch den Ausflug in
+            eine Vorschaurolle. Genau dort war das falsch: Wer hier „Betrachter" wählt, dem nimmt der
+            Rollen-Guard `/admin` im selben Atemzug weg (`routes.tsx`, `RoleNotice`). Die Adresse
+            zeigte danach weiter auf eine Karte, die es in dieser Rolle gar nicht gibt, und nach dem
+            Rückweg „Zur Admin-Ansicht" stand man wieder mitten in ihr statt auf der Übersicht.
+
+            GEMESSEN, NICHT VERMUTET: `tests/design/h1-funktionsinventar.test.ts` (Z-vorschau-rueckweg)
+            durchläuft drei Vorschaurollen nacheinander und fand ab der zweiten Runde die Zeile
+            „Ansicht als Rolle" nicht mehr — sie steht auf der ÜBERSICHT, und die war nie wieder da.
+
+            Deshalb: eine FREMDE Rolle schließt die Karte (`onZurueck`, also zurück auf das Thema),
+            die eigene Rolle „Administrator" nicht — dort ist die Karte ja bedienbar und man bleibt
+            in ihr. Es ist derselbe Rückweg, den auch der Knopf oben nimmt; kein zweiter Weg. */}
         {ROLES.map((r: Role) => (
           <button
             key={r}
             type="button"
-            onClick={() => setRole(r)}
+            onClick={() => {
+              setRole(r);
+              if (r !== "admin") {
+                onZurueck();
+              }
+            }}
             aria-pressed={role === r}
             className={`break-words rounded-pill px-1.5 py-1.5 text-[12px] font-semibold transition-colors ${
               role === r ? "bg-brand text-white" : "bg-hairline-soft text-muted hover:text-text"

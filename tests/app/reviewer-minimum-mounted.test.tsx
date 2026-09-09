@@ -57,6 +57,11 @@ import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
 import { AuthProvider } from "../../apps/web/src/app/AuthContext";
+// JOB 3337 R2: die Verwaltung wechselt Thema und Karte seit diesem Auftrag per NAVIGATION
+// (`/admin?bereich=…&detail=…`) und läuft damit — wie jeder andere Weg der Anwendung — durch den
+// Ungespeichert-Wächter. Dieser Prüfstand montiert ihn deshalb mit, statt die Seite an einer
+// Umgebung zu messen, in der sie nie läuft (`App.tsx` hat den Anbieter immer).
+import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
@@ -92,7 +97,11 @@ async function mount(): Promise<void> {
             createElement(
               ToastProvider,
               null,
-              createElement(MemoryRouter, { initialEntries: ["/admin"] }, createElement(Admin)),
+              createElement(
+                MemoryRouter,
+                { initialEntries: ["/admin"] },
+                createElement(NavGuardProvider, null, createElement(Admin)),
+              ),
             ),
           ),
         ),

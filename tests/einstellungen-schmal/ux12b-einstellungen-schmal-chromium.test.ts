@@ -30,7 +30,7 @@
 //   S5: unveränderte 200-px-Spalte links bei 1280 px DE. B1/B2: Weiche 639/640 px DE.
 //   S6: Rollenraster der Admin-Einstellungen bei 320/390 px × DE/EN; die Rollensperre
 //       selbst gehört weiterhin ausschließlich tests/rollenvorschau-sperre (JOB 3173).
-//   T1: Tab durch vier namentlich geprüfte Reiter in den Inhalt, Shift+Tab zurück, DE/EN.
+//   T1: Tab durch alle namentlich geprüften Reiter in den Inhalt, Shift+Tab zurück, DE/EN.
 //   L1: echter page.reload() trägt EN und die Rückkehr DE, bei 320/360/390 px.
 //   R1–R4: Laufzeitstörungen am ORIGINALDOM aus Seite.tsx, mit geprüftem Rückbau:
 //       alte 200-px-Zeile, immer schmale Weiche, tabindex=-1, DE-Messung im EN-Speicher.
@@ -43,6 +43,8 @@
 // 10 s, unabhängig von `testTimeout`, und die Datei wird rot, obwohl jede Prüfung grün ist
 // (Lehre JOB 3130 R5).
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import i18n from "../../apps/web/src/i18n";
+import { ADMIN_SECTIONS } from "../../apps/web/src/lib/adminSections";
 import {
   type Seite,
   type Stand,
@@ -53,19 +55,36 @@ import {
   wechsle,
 } from "../design/h6-chromium";
 
-/** Die vier Reiter der Adminfläche (`adm.sec.*`), in der Reihenfolge von `ADMIN_SECTIONS`. */
-const REITER_DE = ["Konten", "KI", "Daten", "Sicherheit"] as const;
-/** Dieselben vier auf Englisch (`adm.sec.*`). */
-const REITER_EN = ["Accounts", "AI", "Data", "Security"] as const;
-/** Der Reiter, unter dem die Zeile „Ansicht als Rolle" wohnt (`adm.sec.konten`, de). */
-const RASTER_REITER = "Konten";
+type Sprache = "de" | "en";
+
+// ================================================================================================
+// JOB 3337: DIE REITER WERDEN GELESEN, NICHT ABGESCHRIEBEN.
+// ================================================================================================
+//
+// Bis hierher standen hier vier Namen als Zeichenketten („Konten · KI · Daten · Sicherheit"). Als
+// Pedis Auftrag vom 08.09. daraus die sieben THEMEN der Verwaltung machte, war diese Datei mit 27
+// roten Fällen die letzte, die das noch behauptete — eine zweite Wahrheit über die Gliederung.
+//
+// Sie liest die Namen jetzt aus derselben Quelle wie das Produkt (`ADMIN_SECTIONS` × i18n). Damit
+// misst sie weiterhin GENAU dasselbe — jeder Reiter vollständig lesbar, treffbar, ohne Überlauf,
+// in beiden Sprachen — und ein achtes Thema fällt hier künftig nicht mehr als Namensfehler auf,
+// sondern dort, wo es hingehört: als Layoutmessung.
+const reiterIn = (lng: Sprache): string[] =>
+  ADMIN_SECTIONS.map((abschnitt) =>
+    String(i18n.getResource(lng, "translation", abschnitt.labelKey) ?? ""),
+  );
+/** Die Reiter der Adminfläche (`adm.sec.*`), in der Reihenfolge von `ADMIN_SECTIONS`. */
+const REITER_DE = reiterIn("de");
+/** Dieselben auf Englisch (`adm.sec.*`). */
+const REITER_EN = reiterIn("en");
+/** Der Reiter, unter dem die Zeile „Ansicht als Rolle" wohnt — das erste Thema (`adm.sec.konten`). */
+const RASTER_REITER = REITER_DE[0] ?? "";
 /** Die vollen Rollennamen (`role.name.*`, de) in der Reihenfolge von `ROLES` — JOB 3124. */
 const ROLLEN = ["Betrachter", "Experte", "Controller", "Administrator"] as const;
 /** Englischer Reiter der Rollenvorschau (`adm.sec.konten`, en). */
-const RASTER_REITER_EN = "Accounts";
+const RASTER_REITER_EN = REITER_EN[0] ?? "";
 /** Volle englische Rollennamen (`role.name.*`, en), Reihenfolge von `ROLES`. */
 const ROLLEN_EN = ["Viewer", "Expert", "Controller", "Administrator"] as const;
-type Sprache = "de" | "en";
 type Messschluessel = `${number}/${Sprache}`;
 type Stoerung = "alt" | "schmal" | null;
 const REITER = { de: REITER_DE, en: REITER_EN } as const;
@@ -659,8 +678,12 @@ async function neuLaden(sprache: Sprache): Promise<void> {
   };
   await seite.evaluate(fn('() => { document.documentElement.dataset.ux12cVorReload = "ja"; }'));
   await seite.reload({ waitUntil: "load", timeout: 60_000 });
+  // JOB 3337: die Zahl kommt aus derselben Quelle wie die Fläche — sieben Themen statt vier
+  // Behälter. Eine abgeschriebene 4 hätte hier auf eine Reiterleiste gewartet, die es nicht mehr
+  // gibt, und den Reload-Nachweis in eine Zeitüberschreitung laufen lassen.
   await seite.waitForFunction(
-    fn("() => document.querySelectorAll('[data-einst=\"reiter\"]').length === 4"),
+    fn("(n) => document.querySelectorAll('[data-einst=\"reiter\"]').length === n"),
+    ADMIN_SECTIONS.length,
   );
   expect(
     await seite.evaluate(fn("() => document.documentElement.dataset.ux12cVorReload ?? null")),
@@ -722,12 +745,15 @@ describe("JOB 3175 UX-12c · unabhängige DE/EN-Einstellungen in Chromium", () =
             : breite === 390
               ? "S2"
               : "S360-DE";
-      it(`${fall} · ${breite} px ${sprache}: ≥ 75 % Inhalt, kein Überlauf, vier vollständig lesbare Reiter`, async () => {
+      it(`${fall} · ${breite} px ${sprache}: ≥ 75 % Inhalt, kein Überlauf, alle Reiter vollständig lesbar`, async () => {
         await inSprache(breite, sprache, async () => {
           const m = await messwert(breite, sprache);
           logMessung(fall, m);
           pruefeSchmaleFlaeche(m, REITER[sprache]);
-          expect(m.reiter.length, "vier Reiter — keiner darf schmal verschwinden").toBe(4);
+          expect(
+            m.reiter.length,
+            `${ADMIN_SECTIONS.length} Reiter — keiner darf schmal verschwinden`,
+          ).toBe(ADMIN_SECTIONS.length);
           expect(m.spalteBreite).toBeGreaterThanOrEqual(breite === 390 ? 292 : breite * 0.75);
         });
       }, 120_000);
@@ -856,8 +882,14 @@ describe("JOB 3175 UX-12c · unabhängige DE/EN-Einstellungen in Chromium", () =
               `() => [...document.querySelectorAll('[data-einst="reiter"]')].map(b => b.getAttribute('tabindex'))`,
             ),
           ),
-        ).toEqual(["-1", "-1", "-1", "-1"]);
-        await erwarteRot("R3", () => tastaturweg("en"), /Tab erreicht Reiter „Accounts" nicht/);
+          // JOB 3337: so viele Reiter, wie die Fläche wirklich hat — die Störung muss ALLE treffen,
+          // sonst bliebe ein erreichbarer übrig und die Gegenprobe wäre keine.
+        ).toEqual(ADMIN_SECTIONS.map(() => "-1"));
+        await erwarteRot(
+          "R3",
+          () => tastaturweg("en"),
+          new RegExp(`Tab erreicht Reiter „${REITER_EN[0]}" nicht`),
+        );
       } finally {
         await seite.evaluate(
           fn(
@@ -870,7 +902,7 @@ describe("JOB 3175 UX-12c · unabhängige DE/EN-Einstellungen in Chromium", () =
               `() => [...document.querySelectorAll('[data-einst="reiter"]')].map(b => b.getAttribute('tabindex'))`,
             ),
           ),
-        ).toEqual([null, null, null, null]);
+        ).toEqual(ADMIN_SECTIONS.map(() => null));
         await setzeSprache("en");
         await tastaturweg("en");
       }

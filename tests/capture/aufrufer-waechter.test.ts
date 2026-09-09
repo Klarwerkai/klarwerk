@@ -1279,7 +1279,10 @@ const ALTBESTAND_WEB: readonly string[] = [
   "apps/web/src/components/ko/KoRead.tsx::KoReadBody",
   "apps/web/src/components/trust/KoHomeLine.tsx::KoHomeLine",
   "apps/web/src/lib/adminForms.ts::isNewUserValid",
-  "apps/web/src/lib/adminSections.ts::isAdminSectionId",
+  // JOB 3337 gestrichen: `isAdminSectionId` hat einen Aufrufer bekommen. Seit die Verwaltung ihren
+  // Reiterzustand aus der Adresse liest, ist genau diese Funktion die WEICHE, die einen fremden
+  // Querytext prüft, bevor er Zustand wird (`pages/Admin.tsx`). Das Register schrumpft — so ist der
+  // Wächter gedacht.
   "apps/web/src/lib/answerMarkdown.ts::stripAnswerMarkdown",
   "apps/web/src/lib/askGapRescue.ts::gapRescueStepLabelKey",
   "apps/web/src/lib/askGapRescue.ts::gapRescueSteps",

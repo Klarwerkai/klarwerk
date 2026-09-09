@@ -23,6 +23,8 @@ import {
   kiWahlFrei,
 } from "../../apps/web/src/components/einstellungen/rollenFreiheiten";
 import i18n from "../../apps/web/src/i18n";
+// JOB 3337: die Themen der Verwaltung werden gelesen, nicht abgeschrieben (siehe Fall 2).
+import { ADMIN_SECTIONS } from "../../apps/web/src/lib/adminSections";
 
 describe("JOB 3065 H6 · Rollen-Freiheiten", () => {
   it("1 VOLLZÄHLIG · jeder bewachte Navigationseintrag hat ein Stichwort oder ein ausdrückliches null", () => {
@@ -56,8 +58,18 @@ describe("JOB 3065 H6 · Rollen-Freiheiten", () => {
     expect(worte("viewer")).toEqual(["fragen", "lesen"]);
     expect(worte("experte")).toEqual(["erfassen"]);
     expect(worte("controller")).toEqual(["prüfen", "Konflikte", "Duplikate"]);
-    // Der Eintrag „/admin" IST die Fläche der Einstellungen — seine Freiheiten sind ihre Reiter.
-    expect(worte("admin")).toEqual(["Konten", "KI", "Daten", "Sicherheit"]);
+    // Der Eintrag „/admin" IST die Fläche der Einstellungen — seine Freiheiten sind ihre Themen.
+    //
+    // JOB 3337 (Pedi 08.09.): aus vier Behältern sind die sieben Themen der Vorlage geworden. Die
+    // Erwartung wird deshalb aus `ADMIN_SECTIONS` GELESEN statt abgeschrieben — sonst stünde hier
+    // eine zweite Wahrheit über die Gliederung, die beim nächsten Thema still auseinanderliefe.
+    // Die Zusage bleibt: die Freiheiten des Admins sind genau die Themen seiner Fläche, in ihrer
+    // Reihenfolge, ohne Dublette.
+    expect(worte("admin")).toEqual(ADMIN_SECTIONS.map((abschnitt) => i18n.t(abschnitt.labelKey)));
+    expect(worte("admin")).toHaveLength(new Set(worte("admin")).size);
+    expect(worte("admin")[0], "die Themen kommen nicht roh, sondern übersetzt").toBe(
+      "Benutzer und Rollen",
+    );
   });
 
   it("3 KEIN VERSPRECHEN · KI-Wahl frei gilt heute nur für den Admin", () => {

@@ -30,7 +30,7 @@ import { afterEach, describe, expect, it } from "vitest";
 // `data-einst`, damit die Chromium-Messung sie findet. Beides sind Symbole aus `lucide-react` —
 // also Komponenten, und damit genau die Bauform, die dieser Sammler nicht glauben, sondern messen
 // will. Die Proben unten rendern sie und schauen nach, ob das Attribut im SVG ankommt.
-import { ChevronRight, Lock } from "../../apps/web/node_modules/lucide-react";
+import { ArrowUpRight, ChevronRight, Lock } from "../../apps/web/node_modules/lucide-react";
 import { type ReactNode, act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { Link, MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
@@ -149,6 +149,13 @@ const PROBEN: Record<string, () => ReactNode> = {
   // JOB 3065 H6: die beiden Symbole der Zeilenkarte (Chevron = führt weiter, Schloss = nur lesbar).
   ChevronRight: () => createElement(ChevronRight, symbolProbe),
   Lock: () => createElement(Lock, symbolProbe),
+  // JOB 3337: das dritte Symbol derselben Familie. Der Pfeil nach schräg oben steht in der
+  // Verwaltung an jeder Zeile, die AUS ihr hinausführt (`pages/Admin.tsx`, `Kurzlink`) — bewusst
+  // KEIN Chevron, denn das verspricht dort eine Detailkarte. Er trägt `data-einst="kurzlink"`, und
+  // genau dieses Attribut liest die Chromium-Messung `zielbild-h6-kein-erklaertext` (Fall
+  // K-berichte), um Kurzlink von Detailzeile zu unterscheiden. Kommt es nicht im DOM an, misst sie
+  // ins Leere — deshalb steht die Probe hier.
+  ArrowUpRight: () => createElement(ArrowUpRight, symbolProbe),
 };
 
 let container: HTMLDivElement | null = null;

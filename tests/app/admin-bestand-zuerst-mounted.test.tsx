@@ -84,9 +84,16 @@ import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
 import { AuthProvider } from "../../apps/web/src/app/AuthContext";
+// JOB 3337 R2: die Verwaltung wechselt Thema und Karte seit diesem Auftrag per NAVIGATION
+// (`/admin?bereich=…&detail=…`) und läuft damit — wie jeder andere Weg der Anwendung — durch den
+// Ungespeichert-Wächter. Dieser Prüfstand montiert ihn deshalb mit, statt die Seite an einer
+// Umgebung zu messen, in der sie nie läuft (`App.tsx` hat den Anbieter immer).
+import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
+// JOB 3337: die Zahl der Themen wird gelesen, nicht abgeschrieben (siehe Fall „4 TABSTRUKTUR").
+import { ADMIN_SECTIONS } from "../../apps/web/src/lib/adminSections";
 import { Admin } from "../../apps/web/src/pages/Admin";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -124,7 +131,11 @@ async function mount(): Promise<void> {
             createElement(
               ToastProvider,
               null,
-              createElement(MemoryRouter, { initialEntries: ["/admin"] }, createElement(Admin)),
+              createElement(
+                MemoryRouter,
+                { initialEntries: ["/admin"] },
+                createElement(NavGuardProvider, null, createElement(Admin)),
+              ),
             ),
           ),
         ),
@@ -304,12 +315,15 @@ describe("JOB 1110 D1 · Konten-Tab: erst der Bestand, dann das Formular", () =>
     expect(createSpy).toHaveBeenCalledWith("Cara Neu", "cara@neu.de", "geheim12345", "experte");
   });
 
-  it("4 TABSTRUKTUR · vier Bereiche, Konten ist der Startbereich", async () => {
+  it("4 TABSTRUKTUR · sieben Themen, Benutzer und Rollen ist der Startbereich", async () => {
     await mount();
-    // JOB 3065 H6: vier Reiter (Konten · KI · Daten · Sicherheit) — „Bereitschaft" ist seither eine
-    // Zeile unter Sicherheit, kein eigener Bereich mehr.
+    // JOB 3337 (Pedi 08.09.): aus den vier Behältern sind die sieben Themen der Vorlage geworden
+    // (Benutzer und Rollen · KI · Quellen und Daten · Vorführdaten · Sicherheit und Nachweise ·
+    // Berichte und Analyse · System). Die Zusage dieses Falls bleibt dieselbe: die Themenspalte
+    // steht, und der Einstieg ist das erste Thema — die ZAHL wird aus `ADMIN_SECTIONS` gelesen,
+    // nicht mehr abgeschrieben, damit das nächste Thema hier keine zweite Wahrheit braucht.
     const tabs = [...container.querySelectorAll('button[data-einst="reiter"]')];
-    expect(tabs).toHaveLength(4);
+    expect(tabs).toHaveLength(ADMIN_SECTIONS.length);
     const konten = tabs.find((b) => text(b) === i18n.t("adm.sec.konten"));
     expect(konten?.getAttribute("aria-pressed")).toBe("true");
   });

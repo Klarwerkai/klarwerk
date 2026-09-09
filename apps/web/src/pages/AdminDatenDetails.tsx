@@ -121,6 +121,18 @@ export function DemodatenDetail({ onZurueck }: { onZurueck: () => void }): JSX.E
           </div>
         )}
       </Abfragehuelle>
+      {/* ==========================================================================================
+          JOB 3337 — LADEN UND ENTFERNEN STEHEN NICHT MEHR NEBENEINANDER.
+          ==========================================================================================
+          Codex' Livebefund an 1.0.0-beta.1.198: „Laden und Entfernen als kleine, ähnlich
+          gewichtete Textaktionen." Zwei Handlungen mit sehr verschiedenen Folgen sahen gleich aus
+          und lagen einen Zentimeter auseinander. Die Vorlage verlangt darum: „Laden und
+          Entfernen/Rücksetzen optisch klar unterscheiden."
+
+          JETZT: zwei Blöcke, durch eine Trennlinie geschieden. Oben die aufbauende Handlung, unten
+          — nach der Linie und eingerückt in einen eigenen, ruhigen Bereich — die abräumende. An den
+          Handlungen selbst ändert sich NICHTS: dieselben Knöpfe, dieselbe Rückfrage, dieselbe
+          serverseitige Aufteilung (mega64 A: nur das ANLEGEN steht hinter dem Schalter). */}
       <div>
         {/* AUFTRAG-mega64 Block A: Nur das ANLEGEN steht hinter dem Schalter — der Entfernen-Knopf
             ausdrücklich NICHT. Wer die Vorführhilfe abschaltet, muss vorhandene Demodaten weiterhin
@@ -135,9 +147,11 @@ export function DemodatenDetail({ onZurueck }: { onZurueck: () => void }): JSX.E
             {t("adm.seedButton")}
           </Button>
         </FeatureGate>
+      </div>
+      <div data-einst="entfernen" className="border-t border-hairline pt-3">
         {/* SCRUM-412 (CI): Bestätigung = neutrale Fläche; Rot nur am destruktiven Knopf. */}
         {confirmPurge ? (
-          <span className="ml-2 inline-flex items-center gap-2 rounded-card border border-hairline bg-page px-2.5 py-1.5">
+          <span className="inline-flex items-center gap-2 rounded-card border border-hairline bg-page px-2.5 py-1.5">
             <span className="text-[12px] font-semibold text-text">{t("adm.purgeQ")}</span>
             <button
               type="button"
@@ -159,7 +173,7 @@ export function DemodatenDetail({ onZurueck }: { onZurueck: () => void }): JSX.E
           <button
             type="button"
             onClick={() => setConfirmPurge(true)}
-            className="ml-2 rounded-btn px-3 py-2 text-[12.5px] font-semibold text-muted hover:bg-trust-crit-bg hover:text-trust-crit-text"
+            className="-ml-3 rounded-btn px-3 py-2 text-[12.5px] font-semibold text-muted hover:bg-trust-crit-bg hover:text-trust-crit-text"
           >
             <Trash2 size={14} className="mr-1 inline" />
             {t("adm.purgeButton")}

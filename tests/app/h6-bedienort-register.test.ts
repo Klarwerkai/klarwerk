@@ -233,8 +233,12 @@ describe("JOB 3065 H6 R9 · Bedienort-Register: Ansicht als Rolle und Erweiterte
     expect(admin).toContain('testId="zeile-stufe2"');
     // … und die zweite Datei ist wirklich nur die Karte HINTER der ersten Zeile: sie wird von
     // genau einer Stelle geöffnet und öffnet sich nicht selbst.
-    expect(admin).toContain('setDetail("ansichtRolle")');
-    expect(admin.match(/setDetail\("ansichtRolle"\)/g)?.length).toBe(1);
+    // JOB 3337: die offene Karte liegt nicht mehr in `useState`, sondern in der Adresse
+    // (`/admin?bereich=…&detail=…`) — aus `setDetail("ansichtRolle")` ist
+    // `geheZu("konten", "ansichtRolle")` geworden. Die ZUSAGE dieses Falls ist unverändert und
+    // sogar schärfer: es gibt GENAU EINE Stelle, die diese Karte öffnet.
+    expect(admin).toContain('geheZu("konten", "ansichtRolle")');
+    expect(admin.match(/geheZu\("konten", "ansichtRolle"\)/g)?.length).toBe(1);
     expect(readFileSync(join(WEB, "pages/AdminKontenDetails.tsx"), "utf8")).toContain(
       'testId="detail-ansicht-rolle"',
     );

@@ -24,7 +24,24 @@
 // (Chromium) durchlaufen, nicht in dreien. Das ist kein Verlust — vorher war es faktisch ebenfalls
 // nur eine (die erste; die beiden anderen sahen schon das Anmeldeformular), nur unausgesprochen.
 import { expect, test } from "@playwright/test";
+// JOB 3337 · ADMIN-NAVIGATION — die Reiter der Verwaltung werden GELESEN, nicht abgeschrieben.
+// `ADMIN_SECTIONS` ist die eine Quelle, aus der `pages/Admin.tsx:435` die Reiterspalte füllt; sie
+// hat keine eigenen Importe und ist deshalb auch von hier aus benutzbar. Vorher stand hier der
+// Name eines einzelnen Reiters („Daten") als Literal — er hat den Umbau dieses Jobs nicht
+// überlebt, und niemand konnte das vor dem roten Lauf sehen. Ein Literal weiss nichts davon,
+// dass sich die Gliederung geändert hat; dieser Import schon.
+import { ADMIN_SECTIONS, adminSectionFuerDetail } from "../apps/web/src/lib/adminSections";
 import { SMOKE_MAIL, SMOKE_NAME, SMOKE_PASS, workspaceMarker } from "./support/auth";
+
+/**
+ * Die Reiterspalte der VERWALTUNG.
+ *
+ * `page-admin` setzt `pages/Admin.tsx` über `seitenSchluessel="admin"`
+ * (`components/einstellungen/Seite.tsx:90`) — diese Seite rendert das Rollen-Gate nur für einen
+ * Admin; ein Nicht-Admin steht auf `/start` und hat den Anker nirgends. `data-einst="reiter"` ist
+ * der eine Ort, der Reiter zeichnet (`Seite.tsx:47-61`), es gibt kein zweites Bauteil daneben.
+ */
+const ADMIN_REITER = '[data-testid="page-admin"] [data-einst="reiter"]';
 
 test("Ersteinrichtung legt den Admin an und landet im Arbeitsbereich", async ({ page }) => {
   await page.goto("/");
@@ -67,16 +84,26 @@ test("Ersteinrichtung legt den Admin an und landet im Arbeitsbereich", async ({ 
   //
   // Zwei Zusicherungen schließen das, und keine braucht einen neuen Anker:
   //   · `toHaveURL(/\/admin$/)` schließt die Umleitung aus. Wer kein Admin ist, steht auf /start.
-  //   · der admin-EIGENE Reiter „Daten" — den gibt es nur in der Verwaltung, und der Seed-Weg unten
-  //     bedient ihn ohnehin. Ein Nicht-Admin sieht ihn nirgends.
+  //   · die admin-EIGENE Reiterspalte der Verwaltung — die gibt es nur hier, und der Seed-Weg unten
+  //     bedient sie ohnehin. Ein Nicht-Admin sieht sie nirgends.
+  //
+  // JOB 3337 — NACHFÜHRUNG DER BÜHNE, NICHT ABSCHWÄCHUNG DER AUSSAGE. Bis hierher stand der
+  // einzelne Reiter „Daten" als Literal. Dieser Job hat ihn aufgelöst (er trug Demodaten,
+  // Werkseinstellungen, Papierkorb UND das Audit-Log — vier Dinge aus vier Welten, s.
+  // `lib/adminSections.ts`); die sieben Themen der Vorlage stehen an seiner Stelle. Geprüft wird
+  // deshalb, was den Umbau überdauert und dieselbe Sache belegt: dass die Verwaltung ihre
+  // VOLLSTÄNDIGE Reiterspalte rendert — vollständig gemessen an `ADMIN_SECTIONS`, nicht an einer
+  // Zahl aus dem Kopf. Kein höheres Timeout, kein Skip, und ausdrücklich nicht „irgendein Reiter":
+  // fehlt auch nur ein Thema, ist das hier rot.
   await page.goto("/admin");
   await expect(page, "Rollen-Gate hat von /admin umgeleitet — kein Admin").toHaveURL(/\/admin$/, {
     timeout: 10_000,
   });
   await expect(
-    page.getByRole("button", { name: "Daten", exact: true }),
-    "der admin-eigene Reiter „Daten“ fehlt — die Verwaltung rendert nicht als Admin",
-  ).toBeVisible({ timeout: 10_000 });
+    page.locator(ADMIN_REITER),
+    "die Reiter der Verwaltung fehlen oder sind unvollständig — die Verwaltung rendert nicht als Admin",
+  ).toHaveCount(ADMIN_SECTIONS.length, { timeout: 10_000 });
+  await expect(page.locator(ADMIN_REITER).first()).toBeVisible();
 
   // ──────────────────────────────────────────────────────────────────────────────────────────────
   // AUFTRAG-mega49 BLOCK A2 — DIE ZWEITE DATENLAGE, ÜBER DEN PRODUKTWEG.
@@ -100,7 +127,17 @@ test("Ersteinrichtung legt den Admin an und landet im Arbeitsbereich", async ({ 
   // Zugangsdatum. Ein zweiter, testeigener Seed-Weg wäre eine zweite Wahrheit über „Demodaten" und
   // ist genau deshalb nicht gebaut.
   if (process.env.KLARWERK_SMOKE_SEED === "1") {
-    await page.getByRole("button", { name: "Daten", exact: true }).click();
+    // JOB 3337: Welcher Reiter die Demodaten trägt, sagt das Produkt selbst — `adminSectionFuerDetail`
+    // beantwortet für die Detailkennung `demo` genau die Frage, die hier vorher als Reitername
+    // („Daten") hartkodiert war. Seit diesem Job ist es das Thema „Vorführdaten". Verschiebt ein
+    // späterer Job sie erneut, folgt dieser Weg mit, statt still am alten Namen zu scheitern.
+    const demoThema = adminSectionFuerDetail("demo");
+    const demoReiter = ADMIN_SECTIONS.findIndex((s) => s.id === demoThema);
+    expect(
+      demoReiter,
+      `die Detailkennung „demo“ hat kein Thema in ADMIN_SECTIONS (gefunden: ${String(demoThema)})`,
+    ).toBeGreaterThanOrEqual(0);
+    await page.locator(ADMIN_REITER).nth(demoReiter).click();
     await page.getByTestId("zeile-demodaten").click();
     await page
       .getByTestId("detail-demodaten")

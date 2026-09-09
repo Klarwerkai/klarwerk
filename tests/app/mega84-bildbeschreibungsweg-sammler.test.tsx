@@ -1550,8 +1550,19 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // abzuschreiben. Es bietet keine Bildbeschreibung an (kein `ANGEBOT_MUSTER`) und trägt keinen
     // eigenen Titel (kein `documentTitle`-Prop) — es erscheint nur in der Grundmenge. Die zwei
     // Zahlen, an denen Stufe 2 wirklich hängt, bleiben unverändert: `anbieter` 1, `traeger` 2.
+    //
+    // KONFLIKTRUNDE 7 (JOB 3337 · ADMIN-NAVIGATION): NACH DEM REBASE auf JOB 3390/LADEFEHLER-ALTER-
+    // TAB trifft die unabhängige NEUE Fläche ADMIN-NAVIGATION auf denselben Stand; `komponenten`
+    // von 363 auf 365 NACHGEZOGEN — am eigenen Lauf dieses Arbeitsbaums gemessen, nicht rechnerisch
+    // addiert. Es sind GENAU ZWEI Bauteile, beide in `pages/Admin.tsx` und beide reine
+    // Navigationszeilen: `Kurzlink` (eine Zeile, die aus der Verwaltung auf einen vorhandenen
+    // Bedienort führt) und `BereichsZeile` (dieselbe Zeile mit der ehrlichen Unterscheidung „Rolle
+    // fehlt" gegen „Modul ausgeschaltet"). Für DIESEN Sammler ändern sie nichts: sie zeigen kein
+    // Bild, bieten keine Bildbeschreibung an (kein `ANGEBOT_MUSTER`) und tragen keinen eigenen Titel
+    // (kein `documentTitle`-Prop) — sie erscheinen nur in der Grundmenge. Die zwei Zahlen, an denen
+    // Stufe 2 wirklich hängt, sind unverändert: `anbieter` 1 und `traeger` 2.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 363,
+      komponenten: 365,
       anbieter: 1,
       traeger: 2,
     });

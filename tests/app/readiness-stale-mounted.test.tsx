@@ -80,6 +80,11 @@ import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
 import { AuthProvider } from "../../apps/web/src/app/AuthContext";
+// JOB 3337 R2: die Verwaltung wechselt Thema und Karte seit diesem Auftrag per NAVIGATION
+// (`/admin?bereich=…&detail=…`) und läuft damit — wie jeder andere Weg der Anwendung — durch den
+// Ungespeichert-Wächter. Dieser Prüfstand montiert ihn deshalb mit, statt die Seite an einer
+// Umgebung zu messen, in der sie nie läuft (`App.tsx` hat den Anbieter immer).
+import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
@@ -116,7 +121,11 @@ async function mount(): Promise<void> {
             createElement(
               ToastProvider,
               null,
-              createElement(MemoryRouter, { initialEntries: ["/admin"] }, createElement(Admin)),
+              createElement(
+                MemoryRouter,
+                { initialEntries: ["/admin"] },
+                createElement(NavGuardProvider, null, createElement(Admin)),
+              ),
             ),
           ),
         ),
@@ -150,7 +159,11 @@ async function click(btn: HTMLButtonElement): Promise<void> {
  * unverändert, nur der Weg dorthin ist zwei Klicks statt einem.
  */
 async function oeffneBereitschaft(): Promise<void> {
-  await click(buttonByText(i18n.t("adm.sec.sicherheit")));
+  // JOB 3337 (Pedi 08.09., Vorlage „Innerhalb der Verwaltung"): die Bereitschaft ist eine
+  // Auskunft über den Zustand des Hauses und wohnt seither unter „System" — nicht mehr unter
+  // „Sicherheit und Nachweise", wo die NACHWEISE stehen (Prüfprotokoll, Datenschutz, Audit).
+  // Die Zeile, die Karte und alles, was dieser Fall misst, sind unverändert; nur ihr Thema ist neu.
+  await click(buttonByText(i18n.t("adm.sec.system")));
   const zeile = container.querySelector('[data-testid="zeile-bereitschaft"]');
   if (!(zeile instanceof HTMLButtonElement)) {
     throw new Error("Zeile „Bereitschaft“ nicht gefunden");

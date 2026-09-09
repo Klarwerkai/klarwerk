@@ -50,13 +50,22 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 // Raster „Betrachter" wählen, worauf der Rollen-Guard `/admin` wegnimmt und die Sperrkarte steht.
 import { ROLES } from "../../apps/web/src/app/navigation";
 import i18n from "../../apps/web/src/i18n";
+import { ADMIN_SECTIONS } from "../../apps/web/src/lib/adminSections";
 import { type Seite, type Stand, fn, schattenLagen, starte, wechsle } from "../design/h6-chromium";
 import { schliesseChromium } from "../tor-bereitschaft/chromium-abbau";
 
 /** Die vollen Rollennamen (`role.name.*`, de) in der Reihenfolge von `ROLES`. */
 const NAMEN = ROLES.map((rolle) => i18n.t(`role.name.${rolle}`, { lng: "de" }));
-/** Der Reiter, unter dem die Zeile „Ansicht als Rolle" wohnt (`adm.sec.konten`, de). */
-const REITER = "Konten";
+/**
+ * Der Reiter, unter dem die Zeile „Ansicht als Rolle" wohnt — das ERSTE Thema der Verwaltung.
+ *
+ * JOB 3337: hier stand „Konten" als Zeichenkette. Seit Pedis Auftrag vom 08.09. heißt dieses Thema
+ * „Benutzer und Rollen", und der Griff unten sucht den Reiter über einen ZEICHENGLEICHEN Vergleich
+ * (`norm(b.textContent) === reiterName`) — eine abgeschriebene Beschriftung hätte diese Messung
+ * ohne eigenes Verschulden rot gemacht. Der Name wird deshalb aus derselben Quelle gelesen, aus der
+ * die Fläche ihn zeichnet; die Zeile selbst ist unverändert dort zu Hause.
+ */
+const REITER = i18n.t(ADMIN_SECTIONS[0].labelKey, { lng: "de" });
 
 interface Kasten {
   x: number;

@@ -3828,8 +3828,26 @@ describe("JOB 1181 · Klassenbindungen: aufgelöst oder gemeldet, kein dritter Z
     // KEIN VORBEISCHREIBEN: Beide Bindungen stehen in `ALLE_BINDUNGEN`. Wer die Deckelung in ein
     // Attributobjekt oder in ein blosses `className="…"` schöbe, nähme sie dem Sammler ganz weg —
     // dann wäre dieser Zählstand geschönt. Keine Bindung ist weggefallen.
+    //
+    // KONFLIKTRUNDE 1 (JOB 3337 R2 · ADMIN-NAVIGATION): NACH DEM REBASE auf JOB 3288/IMPORT-VOLLTEXT
+    // von 219 auf 218. GENAU EINE Bindung fällt weg, und sie fällt nicht aus der Erhebung, sondern
+    // aus dem PRODUKT — gemessen an diesem Arbeitsbaum, nicht gerechnet. Die Zeile der Liste
+    // „Gehe zu …" (`shell/CommandPalette.tsx`) trug bis hierher ZWEI zustandsabhängige Klassenketten:
+    // eine am Knopf und eine an der Angabe rechts. Sie trägt jetzt Name, Zielkontext und (wo es eine
+    // gibt) die Route — und nur noch EINE Bindung:
+    //
+    //     − CommandPalette.tsx `ml-auto shrink-0 pl-3 text-right font-mono text-[11px] ${
+    //           i === active ? "text-white/70" : "text-muted-2"}`
+    //
+    // An ihre Stelle treten STATISCHE Klassen (`opacity-90`): Kontext und Route wählen keine eigene
+    // Farbe mehr, sondern erben die der Zeile und treten nur zurück. Damit gibt es dort nichts mehr
+    // aufzulösen — und der Kontrast auf der Markenfläche bleibt über AA (gemessen in
+    // `mega40-kontrast-modern`, Fall „JEDER Text auf einer Akzentfläche": 17/17 grün).
+    //
+    // KEIN VORBEISCHREIBEN: die verbliebene Bindung am Knopf steht weiterhin in `ALLE_BINDUNGEN`;
+    // die Erhaltungszusage oben (aufgelöst + offen == alle) hält das zusammen.
     expect(UNAUFGELOEST.length, "es gibt heute unauflösbare Bindungen — das ist der Befund").toBe(
-      219,
+      218,
     );
     for (const b of UNAUFGELOEST) {
       expect(b.datei, "Meldung ohne Datei").toMatch(/^apps\/web\/src\/.+\.tsx?$/);

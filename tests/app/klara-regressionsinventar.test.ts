@@ -172,6 +172,31 @@ const INVENTAR: readonly string[] = [
   "services/app/src/services/klara-session-service.test.ts",
   "services/app/src/web-static.test.ts",
   "services/reasoner/src/klara-policy.test.ts",
+  // JOB 3337 (ADMIN-NAVIGATION): zwei neue Dateien, von der Achse `palette` gefunden (Muster
+  // `palette`) — sie montieren `CommandPalette` und messen den Direktzugang „Gehe zu …". Sachlich
+  // Klara-Regression im selben Sinn wie A19b und die `navigationsnamen`-Dateien weiter unten: die
+  // Schnellnavigation ist der Weg, ueber den ein Mensch die Flaechen erreicht, gegen die Klara
+  // verglichen wird — faellt der Name oder der Weg, faellt die Vergleichsflaeche. K2 hat sie
+  // gemeldet, das Inventar nimmt sie nicht still auf. (Die gemeinsame Vorrichtung
+  // `tests/admin-navigation/vorrichtung.tsx` ist keine Testdatei und deshalb nicht Teil der Menge.)
+  "tests/admin-navigation/adressierbarkeit.test.tsx",
+  // JOB 3337 R2: die dritte Datei derselben Klasse — sie montiert `CommandPalette` und misst
+  // Fokusrückgabe, Zielkontext und den Ungespeichert-Waechter an der globalen Zielliste.
+  "tests/admin-navigation/bedienbarkeit.test.tsx",
+  "tests/admin-navigation/inventar.test.tsx",
+  // JOB 3337 R5: die vierte Datei derselben Klasse. Sie montiert `CommandPalette` (und faellt
+  // damit unter dasselbe Muster `palette`), um zu sichern, dass die PRUEFBUEHNEN des UI-Smoke die
+  // Palette und die Verwaltung ueber benannte Griffe ansprechen statt ueber sichtbaren Wortlaut —
+  // zweimal in diesem Job ist genau daran das Tor zerbrochen. K2 hat sie gemeldet, das Inventar
+  // nimmt sie nicht still auf.
+  "tests/admin-navigation/smoke-buehne.test.tsx",
+  // JOB 3337 R6: die fuenfte Datei derselben Klasse — sie montiert `CommandPalette` (Achse
+  // `palette`) und misst den TASTATURWEG bis zum Ziel: was markiert ist, muss auch geoeffnet
+  // werden. BEN hatte gemessen, dass beides auseinanderlief (Markierung „Profil", geoeffnet
+  // „System → Bereitschaft"). GEMESSEN, NICHT GESETZT: mit der neuen Datei und noch unveraendertem
+  // Inventar meldete der Waechterlauf „neu im Baum, aber nicht im gepinnten Inventar — Inventar
+  // nachfuehren: expected [ Array(1) ] to deeply equal []"; erst danach wurde diese Zeile angefasst.
+  "tests/admin-navigation/tastaturweg.test.tsx",
   "tests/app/contrast-tokens-d5.test.ts",
   "tests/app/csp-upgrade-insecure-requests.test.ts",
   // G24 (JOB 1601/1610): neu im Baum und von der Erhebung gefunden. Der Waechter der
@@ -324,6 +349,13 @@ const INVENTAR: readonly string[] = [
   "tests/design/k2-funktionsinventar.test.ts",
   "tests/design/zielbild-k2-erfassen.test.ts",
   "tests/design/zielbild-k2-kein-erklaertext.test.ts",
+  // JOB 3337 R7: die sechste Datei der Palettenklasse — und die erste, die sie im BROWSER misst.
+  // Sie faellt ueber die Achse `palette` (Dateiname und Inhalt) und haelt fest, dass die Liste
+  // „Gehe zu …" im flachen Fenster (683x384, BENs Zoommass) nicht mehr unter den Rand laeuft.
+  // „klara" steht nicht im Pfad, K5 bleibt unveraendert. GEMESSEN, NICHT GESETZT: mit der neuen
+  // Datei und noch unveraendertem Inventar meldete der Lauf „neu im Baum, aber nicht im gepinnten
+  // Inventar — Inventar nachfuehren: expected [ Array(1) ] to deeply equal []".
+  "tests/design/job3337-palette-flaches-fenster-chromium.test.ts",
   // JOB 2620 D5: die Bilder-Aussage steht in Tab 2 des Aufgabenfensters genau einmal — gemessen am
   // ausgelieferten taskpane.html ueber die Panel-Fixture, je Sprache. Achse `taskpane`.
   // JOB 3057 K2: der Kasten wohnt jetzt im „?"-Menue der Erfassen-Flaeche (gleiche Kennung);

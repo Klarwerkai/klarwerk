@@ -135,27 +135,24 @@ const INVENTAR: Zeile[] = [
   {
     kennung: "K-cmdk",
     heute: "⌘K-Chip im Suchfeld (Topbar.tsx:588-595)",
-    ort: "Tastenkürzel ⌘K bleibt + Zahnrad-Zeile „Schnellnavigation“",
+    ort: "Tastenkürzel ⌘K bleibt + Zahnrad-Zeile „Gehe zu …“",
     pruefen: async () => {
+      // JOB 3337: gesucht wird über den ZUGÄNGLICHEN NAMEN des Feldes, nicht über ein Bruchstück
+      // seines Platzhalters. Der Platzhalter hieß bis hierher „Zu Seite springen …" und wurde in
+      // diesem Auftrag zu „Gehe zu … (⌘K)"; ein `placeholder*="springen"` hätte diese Messung ohne
+      // eigenes Verschulden in eine Zeitüberschreitung laufen lassen. Der Name (`cmd.suchfeld`) ist
+      // ohnehin die belastbarere Marke: er ist der, den ein Vorlesewerkzeug ausgibt.
+      const feld = `input[aria-label="${t("cmd.suchfeld")}"]`;
       await seite().keyboard.press("Control+k");
-      await warteBis(
-        seite(),
-        `() => document.querySelector('input[placeholder*="springen"]') !== null`,
-      );
+      await warteBis(seite(), "(s) => document.querySelector(s) !== null", feld);
       await seite().keyboard.press("Escape");
-      await warteBis(
-        seite(),
-        `() => document.querySelector('input[placeholder*="springen"]') === null`,
-      );
+      await warteBis(seite(), "(s) => document.querySelector(s) === null", feld);
       await zahnradOeffnen();
       expect(await sichtbarerText('[data-testid="zahnrad-schnellnavigation"]')).toContain(
         t("menue.schnellnavigation"),
       );
       await seite().click('[data-testid="zahnrad-schnellnavigation"]');
-      await warteBis(
-        seite(),
-        `() => document.querySelector('input[placeholder*="springen"]') !== null`,
-      );
+      await warteBis(seite(), "(s) => document.querySelector(s) !== null", feld);
       await seite().keyboard.press("Escape");
     },
   },
@@ -334,10 +331,16 @@ const INVENTAR: Zeile[] = [
   {
     // JOB 3065 H6: Endort erreicht, wie 3060 es selbst vorgesehen hatte („Endort /admin Konten:
     // JOB 3065"). Der Schalter steht in der Zeile „Erweiterte Module · Stufe 2".
+    //
+    // JOB 3337: dieselbe Zeile, neues Thema. Die Vorlage von Codex führt „Erweiterte Module" unter
+    // „System" (neben Bereitschaft und Werkseinstellungen), und genau dorthin zeigt auch der
+    // Hinweis unter einem ausgeschalteten Bereich. Weil der Verwaltungszustand seit diesem Auftrag
+    // ADRESSIERBAR ist, nennt dieser Fall sein Thema jetzt in der Route, statt sich auf das
+    // Standardthema zu verlassen — das ist die kürzere und die ehrlichere Bewegung.
     kennung: "Z-stufe2",
     heute: "Stufe-2-Häkchen (Sidebar.tsx:305-314) → Zahnrad (JOB 3060)",
-    ort: "/admin Konten → Zeile „Erweiterte Module · Stufe 2“ mit ihrem Häkchen (JOB 3065)",
-    route: "/admin",
+    ort: "/admin System → Zeile „Erweiterte Module · Stufe 2“ mit ihrem Häkchen (JOB 3065/3337)",
+    route: "/admin?bereich=system",
     pruefen: async () => {
       await warteBis(
         seite(),

@@ -3,6 +3,7 @@ import { useLocation } from "react-router-dom";
 import { GuardedLink } from "../app/NavGuardContext";
 import { useRole } from "../app/RoleContext";
 import {
+  FOOT_ITEMS,
   type NavItem,
   anzeigeNameKey,
   canSee,
@@ -10,9 +11,10 @@ import {
   kopfbandItems,
   weitereBereicheItems,
 } from "../app/navigation";
+import { nachObergruppen } from "../app/navigationGliederung";
 import { type NavBadge, navBadgeLabelKey, useNavBadges } from "../app/useNavBadges";
 import { useOnline } from "./Meldungen";
-import { MenueZeile } from "./Menue";
+import { MenueKopf, MenueZeile } from "./Menue";
 
 // ================================================================================================
 // JOB 3060 · H1 — DIE FÜNF PUNKTE DES KOPFBANDS UND DIE „WEITEREN BEREICHE".
@@ -55,10 +57,20 @@ function useSichtbareKopfbandPunkte(): NavItem[] {
   return kopfbandItems().filter((i) => canSee(i, role, stufe2));
 }
 
-/** Die „Weiteren Bereiche", die diese Rolle sieht — Menüreihenfolge des Auftrags. */
+/**
+ * Die Ziele der Liste „Bereiche", die diese Rolle sieht.
+ *
+ * JOB 3337: dazu gehören seit Pedis Auftrag vom 08.09. auch Profil und Hilfe — nicht als neue
+ * Ziele, sondern als Kurzlinks unter der Obergruppe „Persönlich und Hilfe". Die Vorlage verlangt
+ * genau diese vierte Gruppe und trennt sie ausdrücklich von der Firmenverwaltung; ihr
+ * maßgeblicher Bedienort bleibt, wo er war (Konto-Menü bzw. die Zeile „Hilfe" darunter).
+ *
+ * Die Reihenfolge innerhalb einer Gruppe ist unverändert die des Auftrags JOB 3060
+ * (`weitereBereicheItems`) — gruppiert wird, nicht umsortiert.
+ */
 function useSichtbareWeitereBereiche(): NavItem[] {
   const { role, stufe2 } = useRole();
-  return weitereBereicheItems().filter((i) => canSee(i, role, stufe2));
+  return [...weitereBereicheItems(), ...FOOT_ITEMS].filter((i) => canSee(i, role, stufe2));
 }
 
 function Zaehler({
@@ -168,7 +180,15 @@ export function KopfbandPunkteListe(): JSX.Element {
   );
 }
 
-/** Die Zeilen des Untermenüs „Weitere Bereiche", mit ihren Zählern (dieselbe Regel wie oben). */
+/**
+ * Die Zeilen des Untermenüs „Bereiche", mit ihren Zählern (dieselbe Regel wie oben).
+ *
+ * JOB 3337: die zwölf Zeilen standen bis hierher ohne jede Zwischenüberschrift untereinander —
+ * Codex' Livebefund: „More areas mischt My Tasks, Conflicts, Duplicates, Topic map, External
+ * knowledge, Risk & Gaps, Lifecycle, Analytics & Audit, Reports, Import & Sources, Knowledge Graph,
+ * Capital Views." Jetzt tragen sie die vier Obergruppen der Vorlage, und für Berechtigte steht
+ * „Verwaltung" dort ausdrücklich als Wort — nicht mehr nur ein Zahnrad.
+ */
 export function WeitereBereicheZeilen(): JSX.Element {
   const { t } = useTranslation();
   const { pathname } = useLocation();
@@ -177,23 +197,28 @@ export function WeitereBereicheZeilen(): JSX.Element {
   const online = useOnline();
   return (
     <>
-      {bereiche.map((item) => (
-        <MenueZeile
-          key={item.id}
-          to={item.path}
-          aktiv={istAktiverEintrag(item, pathname)}
-          testid={`bereich-${item.id}`}
-          wert={zaehlerWert(
-            item,
-            badges,
-            online,
-            item.badgeTone === "crit"
-              ? "rounded-full bg-trust-crit-bg px-1.5 py-px text-[10.5px] font-bold text-trust-crit-text"
-              : "rounded-full bg-hairline px-1.5 py-px text-[10.5px] font-bold text-ink",
-          )}
-        >
-          {t(anzeigeNameKey(item))}
-        </MenueZeile>
+      {nachObergruppen(bereiche).map(({ gruppe, items }) => (
+        <div key={gruppe.id} data-bereichsgruppe={gruppe.id}>
+          <MenueKopf>{t(gruppe.titleKey)}</MenueKopf>
+          {items.map((item) => (
+            <MenueZeile
+              key={item.id}
+              to={item.path}
+              aktiv={istAktiverEintrag(item, pathname)}
+              testid={`bereich-${item.id}`}
+              wert={zaehlerWert(
+                item,
+                badges,
+                online,
+                item.badgeTone === "crit"
+                  ? "rounded-full bg-trust-crit-bg px-1.5 py-px text-[10.5px] font-bold text-trust-crit-text"
+                  : "rounded-full bg-hairline px-1.5 py-px text-[10.5px] font-bold text-ink",
+              )}
+            >
+              {t(anzeigeNameKey(item))}
+            </MenueZeile>
+          ))}
+        </div>
       ))}
     </>
   );

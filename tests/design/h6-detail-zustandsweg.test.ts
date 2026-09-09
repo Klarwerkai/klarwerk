@@ -136,7 +136,8 @@ function matrixAdmin(): Quelle[] {
       // kannte den Bestand gar nicht, also gab es dort weder Zustand noch „Erneut versuchen".
       id: "Demodaten · /api/admin/demo-seed",
       pfad: "/api/admin/demo-seed",
-      reiter: t("adm.sec.daten"),
+      // JOB 3337: eigenes Thema „Vorführdaten".
+      reiter: t("adm.sec.vorfuehrdaten"),
       zeile: '[data-testid="zeile-demodaten"]',
       behaelter: "detail-demodaten",
       inhalt: t("einst.daten.demoBestand"),
@@ -144,7 +145,8 @@ function matrixAdmin(): Quelle[] {
     {
       id: "Werkseinstellungen · /api/admin/factory-reset",
       pfad: "/api/admin/factory-reset",
-      reiter: t("adm.sec.daten"),
+      // JOB 3337: Werkseinstellungen unter „System".
+      reiter: t("adm.sec.system"),
       zeile: '[data-testid="zeile-werkseinstellungen"]',
       behaelter: "detail-werkseinstellungen",
       inhalt: t("adm.factory.unavailable"),
@@ -152,7 +154,8 @@ function matrixAdmin(): Quelle[] {
     {
       id: "Papierkorb · /api/kos/trash",
       pfad: "/api/kos/trash",
-      reiter: t("adm.sec.daten"),
+      // JOB 3337: Papierkorb unter „Quellen und Daten".
+      reiter: t("adm.sec.quellen"),
       zeile: '[data-testid="zeile-papierkorb"]',
       behaelter: "detail-papierkorb",
       inhalt: t("adm.trash.empty"),
@@ -160,7 +163,8 @@ function matrixAdmin(): Quelle[] {
     {
       id: "Audit-Liste · /api/audit",
       pfad: "/api/audit",
-      reiter: t("adm.sec.daten"),
+      // JOB 3337: Benutzeränderungen unter „Sicherheit und Nachweise".
+      reiter: t("adm.sec.sicherheit"),
       zeile: '[data-testid="zeile-audit"]',
       behaelter: "detail-audit",
       inhalt: "auth.",
@@ -178,7 +182,7 @@ function matrixAdmin(): Quelle[] {
     {
       id: "Bereitschaft · Quelle 1 · /api/reasoner/config",
       pfad: "/api/reasoner/config",
-      reiter: t("adm.sec.sicherheit"),
+      reiter: t("adm.sec.system"),
       zeile: '[data-testid="zeile-bereitschaft"]',
       behaelter: "detail-bereitschaft",
       inhalt: t("adm.ready.ki"),
@@ -186,7 +190,7 @@ function matrixAdmin(): Quelle[] {
     {
       id: "Bereitschaft · Quelle 2 · /api/analytics",
       pfad: "/api/analytics",
-      reiter: t("adm.sec.sicherheit"),
+      reiter: t("adm.sec.system"),
       zeile: '[data-testid="zeile-bereitschaft"]',
       behaelter: "detail-bereitschaft",
       inhalt: t("adm.ready.validated"),
@@ -194,7 +198,7 @@ function matrixAdmin(): Quelle[] {
     {
       id: "Bereitschaft · Quelle 3 · /api/validation/board",
       pfad: "/api/validation/board",
-      reiter: t("adm.sec.sicherheit"),
+      reiter: t("adm.sec.system"),
       zeile: '[data-testid="zeile-bereitschaft"]',
       behaelter: "detail-bereitschaft",
       inhalt: t("adm.ready.openReviews"),
@@ -202,7 +206,7 @@ function matrixAdmin(): Quelle[] {
     {
       id: "Bereitschaft · Quelle 4 · /api/upload-limits",
       pfad: "/api/upload-limits",
-      reiter: t("adm.sec.sicherheit"),
+      reiter: t("adm.sec.system"),
       zeile: '[data-testid="zeile-bereitschaft"]',
       behaelter: "detail-bereitschaft",
       inhalt: t("adm.ready.upload"),
@@ -210,7 +214,7 @@ function matrixAdmin(): Quelle[] {
     {
       id: "Bereitschaft · Quelle 5 · /api/external/policy",
       pfad: "/api/external/policy",
-      reiter: t("adm.sec.sicherheit"),
+      reiter: t("adm.sec.system"),
       zeile: '[data-testid="zeile-bereitschaft"]',
       behaelter: "detail-bereitschaft",
       inhalt: t("adm.ready.external"),
@@ -218,7 +222,7 @@ function matrixAdmin(): Quelle[] {
     {
       id: "Bereitschaft · Quelle 6 · /api/admin/demo-seed (BENs Befund aus Runde 2)",
       pfad: "/api/admin/demo-seed",
-      reiter: t("adm.sec.sicherheit"),
+      reiter: t("adm.sec.system"),
       zeile: '[data-testid="zeile-bereitschaft"]',
       behaelter: "detail-bereitschaft",
       inhalt: t("adm.ready.demo"),
@@ -555,7 +559,20 @@ describe("JOB 3065 H6 R3 · Endpunkt-Matrix der Detailkarten — 503 am gebauten
         }
         return befunde;
       })`),
-      [[t("adm.sec.konten"), t("adm.sec.ki"), t("adm.sec.daten"), t("adm.sec.sicherheit")]],
+      // JOB 3337: alle SIEBEN Themen. „Berichte und Analyse" trägt nur Kurzlinks (kein Chevron) —
+      // der Griff unten sammelt ausdrücklich nur Zeilen MIT Chevron und geht dort leer durch, was
+      // genau richtig ist: ein Kurzlink hat keinen Abfragezustand, über den er lügen könnte.
+      [
+        [
+          t("adm.sec.konten"),
+          t("adm.sec.ki"),
+          t("adm.sec.quellen"),
+          t("adm.sec.vorfuehrdaten"),
+          t("adm.sec.sicherheit"),
+          t("adm.sec.berichte"),
+          t("adm.sec.system"),
+        ],
+      ],
     );
     expect(gefunden, `Fehlerzustand ohne Störung: ${gefunden.join(" · ")}`).toEqual([]);
   }, 180_000);

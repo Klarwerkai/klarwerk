@@ -390,7 +390,12 @@ test("mega48: bei offenem Filterblatt ist KEINE Shell-Fläche mehr erreichbar", 
   const klara = page.locator('[data-klara="1"]').first();
   const hamburger = page.getByRole("button", { name: "Menü öffnen" });
   const ausloeser = page.getByRole("button", { name: "Filter", exact: true }).first();
-  const palette = page.getByPlaceholder(/Zu Seite springen/);
+  // JOB 3337 R5: NICHT mehr über ein Bruchstück des Platzhalters. Der hieß „Zu Seite springen …"
+  // und ist in diesem Auftrag zu Pedis Wortlaut „Gehe zu … (⌘K)" geworden (`cmd.placeholder`) —
+  // diese eine Zeile war danach der einzige rote Fall des Tors, und sie lief in eine
+  // Zeitüberschreitung, ohne dass am Geprüften irgendetwas fehlte. Gesucht wird jetzt der benannte
+  // Griff des Feldes (`CommandPalette.tsx`), den keine Umbenennung und keine Sprache verschiebt.
+  const palette = page.locator('[data-cmd="suchfeld"]');
 
   // Ein Fokus-Versuch auf ein Element: gelingt er? Das ist die Frage, die nur ein echter Browser
   // beantwortet — `inert` nimmt einem Element die Fokussierbarkeit, jsdom tut das nicht.

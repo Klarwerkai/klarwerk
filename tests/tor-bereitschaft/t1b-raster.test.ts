@@ -2,6 +2,11 @@ import ts from "typescript";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ROLES } from "../../apps/web/src/app/navigation";
 import i18n from "../../apps/web/src/i18n";
+// JOB 3337: die Originalmessung liest ihren Reiternamen seit diesem Auftrag aus `ADMIN_SECTIONS`
+// (sieben Themen statt vier Behälter, Pedi 08.09.). Wer ihre Deklarationen hier ausführt, muss
+// dieselbe Quelle im Geltungsbereich haben — sonst bricht sie mit „ADMIN_SECTIONS is not defined",
+// ohne dass am Produkt etwas fehlt.
+import { ADMIN_SECTIONS } from "../../apps/web/src/lib/adminSections";
 import { type Stand, fn, schattenLagen, starte, wechsle } from "../design/h6-chromium";
 import { schliesseChromium } from "./chromium-abbau";
 import { t1bQuelle } from "./t1b-original";
@@ -32,12 +37,12 @@ function original(praefix?: string): () => Promise<unknown> {
     "scope",
     ts.transpile(
       `
-    const { stand, expect, fn, wechsle, schattenLagen, ROLES, i18n } = scope;
+    const { stand, expect, fn, wechsle, schattenLagen, ROLES, i18n, ADMIN_SECTIONS } = scope;
     return async () => { ${quelle} ${praefix ? "" : "return await messen(320, false, 200);"} };
   `,
       { target: ts.ScriptTarget.ES2022 },
     ),
-  )({ stand, expect, fn, wechsle, schattenLagen, ROLES, i18n });
+  )({ stand, expect, fn, wechsle, schattenLagen, ROLES, i18n, ADMIN_SECTIONS });
 }
 
 describe("JOB 3152 · Originalmessung erkennt dauerhafte Raster- und Tastaturfehler", () => {

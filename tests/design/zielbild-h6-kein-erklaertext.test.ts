@@ -127,7 +127,25 @@ const KARTEN = `(async ([reiterLabel]) => {
   return { fehler: null, karten };
 })`;
 
-const TABS = ["konten", "ki", "daten", "sicherheit"] as const;
+// JOB 3337: aus vier Behältern sind die sieben Themen der Vorlage geworden. Der Textmesser läuft
+// über ALLE sieben — auf keinem darf ein Satz stehen.
+const TABS = [
+  "konten",
+  "ki",
+  "quellen",
+  "vorfuehrdaten",
+  "sicherheit",
+  "berichte",
+  "system",
+] as const;
+
+// „Berichte und Analyse" trägt AUSSCHLIESSLICH Kurzlinks auf vorhandene Bereiche (Analytics,
+// Auswertungen, Wissensgraph, Kapital-Sichten) — dort gibt es keine Detailkarte, die einen
+// verlegten Hilfetext tragen könnte. Das ist kein Verlust, sondern die Regel „ein Ziel, ein
+// maßgeblicher Bedienort": eine zweite Kartenwand für dieselben Bereiche wäre die Doppelung, die
+// die Vorlage ausdrücklich ausschließt. Die Kartenfälle laufen deshalb über die sechs Themen MIT
+// Karten; dass „berichte" wirklich nur Kurzlinks führt, belegt K-berichte weiter unten.
+const TABS_MIT_KARTEN = TABS.filter((tab) => tab !== "berichte");
 
 /** Eine geöffnete Detailkarte: ihr Sichtfeld und die Texte in ihrem „?"-Menü. */
 interface Karte {
@@ -208,7 +226,7 @@ describe("JOB 3065 H6 · kein Erklärtext im Sichtfeld — gemessen in Chromium"
     return ergebnis.karten;
   }
 
-  for (const tab of TABS) {
+  for (const tab of TABS_MIT_KARTEN) {
     it(`D-${tab} · jede Detailkarte des Reiters „${tab}" trägt bei geschlossenem „?“ KEINEN verlegten Hilfetext`, async () => {
       const gefunden = await karten(adminStand, i18n.t(`adm.sec.${tab}`));
       // Kalibrierung: der Reiter hat überhaupt Karten, und keine ist beim Öffnen steckengeblieben.
@@ -254,7 +272,7 @@ describe("JOB 3065 H6 · kein Erklärtext im Sichtfeld — gemessen in Chromium"
       "adm.ready.help",
     ].map((k) => i18n.t(k));
     const alle: string[] = [];
-    for (const tab of TABS) {
+    for (const tab of TABS_MIT_KARTEN) {
       for (const karte of await karten(adminStand, i18n.t(`adm.sec.${tab}`))) {
         alle.push(...karte.hilfe);
       }
@@ -269,6 +287,25 @@ describe("JOB 3065 H6 · kein Erklärtext im Sichtfeld — gemessen in Chromium"
       ).toBe(true);
     }
   }, 120_000);
+
+  it("K-berichte · KALIBRIERUNG: „Berichte und Analyse“ führt wirklich nur Kurzlinks", async () => {
+    // Der Ausschluss aus TABS_MIT_KARTEN ist damit gemessen und nicht behauptet: null Zeilen mit
+    // Chevron (= null Detailkarten), aber mindestens ein Kurzlink. Bekäme dieses Thema morgen eine
+    // eigene Karte, wäre dieser Fall rot — und der Ausschluss oben gehörte zurückgenommen.
+    expect(adminStand?.fehler).toBeNull();
+    await restText(adminStand, i18n.t("adm.sec.berichte"));
+    const zahlen = await (adminStand?.seite as NonNullable<Stand["seite"]>).evaluate<{
+      chevrons: number;
+      kurzlinks: number;
+    }>(
+      fn(`() => ({
+        chevrons: [...document.querySelectorAll('[data-einst="zeile"]')].filter((z) => z.querySelector('[data-einst="chevron"]')).length,
+        kurzlinks: document.querySelectorAll('[data-einst="kurzlink"]').length,
+      })`),
+    );
+    expect(zahlen.chevrons, "„Berichte und Analyse“ hat eine Detailkarte bekommen").toBe(0);
+    expect(zahlen.kurzlinks, "„Berichte und Analyse“ hat gar keinen Weg").toBeGreaterThan(0);
+  }, 60_000);
 
   it("K · KALIBRIERUNG: ein eingefügter Satz lässt das Messer ausschlagen (und wird zurückgenommen)", async () => {
     expect(adminStand?.fehler).toBeNull();

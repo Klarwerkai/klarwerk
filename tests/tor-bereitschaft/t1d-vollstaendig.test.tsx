@@ -2,6 +2,11 @@
 import { runInNewContext } from "node:vm";
 import ts from "typescript";
 import { afterEach, expect, it, vi } from "vitest";
+// JOB 3337: der Prüfstand von `rollenraster-schmal-chromium` liest den Reiternamen seit diesem
+// Auftrag aus `ADMIN_SECTIONS` statt ihn abzuschreiben (sieben Themen statt vier Behälter). Die
+// Sandkiste unten wertet GENAU DIESE Deklarationen aus und muss deshalb dieselbe Quelle kennen —
+// sonst scheitert sie mit „ADMIN_SECTIONS is not defined", ohne dass am Produkt etwas fehlt.
+import { ADMIN_SECTIONS } from "../../apps/web/src/lib/adminSections";
 import { ABBAU_GRENZE_MS, schliesseChromium } from "./chromium-abbau";
 import { t1bAbbau, t1bQuelle } from "./t1b-original";
 
@@ -136,6 +141,7 @@ async function raster(gefunden: string[]): Promise<{ fehler: string | null; knoe
     `(async () => { ${t1bQuelle(RASTER, ["NAMEN", "REITER", "MESSEN", "messen"])}; return await messen(320, false, 30); })()`,
     {
       ROLES: rollen,
+      ADMIN_SECTIONS,
       i18n: { t: (key: string) => namen[rollen.indexOf(key.replace("role.name.", ""))] },
       stand: { seite },
       fn: (s: string) => s,

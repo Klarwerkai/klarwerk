@@ -72,7 +72,21 @@ function SeitenhilfeListe(): JSX.Element {
 }
 
 /** Die Einträge des Zahnrad-Menüs — im Menü und im Drawer dieselben. */
-export function ZahnradEintraege({ onNavigiert }: { onNavigiert?: () => void }): JSX.Element {
+export function ZahnradEintraege({
+  onNavigiert,
+  onSchnellnavigation,
+}: {
+  onNavigiert?: () => void;
+  /**
+   * JOB 3337 R2: das Schließen VOR dem Öffnen der Liste „Gehe zu …", MIT Fokusrückgabe.
+   *
+   * Die Liste merkt sich beim Öffnen, wer gerade den Fokus hat, und gibt ihn beim Schließen dorthin
+   * zurück. Schlösse das Menü hier ohne Fokusrückgabe, wäre dieser Auslöser die Menüzeile selbst —
+   * und die ist einen Wimpernschlag später abgebaut. Der Fokus hätte kein Zuhause mehr. Deshalb
+   * bekommt das Zahnrad den Fokus zuerst zurück; ES ist dann der Auslöser, und es bleibt stehen.
+   */
+  onSchnellnavigation?: () => void;
+}): JSX.Element {
   const { t } = useTranslation();
   const { role } = useRole();
   const { pathname } = useLocation();
@@ -85,7 +99,9 @@ export function ZahnradEintraege({ onNavigiert }: { onNavigiert?: () => void }):
   const admin = role === "admin";
 
   const schnellnavigation = (): void => {
-    onNavigiert?.();
+    // Die Reihenfolge ist der Punkt: erst den Fokus dorthin zurück, wo er bleiben kann, dann öffnen.
+    // `focus()` läuft synchron, `document.activeElement` steht beim Auslösen also schon richtig.
+    (onSchnellnavigation ?? onNavigiert)?.();
     window.dispatchEvent(new Event("open-command-palette"));
   };
 
@@ -93,6 +109,13 @@ export function ZahnradEintraege({ onNavigiert }: { onNavigiert?: () => void }):
     <>
       {admin ? (
         <>
+          {/* JOB 3337 (Pedi 08.09.): „für berechtigte Nutzer ist Verwaltung / Administration
+              ausdrücklich erkennbar." Bis hierher stand über der Zeile nichts — wer „Verwaltung"
+              suchte, musste wissen, dass sie „Einstellungen" heißt und hinter einem Zahnrad liegt.
+              Der NAME der Zeile bleibt „Einstellungen": er ist seit JOB 3105 UX-08 mit Seitentitel
+              und Direktzugang zeichengleich, und drei Flächen umzubenennen war hier nicht der
+              Auftrag. Die Überschrift sagt jetzt das Fach, die Zeile das Ziel. */}
+          <MenueKopf>{t("gliederung.verwaltung")}</MenueKopf>
           <MenueZeile
             to={einstellungen.path}
             aktiv={istAktiverEintrag(einstellungen, pathname)}
@@ -182,6 +205,10 @@ export function ZahnradMenue(): JSX.Element {
         type="button"
         ref={menue.ausloeserRef}
         aria-label={t("kopfband.menue")}
+        // JOB 3337: „Kein alleinstehendes, unerklärtes Zahnrad." Der sichtbare Text des Kopfbands
+        // ist gepinnt (tests/design/zielbild-h1-kein-erklaertext.test.ts) und bleibt es — der
+        // Zeigehinweis nennt das Symbol trotzdem beim Namen, ohne die Leiste zu verändern.
+        title={t("kopfband.menue")}
         aria-haspopup="menu"
         aria-expanded={menue.offen}
         aria-controls={menue.offen ? menue.flaecheId : undefined}
@@ -192,7 +219,10 @@ export function ZahnradMenue(): JSX.Element {
         <Settings size={18} strokeWidth={1.8} aria-hidden="true" />
       </button>
       <MenueFlaeche menue={menue} label={t("kopfband.menue")} testid="zahnrad-menue">
-        <ZahnradEintraege onNavigiert={() => schliessen(false)} />
+        <ZahnradEintraege
+          onNavigiert={() => schliessen(false)}
+          onSchnellnavigation={() => schliessen(true)}
+        />
       </MenueFlaeche>
     </div>
   );

@@ -14,15 +14,28 @@ import {
 // demselben Druckknopf in ihrer Detailkarte (Beleg: tests/design/h6-funktionsinventar.test.ts).
 // Der Schlüssel `adm.sec.bereitschaft` bleibt deshalb in Gebrauch — als Beschriftung dieser Zeile.
 describe("SCRUM-394: Admin-Bereiche", () => {
-  it("hat genau vier eindeutige Bereiche mit gültigem Default", () => {
+  it("hat genau sieben eindeutige Themen mit gültigem Default", () => {
     const ids = ADMIN_SECTIONS.map((s) => s.id);
-    // SCRUM-432: „Sicherheit" (Investoren) — Bereitschaft ist seit JOB 3065 eine Zeile darunter.
-    expect(ids).toEqual(["konten", "ki", "daten", "sicherheit"]);
-    expect(new Set(ids).size).toBe(4);
+    // JOB 3337 (Pedi 08.09.): „Die Gliederung ist schlecht … alle im Admin-Bereich befindlichen
+    // Seiten … schlecht und unlogisch." Aus den vier Behältern sind die sieben THEMEN der Vorlage
+    // (`gespraech/advisor-freitag/navigation/ADMIN-NAVIGATION-AUFTRAG.md`, Tabelle „Innerhalb der
+    // Verwaltung") geworden. „daten" ist ersatzlos weg — es trug Demodaten, Werkseinstellungen,
+    // Papierkorb UND das Audit-Log, also vier Dinge aus vier Welten; jedes hat jetzt sein Thema.
+    expect(ids).toEqual([
+      "konten",
+      "ki",
+      "quellen",
+      "vorfuehrdaten",
+      "sicherheit",
+      "berichte",
+      "system",
+    ]);
+    expect(new Set(ids).size).toBe(7);
     expect(isAdminSectionId(DEFAULT_ADMIN_SECTION)).toBe(true);
     expect(isAdminSectionId("unsinn")).toBe(false);
-    // Der abgelöste Bereich ist wirklich weg und nicht bloß versteckt.
+    // Die abgelösten Bereiche sind wirklich weg und nicht bloß versteckt.
     expect(isAdminSectionId("bereitschaft")).toBe(false);
+    expect(isAdminSectionId("daten")).toBe(false);
   });
 
   it("hat DE- und EN-Labels für jeden Bereich", async () => {

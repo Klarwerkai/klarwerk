@@ -133,19 +133,25 @@ export interface Treffer {
 }
 
 /**
- * Die gerenderten Treffer: je Zeile der sichtbare Name und der Pfad rechts.
+ * Die gerenderten Treffer: je Zeile der sichtbare Name und der Weg, den sie geht.
  *
- * Die Zeile trägt beides in EINEM Knopf (CommandPalette.tsx:142-161): erst den Namen als reinen
- * Textknoten, dann den Pfad in einem `<span>`. Der Name ist deshalb der Gesamttext ohne den
- * Pfadanteil — abgelesen, nicht abgeschrieben.
+ * JOB 3337 R2 — WARUM DIESER GRIFF UMGEBAUT WURDE. Bis dahin las er den Pfad als ERSTEN `<span>`
+ * der Zeile und den Namen als „Gesamttext minus Pfadlänge". Das war schon damals eine Wette auf die
+ * Reihenfolge zweier Textknoten; seit die Zeile Name UND Zielkontext trägt (Vorlage, Punkt 2:
+ * „Name und kurzer Zielkontext statt roher /route als Hauptorientierung"), wäre sie falsch.
+ *
+ * Der Griff liest jetzt BENANNTE Träger: `data-cmd-name` ist der Name, den ein Mensch liest, und
+ * `data-cmd-pfad` ist der Weg, den der Klick wirklich geht (`CommandPalette.tsx`, `zeile()`). Das
+ * ist STRENGER als vorher, nicht milder: der Weg wird nicht mehr aus einer angezeigten Zeichenkette
+ * erraten, sondern am Knopf abgelesen — eine Zeile, die etwas anderes anzeigt als sie tut, fällt
+ * damit auf statt durch.
  */
 export function palettenTreffer(stand: Stand): Treffer[] {
   const knoepfe = [...palettenFlaeche(stand).querySelectorAll<HTMLButtonElement>("li button")];
-  return knoepfe.map((k) => {
-    const pfad = k.querySelector("span")?.textContent ?? "";
-    const ganz = k.textContent ?? "";
-    return { pfad, text: ganz.slice(0, ganz.length - pfad.length) };
-  });
+  return knoepfe.map((k) => ({
+    pfad: k.getAttribute("data-cmd-pfad") ?? "",
+    text: k.querySelector("[data-cmd-name]")?.textContent ?? "",
+  }));
 }
 
 /** Die Pfade der gerenderten Treffer — für Mengenaussagen. */
