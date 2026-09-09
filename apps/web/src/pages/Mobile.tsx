@@ -107,8 +107,28 @@ export function Mobile(): JSX.Element {
   const fail = (e: unknown): void =>
     push("error", e instanceof ApiError ? e.message : t("state.error"));
 
+  // ============================================================================================
+  // JOB 3377 — DAS HANDY BEARBEITET DENSELBEN TEXT WIE DIE VOLLVERSION.
+  // ============================================================================================
+  //
+  // DER BEFUND (A08): eine am Handy gespeicherte Ergänzung war am Desktop nicht da. Das Handy
+  // schrieb `statement`, der Desktop-Editor zeigt `bodyHtml` (`Capture.tsx`, `setBodyHtml(p.bodyHtml ?? "")`
+  // — z. Zt. :2146) — zwei Felder, zwei Wahrheiten, und der partielle Merge liess den alten Body
+  // pflichtgemäss stehen.
+  //
+  // AB HIER GIBT ES NUR EINEN TEXT: trägt der fortgesetzte Entwurf einen Body, steht seine
+  // Textfassung im Feld unten, und beim Speichern geht er als `bodyHtml` zurück — Bilder, Tabellen
+  // und Auszeichnung wörtlich an ihrem Platz (`draftBodyFromText`). Der Desktop braucht dafür KEINE
+  // Änderung.
+  //
+  // Der Schalter dafür ist `form.segments` und NICHTS daneben: er reist im Formularzustand mit,
+  // damit es keinen Speicherweg geben kann, der ihn vergisst (s. `formToPayload`).
+  const bodyMode = form.segments !== undefined;
+
   const formTitle = (): string =>
-    form.title.trim() || form.statement.trim().slice(0, 60) || t("capture.draftFallbackTitle");
+    form.title.trim() ||
+    (bodyMode ? (form.body ?? "") : form.statement).trim().slice(0, 60) ||
+    t("capture.draftFallbackTitle");
 
   const save = useMutation({
     mutationFn: () => {
@@ -126,6 +146,12 @@ export function Mobile(): JSX.Element {
   });
 
   // FE-MOB-07: offline → in die lokale Queue statt direkter API-Aufruf.
+  //
+  // JOB 3377, BENANNTE GRENZE (nicht behauptet, sondern gesagt): die Warteschlange kennt keinen
+  // Standvergleich — ihr Vertrag (lib/offlineQueue.ts) trägt nur die Nutzlast. Ein offline
+  // bearbeiteter Body geht deshalb beim Nachsynchronisieren nach dem bisherigen Vertrag „letzter
+  // Schreiber gewinnt" raus, genau wie jedes andere Feld, das sie heute schon trägt. Das ist die
+  // offene Grenze dieses Auftrags; sie zu schliessen ist ein eigenes Thema (`expectedUpdatedAt`).
   const onSave = (): void => {
     if (!queue.online) {
       queue.enqueue({
@@ -304,11 +330,21 @@ export function Mobile(): JSX.Element {
                 placeholder={t("mob.formTitle")}
                 className="h-10 w-full rounded-input border border-hairline bg-page px-3 text-sm outline-none focus:border-ink/30"
               />
+              {/* JOB 3377: EIN Textfeld, zwei mögliche Quellen. Trägt der fortgesetzte Entwurf
+                  einen Body, steht hier DERSELBE Fliesstext, den die Vollversion im Editor zeigt
+                  (feste Blöcke als nummerierte Platzhalter an ihrer Stelle); sonst wie bisher die
+                  Kernaussage. Die gespeicherte Kernaussage wird dabei nicht überschrieben — sie
+                  bleibt aus der Nutzlast (`formToPayload`). */}
               <textarea
-                value={form.statement}
-                onChange={(e) => setForm((f) => ({ ...f, statement: e.target.value }))}
+                data-testid={bodyMode ? "mob-body" : "mob-statement"}
+                value={bodyMode ? (form.body ?? "") : form.statement}
+                onChange={(e) =>
+                  setForm((f) =>
+                    bodyMode ? { ...f, body: e.target.value } : { ...f, statement: e.target.value },
+                  )
+                }
                 placeholder={t("mob.formStatement")}
-                rows={3}
+                rows={bodyMode ? 6 : 3}
                 className="w-full resize-y rounded-input border border-hairline bg-page p-2.5 text-sm outline-none focus:border-ink/30"
               />
               <div className="flex gap-2">

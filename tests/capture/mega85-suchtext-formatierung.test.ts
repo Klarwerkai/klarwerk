@@ -26,6 +26,7 @@ import { describe, expect, it } from "vitest";
 import type { Draft, KnowledgeObject } from "../../apps/web/src/api/types";
 import { extractBodyImages } from "../../apps/web/src/lib/bodyImages";
 import { planDocxImageCaptions } from "../../apps/web/src/lib/docx";
+import { draftBodyFromText, draftBodyText, splitDraftBody } from "../../apps/web/src/lib/draftBody";
 import { filterDrafts } from "../../apps/web/src/lib/draftListView";
 import { buildDuplicateCompareSections } from "../../apps/web/src/lib/duplicateCompare";
 import { koPreviewText } from "../../apps/web/src/lib/koPreview";
@@ -113,6 +114,18 @@ const URTEILE: Record<string, string> = {
   // Fall darunter fährt es, statt es zu glauben.
   "apps/web/src/lib/docx.ts":
     "unkritisch: reduziert nur zur ERKENNUNG (leer? Beschriftung?), nie zu Such- oder Anzeigetext",
+  // JOB 3377. `blockZuText` reduziert EINEN Block der obersten Ebene zu seiner bearbeitbaren
+  // Textfassung fürs Mobilformular. Zwei Gründe, warum das unkritisch ist, und beide fährt der
+  // Fall darunter statt sie zu glauben:
+  //   (1) Die Reduktion setzt für ein Tag KEIN Leerzeichen ein — Inline-Auszeichnung verschwindet
+  //       spurlos, „<em>Ventil V2</em>," liest sich als „Ventil V2,". Der Zwischenraum, an dem
+  //       mega84 hing, kann hier gar nicht entstehen.
+  //   (2) Sie läuft je BLOCK, nie über einen ganzen Body — zwei Absätze können nicht zu einem Wort
+  //       zusammenwachsen, weil sie nie in derselben Zeichenkette landen.
+  // Und der Wortlaut kommt nicht von hier zurück: ein UNBERÜHRTER Absatz behält sein rohes HTML
+  // byteweise (`draftBodyFromText`), die Auszeichnung überlebt.
+  "apps/web/src/lib/draftBody.ts":
+    "unkritisch: Inline-Tags spurlos, Reduktion je Block; unberührte Blöcke behalten ihr rohes HTML",
 };
 
 describe("mega85 Block A · Stufe 1+2: die Grundmenge wird erhoben, jeder Fund hat ein Urteil", () => {
@@ -285,6 +298,21 @@ describe("mega85 Block A · Stufe 3: die unkritischen Funde sind wirklich unkrit
       mit.captions.get(1),
       "Der Wortlaut kommt aus der Reduktion statt aus dem Absatz — die Auszeichnung ist weg",
     ).toBe("<strong>Figure 1</strong>: Profiles");
+  });
+
+  it("draftBody: der ausgezeichnete Absatz liest sich WIE der unausgezeichnete (Urteil gefahren)", () => {
+    // Beide Hälften des Urteils, gefahren statt behauptet.
+    const mit = splitDraftBody(BODY_MIT);
+    const ohne = splitDraftBody(BODY_OHNE);
+    expect(draftBodyText(mit)).toBe(draftBodyText(ohne));
+    expect(draftBodyText(mit)).toBe(OHNE);
+    // Je BLOCK: zwei Absätze wachsen nicht zu einem Wort zusammen (der Fall, an dem die
+    // naheliegende „alle Tags weg"-Korrektur der Entwurfssuche gescheitert wäre).
+    expect(draftBodyText(splitDraftBody("<p>Dichtring</p><p>Ventil</p>"))).toBe(
+      "Dichtring\n\nVentil",
+    );
+    // Und der Wortlaut kommt nicht aus der Reduktion zurück: unberührt heisst byteweise gleich.
+    expect(draftBodyFromText(mit, draftBodyText(mit))).toBe(BODY_MIT);
   });
 
   it("die mega84-Leser bleiben geschlossen (Regressionsschutz für die drei bereits grünen)", () => {
