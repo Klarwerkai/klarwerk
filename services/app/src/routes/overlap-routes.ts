@@ -123,6 +123,18 @@ export function overlapRoutes(deps: OverlapRoutesDeps, guards: Guards): FastifyP
         // Eintrag sagt „es gibt etwas, du liest den Inhalt nicht"; das 404 sagt „hier ist nichts".
         // Diese beiden Sätze dürfen nie zusammenfallen — sonst wäre das 404 selbst eine Auskunft.
         if (!entry || !(await paarSichtbar(user, entry.koA, entry.koB, kos))) {
+          // Q7: Nur der Abschließende darf seinen gespeicherten Abschluss auch dann nachweisen,
+          // wenn das Paar nicht mehr sichtbar ist. Ausschließlich Abschlussmetadaten ausgeben:
+          // auch Objektkennungen, Freitextnotiz und Modellbegründung gehören nicht in den Nachweis.
+          const resolution = entry?.resolution;
+          if (entry?.status === "geschlossen" && user.id.length > 0 && resolution?.by === user.id) {
+            reply.code(200).send({
+              id: entry.id,
+              status: entry.status,
+              resolution: { reason: resolution.reason, by: resolution.by, at: resolution.at },
+            });
+            return;
+          }
           reply.code(404).send({ error: "NOT_FOUND", message: "Überschneidung nicht gefunden." });
           return;
         }
