@@ -3,9 +3,14 @@
 # JOB 517 — RESTORE-DRILL. Ein Backup, das nie zurueckgespielt wurde, ist eine Vermutung.
 # ================================================================================================
 #
-# Dieser Drill spielt einen Dump in eine FRISCHE, LEERE Datenbank zurueck, startet Klara dagegen,
+# Dieser Drill spielt einen Dump in eine FRISCHE, LEERE Datenbank zurueck, prueft die Kerntabellen
+# kos, users, audit, objects samt Zeilenzahlen gegen COPY-Daten AUS DEM DUMP und startet Klara
+# mit `npx tsx services/app/src/server.ts` dagegen,
 # meldet sich mit einem Konto AUS DEM DUMP an und fragt die Auditkette ab. Erst das ist ein
-# Wiederherstellungsbeleg. Danach raeumt er den gestarteten Prozess wieder ab.
+# Wiederherstellungsbeleg. Danach raeumt er den identifizierten Prozess wieder ab.
+# OFFENE GRENZE: Echtes npx/tsx erzeugt eine andere Server-PID als $!. Die unveraenderte
+# Identitaetspruefung lehnt dies mit Exit 80 ab; der volle Drill ist damit noch nicht abnahmefaehig.
+# Beleg: tests/backup-drill/start-identitaet.test.ts; Einzelheiten in docs/operations/restore-drill.md.
 #
 # WAS DIESER DRILL NICHT TUT: Er fasst KEINE Produktionsdatenbank an. `RESTORE_DB` muss ein
 # eigener, leerer Zielname sein; der Drill legt ihn an und weigert sich, in eine nicht leere
@@ -20,8 +25,11 @@
 #  11   SIDECAR STIMMT NICHT mit dem Dump ueberein — `pg_restore` wird NICHT gestartet
 #  20   Zieldatenbank liess sich nicht anlegen oder ist NICHT leer
 #  21   `pg_restore` gescheitert
-#  22   Strukturgate: erwartete Tabellen fehlen nach dem Restore
-#  30   Anwendung wurde nicht lebendig (keine PID-Datei / kein `listen`)
+#  22   Strukturgate: fehlende Kerntabellen kos/users/audit/objects, alle Namen in einer Meldung
+#  23   Zeilenabweichung: Tabellenname und beide Zahlen (Dump / Datenbank)
+#  24   Zeilen nicht messbar: Extraktion, COPY-Format oder SQL-Zaehler; nennt die Tabelle
+#  30   Anwendung wurde nicht lebendig (keine PID-Datei / kein `listen` / health != 200)
+#  31   Startwerkzeug node, npx oder lokales tsx fehlt oder ist nicht ausfuehrbar
 #  60   LOGIN fehlgeschlagen (HTTP != 200) — Aufbaufehler, KEIN Auditbefund
 #  61   Verifikation mit 403 abgelehnt — die Fixture hat kein `ko.validate`, Aufbaufehler
 #  70   Auditkette: linkageBreaks != 0
@@ -177,31 +185,81 @@ if ! pg_restore --no-owner --no-privileges -d "$RESTORE_DB" "$DUMP"; then
   echo "[drill] ABBRUCH (21): pg_restore gescheitert." >&2
   exit 21
 fi
-for tabelle in kos users audit_events; do
+KERNTABELLEN=(kos users audit objects)
+FEHLENDE_TABELLEN=()
+for tabelle in "${KERNTABELLEN[@]}"; do
   VORHANDEN="$(psql -d "$RESTORE_DB" -tAc \
     "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name='${tabelle}';")"
   if [ "$VORHANDEN" != "1" ]; then
-    echo "[drill] ABBRUCH (22): Tabelle '$tabelle' fehlt nach dem Restore." >&2
-    exit 22
+    FEHLENDE_TABELLEN+=("$tabelle")
   fi
 done
-echo "[drill] Glied 3 — Restore eingespielt, Struktur vollstaendig."
+if [ "${#FEHLENDE_TABELLEN[@]}" -ne 0 ]; then
+  echo "[drill] ABBRUCH (22): Tabellen fehlen nach dem Restore: ${FEHLENDE_TABELLEN[*]}" >&2
+  exit 22
+fi
+
+# Custom-Archive liefern SQL mit COPY-Bloecken. Nur deren Datenzeilen zaehlen:
+# Zeilenumbrueche in Werten sind escaped; der alleinstehende COPY-Abschluss ist keine Datenzeile.
+# Kein / doppelter / unvollstaendiger Block ist UNBEKANNT, niemals eine leere Tabelle.
+ABWEICHUNGEN=()
+for tabelle in "${KERNTABELLEN[@]}"; do
+  if ! DUMP_ZEILEN="$(pg_restore --data-only --schema=public --table="$tabelle" -f - "$DUMP" |
+    awk -v tabelle="$tabelle" '
+      daten {
+        if ($0 == "\\.") { daten = 0; next }
+        zeilen++; next
+      }
+      /^COPY / {
+        if ($0 !~ ("^COPY \"?public\"?\\.\"?" tabelle "\"? \\(.*\\) FROM stdin;$")) fehler = 1
+        bloecke++; daten = 1
+      }
+      END {
+        if (fehler || daten || bloecke != 1) exit 1
+        printf "%.0f\n", zeilen
+      }
+    ')"; then
+    echo "[drill] ABBRUCH (24): $tabelle: Dump-Zeilen nicht messbar (Extraktion/COPY-Format)." >&2
+    exit 24
+  fi
+  if ! DB_ZEILEN="$(psql -X -v ON_ERROR_STOP=1 -d "$RESTORE_DB" -tAc \
+    "SELECT count(*) FROM public.\"${tabelle}\";")" || [[ ! "$DB_ZEILEN" =~ ^[0-9]+$ ]]; then
+    echo "[drill] ABBRUCH (24): $tabelle: Datenbank-Zeilen nicht messbar (SQL-Zaehler)." >&2
+    exit 24
+  fi
+  echo "[drill] $tabelle: Dump=$DUMP_ZEILEN Datenbank=$DB_ZEILEN"
+  if [ "$DUMP_ZEILEN" != "$DB_ZEILEN" ]; then
+    ABWEICHUNGEN+=("$tabelle: Dump=$DUMP_ZEILEN Datenbank=$DB_ZEILEN")
+  fi
+done
+if [ "${#ABWEICHUNGEN[@]}" -ne 0 ]; then
+  echo "[drill] ABBRUCH (23): Zeilenabweichung: ${ABWEICHUNGEN[*]}" >&2
+  exit 23
+fi
+echo "[drill] Glied 3 — Restore eingespielt, vier Kerntabellen vorhanden und Zeilenzahlen wie im Dump."
 
 # ------------------------------------------------------------------------------------------------
 # GLIED 4 — ANWENDUNG STARTEN, MIT PID-DATEI
 # ------------------------------------------------------------------------------------------------
+# Keine implizite Installation durch npx: tsx muss lokal vorhanden und ausfuehrbar sein.
+if ! command -v node >/dev/null 2>&1 || ! command -v npx >/dev/null 2>&1 ||
+   [ ! -x "$WURZEL/node_modules/.bin/tsx" ] ||
+   ! (cd "$WURZEL" && npm_config_offline=true npx --no-install tsx --version >/dev/null 2>&1); then
+  echo "[drill] ABBRUCH (31): Startwerkzeug node/npx/lokales tsx fehlt oder ist nicht ausfuehrbar." >&2
+  exit 31
+fi
 rm -f "$PID_FILE"
-# `exec` ist hier wesentlich, nicht kosmetisch: Ohne `exec` waere `$!` die PID der SUBSHELL, und
-# `node` liefe als deren Kind mit einer ANDEREN PID. Die Identitaetspruefung unten haette dann
-# nichts zu vergleichen — man muesste der PID-Datei glauben. Mit `exec` ERSETZT node die Subshell,
-# `$!` IST die PID des gestarteten Servers, und die Datei laesst sich dagegen halten.
+# `exec` entfernt die Subshell: $! identifiziert den gestarteten Launcher.
+# Es entfernt NICHT die Kindprozesse von npx/tsx. Deren Server-PID weicht nachweislich ab;
+# die unveraenderte Identitaetspruefung unten verweigert dann mit Exit 80 ein Signal.
 (
   cd "$WURZEL"
   exec env \
     DATABASE_URL="postgres:///${RESTORE_DB}" \
     KLARWERK_PID_FILE="$PID_FILE" \
     PORT="$DRILL_PORT" \
-    node services/app/dist/server.js
+    npm_config_offline=true \
+    npx tsx services/app/src/server.ts
 ) &
 GESTARTETE_PID=$!
 

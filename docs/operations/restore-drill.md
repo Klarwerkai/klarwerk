@@ -1,8 +1,9 @@
 # Restore-Drill — Betriebsanleitung
 
 Ein Backup, das nie zurückgespielt wurde, ist eine Vermutung. Dieser Drill macht daraus eine
-Messung: Er prüft die Prüfsumme, spielt in eine **frische, leere** Datenbank zurück, startet
-Klara dagegen, meldet sich mit einem Konto **aus dem Dump** an, fragt die Auditkette ab und
+Messung: Er prüft die Prüfsumme, spielt in eine **frische, leere** Datenbank zurück,
+prüft die Kerntabellen `kos`, `users`, `audit`, `objects` samt Zeilenzahlen gegen den Dump,
+startet Klara dagegen, meldet sich mit einem Konto **aus dem Dump** an, fragt die Auditkette ab und
 räumt den gestarteten Prozess wieder ab.
 
 ## Der Befehl
@@ -34,8 +35,11 @@ eigenen Exitcode (61).
 | `11` | **Sidecar stimmt nicht** mit dem Dump überein — `pg_restore` wird nicht gestartet |
 | `20` | Zieldatenbank nicht anlegbar oder **nicht leer** |
 | `21` | `pg_restore` gescheitert |
-| `22` | Strukturgate: erwartete Tabellen fehlen nach dem Restore |
+| `22` | Strukturgate: fehlende Kerntabellen (`kos`, `users`, `audit`, `objects`), alle Namen in einer Meldung |
+| `23` | Zeilenabweichung: Tabellenname, `Dump=<Zahl>` und `Datenbank=<Zahl>` |
+| `24` | Zeilenzählung nicht messbar: Datenextraktion, COPY-Format oder SQL-Abfrage fehlgeschlagen; Tabellenname wird genannt |
 | `30` | Anwendung wurde nicht lebendig (keine PID-Datei, `/health` ≠ 200) |
+| `31` | Startwerkzeug fehlt oder ist nicht ausführbar: `node`, `npx` oder lokal installiertes `tsx` |
 | `60` | **Login fehlgeschlagen** — Aufbaufehler, *kein* Auditbefund |
 | `61` | **403 bei der Verifikation** — die Fixture hat kein `ko.validate`, Aufbaufehler |
 | `70` | `linkageBreaks ≠ 0` — echter Kettenbruch |
@@ -66,14 +70,40 @@ jede Abweichung erklärt ist).
 
 | Träger | Was er belegt | Braucht Docker |
 |---|---|---|
-| `tests/operations/restore-drill.backup.test.ts` | **Veröffentlichungsdisziplin** von `backup.sh`: was bei Abbruch und ohne Hashwerkzeug liegen bleibt | nein |
-| `tests/operations/restore-drill.test.ts` | **Aufrufdisziplin** des Drills: dass `pg_restore` bei schlechtem Sidecar *nicht startet*; Reaping-Identität | nein |
-| `tests/operations/restore-drill.integration.test.ts` | **der Restore selbst**: leere DB, `pg_restore`, Login aus dem Dump, Auditzähler | **ja** |
+| `tests/backup-drill/restore-drill.test.ts` | PATH-Stubs: Sidecar vor jedem Restore, leeres Ziel, vier Kerntabellen, Dumpabgleich, Startaufruf, Login-/Auditcodes und Reaping-Identität | nein |
+| `tests/backup-drill/start-identitaet.test.ts` | Echtes `npx tsx`: Launcher-PID und TypeScript-Prozess-PID sind verschieden | nein |
 
-**Ein grüner Lauf der ersten beiden ist kein Datenbanknachweis.** Sie benutzen PATH-Stubs — und
-das ist Absicht: Die tragende Zusage „`pg_restore` wird *nicht* gestartet" lässt sich nur mit
-einem Rekorder belegen. Ein echtes `pg_restore` könnte man nicht auf „wurde nicht aufgerufen"
-prüfen, ohne es zu ersetzen.
+Die drei zuvor genannten Dateien unter `tests/operations/` existieren im aktuellen Arbeitsbaum
+nicht; auch die Suche im Testbestand findet keinen umgezogenen Drill-Träger. Es gibt damit hier
+keinen bestehenden Backup-Veröffentlichungstest und keinen echten Restore-Integrationstest.
+
+**Der Stub-Lauf ist kein Datenbank- oder Startnachweis.** Er ersetzt externe Befehle und belegt
+Aufrufreihenfolge und Entscheidungen des echten Shellskripts. Der Startstub schreibt seine eigene
+PID und bildet die zusätzlichen Prozesse von `npx tsx` nicht ab; diese Grenze misst der zweite Test.
+Ein vollständiger Lauf an einem echten Custom-Dump bleibt separat erforderlich.
+
+## Zeilenabgleich und Anwendungsstart
+
+Nach dem Restore sammelt das Strukturgate alle fehlenden Tabellen aus `kos`, `users`, `audit`,
+`objects` (Exit 22). Für jede vorhandene Kerntabelle extrahiert
+`pg_restore --data-only --schema=public --table=<tabelle> -f - "$DUMP"` die COPY-Daten aus dem
+Archiv. Der Drill zählt ausschließlich deren Datenzeilen und vergleicht sie mit
+`SELECT count(*) FROM public.<tabelle>` in der Ziel-DB, **vor** dem Anwendungsstart.
+Er gibt jedes gemessene Paar als `<tabelle>: Dump=<Zahl> Datenbank=<Zahl>` aus; auch `0 = 0` gilt.
+Abweichungen enden mit Exit 23 samt beiden Zahlen. Nicht lesbare, fehlende oder unvollständige
+COPY-Blöcke und fehlgeschlagene SQL-Zählungen sind Exit 24; fehlende Daten werden nie als 0 ausgelegt.
+Der Vergleich gilt für diese vier Kerntabellen, nicht für sämtliche Tabellen des Dumps.
+
+Der Startbefehl lautet wie im Produktionsimage `npx tsx services/app/src/server.ts`.
+Der Drill prüft vorher `node`, `npx` und das lokale `tsx` ohne Paketdownload (Exit 31).
+
+**Offener Startkonflikt:** Die unveränderte PID-Identitätsprüfung vergleicht `$!` mit der
+vom Server geschriebenen PID. Bei echtem `npx tsx` gehören diese PIDs verschiedenen Prozessen;
+`exec` entfernt lediglich die äußere Subshell. Der Drill verweigert dann mit Exit 80 ein Signal.
+Damit ist der vollständige produktive Drill derzeit noch nicht abnahmefähig. Eine Anpassung der
+Prozesszuordnung und des Reapings braucht einen Folgeauftrag, da dieser Auftrag beide Prüfblöcke
+explizit unverändert verlangt. Nach solchem Abbruch können Launcher und Server weiterlaufen;
+Prozesse ausschließlich nach gesonderter Identifikation manuell beenden.
 
 ## Die Grenze nachträglich erzeugter Sidecars
 

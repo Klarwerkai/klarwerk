@@ -68,10 +68,11 @@ Aufbewahrung/Rotation nach Bedarf am Zielverzeichnis (z. B. `find /data/backups 
    - `--clean --if-exists`: vorhandene Objekte werden vor dem Einspielen entfernt (idempotenter
      Restore in eine bereits teilbefüllte DB).
    - `--no-owner --no-privileges`: passt zum Dump (Rollen/Rechte werden nicht erzwungen).
-4. **Integrität prüfen** (stichprobenartig):
-   ```bash
-   psql -h host -U user -d klarwerk_restore -c "SELECT count(*) FROM kos;"
-   ```
+4. **Integrität gegen den Dump prüfen:** Der automatisierte Drill unten prüft `kos`, `users`,
+   `audit`, `objects` und vergleicht pro Tabelle die COPY-Datenzeilen aus dem Custom-Dump mit
+   `SELECT count(*) FROM public.<tabelle>` der restaurierten Datenbank. Die Ausgabe nennt
+   `<tabelle>: Dump=<Zahl> Datenbank=<Zahl>`, einschließlich `0 = 0`. Für den Drill einen
+   **weiteren leeren Zielnamen** verwenden, da die gerade restaurierte DB nicht mehr leer ist.
 5. **Umschalten:** `KLARWERK_DATABASE_URL`/`DATABASE_URL` der App auf die wiederhergestellte DB zeigen
    lassen (Coolify-Env), App **wieder starten**.
 6. **Verifizieren:** einloggen und ein bekanntes Wissensobjekt öffnen.
@@ -95,7 +96,34 @@ DRILL_LOGIN_PASSWORT='…' \
 ./scripts/backup/restore-drill.sh ./backups/klarwerk-<ZEITSTEMPEL>.dump
 ```
 
-Vollständige Anleitung, alle Exitcodes und die Grenzen: `docs/operations/restore-drill.md`.
+Der Startbefehl ist `npx tsx services/app/src/server.ts`, wie im Produktionsimage.
+**Noch kein vollständiger Startnachweis:** Echtes `npx tsx` erzeugt verschiedene Launcher- und
+Server-PIDs. Die auftragsgemäß unveränderte Identitätsprüfung lehnt dies mit Exit 80 ab;
+Prozesse können weiterlaufen. Details und Messgrenze: `docs/operations/restore-drill.md`.
+
+Exitcodes des Drills (dieselben wie in der Betriebsanleitung und im Skriptkopf):
+
+| Code | Bedeutung |
+|---|---|
+| `0` | Drill bestanden |
+| `1` | Aufruf-/Umgebungsfehler |
+| `10` | Sidecar fehlt oder ist kein 64-Hex; kein `pg_restore` |
+| `11` | Prüfsumme weicht ab; kein `pg_restore` |
+| `20` | Ziel nicht anlegbar, nicht erreichbar oder nicht leer |
+| `21` | Restore gescheitert |
+| `22` | Kerntabellen fehlen: `kos`, `users`, `audit`, `objects`; alle fehlenden Namen in einer Meldung |
+| `23` | Zeilenabweichung mit Tabellenname, `Dump=<Zahl>` und `Datenbank=<Zahl>` |
+| `24` | Zeilenzählung nicht messbar: Extraktion, COPY-Format oder SQL-Abfrage; Tabellenname wird genannt |
+| `30` | Anwendung nicht lebendig (PID-Datei oder `/health`) |
+| `31` | `node`, `npx` oder lokales `tsx` fehlt oder ist nicht ausführbar; kein Paketdownload |
+| `60` | Login fehlgeschlagen |
+| `61` | Auditverifikation abgelehnt, insbesondere fehlendes `ko.validate` |
+| `70` | `linkageBreaks ≠ 0` |
+| `71` | `unresolvedDeviations ≠ 0` |
+| `72` | `uncheckedDeviations ≠ 0` |
+| `80` | Reaping-/PID-Identitätsprüfung fehlgeschlagen |
+
+Vollständige Anleitung und Grenzen: `docs/operations/restore-drill.md`.
 
 ## Hinweise
 - Der Dump ist konsistent (pg_dump snapshot). Für Point-in-Time-Recovery bräuchte es zusätzlich WAL-
