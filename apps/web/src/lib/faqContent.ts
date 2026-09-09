@@ -232,14 +232,14 @@ export const FAQ_CONTENT: readonly FaqItem[] = [
     route: "/bibliothek",
     question: "Wer kann mein Wissen sehen — kann ich das einschränken?",
     answer:
-      "Innerhalb eurer Organisation sehen alle angemeldeten Rollen die Wissensobjekte — die App versteckt Wissen bewusst nicht vor Kollegen, denn Teilen ist ihr Zweck. Was du steuern kannst, ist der Schutz nach außen: Mit den Vertraulichkeitsstufen verhinderst du, dass sensibles Wissen jemals in Exporte oder erzeugte Dokumente gelangt. Eine persönliche Sichtbarkeits-Einschränkung je Nutzer gibt es derzeit nicht — das sagt dir die App auch so ehrlich.",
+      "Innerhalb eurer Organisation sehen alle angemeldeten Rollen die Wissensobjekte — die App versteckt Wissen bewusst nicht vor Kollegen, denn Teilen ist ihr Zweck. Was du steuern kannst, ist der Schutz nach außen: Beim Bibliotheks-Export gilt: Administratoren und Controller dürfen ausschließlich validierte vertrauliche und streng vertrauliche Objekte exportieren; für alle anderen Rollen bleiben sie aus dem Export. Eine persönliche Sichtbarkeits-Einschränkung je Nutzer gibt es derzeit nicht — das sagt dir die App auch so ehrlich.",
   },
   {
     id: "faq.vertrauen.5",
     route: "/bibliothek",
     question: "Was heißt „intern“ oder „vertraulich“ bei einem Objekt?",
     answer:
-      "Es gibt drei Stufen. Öffentlich-intern ist der Standard und bedeutet keine Einschränkung. Vertraulich und streng vertraulich markieren sensibles Wissen: Solche Objekte werden nie in externe Kontexte gegeben, also weder exportiert noch in erzeugte Dokumente aufgenommen. Innerhalb der App bleiben sie für die Rollen sichtbar; jede Stufen-Änderung wird im Prüfprotokoll festgehalten.",
+      "Es gibt drei Stufen. Öffentlich-intern ist der Standard und bedeutet keine Einschränkung. Vertraulich und streng vertraulich markieren sensibles Wissen: Beim Bibliotheks-Export gilt: Administratoren und Controller dürfen ausschließlich validierte vertrauliche und streng vertrauliche Objekte exportieren; für alle anderen Rollen bleiben sie aus dem Export. Innerhalb der App bleiben sie für die Rollen sichtbar; jede Stufen-Änderung wird im Prüfprotokoll festgehalten.",
   },
   {
     id: "faq.vertrauen.6",
@@ -296,7 +296,7 @@ export const FAQ_CONTENT: readonly FaqItem[] = [
     route: "/bibliothek",
     question: "Kann ich Wissen exportieren, zum Beispiel als PDF?",
     answer:
-      "Exportieren ja — als JSON, als MediaWiki-Text oder als HTML; beantwortete Fragen lassen sich zusätzlich samt Quellen als Markdown-Datei mitnehmen. Einen PDF-Export gibt es derzeit nicht. Beachte: Als vertraulich markierte Objekte werden grundsätzlich nicht exportiert.",
+      "Exportieren ja — als JSON, als MediaWiki-Text oder als HTML; beantwortete Fragen lassen sich zusätzlich samt Quellen als Markdown-Datei mitnehmen. Einen PDF-Export gibt es derzeit nicht. Beachte: Administratoren und Controller dürfen ausschließlich validierte vertrauliche und streng vertrauliche Objekte exportieren; für alle anderen Rollen bleiben sie aus dem Export.",
   },
   // ---- Fragen stellen ----
   {
@@ -450,7 +450,7 @@ export const FAQ_CONTENT: readonly FaqItem[] = [
     route: "/admin",
     question: "Verlassen meine Daten das Haus, wenn ich die KI benutze?",
     answer:
-      "Das hängt von der eingestellten KI ab, und du siehst es an der Kennzeichnung: Bei „Im Haus“ bleiben die Inhalte lokal; bei „Externe Verarbeitung“ gehen die Inhalte der jeweiligen Aufgabe an den Cloud-Anbieter. Unabhängig davon gilt: KI-Schlüssel liegen nur auf dem Server, nie im Browser, und als vertraulich markierte Objekte gehen grundsätzlich nicht in externe Kontexte.",
+      "Das hängt von der eingestellten KI ab, und du siehst es an der Kennzeichnung: Bei „Im Haus“ bleiben die Inhalte lokal; bei „Externe Verarbeitung“ gehen die Inhalte der jeweiligen Aufgabe an den Cloud-Anbieter. Unabhängig davon gilt: KI-Schlüssel liegen nur auf dem Server, nie im Browser. Beim Bibliotheks-Export gilt: Administratoren und Controller dürfen ausschließlich validierte vertrauliche und streng vertrauliche Objekte exportieren; für alle anderen Rollen bleiben sie aus dem Export.",
   },
   {
     id: "faq.ki.4",

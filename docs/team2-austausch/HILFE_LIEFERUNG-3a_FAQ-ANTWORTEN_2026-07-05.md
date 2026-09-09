@@ -109,10 +109,10 @@ Absichtlich: Der Vertrauenswert ist bei neunundneunzig gedeckelt, weil in KLARWE
 Offen heißt: erfasst, sichtbar, aber noch nicht ausreichend geprüft — daraus beantwortet KLARWERK keine Fragen. Validiert heißt: von genug Prüfern freigegeben, ohne offene rote Bewertung — erst dieses Wissen trägt Antworten. Mehr Status gibt es bewusst nicht; alles Weitere sagen dir Vertrauenswert, Beleglage und Hinweise am Objekt. *Verwandt: B3-2*
 
 ### faq.vertrauen.4 · ★ Wer kann mein Wissen sehen — kann ich das einschränken?
-Innerhalb eurer Organisation sehen alle angemeldeten Rollen die Wissensobjekte — die App versteckt Wissen bewusst nicht vor Kollegen, denn Teilen ist ihr Zweck. Was du steuern kannst, ist der Schutz nach außen: Mit den Vertraulichkeitsstufen verhinderst du, dass sensibles Wissen jemals in Exporte oder erzeugte Dokumente gelangt. Eine persönliche Sichtbarkeits-Einschränkung je Nutzer gibt es derzeit nicht — das sagt dir die App auch so ehrlich. *Verwandt: B3-4*
+Innerhalb eurer Organisation sehen alle angemeldeten Rollen die Wissensobjekte — die App versteckt Wissen bewusst nicht vor Kollegen, denn Teilen ist ihr Zweck. Was du steuern kannst, ist der Schutz nach außen: Beim Bibliotheks-Export gilt: Administratoren und Controller dürfen ausschließlich validierte vertrauliche und streng vertrauliche Objekte exportieren; für alle anderen Rollen bleiben sie aus dem Export. Eine persönliche Sichtbarkeits-Einschränkung je Nutzer gibt es derzeit nicht — das sagt dir die App auch so ehrlich. *Verwandt: B3-4*
 
 ### faq.vertrauen.5 · Was heißt „intern" oder „vertraulich" bei einem Objekt?
-Es gibt drei Stufen. Öffentlich-intern ist der Standard und bedeutet keine Einschränkung. Vertraulich und streng vertraulich markieren sensibles Wissen: Solche Objekte werden nie in externe Kontexte gegeben, also weder exportiert noch in erzeugte Dokumente aufgenommen. Innerhalb der App bleiben sie für die Rollen sichtbar; jede Stufen-Änderung wird im Prüfprotokoll festgehalten. *Verwandt: B3-4, B7-5*
+Es gibt drei Stufen. Öffentlich-intern ist der Standard und bedeutet keine Einschränkung. Vertraulich und streng vertraulich markieren sensibles Wissen: Beim Bibliotheks-Export gilt: Administratoren und Controller dürfen ausschließlich validierte vertrauliche und streng vertrauliche Objekte exportieren; für alle anderen Rollen bleiben sie aus dem Export. Innerhalb der App bleiben sie für die Rollen sichtbar; jede Stufen-Änderung wird im Prüfprotokoll festgehalten. *Verwandt: B3-4, B7-5*
 
 ### faq.vertrauen.6 · Ein Objekt ist validiert, aber „in Prüfung" markiert — wie kann das sein?
 Dann gibt es einen offenen Widerspruch: Ein anderes Objekt oder eine Meldung stellt die Aussage in Frage, und der Konflikt ist noch nicht entschieden. KLARWERK nimmt dem Objekt dabei nichts weg — es kennzeichnet nur ehrlich, dass man sich gerade nicht uneingeschränkt darauf stützen sollte, bis Menschen den Widerspruch geklärt haben. *Verwandt: B3-5, B6-1*
@@ -140,7 +140,7 @@ Auf der Detailseite: Der Abschnitt Herkunft zeigt, wer das Wissen erfasst hat un
 Ja. Jede inhaltliche Änderung erzeugt eine neue Version, und der Verlauf zeigt, wer wann was geändert hat. Ältere Stände bleiben als eingefrorene Schnappschüsse erhalten. Nichts wird still überschrieben. *Verwandt: B4-5*
 
 ### faq.bibliothek.6 · Kann ich Wissen exportieren, zum Beispiel als PDF?
-Exportieren ja — als JSON, als MediaWiki-Text oder als HTML; beantwortete Fragen lassen sich zusätzlich samt Quellen als Markdown-Datei mitnehmen. Einen PDF-Export gibt es derzeit nicht. Beachte: Als vertraulich markierte Objekte werden grundsätzlich nicht exportiert. *Verwandt: B4-6, B3-4*
+Exportieren ja — als JSON, als MediaWiki-Text oder als HTML; beantwortete Fragen lassen sich zusätzlich samt Quellen als Markdown-Datei mitnehmen. Einen PDF-Export gibt es derzeit nicht. Beachte: Administratoren und Controller dürfen ausschließlich validierte vertrauliche und streng vertrauliche Objekte exportieren; für alle anderen Rollen bleiben sie aus dem Export. *Verwandt: B4-6, B3-4*
 
 ---
 
@@ -219,7 +219,7 @@ An jedem KI-Knopf sitzt ein Info-Zeichen: Es nennt die Aufgabe, die eingestellte
 Die interne KI läuft bei euch — lokal, ohne dass Inhalte das Haus verlassen. Die externe KI ist ein Cloud-Dienst mit oft mehr Leistung, aber die Inhalte der jeweiligen Aufgabe werden dorthin übertragen. Eure Verwaltung legt je Aufgabe fest, welche KI arbeitet, und kann beides kombinieren: sensible Aufgaben intern, andere extern. *Verwandt: B7-1*
 
 ### faq.ki.3 · Verlassen meine Daten das Haus, wenn ich die KI benutze?
-Das hängt von der eingestellten KI ab, und du siehst es an der Kennzeichnung: Bei „Im Haus" bleiben die Inhalte lokal; bei „Externe Verarbeitung" gehen die Inhalte der jeweiligen Aufgabe an den Cloud-Anbieter. Unabhängig davon gilt: KI-Schlüssel liegen nur auf dem Server, nie im Browser, und als vertraulich markierte Objekte gehen grundsätzlich nicht in externe Kontexte. *Verwandt: B7-2, B3-4*
+Das hängt von der eingestellten KI ab, und du siehst es an der Kennzeichnung: Bei „Im Haus" bleiben die Inhalte lokal; bei „Externe Verarbeitung" gehen die Inhalte der jeweiligen Aufgabe an den Cloud-Anbieter. Unabhängig davon gilt: KI-Schlüssel liegen nur auf dem Server, nie im Browser. Beim Bibliotheks-Export gilt: Administratoren und Controller dürfen ausschließlich validierte vertrauliche und streng vertrauliche Objekte exportieren; für alle anderen Rollen bleiben sie aus dem Export. *Verwandt: B7-2, B3-4*
 
 ### faq.ki.4 · Was heißt „deterministischer Modus" — die KI wirkt plötzlich einfach?
 Das ist der ehrliche Ersatzmodus ohne Sprachmodell: Wenn keine KI verbunden ist, arbeitet die App regelbasiert weiter — mit einfacheren Vorschlägen und Standardfragen, klar gekennzeichnet. Sie täuscht keine Intelligenz vor, die gerade nicht da ist. Sobald ein gültiger KI-Zugang eingestellt ist, sind die vollwertigen Funktionen wieder aktiv. *Verwandt: B7-3*

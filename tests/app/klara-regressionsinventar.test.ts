@@ -130,6 +130,10 @@ const INVENTAR: readonly string[] = [
   // (Codex-Vorpruefung R2). Auch diese Datei traegt „klara" nirgends im Pfad und kommt ueber die
   // Achse `taskpane` herein — dieselbe Lage wie die drei darueber.
   "tests/word-vergleich/zwei-laeufe-und-spaete-antworten.test.ts",
+  // JOB 3263: Exportvertrag der FAQ und gemounteter Anzeigeweg; Inhaltsachse komponente.
+  // K2 meldete faq-anzeigeweg.test.tsx vor Nachführung. Der Vertrag nennt denselben Anschluss.
+  "tests/dok1-export-wahrheit/faq-export-rollenausnahme.test.ts",
+  "tests/dok1-export-wahrheit/faq-anzeigeweg.test.tsx",
   // JOB 3203: ladbares Browser-Paket und echte Vorschau-Skripte; K2 meldete beide Pfade.
   "tests/klara-browser/package.test.ts",
   "tests/klara-browser/panel.test.tsx",
