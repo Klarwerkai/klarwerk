@@ -120,6 +120,13 @@ const WIDERRUFENE_FREIGABEN: readonly string[] = [
   // decken. Ihre Nachfolgerinnen stehen am jeweiligen Eintrag.
   "FREEZE-144/JOB3050-20260904/index",
   "FREEZE-144/D5-20260817/repo",
+  // JOB 3424 (Q2d): verbraucht. Diese beiden Freigaben autorisierten den Stand, in dem die
+  // GENERATED-Spalte `external_id` die LEERE Kennung als `''` ablegte (`repo-pg.ts`) und der
+  // Kommentar an `openCandidateSource` (`repo.ts`) die Deckungsgleichheit von Code-Regel und
+  // Index-Prädikat noch ohne Einschränkung behauptete. Sie dürfen den neuen Inhalt nicht
+  // nachträglich decken; ihre Nachfolgerinnen stehen am jeweiligen Eintrag.
+  "FREEZE-144/JOB3087-20260905/repo",
+  "FREEZE-144/D5-20260817/repo-pg",
 ];
 
 const ERWARTETE_ANZAHL = 6;
@@ -204,18 +211,34 @@ const FREEZE_MANIFEST: readonly FreezeEintrag[] = [
     // richtig war. `repo-pg.ts` ist deshalb UNVERÄNDERT — es gibt hier nichts zu migrieren.
     // Sollhash UND Freigabe sind in EINEM Änderungssatz neu gesetzt, die alte steht in
     // WIDERRUFENE_FREIGABEN.
-    hash: "8c8a4e01cb9c15c30bc7d92f2427e55631f715fd5ea63fbc44bb6b5cb51c2d7c",
+    //
+    // JOB 3424 · AUSGEWIESENE ÄNDERUNG (Q2d), NUR KOMMENTAR: der Kopf von `openCandidateSource`
+    // behauptete, „ohne externalId" (über den Wahrheitswert, also AUCH bei `""`) sei „dieselbe
+    // Bedingung wie `external_id IS NOT NULL` im Index". Für die LEERE Kennung war das falsch —
+    // `->>` liefert dort `''` und nicht NULL. Der Satz ist korrigiert und nennt die Stelle, an der
+    // die Deckungsgleichheit jetzt wirklich hergestellt ist (`NULLIF` in `repo-pg.ts`). AUSFÜHRBAR
+    // ist an dieser Datei nichts geändert: der Diff dieses Jobs berührt hier keine Zeile Code.
+    hash: "6b5e93470c11466bfa67f3a9c2d49ba68a52fbbacbc9335cd9965f2f20fa7582",
     freigabe: {
-      id: "FREEZE-144/JOB3087-20260905/repo",
-      autorisiertHash: "8c8a4e01cb9c15c30bc7d92f2427e55631f715fd5ea63fbc44bb6b5cb51c2d7c",
+      id: "FREEZE-144/JOB3424-20260909/repo",
+      autorisiertHash: "6b5e93470c11466bfa67f3a9c2d49ba68a52fbbacbc9335cd9965f2f20fa7582",
     },
   },
   {
     pfad: "services/library-analytics/src/repo-pg.ts",
-    hash: "a965c371f00aee7ba2e32648e8c02c5d8151458862d6adeb042f6efb6ff93ed9",
+    // JOB 3424 · AUSGEWIESENE ÄNDERUNG (Q2d): die GENERATED-Spalte `external_id` von
+    // `import_candidates` legte `data->'item'->>'externalId'` UNVERÄNDERT ab. Für die leere
+    // Zeichenkette ergibt das `''` — NOT NULL — und damit galt der partielle UNIQUE-Index
+    // (`WHERE external_id IS NOT NULL`) ausgerechnet für die Zeilen, die der Dienst über den
+    // plain `insert` OHNE `ON CONFLICT` einliefert (weil `""` in JavaScript falsy ist).
+    // ERSETZEND, nicht additiv: der Ausdruck trägt jetzt `NULLIF(…, '')`, die alte Fassung kommt
+    // nur noch als Erkennungsmerkmal im Heilungs-DO-Block vor, der Bestandsinstanzen nachzieht
+    // (`ADD COLUMN IF NOT EXISTS` wäre dort ein stilles No-op). Sollhash UND Freigabe sind in
+    // EINEM Änderungssatz neu gesetzt, die alte steht in WIDERRUFENE_FREIGABEN.
+    hash: "7cd125c4c4101cd51c0da9ed88e841acfb65fd78068668aa4456e7bfa49f6043",
     freigabe: {
-      id: "FREEZE-144/D5-20260817/repo-pg",
-      autorisiertHash: "a965c371f00aee7ba2e32648e8c02c5d8151458862d6adeb042f6efb6ff93ed9",
+      id: "FREEZE-144/JOB3424-20260909/repo-pg",
+      autorisiertHash: "7cd125c4c4101cd51c0da9ed88e841acfb65fd78068668aa4456e7bfa49f6043",
     },
   },
   {

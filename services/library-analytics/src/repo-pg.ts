@@ -70,6 +70,41 @@ import {
 // Kleinschreibung des restlichen Ausdrucks) — sie matcht NUR die alte, unbegrenzte Variante: die gehärtete
 // Ersatz-Expression `^[0-9]{1,9}$` enthält diese Teilzeichenkette NICHT (nach der `9]` folgt `{1,9}$`,
 // nicht `+$`), die Heilung bleibt also idempotent (kein erneutes Triggern nach der Härtung).
+// ==================================================================================================
+// JOB 3424 (Q2d) — DIE LEERE KENNUNG WAR AUF BEIDEN SEITEN DERSELBEN REGEL ETWAS ANDERES.
+// ==================================================================================================
+//
+// Der Anker-Strang hat GENAU EINE Frage: „belegt dieses Item einen Idempotenzplatz?" Sie wurde bis
+// hierher an ZWEI Orten verschieden beantwortet:
+//
+//   · JAVASCRIPT (`service.ts:603/660`, `repo.ts:210` `openCandidateSource`): über Wahrheitswert.
+//     Eine LEERE Zeichenkette ist falsy → KEIN Anker → der Dienst nimmt den plain `insert`, nicht
+//     den idempotenten `insertIfAbsent`. Das ist die Absicht und bleibt so.
+//   · POSTGRES (diese Datei): die Generated-Spalte übernahm `data->'item'->>'externalId'`
+//     UNVERÄNDERT. Für die leere Zeichenkette liefert `->>` aber `''` und NICHT NULL — dieselbe
+//     Eigenschaft, wegen der die `provider`-Spalte zwei Zeilen tiefer seit WP-SHIP8-FIX ein
+//     ausdrückliches `NULLIF(btrim(...), '')` trägt. Damit war `external_id IS NOT NULL` für eine
+//     leere Kennung WAHR: der partielle UNIQUE-Index galt für eine Zeile, die über den plain
+//     `insert` kam und deshalb kein `ON CONFLICT DO NOTHING` mitbringt.
+//
+// Der Kommentar in `repo.ts:200-204` sagte „dieselbe Bedingung wie `external_id IS NOT NULL` im
+// Index" — für jede nicht leere Kennung stimmte das, für die leere nicht. AB HIER stimmt er für
+// alle: `NULLIF(..., '')` macht aus der leeren Kennung NULL, der Index lässt sie in Ruhe, und
+// `""` / `null` / FEHLEND bedeuten in der Datenbank dasselbe, was sie im Code schon bedeuteten.
+//
+// EHRLICHE GRENZE (Auftrag JOB 3424, Punkt 3): dass der Live-500 vom 05.09. GENAU aus dieser
+// Kollision entstand, ist hier NICHT gemessen — in der Bahn stand weder Docker noch eine
+// Postgres-Instanz zur Verfügung. Belegt ist die Abweichung selbst (zwei Seiten einer Regel, die
+// für `""` verschieden entscheiden); der ausführbare Nachweis am echten Server steht in
+// `tests/q2d-leere-kennung/pg-leere-kennung.integration.test.ts` und läuft, sobald eine Instanz da ist.
+//
+// DIE HEILUNG DER BESTANDSINSTANZEN steht unten als eigener DO-Block, nach demselben Muster wie die
+// `source_version`-Heilung: `ADD COLUMN IF NOT EXISTS` ist auf einer bestehenden Spalte ein
+// STILLES No-op — eine Instanz, die schon läuft, bekäme die neue Expression sonst nie. Erkannt wird
+// die Altfassung daran, dass ihr `NULLIF` fehlt; nach der Heilung trägt die Expression es, der
+// Block greift also kein zweites Mal (idempotent). Der `CASCADE`-Abwurf nimmt den abhängigen
+// UNIQUE-Index mit — er wird am Fuß dieses Skripts ohnehin neu erzeugt. Bereits eingelagerte
+// ''-Zeilen rechnen sich beim Neuaufbau der Spalte von selbst auf NULL um.
 export const IMPORT_CANDIDATES_SCHEMA = `
 CREATE TABLE IF NOT EXISTS import_candidates (
   id text PRIMARY KEY,
@@ -77,7 +112,33 @@ CREATE TABLE IF NOT EXISTS import_candidates (
 );
 ALTER TABLE import_candidates
   ADD COLUMN IF NOT EXISTS external_id text
-  GENERATED ALWAYS AS (data->'item'->>'externalId') STORED;
+  GENERATED ALWAYS AS (NULLIF(data->'item'->>'externalId', '')) STORED;
+DO $$
+DECLARE
+  alt_expr text;
+  abhaengige_indizes text;
+BEGIN
+  SELECT pg_get_expr(d.adbin, d.adrelid) INTO alt_expr
+  FROM pg_attribute a
+  JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+  WHERE a.attrelid = 'import_candidates'::regclass
+    AND a.attname = 'external_id'
+    AND NOT a.attisdropped;
+
+  IF alt_expr IS NOT NULL AND alt_expr NOT ILIKE '%NULLIF%' THEN
+    SELECT string_agg(DISTINCT i.indexrelid::regclass::text, ', ') INTO abhaengige_indizes
+    FROM pg_index i
+    JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attname = 'external_id'
+    WHERE i.indrelid = 'import_candidates'::regclass
+      AND a.attnum = ANY(i.indkey);
+
+    RAISE NOTICE 'import_candidates: external_id bildete die LEERE Kennung als '''' ab — Spalte wird neu aufgebaut, abhängige Indizes (%) folgen (JOB 3424 Q2d)', COALESCE(abhaengige_indizes, '-');
+    ALTER TABLE import_candidates DROP COLUMN external_id CASCADE;
+    ALTER TABLE import_candidates
+      ADD COLUMN external_id text
+      GENERATED ALWAYS AS (NULLIF(data->'item'->>'externalId', '')) STORED;
+  END IF;
+END $$;
 -- WP-SHIP8-FIX (bens F3): PROVIDER-SICHERER Import-Schlüssel. Additive Generated-Spalte provider
 -- (getrimmt + kleingeschrieben, wie importProviderKey in repo.ts). EHRLICHER BACKFILL: Bestands-
 -- zeilen OHNE provider im Item-JSONB werden auf 'confluence' gesetzt — Confluence ist der EINZIGE

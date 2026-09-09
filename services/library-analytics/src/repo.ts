@@ -174,8 +174,10 @@ export function candidateSourceId(provider: string | null | undefined, externalI
 // review_status IN ('neu','in_bearbeitung')`) — Feld für Feld, so wie es dort Spalte für Spalte
 // geschieht. Ein Spalten-Tupel kennt keine Trennzeichen-Mehrdeutigkeit; darum war die Datenbank
 // schon immer richtig und die Abweichung EINSEITIG: InMemory war STRENGER als Postgres und
-// blockierte einen Kandidaten, den der Index korrekt eingereiht hätte. Es gibt hier folglich
-// nichts zu migrieren — `IMPORT_CANDIDATES_SCHEMA` bleibt Zeichen für Zeichen, wie es ist.
+// blockierte einen Kandidaten, den der Index korrekt eingereiht hätte. Es gab FÜR DIESEN BEFUND
+// folglich nichts zu migrieren — `IMPORT_CANDIDATES_SCHEMA` blieb Zeichen für Zeichen, wie es war.
+// (JOB 3424 hat die DDL später aus einem ANDEREN Grund angefasst: die LEERE Kennung, s. unten am
+// Kopf von `openCandidateSource`. Der Satz oben gilt unverändert für den Befund von JOB 3087.)
 //
 // DAS VORBILD STEHT IM HAUS: JOB 3081 hat denselben Fehler eine Datei weiter am Herkunfts-Anker
 // behoben und den Schlüsselstring dort ebenfalls abgeschafft (`service.ts:1620-1622`,
@@ -199,7 +201,18 @@ interface OpenCandidateSource {
  *
  * SCRUM-510 (WP3) / WP-SHIP8-FIX (bens F3): Items OHNE externalId haben KEINEN Quellbezug (kein
  * Anker → keine externalId-Idempotenz) — dieselbe Bedingung wie `external_id IS NOT NULL` im
- * Index. Fehlende `sourceVersion` zählt als 1 (deckungsgleich mit dem Orchestrator und dem
+ * Index.
+ *
+ * JOB 3424 (Q2d) — DIESER SATZ WAR FÜR EINEN FALL FALSCH, UND ER IST ES SEIT DIESEM JOB NICHT MEHR.
+ * „OHNE externalId" heisst hier über den Wahrheitswert (`!ext`), also AUCH bei der LEEREN
+ * Zeichenkette. Der Index sagte für sie das Gegenteil: `data->'item'->>'externalId'` liefert für
+ * `""` ein `''` und NICHT NULL, `external_id IS NOT NULL` war also WAHR. Die eine Regel hatte damit
+ * zwei Antworten, und die Zeile kam über den plain `insert` (ohne `ON CONFLICT`) in eine Tabelle,
+ * deren Index sie beanspruchte. Die Deckungsgleichheit ist jetzt in der DDL hergestellt
+ * (`NULLIF(..., '')`, `repo-pg.ts`, Kopf von IMPORT_CANDIDATES_SCHEMA) — hier bleibt Zeichen für
+ * Zeichen alles, wie es war.
+ *
+ * Fehlende `sourceVersion` zählt als 1 (deckungsgleich mit dem Orchestrator und dem
  * CASE/ELSE-1 der Generated Column, `repo-pg.ts:114-120`). Ein fehlender Provider zählt als
  * "confluence" (`importProviderKey`, deckungsgleich mit dem Pg-Backfill).
  * WP-SHIP8-CLOSE-3 (bens ROT-2): OFFEN heisst 'neu' ODER 'in_bearbeitung' (`isOpenReviewStatus`) —
