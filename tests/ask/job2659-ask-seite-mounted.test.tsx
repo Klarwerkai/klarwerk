@@ -26,6 +26,7 @@ import { AuditService, InMemoryAuditRepo } from "../../services/audit";
 import { InMemoryKoRepo, KoService } from "../../services/knowledge-object";
 import { type ModelClient, Reasoner } from "../../services/reasoner";
 import { ABSAGE_MARKE, ModelProvider } from "../../services/reasoner/src/provider-model";
+import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 
 const kette = vi.hoisted(() => ({
   ask: null as null | ((frage: string) => Promise<unknown>),
@@ -91,8 +92,15 @@ async function verdrahten(modell: ModelClient, statement: string = QUELLENWORTLA
     author: "anna",
   });
   await koService.setValidationState(ventil.id, { trust: 92, status: "validiert" });
+  // JOB 3550: diese Datei misst die ECHTE Kette bis zum Modell — sie braucht deshalb dieselbe
+  // Adminfreigabe (JOB 3549), die im Betrieb vor dem ersten Modellaufruf steht. Ohne sie antwortete
+  // hier der deterministische Ersatz, und U4–U8c prüften nicht mehr, was sie prüfen wollen (JOB 3500,
+  // `archiv/3500/runde-3/code.md`: 5 rote Fälle genau in dieser Datei). Die Zuordnung bleibt die
+  // Vorgabe — erteilt wird nur die Freigabe, nichts umgestellt.
+  const reasoner = new Reasoner(new ModelProvider(modell));
+  await erteileKiFreigabe(reasoner);
   const ask = new AskService({
-    reasoner: new Reasoner(new ModelProvider(modell)),
+    reasoner,
     koService,
     gaps: new InMemoryGapRepo(),
     audit: new AuditService({ repo: new InMemoryAuditRepo() }),

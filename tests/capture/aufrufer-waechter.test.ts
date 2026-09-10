@@ -772,6 +772,17 @@ const BEWUSST: readonly Ausnahme[] = [
     grund: "Dieselbe Bauart und derselbe Grund wie `resetEmbedSemaphoreForTests`.",
   },
   {
+    schluessel: "services/reasoner/src/testhelfer-ki-freigabe.ts::erteileKiFreigabe",
+    grund:
+      "JOB 3550: setzt die Adminfreigabe für öffentliche KI (JOB 3549) in einem TESTAUFBAU — " +
+      "dieselbe Bauart und derselbe Grund wie `resetModelSemaphoreForTests` eine Zeile höher. " +
+      "Ein Produktaufrufer wäre hier der Fehler und nicht die Behebung: er würde die Freigabe im " +
+      "Betrieb erteilen, statt sie vom Administrator zu verlangen — genau das, was Pedis Satz " +
+      'verbietet („Voreinstellung bleibt ohne ausdrückliche Adminfreigabe gesperrt"). ' +
+      "`mitKiFreigabe` aus derselben Datei steht NICHT hier: es wird in seiner eigenen Datei " +
+      "verwendet und fällt deshalb nicht unter den engen Schnitt dieses Wächters.",
+  },
+  {
     schluessel: "services/db-tx/src/pg-test-guard.ts::guardedLocalPgTestUrl",
     grund:
       "Riegel für Integrationstests: er verhindert, dass ein Testlauf auf eine fremde Datenbank " +

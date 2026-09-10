@@ -40,6 +40,13 @@ import {
   createCappedCloudClientFromEnv,
   createCappedLocalClientFromEnv,
 } from "../../services/reasoner/src/model-client";
+// JOB 3550: die Adminfreigabe für öffentliche KI (JOB 3549) gehört zur Verdrahtung des Produkts —
+// im Betrieb setzt sie ein Administrator, hier der Testaufbau. Sie steht NUR an den Stellen, an
+// denen dieser Test einen echten Weg nach draußen misst; wo er die Sperre misst, fehlt sie.
+import {
+  erteileKiFreigabe,
+  mitKiFreigabe,
+} from "../../services/reasoner/src/testhelfer-ki-freigabe";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -191,6 +198,9 @@ describe("JOB 3090 V1–V4: die Anbieterwahl, von der Env bis auf den Bildschirm
       model: "claude-sonnet-4-6",
     });
     // Die Vorgabe ist keine Anzeige-Behauptung: der echte Lauf geht wirklich zu OpenAI.
+    // JOB 3550: dieser Fall misst die VORGABE („auto") und darf sie deshalb nicht überschreiben —
+    // die Freigabe kommt getrennt, die Zuordnung bleibt unangetastet.
+    await erteileKiFreigabe(reasoner);
     await reasoner.assistText("Ein roher Satz, der geglättet werden soll.", "de");
     const modellAnfragen = anfragen.filter((a) => !a.url.includes("/api/"));
     expect(modellAnfragen).toHaveLength(1);
@@ -205,7 +215,7 @@ describe("JOB 3090 V1–V4: die Anbieterwahl, von der Env bis auf den Bildschirm
     const anfragen = fetchSpion();
     const reasoner = reasonerWieImProdukt(BEIDE_ENV);
     // Ein alter Schreibweg mit `cloud` landet nicht still: er wird migriert UND gemeldet.
-    await reasoner.setTaskConfig({ global: "cloud", perTask: {} });
+    await reasoner.setTaskConfig(mitKiFreigabe({ global: "cloud", perTask: {} }));
     const cfg = reasoner.configStatus();
     expect(cfg.taskConfig.global).toBe("openai");
     expect(cfg.migration).toEqual({ global: { von: "cloud", nach: "openai" }, perTask: {} });
