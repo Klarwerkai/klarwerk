@@ -237,6 +237,10 @@ const de = {
   "topbar.openMenu": "Menü öffnen",
   "topbar.closeMenu": "Menü schließen",
   "topbar.menuLabel": "Navigationsmenü",
+  // JOB 3525: die SICHTBARE Beschriftung des Menü-Knopfes auf schmaler Breite. Bewusst nur das
+  // Substantiv — „Menü öffnen" bleibt der zugängliche Name (`topbar.openMenu`) und enthält dieses
+  // Wort, damit Sprachbedienung „Klick Menü" trifft (WCAG 2.5.3).
+  "topbar.menuShort": "Menü",
   // B1b: Rückweg aus der schalenlosen /mobile-Ansicht zur Vollversion.
   "topbar.toDesktop": "Zur Vollversion",
   "topbar.notifications": "Meldungen",
@@ -6071,6 +6075,7 @@ const en: typeof de = {
   "topbar.openMenu": "Open menu",
   "topbar.closeMenu": "Close menu",
   "topbar.menuLabel": "Navigation menu",
+  "topbar.menuShort": "Menu",
   "topbar.toDesktop": "To full version",
   "topbar.notifications": "Notifications",
   "topbar.notificationsPlaceholder": "No notifications yet. Real source coming (#63).",
@@ -10966,6 +10971,7 @@ const nl: typeof de = {
   "topbar.openMenu": "Menu openen",
   "topbar.closeMenu": "Menu sluiten",
   "topbar.menuLabel": "Navigatiemenu",
+  "topbar.menuShort": "Menu",
   "topbar.toDesktop": "Naar volledige versie",
   "topbar.notifications": "Meldingen",
   "topbar.notificationsPlaceholder": "Nog geen meldingen. Echte bron volgt (#63).",

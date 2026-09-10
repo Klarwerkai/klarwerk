@@ -1677,8 +1677,26 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // (kein `ANGEBOT_MUSTER`) und trägt keinen eigenen Titel (kein `documentTitle`-Prop) — sie
     // erscheint nur in der Grundmenge. Die zwei Zahlen, an denen Stufe 2 wirklich hängt, bleiben
     // unverändert: `anbieter` 1 und `traeger` 2.
+    //
+    // JOB 3525 (CHR-NAVIGATION-SCHMAL): `komponenten` von 374 auf 376 NACHGEZOGEN — am Lauf dieses
+    // Arbeitsbaums gemessen (der Fall meldete `gemessen: 376 Komponenten · 1 Anbieter · 2 Traeger`),
+    // nicht gerechnet. GENAU ZWEI Bauteile kommen hinzu, beide in `shell/KopfbandPunkte.tsx`:
+    //
+    //     + `KopfbandPunkt` — EIN Punkt des Kopfbands. Das ist eine HERAUSLÖSUNG, keine neue
+    //       Fläche: derselbe Baum stand vorher inline in `KopfbandPunkte`. Er bekommt einen Namen,
+    //       weil das schmale Band dieselben Punkte ein zweites Mal zeigt und eine Abschrift zwei
+    //       Orte schüfe, an denen Aktivregel, Zähler und Fokusring auseinanderlaufen können.
+    //     + `KopfbandPunkteSchmal` — die Auswahl der Punkte, die auf dem Band 760–899 px oben
+    //       stehen bleiben. Sie filtert `useSichtbareKopfbandPunkte`, führt also keine zweite
+    //       Quelle, und gibt `null`, wenn die Rolle keinen davon sehen darf.
+    //
+    // Dieselbe Begründung wie oben, und sie trägt hier genauso: Die Auflage verbietet, dass eine
+    // UMSTELLUNG die Erhebung verschiebt — nicht, dass der Quellbaum wächst. Die zwei Zahlen, an
+    // denen Stufe 2 wirklich hängt, sind unverändert: `anbieter` 1 und `traeger` 2. Keines der
+    // beiden Bauteile bietet eine Bildbeschreibung an (kein `ANGEBOT_MUSTER`) und keines trägt
+    // einen eigenen Titel (kein `documentTitle`-Prop) — sie erscheinen nur in der Grundmenge.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 374,
+      komponenten: 376,
       anbieter: 1,
       traeger: 2,
     });

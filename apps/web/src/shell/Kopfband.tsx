@@ -3,9 +3,40 @@ import { type FormEvent, type Ref, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useGuardedNavigate } from "../app/NavGuardContext";
 import { KontoMenue } from "./KontoMenue";
-import { KopfbandPunkte } from "./KopfbandPunkte";
+import { KopfbandPunkte, KopfbandPunkteSchmal } from "./KopfbandPunkte";
 import { Logo } from "./Logo";
 import { ZahnradMenue } from "./ZahnradMenue";
+import { useMediaQuery } from "./useMediaQuery";
+
+// ================================================================================================
+// JOB 3525 · CHR-NAVIGATION-SCHMAL — DIE SCHMALE BREITE ZERFÄLLT IN ZWEI BÄNDER, NICHT IN EINES.
+// ================================================================================================
+//
+// PEDIS BEFUND (10.09. 09:05, Bildschirmfoto bei Codex): mit schmalerem Fenster waren die
+// Menüpunkte fort, sichtbar war nur ein Symbol — der Weg zu „Meine Entwürfe" und „Gehe zu …" war
+// nicht zu finden. Das Symbol trug bis hierher NUR ein `aria-label`; fürs Auge stand dort nichts.
+//
+// DIE OBERE GRENZE IST ZWINGEND DIESELBE WIE `NARROW_QUERY` (899 px). Läge sie auch nur ein Pixel
+// daneben, entstünde genau die Zwischenbreite, die der Auftrag verbietet: eine, in der weder die
+// Punkte noch der beschriftete Menü-Knopf ihre Rolle voll ausfüllen. Der Test
+// `tests/navigation-schmal/kopfband-schmal.test.tsx` (Fall G) rechnet diesen Anschluss aus BEIDEN
+// Quelltexten nach, damit ein späterer Umbau die Fuge nicht still aufreißt.
+//
+// DIE UNTERE GRENZE IST 760 px. Sie ist ÜBERSCHLAGEN und dann NACHGEMESSEN, in dieser Reihenfolge:
+// die Zeile aus Menü-Knopf, Wortmarke, „Meine Entwürfe", „Gehe zu … ⌘K", Zahnrad und Konto trägt in
+// der langen Sprache (DE) rund 590 px — 64 px Seitenpolster, drei Fugen à 20 px (`gap-5`, s. u.)
+// und der Rest Inhalt. Die Reserve bis 760 ist mit Absicht so gross: das Firmenlogo neben der
+// Wortmarke (`Logo.tsx`, aktive Firmen-CI) kostet noch einmal rund 45 px. Der Überschlag steht hier
+// als Begründung, NICHT als Beleg — den liefert die Messung am gebauten Produkt in Chromium
+// (`tests/navigation-schmal/kopfband-schmal-chromium.test.ts`, Fälle L1–L4 und B1 bei genau 760 px).
+// jsdom könnte diese Frage gar nicht beantworten: dort gibt es kein Layout.
+//
+// 760 ist zugleich die Zahl, die das Produkt an dieser Stelle bereits führt (`useMediaQuery.ts`,
+// `TABLET_LESE_QUERY`: „das Band ZWISCHEN Telefon und Desktop"). Eine EIGENE Konstante steht hier
+// trotzdem, weil die beiden Bänder verschiedene Fragen beantworten — die Bibliothek entscheidet
+// über ihre Lesespalten, das Kopfband über seine Punkte. Verschiebt die Bibliothek ihre
+// Leseschwelle, soll das Kopfband nicht mitwandern.
+export const SCHMAL_PUNKTE_QUERY = "(min-width: 760px) and (max-width: 899px)";
 
 // ================================================================================================
 // JOB 3060 · H1 — DAS EINE KOPFBAND (Mockup design/klarwerk/Main.dc.html Z.17-34).
@@ -27,6 +58,10 @@ import { ZahnradMenue } from "./ZahnradMenue";
 // Platzhalter Suchen
 // (tests/design/zielbild-h1-kein-erklaertext.test.ts).
 //
+// JOB 3525 fügt diesem Inventar KEIN Wort hinzu: das Wort „Menü" gehört zum Menü-Knopf, und den
+// gibt es erst unter 900 px — auf der breiten Ansicht, an der das Inventar gemessen wird, ändert
+// sich zeichengleich nichts.
+//
 // Navigation läuft ausschließlich über den Ungespeichert-Wächter (`useGuardedNavigate`,
 // `GuardedLink` in den Bausteinen; mega39 B, shell-links-guarded.test.ts).
 export function Kopfband({
@@ -43,6 +78,12 @@ export function Kopfband({
   const { t } = useTranslation();
   const navigate = useGuardedNavigate();
   const [q, setQ] = useState("");
+  // JOB 3525: das obere der beiden schmalen Bänder (760–899 px). Der Wert wird IMMER gelesen, auch
+  // breit — `narrow` entscheidet danach, ob er überhaupt etwas bedeutet. Ein Haken darf nicht
+  // hinter einer Bedingung stehen.
+  const punkteSchmal = useMediaQuery(SCHMAL_PUNKTE_QUERY);
+  /** Das UNTERE schmale Band (< 760 px): dort führt allein der beschriftete Menü-Knopf. */
+  const nurMenue = narrow && !punkteSchmal;
 
   // Das Kopfbandinventar gilt in JEDEM Zustand — auch in der Rollen-Vorschau des Admins. Der
   // Rückweg „Zur Admin-Ansicht" wohnt deshalb ausschließlich im Zahnrad-Menü (RollenVorschau.tsx),
@@ -56,25 +97,75 @@ export function Kopfband({
     navigate(term ? `/bibliothek?q=${encodeURIComponent(term)}` : "/bibliothek");
   };
 
+  // ==============================================================================================
+  // JOB 3525 · DER ABSTAND SCHMAL — UND WARUM ER NICHT IM KLASSENSTRING STEHT.
+  // ==============================================================================================
+  //
+  // SACHE: der Abstand zwischen den Blöcken ist BREIT unverändert 36 px (`gap-9`, Mockup
+  // Main.dc.html) und SCHMAL 20 px. Das ist keine Verschönerung, sondern der Platz, aus dem
+  // Lieferung 2 bezahlt wird: drei Fugen à 36 px sind auf 760 px gut ein Siebtel der ganzen Zeile.
+  //
+  // FORM (Runde 2, nach ROT): in Runde 1 stand der Abstand als eingesetzte Klasse in einem
+  // Vorlagentext (className={`kw-kopfband … ${abstand} …`}). Das hat ZWEI Prüfer gebrochen, die den
+  // Klassenstring dieses `<header>` als STRING-LITERAL lesen und lesen müssen:
+  //   · `tests/kontokreis-funke/konto-kreis-traegt-den-funke.test.ts:313` bricht ausdrücklich ab
+  //     („`className` ist kein String-Literal") statt zu raten — die ganze Datei sammelte 0 Fälle;
+  //   · `tests/legal/mega62-kontrast-pflichtflaechen.test.ts:224` sucht das Klassenattribut dieses
+  //     Elements WÖRTLICH im Quelltext, weil die Kontrastrechnung sonst an einem geratenen Pfad
+  //     hinge. (Die gesuchte Zeichenfolge steht hier mit Absicht NICHT im Klartext: ein Kommentar,
+  //     der sie abschriebe, hielte jene Prüfung grün, während das Attribut längst fort wäre —
+  //     gemessen in der Gegenprobe dieser Runde, wo genau das geschah.)
+  // Beide haben recht: der DOM-Pfad des Kopfbands ist die Voraussetzung fremder Messungen, und eine
+  // berechnete Klassenliste macht ihn unlesbar. Der Klassenstring bleibt deshalb, was er war.
+  //
+  // Der schmale Abstand steht stattdessen als EIGENSCHAFT am Element — `columnGap`, also genau die
+  // Achse, um die es geht (umgebrochen wird nichts, `row-gap` wäre ohne Wirkung). BREIT ist das
+  // Attribut `undefined`: die breite Ansicht trägt kein `style`, ihr DOM ist zeichengleich der
+  // Bestand von JOB 3060 (Lieferung 3, Fälle F und B3).
+  const schmalerAbstand = narrow ? { columnGap: "20px" } : undefined;
+
   return (
     <header
       data-testid="kopfband"
       className="kw-kopfband flex h-[56px] shrink-0 items-center gap-9 bg-ink px-8 text-white"
+      style={schmalerAbstand}
     >
-      {/* E2E-017: schmaler Kopf bekommt einen Hamburger, der die Punkte als Drawer öffnet. */}
+      {/* ==========================================================================================
+          E2E-017 · JOB 3525 — DER SCHMALE KOPF TRÄGT EIN WORT, NICHT NUR EIN ZEICHEN.
+          ==========================================================================================
+          Bis JOB 3525 stand hier ein `grid h-9 w-9`-Kästchen mit dem Hamburger und einem
+          `aria-label`. Wer sieht, sah nichts; wer hört, hörte „Menü öffnen". Genau diese Hälfte hat
+          Pedi gefehlt. Jetzt steht das Wort DA — und es ist ein eigener, kurzer Schlüssel
+          (`topbar.menuShort`, de/en/nl), nicht der Satz „Menü öffnen": eine Beschriftung ist ein
+          Name, keine Aufforderung.
+
+          DAS `aria-label` BLEIBT „Menü öffnen" und behält damit die Handlung im zugänglichen Namen.
+          Es ENTHÄLT das sichtbare Wort („Menü" in „Menü öffnen", „Menu" in „Open menu") — die
+          Bedingung von WCAG 2.5.3 „Label in Name", die ein Sprachbediener braucht, um „Klick Menü"
+          sagen zu können. Ein `aria-label`, das das sichtbare Wort NICHT enthielte, wäre hier der
+          eigentliche Fehler; der Test hält beides zusammen (Fall A).
+
+          `shrink-0`: der Knopf gibt keinen Platz ab — er ist auf dem unteren Band der einzige Weg
+          in die Navigation. `-ml-3` und `h-9` sind unverändert, die Kopfbandhöhe von 56 px bleibt
+          damit unberührt (im Browser gemessen, Fall L1). */}
       {narrow ? (
         <button
           type="button"
           ref={menuButtonRef}
+          data-testid="kopfband-menue"
           aria-label={t("topbar.openMenu")}
           onClick={() => onOpenMenu?.()}
-          className="-ml-3 grid h-9 w-9 shrink-0 place-items-center rounded-btn text-hairline hover:text-white"
+          className="-ml-3 flex h-9 shrink-0 items-center gap-1.5 rounded-btn px-1.5 text-hairline hover:text-white"
         >
           <Menu size={20} aria-hidden="true" />
+          <span className="text-[13px] leading-none">{t("topbar.menuShort")}</span>
         </button>
       ) : null}
       <Logo />
+      {/* JOB 3525 · Lieferung 2: auf dem oberen schmalen Band bleiben die zentralen Punkte OBEN
+          stehen, statt vollständig hinter den Knopf zu wandern. Breit ändert sich nichts. */}
       {narrow ? null : <KopfbandPunkte />}
+      {narrow && punkteSchmal ? <KopfbandPunkteSchmal /> : null}
       <div className="ml-auto flex min-w-0 shrink items-center gap-4">
         {/* ==========================================================================================
             JOB 3503 · TEIL 3b — „GEHE ZU …" STEHT OBEN, NICHT NUR HINTER DEM ZAHNRAD.
@@ -98,10 +189,13 @@ export function Kopfband({
             `shrink-0`: der Knopf gibt keinen Platz ab. Das Suchfeld daneben ist schrumpffähig und
             trägt bei 1280 px unverändert seine gemessenen 260 px (Zielbild V12).
 
-            SCHMAL BLEIBT UNBERÜHRT: unter 900 px zeigt die Hülle diesen Bereich gar nicht, und die
-            Zeile „Gehe zu …" steht dort weiter im Zahnrad-Menü. Der stumme Hamburger auf schmaler
-            Breite ist JOB 3525 und ausdrücklich nicht dieser Auftrag. */}
-        {narrow ? null : (
+            SCHMAL, SEIT JOB 3525: der Knopf steht auf dem OBEREN schmalen Band (760–899 px)
+            ebenfalls hier — er ist einer der beiden Wege, die Pedi am 10.09. gesucht hat. Nur
+            unter 760 px entfällt er, und dann führt die Beschriftung des Menü-Knopfes dorthin: die
+            Zeile „Gehe zu …" steht unverändert im Zahnrad-Menü, das der Drawer mitträgt
+            (`DrawerMenue.tsx`, `ZahnradEintraege`). Ein zweiter Bau entsteht dadurch nicht — es ist
+            derselbe Knopf, nur eine Bedingung weiter. */}
+        {nurMenue ? null : (
           <button
             type="button"
             data-testid="kopfband-gehezu"

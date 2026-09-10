@@ -111,6 +111,48 @@ function zaehlerWert(
 }
 
 /**
+ * EIN Punkt des Kopfbands — die Bauform, die breit und schmal dieselbe ist.
+ *
+ * JOB 3525: bis hierher stand dieses Stück Baum genau einmal, mitten in `KopfbandPunkte`. Da das
+ * schmale Band jetzt eine ZWEITE Auswahl derselben Punkte zeigt, wäre die naheliegende Abkürzung
+ * eine Kopie gewesen — und damit zwei Orte, an denen Aktivregel, Zähler und Fokusring auseinander
+ * laufen können. Es ist stattdessen EIN Bauteil, das beide benutzen: das gerenderte `<a>` ist
+ * zeichengleich dasselbe, breit wie schmal.
+ */
+function KopfbandPunkt({
+  item,
+  badges,
+  online,
+  pathname,
+}: {
+  item: NavItem;
+  badges: Record<string, NavBadge>;
+  online: boolean;
+  pathname: string;
+}): JSX.Element {
+  const { t } = useTranslation();
+  const aktiv = istAktiverEintrag(item, pathname);
+  return (
+    <GuardedLink
+      to={item.path}
+      aria-current={aktiv ? "page" : undefined}
+      data-kopfband-punkt={item.id}
+      className={`kw-kopfband-punkt flex items-center gap-1.5 border-b-2 px-0.5 py-1.5 text-[13.5px] leading-tight no-underline outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand ${
+        aktiv ? "border-brand font-semibold text-white" : "border-transparent text-hairline"
+      }`}
+    >
+      <span>{t(anzeigeNameKey(item))}</span>
+      {zaehlerWert(
+        item,
+        badges,
+        online,
+        "kw-kopfband-zaehler rounded-[999px] bg-hairline px-1.5 py-px text-[10.5px] font-bold leading-normal text-ink",
+      )}
+    </GuardedLink>
+  );
+}
+
+/**
  * Die Punkte im Kopfband: `<a>` mit sichtbarem Text, aktiver Punkt `aria-current="page"` und
  * 2 px Unterstrich (modern.css), „Prüfen" mit dem Zähler der offenen Prüfungen.
  */
@@ -125,28 +167,68 @@ export function KopfbandPunkte(): JSX.Element {
       aria-label={t("kopfband.navigation")}
       className="kw-kopfband-punkte flex items-center gap-[26px]"
     >
-      {punkte.map((item) => {
-        const aktiv = istAktiverEintrag(item, pathname);
-        return (
-          <GuardedLink
-            key={item.id}
-            to={item.path}
-            aria-current={aktiv ? "page" : undefined}
-            data-kopfband-punkt={item.id}
-            className={`kw-kopfband-punkt flex items-center gap-1.5 border-b-2 px-0.5 py-1.5 text-[13.5px] leading-tight no-underline outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand ${
-              aktiv ? "border-brand font-semibold text-white" : "border-transparent text-hairline"
-            }`}
-          >
-            <span>{t(anzeigeNameKey(item))}</span>
-            {zaehlerWert(
-              item,
-              badges,
-              online,
-              "kw-kopfband-zaehler rounded-[999px] bg-hairline px-1.5 py-px text-[10.5px] font-bold leading-normal text-ink",
-            )}
-          </GuardedLink>
-        );
-      })}
+      {punkte.map((item) => (
+        <KopfbandPunkt
+          key={item.id}
+          item={item}
+          badges={badges}
+          online={online}
+          pathname={pathname}
+        />
+      ))}
+    </nav>
+  );
+}
+
+// ================================================================================================
+// JOB 3525 · LIEFERUNG 2 — WELCHE PUNKTE AUF SCHMALER BREITE OBEN BLEIBEN.
+// ================================================================================================
+//
+// Pedi hat am 10.09. um 09:05 zwei Dinge gesucht und nicht gefunden: „Meine Entwürfe" und
+// „Gehe zu …". Genau diese zwei stehen auf dem oberen schmalen Band (760–899 px) weiter oben —
+// „Gehe zu …" als Knopf in `Kopfband.tsx`, „Meine Entwürfe" hier.
+//
+// WARUM NUR EINER UND NICHT DREI: die Zeile hat auf 760 px nach Wortmarke, Menü-Knopf, „Gehe zu …",
+// Zahnrad und Konto rund 120 px übrig. Ein zweiter Punkt („Bibliothek", „Erfassen") passte bei 760
+// nicht mehr, ohne dass etwas schrumpft oder überläuft — und ein überlaufendes Kopfband wäre genau
+// der Layoutbruch, den §5.3 des Auftrags verbietet. Lieber EIN Punkt, der sicher steht, als drei,
+// die sich schieben; alles Übrige bleibt hinter dem jetzt BESCHRIFTETEN Menü-Knopf erreichbar.
+//
+// DIE LISTE IST EINE AUSWAHL, KEINE ZWEITE QUELLE: gefiltert wird auf `useSichtbareKopfbandPunkte`
+// — dieselben Punkte, dieselben Rollen-Gates. Eine Id, die es im Kopfband nicht (mehr) gibt, fällt
+// hier still weg statt einen leeren Platz zu erzeugen; `tests/navigation-schmal/…` rechnet nach,
+// dass jede Id dieser Liste in `kopfbandItems()` wirklich vorkommt.
+const SCHMAL_PUNKT_IDS: readonly string[] = ["entwuerfe"];
+
+/**
+ * Die Punkte, die auf dem oberen schmalen Band (760–899 px) im Kopfband stehen bleiben.
+ *
+ * `null`, wenn die Rolle keinen davon sehen darf — ein leeres `<nav aria-label="Hauptnavigation">`
+ * wäre eine Ansage ohne Inhalt.
+ */
+export function KopfbandPunkteSchmal(): JSX.Element | null {
+  const { t } = useTranslation();
+  const { pathname } = useLocation();
+  const badges = useNavBadges();
+  const online = useOnline();
+  const punkte = useSichtbareKopfbandPunkte().filter((item) => SCHMAL_PUNKT_IDS.includes(item.id));
+  if (punkte.length === 0) {
+    return null;
+  }
+  return (
+    <nav
+      aria-label={t("kopfband.navigation")}
+      className="kw-kopfband-punkte flex shrink-0 items-center gap-[26px]"
+    >
+      {punkte.map((item) => (
+        <KopfbandPunkt
+          key={item.id}
+          item={item}
+          badges={badges}
+          online={online}
+          pathname={pathname}
+        />
+      ))}
     </nav>
   );
 }
@@ -159,6 +241,10 @@ export function KopfbandPunkte(): JSX.Element {
  * („auf schmaler Fensterbreite verschwinden die Kopfbandpunkte hinter einem stummen Symbol" — das
  * Symbol selbst ist JOB 3525; dass „Meine Entwürfe" dahinter WIRKLICH steht, misst
  * `tests/entwuerfe-menuepunkt/kopfband-und-uebersicht.test.tsx`, Fall I).
+ *
+ * JOB 3525: das Symbol ist seitdem KEIN stummes mehr — es trägt das Wort „Menü" (`Kopfband.tsx`).
+ * Diese Liste bleibt der VOLLSTÄNDIGE Weg: auch was auf dem oberen schmalen Band oben stehen
+ * bleibt, steht hier zusätzlich — ein Weg mehr, keiner weniger.
  */
 export function KopfbandPunkteListe(): JSX.Element {
   const { t } = useTranslation();
