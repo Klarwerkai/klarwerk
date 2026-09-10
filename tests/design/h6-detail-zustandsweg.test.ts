@@ -671,7 +671,13 @@ describe("JOB 3065 H6 R3 · Endpunkt-Matrix der Detailkarten — 503 am gebauten
     // JOB 3511: der zentrale Markenstand. Er kommt NICHT über `endpoints`, sondern über
     // `lib/brandTheme.ts` — dort wohnt die eine Quelle der Firmen-CI samt Drosselung und
     // 404-Unterscheidung, und ein zweiter Einstieg über `endpoints` wäre ein zweiter Weg dorthin.
-    ladeBranding: "/api/branding",
+    //
+    // JOB 3563 NACHGEFÜHRT: Der Griff heißt jetzt `holeMarkeFuerFlaeche` statt `ladeBranding`.
+    // Derselbe Endpunkt, derselbe Weg — die Karte ruft `ladeBranding` nur nicht mehr SELBST, weil
+    // sie sonst einen zweiten Markenstand neben `lib/brandTheme.ts` hielte (BEN, JOB 3511 R2
+    // `ben.md:31`). `holeMarkeFuerFlaeche` legt die Antwort ins Modul und reicht Fehler weiter,
+    // damit dieser Matrix-Fall seinen Fehlerzustand samt „Erneut versuchen" behält.
+    holeMarkeFuerFlaeche: "/api/branding",
     "endpoints.admin.factoryResetStatus": "/api/admin/factory-reset",
     "endpoints.ko.trash": "/api/kos/trash",
     useUsers: "/api/users",

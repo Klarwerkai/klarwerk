@@ -5,7 +5,7 @@
 // Zeile mit Wert, erreichbar über das Chevron. Hilfetexte im „?"-Menü der Karte.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, ArrowRight, Power, RotateCcw, Trash2, UserPlus } from "lucide-react";
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { ApiError } from "../api/client";
@@ -20,10 +20,12 @@ import { Abfragehuelle } from "../components/einstellungen/Abfragehuelle";
 import { Detailkarte } from "../components/einstellungen/Detailkarte";
 import { Button, Field, TextInput } from "../components/ui";
 import { isUserAuditAction } from "../lib/adminForms";
-import type { BrandProfil, BrandingWunsch } from "../lib/brandTheme";
+import type { BrandProfil, BrandingStand, BrandingWunsch } from "../lib/brandTheme";
 import {
   BRAND_PROFIL_ADVISOR,
-  ladeBranding,
+  abonniereBranding,
+  aktuellesBranding,
+  holeMarkeFuerFlaeche,
   setzeBranding,
   uebernimmBranding,
 } from "../lib/brandTheme";
@@ -47,23 +49,131 @@ import { PILOT_NEXT_STEPS } from "../lib/pilotNextSteps";
  * WAS ER AUSDRÜCKLICH NICHT TUT: laden, löschen, KI anstoßen. Das Umschalten löst genau den einen
  * `PUT` aus; die Demo-Datenpakete darüber bleiben davon unberührt, und der Satz auf der Fläche
  * sagt das auch.
+ *
+ * ================================================================================================
+ * JOB 3563 — DIE KARTE FOLGT DER EINEN MARKENQUELLE, STATT EINE ZWEITE ZU HALTEN.
+ * ================================================================================================
+ * Bis hierher rief die Abfrage dieser Karte `ladeBranding` unmittelbar selbst und hielt damit einen
+ * ZWEITEN Markenstand neben `lib/brandTheme.ts`. Geschrieben wurde er nur vom eigenen
+ * `PUT`; die gedrosselte Nachführung des Moduls schrieb dort nie hin. Schaltete jemand anderswo um
+ * — zweiter Administrator, zweiter Tab —, zog die Seite ringsum nach (Logo und Farben hängen am
+ * Modul) und dieser Schalter blieb auf dem alten Stand stehen. Schlimmer als die falsche Anzeige
+ * war die FOLGE: der nächste Klick rechnete seinen `PUT` aus dem veralteten Stand und schickte den
+ * ALTEN `profil`-Wert mit — die fremde Profilwahl war weg, ohne dass es jemand gesehen hat.
+ * BEN hat das zweimal benannt (JOB 3511 R1 `ben.md:30`, R2 `ben.md:31`).
+ *
+ * ------------------------------------------------------------------------------------------------
+ * RUNDE 2 — BENs ZWEI KORREKTURPFLICHTEN AN RUNDE 1. Beide von ihm gemessen, nicht vermutet:
+ * ------------------------------------------------------------------------------------------------
+ *   1. „Den unabhängigen Kartenabruf ablösen." Runde 1 hängte die ANZEIGE ans Modul, ließ den
+ *      `useQuery` aber IMMER laufen. Wer die Karte öffnete, während das Modul den Stand längst
+ *      hatte, löste damit einen zusätzlichen `GET /api/branding` aus — genau der zweite Abrufweg
+ *      neben der gedrosselten Nachführung, den Lieferung 3 ausschließt.
+ *   2. „Den sichtbaren Zustand einschließlich Fehlererholung aus der gemeinsamen Quelle ableiten."
+ *      Schwerer wog die Folge: Scheiterte dieser Abruf, verdeckte die Fehlerbox der Hülle die
+ *      Bedienelemente auch dann noch, wenn das Modul längst einen bestätigten Stand trug. BENs
+ *      Gegenprobe im Wortlaut: „externe Version 2 übernommen, Wurzelattribut `advisor`, Karte
+ *      weiterhin ‚nicht abrufbar · Erneut versuchen'."
+ *
+ * DIE AUFTEILUNG JETZT, und sie ist die ganze Änderung. EINE Frage entscheidet alles:
+ * KENNT DAS MODUL EINEN STAND?
+ *
+ *   · JA (`aktuellesBranding() !== null`): die Karte zeigt und schaltet IHN — über
+ *     `abonniereBranding`/`aktuellesBranding`, dieselbe Anbindung wie `shell/Logo.tsx:36`. Kein
+ *     Abruf, keine Hülle, keine Fehlerbox. Deshalb zieht der Schalter bei einer fremden Änderung
+ *     mit (ohne Neuladen, ohne Fokuswechsel, ohne Klick), und deshalb bleibt ein bestätigter Stand
+ *     sichtbar und bedienbar, auch wenn eine spätere Auffrischung scheitert (LEHREN §7, Auftrag §9
+ *     „Cache mit gescheiterter Auffrischung": es wird nichts geleert und nichts gemeldet).
+ *   · NEIN: erst dann arbeitet react-query, und zwar genau für die drei Lagen, die es OHNE
+ *     bestätigten Stand geben muss — „wird geladen", „nicht abrufbar" mit „Erneut versuchen"
+ *     (dessen `refetch`) und der geglückte Erstabruf. Der Abruf läuft über `holeMarkeFuerFlaeche`
+ *     und mündet in dieselbe eine Quelle; seine Antwort landet im Modul, und damit fällt die Karte
+ *     von selbst in den Ja-Zweig. Genauso wirkt eine erfolgreiche Hintergrundübernahme nach einem
+ *     Fehler: die Bedienelemente stehen wieder da, ohne dass jemand „Erneut versuchen" drückt.
+ *
+ * KEIN ZWEITER TAKT — und seit Runde 3 auch nicht in der einen Sekunde, in der es bisher noch
+ * einen gab. Drei Zeilen halten das zusammen, jede gegen einen anderen Weg:
+ *
+ *   · `enabled: gemeldet === null` nimmt den Abruf weg, sobald das Modul einen Stand HAT.
+ *   · `refetchOnWindowFocus: false` nimmt den Fokus-Abruf des `QueryClient` (`main.tsx:44`) weg,
+ *     der sonst neben dem Fokus-Hörer in `brandTheme.ts` liefe.
+ *   · `holeMarkeFuerFlaeche` teilt sich einen BEREITS LAUFENDEN Abruf, statt einen zweiten zu
+ *     starten. Das ist BENs Korrekturpflicht an Runde 2, und sein Fall ist der Anwendungsstart:
+ *     `initBrandTheme()` holt, die Antwort ist noch unterwegs, das Modul weiß also noch nichts —
+ *     und genau dann wird die Karte geöffnet. `enabled` sah dort einen leeren Stand und konnte
+ *     „noch keiner" nicht von „läuft gerade" unterscheiden; die Karte holte ein zweites Mal. BEN
+ *     wörtlich gemessen: „expected ‚spy' to be called 1 times, but got 2 times."
+ *
+ * Es bleibt also genau EIN Abruf — der erste, den überhaupt jemand macht —, und der zählt in der
+ * Minutenfrist des Moduls mit.
  */
 function DemoErscheinungsbild(): JSX.Element {
   const { t } = useTranslation();
-  const qc = useQueryClient();
   const { push } = useToast();
-  const marke = useQuery({ queryKey: ["admin", "branding"], queryFn: ladeBranding });
+  const gemeldet = useSyncExternalStore(abonniereBranding, aktuellesBranding, aktuellesBranding);
+  const marke = useQuery({
+    queryKey: ["admin", "branding"],
+    queryFn: holeMarkeFuerFlaeche,
+    // DER GANZE UNTERSCHIED ZU RUNDE 1. Hat das Modul einen Stand, gibt es hier nichts zu holen:
+    // die Karte zeigt ihn, und die Nachführung des Moduls hält ihn frisch. Ohne diese Zeile wäre
+    // der `useQuery` ein zweiter Abrufweg (BEN, Korrekturpflicht 1).
+    enabled: gemeldet === null,
+    refetchOnWindowFocus: false,
+  });
   const schalten = useMutation({
     mutationFn: (wunsch: BrandingWunsch) => setzeBranding(wunsch),
     onSuccess: (antwort) => {
       // Sofort sichtbar, ohne auf den nächsten Abruf zu warten — und `letzteVersion` in
       // `brandTheme.ts` bleibt dabei richtig, sodass die Nachführung nicht doppelt schreibt.
+      // Das ist seit JOB 3563 zugleich die Anzeige: der Abonnent oben meldet den neuen Stand, ohne
+      // dass hier noch eine zweite Ablage beschrieben (`qc.setQueryData`) oder neu abgerufen wird.
       uebernimmBranding(antwort);
-      qc.setQueryData(["admin", "branding"], antwort);
       push("success", t("einst.marke.gespeichert"));
     },
     onError: (e) => push("error", e instanceof ApiError ? e.message : t("state.error")),
   });
+
+  // Die Bedienelemente zu EINEM Stand. Sie stehen als Funktion und nicht als eigenes Bauteil da,
+  // weil sie den `schalten`-Vorgang und `t` dieser Karte brauchen — und weil es sie genau einmal
+  // geben darf: eine zweite Fassung für den Abrufzweig wäre wieder eine zweite Wahrheit.
+  const bedienfeld = (stand: BrandingStand): JSX.Element => (
+    <div className="mt-2 space-y-2">
+      <Field label={t("einst.marke.profil")}>
+        <select
+          data-testid="marke-profil"
+          className="w-full rounded-input border border-hairline bg-surface px-2.5 py-1.5 text-[13px] text-text"
+          value={stand.profil ?? ""}
+          disabled={schalten.isPending}
+          onChange={(e) => {
+            const profil: BrandProfil =
+              e.target.value === BRAND_PROFIL_ADVISOR ? BRAND_PROFIL_ADVISOR : null;
+            // Ohne Profil gibt es nichts zu verwenden — der Schalter fällt mit zurück, damit nie
+            // ein Zustand „aktiv, aber ohne Profil" entsteht.
+            schalten.mutate({ profil, aktiv: profil === null ? false : stand.aktiv });
+          }}
+        >
+          <option value="">{t("einst.marke.profilKeines")}</option>
+          <option value={BRAND_PROFIL_ADVISOR}>{t("einst.marke.profilAdvisor")}</option>
+        </select>
+      </Field>
+      <label className="flex items-center gap-2 text-[12.5px] text-text">
+        <input
+          type="checkbox"
+          data-testid="marke-schalter"
+          checked={stand.aktiv}
+          disabled={stand.profil === null || schalten.isPending}
+          // `stand.profil` ist der NACHGEFÜHRTE Wert: hat jemand anders zwischenzeitlich ein
+          // Profil gewählt, geht dieses fremde Profil mit — der Klick auf das Kästchen schaltet,
+          // was zu sehen ist, und dreht keine fremde Wahl still zurück.
+          onChange={(e) => schalten.mutate({ profil: stand.profil, aktiv: e.target.checked })}
+        />
+        {t("einst.marke.schalter")}
+      </label>
+      {stand.profil === null ? (
+        <p className="text-[12px] text-muted-2">{t("einst.marke.ohneProfil")}</p>
+      ) : null}
+    </div>
+  );
 
   return (
     <div data-einst="erscheinungsbild" className="border-t border-hairline pt-3">
@@ -71,45 +181,23 @@ function DemoErscheinungsbild(): JSX.Element {
       <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">
         {t("einst.marke.erklaerung")}
       </p>
-      {/* Die Hülle steht davor: „Firmen-CI ist aus" ist eine TATSACHENAUSSAGE über die Installation
-          und darf nur aus einer erfolgreichen Antwort stammen, nie aus einem gescheiterten Abruf. */}
-      <Abfragehuelle abfrage={marke} testId="huelle-branding">
-        {(stand) => (
-          <div className="mt-2 space-y-2">
-            <Field label={t("einst.marke.profil")}>
-              <select
-                data-testid="marke-profil"
-                className="w-full rounded-input border border-hairline bg-surface px-2.5 py-1.5 text-[13px] text-text"
-                value={stand.profil ?? ""}
-                disabled={schalten.isPending}
-                onChange={(e) => {
-                  const profil: BrandProfil =
-                    e.target.value === BRAND_PROFIL_ADVISOR ? BRAND_PROFIL_ADVISOR : null;
-                  // Ohne Profil gibt es nichts zu verwenden — der Schalter fällt mit zurück,
-                  // damit nie ein Zustand „aktiv, aber ohne Profil" entsteht.
-                  schalten.mutate({ profil, aktiv: profil === null ? false : stand.aktiv });
-                }}
-              >
-                <option value="">{t("einst.marke.profilKeines")}</option>
-                <option value={BRAND_PROFIL_ADVISOR}>{t("einst.marke.profilAdvisor")}</option>
-              </select>
-            </Field>
-            <label className="flex items-center gap-2 text-[12.5px] text-text">
-              <input
-                type="checkbox"
-                data-testid="marke-schalter"
-                checked={stand.aktiv}
-                disabled={stand.profil === null || schalten.isPending}
-                onChange={(e) => schalten.mutate({ profil: stand.profil, aktiv: e.target.checked })}
-              />
-              {t("einst.marke.schalter")}
-            </label>
-            {stand.profil === null ? (
-              <p className="text-[12px] text-muted-2">{t("einst.marke.ohneProfil")}</p>
-            ) : null}
-          </div>
-        )}
-      </Abfragehuelle>
+      {gemeldet === null ? (
+        // NOCH KEIN BESTÄTIGTER STAND. Nur hier gibt es Lade-, Fehler- und Wiederholweg, und nur
+        // hier ist die Hülle richtig: „Firmen-CI ist aus" ist eine TATSACHENAUSSAGE über die
+        // Installation und darf nur aus einer erfolgreichen Antwort stammen, nie aus einem
+        // gescheiterten Abruf.
+        //
+        // Der Kindzweig rendert DASSELBE Bedienfeld wie unten und ist trotzdem nicht der Weg, auf
+        // dem man es zu sehen bekommt: `holeMarkeFuerFlaeche` legt die Antwort ins Modul, BEVOR
+        // die Abfrage auflöst — also meldet der Abonnent oben zuerst, und die Karte steht schon im
+        // Zweig darunter. Er steht da, weil der Vertrag der Hülle ein Kind verlangt, und er
+        // rendert bewusst nicht eine zweite Fassung.
+        <Abfragehuelle abfrage={marke} testId="huelle-branding">
+          {(beimAbruf) => bedienfeld(beimAbruf)}
+        </Abfragehuelle>
+      ) : (
+        bedienfeld(gemeldet)
+      )}
     </div>
   );
 }

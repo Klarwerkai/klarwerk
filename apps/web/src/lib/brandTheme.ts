@@ -167,7 +167,7 @@ export function setzeBranding(wunsch: BrandingWunsch): Promise<BrandingStand> {
 // ------------------------------------------------------------------------------------------------
 let letzteVersion: number | null = null;
 let letzterAbrufMs = Number.NEGATIVE_INFINITY;
-let laeuft = false;
+let laufenderAbruf: Promise<BrandingStand> | null = null;
 let angemeldet = false;
 let aktuellerStand: BrandingStand | null = null;
 const zuhoerer = new Set<() => void>();
@@ -222,6 +222,141 @@ export function uebernimmBranding(stand: BrandingStand): void {
 }
 
 /**
+ * Der Monotonie-Riegel als eigener, benannter Griff.
+ *
+ * JOB 3563: Er stand bis hierher als `if` mitten in `frischeMarke` und hatte genau einen Aufrufer.
+ * Seit die Adminfläche ihren Stand aus DIESEM Modul bezieht statt aus einer eigenen Abfrage, hat er
+ * zwei — und ein zweites Mal hingeschriebener Vergleich wäre genau die zweite Wahrheit, gegen die
+ * dieser Riegel gebaut ist. Bedingung, Wirkung und Begründung stehen unverändert unten.
+ */
+function uebernimmWennNeuer(stand: BrandingStand): void {
+  // ================================================================================================
+  // NUR VORWÄRTS. BENs Befund an Runde 1 (Korrekturpflicht 2), gemessen und nicht vermutet:
+  // ================================================================================================
+  // Hier stand `stand.version !== letzteVersion` — also „jede ANDERE Version", auch eine ÄLTERE.
+  // Der Fall, den das kaputtmacht, ist keine Theorie und braucht keinen Fehler: Ein
+  // Hintergrundabruf startet, WÄHREND er läuft schaltet Pedi die Marke ein, sein `PUT` bestätigt
+  // Version 2 und die Marke steht — und danach löst der ältere `GET` mit Version 1 auf und dreht
+  // seine gerade bestätigte Schaltung wieder zurück. Zwei Antworten überholen einander; das ist
+  // im Netz der Normalfall und nicht die Ausnahme.
+  //
+  // `>` statt `!==` ist die ganze Abwehr: ein Stand, der ÄLTER ist als der zuletzt übernommene,
+  // trägt keine Neuigkeit und wird verworfen. `letzteVersion === null` ist der Start — die erste
+  // Antwort wird immer übernommen.
+  //
+  // WAS DAS BEWUSST NICHT KANN: Setzt ein Server seinen Zähler zurück (neu aufgesetzte Instanz),
+  // gilt sein kleinerer Stand erst nach einem Neuladen der Seite. Das ist der richtige Tausch —
+  // eine zurückgedrehte Schaltung sieht der Mensch sofort, ein neu aufgesetzter Server ist ein
+  // Neustart-Ereignis. Die Alternative (Zeitstempel statt Zähler) steht nicht im Vertrag.
+  if (letzteVersion === null || stand.version > letzteVersion) {
+    uebernimmBranding(stand);
+  }
+}
+
+/**
+ * ================================================================================================
+ * JOB 3563 RUNDE 3 — DER EINE LAUFENDE ABRUF, DEN SICH BEIDE AUFRUFSTELLEN TEILEN.
+ * ================================================================================================
+ *
+ * BENs Korrekturpflicht an Runde 2, von ihm gemessen und nicht vermutet: „Karte startet neben
+ * laufendem Modulabruf einen zweiten GET: expected ‚spy' to be called 1 times, but got 2 times."
+ *
+ * DER FALL IST DER START DER ANWENDUNG, also der Normalfall und keine Kante. `initBrandTheme` holt
+ * beim Start einmal; solange DIESE Antwort unterwegs ist, kennt das Modul noch keinen Stand
+ * (`aktuellesBranding() === null`). Wird die Adminkarte in genau diesem Fenster geöffnet, sah ihr
+ * Riegel `enabled: gemeldet === null` einen leeren Stand und holte selbst — Runde 2 unterschied
+ * nicht zwischen „noch kein Abruf" und „Abruf läuft bereits" (BEN wörtlich). Zwei GET statt einem.
+ *
+ * DIE ANTWORT DARAUF IST NICHT NOCH EIN RIEGEL AN DER AUFRUFSTELLE, SONDERN EIN GEMEINSAMER ABRUF:
+ * wer holen will, während schon geholt wird, bekommt DAS LAUFENDE VERSPRECHEN statt eines eigenen.
+ * Ein zweiter Riegel („nicht holen, es läuft ja schon") wäre für die Fläche falsch — sie stünde
+ * dann ohne Antwort da und wüsste nicht, wann sie eine bekommt. Geteilt wird deshalb das
+ * Versprechen, nicht das Nein.
+ *
+ * DER RIEGEL LÄUFT GENAU EINMAL JE ANTWORT, hier im Erzeuger und nicht je Teilnehmer:
+ * `uebernimmWennNeuer` ist zwar in sich harmlos wiederholbar, aber ein zweiter Durchlauf wäre
+ * wieder ein zweiter Weg zur selben Wahrheit.
+ *
+ * `laufenderAbruf` wird in BEIDEN Ausgängen zurückgesetzt — auch im Fehlerfall. Sonst hinge jeder
+ * spätere Aufruf für immer am abgelehnten Versprechen von damals, und der Knopf „Erneut versuchen"
+ * der Fläche würde nichts mehr auslösen (gemessen in `tests/demo-firmen-ci-web/
+ * admin-flaeche-mounted.test.tsx`, A18). Ein unbedingtes Zurücksetzen genügt, weil ein neuer Abruf
+ * nur entsteht, solange `laufenderAbruf` null ist — es kann nie zwei nebeneinander geben.
+ */
+function laufendenAbrufTeilen(): Promise<BrandingStand> {
+  const schonUnterwegs = laufenderAbruf;
+  if (schonUnterwegs !== null) {
+    return schonUnterwegs;
+  }
+  // Der Drosselzähler zählt ab dem START des Abrufs, nicht ab seiner Antwort: was gerade geholt
+  // wird, holt der nächste Taktschlag nicht noch einmal.
+  letzterAbrufMs = Date.now();
+  const geteilt: Promise<BrandingStand> = ladeBranding().then(
+    (stand) => {
+      laufenderAbruf = null;
+      uebernimmWennNeuer(stand);
+      return stand;
+    },
+    (fehler: unknown) => {
+      laufenderAbruf = null;
+      throw fehler;
+    },
+  );
+  laufenderAbruf = geteilt;
+  return geteilt;
+}
+
+/**
+ * ================================================================================================
+ * JOB 3563 — DER ABRUF FÜR EINE FLÄCHE, DIE IHREN LADE- UND FEHLERZUSTAND SELBST ZEIGEN MUSS.
+ * ================================================================================================
+ *
+ * Die Adminkarte („Demo-Erscheinungsbild", `pages/AdminDatenDetails.tsx`) hielt bis JOB 3563 einen
+ * EIGENEN Markenstand in ihrer Abfrage. Schaltete jemand anderswo um — zweiter Administrator,
+ * zweiter Tab —, zog die Seite ringsum nach und der Schalter daneben blieb stehen; sein nächster
+ * Klick schickte den alten `profil`-Wert mit und drehte die fremde Wahl still zurück (BEN, JOB 3511
+ * R2, `ben.md:31`). Sie bezieht ihren angezeigten Stand jetzt über `abonniereBranding` aus diesem
+ * Modul — und ihren ABRUF über diesen Griff, damit er in dieselbe eine Quelle mündet.
+ *
+ * UNTERSCHIED ZU `frischeMarke`: Ein Fehler wird WEITERGEREICHT. Die Fläche muss ihn zeigen dürfen
+ * („nicht abrufbar" mit „Erneut versuchen", `components/einstellungen/Abfragehuelle.tsx`); ein
+ * verschluckter Fehler wäre dort die Behauptung, der Stand sei bekannt. Der Hintergrundtakt darf
+ * ihn dagegen gerade NICHT zeigen — er hat keinen Adressaten und leert nichts (LEHREN §7).
+ *
+ * GLEICH ZU `frischeMarke`: derselbe Weg (`ladeBranding` samt 404-Unterscheidung), derselbe
+ * Monotonie-Riegel und derselbe Drosselzähler. `letzterAbrufMs` wird mitgeführt, weil die Zusage
+ * „höchstens ein Abruf je Minute" über ALLE Wege zusammen gilt: was diese Fläche gerade geholt hat,
+ * holt der nächste Taktschlag nicht noch einmal.
+ *
+ * BEWUSST OHNE EIGENE DROSSELUNG: Dieser Griff hängt an einem geöffneten Bedienort und an dessen
+ * Knopf „Erneut versuchen". Ein wegen der Minutenfrist übersprungener Abruf hieße dort: der Mensch
+ * drückt, und nichts geschieht.
+ *
+ * DASS ER TROTZDEM KEINEN ZWEITEN TAKT ERZEUGT, hat zwei Teile, und erst beide zusammen halten:
+ *
+ *   · NACH dem ersten Abruf entscheidet die AUFRUFSTELLE: `AdminDatenDetails.tsx` ruft ihn nur,
+ *     solange `aktuellesBranding()` noch `null` ist (`enabled: gemeldet === null`), und nie bei
+ *     Fokuswechsel (`refetchOnWindowFocus: false`). Hat das Modul einen Stand, holt die Fläche gar
+ *     nichts mehr — sie zeigt ihn. BENs Befund an Runde 1 (Korrekturpflicht 1) war genau das
+ *     Gegenteil: „ruft immer `ladeBranding()` auf; weder vorhandener Stand noch Minutenfrist
+ *     verhindern den Abruf." Dieser Riegel gehört an die Aufrufstelle und nicht hierher: hier säße
+ *     er auch vor dem Knopf „Erneut versuchen".
+ *   · WÄHREND des ersten Abrufs kann keine Aufrufstelle etwas entscheiden — das Modul weiß dort
+ *     noch nichts, und ein leerer Stand sieht von außen aus wie „es hat noch niemand geholt". Das
+ *     war BENs Befund an Runde 2. Deshalb geht der Abruf jetzt durch `laufendenAbrufTeilen`: läuft
+ *     schon einer, wird SEIN Versprechen zurückgegeben statt eines zweiten GET.
+ */
+export async function holeMarkeFuerFlaeche(): Promise<BrandingStand> {
+  const geholt = await laufendenAbrufTeilen();
+  // NICHT `geholt`, sondern der Stand des Moduls: hat eine gerade bestätigte Schaltung eine NEUERE
+  // Version, hat der Riegel diese Antwort eben verworfen — dann ist die neuere die Wahrheit, und
+  // die Fläche darf nicht die verworfene zu sehen bekommen. Nach `uebernimmWennNeuer` ist
+  // `aktuellerStand` nie `null` (entweder eben gesetzt, oder es lag schon einer vor); `?? geholt`
+  // steht nur da, damit der Typ ohne unerreichbaren Zweig auskommt.
+  return aktuellerStand ?? geholt;
+}
+
+/**
  * Einmal nachsehen, ob sich die Marke geändert hat.
  *
  * FÄLLT DER ABRUF AUS, PASSIERT NICHTS — der zuletzt bekannte Zustand bleibt stehen, es fliegt
@@ -229,42 +364,22 @@ export function uebernimmBranding(stand: BrandingStand): void {
  * Das ist dieselbe Regel wie in LEHREN 7: eine gescheiterte Hintergrund-Auffrischung leert nichts.
  */
 async function frischeMarke(erzwingen: boolean): Promise<void> {
-  if (laeuft) {
+  // Läuft schon einer, ist hier nichts zu tun: SEINE Antwort geht ohnehin durch denselben Riegel
+  // und meldet denselben Zuhörern. Der Hintergrundtakt hat — anders als die Fläche — keinen
+  // Adressaten, der auf ein Ergebnis wartet; er muss sich also nicht anhängen, sondern nur
+  // schweigen. (Bis Runde 2 hieß dieselbe Bedingung `laeuft`.)
+  if (laufenderAbruf !== null) {
     return;
   }
-  const jetzt = Date.now();
-  if (!erzwingen && jetzt - letzterAbrufMs < BRANDING_MINDESTABSTAND_MS) {
+  if (!erzwingen && Date.now() - letzterAbrufMs < BRANDING_MINDESTABSTAND_MS) {
     return;
   }
-  laeuft = true;
-  letzterAbrufMs = jetzt;
   try {
-    const stand = await ladeBranding();
-    // ================================================================================================
-    // NUR VORWÄRTS. BENs Befund an Runde 1 (Korrekturpflicht 2), gemessen und nicht vermutet:
-    // ================================================================================================
-    // Hier stand `stand.version !== letzteVersion` — also „jede ANDERE Version", auch eine ÄLTERE.
-    // Der Fall, den das kaputtmacht, ist keine Theorie und braucht keinen Fehler: Ein
-    // Hintergrundabruf startet, WÄHREND er läuft schaltet Pedi die Marke ein, sein `PUT` bestätigt
-    // Version 2 und die Marke steht — und danach löst der ältere `GET` mit Version 1 auf und dreht
-    // seine gerade bestätigte Schaltung wieder zurück. Zwei Antworten überholen einander; das ist
-    // im Netz der Normalfall und nicht die Ausnahme.
-    //
-    // `>` statt `!==` ist die ganze Abwehr: ein Stand, der ÄLTER ist als der zuletzt übernommene,
-    // trägt keine Neuigkeit und wird verworfen. `letzteVersion === null` ist der Start — die erste
-    // Antwort wird immer übernommen.
-    //
-    // WAS DAS BEWUSST NICHT KANN: Setzt ein Server seinen Zähler zurück (neu aufgesetzte Instanz),
-    // gilt sein kleinerer Stand erst nach einem Neuladen der Seite. Das ist der richtige Tausch —
-    // eine zurückgedrehte Schaltung sieht der Mensch sofort, ein neu aufgesetzter Server ist ein
-    // Neustart-Ereignis. Die Alternative (Zeitstempel statt Zähler) steht nicht im Vertrag.
-    if (letzteVersion === null || stand.version > letzteVersion) {
-      uebernimmBranding(stand);
-    }
+    // Der Riegel „nur vorwärts" und der Drosselzähler stehen seit Runde 3 in
+    // `laufendenAbrufTeilen` — gemeinsam mit der Fläche, damit es beide nur einmal gibt.
+    await laufendenAbrufTeilen();
   } catch {
     // Absicht: kein Zurücksetzen, keine Meldung. Siehe Kopfkommentar dieser Funktion.
-  } finally {
-    laeuft = false;
   }
 }
 
