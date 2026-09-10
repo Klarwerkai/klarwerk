@@ -61,6 +61,7 @@ import { type SpeechRec, diktatSprache, makeRec } from "../../lib/speechDictatio
 import { hasSpeechRecognition } from "../../lib/speechSupport";
 import type { TitelMitQuelle } from "../../lib/titelRangfolge";
 import { useAiBillable } from "../../lib/useAiBillable";
+import { AiAssistInstructions } from "../AiAssistBox";
 import { AiCostHint } from "../AiCostHint";
 import { AiGeneratedNotice } from "../AiGeneratedNotice";
 // JOB 3426: die EINE Entwurfsliste des Produkts (Suche, Sortierung, Löschen) — bis hierher nur im
@@ -150,6 +151,9 @@ export type ArbeitsraumFabrik = (args: {
 
 type Ansicht = "blatt" | ArbeitsraumModus;
 
+// Freie Anweisungen reisen unverändert mit, auch wenn der Mensch nach einem Fehler wiederholt.
+type AssistRequest = AssistAction | { instruction: string };
+
 /**
  * Die zuletzt versuchte Handlung (Auftrag §9) — das, was „Erneut versuchen" wiederholt.
  *
@@ -159,7 +163,7 @@ type Ansicht = "blatt" | ArbeitsraumModus;
  */
 type LetzteAktion =
   | { art: "laden" | "speichern" | "einreichen" | "struktur" }
-  | { art: "assist"; aktion: AssistAction };
+  | { art: "assist"; aktion: AssistRequest };
 
 function fehlerMeldung(err: unknown, rueckfall: string): string {
   if (err instanceof ApiError) {
@@ -392,7 +396,7 @@ export function Blatt({
   const [structureKeptRichBody, setStructureKeptRichBody] = useState(false);
   const [structureTitleAdopted, setStructureTitleAdopted] = useState(false);
   const [assistProposal, setAssistProposal] = useState<
-    (AssistResult & { action: AssistAction }) | null
+    (AssistResult & { action: AssistRequest }) | null
   >(null);
   const [assistErr, setAssistErr] = useState<string | null>(null);
   const [assistAccepted, setAssistAccepted] = useState(false);
@@ -934,17 +938,17 @@ export function Blatt({
   });
 
   const assist = useMutation({
-    mutationFn: (action: AssistAction) =>
+    mutationFn: (action: AssistRequest) =>
       endpoints.reasoner.assist(
         assistInput,
         locale,
-        t(assistActionInstructionKey(action)),
+        typeof action === "string" ? t(assistActionInstructionKey(action)) : action.instruction,
         // JOB 3353 A: dieselbe fehlende Kennung wie bei `structure` eine Ebene höher — und dies
         // ist der Aufruf, den Codex live gemessen hat (POST /api/reasoner, task assist, Payload
         // ohne draftId/koId). Begründung und Grenzen stehen dort.
         draftProvenance(confidentiality, undefined, activeDraftId ?? undefined),
       ),
-    onMutate: (action: AssistAction) => {
+    onMutate: (action: AssistRequest) => {
       // Die KONKRETE Handlung, nicht „KI": sie ist es, die wiederholt werden muss.
       setLetzteAktion({ art: "assist", aktion: action });
       setErr(null);
@@ -2040,6 +2044,16 @@ export function Blatt({
             {t(assistActionLabelKey(action))}
           </MenueEintrag>
         ))}
+        <MenueTrenner />
+        <MenueFlaeche>
+          <AiAssistInstructions
+            disabled={!canAssist}
+            onRun={(instruction) => {
+              setOffenesMenue(null);
+              assist.mutate({ instruction });
+            }}
+          />
+        </MenueFlaeche>
       </Menue>
 
       {/* Auch die rechte Hälfte bricht um, statt zu schieben — sie ist bei 390 px für sich allein
@@ -2862,7 +2876,10 @@ export function Blatt({
               ) : null}
               <p className="mt-1.5 text-[12px] leading-relaxed text-muted">
                 {t("fd.assistProposalCheck", {
-                  action: t(assistActionLabelKey(assistProposal.action)),
+                  action:
+                    typeof assistProposal.action === "string"
+                      ? t(assistActionLabelKey(assistProposal.action))
+                      : assistProposal.action.instruction,
                 })}
               </p>
               <p className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap text-[13px] leading-relaxed text-text">

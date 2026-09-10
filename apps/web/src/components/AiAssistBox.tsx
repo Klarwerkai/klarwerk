@@ -54,11 +54,6 @@ export function AiAssistBox({
   compact?: boolean;
 }): JSX.Element {
   const { t } = useTranslation();
-  // SCRUM-386: eigene KI-Funktionen der Instanz — nach den Werks-Aktionen, gleicher Fluss
-  // (Vorschau + bewusste Übernahme). Das ?-HelpTip zeigt die hinterlegte Anweisung offen an.
-  const presets = useAssistPresets();
-  const customPresets = presets.data ?? [];
-  const [free, setFree] = useState("");
   const [pending, setPending] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
   const [boxErr, setBoxErr] = useState<string | null>(null);
@@ -122,42 +117,9 @@ export function AiAssistBox({
             <HelpTip title={t(assistActionLabelKey(a))} body={t(assistActionHelpKey(a))} />
           </span>
         ))}
-        {/* SCRUM-386: Admin-Presets — optisch als „eigene" Funktionen markiert (gestrichelt). */}
-        {customPresets.map((p) => (
-          <span key={p.id} className="inline-flex items-center gap-0.5">
-            <button
-              type="button"
-              disabled={disabled}
-              onClick={() => void run(p.instruction)}
-              className="rounded-pill border border-dashed border-ai-dashed px-2.5 py-1 text-[12px] font-semibold text-muted hover:border-ink/30 hover:text-text disabled:opacity-50"
-            >
-              {p.name}
-            </button>
-            <HelpTip
-              title={p.name}
-              body={t("capture.ai.customHelp", { instruction: p.instruction })}
-            />
-          </span>
-        ))}
       </div>
       <AiUnavailableHint show={!assistAi.available} />
-      <div className="mt-2 flex flex-wrap items-center gap-2">
-        <input
-          value={free}
-          onChange={(e) => setFree(e.target.value)}
-          placeholder={t("capture.ai.freePlaceholder")}
-          aria-label={t("capture.ai.freeLabel")}
-          className="h-9 min-w-[12rem] flex-1 rounded-input border border-hairline bg-surface px-3 text-[13px] outline-none focus:border-ink/30"
-        />
-        <Button
-          variant="ghost"
-          disabled={disabled || free.trim().length === 0}
-          onClick={() => void run(free.trim())}
-        >
-          <Sparkles size={14} />
-          {t("capture.ai.run")}
-        </Button>
-      </div>
+      <AiAssistInstructions disabled={disabled} onRun={(instruction) => void run(instruction)} />
       {boxErr ? <p className="mt-2 text-[12px] text-trust-crit-text">{boxErr}</p> : null}
       {preview !== null ? (
         <div className="mt-2 rounded-btn border border-ai/30 bg-surface p-2.5">
@@ -209,6 +171,72 @@ export function AiAssistBox({
           ) : null}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+// JOB 3428: dieselben Vorlagen und dieselbe freie Eingabe für Arbeitsraum und Standardeditor.
+// Der Aufrufer besitzt Anfrage, Vorschau und Übernahme; hier lebt nur die noch ungesendete Anweisung.
+export function AiAssistInstructions({
+  disabled,
+  onRun,
+}: {
+  disabled: boolean;
+  onRun: (instruction: string) => void;
+}): JSX.Element {
+  const { t } = useTranslation();
+  const presets = useAssistPresets();
+  const [free, setFree] = useState("");
+
+  return (
+    <div className="mt-2">
+      {(presets.data ?? []).map((p) => (
+        <div key={p.id} className="mb-2">
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => onRun(p.instruction)}
+            className="rounded-pill border border-dashed border-ai-dashed px-2.5 py-1 text-[12px] font-semibold text-muted hover:border-ink/30 hover:text-text disabled:opacity-50"
+          >
+            {p.name}
+          </button>
+          <HelpTip
+            title={p.name}
+            body={t("capture.ai.customHelp", { instruction: p.instruction })}
+          />
+          <p className="mt-1 whitespace-pre-wrap break-words text-[11.5px] text-muted">
+            {t("capture.ai.customHelp", { instruction: p.instruction })}
+          </p>
+        </div>
+      ))}
+      {/*
+        KEIN Sammelfehler, wenn der Vorlagenabruf scheitert. Die Vorlagen sind eine Nebensache
+        dieser Fläche: fehlen sie, fehlen genau sie — die freie Anweisung und die fünf
+        Standardaktionen arbeiten weiter. Runde 1 schrieb hier `state.error` („Etwas ist
+        schiefgelaufen.") hin; dieser Satz behauptet einen Fehler der GANZEN Seite und machte
+        `tests/capture/job2684-d2-studio-mounted.test.tsx` und `…-d4-studio-dokumentweg-mounted…`
+        rot, die auf ihrem DRAFT_STALE-Weg genau diesen Satz ausschließen. Ein eigener, knapper Text
+        bräuchte einen neuen Schlüssel in `apps/web/src/i18n.ts` — außerhalb der Zielpfade dieses
+        Auftrags; der alte Arbeitsraum zeigt hier ebenfalls seit jeher nichts. Festgehalten in
+        `tests/ki-freie-anweisung/standardeditor-mounted.test.tsx` (F6).
+      */}
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <input
+          value={free}
+          onChange={(e) => setFree(e.target.value)}
+          placeholder={t("capture.ai.freePlaceholder")}
+          aria-label={t("capture.ai.freeLabel")}
+          className="h-9 min-w-0 flex-1 rounded-input border border-hairline bg-surface px-3 text-[13px] outline-none focus:border-ink/30"
+        />
+        <Button
+          variant="ghost"
+          disabled={disabled || free.trim().length === 0}
+          onClick={() => onRun(free.trim())}
+        >
+          <Sparkles size={14} />
+          {t("capture.ai.run")}
+        </Button>
+      </div>
     </div>
   );
 }

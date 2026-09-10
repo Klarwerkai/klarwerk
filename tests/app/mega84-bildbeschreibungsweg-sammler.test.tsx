@@ -1625,8 +1625,27 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // (kein `ANGEBOT_MUSTER`) und tragen keinen eigenen Titel (kein `documentTitle`-Prop) — sie
     // erscheinen nur in der Grundmenge. Die zwei Zahlen, an denen Stufe 2 wirklich hängt, bleiben
     // unverändert: `anbieter` 1 und `traeger` 2.
+    //
+    // JOB 3428 (KI-FREIE-ANWEISUNG): `komponenten` von 371 auf 372 NACHGEZOGEN — am eigenen Lauf
+    // dieses Arbeitsbaums gemessen (der Fall meldete `gemessen: 372 Komponenten`), nicht gerechnet.
+    // GENAU EIN Bauteil kommt hinzu, in `components/AiAssistBox.tsx`:
+    //
+    //     + `AiAssistInstructions` — die eigenen Vorlagen und die freie KI-Anweisung. Eigene
+    //       Komponente, weil sie seit diesem Auftrag ZWEI Flächen zeigen: der alte Arbeitsraum
+    //       (`AiAssistBox`) und das KI-Menü des Standardeditors (`erfassen/Blatt.tsx`). Ein zweites
+    //       Mal geschriebenes Vorlagenfeld wäre genau die zweite Vorlagenverwaltung, die der
+    //       Auftrag ausdrücklich verbietet.
+    //
+    // GEGENPROBE dazu, gemessen statt behauptet: mit der Deklaration kleingeschrieben
+    // (`aiAssistInstructions`) meldet dieser Fall wieder `gemessen: 371 Komponenten` —
+    // `alsKomponente` (oben, :453) verlangt einen Großbuchstaben am Namensanfang; die +1 ist damit
+    // genau dieses eine Bauteil und kein zweiter Fund, der sich hinter derselben Zahl versteckt.
+    // Für DIESEN Sammler ändert es nichts: es zeigt kein Bild, bietet keine Bildbeschreibung an
+    // (kein `ANGEBOT_MUSTER`) und trägt keinen eigenen Titel (kein `documentTitle`-Prop) — es
+    // erscheint nur in der Grundmenge. Die zwei Zahlen, an denen Stufe 2 wirklich hängt, bleiben
+    // unverändert: `anbieter` 1 und `traeger` 2.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 371,
+      komponenten: 372,
       anbieter: 1,
       traeger: 2,
     });
