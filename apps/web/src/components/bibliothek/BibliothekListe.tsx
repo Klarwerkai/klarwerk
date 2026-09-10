@@ -55,6 +55,36 @@ export interface BibGruppenkopf {
 export type BibListenPosten = BibZeile | BibGruppenkopf;
 
 // ==================================================================================================
+// JOB 3335 · UX-21 — WIE BREIT DIE LISTE IST, STEHT HIER. NUR HIER.
+// ==================================================================================================
+//
+// Bis zu diesem Auftrag hielt diese Datei die 380 px der Vorlage bedingungslos fest, und die Fläche
+// darüber überschrieb sie schmal per Nachfahren-Selektor auf die Marke dieser Liste — ein
+// Fremdgriff, dessen Kommentar selbst sagte, er sei nur der Weg, „ohne die Datei anzufassen".
+// Jetzt sagt die Fläche der Liste, in welcher LAGE sie steht, und die Liste kleidet sich selbst:
+//   spalte    → neben dem Bericht, 380 px, rechte Haarlinie (Desktop; die Vorlage, gemessen in
+//               `tests/design/zielbild-h4-bibliothek.test.ts` V1/D1)
+//   allein    → sie trägt die Fläche, volle Breite (Telefon; Tablet ohne gewählten Bericht)
+//   darueber  → das Lese-Tablet mit ausgeklappter Liste: 380 px als Schublade ÜBER dem Bericht,
+//               links, mit Schatten nach rechts, bis zum unteren Rand der Fläche (die gibt dafür
+//               `relative` und ihre feste Höhe, in der die Spur unten rollt) — und UNTER der
+//               haftenden Leiste des Berichts (`top-12` = deren Höhe `h-12`, `BibliothekFlaeche.tsx`),
+//               damit Rückweg und Schalter frei liegen und bedienbar bleiben. Der Bericht weicht
+//               nicht — sonst stünde er wieder in den 356 px von N-0044.
+// Die Fläche entscheidet, OB die Liste steht (`zeigeListe`); hier steht, WIE BREIT und WO.
+//
+// DREI FLACHE KONSTANTEN UND EINE ENTSCHEIDUNG DAZWISCHEN — nicht ein Nachschlagen `TABELLE[lage]`:
+// der Klassensammler (`tests/app/mega47-modale-flaechen-sammler.test.tsx`, JOB 1181) liest flache
+// Konstanten vollständig auf; offen bleibt allein die Wahl (dieselbe Bauform wie
+// `cx(STAND_ZEILE, … ? STAND_GESTOERT : STAND_RUHIG)`, JOB 3135). Ein berechneter Klassenname
+// wäre ihm ein dritter, stiller Zustand (Auflage aus JOB 3267).
+type BibListenLage = "spalte" | "allein" | "darueber";
+const LAGE_SPALTE = "w-[380px] shrink-0";
+const LAGE_ALLEIN = "w-full";
+const LAGE_DARUEBER =
+  "absolute bottom-0 left-0 top-12 z-20 w-[380px] shadow-[8px_0_24px_rgba(14,22,38,0.12)]";
+
+// ==================================================================================================
 // JOB 3362 · LESEVARIANTE-FLAECHEN — DER ZEILENTITEL STEHT IN DER LESESPRACHE.
 // ==================================================================================================
 //
@@ -136,6 +166,7 @@ export function BibliothekListe({
   gesamt,
   onNachladen,
   leerAktion,
+  lage,
 }: {
   q: string;
   onQ: (wert: string) => void;
@@ -166,6 +197,9 @@ export function BibliothekListe({
   onNachladen: () => void;
   // Ein Knopf im Leerzustand (Erfassen) — die Rolle entscheidet der Aufrufer.
   leerAktion: ReactNode;
+  // JOB 3335: die Lage auf der Fläche — s. `LAGE_KLASSE` oben. Der Aufrufer weiss, welches Band
+  // gilt; diese Datei weiss, wie breit sie darin ist.
+  lage: BibListenLage;
 }): JSX.Element {
   const { t } = useTranslation();
   const spur = useRef<HTMLDivElement | null>(null);
@@ -189,8 +223,15 @@ export function BibliothekListe({
 
   return (
     <div
+      // Die Kennung ist das Ziel von `aria-controls` am Schalter „Trefferliste" der Fläche
+      // (JOB 3335): der Schalter sagt damit, WELCHEN Bereich er ein- und ausklappt.
+      id="bib-liste"
       data-testid="bib-liste"
-      className="flex w-[380px] shrink-0 flex-col border-r border-hairline bg-surface"
+      data-lage={lage}
+      className={cx(
+        "flex flex-col border-r border-hairline bg-surface",
+        lage === "spalte" ? LAGE_SPALTE : lage === "allein" ? LAGE_ALLEIN : LAGE_DARUEBER,
+      )}
     >
       <div className="flex flex-col gap-2.5 px-4 pb-2.5 pt-4">
         {ortszeile}
@@ -259,7 +300,15 @@ export function BibliothekListe({
           der in derselben Lage „–" zeigt. Ohne den Fall ist hier nichts. */}
       {hinweis ? <div className="px-4">{hinweis}</div> : null}
 
-      <div ref={spur} onScroll={beiScroll} className="min-h-0 flex-1 overflow-y-auto">
+      {/* JOB 3335: die Marke trägt die Rollspur nach aussen — die Fläche merkt sich beim Einklappen
+          der Liste (Tablet) deren Rollstand und stellt ihn beim Ausklappen wieder her; dafür muss
+          sie das rollende Element finden, ohne seine Klassen zu kennen. */}
+      <div
+        ref={spur}
+        onScroll={beiScroll}
+        data-testid="bib-spur"
+        className="min-h-0 flex-1 overflow-y-auto"
+      >
         {/* Laden: keine Zeile, kein Text. Erst wenn etwas feststeht, steht hier etwas. */}
         {fehler ? (
           <div className="px-4 py-3">

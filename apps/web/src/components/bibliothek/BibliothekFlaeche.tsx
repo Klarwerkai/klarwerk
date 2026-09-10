@@ -1,5 +1,5 @@
 import { type UseQueryResult, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -90,7 +90,7 @@ import { useAuthorName } from "../../lib/useAuthorName";
 import { LIBRARY_SEARCH_DEBOUNCE_MS, useDebouncedValue } from "../../lib/useDebouncedValue";
 import { usePersistentEnum } from "../../lib/usePersistentValue";
 import { useReadiness } from "../../lib/useReadiness";
-import { useMediaQuery } from "../../shell/useMediaQuery";
+import { TABLET_LESE_QUERY, useMediaQuery } from "../../shell/useMediaQuery";
 import { DemoBanner } from "../DemoBanner";
 import { RoleLink } from "../RoleLink";
 import { cx } from "../ui";
@@ -184,9 +184,10 @@ const EINTRAG_PARAM = "eintrag";
 // DIE SCHWELLE, geometrisch und nicht gefühlt: unter 760 px bekommt der Bericht WENIGER Platz als
 // die 380 px breite Liste, die ihn nur findet — die Hauptsache wäre schmaler als das Verzeichnis.
 // Darum 760 und NICHT die Hausschwelle `NARROW_QUERY` (≤899 px, `shell/useMediaQuery.ts:35`, die
-// Schwelle des Schubfachs): bei 768 px (Tablet hochkant) bleibt es bei 380 + 388 px und damit bei
-// der heutigen Anordnung — genau die Breite, für die UX-21 den Tablet-Lesemodus mit einklappbarer
-// Trefferliste getrennt entwirft (Auftrag §10). Diese Lieferung nimmt ihm nichts vorweg.
+// Schwelle des Schubfachs): bei 768 px (Tablet hochkant) blieb es bei 380 + 388 px und damit bei
+// der damaligen Anordnung — genau die Breite, für die UX-21 den Tablet-Lesemodus mit einklappbarer
+// Trefferliste getrennt entwirft (Auftrag §10). Seit JOB 3335 trägt dieses Band (760–899 px,
+// `TABLET_LESE_QUERY`) den Lesemodus — s. den Block darunter; diese Schwelle bleibt unverändert.
 //
 // GELESEN WIRD DIE BREITE ÜBER `matchMedia` UND NICHT NUR ÜBER CSS (`useMediaQuery`, die EINE
 // Stelle im Haus, die `matchMedia` liest — `FacetFilter.tsx:43` und `Validation.tsx:162` gehen
@@ -196,6 +197,43 @@ const EINTRAG_PARAM = "eintrag";
 // (SSR, alte Umgebung), gilt „breit" — das Verhalten von heute.
 const SCHMAL_UNTER = 760;
 const SCHMAL_ABFRAGE = `(max-width: ${SCHMAL_UNTER - 1}px)`;
+
+// ==================================================================================================
+// JOB 3335 · UX-21 — DAS LESE-TABLET: DER BERICHT TRÄGT DIE FLÄCHE, DIE LISTE KOMMT AUF WUNSCH DAZU.
+// ==================================================================================================
+//
+// DER BEFUND (N-0044, Pedi am 06.09. auf dem iPad hochkant, 768 × 1024): „Liste ca. 380 px und
+// Text 356 px" nebeneinander — die Anordnung des Desktops auf einer Fläche, die dafür zu schmal
+// ist. Der Kommentar über `SCHMAL_UNTER` hat 768 ausdrücklich diesem Auftrag überlassen.
+//
+// DAS DRITTE BAND (`TABLET_LESE_QUERY`, `shell/useMediaQuery.ts`: 760–899 px, lückenlos an die
+// Telefonschwelle anschliessend) macht aus dem Nebeneinander ein Nacheinander, das der MENSCH
+// bestimmt: der Bericht trägt die Fläche in einem Leseraum, und ein beschrifteter Schalter in der
+// haftenden Leiste holt die Trefferliste als Schublade DARÜBER dazu — ohne den Bericht zu
+// schliessen, ohne Suchbegriff, Filter oder Rollstand zu verlieren. Heute klappt schmal die Breite
+// die Liste weg (der Rückweg SCHLIESST den Bericht); im Tablet-Band klappt sie der Mensch.
+//
+// WARUM SCHUBLADE UND NICHT „DER BERICHT WEICHT": 380 px Liste neben 736 px Inhaltsbreite liessen
+// dem Text wieder 356 px — genau die Quetsche des Befunds. Die Schublade liegt über dem linken
+// Teil des Berichts; wer die Liste offen hat, sucht gerade seine Trefferstelle, nicht die
+// Zeile im Text. Der Schalter steht rechts in der Leiste und bleibt dabei frei (gemessen in
+// `tests/ux21-tablet-lesemodus/tablet-chromium.test.ts` T2, `elementFromPoint`).
+//
+// DIE VORLIEBE IST EINE BEDIEN-WAHL, KEIN ZUSTAND DER DATEN: sie wohnt wie die Sortierung im
+// vorhandenen `usePersistentEnum` (`lib/usePersistentValue.ts`), nicht in der Adresse (ein
+// geteilter Link soll nicht festlegen, ob beim Empfänger die Liste offen ist) und nicht in einem
+// zweiten Speicher. Ein gespeicherter Wert ausserhalb der Menge fällt auf „zu" zurück — den
+// Leseraum, der der Zweck dieses Bandes ist.
+const TABLET_LISTE_STORAGE_KEY = "klarwerk.library.tabletListe";
+const TABLET_LISTE_WAHL = ["offen", "zu"] as const;
+// DER LESERAUM: 600 px Textbreite bei der Grundschrift des Berichts (15,5 px, `BibliothekLesen.tsx`)
+// sind ≈ 75–78 Zeichen je Zeile — die obere Kante des lesbaren Bereichs (45–75 Zeichen, Bringhurst;
+// darüber verliert das Auge den Zeilenanfang). Die 720 px des Desktops (Vorlage
+// `Bibliothek.dc.html`, ≈ 93 Zeichen) bleiben dort unverändert; die 356 px von N-0044 (≈ 46
+// Zeichen) waren nicht zu schmal für das Auge, sondern zu schmal für Bilder, Tabellen und die
+// Kopfzeile des Berichts. Dazu je 24 px Innenabstand (`px-6`), damit der Text nicht am Rand der
+// Inhaltsfläche klebt: 600 + 2 · 24 = 648 — die Zahl in `max-w-[648px]` unten. Tailwind liest
+// Klassen als Text, deshalb steht sie dort ausgeschrieben und hier begründet.
 
 const LIBRARY_FILTER_CONFIGS: readonly FacetGroupConfig[] = [
   { key: "maturity", labelKey: "lib.facet.maturity" },
@@ -235,6 +273,16 @@ export function BibliothekFlaeche({
   // JOB 3121 · UX-14: die eine Breitenfrage dieser Fläche. Sie entscheidet weiter unten NUR die
   // Anordnung — keinen Abruf, keinen Filter, keine Aussage über den Bestand.
   const schmal = useMediaQuery(SCHMAL_ABFRAGE);
+  // JOB 3335 · UX-21: das dritte Band (s. o.). Beide Abfragen laufen über denselben Haken — die
+  // EINE Stelle des Hauses, die `matchMedia` liest. Sie schliessen sich aus (759 | 760–899 | 900).
+  const tablet = useMediaQuery(TABLET_LESE_QUERY);
+  // Die Bedien-Vorliebe des Lese-Tablets: ob die Trefferliste neben dem offenen Bericht steht.
+  // Wirkt NUR im Tablet-Band (s. `zeigeListe`); auf Telefon und Desktop wird sie nicht gelesen.
+  const [tabletListe, setTabletListe] = usePersistentEnum(
+    TABLET_LISTE_STORAGE_KEY,
+    TABLET_LISTE_WAHL,
+    "zu",
+  );
   const { user } = useSession();
   const nameOf = useAuthorName();
   // JOB 3088 · Q1b: die Detailabfrage des gelesenen Eintrags wohnt in `BibliothekLesen`, nicht hier.
@@ -843,7 +891,13 @@ export function BibliothekFlaeche({
   // einem Telefon sofort in einem Bericht, den niemand gewählt hat — die Liste wäre nur über den
   // Rückweg erreichbar. Die Ableitung bleibt EINE (kein zweiter Auswahlspeicher, Lieferung 2), sie
   // kennt jetzt nur die Breite: schmal zählt allein die getroffene Wahl aus Pfad oder Adresse.
-  const vorwahl = schmal ? null : (sichtbareIds[0] ?? null);
+  //
+  // JOB 3335 · UX-21 — DASSELBE GILT AUF DEM LESE-TABLET, aus demselben Grund: dort trägt der
+  // Bericht die Fläche und die Liste ist (in der Vorgabe) eingeklappt. Eine Vorwahl stellte den
+  // Erstbesuch in einen Bericht, den niemand gewählt hat, mit weggeklappter Liste davor. Ohne Wahl
+  // trägt deshalb die Liste die Fläche allein — wie auf dem Telefon.
+  const einspaltig = schmal || tablet;
+  const vorwahl = einspaltig ? null : (sichtbareIds[0] ?? null);
   const gewaehltEffektiv = gewaehlt ?? vorwahl;
   // ================================================================================================
   // JOB 3121 · UX-14 — WELCHE FLÄCHE DIE BREITE TRÄGT. EINE BEDINGUNG, ZWEIMAL GELESEN.
@@ -852,14 +906,26 @@ export function BibliothekFlaeche({
   // was der Mensch gerade will: ohne Wahl die Liste, mit Wahl der Bericht. Was nicht gezeigt wird,
   // wird auch nicht gebaut — nur so ist es weder sichtbar noch mit der Tastatur erreichbar
   // (Lieferung 5). `zeigeListe` ist die EINE Ableitung dafür; `!zeigeListe` heißt überall unten
-  // „schmal, und der Bericht trägt die Fläche allein".
-  const zeigeListe = !schmal || gewaehltEffektiv === null;
-  const zeigeBericht = !schmal || gewaehltEffektiv !== null;
+  // „einspaltig, und der Bericht trägt die Fläche allein".
+  //
+  // JOB 3335 · UX-21 — DAS TABLET-BAND ALS DRITTE BEDINGUNG DERSELBEN ABLEITUNG. Mit Wahl trägt
+  // auch hier der Bericht die Fläche; die Liste steht zusätzlich da, wenn der Mensch sie dazugeholt
+  // hat (`tabletListe`). Kein zweiter Sichtbarkeitszustand: der Schalter unten liest `zeigeListe`
+  // für sein `aria-expanded` und sagt damit nur, was wirklich im Baum steht. Was er wegklappt,
+  // wird — wie schmal — nicht gebaut, nicht bloss versteckt.
+  const listeGewuenscht = tablet && tabletListe === "offen";
+  const zeigeListe = gewaehltEffektiv === null || !einspaltig || listeGewuenscht;
+  const zeigeBericht = gewaehltEffektiv !== null || !einspaltig;
+  // WIE die Liste steht, sagt ihr die Fläche, WIE BREIT sie dann ist, weiss `BibliothekListe.tsx`
+  // selbst (JOB 3335: der Nachfahren-Selektor dieser Datei auf die Listenbreite ist dort
+  // abgelöst). Allein → volle Breite; im Tablet-Band neben dem Bericht → Schublade darüber.
+  const listenLage = !zeigeBericht ? "allein" : tablet ? "darueber" : "spalte";
   // Ein FOKUSZIEL, kein Zustand: wechselt schmal die Fläche, verschwindet das gedrückte
   // Bedienelement aus dem DOM, und der Fokus fiele auf `<body>` — die Tastatur begänne wieder ganz
   // oben. Der Merker sagt nur, wohin er nach dem nächsten Zeichnen gehört; er entscheidet nichts.
   const wurzel = useRef<HTMLDivElement | null>(null);
-  const fokusZiel = useRef<"liste" | "bericht" | null>(null);
+  // JOB 3335: „schalter" ist der dritte Halt — nach dem Einklappen der Schublade auf dem Tablet.
+  const fokusZiel = useRef<"liste" | "bericht" | "schalter" | null>(null);
   const zuletztGelesen = useRef<string | null>(null);
   // ================================================================================================
   // JOB 3121 R2 · UX-14 — DIE LISTENPOSITION IST EINE ROLLPOSITION, KEINE ZEILE.
@@ -890,6 +956,15 @@ export function BibliothekFlaeche({
   // gerollt" (Erstaufruf, Deep-Link) — dann gibt es nichts wiederherzustellen, und behauptet wird
   // auch nichts.
   const listenRollstand = useRef<number | null>(null);
+  // JOB 3335 · UX-21 — WAS DIE LISTE ROLLT, HÄNGT AM BAND. Schmal rollt die Seite (s. o.); im
+  // Tablet-Band hat die Fläche ihre feste Höhe, und die Liste rollt in ihrer eigenen Spur
+  // (`BibliothekListe.tsx`, `bib-spur`, `overflow-y-auto`). Der MERKER ist derselbe
+  // (`listenRollstand`); nur das Element, an dem er abgelesen und wiederhergestellt wird, ist ein
+  // anderes. Gesucht wird die Spur über ihre Marke, nicht über ihre Klassen.
+  const listenRoller = (): HTMLElement | null =>
+    tablet
+      ? (wurzel.current?.querySelector<HTMLElement>('[data-testid="bib-spur"]') ?? null)
+      : rollbereich();
   useEffect(() => {
     const ziel = fokusZiel.current;
     const w = wurzel.current;
@@ -909,38 +984,68 @@ export function BibliothekFlaeche({
       w.querySelector<HTMLElement>('[data-testid="bib-zurueck"]')?.focus({ preventScroll: true });
       return;
     }
+    if (ziel === "schalter") {
+      // JOB 3335: die Schublade ist eben aus dem Baum gegangen — stand der Fokus auf einer Zeile
+      // darin, fiele er jetzt auf <body>. Und auch nach einem Fingertipp auf den Schalter selbst
+      // liegt er nicht sicher dort: Safari (iPad) fokussiert Knöpfe beim Tippen nicht. Deshalb
+      // ausdrücklich, nicht dem Browser überlassen.
+      w.querySelector<HTMLElement>('[data-testid="bib-liste-schalter"]')?.focus({
+        preventScroll: true,
+      });
+      return;
+    }
     // Zurück in die Liste: auf die Zeile des eben gelesenen Berichts. Ist sie nicht (mehr) da —
-    // weggefiltert, gelöscht —, nimmt der Fokus das Suchfeld, den ersten Halt der Liste. Die
-    // Marken stammen aus `BibliothekListe.tsx` (`bib-zeile`/`data-bib-id`:250-251, `bib-suche`:147);
-    // gelesen wird nur, nichts dort geändert (Auftrag §10).
+    // weggefiltert, gelöscht —, nimmt der Fokus einen anderen Halt der Liste. Die Marken stammen
+    // aus `BibliothekListe.tsx` (`bib-zeile`/`data-bib-id`, `bib-suche`, `bib-spur`).
+    //
+    // JOB 3335 RUNDE 2 (Befund BEN) — DIE ROLLPOSITION HÄNGT NICHT AN DER ZEILE. Runde 1 stellte
+    // den Rollstand nur wieder her, wenn die gelesene Zeile in der Liste stand; lag der offene
+    // Bericht außerhalb der gefilterten Treffer, war die Position nach Zu und Auf verloren
+    // (gemessen: 240 → 0). Jetzt gilt: ERST die Position, DANN der Fokus — und der Fokus auf
+    // einen SICHTBAREN Halt (N-0001/0035): die gelesene Zeile, wenn sie im Bild steht; sonst die
+    // erste Zeile im Bild; ohne Layout (jsdom) die gelesene Zeile oder das Suchfeld. Der Klemmfall
+    // aus JOB 3121 R2 bleibt: ist die Liste kürzer geworden und die Position nicht mehr
+    // erreichbar, rollt die gelesene Zeile ins Bild — so weit wie nötig.
     const stand = listenRollstand.current;
     listenRollstand.current = null;
     const zeilen = Array.from(w.querySelectorAll<HTMLElement>('[data-testid="bib-zeile"]'));
     const zeile = zeilen.find((z) => z.getAttribute("data-bib-id") === zuletztGelesen.current);
-    if (zeile !== undefined && roll !== null && stand !== null) {
-      zeile.focus({ preventScroll: true });
-      roll.scrollTop = stand;
-      // Die Liste kann inzwischen kürzer geworden sein (Auffrischung, Löschung durch andere): dann
-      // klemmt der Browser die Rollposition, und die fokussierte Zeile stünde außerhalb des Bildes —
-      // ein Fokus, den man nicht sieht (N-0001/0035). Nur DANN rollt die Zeile ins Bild, und nur so
-      // weit wie nötig. Der Regelfall bleibt unberührt.
-      const zr = zeile.getBoundingClientRect();
-      const rr = roll.getBoundingClientRect();
-      if (zr.bottom <= rr.top || zr.top >= rr.bottom) {
-        zeile.scrollIntoView({ block: "nearest" });
-      }
+    const suchfeld = w.querySelector<HTMLElement>('[data-testid="bib-suche"]');
+    const listenRoll = listenRoller();
+    if (listenRoll === null || stand === null) {
+      // Nichts wiederherzustellen (Erstaufruf, Deep-Link, kein Rollbereich): der Weg von JOB 3121.
+      (zeile ?? suchfeld)?.focus();
       return;
     }
-    (zeile ?? w.querySelector<HTMLElement>('[data-testid="bib-suche"]'))?.focus();
+    listenRoll.scrollTop = stand;
+    const rr = listenRoll.getBoundingClientRect();
+    const imBild = (el: HTMLElement): boolean => {
+      const r = el.getBoundingClientRect();
+      return rr.height > 0 && r.bottom > rr.top && r.top < rr.bottom;
+    };
+    if (zeile !== undefined && listenRoll.scrollTop !== stand) {
+      // Geklemmt: die Liste ist kürzer geworden (Auffrischung, Löschung durch andere). Ohne
+      // Layout (jsdom) gibt es kein `scrollIntoView` — und auch nichts ins Bild zu rollen.
+      zeile.focus({ preventScroll: true });
+      zeile.scrollIntoView?.({ block: "nearest" });
+      return;
+    }
+    const halt =
+      zeile !== undefined && (rr.height === 0 || imBild(zeile))
+        ? zeile
+        : (zeilen.find(imBild) ?? zeile ?? suchfeld);
+    halt?.focus({ preventScroll: true });
   });
   const waehle = (id: string): void => {
-    if (schmal) {
+    if (schmal || (tablet && !listeGewuenscht)) {
       // Schmal tritt der Bericht AN DIE STELLE der Liste — der Fokus geht mit, auf seinen ersten
       // Halt (den Rückweg). Breit bleibt er, wo er ist: dort wechselt nichts den Platz.
+      // JOB 3335: auf dem Lese-Tablet gilt dasselbe, sobald die Liste mit der Wahl verschwindet
+      // (Vorliebe „zu"); bleibt sie als Schublade stehen, bleibt auch der Fokus auf der Zeile.
       fokusZiel.current = "bericht";
       // Und hier, VOR dem Verschwinden der Liste, ist der einzige Augenblick, in dem ihre
       // Rollposition noch abzulesen ist: gleich zeigt derselbe Rollbereich den Bericht.
-      listenRollstand.current = rollbereich()?.scrollTop ?? null;
+      listenRollstand.current = listenRoller()?.scrollTop ?? null;
     }
     if (vorgewaehlt === undefined) {
       setParams(
@@ -994,6 +1099,28 @@ export function BibliothekFlaeche({
       },
       { replace: true },
     );
+  };
+  // ================================================================================================
+  // JOB 3335 · UX-21 — DER SCHALTER „TREFFERLISTE": ER ÄNDERT DIE SICHTBARKEIT DER LISTE, SONST NICHTS.
+  // ================================================================================================
+  // Er fasst weder `gewaehltEffektiv` noch die Adresse an (`EINTRAG_PARAM` bleibt), stösst keinen
+  // Abruf an und setzt `windowLimit` nicht zurück: Suchbegriff, Facetten, Zeitraum, Umschalter,
+  // Geltungsbereich und die Rollstellung der Liste überleben jedes Ein- und Ausklappen. Der Fokus
+  // wandert über den vorhandenen Merker `fokusZiel`: nach dem Ausklappen auf die Trefferstelle (die
+  // Zeile des offenen Berichts, sonst das Suchfeld — derselbe Zweig wie beim Rückweg), nach dem
+  // Einklappen zurück auf den Schalter (s. den Zweig „schalter" im Fokuseffekt). Der Rollstand der
+  // Liste wird beim Einklappen abgelesen (gleich ist die Spur weg) und über denselben Merker
+  // `listenRollstand` beim Ausklappen wiederhergestellt — kein zweiter.
+  const listeUmschalten = (): void => {
+    if (listeGewuenscht) {
+      listenRollstand.current = listenRoller()?.scrollTop ?? null;
+      fokusZiel.current = "schalter";
+      setTabletListe("zu");
+      return;
+    }
+    zuletztGelesen.current = gewaehltEffektiv;
+    fokusZiel.current = "liste";
+    setTabletListe("offen");
   };
   const trefferFelder: readonly MatchField[] =
     win.visible.find((i) => i.ko.id === gewaehltEffektiv)?.matches ?? [];
@@ -1097,7 +1224,9 @@ export function BibliothekFlaeche({
   // dem Telefon nicht sieht, ist keiner (Auftrag §9) — dann trägt ihn der Lesebereich. Zwei Knoten
   // nebeneinander entstehen nie: `zeigeListe` entscheidet, welcher der beiden Orte ihn bekommt, und
   // `hinweisSchonGesagt` unten bleibt unverändert an `standQuelle` — der Satz steht so oder so
-  // genau einmal auf der Fläche.
+  // genau einmal auf der Fläche. JOB 3335: im Tablet-Band gilt dieselbe Weiche mit jedem Klappen —
+  // Schublade offen → an der Liste, zu → am Bericht; nie zwei, nie null
+  // (`tests/ux21-tablet-lesemodus/tablet-lesemodus-mounted.test.tsx` R9).
   const hinweisKnoten = standQuelle ? (
     <>
       <AuffrischungHinweis query={standQuelle} />
@@ -1123,11 +1252,14 @@ export function BibliothekFlaeche({
             // breiten Kopfband und zwänge den Bericht auf dem Telefon in einen zweiten Rollbereich
             // INNERHALB der ohnehin rollenden Inhaltsfläche (`AppShell.tsx:102`, `overflow-y-auto`)
             // — genau die Falle aus Auftrag §6a. Die Mindesthöhe bleibt, damit die leere Fläche
-            // nicht zusammenfällt. `w-full` an der Liste ist der einzige Weg, ihre festen 380 px
-            // (`BibliothekListe.tsx:128`) auf 320 px unterzubringen, ohne die Datei anzufassen, die
-            // nicht Zielpfad ist (§4/§10) — derselbe Griff wie bei den Zustandsankern unten.
-            "min-h-[calc(100vh-12rem)] flex-col [&_[data-testid=bib-liste]]:w-full"
+            // nicht zusammenfällt. Die Breite der Liste steht seit JOB 3335 in
+            // `BibliothekListe.tsx` selbst (`lage`), nicht mehr als Fremdgriff hier.
+            "min-h-[calc(100vh-12rem)] flex-col"
           : "h-[calc(100vh-12rem)] min-h-[30rem]",
+        // JOB 3335 · UX-21: im Tablet-Band bleibt die feste Höhe des Desktops (768 lief bis hierher
+        // schon so, und die Schublade braucht eine Höhe, in der ihre Spur rollt). `relative` ist
+        // der Bezug der Schublade (`absolute inset-y-0 left-0`, `BibliothekListe.tsx`).
+        tablet ? "relative" : "",
       )}
     >
       {/* ==========================================================================================
@@ -1156,6 +1288,7 @@ export function BibliothekFlaeche({
       </div>
       {zeigeListe ? (
         <BibliothekListe
+          lage={listenLage}
           q={q}
           onQ={(wert) => {
             resetWindow();
@@ -1428,7 +1561,7 @@ export function BibliothekFlaeche({
                     </MenueUntermenue>
                     <MenueZeile>
                       {/* /import verlangt admin UND Stufe 2 — die gesperrte Fassung bleibt ein Wort,
-                        kein Weg (mega70 B). */}
+                          kein Weg (mega70 B). */}
                       <RoleLink to="/import" className="block w-full" testId="bib-import">
                         {() => t("lib.reimport")}
                       </RoleLink>
@@ -1511,12 +1644,12 @@ export function BibliothekFlaeche({
                       ))}
                     </MenueUntermenue>
                     {/* Der Geltungsbereich steht NICHT hier: er ist kein Filter, sondern der
-                      Bestand, auf den die Filter erst wirken. Sein Ort ist die Ortszeile über dem
-                      Suchfeld (`library-scope-bar`, oben) — ein zweiter Ort für dieselbe Sache
-                      wäre genau die Doppelung, die dieser Umbau abschafft. */}
+                        Bestand, auf den die Filter erst wirken. Sein Ort ist die Ortszeile über dem
+                        Suchfeld (`library-scope-bar`, oben) — ein zweiter Ort für dieselbe Sache
+                        wäre genau die Doppelung, die dieser Umbau abschafft. */}
                     <MenueTrenner />
                     {/* Jede Facette ein Untermenü — dieselbe Logik, dieselben Kontext-Zähler und
-                      dasselbe ehrliche Ausgrauen wie in der abgelösten Schiene. */}
+                        dasselbe ehrliche Ausgrauen wie in der abgelösten Schiene. */}
                     {groups
                       .filter((g) => g.key !== BEREICH_KEY)
                       .map((g) => {
@@ -1610,21 +1743,43 @@ export function BibliothekFlaeche({
             schmal ? "w-full" : "overflow-y-auto",
           )}
         >
-          <div className={cx("flex min-w-0 flex-col", schmal ? "w-full" : "")}>
+          <div
+            className={cx(
+              "flex min-w-0 flex-col",
+              schmal ? "w-full" : "",
+              // JOB 3335 · UX-21 — DER LESERAUM des Tablets: Innenabstand und Zeilenlängengrenze
+              // (600 px Text + 2 · 24 px, Begründung bei `TABLET_LISTE_WAHL` oben). `w-full` bis
+              // zur Grenze, dann hält `justify-center` des Rahmens die Spalte in der Mitte. Ohne
+              // beides lief der Text randlos über die Inhaltsbreite.
+              tablet ? "w-full max-w-[648px] px-6" : "",
+            )}
+          >
             {/* ======================================================================================
-              JOB 3121 · UX-14 — DER RÜCKWEG. Er steht NUR da, wo er etwas bedeutet: schmal, mit
-              gelesenem Bericht. Breit ist die Liste nie weg, ein Rückweg wäre dort ein Knopf ins
-              Nichts (und drängte sich zwischen die beiden Spalten). Er haftet oben, damit er auch
-              nach dem Rollen durch einen langen Bericht noch da ist.
+              JOB 3121 · UX-14 — DER RÜCKWEG. Er steht NUR da, wo er etwas bedeutet: einspaltig, mit
+              gelesenem Bericht (Telefon; Lese-Tablet, s. u.). Breit ist die Liste nie weg, ein
+              Rückweg wäre dort ein Knopf ins Nichts (und drängte sich zwischen die beiden Spalten).
+              Er haftet oben, damit er auch nach dem Rollen durch einen langen Bericht noch da ist.
 
               KEIN NEUER ÜBERSETZUNGSSCHLÜSSEL (Auftrag §4, dieselbe Regel wie beim Wiederholknopf
               der Liste): der Satz kommt aus dem vorhandenen `nb.back` („Zurück zu „{{title}}"",
               de/en/nl) mit dem vorhandenen Namen der Fläche aus `nav.library`. Er ist damit in
               allen drei Sprachen übersetzt und nennt das Ziel — was ein blosses „Zurück" nicht tut.
               Die genauere Beschriftung („Zurück zur Trefferliste") bräuchte `i18n.ts`, und die
-              Datei ist nicht Zielpfad; sie ist als REST gemeldet. */}
-            {zeigeListe ? null : (
-              <div className="sticky top-0 z-10 bg-page pb-2 pt-3">
+              Datei ist nicht Zielpfad; sie ist als REST gemeldet.
+
+              JOB 3335 · UX-21 — DIESELBE LEISTE TRÄGT IM TABLET-BAND DEN SCHALTER „TREFFERLISTE".
+              Die Leiste hat eine feste Höhe (`h-12`): die Schublade beginnt genau darunter
+              (`top-12` in `LAGE_KLASSE`, `BibliothekListe.tsx`), damit Rückweg UND Schalter bei offener
+              Liste frei liegen und bedienbar bleiben — kein Bedienelement unter einem Überzug,
+              kein unsichtbarer Fokus (N-0001/0035). Der Rückweg bleibt auch dann stehen: er
+              schliesst den Bericht, und das ist mit offener Liste weiter ein Weg. Der Schalter
+              ist ein echter <button> mit `aria-expanded` auf den Listenbereich (`aria-controls`
+              nur, solange der im Baum steht — eine Kennung ins Leere behauptete einen Bereich,
+              den es nicht gibt) und einer Beschriftung, die den Zustand nennt. Telefon und
+              Desktop bekommen ihn NICHT: dort bedeutet er nichts (dieselbe Begründung wie beim
+              Rückweg). */}
+            {einspaltig ? (
+              <div className="sticky top-0 z-10 flex h-12 items-center justify-between gap-2 bg-page">
                 <button
                   type="button"
                   data-testid="bib-zurueck"
@@ -1634,8 +1789,29 @@ export function BibliothekFlaeche({
                   <ArrowLeft size={15} aria-hidden className="shrink-0" />
                   {t("nb.back", { title: t("nav.library") })}
                 </button>
+                {tablet ? (
+                  <button
+                    type="button"
+                    data-testid="bib-liste-schalter"
+                    aria-expanded={zeigeListe}
+                    aria-controls={zeigeListe ? "bib-liste" : undefined}
+                    onClick={listeUmschalten}
+                    className="ml-auto inline-flex items-center gap-1.5 rounded-btn border border-hairline bg-surface px-2.5 py-1 text-[12.5px] font-semibold text-text hover:bg-hairline-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+                  >
+                    {zeigeListe ? (
+                      <PanelLeftClose size={15} aria-hidden className="shrink-0" />
+                    ) : (
+                      <PanelLeftOpen size={15} aria-hidden className="shrink-0" />
+                    )}
+                    {t(
+                      zeigeListe
+                        ? "lib.lesemodus.listeAusblenden"
+                        : "lib.lesemodus.listeEinblenden",
+                    )}
+                  </button>
+                ) : null}
               </div>
-            )}
+            ) : null}
             {/* Der Auffrischungssatz gehört auf die Fläche, die gerade da ist — s. `hinweisKnoten`. */}
             {zeigeListe ? null : hinweisKnoten}
             {/* SCRUM-291: Demo-/Pilotpfad bleibt auf der Zielseite wiedererkennbar (nur ?demo=stage1). */}

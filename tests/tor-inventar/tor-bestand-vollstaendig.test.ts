@@ -210,6 +210,14 @@ describe("JOB 3131 T2 · der Bestand ueberlebt die Aufteilung in zwei Laeufe", (
     expect(holeRest()).toContain(
       "tests/ux26-herkunft-belege/herkunft-belege-verstaendlich.test.tsx",
     );
+    // JOB 3335 (UX-21): wieder ein NEUES Verzeichnis (`tests/ux21-tablet-lesemodus/`) mit einer
+    // `.tsx`-Datei OHNE JSX (jsdom, `createElement`, kein Chromium) — sie trägt den einzigen Beleg
+    // dafür, dass der Schalter „Trefferliste" des Lese-Tablets die Liste ein- und ausklappt, ohne
+    // den Bericht zu schliessen. Die Chromium-Messung daneben fährt über `h4-harness` und gehört
+    // in die serielle Browser-Gruppe; fiele eine von beiden still aus beiden Läufen, bliebe der
+    // Befund N-0044 ungedeckt.
+    expect(holeRest()).toContain("tests/ux21-tablet-lesemodus/tablet-lesemodus-mounted.test.tsx");
+    expect(holeBrowser()).toContain("tests/ux21-tablet-lesemodus/tablet-chromium.test.ts");
   });
 
   it("V4 · der Verzeichnisgang der Konfiguration sieht denselben Bestand wie der Collector", () => {

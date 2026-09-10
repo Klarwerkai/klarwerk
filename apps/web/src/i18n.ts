@@ -3667,6 +3667,10 @@ const de = {
   "lib.liste.fehler": "Die Liste ließ sich nicht laden.",
   "lib.liste.erneut": "Erneut versuchen",
   "lib.liste.erfassen": "Erfassen",
+  // JOB 3335 · UX-21: der Schalter „Trefferliste" des Lese-Tablets (760–899 px). Die Beschriftung
+  // nennt den ZUSTAND, den ein Klick herstellt — kein Symbol allein, kein Erklärsatz (H4).
+  "lib.lesemodus.listeEinblenden": "Trefferliste einblenden",
+  "lib.lesemodus.listeAusblenden": "Trefferliste ausblenden",
   "lib.lesen.mehr": "Mehr",
   "lib.lesen.bilder_one": "{{count}} Bild",
   "lib.lesen.bilder_other": "{{count}} Bilder",
@@ -8881,6 +8885,9 @@ const en: typeof de = {
   "lib.liste.fehler": "The list could not be loaded.",
   "lib.liste.erneut": "Try again",
   "lib.liste.erfassen": "Capture",
+  // JOB 3335 · UX-21 — see the German entry.
+  "lib.lesemodus.listeEinblenden": "Show result list",
+  "lib.lesemodus.listeAusblenden": "Hide result list",
   "lib.lesen.mehr": "More",
   "lib.lesen.bilder_one": "{{count}} image",
   "lib.lesen.bilder_other": "{{count}} images",
@@ -13733,6 +13740,9 @@ const nl: typeof de = {
   "lib.liste.fehler": "De lijst kon niet worden geladen.",
   "lib.liste.erneut": "Opnieuw proberen",
   "lib.liste.erfassen": "Vastleggen",
+  // JOB 3335 · UX-21 — zie de Duitse regel.
+  "lib.lesemodus.listeEinblenden": "Resultatenlijst tonen",
+  "lib.lesemodus.listeAusblenden": "Resultatenlijst verbergen",
   "lib.lesen.mehr": "Meer",
   "lib.lesen.bilder_one": "{{count}} afbeelding",
   "lib.lesen.bilder_other": "{{count}} afbeeldingen",

@@ -3868,8 +3868,28 @@ describe("JOB 1181 · Klassenbindungen: aufgelöst oder gemeldet, kein dritter Z
     // KEIN VORBEISCHREIBEN: nichts wurde in ein Attributobjekt oder ein blosses `className="…"`
     // geschoben, um dem Sammler auszuweichen — die Erhaltungszusage oben (aufgelöst + offen ==
     // alle) hält das zusammen.
+    //
+    // KONFLIKTRUNDE 1 (JOB 3335 · UX-21) NACH DEM REBASE auf JOB 3420/UX-10b: von 216 auf 217.
+    // GENAU EINE Bindung kommt dazu, von derselben Bauform wie `cx(STAND_ZEILE, … ? STAND_GESTOERT
+    // : STAND_RUHIG)` aus JOB 3135 — flache Konstanten, und offen bleibt allein die Entscheidung
+    // dazwischen. Gemessen an diesem Arbeitsbaum nach der Konfliktauflösung, nicht gerechnet:
+    //
+    //     + components/bibliothek/BibliothekListe.tsx — `cx("flex flex-col border-r …",
+    //           lage === "spalte" ? LAGE_SPALTE : lage === "allein" ? LAGE_ALLEIN : LAGE_DARUEBER)`
+    //       (die LAGE der Trefferliste: Spalte am Desktop · allein auf Telefon und Tablet ohne
+    //        Bericht · Schublade über dem Bericht auf dem Lese-Tablet)
+    //
+    // Sie LÖST den Fremdgriff der Fläche ab (`[&_[data-testid=bib-liste]]:w-full` in der
+    // Anordnungs-Bindung von `BibliothekFlaeche.tsx`, JOB 3121) — dieser stand in einem Zweig der
+    // schon gezählten Bindung, also fällt dort nichts heraus; die Breite der Liste hat jetzt genau
+    // EINEN Ort. Die drei Bindungen aus JOB 3121 bleiben (zwei davon mit einem zusätzlichen
+    // `tablet`-Zweig im selben Ausdruck, also keine zweite Bindung). WARUM NICHT AUFLÖSBAR
+    // GESCHRIEBEN (Auflage aus JOB 3267): ein berechneter Klassenname (`TABELLE[lage]`) ist bewusst
+    // NICHT gewählt; die drei Ketten sind flache Konstanten und werden vom Sammler gelesen — offen
+    // bleibt allein die Wahl, und die gehört an das eine Wurzelelement der Liste, nicht in drei
+    // Abschriften desselben Markups. Keine Bindung ist weggefallen.
     expect(UNAUFGELOEST.length, "es gibt heute unauflösbare Bindungen — das ist der Befund").toBe(
-      216,
+      217,
     );
     for (const b of UNAUFGELOEST) {
       expect(b.datei, "Meldung ohne Datei").toMatch(/^apps\/web\/src\/.+\.tsx?$/);
