@@ -1169,8 +1169,89 @@ const de = {
   "adm.ai.testOk": "Verbindung ok — {{provider}} hat geantwortet. Der Schlüssel funktioniert.",
   "adm.ai.testLocal": "Lokalen LLM testen",
   "adm.ai.testLocalOk": "Lokaler LLM hat geantwortet ({{provider}}).",
-  "adm.ai.testFail":
-    "Test fehlgeschlagen: {{detail}} Tipp: Schlüssel im Start-Dialog bzw. Schlüsselbund (Service Klarwerk, Account ANTHROPIC_API_KEY) erneuern, dann App neu starten.",
+  // ==============================================================================================
+  // JOB 3420 (UX-10b) — DER PAUSCHALE SCHLÜSSELTIPP IST ERSETZT, NICHT ERGÄNZT.
+  // ==============================================================================================
+  //
+  // HIER STAND: „Test fehlgeschlagen: {{detail}} Tipp: Schlüssel im Start-Dialog bzw. Schlüsselbund
+  // (Service Klarwerk, Account ANTHROPIC_API_KEY) erneuern, dann App neu starten." — angehängt an
+  // JEDES Scheitern, also auch an ein 400 von ChatGPT (bei dem ein neuer Schlüssel nichts ändert),
+  // an den eigenen lokalen LLM und an eine Anfrage, die KLARWERK gar nicht erst erreichte.
+  //
+  // `adm.ai.testFail` trägt jetzt nur noch den NEUTRALEN RAHMEN mit der Rohmeldung. Ursache und Rat
+  // kommen aus den `adm.ai.befund.*`/`adm.ai.rat.*`-Schlüsseln unten, ausgewählt von der EINEN
+  // Ableitung `apps/web/src/lib/kiTestBefund.ts` aus dem, was der Server GEMESSEN hat. Der
+  // Kontoname steht nur noch im Rat des GEPRÜFTEN Anbieters (`adm.ai.rat.zugangKonto.*`, unten),
+  // nie mehr im allgemeinen Fehlertext (Wächter:
+  // `tests/ki-fehlerhilfe/kein-pauschaler-schluesseltipp-im-text.test.ts`).
+  "adm.ai.testFail": "Test fehlgeschlagen: {{detail}}",
+  "adm.ai.wiederholen": "Test wiederholen",
+  // JOB 3420 Runde 2: läuft eine Wiederholung, bleibt der zuletzt gemessene Befund stehen — aber
+  // ausdrücklich als der ÄLTERE, nie als der aktuelle (Auftrag §9).
+  "adm.ai.befund.aelter": "Älterer Befund von {{zeit}} · eine neue Prüfung läuft.",
+  "adm.ai.befund.aelterOhneZeit": "Älterer Befund · eine neue Prüfung läuft.",
+  "adm.ai.befund.zitat": "Begründung des Anbieters (wörtlich): „{{grund}}“",
+  "adm.ai.befund.zugang":
+    "Der Anbieter hat den Zugang abgelehnt (HTTP {{status}}) — die hinterlegten Zugangsdaten wurden nicht anerkannt.",
+  "adm.ai.befund.kontingent":
+    "Der Anbieter hat wegen Kontingent oder Anfragerate abgewiesen (HTTP 429).",
+  "adm.ai.befund.abgelehnt":
+    "Der Anbieter hat die Anfrage abgelehnt (HTTP 400) — beanstandet wurde die Anfrage selbst, nicht der Zugang.",
+  "adm.ai.befund.nichtErreichbar":
+    "Der Anbieter war nicht erreichbar: Netzfehler oder Störung auf seiner Seite.",
+  "adm.ai.befund.zeitlimit": "Das Zeitlimit lief ab, bevor der Anbieter geantwortet hat.",
+  "adm.ai.befund.unbrauchbar":
+    "Der Anbieter hat geantwortet, aber ohne brauchbaren Inhalt (leer oder abgeschnitten).",
+  "adm.ai.befund.unbestimmt":
+    "Grund nicht eingeordnet — dieser Fehler ließ sich keiner gemessenen Ursache zuordnen.",
+  "adm.ai.befund.anfrage":
+    "Die Anfrage an KLARWERK kam nicht durch — es liegt überhaupt kein Prüfergebnis vor.",
+  "adm.ai.befund.lokal.zugang": "Der eigene LLM-Server hat den Zugang abgelehnt (HTTP {{status}}).",
+  "adm.ai.befund.lokal.kontingent":
+    "Der eigene LLM-Server hat wegen Auslastung abgewiesen (HTTP 429).",
+  "adm.ai.befund.lokal.abgelehnt":
+    "Der eigene LLM-Server hat die Anfrage abgelehnt (HTTP 400) — beanstandet wurde die Anfrage selbst.",
+  "adm.ai.befund.lokal.nichtErreichbar":
+    "Der eigene LLM-Server war nicht erreichbar: Tunnel oder Server aus, oder ein Netzfehler dazwischen.",
+  "adm.ai.befund.lokal.zeitlimit":
+    "Das Zeitlimit lief ab, bevor der eigene LLM-Server geantwortet hat.",
+  "adm.ai.befund.lokal.unbrauchbar":
+    "Der eigene LLM-Server hat geantwortet, aber ohne brauchbaren Inhalt.",
+  "adm.ai.befund.lokal.unbestimmt":
+    "Grund nicht eingeordnet — dieser Fehler des eigenen LLM-Servers ließ sich keiner gemessenen Ursache zuordnen.",
+  "adm.ai.rat.zugang":
+    "Nächster Schritt: die hinterlegten Zugangsdaten dieses Anbieters erneuern und die App neu starten.",
+  // JOB 3420: je Anbieter ein eigener Satz. Der KONTONAME steht hier als Fließtext und NICHT als
+  // Zeichenkette in `kiTestBefund.ts` — `tests/security/egress-chokepoint.test.ts:31-35` verbietet
+  // die Code-Form eines Credential-Namens ausserhalb der beiden Chokepoint-Dateien und nimmt genau
+  // diesen i18n-Fall aus. Gewählt wird der Schlüssel aus dem GEMESSENEN `anbieter`; ohne Anbieter
+  // greift `adm.ai.rat.zugang` ohne jeden Kontonamen.
+  "adm.ai.rat.zugangKonto.openai":
+    "Nächster Schritt: den Schlüssel im Start-Dialog bzw. Schlüsselbund (Service Klarwerk, Konto OPENAI_API_KEY) erneuern, dann App neu starten.",
+  "adm.ai.rat.zugangKonto.anthropic":
+    "Nächster Schritt: den Schlüssel im Start-Dialog bzw. Schlüsselbund (Service Klarwerk, Konto ANTHROPIC_API_KEY) erneuern, dann App neu starten.",
+  "adm.ai.rat.kontingent":
+    "Nächster Schritt: später erneut testen. Ein anderer Schlüssel ändert daran nichts.",
+  "adm.ai.rat.abgelehnt":
+    "Nächster Schritt: Modell- und Parameterwahl prüfen. Ein neuer Schlüssel hilft in dieser Lage nicht.",
+  "adm.ai.rat.nichtErreichbar":
+    "Nächster Schritt: noch einmal testen; hält es an, liegt die Störung beim Anbieter oder im Netz.",
+  "adm.ai.rat.zeitlimit":
+    "Nächster Schritt: den Test erneut starten; bleibt es dabei, Modellgröße und Auslastung prüfen.",
+  "adm.ai.rat.unbrauchbar": "Nächster Schritt: erneut testen und die Modellwahl prüfen.",
+  "adm.ai.rat.anfrage": "Nächster Schritt: Verbindung prüfen und die Prüfung erneut anstoßen.",
+  "adm.ai.rat.lokal.zugang":
+    "Nächster Schritt: Adresse und Zugangsdaten des eigenen LLM-Servers prüfen (KLARWERK_LOCAL_LLM_URL/_MODEL).",
+  "adm.ai.rat.lokal.kontingent":
+    "Nächster Schritt: später erneut testen — der eigene LLM-Server ist gerade ausgelastet.",
+  "adm.ai.rat.lokal.abgelehnt":
+    "Nächster Schritt: Modellnamen und Parameter des eigenen LLM-Servers prüfen.",
+  "adm.ai.rat.lokal.nichtErreichbar":
+    "Nächster Schritt: Tunnel und eigenen LLM-Server prüfen, danach erneut testen.",
+  "adm.ai.rat.lokal.zeitlimit":
+    "Nächster Schritt: erneut testen; antwortet der eigene LLM-Server dauerhaft zu langsam, Modell oder Hardware prüfen.",
+  "adm.ai.rat.lokal.unbrauchbar":
+    "Nächster Schritt: erneut testen und den Modellnamen des eigenen LLM-Servers prüfen.",
   "adm.ai.global": "Global (Standard für alle Einsätze)",
   "adm.ai.choice.inherit": "— wie global —",
   "adm.ai.choice.auto": "Auto (Modell wenn verfügbar)",
@@ -6750,8 +6831,64 @@ const en: typeof de = {
   "adm.ai.testOk": "Connection ok — {{provider}} responded. The key works.",
   "adm.ai.testLocal": "Test local LLM",
   "adm.ai.testLocalOk": "Local LLM responded ({{provider}}).",
-  "adm.ai.testFail":
-    "Test failed: {{detail}} Tip: renew the key in the start dialog or keychain (service Klarwerk, account ANTHROPIC_API_KEY), then restart the app.",
+  // JOB 3420 (UX-10b): the blanket key tip is gone — see the note in the German block. The frame
+  // carries only the raw message; cause and next step come from `adm.ai.befund.*`/`adm.ai.rat.*`.
+  "adm.ai.testFail": "Test failed: {{detail}}",
+  "adm.ai.wiederholen": "Run test again",
+  "adm.ai.befund.aelter": "Earlier result from {{zeit}} · a new test is running.",
+  "adm.ai.befund.aelterOhneZeit": "Earlier result · a new test is running.",
+  "adm.ai.befund.zitat": "Provider's reason (verbatim): “{{grund}}”",
+  "adm.ai.befund.zugang":
+    "The provider refused access (HTTP {{status}}) — the stored credentials were not accepted.",
+  "adm.ai.befund.kontingent": "The provider refused due to quota or request rate (HTTP 429).",
+  "adm.ai.befund.abgelehnt":
+    "The provider rejected the request (HTTP 400) — what it objected to is the request itself, not the access.",
+  "adm.ai.befund.nichtErreichbar":
+    "The provider could not be reached: network error or an outage on their side.",
+  "adm.ai.befund.zeitlimit": "The time limit ran out before the provider answered.",
+  "adm.ai.befund.unbrauchbar":
+    "The provider answered, but without usable content (empty or truncated).",
+  "adm.ai.befund.unbestimmt":
+    "Reason not classified — this failure could not be matched to any measured cause.",
+  "adm.ai.befund.anfrage":
+    "The request to KLARWERK did not get through — there is no test result at all.",
+  "adm.ai.befund.lokal.zugang": "Your own LLM server refused access (HTTP {{status}}).",
+  "adm.ai.befund.lokal.kontingent": "Your own LLM server refused because it is busy (HTTP 429).",
+  "adm.ai.befund.lokal.abgelehnt":
+    "Your own LLM server rejected the request (HTTP 400) — what it objected to is the request itself.",
+  "adm.ai.befund.lokal.nichtErreichbar":
+    "Your own LLM server could not be reached: tunnel or server down, or a network error in between.",
+  "adm.ai.befund.lokal.zeitlimit": "The time limit ran out before your own LLM server answered.",
+  "adm.ai.befund.lokal.unbrauchbar": "Your own LLM server answered, but without usable content.",
+  "adm.ai.befund.lokal.unbestimmt":
+    "Reason not classified — this failure of your own LLM server could not be matched to any measured cause.",
+  "adm.ai.rat.zugang":
+    "Next step: renew the stored credentials for this provider and restart the app.",
+  "adm.ai.rat.zugangKonto.openai":
+    "Next step: renew the key in the start dialog or keychain (service Klarwerk, account OPENAI_API_KEY), then restart the app.",
+  "adm.ai.rat.zugangKonto.anthropic":
+    "Next step: renew the key in the start dialog or keychain (service Klarwerk, account ANTHROPIC_API_KEY), then restart the app.",
+  "adm.ai.rat.kontingent": "Next step: test again later. A different key changes nothing here.",
+  "adm.ai.rat.abgelehnt":
+    "Next step: check the model and parameter choice. A new key does not help in this situation.",
+  "adm.ai.rat.nichtErreichbar":
+    "Next step: try once more; if it persists, the fault is at the provider or in the network.",
+  "adm.ai.rat.zeitlimit":
+    "Next step: start the test again; if it stays this way, check model size and load.",
+  "adm.ai.rat.unbrauchbar": "Next step: test again and check the model choice.",
+  "adm.ai.rat.anfrage": "Next step: check the connection and start the check again.",
+  "adm.ai.rat.lokal.zugang":
+    "Next step: check the address and credentials of your own LLM server (KLARWERK_LOCAL_LLM_URL/_MODEL).",
+  "adm.ai.rat.lokal.kontingent":
+    "Next step: test again later — your own LLM server is busy right now.",
+  "adm.ai.rat.lokal.abgelehnt":
+    "Next step: check the model name and parameters of your own LLM server.",
+  "adm.ai.rat.lokal.nichtErreichbar":
+    "Next step: check the tunnel and your own LLM server, then test again.",
+  "adm.ai.rat.lokal.zeitlimit":
+    "Next step: test again; if your own LLM server is consistently too slow, check the model or the hardware.",
+  "adm.ai.rat.lokal.unbrauchbar":
+    "Next step: test again and check the model name of your own LLM server.",
   "adm.ai.global": "Global (default for all uses)",
   "adm.ai.choice.inherit": "— same as global —",
   "adm.ai.choice.auto": "Auto (model when available)",
@@ -11549,8 +11686,68 @@ const nl: typeof de = {
   "adm.ai.testOk": "Verbinding oké — {{provider}} heeft geantwoord. De sleutel werkt.",
   "adm.ai.testLocal": "Lokale LLM testen",
   "adm.ai.testLocalOk": "Lokale LLM heeft geantwoord ({{provider}}).",
-  "adm.ai.testFail":
-    "Test mislukt: {{detail}} Tip: vernieuw de sleutel in het startdialoogvenster of de sleutelhanger (service Klarwerk, account ANTHROPIC_API_KEY) en start de app opnieuw.",
+  // JOB 3420 (UX-10b): de algemene sleuteltip is vervallen — zie de toelichting in het DE-blok.
+  "adm.ai.testFail": "Test mislukt: {{detail}}",
+  "adm.ai.wiederholen": "Test opnieuw uitvoeren",
+  "adm.ai.befund.aelter": "Oudere uitslag van {{zeit}} · een nieuwe test loopt.",
+  "adm.ai.befund.aelterOhneZeit": "Oudere uitslag · een nieuwe test loopt.",
+  "adm.ai.befund.zitat": "Toelichting van de aanbieder (letterlijk): „{{grund}}”",
+  "adm.ai.befund.zugang":
+    "De aanbieder heeft de toegang geweigerd (HTTP {{status}}) — de opgeslagen toegangsgegevens werden niet aanvaard.",
+  "adm.ai.befund.kontingent":
+    "De aanbieder heeft geweigerd wegens quotum of aanvraagsnelheid (HTTP 429).",
+  "adm.ai.befund.abgelehnt":
+    "De aanbieder heeft de aanvraag afgewezen (HTTP 400) — het bezwaar geldt de aanvraag zelf, niet de toegang.",
+  "adm.ai.befund.nichtErreichbar":
+    "De aanbieder was niet bereikbaar: netwerkfout of een storing aan zijn kant.",
+  "adm.ai.befund.zeitlimit": "De tijdslimiet verstreek voordat de aanbieder antwoordde.",
+  "adm.ai.befund.unbrauchbar":
+    "De aanbieder heeft geantwoord, maar zonder bruikbare inhoud (leeg of afgebroken).",
+  "adm.ai.befund.unbestimmt":
+    "Reden niet ingedeeld — deze fout liet zich aan geen enkele gemeten oorzaak toewijzen.",
+  "adm.ai.befund.anfrage":
+    "De aanvraag aan KLARWERK kwam niet door — er is helemaal geen testresultaat.",
+  "adm.ai.befund.lokal.zugang": "De eigen LLM-server heeft de toegang geweigerd (HTTP {{status}}).",
+  "adm.ai.befund.lokal.kontingent":
+    "De eigen LLM-server heeft geweigerd wegens belasting (HTTP 429).",
+  "adm.ai.befund.lokal.abgelehnt":
+    "De eigen LLM-server heeft de aanvraag afgewezen (HTTP 400) — het bezwaar geldt de aanvraag zelf.",
+  "adm.ai.befund.lokal.nichtErreichbar":
+    "De eigen LLM-server was niet bereikbaar: tunnel of server uit, of een netwerkfout ertussen.",
+  "adm.ai.befund.lokal.zeitlimit":
+    "De tijdslimiet verstreek voordat de eigen LLM-server antwoordde.",
+  "adm.ai.befund.lokal.unbrauchbar":
+    "De eigen LLM-server heeft geantwoord, maar zonder bruikbare inhoud.",
+  "adm.ai.befund.lokal.unbestimmt":
+    "Reden niet ingedeeld — deze fout van de eigen LLM-server liet zich aan geen enkele gemeten oorzaak toewijzen.",
+  "adm.ai.rat.zugang":
+    "Volgende stap: vernieuw de opgeslagen toegangsgegevens van deze aanbieder en start de app opnieuw.",
+  "adm.ai.rat.zugangKonto.openai":
+    "Volgende stap: vernieuw de sleutel in het startdialoogvenster of de sleutelhanger (service Klarwerk, account OPENAI_API_KEY) en start de app opnieuw.",
+  "adm.ai.rat.zugangKonto.anthropic":
+    "Volgende stap: vernieuw de sleutel in het startdialoogvenster of de sleutelhanger (service Klarwerk, account ANTHROPIC_API_KEY) en start de app opnieuw.",
+  "adm.ai.rat.kontingent":
+    "Volgende stap: later opnieuw testen. Een andere sleutel verandert hier niets aan.",
+  "adm.ai.rat.abgelehnt":
+    "Volgende stap: controleer de model- en parameterkeuze. Een nieuwe sleutel helpt in dit geval niet.",
+  "adm.ai.rat.nichtErreichbar":
+    "Volgende stap: probeer het nog eens; blijft het zo, dan ligt de storing bij de aanbieder of in het netwerk.",
+  "adm.ai.rat.zeitlimit":
+    "Volgende stap: start de test opnieuw; blijft het zo, controleer dan modelgrootte en belasting.",
+  "adm.ai.rat.unbrauchbar": "Volgende stap: opnieuw testen en de modelkeuze controleren.",
+  "adm.ai.rat.anfrage": "Volgende stap: controleer de verbinding en start de controle opnieuw.",
+  "adm.ai.rat.lokal.zugang":
+    "Volgende stap: controleer adres en toegangsgegevens van de eigen LLM-server (KLARWERK_LOCAL_LLM_URL/_MODEL).",
+  "adm.ai.rat.lokal.kontingent":
+    "Volgende stap: later opnieuw testen — de eigen LLM-server is momenteel belast.",
+  "adm.ai.rat.lokal.abgelehnt":
+    "Volgende stap: controleer de modelnaam en parameters van de eigen LLM-server.",
+  "adm.ai.rat.lokal.nichtErreichbar":
+    "Volgende stap: controleer de tunnel en de eigen LLM-server, test daarna opnieuw.",
+  "adm.ai.rat.lokal.zeitlimit":
+    "Volgende stap: opnieuw testen; antwoordt de eigen LLM-server structureel te traag, controleer dan model of hardware.",
+  "adm.ai.rat.lokal.unbrauchbar":
+    "Volgende stap: opnieuw testen en de modelnaam van de eigen LLM-server controleren.",
   "adm.ai.global": "Globaal (standaard voor alle taken)",
   "adm.ai.choice.inherit": "— zoals globaal —",
   "adm.ai.choice.auto": "Auto (model indien beschikbaar)",

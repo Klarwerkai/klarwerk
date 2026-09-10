@@ -6,7 +6,7 @@
 // Hilfe-Zeichen und die Einleitungsabsätze) wandern in das eine „?"-Menü je Karte (Lieferung 9).
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { KeyRound, Sparkles, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
@@ -14,6 +14,7 @@ import type {
   ExternalKnowledgeStage,
   ReasonerCloudAnbieter,
   ReasonerConfigStatus,
+  ReasonerProbeResult,
 } from "../api/types";
 import { useToast } from "../app/ToastContext";
 import { Abfragehuelle } from "../components/einstellungen/Abfragehuelle";
@@ -28,6 +29,7 @@ import {
 } from "../lib/aiOverview";
 // AUFTRAG kimodus-live: Topbar-/Status-Queries nach dem Übernehmen live invalidieren.
 import { invalidateAiState } from "../lib/aiStateInvalidate";
+import { type KiTestArt, type KiTestBefund, kiTestBefund } from "../lib/kiTestBefund";
 import { parseNeededValidations } from "../lib/reviewerMinimum";
 import { maxRawAttachmentMb } from "../lib/uploadLimits";
 
@@ -128,6 +130,158 @@ function WahlOptionen({ konfig }: { konfig: ReasonerConfigStatus }): JSX.Element
       )}
       <option value="deterministic">{t("adm.ai.choice.deterministic")}</option>
     </>
+  );
+}
+
+// ================================================================================================
+// JOB 3420 (UX-10b) — EIN FEHLERKASTEN, DER SAGT, WORAN ES LAG.
+// ================================================================================================
+//
+// VORHER: sechs Stellen dieser Datei (`:268`, `:273`, `:292`, `:297`, `:328`, `:357`) schickten ihr
+// Scheitern durch DENSELBEN Schlüssel `adm.ai.testFail`, an dem der Anthropic-Schlüsseltipp fest
+// hing. Fünf davon hatten mit einem Cloud-Schlüssel nichts zu tun.
+//
+// JETZT: Aus dem Prüfergebnis macht GENAU EINE Stelle einen Rat — `lib/kiTestBefund.ts`. Diese
+// Komponente zeigt ihn nur an; sie entscheidet nichts und liest kein Feld selbst. Was sie zeigt:
+// den neutralen Rahmen mit der unveränderten Rohmeldung (nur wenn ein Ergebnis VORLIEGT), die
+// gemessene Ursache, die wörtlich zitierte Begründung des Anbieters (nur wenn er eine mitschickte),
+// den nächsten Schritt (nur wenn einer belegt ist) und das Angebot zu wiederholen.
+function KiFehlerkasten({
+  testId,
+  befund,
+  detail,
+  veraltet,
+  zeit,
+  wiederholen,
+  laeuft,
+}: {
+  testId: string;
+  befund: KiTestBefund;
+  /** Die Rohmeldung des Servers — `null`, wenn gar kein Prüfergebnis vorliegt (Fall „anfrage"). */
+  detail: string | null;
+  /** Steht hier der Befund des VORIGEN Laufs, während ein neuer läuft? */
+  veraltet: boolean;
+  /** Zeitstempel (`at`) des gezeigten Befundes — `null`, wenn keiner vorliegt. */
+  zeit: string | null;
+  wiederholen: () => void;
+  laeuft: boolean;
+}): JSX.Element {
+  const { t } = useTranslation();
+  return (
+    <div
+      data-testid={testId}
+      className="rounded-btn bg-trust-crit-bg px-2.5 py-1.5 text-[12px] text-trust-crit-text"
+    >
+      {/* Auftrag §9: ein stehen gebliebener Befund wird als der ÄLTERE kenntlich gemacht — mit
+        seinem Zeitstempel, wenn er einen trägt. Dieselbe Form wie der Standhinweis der
+        Einstellungen (`components/einstellungen/Abfragehuelle.tsx:160-170`). */}
+      {veraltet ? (
+        <p data-testid={`${testId}-aelter`} className="mb-0.5 font-semibold">
+          {zeit === null
+            ? t("adm.ai.befund.aelterOhneZeit")
+            : t("adm.ai.befund.aelter", {
+                zeit: new Date(zeit).toLocaleTimeString(undefined, {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                }),
+              })}
+        </p>
+      ) : null}
+      {detail === null ? null : <p>{t("adm.ai.testFail", { detail })}</p>}
+      <p className="mt-0.5 font-semibold">{t(befund.ursacheKey, befund.ursacheWerte)}</p>
+      {befund.anbieterGrund === null ? null : (
+        <p className="mt-0.5">{t("adm.ai.befund.zitat", { grund: befund.anbieterGrund })}</p>
+      )}
+      {befund.ratKey === null ? null : <p className="mt-0.5">{t(befund.ratKey)}</p>}
+      {befund.wiederholbar ? (
+        <button
+          type="button"
+          disabled={laeuft}
+          onClick={wiederholen}
+          className="mt-1.5 inline-flex h-7 items-center gap-1 rounded-btn border border-hairline bg-surface px-2.5 text-[11.5px] font-semibold text-text hover:border-ink/30 disabled:opacity-50"
+        >
+          <KeyRound size={12} />
+          {laeuft ? t("adm.ai.testRunning") : t("adm.ai.wiederholen")}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+/** Was zuletzt gemessen wurde — der Stoff, aus dem der Kasten seine Anzeige baut. */
+interface KiFehlerstand {
+  readonly befund: KiTestBefund;
+  readonly detail: string | null;
+  readonly zeit: string | null;
+}
+
+// ================================================================================================
+// JOB 3420 · RUNDE 2 (BENs Korrekturpflicht 1) — DER KNOPF, DEN MAN GERADE GEDRÜCKT HAT, BLEIBT DA.
+// ================================================================================================
+//
+// DER GEMESSENE FEHLER DER RUNDE 1: Der Fehlerkasten hing unmittelbar an `mutation.data` bzw.
+// `mutation.isError`. TanStack Query räumt beides beim erneuten `mutate()` ab (Zustand `pending`
+// trägt `data: undefined, error: null`) — der Kasten verschwand also GENAU in dem Moment, in dem
+// sein Wiederholen-Knopf gedrückt wurde. Der zugesagte Laufzustand („teste …", deaktiviert) war
+// darum unerreichbar; BEN hat das mit einer verzögerten zweiten Antwort belegt
+// (`kastenVorhanden:false`, jobs/3420/runde-1/ben.md).
+//
+// DESHALB WOHNT DAS GEDÄCHTNIS HIER, eine Ebene über der Bedingung: dieser Bereich ist IMMER
+// gemountet und entscheidet selbst, was er zeigt. Läuft eine Wiederholung, bleibt der zuletzt
+// gemessene Befund sichtbar und wird als der ÄLTERE ausgewiesen (Auftrag §9; dieselbe Hausregel wie
+// beim Standhinweis der Einstellungen: niemals leeren, sondern den Stand benennen). Endet ein Lauf
+// OHNE Fehler, ist der alte Befund weg — er gälte sonst für eine Messung, die es nicht mehr gibt.
+function KiFehlerbereich({
+  testIdBasis,
+  art,
+  ergebnis,
+  anfrageFehler,
+  laeuft,
+  wiederholen,
+}: {
+  /** `ki-fehler-cloud` → Ergebnisfall; der Anfragefall hängt `-anfrage` an (Bestandskennungen). */
+  testIdBasis: string;
+  art: KiTestArt;
+  /**
+   * Das Prüfergebnis, wenn eines vorliegt — die beiden Selbsttests haben keines. `| undefined`
+   * ausgeschrieben: `exactOptionalPropertyTypes` (tsconfig) unterscheidet „Feld fehlt" von „Feld
+   * ist undefined", und die Aufrufer reichen hier `mutation.data` durch.
+   */
+  ergebnis?: ReasonerProbeResult | undefined;
+  anfrageFehler: boolean;
+  laeuft: boolean;
+  wiederholen: () => void;
+}): JSX.Element | null {
+  const gemerkt = useRef<KiFehlerstand | null>(null);
+  const aktuell: KiFehlerstand | null =
+    ergebnis !== undefined && !ergebnis.ok
+      ? {
+          befund: kiTestBefund({ ergebnis, anfrageFehler: false, art }),
+          detail: ergebnis.detail,
+          zeit: ergebnis.at,
+        }
+      : anfrageFehler
+        ? { befund: kiTestBefund({ anfrageFehler: true, art }), detail: null, zeit: null }
+        : null;
+  if (aktuell !== null) {
+    gemerkt.current = aktuell;
+  } else if (!laeuft) {
+    gemerkt.current = null;
+  }
+  const zeigen = aktuell ?? (laeuft ? gemerkt.current : null);
+  if (zeigen === null) {
+    return null;
+  }
+  return (
+    <KiFehlerkasten
+      testId={zeigen.befund.fall === "anfrage" ? `${testIdBasis}-anfrage` : testIdBasis}
+      befund={zeigen.befund}
+      detail={zeigen.detail}
+      veraltet={aktuell === null}
+      zeit={zeigen.zeit}
+      wiederholen={wiederholen}
+      laeuft={laeuft}
+    />
   );
 }
 
@@ -253,50 +407,44 @@ export function KiDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element 
                 {selfTestPending ? t("adm.selfTest.running") : t("adm.selfTest.button")}
               </button>
             </div>
-            {aiTest.data ? (
-              <p
-                className={`rounded-btn px-2.5 py-1.5 text-[12px] ${
-                  aiTest.data.ok
-                    ? "bg-trust-pos-bg text-trust-pos-text"
-                    : "bg-trust-crit-bg text-trust-crit-text"
-                }`}
-              >
+            {aiTest.data?.ok ? (
+              <p className="rounded-btn bg-trust-pos-bg px-2.5 py-1.5 text-[12px] text-trust-pos-text">
                 {/* JOB 3120: derselbe Name wie in der Statuszeile darüber — auch hier ist
-                  `provider` der Client-Name (`service.ts:847`), keine zweite Größe. */}
-                {aiTest.data.ok
-                  ? t("adm.ai.testOk", { provider: anbieterUndModell(aiTest.data.provider) })
-                  : t("adm.ai.testFail", { detail: aiTest.data.detail })}
+                    `provider` der Client-Name (`service.ts:847`), keine zweite Größe. */}
+                {t("adm.ai.testOk", { provider: anbieterUndModell(aiTest.data.provider) })}
               </p>
             ) : null}
-            {aiTest.isError ? (
-              <p className="rounded-btn bg-trust-crit-bg px-2.5 py-1.5 text-[12px] text-trust-crit-text">
-                {t("adm.ai.testFail", { detail: t("state.error") })}
-              </p>
-            ) : null}
+            {/* JOB 3420: eine frisch und erfolgreich beantwortete Messung — hier DARF die Karte
+              eine Ursache nennen, und zwar die, die der Server gemessen hat. Der Bereich steht
+              IMMER (auch während einer Wiederholung), er entscheidet selbst, was er zeigt. */}
+            <KiFehlerbereich
+              testIdBasis="ki-fehler-cloud"
+              art="cloud"
+              ergebnis={aiTest.data}
+              anfrageFehler={aiTest.isError}
+              laeuft={aiTest.isPending}
+              wiederholen={() => aiTest.mutate()}
+            />
             {/* SCRUM-428: Ergebnis des lokalen Key-Tests, gleiche ehrliche Darstellung. */}
-            {aiTestLocal.data ? (
-              <p
-                className={`rounded-btn px-2.5 py-1.5 text-[12px] ${
-                  aiTestLocal.data.ok
-                    ? "bg-trust-pos-bg text-trust-pos-text"
-                    : "bg-trust-crit-bg text-trust-crit-text"
-                }`}
-              >
+            {aiTestLocal.data?.ok ? (
+              <p className="rounded-btn bg-trust-pos-bg px-2.5 py-1.5 text-[12px] text-trust-pos-text">
                 {/* JOB 3120: dieselbe Ableitung. Der lokale Client heißt `local:<modell>` und hat
-                  in der Tabelle bewusst KEINEN Eintrag — er bleibt darum wörtlich stehen (der
-                  eigene Server ist kein Anbieter, dem man Texte „zeigt"). */}
-                {aiTestLocal.data.ok
-                  ? t("adm.ai.testLocalOk", {
-                      provider: anbieterUndModell(aiTestLocal.data.provider),
-                    })
-                  : t("adm.ai.testFail", { detail: aiTestLocal.data.detail })}
+                    in der Tabelle bewusst KEINEN Eintrag — er bleibt darum wörtlich stehen (der
+                    eigene Server ist kein Anbieter, dem man Texte „zeigt"). */}
+                {t("adm.ai.testLocalOk", {
+                  provider: anbieterUndModell(aiTestLocal.data.provider),
+                })}
               </p>
             ) : null}
-            {aiTestLocal.isError ? (
-              <p className="rounded-btn bg-trust-crit-bg px-2.5 py-1.5 text-[12px] text-trust-crit-text">
-                {t("adm.ai.testFail", { detail: t("state.error") })}
-              </p>
-            ) : null}
+            {/* JOB 3420: `art: "local"` — hier erscheint in KEINEM Fall ein Cloud-Schlüsseltipp. */}
+            <KiFehlerbereich
+              testIdBasis="ki-fehler-local"
+              art="local"
+              ergebnis={aiTestLocal.data}
+              anfrageFehler={aiTestLocal.isError}
+              laeuft={aiTestLocal.isPending}
+              wiederholen={() => aiTestLocal.mutate()}
+            />
             {/* SCRUM-493: strukturiertes OK/FAIL des Konflikt-Selbsttests inkl. Provider + Streitpunkt. */}
             {conflictSelfTest.data ? (
               <div
@@ -323,11 +471,13 @@ export function KiDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element 
                 </p>
               </div>
             ) : null}
-            {conflictSelfTest.isError ? (
-              <p className="rounded-btn bg-trust-crit-bg px-2.5 py-1.5 text-[12px] text-trust-crit-text">
-                {t("adm.ai.testFail", { detail: t("state.error") })}
-              </p>
-            ) : null}
+            <KiFehlerbereich
+              testIdBasis="ki-fehler-konflikt"
+              art="selftest"
+              anfrageFehler={conflictSelfTest.isError}
+              laeuft={conflictSelfTest.isPending}
+              wiederholen={() => conflictSelfTest.mutate()}
+            />
             {/* SCRUM-494: strukturiertes OK/FAIL des Duplikat-Selbsttests inkl. Provider + Beziehung. */}
             {dupSelfTest.data ? (
               <div
@@ -352,11 +502,13 @@ export function KiDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element 
                 </p>
               </div>
             ) : null}
-            {dupSelfTest.isError ? (
-              <p className="rounded-btn bg-trust-crit-bg px-2.5 py-1.5 text-[12px] text-trust-crit-text">
-                {t("adm.ai.testFail", { detail: t("state.error") })}
-              </p>
-            ) : null}
+            <KiFehlerbereich
+              testIdBasis="ki-fehler-duplikat"
+              art="selftest"
+              anfrageFehler={dupSelfTest.isError}
+              laeuft={dupSelfTest.isPending}
+              wiederholen={() => dupSelfTest.mutate()}
+            />
             {/* SCRUM-525 P.5 (WP-C): per Deploy-ENV festgelegt — die Auswahl ist gesperrt, und die
               Karte sagt, WELCHE Variable das tut (ein PUT liefert ohnehin 409). */}
             {gesperrt ? (

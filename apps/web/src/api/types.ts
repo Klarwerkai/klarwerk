@@ -1869,6 +1869,13 @@ export interface ReasonerConfigStatus {
   policySource?: "env" | "db" | "default";
 }
 
+// JOB 3420 (UX-10b): die Fehlerklassen, die der Server misst — WORTGLEICH zu `ModelFailureClass` in
+// `services/reasoner/src/model-errors.ts`. Hier ausgeschrieben und nicht importiert, aus demselben
+// Grund wie `REASONER_TASKS` oben: `apps/web/src` darf nicht aus `services/` importieren.
+// "unknown" ist der EHRLICHE Rückfall für einen uneingeordneten Fehler und darf von der Fläche nicht
+// als Ursache ausgegeben werden (s. `apps/web/src/lib/kiTestBefund.ts`).
+export type ModelFailureClass = "timeout" | "http" | "network" | "parse" | "unknown";
+
 // Key-Test (Pedi 02.07.): Ergebnis des echten Mini-Modellaufrufs (ehrlich, kein Secret).
 export interface ReasonerProbeResult {
   ok: boolean;
@@ -1879,6 +1886,14 @@ export interface ReasonerProbeResult {
   // JOB 3134: welcher externe Anbieter geprüft wurde (der aus der gespeicherten globalen Wahl);
   // fehlt es, wurde keiner geprüft und `detail` sagt, warum.
   anbieter?: ReasonerCloudAnbieter;
+  // JOB 3420 (UX-10b): die vom Server GEMESSENE Ursache eines Scheiterns — gesetzt nur im `catch`
+  // von `probe()`/`probeLocal()` (`services/reasoner/src/service.ts`). Fehlt `fehlerklasse`, wurde
+  // die Ursache nicht gemessen (frühe Rückgabe, älterer Server); das ist ausdrücklich etwas anderes
+  // als `"unknown"`. Keines der drei Felder trägt je ein Geheimnis: `anbieterGrund` ist die vom
+  // Anbieter selbst gelieferte, gekappte Begründung, unverändert durchgereicht.
+  fehlerklasse?: ModelFailureClass;
+  status?: number;
+  anbieterGrund?: string;
 }
 
 // SCRUM-493: End-to-End-Selbsttest der Konflikterkennung (Modell antwortet + liefert kollision).

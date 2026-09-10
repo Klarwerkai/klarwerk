@@ -1591,8 +1591,20 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // (oben, :453) verlangt einen Großbuchstaben am Namensanfang, und die +1 ist damit genau dieses
     // Bauteil und kein zweiter Fund, der sich hinter derselben Zahl versteckt. Die zwei Zahlen, an
     // denen Stufe 2 wirklich hängt, bleiben unverändert: `anbieter` 1 und `traeger` 2.
+    //
+    // KONFLIKTRUNDE 2 (JOB 3420 · KI-FEHLERHILFE): NACH DEM REBASE auf JOB 3430/Q1c-NACHLADEN trifft
+    // die unabhängige NEUE Fläche KI-FEHLERHILFE auf denselben Stand; `komponenten` von 367 auf 369
+    // NACHGEZOGEN — am eigenen Lauf dieses Arbeitsbaums gemessen, nicht rechnerisch addiert. Es sind
+    // GENAU ZWEI Bauteile, beide in `pages/AdminKiDetails.tsx`: `KiFehlerkasten` (der EINE rote
+    // Kasten der KI-Karte, der die gemessene Ursache statt eines pauschalen Schlüsseltipps zeigt)
+    // und `KiAnfrageFehler` (derselbe Kasten für den Fall, dass gar kein Prüfergebnis vorliegt).
+    // Beide sind HERAUSLÖSUNGEN aus sechs vorher abgeschriebenen `<p>`-Zeilen derselben Karte, keine
+    // neue Fläche. Für DIESEN Sammler ändern sie nichts: sie zeigen kein Bild, bieten keine
+    // Bildbeschreibung an (kein `ANGEBOT_MUSTER`) und tragen keinen eigenen Titel (kein
+    // `documentTitle`-Prop) — sie erscheinen nur in der Grundmenge. Die zwei Zahlen, an denen
+    // Stufe 2 wirklich hängt, sind unverändert: `anbieter` 1 und `traeger` 2.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 367,
+      komponenten: 369,
       anbieter: 1,
       traeger: 2,
     });

@@ -17,7 +17,7 @@ import {
 } from "./model-concurrency";
 // WP-D10 (Fix 3): Fehlerklasse eines gescheiterten Modellaufrufs (timeout|http|network|parse) für die
 // ehrliche Fallback-Ursache und das PII-freie Diagnose-Log.
-import { classifyModelFailure } from "./model-errors";
+import { ModelHttpError, classifyModelFailure } from "./model-errors";
 import type { ModelFailureInfo } from "./model-errors";
 import {
   type AssistPreset,
@@ -195,6 +195,30 @@ function anbieterAusName(name: string): ReasonerCloudAnbieter | undefined {
     return "anthropic";
   }
   return undefined;
+}
+
+// ================================================================================================
+// JOB 3420 (UX-10b) — DIE URSACHE EINER GESCHEITERTEN PROBE, SO WIE SIE GEMESSEN WURDE.
+// ================================================================================================
+//
+// Bis hierher trug das Probe-Ergebnis nur die ROHMELDUNG (`detail`). Die Fläche hängte daran EINEN
+// pauschalen Ratschlag („Schlüssel erneuern") — auch bei einem 400, bei dem ein neuer Schlüssel
+// nichts ändert, und auch beim eigenen lokalen LLM. Die Klasse war die ganze Zeit ableitbar; sie
+// wurde an dieser einen Stelle nur nicht gebildet.
+//
+// WAS HIER NICHT PASSIERT: `anbieterGrund` wird NUR aus einem echten `ModelHttpError` gelesen, nie
+// aus der Meldung geraten. Und es wird kein Feld gesetzt, für das keine Messung vorliegt —
+// `exactOptionalPropertyTypes` macht daraus keine `undefined`-Werte, sondern fehlende Schlüssel.
+function probeUrsache(
+  error: unknown,
+): Pick<ReasonerProbeResult, "fehlerklasse" | "status" | "anbieterGrund"> {
+  const befund = classifyModelFailure(error);
+  const grund = error instanceof ModelHttpError ? error.anbieterGrund : undefined;
+  return {
+    fehlerklasse: befund.failureClass,
+    ...(befund.status === undefined ? {} : { status: befund.status }),
+    ...(grund === undefined ? {} : { anbieterGrund: grund }),
+  };
 }
 
 // WP-BILD-1c: die EINE Task-Liste für Policy-Validierung und KI-Verwaltungs-Anzeige (vorher drei
@@ -679,6 +703,7 @@ export class Reasoner {
         detail: error instanceof Error ? error.message : String(error),
         at,
         anbieter: gewaehlt,
+        ...probeUrsache(error),
       };
     }
   }
@@ -713,6 +738,7 @@ export class Reasoner {
         mode: "model",
         detail: error instanceof Error ? error.message : String(error),
         at,
+        ...probeUrsache(error),
       };
     }
   }

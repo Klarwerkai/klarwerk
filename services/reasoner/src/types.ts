@@ -1,7 +1,7 @@
 // RT-001 (bens Sammel-Review 3): anbieterneutrale, strukturierte Fehlerklasse eines Judge-Versuchs
 // (nur Klasse + optionaler HTTP-Status — nie Rohmeldung/Secret/Provider-Detail) reist bis zum Runner.
 import type { AiGeneratedMark } from "../../model-runs";
-import type { ModelFailureInfo } from "./model-errors";
+import type { ModelFailureClass, ModelFailureInfo } from "./model-errors";
 
 // SCRUM-88 / FR-I18N-01: sprachbewusste Reasoner-Steuerung. Steuert Prompting, Interview-Fragen
 // und Step-Labels — NICHT den Quelleninhalt.
@@ -610,6 +610,25 @@ export interface ReasonerProbeResult {
   // bestimmt. Fehlt das Feld, wurde kein externer Anbieter geprüft (Wahl lokal/deterministisch oder
   // nichts eingerichtet); `detail` sagt dann, warum.
   anbieter?: ReasonerCloudAnbieter;
+  // ==============================================================================================
+  // JOB 3420 (UX-10b) — DIE GEMESSENE URSACHE, DAMIT DIE KARTE NICHT RATEN MUSS.
+  // ==============================================================================================
+  //
+  // GESETZT WERDEN SIE AUSSCHLIESSLICH IM `catch` von `probe()`/`probeLocal()` (service.ts), aus
+  // `classifyModelFailure(error)` bzw. — für `anbieterGrund` — aus einem echten `ModelHttpError`.
+  // Die frühen Rückgaben („kein externer Anbieter gewählt", „nicht eingerichtet", „kein lokaler LLM
+  // verdrahtet") setzen sie NICHT: dort ist nichts gescheitert. Ein FEHLENDES Feld heisst deshalb
+  // „nicht gemessen" und gerade nicht „unbekannter Fehler" — den trägt `fehlerklasse: "unknown"`.
+  //
+  // SIE TRAGEN NIE EIN GEHEIMNIS. `fehlerklasse` und `status` sind Metadaten; `anbieterGrund` ist
+  // die vom Anbieter selbst gelieferte, bereits gekappte und geheimnisfreie Begründung (JOB 3122,
+  // Aufbereitung in `model-client.ts`) — hier wird sie unverändert durchgereicht, nicht gedeutet.
+  //
+  // Der Client spiegelt dieselben drei Felder in `apps/web/src/api/types.ts` (er darf nicht aus
+  // `services/` importieren); die Ableitung darüber ist `apps/web/src/lib/kiTestBefund.ts`.
+  fehlerklasse?: ModelFailureClass;
+  status?: number;
+  anbieterGrund?: string;
 }
 
 // PAKET 2 (D-AISTATE, Pedi 23.07.): ehrlicher Erreichbarkeits-Zustand für die Top-Badges — „aktiv"

@@ -3846,8 +3846,30 @@ describe("JOB 1181 · Klassenbindungen: aufgelöst oder gemeldet, kein dritter Z
     //
     // KEIN VORBEISCHREIBEN: die verbliebene Bindung am Knopf steht weiterhin in `ALLE_BINDUNGEN`;
     // die Erhaltungszusage oben (aufgelöst + offen == alle) hält das zusammen.
+    //
+    // JOB 3420 (UX-10b · KI-FEHLERHILFE): von 218 auf 216. GENAU ZWEI Bindungen fallen weg, und sie
+    // fallen aus dem PRODUKT, nicht aus der Erhebung — gemessen an diesem Arbeitsbaum, nicht
+    // gerechnet (der Sammler meldete `expected 216 to be 218`). Die beiden Ergebniszeilen der
+    // KI-Karte trugen bis hierher je EINE zustandsabhängige Klassenkette, weil derselbe `<p>` den
+    // Erfolgs- UND den Fehlerfall zeigte:
+    //
+    //     − AdminKiDetails.tsx `rounded-btn px-2.5 py-1.5 text-[12px] ${
+    //           aiTest.data.ok ? "bg-trust-pos-bg text-trust-pos-text"
+    //                          : "bg-trust-crit-bg text-trust-crit-text"}`
+    //     − AdminKiDetails.tsx dieselbe Kette für `aiTestLocal.data.ok`
+    //
+    // Der Fehlerfall ist jetzt ein eigenes Bauteil (`KiFehlerkasten`) mit einer STATISCHEN
+    // Klassenkette, der Erfolgsfall behält seine eigene, ebenfalls statisch. Damit gibt es an
+    // beiden Stellen nichts mehr aufzulösen — die Klassen sind nicht verschoben, sondern die
+    // Entscheidung dazwischen ist verschwunden, weil die beiden Zustände nicht mehr denselben
+    // Knoten teilen. Die vier zustandsabhängigen Ketten der beiden SELBSTTEST-Kästen bleiben
+    // unverändert stehen und werden weiter als offen geführt.
+    //
+    // KEIN VORBEISCHREIBEN: nichts wurde in ein Attributobjekt oder ein blosses `className="…"`
+    // geschoben, um dem Sammler auszuweichen — die Erhaltungszusage oben (aufgelöst + offen ==
+    // alle) hält das zusammen.
     expect(UNAUFGELOEST.length, "es gibt heute unauflösbare Bindungen — das ist der Befund").toBe(
-      218,
+      216,
     );
     for (const b of UNAUFGELOEST) {
       expect(b.datei, "Meldung ohne Datei").toMatch(/^apps\/web\/src\/.+\.tsx?$/);
