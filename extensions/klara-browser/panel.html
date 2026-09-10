@@ -20,11 +20,37 @@
       <p id="status" role="status" aria-live="polite" tabindex="-1"></p>
       <button type="button" id="refresh" data-i18n="refresh"></button>
       <div class="inhalt">
-        <!-- CHR-02, Pflichtlieferung 4: im Ruhezustand steht NUR das Symbol; der eine Satz (≤ 60
+        <!-- JOB 3524 · Lieferung 4: DIE ERFOLGSFÜHRUNG STEHT OBEN, AN DER BESTÄTIGUNG.
+             Bis hierher stand dieser Abschnitt ganz unten — unter Speichern/Verwerfen und den
+             langen Anleitungsabsätzen. Der Link ist derselbe wie zuvor (`#open`, gebaut aus der
+             frisch nachgelesenen Entwurfskennung in `panel.js`), er ist nur HOCHGEZOGEN und hat
+             mit „Neue Übernahme" die zweite Handlung neben sich. Kein Bibliothekslink: die
+             Adresse trägt genau die gespeicherte Kennung. -->
+        <section id="done" hidden>
+          <p><a id="open" target="_blank" rel="noopener noreferrer" data-i18n="openDraft" hidden></a></p>
+          <div class="actions"><button type="button" id="neu" data-i18n="newCapture" hidden></button></div>
+          <!-- JOB 3280 · CHR-07: die klare Rückfrage. Es gibt einen Entwurf, aber der Stand in der
+               Leiste ist nicht der gespeicherte — der Link erscheint erst wieder, wenn beides
+               übereinstimmt. Ein Link auf einen veralteten Stand wäre die stillste Art zu lügen. -->
+          <p id="open-stale" class="hint warn" data-i18n="openStale" hidden></p>
+          <p class="hint" data-i18n="webSession"></p>
+        </section>
+        <!-- CHR-02, Pflichtlieferung 4: im Ruhezustand steht das Symbol; der eine Satz (≤ 60
              Zeichen) steht oben in #status. Alle erklärenden Absätze hängen an der Vorschau bzw.
-             am gespeicherten Entwurf und erscheinen erst dort. -->
+             am gespeicherten Entwurf und erscheinen erst dort.
+
+             JOB 3524 · Lieferung 3 — UND SEITHER EINE HANDLUNG, DENN „NUR DAS SYMBOL" WAR EINE
+             SACKGASSE. Nach dem Verwerfen fiel die Leiste hierher zurück, und jeder Weg zu einer
+             neuen Übernahme stand im Absatz `instructions` — INNERHALB von `#preview`, also genau
+             dann verborgen, wenn er gebraucht wird. Pedi hat deshalb am 10.09. die Erweiterung neu
+             gestartet. Der Knopf teilt sich Zuhörer und Beschriftung mit dem in der Erfolgsmeldung
+             oben (eine Handlung, zwei Stellen, an denen sie gebraucht wird) und steht nur da, wenn
+             es einen Tab gibt, den die Erweiterung schon einmal lesen durfte (`canCapture`). Die
+             eine Zeile in `#status` bleibt daneben stehen und nennt die Wege, die auch dann noch
+             tragen, wenn der Tab inzwischen weitergezogen ist. -->
         <div id="rest" hidden>
           <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 6h16"></path><path d="M4 11h16"></path><path d="M4 16h10"></path><path d="M4 21h6"></path></svg>
+          <div class="actions"><button type="button" id="neu-rest" data-i18n="newCapture" hidden></button></div>
         </div>
         <p id="pending-capture" class="hint" data-i18n="pendingCapture" hidden></p>
         <section aria-labelledby="account-title">
@@ -38,23 +64,28 @@
           </form>
           <button type="button" id="logout" data-i18n="logout" hidden></button>
         </section>
+        <!-- JOB 3524 · Lieferung 5: DIE REIHENFOLGE DER FLÄCHE.
+             Inhaltsquelle wählen · Inhalt des GEWÄHLTEN Umfangs · Titel, Vertraulichkeit, kurze
+             Quellenangabe · Details (zugeklappt) · Speichern und Verwerfen. Die langen Anleitungs-
+             und Technikabsätze wohnen im Aufklapper; konkrete Warnungen (`#ai-chat`,
+             `#source-changed`, `#scope-none`, `#gaps-box`, `#image-note`) und die Zustandszeile
+             mit den drei Zwischenablage-Ausgängen stehen ausdrücklich NICHT darin. -->
         <section id="preview" aria-labelledby="preview-title" hidden>
           <h2 id="preview-title" data-i18n="preview"></h2>
           <p id="ai-chat" class="badge" data-i18n="aiChat" hidden></p>
           <p id="source-changed" class="hint" data-i18n="sourceChanged" hidden></p>
-          <dl><dt data-i18n="page"></dt><dd id="page"></dd><dt data-i18n="source"></dt><dd id="source"></dd><dt data-i18n="captured"></dt><dd id="captured"></dd><dt data-i18n="scopeLabel"></dt><dd id="scope-value"></dd></dl>
-          <p class="hint" data-i18n="sourceHint"></p>
-          <p class="hint" data-i18n="originHint"></p>
           <fieldset id="scope-box">
             <legend data-i18n="scope"></legend>
             <label class="choice"><input type="radio" name="mode" id="mode-selection" value="selection" /><span><span data-i18n="modeSelection"></span> <span class="hint" id="info-selection"></span></span></label>
             <label class="choice"><input type="radio" name="mode" id="mode-article" value="article" /><span><span data-i18n="modeArticle"></span> <span class="hint" id="info-article"></span></span></label>
             <label class="choice"><input type="radio" name="mode" id="mode-page" value="page" /><span><span data-i18n="modePage"></span> <span class="hint" id="info-page"></span></span></label>
-            <!-- JOB 3280 · CHR-06: der vierte Umfang. Er ist erst wählbar, wenn etwas eingefügt
-                 wurde — die Taste darunter ist der einzige Weg, ihn zu füllen. -->
+            <!-- JOB 3280 · CHR-06: der vierte Umfang.
+                 JOB 3524 · Lieferung 2: er ist WÄHLBAR, bevor etwas eingefügt wurde. Vorher war er
+                 gesperrt, solange das Feld leer war — der einzige Weg zu ihm führte über die Taste,
+                 die ein Recht anfragt. Die Wahl allein liest nichts und fragt nichts an; sie öffnet
+                 das Feld und setzt den Schreibpunkt hinein, damit Cmd+V bzw. Strg+V sofort wirkt. -->
             <label class="choice"><input type="radio" name="mode" id="mode-clipboard" value="clipboard" /><span><span data-i18n="modeClipboard"></span> <span class="hint" id="info-clipboard"></span></span></label>
             <p id="scope-none" class="hint warn" data-i18n="scopeChoose" hidden></p>
-            <p class="hint" data-i18n="scopeHint"></p>
           </fieldset>
           <!-- JOB 3280 · CHR-06 / JOB 3412 — DIE ZWISCHENABLAGE WIRD NUR AUF KLICK GELESEN.
                Keine Pflichtberechtigung im Manifest: `clipboardRead` steht dort ausschliesslich
@@ -66,8 +97,11 @@
                Feld klicken und mit Cmd+V bzw. Strg+V einfügen. Der frühere Satz an dieser Stelle
                („also fragt Chrome beim ersten Mal selbst") war durch die Liveprobe vom 09.09.
                widerlegt und ist deshalb weg. Der eingefügte Text steht danach in einem Feld, das
-               Pedi bearbeiten kann — die Vorschau darunter zieht mit. -->
-          <fieldset id="clipboard-box">
+               Pedi bearbeiten kann — die Vorschau darunter zieht mit.
+               JOB 3524 · Lieferung 2: dieser Block hängt jetzt AM GEWÄHLTEN UMFANG, wie `#origin-box`
+               darin. Bei Markierung, Artikel oder Seite ist er weg und drängt weder Inhalt noch
+               Aktionen nach unten (Pedis Bildschirmfoto 10.09. 09:01). -->
+          <fieldset id="clipboard-box" hidden>
             <legend data-i18n="clipboardTitle"></legend>
             <p class="hint" data-i18n="clipboardHint"></p>
             <button type="button" id="paste" data-i18n="paste"></button>
@@ -78,29 +112,28 @@
               <p class="hint" data-i18n="originHintClip"></p>
             </div>
           </fieldset>
+          <div id="gaps-box" hidden><h3 data-i18n="gapsTitle"></h3><ul id="gaps"></ul></div>
+          <h3 data-i18n="content"></h3>
+          <p id="image-note" class="hint" data-i18n="imageNote" hidden></p>
+          <div id="content" class="content" tabindex="0"></div>
           <label for="title" data-i18n="title"></label><input id="title" maxlength="90" />
           <label for="context" data-i18n="context"></label><textarea id="context" maxlength="4000" rows="3"></textarea>
           <label for="confidentiality" data-i18n="confidentiality"></label>
           <select id="confidentiality"><option value="" data-i18n="open"></option><option value="intern" data-i18n="internal"></option><option value="vertraulich" data-i18n="confidential"></option><option value="streng_vertraulich" data-i18n="strict"></option></select>
-          <p class="hint" data-i18n="classificationHint"></p>
-          <div id="gaps-box" hidden><h3 data-i18n="gapsTitle"></h3><ul id="gaps"></ul></div>
-          <h3 data-i18n="content"></h3>
-          <p class="hint" data-i18n="contentHint"></p>
-          <p id="image-note" class="hint" data-i18n="imageNote" hidden></p>
-          <div id="content" class="content" tabindex="0"></div>
-          <p class="hint" data-i18n="summaryHint"></p>
+          <dl><dt data-i18n="page"></dt><dd id="page"></dd><dt data-i18n="source"></dt><dd id="source"></dd><dt data-i18n="captured"></dt><dd id="captured"></dd><dt data-i18n="scopeLabel"></dt><dd id="scope-value"></dd></dl>
+          <details id="details">
+            <summary data-i18n="detailsTitle"></summary>
+            <p class="hint" data-i18n="scopeHint"></p>
+            <p class="hint" data-i18n="contentHint"></p>
+            <p class="hint" data-i18n="summaryHint"></p>
+            <p class="hint" data-i18n="classificationHint"></p>
+            <p class="hint" data-i18n="sourceHint"></p>
+            <p class="hint" data-i18n="originHint"></p>
+            <p class="hint" data-i18n="instructions"></p>
+            <p class="hint" data-i18n="sessionHint"></p>
+          </details>
           <label class="confirm"><input type="checkbox" id="confirm" /><span data-i18n="confirm"></span></label>
           <div class="actions"><button type="button" id="save" class="primary" data-i18n="save" disabled></button><button type="button" id="cancel" data-i18n="cancel"></button></div>
-          <p class="hint" data-i18n="instructions"></p>
-          <p class="hint" data-i18n="sessionHint"></p>
-        </section>
-        <section id="done" hidden>
-          <p><a id="open" target="_blank" rel="noopener noreferrer" data-i18n="openDraft" hidden></a></p>
-          <!-- JOB 3280 · CHR-07: die klare Rückfrage. Es gibt einen Entwurf, aber der Stand in der
-               Leiste ist nicht der gespeicherte — der Link erscheint erst wieder, wenn beides
-               übereinstimmt. Ein Link auf einen veralteten Stand wäre die stillste Art zu lügen. -->
-          <p id="open-stale" class="hint warn" data-i18n="openStale" hidden></p>
-          <p class="hint" data-i18n="webSession"></p>
         </section>
       </div>
     </main>

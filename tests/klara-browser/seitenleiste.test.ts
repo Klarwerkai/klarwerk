@@ -431,9 +431,14 @@ describe("JOB 3278 · CHR-03 — Vorschau, Zustände und beide Sprachen", () => 
     // Umfangsfeld (`#scope-value`), wenn noch keine Wahl getroffen ist. Auch das ist eine
     // Beschriftung, keine Zustandszeile. Die zugehörige HINWEISzeile `scopeChoose` trägt dagegen
     // einen eigenen `data-i18n`-Knoten und fällt deshalb ohnehin nicht in diese Menge.
+    // JOB 3524: `scopeNotPasted` steht aus demselben Grund hier wie `scopeEmpty` — `panel.js` baut
+    // es in den Umfangshinweis des VIERTEN Umfangs (`info-clipboard`), über `t()` in einem
+    // Textbaustein, nie als eigener `data-i18n`-Knoten. Es ist eine Beschriftung („hier ist noch
+    // nichts eingefügt"), keine Zustandszeile und trägt deshalb keinen Ton.
     const KEINE_ZUSTANDSZEILE = new Set([
       "signedOut",
       "scopeEmpty",
+      "scopeNotPasted",
       "scopeNone",
       "chars",
       "images",

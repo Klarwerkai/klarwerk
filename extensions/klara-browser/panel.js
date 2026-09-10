@@ -5,6 +5,16 @@
     if (!element) throw new Error("Missing panel element");
     return /** @type {HTMLInputElement} */ (element);
   };
+  /**
+   * JOB 3524 · Lieferung 3+4: die Sicht, ERGÄNZT um `canCapture` — DASS eine neue Übernahme von
+   * der Leiste aus beginnen kann. Der Worker legt das Feld an (`worker.js`, `view()`).
+   *
+   * WARUM HIER UND NICHT IN `types.d.ts`: jene Datei steht nicht in den Zielpfaden dieses Auftrags,
+   * und Runde 1 wurde genau dafür zurückgewiesen. Der Typ wohnt deshalb bei seinem einzigen Leser.
+   * Kommt `types.d.ts` einmal zu einem Auftrag, zieht `canCapture` dorthin und dieser Typ fällt
+   * ersatzlos weg — es ist eine Ortsangabe, keine zweite Wahrheit.
+   * @typedef {import("./types").View & { canCapture?: boolean }} Sicht
+   */
   // JOB 3279 (Pedi 08.09.): Deutsch ist der Standard. Die Browsersprache entscheidet NICHT mehr —
   // sie greift nur, wenn die gespeicherte Wahl gar nicht gelesen werden kann.
   let language = "de";
@@ -91,6 +101,9 @@
       "account_changed",
       "stale_preview",
       "logout_first",
+      // JOB 3524: „Neue Übernahme" ohne einen Tab, den die Erweiterung schon einmal lesen durfte.
+      // Nichts ging verloren und nichts wurde gesendet — die Zeile nennt die Wege, die tragen.
+      "no_tab",
       // JOB 3280: drei Lagen mit einem klaren nächsten Schritt — sie sind kein Ausfall, sondern
       // eine Nachfrage. Gelb, nicht rot; und keine von ihnen hat etwas gesendet.
       "clipboard_empty",
@@ -164,6 +177,11 @@
       // JOB 3279 R2: ohne gewählten Umfang gibt es nichts zu speichern. Der Knopf bleibt gesperrt,
       // bis die Wahl getroffen ist — statt still die ganze Seite mitzunehmen.
       !next.mode ||
+      // JOB 3524 · Lieferung 2: der vierte Umfang ist wählbar, BEVOR er Inhalt hat — gespeichert
+      // wird er dadurch nicht. Ein gewählter Umfang ohne Inhalt ergibt keinen Entwurf; derselbe
+      // Riegel liegt im Worker (`payload`, `empty`), hier ist er nur sichtbar statt erst als
+      // Fehlermeldung nach dem Klick.
+      !next.variants?.[next.mode]?.available ||
       // JOB 3280: eingefügter Text ohne Herkunftsangabe wird nicht gespeichert. Dieselbe Grenze
       // zieht der Worker (`payload`, `origin_missing`) — hier ist sie nur sichtbar, nicht neu.
       (next.mode === "clipboard" && !$("origin").value) ||
@@ -181,6 +199,10 @@
       "refresh",
       "logout",
       "login",
+      // JOB 3524: die beiden Wege in eine neue Übernahme sind gesperrt, solange etwas läuft — sie
+      // verwerfen die örtliche Auswahl, und das mitten in einem Speichervorgang wäre eine Falle.
+      "neu",
+      "neu-rest",
     ])
       $(id).disabled = busy;
     // JOB 3280 R3: solange eine Anlage unklar ist, steht der INHALT still — Einfügen, das Textfeld
@@ -190,7 +212,13 @@
     const ungeklaert = next.unresolvedCreate === true;
     for (const id of ["paste", "clipboard"]) $(id).disabled = busy || !next.selection || ungeklaert;
     for (const mode of MODES)
-      $(`mode-${mode}`).disabled = busy || !next.variants?.[mode]?.available || ungeklaert;
+      $(`mode-${mode}`).disabled =
+        busy ||
+        ungeklaert ||
+        // JOB 3524 · Lieferung 2: die drei Umfänge der SEITE bleiben an ihren Inhalt gebunden — sie
+        // entstehen beim Erfassen oder gar nicht. Der vierte ist wählbar, sobald es überhaupt eine
+        // Übernahme gibt; sein Inhalt entsteht erst danach, im Feld darunter.
+        (mode === "clipboard" ? !next.selection : !next.variants?.[mode]?.available);
   }
   /** Der Wirt einer Adresse, oder die Adresse selbst — nie ein geratener Name. @param {string} url */
   const wirt = (url) => {
@@ -200,7 +228,7 @@
       return url;
     }
   };
-  /** @param {import("./types").View} next */
+  /** @param {Sicht} next */
   function render(next) {
     current = next;
     document.documentElement.lang = language;
@@ -241,15 +269,22 @@
       $("page").textContent = next.selection.title;
       $("source").textContent = next.selection.url;
       $("captured").textContent = next.selection.capturedAt;
+      // JOB 3524: der vierte Umfang bekommt hier seinen EIGENEN Namen. Bis hierher fiel er durch
+      // die Kette hindurch auf „Markierung" — die Umfangszeile nannte damit etwas, das gar nicht
+      // gewählt war.
       $("scope-value").textContent = next.mode
         ? t(
-            `mode${next.mode === "article" ? "Article" : next.mode === "page" ? "Page" : "Selection"}`,
+            `mode${next.mode === "article" ? "Article" : next.mode === "page" ? "Page" : next.mode === "clipboard" ? "Clipboard" : "Selection"}`,
           )
         : t("scopeNone");
       $("scope-none").hidden = Boolean(next.mode);
       // JOB 3280: die Chat-Kennzeichnung gilt der SEITE. Bei eingefügtem Text sagt sie nichts über
       // den Inhalt aus — dort trägt die Herkunftsangabe die Aussage, und nur sie.
       $("ai-chat").hidden = next.aiChat !== true || next.mode === "clipboard";
+      // JOB 3524 · Lieferung 2: der ganze Block hängt am gewählten Umfang, nicht nur die
+      // Herkunftswahl darin. Bei Markierung, Artikel oder Seite ist er weg und drängt weder Inhalt
+      // noch Aktionen nach unten (Pedis Bildschirmfoto 10.09. 09:01).
+      $("clipboard-box").hidden = next.mode !== "clipboard";
       $("origin-box").hidden = next.mode !== "clipboard";
       $("source-changed").hidden = !next.sourceChanged;
       for (const mode of MODES) {
@@ -257,7 +292,9 @@
         $(`mode-${mode}`).checked = next.mode === mode;
         $(`info-${mode}`).textContent = variant?.available
           ? `· ${variant.text.length} ${t("chars")}${variant.images ? ` · ${variant.images} ${t("images")}` : ""}`
-          : `· ${t("scopeEmpty")}`;
+          : // JOB 3524 · Lieferung 1: „nicht vorhanden" ist beim vierten Umfang eine Falschaussage
+            // über das System des Menschen. Was stimmt: in Klara ist noch nichts eingefügt.
+            `· ${t(mode === "clipboard" ? "scopeNotPasted" : "scopeEmpty")}`;
       }
       const gaps = next.gaps ?? [];
       $("gaps-box").hidden = gaps.length === 0;
@@ -320,6 +357,18 @@
     $("open").hidden = !href;
     $("open-stale").hidden = !offen;
     $("done").hidden = !href && !offen;
+    // JOB 3524 · Lieferung 4: „Neue Übernahme" steht NUR neben einem bestätigten Entwurf. Bei der
+    // Rückfrage (`#open-stale`) gibt es ungesicherte Änderungen — dort wäre ein Knopf, der die
+    // Auswahl wegnimmt, eine Falle; die Zeile daneben sagt stattdessen, was zu tun ist.
+    $("neu").hidden = !href || next.canCapture !== true;
+    // JOB 3524 · Lieferung 3: DER ZUSTAND „KEINE AUSWAHL" IST KEINE SACKGASSE MEHR.
+    //
+    // Nach dem Verwerfen fiel die Leiste auf die eine Ruhezeile zurück, und jeder Weg zu einer
+    // neuen Übernahme stand im Absatz `instructions` — INNERHALB von `#preview`, also genau dann
+    // verborgen, wenn er gebraucht wird. Pedi hat deshalb am 10.09. die Erweiterung neu gestartet.
+    // Jetzt steht hier der Knopf, und daneben in einer Zeile die Wege, die die Erweiterung sonst
+    // noch kennt (Symbol, Rechtsklick, Tastenkürzel) — falls der Tab inzwischen weitergezogen ist.
+    $("neu-rest").hidden = Boolean(next.selection) || next.canCapture !== true;
     controls(next);
   }
   /**
@@ -405,7 +454,28 @@
       if (busy || $(`mode-${mode}`).disabled || current.mode === mode) return;
       // Ein anderer Umfang ist ein anderer Inhalt: die Bestätigung verfällt und muss neu erfolgen.
       $("confirm").checked = false;
-      void send({ type: "mode", captureId: current.captureId, mode });
+      const gesendet = send({ type: "mode", captureId: current.captureId, mode });
+      // ============================================================================================
+      // JOB 3524 · Lieferung 2 — DIE WAHL ALLEIN LIEST NICHTS UND FRAGT KEIN RECHT AN.
+      // ============================================================================================
+      //
+      // Der vierte Umfang ist wählbar, bevor etwas eingefügt wurde; die Grenze dafür steht im Worker
+      // (`message.type === "mode"`). Damit die Wahl auch etwas nützt, steht der Schreibpunkt danach
+      // im Feld darunter — Cmd+V bzw. Strg+V wirkt unmittelbar, ohne Umweg über die Taste, die ein
+      // Recht anfragt. Genau daran ist Pedi am 10.09. 08:57 hängengeblieben.
+      //
+      // WAS HIER NICHT GESCHIEHT: `navigator.clipboard` wird nicht berührt und
+      // `chrome.permissions.request` nicht gerufen. Beides steht in dieser Datei ausschliesslich im
+      // Klickzuhörer von `#paste` weiter unten; `focus()` liest nichts.
+      //
+      // WARUM ERST NACH DER ANTWORT: `send()` sperrt die Fläche für die Dauer der Runde, und dazu
+      // gehört `#clipboard` selbst (`controls()`). Ein `focus()` auf ein gesperrtes Feld verpufft.
+      // Die Kette hängt deshalb hinter der Warteschlange von `send()` — die gibt die Sperre in
+      // ihrem `finally` zurück, bevor diese Zeile läuft.
+      if (mode === "clipboard")
+        void gesendet.then(() => {
+          if (current.mode === "clipboard" && !$("clipboard").disabled) $("clipboard").focus();
+        });
     });
   for (const id of ["title", "context", "confidentiality", "origin"])
     $(id).addEventListener("input", () => {
@@ -536,6 +606,34 @@
   $("cancel").addEventListener("click", () => {
     if (!busy) void send({ type: "cancel", captureId: current.captureId });
   });
+  // ================================================================================================
+  // JOB 3524 · Lieferung 3+4 — „NEUE ÜBERNAHME": EINE HANDLUNG, ZWEI STELLEN, EIN ZUHÖRER.
+  // ================================================================================================
+  //
+  // Sie steht an den zwei Stellen, an denen Pedi am 10.09. hängengeblieben ist:
+  //   `#neu`      neben dem Entwurfslink in der Erfolgsmeldung oben (Bildschirmfoto 09.18.36 — die
+  //               Leiste stand auf dem gespeicherten Artikel, seine frische Markierung war
+  //               unerreichbar, „Markierung · nicht vorhanden" ausgegraut).
+  //   `#neu-rest` im Ruhezustand nach dem Verwerfen (Bildschirmfoto 09.00.06 — „Keine Auswahl",
+  //               ohne Weg zurück; Pedi hat die Erweiterung neu gestartet).
+  //
+  // Beide rufen DENSELBEN Zuhörer und dieselbe Nachricht. Der Worker verwirft dort die örtliche
+  // Übernahme und liest die Seite sofort neu — es ist kein zweiter Erfassungsweg, sondern das
+  // `capture()`, das auch Symbol und Kontextmenü rufen (`worker.js`, `message.type === "recapture"`).
+  //
+  // WAS DABEI NICHT GESCHIEHT: kein Netzauftrag. Ein bereits gespeicherter Entwurf wird weder
+  // überschrieben noch gelöscht — die neue Übernahme bekommt eine eigene Kennung und wird beim
+  // Sichern ein eigener Entwurf. Genau deshalb heisst der Knopf „Neue Übernahme" und nicht
+  // „Verwerfen": verworfen wird nur, was hier in der Leiste liegt.
+  const neueUebernahme = () => {
+    if (busy) return;
+    void send({ type: "recapture", captureId: current.captureId });
+  };
+  for (const id of ["neu", "neu-rest"])
+    $(id).addEventListener("click", () => {
+      if ($(id).hidden) return;
+      neueUebernahme();
+    });
   $("save").addEventListener("click", () => {
     if (busy || $("save").disabled || !$("confirm").checked) return;
     $("confirm").checked = false;

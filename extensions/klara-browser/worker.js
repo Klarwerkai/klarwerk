@@ -21,6 +21,25 @@
    * @type {import("./types").Mode[]}
    */
   const MODES = ["selection", "article", "page", "clipboard"];
+  /**
+   * JOB 3524 · DIE ZWEI FELDER DIESER RUNDE — UND WARUM SIE HIER STEHEN UND NICHT IN `types.d.ts`.
+   *
+   * `lastTab` ist der zuletzt ERFOLGREICH gelesene Tab. Er überlebt das Verwerfen (das setzt nur
+   * `work` zurück) und ist damit die einzige Angabe, aus der eine neue Übernahme aus der Leiste
+   * heraus starten kann — die Erweiterung hat kein `tabs`-Recht und darf den offenen Tab nicht
+   * raten. `logout` räumt ihn mit allem anderen weg (`storage.session.clear()`).
+   *
+   * `canCapture` sagt der Leiste, DASS ein solcher Tab da ist. Bewusst schwach: „es gibt einen
+   * Tab", nicht „das Lesen wird gelingen" — das entscheidet sich erst am Zugriff.
+   *
+   * `types.d.ts` wäre ihr Platz, steht aber nicht in den Zielpfaden dieses Auftrags; Runde 1 wurde
+   * genau dafür zurückgewiesen. Sie wohnen deshalb bei ihrem Erzeuger. Kommt `types.d.ts` einmal
+   * zu einem Auftrag, ziehen beide dorthin und diese drei Typen fallen ersatzlos weg — es ist eine
+   * Ortsangabe, keine zweite Wahrheit.
+   * @typedef {{ id?: number, url?: string, title?: string }} Reiter
+   * @typedef {import("./types").State & { lastTab?: Reiter }} Zustand
+   * @typedef {import("./types").View & { canCapture?: boolean }} Sicht
+   */
   const ready = chrome.storage.session.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" });
   let busy = false;
   let captureBusy = false;
@@ -470,7 +489,7 @@
   async function put(work) {
     await chrome.storage.session.set({ work });
   }
-  /** @param {import("./types").State} state @param {string} [status] @returns {import("./types").View} */
+  /** @param {Zustand} state @param {string} [status] @returns {Sicht} */
   function view(state, status) {
     const w = state.work;
     return {
@@ -481,6 +500,11 @@
           ? state.captureStatus
           : "no_selection"),
       pendingCapture: state.pendingCapture === true,
+      // JOB 3524 · Lieferung 3+4: DASS eine neue Übernahme von hier aus überhaupt beginnen kann.
+      // Sie braucht einen Tab (laufende Übernahme oder zuletzt gelesener); ohne einen steht in der
+      // Leiste kein Knopf, der nichts tun könnte. Die Zusage ist bewusst schwach: „es gibt einen
+      // Tab", nicht „das Lesen wird gelingen" — das entscheidet sich erst am Zugriff (s. oben).
+      canCapture: Boolean(state.work?.selection || state.lastTab),
       ...(state.auth ? { user: { id: state.auth.id, email: state.auth.email } } : {}),
       ...(w
         ? {
@@ -658,9 +682,17 @@
     if (
       !message ||
       typeof message !== "object" ||
-      !["state", "login", "logout", "edit", "mode", "clipboard", "save", "cancel"].includes(
-        message.type,
-      )
+      ![
+        "state",
+        "login",
+        "logout",
+        "edit",
+        "mode",
+        "clipboard",
+        "save",
+        "cancel",
+        "recapture",
+      ].includes(message.type)
     )
       return { status: "invalid_message" };
     if (message.type === "state") {
@@ -672,6 +704,62 @@
         busy = false;
         void nachholen();
       }
+    }
+    // ==============================================================================================
+    // JOB 3524 · Lieferung 3+4 — EINE NEUE ÜBERNAHME BEGINNT AUS DER LEISTE HERAUS.
+    // ==============================================================================================
+    //
+    // DER BEFUND (Pedi am 10.09., Bildschirmfoto 09.18.36): links ein frisch markierter Absatz,
+    // rechts die Leiste auf dem zuvor GESPEICHERTEN Artikel und „Markierung · nicht vorhanden"
+    // ausgegraut. Der Grund steht in `capture()` weiter unten: solange eine Übernahme im Zustand
+    // liegt, wird eine neue NICHT darüber geschrieben — sie wird nur als `pendingCapture` gemerkt.
+    // Das ist richtig (eine begonnene Übernahme verschwindet nie von selbst), aber der einzige
+    // Ausweg war „Auswahl verwerfen" und danach ein neuer Griff zum Symbol. Pedi hat stattdessen
+    // die Erweiterung neu gestartet.
+    //
+    // Diese Nachricht ist genau dieser Ausweg, als EINE bewusste Handlung: die örtliche Übernahme
+    // geht weg, und die Seite wird sofort neu gelesen. Es ist kein zweiter Erfassungsweg — es ist
+    // dasselbe `capture()`, das auch Symbol und Kontextmenü rufen.
+    //
+    // WAS DABEI NICHT GESCHIEHT: kein Netzauftrag, also auch kein Überschreiben und kein Löschen
+    // eines bereits gespeicherten Entwurfs. Er liegt auf dem Server und bleibt dort unberührt;
+    // die neue Übernahme bekommt eine eigene Kennung und wird beim Sichern ein eigener Entwurf.
+    //
+    // DIE GRENZE, DIE HIER NICHT MESSBAR IST: `scripting.executeScript` braucht Zugriff auf den
+    // Tab. Den hat die Erweiterung aus `activeTab` — erteilt beim Klick auf Symbol oder
+    // Kontextmenü, gültig für DIESEN Tab, bis er woanders hin navigiert oder geschlossen wird. Ein
+    // Klick in der Leiste erteilt ihn NICHT neu. Solange derselbe Tab offen und unnavigiert ist,
+    // trägt der alte Zugriff; danach scheitert der Aufruf, und `capture()` meldet ehrlich
+    // `capture_failed` statt still nichts zu tun. Im Prüfstand ist `executeScript` gestellt, dort
+    // ist diese Grenze also NICHT nachgewiesen — nur das Verhalten drumherum.
+    if (message.type === "recapture") {
+      if (busy || captureBusy) return view(await read(), "busy");
+      busy = true;
+      /** @type {Reiter | undefined} */
+      let tab;
+      try {
+        const state = /** @type {Zustand} */ (await read());
+        const s = state.work?.selection;
+        // Der Tab der laufenden Übernahme, sonst der zuletzt erfolgreich gelesene. Beides steht im
+        // eigenen Zustand — die Leiste hat kein `tabs`-Recht und darf den offenen Tab nicht raten.
+        tab = s ? { id: s.tabId, url: s.url, title: s.title } : state.lastTab;
+        if (tab)
+          await chrome.storage.session.set({
+            work: null,
+            captureStatus: null,
+            pendingCapture: false,
+          });
+      } finally {
+        busy = false;
+      }
+      if (!tab) {
+        void nachholen();
+        return view(await read(), "no_tab");
+      }
+      // NACH der Sperre: `capture()` steigt bei `busy` aus und merkt sich den Wunsch nur — die
+      // Leiste bekäme dann eine Antwort, in der die neue Übernahme noch gar nicht steht.
+      await capture(tab);
+      return view(await read());
     }
     if (busy || captureBusy) return view(await read(), "busy");
     busy = true;
@@ -757,8 +845,25 @@
       if (message.type === "mode") {
         // Der Umfang wird bewusst gewählt und nie automatisch ausgeweitet: ein Umfang ohne
         // Inhalt bleibt unwählbar, statt eine leere Übernahme zu erlauben.
+        //
+        // JOB 3524 · Lieferung 2 — GENAU EINE AUSNAHME, UND SIE GILT NUR DEM VIERTEN UMFANG.
+        //
+        // Die drei Umfänge der SEITE entstehen beim Erfassen oder gar nicht: `article` ohne
+        // Artikelbereich wird durch keine Handlung des Menschen noch voll. Der vierte entsteht
+        // umgekehrt AUSSCHLIESSLICH durch eine Handlung des Menschen — er ist nach dem Erfassen
+        // immer leer. Die Regel „leer bleibt unwählbar" sperrte ihn damit dauerhaft: wählbar wurde
+        // er erst durch das Einfügen, und einfügen konnte man nur über die Taste, die ein Recht
+        // anfragt. Pedi kam so an das Feld nie ohne Rechtefrage heran (10.09. 08:57).
+        //
+        // Der leere vierte Umfang ist deshalb wählbar — und BEHAUPTET DABEI NICHTS: die Vorschau
+        // wird leer (`chosen()` liefert die leere Variante), `payload()` wirft weiter `empty`, und
+        // die Leiste hält den Speicherknopf gesperrt. Gewählt heisst hier „hierhin gehört der
+        // Inhalt", nicht „hier ist Inhalt".
         const wanted = message.mode;
-        if (!isMode(wanted) || !state.work.variants?.[wanted]?.available)
+        if (
+          !isMode(wanted) ||
+          (wanted !== "clipboard" && !state.work.variants?.[wanted]?.available)
+        )
           return view(state, "invalid_message");
         state.work.mode = wanted;
         state.work.receipt = null;
@@ -1116,6 +1221,14 @@
                 savedLevel: "",
                 receipt: null,
               });
+              // JOB 3524 · Lieferung 3: DER TAB, DEN DIE ERWEITERUNG SCHON EINMAL LESEN DURFTE.
+              // Er überlebt das Verwerfen (das setzt nur `work` zurück) und ist damit die einzige
+              // Angabe, aus der eine neue Übernahme nach dem Verwerfen überhaupt starten kann —
+              // die Leiste hat kein `tabs`-Recht und darf den offenen Tab nicht raten. Abgemeldet
+              // wird er mit allem anderen: `logout` ruft `storage.session.clear()`.
+              /** @type {Zustand} */
+              const merken = { lastTab: { id: tab.id, url: s.url, title: s.title } };
+              await chrome.storage.session.set(merken);
             }
           } else status = "source_changed";
         } catch {

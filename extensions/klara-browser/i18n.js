@@ -50,6 +50,12 @@ globalThis.KLARA_TEXT = {
     scopeHint:
       "Der Umfang wird bewusst gewählt und nie von selbst ausgeweitet. „Zugängliche Seite“ ist alles, was ohne Nachladen lesbar ist — nicht jede geschützte, eingebettete oder erst später geladene Ressource.",
     scopeEmpty: "nicht vorhanden",
+    // JOB 3524 · Lieferung 1: der vierte Umfang ist NICHT „nicht vorhanden". Er entsteht erst durch
+    // das Einfügen, und solange nichts eingefügt wurde, ist genau das die Lage. Der Satz sagt nichts
+    // über die Zwischenablage des Menschen und nichts über Rechte — beides weiss die Leiste hier
+    // nicht, und Pedi hat aus „nicht vorhanden" am 10.09. 08:57 geschlossen, Klara könne seine
+    // Zwischenablage nicht lesen.
+    scopeNotPasted: "noch nicht eingefügt",
     scopeNone: "noch nicht gewählt",
     scopeChoose:
       "Auf dieser Seite wurde weder eine Markierung noch ein eigener Artikelbereich gefunden. Bitte den Umfang ausdrücklich wählen — die ganze Seite wird nie von selbst übernommen.",
@@ -88,6 +94,20 @@ globalThis.KLARA_TEXT = {
       "Ich habe Umfang, Inhalt, Quelle und Vertraulichkeit geprüft und möchte diesen ungeprüften Entwurf in meinem angezeigten Klarwerk-Konto speichern.",
     save: "Bewusst als Entwurf speichern",
     cancel: "Auswahl verwerfen",
+    // JOB 3524 · Lieferung 5: der Kasten, in dem die langen Erläuterungen wohnen. Er ist zu, solange
+    // niemand ihn öffnet — konkrete Warnungen und die drei Zwischenablage-Ausgänge stehen NICHT
+    // darin, sie bleiben sichtbar.
+    detailsTitle: "Details zur Übernahme",
+    // JOB 3524 · Lieferung 3+4: der Weg in eine neue Übernahme — neben dem Entwurfslink oben und
+    // im Ruhezustand nach dem Verwerfen. Er verwirft die ÖRTLICHE Auswahl und liest die Seite neu;
+    // ein bereits gespeicherter Entwurf bleibt, wo er ist. Deshalb „Neue Übernahme", nicht
+    // „Verwerfen" — verworfen wird nur, was in der Leiste liegt.
+    newCapture: "Neue Übernahme",
+    // JOB 3524: „Neue Übernahme" ohne einen Tab, den die Erweiterung schon einmal lesen durfte.
+    // Die Zeile behauptet keinen Grund, den die Leiste nicht kennt — sie nennt die Wege, die
+    // unabhängig davon tragen.
+    no_tab:
+      "Von hier aus geht es gerade nicht weiter. Bitte auf der Seite markieren und Rechtsklick, das Symbol oder Alt+Umschalt+K benutzen.",
     openDraft: "Entwurf in Klarwerk öffnen",
     openStale:
       "Zu dieser Übernahme gibt es bereits einen Entwurf, aber der Stand hier ist nicht der gespeicherte. Bitte bestätigen und speichern: die Änderungen gehen in denselben Entwurf, es entsteht keine zweite Kopie. Danach erscheint der Link wieder.",
@@ -221,6 +241,9 @@ globalThis.KLARA_TEXT = {
     scopeHint:
       "The scope is chosen deliberately and is never widened on its own. “Accessible page” means everything readable without further loading — not every protected, embedded or later-loaded resource.",
     scopeEmpty: "not available",
+    // JOB 3524 · Lieferung 1 — see the German entry above: the fourth scope is not „unavailable",
+    // it is simply not filled yet. It says nothing about the person's clipboard or any permission.
+    scopeNotPasted: "not pasted yet",
     scopeNone: "not chosen yet",
     scopeChoose:
       "Neither a selection nor a distinct article region was found on this page. Please choose the scope explicitly — the whole page is never captured on its own.",
@@ -259,6 +282,10 @@ globalThis.KLARA_TEXT = {
       "I have checked the scope, content, source and confidentiality and want to save this unreviewed draft to my displayed Klarwerk account.",
     save: "Confirm and save draft",
     cancel: "Discard selection",
+    detailsTitle: "Details about this capture",
+    newCapture: "New capture",
+    no_tab:
+      "This cannot continue from here right now. Please select on the page and use right-click, the icon or Alt+Shift+K.",
     openDraft: "Open draft in Klarwerk",
     openStale:
       "A draft already exists for this capture, but what you see here is not what is saved. Please confirm and save: the changes go into the same draft, no second copy is created. The link reappears afterwards.",

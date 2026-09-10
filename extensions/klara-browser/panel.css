@@ -170,15 +170,25 @@ section {
   margin-top: 12px;
   box-shadow: var(--shadow-tile);
 }
-/* Der Ruhezustand: das Symbol und sonst NICHTS. Der eine Satz steht in #status darüber. */
+/* Der Ruhezustand: das Symbol, der eine Satz in #status darüber — und seit JOB 3524 die eine
+   Handlung, mit der eine neue Übernahme beginnt. Bis dahin war dieser Zustand eine Sackgasse:
+   Pedi hat am 10.09. nach dem Verwerfen die Erweiterung neu gestartet, weil hier nichts stand.
+   Deshalb SPALTE statt Zeile — Symbol oben, Knopf darunter, beide mittig. */
 #rest {
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
   padding: 26px 0 6px;
   color: var(--lupe);
 }
 #rest svg {
   display: block;
+}
+/* Der Knopf steht für sich, nicht über die ganze Breite: er ist ein Angebot, keine Aufforderung.
+   `.actions button` streckt sonst jedes Kind auf die volle Zeile (flex: 1 1 auto). */
+#rest .actions button {
+  flex: 0 0 auto;
 }
 label {
   display: block;
@@ -370,6 +380,28 @@ dd {
   margin-top: 3px;
   width: 16px;
   height: 16px;
+}
+/* JOB 3524 · Lieferung 5: DER AUFKLAPPER FÜR DIE LANGEN ERLÄUTERUNGEN.
+   Er ist zu, solange niemand ihn öffnet — die Anleitungs- und Technikabsätze drängten sonst
+   Inhalt, Titel und die beiden Knöpfe nach unten (Pedis Bildschirmfoto 10.09. 09:01). Konkrete
+   Warnungen und die drei Zwischenablage-Ausgänge stehen ausdrücklich NICHT darin; sie sind keine
+   Erläuterung und bleiben sichtbar. Die Zusammenfassungszeile ist bedienbar und muss deshalb wie
+   ein Bedienelement aussehen und einen Fokusrahmen tragen (:focus-visible weiter oben). */
+details {
+  margin-top: 12px;
+  border-top: 1px solid var(--hairline);
+  padding-top: 8px;
+}
+summary {
+  cursor: pointer;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 4px 0;
+}
+/* Der erste Absatz sitzt sonst am Deckel der Zusammenfassungszeile. */
+details > .hint:first-of-type {
+  margin-top: 8px;
 }
 .actions {
   display: flex;
