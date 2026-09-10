@@ -40,7 +40,8 @@ import {
   SlidersHorizontal,
   X,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client";
@@ -240,6 +241,7 @@ export function Validation(): JSX.Element {
   // erste sichtbare. Ein gewählter Eintrag, der aus der Liste fällt (entschieden, weggefiltert),
   // fällt automatisch auf denselben Weg zurück.
   const [aktivId, setAktivId] = useState<string | null>(null);
+  const pruefbereichRef = useRef<HTMLDivElement>(null);
   const markDeletedKo = (id: string): void => {
     setLocallyDeletedKoIds((ids) => withDeletedKoId(ids, id));
   };
@@ -978,7 +980,21 @@ export function Validation(): JSX.Element {
                       type="button"
                       data-testid="pruefen-warteschlange-eintrag"
                       aria-current={ist ? "true" : undefined}
-                      onClick={() => setAktivId(k.id)}
+                      onClick={() => {
+                        const auswahlSetzen = () => setAktivId(k.id);
+                        if (!schmal) {
+                          auswahlSetzen();
+                          return;
+                        }
+                        // Nur die bewusste Auswahl führt den Blick. Erst die gewählte Karte
+                        // zeichnen, dann ihre Lage nutzen; Abrufe und Entscheidungen springen nie.
+                        flushSync(auswahlSetzen);
+                        pruefbereichRef.current?.scrollIntoView({
+                          block: "start",
+                          behavior: "instant",
+                        });
+                        pruefbereichRef.current?.focus({ preventScroll: true });
+                      }}
                       className={cx(
                         "block w-full rounded-[9px] border px-[12px] py-[10px] text-left text-[13.5px] leading-[1.35]",
                         ist
@@ -996,7 +1012,9 @@ export function Validation(): JSX.Element {
         </div>
 
         {/* ---- Die eine Karte (Pruefen.dc.html Z.51–62) -------------------------------------- */}
-        <div className="min-w-0 flex-1">{aktiv ? karte(aktiv) : null}</div>
+        <div ref={pruefbereichRef} tabIndex={schmal ? -1 : undefined} className="min-w-0 flex-1">
+          {aktiv ? karte(aktiv) : null}
+        </div>
       </div>
     </div>
   );
