@@ -831,6 +831,23 @@ export function BibliothekFlaeche({
       zustandWort: t(`status.${zustand}`),
       ton: zustandsTon(zustand),
       stufe: { labelKey: auskunft.labelKey, tone: auskunft.tone },
+      // ============================================================================================
+      // JOB 3488 · DIE VORSCHAUQUELLE — SIE LIEGT SCHON HIER, ALSO KOSTET SIE NICHTS.
+      // ============================================================================================
+      // Die Zeile entsteht aus dem VOLLEN Suchobjekt; die Kernaussage ist damit ohne einen einzigen
+      // zusätzlichen Abruf greifbar. Kein Query, kein Effekt, kein Zustand, kein KI-Aufruf.
+      //
+      // NUR `statement`, UND DAS IST GEMESSEN, NICHT ANGENOMMEN: `bodyHtml` ist am Draht dieser
+      // Liste nicht vorhanden — `GET /api/library/search`
+      // (`services/app/src/routes/library-routes.ts:539`) liefert über `KoService.listForSearch`
+      // (`services/knowledge-object/src/service.ts:3031-3035`) die body-freie Projektion beider
+      // Kompositionswurzeln (InMemory `repo.ts:483` `map(({ bodyHtml: _omitted, ...rest }) => rest)`,
+      // Postgres `repo-pg.ts:580` `SELECT data - 'bodyHtml' AS data FROM kos`). Der Body-Rückfall aus
+      // `koPreviewText` (`lib/koPreview.ts:34`) liefe hier also ins Leere; ihn trotzdem
+      // hinzuschreiben behauptete eine Quelle, die es nicht gibt. `statement` dagegen ist am Draht
+      // Pflichtfeld (`api/types.ts:335`, `statement: string`). Eine Zeile ohne Kernaussage bekommt
+      // deshalb schlicht keinen Aufklapper — kein Nachladen je Zeile, kein Modelltext.
+      vorschau: { statement: ko.statement },
     };
   };
 

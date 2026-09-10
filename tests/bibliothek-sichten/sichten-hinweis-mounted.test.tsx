@@ -285,7 +285,16 @@ describe("UX-29 C · Speicherhinweis auf der Bibliotheksfläche", () => {
       click(element('[data-testid="bib-sicht-speichern"]'));
       waehleImMenue(container, "bib-menue-filter", String(i18n.t("lib.sort.title")));
       expect(ids()[0]).toBe(`objekt-${LIBRARY_RESULT_LIMIT}`);
-      const scroll = element('[data-testid="bib-zeile"]').parentElement as HTMLElement;
+      // JOB 3488: die Rollspur wird über ihre MARKE gegriffen, nicht über die Baumlage der Zeile.
+      // Bis hierher stand hier `element('[data-testid="bib-zeile"]').parentElement` — eine Annahme
+      // über den Aufbau der Liste, und genau die ist mit dem Vorschau-Aufklapper gefallen: die
+      // Zeile ist jetzt ein BLOCK aus Zeilenknopf und Umschalter, der Elternknoten der Zeile ist
+      // also der Block und nicht mehr die Spur. Ein `scroll`-Ereignis STEIGT NICHT AUF, der Griff
+      // lief damit ins Leere und das Nachladen blieb aus (gemessen: 200 statt 201 Zeilen). Die
+      // Marke `bib-spur` steht in `BibliothekListe.tsx` ausdrücklich dafür, das rollende Element
+      // von aussen zu finden, ohne seinen Aufbau zu kennen — dieselbe Marke, die auch
+      // `BibliothekFlaeche.tsx` (`listenRoller`) benutzt. Gemessen wird unverändert dasselbe.
+      const scroll = element('[data-testid="bib-spur"]');
       act(() => {
         scroll.scrollTop = 19_500;
         scroll.dispatchEvent(new Event("scroll"));

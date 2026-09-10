@@ -2,7 +2,9 @@ import { Languages, Search } from "lucide-react";
 import { type ReactNode, type UIEvent, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { CONF_TONE_CLASS, type ConfidentialityTone } from "../../lib/confidentiality";
+import type { KoPreviewSource } from "../../lib/koPreview";
 import { useLesevariante } from "../../lib/lesevariante";
+import { KoSummaryDisclosure } from "../KoSummaryDisclosure";
 import { cx } from "../ui";
 import { BIB_SEGMENTE, type BibSegment, type ZustandsTon, amListenende } from "./zustand";
 
@@ -41,6 +43,14 @@ export interface BibZeile {
   ton: ZustandsTon;
   // JOB 3034: die Vertraulichkeitsstufe im Klartext, auch die fehlende — s. `vertraulichkeitsAuskunft`.
   stufe: { labelKey: string; tone: ConfidentialityTone };
+  // ================================================================================================
+  // JOB 3488 · BIBLIOTHEK-VORSCHAU-AUFKLAPPER — DIE QUELLE DES VORSCHAUTEXTES, MEHR NICHT.
+  // ================================================================================================
+  // Der Aufklapper der Zeile liest AUSSCHLIESSLICH, was der Aufrufer hier hereinreicht; gekürzt wird
+  // an der einen vorhandenen Stelle (`lib/koPreview.ts`, `koPreviewText`), nicht hier. Das Feld ist
+  // optional, weil eine Zeile ohne Kernaussage schlicht keinen Aufklapper bekommt — kein leerer
+  // Kasten, kein erfundener Text (`KoSummaryDisclosure.tsx:50-53` gibt dann `null` zurück).
+  vorschau?: KoPreviewSource;
 }
 
 // D-BIB: die Untergruppen-Ansicht überlebt als Zwischenüberschrift in derselben Liste (vorher
@@ -95,13 +105,19 @@ const LAGE_DARUEBER =
 // Original, Variante vorhanden — sonst `undefined`, und dann steht das Original ohne jeden Hinweis
 // da. Diese Datei zeichnet nur, sie entscheidet nichts.
 //
-// WARUM DIE KURZFORM UND NICHT DER BAUSTEIN `LesevarianteHinweis`: die Zeile IST ein `<button>`, und
-// der Baustein trägt seinen Umschalter „Original anzeigen" als zweiten `<button>` darin. Ein Knopf im
-// Knopf ist im DOM nicht erlaubt und mit der Tastatur nicht erreichbar. Die Zeile trägt die
-// Kennzeichnung deshalb als reinen Text — in DERSELBEN Bauform wie die Kurzvorschau
-// (`KoSummaryDisclosure.tsx:75-84`), mit denselben Schlüsseln aus JOB 3326 und ohne einen zweiten
-// Wortlaut. Der Weg zum Original ist die Lesefläche rechts, die den vollen Baustein samt Umschalter
-// zeigt.
+// WARUM DIE KURZFORM UND NICHT DER BAUSTEIN `LesevarianteHinweis`: der Baustein trägt seinen
+// Umschalter „Original anzeigen" als eigenen `<button>`, und dieser Umschalter gehört in den
+// ZEILENKNOPF hinein — dort, wo der Titel steht, den er umschaltet. Ein Knopf im Knopf ist im DOM
+// nicht erlaubt und mit der Tastatur nicht erreichbar. Die Zeile trägt die Kennzeichnung deshalb als
+// reinen Text — in DERSELBEN Bauform wie die Kurzvorschau (`KoSummaryDisclosure.tsx:75-84`), mit
+// denselben Schlüsseln aus JOB 3326 und ohne einen zweiten Wortlaut. Der Weg zum Original ist die
+// Lesefläche rechts, die den vollen Baustein samt Umschalter zeigt.
+//
+// JOB 3488 — DIE ALTE BEGRÜNDUNG „die Zeile IST ein `<button>`" GILT SO NICHT MEHR und ist deshalb
+// hier nachgeführt: die Zeile ist seit dem Vorschau-Aufklapper ein BLOCK aus Zeilenknopf und
+// Umschalter als GESCHWISTER (s. unten am Markup). Was bleibt, ist die Regel selbst — ein Knopf in
+// einem Knopf entsteht nicht. Für die Lesevariante ändert das nichts: ihr Umschalter säße nicht
+// neben dem Titel, sondern müsste ihn ersetzen, und dafür ist die Lesefläche der Ort.
 //
 // DAS ORIGINAL BLEIBT WAHRHEIT, und zwar messbar: `title=` am Titel führt weiter den ORIGINALtitel
 // (der Werkzeugtipp an der abgeschnittenen Zeile), und Suche, Reihung und Gruppierung entstehen
@@ -358,49 +374,91 @@ export function BibliothekListe({
               <span className="shrink-0 text-[11px] text-muted">{p.anzahl}</span>
             </div>
           ) : (
-            <button
+            // ======================================================================================
+            // JOB 3488 · DIE ZEILE IST EIN BLOCK: ZEILENKNOPF UND VORSCHAU-UMSCHALTER SIND
+            // GESCHWISTER.
+            // ======================================================================================
+            // Bis hierher war die ganze Zeile EIN `<button>` und damit der einzige Bedienweg — wer
+            // wissen wollte, worum es geht, musste den Eintrag öffnen und die Liste verlassen. Der
+            // Aufklapper braucht einen zweiten Knopf; ein Knopf IM Knopf ist im DOM nicht erlaubt und
+            // mit der Tastatur nicht erreichbar (die Regel oben). Also trägt jetzt ein Block beides
+            // nebeneinander. Der alte Aufbau steht nicht als zweiter Zweig daneben, er ist ersetzt.
+            //
+            // WAS DER BLOCK TRÄGT UND WAS DER KNOPF: gezeichnet werden Auswahlanstrich und
+            // Trennlinie GENAU EINMAL, nämlich am Block — sonst stünden zwei Haarlinien
+            // übereinander, sobald ein Aufklapper darunter hängt. Der Knopf ERBT beides
+            // (`bg-inherit`, `border-inherit`) und behält seine gemessenen Zeilenmaße (12/16 px
+            // Polster). Damit misst `tests/design/zielbild-h4-bibliothek.test.ts` V10/V11 an der
+            // Zeile weiter genau die Werte, die die Zeile zeigt.
+            //
+            // WAS AM KNOPF BLEIBEN MUSS, weil fremder Code es liest: `data-testid="bib-zeile"` plus
+            // `data-bib-id` an einem FOKUSSIERBAREN Element (`BibliothekFlaeche.tsx:1011-1012`
+            // sucht es, `:1017`/`:1029`/`:1037` fokussiert es, `:1030` rollt es ins Bild) und
+            // `aria-current` für die gewählte Zeile. Eine Marke am umhüllenden `div` machte den
+            // Fokus- und Rollweg aus JOB 3121/3335 kaputt.
+            <div
               key={p.id}
-              type="button"
-              data-testid="bib-zeile"
+              data-testid="bib-zeilenblock"
               data-bib-id={p.id}
-              aria-current={p.id === gewaehlt ? "true" : undefined}
-              onClick={() => onWaehle(p.id)}
               className={cx(
-                "group flex w-full items-start gap-2.5 border-b border-hairline-soft px-4 py-3 text-left outline-none",
+                "border-b border-hairline-soft",
                 p.id === gewaehlt ? "bg-[#FDEADD]" : "hover:bg-hairline-soft",
               )}
             >
-              <span
-                aria-hidden
-                data-testid="bib-punkt"
-                className={cx("mt-1.5 h-2 w-2 shrink-0 rounded-[50%]", PUNKT_TON[p.ton])}
-              />
-              <span className="flex min-w-0 flex-col gap-[3px]">
-                {/* JOB 3362: der Titel in der Lesesprache, wenn es eine Übersetzung gibt — samt
+              <button
+                type="button"
+                data-testid="bib-zeile"
+                data-bib-id={p.id}
+                aria-current={p.id === gewaehlt ? "true" : undefined}
+                onClick={() => onWaehle(p.id)}
+                className="group flex w-full items-start gap-2.5 border-inherit bg-inherit px-4 py-3 text-left outline-none"
+              >
+                <span
+                  aria-hidden
+                  data-testid="bib-punkt"
+                  className={cx("mt-1.5 h-2 w-2 shrink-0 rounded-[50%]", PUNKT_TON[p.ton])}
+                />
+                <span className="flex min-w-0 flex-col gap-[3px]">
+                  {/* JOB 3362: der Titel in der Lesesprache, wenn es eine Übersetzung gibt — samt
                     Kennzeichnung. Die Begründung steht am Bauteil selbst. */}
-                <ZeilenTitel zeile={p} gewaehlt={p.id === gewaehlt} />
-                <span data-bib-text="zeile-meta" className="block text-[12px] text-muted">
-                  {`${p.bereich} · ${p.zustandWort}`}
-                </span>
-                {/* JOB 3034 · JOB 3063 R6: die Vertraulichkeitsstufe im Klartext — JEDE Zeile trägt
+                  <ZeilenTitel zeile={p} gewaehlt={p.id === gewaehlt} />
+                  <span data-bib-text="zeile-meta" className="block text-[12px] text-muted">
+                    {`${p.bereich} · ${p.zustandWort}`}
+                  </span>
+                  {/* JOB 3034 · JOB 3063 R6: die Vertraulichkeitsstufe im Klartext — JEDE Zeile trägt
                     genau EINE, und die fehlende sagt „Nicht eingestuft" statt zu schweigen. Sie
                     steht bewusst NEBEN der Meta-Zeile und nicht darin: die Meta-Zeile ist auf
                     „Bereich · Zustand" gemessen (`zielbild-h4-bibliothek` V15, genau zwei Teile).
                     Der Einbau der Runde 5 reichte die Stufe bis hierher durch und zeichnete sie
                     dann nicht — der Weg endete blind, und `stufe-im-klartext` fand nichts. */}
-                <span
-                  data-testid="ko-vertraulichkeitsstufe"
-                  data-bib-text="zeile-stufe"
-                  title={t("conf.field")}
-                  className={cx(
-                    "mt-[3px] w-fit rounded-pill px-1.5 py-0.5 text-[11px] font-semibold",
-                    CONF_TONE_CLASS[p.stufe.tone],
-                  )}
-                >
-                  {t(p.stufe.labelKey)}
+                  <span
+                    data-testid="ko-vertraulichkeitsstufe"
+                    data-bib-text="zeile-stufe"
+                    title={t("conf.field")}
+                    className={cx(
+                      "mt-[3px] w-fit rounded-pill px-1.5 py-0.5 text-[11px] font-semibold",
+                      CONF_TONE_CLASS[p.stufe.tone],
+                    )}
+                  >
+                    {t(p.stufe.labelKey)}
+                  </span>
                 </span>
-              </span>
-            </button>
+              </button>
+              {/* Der Aufklapper — der EINE vorhandene Baustein, importiert und nicht abgeschrieben.
+                  Er hält seinen Offen-Zustand je Vorkommen (`KoSummaryDisclosure.tsx:38`), also je
+                  Treffer, und sein Umschalter hält Klick und Vorgabe an (`:60-62`): weder wechselt
+                  die Auswahl mit, noch wandert die Adresse. Ohne Kernaussage gibt er `null` zurück —
+                  dann steht hier nichts, und die Zeile behauptet auch nicht, es gäbe nichts.
+                  `id` reicht die Kennung nur für die Leseübersetzung durch (JOB 3326).
+                  DAS POLSTER: der Umschalter rückt in das Fusspolster des Zeilenknopfs (`-mt-2`) und
+                  beginnt an der Textspalte (34 px = 16 px Polster + 8 px Punkt + 10 px Abstand) —
+                  so bleiben die gemessenen Zeilenmaße unangetastet und der Block fällt trotzdem
+                  nicht auseinander. */}
+              <KoSummaryDisclosure
+                source={{ ...p.vorschau, id: p.id }}
+                className="-mt-2 pb-3 pl-[34px] pr-4"
+              />
+            </div>
           ),
         )}
       </div>
