@@ -54,9 +54,10 @@ export const OBERGRUPPEN: readonly Obergruppe[] = [
 ];
 
 /**
- * Jedes der 20 Navigationsziele in genau einer Obergruppe — abgeschrieben aus der Tabelle der
- * Vorlage, nicht erfunden:
- *   Arbeiten   Start, Fragen, Bibliothek, Erfassen, Meine Aufgaben, Themenkarte, Externes Wissen
+ * Jedes der 21 Navigationsziele in genau einer Obergruppe — abgeschrieben aus der Tabelle der
+ * Vorlage, nicht erfunden (JOB 3503 hat „Meine Entwürfe" ergänzt; es arbeitet, wo erfasst wird):
+ *   Arbeiten   Start, Fragen, Bibliothek, Erfassen, Meine Entwürfe, Meine Aufgaben, Themenkarte,
+ *              Externes Wissen
  *   Qualität   Prüfen, Konflikte, Doppelungen, Risiken und Wissenslücken, Lebenszyklus
  *   Verwaltung alle Admin-Ziele (Einstellungen, Analytics & Audit, Auswertungen, Import,
  *              Wissensgraph, Kapital-Sichten) samt der sieben Themen darunter
@@ -66,6 +67,12 @@ const OBERGRUPPE_JE_ZIEL: Record<string, ObergruppeId> = {
   start: "arbeiten",
   aufgaben: "arbeiten",
   erfassen: "arbeiten",
+  // JOB 3503: „Meine Entwürfe" ist ein Kopfband-Punkt und steht damit NICHT unter „Weitere
+  // Bereiche" — diese Tabelle braucht ihn trotzdem, denn `direktzugangZiele` fragt sie für JEDES
+  // Navigationsziel (`ALL_ITEMS`) und `obergruppeVon` wirft bei einer Lücke. Ohne diesen Eintrag
+  // stürzte die Schnellnavigation ab, sobald eine Rolle den neuen Punkt sieht. Mit ihm ist der
+  // Bereich zusätzlich über „Gehe zu …" auffindbar — unter „Arbeiten", wo er hingehört.
+  entwuerfe: "arbeiten",
   fragen: "arbeiten",
   bibliothek: "arbeiten",
   wissensnetz: "arbeiten",

@@ -185,7 +185,23 @@ afterEach(() => {
 });
 
 describe("JOB 3060 · H1 · Rollen-Vorschau: das Kopfband bleibt bei seinem Inventar, der Rückweg liegt im Zahnrad", () => {
-  const INVENTAR = ["KLARWERK", "Start", "Fragen", "Bibliothek", "Erfassen", "Prüfen"];
+  // JOB 3503 (ENTWUERFE-MENUEPUNKT): „Meine Entwürfe" ist der sechste Punkt des Kopfbands und
+  // gehört damit zum Inventar. Gelesen wird hier BLATTWEISE (jeder kinderlose Knoten als ein
+  // Eintrag), der Name steht also als GANZER String da — anders als beim Chromium-Zwilling
+  // (`h1-funktionsinventar`), der `innerText` in Wörter zerlegt.
+  const INVENTAR = [
+    "KLARWERK",
+    "Start",
+    "Fragen",
+    "Bibliothek",
+    "Erfassen",
+    "Meine Entwürfe",
+    "Prüfen",
+    // JOB 3503 · Teil 3b: der sichtbare Einstieg in die vorhandene Befehlspalette, mit seinem
+    // Kürzel. Zwei Blätter, weil Name und Kürzel zwei `<span>` sind.
+    "Gehe zu …",
+    "⌘K",
+  ];
 
   it("als Admin ohne Vorschau: genau das Inventar (Zähler und Initialen ausgenommen), keine Pille", async () => {
     await mount();
@@ -214,7 +230,13 @@ describe("JOB 3060 · H1 · Rollen-Vorschau: das Kopfband bleibt bei seinem Inve
       const knoepfe = [...container.querySelectorAll("header button")].map(
         (b) => b.getAttribute("data-testid") ?? b.getAttribute("type"),
       );
-      expect(knoepfe.sort()).toEqual(["kopfband-konto", "kopfband-zahnrad", "submit"]);
+      // JOB 3503 Teil 3b: „Gehe zu …" kommt als benannter Knopf dazu — auch in JEDER Vorschaurolle.
+      expect(knoepfe.sort()).toEqual([
+        "kopfband-gehezu",
+        "kopfband-konto",
+        "kopfband-zahnrad",
+        "submit",
+      ]);
 
       // Der Rückweg: Zahnrad → „Zur Admin-Ansicht" (RollenVorschau.tsx) — dieselbe Montage,
       // derselbe Router, kein Reload.

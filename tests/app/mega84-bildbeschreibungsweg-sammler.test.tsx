@@ -1659,8 +1659,26 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // (kein `ANGEBOT_MUSTER`) und trägt keinen eigenen Titel (kein `documentTitle`-Prop) — es
     // erscheint nur in der Grundmenge. Die zwei Zahlen, an denen Stufe 2 wirklich hängt, bleiben
     // unverändert: `anbieter` 1 und `traeger` 2.
+    //
+    // KONFLIKTRUNDE 3 (JOB 3503 · ENTWUERFE-MENUEPUNKT): NACH DEM REBASE auf JOB 3511/DEMO-FIRMEN-CI
+    // trifft die unabhängige NEUE Fläche ENTWUERFE-MENUEPUNKT auf denselben Stand; `komponenten` von
+    // 373 (nach DEMO-FIRMEN-CI, siehe oben) auf 374 NACHGEZOGEN — am eigenen Lauf dieses
+    // Arbeitsbaums nach der Konfliktauflösung gemessen, nicht rechnerisch addiert. GENAU EIN
+    // weiteres Bauteil kommt hinzu:
+    //
+    //     + `MeineEntwuerfe` (`pages/MeineEntwuerfe.tsx`) — die eigene Übersichtsseite hinter dem
+    //       neuen Kopfband-Punkt. Sie ist eine Seite, keine Herauslösung.
+    //
+    // GEGENPROBE dazu, gemessen statt behauptet: mit der Deklaration kleingeschrieben
+    // (`meineEntwuerfe`) meldet dieser Fall wieder `gemessen: 373 Komponenten` — `alsKomponente`
+    // (oben, :453) verlangt einen Großbuchstaben am Namensanfang; die +1 ist damit genau dieses
+    // Bauteil und kein zweiter Fund, der sich hinter derselben Zahl versteckt.
+    // Für DIESEN Sammler ändert sie nichts: sie zeigt kein Bild, bietet keine Bildbeschreibung an
+    // (kein `ANGEBOT_MUSTER`) und trägt keinen eigenen Titel (kein `documentTitle`-Prop) — sie
+    // erscheint nur in der Grundmenge. Die zwei Zahlen, an denen Stufe 2 wirklich hängt, bleiben
+    // unverändert: `anbieter` 1 und `traeger` 2.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 373,
+      komponenten: 374,
       anbieter: 1,
       traeger: 2,
     });

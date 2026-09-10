@@ -41,6 +41,11 @@ export const STICHWORT_JE_EINTRAG: Record<string, string | null> = {
   aufgaben: "einst.rollen.wort.erfassen",
   erfassen: "einst.rollen.wort.erfassen",
   captureFrontDoor: "einst.rollen.wort.erfassen",
+  // JOB 3503: „Meine Entwürfe" ist KEINE zusätzliche Freiheit, sondern derselbe Weg von der anderen
+  // Seite — ein Entwurf entsteht beim Erfassen und wird dort weitergeschrieben. Deshalb DASSELBE
+  // Stichwort wie „Erfassen": ein eigenes Wort behauptete ein Recht, das die Rolle nicht zusätzlich
+  // bekommt, und die Karte zählte eine Freiheit doppelt.
+  entwuerfe: "einst.rollen.wort.erfassen",
   // Controller — Prüfen, Risiko & Lücken und Lebenszyklus sind dieselbe Prüfarbeit.
   validierung: "einst.rollen.wort.pruefen",
   risiko: "einst.rollen.wort.pruefen",

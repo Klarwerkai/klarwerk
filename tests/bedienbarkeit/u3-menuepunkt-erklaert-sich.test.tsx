@@ -244,7 +244,10 @@ describe("JOB 3028 U3 → H1 · der Erklärsatz zum Menüpunkt steht in der Seit
   it("U3-2: die Kopfband-Punkte tragen KEIN title und KEIN aria-describedby — der Name bleibt die Beschriftung", async () => {
     await mountKopfband("/aufgaben");
     const punkte = [...container.querySelectorAll<HTMLAnchorElement>("header a.kw-kopfband-punkt")];
-    expect(punkte.length, "keine Kopfband-Punkte gefunden").toBe(5);
+    // JOB 3503: sechs — „Meine Entwürfe" ist als eigener Punkt dazugekommen. Die Untergrenze steht
+    // hier gegen einen leeren Baum („keine Punkte gefunden"), nicht als Design-Pin; die REGEL des
+    // Falls (kein Tooltip, kein zweiter Name) gilt unverändert für jeden Punkt.
+    expect(punkte.length, "keine Kopfband-Punkte gefunden").toBe(6);
     for (const link of punkte) {
       expect(link.hasAttribute("title"), `${link.getAttribute("href")} trägt einen Tooltip`).toBe(
         false,

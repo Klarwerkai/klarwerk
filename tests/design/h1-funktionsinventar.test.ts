@@ -91,11 +91,14 @@ const BEREICHE: [string, string, string][] = [
   ["kapital", "/kapital", "nav.capital"],
 ];
 
+// JOB 3503 (ENTWUERFE-MENUEPUNKT): der sechste Punkt — „Meine Entwürfe" zwischen „Erfassen" und
+// „Prüfen". Er bringt eine eigene Zeile K-entwuerfe mit; die Tabellenzahl unten ist nachgeführt.
 const KOPFBAND: [string, string, string][] = [
   ["start", "/start", "nav.start"],
   ["fragen", "/fragen", "nav.ask"],
   ["bibliothek", "/bibliothek", "nav.library"],
   ["erfassen", "/erfassen", "kopfband.erfassen"],
+  ["entwuerfe", "/entwuerfe", "mob.drafts"],
   ["validierung", "/validierung", "kopfband.pruefen"],
 ];
 
@@ -130,6 +133,38 @@ const INVENTAR: Zeile[] = [
       await seite().press('header input[type="search"]', "Enter");
       await warteBis(seite(), `() => location.pathname === '/bibliothek'`);
       expect(new URL(seite().url()).searchParams.get("q")).toBe("Ventil");
+    },
+  },
+  {
+    // ============================================================================================
+    // JOB 3503 · TEIL 3b — DER SICHTBARE EINSTIEG „GEHE ZU …" OBEN IM KOPFBAND.
+    // ============================================================================================
+    // Pedi (10.09. 06:48 über Codex): „Gehe zu" soll direkt sichtbar oben im Kopfband stehen, nicht
+    // nur hinter dem Zahnrad. Gemessen wird genau das, was er verlangt hat, und in dieser Ordnung:
+    // der Knopf STEHT da, er trägt seinen Namen UND seine Tastenkombination, und sein Klick öffnet
+    // DIESELBE Palette, die auch das Kürzel öffnet (erkennbar am zugänglichen Namen ihres
+    // Suchfeldes, `cmd.suchfeld`). Danach steht das Kürzel unverändert zur Verfügung — der Knopf
+    // ergänzt es, er ersetzt es nicht.
+    kennung: "K-gehezu",
+    heute: "„Gehe zu …“ nur im Zahnrad-Menü (ZahnradMenue.tsx, Zeile schnellnavigation)",
+    ort: "Kopfband-Knopf „Gehe zu … ⌘K“ → dieselbe Befehlspalette",
+    pruefen: async () => {
+      const feld = `input[aria-label="${t("cmd.suchfeld")}"]`;
+      const knopf = 'header [data-testid="kopfband-gehezu"]';
+      const text = (await sichtbarerText(knopf)) ?? "";
+      expect(text).toContain(t("menue.schnellnavigation"));
+      expect(text, "die Tastenkombination ist am Knopf nicht erkennbar").toContain("⌘K");
+      // Zu: der Klick öffnet.
+      await warteBis(seite(), "(s) => document.querySelector(s) === null", feld);
+      await seite().click(knopf);
+      await warteBis(seite(), "(s) => document.querySelector(s) !== null", feld);
+      await seite().keyboard.press("Escape");
+      await warteBis(seite(), "(s) => document.querySelector(s) === null", feld);
+      // Und der Tastaturweg lebt weiter — dieselbe Fläche, zweiter Griff.
+      await seite().keyboard.press("Control+k");
+      await warteBis(seite(), "(s) => document.querySelector(s) !== null", feld);
+      await seite().keyboard.press("Escape");
+      await warteBis(seite(), "(s) => document.querySelector(s) === null", feld);
     },
   },
   {
@@ -255,14 +290,23 @@ const INVENTAR: Zeile[] = [
     // Gewählt wird jetzt in den Einstellungen (JOB 3065), zurück geht es weiter über das Zahnrad.
     route: "/admin",
     pruefen: async () => {
-      const inventar = new Set([
-        "KLARWERK",
-        t("nav.start"),
-        t("nav.ask"),
-        t("nav.library"),
-        t("kopfband.erfassen"),
-        t("kopfband.pruefen"),
-      ]);
+      // Gelesen wird `innerText.split(/\s+/)` — ein Name aus zwei Wörtern („Meine Entwürfe",
+      // JOB 3503) steht darin als ZWEI Einträge. Das Inventar wird deshalb aus den Namen
+      // aufgespalten und nicht von Hand abgeschrieben.
+      const inventar = new Set(
+        [
+          "KLARWERK",
+          t("nav.start"),
+          t("nav.ask"),
+          t("nav.library"),
+          t("kopfband.erfassen"),
+          t("mob.drafts"),
+          t("kopfband.pruefen"),
+          // JOB 3503 Teil 3b: der sichtbare Einstieg in die Befehlspalette, mit seinem Kürzel.
+          t("menue.schnellnavigation"),
+          "⌘K",
+        ].flatMap((n) => n.split(/\s+/)),
+      );
       for (const rolle of ["viewer", "experte", "controller"]) {
         // JOB 3065 H6: Die Rolle wird jetzt DORT gewählt, wo sie hingehört — in den Einstellungen
         // (Konten → „Ansicht als Rolle"). Der Rückweg bleibt im Zahnrad, denn nur er überlebt die
@@ -305,7 +349,14 @@ const INVENTAR: Zeile[] = [
           (w) => !inventar.has(w) && w !== band.zaehler && w !== band.initialen,
         );
         expect(fremd, `${rolle}: Text außerhalb des Kopfbandinventars`).toEqual([]);
-        expect(band.knoepfe.sort()).toEqual(["kopfband-konto", "kopfband-zahnrad", "submit"]);
+        // JOB 3503 Teil 3b: der Knopf „Gehe zu …" kommt dazu — benannt, damit er nicht als
+        // namenloses `button` im Band auftaucht.
+        expect(band.knoepfe.sort()).toEqual([
+          "kopfband-gehezu",
+          "kopfband-konto",
+          "kopfband-zahnrad",
+          "submit",
+        ]);
         expect(
           await lies<boolean>(
             `() => document.querySelector('[data-testid="kopfband-vorschau"]') === null`,
@@ -605,6 +656,9 @@ const INVENTAR: Zeile[] = [
         t("nav.ask"),
         t("nav.library"),
         t("kopfband.erfassen"),
+        // JOB 3503: der neue Kopfband-Punkt steht schmal im Drawer — sonst wäre er auf 390 px
+        // unerreichbar, und die Zusage „eigener sichtbarer Menüpunkt" gälte nur am Schreibtisch.
+        t("mob.drafts"),
         t("kopfband.pruefen"),
         t("menue.weitereBereiche"),
         t("menue.seitenhilfe"),
@@ -658,12 +712,13 @@ describe("JOB 3060 · H1 · das Funktionsinventar — jede Zeile der Tabelle heu
     await s?.schliessen();
   }, 60_000);
 
-  it("die Tabelle ist vollständig: jede Zeile aus 5a/5b steht hier (Kopfband 5+3, Zahnrad 26, Konto 6, Profil 1, Drawer 1 = 42)", () => {
+  it("die Tabelle ist vollständig: jede Zeile aus 5a/5b steht hier (Kopfband 6+4, Zahnrad 26, Konto 6, Profil 1, Drawer 1 = 44)", () => {
     const kennungen = INVENTAR.map((z) => z.kennung);
     expect(new Set(kennungen).size).toBe(kennungen.length);
-    expect(kennungen).toHaveLength(42);
-    // Kopfband: fünf Punkte, Zähler, Suche, ⌘K.
-    expect(kennungen.filter((k) => k.startsWith("K-"))).toHaveLength(8);
+    expect(kennungen).toHaveLength(44);
+    // Kopfband: sechs Punkte (JOB 3503: „Meine Entwürfe" kam dazu), Zähler, Suche, „Gehe zu …"
+    // (JOB 3503 Teil 3b) und ⌘K.
+    expect(kennungen.filter((k) => k.startsWith("K-"))).toHaveLength(10);
     // Zahnrad: Einstellungen, drei Status-Zeilen, Ansicht als Rolle, Stufe 2, Nav-Erklärsatz,
     // HelpTips, zwölf Weitere Bereiche, deren Zähler, Hilfe, Rechtliches, Version, Insel-Marker,
     // dazu der Vorschau-Rückweg „Zur Admin-Ansicht" samt Kopfbandinventar in jeder Vorschaurolle.

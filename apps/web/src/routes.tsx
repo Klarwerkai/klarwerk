@@ -105,6 +105,11 @@ const KnowledgeIntake = lazy(() =>
 );
 const Library = lazy(() => import("./pages/Library").then((m) => ({ default: m.Library })));
 const Lifecycle = lazy(() => import("./pages/Lifecycle").then((m) => ({ default: m.Lifecycle })));
+// JOB 3503: nachgeladen wie jede andere Seite — die Regel oben kennt keine Ausnahme, und der
+// Wächter `tests/erstladezeit/` erhebt seine Sollmenge aus dem Dateisystem.
+const MeineEntwuerfe = lazy(() =>
+  import("./pages/MeineEntwuerfe").then((m) => ({ default: m.MeineEntwuerfe })),
+);
 const Mobile = lazy(() => import("./pages/Mobile").then((m) => ({ default: m.Mobile })));
 const MyTasks = lazy(() => import("./pages/MyTasks").then((m) => ({ default: m.MyTasks })));
 const PlaceholderPage = lazy(() =>
@@ -143,6 +148,9 @@ const PAGES: Record<string, ComponentType> = {
   // JOB 1972: Seitenauflösung für den bewachten Deep-Link `/erfassen/neu`. Ohne diesen Schlüssel
   // fiele die berechtigte Rolle auf den `PlaceholderPage`-Zweig (:88) statt auf die Erfassung.
   captureIntake: KnowledgeIntake,
+  // JOB 3503: der eigene Ort der Entwürfe. Er liest denselben Bestand wie der Editor (`useDrafts`),
+  // legt keinen zweiten an.
+  entwuerfe: MeineEntwuerfe,
   fragen: Ask,
   bibliothek: Library,
   extern: ExternalKnowledge,

@@ -1,9 +1,10 @@
 // ================================================================================================
-// JOB 3060 · H1 — DER SICHTBARE TEXT DES KOPFBANDS SIND GENAU SIEBEN WÖRTER.
+// JOB 3060 · H1 — DER SICHTBARE TEXT DES KOPFBANDS IST GENAU SEIN INVENTAR.
 // ================================================================================================
 //
 // Pedi (04.09. 06:50): „Text über Text über Text.“ Das Kopfband der gebauten App trägt als sicht-
-// baren Text genau KLARWERK, Start, Fragen, Bibliothek, Erfassen, Prüfen und den Platzhalter
+// baren Text genau KLARWERK, Start, Fragen, Bibliothek, Erfassen, Meine Entwürfe (JOB 3503),
+// Prüfen, Gehe zu … ⌘K (JOB 3503 Teil 3b) und den Platzhalter
 // Suchen — den Zähler an „Prüfen“ und die Initialen im Konto-Kreis ausgenommen. Kein „Design:
 // Klassisch", kein „DE EN NL“, keine Versions-Pille, kein „Mobil“, keine Hilfe-Beschriftung.
 //
@@ -99,22 +100,51 @@ describe("JOB 3060 · H1 · kein Erklärtext im Kopfband — die echte Seite in 
     await s?.schliessen();
   }, 60_000);
 
-  const SIEBEN = ["KLARWERK", "Start", "Fragen", "Bibliothek", "Erfassen", "Prüfen"];
+  // ==============================================================================================
+  // JOB 3503 (ENTWUERFE-MENUEPUNKT) — ES SIND SIEBEN NAMEN, NICHT MEHR SECHS.
+  // ==============================================================================================
+  // Pedi, 10.09.2026 über Codex: „eigener sichtbarer Menüpunkt oben in der Topbar." „Meine
+  // Entwürfe" steht zwischen „Erfassen" und „Prüfen". Der Fall selbst ist unverändert scharf: der
+  // sichtbare Text des Bands ist GENAU dieses Inventar — kein Erklärsatz, kein „Design:", nichts
+  // Zusätzliches. Was sich geändert hat, ist ein Eintrag, nicht die Regel.
+  //
+  // ZWEI EBENEN, WEIL EIN NAME ZWEI WÖRTER SEIN KANN: `NAMEN` sind die Namen, die ein Mensch liest
+  // („Meine Entwürfe"), `WOERTER` ist dieselbe Liste, wie `innerText.split(/\s+/)` sie liefert.
+  // JOB 3503 · Teil 3b: „Gehe zu … ⌘K" steht seit Pedis Nachtrag vom 10.09. sichtbar im Band —
+  // rechts, vor dem Suchfeld. Es ist der ACHTE Name und kein Erklärtext: ein benannter Einstieg in
+  // die vorhandene Befehlspalette, mit seiner Tastenkombination daran. Der Fall bleibt scharf: der
+  // sichtbare Text des Bands ist GENAU dieses Inventar, nichts darüber hinaus.
+  const NAMEN = [
+    "KLARWERK",
+    "Start",
+    "Fragen",
+    "Bibliothek",
+    "Erfassen",
+    "Meine Entwürfe",
+    "Prüfen",
+    "Gehe zu …",
+    "⌘K",
+  ];
+  const WOERTER = NAMEN.flatMap((n) => n.split(/\s+/));
 
-  it("Z · die sechs Wörter des Bands sind die Übersetzungen des Produkts (de) — nicht abgeschrieben", () => {
+  it("Z · die Namen des Bands sind die Übersetzungen des Produkts (de) — nicht abgeschrieben", () => {
     expect([
       i18n.getFixedT("de")("app.name"),
       i18n.getFixedT("de")("nav.start"),
       i18n.getFixedT("de")("nav.ask"),
       i18n.getFixedT("de")("nav.library"),
       i18n.getFixedT("de")("kopfband.erfassen"),
+      i18n.getFixedT("de")("mob.drafts"),
       i18n.getFixedT("de")("kopfband.pruefen"),
-    ]).toEqual(SIEBEN);
+      i18n.getFixedT("de")("menue.schnellnavigation"),
+      // Das Kürzel ist ein Zeichen und keine Übersetzung — es steht so auch in der Zahnrad-Zeile.
+      "⌘K",
+    ]).toEqual(NAMEN);
     expect(i18n.getFixedT("de")("kopfband.suchen")).toBe("Suchen");
   });
 
   for (const pfad of ROUTEN) {
-    it(`T · ${pfad}: innerText des Kopfbands = KLARWERK Start Fragen Bibliothek Erfassen Prüfen (+ Zähler, + Initialen), Platzhalter Suchen`, () => {
+    it(`T · ${pfad}: innerText des Kopfbands = KLARWERK Start Fragen Bibliothek Erfassen Meine Entwürfe Prüfen Gehe zu … ⌘K (+ Zähler, + Initialen), Platzhalter Suchen`, () => {
       expect(fehler).toBeNull();
       const inv = jeRoute[pfad];
       expect(inv, "Kopfband nicht gefunden").toBeTruthy();
@@ -123,7 +153,7 @@ describe("JOB 3060 · H1 · kein Erklärtext im Kopfband — die echte Seite in 
       expect(inv.zaehler).toBe(String(boardZahl));
       expect(inv.initialen).toBe("PK");
       const ohneAusnahmen = inv.woerter.filter((w) => w !== inv.zaehler && w !== inv.initialen);
-      expect(ohneAusnahmen).toEqual(SIEBEN);
+      expect(ohneAusnahmen).toEqual(WOERTER);
       expect(inv.placeholder).toBe("Suchen");
     });
   }

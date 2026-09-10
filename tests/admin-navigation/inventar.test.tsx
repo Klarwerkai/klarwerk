@@ -10,6 +10,12 @@
 // als direkte Einträge dieser Liste." Und die Vorlage nennt den Prüfmaßstab namentlich: 20
 // ALL_ITEMS-Ziele plus der Audit-Deep-Link, dazu 17 Admin-Detailkennungen.
 //
+// JOB 3503 hat die Navigationsquelle um „Meine Entwürfe" (`/entwuerfe`) erweitert — es sind seither
+// 21 ALL_ITEMS-Ziele. Die Zahl unten ist nachgeführt, die Regel unverändert: JEDES Ziel der Quelle
+// braucht einen Weg im Direktzugang und einen Ort im Menü, sonst ist dieser Test rot. Genau das ist
+// der Grund, warum der neue Punkt in `NAV_GROUPS` steht und nicht in einer Nebenliste: nur so wird
+// er von „Gehe zu …" überhaupt gesehen.
+//
 // DIE 17 STEHEN NICHT IN DIESER DATEI. Sie werden aus `pages/Admin.tsx` GELESEN — aus den
 // `case`-Zweigen und den beiden `startsWith`-Präfixen des Detail-Switch. Eine abgeschriebene Liste
 // wäre eine zweite Wahrheit: sie bliebe grün, wenn morgen eine Karte aus dem Switch fiele. So wird
@@ -119,12 +125,12 @@ describe("JOB 3337 · A · der Bestand ist vollständig und adressierbar", () =>
     expect(ohneThema, ohneThema.join(" · ")).toEqual([]);
   });
 
-  it("A2 · alle 21 Routenziele der Vorlage stehen im Direktzugang", () => {
+  it("A2 · alle 22 Routenziele der Vorlage stehen im Direktzugang", () => {
     const pfade = alleZiele().map((z) => z.path);
     const fehlend = [...ALL_ITEMS.map((i) => i.path), ANALYTICS_AUDIT_PATH].filter(
       (p) => !pfade.includes(p),
     );
-    expect(ALL_ITEMS, "die Quelle selbst ist geschrumpft").toHaveLength(20);
+    expect(ALL_ITEMS, "die Quelle selbst ist geschrumpft").toHaveLength(21);
     expect(fehlend, `ohne Weg im Direktzugang: ${fehlend.join(" · ")}`).toEqual([]);
   });
 

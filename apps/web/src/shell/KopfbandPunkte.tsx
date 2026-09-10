@@ -151,7 +151,15 @@ export function KopfbandPunkte(): JSX.Element {
   );
 }
 
-/** Dieselben fünf Punkte als Zeilenliste — für den Off-Canvas-Drawer. */
+/**
+ * Dieselben Punkte als Zeilenliste — für den Off-Canvas-Drawer.
+ *
+ * JOB 3503: sie kommen aus derselben Quelle wie oben (`useSichtbareKopfbandPunkte`), deshalb wandert
+ * ein neuer Punkt hier ohne Zutun mit. Das ist die Zusage, auf die Pedis Befund vom 10.09. zählt
+ * („auf schmaler Fensterbreite verschwinden die Kopfbandpunkte hinter einem stummen Symbol" — das
+ * Symbol selbst ist JOB 3525; dass „Meine Entwürfe" dahinter WIRKLICH steht, misst
+ * `tests/entwuerfe-menuepunkt/kopfband-und-uebersicht.test.tsx`, Fall I).
+ */
 export function KopfbandPunkteListe(): JSX.Element {
   const { t } = useTranslation();
   const { pathname } = useLocation();

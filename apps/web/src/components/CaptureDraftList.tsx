@@ -165,6 +165,33 @@ export interface CaptureDraftListArbeitsraumProps extends CaptureDraftListBasis 
   scopeLabel: string;
 }
 
+// ================================================================================================
+// JOB 3503 (ENTWUERFE-MENUEPUNKT) — DIE DRITTE FLÄCHE: DIE EIGENE SEITE.
+// ================================================================================================
+//
+// „Meine Entwürfe" hat seit JOB 3503 einen eigenen Punkt im Kopfband und eine eigene Seite
+// (`pages/MeineEntwuerfe.tsx`). Sie zeigt DIESELBE Liste — dieselbe Suche, dieselbe Sortierung,
+// denselben Löschweg, dieselben Merkschlüssel. Eine dritte Komponente wäre die dritte Auffassung
+// davon, was „suchen", „sortieren" und „löschen" heisst; genau das verbietet der Auftrag (§3).
+//
+// WAS DIE SEITE ANDERS DARREICHT als der Arbeitsraum: Sie braucht KEINEN Karten-Rahmen, KEINE
+// Überschrift „Entwürfe fortsetzen" und KEIN Auf-/Zuklappen. Die Hülle nennt die Seite bereits (der
+// Kopfband-Punkt steht auf dieser Route mit `aria-current="page"`), und eine Seite, die man erst
+// aufklappen muss, wäre genau der Aufklapper, den dieser Auftrag ablösen soll. Die ZEILEN sind
+// dieselben wie im Arbeitsraum (Titel, Ersteller, Stand, Status, „Fortsetzen", Löschweg) — sie
+// stehen deshalb unten EINMAL (`inhalt`) und werden von beiden Zweigen gezeigt.
+//
+// Lade-, Leer- und Fehlerlage bleiben wie im Blatt-Zweig beim AUFRUFER: sie sind Auskünfte über den
+// Abruf, und diese Komponente sieht einen gescheiterten Abruf gar nicht.
+export interface CaptureDraftListSeiteProps extends CaptureDraftListBasis {
+  variant: "seite";
+  isAdmin: boolean;
+  directory: readonly { id: string; name: string }[];
+  // „Meine Entwürfe" bzw. „Admin-Ansicht: alle Entwürfe" — dieselbe ADMIN-Auskunft wie im
+  // Arbeitsraum (mega38 J4), von der Seite gebildet.
+  scopeLabel: string;
+}
+
 export interface CaptureDraftListBlattProps extends CaptureDraftListBasis {
   variant: "blatt";
   /**
@@ -181,7 +208,10 @@ export interface CaptureDraftListBlattProps extends CaptureDraftListBasis {
   entriesDisabledTitle: string;
 }
 
-export type CaptureDraftListProps = CaptureDraftListArbeitsraumProps | CaptureDraftListBlattProps;
+export type CaptureDraftListProps =
+  | CaptureDraftListArbeitsraumProps
+  | CaptureDraftListBlattProps
+  | CaptureDraftListSeiteProps;
 
 export function CaptureDraftList(props: CaptureDraftListProps): JSX.Element | null {
   const { i18n, t } = useTranslation();
@@ -399,6 +429,130 @@ export function CaptureDraftList(props: CaptureDraftListProps): JSX.Element | nu
     );
   }
 
+  // ==============================================================================================
+  // JOB 3503 — DIE ZEILEN DES ARBEITSRAUMS SIND JETZT AUCH DIE ZEILEN DER SEITE.
+  // ==============================================================================================
+  // Zeichengleich zu vorher, nur einmal benannt statt zweimal geschrieben. Neu sind drei inerte
+  // Anker an der Zeile: ohne sie liesse sich „diese Zeile öffnet GENAU diesen Entwurf" auf der
+  // neuen Seite nur behaupten, nicht messen. Sie tragen den neutralen Namen der gemeinsamen
+  // Bedienung — dieselbe Zeile, gleich gemessen, egal auf welcher Fläche sie steht.
+  const inhalt = (
+    <>
+      {/* Volltext-/Titelsuche + Sortierung (Admin zusätzlich Ersteller-Filter). Leerer Filter =
+          alle. JOB 3426: die Bedienung steht oben EINMAL und trägt alle Flächen. */}
+      {steuerung}
+      {visibleDrafts.length === 0 ? (
+        <p
+          data-testid="entwurfsliste-filter-leer"
+          className="rounded-btn bg-page px-3 py-2 text-[12px] leading-relaxed text-muted"
+        >
+          {t("capture.draftEmptyFiltered")}
+        </p>
+      ) : (
+        <ul className="divide-y divide-hairline">
+          {visibleDrafts.map((d) => (
+            <li
+              key={d.id}
+              data-testid="entwurfsliste-eintrag"
+              data-entwurfszeile={d.id}
+              className={`flex flex-col gap-2 py-2 sm:flex-row sm:items-center ${
+                highlightId === d.id
+                  ? "rounded-card border border-trust-pos-fill/40 bg-trust-pos-bg px-2"
+                  : ""
+              }`}
+            >
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-[13px] font-semibold text-text">
+                  {/* JOB 3503: der Titel trägt einen eigenen Träger — die Marken „in Bearbeitung"
+                      und „gerade gespeichert" stehen DANEBEN und nicht darin, sonst läse ein
+                      Titelvergleich sie mit. Dieselbe Trennung wie im Blatt-Zweig
+                      (`blatt-entwurf-eintrag-titel`, JOB 3266 R3). */}
+                  <span data-testid="entwurfsliste-eintrag-titel">
+                    {draftTitle(d, fallbackTitle)}
+                  </span>
+                  {editingId === d.id ? (
+                    <span className="ml-2 font-mono text-[10px] uppercase text-ai">
+                      {t("capture.editingBadge")}
+                    </span>
+                  ) : null}
+                  {highlightId === d.id ? (
+                    <span className="ml-2 font-mono text-[10px] uppercase text-trust-pos-text">
+                      {t("capture.draftJustSaved")}
+                    </span>
+                  ) : null}
+                </div>
+                <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11.5px] text-muted">
+                  <span>
+                    {t("capture.draftCreatorMeta", { name: draftAuthorName(d, directory) })}
+                  </span>
+                  <span>
+                    {t("capture.draftSavedMeta", {
+                      date: formatDraftTimestamp(d.updatedAt || d.createdAt),
+                    })}
+                  </span>
+                  <span>{t("capture.draftStatusMeta")}</span>
+                </div>
+              </div>
+              {/* Bugfix (Pedi 04.07.): Löschen erst nach Inline-Nachfrage — kein stiller Verlust. */}
+              {confirmDiscardId === d.id ? (
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="text-[11.5px] font-semibold text-text">
+                    {t("capture.discardDraftQ")}
+                  </span>
+                  <LoeschRueckfrage
+                    id={d.id}
+                    discardPending={discardPending}
+                    onConfirmDiscard={onConfirmDiscard}
+                    onDiscard={onDiscard}
+                  />
+                </span>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    data-testid="entwurfsliste-fortsetzen"
+                    data-entwurf-fortsetzen={d.id}
+                    onClick={() => onResume(d)}
+                    className="inline-flex items-center gap-1 rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-muted hover:text-text"
+                  >
+                    <RotateCcw size={13} />
+                    {t("capture.resume")}
+                  </button>
+                  <LoeschKnopf id={d.id} onConfirmDiscard={onConfirmDiscard} />
+                </>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </>
+  );
+
+  // JOB 3503: die eigene Seite — dieselben Zeilen, dieselbe Bedienung, ohne Rahmen und ohne
+  // Aufklapper. Die Zahl steht als Plakette da, wo sie im Arbeitsraum steht; die Reichweiten-
+  // Plakette bleibt eine ADMIN-Auskunft (mega38 J4) und erscheint nur dort, wo sie etwas
+  // unterscheidet.
+  if (props.variant === "seite") {
+    return (
+      <div data-testid="entwuerfe-liste" className="space-y-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {isAdmin ? (
+            <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted-2">
+              {props.scopeLabel}
+            </span>
+          ) : null}
+          <span
+            data-testid="entwurfsliste-anzahl"
+            className="rounded-pill bg-page px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted-2"
+          >
+            {totalCount}
+          </span>
+        </div>
+        {inhalt}
+      </div>
+    );
+  }
+
   const { open, onToggleOpen, scopeLabel } = props;
 
   return (
@@ -430,87 +584,7 @@ export function CaptureDraftList(props: CaptureDraftListProps): JSX.Element | nu
           <ChevronDown size={14} className={`transition-transform ${open ? "rotate-180" : ""}`} />
         </button>
       </div>
-      {open ? (
-        <>
-          {/* Volltext-/Titelsuche + Sortierung (Admin zusätzlich Ersteller-Filter). Leerer Filter =
-              alle. JOB 3426: die Bedienung steht oben EINMAL und trägt beide Flächen. */}
-          {steuerung}
-          {visibleDrafts.length === 0 ? (
-            <p
-              data-testid="entwurfsliste-filter-leer"
-              className="rounded-btn bg-page px-3 py-2 text-[12px] leading-relaxed text-muted"
-            >
-              {t("capture.draftEmptyFiltered")}
-            </p>
-          ) : (
-            <ul className="divide-y divide-hairline">
-              {visibleDrafts.map((d) => (
-                <li
-                  key={d.id}
-                  className={`flex flex-col gap-2 py-2 sm:flex-row sm:items-center ${
-                    highlightId === d.id
-                      ? "rounded-card border border-trust-pos-fill/40 bg-trust-pos-bg px-2"
-                      : ""
-                  }`}
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-[13px] font-semibold text-text">
-                      {draftTitle(d, fallbackTitle)}
-                      {editingId === d.id ? (
-                        <span className="ml-2 font-mono text-[10px] uppercase text-ai">
-                          {t("capture.editingBadge")}
-                        </span>
-                      ) : null}
-                      {highlightId === d.id ? (
-                        <span className="ml-2 font-mono text-[10px] uppercase text-trust-pos-text">
-                          {t("capture.draftJustSaved")}
-                        </span>
-                      ) : null}
-                    </div>
-                    <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11.5px] text-muted">
-                      <span>
-                        {t("capture.draftCreatorMeta", { name: draftAuthorName(d, directory) })}
-                      </span>
-                      <span>
-                        {t("capture.draftSavedMeta", {
-                          date: formatDraftTimestamp(d.updatedAt || d.createdAt),
-                        })}
-                      </span>
-                      <span>{t("capture.draftStatusMeta")}</span>
-                    </div>
-                  </div>
-                  {/* Bugfix (Pedi 04.07.): Löschen erst nach Inline-Nachfrage — kein stiller Verlust. */}
-                  {confirmDiscardId === d.id ? (
-                    <span className="inline-flex items-center gap-1.5">
-                      <span className="text-[11.5px] font-semibold text-text">
-                        {t("capture.discardDraftQ")}
-                      </span>
-                      <LoeschRueckfrage
-                        id={d.id}
-                        discardPending={discardPending}
-                        onConfirmDiscard={onConfirmDiscard}
-                        onDiscard={onDiscard}
-                      />
-                    </span>
-                  ) : (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => onResume(d)}
-                        className="inline-flex items-center gap-1 rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-muted hover:text-text"
-                      >
-                        <RotateCcw size={13} />
-                        {t("capture.resume")}
-                      </button>
-                      <LoeschKnopf id={d.id} onConfirmDiscard={onConfirmDiscard} />
-                    </>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </>
-      ) : null}
+      {open ? inhalt : null}
       {/* AUFTRAG-mega38 BLOCK J4: hier stand im eingeklappten Zustand „{{count}} Entwürfe sind
           eingeklappt, damit die Erfassungswege darunter erreichbar bleiben." Das erklärt der
           Leserin UNSERE Layoutentscheidung — eine Auskunft über uns, nicht über ihre Arbeit. Die

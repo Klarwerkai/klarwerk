@@ -9,8 +9,11 @@
 //
 // Dazu die Beschriftungen des Kopfbands in allen drei Sprachen (Lieferung 9) und der Platzhalter
 // „Suchen“ (Mockup Z.29).
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  GUARDED_ITEMS,
   NAV_GROUPS,
   anzeigeNameKey,
   einstellungenItem,
@@ -35,12 +38,46 @@ describe("JOB 3060 · H1 · die drei Orte der Navigation", () => {
     expect([...vereinigt].sort()).toEqual([...alle].sort());
   });
 
-  it("das Kopfband trägt Start · Fragen · Bibliothek · Erfassen · Prüfen — in dieser Reihenfolge (Mockup Z.20-24)", () => {
+  // ================================================================================================
+  // JOB 3503 — JEDER KOPFBAND-PUNKT IST BEWACHT UND HAT EINEN SEITENEINTRAG IM ROUTER.
+  // ================================================================================================
+  // Der Fall darüber prüft den ORT im Bild. Er sagt nichts darüber, ob der Punkt hinter dem Bild
+  // auch trägt: ein Eintrag ohne Rollen-Gate oder ohne Seite wäre ein Punkt, der ins Leere führt
+  // (`Guarded` fiele auf `PlaceholderPage`). Beides wird hier nachgerechnet — an `GUARDED_ITEMS`
+  // (die Menge, über die `Guarded` in routes.tsx entscheidet) und an `PAGES`, aus der Datei GELESEN
+  // statt abgeschrieben. Der Anlass ist der neue Punkt „Meine Entwürfe"; die Regel gilt für alle.
+  it("jeder Kopfband-Punkt hat ein Rollen-Gate und einen Seiteneintrag in routes.tsx", () => {
+    const routerQuelle = readFileSync(resolve(process.cwd(), "apps/web/src/routes.tsx"), "utf8");
+    // Nicht-vakuös: es sind wirklich sechs, nicht null.
+    expect(kopfbandItems()).toHaveLength(6);
+    for (const item of kopfbandItems()) {
+      expect(
+        GUARDED_ITEMS.some((g) => g.id === item.id && g.path === item.path),
+        `${item.id} steht nicht im Rollen-Gate`,
+      ).toBe(true);
+      expect(routerQuelle, `${item.id} hat keinen Seiteneintrag in PAGES`).toContain(
+        `${item.id}: `,
+      );
+    }
+    // Und der neue Punkt trägt DIESELBE Schranke wie sein Nachbar „Erfassen“ — wer nicht erfassen
+    // darf, hat keine Entwürfe (Auftrag §3.3).
+    const entwuerfe = kopfbandItems().find((i) => i.id === "entwuerfe");
+    const erfassen = kopfbandItems().find((i) => i.id === "erfassen");
+    expect(entwuerfe?.minRole).toBe(erfassen?.minRole);
+    expect(entwuerfe?.minRole).toBe("experte");
+  });
+
+  // JOB 3503 (ENTWUERFE-MENUEPUNKT): es sind SECHS. Pedi, 10.09.2026 über Codex: „eigener sichtbarer
+  // Menüpunkt oben in der Topbar." „Meine Entwürfe" steht zwischen „Erfassen" und „Prüfen" — das ist
+  // die Reihenfolge der Arbeit (erfassen · weiterschreiben · prüfen). Die fünf des Mockups
+  // (Main.dc.html Z.20-24) bleiben in ihrer Ordnung; ergänzt wurde einer, umgestellt keiner.
+  it("das Kopfband trägt Start · Fragen · Bibliothek · Erfassen · Meine Entwürfe · Prüfen — in dieser Reihenfolge", () => {
     expect(kopfbandItems().map((i) => i.id)).toEqual([
       "start",
       "fragen",
       "bibliothek",
       "erfassen",
+      "entwuerfe",
       "validierung",
     ]);
     expect(kopfbandItems().map((i) => i.path)).toEqual([
@@ -48,6 +85,7 @@ describe("JOB 3060 · H1 · die drei Orte der Navigation", () => {
       "/fragen",
       "/bibliothek",
       "/erfassen",
+      "/entwuerfe",
       "/validierung",
     ]);
   });
@@ -70,12 +108,16 @@ describe("JOB 3060 · H1 · die drei Orte der Navigation", () => {
     expect(einstellungenItem().path).toBe("/admin");
   });
 
-  it("die fünf Punkte und „Suchen“ sind DE/EN/NL beschriftet — kürzer als ihre Seitentitel", () => {
+  it("die sechs Punkte und „Suchen“ sind DE/EN/NL beschriftet — kürzer als ihre Seitentitel", () => {
     const de = {
       start: "Start",
       fragen: "Fragen",
       bibliothek: "Bibliothek",
       erfassen: "Erfassen",
+      // JOB 3503: KEIN neuer Textschlüssel — `mob.drafts` trägt diesen Namen seit langem in allen
+      // drei Sprachen. Es ist zugleich der Seitentitel: hier gibt es keine zwei Namen, die kürzer
+      // oder länger sein könnten (JOB 3105 UX-08 — ein Bereich, ein Name).
+      entwuerfe: "Meine Entwürfe",
       validierung: "Prüfen",
     };
     for (const item of kopfbandItems()) {

@@ -259,9 +259,19 @@ describe("JOB 3060 · H1 · das Kopfband — die echte Seite, gemountet in Chrom
   it("V6 · punkte-abstand 26px — gap an der realen Punktleiste", async () => {
     expect(await messen(sel?.punkte, "gap")).toBe(zielProp(zielStil(ziel, Z_PUNKTE), "gap"));
   });
-  it("V7 · die fünf Punkte in Mockup-Reihenfolge: Start · Fragen · Bibliothek · Erfassen · Prüfen", () => {
+  // JOB 3503 (ENTWUERFE-MENUEPUNKT): der sechste Punkt. Die fünf des Mockups behalten ihre
+  // Reihenfolge; „Meine Entwürfe" steht zwischen „Erfassen" und „Prüfen" — erfassen, weiter-
+  // schreiben, prüfen. Die MASSE darunter (V6, V8, V9) sind unverändert und gelten für ihn mit.
+  it("V7 · die sechs Punkte in Bildreihenfolge: Start · Fragen · Bibliothek · Erfassen · Meine Entwürfe · Prüfen", () => {
     expect(fehler).toBeNull();
-    expect(sel?.punktTexte).toEqual(["Start", "Fragen", "Bibliothek", "Erfassen", "Prüfen"]);
+    expect(sel?.punktTexte).toEqual([
+      "Start",
+      "Fragen",
+      "Bibliothek",
+      "Erfassen",
+      "Meine Entwürfe",
+      "Prüfen",
+    ]);
   });
   it("V8 · inaktiver punkt: 13.5px, #B9C1D2, 2px Unterstrich transparent, Polster 6px 2px — am realen Punkt", async () => {
     const stil = zielStil(ziel, Z_INAKTIV);

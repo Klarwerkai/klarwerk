@@ -473,6 +473,23 @@ const INVENTAR: readonly string[] = [
   // Chevrons steht in keiner Palette). Sachlich Klara-Regression im weiteren Sinn: dieselbe
   // Werkbank-Palette, die Klara ein zweites Mal aufschreibt, trägt hier die Zeilenkarte.
   "tests/design/zielbild-h6-einstellungen.test.ts",
+  // ==============================================================================================
+  // JOB 3503 · TEIL 3b — VIER DATEIEN KOMMEN ÜBER DIE ACHSE `palette` DAZU.
+  // ==============================================================================================
+  // K2 hat sie gemeldet, das Inventar nimmt sie nicht still auf. Der Anlass: „Gehe zu …" steht seit
+  // diesem Auftrag sichtbar im Kopfband und öffnet die VORHANDENE Befehlspalette
+  // (`shell/CommandPalette.tsx`). Die vier Dateien messen genau diesen Einstieg — der neue Fall
+  // selbst, das Kopfbandinventar in der Rollen-Vorschau, das Funktionsinventar (Zeile K-gehezu) und
+  // der Erklärtext-Wächter des Bands.
+  //
+  // SIE TREFFEN DIE ACHSE `palette`, und zwar über das Wort „Befehlspalette" — dieselbe Achse, über
+  // die die `tests/navigationsnamen/palette-*`-Dateien und `tests/admin-navigation/*` schon lange
+  // hier stehen. Sachlich derselbe Sinn wie dort: Klara und die Werkbank teilen die
+  // Schnellnavigation als Weg zu jedem Bereich; wer sie anfasst, fasst Klaras Weg mit an.
+  "tests/app/h1-vorschau-rueckweg-mounted.test.tsx",
+  "tests/design/h1-funktionsinventar.test.ts",
+  "tests/design/zielbild-h1-kein-erklaertext.test.ts",
+  "tests/entwuerfe-menuepunkt/gehe-zu-im-kopfband.test.tsx",
   "tests/help/klara-registry.test.ts",
   "tests/i18n/mega35-word-wortliste.test.ts",
   // JOB 3008 D1 (02.09.2026): der Zustandsweg der Office-Erkennung, am laufenden Aufgabenfenster

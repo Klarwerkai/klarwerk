@@ -41,11 +41,14 @@ describe("JOB 3028 U3 · navHilfeFor — Regel 1: genau ein Kapitel auf der Rout
 });
 
 describe("JOB 3028 U3 · navHilfeFor — Regel 2: kein Kapitel ⇒ null", () => {
-  it("die elf Menüpunkte ohne Kapitel bekommen nichts — Fehlen ist die ehrliche Auskunft", () => {
+  // JOB 3503: es sind zwölf. „Meine Entwürfe" (`/entwuerfe`) ist dazugekommen und hat kein
+  // Hilfekapitel — und bekommt deshalb keinen Hinweis. Ein erfundenes Kapitel wäre die Alternative
+  // gewesen; Fehlen ist die ehrliche Auskunft.
+  it("die zwölf Menüpunkte ohne Kapitel bekommen nichts — Fehlen ist die ehrliche Auskunft", () => {
     const ohne = ALL_ITEMS.filter(
       (item) => HELP_TOPICS.filter((t) => t.to === item.path).length === 0,
     ).map((item) => item.path);
-    expect(ohne.length, "die Menge der kapitellosen Punkte ist nicht mehr elf").toBe(11);
+    expect(ohne.length, "die Menge der kapitellosen Punkte ist nicht mehr zwölf").toBe(12);
     for (const pfad of ohne) {
       expect(navHilfeFor(pfad), `${pfad} bekommt einen Hinweis ohne Kapitel`).toBeNull();
     }
@@ -82,7 +85,7 @@ describe("JOB 3028 U3 · navHilfeFor — Regel 4: die eine ausgeschriebene Ausna
 // nicht dass sie „ungefähr passt". Ein Punkt, der in keinen Topf fällt, wäre ein stiller Rest, und
 // genau aus einem stillen Rest entsteht die nächste falsche Zahl.
 describe("JOB 3028 U3 · die Aufteilung der Menüpunkte geht ohne Rest auf", () => {
-  it("20 gesamt = 8 mit Hinweis + 11 ohne Kapitel + 0 mehrdeutig + 1 begründete Ausnahme", () => {
+  it("21 gesamt = 8 mit Hinweis + 12 ohne Kapitel + 0 mehrdeutig + 1 begründete Ausnahme", () => {
     const kapitelZu = (pfad: string): number =>
       HELP_TOPICS.filter((topic) => topic.to === pfad).length;
 
@@ -94,9 +97,11 @@ describe("JOB 3028 U3 · die Aufteilung der Menüpunkte geht ohne Rest auf", () 
       (i) => kapitelZu(i.path) === 1 && navHilfeFor(i.path) === null,
     );
 
-    expect(ALL_ITEMS.length, "gesamt").toBe(20);
+    // JOB 3503: 20 → 21 (der Kopfband-Punkt „Meine Entwürfe"), und er fällt in den Topf „ohne
+    // Kapitel" (11 → 12). Die Summe geht weiter ohne Rest auf — genau das prüft der Fall.
+    expect(ALL_ITEMS.length, "gesamt").toBe(21);
     expect(mitHinweis.length, "mit Hinweis").toBe(8);
-    expect(ohneKapitel.length, "ohne Kapitel").toBe(11);
+    expect(ohneKapitel.length, "ohne Kapitel").toBe(12);
     expect(mehrdeutig.length, "mehrdeutig").toBe(0);
     expect(
       ausnahme.map((i) => i.path),
@@ -109,8 +114,9 @@ describe("JOB 3028 U3 · die Aufteilung der Menüpunkte geht ohne Rest auf", () 
       "die vier Töpfe ergeben nicht die Gesamtzahl — es gibt einen stillen Rest",
     ).toBe(ALL_ITEMS.length);
 
-    // Und die Zahl, um die es in der Rückgabe ging: STUMM sind zwölf, nicht elf.
+    // Und die Zahl, um die es in der Rückgabe ging: STUMM sind zwölf, nicht elf — seit JOB 3503
+    // dreizehn (zwölf ohne Kapitel plus `/admin` als begründete Ausnahme).
     const stumm = ALL_ITEMS.filter((i) => navHilfeFor(i.path) === null);
-    expect(stumm.length, "stumme Menüpunkte").toBe(12);
+    expect(stumm.length, "stumme Menüpunkte").toBe(13);
   });
 });

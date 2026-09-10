@@ -7,6 +7,7 @@ import {
   CheckSquare,
   Copy,
   FileOutput,
+  FileStack,
   GitCompare,
   Globe,
   HelpCircle,
@@ -120,6 +121,42 @@ export const NAV_GROUPS: NavGroup[] = [
         path: "/erfassen",
         labelKey: "nav.capture",
         icon: Plus,
+        minRole: "experte",
+        section: "7.3",
+        shot: "03",
+      },
+      {
+        // ==========================================================================================
+        // JOB 3503 · ENTWUERFE-MENUEPUNKT — „Meine Entwürfe" ist ein ORT, kein Aufklapper.
+        // ==========================================================================================
+        //
+        // Pedi (über Codex, 10.09.2026): „eigener sichtbarer Menüpunkt oben in der Topbar, öffnet
+        // eine eigenständige verständliche Übersicht, genauso aufgebaut wie Bibliothek." Bis hierher
+        // steckten die Entwürfe ausschliesslich im Editor hinter dem Menü „Mehr" → „Entwürfe"
+        // (`components/erfassen/Blatt.tsx`) und in der zugeklappten Karte „Entwürfe fortsetzen" des
+        // Arbeitsraums (`pages/Capture.tsx`). Beide Wege BLEIBEN — dieser Auftrag ergänzt einen, er
+        // ersetzt keinen.
+        //
+        // ER STEHT HIER, IN DER GRUPPE, UND NICHT IN EINER NEBENLISTE. Ein Eintrag in `NAV_GROUPS`
+        // ist die einzige Stelle, von der ALLE weiteren Register erben: Router und Rollen-Gate
+        // (`GUARDED_ITEMS`), das Menü (`nachObergruppen`), die Schnellnavigation „Gehe zu …"
+        // (`direktzugangZiele`) und die Freiheitenliste der ROLLEN-Karte. Zwei dieser Register
+        // verlangen einen eigenen Eintrag, und beide bekommen ihn:
+        //   · `app/navigationGliederung.ts`  → `entwuerfe: "arbeiten"` (sonst wirft `obergruppeVon`)
+        //   · `components/einstellungen/rollenFreiheiten.ts` → dasselbe Stichwort wie „Erfassen"
+        // Eine Nebenliste hätte den Punkt an beiden vorbeigeführt — und damit an „Gehe zu …".
+        //
+        // `minRole: "experte"` ist DIESELBE Schranke wie an „Erfassen": Entwürfe entstehen dort, und
+        // wer nicht erfassen darf, kann keine haben. Der Punkt wird für eine Betrachterin also nicht
+        // eigens versteckt — er fällt unter die Regel, die für ihren Nachbarn schon gilt (`canSee`).
+        //
+        // KEIN NEUER TEXTSCHLÜSSEL: `mob.drafts` steht seit langem in de/en/nl („Meine Entwürfe" /
+        // „My drafts" / „Mijn concepten") und ist genau dieses Wort. Ein zweiter Schlüssel für
+        // denselben Namen wäre die Bauform, die JOB 3105 UX-08 hier abgeschafft hat.
+        id: "entwuerfe",
+        path: "/entwuerfe",
+        labelKey: "mob.drafts",
+        icon: FileStack,
         minRole: "experte",
         section: "7.3",
         shot: "03",
@@ -332,7 +369,8 @@ export const FOOT_ITEMS: NavItem[] = [
 export const ALL_ITEMS: NavItem[] = [...NAV_GROUPS.flatMap((g) => g.items), ...FOOT_ITEMS];
 
 // ================================================================================================
-// JOB 3060 · H1 — DIE HÜLLE HAT EIN KOPFBAND MIT FÜNF PUNKTEN, KEINE SEITENLEISTE MEHR.
+// JOB 3060 · H1 — DIE HÜLLE HAT EIN KOPFBAND, KEINE SEITENLEISTE MEHR (JOB 3060: fünf Punkte;
+// seit JOB 3503 sechs — s. u.).
 // ================================================================================================
 //
 // Die Gruppen oben bleiben die EINE Quelle aller Routen (Router, Palette, Rollen-Gates). Was sich
@@ -341,7 +379,20 @@ export const ALL_ITEMS: NavItem[] = [...NAV_GROUPS.flatMap((g) => g.items), ...F
 // Bereiche", und „Admin" ist dort die Zeile „Einstellungen". Drei Mengen, und JEDER Gruppenpunkt
 // steht in genau einer davon — das pinnt tests/app/h1-navigation-orte.test.ts, damit ein künftiger
 // Punkt nicht still aus dem Bild fällt.
-const KOPFBAND_IDS = ["start", "fragen", "bibliothek", "erfassen", "validierung"] as const;
+//
+// JOB 3503: es sind SECHS. „Meine Entwürfe" steht zwischen „Erfassen" und „Prüfen", weil das die
+// Reihenfolge der Arbeit ist — erfassen, weiterschreiben, prüfen. Der Punkt ist kein zusätzlicher
+// Ort neben den drei Mengen, sondern einer VON ihnen: der Test oben (`h1-navigation-orte`) rechnet
+// weiterhin nach, dass Kopfband, „Weitere Bereiche" und „Einstellungen" die Gruppen restlos und
+// überschneidungsfrei aufteilen.
+const KOPFBAND_IDS = [
+  "start",
+  "fragen",
+  "bibliothek",
+  "erfassen",
+  "entwuerfe",
+  "validierung",
+] as const;
 
 // ================================================================================================
 // JOB 3105 · UX-08 — DER ANGEZEIGTE NAME EINES BEREICHS HAT EINE EINZIGE QUELLE.
@@ -416,7 +467,7 @@ function gruppenPunkt(id: string): NavItem {
   return item;
 }
 
-/** Die fünf Punkte des Kopfbands, in Bildreihenfolge — noch OHNE Rollenfilter. */
+/** Die sechs Punkte des Kopfbands, in Bildreihenfolge — noch OHNE Rollenfilter. */
 export function kopfbandItems(): NavItem[] {
   return KOPFBAND_IDS.map(gruppenPunkt);
 }
