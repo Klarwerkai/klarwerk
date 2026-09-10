@@ -417,6 +417,13 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/klara/sessions/:sessionId/zuruf": { protection: "ko.read" },
 
   // --- Library / Import / Analytics / Graph (library-routes.ts) ---
+  // JOB 3507: requireUser öffnet die Auskunft; fehlendes ko.read liefert 200 + leere Liste.
+  // Erst mit Leserecht wird der Bestand über SQL-Trim und sichtbareFuer gezählt (F2/F3/F6).
+  "GET /api/categories": {
+    protection: "auth",
+    zeilenrecht: ["sichtbareFuer"],
+    reason: "category-routes.ts: can(ko.read) vor jedem Bestandsabruf; ohne Recht keine Daten.",
+  },
   "GET /api/library/search": { protection: "ko.read", zeilenrecht: ["sichtbareFuer"] },
   // JOB 3095 · M5: Bildsuche — Kandidaten über `sichtbareFuer` (plus SQL-Trim), jeder geladene
   // Rumpf zusätzlich über `darfSehen` am vollen Objekt (library-routes.ts, `/api/library/images`).

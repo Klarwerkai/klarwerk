@@ -146,6 +146,10 @@ const REGISTER: Record<string, Eintrag> = {
       "JOB 3326 — Antwort ist eine Zählbilanz plus Lieferschlüssel (lesevarianten.ts, LadeBilanz).",
   },
   "GET /api/library/search": { urteil: "PRAEDIKAT", grund: "Block B — Titel/Kernaussage." },
+  "GET /api/categories": {
+    urteil: "PRAEDIKAT",
+    grund: "JOB 3507 — Kategorien und Zähler erst nach sqlSichtbarkeitFuer + sichtbareFuer.",
+  },
   // JOB 3095 · M5: Bilder anhand Beschreibung/Benennung. Die Kandidaten laufen durch denselben
   // SQL-Trim und `sichtbareFuer` wie die Bibliothekssuche; der Rumpf jedes Treffers wird zusätzlich
   // am vollen Objekt gegen `darfSehen` gehalten (library-routes.ts, Route `/api/library/images`).

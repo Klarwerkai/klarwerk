@@ -201,6 +201,7 @@ import { aiCheckCoverageRoutes } from "./routes/ai-check-coverage-routes";
 import { askRoutes } from "./routes/ask-routes";
 import { auditRoutes } from "./routes/audit-routes";
 import { canSeeDraft, captureRoutes } from "./routes/capture-routes";
+import { categoryRoutes } from "./routes/category-routes";
 import { checkTextRoutes } from "./routes/check-text-routes";
 import { conflictRoutes } from "./routes/conflicts-routes";
 import { confluenceImportRoutes } from "./routes/confluence-import-routes";
@@ -2121,6 +2122,7 @@ export function buildApp(
       semanticPrefilter,
     }),
   );
+  app.register(categoryRoutes(services.ko, guards));
   app.register(outputRoutes(services.output, guards));
   app.register(managementRoutes(services.management, guards));
   app.register(modelRunRoutes(services.modelRuns, guards));
