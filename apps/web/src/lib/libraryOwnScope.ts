@@ -2,10 +2,20 @@
 // JOB 381 — DER GELTUNGSBEREICH DER BIBLIOTHEK: DIE EINE STELLE, DIE „GEHOERT MIR" ENTSCHEIDET.
 // ================================================================================================
 //
-// Pedis Entscheidung (`ENTSCHEIDUNGEN/JOB-381-ORTSZEILE.md`) gibt zwei Schaltflaechen vor —
-// die eigene Ablage vor dem gesamten sichtbaren Bestand; die Filterwirkung ist verbindlich:
+// PEDIS BEGRUENDUNG, WOERTLICH — sie ist der Grund, warum es diese Datei gibt:
 //
-// Die eigene Ablage filtert auf die Erstellerkennung des angemeldeten Nutzers.
+//   „Die Zeile muss wirken, nicht nur aussehen. 'Meine Ablage' filtert auf createdBy des
+//   angemeldeten Nutzers. Eine Schaltflaeche ohne Wirkung waere eine Attrappe."
+//
+// HERKUNFT DES WORTLAUTS: `archiv/3489/runde-1/ben.md:35` in der Steuerung. Die Entscheidungsdatei
+// `ENTSCHEIDUNGEN/JOB-381-ORTSZEILE.md`, die frueher hier zitiert wurde, existiert NICHT — weder im
+// Arbeitsbaum noch in irgendeinem Commit (`git log --all -- "*JOB-381-ORTSZEILE*"` ist leer). Dieser
+// Kommentar ist damit der letzte Ort des Satzes; er wird nicht umformuliert. Der Wortlaut haengt an
+// einem Waechter (`tests/bibliothek-scope-sprache/ortszeile-sprache-mounted.test.tsx`, Fall 6), weil
+// er schon einmal verloren ging: die Quelltextprobe von JOB 3489 verbot die Anzeigetexte im GANZEN
+// Dateiinhalt und traf damit auch Kommentare. Sie misst seit JOB 3565 nur noch Codezeilen.
+//
+// Zwei Schaltflaechen also: die eigene Ablage vor dem gesamten sichtbaren Bestand.
 //
 // Diese Datei existiert, damit die Antwort auf „wem gehoert dieses Objekt" an GENAU EINEM Ort
 // faellt — dieselbe Begruendung, mit der `services/app/src/sichtbarkeit.ts` die Sichtbarkeitsfrage
@@ -48,7 +58,7 @@
 // ohne Historie: kein Ersteller bekannt heisst „nicht meins", nicht „vielleicht meins".
 import type { KnowledgeObject } from "../api/types";
 
-/** Der URL-Parameter des Suchbereichs (PLAN 378 §4.2; die Browsersonde R-18 liest ihn). */
+/** Der URL-Parameter des Geltungsbereichs (PLAN 378 §4.2; die Browsersonde R-18 liest ihn). */
 export const LIBRARY_SCOPE_PARAM = "raum";
 
 export type LibraryScope = "alle" | "meine";
@@ -58,7 +68,7 @@ export const DEFAULT_LIBRARY_SCOPE: LibraryScope = "alle";
 
 // Die Anzeigetexte liegen unter `lib.ownScope.*` in `i18n.ts`; die Fläche übersetzt sie.
 
-/** Liest den Suchbereich aus der Adresse. Alles Unbekannte faellt auf den Standard zurueck. */
+/** Liest den Geltungsbereich aus der Adresse. Alles Unbekannte faellt auf den Standard zurueck. */
 export function parseLibraryScope(raw: string | null | undefined): LibraryScope {
   return raw === "meine" ? "meine" : DEFAULT_LIBRARY_SCOPE;
 }
@@ -88,7 +98,7 @@ export function isOwnKo(
 }
 
 /**
- * Die Treffermenge auf den Suchbereich einschraenken.
+ * Die Treffermenge auf den Geltungsbereich einschraenken.
  *
  * Der Gesamtbestand laesst die Menge UNVERAENDERT — es ist kein Rechtefilter, sondern eine Sicht.
  * Was ein Nutzer sehen darf, hat der Server bereits entschieden (`sichtbareFuer` plus
