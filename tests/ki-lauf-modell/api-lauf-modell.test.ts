@@ -73,6 +73,7 @@ async function umgebung() {
     url: "/api/kos",
     headers: admin,
     payload: {
+      confidentiality: "intern",
       title: "Wartung Hauptschalter",
       statement: "Vor der Wartung verriegeln.",
       type: "best_practice",

@@ -33,6 +33,7 @@ describe("JOB 3023 · D — die Gegenprobe", () => {
       url: "/api/kos",
       headers,
       payload: {
+        confidentiality: "intern",
         title: "Ventil entlueften",
         statement: "Bei Ueberdruck das Ventil X langsam entlueften.",
         type: "best_practice",

@@ -94,6 +94,7 @@ describe("mega45 D · der Betriebsschalter der Herkunftskette", () => {
       url: "/api/kos",
       headers,
       payload: {
+        confidentiality: "intern",
         title: "Lieferzeiten Standardteile",
         statement: "Standardteile sind in fuenf Werktagen da.",
         type: "best_practice",

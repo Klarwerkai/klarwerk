@@ -43,6 +43,7 @@ describe("SCRUM-470 (#1): Client-sources werden auf öffentlichen Schreibpfaden 
       url: "/api/kos",
       headers,
       payload: {
+        confidentiality: "intern",
         title: "Handbuch",
         statement: "Inhalt.",
         type: "best_practice",
@@ -60,7 +61,13 @@ describe("SCRUM-470 (#1): Client-sources werden auf öffentlichen Schreibpfaden 
       method: "POST",
       url: "/api/kos",
       headers,
-      payload: { title: "Handbuch", statement: "Inhalt.", type: "best_practice", category: "Doku" },
+      payload: {
+        confidentiality: "intern",
+        title: "Handbuch",
+        statement: "Inhalt.",
+        type: "best_practice",
+        category: "Doku",
+      },
     });
     const id = created.json().id as string;
     const revised = await app.inject({

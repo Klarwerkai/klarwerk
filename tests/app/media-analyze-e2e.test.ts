@@ -145,6 +145,7 @@ describe("SCRUM-382: /api/media/analyze (HTTP end-to-end)", () => {
       url: "/api/kos",
       headers,
       payload: {
+        confidentiality: "intern",
         title: "Anlagen-Rundgang",
         statement: "Interner Rundgang mit sensiblen Details.",
         type: "best_practice",

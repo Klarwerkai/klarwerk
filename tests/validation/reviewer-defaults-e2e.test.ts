@@ -140,7 +140,11 @@ describe("SCRUM-395: Standard-Prüferanzahl + Prüfer-Vorschlag beim Einreichen"
       method: "POST",
       url: "/api/kos",
       headers: erik.headers,
-      payload: { ...KO_PAYLOAD, title: "Zweiter Beitrag", neededValidations: 4 },
+      payload: {
+        ...KO_PAYLOAD,
+        title: "Zweiter Beitrag",
+        neededValidations: 4,
+      },
     });
     expect(explicit.json().neededValidations).toBe(4);
   });
@@ -175,7 +179,10 @@ describe("SCRUM-395: Standard-Prüferanzahl + Prüfer-Vorschlag beim Einreichen"
       url: "/api/kos",
       headers: erik.headers,
       // Erik nennt Carla als Prüferin — und (fälschlich) sich selbst: das wird gefiltert.
-      payload: { ...KO_PAYLOAD, reviewerIds: [carla.id, carla.id, erik.id] },
+      payload: {
+        ...KO_PAYLOAD,
+        reviewerIds: [carla.id, carla.id, erik.id],
+      },
     });
     expect(created.statusCode).toBe(201);
     const koId = created.json().id as string;

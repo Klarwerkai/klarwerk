@@ -248,6 +248,7 @@ describe("D-AISTATE V5: revise-Route gibt die frisch als pending markierte Fassu
       url: "/api/kos",
       headers,
       payload: {
+        confidentiality: "intern",
         title: "Erstfassung",
         statement: "Aussage eins.",
         type: "best_practice",

@@ -72,6 +72,7 @@ describe("mega26 Block A: Laufkontext des Modelllaufs (wer/woran)", () => {
       url: "/api/kos",
       headers: admin,
       payload: {
+        confidentiality: "intern",
         title: "Wartung Hauptschalter",
         statement: "Vor der Wartung verriegeln.",
         type: "best_practice",

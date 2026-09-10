@@ -79,7 +79,9 @@ async function frageMitBeleg(
       statement: "Bei Ueberdruck Ventil X manuell schliessen.",
       type: "best_practice",
       category: "Anlage 1",
-      ...(opts.vertraulich ? { confidentiality: "vertraulich" } : {}),
+      // JOB 3429 (Q3 c): der Schreibweg verlangt die Stufe — der nicht-vertrauliche Zweig sagt
+      // deshalb ausdrücklich „intern" statt gar nichts. Die Aussage des Falls bleibt dieselbe.
+      confidentiality: opts.vertraulich ? "vertraulich" : "intern",
     },
   });
   if (ko.statusCode !== 201) {

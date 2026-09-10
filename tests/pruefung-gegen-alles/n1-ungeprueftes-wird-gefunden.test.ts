@@ -79,6 +79,7 @@ async function seedOffen(
     url: "/api/kos",
     headers,
     payload: {
+      confidentiality: "intern",
       title: opts.titel ?? TITEL,
       statement: opts.statement ?? SEED_STMT,
       type: "best_practice",

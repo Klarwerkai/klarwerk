@@ -75,6 +75,7 @@ async function retrievalApp() {
     url: "/api/kos",
     headers,
     payload: {
+      confidentiality: "intern",
       title: "Ventil entlasten vor Wartung",
       statement: VALIDATED_STATEMENT,
       type: "best_practice",
@@ -93,6 +94,7 @@ async function retrievalApp() {
     url: "/api/kos",
     headers,
     payload: {
+      confidentiality: "intern",
       title: "Kompressor Filterwechsel",
       statement: "Kompressor Filter woechentlich wechseln und dokumentieren.",
       type: "best_practice",

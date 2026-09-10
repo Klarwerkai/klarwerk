@@ -78,6 +78,7 @@ describe("G27 R1 · sichtbarer Wahrheitsweg · Bibliothek und Klara sehen DENSEL
       url: "/api/kos",
       headers,
       payload: {
+        confidentiality: "intern",
         title: "Überdruckventil prüfen",
         statement: "Bei Überdruck Ventil X schließen.",
         type: "best_practice",
@@ -181,6 +182,7 @@ describe("G27 R1 · sichtbarer Wahrheitsweg · Bibliothek und Klara sehen DENSEL
       url: "/api/kos",
       headers,
       payload: {
+        confidentiality: "intern",
         title: "Überdruckventil prüfen",
         statement: "Bei Überdruck Ventil X schließen.",
         type: "best_practice",
@@ -211,6 +213,7 @@ describe("G27 R1 · sichtbarer Wahrheitsweg · Bibliothek und Klara sehen DENSEL
       url: "/api/kos",
       headers,
       payload: {
+        confidentiality: "intern",
         title: "Überdruckventil prüfen",
         statement: "Bei Überdruck Ventil X schließen.",
         type: "best_practice",

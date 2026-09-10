@@ -235,12 +235,15 @@ async function vorrichtung(kopieAbsaetze: readonly string[]): Promise<void> {
     payload: { email, password: "geheim12345" },
   });
   cookie = `kw_session=${(login.json() as { token: string }).token}`;
+  // JOB 3429 (Q3 c): der Anlageweg verlangt die Stufe. Dieser Fall misst die Konfliktfläche,
+  // nicht die Einstufung — beide Objekte tragen deshalb die neutrale Stufe „intern".
   const freigegeben = await endpoints.ko.create({
     title: TITEL_FREIGEGEBEN,
     statement: ABSAETZE.join("\n\n"),
     type: "best_practice",
     category: "Commercial",
     bodyHtml: ABSAETZE.map((a) => `<p>${a}</p>`).join(""),
+    confidentiality: "intern",
   } as never);
   await endpoints.ko.act(freigegeben.id, { action: "admin-validate" });
   await endpoints.ko.create({
@@ -249,6 +252,7 @@ async function vorrichtung(kopieAbsaetze: readonly string[]): Promise<void> {
     type: "best_practice",
     category: "Commercial",
     bodyHtml: kopieAbsaetze.map((a) => `<p>${a}</p>`).join(""),
+    confidentiality: "intern",
   } as never);
   await services.aiCheckWorker?.idle();
   await seiteOeffnen();

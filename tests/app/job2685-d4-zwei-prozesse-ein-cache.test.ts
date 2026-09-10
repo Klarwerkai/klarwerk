@@ -101,6 +101,7 @@ async function objekt(
     url: "/api/kos",
     headers: wer,
     payload: {
+      confidentiality: "intern",
       title: "Wartung der Presse",
       statement: "Ein Objekt mit Bild.",
       type: "best_practice",

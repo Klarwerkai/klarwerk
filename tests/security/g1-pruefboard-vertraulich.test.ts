@@ -99,6 +99,7 @@ async function vertraulichesKo(app: App, autor: Auth): Promise<string> {
     url: "/api/kos",
     headers: autor,
     payload: {
+      confidentiality: "intern",
       title: "Vertraulicher Pruefling",
       statement: "Sensibler Kerntext, der einen fremden Pruefer nichts angeht.",
       type: "best_practice",
@@ -128,6 +129,7 @@ async function internesKo(app: App, autor: Auth): Promise<string> {
     url: "/api/kos",
     headers: autor,
     payload: {
+      confidentiality: "intern",
       title: "Internes Alltagswissen",
       statement: "Nichts Geheimes — dieses Objekt muss jeder Pruefer sehen.",
       type: "best_practice",

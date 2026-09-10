@@ -87,6 +87,7 @@ async function koMitAnhang(app: App, autor: Auth, vertraulich: boolean) {
     url: "/api/kos",
     headers: autor,
     payload: {
+      confidentiality: "intern",
       title: vertraulich ? "Vertrauliches mit Anhang" : "Internes mit Anhang",
       statement: "Ein Objekt, an dem ein Original hängt.",
       type: "best_practice",

@@ -47,6 +47,7 @@ describe("mega26 Block B: Grund der Verknüpfung am EvidenceRecord", () => {
       url: "/api/kos",
       headers,
       payload: {
+        confidentiality: "intern",
         title: "Entlüften der Pumpe",
         statement: "Vor dem Anfahren entlüften.",
         type: "best_practice",

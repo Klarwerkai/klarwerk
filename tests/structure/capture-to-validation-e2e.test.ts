@@ -48,6 +48,7 @@ describe("SCRUM-335: Capture-Editor → Validation E2E (HTTP + Sanitizer + FE-He
       url: "/api/kos",
       headers: admin,
       payload: {
+        confidentiality: "intern",
         title: "Presse P2 sicher entlueften",
         statement: "Vor Wartung Druck ablassen und Restdruck pruefen.",
         bodyHtml: rawBody,

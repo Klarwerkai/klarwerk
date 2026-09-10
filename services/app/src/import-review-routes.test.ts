@@ -134,6 +134,7 @@ describe("SCRUM-238: Import-/Review-Workflow (HTTP end-to-end)", () => {
       url: "/api/kos",
       headers: admin,
       payload: {
+        confidentiality: "intern",
         title: dup.title,
         statement: dup.statement,
         type: dup.type,

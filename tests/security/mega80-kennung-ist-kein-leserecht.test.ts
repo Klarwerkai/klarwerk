@@ -117,7 +117,13 @@ async function legeKoAn(app: App, autor: Auth, titel: string, vertraulich: boole
     method: "POST",
     url: "/api/kos",
     headers: autor,
-    payload: { title: titel, type: "technik", statement: GEHEIM, bodyHtml: `<p>${GEHEIM}</p>` },
+    payload: {
+      confidentiality: "intern",
+      title: titel,
+      type: "technik",
+      statement: GEHEIM,
+      bodyHtml: `<p>${GEHEIM}</p>`,
+    },
   });
   if (created.statusCode !== 201) {
     throw new Error(`KO nicht angelegt: ${created.statusCode} ${created.body}`);

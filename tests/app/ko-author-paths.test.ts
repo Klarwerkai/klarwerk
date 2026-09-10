@@ -39,7 +39,13 @@ describe("WP-RETEST7 R6: author ist auf JEDEM Anlege-Pfad gesetzt", () => {
       method: "POST",
       url: "/api/kos",
       headers,
-      payload: { title: "Direkt", statement: "s", type: "best_practice", category: "K" },
+      payload: {
+        confidentiality: "intern",
+        title: "Direkt",
+        statement: "s",
+        type: "best_practice",
+        category: "K",
+      },
     });
     expect(res.statusCode).toBe(201);
     expect((res.json() as { author: string }).author).toBe(userId);
@@ -206,7 +212,13 @@ describe("WP-RETEST7 R6: author ist auf JEDEM Anlege-Pfad gesetzt", () => {
       method: "POST",
       url: "/api/kos",
       headers,
-      payload: { title: "Fürs Board", statement: "s", type: "best_practice", category: "K" },
+      payload: {
+        confidentiality: "intern",
+        title: "Fürs Board",
+        statement: "s",
+        type: "best_practice",
+        category: "K",
+      },
     });
     const board = await app.inject({ method: "GET", url: "/api/validation/board", headers });
     expect(board.statusCode).toBe(200);

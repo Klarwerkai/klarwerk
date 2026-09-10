@@ -58,6 +58,7 @@ async function setup(): Promise<{ app: App; autor: { authorization: string } }> 
     url: "/api/kos",
     headers: autor,
     payload: {
+      confidentiality: "intern",
       title: `Wartung ${SELTENES_WORT}`,
       statement: `Der ${SELTENES_WORT} wird vor jeder Wartung entlastet.`,
       type: "best_practice",

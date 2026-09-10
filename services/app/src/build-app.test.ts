@@ -87,6 +87,7 @@ describe("KO-API (§2.3)", () => {
       url: "/api/kos",
       headers,
       payload: {
+        confidentiality: "intern",
         title: "Ventil",
         statement: "Bei Überdruck schließen.",
         type: "best_practice",
@@ -135,14 +136,26 @@ describe("KO-API (§2.3)", () => {
       method: "POST",
       url: "/api/kos",
       headers,
-      payload: { title: "X", statement: "Y", type: "best_practice", category: "A" },
+      payload: {
+        confidentiality: "intern",
+        title: "X",
+        statement: "Y",
+        type: "best_practice",
+        category: "A",
+      },
     });
     const id = create.json().id as string;
 
     const noauth = await app.inject({
       method: "POST",
       url: "/api/kos",
-      payload: { title: "Z", statement: "W", type: "best_practice", category: "A" },
+      payload: {
+        confidentiality: "intern",
+        title: "Z",
+        statement: "W",
+        type: "best_practice",
+        category: "A",
+      },
     });
     expect(noauth.statusCode).toBe(401);
 
@@ -319,6 +332,7 @@ describe("Restliche API end-to-end (§2.4/§2.5)", () => {
       url: "/api/kos",
       headers,
       payload: {
+        confidentiality: "intern",
         title: "Ventil bei Überdruck",
         statement: "Bei Überdruck Ventil X schließen.",
         type: "best_practice",
@@ -372,6 +386,7 @@ describe("FR-VAL-07: Benachrichtigungen", () => {
       url: "/api/kos",
       headers,
       payload: {
+        confidentiality: "intern",
         title: "Ventil",
         statement: "Bei Überdruck schließen.",
         type: "best_practice",

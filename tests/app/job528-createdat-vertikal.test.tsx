@@ -168,7 +168,12 @@ async function objektAnlegen(titel: string): Promise<string> {
     method: "POST",
     url: "/api/kos",
     headers: { authorization: `Bearer ${bruecke.token}` },
-    payload: { title: titel, type: "technik", statement: `Aussage zu ${titel}.` },
+    payload: {
+      confidentiality: "intern",
+      title: titel,
+      type: "technik",
+      statement: `Aussage zu ${titel}.`,
+    },
   });
   expect(res.statusCode, res.body).toBe(201);
   return (JSON.parse(res.body) as { id: string }).id;

@@ -71,6 +71,7 @@ describe("SCRUM-364: Review Queue Execution & Assignment Completion (HTTP end-to
       url: "/api/kos",
       headers: admin.headers,
       payload: {
+        confidentiality: "intern",
         title: "Presse P2 entlüften",
         statement: "Vor Wartung Druck ablassen.",
         type: "best_practice",
@@ -139,6 +140,7 @@ describe("SCRUM-364: Review Queue Execution & Assignment Completion (HTTP end-to
       url: "/api/kos",
       headers: admin.headers,
       payload: {
+        confidentiality: "intern",
         title: "Lager schmieren",
         statement: "Intervall einhalten.",
         type: "best_practice",

@@ -318,11 +318,14 @@ async function aufbauen(): Promise<Aufbau> {
   }
 
   // --- Bestandsquelle: liegt bereits validiert im Haus (drei grüne, zwei gelbe Stimmen). --------
+  // JOB 3429 (Q3 c): der Anlageweg verlangt die Stufe. Diese Fälle messen die Wirkungskette der
+  // Korrektur, nicht die Einstufung — sie tragen deshalb die neutrale Stufe „intern".
   const bestand = await endpoints.ko.create({
     title: BESTAND_TITEL,
     statement: BESTAND_AUSSAGE,
     type: "best_practice",
     category: "Wartung",
+    confidentiality: "intern",
   } as never);
   const bestandId = bestand.id;
 
@@ -332,6 +335,7 @@ async function aufbauen(): Promise<Aufbau> {
     statement: BESTAND_AUSSAGE,
     type: "best_practice",
     category: "Wartung",
+    confidentiality: "intern",
   } as never);
   const korrekturId = korrektur.id;
 
@@ -341,6 +345,7 @@ async function aufbauen(): Promise<Aufbau> {
     statement: FREMDE_AUSSAGE,
     type: "best_practice",
     category: "Verwaltung",
+    confidentiality: "intern",
   } as never);
   await endpoints.ko.act(fremd.id, { action: "admin-validate" });
 

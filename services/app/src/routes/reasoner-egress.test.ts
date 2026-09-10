@@ -85,6 +85,7 @@ describe("SCRUM-502 R6: /api/reasoner egress (echter complete-Spy)", () => {
       url: "/api/kos",
       headers,
       payload: {
+        confidentiality: "intern",
         title: "Intern",
         statement: "Interner Kerntext.",
         type: "best_practice",

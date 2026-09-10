@@ -175,6 +175,7 @@ async function objektAnlegen(): Promise<string> {
     url: "/api/kos",
     headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
     payload: {
+      confidentiality: "intern",
       title: TITEL,
       statement: "Vor dem ersten Auftrag den Nullpunkt pruefen.",
       category: "Qualitaet",

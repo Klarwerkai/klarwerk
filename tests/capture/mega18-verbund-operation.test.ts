@@ -77,6 +77,7 @@ async function setup(stage?: string) {
     url: "/api/kos",
     headers,
     payload: {
+      confidentiality: "intern",
       title: "Dichtungswechsel L4",
       statement: "Dichtung vor jedem Anlauf prüfen.",
       type: "best_practice",
@@ -478,6 +479,7 @@ describe("mega18 A-1: die verteilte Fehlerkante", () => {
       url: "/api/kos",
       headers,
       payload: {
+        confidentiality: "intern",
         title: "Dichtung",
         statement: "x",
         type: "technik",

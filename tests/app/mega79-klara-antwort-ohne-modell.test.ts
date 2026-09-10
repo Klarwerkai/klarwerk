@@ -240,6 +240,7 @@ async function ketteApp() {
     url: "/api/kos",
     headers,
     payload: {
+      confidentiality: "intern",
       title: "Ventil entlasten vor Wartung",
       statement: VALIDIERTE_AUSSAGE,
       type: "best_practice",

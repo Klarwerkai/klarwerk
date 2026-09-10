@@ -50,6 +50,7 @@ async function bestand(
     url: "/api/kos",
     headers,
     payload: {
+      confidentiality: "intern",
       title: TITEL,
       statement: ABSATZ,
       type: "best_practice",
@@ -114,6 +115,7 @@ describe("M3b · gleicher Inhalt trotz fremdem oder fehlendem Titel am Server", 
       url: "/api/kos",
       headers,
       payload: {
+        confidentiality: "intern",
         title: "Ventil V3 zuerst schliessen",
         statement,
         type: "best_practice",

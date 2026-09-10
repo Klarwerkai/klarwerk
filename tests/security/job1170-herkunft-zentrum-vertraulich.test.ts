@@ -109,6 +109,7 @@ async function zentrum(app: App, autor: Auth, vertraulich: boolean): Promise<str
     url: "/api/kos",
     headers: autor,
     payload: {
+      confidentiality: "intern",
       title: vertraulich ? "Vertrauliches Zentrum" : "Internes Zentrum",
       statement: vertraulich ? GEHEIM : "Ganz gewoehnlicher interner Inhalt.",
       type: "best_practice",

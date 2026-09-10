@@ -68,6 +68,7 @@ describe("PMO-FEA-0002: Wirkungs-Rückmeldung an den Autor", () => {
       url: "/api/kos",
       headers: admin.headers,
       payload: {
+        confidentiality: "intern",
         title: "Spindel SP-7 nur im Stillstand schmieren",
         statement: "Schmierung bei Drehung verteilt Fett in die Lager.",
         type: "best_practice",
@@ -104,7 +105,12 @@ describe("PMO-FEA-0002: Wirkungs-Rückmeldung an den Autor", () => {
       method: "POST",
       url: "/api/kos",
       headers: admin.headers,
-      payload: { title: "Eigenes Wissen", statement: "Test.", type: "best_practice" },
+      payload: {
+        confidentiality: "intern",
+        title: "Eigenes Wissen",
+        statement: "Test.",
+        type: "best_practice",
+      },
     });
     const koId = created.json().id as string;
     await app.inject({

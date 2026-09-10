@@ -61,7 +61,13 @@ async function createKo(
     method: "POST",
     url: "/api/kos",
     headers,
-    payload: { title, statement: `Aussage zu ${title}`, type: "best_practice", category: "K" },
+    payload: {
+      confidentiality: "intern",
+      title,
+      statement: `Aussage zu ${title}`,
+      type: "best_practice",
+      category: "K",
+    },
   });
   expect(res.statusCode).toBe(201);
   return res.json() as { id: string };

@@ -33,6 +33,7 @@ describe("SCRUM-359: Trust-Formel → Server/FE-Konsistenz (HTTP + FE-Helfer)", 
       url: "/api/kos",
       headers,
       payload: {
+        confidentiality: "intern",
         title,
         statement,
         type: "best_practice",

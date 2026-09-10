@@ -151,6 +151,7 @@ describe("JOB 3066 R4 · F5: DELETE /api/kos/:id räumt auf JEDEM Ausgang genau 
           url: "/api/kos",
           headers,
           payload: {
+            confidentiality: "intern",
             title,
             statement: "Bei Überdruck zuerst Ventil V3 schließen.",
             type: "best_practice",

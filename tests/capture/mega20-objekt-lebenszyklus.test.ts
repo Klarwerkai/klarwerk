@@ -269,6 +269,7 @@ describe("mega20 C: die modulübergreifende Referenzprüfung in services/app", (
       url: "/api/kos",
       headers,
       payload: {
+        confidentiality: "intern",
         ...INHALT,
         bodyHtml: `<p>Siehe <img src="/api/objects/${bild.id}/raw" alt="x"></p>`,
       },
@@ -294,6 +295,7 @@ describe("mega20 C: die modulübergreifende Referenzprüfung in services/app", (
       url: "/api/kos",
       headers,
       payload: {
+        confidentiality: "intern",
         ...INHALT,
         bodyHtml: `<p><img src="/api/objects/${bild.id}/raw" alt="x"></p>`,
       },

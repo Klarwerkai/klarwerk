@@ -162,6 +162,7 @@ async function vertraulichesImPapierkorb(
     url: "/api/kos",
     headers: autor,
     payload: {
+      confidentiality: "intern",
       title: "Vertraulicher Beitrag JOB1178",
       type: "technik",
       statement: GEHEIM,

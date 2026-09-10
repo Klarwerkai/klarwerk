@@ -553,6 +553,7 @@ async function objektAnlegen(
     url: "/api/kos",
     headers,
     payload: {
+      confidentiality: "intern",
       title: titel,
       statement: `${titel} — Kurzfassung fuer den Pruefstand.`,
       type: "best_practice",
@@ -664,6 +665,7 @@ describe("JOB 3052 · D6 · das Wissensnetz des Zielbilds — die echte Seite, g
           url: "/api/kos",
           headers,
           payload: {
+            confidentiality: "intern",
             title: w.titel,
             statement: `${w.titel} — Kurzfassung fuer den Pruefstand.`,
             type: "best_practice",

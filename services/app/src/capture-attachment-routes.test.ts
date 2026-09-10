@@ -31,6 +31,7 @@ describe("SCRUM-243: Capture/KO/Attachment/Evidence (HTTP end-to-end)", () => {
       url: "/api/kos",
       headers,
       payload: {
+        confidentiality: "intern",
         title: "Lager L3 schmieren",
         statement: "Lager L3 alle 200h schmieren.",
         type: "best_practice",

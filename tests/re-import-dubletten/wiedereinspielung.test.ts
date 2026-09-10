@@ -21,18 +21,22 @@ const ZUGANG = { name: "Admin", email: "reimport@x.de", password: "secret123" };
 // einen Punkt enden und die „veraenderte" Sicherung entfernte ihn und haengte ihn sofort wieder an
 // — das Satzzeichen war danach dasselbe, der Pflichtfall pruefte ihn also gar nicht. Jetzt ist der
 // Punkt in der Sicherung wirklich neu.
+// JOB 3429 (Q3 c): der Schreibweg verlangt die Stufe. Diese Einträge messen die Dublettenerkennung,
+// nicht die Einstufung — sie tragen deshalb die neutrale Stufe „intern".
 const BESTAND = [
   {
     title: "Ventil entlueften",
     statement: "Bei Ueberdruck das Ventil X langsam entlueften",
     type: "best_practice" as const,
     category: "Wartung",
+    confidentiality: "intern" as const,
   },
   {
     title: "Pumpe schmieren",
     statement: "Die Pumpe alle 200 Betriebsstunden schmieren",
     type: "technik" as const,
     category: "Wartung",
+    confidentiality: "intern" as const,
   },
 ];
 
@@ -50,6 +54,8 @@ const REICHES_KO = {
   statement: "Die Rueckschlagklappe vor jedem Anlauf auf Dichtheit pruefen",
   type: "best_practice" as const,
   category: "Wartung",
+  // JOB 3429 (Q3 c): Pflichtfeld des Schreibwegs; dieser Fall misst die Dublettenerkennung.
+  confidentiality: "intern" as const,
   conditions: [
     "Anlage steht still und ist drucklos",
     "Absperrschieber vor der Klappe ist geschlossen",

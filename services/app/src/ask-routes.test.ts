@@ -35,6 +35,7 @@ describe("SCRUM-242: Ask-Workflow (HTTP end-to-end)", () => {
       url: "/api/kos",
       headers,
       payload: {
+        confidentiality: "intern",
         title: "Zylinderkopfdichtung XQ42 wechseln",
         statement: "Die Zylinderkopfdichtung XQ42 vor dem Wechsel entlasten.",
         type: "best_practice",

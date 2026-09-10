@@ -91,6 +91,7 @@ async function realeKompositionMitValidiertemKo() {
     url: "/api/kos",
     headers,
     payload: {
+      confidentiality: "intern",
       title: KO_TITEL,
       statement: KO_SATZ,
       type: "best_practice",

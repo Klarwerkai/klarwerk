@@ -197,12 +197,15 @@ async function vorrichtung(bodyHtml: string) {
     payload: { email: "pedi@job2614.test", password: "geheim12345" },
   });
   cookie = `kw_session=${(login.json() as { token: string }).token}`;
+  // JOB 3429 (Q3 c): der Anlageweg verlangt die Stufe. Dieser Fall misst die sichtbare Fundstelle,
+  // nicht die Einstufung — er trägt deshalb die neutrale Stufe „intern".
   const ko = await endpoints.ko.create({
     title: TITEL,
     statement: KERNAUSSAGE,
     type: "best_practice",
     category: "Wartung",
     bodyHtml,
+    confidentiality: "intern",
   } as never);
   await endpoints.ko.act(ko.id, { action: "admin-validate" });
   await services.aiCheckWorker?.idle();

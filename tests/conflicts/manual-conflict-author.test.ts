@@ -40,6 +40,7 @@ describe("mega26 Block B: Urheber am manuell angelegten Konflikt", () => {
       url: "/api/kos",
       headers,
       payload: {
+        confidentiality: "intern",
         title: titel,
         statement: `${titel} — Aussage.`,
         type: "best_practice",

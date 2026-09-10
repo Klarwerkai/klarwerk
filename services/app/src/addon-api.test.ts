@@ -55,6 +55,7 @@ async function appWithValidatedKo() {
     url: "/api/kos",
     headers,
     payload: {
+      confidentiality: "intern",
       title: "Zylinderkopfdichtung XQ42 wechseln",
       statement: "Die Zylinderkopfdichtung XQ42 vor dem Wechsel entlasten.",
       type: "best_practice",
@@ -292,7 +293,13 @@ describe("KLARWERK_ADDON_API — Flag AN", () => {
       method: "POST",
       url: "/api/kos",
       headers: { [ADDON_KEY_HEADER]: KEY },
-      payload: { title: "x", statement: "y", type: "best_practice", category: "c" },
+      payload: {
+        confidentiality: "intern",
+        title: "x",
+        statement: "y",
+        type: "best_practice",
+        category: "c",
+      },
     });
     expect(create.statusCode).toBeGreaterThanOrEqual(400);
   });

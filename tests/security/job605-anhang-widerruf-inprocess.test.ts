@@ -98,6 +98,7 @@ async function koMitAnhang(app: App, autor: Auth): Promise<{ koId: string; objec
     url: "/api/kos",
     headers: autor,
     payload: {
+      confidentiality: "intern",
       title: "Typenschild Anlage 4",
       statement: "Das Typenschild sitzt hinter der Wartungsklappe.",
       type: "best_practice",

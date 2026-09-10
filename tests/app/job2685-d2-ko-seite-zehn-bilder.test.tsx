@@ -281,6 +281,7 @@ describe("JOB 2685 D2 · B · zehn Anforderungen gegen die echte App: zwei Suche
       url: "/api/kos",
       headers: anna,
       payload: {
+        confidentiality: "intern",
         title: "Wartung der Presse in zehn Schritten",
         statement: "Zehn Schritte, zehn Bilder.",
         type: "best_practice",

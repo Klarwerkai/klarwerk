@@ -1016,6 +1016,45 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             ownership: _ignoredOwnership,
             ...input
           } = request.body;
+          // ==========================================================================================
+          // JOB 3429 (Q3 c) — OHNE EINSTUFUNG ENTSTEHT HIER KEIN WISSENSOBJEKT.
+          // ==========================================================================================
+          //
+          // DER BEFUND (JOB 3082 Runde 3, Codex-Antwort 25 Punkt 2). Die Stufenpflicht stand an ZWEI
+          // von DREI Anlagewegen: in der Oberfläche (`apps/web/src/pages/Capture.tsx`, `requestSubmit`
+          // kehrt ohne Wahl um) und am Entwurfs-Promote (`services/capture/src/service.ts`,
+          // `toKoInput` → INCOMPLETE). Hier fehlte sie, weil `confidentiality` am Eingabetyp optional
+          // ist (`services/knowledge-object/src/types.ts:230`) — ein Rumpf ohne das Feld legte an. So
+          // entstand ein Objekt, das NIEMAND eingestuft hat, und jede spätere Regel, die auf der Stufe
+          // aufbaut, stünde für dieses Objekt auf Sand.
+          //
+          // EINE PFLICHT, DIE NUR DER CLIENT KENNT, IST KEINE — derselbe Satz, mit dem JOB 3082 den
+          // Promote-Weg begründet hat (`services/capture/src/service.ts`, `KO_PFLICHTFELDER`).
+          //
+          // WARUM HIER UND NICHT IM DIENST. `ko.create` ist auch der Weg von Import und Seed, und für
+          // die gelten eigene Regeln (s. Kommentar oben: Herkunftsanker nur über den Import). Ein
+          // bewusst uneingestuftes Objekt — Altbestand, Fixtures — entsteht weiterhin über den Dienst.
+          // Verschärft wird genau der ÖFFENTLICHE Schreibweg, dort, wo er schon heute seine eigenen
+          // Grenzen zieht.
+          //
+          // WARUM KEIN VORGABEWERT. Ein stilles „intern" wäre genau die erfundene Einstufung, die
+          // JOB 3076/3082 abgeschafft haben: „nie eingestuft" muss ausdrückbar bleiben, sonst kann
+          // `discloseConfidentiality` (`confidentiality.ts:99-102`) den Altbestand nicht mehr ehrlich
+          // als `{ null, "unknown" }` melden. Fehlende Stufe ist ein Eingabefehler, keine Annahme.
+          //
+          // NUR DAS FEHLEN steht hier. Ein VORHANDENER, aber ungültiger Wert wird schon vom Dienst
+          // abgewiesen (`service.ts`, INVALID_CONFIDENTIALITY → 400) — auch `null`, das darum nicht in
+          // diese Prüfung gehört. Zwei Prüfungen für denselben Wert wären zwei Auslegungen.
+          //
+          // BESTAND BLEIBT UNANGETASTET: das wirkt nur auf neue Anlagen, rückwirkend ändert sich nichts.
+          if (input.confidentiality === undefined) {
+            reply.code(400).send({
+              error: "MISSING_CONFIDENTIALITY",
+              message:
+                "Vertraulichkeitsstufe fehlt — ein Wissensobjekt entsteht nur mit ausdrücklicher Einstufung.",
+            });
+            return;
+          }
           const created = await ko.create({ ...input, author: user.id });
           // SCRUM-395: Prüfer-Vorschlag beim Einreichen — der Autor darf für sein EIGENES,
           // frisch eingereichtes KO Prüfer benennen (dedupliziert, ohne sich selbst).

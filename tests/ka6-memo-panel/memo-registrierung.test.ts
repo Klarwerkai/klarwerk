@@ -127,6 +127,7 @@ async function aufbau(opts: { modell?: ZurufModell } = {}): Promise<Aufbau> {
     url: "/api/kos",
     headers: anmeldung,
     payload: {
+      confidentiality: "intern",
       title: KO_TITEL,
       statement: KO_AUSSAGE,
       type: "best_practice",

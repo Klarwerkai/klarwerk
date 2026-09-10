@@ -283,6 +283,7 @@ async function objekt(app: App, wer: Auth, bodyHtml: string): Promise<Record<str
     url: "/api/kos",
     headers: wer,
     payload: {
+      confidentiality: "intern",
       title: "Wartung der Presse in zehn Schritten",
       statement: "Zehn Schritte, zehn Bilder.",
       type: "best_practice",

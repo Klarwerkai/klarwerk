@@ -46,6 +46,7 @@ async function bestueckteApp() {
     url: "/api/kos",
     headers,
     payload: {
+      confidentiality: "intern",
       title: "Zylinderkopfdichtung XQ42 wechseln",
       statement: "Die Zylinderkopfdichtung XQ42 vor dem Wechsel entlasten.",
       type: "best_practice",
@@ -68,6 +69,7 @@ async function bestueckteApp() {
     url: "/api/kos",
     headers,
     payload: {
+      confidentiality: "intern",
       title: "Turboverdichter TVX99 Sonderfall",
       statement: ENTWURF_INHALT,
       type: "best_practice",

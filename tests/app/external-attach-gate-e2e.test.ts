@@ -91,6 +91,7 @@ async function setup(stage?: string) {
     url: "/api/kos",
     headers,
     payload: {
+      confidentiality: "intern",
       title: "Dichtungswechsel L4",
       statement: "Dichtung vor jedem Anlauf prüfen.",
       type: "best_practice",
@@ -291,6 +292,7 @@ describe("mega16 Block A: bens semantischer Bypass ist geschlossen", () => {
       url: "/api/kos",
       headers,
       payload: {
+        confidentiality: "intern",
         title: "Anderes Objekt",
         statement: "Egal.",
         type: "best_practice",

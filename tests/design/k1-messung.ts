@@ -333,7 +333,13 @@ export async function starteFlaeche(opts: FlaecheOptionen = {}): Promise<Flaeche
       method: "POST",
       url: "/api/kos",
       headers,
-      payload: { title: titel, statement: aussage, type: "best_practice", category: "Wartung" },
+      payload: {
+        confidentiality: "intern",
+        title: titel,
+        statement: aussage,
+        type: "best_practice",
+        category: "Wartung",
+      },
     });
     const id = (res.json() as { id: string }).id;
     await app.inject({

@@ -45,6 +45,7 @@ async function anlegen(
     url: "/api/kos",
     headers,
     payload: {
+      confidentiality: "intern",
       title: "Ventil X schließt bei Überdruck",
       statement: "Bei Überdruck Ventil X manuell schließen.",
       type: "best_practice",

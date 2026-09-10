@@ -91,7 +91,13 @@ async function reicheEin(
     method: "POST",
     url: "/api/kos",
     headers,
-    payload: { title, statement: `Aussage zu ${title}.`, type: "best_practice", category: "K" },
+    payload: {
+      confidentiality: "intern",
+      title,
+      statement: `Aussage zu ${title}.`,
+      type: "best_practice",
+      category: "K",
+    },
   });
 }
 

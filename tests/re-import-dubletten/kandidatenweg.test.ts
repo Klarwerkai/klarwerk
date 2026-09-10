@@ -70,6 +70,8 @@ const REICHES_KO = {
   statement: "Die Rueckschlagklappe vor jedem Anlauf auf Dichtheit pruefen",
   type: "best_practice" as const,
   category: "Wartung",
+  // JOB 3429 (Q3 c): Pflichtfeld des Schreibwegs; dieser Fall misst die Dublettenerkennung.
+  confidentiality: "intern" as const,
   conditions: [
     "Anlage steht still und ist drucklos",
     "Absperrschieber vor der Klappe ist geschlossen",
@@ -102,7 +104,13 @@ async function legeKoAn(
   headers: Headers,
   payload: Record<string, unknown>,
 ): Promise<string> {
-  const res = await app.inject({ method: "POST", url: "/api/kos", headers, payload });
+  // JOB 3429 (Q3 c): der Schreibweg verlangt die Stufe. Vorgabe hier, vom Aufrufer überschreibbar.
+  const res = await app.inject({
+    method: "POST",
+    url: "/api/kos",
+    headers,
+    payload: { confidentiality: "intern", ...payload },
+  });
   expect(res.statusCode, res.body).toBe(201);
   return res.json().id as string;
 }

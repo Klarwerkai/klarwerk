@@ -34,6 +34,7 @@ describe("SCRUM-358: Conflict → serverseitige Trust-/Status-Wirkung (HTTP)", (
       url: "/api/kos",
       headers,
       payload: {
+        confidentiality: "intern",
         title,
         statement,
         type: "best_practice",

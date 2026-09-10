@@ -48,6 +48,7 @@ async function ko(app: App, autor: Auth, titel: string): Promise<string> {
     url: "/api/kos",
     headers: autor,
     payload: {
+      confidentiality: "intern",
       title: titel,
       statement: "Eine Aussage, an der eine Anlage haengt.",
       type: "best_practice",

@@ -97,6 +97,7 @@ async function vertraulichesObjekt(app: App, autor: Auth): Promise<string> {
     url: "/api/kos",
     headers: autor,
     payload: {
+      confidentiality: "intern",
       title: "Vertraulicher Beitrag JOB1566",
       type: "technik",
       statement: GEHEIM,

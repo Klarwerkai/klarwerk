@@ -50,6 +50,7 @@ describe("Block E: die angezeigte Rohdateigrenze ist real, nicht behauptet", () 
       url: "/api/kos",
       headers,
       payload: {
+        confidentiality: "intern",
         title: "Dichtungswechsel L4",
         statement: "Dichtung vor jedem Anlauf prüfen.",
         type: "best_practice",

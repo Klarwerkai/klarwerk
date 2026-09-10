@@ -50,6 +50,7 @@ async function setup() {
       url: "/api/kos",
       headers: admin,
       payload: {
+        confidentiality: "intern",
         title: titel,
         statement: `${titel} Aussage zum Vorgang.`,
         type: "best_practice",

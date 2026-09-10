@@ -96,7 +96,14 @@ describe("Ask 7/8 · Skalierungsgegenprobe zum Retrieval-Grenzfall", () => {
       method: "POST",
       url: "/api/kos",
       headers,
-      payload: { title, statement, type: "best_practice", category: "Ask", neededValidations: 1 },
+      payload: {
+        confidentiality: "intern",
+        title,
+        statement,
+        type: "best_practice",
+        category: "Ask",
+        neededValidations: 1,
+      },
     });
     return res.json().id as string;
   }

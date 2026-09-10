@@ -55,6 +55,7 @@ describe("SCRUM-363: Assignment-Notification im Feed (HTTP end-to-end)", () => {
       url: "/api/kos",
       headers: admin.headers,
       payload: {
+        confidentiality: "intern",
         title: "Presse P2 entlüften",
         statement: "Vor Wartung Druck ablassen.",
         type: "best_practice",

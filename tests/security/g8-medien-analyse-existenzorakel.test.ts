@@ -112,6 +112,7 @@ async function anhangAmKo(
     url: "/api/kos",
     headers: autor,
     payload: {
+      confidentiality: "intern",
       title: vertraulich ? "Vertrauliche Aufnahme" : "Interne Aufnahme",
       statement: "Ein Objekt, an dem ein Original hängt.",
       type: "best_practice",

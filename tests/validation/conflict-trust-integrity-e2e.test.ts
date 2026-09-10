@@ -39,6 +39,7 @@ describe("SCRUM-357: Conflict → Trust/Usability/Review-Integrität (HTTP + FE-
       url: "/api/kos",
       headers,
       payload: {
+        confidentiality: "intern",
         title,
         statement,
         type: "best_practice",

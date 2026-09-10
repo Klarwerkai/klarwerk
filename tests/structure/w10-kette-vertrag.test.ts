@@ -274,6 +274,7 @@ async function erfasse(
     url: "/api/kos",
     headers: admin,
     payload: {
+      confidentiality: "intern",
       title: titel,
       statement: "Vor dem Entlüften des Hydraulikzylinders HZ7 den Systemdruck ablassen.",
       bodyHtml,

@@ -117,6 +117,7 @@ async function lageMit(
       url: "/api/kos",
       headers,
       payload: {
+        confidentiality: "intern",
         title: o.titel,
         statement: "Kurzfassung fuer den Pruefstand.",
         type: "best_practice",

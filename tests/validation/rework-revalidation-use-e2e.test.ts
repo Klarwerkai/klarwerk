@@ -67,6 +67,7 @@ describe("SCRUM-349: Review → Rework → Revalidation → Use E2E (HTTP + Sani
       url: "/api/kos",
       headers: admin,
       payload: {
+        confidentiality: "intern",
         title: "Spezialpresse SPX9 entlüften",
         statement: "Vor Wartung der Spezialpresse SPX9 den Druck ablassen.",
         bodyHtml: initialBody,

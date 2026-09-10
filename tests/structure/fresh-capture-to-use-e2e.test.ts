@@ -57,6 +57,7 @@ describe("SCRUM-348: Fresh Capture → Studio → Review → Use E2E (HTTP + San
       url: "/api/kos",
       headers: admin,
       payload: {
+        confidentiality: "intern",
         title: "Hydraulikzylinder HZ7 sicher entlüften",
         statement: "Vor dem Entlüften des Hydraulikzylinders HZ7 den Systemdruck ablassen.",
         bodyHtml,

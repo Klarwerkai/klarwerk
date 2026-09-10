@@ -81,6 +81,7 @@ async function aufbauen(): Promise<Aufbau> {
       url: "/api/kos",
       headers: kopf,
       payload: {
+        confidentiality: "intern",
         title,
         statement,
         type: "best_practice",

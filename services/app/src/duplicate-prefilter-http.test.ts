@@ -57,7 +57,13 @@ async function createKo(
     method: "POST",
     url: "/api/kos",
     headers,
-    payload: { title: "Pumpe entlüften", statement, type: "best_practice", category: "Wartung" },
+    payload: {
+      confidentiality: "intern",
+      title: "Pumpe entlüften",
+      statement,
+      type: "best_practice",
+      category: "Wartung",
+    },
   });
   return res.statusCode;
 }

@@ -53,6 +53,7 @@ async function ko(app: App, autor: Auth, titel: string, kategorie: string): Prom
     url: "/api/kos",
     headers: autor,
     payload: {
+      confidentiality: "intern",
       title: titel,
       statement: "Eine Aussage, die in einem Zähler landet.",
       type: "best_practice",

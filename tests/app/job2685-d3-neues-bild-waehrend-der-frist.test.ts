@@ -108,7 +108,9 @@ async function objekt(
       type: "best_practice",
       category: "Instandhaltung",
       bodyHtml,
-      ...(confidentiality ? { confidentiality } : {}),
+      // JOB 3429 (Q3 c): der Schreibweg verlangt die Stufe — ohne ausdrücklichen Wunsch des
+      // Aufrufers steht hier „intern". Der Fall misst die Bildfrist, nicht die Einstufung.
+      confidentiality: confidentiality ?? "intern",
     },
   });
   expect(created.statusCode, created.body).toBe(201);

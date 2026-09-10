@@ -95,6 +95,7 @@ async function vertraulichesKo(app: App, autor: Auth, bodyHtml?: string): Promis
     url: "/api/kos",
     headers: autor,
     payload: {
+      confidentiality: "intern",
       title: "Vertrauliches Trägerobjekt",
       statement: "Ein Objekt, dessen Anhang die Stufe erbt.",
       type: "best_practice",

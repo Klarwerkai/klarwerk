@@ -82,6 +82,7 @@ async function vertraulichesKo(app: App, autor: Auth, titel = "Vertraulicher Bei
     url: "/api/kos",
     headers: autor,
     payload: {
+      confidentiality: "intern",
       title: titel,
       statement: "Sensibler Kerntext, der einen Betrachter nichts angeht.",
       type: "best_practice",
@@ -109,6 +110,7 @@ async function internesKo(app: App, autor: Auth) {
     url: "/api/kos",
     headers: autor,
     payload: {
+      confidentiality: "intern",
       title: "Internes Alltagswissen",
       statement: "Nichts Geheimes — dieses Objekt muss jeder Betrachter sehen.",
       type: "best_practice",

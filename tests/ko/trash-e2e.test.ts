@@ -51,6 +51,7 @@ describe("SCRUM-422: Papierkorb für gelöschte Wissensobjekte", () => {
       url: "/api/kos",
       headers,
       payload: {
+        confidentiality: "intern",
         title,
         statement: "Bei Überdruck zuerst Ventil V3 schließen.",
         type: "best_practice",

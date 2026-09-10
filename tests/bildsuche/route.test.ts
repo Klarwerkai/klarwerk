@@ -85,7 +85,13 @@ async function setup() {
 }
 
 async function anlegen(app: App, headers: Auth, payload: Record<string, unknown>): Promise<string> {
-  const res = await app.inject({ method: "POST", url: "/api/kos", headers, payload });
+  // JOB 3429 (Q3 c): der Schreibweg verlangt die Stufe. Vorgabe hier, vom Aufrufer überschreibbar.
+  const res = await app.inject({
+    method: "POST",
+    url: "/api/kos",
+    headers,
+    payload: { confidentiality: "intern", ...payload },
+  });
   if (res.statusCode !== 201) {
     throw new Error(`Anlage fehlgeschlagen: ${res.statusCode} ${res.body}`);
   }

@@ -48,6 +48,7 @@ describe("SCRUM-421: der Server erzwingt Anzahl UND Größe der Anhänge", () =>
       url: "/api/kos",
       headers,
       payload: {
+        confidentiality: "intern",
         title: "Dichtungswechsel L4",
         statement: "Dichtung vor jedem Anlauf prüfen.",
         type: "best_practice",

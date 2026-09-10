@@ -77,6 +77,7 @@ describe("SCRUM-398: Live-Wall", () => {
       url: "/api/kos",
       headers,
       payload: {
+        confidentiality: "intern",
         title: "Presse P2 entlüften",
         statement: "Vor Wartung Druck ablassen.",
         type: "best_practice",

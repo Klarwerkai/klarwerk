@@ -76,6 +76,7 @@ async function appMitBeidenSorten() {
       url: "/api/kos",
       headers,
       payload: {
+        confidentiality: "intern",
         title,
         statement,
         type: "best_practice",
@@ -293,6 +294,7 @@ describe("JOB 2964 · F-0688 · die Schluessel-API liefert nur validiertes Wisse
         url: "/api/kos",
         headers,
         payload: {
+          confidentiality: "intern",
           title,
           statement,
           type: "best_practice",

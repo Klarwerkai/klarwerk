@@ -63,6 +63,7 @@ describe("Experten-Matching Route (hinter Feature-Flag)", () => {
       url: "/api/kos",
       headers,
       payload: {
+        confidentiality: "intern",
         title: "Pumpe",
         statement: "Pumpe entlüften.",
         type: "best_practice",

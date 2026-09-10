@@ -42,6 +42,8 @@ const EXISTING = {
   statement: "Der Urlaub betraegt 28 Tage pro Jahr.",
   type: "best_practice" as const,
   category: "Personal",
+  // JOB 3429 (Q3 c): Pflichtfeld des Schreibwegs; dieser Fall misst die Dublettenerkennung am Import.
+  confidentiality: "intern" as const,
 };
 const IMPORTED = {
   title: "Urlaubsregelung",
@@ -207,7 +209,7 @@ describe("SCRUM-470 (S6): Erkennung am Import-Accept-Pfad (HTTP end-to-end)", ()
       method: "POST",
       url: "/api/kos",
       headers,
-      payload: { ...base, title: TITEL, statement: BESTAND },
+      payload: { confidentiality: "intern", ...base, title: TITEL, statement: BESTAND },
     });
     expect(createdKo.statusCode).toBe(201);
 

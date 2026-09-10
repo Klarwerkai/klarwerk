@@ -99,6 +99,7 @@ describe("SCRUM-421: einstellbare Upload-Grenzen", () => {
       url: "/api/kos",
       headers: erik.headers,
       payload: {
+        confidentiality: "intern",
         title: "Mit Anhang",
         statement: "Bild anhängen.",
         type: "best_practice",

@@ -99,6 +99,7 @@ async function bestandDannKaputt(
     url: "/api/kos",
     headers,
     payload: {
+      confidentiality: "intern",
       title: "Überdruckventil prüfen",
       statement: "Bei Überdruck Ventil X schließen.",
       type: "best_practice",

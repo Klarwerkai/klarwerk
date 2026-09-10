@@ -110,6 +110,7 @@ async function vertraulicherAnhang(app: App, opfer: Auth, angreifer: Auth) {
     url: "/api/kos",
     headers: opfer,
     payload: {
+      confidentiality: "intern",
       title: "Vertrauliches Trägerobjekt",
       statement: "Ein Objekt, dessen Anhang die Stufe erbt.",
       type: "best_practice",
@@ -172,6 +173,7 @@ async function eigenesKo(app: App, angreifer: Auth, bodyHtml?: string): Promise<
     url: "/api/kos",
     headers: angreifer,
     payload: {
+      confidentiality: "intern",
       title: "Mein eigenes Objekt",
       statement: "Ganz normales internes Wissen.",
       type: "best_practice",
@@ -341,6 +343,7 @@ describe("mega78 A · GEGENPROBEN — der Nachweisweg bleibt offen", () => {
       url: "/api/kos",
       headers: opfer,
       payload: {
+        confidentiality: "intern",
         title: "Internes mit Anhang",
         statement: "Ein Objekt, an dem ein Original hängt.",
         type: "best_practice",

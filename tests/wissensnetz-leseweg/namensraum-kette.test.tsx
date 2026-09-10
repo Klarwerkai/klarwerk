@@ -56,6 +56,7 @@ async function anlegen(
     url: "/api/kos",
     headers: kopf,
     payload: {
+      confidentiality: "intern",
       title: titel,
       statement: "Kurzfassung fuer den Pruefstand.",
       type: "best_practice",

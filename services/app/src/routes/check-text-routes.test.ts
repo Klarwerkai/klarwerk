@@ -90,6 +90,7 @@ async function seedValidated(
     url: "/api/kos",
     headers,
     payload: {
+      confidentiality: "intern",
       title: "Pumpe entlüften",
       statement,
       type: "best_practice",

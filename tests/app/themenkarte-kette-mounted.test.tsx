@@ -131,6 +131,7 @@ async function bestueckteApp(
       url: "/api/kos",
       headers,
       payload: {
+        confidentiality: "intern",
         title: k.titel,
         statement: `${k.titel} — Kurzfassung fuer den Pruefstand.`,
         type: "best_practice",

@@ -49,6 +49,7 @@ describe("Persistenz: App gegen echtes Postgres", () => {
       url: "/api/kos",
       headers,
       payload: {
+        confidentiality: "intern",
         title: "Ventil schließen",
         statement: "Bei Überdruck Ventil X schließen.",
         type: "best_practice",

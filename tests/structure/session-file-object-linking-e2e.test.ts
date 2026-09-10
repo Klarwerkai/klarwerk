@@ -47,6 +47,7 @@ describe("SCRUM-373: Session File → Object-Store → Body-Link E2E (HTTP + FE-
       url: "/api/kos",
       headers: admin,
       payload: {
+        confidentiality: "intern",
         title: "Wartungsplan Pumpe P7",
         statement: "Wartungsintervalle laut Herstellerhandbuch für Pumpe P7.",
         type: "best_practice",

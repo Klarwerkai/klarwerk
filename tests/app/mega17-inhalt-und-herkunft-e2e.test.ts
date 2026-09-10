@@ -71,6 +71,7 @@ async function createKo(app: App, headers: Record<string, string>, bodyHtml: str
     url: "/api/kos",
     headers,
     payload: {
+      confidentiality: "intern",
       title: "Dichtungswechsel L4",
       statement: "Dichtung vor jedem Anlauf pruefen.",
       type: "best_practice",

@@ -107,6 +107,7 @@ async function eingereicht(
     url: "/api/kos",
     headers,
     payload: {
+      confidentiality: "intern",
       title: opts.titel ?? panelTitel(statement),
       statement,
       type: "best_practice",

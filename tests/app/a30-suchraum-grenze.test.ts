@@ -349,7 +349,14 @@ async function route() {
 }
 
 async function anlegen(app: App, headers: Auth, payload: Record<string, unknown>): Promise<string> {
-  const res = await app.inject({ method: "POST", url: "/api/kos", headers, payload });
+  // JOB 3429 (Q3 c): der Schreibweg verlangt die Stufe. Vorgabe hier, damit jeder Aufrufer, den
+  // die Einstufung nicht interessiert, unverändert bleibt — wer sie setzt, überschreibt sie.
+  const res = await app.inject({
+    method: "POST",
+    url: "/api/kos",
+    headers,
+    payload: { confidentiality: "intern", ...payload },
+  });
   expect(res.statusCode, res.body).toBe(201);
   return res.json().id as string;
 }

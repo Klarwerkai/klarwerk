@@ -59,6 +59,7 @@ describe("SCRUM-350: Evidence & Attachments → Review → Use E2E (HTTP + Objec
       url: "/api/kos",
       headers: admin,
       payload: {
+        confidentiality: "intern",
         title: "Förderband FB12 Riemen spannen",
         statement: "Den Riemen des Förderbands FB12 nach Herstellervorgabe spannen.",
         bodyHtml: applyBodyTemplate("", "procedure", "de"),

@@ -278,6 +278,7 @@ describe("JOB 2698 — ein Blick auf die Glocke liest die Einträge, die er brau
       url: "/api/kos",
       headers: pedi.headers,
       payload: {
+        confidentiality: "intern",
         title: "Neues Wissen",
         statement: "Eine Aussage mit genug Substanz für die Anlage.",
         type: "best_practice",

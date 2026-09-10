@@ -78,7 +78,13 @@ export async function koAnlegen(app: App, konto: Konto, titel: string, satz: str
     method: "POST",
     url: "/api/kos",
     headers: konto.headers,
-    payload: { title: titel, statement: satz, type: "best_practice", category: "Anlage 1" },
+    payload: {
+      confidentiality: "intern",
+      title: titel,
+      statement: satz,
+      type: "best_practice",
+      category: "Anlage 1",
+    },
   });
   if (res.statusCode >= 300) {
     throw new Error(`KO-Anlage fehlgeschlagen: ${res.statusCode} ${res.body}`);

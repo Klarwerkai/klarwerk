@@ -56,6 +56,7 @@ describe("SCRUM-237: Validierungs-Workflow (HTTP end-to-end)", () => {
       url: "/api/kos",
       headers,
       payload: {
+        confidentiality: "intern",
         title: "Presse P2 entlüften",
         statement: "Vor Wartung Druck ablassen.",
         type: "best_practice",

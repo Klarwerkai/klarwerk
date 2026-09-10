@@ -89,6 +89,7 @@ async function wissenAnlegen(
     url: "/api/kos",
     headers: auth,
     payload: {
+      confidentiality: "intern",
       title: "Überdruckventil prüfen",
       statement: "Bei Überdruck Ventil X schließen.",
       type: "best_practice",

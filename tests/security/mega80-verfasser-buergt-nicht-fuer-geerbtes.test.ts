@@ -121,6 +121,7 @@ async function legeKoAn(app: App, wer: Auth, titel: string, bodyHtml?: string): 
     url: "/api/kos",
     headers: wer,
     payload: {
+      confidentiality: "intern",
       title: titel,
       statement: "Inhalt für mega80 B.",
       type: "best_practice",

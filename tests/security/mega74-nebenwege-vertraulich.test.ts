@@ -74,6 +74,7 @@ async function ko(app: App, autor: Auth, titel: string, vertraulich: boolean): P
     url: "/api/kos",
     headers: autor,
     payload: {
+      confidentiality: "intern",
       title: titel,
       statement: vertraulich ? GEHEIM : "Ganz gewöhnlicher interner Inhalt.",
       type: "best_practice",

@@ -65,6 +65,7 @@ describe("SCRUM-334: Review-Nacharbeitsfluss E2E (HTTP + FE-Helfer)", () => {
       url: "/api/kos",
       headers: admin.headers,
       payload: {
+        confidentiality: "intern",
         title: "Presse P2 entlüften",
         statement: "Vor Wartung Druck ablassen.",
         type: "best_practice",

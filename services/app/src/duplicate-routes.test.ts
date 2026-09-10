@@ -35,7 +35,13 @@ describe("Berater-Konzept Duplikate 04.07.: Duplikat-Workflow (HTTP end-to-end)"
       method: "POST",
       url: "/api/kos",
       headers: ctx.headers,
-      payload: { title: "Pumpe entlüften", statement, type: "best_practice", category: "Wartung" },
+      payload: {
+        confidentiality: "intern",
+        title: "Pumpe entlüften",
+        statement,
+        type: "best_practice",
+        category: "Wartung",
+      },
     });
     expect(res.statusCode).toBe(201);
     await ctx.services.aiCheckWorker?.idle();

@@ -101,6 +101,7 @@ async function bestand(app: App, autor: Auth): Promise<{ vertraulich: string; in
     url: "/api/kos",
     headers: autor,
     payload: {
+      confidentiality: "intern",
       title: VERTRAULICH_TITEL,
       statement: VERTRAULICH_KERN,
       type: "best_practice",
@@ -125,6 +126,7 @@ async function bestand(app: App, autor: Auth): Promise<{ vertraulich: string; in
     url: "/api/kos",
     headers: autor,
     payload: {
+      confidentiality: "intern",
       title: INTERN_TITEL,
       statement: "Alltagswissen zum Ventil, das jeder sehen darf.",
       type: "best_practice",

@@ -45,6 +45,7 @@ describe("SCRUM-509: Vertraulichkeits-Downgrade kontrolliert (HTTP end-to-end)",
       url: "/api/kos",
       headers: author,
       payload: {
+        confidentiality: "intern",
         title: "Vertraulicher Beitrag",
         statement: "Sensibler Kerntext für den Downgrade-Test.",
         type: "best_practice",

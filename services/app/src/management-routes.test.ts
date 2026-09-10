@@ -31,6 +31,7 @@ describe("SCRUM-240: Management-Snapshot (HTTP end-to-end)", () => {
       url: "/api/kos",
       headers,
       payload: {
+        confidentiality: "intern",
         title,
         statement: `Aussage zu ${title}`,
         type: "best_practice",

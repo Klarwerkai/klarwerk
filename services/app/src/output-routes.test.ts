@@ -45,6 +45,7 @@ describe("SCRUM-239: Output-Factory-Workflow (HTTP end-to-end)", () => {
       url: "/api/kos",
       headers,
       payload: {
+        confidentiality: "intern",
         title,
         statement: `Aussage zu ${title}`,
         type: "best_practice",

@@ -117,7 +117,13 @@ export async function anlegen(
   headers: Auth,
   payload: Record<string, unknown>,
 ): Promise<string> {
-  const res = await app.inject({ method: "POST", url: "/api/kos", headers, payload });
+  // JOB 3429 (Q3 c): der Schreibweg verlangt die Stufe. Vorgabe hier, vom Aufrufer überschreibbar.
+  const res = await app.inject({
+    method: "POST",
+    url: "/api/kos",
+    headers,
+    payload: { confidentiality: "intern", ...payload },
+  });
   expect(res.statusCode, res.body).toBe(201);
   return res.json().id as string;
 }

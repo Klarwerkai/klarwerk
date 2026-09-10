@@ -80,6 +80,7 @@ async function traegerAnlegen(app: App, wer: Auth, objectIds: string[]): Promise
     url: "/api/kos",
     headers: wer,
     payload: {
+      confidentiality: "intern",
       title: "Trägerobjekt",
       statement: "Ein Objekt, dessen Bilder im Fließtext stehen.",
       type: "best_practice",

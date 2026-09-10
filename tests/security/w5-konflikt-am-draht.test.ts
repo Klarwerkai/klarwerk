@@ -67,7 +67,13 @@ async function aufbau(mail: string): Promise<Aufbau> {
       method: "POST",
       url: "/api/kos",
       headers: autor,
-      payload: { title: titel, statement: aussage, type: "best_practice", category: "Anlage 1" },
+      payload: {
+        confidentiality: "intern",
+        title: titel,
+        statement: aussage,
+        type: "best_practice",
+        category: "Anlage 1",
+      },
     });
     expect(res.statusCode, res.body).toBe(201);
     const id = res.json().id as string;
@@ -335,6 +341,7 @@ describe("JOB1157 W5 · der Konfliktzustand geht ueber den Draht", () => {
       url: "/api/kos",
       headers: a.autor,
       payload: {
+        confidentiality: "intern",
         title: "Foerderband",
         statement: "Das Foerderband laeuft mit halber Last an.",
         type: "best_practice",
@@ -346,6 +353,7 @@ describe("JOB1157 W5 · der Konfliktzustand geht ueber den Draht", () => {
       url: "/api/kos",
       headers: a.autor,
       payload: {
+        confidentiality: "intern",
         title: "Foerderband Gegenrede",
         statement: "Das Foerderband laeuft mit voller Last an.",
         type: "best_practice",
