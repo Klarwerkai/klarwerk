@@ -14,10 +14,18 @@
 //   · Gemessen wird per `getComputedStyle` und `getBoundingClientRect` an den REALEN Elementen;
 //     Sollwerte kommen ZEILENWEISE aus der .dc.html (jeder Fall nennt seine Zeile), Hex → rgb.
 //   · Die Zustaende (Auftrag §9) werden AKTIV ausgeloest: senden (201), andere Markierung, 413,
-//     Netzabbruch, Dokument-Weg, Titel von Hand, „?“-Menue, leere Markierung, kein Word.
+//     Netzabbruch, Dokument-Weg, Titel von Hand, die Erklaersaetze hinter dem Zahnrad, leere
+//     Markierung, kein Word.
 //   · Jeder Wert, den dieser Auftrag bewusst NICHT angleicht, steht unten als OFFENER Wert mit
 //     Grund und gemessenem Istwert (Bereich-Zeile ohne Serverweg, Kopf aus K1/JOB 3056,
-//     Farbe #9AA2B1 ohne Werkbank-Token, `margin-top: auto` ohne Fensterhoehen-Spalte).
+//     Farbe #9AA2B1 ohne Werkbank-Token).
+//
+// JOB 3506 K2b (10.09.2026) — ZWEI DER OFFENEN POSTEN SIND GESCHLOSSEN, EINER WURDE SCHARF:
+//   · Das „?“-Menue der Flaeche (#capture-mehr-btn / #capture-mehr) ist hinter das Zahnrad
+//     gezogen (#einst-erfassen). Fall G misst den neuen Ort UND dass am alten nichts steht.
+//   · `Z.52 margin-top: auto` war ein OFFENER Posten mit dem Grund „Flex-Spalte von Fensterhoehe
+//     fehlt (K1 nicht auf main)". K1 ist gelandet; der Posten ist jetzt ein normaler, scharfer
+//     Fall, der den Abstand am Fensterboden misst (s. u. bei Z.52).
 //
 // RED-FIRST (05.09.2026, Basis 665aec8): vor dem Umbau rot — keine `#capture-kicker`, keine
 // `.capture-absatz`, Radiogruppe `#scope-selection` und Hinweisband `#capture-bilder-hinweis` im
@@ -297,6 +305,34 @@ describe.runIf(zielbildDa)(
       const l = (await lies<R | null>(RECT, "#capture-dokument-link")) as R;
       expect(l.top).toBeGreaterThanOrEqual(k.bottom);
     });
+    // JOB 3506 K2b: bis hierher stand dieser Wert unten als OFFENER Posten, mit dem Grund „setzt
+    // eine Flex-Spalte von Fensterhoehe voraus (Kopf und Umschalter aus K1, JOB 3056 — nicht auf
+    // main)". K1 ist gelandet, die Bedingung ist erfuellt — der Posten wird ein scharfer Fall.
+    // GEMESSEN WIRD DIE WIRKUNG, NICHT DER STILWERT: Chromium loest `margin-top: auto` an einem
+    // Flex-Kind zu Pixeln auf (derselbe Befund steht in zielbild-k1-einstellungen.test.ts F1 fuer
+    // #kw-stand-zeile). Ein Vergleich gegen die Zeichenkette „auto" waere deshalb entweder immer
+    // rot oder — mit `margin-top` als Sollwert allein — wirkungslos: die Marge kann gesetzt und
+    // trotzdem tot sein, wenn die Spalte fehlt. Der Fall misst darum beides: die Voraussetzung
+    // (die Flaeche IST die Spalte) und den Abstand am Fensterboden.
+    it("Z.52 · Textlink am FENSTERBODEN: `margin-top: auto` in einer Flex-Spalte von Fensterhoehe — Abstand gemessen, nicht behauptet", async () => {
+      expect(zielProp(zielStilZeile(52), "margin-top"), "Zielbild Z.52 ohne margin-top").toBe(
+        "auto",
+      );
+      expect(await messen("#section-capture", "display")).toBe("flex");
+      expect(await messen("#section-capture", "flex-direction")).toBe("column");
+      const k = (await lies<R | null>(RECT, "#send-btn")) as R;
+      const l = (await lies<R | null>(RECT, "#capture-dokument-link")) as R;
+      const rumpfUnten = await lies<number>("() => document.body.getBoundingClientRect().bottom");
+      console.info(
+        `JOB 3506 K2b · Z.52 · Knopf unten ${k.bottom} · Link oben ${l.top} · Link unten ${l.bottom} · Rumpf unten ${rumpfUnten}`,
+      );
+      // Der Link schliesst mit dem Rumpfboden ab — und der Rumpf fuellt das 720px-Fenster.
+      expect(Math.abs(l.bottom - rumpfUnten), "Link nicht am Rumpfboden").toBeLessThan(1);
+      expect(Math.abs(rumpfUnten - 720), "der Rumpf fuellt das Fenster nicht").toBeLessThan(1);
+      // Und er klebt nicht mehr am Knopf: Z.48 und Z.52 tragen keine eigene Marge, der Abstand
+      // ist ausschliesslich der freie Raum, den die Auto-Marge aufnimmt.
+      expect(l.top - k.bottom, "kein freier Raum zwischen Knopf und Link").toBeGreaterThan(100);
+    });
 
     // ---- Zustaende (Auftrag §9), AKTIV ausgeloest --------------------------------------------------
     it("A · Senden → 201: die Karte wird EINE Zeile „Entwurf gesendet“ mit Link „Öffnen“ auf den Entwurf; Titel und Herkunft im Payload", async () => {
@@ -484,24 +520,44 @@ describe.runIf(zielbildDa)(
       await warten("() => document.getElementById('capture-kicker').className === ''");
     }, 40_000);
 
-    it("G · das „?“-Menue (§5a): zu bis zum Klick, dann Umfang, Bilder, Pruefung, Seiten — die vier Saetze, die das Sichtfeld verlassen haben", async () => {
-      expect(await lies<boolean>(SICHTBAR, "#capture-mehr")).toBe(false);
-      expect(await lies<string | null>(ATTR, ["#capture-mehr-btn", "aria-expanded"])).toBe("false");
-      await lies<boolean>(KLICK, "#capture-mehr-btn");
-      expect(await lies<boolean>(SICHTBAR, "#capture-mehr")).toBe(true);
-      expect(await lies<string | null>(ATTR, ["#capture-mehr-btn", "aria-expanded"])).toBe("true");
-      expect(await lies<string>(TEXT, "#capture-hinweis-umfang")).toBe(wort("de", "sendHint"));
-      expect(await lies<string>(TEXT, "#capture-bilder-hinweis")).toContain(
+    // JOB 3506 K2b: Fall G misst denselben Gegenstand an seinem NEUEN Ort. Bis dahin stand das
+    // „?“-Menue (#capture-mehr-btn / #capture-mehr) IN der Erfassen-Flaeche; Pedis Mockup zeigt
+    // dort keinen Erklaerknopf. Die vier Saetze wohnen jetzt hinter dem Zahnrad — derselbe
+    // Wortlaut, dieselben Kennungen, dieselben Woerterbuchschluessel, ein anderer Ort. Der Fall
+    // hat deshalb ZWEI Haelften: in der Flaeche ist nichts mehr, hinter dem Zahnrad steht alles.
+    it("G · die vier Erklaersaetze (§5a): in der Erfassen-Flaeche kein „?“ mehr — Umfang, Bilder, Pruefung, Seiten stehen hinter dem Zahnrad, und nur dort", async () => {
+      // (1) Die Flaeche: der Knopf und sein Menue sind WEG, nicht verborgen.
+      expect(await lies<number>(ZAEHLEN, "#section-capture #capture-mehr-btn")).toBe(0);
+      expect(await lies<number>(ZAEHLEN, "#capture-mehr-btn")).toBe(0);
+      expect(await lies<number>(ZAEHLEN, "#capture-mehr")).toBe(0);
+      for (const key of ["sendHint", "sendImagesNote", "sendReviewNote", "scopePagesHint"]) {
+        expect(await lies<number>(ZAEHLEN, `#section-capture [data-t=${key}]`), key).toBe(0);
+      }
+      // (2) Hinter dem Zahnrad: die vier Saetze, woertlich aus dem Woerterbuch — und je EINMAL im
+      //     ganzen Panel (kein Parallelweg, keine Kopie an zwei Orten).
+      expect(await lies<boolean>(KLICK, "#kw-zahnrad")).toBe(true);
+      expect(await lies<boolean>(SICHTBAR, "#kw-einstellungen")).toBe(true);
+      expect(await lies<boolean>(SICHTBAR, "#section-capture")).toBe(false);
+      expect(await lies<string>(TEXT, "#einst-erfassen #capture-hinweis-umfang")).toBe(
+        wort("de", "sendHint"),
+      );
+      expect(await lies<string>(TEXT, "#einst-erfassen #capture-bilder-hinweis")).toContain(
         wort("de", "sendImagesNote"),
       );
-      expect(await lies<string>(TEXT, "#capture-hinweis-pruefung")).toBe(
+      expect(await lies<string>(TEXT, "#einst-erfassen #capture-hinweis-pruefung")).toBe(
         wort("de", "sendReviewNote"),
       );
-      expect(await lies<string>(TEXT, "#capture-hinweis-seiten")).toBe(
+      expect(await lies<string>(TEXT, "#einst-erfassen #capture-hinweis-seiten")).toBe(
         wort("de", "scopePagesHint"),
       );
-      await lies<boolean>(KLICK, "#capture-mehr-btn");
-      expect(await lies<boolean>(SICHTBAR, "#capture-mehr")).toBe(false);
+      for (const key of ["sendHint", "sendImagesNote", "sendReviewNote", "scopePagesHint"]) {
+        expect(await lies<number>(ZAEHLEN, `[data-t=${key}]`), key).toBe(1);
+      }
+      // (3) Zurueck auf „Erfassen" ueber den Chevron (der Weg, den ein Mensch nimmt: kwZurueck
+      //     fuehrt aus den Einstellungen in den zuletzt benutzten Bereich) — die Folgefaelle
+      //     messen wieder die Flaeche.
+      await lies<boolean>(KLICK, "#kw-zurueck");
+      expect(await lies<boolean>(SICHTBAR, "#section-capture")).toBe(true);
     });
 
     it("H · drei Sprachen: Kicker, Satz, Knopf, Link und Beschriftung folgen dem Sprachwechsel", async () => {
@@ -525,9 +581,6 @@ describe.runIf(zielbildDa)(
           expect(await lies<string>(TEXT, "label.capture-zeile > span")).toBe(
             wort(sprache, "captureTitleLabel"),
           );
-          expect(await lies<string | null>(ATTR, ["#capture-mehr-btn", "aria-label"])).toBe(
-            wort(sprache, "captureMehr"),
-          );
         }
         for (const sprache of SPRACHEN) {
           expect(wort(sprache, "captureKicker")).toContain("{n}");
@@ -538,7 +591,7 @@ describe.runIf(zielbildDa)(
       }
     }, 40_000);
 
-    it("I · ABLOESUNG: Radiogruppe, Seiten-Option, Seiten-Hinweis, Pruefhinweis und #open-block sind weg; der Bilder-Kasten wohnt im Menue", async () => {
+    it("I · ABLOESUNG: Radiogruppe, Seiten-Option, Seiten-Hinweis, Pruefhinweis, #open-block und das „?“-Menue sind weg; der Bilder-Kasten wohnt hinter dem Zahnrad", async () => {
       for (const sel of [
         "#scope-selection",
         "#scope-document",
@@ -548,10 +601,16 @@ describe.runIf(zielbildDa)(
         "#send-review-note",
         "#open-block",
         '#section-capture [role="radiogroup"]',
+        // JOB 3506 K2b: der alte Ort der vier Saetze — ersetzt, nicht daneben belassen.
+        "#capture-mehr-btn",
+        "#capture-mehr",
       ]) {
         expect(await lies<number>(ZAEHLEN, sel), sel).toBe(0);
       }
-      expect(await lies<number>(ZAEHLEN, "#capture-mehr > #capture-bilder-hinweis")).toBe(1);
+      expect(
+        await lies<number>(ZAEHLEN, "#einst-erfassen > .einst-zeile > #capture-bilder-hinweis"),
+      ).toBe(1);
+      expect(await lies<number>(ZAEHLEN, "#section-capture #capture-bilder-hinweis")).toBe(0);
       expect(await lies<number>(ZAEHLEN, "#capture-karte")).toBe(1);
     });
 
@@ -569,12 +628,6 @@ describe.runIf(zielbildDa)(
         () => lies<string | null>(WERT, "#capture-titel"),
         zielTextZeile(37),
         "die Vorbelegung ist die erste Zeile der Markierung (dieselbe Ableitung wie der Sendeweg, 60 Zeichen); ein von Hand geschriebener Titel reist als Titel (Fall F)",
-      ],
-      [
-        "Z.52 margin-top: auto (Link am Fensterboden)",
-        () => messen("#capture-dokument-link", "margin-top"),
-        "auto",
-        "setzt eine Flex-Spalte von Fensterhoehe voraus (Kopf und Umschalter aus K1, JOB 3056 — nicht auf main); unter der Flaeche stehen heute Hilfe-Karte, Stand und Fusszeile — der Link steht mittig unter dem Knopf (Z.48/52-Abstaende gemessen)",
       ],
       [
         "§5.1 Farbe des Satzes „Markiere Text in Word.“ (#9AA2B1)",

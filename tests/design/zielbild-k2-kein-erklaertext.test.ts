@@ -7,6 +7,14 @@
 // hoechstens 40 Zeichen. Der Erklaertext von heute (Umfangs-Satz, Bilder-Hinweisband, Pruef- und
 // Seitenhinweis) ist aus dem Sichtfeld verschwunden; er wohnt im „?“-Menue (§5a).
 //
+// JOB 3506 K2b (10.09.2026) — DER ORT DES ERKLAERTEXTS IST WEITERGEZOGEN, DER MASSSTAB NICHT.
+// Das „?“-Menue sass bis hierher IN der Erfassen-Flaeche; Pedis Mockup zeigt dort keinen
+// Erklaerknopf. Die vier Saetze stehen jetzt hinter dem Zahnrad (#einst-erfassen), der lange
+// KA7-Satz dazu (#ka7-mehr-hinweis) ebenfalls. Fuer diesen Textmesser heisst das: der Knopf
+// `#capture-mehr-btn` faellt aus den Traegerlisten (T1/T2), und Fall T4 misst nicht mehr das
+// Aufklappen, sondern DASS kein langer Satz mehr in der Flaeche steht und alle langen Saetze
+// hinter dem Zahnrad zu finden sind. Die 40-Zeichen-Regel selbst ist unveraendert.
+//
 // WIE GEMESSEN WIRD: das ausgelieferte taskpane.html laeuft in Chromium (tests/design/k2-buehne.ts).
 // Erhoben werden ALLE Elemente in `#section-capture`, die EIGENE Textknoten tragen und sichtbar
 // sind (kein `display: none` in der Ahnenreihe, ein echtes Rechteck — die 1px-Vorlese-Ueberschrift
@@ -117,7 +125,7 @@ describe.runIf(zielbildDa)(
       await b?.schliessen();
     }, 60_000);
 
-    it("T1 · Ruhezustand mit Markierung: genau Kicker, zwei Absaetze, „Titel“, der Titelwert, Knopf, Textlink und „?“ — sonst nichts, und nichts ueber 40 Zeichen", async () => {
+    it("T1 · Ruhezustand mit Markierung: genau Kicker, zwei Absaetze, „Titel“, der Titelwert, Knopf und Textlink — sonst nichts, und nichts ueber 40 Zeichen", async () => {
       const traeger = await lies<Traeger[]>(TRAEGER);
       console.info(`JOB 3057 K2 · Textmesser T1: ${JSON.stringify(traeger)}`);
       expect(verstoesse(traeger)).toEqual([]);
@@ -138,13 +146,15 @@ describe.runIf(zielbildDa)(
           // Ordnung" lesen. Anders als die Dublettenauskunft bekommt sie KEINE eigene Rolle: sie ist
           // eine BESCHRIFTUNG und haelt die 40-Zeichen-Regel dieses Auftrags ein (oben `verstoesse`
           // und die Laengenprobe in tests/ka7-konflikt-im-panel/konfliktkarte-mounted.test.ts P17e).
-          // Der lange Erklaertext dazu wohnt im „?"-Menue (#ka7-mehr-hinweis, Fall T4).
+          // Der lange Erklaertext dazu wohnt seit JOB 3506 K2b hinter dem Zahnrad
+          // (#ka7-mehr-hinweis in #einst-erfassen, Fall T4).
           "beschriftung:#ka7-einreich-hinweis",
           "beschriftung:span",
           "feldwert:#capture-titel",
           "knopf:#send-btn",
           "knopf:#capture-dokument-link",
-          "knopf:#capture-mehr-btn",
+          // JOB 3506 K2b: `knopf:#capture-mehr-btn` stand hier, solange das „?“ in der Flaeche
+          // sass. Es ist weg — nicht verborgen; T4 misst den Nachweis.
         ].sort(),
       );
       const beschriftungen = traeger.filter((t) => t.rolle === "beschriftung").map((t) => t.text);
@@ -174,8 +184,9 @@ describe.runIf(zielbildDa)(
       expect(saetze(status[0]?.text ?? "")).toBe(1);
       expect(status[0]?.text).toBe(wort("de", "sendTooLarge"));
       const knoepfe = traeger.filter((t) => t.rolle === "knopf").map((t) => t.sel);
+      // JOB 3506 K2b: ohne das „?“ sind es drei — Senden, Textlink, „Erneut senden“.
       expect(knoepfe.sort()).toEqual(
-        ["#send-btn", "#capture-dokument-link", "#capture-mehr-btn", "#send-status-btn"].sort(),
+        ["#send-btn", "#capture-dokument-link", "#send-status-btn"].sort(),
       );
       // Der Fehlersatz ist zustandsgebunden: die 40-Zeichen-Regel gilt fuer Beschriftungen; er ist
       // als EIN Satz + EIN Knopf begrenzt (§5.6) und geht mit dem naechsten Senden wieder weg.
@@ -213,19 +224,25 @@ describe.runIf(zielbildDa)(
       expect(traeger.some((t) => t.rolle === "kicker")).toBe(false);
     });
 
-    it("T4 · das „?“-Menue traegt die langen Saetze — erst nach dem Klick, und nur dort", async () => {
-      await lies<boolean>(KLICK, "#capture-mehr-btn");
-      expect(await lies<boolean>(SICHTBAR, "#capture-mehr")).toBe(true);
+    it("T4 · die langen Saetze wohnen hinter dem Zahnrad — in der Erfassen-Flaeche steht KEINER", async () => {
+      // (1) In der Flaeche: kein einziger langer Satz. Das ist die scharfe Form dessen, was T4 bis
+      //     JOB 3506 nur nach dem Zuklappen des Menues gemessen hat.
       const traeger = await lies<Traeger[]>(TRAEGER);
       const lang = traeger.filter((t) => t.rolle === "beschriftung" && t.text.length > GRENZE);
-      expect(lang.length).toBeGreaterThanOrEqual(4);
-      // Dieselbe Zaehlung, nur INNERHALB des Menues (ohne Knoepfe/Links, die oben nicht als
-      // Beschriftung zaehlen): jeder lange Satz wohnt im Menue, keiner ausserhalb.
-      const imMenue = await lies<number>(
-        "() => Array.from(document.querySelectorAll('#capture-mehr *')).filter((e) => !e.closest('a, button') && Array.from(e.childNodes).some((k) => k.nodeType === 3 && k.textContent.trim().length > 40)).length",
+      expect(lang.map((t) => `${t.sel}: ${t.text}`)).toEqual([]);
+      expect(verstoesse(traeger)).toEqual([]);
+      // (2) Hinter dem Zahnrad: dieselben langen Saetze, sichtbar ohne Klapperei — die vier des
+      //     Auftrags 3057 plus der KA7-Satz. Gezaehlt wird derselbe Massstab (eigene Textknoten
+      //     ueber der Grenze, ohne Knoepfe/Links) an der Gruppe #einst-erfassen.
+      await lies<boolean>(KLICK, "#kw-zahnrad");
+      expect(await lies<boolean>(SICHTBAR, "#einst-erfassen")).toBe(true);
+      const inGruppe = await lies<number>(
+        "() => Array.from(document.querySelectorAll('#einst-erfassen *')).filter((e) => !e.closest('a, button') && Array.from(e.childNodes).some((k) => k.nodeType === 3 && k.textContent.trim().length > 40)).length",
       );
-      expect(imMenue).toBe(lang.length);
-      await lies<boolean>(KLICK, "#capture-mehr-btn");
+      expect(inGruppe).toBeGreaterThanOrEqual(4);
+      // (3) Zurueck in die Flaeche — sie bleibt frei von Erklaertext.
+      await lies<boolean>(KLICK, "#kw-zurueck");
+      expect(await lies<boolean>(SICHTBAR, "#section-capture")).toBe(true);
       expect(verstoesse(await lies<Traeger[]>(TRAEGER))).toEqual([]);
     });
 

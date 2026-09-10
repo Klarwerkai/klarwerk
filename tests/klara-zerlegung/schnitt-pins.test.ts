@@ -281,6 +281,11 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // Mitfahrer (Pfadliteral, `splitTaskpane`). JOB 3056 K1 (Rebase, 05.09.2026): DIE DATEI IST
   // GELOESCHT — sie mass die Vier-Lagen-Herkunftszeile, die mit dem Ruhe-Umbau selbst entfallen ist
   // (s. Kommentar in tests/app/klara-regressionsinventar.test.ts). Kein Mitfahrer mehr.
+  // JOB 3506 (K2b): die zwei Oberflaechenreste der Erfassen-Flaeche — das „?"-Menue hinter dem
+  // Zahnrad und der Dokumentlink am Fensterboden. Die Datei nennt den ausgelieferten Pfad im
+  // Kopfkommentar (Griff `pfad`) und misst ihn ueber die vorhandene Buehne tests/design/
+  // k2-buehne.ts; sie schneidet KEINE KW-Marken und nutzt die Panel-Fixture nicht.
+  "tests/k2b-erfassen-reste/k2b-menue-und-link.test.ts": "pfad",
   // JOB 3094 (KA7): die Konfliktkarte — Pfadliteral im Kopfkommentar, Klara-Panel-Fixture.
   "tests/ka7-konflikt-im-panel/konfliktkarte-mounted.test.ts": "pfad,fixture",
   "tests/klara-panel/p7-office-erkennung-am-fenster.test.tsx": "pfad,fixture",

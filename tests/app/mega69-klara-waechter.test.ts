@@ -1976,7 +1976,57 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // GEMESSEN: tests/addin-bildbilanz (33 Faelle in zwei Dateien, davon 27 am geladenen Fenster),
     // tests/app/job2923 B4/B5 am ECHTEN Antwortkoerper der Route, Waechterlauf (Inventar,
     // Inhalts-Pin, Aufrufer, Theme, Frische, Tor).
-    const PIN = "be4c3b38cf03104bd08a3ab61cd561202ce7cd284e90adbb20984dcc297a7fcc";
+    //
+    // JOB 3506 · K2b-OBERFLAECHENRESTE (10.09.2026) — AUSLIEFERUNGSFOLGEN GEPRUEFT, BEVOR DER PIN
+    // WANDERTE. VORHERHASH taskpane.html: `be4c3b38cf03104bd08a3ab61cd561202ce7cd284e90adbb20984dcc297a7fcc`.
+    //
+    // ANLASS: die benannte Restschuld von JOB 3057 (K2). Dessen RUECKGABE (archiv/3057/runde-4)
+    // nennt sie woertlich — „das ‚?‘-Menue der Erfassen-Flaeche sitzt weiterhin in der Flaeche
+    // (nicht hinter dem Zahnrad)" und „‚?‘-Menue in den Zahnrad-Ort ziehen (jetzt moeglich, eigener
+    // Auftrag, weil K1-Flaeche)". Dazu der OFFENE Wert `Z.52 margin-top: auto`, damals mit dem
+    // Grund „setzt eine Flex-Spalte von Fensterhoehe voraus (K1, JOB 3056 — nicht auf main)".
+    // K1 ist gelandet; beide Bedingungen sind erfuellt.
+    //
+    // GEAENDERT WURDE IM FENSTER GENAU VIERERLEI — Markup, Stil, EIN Woerterbuchschluessel je
+    // Sprache und zwei Skriptstellen, die nur DOM anfassen:
+    //   · MARKUP, UMZUG STATT NEUBAU: `#capture-mehr-btn` und `#capture-mehr` sind aus
+    //     `#section-capture` ENTFERNT (nicht verborgen). Die vier Erklaersaetze stehen jetzt in
+    //     einer neuen Gruppe `#einst-erfassen` in `#kw-einstellungen`, in der VORHANDENEN Bauform
+    //     (.einst-kicker + .einst-gruppe + .einst-zeile). Die vier Elemente ziehen mit IHREN
+    //     Kennungen und IHREN `data-t`-Schluesseln um (`#capture-hinweis-umfang` sendHint,
+    //     `#capture-bilder-hinweis` sendImagesNote samt Link und Inline-Farben BYTEGLEICH,
+    //     `#capture-hinweis-pruefung` sendReviewNote, `#capture-hinweis-seiten` scopePagesHint).
+    //     Kein Satz wurde umformuliert, keiner entfernt, keiner kopiert: jeder steht genau einmal.
+    //     Die Gruppe steht NACH „Konto" und VOR dem Stand-Fuss — die ersten Kinder von
+    //     `#kw-einstellungen` (Gruppe 1, der Admin-Kicker) bleiben, was sie waren.
+    //   · STIL: `#section-capture` wird zur Flex-Spalte von Fensterhoehe (`display: flex;
+    //     flex-direction: column; flex: 1 1 auto; min-height: 0` — dieselben Angaben, die
+    //     `#section-ask` und `#kw-einstellungen` seit JOB 3056 tragen), und
+    //     `#capture-dokument-link` bekommt `margin: auto 0 0` (die Bauform von `#kw-stand-zeile`).
+    //     Die vier `#capture-mehr*`-Regeln sind entfallen, `#einst-erfassen p { margin: 0 }` kommt
+    //     dazu. Die Regel `#capture-bilder-hinweis` ist UNVERAENDERT (tools/design-vergleich liest
+    //     sie), ebenso Polsterung, Achse, Groesse und Tinte des Dokumentlinks (Z.52).
+    //   · WOERTERBUCH: `captureMehr` (das aria-label des entfallenen Knopfs) ist in allen drei
+    //     Sprachen GELOESCHT — kein toter Rest; `einstErfassenKicker` kommt in allen drei Sprachen
+    //     dazu (der EINZIGE neue Wortlaut dieses Jobs). Netto: unveraendert viele Schluessel.
+    //   · SKRIPT: die Klapp-Behandlung des „?"-Knopfs und seine `aria-label`-Zeile in
+    //     `renderStatics` sind entfallen; `ka7EinreichHinweisElement` haengt den langen KA7-Satz
+    //     (`#ka7-mehr-hinweis`) statt an `#capture-mehr` an `#einst-erfassen` — derselbe Satz,
+    //     derselbe Schluessel `ka7EntwurfMenuText`, dieselbe Sprachfuehrung ueber `data-t`.
+    // KEIN neues `fetch(`, KEIN neues Abrufziel, KEIN geaenderter Anfragekoerper, KEIN Manifest,
+    // KEINE geaenderte CSP, kein neues Recht, keine neue Word-API, keine geaenderte Frequenz, kein
+    // neuer Fremd-Ursprung: dieser Job fasst ausschliesslich die Oberflaeche an. Der Sendeweg und
+    // die Zustaende des Dokumentlinks (ohne Word gesperrt, ohne Markierung frei, sendOffline)
+    // sind unveraendert und laufen unveraendert gruen. Ein installiertes Add-in braucht deshalb
+    // KEIN erneutes Sideload — der Stempel-Mechanismus traegt die neue Fassung wie bisher.
+    // NICHT GEMESSEN und hier ausdruecklich gesagt: echtes Word. Gemessen wurde in Chromium am
+    // ausgelieferten Fenster und im jsdom.
+    // GEMESSEN: tests/k2b-erfassen-reste (6 Faelle, am geladenen Fenster, mit Kalibrierung),
+    // tests/design/zielbild-k2-erfassen (Fall G neu, Z.52 vom OFFENEN Posten zum scharfen Fall),
+    // tests/design/zielbild-k2-kein-erklaertext (T1/T2/T4), tests/design/k2-funktionsinventar
+    // (I3–I6 am neuen Ort), tests/design/zielbild-k1-einstellungen, Waechterlauf (Inventar,
+    // Inhalts-Pin, Aufrufer, Theme, Frische, Tor).
+    const PIN = "c1ffc7958e403df1e7c413b4757e653fff5cfc835a9017d79bdf6b3840052f78";
     const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
     expect(
       ist,

@@ -487,6 +487,10 @@ const INVENTAR: readonly string[] = [
   // JOB 3094 (KA7, 06.09.2026): die Konfliktkarte im Word-Panel, am laufenden Fenster gemessen —
   // gefunden ueber die Achse `taskpane` (Panel-Fixture). K2 hat sie gemeldet, das Inventar nimmt
   // sie nicht still auf.
+  // JOB 3506 (K2b, 10.09.2026): die zwei Oberflaechenreste der Erfassen-Flaeche, in Chromium am
+  // ausgelieferten Aufgabenfenster gemessen — gefunden ueber die Achse `taskpane` (der Pfad traegt
+  // kein „klara"). K2 hat sie gemeldet, das Inventar nimmt sie nicht still auf.
+  "tests/k2b-erfassen-reste/k2b-menue-und-link.test.ts",
   "tests/ka7-konflikt-im-panel/konfliktkarte-mounted.test.ts",
   "tests/klara-panel/p7-office-erkennung-am-fenster.test.tsx",
   // JOB 3019 D1 hatte hier `ka5-markierung-reist-mit.test.tsx` (unter tests/klara-panel) stehen

@@ -539,8 +539,11 @@ const INVENTAR: readonly Zeile[] = [
     // umgebaut (die Radiogruppe #scope-selection/#scope-document und #send-review-note sind
     // ersetzt, nicht daneben belassen — s. tests/design/k2-funktionsinventar.test.ts) — die Zeile
     // nennt die tatsaechlich sichtbaren Orte statt der abgeloesten Ids.
+    // JOB 3506 K2b: der „?"-Knopf der Erfassen-Flaeche ist entfallen — seine vier Saetze wohnen
+    // hinter dem Zahnrad (#einst-erfassen). Die Zeile nennt weiter die tatsaechlich sichtbaren
+    // Orte; der Textlink am Fensterboden tritt an die Stelle des Knopfs.
     heute: "#section-capture (Erfassen, JOB 3057 K2)",
-    neu: "#section-capture #capture-karte, #capture-titel, #send-btn, #capture-mehr-btn",
+    neu: "#section-capture #capture-karte, #capture-titel, #send-btn, #capture-dokument-link",
     weg: "erfassen",
     sichtbar: true,
     funktion: "Erfassen-Flaeche ueber den Umschalter",

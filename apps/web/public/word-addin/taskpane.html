@@ -390,8 +390,13 @@
        KONFLIKTRUNDE 6: die -14px-Kompensation war fuer die 14px Koerperpolsterung vor JOB 3056
        gebaut; K1s Kopf steht jetzt direkt am Fensterrand (body padding: 0, s.o.) — ohne Polsterung
        zum Aufheben bleibt die Karte einfach randlos (margin: 0), damit ihre eigenen 16px wieder am
-       Fensterrand ankommen. */
-    #section-capture { margin: 0; }
+       Fensterrand ankommen.
+       JOB 3506 K2b: die Flaeche ist jetzt die Flex-Spalte von Fensterhoehe, die das Zielbild
+       voraussetzt (Erfassen.dc.html Z.15: `height: 720px; display: flex; flex-direction: column`).
+       Die Bauform ist die VORHANDENE — dieselben drei Angaben wie an #section-ask (JOB 3056) und
+       #kw-einstellungen: `flex: 1 1 auto` unter dem Kopf, `min-height: 0`. Erst dadurch wirkt die
+       Auto-Marge des Dokumentlinks (Z.52, s. u.); ohne die Spalte waere sie eine tote Regel. */
+    #section-capture { margin: 0; display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
     #section-capture.hidden { display: none; }
     /* Z.28: die Markierungskarte. */
     #capture-karte { margin: 10px 16px 0; padding: 16px; border-radius: 12px; display: flex; flex-direction: column; gap: 10px; }
@@ -418,18 +423,22 @@
     /* Fehler- und Officefall: EIN Satz, EIN Knopf (§5.6). */
     #send-status, #office-hint { margin: 12px 16px 0; }
     .capture-knopf { margin: 8px 16px 0; }
-    /* Z.52: der Textlink „Ganzes Dokument uebernehmen" — mittig unter dem Knopf. Das `margin-top:
-       auto` der Vorlage setzt eine Spalte von Fensterhoehe voraus (Kopf und Umschalter aus K1,
-       JOB 3056) und steht im Messtest als OFFENER Wert. */
-    #capture-dokument-link { display: block; margin: 0; padding: 12px 16px 16px; text-align: center; font-size: 12.5px; color: var(--muted); text-decoration: none; }
+    /* Z.52: der Textlink „Ganzes Dokument uebernehmen" — mittig, am FENSTERBODEN. JOB 3506 K2b:
+       `margin-top: auto` wie im Zielbild, in derselben Bauform, die #kw-stand-zeile in den
+       Einstellungen schon benutzt (`margin: auto 0 0` als letztes Kind einer Flex-Spalte). Die
+       Spalte bringt #section-capture jetzt mit (s. o.); Polsterung, Achse, Groesse und Tinte aus
+       Z.52 bleiben unveraendert. */
+    #capture-dokument-link { display: block; margin: auto 0 0; padding: 12px 16px 16px; text-align: center; font-size: 12.5px; color: var(--muted); text-decoration: none; }
     #capture-dokument-link[aria-disabled="true"] { pointer-events: none; opacity: 0.5; }
-    /* Das „?"-Menue nach Pages-Art (§5a): Umfang, Bilder, Pruefung, Seiten — ein benannter Ort,
-       zu bis zum Klick. Der Bilder-Kasten behaelt seine Inline-Farben (mega43 A2: Inline-Stile
-       sind eine Farbquelle des Sammlers). */
-    #capture-mehr-btn { display: block; margin: 0 16px 8px auto; width: 28px; height: 28px; padding: 0; border-radius: 50%; font-size: 13px; line-height: 1; }
-    #capture-mehr { margin: 0 16px 12px; }
-    #capture-mehr.hidden { display: none; }
-    #capture-mehr p { margin: 6px 0; }
+    /* JOB 3506 K2b — DIE VIER ERKLAERSAETZE SIND HINTER DAS ZAHNRAD GEZOGEN (#einst-erfassen).
+       Das „?"-Menue in der Flaeche (#capture-mehr-btn / #capture-mehr, JOB 3057 §5a) ist ERSETZT,
+       nicht daneben belassen: Markup, Stilregeln und der Schluessel `captureMehr` sind weg. Die
+       Saetze wohnen jetzt dort, wo Klara alles Erklaerende fuehrt — in den Einstellungen, in der
+       vorhandenen Bauform (.einst-kicker + .einst-gruppe + .einst-zeile). Die Zeilen tragen
+       FLIESSTEXT statt Beschriftung+Wert, deshalb nehmen ihre Absaetze keine eigene Marge mit.
+       Der Bilder-Kasten zieht UNVERAENDERT mit um — gleiche Kennung, gleiche Regel, gleiche
+       Inline-Farben (mega43 A2: Inline-Stile sind eine Farbquelle des Sammlers). */
+    #einst-erfassen p { margin: 0; }
     #capture-bilder-hinweis { display: flex; align-items: flex-start; gap: 8px; padding: 9px 10px; border-radius: 8px; font-size: 12px; line-height: 1.5; margin: 8px 0 4px; }
     textarea {
       width: 100%;
@@ -917,8 +926,9 @@
        Word.run). Fehler- und Officefall: EIN Satz, EIN Knopf. Die Bereich-Zeile der Vorlage
        (Z.39-45) ist bewusst nicht gebaut: kein Serverweg liefert eine Kategorienliste (Auftrag
        §5.2: „Zeile entfaellt, kein Platzhaltertext"). Radiogruppe, Bilder-Hinweisband, Pruef- und
-       Seitenhinweis sind aus dem Sichtfeld ERSETZT; ihre Funktionen wohnen im „?"-Menue unten
-       (§5a: kein Verlust, benannter Ort) — gemessen in tests/design/k2-funktionsinventar.test.ts. -->
+       Seitenhinweis sind aus dem Sichtfeld ERSETZT; ihre Funktionen wohnen seit JOB 3506 K2b
+       hinter dem Zahnrad (#einst-erfassen) — kein Verlust, benannter Ort, gemessen in
+       tests/design/k2-funktionsinventar.test.ts und tests/k2b-erfassen-reste. -->
   <div class="card" id="capture-karte">
     <h2 class="nur-vorlesen" data-t="captureCardTitle"></h2>
     <div id="capture-kicker" class="hidden"></div>
@@ -944,26 +954,10 @@
   <button type="button" class="ghost capture-knopf hidden" id="office-hint-btn" data-t="captureReload"></button>
   <div id="send-status" class="status hidden"></div>
   <button type="button" class="ghost capture-knopf hidden" id="send-status-btn"></button>
+  <!-- JOB 3506 K2b: der Textlink steht am FENSTERBODEN (Z.52, `margin-top: auto`) — er ist das
+       letzte Kind der Flex-Spalte #section-capture. Nach ihm kommt in dieser Flaeche nichts mehr:
+       das „?"-Menue von JOB 3057 ist hinter das Zahnrad gezogen (#einst-erfassen, s. u.). -->
   <a href="#" id="capture-dokument-link" data-t="captureDocumentLink"></a>
-  <!-- Das „?"-Menue (§5a, Pages-Art): was aus dem Sichtfeld ging, steht hier mit Namen — der Satz
-       zum Umfang und zur Formatierung (sendHint), der GEMESSENE Bilder-Kasten (JOB 2620 D5, eine
-       Bilder-Aussage in Tab 2, tests/design/zielbild-wissen-erfassen-einmal.test.ts), der
-       Pruefhinweis (sendReviewNote) und der Seiten-Hinweis (scopePagesHint: Word gibt Seiten hier
-       nicht her). Die Radios „Markierter Text"/„Ganzes Dokument" sind Karte und Textlink geworden,
-       die deaktivierte Seiten-Option ist dieser eine Satz. -->
-  <button type="button" class="ghost" id="capture-mehr-btn" aria-expanded="false" aria-controls="capture-mehr">?</button>
-  <div id="capture-mehr" class="hidden">
-    <p class="muted" id="capture-hinweis-umfang" data-t="sendHint"></p>
-    <div id="capture-bilder-hinweis" style="background: var(--warn-bg); color: var(--warn-text);">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; margin-top: 1px;"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>
-      <div>
-        <span data-t="sendImagesNote"></span>
-        <a id="capture-bilder-hinweis-link" href="https://app.klarwerk.ai/erfassen" target="_blank" rel="noopener" data-t="sendImagesNoteLink" style="color: var(--warn-text); font-weight: 600;"></a>
-      </div>
-    </div>
-    <p class="muted" id="capture-hinweis-pruefung" data-t="sendReviewNote"></p>
-    <p class="muted" id="capture-hinweis-seiten" data-t="scopePagesHint"></p>
-  </div>
   </div>
 
   <!-- ============================================================================================
@@ -1067,6 +1061,37 @@
         <span data-t="einstHilfe"></span>
         <span class="einst-wert"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg></span>
       </button>
+    </div>
+
+    <!-- ==========================================================================================
+         JOB 3506 K2b — DIE VIER ERKLAERSAETZE DER ERFASSEN-FLAECHE, AN IHREM ORT.
+         ==========================================================================================
+         Pedis Mockup Erfassen.dc.html zeigt in der Flaeche nur Karte, „Titel", EINEN Knopf und den
+         Textlink am Fensterboden — kein „?". Die vier Saetze, die JOB 3057 §5a in ein Menue IN der
+         Flaeche gestellt hat, wohnen deshalb ab jetzt hier: der Satz zum Umfang und zur
+         Formatierung (sendHint), der GEMESSENE Bilder-Kasten (JOB 2620 D5, EINE Bilder-Aussage in
+         Tab 2 — tests/design/zielbild-wissen-erfassen-einmal.test.ts), der Pruefhinweis
+         (sendReviewNote) und der Seiten-Hinweis (scopePagesHint: Word gibt Seiten hier nicht her).
+         DIESELBEN Schluessel, derselbe Wortlaut, dieselben Kennungen — nur ein anderer Ort; das
+         „?" in der Flaeche ist ENTFERNT, nicht versteckt (Abloesung, kein Parallelweg).
+         Die Gruppe steht NACH „Konto" und VOR dem Fuss, damit die ersten Kinder von
+         #kw-einstellungen (Gruppe 1, der Admin-Kicker) bleiben, was sie sind.
+         ZUSTAND (§9): reiner Woerterbuchtext — kein Admin-, kein Serverwert, keine Frische, kein
+         Ladezustand. Deshalb steht hier nie ein „–": es gibt nichts abzurufen. -->
+    <div class="einst-kicker" data-t="einstErfassenKicker"></div>
+    <div class="einst-gruppe" id="einst-erfassen">
+      <div class="einst-zeile"><p class="muted" id="capture-hinweis-umfang" data-t="sendHint"></p></div>
+      <div class="einst-zeile">
+        <div id="capture-bilder-hinweis" style="background: var(--warn-bg); color: var(--warn-text);">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; margin-top: 1px;"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>
+          <div>
+            <span data-t="sendImagesNote"></span>
+            <a id="capture-bilder-hinweis-link" href="https://app.klarwerk.ai/erfassen" target="_blank" rel="noopener" data-t="sendImagesNoteLink" style="color: var(--warn-text); font-weight: 600;"></a>
+          </div>
+        </div>
+      </div>
+      <div class="einst-zeile"><p class="muted" id="capture-hinweis-pruefung" data-t="sendReviewNote"></p></div>
+      <div class="einst-zeile"><p class="muted" id="capture-hinweis-seiten" data-t="scopePagesHint"></p></div>
     </div>
 
     <!-- AUFTRAG-mega69 Block E: der sichtbare Auslieferungsstand (Einstellungen.dc.html Z.68). Der
@@ -2538,9 +2563,8 @@
         captureRetry: "Erneut senden",
         captureLogin: "Anmelden",
         captureReload: "Neu laden",
-        captureMehr: "Hinweise",
         captureBilderLink: "In KLARWERK ergänzen",
-        // JOB 2620 (seit JOB 3057 im „?"-Menue): gemessener Bilder-Kasten, Pruefungs-Hinweis.
+        // JOB 2620 (seit JOB 3506 hinter dem Zahnrad): gemessener Bilder-Kasten, Pruefungs-Hinweis.
         sendImagesNote: "Eingebettete Bilder kommen mit dem Entwurf an. Von Text umflossene Bilder gibt Word hier nicht heraus — schon eines davon kostet derzeit alle Bilder des Dokuments.",
         sendImagesNoteLink: "Mit allen Bildern: Upload in der Konsole.",
         sendReviewNote: "Zur Prüfung geht er erst, wenn du einreichst — nichts wird automatisch validiert.",
@@ -2617,6 +2641,10 @@
         einstSprache: "Sprache",
         einstMitlesen: "Text in Word mitlesen",
         einstAdminKicker: "VOM ADMIN EINGESTELLT",
+        // JOB 3506 K2b: der Kicker der Gruppe, die die vier Erklaersaetze der Erfassen-Flaeche
+        // traegt (sendHint, sendImagesNote, sendReviewNote, scopePagesHint) — der EINZIGE neue
+        // Wortlaut dieses Jobs; die vier Saetze selbst sind woertlich umgezogen, nicht neu getextet.
+        einstErfassenKicker: "BEIM ERFASSEN",
         einstKi: "KI",
         einstWissen: "Wissen",
         einstWissenWert: "Nur freigegeben",
@@ -2950,9 +2978,8 @@
         captureRetry: "Send again",
         captureLogin: "Sign in",
         captureReload: "Reload",
-        captureMehr: "Notes",
         captureBilderLink: "Add in KLARWERK",
-        // JOB 2620 (in the "?" menu since JOB 3057): measured image note, review hint.
+        // JOB 2620 (behind the gear since JOB 3506): measured image note, review hint.
         sendImagesNote: "Embedded images arrive with the draft. Images with text wrapping are not provided by Word here — a single one currently costs all images of the document.",
         sendImagesNoteLink: "With all images: upload in the console.",
         sendReviewNote: "It only goes to review once you submit it — nothing is validated automatically.",
@@ -3006,6 +3033,7 @@
         einstSprache: "Language",
         einstMitlesen: "Read text in Word",
         einstAdminKicker: "SET BY ADMIN",
+        einstErfassenKicker: "WHEN CAPTURING",
         einstKi: "AI",
         einstWissen: "Knowledge",
         einstWissenWert: "Approved only",
@@ -3246,9 +3274,8 @@
         captureRetry: "Opnieuw sturen",
         captureLogin: "Aanmelden",
         captureReload: "Opnieuw laden",
-        captureMehr: "Aanwijzingen",
         captureBilderLink: "In KLARWERK aanvullen",
-        // JOB 2620 (sinds JOB 3057 in het "?"-menu): gemeten afbeeldingenkader, controlehint.
+        // JOB 2620 (sinds JOB 3506 achter het tandwiel): gemeten afbeeldingenkader, controlehint.
         sendImagesNote: "Ingesloten afbeeldingen komen mee met het concept. Afbeeldingen met tekstomloop geeft Word hier niet vrij — één daarvan kost momenteel alle afbeeldingen van het document.",
         sendImagesNoteLink: "Met alle afbeeldingen: upload in de console.",
         sendReviewNote: "Het gaat pas ter controle wanneer je het indient — er wordt niets automatisch gevalideerd.",
@@ -3302,6 +3329,7 @@
         einstSprache: "Taal",
         einstMitlesen: "Tekst in Word meelezen",
         einstAdminKicker: "DOOR ADMIN INGESTELD",
+        einstErfassenKicker: "BIJ HET VASTLEGGEN",
         einstKi: "AI",
         einstWissen: "Kennis",
         einstWissenWert: "Alleen vrijgegeven",
@@ -3634,8 +3662,8 @@
       document.querySelectorAll("[data-t]").forEach(function (el) {
         el.textContent = t(el.getAttribute("data-t"));
       });
-      // JOB 3057 K2: der zugaengliche Name des „?"-Knopfs (sein Bild ist das Zeichen, kein data-t).
-      document.getElementById("capture-mehr-btn").setAttribute("aria-label", t("captureMehr"));
+      // JOB 3506 K2b: der „?"-Knopf der Erfassen-Flaeche ist weg — mit ihm sein aria-label und der
+      // Schluessel `captureMehr`. Die vier Saetze tragen ihren Wortlaut ueber `data-t` (oben).
       // WP-KLARA-ASK: Platzhalter des Frage-Eingabefelds in der aktuellen Sprache.
       document.getElementById("ask-input").placeholder = t("askInputPlaceholder");
       // JOB 3004 D1: der Tooltip der Frage-Zeile („Frage bearbeiten") in der aktuellen Sprache.
@@ -7367,13 +7395,8 @@
     document.getElementById("capture-titel").addEventListener("input", function () {
       captureTitelVonHand = this.value.replace(/^\s+|\s+$/g, "").length > 0;
     });
-    // Das „?"-Menue (§5a): auf, zu — sonst nichts.
-    document.getElementById("capture-mehr-btn").addEventListener("click", function () {
-      var menue = document.getElementById("capture-mehr");
-      var offen = menue.className === "hidden";
-      menue.className = offen ? "" : "hidden";
-      this.setAttribute("aria-expanded", offen ? "true" : "false");
-    });
+    // JOB 3506 K2b: das „?"-Menue der Erfassen-Flaeche ist entfallen — es gibt nichts mehr auf-
+    // und zuzuklappen. Die vier Saetze stehen offen hinter dem Zahnrad (#einst-erfassen).
 
     // AUFTRAG-mega69 Block E: Auslieferungsstand anzeigen. __KLARA_STAND__ wird vom Build ersetzt;
     // der Praefix-Vergleich (statt Gleichheit) haelt auch dann, wenn der Platzhalter-Name selbst
@@ -11684,17 +11707,22 @@
     // dort „keine Abweichung" ohne erfolgreichen frischen Lauf.
     // ------------------------------------------------------------------------------------------
     function ka7EinreichHinweisElement() {
-      // RUNDE 3: der lange Satz wohnt im „?"-Menue der Erfassen-Flaeche — dort, wo diese Flaeche
-      // ihre Erklaertexte haelt (JOB 3057 K2 §5a). `data-t` traegt ihn durch den Sprachwechsel
-      // (renderStatics uebersetzt jedes [data-t]).
-      var menue = document.getElementById("capture-mehr");
-      if (menue && !document.getElementById("ka7-mehr-hinweis")) {
+      // RUNDE 3: der lange Satz wohnt dort, wo die Erfassen-Flaeche ihre Erklaertexte haelt.
+      // JOB 3506 K2b: das ist nicht mehr das „?"-Menue IN der Flaeche, sondern die Gruppe hinter
+      // dem Zahnrad (#einst-erfassen) — derselbe Satz, derselbe Schluessel, ein anderer Ort. Er
+      // bekommt die Zeilenform der Gruppe (.einst-zeile), damit er nicht als Fremdkoerper danebensteht.
+      // `data-t` traegt ihn durch den Sprachwechsel (renderStatics uebersetzt jedes [data-t]).
+      var gruppe = document.getElementById("einst-erfassen");
+      if (gruppe && !document.getElementById("ka7-mehr-hinweis")) {
+        var zeile = document.createElement("div");
+        zeile.className = "einst-zeile";
         var erklaerung = document.createElement("p");
         erklaerung.id = "ka7-mehr-hinweis";
         erklaerung.className = "muted";
         erklaerung.setAttribute("data-t", "ka7EntwurfMenuText");
         erklaerung.textContent = t("ka7EntwurfMenuText");
-        menue.appendChild(erklaerung);
+        zeile.appendChild(erklaerung);
+        gruppe.appendChild(zeile);
       }
       var vorhanden = document.getElementById("ka7-einreich-hinweis");
       if (vorhanden) { return vorhanden; }

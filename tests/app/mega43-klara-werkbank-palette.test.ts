@@ -1359,9 +1359,13 @@ describe("mega43 B1/B2 · Klara führt die Werkbank-Palette (keine zweite Wahrhe
     expect(MODELL.inline.length).toBeGreaterThan(0);
     const mitFarbe = MODELL.inline.filter((q) => /(^|;)\s*color\s*:/.test(q.text));
     // JOB 3057 K2: die Radiogruppe (label#scope-pages-label) ist ersetzt; der farbtragende
-    // Inline-Stil sitzt jetzt am Bilder-Kasten im „?"-Menue der Erfassen-Flaeche.
+    // Inline-Stil sitzt seitdem am Bilder-Kasten.
+    // JOB 3506 K2b: der Kasten ist mit den drei anderen Erklaersaetzen hinter das Zahnrad gezogen
+    // (Einstellungsgruppe #einst-erfassen) — das Element, sein `style` und seine Farben sind
+    // UNVERAENDERT, nur sein Ort im Baum ist ein anderer. Der Sammler nennt den Ort als Pfad,
+    // deshalb zieht dieser Pin mit.
     expect(mitFarbe.map((q) => q.ort)).toContain(
-      "body > div#section-capture.hidden > div#capture-mehr.hidden > div#capture-bilder-hinweis [style]",
+      "body > div#kw-einstellungen.hidden > div#einst-erfassen.einst-gruppe > div.einst-zeile > div#capture-bilder-hinweis [style]",
     );
     // Der heutige Inline-Stil führt kein Literal, sondern var(--muted) — er ist sauber.
     expect(farbfunde(MODELL).filter((f) => f.ort.includes("[style]"))).toEqual([]);

@@ -1089,14 +1089,20 @@ describe("KA7 · JOB 3174 M4b — Zeit, Wiederöffnen, Doppelung", () => {
     }
   });
 
-  it("P17d · der LANGE Satz wohnt im „?“-Menü — dort steht er, auf der Fläche nie (DE/EN/NL)", async () => {
+  // JOB 3506 K2b (10.09.2026): der Ort der Erklärtexte der Erfassen-Fläche ist weitergezogen. Das
+  // „?“-Menü IN der Fläche (#capture-mehr) ist entfallen — Pedis Mockup zeigt dort keinen
+  // Erklärknopf; die vier Sätze von JOB 3057 und dieser KA7-Satz stehen jetzt hinter dem Zahnrad,
+  // in der Einstellungsgruppe #einst-erfassen. Der Maßstab dieses Falls ist unverändert: der lange
+  // Satz steht dort und auf der Fläche nie; die Fläche trägt nur die kurze Beschriftung.
+  it("P17d · der LANGE Satz wohnt hinter dem Zahnrad — dort steht er, auf der Fläche nie (DE/EN/NL)", async () => {
     panel = aufbauen({ checkText: reply(200, antwort([konflikt()])) });
     await panel.flush();
     panel.setTab("capture");
     await panel.flush();
-    // Er hängt im Menü, nicht an der Markierungskarte.
-    const imMenue = panel.q("#capture-mehr #ka7-mehr-hinweis");
-    expect(imMenue, "der Erklärtext fehlt im „?“-Menü").not.toBeNull();
+    // Er hängt in der Einstellungsgruppe, nicht an der Markierungskarte.
+    const imMenue = panel.q("#einst-erfassen #ka7-mehr-hinweis");
+    expect(imMenue, "der Erklärtext fehlt hinter dem Zahnrad").not.toBeNull();
+    expect(panel.q("#section-capture #ka7-mehr-hinweis"), "er steht in der Fläche").toBeNull();
     for (const sprache of ["de", "en", "nl"] as const) {
       await spracheWechseln(panel, sprache);
       const lang = panel.text("#ka7-mehr-hinweis");
@@ -1106,10 +1112,12 @@ describe("KA7 · JOB 3174 M4b — Zeit, Wiederöffnen, Doppelung", () => {
       expect(panel.text("#ka7-einreich-hinweis").length, sprache).toBeLessThanOrEqual(GRENZE_K2);
     }
     await spracheWechseln(panel, "de");
-    // Das Menü ist zu, solange niemand auf „?“ klickt — der Erklärtext steht nicht im Sichtfeld.
-    expect(panel.q("#capture-mehr")?.className).toContain("hidden");
-    panel.q("#capture-mehr-btn")?.click();
-    expect(panel.q("#capture-mehr")?.className).not.toContain("hidden");
+    // Die Einstellungen sind zu, solange niemand aufs Zahnrad tippt — der Erklärtext steht nicht
+    // im Sichtfeld der Erfassen-Fläche. Ein Tipp aufs Zahnrad bringt ihn.
+    expect(panel.q("#kw-einstellungen")?.className).toContain("hidden");
+    expect(panel.q("#capture-mehr-btn"), "das „?“ in der Fläche lebt weiter").toBeNull();
+    panel.q("#kw-zahnrad")?.click();
+    expect(panel.q("#kw-einstellungen")?.className).not.toContain("hidden");
     expect(panel.text("#ka7-mehr-hinweis")).toContain("Keine frische Prüfung");
   });
 

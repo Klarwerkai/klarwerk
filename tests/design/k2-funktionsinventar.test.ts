@@ -17,11 +17,11 @@
 // |----------------------------------------------------|---------------------------------------------------|------|
 // | #scope-selection „Markierter Text“ (Radio)         | Markierungskarte: #capture-kicker + .capture-absatz| I1   |
 // | #scope-document „Ganzes Dokument“ (Radio)          | Textlink #capture-dokument-link (loest den Weg aus)| I2   |
-// | #scope-pages (deaktiviert) + scopePagesOff-Tooltip | „?“-Menue: #capture-hinweis-seiten (EIN Satz)      | I3   |
-// | #scope-pages-hint (scopePagesHint)                 | derselbe Satz, „?“-Menue                          | I3   |
-// | #capture-bilder-hinweis (sendImagesNote + Link)    | „?“-Menue, gleiche Kennung, Link nach /erfassen   | I4   |
-// | sendHint (Umfang, Formatierung)                    | „?“-Menue: #capture-hinweis-umfang                 | I5   |
-// | #send-review-note (sendReviewNote, Pruefhinweis)   | „?“-Menue: #capture-hinweis-pruefung               | I6   |
+// | #scope-pages (deaktiviert) + scopePagesOff-Tooltip | Zahnrad: #capture-hinweis-seiten (EIN Satz)        | I3   |
+// | #scope-pages-hint (scopePagesHint)                 | derselbe Satz, hinter dem Zahnrad                 | I3   |
+// | #capture-bilder-hinweis (sendImagesNote + Link)    | Zahnrad, gleiche Kennung, Link nach /erfassen     | I4   |
+// | sendHint (Umfang, Formatierung)                    | Zahnrad: #capture-hinweis-umfang                   | I5   |
+// | #send-review-note (sendReviewNote, Pruefhinweis)   | Zahnrad: #capture-hinweis-pruefung                 | I6   |
 // | #send-btn „Als Entwurf senden“                     | #send-btn (frei nur mit Markierung)               | I7   |
 // | #open-block / #open-link „Entwurf oeffnen“         | Ergebniszeile #capture-ergebnis + #open-link „Oeffnen“| I8 |
 // | sendOk „Entwurf angelegt: {title}“ im Statusfeld   | #capture-ergebnis „Entwurf gesendet“; Titel im Payload| I8 |
@@ -32,6 +32,14 @@
 // | captureCardTitle (h2 der Karte)                    | h2.nur-vorlesen (Hilfstechnik)                    | I13  |
 // | — (neu) Zeile „Titel“                              | #capture-titel, editierbar, reist als Titel       | I14  |
 // | — (neu) ohne Markierung                            | #capture-leer „Markiere Text in Word.“, Knopf grau| I15  |
+//
+// JOB 3506 K2b (10.09.2026) — DER „NEUE ORT“ VON I3–I6 IST WEITERGEZOGEN. JOB 3057 hat die vier
+// Erklaersaetze in ein „?“-Menue IN der Erfassen-Flaeche gestellt und in seiner RUECKGABE selbst
+// als Restschuld benannt („‚?‘-Menue in den Zahnrad-Ort ziehen ... eigener Auftrag, weil
+// K1-Flaeche"). Genau das ist jetzt geschehen: die Saetze wohnen in der Einstellungsgruppe
+// #einst-erfassen hinter #kw-zahnrad — dieselben Kennungen, dieselben Woerterbuchschluessel,
+// derselbe Wortlaut. Die Zeilen I3–I6 messen deshalb ab hier den Zahnrad-Ort; die Aussage der
+// Tabelle („keine Funktion geht verloren") ist unveraendert, nur ihr Zielort ist ein anderer.
 import { afterEach, describe, expect, it } from "vitest";
 import { type KlaraPanel, createKlaraPanel, reply } from "../app/klara-panel-fixture";
 
@@ -111,42 +119,48 @@ describe("JOB 3057 · K2 · Funktionsinventar „heute → neuer Ort“ — jede
     expect(p.q("#open-link")?.href).toContain("draft=d-dok");
   });
 
-  it("I3 · Seiten (deaktivierte Option + Tooltip + Hinweis) → EIN Satz im „?“-Menue, zu bis zum Klick", async () => {
+  it("I3 · Seiten (deaktivierte Option + Tooltip + Hinweis) → EIN Satz hinter dem Zahnrad, nicht in der Flaeche", async () => {
     const p = oeffnen();
     await p.flush();
-    expect(p.q("#capture-mehr")?.className).toBe("hidden");
-    expect(p.q("#capture-mehr-btn")?.getAttribute("aria-expanded")).toBe("false");
-    p.q("#capture-mehr-btn")?.click();
-    expect(p.q("#capture-mehr")?.className).toBe("");
-    expect(p.q("#capture-mehr-btn")?.getAttribute("aria-expanded")).toBe("true");
-    expect(p.text("#capture-mehr #capture-hinweis-seiten")).toBe(p.t("scopePagesHint"));
+    // JOB 3506 K2b: es gibt keinen Erklaerknopf in der Flaeche mehr, den man aufklappen koennte.
+    expect(p.q("#capture-mehr-btn")).toBeNull();
+    expect(p.q("#capture-mehr")).toBeNull();
+    // Der Weg ist das Zahnrad: eine Ansicht, keine Klapperei.
+    expect(p.q("#kw-einstellungen")?.className).toBe("hidden");
+    p.q("#kw-zahnrad")?.click();
+    expect(p.q("#kw-einstellungen")?.className).toBe("");
+    expect(p.q("#section-capture")?.className).toBe("hidden");
+    expect(p.text("#einst-erfassen #capture-hinweis-seiten")).toBe(p.t("scopePagesHint"));
     expect(p.q("#scope-pages")).toBeNull();
     expect(p.q("#scope-pages-hint")).toBeNull();
-    p.q("#capture-mehr-btn")?.click();
-    expect(p.q("#capture-mehr")?.className).toBe("hidden");
+    // Und zurueck: der Chevron fuehrt in den zuletzt benutzten Bereich.
+    p.q("#kw-zurueck")?.click();
+    expect(p.q("#kw-einstellungen")?.className).toBe("hidden");
   });
 
-  it("I4 · Bilder-Hinweisband → derselbe Kasten im „?“-Menue, mit Link in die Konsole", async () => {
+  it("I4 · Bilder-Hinweisband → derselbe Kasten hinter dem Zahnrad, mit Link in die Konsole", async () => {
     const p = oeffnen();
     await p.flush();
-    p.q("#capture-mehr-btn")?.click();
-    expect(p.text("#capture-mehr #capture-bilder-hinweis")).toContain(p.t("sendImagesNote"));
+    p.q("#kw-zahnrad")?.click();
+    expect(p.text("#einst-erfassen #capture-bilder-hinweis")).toContain(p.t("sendImagesNote"));
     expect(p.text("#capture-bilder-hinweis-link")).toBe(p.t("sendImagesNoteLink"));
     expect(p.q("#capture-bilder-hinweis-link")?.href).toContain("app.klarwerk.ai/erfassen");
-    // Nicht mehr in der Karte selbst:
+    // Nicht mehr in der Karte selbst — und ueberhaupt nicht mehr in der Erfassen-Flaeche:
     expect(p.q("#capture-karte #capture-bilder-hinweis")).toBeNull();
+    expect(p.q("#section-capture #capture-bilder-hinweis")).toBeNull();
   });
 
-  it("I5/I6 · Umfangs-Satz (sendHint) und Pruefhinweis (sendReviewNote) → „?“-Menue", async () => {
+  it("I5/I6 · Umfangs-Satz (sendHint) und Pruefhinweis (sendReviewNote) → hinter das Zahnrad", async () => {
     const p = oeffnen();
     await p.flush();
-    p.q("#capture-mehr-btn")?.click();
-    expect(p.text("#capture-mehr #capture-hinweis-umfang")).toBe(p.t("sendHint"));
-    expect(p.text("#capture-mehr #capture-hinweis-pruefung")).toBe(p.t("sendReviewNote"));
+    p.q("#kw-zahnrad")?.click();
+    expect(p.text("#einst-erfassen #capture-hinweis-umfang")).toBe(p.t("sendHint"));
+    expect(p.text("#einst-erfassen #capture-hinweis-pruefung")).toBe(p.t("sendReviewNote"));
     expect(p.q("#send-review-note")).toBeNull();
     for (const sprache of ["en", "nl"]) {
       p.setLang(sprache);
       expect(p.text("#capture-hinweis-pruefung")).toBe(p.t("sendReviewNote"));
+      expect(p.text("[data-t=einstErfassenKicker]")).toBe(p.t("einstErfassenKicker"));
     }
   });
 
@@ -283,6 +297,9 @@ describe("JOB 3057 · K2 · Funktionsinventar „heute → neuer Ort“ — jede
       "#scope-pages-hint",
       "#send-review-note",
       "#open-block",
+      // JOB 3506 K2b: das „?“-Menue der Flaeche ist ERSETZT, nicht daneben belassen.
+      "#capture-mehr-btn",
+      "#capture-mehr",
     ]) {
       expect(p.q(alt), alt).toBeNull();
     }
@@ -303,18 +320,31 @@ describe("JOB 3057 · K2 · Funktionsinventar „heute → neuer Ort“ — jede
       "#send-status",
       "#send-status-btn",
       "#capture-dokument-link",
-      "#capture-mehr-btn",
-      "#capture-mehr",
-      "#capture-hinweis-umfang",
-      "#capture-bilder-hinweis",
-      "#capture-hinweis-pruefung",
-      "#capture-hinweis-seiten",
+      // JOB 3506 K2b: die vier Saetze mit ihren UNVERAENDERTEN Kennungen — am neuen Ort.
+      "#einst-erfassen",
+      "#einst-erfassen #capture-hinweis-umfang",
+      "#einst-erfassen #capture-bilder-hinweis",
+      "#einst-erfassen #capture-hinweis-pruefung",
+      "#einst-erfassen #capture-hinweis-seiten",
     ]) {
       expect(p.q(neu), neu).not.toBeNull();
     }
-    for (const key of ["scopeSelection", "scopeDocument", "scopePages", "scopePagesOff"]) {
+    // JOB 3506 K2b: `captureMehr` war das aria-label des entfernten „?“-Knopfs — mit ihm faellt
+    // der Schluessel. Kein toter Rest im Woerterbuch.
+    for (const key of [
+      "scopeSelection",
+      "scopeDocument",
+      "scopePages",
+      "scopePagesOff",
+      "captureMehr",
+    ]) {
       // Entfernte Schluessel liefern den Schluesselnamen — sie stehen in keinem Woerterbuch mehr.
       expect(p.t(key)).toBe(key);
+    }
+    // Und der EINE neue Schluessel dieses Jobs ist in allen drei Sprachen da.
+    for (const sprache of ["de", "en", "nl"]) {
+      p.setLang(sprache);
+      expect(p.t("einstErfassenKicker"), sprache).not.toBe("einstErfassenKicker");
     }
   });
 });
