@@ -189,6 +189,17 @@ const IMPACT_TEXT_TONE: Record<"pos" | "warn" | "crit", string> = {
 // Wie lange die Quittung im Fußband steht (Auftrag §5.3: „eine Zeile ‚Freigegeben' 3 s im Fuß").
 const QUITTUNG_MS = 3000;
 
+// JOB 3504: ab wie viel angesammeltem Radweg die Auswahl einen Artikel weiterrückt. Ein Rastpunkt
+// eines gewöhnlichen Mausrads misst 100 px und schaltet damit genau einmal; ein Trackpad schickt
+// Zehntel davon, und ohne diese Schwelle rauschte die Auswahl bei der kleinsten Handbewegung durch
+// die halbe Liste. Gehalten von `tests/pruefen-listennavigation/mausrad.test.tsx`.
+const RAD_SCHWELLE_PX = 40;
+
+// Ein Radereignis meldet seinen Weg in Pixeln (0), Zeilen (1) oder Seiten (2) — Firefox liefert für
+// eine Raste `deltaMode: 1, deltaY: 3`. Ohne Umrechnung wären drei Zeilen drei Pixel und keine Raste
+// erreichte je die Schwelle.
+const RAD_MASS_PX: Record<number, number> = { 0: 1, 1: 16, 2: 400 };
+
 /**
  * JOB 3112 · V3 — die zwei Wege, auf denen ein Wissensobjekt die Prüffläche FREIGEGEBEN verlässt.
  * `rate` ist der Knopf „Freigeben" im Fußband (Recht `ko.validate`), `admin` das „Als wahr
@@ -242,6 +253,8 @@ export function Validation(): JSX.Element {
   // fällt automatisch auf denselben Weg zurück.
   const [aktivId, setAktivId] = useState<string | null>(null);
   const pruefbereichRef = useRef<HTMLDivElement>(null);
+  // JOB 3504: die Warteschlange selbst — Anker für den Radlauf und für „die Auswahl bleibt sichtbar".
+  const warteschlangeRef = useRef<HTMLUListElement>(null);
   const markDeletedKo = (id: string): void => {
     setLocallyDeletedKoIds((ids) => withDeletedKoId(ids, id));
   };
@@ -641,6 +654,113 @@ export function Validation(): JSX.Element {
 
   const aktiv = visible.find((k) => k.id === aktivId) ?? visible[0] ?? null;
 
+  // ================================================================================================
+  // JOB 3504 — DURCH DIE LISTE GEHEN, OHNE JEDEN ARTIKEL ANZUKLICKEN (Pedi, 10.09. 06:48).
+  // ================================================================================================
+  //
+  // BEIDES, und beides NUR HIER: die Pfeiltasten, solange die Liste den Fokus hat, und das Mausrad,
+  // solange der Zeiger über ihr steht. Es gibt KEINEN Zuhörer an `window` oder `document` — ein
+  // globaler Griff nach ArrowUp/ArrowDown kaperte das Suchfeld des Filter-Menüs, das Begründungsfeld
+  // der Rückfrage und jede Auswahlliste der Karte. Die Reichweite IST die Zusage: sie steht nicht in
+  // einer Bedingung, die man vergessen kann, sondern im ORT der beiden Zuhörer (Auftrag §3.1).
+  //
+  // RECHTS KANN NICHTS VERALTEN (Auftrag §3.4). Die Karte ist eine Ableitung aus `visible` — genau
+  // derselben Liste, die links steht (`karte(aktiv)` weiter unten). Weiterschalten löst KEINEN
+  // artikelbezogenen Abruf aus; es gibt also gar keine späte Antwort, die zu einer überholten
+  // Auswahl eintreffen könnte. Deshalb wird hier auch nichts entprellt und nichts verzögert: jeder
+  // Schritt ist ein Zustandswechsel, und der nächste Zeichenlauf zeigt genau ihn.
+  //
+  // HOVER GIBT ES NICHT (Auftrag §3.5). Bloßes Überfahren wählt nichts aus — an den Einträgen steht
+  // kein `onMouseEnter`, und dieses Fehlen ist die ganze Umsetzung dieser Zusage.
+  //
+  // DER FOKUS BLEIBT, WO ER IST (Auftrag §3.3). Verschoben wird `aktivId`, sonst nichts; der Knopf,
+  // der den Fokus hat, behält ihn (die Liste selbst ändert sich beim Schalten ja nicht).
+
+  // DIE SCHWELLENDE AUSWAHL, und warum sie eine Referenz ist und kein Zustand mehr.
+  //
+  // GEMESSEN (Runde 1, `pfeiltasten.test.tsx` „schnelles Weiterschalten"): fünf Pfeiltasten in EINEM
+  // React-Durchlauf rückten die Auswahl von F nur bis E — nicht bis A. React fasst mehrere
+  // Zustandssetzungen desselben Durchlaufs zusammen; jeder der fünf Schritte las deshalb dieselbe
+  // alte `aktiv` aus seinem Abschluss und rechnete fünfmal denselben Nachbarn aus. Vier Tastendrücke
+  // wären spurlos verschwunden.
+  //
+  // `aktivRef` trägt die SOFORT nachgeführte Auswahl: sie wird beim Schieben gesetzt, bevor React
+  // gezeichnet hat, und nach jedem Zeichenlauf wieder mit der tatsächlich gezeigten Auswahl
+  // abgeglichen. Damit rechnet Schritt n+1 auf dem Ergebnis von Schritt n — und ein weggefilterter
+  // oder entschiedener Eintrag setzt sie auf denselben Weg zurück wie die Fläche selbst.
+  const aktivRef = useRef<string | null>(aktiv?.id ?? null);
+  useEffect(() => {
+    aktivRef.current = aktiv?.id ?? null;
+  });
+
+  /**
+   * Die Auswahl um `delta` Einträge verschieben. Ohne `ausfuehren` wird nur GEFRAGT, ob der Schritt
+   * überhaupt möglich ist — das braucht der Radlauf, um zu entscheiden, ob er das Ereignis
+   * verbraucht oder der Seite überlässt. An den Enden ist Schluss: kein Umlauf.
+   */
+  function auswahlSchieben(delta: number, ausfuehren: boolean): boolean {
+    const i = visible.findIndex((k) => k.id === aktivRef.current);
+    const ziel = i === -1 ? undefined : visible[i + delta];
+    if (!ziel) {
+      return false;
+    }
+    if (!ausfuehren) {
+      return true;
+    }
+    aktivRef.current = ziel.id;
+    setAktivId(ziel.id);
+    // Die Auswahl bleibt sichtbar. `nearest` zieht nur, wenn sie wirklich aus dem Sichtbereich
+    // gewandert ist — beim Klick geschieht das ausdrücklich NICHT (das Ziel ist ja getroffen worden
+    // und steht damit schon im Blick; JOB 3464 misst genau das). Der Zielknopf steht bereits im
+    // Baum, bevor React neu zeichnet: die Liste ändert sich beim Schalten nicht, nur ihre Markierung.
+    warteschlangeRef.current
+      ?.querySelectorAll<HTMLElement>('[data-testid="pruefen-warteschlange-eintrag"]')
+      ?.[i + delta]?.scrollIntoView({ block: "nearest", behavior: "instant" });
+    return true;
+  }
+
+  // Der Radlauf hängt an einem NATIVEN Zuhörer und liest über diese Referenz, was der letzte
+  // Zeichenlauf weiss (`visible`, `aktiv`). Ohne dep-Liste läuft die Nachführung nach jedem Zeichnen.
+  const schiebenRef = useRef(auswahlSchieben);
+  useEffect(() => {
+    schiebenRef.current = auswahlSchieben;
+  });
+
+  const listeSteht = visible.length > 0;
+  useEffect(() => {
+    const ul = listeSteht ? warteschlangeRef.current : null;
+    if (!ul) {
+      return;
+    }
+    // NATIV und ausdrücklich `passive: false`. React hängt `onWheel` als PASSIVEN Zuhörer ein; dort
+    // liefe `preventDefault()` ins Leere (samt Konsolenwarnung) und die Seite scrollte unter der
+    // Auswahl weg, während die Auswahl gleichzeitig weiterrückt — zwei Bewegungen auf eine Geste.
+    let summe = 0;
+    const beiRad = (e: WheelEvent): void => {
+      const schub = e.deltaY * (RAD_MASS_PX[e.deltaMode] ?? 1);
+      if (schub === 0) {
+        return;
+      }
+      const richtung = schub > 0 ? 1 : -1;
+      if (!schiebenRef.current(richtung, false)) {
+        // Am Ende der Liste gehört das Rad wieder der Seite — sonst wäre die Fläche eine Sackgasse.
+        summe = 0;
+        return;
+      }
+      e.preventDefault();
+      // Ein Richtungswechsel verwirft das Angesammelte: sonst schaltete ein Zurückwischen den
+      // nächsten Vorwärtsschub verfrüht durch.
+      summe = Math.sign(summe) === richtung ? summe + schub : schub;
+      if (Math.abs(summe) < RAD_SCHWELLE_PX) {
+        return;
+      }
+      summe = 0;
+      schiebenRef.current(richtung, true);
+    };
+    ul.addEventListener("wheel", beiRad, { passive: false });
+    return () => ul.removeEventListener("wheel", beiRad);
+  }, [listeSteht]);
+
   // Wie viele Filter gerade greifen — der einzige Text, den das geschlossene Filter-Menü zeigt.
   const filterAktiv =
     (filter.search.trim() ? 1 : 0) +
@@ -971,7 +1091,29 @@ export function Validation(): JSX.Element {
             ? leerSatz()
             : null}
           {visible.length > 0 ? (
-            <ul data-testid="pruefen-warteschlange" className="flex flex-col gap-1">
+            // JOB 3504: der Tastenlauf hängt an der LISTE und fängt damit nur, was aus ihr
+            // aufsteigt. Ein Pfeil im Suchfeld des Filter-Menüs, im Begründungsfeld der Rückfrage
+            // oder irgendwo sonst auf der Seite kommt hier nie an — die Liste ist die Grenze.
+            // Der Fokus wohnt in den EINTRÄGEN (es sind Knöpfe); die Liste trägt nur die
+            // Weiterschaltung und bekommt deshalb weder Rolle noch eigene Fokussierbarkeit.
+            <ul
+              ref={warteschlangeRef}
+              data-testid="pruefen-warteschlange"
+              className="flex flex-col gap-1"
+              onKeyDown={(e) => {
+                if (e.key !== "ArrowDown" && e.key !== "ArrowUp") {
+                  return;
+                }
+                // Mit Zusatztaste gehört der Pfeil der Seite (Auswahl erweitern, Seitenanfang …).
+                if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) {
+                  return;
+                }
+                if (!auswahlSchieben(e.key === "ArrowDown" ? 1 : -1, true)) {
+                  return;
+                }
+                e.preventDefault();
+              }}
+            >
               {visible.map((k) => {
                 const ist = aktiv?.id === k.id;
                 return (
