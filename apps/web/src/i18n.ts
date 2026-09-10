@@ -3679,6 +3679,20 @@ const de = {
   "lib.liste.fehler": "Die Liste ließ sich nicht laden.",
   "lib.liste.erneut": "Erneut versuchen",
   "lib.liste.erfassen": "Erfassen",
+  // JOB 3531 · Q6d — die Liste ohne Verbindung. Zwei Sätze, und beide sagen etwas über die
+  // MASCHINE, nichts über den Bestand: offline wird gar nicht gerufen, also weiss niemand, ob es
+  // Treffer gibt. Sie lösen an ihrer Stelle das Schweigen ab (`BibliothekListe.tsx`, Zweig
+  // `pausiert`) — und im Fall des veralteten LEEREN Zwischenspeichers das falsche „Nichts
+  // gefunden." (Codex R-1613, 1.0.0-beta.1.110). Kein Knopf dazu: der Abruf ist angehalten, nicht
+  // gescheitert, und der zweite Satz sagt genau das (N-0036).
+  //
+  // NICHT `mob.offlineSearch`/`mob.offlineNeedsConn` mitbenutzt, obwohl sie nah klingen: die sind
+  // die Sätze der MOBILEN Fläche („Offline – Suche braucht eine Verbindung.") und werden dort
+  // gepinnt; ein geteilter Schlüssel bände zwei Flächen aneinander, deren Wortlaut niemand
+  // gemeinsam entschieden hat.
+  "lib.liste.offline": "Ohne Verbindung kann gerade nicht gesucht werden.",
+  "lib.liste.offlineWeiter":
+    "Sobald die Verbindung wieder steht, wird die Suche von selbst fortgesetzt.",
   // JOB 3335 · UX-21: der Schalter „Trefferliste" des Lese-Tablets (760–899 px). Die Beschriftung
   // nennt den ZUSTAND, den ein Klick herstellt — kein Symbol allein, kein Erklärsatz (H4).
   "lib.lesemodus.listeEinblenden": "Trefferliste einblenden",
@@ -8918,6 +8932,8 @@ const en: typeof de = {
   "lib.liste.fehler": "The list could not be loaded.",
   "lib.liste.erneut": "Try again",
   "lib.liste.erfassen": "Capture",
+  "lib.liste.offline": "Searching is not possible without a connection.",
+  "lib.liste.offlineWeiter": "The search continues on its own as soon as the connection is back.",
   // JOB 3335 · UX-21 — see the German entry.
   "lib.lesemodus.listeEinblenden": "Show result list",
   "lib.lesemodus.listeAusblenden": "Hide result list",
@@ -13793,6 +13809,8 @@ const nl: typeof de = {
   "lib.liste.fehler": "De lijst kon niet worden geladen.",
   "lib.liste.erneut": "Opnieuw proberen",
   "lib.liste.erfassen": "Vastleggen",
+  "lib.liste.offline": "Zonder verbinding kan er nu niet worden gezocht.",
+  "lib.liste.offlineWeiter": "Zodra de verbinding er weer is, gaat het zoeken vanzelf verder.",
   // JOB 3335 · UX-21 — zie de Duitse regel.
   "lib.lesemodus.listeEinblenden": "Resultatenlijst tonen",
   "lib.lesemodus.listeAusblenden": "Resultatenlijst verbergen",

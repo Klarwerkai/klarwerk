@@ -1391,13 +1391,37 @@ export function BibliothekFlaeche({
           // 1.0.0-beta.1.103 (`R-1613-offline-20260905-1955/BEFUND.md`, Punkte 3/4: „Nichts gefunden."
           // und „Erfassen" bei NULL Suchrequests; nach Netzrückkehr genau ein Ruf und zwei Treffer).
           //
-          // DIE ZWEITE BEDINGUNG (`query.data === undefined`) IST ABSICHT und steht wörtlich so schon
-          // eine Zeile höher bei `fehler`: gemeint ist „für diesen Suchbegriff liegt noch KEINE Antwort
-          // vor", nicht „das Gerät ist offline". Liegen Treffer im Zwischenspeicher, bleibt alles wie
-          // bisher — auch ein zwischengespeichertes LEERES Ergebnis darf weiter „Nichts gefunden."
-          // sagen, denn es wurde wirklich einmal erfolgreich geholt (Auftrag §9, die zwei
-          // Offline-Zeilen).
-          pausiert={angehalten(query) && query.data === undefined}
+          // ============================================================================================
+          // JOB 3531 · Q6d — EIN LEERER ZWISCHENSPEICHER IST OFFLINE KEIN „NICHTS GEFUNDEN" MEHR.
+          // ============================================================================================
+          // BIS JOB 3531 STAND HIER `angehalten(query) && query.data === undefined`, und die Begründung
+          // daneben erklärte die zweite Bedingung ausdrücklich als Absicht: „auch ein
+          // zwischengespeichertes LEERES Ergebnis darf weiter ‚Nichts gefunden.' sagen, denn es wurde
+          // wirklich einmal erfolgreich geholt". Das war falsch, und zwar gemessen: Codex hat den Fall
+          // an 1.0.0-beta.1.110 als Fehler befundet (R-1613, Prioritätenzeile Q6d) — der Server HAT den
+          // Treffer, der Zwischenspeicher ist leer und veraltet, und die Fläche behauptete offline eine
+          // Tatsache über den Bestand, die sie nicht kennt. „Einmal erfolgreich geholt" trägt die
+          // Aussage „es gibt nichts" nur so lange, wie sie nachgeprüft werden KANN; offline kann sie
+          // das nicht. Damit gilt hier derselbe Grundsatz wie beim Zähler und beim Leerzweig: keine
+          // negative oder zeitabhängige Aussage ohne frische Datengrundlage.
+          //
+          // DIE BEDINGUNG LAUTET DESHALB „KEINE ZWISCHENGESPEICHERTEN TREFFER" — nie beantwortet
+          // (`undefined`) ODER leer beantwortet. Beides ist dieselbe Lage: die Fläche hat nichts zu
+          // zeigen und weiss nicht, ob es etwas zu zeigen gäbe.
+          //
+          // WAS AUSDRÜCKLICH NICHT GILT: `query.data === undefined` allein zu streichen. Dann fiele
+          // auch ein Zwischenspeicher MIT Zeilen in diese Lage, und die Zeilen verschwänden hinter
+          // einem Satz — genau der Rückschritt, den REGELN §7 verbietet (zuletzt erfolgreich geholte
+          // Werte bleiben SICHTBAR). Ein voller Speicher bleibt darum unberührt: die Zeilen stehen, der
+          // Zähler schweigt (`gesamt` unten), und mehr ist offline auch nicht zu sagen.
+          //
+          // ES BLEIBT BEI EINEM AUSDRUCK. Diese Zeile ist die einzige Stelle, an der „offline" für die
+          // Liste entsteht; die Liste wertet ihn nur aus (`BibliothekListe.tsx`, Zweig `pausiert`).
+          // Kein `navigator.onLine`, keine dritte Lage, kein zweiter Weg.
+          //
+          // NICHT VERWECHSELN mit dem `query.data === undefined` eine Zeile höher bei `fehler`: dort
+          // geht es um einen ERSTFEHLER ohne Bestand, also um ein Ereignis, das stattgefunden hat.
+          pausiert={angehalten(query) && (query.data === undefined || query.data.length === 0)}
           // Die Bauform steht in `AuffrischungHinweis` (EINE Stelle für Liste und Lesefläche); die
           // Lage fragt die Liste hier ab, damit sie ohne den Fall auch keinen leeren Platz hält.
           //

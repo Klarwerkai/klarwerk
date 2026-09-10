@@ -21,8 +21,10 @@ import { BIB_SEGMENTE, type BibSegment, type ZustandsTon, amListenende } from ".
 //   laden   → leere Spalte OHNE Text (ein „Lädt …" wäre der Erklärsatz, den diese Seite loswird)
 //   leer    → EIN Satz plus ein Knopf
 //   Fehler  → EIN Satz plus „Erneut versuchen"
-//   pausiert → wie laden: NICHTS. Offline wird gar nicht gerufen; ein Leerzustand behauptete dann
-//             ein Ergebnis, das niemand geholt hat (JOB 3099 · Q6c, s. den Zweig unten)
+//   pausiert → EIN Satz über die VERBINDUNG plus die Zusage, dass es von selbst weitergeht. Kein
+//             Leerzustand: offline wird gar nicht gerufen, und ein Leerzustand behauptete dann ein
+//             Ergebnis, das niemand geholt hat (JOB 3099 · Q6c). Kein Knopf: der Abruf ist
+//             angehalten, nicht gescheitert (JOB 3531 · Q6d, s. den Zweig unten)
 //   Zähler  → NUR nach erfolgreichem frischem Abruf eine Zahl; sonst „–". Ein Zähler aus altem
 //             Cache behauptete Aktualität, die niemand geprüft hat.
 
@@ -339,20 +341,41 @@ export function BibliothekListe({
           </div>
         ) : null}
         {/* ==========================================================================================
-            JOB 3099 · Q6c — HIER WIRD GESCHWIEGEN, WEIL NICHTS GEMESSEN WURDE.
+            JOB 3531 · Q6d — OFFLINE SAGT DIE LISTE, WAS MIT IHR IST. NICHTS ÜBER DEN BESTAND.
+            ==========================================================================================
+            HIER STAND BIS JOB 3531 NICHTS. Der Zweig `pausiert` war seit JOB 3099 aus dem
+            Leerzustand ausgenommen (zu Recht — s. unten), und an seine Stelle trat Schweigen: eine
+            leere Fläche, aus der niemand ablesen kann, ob gesucht wurde, ob es nichts gibt oder ob
+            die Verbindung fehlt. Der Kommentar an dieser Stelle nannte den fehlenden Satz als
+            RESTSCHULD und begründete sie mit einer Sperre auf `apps/web/src/i18n.ts` (belegt von
+            JOB 3079/3095). Diese Sperre ist weg, die Restschuld ist damit eingelöst und ihre
+            Begründung nicht mehr wahr; sie steht deshalb nicht daneben, sondern ist ersetzt.
+
+            WAS DER SATZ SAGEN DARF UND WAS NICHT: Er ist eine Aussage über die MASCHINE („ohne
+            Verbindung kann gerade nicht gesucht werden"), nie eine über den Bestand. Offline geht
+            gar kein Ruf hinaus — über Treffer weiss diese Fläche nichts, und genau das steht da.
+            Dazu die Zusage, dass es von selbst weitergeht (N-0036): der Abruf ist ANGEHALTEN, nicht
+            gescheitert. Deshalb entsteht hier auch KEIN Knopf — ein „Erneut versuchen" wäre eine
+            Handlung ohne Wirkung; der Wiederholungsknopf bleibt, wo er hingehört, im Zweig `fehler`
+            darüber. Der Suchtext bleibt unangetastet im Feld (`q` oben), denn die Suche läuft mit
+            dem Netz von selbst weiter. */}
+        {!laedt && !fehler && pausiert ? (
+          <div data-testid="bib-offline" className="px-4 py-3">
+            <p className="text-[12.5px] leading-relaxed text-muted">{t("lib.liste.offline")}</p>
+            <p className="mt-1 text-[12.5px] leading-relaxed text-muted">
+              {t("lib.liste.offlineWeiter")}
+            </p>
+          </div>
+        ) : null}
+        {/* ==========================================================================================
+            JOB 3099 · Q6c — DER LEERZUSTAND VERLANGT EINEN ERFOLGREICHEN ABRUF.
             ==========================================================================================
             Der Leerzustand ist eine TATSACHENAUSSAGE über den Bestand („gesucht, nichts gefunden")
             samt Angebot, den Eintrag neu zu erfassen. Er darf deshalb nur nach einem erfolgreichen
-            Abruf entstehen. Die dritte Lage `pausiert` (offline angehalten, noch keine Antwort) war
-            bis JOB 3099 keiner der beiden alten Zweige — und fiel damit in den Leerzweig.
-
-            WARUM HIER NICHTS STEHT UND NICHT EIN EIGENER SATZ: Der bessere Satz wäre „Ohne
-            Verbindung kann gerade nicht gesucht werden." Er braucht einen neuen Schlüssel in
-            `apps/web/src/i18n.ts`, und diese Datei ist von JOB 3079 und JOB 3095 belegt (Auftrag
-            §4/§10) — ein Wort ohne Übersetzung wäre die halbe Lieferung. Schweigen ist dagegen
-            immer erlaubt (dieselbe Begründung wie beim Zähler, `BibliothekFlaeche.tsx:464-466`) und
-            genau das, was diese Datei beim Laden schon tut (`:191`). Der eigene Satz bleibt als
-            benannte Restschuld offen, sobald `i18n.ts` frei ist. */}
+            Abruf entstehen. Die dritte Lage `pausiert` (offline angehalten) war bis JOB 3099 keiner
+            der beiden alten Zweige — und fiel damit in den Leerzweig. Sie hat seit JOB 3531 ihren
+            eigenen Zweig direkt darüber; `!pausiert` hält die beiden auseinander, damit nie beide
+            Aussagen zugleich dastehen. */}
         {!laedt && !fehler && !pausiert && eintraege.length === 0 ? (
           <div data-testid="bib-leer" className="px-4 py-3">
             <p className="text-[12.5px] leading-relaxed text-muted">
