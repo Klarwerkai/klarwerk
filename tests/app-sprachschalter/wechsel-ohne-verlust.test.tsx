@@ -115,13 +115,43 @@ const KO = {
   history: [],
 };
 
-/** Meldet die aktuelle Adresse in den Baum — so ist „kein Routenwechsel" wirklich gemessen. */
+// ================================================================================================
+// JOB 3559 · DIE ADRESSE HAT ZWEI TEILE, UND SIE SAGEN VERSCHIEDENES.
+// ================================================================================================
+//
+// BIS JOB 3559 stand hier EIN Knoten mit `${pathname}${search}` und ein Helfer `ort()`, der ihn als
+// eine Zeichenkette zurückgab. Damit war die falsche Prüfung nicht nur möglich, sondern naheliegend:
+// `expect(ort(c)).toBe("/bibliothek")` sieht wie eine Routenprüfung aus, verglich aber PFAD UND
+// ABFRAGETEIL. Der Fall wurde dadurch ZEITABHÄNGIG — die Bibliothek schreibt den Suchbegriff nach
+// `LIBRARY_SEARCH_DEBOUNCE_MS` (300 ms, `apps/web/src/lib/useDebouncedValue.ts:9`) in die Adresse
+// (`BibliothekFlaeche.tsx:620-633`), und er hielt nur, solange der Prüfkasten schneller war als die
+// Entprellung. JOB 3531 hat ihn dreifach gemessen kippen sehen, ohne diese Datei anzufassen.
+//
+// DESHALB ZWEI KNOTEN UND ZWEI HELFER, und ausdrücklich KEINE zusammengesetzte Zeichenkette
+// irgendwo in dieser Datei: `routenPfad()` gibt den Pfad, `adresse()` gibt beide Teile GETRENNT.
+// Eine kombinierte Zeichenkette gegen einen Pfad zu stellen ist danach nicht mehr formulierbar,
+// weil es die kombinierte Zeichenkette nicht mehr gibt — nicht bloß, weil niemand sie mehr benutzt.
+//
+// DIE ZWEI AUSSAGEN, die dahinterstehen:
+//   PFAD        — eine Zusage: der Sprachwechsel bewegt die Route NICHT.
+//   ABFRAGETEIL — eine andere Zusage (JOB 3104): der getippte Begriff wird verzögert nachgetragen.
+// Beide werden ab hier getrennt behauptet, und beide werden behauptet.
 function Ortsmelder(): JSX.Element {
   const ort = useLocation();
-  return createElement("span", {
-    "data-testid": "ort",
-    children: `${ort.pathname}${ort.search}`,
-  });
+  return createElement(
+    "span",
+    null,
+    createElement("span", {
+      key: "pfad",
+      "data-testid": "ort-pfad",
+      children: ort.pathname,
+    }),
+    createElement("span", {
+      key: "abfrage",
+      "data-testid": "ort-abfrage",
+      children: ort.search,
+    }),
+  );
 }
 
 let montage: Montage | null = null;
@@ -130,8 +160,47 @@ function neueQc(): QueryClient {
   return new QueryClient({ defaultOptions: { queries: { retry: false } } });
 }
 
-function ort(c: HTMLElement): string {
-  return c.querySelector('[data-testid="ort"]')?.textContent ?? "";
+/** DIE ROUTE, und nur sie. Ein `?` kann hier nicht vorkommen — der Wächter darunter sagt es laut. */
+function routenPfad(c: HTMLElement): string {
+  const wert = c.querySelector('[data-testid="ort-pfad"]')?.textContent ?? "";
+  if (wert.includes("?")) {
+    throw new Error(`Der Pfadknoten trägt einen Abfrageteil: „${wert}"`);
+  }
+  return wert;
+}
+
+/**
+ * DIE VOLLE ADRESSE — beide Teile, getrennt. Bewusst KEINE zusammengesetzte Zeichenkette: genau die
+ * war der Fehler, den JOB 3559 abstellt (s. den Block über `Ortsmelder`).
+ */
+function adresse(c: HTMLElement): { pfad: string; abfrage: string } {
+  return {
+    pfad: routenPfad(c),
+    abfrage: c.querySelector('[data-testid="ort-abfrage"]')?.textContent ?? "",
+  };
+}
+
+/**
+ * Warten auf ein BEOBACHTBARES Ereignis, nicht auf eine Uhr: die Adresse trägt den Abfrageteil.
+ *
+ * `ABBRUCH_MS` ist eine ABBRUCHSCHWELLE, keine Messgröße — der Fall behauptet nicht, dass es
+ * schneller geht, sondern nur, dass es überhaupt geschieht. Ein `setTimeout` über die Entprellzeit
+ * wäre die umgekehrte, unehrliche Bauweise: sie wäre auf einem langsamen Kasten wieder ein Wettlauf.
+ * Damit hängt kein Fall dieser Datei mehr an der Geschwindigkeit des Prüfkastens.
+ */
+async function warteBisAdresseTraegt(c: HTMLElement, abfrage: string): Promise<void> {
+  const ABBRUCH_MS = 5000;
+  const start = Date.now();
+  while (adresse(c).abfrage !== abfrage) {
+    if (Date.now() - start > ABBRUCH_MS) {
+      throw new Error(
+        `Die Adresse trägt „${abfrage}" nicht; ihr Abfrageteil lautet „${adresse(c).abfrage}"`,
+      );
+    }
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 10));
+    });
+  }
 }
 
 /** Text wie ein Mensch setzen: nativer Value-Setter + input-Event (React-onChange). */
@@ -244,7 +313,7 @@ describe("JOB 3323 B · /erfassen — der ungesicherte Entwurf überlebt den Wec
     ).toBe(240);
 
     // 3. KEIN ROUTENWECHSEL.
-    expect(ort(c)).toBe("/erfassen");
+    expect(routenPfad(c)).toBe("/erfassen");
 
     // 4. Und zurück auf Deutsch, mitten in derselben Szene — alles drei steht immer noch.
     await wechsleAuf(c, "de");
@@ -257,7 +326,7 @@ describe("JOB 3323 B · /erfassen — der ungesicherte Entwurf überlebt den Wec
     );
     expect(schreibflaecheVorher?.textContent).toContain(RUMPF);
     expect((scrollflaeche as HTMLElement).scrollTop).toBe(240);
-    expect(ort(c)).toBe("/erfassen");
+    expect(routenPfad(c)).toBe("/erfassen");
   });
 });
 
@@ -330,7 +399,7 @@ describe("JOB 3323 B/C · /validierung — geöffnete Prüfung bleibt offen, der
     expect(c.querySelector("main")?.textContent).toContain("PROBE-AUSSAGE-A");
 
     // 4. Keine Route hat sich bewegt.
-    expect(ort(c)).toBe("/validierung");
+    expect(routenPfad(c)).toBe("/validierung");
   });
 });
 
@@ -353,7 +422,43 @@ describe("JOB 3323 B · /bibliothek — der getippte Filter bleibt stehen", () =
     await wechsleAuf(c, "de");
     expect(c.querySelector('[data-testid="bib-suche"]')).toBe(feld);
     expect(feld?.value).toBe("Halterung");
-    expect(ort(c)).toBe("/bibliothek");
+    // Die ROUTE, nicht die ganze Adresse: ob die entprellte Fortschreibung schon angekommen ist,
+    // hat mit der Zusage dieses Falles nichts zu tun (JOB 3559). Sie steht im Fall darunter.
+    expect(routenPfad(c)).toBe("/bibliothek");
+  });
+
+  // ==============================================================================================
+  // JOB 3559 · DIE ZUGESAGTE FORTSCHREIBUNG WIRD POSITIV GESICHERT — und deshalb darf gewartet
+  // werden, statt gehofft.
+  // ==============================================================================================
+  // Der Fall darüber sagt, was der Sprachwechsel NICHT tut. Dieser sagt, was die Bibliothek TUT:
+  // sie trägt den getippten Begriff nach der Entprellung in die Adresse — und zwar OHNE dabei die
+  // Route zu bewegen und ohne das Feld neu zu montieren. Vor JOB 3559 war diese Zusage nirgends
+  // gesichert; sie wurde nur stillschweigend vorausgesetzt und dabei sogar falsch herum geprüft.
+  it("nach der Entprellung: die Route steht still UND die Adresse trägt den Begriff", async () => {
+    montage = await montiere(
+      "/bibliothek",
+      createElement("div", null, createElement(Library), createElement(Ortsmelder)),
+      neueQc(),
+    );
+    const c = montage.container;
+    const feld = c.querySelector<HTMLInputElement>('[data-testid="bib-suche"]');
+    expect(feld, "Suchfeld der Bibliothek fehlt").toBeTruthy();
+    await tippe(feld as HTMLInputElement, "Halterung");
+
+    await wechsleAuf(c, "en");
+    await wechsleAuf(c, "de");
+
+    // Absichtlich ÜBER die Entprellzeit hinaus — und trotzdem grün.
+    await warteBisAdresseTraegt(c, "?q=Halterung");
+
+    // Die Route hat sich nicht bewegt …
+    expect(routenPfad(c)).toBe("/bibliothek");
+    // … und die zugesagte Fortschreibung ist wirklich angekommen (JOB 3104).
+    expect(adresse(c)).toEqual({ pfad: "/bibliothek", abfrage: "?q=Halterung" });
+    // Knotenidentität und Feldwert bleiben dabei unangetastet — auch über das Warten hinweg.
+    expect(c.querySelector('[data-testid="bib-suche"]')).toBe(feld);
+    expect(feld?.value).toBe("Halterung");
   });
 });
 
