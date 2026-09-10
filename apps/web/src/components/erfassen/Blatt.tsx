@@ -17,6 +17,7 @@ import { useSession } from "../../app/AuthContext";
 import { ImageDescribeProvider } from "../../app/ImageDescribeContext";
 import { useNavGuard, useUnloadGuard } from "../../app/NavGuardContext";
 import { useToast } from "../../app/ToastContext";
+import { useLiveKnowledgeCheck } from "../../hooks/useLiveKnowledgeCheck";
 import {
   applyBodyAssist,
   applySpellingAssistPreservingHtml,
@@ -71,7 +72,6 @@ import { HelpTip } from "../HelpTip";
 import { RichTextEditor } from "../RichTextEditor";
 import { RoleLink } from "../RoleLink";
 import { LiveReactionZone } from "../capture/intake/LiveReactionZone";
-import { useLiveKnowledgeCheck } from "../capture/intake/useLiveKnowledgeCheck";
 import { Menue, MenueEintrag, MenueFlaeche, MenueTrenner } from "./Menue";
 import {
   SymbolBild,
@@ -540,7 +540,17 @@ export function Blatt({
 
   // Die stille Live-Reaktion (§5): sie hört auf den Klartext des Blattes, nicht auf ein zweites Feld.
   const liveText = useMemo(() => bodyTextForAssist(bodyHtml), [bodyHtml]);
-  const verdict = useLiveKnowledgeCheck(liveText);
+  const { verdict, checkStatus } = useLiveKnowledgeCheck(liveText);
+  // JOB 3427: Der bisherige pending-Text behauptet zusätzlich „nichts Ähnliches gefunden“.
+  // Das folgt NICHT aus pending. Hier nur die belegte Aussage über die Konfliktprüfung.
+  const liveAusfallSatz =
+    checkStatus === "pending"
+      ? {
+          de: "Auf Widerspruch noch nicht geprüft.",
+          en: "Conflict check not yet run.",
+          nl: "Nog niet op tegenstrijdigheid gecontroleerd.",
+        }[toReasonerLocale(i18n.language)]
+      : t("intake.live.unavailable");
 
   // Die Bereiche kommen aus dem BESTAND, nicht aus einer erfundenen Liste: was es im Haus gibt,
   // steht zur Wahl. Fehlt der Bestand noch, sagt das Menü das (Zustandsmodell §9), statt eine
@@ -2356,19 +2366,14 @@ export function Blatt({
                         {quellenVorschlag}
                       </dd>
                     </div>
-                    {/* Und die LEISE Hälfte der Live-Prüfung: `pending` (nicht geprüft, z. B. ohne
-                        Modell) und `unavailable` (Prüfung nicht erreichbar) bekommen keinen Chip auf
-                        der Fläche, verschwinden aber auch nicht. Wer wissen will, woran er ist,
-                        findet es hier — mit den Worten der bestehenden Live-Zone, nicht mit neuen. */}
-                    {verdict.status === "pending" || verdict.status === "unavailable" ? (
+                    {/* Dieselbe Auskunft wie auf dem Blatt, auch in der Statusübersicht. */}
+                    {checkStatus === "pending" || checkStatus === "failed" ? (
                       <div>
                         <dt className="text-[12px] text-muted">
                           {t("erfassen.status.livePruefung")}
                         </dt>
                         <dd data-testid="blatt-status-livepruefung" className="mt-0.5 text-text">
-                          {verdict.status === "pending"
-                            ? t("intake.live.pending")
-                            : t("intake.live.unavailable")}
+                          {liveAusfallSatz}
                         </dd>
                       </div>
                     ) : null}
@@ -2712,18 +2717,13 @@ export function Blatt({
               seit JOB 3045 die FUNDORTZEILE (Kategorie und Zustand des getroffenen Objekts) samt
               ihrer null-Regeln. Sie hier nachzubauen hiesse, diese Arbeit wegzuwerfen und eine
               zweite Wahrheit über denselben Befund zu schreiben. */}
-          {/* JOB 3062 R6 (bens Befund 4): „DAS IST NEU" FEHLTE — und das war ein echter Verlust.
-              Auftrag §5 nennt DREI Fälle für den Chip: „Ähnliches existiert schon", „könnte
-              widersprechen", „Das ist neu". R5 kannte nur die ersten beiden; die Auskunft, dass die
-              Prüfung wirklich lief und NICHTS fand, kam nirgends mehr an. Sie ist die wertvollste
-              der drei — sie ist der Grund, überhaupt weiterzuschreiben.
-
-              STILL BLEIBEN NUR `idle` UND `checking` — „hört zu"/„prüft" sind genau das Geplapper,
-              das §5 von der Fläche nimmt. Und `pending`/`unavailable` bekommen KEINEN Chip, sondern
-              eine Zeile im Menü … → „Status": sie sind Aussagen über die PRÜFUNG, nicht über den
-              Text, und ohne Modell wäre `pending` der Dauerzustand — ein Chip, der immer da steht,
-              ist wieder Text über Text. Was sie nie werden dürfen, ist „neu"; genau das hält
-              `mapKnowledgeCheck` fest, und daran ändert diese Fläche nichts. */}
+          {/* JOB 3427: Der Prüfstatus steht vor dem Treffer. Deterministische Ähnlichkeit bleibt
+              auch ohne Konflikturteil sichtbar; idle/checking bleiben still. */}
+          {checkStatus === "pending" || checkStatus === "failed" ? (
+            <output data-testid="blatt-live-ausfall" className="block text-[12px] text-muted">
+              {liveAusfallSatz}
+            </output>
+          ) : null}
           {verdict.status === "new" ||
           verdict.status === "similar" ||
           verdict.status === "conflict" ? (
