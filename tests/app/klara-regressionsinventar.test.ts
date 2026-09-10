@@ -718,6 +718,24 @@ const INVENTAR: readonly string[] = [
   // Flaeche mit, und die Palette-Achse soll genau diese Leser sichtbar machen. K2 hat die Datei
   // gemeldet, das Inventar nimmt sie nicht still auf.
   "tests/demo-firmen-ci-server/branding-speicher.test.ts",
+  // JOB 3512 (10.09.2026) DEMO-FIRMEN-CI VERBRAUCHER: die Firmen-CI in Klara/Word und in der
+  // Chrome-Leiste. ZWEI der drei Faelle des Auftrags stehen hier, und der dritte AUSDRUECKLICH
+  // NICHT — das ist gemessen, nicht vergessen:
+  //   · `word-marke.test.ts` laedt das vollstaendige Aufgabenfenster, `marke-quelle.test.ts` liest
+  //     es als Drift-Waechter ueber die Bauform. Beide kommen ueber die Inhaltsachse `taskpane`
+  //     herein; „klara" steht in keinem der Pfade — der Verzeichnisname war im Auftrag (§4)
+  //     abschliessend vorgegeben —, K5 bleibt deshalb unveraendert.
+  //   · `panel-marke.test.ts` (die gemountete Chrome-Leiste) wird von KEINER der sechs Achsen
+  //     gefunden: er nennt weder das Aufgabenfenster noch das Word-Manifest noch die Token-Datei,
+  //     und die Chrome-Erweiterung erreichen die Achsen sonst nur ueber den Pfadnamen `klara`
+  //     (`tests/klara-browser/`), den dieses Verzeichnis nicht traegt. Ihn hier einzutragen machte
+  //     K6 rot („im Inventar, aber von keiner Achse gedeckt") — und das zu Recht: dieses Inventar
+  //     pinnt die ABGELEITETE Menge, es ist keine Wunschliste. Die Luecke wird damit benannt statt
+  //     umgangen; geschlossen wuerde sie durch eine Achse fuer die Erweiterung, und die ist ein
+  //     eigener Auftrag (`extensions/klara-browser` steht in keiner der sechs Achsen).
+  // K2 hat die beiden gemeldet, das Inventar nimmt sie nicht still auf.
+  "tests/demo-firmen-ci-verbraucher/marke-quelle.test.ts",
+  "tests/demo-firmen-ci-verbraucher/word-marke.test.ts",
 ];
 
 // ------------------------------------------------------------------------------------------------

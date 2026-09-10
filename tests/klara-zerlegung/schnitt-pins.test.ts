@@ -326,6 +326,22 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // Panel-Fixture importiert sie nicht. A2 hat sie gemeldet, das Verzeichnis nimmt sie nicht
   // still auf.
   "tests/ki-fragment-sichtbar/flaeche-klara-panel.test.ts": "pfad",
+  // JOB 3512 DEMO-FIRMEN-CI VERBRAUCHER (10.09.2026): die Firmen-CI in Klara/Word. Zwei echte
+  // Mitfahrer, mit zwei verschiedenen Griffen — und beide GEMESSEN, nicht gesetzt:
+  //   · `marke-quelle.test.ts` nennt `apps/web/public/word-addin/taskpane.html` als Literal
+  //     (Griff `pfad`) und schneidet daraus den Block KW-MARKE. Der Griff `marken` sieht das
+  //     NICHT, weil der Markenname zusammengesetzt wird (`${marke}-START`) und sein Muster ein
+  //     Literal `KW-…-START` verlangt — eine bekannte Textgrenze des Sammlers, keine zweite
+  //     Wahrheit: `pfad` hält die Datei ohnehin fest.
+  //   · `word-marke.test.ts` baut den Pfad aus Segmenten (`join(…, "word-addin", "taskpane.html")`)
+  //     und lädt Markup und Inline-Skript vollständig — Griff `zusammengesetzt`. Wandert das
+  //     Skript bei einem Schnitt in eine eigene Datei, lädt dieser Prüfstand ein Fenster ohne
+  //     Verhalten und wäre still grün; genau dagegen steht dieser Eintrag.
+  // Der dritte Fall des Auftrags (`panel-marke.test.ts`, die Chrome-Leiste) greift `taskpane.html`
+  // gar nicht an und steht deshalb bewusst NICHT hier.
+  // A2 hat beide gemeldet, das Verzeichnis nimmt sie nicht still auf.
+  "tests/demo-firmen-ci-verbraucher/marke-quelle.test.ts": "pfad",
+  "tests/demo-firmen-ci-verbraucher/word-marke.test.ts": "zusammengesetzt",
 };
 
 // ------------------------------------------------------------------------------------------------

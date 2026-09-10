@@ -111,11 +111,31 @@ header {
   padding: 14px 16px 10px;
   flex: 0 0 auto;
 }
+/* JOB 3512 · die linke Gruppe der Kopfzeile: Wortmarke und — nur bei aktiver Firmen-CI — das
+   Firmenlogo daneben. Dieselben Werte wie `#kw-kopf-links` in Klara/Word (taskpane.html Z.102),
+   damit kein dritter Kopfaufbau entsteht. Keine Farbe: die Gruppe ordnet nur an. */
+.kopf-links {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
 .brand {
   font-size: 15px;
   font-weight: 650;
   letter-spacing: 0.2px;
   color: var(--text);
+}
+/* Das Firmenlogo. 18px ist die Höhe der Strichsymbole in Klara/Word — die Kopfzeile behält damit
+   ihre Maße (D4 in tests/klara-browser/seitenleiste.test.ts misst sie). Keine eigene Farbregel:
+   das Bild bringt seine Farben mit, der Grund bleibt Papier.
+   KEIN `display` in dieser Regel: `[hidden]` oben trägt zwar `!important` und gewönne, aber die
+   Verbergung soll nicht an einem `!important` hängen — als Flex-Kind der Gruppe wird das Bild
+   ohnehin blockartig gesetzt. Dieselbe Entscheidung wie bei `#kw-marke-logo` in Klara/Word, wo
+   `.hidden` kein `!important` trägt und ein `display` hier die Verbergung geschlagen hätte. */
+#marke-logo {
+  height: 18px;
+  width: auto;
 }
 .sprache {
   display: flex;

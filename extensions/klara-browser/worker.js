@@ -1110,10 +1110,66 @@
     await put(work);
     return view(state, "updated");
   }
+  // ================================================================================================
+  // KW-MARKE-START — DER MARKENSTAND DER INSTANZ (JOB 3512).
+  // ================================================================================================
+  //
+  // WARUM DIESER ABRUF HIER STEHT UND NICHT IN DER LEISTE: `panel.js` hat baulich KEINEN Netzzugang
+  // — `tests/klara-browser/package.test.ts` verbietet dort `fetch(`, und das ist der Grund, warum
+  // eine geöffnete Seitenleiste keine Adresse und keinen Kopf aus Seitendaten bilden kann. Der
+  // Markenstand nimmt deshalb denselben Weg wie alles andere: Nachricht an den Worker, Abruf hier.
+  //
+  // WARUM ER NICHT DURCH `api()` LÄUFT: jene Tabelle ist der ANGEMELDETE Weg — sie reicht das
+  // Sitzungstoken mit und übersetzt jeden Fehlschlag in einen Vorgangszustand der Übernahme. Beides
+  // wäre hier falsch. `GET /api/branding` ist die öffentliche Darstellungsauskunft der Instanz
+  // (JOB 3510: „die drei Verbraucher färben ihre Oberfläche, bevor irgendjemand angemeldet ist");
+  // sie braucht kein Token, bekommt deshalb ausdrücklich `credentials: "omit"` UND keinen
+  // `Authorization`-Kopf, und ein Fehlschlag ist hier kein Zustand, sondern schlicht „nicht
+  // abrufbar" — die Leiste behält dann den zuletzt bekannten Look.
+  //
+  // KEIN ZWEITER HOST: dieselbe Konstante `HOST` wie jeder andere Abruf. Die CSP der Erweiterung
+  // (`connect-src https://app.klarwerk.ai`) deckt genau ihn und sonst nichts.
+  //
+  // DER TYP WOHNT HIER UND NICHT IN `types.d.ts`: jene Datei steht nicht in den Zielpfaden dieses
+  // Auftrags — dieselbe Ortsangabe wie `Sicht` in `panel.js` (JOB 3524). Kommt `types.d.ts` einmal
+  // zu einem Auftrag, zieht `MarkeAntwort` dorthin und dieser Typ fällt ersatzlos weg.
+  /** @typedef {{ok: boolean, stand?: unknown}} MarkeAntwort */
+  /** @returns {Promise<MarkeAntwort>} */
+  async function markeLesen() {
+    try {
+      const response = await fetch(`${HOST}/api/branding`, {
+        method: "GET",
+        credentials: "omit",
+        redirect: "error",
+        cache: "no-store",
+        signal: AbortSignal.timeout(20000),
+      });
+      if (!response.ok) return { ok: false };
+      return { ok: true, stand: await response.json() };
+    } catch {
+      // Absicht: kein Zustand, keine Meldung, kein Zurücksetzen. Die Leiste liest `ok: false` als
+      // „nichts Neues erfahren" und lässt stehen, was steht.
+      return { ok: false };
+    }
+  }
+  // KW-MARKE-END
   chrome.runtime.onMessage.addListener((message, sender, respond) => {
     if (sender.id !== chrome.runtime.id || sender.url !== chrome.runtime.getURL("panel.html")) {
       respond({ status: "forbidden_sender" });
       return false;
+    }
+    // JOB 3512: der Markenstand geht bewusst NICHT durch `dispatch` — der beantwortet Fragen zur
+    // Übernahme und gibt eine `View` zurück. Die Marke ist keine Übernahme: sie kennt keinen
+    // Vorgang, keine Auswahl und keinen Zustand, und ein Fehlschlag darf die Leiste nicht in einen
+    // Übernahmezustand versetzen. Eigene Frage, eigene Antwort, eine Zeile.
+    if (message && typeof message === "object" && message.type === "branding") {
+      // `respond` ist im Vertrag auf `View` typisiert (types.d.ts, nicht Zielpfad). Die Marke IST
+      // keine View — deshalb hier die eine benannte Umtypung statt einer erfundenen View-Form.
+      const antworte = /** @type {(antwort: MarkeAntwort) => void} */ (
+        /** @type {unknown} */ (respond)
+      );
+      markeLesen().then(antworte, () => antworte({ ok: false }));
+      return true;
     }
     dispatch(message).then(respond, () => respond({ status: "storage_error" }));
     return true;

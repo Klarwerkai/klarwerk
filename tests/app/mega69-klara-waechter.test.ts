@@ -2026,7 +2026,90 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // tests/design/zielbild-k2-kein-erklaertext (T1/T2/T4), tests/design/k2-funktionsinventar
     // (I3–I6 am neuen Ort), tests/design/zielbild-k1-einstellungen, Waechterlauf (Inventar,
     // Inhalts-Pin, Aufrufer, Theme, Frische, Tor).
-    const PIN = "c1ffc7958e403df1e7c413b4757e653fff5cfc835a9017d79bdf6b3840052f78";
+    //
+    // JOB 3512 · DEMO-FIRMEN-CI VERBRAUCHER (10.09.2026) — AUSLIEFERUNGSFOLGEN GEPRUEFT, BEVOR DER
+    // PIN WANDERTE. VORHERHASH taskpane.html:
+    // `c1ffc7958e403df1e7c413b4757e653fff5cfc835a9017d79bdf6b3840052f78`.
+    //
+    // ANLASS: Pedis Freigabe vom 10.09. („Setz es um", gespraech/ci-advisor/AUFTRAGSGRUNDLAGE.md).
+    // Eine zentrale, vom Administrator umschaltbare Markenwahl wirkt in KLARWERK (JOB 3511), in
+    // Klara/Word (hier) und in der Chrome-Erweiterung. Fuer Freitag ausdruecklich NUR Logo und
+    // Markenfarben — kein Layout- und kein Funktionsumbau.
+    //
+    // GEAENDERT WURDE IM FENSTER GENAU VIERERLEI:
+    //   · MARKUP: EIN Element kommt dazu — `<img id="kw-marke-logo" class="hidden" alt="">` in der
+    //     bestehenden Gruppe `#kw-kopf-links`, NEBEN der Wortmarke „Klara" und nicht an ihrer
+    //     Stelle. Es startet verborgen und OHNE `src`; ein leeres `src` waere ein Abruf auf die
+    //     eigene Adresse. Keine Zeile des uebrigen Kopfes ist beruehrt.
+    //   · STIL: eine neue Regel `#kw-marke-logo` (display/height/width, KEINE Farbe) und eine neue
+    //     `:root`-Variable `--shadow-primary`. Der Wert dieser Variablen ist ZEICHENGLEICH der, der
+    //     bis hierher direkt in `button.primary` stand (`0 2px 10px -2px rgba(232, 99, 10, 0.45)`);
+    //     die Regel dort liest ihn jetzt ueber `var(--shadow-primary)`. Ohne aktive Firmen-CI ist
+    //     der berechnete Wert also derselbe wie zuvor — mit ihr wandert der Knopfschein in die
+    //     Markenfarbe mit, statt als zurueckgebliebenes Orange unter einem blauen Knopf zu stehen.
+    //     Dieselbe Bauform und derselbe Name wie in `extensions/klara-browser/panel.css:67`.
+    //   · WOERTERBUCH: KEIN neuer Schluessel, in keiner Sprache. Der Alternativtext des Logos
+    //     („Advisor ICT solutions logo") ist eine Eigenschaft der Originaldatei, keine Uebersetzung;
+    //     er steht als Zuordnung JE PROFIL im Skript (`KW_MARKE_ALT`), wie im Web
+    //     (`apps/web/src/lib/brandTheme.ts`, BRAND_LOGO_ALT).
+    //   · SKRIPT: ein Schnittmarkenpaar `KW-MARKE-START/END` mit sieben Funktionen
+    //     (`kwMarkeKanaele`, `kwMarkeAbgetoent`, `kwMarkeGueltig`, `kwMarkeAnwenden`,
+    //     `kwMarkeKennung`, `kwMarkeUebernehmen`, `kwMarkeHolen`) und ihrer Verdrahtung am
+    //     Skriptende. Die Farben
+    //     werden NICHT als zweiter Farbsatz hinterlegt, sondern zur Laufzeit auf die WURZEL
+    //     geschrieben (`--brand`, `--brand-deep`, `--brand-text`, `--ink`, `--shadow-primary`).
+    //     Ausschalten nimmt genau diese fuenf wieder weg — danach steht wieder exakt der Wert aus
+    //     `:root`, und es bleibt keine Markenregel stehen, die noch matchen koennte.
+    //     `--pos-*` und `--warn-*` werden nie angefasst: Bedeutung ist keine Marke.
+    //
+    // UND — die eigentliche Auslieferungsfolge — EIN NEUES ABRUFZIEL:
+    //   `GET /api/branding` (JOB 3510, services/app/src/routes/branding-routes.ts:49).
+    // Es ist SAME-ORIGIN auf derselben App-Domain, auf der dieses Aufgabenfenster liegt. KEIN
+    // Manifest, KEIN neuer Fremd-Ursprung, KEINE geaenderte CSP (`connect-src 'self'` deckt es),
+    // KEIN neues Recht — der Leseweg verlangt bewusst gar keines, weil sich die Flaeche faerben
+    // muss, bevor jemand angemeldet ist. KEINE Nutzlast (GET ohne Koerper, ohne Query). Die
+    // ausfuehrliche Antwort auf „CSP? Recht? Manifest?" steht bei `BEKANNTE_ABRUFZIELE` in
+    // `tests/app/mega69-klara-merkmale.test.ts` (14 → 15).
+    //
+    // NEU IST AUSSERDEM EINE WIEDERKEHRENDE FRIST (60 s). Das ist bewusst und benannt: bis hierher
+    // hing jeder wiederkehrende Abruf dieses Fensters an einem Ereignis. Genau der Bildschirm, um
+    // den es am Freitag geht, erzeugt aber keines — das Aufgabenfenster steht waehrend der
+    // Vorfuehrung offen daneben, niemand klickt hinein. Die Frist ruft DIESELBE gedrosselte
+    // Funktion wie Sichtbarkeit und Fokus; die Zusage „hoechstens ein Abruf je Minute" gilt ueber
+    // alle drei Wege ZUSAMMEN, nicht je Weg. Gemessen in
+    // `tests/demo-firmen-ci-verbraucher/word-marke.test.ts` W7.
+    //
+    // ES IST AUSDRUECKLICH KEIN `setInterval`, sondern eine nach jedem Blick NEU gestellte
+    // `setTimeout`-Frist — dieselbe Bauform wie der Anmeldepoll. Runde 1 dieses Jobs hatte ein
+    // Intervall und wurde dafuer an ZWEI Stellen rot: `tests/app/word-addin.test.ts` haelt fest,
+    // dass das Wort in dieser Datei nicht vorkommt, und `tests/app/ka3-fokusverhalten.test.tsx`
+    // misst zur Laufzeit, dass es nie gerufen wird. Die Hauszusage lautet: dieses Fenster haelt
+    // Fristen, keinen Takt — es gibt immer genau einen offenen Abruf, nie zwei ueberlappende.
+    //
+    // DER ASK-WEG UND JEDER ANDERE BESTANDSWEG BLEIBEN UNBERUEHRT: dieselbe Nutzlast, dieselben
+    // Endpunkte, dieselben Rechte. Die Marke kennt keinen Vorgang und keinen Zustand der Flaeche;
+    // ein Abruffehler leert nichts und meldet nichts (LEHREN §7), das Fenster bleibt voll
+    // bedienbar. Ein aelterer Server ohne die Route antwortet 404 → es bleibt beim normalen Look.
+    // Ein installiertes Add-in braucht deshalb KEIN erneutes Sideload; es holt die Datei beim
+    // naechsten Oeffnen frisch vom Server.
+    // RUNDE 2 — WAS SICH GEGENUEBER RUNDE 1 AM SKRIPT GEAENDERT HAT (BENs Befund):
+    // `kwMarkeUebernehmen` verglich Staende am ZAEHLER und verwarf `version <= meine`. Das war
+    // falsch: `version` gilt laut Vertrag (JOB 3510) nur INNERHALB eines Prozesslaufs — nach jedem
+    // Neustart und jedem Deploy faengt sie wieder bei 0 an. Ein offenes Aufgabenfenster, das vorher
+    // `version 9` gesehen hatte, verwarf danach JEDE weitere Schaltung und blieb blau, waehrend der
+    // Server laengst „aus" sagte. Verglichen wird jetzt am AUSSEHEN (`kwMarkeKennung`: Profil, beide
+    // Markenfarben, Logoadresse) — das kann auch den Fall nicht verwechseln, in dem derselbe
+    // Zaehlerstand nach einem Neustart etwas ANDERES bezeichnet. `version` wird weiterhin gelesen,
+    // aber nur noch als Vertragsmerkmal: eine Antwort ohne numerische `version` ist keine Auskunft
+    // ueber die Marke und wird verworfen. Gegen ueberholende Antworten steht unveraendert
+    // `kwMarkeLaeuft` (immer nur EIN offener Abruf) — gemessen in `word-marke.test.ts` W8, der
+    // Neustartfall in W11/W12, die Ruhe des Minutenblicks in W13.
+    //
+    // NICHT GEMESSEN und hier ausdruecklich gesagt: echtes Word. Gemessen wurde in jsdom am
+    // vollstaendig geladenen Aufgabenfenster.
+    // GEMESSEN: tests/demo-firmen-ci-verbraucher (drei Dateien), Waechterlauf (Inventar,
+    // Inhalts-Pin, Aufrufer, Theme, Frische, Tor), mega43-Palettensammler, mega69-Merkmalsvertrag.
+    const PIN = "8e3950aa27c94aa013a3556db263f08d8baf72644ba2495c115f24c4aeaeee78";
     const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
     expect(
       ist,

@@ -13,7 +13,12 @@
       <!-- JOB 3278 · CHR-01: die Kopfzeile wie Klara in Word — links die Wortmarke, rechts die eine
            Bedienung dieser Fläche. Kein Untertitel, kein Satz. -->
       <header>
-        <span class="brand">Klara</span>
+        <!-- JOB 3512 · KW-MARKE: bei aktiver Firmen-CI tritt das Firmenlogo NEBEN die Wortmarke,
+             nicht an ihre Stelle (Pedi: „Produktidentität erkennbar halten"). Die Gruppe hält
+             beide zusammen, damit die Kopfzeile ihre Aufteilung links|rechts behält — dieselbe
+             Bauform wie `#kw-kopf-links` in Klara/Word. Das Bild startet verborgen und OHNE `src`;
+             ein leeres `src` wäre ein Abruf auf die eigene Seite. Beides setzt `panel.js`. -->
+        <span class="kopf-links"><span class="brand">Klara</span><img id="marke-logo" alt="" hidden /></span>
         <label class="sprache"><span data-i18n="language"></span><select id="language"><option value="de">Deutsch</option><option value="en">English</option></select></label>
       </header>
       <p class="badge" data-i18n="unreviewed"></p>

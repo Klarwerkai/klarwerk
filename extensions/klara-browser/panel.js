@@ -734,5 +734,273 @@
     }
     render(current);
   })();
-  void send({ type: "state" });
+  // JOB 3512: der Aufbau bekommt einen Namen, weil der Markenabruf sich HINTER ihn stellt (Ende
+  // dieser Datei). Sonst waere die Markenfrage die ERSTE Nachricht der Leiste — und die eine Frage,
+  // mit der sie ueberhaupt aufbaut, die zweite.
+  const aufbau = send({ type: "state" });
+  // ================================================================================================
+  // KW-MARKE-START — DIE FIRMEN-CI DER VORFÜHRUNG (JOB 3512).
+  // ================================================================================================
+  //
+  // WOZU: Schaltet der Administrator in KLARWERK das Demo-Erscheinungsbild ein, trägt diese Leiste
+  // dasselbe Logo und dieselben Hausfarben — ohne zweiten Schalter und ohne Neuinstallation.
+  //
+  // DIE EINE QUELLE IST DER SERVER, und sie ist DIESELBE wie im Web und in Klara/Word:
+  // `GET /api/branding` (JOB 3510). Hier steht KEINE gespeicherte Wahl, KEIN eigener Schalter und
+  // KEIN zweiter Farbsatz — die beiden belegten Werte kommen im Vertrag (`marke.farben`), alles
+  // Weitere ist daraus gerechnet, mit derselben Rechnung wie `apps/web/src/styles/marke.css`:
+  //   · `--brand`                       = die Markenfarbe selbst;
+  //   · `--brand-text` / `--brand-deep` = 0,8 × jeder Kanal (texttragend, AA auf Papier und Karte);
+  //   · `--ink`                         = die zweite belegte Farbe (Überschriften);
+  //   · `--shadow-primary`              = der bestehende Knopfschein in der Markenfarbe.
+  // NICHT angefasst werden `--pos-*`, `--warn-*` und `--crit-*`: die vier ehrlichen Zustände der
+  // Leiste tragen Bedeutung, keine Marke.
+  //
+  // WARUM AN DER WURZEL UND NICHT ÜBER NEUE REGELN IN `panel.css`: jede Regel dort greift über
+  // `var(--…)`, und `tests/klara-browser/seitenleiste.test.ts` hält fest, dass Farbliterale
+  // ausschliesslich im `:root`-Block wohnen. Eine Überschreibung an der Wurzel wirkt deshalb genau
+  // dort, wo heute der Funke wirkt — und WEGNEHMEN stellt zeichengleich den vorherigen Look her,
+  // weil keine Markenregel zurückbleibt, die noch matchen könnte.
+  //
+  // DAS LOGO IST DIE MITGELIEFERTE DATEI. Der Vertrag nennt `marke.logo` — das ist die Adresse des
+  // SERVERS. Diese Erweiterung ist buildlos und CSP-eng; sie zeigt die byte-gleiche Kopie aus
+  // ihrem eigenen Paket (`marke/advisor/adv-logo.svg`). Keine Laufzeitabhängigkeit von einer
+  // fremden Herkunft, kein Webfont, kein externes Stylesheet, keine gelockerte CSP — und KEINE
+  // `web_accessible_resources`: die Datei liegt auf einer Erweiterungsseite und wird relativ
+  // geladen; sichtbar werden müsste sie nur für eine FREMDE Seite, und die geht sie nichts an.
+  //
+  // NUR DIE EIGENE OBERFLÄCHE: hier wird ausschliesslich `document.documentElement` dieser Leiste
+  // angefasst. Kein Skript und kein CSS geht in eine Seite Dritter.
+  const MARKE_ABSTAND_MS = 60_000;
+  /** Der Abtönungsfaktor der texttragenden Markentöne — 0.8, wie in `styles/marke.css`. */
+  const MARKE_ABTOENUNG = 0.8;
+  /** Die Deckung des Knopfscheins. Bestandswert; nur die Farbe wandert mit. */
+  const MARKE_SCHEIN = 0.45;
+  /** Die mitgelieferten Logodateien, JE PROFIL. Ein unbekanntes Profil bekommt kein Bild. */
+  const MARKE_LOGOS = { advisor: "marke/advisor/adv-logo.svg" };
+  /**
+   * Der Alternativtext JE PROFIL. Er steht hier und nicht in `i18n.js`: „Advisor ICT solutions
+   * logo" ist der Alternativtext der Originaldatei (gespraech/ci-advisor/AUFTRAGSGRUNDLAGE.md),
+   * also eine Eigenschaft des Bildes und keine Übersetzung.
+   */
+  const MARKE_ALT = { advisor: "Advisor ICT solutions logo" };
+  /** Genau die Stellen, die die Marke belegt. Ausschalten heisst: diese fünf wieder freigeben. */
+  const MARKE_TOKEN = ["--brand", "--brand-deep", "--brand-text", "--ink", "--shadow-primary"];
+  /** Das zuletzt AUFGETRAGENE Aussehen (Kennung, s. u.); `null` = es wurde noch nichts gesetzt.
+   * @type {string | null} */
+  let markeAussehen = null;
+  let markeLetzterAbruf = Number.NEGATIVE_INFINITY;
+  let markeLaeuft = false;
+
+  /** @param {unknown} hex @returns {number[] | null} */
+  function markeKanaele(hex) {
+    const treffer = /^#([0-9a-fA-F]{6})$/.exec(String(hex ?? "").trim());
+    if (!treffer?.[1]) return null;
+    const roh = treffer[1];
+    return [
+      Number.parseInt(roh.slice(0, 2), 16),
+      Number.parseInt(roh.slice(2, 4), 16),
+      Number.parseInt(roh.slice(4, 6), 16),
+    ];
+  }
+
+  /** @param {number[]} kanaele @param {number} faktor */
+  function markeAbgetoent(kanaele, faktor) {
+    return `#${kanaele
+      .map((k) =>
+        Math.min(255, Math.max(0, Math.round(k * faktor)))
+          .toString(16)
+          .padStart(2, "0"),
+      )
+      .join("")}`;
+  }
+
+  /**
+   * Trägt dieser Stand wirklich eine anzeigbare Marke?
+   *
+   * Der Server löst das schon auf (die Marke hängt an Profil UND Schalter) — die Leiste verlässt
+   * sich aber nicht darauf. Fehlt eine Voraussetzung oder ist ein Farbwert unlesbar, gilt „keine
+   * Firmen-CI" und nicht „Firmen-CI mit halben Werten".
+   * @param {Record<string, unknown> | null} stand
+   */
+  function markeGueltig(stand) {
+    if (!stand || stand.aktiv !== true || typeof stand.profil !== "string" || !stand.profil)
+      return false;
+    const marke = /** @type {Record<string, unknown> | null} */ (stand.marke ?? null);
+    if (!marke || typeof marke !== "object") return false;
+    const farben = /** @type {Record<string, unknown> | null} */ (marke.farben ?? null);
+    if (!farben || typeof farben !== "object") return false;
+    return Boolean(markeKanaele(farben.primaer) && markeKanaele(farben.schrift));
+  }
+
+  /** Den Stand auf die eigene Fläche schreiben — oder sie vollständig zurückgeben.
+   * @param {Record<string, unknown> | null} stand */
+  function markeAnwenden(stand) {
+    const wurzel = document.documentElement.style;
+    const bild = $("marke-logo");
+    if (!stand || !markeGueltig(stand)) {
+      for (const token of MARKE_TOKEN) wurzel.removeProperty(token);
+      bild.hidden = true;
+      // Kein `src = ""`: das wäre ein Abruf auf die eigene Adresse, kein leeres Bild.
+      bild.removeAttribute("src");
+      bild.setAttribute("alt", "");
+      return;
+    }
+    const profil = /** @type {string} */ (stand.profil);
+    const farben = /** @type {Record<string, unknown>} */ (
+      /** @type {Record<string, unknown>} */ (stand.marke).farben
+    );
+    const primaer = /** @type {number[]} */ (markeKanaele(farben.primaer));
+    const schrift = /** @type {number[]} */ (markeKanaele(farben.schrift));
+    const tief = markeAbgetoent(primaer, MARKE_ABTOENUNG);
+    wurzel.setProperty("--brand", markeAbgetoent(primaer, 1));
+    wurzel.setProperty("--brand-deep", tief);
+    wurzel.setProperty("--brand-text", tief);
+    wurzel.setProperty("--ink", markeAbgetoent(schrift, 1));
+    wurzel.setProperty(
+      "--shadow-primary",
+      `0 2px 10px -2px rgba(${primaer[0]}, ${primaer[1]}, ${primaer[2]}, ${MARKE_SCHEIN})`,
+    );
+    // Das Bild nur bei einem Profil, dessen Datei WIRKLICH mitgeliefert ist. Ein `src` auf eine
+    // nicht vorhandene Datei wäre ein kaputtes Bild neben der Wortmarke; die Farben stehen dann
+    // trotzdem, denn die kommen vollständig aus dem Vertrag.
+    const datei = Object.hasOwn(MARKE_LOGOS, profil)
+      ? MARKE_LOGOS[/** @type {"advisor"} */ (profil)]
+      : null;
+    if (!datei) {
+      bild.hidden = true;
+      bild.removeAttribute("src");
+      bild.setAttribute("alt", "");
+      return;
+    }
+    bild.setAttribute("src", datei);
+    bild.setAttribute("alt", MARKE_ALT[/** @type {"advisor"} */ (profil)]);
+    bild.hidden = false;
+  }
+
+  /**
+   * Was dieser Stand SICHTBAR trägt — die Kennung des Aussehens, nicht die des Zählers.
+   *
+   * Verglichen wird genau das, was `markeAnwenden` schreibt: Profil, die beiden Markenfarben und
+   * die Logoadresse. Zwei Stände mit derselben Kennung sehen zeichengleich aus.
+   * @param {Record<string, unknown> | null} stand
+   */
+  function markeKennung(stand) {
+    if (!markeGueltig(stand)) return "aus";
+    const marke = /** @type {Record<string, unknown>} */ (
+      /** @type {Record<string, unknown>} */ (stand).marke
+    );
+    const farben = /** @type {Record<string, unknown>} */ (marke.farben);
+    return [
+      /** @type {Record<string, unknown>} */ (stand).profil,
+      farben.primaer,
+      farben.schrift,
+      marke.logo,
+    ].join("|");
+  }
+
+  /**
+   * Einen eingetroffenen Stand prüfen und übernehmen — AM AUSSEHEN, NICHT AM ZÄHLER.
+   *
+   * FRÜHER STAND HIER „nur vorwärts": `version <= meine` wurde verworfen. Das war falsch, und zwar
+   * an der Stelle, an der es weh tut. `version` gilt laut Vertrag (JOB 3510, Rückgabe Runde 3) NUR
+   * INNERHALB EINES PROZESSLAUFS: die Wahl liegt im Speicher, nach einem Serverneustart beginnt der
+   * Zähler wieder bei 0. Eine offene Leiste, die vorher `version 9` gesehen hat, hätte danach JEDE
+   * weitere Schaltung verworfen — sie wäre blau geblieben, während der Server längst „aus" sagt.
+   * Der Vertrag schreibt darum ausdrücklich „auf Version UNGLEICH meiner prüfen, nicht auf größer
+   * als meine".
+   *
+   * Hier wird noch eine Stufe strenger verglichen, nämlich am AUSSEHEN: auch „ungleich" trägt nach
+   * einem Neustart nicht sicher, weil derselbe Zählerstand dann einen ANDEREN Stand bezeichnen kann
+   * (v2 vor dem Neustart „an", v2 danach „aus"). Die Kennung kann das nicht verwechseln — sie ist
+   * aus den angezeigten Werten selbst gebildet.
+   *
+   * Und das Überholen, gegen das der Zähler einmal antreten sollte? Dagegen steht `markeLaeuft`: es
+   * ist baulich immer nur EIN Abruf offen (gemessen in P9), also kann keine ältere Antwort eine
+   * neuere überholen. Der Zähler hat diesen Schutz nie geleistet, er hat nur den Neustartfall
+   * zerstört.
+   *
+   * `version` bleibt trotzdem gelesen — aber als VERTRAGSMERKMAL: eine Antwort ohne numerische
+   * `version` ist keine Auskunft über die Marke, sondern Unsinn auf der Leitung. Sie wird verworfen,
+   * und der zuletzt bekannte Look bleibt stehen (LEHREN §7).
+   * @param {unknown} roh
+   */
+  function markeUebernehmen(roh) {
+    if (!roh || typeof roh !== "object") return;
+    const stand = /** @type {Record<string, unknown>} */ (roh);
+    if (typeof stand.version !== "number") return;
+    const kennung = markeKennung(stand);
+    if (kennung === markeAussehen) return;
+    markeAussehen = kennung;
+    markeAnwenden(stand);
+  }
+
+  /**
+   * Einmal nachsehen. Gedrosselt über ALLE Anlässe zusammen, nie zwei Abrufe gleichzeitig.
+   *
+   * Fällt der Abruf aus, passiert NICHTS: der zuletzt bekannte Look bleibt stehen, es erscheint
+   * keine Meldung, und die Leiste bleibt voll bedienbar (LEHREN §7 — eine gescheiterte
+   * Hintergrund-Auffrischung leert nichts).
+   * @param {boolean} erzwingen
+   */
+  function markeHolen(erzwingen) {
+    if (markeLaeuft) return;
+    const jetzt = Date.now();
+    if (!erzwingen && jetzt - markeLetzterAbruf < MARKE_ABSTAND_MS) return;
+    markeLaeuft = true;
+    markeLetzterAbruf = jetzt;
+    // Der Worker holt; die Leiste hat baulich keinen Netzzugang (package.test.ts).
+    const frage =
+      /** @type {(nachricht: {type: string}) => Promise<{ok?: boolean, stand?: unknown}>} */ (
+        /** @type {unknown} */ (chrome.runtime.sendMessage)
+      );
+    void frage({ type: "branding" }).then(
+      (antwort) => {
+        if (antwort?.ok) markeUebernehmen(antwort.stand);
+        markeLaeuft = false;
+      },
+      () => {
+        markeLaeuft = false;
+      },
+    );
+  }
+
+  /**
+   * Die nächste Frist stellen — immer genau eine offene, gestellt NACH dem letzten Blick.
+   *
+   * KEIN `setInterval`, und das ist dieselbe Entscheidung wie in Klara/Word (dort ist sie sogar
+   * eine gemessene Hauszusage): ein Intervall feuert weiter, während ein Abruf noch läuft, und
+   * legt Aufrufe übereinander. Eine neu gestellte Frist kann das baulich nicht.
+   */
+  function markeFristStellen() {
+    setTimeout(() => {
+      markeHolen(false);
+      markeFristStellen();
+    }, MARKE_ABSTAND_MS);
+  }
+
+  // Drei Anlässe, EINE Drosselung. Die Frist ist die wichtigste der drei: eine Seitenleiste, die
+  // während der Vorführung offen daneben steht, erzeugt weder Sichtbarkeits- noch Fokuswechsel —
+  // ohne sie zöge sie nie nach.
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState !== "hidden") markeHolen(false);
+  });
+  globalThis.addEventListener("focus", () => markeHolen(false));
+  markeFristStellen();
+  // ================================================================================================
+  // DER ERSTE ABRUF DRÄNGELT SICH NICHT VOR DEN AUFBAU.
+  // ================================================================================================
+  // Die Marke ist Kosmetik; `send({type:"state"})` ist die Arbeit. Stünde der Markenabruf davor,
+  // wäre er die ERSTE Nachricht der Leiste — gemessen, nicht vermutet: genau daran wurde
+  // `tests/klara-browser/artikel.test.tsx` B6 rot, der Fall, der den gefährlichsten Augenblick der
+  // Leiste prüft (die Erfassung wird fertig, WÄHREND die Leiste aufbaut). Der Prüfstand hält dort
+  // die erste Antwort an; die angehaltene Antwort wäre die der Marke gewesen statt die des
+  // Zustands, und der Fall hätte nichts mehr geprüft.
+  //
+  // Warten heisst hier NICHT „nur bei Erfolg": auch ein gescheiterter Aufbau gibt die Marke frei.
+  void aufbau.then(
+    () => markeHolen(true),
+    () => markeHolen(true),
+  );
+  // KW-MARKE-END
 })();

@@ -272,7 +272,35 @@ function m6FremdeZiele(src: string): string[] {
 // 12 → 13). BEIDE SEITEN BLEIBEN ERHALTEN: der KA7-Block bleibt beim dreizehnten Abrufziel, der
 // M5-Bildblock kommt als vierzehntes Ziel hinzu (13 → 14) — der Wert, den die REBASE-HINWEIS der
 // ursprünglichen Fassung bereits vorgesehen hatte.
-const BEKANNTE_ABRUFZIELE = 14;
+//
+// ================================================================================================
+// JOB 3512 (10.09.2026) — DIE BEWUSSTE ANTWORT ZUM FÜNFZEHNTEN ABRUFZIEL (14 → 15).
+// ================================================================================================
+//
+// DAS NEUE ZIEL: `kwMarkeHolen` (Block KW-MARKE, die Firmen-CI der Vorführung), EINE `fetch(`-Stelle
+// für EINEN Pfad: `GET /api/branding` — die instanzweite Markenwahl aus JOB 3510
+// (`services/app/src/routes/branding-routes.ts:49`). Sie ist dieselbe Auskunft, die KLARWERK und
+// die Chrome-Erweiterung lesen; es gibt bewusst keine zweite Quelle und keinen zweiten Schalter.
+//
+//   · CSP:      unverändert. `connect-src 'self'` deckt den Pfad — es ist die eigene App-Domain,
+//               auf der dieses Aufgabenfenster ohnehin liegt. Kein neuer Ursprung.
+//   · Recht:    KEINES. Der Leseweg ist bewusst ohne Anmeldung erreichbar (Begründung im Kopf von
+//               `branding-routes.ts`: die Fläche färbt sich, BEVOR jemand angemeldet ist). Der
+//               Abruf reist trotzdem mit `credentials: "include"` wie jeder andere — same-origin,
+//               kein zusätzliches Geheimnis, und M10 bleibt damit geschlossen.
+//   · Nutzlast: hinaus geht NICHTS (GET ohne Körper, ohne Query). Herein kommen Profilname,
+//               Schalter, Änderungszahl und die zwei belegten Farbwerte samt Logopfad.
+//   · Frequenz: einmal beim Laden, danach beim Sichtbarwerden, beim Fokus und im festen Takt —
+//               alle drei durch DIESELBE Drosselung von einem Abruf je Minute
+//               (`KW_MARKE_ABSTAND_MS`), nie zwei gleichzeitig. Der feste Takt ist NEU für dieses
+//               Fenster und ausdrücklich gewollt: ein Aufgabenfenster, das während der Vorführung
+//               offen daneben steht, erzeugt weder Sichtbarkeits- noch Fokuswechsel und zöge sonst
+//               nie nach. Gemessen: tests/demo-firmen-ci-verbraucher/word-marke.test.ts W7.
+//
+// AUSLIEFERUNGSFOLGE für ein installiertes Add-in: KEIN erneutes Sideload. Ein älterer Server ohne
+// die Route antwortet 404 → das Fenster übernimmt nichts und bleibt beim normalen Look; gemessen in
+// derselben Datei (W6/W7). Ein Abruffehler leert nie den zuletzt bekannten Stand (W5).
+const BEKANNTE_ABRUFZIELE = 15;
 function m7Abrufmenge(src: string): number {
   return abrufziele(src).length;
 }
