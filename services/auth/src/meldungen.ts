@@ -1,9 +1,9 @@
-import { OIDC_UNREACHABLE_MESSAGE } from "./oidc";
-
 export type Sprache = "de" | "en" | "nl";
 
-// Der bestehende SSO-Fehler liegt außerhalb der Q9-Zielpfade. Seine DE-Konstante
-// bleibt die einzige Literalquelle; auch dieser Fehler wird hier übersetzt.
+// JOB 3562: Dieser Katalog ist ein BLATT — er importiert aus keinem anderen Modul unter
+// services/auth/src. Er übersetzt die Fehler dieser Module; bezöge er einen seiner Texte von dort,
+// änderte eine Umformulierung im Dienstmodul still einen Text, den Menschen in drei Sprachen sehen,
+// und nur die deutsche Fassung liefe mit. Gehalten von tests/q9-oidc-literalquelle/.
 export const MELDUNGEN = {
   INVALID_CREDENTIALS: {
     de: "E-Mail oder Passwort falsch.",
@@ -136,7 +136,7 @@ export const MELDUNGEN = {
     nl: "Onbekende rol.",
   },
   OIDC_UNREACHABLE: {
-    de: OIDC_UNREACHABLE_MESSAGE,
+    de: "Anmeldedienst antwortet nicht.",
     en: "The sign-in service is not responding.",
     nl: "De aanmelddienst reageert niet.",
   },

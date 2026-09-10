@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { type JWTVerifyGetKey, createRemoteJWKSet, errors as joseErrors, jwtVerify } from "jose";
+import { MELDUNGEN } from "./meldungen";
 import { AuthError, type Role } from "./types";
 
 // ================================================================================================
@@ -20,7 +21,17 @@ import { AuthError, type Role } from "./types";
 export const OIDC_TOKEN_TIMEOUT_MS = 10_000;
 export const OIDC_JWKS_TIMEOUT_MS = 5_000;
 export const OIDC_JWKS_COOLDOWN_MS = 30_000;
-export const OIDC_UNREACHABLE_MESSAGE = "Anmeldedienst antwortet nicht.";
+
+// JOB 3562: DER TEXT WOHNT NICHT MEHR HIER. Bis 3562 stand der deutsche Satz an dieser Stelle als
+// Literal — und `meldungen.ts` importierte ihn, um ihn zu uebersetzen. Der Katalog holte seine
+// Wahrheit also aus dem Modul, dessen Fehler er uebersetzt: wer den Satz hier umformuliert haette,
+// haette die DE-Fassung geaendert und EN/NL unberuehrt stehen lassen, ohne dass es jemand merkt.
+// Jetzt laeuft es andersherum — alle drei Fassungen stehen nebeneinander in `meldungen.ts`, und
+// diese Konstante ist nur noch ihr ABLEITUNG. Sie bleibt bestehen, weil sie Aufrufer hat:
+// `tests/app/job2693-ein-anmeldedienst-der-nicht-antwortet.test.ts:14,90` haelt sie gegen den
+// Vorgabewert der Klasse. Ein Ringschluss entsteht nicht: `meldungen.ts` importiert aus keinem
+// Modul unter services/auth/src (Waechter A in tests/q9-oidc-literalquelle/).
+export const OIDC_UNREACHABLE_MESSAGE = MELDUNGEN.OIDC_UNREACHABLE.de;
 
 /** Der eine Fehler fuer „der Anmeldedienst antwortet nicht" — unterscheidbar per instanceof. */
 export class OidcUnreachableError extends AuthError {
