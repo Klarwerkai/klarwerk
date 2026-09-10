@@ -366,6 +366,18 @@ const REGISTER: Record<string, Eintrag> = {
   "GET /api/ai-status": { urteil: "KEIN_KO_INHALT", grund: "Modellzustand." },
   "GET /api/reasoner/status": { urteil: "KEIN_KO_INHALT", grund: "Modellzustand." },
   "GET /api/features": { urteil: "KEIN_KO_INHALT", grund: "Schalter als Ja/Nein." },
+  // JOB 3510 · die Markenwahl. Beide Wege geben ausschließlich die Darstellungslage der Instanz
+  // aus: Profilname, `aktiv`, Änderungszahl und — nur bei eingeschalteter Wahl — Markenname, zwei
+  // Logofarben und der Pfad des mitgelieferten Logos (`branding-settings.ts`, BRANDING_PROFILE).
+  // Kein Feld dieser Antworten stammt aus einem Wissensobjekt; die Ablage kennt den Bestand nicht.
+  "GET /api/branding": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "JOB 3510 — Erscheinungsbild der Instanz (branding-routes.ts), kein Bestand.",
+  },
+  "PUT /api/admin/branding": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "JOB 3510 — Antwort ist derselbe Stand wie der Leseweg; users.manage im Rumpf.",
+  },
   "GET /api/i18n/locales": { urteil: "KEIN_KO_INHALT", grund: "Oberflächentexte." },
   "GET /api/i18n/:locale/:key": { urteil: "KEIN_KO_INHALT", grund: "Oberflächentexte." },
   "GET /addin": { urteil: "KEIN_KO_INHALT", grund: "statisches Add-in-Bundle." },

@@ -709,6 +709,15 @@ const INVENTAR: readonly string[] = [
   // Palette-Achse soll JEDEN Leser der Token-Datei sichtbar machen, auch wenn er nicht Klara ist —
   // und genau dieser Leser fuehrt eine ZWEITE Farbquelle neben `themes.css` ein.
   "tests/demo-firmen-ci-web/marke-bindung.test.ts",
+  // JOB 3510 (10.09.2026): der Speicher der instanzweiten Markenwahl. Ueber die Inhaltsachse
+  // `palette` gefunden — der Fall benennt ausdruecklich, dass es GENAU die zwei im Logo
+  // hinterlegten Farbwerte gibt und keine erfundene Hausfarbenpalette. Das ist kein Klara-Test:
+  // „klara" steht nicht im Pfad, K5 bleibt unveraendert. Der Eintrag steht trotzdem hier, und der
+  // Grund ist kein formaler — die beiden Farbwerte sind genau die, mit denen JOB 3512 das
+  // Word-Aufgabenfenster und das Chrome-Panel einfaerbt. Wer sie verstellt, verstellt Klaras
+  // Flaeche mit, und die Palette-Achse soll genau diese Leser sichtbar machen. K2 hat die Datei
+  // gemeldet, das Inventar nimmt sie nicht still auf.
+  "tests/demo-firmen-ci-server/branding-speicher.test.ts",
 ];
 
 // ------------------------------------------------------------------------------------------------

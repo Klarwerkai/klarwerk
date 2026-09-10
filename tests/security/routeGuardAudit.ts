@@ -575,6 +575,20 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // gibt, sonst rendert die Oberfläche für sie tote Knöpfe).
   "GET /api/features": { protection: "auth" },
 
+  // --- Erscheinungsbild der Instanz (branding-routes.ts, JOB 3510) ---
+  // Die Markenwahl ist Darstellungslage, kein Bestand: ein Profilname, zwei Logofarben, ein
+  // Logopfad und eine Änderungszahl. Sie ist BEWUSST weiter offen als `/api/features` darüber, und
+  // der Grund ist eine Anforderung, keine Bequemlichkeit: Word-Taskpane und Chrome-Panel färben
+  // ihre eigene Oberfläche, bevor sich jemand angemeldet hat, und die Anmeldemaske selbst ist die
+  // erste Fläche, die der Kunde sieht. Sie verrät weder, welche Fähigkeiten ein Betrieb gebucht
+  // hat, noch irgendeine Nutzer- oder Wissensangabe — dieselbe Klasse wie `/api/i18n`.
+  "GET /api/branding": {
+    protection: "public",
+    reason: "Erscheinungsbild der Instanz (Profil, zwei Logofarben, Logopfad); keine Nutzerdaten.",
+  },
+  // Umschalten ist Verwaltung — dieselbe Schranke wie jeder Weg in admin-routes.ts.
+  "PUT /api/admin/branding": { protection: "users.manage" },
+
   // --- Zugangs-Zustand des Imports (import-access-routes.ts) ---
   // AUFTRAG-mega67 Block C/D: rein LESEND — Schalter-Zustand, die BENANNTEN Zugangsvariablen mit
   // Ja/Nein und der HTTPS-Riegel. Niemals ein Wert, niemals eine Maske mit Länge; kein Aufruf an

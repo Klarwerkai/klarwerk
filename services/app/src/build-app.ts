@@ -173,6 +173,8 @@ import {
 } from "./addon-auth-throttle";
 import { matchAddonRoute, principalHasCapability, resolveAddonAuth } from "./addon-principal";
 import { type AiCheckWorker, createAiCheckRunner, createAiCheckWorker } from "./ai-check-worker";
+// JOB 3510: die EINE instanzweite Markenwahl (Demo-Firmen-CI) — heute nur im Speicher (s. u.).
+import { type BrandingSettingsRepo, InMemoryBrandingSettingsRepo } from "./branding-settings";
 import { type SemanticPrefilter, removeKoFromDuplicatePrefilter } from "./duplicate-detection";
 import { cappedEmbeddingProvider } from "./embed-concurrency";
 import type { FactoryReset } from "./factory-reset";
@@ -200,6 +202,7 @@ import { adminRoutes } from "./routes/admin-routes";
 import { aiCheckCoverageRoutes } from "./routes/ai-check-coverage-routes";
 import { askRoutes } from "./routes/ask-routes";
 import { auditRoutes } from "./routes/audit-routes";
+import { brandingRoutes } from "./routes/branding-routes";
 import { canSeeDraft, captureRoutes } from "./routes/capture-routes";
 import { categoryRoutes } from "./routes/category-routes";
 import { checkTextRoutes } from "./routes/check-text-routes";
@@ -262,6 +265,21 @@ export interface AppServices {
   // deshalb nicht — nach einem Replay ist sie leer, und die Admin-Aktion „Übersetzungen laden"
   // stellt sie idempotent wieder her (die Lieferung liegt als Datei im Auslieferungsstand).
   lesevarianten: LesevariantenRepo;
+  /**
+   * JOB 3510: die EINE instanzweite Markenwahl (Demo-Firmen-CI) — Web, Word/Klara und das
+   * Chrome-Panel lesen sie über `GET /api/branding`.
+   *
+   * Sie steht als eigenes Feld neben `lesevarianten` und ausdrücklich NICHT in `AppRepos`:
+   * `AppRepos` ist der Satz, den die Dev-Persistenz journalierend umhüllt (`dev-persist.ts`,
+   * `MUTATING_METHODS` ist ein vollständiger Record über `keyof AppRepos`), und `dev-persist.ts`
+   * liegt ausserhalb der Zielpfade dieses Auftrags.
+   *
+   * ACHTUNG, DIE WICHTIGE EINSCHRÄNKUNG: Hinter diesem Feld steht HEUTE in JEDEM Betrieb die
+   * In-Memory-Ablage — auch gegen Postgres (s. `buildPgServices`). Die Markenwahl ist damit
+   * FLÜCHTIG: Neustart oder Deploy setzen sie auf die Vorgabe zurück (kein Profil, aus). Der Grund
+   * und der vollständige Weg zur Ablösung stehen im Kopf von `branding-settings.ts`.
+   */
+  brandingSettings: BrandingSettingsRepo;
   /**
    * JOB 3363: die Ablage der Import-Kandidaten — DIESELBE Instanz, die `LibraryService` bekommt.
    * Sie steht hier, weil die Lesevarianten-Routen einen einzelnen Kandidaten nachschlagen müssen
@@ -425,6 +443,9 @@ export function assembleServices(
     // JOB 3326: gesetzt nur von `buildPgServices` (echter Pool) — ohne Injektion die In-Memory-
     // Ablage. Derselbe Vertrag, andere Haltbarkeit; beide werden getrennt geprüft.
     lesevarianten?: LesevariantenRepo;
+    // JOB 3510: die Einhängestelle für eine haltbare Markenablage. HEUTE injiziert sie NIEMAND —
+    // auch `buildPgServices` nicht (Grund dort). Sie bleibt, weil die Ablösung genau hier ansetzt.
+    brandingSettings?: BrandingSettingsRepo;
     // W1 Weg A (Auftrag 143): `answerSnapshots` stand hier als Option, mit dem benannten Preis,
     // dass der Beleg nicht durch das Dev-Journal lief. Die Restgrenze ist geschlossen — das Repo
     // liegt jetzt in `AppRepos` und kommt wie jedes andere aus `repos.`.
@@ -611,6 +632,8 @@ export function assembleServices(
     klaraSessions: opts.klaraSessions ?? new InMemoryKlaraSessionRepo(),
     // JOB 3326: die Lesevarianten-Ablage — Postgres, wenn injiziert, sonst im Speicher.
     lesevarianten: opts.lesevarianten ?? new InMemoryLesevariantenRepo(),
+    // JOB 3510: die Markenwahl — heute IMMER im Speicher, weil niemand etwas injiziert (s. o.).
+    brandingSettings: opts.brandingSettings ?? new InMemoryBrandingSettingsRepo(),
     // JOB 3110 (M2b): DIE VORHANDENEN gecappten Cloud-Clients, weitergereicht — kein zweiter Aufruf
     // der Fabrik. JOB 3134: hinter der Hülle (oben), die je Aufruf den GEWÄHLTEN Anbieter nimmt.
     zurufModell,
@@ -885,6 +908,13 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // JOB 3326: die Lesevarianten liegen in DERSELBEN Datenbank wie der Bestand (dedizierte
       // Kundeninstanz = ein Datenraum) — kein zweiter Dienst, keine kundenübergreifende Ablage.
       lesevarianten: new PgLesevariantenRepo(pool),
+      // JOB 3510: HIER FEHLT DIE MARKENWAHL, UND ZWAR WISSENTLICH. Sie bekommt bewusst KEINE
+      // Postgres-Ablage untergeschoben, sondern fällt (weiter unten in `assembleServices`) auf die
+      // In-Memory-Ablage zurück — auch im Postgres-Betrieb. Der Grund steht ausgeschrieben im Kopf
+      // von `branding-settings.ts`: Eine eigene Tabelle verlangt einen Eintrag in der
+      // Migrations-Sollliste `services/app/src/migrationsbeleg.ts`, und dieser Pfad ist in JOB 3510
+      // nicht freigegeben. Die Folge ist benannt und nicht versteckt: Die Markenwahl überlebt
+      // keinen Neustart und keinen Deploy — für die Vorführung also NACH dem letzten Deploy setzen.
     },
   );
 }
@@ -2226,6 +2256,13 @@ export function buildApp(
   // nichts. Sie ist selbst NICHT geschaltet: Eine Auskunft, die man erst freischalten muss, könnte
   // die Oberfläche nie fragen. Angemeldete Nutzung genügt (Begründung in features-routes.ts).
   app.register(featuresRoutes(guards));
+  // JOB 3510: die EINE Auskunft über das Erscheinungsbild dieser Instanz — und der Adminweg, der es
+  // umschaltet. Sie ist wie die Schalterauskunft darüber SELBST nicht geschaltet: Eine Marke, die
+  // man erst freischalten müsste, ließe die Vorführinstanz beim ersten Laden ungefärbt. Die
+  // Begründung, warum das nicht in `/api/features` gehört, steht im Kopf von branding-routes.ts.
+  app.register(
+    brandingRoutes({ branding: services.brandingSettings, audit: services.audit }, guards),
+  );
   // AUFTRAG-mega67 Block C/D: der ZUGANGS-ZUSTAND des Confluence-Imports, rein lesend. BEWUSST
   // ausserhalb des `confluenceImport`-Schalters registriert (anders als die Import-Routen unten):
   // eine Auskunft, die selbst hinter dem Schalter laege, koennte den Zustand „ausgeschaltet" nicht
