@@ -84,6 +84,15 @@ export function draftToForm(draft: Pick<Draft, "payload" | "anchorsMissing">): D
   };
 }
 
+// Nur die bearbeitbaren Textfelder zählen; segments ist der unverändert mitreisende Bauplan.
+export function isDraftFormChanged(form: DraftFormState, baseline: DraftFormState): boolean {
+  return (
+    form.title.trim() !== baseline.title.trim() ||
+    form.statement.trim() !== baseline.statement.trim() ||
+    (form.body ?? "").trim() !== (baseline.body ?? "").trim()
+  );
+}
+
 // Ein Entwurf ist speicherbar, sobald irgendein Inhalt da ist.
 export function isDraftFormFillable(form: DraftFormState): boolean {
   return (

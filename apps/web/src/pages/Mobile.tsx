@@ -13,6 +13,7 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { flushSync } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ApiError } from "../api/client";
@@ -34,6 +35,7 @@ import {
   draftTitle,
   draftToForm,
   formToPayload,
+  isDraftFormChanged,
   isDraftFormFillable,
 } from "../lib/draftForm";
 import { conflictKnowledge } from "../lib/effectiveAnswer";
@@ -98,9 +100,12 @@ export function Mobile(): JSX.Element {
   // --- Erfassen (FE-MOB-02/04) ---
   const drafts = useDrafts();
   const [form, setForm] = useState<DraftFormState>({ ...EMPTY_DRAFT_FORM });
+  const [baseline, setBaseline] = useState<DraftFormState>({ ...EMPTY_DRAFT_FORM });
   const [editingId, setEditingId] = useState<string | null>(null);
+  const isDirty = isDraftFormChanged(form, baseline);
   const resetForm = (): void => {
     setForm({ ...EMPTY_DRAFT_FORM });
+    setBaseline({ ...EMPTY_DRAFT_FORM });
     setEditingId(null);
   };
   const invalidateDrafts = (): void => void qc.invalidateQueries({ queryKey: ["drafts"] });
@@ -169,25 +174,29 @@ export function Mobile(): JSX.Element {
     save.mutate();
   };
 
-  // WP-SAMMEL20-FIX (bens Fix 4, B1b): das Mobile-Formular meldet sich am BESTEHENDEN NavGuard an
-  // (dasselbe Muster wie Capture — konsistent, kein zweiter Autosave-Mechanismus): eine befüllte
-  // Eingabe macht die Navigation „dirty", der Wächter fragt nach (Bleiben · Verwerfen · Entwurf
-  // speichern); Speichern nutzt den normalen Draft-Weg (offline: die Offline-Queue). Bewusst OHNE
-  // Dep-Array: der Wächter sieht so in jedem Render den frischen Formular-Stand (setGuard ist ein
-  // reiner Ref-Setter, kein Re-Render-Auslöser).
+  // WP-SAMMEL20-FIX bleibt erhalten: der bestehende NavGuard schützt ungespeicherte Eingaben und
+  // speichert über den normalen Draft-Weg (offline: die Offline-Queue).
+  // JOB 3463: Anlass ist der Nutzerbefund vom 08.09.2026 — bloßes Fortsetzen fragte fälschlich nach
+  // Verwerfen; deshalb gilt jetzt „verändert gegenüber dem Ausgangsstand“ statt „befüllt“.
+  // Neue Eingaben vergleichen gegen das leere Formular und bleiben geschützt.
+  // Bewusst OHNE Dep-Array: jeder Render meldet den frischen Stand (setGuard ist ein Ref-Setter).
   useEffect(() => {
     setGuard({
-      isDirty: () => isDraftFormFillable(form),
+      isDirty: () => isDirty,
       save: async () => {
         const payload = formToPayload(form);
         if (!queue.online) {
-          queue.enqueue({
-            id: crypto.randomUUID(),
-            kind: editingId ? "draft.update" : "draft.create",
-            draftId: editingId,
-            payload,
-            title: formTitle(),
-            createdAt: new Date().toISOString(),
+          // Vor dem anschließenden Seitenwechsel muss auch der Persistenzeffekt der Queue laufen.
+          // Sonst kann React enqueue und Navigation bündeln und Mobile vorher aushängen.
+          flushSync(() => {
+            queue.enqueue({
+              id: crypto.randomUUID(),
+              kind: editingId ? "draft.update" : "draft.create",
+              draftId: editingId,
+              payload,
+              title: formTitle(),
+              createdAt: new Date().toISOString(),
+            });
           });
           push("info", t("mob.queued"));
         } else if (editingId) {
@@ -210,7 +219,7 @@ export function Mobile(): JSX.Element {
   // keine zweite Autorität: `useUnloadGuard` hängt genau einen `beforeunload`-Handler ans Fenster
   // und nimmt ihn wieder ab. Dasselbe Dirty-Prädikat wie der In-App-Wächter — beide können nicht
   // auseinanderlaufen.
-  useUnloadGuard(isDraftFormFillable(form));
+  useUnloadGuard(isDirty);
 
   // SCRUM-87 / FR-MOB-03: Inline-Bestätigung statt nativem Dialog.
   const [confirm, setConfirm] = useState<ConfirmState>(NO_CONFIRM);
@@ -229,7 +238,9 @@ export function Mobile(): JSX.Element {
   const resume = (id: string): void => {
     const d = (drafts.data ?? []).find((x) => x.id === id);
     if (d) {
-      setForm(draftToForm(d));
+      const resumed = draftToForm(d);
+      setForm(resumed);
+      setBaseline(resumed);
       setEditingId(id);
     }
   };
@@ -599,7 +610,7 @@ export function Mobile(): JSX.Element {
                               {s.sources.map((ref) => (
                                 // AUFTRAG-mega12 Block C (echter Treffer, gefunden beim Bauen der
                                 // Architekturprüfung): Mobile MELDET einen Wächter an
-                                // (isDraftFormFillable), hatte hier aber rohe <Link>. Die Erfassungs-
+                                // (Standvergleich), hatte hier aber rohe <Link>. Die Erfassungs-
                                 // Karteikarte und diese Quellen-Verweise leben in DERSELBEN
                                 // Komponente — ein getippter Entwurf überlebt den Tab-Wechsel und
                                 // ging bei einem Tipp auf diesen Verweis still verloren. Dieselbe
