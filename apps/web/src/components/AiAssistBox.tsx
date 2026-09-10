@@ -219,7 +219,49 @@ export function AiAssistInstructions({
         bräuchte einen neuen Schlüssel in `apps/web/src/i18n.ts` — außerhalb der Zielpfade dieses
         Auftrags; der alte Arbeitsraum zeigt hier ebenfalls seit jeher nichts. Festgehalten in
         `tests/ki-freie-anweisung/standardeditor-mounted.test.tsx` (F6).
+
+        JOB 3566 — DIESER SCHLÜSSEL IST JETZT DA, UND ER IST DIE LÖSUNG. `state.error` bleibt aus
+        dem oben genannten Grund verboten; an seiner Stelle steht `capture.ai.presetsFailed` — ein
+        Satz, der GENAU die eigenen KI-Funktionen benennt und über Seite, KI und Text des Nutzers
+        nichts behauptet. Er tritt an die Stelle des Sammelfehlers, nicht daneben (Fall D).
+
+        WARUM `isError` UND NICHT `data.length === 0`: Schweigen bedeutete bis heute zweierlei —
+        „diese Organisation hat keine eigenen Funktionen" (wahr) und „sie konnten nicht geladen
+        werden" (eine stillschweigende Falschaussage). Nur der Abrufzustand kann die beiden
+        trennen; die Trefferzahl kann es nicht. Deshalb schweigt der erfolgreiche LEERE Bestand
+        weiter (Fall B), und deshalb schweigt auch der noch LAUFENDE erste Abruf (Fall E) — dort
+        ist noch nichts gescheitert.
+
+        UND DESHALB WIRD NICHTS GELEERT: `isError` und `data` schließen einander in React Query
+        nicht aus. Scheitert eine AUFFRISCHUNG, bleibt der zuletzt erfolgreich geholte Bestand in
+        `data` — die bekannten Funktionen bleiben oben sichtbar UND dieser Satz kommt darunter
+        dazu (Fall F in `tests/ki-freie-anweisung/vorlagen-fehler-mounted.test.tsx`).
+
+        DIE OPTIK IST DIE DER HINWEISZEILE (`AiUnavailableHint`), nicht die der roten Fehlerzeile
+        der Box (`boxErr`, oben): die gehört der Assist-Anfrage. Zwei Fehlerkanäle, zwei Stellen,
+        zwei verschiedene Aussagen.
+
+        RUNDE 2 — WARUM `isError` ALLEIN NICHT REICHT (BEN, Korrekturpflicht 1). Ist das Gerät schon
+        offline, BEVOR diese Fläche aufgeht, wird der Abruf gar nicht erst gestellt: react-query
+        pausiert ihn (`fetchStatus: "paused"`, Netzmodus „online"), der Endpunkt wird nie gerufen,
+        und weil nichts gerufen wurde, ist auch nichts gescheitert — `isError` bleibt falsch und die
+        Fläche schwieg wieder. Gemessen: Fall G rief den Vorlagen-Endpunkt 0-mal. Deshalb steht der
+        Satz auch bei `paused`; §9 des Auftrags verlangt für offline ausdrücklich dieselbe Aussage
+        wie für den Fehler.
+
+        WARUM `fetchStatus === "paused"` UND NICHT DER ONLINEZUSTAND SELBST (`lib/netzzustand.ts`).
+        `paused` entsteht NUR an einem Abruf, den es geben soll (dort im Kopfkommentar :5-11
+        festgehalten) — genau die Aussage, die hier gebraucht wird. Ein eigener Online-Blick wäre
+        eine zweite Wahrheit über dieselbe Sache und würde zu viel sagen: offline mit frischem, weil
+        eben geholtem Bestand fragt niemand nach, es ist nichts unterwegs und nichts fehlt — dann
+        wäre „konnten nicht geladen werden" falsch. Beides misst Fall G: offline steht der Satz,
+        und sobald das Netz zurück ist, holt der Abruf nach und der Satz geht wieder.
       */}
+      {presets.isError || presets.fetchStatus === "paused" ? (
+        <p data-testid="ki-vorlagen-fehler" className="mt-1.5 text-[12px] text-muted-2">
+          {t("capture.ai.presetsFailed")}
+        </p>
+      ) : null}
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <input
           value={free}

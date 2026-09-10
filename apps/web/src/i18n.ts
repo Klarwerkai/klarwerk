@@ -1926,6 +1926,11 @@ const de = {
   // SCRUM-386: ?-Hilfe für kundeneigene Funktionen — die Anweisung ist offen sichtbar (G-3).
   "capture.ai.customHelp":
     "Eigene KI-Funktion deiner Organisation (vom Admin angelegt). Anweisung an die KI: „{{instruction}}“. Wie bei allen KI-Aktionen entsteht nur ein Vorschlag zur Vorschau — übernommen wird ausschließlich, was du bewusst per Klick übernimmst.",
+  // JOB 3566: der Satz für den GESCHEITERTEN Abruf der eigenen KI-Funktionen — er benennt genau
+  // sie und sagt nichts über die Seite, die KI oder deinen Text. Ohne ihn sieht „diese Organisation
+  // hat keine eigenen Funktionen" genauso aus wie „sie konnten nicht geladen werden".
+  "capture.ai.presetsFailed":
+    "Die eigenen KI-Funktionen deiner Organisation konnten nicht geladen werden.",
   "capture.ai.freeLabel": "Eigene KI-Anweisung",
   "capture.ai.freePlaceholder": "z. B. „kürzer und sachlicher formulieren“",
   "capture.ai.run": "Ausführen",
@@ -7550,6 +7555,7 @@ const en: typeof de = {
   // SCRUM-386: ?-help for custom functions — the instruction is openly visible (G-3).
   "capture.ai.customHelp":
     "Custom AI function of your organisation (created by the admin). Instruction for the AI: „{{instruction}}“. As with all AI actions, only a suggestion for preview is produced — nothing is adopted unless you deliberately click to adopt it.",
+  "capture.ai.presetsFailed": "The custom AI functions of your organisation could not be loaded.",
   "capture.ai.freeLabel": "Your own AI instruction",
   "capture.ai.freePlaceholder": "e.g. “phrase it shorter and more factual”",
   "capture.ai.run": "Run",
@@ -12443,6 +12449,7 @@ const nl: typeof de = {
     "Verbetert alleen de leesbaarheid (alinea's, interpunctie) — zonder markdown-tekens; de inhoud blijft letterlijk.",
   "capture.ai.customHelp":
     "Eigen AI-functie van je organisatie (aangemaakt door de admin). Instructie aan de AI: „{{instruction}}“. Zoals bij alle AI-acties ontstaat er alleen een voorstel ter voorbeeld — overgenomen wordt uitsluitend wat jij bewust met een klik overneemt.",
+  "capture.ai.presetsFailed": "De eigen AI-functies van je organisatie konden niet worden geladen.",
   "capture.ai.freeLabel": "Eigen AI-instructie",
   "capture.ai.freePlaceholder": "bijv. „korter en zakelijker formuleren“",
   "capture.ai.run": "Uitvoeren",
