@@ -104,11 +104,32 @@ describe("Block C: Dirty-Flow-Module haben keine Ausgänge, die den Wächter umg
   > = {
     "pages/Capture.tsx": {
       rawLink: 0,
-      rawNavigate: 1,
+      rawNavigate: 2,
       // JOB 3062 · H3: 2 -> 1. Der zweite rohe Aufruf gehörte zum Hinweis „Entwurf gespeichert",
       // den die Vordertür über den `location.state` schickte; beide sind gelöscht (dort begründet).
       // Das Budget wird GESENKT, nicht gelockert.
-      why: "1x Räumung des location.state auf DERSELBEN Route (/erfassen, replace) nach bewusstem Abbruch des Dateiimports — kein Seitenwechsel.",
+      //
+      // JOB 3526 (ENTWURF-VERLASSEN): 1 -> 2, und das ist eine ANHEBUNG — die erste in dieser Datei.
+      // Sie wird deshalb hier offen benannt statt stillschweigend mitgenommen.
+      //
+      // Der neue Aufruf steht IM `proceed`-Zweig von `guard(...)` (Capture.tsx: `entwurfVerlassen`).
+      // Er ist damit kein Ausgang NEBEN der Wache, sondern der Ausgang, den die Wache selbst
+      // freigibt. Ein `guardedNavigate` an dieser Stelle liefe ein ZWEITES Mal in dieselbe Wache
+      // und stellte dieselbe Frage noch einmal — die Rohform ist hier also nicht die laxere,
+      // sondern die einzig richtige Wahl.
+      //
+      // RUNDE 5 (bens Korrekturpflicht 2): hier stand „er läuft ausschliesslich, nachdem der Mensch
+      // ‚Verwerfen und wechseln‘ gewählt hat". Das war FALSCH und Bens Gegenprobe hat es widerlegt.
+      // Richtig ist: der Rückruf läuft nach ZWEI der drei Antworten — nach „Verwerfen und wechseln"
+      // und nach erfolgreichem „Entwurf speichern und wechseln"; beide enden in `runPending()`
+      // (NavGuardContext.tsx). Am Budget ändert das nichts (es bleibt EIN roher Aufruf, und er
+      // liegt hinter dem Dialog), an der Meldung danach sehr wohl: sie hängt jetzt daran, was
+      // wirklich geschehen ist (tests/entwurf-verlassen, Fälle 3, 12 und 12b).
+      //
+      // Präzedenzfall wörtlich: `pages/Mobile.tsx` unten führt genau diesen Fall seit jeher als
+      // begründet („navigate, das bereits SELBST in guard(...) gewickelt ist"). Die Zahl steigt,
+      // die Strenge nicht: was dazukommt, ist per Bauform bewacht.
+      why: "1x Räumung des location.state auf DERSELBEN Route (/erfassen, replace) nach bewusstem Abbruch des Dateiimports — kein Seitenwechsel. 1x navigate, das bereits SELBST in guard(...) gewickelt ist (dritter Weg Entwurf-verlassen, JOB 3526).",
     },
     "components/erfassen/Blatt.tsx": {
       rawLink: 1,

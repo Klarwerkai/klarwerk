@@ -41,6 +41,9 @@ import {
 } from "../app/NavGuardContext";
 import { useRole } from "../app/RoleContext";
 import { useToast } from "../app/ToastContext";
+// JOB 3526: das Ziel des dritten Wegs. Als Konstante und nicht als getippter Pfad — `navigation.ts`
+// ist die eine Wahrheit über die Adressen der Hülle; sie wird hier NUR gelesen.
+import { HOME_ROUTE } from "../app/navigation";
 import { AiAssistBox } from "../components/AiAssistBox";
 import { AiModelInfo } from "../components/AiModelInfo";
 import { AiUnavailableHint } from "../components/AiUnavailableHint";
@@ -599,6 +602,36 @@ export function CaptureArbeitsraum({
   // Inhalte (Bilder, Dateien, laufende Verarbeitung, geladene Treffer) nicht still fallen lassen —
   // bens Verlustpfad 3 lief genau über diesen erfolgreichen Save. true = Bestätigung offen.
   const [confirmSaveLimit, setConfirmSaveLimit] = useState(false);
+  // JOB 3526 (ENTWURF-VERLASSEN): der dritte Weg aus einem geöffneten Entwurf — Änderungen
+  // verwerfen und die Fläche verlassen, OHNE den gespeicherten Entwurf zu löschen.
+  // Die Rückfrage selbst gehört der gemeinsamen Wache (`NavGuardContext`) — hier steht KEIN eigener
+  // Dialogzustand mehr (Runde 2, bens Korrekturpflicht 2).
+  //   · `verlassenAusstehend`  — nur für den UNVERÄNDERTEN Entwurf: geräumt ist bereits, der Sprung
+  //     steht noch aus (s. den Effekt bei `entwurfVerlassen`: er darf erst NACH dem Render laufen,
+  //     in dem die Fläche leer ist).
+  //   · `entwurfBasisAbdruck`  — der Zustand der Fläche IM AUGENBLICK DES ÖFFNENS. Daran, und nur
+  //     daran, hängt „gibt es Änderungen seit dem Öffnen?".
+  const [verlassenAusstehend, setVerlassenAusstehend] = useState(false);
+  const [entwurfBasisAbdruck, setEntwurfBasisAbdruck] = useState<string | null>(null);
+  // `loadDraft` schreibt den Ausgangsstand NICHT selbst: seine Setter wirken erst im nächsten
+  // Render, ein dort gebildeter Abdruck trüge noch den Stand von VORHER. Es setzt nur diese Marke;
+  // der Effekt bei `entwurfGeaendert` nimmt den Abdruck dann aus der fertig gefüllten Fläche — mit
+  // derselben Rechnung wie der laufende Vergleich.
+  const basisNachtragenRef = useRef(false);
+  // ── RUNDE 5, KORREKTURPFLICHT 1 (ben): WELCHE ANTWORT WAR ES? ─────────────────────────────────
+  //
+  // Der `proceed`-Rückruf, den `guard(...)` bekommt, läuft NICHT nur nach „Verwerfen und wechseln".
+  // Die gemeinsame Wache ruft dasselbe `runPending()` auch nach erfolgreichem „Entwurf speichern und
+  // wechseln" (NavGuardContext.tsx: `saveAndGo` → `runPending`). Runde 4 meldete deshalb auf BEIDEN
+  // Antworten „die Änderungen sind verworfen, der gespeicherte Entwurf ist unverändert" — nach dem
+  // Speichern war das nachweislich falsch: Ben mass genau ein `update`, der Bestand war geändert.
+  //
+  // Diese Marke trägt die Antwort vom Dialog zum Rückruf. Sie wird an genau zwei Stellen gesetzt:
+  // beim Betreten des Verlassen-Wegs auf `false` (kein Wert aus einem früheren Dialog kann
+  // hineinlecken) und im `save`-Rückruf der Wache auf `true`, NACHDEM `saveDraft` tatsächlich
+  // geschrieben hat. Nicht vorher: eine Meldung „gespeichert" vor dem Schreiben wäre derselbe
+  // Fehler mit umgekehrtem Vorzeichen.
+  const verlassenGespeichertRef = useRef(false);
   const [showHelpers, setShowHelpers] = useState(false);
   // KW-STR / SCRUM-45/46/48: WYSIWYG-Body (sanitisiertes HTML), separat vom Reasoner-Draft.
   const [bodyHtml, setBodyHtml] = useState("");
@@ -2307,6 +2340,10 @@ export function CaptureArbeitsraum({
         setMode("interview");
       }
     }
+    // JOB 3526: AB HIER LÄUFT DIE UHR FÜR „SEIT DEM ÖFFNEN". Die Marke steht am Ende und nicht am
+    // Anfang: der Weg `target === "frontdoor"` oben verlässt diese Fläche und füllt sie gar nicht —
+    // ein dort genommener Ausgangsstand gehörte zu einem Entwurf, den diese Seite nie gezeigt hat.
+    basisNachtragenRef.current = true;
     setNotice(t("capture.editingDraft"));
     window.setTimeout(() => {
       workAreaRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -2433,6 +2470,11 @@ export function CaptureArbeitsraum({
     setShowCondMeasures(false);
     setShowHelpers(false);
     setDraftId(null);
+    // JOB 3526: der Leerzustand hat auch keinen Ausgangsstand mehr — es ist kein Entwurf mehr
+    // geöffnet, also gibt es kein „seit dem Öffnen". Eine stehen gebliebene Marke zeigte auf einen
+    // Entwurf, der hier nicht mehr liegt.
+    basisNachtragenRef.current = false;
+    setEntwurfBasisAbdruck(null);
     // JOB 3106 (UX-01): der Leerzustand trägt keine Markierung. Sie zeigte sonst auf einen
     // Entwurf, mit dem dieses Formular nichts mehr zu tun hat.
     setGeradeGesicherterEntwurf(null);
@@ -2545,7 +2587,7 @@ export function CaptureArbeitsraum({
   };
 
   // Bug (Pedi 04.07.): ungespeicherten Entwurf nicht still verlieren. Diese Wache greift beim
-  const { setGuard } = useNavGuard();
+  const { setGuard, guard } = useNavGuard();
   // Verlassen der Seite über den BROWSER (Zurück-Taste, Neuladen, Tab schließen) — dann fragt der
   // Browser „Seite verlassen?".
   // Bug (Pedi 05.07.): Der Wächter muss in JEDEM Erfassungsmodus greifen, sobald IRGENDEIN Feld
@@ -2609,6 +2651,101 @@ export function CaptureArbeitsraum({
   // den bens Auflage A verbietet.
   const isCaptureDirty =
     hasUnsaved || hasUnsavedMeta || ivStarted || Boolean(ivResult) || Boolean(fileQueue);
+  // ==============================================================================================
+  // JOB 3526 (ENTWURF-VERLASSEN) — „SEIT DEM ÖFFNEN GEÄNDERT?" IST EINE ANDERE FRAGE ALS „DIRTY".
+  // ==============================================================================================
+  //
+  // `isCaptureDirty` oben fragt: „geht beim Wegwerfen etwas verloren?". An einem GEÖFFNETEN Entwurf
+  // ist die Antwort immer ja — sein Text steht ja in der Fläche. Als Auslöser für die Rückfrage
+  // dieses Auftrags wäre sie damit unbrauchbar: sie fragte auch den, der nichts angefasst hat.
+  //
+  // Deshalb steht hier ein ZWEITER, klar abgegrenzter Begriff — nicht als konkurrierende
+  // Schmutzig-Definition (die bleibt eine, oben), sondern als VERGLEICH gegen einen Ausgangsstand:
+  // derselbe Abdruck, einmal beim Öffnen genommen und einmal jetzt. Er steuert AUSSCHLIESSLICH, ob
+  // die Verlassen-Rückfrage erscheint; Verwerfen-Knopf, Navigationswache und `beforeunload` hängen
+  // unverändert an `isCaptureDirty`.
+  //
+  // WAS IM ABDRUCK STEHT: genau die Felder, die `saveDraft` in die Nutzlast schreibt und `loadDraft`
+  // zurückholt — plus die drei flüchtigen Zustände, die `isCaptureDirty` zusätzlich zählt
+  // (Interview, Datei-Import). Was NICHT drinsteht, ist Ansicht statt Inhalt (Modus, Wizard-Schritt,
+  // aufgeklappte Details, Meldungen): wer nur die Ansicht wechselt, hat nichts geändert.
+  //
+  // Bewusst EINE Zeichenkette und nicht ein Feldvergleich: der Ausgangsstand wird mit DERSELBEN
+  // Rechnung genommen wie der aktuelle (s. `basisNachtragenRef` unten). Zwei getrennte Ableitungen —
+  // eine aus der Nutzlast des geladenen Entwurfs, eine aus der Fläche — wären genau die Stelle, an
+  // der ein Feld auseinanderläuft und die Rückfrage schweigt, obwohl es etwas zu verlieren gibt.
+  const flaechenAbdruck = useMemo(
+    () =>
+      JSON.stringify({
+        raw,
+        bodyHtml,
+        titel: draft?.title ?? null,
+        aussage: draft?.statement ?? null,
+        bedingungen: draft?.conditions ?? null,
+        massnahmen: draft?.measures ?? null,
+        type,
+        category,
+        asset,
+        tags,
+        neededValidations,
+        stufe: declaredConfidentiality ?? null,
+        reviewerIds,
+        pendingSources,
+        sourceForm,
+        extQuery,
+        // Nur die Kennungen: die Bytes (`dataUrl`/`original`/`data`) ändern sich nicht, ohne dass
+        // sich die Liste ändert — und sie hier zu vergleichen hiesse, sie bei jedem Tastendruck
+        // durch JSON.stringify zu schicken.
+        bilder: images.map((b) => b.id),
+        dokumente: docs.map((d) => `${d.id}:${d.objectId ?? ""}`),
+        ivStarted,
+        ivAnswers,
+        ivAnswer,
+        ivResult,
+        datei: fileName,
+        dateitext: fileText,
+        funde: filePoints?.length ?? null,
+      }),
+    [
+      raw,
+      bodyHtml,
+      draft,
+      type,
+      category,
+      asset,
+      tags,
+      neededValidations,
+      declaredConfidentiality,
+      reviewerIds,
+      pendingSources,
+      sourceForm,
+      extQuery,
+      images,
+      docs,
+      ivStarted,
+      ivAnswers,
+      ivAnswer,
+      ivResult,
+      fileName,
+      fileText,
+      filePoints,
+    ],
+  );
+  // Ohne bekannten Ausgangsstand wird GEFRAGT, nicht geschwiegen: „ich weiss es nicht" darf hier
+  // nie zu „es gibt nichts zu verlieren" werden — der teure Fehler wäre das stille Verwerfen.
+  const entwurfGeaendert = entwurfBasisAbdruck === null || flaechenAbdruck !== entwurfBasisAbdruck;
+  // Der Ausgangsstand wird im ersten Render NACH dem Öffnen genommen. Bewusst OHNE Abhängigkeits-
+  // liste: die Marke soll auch dann eingelöst werden, wenn der Abdruck sich durch das Laden gar
+  // nicht geändert hat (ein inhaltlich leerer Entwurf in eine leere Fläche) — eine Liste mit
+  // `flaechenAbdruck` liesse den Effekt genau dort aus, die Marke bliebe stehen und der nächste
+  // Tastendruck würde zum vermeintlichen Ausgangsstand.
+  useEffect(() => {
+    if (!basisNachtragenRef.current) {
+      return;
+    }
+    basisNachtragenRef.current = false;
+    setEntwurfBasisAbdruck(flaechenAbdruck);
+  });
   // AUFTRAG-mega5 Block A (bens Ship-Gate 1): die EHRLICHE GRENZE des Speicher-Vertrags. Für jeden
   // Dirty-Zustand gilt genau eines von beidem: saveDraft sichert ihn vollständig (Text, Metadaten,
   // Prüfer, Quellenformular, pendingSources, extQuery, Interviewfortschritt — Resume stellt sie
@@ -2890,6 +3027,10 @@ export function CaptureArbeitsraum({
             throw new Error("speicherTorGeschlossen");
           }
           await saveDraft.mutateAsync();
+          // RUNDE 5, KP1: ab hier IST geschrieben. Wurde dieser Rückruf aus dem Verlassen-Weg
+          // heraus ausgelöst („Entwurf speichern und wechseln"), meldet der `proceed`-Zweig unten
+          // deshalb „gespeichert" statt „verworfen".
+          verlassenGespeichertRef.current = true;
         }
         if (filePoints && filePoints.length > 0 && fileName) {
           const all = filePoints.map(({ title, summary, sourceExcerpt }) => ({
@@ -2943,6 +3084,104 @@ export function CaptureArbeitsraum({
     // (z. B. weil ein Original neu gebunden wurde), wird sie mit dem neuen Stand neu gesetzt.
     speicherTor,
   ]);
+
+  // ==============================================================================================
+  // JOB 3526 (ENTWURF-VERLASSEN) — DER DRITTE WEG.
+  // ==============================================================================================
+  //
+  // DER BEFUND (Pedi, 10.09., 09:08). Er hatte einen gespeicherten Entwurf offen und wollte weder
+  // sichern noch einreichen: er wollte seine Änderungen wegwerfen und gehen. Diesen Weg gab es
+  // nicht. „Verwerfen" leert die Fläche und BLEIBT stehen; „Entwurf löschen" nimmt ihm den
+  // gespeicherten Entwurf. Zwischen beidem lag nichts.
+  //
+  // DER GESPEICHERTE ENTWURF WIRD DABEI NICHT ANGEFASST. Das ist der ganze Unterschied zum Löschen,
+  // und er steht hier nicht als Absicht, sondern als Bauform: dieser Weg ruft weder
+  // `endpoints.drafts.remove` noch `saveDraft` — er verlässt ausschliesslich die Seite.
+  //
+  // ── RUNDE 2, KORREKTURPFLICHT 2 (ben): DIE ENTSCHEIDUNG GEHÖRT DER GEMEINSAMEN WACHE ──────────
+  //
+  // Runde 1 hatte hier einen EIGENEN Bestätigungsdialog und räumte die Fläche VOR dem Sprung. Damit
+  // fand die gemeinsame Wache nichts mehr vor und liess durch — die Entscheidung „verwerfen oder
+  // doch nicht" fiel also neben ihr, in einem zweiten Dialog. Ben hat das zu Recht als parallelen
+  // Schutzweg gewertet: es gab zwei Dialoge für dieselbe Frage.
+  //
+  // Jetzt fragt die WACHE SELBST (`guard(...)`, NavGuardContext) — mit der Fläche im UNVERÄNDERTEN
+  // Zustand. Sie bietet genau die drei richtigen Antworten an, und zwar die, die sie überall sonst
+  // auch anbietet: „Hier bleiben" · „Verwerfen und wechseln" · „Entwurf speichern und wechseln".
+  // „Verwerfen und wechseln" ist Pedis dritter Weg; der gespeicherte Entwurf bleibt dabei stehen,
+  // weil auf diesem Zweig kein einziger Schreibaufruf liegt. Es gibt damit EINEN Dialog, und die
+  // normale Navigation von dieser Seite ist unverändert.
+  //
+  // Geräumt wird auf diesem Zweig nichts mehr: die Seite wird verlassen und ausgehängt, und die
+  // Erfassungsfläche hält ihren Zustand nirgends fest (kein localStorage in dieser Datei) — ein
+  // `resetCaptureForm` davor wäre reine Zeremonie und genau das, was die Wache blind gemacht hat.
+  //
+  // ── RUNDE 2, KORREKTURPFLICHT 1 (ben): KEIN AUSGANG, SOLANGE GESCHRIEBEN WIRD ─────────────────
+  //
+  // Bens Gegenproben: mit verzögertem `drafts.update` bzw. `drafts.promote` liess sich die Seite
+  // verlassen, WÄHREND der Schreibvorgang noch lief. Danach war der Bestand geändert (Save) oder
+  // der Entwurf ganz weg (Promote löscht ihn serverseitig) — die Zusage „der gespeicherte Entwurf
+  // ist unverändert" war in beiden Fällen nachweislich falsch. Ein Ausgang, der eine Zusage macht,
+  // die ein laufender Vorgang gleich darauf bricht, ist schlimmer als kein Ausgang.
+  //
+  // Deshalb ist der dritte Weg gesperrt, solange ein Vorgang am Entwurf offen ist. Die Sperre sitzt
+  // an BEIDEN Enden — am Knopf (sichtbar, `disabled`) und im Handler (wirksam, auch bei Tastatur
+  // oder einem Klick im selben Tick). `discardDraft` steht bewusst mit in der Liste: läuft gerade
+  // ein Löschen, ist „der gespeicherte Entwurf bleibt" ebenfalls nicht zugesagt.
+  // Genau die drei Vorgänge, die den GESPEICHERTEN Entwurf anfassen — nicht mehr. Die KI-Struktur
+  // (`structure`) steht bewusst NICHT hier: sie schreibt nichts am Entwurf, und ein Ausgang, der
+  // beim Nachdenken der KI zufällt, wäre eine Gängelung ohne Grund.
+  const verlassenGesperrt = saveDraft.isPending || submit.isPending || discardDraft.isPending;
+  const entwurfVerlassen = (): void => {
+    // KP1: läuft ein Schreibvorgang, gibt es keinen Ausgang — und keine Zusage.
+    if (verlassenGesperrt) {
+      return;
+    }
+    // Nichts geändert ⇒ nichts zu verwerfen ⇒ keine Rückfrage. Eine Rückfrage über nichts ist eine
+    // Gängelung, und sie lehrt den Menschen, Rückfragen wegzuklicken.
+    //
+    // Hier — und NUR hier — wird vorher geräumt, und das ist kein Umgehen der Wache: `entwurfGeaendert`
+    // ist falsch, die Fläche trägt also Zeichen für Zeichen den Inhalt des gespeicherten Entwurfs.
+    // Es gibt nichts zu verlieren, und die Wache bekommt den Sprung trotzdem zu sehen (`guardedNavigate`
+    // im Effekt unten) — sie findet nur nichts mehr, worüber zu fragen wäre.
+    if (!entwurfGeaendert) {
+      resetCaptureForm();
+      setErr(null);
+      setNotice(null);
+      setVerlassenAusstehend(true);
+      return;
+    }
+    // Geändert ⇒ die GEMEINSAME Wache fragt. Im `proceed`-Zweig steht bewusst das rohe `navigate`:
+    // wir sind bereits durch die Wache hindurch, ein `guardedNavigate` liefe ein zweites Mal hinein.
+    //
+    // RUNDE 5, KP1: der Rückruf läuft nach ZWEI der drei Antworten — nach „Verwerfen und wechseln"
+    // UND nach erfolgreichem „Entwurf speichern und wechseln" (beide enden in `runPending()`). Er
+    // meldet deshalb nicht mehr pauschal „verworfen", sondern das, was tatsächlich geschehen ist.
+    // Die Marke wird hier zurückgesetzt: zwischen diesem Klick und der Antwort kann nur der Dialog
+    // selbst schreiben.
+    verlassenGespeichertRef.current = false;
+    guard(() => {
+      push(
+        "success",
+        verlassenGespeichertRef.current
+          ? t("capture.leaveDraft.doneSaved")
+          : t("capture.leaveDraft.done"),
+      );
+      navigate(HOME_ROUTE);
+    });
+  };
+  // Der unveränderte Zweig: der Sprung darf erst NACH dem Render laufen, in dem die Fläche geräumt
+  // ist — im Klick-Handler selbst trüge der angemeldete Wächter noch den Stand von vorher. Der
+  // Effekt steht mit Absicht UNTER dem `setGuard`-Effekt: React führt Effekte in Deklarations-
+  // reihenfolge aus, die Wache ist hier also schon nachgeführt.
+  useEffect(() => {
+    if (!verlassenAusstehend) {
+      return;
+    }
+    setVerlassenAusstehend(false);
+    push("success", t("capture.leaveDraft.doneUnchanged"));
+    guardedNavigate(HOME_ROUTE);
+  }, [verlassenAusstehend, guardedNavigate, push, t]);
 
   // SCRUM-403 / JOB 3038: die Rekorder-Fabrik ist keine Sache dieser Seite mehr — sie steht als
   // EINE Wahrheit in `lib/speechDictation.ts` und wird von Erfassen UND Fragefeld benutzt. Neu ist
@@ -3953,6 +4192,35 @@ export function CaptureArbeitsraum({
         {t("demo.badge.label")}
       </span>
     ) : null;
+
+  // JOB 3526 (ENTWURF-VERLASSEN): der dritte Weg steht dort, wo auch Sichern und Einreichen stehen.
+  //
+  // EINE Definition, drei Aufrufe (Erzähl-Leiste, Entscheiden-Leiste, Experten-Leiste): in allen
+  // drei kann ein geöffneter Entwurf liegen, und ein Ausgang, den es nur in einer davon gibt, ist
+  // für den, der gerade in einer anderen steht, kein Ausgang. Abgeschrieben wird er deshalb nicht.
+  //
+  // NUR AM GEÖFFNETEN ENTWURF (`draftId`). Ohne gespeicherten Entwurf gäbe es nichts, was beim
+  // Verlassen erhalten bliebe — dort ist „Verwerfen" daneben die richtige und einzige Handlung.
+  //
+  // RUNDE 2 (bens Korrekturpflicht 1): `disabled` solange ein Vorgang am Entwurf läuft. Der Titel
+  // sagt dann, WARUM der Weg gerade zu ist — ein grauer Knopf ohne Grund ist eine Sackgasse. Sonst
+  // trägt er die Zusage, die die gemeinsame Wache selbst nicht ausspricht: der gespeicherte Entwurf
+  // bleibt (s. ABWEICHUNGEN in der Rückgabe).
+  const entwurfVerlassenKnopf = (): JSX.Element | null =>
+    draftId === null ? null : (
+      <button
+        type="button"
+        data-testid="capture-entwurf-verlassen"
+        onClick={entwurfVerlassen}
+        disabled={verlassenGesperrt}
+        title={
+          verlassenGesperrt ? t("capture.leaveDraft.busy") : t("capture.leaveDraft.keepsDraftHint")
+        }
+        className="rounded-btn px-3 py-2 text-[12.5px] font-semibold text-muted hover:bg-surface-2 hover:text-text disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-muted"
+      >
+        {t("capture.leaveDraft.action")}
+      </button>
+    );
 
   // F-0007: die Rücksprache vor dem Bestand. Sie steht an BEIDEN Einreich-Stellen — ein zweiter
   // Knopf, an dem sie fehlte, wäre kein Schutz, sondern ein Schlupfloch. Der Bestätigungsknopf
@@ -5807,6 +6075,8 @@ export function CaptureArbeitsraum({
                 <Button variant="ghost" onClick={loadExample}>
                   {t("capture.loadExample")}
                 </Button>
+                {/* JOB 3526: der dritte Weg — nur am geöffneten Entwurf, s. `entwurfVerlassenKnopf`. */}
+                {entwurfVerlassenKnopf()}
                 {/* F-0007: die Markierung beginnt dort, wo das Beispiel entsteht — der Nutzer sieht
                   sie vom Laden bis zum Einreichen, nicht erst am Ende. */}
                 {beispielMarkierung()}
@@ -6089,6 +6359,9 @@ export function CaptureArbeitsraum({
                     <KnopfUnterschied />
                     <div className="flex items-center gap-1.5">
                       {beispielMarkierung()}
+                      {/* JOB 3526: auch der Experten-Weg trägt einen geöffneten Entwurf (JOB 3414)
+                        — und hatte bis hierher überhaupt keinen Ausgang ausser Einreichen. */}
+                      {entwurfVerlassenKnopf()}
                       <Button
                         variant="primary"
                         className="flex-1"
@@ -6481,6 +6754,10 @@ export function CaptureArbeitsraum({
                   >
                     {t(CAPTURE_WIZARD_TEXT.discard)}
                   </button>
+                  {/* JOB 3526: DIE STELLE AUS PEDIS BEFUND — hier standen nur Sichern und Einreichen
+                    (und daneben „Verwerfen", das die Fläche leert und stehen bleibt). Der dritte Weg
+                    geht: Änderungen weg, gespeicherter Entwurf bleibt. */}
+                  {entwurfVerlassenKnopf()}
                   <Button
                     variant="primary"
                     className="flex-1"
@@ -6540,6 +6817,10 @@ export function CaptureArbeitsraum({
             </Button>
           </div>
         </Modal>
+        {/* JOB 3526 RUNDE 2: HIER STAND EIN ZWEITER BESTÄTIGUNGSDIALOG — er ist ersatzlos weg.
+          Die Rückfrage stellt jetzt die gemeinsame Wache (`NavGuardContext`), siehe
+          `entwurfVerlassen` oben. Ein eigener Dialog daneben hätte zwei Zuständigkeiten für
+          dieselbe Entscheidung bedeutet (bens Korrekturpflicht 2 der Runde 1). */}
       </div>
     </ImageDescribeProvider>
   );

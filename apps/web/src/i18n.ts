@@ -2391,6 +2391,30 @@ const de = {
     "Text, Metadaten und Quellen werden gespeichert. Diese Inhalte kann der Entwurf jedoch nicht sichern — beim Speichern werden sie verworfen:",
   "capture.saveLimit.cancel": "Abbrechen — Inhalte behalten",
   "capture.saveLimit.confirm": "Trotzdem speichern und diese Inhalte verwerfen",
+  // JOB 3526 (Pedi, 10.09., 09:08): DER DRITTE WEG AUS EINEM GEÖFFNETEN ENTWURF. Angeboten waren
+  // nur „sichern" und „einreichen" — wer weder das eine noch das andere wollte, kam nicht heraus,
+  // ohne den Entwurf zu löschen.
+  //
+  // RUNDE 2: die Rückfrage selbst stellt die GEMEINSAME Wache (`nav.guard.*`) — die vier eigenen
+  // Dialogtexte, die hier standen, sind weg (bens Korrekturpflicht 2: kein zweiter Schutzweg).
+  // Was bleibt, ist die Beschriftung des Wegs, die Zusage am Knopf und die Meldung danach.
+  "capture.leaveDraft.action": "Entwurf verlassen",
+  // Die Zusage, die Pedis Sorge beantwortet („nimmt mir das meinen Entwurf?"). Sie steht am Knopf,
+  // weil der gemeinsame Dialog seinen Text nicht von hier bezieht — s. ABWEICHUNGEN der Rückgabe.
+  "capture.leaveDraft.keepsDraftHint":
+    "Verwirft die Änderungen seit dem Öffnen. Der gespeicherte Entwurf bleibt unverändert erhalten.",
+  "capture.leaveDraft.busy": "Nicht möglich, solange ein Vorgang an diesem Entwurf läuft.",
+  "capture.leaveDraft.done":
+    "Entwurf verlassen. Die Änderungen seit dem Öffnen sind verworfen, der gespeicherte Entwurf ist unverändert.",
+  // RUNDE 5 (bens Korrekturpflicht 1): der Dialog der Wache hat DREI Antworten, und zwei davon
+  // führen weg. Wer „Entwurf speichern und wechseln" wählt, hat NICHTS verworfen — sein Entwurf ist
+  // geschrieben. Die Meldung oben stand vorher auch auf diesem Weg da und behauptete das Gegenteil
+  // dessen, was gerade geschehen war. Deshalb dieser eigene Satz für den Speicherweg.
+  "capture.leaveDraft.doneSaved":
+    "Entwurf verlassen. Die Änderungen seit dem Öffnen sind im gespeicherten Entwurf gesichert.",
+  // Der unveränderte Entwurf: hier gab es nichts zu verwerfen, und das sagt die Meldung auch so.
+  "capture.leaveDraft.doneUnchanged":
+    "Entwurf verlassen. Der gespeicherte Entwurf ist unverändert.",
   "capture.ivAnswerHint": "Deine Antwort …",
   "capture.ivSend": "Antwort senden",
   "capture.ivReadAloud": "Vorlesen",
@@ -7921,6 +7945,15 @@ const en: typeof de = {
     "Text, metadata and sources will be saved. However, the draft cannot save the following content — saving will discard it:",
   "capture.saveLimit.cancel": "Cancel — keep the content",
   "capture.saveLimit.confirm": "Save anyway and discard this content",
+  "capture.leaveDraft.action": "Leave draft",
+  "capture.leaveDraft.keepsDraftHint":
+    "Discards the changes made since you opened it. The saved draft remains unchanged.",
+  "capture.leaveDraft.busy": "Not possible while an operation on this draft is running.",
+  "capture.leaveDraft.done":
+    "Draft left. The changes made since you opened it were discarded, the saved draft is unchanged.",
+  "capture.leaveDraft.doneSaved":
+    "Draft left. The changes made since you opened it are stored in the saved draft.",
+  "capture.leaveDraft.doneUnchanged": "Draft left. The saved draft is unchanged.",
   "capture.ivAnswerHint": "Your answer …",
   "capture.ivSend": "Send answer",
   "capture.ivReadAloud": "Read aloud",
@@ -12813,6 +12846,15 @@ const nl: typeof de = {
     "Tekst, metadata en bronnen worden opgeslagen. Deze inhoud kan het concept echter niet opslaan — bij het opslaan wordt die verworpen:",
   "capture.saveLimit.cancel": "Annuleren — inhoud behouden",
   "capture.saveLimit.confirm": "Toch opslaan en deze inhoud verwerpen",
+  "capture.leaveDraft.action": "Concept verlaten",
+  "capture.leaveDraft.keepsDraftHint":
+    "Verwerpt de wijzigingen sinds het openen. Het opgeslagen concept blijft ongewijzigd bestaan.",
+  "capture.leaveDraft.busy": "Niet mogelijk zolang er een bewerking aan dit concept loopt.",
+  "capture.leaveDraft.done":
+    "Concept verlaten. De wijzigingen sinds het openen zijn verworpen, het opgeslagen concept is ongewijzigd.",
+  "capture.leaveDraft.doneSaved":
+    "Concept verlaten. De wijzigingen sinds het openen zijn opgeslagen in het bewaarde concept.",
+  "capture.leaveDraft.doneUnchanged": "Concept verlaten. Het opgeslagen concept is ongewijzigd.",
   "capture.ivAnswerHint": "Jouw antwoord …",
   "capture.ivSend": "Antwoord versturen",
   "capture.ivReadAloud": "Voorlezen",
