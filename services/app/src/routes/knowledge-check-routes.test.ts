@@ -45,6 +45,17 @@ const conflictVerdict: ConflictVerdict = {
   zitat_b: "zuerst die Vorwärmung aktivieren",
 } as unknown as ConflictVerdict;
 
+// JOB 3556 R3: Diese Prüfstände fragten mit `source:"draft"` OHNE Anker — genau die Lücke, die BEN
+// an Runde 2 gemessen hat („nach Weglassen der Kennung erreicht derselbe Text den Judge"). Seit der
+// Ankersperre gilt `source:"draft"` ohne auflösbaren Anker als vertraulich; damit jeder Fall hier
+// weiter DAS misst, was sein Name sagt (Deklaration, Backstop, Modellverfügbarkeit), fragt er ab
+// jetzt mit der Kennung eines gespeicherten Entwurfs. `d-intern` trägt „intern": ein Anker, der
+// auflöst und nichts hebt.
+const ENTWUERFE: Record<string, { payload: { confidentiality?: unknown } }> = {
+  "d-intern": { payload: { confidentiality: "intern" } },
+};
+const DRAFT_ANKER = "d-intern";
+
 async function appWith(opts: { active: boolean; verdict?: ConflictVerdict | null }) {
   const seed = [mkKo()];
   const findCandidates = vi.fn(async () => seed);
@@ -57,7 +68,17 @@ async function appWith(opts: { active: boolean; verdict?: ConflictVerdict | null
   } as unknown as Reasoner;
   const conflicts = new ConflictService({ repo: new InMemoryConflictRepo() });
   const app = Fastify();
-  await app.register(knowledgeCheckRoutes({ ko, conflicts, reasoner, guards: fakeGuards }));
+  await app.register(
+    knowledgeCheckRoutes({
+      ko,
+      conflicts,
+      reasoner,
+      guards: fakeGuards,
+      capture: {
+        getDraft: async (id: string) => ENTWUERFE[id],
+      } as Parameters<typeof knowledgeCheckRoutes>[0]["capture"],
+    }),
+  );
   return { app, judgeConflict };
 }
 
@@ -72,6 +93,7 @@ describe("POST /api/knowledge/check — Provenienz-Vertrag (WP3)", () => {
       text: DRAFT,
       source: "draft",
       confidentiality: "vertraulich",
+      draftId: DRAFT_ANKER,
     });
     expect(res.statusCode).toBe(200);
     expect(judgeConflict).not.toHaveBeenCalled(); // kein Cloud-Egress des Freitexts
@@ -99,7 +121,12 @@ describe("POST /api/knowledge/check — Provenienz-Vertrag (WP3)", () => {
 
   it("freigegebener Draft (intern) + Modell aktiv → Judge läuft, echte conflicts, done", async () => {
     const { app, judgeConflict } = await appWith({ active: true, verdict: conflictVerdict });
-    const res = await post(app, { text: DRAFT, source: "draft", confidentiality: "intern" });
+    const res = await post(app, {
+      text: DRAFT,
+      source: "draft",
+      confidentiality: "intern",
+      draftId: DRAFT_ANKER,
+    });
     expect(res.statusCode).toBe(200);
     expect(judgeConflict).toHaveBeenCalled(); // Widerspruchs-Judge lief
     const body = res.json();
@@ -112,7 +139,12 @@ describe("POST /api/knowledge/check — Provenienz-Vertrag (WP3)", () => {
   // Kernergebnis unverändert durch; dieser Fall hält fest, dass dabei nichts verloren geht.
   it("der Antwortkörper trägt koStatus/koCategory in similar UND conflicts", async () => {
     const { app } = await appWith({ active: true, verdict: conflictVerdict });
-    const res = await post(app, { text: DRAFT, source: "draft", confidentiality: "intern" });
+    const res = await post(app, {
+      text: DRAFT,
+      source: "draft",
+      confidentiality: "intern",
+      draftId: DRAFT_ANKER,
+    });
     expect(res.statusCode).toBe(200);
     const body = res.json();
     const treffer = body.similar.find((s: { id: string }) => s.id === "kc");
@@ -125,7 +157,12 @@ describe("POST /api/knowledge/check — Provenienz-Vertrag (WP3)", () => {
 
   it("Draft intern, aber KEIN Modell verfügbar → Spy=0, pending (kein Fake-'done')", async () => {
     const { app, judgeConflict } = await appWith({ active: false, verdict: conflictVerdict });
-    const res = await post(app, { text: DRAFT, source: "draft", confidentiality: "intern" });
+    const res = await post(app, {
+      text: DRAFT,
+      source: "draft",
+      confidentiality: "intern",
+      draftId: DRAFT_ANKER,
+    });
     expect(res.statusCode).toBe(200);
     expect(judgeConflict).not.toHaveBeenCalled();
     expect(res.json().status).toBe("pending");
@@ -140,6 +177,7 @@ it("N11b: ohne verdrahtete Dokumentzustimmung bleibt der zusätzliche Marker wir
       source: "draft",
       confidentiality: "vertraulich",
       nichtEingestuft: true,
+      draftId: DRAFT_ANKER,
     });
     expect(response.statusCode).toBe(200);
     expect(response.json().status).toBe("pending");

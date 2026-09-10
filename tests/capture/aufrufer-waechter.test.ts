@@ -1217,21 +1217,10 @@ const ERSETZT_JOB3062: readonly Ausnahme[] = [
 ];
 
 // ------------------------------------------------------------------------------------------------
-// JOB 3427 R2: Das Blatt verwendet den freigegebenen Hook unter src/hooks, der Prüfstatus und
-// Treffer getrennt hält. Der alte Hook verliert seinen einzigen Produktaufrufer; seine Datei
-// liegt weiterhin außerhalb der Zielpfade. Nur mapKnowledgeCheck wird noch wiederverwendet.
-// Der Abbau des alten Hook-Exports ist in RUECKGABE.md offen benannt; A3 verlangt anschließend
-// auch die Entfernung dieses Eintrags. Kein Scheinaufrufer und keine Erweiterung des Altbestands.
-const ERSETZT_JOB3427: readonly Ausnahme[] = [
-  {
-    schluessel:
-      "apps/web/src/components/capture/intake/useLiveKnowledgeCheck.ts::useLiveKnowledgeCheck",
-    grund:
-      "Seit JOB 3427 R2 ersetzt durch hooks/useLiveKnowledgeCheck.ts am Blatt-Einstieg. " +
-      "Der alte Export hat nur noch Testaufrufer; Abbau außerhalb der ausdrücklich " +
-      "freigegebenen Zielpfade. Als offene Ablösung in der Rückgabe benannt.",
-  },
-];
+// JOB 3556: Das Duldungsregister aus JOB 3427 R2 ist GESTRICHEN, nicht leer stehen geblieben. Sein
+// einziger Eintrag duldete den abgeloesten `useLiveKnowledgeCheck` in components/capture/intake,
+// weil dessen Abbau ausserhalb der damaligen Zielpfade lag. Dieser Auftrag hatte die Pfade und hat
+// ihn entfernt — damit trifft die Ausnahme nicht mehr zu, und A3 haette sie als Leiche gemeldet.
 
 // REGISTER 5 · BEWUSST OHNE AUFRUFER AUF `apps/web/src` (JOB 2611 D1)
 // ------------------------------------------------------------------------------------------------
@@ -1440,7 +1429,6 @@ const GEDULDET = new Set<string>([
   ...ERSETZT_JOB3061.map((a) => a.schluessel),
   ...ERSETZT_JOB3063.map((a) => a.schluessel),
   ...ERSETZT_JOB3062.map((a) => a.schluessel),
-  ...ERSETZT_JOB3427.map((a) => a.schluessel),
   ...ALTBESTAND,
   ...BEWUSST_WEB.map((a) => a.schluessel),
   ...ALTBESTAND_WEB,
@@ -1564,7 +1552,6 @@ describe("JOB 2605 · A · der Aufrufer-Wächter über services/**", () => {
       ...ERSETZT_JOB3015,
       ...ERSETZT_JOB3061,
       ...ERSETZT_JOB3062,
-      ...ERSETZT_JOB3427,
       ...BEWUSST_WEB,
     ]) {
       expect(a.grund.length, `Ausnahme ${a.schluessel} ohne Begruendung`).toBeGreaterThan(40);

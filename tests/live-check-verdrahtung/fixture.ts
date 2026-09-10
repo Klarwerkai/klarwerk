@@ -48,7 +48,21 @@ export const conflictVerdict: ConflictVerdict = {
   zitat_b: "zuerst die Vorwärmung aktivieren",
 } as unknown as ConflictVerdict;
 
-export async function appWith(opts: { active: boolean; verdict?: ConflictVerdict | null }) {
+// JOB 3556: der ENTWURFS-Backstop, wie ihn `build-app.ts` der echten Route mitgibt. Ohne ihn
+// verhält sich eine Anfrage MIT `draftId` fail-closed — was einen Prüfstand grün aussehen liesse,
+// der die Sperre gar nicht misst („kein Judge" käme dann vom fehlenden Dienst, nicht von der
+// gespeicherten Stufe). Wer die Entwurfsstufe prüft, MUSS ihn reichen.
+// JOB 3556 R3: `ka4` ist der BESTEHENDE Riegel (Einwilligung je Dokument, `ask-routes.ts::ka4Freigabe`),
+// den `build-app.ts` der Route ab jetzt mitgibt. Eine Fixture ohne ihn misst den Zustimmungsweg nicht:
+// „kein Judge" käme dann vom fehlenden Prüfer statt von der verweigerten Einwilligung.
+export async function appWith(opts: {
+  active: boolean;
+  verdict?: ConflictVerdict | null;
+  capture?: {
+    getDraft: (id: string) => Promise<{ payload: { confidentiality?: unknown } } | undefined>;
+  };
+  ka4?: { erlaubt: boolean; grund?: string };
+}) {
   const seed = [mkKo()];
   const findCandidates = vi.fn(async () => seed);
   const get = vi.fn(async (id: string) => seed.find((k) => k.id === id));
@@ -59,7 +73,25 @@ export async function appWith(opts: { active: boolean; verdict?: ConflictVerdict
     judgeConflict,
   } as unknown as Reasoner;
   const conflicts = new ConflictService({ repo: new InMemoryConflictRepo() });
+  const pruefeExterneAusfuehrung = vi.fn(async () => opts.ka4 ?? { erlaubt: false });
   const app = Fastify();
-  await app.register(knowledgeCheckRoutes({ ko, conflicts, reasoner, guards: fakeGuards }));
-  return { app, judgeConflict };
+  await app.register(
+    knowledgeCheckRoutes({
+      ko,
+      conflicts,
+      reasoner,
+      guards: fakeGuards,
+      capture: opts.capture as Parameters<typeof knowledgeCheckRoutes>[0]["capture"],
+      ...(opts.ka4 ? { ka4: { pruefeExterneAusfuehrung } } : {}),
+    }),
+  );
+  return { app, judgeConflict, pruefeExterneAusfuehrung };
 }
+
+// Die drei Kopfzeilen der Klara-Bindung, wörtlich wie in `ask-routes.ts:150-152`. Eine Anfrage mit
+// ihnen ist „gebunden" — sie braucht die bestätigte Einwilligung, sonst erreicht sie keine Cloud.
+export const KLARA_BINDUNG = {
+  "x-klara-session": "s-1",
+  "x-klara-instance": "i-1",
+  "x-klara-document": "d-1",
+};

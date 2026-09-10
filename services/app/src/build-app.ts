@@ -2119,6 +2119,15 @@ export function buildApp(
       conflicts: services.conflicts,
       reasoner: services.reasoner,
       guards,
+      // JOB 3556: HIER FEHLTE DIE VERDRAHTUNG. Der Entwurfs-Backstop (JOB 2692 D1) lädt die
+      // GESPEICHERTE Stufe des Entwurfs, aus dem der geprüfte Text stammt — ohne ihn entschiede
+      // allein die Client-Deklaration, ob der Widerspruchs-Judge den Freitext sehen darf.
+      // Dieselbe Dienstinstanz wie bei `reasonerRoutes` (`:2197`), nur lesend genutzt.
+      capture: services.capture,
+      // JOB 3556 R3: derselbe KA4-Riegel (Einwilligung je Dokument) wie bei `reasonerRoutes` und
+      // `klaraAiRoutes` — DIESELBE Instanz (`:1718`), keine zweite Auslegung. Der Browser-Editor
+      // trägt keine Klara-Bindung; für ihn ändert die Verdrahtung nichts.
+      ka4: klaraSessions,
     }),
   );
   // SCRUM-491 Slice 5: /api/check-text existiert NUR bei aktivem Add-on-Flag — sonst gar nicht

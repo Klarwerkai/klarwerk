@@ -383,7 +383,10 @@ const de = {
   // dahinter steht, kommt roh aus dem Bestand (Kategorie) bzw. aus der StatusPill (Zustand).
   "intake.live.fundort": "Liegt in:",
   "intake.live.openKo": "Ansehen",
-  "intake.live.pending": "Ähnliches gefunden? Nein. Auf Widerspruch noch nicht geprüft.",
+  // JOB 3556: Der frühere Satz zur laufenden Widerspruchsprüfung ist hier GESTRICHEN (in allen drei
+  // Sprachen). Er behauptete zweierlei in einem — „nichts Ähnliches gefunden" UND „auf Widerspruch
+  // noch nicht geprüft" —, und das Erste folgt nicht aus dem Prüfstatus. Seit JOB 3427 sagt das
+  // Blatt nur die belegte Hälfte, mit eigenem Satz am Ort des Prüfstatus.
   "intake.live.unavailable": "Prüfung derzeit nicht verfügbar.",
   "intake.structure.heading": "Klarwerk schlägt vor — tipp an, was nicht passt:",
   "intake.structure.title": "Titel",
@@ -6219,7 +6222,6 @@ const en: typeof de = {
   "intake.live.conflictLead": "Careful — this may contradict:",
   "intake.live.fundort": "Sits in:",
   "intake.live.openKo": "View",
-  "intake.live.pending": "Nothing similar found. Conflict check not yet run.",
   "intake.live.unavailable": "Check currently unavailable.",
   "intake.structure.heading": "Klarwerk suggests — tap anything that's off:",
   "intake.structure.title": "Title",
@@ -11122,8 +11124,6 @@ const nl: typeof de = {
   "intake.live.conflictLead": "Let op — dit kan in tegenspraak zijn met:",
   "intake.live.fundort": "Staat in:",
   "intake.live.openKo": "Bekijken",
-  "intake.live.pending":
-    "Niets soortgelijks gevonden. Nog niet op tegenstrijdigheid gecontroleerd.",
   "intake.live.unavailable": "Controle momenteel niet beschikbaar.",
   "intake.structure.heading": "Klarwerk stelt voor — tik aan wat niet klopt:",
   "intake.structure.title": "Titel",

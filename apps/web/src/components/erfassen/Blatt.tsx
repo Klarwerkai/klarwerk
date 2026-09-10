@@ -296,6 +296,20 @@ export function Blatt({
 
   // ---- Entwurf ---------------------------------------------------------------------------------
   const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
+  // ==============================================================================================
+  // JOB 3556 R3 — WIE OFT DER GESPEICHERTE STAND DIESES BLATTES NEU GESETZT WURDE.
+  // ==============================================================================================
+  // Der Live-Check fragt den Server, und der SERVER entscheidet am gespeicherten Entwurf, nicht am
+  // getippten Text (`knowledge-check-routes.ts::resolveDraftConfidential`). Wer einen vertraulich
+  // gespeicherten Entwurf im Menü auf „intern" stellt und SICHERT, hat damit eine neue Frage
+  // gestellt — ohne ein Zeichen am Text zu ändern. Ohne diesen Zähler blieb der alte Befund stehen
+  // („Auf Widerspruch noch nicht geprüft"), obwohl die Prüfung ab jetzt laufen dürfte (BEN, R2).
+  //
+  // EIN ZÄHLER UND KEIN INHALT: die Fläche kennt den gespeicherten Stand nicht — sie weiß nur, DASS
+  // er neu gesetzt wurde (geladen oder gesichert). Genau das steht hier. Ein `updatedAt` wäre die
+  // ehrlichere Marke, ist aber optional (`draft.updatedAt ?? null`, `:856`): fehlte es, änderte sich
+  // der Schlüssel nach dem Sichern nicht — die Lücke wäre offen geblieben.
+  const [gespeicherterStand, setGespeicherterStand] = useState(0);
   // JOB 3426 (ENTWUERFE-VERWALTEN): Die Zeile, deren Löschung gerade zur Rückfrage steht. `null`
   // heisst „keine Frage offen". Der Löschbefehl geht ausschliesslich über die Bestätigung —
   // derselbe Bestätigungsweg, den `CaptureDraftList` schon für den Arbeitsraum führt (Bugfix Pedi
@@ -544,7 +558,38 @@ export function Blatt({
 
   // Die stille Live-Reaktion (§5): sie hört auf den Klartext des Blattes, nicht auf ein zweites Feld.
   const liveText = useMemo(() => bodyTextForAssist(bodyHtml), [bodyHtml]);
-  const { verdict, checkStatus } = useLiveKnowledgeCheck(liveText);
+  // ================================================================================================
+  // JOB 3556 (LIVE-CHECK-VERDRAHTUNG A) — DER LIVE-CHECK SENDET, WAS DAS BLATT WIRKLICH WEISS.
+  // ================================================================================================
+  // Bis hierher ging nur der blanke Text an `/api/knowledge/check`. Die Route stuft eine fehlende
+  // Herkunft fail-safe als vertraulich ein und lässt den Widerspruchs-Judge aus — im Standardeditor
+  // konnte deshalb GRUNDSÄTZLICH kein Widerspruch gemeldet werden; er stand dauerhaft als „noch
+  // nicht geprüft" da. Ab jetzt reist die echte Herkunft mit, über dieselbe `draftProvenance`, die
+  // die übrigen KI-Wege dieses Blattes benutzen (`:930`, `:965`, `:2527`).
+  //
+  // WAS HIER NICHT PASSIERT, und warum:
+  //  - Kein Vorgabewert: hat niemand eine Stufe gewählt, geht KEINE Herkunft hinaus (`undefined`)
+  //    — der Server bleibt fail-safe, der Status bleibt ehrlich „nicht geprüft".
+  //    `draftProvenance(undefined)` wäre hier falsch: es deklarierte „vertraulich", also eine
+  //    Einstufung, die niemand vorgenommen hat.
+  //  - Kein erfundenes `koId`: dieses Blatt bearbeitet einen Entwurf, kein Wissensobjekt.
+  //  - Kein Absenken durch den Client: die `draftId` reist mit, und der Server hebt daran die
+  //    GESPEICHERTE Stufe (JOB 3556, `knowledge-check-routes.ts::resolveDraftConfidential`). Eine
+  //    Menüwahl unter der gespeicherten Stufe gibt den Text also nicht frei — und zwar dort
+  //    entschieden, wo es zählt, nicht im Browser. Genau dieselbe Bauform wie bei `structure`/
+  //    `assist` (`:930`, `:965`): Deklaration plus Anker, die Auflösung macht der Server.
+  const livePruefHerkunft = useMemo(
+    () =>
+      declaredConfidentiality === undefined
+        ? undefined
+        : draftProvenance(declaredConfidentiality, undefined, activeDraftId ?? undefined),
+    [declaredConfidentiality, activeDraftId],
+  );
+  const { verdict, checkStatus } = useLiveKnowledgeCheck(
+    liveText,
+    livePruefHerkunft,
+    gespeicherterStand,
+  );
   // JOB 3427: Der bisherige pending-Text behauptet zusätzlich „nichts Ähnliches gefunden“.
   // Das folgt NICHT aus pending. Hier nur die belegte Aussage über die Konfliktprüfung.
   const liveAusfallSatz =
@@ -827,6 +872,8 @@ export function Blatt({
         setBodyHtml(loadedBody);
         setKategorie(draft.payload.category ?? "");
         loadedUpdatedAtRef.current = draft.updatedAt ?? null;
+        // JOB 3556 R3: ab hier steht ein anderer gespeicherter Stand hinter diesem Blatt.
+        setGespeicherterStand((n) => n + 1);
         setStaleConflict(false);
         setQuellBildzahl(draft.payload.sourceImageCount ?? null);
         setConfidentiality(loadedConfidentiality);
@@ -1034,6 +1081,11 @@ export function Blatt({
       saveRequestedRef.current = false;
       saveOperationRef.current = null;
       loadedUpdatedAtRef.current = draft.updatedAt ?? null;
+      // JOB 3556 R3 — DAS SICHERN IST EINE NEUE FRAGE AN DEN LIVE-CHECK. Der Server prüft den
+      // Egress am GESPEICHERTEN Entwurf; er ist ab diesem Augenblick ein anderer (etwa: eben noch
+      // vertraulich, jetzt intern). Ohne diese Zeile bliebe die Antwort zur alten Stufe stehen,
+      // solange niemand den Text anfasst.
+      setGespeicherterStand((n) => n + 1);
       setStaleConflict(false);
       setErr(null);
       // JOB 2705 (R2-23 c): der ABGESENDETE Stand ist der Bezugspunkt, nicht der aktuelle — sonst

@@ -1,7 +1,17 @@
-import { useEffect, useState } from "react";
-import { endpoints } from "../../../api/endpoints";
 import type { KnowledgeCheckResult } from "../../../api/types";
-import { INTAKE_MIN_LENGTH, type LiveVerdict } from "../../../lib/intakeSimilarity";
+import type { LiveVerdict } from "../../../lib/intakeSimilarity";
+
+// JOB 3556 (LIVE-CHECK-VERDRAHTUNG A): DER ZWEITE HAKEN IST WEG, DIE ABBILDUNG BLEIBT HIER.
+// Diese Datei trug bis JOB 3556 zwei Dinge: die reine Abbildung `mapKnowledgeCheck` UND einen
+// eigenen `useLiveKnowledgeCheck`, den seit JOB 3427 R2 kein Produktcode mehr rief (das Blatt fährt
+// `hooks/useLiveKnowledgeCheck.ts`, der Prüfstatus und Treffer getrennt hält). Zwei Haken auf
+// denselben Endpunkt sind zwei Wahrheiten über denselben Befund — der abgelöste ist entfernt, nicht
+// danebengelassen.
+//
+// WARUM `mapKnowledgeCheck` HIER BLEIBT und nicht mitzieht: sie ist die Abbildung Serverbefund →
+// ANZEIGE-Verdict und gehört damit zur Darstellung, die in diesem Ordner neben `LiveReactionZone`
+// wohnt; ihr eigener Prüfstand liegt daneben (`useLiveKnowledgeCheck.test.ts`). Ein Umzug hätte den
+// Aufrufer im Haken nur umgehängt und den Prüfstand mitgeschleppt, ohne etwas zu klären.
 
 // G-2-EHRLICHKEIT (SCRUM-527): reine Abbildung des ehrlichen Endpoint-Ergebnisses auf den Anzeige-Verdict.
 // KERNREGEL: „neu" NUR bei status "done" UND leerem similar+conflicts — also wenn WIRKLICH geprüft wurde
@@ -45,41 +55,4 @@ export function mapKnowledgeCheck(r: KnowledgeCheckResult): LiveVerdict {
     return { status: "pending" }; // Widerspruch NICHT geprüft — nicht „neu"
   }
   return { status: "unavailable" }; // failed
-}
-
-// SCRUM-527 (Live-Check): der Hook ruft debounced POST /api/knowledge/check und bildet das ehrliche
-// Ergebnis über mapKnowledgeCheck ab. Ein Netzwerkfehler ist ebenfalls eine nicht-verfügbare Prüfung →
-// „unavailable" (ehrlich sichtbar), statt still auf „neu"/„idle" zu fallen. Der Erfassungs-Flow bleibt
-// nicht-blockierend: der Zustand ist rein informativ, das Speichern wird nie verhindert.
-export function useLiveKnowledgeCheck(text: string, debounceMs = 500): LiveVerdict {
-  const [verdict, setVerdict] = useState<LiveVerdict>({ status: "idle" });
-
-  useEffect(() => {
-    if (text.trim().length < INTAKE_MIN_LENGTH) {
-      setVerdict({ status: "idle" });
-      return;
-    }
-    // Sofort sichtbar/lebendig: die Zone läuft, während geprüft wird.
-    setVerdict({ status: "checking" });
-    let cancelled = false;
-    const handle = setTimeout(async () => {
-      try {
-        const r = await endpoints.knowledge.check(text.trim());
-        if (!cancelled) {
-          setVerdict(mapKnowledgeCheck(r));
-        }
-      } catch {
-        // Prüfung nicht erreichbar → ehrlich als „nicht verfügbar" anzeigen (nicht als „neu").
-        if (!cancelled) {
-          setVerdict({ status: "unavailable" });
-        }
-      }
-    }, debounceMs);
-    return () => {
-      cancelled = true;
-      clearTimeout(handle);
-    };
-  }, [text, debounceMs]);
-
-  return verdict;
 }

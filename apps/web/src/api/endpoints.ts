@@ -482,8 +482,24 @@ export const endpoints = {
     impact: () => api.get<MyImpact>("/me/impact"),
   },
   // SCRUM-527: Live-Check eines Entwurfstextes (Ähnlichkeit/Widerspruch gegen den Bestand).
+  //
+  // JOB 3556 (LIVE-CHECK-VERDRAHTUNG Teil A) — DIE HERKUNFT REIST MIT.
+  // Bis hierher ging nur `{ text }` hinaus. Die Route kennt `source`/`koId`/`confidentiality`/
+  // `nichtEingestuft` seit SCRUM-527 WP3 und stuft eine FEHLENDE Herkunft fail-safe als vertraulich
+  // ein (knowledge-check-routes.ts:46-47) — der Widerspruchs-Judge lief deshalb im Standardeditor
+  // grundsätzlich NIE, und ein echter Widerspruch erschien dauerhaft als „nicht geprüft".
+  //
+  // KEIN ZWEITER VERTRAG: es ist dieselbe `ReasonerProvenance` und derselbe `provenanceFields`-
+  // Serializer wie auf den Reasoner-Wegen (`:502` ff.) — eine Form, eine Bedeutung, eine Stelle,
+  // an der sich beides ändern lässt. `provenance` ist OPTIONAL und wird weggelassen, wenn die
+  // Fläche die Einstufung nicht kennt: dann geht wie bisher nur der Text hinaus und der Server
+  // entscheidet unverändert fail-safe. Ein Vorgabewert wäre hier eine erfundene Freigabe.
   knowledge: {
-    check: (text: string) => api.post<KnowledgeCheckResult>("/knowledge/check", { text }),
+    check: (text: string, provenance?: ReasonerProvenance) =>
+      api.post<KnowledgeCheckResult>("/knowledge/check", {
+        text,
+        ...(provenance ? provenanceFields(provenance) : {}),
+      }),
   },
   // Klara Stufe 2: KI-Antwort NUR aus mitgesandten Hilfe-Schnipseln (ehrliche Luecke sonst).
   help: {

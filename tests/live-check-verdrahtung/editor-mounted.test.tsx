@@ -10,6 +10,12 @@ const box = vi.hoisted(() => ({
   zeit: 0,
   zaehler: { get: 0, list: 0, remove: 0 },
   seed: async (_p: Record<string, unknown>): Promise<string> => "",
+  // JOB 3556: derselbe Entwurfsbestand, den die Fläche bearbeitet — für den SERVER lesbar gemacht.
+  // Ohne diese Brücke kennt die Route den Entwurf nicht, den der Editor gerade lädt; „kein Judge"
+  // käme dann vom unauflösbaren Anker statt von der gespeicherten Stufe, und F3b wäre ein
+  // Scheingrün. Nur Lesezugriff, genau wie der echte Backstop.
+  getDraft: async (_id: string): Promise<{ payload: { confidentiality?: unknown } } | undefined> =>
+    undefined,
 }));
 
 vi.mock("../../apps/web/src/api/auth", () => ({
@@ -40,6 +46,7 @@ vi.mock("../../apps/web/src/api/endpoints", async () => {
     box.zeit += 60_000;
     return (await svc.createDraft(p, "u1")).id;
   };
+  box.getDraft = async (id: string) => svc.getDraft(id);
   const ok = <T,>(v: T) => vi.fn(async () => v);
   return {
     endpoints: {
@@ -187,7 +194,7 @@ function unmount(): void {
 
 const TEXT = DRAFT;
 let server: Awaited<ReturnType<typeof appWith>>;
-let drahtAntwort: { status: string; similar: unknown[] } | undefined;
+let drahtAntwort: { status: string; similar: unknown[]; conflicts: unknown[] } | undefined;
 const MATCH = {
   id: "kc",
   title: "Kaltstart Vorwärmung",
@@ -203,7 +210,12 @@ beforeEach(async () => {
   box.fehler = false;
   box.antwort = undefined;
   drahtAntwort = undefined;
-  server = await appWith({ active: true, verdict: conflictVerdict });
+  server = await appWith({
+    active: true,
+    verdict: conflictVerdict,
+    // Der Server liest DENSELBEN Entwurfsbestand wie die Fläche — sonst misst F3b nichts.
+    capture: { getDraft: (id: string) => box.getDraft(id) },
+  });
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string, init?: RequestInit) => {
@@ -227,11 +239,22 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-async function gespeichertesBlatt(): Promise<void> {
+// JOB 3556: die Stufe des GESPEICHERTEN Entwurfs ist ab jetzt Teil des Aufbaus — sie entscheidet,
+// was der Editor an die Route weitergibt. „ohne" heißt: der Entwurf trägt gar kein Feld
+// `confidentiality`. BEWUSST ein Wort und nicht `undefined`: ein ausdrücklich übergebenes
+// `undefined` löst in JavaScript den Vorgabewert aus — der Fall „ohne Einstufung" wäre dann
+// stillschweigend der Fall „intern" gewesen (in Runde 1 genau so gemessen).
+//
+// Gibt die Kennung des gesäten Entwurfs ZURÜCK: sie ist der Anker, an dem der Server die
+// gespeicherte Stufe hebt, und die Nutzlast-Prüfungen nennen genau sie statt „irgendeine
+// Zeichenkette". Ein `expect.any(String)` liesse einen falschen Anker durchgehen.
+async function gespeichertesBlatt(
+  stufe: "intern" | "vertraulich" | "ohne" = "intern",
+): Promise<string> {
   const id = await box.seed({
     title: "Kaltstart",
     bodyHtml: `<p>${TEXT}</p>`,
-    confidentiality: "intern",
+    ...(stufe === "ohne" ? {} : { confidentiality: stufe }),
   });
   await mount(`/erfassen?draft=${id}`);
   await act(async () => {
@@ -244,6 +267,7 @@ async function gespeichertesBlatt(): Promise<void> {
       body: expect.stringContaining(TEXT),
     }),
   );
+  return id;
 }
 
 function chip(): Element | null {
@@ -251,6 +275,48 @@ function chip(): Element | null {
 }
 function hinweis(): Element | null {
   return container.querySelector('[data-testid="blatt-live-ausfall"]');
+}
+
+// JOB 3556: die ZULETZT abgesendete Nutzlast, so wie sie am Draht steht. Gemessen wird das
+// vollständige Objekt (`toEqual`), nicht „enthält ein Feld": nur so fällt auf, wenn ein Feld
+// erfunden dazukommt (ein Vorgabewert „nicht vertraulich") oder eines still verschwindet.
+function nutzlast(): Record<string, unknown> {
+  const aufrufe = vi.mocked(fetch).mock.calls;
+  const letzter = aufrufe[aufrufe.length - 1];
+  if (!letzter) {
+    throw new Error("Es gab keine Anfrage an /knowledge/check.");
+  }
+  return JSON.parse(String((letzter[1] as RequestInit).body));
+}
+
+// Der Mensch wählt im Blatt eine Stufe — über das echte Menü, nicht über einen gesetzten Zustand.
+async function stufeWaehlen(stufe: "intern" | "vertraulich"): Promise<void> {
+  await act(async () => {
+    const werkzeug = container.querySelector('[data-testid="blatt-werkzeug-vertraulichkeit"]');
+    if (!(werkzeug instanceof HTMLButtonElement)) {
+      throw new Error("Das Menü Vertraulichkeit ist nicht auf dem Blatt.");
+    }
+    werkzeug.click();
+    await flush();
+  });
+  await act(async () => {
+    const flaeche = container.querySelector('[data-testid="blatt-menue-vertraulichkeit"]');
+    if (!(flaeche instanceof HTMLElement)) {
+      throw new Error("Das Menü Vertraulichkeit hat sich nicht geöffnet.");
+    }
+    const eintrag = [...flaeche.querySelectorAll("button")].find(
+      (b) => (b.textContent ?? "").trim() === i18n.t(`conf.level.${stufe}`),
+    );
+    if (!(eintrag instanceof HTMLButtonElement)) {
+      throw new Error(`Stufe '${stufe}' nicht im Menü.`);
+    }
+    eintrag.click();
+    await flush();
+  });
+  // Der Wechsel der Einstufung ist eine neue Frage an den Server — der Debounce muss ablaufen.
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 650));
+  });
 }
 
 describe("Live-Prüfung im gemounteten Editor", () => {
@@ -339,6 +405,9 @@ it("ungespeicherter Text bleibt am echten Draht pending ohne Judge; derselbe Spy
     await new Promise((resolve) => setTimeout(resolve, 650));
   });
   expect(fetch).toHaveBeenCalled();
+  // JOB 3556: ein frisches Blatt hat keine gewählte Einstufung — also reist auch keine. Kein
+  // `source`, kein `confidentiality`: der Server entscheidet unverändert fail-safe.
+  expect(nutzlast()).toEqual({ text: TEXT });
   expect(server.judgeConflict).not.toHaveBeenCalled();
   expect(hinweis()?.textContent).toBe("Auf Widerspruch noch nicht geprüft.");
   await pruefeAehnlichenFundort();
@@ -368,21 +437,165 @@ async function pruefeAehnlichenFundort(): Promise<void> {
   expect(chip()?.querySelector("a")?.textContent).toBe("Kaltstart Vorwärmung");
 }
 
-it("echter Editor mit aktivem Modell: pending UND Ähnlichkeit mit Fundort und Link", async () => {
-  await gespeichertesBlatt();
-  expect(fetch).toHaveBeenCalledWith(
-    "/api/knowledge/check",
-    expect.objectContaining({ body: JSON.stringify({ text: TEXT }) }),
-  );
-  expect(drahtAntwort?.status).toBe("pending");
-  expect(drahtAntwort?.similar).toHaveLength(1);
-  expect(server.judgeConflict).not.toHaveBeenCalled();
+// ==================================================================================================
+// JOB 3556 · TEIL A — F1: DIE HERKUNFT REIST MIT, UND DER WIDERSPRUCH KOMMT AN.
+// ==================================================================================================
+// Bis JOB 3556 stand hier der Gegenbeweis: derselbe Aufbau (gespeicherter, als „intern" eingestufter
+// Entwurf, aktives Modell) endete am echten Draht in „pending" — der Browser schickte nur `{text}`,
+// die Route stufte die fehlende Herkunft fail-safe als vertraulich ein und ließ den Judge aus. Ein
+// echter Widerspruch KONNTE im Editor nicht erscheinen. Genau diese Zeile dreht Teil A um.
+it("F1 · gespeichert und eingestuft: Herkunft am Draht, Judge läuft, Widerspruch steht als Widerspruch", async () => {
+  const entwurf = await gespeichertesBlatt("intern");
+  // Genau die Felder, die die Route kennt — und KEIN erfundenes `koId`: dieses Blatt bearbeitet
+  // einen Entwurf, kein Wissensobjekt. Es gibt keine KO-Kennung, also reist keine. Die
+  // ENTWURFS-Kennung reist sehr wohl mit: sie ist der hebende Backstop (JOB 2692 D2), an dem der
+  // Server die gespeicherte Stufe nachschlägt. Ohne sie gälte `source:"draft"` als vertraulich.
+  expect(nutzlast()).toEqual({
+    text: TEXT,
+    source: "draft",
+    confidentiality: "intern",
+    draftId: entwurf,
+  });
+  expect(server.judgeConflict).toHaveBeenCalled();
+  expect(drahtAntwort?.status).toBe("done");
+  expect(drahtAntwort?.conflicts).toHaveLength(1);
   console.info(
-    `LIVE-MESSUNG status=${drahtAntwort?.status} similarAnzahl=${drahtAntwort?.similar.length} judgeAufgerufen=${server.judgeConflict.mock.calls.length > 0}`,
+    `LIVE-MESSUNG status=${drahtAntwort?.status} similarAnzahl=${drahtAntwort?.similar.length} konflikte=${drahtAntwort?.conflicts.length} judgeAufgerufen=${server.judgeConflict.mock.calls.length > 0}`,
   );
+  // Kein „nicht geprüft" mehr — es WURDE geprüft, und das Ergebnis steht auf der Fläche.
+  expect(hinweis()).toBeNull();
+  expect(chip()?.getAttribute("data-lage")).toBe("conflict");
+  await act(async () => {
+    (chip()?.querySelector("button") as HTMLButtonElement).click();
+  });
+  expect(chip()?.textContent).toContain("Kaltstart Vorwärmung");
+  expect(chip()?.querySelector("a")?.getAttribute("href")).toBe("/wissen/kc");
+});
+
+// F2 — VERTRAULICH BLEIBT VERTRAULICH: die Herkunft reist, aber sie ÖFFNET nichts.
+it("F2 · vertraulicher Bestandstext: Stufe reist mit, KEIN Judge, ehrlich „nicht geprüft“", async () => {
+  const entwurf = await gespeichertesBlatt("vertraulich");
+  expect(nutzlast()).toEqual({
+    text: TEXT,
+    source: "draft",
+    confidentiality: "vertraulich",
+    draftId: entwurf,
+  });
+  expect(server.judgeConflict).not.toHaveBeenCalled();
+  expect(drahtAntwort?.status).toBe("pending");
   expect(hinweis()?.textContent).toBe("Auf Widerspruch noch nicht geprüft.");
+  // Die Ähnlichkeit bleibt sichtbar — sie ist deterministisch belegt, auch ohne Judge.
   await pruefeAehnlichenFundort();
+});
+
+// F3 — UNBEKANNTE EINSTUFUNG: der Editor SCHWEIGT über sie, statt eine zu erfinden.
+it("F3 · Entwurf ohne Einstufung: kein `confidentiality` am Draht, Server bleibt fail-safe", async () => {
+  await gespeichertesBlatt("ohne");
+  expect(nutzlast()).toEqual({ text: TEXT });
+  expect(server.judgeConflict).not.toHaveBeenCalled();
+  expect(drahtAntwort?.status).toBe("pending");
   expect(hinweis()?.textContent).toBe("Auf Widerspruch noch nicht geprüft.");
+});
+
+// F3b — DIE GESPEICHERTE STUFE WIRD NICHT ABGESENKT (Auftrag §5.2, ausdrückliches Verbot).
+// Ein Entwurf liegt als „vertraulich" im Bestand; im Menü wird „intern" gewählt, aber NICHT
+// gesichert.
+//
+// WO DIE SPERRE SITZT — die Aussage dieses Prüfstands: NICHT im Browser. Der Client deklariert
+// ehrlich, was der Mensch gewählt hat („intern"), und legt den ANKER daneben (`draftId`). Der
+// SERVER schlägt daran die gespeicherte Stufe nach und hebt — `resolveDraftConfidential` in
+// `knowledge-check-routes.ts`. Genau deshalb steht hier `confidentiality: "intern"` am Draht und
+// trotzdem KEIN Judge-Aufruf: eine Client-Deklaration unter der gespeicherten Stufe gibt den Text
+// nicht frei. Eine Sperre, die stattdessen den Browser das richtige Wort sagen liesse, wäre keine —
+// sie fiele mit dem ersten manipulierten Client. Die tragende Zeile ist deshalb
+// `judgeConflict not toHaveBeenCalled`, nicht das Wort in der Nutzlast.
+it("F3b · Menüwahl unter der gespeicherten Stufe senkt den Egress NICHT", async () => {
+  const entwurf = await gespeichertesBlatt("vertraulich");
+  await stufeWaehlen("intern");
+  expect(nutzlast()).toEqual({
+    text: TEXT,
+    source: "draft",
+    confidentiality: "intern",
+    draftId: entwurf,
+  });
+  expect(server.judgeConflict).not.toHaveBeenCalled();
+  expect(hinweis()?.textContent).toBe("Auf Widerspruch noch nicht geprüft.");
+});
+
+// ==================================================================================================
+// JOB 3556 R3 · K2 — DAS SICHERN IST DIE NEUE FRAGE (BEN-Korrekturpflicht 2).
+// ==================================================================================================
+// BENs Messung an Runde 2: „nach Laden eines vertraulichen Entwurfs, Menüwahl ‚intern' und
+// erfolgreichem Sichern bleibt der bekannte Widerspruch ungeprüft." Genau dieser Weg, Schritt für
+// Schritt, im gemounteten Editor gegen die echte Route: der Server hebt vor dem Sichern an der
+// GESPEICHERTEN Stufe (kein Judge), danach nicht mehr (Judge, Widerspruch auf der Fläche). Kein
+// Zeichen am Text wird dabei angefasst — die einzige Handlung zwischen beiden Befunden ist der
+// Klick auf „Entwurf sichern".
+it("K2 · nach dem Sichern von „intern“ erscheint der Widerspruch OHNE weitere Texteingabe", async () => {
+  const entwurf = await gespeichertesBlatt("vertraulich");
+  await stufeWaehlen("intern");
+  // Zwischenstand, der BENs Befund wörtlich festhält: die Wahl allein gibt nichts frei.
+  expect(server.judgeConflict).not.toHaveBeenCalled();
+  expect(hinweis()?.textContent).toBe("Auf Widerspruch noch nicht geprüft.");
+  const anfragenVorher = vi.mocked(fetch).mock.calls.length;
+
+  await act(async () => {
+    const knopf = container.querySelector('[data-testid="blatt-entwurf-sichern"]');
+    if (!(knopf instanceof HTMLButtonElement)) {
+      throw new Error("Der Knopf 'Entwurf sichern' ist nicht auf dem Blatt.");
+    }
+    knopf.click();
+    await flush();
+  });
+  // Der gespeicherte Entwurf trägt jetzt wirklich „intern" — gelesen aus demselben Bestand, den der
+  // Server befragt (nicht aus dem Zustand der Fläche).
+  expect((await box.getDraft(entwurf))?.payload.confidentiality).toBe("intern");
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 650));
+  });
+
+  expect(vi.mocked(fetch).mock.calls.length).toBeGreaterThan(anfragenVorher);
+  expect(nutzlast()).toEqual({
+    text: TEXT,
+    source: "draft",
+    confidentiality: "intern",
+    draftId: entwurf,
+  });
+  expect(server.judgeConflict).toHaveBeenCalled();
+  expect(drahtAntwort?.status).toBe("done");
+  expect(hinweis()).toBeNull();
+  expect(chip()?.getAttribute("data-lage")).toBe("conflict");
+});
+
+// F4 — ZUSTIMMUNG KANN DER CLIENT NICHT BEHAUPTEN. Die dokumentbezogene Zustimmung läuft seit
+// JOB 3556 R3 über den bestehenden Riegel (KA4/Klara-Bindung an den Kopfzeilen, `ask-routes.ts::
+// ka4Freigabe`), den diese Route wie `reasoner-routes.ts:287-296` befragt; gemessen wird er in
+// `anker-und-zustimmung.test.ts` (K3). Ein Feld in der NUTZLAST öffnet den Judge deshalb NICHT —
+// sonst wäre die Zustimmung eine Selbstauskunft des Clients.
+it("F4 · ohne Zustimmung kein Judge — auch wenn die Nutzlast eine behauptet", async () => {
+  // JOB 3556 R3: MIT auflösbarem Anker gefragt (ein „intern" gespeicherter Entwurf). Sonst käme das
+  // „kein Judge" seit der Ankersperre schon von der fehlenden Kennung, und dieser Fall misste die
+  // erfundene Zustimmung gar nicht mehr.
+  const entwurf = await box.seed({
+    title: "Kaltstart",
+    bodyHtml: `<p>${TEXT}</p>`,
+    confidentiality: "intern",
+  });
+  const versuch = await server.app.inject({
+    method: "POST",
+    url: "/api/knowledge/check",
+    payload: {
+      text: TEXT,
+      source: "draft",
+      confidentiality: "vertraulich",
+      nichtEingestuft: true,
+      draftId: entwurf,
+      dokumentZustimmung: true,
+    },
+  });
+  expect(versuch.statusCode).toBe(200);
+  expect(versuch.json().status).toBe("pending");
+  expect(server.judgeConflict).not.toHaveBeenCalled();
 });
 
 it.each(["pending", "failed"])(

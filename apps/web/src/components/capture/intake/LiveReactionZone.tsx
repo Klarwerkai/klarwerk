@@ -55,7 +55,19 @@ function Fundort({
 // Sie reagiert sichtbar/lebendig auf den Entwurfstext: idle (hört zu), checking (ehrlicher Lauf-Zustand
 // mit pulsierenden Punkten), new / similar / conflict. never block, only show honest status. Reine
 // Präsentation: der Verdict kommt vom gekapselten Hook (useLiveKnowledgeCheck) bzw. im Test gemockt.
-export function LiveReactionZone({ verdict }: { verdict: LiveVerdict }): JSX.Element {
+//
+// JOB 3556 (LIVE-CHECK-VERDRAHTUNG A) — DIESE ZONE SPRICHT NICHT MEHR ÜBER DEN PRÜFSTATUS.
+// Seit JOB 3427 sagt der PRÜFSTATUS seinen Satz beim Aufrufer (`Blatt.tsx`, `blatt-live-ausfall`),
+// getrennt vom Treffer und ohne die unbelegte Zusatzbehauptung „Ähnliches gefunden? Nein". Die
+// Zweige `pending`/`unavailable` und ihre Texte waren damit unerreichbar geworden — sie sind
+// entfernt, und der TYP hält es fest: was diese Zone nicht mehr darstellen kann, kann ihr auch
+// niemand mehr übergeben. Ein unerreichbarer Zweig wäre sonst genau die Leiche, die beim nächsten
+// Umbau wieder mitgepflegt wird.
+export function LiveReactionZone({
+  verdict,
+}: {
+  verdict: Exclude<LiveVerdict, { status: "pending" } | { status: "unavailable" }>;
+}): JSX.Element {
   const { t } = useTranslation();
 
   // Lebendiger Lauf-Zustand: drei pulsierende Punkte statt totem Ladebalken.
@@ -113,25 +125,6 @@ export function LiveReactionZone({ verdict }: { verdict: LiveVerdict }): JSX.Ele
           {verdict.match.title}
         </Link>
         <Fundort koStatus={verdict.match.koStatus} koCategory={verdict.match.koCategory} />
-      </div>
-    );
-  }
-
-  // G-2-EHRLICHKEIT (SCRUM-527): „pending" = nichts Ähnliches, aber Widerspruch NICHT geprüft. Neutral
-  // (nicht das positive „neu"-Grün), damit nichts Unbelegtes behauptet wird.
-  if (verdict.status === "pending") {
-    return (
-      <div className="rounded-card border border-hairline bg-surface px-4 py-3 text-[13px] text-muted">
-        {t("intake.live.pending")}
-      </div>
-    );
-  }
-
-  // „unavailable" = die Prüfung ist fehlgeschlagen/nicht erreichbar — ehrlich sichtbar, nicht als „neu".
-  if (verdict.status === "unavailable") {
-    return (
-      <div className="rounded-card border border-hairline bg-surface px-4 py-3 text-[13px] text-muted">
-        {t("intake.live.unavailable")}
       </div>
     );
   }

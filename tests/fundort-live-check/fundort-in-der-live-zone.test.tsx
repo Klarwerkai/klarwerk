@@ -43,7 +43,7 @@ import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
 import type { KoStatus } from "../../apps/web/src/api/types";
 import { LiveReactionZone } from "../../apps/web/src/components/capture/intake/LiveReactionZone";
-import { useLiveKnowledgeCheck } from "../../apps/web/src/components/capture/intake/useLiveKnowledgeCheck";
+import { useLiveKnowledgeCheck } from "../../apps/web/src/hooks/useLiveKnowledgeCheck";
 import i18n from "../../apps/web/src/i18n";
 import type { LiveVerdict } from "../../apps/web/src/lib/intakeSimilarity";
 
@@ -72,10 +72,21 @@ async function render(el: ReactElement): Promise<void> {
   await act(flush);
 }
 
-// Der Anzeigeweg, wie ihn KnowledgeIntake.tsx:41/:146 fährt: Hook → Verdict → Zone. Nur hier
-// zusammengesetzt, damit Fall E die echte Kette misst und nicht einen handgebauten Verdict.
-function Sonde({ text, debounceMs }: { text: string; debounceMs: number }): ReactElement {
-  const verdict = useLiveKnowledgeCheck(text, debounceMs);
+// Der Anzeigeweg, wie ihn das Blatt fährt: Hook → Verdict → Zone. Nur hier zusammengesetzt, damit
+// Fall E die echte Kette misst und nicht einen handgebauten Verdict.
+//
+// JOB 3556: umgehängt auf den EINEN Haken (`apps/web/src/hooks/useLiveKnowledgeCheck.ts`) — der
+// abgelöste Haken in `components/capture/intake` ist entfernt. Und wie im Blatt (`Blatt.tsx`,
+// §5-Chip) trägt die Zone die Lagen `pending`/`unavailable` nicht mehr: über den Prüfstatus spricht
+// der Aufrufer, nicht die Trefferzone. Ohne Herkunft (`undefined`) geht wie bisher nur der Text
+// hinaus — dieser Prüfstand misst die Anzeigekette, nicht die Verdrahtung der Einstufung.
+function Sonde({ text, debounceMs }: { text: string; debounceMs: number }): ReactElement | null {
+  // JOB 3556 R3: der dritte Platz ist der gespeicherte Stand des Entwurfs — diese Sonde bearbeitet
+  // keinen gespeicherten Entwurf, also hat sie keinen (`undefined`).
+  const { verdict } = useLiveKnowledgeCheck(text, undefined, undefined, debounceMs);
+  if (verdict.status === "pending" || verdict.status === "unavailable") {
+    return null;
+  }
   return createElement(LiveReactionZone, { verdict });
 }
 
@@ -101,6 +112,11 @@ async function spracheSetzen(lng: "de" | "en" | "nl"): Promise<void> {
   });
 }
 
+// JOB 3556: Was die Zone überhaupt darstellen kann. `pending`/`unavailable` gehören seit diesem
+// Auftrag nicht mehr dazu — über den Prüfstatus spricht der Aufrufer. Der Typ hält es fest, damit
+// dieser Prüfstand nicht wieder Lagen einsetzt, die die Fläche gar nicht mehr kennt.
+type ZonenVerdict = Exclude<LiveVerdict, { status: "pending" } | { status: "unavailable" }>;
+
 const text = (): string => (container.textContent ?? "").replace(/\s+/g, " ");
 const fundortZeile = (): Element | null => container.querySelector('[data-testid="live-fundort"]');
 // Der ZUSAMMENGESETZTE sichtbare Text der Fundortzeile. Genau er ist das, was ein Mensch liest —
@@ -112,7 +128,7 @@ const fundortText = (): string | null => {
 };
 
 // Ein Verdict der Lage „Treffer" mit frei gesetztem Fundort — für die Kombinationstabelle.
-const treffer = (koCategory: string | null, koStatus: KoStatus | null): LiveVerdict => ({
+const treffer = (koCategory: string | null, koStatus: KoStatus | null): ZonenVerdict => ({
   status: "similar",
   match: { koId: "k1", title: "Not-Aus vor Wartung", score: 0.6, koStatus, koCategory },
 });
@@ -135,7 +151,7 @@ afterEach(async () => {
 
 describe("JOB 3045 · Fundort in der Live-Zone", () => {
   it("A · similar mit Kategorie UND Zustand: beides steht auf der Fläche", async () => {
-    const verdict: LiveVerdict = {
+    const verdict: ZonenVerdict = {
       status: "similar",
       match: {
         koId: "k1",
@@ -155,7 +171,7 @@ describe("JOB 3045 · Fundort in der Live-Zone", () => {
   });
 
   it("B · Zustand null: die Kategorie steht da, ein Zustandswort wird NICHT erfunden", async () => {
-    const verdict: LiveVerdict = {
+    const verdict: ZonenVerdict = {
       status: "similar",
       match: {
         koId: "k1",
@@ -174,7 +190,7 @@ describe("JOB 3045 · Fundort in der Live-Zone", () => {
   });
 
   it("C · beides null: die Fundortzeile entsteht gar nicht — kein Platzhalter", async () => {
-    const verdict: LiveVerdict = {
+    const verdict: ZonenVerdict = {
       status: "similar",
       match: {
         koId: "k1",
@@ -196,7 +212,7 @@ describe("JOB 3045 · Fundort in der Live-Zone", () => {
   });
 
   it("D · conflict trägt den Fundort ebenso (nicht nur similar)", async () => {
-    const verdict: LiveVerdict = {
+    const verdict: ZonenVerdict = {
       status: "conflict",
       match: {
         koId: "k9",
@@ -267,7 +283,7 @@ describe("JOB 3045 · Fundort in der Live-Zone", () => {
   });
 
   it("F · der Zustand spricht die Sprache der Oberfläche (en/nl), nicht Deutsch", async () => {
-    const verdict: LiveVerdict = {
+    const verdict: ZonenVerdict = {
       status: "similar",
       match: {
         koId: "k1",

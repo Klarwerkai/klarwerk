@@ -63,19 +63,12 @@ describe("LiveReactionZone", () => {
     expect(html).toContain('href="/wissen/k9"');
   });
 
-  it("G-2: pending = Widerspruch NICHT geprüft — sichtbar, NIE als 'neu'", () => {
-    const html = render(<LiveReactionZone verdict={{ status: "pending" }} />);
-    expect(html).toContain("noch nicht geprüft");
-    // Darf NICHT die positive „neu, du bist die erste Person"-Behauptung zeigen.
-    expect(html).not.toContain("Das ist neu");
-    expect(html).not.toContain("Du bist die erste Person");
-  });
-
-  it("G-2: unavailable = Prüfung nicht verfügbar — sichtbar, NIE als 'neu'", () => {
-    const html = render(<LiveReactionZone verdict={{ status: "unavailable" }} />);
-    expect(html).toContain("nicht verfügbar");
-    expect(html).not.toContain("Das ist neu");
-  });
+  // JOB 3556: Die beiden Fälle „pending" und „unavailable" standen hier bis zu diesem Auftrag. Sie
+  // sind mit ihren Zweigen entfernt, weil diese Zone über den PRÜFSTATUS nicht mehr spricht — das
+  // tut seit JOB 3427 der Aufrufer (`Blatt.tsx`, `blatt-live-ausfall`), und zwar ohne die unbelegte
+  // Zusatzbehauptung „Ähnliches gefunden? Nein". Die Aussage selbst ist nicht verloren, sondern
+  // umgezogen: `tests/live-check-verdrahtung/editor-mounted.test.tsx` misst sie am gemounteten
+  // Editor, also dort, wo ein Mensch sie liest. Der Typ der Zone lässt beide Lagen nicht mehr zu.
 
   it("idle: ruhiges 'hört zu' (Zone nie tot)", () => {
     const html = render(<LiveReactionZone verdict={{ status: "idle" }} />);
