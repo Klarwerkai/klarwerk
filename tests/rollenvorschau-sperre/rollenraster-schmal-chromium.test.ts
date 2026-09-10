@@ -96,6 +96,8 @@ interface Messung {
   dokumentScrollWidth: number;
   rasterKlasse: string;
   rasterBreite: number;
+  /** `grid-template-columns` des Rasters, wie Chromium es aufgelöst hat — eine Angabe = einspaltig. */
+  rasterSpalten: string;
   knoepfe: Knopfmass[];
 }
 
@@ -141,7 +143,7 @@ interface Lage {
 }
 
 // ---- In der Seite: die Detailkarte öffnen und messen ---------------------------------------------
-const MESSEN = `(async ([reiterName, nowrap, breite, timeout, namen]) => {
+const MESSEN = `(async ([reiterName, nowrap, breite, timeout, namen, attrappe]) => {
   const start = Date.now();
   const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim();
   const warte = async (pruefung, ms = 8000) => {
@@ -152,7 +154,7 @@ const MESSEN = `(async ([reiterName, nowrap, breite, timeout, namen]) => {
     }
     return pruefung();
   };
-  const leer = { viewport: 0, dokumentScrollWidth: 0, rasterKlasse: '', rasterBreite: 0, knoepfe: [] };
+  const leer = { viewport: 0, dokumentScrollWidth: 0, rasterKlasse: '', rasterBreite: 0, rasterSpalten: '', knoepfe: [] };
 
   // 1. Reiter „Konten" — dort wohnt die Zeile „Ansicht als Rolle".
   if (document.querySelector('[data-testid="zeile-ansicht-rolle"]') === null
@@ -173,6 +175,15 @@ const MESSEN = `(async ([reiterName, nowrap, breite, timeout, namen]) => {
       return Object.assign({ fehler: 'Detailkarte „Ansicht als Rolle" ging nicht auf' }, leer);
   }
   const karte = document.querySelector('[data-testid="detail-ansicht-rolle"]');
+
+  // JOB 3448: JEDE Messung ohne Attrappen-Flagge stellt zuerst den Auslieferungszustand her — genau
+  // wie der Kürzungsvertrag unten bei jedem Lauf ohne \`nowrap\` zurückgesetzt wird. Deshalb steht
+  // das Abräumen VOR der Bereitschaftsprüfung: der Folgelauf soll die Produktrollen zählen, nicht
+  // die Reste des vorigen Laufs. Fällt diese Rücknahme weg, wird der Folgelauf rot (Gegenprobe G4).
+  if (!attrappe) {
+    for (const alt of karte.querySelectorAll('[data-job3448-attrappe]')) alt.remove();
+  }
+
   const layout = () => {
     const knoepfe = [...karte.querySelectorAll('button[aria-pressed]')];
     const raster = knoepfe[0]?.parentElement;
@@ -183,6 +194,12 @@ const MESSEN = `(async ([reiterName, nowrap, breite, timeout, namen]) => {
   };
   if (!(await warte(() => {
     const ist = layout();
+    // WAS DIESE ZAHL IST UND WAS NICHT (JOB 3448): sie kommt aus den Tailwind-Haltepunkten des
+    // Rasters und ist eine Aussage über das CSS-RASTER — nicht über die Zahl der Rollen. Sie wird
+    // hier ABSICHTLICH nicht aus dem gemessenen \`gridTemplateColumns\` abgeleitet: dann verglichen
+    // sich zwei Namen derselben Messung, und die Gegenprobe „falsche Spaltenzahl" von JOB 3152
+    // (\`t1b-raster.test.ts\`, \`repeat(4, 1fr)\` bei 320 px) würde grün, obwohl das Raster kaputt ist.
+    // Dass das Raster auch bei WACHSENDER Rollenliste einspaltig bleibt, misst stattdessen S4.
     const spalten = breite >= 1024 ? 4 : breite >= 640 ? 2 : 1;
     return ist.viewport === breite && ist.rasterBreite > 0
       && ist.spalten.length === spalten && ist.spalten.every(s => parseFloat(s) > 0)
@@ -194,7 +211,23 @@ const MESSEN = `(async ([reiterName, nowrap, breite, timeout, namen]) => {
       + '] · ' + (Date.now() - start) + 'ms · letzter Zustand: ' + JSON.stringify(ist) }, leer);
   }
   await document.fonts.ready;
-  const knoepfe = [...karte.querySelectorAll('button[aria-pressed]')];
+  let knoepfe = [...karte.querySelectorAll('button[aria-pressed]')];
+
+  // 2b. Nur für die Gegenprobe S4 (JOB 3448): einen zusätzlichen, gleichartigen Rollenknopf
+  //     beistellen — die Prüfstandsattrappe einer sechsten Rolle. Sie wird aus einem echten Knopf
+  //     geklont, damit sie dessen Klassen und damit sein Layoutverhalten trägt; ihr Text ist länger
+  //     als jeder Produktname („Attrappe (Prüfstand)" statt „Administrator"), also der härtere Fall.
+  //     AM PRODUKT ÄNDERT SICH NICHTS: \`ROLES\` bleibt unberührt, der Knopf lebt nur im DOM dieser
+  //     Messung. Sie kommt NACH der Bereitschaftsprüfung, die weiterhin die Produktrollen zählt.
+  if (attrappe && knoepfe.length > 0) {
+    const vorlage = knoepfe[knoepfe.length - 1];
+    const doppel = vorlage.cloneNode(true);
+    doppel.setAttribute('data-job3448-attrappe', '1');
+    doppel.textContent = 'Attrappe (Prüfstand)';
+    vorlage.parentElement.append(doppel);
+    await new Promise((r) => requestAnimationFrame(() => r(null)));
+    knoepfe = [...karte.querySelectorAll('button[aria-pressed]')];
+  }
 
   // 3. Nur für die Gegenprobe S3: den Vertrag einsetzen, der den Schaden macht — und ihn danach
   //    wieder abräumen. Jede Messung ohne Flagge stellt den Auslieferungszustand her.
@@ -253,6 +286,7 @@ const MESSEN = `(async ([reiterName, nowrap, breite, timeout, namen]) => {
     dokumentScrollWidth: document.documentElement.scrollWidth,
     rasterKlasse: String(raster.getAttribute('class') || ''),
     rasterBreite: raster.clientWidth,
+    rasterSpalten: String(getComputedStyle(raster).gridTemplateColumns || ''),
     knoepfe: mass,
   };
 })`;
@@ -332,13 +366,25 @@ const WARTE_EINSTELLUNGEN = `() => document.querySelector('[data-einst="seite"]'
 let stand: Stand;
 const messungen = new Map<number, Messung>();
 
-async function messen(breite: number, nowrap = false, timeout = 8_000): Promise<Messung> {
+async function messen(
+  breite: number,
+  nowrap = false,
+  timeout = 8_000,
+  attrappe = false,
+): Promise<Messung> {
   const seite = stand.seite;
   if (seite === null) {
     throw new Error(`Bühne steht nicht: ${stand.fehler ?? "unbekannt"}`);
   }
   await (seite as unknown as SeiteMitViewport).setViewportSize({ width: breite, height: 740 });
-  return await seite.evaluate<Messung>(fn(MESSEN), [REITER, nowrap, breite, timeout, NAMEN]);
+  return await seite.evaluate<Messung>(fn(MESSEN), [
+    REITER,
+    nowrap,
+    breite,
+    timeout,
+    NAMEN,
+    attrappe,
+  ]);
 }
 
 /** Die Seite roh — die Bühne reicht sie durch, ihr Typ nennt nur, was sie hier braucht. */
@@ -394,7 +440,7 @@ function protokoll(breite: number, m: Messung): string {
       `scroll ${k.scrollWidth} px, ${k.zeilen.length} Textzeile(n), Überlauf ${k.ueberlaufPx} px`,
   );
   return [
-    `  Viewport ${breite} px · Raster ${m.rasterBreite} px (${m.rasterKlasse})`,
+    `  Viewport ${breite} px · Raster ${m.rasterBreite} px (${m.rasterKlasse}) · Spalten „${m.rasterSpalten}"`,
     `  document.scrollWidth ${m.dokumentScrollWidth} px`,
     ...zeilen,
   ].join("\n");
@@ -492,6 +538,56 @@ describe("JOB 3124 UX-12 · das Rollenraster bei 320 und 390 px, in Chromium gem
       expect(k.scrollWidth, `„${k.text}" nach der Gegenprobe`).toBeLessThanOrEqual(k.clientWidth);
       expect(k.whiteSpace, `„${k.text}": die Störung wurde nicht abgeräumt`).not.toBe("nowrap");
     }
+  }, 120_000);
+
+  // ================================================================================================
+  // JOB 3448 · S4 — WÄCHST DIE ROLLENLISTE, IST DIE SPALTENLAGE GEMESSEN STATT ANGENOMMEN.
+  // ================================================================================================
+  // Die Bereitschaftsprüfung in `MESSEN` erwartet die Spaltenzahl aus den Tailwind-Haltepunkten
+  // (`:186`) — sie ist eine Aussage über das CSS-Raster, NICHT über die Zahl der Rollen. Eine sechste
+  // Rolle liefe deshalb in dieselbe Prüfung, ohne dass ein Fall belegt, dass das Raster bei 320 px
+  // noch einspaltig passt. S4 stellt dem Raster einen zusätzlichen, gleichartigen
+  // `button[aria-pressed]` bei (dieselbe Technik wie die Störung in S3) und misst dieselben drei
+  // Zusagen wie S1/S2 an der vergrößerten Liste. AM PRODUKT ÄNDERT SICH NICHTS: `ROLES` bleibt, wie
+  // es ist; der zusätzliche Knopf ist eine Prüfstandsattrappe im DOM, und der Folgelauf belegt, dass
+  // sie wieder weg ist.
+  it("S4 · Gegenprobe: mit einem zusätzlichen Rollenknopf bleibt das Raster bei 320 px einspaltig", async () => {
+    const gross = await messen(320, false, 8_000, true);
+    expect(gross.fehler).toBeNull();
+    expect(
+      gross.knoepfe.map((k) => k.text),
+      "die Attrappe wurde nicht mitgemessen",
+    ).toHaveLength(NAMEN.length + 1);
+    // Einspaltig, an zwei unabhängigen Merkmalen gemessen: das Raster nennt EINE Spalte …
+    expect(
+      gross.rasterSpalten.trim().split(/\s+/),
+      `das Raster meldet mehr als eine Spalte: „${gross.rasterSpalten}"`,
+    ).toHaveLength(1);
+    // … und alle Knöpfe stehen an derselben linken Kante.
+    expect(
+      new Set(gross.knoepfe.map((k) => k.rect.x)).size,
+      "die Knöpfe stehen nicht alle an derselben linken Kante",
+    ).toBe(1);
+    for (let i = 0; i < gross.knoepfe.length; i++) {
+      for (let j = i + 1; j < gross.knoepfe.length; j++) {
+        const a = gross.knoepfe[i] as Knopfmass;
+        const b = gross.knoepfe[j] as Knopfmass;
+        expect(ueberlappt(a.rect, b.rect), `„${a.text}" und „${b.text}" überlappen sich`).toBe(
+          false,
+        );
+      }
+    }
+    expect(
+      gross.dokumentScrollWidth,
+      `die Seite läuft mit ${gross.knoepfe.length} Knöpfen waagerecht über (${gross.dokumentScrollWidth} px)`,
+    ).toBeLessThanOrEqual(320);
+    // eslint-disable-next-line no-console -- die Messwerte sind der Beleg der Rückgabe
+    console.log(`JOB 3448 · S4 mit Attrappe:\n${protokoll(320, gross)}`);
+
+    // Und der Auslieferungszustand kommt zurück: der Folgelauf sieht wieder genau die Produktrollen.
+    const zurueck = await messen(320);
+    expect(zurueck.fehler, "die Attrappe wurde nicht abgeräumt").toBeNull();
+    expect(zurueck.knoepfe.map((k) => k.text)).toEqual([...NAMEN]);
   }, 120_000);
 
   // ==============================================================================================

@@ -191,7 +191,12 @@ for (const datei of [KARTEN, RASTER, "tests/tor-bereitschaft/t1b-raster.test.ts"
         hook = fn;
         rahmen = ms;
       },
-      beende: async (s: { browser: typeof browser }) => s.browser.close(),
+      // JOB 3448: hier stand ein `beende`-Durchreicher. KEINER der drei ausgeführten Original-
+      // `afterAll` rief ihn je auf — sie rufen alle `schliesseChromium(...)`
+      // (`rollenraster-schmal-chromium.test.ts:412`, `start-karten-schmal-chromium.test.tsx:420`,
+      // `t1b-raster.test.ts:53`). Er täuschte einen zweiten Abbauweg vor, den es nicht gibt, und ist
+      // ersatzlos weg. Der gleichnamige ECHTE Export in `tests/design/h6-chromium.ts:365` ist eine
+      // andere Sache und bleibt unangetastet.
     });
     const p = hook();
     await Promise.resolve();
