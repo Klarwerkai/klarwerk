@@ -143,6 +143,23 @@ function matrixAdmin(): Quelle[] {
       inhalt: t("einst.daten.demoBestand"),
     },
     {
+      // JOB 3511 (DEMO-FIRMEN-CI): die ZWEITE Quelle derselben Karte — der Abschnitt
+      // „Demo-Erscheinungsbild" liest den zentralen Markenstand. Sie ist TRAGEND und nicht
+      // nachrangig wie `/api/directory` weiter unten: wer den Schalter bedient, darf nicht auf eine
+      // Stellung schauen, die niemand bestätigt hat. Also derselbe vierteilige Beleg wie überall.
+      //
+      // NICHT ZU VERWECHSELN MIT 404: Antwortet der Server „gibt es hier nicht" (Stände ohne JOB
+      // 3510), dann ist „kein Firmenprofil" die WAHRE Auskunft und es entsteht ausdrücklich KEIN
+      // Fehlerzustand — genau das hält die Kalibrierung K fest. Gestört wird hier mit 503, und das
+      // sagt nichts über die Installation aus.
+      id: "Demo-Erscheinungsbild · /api/branding",
+      pfad: "/api/branding",
+      reiter: t("adm.sec.vorfuehrdaten"),
+      zeile: '[data-testid="zeile-demodaten"]',
+      behaelter: "detail-demodaten",
+      inhalt: t("einst.marke.profil"),
+    },
+    {
       id: "Werkseinstellungen · /api/admin/factory-reset",
       pfad: "/api/admin/factory-reset",
       // JOB 3337: Werkseinstellungen unter „System".
@@ -651,6 +668,10 @@ describe("JOB 3065 H6 R3 · Endpunkt-Matrix der Detailkarten — 503 am gebauten
     "endpoints.external.policy": "/api/external/policy",
     "endpoints.duplicates.settings": "/api/duplicates/settings",
     "endpoints.admin.demoStatus": "/api/admin/demo-seed",
+    // JOB 3511: der zentrale Markenstand. Er kommt NICHT über `endpoints`, sondern über
+    // `lib/brandTheme.ts` — dort wohnt die eine Quelle der Firmen-CI samt Drosselung und
+    // 404-Unterscheidung, und ein zweiter Einstieg über `endpoints` wäre ein zweiter Weg dorthin.
+    ladeBranding: "/api/branding",
     "endpoints.admin.factoryResetStatus": "/api/admin/factory-reset",
     "endpoints.ko.trash": "/api/kos/trash",
     useUsers: "/api/users",

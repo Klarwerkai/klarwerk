@@ -210,6 +210,29 @@ const REGISTER: Eintrag[] = [
     ],
   },
   {
+    // JOB 3511 · die Firmen-CI. Der Wächter liest modern.css als GEGENPROBE — er misst dort
+    // nichts, sondern belegt, dass die Markenebene und die Darstellungswahl einander nicht
+    // anfassen. Genau deshalb fällt er in den Sammler und muss sich hier erklären.
+    waechter: "tests/demo-firmen-ci-web/marke-bindung.test.ts",
+    teildeckung: "marken-bindung",
+    aussage:
+      "Jede Regel in styles/marke.css hängt unter [data-brand=„advisor“], die Markenebene führt " +
+      "kein eigenes Token ein, lässt die semantischen Farben (Warnung, Fehler, Erfolg, Info, KI) " +
+      "unangetastet und nennt data-theme nicht; umgekehrt kennt modern.css kein data-brand. " +
+      "Deckt die BINDUNG und die TRENNUNG der beiden Ebenen — nicht die Wahl der Advisor-Farben, " +
+      "nicht deren Kontrast und keinen im Browser gemessenen Wert.",
+    beleg: [
+      {
+        was: "der Markenanker selbst — ohne ihn kann der Test die Bindung nicht prüfen",
+        muster: /\[data-brand="advisor"\]/,
+      },
+      {
+        was: "modern.css als gegengelesene Quelle der Darstellungswahl",
+        muster: /styles\/modern\.css/,
+      },
+    ],
+  },
+  {
     waechter: "tests/legal/mega62-kontrast-pflichtflaechen.test.ts",
     teildeckung: "pflichtflaechen-kontrast",
     aussage:

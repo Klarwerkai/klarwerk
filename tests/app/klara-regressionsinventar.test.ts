@@ -683,6 +683,15 @@ const INVENTAR: readonly string[] = [
   // JOB 3244: gemessene Word-/Editor-Rümpfe und Dokumentzustimmung am echten Router.
   "tests/n11b-zustimmung-macht-intern/einstiege.test.ts",
   "tests/n11b-zustimmung-macht-intern/zustimmung.test.ts",
+  // JOB 3511 (10.09.2026) DEMO-FIRMEN-CI: der Bindungssammler der Firmen-CI der WEB-App. Von der
+  // Inhaltsachse `palette` gefunden — er liest `apps/web/src/styles/themes.css`, um zu belegen,
+  // dass die Markenebene (`styles/marke.css`) kein eigenes Token einfuehrt, sondern nur bekannte
+  // ueberschreibt. Es ist KEIN Klara-Test: „klara" steht weder im Pfad noch im Inhalt, K5 bleibt
+  // unveraendert. K2 hat die Datei gemeldet, das Inventar nimmt sie nicht still auf. Der Eintrag
+  // steht hier aus demselben Grund wie `zielbild-wissensnetz.test.ts` weiter oben: die
+  // Palette-Achse soll JEDEN Leser der Token-Datei sichtbar machen, auch wenn er nicht Klara ist —
+  // und genau dieser Leser fuehrt eine ZWEITE Farbquelle neben `themes.css` ein.
+  "tests/demo-firmen-ci-web/marke-bindung.test.ts",
 ];
 
 // ------------------------------------------------------------------------------------------------

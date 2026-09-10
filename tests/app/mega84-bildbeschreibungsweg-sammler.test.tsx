@@ -1640,12 +1640,27 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // (`aiAssistInstructions`) meldet dieser Fall wieder `gemessen: 371 Komponenten` —
     // `alsKomponente` (oben, :453) verlangt einen Großbuchstaben am Namensanfang; die +1 ist damit
     // genau dieses eine Bauteil und kein zweiter Fund, der sich hinter derselben Zahl versteckt.
+    //
+    // KONFLIKTRUNDE 1 (JOB 3511 · DEMO-FIRMEN-CI): NACH DEM REBASE auf JOB 3428/KI-FREIE-ANWEISUNG
+    // trifft die unabhängige NEUE Fläche DEMO-FIRMEN-CI auf denselben Stand; `komponenten` von 372
+    // (nach KI-FREIE-ANWEISUNG, siehe oben) auf 373 NACHGEZOGEN — am eigenen Lauf dieses
+    // Arbeitsbaums nach der Konfliktauflösung gemessen, nicht rechnerisch addiert. GENAU EIN
+    // Bauteil kommt hinzu: `DemoErscheinungsbild` in `pages/AdminDatenDetails.tsx` — der Abschnitt
+    // „Demo-Erscheinungsbild" der Demodaten-Karte (Firmenprofil wählen, Firmen-CI an/aus). Es ist
+    // eine eigene Komponente und keine Zeile in `DemodatenDetail`, weil es eine eigene Abfrage samt
+    // eigenem Lade-/Fehlerzustand führt (`GET /api/branding` hinter der `Abfragehuelle`);
+    // hineingeschrieben teilte es sich den Zustand mit dem Demodaten-Bestand und könnte dessen
+    // Fehler nicht mehr von seinem eigenen unterscheiden.
+    // GEGENPROBE dazu, gemessen statt behauptet: mit der Deklaration kleingeschrieben
+    // (`demoErscheinungsbild`) meldet dieser Fall wieder `gemessen: 372 Komponenten` —
+    // `alsKomponente` (oben, :453) verlangt einen Großbuchstaben am Namensanfang; die +1 ist damit
+    // genau dieses Bauteil und kein zweiter Fund, der sich hinter derselben Zahl versteckt.
     // Für DIESEN Sammler ändert es nichts: es zeigt kein Bild, bietet keine Bildbeschreibung an
     // (kein `ANGEBOT_MUSTER`) und trägt keinen eigenen Titel (kein `documentTitle`-Prop) — es
     // erscheint nur in der Grundmenge. Die zwei Zahlen, an denen Stufe 2 wirklich hängt, bleiben
     // unverändert: `anbieter` 1 und `traeger` 2.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 372,
+      komponenten: 373,
       anbieter: 1,
       traeger: 2,
     });

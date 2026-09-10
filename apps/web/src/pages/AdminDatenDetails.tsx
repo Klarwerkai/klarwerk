@@ -20,7 +20,99 @@ import { Abfragehuelle } from "../components/einstellungen/Abfragehuelle";
 import { Detailkarte } from "../components/einstellungen/Detailkarte";
 import { Button, Field, TextInput } from "../components/ui";
 import { isUserAuditAction } from "../lib/adminForms";
+import type { BrandProfil, BrandingWunsch } from "../lib/brandTheme";
+import {
+  BRAND_PROFIL_ADVISOR,
+  ladeBranding,
+  setzeBranding,
+  uebernimmBranding,
+} from "../lib/brandTheme";
 import { PILOT_NEXT_STEPS } from "../lib/pilotNextSteps";
+
+/**
+ * JOB 3511 — DER ABSCHNITT „DEMO-ERSCHEINUNGSBILD".
+ *
+ * Pedi wählt hier das Firmenprofil (heute genau eines: Advisor) und legt den Schalter um; danach
+ * trägt KLARWERK das Advisor-Logo und die Advisor-Hausfarben, zurückgelegt sieht alles wieder aus
+ * wie vorher — einschließlich seiner bisherigen klassisch/modern-Wahl.
+ *
+ * WARUM ER HIER WOHNT UND KEINE EIGENE DETAILKARTE IST: eine eigene Karte bräuchte eine Kennung in
+ * `lib/adminSections.ts` und einen Zweig im Detail-Switch von `pages/Admin.tsx`; beide Dateien
+ * liegen außerhalb der Zielpfade dieses Auftrags (s. RUECKGABE, ABWEICHUNGEN). Der Ort ist
+ * trotzdem der richtige: Admin → Vorführdaten ist das Thema, unter dem die Vorführung wohnt.
+ *
+ * WARUM DIE WAHL NICHT IM BROWSER LIEGT: sie gilt für ALLE. Es gibt genau eine Quelle — den Server
+ * (`GET /api/branding`, `PUT /api/admin/branding`) — und keine zweite Speicherschicht daneben.
+ *
+ * WAS ER AUSDRÜCKLICH NICHT TUT: laden, löschen, KI anstoßen. Das Umschalten löst genau den einen
+ * `PUT` aus; die Demo-Datenpakete darüber bleiben davon unberührt, und der Satz auf der Fläche
+ * sagt das auch.
+ */
+function DemoErscheinungsbild(): JSX.Element {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const { push } = useToast();
+  const marke = useQuery({ queryKey: ["admin", "branding"], queryFn: ladeBranding });
+  const schalten = useMutation({
+    mutationFn: (wunsch: BrandingWunsch) => setzeBranding(wunsch),
+    onSuccess: (antwort) => {
+      // Sofort sichtbar, ohne auf den nächsten Abruf zu warten — und `letzteVersion` in
+      // `brandTheme.ts` bleibt dabei richtig, sodass die Nachführung nicht doppelt schreibt.
+      uebernimmBranding(antwort);
+      qc.setQueryData(["admin", "branding"], antwort);
+      push("success", t("einst.marke.gespeichert"));
+    },
+    onError: (e) => push("error", e instanceof ApiError ? e.message : t("state.error")),
+  });
+
+  return (
+    <div data-einst="erscheinungsbild" className="border-t border-hairline pt-3">
+      <div className="text-[13px] font-semibold text-text">{t("einst.marke.titel")}</div>
+      <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">
+        {t("einst.marke.erklaerung")}
+      </p>
+      {/* Die Hülle steht davor: „Firmen-CI ist aus" ist eine TATSACHENAUSSAGE über die Installation
+          und darf nur aus einer erfolgreichen Antwort stammen, nie aus einem gescheiterten Abruf. */}
+      <Abfragehuelle abfrage={marke} testId="huelle-branding">
+        {(stand) => (
+          <div className="mt-2 space-y-2">
+            <Field label={t("einst.marke.profil")}>
+              <select
+                data-testid="marke-profil"
+                className="w-full rounded-input border border-hairline bg-surface px-2.5 py-1.5 text-[13px] text-text"
+                value={stand.profil ?? ""}
+                disabled={schalten.isPending}
+                onChange={(e) => {
+                  const profil: BrandProfil =
+                    e.target.value === BRAND_PROFIL_ADVISOR ? BRAND_PROFIL_ADVISOR : null;
+                  // Ohne Profil gibt es nichts zu verwenden — der Schalter fällt mit zurück,
+                  // damit nie ein Zustand „aktiv, aber ohne Profil" entsteht.
+                  schalten.mutate({ profil, aktiv: profil === null ? false : stand.aktiv });
+                }}
+              >
+                <option value="">{t("einst.marke.profilKeines")}</option>
+                <option value={BRAND_PROFIL_ADVISOR}>{t("einst.marke.profilAdvisor")}</option>
+              </select>
+            </Field>
+            <label className="flex items-center gap-2 text-[12.5px] text-text">
+              <input
+                type="checkbox"
+                data-testid="marke-schalter"
+                checked={stand.aktiv}
+                disabled={stand.profil === null || schalten.isPending}
+                onChange={(e) => schalten.mutate({ profil: stand.profil, aktiv: e.target.checked })}
+              />
+              {t("einst.marke.schalter")}
+            </label>
+            {stand.profil === null ? (
+              <p className="text-[12px] text-muted-2">{t("einst.marke.ohneProfil")}</p>
+            ) : null}
+          </div>
+        )}
+      </Abfragehuelle>
+    </div>
+  );
+}
 
 /** SCRUM-181 / Pedi 14.07.: Demodaten laden — auch neben vorhandenen Daten, idempotent. */
 export function DemodatenDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element {
@@ -241,6 +333,9 @@ export function DemodatenDetail({ onZurueck }: { onZurueck: () => void }): JSX.E
           </div>
         </div>
       ) : null}
+      {/* JOB 3511: das Erscheinungsbild der Vorführung — eigener Abschnitt, eigene Trennlinie. Es
+          steht bewusst UNTER den Datenhandlungen: es ist kein Datenweg, es lädt und löscht nichts. */}
+      <DemoErscheinungsbild />
     </Detailkarte>
   );
 }

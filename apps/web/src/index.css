@@ -12,6 +12,13 @@
    an Spezifität, nie über Ladereihenfolge. */
 @import "./styles/themes.css";
 @import "./styles/modern.css";
+/* JOB 3511: die Firmen-CI (Demo-Erscheinungsbild). Sie hängt ausschließlich unter dem eigenen
+   Wurzelattribut [data-brand="advisor"] und steht ZUSÄTZLICH zu data-theme, nie an seiner Stelle.
+   Die Reihenfolge ist hier NICHT gleichgültig: [data-brand="advisor"] und [data-theme="modern"]
+   sind beides ein Attributselektor an derselben Wurzel, also gleich spezifisch — gewinnen kann die
+   Markenebene nur, weil sie zuletzt geladen wird. Ohne das Attribut ändert sich kein einziger
+   berechneter Wert (Sammler: tests/demo-firmen-ci-web/marke-bindung.test.ts). */
+@import "./styles/marke.css";
 
 @tailwind base;
 @tailwind components;

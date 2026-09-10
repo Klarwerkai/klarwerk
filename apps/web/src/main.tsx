@@ -5,6 +5,7 @@ import { BrowserRouter } from "react-router-dom";
 import App from "./App";
 import i18n from "./i18n";
 import "./index.css";
+import { initBrandTheme } from "./lib/brandTheme";
 import { initDesignTheme } from "./lib/designTheme";
 import { bindHtmlLang } from "./lib/htmlLang";
 import { ZAEHLER_FRISCHE_MS } from "./lib/loadingState";
@@ -13,6 +14,13 @@ import { bindSpracheSpeichern } from "./lib/sprachwahl";
 // AUFTRAG-mega40 B: gespeicherte Design-Wahl VOR dem ersten Render anwenden (kein Aufblitzen des
 // falschen Themes; gilt auch für Routen ohne Topbar wie /mobile). Standard bleibt Klassisch.
 initDesignTheme();
+
+// JOB 3511: die Firmen-CI (Demo-Erscheinungsbild) DANEBEN, nicht darin. `initDesignTheme` setzt
+// `data-theme` aus der Wahl DIESES Browsers; `initBrandTheme` holt `data-brand` vom Server — die
+// Wahl der INSTALLATION, für alle gleich. Zwei Attribute, zwei Eigentümer, zwei Lebensdauern.
+// Der Aufruf blockiert den Start bewusst nicht: fällt `/api/branding` aus, startet die Anwendung
+// unverändert und ohne Fehlerbanner (lib/brandTheme.ts).
+initBrandTheme();
 
 // AUFTRAG-101: <html lang> an die aktive i18n-Sprache binden. GENAU HIER, an der Wurzel — nicht im
 // Sprachumschalter (`pages/Profile.tsx`), sonst brächte der nächste Umschalter eine zweite Wahrheit

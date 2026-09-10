@@ -5896,6 +5896,17 @@ const de = {
   // als „fehlt" zu benennen wäre eine Behauptung über die Quelle, die niemand belegen kann.
   "w2.value.missing": "Pflichtangabe fehlt",
   "w2.value.none": "Nicht geliefert",
+  // JOB 3511 — Demo-Erscheinungsbild (Firmen-CI). Der Erklärsatz nennt die drei Dinge, die Pedi
+  // wissen muss, bevor er schaltet: für wen es gilt, wovon es unabhängig ist, was es NICHT tut.
+  "einst.marke.titel": "Demo-Erscheinungsbild",
+  "einst.marke.erklaerung":
+    "Die Wahl gilt für alle Anwender dieser Installation und ist unabhängig von den Demo-Datenpaketen. Umschalten lädt keine Daten, löscht keine Daten und startet keine KI-Verarbeitung.",
+  "einst.marke.profil": "Firmenprofil",
+  "einst.marke.profilKeines": "Kein Firmenprofil",
+  "einst.marke.profilAdvisor": "Advisor",
+  "einst.marke.schalter": "Firmen-CI verwenden",
+  "einst.marke.ohneProfil": "Ohne Firmenprofil gibt es nichts zu verwenden.",
+  "einst.marke.gespeichert": "Erscheinungsbild übernommen.",
 };
 
 const en: typeof de = {
@@ -10779,6 +10790,16 @@ const en: typeof de = {
   // AUFTRAG-81: mirror of the DE keys — see the note there.
   "w2.value.missing": "Required value missing",
   "w2.value.none": "Not delivered",
+  // JOB 3511 — demo appearance (company CI); mirror of the DE keys.
+  "einst.marke.titel": "Demo appearance",
+  "einst.marke.erklaerung":
+    "The choice applies to every user of this installation and is independent of the demo data packages. Switching loads no data, deletes no data and starts no AI processing.",
+  "einst.marke.profil": "Company profile",
+  "einst.marke.profilKeines": "No company profile",
+  "einst.marke.profilAdvisor": "Advisor",
+  "einst.marke.schalter": "Use company CI",
+  "einst.marke.ohneProfil": "Without a company profile there is nothing to use.",
+  "einst.marke.gespeichert": "Appearance applied.",
 };
 
 const nl: typeof de = {
@@ -15659,6 +15680,17 @@ const nl: typeof de = {
   // AUFTRAG-81: spiegel van de DE-sleutels — zie de toelichting daar.
   "w2.value.missing": "Verplichte gegevens ontbreken",
   "w2.value.none": "Niet geleverd",
+  // JOB 3511 — demo-uiterlijk (bedrijfs-CI); spiegel van de DE-sleutels. NL steht hier, weil
+  // `nl: typeof de` jeden Schlüssel verlangt — ein fehlender wäre ein Typfehler, kein Rückfall.
+  "einst.marke.titel": "Demo-uiterlijk",
+  "einst.marke.erklaerung":
+    "De keuze geldt voor alle gebruikers van deze installatie en staat los van de demo-datapakketten. Omschakelen laadt geen gegevens, verwijdert geen gegevens en start geen AI-verwerking.",
+  "einst.marke.profil": "Bedrijfsprofiel",
+  "einst.marke.profilKeines": "Geen bedrijfsprofiel",
+  "einst.marke.profilAdvisor": "Advisor",
+  "einst.marke.schalter": "Bedrijfs-CI gebruiken",
+  "einst.marke.ohneProfil": "Zonder bedrijfsprofiel valt er niets te gebruiken.",
+  "einst.marke.gespeichert": "Uiterlijk overgenomen.",
 };
 
 void i18n.use(initReactI18next).init({

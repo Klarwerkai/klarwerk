@@ -1,0 +1,89 @@
+/* ================================================================================================
+   JOB 3511 — DIE FIRMEN-CI (DEMO-ERSCHEINUNGSBILD), AUSSCHLIESSLICH UNTER [data-brand="advisor"].
+   ================================================================================================
+
+   Diese Datei ist die dritte Stilquelle neben `themes.css` (die eine Farb-Wahrheit) und
+   `modern.css` (die Regeln des zweiten Designs). Sie enthält NICHTS, was ohne das Wurzelattribut
+   `data-brand="advisor"` wirken könnte — das ist der ganze Beweis für Lieferung 6 des Auftrags
+   („Ausschalten stellt wirklich wieder her"): eine Regel, deren Prelude das Attribut verlangt,
+   kann ohne das Attribut nicht matchen, und damit ist jeder berechnete Wert wieder exakt der
+   vorherige. Gesammelt und kalibriert in `tests/demo-firmen-ci-web/marke-bindung.test.ts`.
+
+   DIE MARKE IST NICHT DIE DARSTELLUNGSWAHL. `data-brand` steht ZUSÄTZLICH zu `data-theme`, nie an
+   seiner Stelle (`lib/brandTheme.ts`). Deshalb steht hier auch keine einzige `data-theme`-Regel:
+   die Firmen-CI gilt in klassisch wie in modern, und die gespeicherte Wahl des Menschen bleibt
+   unangetastet.
+
+   REIHENFOLGE STATT SPEZIFITÄT: `[data-brand="advisor"]` und `[data-theme="modern"]` sind beides
+   EIN Attributselektor an derselben Wurzel — gleiche Spezifität. Welcher gewinnt, entscheidet
+   allein die Quellreihenfolge, und darum wird diese Datei in `index.css` NACH beiden eingebunden.
+
+   ------------------------------------------------------------------------------------------------
+   DIE FARBEN — genau EIN belegter Wert, und was daraus abgeleitet ist.
+   ------------------------------------------------------------------------------------------------
+   Belegt sind zwei Werte (Quelle: `gespraech/ci-advisor/AUFTRAGSGRUNDLAGE.md`, im Original-SVG
+   hinterlegt): das Blau #0578b7 und der dunkle Schriftzug #161417. Es sind LOGOFARBEN, kein
+   geprüfter CI-Leitfaden — deshalb wird hier keine Palette erfunden.
+
+   #0578b7 ist die Marken-/Akzentfarbe und ersetzt den Funke. #161417 bleibt bewusst OHNE
+   Token-Überschreibung und wirkt allein über das Logo selbst. Begründung, gemessen und nicht
+   vermutet: jeder Token, der dafür in Frage käme (`--kw-ink`, `--kw-night`, `--kw-text`), steht in
+   `themes.css` unter „Flächen und Tinte", nicht unter „Marke" — und die dunklen Flächen tragen
+   dokumentierte Kontrastpaarungen, die schon heute knapp liegen (`--kw-shell-muted-2` #7E879A auf
+   `--kw-night-2` #16213A misst 4,43:1). Eine Verschiebung dieser Flächen wäre der Layout-Umbau,
+   den der Auftrag für Freitag ausdrücklich ausschließt.
+
+   SEMANTISCHE FARBEN BLEIBEN. Kein `--kw-trust-*` und kein `--kw-ai*` steht hier: eine rote
+   Fehlermeldung bleibt rot, eine Warnung gelb, die KI-Kennfarbe violett. Das prüft B4 des
+   Bindungssammlers.
+
+   FORMAT wie in `themes.css`: RGB-Kanäle („R G B"), damit Tailwinds Alpha-Modifier (bg-brand/5,
+   ring-brand/60) weiter funktionieren; der Hex-Wert steht als Kommentar daneben (Hex-Literale sind
+   außerhalb der Token-Datei verboten — mega40 H2). */
+
+[data-brand="advisor"] {
+  /* Der belegte Markenwert. Weiß darauf misst 4,80:1 (AA) — der Funke #ED7D0E trug Weiß nur mit
+     2,40:1, die vorhandenen `bg-brand text-white`-Flächen werden also besser, nicht schlechter. */
+  --kw-brand: 5 120 183; /* #0578b7 — belegt */
+  /* Helle Abstufung für nicht-texttragende Markenflächen (Hero-Kicker, Balken). Herleitung:
+     #0578b7 zur Hälfte mit Weiß gemischt — (5+255)/2, (120+255)/2, (183+255)/2. */
+  --kw-brand-300: 130 188 219; /* #82bcdb — 50 % #0578b7 auf Weiß */
+  /* Das Text-Token. #0578b7 selbst misst auf der Seite #f3f4f6 nur 4,36:1 und fiele damit unter AA
+     — dieselbe Falle wie mega62 D. Herleitung: alle drei Kanäle von #0578b7 mit 0,8 multipliziert
+     (5·0,8=4, 120·0,8=96, 183·0,8=146,4). Ergebnis 6,79:1 auf Weiß, 6,17:1 auf der Seite,
+     6,40:1 auf modernem Papier #FAF8F5, 5,78:1 auf --kw-funke-soft unten. */
+  --kw-brand-text: 4 96 146; /* #046092 — 0,8 × #0578b7 */
+  /* Die texttragende Markenfläche des modernen Themas (mega41 A: `bg-brand.text-white` landet dort
+     auf diesem Token). DIESELBE Abstufung wie --kw-brand-text, kein zweiter Wert: Weiß darauf
+     6,79:1, deutlich über den 4,72:1 des Funke-dunkel, den es ablöst. */
+  --kw-funke-deep: 4 96 146; /* #046092 — 0,8 × #0578b7 */
+  /* Die helle Markenfläche des modernen Themas. Herleitung: 12 % #0578b7 auf Weiß
+     (0,12·5+0,88·255 = 225 · 0,12·120+0,88·255 = 239 · 0,12·183+0,88·255 = 246).
+     --kw-brand-text darauf: 5,78:1 — die Fläche bleibt für Markentext benutzbar (mega62 D). */
+  --kw-funke-soft: 225 239 246; /* #e1eff6 — 12 % #0578b7 auf Weiß */
+}
+
+/* ------------------------------------------------------------------------------------------------
+   DER KONTO-KREIS — DIE EINE STELLE, DIE EINE GEGENREGEL BRAUCHT.
+   ------------------------------------------------------------------------------------------------
+   `shell/KontoMenue.tsx:121` ist die in mega41 A namentlich benannte Ausnahme: er löst die
+   AA-Frage über DUNKLEN Text auf der vollen Markenfläche (`bg-brand text-ink`), nicht über eine
+   hellere Fläche. Das trägt auf Orange (#16222C auf #ED7D0E: 5,80:1) — auf dem Advisor-Blau nicht:
+   #16222C auf #0578b7 misst nur 3,37:1.
+
+   Der blaue Markenwert ist belegt und wird nicht aufgehellt; korrigiert wird deshalb die SCHRIFT,
+   und zwar in die Richtung, die die Hausregel für texttragende Markenflächen ohnehin vorsieht:
+   Weiß auf #0578b7 misst 4,80:1. Zwei Klassen Spezifität (Attribut + Klasse) schlagen die
+   `text-ink`-Utility am Element; kein `!important`, kein zweiter Farbweg, und ohne das Attribut
+   ist der Kreis unverändert der bisherige. */
+[data-brand="advisor"] .kw-konto-kreis {
+  color: rgb(var(--kw-surface));
+}
+
+/* DAS LOGO STEHT AUSDRÜCKLICH NICHT HIER. Es ist ein `<img>` mit echtem Alternativtext in
+   `shell/Logo.tsx`, neben der Wortmarke KLARWERK — die Adresse liefert der Server im Vertrag
+   (`marke.logo` → `/marke/advisor/adv-logo.svg`, die byte-gleiche Kopie der Originaldatei unter
+   `apps/web/public/`). Ein CSS-`::after` mit `background-image` wäre der zweite, schwächere Weg:
+   generierter Inhalt trägt keinen zuverlässigen Namen für Hilfsmittel, und die Adresse stünde dann
+   ein zweites Mal hier, obwohl der Vertrag sie schon nennt. Diese Datei bleibt deshalb, was ihr
+   Kopf sagt: die FARBEN. */
