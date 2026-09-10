@@ -74,6 +74,7 @@ import { ConflictTargetPicker } from "../ConflictTargetPicker";
 import { ExternalUrlText } from "../ExternalUrlText";
 import { KnowledgeNeighborhood } from "../KnowledgeNeighborhood";
 import { RoleLink } from "../RoleLink";
+import { SanitizedHtml } from "../SanitizedHtml";
 import { UploadLimitsHint } from "../UploadLimitsHint";
 import { ConfidenceBar, KnowledgeTypeTag, ProvenanceLine } from "../trust";
 import { Button, Field, TextInput, cx } from "../ui";
@@ -241,6 +242,32 @@ function AbschnittNachladen<T>({
       {laeuft ? t("state.loading") : t("lib.liste.erneut")}
     </button>
   );
+}
+
+/**
+ * Einen Schlüssel in einer Menge setzen oder entfernen — und die ALTE Menge zurückgeben, wenn sich
+ * nichts ändert (React zeichnet dann nicht neu).
+ *
+ * JOB 3475 · UX-28: diese Regel stand als Rumpf in `abschnittUmschalten`. Seit die Fassungskarten
+ * dieselbe Frage stellen („welche sind offen?"), wäre sie zweimal dagestanden — und aus einer Regel
+ * würden über kurz oder lang zwei. Ein Bauteil ist das nicht (kleingeschrieben, gibt kein JSX
+ * zurück): es ist die eine Mengenregel dieser Fläche.
+ */
+function mengeMitSchluessel(
+  vorher: ReadonlySet<string>,
+  schluessel: string,
+  drin: boolean,
+): ReadonlySet<string> {
+  if (vorher.has(schluessel) === drin) {
+    return vorher;
+  }
+  const naechste = new Set(vorher);
+  if (drin) {
+    naechste.add(schluessel);
+  } else {
+    naechste.delete(schluessel);
+  }
+  return naechste;
 }
 
 const CONFLICT_TYPES: readonly ConflictType[] = [
@@ -544,18 +571,39 @@ export function MehrAbschnitte({
   const [hinfuehren, setHinfuehren] = useState<Sprungziel | null>(null);
 
   const abschnittUmschalten = (schluessel: string, offen: boolean): void => {
-    setOffene((vorher) => {
-      if (vorher.has(schluessel) === offen) {
-        return vorher;
-      }
-      const naechste = new Set(vorher);
-      if (offen) {
-        naechste.add(schluessel);
-      } else {
-        naechste.delete(schluessel);
-      }
-      return naechste;
-    });
+    setOffene((vorher) => mengeMitSchluessel(vorher, schluessel, offen));
+  };
+
+  // ---- JOB 3475 · UX-28: die offenen FASSUNGEN — dieselbe Haltung, ein Stockwerk tiefer ---------
+  //
+  // Der Zustand wohnt hier und NICHT in der Karte: eine Karte, die ihr `offen` selbst hielte, fiele
+  // bei jeder Auffrischung der Fassungsabfrage zu (react-query liefert eine neue Liste, React
+  // zeichnet die Karten neu) — genau das, was Abschnitt 9 des Auftrags ausschließt. Der Schlüssel
+  // ist `koId:version` aus `koVersionRows`, also stabil über eine Auffrischung hinweg.
+  const [offeneFassungen, setOffeneFassungen] = useState<ReadonlySet<string>>(
+    () => new Set<string>(),
+  );
+  const fassungUmschalten = (schluessel: string, offen: boolean): void => {
+    setOffeneFassungen((vorher) => mengeMitSchluessel(vorher, schluessel, offen));
+  };
+
+  /**
+   * RUNDE 2 (BEN, Prüflücke 6): DER RÜCKWEG GIBT DEN FOKUS ZURÜCK, STATT IHN FALLEN ZU LASSEN.
+   *
+   * Der Rückweg-Knopf verschwindet mit dem Inhalt, den er zuklappt. Ohne diese Rückgabe steht der
+   * Fokus danach auf `document.body` (von BEN gemessen) — wer mit der Tastatur liest, verlöre
+   * seinen Ort in der Liste und müsste sich neu durch den Abschnitt tabben. Dieselbe Regel, die
+   * dieses Haus schon für das „Mehr"-Blatt und den Anhang-Upload hält (JOB 3102, JOB 3126).
+   *
+   * Der Knopf der Fassung bleibt gemountet (nur der Inhalt darunter fällt weg), deshalb genügt das
+   * Suchen im schon gezeichneten Baum. Gesucht wird über die Marke statt über einen
+   * zusammengesetzten Selektor — dieselbe Vorsicht wie beim Anhangsprung weiter unten.
+   */
+  const fassungZurueck = (schluessel: string): void => {
+    fassungUmschalten(schluessel, false);
+    Array.from(wurzel.current?.querySelectorAll<HTMLElement>("[data-bib-fassung]") ?? [])
+      .find((e) => e.dataset.bibFassung === schluessel)
+      ?.focus();
   };
 
   // Der Effekt hängt an den WERTEN, nicht an der Kennung des Objekts. Deshalb trägt das Sprungziel
@@ -1462,44 +1510,157 @@ export function MehrAbschnitte({
         {((): JSX.Element => {
           const fassungsLage = abfrageMitBestand(versions);
           const fassungen = fassungsLage.data ?? [];
+          // EINMAL abgeleitet, nicht zweimal: bis hierher stand `koVersionRows(fassungen)` zweimal
+          // in diesem Block. Seit die Zeile den Bericht mitführt (`koVersionSnapshots.ts`), wäre das
+          // zweimal derselbe Klartext-Durchlauf über einen Bericht, der megabytegroß sein kann.
+          const zeilen = koVersionRows(fassungen);
           return fassungsLage.isLoading ? (
             <p className="text-[12.5px] text-muted">{t("state.loading")}</p>
           ) : fassungsLage.isError ? (
             <p className="text-[12.5px] text-danger">{t("state.error")}</p>
-          ) : koVersionRows(fassungen).length === 0 ? (
+          ) : zeilen.length === 0 ? (
             <p className="text-[12.5px] text-muted">{t("ko.snapshotsEmpty")}</p>
           ) : (
             <ol className="space-y-3">
-              {koVersionRows(fassungen).map((v) => (
-                <li key={v.key} className="rounded-input border border-hairline bg-surface p-2.5">
-                  <div className="font-mono text-[11px] text-muted-2">
-                    v{v.version} · {new Date(v.at).toLocaleDateString(i18n.language)} ·{" "}
-                    {nameOf(v.author)} · {t(`status.${v.status}`)}
-                  </div>
-                  <div className="mt-1 text-[13px] font-semibold text-text">{v.title}</div>
-                  <p className="mt-1 text-[12.5px] text-muted">{v.excerpt}</p>
-                  {(() => {
-                    const diff = diffForVersion(fassungen, v.version);
-                    if (!diff || diff.fromVersion === null) {
-                      return (
+              {zeilen.map((v) => {
+                // ============================================================================
+                // JOB 3475 · UX-28 — DIE FASSUNGSKARTE IST EIN WEG, KEIN STUMMES `<li>` MEHR.
+                // ============================================================================
+                //
+                // Bis hierher war diese Karte ein `<li>` OHNE Knopf, ohne `onClick`, ohne
+                // `tabIndex` — Pedis Befund „Klick öffnet nichts, Tab überspringt die Karten"
+                // (N-0055/N-0057) stand als Code da. Jetzt trägt sie EINEN nativen
+                // `<button type="button" aria-expanded>` in der Bauform dieses Hauses (Muster: der
+                // Belegsprung `:1449-1461`, der Anhangknopf): damit wirken Tabulator, Eingabe- und
+                // Leertaste OHNE `tabIndex`-Nachbau und ohne Tastenbehandlung von Hand.
+                //
+                // KEIN `disabled` UND KEIN `aria-disabled`: der Knopf führt in JEDEM Fall zu einer
+                // Aussage — auch die Fassung ohne gespeicherten Bericht hat einen Inhalt zu zeigen
+                // (ihre Felder) und sagt dort ehrlich, dass kein ausführlicher Inhalt gespeichert
+                // ist. Ein gesperrter Knopf wäre hier also keine Sackgassenvermeidung, sondern eine
+                // verschlossene Tür (Muster `:1462-1468`: WO ein Weg ins Leere führt, steht ein
+                // Satz statt eines Knopfes — hier führt er nicht ins Leere).
+                const offen = offeneFassungen.has(v.key);
+                const aktion = offen ? t("ko.snapshotClose") : t("ko.snapshotOpen");
+                // Die GEMESSENE Größe des gespeicherten Berichts — die Angabe, an der sich zwei
+                // Fassungen mit gleicher Kernaussage unterscheiden. Sie steht nur da, wo wirklich
+                // ein Bericht mit Text liegt; „0 Zeichen" wäre eine Aussage über einen Bericht, den
+                // es nicht gibt.
+                const groesse =
+                  v.berichtZeichen > 0
+                    ? t("ko.snapshotBodyChars", {
+                        anzahl: v.berichtZeichen.toLocaleString(i18n.language),
+                      })
+                    : null;
+                // Die gespeicherten Felder DIESER Fassung. Titel und Status stehen schon im Kopf
+                // der Karte; sie hier zu wiederholen wäre dieselbe Aussage zweimal.
+                const felder: [string, string][] = [
+                  ["statement", v.statement],
+                  ["conditions", v.conditions.join(" · ")],
+                  ["measures", v.measures.join(" · ")],
+                  ["type", t(`ktype.${v.type}`)],
+                ];
+                return (
+                  <li key={v.key} className="rounded-input border border-hairline bg-surface p-2.5">
+                    <div className="font-mono text-[11px] text-muted-2">
+                      v{v.version} · {new Date(v.at).toLocaleDateString(i18n.language)} ·{" "}
+                      {nameOf(v.author)} · {t(`status.${v.status}`)}
+                    </div>
+                    <div className="mt-1 text-[13px] font-semibold text-text">{v.title}</div>
+                    <p className="mt-1 text-[12.5px] text-muted">{v.excerpt}</p>
+                    {(() => {
+                      // DER EINE ORT FÜR DIE ÄNDERUNGSANGABE (Auftrag 4e). Mit dem siebten Feld aus
+                      // `koVersionDiff.ts` liest sich die Zeile jetzt als „Aussage · Ausführlicher
+                      // Inhalt" — und „Keine Änderung in den Hauptfeldern" steht nur noch da, wenn
+                      // ALLE sieben Felder gleich sind, den Bericht eingeschlossen.
+                      const diff = diffForVersion(fassungen, v.version);
+                      if (!diff || diff.fromVersion === null) {
+                        return (
+                          <p className="mt-1 font-mono text-[10.5px] text-muted-2">
+                            {t("ko.snapshotInitial")}
+                          </p>
+                        );
+                      }
+                      return diff.changed.length === 0 ? (
                         <p className="mt-1 font-mono text-[10.5px] text-muted-2">
-                          {t("ko.snapshotInitial")}
+                          {t("ko.snapshotNoChanges")}
+                        </p>
+                      ) : (
+                        <p className="mt-1 font-mono text-[10.5px] text-muted-2">
+                          {diff.changed.map((f) => t(`ko.snapshotField.${f}`)).join(" · ")}
                         </p>
                       );
-                    }
-                    return diff.changed.length === 0 ? (
-                      <p className="mt-1 font-mono text-[10.5px] text-muted-2">
-                        {t("ko.snapshotNoChanges")}
-                      </p>
-                    ) : (
-                      <p className="mt-1 font-mono text-[10.5px] text-muted-2">
-                        {diff.changed.map((f) => t(`ko.snapshotField.${f}`)).join(" · ")}
-                      </p>
-                    );
-                  })()}
-                  <p className="mt-1 font-mono text-[10.5px] text-muted-2">{v.note}</p>
-                </li>
-              ))}
+                    })()}
+                    <p className="mt-1 font-mono text-[10.5px] text-muted-2">{v.note}</p>
+                    <button
+                      type="button"
+                      data-bib-fassung={v.key}
+                      aria-expanded={offen}
+                      // Der zugängliche Name nennt die Fassung, die Handlung UND die gemessene
+                      // Größe — sonst hörte ein Vorleseprogramm bei zehn Karten zehnmal dasselbe
+                      // Wort (Muster `:1452-1453`).
+                      aria-label={`v${v.version} — ${aktion}${groesse ? ` · ${groesse}` : ""}`}
+                      onClick={() => fassungUmschalten(v.key, !offen)}
+                      className="mt-1.5 inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-muted hover:text-text"
+                    >
+                      {aktion}
+                      {groesse ? (
+                        <span className="font-mono text-[10.5px] text-muted-2">· {groesse}</span>
+                      ) : null}
+                    </button>
+                    {offen ? (
+                      <div
+                        data-bib-fassung-inhalt={v.key}
+                        className="mt-2 border-t border-hairline pt-2"
+                      >
+                        {/* WELCHE Fassung hier steht und dass sie nur lesbar ist — kein Erklärkasten,
+                            eine Zeile in derselben Machart wie die Kopfzeile der Karte. Ohne sie
+                            läse jemand einen alten Bericht als aktuellen Stand. */}
+                        <p className="font-mono text-[10.5px] text-muted-2">
+                          {t("ko.snapshotReadOnly", { version: v.version })}
+                        </p>
+                        <dl className="mt-1.5 grid gap-1.5">
+                          {felder
+                            .filter(([, wert]) => wert.trim().length > 0)
+                            .map(([feld, wert]) => (
+                              <div key={feld}>
+                                <dt className="font-mono text-[10.5px] text-muted-2">
+                                  {t(`ko.snapshotField.${feld}`)}
+                                </dt>
+                                <dd className="text-[12.5px] text-text">{wert}</dd>
+                              </div>
+                            ))}
+                        </dl>
+                        {/* Der Bericht dieser Fassung — über den EINEN Zeichenweg des Hauses
+                            (`SanitizedHtml`, dieselbe Bauform wie die Lesefläche selbst). Kein
+                            `dangerouslySetInnerHTML` von Hand, keine zweite Allowlist. */}
+                        {v.berichtHtml ? (
+                          <SanitizedHtml
+                            html={v.berichtHtml}
+                            className="prose-kw mt-2 text-[12.5px]"
+                          />
+                        ) : (
+                          // WISSENSLÜCKE STATT ERFINDUNG: der Satz sagt, dass für DIESE Fassung
+                          // nichts gespeichert ist — nicht, dass der Bericht leer WAR, und
+                          // ausdrücklich nichts aus einer anderen Fassung.
+                          <p className="mt-2 text-[12.5px] text-muted">
+                            {t("ko.snapshotBodyMissing")}
+                          </p>
+                        )}
+                        <button
+                          type="button"
+                          data-bib-fassung-zurueck={v.key}
+                          aria-label={`v${v.version} — ${t("ko.snapshotBackToCurrent")}`}
+                          onClick={() => fassungZurueck(v.key)}
+                          className="mt-2 inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-muted hover:text-text"
+                        >
+                          {t("ko.snapshotBackToCurrent")}
+                        </button>
+                      </div>
+                    ) : null}
+                  </li>
+                );
+              })}
             </ol>
           );
         })()}
