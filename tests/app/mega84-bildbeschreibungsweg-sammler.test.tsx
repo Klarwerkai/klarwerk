@@ -1603,8 +1603,30 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // Bildbeschreibung an (kein `ANGEBOT_MUSTER`) und tragen keinen eigenen Titel (kein
     // `documentTitle`-Prop) — sie erscheinen nur in der Grundmenge. Die zwei Zahlen, an denen
     // Stufe 2 wirklich hängt, sind unverändert: `anbieter` 1 und `traeger` 2.
+    //
+    // KONFLIKTRUNDE 2 (JOB 3426 · ENTWUERFE-VERWALTEN): auf demselben Rebase-Ziel trifft die
+    // ZWEITE, ebenso unabhängige Fläche ENTWUERFE-VERWALTEN auf denselben Stand; `komponenten` von
+    // 369 (nach KI-FEHLERHILFE, siehe oben) auf 371 NACHGEZOGEN — am eigenen Lauf dieses
+    // Arbeitsbaums gemessen, nicht rechnerisch addiert. GENAU ZWEI weitere Bauteile kommen hinzu,
+    // beide in `components/CaptureDraftList.tsx`:
+    //
+    //     + `LoeschKnopf` — der Papierkorb EINER Entwurfszeile, der die Löschfrage STELLT (er
+    //       löscht nicht). Eigene Komponente, weil ihn seit diesem Auftrag ZWEI Flächen zeigen —
+    //       der alte Arbeitsraum und die Menüfläche des Editors — und ein zweites Mal geschriebener
+    //       Löschknopf genau die Stelle wäre, an der die Rückfrage einmal fehlte.
+    //     + `LoeschRueckfrage` — die zwei Knöpfe „Behalten" und „Löschen" derselben Rückfrage, aus
+    //       demselben Grund und mit derselben Warnfarbe (AUFTRAG-mega45 Block E).
+    //
+    // GEGENPROBE dazu, gemessen statt behauptet: mit den beiden Deklarationen kleingeschrieben
+    // (`loeschKnopf`, `loeschRueckfrage`) meldet dieser Fall wieder `gemessen: 369 Komponenten` —
+    // `alsKomponente` (oben, :453) verlangt einen Großbuchstaben am Namensanfang; die +2 sind damit
+    // genau diese zwei Bauteile und kein dritter Fund, der sich hinter derselben Zahl versteckt.
+    // Für DIESEN Sammler ändern sie nichts: sie zeigen kein Bild, bieten keine Bildbeschreibung an
+    // (kein `ANGEBOT_MUSTER`) und tragen keinen eigenen Titel (kein `documentTitle`-Prop) — sie
+    // erscheinen nur in der Grundmenge. Die zwei Zahlen, an denen Stufe 2 wirklich hängt, bleiben
+    // unverändert: `anbieter` 1 und `traeger` 2.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 369,
+      komponenten: 371,
       anbieter: 1,
       traeger: 2,
     });

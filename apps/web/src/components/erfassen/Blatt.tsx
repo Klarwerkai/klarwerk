@@ -53,7 +53,6 @@ import { INTAKE_STARTERS, type IntakeStarter } from "../../lib/intakeStarters";
 import { deriveIntakeSuggestion } from "../../lib/intakeSuggestion";
 // JOB 3266 (D1): dasselbe Datumsformat wie überall sonst in der Oberfläche — und dieselbe
 // Ehrlichkeit: ein fehlender oder unlesbarer Zeitwert wird `null`, nicht ein erfundenes Datum.
-import { formatKoTimestamp } from "../../lib/koDates";
 import { toReasonerLocale } from "../../lib/reasonerLocale";
 import { draftProvenance } from "../../lib/reasonerProvenance";
 import { isEmptyHtml } from "../../lib/richText";
@@ -63,6 +62,9 @@ import type { TitelMitQuelle } from "../../lib/titelRangfolge";
 import { useAiBillable } from "../../lib/useAiBillable";
 import { AiCostHint } from "../AiCostHint";
 import { AiGeneratedNotice } from "../AiGeneratedNotice";
+// JOB 3426: die EINE Entwurfsliste des Produkts (Suche, Sortierung, Löschen) — bis hierher nur im
+// alten Arbeitsraum verdrahtet, siehe der Block an ihrem Aufruf unten.
+import { CaptureDraftList } from "../CaptureDraftList";
 import { DemoBanner } from "../DemoBanner";
 import { DraftBodyGallery } from "../DraftBodyGallery";
 import { HelpTip } from "../HelpTip";
@@ -290,6 +292,11 @@ export function Blatt({
 
   // ---- Entwurf ---------------------------------------------------------------------------------
   const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
+  // JOB 3426 (ENTWUERFE-VERWALTEN): Die Zeile, deren Löschung gerade zur Rückfrage steht. `null`
+  // heisst „keine Frage offen". Der Löschbefehl geht ausschliesslich über die Bestätigung —
+  // derselbe Bestätigungsweg, den `CaptureDraftList` schon für den Arbeitsraum führt (Bugfix Pedi
+  // 04.07.: kein stiller Verlust), nicht ein zweiter daneben.
+  const [loeschFrageId, setLoeschFrageId] = useState<string | null>(null);
   // ==============================================================================================
   // JOB 3106 (UX-01) — DER ENTWURF, DEN DER SERVER GERADE QUITTIERT HAT.
   // ==============================================================================================
@@ -317,6 +324,27 @@ export function Blatt({
   // JOB 3106 (UX-01): der Merker des Speicherweges für den Ladeeffekt — `<kennung>#<reloadNonce>`.
   // Seine Begründung steht am Ladeeffekt, wo er gelesen wird.
   const speicherAdresseRef = useRef<string | null>(null);
+  // ==============================================================================================
+  // JOB 3426 R2 (bens Korrekturpflicht 1) — DER LADEVORGANG, DER GERADE IN DER LUFT IST.
+  // ==============================================================================================
+  // bens Messung: Ladeantwort zurückhalten, denselben Entwurf bestätigt löschen, Ladeantwort
+  // freigeben → „bereits gelöschter Entwurf wird wieder als offen geführt". Die Antwort war schon
+  // unterwegs, als der Server die Löschung quittierte; ihr `.then` setzte danach Titel, aktive
+  // Kennung und `savedStateRef` — das Blatt behauptete einen gespeicherten Stand, den es nicht
+  // mehr gibt.
+  //
+  // WARUM NICHT `cancelled` DES EFFEKTS REICHT: Der Löschweg setzt die Adresse zurück
+  // (`setSearchParams({})`), und erst DAS räumt den Effekt ab. Zwischen der Quittung des Servers
+  // und dem nächsten Bildaufbau liegen aber Mikroaufgaben, in denen die Ladeantwort eintreffen
+  // kann — `cancelled` ist dann noch `false`. Dieses Merkzettelchen dagegen wird IM Löschzweig
+  // gesetzt, synchron, bevor irgendetwas anderes läuft.
+  //
+  // WARUM KEINE LISTE ALLER JE GELÖSCHTEN KENNUNGEN: Ein solcher Vorrat verwürfe auch einen
+  // SPÄTEREN, ausdrücklichen Ladeversuch derselben Kennung (Zurück-Taste auf `?draft=<gelöscht>`)
+  // — und dort ist die ehrliche Auskunft der Fehlertext „Der Entwurf konnte nicht geladen werden",
+  // nicht ein wortloses Nichts. Verworfen wird deshalb nur der Ladevorgang, der zum Zeitpunkt der
+  // Löschung WIRKLICH lief.
+  const laufendesLadenRef = useRef<{ id: string; verworfen: boolean } | null>(null);
   // ================================================================================================
   // JOB 3323 R2 — DIE ÜBERSETZUNG DARF DEN LADEEFFEKT NICHT AUSLÖSEN.
   // ================================================================================================
@@ -736,6 +764,11 @@ export function Blatt({
     // JOB 2974 D3 (F-0040): die Kennung, die VOR diesem Ladeversuch aktiv war.
     const vorherigeKennung = activeDraftId;
     let cancelled = false;
+    // JOB 3426 R2 (bens Korrekturpflicht 1): AB HIER IST DIESER LADEVORGANG „IN DER LUFT". Der
+    // Löschweg unten findet ihn über dieses Merkzettelchen und erklärt ihn für verworfen, wenn er
+    // genau die Kennung holt, die eben gelöscht wurde. Die Begründung steht an der Deklaration.
+    const lauf = { id: resumeDraftId, verworfen: false };
+    laufendesLadenRef.current = lauf;
     setLoadingDraft(true);
     // JOB 3141 (CAP-P1, Lieferung 1 und 4): DER DRITTE EINGABEWEG WIRD MIT ANGEHALTEN. Tastatur und
     // Einfügen laufen über die Schreibfläche, die es ab jetzt während des Ladens nicht gibt — das
@@ -758,7 +791,7 @@ export function Blatt({
     endpoints.drafts
       .get(resumeDraftId)
       .then((draft) => {
-        if (cancelled) {
+        if (cancelled || lauf.verworfen) {
           return;
         }
         const loadedTitle = draft.payload.title ?? "";
@@ -808,7 +841,11 @@ export function Blatt({
         clearAssistState();
       })
       .catch((e: unknown) => {
-        if (cancelled) {
+        // JOB 3426 R2: Ein Ladevorgang, dessen Entwurf inzwischen gelöscht wurde, SCHEITERT in der
+        // Regel — der Server kennt die Kennung nicht mehr. „Der Entwurf konnte nicht geladen
+        // werden" wäre hier eine Störungsmeldung für einen Vorgang, der genau so gewollt war und
+        // eben quittiert wurde („Entwurf gelöscht"). Verworfen ist verworfen, in beiden Zweigen.
+        if (cancelled || lauf.verworfen) {
           return;
         }
         // JOB 2974 D3 (F-0040, Variante A): Eine abgelehnte FREMDE Kennung darf den eigenen Entwurf
@@ -823,6 +860,12 @@ export function Blatt({
         setErr(ladeFehlerMeldung(e, tRef.current("fd.errLoadFailed")));
       })
       .finally(() => {
+        if (laufendesLadenRef.current === lauf) {
+          laufendesLadenRef.current = null;
+        }
+        // Auch ein VERWORFENER Lauf gibt das Blatt frei: die Sperre gehört zum Ladevorgang, nicht
+        // zum Ergebnis. Ohne diese Zeile bliebe die Schreibfläche nach einer Löschung mitten im
+        // Laden gesperrt, bis der nächste Bildaufbau den Effekt abräumt.
         if (!cancelled) {
           setLoadingDraft(false);
         }
@@ -830,6 +873,9 @@ export function Blatt({
 
     return () => {
       cancelled = true;
+      if (laufendesLadenRef.current === lauf) {
+        laufendesLadenRef.current = null;
+      }
     };
     // JOB 3323 R2: `t` steht hier BEWUSST NICHT (Begründung an `tRef`, oben). Die übrigen vier
     // sind stabil (`useCallback` mit leerer Liste bzw. Zustandswerte) — dieser Effekt läuft damit
@@ -1526,6 +1572,74 @@ export function Blatt({
   };
 
   // ==============================================================================================
+  // JOB 3426 (ENTWUERFE-VERWALTEN) — DER LÖSCHWEG DES EDITORS.
+  // ==============================================================================================
+  //
+  // Es ist DERSELBE Weg wie im Arbeitsraum (`Capture.tsx:2311`): `DELETE /api/drafts/<id>`, danach
+  // den Bestand für ungültig erklären. Kein neuer Endpunkt, keine zweite Zustandsquelle — die Liste
+  // liest weiterhin allein `useDrafts()`.
+  //
+  // WAS PASSIERT, WENN DER GELÖSCHTE ENTWURF DER GERADE OFFENE IST: Die Adresse darf ihn nicht
+  // weiter nennen — der Ladeweg (`resumeDraftId`) holte sonst beim nächsten Aufbau einen Stand, den
+  // es nicht mehr gibt, und landete in der Fehlermeldung „Der Entwurf konnte nicht geladen werden".
+  // Der TEXT auf dem Blatt bleibt dabei stehen: ihn wegzuräumen wäre ein zweiter, ungefragter
+  // Verlust — gefragt wurde nach dem gespeicherten Stand, nicht nach der Arbeit auf dem Blatt.
+  //
+  // UND ER GILT AB DA ALS UNGESICHERT: `savedStateRef` ist der Bezugspunkt für „ungespeicherte
+  // Änderung" (`istSchmutzig`). Bliebe der gelöschte Stand darin stehen, hielte das Blatt seinen
+  // Inhalt für gesichert — der Entlade- und der Routenwächter schwiegen, und beim Verlassen wäre er
+  // wirklich weg. Der Bezugspunkt ist deshalb das leere Blatt: es gibt keinen gesicherten Stand mehr.
+  //
+  // ==============================================================================================
+  // JOB 3426 R2 (bens Korrekturpflicht 1) — DER GELÖSCHTE ENTWURF KANN GERADE NOCH IM LADEN SEIN.
+  // ==============================================================================================
+  // bens Gegenprobe: Ladeantwort zurückhalten → denselben Entwurf bestätigt löschen → Ladeantwort
+  // freigeben. Danach führte das Blatt den gelöschten Entwurf wieder als offen. ZWEI verschiedene
+  // Löcher steckten darin, und beide werden hier einzeln gestopft:
+  //
+  //   1. DIE BEDINGUNG LAS DEN FALSCHEN ZUSTAND. `activeDraftId` ist erst gesetzt, wenn die
+  //      Ladeantwort DA war — mitten im Laden ist sie `null`, und die Aufräumung darunter wurde
+  //      übersprungen: die Adresse nannte den gelöschten Entwurf weiter. Gefragt wird deshalb auch
+  //      die ADRESSE (`resumeDraftId`): sie trägt die Kennung vom ersten Augenblick an.
+  //   2. DIE ANTWORT WAR SCHON UNTERWEGS. Das Zurücksetzen der Adresse räumt den Ladeeffekt erst
+  //      beim nächsten Bildaufbau ab; bis dahin kann das `.then` eintreffen und Titel, Kennung und
+  //      `savedStateRef` setzen. Der laufende Ladevorgang wird deshalb HIER, synchron, für
+  //      verworfen erklärt — bevor irgendeine Mikroaufgabe dazwischenkommt.
+  //
+  // Jedes der beiden ist für sich messbar (Fall K und Fall L in
+  // `tests/entwuerfe-verwalten/blatt-entwuerfe-verwalten.test.tsx`): ohne 1 bleibt `?draft=` stehen,
+  // ohne 2 kommt der gelöschte Titel zurück aufs Blatt.
+  const entwurfLoeschen = useMutation({
+    mutationFn: (id: string) => endpoints.drafts.remove(id),
+    onSuccess: (_leer, id) => {
+      const lauf = laufendesLadenRef.current;
+      if (lauf?.id === id) {
+        lauf.verworfen = true;
+      }
+      setLoeschFrageId(null);
+      void qc.invalidateQueries({ queryKey: ["drafts"] });
+      push("success", t("capture.draftDiscarded"));
+      if (activeDraftId !== id && resumeDraftId !== id) {
+        return;
+      }
+      setActiveDraftId(null);
+      setGesicherterEntwurf(null);
+      loadedUpdatedAtRef.current = null;
+      setStaleConflict(false);
+      savedStateRef.current = { title: "", bodyHtml: "", confidentiality: "intern", kategorie: "" };
+      if (resumeDraftId === id) {
+        setSearchParams({}, { replace: true });
+      }
+    },
+    onError: (e) => {
+      // §4b.5: Der Eintrag bleibt stehen — gelöscht ist nur, was der Server bestätigt hat. Die
+      // Rückfrage geht zu, damit die Zeile wieder bedienbar ist; die Störung steht im Hinweis.
+      setLoeschFrageId(null);
+      push("error", fehlerMeldung(e, t("state.error")));
+    },
+  });
+
+  // ==============================================================================================
   // JOB 3266 (D1) — DIE EINE HANDBEWEGUNG, DIE DIE ENTWURFSLISTE AUFKLAPPT.
   // ==============================================================================================
   // Drei Auslöser führen zu DERSELBEN Fläche: das benannte Werkzeug „Meine Entwürfe" der
@@ -2164,75 +2278,40 @@ export function Blatt({
                       {t("erfassen.entwuerfe.keine")}
                     </p>
                   ) : null}
-                  {(drafts.data ?? []).map((d) => {
-                    // Einmal gelesen, einmal entschieden: ob das Datum steht und was dort steht,
-                    // ist dieselbe Frage — zwei Aufrufe wären zwei Antworten auf sie.
-                    const datum = formatKoTimestamp(d.updatedAt, i18n.language);
-                    return (
-                      <button
-                        key={d.id}
-                        type="button"
-                        data-testid="blatt-entwurf-eintrag"
-                        // WELCHEN Entwurf diese Zeile öffnet, steht an ihr selbst — dieselbe Kennung,
-                        // die gleich in die Adresse geht. Ohne sie liesse sich „der Titel öffnet
-                        // GENAU diesen Entwurf" nur behaupten, nicht messen.
-                        data-entwurf={d.id}
-                        // JOB 3256 (CAP-P1-R, Zustandsmodell §9 „laden"): dieselbe eine Regel wie am
-                        // Diktat- und am Bild-Werkzeug. Während geladen wird, gibt es hier nichts
-                        // Ungesichertes zu retten (`blattNimmtAn` ist falsch) — ein Klick würde also
-                        // ohne Rückfrage ein ZWEITES Laden anstoßen, während das erste noch läuft.
-                        // Gesperrt sagt der Eintrag, dass er gerade nicht kann, statt es wortlos zu
-                        // tun; den Grund nennt er im selben Satz wie das Blatt darüber.
-                        disabled={!blattNimmtAn}
-                        title={blattNimmtAn ? undefined : t("erfassen.laden.nichtBereit")}
-                        onClick={() => entwurfOeffnen(d.id)}
-                        className={`block w-full rounded-[7px] px-2 py-1.5 text-left text-[13px] ${
-                          blattNimmtAn ? "hover:bg-hairline-soft" : "opacity-50"
-                        } ${d.id === activeDraftId ? "font-semibold text-text" : "text-text"}`}
-                      >
-                        {/* ==========================================================================
-                            JOB 3266 R3 (bens Korrekturpflicht 2) — DER TITEL STEHT GANZ DA.
-                            ==========================================================================
-                            Hier stand `truncate` (`white-space: nowrap`, `overflow: hidden`,
-                            `text-overflow: ellipsis`). Bens Messung: 506 px Text auf 262 px Fläche
-                            bei 320 px Fenster — der Titel brach mit Auslassungspunkten ab, und zwar
-                            AM ENDE. Genau dort stehen aber die Wörter, die zwei Entwürfe desselben
-                            Vorhabens unterscheiden („… Ausgabe Nord 2026" gegen „… Süd 2026"). Eine
-                            Liste, in der zwei Zeilen gleich aussehen, ist keine Auswahl.
+                  {/* ==================================================================================
+                      JOB 3426 (ENTWUERFE-VERWALTEN) — DIESELBE LISTE WIE IM ARBEITSRAUM.
+                      ==================================================================================
+                      Hier stand die ROHE Abbildung `(drafts.data ?? []).map(...)`: Titel, Datum, ein
+                      Öffnen-Knopf — ohne Suche, ohne Sortierung, ohne Löschweg. Die fertige Bedienung
+                      lag seit AUFTRAG-sortfilter in `CaptureDraftList` und hing nur am alten
+                      Arbeitsraum (`Capture.tsx`). Sie wird jetzt hier gerufen, statt ein zweites Mal
+                      geschrieben zu werden; die Anker `blatt-entwurf-eintrag*` und die
+                      Titel-Lesbarkeit aus JOB 3266 R3 sind mit umgezogen und stehen dort unverändert.
 
-                            `break-words` (`overflow-wrap: break-word`) statt einer festen Zeile: Der
-                            Titel bricht wie gewöhnlicher Text um, und ein einzelnes überlanges Wort
-                            (eine Kennung, ein Dateiname ohne Leerzeichen) bricht innerhalb statt
-                            über den Rand hinauszuschieben. Die Höhe darf wachsen — die Liste ist
-                            genau dafür rollbar (`MenueFlaeche`, `max-h-[420px] overflow-auto`).
+                      DIE DREI LAGEN DARÜBER BLEIBEN HIER (JOB 3266, D1): „lädt", „leer" und „gestört"
+                      sind Auskünfte über den ABRUF. Die Liste bekommt bei einem gescheiterten Abruf
+                      gar keine Entwürfe zu sehen und könnte über ihn nichts sagen.
 
-                            Der Anker `…-eintrag-titel` ist der Messpunkt des Lesbarkeitsmessers
-                            (`tests/d1-meine-entwuerfe/zugang-schmal-chromium.test.ts`): er vergleicht
-                            `scrollWidth`/`scrollHeight` gegen die sichtbare Fläche. Ohne benannten
-                            Knoten müsste der Messer raten, welches Kind der Titel ist. */}
-                        <span
-                          data-testid="blatt-entwurf-eintrag-titel"
-                          className="block break-words"
-                        >
-                          {d.payload.title || fallbackTitle}
-                        </span>
-                        {/* JOB 3266 (D1), Lieferung 3: das DATUM neben dem Titel — bei mehreren
-                          Entwürfen desselben Vorhabens ist der Titel allein nicht unterscheidbar.
-                          Es ist der Stand, den der Server führt (`updatedAt`), gelesen mit
-                          derselben Funktion wie jedes andere Datum der Oberfläche. Fehlt oder
-                          bricht der Wert, steht KEINE Zeile da statt eines erfundenen Datums —
-                          das ist die Zusage von `formatKoTimestamp` selbst. */}
-                        {datum ? (
-                          <span
-                            data-testid="blatt-entwurf-eintrag-datum"
-                            className="mt-0.5 block text-[11.5px] font-normal text-muted"
-                          >
-                            {datum}
-                          </span>
-                        ) : null}
-                      </button>
-                    );
-                  })}
+                      ÖFFNEN ist der vorhandene eine Weg `entwurfOeffnen` (über die Adresse), LÖSCHEN
+                      der vorhandene Entwurfsweg `entwurfLoeschen` — beide oben, mit ihrer Begründung.
+
+                      JOB 3256 (Zustandsmodell §9 „laden"): Während das Blatt lädt, nimmt es keinen
+                      zweiten Entwurf an (`blattNimmtAn`). Die Zeilen sind dann gesperrt und sagen im
+                      Titel, warum — statt es wortlos zu tun. */}
+                  <CaptureDraftList
+                    variant="blatt"
+                    drafts={drafts.data ?? []}
+                    titleFallback={fallbackTitle}
+                    entriesDisabled={!blattNimmtAn}
+                    entriesDisabledTitle={t("erfassen.laden.nichtBereit")}
+                    editingId={activeDraftId}
+                    highlightId={gesicherterEntwurf?.id ?? null}
+                    confirmDiscardId={loeschFrageId}
+                    onConfirmDiscard={setLoeschFrageId}
+                    discardPending={entwurfLoeschen.isPending}
+                    onDiscard={(id) => entwurfLoeschen.mutate(id)}
+                    onResume={(d) => entwurfOeffnen(d.id)}
+                  />
                 </MenueFlaeche>
               ) : null}
               {mehrFlaeche === "anhaenge" ? (
