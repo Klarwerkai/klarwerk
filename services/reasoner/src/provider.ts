@@ -1395,9 +1395,25 @@ export function queryTokens(text: string): string[] {
 // gekürzt (Begründung an `KnowledgeRef.bodyText`). Fehlt das Feld, ist der Rückgabewert Zeichen für
 // Zeichen der alte.
 export function refMatchText(ref: KnowledgeRef): string {
-  const captions = ref.captionTexts?.length ? ` ${ref.captionTexts.join(" ")}` : "";
   const body = ref.bodyText?.trim() ? ` ${ref.bodyText.trim()}` : "";
-  return `${ref.title} ${ref.statement}${captions}${body}`;
+  return `${refKernText(ref)}${body}`;
+}
+
+// JOB 3425 (S7): DERSELBE TEXT OHNE DEN DOKUMENTKÖRPER — Titel, Aussage und Bild-Fußnoten.
+//
+// Er ist ZEICHENGLEICH der Text, den `refMatchText` vor G27 gebaut hat; die Zeile darüber setzt ihn
+// nur wieder zusammen, damit es weiterhin EINE Stelle gibt, an der steht, was zum durchsuchbaren
+// Text eines Refs gehört. Wer hier ein Feld ergänzt, ergänzt beide Maße zugleich.
+//
+// WOZU: `rankCandidates` zählt daran, wie viele Fragewörter AUSSERHALB des Fließtexts stehen.
+// Die Grenze verläuft zwischen Körper und Rest und nicht zwischen Titel und Rest — dieselbe
+// Trennung, die `suchTrefferguete` (knowledge-object) mit `koerper: 0` gegen alle anderen Stufen
+// zieht. Die Fußnote steht dort über dem Körper, also steht sie auch hier auf der Kernseite.
+// Es wird NICHTS abgestuft: der Kerntext kennt keine Rangfolge zwischen Titel und Aussage — eine
+// solche Zahl wäre erfunden, und dieser Auftrag verlangt keine.
+function refKernText(ref: KnowledgeRef): string {
+  const captions = ref.captionTexts?.length ? ` ${ref.captionTexts.join(" ")}` : "";
+  return `${ref.title} ${ref.statement}${captions}`;
 }
 
 // AUFTRAG-mega52 B1 — DAS RELEVANZMASS.
@@ -1594,13 +1610,20 @@ export function statusTrustBoost(ref: Pick<KnowledgeRef, "status" | "trust">): n
 export interface RankedCandidate {
   ref: KnowledgeRef;
   keywordScore: number; // reine Relevanz (Keyword-Überschneidung) — der dominante Gate.
+  // JOB 3425 (S7): wie viele der GEZÄHLTEN Fragewörter ausserhalb des Fließtexts stehen (Titel,
+  // Aussage, Bild-Fußnote — `refKernText`). Immer `<= keywordScore`; eine Quelle, die die Frage nur
+  // im Körper streift, steht bei 0. Die Zahl steht mit im Ergebnis, weil sie die Rangfolge
+  // MITENTSCHEIDET und ein Ranking, dessen Begründung man nicht nachrechnen kann, keines ist —
+  // dieselbe Begründung, aus der `keywordScore` und `rankScore` hier stehen.
+  kerntreffer: number;
   rankScore: number; // keywordScore + gedeckelter Status-/Trust-Bonus (< 1).
 }
 
 // Nachvollziehbares, DOM-freies Ranking: (1) Relevanz-Gate (mega52 B1: das MASS `meetsRelevance-
-// Threshold`, nicht mehr „Überschneidung > 0"), (2) stabile Sortierung nach rankScore (Relevanz
-// dominiert, Status/Trust als Tiebreak), (3) harte Begrenzung auf topK Kandidaten. Bei Gleichstand
-// bleibt die Eingabereihenfolge erhalten (stabil).
+// Threshold`, nicht mehr „Überschneidung > 0"), (2) stabile Sortierung nach Relevanz, dann
+// Fundstelle, dann Status/Trust (JOB 3425 — die drei Schlüssel und ihre Begründung stehen am
+// `sort` selbst), (3) harte Begrenzung auf topK Kandidaten. Bei Gleichstand in ALLEN dreien bleibt
+// die Eingabereihenfolge erhalten (stabil).
 //
 // AUFTRAG-mega52 B2 — ACHT IST EIN DECKEL, KEIN SOLLWERT. Die Schwelle wirkt VOR dem `slice`: wer
 // sie nicht erreicht, kommt gar nicht erst in die Liste, auch wenn dadurch nur zwei Quellen übrig
@@ -1645,9 +1668,16 @@ export function rankCandidates(
         nominalQuelle,
         relevanz,
       );
+      // JOB 3425 (S7): DIE FUNDSTELLE, mit DERSELBEN Zerlegung und DERSELBEN Überschneidungsregel
+      // — nur auf dem Text ohne Fließtext. Keine zweite Regel, kein zweites Maß, keine neue Zahl:
+      // `kerntreffer` ist per Konstruktion eine Teilmenge dessen, was `wert` schon gezählt hat.
+      const nominalKern = new Set<string>();
+      const kerntoken = tokenize(refKernText(ref), nominalKern);
+      const { wert: kerntreffer } = ueberschneidung(words, kerntoken, nominalFrage, nominalKern);
       return {
         ref,
         keywordScore: wert,
+        kerntreffer,
         reichweite: wert + entsprechung,
         substanz,
         rankScore: wert + statusTrustBoost(ref),
@@ -1666,11 +1696,64 @@ export function rankCandidates(
   // über die Entsprechung trifft, die Latte für alle anderen an und könnte einen direkten Treffer
   // aus der Liste drängen. Die Weitung darf nur hinzufügen, nie wegnehmen.
   const best = scored.reduce((max, x) => Math.max(max, x.keywordScore), 0);
-  return scored
-    .filter((x) => meetsRelevanceThreshold(x.reichweite, best))
-    .map(({ ref, keywordScore, rankScore }) => ({ ref, keywordScore, rankScore }))
-    .sort((a, b) => b.rankScore - a.rankScore)
-    .slice(0, limit);
+  return (
+    scored
+      .filter((x) => meetsRelevanceThreshold(x.reichweite, best))
+      .map(({ ref, keywordScore, kerntreffer, rankScore }) => ({
+        ref,
+        keywordScore,
+        kerntreffer,
+        rankScore,
+      }))
+      // ==========================================================================================
+      // JOB 3425 (S7) — DIE FUNDSTELLE ENTSCHEIDET DEN GLEICHSTAND, NICHT MEHR DER ZUFALL.
+      // ==========================================================================================
+      //
+      // BIS HIERHER stand hier `sort((a, b) => b.rankScore - a.rankScore)`. Das ist, weil
+      // `keywordScore` ganzzahlig und `statusTrustBoost` strikt < 1 ist, Zeichen für Zeichen die
+      // Ordnung „keywordScore ↓, dann statusTrustBoost ↓" — die erste der beiden Zeilen unten ist
+      // deshalb KEINE Änderung, sondern dieselbe Regel ausgeschrieben.
+      //
+      // DER GEMESSENE FEHLER, den die neue MITTLERE Zeile behebt
+      // (`tests/ask-titelquelle/s7-titelquelle-messung.test.ts`, Reihe 2 E des Codex-Befunds
+      // R-1548): eine Quelle, die die Frage im TITEL und in der AUSSAGE beantwortet, steht neben
+      // 60 Quellen, die dieselben Fragewörter NUR im Fließtext tragen. Seit G27 verschmilzt
+      // `refMatchText` beides zu EINEM Text, also messen alle 61 denselben `keywordScore`
+      // (gemessen: 4) — der Titeltreffer ist im Ranking nichts mehr wert. Was danach noch
+      // unterscheidet, ist allein der Status-/Trust-Bonus, und der spricht in Reihe 2 E gegen die
+      // richtige Quelle: Ziel 0.832 (validiert, Trust 83) gegen Körper 0.9 (validiert, Trust 100),
+      // also rankScore 4.832 gegen 4.9. Die Titelquelle stand damit auf Rangplatz 49 von 50;
+      // `slice(0, 8)` hat sie weggeschnitten, und die Antwort kam ohne sie.
+      //
+      // BEI GLEICHEM TRUST ist der Ausgang derselbe, nur aus einem anderen Grund: dann sind auch
+      // die `rankScore` gleich, und die stabile Sortierung reicht die EINGANGSREIHENFOLGE durch —
+      // die kommt aus der Datenquelle, die nach `validiert ↓, trust ↓, koId` ausgibt und die
+      // Treffergüte NICHT in die Ausgabe legt (search-projection.ts:880-882). Über den Platz der
+      // Titelquelle entschied dann die Kennung, also der Zufall. Der Test stellt bewusst die
+      // Reihe 2 E her, weil nur sie ohne Zufall rot ist (BEN, Runde 1).
+      //
+      // WARUM DIE FUNDSTELLE VOR DEN STATUS-/TRUST-BONUS GEHÖRT und nicht dahinter: sie ist ein
+      // RELEVANZSIGNAL — „das Objekt handelt von der Sache" gegen „das Wort kommt im Text vor". Der
+      // Bonus ist ausdrücklich keines („Trust HILFT, ist aber keine Wahrheit (PI-K2) → nur als
+      // feiner Tiebreaker", zwei Bildschirme weiter oben). Stünde er davor, bliebe genau der
+      // gemessene Fehler stehen: 4.832 gegen 4.9, die Titelquelle wieder draussen.
+      //
+      // WAS DAMIT AUSDRÜCKLICH NICHT PASSIERT:
+      //  · Kein Kandidat mit WENIGER Überschneidung steigt über einen mit mehr. Die erste Zeile
+      //    bleibt die erste; `kerntreffer` wird nur bei GLEICHEM `keywordScore` überhaupt gelesen.
+      //  · Kein Fließtext-Treffer verliert seinen Platz an einen Titel-Treffer, der weniger von der
+      //    Frage abdeckt. Wo die Antwort im Körper steht, hat der Körper-Treffer den HÖHEREN
+      //    `keywordScore` und gewinnt schon an Zeile eins (Gegenprobe im genannten Test).
+      //  · Kein Gate, kein Deckel, keine Schwelle und keine Sichtbarkeitsregel ändert sich. Die
+      //    Menge, die hier ankommt, ist dieselbe wie vorher; nur ihre Reihenfolge ist begründet.
+      .sort(
+        (a, b) =>
+          b.keywordScore - a.keywordScore ||
+          b.kerntreffer - a.kerntreffer ||
+          b.rankScore - a.rankScore,
+      )
+      .slice(0, limit)
+  );
 }
 
 // Begrenzte, status-/trust-bewusste Kandidatenliste (nur die Refs, in Rangfolge). Ersetzt das
