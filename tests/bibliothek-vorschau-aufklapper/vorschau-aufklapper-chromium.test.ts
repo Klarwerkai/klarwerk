@@ -20,19 +20,13 @@
 // und wie `tests/ux21-tablet-lesemodus/tablet-chromium.test.ts`): mehr Instanzen kippen im
 // Gesamttor fremde Browsertests. Keine eigene Startstelle — Playwright kommt über den Prüfstand.
 //
-// DIE TASTATUR KOMMT ÜBER EINE ENGE ERWEITERUNG DES SEITEN-TYPS, und das ist Absicht: `Seite` in
-// `h4-harness.ts` ist eine schlanke Handtypisierung „nur was gebraucht wird", und diese Datei
-// braucht als erste `page.keyboard`. Die Harness steht nicht in den Zielpfaden dieses Auftrags,
-// also wird sie nicht angefasst; der Zugriff wird hier lokal und benannt aufgeweitet, nicht
-// nachgebaut. Das ECHTE Playwright-Objekt trägt `keyboard` — es wird nichts erfunden.
+// DIE TASTATUR KOMMT AUS DER VORRICHTUNG SELBST (JOB 3564): `Seite` in `h4-harness.ts` kennt
+// `keyboard.press` seit der Aufnahme in ihre schlanke Typisierung. Diese Datei drückt die Tasten
+// deshalb direkt über `seite().keyboard` — ohne eigene Erweiterung, ohne Cast. Wer hier ein
+// weiteres Feld der echten Playwright-Seite braucht, trägt es dort ein, nicht hier.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { type H4Stand, ORIGIN, TITEL_FREI, fn, h4Stand } from "../design/h4-harness";
-
-/** Der Tastaturzugriff der echten Playwright-Seite — s. den Absatz im Kopf. */
-interface MitTastatur {
-  keyboard: { press(taste: string): Promise<void> };
-}
 
 interface Umschalter {
   expanded: string | null;
@@ -146,7 +140,7 @@ function seite(): H4Stand["seite"] {
 }
 
 async function taste(name: string): Promise<void> {
-  await (seite() as unknown as MitTastatur).keyboard.press(name);
+  await seite().keyboard.press(name);
   await seite().waitForTimeout(120);
 }
 

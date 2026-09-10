@@ -89,6 +89,14 @@ export interface Seite {
   waitForTimeout(ms: number): Promise<void>;
   /** Für die schmale Lage (`R-19`): dieselbe Seite, nur ein schmaleres Fenster. */
   setViewportSize(groesse: { width: number; height: number }): Promise<void>;
+  /**
+   * JOB 3564: die Tastatur steht HIER und nicht in den Testdateien. SIEBEN Browserprüfungen haben
+   * sich `keyboard` bis dahin je selbst nachgereicht (Interface oder Cast; gemessen am Basisstand
+   * `efca6a6`) — dieselbe Arbeit siebenmal. Schlank wie der Rest: nur `press`, das einzige, was die
+   * Verbraucher wirklich rufen; wer `type` braucht, trägt es hier nach, nicht bei sich.
+   * `tests/design-vorrichtung/seiten-typ-waechter.test.ts` hält den Ort fest.
+   */
+  keyboard: { press(taste: string): Promise<void> };
   evaluate<T>(fn: BrowserFn, arg?: unknown): Promise<T>;
   on(ereignis: string, handler: (arg: unknown) => void): void;
 }
