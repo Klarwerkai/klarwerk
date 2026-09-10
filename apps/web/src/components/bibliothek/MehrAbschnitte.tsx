@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { type UseQueryResult, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link2, Paperclip, X } from "lucide-react";
 import { type ChangeEvent, type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -183,6 +183,63 @@ function AnhangVorschau({ src }: { src: string | undefined }): JSX.Element {
         </span>
       )}
     </span>
+  );
+}
+
+// ==================================================================================================
+// JOB 3430 · Q1c — EIN ABSCHNITT HOLT SEINEN STAND SELBST NACH.
+// ==================================================================================================
+//
+// DER BEFUND (Codex, 05.09. gegen 1.0.0-beta.1.102, `R-1613-20260905T193615162865`): an frische
+// Fassungen und Belege kam der Leser NUR über „Mehr zuklappen und wieder aufklappen" — erst das
+// Abmelden des letzten Beobachters und das erneute Montieren lösten einen Abruf aus. Ein Weg, der
+// verlangt, die halbe Seite wegzuklappen, ist keiner.
+//
+// `invalidate()` (`:283-289`) ist dafür ausdrücklich NICHT der Weg: sie hängt an den SCHREIBaktionen,
+// wirft fünf fremde Schlüssel zugleich weg (`ko`, `validation`, `kos`, `library`, `conflicts`) und
+// trifft genau diese beiden Abfragen nicht einmal.
+//
+// DAS MITTEL BRINGT DIE ABFRAGE SCHON MIT: `refetch()` ihres eigenen `useQuery`. Damit ist die
+// Reichweite von selbst genau ein Abschnitt — kein zweiter Schlüssel, keine zweite Datenquelle,
+// keine neue Route. `cancelRefetch: false` wie beim Wiederholknopf der Fläche
+// (`BibliothekFlaeche.tsx`, `alleAuffrischen`): ein bereits laufender Abruf wird nicht abgebrochen
+// und neu gestartet, sein Ergebnis kommt an (Lehre JOB 3088 R2, Fall E).
+//
+// KEINE NEUEN WÖRTER: der Knopf trägt den Bestandstext `lib.liste.erneut`, der Ladezustand
+// `state.loading`. Der zugängliche Name nennt zusätzlich den Abschnitt — sonst hießen zwei Wege auf
+// derselben Fläche für ein Vorleseprogramm gleich (Muster `:1417`).
+//
+// EINE BAUFORM, ZWEI AUFRUFER: stünde derselbe Knopf zweimal als Literal da, würden aus einer
+// Aussage über kurz oder lang zwei — dieselbe Begründung, mit der `AuffrischungHinweis`
+// (JOB 3063 R6) den Satz daneben aus zwei Flächen in eine Bauform geholt hat.
+function AbschnittNachladen<T>({
+  abschnitt,
+  bezeichnung,
+  query,
+}: {
+  abschnitt: string;
+  bezeichnung: string;
+  query: UseQueryResult<T>;
+}): JSX.Element {
+  const { t } = useTranslation();
+  // WÄHREND ein Abruf läuft, ist der Weg beschäftigt und nicht auslösbar: das ist der sichtbare
+  // Ladezustand UND der Schutz vor dem zweiten Ruf auf denselben Abschnitt. Ein Abruf entsteht hier
+  // ausschließlich durch den Klick — kein Intervall, kein Effekt, keine Schleife.
+  const laeuft = query.isFetching;
+  return (
+    <button
+      type="button"
+      data-bib-nachladen={abschnitt}
+      disabled={laeuft}
+      aria-busy={laeuft}
+      aria-label={`${t("lib.liste.erneut")} — ${bezeichnung}`}
+      onClick={() => {
+        void query.refetch({ cancelRefetch: false });
+      }}
+      className="mb-3 rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-text hover:bg-hairline-soft disabled:cursor-default disabled:text-muted-2"
+    >
+      {laeuft ? t("state.loading") : t("lib.liste.erneut")}
+    </button>
   );
 }
 
@@ -1287,6 +1344,10 @@ export function MehrAbschnitte({
             Fehlerfall — dann gibt es nichts zu zeigen, und es entsteht auch kein „Original nicht
             mehr an diesem Objekt" aus einem Abrufscheitern. */}
         <AuffrischungHinweis query={evidence} />
+        {/* JOB 3430 · Q1c: der eigene Nachladeweg dieses Abschnitts. Er steht NEBEN dem datierten
+            Satz, weil beide dieselbe Lage bedienen — der Satz sagt, wie alt der Stand ist, der Weg
+            holt ihn. Er betrifft NUR die Belegabfrage; die Fassungen daneben rührt er nicht an. */}
+        <AbschnittNachladen abschnitt="belege" bezeichnung={t("ko.mehr.belege")} query={evidence} />
         {((): JSX.Element => {
           const belegLage = abfrageMitBestand(evidence);
           const belegZeilen = evidenceRows(belegLage.data ?? []);
@@ -1383,46 +1444,65 @@ export function MehrAbschnitte({
         offen={offene.has("schnappschuesse")}
         aufWechsel={(o) => abschnittUmschalten("schnappschuesse", o)}
       >
-        {versions.isLoading ? (
-          <p className="text-[12.5px] text-muted">{t("state.loading")}</p>
-        ) : versions.isError ? (
-          <p className="text-[12.5px] text-danger">{t("state.error")}</p>
-        ) : koVersionRows(versions.data ?? []).length === 0 ? (
-          <p className="text-[12.5px] text-muted">{t("ko.snapshotsEmpty")}</p>
-        ) : (
-          <ol className="space-y-3">
-            {koVersionRows(versions.data ?? []).map((v) => (
-              <li key={v.key} className="rounded-input border border-hairline bg-surface p-2.5">
-                <div className="font-mono text-[11px] text-muted-2">
-                  v{v.version} · {new Date(v.at).toLocaleDateString(i18n.language)} ·{" "}
-                  {nameOf(v.author)} · {t(`status.${v.status}`)}
-                </div>
-                <div className="mt-1 text-[13px] font-semibold text-text">{v.title}</div>
-                <p className="mt-1 text-[12.5px] text-muted">{v.excerpt}</p>
-                {(() => {
-                  const diff = diffForVersion(versions.data ?? [], v.version);
-                  if (!diff || diff.fromVersion === null) {
-                    return (
+        {/* JOB 3430 · Q1c — DIE FASSUNGEN BEKOMMEN DENSELBEN ZUSTANDSVERTRAG WIE DIE BELEGE.
+            Bis hierher stand hier `versions.isError ? <Fehler>` OHNE Blick auf den Bestand: nach
+            einem gescheiterten HINTERGRUNDabruf (react-query: `isError` UND `data` zugleich) fielen
+            alle Schnappschüsse weg und wurden durch eine Fehlerzeile ersetzt. Mit einem Nachladeweg
+            daneben wäre das kein Schönheitsfehler mehr, sondern die Falle: ein Klick, der bei
+            weggebrochenem Netz die Liste leert. Die Regel ist NICHT hier neu erfunden —
+            `abfrageMitBestand` und `AuffrischungHinweis` sind der eine Ort, an dem dieses Haus sie
+            hält (JOB 3034/3063, s. den Belegabschnitt `:1337-1352`). Ein ERSTabruf ohne Bestand
+            bleibt der Fehlerfall: dann gibt es wirklich nichts zu zeigen. */}
+        <AuffrischungHinweis query={versions} />
+        <AbschnittNachladen
+          abschnitt="schnappschuesse"
+          bezeichnung={t("ko.mehr.schnappschuesse")}
+          query={versions}
+        />
+        {((): JSX.Element => {
+          const fassungsLage = abfrageMitBestand(versions);
+          const fassungen = fassungsLage.data ?? [];
+          return fassungsLage.isLoading ? (
+            <p className="text-[12.5px] text-muted">{t("state.loading")}</p>
+          ) : fassungsLage.isError ? (
+            <p className="text-[12.5px] text-danger">{t("state.error")}</p>
+          ) : koVersionRows(fassungen).length === 0 ? (
+            <p className="text-[12.5px] text-muted">{t("ko.snapshotsEmpty")}</p>
+          ) : (
+            <ol className="space-y-3">
+              {koVersionRows(fassungen).map((v) => (
+                <li key={v.key} className="rounded-input border border-hairline bg-surface p-2.5">
+                  <div className="font-mono text-[11px] text-muted-2">
+                    v{v.version} · {new Date(v.at).toLocaleDateString(i18n.language)} ·{" "}
+                    {nameOf(v.author)} · {t(`status.${v.status}`)}
+                  </div>
+                  <div className="mt-1 text-[13px] font-semibold text-text">{v.title}</div>
+                  <p className="mt-1 text-[12.5px] text-muted">{v.excerpt}</p>
+                  {(() => {
+                    const diff = diffForVersion(fassungen, v.version);
+                    if (!diff || diff.fromVersion === null) {
+                      return (
+                        <p className="mt-1 font-mono text-[10.5px] text-muted-2">
+                          {t("ko.snapshotInitial")}
+                        </p>
+                      );
+                    }
+                    return diff.changed.length === 0 ? (
                       <p className="mt-1 font-mono text-[10.5px] text-muted-2">
-                        {t("ko.snapshotInitial")}
+                        {t("ko.snapshotNoChanges")}
+                      </p>
+                    ) : (
+                      <p className="mt-1 font-mono text-[10.5px] text-muted-2">
+                        {diff.changed.map((f) => t(`ko.snapshotField.${f}`)).join(" · ")}
                       </p>
                     );
-                  }
-                  return diff.changed.length === 0 ? (
-                    <p className="mt-1 font-mono text-[10.5px] text-muted-2">
-                      {t("ko.snapshotNoChanges")}
-                    </p>
-                  ) : (
-                    <p className="mt-1 font-mono text-[10.5px] text-muted-2">
-                      {diff.changed.map((f) => t(`ko.snapshotField.${f}`)).join(" · ")}
-                    </p>
-                  );
-                })()}
-                <p className="mt-1 font-mono text-[10.5px] text-muted-2">{v.note}</p>
-              </li>
-            ))}
-          </ol>
-        )}
+                  })()}
+                  <p className="mt-1 font-mono text-[10.5px] text-muted-2">{v.note}</p>
+                </li>
+              ))}
+            </ol>
+          );
+        })()}
       </Abschnitt>
 
       {/* 11 — Kommentare */}

@@ -1575,8 +1575,24 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // Es bietet keine Bildbeschreibung an (kein `ANGEBOT_MUSTER`) und trägt keinen eigenen Titel
     // (kein `documentTitle`-Prop) — es erscheint nur in der Grundmenge. Die zwei Zahlen, an denen
     // Stufe 2 wirklich hängt, bleiben unverändert: `anbieter` 1 und `traeger` 2.
+    //
+    // JOB 3430 (Q1c-NACHLADEN): `komponenten` von 366 auf 367 NACHGEZOGEN — am Lauf gemessen, nicht
+    // gerechnet. Das Tor dieses Arbeitsbaums meldete wörtlich `gemessen: 367 Komponenten ·
+    // 1 Anbieter · 2 Traeger · Grundmenge 471 Quelldateien` gegen die damalige Auflage 366.
+    // GENAU EIN Bauteil kommt hinzu: `AbschnittNachladen` in
+    // `components/bibliothek/MehrAbschnitte.tsx` — der Knopf, mit dem ein aufgeklappter Abschnitt
+    // („Belege", „Schnappschüsse") seinen Stand über `refetch()` seiner eigenen Abfrage nachholt.
+    // Es ist eine HERAUSLÖSUNG, keine neue Fläche: dieselbe Bauform steht an zwei Abschnitten
+    // derselben Lesefläche, statt zweimal als Literal — hingeschrieben wäre sie die Doppelung, die
+    // die Doppelungswächter suchen. Es zeigt kein Bild, bietet keine Bildbeschreibung an (kein
+    // `ANGEBOT_MUSTER`) und trägt keinen eigenen Titel (kein `documentTitle`-Prop); es erscheint
+    // nur in der Grundmenge. GEGENPROBE dazu, gemessen statt behauptet: mit der Deklaration
+    // kleingeschrieben (`abschnittNachladen`) meldet dieser Fall wieder 366 — `alsKomponente`
+    // (oben, :453) verlangt einen Großbuchstaben am Namensanfang, und die +1 ist damit genau dieses
+    // Bauteil und kein zweiter Fund, der sich hinter derselben Zahl versteckt. Die zwei Zahlen, an
+    // denen Stufe 2 wirklich hängt, bleiben unverändert: `anbieter` 1 und `traeger` 2.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 366,
+      komponenten: 367,
       anbieter: 1,
       traeger: 2,
     });
