@@ -36,7 +36,7 @@
 //
 // Die beiden Kalibrierungsfaelle unten nageln genau das fest — sie sind der Grund, warum dieser
 // Test nicht auch mit `author` oder `originalAuthor` gruen waere.
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { KnowledgeObject } from "../../apps/web/src/api/types";
 
@@ -153,16 +153,18 @@ import {
 import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter, useLocation } from "../../apps/web/node_modules/react-router-dom";
+import i18n from "../../apps/web/src/i18n";
 import {
-  ALLE_INHALTE_LABEL,
   LIBRARY_SCOPE_PARAM,
-  MEINE_ABLAGE_LABEL,
-  SCOPE_BAR_LABEL,
   applyLibraryScope,
   createdByOf,
   parseLibraryScope,
 } from "../../apps/web/src/lib/libraryOwnScope";
 import { Library } from "../../apps/web/src/pages/Library";
+
+beforeEach(async () => {
+  await i18n.changeLanguage("de");
+});
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -270,8 +272,8 @@ describe("JOB 381 · Lieferung 1 — der Geltungsbereich als Bauteil", () => {
   it("Reihenfolge: zuerst Meine Ablage, danach Alle Inhalte", () => {
     mount();
     const [erste, zweite] = schalter();
-    expect(erste?.textContent).toContain(MEINE_ABLAGE_LABEL);
-    expect(zweite?.textContent).toContain(ALLE_INHALTE_LABEL);
+    expect(erste?.textContent).toContain("Meine Ablage");
+    expect(zweite?.textContent).toContain("Alle Inhalte");
   });
 
   it("Standard ist Alle Inhalte — sie ist gedrueckt, Meine Ablage nicht", () => {
@@ -283,10 +285,10 @@ describe("JOB 381 · Lieferung 1 — der Geltungsbereich als Bauteil", () => {
   it("die Gruppe traegt ihren Namen — ohne sichtbaren Erklaersatz daneben", () => {
     mount();
     const gruppe = geltungsbereich().querySelector("fieldset");
-    expect(gruppe?.getAttribute("aria-label")).toBe(SCOPE_BAR_LABEL);
+    expect(gruppe?.getAttribute("aria-label")).toBe("Geltungsbereich");
     // Sichtbar steht in der Zeile NUR, was auf den beiden Schaltflaechen steht (H4-Textmesser).
     const sichtbar = (geltungsbereich().textContent ?? "").replace(/\s+/g, " ").trim();
-    expect(sichtbar).toBe(`${MEINE_ABLAGE_LABEL}${ALLE_INHALTE_LABEL}`);
+    expect(sichtbar).toBe("Meine AblageAlle Inhalte");
   });
 
   it("die Ortszeile steht VOR dem Suchfeld — die Tabreihenfolge folgt der Leserichtung (A-9)", () => {

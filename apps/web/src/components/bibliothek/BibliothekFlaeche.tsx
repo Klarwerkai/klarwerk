@@ -54,12 +54,9 @@ import {
   saveLibraryView,
 } from "../../lib/libraryFacets";
 import {
-  ALLE_INHALTE_LABEL,
   DEFAULT_LIBRARY_SCOPE,
   LIBRARY_SCOPE_PARAM,
   type LibraryScope,
-  MEINE_ABLAGE_LABEL,
-  SCOPE_BAR_LABEL,
   applyLibraryScope,
   parseLibraryScope,
 } from "../../lib/libraryOwnScope";
@@ -1316,7 +1313,7 @@ export function BibliothekFlaeche({
             // JOB 381 · DIE ORTSZEILE — WORIN WIRD GERADE GESUCHT (H4: als ruhige Zeile über der Liste).
             // ======================================================================================
             //
-            // Sie steht auf der SEITE und nie in einem Menü: der Geltungsbereich ist kein Filter,
+            // Sie steht auf der SEITE und nie in einem Menü: der Suchbereich ist kein Filter,
             // sondern die Angabe des BESTANDS, auf den sich Suche, Umschalter und Filter erst
             // beziehen („Die Schiene filtert, die Kopfzeile sucht", `R-19`). Läge er im Filtermenü,
             // wäre die durchsuchte Menge nur nach dem Öffnen eines Menüs ablesbar — genau das
@@ -1331,7 +1328,7 @@ export function BibliothekFlaeche({
             // sichtbar stehen nur die beiden Beschriftungen. Der Textmesser
             // (`tests/design/zielbild-h4-kein-erklaertext.test.ts`) zählt deshalb null Zeichen hinzu.
             //
-            // Die Reihenfolge „Meine Ablage" vor „Alle Inhalte" ist Pedis Entscheidung
+            // Die Reihenfolge eigene Ablage vor Gesamtbestand ist Pedis Entscheidung
             // (`ENTSCHEIDUNGEN/JOB-381-ORTSZEILE.md`), nicht Geschmack.
             <div
               data-testid="library-scope-bar"
@@ -1339,13 +1336,13 @@ export function BibliothekFlaeche({
               className="flex items-center justify-between gap-2"
             >
               <fieldset
-                aria-label={SCOPE_BAR_LABEL}
+                aria-label={t("lib.ownScope.label")}
                 className="flex min-w-0 items-center gap-1 border-0 p-0"
               >
                 {(
                   [
-                    { wert: "meine", label: MEINE_ABLAGE_LABEL },
-                    { wert: "alle", label: ALLE_INHALTE_LABEL },
+                    { wert: "meine", label: t("lib.ownScope.meine") },
+                    { wert: "alle", label: t("lib.ownScope.alle") },
                   ] satisfies { wert: LibraryScope; label: string }[]
                 ).map((e) => {
                   const aktiv = scope === e.wert;

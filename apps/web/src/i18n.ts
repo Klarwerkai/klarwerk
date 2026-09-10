@@ -3657,6 +3657,9 @@ const de = {
   // `lib.scope.note` (unten, AUFTRAG-BASIC-u2) bleibt daneben stehen und sagt etwas anderes: WELCHER
   // BESTAND durchsucht wird. Feld und Bestand sind zwei Fragen; eine ersetzt die andere nicht.
   "lib.searchLabel": "Bibliothek durchsuchen",
+  "lib.ownScope.label": "Geltungsbereich",
+  "lib.ownScope.meine": "Meine Ablage",
+  "lib.ownScope.alle": "Alle Inhalte",
   // JOB 3063 · H4 — die Fläche „Liste plus Lesefläche": Umschalter, Menüs, Listenzustände.
   // Beschriftungen, keine Erklärsätze (Pedi 04.09.: Erklärtext gehört hinter Menüs, nicht ins
   // Sichtfeld). Das Wort zum Zustand kommt unverändert aus `status.*` — keine zweite Vokabel.
@@ -8885,6 +8888,9 @@ const en: typeof de = {
   "lib.format.html": "HTML (print/PDF)",
   // JOB 1119 (D-002) — see the German entry for the finding and the measured search space.
   "lib.searchLabel": "Search the library",
+  "lib.ownScope.label": "Scope",
+  "lib.ownScope.meine": "My collection",
+  "lib.ownScope.alle": "All content",
   "lib.segment.label": "State",
   "lib.segment.alle": "All",
   "lib.menue.weitere": "More actions",
@@ -13747,6 +13753,9 @@ const nl: typeof de = {
   "lib.format.html": "HTML (Print/PDF)",
   // JOB 1119 (D-002) — zie de Duitse regel voor de bevinding en de gemeten zoekruimte.
   "lib.searchLabel": "Bibliotheek doorzoeken",
+  "lib.ownScope.label": "Bereik",
+  "lib.ownScope.meine": "Mijn verzameling",
+  "lib.ownScope.alle": "Alle inhoud",
   "lib.segment.label": "Status",
   "lib.segment.alle": "Alle",
   "lib.menue.weitere": "Meer acties",

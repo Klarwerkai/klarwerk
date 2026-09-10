@@ -78,6 +78,17 @@ type Eintrag = {
 
 const REGISTER: Eintrag[] = [
   {
+    waechter: "tests/bibliothek-scope-sprache/ortszeile-390px-browser.test.ts",
+    teildeckung: "bibliothek-scope-sprachbreite",
+    aussage:
+      "Misst Sichtbarkeit und ungekürzte Scope-Beschriftungen in DE/EN/NL bei 390 px am gebauten Produkt. Keine allgemeine Theme-, Kontrast- oder Designabnahme.",
+    beleg: [
+      { was: "echte Bibliotheksfläche", muster: /h4Stand/ },
+      { was: "390-px-Fenster", muster: /width: 390/ },
+      { was: "Kürzungsmessung", muster: /scrollWidth/ },
+    ],
+  },
+  {
     waechter: "tests/m6-import-erklaerweg/klara-importwege-dom.test.tsx",
     teildeckung: "importwege-css-umschaltung",
     aussage:
