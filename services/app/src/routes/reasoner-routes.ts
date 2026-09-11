@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
 import type { AskService } from "../../../ask";
+import type { AuditService } from "../../../audit";
 import type { CaptureService } from "../../../capture";
 import {
   DEFAULT_EXTERNAL_KNOWLEDGE_STAGE,
@@ -78,6 +79,14 @@ export interface ReasonerRoutesDeps {
   // Dienstinstanz wie dort. OPTIONAL: fehlt er, verhält sich eine Klara-gebundene Anfrage
   // fail-closed (keine Cloud); eine Anfrage ohne Bindung bleibt unverändert.
   ka4?: Ka4Freigabepruefer | undefined;
+  // JOB 3549: das Protokoll für die KI-Freigabe. DERSELBE Dienst, den `ko-routes.ts` benutzt
+  // (`services/audit`, Hashkette) — kein zweiter Speicherort. In der Kompositionswurzel kommt er
+  // ohne Zutun mit: `build-app.ts:2197` reicht `{ ...services }` herein, und `services.audit` ist
+  // dort deklariert (`:302`) und gebaut (`:454`).
+  // OPTIONAL im Typ, damit die vielen Bestandsaufbauten dieser Routen unverändert bleiben — aber
+  // NICHT optional in der Wirkung: fehlt er, wird eine ERWEITERUNG der Freigabe abgelehnt (503),
+  // statt still zu gelten. Eine Freigabe, die niemand belegen kann, ist keine.
+  audit?: AuditService | undefined;
 }
 
 // JOB 2692 D1: was die Route über den Aufruf weiß, das der reinen Regel fehlt — Entwurfskennung,
@@ -244,8 +253,58 @@ async function sendeOderSperre<T>(
   }
 }
 
+// ================================================================================================
+// JOB 3549 · DAS PROTOKOLL DER KI-FREIGABE — WER, WANN, VON WAS AUF WAS.
+// ================================================================================================
+//
+// Der Fehlercode, mit dem eine ERWEITERUNG abgelehnt wird, die niemand belegen kann. 503 und nicht
+// 500: das ist kein Programmfehler, sondern eine vorübergehend nicht erfüllbare Voraussetzung — der
+// Administrator darf es wieder versuchen, sobald das Protokoll schreibbar ist.
+// Bewusst NICHT exportiert (Aufrufer-Wächter, `tests/capture/aufrufer-waechter.test.ts`): der Code
+// gehört dem Draht, nicht dem Modul. Die Tests prüfen ihn deshalb als Zeichenkette — das ist der
+// härtere Vertrag, denn ein umbenannter Export bräche die Fläche, ohne den Test rot zu machen.
+const FREIGABE_NICHT_PROTOKOLLIERBAR = "REASONER_FREIGABE_NICHT_PROTOKOLLIERBAR";
+const FREIGABE_NICHT_PROTOKOLLIERBAR_MELDUNG =
+  "Die Freigabe konnte nicht protokolliert werden und wurde deshalb NICHT erteilt. " +
+  "Bitte später erneut versuchen.";
+// Das Ziel der Auditzeilen — eine Einstellung, kein Datensatz; deshalb ein fester, sprechender Name.
+const FREIGABE_ZIEL = "reasoner.kiFreigabe";
+
+// Der WIRKSAME Schalterstand einer Freigabe: zwei Booleans, keine Zwischentöne.
+//
+// Das ist KEINE zweite Entscheidung darüber, ob etwas hinausdarf — die fällt allein in
+// `Reasoner.oeffentlicheKiErlaubt`. Es ist die Lesart „nur `true` zählt" für den VERGLEICH zweier
+// Stände, damit „ist das eine Erweiterung?" beantwortbar ist, bevor geschrieben wird. `false`,
+// „fehlt" und ein fremder Wert sind hier dasselbe wie dort: nicht freigegeben.
+function schalterstand(
+  freigabe: { oeffentlicheKi?: boolean; vertraulicheInhalte?: boolean } = {},
+): {
+  oeffentlicheKi: boolean;
+  vertraulicheInhalte: boolean;
+} {
+  return {
+    oeffentlicheKi: freigabe?.oeffentlicheKi === true,
+    vertraulicheInhalte: freigabe?.vertraulicheInhalte === true,
+  };
+}
+
+type Schalterstand = ReturnType<typeof schalterstand>;
+
+// Erweiterung = irgendein Schalter geht von „nicht freigegeben" auf „freigegeben". Nur SIE ist
+// belegpflichtig; eine Rücknahme führt in die sichere Richtung und darf nie an ihrem Beleg scheitern.
+function istErweiterung(vorher: Schalterstand, nachher: Schalterstand): boolean {
+  return (
+    (nachher.oeffentlicheKi && !vorher.oeffentlicheKi) ||
+    (nachher.vertraulicheInhalte && !vorher.vertraulicheInhalte)
+  );
+}
+
+function gleicherStand(a: Schalterstand, b: Schalterstand): boolean {
+  return a.oeffentlicheKi === b.oeffentlicheKi && a.vertraulicheInhalte === b.vertraulicheInhalte;
+}
+
 export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): FastifyPluginAsync {
-  const { reasoner, ask, externalKnowledge, ko, capture, ka4 } = deps;
+  const { reasoner, ask, externalKnowledge, ko, capture, ka4, audit } = deps;
 
   // Ein Load je Anker liefert die hebende Stufe und den echten Subjektbezug. Keine frei
   // gelieferte Kennung wird als gefundenes Subjekt ausgegeben. Ohne Klara-Bindung bleibt der
@@ -676,36 +735,133 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
 
     // KI-Verwaltung v1 (02.07.2026, Teil-Slice): Zuordnung global + je Aufgabe setzen.
     // Nur Admin; keine Schlüssel — die leben weiter ausschließlich serverseitig.
-    app.put<{ Body: { global?: string; perTask?: Record<string, string> } }>(
-      "/api/reasoner/config",
-      async (request, reply) => {
-        const user = await guards.requirePermission("users.manage", request, reply);
-        if (!user) {
+    //
+    // JOB 3549: DERSELBE Weg trägt jetzt auch die Adminfreigabe für öffentliche KI. Er wird
+    // ERWEITERT, nicht ersetzt — ein zweiter Adminweg wäre ein zweites Recht, ein zweites Protokoll
+    // und eine zweite Gelegenheit, eines von beidem zu vergessen. Das Recht bleibt `users.manage`
+    // wie bei jedem anderen Adminweg dieser Datei; die Prüfung steht SERVERSEITIG hier, weil eine
+    // Oberfläche nichts erzwingen kann (Codex 93f857c5).
+    app.put<{
+      Body: {
+        global?: string;
+        perTask?: Record<string, string>;
+        // JOB 3549: WEGLASSEN LÄSST DIE FREIGABE UNVERÄNDERT (Vertrag §3) — die Bestands-Oberfläche
+        // speichert nur `global`/`perTask` und darf eine erteilte Freigabe dabei nicht löschen.
+        kiFreigabe?: { oeffentlicheKi?: boolean; vertraulicheInhalte?: boolean };
+      };
+    }>("/api/reasoner/config", async (request, reply) => {
+      const user = await guards.requirePermission("users.manage", request, reply);
+      if (!user) {
+        return;
+      }
+      // Der VORHER-Stand, gelesen bevor irgendetwas passiert — er ist die eine Hälfte des
+      // Protokolleintrags und zugleich der Vergleichspunkt für „ist das eine Erweiterung?".
+      const vorher = schalterstand(reasoner.configStatus().taskConfig.kiFreigabe);
+      const nachher =
+        request.body.kiFreigabe === undefined ? vorher : schalterstand(request.body.kiFreigabe);
+      const erweiterung = istErweiterung(vorher, nachher);
+
+      // FAIL-CLOSED VOR DEM SCHREIBEN: eine Erweiterung, die nicht belegt werden kann, findet nicht
+      // statt. Erst der Beleg, dann die Wirkung — die andere Reihenfolge hinterließe im Zweifel eine
+      // wirksame Freigabe ohne Spur, und das ist genau der Zustand, den dieser Auftrag ausschließt.
+      if (erweiterung) {
+        if (!audit) {
+          reply.code(503).send({
+            error: FREIGABE_NICHT_PROTOKOLLIERBAR,
+            message: FREIGABE_NICHT_PROTOKOLLIERBAR_MELDUNG,
+          });
           return;
         }
         try {
-          // Laufzeit-Validierung übernimmt setTaskConfig (wirft bei ungültigen Werten).
-          // SCRUM-525 P.5 (WP6): setTaskConfig persistiert jetzt → die Zuordnung überlebt Neustart/Deploy.
-          await reasoner.setTaskConfig({
-            global: request.body.global ?? "auto",
-            perTask: request.body.perTask ?? {},
-          } as Parameters<typeof reasoner.setTaskConfig>[0]);
-          reply.code(200).send(reasoner.configStatus());
-        } catch (error) {
-          // SCRUM-525 P.5 (WP-C): Befund 3(a) — ein aktiver ENV-Override (KLARWERK_REASONER_POLICY) lehnt
-          // den Schreibversuch ab (409, ehrliche Begründung), statt ihn wie einen 400-Validierungsfehler
-          // zu behandeln oder still zu übernehmen.
-          if (error instanceof ReasonerPolicyLockedError) {
-            reply.code(409).send({ error: "REASONER_POLICY_ENV_LOCKED", message: error.message });
-            return;
-          }
-          reply.code(400).send({
-            error: "BAD_REQUEST",
-            message: error instanceof Error ? error.message : "Ungültige KI-Zuordnung.",
+          await audit.record({
+            actor: user.id,
+            action: "reasoner.ki-freigabe",
+            target: FREIGABE_ZIEL,
+            payload: { vorher, nachher },
           });
+        } catch (fehler) {
+          request.log.error(
+            { err: fehler instanceof Error ? fehler.name : "unknown" },
+            "reasoner.ki-freigabe konnte nicht protokolliert werden — Erweiterung abgelehnt",
+          );
+          reply.code(503).send({
+            error: FREIGABE_NICHT_PROTOKOLLIERBAR,
+            message: FREIGABE_NICHT_PROTOKOLLIERBAR_MELDUNG,
+          });
+          return;
         }
-      },
-    );
+      }
+
+      try {
+        // Laufzeit-Validierung übernimmt setTaskConfig (wirft bei ungültigen Werten).
+        // SCRUM-525 P.5 (WP6): setTaskConfig persistiert jetzt → die Zuordnung überlebt Neustart/Deploy.
+        await reasoner.setTaskConfig({
+          global: request.body.global ?? "auto",
+          perTask: request.body.perTask ?? {},
+          ...(request.body.kiFreigabe === undefined ? {} : { kiFreigabe: request.body.kiFreigabe }),
+        } as Parameters<typeof reasoner.setTaskConfig>[0]);
+      } catch (error) {
+        // JOB 3549: der Beleg steht schon in der Kette, die Freigabe ist aber NICHT wirksam
+        // geworden (ENV-Sperre, Persistenzfehler, ungültige Zuordnung). Das Audit ist append-only —
+        // die Korrektur ist deshalb ein ZWEITER Eintrag, kein Zurücknehmen des ersten. Er ist
+        // best-effort: scheitert auch er, ist die Freigabe trotzdem nicht wirksam (sichere Richtung).
+        if (erweiterung) {
+          await audit
+            ?.record({
+              actor: user.id,
+              action: "reasoner.ki-freigabe-nicht-wirksam",
+              target: FREIGABE_ZIEL,
+              payload: { vorher, nachher },
+            })
+            .catch(() => undefined);
+        }
+        // SCRUM-525 P.5 (WP-C): Befund 3(a) — ein aktiver ENV-Override (KLARWERK_REASONER_POLICY) lehnt
+        // den Schreibversuch ab (409, ehrliche Begründung), statt ihn wie einen 400-Validierungsfehler
+        // zu behandeln oder still zu übernehmen.
+        if (error instanceof ReasonerPolicyLockedError) {
+          reply.code(409).send({ error: "REASONER_POLICY_ENV_LOCKED", message: error.message });
+          return;
+        }
+        reply.code(400).send({
+          error: "BAD_REQUEST",
+          message: error instanceof Error ? error.message : "Ungültige KI-Zuordnung.",
+        });
+        return;
+      }
+
+      const status = reasoner.configStatus();
+      const wirksam = schalterstand(status.taskConfig.kiFreigabe);
+      if (erweiterung && !gleicherStand(wirksam, nachher)) {
+        // Geschrieben, aber nicht angekommen: der Beleg aus der Kette behauptete mehr, als gilt.
+        // Auch das wird korrigiert statt verschwiegen.
+        await audit
+          ?.record({
+            actor: user.id,
+            action: "reasoner.ki-freigabe-nicht-wirksam",
+            target: FREIGABE_ZIEL,
+            payload: { vorher, nachher },
+          })
+          .catch(() => undefined);
+      } else if (!erweiterung && !gleicherStand(vorher, nachher)) {
+        // EINE RÜCKNAHME (oder Teilrücknahme) wird ebenso protokolliert, aber sie blockiert nicht:
+        // sie führt in die sichere Richtung und gilt bereits. Ein 503 hier würde behaupten, sie sei
+        // ausgeblieben — sie ist es nicht.
+        await audit
+          ?.record({
+            actor: user.id,
+            action: "reasoner.ki-freigabe",
+            target: FREIGABE_ZIEL,
+            payload: { vorher, nachher },
+          })
+          .catch((fehler: unknown) => {
+            request.log.error(
+              { err: fehler instanceof Error ? fehler.name : "unknown" },
+              "reasoner.ki-freigabe (Rücknahme) konnte nicht protokolliert werden — sie gilt trotzdem",
+            );
+          });
+      }
+      reply.code(200).send(status);
+    });
 
     // SCRUM-386: kundeneigene KI-Assist-Funktionen (Presets). Lesen darf jede angemeldete
     // Rolle (die Palette im Editor zeigt sie an); verwalten nur der Admin. Leitplanken:

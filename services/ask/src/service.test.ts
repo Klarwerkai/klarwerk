@@ -1,14 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { AuditService, InMemoryAuditRepo } from "../../audit";
 import { InMemoryKoRepo, KoService } from "../../knowledge-object";
-import {
-  type AnswerResult,
-  type KnowledgeRef,
-  Reasoner,
-  type ReasonerLocale,
-  type ReasonerProvider,
-  type StructureResult,
-} from "../../reasoner";
+// JOB 3549 R5: `KnowledgeRef`, `ReasonerLocale`, `ReasonerProvider` und `StructureResult` wurden
+// nur vom mitschreibenden Provider des Falls FR-I18N-01 gebraucht; der ist umgezogen (s. u.).
+import { type AnswerResult, Reasoner } from "../../reasoner";
 import { InMemoryGapRepo } from "./repo";
 import { AskService } from "./service";
 import type { Gap } from "./types";
@@ -206,93 +201,26 @@ describe("AskService", () => {
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 
-  // SCRUM-88 / FR-I18N-01: AskService reicht die UI-Sprache an den Reasoner durch.
-  it("FR-I18N-01: ask(..., 'en') übergibt locale an den Reasoner", async () => {
-    const seen: (ReasonerLocale | undefined)[] = [];
-    const capturing: ReasonerProvider = {
-      name: "capture",
-      isAvailable: () => true,
-      structure: async (): Promise<StructureResult> => {
-        throw new Error("ungenutzt");
-      },
-      answer: async (
-        _q: string,
-        _ctx: readonly KnowledgeRef[],
-        locale?: ReasonerLocale,
-      ): Promise<AnswerResult> => {
-        seen.push(locale);
-        return {
-          answered: true,
-          answer: "ok",
-          knowledgeClass: "gesichert",
-          trust: 50,
-          sources: ["x"],
-          citedSources: ["x"],
-          steps: [],
-          demo: false,
-        };
-      },
-      assistText: async () => ({ text: "", demo: false }),
-      interview: async () => ({
-        question: null,
-        done: true,
-        draft: {
-          title: "",
-          statement: "",
-          conditions: [],
-          measures: [],
-          tags: [],
-          confidence: 0,
-          demo: false,
-        },
-        demo: false,
-      }),
-      extract: async () => ({ points: [], note: null, demo: false }),
-      select: () => [],
-    };
-    // ============================================================================================
-    // OFFEN (JOB 3570/3588, nachgemessen von JOB 3657): DIESER AUFBAU BRAUCHT DIE GRUNDFREIGABE
-    // UND KANN SIE VON HIER AUS NICHT BEKOMMEN.
-    // ============================================================================================
-    //
-    // `seen` bleibt nur gefüllt, wenn der als Cloud verdrahtete Provider wirklich gefragt wird;
-    // unter dem Kern von JOB 3549 setzt das die Adminfreigabe voraus. Auf dem Messstand von
-    // JOB 3657 (Kern 1bcb283) ist das der gemessene Rotstand:
-    // „AssertionError: expected [] to deeply equal [ 'en', 'de' ]".
-    //
-    // WARUM HIER NICHTS STEHT — beide Wege sind versperrt, und zwar GEMESSEN, nicht vermutet:
-    //   1. Der Testhelfer (`services/reasoner/src/testhelfer-ki-freigabe.ts`) ist von hier aus
-    //      nicht importierbar. `npx depcruise --config .dependency-cruiser.cjs services` meldet
-    //      mit dem Import „error module-boundaries: services/ask/src/service.test.ts →
-    //      services/reasoner/src/testhelfer-ki-freigabe.ts" — JOB 3657 hat alle vier betroffenen
-    //      Dateien zugleich gemessen: „x 4 dependency violations (4 errors, 0 warnings)". Die Regel
-    //      steht in `.dependency-cruiser.cjs:16-27` und lässt Cross-Modul-Importe ausschliesslich
-    //      über `services/reasoner/index.ts` zu.
-    //   2. Die Felder von Hand zu schreiben (`kiFreigabe: { … }` an `setTaskConfig`) verbietet der
-    //      Freigabe-Wächter F2 in `tests/ki-anbieterwahl/routing-zwei-attrappen.test.ts`
-    //      AUSNAHMSLOS. Genau daran ist JOB 3588 Runde 1 rot geworden — und die Regel ist richtig:
-    //      wer die Felder einmal von Hand schreiben darf, kann morgen `vertraulicheInhalte`
-    //      danebenschreiben, ohne dass es jemand sieht.
-    //
-    // DER KLEINSTE UMBAU, DER ES KÖNNTE: eine Zeile PRODUKTCODE in `services/reasoner/index.ts`,
-    // die den Helfer re-exportiert. JOB 3657 hat sie auf einem Messstand gebaut und wieder
-    // verworfen; mit ihr werden alle fünf offenen Fälle grün (Test Files 6 passed · Tests 128
-    // passed, depcruise sauber, `tsc` ohne Ausgabe). Sie liegt ausserhalb der Zielpfade, sie
-    // widerspricht der Hausdoktrin zu mega59 Block I in `services/reasoner/index.ts` („ein
-    // Re-Export ist die ÖFFENTLICHE Fläche des Moduls"), und sie macht den Freigabe-Wächter F1
-    // blind für genau diese vier Benutzer. Alle drei Punkte mit Zahlen im Kopf von `appWithSpy` in
-    // `services/app/src/routes/reasoner-egress.test.ts`. Deshalb bleibt der Punkt offen und wird
-    // benannt, statt hier still am Wächter vorbei gebaut zu werden.
-    const ask = new AskService({
-      reasoner: new Reasoner(capturing),
-      koService: ctx.koService,
-      gaps: ctx.gaps,
-      audit: ctx.audit,
-    });
-    await ask.ask("Frage", "tester", "en");
-    await ask.ask("Frage");
-    expect(seen).toEqual(["en", "de"]);
-  });
+  // ==============================================================================================
+  // UMGEZOGEN (JOB 3549 R5): „FR-I18N-01: ask(..., 'en') übergibt locale an den Reasoner"
+  // ==============================================================================================
+  //
+  // Der Fall (SCRUM-88) steht jetzt in `tests/admin-ki-freigabe/verlagerte-modellwege.test.ts`,
+  // Block 2 — mit demselben mitschreibenden Provider und derselben Erwartung
+  // (`expect(seen).toEqual(["en", "de"])`), ergänzt um die Grundfreigabe.
+  //
+  // WARUM ER NICHT HIER BLEIBEN KONNTE: `seen` füllt sich nur, wenn der als Cloud verdrahtete
+  // Provider WIRKLICH gefragt wird; unter dem Kern von JOB 3549 setzt das die Adminfreigabe voraus
+  // („expected [] to deeply equal [ 'en', 'de' ]"). Von HIER aus ist sie auf keinem erlaubten Weg
+  // zu setzen: der Testhelfer liegt hinter der Modulgrenze (`.dependency-cruiser.cjs:16-27` —
+  // diese Datei liegt im Modul `services/ask`), und die Freigabefelder von Hand zu schreiben
+  // verbietet der Freigabe-Wächter F2 (`tests/ki-anbieterwahl/routing-zwei-attrappen.test.ts`)
+  // ausnahmslos. Unter `tests/` fallen beide Sperren weg — dort liegt kein Modul, und
+  // `tests/admin-ki-freigabe/` ist die ausdrücklich ausgenommene Ausnahme des Wächters.
+  // Entschieden von Codex am 11.09. 21:55 („Weg (b)").
+  //
+  // Die übrigen Fälle dieser Suite bleiben hier: sie bauen `new Reasoner()` ohne Provider — ohne
+  // öffentlichen Anbieter gibt es nichts freizugeben.
 
   it("SCRUM-115: Legacy-Lücke ohne priority wird beim Lesen auf 'mittel' normalisiert", async () => {
     // Direkt ins Repo geschrieben, ohne priority (Altdaten).

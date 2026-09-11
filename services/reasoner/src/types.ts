@@ -356,11 +356,42 @@ export interface ReasonerCloudAnbieterStatus {
 // "default" (nichts konfiguriert/geladen, inkl. eines fail-closed Ladefehlers — s. Reasoner.setTaskConfig).
 export type ReasonerPolicySource = "env" | "db" | "default";
 
+// ================================================================================================
+// JOB 3549 · DIE ADMINFREIGABE FÜR ÖFFENTLICHE KI — ZWEI SCHALTER, GETRENNT, NIE VORGEGEBEN.
+// ================================================================================================
+//
+// PEDIS ENTSCHEIDUNG (10.09. 21:25, über Codex 07cc6d07), auf die dieser Typ gebaut ist:
+//   „Öffentliche KI nur nach AUSDRÜCKLICHER Adminfreigabe. Keine Freigabe, kein Egress — auch nicht
+//    bei einer Instanz, die heute läuft. Vertrauliche Inhalte zusätzlich mit Warnhinweis.
+//    Bloße frühere NUTZUNG ist KEINE Zustimmung. Im Zweifel gilt: gesperrt."
+//
+// WARUM ZWEI SCHALTER UND NICHT EINER. „Darf überhaupt etwas an eine öffentliche KI" und „darf auch
+// VERTRAULICHES dorthin" sind zwei Fragen, und die zweite ist die teurere. Wer die erste beantwortet,
+// bekommt die zweite nicht stillschweigend dazu (das ist genau die Vermengung, die SCRUM-502 als
+// harte Coderegel gelöst hatte und die jetzt der Administrator entscheidet).
+//
+// WARUM `?: boolean` UND NICHT `?: true`. Der Typ beschreibt auch, was aus der DATENBANK
+// zurückkommt — dort kann ein Altbestand oder eine Rücknahme `false` tragen. Für die WIRKUNG gilt
+// trotzdem nur eine Regel, und die steht in `Reasoner.oeffentlicheKiErlaubt`: **nur `true` erlaubt;
+// `false` und „fehlt" sperren gleich.** Der Testhelfer (`testhelfer-ki-freigabe.ts`, JOB 3550)
+// verengt seine eigene Eingabe deshalb auf `?: true` — ihm ist `false` nicht einmal schreibbar.
+export interface ReasonerKiFreigabe {
+  // Grundfreigabe: es darf überhaupt etwas an eine öffentliche KI gehen.
+  oeffentlicheKi?: boolean;
+  // Zweite, GETRENNTE Freigabe: auch als vertraulich eingestufter Text darf dorthin. Ohne die
+  // Grundfreigabe wirkungslos (sie ist eine Erweiterung, keine Umgehung).
+  vertraulicheInhalte?: boolean;
+}
+
 // Die WIRKSAME Zuordnung: nach der Normalisierung stehen hier nur noch aktive Werte — kein
 // `cloud`, kein `model` (JOB 3134, s. ReasonerLegacyChoice).
 export interface ReasonerTaskConfig {
   global: ReasonerAktiveWahl;
   perTask: Partial<Record<ReasonerTask, ReasonerAktiveWahl>>;
+  // JOB 3549: die Adminfreigabe. FEHLT sie, ist nichts freigegeben — deshalb steht das Feld nach der
+  // Normalisierung nur da, wenn wenigstens ein Schalter `true` ist (kein `{}`, kein `false`-Rest).
+  // Ein fehlendes Feld ist damit dasselbe wie „gesperrt" und kein „noch nicht gefragt".
+  kiFreigabe?: ReasonerKiFreigabe;
 }
 
 // Die EINGABE einer Zuordnung (Schreibweg, Datenbankbestand, Deploy-ENV): darf noch die abgelösten
@@ -368,6 +399,11 @@ export interface ReasonerTaskConfig {
 export interface ReasonerTaskConfigEingabe {
   global: ReasonerTaskChoice;
   perTask: Partial<Record<ReasonerTask, ReasonerTaskChoice>>;
+  // JOB 3549: WEGLASSEN LÄSST DIE FREIGABE UNVERÄNDERT (Vertrag §3). Das ist Absicht und nicht
+  // Bequemlichkeit: der Admin-Schreibweg trägt bis heute nur `global`/`perTask`, und ein Speichern
+  // der ZUORDNUNG darf eine erteilte Freigabe nicht beiläufig löschen — und eine fehlende nicht
+  // beiläufig erteilen. Wer die Freigabe ändern will, nennt sie.
+  kiFreigabe?: ReasonerKiFreigabe;
 }
 
 export interface ReasonerConfigStatus {

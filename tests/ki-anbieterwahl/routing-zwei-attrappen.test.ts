@@ -2549,7 +2549,9 @@ const NAMENTLICHE_ERWARTUNGEN: readonly NamentlicheDatei[] = [
     datei: "services/app/src/routes/reasoner-egress.test.ts",
     warum:
       "Die drei Sperrfälle hier sind der Grund, warum diese Datei AUSDRÜCKLICH keine Freigabe " +
-      "bekommt (Register 3). Der vierte ist ihre Gegenprobe: ohne ihn wäre die Null trivial.",
+      "bekommt (Register 3). Ihre GEGENPROBE — derselbe Aufbau, mit Grundfreigabe, mit Aufruf — " +
+      "liegt seit JOB 3549 R6 in `tests/admin-ki-freigabe/verlagerte-modellwege.test.ts` (Block 4, " +
+      "Fall „Positiv: bewusst intern“); sie braucht die Freigabe und kann sie hier nicht bekommen.",
     faelle: [
       {
         testname: "extract: Upload (transient-document) OHNE Stufe",
@@ -2566,10 +2568,10 @@ const NAMENTLICHE_ERWARTUNGEN: readonly NamentlicheDatei[] = [
         testname: "extract: transient-document + koId eines INTERNEN KOs",
         erwartungen: ["expect(complete).not.toHaveBeenCalled();"],
       },
-      {
-        testname: "Positiv: bewusst intern",
-        erwartungen: ["expect(complete).toHaveBeenCalled();"],
-      },
+      // JOB 3549 R6: der Fall „Positiv: bewusst intern" ist AUSGETRAGEN, weil er umgezogen ist
+      // (s. `warum` oben). F7 verlangt die Ausführung eines geführten Falls unter seinem Namen in
+      // SEINER Datei; ein Eintrag ohne Träger macht den Wächter rot, und zwar zu Recht. Der Fall
+      // selbst ist nicht verschwunden, nur umgezogen — die Fallzahl der Klasse ist unverändert.
     ],
   },
   {

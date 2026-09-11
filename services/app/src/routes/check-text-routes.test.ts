@@ -816,55 +816,25 @@ describe("SCRUM-498 B2: Modell-Cap-Überlauf (deep) → kontrolliertes 503, kein
   }
 
   // ================================================================================================
-  // OFFEN (JOB 3588, nachgemessen von JOB 3657): DER FALL UNTEN BRAUCHT DIE GRUNDFREIGABE UND KANN
-  // SIE VON HIER AUS NICHT BEKOMMEN.
+  // UMGEZOGEN (JOB 3549 R5): „want:'deep' + Cap-Überlauf → 503 + Retry-After (MODEL_BUSY), nicht 500"
   // ================================================================================================
   //
-  // „want:'deep' + Cap-Überlauf → 503" misst, dass ein ausgelastetes Modell zu 503 + Retry-After
-  // führt und NICHT zu 500 — dafür muss der Cloud-Client überhaupt gerufen werden. Unter dem Kern
-  // von JOB 3549 setzt das die Adminfreigabe voraus; ohne sie läuft der Judge deterministisch durch
-  // und die Route antwortet mit 200. Gemessen auf dem Messstand von JOB 3657 (Kern 1bcb283):
-  // „AssertionError: expected 200 to be 503" — die Zusage wäre still verschwunden.
+  // Der Fall steht jetzt in `tests/admin-ki-freigabe/verlagerte-modellwege.test.ts`, Block 1 — mit
+  // demselben Aufbau (`busyReasonerServices`, `seedValidated`, dieselbe Nutzlast) und derselben
+  // Erwartung (503, Retry-After, MODEL_BUSY, kein Stacktrace), ergänzt um die Grundfreigabe.
   //
-  // BEIDE WEGE SIND VERSPERRT, gemessen und nicht vermutet:
-  //   1. TESTHELFER IMPORTIEREN — `npx depcruise --config .dependency-cruiser.cjs services` meldet
-  //      mit dem Import „error module-boundaries: services/app/src/routes/check-text-routes.test.ts
-  //      → services/reasoner/src/testhelfer-ki-freigabe.ts" (JOB 3657, Gegenprobe 1: zusammen mit
-  //      den drei Schwesterdateien „x 4 dependency violations (4 errors, 0 warnings)").
-  //      `.dependency-cruiser.cjs:16-27`; Cross-Modul nur über `services/reasoner/index.ts`.
-  //   2. DIE FELDER SELBST SCHREIBEN — auch in der Nutzlast des echten Adminwegs
-  //      `PUT /api/reasoner/config`. Der Freigabe-Wächter F2
-  //      (`tests/ki-anbieterwahl/routing-zwei-attrappen.test.ts`) verbietet das ausnahmslos;
-  //      JOB 3588 Runde 1 ist genau daran rot geworden.
+  // WARUM ER NICHT HIER BLEIBEN KONNTE: er misst, dass ein AUSGELASTETES Modell zu 503 führt und
+  // nicht zu 500 — dafür muss der Cloud-Client überhaupt gerufen werden. Unter dem Kern von
+  // JOB 3549 setzt das die Adminfreigabe voraus; ohne sie läuft der Judge deterministisch durch und
+  // die Route antwortet mit 200 („expected 200 to be 503"). Von HIER aus ist die Freigabe auf
+  // keinem erlaubten Weg zu setzen: der Testhelfer liegt hinter der Modulgrenze
+  // (`.dependency-cruiser.cjs:16-27` — diese Datei liegt im Modul `services/app`), und die
+  // Freigabefelder von Hand zu schreiben verbietet der Freigabe-Wächter F2
+  // (`tests/ki-anbieterwahl/routing-zwei-attrappen.test.ts`) ausnahmslos. Unter `tests/` fallen
+  // beide Sperren weg. Entschieden von Codex am 11.09. 21:55 („Weg (b)").
   //
-  // ACHTUNG, diese Datei steht in KEINEM der drei Register von `routing-zwei-attrappen.test.ts`:
-  // ihr Pfad liegt ausserhalb der dort gepflegten FLÄCHE. F6 kann sie deshalb nicht einfordern —
-  // sie ist genau die Sorte Datei, die im Torlauf des Kerns still rot wird. Wer die Freigabe hier
-  // je setzt, trägt sie zuerst in die FLÄCHE ein.
-  //
-  // Der kleinste Umbau ist ein Re-Export des Helfers in `services/reasoner/index.ts` — ausserhalb
-  // der Zielpfade und gegen die dort festgehaltene Hausdoktrin (mega59 Block I). JOB 3657 hat ihn
-  // auf einem verworfenen Messstand gebaut: damit werden alle fünf offenen Fälle grün (128/128,
-  // depcruise und `tsc` sauber), aber der Freigabe-Wächter F1 sieht die Benutzer dann nicht mehr.
-  // Vollständig mit Zahlen in `services/app/src/routes/reasoner-egress.test.ts`, Kopf `appWithSpy`.
-  it("want:'deep' + Cap-Überlauf → 503 + Retry-After (MODEL_BUSY), nicht 500", async () => {
-    const app = buildApp(busyReasonerServices());
-    const headers = await loginOn(app);
-    // Mittlere Deckung (identisch vs. Kurzfassung) → der deep-Pfad ruft wirklich den (werfenden) Judge.
-    await seedValidated(app, headers, TEXT_MITTEL);
-    const res = await app.inject({
-      method: "POST",
-      url: "/api/check-text",
-      headers,
-      // SCRUM-502 Schicht 2 (Round 3): nicht-vertrauliche Herkunft, damit der deep-Judge wirklich läuft.
-      payload: { text: TEXT_IDENTISCH, want: "deep", source: "draft", confidentiality: "intern" },
-    });
-    expect(res.statusCode).toBe(503);
-    expect(res.headers["retry-after"]).toBeDefined();
-    expect(res.json().error).toBe("MODEL_BUSY");
-    expect(res.payload).not.toContain("ModelCapacityError"); // kein Stacktrace nach außen
-  });
-
+  // DER NACHBARFALL BLEIBT HIER: „Stufe 1 (kein Modell) bleibt 200" braucht gerade KEINEN
+  // Modellaufruf und bekommt deshalb auch keine Freigabe — mit einer wäre er nicht mehr derselbe Fall.
   it("Stufe 1 (kein Modell) bleibt 200 — der Cap berührt den deterministischen Pfad nicht", async () => {
     const app = buildApp(busyReasonerServices());
     const headers = await loginOn(app);

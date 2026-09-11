@@ -86,33 +86,6 @@ async function aufbauen() {
     author: "anna",
   });
 
-  // ==============================================================================================
-  // OFFEN (JOB 3570/3588, nachgemessen von JOB 3657): DIESER AUFBAU BRAUCHT DIE GRUNDFREIGABE
-  // UND KANN SIE VON HIER AUS NICHT BEKOMMEN.
-  // ==============================================================================================
-  //
-  // KA4-V0/V1 verlangen `gesehen.length === 1`, also einen TATSÄCHLICHEN Aufruf des als Cloud
-  // verdrahteten Mitschreibers; unter dem Kern von JOB 3549 setzt das die Adminfreigabe voraus.
-  // Ohne sie bleibt `gesehen` leer und „das vertrauliche Objekt ist nicht dabei" wäre die Aussage
-  // über eine nie gestellte Frage. Auf dem Messstand von JOB 3657 (Kern 1bcb283) werden BEIDE
-  // Fälle genau so rot: „AssertionError: expected +0 to be 1" — die Kalibrierung KA4-V0 fällt mit
-  // dem Beleg KA4-V1 zusammen, und das ist der Punkt: ohne Aufruf misst der Beleg nichts.
-  //
-  // WARUM HIER NICHTS STEHT: beide Wege sind versperrt — ausführlich und mit den gemessenen
-  // depcruise-Zahlen in `services/ask/src/service.test.ts` (gleicher Fall, gleicher Grund).
-  // Kurz: der Testhelfer liegt hinter der Modulgrenze (`.dependency-cruiser.cjs:16-27`), und die
-  // Felder von Hand zu schreiben verbietet der Freigabe-Wächter F2
-  // (`tests/ki-anbieterwahl/routing-zwei-attrappen.test.ts`) ausnahmslos. Der Nachtrag, der es
-  // löste, ist eine Zeile PRODUKTCODE in `services/reasoner/index.ts` — ausserhalb der Zielpfade;
-  // gemessen und wieder verworfen von JOB 3657, Rechnung im Kopf von `appWithSpy` in
-  // `services/app/src/routes/reasoner-egress.test.ts`.
-  //
-  // NUR `oeffentlicheKi` UND NIEMALS `vertraulicheInhalte`: diese Datei misst, dass Vertrauliches
-  // den Modellkontext nicht erreicht. Die zweite Freigabe hätte die Sperre aufgehoben, die hier die
-  // Zusage trägt — der Test bliebe grün und misst etwas anderes. JOB 3657 hat auf dem Messstand
-  // ausschliesslich die Grundfreigabe gesetzt (`erteileKiFreigabe(reasoner)` ohne zweiten Wert);
-  // KA4-V1 blieb dabei grün und hat damit BELEGT, dass die Grundfreigabe genügt und der Beleg
-  // dieser Datei erhalten bleibt.
   const { provider, gesehen } = mitschreiber();
   const ask = new AskService({
     reasoner: new Reasoner(provider),
@@ -124,26 +97,31 @@ async function aufbauen() {
 }
 
 describe("KA4 · D2 · der erlaubte Zweig laesst Vertrauliches NICHT durch", () => {
-  it("KA4-V0 · KALIBRIERUNG: im erlaubten Zweig kommt ein OFFENES Objekt beim Modell an", async () => {
-    const { ask, offen, gesehen } = await aufbauen();
-    // Der erlaubte Zweig: KEINE Zwangsflags — genau der Aufruf aus ask-routes.ts:293/:330.
-    await ask.ask(FRAGE, "anna");
-    expect(gesehen.length).toBe(1);
-    expect(gesehen[0]?.kontext.map((k) => k.id)).toContain(offen.id);
-  });
-
-  it("KA4-V1 · DER BELEG: das VERTRAULICHE Objekt erreicht den Modellkontext nicht", async () => {
-    const { ask, geheim, gesehen } = await aufbauen();
-    await ask.ask(FRAGE, "anna");
-    expect(gesehen.length).toBe(1);
-    const kontext = gesehen[0]?.kontext ?? [];
-    expect(kontext.map((k) => k.id)).not.toContain(geheim.id);
-    // Nicht nur die Kennung: auch kein Titel, keine Aussage, kein Mandantenname.
-    const roh = JSON.stringify(kontext);
-    expect(roh).not.toContain("Sonderverfahren");
-    expect(roh).not.toContain("Mueller");
-  });
-
+  // ==============================================================================================
+  // UMGEZOGEN (JOB 3549 R5): KA4-V0 und KA4-V1
+  // ==============================================================================================
+  //
+  // Beide Fälle stehen jetzt in `tests/admin-ki-freigabe/verlagerte-modellwege.test.ts`, Block 3 —
+  // mit demselben Aufbau (`mitschreiber`, dasselbe vertrauliche und dasselbe offene Objekt) und
+  // denselben Erwartungen (`gesehen.length === 1`; die Kennung, „Sonderverfahren" und „Mueller"
+  // kommen im Kontext NICHT vor), ergänzt um die Grundfreigabe.
+  //
+  // WARUM SIE NICHT HIER BLEIBEN KONNTEN: beide verlangen `gesehen.length === 1`, also einen
+  // TATSÄCHLICHEN Aufruf des als Cloud verdrahteten Mitschreibers. Unter dem Kern von JOB 3549
+  // setzt das die Adminfreigabe voraus; ohne sie bleibt `gesehen` leer („expected +0 to be 1") und
+  // „das vertrauliche Objekt ist nicht dabei" wäre die Aussage über eine nie gestellte Frage. Von
+  // HIER aus ist die Freigabe auf keinem erlaubten Weg zu setzen: der Testhelfer liegt hinter der
+  // Modulgrenze (`.dependency-cruiser.cjs:16-27` — diese Datei liegt im Modul `services/ask`), und
+  // die Freigabefelder von Hand zu schreiben verbietet der Freigabe-Wächter F2
+  // (`tests/ki-anbieterwahl/routing-zwei-attrappen.test.ts`) ausnahmslos. Unter `tests/` fallen
+  // beide Sperren weg. Entschieden von Codex am 11.09. 21:55 („Weg (b)").
+  //
+  // AM NEUEN ORT WIRD NUR DIE GRUNDFREIGABE GESETZT, NIEMALS `vertraulicheInhalte` — das ist der
+  // Gegenstand von KA4-V1: die zweite Freigabe hätte genau die Sperre aufgehoben, die der Fall
+  // belegt. Mit der blossen Grundfreigabe findet der Aufruf statt UND das vertrauliche Objekt
+  // bleibt draussen.
+  //
+  // KA4-V2 und KA4-V3 bleiben hier: sie lesen `result.sources` und brauchen keinen Modellaufruf.
   it("KA4-V2 · es taucht auch nicht in Quellen, Zitaten oder Schritten auf", async () => {
     const { ask, geheim } = await aufbauen();
     const { result } = await ask.ask(FRAGE, "anna");

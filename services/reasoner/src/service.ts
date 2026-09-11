@@ -57,6 +57,7 @@ import type {
   ReasonerCloudAnbieter,
   ReasonerCloudAnbieterStatus,
   ReasonerConfigStatus,
+  ReasonerKiFreigabe,
   ReasonerLegacyChoice,
   ReasonerLocale,
   ReasonerPolicyMigration,
@@ -286,7 +287,39 @@ export function isValidReasonerChoice(value: string): value is ReasonerTaskChoic
 }
 
 function clone(config: ReasonerTaskConfig): ReasonerTaskConfig {
-  return { global: config.global, perTask: { ...config.perTask } };
+  return {
+    global: config.global,
+    perTask: { ...config.perTask },
+    // JOB 3549: die Freigabe reist mit — sonst verlöre `clone` sie beim Setzen des Default oder des
+    // fail-closed Ladewerts. Beide Vorlagen (DEFAULT_REASONER_POLICY, LOAD_FAILURE_FALLBACK_POLICY)
+    // tragen bewusst KEINE Freigabe; dass sie hier trotzdem kopiert würde, ist die Zusage für jeden
+    // anderen Aufrufer und nicht der Weg, auf dem eine Vorgabe hereinkäme.
+    ...(config.kiFreigabe ? { kiFreigabe: { ...config.kiFreigabe } } : {}),
+  };
+}
+
+// ================================================================================================
+// JOB 3549 · DIE FREIGABE NORMALISIEREN — NUR `true` ZÄHLT, ALLES ANDERE IST „NICHT FREIGEGEBEN".
+// ================================================================================================
+//
+// EINE Stelle, die aus einer Eingabe (Adminweg, Datenbankbestand, Deploy-ENV) den WIRKSAMEN Wert
+// macht. Sie ist bewusst streng:
+//   - jeder Schalter, der nicht wörtlich `true` ist, fällt weg (auch `"true"`, `1`, `{}`),
+//   - bleibt nichts übrig, gibt es kein Feld — „gesperrt" hat genau EINE Darstellung.
+// Ohne diese Verengung gäbe es zwei Arten von „nicht freigegeben" (`false` und „fehlt"), und jede
+// spätere Prüfung müsste beide kennen. Genau daraus entstehen die Lücken, die dieser Auftrag
+// schließt. Der Vertrag sagt es wörtlich: „Nur `true` erlaubt; `false` und ‚fehlt' sperren gleich."
+function normalisiereKiFreigabe(
+  eingabe: ReasonerKiFreigabe | undefined,
+): ReasonerKiFreigabe | undefined {
+  if (!eingabe || typeof eingabe !== "object") {
+    return undefined;
+  }
+  const wirksam: ReasonerKiFreigabe = {
+    ...(eingabe.oeffentlicheKi === true ? { oeffentlicheKi: true } : {}),
+    ...(eingabe.vertraulicheInhalte === true ? { vertraulicheInhalte: true } : {}),
+  };
+  return Object.keys(wirksam).length > 0 ? wirksam : undefined;
 }
 
 // IC-3: eng geschnittener, JSON-liefernder System-Prompt für die Import-Auswahl. Das Modell soll aus
@@ -600,10 +633,53 @@ export class Reasoner {
   // wird aus der Kette GENOMMEN. Vertraulicher Text verlässt den Server nie extern; es bleibt der
   // lokale LLM (falls verdrahtet) und/oder der deterministische Fallback. Die Durchsetzung liegt
   // hier zentral am Routing, damit kein Aufrufer sie vergessen kann — für BEIDE externen Anbieter.
-  private chainForChoice(choice: ReasonerAktiveWahl, confidential = false): ReasonerProvider[] {
+  // ==============================================================================================
+  // JOB 3549 · DIE EINE ENTSCHEIDUNGSSTELLE: DARF JETZT ETWAS AN EINE ÖFFENTLICHE KI HINAUS?
+  // ==============================================================================================
+  //
+  // Sie steht hier und NUR hier. Jede andere Stelle, die etwas über den Cloudweg wissen will, fragt
+  // sie — keine zweite Auffassung, kein zweiter Riegel, den ein Aufrufer vergessen kann. Genau das
+  // war der Fehler, den dieser Auftrag beseitigt: bis hierher entschied der Code selbst („vertraulich
+  // ⇒ nie Cloud"), und die Erlaubnis für den gewöhnlichen Fall war überhaupt keine Entscheidung,
+  // sondern die Verdrahtung.
+  //
+  // DIE REGEL, wörtlich aus Pedis Entscheidung (10.09. 21:25, über Codex 07cc6d07):
+  //   1. Ohne AUSDRÜCKLICHE Grundfreigabe geht NICHTS hinaus — auch nicht bei einer Instanz, die
+  //      heute läuft. Bloße frühere Nutzung ist keine Zustimmung.
+  //   2. Vertrauliches braucht ZUSÄTZLICH die zweite Freigabe. Sie erweitert die erste, sie ersetzt
+  //      sie nicht: ohne Grundfreigabe ist sie wirkungslos (deshalb die frühe Rückkehr).
+  //   3. Nur `true` erlaubt. `false` und „fehlt" sperren gleich — im Zweifel gesperrt.
+  //
+  // WAS SIE NICHT IST: eine Aussage darüber, WER eingerichtet oder gewählt ist. Diese Frage
+  // beantwortet `chainForChoice(..., { fuerAnzeige: true })`, und sie beantwortet sie auch ohne
+  // Freigabe — Sichtbarkeit ist keine Erlaubnis, aber eine fehlende Erlaubnis ist auch kein Grund,
+  // den eingerichteten Anbieter zu verschweigen (Pedi: „Der Anbieter bleibt sichtbar, es gibt keinen
+  // Demo-Sonderweg").
+  private oeffentlicheKiErlaubt(confidential: boolean): boolean {
+    const freigabe = this.taskConfig.kiFreigabe;
+    if (freigabe?.oeffentlicheKi !== true) {
+      return false;
+    }
+    return !confidential || freigabe.vertraulicheInhalte === true;
+  }
+
+  private chainForChoice(
+    choice: ReasonerAktiveWahl,
+    confidential = false,
+    // JOB 3549: `fuerAnzeige` beantwortet die KONFIGURATIONSfrage („wer ist eingerichtet und
+    // gewählt") statt der Egressfrage („darf jetzt etwas hinaus"). Es hebt AUSSCHLIESSLICH den
+    // Freigabe-Riegel auf, niemals die Vertraulichkeitsregel — und es hat keinen einzigen Aufrufer
+    // auf einem Weg, auf dem echter Text das Haus verlässt. Die Liste dieser Aufrufer steht bei
+    // `activeModelProvider`, `effectiveAnbieterFor` und `configStatus`.
+    // JOB 3549 R2: dazu kommt `durchVertraulichkeitAusgeschlossen()` — der einzige Aufrufer, der die
+    // Kette nicht einmal ausliest, sondern nur zwei Mitgliedschaften vergleicht (Ursachenfrage).
+    opts?: { fuerAnzeige?: boolean },
+  ): ReasonerProvider[] {
     const chain: ReasonerProvider[] = [];
     if (choice !== "deterministic") {
-      if (!confidential && choice !== "local") {
+      const darfHinaus =
+        opts?.fuerAnzeige === true ? !confidential : this.oeffentlicheKiErlaubt(confidential);
+      if (darfHinaus && choice !== "local") {
         const cloud = this.cloudFuerWahl(choice);
         if (cloud) {
           chain.push(cloud);
@@ -639,10 +715,16 @@ export class Reasoner {
 
   // JOB 3134: dieselbe Auflösung mit dem NAMEN des externen Anbieters — „extern" sagt nicht, wem
   // die Texte gezeigt werden.
+  // JOB 3549: ANZEIGE, nicht Egress. Dieses Feld (`configStatus().effectiveAnbieter`, darüber auch
+  // `effectiveProvider`) beantwortet „welcher Anbieter ist für diese Aufgabe eingerichtet und
+  // gewählt" — und muss das auch dann beantworten, wenn die Freigabe fehlt, sonst stünde auf der
+  // Adminfläche „kein KI-Modell" statt „ChatGPT eingerichtet · Freigabe fehlt" und niemand fände den
+  // Schalter, der zu setzen wäre. Ob wirklich etwas läuft, sagt daneben `configStatus().effective`
+  // (`effectiveFor`, gegated) — die beiden Antworten stehen bewusst nebeneinander.
   private effectiveAnbieterFor(
     task: ModelRunTask,
   ): ReasonerCloudAnbieter | "local" | "deterministic" {
-    const first = this.providerChain(task)[0];
+    const first = this.chainForChoice(this.choiceFor(task), false, { fuerAnzeige: true })[0];
     if (!first || first === this.fallback) {
       return "deterministic";
     }
@@ -860,7 +942,7 @@ export class Reasoner {
   private migration: ReasonerPolicyMigration | undefined;
 
   getTaskConfig(): ReasonerTaskConfig {
-    return { global: this.taskConfig.global, perTask: { ...this.taskConfig.perTask } };
+    return clone(this.taskConfig);
   }
 
   // JOB 3134: wohin ein abgelöster Wert wandert — auf den Anbieter, der unter der alten Vorzugsregel
@@ -885,7 +967,14 @@ export class Reasoner {
   // Validiert eine Policy und normalisiert sie (nur bekannte Tasks/Choices). Wirft bei Ungültigem.
   // JOB 3134: migriert dabei die abgelösten Werte und gibt die Migration zurück — für JEDE
   // Eingangsstelle dieselbe Regel (Schreibweg, Datenbank, Deploy-ENV).
-  private normalizeTaskConfig(next: ReasonerTaskConfigEingabe): {
+  // JOB 3549: `bisher` ist die Freigabe, die gilt, wenn die EINGABE keine nennt — der Vertrag sagt
+  // „Weglassen lässt die Freigabe unverändert". Die beiden Ladewege (Datenbank, Deploy-ENV) reichen
+  // hier bewusst NICHTS herein: sie ERSETZEN den Zustand, und was die Quelle nicht trägt, ist nicht
+  // freigegeben. Nur der Admin-Schreibweg (`setTaskConfig`) reicht den bisherigen Wert durch.
+  private normalizeTaskConfig(
+    next: ReasonerTaskConfigEingabe,
+    bisher?: ReasonerKiFreigabe | undefined,
+  ): {
     config: ReasonerTaskConfig;
     migration: ReasonerPolicyMigration | undefined;
   } {
@@ -914,8 +1003,12 @@ export class Reasoner {
         migriert = true;
       }
     }
+    const kiFreigabe =
+      next.kiFreigabe === undefined
+        ? normalisiereKiFreigabe(bisher)
+        : normalisiereKiFreigabe(next.kiFreigabe);
     return {
-      config: { global: global.wahl, perTask },
+      config: { global: global.wahl, perTask, ...(kiFreigabe ? { kiFreigabe } : {}) },
       migration: migriert ? migration : undefined,
     };
   }
@@ -933,7 +1026,9 @@ export class Reasoner {
     if (this.policySource === "env") {
       throw new ReasonerPolicyLockedError();
     }
-    const normalized = this.normalizeTaskConfig(next); // wirft bei Ungültigem, bevor irgendetwas passiert
+    // JOB 3549: der bisherige Freigabestand wird durchgereicht — ein Speichern der ZUORDNUNG ohne
+    // Rumpf-Feld `kiFreigabe` lässt die Freigabe, wie sie war (weder gelöscht noch erteilt).
+    const normalized = this.normalizeTaskConfig(next, this.taskConfig.kiFreigabe); // wirft bei Ungültigem, bevor irgendetwas passiert
     await this.policyRepo.set(normalized.config); // ZUERST persistieren …
     this.taskConfig = normalized.config; // … Laufzeit erst nach erfolgreichem Write
     this.migration = normalized.migration;
@@ -1260,6 +1355,30 @@ export class Reasoner {
   // usingAnyModel() reicht bewusst NICHT: eine deterministische Task-Policy, eine local-Policy
   // ohne lokales Modell und der fail-closed Policy-Ladefehler (LOAD_FAILURE_FALLBACK_POLICY →
   // deterministic) dürfen NIE als Vertraulichkeitsblockade erscheinen.
+  //
+  // JOB 3549 R2 — SIE IST BEWUSST FREIGABE-NEUTRAL, UND ZWAR AUS EINEM GEMESSENEN GRUND.
+  //
+  // Runde 1 hatte hier den Riegel mitgeprüft („nur `confidential`, wenn es OHNE die Vertraulichkeit
+  // hinausgedurft hätte"). Das klingt genauer und ist trotzdem falsch: `runTask` wirft den
+  // typisierten `ConfidentialCloudBlockedError` NUR, wenn diese Antwort hier `true` ist (`:1297`).
+  // Wurde sie durch die fehlende Freigabe zu `false`, blieb der ROHE Providerfehler übrig, und die
+  // Route beantwortete den vertraulichen Lauf mit **HTTP 500** statt mit dem typisierten 409 —
+  // gemessen an `services/app/src/routes/reasoner-routes.test.ts:443` (B10, „expected 500 to be
+  // 409"). Ein 500 ist unter keiner Lesart die ehrlichere Auskunft; es ist der Verlust jeder
+  // Auskunft. Der Auftrag verlangt diese Verfeinerung auch nirgends — Runde 1 hat sie selbst unter
+  // ABWEICHUNGEN geführt. Sie ist deshalb zurückgenommen.
+  //
+  // WAS DIESE FRAGE BEANTWORTET, ist eine ANDERE als die des Riegels:
+  //   Riegel (`oeffentlicheKiErlaubt`)  — „darf jetzt etwas hinaus?"        → entscheidet den Egress.
+  //   Hier                              — „hat die Vertraulichkeit etwas
+  //                                        aus der Kette genommen?"        → benennt die Ursache.
+  // Beide sind wahr, wenn beide zutreffen; die Ursachenfrage wird nicht dadurch unwahr, dass daneben
+  // noch ein zweiter Grund steht. Der Text IST vertraulich, und eine Cloud IST verdrahtet — genau
+  // das sagt der Satz. Die fehlende Freigabe meldet die Adminfläche an ihrer eigenen Stelle
+  // (`configStatus().taskConfig.kiFreigabe`, JOB 3501), nicht über den Ursachencode eines Laufs.
+  //
+  // KEIN ZWEITER RIEGEL: diese Zeile lässt nichts hinaus. Sie wird ausschließlich gelesen, nachdem
+  // die Kette (die durch den Riegel ging) ohne Ergebnis geblieben ist.
   private cloudExcludedByConfidentiality(task: ModelRunTask, confidential: boolean): boolean {
     return confidential && this.cloudFuerWahl(this.choiceFor(task)) !== undefined;
   }
@@ -1277,8 +1396,36 @@ export class Reasoner {
     );
   }
 
+  // JOB 3549 R2 · DIE EINE DEFINITION VON „WEGEN DER VERTRAULICHKEIT AUSGESCHLOSSEN".
+  //
+  // Sie misst AUSSCHLIESSLICH die Wirkung des Vertraulichkeits-Bits: was in derselben Kette stünde,
+  // wenn der Text nicht vertraulich wäre, mit ihm aber fehlt. Der Freigabe-Riegel ist dabei
+  // ausgeklammert (`fuerAnzeige`), weil er die andere Frage beantwortet — sonst verschwände die
+  // Ursache „confidential" überall dort, wo AUSSERDEM die Freigabe fehlt, und `no-model" behauptete,
+  // es sei kein Modell da, obwohl eines verdrahtet ist. Genau dieselbe Neutralität hat
+  // `cloudExcludedByConfidentiality` (oben) für die aufgabenbezogenen Wege; die beiden Fundstellen
+  // antworten damit gleich, was Pflichtlieferung 2 verlangt.
+  //
+  // KEIN EGRESS: es wird nur die MITGLIEDSCHAFT zweier Ketten verglichen, nie eine davon befragt.
+  // Der Weg, der wirklich etwas hinausgibt, ist `globaleKette(confidential)` darüber — gegated.
+  private durchVertraulichkeitAusgeschlossen(): boolean {
+    const anzeige = (confidential: boolean): ReasonerProvider[] =>
+      this.chainForChoice(this.taskConfig.global, confidential, { fuerAnzeige: true }).filter(
+        (provider) => provider !== this.fallback,
+      );
+    const mitBit = anzeige(true);
+    return anzeige(false).some((provider) => !mitBit.includes(provider));
+  }
+
+  // JOB 3549: ANZEIGE, nicht Egress — `status()` nennt Namen und Stufe der verdrahteten, gewählten
+  // KI. Es überträgt nichts; jeder Weg, der wirklich etwas hinausgibt, geht über `globaleKette()`
+  // bzw. `providerChain()` und damit über den Riegel. Diese Trennung ist Pflichtlieferung 3.
   private activeModelProvider(): ReasonerProvider {
-    return this.globaleKette()[0] ?? this.fallback;
+    return (
+      this.chainForChoice(this.taskConfig.global, false, { fuerAnzeige: true }).filter(
+        (provider) => provider !== this.fallback,
+      )[0] ?? this.fallback
+    );
   }
 
   // FR-RSN-05: server-echte Statusanzeige. JOB 3134 R3: „aktiv" heißt, dass die GEWÄHLTE Kette
@@ -1414,7 +1561,12 @@ export class Reasoner {
     // Jetzt ist es das erste Glied der Kette der globalen Wahl; ist das der Ersatzmodus (Wahl
     // deterministisch, oder gewählter Anbieter nicht eingerichtet), steht das hier auch — mit
     // `mode: "demo"`, obwohl `configured` (irgendein Modell ist verdrahtet) wahr sein kann.
-    const aktiv = this.chainForChoice(this.taskConfig.global)[0] ?? this.fallback;
+    // JOB 3549: ANZEIGE (`fuerAnzeige`) — „aktive KI" bleibt der eingerichtete, gewählte Anbieter,
+    // auch wenn die Freigabe fehlt. Sonst verschwände er aus der Adminsicht, und 3501 könnte den
+    // Warnhinweis „… ist eingerichtet, aber nicht freigegeben" gar nicht bauen. Was tatsächlich
+    // LÄUFT, steht daneben in `effective` (gegated) und in `taskConfig.kiFreigabe`.
+    const aktiv =
+      this.chainForChoice(this.taskConfig.global, false, { fuerAnzeige: true })[0] ?? this.fallback;
     const aktivIstModell = aktiv !== this.fallback;
     return {
       provider: aktivIstModell ? aktiv.name : this.fallback.name,
@@ -2073,8 +2225,12 @@ export class Reasoner {
     // derselben Kette ohne das Paar-Bit stünde, mit ihm aber fehlt (Cloud, oder ein nicht
     // bestätigter Secondary).
     const providers = this.globaleKette(confidential);
-    const confidentialExcluded =
-      confidential && this.globaleKette(false).some((provider) => !providers.includes(provider));
+    // JOB 3549 R2: die Differenz kommt aus `durchVertraulichkeitAusgeschlossen()` — freigabe-neutral
+    // und damit deckungsgleich mit `cloudExcludedByConfidentiality`. Vorher stand hier
+    // `globaleKette(false)`, das seit dem Riegel BEIDE Ketten leer sieht, sobald die Freigabe fehlt:
+    // die Differenz wäre still zu `false` geworden und der Ausgang zu „no-model", obwohl ein Modell
+    // verdrahtet ist. `providers` (der Egress) bleibt unverändert gegated.
+    const confidentialExcluded = confidential && this.durchVertraulichkeitAusgeschlossen();
     return { providers, confidentialExcluded };
   }
 

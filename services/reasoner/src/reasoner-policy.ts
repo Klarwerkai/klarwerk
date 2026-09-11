@@ -10,8 +10,19 @@ export interface ReasonerPolicyRepo {
   set(config: ReasonerTaskConfig): Promise<void>;
 }
 
+// JOB 3549: die Adminfreigabe MUSS mitkopiert werden — sonst wäre sie nach einem Neustart weg und
+// eine bewusst erteilte Freigabe müsste nach jedem Deploy neu gesetzt werden. Der Weg zurück ist
+// derselbe: `get()` gibt sie mit, `set()` schreibt sie in die Singleton-Zeile.
+// Sie wird KOPIERT, nicht geteilt (wie `perTask`): der In-Memory-Speicher darf keine Referenz auf
+// das Laufzeitobjekt behalten, sonst änderte eine spätere Laufzeitmutation den „gespeicherten" Wert
+// still mit. Ein fehlendes Feld bleibt fehlend — „keine Freigabe" ist der sichere Zustand und wird
+// nie zu einem leeren `{}` aufgefüllt, das später wie ein gepflegter Wert aussähe.
 function clone(config: ReasonerTaskConfig): ReasonerTaskConfig {
-  return { global: config.global, perTask: { ...config.perTask } };
+  return {
+    global: config.global,
+    perTask: { ...config.perTask },
+    ...(config.kiFreigabe ? { kiFreigabe: { ...config.kiFreigabe } } : {}),
+  };
 }
 
 // In-Memory-Variante (Tests/Dev/Dev-Journal-Replay). Ohne set() bleibt get() null (= nie konfiguriert).
