@@ -431,6 +431,21 @@
     #capture-felder { margin: 14px 16px 0; display: flex; flex-direction: column; gap: 8px; }
     .capture-zeile { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; background: var(--surface); border: 1px solid var(--hairline); border-radius: 10px; font-size: 14px; color: var(--text); }
     #capture-titel { flex: 1 1 auto; min-width: 0; margin: 0 0 0 12px; padding: 0; border: 0; background: var(--surface); font: inherit; font-size: 14px; color: var(--muted); text-align: right; }
+    /* JOB 3555 K2b — Z.39-45: die Zeile „Bereich", dieselbe Bauform wie „Titel" (Z.35-38). Der Wert
+       ist eine echte Auswahl: ein natives <select> bringt den Chevron aus Z.43 selbst mit. Seine
+       Farbe stellt der Host, nicht dieses Blatt — der Zielbildwert #9AA2B1 bleibt damit derselbe
+       OFFENE Gestaltungsposten wie bei #capture-leer (mega43: kein Werkbank-Token), er wird hier
+       weder behauptet noch als Literal eingeschleust. Die Auswahl waechst mit ihrem Inhalt statt
+       die Zeile zu fuellen, damit Wert und Chevron wie im Zielbild rechts stehen. */
+    #capture-bereich { flex: 0 1 auto; min-width: 0; max-width: 62%; margin: 0 0 0 12px; padding: 0; border: 0; background: var(--surface); font: inherit; font-size: 14px; color: var(--muted); }
+    /* Gesperrt (laedt / leer in deinem Bestand / Fehler): der gezeigte Satz IST die Auskunft und
+       darf nicht halbdurchsichtig werden (dieselbe Entscheidung wie bei #send-btn:disabled). Die
+       TINTE steht bewusst NICHT noch einmal hier: die Regel darueber setzt sie fuer beide Zustaende,
+       und eine zweite `color`-Angabe waere eine zweite Wahrheit ueber dieselbe Farbe, die der
+       Palettensammler an einem Zustandsselektor nicht nachmessen kann (mega43 B1). Dass die eine
+       Angabe auch im gesperrten Zustand traegt, misst tests/design/zielbild-k2-erfassen.test.ts
+       Z.42 in Chromium — an genau diesem Feld, das dort gesperrt steht. */
+    #capture-bereich:disabled { opacity: 1; }
     /* Z.48/49: der EINE Knopf. Gesperrt: grau (§5.3: #E9E5DE = --hairline) statt halbdurchsichtig. */
     #capture-aktion { margin: 14px 16px 0; }
     #capture-aktion #send-btn { width: 100%; padding: 13px 0; border-radius: 10px; font-size: 14px; font-weight: 600; box-shadow: none; }
@@ -943,8 +958,10 @@
        editierbar; reist als Titel des Entwurfs), EIN Knopf, darunter der Textlink „Ganzes
        Dokument uebernehmen" (loest den Dokument-Weg direkt aus — .docx zuerst, Rueckfall
        Word.run). Fehler- und Officefall: EIN Satz, EIN Knopf. Die Bereich-Zeile der Vorlage
-       (Z.39-45) ist bewusst nicht gebaut: kein Serverweg liefert eine Kategorienliste (Auftrag
-       §5.2: „Zeile entfaellt, kein Platzhaltertext"). Radiogruppe, Bilder-Hinweisband, Pruef- und
+       (Z.39-45) IST seit JOB 3555 gebaut — der Grund ihres Fehlens ist entfallen: seit JOB 3507
+       liefert `GET /api/categories` (services/app/src/routes/category-routes.ts) die Bereiche, die
+       im SICHTBAREN Bestand des Fragenden wirklich vorkommen. Nur daher kommen die Namen; es gibt
+       keine hartkodierte Liste und keinen Platzhaltertext. Radiogruppe, Bilder-Hinweisband, Pruef- und
        Seitenhinweis sind aus dem Sichtfeld ERSETZT; ihre Funktionen wohnen seit JOB 3506 K2b
        hinter dem Zahnrad (#einst-erfassen) — kein Verlust, benannter Ort, gemessen in
        tests/design/k2-funktionsinventar.test.ts und tests/k2b-erfassen-reste. -->
@@ -967,6 +984,10 @@
   </div>
   <div id="capture-felder">
     <label class="capture-zeile" for="capture-titel"><span data-t="captureTitleLabel"></span><input type="text" id="capture-titel" autocomplete="off" /></label>
+    <!-- JOB 3555 K2b (Z.39-45): die Zeile „Bereich". Ihre Eintraege entstehen erst zur Laufzeit aus
+         GET /api/categories (renderCaptureBereich) — im Markup steht bewusst KEINE Option, damit
+         nichts dasteht, was der Bestand nicht hergibt. -->
+    <label class="capture-zeile" for="capture-bereich"><span data-t="captureBereichLabel"></span><select id="capture-bereich" disabled></select></label>
   </div>
   <div id="capture-aktion"><button type="button" class="primary" id="send-btn" data-t="sendCta" disabled></button></div>
   <div id="office-hint" class="hidden"></div>
@@ -1360,8 +1381,14 @@
       return out.join("\n");
     }
 
-    function draftPostPayload(title, statement, bodyHtml) {
-      return JSON.stringify({ title: title, statement: statement, bodyHtml: bodyHtml, origin: "word_addin" });
+    // JOB 3555 K2b: `category` ist OPTIONAL und steht bewusst HIER — an der EINEN Entscheidungs-
+    // stelle, die den finalen Payload baut (bens Bedingung 4, WP-SHIP8-FINAL): das Budget misst
+    // damit den String, der wirklich gesendet wird, samt Bereich. Ohne Wahl bleibt der Parameter
+    // undefiniert, `JSON.stringify` laesst das Feld weg — der Rumpf ist dann BYTEGLEICH der von
+    // vorher (nicht `""`, nicht `null`), und der Bibliotheksspiegel `wordAddin.ts#draftPostPayload`
+    // (drei Parameter, nicht Zielpfad dieses Jobs) bleibt der gemessene Zwilling.
+    function draftPostPayload(title, statement, bodyHtml, category) {
+      return JSON.stringify({ title: title, statement: statement, bodyHtml: bodyHtml, category: category, origin: "word_addin" });
     }
 
     // JOB 2613 D1 — Spiegel von wordAddin.ts#trimWordImagesToBudget. Groesstes Bild zuerst
@@ -1388,10 +1415,13 @@
       return { html: aktuell, dropped: dropped, passt: false };
     }
 
-    function prepareWordDraftRequest(html, text, titleOverride) {
+    function prepareWordDraftRequest(html, text, titleOverride, categoryWahl) {
       // JOB 3057 K2: ein von Hand gesetzter Titel (Zeile „Titel") geht vor der Ableitung.
       var eigen = (titleOverride || "").slice(0, WORD_ADDIN_TITLE_MAX).trim();
       var title = eigen.length > 0 ? eigen : deriveDraftTitleFromSelection(text);
+      // JOB 3555 K2b: der gewaehlte Bereich (Zeile „Bereich"). NUR eine echte Wahl reist mit —
+      // ohne sie bleibt `category` undefiniert und der Payload unveraendert wie bisher.
+      var category = typeof categoryWahl === "string" && categoryWahl.length > 0 ? categoryWahl : undefined;
       // JOB 2703 D3: KEINE Kuerzung mehr im Client. Bis D2 stand hier `slice(0, 500)` — was der
       // Client abschnitt, sah der Server nie, und keine kanonische Regel konnte es zurueckholen.
       // Der Server kuerzt die Aussage an EINEM Ort (kernaussageAusKlartext, capture-routes.ts).
@@ -1403,19 +1433,19 @@
       // "alles gut", obwohl Formatierung und Bilder verschwanden — die stille Null. Keine
       // geratene Bildzahl: wo kein HTML ankam, ist jede Zahl erfunden.
       if (inner.length === 0) {
-        return { payload: draftPostPayload(title, statement, selectionToBodyHtml(text)), title: title, usedHtml: false, overBudget: false, undeliveredImages: 0, plainTextFallback: true, droppedImages: 0 };
+        return { payload: draftPostPayload(title, statement, selectionToBodyHtml(text), category), title: title, usedHtml: false, overBudget: false, undeliveredImages: 0, plainTextFallback: true, droppedImages: 0 };
       }
       var passt = function (kandidat) {
-        return wordHtmlUtf8Bytes(draftPostPayload(title, statement, kandidat)) <= WORD_ADDIN_BODY_BUDGET_BYTES;
+        return wordHtmlUtf8Bytes(draftPostPayload(title, statement, kandidat, category)) <= WORD_ADDIN_BODY_BUDGET_BYTES;
       };
-      var htmlPayload = draftPostPayload(title, statement, inner);
+      var htmlPayload = draftPostPayload(title, statement, inner, category);
       if (wordHtmlUtf8Bytes(htmlPayload) > WORD_ADDIN_BODY_BUDGET_BYTES) {
         // JOB 2613 D1: erst Bilder weglassen, dann erst den ganzen Rumpf aufgeben.
         var getrimmt = trimWordImagesToBudget(inner, passt);
         if (getrimmt.passt && getrimmt.dropped > 0) {
-          return { payload: draftPostPayload(title, statement, getrimmt.html), title: title, usedHtml: true, overBudget: false, undeliveredImages: countUndeliveredWordImages(getrimmt.html), plainTextFallback: false, droppedImages: getrimmt.dropped };
+          return { payload: draftPostPayload(title, statement, getrimmt.html, category), title: title, usedHtml: true, overBudget: false, undeliveredImages: countUndeliveredWordImages(getrimmt.html), plainTextFallback: false, droppedImages: getrimmt.dropped };
         }
-        return { payload: draftPostPayload(title, statement, selectionToBodyHtml(text)), title: title, usedHtml: false, overBudget: true, undeliveredImages: undeliveredImages, plainTextFallback: false, droppedImages: 0 };
+        return { payload: draftPostPayload(title, statement, selectionToBodyHtml(text), category), title: title, usedHtml: false, overBudget: true, undeliveredImages: undeliveredImages, plainTextFallback: false, droppedImages: 0 };
       }
       return { payload: htmlPayload, title: title, usedHtml: true, overBudget: false, undeliveredImages: undeliveredImages, plainTextFallback: false, droppedImages: 0 };
     }
@@ -2578,6 +2608,15 @@
         captureKicker: "MARKIERUNG · {n} ABSÄTZE",
         captureKickerEins: "MARKIERUNG · 1 ABSATZ",
         captureTitleLabel: "Titel",
+        // JOB 3555 K2b: die Zeile „Bereich" (Zielbild Z.39-45). Vier Lagen, vier Wortlaute — und
+        // KEINER behauptet mehr, als der Abruf hergibt: „leer" spricht ausdruecklich vom EIGENEN
+        // Bestand (die Route sieht nur die Sicht des Fragenden, category-routes.ts:9-11), „Fehler"
+        // sagt Fehler statt Leere. Die Zeile bleibt in jeder Lage sichtbar, Senden bleibt moeglich.
+        captureBereichLabel: "Bereich",
+        captureBereichWahl: "Bereich wählen",
+        captureBereichLaedt: "Wird geladen …",
+        captureBereichLeer: "Noch kein Bereich in deinem Bestand",
+        captureBereichFehler: "Bereiche nicht geladen",
         captureDocumentLink: "Ganzes Dokument übernehmen",
         captureRetry: "Erneut senden",
         captureLogin: "Anmelden",
@@ -2993,6 +3032,13 @@
         captureKicker: "SELECTION · {n} PARAGRAPHS",
         captureKickerEins: "SELECTION · 1 PARAGRAPH",
         captureTitleLabel: "Title",
+        // JOB 3555 K2b: „Area" ist der Begriff, den dieses Panel fuer `category` schon fuehrt
+        // (bestandBereich: „Area: {bereich}") — kein zweites Wort fuer dieselbe Sache.
+        captureBereichLabel: "Area",
+        captureBereichWahl: "Choose area",
+        captureBereichLaedt: "Loading …",
+        captureBereichLeer: "No area in your knowledge yet",
+        captureBereichFehler: "Areas not loaded",
         captureDocumentLink: "Take over the whole document",
         captureRetry: "Send again",
         captureLogin: "Sign in",
@@ -3289,6 +3335,12 @@
         captureKicker: "SELECTIE · {n} ALINEA'S",
         captureKickerEins: "SELECTIE · 1 ALINEA",
         captureTitleLabel: "Titel",
+        // JOB 3555 K2b: „Gebied" wie in bestandBereich („Gebied: {bereich}").
+        captureBereichLabel: "Gebied",
+        captureBereichWahl: "Gebied kiezen",
+        captureBereichLaedt: "Wordt geladen …",
+        captureBereichLeer: "Nog geen gebied in jouw bestand",
+        captureBereichFehler: "Gebieden niet geladen",
         captureDocumentLink: "Heel document overnemen",
         captureRetry: "Opnieuw sturen",
         captureLogin: "Aanmelden",
@@ -3614,6 +3666,39 @@
     var captureSendeLauf = 0;
     var sendStatusUrl = null;
 
+    // ============================================================================================
+    // JOB 3555 K2b — DER ZUSTAND DER BEREICH-ZEILE (Zielbild Erfassen.dc.html Z.39-45).
+    // ============================================================================================
+    //
+    // VIER LAGEN, und jede sagt genau das, was festgestellt ist:
+    //   "laedt"  → „Wird geladen …", Auswahl gesperrt. KEINE Aussage ueber den Bestand.
+    //   "liste"  → die Namen aus GET /api/categories, in der Reihenfolge der Antwort; davor der
+    //              Platzhalter „Bereich waehlen" mit leerem Wert (= keine Wahl).
+    //   "leer"   → „Noch kein Bereich in deinem Bestand" — die Route sieht ausschliesslich die
+    //              Sicht des Fragenden (category-routes.ts:9-11), deshalb „in DEINEM Bestand" und
+    //              nie „es gibt keine Bereiche".
+    //   "fehler" → „Bereiche nicht geladen". Ein Fehler heisst Fehler, nie stille Leere.
+    // In JEDER Lage bleibt die Zeile sichtbar und der Sendeknopf unberuehrt: ohne Bereich ist das
+    // Verhalten genau das von vor diesem Job.
+    //
+    // KEIN ZWISCHENSPEICHER — und das ist eine Entscheidung, keine Auslassung: die Route antwortet
+    // `cache-control: private, no-store` (category-routes.ts:13). Es wird beim Betreten der Flaeche
+    // frisch geholt; die Lage „Cache mit laufender Auffrischung" gibt es hier deshalb nicht. Und
+    // eine Auffrischung, die scheitert, laesst KEINE alte Liste als „aktuell" stehen: Liste und
+    // Wahl fallen, die Zeile nennt den gescheiterten Versuch (Lehre JOB 3027/3025/3037). Damit
+    // geht auch nie ein Wert hinaus, den dieser Lauf nicht belegt hat.
+    //
+    // `captureBereichWahl` ist die Wahl des Menschen, nicht der Zustand des Feldes: sie ueberlebt
+    // ein erneutes Zeichnen und eine ERFOLGREICHE Auffrischung, solange ihr Name noch in der neuen
+    // Liste steht. Findet die Auffrischung NICHTS mehr (leere Liste) oder scheitert sie, faellt sie
+    // mit (RUNDE 5).
+    // Und sie ist NICHT die Quelle des Versands: gesendet wird, was die Zeile sichtbar traegt
+    // (`captureBereichGewaehlt`). Ein gehaltener Wert allein kann deshalb nie hinausgehen.
+    var captureBereichLage = "laedt";
+    var captureBereiche = [];
+    var captureBereichWahl = "";
+    var captureBereichLauf = 0;
+
     function updateSendState() {
       var sendBtn = document.getElementById("send-btn");
       var hint = document.getElementById("office-hint");
@@ -3736,6 +3821,9 @@
       renderAskFragment(); // JOB 3366: derselbe gehaltene Zustand, neuer Text
       refreshAnswerToggleLabel(); // klara1b: „mehr/weniger anzeigen" in der neuen Sprache
       renderCapture(); // JOB 3057 K2: Kicker, Ergebniszeile und Bilder-Satz in der neuen Sprache
+      renderCaptureBereich(); // JOB 3555 K2b: Platzhalter und Lagensatz der Bereich-Zeile neu —
+                              // gehaltener Zustand, neuer Text; die Namen selbst sind Daten und
+                              // werden nicht uebersetzt.
       renderCaptureDubletten(); // JOB 3092 S6: die Dublettenauskunft — gehaltener Stand, neuer Text
       updateSendState(); // K5: Office-Hinweis/Knopf-Grund in der neuen Sprache neu aufbauen
       checkSession(); // Statuszeile in der neuen Sprache neu aufbauen
@@ -4818,6 +4906,141 @@
     }
 
     // ============================================================================================
+    // JOB 3555 K2b — DIE BEREICH-ZEILE: ZEICHNEN UND HOLEN.
+    // ============================================================================================
+
+    /** Der Satz, der in der Zeile steht, solange nichts zu waehlen ist — je Lage genau einer. */
+    function captureBereichSatz() {
+      if (captureBereichLage === "laedt") { return t("captureBereichLaedt"); }
+      if (captureBereichLage === "leer") { return t("captureBereichLeer"); }
+      return t("captureBereichFehler");
+    }
+
+    /**
+     * Die Auswahl aus dem gehaltenen Zustand aufbauen. Nur DOM-APIs (textContent/value) — die Namen
+     * kommen vom Server und werden nie als HTML gelesen.
+     *
+     * Ohne Liste steht GENAU EINE Option da: der Satz der Lage, mit leerem Wert und gesperrt. Der
+     * Satz IST dann der sichtbare Wert der Zeile — nicht eine leere Auswahl, die sich als „nichts
+     * vorhanden" lesen liesse.
+     */
+    function renderCaptureBereich() {
+      var feld = document.getElementById("capture-bereich");
+      if (!feld) { return; }
+      while (feld.firstChild) { feld.removeChild(feld.firstChild); }
+      var platzhalter = document.createElement("option");
+      platzhalter.value = "";
+      if (captureBereichLage !== "liste") {
+        platzhalter.textContent = captureBereichSatz();
+        feld.appendChild(platzhalter);
+        feld.disabled = true;
+        feld.value = "";
+        return;
+      }
+      platzhalter.textContent = t("captureBereichWahl");
+      feld.appendChild(platzhalter);
+      for (var i = 0; i < captureBereiche.length; i += 1) {
+        var option = document.createElement("option");
+        option.value = captureBereiche[i];
+        option.textContent = captureBereiche[i];
+        feld.appendChild(option);
+      }
+      feld.disabled = false;
+      // Die Wahl des Menschen ueberlebt das Zeichnen — aber nur, wenn es sie in der Liste gibt.
+      feld.value = captureBereichWahl;
+      if (feld.value !== captureBereichWahl) { captureBereichWahl = ""; feld.value = ""; }
+    }
+
+    /**
+     * WAS DIE ZEILE SICHTBAR TRAEGT — und nur das darf hinausgehen (RUNDE 5, BEN: „unsichtbarer
+     * alter Bereich"). Der Wert kommt aus dem Feld selbst und ist an die Lage gebunden: ohne
+     * frisch geholte Liste („laedt", „leer", „fehler") steht dort der Satz der Lage mit leerem
+     * Wert, also gibt es keine Wahl — auch dann nicht, wenn im Speicher noch eine staende. Damit
+     * kann sichtbarer Zustand und Nutzlast nicht auseinanderlaufen; es ist keine zweite Wahrheit
+     * neben `captureBereichWahl`, sondern DIE eine Ablesung vor dem Senden.
+     */
+    function captureBereichGewaehlt() {
+      if (captureBereichLage !== "liste") { return ""; }
+      var feld = document.getElementById("capture-bereich");
+      return feld && typeof feld.value === "string" ? feld.value : "";
+    }
+
+    /** Nur, was der Server wirklich als Namen geliefert hat: Zeichenkette, nicht leer, in Reihenfolge. */
+    function captureBereicheAusAntwort(koerper) {
+      if (!koerper || typeof koerper !== "object" || !Array.isArray(koerper.categories)) { return null; }
+      var raus = [];
+      for (var i = 0; i < koerper.categories.length; i += 1) {
+        var eintrag = koerper.categories[i];
+        var name = eintrag && typeof eintrag.name === "string" ? eintrag.name : null;
+        // RUNDE 5 (BEN): der gelieferte Name wird NICHT umgeschrieben. Bis Runde 4 stand hier ein
+        // beidseitiges Beschneiden — aus " Technik " wurde "Technik", und GENAU DIESER veraenderte
+        // Wert reiste in die Nutzlast. Der Bestand vergleicht Bereichsnamen exakt
+        // (category-routes.ts:33): ein beschnittener Name bezeichnet einen ANDEREN Bereich, und zwei
+        // Namen, die sich nur am Rand unterscheiden, fielen zu einem zusammen. Beschnitten wird nur
+        // noch fuer die EINE Frage, ob ueberhaupt ein Name dasteht; hinaus geht der gelieferte Name.
+        if (name === null || name.replace(/^\s+|\s+$/g, "").length === 0) { continue; }
+        raus.push(name);
+      }
+      // Die Zahl `count` wird bewusst NICHT gezeigt: sie beschreibt den SICHTBAREN Bestand des
+      // Fragenden (category-routes.ts:9-11), und in einer Zeile ohne diesen Zusatz waere sie als
+      // Gesamtbestand zu lesen. Lieber keine Zahl als eine, die mehr behauptet.
+      return raus;
+    }
+
+    /**
+     * Die Bereiche beim Betreten der Flaeche frisch holen — ueber `m5Abruf`, den vorhandenen
+     * Auskunfts-Abruf dieses Panels (same-origin, `credentials: "include"`, eigene Frist). KEINE
+     * neue Abrufstelle: ihre Menge ist gepinnt (tests/app/mega69-klara-merkmale.test.ts, M7), und
+     * ein zweiter Abrufweg zur selben Sache waere genau der Parallelweg, den dieses Panel nirgends
+     * fuehrt. (Der Zaehler dort liest den Quelltext und streicht nur Zeilen, die mit zwei
+     * Schraegstrichen beginnen — in einem Blockkommentar wie diesem waere der Aufrufname mit
+     * offener Klammer ein FALSCHER Treffer. Deshalb steht er hier ausgeschrieben, nicht als Code.)
+     *
+     * Ein spaeter Ruecklauf eines aelteren Abrufs veraendert nichts (Laufnummer) — dieselbe Regel
+     * wie beim Lesen der Markierung.
+     */
+    function captureBereicheLesen() {
+      captureBereichLauf += 1;
+      var lauf = captureBereichLauf;
+      captureBereichLage = "laedt";
+      renderCaptureBereich();
+      var scheitern = function () {
+        if (lauf !== captureBereichLauf) { return; }
+        // Fail-closed: Liste UND Wahl fallen. Ein gehaltener Wert ohne frischen Beleg duerfte
+        // weder dastehen noch mitreisen.
+        captureBereiche = [];
+        captureBereichWahl = "";
+        captureBereichLage = "fehler";
+        renderCaptureBereich();
+      };
+      m5Abruf("/api/categories")
+        .then(function (res) {
+          if (lauf !== captureBereichLauf) { return null; }
+          // Alles ausser 200 ist keine Auskunft — auch 401/403 nicht. Die Zeile sagt dann „nicht
+          // geladen" und nicht „keine Bereiche".
+          if (!res || res.status !== 200) { scheitern(); return null; }
+          return res.json();
+        })
+        .then(function (koerper) {
+          if (koerper === null || lauf !== captureBereichLauf) { return; }
+          var namen = captureBereicheAusAntwort(koerper);
+          // Ein Koerper, den man nicht lesen kann, ist ein FEHLGESCHLAGENER Abruf und keine
+          // erfolgreiche Leere (Lehre JOB 3092 R1).
+          if (namen === null) { scheitern(); return; }
+          captureBereiche = namen;
+          captureBereichLage = namen.length === 0 ? "leer" : "liste";
+          // RUNDE 5 (BEN): eine erfolgreiche LEERE Antwort ist der Beleg, dass es gerade nichts zu
+          // waehlen gibt — dann faellt auch die gehaltene Wahl, genau wie bei `scheitern()`. Bis
+          // Runde 4 leerte diese Lage nur das Feld; der gehaltene Name stand unsichtbar weiter und
+          // reiste beim naechsten Senden mit (gemessen: waehlen, Flaeche verlassen, mit leerer
+          // Antwort zurueckkehren, senden → `"category":"Technik"` ohne sichtbare Wahl).
+          if (namen.length === 0) { captureBereichWahl = ""; }
+          renderCaptureBereich();
+        })
+        .catch(scheitern);
+    }
+
+    // ============================================================================================
     // JOB 3092 · S6 (W6) — DIE DUBLETTENPRUEFUNG VOR DEM EINREICHEN.
     // ============================================================================================
     //
@@ -5446,7 +5669,19 @@
         }
         // WP-SHIP8-FINAL (bens Bedingung 4): EINE Entscheidungsstelle baut den FINALEN Payload —
         // das Budget hat genau DIESEN String gemessen (Envelope inkl. Escaping), er wird gesendet.
-        var prepared = prepareWordDraftRequest(html, text, titelWunsch);
+        // JOB 3555 K2b: die Wahl aus der Zeile „Bereich" reist mit — und zwar GENAU DAS, was die
+        // Zeile in diesem Augenblick sichtbar traegt (`captureBereichGewaehlt`, an die Lage
+        // gebunden). RUNDE 5 (BEN): bis Runde 4 stand hier der gehaltene Zustand. Der ueberlebte
+        // eine Auffrischung, die nichts mehr zu waehlen fand, und reiste unsichtbar mit.
+        // ZWEI SCHREIBWEISEN, EIN WEG — und das ist Absicht: OHNE Wahl steht hier BUCHSTAeBLICH
+        // der Aufruf von vorher (`tests/app/word-addin.test.ts:792` pinnt genau ihn, weil er die
+        // Zusage traegt, dass die Auswahl als HTML durch DIESE eine Stelle reist). Ein vierter
+        // Parameter, der in beiden Faellen mitginge, haette den Pin gebrochen und dabei nichts
+        // gewonnen: `undefined` und „kein Argument" bauen denselben Payload.
+        var bereichWahl = captureBereichGewaehlt();
+        var prepared = bereichWahl
+          ? prepareWordDraftRequest(html, text, titelWunsch, bereichWahl)
+          : prepareWordDraftRequest(html, text, titelWunsch);
         showSendStatus("busy", t("sendBusy"));
         fetch("/api/drafts", {
           method: "POST",
@@ -7290,7 +7525,10 @@
       kwAnsichtSetzen(name === "capture" ? "erfassen" : "fragen");
       // JOB 3057 K2: beim Wechsel auf „Erfassen" die Markierung frisch lesen — der Anlass, der
       // auch auf Hosts ohne DocumentSelectionChanged traegt.
-      if (name === "capture") { captureMarkierungLesen(); }
+      // JOB 3555 K2b: derselbe Anlass holt die Bereiche frisch. Die Route ist `no-store`
+      // (category-routes.ts:13) — es gibt nichts zwischenzuspeichern, und ein gescheiterter Versuch
+      // bekommt beim naechsten Betreten von selbst seinen zweiten.
+      if (name === "capture") { captureMarkierungLesen(); captureBereicheLesen(); }
     }
 
     document.getElementById("tab-ask").addEventListener("click", function () { setTab("ask"); });
@@ -7414,6 +7652,11 @@
     document.getElementById("capture-titel").addEventListener("input", function () {
       captureTitelVonHand = this.value.replace(/^\s+|\s+$/g, "").length > 0;
     });
+    // JOB 3555 K2b: die Zeile „Bereich". Der gehaltene Zustand folgt der Wahl des Menschen — der
+    // Platzhalter (leerer Wert) bedeutet KEINE Wahl, und dann geht auch kein Feld hinaus.
+    document.getElementById("capture-bereich").addEventListener("change", function () {
+      captureBereichWahl = this.value;
+    });
     // JOB 3506 K2b: das „?"-Menue der Erfassen-Flaeche ist entfallen — es gibt nichts mehr auf-
     // und zuzuklappen. Die vier Saetze stehen offen hinter dem Zahnrad (#einst-erfassen).
 
@@ -7478,6 +7721,10 @@
     // Gedanke wie bei `ladeAiLage` weiter unten: erst der ehrliche Zwischenzustand, dann das
     // Ergebnis.
     updateSendState();
+    // JOB 3555 K2b: aus demselben Grund die Bereich-Zeile — sie steht ab dem ERSTEN Bildaufbau in
+    // ihrer ehrlichen Lage („Wird geladen …"), nicht als leeres Feld. Geholt wird beim Betreten der
+    // Flaeche (setTab), nicht hier: ein Abruf im Ladeweg gaebe eine Auskunft aus, die niemand sieht.
+    renderCaptureBereich();
     // WP-KLARA-1b (K5): timeout-basierte Office-Erkennung. Office.onReady mit FRIST — laedt office.js
     // nicht (Blocker/Offline/normaler Browser) oder wird Office nie bereit, kippt der Zustand nach
     // OFFICE_READY_TIMEOUT_MS EHRLICH auf „kein Office" (Hinweis + deaktivierter Knopf mit Grund).
@@ -8821,6 +9068,13 @@
     /**
      * DER EINE ABRUF dieses Blocks — Suche und Bildbytes, dieselbe Herkunft, dieselbe Sitzung,
      * eigene Frist. Liefert die rohe Antwort; wer sie liest (JSON oder Blob), entscheidet der Aufrufer.
+     *
+     * JOB 3555 K2b: er traegt seit diesem Job einen DRITTEN Pfad derselben Herkunft — `GET
+     * /api/categories` fuer die Bereich-Zeile der Erfassen-Flaeche (`captureBereicheLesen`). Kein
+     * neuer Abruf, kein neuer Ursprung, kein neues Recht (`ko.read` wie die Bildsuche): eine
+     * zweite Abrufstelle fuer dieselbe Art Auskunft waere ein Parallelweg, den dieses Panel
+     * nirgends fuehrt (ihre Menge ist gepinnt, mega69-klara-merkmale M7). Der Name bleibt, damit
+     * die Marken und Verweise auf ihn tragen; der Rumpf ist bereits allgemein.
      */
     function m5Abruf(pfad) {
       var controller = new AbortController();

@@ -21,6 +21,12 @@
 // zaehlt nicht als sichtbar). Jedes wird einer Rolle zugeordnet: Kicker, Markierung, Knopf/Link,
 // Feldwert — oder „Beschriftung/Satz“, und dort gilt die 40-Zeichen-Grenze.
 //
+// JOB 3555 K2b (10.09.2026) — EINE BESCHRIFTUNG KOMMT DAZU, KEIN SATZ. Unter „Titel" steht jetzt
+// die Zeile „Bereich" (Zielbild Z.39-45). Fuer diesen Textmesser heisst das: eine zweite
+// Feldbeschriftung in den Traegerlisten (T1/T3) — sie haelt die 40-Zeichen-Regel wie „Titel", und
+// der WERT der Zeile ist ein <select>, also ein Feldwert und kein Erklaertext. Die 40-Zeichen-Regel
+// selbst ist unveraendert; T1 prueft sie zusaetzlich an allen fuenf neuen Wortlauten je Sprache.
+//
 // DIE GEGENPROBE IST TEIL DER MESSUNG (Fall K): dieselbe Seite mit einem im Speicher wieder
 // eingefuegten Hinweissatz — der Messer MUSS ihn melden. Sonst misst er nichts.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -150,6 +156,12 @@ describe.runIf(zielbildDa)(
           // (#ka7-mehr-hinweis in #einst-erfassen, Fall T4).
           "beschriftung:#ka7-einreich-hinweis",
           "beschriftung:span",
+          // JOB 3555 K2b: die zweite Feldbeschriftung — „Bereich" (Zielbild Z.40). Sie ist eine
+          // BESCHRIFTUNG wie „Titel" und haelt die 40-Zeichen-Regel; der Wert der Zeile ist ein
+          // <select> und damit ein Feldwert, kein Satz. Diese Buehne beantwortet
+          // `/api/categories` nicht (404) — die Zeile steht hier also in ihrer Fehler-Lage, deren
+          // Satz („Bereiche nicht geladen") ebenfalls unter der Grenze bleibt.
+          "beschriftung:span",
           "feldwert:#capture-titel",
           "knopf:#send-btn",
           "knopf:#capture-dokument-link",
@@ -163,7 +175,24 @@ describe.runIf(zielbildDa)(
       // woertlich, nicht ueber `wort()`: `woerterbuch()` liest die ERSTE `de: {`-Tabelle der Seite
       // (STRINGS); die KA7-Saetze wohnen in der eigenen Tabelle KA7_TEXTE und sind dort nicht zu
       // finden. Derselbe Wortlaut ist in konfliktkarte-mounted.test.ts P17/P17c gepinnt.
-      expect(beschriftungen).toEqual(["Keine frische Prüfung", wort("de", "captureTitleLabel")]);
+      expect(beschriftungen).toEqual([
+        "Keine frische Prüfung",
+        wort("de", "captureTitleLabel"),
+        wort("de", "captureBereichLabel"),
+      ]);
+      // JOB 3555 K2b: die vier Lagensaetze der Bereich-Zeile sind Feldwerte, keine Erklaersaetze —
+      // und bleiben in allen drei Sprachen unter der Grenze dieses Auftrags.
+      for (const sprache of ["de", "en", "nl"] as const) {
+        for (const key of [
+          "captureBereichLabel",
+          "captureBereichWahl",
+          "captureBereichLaedt",
+          "captureBereichLeer",
+          "captureBereichFehler",
+        ]) {
+          expect(wort(sprache, key).length, `${sprache}.${key}`).toBeLessThanOrEqual(GRENZE);
+        }
+      }
       // Der Erklaertext von heute ist NICHT sichtbar (er wohnt im „?“-Menue, Fall T4).
       const sichtbarerText = traeger.map((t) => t.text).join("\n");
       for (const key of ["sendHint", "sendImagesNote", "sendReviewNote", "scopePagesHint"]) {
@@ -219,6 +248,8 @@ describe.runIf(zielbildDa)(
       expect(zeile.map((t) => t.text)).toEqual([
         wort("de", "sendOk"),
         wort("de", "captureTitleLabel"),
+        // JOB 3555 K2b: die dritte Span-Beschriftung der Flaeche — „Bereich".
+        wort("de", "captureBereichLabel"),
       ]);
       expect(traeger.some((t) => t.sel === "#open-link" && t.rolle === "knopf")).toBe(true);
       expect(traeger.some((t) => t.rolle === "kicker")).toBe(false);

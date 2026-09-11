@@ -2109,7 +2109,136 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // vollstaendig geladenen Aufgabenfenster.
     // GEMESSEN: tests/demo-firmen-ci-verbraucher (drei Dateien), Waechterlauf (Inventar,
     // Inhalts-Pin, Aufrufer, Theme, Frische, Tor), mega43-Palettensammler, mega69-Merkmalsvertrag.
-    const PIN = "8e3950aa27c94aa013a3556db263f08d8baf72644ba2495c115f24c4aeaeee78";
+    //
+    // JOB 3555 · K2b-BEREICH-ZEILE (10.09.2026) — AUSLIEFERUNGSFOLGEN GEPRUEFT, BEVOR DER PIN
+    // WANDERTE. VORHERHASH taskpane.html:
+    // `c1ffc7958e403df1e7c413b4757e653fff5cfc835a9017d79bdf6b3840052f78`.
+    //
+    // ANLASS: der Kommentar in `taskpane.html` beschrieb einen Zustand, den es nicht mehr gibt —
+    // „Die Bereich-Zeile der Vorlage (Z.39-45) ist bewusst nicht gebaut: kein Serverweg liefert
+    // eine Kategorienliste". `GET /api/categories` (JOB 3507, services/app/src/routes/
+    // category-routes.ts) ist seit dem 10.09.2026 LIVE. Der Grund ist entfallen, die Zeile ist
+    // gebaut; der Kommentar ist ERSETZT, nicht daneben belassen.
+    //
+    // GEAENDERT WURDE IM FENSTER GENAU VIERERLEI:
+    //   · MARKUP: EINE neue Zeile in `#capture-felder`, unter der Titelzeile, in DERSELBEN Bauform
+    //     (`label.capture-zeile` + `span[data-t]` + Wertfeld): `<select id="capture-bereich"
+    //     disabled>` — im Markup OHNE Option, die Eintraege entstehen erst aus der Serverantwort.
+    //     Kein bestehendes Element wurde verschoben, umbenannt oder entfernt; der Dokumentlink
+    //     bleibt letztes Kind der Flex-Spalte.
+    //   · STIL: zwei neue Regeln (`#capture-bereich`, `#capture-bereich:disabled`). Die erste
+    //     traegt die Farben, ausschliesslich aus vorhandenen Werkbank-Tokens (`--surface`,
+    //     `--muted`) — KEIN neues Farbliteral (mega43). Die zweite traegt NUR `opacity: 1` und
+    //     KEINE Farbe (RUNDE 4, siehe unten). Keine bestehende Regel wurde geaendert.
+    //   · WOERTERBUCH: FUENF neue Schluessel je Sprache (captureBereichLabel, captureBereichWahl,
+    //     captureBereichLaedt, captureBereichLeer, captureBereichFehler). Keiner ersetzt einen
+    //     bestehenden, keiner faellt weg. „Bereich"/„Area"/„Gebied" folgt dem Begriff, den das
+    //     Panel fuer `category` schon fuehrt (`bestandBereich`).
+    //   · SKRIPT: der Zustand der Zeile (`captureBereichLage/-e/-Wahl/-Lauf`), sein Zeichnen
+    //     (`renderCaptureBereich`, `captureBereichSatz`, `captureBereicheAusAntwort`), der Abruf
+    //     (`captureBereicheLesen`), ein `change`-Zuhoerer, je eine Zeile in `setTab` und `setLang`
+    //     sowie ein OPTIONALER vierter Parameter an `draftPostPayload`/`prepareWordDraftRequest`.
+    //
+    // DIE AUSLIEFERUNGSFRAGEN, EINZELN BEANTWORTET:
+    //   · KEINE neue Abrufstelle und KEIN neues Abrufziel: der Abruf laeuft ueber die VORHANDENE
+    //     Stelle `m5Abruf` (same-origin GET, `credentials: "include"`, eigene Frist) — M7 in
+    //     tests/app/mega69-klara-merkmale.test.ts bleibt bei 14, gemessen.
+    //     RUNDE 2, gemessen statt vermutet: Runde 1 stand hier auf 16. Nicht wegen eines neuen
+    //     Abrufs — wegen zweier KOMMENTARE. Der Zaehler in mega69-klara-merkmale streicht vor dem
+    //     Zaehlen nur Zeilen, die mit zwei Schraegstrichen beginnen; in einem Blockkommentar
+    //     (` * …`) zaehlte der Aufrufname mit offener Klammer als echter Abruf mit. Beide
+    //     Erwaehnungen sind jetzt ausgeschrieben („Abrufstelle"), der Code ist unveraendert.
+    //   · KEIN neuer Endpunkt und kein neues Recht: `GET /api/categories` steht seit JOB 3507 und
+    //     wird nur benutzt; sie verlangt `ko.read` wie die Bibliothek und liefert bei fehlendem
+    //     Recht eine leere Sicht statt eines Fehlers.
+    //   · DIE NUTZLAST AENDERT SICH NUR MIT EINER WAHL: ohne gewaehlten Bereich bleibt
+    //     `category` undefiniert, `JSON.stringify` laesst das Feld weg — der abgesetzte Rumpf ist
+    //     dann BYTEGLEICH dem von vorher (kein `""`, kein `null`). Der Bibliotheksspiegel
+    //     `apps/web/src/lib/wordAddin.ts#draftPostPayload` (drei Parameter) ist deshalb UNBERUEHRT
+    //     und bleibt der gemessene Zwilling (tests/app/word-addin.test.ts). Das Feld selbst kennt
+    //     der Sendeweg laengst (`DraftPayload.category`, services/capture/src/types.ts:8) — es ist
+    //     KEINE Serveraenderung noetig und es wurde keine gemacht.
+    //     RUNDE 2: die Sendestelle ruft `prepareWordDraftRequest` deshalb in ZWEI Schreibweisen —
+    //     ohne Wahl BUCHSTAeBLICH im Bestandsaufruf mit drei Argumenten, den
+    //     `tests/app/word-addin.test.ts:792` pinnt (Runde 1 hatte ihn unbeabsichtigt gebrochen),
+    //     mit Wahl im erweiterten. Beide Zweige bauen denselben Payload wie zuvor.
+    //   · KEIN Manifest, KEINE geaenderte CSP, keine neue Word-API, kein neuer Fremd-Ursprung,
+    //     keine geaenderte Frequenz (geholt wird beim Betreten der Flaeche, wie die Markierung).
+    //   · Ein installiertes Add-in braucht KEIN erneutes Sideload; der Stempel-Mechanismus traegt
+    //     die neue Fassung wie bisher.
+    // NICHT GEMESSEN und hier ausdruecklich gesagt: echtes Word. Gemessen wurde in Chromium am
+    // ausgelieferten Fenster und im jsdom.
+    // GEMESSEN: tests/k2b-bereich-zeile (F1-F5 an echten Antworten: Liste, leer, 500, offline,
+    // Wahl/keine Wahl — plus zwei Kalibrierungen), tests/design/zielbild-k2-erfassen (Z.39/Z.40/
+    // Z.42 neu; der OFFENE Posten „Bereich-Zeile ohne Serverweg" ist ersetzt),
+    // tests/design/zielbild-k2-kein-erklaertext (T1/T3: eine Beschriftung mehr, kein Satz mehr),
+    // tests/design/k2-funktionsinventar (I16/I16b), tests/k2b-erfassen-reste,
+    // Waechterlauf (Inventar, Inhalts-Pin, Aufrufer, Theme, Frische, Tor).
+    //
+    // KONFLIKTRUNDE (JOB 3555) — BEIDE AENDERUNGEN SIND IM AUSGELIEFERTEN taskpane.html VEREINT
+    // (JOB 3512s Markenwahl UND JOB 3555s Bereich-Zeile); der Pin ist aus der zusammengefuehrten
+    // Datei neu berechnet.
+    //
+    // RUNDE 3 (11.09.2026) — DERSELBE PIN, ZUM ZWEITEN MAL NEU GERECHNET: DIE BASIS IST GEWANDERT,
+    // DER INHALT NICHT. Runde 2 rechnete `c8f7ff89…` auf der damaligen Basis `468fd75` (JOB 3510 D3).
+    // Danach hat der Taktgeber diese Arbeit auf `9ea4bb9` (ship 1.0.0-beta.1.276) rebased; darin
+    // steckt `3674538` (JOB 3512 D2), die letzte fremde Aenderung an `taskpane.html`. Der Pin zeigte
+    // damit auf einen Stand, den es nach dem Rebase nicht mehr gab — der Waechter hat GENAU DAS
+    // getan, wofuer er da ist, und die Runde 2 rot gemacht (Waechterlauf und Tor: `expected
+    // '19ddb483…' to be 'c8f7ff89…'`).
+    //
+    // KEINE NEUE AUSLIEFERUNGSFRAGE, und das ist gemessen statt behauptet: `git diff 9ea4bb9 --
+    // apps/web/public/word-addin/taskpane.html` ergibt `230 12` (+230/−12) und enthaelt
+    // AUSSCHLIESSLICH die oben aufgezaehlten vier Aenderungen dieses Jobs (Markup, zwei Stilregeln,
+    // fuenf Woerterbuch-Schluessel je Sprache, Skriptblock samt optionalem vierten Parameter). JOB
+    // 3512s Markenteil ist unberuehrt in der Datei (KW-MARKE-Block, `kwMarkeKennung`) — er kommt
+    // jetzt aus der Basis, nicht mehr aus einer Zusammenfuehrung. Es bleibt deshalb bei den
+    // Antworten oben: kein neues Abrufziel, keine neue Abrufstelle, kein Manifest, keine geaenderte
+    // CSP, kein neues Recht, kein Sideload; die Nutzlast aendert sich nur mit einer echten Wahl.
+    // VORHERHASH taskpane.html auf DIESER Basis (`git show 9ea4bb9:…`):
+    // `8e3950aa27c94aa013a3556db263f08d8baf72644ba2495c115f24c4aeaeee78`.
+    //
+    // RUNDE 4 (11.09.2026) — EINE EINZIGE AENDERUNG AN taskpane.html, UND SIE NIMMT ETWAS WEG.
+    // VORHERHASH (Stand Runde 3): `19ddb4834c263e10a68a64eb4ae2930cac4e1bfb1cdd0469c663d1859955bdc6`.
+    // ANLASS: das Tor der Runde 3 war rot, und der Befund gehoerte diesem Job — der Palettensammler
+    // meldete `#capture-bereich:disabled` als „Regel mit `color`, die der Sammler nicht gemessen
+    // hat" (mega43 B1, zwei Faelle). Ein Zustandsselektor laesst sich nicht auf das Markup anwenden;
+    // ohne benannte Ausnahme ist das dort ROT statt still.
+    // ENTSCHEIDUNG: nicht eine Ausnahme eintragen, sondern die zweite Wahrheit entfernen. Die
+    // Deklaration `color: var(--muted)` stand im gesperrten Zustand NOCH EINMAL, obwohl die Regel
+    // `#capture-bereich` daruber dieselbe Tinte bereits fuer beide Zustaende setzt. Sie ist
+    // ersatzlos weg; `opacity: 1` bleibt (es haelt den Satz der Lage lesbar statt halbdurchsichtig)
+    // und traegt keine Farbe. Der Sammler misst damit GENAU EINE Regel — die lesbare.
+    // KEINE AUSLIEFERUNGSFOLGE, und das ist gemessen statt behauptet: dass die eine Angabe auch am
+    // gesperrten Feld traegt, misst tests/design/zielbild-k2-erfassen.test.ts Z.42 in Chromium — die
+    // dortige Buehne beantwortet `/api/categories` nicht, das Feld steht also gesperrt, und der
+    // gemessene `color` bleibt der Zielwert. Die Punkte oben (Abrufstelle, Endpunkt, Nutzlast,
+    // Manifest, CSP, Sideload) sind unberuehrt: an Markup, Woerterbuch und Skript hat diese Runde
+    // NICHTS geaendert.
+    // RUNDE 5 (11.09.2026) — ZWEI FEHLER AM ZUSTAND DER ZEILE, VON BEN GEMESSEN, HIER BEHOBEN.
+    // VORHERHASH (Stand Runde 4): `db56d6b1148fa49fd336cb148ccb1673823bd4d3d2601d7e0e423fbfab33fabb`.
+    // ANLASS 1: der GEHALTENE Bereich wurde nicht mitbereinigt, wenn die Anzeige leer wurde. Wer
+    // „Technik" waehlte, die Flaeche verliess und mit einer LEEREN Antwort zurueckkam, sah „Noch
+    // kein Bereich in deinem Bestand" — und sendete trotzdem `"category":"Technik"`. Behoben an
+    // zwei Stellen, weil der Fehler zwei Haelften hat: die erfolgreiche leere Antwort verwirft die
+    // gehaltene Wahl jetzt (wie `scheitern()` es laengst tat), und der Sendeweg liest nicht mehr den
+    // gehaltenen Zustand, sondern GENAU DAS, was die Zeile sichtbar traegt (neue Ablesung
+    // `captureBereichGewaehlt`, an die Lage gebunden). Damit koennen sichtbarer Zustand und Nutzlast
+    // nicht mehr auseinanderlaufen — auch nicht waehrend einer noch laufenden Auffrischung.
+    // ANLASS 2: `captureBereicheAusAntwort` beschnitt die gelieferten Namen beidseitig; aus
+    // " Technik " wurde "Technik", und dieser veraenderte Wert reiste in die Nutzlast. Der Bestand
+    // vergleicht Bereichsnamen exakt (category-routes.ts:33). Beschnitten wird nur noch fuer die
+    // Frage, OB ein Name dasteht; hinaus geht der gelieferte Name.
+    // KEINE NEUE AUSLIEFERUNGSFRAGE: Markup, Stil und Woerterbuch sind unberuehrt (kein neuer
+    // Schluessel, kein neues Element, keine neue Regel), es gibt kein neues Abrufziel und keine neue
+    // Abrufstelle, kein Manifest, keine CSP-Aenderung, kein neues Recht, kein Sideload. Geaendert
+    // wurde AUSSCHLIESSLICH Skript: drei Stellen und ihre Kommentare. Die Nutzlast wird durch diese
+    // Runde nur ENGER — sie traegt `category` jetzt in genau den Faellen, in denen die Zeile den
+    // Bereich auch zeigt; der Bibliotheksspiegel `wordAddin.ts#draftPostPayload` bleibt unberuehrt.
+    // GEMESSEN: tests/k2b-bereich-zeile (F6/F7/F8 neu, dazu die Kalibrierungen K-d/K-e, die den
+    // Stand von Runde 4 im Speicher wiederherstellen und F6 bzw. F8 fallen lassen), die sechs
+    // Abnahmepfade des Auftrags und der Waechterlauf.
+    const PIN = "13d5056a13299b0f1ae379caf9d250b3ae03f291be967bd1cd219c41cfd7e8f5";
     const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
     expect(
       ist,

@@ -32,6 +32,7 @@
 // | captureCardTitle (h2 der Karte)                    | h2.nur-vorlesen (Hilfstechnik)                    | I13  |
 // | — (neu) Zeile „Titel“                              | #capture-titel, editierbar, reist als Titel       | I14  |
 // | — (neu) ohne Markierung                            | #capture-leer „Markiere Text in Word.“, Knopf grau| I15  |
+// | — (neu) Zeile „Bereich“ (JOB 3555)                 | #capture-bereich aus GET /api/categories, reist als category | I16 |
 //
 // JOB 3506 K2b (10.09.2026) — DER „NEUE ORT“ VON I3–I6 IST WEITERGEZOGEN. JOB 3057 hat die vier
 // Erklaersaetze in ein „?“-Menue IN der Erfassen-Flaeche gestellt und in seiner RUECKGABE selbst
@@ -40,6 +41,11 @@
 // #einst-erfassen hinter #kw-zahnrad — dieselben Kennungen, dieselben Woerterbuchschluessel,
 // derselbe Wortlaut. Die Zeilen I3–I6 messen deshalb ab hier den Zahnrad-Ort; die Aussage der
 // Tabelle („keine Funktion geht verloren") ist unveraendert, nur ihr Zielort ist ein anderer.
+//
+// JOB 3555 K2b (10.09.2026) — EINE FUNKTION KOMMT DAZU, KEINE GEHT: die Zeile „Bereich" (Zielbild
+// Z.39-45). Sie war in JOB 3057 ausdruecklich NICHT gebaut, weil kein Serverweg eine
+// Kategorienliste lieferte; `GET /api/categories` (JOB 3507) liefert sie seither. I16 misst die
+// ganze Kette am laufenden Fenster: Abruf → Zeile → Wahl → `category` in der Nutzlast.
 import { afterEach, describe, expect, it } from "vitest";
 import { type KlaraPanel, createKlaraPanel, reply } from "../app/klara-panel-fixture";
 
@@ -286,6 +292,77 @@ describe("JOB 3057 · K2 · Funktionsinventar „heute → neuer Ort“ — jede
     expect(p.q("#capture-dokument-link")?.getAttribute("aria-disabled")).toBeNull();
   });
 
+  it("I16 · NEU: die Zeile „Bereich“ kommt aus GET /api/categories und reist als `category` mit — ohne Wahl bleibt die Nutzlast, was sie war", async () => {
+    const p = oeffnen({
+      routes: {
+        "/api/categories": reply(200, {
+          categories: [
+            { name: "Technik", count: 3 },
+            { name: "Recht", count: 1 },
+          ],
+        }),
+        "/api/drafts": reply(201, { id: "d-b" }),
+      },
+    });
+    await p.flush();
+    p.setTab("capture");
+    await p.flush();
+    // Der Abruf ist wirklich gelaufen — und zwar genau einmal, beim Betreten der Flaeche.
+    expect(p.calls.filter((c) => c.url === "/api/categories" && c.method === "GET")).toHaveLength(
+      1,
+    );
+    // Die Zeile steht in der Bauform der Titelzeile und traegt die Namen der ANTWORT.
+    expect(
+      p.q("#capture-felder > label.capture-zeile:nth-child(2) > #capture-bereich"),
+    ).not.toBeNull();
+    expect(p.text("#capture-bereich")).toBe(`${p.t("captureBereichWahl")}TechnikRecht`);
+    expect(p.q("#capture-bereich")?.disabled).toBe(false);
+    // (a) Ohne Wahl: die Nutzlast ist die von vorher — kein Feld, nicht `""`, nicht `null`.
+    p.q("#send-btn")?.click();
+    await p.flush();
+    await p.flush();
+    expect(Object.keys(posts(p)[0] ?? {})).not.toContain("category");
+    // (b) Mit Wahl: genau dieser Wert, und nur er kommt dazu.
+    const feld = p.q("#capture-bereich");
+    if (feld === null) throw new Error("#capture-bereich fehlt");
+    feld.value = "Technik";
+    const EventKlasse = (globalThis as unknown as { Event: new (typ: string) => { type: string } })
+      .Event;
+    feld.dispatchEvent(new EventKlasse("change"));
+    p.q("#send-btn")?.click();
+    await p.flush();
+    await p.flush();
+    const zweiter = posts(p)[1] ?? {};
+    expect(zweiter.category).toBe("Technik");
+    expect(zweiter.title).toBe(posts(p)[0]?.title);
+    expect(zweiter.origin).toBe("word_addin");
+  });
+
+  it("I16b · die Zeile sagt in jeder Lage die Wahrheit: leere Antwort ≠ Fehler, und beide sperren das Senden nicht", async () => {
+    const leer = oeffnen({ routes: { "/api/categories": reply(200, { categories: [] }) } });
+    await leer.flush();
+    leer.setTab("capture");
+    await leer.flush();
+    expect(leer.text("#capture-bereich")).toBe(leer.t("captureBereichLeer"));
+    expect(leer.q("#capture-bereich")?.disabled).toBe(true);
+    expect(leer.q("#send-btn")?.disabled).toBe(false);
+    // Drei Sprachen, drei Fassungen — der gehaltene Zustand wird neu geschrieben, nicht verworfen.
+    for (const sprache of ["en", "nl"]) {
+      leer.setLang(sprache);
+      expect(leer.text("#capture-bereich"), sprache).toBe(leer.t("captureBereichLeer"));
+    }
+    leer.restore();
+
+    const kaputt = oeffnen({ routes: { "/api/categories": reply(500, { error: "BOOM" }) } });
+    await kaputt.flush();
+    kaputt.setTab("capture");
+    await kaputt.flush();
+    expect(kaputt.text("#capture-bereich")).toBe(kaputt.t("captureBereichFehler"));
+    // Ein Fehler ist keine Leere: die zwei Saetze sind wirklich zwei.
+    expect(kaputt.t("captureBereichFehler")).not.toBe(kaputt.t("captureBereichLeer"));
+    expect(kaputt.q("#send-btn")?.disabled).toBe(false);
+  });
+
   it("Vollstaendigkeit · keine heutige Kennung der Erfassen-Flaeche fehlt ohne Nachfolger, keine alte steht daneben", async () => {
     const p = oeffnen();
     await p.flush();
@@ -314,6 +391,10 @@ describe("JOB 3057 · K2 · Funktionsinventar „heute → neuer Ort“ — jede
       "#capture-bilder-satz",
       "#capture-bilder-link",
       "#capture-titel",
+      // JOB 3555 K2b: die zweite Feldzeile — im Markup ohne Option, ihre Eintraege entstehen aus
+      // der Serverantwort.
+      "#capture-bereich",
+      "#capture-felder > label.capture-zeile:nth-child(2) > #capture-bereich",
       "#send-btn",
       "#office-hint",
       "#office-hint-btn",
@@ -341,10 +422,20 @@ describe("JOB 3057 · K2 · Funktionsinventar „heute → neuer Ort“ — jede
       // Entfernte Schluessel liefern den Schluesselnamen — sie stehen in keinem Woerterbuch mehr.
       expect(p.t(key)).toBe(key);
     }
-    // Und der EINE neue Schluessel dieses Jobs ist in allen drei Sprachen da.
+    // Und der EINE neue Schluessel von JOB 3506 ist in allen drei Sprachen da — ebenso die fuenf
+    // von JOB 3555 (Beschriftung, Platzhalter und die drei Lagensaetze der Bereich-Zeile).
     for (const sprache of ["de", "en", "nl"]) {
       p.setLang(sprache);
       expect(p.t("einstErfassenKicker"), sprache).not.toBe("einstErfassenKicker");
+      for (const key of [
+        "captureBereichLabel",
+        "captureBereichWahl",
+        "captureBereichLaedt",
+        "captureBereichLeer",
+        "captureBereichFehler",
+      ]) {
+        expect(p.t(key), `${sprache}.${key}`).not.toBe(key);
+      }
     }
   });
 });

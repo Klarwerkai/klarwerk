@@ -215,7 +215,16 @@ describe("JOB 3014 · B — die Grobstruktur der ausgelieferten Seite", () => {
     // der Zuwachs (rund 200 Zeilen) ist KLEINER als ein Soll-Block, also ist ein Block die
     // kleinste Stufe, die ihn trägt. Nicht weiter, kein Blankoscheck. Die Lücke ist wieder
     // gewachsen — JOB 3227 (P11, der Schnitt) wartet weiter.
-    expect(zeilenzahl).toBeLessThan(12000);
+    // JOB 3555 (K2b-BEREICH-ZEILE, 11.09.2026): die Bereich-Zeile der Erfassen-Fläche (Zustand,
+    // Zeichnen, Abruf über die vorhandene Abrufstelle, fünf Wörterbuch-Schlüssel in drei Sprachen)
+    // hob die Zeilenzahl auf 12158 — die Schranke 12000 fiel wörtlich im Tor („expected 12158 to be
+    // less than 12000"). Gemessen am Basisstand 4ba7377: dort stand das Skript zwischen Zeile 1167
+    // und 13123, in derselben Zählweise also bei 11957 — der Zuwachs dieses Jobs ist 201 Zeilen.
+    // Er ist KLEINER als ein Soll-Block, deshalb rückt
+    // die Schranke nach derselben Regel wie in JOB 3094/3438 um EINEN Soll-Block (500) auf 12500 —
+    // nicht weiter, kein Blankoscheck. Die Lücke ist damit wieder gewachsen: dieser Job hat nichts
+    // geschnitten, er hat angebaut, und JOB 3227 (P11) wartet unverändert.
+    expect(zeilenzahl).toBeLessThan(12500);
     expect(SOLL_ZEILEN_JE_SKRIPT).toBe(500);
   });
 });

@@ -17,8 +17,13 @@
 //     Netzabbruch, Dokument-Weg, Titel von Hand, die Erklaersaetze hinter dem Zahnrad, leere
 //     Markierung, kein Word.
 //   · Jeder Wert, den dieser Auftrag bewusst NICHT angleicht, steht unten als OFFENER Wert mit
-//     Grund und gemessenem Istwert (Bereich-Zeile ohne Serverweg, Kopf aus K1/JOB 3056,
-//     Farbe #9AA2B1 ohne Werkbank-Token).
+//     Grund und gemessenem Istwert (Kopf aus K1/JOB 3056, Farbe #9AA2B1 ohne Werkbank-Token).
+//
+// JOB 3555 K2b (10.09.2026) — DER DRITTE OFFENE POSTEN IST GESCHLOSSEN: die Bereich-Zeile (Z.39-45)
+// stand hier mit dem Grund „kein Serverweg liefert eine Kategorienliste". `GET /api/categories`
+// (JOB 3507) ist live, die Zeile ist gebaut — sie wird ab hier als scharfer Fall gemessen
+// (Z.39/Z.40/Z.42), nicht mehr als offener Wert. Dass sie EHRLICH benennt, was sie weiss, misst
+// tests/k2b-bereich-zeile/bereich-zeile.test.ts an echten Antworten (Liste, leer, 500, offline).
 //
 // JOB 3506 K2b (10.09.2026) — ZWEI DER OFFENEN POSTEN SIND GESCHLOSSEN, EINER WURDE SCHARF:
 //   · Das „?“-Menue der Flaeche (#capture-mehr-btn / #capture-mehr) ist hinter das Zahnrad
@@ -86,6 +91,9 @@ const REGISTER: Record<string, [number, "margin" | "padding"]> = {
   "#capture-karte.padding": [28, "padding"],
   "#capture-felder.margin": [34, "margin"],
   "label.capture-zeile.padding": [35, "padding"],
+  // JOB 3555 K2b: die zweite Zeile („Bereich") traegt dieselbe Klasse und muss dieselbe Polsterung
+  // messen — aber gegen IHRE Zielbildzeile, nicht gegen die der Titelzeile.
+  "label.capture-zeile.bereich.padding": [39, "padding"],
   "#capture-aktion.margin": [48, "margin"],
   "#send-btn.padding": [49, "padding"],
   "#capture-dokument-link.padding": [52, "padding"],
@@ -257,6 +265,53 @@ describe.runIf(zielbildDa)(
       expect(await lies<string | null>(ATTR, ["#capture-titel", "disabled"])).toBeNull();
       expect(await lies<string>(WERT, "#capture-titel")).toBe(TITEL_VORBELEGT);
       expect(TITEL_VORBELEGT.length).toBe(60);
+    });
+
+    // ---- Z.39-45: die Zeile „Bereich“ (JOB 3555 — vom OFFENEN Posten zum scharfen Fall) -----------
+    // Bis JOB 3507 gab es keinen Serverweg, der eine Kategorienliste liefert; die Zeile stand
+    // deshalb unten als OFFENER Wert mit genau diesem Grund. `GET /api/categories` ist seither LIVE,
+    // die Zeile ist gebaut — und wird hier gemessen wie jede andere.
+    // WAS DIESE BUEHNE ZEIGT: sie beantwortet `/api/categories` NICHT (ihre Auffangroute liefert
+    // 404), die Zeile steht hier also in ihrer FEHLER-Lage. Genau richtig fuer diesen Fall: Mass,
+    // Farbe und Ort haengen nicht an der Antwort, und dass die Lage ehrlich benannt ist, misst
+    // tests/k2b-bereich-zeile/bereich-zeile.test.ts an einer echten Antwort.
+    const BEREICH_ZEILE = "#capture-felder > label.capture-zeile:nth-child(2)";
+    it("Z.39 · Bereich-Zeile: zweite Zeile im Feldblock, dieselbe Bauform wie „Titel“ — Polsterung, Papier, Rahmen, Radius", async () => {
+      expect(await lies<number>(ZAEHLEN, "#capture-felder > label.capture-zeile")).toBe(2);
+      expect(await lies<number>(ZAEHLEN, `${BEREICH_ZEILE} > #capture-bereich`)).toBe(1);
+      const stil = zielStilZeile(39);
+      expect(await messen(BEREICH_ZEILE, "display")).toBe(zielProp(stil, "display"));
+      expect(await messen(BEREICH_ZEILE, "align-items")).toBe(zielProp(stil, "align-items"));
+      expect(await messen(BEREICH_ZEILE, "justify-content")).toBe(
+        zielProp(stil, "justify-content"),
+      );
+      await vierSeitenGleich("label.capture-zeile.bereich.padding", BEREICH_ZEILE);
+      expect(await messen(BEREICH_ZEILE, "background-color")).toBe(
+        kanon(zielProp(stil, "background")),
+      );
+      expect(await messen(BEREICH_ZEILE, "border")).toBe(kanon(zielProp(stil, "border")));
+      expect(await messen(BEREICH_ZEILE, "border-radius")).toBe(zielProp(stil, "border-radius"));
+    });
+    it("Z.40 · Beschriftung „Bereich“: font-size 14px, color #1A2233, Wortlaut aus dem Woerterbuch", async () => {
+      const sel = `${BEREICH_ZEILE} > span`;
+      const stil = zielStilZeile(40);
+      expect(await messen(sel, "font-size")).toBe(zielProp(stil, "font-size"));
+      expect(await messen(sel, "color")).toBe(kanon(zielProp(stil, "color")));
+      expect(await lies<string>(TEXT, sel)).toBe(zielTextZeile(40));
+      expect(wort("de", "captureBereichLabel")).toBe(zielTextZeile(40));
+    });
+    it("Z.42 · Wert: font-size 14px, color #525B6B — und die Auswahl steht am rechten Rand der Zeile", async () => {
+      const stil = zielStilZeile(42);
+      expect(await messen("#capture-bereich", "font-size")).toBe(zielProp(stil, "font-size"));
+      expect(await messen("#capture-bereich", "color")).toBe(kanon(zielProp(stil, "color")));
+      // Z.41 setzt Wert und Chevron als eigene Gruppe rechts; die native Auswahl bringt beides mit.
+      // Gemessen wird die WIRKUNG: ihr rechter Rand faellt mit dem Textrand der Zeile zusammen.
+      const zeile = (await lies<R | null>(RECT, BEREICH_ZEILE)) as R;
+      const feld = (await lies<R | null>(RECT, "#capture-bereich")) as R;
+      const polsterRechts = Number.parseFloat(
+        (await messen(BEREICH_ZEILE, "padding-right")) ?? "0",
+      );
+      expect(Math.abs(zeile.right - polsterRechts - 1 - feld.right)).toBeLessThan(1.5);
     });
 
     // ---- Z.48/49: der EINE Knopf ------------------------------------------------------------------
@@ -615,14 +670,13 @@ describe.runIf(zielbildDa)(
     });
 
     // ---- OFFENE WERTE: gemessen, begruendet, nicht behauptet ---------------------------------------
+    // JOB 3555 K2b: „Z.39-45 Zeile „Bereich“ (Auswahl)“ STAND HIER — mit dem Grund „es gibt keinen
+    // Serverweg, der eine Kategorienliste liefert (services/app/src/routes: keine Route); dann
+    // ‚Zeile entfaellt, kein Platzhaltertext‘. Gemessen: genau eine Zeile (Titel)“. Der Grund ist
+    // entfallen: `GET /api/categories` ist seit JOB 3507 live. Der Posten ist deshalb KEIN offener
+    // Wert mehr, sondern die drei scharfen Faelle Z.39/Z.40/Z.42 weiter oben — ersetzt, nicht
+    // daneben belassen.
     const OFFEN: [string, () => Promise<string | null>, string, string][] = [
-      [
-        "Z.39-45 Zeile „Bereich“ (Auswahl)",
-        () =>
-          lies<string | null>("() => String(document.querySelectorAll('.capture-zeile').length)"),
-        "2 Zeilen (Titel, Bereich)",
-        "Auftrag §5.2: Werte aus dem bestehenden Kategorien-Weg — es gibt keinen Serverweg, der eine Kategorienliste liefert (services/app/src/routes: keine Route); dann „Zeile entfaellt, kein Platzhaltertext“. Gemessen: genau eine Zeile (Titel)",
-      ],
       [
         "Z.37 Wortlaut des Titels „Profile in Spritzzonen“",
         () => lies<string | null>(WERT, "#capture-titel"),

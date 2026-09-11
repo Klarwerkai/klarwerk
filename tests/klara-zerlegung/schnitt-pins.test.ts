@@ -286,6 +286,12 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // Kopfkommentar (Griff `pfad`) und misst ihn ueber die vorhandene Buehne tests/design/
   // k2-buehne.ts; sie schneidet KEINE KW-Marken und nutzt die Panel-Fixture nicht.
   "tests/k2b-erfassen-reste/k2b-menue-und-link.test.ts": "pfad",
+  // JOB 3555 (K2b): die Bereich-Zeile der Erfassen-Flaeche, in Chromium am ausgelieferten
+  // Aufgabenfenster gemessen. Wie die Zeile darueber: sie nennt den ausgelieferten Pfad im
+  // Kopfkommentar (Griff `pfad`) und misst ihn ueber die vorhandene Buehne tests/design/
+  // k2-buehne.ts; sie schneidet KEINE KW-Marken und nutzt die Panel-Fixture nicht. A2 hat die
+  // Datei gemeldet, das Verzeichnis nimmt sie nicht still auf.
+  "tests/k2b-bereich-zeile/bereich-zeile.test.ts": "pfad",
   // JOB 3094 (KA7): die Konfliktkarte — Pfadliteral im Kopfkommentar, Klara-Panel-Fixture.
   "tests/ka7-konflikt-im-panel/konfliktkarte-mounted.test.ts": "pfad,fixture",
   "tests/klara-panel/p7-office-erkennung-am-fenster.test.tsx": "pfad,fixture",

@@ -507,6 +507,11 @@ const INVENTAR: readonly string[] = [
   // JOB 3506 (K2b, 10.09.2026): die zwei Oberflaechenreste der Erfassen-Flaeche, in Chromium am
   // ausgelieferten Aufgabenfenster gemessen — gefunden ueber die Achse `taskpane` (der Pfad traegt
   // kein „klara"). K2 hat sie gemeldet, das Inventar nimmt sie nicht still auf.
+  // JOB 3555 (K2b, 10.09.2026): die Bereich-Zeile der Erfassen-Flaeche, in Chromium am
+  // ausgelieferten Aufgabenfenster gemessen — gefunden ueber dieselbe Achse `taskpane` wie die
+  // Zeile darunter (der Pfad traegt kein „klara"). K2 hat sie gemeldet, das Inventar nimmt sie
+  // nicht still auf.
+  "tests/k2b-bereich-zeile/bereich-zeile.test.ts",
   "tests/k2b-erfassen-reste/k2b-menue-und-link.test.ts",
   "tests/ka7-konflikt-im-panel/konfliktkarte-mounted.test.ts",
   "tests/klara-panel/p7-office-erkennung-am-fenster.test.tsx",
