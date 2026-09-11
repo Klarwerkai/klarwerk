@@ -11,10 +11,56 @@
 // Der Name der Datei sagt „BrandPanel", weil die Markenfläche der größere Teil ist; der
 // Sprachumschalter liegt bewusst daneben statt in einer dritten Datei — beide sind ausschließlich
 // Bausteine der öffentlichen Strecke und haben außerhalb von ihr keinen Aufrufer.
+import { useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
+import { BRAND_LOGO_ALT, abonniereBranding, aktuellesBranding } from "../lib/brandTheme";
+
+// ================================================================================================
+// JOB 3577 — DIE ANMELDEMASKE TRÄGT DIE FIRMEN-CI MIT. SIE IST DIE ERSTE FLÄCHE, DIE EIN GAST SIEHT.
+// ================================================================================================
+//
+// Bis hierher trug bei aktiver Firmen-CI ALLES das Advisor-Zeichen — Kopfband, Bibliothek, Admin —,
+// nur die öffentliche Strecke nicht. Sie ist damit die einzige Fläche gewesen, die der Markenwahl
+// der Installation widersprochen hat, und ausgerechnet die, die bei der Vorführung zuerst dasteht.
+//
+// NEBEN, NICHT ANSTELLE: Pedis Auflage „die Produktidentität bleibt erkennbar" gilt hier genauso wie
+// im Kopfband (`shell/Logo.tsx:17`). Das Wort KLARWERK und der Untertitel „Reasoning System" bleiben
+// in JEDEM Zustand stehen; das Firmenlogo tritt daneben.
+//
+// WOHER DER STAND KOMMT — dieselbe EINE Quelle wie an der Wurzel (`shell/Logo.tsx:36`): das Modul
+// `lib/brandTheme.ts`, das `/api/branding` auf einen Abruf je Minute gedrosselt abfragt. Diese Datei
+// fragt AUSDRÜCKLICH nicht selbst; eine eigene Abfrage „nur für die Anmeldemaske" wäre ein zweiter,
+// ungedrosselter Takt neben dem dort gedrosselten (`brandTheme.ts:187-189`). `useSyncExternalStore`
+// sorgt zugleich dafür, dass ein bereits geöffnetes `/login`-Fenster das Umschalten ohne Neuladen
+// mitbekommt. Dass die öffentliche Strecke den Stand überhaupt haben KANN, hängt an zwei belegten
+// Punkten: `GET /api/branding` ist `public` (JOB 3510), und `main.tsx:23` ruft `initBrandTheme()`
+// bedingungslos vor dem ersten Render — also auch vor der Anmeldung.
+//
+// DIE WEISSE PLATTE, IN BEIDEN VARIANTEN — gemessen, nicht geschätzt (WCAG-Leuchtdichte):
+//   · Auf dem dunklen `bg-ink` der Spalte ist sie PFLICHT. Der dunkle Schriftzug des Logos (#161417)
+//     misst dort 1,13:1 (klassisch #16222C) bzw. 1,01:1 (modern #0E1626) — praktisch unsichtbar;
+//     das Advisor-Blau käme mit 3,37:1 bzw. 3,77:1 gerade so durch. Auf Weiß sind es 18,32:1 und
+//     4,80:1. Dieselbe Bauform und dieselbe Begründung wie `shell/Logo.tsx:28-31`.
+//   · Auf dem hellen Grund des schmalen Ankers wäre sie nicht nötig (Blau 4,36:1 auf der klassischen
+//     Seite #F3F4F6 und 4,53:1 auf modernem Papier #FAF8F5 — beides über den 3:1 für Grafik) und
+//     steht trotzdem: das KLARWERK-Zeichen direkt daneben sitzt schon heute BEDINGUNGSLOS auf einer
+//     weißen Platte (`:20`), zwei verschiedene Behandlungen nebeneinander sähen zufällig aus. Und
+//     Weiß ist themenfest, während der Seitenton mit der Darstellungswahl wechselt.
+// Es entsteht dabei KEINE neue CSS-Regel mit `color`: die Platte ist eine Tailwind-Utility auf
+// vorhandenen Token-Werten, der Kontrastsammler bekommt also nichts Neues zu messen.
+//
+// `alt` KOMMT AUS DEM PROFIL (`BRAND_LOGO_ALT`), nicht aus `marke.name` und nicht über `i18n`: der
+// Alternativtext ist eine Eigenschaft der Originaldatei, keine Übersetzung (`brandTheme.ts:43-49`).
 
 /** Das Wortzeichen — einmal beschrieben, an drei Stellen verwendet. */
 function Wortmarke({ hell }: { hell: boolean }): JSX.Element {
+  const stand = useSyncExternalStore(abonniereBranding, aktuellesBranding, aktuellesBranding);
+  // Ein Profil OHNE Schalter und ein Schalter OHNE Profil sind beide „aus" — wörtlich die Regel aus
+  // `shell/Logo.tsx:39-40`, damit die Anmeldemaske und die Hülle nicht zwei Sichtbarkeitsbegriffe
+  // bekommen. `null` („noch nicht bekannt") führt auf denselben Zweig wie „aus": kein Platzhalter,
+  // kein Skelett, kein Aufblitzen.
+  const profil = stand?.aktiv ? stand.profil : null;
+  const marke = profil === null ? null : (stand?.marke ?? null);
   return (
     <span className="flex items-center gap-2.5">
       <span className="grid h-9 w-9 place-items-center rounded-[10px] bg-white">
@@ -35,6 +81,16 @@ function Wortmarke({ hell }: { hell: boolean }): JSX.Element {
           Reasoning System
         </span>
       </span>
+      {profil === null || marke === null ? null : (
+        // Der Abstand kommt aus dem `gap-2.5` des Umschlags — kein eigener Rand, der neben der
+        // vorhandenen Lücke eine zweite Zahl wäre.
+        <span
+          data-testid="auth-firmenlogo"
+          className="grid h-9 place-items-center rounded-[10px] bg-white px-2"
+        >
+          <img src={marke.logo} alt={BRAND_LOGO_ALT[profil]} className="h-6 w-auto" />
+        </span>
+      )}
     </span>
   );
 }
