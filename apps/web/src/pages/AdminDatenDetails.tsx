@@ -4,14 +4,28 @@
 // Audit-Liste. Inhalt und Verhalten wie zuvor in `Admin.tsx`; neu ist nur der Ort: hinter einer
 // Zeile mit Wert, erreichbar über das Chevron. Hilfetexte im „?"-Menü der Karte.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ArrowRight, Power, RotateCcw, Trash2, UserPlus } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowRight,
+  Loader2,
+  PackagePlus,
+  Power,
+  RotateCcw,
+  Trash2,
+  UserPlus,
+} from "lucide-react";
 import { useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import { useAudit, useUsers } from "../api/hooks";
-import type { DemoSeedResult } from "../api/types";
+import type {
+  DemoPackageInfo,
+  DemoPackageResult,
+  DemoPackageTextDto,
+  DemoSeedResult,
+} from "../api/types";
 import { useToast } from "../app/ToastContext";
 // AUFTRAG-mega64 Block A: der Demodaten-Knopf steht hinter dem Betriebsschalter — dieselbe
 // fail-closed Regel wie jede andere geschaltete Fläche (mega46 F2).
@@ -202,7 +216,57 @@ function DemoErscheinungsbild(): JSX.Element {
   );
 }
 
-/** SCRUM-181 / Pedi 14.07.: Demodaten laden — auch neben vorhandenen Daten, idempotent. */
+/**
+ * ================================================================================================
+ * JOB 3636 — DIE KENNUNG, UNTER DER DAS ADVISOR-PAKET IN DER SERVERLISTE STEHT.
+ * ================================================================================================
+ *
+ * Sie ist hier ausschliesslich ein SUCHSCHLÜSSEL in die Antwort von `GET /api/admin/demo-packages`
+ * — nie das Ziel eines Aufrufs aus eigener Kraft. Findet die Liste sie nicht, lädt die Karte
+ * NICHTS und sagt genau das (Auftrag §4: „eine erfundene Kennung, die ins Leere lädt, wäre
+ * schlimmer als eine ehrliche Lücke"). Geladen wird deshalb immer `paket.id` aus dem gefundenen
+ * Listeneintrag und nie diese Konstante.
+ *
+ * Derselbe Wert steht in `components/ExamplePackages.tsx:101` (`LESEVARIANTEN_PAKET`). Er wird von
+ * dort NICHT geholt: die Konstante ist nicht exportiert, und ein Export samt Import quer über eine
+ * Bauteildatei wäre eine Abhängigkeit der Verwaltungsseite auf die Importfläche — für eine
+ * Zeichenkette, deren Richtigkeit hier ohnehin die Serverliste entscheidet und nicht der Import.
+ */
+const ADVISOR_PAKET = "advisor-ict-en-v1";
+
+/**
+ * SCRUM-181 / Pedi 14.07.: Demodaten laden — auch neben vorhandenen Daten, idempotent.
+ *
+ * ================================================================================================
+ * JOB 3636 — ZWEI KARTEN, ZWEI WEGE. VOR DEM KLICK STEHT, WAS GELADEN WIRD.
+ * ================================================================================================
+ *
+ * Pedi über Codex, 13:17: die Seite „soll vor dem Laden eindeutig zeigen, WELCHE Daten geladen
+ * werden"; er verlangt „getrennte Auswahl/Aktionen für allgemeine Demodaten und ‚Advisor-Demodaten
+ * laden', analog zur eindeutigen Profilauswahl beim Erscheinungsbild".
+ *
+ * DIE REGEL, AUF DIE ES ANKOMMT (Auftrag §4): Zweimal derselbe Aufruf mit zwei Beschriftungen wäre
+ * der Fehler, nicht die Lösung. Die beiden Knöpfe laden deshalb wirklich Verschiedenes, und wer es
+ * nachsehen will, findet es an genau zwei Stellen dieser Datei:
+ *
+ *   Karte 1 „Demodaten"  → `demoSeed.mutate(false)` → `POST /api/admin/demo-seed`
+ *   Karte 2 „Demopakete" → `paketLaden.mutate(paket)` → `POST /api/admin/demo-packages/<id>/load`
+ *
+ * WAS UNBERÜHRT BLEIBT (Auftrag §5): die Rückfrage vor dem frischen Laden (`force`), der
+ * Entfernen-Weg samt seiner Bestätigung, das Erscheinungsbild als eigener, ungekoppelter Abschnitt
+ * — und die Rücksetzlogik aus JOB 3277. Zurücksetzen und paketbezogenes Entfernen wohnen weiterhin
+ * NUR im Demopaket-Kasten auf `/import` (`components/ExamplePackages.tsx`); hier steht der eine
+ * Handgriff, den Pedi hier verlangt hat. Eine zweite Fassung der Eingriffe wäre eine zweite
+ * Wahrheit über denselben Bestand.
+ *
+ * RECHTE WIE BISHER, und das ist gemessen statt angenommen: beide Wege liegen serverseitig hinter
+ * derselben Prüfung `users.manage` (`services/app/src/routes/admin-routes.ts:169,227`). Der
+ * Betriebsschalter `demodaten` umschliesst weiterhin GENAU das, was er bisher umschloss — das
+ * Anlegen des Grundbestands (mega64 Block A); die Paketrouten stehen nicht hinter ihm, und ein
+ * Gatter, das nur die Fläche sperrt, während `/import` denselben Aufruf offen anbietet, wäre eine
+ * Scheinsperre. Stufe 2 ist kein Recht, sondern ein lokaler Sichtschalter des Admins
+ * (`lib/effectiveRole.ts:11`, `lib/stufe2Storage.ts`).
+ */
 export function DemodatenDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element {
   const { t, i18n } = useTranslation();
   const qc = useQueryClient();
@@ -237,6 +301,21 @@ export function DemodatenDetail({ onZurueck }: { onZurueck: () => void }): JSX.E
         ["analytics"],
         ["evidence"],
         ["admin", "demo-status"],
+        /**
+         * JOB 3636 R2 — DIESELBE LÜCKE WIE BEIM GESAMT-ENTFERNEN, an ihrer dritten Stelle.
+         *
+         * BEN fand sie am Purge (Korrekturpflicht 2). Sie steht aber auch hier, und das ist
+         * gemessen statt vermutet: „frisch laden" räumt VORHER das vorhandene Demo-Set auf —
+         * `seedDemoForAdmin` ruft bei `force` dasselbe `purgeDemoSeed`
+         * (`services/app/src/seed-demo.ts:213-215`), und das nimmt die Paketbausteine mit.
+         * Ohne diesen Schlüssel stünde nach einem frischen Laden derselbe veraltete Advisor-
+         * Bestand da wie nach dem Entfernen.
+         *
+         * Der Schlüssel steht UNBEDINGT hier, nicht nur im `force`-Fall: ein Abruf kann die
+         * angezeigte Zahl nie falsch machen, ein fehlender Abruf schon — und eine Bedingung wäre
+         * eine zweite Regel, die mit der Serverseite in Gleichschritt bleiben müsste.
+         */
+        ["demo-packages"],
       ]) {
         void qc.invalidateQueries({ queryKey: key });
       }
@@ -245,6 +324,97 @@ export function DemodatenDetail({ onZurueck }: { onZurueck: () => void }): JSX.E
       } else {
         push("success", t("adm.seedDone", { kos: r.kos, users: r.users }));
       }
+    },
+    onError: fail,
+  });
+
+  /**
+   * JOB 3636 — DIE LISTE IST DIE QUELLE, NICHT DAS GEDÄCHTNIS.
+   *
+   * Derselbe Schlüssel wie im Demopaket-Kasten auf `/import`
+   * (`components/ExamplePackages.tsx`): ein Endpunkt, ein Eintrag im Vorrat. Ein eigener Schlüssel
+   * hätte hier eine zweite Kopie derselben Übersicht gehalten, die nach einem Handgriff auf der
+   * anderen Fläche veraltet gewesen wäre.
+   *
+   * `queryFn` steht als BLANKER Verweis da (nicht `() => …list()`): der Vollzähligkeitsfall der
+   * Endpunkt-Matrix (`tests/design/h6-detail-zustandsweg.test.ts`, Fall V) liest genau diese
+   * Schreibweise und verlangt für sie einen gemessenen Fehlerweg. Eine Pfeilfunktion ginge an ihm
+   * vorbei — der neue Abruf wäre dann ungemessen live gegangen.
+   */
+  const demoPakete = useQuery({
+    queryKey: ["demo-packages"],
+    queryFn: endpoints.admin.demoPackages.list,
+  });
+
+  /** Die Pakettexte kommen VOM SERVER in drei Sprachen; die Fläche wählt nur aus. */
+  const paketText = (text: DemoPackageTextDto): string =>
+    i18n.language.startsWith("en") ? text.en : i18n.language.startsWith("nl") ? text.nl : text.de;
+
+  // Die Bilanz des letzten Paket-Handgriffs — mit dem NAMEN des Pakets, weil „geladen" allein
+  // nicht mehr genügt, seit es zwei Möglichkeiten gibt (Auftrag §6).
+  const [paketBilanz, setPaketBilanz] = useState<{
+    titel: string;
+    wert: DemoPackageResult;
+  } | null>(null);
+
+  /**
+   * ==============================================================================================
+   * JOB 3636 R2 — DIE BILANZ NENNT AUCH, WAS NICHT GELANG (BENs Korrekturpflicht 1).
+   * ==============================================================================================
+   *
+   * Runde 1 las aus der Antwort NUR `created` und `skipped`. Der Drahtvertrag führt aber zwei
+   * weitere Felder, die beide von einem UNVOLLSTÄNDIGEN Lauf erzählen (`api/types.ts:1547,1550`):
+   *
+   *   `skippedInTrash` — Bausteine, deren Anker im Papierkorb liegt: nicht angelegt, kein Duplikat.
+   *   `failures`       — Nacharbeiten, die mit Schlüssel und Grund gescheitert sind.
+   *
+   * Ein Lauf mit `created: 0, skipped: 0, failures: 6` stand damit als „0 angelegt, 0 unverändert"
+   * da — der Form nach eine Erfolgsmeldung, dem Inhalt nach ein Fehlschlag. Genau die Sorte Satz,
+   * die dieser Auftrag abschafft (§4: ein Knopf, der etwas anderes tut, als er sagt).
+   *
+   * DIE TEXTE SIND DIE VORHANDENEN. `dpk.resultTrash` und `dpk.resultFailures` stehen seit JOB 3277
+   * in allen drei Sprachen (`i18n.ts:4207,4208 / 9379,9380 / 14273,14274`) und tragen im
+   * Demopaket-Kasten auf `/import` dieselbe Aussage (`components/ExamplePackages.tsx:570-577`) —
+   * mit demselben Trennzeichen. Eine zweite Formulierung für denselben Sachverhalt wäre eine zweite
+   * Wahrheit; deshalb steht hier kein neuer Schlüssel.
+   *
+   * EIN ORT FÜR BEIDE AUSGABEN: Meldung und Kartenzeile lesen diese eine Funktion. Ginge die
+   * Zählung nur in eine der beiden, widersprächen sich Toast und Fläche beim nächsten Umbau.
+   */
+  const paketBilanzText = (titel: string, wert: DemoPackageResult): string => {
+    const teile = [titel, t("dpk.resultLoad", { created: wert.created, skipped: wert.skipped })];
+    if (wert.skippedInTrash > 0) {
+      teile.push(t("dpk.resultTrash", { n: wert.skippedInTrash }));
+    }
+    if (wert.failures.length > 0) {
+      teile.push(t("dpk.resultFailures", { n: wert.failures.length }));
+    }
+    return teile.join(" · ");
+  };
+  const paketLaden = useMutation<DemoPackageResult, unknown, DemoPackageInfo>({
+    // Der Aufruf nimmt das gefundene LISTENOBJEKT entgegen und liest seine Kennung daraus. Damit
+    // kann dieser Weg baulich keine Kennung laden, die der Server nicht selbst genannt hat.
+    mutationFn: (paket) => endpoints.admin.demoPackages.load(paket.id),
+    onSuccess: (r, paket) => {
+      for (const key of [
+        ["kos"],
+        ["library"],
+        ["gaps"],
+        ["conflicts"],
+        ["validation"],
+        ["analytics"],
+        ["evidence"],
+        ["admin", "demo-status"],
+        ["demo-packages"],
+      ]) {
+        void qc.invalidateQueries({ queryKey: key });
+      }
+      const titel = paketText(paket.title);
+      setPaketBilanz({ titel, wert: r });
+      // JOB 3636 R2: Ein Lauf mit gescheiterten Nacharbeiten ist KEIN Erfolg. Er ist auch kein
+      // Fehlschlag — angelegt wurde ja etwas —, deshalb die neutrale Stufe statt der grünen. Die
+      // Zahl daneben sagt, worauf sie sich bezieht; „teilweise" allein wäre wieder nur ein Wort.
+      push(r.failures.length > 0 ? "info" : "success", paketBilanzText(titel, r));
     },
     onError: fail,
   });
@@ -265,10 +435,30 @@ export function DemodatenDetail({ onZurueck }: { onZurueck: () => void }): JSX.E
         ["gaps"],
         ["tasks"],
         ["admin", "demo-status"],
+        /**
+         * JOB 3636 R2 — BENs Korrekturpflicht 2: DIESE ZEILE FEHLTE, UND DIE KARTE LOG DESHALB.
+         *
+         * Der Gesamt-Purge nimmt die Paketbausteine MIT: sie tragen denselben `demoSeed`-Merker
+         * wie der Grundbestand — der Server sagt es an der Paketroute selbst
+         * (`services/app/src/routes/admin-routes.ts:154`: „Gesamt-Purge (DELETE
+         * /api/admin/demo-seed) bleibt zeichengleich und nimmt das Paket weiter mit").
+         *
+         * Ohne diesen Schlüssel blieb `paket.loaded` auf dem Stand VOR dem Entfernen stehen; die
+         * Advisor-Karte sagte „6 von 6 geladen" über einen Bestand, den derselbe Klick gerade
+         * geleert hatte. Gemessen von BEN an Runde 1 und jetzt als Fall V12 festgehalten.
+         */
+        ["demo-packages"],
       ]) {
         void qc.invalidateQueries({ queryKey: key });
       }
       setConfirmPurge(false);
+      /**
+       * Und die Bilanz des letzten Ladens geht mit. Sie ist eine Aussage über den JETZIGEN Bestand
+       * („Advisor ICT (EN) · 6 angelegt"); nach dem Entfernen ist von diesen sechs nichts mehr da.
+       * Stehen zu lassen, was gerade gelöscht wurde, wäre dieselbe Unehrlichkeit wie die veraltete
+       * Bestandszeile darüber — nur an einer zweiten Stelle.
+       */
+      setPaketBilanz(null);
       push(
         "success",
         t("adm.purgeDone", {
@@ -290,17 +480,196 @@ export function DemodatenDetail({ onZurueck }: { onZurueck: () => void }): JSX.E
       testId="detail-demodaten"
       hilfe={[{ titel: t("adm.seedTitle"), text: t("adm.seedHint") }]}
     >
-      <Abfragehuelle abfrage={demoStatus} testId="huelle-demostatus">
-        {(stand) => (
-          <div data-testid="demo-bestand" className="text-[12.5px] text-muted-2">
-            {t("einst.daten.demoBestand")}
-            {" · "}
-            {stand.present
-              ? t("einst.daten.demoDa", { count: stand.count })
-              : t("einst.wert.keine")}
+      {/* ==========================================================================================
+          JOB 3636 · KARTE 1 — DIE ALLGEMEINEN DEMODATEN.
+          ==========================================================================================
+          Der Titel steht als eigener Schlüssel (`adm.seedTitle`) über der Karte, die Knopfschrift
+          kommt aus `adm.seedButton`. Beide tragen heute denselben Wortlaut; es sind trotzdem zwei
+          Schlüssel, damit die Karte später „Allgemeine Demodaten" heissen kann, ohne dass sich die
+          Beschriftung des Knopfes mit ändert (s. RUECKGABE, ABWEICHUNGEN: die Textlieferung gehört
+          nach `i18n.ts` und damit in einen eigenen Auftrag).
+
+          WARUM HIER KEIN ERKLÄRSATZ STEHT, obwohl der Auftrag einen verlangt: `adm.seedHint` ist
+          der Hilfekörper DIESER Karte (`hilfe` oben, verlangt von
+          `tests/design/h6-funktionsinventar.test.ts:282`). Derselbe Satz zusätzlich im Sichtfeld
+          verstösst gegen Pedis Regel vom 04.09. „ein Ziel, ein Ort" — gemessen, nicht vermutet:
+          `tests/design/zielbild-h6-kein-erklaertext.test.ts` wurde damit rot („Lädt einen kleinen,
+          echten Demo-Bestand …“ steht im Sichtfeld der Karte). Was diese Karte enthält, sagen
+          deshalb ihr Titel, die Bestandszeile und das „?"-Menü; ein eigener, kurzer Flächensatz
+          bräuchte einen neuen Schlüssel in `i18n.ts` (s. RUECKGABE, ABWEICHUNGEN).
+
+          Die Advisor-Karte darunter zeigt ihren Satz dagegen, und das ist kein Widerspruch: ihre
+          Beschreibung kommt vom SERVER und steht in keinem „?"-Menü — genau wie der Erklärsatz des
+          Erscheinungsbilds weiter unten. */}
+      <div data-einst="karte-allgemein" className="rounded-card border border-hairline bg-page p-3">
+        <p className="text-[13.5px] font-semibold text-text">{t("adm.seedTitle")}</p>
+        <Abfragehuelle abfrage={demoStatus} testId="huelle-demostatus">
+          {(stand) => (
+            <div data-testid="demo-bestand" className="mt-1.5 text-[12.5px] text-muted-2">
+              {t("einst.daten.demoBestand")}
+              {" · "}
+              {stand.present
+                ? t("einst.daten.demoDa", { count: stand.count })
+                : t("einst.wert.keine")}
+            </div>
+          )}
+        </Abfragehuelle>
+        {/* AUFTRAG-mega64 Block A: Nur das ANLEGEN steht hinter dem Schalter — der Entfernen-Knopf
+            ausdrücklich NICHT. Wer die Vorführhilfe abschaltet, muss vorhandene Demodaten weiterhin
+            loswerden können. Dieselbe Aufteilung wie serverseitig in admin-routes.ts. */}
+        <div className="mt-2">
+          <FeatureGate feature="demodaten">
+            <Button
+              variant="ghost"
+              disabled={demoSeed.isPending}
+              onClick={() => demoSeed.mutate(false)}
+            >
+              <UserPlus size={15} />
+              {t("adm.seedButton")}
+            </Button>
+          </FeatureGate>
+        </div>
+        {/* JOB 3636: Rückfrage, Einmalkennwörter und Next-Steps gehören ZU DIESEM Knopf und stehen
+            deshalb in seiner Karte. Bis hierher standen sie unterhalb des Entfernen-Blocks — mit
+            zwei Ladewegen auf der Fläche wäre dort nicht mehr zu sehen, welcher von beiden sie
+            erzeugt hat. An den Blöcken selbst ändert sich nichts. */}
+        {/* SCRUM-306: nach erfolgreichem Seed sichtbare Next-Steps — keine automatische Weiterleitung. */}
+        {demoSeed.isSuccess && demoSeed.data?.skipped ? (
+          <div className="mt-2 rounded-btn bg-trust-warn-bg px-3 py-2 text-[12.5px] text-trust-warn-text">
+            <p>{t("adm.seedSkippedInline")}</p>
+            {/* Pedi 05.07.: Demo-Set trotzdem laden — vorhandenes Demo-Set wird zuerst aufgeräumt. */}
+            <button
+              type="button"
+              disabled={demoSeed.isPending}
+              onClick={() => demoSeed.mutate(true)}
+              className="mt-1.5 inline-flex items-center gap-1 rounded-btn border border-trust-warn-text/30 px-2.5 py-1 font-semibold text-trust-warn-text hover:bg-trust-warn-text/10 disabled:opacity-50"
+            >
+              <UserPlus size={13} />
+              {t("adm.seedForce")}
+            </button>
           </div>
-        )}
-      </Abfragehuelle>
+        ) : null}
+        {/* ================================================================================
+            AUFTRAG-mega64 BLOCK A — DIE EINMALKENNWÖRTER, GENAU EINMAL.
+            ================================================================================
+            Der Server erzeugt sie bei jeder Neuanlage frisch und nennt sie NUR in der Antwort auf
+            diesen einen Aufruf; danach speichert er nur einen Prüfwert. Deshalb stehen sie hier,
+            sofort, mit dem Hinweis, dass ein Neuladen sie verliert. Sie werden bewusst NICHT in
+            einen Zwischenspeicher, in eine Datei oder in eine Meldung gelegt. */}
+        {(demoSeed.data?.einmalkennwoerter ?? []).length > 0 ? (
+          <div
+            data-testid="demo-einmalkennwoerter"
+            className="mt-2 rounded-card border border-trust-warn-fill/40 bg-trust-warn-bg p-3 text-trust-warn-text"
+          >
+            <div className="font-mono text-[10px] uppercase tracking-wider">
+              {t("adm.seedCredsTitle")}
+            </div>
+            <p className="mt-0.5 text-[12.5px] leading-relaxed">{t("adm.seedCredsHint")}</p>
+            <ul className="mt-2 space-y-1">
+              {(demoSeed.data?.einmalkennwoerter ?? []).map((zugang) => (
+                <li key={zugang.email} className="font-mono text-[12px]">
+                  {zugang.email} · <span className="font-semibold">{zugang.kennwort}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+        {demoSeed.isSuccess && !demoSeed.data?.skipped ? (
+          <div className="mt-2 rounded-card border border-hairline bg-surface p-3">
+            <div className="font-mono text-[10px] uppercase tracking-wider text-muted-2">
+              {t("pilot.next.title")}
+            </div>
+            <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">
+              {t("pilot.next.hint")}
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {PILOT_NEXT_STEPS.map((step) => (
+                <Link
+                  key={step.id}
+                  to={step.to}
+                  className="inline-flex items-center gap-1 rounded-btn border border-hairline bg-surface px-2.5 py-1 text-[12px] font-semibold text-text hover:border-ink/30"
+                >
+                  {t(step.labelKey)}
+                  <ArrowRight size={13} />
+                </Link>
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </div>
+      {/* ==========================================================================================
+          JOB 3636 · KARTE 2 — DAS ADVISOR-PAKET, MIT SEINEM EIGENEN AUFRUF.
+          ==========================================================================================
+          Der Titel der Karte steht AUSSERHALB der Hülle, weil er in jedem Zustand gebraucht wird:
+          auch „wird geladen" und „nicht abrufbar" müssen sagen, WORÜBER sie sprechen. Alles, was
+          eine Tatsachenaussage über den Bestand ist — Name, Beschreibung, Umfang, „noch nicht
+          geladen" —, steht INNERHALB der Hülle und damit nur, wenn es der Server geliefert hat. */}
+      <div data-einst="karte-advisor" className="rounded-card border border-hairline bg-page p-3">
+        <p className="text-[13.5px] font-semibold text-text">{t("dpk.title")}</p>
+        <Abfragehuelle abfrage={demoPakete} testId="huelle-demopakete">
+          {(liste) => {
+            const paket = liste.packages.find((p) => p.id === ADVISOR_PAKET);
+            if (paket === undefined) {
+              // EHRLICHE LÜCKE STATT ERFUNDENER KENNUNG (Auftrag §4): kein Knopf, keine Zusage.
+              // Der Wortlaut ist der, den diese Fläche für „gibt es hier nicht" schon führt.
+              return (
+                <p data-testid="advisor-fehlt" className="mt-1 text-[12.5px] text-muted-2">
+                  {t("adm.factory.unavailable")}
+                </p>
+              );
+            }
+            return (
+              <div data-demopaket={paket.id}>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-[13px] font-semibold text-text">{paketText(paket.title)}</p>
+                  {paket.fictional ? (
+                    <span className="rounded-btn bg-surface px-2 py-0.5 text-[11.5px] text-muted">
+                      {t("dpk.fictional")}
+                    </span>
+                  ) : null}
+                </div>
+                <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">
+                  {paketText(paket.description)}
+                </p>
+                <p className="mt-1 text-[12.5px] text-muted-2">
+                  {t("dpk.scope", {
+                    items: paket.items,
+                    areas: paket.areas.join(", "),
+                    language: paket.language.toUpperCase(),
+                  })}
+                  {" · "}
+                  {paket.loaded === 0
+                    ? t("dpk.stateNone")
+                    : t("dpk.stateLoaded", { loaded: paket.loaded, items: paket.items })}
+                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  {/* DIE BESCHRIFTUNG NENNT DAS PAKET. Sie wird aus dem vorhandenen Schlüssel und
+                      dem Servertitel zusammengesetzt — damit steht in jeder Sprache am Knopf, was
+                      er wirklich lädt, und keine zweite Textquelle behauptet es daneben. */}
+                  <Button
+                    variant="ghost"
+                    data-testid="advisor-laden"
+                    disabled={paketLaden.isPending}
+                    onClick={() => paketLaden.mutate(paket)}
+                  >
+                    {paketLaden.isPending ? (
+                      <Loader2 size={15} className="animate-spin" />
+                    ) : (
+                      <PackagePlus size={15} />
+                    )}
+                    {`${paketLaden.isPending ? t("dpk.busy") : t("dpk.load")} · ${paketText(paket.title)}`}
+                  </Button>
+                  {paketBilanz ? (
+                    <span data-testid="advisor-bilanz" className="text-[12.5px] text-muted">
+                      {paketBilanzText(paketBilanz.titel, paketBilanz.wert)}
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+            );
+          }}
+        </Abfragehuelle>
+      </div>
       {/* ==========================================================================================
           JOB 3337 — LADEN UND ENTFERNEN STEHEN NICHT MEHR NEBENEINANDER.
           ==========================================================================================
@@ -309,25 +678,11 @@ export function DemodatenDetail({ onZurueck }: { onZurueck: () => void }): JSX.E
           und lagen einen Zentimeter auseinander. Die Vorlage verlangt darum: „Laden und
           Entfernen/Rücksetzen optisch klar unterscheiden."
 
-          JETZT: zwei Blöcke, durch eine Trennlinie geschieden. Oben die aufbauende Handlung, unten
-          — nach der Linie und eingerückt in einen eigenen, ruhigen Bereich — die abräumende. An den
-          Handlungen selbst ändert sich NICHTS: dieselben Knöpfe, dieselbe Rückfrage, dieselbe
-          serverseitige Aufteilung (mega64 A: nur das ANLEGEN steht hinter dem Schalter). */}
-      <div>
-        {/* AUFTRAG-mega64 Block A: Nur das ANLEGEN steht hinter dem Schalter — der Entfernen-Knopf
-            ausdrücklich NICHT. Wer die Vorführhilfe abschaltet, muss vorhandene Demodaten weiterhin
-            loswerden können. Dieselbe Aufteilung wie serverseitig in admin-routes.ts. */}
-        <FeatureGate feature="demodaten">
-          <Button
-            variant="ghost"
-            disabled={demoSeed.isPending}
-            onClick={() => demoSeed.mutate(false)}
-          >
-            <UserPlus size={15} />
-            {t("adm.seedButton")}
-          </Button>
-        </FeatureGate>
-      </div>
+          JETZT: zwei Blöcke, durch eine Trennlinie geschieden. Oben die aufbauenden Handlungen,
+          unten — nach der Linie und eingerückt in einen eigenen, ruhigen Bereich — die abräumende.
+          An den Handlungen selbst ändert sich NICHTS: dieselben Knöpfe, dieselbe Rückfrage,
+          dieselbe serverseitige Aufteilung (mega64 A: nur das ANLEGEN steht hinter dem Schalter).
+          JOB 3636: „oben" sind jetzt ZWEI Karten statt einer — die Linie darunter bleibt. */}
       <div data-einst="entfernen" className="border-t border-hairline pt-3">
         {/* SCRUM-412 (CI): Bestätigung = neutrale Fläche; Rot nur am destruktiven Knopf. */}
         {confirmPurge ? (
@@ -360,67 +715,6 @@ export function DemodatenDetail({ onZurueck }: { onZurueck: () => void }): JSX.E
           </button>
         )}
       </div>
-      {/* SCRUM-306: nach erfolgreichem Seed sichtbare Next-Steps — keine automatische Weiterleitung. */}
-      {demoSeed.isSuccess && demoSeed.data?.skipped ? (
-        <div className="rounded-btn bg-trust-warn-bg px-3 py-2 text-[12.5px] text-trust-warn-text">
-          <p>{t("adm.seedSkippedInline")}</p>
-          {/* Pedi 05.07.: Demo-Set trotzdem laden — vorhandenes Demo-Set wird zuerst aufgeräumt. */}
-          <button
-            type="button"
-            disabled={demoSeed.isPending}
-            onClick={() => demoSeed.mutate(true)}
-            className="mt-1.5 inline-flex items-center gap-1 rounded-btn border border-trust-warn-text/30 px-2.5 py-1 font-semibold text-trust-warn-text hover:bg-trust-warn-text/10 disabled:opacity-50"
-          >
-            <UserPlus size={13} />
-            {t("adm.seedForce")}
-          </button>
-        </div>
-      ) : null}
-      {/* ================================================================================
-          AUFTRAG-mega64 BLOCK A — DIE EINMALKENNWÖRTER, GENAU EINMAL.
-          ================================================================================
-          Der Server erzeugt sie bei jeder Neuanlage frisch und nennt sie NUR in der Antwort auf
-          diesen einen Aufruf; danach speichert er nur einen Prüfwert. Deshalb stehen sie hier,
-          sofort, mit dem Hinweis, dass ein Neuladen sie verliert. Sie werden bewusst NICHT in einen
-          Zwischenspeicher, in eine Datei oder in eine Meldung gelegt. */}
-      {(demoSeed.data?.einmalkennwoerter ?? []).length > 0 ? (
-        <div
-          data-testid="demo-einmalkennwoerter"
-          className="rounded-card border border-trust-warn-fill/40 bg-trust-warn-bg p-3 text-trust-warn-text"
-        >
-          <div className="font-mono text-[10px] uppercase tracking-wider">
-            {t("adm.seedCredsTitle")}
-          </div>
-          <p className="mt-0.5 text-[12.5px] leading-relaxed">{t("adm.seedCredsHint")}</p>
-          <ul className="mt-2 space-y-1">
-            {(demoSeed.data?.einmalkennwoerter ?? []).map((zugang) => (
-              <li key={zugang.email} className="font-mono text-[12px]">
-                {zugang.email} · <span className="font-semibold">{zugang.kennwort}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-      {demoSeed.isSuccess && !demoSeed.data?.skipped ? (
-        <div className="rounded-card border border-hairline bg-page p-3">
-          <div className="font-mono text-[10px] uppercase tracking-wider text-muted-2">
-            {t("pilot.next.title")}
-          </div>
-          <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">{t("pilot.next.hint")}</p>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {PILOT_NEXT_STEPS.map((step) => (
-              <Link
-                key={step.id}
-                to={step.to}
-                className="inline-flex items-center gap-1 rounded-btn border border-hairline bg-surface px-2.5 py-1 text-[12px] font-semibold text-text hover:border-ink/30"
-              >
-                {t(step.labelKey)}
-                <ArrowRight size={13} />
-              </Link>
-            ))}
-          </div>
-        </div>
-      ) : null}
       {/* JOB 3511: das Erscheinungsbild der Vorführung — eigener Abschnitt, eigene Trennlinie. Es
           steht bewusst UNTER den Datenhandlungen: es ist kein Datenweg, es lädt und löscht nichts. */}
       <DemoErscheinungsbild />

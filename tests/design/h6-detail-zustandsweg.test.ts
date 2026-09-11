@@ -160,6 +160,23 @@ function matrixAdmin(): Quelle[] {
       inhalt: t("einst.marke.profil"),
     },
     {
+      // JOB 3636 (VORFUEHRDATEN GETRENNT WAEHLEN): die DRITTE Quelle derselben Karte — die Liste
+      // der Demopakete. Aus ihr holt die Advisor-Karte die Kennung, mit der sie lädt; ohne sie gibt
+      // es dort weder Name noch Knopf. Sie ist damit TRAGEND und bekommt denselben vierteiligen
+      // Beleg wie jede andere: Fehlerwort, Ausweg, echter Neuabruf, echter Inhalt.
+      //
+      // `inhalt` ist der Titel aus dem Paketvertrag (`example-packages/advisor-ict-en-v1.ts:93-97`)
+      // — er lautet in allen drei Sprachen gleich und hängt deshalb nicht an der Oberflächensprache
+      // dieses Laufs. Er steht INNERHALB der Hülle: der Kartentitel „Demopakete" darüber ist ohne
+      // Antwort da, der Paketname erst mit ihr.
+      id: "Advisor-Demodaten · /api/admin/demo-packages",
+      pfad: "/api/admin/demo-packages",
+      reiter: t("adm.sec.vorfuehrdaten"),
+      zeile: '[data-testid="zeile-demodaten"]',
+      behaelter: "detail-demodaten",
+      inhalt: "Advisor ICT (EN)",
+    },
+    {
       id: "Werkseinstellungen · /api/admin/factory-reset",
       pfad: "/api/admin/factory-reset",
       // JOB 3337: Werkseinstellungen unter „System".
@@ -668,6 +685,10 @@ describe("JOB 3065 H6 R3 · Endpunkt-Matrix der Detailkarten — 503 am gebauten
     "endpoints.external.policy": "/api/external/policy",
     "endpoints.duplicates.settings": "/api/duplicates/settings",
     "endpoints.admin.demoStatus": "/api/admin/demo-seed",
+    // JOB 3636: die Übersicht der Demopakete. Derselbe Weg wie im Demopaket-Kasten auf `/import`
+    // (`components/ExamplePackages.tsx`) und derselbe Vorratsschlüssel — die Verwaltungskarte hält
+    // keine zweite Kopie dieser Liste.
+    "endpoints.admin.demoPackages.list": "/api/admin/demo-packages",
     // JOB 3511: der zentrale Markenstand. Er kommt NICHT über `endpoints`, sondern über
     // `lib/brandTheme.ts` — dort wohnt die eine Quelle der Firmen-CI samt Drosselung und
     // 404-Unterscheidung, und ein zweiter Einstieg über `endpoints` wäre ein zweiter Weg dorthin.

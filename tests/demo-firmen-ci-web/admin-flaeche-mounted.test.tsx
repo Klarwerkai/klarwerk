@@ -82,6 +82,11 @@ const d = vi.hoisted(() => ({
   demoStatus: vi.fn(),
   demoSeed: vi.fn(),
   demoPurge: vi.fn(),
+  // JOB 3636: dieselbe Karte trägt seither eine zweite Ladefläche („Advisor-Demodaten"), die ihre
+  // Paketliste selbst holt. Die Attrappe muss den Weg kennen — sonst fiele diese Karte beim Mounten
+  // aus, und die Fälle unten würden an einem Fehler messen, der mit dem Erscheinungsbild nichts zu
+  // tun hat.
+  demoPackages: vi.fn(),
 }));
 
 // `ApiError` bleibt die ECHTE Klasse: die 404-Unterscheidung in `ladeBranding` hängt an
@@ -92,7 +97,12 @@ vi.mock("../../apps/web/src/api/client", async (echt) => ({
 }));
 vi.mock("../../apps/web/src/api/endpoints", () => ({
   endpoints: {
-    admin: { demoStatus: d.demoStatus, demoSeed: d.demoSeed, demoPurge: d.demoPurge },
+    admin: {
+      demoStatus: d.demoStatus,
+      demoSeed: d.demoSeed,
+      demoPurge: d.demoPurge,
+      demoPackages: { list: d.demoPackages, load: vi.fn() },
+    },
   },
 }));
 vi.mock("../../apps/web/src/api/hooks", () => ({
@@ -215,6 +225,8 @@ beforeEach(async () => {
   d.demoStatus.mockReset();
   d.demoSeed.mockReset();
   d.demoPurge.mockReset();
+  d.demoPackages.mockReset();
+  d.demoPackages.mockResolvedValue({ packages: [] });
   d.demoStatus.mockResolvedValue({ present: false, count: 0 });
   d.get.mockResolvedValue(stand());
   f = await frischesFenster();
