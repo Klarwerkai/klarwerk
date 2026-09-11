@@ -20,6 +20,7 @@ import { buildApp, buildServices } from "../../services/app/src/build-app";
 import { InMemoryModelRunRepo, ModelRunService } from "../../services/model-runs";
 import { DeterministicProvider, ModelProvider, Reasoner } from "../../services/reasoner";
 import { createCappedCloudClientFromEnv } from "../../services/reasoner/src/model-client";
+import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 
 const CLOUD_ENV = {
   ANTHROPIC_API_KEY: "test-schluessel-nur-hier",
@@ -51,6 +52,12 @@ async function umgebung() {
   const repo = new InMemoryModelRunRepo();
   const mutable = services as unknown as { reasoner: Reasoner; modelRuns: ModelRunService };
   mutable.reasoner = new Reasoner(new ModelProvider(client), new DeterministicProvider(), repo);
+  // JOB 3588: die GRUNDFREIGABE im Aufbau. Beide Fälle dieser Datei lesen einen ECHTEN Cloud-Lauf
+  // aus dem Bestand (`provider` und `model` sind zwei verschiedene Angaben) — ohne die Adminfreigabe
+  // des Kerns von JOB 3549 entstünde gar kein Cloud-Lauf und die Route hätte nichts zu nennen.
+  // Kein `vertraulicheInhalte`: der Anker unten stuft den Text ausdrücklich als NICHT vertraulich
+  // ein; das ist die Voraussetzung, die dieser Test selbst herstellt.
+  await erteileKiFreigabe(mutable.reasoner);
   mutable.modelRuns = new ModelRunService({ repo });
   const app = buildApp(services);
 

@@ -23,6 +23,13 @@ import { AuditService, InMemoryAuditRepo } from "../../services/audit";
 import { InMemoryKoRepo, KoService } from "../../services/knowledge-object";
 import { type ModelClient, Reasoner } from "../../services/reasoner";
 import { ModelProvider } from "../../services/reasoner/src/provider-model";
+// JOB 3588: die GRUNDFREIGABE im Aufbau. Auch die beiden RECHTE-Fälle (R1 vertraulich, R2
+// unvalidiert) brauchen sie: sie messen nicht „kein Modellaufruf", sondern „das Modell LÄUFT und
+// bekommt den geschützten Dokumenttext trotzdem nicht" (`prompts()` hat Länge 1). Ohne die
+// Adminfreigabe des Kerns von JOB 3549 bliebe die Zahl 0 und die Aussage wäre wertlos.
+// KEINE Freigabe für VERTRAULICHES: das vertrauliche Objekt wird vom Auszug ausgeschlossen, bevor
+// ein Prompt entsteht — der Lauf selbst führt nichts Vertrauliches.
+import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 
 const VORGEFUNDEN = process.env.KLARWERK_SKIP_KEYCHAIN;
 beforeAll(() => {
@@ -94,8 +101,10 @@ async function aufbauen(
     await koService.setValidationState(ko.id, { trust: 90, status: "validiert" });
   }
   const { client, prompts } = mitschreiber(antwort);
+  const reasoner = new Reasoner(new ModelProvider(client));
+  await erteileKiFreigabe(reasoner);
   const ask = new AskService({
-    reasoner: new Reasoner(new ModelProvider(client)),
+    reasoner,
     koService,
     gaps: new InMemoryGapRepo(),
     audit: new AuditService({ repo: new InMemoryAuditRepo() }),

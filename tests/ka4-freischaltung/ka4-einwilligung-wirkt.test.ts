@@ -50,6 +50,7 @@ import {
   type ReasonerProvider,
   resolveKlaraPolicy,
 } from "../../services/reasoner";
+import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 
 const FRAGE = "Wie wird die Zylinderkopfdichtung XQ42 gewechselt?";
 
@@ -561,8 +562,16 @@ describe("JOB 3033 · KA4 · Umfang und Vertraulichkeit des Egress", () => {
       author: "anna",
     });
 
+    const reasoner = new Reasoner(provider);
+    // JOB 3588: NUR die GRUNDFREIGABE. KA4-S3 und KA4-F8a messen, dass der Anbieter über diesen Weg
+    // WIRKLICH gerufen wird (`gesehen`/Aufrufzähler = 1) und dass das, was er sieht, von den
+    // ausgewiesenen Nutzlastklassen gedeckt ist. Ohne die Adminfreigabe des Kerns von JOB 3549
+    // bliebe der Zähler 0 und beide Aussagen wären Aussagen über eine Null.
+    // KEIN `vertraulicheInhalte`: das vertrauliche Objekt oben soll den Modellweg NICHT erreichen —
+    // das ist die Zusage dieser Datei, und der zweite Schalter würde sie aufheben.
+    await erteileKiFreigabe(reasoner);
     const ask = new AskService({
-      reasoner: new Reasoner(provider),
+      reasoner,
       koService,
       gaps: new InMemoryGapRepo(),
       audit: new AuditService({ repo: new InMemoryAuditRepo() }),

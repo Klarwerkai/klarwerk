@@ -37,6 +37,7 @@ import {
 } from "../../services/reasoner/src/model-client";
 import { cappedModelClient } from "../../services/reasoner/src/model-concurrency";
 import type { ModelClient } from "../../services/reasoner/src/provider-model";
+import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 
 const CLOUD_ENV = {
   ANTHROPIC_API_KEY: "test-schluessel-nur-hier",
@@ -113,6 +114,14 @@ async function laufUndDatensatz(
 ): Promise<ModelRunRecord> {
   const repo = new InMemoryModelRunRepo();
   const reasoner = new Reasoner(primary, fallback, repo);
+  // JOB 3588: die GRUNDFREIGABE im Aufbau. Die Frage dieser Datei — „welches MODELL nennt der
+  // Datensatz?" — hat nur dann eine Antwort, wenn das Modell auch gerufen wurde; ohne die
+  // Adminfreigabe des Kerns von JOB 3549 stünde `primary` in keiner Kette und jeder Fall läse den
+  // deterministischen Ersatz. Sie steht UNBEDINGT hier und nicht je Fall: die beiden Fälle mit
+  // `primary === undefined` (M3, M5) enden auch mit Freigabe deterministisch — es ist kein
+  // öffentlicher Anbieter verdrahtet, und die Freigabe verdrahtet keinen.
+  // Kein `vertraulicheInhalte`: keine Aufgabe dieser Datei reicht vertraulichen Text herein.
+  await erteileKiFreigabe(reasoner);
   try {
     await aufgabe(reasoner);
   } catch {
@@ -158,6 +167,7 @@ async function laufMitZaehler(
   const { client, aufrufe } = zaehlenderClient();
   const repo = new InMemoryModelRunRepo();
   const reasoner = new Reasoner(new ModelProvider(client), new DeterministicProvider(), repo);
+  await erteileKiFreigabe(reasoner); // JOB 3588, Grundfreigabe (Begründung s. `laufUndDatensatz`)
   await aufgabe(reasoner);
   const laeufe = await repo.recent(10);
   expect(laeufe).toHaveLength(1);
@@ -356,6 +366,9 @@ describe("JOB 3036 R2: ohne echten Modellaufruf steht kein Modell im Protokoll",
     const { client, aufrufe } = zaehlenderClient(true);
     const repo = new InMemoryModelRunRepo();
     const reasoner = new Reasoner(new ModelProvider(client), new DeterministicProvider(), repo);
+    // JOB 3588, Grundfreigabe: `aufrufe()` muss GENAU 1 werden — ohne sie wäre es 0 und der Fall
+    // prüfte zwei Läufe ohne Modellaufruf statt der Trennung ihrer Spuren.
+    await erteileKiFreigabe(reasoner);
 
     await Promise.all([
       reasoner.assistText("Roher Satz.", "de"),

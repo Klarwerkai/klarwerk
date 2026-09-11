@@ -21,6 +21,7 @@ import {
   ModelTimeoutError,
   Reasoner,
 } from "../../services/reasoner";
+import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 
 const tick = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 5));
 
@@ -37,6 +38,11 @@ async function appWithModelClient(client: ModelClient) {
   const services = buildServices();
   // ECHTER Reasoner + ECHTER ModelProvider — nur der Client (die HTTP-Fläche) ist gefaked.
   services.reasoner = new Reasoner(new ModelProvider(client));
+  // JOB 3588: die GRUNDFREIGABE im Aufbau. Der ganze Sinn dieses Aufbaus ist, dass der echte
+  // ModelProvider den gefakten Client WIRKLICH ruft — ohne die Adminfreigabe des Kerns von JOB 3549
+  // stünde er in keiner Kette und jeder Fall prüfte den deterministischen Ersatz. Kein
+  // `vertraulicheInhalte`: die Objekte dieser Datei sind offen eingestuft.
+  await erteileKiFreigabe(services.reasoner);
   const app = buildApp(services);
   await app.inject({
     method: "POST",

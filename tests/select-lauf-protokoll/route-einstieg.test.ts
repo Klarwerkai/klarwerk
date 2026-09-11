@@ -28,6 +28,7 @@ import { InMemoryModelRunRepo } from "../../services/model-runs";
 import { DeterministicProvider, ModelProvider, Reasoner } from "../../services/reasoner";
 import { cappedModelClient } from "../../services/reasoner/src/model-concurrency";
 import type { ModelClient } from "../../services/reasoner/src/provider-model";
+import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 
 const SAVED: Record<string, string | undefined> = {};
 const KEYS = ["KLARWERK_CONFLUENCE_IMPORT", "KLARWERK_ADDON_API"];
@@ -101,6 +102,11 @@ async function selectApp(antwort: () => Promise<string>) {
     new DeterministicProvider(),
     repo,
   );
+  // JOB 3588: die GRUNDFREIGABE im Aufbau. Beide Fälle dieser Datei messen, dass der Routeneinstieg
+  // einen ECHTEN Auswahllauf protokolliert (mit Modellnamen). Ohne die Adminfreigabe des Kerns von
+  // JOB 3549 endete jeder Lauf „no-model", und die Route hätte nichts zu protokollieren.
+  // Kein `vertraulicheInhalte`: der Schnappschuss dieser Datei ist nicht vertraulich eingestuft.
+  await erteileKiFreigabe(reasoner);
   const services = buildServices();
   const app = buildApp(services);
   app.register(

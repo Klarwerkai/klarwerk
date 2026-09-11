@@ -52,6 +52,7 @@ import {
   type ReasonerProvider,
   type ReasonerTaskChoice,
 } from "../../services/reasoner";
+import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 
 const TASKPANE = "apps/web/public/word-addin/taskpane.html";
 const HTML = readFileSync(resolve(process.cwd(), TASKPANE), "utf8");
@@ -276,8 +277,16 @@ async function ketteAufbauen(
     author: "anna",
   });
 
+  const reasoner = new Reasoner(provider);
+  // JOB 3588: die GRUNDFREIGABE im Aufbau. V2-E1 („die Antwort kommt vom Anbieter und trägt seinen
+  // Beleg") und V2-E3 messen, ob die EINWILLIGUNG den Anbieterweg öffnet bzw. nach Ablauf wieder
+  // schließt. Ohne die Adminfreigabe des Kerns von JOB 3549 wäre der Weg immer zu, und beide Fälle
+  // prüften die falsche Sperre. Die Freigabe ersetzt die Einwilligung NICHT — sie ist die Bedingung
+  // davor, und E3 belegt weiterhin, dass die Einwilligung allein die Tür öffnet und schließt.
+  // Kein `vertraulicheInhalte`: das Objekt dieses Aufbaus ist offen eingestuft.
+  await erteileKiFreigabe(reasoner);
   const ask = new AskService({
-    reasoner: new Reasoner(provider),
+    reasoner,
     koService,
     gaps: new InMemoryGapRepo(),
     audit: new AuditService({ repo: new InMemoryAuditRepo() }),

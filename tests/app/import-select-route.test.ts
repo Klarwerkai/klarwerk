@@ -18,6 +18,7 @@ import {
 import type { ConfluenceSourceAdapter } from "../../services/confluence";
 import { type ImportItem, promptRequiresConfidential } from "../../services/library-analytics";
 import { ModelProvider, Reasoner } from "../../services/reasoner";
+import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 
 // WP-VIP2-GATE (bens P0-1, endgueltig): Spy am EMBEDDER-Chokepoint. Das Modul services/embedding
 // wird gewrappt: jeder von createEmbeddingProviderFromEnv gebaute Provider zaehlt seine embed()-
@@ -67,7 +68,17 @@ function fixtureAdapter(items: ImportItem[]): ConfluenceSourceAdapter {
 
 // Spy am ECHTEN Cloud-Chokepoint: ModelClient.complete — der einzige Weg, auf dem der Satz die
 // Maschine Richtung Cloud verlassen würde (deriveImportCriteria → completeRaw → client.complete).
-function cloudSpyReasoner(criteriaJson: string) {
+// JOB 3588: die GRUNDFREIGABE gehört in DIESEN Aufbau und in keinen einzelnen Fall.
+//
+// Beide Sorten von Fällen benutzen diesen Spion: die POSITIVFÄLLE erwarten genau einen Cloud-Aufruf,
+// die SPERRFÄLLE (restringierte/ungültige Stufe, fremde Prompt-Provenienz) erwarten null. Beide
+// brauchen die Adminfreigabe des Kerns von JOB 3549 — und zwar aus demselben Grund: nur mit ihr ist
+// die gemessene Null die Aussage über die VERTRAULICHKEITS- bzw. Provenienzregel, die diese Datei
+// prüft, und nicht über eine fehlende Adminfreigabe, die mit ihr nichts zu tun hat.
+//
+// KEIN `vertraulicheInhalte`: die Positivfälle fahren einen komplett `intern` freigegebenen
+// Schnappschuss, und die restriktiven Stufen sollen gesperrt BLEIBEN.
+async function cloudSpyReasoner(criteriaJson: string) {
   let calls = 0;
   const provider = new ModelProvider({
     name: "anthropic:test",
@@ -76,11 +87,16 @@ function cloudSpyReasoner(criteriaJson: string) {
       return criteriaJson;
     },
   });
-  return { reasoner: new Reasoner(provider), cloudCalls: () => calls };
+  const reasoner = new Reasoner(provider);
+  await erteileKiFreigabe(reasoner);
+  return { reasoner, cloudCalls: () => calls };
 }
 
-function throwingReasoner() {
-  return new Reasoner(
+// JOB 3588: ebenfalls mit Grundfreigabe — „Modell wirft → inferenceStatus unavailable" setzt voraus,
+// dass das Modell überhaupt gerufen wird. Ohne sie entstünde `no-model` statt `model-error`, und der
+// Fall prüfte eine andere Ursache als die, die er benennt.
+async function throwingReasoner() {
+  const reasoner = new Reasoner(
     new ModelProvider({
       name: "anthropic:test",
       complete: async () => {
@@ -88,6 +104,8 @@ function throwingReasoner() {
       },
     }),
   );
+  await erteileKiFreigabe(reasoner);
+  return reasoner;
 }
 
 async function selectApp(items: ImportItem[], reasoner?: Reasoner) {
@@ -128,7 +146,7 @@ describe("WP-SAMMEL20-FIX (Fix 1, P0): Select-Vertraulichkeit — fail-safe Batc
   const PROMPT = "alles zur Pumpenwartung";
 
   it("EIN Item ohne Signal im Snapshot → Select-Aufruf läuft vertraulich: 0 Cloud-Calls, ehrlicher Ausfall", async () => {
-    const spy = cloudSpyReasoner('{"keywords":["pumpe"]}');
+    const spy = await cloudSpyReasoner('{"keywords":["pumpe"]}');
     const { app, headers } = await selectApp(
       [
         item({ title: "Pumpe warten", confidentiality: "intern" }),
@@ -151,7 +169,7 @@ describe("WP-SAMMEL20-FIX (Fix 1, P0): Select-Vertraulichkeit — fail-safe Batc
 
   it("restringierte UND ungültige Stufe im Snapshot → ebenfalls 0 Cloud-Calls", async () => {
     for (const conf of ["vertraulich", "streng_vertraulich", "geheim"]) {
-      const spy = cloudSpyReasoner('{"keywords":["pumpe"]}');
+      const spy = await cloudSpyReasoner('{"keywords":["pumpe"]}');
       const { app, headers } = await selectApp(
         [
           item({ title: "Frei", confidentiality: "intern" }),
@@ -172,7 +190,7 @@ describe("WP-SAMMEL20-FIX (Fix 1, P0): Select-Vertraulichkeit — fail-safe Batc
   });
 
   it("POSITIVFALL: NUR bei komplett explizit freigegebenen Stufen arbeitet die Cloud (1 Call, Kriterien wirken)", async () => {
-    const spy = cloudSpyReasoner('{"keywords":["pumpe"]}');
+    const spy = await cloudSpyReasoner('{"keywords":["pumpe"]}');
     const { app, headers } = await selectApp(
       [
         item({ title: "Pumpe warten", confidentiality: "intern" }),
@@ -218,7 +236,7 @@ describe("WP-VIP2-GATE (bens P0-1, endgueltig): Prompt-Provenienz ohne fail-open
   });
 
   it("LEERER Snapshot → vertraulich (fail-closed, vorher fail-open): 0 Cloud- UND 0 Embedder-Aufrufe", async () => {
-    const spy = cloudSpyReasoner('{"keywords":["pumpe"]}');
+    const spy = await cloudSpyReasoner('{"keywords":["pumpe"]}');
     const { app, headers } = await selectApp([], spy.reasoner);
     const res = await app.inject({
       ...selectBody({ prompt: PROMPT, promptConfidential: false }),
@@ -234,7 +252,7 @@ describe("WP-VIP2-GATE (bens P0-1, endgueltig): Prompt-Provenienz ohne fail-open
   });
 
   it("unklassifiziertes Item im Snapshot → exakt NULL Cloud- und NULL Embedder-Aufrufe (bens Formulierung)", async () => {
-    const spy = cloudSpyReasoner('{"keywords":["pumpe"]}');
+    const spy = await cloudSpyReasoner('{"keywords":["pumpe"]}');
     const { app, headers } = await selectApp(
       [item({ title: "Pumpe warten", confidentiality: "intern" }), item({ title: "Ohne Signal" })],
       spy.reasoner,
@@ -249,7 +267,7 @@ describe("WP-VIP2-GATE (bens P0-1, endgueltig): Prompt-Provenienz ohne fail-open
   });
 
   it("FEHLKLASSIFIZIERT (ungueltige Stufe) → ebenfalls 0/0", async () => {
-    const spy = cloudSpyReasoner('{"keywords":["pumpe"]}');
+    const spy = await cloudSpyReasoner('{"keywords":["pumpe"]}');
     const { app, headers } = await selectApp(
       [
         item({ title: "Frei", confidentiality: "intern" }),
@@ -270,7 +288,7 @@ describe("WP-VIP2-GATE (bens P0-1, endgueltig): Prompt-Provenienz ohne fail-open
   });
 
   it("POSITIVFALL unveraendert: komplett explizit freigegebener Snapshot → genau 1 Cloud-Call, 0 Embedder", async () => {
-    const spy = cloudSpyReasoner('{"keywords":["pumpe"]}');
+    const spy = await cloudSpyReasoner('{"keywords":["pumpe"]}');
     const { app, headers } = await selectApp(
       [
         item({ title: "Pumpe warten", confidentiality: "intern" }),
@@ -323,7 +341,7 @@ describe("WP-SAMMEL20-FIX (Fix 2): KI-Ausfall NIE still — inferenceStatus + Kl
         item({ title: "Pumpe warten", tags: ["wartung"], confidentiality: "intern" }),
         item({ title: "Ventil tauschen", tags: ["montage"], confidentiality: "intern" }),
       ],
-      throwingReasoner(),
+      await throwingReasoner(),
     );
     const res = await app.inject({
       ...selectBody({
@@ -359,7 +377,7 @@ describe("WP-SAMMEL20-FIX (Fix 2): KI-Ausfall NIE still — inferenceStatus + Kl
 
 describe("WP-SAMMEL20-FIX (Fix 3): Route-Schema der Auswahl", () => {
   it("Prompt über dem Deckel → ehrlicher 400 (kein stilles Kappen, kein Cloud-Call)", async () => {
-    const spy = cloudSpyReasoner("{}");
+    const spy = await cloudSpyReasoner("{}");
     const { app, headers } = await selectApp(
       [item({ title: "Pumpe", confidentiality: "intern" })],
       spy.reasoner,
@@ -418,7 +436,7 @@ describe("WP-VIP2-GATE-2 Fix 1: Prompt-Eigenprovenienz (Pflicht-Einstufung + heb
   });
 
   it("interner Snapshot + FEHLENDE Einstufung → ehrlicher 400 und BEIDE Egress-Spys exakt 0", async () => {
-    const spy = cloudSpyReasoner('{"keywords":["pumpe"]}');
+    const spy = await cloudSpyReasoner('{"keywords":["pumpe"]}');
     const { app, headers } = await selectApp(INTERN_SNAPSHOT(), spy.reasoner);
     const res = await app.inject({ ...selectBody({ prompt: PROMPT }), headers });
     expect(res.statusCode).toBe(400);
@@ -436,7 +454,7 @@ describe("WP-VIP2-GATE-2 Fix 1: Prompt-Eigenprovenienz (Pflicht-Einstufung + heb
   });
 
   it("interner Snapshot + VERTRAULICHE Einstufung (Vorgabe Ja/unsicher) → 200, aber 0 Cloud- UND 0 Embedder-Aufrufe", async () => {
-    const spy = cloudSpyReasoner('{"keywords":["pumpe"]}');
+    const spy = await cloudSpyReasoner('{"keywords":["pumpe"]}');
     const { app, headers } = await selectApp(INTERN_SNAPSHOT(), spy.reasoner);
     const res = await app.inject({
       ...selectBody({ prompt: PROMPT, promptConfidential: true }),
@@ -452,7 +470,7 @@ describe("WP-VIP2-GATE-2 Fix 1: Prompt-Eigenprovenienz (Pflicht-Einstufung + heb
   });
 
   it("POSITIV NUR bei explizit unbedenklichem Prompt UND komplett internem Snapshot (1 Cloud, 0 Embedder)", async () => {
-    const spy = cloudSpyReasoner('{"keywords":["pumpe"]}');
+    const spy = await cloudSpyReasoner('{"keywords":["pumpe"]}');
     const { app, headers } = await selectApp(INTERN_SNAPSHOT(), spy.reasoner);
     const res = await app.inject({
       ...selectBody({ prompt: PROMPT, promptConfidential: false }),
@@ -465,7 +483,7 @@ describe("WP-VIP2-GATE-2 Fix 1: Prompt-Eigenprovenienz (Pflicht-Einstufung + heb
   });
 
   it("BACKSTOP hebt monoton: unbedenklicher Prompt, aber EIN unklares Item → trotzdem 0/0", async () => {
-    const spy = cloudSpyReasoner('{"keywords":["pumpe"]}');
+    const spy = await cloudSpyReasoner('{"keywords":["pumpe"]}');
     const { app, headers } = await selectApp(
       [item({ title: "Pumpe warten", confidentiality: "intern" }), item({ title: "Ohne Signal" })],
       spy.reasoner,

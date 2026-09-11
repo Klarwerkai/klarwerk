@@ -41,6 +41,11 @@ import { AuditService, InMemoryAuditRepo } from "../../services/audit";
 import { InMemoryKoRepo, KoService } from "../../services/knowledge-object";
 import { type ModelClient, Reasoner } from "../../services/reasoner";
 import { ModelProvider } from "../../services/reasoner/src/provider-model";
+// JOB 3588: die GRUNDFREIGABE im Aufbau. Alle vier Fälle messen einen ECHTEN Modellweg (der
+// `mitschreiber` zählt den Prompt und die Antwort geht durch); ohne die Adminfreigabe des Kerns von
+// JOB 3549 liefe kein Modell, und „beide Quellen stehen in der Antwort" wäre eine Aussage über den
+// deterministischen Ersatz. KEINE Freigabe für VERTRAULICHES: kein Fall stuft hier etwas so ein.
+import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 
 const VORGEFUNDEN = process.env.KLARWERK_SKIP_KEYCHAIN;
 beforeAll(() => {
@@ -122,8 +127,10 @@ async function aufbauen(antwort: string, kopieAbsaetze: readonly string[]) {
     author: "bea",
   });
   const { client, prompts } = mitschreiber(antwort);
+  const reasoner = new Reasoner(new ModelProvider(client));
+  await erteileKiFreigabe(reasoner);
   const ask = new AskService({
-    reasoner: new Reasoner(new ModelProvider(client)),
+    reasoner,
     koService,
     gaps: new InMemoryGapRepo(),
     audit: new AuditService({ repo: new InMemoryAuditRepo() }),

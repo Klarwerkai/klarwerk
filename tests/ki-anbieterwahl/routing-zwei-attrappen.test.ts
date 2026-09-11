@@ -649,6 +649,21 @@ describe("JOB 3134 N: die Nebenwege folgen derselben Wahl — Weltwissen, Urteil
 //       erlaubt, die Freigabe SELBST setzen nicht (F4, `setztFreigabeSelbst`) — und ein SPERRFALL
 //       steht namentlich in `faelle` mit `freigaben: []`. Ausführlich bei `Dateiakte`.
 //
+// WAS JOB 3588 GEÄNDERT HAT — nur die beiden REGISTER, keine Regel:
+//   (j) Vierundzwanzig Bestandsdateien sind dazugekommen, je mit Grund (FREIGABE_ERLAUBT) und
+//       Fallakte (FALLAKTEN). Sie sind der Rest des Nachtrags: JOB 3550 versorgte drei Dateien,
+//       JOB 3570 einunddreißig, und diese vierundzwanzig gehörten bis heute niemandem. Die Zahlen
+//       sind mit DIESEM Wächter gemessen, nicht abgeschätzt. Damit ist F1 wieder in beiden
+//       Richtungen wahr: kein Benutzer ohne Eintrag, kein Eintrag ohne Träger.
+//   (k) NICHT dazugekommen sind vier Dateien, die die Freigabe ebenfalls bräuchten und sie auf
+//       keinem erlaubten Weg bekommen können: `services/app/src/routes/check-text-routes.test.ts`,
+//       `services/app/src/routes/reasoner-egress.test.ts`, `services/ask/src/service.test.ts` und
+//       `services/ask/src/ka4-vertraulich-im-erlaubten-zweig.test.ts`. Der Helfer liegt hinter der
+//       Modulgrenze (`.dependency-cruiser.cjs:16-27`, gemessen mit `depcruise`), und die Felder von
+//       Hand zu schreiben verbietet F2 — auch in der Nutzlast des echten Adminwegs. JOB 3588
+//       Runde 1 hatte genau das getan und ist hier rot geworden; die Regel bleibt, der Punkt bleibt
+//       offen und steht im Kopf der jeweiligen Datei mit Messung und kleinstem Umbau.
+//
 // WARUM DIESER BLOCK IN DIESER DATEI STEHT und nicht in einer eigenen: die Zielpfade des Auftrags
 // zählen 57 Testdateien EINZELN auf (Auftrag §2b, mit Begründung — ein breiter Pfad hätte fünf
 // andere laufende Aufträge blockiert). Eine neue Datei läge außerhalb davon. Diese Datei trägt alle
@@ -896,6 +911,169 @@ const FREIGABE_ERLAUBT: ReadonlyMap<string, string> = new Map([
     'Dasselbe für das Dubletten-Urteil: der Fall stellt „mit Modell urteilt" gegen „ohne Modell ' +
       'ehrlich null". Ohne Freigabe wären beide Hälften null, und der Fall verlöre seine ' +
       "Gegenprobe im eigenen Rumpf.",
+  ],
+
+  // ----------------------------------------------------------------------------------------------
+  // JOB 3588 · DER NACHTRAG 2 — die vierundzwanzig Bestandsdateien, die bis heute niemandem gehörten.
+  // ----------------------------------------------------------------------------------------------
+  //
+  // WOHER DIE LISTE KOMMT: aus dem Torlauf des Kerns (JOB 3549 Runde 3), nicht aus einer Schätzung.
+  // JOB 3550 versorgte drei Dateien, JOB 3570 einunddreißig — diese hier lagen dazwischen. Jede
+  // misst einen ECHTEN Weg zum Modell und würde mit dem Kern rot, obwohl sich das Produkt richtig
+  // verhält.
+  //
+  // ZWEIMAL STEHT IN DIESEM BLOCK AUSDRÜCKLICH, DASS DIE ZWEITE FREIGABE FEHLT, obwohl der Dateiname
+  // das Gegenteil vermuten lässt (`mega61-vertraulich-…`, `ka4-vertraulich-…`): genau diese Dateien
+  // messen, dass Vertrauliches NICHT hinausgeht. Sie brauchen die Grundfreigabe, damit der Weg
+  // überhaupt beginnt — und nie die zweite, die die gemessene Sperre aufheben würde.
+  [
+    "tests/app/ai-check-provider-failure-e2e-rt001.test.ts",
+    "Jeder Fall misst eine Ursache, die NUR entsteht, wenn der Provider wirklich gerufen wurde " +
+      "(401→auth, 429→rate-limit, …). Ohne Freigabe endete der Lauf deterministisch-erfolgreich " +
+      "und alle acht Fälle prüften eine Ursache, die es gar nicht gibt.",
+  ],
+  [
+    "tests/app/aistate-fix2.test.ts",
+    "EIN Fall (der LIVE-Pfad) zählt echte Judge-Aufrufe und bekommt die Freigabe. Die übrigen " +
+      "fahren ohne Modell oder über eigene Attrappen und bleiben ausdrücklich ohne — ihre Null " +
+      "gehört dem fehlenden Anbieter.",
+  ],
+  [
+    "tests/app/aistate-fix3.test.ts",
+    "Zwei Fälle brauchen sie: der echte Duplikat-Judge-Aufruf und das Modell-Profil im Datensatz. " +
+      'Der Sperrfall („ECHTER No-Model-Runner-Test: Provider-/complete-Aufrufe EXAKT 0") bekommt ' +
+      "sie AUSDRÜCKLICH NICHT — dort ist die Null die Zusage.",
+  ],
+  [
+    "tests/app/import-group-routes.test.ts",
+    "Die Freigabe steht im gemeinsamen Aufbau, weil BEIDE Sorten Fälle sie brauchen: die positiven " +
+      "erwarten genau einen Cloud-Aufruf, die Sperrfälle null. Nur mit ihr ist die gemessene Null " +
+      "die Aussage über die Vertraulichkeitsregel und nicht über eine fehlende Adminfreigabe.",
+  ],
+  [
+    "tests/app/import-select-route.test.ts",
+    "Derselbe Grund wie bei der Gruppenroute, dazu ein zweiter Aufbau: „Modell wirft → " +
+      "inferenceStatus unavailable“ setzt voraus, dass das Modell überhaupt gerufen wird — ohne " +
+      "Freigabe entstünde `no-model` statt `model-error`, also eine andere Ursache als benannt.",
+  ],
+  [
+    "tests/app/ship8-close-aicheck.test.ts",
+    "Der ganze Sinn dieses Aufbaus ist, dass der echte ModelProvider den gefakten Client WIRKLICH " +
+      "ruft. Ohne Freigabe stünde er in keiner Kette und jeder Fall prüfte den deterministischen " +
+      "Ersatz statt des Weges, den die Datei benennt.",
+  ],
+  [
+    "tests/app/tv1-durchstich-route.test.ts",
+    "Nur mit Grundfreigabe läuft der Cloud-Vision-Weg im Fall `intern` und es kann überhaupt ein " +
+      "Titelvorschlag entstehen. Der Fall `streng_vertraulich` darunter bleibt gesperrt — dafür " +
+      "bräuchte es `vertraulicheInhalte`, und genau die wird hier bewusst nicht gesetzt.",
+  ],
+  [
+    "tests/ask-c02/befund.test.ts",
+    "Drei Fälle messen einen echten Weg zum Modell (`mitschreiber` zählt die Prompts). Ohne " +
+      "Freigabe gäbe es keinen einzigen Prompt, und die Aussagen über Auszug, Beleg und Deckung " +
+      "wären Aussagen über eine Null. Kein Fall dieser Datei stuft ein Objekt vertraulich ein.",
+  ],
+  [
+    "tests/ask-c02/konflikt.test.ts",
+    "Alle vier Fälle messen einen echten Modellweg; ohne Freigabe liefe kein Modell und „beide " +
+      "Quellen stehen in der Antwort“ wäre eine Aussage über den deterministischen Ersatz. " +
+      "Kein Fall stuft hier etwas vertraulich ein.",
+  ],
+  [
+    "tests/ask-volltext/vollkette-und-rechte.test.ts",
+    "Auch die beiden RECHTE-Fälle brauchen sie: sie messen nicht „kein Modellaufruf“, sondern " +
+      "„das Modell LÄUFT und bekommt den geschützten Dokumenttext trotzdem nicht“ (Promptzahl 1). " +
+      "Ohne Freigabe bliebe die Zahl 0 und die Aussage wertlos. Das vertrauliche Objekt fällt " +
+      "schon vor dem Prompt aus dem Auszug — der Lauf selbst führt nichts Vertrauliches.",
+  ],
+  [
+    "tests/ask/job2659-eine-marke-ist-kein-beleg.test.ts",
+    "Ein Fall, die Vollkette K: K3/K4 messen, dass die ABSAGE bzw. die fehlende Marke des ECHTEN " +
+      "Modells zur Wissenslücke wird. Ohne Freigabe liefe das Modell gar nicht, und die Lücke " +
+      "entstünde aus dem falschen Grund. Die Objekte sind offen eingestuft.",
+  ],
+  [
+    "tests/ask/mega61-vertraulich-kein-cloud-kontext.test.ts",
+    "AUSSCHLIESSLICH `oeffentlicheKi`, NIEMALS die zweite: die Datei misst, dass Vertrauliches den " +
+      "Modellkontext nicht erreicht. Die Grundfreigabe lässt den Weg überhaupt erst beginnen — die " +
+      "zweite würde die Sperre aufheben, die hier die ganze Zusage trägt.",
+  ],
+  [
+    "tests/conflicts/detection-cap-honesty.test.ts",
+    "Vier Fälle zählen ECHTE Judge-Aufrufe und lesen daraus die Abdeckung (geprüfte Menge, " +
+      "verfügbare Menge, Deckelung). Ohne Freigabe bliebe jeder Zähler 0, und „der Deckel wirkt in " +
+      "BEIDEN Live-Wegen“ wäre eine Aussage über zwei Nullen. Die KOs sind offen eingestuft.",
+  ],
+  [
+    "tests/import-freitext-titel/titel-satz-findet-die-seite.test.ts",
+    "Der Doppelgänger soll seine Deutung wirklich liefern; ohne Freigabe käme er nie zum Zug und " +
+      "der Fall prüfte den deterministischen Ersatz statt der beobachteten Fehldeutung. Der " +
+      "KI-AUSFALL-Fall braucht sie ebenso — sonst wäre die Ursache „kein Modell“ statt „Fehler“.",
+  ],
+  [
+    "tests/ka4-freischaltung/ka4-einwilligung-wirkt.test.ts",
+    "Ein Fall: KA4-S3/KA4-F8a messen, dass der Anbieter über diesen Weg WIRKLICH gerufen wird " +
+      "(Zähler 1) und dass das Gesehene von den ausgewiesenen Nutzlastklassen gedeckt ist. KEIN " +
+      "`vertraulicheInhalte`: das vertrauliche Objekt soll den Modellweg gerade nicht erreichen.",
+  ],
+  [
+    "tests/ki-lauf-modell/api-lauf-modell.test.ts",
+    "Beide Fälle lesen einen ECHTEN Cloud-Lauf aus dem Bestand (`provider` und `model` sind zwei " +
+      "verschiedene Angaben). Ohne Freigabe entstünde gar kein Cloud-Lauf und die Route hätte " +
+      "nichts zu nennen. Der Anker stuft den Text ausdrücklich als NICHT vertraulich ein.",
+  ],
+  [
+    "tests/ki-lauf-modell/lauf-nennt-modell.test.ts",
+    "Die Frage der Datei — „welches MODELL nennt der Datensatz?“ — hat nur dann eine Antwort, " +
+      "wenn das Modell auch gerufen wurde. Sie steht unbedingt im Aufbau: die beiden Fälle ohne " +
+      "verdrahteten Anbieter enden auch mit Freigabe deterministisch, denn die Freigabe verdrahtet " +
+      "keinen Anbieter.",
+  ],
+  [
+    "tests/klara-freigabe/v2-einwilligung-ende-zu-ende.test.ts",
+    "V2-E1/E3 messen, ob die EINWILLIGUNG den Anbieterweg öffnet bzw. nach Ablauf wieder schließt. " +
+      "Ohne Adminfreigabe wäre der Weg immer zu und beide prüften die falsche Sperre. Die Freigabe " +
+      "ersetzt die Einwilligung NICHT — sie ist die Bedingung davor, und E3 belegt das weiterhin.",
+  ],
+  [
+    "tests/library/import-json-zero-model-calls.test.ts",
+    "NUR die Gegenprobe („derselbe Spy-Aufbau ZÄHLT, wenn ein Objekt regulär eingereicht wird“) " +
+      "bekommt sie, denn nur sie behauptet eine Zahl ÜBER null. Die Sperrfälle „NULL " +
+      "Modellaufrufe“ bekommen ausdrücklich KEINE — sie stehen unten namentlich mit leerer " +
+      "Freigabeliste.",
+  ],
+  [
+    "tests/m3-dokumentweg-panel/w6-anschluss-echte-route.test.ts",
+    "Der Aufbau existiert, damit der mitschreibende Anbieter WIRKLICH gerufen wird. Ohne Freigabe " +
+      "bliebe die Liste leer und „mit Zustimmung geht es hinaus / ohne nicht“ prüfte zweimal " +
+      "dieselbe Sperre. Die Freigabe ersetzt die ZUSTIMMUNG nicht; `zustimmen === false` bleibt zu.",
+  ],
+  [
+    "tests/n11b-zustimmung-macht-intern/zustimmung.test.ts",
+    "Die Datei misst, dass die bestätigte DOKUMENTZUSTIMMUNG den tiefen Zweig öffnet — dafür muss " +
+      "er wirklich laufen. Ohne Freigabe gäben „mit Zustimmung“ und „ohne Zustimmung“ dasselbe " +
+      "Ergebnis aus zwei verschiedenen Gründen. KEIN `vertraulicheInhalte`: die Zustimmung hebt " +
+      "Text auf INTERN, nicht über die Vertraulichkeitsgrenze.",
+  ],
+  [
+    "tests/security/vip2-gate.test.ts",
+    "Ein Fall: die Statusrouten sollen keinen Anbieter-/Modellnamen durchsickern lassen UND " +
+      "trotzdem ehrlich „cloud-fähig“ melden. Die zweite Hälfte ist die gegatete Antwort des " +
+      "Kerns; ohne Adminfreigabe ist sie `false`, und der Leck-Test liefe an einem Zustand vorbei, " +
+      "in dem es gar nichts zu lecken gäbe. Die Statusrouten übertragen keinen Text.",
+  ],
+  [
+    "tests/select-lauf-protokoll/laufprotokoll.test.ts",
+    "Die Datei protokolliert Auswahlläufe an einem ECHTEN Modell: Modellname, Verbrauch, " +
+      "Fehlerursache. Ohne Freigabe stünde der Client in keiner Kette, jeder Lauf endete " +
+      "„no-model“, und acht Fälle prüften eine Ursache, die sie gar nicht herbeigeführt haben.",
+  ],
+  [
+    "tests/select-lauf-protokoll/route-einstieg.test.ts",
+    "Beide Fälle messen, dass der Routeneinstieg einen ECHTEN Auswahllauf protokolliert (mit " +
+      "Modellnamen). Ohne Freigabe endete jeder Lauf „no-model“ und die Route hätte nichts zu " +
+      "protokollieren. Der Schnappschuss ist nicht vertraulich eingestuft.",
   ],
 ]);
 
@@ -1850,6 +2028,346 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
     gesamtboden: 14,
     faelle: {
       "#6": { boden: 2, freigaben: ["erteileKiFreigabe(withModel)"] },
+    },
+  },
+
+  // ---- JOB 3588 · DER NACHTRAG 2. Alle Zahlen unten sind GEMESSEN, nicht abgeschätzt: sie stammen
+  // aus einem Lauf dieses Wächters über den Stand nach dem Einbau der Freigabe (`erwartungsstellen`
+  // am Syntaxbaum, `fallStellen` am Bestandsteil ohne Kommentare) — dieselbe Rechnung, die F4
+  // gleich darauf anstellt. Was nicht selbst gefahren wurde, steht hier nicht.
+  //
+  // WARUM SECHZEHN DIESER VIERUNDZWANZIG DATEIEN `vollzaehlig` TRAGEN und acht nicht: sechzehn
+  // setzen ihre Freigabe im VORSPANN, im gemeinsamen Aufbau. Dann läuft JEDER Fall der Datei durch
+  // sie hindurch, und „nur die geänderten Fälle werden geführt" wäre keine Grenze mehr, sondern ein
+  // Loch — F4 verlangt für sie deshalb die vollzählige Fallliste. Die übrigen acht setzen sie in
+  // einzelnen Fällen; dort ist nur der betroffene Fall geführt, damit eine fremde Erweiterung an
+  // einer dieser Dateien nicht künstlich rot wird (Grenze aus Auftrag 3570 §3.4).
+  //
+  // DIE SPERRFÄLLE stehen namentlich mit LEERER Freigabeliste — mehr ist dort so rot wie weniger.
+  // Das ist die eigentliche Zusage dieses Blocks: `import-json-zero-model-calls` behauptet NULL
+  // Modellaufrufe, `aistate-fix3` einen Runner ganz ohne Modell, `mega61` und `tv1-durchstich`
+  // je eine Vertraulichkeitssperre. Wer einem von ihnen still eine Freigabe einbaut, ändert, was
+  // der Test misst — und genau das fällt hier auf.
+  "tests/app/ai-check-provider-failure-e2e-rt001.test.ts": {
+    gesamtboden: 6,
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: { boden: 1, freigaben: ["erteileKiFreigabe(services.reasoner)"] },
+      "#1": { boden: 5, freigaben: ["erteileKiFreigabe(services.reasoner)"] },
+    },
+  },
+  "tests/app/aistate-fix2.test.ts": {
+    gesamtboden: 14,
+    faelle: {
+      "#5": { boden: 3, freigaben: ["erteileKiFreigabe(services.reasoner)"] },
+    },
+  },
+  "tests/app/aistate-fix3.test.ts": {
+    gesamtboden: 37,
+    faelle: {
+      "#1": { boden: 7, freigaben: ["erteileKiFreigabe(services.reasoner)"] },
+      "#2": { boden: 3, freigaben: ["erteileKiFreigabe(services.reasoner)"] },
+      // SPERRFALL: „ECHTER No-Model-Runner-Test — Provider-/complete-Aufrufe EXAKT 0". Die Null ist
+      // hier die Zusage; eine Freigabe würde ändern, was der Fall misst.
+      "#3": { boden: 4, freigaben: [] },
+    },
+  },
+  "tests/app/import-group-routes.test.ts": {
+    gesamtboden: 85,
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: { boden: 0, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#1": { boden: 10, freigaben: [] },
+      "#2": { boden: 3, freigaben: [] },
+      "#3": { boden: 6, freigaben: [] },
+      "#4": { boden: 6, freigaben: [] },
+      "#5": { boden: 4, freigaben: [] },
+      "#6": { boden: 3, freigaben: [] },
+      "#7": { boden: 2, freigaben: [] },
+      "#8": { boden: 2, freigaben: [] },
+      "#9": { boden: 4, freigaben: [] },
+      "#10": { boden: 6, freigaben: [] },
+      "#11": { boden: 4, freigaben: [] },
+      "#12": { boden: 4, freigaben: [] },
+      "#13": { boden: 4, freigaben: [] },
+      "#14": { boden: 4, freigaben: [] },
+      "#15": { boden: 4, freigaben: [] },
+      "#16": { boden: 2, freigaben: [] },
+      "#17": { boden: 5, freigaben: [] },
+      "#18": { boden: 2, freigaben: [] },
+      "#19": { boden: 10, freigaben: [] },
+    },
+  },
+  "tests/app/import-select-route.test.ts": {
+    gesamtboden: 75,
+    vollzaehlig: true,
+    faelle: {
+      // Zwei Aufbauten, zwei Freigaben: der Spion-Aufbau und der werfende Reasoner.
+      VORSPANN: {
+        boden: 0,
+        freigaben: ["erteileKiFreigabe(reasoner)", "erteileKiFreigabe(reasoner)"],
+      },
+      "#1": { boden: 4, freigaben: [] },
+      "#2": { boden: 2, freigaben: [] },
+      "#3": { boden: 5, freigaben: [] },
+      "#4": { boden: 5, freigaben: [] },
+      "#5": { boden: 3, freigaben: [] },
+      "#6": { boden: 3, freigaben: [] },
+      "#7": { boden: 3, freigaben: [] },
+      "#8": { boden: 7, freigaben: [] },
+      "#9": { boden: 2, freigaben: [] },
+      "#10": { boden: 5, freigaben: [] },
+      "#11": { boden: 2, freigaben: [] },
+      "#12": { boden: 4, freigaben: [] },
+      "#13": { boden: 4, freigaben: [] },
+      "#14": { boden: 7, freigaben: [] },
+      "#15": { boden: 5, freigaben: [] },
+      "#16": { boden: 4, freigaben: [] },
+      "#17": { boden: 3, freigaben: [] },
+      "#18": { boden: 1, freigaben: [] },
+      "#19": { boden: 4, freigaben: [] },
+      "#20": { boden: 2, freigaben: [] },
+    },
+  },
+  "tests/app/ship8-close-aicheck.test.ts": {
+    gesamtboden: 20,
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: { boden: 1, freigaben: ["erteileKiFreigabe(services.reasoner)"] },
+      "#1": { boden: 2, freigaben: [] },
+      "#2": { boden: 2, freigaben: [] },
+      "#3": { boden: 2, freigaben: [] },
+      "#4": { boden: 2, freigaben: [] },
+      "#5": { boden: 4, freigaben: [] },
+      "#6": { boden: 3, freigaben: [] },
+      "#7": { boden: 4, freigaben: [] },
+    },
+  },
+  "tests/app/tv1-durchstich-route.test.ts": {
+    gesamtboden: 13,
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: { boden: 0, freigaben: ["erteileKiFreigabe(services.reasoner)"] },
+      "#1": { boden: 3, freigaben: [] },
+      "#2": { boden: 5, freigaben: [] },
+      // SPERRFALL `streng_vertraulich`: er bleibt zu, weil `vertraulicheInhalte` NICHT erteilt ist.
+      "#3": { boden: 5, freigaben: [] },
+    },
+  },
+  "tests/ask-c02/befund.test.ts": {
+    gesamtboden: 79,
+    faelle: {
+      Z6: { boden: 1, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      A7: { boden: 3, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      A6: { boden: 3, freigaben: ["erteileKiFreigabe(reasoner)"] },
+    },
+  },
+  "tests/ask-c02/konflikt.test.ts": {
+    gesamtboden: 18,
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: { boden: 0, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#1": { boden: 9, freigaben: [] },
+      K3: { boden: 7, freigaben: [] },
+      K4: { boden: 2, freigaben: [] },
+    },
+  },
+  "tests/ask-volltext/vollkette-und-rechte.test.ts": {
+    gesamtboden: 20,
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: { boden: 0, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      V0: { boden: 2, freigaben: [] },
+      V1: { boden: 6, freigaben: [] },
+      R1: { boden: 6, freigaben: [] },
+      R2: { boden: 4, freigaben: [] },
+      R3: { boden: 2, freigaben: [] },
+    },
+  },
+  "tests/ask/job2659-eine-marke-ist-kein-beleg.test.ts": {
+    gesamtboden: 139,
+    faelle: {
+      "#39": { boden: 1, freigaben: ["erteileKiFreigabe(reasoner)"] },
+    },
+  },
+  "tests/ask/mega61-vertraulich-kein-cloud-kontext.test.ts": {
+    gesamtboden: 15,
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: { boden: 0, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#1": { boden: 2, freigaben: [] },
+      // G1–G3 sind die SPERRFÄLLE dieser Datei: das vertrauliche Objekt darf den Modellkontext
+      // nicht erreichen. Sie leben von der Grundfreigabe im VORSPANN (sonst liefe gar kein Modell)
+      // und bekommen nie eine eigene, großzügigere daneben.
+      G1: { boden: 4, freigaben: [] },
+      G2: { boden: 3, freigaben: [] },
+      G3: { boden: 1, freigaben: [] },
+      G4: { boden: 3, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      G5: { boden: 2, freigaben: [] },
+    },
+  },
+  "tests/conflicts/detection-cap-honesty.test.ts": {
+    gesamtboden: 37,
+    faelle: {
+      "#1": { boden: 3, freigaben: ["erteileKiFreigabe(services.reasoner)"] },
+      "#4": { boden: 9, freigaben: ["erteileKiFreigabe(services.reasoner)"] },
+      "#5": { boden: 2, freigaben: ["erteileKiFreigabe(services.reasoner)"] },
+      "#6": { boden: 5, freigaben: ["erteileKiFreigabe(services.reasoner)"] },
+    },
+  },
+  "tests/import-freitext-titel/titel-satz-findet-die-seite.test.ts": {
+    gesamtboden: 27,
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: { boden: 0, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#1": { boden: 6, freigaben: [] },
+      "#2": { boden: 6, freigaben: [] },
+      "#3": { boden: 5, freigaben: [] },
+      "#4": { boden: 2, freigaben: [] },
+      "#5": { boden: 1, freigaben: [] },
+      "#6": { boden: 1, freigaben: [] },
+      "#7": { boden: 3, freigaben: [] },
+      // Der KI-AUSFALL-Fall baut seinen eigenen, werfenden Reasoner — deshalb hier und nicht oben.
+      "#8": { boden: 3, freigaben: ["erteileKiFreigabe(werfend)"] },
+    },
+  },
+  "tests/ka4-freischaltung/ka4-einwilligung-wirkt.test.ts": {
+    gesamtboden: 55,
+    faelle: {
+      "#10": { boden: 5, freigaben: ["erteileKiFreigabe(reasoner)"] },
+    },
+  },
+  "tests/ki-lauf-modell/api-lauf-modell.test.ts": {
+    gesamtboden: 14,
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: { boden: 1, freigaben: ["erteileKiFreigabe(mutable.reasoner)"] },
+      "#1": { boden: 8, freigaben: [] },
+      "#2": { boden: 5, freigaben: [] },
+    },
+  },
+  "tests/ki-lauf-modell/lauf-nennt-modell.test.ts": {
+    gesamtboden: 53,
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: {
+        boden: 2,
+        freigaben: ["erteileKiFreigabe(reasoner)", "erteileKiFreigabe(reasoner)"],
+      },
+      "#1": { boden: 5, freigaben: [] },
+      "#2": { boden: 4, freigaben: [] },
+      "#3": { boden: 6, freigaben: [] },
+      "#4": { boden: 3, freigaben: [] },
+      "#5": { boden: 4, freigaben: [] },
+      "#6": { boden: 3, freigaben: [] },
+      "#7": { boden: 2, freigaben: [] },
+      "#8": { boden: 2, freigaben: [] },
+      "#9": { boden: 3, freigaben: [] },
+      "#10": { boden: 4, freigaben: [] },
+      "#11": { boden: 3, freigaben: [] },
+      "#12": { boden: 3, freigaben: [] },
+      "#13": { boden: 2, freigaben: [] },
+      "#14": { boden: 3, freigaben: [] },
+      "#15": { boden: 4, freigaben: ["erteileKiFreigabe(reasoner)"] },
+    },
+  },
+  "tests/klara-freigabe/v2-einwilligung-ende-zu-ende.test.ts": {
+    gesamtboden: 62,
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: { boden: 6, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#1": { boden: 1, freigaben: [] },
+      "#2": { boden: 8, freigaben: [] },
+      "#3": { boden: 10, freigaben: [] },
+      "#4": { boden: 15, freigaben: [] },
+      "#5": { boden: 5, freigaben: [] },
+      "#6": { boden: 6, freigaben: [] },
+      "#7": { boden: 6, freigaben: [] },
+      "#8": { boden: 2, freigaben: [] },
+      "#9": { boden: 3, freigaben: [] },
+    },
+  },
+  "tests/library/import-json-zero-model-calls.test.ts": {
+    gesamtboden: 23,
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: { boden: 0, freigaben: [] },
+      // DIE ZWEI SPERRFÄLLE, um die es in dieser Datei geht: ein Bibliotheks-Import erzeugt NULL
+      // Modellaufrufe. Sie sind heute grün und bleiben ohne jede Freigabe — hier steht das
+      // namentlich, damit eine spätere Runde sie nicht beiläufig „mitversorgt".
+      "#1": { boden: 7, freigaben: [] },
+      "#2": { boden: 7, freigaben: [] },
+      // NUR die Gegenprobe behauptet eine Zahl über null und bekommt deshalb die Grundfreigabe.
+      "#3": { boden: 3, freigaben: ["erteileKiFreigabe(services.reasoner)"] },
+      "#4": { boden: 3, freigaben: [] },
+      "#5": { boden: 3, freigaben: [] },
+    },
+  },
+  "tests/m3-dokumentweg-panel/w6-anschluss-echte-route.test.ts": {
+    gesamtboden: 33,
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: { boden: 13, freigaben: ["erteileKiFreigabe(services.reasoner)"] },
+      R1: { boden: 7, freigaben: [] },
+      R2: { boden: 2, freigaben: [] },
+      R3: { boden: 2, freigaben: [] },
+      R4: { boden: 2, freigaben: [] },
+      R5: { boden: 4, freigaben: [] },
+      R6: { boden: 3, freigaben: [] },
+    },
+  },
+  "tests/n11b-zustimmung-macht-intern/zustimmung.test.ts": {
+    gesamtboden: 71,
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: { boden: 15, freigaben: ["erteileKiFreigabe(services.reasoner)"] },
+      "#1": { boden: 5, freigaben: [] },
+      "#2": { boden: 3, freigaben: [] },
+      "#3": { boden: 3, freigaben: [] },
+      "#4": { boden: 20, freigaben: [] },
+      "#5": { boden: 9, freigaben: [] },
+      "#6": { boden: 5, freigaben: [] },
+      "#7": { boden: 4, freigaben: [] },
+      "#8": { boden: 4, freigaben: [] },
+      "#9": { boden: 3, freigaben: [] },
+    },
+  },
+  "tests/security/vip2-gate.test.ts": {
+    gesamtboden: 86,
+    faelle: {
+      "#12": { boden: 2, freigaben: ["erteileKiFreigabe(services.reasoner)"] },
+    },
+  },
+  "tests/select-lauf-protokoll/laufprotokoll.test.ts": {
+    gesamtboden: 52,
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: { boden: 1, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#1": { boden: 11, freigaben: [] },
+      "#2": { boden: 2, freigaben: [] },
+      "#3": { boden: 6, freigaben: [] },
+      "#4": { boden: 3, freigaben: [] },
+      "#5": { boden: 2, freigaben: [] },
+      "#6": { boden: 4, freigaben: [] },
+      "#7": { boden: 8, freigaben: [] },
+      "#8": { boden: 6, freigaben: [] },
+      "#9": { boden: 3, freigaben: [] },
+      // Drei Fälle bauen ihren eigenen Reasoner neben dem Aufbau und erteilen deshalb selbst.
+      "#10": { boden: 1, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#11": { boden: 3, freigaben: [] },
+      "#12": { boden: 1, freigaben: [] },
+      "#13": { boden: 1, freigaben: ["erteileKiFreigabe(reasoner)"] },
+    },
+  },
+  "tests/select-lauf-protokoll/route-einstieg.test.ts": {
+    gesamtboden: 17,
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: { boden: 0, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#1": { boden: 6, freigaben: [] },
+      "#2": { boden: 8, freigaben: [] },
+      "#3": { boden: 2, freigaben: [] },
+      "#4": { boden: 1, freigaben: [] },
     },
   },
 };

@@ -8,6 +8,10 @@ import { createAiCheckRunner } from "../../services/app/src/ai-check-worker";
 import { type AppServices, buildApp, buildServices } from "../../services/app/src/build-app";
 import type { DetectSubject } from "../../services/conflicts";
 import { type ModelClient, ModelProvider, Reasoner } from "../../services/reasoner";
+// JOB 3588: die Grundfreigabe im Aufbau — nur im LIVE-Pfad-Fall, der echte Judge-Aufrufe zählt.
+// Die übrigen Fälle dieser Datei fahren ohne Modell bzw. über eigene Attrappen und bleiben
+// unverändert ohne Freigabe. Kein `vertraulicheInhalte` in dieser Datei.
+import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 
 // Spy-CLIENT (Cloud ODER lokal): zählt jeden echten complete()-Aufruf. Liefert je nach System-Prompt
 // gültiges Konflikt- bzw. Duplikat-JSON — so entstehen echte (Nicht-)Urteile ohne Netz.
@@ -195,6 +199,11 @@ describe("D-AISTATE V2: Konflikt-Cap 8 im Live-Pfad aufgehoben — ALLE Kandidat
       },
     } as unknown as ModelClient;
     services.reasoner = new Reasoner(new ModelProvider(client));
+    // JOB 3588: die GRUNDFREIGABE. Der Fall zählt ECHTE Judge-Aufrufe (12 + 12) — ohne die
+    // Adminfreigabe des Kerns von JOB 3549 stünde der Spion in keiner Kette und beide Zähler blieben
+    // 0; „kein stiller Cap 8" wäre die Aussage über eine Null. Kein `vertraulicheInhalte`: die KOs
+    // dieses Falls sind offen eingestuft.
+    await erteileKiFreigabe(services.reasoner);
     const run = runnerFor(services);
 
     // 12 inhaltlich verschiedene Bestands-KOs derselben Kategorie + 1 Subjekt (weit über dem

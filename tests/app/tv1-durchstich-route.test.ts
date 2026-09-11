@@ -36,6 +36,7 @@
 import { describe, expect, it } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 import { ModelProvider, Reasoner } from "../../services/reasoner";
+import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 
 // Ein gültiges Mini-PNG: die Magic Bytes müssen echt sein, sonst weist die frühe Bildprüfung
 // (bens P3) den Request mit 400 ab, bevor irgendein Titel entstehen könnte.
@@ -93,6 +94,12 @@ async function describeUeberRoute(
   const services: TestServices = buildServices();
   if (vision !== null) {
     services.reasoner = new Reasoner(visionMit(vision));
+    // JOB 3588: NUR die GRUNDFREIGABE. Sie ist die Voraussetzung dafür, dass der Cloud-Vision-Weg
+    // im Fall `intern` überhaupt läuft und ein Titelvorschlag entstehen kann. Der Fall
+    // `streng_vertraulich` darunter bleibt trotzdem gesperrt — dafür bräuchte es
+    // `vertraulicheInhalte`, und genau die wird hier bewusst NICHT gesetzt: die Sperre ist die
+    // Zusage, die dieser Test trägt.
+    await erteileKiFreigabe(services.reasoner);
   }
   const app = buildApp(services);
   const headers = await loginHeaders(app);

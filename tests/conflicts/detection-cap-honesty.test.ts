@@ -19,6 +19,11 @@ import { isCompleteRun, mergeCoverage } from "../../services/conflicts";
 import { selectCandidates } from "../../services/conflicts/src/detect";
 import { selectOverlapCandidates } from "../../services/conflicts/src/duplicate-detect";
 import { type ModelClient, ModelProvider, Reasoner } from "../../services/reasoner";
+// JOB 3588: die GRUNDFREIGABE im Aufbau. Alle Aufbauten mit Spion zählen ECHTE Judge-Aufrufe und
+// lesen daraus die Abdeckung (geprüfte Menge, verfügbare Menge, Deckelung). Ohne die Adminfreigabe
+// des Kerns von JOB 3549 bliebe jeder Zähler 0, und „der Deckel wirkt in BEIDEN Live-Wegen" wäre
+// eine Aussage über zwei Nullen. KEINE Freigabe für VERTRAULICHES: die KOs sind offen eingestuft.
+import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 
 // AUFTRAG-mega31 A1: gültige Nicht-Treffer-URTEILE. Im Reasoner-Vertrag ist `null` ausnahmslos ein
 // Fehlerausgang — „ein echtes `kein_konflikt`/`verschieden` ist ein NICHT-null-verdict". Ein
@@ -90,6 +95,7 @@ describe("mega28 A1 · der Deckel wirkt in BEIDEN Live-Wegen, aus EINER Stelle",
     const services = buildServices();
     const spy = spyClient();
     services.reasoner = new Reasoner(new ModelProvider(spy.client));
+    await erteileKiFreigabe(services.reasoner); // JOB 3588, Grundfreigabe (s. Kopf der Importe)
 
     // Deutlich MEHR Bestand als der Deckel — vor mega28 waren das 60 Konflikt- und 60 Duplikat-Urteile.
     const poolSize = DETECTION_CANDIDATE_CAP * 3;
@@ -156,6 +162,7 @@ describe("mega28 A2 · ein gedeckelter Lauf liest sich NICHT wie ein vollständi
     const services = buildServices();
     const spy = spyClient();
     services.reasoner = new Reasoner(new ModelProvider(spy.client));
+    await erteileKiFreigabe(services.reasoner); // JOB 3588, Grundfreigabe (s. Kopf der Importe)
     const poolSize = DETECTION_CANDIDATE_CAP + 7;
     for (let i = 0; i < poolSize; i++) {
       await makeKo(services, `Kandidat ${i}`, `verschiedene aussage nummer ${i} im betrieb`);
@@ -187,6 +194,7 @@ describe("mega28 A2 · ein gedeckelter Lauf liest sich NICHT wie ein vollständi
     const services = buildServices();
     const spy = spyClient();
     services.reasoner = new Reasoner(new ModelProvider(spy.client));
+    await erteileKiFreigabe(services.reasoner); // JOB 3588, Grundfreigabe (s. Kopf der Importe)
     for (let i = 0; i < 3; i++) {
       await makeKo(services, `Kandidat ${i}`, `verschiedene aussage nummer ${i} im betrieb`);
     }
@@ -215,6 +223,7 @@ describe("mega28 A2 · ein gedeckelter Lauf liest sich NICHT wie ein vollständi
     const services = buildServices();
     const spy = spyClient();
     services.reasoner = new Reasoner(new ModelProvider(spy.client));
+    await erteileKiFreigabe(services.reasoner); // JOB 3588, Grundfreigabe (s. Kopf der Importe)
     const poolSize = DETECTION_CANDIDATE_CAP + 5;
     for (let i = 0; i < poolSize; i++) {
       await makeKo(services, `Kandidat ${i}`, `verschiedene aussage nummer ${i} im betrieb`);

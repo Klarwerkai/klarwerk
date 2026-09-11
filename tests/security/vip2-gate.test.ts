@@ -26,6 +26,7 @@ import {
 } from "../../services/auth";
 import { verifyPassword } from "../../services/auth/src/password";
 import { ModelProvider, Reasoner } from "../../services/reasoner";
+import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 
 const REGISTER = {
   method: "POST" as const,
@@ -310,7 +311,13 @@ describe("WP-VIP2-GATE B3: Cookie-Härtung — Secure in Produktion erzwungen", 
 });
 
 describe("WP-VIP2-GATE B4: /api/ai-status + /api/reasoner/status sind abstrahiert", () => {
-  function modelServices(): AppServices {
+  // JOB 3588: die GRUNDFREIGABE im Aufbau. Dieser Block misst, dass die Statusrouten KEINEN
+  // Anbieter-/Modellnamen durchsickern lassen, UND dass sie trotzdem ehrlich „cloud-fähig" melden
+  // (`tasks.answer === true`). Die zweite Hälfte ist die gegatete Antwort des Kerns von JOB 3549
+  // (`configStatus().effective`): ohne Adminfreigabe ist sie `false`, und der Leck-Test liefe an
+  // einem Zustand vorbei, in dem es gar nichts zu lecken gäbe.
+  // Kein `vertraulicheInhalte`: die Statusrouten übertragen keinen Text.
+  async function modelServices(): Promise<AppServices> {
     const services = buildServices();
     services.reasoner = new Reasoner(
       new ModelProvider({
@@ -318,11 +325,12 @@ describe("WP-VIP2-GATE B4: /api/ai-status + /api/reasoner/status sind abstrahier
         complete: async () => "{}",
       }),
     );
+    await erteileKiFreigabe(services.reasoner);
     return services;
   }
 
   it("anonym: nur {active, mode} — KEIN Provider-/Modellname im Body", async () => {
-    const app = buildApp(modelServices());
+    const app = buildApp(await modelServices());
     const status = await app.inject({ method: "GET", url: "/api/reasoner/status" });
     expect(status.statusCode).toBe(200);
     // PAKET 2 (D-AISTATE): zusätzlich der ehrliche Erreichbarkeits-Zustand — eine STUFE (kein Provider-/
@@ -376,7 +384,7 @@ describe("WP-VIP2-GATE B4: /api/ai-status + /api/reasoner/status sind abstrahier
   // ein normaler Leseberechtigter (experte, ko.read) bekommt 403; die KI-Pille normaler Nutzer
   // laeuft ueber den abstrahierten oeffentlichen Status (oben getestet).
   it("ECHTE Admin-Sicht: /api/reasoner/config nennt den Provider — 401 anonym, 403 fuer ko.read-Rollen, 200 fuer Admin", async () => {
-    const app = buildApp(modelServices());
+    const app = buildApp(await modelServices());
     const anonymous = await app.inject({ method: "GET", url: "/api/reasoner/config" });
     expect(anonymous.statusCode).toBe(401);
     // Erster Registrierter = Bootstrap-Admin.

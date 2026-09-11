@@ -22,6 +22,7 @@ import { confluenceImportRoutes } from "../../services/app/src/routes/confluence
 import type { ConfluenceSourceAdapter } from "../../services/confluence";
 import type { ImportItem, SelectCriteria } from "../../services/library-analytics";
 import { ModelProvider, Reasoner } from "../../services/reasoner";
+import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 
 interface TitelAntwort {
   matched: number;
@@ -64,10 +65,16 @@ function fixtureAdapter(items: ImportItem[]): ConfluenceSourceAdapter {
 
 // Der Doppelgänger liefert die im Livelauf beobachtete Deutung — ein Thema, das weder Label noch
 // abgeleitetes Titel-Thema irgendeiner Seite ist.
-function deutenderReasoner(criteriaJson: string): Reasoner {
-  return new Reasoner(
+// JOB 3588: mit GRUNDFREIGABE. Der Doppelgänger soll seine Deutung wirklich liefern — ohne die
+// Adminfreigabe des Kerns von JOB 3549 käme er nie zum Zug, und der Fall prüfte den
+// deterministischen Ersatz statt der beobachteten Fehldeutung. Kein `vertraulicheInhalte`: die
+// Fälle fahren `promptConfidential: false` und offene Seiten.
+async function deutenderReasoner(criteriaJson: string): Promise<Reasoner> {
+  const reasoner = new Reasoner(
     new ModelProvider({ name: "anthropic:test", complete: async () => criteriaJson }),
   );
+  await erteileKiFreigabe(reasoner);
+  return reasoner;
 }
 
 async function selectApp(items: ImportItem[], reasoner?: Reasoner) {
@@ -108,7 +115,7 @@ describe("JOB 3356: Freitext-Satz mit exaktem Titel — 0 Treffer, aber nicht me
   it("KI deutet 'Customer file restoration' → 0 Treffer BLEIBEN 0, daneben steht der Titelbefund", async () => {
     const { app, headers } = await selectApp(
       SNAPSHOT,
-      deutenderReasoner('{"themes":["Customer file restoration"]}'),
+      await deutenderReasoner('{"themes":["Customer file restoration"]}'),
     );
     const res = await app.inject({
       ...selectBody({ prompt: GESUCHT, promptConfidential: false }),
@@ -132,7 +139,7 @@ describe("JOB 3356: Freitext-Satz mit exaktem Titel — 0 Treffer, aber nicht me
   it("der zweite Aufruf mit titleFallback.criteria liefert GENAU diese eine Seite", async () => {
     const { app, headers } = await selectApp(
       SNAPSHOT,
-      deutenderReasoner('{"themes":["Customer file restoration"]}'),
+      await deutenderReasoner('{"themes":["Customer file restoration"]}'),
     );
     const erst = await app.inject({
       ...selectBody({ prompt: GESUCHT, promptConfidential: false }),
@@ -157,7 +164,7 @@ describe("JOB 3356: Freitext-Satz mit exaktem Titel — 0 Treffer, aber nicht me
   it("der Deckel des ursprünglichen Aufrufs reist unverändert mit (keine neue Menge)", async () => {
     const { app, headers } = await selectApp(
       SNAPSHOT,
-      deutenderReasoner('{"themes":["Customer file restoration"]}'),
+      await deutenderReasoner('{"themes":["Customer file restoration"]}'),
     );
     const res = await app.inject({
       ...selectBody({ prompt: "customer file", promptConfidential: false, criteria: { limit: 1 } }),
@@ -180,7 +187,7 @@ describe("JOB 3356: Freitext-Satz mit exaktem Titel — 0 Treffer, aber nicht me
   it("auch die 0 wird gesagt: ein Satz ohne jeden Titeltreffer bekommt matched 0", async () => {
     const { app, headers } = await selectApp(
       SNAPSHOT,
-      deutenderReasoner('{"themes":["Customer file restoration"]}'),
+      await deutenderReasoner('{"themes":["Customer file restoration"]}'),
     );
     const res = await app.inject({
       ...selectBody({ prompt: "Hydraulik am Kran", promptConfidential: false }),
@@ -198,7 +205,7 @@ describe("JOB 3356: Freitext-Satz mit exaktem Titel — 0 Treffer, aber nicht me
   it("zweite Chance: findet der Wortlaut nichts, zählt die längste geklammerte Teilkette", async () => {
     const { app, headers } = await selectApp(
       SNAPSHOT,
-      deutenderReasoner('{"themes":["Customer file restoration"]}'),
+      await deutenderReasoner('{"themes":["Customer file restoration"]}'),
     );
     const res = await app.inject({
       ...selectBody({
@@ -220,7 +227,7 @@ describe("JOB 3356: Freitext-Satz mit exaktem Titel — 0 Treffer, aber nicht me
   it("der Wortlaut des Menschen hat Vorrang vor der Verkürzung", async () => {
     const { app, headers } = await selectApp(
       SNAPSHOT,
-      deutenderReasoner('{"themes":["Customer file restoration"]}'),
+      await deutenderReasoner('{"themes":["Customer file restoration"]}'),
     );
     const res = await app.inject({
       ...selectBody({ prompt: GESUCHT, promptConfidential: false }),
@@ -248,6 +255,9 @@ describe("JOB 3356: Freitext-Satz mit exaktem Titel — 0 Treffer, aber nicht me
         },
       }),
     );
+    // JOB 3588: auch der KI-AUSFALL braucht die Grundfreigabe — sonst wäre die Ursache „kein Modell
+    // freigegeben" statt „Modell wirft", und der Fall belegte nicht, was sein Name sagt.
+    await erteileKiFreigabe(werfend);
     const { app, headers } = await selectApp(SNAPSHOT, werfend);
     const res = await app.inject({
       ...selectBody({

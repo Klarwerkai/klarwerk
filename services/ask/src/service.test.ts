@@ -250,11 +250,33 @@ describe("AskService", () => {
       extract: async () => ({ points: [], note: null, demo: false }),
       select: () => [],
     };
-    // OFFEN (JOB 3570): `seen` bleibt nur gefüllt, wenn der als Cloud verdrahtete Provider
-    // wirklich gefragt wird — unter dem Kern von JOB 3549 braucht dieser Aufbau die
-    // Grundfreigabe. Sie ist von `services/ask` aus nicht setzbar: der Testhelfer liegt in
-    // `services/reasoner/src`, und der Import dorthin verletzt die Modulgrenze. Der Nachtrag ist
-    // ein Re-Export in `services/reasoner/index.ts` — außerhalb der Zielpfade von JOB 3570.
+    // ============================================================================================
+    // OFFEN (JOB 3570, gemessen und bestätigt von JOB 3588): DIESER AUFBAU BRAUCHT DIE
+    // GRUNDFREIGABE UND KANN SIE VON HIER AUS NICHT BEKOMMEN.
+    // ============================================================================================
+    //
+    // `seen` bleibt nur gefüllt, wenn der als Cloud verdrahtete Provider wirklich gefragt wird;
+    // unter dem Kern von JOB 3549 setzt das die Adminfreigabe voraus.
+    //
+    // WARUM HIER NICHTS STEHT — beide Wege sind versperrt, und zwar GEMESSEN, nicht vermutet:
+    //   1. Der Testhelfer (`services/reasoner/src/testhelfer-ki-freigabe.ts`) ist von hier aus
+    //      nicht importierbar. `npx depcruise --config .dependency-cruiser.cjs services` meldet
+    //      mit dem Import „error module-boundaries: services/ask/src/service.test.ts →
+    //      services/reasoner/src/testhelfer-ki-freigabe.ts · 1 dependency violations (1 errors)"
+    //      (JOB 3588, Gegenprobe 1). Die Regel steht in `.dependency-cruiser.cjs:16-27` und lässt
+    //      Cross-Modul-Importe ausschliesslich über `services/reasoner/index.ts` zu.
+    //   2. Die Felder von Hand zu schreiben (`kiFreigabe: { … }` an `setTaskConfig`) verbietet der
+    //      Freigabe-Wächter F2 in `tests/ki-anbieterwahl/routing-zwei-attrappen.test.ts:2093`
+    //      AUSNAHMSLOS. Genau daran ist JOB 3588 Runde 1 rot geworden — und die Regel ist richtig:
+    //      wer die Felder einmal von Hand schreiben darf, kann morgen `vertraulicheInhalte`
+    //      danebenschreiben, ohne dass es jemand sieht.
+    //
+    // DER KLEINSTE UMBAU, DER ES KÖNNTE: eine Zeile in `services/reasoner/index.ts`, die den Helfer
+    // re-exportiert. Sie liegt ausserhalb der Zielpfade dieses Auftrags UND widerspricht der
+    // Hausdoktrin, die dort im Kommentar zu mega59 Block I (`services/reasoner/index.ts:38-52`)
+    // ausdrücklich festgehalten ist: ein Re-Export ist die ÖFFENTLICHE Fläche des Moduls, und für
+    // einen Testhelfer ist das „eine Zusage, die niemand geben wollte". Deshalb bleibt der Punkt
+    // offen und wird benannt, statt hier still am Wächter vorbei gebaut zu werden.
     const ask = new AskService({
       reasoner: new Reasoner(capturing),
       koService: ctx.koService,

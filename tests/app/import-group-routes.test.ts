@@ -24,6 +24,7 @@ import {
   groupingRequiresConfidential,
 } from "../../services/library-analytics";
 import { MAX_GROUP_CANDIDATES, ModelProvider, Reasoner } from "../../services/reasoner";
+import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 
 function fixtureAdapter(items: ImportItem[]): ConfluenceSourceAdapter {
   return {
@@ -124,7 +125,17 @@ async function importApp(
 
 // WP-SHIP7-FIX (bens P0, Fix 1): Reasoner mit Cloud-Provider, dessen complete-Aufrufe gezählt
 // werden — der einzige Weg, auf dem Kandidatendaten die Maschine verlassen würden.
-function cloudSpyReasoner(ids: readonly string[]) {
+// JOB 3588: die GRUNDFREIGABE gehört in DIESEN Aufbau und in keinen einzelnen Fall.
+//
+// Beide Sorten von Fällen benutzen diesen Spion: die POSITIVEN erwarten genau einen Cloud-Aufruf,
+// die SPERRFÄLLE erwarten null. Beide brauchen die Adminfreigabe des Kerns von JOB 3549 — und zwar
+// aus demselben Grund: nur mit ihr ist die gemessene Null die Aussage über die VERTRAULICHKEITS-
+// Regel, die dieser Test prüft, und nicht über eine fehlende Adminfreigabe, die mit dem Test nichts
+// zu tun hat. Ohne sie wären alle Sperrfälle grün, ohne irgendetwas zu belegen.
+//
+// KEIN `vertraulicheInhalte`: die Kandidaten der Positivfälle sind ausdrücklich `intern` freigegeben,
+// und die restriktiven Stufen sollen gesperrt BLEIBEN.
+async function cloudSpyReasoner(ids: readonly string[]) {
   let calls = 0;
   const provider = new ModelProvider({
     name: "anthropic:test",
@@ -133,7 +144,9 @@ function cloudSpyReasoner(ids: readonly string[]) {
       return JSON.stringify({ groups: [{ title: "Alles", ids: [...ids] }] });
     },
   });
-  return { reasoner: new Reasoner(provider), cloudCalls: () => calls };
+  const reasoner = new Reasoner(provider);
+  await erteileKiFreigabe(reasoner);
+  return { reasoner, cloudCalls: () => calls };
 }
 
 const LONG_STATEMENT = "Ausführliche Beschreibung der Wartung. ".repeat(8); // > 200 Zeichen
@@ -295,7 +308,7 @@ describe("WP-REST18 (Fix 1): Quell-Id-Dedupe am Routeneingang", () => {
   });
 
   it("Kollision mit unterschiedlicher Vertraulichkeit → die RESTRIKTIVSTE Variante gewinnt (Cloud = 0 Aufrufe)", async () => {
-    const spy = cloudSpyReasoner(["p1"]);
+    const spy = await cloudSpyReasoner(["p1"]);
     // Variante A ist explizit freigegeben (intern), Variante B derselben Seite ist UNKLAR
     // (kein Governance-Signal) — die Union bleibt fail-safe vertraulich.
     const { app, headers } = await importApp(
@@ -314,7 +327,7 @@ describe("WP-REST18 (Fix 1): Quell-Id-Dedupe am Routeneingang", () => {
     expect(res.statusCode).toBe(200);
     expect(spy.cloudCalls()).toBe(0); // die unklare Variante macht den Batch vertraulich
     // Gegenprobe: sind BEIDE Varianten explizit intern, bleibt der Cloud-Weg offen.
-    const spy2 = cloudSpyReasoner(["p1"]);
+    const spy2 = await cloudSpyReasoner(["p1"]);
     const both = await importApp(
       [
         item({ title: "Pumpe warten", externalId: "p1", confidentiality: "intern" }),
@@ -346,7 +359,7 @@ describe("WP-SHIP7-FIX P0 (Fix 1): Vertraulichkeit der Gruppierung — Cloud nur
     });
 
   it("restringierte Stufe (vertraulich) → NULL Cloud-Aufrufe; ehrlicher deterministischer Fallback", async () => {
-    const spy = cloudSpyReasoner(["p1", "p2"]);
+    const spy = await cloudSpyReasoner(["p1", "p2"]);
     const { app, headers } = await importApp(
       [
         item({ title: "Offen", externalId: "p1", confidentiality: "intern" }),
@@ -361,7 +374,7 @@ describe("WP-SHIP7-FIX P0 (Fix 1): Vertraulichkeit der Gruppierung — Cloud nur
   });
 
   it("FEHLENDE Stufe (kein Governance-Signal) → fail-safe vertraulich → NULL Cloud-Aufrufe", async () => {
-    const spy = cloudSpyReasoner(["p1", "p2"]);
+    const spy = await cloudSpyReasoner(["p1", "p2"]);
     const { app, headers } = await importApp(
       [
         item({ title: "Offen", externalId: "p1", confidentiality: "intern" }),
@@ -375,7 +388,7 @@ describe("WP-SHIP7-FIX P0 (Fix 1): Vertraulichkeit der Gruppierung — Cloud nur
   });
 
   it("UNGÜLTIGE Stufe → fail-safe vertraulich → NULL Cloud-Aufrufe", async () => {
-    const spy = cloudSpyReasoner(["p1"]);
+    const spy = await cloudSpyReasoner(["p1"]);
     const { app, headers } = await importApp(
       [
         item({
@@ -392,7 +405,7 @@ describe("WP-SHIP7-FIX P0 (Fix 1): Vertraulichkeit der Gruppierung — Cloud nur
   });
 
   it("POSITIV: NUR wenn ALLE Kandidaten explizit gültig freigegeben (intern) sind, arbeitet die Cloud", async () => {
-    const spy = cloudSpyReasoner(["p1", "p2"]);
+    const spy = await cloudSpyReasoner(["p1", "p2"]);
     const { app, headers } = await importApp(
       [
         item({ title: "Offen A", externalId: "p1", confidentiality: "intern" }),
@@ -430,7 +443,7 @@ describe("WP-SHIP7-FIX P0 (Fix 1): Vertraulichkeit der Gruppierung — Cloud nur
     // Der echte Mapper: offene Seite → ausdrücklich „intern", restringierte Seite → „vertraulich".
     expect(mapped[0]?.confidentiality).toBe("intern");
     expect(mapped[1]?.confidentiality).toBe("vertraulich");
-    const spy = cloudSpyReasoner(["p1", "p2"]);
+    const spy = await cloudSpyReasoner(["p1", "p2"]);
     const { app, headers } = await importApp(mapped, { reasoner: spy.reasoner });
     const res = await groupRequest(app, headers);
     expect(res.statusCode).toBe(200);

@@ -46,6 +46,11 @@ import {
   titelkern,
   waehleKandidaten,
 } from "../../services/reasoner/src/provider-model";
+// JOB 3588: die GRUNDFREIGABE im Aufbau. Jeder Fall dieser Datei misst einen ECHTEN Weg zum Modell
+// (`mitschreiber` zählt die Prompts) — ohne die Adminfreigabe des Kerns von JOB 3549 gäbe es keinen
+// einzigen Prompt, und die Aussagen über Auszug, Beleg und Deckung wären Aussagen über eine Null.
+// KEINE Freigabe für VERTRAULICHES: kein Fall dieser Datei stuft ein Objekt vertraulich ein.
+import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 
 const VORGEFUNDEN = process.env.KLARWERK_SKIP_KEYCHAIN;
 beforeAll(() => {
@@ -409,8 +414,10 @@ async function aufbauen(
     author: "bea",
   });
   const { client, prompts } = mitschreiber(antwort);
+  const reasoner = new Reasoner(new ModelProvider(client));
+  await erteileKiFreigabe(reasoner);
   const ask = new AskService({
-    reasoner: new Reasoner(new ModelProvider(client)),
+    reasoner,
     koService,
     gaps: new InMemoryGapRepo(),
     audit: new AuditService({ repo: new InMemoryAuditRepo() }),
@@ -547,8 +554,10 @@ describe("JOB 3353 A · dieselbe Regel, gleich wie gefragt wird", () => {
     await koService.setValidationState(nl.id, { trust: 90, status: "validiert" });
 
     const { client, prompts } = mitschreiber(PARAPHRASE);
+    const reasoner = new Reasoner(new ModelProvider(client));
+    await erteileKiFreigabe(reasoner);
     const ask = new AskService({
-      reasoner: new Reasoner(new ModelProvider(client)),
+      reasoner,
       koService,
       gaps: new InMemoryGapRepo(),
       audit: new AuditService({ repo: new InMemoryAuditRepo() }),
@@ -593,8 +602,10 @@ describe("JOB 3353 A · dieselbe Regel, gleich wie gefragt wird", () => {
       author: "anna",
     });
     const { client, prompts } = mitschreiber(PARAPHRASE);
+    const reasoner = new Reasoner(new ModelProvider(client));
+    await erteileKiFreigabe(reasoner);
     const ask = new AskService({
-      reasoner: new Reasoner(new ModelProvider(client)),
+      reasoner,
       koService,
       gaps: new InMemoryGapRepo(),
       audit: new AuditService({ repo: new InMemoryAuditRepo() }),

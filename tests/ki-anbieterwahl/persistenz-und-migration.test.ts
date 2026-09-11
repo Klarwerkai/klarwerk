@@ -190,6 +190,13 @@ describe("JOB 3134 C: Persistenz über den Neustart der Instanz", () => {
     const repo = new Bestand();
     const r = instanz(BEIDE_ENV, repo);
     await r.setTaskConfig({ global: "openai", perTask: {} });
+    // JOB 3588 (der von JOB 3570 in dieser Datei offen gebliebene Fall): die Grundfreigabe steht
+    // BEWUSST hier — nach der letzten gelungenen Speicherung und VOR dem erzwungenen Schreibfehler.
+    // Später ginge sie nicht mehr: `erteileKiFreigabe` schreibt über `setTaskConfig`, und der Repo
+    // lehnt ab diesem Punkt jede Speicherung ab. Sie lässt die Zuordnung unverändert (`openai`
+    // bleibt `openai`) und ist die Voraussetzung dafür, dass `urls` unten den EMPFÄNGER prüft und
+    // nicht die Sperre. Kein `vertraulicheInhalte`: der Text dieses Falls ist nicht eingestuft.
+    await erteileKiFreigabe(r);
     repo.schreibenScheitert = true;
     await expect(r.setTaskConfig({ global: "anthropic", perTask: {} })).rejects.toThrow(
       "db write down",

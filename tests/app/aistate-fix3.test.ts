@@ -10,6 +10,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createAiCheckRunner } from "../../services/app/src/ai-check-worker";
 import { type AppServices, buildApp, buildServices } from "../../services/app/src/build-app";
 import { type ModelClient, ModelProvider, Reasoner } from "../../services/reasoner";
+// JOB 3588: die Grundfreigabe im Aufbau — NUR für die beiden Fälle, die einen echten Judge-Aufruf
+// zählen bzw. ein Modell-Profil erwarten. Der Sperrfall dieser Datei („ECHTER No-Model-Runner-Test:
+// Provider-/complete-Aufrufe EXAKT 0") bekommt sie AUSDRÜCKLICH NICHT — dort ist die Null die
+// Zusage, und eine Freigabe würde ändern, was der Test misst. Kein `vertraulicheInhalte`.
+import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 
 type FakeReasoner = AppServices["reasoner"];
 
@@ -94,6 +99,9 @@ describe("V2 (Pedi D-V2=a): beide Schichten je Kandidat — Merge-Vertrag über 
       },
     } as unknown as ModelClient;
     services.reasoner = new Reasoner(new ModelProvider(client));
+    // JOB 3588: die Grundfreigabe — der Fall zählt einen ECHTEN Duplikat-Judge-Aufruf und liest
+    // danach die KI-Einordnung aus dem Treffer. Ohne sie bliebe der Zähler 0.
+    await erteileKiFreigabe(services.reasoner);
     const run = runnerFor(services);
 
     await makeKo(services, {
@@ -128,6 +136,9 @@ describe("V2 (Pedi D-V2=a): beide Schichten je Kandidat — Merge-Vertrag über 
           : '{"beziehung":"teilweise","gemeinsame_aussagen":[{"beschreibung":"Kernsatz","zitat_a":"gemeinsamer kernsatz","zitat_b":"gemeinsamer kernsatz"}],"nur_in_a":"","nur_in_b":"","empfehlung":"zusammenfuehren_pruefen","confidence":0.9,"begruendung":"ueberlappt"}',
     } as unknown as ModelClient;
     services.reasoner = new Reasoner(new ModelProvider(client));
+    // JOB 3588: die Grundfreigabe — „Modell-Profil trägt den Eintrag" setzt voraus, dass das Modell
+    // wirklich geurteilt hat (`detector.method === "model"`).
+    await erteileKiFreigabe(services.reasoner);
     const run = runnerFor(services);
 
     await makeKo(services, {

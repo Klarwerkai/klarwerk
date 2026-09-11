@@ -27,6 +27,7 @@ import {
 } from "../../services/reasoner/src/model-concurrency";
 import { ModelTimeoutError } from "../../services/reasoner/src/model-errors";
 import type { ModelClient } from "../../services/reasoner/src/provider-model";
+import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 
 const SATZ = "alles zum Thema Wartung";
 
@@ -53,17 +54,26 @@ function modellClient(
   };
 }
 
-function reasonerMitModell(
+// JOB 3588: die GRUNDFREIGABE gehört in DIESEN Aufbau.
+//
+// Die Datei protokolliert Auswahlläufe an einem ECHTEN Modell: Modellname, Verbrauch, Fehlerursache.
+// Ohne die Adminfreigabe des Kerns von JOB 3549 stünde der Client in keiner Kette, jeder Lauf endete
+// „no-model", und acht Fälle prüften eine Ursache, die sie gar nicht herbeigeführt haben.
+//
+// KEIN `vertraulicheInhalte` — und das ist hier keine Formsache: R4b („Cloud wegen Vertraulichkeit
+// ausgeschlossen") benutzt denselben Aufbau und verlangt `aufrufe() === 0`. Mit der Grundfreigabe
+// ALLEIN bleibt genau das so (`oeffentlicheKiErlaubt` verlangt für vertraulichen Text zusätzlich den
+// zweiten Schalter), und die gemessene Null gehört damit der EINSTUFUNG — nicht einer fehlenden
+// Adminfreigabe, die mit R4b nichts zu tun hat. Der zweite Schalter würde den Fall zerstören.
+async function reasonerMitModell(
   antwort: () => Promise<string>,
   opts: { ohneModellnamen?: boolean; rejectsConfidential?: boolean } = {},
-): { reasoner: Reasoner; repo: InMemoryModelRunRepo; aufrufe: () => number } {
+): Promise<{ reasoner: Reasoner; repo: InMemoryModelRunRepo; aufrufe: () => number }> {
   const repo = new InMemoryModelRunRepo();
   const { client, aufrufe } = modellClient(antwort, opts);
-  return {
-    reasoner: new Reasoner(new ModelProvider(client), new DeterministicProvider(), repo),
-    repo,
-    aufrufe,
-  };
+  const reasoner = new Reasoner(new ModelProvider(client), new DeterministicProvider(), repo);
+  await erteileKiFreigabe(reasoner);
+  return { reasoner, repo, aufrufe };
 }
 
 async function genauEinDatensatz(repo: InMemoryModelRunRepo): Promise<ModelRunRecord> {
@@ -74,7 +84,9 @@ async function genauEinDatensatz(repo: InMemoryModelRunRepo): Promise<ModelRunRe
 
 describe("JOB 3127: jede echte Auswahl-Anfrage schreibt genau einen select-Lauf", () => {
   it("R1 Erfolg: ein Datensatz task=select/status=success mit Modellnamen — Kriterien unverändert", async () => {
-    const { reasoner, repo, aufrufe } = reasonerMitModell(async () => '{"themes":["Wartung"]}');
+    const { reasoner, repo, aufrufe } = await reasonerMitModell(
+      async () => '{"themes":["Wartung"]}',
+    );
 
     const ergebnis = await reasoner.deriveImportCriteria(SATZ, "de", false);
 
@@ -94,7 +106,7 @@ describe("JOB 3127: jede echte Auswahl-Anfrage schreibt genau einen select-Lauf"
   });
 
   it("R1b der Anbieter nennt kein Modell: das Feld FEHLT, der Lauf steht trotzdem da", async () => {
-    const { reasoner, repo } = reasonerMitModell(async () => '{"themes":["Wartung"]}', {
+    const { reasoner, repo } = await reasonerMitModell(async () => '{"themes":["Wartung"]}', {
       ohneModellnamen: true,
     });
 
@@ -106,7 +118,7 @@ describe("JOB 3127: jede echte Auswahl-Anfrage schreibt genau einen select-Lauf"
   });
 
   it("R2 Modellfehler: ein Datensatz status=error/error=model-error, Rückgabe unverändert", async () => {
-    const { reasoner, repo } = reasonerMitModell(async () => {
+    const { reasoner, repo } = await reasonerMitModell(async () => {
       throw new Error("Modell-API antwortete mit 500");
     });
 
@@ -123,7 +135,7 @@ describe("JOB 3127: jede echte Auswahl-Anfrage schreibt genau einen select-Lauf"
   });
 
   it("R2b Zeitlimit: die Ursache heißt model-timeout, im Datensatz wie in der Rückgabe", async () => {
-    const { reasoner, repo } = reasonerMitModell(async () => {
+    const { reasoner, repo } = await reasonerMitModell(async () => {
       throw new ModelTimeoutError("Zeitlimit überschritten", 30_000);
     });
 
@@ -136,7 +148,7 @@ describe("JOB 3127: jede echte Auswahl-Anfrage schreibt genau einen select-Lauf"
   });
 
   it("R2c der bezahlte, ergebnislose Aufruf verliert seinen Verbrauch nicht", async () => {
-    const { reasoner, repo } = reasonerMitModell(async () => {
+    const { reasoner, repo } = await reasonerMitModell(async () => {
       // Die API hat Eingabe gelesen und abgerechnet, BEVOR sie scheiterte.
       meldeModellVerbrauch(3000, 12);
       throw new Error("Modell-API antwortete mit 500");
@@ -150,7 +162,7 @@ describe("JOB 3127: jede echte Auswahl-Anfrage schreibt genau einen select-Lauf"
   });
 
   it("R3 Antwort ohne verwertbares JSON: ein Datensatz status=error, Rückgabe model-error", async () => {
-    const { reasoner, repo } = reasonerMitModell(
+    const { reasoner, repo } = await reasonerMitModell(
       async () => "Gerne! Ich helfe dir bei der Auswahl.",
     );
 
@@ -184,7 +196,7 @@ describe("JOB 3127: jede echte Auswahl-Anfrage schreibt genau einen select-Lauf"
   });
 
   it("R4b Cloud wegen Vertraulichkeit ausgeschlossen: die Ursache heißt confidential", async () => {
-    const { reasoner, repo, aufrufe } = reasonerMitModell(async () => '{"themes":["x"]}', {
+    const { reasoner, repo, aufrufe } = await reasonerMitModell(async () => '{"themes":["x"]}', {
       rejectsConfidential: true,
     });
 
@@ -201,7 +213,7 @@ describe("JOB 3127: jede echte Auswahl-Anfrage schreibt genau einen select-Lauf"
   });
 
   it("R5 leerer Prompt: nichts gefragt, nichts protokolliert", async () => {
-    const { reasoner, repo, aufrufe } = reasonerMitModell(async () => '{"themes":["x"]}');
+    const { reasoner, repo, aufrufe } = await reasonerMitModell(async () => '{"themes":["x"]}');
 
     const ergebnis = await reasoner.deriveImportCriteria("  ", "de", false);
 
@@ -213,6 +225,7 @@ describe("JOB 3127: jede echte Auswahl-Anfrage schreibt genau einen select-Lauf"
   it("R5b ohne Protokoll-Repo (Tests/CLI) bleibt die Auswahl unverändert und wirft nicht", async () => {
     const { client } = modellClient(async () => '{"themes":["Wartung"]}');
     const reasoner = new Reasoner(new ModelProvider(client), new DeterministicProvider());
+    await erteileKiFreigabe(reasoner); // JOB 3588, Grundfreigabe (s. `reasonerMitModell`)
 
     await expect(reasoner.deriveImportCriteria(SATZ, "de", false)).resolves.toEqual({
       criteria: { themes: ["Wartung"] },
@@ -221,7 +234,7 @@ describe("JOB 3127: jede echte Auswahl-Anfrage schreibt genau einen select-Lauf"
   });
 
   it("R6 zwei Aufrufe → exakt zwei Datensätze (kein Pfad schreibt doppelt)", async () => {
-    const { reasoner, repo } = reasonerMitModell(async () => '{"themes":["Wartung"]}');
+    const { reasoner, repo } = await reasonerMitModell(async () => '{"themes":["Wartung"]}');
 
     await reasoner.deriveImportCriteria(SATZ, "de", false);
     await reasoner.deriveImportCriteria("alles von Anna", "en", false);
@@ -233,7 +246,7 @@ describe("JOB 3127: jede echte Auswahl-Anfrage schreibt genau einen select-Lauf"
   });
 
   it("R6b auch der gescheiterte Aufruf schreibt genau EINEN Datensatz", async () => {
-    const { reasoner, repo } = reasonerMitModell(async () => {
+    const { reasoner, repo } = await reasonerMitModell(async () => {
       throw new Error("Modell-API antwortete mit 500");
     });
 
@@ -255,6 +268,7 @@ describe("JOB 3127: jede echte Auswahl-Anfrage schreibt genau einen select-Lauf"
       new DeterministicProvider(),
       kaputtesRepo,
     );
+    await erteileKiFreigabe(reasoner); // JOB 3588, Grundfreigabe (s. `reasonerMitModell`)
 
     await expect(reasoner.deriveImportCriteria(SATZ, "de", false)).resolves.toEqual({
       criteria: { themes: ["Wartung"] },

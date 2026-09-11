@@ -12,7 +12,7 @@ describe("SCRUM-502 R6: /api/reasoner egress (echter complete-Spy)", () => {
     "Bei Überdruck sofort das Ventil schließen und den Vorgang dokumentieren.";
 
   // ================================================================================================
-  // JOB 3570 · WARUM IN DIESER DATEI KEINE KI-FREIGABE STEHT.
+  // JOB 3570/3588 · WELCHER FALL DIESER DATEI EINE KI-FREIGABE BEKOMMT — UND WELCHER NIE.
   // ================================================================================================
   //
   // Drei der vier Fälle unten sind SPERRFÄLLE: sie erwarten „Cloud-complete NIE aufgerufen" und
@@ -20,15 +20,28 @@ describe("SCRUM-502 R6: /api/reasoner egress (echter complete-Spy)", () => {
   // nichts zu suchen, der die Sperre messt. Ihre Null steht nicht auf einer Vermutung, sondern auf
   // einem gezählten Spion (`expect(complete).not.toHaveBeenCalled()`).
   //
-  // Der VIERTE Fall („Positiv: bewusst intern deklarierter Upload → Cloud-complete läuft") bräuchte
-  // die Grundfreigabe, sobald der Kern von JOB 3549 eingebaut ist — und kann sie hier nicht
-  // bekommen: der Testhelfer liegt in `services/reasoner/src/testhelfer-ki-freigabe.ts`, und ein
-  // Import von `services/app` dorthin verletzt die Modulgrenze. Gemessen, nicht vermutet:
-  // `npx depcruise --config .dependency-cruiser.cjs services` meldet dann
-  // „error module-boundaries: services/app/src/routes/reasoner-egress.test.ts →
-  // services/reasoner/src/testhelfer-ki-freigabe.ts". Der Nachtrag dafür ist EINE Zeile in
-  // `services/reasoner/index.ts` (Re-Export des Helfers) — außerhalb der Zielpfade von JOB 3570
-  // und deshalb dort als offener Punkt benannt, nicht heimlich hier gebaut.
+  // Der VIERTE Fall („Positiv: bewusst intern deklarierter Upload → Cloud-complete läuft") braucht
+  // die Grundfreigabe, sobald der Kern von JOB 3549 eingebaut ist — und BEKOMMT SIE HIER NICHT.
+  // JOB 3588 hat beide denkbaren Wege geprüft und beide versperrt gefunden:
+  //
+  //   1. TESTHELFER IMPORTIEREN — verletzt die Modulgrenze. Gemessen, nicht vermutet: mit dem
+  //      Import meldet `npx depcruise --config .dependency-cruiser.cjs services`
+  //      „error module-boundaries: <diese Datei> → services/reasoner/src/testhelfer-ki-freigabe.ts
+  //      · 1 dependency violations (1 errors)". Die Regel steht in `.dependency-cruiser.cjs:16-27`
+  //      und lässt Cross-Modul-Importe ausschliesslich über `services/reasoner/index.ts` zu.
+  //   2. DIE FELDER SELBST SCHREIBEN — auch im Nutzlastobjekt des ECHTEN Adminwegs
+  //      (`PUT /api/reasoner/config` mit `kiFreigabe: { … }`). Das verbietet der Freigabe-Wächter
+  //      F2 (`tests/ki-anbieterwahl/routing-zwei-attrappen.test.ts:2093`) ausnahmslos und für die
+  //      ganze Fläche. JOB 3588 Runde 1 hat genau diesen Weg gebaut und ist daran rot geworden.
+  //      Die Regel ist richtig: wer die Felder einmal von Hand schreiben darf, kann morgen
+  //      `vertraulicheInhalte` danebenschreiben, ohne dass es jemand sieht.
+  //
+  // DER KLEINSTE UMBAU, DER ES KÖNNTE: eine Zeile in `services/reasoner/index.ts`, die den Helfer
+  // re-exportiert. Sie liegt ausserhalb der Zielpfade dieses Auftrags UND widerspricht der
+  // Hausdoktrin, die dort im Kommentar zu mega59 Block I (`services/reasoner/index.ts:38-52`)
+  // festgehalten ist: ein Re-Export ist die ÖFFENTLICHE Fläche des Moduls, und für einen
+  // Testhelfer ist das „eine Zusage, die niemand geben wollte". Der Punkt bleibt deshalb offen und
+  // benannt, statt hier still am Wächter vorbei gebaut zu werden.
   function appWithSpy() {
     const complete = vi.fn(async () => '{"points": []}');
     const services = buildServices();
@@ -139,8 +152,9 @@ describe("SCRUM-502 R6: /api/reasoner egress (echter complete-Spy)", () => {
       },
     });
     expect(res.statusCode).toBe(200);
-    // OFFEN (JOB 3570): dieser Fall braucht unter dem Kern von JOB 3549 die Grundfreigabe; sie ist
-    // von hier aus nicht setzbar (Modulgrenze, s. Kopf von `appWithSpy`).
+    // OFFEN (JOB 3570, gemessen und bestätigt von JOB 3588): dieser Fall braucht unter dem Kern von
+    // JOB 3549 die Grundfreigabe; sie ist von hier aus auf KEINEM erlaubten Weg setzbar — beide
+    // Sperren samt gemessener depcruise-Meldung stehen im Kopf von `appWithSpy`.
     expect(complete).toHaveBeenCalled();
   });
 });

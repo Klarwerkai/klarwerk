@@ -49,6 +49,7 @@ import type { AiCheckWorker } from "../../services/app/src/ai-check-worker";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 import type { ModelClient } from "../../services/reasoner";
 import { ModelProvider, Reasoner } from "../../services/reasoner";
+import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 
 const ENV_KEYS = [
   "KLARWERK_SKIP_KEYCHAIN",
@@ -294,6 +295,20 @@ describe("mega28 D: POST /api/library/import erzeugt NULL Modellaufrufe", () => 
   it("Gegenprobe: derselbe Spy-Aufbau ZÄHLT, wenn ein Objekt regulär eingereicht wird", async () => {
     // Ohne diese Probe wäre „alles null" auch dann grün, wenn die Spione gar nicht verdrahtet wären.
     const { services, model, detection } = await setup();
+    // ============================================================================================
+    // JOB 3588 · DIE FREIGABE STEHT HIER — IN DER GEGENPROBE — UND AUSDRÜCKLICH NICHT IN `setup()`.
+    // ============================================================================================
+    //
+    // Die vier anderen Fälle dieser Datei sind SPERRFÄLLE: sie belegen, dass ein Bibliotheks-Import
+    // NULL Modellaufrufe erzeugt. Sie bekommen KEINE Freigabe. Nur diese Gegenprobe braucht sie,
+    // denn nur sie behauptet eine Zahl ÜBER null (`model.calls > 0`) — und sie ruft den Runner
+    // direkt auf demselben Reasoner, den `setup()` verdrahtet hat.
+    //
+    // Warum das die richtige Stelle ist: die Sperrfälle messen den IMPORTWEG, nicht den Riegel. Ihre
+    // Null entsteht daraus, dass der Importweg den Reasoner überhaupt nicht anfasst — daran ändert
+    // eine hier gesetzte Freigabe nichts, und deshalb hat sie dort auch nichts zu suchen.
+    // Kein `vertraulicheInhalte`: die beiden Objekte unten sind `intern` eingestuft.
+    await erteileKiFreigabe(services.reasoner);
     const a = await services.ko.create({
       title: "Pumpe P2 Druckverlust",
       statement: "Bei Pumpe P2 faellt der Druck an Ventil V4.",

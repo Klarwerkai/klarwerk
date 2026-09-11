@@ -5,6 +5,7 @@ import { buildApp, buildServices } from "../../services/app/src/build-app";
 // JOB 3353 B: die Kennung der typisierten Sperrantwort — aus der EINEN Quelle, nicht getippt.
 import { CONFIDENTIAL_CLOUD_BLOCKED } from "../../services/app/src/routes/reasoner-routes";
 import { ModelProvider, Reasoner } from "../../services/reasoner";
+import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 
 const TEXT = "Nach dem Anfahren zehn Sekunden warten, dann die Pumpe entlüften.";
 // JOB 3276: die Antwort, die dieses Test-Modell auf eine Überarbeitung gibt. Sie war bis hierher
@@ -52,6 +53,14 @@ async function aufbauen(zustimmen = true, modellfehler = false) {
       },
     }),
   );
+  // JOB 3588: die GRUNDFREIGABE im Aufbau. Die Datei misst, dass die bestätigte DOKUMENTZUSTIMMUNG
+  // den tiefen Zweig öffnet — `gesehen`/`bilder` müssen dafür wirklich gefüllt werden. Ohne die
+  // Adminfreigabe des Kerns von JOB 3549 wäre der Zweig immer zu, und die Fälle „mit Zustimmung"
+  // und „ohne Zustimmung" gäben dasselbe Ergebnis aus zwei verschiedenen Gründen.
+  // KEIN `vertraulicheInhalte`: die Zusage dieser Datei ist, dass die Zustimmung Text auf INTERN
+  // hebt — sie hebt ihn nicht über die Vertraulichkeitsgrenze, und der zweite Schalter würde genau
+  // diese Grenze aufweichen.
+  await erteileKiFreigabe(services.reasoner);
   const app = buildApp(services);
   apps.push(app);
   const registration = await app.inject({

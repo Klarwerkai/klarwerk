@@ -35,6 +35,11 @@ import {
   pruefeDeckung,
   zitatWoerter,
 } from "../../services/reasoner/src/provider-model";
+// JOB 3588: die GRUNDFREIGABE im Aufbau für die Vollkette K. K3 und K4 messen, dass die ABSAGE bzw.
+// die fehlende Marke des ECHTEN Modells zur Wissenslücke wird — ohne die Adminfreigabe des Kerns von
+// JOB 3549 liefe das Modell gar nicht, und die Lücke entstünde aus dem falschen Grund.
+// KEINE Freigabe für VERTRAULICHES: die Objekte dieser Datei sind offen eingestuft.
+import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 
 function ref(
   id: string,
@@ -564,8 +569,10 @@ async function kette(modell: ModelClient) {
     author: "anna",
   });
   await koService.setValidationState(ventil.id, { trust: 92, status: "validiert" });
+  const reasoner = new Reasoner(new ModelProvider(modell));
+  await erteileKiFreigabe(reasoner);
   const ask = new AskService({
-    reasoner: new Reasoner(new ModelProvider(modell)),
+    reasoner,
     koService,
     gaps: new InMemoryGapRepo(),
     audit: new AuditService({ repo: new InMemoryAuditRepo() }),

@@ -86,12 +86,25 @@ async function aufbauen() {
     author: "anna",
   });
 
-  // OFFEN (JOB 3570): KA4-V0/V1 verlangen `gesehen.length === 1`, also einen tatsächlichen Aufruf
-  // des als Cloud verdrahteten Mitschreibers. Unter dem Kern von JOB 3549 braucht dieser Aufbau
-  // deshalb die Grundfreigabe. Sie ist von `services/ask` aus nicht setzbar: der Testhelfer liegt
-  // in `services/reasoner/src/testhelfer-ki-freigabe.ts`, und der Import dorthin verletzt die
-  // Modulgrenze (`dependency-cruiser` „module-boundaries"). Der Nachtrag ist ein Re-Export in
-  // `services/reasoner/index.ts` — außerhalb der Zielpfade von JOB 3570.
+  // ==============================================================================================
+  // OFFEN (JOB 3570, gemessen und bestätigt von JOB 3588): DIESER AUFBAU BRAUCHT DIE
+  // GRUNDFREIGABE UND KANN SIE VON HIER AUS NICHT BEKOMMEN.
+  // ==============================================================================================
+  //
+  // KA4-V0/V1 verlangen `gesehen.length === 1`, also einen TATSÄCHLICHEN Aufruf des als Cloud
+  // verdrahteten Mitschreibers; unter dem Kern von JOB 3549 setzt das die Adminfreigabe voraus.
+  // Ohne sie bliebe `gesehen` leer und „das vertrauliche Objekt ist nicht dabei" wäre die Aussage
+  // über eine nie gestellte Frage.
+  //
+  // WARUM HIER NICHTS STEHT: beide Wege sind versperrt — ausführlich und mit der gemessenen
+  // depcruise-Meldung in `services/ask/src/service.test.ts` (gleicher Fall, gleicher Grund).
+  // Kurz: der Testhelfer liegt hinter der Modulgrenze (`.dependency-cruiser.cjs:16-27`), und die
+  // Felder von Hand zu schreiben verbietet der Freigabe-Wächter F2
+  // (`tests/ki-anbieterwahl/routing-zwei-attrappen.test.ts:2093`) ausnahmslos.
+  //
+  // WÄRE ES MÖGLICH, DANN NUR `oeffentlicheKi` UND NIEMALS `vertraulicheInhalte`: diese Datei
+  // misst, dass Vertrauliches den Modellkontext nicht erreicht. Die zweite Freigabe hätte die
+  // Sperre aufgehoben, die hier die Zusage trägt — der Test bliebe grün und misst etwas anderes.
   const { provider, gesehen } = mitschreiber();
   const ask = new AskService({
     reasoner: new Reasoner(provider),

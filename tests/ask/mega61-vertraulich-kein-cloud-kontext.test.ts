@@ -37,6 +37,18 @@ import {
   type ReasonerLocale,
   type ReasonerProvider,
 } from "../../services/reasoner";
+// ================================================================================================
+// JOB 3588 · NUR DIE GRUNDFREIGABE — DIE ZWEITE HAT IN DIESER DATEI NICHTS ZU SUCHEN.
+// ================================================================================================
+//
+// Diese Datei misst, dass VERTRAULICHES den Modellweg NICHT erreicht. Genau deshalb bekommt sie
+// ausschließlich `oeffentlicheKi` und NIEMALS `vertraulicheInhalte`: die zweite Freigabe würde die
+// Sperre aufheben, die hier die Zusage aus Abschnitt 8 der Datenschutzerklärung trägt — der Test
+// bliebe grün und misst etwas anderes. Die Grundfreigabe dagegen ist die VORAUSSETZUNG dafür, dass
+// der Weg überhaupt beginnt: ohne sie steht der mitschreibende Provider (er sitzt an der Stelle der
+// Cloud) in keiner Kette, `gesehen` bliebe leer, und „nicht enthalten" wäre die Aussage über eine
+// nie gestellte Frage.
+import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 
 const FRAGE = "Was tun bei Störung der Xylophon-Anlage?";
 
@@ -90,8 +102,12 @@ async function aufbauen(vertraulich: boolean) {
     ...(vertraulich ? { confidentiality: "vertraulich" as const } : {}),
   });
   const { provider, gesehen } = mitschreibenderProvider();
+  const reasoner = new Reasoner(provider);
+  // NUR die Grundfreigabe (s. Kopf). Der Lauf selbst führt nichts Vertrauliches: `dropConfidential`
+  // im Ask-Dienst hat das Objekt schon entfernt — G3 misst genau das (`confidential === false`).
+  await erteileKiFreigabe(reasoner);
   const ask = new AskService({
-    reasoner: new Reasoner(provider),
+    reasoner,
     koService,
     gaps: new InMemoryGapRepo(),
     audit: new AuditService({ repo: new InMemoryAuditRepo() }),
@@ -165,6 +181,13 @@ describe("mega61 G · vertrauliche Inhalte erreichen den Antwortweg nicht", () =
       },
     } as unknown as ReasonerProvider;
     const reasoner = new Reasoner(cloud);
+    // NUR die Grundfreigabe — und sie ist hier der SCHÄRFSTE Punkt der ganzen Datei: die Kalibrierung
+    // darunter braucht sie (ohne sie wäre `gefragt` schon beim ersten Aufruf 0 und der Fall grün aus
+    // dem falschen Grund), der Sperrfall darunter muss sie ÜBERLEBEN. Er tut es: `oeffentlicheKi`
+    // allein lässt vertraulichen Text nicht hinaus (`oeffentlicheKiErlaubt` verlangt dafür
+    // zusätzlich `vertraulicheInhalte`). Wer hier den zweiten Schalter setzte, machte aus der Zusage
+    // eine Tautologie.
+    await erteileKiFreigabe(reasoner);
 
     // Nicht vertraulich → die Cloud wird gefragt (Kalibrierung).
     await reasoner.answer(FRAGE, [], "de", false);

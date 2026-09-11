@@ -15,6 +15,12 @@ import {
 } from "../../services/app/src/ai-check-worker";
 import { type AppServices, buildServices } from "../../services/app/src/build-app";
 import { type ModelClient, ModelHttpError, ModelProvider, Reasoner } from "../../services/reasoner";
+// JOB 3588: die GRUNDFREIGABE im Aufbau. JEDER Fall dieser Datei misst eine Ursache, die NUR
+// entstehen kann, wenn der Provider wirklich gerufen wurde (401→auth, 429→rate-limit, …). Ohne die
+// Adminfreigabe des Kerns von JOB 3549 stünde der Provider in keiner Kette, der Lauf endete
+// erfolgreich-deterministisch, und alle acht Fälle prüften eine Ursache, die es nicht gibt.
+// KEINE Freigabe für VERTRAULICHES: die Objekte dieser Datei sind offen eingestuft.
+import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 
 // Ein Client, dessen complete() bei JEDEM Aufruf (Konflikt- UND Duplikat-Judge) denselben Fehler wirft
 // — so nimmt der Fehler den echten judge*Outcome-Weg. Für den „unbekannten Rückfall" liefert er
@@ -120,6 +126,7 @@ describe("RT-001 e2e: echter Providerpfad Providerfehler → judge*Outcome → R
     it(label, async () => {
       const services = buildServices();
       services.reasoner = new Reasoner(new ModelProvider(client));
+      await erteileKiFreigabe(services.reasoner);
       const out = await runAgainstJudge(services);
       // AUFTRAG-mega28 A2: der Ausgang traegt zusaetzlich die Abdeckung des Laufs. Geprueft wird
       // hier weiterhin GENAU die Ursache — deshalb toMatchObject statt eines Form-Vergleichs.
@@ -136,6 +143,7 @@ describe("RT-001 e2e: echter Providerpfad Providerfehler → judge*Outcome → R
     });
     const services = buildServices();
     services.reasoner = new Reasoner(new ModelProvider(leakyClient));
+    await erteileKiFreigabe(services.reasoner);
     const out = await runAgainstJudge(services);
     // Der Ausgang trägt AUSSCHLIESSLICH die neutrale Klasse (mega28 A2: plus die reinen
     // Abdeckungs-ZAHLEN, die keinen Anbietertext tragen können — die Leck-Probe unten prüft das).

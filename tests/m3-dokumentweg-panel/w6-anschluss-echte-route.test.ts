@@ -28,6 +28,7 @@ import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 import { ModelProvider, Reasoner } from "../../services/reasoner";
+import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 
 const TEXT =
   "Vor jeder Wartung an der Presse P2 ist der Hauptschalter abzuschließen und der Druck im " +
@@ -82,6 +83,13 @@ async function aufbauen(zustimmen: boolean) {
       },
     }),
   );
+  // JOB 3588: die GRUNDFREIGABE im Aufbau. Der Aufbau existiert, damit der mitschreibende Anbieter
+  // WIRKLICH gerufen wird (`gesehen`) — ohne die Adminfreigabe des Kerns von JOB 3549 bliebe die
+  // Liste leer, und die Fälle „mit Zustimmung geht es hinaus / ohne nicht" prüften beide dieselbe
+  // Sperre. Die Freigabe ersetzt die ZUSTIMMUNG nicht; sie ist die Bedingung davor, und der Fall
+  // `zustimmen === false` bleibt deshalb weiterhin zu.
+  // Kein `vertraulicheInhalte`: der Weg dieser Datei führt nicht eingestuften Text.
+  await erteileKiFreigabe(services.reasoner);
   const app = buildApp(services);
   apps.push(app);
   const anmeldung = { email: "m3c@example.test", password: "test-password-3243" };
