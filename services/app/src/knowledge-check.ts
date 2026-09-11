@@ -18,8 +18,25 @@ import { trigramSimilarity } from "../../conflicts";
 import type { KnowledgeObject, KoService, KoStatus } from "../../knowledge-object";
 import { dropConfidential } from "../../knowledge-object";
 // JOB 3298: DIESELBE Zerlegung in Inhaltstoken, die Ask/Reasoner benutzen — der Live-Check wählt die
-// Sätze des Dokumenttexts nach derselben Wortauffassung aus wie der Antwortweg. Es gibt keine zweite
-// Tokenisierung in diesem Haus, und diese hier ist die öffentliche Fläche des Reasoner-Moduls.
+// Sätze des Dokumenttexts (`dokumentAuszug`) nach derselben Wortauffassung aus wie der Antwortweg.
+// Diese hier ist die öffentliche Fläche des Reasoner-Moduls.
+//
+// JOB 3574 — BERICHTIGUNG. Hier stand „Es gibt keine zweite Tokenisierung in diesem Haus". Das war
+// schon beim Schreiben falsch: zwölf Zeilen tiefer zerlegt `terms()` denselben Entwurfstext ein
+// zweites Mal, für die Kandidaten-Vorauswahl. Gemessen wurde (Lieferung 4, Testfälle T1/T1b in
+// tests/live-check-suchwoerter/), ob `queryTokens` diese zweite Zerlegung ABLÖSEN kann — sie kann es
+// an dieser Stelle nicht, ohne eine Schwelle zu verstellen:
+//   · Mindestlänge: `queryTokens` nimmt Wörter ab drei Zeichen (provider.ts:1183, `w.length > 2`),
+//     die Vorauswahl hier nur ÜBER drei (`TERM_MIN_LAENGE`). „Gas" wäre neu ein Suchwort — eine
+//     Schwellenänderung, und die ist ausdrücklich nicht Gegenstand.
+//   · Grundformen: `queryTokens` liefert Stämme („leitung" → „leit", „entleeren" → „entleer"), die
+//     Vorauswahl hier Oberflächenformen. Beide finden über `includes` denselben Bestand, aber die
+//     Wortliste wäre eine andere — und die Zusage „für höchstens zwölf Wörter Zeichen für Zeichen
+//     die alte Liste" (Testfall V1) wäre gebrochen.
+// Es bleiben deshalb ZWEI Zerlegungen in dieser Datei, mit zwei verschiedenen Aufgaben: `queryTokens`
+// für die Satzauswahl im Dokumenttext (Wortgleichheit gegen den Antwortweg zählt), `terms()` für den
+// Repo-Prefilter (Schwellentreue gegen den Bestand zählt). Das ist der gemessene Stand, nicht der
+// erwünschte; die Zusammenlegung bliebe ein eigener Auftrag mit eigener Schwellenentscheidung.
 import { queryTokens } from "../../reasoner";
 
 // JOB 3031 — DER FUNDORT REIST AUCH AUF DIESEM WEG MIT DEM TREFFER.
@@ -224,16 +241,79 @@ const SIMILAR_MIN_SCORE = 0.18;
 const SIMILAR_LIMIT = 5;
 const CANDIDATE_LIMIT = 40;
 
-// Reine Wörter für die Kandidaten-Vorauswahl (Keyword-Prefilter des Repos).
+// ================================================================================================
+// JOB 3574 · DIE ZWÖLF SUCHWÖRTER KOMMEN AUS DEM GANZEN TEXT, NICHT AUS SEINEM ANFANG.
+// ================================================================================================
+//
+// DER BEFUND, GEMESSEN (tests/live-check-suchwoerter/suchwoerter-aus-dem-ganzen-text.test.ts).
+// Bis heute stand hier `.slice(0, 12)` über die Einfügereihenfolge eines `Set` — also wörtlich die
+// zwölf ERSTEN Wörter über drei Zeichen, nicht die zwölf tragenden. Diese Wortliste ist die EINZIGE
+// Eingabe der Kandidaten-Vorauswahl (`deps.ko.findCandidates` unten), und die kennt keinen
+// Ersatzweg: passt kein Wort, ist die Kandidatenliste leer
+// (services/knowledge-object/src/repo-candidates.test.ts:72-77). Ein Entwurf mit vorangestellter
+// Kopfzeile — Herkunft, Datum, Status, Kategorie, wie die Browser-Erweiterung sie setzt — verbrauchte
+// damit alle zwölf Plätze für Beiwerk. Gemessen an derselben Sache mit und ohne Kopfzeile:
+// ohne 7 Wörter → 1 Kandidat → 1 Ähnlichkeitstreffer → 1 Judge-Aufruf; mit Kopfzeile 12
+// Kopfzeilenwörter → 0 Kandidaten → 0 Treffer → 0 Judge-Aufrufe, Status beide Male „done".
+//
+// DIE REGEL. Die verschiedenen Wörter über drei Zeichen werden NACH WORTLÄNGE ABSTEIGEND gereiht,
+// bei gleicher Länge nach ihrem ersten Vorkommen im Text; die zwölf ersten dieser Reihung sind die
+// Suchwörter. Die TEXTSTELLE spielt keine Rolle mehr — ein Wort am Textende hat dieselbe Chance wie
+// eines in der ersten Zeile.
+//
+// WARUM DIE LÄNGE UND NICHT DIE STELLE: die Vorauswahl des Repos ist ein ODER über TEILZEICHENKETTEN
+// (`koCandidateScore`, services/knowledge-object/src/repo.ts:261-270). Ein langes Wort ist dort das
+// trennscharfe: „überdrucksicherheitsventil" trifft genau den einen Gegenstand, „werk" oder „stand"
+// trifft alles oder nichts. Im Deutschen ist zugleich das lange Wort das fachliche — Komposita wie
+// „Rueckhaltebecken" oder „Ueberdrucksicherheitsventil" tragen den Sachverhalt, während das Beiwerk
+// einer Kopfzeile („Quelle", „Datum", „Status", „Werk", „Stand") kurz ist. Die Regel bleibt dabei
+// INHALTSBLIND: sie kennt keine Wortliste und keine Sprache, sie zählt Zeichen.
+//
+// WARUM DETERMINISTISCH: eine reine Funktion. Sortiert wird nach zwei Ganzzahlen (Wortlänge, dann
+// Fundstelle); der Vergleich ist total, das zweite Kriterium schließt jeden Gleichstand aus, die
+// Stabilität der Sortierung wird nicht vorausgesetzt. Kein Modell, kein Egress, keine Zufallsquelle,
+// keine Uhrzeit — gleiche Eingabe, gleiche Ausgabe.
+//
+// KEINE SCHWELLE IST ANGEFASST: es bleiben zwölf Plätze, es bleibt die Mindestlänge über drei
+// Zeichen, und `SIMILAR_MIN_SCORE`, `SIMILAR_LIMIT`, `CANDIDATE_LIMIT` stehen unverändert oben. Die
+// Wortlänge ist hier SORTIERSCHLÜSSEL, keine Grenze: kein Wort wird wegen seiner Länge verworfen,
+// das nicht schon `TERM_MIN_LAENGE` verwarf. Die Regel führt keine einzige neue Zahl ein.
+// Für einen Text mit höchstens zwölf verschiedenen Wörtern ist die Liste Wort für Wort die alte —
+// dann greift die Auswahl gar nicht.
+//
+// WAS DIE REGEL NICHT KANN — der Zielkonflikt, gemessen in Runde 1 (BEN):
+// Sie verteilt zwölf Plätze, sie schafft keine dreizehnten. Die alte Regel war „die ersten zwölf";
+// jede Regel, die ein Wort von Platz 13 aufwärts aufnimmt, MUSS dafür eines der ersten zwölf
+// fallen lassen. Hängt ein Bestandsgegenstand an genau diesem einen Wort, ist er verloren. Solange
+// die Zwölf feststeht, ist „kein heute gefundener Kandidat geht verloren" deshalb als ALLGEMEINE
+// Zusage unerfüllbar — das ist keine Schwäche dieser Regel, sondern eine Eigenschaft von zwölf
+// Plätzen. Diese Regel verschiebt den Verlust dorthin, wo er am wenigsten kostet: es fallen die
+// KÜRZESTEN Wörter, also die unschärfsten Sucher. Gemessen abgesichert sind der Fall „Fachinhalt
+// vorne" (V2) und der Fall „der Gegenstand hängt an EINEM langen Wort auf Platz zwei" (V3, BENs
+// Gegenbeispiel gegen die Vorgängerregel). Ein Verlust bleibt möglich, wenn ein Gegenstand
+// ausschließlich an einem der kürzesten Wörter eines langwortreichen Entwurfs hängt; das wird hier
+// nicht wegbehauptet.
+const TERM_PLAETZE = 12;
+const TERM_MIN_LAENGE = 3;
+
+/** Reine Wörter für die Kandidaten-Vorauswahl (Keyword-Prefilter des Repos). */
 function terms(text: string): string[] {
-  return Array.from(
+  const worte = Array.from(
     new Set(
       text
         .toLowerCase()
         .split(/[^a-z0-9äöüß]+/i)
-        .filter((w) => w.length > 3),
+        .filter((w) => w.length > TERM_MIN_LAENGE),
     ),
-  ).slice(0, 12);
+  );
+  if (worte.length <= TERM_PLAETZE) {
+    return worte;
+  }
+  return worte
+    .map((wort, fundstelle) => ({ wort, fundstelle }))
+    .sort((a, b) => b.wort.length - a.wort.length || a.fundstelle - b.fundstelle)
+    .slice(0, TERM_PLAETZE)
+    .map((eintrag) => eintrag.wort);
 }
 
 export async function checkKnowledge(
