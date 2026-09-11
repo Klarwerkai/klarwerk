@@ -218,6 +218,14 @@ describe("JOB 3131 T2 · der Bestand ueberlebt die Aufteilung in zwei Laeufe", (
     // Befund N-0044 ungedeckt.
     expect(holeRest()).toContain("tests/ux21-tablet-lesemodus/tablet-lesemodus-mounted.test.tsx");
     expect(holeBrowser()).toContain("tests/ux21-tablet-lesemodus/tablet-chromium.test.ts");
+    // JOB 3468 (REVIEW26-HILFE-IMPORT): dieselbe Bauform wie die Pins darueber — ein NEUES
+    // Verzeichnis (`tests/review26-hilfe-import/`) mit einer `.ts` und einer `.tsx` OHNE JSX
+    // (jsdom, `createElement`, kein Chromium). Genau diese Bauform faellt still aus beiden Gruppen,
+    // wenn ein `include`- oder Gruppenmuster den neuen Baum nicht trifft. Die beiden Dateien tragen
+    // den EINZIGEN Beleg dafuer, dass die gemeldete Hilfesuche „import" den vorhandenen Dateiimport
+    // findet und dass die Grenzen auf der Karte aus der Serverquelle kommen.
+    expect(holeRest()).toContain("tests/review26-hilfe-import/hilfe-findet-dateiimport.test.ts");
+    expect(holeRest()).toContain("tests/review26-hilfe-import/hilfe-karte-dateiimport.test.tsx");
   });
 
   it("V4 · der Verzeichnisgang der Konfiguration sieht denselben Bestand wie der Collector", () => {

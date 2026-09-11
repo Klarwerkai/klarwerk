@@ -231,8 +231,12 @@ describe("JOB 3338 W · kein Satz macht eine Zusage, die Klarwerk nicht halten k
 });
 
 describe("JOB 3338 R · der bestehende Hilfebestand bleibt unangetastet", () => {
-  it("R1: HELP_TOPICS führt weiterhin genau die zehn bekannten Kapitel — kein ISO-Kapitel darin", () => {
-    expect(HELP_TOPICS).toHaveLength(10);
+  // JOB 3468 (REVIEW26-HILFE-IMPORT): von zehn auf elf Kapitel. Das neue `fileimport` liegt in
+  // HELP_TOPICS und NICHT bei den ISO-Kapiteln — die Aussage dieses Falls (zwei getrennte Listen,
+  // genau ein Kapitel je Menü-Route) ist davon unberührt und wird unten weiter gemessen. Die Zahl
+  // ist gepinnt und nicht abgeleitet: ein verlorenes Kapitel soll hier auffallen.
+  it("R1: HELP_TOPICS führt weiterhin genau die bekannten Kapitel — kein ISO-Kapitel darin", () => {
+    expect(HELP_TOPICS).toHaveLength(11);
     const isoIds = new Set(ISO_HELP_TOPICS.map((t) => t.id));
     for (const t of HELP_TOPICS) {
       expect(isoIds.has(t.id), `${t.id} ist in beide Listen geraten`).toBe(false);

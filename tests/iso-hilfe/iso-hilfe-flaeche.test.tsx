@@ -22,6 +22,7 @@ import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
 import i18n from "../../apps/web/src/i18n";
+import { HELP_TOPICS } from "../../apps/web/src/lib/helpTopics";
 import {
   ISO_HELP_LABELS,
   ISO_HELP_TOPICS,
@@ -199,9 +200,14 @@ describe("JOB 3338 · A — der Suchbegriff findet die ISO-Erklärung, in beiden
     await tippe("pwa");
     expect(sichtbareKapitel()).toEqual(["mobile"]);
     await tippe("");
-    // Leere Suche zeigt ALLE: die zehn bestehenden Kapitel plus die vier ISO-Kapitel.
+    // Leere Suche zeigt ALLE: die Kapitel aus `HELP_TOPICS` plus die vier ISO-Kapitel.
+    // JOB 3468 (REVIEW26-HILFE-IMPORT): von 14 auf 15 — `HELP_TOPICS` führt seit diesem Job elf
+    // Kapitel (das neue `fileimport`). Die Zahl ist hier ABGELEITET und nicht mehr getippt: sie
+    // bleibt damit bei jedem weiteren Kapitel richtig, und der Fall prüft weiterhin genau das, was
+    // er prüfen soll — dass BEIDE Listen auf der Fläche ankommen und keine dabei verlorengeht.
     const alle = sichtbareKapitel();
-    expect(alle.length).toBe(14);
+    expect(alle.length).toBe(HELP_TOPICS.length + ISO_HELP_TOPICS.length);
+    expect(alle.length, "der sichtbare Bestand ist nicht mehr fünfzehn Kapitel").toBe(15);
     for (const id of ["firststart", "capture", "ask", "library", "validation", "tasks"]) {
       expect(alle, `${id} fehlt in der ungefilterten Hilfe`).toContain(id);
     }

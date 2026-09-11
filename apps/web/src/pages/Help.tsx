@@ -2,6 +2,7 @@ import { ArrowRight, ExternalLink } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
+import { UploadLimitsHint } from "../components/UploadLimitsHint";
 import { Card, PageHeader } from "../components/ui";
 import { HELP_TOPICS, type HelpSearchItem, filterHelpTopics } from "../lib/helpTopics";
 import {
@@ -27,7 +28,22 @@ import { PILOT_OBSERVATIONS } from "../lib/pilotObservationGuide";
 // DOM-freien Filter. Ein ISO-Kapitel trägt zusätzlich `sources` — EXTERNE Adressen, die als eigener
 // Block unter dem Text stehen und den Tabwechsel am Link ankündigen. Der interne Handlungslink
 // bleibt davon getrennt: er ist eine App-Route und öffnet keinen Tab.
-type HilfeEintrag = HelpSearchItem & { to: string; sources?: readonly string[] };
+//
+// JOB 3468 (REVIEW26-HILFE-IMPORT): genau EIN Kapitel verlangt zusätzlich die geltenden
+// Upload-Grenzen auf seiner Karte — der Dateiimport. Die Zahlen stehen NICHT in seinem Text: sie
+// kommen vom Server und werden von der einen vorhandenen Anzeige dafür gezeigt
+// (`components/UploadLimitsHint.tsx`). Liegen sie nicht vor, zeigt die Karte den Zusatz GAR NICHT —
+// ohne frische Grundlage wird keine Grenze behauptet. Das Kapitel selbst hängt an keinem Abruf und
+// bleibt in jedem Zustand auffindbar und lesbar, auch offline.
+//
+// WAS ENTSCHEIDET: das Merkmal `uploadLimits` des Kapitels, NICHT seine Kennung. Eine Seite, die
+// „wenn id === 'fileimport'" fragt, ist ein Sonderfall und läuft beim nächsten Kapitel auseinander
+// — dieselbe Erwägung wie beim ISO-Zweig eine Zeile weiter unten (`istIso` hängt an `sources`).
+type HilfeEintrag = HelpSearchItem & {
+  to: string;
+  sources?: readonly string[];
+  uploadLimits?: boolean;
+};
 
 export function Help(): JSX.Element {
   const { t, i18n } = useTranslation();
@@ -43,6 +59,9 @@ export function Help(): JSX.Element {
       body: t(topic.bodyKey),
       tags: topic.tags,
       to: topic.to,
+      // Nur setzen, wenn das Kapitel es WIRKLICH verlangt: ein Feld mit `undefined` ist unter
+      // `exactOptionalPropertyTypes` etwas anderes als ein fehlendes.
+      ...(topic.uploadLimits === true ? { uploadLimits: true } : {}),
     })),
     ...ISO_HELP_TOPICS.map((topic) => ({
       id: topic.id,
@@ -151,6 +170,17 @@ export function Help(): JSX.Element {
                     </p>
                   ))}
                 </div>
+                {/* JOB 3468: die geltenden Upload-Grenzen — AUS DER SERVERQUELLE, über die eine
+                    vorhandene Anzeige. Sie entscheidet selbst, ob sie etwas sagt: ohne Werte
+                    (laden, leer, Fehler, offline, kein Abfragekontext) rendert sie `null`
+                    (`UploadLimitsHint.tsx:28-37`). Damit behauptet die Hilfe weder eine Zahl noch
+                    eine Frische, und sie meldet auch keinen fremden Dienstfehler.
+                    Die Klassenkette steht LITERAL da — der Klassenbindungs-Sammler
+                    (`tests/app/mega47-modale-flaechen-sammler.test.tsx`) könnte eine erst zur
+                    Laufzeit gebaute nicht auflösen (siehe den Block weiter unten). */}
+                {topic.uploadLimits ? (
+                  <UploadLimitsHint className="mt-2 text-[11px] text-muted-2" />
+                ) : null}
                 {istIso ? (
                   // `2701` ist ein SUCHALIAS, keine Normbezeichnung. Bei den ISO-Kapiteln bekommt
                   // die Merkmalsleiste deshalb eine Überschrift, die genau das sagt.

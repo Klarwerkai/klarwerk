@@ -4843,6 +4843,16 @@ const de = {
   "help.capture.title": "Wissen erfassen",
   "help.capture.body":
     "Halte Erfahrungswissen formlos fest — per Text, Diktat oder Foto. Die KI strukturiert es, du prüfst und reichst ein.",
+  // JOB 3468 (REVIEW26-HILFE-IMPORT): Die Hilfesuche „import" blieb leer, obwohl der Weg existiert.
+  // Der Text ist eine ANLEITUNG und nennt Fläche, Modus und Knopf mit ihren echten Beschriftungen
+  // (`nav.capture`, `erfassen.weg.datei`, `capture.file.pick`, `capture.file.importMode.*`) — wer
+  // einen davon umbenennt, macht `tests/review26-hilfe-import/hilfe-karte-dateiimport.test.tsx`
+  // (D3) rot. KEINE ZAHL steht darin: Anzahl und Größe kommen vom Server und werden auf der Karte
+  // von `UploadLimitsHint` gezeigt. Keine zeitabhängige Aussage („derzeit", „aktuell") — die
+  // Formatliste ist aus `lib/extract.ts` erhoben und wird von Q1/Q2 dort festgehalten.
+  "help.fileimport.title": "Datei importieren: Word, PDF, PowerPoint, Text und Bild",
+  "help.fileimport.body":
+    "Der Weg beginnt unter „Wissen erfassen“: im Werkzeug „Datei“ den Eintrag „Datei importieren“ wählen und dort mit „Datei auswählen“ ein Dokument öffnen — oder es auf die Ablagefläche ziehen.\n\nDanach entscheidest du, was daraus wird: „In Punkte analysieren“ schlägt einzelne Wissenspunkte mit Belegstelle vor, und du wählst aus, was übernommen wird; „Ganzes Dokument übernehmen“ legt genau einen vollständigen Entwurf an. Gespeichert wird nichts ohne dein Zutun; ein angelegter Entwurf ist ungeprüft und nicht eingereicht.\n\nAngenommen werden Textdateien (.txt, .md, .markdown, .csv, .log, .json), Word (.docx), PDF, PowerPoint (.pptx) und Bilder.",
   "help.validate.title": "Validieren",
   "help.validate.body":
     "Bewerte Objekte grün/gelb/rot. Ab der Schwelle gilt ein Objekt als validiert; rote Bewertungen gehen zurück an den Autor.",
@@ -9966,6 +9976,9 @@ const en: typeof de = {
   "help.capture.title": "Capture knowledge",
   "help.capture.body":
     "Capture experience knowledge informally — via text, dictation or photo. The AI structures it, you review and submit.",
+  "help.fileimport.title": "Import a file: Word, PDF, PowerPoint, text and images",
+  "help.fileimport.body":
+    "The path starts under “Capture Knowledge”: in the “File” tool pick the entry “Import file”, then open a document with “Choose file” — or drag it onto the drop area.\n\nNext you decide what becomes of it: “Analyze into points” proposes individual knowledge points with a source excerpt, and you select what gets taken over; “Take over whole document” creates exactly one complete draft. Nothing is saved without your action, and a created draft is unreviewed and not submitted.\n\nAccepted are text files (.txt, .md, .markdown, .csv, .log, .json), Word (.docx), PDF, PowerPoint (.pptx) and images.",
   "help.validate.title": "Validate",
   "help.validate.body":
     "Rate objects green/amber/red. At the threshold an object is validated; red ratings go back to the author.",
@@ -14862,6 +14875,9 @@ const nl: typeof de = {
   "help.capture.title": "Kennis vastleggen",
   "help.capture.body":
     "Leg ervaringskennis vormvrij vast — via tekst, dictaat of foto. De KI structureert het, jij controleert en dient in.",
+  "help.fileimport.title": "Bestand importeren: Word, PDF, PowerPoint, tekst en afbeeldingen",
+  "help.fileimport.body":
+    "De weg begint onder „Kennis vastleggen“: kies in het gereedschap „Bestand“ het item „Bestand importeren“ en open daar met „Bestand kiezen“ een document — of sleep het naar het neerzetvlak.\n\nDaarna beslis je wat ervan wordt: „In punten analyseren“ stelt afzonderlijke kennispunten met bronfragment voor en jij selecteert wat wordt overgenomen; „Hele document overnemen“ maakt precies één volledig concept aan. Er wordt niets opgeslagen zonder jouw toedoen; een aangemaakt concept is ongecontroleerd en niet ingediend.\n\nGeaccepteerd worden tekstbestanden (.txt, .md, .markdown, .csv, .log, .json), Word (.docx), PDF, PowerPoint (.pptx) en afbeeldingen.",
   "help.validate.title": "Valideren",
   "help.validate.body":
     "Beoordeel objecten groen/geel/rood. Vanaf de drempel geldt een object als gevalideerd; rode beoordelingen gaan terug naar de auteur.",

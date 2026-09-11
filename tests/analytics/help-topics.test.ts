@@ -39,12 +39,34 @@ describe("SCRUM-219: helpTopics", () => {
     expect(filterHelpTopics(items, "zzz-nichts")).toEqual([]);
   });
 
-  it("HELP_TOPICS: 10 Kapitel, eindeutige IDs, nur interne Routen", () => {
-    expect(HELP_TOPICS).toHaveLength(10);
-    expect(new Set(HELP_TOPICS.map((t) => t.id)).size).toBe(10);
+  // JOB 3468 (REVIEW26-HILFE-IMPORT): von 10 auf 11. GENAU EIN Kapitel kommt dazu — `fileimport`,
+  // der in der Hilfe bisher unauffindbare Dateiimport. Kein bestehendes Kapitel ist weggefallen;
+  // dass die Zahl nicht nur hochgesetzt wurde, hält der nächste Fall fest (er nennt die Kennung).
+  it("HELP_TOPICS: 11 Kapitel, eindeutige IDs, nur interne Routen", () => {
+    expect(HELP_TOPICS).toHaveLength(11);
+    expect(new Set(HELP_TOPICS.map((t) => t.id)).size).toBe(11);
     for (const topic of HELP_TOPICS) {
       expect(topic.to.startsWith("/")).toBe(true);
       expect(topic.tags.length).toBeGreaterThan(0);
     }
+  });
+
+  // Die Zahl allein wäre beim nächsten Austausch wertlos: zehn Kapitel bleiben zehn, auch wenn eines
+  // verschwindet und ein anderes dafür kommt. Dieser Fall nennt deshalb die Kennungen IN ANZEIGE-
+  // REIHENFOLGE — ein Verlust und eine Umsortierung werden damit beide sichtbar.
+  it("HELP_TOPICS: genau diese Kapitel, in dieser Anzeigereihenfolge", () => {
+    expect(HELP_TOPICS.map((t) => t.id)).toEqual([
+      "firststart",
+      "capture",
+      "fileimport",
+      "ask",
+      "library",
+      "validation",
+      "tasks",
+      "risk",
+      "lifecycle",
+      "stufe2",
+      "mobile",
+    ]);
   });
 });
