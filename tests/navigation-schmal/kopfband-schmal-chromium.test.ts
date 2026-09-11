@@ -35,24 +35,35 @@
 //   · Gemessen wird DEUTSCH. Das ist der bindende Fall: „Meine Entwürfe" und „Gehe zu …" sind
 //     länger als „My drafts" und „Go to …", die englische Zeile passt also erst recht. Die
 //     Sprachumschaltung selbst prüft die jsdom-Datei (Fall D).
-//   · Gemessen wird OHNE Firmen-CI. Ist sie aktiv, tritt neben die Wortmarke ein Logo
-//     (`shell/Logo.tsx`, `h-7` + `px-1.5` + `ml-2.5`, rund 45 px). Die 760-px-Kante ist mit dieser
-//     Reserve gewählt; gemessen ist sie hier nicht.
+//   · Gemessen wird hier OHNE Firmen-CI. MIT ihr misst seit JOB 3571 der Schwesterlauf
+//     `kopfband-ci-chromium.test.ts` dieselben Breiten mit demselben Werkzeug — die Lücke, die an
+//     dieser Stelle bis zum 10.09.2026 eingestanden stand, ist damit eingelöst und nicht verschoben.
+//     Was OFFEN BLEIBT und deshalb weiter hier steht: Englisch und Niederländisch MIT Firmen-CI sind
+//     auf keiner der beiden Seiten gemessen. Bindend ist Deutsch (siehe die Zeile darüber), die
+//     kürzeren Sprachen passen erst recht — belegt ist das aber nicht.
 //   · Eine Instanz je Datei (Kopf von `tests/design/h6-chromium.ts`); die Breiten werden an
 //     DERSELBEN Seite durchgefahren.
 //   · Bei 900 px — der schmalsten Breite der BREITEN Bauform — werden L3/L4 gemessen und
 //     ausgegeben, aber NICHT zugesichert. Die Begründung steht bei `STRENG` weiter unten; kurz:
 //     das ist der Bestand von JOB 3060, den §5.3 dieses Auftrags ausdrücklich unberührt lässt.
+//
+// DAS MESSWERKZEUG SELBST WOHNT SEIT JOB 3571 NEBENAN (`kopfband-messung.ts`) und wird von beiden
+// Läufen importiert — eine zweite Kopie hiesse zwei Wahrheiten über dieselbe Zeile. Was hier bleibt,
+// ist die ZUSAGE dieses Jobs: die Breitenliste, `STRENG` und der Wortlaut der Fälle.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { type Seite, type Stand, fn, starte, wechsle } from "../design/h6-chromium";
+import { type Stand, starte } from "../design/h6-chromium";
 import { schliesseChromium } from "../tor-bereitschaft/chromium-abbau";
-
-/** Die Bühne reicht die rohe Playwright-Seite durch — nur so lässt sich die Breite verstellen. */
-interface SeiteMitViewport {
-  setViewportSize(size: { width: number; height: number }): Promise<void>;
-}
+import {
+  type Messung,
+  STRENG_ALLES,
+  messe as messeZeile,
+  nurGemessen,
+  pruefeZeile as pruefeZeileMit,
+} from "./kopfband-messung";
 
 const HOEHE = 800;
+/** Die Kennung, unter der die gemessenen Zahlen im Lauf stehen. */
+const KENNUNG = "JOB 3525";
 /** Die Startbreite ist die engste des Punkte-Bands — dort entscheidet sich die Schwelle. */
 const START_BREITE = 760;
 
@@ -73,95 +84,9 @@ afterAll(async () => {
   }
 }, 60_000);
 
-function seiteRoh(): Seite & SeiteMitViewport {
-  const seite = stand.seite;
-  if (seite === null) {
-    throw new Error(`Bühne steht nicht: ${stand.fehler ?? "unbekannt"}`);
-  }
-  return seite as unknown as Seite & SeiteMitViewport;
-}
-
-interface Kasten {
-  name: string;
-  links: number;
-  rechts: number;
-  oben: number;
-  unten: number;
-  text: string;
-}
-
-interface Messung {
-  bandHoehe: number;
-  bandOben: number;
-  bandUnten: number;
-  scrollBreite: number;
-  clientBreite: number;
-  fensterBreite: number;
-  kaesten: Kasten[];
-  punkte: string[];
-  menueText: string;
-  geheZuText: string;
-  entwuerfeText: string;
-}
-
-// In der Seite: jedes Bedienelement des Kopfbands mit seiner tatsächlichen Lage. Die Auswahl ist
-// bewusst die der SICHTBAREN Griffe — Logo, Menü-Knopf, jeder Punkt, „Gehe zu …", Suche, Zahnrad,
-// Konto. Was der Browser nicht zeichnet (`offsetParent === null`), fällt heraus statt als
-// Nullkasten alles zu überlappen.
-const MESSUNG = fn(`() => {
-  const band = document.querySelector('header[data-testid="kopfband"]');
-  if (!band) return null;
-  const br = band.getBoundingClientRect();
-  const sel = [
-    ['menue', '[data-testid="kopfband-menue"]'],
-    ['marke', '.kw-kopfband-marke'],
-    ['gehezu', '[data-testid="kopfband-gehezu"]'],
-    ['suche', '.kw-kopfband-suche'],
-    ['zahnrad', '[data-testid="kopfband-zahnrad"]'],
-    ['konto', '[data-testid="kopfband-konto"]'],
-  ];
-  const kaesten = [];
-  for (const [name, s] of sel) {
-    const el = band.querySelector(s);
-    if (!el || el.offsetParent === null) continue;
-    const r = el.getBoundingClientRect();
-    kaesten.push({ name, links: r.left, rechts: r.right, oben: r.top, unten: r.bottom, text: (el.innerText || '').trim() });
-  }
-  for (const a of band.querySelectorAll('[data-kopfband-punkt]')) {
-    if (a.offsetParent === null) continue;
-    const r = a.getBoundingClientRect();
-    kaesten.push({ name: 'punkt:' + a.getAttribute('data-kopfband-punkt'), links: r.left, rechts: r.right, oben: r.top, unten: r.bottom, text: (a.innerText || '').trim() });
-  }
-  const menue = band.querySelector('[data-testid="kopfband-menue"]');
-  const gehezu = band.querySelector('[data-testid="kopfband-gehezu"]');
-  const entwuerfe = band.querySelector('[data-kopfband-punkt="entwuerfe"]');
-  return {
-    bandHoehe: br.height,
-    bandOben: br.top,
-    bandUnten: br.bottom,
-    scrollBreite: band.scrollWidth,
-    clientBreite: band.clientWidth,
-    fensterBreite: window.innerWidth,
-    kaesten,
-    punkte: [...band.querySelectorAll('[data-kopfband-punkt]')].map((a) => a.getAttribute('data-kopfband-punkt')),
-    menueText: menue ? (menue.innerText || '').trim() : '',
-    geheZuText: gehezu ? (gehezu.innerText || '').trim() : '',
-    entwuerfeText: entwuerfe ? (entwuerfe.innerText || '').trim() : '',
-  };
-}`);
-
 /** Die Seite auf `breite` stellen, `/start` neu aufbauen und messen. */
 async function messe(breite: number): Promise<Messung> {
-  const seite = seiteRoh();
-  await seite.setViewportSize({ width: breite, height: HOEHE });
-  await wechsle(stand, "/start", 'header[data-testid="kopfband"]');
-  expect(stand.fehler, `die Seite kam bei ${breite}px nicht hoch`).toBeNull();
-  const m = await seite.evaluate<Messung | null>(MESSUNG);
-  expect(m, `bei ${breite}px steht kein Kopfband`).not.toBeNull();
-  if (m === null) {
-    throw new Error("unerreichbar");
-  }
-  return m;
+  return messeZeile(stand, breite, HOEHE);
 }
 
 // ================================================================================================
@@ -187,55 +112,12 @@ const STRENG = new Set([390, 600, 760, 768, 899, 1280]);
 
 /** L1–L4 in einem Stück: die vier Aussagen gehören zusammen, sie beschreiben EINE Zeile. */
 function pruefeZeile(m: Messung, breite: number): void {
-  const streng = STRENG.has(breite);
-  // L1 — die Höhe des Mockups, unverändert.
-  expect(m.bandHoehe, `${breite}px: die Kopfbandhöhe ist nicht 56 px`).toBeCloseTo(56, 1);
-  expect(m.kaesten.length, `${breite}px: es wurde nichts gemessen`).toBeGreaterThan(2);
-  // L3 — nichts läuft seitlich heraus. 1 px Toleranz für die Teilpixel des Browsers.
-  const zusatz = streng ? "" : " (nicht zugesichert: breite Bauform, JOB 3060)";
-  console.log(
-    `JOB 3525 · ${breite}px · Kopfband scrollWidth ${m.scrollBreite} / clientWidth ${m.clientBreite}${zusatz}`,
+  pruefeZeileMit(
+    m,
+    breite,
+    STRENG.has(breite) ? STRENG_ALLES : nurGemessen("breite Bauform, JOB 3060"),
+    KENNUNG,
   );
-  if (streng) {
-    expect(
-      m.scrollBreite,
-      `${breite}px: das Kopfband läuft über (${m.scrollBreite} > ${m.clientBreite})`,
-    ).toBeLessThanOrEqual(m.clientBreite + 1);
-  }
-  for (const k of m.kaesten) {
-    // L2 — jedes Element liegt IN der Zeile; ein Umbruch schöbe es unter `bandUnten`.
-    expect(k.oben, `${breite}px: „${k.name}“ steht über dem Kopfband`).toBeGreaterThanOrEqual(
-      m.bandOben - 1,
-    );
-    expect(
-      k.unten,
-      `${breite}px: „${k.name}“ ragt unter das Kopfband — die Zeile ist umgebrochen`,
-    ).toBeLessThanOrEqual(m.bandUnten + 1);
-    if (!streng) {
-      continue;
-    }
-    // Und es steht im Fenster, nicht daneben.
-    expect(k.links, `${breite}px: „${k.name}“ steht links ausserhalb`).toBeGreaterThanOrEqual(-1);
-    expect(k.rechts, `${breite}px: „${k.name}“ ist rechts angeschnitten`).toBeLessThanOrEqual(
-      m.fensterBreite + 1,
-    );
-  }
-  if (!streng) {
-    return;
-  }
-  // L4 — nichts überlappt: nach links sortiert folgt jedes Element auf das vorige.
-  const sortiert = [...m.kaesten].sort((a, b) => a.links - b.links);
-  for (let i = 1; i < sortiert.length; i++) {
-    const vor = sortiert[i - 1];
-    const nach = sortiert[i];
-    if (!vor || !nach) {
-      continue;
-    }
-    expect(
-      nach.links,
-      `${breite}px: „${nach.name}“ überlappt „${vor.name}“ (${nach.links} < ${vor.rechts})`,
-    ).toBeGreaterThanOrEqual(vor.rechts - 1);
-  }
 }
 
 describe("JOB 3525 · L · die Kopfbandzeile trägt auf jeder Breite", () => {

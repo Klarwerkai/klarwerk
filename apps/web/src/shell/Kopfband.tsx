@@ -22,14 +22,32 @@ import { useMediaQuery } from "./useMediaQuery";
 // `tests/navigation-schmal/kopfband-schmal.test.tsx` (Fall G) rechnet diesen Anschluss aus BEIDEN
 // Quelltexten nach, damit ein späterer Umbau die Fuge nicht still aufreißt.
 //
-// DIE UNTERE GRENZE IST 760 px. Sie ist ÜBERSCHLAGEN und dann NACHGEMESSEN, in dieser Reihenfolge:
-// die Zeile aus Menü-Knopf, Wortmarke, „Meine Entwürfe", „Gehe zu … ⌘K", Zahnrad und Konto trägt in
-// der langen Sprache (DE) rund 590 px — 64 px Seitenpolster, drei Fugen à 20 px (`gap-5`, s. u.)
-// und der Rest Inhalt. Die Reserve bis 760 ist mit Absicht so gross: das Firmenlogo neben der
-// Wortmarke (`Logo.tsx`, aktive Firmen-CI) kostet noch einmal rund 45 px. Der Überschlag steht hier
-// als Begründung, NICHT als Beleg — den liefert die Messung am gebauten Produkt in Chromium
-// (`tests/navigation-schmal/kopfband-schmal-chromium.test.ts`, Fälle L1–L4 und B1 bei genau 760 px).
-// jsdom könnte diese Frage gar nicht beantworten: dort gibt es kein Layout.
+// DIE UNTERE GRENZE IST 760 px, UND SIE IST BELEGT — in Chromium am gebauten Produkt, mit und ohne
+// aktive Firmen-CI. Die Zeile aus Menü-Knopf, Wortmarke, „Meine Entwürfe", „Gehe zu … ⌘K", Zahnrad
+// und Konto trägt in der langen Sprache (DE); 64 px Seitenpolster, drei Fugen à 20 px (`gap-5`,
+// s. u.), der Rest Inhalt.
+//
+// OHNE Firmen-CI: `tests/navigation-schmal/kopfband-schmal-chromium.test.ts` (JOB 3525), Fälle L1–L4
+// und B1 bei genau 760 px — scrollWidth 760 / clientWidth 760.
+//
+// MIT Firmen-CI: `tests/navigation-schmal/kopfband-ci-chromium.test.ts` (JOB 3571), Fälle CI0–CI4.
+// Gemessen am 11.09.2026: das Firmenlogo neben der Wortmarke (`Logo.tsx`) kostet 110,3 px, nicht die
+// hier früher überschlagenen „rund 45 px" — die Wortmarke wächst von 92,2 px auf 202,5 px. Die
+// 760-px-Kante trägt das trotzdem: bei 760 px bleiben MIT Logo noch 58,5 px frei — scrollWidth 760 /
+// clientWidth 760, nichts umgebrochen, nichts angeschnitten, nichts überlappt. (Der freie Raum OHNE
+// Logo steht im Lauf ebenfalls, wird hier aber NICHT als Zahl behauptet: er schwankte zwischen zwei
+// Läufen um 10 px, weil rechts die Kontodarstellung des jeweiligen Bestands mitmisst. Die 58,5 px
+// mit Logo waren in beiden Läufen gleich.) Der
+// frühere Satz „der Überschlag steht hier als Begründung, NICHT als Beleg" ist damit eingelöst; die
+// Zahl 760 bleibt, weil die Messung sie trägt, nicht weil die Rechnung stimmte.
+//
+// WAS DIESELBE MESSUNG AUSSERHALB DIESES BANDS GEFUNDEN HAT (Fall CI5, Befund, hier NICHT behoben):
+// Unter 760 px und in der breiten Bauform bei 900 px reicht der Platz mit aktiver Firmen-CI nicht —
+// bei 390 px steht der Konto-Kreis 20,5 px, bei 900 px 109,5 px rechts ausserhalb des Fensters. Das
+// Band 760–899 px, um das es hier geht, ist davon nicht betroffen; die Ursache ist die Breite des
+// Logokastens (`Logo.tsx`) und gehört einem eigenen Auftrag.
+//
+// jsdom könnte keine dieser Fragen beantworten: dort gibt es kein Layout.
 //
 // 760 ist zugleich die Zahl, die das Produkt an dieser Stelle bereits führt (`useMediaQuery.ts`,
 // `TABLET_LESE_QUERY`: „das Band ZWISCHEN Telefon und Desktop"). Eine EIGENE Konstante steht hier
