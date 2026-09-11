@@ -87,24 +87,32 @@ async function aufbauen() {
   });
 
   // ==============================================================================================
-  // OFFEN (JOB 3570, gemessen und bestätigt von JOB 3588): DIESER AUFBAU BRAUCHT DIE
-  // GRUNDFREIGABE UND KANN SIE VON HIER AUS NICHT BEKOMMEN.
+  // OFFEN (JOB 3570/3588, nachgemessen von JOB 3657): DIESER AUFBAU BRAUCHT DIE GRUNDFREIGABE
+  // UND KANN SIE VON HIER AUS NICHT BEKOMMEN.
   // ==============================================================================================
   //
   // KA4-V0/V1 verlangen `gesehen.length === 1`, also einen TATSÄCHLICHEN Aufruf des als Cloud
   // verdrahteten Mitschreibers; unter dem Kern von JOB 3549 setzt das die Adminfreigabe voraus.
-  // Ohne sie bliebe `gesehen` leer und „das vertrauliche Objekt ist nicht dabei" wäre die Aussage
-  // über eine nie gestellte Frage.
+  // Ohne sie bleibt `gesehen` leer und „das vertrauliche Objekt ist nicht dabei" wäre die Aussage
+  // über eine nie gestellte Frage. Auf dem Messstand von JOB 3657 (Kern 1bcb283) werden BEIDE
+  // Fälle genau so rot: „AssertionError: expected +0 to be 1" — die Kalibrierung KA4-V0 fällt mit
+  // dem Beleg KA4-V1 zusammen, und das ist der Punkt: ohne Aufruf misst der Beleg nichts.
   //
-  // WARUM HIER NICHTS STEHT: beide Wege sind versperrt — ausführlich und mit der gemessenen
-  // depcruise-Meldung in `services/ask/src/service.test.ts` (gleicher Fall, gleicher Grund).
+  // WARUM HIER NICHTS STEHT: beide Wege sind versperrt — ausführlich und mit den gemessenen
+  // depcruise-Zahlen in `services/ask/src/service.test.ts` (gleicher Fall, gleicher Grund).
   // Kurz: der Testhelfer liegt hinter der Modulgrenze (`.dependency-cruiser.cjs:16-27`), und die
   // Felder von Hand zu schreiben verbietet der Freigabe-Wächter F2
-  // (`tests/ki-anbieterwahl/routing-zwei-attrappen.test.ts:2093`) ausnahmslos.
+  // (`tests/ki-anbieterwahl/routing-zwei-attrappen.test.ts`) ausnahmslos. Der Nachtrag, der es
+  // löste, ist eine Zeile PRODUKTCODE in `services/reasoner/index.ts` — ausserhalb der Zielpfade;
+  // gemessen und wieder verworfen von JOB 3657, Rechnung im Kopf von `appWithSpy` in
+  // `services/app/src/routes/reasoner-egress.test.ts`.
   //
-  // WÄRE ES MÖGLICH, DANN NUR `oeffentlicheKi` UND NIEMALS `vertraulicheInhalte`: diese Datei
-  // misst, dass Vertrauliches den Modellkontext nicht erreicht. Die zweite Freigabe hätte die
-  // Sperre aufgehoben, die hier die Zusage trägt — der Test bliebe grün und misst etwas anderes.
+  // NUR `oeffentlicheKi` UND NIEMALS `vertraulicheInhalte`: diese Datei misst, dass Vertrauliches
+  // den Modellkontext nicht erreicht. Die zweite Freigabe hätte die Sperre aufgehoben, die hier die
+  // Zusage trägt — der Test bliebe grün und misst etwas anderes. JOB 3657 hat auf dem Messstand
+  // ausschliesslich die Grundfreigabe gesetzt (`erteileKiFreigabe(reasoner)` ohne zweiten Wert);
+  // KA4-V1 blieb dabei grün und hat damit BELEGT, dass die Grundfreigabe genügt und der Beleg
+  // dieser Datei erhalten bleibt.
   const { provider, gesehen } = mitschreiber();
   const ask = new AskService({
     reasoner: new Reasoner(provider),

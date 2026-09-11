@@ -251,32 +251,38 @@ describe("AskService", () => {
       select: () => [],
     };
     // ============================================================================================
-    // OFFEN (JOB 3570, gemessen und bestätigt von JOB 3588): DIESER AUFBAU BRAUCHT DIE
-    // GRUNDFREIGABE UND KANN SIE VON HIER AUS NICHT BEKOMMEN.
+    // OFFEN (JOB 3570/3588, nachgemessen von JOB 3657): DIESER AUFBAU BRAUCHT DIE GRUNDFREIGABE
+    // UND KANN SIE VON HIER AUS NICHT BEKOMMEN.
     // ============================================================================================
     //
     // `seen` bleibt nur gefüllt, wenn der als Cloud verdrahtete Provider wirklich gefragt wird;
-    // unter dem Kern von JOB 3549 setzt das die Adminfreigabe voraus.
+    // unter dem Kern von JOB 3549 setzt das die Adminfreigabe voraus. Auf dem Messstand von
+    // JOB 3657 (Kern 1bcb283) ist das der gemessene Rotstand:
+    // „AssertionError: expected [] to deeply equal [ 'en', 'de' ]".
     //
     // WARUM HIER NICHTS STEHT — beide Wege sind versperrt, und zwar GEMESSEN, nicht vermutet:
     //   1. Der Testhelfer (`services/reasoner/src/testhelfer-ki-freigabe.ts`) ist von hier aus
     //      nicht importierbar. `npx depcruise --config .dependency-cruiser.cjs services` meldet
     //      mit dem Import „error module-boundaries: services/ask/src/service.test.ts →
-    //      services/reasoner/src/testhelfer-ki-freigabe.ts · 1 dependency violations (1 errors)"
-    //      (JOB 3588, Gegenprobe 1). Die Regel steht in `.dependency-cruiser.cjs:16-27` und lässt
-    //      Cross-Modul-Importe ausschliesslich über `services/reasoner/index.ts` zu.
+    //      services/reasoner/src/testhelfer-ki-freigabe.ts" — JOB 3657 hat alle vier betroffenen
+    //      Dateien zugleich gemessen: „x 4 dependency violations (4 errors, 0 warnings)". Die Regel
+    //      steht in `.dependency-cruiser.cjs:16-27` und lässt Cross-Modul-Importe ausschliesslich
+    //      über `services/reasoner/index.ts` zu.
     //   2. Die Felder von Hand zu schreiben (`kiFreigabe: { … }` an `setTaskConfig`) verbietet der
-    //      Freigabe-Wächter F2 in `tests/ki-anbieterwahl/routing-zwei-attrappen.test.ts:2093`
+    //      Freigabe-Wächter F2 in `tests/ki-anbieterwahl/routing-zwei-attrappen.test.ts`
     //      AUSNAHMSLOS. Genau daran ist JOB 3588 Runde 1 rot geworden — und die Regel ist richtig:
     //      wer die Felder einmal von Hand schreiben darf, kann morgen `vertraulicheInhalte`
     //      danebenschreiben, ohne dass es jemand sieht.
     //
-    // DER KLEINSTE UMBAU, DER ES KÖNNTE: eine Zeile in `services/reasoner/index.ts`, die den Helfer
-    // re-exportiert. Sie liegt ausserhalb der Zielpfade dieses Auftrags UND widerspricht der
-    // Hausdoktrin, die dort im Kommentar zu mega59 Block I (`services/reasoner/index.ts:38-52`)
-    // ausdrücklich festgehalten ist: ein Re-Export ist die ÖFFENTLICHE Fläche des Moduls, und für
-    // einen Testhelfer ist das „eine Zusage, die niemand geben wollte". Deshalb bleibt der Punkt
-    // offen und wird benannt, statt hier still am Wächter vorbei gebaut zu werden.
+    // DER KLEINSTE UMBAU, DER ES KÖNNTE: eine Zeile PRODUKTCODE in `services/reasoner/index.ts`,
+    // die den Helfer re-exportiert. JOB 3657 hat sie auf einem Messstand gebaut und wieder
+    // verworfen; mit ihr werden alle fünf offenen Fälle grün (Test Files 6 passed · Tests 128
+    // passed, depcruise sauber, `tsc` ohne Ausgabe). Sie liegt ausserhalb der Zielpfade, sie
+    // widerspricht der Hausdoktrin zu mega59 Block I in `services/reasoner/index.ts` („ein
+    // Re-Export ist die ÖFFENTLICHE Fläche des Moduls"), und sie macht den Freigabe-Wächter F1
+    // blind für genau diese vier Benutzer. Alle drei Punkte mit Zahlen im Kopf von `appWithSpy` in
+    // `services/app/src/routes/reasoner-egress.test.ts`. Deshalb bleibt der Punkt offen und wird
+    // benannt, statt hier still am Wächter vorbei gebaut zu werden.
     const ask = new AskService({
       reasoner: new Reasoner(capturing),
       koService: ctx.koService,
