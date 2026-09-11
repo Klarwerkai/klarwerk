@@ -10,10 +10,14 @@
 //   rutscht sie hinter die Validiert-Stufe oder zählt sie einen Term doppelt, wird diese Datei rot —
 //   im REGULÄREN Testlauf, also auch ohne Docker.
 //
-// GEMESSEN WIRD, WAS LÄUFT: `PgKoRepo.findCandidates` wird über den Produktpfad gerufen, mit einem
-// Stellvertreter für den Pool, der die abgesetzte Anweisung samt Parameterliste festhält. Es wird
-// keine Zeichenkette nachgebaut und keine Regel zweitgeschrieben; die Such-Ausdrücke kommen aus der
-// einen Quelle des Produkts (`KO_CANDIDATE_SEARCH_EXPRESSIONS`).
+// GEMESSEN WIRD DIE GESTALT DER ABFRAGE, NICHT IHR LAUF IM PRODUKT — und der Unterschied ist keine
+// Feinheit: `KoRepo.findCandidates` hat im Produkt KEINEN Aufrufer (JOB 3607, belegt in
+// `toter-kandidatenweg.test.ts`; der Suchweg läuft über `KoService.findCandidates` →
+// `findSearchHits` → `KoSearchProjectionRepo.findActive`). Diese Datei ruft die Methode deshalb
+// SELBST, mit einem Stellvertreter für den Pool, der die abgesetzte Anweisung samt Parameterliste
+// festhält. Was hier grün ist, sagt: die Abfrage hätte die richtige Rangfolge, wenn sie liefe. Es
+// wird keine Zeichenkette nachgebaut und keine Regel zweitgeschrieben; die Such-Ausdrücke kommen aus
+// der einen Quelle des Adapters (`KO_CANDIDATE_SEARCH_EXPRESSIONS`).
 //
 // DIE KALIBRIERUNG am Ende der Datei misst die SCHÄRFE des Prüfwerkzeugs selbst: sie ersetzt in der
 // ECHTEN Abfrage die Trefferstufe durch die drei Formen, die eine Zeichenkettensuche hereinlegen
@@ -59,7 +63,8 @@ const VERTRAG: Rangfolgevertrag = {
   ausdruecke: KO_CANDIDATE_SEARCH_EXPRESSIONS,
 };
 
-/** Ein echter Lauf über den Produktpfad; zurück kommt die abgesetzte Anweisung. */
+/** Ein echter Lauf durch die Methode selbst (nicht durch einen Produktaufrufer — es gibt keinen);
+ * zurück kommt die abgesetzte Anweisung. */
 async function abfrage(
   terms: readonly string[] = TERME,
   limit: number = LIMIT,
@@ -128,8 +133,8 @@ describe("JOB 3583 · V2 Strukturwächter: die Rangfolge steht IN der Abfrage", 
 // ------------------------------------------------------------------------------------------------
 // KALIBRIERUNG — die Schärfe des Prüfwerkzeugs, an der ECHTEN Abfrage gemessen.
 // ------------------------------------------------------------------------------------------------
-// Ersetzt wird jeweils NUR die erste Sortierstufe der Anweisung, die der Produktpfad eben abgesetzt
-// hat. Damit misst die Kalibrierung das Werkzeug und nicht eine Nachbildung des Produkts.
+// Ersetzt wird jeweils NUR die erste Sortierstufe der Anweisung, die der Adapter eben abgesetzt
+// hat. Damit misst die Kalibrierung das Werkzeug und nicht eine Nachbildung der Abfrage.
 
 /** Die erste Sortierstufe der echten Anweisung durch `neu` ersetzen. */
 function mitAndererTrefferstufe(sql: string, neu: string): string {

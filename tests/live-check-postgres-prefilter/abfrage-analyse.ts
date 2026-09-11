@@ -336,7 +336,7 @@ export function pruefeRangfolge(sql: string, vertrag: Rangfolgevertrag): Rangfol
   }
 
   // 2) Je Term GENAU ein Summand: n Terme brauchen n-1 Additionen. Ein Term, der in mehreren
-  //    Feldern steht, zählt damit einmal — wie im Speicherbestand (repo.ts:261-270).
+  //    Feldern steht, zählt damit einmal — wie im Speicherbestand (repo.ts:282-291).
   const plus = zaehle(m, "+", treffer);
   const erwartet = Math.max(0, vertrag.termParameter.length - 1);
   if (plus !== erwartet) {

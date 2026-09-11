@@ -16,10 +16,20 @@ import {
   type KoVersionSnapshot,
 } from "./types";
 
-// SCRUM-362 / AG-03-DBINDEX: die Such-Ausdrücke des Ask-Prefilters (PgKoRepo.findCandidates) als EINE
-// Quelle der Wahrheit. Query-Builder UND Indexdefinition leiten beide hieraus ab → Query-Shape und
-// Index-Pfad bleiben garantiert deckungsgleich (kein Drift). Jeweils ein GIN-Trigramm-Index (pg_trgm)
-// macht das `ILIKE '%term%'` (auch mit führendem Wildcard) indexierbar.
+// SCRUM-362 / AG-03-DBINDEX: die Such-Ausdrücke der Kandidaten-Vorauswahl dieses Adapters
+// (`PgKoRepo.findCandidates`) als EINE Quelle der Wahrheit. Query-Builder UND Indexdefinition leiten
+// beide hieraus ab → Query-Shape und Index-Pfad bleiben garantiert deckungsgleich (kein Drift).
+// Jeweils ein GIN-Trigramm-Index (pg_trgm) macht das `ILIKE '%term%'` (auch mit führendem Wildcard)
+// indexierbar.
+//
+// KEIN PRODUKTAUFRUFER (JOB 3607): Diese Abfrage läuft im Produkt nicht. Der Suchweg von Klara,
+// Textprüfung und Wissensprüfung geht seit G27 über `KoService.findCandidates` → `findSearchHits`
+// → `KoSearchProjectionRepo.findActive` (Projektion der AKTIVEN KO-Version). Der Wegweiser mit
+// Datei und Zeile steht an der Schnittstellen-Definition `KoRepo.findCandidates` in `repo.ts`;
+// gehalten wird die Aussage von `tests/live-check-postgres-prefilter/toter-kandidatenweg.test.ts`.
+// Die fünf Indizes unten legt `KO_SCHEMA` trotzdem an — sie kosten LIVE bei jedem Schreiben Pflege
+// und bedienen ausschliesslich diese Abfrage. Ihr Abbau ist eine Eigentümerentscheidung (Schema auf
+// der LIVE-Datenbank) und gemeldet, nicht getan.
 const KO_CANDIDATE_SEARCH: ReadonlyArray<{ index: string; expr: string }> = [
   { index: "idx_kos_title_trgm", expr: "data->>'title'" },
   { index: "idx_kos_statement_trgm", expr: "data->>'statement'" },
@@ -78,8 +88,9 @@ export const KO_SCHREIBSTAND_LESEN_SQL =
   "SELECT stand::text AS stand FROM ko_schreibstand WHERE id = 1";
 
 // Postgres-Adapter für knowledge-object. Vollobjekt als JSONB; Filterspalten indiziert.
-// SCRUM-362: pg_trgm + GIN-Trigramm-Indizes machen den Ask-Prefilter (ILIKE auf title/statement/
-// category/tags) indexierbar. Alle Statements sind idempotent (IF NOT EXISTS) und nicht destruktiv;
+// SCRUM-362: pg_trgm + GIN-Trigramm-Indizes machen die Kandidaten-Vorauswahl dieses Adapters (ILIKE
+// auf title/statement/category/tags) indexierbar — eine Abfrage, die das Produkt heute nicht mehr
+// ruft (s. KO_CANDIDATE_SEARCH oben). Alle Statements sind idempotent (IF NOT EXISTS) und nicht destruktiv;
 // die bestehenden idx_kos_type/idx_kos_status bleiben unverändert.
 export const KO_SCHEMA = `
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
@@ -675,24 +686,38 @@ export class PgKoRepo implements KoRepo {
     return res.rows.map((row) => row.id);
   }
 
-  // SCRUM-361 / AG-03 / FR-ASK-02 / NFR-PERF-03: datenquellennahe Kandidaten-Vorauswahl für Ask
-  // UND für den Live-Check. Statt alle KOs zu laden, filtert die DB ODER-weise über die (bereits
+  // SCRUM-361 / AG-03 / FR-ASK-02 / NFR-PERF-03: datenquellennahe Kandidaten-Vorauswahl. Statt
+  // alle KOs zu laden, filtert die DB ODER-weise über die (bereits
   // tokenisierten) Inhalts-Terme auf den vorhandenen Feldern (title/statement/category/tags/
   // captionTexts) — vollständig PARAMETRISIERT (kein SQL-Injection-Risiko; die Terme sind reine
   // Inhaltstoken ohne Wildcards). KEINE Volltext-Engine, KEINE Embeddings, KEINE Migration: nur
   // ILIKE/JSONB auf vorhandenen Spalten.
   //
   // ==============================================================================================
+  // KEIN PRODUKTAUFRUFER — JOB 3607. DIESE ABFRAGE WIRD IM PRODUKT NICHT ABGESETZT.
+  // ==============================================================================================
+  //
+  // Weder Klara noch Textprüfung noch Wissensprüfung kommen hier an: ihr gemeinsamer Weg ist seit
+  // G27 `KoService.findCandidates` → `findSearchHits` → `KoSearchProjectionRepo.findActive`, also
+  // die Suchprojektion der AKTIVEN KO-Version. `KoRepo.findCandidates` erreicht nur noch, wer sie
+  // in einem Test selbst ruft. Der Wegweiser mit Datei und Zeile steht an der
+  // Schnittstellen-Definition in `repo.ts`; dass es dabei bleibt, hält
+  // `tests/live-check-postgres-prefilter/toter-kandidatenweg.test.ts` fest.
+  //
+  // ==============================================================================================
   // JOB 3583 — DIE RANGFOLGE VOR DEM `LIMIT` IST SACHE DIESER ABFRAGE.
   // ==============================================================================================
   //
   // HIER STAND: „Die feine Relevanz-/Status-/Trust-Endsortierung übernimmt der Reasoner
-  // (`selectCandidates`)." Der Satz trägt nicht und ist deshalb entfernt: der Reasoner sieht nur,
-  // was unter dem harten SQL-`LIMIT` überhaupt herauskommt. Was diese Abfrage wegschneidet, kann
-  // keine spätere Stufe zurückholen — die Rangfolge VOR dem Deckel entscheidet also allein hier.
+  // (`selectCandidates`)." Der Satz trägt nicht und ist deshalb entfernt: wer diese Abfrage fährt,
+  // sieht danach nur, was unter dem harten SQL-`LIMIT` herauskommt — was sie wegschneidet, kann
+  // keine spätere Stufe zurückholen. Die Rangfolge VOR dem Deckel entscheidet also allein hier,
+  // und zwar für JEDEN, der diese Methode ruft. Heute ist das kein Produktweg, sondern der Test-
+  // und Bibliotheksweg des Adapters — die Sätze unten sagen, was die Abfrage TUT, nicht, was das
+  // Produkt daraus macht.
   //
   // WAS DARAUS FOLGTE. Bis heute sortierte diese Abfrage nur nach `validiert` und `trust`, der
-  // Speicherbestand aber nach (Term-Trefferzahl ↓, validiert, Trust ↓) — repo.ts:577-606. Sobald
+  // Speicherbestand aber nach (Term-Trefferzahl ↓, validiert, Trust ↓) — repo.ts:615-633. Sobald
   // mehr Objekte die ODER-Bedingung erfüllen als `limit` zulässt (der Alltag eines gewachsenen
   // Bestands), lieferten die zwei Adapter verschiedene Mengen: ein Objekt, das elf von zwölf
   // Suchwörtern trifft, stand hinter einem validierten, das eines trifft, und fiel heraus.
@@ -700,7 +725,7 @@ export class PgKoRepo implements KoRepo {
   // DIE TREFFERZAHL ENTSTEHT AUS DENSELBEN AUSDRÜCKEN UND DENSELBEN PARAMETERN wie die
   // `WHERE`-Bedingung — je Term EIN `CASE`, gebaut aus GENAU demselben ODER-Arm. Damit zählt ein
   // Term EINMAL, auch wenn er in mehreren Feldern steht (der Speicherbestand zählt Terme, nicht
-  // Fundstellen: repo.ts:261-270). Es kommt kein Parameter dazu, kein Term wird in den
+  // Fundstellen: repo.ts:282-291). Es kommt kein Parameter dazu, kein Term wird in den
   // Anweisungstext eingebettet, und keine Spalte, kein Index und keine Migration entsteht.
   //
   // WAS ES KOSTET, ehrlich benannt: die Summe wird NUR auf den Zeilen gerechnet, die das `WHERE`

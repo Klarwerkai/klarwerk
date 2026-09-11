@@ -63,7 +63,8 @@ export interface KoSichtbarkeitstrim {
   trifftZu(ko: KnowledgeObject): boolean;
 }
 
-// SCRUM-361 / AG-03 / FR-ASK-02 / NFR-PERF-03: datenquellennahe Kandidatenabfrage für Ask. Statt den
+// SCRUM-361 / AG-03 / FR-ASK-02 / NFR-PERF-03: die Frage der datenquellennahen Kandidatenabfrage
+// (`KoRepo.findCandidates`, im Produkt ohne Aufrufer — s. die Marke dort). Statt den
 // gesamten Pool (`list()`) in den Speicher zu laden, liefert das Repository eine VORGEFILTERTE,
 // auf `limit` begrenzte Kandidatenmenge: KOs, deren durchsuchbarer Text (Titel/Aussage/Tags/Kategorie)
 // mindestens einen der (bereits tokenisierten) Inhalts-Terme enthält. `terms` sind Inhaltstoken der
@@ -225,7 +226,27 @@ export interface KoRepo {
   // dauerhaft ohne Feld und damit bei JEDER Bildsuche Kandidat (fehlendes Feld = „unbekannt").
   // Deshalb die eigene, schmale Liste — kein Rumpf, nur Kennungen, indexnah und gedeckelt.
   missingImageNames(limit: number): Promise<string[]>;
-  // SCRUM-361: begrenzte, vorgefilterte Kandidatenmenge für Ask (kein All-Pool-Load mehr).
+  // SCRUM-361: begrenzte, vorgefilterte Kandidatenmenge (kein All-Pool-Load) — ODER-Treffer über
+  // die Inhalts-Terme, gedeckelt auf `limit`.
+  //
+  // ==============================================================================================
+  // KEIN PRODUKTAUFRUFER — JOB 3607. HIER ENTSCHEIDET SICH NICHTS MEHR.
+  // ==============================================================================================
+  //
+  // Diese Methode wird vom Produkt NICHT gerufen; sie erreicht nur noch ihre eigenen Tests. Der
+  // Suchweg von Klara, Textprüfung und Wissensprüfung läuft seit G27 über
+  // `KoService.findCandidates` → `findSearchHits` → `KoSearchProjectionRepo.findActive`, also über
+  // die Projektion der AKTIVEN KO-Version. Was hier steht, ist ein Test-/Bibliotheksweg.
+  //
+  // WER AN DER KANDIDATENWAHL ETWAS ÄNDERN WILL, ÄNDERT ES DORT — und muss nicht suchen:
+  // `services/knowledge-object/src/service.ts:3244-3268` ist der Rumpf, `service.ts:3255` der
+  // Aufruf von `findSearchHits`. Das ist der EINE Wegweiser mit Datei und Zeile; die Marken in
+  // `repo-pg.ts` verweisen hierher, statt eine zweite Wahrheit zu führen.
+  //
+  // Gehalten wird beides von `tests/live-check-postgres-prefilter/toter-kandidatenweg.test.ts`:
+  // er wird rot, sobald das Produkt diese Methode wieder ruft, sobald diese Marke verschwindet und
+  // auch dann, wenn der Wegweiser oben ins Leere zeigt. Entfernt wird die Methode NICHT — das ist
+  // eine Eigentümerentscheidung (öffentliche Schnittstelle des Moduls), sie ist gemeldet.
   findCandidates(query: KoCandidateQuery): Promise<KnowledgeObject[]>;
   // WP-SUBMIT-ASYNC (Pedis R3): schmaler Feld-Patch des Hintergrund-Prüf-Status — patcht NUR
   // aiCheck (nie das restliche Objekt) auf einem EXISTIERENDEN, nicht getrashten KO. false = KO
@@ -577,6 +598,12 @@ export class InMemoryKoRepo implements KoRepo {
   // SCRUM-361: vorgefilterte, begrenzte Kandidatenmenge. ODER-Treffer über die Inhalts-Terme,
   // sortiert nach (Term-Trefferzahl ↓, validiert zuerst, Trust ↓) und auf `limit` gedeckelt — so
   // bleiben relevante validierte Treffer auch bei vielen Kandidaten unter dem Limit erhalten.
+  //
+  // KEIN PRODUKTAUFRUFER (JOB 3607): Diese Umsetzung wird im Produkt nicht erreicht — der Suchweg
+  // läuft über `KoService.findCandidates` → `findSearchHits` → `KoSearchProjectionRepo.findActive`.
+  // Was die Reihenfolge hier entscheidet, entscheidet sie für Tests, nicht für Klara, Textprüfung
+  // oder Wissensprüfung. Der Wegweiser mit Datei und Zeile steht an der Schnittstellen-Definition
+  // `KoRepo.findCandidates` weiter oben in dieser Datei.
   //
   // SCRUM-491 (ben-Re-Review, Scope-Ehrlichkeit): Dies ist der TEST-/DEV-Adapter und ist NICHT
   // quell-seitig gedeckelt — er scort den (kleinen) In-Memory-Bestand VOLLSTÄNDIG und schneidet erst

@@ -2,10 +2,10 @@
 // JOB 3583 · LIEFERUNG 5 — DIE FELDGRENZEN-ABWEICHUNG: GEMESSEN UND BENANNT, NICHT GEÄNDERT.
 // ================================================================================================
 //
-// DIE ABWEICHUNG. `koCandidateText` (services/knowledge-object/src/repo.ts:253-255) fügt Titel,
+// DIE ABWEICHUNG. `koCandidateText` (services/knowledge-object/src/repo.ts:274-276) fügt Titel,
 // Aussage, Schlagworte, Kategorie und Bildfussnoten mit LEERZEICHEN zu EINEM Text zusammen und sucht
 // den Term als Teilzeichenkette darin. Postgres prüft dieselben Felder EINZELN — fünf `ILIKE`
-// (repo-pg.ts:23-31). Ein Term, der über eine Feldgrenze reicht, trifft deshalb nur im
+// (repo-pg.ts:33-41). Ein Term, der über eine Feldgrenze reicht, trifft deshalb nur im
 // Speicherbestand. Dass das WIRKLICH so ist, misst der Fall „BEKANNTE ABWEICHUNG" in
 // services/knowledge-object/src/repo-pg-kandidaten.integration.test.ts an einer echten Datenbank.
 //

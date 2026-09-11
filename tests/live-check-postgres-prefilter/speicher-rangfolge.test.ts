@@ -9,9 +9,11 @@
 // gegen die V1 die Datenbank hält. Ohne sie stünde in der Rückgabe eine Erwartung, die niemand
 // gemessen hat.
 //
-// Gemessen wird der Produktpfad `InMemoryKoRepo.findCandidates` (repo.ts:588-606), nicht die Regel
-// nachgebaut. Die Reihenfolge wird zusätzlich ausgegeben, damit sie in der Rückgabe wörtlich aus
-// einem Lauf zitiert werden kann.
+// Gemessen wird die Methode selbst — `InMemoryKoRepo.findCandidates` (repo.ts:615-633) —, nicht die
+// Regel nachgebaut. Ein PRODUKTPFAD ist sie nicht: sie hat im Produkt keinen Aufrufer (JOB 3607,
+// `toter-kandidatenweg.test.ts`); gemessen wird der Massstab für V1, nicht das Verhalten von Klara.
+// Die Reihenfolge wird zusätzlich ausgegeben, damit sie in der Rückgabe wörtlich aus einem Lauf
+// zitiert werden kann.
 import { describe, expect, it } from "vitest";
 import { InMemoryKoRepo } from "../../services/knowledge-object/src/repo";
 import { BESTAND, ERWARTETE_REIHENFOLGE, TERME } from "./bestand";
