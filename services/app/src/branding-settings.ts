@@ -276,8 +276,13 @@ function profilAusAblage(wert: string | null): BrandingProfil | null {
  *   Wahl wirklich zugewiesen wird — gegen einen Stellvertreter-Pool in
  *   `tests/demo-firmen-ci-haltbarkeit/`, dessen eigene Treue `stellvertreter-treue.test.ts` misst
  *   (ein Stellvertreter, der ergänzt, was im SQL fehlt, macht jeden Test darüber wertlos).
- *   NICHT gemessen ist das Verhalten echter Zeilensperren unter echter Gleichzeitigkeit: dafür
- *   bräuchte es ein echtes Postgres, und das Tor hat keins.
+ *   Ergänzend prüft `branding-settings.integration.test.ts` gegen echtes Postgres: N1 die
+ *   lückenlosen Versionen einer bestehenden Zeile, N2 den gleichzeitigen Erst-Insert, N3 den
+ *   erlaubten älteren Vorher-Schnappschuss und N4 das Warten auf die Zeilensperre samt Weiterzählen
+ *   nach COMMIT. Der Stellvertreter bleibt der schnelle Formwächter; echte Sperren kann er nicht
+ *   messen. Der separate Integrationslauf braucht Postgres und meldet ohne Datenbank SKIP —
+ *   JOB 3590 konnte in seiner Cloud nur diesen Skip messen, keinen erfolgreichen Postgres-Lauf.
+ *   Ein solcher Lauf sowie die Messung über mehrere Prozesse/Server hinweg stehen weiterhin aus.
  */
 export class PgBrandingSettingsRepo implements BrandingSettingsRepo {
   constructor(private readonly pool: Pool) {}
