@@ -173,8 +173,13 @@ import {
 } from "./addon-auth-throttle";
 import { matchAddonRoute, principalHasCapability, resolveAddonAuth } from "./addon-principal";
 import { type AiCheckWorker, createAiCheckRunner, createAiCheckWorker } from "./ai-check-worker";
-// JOB 3510: die EINE instanzweite Markenwahl (Demo-Firmen-CI) — heute nur im Speicher (s. u.).
-import { type BrandingSettingsRepo, InMemoryBrandingSettingsRepo } from "./branding-settings";
+// JOB 3510/3578: die EINE instanzweite Markenwahl (Demo-Firmen-CI) — im Postgres-Betrieb haltbar
+// (`PgBrandingSettingsRepo`, s. `buildPgServices`), im Speicher nur ohne Datenbank.
+import {
+  type BrandingSettingsRepo,
+  InMemoryBrandingSettingsRepo,
+  PgBrandingSettingsRepo,
+} from "./branding-settings";
 import { type SemanticPrefilter, removeKoFromDuplicatePrefilter } from "./duplicate-detection";
 import { cappedEmbeddingProvider } from "./embed-concurrency";
 import type { FactoryReset } from "./factory-reset";
@@ -274,10 +279,10 @@ export interface AppServices {
    * `MUTATING_METHODS` ist ein vollständiger Record über `keyof AppRepos`), und `dev-persist.ts`
    * liegt ausserhalb der Zielpfade dieses Auftrags.
    *
-   * ACHTUNG, DIE WICHTIGE EINSCHRÄNKUNG: Hinter diesem Feld steht HEUTE in JEDEM Betrieb die
-   * In-Memory-Ablage — auch gegen Postgres (s. `buildPgServices`). Die Markenwahl ist damit
-   * FLÜCHTIG: Neustart oder Deploy setzen sie auf die Vorgabe zurück (kein Profil, aus). Der Grund
-   * und der vollständige Weg zur Ablösung stehen im Kopf von `branding-settings.ts`.
+   * JOB 3578: Hinter diesem Feld steht im POSTGRES-BETRIEB die haltbare Ablage
+   * (`PgBrandingSettingsRepo`, eingehängt in `buildPgServices`) — die Markenwahl überlebt damit
+   * Neustart und Deploy. Ohne Datenbank (Tests, Dev-Betrieb) bleibt der Rückfall auf die
+   * In-Memory-Ablage, genau wie bei `lesevarianten` und `klaraSessions`.
    */
   brandingSettings: BrandingSettingsRepo;
   /**
@@ -443,8 +448,9 @@ export function assembleServices(
     // JOB 3326: gesetzt nur von `buildPgServices` (echter Pool) — ohne Injektion die In-Memory-
     // Ablage. Derselbe Vertrag, andere Haltbarkeit; beide werden getrennt geprüft.
     lesevarianten?: LesevariantenRepo;
-    // JOB 3510: die Einhängestelle für eine haltbare Markenablage. HEUTE injiziert sie NIEMAND —
-    // auch `buildPgServices` nicht (Grund dort). Sie bleibt, weil die Ablösung genau hier ansetzt.
+    // JOB 3510/3578: die Einhängestelle der haltbaren Markenablage. Gesetzt von
+    // `buildPgServices` (echter Pool); ohne Injektion die In-Memory-Ablage — derselbe Vertrag,
+    // andere Haltbarkeit, beide werden getrennt geprüft.
     brandingSettings?: BrandingSettingsRepo;
     // W1 Weg A (Auftrag 143): `answerSnapshots` stand hier als Option, mit dem benannten Preis,
     // dass der Beleg nicht durch das Dev-Journal lief. Die Restgrenze ist geschlossen — das Repo
@@ -632,7 +638,7 @@ export function assembleServices(
     klaraSessions: opts.klaraSessions ?? new InMemoryKlaraSessionRepo(),
     // JOB 3326: die Lesevarianten-Ablage — Postgres, wenn injiziert, sonst im Speicher.
     lesevarianten: opts.lesevarianten ?? new InMemoryLesevariantenRepo(),
-    // JOB 3510: die Markenwahl — heute IMMER im Speicher, weil niemand etwas injiziert (s. o.).
+    // JOB 3510/3578: die Markenwahl — Postgres, wenn injiziert, sonst im Speicher.
     brandingSettings: opts.brandingSettings ?? new InMemoryBrandingSettingsRepo(),
     // JOB 3110 (M2b): DIE VORHANDENEN gecappten Cloud-Clients, weitergereicht — kein zweiter Aufruf
     // der Fabrik. JOB 3134: hinter der Hülle (oben), die je Aufruf den GEWÄHLTEN Anbieter nimmt.
@@ -908,13 +914,11 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // JOB 3326: die Lesevarianten liegen in DERSELBEN Datenbank wie der Bestand (dedizierte
       // Kundeninstanz = ein Datenraum) — kein zweiter Dienst, keine kundenübergreifende Ablage.
       lesevarianten: new PgLesevariantenRepo(pool),
-      // JOB 3510: HIER FEHLT DIE MARKENWAHL, UND ZWAR WISSENTLICH. Sie bekommt bewusst KEINE
-      // Postgres-Ablage untergeschoben, sondern fällt (weiter unten in `assembleServices`) auf die
-      // In-Memory-Ablage zurück — auch im Postgres-Betrieb. Der Grund steht ausgeschrieben im Kopf
-      // von `branding-settings.ts`: Eine eigene Tabelle verlangt einen Eintrag in der
-      // Migrations-Sollliste `services/app/src/migrationsbeleg.ts`, und dieser Pfad ist in JOB 3510
-      // nicht freigegeben. Die Folge ist benannt und nicht versteckt: Die Markenwahl überlebt
-      // keinen Neustart und keinen Deploy — für die Vorführung also NACH dem letzten Deploy setzen.
+      // JOB 3578: die Markenwahl liegt in DERSELBEN Datenbank wie der Bestand — kein zweiter
+      // Dienst, keine Datei auf der Platte, keine kundenübergreifende Ablage. Mit dieser Zeile
+      // überlebt die vom Administrator gesetzte Firmen-CI Neustart und Deploy; ohne sie fiele
+      // `assembleServices` auch im Postgres-Betrieb auf die flüchtige In-Memory-Ablage zurück.
+      brandingSettings: new PgBrandingSettingsRepo(pool),
     },
   );
 }

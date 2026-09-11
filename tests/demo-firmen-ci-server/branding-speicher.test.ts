@@ -1,23 +1,30 @@
 // ================================================================================================
-// JOB 3510 · DER SPEICHER DER MARKENWAHL — und der Pin auf seine heute noch fehlende Haltbarkeit.
+// JOB 3510 · DER SPEICHER DER MARKENWAHL — und der Pin auf seine Haltbarkeit (JOB 3578).
 // ================================================================================================
 //
-// Die Markenwahl liegt HEUTE nur im Speicher; sie überlebt keinen Neustart. Das ist kein Versehen,
-// sondern eine Auftragsgrenze — der vollständige Grund steht im Kopf von
-// `services/app/src/branding-settings.ts`. Der letzte Fall dieser Datei hält den Weg dorthin offen
-// und den halben Weg versperrt: Eine Postgres-Ablage braucht DREI Dinge gleichzeitig (DDL hier,
-// Migration in `db.ts`, Eintrag in der Sollliste `migrationsbeleg.ts`). Wer nur zwei davon tut,
-// bekommt genau die drei roten Fälle in `services/app/src/db.migrate.test.ts`, die in JOB 3510
-// Runde 2 das Tor gestoppt haben — dieser Fall fängt das eine Runde früher ab.
+// STAND SEIT JOB 3578: Die Markenwahl ist HALTBAR. Hinter `dienste.branding` steht im
+// Postgres-Betrieb `PgBrandingSettingsRepo`; die In-Memory-Ablage bleibt für Tests und den
+// Dev-Betrieb ohne Datenbank und ist FÜR SICH weiterhin flüchtig — das ist dort gewollt und wird
+// unten vorgeführt statt behauptet.
+//
+// Der letzte Fall dieser Datei hält den halben Weg versperrt: Eine Postgres-Ablage braucht DREI
+// Dinge gleichzeitig (DDL in `branding-settings.ts`, Migration in `db.ts`, Eintrag in der
+// Sollliste `migrationsbeleg.ts`). Wer eins davon wieder herausnimmt, bekommt genau die drei roten
+// Fälle in `services/app/src/db.migrate.test.ts`, die in JOB 3510 Runde 2 das Tor gestoppt haben —
+// dieser Fall fängt das eine Runde früher ab. Er misst alle drei Stufen GEMEINSAM und ist deshalb
+// in beide Richtungen scharf: „keins" war bis JOB 3578 der grüne Zustand, „alle drei" ist es jetzt.
 import { readFileSync } from "node:fs";
+import type { Pool } from "pg";
 import { describe, expect, it } from "vitest";
 import {
   BRANDING_PROFILE,
   BRANDING_VORGABE,
   InMemoryBrandingSettingsRepo,
+  PgBrandingSettingsRepo,
   brandingAntwort,
   normalisiereBrandingWahl,
 } from "../../services/app/src/branding-settings";
+import { buildPgServices } from "../../services/app/src/build-app";
 
 describe("JOB 3510 · Lieferung 1/2: der Speicher", () => {
   it("die Vorgabe eines nie gesetzten Speichers ist AUS", async () => {
@@ -44,10 +51,10 @@ describe("JOB 3510 · Lieferung 1/2: der Speicher", () => {
     expect(await new InMemoryBrandingSettingsRepo().lies()).toEqual(BRANDING_VORGABE);
   });
 
-  it("die Ablage ist heute FLÜCHTIG — ein Neustart verliert die Wahl, und das steht auch so da", async () => {
-    // Der Neustart, nachgestellt: derselbe Vertrag, ein neuer Prozess. Heute gibt es hinter dem
-    // Feld `brandingSettings` nichts Haltbares, also ist die eingestellte Marke danach weg. Dieser
-    // Fall behauptet die Einschränkung nicht — er führt sie vor.
+  it("die In-Memory-Ablage ist FÜR SICH flüchtig — und der Postgres-Betrieb benutzt sie nicht", async () => {
+    // Der Neustart, nachgestellt: derselbe Vertrag, ein neuer Prozess. Die In-Memory-Ablage
+    // verliert die Wahl dabei, und das ist für Tests und den Dev-Betrieb ohne Datenbank gewollt.
+    // Dieser Fall behauptet es nicht — er führt es vor.
     const vorNeustart = new InMemoryBrandingSettingsRepo();
     await vorNeustart.setze({ profil: "advisor", aktiv: true });
     expect(await vorNeustart.lies()).toEqual({ profil: "advisor", aktiv: true, version: 1 });
@@ -55,11 +62,12 @@ describe("JOB 3510 · Lieferung 1/2: der Speicher", () => {
     const nachNeustart = new InMemoryBrandingSettingsRepo();
     expect(await nachNeustart.lies()).toEqual(BRANDING_VORGABE);
 
-    // Und die Einschränkung steht dort, wo ein Weiterbauender sie sehen MUSS: an der
-    // Einhängestelle selbst. Ohne diesen Satz wäre die fehlende Haltbarkeit eine stille Falle.
-    expect(readFileSync("services/app/src/build-app.ts", "utf8")).toMatch(
-      /HIER FEHLT DIE MARKENWAHL, UND ZWAR WISSENTLICH/,
-    );
+    // JOB 3578: UND GENAU DESHALB steht sie im Postgres-Betrieb nicht mehr da. Gemessen an der
+    // GEBAUTEN Komposition und nicht an einem Textmuster in `build-app.ts`: ein Kommentar über die
+    // Einhängestelle wäre wieder nur eine Behauptung, ein `instanceof` ist die Verdrahtung selbst.
+    const dienste = buildPgServices({} as unknown as Pool);
+    expect(dienste.brandingSettings).toBeInstanceOf(PgBrandingSettingsRepo);
+    expect(dienste.brandingSettings).not.toBeInstanceOf(InMemoryBrandingSettingsRepo);
   });
 
   it("der halbe Weg zur Haltbarkeit ist versperrt: DDL, Migration und Sollliste nur gemeinsam", () => {
@@ -72,7 +80,7 @@ describe("JOB 3510 · Lieferung 1/2: der Speicher", () => {
 
     // 1. Gibt es hier überhaupt eine DDL-Konstante? 2. Wird sie migriert? 3. Steht sie im
     // Migrations-Risikoinventar? Die Lehre SCRUM-496 und JOB 727 D2 verlangen: entweder alle drei
-    // oder keins. Heute ist es keins (flüchtige Ablage), nach der Ablösung sind es alle drei.
+    // oder keins. Bis JOB 3510 war es keins (flüchtige Ablage), seit JOB 3578 sind es alle drei.
     const stufen = {
       ddlVorhanden: /export const \w+_SCHEMA\s*=\s*`/.test(quelle),
       wirdMigriert: db.slice(start, db.indexOf("];", start)).includes("BRANDING"),
@@ -83,6 +91,15 @@ describe("JOB 3510 · Lieferung 1/2: der Speicher", () => {
       new Set(Object.values(stufen)).size,
       `halber Weg: ${JSON.stringify(stufen)} — DDL, migrate()-Eintrag und Sollliste in migrationsbeleg.ts gehören zusammen; fehlt einer, ist db.migrate.test.ts rot`,
     ).toBe(1);
+
+    // JOB 3578 — DIE RICHTUNG, festgehalten: Es sind ALLE DREI, nicht „keins". Ohne diese Zeile
+    // bliebe der Fall oben auch dann grün, wenn jemand die Haltbarkeit vollständig zurückbaute:
+    // „keins" erfüllt die Gemeinsamkeitsprüfung genauso gut wie „alle drei".
+    expect(stufen, "die Haltbarkeit ist zurückgebaut worden").toEqual({
+      ddlVorhanden: true,
+      wirdMigriert: true,
+      imRisikoinventar: true,
+    });
   });
 });
 

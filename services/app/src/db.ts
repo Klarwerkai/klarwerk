@@ -35,6 +35,10 @@ import {
   REASONER_POLICY_SCHEMA,
 } from "../../reasoner";
 import { VALIDATION_SCHEMA, VALIDATION_SETTINGS_SCHEMA } from "../../validation";
+// JOB 3578: die instanzweite Markenwahl (Demo-Firmen-CI). Sie wohnt wie die Lesevarianten im
+// App-Wurzelverzeichnis, weil sie zu keinem Fachmodul gehört: drei Oberflächen lesen sie, und
+// keine davon besitzt sie.
+import { BRANDING_SETTINGS_SCHEMA } from "./branding-settings";
 // JOB 3326: die Lesevarianten (gekennzeichnete Leseübersetzungen). Sie wohnen im App-Root und nicht
 // im knowledge-object-Modul, weil sie das KO-Modell ausdrücklich NICHT umbauen: die Variante ist ein
 // eigener, danebenliegender Datenraum, den kein Lesepfad des Originals berührt.
@@ -140,6 +144,10 @@ export async function migrate(pool: Pool): Promise<void> {
     // ohne Fremdschlüssel auf `kos` — eine Variante ohne Objekt ist eine verwaiste Lesezeile und
     // kein Grund, eine Migration scheitern zu lassen; die Leserouten filtern sie ohnehin weg.
     LESEVARIANTEN_SCHEMA,
+    // JOB 3578: die Markenwahl (Demo-Firmen-CI). Additiv und wiederholbar (CREATE TABLE IF NOT
+    // EXISTS) und OHNE Reihenfolgebedingung: kein Fremdschlüssel, keine Extension, keine andere
+    // Tabelle — die Stufe steht am Ende, weil das die lesbare Ordnung ist, nicht weil sie muss.
+    BRANDING_SETTINGS_SCHEMA,
   ];
   for (const ddl of schemas) {
     await pool.query(ddl);

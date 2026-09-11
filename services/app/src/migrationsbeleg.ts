@@ -215,6 +215,12 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   // JOB 3326: die Lesevarianten-Tabelle. Rein additiv (`CREATE TABLE IF NOT EXISTS`, kein ALTER,
   // kein DROP, kein DELETE, kein Fremdschlüssel) und wiederholbar.
   { stufe: "LESEVARIANTEN_SCHEMA", risiko: "ADDITIV" },
+  // JOB 3578: die eine Zeile der instanzweiten Markenwahl (Demo-Firmen-CI). ADDITIV, und zwar
+  // nachgezählt statt behauptet: von den sechs RISIKOMARKERN oben trifft KEINER — die Stufe
+  // besteht aus einem einzigen `CREATE TABLE IF NOT EXISTS` ohne `DROP TABLE`, `TRUNCATE`,
+  // `DROP COLUMN`, `DELETE FROM`, `DROP INDEX` und ohne `UPDATE … SET`. Kein Seed, kein
+  // Fremdschlüssel, keine Extension; ein zweiter Lauf ist folgenlos.
+  { stufe: "BRANDING_SETTINGS_SCHEMA", risiko: "ADDITIV" },
 ];
 
 /**
