@@ -784,11 +784,20 @@ export function BibliothekFlaeche({
   // Die Fläche zeigt dann den vorhandenen Ladezweig (keine Zeile, kein Leerzustand, keine Zahl) —
   // sie zeigt insbesondere NICHT die ungefilterte Vollmenge als fertige Antwort.
   //
-  // MIT EINER AUSNAHME, und die ist die Zusage aus REGELN §7: ist die Auffrischung des Bestands
-  // GESCHEITERT, wird nicht ewig geladen. Dann steht der Filter aus der Adresse (`wirksameAuswahl`),
-  // darüber der Satz „Stand von <Zeit> · Auffrischung fehlgeschlagen" mit dem Wiederholknopf — und
-  // die Prüfung wird nachgeholt, sobald ein Abruf durchkommt. Der Zähler schweigt trotzdem: die
+  // MIT ZWEI AUSNAHMEN, und beide sind dieselbe Zusage aus REGELN §7: es wird nicht ewig geladen,
+  // wenn nichts mehr kommen kann. Dann steht der Filter aus der Adresse (`wirksameAuswahl`), die
+  // Prüfung wird nachgeholt, sobald ein Abruf durchkommt, und der Zähler schweigt trotzdem — die
   // Auswahl ist unbestätigt, und eine Trefferzahl wäre die zu starke Aussage.
+  //   GESCHEITERT (`all.isError`) — darüber der Satz „Stand von <Zeit> · Auffrischung
+  //     fehlgeschlagen" mit dem Wiederholknopf, ohne Bestand der Fehlerzweig der Liste.
+  //   ANGEHALTEN (`angehalten(all)`, JOB 3567) — offline geht der Abruf gar nicht erst hinaus; es
+  //     gibt nichts zu erwarten und niemanden, auf den man warten könnte. Diese Ausnahme fehlte bis
+  //     JOB 3567, und die ältere Fassung dieses Kommentars nannte deshalb nur die erste; sie ist
+  //     hier ERSETZT, nicht ergänzt. Ohne sie blieb `keimWartet` wahr, solange das Netz weg war,
+  //     `laedt` (`:1373`) machte daraus ein LADEN, und `BibliothekListe.tsx:362` schaltete damit
+  //     den Verbindungssatz aus JOB 3531 ab: wer die Bibliothek über einen Filterlink ohne Netz
+  //     öffnete, sah weder Zeile noch Hinweis noch Ende (Codex an JOB 3531,
+  //     `archiv/3531/runde-1/ben.md:26`; gemessen in `tests/q6d-keim-offline/`).
   //
   // ================================================================================================
   // JOB 3115 R2 (Befund BEN, Korrekturpflicht 3) — EIN BESTANDS-ERSTFEHLER IST EIN LISTENFEHLER.
@@ -801,11 +810,13 @@ export function BibliothekFlaeche({
   // Aussage: gemessen wurde nichts. Der Fall gehört deshalb in den vorhandenen Fehlerzweig der
   // Liste, dessen Knopf `alleAuffrischen` ruft und damit BEIDE Quellen zurückholt.
   //
-  // `!all.isError` deckt damit BEIDE Fehlerlagen ab und ist die eine Bedingung dafür: mit Bestand
-  // trägt der Hinweis den Weg zurück, ohne Bestand der Fehlerzweig. Gewartet wird nur, solange
-  // überhaupt noch etwas kommen kann.
+  // `!all.isError` deckt damit BEIDE Fehlerlagen ab: mit Bestand trägt der Hinweis den Weg zurück,
+  // ohne Bestand der Fehlerzweig. Gewartet wird nur, solange überhaupt noch etwas kommen kann — und
+  // das ist die Regel, aus der seit JOB 3567 auch die zweite Bedingung folgt: ein ANGEHALTENER
+  // Bestandsabruf ist kein Abruf, auf den sich warten liesse. Verwendet wird dafür der EINE
+  // Ausdruck `angehalten` von oben (`:754`), kein `navigator.onLine` und keine zweite Wahrheit.
   const bestandsErstfehler = all.isError && all.data === undefined;
-  const keimWartet = keimBrauchtBestand && !all.isError;
+  const keimWartet = keimBrauchtBestand && !all.isError && !angehalten(all);
   const nichtFrisch = quellen.filter((q) => auffrischungGescheitert(q));
   const standQuelle =
     nichtFrisch.length === 0

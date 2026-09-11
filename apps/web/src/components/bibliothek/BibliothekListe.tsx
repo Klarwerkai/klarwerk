@@ -202,9 +202,16 @@ export function BibliothekListe({
   onWaehle: (id: string) => void;
   laedt: boolean;
   fehler: boolean;
-  // JOB 3099: der Abruf ist offline ANGEHALTEN und hat für diese Suche noch keine Antwort. Weder
+  // JOB 3099: der Abruf ist offline ANGEHALTEN und hat für diese Suche NICHTS VORZUZEIGEN. Weder
   // ein Laden noch ein Fehler — und deshalb erst recht kein Ergebnis. Der Aufrufer bildet die Lage
-  // (`BibliothekFlaeche.tsx`, `fetchStatus === "paused"`); die Liste wertet sie nur aus.
+  // (`BibliothekFlaeche.tsx:1424`, `angehalten(query) && (query.data === undefined ||
+  // query.data.length === 0)`); die Liste wertet sie nur aus.
+  //
+  // JOB 3531 — ES SIND ZWEI QUELLEN DERSELBEN LAGE, nicht eine: „noch keine Antwort" (`undefined`)
+  // UND der LEERE Zwischenspeicher. Ein einmal erfolgreich geholtes `[]` trägt die Aussage „es gibt
+  // nichts" nur so lange, wie sie nachgeprüft werden kann; offline kann sie das nicht. Die ältere
+  // Fassung dieses Satzes nannte nur die erste Quelle und war damit unvollständig (Codex an
+  // JOB 3531, `archiv/3531/runde-1/ben.md:31`).
   pausiert: boolean;
   // Nur im Fall gesetzt: der Auffrischungs-Hinweis über dem Bestand, den der Aufrufer baut
   // (`AUFFRISCHUNG_HINWEIS_MARKE`, eine Bauform für Liste UND Lesefläche).
