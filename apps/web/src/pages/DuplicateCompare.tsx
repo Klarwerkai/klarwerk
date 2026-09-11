@@ -28,6 +28,7 @@ import { PruefenSatz } from "../components/pruefen/PruefenZustand";
 import { markiereTeile } from "../components/pruefen/markierung";
 import { cx } from "../components/ui";
 import {
+  COMPARE_OVERALL_KO_MISSING,
   COMPARE_TONE_LEGEND,
   type CompareMetrics,
   type CompareSection,
@@ -36,6 +37,7 @@ import {
   compareToneLabelKey,
   overallFromConflict,
   overallFromOverlap,
+  overlapLeadBridge,
 } from "../lib/duplicateCompare";
 
 // SCRUM-488: Punktfarbe je Ampel für die Legende (gleiche Semantik wie die Score-Balken-Segmente).
@@ -226,14 +228,13 @@ export function DuplicateCompare({ kind }: { kind: DuplicateCompareKind }): JSX.
       ? isDuplicate
         ? overallFromOverlap(entry as OverlapEntry, sections)
         : overallFromConflict(entry as Conflict, sections)
-      : {
-          match: 0,
-          conflict: 0,
-          uncertainty: 100,
-          source: "heuristic" as const,
-          note: "dcmp.note.koMissing",
-        };
+      : COMPARE_OVERALL_KO_MISSING;
   const head = compareHeadline(overall);
+  // REVIEW26 (JOB 3469): Führt das Brett für dasselbe Paar eine ANDERE Metrik als diese Seite
+  // (Modellfund: dort KI-Sicherheit, hier Textdeckung), nennt ein Satz beide Zahlen nebeneinander.
+  // Ob es ihn gibt, entscheidet die Lib aus den vorhandenen Werten — hier wird nichts geraten.
+  const bruecke =
+    isDuplicate && left && right ? overlapLeadBridge(entry as OverlapEntry, overall) : null;
   const sourceTitle = isDuplicate
     ? t("dcmp.sourceDuplicate", {
         relation: t(`dcmp.relation.${(entry as OverlapEntry).relation}`, {
@@ -258,12 +259,25 @@ export function DuplicateCompare({ kind }: { kind: DuplicateCompareKind }): JSX.
           <PruefenPille ton={isDuplicate ? "warn" : "crit"} kennung="art">
             {sourceTitle}
           </PruefenPille>
+          {/* REVIEW26 (JOB 3469): die führende Zahl trägt den Namen dessen, was sie misst — die
+              Wahl der Beschriftung trifft die Lib (`matchLeadKey`), nicht diese Ansicht. Ohne
+              benannte Metrik (fehlendes Wissensobjekt) bleibt es bei der nackten Zahl; es wird
+              nichts behauptet, was die Datenlage nicht hergibt. */}
           <PruefenPille kennung="fuehrend">
-            {isDuplicate
-              ? t("dup.samePercent", { percent: Math.round(head.leadPercent) })
-              : `${t("dcmp.textSimilarity")} ${percent(head.leadPercent)}`}
+            {head.leadTextKey
+              ? t(head.leadTextKey, { percent: Math.round(head.leadPercent) })
+              : percent(head.leadPercent)}
           </PruefenPille>
         </PruefenPaarZeile>
+
+        {bruecke ? (
+          <p data-testid="dcmp-metrikbruecke" className="text-[12.5px] leading-relaxed text-muted">
+            {t(bruecke.messageKey, {
+              board: t(bruecke.boardLeadKey, { percent: bruecke.boardPercent }),
+              compare: t(bruecke.compareLeadKey, { percent: bruecke.comparePercent }),
+            })}
+          </p>
+        ) : null}
 
         <PruefenPaar>
           <PruefenPaarKarte

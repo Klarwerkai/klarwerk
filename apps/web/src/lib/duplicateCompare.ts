@@ -1,4 +1,5 @@
 import type { Conflict, KnowledgeObject, OverlapEntry } from "../api/types";
+import { LEAD_METRIC_TEXT, type LeadMetric, overlapDetectorInfo } from "./duplicateBoard";
 import { htmlToPlainText } from "./richText";
 
 export type CompareTone = "green" | "yellow" | "red";
@@ -23,6 +24,35 @@ export interface CompareSection {
   // SCRUM-487 (i18n): stabiler i18n-Key (dcmp.reason.*), KEIN fertiger Satz — die Ansicht macht t(...).
   reason: string;
 }
+
+// ================================================================================================
+// REVIEW26 (JOB 3469) — DIE FÜHRENDE ZAHL DER VERGLEICHSSEITE BEKOMMT IHREN NAMEN.
+// ================================================================================================
+//
+// `CompareMetrics` bleibt unverändert (die Abschnittswerte messen alle dasselbe: die
+// Textähnlichkeit IHRES Feldes). Was einen Namen braucht, ist die GESAMTZAHL — und die entsteht
+// je nach Datenlage aus verschiedenen Quellen: aus dem Detektorwert oder aus dem Durchschnitt der
+// Abschnitte. `CompareOverall` sagt deshalb zusätzlich, WAS `match` misst.
+export interface CompareOverall extends CompareMetrics {
+  // Was `match` misst. `null` NUR, wenn es gar keine Grundlage gibt (fehlendes Wissensobjekt):
+  // dann wird keine Metrik behauptet, so wie ohne detector keine Zahl behauptet wird.
+  matchMetric: LeadMetric | null;
+  // i18n-Schlüssel „NN % <Metrik>" zu `match`; `null` mit derselben Begründung.
+  matchLeadKey: string | null;
+}
+
+// Fehlt ein Wissensobjekt, gibt es weder Abschnitte noch Detektorwert. Diese Lage stand bis
+// hierher als Objektliteral IN der Ansicht; sie gehört hierher, damit die Ansicht auch in diesem
+// Fall keine Metrik auswählt.
+export const COMPARE_OVERALL_KO_MISSING: CompareOverall = {
+  match: 0,
+  conflict: 0,
+  uncertainty: 100,
+  source: "heuristic",
+  note: "dcmp.note.koMissing",
+  matchMetric: null,
+  matchLeadKey: null,
+};
 
 export const DUPLICATE_COMPARE_SAFETY = {
   mergeEnabled: false,
@@ -238,7 +268,7 @@ function average(values: number[]): number {
 export function overallFromOverlap(
   entry: OverlapEntry,
   sections: readonly CompareSection[],
-): CompareMetrics {
+): CompareOverall {
   const sectionMatch = average(sections.map((section) => section.metrics.match));
   const sectionConflict = average(sections.map((section) => section.metrics.conflict));
   const sectionUncertainty = average(sections.map((section) => section.metrics.uncertainty));
@@ -249,6 +279,10 @@ export function overallFromOverlap(
       uncertainty: sectionUncertainty,
       source: "heuristic",
       note: "dcmp.note.noScore",
+      // REVIEW26: ohne Detektorwert IST die führende Zahl der Abschnittsdurchschnitt — und sie
+      // sagt es jetzt auch, statt sich „gleich" zu nennen.
+      matchMetric: "sectionAverage",
+      matchLeadKey: LEAD_METRIC_TEXT.sectionAverage,
     };
   }
   const detectorMatch = clampPercent(entry.detector.lexicalScore * 100);
@@ -262,16 +296,23 @@ export function overallFromOverlap(
     uncertainty: detectorUncertainty,
     source: "mixed",
     note: "dcmp.note.mixedOverlap",
+    // Diese Seite führt IMMER die deterministische Textdeckung (`lexicalScore`) — auch bei einem
+    // Modellfund, dessen Sicherheit hier nur in `uncertainty` einfliesst. Genau daher rührt der
+    // gemeldete Sprung gegenüber dem Brett; er wird benannt, nicht wegdefiniert.
+    matchMetric: "textOverlap",
+    matchLeadKey: LEAD_METRIC_TEXT.textOverlap,
   };
 }
 
 export function overallFromConflict(
   conflict: Conflict,
   sections: readonly CompareSection[],
-): CompareMetrics {
+): CompareOverall {
   const sectionMatch = average(sections.map((section) => section.metrics.match));
   const sectionConflict = average(sections.map((section) => section.metrics.conflict));
   const sectionUncertainty = average(sections.map((section) => section.metrics.uncertainty));
+  // In BEIDEN Zweigen ist `match` der Abschnittsdurchschnitt; der Detektorwert des Konflikts
+  // fliesst in `conflict`/`uncertainty`. Die führende Zahl heisst hier deshalb immer gleich.
   if (conflict.origin === "auto" && typeof conflict.detector?.confidence === "number") {
     const detectorConflict = clampPercent(conflict.detector.confidence * 100);
     return {
@@ -280,6 +321,8 @@ export function overallFromConflict(
       uncertainty: clampPercent((1 - conflict.detector.confidence) * 100),
       source: "mixed",
       note: "dcmp.note.mixedConflict",
+      matchMetric: "sectionAverage",
+      matchLeadKey: LEAD_METRIC_TEXT.sectionAverage,
     };
   }
   return {
@@ -288,6 +331,8 @@ export function overallFromConflict(
     uncertainty: sectionUncertainty,
     source: "heuristic",
     note: "dcmp.note.noScore",
+    matchMetric: "sectionAverage",
+    matchLeadKey: LEAD_METRIC_TEXT.sectionAverage,
   };
 }
 
@@ -299,13 +344,60 @@ export interface CompareHeadline {
   leadPercent: number; // führende Zahl: Text-Ähnlichkeit (match)
   differencePercent: number; // vormals „Konflikt %" → ehrlich: Textunterschied, kein bewiesener Widerspruch
   uncertaintyPercent: number;
+  // REVIEW26 (JOB 3469): WAS `leadPercent` misst, und der i18n-Schlüssel seiner Beschriftung.
+  // `null` nur, wenn die übergebenen Werte selbst keine Metrik benennen (siehe `CompareOverall`).
+  leadMetric: LeadMetric | null;
+  leadTextKey: string | null;
 }
 
-export function compareHeadline(metrics: CompareMetrics): CompareHeadline {
+export function compareHeadline(metrics: CompareMetrics | CompareOverall): CompareHeadline {
+  const benannt = "matchMetric" in metrics ? metrics : null;
   return {
     leadPercent: metrics.match,
     differencePercent: metrics.conflict,
     uncertaintyPercent: metrics.uncertainty,
+    leadMetric: benannt?.matchMetric ?? null,
+    leadTextKey: benannt?.matchLeadKey ?? null,
+  };
+}
+
+// ================================================================================================
+// REVIEW26 (JOB 3469) — DER BRÜCKENSATZ ZWISCHEN BRETT UND VERGLEICH.
+// ================================================================================================
+//
+// Führen die zwei Flächen VERSCHIEDENE Metriken desselben Paars (Brett: KI-Sicherheit, Vergleich:
+// Textdeckung), dann liest derselbe Mensch nacheinander zwei Zahlen, die einander zu widersprechen
+// scheinen. Der Satz nennt beide nebeneinander. Er entsteht NUR aus tatsächlich vorhandenen
+// Werten: ohne `detector` (kein Brettwert) und bei gleicher Metrik gibt es ihn nicht.
+export interface CompareLeadBridge {
+  messageKey: string;
+  boardMetric: LeadMetric;
+  boardPercent: number;
+  boardLeadKey: string;
+  compareMetric: LeadMetric;
+  comparePercent: number;
+  compareLeadKey: string;
+}
+
+export function overlapLeadBridge(
+  entry: OverlapEntry,
+  overall: CompareOverall,
+): CompareLeadBridge | null {
+  const brett = overlapDetectorInfo(entry);
+  if (!brett || overall.matchMetric === null || overall.matchLeadKey === null) {
+    return null;
+  }
+  if (brett.leadMetric === overall.matchMetric) {
+    return null;
+  }
+  return {
+    messageKey: "dcmp.metricBridge",
+    boardMetric: brett.leadMetric,
+    boardPercent: brett.leadPercent,
+    boardLeadKey: brett.leadTextKey,
+    compareMetric: overall.matchMetric,
+    comparePercent: overall.match,
+    compareLeadKey: overall.matchLeadKey,
   };
 }
 

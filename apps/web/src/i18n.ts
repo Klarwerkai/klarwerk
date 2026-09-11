@@ -3485,6 +3485,12 @@ const de = {
   "dup.textIdentical": "Textgleiches Duplikat",
   "dup.overlap": "{{percent}} % Textdeckung",
   "dup.confidence": "Sicherheit {{percent}} %",
+  // REVIEW26 (JOB 3469): Die führende Prozentzahl trägt den NAMEN dessen, was sie misst. Ohne ihn
+  // lasen sich 95 % (Brett, KI-Sicherheit) und 26 % (Vergleich, Textdeckung) desselben Paars unter
+  // derselben Beschriftung „gleich" wie ein Widerspruch. Es wird nichts gerechnet, nur benannt.
+  "dup.lead.modelConfidence": "{{percent}} % KI-Sicherheit",
+  "dup.lead.textOverlap": "{{percent}} % Textdeckung",
+  "dup.lead.sectionAverage": "{{percent}} % Feldähnlichkeit im Schnitt",
   // SCRUM-486 B: ehrliche Rahmung der führenden Zahl — Ähnlichkeit ist kein Beweis.
   "dup.leadCaptionModel": "KI-Wahrscheinlichkeit — kein bewiesenes Duplikat",
   "dup.leadCaptionText": "Wort-/Text-Ähnlichkeit — kein bewiesenes Duplikat",
@@ -3532,7 +3538,8 @@ const de = {
   "dup.side.right": "Rechts behalten",
   "dup.side.both": "Beide behalten, verknüpfen",
   "dup.side.none": "Kein Duplikat",
-  "dup.samePercent": "{{percent}} % gleich",
+  // REVIEW26 (JOB 3469): „NN % gleich" ist ERSETZT, nicht ergänzt — die Beschriftung verschwieg,
+  // welche Messung dahinterstand. An ihrer Stelle stehen die benannten `dup.lead.*`-Schlüssel.
   "dup.keepNote": "Getrennt lassen; maßgeblich ist: {{title}}.",
   // SCRUM-486 (Entdichtung): Führungszeile pro Karte + neutraler „entfernt"-Hinweis statt Roh-UUID.
   "board.koRemoved": "Objekt entfernt",
@@ -5536,6 +5543,11 @@ const de = {
   "dcmp.notFound": "Vergleich nicht gefunden oder bereits geschlossen.",
   "dcmp.textSimilarity": "Text-Ähnlichkeit",
   "dcmp.noProvenContradiction": "kein bewiesener Widerspruch — nur Wort-/Feldähnlichkeit",
+  // REVIEW26 (JOB 3469): der Brückensatz. Er steht NUR, wenn Brett und Vergleichsseite für
+  // dasselbe Paar wirklich verschiedene Metriken führen — sonst behauptete er einen Sprung,
+  // den es nicht gibt.
+  "dcmp.metricBridge":
+    "Dasselbe Paar, zwei Messungen: Auf dem Brett „Duplikate“ steht {{board}}, hier {{compare}}. Kein Widerspruch — die beiden Zahlen messen Verschiedenes.",
   "dcmp.moreValues": "Weitere Werte",
   "dcmp.uncertainty": "Unsicherheit",
   "dcmp.textDifference": "Textunterschied",
@@ -8808,6 +8820,10 @@ const en: typeof de = {
   "dup.textIdentical": "Near-identical text",
   "dup.overlap": "{{percent}}% text overlap",
   "dup.confidence": "Confidence {{percent}}%",
+  // REVIEW26 (JOB 3469): the leading percentage now carries the name of what it measures.
+  "dup.lead.modelConfidence": "{{percent}}% AI confidence",
+  "dup.lead.textOverlap": "{{percent}}% text overlap",
+  "dup.lead.sectionAverage": "{{percent}}% average field similarity",
   // SCRUM-486 B: honest framing of the leading number — similarity is not proof.
   "dup.leadCaptionModel": "AI likelihood — not a proven duplicate",
   "dup.leadCaptionText": "Word/text similarity — not a proven duplicate",
@@ -8848,7 +8864,6 @@ const en: typeof de = {
   "dup.side.right": "Keep right",
   "dup.side.both": "Keep both, link them",
   "dup.side.none": "Not a duplicate",
-  "dup.samePercent": "{{percent}} % same",
   "dup.keepNote": "Keep separate; authoritative: {{title}}.",
   // SCRUM-486 (de-densify): lead line per card + neutral "removed" hint instead of a raw UUID.
   "board.koRemoved": "Item removed",
@@ -10598,6 +10613,10 @@ const en: typeof de = {
   "dcmp.notFound": "Comparison not found or already closed.",
   "dcmp.textSimilarity": "Text similarity",
   "dcmp.noProvenContradiction": "no proven contradiction — only word/field similarity",
+  // REVIEW26 (JOB 3469): the bridge sentence, shown only when the two surfaces really do lead
+  // with different metrics for the same pair.
+  "dcmp.metricBridge":
+    "One pair, two measurements: the “Duplicates” board shows {{board}}, this page shows {{compare}}. Not a contradiction — the two numbers measure different things.",
   "dcmp.moreValues": "More values",
   "dcmp.uncertainty": "Uncertainty",
   "dcmp.textDifference": "Text difference",
@@ -13706,6 +13725,10 @@ const nl: typeof de = {
   "dup.textIdentical": "Tekstgelijk duplicaat",
   "dup.overlap": "{{percent}} % tekstdekking",
   "dup.confidence": "Zekerheid {{percent}} %",
+  // REVIEW26 (JOB 3469): het leidende percentage draagt nu de naam van wat het meet.
+  "dup.lead.modelConfidence": "{{percent}} % AI-zekerheid",
+  "dup.lead.textOverlap": "{{percent}} % tekstdekking",
+  "dup.lead.sectionAverage": "{{percent}} % gemiddelde veldgelijkenis",
   "dup.leadCaptionModel": "AI-waarschijnlijkheid — geen bewezen duplicaat",
   "dup.leadCaptionText": "Woord-/tekstgelijkenis — geen bewezen duplicaat",
   "dup.why": "Onderbouwing",
@@ -13743,7 +13766,6 @@ const nl: typeof de = {
   "dup.side.right": "Rechts behouden",
   "dup.side.both": "Beide behouden, koppelen",
   "dup.side.none": "Geen duplicaat",
-  "dup.samePercent": "{{percent}} % gelijk",
   "dup.keepNote": "Gescheiden laten; doorslaggevend is: {{title}}.",
   "board.koRemoved": "Object verwijderd",
   "board.detailsShow": "Details bekijken",
@@ -15501,6 +15523,9 @@ const nl: typeof de = {
   "dcmp.notFound": "Vergelijking niet gevonden of al gesloten.",
   "dcmp.textSimilarity": "Tekstgelijkenis",
   "dcmp.noProvenContradiction": "geen bewezen tegenspraak — alleen woord-/veldgelijkenis",
+  // REVIEW26 (JOB 3469): de brugzin; alleen zichtbaar bij werkelijk verschillende metrieken.
+  "dcmp.metricBridge":
+    "Hetzelfde paar, twee metingen: het bord „Duplicaten“ toont {{board}}, hier staat {{compare}}. Geen tegenspraak — beide getallen meten iets anders.",
   "dcmp.moreValues": "Meer waarden",
   "dcmp.uncertainty": "Onzekerheid",
   "dcmp.textDifference": "Tekstverschil",

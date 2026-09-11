@@ -7,10 +7,10 @@
 // Rechts behalten / Beide behalten, verknüpfen / Kein Duplikat".
 //
 // EHRLICHKEIT VOR OPTIK, hier besonders (Auftrag §8.5):
-//   · Die Prozentzahl bleibt SICHTBAR — als EINE Pille „NN % gleich" in der Kopfzeile. Sie führt
-//     mit der KI-Wahrscheinlichkeit, wenn es einen echten Modellfund gibt, sonst mit der
-//     Textdeckung (`overlapDetectorInfo.isModelFinding`); die Einordnung „Wahrscheinlichkeit, kein
-//     Beweis" steht wörtlich im „Mehr".
+//   · Die Prozentzahl bleibt SICHTBAR — als EINE Pille in der Kopfzeile. Seit REVIEW26 (JOB 3469)
+//     nennt sie auch, WAS sie misst: „NN % KI-Sicherheit" beim echten Modellfund, sonst
+//     „NN % Textdeckung". Beides wählt und benennt `overlapDetectorInfo` (`lib/duplicateBoard.ts`),
+//     nicht diese Datei; die Einordnung „Wahrscheinlichkeit, kein Beweis" steht wörtlich im „Mehr".
 //   · KEIN Zusammenführen, KEIN Löschen. „Links behalten" ist der vorhandene, dokumentierende Weg
 //     `keepSeparate` mit einem Vermerk, welche Seite als maßgeblich gilt — beide Objekte bleiben.
 //   · Markiert wird nur, was wörtlich belegt ist. Findet sich weder ein Eigenanteil noch ein
@@ -249,13 +249,9 @@ export function Duplicates(): JSX.Element {
   function duplikatFlaeche(e: OverlapEntry): JSX.Element {
     const pair = conflictKoPair(e, kos.data ?? []);
     const info = overlapDetectorInfo(e);
-    // Die EINE führende Zahl der Pille — dieselbe Wahl wie bisher (Duplicates.tsx:203):
-    // KI-Wahrscheinlichkeit bei echtem Modellfund, sonst die deterministische Textdeckung.
-    const fuehrend = info
-      ? info.isModelFinding
-        ? info.confidencePercent
-        : info.overlapPercent
-      : undefined;
+    // REVIEW26 (JOB 3469): die Auswahl der führenden Zahl stand bis hierher AN DIESER STELLE und
+    // ist ersatzlos in `overlapDetectorInfo` gewandert — samt der Beschriftung, die jetzt sagt,
+    // WAS die Zahl misst. Die Ansicht wählt nicht mehr und benennt nicht mehr selbst.
     // SCRUM-486: WAS (Duplikat vs. Überschneidung) und ERKENNUNGSWEG, ehrlich benannt — dieselbe
     // Ableitung wie in der alten Befundkarte; sie steht jetzt im „Mehr".
     const befund = overlapFinding(e);
@@ -463,9 +459,9 @@ export function Duplicates(): JSX.Element {
           <PruefenPille kennung="lauf">
             {t("pruefen.kVonN", { k: index + 1, n: items.length })}
           </PruefenPille>
-          {fuehrend !== undefined ? (
+          {info ? (
             <PruefenPille ton="warn" kennung="gleich">
-              {t("dup.samePercent", { percent: fuehrend })}
+              {t(info.leadTextKey, { percent: info.leadPercent })}
             </PruefenPille>
           ) : null}
           <PruefenPille kennung="beziehung">{t(relationLabelKey(e.relation))}</PruefenPille>
