@@ -5,8 +5,15 @@ import type { KnowledgeObject } from "./types";
 
 // SCRUM-361 / AG-03 / FR-ASK-02 / NFR-PERF-03: Query-Shape-Test des datenquellennahen Prefilters.
 // Fake-Pool zeichnet SQL + Params auf und liefert kontrollierte Zeilen — kein echtes Postgres nötig.
-// Belegt: ODER-Treffer über ILIKE (title/statement/category/tags), validiert-/Trust-Bias-ORDER BY,
+// Belegt: ODER-Treffer über ILIKE (title/statement/category/tags), die Rangfolge des ORDER BY,
 // LIMIT, vollständig parametrisiert (keine eingebetteten Werte); leere Terme → keine DB-Abfrage.
+//
+// JOB 3583 — NACHGEFÜHRT. Bis hierher stand hier „validiert-/Trust-Bias-ORDER BY", und der Fall
+// unten pinnte `ORDER BY (status='validiert') DESC` als Anfang der Klausel. Seit JOB 3583 führt die
+// TERM-TREFFERZAHL die Rangfolge an (repo-pg.ts, `trefferzahl`) — vorher entschied die Vorauswahl
+// ohne jedes Relevanzmass, und ein Objekt, das elf von zwölf Suchwörtern trifft, fiel unter dem
+// `LIMIT` hinter ein validiertes heraus, das eines trifft. Der Pin ist dabei SCHÄRFER geworden,
+// nicht schwächer: er prüft jetzt die REIHENFOLGE der drei Stufen, nicht mehr nur, dass es sie gibt.
 function fakePool(rows: { data: KnowledgeObject }[]) {
   const calls: { sql: string; params: unknown[] }[] = [];
   const pool = {
@@ -42,10 +49,19 @@ describe("SCRUM-361: PgKoRepo.findCandidates (Query-Shape, Fake-Pool)", () => {
     expect(sql).toContain("data->>'category' ILIKE");
     expect(sql).toContain("(data->'tags')::text ILIKE");
     expect(sql).toContain(" OR ");
-    // validierte zuerst, dann Trust absteigend; harte Begrenzung über LIMIT.
-    expect(sql).toContain("ORDER BY (status='validiert') DESC");
-    expect(sql).toContain("(data->>'trust')::int DESC");
+    // JOB 3583: Term-Trefferzahl zuerst, dann validierte, dann Trust absteigend; harte Begrenzung
+    // über LIMIT. Die erste Stufe hängt an den TERM-Parametern — eine Konstante oder ein Alias auf
+    // eine Konstante erfüllt das nicht (der eigentliche Strukturwächter dazu liegt in
+    // tests/live-check-postgres-prefilter/rangfolge-waechter.test.ts).
+    expect(sql).toContain("ORDER BY (CASE WHEN");
+    expect(sql).toContain(
+      ") DESC, (status='validiert') DESC, (data->>'trust')::int DESC NULLS LAST",
+    );
     expect(sql).toContain("LIMIT");
+    // Die Trefferstufe nennt BEIDE Termparameter — sie summiert über alle, nicht über einen.
+    const rangfolge = sql.slice(sql.lastIndexOf("ORDER BY"));
+    expect(rangfolge.slice(0, rangfolge.indexOf("(status="))).toContain("$1");
+    expect(rangfolge.slice(0, rangfolge.indexOf("(status="))).toContain("$2");
     // Vollständig parametrisiert: zwei Term-Parameter (%...%) + Limit, keine eingebetteten Werte.
     expect(params).toEqual(["%ventil%", "%überdruck%", 50]);
   });

@@ -675,13 +675,43 @@ export class PgKoRepo implements KoRepo {
     return res.rows.map((row) => row.id);
   }
 
-  // SCRUM-361 / AG-03 / FR-ASK-02 / NFR-PERF-03: datenquellennahe Kandidaten-Vorauswahl für Ask.
-  // Statt alle KOs zu laden, filtert die DB ODER-weise über die (bereits tokenisierten) Inhalts-Terme
-  // auf den vorhandenen Feldern (title/statement/category/tags) — vollständig PARAMETRISIERT (kein
-  // SQL-Injection-Risiko; die Terme sind reine Inhaltstoken ohne Wildcards). Reihenfolge: validierte
-  // KOs zuerst, dann höherer Trust → relevante validierte Treffer bleiben unter dem LIMIT erhalten.
-  // KEINE Volltext-Engine, KEINE Embeddings, KEINE Migration: nur ILIKE/JSONB auf vorhandenen Spalten.
-  // Die feine Relevanz-/Status-/Trust-Endsortierung übernimmt der Reasoner (`selectCandidates`).
+  // SCRUM-361 / AG-03 / FR-ASK-02 / NFR-PERF-03: datenquellennahe Kandidaten-Vorauswahl für Ask
+  // UND für den Live-Check. Statt alle KOs zu laden, filtert die DB ODER-weise über die (bereits
+  // tokenisierten) Inhalts-Terme auf den vorhandenen Feldern (title/statement/category/tags/
+  // captionTexts) — vollständig PARAMETRISIERT (kein SQL-Injection-Risiko; die Terme sind reine
+  // Inhaltstoken ohne Wildcards). KEINE Volltext-Engine, KEINE Embeddings, KEINE Migration: nur
+  // ILIKE/JSONB auf vorhandenen Spalten.
+  //
+  // ==============================================================================================
+  // JOB 3583 — DIE RANGFOLGE VOR DEM `LIMIT` IST SACHE DIESER ABFRAGE.
+  // ==============================================================================================
+  //
+  // HIER STAND: „Die feine Relevanz-/Status-/Trust-Endsortierung übernimmt der Reasoner
+  // (`selectCandidates`)." Der Satz trägt nicht und ist deshalb entfernt: der Reasoner sieht nur,
+  // was unter dem harten SQL-`LIMIT` überhaupt herauskommt. Was diese Abfrage wegschneidet, kann
+  // keine spätere Stufe zurückholen — die Rangfolge VOR dem Deckel entscheidet also allein hier.
+  //
+  // WAS DARAUS FOLGTE. Bis heute sortierte diese Abfrage nur nach `validiert` und `trust`, der
+  // Speicherbestand aber nach (Term-Trefferzahl ↓, validiert, Trust ↓) — repo.ts:577-606. Sobald
+  // mehr Objekte die ODER-Bedingung erfüllen als `limit` zulässt (der Alltag eines gewachsenen
+  // Bestands), lieferten die zwei Adapter verschiedene Mengen: ein Objekt, das elf von zwölf
+  // Suchwörtern trifft, stand hinter einem validierten, das eines trifft, und fiel heraus.
+  //
+  // DIE TREFFERZAHL ENTSTEHT AUS DENSELBEN AUSDRÜCKEN UND DENSELBEN PARAMETERN wie die
+  // `WHERE`-Bedingung — je Term EIN `CASE`, gebaut aus GENAU demselben ODER-Arm. Damit zählt ein
+  // Term EINMAL, auch wenn er in mehreren Feldern steht (der Speicherbestand zählt Terme, nicht
+  // Fundstellen: repo.ts:261-270). Es kommt kein Parameter dazu, kein Term wird in den
+  // Anweisungstext eingebettet, und keine Spalte, kein Index und keine Migration entsteht.
+  //
+  // WAS ES KOSTET, ehrlich benannt: die Summe wird NUR auf den Zeilen gerechnet, die das `WHERE`
+  // bereits durchgelassen hat (O(Treffer) Ausdrucksauswertungen je Abfrage, danach die Sortierung
+  // O(Treffer · log Treffer)). Die Trigramm-Indizes aus KO_CANDIDATE_SEARCH bleiben für das `WHERE`
+  // zuständig und werden nicht angefasst; ein Index auf der Trefferzahl ist weder möglich noch
+  // nötig.
+  //
+  // Belege: `repo-pg-kandidaten.integration.test.ts` (Mengen- und Reihenfolgegleichheit mit
+  // `InMemoryKoRepo` an echtem Postgres) und `tests/live-check-postgres-prefilter/` (Strukturwächter
+  // im regulären Lauf, gegen den stillen Rückfall).
   async findCandidates(query: KoCandidateQuery): Promise<KnowledgeObject[]> {
     const terms = query.terms.map((t) => t.trim().toLowerCase()).filter((t) => t.length > 0);
     if (terms.length === 0) {
@@ -703,13 +733,17 @@ export class PgKoRepo implements KoRepo {
     }
     params.push(limit);
     const limitP = `$${params.length}`;
-    // ORDER BY: validierte zuerst, dann Trust absteigend (NULLS LAST schützt vor fehlendem Trust-
-    // Feld); harte Begrenzung über LIMIT. Alle Werte sind Parameter, kein eingebetteter Term.
+    // JOB 3583: die Term-Trefferzahl — je Term genau ein Summand, und zwar WÖRTLICH der ODER-Arm
+    // aus `ors`. Eine zweite Formel gibt es nicht, die auseinanderlaufen könnte.
+    const trefferzahl = ors.map((arm) => `CASE WHEN ${arm} THEN 1 ELSE 0 END`).join(" + ");
+    // ORDER BY: Term-Trefferzahl absteigend, dann validierte zuerst, dann Trust absteigend
+    // (NULLS LAST schützt vor fehlendem Trust-Feld); harte Begrenzung über LIMIT. Alle Werte sind
+    // Parameter, kein eingebetteter Term.
     // WP-SAMMEL21-FIX (bens Fix 3): DATENSPARENDE PROJEKTION wie listForSearch — bis zu 200
     // Kandidaten je Frage würden sonst ihr volles bodyHtml (potenziell megabyte-große base64-
     // Bilder) aus der DB ziehen. `data - 'bodyHtml'` entfernt es bereits im SELECT; Titel/
     // Statement/captionTexts (genau die Matching-/Antwortfelder des Ask-Pfads) bleiben drin.
-    const sql = `SELECT data - 'bodyHtml' AS data FROM kos WHERE ${ors.join(" OR ")} ORDER BY (status='validiert') DESC, (data->>'trust')::int DESC NULLS LAST LIMIT ${limitP}`;
+    const sql = `SELECT data - 'bodyHtml' AS data FROM kos WHERE ${ors.join(" OR ")} ORDER BY (${trefferzahl}) DESC, (status='validiert') DESC, (data->>'trust')::int DESC NULLS LAST LIMIT ${limitP}`;
     const res = await this.pool.query<DataRow>(sql, params);
     return res.rows.map((row) => row.data);
   }

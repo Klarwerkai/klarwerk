@@ -140,17 +140,31 @@ describe("JOB 544 · W — der Suchweg ordnet deterministisch, in beiden Adapter
     // DIESER FALL BESCHÖNIGT NICHTS: `PgKoRepo.findCandidates` ordnet ohne stabilen Schlüssel. Der
     // Befund aus D3 stimmt für DIESE Methode. Er ist nur nicht mehr der Suchweg — `KoService`
     // ruft sie nicht, und die Zusicherung hält genau das fest, statt den Mangel zu blessen.
+    //
+    // JOB 3583 — NACHGEFÜHRT, UND ZWAR NUR IN EINEM PUNKT. Diese Abfrage trägt seit JOB 3583 die
+    // TERM-TREFFERZAHL als erste Sortierstufe (repo-pg.ts, `trefferzahl`), weil sie sonst andere
+    // Kandidaten wählt als `InMemoryKoRepo` und damit als alles, was am Speicherbestand gemessen
+    // wurde. Es sind deshalb DREI Schlüssel statt zweier. Die Aussage DIESES Falles ist davon
+    // unberührt und wird nicht abgeschwächt: ein STABILER Schlüssel (die Kennung) ist weiterhin
+    // keiner dabei, und der Suchweg ist diese Methode weiterhin nicht. Der Tiebreaker-Befund aus D3
+    // bleibt also offen — er wird hier gemessen, nicht gutgeheissen.
     const { pool, calls } = fakePool();
     const repo = new PgKoRepo(pool);
     await repo.findCandidates({ terms: ["hydraulik"], limit: 5 });
     const sql = (calls[0] as { sql: string }).sql;
-    expect(sql).toContain("ORDER BY (status='validiert') DESC");
+    expect(sql).toContain("(status='validiert') DESC");
     expect(sql).toContain("(data->>'trust')::int DESC NULLS LAST");
-    // Kein stabiler Schlüssel — gemessen, nicht gutgeheissen: GENAU ZWEI Sortierschlüssel.
+    // Kein stabiler Schlüssel — gemessen, nicht gutgeheissen: GENAU DREI Sortierschlüssel, und der
+    // letzte ist Trust, nicht die Kennung.
     //
     // Gezählt statt nach „id" gesucht: `validiert` enthält die Buchstabenfolge `id`, und genau
     // daran ist die erste Fassung dieses Falles zu Recht rot geworden. Eine Zeichensuche misst hier
     // die Schreibweise eines Statuswerts, die Zählung misst den Vertrag.
-    expect(sortierschluessel(sql)).toHaveLength(2);
+    const schluessel = sortierschluessel(sql);
+    expect(schluessel).toHaveLength(3);
+    // Die Trefferzahl führt und hängt am TERM-Parameter; die Validiert-Stufe folgt ihr.
+    expect(schluessel[0]).toContain("$1");
+    expect(schluessel[1]).toBe("(status='validiert') DESC");
+    expect(schluessel[2]).toBe("(data->>'trust')::int DESC NULLS LAST");
   });
 });
