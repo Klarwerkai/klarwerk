@@ -47,14 +47,17 @@ import {
   DATEI_INHALT,
   DATEI_NAME,
   type Entwurfsweiche,
+  FALL_RAHMEN_MS,
   type SeiteMitDatei,
   aufErfolgskastenWarten,
+  aufFlaechensatzWarten,
   dateiWaehlen,
   dateiwegOeffnen,
   entwurfsWeicheLegen,
   ganzdokumentWaehlen,
   neuLaden,
   speichernDruecken,
+  speicherversuchBeginnen,
   spracheSetzen,
 } from "./ux19-buehne";
 
@@ -209,7 +212,7 @@ beforeAll(async () => {
     return;
   }
   weiche = await entwurfsWeicheLegen(seite);
-}, 180_000);
+}, FALL_RAHMEN_MS);
 
 afterAll(async () => {
   await b?.schliessen();
@@ -221,234 +224,251 @@ describe("JOB 3259 · UX-19-R2 — die Vorlesehilfe am Ganzdokument-Weg (Chromiu
     expect(b.seitenfehler, "die Seite hat beim Mounten geworfen").toEqual([]);
   });
 
-  it("V2 · beide Auswahlkarten haben Rolle, Namen und einen ansagbaren Zustand — in beiden Stellungen", async () => {
-    expect(b.fehler).toBeNull();
-    await bisZurImportart();
+  it(
+    "V2 · beide Auswahlkarten haben Rolle, Namen und einen ansagbaren Zustand — in beiden Stellungen",
+    async () => {
+      expect(b.fehler).toBeNull();
+      await bisZurImportart();
 
-    const punkteText = t(CAPTURE_FILE_TEXT.importModePoints);
-    const ganzesText = t(CAPTURE_FILE_TEXT.importModeWhole);
+      const punkteText = t(CAPTURE_FILE_TEXT.importModePoints);
+      const ganzesText = t(CAPTURE_FILE_TEXT.importModeWhole);
 
-    const punkteAus = await befund("button[aria-pressed]", punkteText);
-    const ganzesAus = await befund("button[aria-pressed]", ganzesText);
-    expect(punkteAus.gefunden && ganzesAus.gefunden, "eine Auswahlkarte fehlt").toBe(true);
-    for (const [karte, beschriftung, beschreibung] of [
-      [punkteAus, punkteText, t(CAPTURE_FILE_TEXT.importModePointsDesc)],
-      [ganzesAus, ganzesText, t(CAPTURE_FILE_TEXT.importModeWholeDesc)],
-    ] as const) {
-      expect(karte.rolle).toBe("button");
-      // Der Name trägt Beschriftung UND Beschreibung; der Radio-Punkt ist `aria-hidden`
-      // (`ChoiceCards.tsx:56`) und fällt heraus.
-      expect(karte.name).toBe(`${beschriftung} ${beschreibung}`);
-      expect(karte.deaktiviert).toBe(false);
-    }
-    expect(punkteAus.gedrueckt).toBe("true");
-    expect(ganzesAus.gedrueckt).toBe("false");
+      const punkteAus = await befund("button[aria-pressed]", punkteText);
+      const ganzesAus = await befund("button[aria-pressed]", ganzesText);
+      expect(punkteAus.gefunden && ganzesAus.gefunden, "eine Auswahlkarte fehlt").toBe(true);
+      for (const [karte, beschriftung, beschreibung] of [
+        [punkteAus, punkteText, t(CAPTURE_FILE_TEXT.importModePointsDesc)],
+        [ganzesAus, ganzesText, t(CAPTURE_FILE_TEXT.importModeWholeDesc)],
+      ] as const) {
+        expect(karte.rolle).toBe("button");
+        // Der Name trägt Beschriftung UND Beschreibung; der Radio-Punkt ist `aria-hidden`
+        // (`ChoiceCards.tsx:56`) und fällt heraus.
+        expect(karte.name).toBe(`${beschriftung} ${beschreibung}`);
+        expect(karte.deaktiviert).toBe(false);
+      }
+      expect(punkteAus.gedrueckt).toBe("true");
+      expect(ganzesAus.gedrueckt).toBe("false");
 
-    // Umgeschaltet: der Zustand dreht sich, an BEIDEN Karten — der Name bleibt.
-    await ganzdokumentWaehlen(seite);
-    const punkteAn = await befund("button[aria-pressed]", punkteText);
-    const ganzesAn = await befund("button[aria-pressed]", ganzesText);
-    expect(punkteAn.gedrueckt).toBe("false");
-    expect(ganzesAn.gedrueckt).toBe("true");
-    expect(ganzesAn.name).toBe(ganzesAus.name);
-    expect(b.seitenfehler).toEqual([]);
-  }, 180_000);
+      // Umgeschaltet: der Zustand dreht sich, an BEIDEN Karten — der Name bleibt.
+      await ganzdokumentWaehlen(seite);
+      const punkteAn = await befund("button[aria-pressed]", punkteText);
+      const ganzesAn = await befund("button[aria-pressed]", ganzesText);
+      expect(punkteAn.gedrueckt).toBe("false");
+      expect(ganzesAn.gedrueckt).toBe("true");
+      expect(ganzesAn.name).toBe(ganzesAus.name);
+      expect(b.seitenfehler).toEqual([]);
+    },
+    FALL_RAHMEN_MS,
+  );
 
-  it("V3 · die Anleitung wechselt mit der Importart — und eine Ansage dazu wäre höflich gebaut", async () => {
-    expect(b.fehler).toBeNull();
-    await bisZurImportart();
+  it(
+    "V3 · die Anleitung wechselt mit der Importart — und eine Ansage dazu wäre höflich gebaut",
+    async () => {
+      expect(b.fehler).toBeNull();
+      await bisZurImportart();
 
-    const vorher = await seite.evaluate<Befund>(fn(ANLEITUNG_BEFUND));
-    expect(vorher.gefunden, "die Anleitung wurde im Baum nicht gefunden").toBe(true);
-    expect(vorher.name).toContain(t(CAPTURE_FILE_TEXT.hint).slice(0, 60));
+      const vorher = await seite.evaluate<Befund>(fn(ANLEITUNG_BEFUND));
+      expect(vorher.gefunden, "die Anleitung wurde im Baum nicht gefunden").toBe(true);
+      expect(vorher.name).toContain(t(CAPTURE_FILE_TEXT.hint).slice(0, 60));
 
-    await ganzdokumentWaehlen(seite);
-    const nachher = await seite.evaluate<Befund>(fn(ANLEITUNG_BEFUND));
-    expect(nachher.name).toContain(t(CAPTURE_FILE_TEXT.hintWhole).slice(0, 60));
-    expect(nachher.name).not.toBe(vorher.name);
+      await ganzdokumentWaehlen(seite);
+      const nachher = await seite.evaluate<Befund>(fn(ANLEITUNG_BEFUND));
+      expect(nachher.name).toContain(t(CAPTURE_FILE_TEXT.hintWhole).slice(0, 60));
+      expect(nachher.name).not.toBe(vorher.name);
 
-    // ------------------------------------------------------------------------------------
-    // DIE ANSAGE — als EINBAHNSTRASSE zugesichert (Codex-Nachführung 08.09. 16:50:
-    // „Live-Region-Reste kein neuer Rotgrund").
-    // ------------------------------------------------------------------------------------
-    // GEMESSEN am heutigen Stand: `Capture.tsx:4591-4598` rendert die Anleitung als nackten
-    // `<span>` in einem `<div>` — keine Rolle, keine Kennung, keine Live-Region, keine Beziehung
-    // zur gedrückten Karte. Für eine Vorlesehilfe heisst das: der WECHSEL der Importart wird nicht
-    // angesagt. Der Befund steht in der Rückgabe unter REST; repariert wird er hier nicht
-    // (Auftrag §10: `Capture.tsx` gehört in diesem Takt JOB 3254).
-    //
-    // NICHT zugesichert wird, dass es so BLEIBT. Eine Zeile `expect(ansage).toBe(null)` würde
-    // genau den Job rot machen, der den Mangel behebt — ein Wächter, der die Verbesserung
-    // bestraft. Zugesichert wird deshalb nur die RICHTUNG: ist eine Live-Region da, muss sie
-    // höflich ansagen (`polite`/`status`) und nicht mit `assertive` in jede Bedienung
-    // hineinreden. Ohne Region bleibt der Fall grün und der Befund steht in der Rückgabe.
-    if (nachher.ansage !== null) {
-      expect(
-        nachher.ansage.live === "polite" || nachher.ansage.rolle === "status",
-        `die Anleitung sagt an, aber nicht höflich: ${JSON.stringify(nachher.ansage)}`,
-      ).toBe(true);
-    }
-    expect(b.seitenfehler).toEqual([]);
-  }, 180_000);
+      // ------------------------------------------------------------------------------------
+      // DIE ANSAGE — als EINBAHNSTRASSE zugesichert (Codex-Nachführung 08.09. 16:50:
+      // „Live-Region-Reste kein neuer Rotgrund").
+      // ------------------------------------------------------------------------------------
+      // GEMESSEN am heutigen Stand: `Capture.tsx:4591-4598` rendert die Anleitung als nackten
+      // `<span>` in einem `<div>` — keine Rolle, keine Kennung, keine Live-Region, keine Beziehung
+      // zur gedrückten Karte. Für eine Vorlesehilfe heisst das: der WECHSEL der Importart wird nicht
+      // angesagt. Der Befund steht in der Rückgabe unter REST; repariert wird er hier nicht
+      // (Auftrag §10: `Capture.tsx` gehört in diesem Takt JOB 3254).
+      //
+      // NICHT zugesichert wird, dass es so BLEIBT. Eine Zeile `expect(ansage).toBe(null)` würde
+      // genau den Job rot machen, der den Mangel behebt — ein Wächter, der die Verbesserung
+      // bestraft. Zugesichert wird deshalb nur die RICHTUNG: ist eine Live-Region da, muss sie
+      // höflich ansagen (`polite`/`status`) und nicht mit `assertive` in jede Bedienung
+      // hineinreden. Ohne Region bleibt der Fall grün und der Befund steht in der Rückgabe.
+      if (nachher.ansage !== null) {
+        expect(
+          nachher.ansage.live === "polite" || nachher.ansage.rolle === "status",
+          `die Anleitung sagt an, aber nicht höflich: ${JSON.stringify(nachher.ansage)}`,
+        ).toBe(true);
+      }
+      expect(b.seitenfehler).toEqual([]);
+    },
+    FALL_RAHMEN_MS,
+  );
 
-  it("V4 · Dateiauswahl und Ablagefläche sind benannte Knöpfe, und ihre Ansage-Region steht", async () => {
-    expect(b.fehler).toBeNull();
-    await bisZurImportart();
-    await ganzdokumentWaehlen(seite);
+  it(
+    "V4 · Dateiauswahl und Ablagefläche sind benannte Knöpfe, und ihre Ansage-Region steht",
+    async () => {
+      expect(b.fehler).toBeNull();
+      await bisZurImportart();
+      await ganzdokumentWaehlen(seite);
 
-    const waehlen = await befund('[data-testid="capture-file-pick"]');
-    expect(waehlen.gefunden, "der Knopf „Datei auswählen“ fehlt").toBe(true);
-    expect(waehlen.rolle).toBe("button");
-    expect(waehlen.name).toBe(t(CAPTURE_FILE_TEXT.pick));
-    expect(waehlen.deaktiviert).toBe(false);
+      const waehlen = await befund('[data-testid="capture-file-pick"]');
+      expect(waehlen.gefunden, "der Knopf „Datei auswählen“ fehlt").toBe(true);
+      expect(waehlen.rolle).toBe("button");
+      expect(waehlen.name).toBe(t(CAPTURE_FILE_TEXT.pick));
+      expect(waehlen.deaktiviert).toBe(false);
 
-    const ablage = await befund('[data-testid="capture-dropzone"]');
-    expect(ablage.rolle, "die Ablagefläche ist kein echter Knopf mehr").toBe("button");
-    expect(ablage.name).toBe(t(CAPTURE_FILE_TEXT.dropHint));
+      const ablage = await befund('[data-testid="capture-dropzone"]');
+      expect(ablage.rolle, "die Ablagefläche ist kein echter Knopf mehr").toBe("button");
+      expect(ablage.name).toBe(t(CAPTURE_FILE_TEXT.dropHint));
 
-    // Der Vergleichsmaßstab für den Befund aus V3: HIER ist es richtig gebaut. Die
-    // Ablehnungs-Meldung der Dateiauswahl liegt dauerhaft montiert in einer Live-Region
-    // (`CaptureFileImport.tsx:154-160`), leer im Ruhezustand.
-    const meldung = await befund("output");
-    expect(meldung.gefunden, "die dauerhaft montierte Ansage-Region der Dateiauswahl fehlt").toBe(
-      true,
-    );
-    expect(meldung.rolle).toBe("status");
-    expect(meldung.ansage?.live).toBe("polite");
-    expect(meldung.ansage?.atomic).toBe("true");
-    expect(b.seitenfehler).toEqual([]);
-  }, 180_000);
-
-  it("V5 · Speichern-Knopf, Wartezustand, Quittung, Erfolgskasten und Öffnen-Link", async () => {
-    expect(b.fehler).toBeNull();
-    await bisZurImportart();
-    await ganzdokumentWaehlen(seite);
-    await dateiWaehlen(seite);
-
-    // ---- der Knopf in Ruhe ----------------------------------------------------------------
-    const ruhe = await befund("button", t(CAPTURE_FILE_TEXT.wholeCta));
-    expect(ruhe.rolle).toBe("button");
-    expect(ruhe.name).toBe(t(CAPTURE_FILE_TEXT.wholeCta));
-    expect(ruhe.deaktiviert).toBe(false);
-
-    // ---- die Einlese-Quittung ---------------------------------------------------------------
-    const quittungSatz = t(CAPTURE_FILE_TEXT.loadedStatsWhole, {
-      name: DATEI_NAME,
-      chars: DATEI_INHALT.length,
-    });
-    const quittung = await befund("div", quittungSatz);
-    expect(quittung.gefunden, "die Einlese-Quittung des Ganzdokument-Wegs fehlt").toBe(true);
-    expect(quittung.name).toBe(quittungSatz);
-    // Ansage: dieselbe Einbahnstrasse wie in V3. Heute liegt die Quittung in keiner Live-Region
-    // (`Capture.tsx:5504-5507`/`:6133-6136`, Befund in der Rückgabe unter REST). Kommt eine dazu,
-    // bleibt dieser Fall grün — sie muss dann nur höflich sein.
-    if (quittung.ansage !== null) {
-      expect(
-        quittung.ansage.live === "polite" || quittung.ansage.rolle === "status",
-        `die Quittung sagt an, aber nicht höflich: ${JSON.stringify(quittung.ansage)}`,
-      ).toBe(true);
-    }
-
-    // ---- der Wartezustand: derselbe Knopf, andere Beschriftung, gesperrt --------------------
-    weiche.setze("langsam");
-    try {
-      const marke = weiche.marke;
-      expect(await speichernDruecken(seite)).toBe(true);
-      await seite.waitForFunction(
-        fn(`(w) => (document.body.textContent || '').replace(/\\s+/g, ' ').includes(w)`),
-        t(CAPTURE_FILE_TEXT.wholeSaving),
-        { timeout: 20_000 },
+      // Der Vergleichsmaßstab für den Befund aus V3: HIER ist es richtig gebaut. Die
+      // Ablehnungs-Meldung der Dateiauswahl liegt dauerhaft montiert in einer Live-Region
+      // (`CaptureFileImport.tsx:154-160`), leer im Ruhezustand.
+      const meldung = await befund("output");
+      expect(meldung.gefunden, "die dauerhaft montierte Ansage-Region der Dateiauswahl fehlt").toBe(
+        true,
       );
-      const warten = await befund("button", t(CAPTURE_FILE_TEXT.wholeSaving));
-      expect(warten.rolle).toBe("button");
-      expect(warten.name).toBe(t(CAPTURE_FILE_TEXT.wholeSaving));
-      expect(warten.deaktiviert, "der Knopf ist im Wartezustand nicht gesperrt").toBe(true);
-      await aufErfolgskastenWarten(seite);
-      // Der Erfolg hing an einem WIRKLICH gelaufenen Anlege-Aufruf.
-      await weiche.warteAufAbschluss(marke);
-    } finally {
-      weiche.setze("durch");
-    }
+      expect(meldung.rolle).toBe("status");
+      expect(meldung.ansage?.live).toBe("polite");
+      expect(meldung.ansage?.atomic).toBe("true");
+      expect(b.seitenfehler).toEqual([]);
+    },
+    FALL_RAHMEN_MS,
+  );
 
-    // ---- der Erfolgskasten -----------------------------------------------------------------
-    const quelle = t(CAPTURE_FILE_TEXT.wholeSavedSource, { name: DATEI_NAME });
-    const kasten = await befund(
-      "div",
-      t(CAPTURE_FILE_TEXT.wholeSavedTitle),
-      t(CAPTURE_FILE_TEXT.wholeSavedBadge),
-      quelle,
-    );
-    expect(kasten.gefunden, "der Erfolgskasten fehlt").toBe(true);
-    expect(kasten.name).toContain(t(CAPTURE_FILE_TEXT.wholeSavedTitle));
-    expect(kasten.name).toContain(t(CAPTURE_FILE_TEXT.wholeSavedBadge));
-    expect(kasten.name).toContain(quelle);
-    // Ansage: BEFUND am heutigen Stand (Auftrag §10, nicht repariert) — `Capture.tsx:4661-4675`
-    // rendert den Kasten als reines `<div>`, ohne `role="status"` und ohne `aria-live`. Der
-    // wichtigste Satz dieses Wegs („dein Dokument liegt jetzt als Entwurf") wird also nicht
-    // angesagt; der Befund steht in der Rückgabe unter REST. Zugesichert wird auch hier nur die
-    // Richtung — eine ergänzte Region macht diesen Fall NICHT rot, eine unhöfliche schon.
-    if (kasten.ansage !== null) {
-      expect(
-        kasten.ansage.live === "polite" || kasten.ansage.rolle === "status",
-        `der Erfolgskasten sagt an, aber nicht höflich: ${JSON.stringify(kasten.ansage)}`,
-      ).toBe(true);
-    }
+  it(
+    "V5 · Speichern-Knopf, Wartezustand, Quittung, Erfolgskasten und Öffnen-Link",
+    async () => {
+      expect(b.fehler).toBeNull();
+      await bisZurImportart();
+      await ganzdokumentWaehlen(seite);
+      await dateiWaehlen(seite);
 
-    // ---- der Öffnen-Link -------------------------------------------------------------------
-    const link = await befund(`a[href^="${CAPTURE_FRONT_DOOR_ROUTE}?draft="]`);
-    expect(link.gefunden, "der Öffnen-Link fehlt").toBe(true);
-    expect(link.rolle).toBe("link");
-    // Der Pfeil daneben ist `aria-hidden` (`Capture.tsx:4694`) und gehört deshalb nicht in den
-    // Namen — genau das prüft diese Zeile.
-    expect(link.name).toBe(t(CAPTURE_FILE_TEXT.wholeOpenDraft));
+      // ---- der Knopf in Ruhe ----------------------------------------------------------------
+      const ruhe = await befund("button", t(CAPTURE_FILE_TEXT.wholeCta));
+      expect(ruhe.rolle).toBe("button");
+      expect(ruhe.name).toBe(t(CAPTURE_FILE_TEXT.wholeCta));
+      expect(ruhe.deaktiviert).toBe(false);
 
-    const weiteres = await befund("button", t(CAPTURE_FILE_TEXT.wholeImportAnother));
-    expect(weiteres.rolle).toBe("button");
-    expect(weiteres.name).toBe(t(CAPTURE_FILE_TEXT.wholeImportAnother));
-    expect(b.seitenfehler).toEqual([]);
-  }, 180_000);
+      // ---- die Einlese-Quittung ---------------------------------------------------------------
+      const quittungSatz = t(CAPTURE_FILE_TEXT.loadedStatsWhole, {
+        name: DATEI_NAME,
+        chars: DATEI_INHALT.length,
+      });
+      const quittung = await befund("div", quittungSatz);
+      expect(quittung.gefunden, "die Einlese-Quittung des Ganzdokument-Wegs fehlt").toBe(true);
+      expect(quittung.name).toBe(quittungSatz);
+      // Ansage: dieselbe Einbahnstrasse wie in V3. Heute liegt die Quittung in keiner Live-Region
+      // (`Capture.tsx:5504-5507`/`:6133-6136`, Befund in der Rückgabe unter REST). Kommt eine dazu,
+      // bleibt dieser Fall grün — sie muss dann nur höflich sein.
+      if (quittung.ansage !== null) {
+        expect(
+          quittung.ansage.live === "polite" || quittung.ansage.rolle === "status",
+          `die Quittung sagt an, aber nicht höflich: ${JSON.stringify(quittung.ansage)}`,
+        ).toBe(true);
+      }
 
-  it("V6 · auf Englisch stehen dieselben zugänglichen Namen auf Englisch — kein deutscher Rückfall", async () => {
-    expect(b.fehler).toBeNull();
-    const deutsch = (schluessel: string): string =>
-      String(i18n.getResource("de", "translation", schluessel));
-    await spracheSetzen(seite, "en");
-    await bisZurImportart();
-    await ganzdokumentWaehlen(seite);
+      // ---- der Wartezustand: derselbe Knopf, andere Beschriftung, gesperrt --------------------
+      weiche.setze("langsam");
+      try {
+        const versuch = speicherversuchBeginnen(weiche);
+        expect(await speichernDruecken(seite)).toBe(true);
+        await aufFlaechensatzWarten(seite, t(CAPTURE_FILE_TEXT.wholeSaving));
+        const warten = await befund("button", t(CAPTURE_FILE_TEXT.wholeSaving));
+        expect(warten.rolle).toBe("button");
+        expect(warten.name).toBe(t(CAPTURE_FILE_TEXT.wholeSaving));
+        expect(warten.deaktiviert, "der Knopf ist im Wartezustand nicht gesperrt").toBe(true);
+        await aufErfolgskastenWarten(seite, versuch);
+        // Der Erfolg hing an einem WIRKLICH gelaufenen Anlege-Aufruf.
+        await weiche.warteAufAbschluss(versuch.marke);
+      } finally {
+        weiche.setze("durch");
+      }
 
-    const ganzes = await befund("button[aria-pressed]", t(CAPTURE_FILE_TEXT.importModeWhole));
-    expect(ganzes.gedrueckt).toBe("true");
-    expect(ganzes.name).toBe(
-      `${t(CAPTURE_FILE_TEXT.importModeWhole)} ${t(CAPTURE_FILE_TEXT.importModeWholeDesc)}`,
-    );
-    expect(ganzes.name).not.toContain(deutsch(CAPTURE_FILE_TEXT.importModeWhole));
+      // ---- der Erfolgskasten -----------------------------------------------------------------
+      const quelle = t(CAPTURE_FILE_TEXT.wholeSavedSource, { name: DATEI_NAME });
+      const kasten = await befund(
+        "div",
+        t(CAPTURE_FILE_TEXT.wholeSavedTitle),
+        t(CAPTURE_FILE_TEXT.wholeSavedBadge),
+        quelle,
+      );
+      expect(kasten.gefunden, "der Erfolgskasten fehlt").toBe(true);
+      expect(kasten.name).toContain(t(CAPTURE_FILE_TEXT.wholeSavedTitle));
+      expect(kasten.name).toContain(t(CAPTURE_FILE_TEXT.wholeSavedBadge));
+      expect(kasten.name).toContain(quelle);
+      // Ansage: BEFUND am heutigen Stand (Auftrag §10, nicht repariert) — `Capture.tsx:4661-4675`
+      // rendert den Kasten als reines `<div>`, ohne `role="status"` und ohne `aria-live`. Der
+      // wichtigste Satz dieses Wegs („dein Dokument liegt jetzt als Entwurf") wird also nicht
+      // angesagt; der Befund steht in der Rückgabe unter REST. Zugesichert wird auch hier nur die
+      // Richtung — eine ergänzte Region macht diesen Fall NICHT rot, eine unhöfliche schon.
+      if (kasten.ansage !== null) {
+        expect(
+          kasten.ansage.live === "polite" || kasten.ansage.rolle === "status",
+          `der Erfolgskasten sagt an, aber nicht höflich: ${JSON.stringify(kasten.ansage)}`,
+        ).toBe(true);
+      }
 
-    const waehlen = await befund('[data-testid="capture-file-pick"]');
-    expect(waehlen.name).toBe(t(CAPTURE_FILE_TEXT.pick));
-    expect(waehlen.name).not.toBe(deutsch(CAPTURE_FILE_TEXT.pick));
+      // ---- der Öffnen-Link -------------------------------------------------------------------
+      const link = await befund(`a[href^="${CAPTURE_FRONT_DOOR_ROUTE}?draft="]`);
+      expect(link.gefunden, "der Öffnen-Link fehlt").toBe(true);
+      expect(link.rolle).toBe("link");
+      // Der Pfeil daneben ist `aria-hidden` (`Capture.tsx:4694`) und gehört deshalb nicht in den
+      // Namen — genau das prüft diese Zeile.
+      expect(link.name).toBe(t(CAPTURE_FILE_TEXT.wholeOpenDraft));
 
-    await dateiWaehlen(seite);
-    const ruhe = await befund("button", t(CAPTURE_FILE_TEXT.wholeCta));
-    expect(ruhe.name).toBe(t(CAPTURE_FILE_TEXT.wholeCta));
-    expect(ruhe.name).not.toBe(deutsch(CAPTURE_FILE_TEXT.wholeCta));
+      const weiteres = await befund("button", t(CAPTURE_FILE_TEXT.wholeImportAnother));
+      expect(weiteres.rolle).toBe("button");
+      expect(weiteres.name).toBe(t(CAPTURE_FILE_TEXT.wholeImportAnother));
+      expect(b.seitenfehler).toEqual([]);
+    },
+    FALL_RAHMEN_MS,
+  );
 
-    expect(await speichernDruecken(seite)).toBe(true);
-    await aufErfolgskastenWarten(seite);
+  it(
+    "V6 · auf Englisch stehen dieselben zugänglichen Namen auf Englisch — kein deutscher Rückfall",
+    async () => {
+      expect(b.fehler).toBeNull();
+      const deutsch = (schluessel: string): string =>
+        String(i18n.getResource("de", "translation", schluessel));
+      await spracheSetzen(seite, "en");
+      await bisZurImportart();
+      await ganzdokumentWaehlen(seite);
 
-    const kasten = await befund(
-      "div",
-      t(CAPTURE_FILE_TEXT.wholeSavedTitle),
-      t(CAPTURE_FILE_TEXT.wholeSavedBadge),
-      t(CAPTURE_FILE_TEXT.wholeSavedSource, { name: DATEI_NAME }),
-    );
-    expect(kasten.name).toContain(t(CAPTURE_FILE_TEXT.wholeSavedTitle));
-    expect(kasten.name).toContain(t(CAPTURE_FILE_TEXT.wholeSavedBadge));
-    expect(kasten.name).not.toContain(deutsch(CAPTURE_FILE_TEXT.wholeSavedTitle));
+      const ganzes = await befund("button[aria-pressed]", t(CAPTURE_FILE_TEXT.importModeWhole));
+      expect(ganzes.gedrueckt).toBe("true");
+      expect(ganzes.name).toBe(
+        `${t(CAPTURE_FILE_TEXT.importModeWhole)} ${t(CAPTURE_FILE_TEXT.importModeWholeDesc)}`,
+      );
+      expect(ganzes.name).not.toContain(deutsch(CAPTURE_FILE_TEXT.importModeWhole));
 
-    const link = await befund(`a[href^="${CAPTURE_FRONT_DOOR_ROUTE}?draft="]`);
-    expect(link.rolle).toBe("link");
-    expect(link.name).toBe(t(CAPTURE_FILE_TEXT.wholeOpenDraft));
-    expect(link.name).not.toBe(deutsch(CAPTURE_FILE_TEXT.wholeOpenDraft));
-    expect(b.seitenfehler).toEqual([]);
-  }, 180_000);
+      const waehlen = await befund('[data-testid="capture-file-pick"]');
+      expect(waehlen.name).toBe(t(CAPTURE_FILE_TEXT.pick));
+      expect(waehlen.name).not.toBe(deutsch(CAPTURE_FILE_TEXT.pick));
+
+      await dateiWaehlen(seite);
+      const ruhe = await befund("button", t(CAPTURE_FILE_TEXT.wholeCta));
+      expect(ruhe.name).toBe(t(CAPTURE_FILE_TEXT.wholeCta));
+      expect(ruhe.name).not.toBe(deutsch(CAPTURE_FILE_TEXT.wholeCta));
+
+      const versuch = speicherversuchBeginnen(weiche);
+      expect(await speichernDruecken(seite)).toBe(true);
+      await aufErfolgskastenWarten(seite, versuch);
+
+      const kasten = await befund(
+        "div",
+        t(CAPTURE_FILE_TEXT.wholeSavedTitle),
+        t(CAPTURE_FILE_TEXT.wholeSavedBadge),
+        t(CAPTURE_FILE_TEXT.wholeSavedSource, { name: DATEI_NAME }),
+      );
+      expect(kasten.name).toContain(t(CAPTURE_FILE_TEXT.wholeSavedTitle));
+      expect(kasten.name).toContain(t(CAPTURE_FILE_TEXT.wholeSavedBadge));
+      expect(kasten.name).not.toContain(deutsch(CAPTURE_FILE_TEXT.wholeSavedTitle));
+
+      const link = await befund(`a[href^="${CAPTURE_FRONT_DOOR_ROUTE}?draft="]`);
+      expect(link.rolle).toBe("link");
+      expect(link.name).toBe(t(CAPTURE_FILE_TEXT.wholeOpenDraft));
+      expect(link.name).not.toBe(deutsch(CAPTURE_FILE_TEXT.wholeOpenDraft));
+      expect(b.seitenfehler).toEqual([]);
+    },
+    FALL_RAHMEN_MS,
+  );
 });
