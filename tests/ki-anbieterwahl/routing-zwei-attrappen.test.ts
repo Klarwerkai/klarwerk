@@ -632,6 +632,23 @@ describe("JOB 3134 N: die Nebenwege folgen derselben Wahl — Weltwissen, Urteil
 //       Unterscheidung „ausführbar oder nur Wortlaut" gehört einem Folgeauftrag mit AST-Prüfung;
 //       sie ist eine Parseraufgabe und keine Textsuche.
 //
+// WAS JOB 3586 GEÄNDERT HAT — der Folgeauftrag aus (g) ist eingelöst:
+//   (h) F4 und F7 vergleichen keine Zeichen mehr, sondern fragen den SYNTAXBAUM. Was zählt, ist ein
+//       `expect(…)`-AUFRUF im Baum von `tests/waechter-ast/erwartungsstellen.ts`. Ein Kommentar
+//       steht dort nicht, der Inhalt einer Zeichenkette ist ein Textknoten, der Inhalt eines
+//       Regex-Literals ebenso — alle drei Umgehungen aus den Runden 1 bis 3 fallen damit in EINEM
+//       Schritt weg statt einzeln nachgepflegt zu werden, und dazu der syntaktisch tote Zweig. Die
+//       zweite Abtaststufe (`literale: "leeren"`) ist ERSATZLOS ENTFERNT: sie war der abgelöste
+//       Weg, und zwei Wege nebeneinander wären wieder eine Lücke. `nurCode` blendet nur noch
+//       Kommentare aus — dafür wird es weiter gebraucht (Fallgrenzen, F3, F6). Die vier Proben, an
+//       denen JOB 3570 gescheitert ist, stehen als dauerhafte Testfälle in `tests/waechter-ast/`.
+//   (i) Die STÜCKZAHL der Freigabe-Aufrufe je Datei (`freigaben`) und ihre Wortlautliste (`formen`)
+//       sind gestrichen. Sie waren Gleichheiten über Zahlen und brachen bei jeder ehrlichen
+//       Erweiterung — JOB 3588 hat 29 Bestandsdateien richtig versorgt, und dieser Wächter meldete
+//       Rot (Hinweis der Steuerung 11.09. 09:5x). An ihre Stelle tritt eine Regel: erteilen ist
+//       erlaubt, die Freigabe SELBST setzen nicht (F4, `setztFreigabeSelbst`) — und ein SPERRFALL
+//       steht namentlich in `faelle` mit `freigaben: []`. Ausführlich bei `Dateiakte`.
+//
 // WARUM DIESER BLOCK IN DIESER DATEI STEHT und nicht in einer eigenen: die Zielpfade des Auftrags
 // zählen 57 Testdateien EINZELN auf (Auftrag §2b, mit Begründung — ein breiter Pfad hätte fünf
 // andere laufende Aufträge blockiert). Eine neue Datei läge außerhalb davon. Diese Datei trägt alle
@@ -646,6 +663,12 @@ import type {
   ReasonerTaskConfig,
   ReasonerTaskConfigEingabe,
 } from "../../services/reasoner/src/types";
+import {
+  type Erwartungsbefund,
+  erwartungLaeuft,
+  erwartungsstellen,
+  zaehleErwartungen,
+} from "../waechter-ast/erwartungsstellen";
 
 /** Der Modulname, an dem eine Benutzung des Helfers erkennbar ist. */
 const HELFER = "testhelfer-ki-freigabe";
@@ -1096,49 +1119,36 @@ const lies = (pfad: string): string => readFileSync(join(process.cwd(), pfad), "
  * anschließend Code für Zeichenkette. Verliert sie sie doch, wirft sie: lieber rot als still
  * falsch gezählt.
  *
- * ZWEI STUFEN, UND WARUM ES ZWEI SEIN MÜSSEN (Prüfer BEN, JOB 3570 Runde 2, Korrekturpflicht 1).
- * `literale: "erhalten"` blendet nur Kommentare aus — diese Stufe braucht jeder, der am Text noch
- * etwas WIEDERERKENNEN muss: die Fallköpfe (`it("B1 · …")`), die Freigabe-Aufrufe mitsamt ihren
- * Argumenten (`mitKiFreigabe({ global: "openai", … })`) und die Sperr-Zeilen in F3 leben alle in
- * Zeichenketten. `literale: "leeren"` blendet zusätzlich den INHALT von ZEICHENKETTEN und VORLAGEN
- * aus — diese Stufe zählt Erwartungen. BEN hat in `tests/ki-lauf-verbrauch/ehrlich.test.ts:121` die
- * echte Prüfung `expect(datensatz.status).toBe("error")` durch
- * `void 'expect(datensatz.status).toBe("error")';` ersetzt: dieselben Zeichen, kein Lauf — und alle
- * 38 Fälle blieben grün, weil der Wortlaut den Boden weiterbezahlte. Eine Erwartung, die man mit
- * einem String bezahlen kann, ist keine Erwartung.
+ * WAS DIESE ABTASTUNG SEIT JOB 3586 NICHT MEHR TUT: zählen. Sie hatte eine zweite Stufe
+ * (`literale: "leeren"`), die zusätzlich den INHALT von Zeichenketten und Vorlagen leerte, damit
+ * `void 'expect(…)';` den Erwartungsboden nicht mehr bezahlen konnte (Prüfer BEN, JOB 3570
+ * Runde 2). Die Stufe trug nur bis zum nächsten Literaltyp: an
+ * `void /expect(datensatz.status).toBe("error");/;` ist sie gescheitert, weil der Anfang eines
+ * Regex-Literals ohne Parser nicht von einer Division zu unterscheiden ist. Gezählt wird deshalb
+ * jetzt am SYNTAXBAUM (`tests/waechter-ast/erwartungsstellen.ts`), und die zweite Stufe ist
+ * ersatzlos entfernt — ein abgelöster Weg, der daneben stehen bleibt, ist die nächste Lücke.
  *
- * Was in `${…}` steht, ist AUSFÜHRBARER Code und bleibt in beiden Stufen stehen — eine Erwartung
- * in einer Einbettung läuft wirklich.
+ * Diese Stufe hier braucht jeder, der am Text noch etwas WIEDERERKENNEN muss: die Fallköpfe
+ * (`it("B1 · …")`), die Freigabe-Aufrufe mitsamt ihren Argumenten
+ * (`mitKiFreigabe({ global: "openai", … })`), die Sperr-Zeilen in F3 und die Modellwege in F6 leben
+ * alle in Zeichenketten und müssen lesbar bleiben.
  *
- * DIE GRENZE, AUSDRÜCKLICH (JOB 3570 Runde 4, Weisung der Steuerung vom 11.09.). REGEX-LITERALE
- * werden hier NICHT geleert, und ihr Anfang wird nur GERATEN — `istRegexStelle` sieht ein einzelnes
- * Zeichen und kann `void /…/` nicht von einer Division unterscheiden. Runde 3 hat den Inhalt von
- * Regex-Literalen mitgeleert und daraus eine „literalfreie Stufe" behauptet; BEN hat die Behauptung
- * mit `void /expect(datensatz.status).toBe("error");/;` widerlegt. Ob eine Zeichenfolge
- * ausführbarer Code ist, ist eine Frage an einen PARSER, nicht an einen Zeichenvergleich. Der
- * Wortlaut-Ersatz durch ein Regex-Literal bleibt deshalb offen und ist in F4 und F7 als gemessene
- * Lücke festgehalten statt stillschweigend zugedeckt; er gehört einem Folgeauftrag mit AST-Prüfung.
- * Der Regex-Zweig unten bleibt trotzdem stehen, aber nur noch zum MITZÄHLEN der Anführungszeichen:
- * ohne ihn verlöre die Abtastung an `job1164-wiretyp-dienstgrenze.test.ts:164` die Spur.
+ * DER REGEX-ZWEIG unten rät seinen Anfang weiterhin nur (`istRegexStelle` sieht ein einzelnes
+ * Zeichen). Das ist hier hinnehmbar und war es vorher nicht: er entscheidet nichts mehr über
+ * Erwartungen, sondern hält nur die Anführungszeichen auseinander. Ohne ihn verlöre die Abtastung
+ * an `tests/reasoner/job1164-wiretyp-dienstgrenze.test.ts:164` die Spur und hielte anschließend
+ * Code für Zeichenkette.
  */
-function nurCode(
-  quelle: string,
-  wofuer: string,
-  literale: "erhalten" | "leeren" = "erhalten",
-): string {
+function nurCode(quelle: string, wofuer: string): string {
   const aus = quelle.split("");
   const leere = (von: number, bis: number): void => {
     for (let k = von; k < bis && k < aus.length; k++) if (aus[k] !== "\n") aus[k] = " ";
-  };
-  /** Literalinhalt — nur in der zählenden Stufe geleert, längentreu wie alles hier. */
-  const leereInhalt = (von: number, bis: number): void => {
-    if (literale === "leeren") leere(von, bis);
   };
   /**
    * GERATEN, nicht entschieden: ein `/` beginnt vermutlich ein Regex-Literal, wenn davor kein Wert
    * steht. Ein Schlüsselwort (`void /…/`) sieht wie ein Wert aus, also rät dieser Blick dort falsch.
    * Das ist hingenommen: der Zweig hält nur die Anführungszeichen auseinander, er entscheidet
-   * nichts über Erwartungen (siehe „DIE GRENZE" im Kopf dieser Abtastung).
+   * nichts über Erwartungen (siehe „DER REGEX-ZWEIG" im Kopf dieser Abtastung).
    */
   const istRegexStelle = (v: string): boolean => v === "" || !/[\w$)\]}"'`]/.test(v);
   /** Je offener `${…}`-Einbettung die Klammertiefe, bei der sie wieder in die Vorlage zurückfällt. */
@@ -1151,7 +1161,6 @@ function nurCode(
     const z = quelle.charAt(i);
     if (inVorlage) {
       if (z === "\\") {
-        leereInhalt(i, i + 2);
         i += 2;
       } else if (z === "`") {
         inVorlage = false;
@@ -1164,7 +1173,6 @@ function nurCode(
         vorher = "{";
         i += 2;
       } else {
-        leereInhalt(i, i + 1);
         i += 1;
       }
       continue;
@@ -1185,13 +1193,11 @@ function nurCode(
     }
     if (z === '"' || z === "'") {
       i += 1;
-      const inhaltVon = i;
       // Eine unbeendete Zeichenkette endet spätestens an der Zeile — sonst risse ein Tippfehler
       // in einer fremden Datei den ganzen Rest des Wächters mit.
       while (i < quelle.length && quelle.charAt(i) !== z && quelle.charAt(i) !== "\n") {
         i += quelle.charAt(i) === "\\" ? 2 : 1;
       }
-      leereInhalt(inhaltVon, i);
       i += 1;
       vorher = z;
       continue;
@@ -1202,8 +1208,8 @@ function nurCode(
       continue;
     }
     if (z === "/" && istRegexStelle(vorher)) {
-      // ÜBERLESEN, NICHT LEEREN (Runde 4): der Inhalt bleibt in BEIDEN Stufen stehen. Wer ihn leert,
-      // behauptet damit, jedes Regex-Literal zu kennen — und diesen Anfang hier hat er nur geraten.
+      // ÜBERLESEN, NICHT LEEREN: der Inhalt bleibt stehen. Wer ihn leert, behauptet damit, jedes
+      // Regex-Literal zu kennen — und diesen Anfang hier hat er nur geraten.
       i += 1;
       let klasse = false;
       while (i < quelle.length) {
@@ -1257,24 +1263,32 @@ function bestand(pfad: string): string {
 }
 
 /**
- * Der Bestandsteil ohne Kommentare — die Grundlage jeder WIEDERERKENNUNG in F3 und F4.
+ * Der Bestandsteil ohne Kommentare — die Grundlage jeder WIEDERERKENNUNG in F3, F4 und F7.
  *
  * Literale bleiben hier stehen: Fallköpfe, Freigabe-Argumente und die Sperr-Zeilen von F3 sind
- * Zeichenketten. Gezählt wird nicht hier, sondern in `bestandErwartungen`.
+ * Zeichenketten. Gezählt wird nicht hier, sondern am Syntaxbaum (`bestandsstellen`).
  */
 const bestandCode = (pfad: string): string => nurCode(bestand(pfad), pfad);
 
 /**
- * Derselbe Bestandsteil, zusätzlich ohne LITERALINHALT — die Grundlage jeder ZÄHLUNG in F4.
+ * Der Syntaxbaum-Befund einer Datei: wo steht ein AUSGEFÜHRTER `expect(…)`-Aufruf (JOB 3586)?
  *
- * Beide Abtastungen sind längentreu und gehen von derselben Quelle aus. Deshalb liegt ein Testfall
- * in beiden an genau derselben Zeichenstelle, und F4 kann den Fall am erkennbaren Text abgrenzen und
- * im zählbaren zählen. Diese Gleichlage ist keine Annahme: F4 prüft sie je Datei nach.
+ * Gelesen wird der ROHE Bestandsteil — der Parser braucht keine ausgeblendeten Kommentare, er
+ * kennt sie. Die Zeichenstellen beziehen sich deshalb auf `bestand(pfad)`; weil `nurCode`
+ * längentreu ist, liegen sie zugleich richtig in `bestandCode(pfad)`, an dem F4 und F7 ihre
+ * Fallgrenzen abstecken. Diese Gleichlage ist keine Annahme: beide Fälle prüfen sie je Datei nach.
+ *
+ * Einmal je Datei, nicht einmal je Frage: F4 und F7 fragen dieselben Dateien, und ein Parserlauf
+ * je Frage wäre die Laufzeit zweimal bezahlt (Auftrag §3.4).
  */
-const bestandErwartungen = (pfad: string): string => nurCode(bestand(pfad), pfad, "leeren");
-
-/** Ausführbare Erwartungen in einem Stück zählbaren Codes. */
-const erwartungen = (zaehlbar: string): number => (zaehlbar.match(/expect\(/g) ?? []).length;
+const befunde = new Map<string, Erwartungsbefund>();
+const bestandsstellen = (pfad: string): Erwartungsbefund => {
+  const bekannt = befunde.get(pfad);
+  if (bekannt !== undefined) return bekannt;
+  const frisch = erwartungsstellen(bestand(pfad), pfad);
+  befunde.set(pfad, frisch);
+  return frisch;
+};
 
 /** Der Kopf eines Testfalls — die Kennung davor („B1", „D5", „U8c") ist sein Schlüssel. */
 const FALL_KOPF = /^it\(\s*[`"'](([A-Za-z]+\d+[a-z]?)\s*·)/;
@@ -1292,6 +1306,27 @@ const FALL_KOPF_ALLE = /\bit\(\s*[`"']/g;
 
 /** Ein Freigabe-Aufruf, wörtlich mitsamt seinen Argumenten. */
 const FREIGABE_RUF = /(?:mit|erteile)KiFreigabe\([^)]*\)/g;
+
+/**
+ * Setzt dieser Aufruf die Freigabe SELBST, statt sie nur zu erteilen? (JOB 3586)
+ *
+ * Beide Helferformen nehmen als ZWEITES Argument die Freigabe (`{ oeffentlicheKi, … }`). Wer es
+ * schreibt, weitet die Erlaubnis aus; wer es weglässt, bekommt die Grundfreigabe. Genau diese
+ * Unterscheidung hat vorher die Wortlautliste `formen` je Datei aufgezählt — als Regel gilt sie für
+ * jede Datei, auch für die morgen eingetragene, und kostet keine Pflege.
+ *
+ * Gezählt wird das Komma auf der OBERSTEN Klammerebene: die Zuordnung selbst trägt Kommata
+ * (`{ global: …, perTask: … }`), und die zählen nicht.
+ */
+function setztFreigabeSelbst(ruf: string): boolean {
+  let tiefe = 0;
+  for (const z of ruf.slice(ruf.indexOf("(") + 1)) {
+    if (z === "{" || z === "[") tiefe += 1;
+    else if (z === "}" || z === "]") tiefe -= 1;
+    else if (z === "," && tiefe === 0) return true;
+  }
+  return false;
+}
 
 /**
  * Zerlegt einen Bestandsteil lückenlos in seine Testfälle.
@@ -1329,7 +1364,7 @@ const AM_REASONER = "erteileKiFreigabe(reasoner)";
 
 /** Was über einen einzelnen Testfall festgeschrieben ist. */
 interface Fallakte {
-  /** Zahl der `expect(` im Fall, ausgezählt am Basisstand. BODEN: dazu ja, weg nein. */
+  /** Zahl der AUSGEFÜHRTEN Erwartungen im Fall, ausgezählt am Basisstand. BODEN: dazu ja, weg nein. */
   readonly boden: number;
   /** Die erlaubten Freigabe-Aufrufe, wörtlich und VOLLZÄHLIG — mehr ist so rot wie weniger. */
   readonly freigaben: readonly string[];
@@ -1345,23 +1380,35 @@ interface Fallakte {
  * „Unveränderte Fälle brauchen keinen Eintrag"). Weggelassen wird deshalb nur die AUFZÄHLUNG,
  * nicht die Bewachung:
  *
- *   `gesamtboden` — die Summe der `expect(` über den ganzen Bestandsteil. Eine gelöschte Erwartung
- *                   und ein gelöschter GANZER Fall fallen hier auf, auch wenn der Fall nicht
- *                   einzeln geführt wird.
- *   `freigaben`   — die ANZAHL aller Freigabe-Aufrufe der Datei. Eine zusätzliche Freigabe in
- *                   einem nicht geführten Fall ist damit so rot wie eine in einem geführten.
- *   `formen`      — die verschiedenen WORTLAUTE, vollzählig und sortiert. `freigaben` allein
- *                   zählte nur; erst der Wortlaut schließt aus, dass eine Grundfreigabe still
- *                   gegen eine großzügigere getauscht wird (`{ vertraulicheInhalte: true }`).
- *   `faelle`      — je GEÄNDERTEM Fall (und je Sperrfall) Boden und exakte Liste, wie bisher.
+ *   `gesamtboden` — die Summe der ausgeführten Erwartungen über den ganzen Bestandsteil. Eine
+ *                   gelöschte Erwartung und ein gelöschter GANZER Fall fallen hier auf, auch wenn
+ *                   der Fall nicht einzeln geführt wird.
+ *   `faelle`      — je GEÄNDERTEM Fall und je SPERRFALL Boden und exakte Liste der Freigaben.
  *   `vollzaehlig` — nur die drei Dateien von JOB 3550: dort ist `faelle` KOMPLETT, und die
  *                   Gleichheit der Schlüsselmengen bleibt geprüft. Ohne diese Marke wäre die
  *                   Prüfung von Runde 2 stillschweigend verlorengegangen.
+ *
+ * WAS JOB 3586 HIER GESTRICHEN HAT, und warum (Hinweis der Steuerung 11.09. 09:5x). Bis hierher
+ * führte die Akte zusätzlich `freigaben` (die STÜCKZAHL der Freigabe-Aufrufe je Datei) und `formen`
+ * (ihre Wortlaute). Beide waren Gleichheiten — und eine Gleichheit über eine Stückzahl bricht bei
+ * jeder ehrlichen Erweiterung: JOB 3588 hat 29 Bestandsdateien richtig versorgt, und der Wächter
+ * meldete Rot, obwohl beide Seiten sauber gearbeitet hatten. Ein Wächter, den man nur durch
+ * Nachtragen einer Zahl beruhigen kann, wird eines Tages durch Hochsetzen der Zahl beruhigt.
+ *
+ * AN IHRE STELLE TRITT EINE REGEL, und zwar an drei Stellen, die es schon gibt:
+ *   1. F1  — wer die Freigabe überhaupt setzen darf, steht namentlich im Register, mit Grund.
+ *   2. F2  — die Freigabefelder darf NIEMAND von Hand schreiben; eine großzügigere Freigabe
+ *            (`vertraulicheInhalte`) ist damit in der ganzen Fläche unschreibbar. Genau das war die
+ *            Aufgabe von `formen`, nur global statt je Datei.
+ *   3. F4  — ein Freigabe-Aufruf trägt GENAU EIN Argument (die Zuordnung). Der zweite Parameter des
+ *            Helfers ist die Freigabe selbst; wer ihn schreibt, weitet aus. Diese Regel braucht
+ *            keine Pflege je Datei und gilt auch für morgen eingetragene Dateien.
+ * Und der Fall, den die Stückzahl WIRKLICH geschützt hat — ein SPERRFALL, der still eine Freigabe
+ * bekommt —, gehört in `faelle`: dort steht er namentlich mit `freigaben: []`, und mehr ist so rot
+ * wie weniger. Wer einen Sperrfall baut, trägt ihn ein; das ist die Regel, die die Zahl ersetzt.
  */
 interface Dateiakte {
   readonly gesamtboden: number;
-  readonly freigaben: number;
-  readonly formen: readonly string[];
   readonly faelle: Readonly<Record<string, Fallakte>>;
   readonly vollzaehlig?: true;
 }
@@ -1376,15 +1423,6 @@ interface Dateiakte {
 const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
   [DIESE_DATEI]: {
     gesamtboden: 105,
-    freigaben: 23,
-    formen: [
-      AM_REASONER,
-      "mitKiFreigabe(konfig)",
-      ZUORDNUNG('"anthropic"'),
-      ZUORDNUNG('"openai"', '{ assist: "anthropic" }'),
-      ZUORDNUNG('"openai"'),
-      ZUORDNUNG("wahl"),
-    ],
     vollzaehlig: true,
     faelle: {
       VORSPANN: { boden: 0, freigaben: [] },
@@ -1417,8 +1455,6 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
   },
   "tests/openai-cloud-anbieter/cloud-wahl-verbindungstest.test.tsx": {
     gesamtboden: 42,
-    freigaben: 2,
-    formen: [AM_REASONER, ZUORDNUNG('"cloud"')],
     vollzaehlig: true,
     faelle: {
       VORSPANN: { boden: 0, freigaben: [] },
@@ -1431,8 +1467,6 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
   },
   "tests/ask/job2659-ask-seite-mounted.test.tsx": {
     gesamtboden: 37,
-    freigaben: 1,
-    formen: [AM_REASONER],
     vollzaehlig: true,
     faelle: {
       VORSPANN: { boden: 1, freigaben: [AM_REASONER] },
@@ -1455,11 +1489,6 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
   // Fälle ohne Kennung heißen nach ihrer Stelle (`#1`, `#2`, …), s. `FALL_KOPF_ALLE`.
   "tests/reasoner/dual-provider.test.ts": {
     gesamtboden: 23,
-    freigaben: 5,
-    formen: [
-      "erteileKiFreigabe(r)",
-      'mitKiFreigabe({ global: "auto", perTask: { assist: "local" } })',
-    ],
     faelle: {
       "#1": { boden: 1, freigaben: ["erteileKiFreigabe(r)"] },
       "#2": { boden: 2, freigaben: ["erteileKiFreigabe(r)"] },
@@ -1473,8 +1502,6 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
   },
   "tests/reasoner/aistate-confidential-judge.test.ts": {
     gesamtboden: 15,
-    freigaben: 3,
-    formen: ["erteileKiFreigabe(reasoner)"],
     faelle: {
       "#1": { boden: 4, freigaben: ["erteileKiFreigabe(reasoner)"] },
       "#2": { boden: 3, freigaben: ["erteileKiFreigabe(reasoner)"] },
@@ -1483,19 +1510,12 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
   },
   "tests/reasoner/aistate-egress-guard.test.ts": {
     gesamtboden: 25,
-    freigaben: 1,
-    formen: ["erteileKiFreigabe(reasoner)"],
     faelle: {
       "#8": { boden: 2, freigaben: ["erteileKiFreigabe(reasoner)"] },
     },
   },
   "tests/reasoner/reasoner-reachability.test.ts": {
     gesamtboden: 21,
-    freigaben: 8,
-    formen: [
-      "erteileKiFreigabe(r)",
-      'mitKiFreigabe({ global: "auto", perTask: { answer: "cloud" } })',
-    ],
     faelle: {
       "#2": { boden: 4, freigaben: ["erteileKiFreigabe(r)"] },
       "#3": { boden: 2, freigaben: ["erteileKiFreigabe(r)"] },
@@ -1512,19 +1532,12 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
   },
   "tests/reasoner/local-empty-response.test.ts": {
     gesamtboden: 34,
-    freigaben: 1,
-    formen: ["erteileKiFreigabe(reasoner)"],
     faelle: {
       "#8": { boden: 5, freigaben: ["erteileKiFreigabe(reasoner)"] },
     },
   },
   "tests/reasoner/import-criteria.test.ts": {
     gesamtboden: 12,
-    freigaben: 6,
-    formen: [
-      "erteileKiFreigabe(r)",
-      'mitKiFreigabe({ global: "auto", perTask: { select: "deterministic" } })',
-    ],
     faelle: {
       "#1": { boden: 1, freigaben: ["erteileKiFreigabe(r)"] },
       "#3": { boden: 2, freigaben: ["erteileKiFreigabe(r)"] },
@@ -1539,16 +1552,6 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
   },
   "tests/reasoner/group-candidates.test.ts": {
     gesamtboden: 48,
-    freigaben: 11,
-    formen: [
-      "erteileKiFreigabe(fehlerhaft)",
-      "erteileKiFreigabe(kaputt)",
-      "erteileKiFreigabe(langsam)",
-      "erteileKiFreigabe(reasoner)",
-      'mitKiFreigabe({ global: "auto", perTask: { group: "deterministic" } })',
-      'mitKiFreigabe({ global: "deterministic", perTask: {} })',
-      'mitKiFreigabe({ global: "local", perTask: {} })',
-    ],
     faelle: {
       "#8": { boden: 3, freigaben: ["erteileKiFreigabe(reasoner)"] },
       "#9": {
@@ -1571,16 +1574,12 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
   },
   "tests/reasoner/extract-source-language.test.ts": {
     gesamtboden: 12,
-    freigaben: 1,
-    formen: ["erteileKiFreigabe(reasoner)"],
     faelle: {
       "#5": { boden: 2, freigaben: ["erteileKiFreigabe(reasoner)"] },
     },
   },
   "tests/reasoner/fallback-reason.test.ts": {
     gesamtboden: 36,
-    freigaben: 5,
-    formen: ["erteileKiFreigabe(reasoner)"],
     faelle: {
       "#2": { boden: 2, freigaben: ["erteileKiFreigabe(reasoner)"] },
       "#3": { boden: 2, freigaben: ["erteileKiFreigabe(reasoner)"] },
@@ -1591,8 +1590,6 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
   },
   "tests/reasoner/describe-image.test.ts": {
     gesamtboden: 44,
-    freigaben: 11,
-    formen: ["erteileKiFreigabe(reasoner)"],
     faelle: {
       "#2": { boden: 3, freigaben: ["erteileKiFreigabe(reasoner)"] },
       "#3": { boden: 1, freigaben: ["erteileKiFreigabe(reasoner)"] },
@@ -1609,12 +1606,6 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
   },
   "tests/reasoner/mega67-billable-je-aufgabe.test.ts": {
     gesamtboden: 17,
-    freigaben: 5,
-    formen: [
-      "erteileKiFreigabe(r)",
-      'mitKiFreigabe({ global: "auto", perTask: { extract: "deterministic" } })',
-      'mitKiFreigabe({ global: "auto", perTask: { structure: "local" } })',
-    ],
     faelle: {
       "#3": { boden: 2, freigaben: ["erteileKiFreigabe(r)"] },
       "#4": {
@@ -1631,16 +1622,12 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
   },
   "tests/reasoner/mega61-ki-kennzeichnung.test.ts": {
     gesamtboden: 23,
-    freigaben: 1,
-    formen: ["erteileKiFreigabe(mitModell)"],
     faelle: {
       "#7": { boden: 2, freigaben: ["erteileKiFreigabe(mitModell)"] },
     },
   },
   "tests/reasoner/job1164-wiretyp-dienstgrenze.test.ts": {
     gesamtboden: 26,
-    freigaben: 5,
-    formen: ["erteileKiFreigabe(reasoner)"],
     faelle: {
       "#1": { boden: 3, freigaben: ["erteileKiFreigabe(reasoner)"] },
       "#2": { boden: 1, freigaben: ["erteileKiFreigabe(reasoner)"] },
@@ -1651,8 +1638,6 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
   },
   "tests/ki-anbieterwahl/persistenz-und-migration.test.ts": {
     gesamtboden: 58,
-    freigaben: 2,
-    formen: ["erteileKiFreigabe(zweite)"],
     faelle: {
       C1: { boden: 8, freigaben: ["erteileKiFreigabe(zweite)"] },
       C1b: { boden: 6, freigaben: ["erteileKiFreigabe(zweite)"] },
@@ -1660,8 +1645,6 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
   },
   "tests/openai-anbieterfalle/openai-budget-parameter.test.ts": {
     gesamtboden: 44,
-    freigaben: 2,
-    formen: ["erteileKiFreigabe(reasoner)"],
     faelle: {
       "#1": { boden: 7, freigaben: ["erteileKiFreigabe(reasoner)"] },
       "#6": { boden: 5, freigaben: ["erteileKiFreigabe(reasoner)"] },
@@ -1669,8 +1652,6 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
   },
   "tests/openai-anbieterfalle/openai-sagt-warum-und-die-anbieterfalle-faellt.test.ts": {
     gesamtboden: 72,
-    freigaben: 2,
-    formen: ["erteileKiFreigabe(reasoner)"],
     faelle: {
       "#14": { boden: 4, freigaben: ["erteileKiFreigabe(reasoner)"] },
       "#15": { boden: 2, freigaben: ["erteileKiFreigabe(reasoner)"] },
@@ -1681,8 +1662,6 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
   // Prüfer BEN die Löschung von `expect(datensatz.status).toBe("error")` in V3c durchgehen sehen.
   "tests/ki-lauf-verbrauch/ehrlich.test.ts": {
     gesamtboden: 13,
-    freigaben: 1,
-    formen: ["erteileKiFreigabe(reasoner)"],
     vollzaehlig: true,
     faelle: {
       VORSPANN: { boden: 1, freigaben: ["erteileKiFreigabe(reasoner)"] },
@@ -1695,8 +1674,6 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
   },
   "tests/ki-lauf-verbrauch/genau-einmal.test.ts": {
     gesamtboden: 8,
-    freigaben: 2,
-    formen: ["erteileKiFreigabe(reasoner)"],
     faelle: {
       V6a: { boden: 4, freigaben: ["erteileKiFreigabe(reasoner)"] },
       V6b: { boden: 4, freigaben: ["erteileKiFreigabe(reasoner)"] },
@@ -1704,16 +1681,12 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
   },
   "tests/ki-lauf-verbrauch/mehrfachaufruf.test.ts": {
     gesamtboden: 7,
-    freigaben: 1,
-    formen: ["erteileKiFreigabe(reasoner)"],
     faelle: {
       V2: { boden: 7, freigaben: ["erteileKiFreigabe(reasoner)"] },
     },
   },
   "tests/ki-lauf-verbrauch/spur.test.ts": {
     gesamtboden: 6,
-    freigaben: 1,
-    formen: ["erteileKiFreigabe(reasoner)"],
     vollzaehlig: true,
     faelle: {
       VORSPANN: { boden: 0, freigaben: [] },
@@ -1722,8 +1695,6 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
   },
   "tests/ki-assist-leer/assist-budget-und-anweisung.test.ts": {
     gesamtboden: 23,
-    freigaben: 2,
-    formen: ["erteileKiFreigabe(reasoner)"],
     faelle: {
       "#8": { boden: 3, freigaben: ["erteileKiFreigabe(reasoner)"] },
       "#11": { boden: 1, freigaben: ["erteileKiFreigabe(reasoner)"] },
@@ -1731,8 +1702,6 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
   },
   "tests/ki-assist-leer/assist-leere-antwort.test.ts": {
     gesamtboden: 38,
-    freigaben: 8,
-    formen: ["erteileKiFreigabe(reasoner)"],
     faelle: {
       "#5": { boden: 4, freigaben: ["erteileKiFreigabe(reasoner)"] },
       "#6": { boden: 1, freigaben: ["erteileKiFreigabe(reasoner)"] },
@@ -1748,8 +1717,6 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
   // vollzählig, sonst hinge jeder der vier allein am Dateiboden.
   "tests/ki-assist-leer/assist-route-ehrliche-meldung.test.ts": {
     gesamtboden: 11,
-    freigaben: 1,
-    formen: ["erteileKiFreigabe(services.reasoner)"],
     vollzaehlig: true,
     faelle: {
       VORSPANN: { boden: 2, freigaben: ["erteileKiFreigabe(services.reasoner)"] },
@@ -1761,8 +1728,6 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
   },
   "tests/ki-assist-leer/assist-unveraendert-und-fragment.test.ts": {
     gesamtboden: 29,
-    freigaben: 7,
-    formen: ["erteileKiFreigabe(reasoner)"],
     faelle: {
       "#1": { boden: 5, freigaben: ["erteileKiFreigabe(reasoner)"] },
       "#2": { boden: 2, freigaben: ["erteileKiFreigabe(reasoner)"] },
@@ -1775,13 +1740,6 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
   },
   "services/reasoner/src/service.test.ts": {
     gesamtboden: 174,
-    freigaben: 20,
-    formen: [
-      "erteileKiFreigabe(reasoner)",
-      'mitKiFreigabe({ global: "auto", perTask: { structure: "deterministic" } })',
-      'mitKiFreigabe({ global: "cloud", perTask: {} })',
-      'mitKiFreigabe({ global: "deterministic", perTask: {} })',
-    ],
     faelle: {
       "#10": { boden: 2, freigaben: ["erteileKiFreigabe(reasoner)"] },
       "#11": { boden: 2, freigaben: ["erteileKiFreigabe(reasoner)"] },
@@ -1810,14 +1768,6 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
   },
   "services/reasoner/src/confidential-fallback.test.ts": {
     gesamtboden: 32,
-    freigaben: 15,
-    formen: [
-      "erteileKiFreigabe(reasoner)",
-      'mitKiFreigabe({ global: "auto", perTask: { select: "deterministic" } })',
-      'mitKiFreigabe({ global: "auto", perTask: { structure: "deterministic" } })',
-      'mitKiFreigabe({ global: "auto", perTask: { structure: "local" } })',
-      'mitKiFreigabe({ global: "deterministic", perTask: {} })',
-    ],
     faelle: {
       "#1": { boden: 3, freigaben: ["erteileKiFreigabe(reasoner)"] },
       "#2": { boden: 2, freigaben: ["erteileKiFreigabe(reasoner)"] },
@@ -1847,11 +1797,14 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
   },
   "services/reasoner/src/job3353-vertraulichkeit-sperre.test.ts": {
     gesamtboden: 18,
-    freigaben: 5,
-    formen: ["erteileKiFreigabe(reasoner)"],
     faelle: {
       "#1": { boden: 4, freigaben: ["erteileKiFreigabe(reasoner)"] },
       "#2": { boden: 3, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      // S3 misst eine SPERRE („gar keine Cloud verdrahtet") und darf deshalb KEINE Freigabe tragen.
+      // Bis JOB 3586 hing dieser Schutz an der Stückzahl `freigaben: 5` der Datei; jetzt steht er
+      // als Regel da, wo er hingehört — namentlich beim Fall (Hinweis der Steuerung 11.09. 09:5x,
+      // Punkt 3: „Dateien, die eine SPERRE messen, tragen sie ausdrücklich NICHT").
+      "#3": { boden: 2, freigaben: [] },
       "#4": { boden: 1, freigaben: ["erteileKiFreigabe(reasoner)"] },
       "#5": { boden: 3, freigaben: ["erteileKiFreigabe(reasoner)"] },
       "#6": { boden: 5, freigaben: ["erteileKiFreigabe(reasoner)"] },
@@ -1859,11 +1812,6 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
   },
   "services/reasoner/src/extract-failure.test.ts": {
     gesamtboden: 45,
-    freigaben: 8,
-    formen: [
-      "erteileKiFreigabe(reasoner)",
-      'mitKiFreigabe({ global: "auto", perTask: { extract: "deterministic" } })',
-    ],
     faelle: {
       "#1": { boden: 5, freigaben: ["erteileKiFreigabe(reasoner)"] },
       "#3": {
@@ -1880,16 +1828,12 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
   },
   "services/reasoner/src/extract.test.ts": {
     gesamtboden: 41,
-    freigaben: 1,
-    formen: ["erteileKiFreigabe(reasoner)"],
     faelle: {
       "#15": { boden: 2, freigaben: ["erteileKiFreigabe(reasoner)"] },
     },
   },
   "services/reasoner/src/model-concurrency.test.ts": {
     gesamtboden: 26,
-    freigaben: 3,
-    formen: ["erteileKiFreigabe(reasoner)"],
     faelle: {
       "#8": { boden: 1, freigaben: ["erteileKiFreigabe(reasoner)"] },
       "#9": { boden: 1, freigaben: ["erteileKiFreigabe(reasoner)"] },
@@ -1898,16 +1842,12 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
   },
   "services/reasoner/src/conflict-judge.test.ts": {
     gesamtboden: 23,
-    freigaben: 1,
-    formen: ["erteileKiFreigabe(withModel)"],
     faelle: {
       "#13": { boden: 2, freigaben: ["erteileKiFreigabe(withModel)"] },
     },
   },
   "services/reasoner/src/duplicate-judge.test.ts": {
     gesamtboden: 14,
-    freigaben: 1,
-    formen: ["erteileKiFreigabe(withModel)"],
     faelle: {
       "#6": { boden: 2, freigaben: ["erteileKiFreigabe(withModel)"] },
     },
@@ -1929,19 +1869,21 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
 //
 // F7 führt deshalb je Datei und Testnamen die Erwartungen WÖRTLICH, die dort stehen müssen, und
 // prüft für jede zwei Dinge zusammen:
-//   1. der Wortlaut steht im Bestandsteil der Datei (Kommentare sind ausgeblendet — eine Erwähnung
-//      in Prosa zählt nicht), UND
-//   2. an DERSELBEN Zeichenstelle steht in der zählenden Stufe noch ein `expect(` — der Wortlaut ist
-//      also nicht der Inhalt einer Zeichenkette oder einer Vorlage.
-// Damit fällt `void 'expect(datensatz.status).toBe("error")';` durch, und eine Umformulierung
-// ebenso: sie trägt den geführten Namen nicht mehr.
+//   1. der Wortlaut steht im Bestandsteil der Datei, UND
+//   2. an DERSELBEN Zeichenstelle beginnt im SYNTAXBAUM ein `expect(…)`-Aufruf — der Wortlaut ist
+//      also wirklich Code und nicht der Inhalt eines Kommentars, einer Zeichenkette, einer Vorlage
+//      oder eines Regex-Literals.
+// Damit fällt `void 'expect(datensatz.status).toBe("error")';` durch, ebenso
+// `void /expect(datensatz.status).toBe("error");/;`, und eine Umformulierung ebenso: sie trägt den
+// geführten Namen nicht mehr.
 //
-// WIE WEIT DAS TRÄGT, ausdrücklich (Runde 4): Punkt 2 unterscheidet Zeichenketten und Vorlagen vom
-// Code, aber NICHT Regex-Literale — `void /expect(…)/;` genügt ihm weiterhin. Ob eine Zeichenfolge
-// ausgeführt wird, entscheidet ein Parser und kein Zeichenvergleich; drei Runden Zeichenvergleich
-// haben das belegt. Die Lücke ist in der Kalibrierung von F7 gemessen festgehalten und gehört einem
-// Folgeauftrag mit AST-Prüfung. Was F7 heute trägt — Name, Datei, Wortlaut, keine Zeichenkette —
-// trägt es belegt (Prüfer BEN, Runde 3: Löschprobe und Stringprobe machen F7 rot).
+// WIE WEIT DAS TRÄGT, ausdrücklich (JOB 3586): Punkt 2 entscheidet ein PARSER
+// (`tests/waechter-ast/erwartungsstellen.ts`), kein Zeichenvergleich — drei Runden Zeichenvergleich
+// haben belegt, dass es anders nicht geht. Nicht entschieden ist damit die LAUFZEIT: eine
+// Bedingung, die erst im Lauf falsch wird, sieht kein Parser. Der syntaktisch tote Zweig ist
+// abgedeckt. Was F7 trägt — Name, Datei, Wortlaut, ausgeführt — trägt es belegt (Prüfer BEN,
+// Runde 3: Löschprobe und Stringprobe; JOB 3586: dieselben vier Proben dauerhaft in
+// `tests/waechter-ast/vier-proben.test.ts`).
 //
 // WAS F7 (NOCH) NICHT IST: keine vollständige Abschrift aller 803 Erwartungen der Fläche. Geführt
 // sind die, deren Verlust gefährlich wäre — jede NULL eines Sperrfalls und je Datei die Erwartung,
@@ -2153,11 +2095,38 @@ describe("JOB 3550 F: der Freigabe-Wächter — die KI-Freigabe bleibt eine name
     // `bestand` schneidet NUR diesen Wächterblock weg (er misst den Vertrag und muss die Namen
     // nennen dürfen). Der Bestandsteil dieser Datei wird geprüft wie jeder andere — das ist die
     // Korrektur (c) aus dem Kopf dieses Blocks.
+    //
+    // GEMESSEN STATT GERATEN WIRD SEIT JOB 3586 AM CODE, NICHT AM ROHTEXT. F2 verglich Zeichen und
+    // fiel damit auf denselben Trick herein wie F4 und F7 vor diesem Auftrag — nur in die andere
+    // Richtung: als FEHLALARM. Der Prüffall der Steuerung (JOB 3588, dessen 29 Dateien hier
+    // eingespielt und gemessen wurden) machte F2 mit 23 Dateien rot; NEUNZEHN davon nannten das
+    // Feld ausschließlich in einem Kommentar, und zwar in genau dem Satz, den die Steuerung
+    // ausdrücklich sehen will: „Kein `vertraulicheInhalte`: die KOs sind intern eingestuft."
+    // Ein Wächter, der die BEGRÜNDUNG der Zurückhaltung bestraft, treibt sie aus den Dateien
+    // heraus. `bestandCode` blendet Kommentare aus und lässt ZEICHENKETTEN stehen — die vier
+    // Dateien, die `kiFreigabe: { oeffentlicheKi: true }` wirklich schreiben, bleiben rot.
     const vonHand = testquellen().filter((p) => {
-      const quelle = bestand(p);
+      const quelle = bestandCode(p);
       return felder.some((feld) => quelle.includes(feld));
     });
     expect(vonHand).toEqual([]);
+    // KALIBRIERUNG der Unterscheidung, an der sie hängt — beide Richtungen, sonst bewiese die Zeile
+    // oben vielleicht nur, dass nirgends etwas steht. Ein Feldname in Prosa ist keine Zuweisung;
+    // derselbe Name als Eigenschaft oder in einer Zeichenkette ist eine und bleibt rot.
+    const muster = [
+      "// Kein `vertraulicheInhalte`: dieser Fall ist intern eingestuft.",
+      "/* auch hier nur Prosa: oeffentlicheKi */",
+      "const hart = { kiFreigabe: { oeffentlicheKi: true } };",
+      'const auchHart = cfg["vertraulicheInhalte"];',
+    ].join("\n");
+    const gesiebt = nurCode(muster, "F2-KALIBRIERUNG.ts");
+    // Der Rohtext trägt jeden der vier Namen — die Siebung entscheidet, nicht die Suche.
+    expect((muster.match(/oeffentlicheKi|vertraulicheInhalte/g) ?? []).length).toBe(4);
+    expect((gesiebt.match(/oeffentlicheKi|vertraulicheInhalte/g) ?? []).length).toBe(2);
+    expect(gesiebt).toContain("kiFreigabe: { oeffentlicheKi: true }");
+    expect(gesiebt).toContain('cfg["vertraulicheInhalte"]');
+    // Und längentreu bleibt sie auch hier: sonst läge F4 in derselben Datei auf falschen Stellen.
+    expect(gesiebt.length).toBe(muster.length);
     // Der zweite Schalter ist nirgends erteilt — und das ist eine Liste, kein Zufall.
     expect(VERTRAULICH_ERLAUBT).toEqual([]);
   });
@@ -2191,91 +2160,117 @@ describe("JOB 3550 F: der Freigabe-Wächter — die KI-Freigabe bleibt eine name
   });
 
   it("F4 · je Fall: der Erwartungsboden und die vollzählige Liste der Freigabe-Aufrufe", () => {
-    // KALIBRIERUNG (JOB 3570 Runde 2, Korrekturpflicht 1 von Prüfer BEN): der Boden zählt
-    // AUSFÜHRBARE Erwartungen. Eine Zeile Prosa, die eine Erwartung nur ERWÄHNT, zählt nicht —
-    // sonst bezahlt ein Kommentar die Löschung eines Tests. Beides hier an einem Muster gemessen,
-    // damit die Regel nicht bloß im Kopftext behauptet steht.
+    // KALIBRIERUNG (JOB 3586): der Boden zählt AUSGEFÜHRTE Erwartungen, entschieden am Syntaxbaum.
+    // Die Formen, an denen JOB 3570 dreimal gescheitert ist, stehen hier nebeneinander: Kommentar
+    // (Runde 1), Zeichenkette (Runde 2), Regex-Literal nach `void` (Runde 3) — dazu der tote Zweig
+    // in allen Gestalten, die ein Parser entscheiden kann (`if`, `for`, `while`, Kurzschluss,
+    // Auswahl; die Schleifen- und Ausdrucksformen sind die Korrekturpflicht von Prüfer BEN aus
+    // Runde 1). Jede von ihnen trägt den WORTLAUT einer Erwartung und keine Ausführung. Vor
+    // JOB 3586 zahlten sie den Boden; jetzt zählen sie nicht mehr mit. Ihre ausführlichen Proben an
+    // ECHTEM Material führt `tests/waechter-ast/vier-proben.test.ts`.
     const muster = [
       'const w = "nicht // ein Kommentar";',
       "// Hier stand einmal expect(alt).toBe(1) — Prosa, kein Lauf.",
       "/* auch das nicht: expect(auch).toBe(2) */",
-      "expect(echt).toBe(3);",
-      "expect(zeichen).toMatch(/[\"']/);",
+      "void 'expect(alsZeichenkette).toBe(3)';",
+      "void `expect(inVorlage).toBe(4)`;",
+      // Der Klammerauf im Regex steht ABSICHTLICH ungeschützt (eine Gruppe): nur so trägt die
+      // Zeile überhaupt den Wortlaut, an dem die alte Zählung gescheitert ist.
+      "void /expect(imRegexLiteral).toBe(5);/;",
+      "if (false) expect(imTotenZweig).toBe(6);",
+      // Die Schleifenformen desselben toten Zweigs (Korrekturpflicht 1, Prüfer BEN, Runde 1): in
+      // Runde 1 zählte `for (; false;)` noch mit, und damit war die teuerste Erwartung der Fläche
+      // still abzuschalten.
+      "for (; false;) expect(imTotenFor).toBe(9);",
+      "while (false) expect(imTotenWhile).toBe(10);",
+      "false && expect(imTotenUnd).toBe(11);",
+      "true ? 0 : expect(imTotenZweigWahl).toBe(12);",
+      "expect(echt).toBe(7);",
+      "void `Vorlage mit ${expect(inEinbettung).toBe(8)} darin`;",
+      "expect(zeichen).toMatch(/expect(imMuster)/);",
     ].join("\n");
-    const gedampft = nurCode(muster, "KALIBRIERUNG");
-    expect(erwartungen(gedampft)).toBe(2);
-    expect(gedampft).toContain('const w = "nicht // ein Kommentar";');
-    expect(gedampft).not.toContain("Prosa, kein Lauf");
-    // Längentreu: Zeilennummern und Schnittstellen dürfen sich nicht verschieben.
-    expect(gedampft.length).toBe(muster.length);
-    expect(gedampft.split("\n")).toHaveLength(muster.split("\n").length);
-    // Und die Abtastung greift auf ECHTEM Material, nicht nur am Muster: diese beiden Dateien
+    const ganzesMuster = { von: 0, bis: muster.length };
+    const gemessen = erwartungsstellen(muster, "KALIBRIERUNG.ts");
+    // DREI laufen: die offene Erwartung, die in der Einbettung (die läuft wirklich) und die
+    // `toMatch`-Prüfung. Der WORTLAUT steht vierzehnmal da — diese Spreizung ist die ganze Aussage
+    // des Auftrags, und sie wird gemessen und nicht behauptet.
+    expect((muster.match(/expect\(/g) ?? []).length).toBe(14);
+    expect(gemessen.stellen).toHaveLength(3);
+    for (const laeuft of [
+      "expect(echt).toBe(7);",
+      "expect(inEinbettung).toBe(8)",
+      "expect(zeichen).toMatch(",
+    ]) {
+      expect([laeuft, erwartungLaeuft(muster, gemessen, laeuft, ganzesMuster)]).toEqual([
+        laeuft,
+        [muster.indexOf(laeuft)],
+      ]);
+    }
+    for (const wortlaut of [
+      "expect(alt).toBe(1)",
+      "expect(auch).toBe(2)",
+      "expect(alsZeichenkette).toBe(3)",
+      "expect(inVorlage).toBe(4)",
+      "expect(imRegexLiteral).toBe(5)",
+      "expect(imTotenZweig).toBe(6)",
+      "expect(imTotenFor).toBe(9)",
+      "expect(imTotenWhile).toBe(10)",
+      "expect(imTotenUnd).toBe(11)",
+      "expect(imTotenZweigWahl).toBe(12)",
+      "expect(imMuster)",
+    ]) {
+      // Der Wortlaut IST da — er läuft nur nicht. Beides wird gemessen, sonst bewiese die zweite
+      // Zeile vielleicht nur einen Suchfehler statt einer Unterscheidung.
+      expect([wortlaut, muster.includes(wortlaut)]).toEqual([wortlaut, true]);
+      expect([wortlaut, erwartungLaeuft(muster, gemessen, wortlaut, ganzesMuster)]).toEqual([
+        wortlaut,
+        [],
+      ]);
+    }
+    // Und die Unterscheidung greift auf ECHTEM Material, nicht nur am Muster: diese beiden Dateien
     // führen je eine Erwähnung in Prosa, die vor der Korrektur als Boden mitzählte.
     for (const belegt of [
       "tests/ki-lauf-verbrauch/ehrlich.test.ts",
       "tests/ki-lauf-verbrauch/spur.test.ts",
     ]) {
       const roh = (bestand(belegt).match(/expect\(/g) ?? []).length;
-      const echt = erwartungen(bestandCode(belegt));
+      const echt = bestandsstellen(belegt).stellen.length;
       expect([belegt, roh > echt]).toEqual([belegt, true]);
     }
 
-    // ZWEITE KALIBRIERUNG (JOB 3570 Runde 3, Korrekturpflicht 1 von Prüfer BEN): der WORTLAUT einer
-    // Erwartung IN EINER ZEICHENKETTE ist kein Lauf. BEN hat in `ehrlich.test.ts:121` die echte
-    // Prüfung durch `void 'expect(datensatz.status).toBe("error")';` ersetzt — Kommentare waren
-    // ausgeblendet, Zeichenketten nicht, und der Boden blieb bezahlt. Gezählt wird jetzt auf der
-    // Stufe `leeren`. Was in `${…}` steht, LÄUFT und zählt weiter mit; das ist der Unterschied
-    // zwischen „Literal" und „Literalinhalt" und hier an einem Muster festgehalten.
-    const literale = [
-      "void 'expect(alsZeichenkette).toBe(1)';",
-      'void "expect(inAnfuehrungszeichen).toBe(2)";',
-      "void `expect(inVorlage).toBe(3)`;",
-      "void `Vorlage mit ${expect(inEinbettung).toBe(4)} darin`;",
-      // Der Klammerauf im Regex steht ABSICHTLICH ungeschützt (eine Gruppe): nur so trägt die Zeile
-      // überhaupt ein zählbares `expect(`. Mit `\\(` fiele sie aus beiden Zählungen heraus und die
-      // Kalibrierung prüfte am Regex-Zweig nichts — gemessen im ersten Lauf (erwartet 6, gezählt 5).
-      "expect(text).toMatch(/expect(alsRegex)/);",
-      // DIE OFFENE LÜCKE, hier gemessen statt beschwiegen (Runde 4, Weisung der Steuerung vom
-      // 11.09.): diese Zeile führt KEINE Erwartung aus, zählt aber eine. Ein Regex-Literal beginnt
-      // an einem `/`, das ohne Parser nicht von einer Division zu trennen ist — nach `void` rät die
-      // Abtastung falsch, und genau dort hat BEN in Runde 3 getroffen. Die Zählung leert deshalb
-      // Regex-Inhalt gar nicht mehr, statt Vollständigkeit vorzugeben. Wer die Lücke schließt
-      // (Folgeauftrag, AST-Prüfung), macht diese Zeile rot und trägt sie hier nach.
-      "void /expect(imRegexLiteral).toBe(5);/;",
-    ].join("\n");
-    const ohneInhalt = nurCode(literale, "KALIBRIERUNG LITERALE", "leeren");
-    // Vier werden gezählt: die Erwartung in der Einbettung, die echte `toMatch`-Prüfung — und die
-    // beiden Wortlaute in Regex-Literalen, von denen KEINER läuft. Zeichenkette und Vorlage sind
-    // weg, das Regex-Literal nicht: das ist der Stand, nicht das Ziel.
-    expect(erwartungen(ohneInhalt)).toBe(4);
-    expect(ohneInhalt).toContain("expect(inEinbettung).toBe(4)");
-    expect(ohneInhalt).toContain("expect(text).toMatch(");
-    for (const verschwunden of ["alsZeichenkette", "inAnfuehrungszeichen", "inVorlage"]) {
-      expect([verschwunden, ohneInhalt.includes(verschwunden)]).toEqual([verschwunden, false]);
+    // KALIBRIERUNG DER REGEL, die seit JOB 3586 die Stückzahl je Datei ersetzt: erteilen ist
+    // erlaubt, selbst setzen nicht. Eine Regel, die nie feuert, bewacht nichts — deshalb steht die
+    // rote Richtung hier genauso gemessen da wie die grüne. Diese Zeilen dürfen die Feldnamen
+    // nennen: der Wächterblock ist aus dem Bestandsteil dieser Datei herausgeschnitten (F2).
+    for (const erlaubt of [
+      AM_REASONER,
+      ZUORDNUNG('"openai"'),
+      ZUORDNUNG('"openai"', '{ assist: "anthropic" }'),
+      "mitKiFreigabe(konfig)",
+    ]) {
+      expect([erlaubt, setztFreigabeSelbst(erlaubt)]).toEqual([erlaubt, false]);
     }
-    for (const geblieben of ["alsRegex", "imRegexLiteral"]) {
-      expect([geblieben, "Lücke", ohneInhalt.includes(geblieben)]).toEqual([
-        geblieben,
-        "Lücke",
-        true,
-      ]);
+    for (const ausgeweitet of [
+      "erteileKiFreigabe(reasoner, { vertraulicheInhalte: true })",
+      "mitKiFreigabe(vorlage, { oeffentlicheKi: true })",
+      'mitKiFreigabe({ global: "openai", perTask: {} }, { vertraulicheInhalte: true })',
+    ]) {
+      expect([ausgeweitet, setztFreigabeSelbst(ausgeweitet)]).toEqual([ausgeweitet, true]);
     }
-    // Längentreu auch hier — davon hängt die Gleichlage der beiden Stufen ab (s. u.).
-    expect(ohneInhalt.length).toBe(literale.length);
-    expect(ohneInhalt.split("\n")).toHaveLength(literale.split("\n").length);
-    // Und der Unterschied ist der Betrag, den die Gegenprobe von BEN aus Runde 2 bezahlt hat: die
-    // schwächere Stufe zählt alle sieben Vorkommen, die zählende die drei Zeichenketten-Wortlaute
-    // nicht mehr.
-    expect(erwartungen(nurCode(literale, "KALIBRIERUNG LITERALE"))).toBe(7);
 
     for (const [datei, dateiakte] of Object.entries(FALLAKTEN)) {
       const akten = dateiakte.faelle;
       const code = bestandCode(datei);
-      const zaehlbar = bestandErwartungen(datei);
-      // DIE GLEICHLAGE, geprüft statt angenommen: nur weil beide Stufen längentreu auf derselben
-      // Quelle arbeiten, darf F4 einen Fall am erkennbaren Text abgrenzen und im zählbaren zählen.
-      // Wäre sie verletzt, zählte der Wächter den falschen Fall — still und grün.
-      expect([datei, "Gleichlage", zaehlbar.length]).toEqual([datei, "Gleichlage", code.length]);
+      const befund = bestandsstellen(datei);
+      // DIE GLEICHLAGE, geprüft statt angenommen: der Syntaxbaum zählt auf der ROHEN Quelle, die
+      // Fallgrenzen stehen im ausgeblendeten Text. Nur weil `nurCode` längentreu ist, liegt ein
+      // Fall in beiden an derselben Zeichenstelle. Wäre sie verletzt, zählte der Wächter den
+      // falschen Fall — still und grün.
+      expect([datei, "Gleichlage", bestand(datei).length]).toEqual([
+        datei,
+        "Gleichlage",
+        code.length,
+      ]);
       const ganzerBestand = code.replace(/\s+/g, " ");
       const stellen = fallStellen(code);
       // WO DER AUFBAU GETEILT IST, IST JEDER FALL BETROFFEN (Korrekturpflicht 2 von Prüfer BEN).
@@ -2287,13 +2282,28 @@ describe("JOB 3550 F: der Freigabe-Wächter — die KI-Freigabe bleibt eine name
         const wozu = "VORSPANN gibt frei → die Datei ist vollzählig zu führen";
         expect([datei, wozu, dateiakte.vollzaehlig === true]).toEqual([datei, wozu, true]);
       }
-      // DIE DATEI ALS GANZES (JOB 3570): der Boden über alle Fälle und die Zahl der Freigaben.
-      // Ein gelöschter Fall, eine gelöschte Erwartung und eine zusätzliche Freigabe IRGENDWO in
-      // der Datei fallen hier auf — auch in einem Fall, der unten nicht einzeln geführt wird.
+      // DIE DATEI ALS GANZES (JOB 3570): der Boden über alle Fälle. Eine gelöschte Erwartung und
+      // ein gelöschter GANZER Fall fallen hier auf — auch in einem Fall, der unten nicht einzeln
+      // geführt wird. Eine DAZUGEKOMMENE Erwartung ist kein Fehler; deshalb eine Schranke.
       const alleRufe = [...ganzerBestand.matchAll(FREIGABE_RUF)].map((t) => t[0]);
-      expect([datei, erwartungen(zaehlbar) >= dateiakte.gesamtboden]).toEqual([datei, true]);
-      expect([datei, alleRufe.length]).toEqual([datei, dateiakte.freigaben]);
-      expect([datei, [...new Set(alleRufe)].sort()]).toEqual([datei, [...dateiakte.formen].sort()]);
+      expect(
+        befund.stellen.length,
+        `${datei}: ${befund.stellen.length} ausgeführte Erwartungen, geführt sind ${dateiakte.gesamtboden}`,
+      ).toBeGreaterThanOrEqual(dateiakte.gesamtboden);
+      // DIE REGEL STATT DER STÜCKZAHL (JOB 3586, Hinweis der Steuerung 11.09. 09:5x): ein
+      // Freigabe-Aufruf trägt GENAU EIN Argument — die Zuordnung. Der zweite Parameter beider
+      // Helferformen IST die Freigabe (`{ oeffentlicheKi, vertraulicheInhalte }`); wer ihn
+      // schreibt, weitet aus, statt die Grundfreigabe zu erteilen. Diese Regel kostet keine
+      // Pflege je Datei, gilt für jede künftig eingetragene Datei mit — und sie ersetzt die
+      // Wortlautliste `formen`, die genau das je Datei aufzählte. Gezählt wird nichts mehr: eine
+      // zusätzliche Grundfreigabe in einem nicht geführten Fall ist erlaubt (so arbeitet
+      // JOB 3588), eine in einem SPERRFALL nicht — der steht namentlich unten in `faelle`.
+      for (const ruf of alleRufe) {
+        expect(
+          setztFreigabeSelbst(ruf),
+          `${datei}: ${ruf} setzt die Freigabe selbst statt sie zu erteilen`,
+        ).toBe(false);
+      }
       // Und für die drei Dateien von JOB 3550, deren Fallliste KOMPLETT ist, bleibt es dabei:
       // kein Fall verschwindet und keiner kommt unbemerkt dazu.
       if (dateiakte.vollzaehlig) {
@@ -2305,10 +2315,13 @@ describe("JOB 3550 F: der Freigabe-Wächter — die KI-Freigabe bleibt eine name
         expect([datei, fall, stellen.has(fall)]).toEqual([datei, fall, true]);
         const stelle = stellen.get(fall) ?? { von: 0, bis: 0 };
         const text = code.slice(stelle.von, stelle.bis).replace(/\s+/g, " ");
-        // Gezählt wird auf der Stufe `leeren`, an DERSELBEN Stelle — ein Wortlaut in einem Literal
-        // ersetzt keine Erwartung.
-        const zahl = erwartungen(zaehlbar.slice(stelle.von, stelle.bis));
-        expect([datei, fall, zahl >= akte.boden]).toEqual([datei, fall, true]);
+        // Gezählt wird am Syntaxbaum, im Bereich DIESES Falls — ein Wortlaut in einem Kommentar,
+        // einer Zeichenkette, einem Regex-Literal oder einem toten Zweig ersetzt keine Erwartung.
+        const zahl = zaehleErwartungen(befund, stelle.von, stelle.bis);
+        expect(
+          zahl,
+          `${datei} · ${fall}: ${zahl} ausgeführte Erwartungen, geführt sind ${akte.boden}`,
+        ).toBeGreaterThanOrEqual(akte.boden);
         expect([datei, fall, [...text.matchAll(FREIGABE_RUF)].map((t) => t[0])]).toEqual([
           datei,
           fall,
@@ -2365,65 +2378,57 @@ describe("JOB 3550 F: der Freigabe-Wächter — die KI-Freigabe bleibt eine name
     expect((gesehen[0] as { kiFreigabe?: unknown }).kiFreigabe).toEqual({ oeffentlicheKi: true });
   });
 
-  it("F7 · namentlich geführte Erwartungen stehen da und nicht in einer Zeichenkette", () => {
+  it("F7 · namentlich geführte Erwartungen werden AUSGEFÜHRT, nicht nur zitiert", () => {
     /**
-     * WAS GEPRÜFT WIRD: der Wortlaut steht im Code UND an seiner Zeichenstelle beginnt auch in der
-     * zählenden Stufe noch ein `expect(`. Beides zusammen, denn einzeln ist jedes zu haben: den
-     * Wortlaut hat auch ein String, das `expect(` hat auch eine andere Erwartung.
+     * WAS GEPRÜFT WIRD (seit JOB 3586): der Wortlaut steht in der Quelle UND an genau dieser
+     * Zeichenstelle beginnt im SYNTAXBAUM ein `expect(…)`-Aufruf. Beides zusammen, denn einzeln ist
+     * jedes zu haben: den Wortlaut hat auch ein Kommentar, den Aufruf hat auch jede andere
+     * Erwartung.
      *
-     * WAS NICHT GEPRÜFT WIRD (Runde 4, ausdrücklich): ob die Stelle WIRKLICH ausgeführt wird. Die
-     * zählende Stufe leert Zeichenketten und Vorlagen, Regex-Literale nicht — ein Wortlaut in einem
-     * Regex-Literal genügt dieser Prüfung weiterhin. Die Kalibrierung unten misst beides, das
-     * Getragene und die Lücke. Ein früherer Name dieses Falls hieß „AUSFÜHRBAR"; er versprach mehr,
-     * als zwei Abtaststufen halten können, und ist deshalb zurückgenommen.
+     * WAS DAS GEGENÜBER RUNDE 4 MEHR IST: der Baum kennt keinen Kommentar- und keinen
+     * Literalinhalt. Damit fällt neben `void 'expect(…)';` jetzt auch `void /expect(…)/;` durch —
+     * die Gegenprobe, an der JOB 3570 in Runde 3 gescheitert ist. Der Fall heißt deshalb wieder
+     * AUSGEFÜHRT: diesmal hält der Name, weil ein Parser entscheidet und kein Zeichenvergleich.
+     *
+     * WAS WEITERHIN NICHT GEPRÜFT WIRD: ob der Lauf die Stelle zur Laufzeit ERREICHT — eine
+     * Bedingung, die erst im Lauf falsch wird, sieht kein Parser. Der syntaktisch tote Zweig ist
+     * abgedeckt (`tests/waechter-ast/erwartungsstellen.ts`, Abschnitt TOTER_ZWEIG).
      */
-    const stellenImCode = (
-      code: string,
-      zaehlbar: string,
-      erwartung: string,
-      bereich: { readonly von: number; readonly bis: number },
-    ): number[] => {
-      const gefunden: number[] = [];
-      for (let i = code.indexOf(erwartung); i >= 0; i = code.indexOf(erwartung, i + 1)) {
-        if (i >= bereich.von && i < bereich.bis && zaehlbar.startsWith("expect(", i)) {
-          gefunden.push(i);
-        }
-      }
-      return gefunden;
-    };
-
-    // KALIBRIERUNG: die Unterscheidung selbst, an einem Muster gemessen — und daneben die Lücke,
-    // ebenfalls gemessen. Ohne die erste Hälfte wäre die Trennung eine Behauptung über zwei
-    // Abtastungen, ohne die zweite eine Behauptung über ihre Reichweite; beides hat Runden gekostet.
+    // KALIBRIERUNG: die Unterscheidung selbst, an einem Muster gemessen. Die drei Fälschungen sind
+    // die drei Runden von JOB 3570 — Kommentar, Zeichenkette, Regex-Literal.
     const probe = [
       "expect(echt).toBe(1);",
       "void 'expect(gefaelscht).toBe(2)';",
-      // Dieselbe Fälschung, nur in einem Regex-Literal statt in einer Zeichenkette — BENs Gegenprobe
-      // aus Runde 3. Sie kommt hier durch, und das steht so da, weil es so ist.
       "void /expect(imRegex).toBe(3);/;",
+      "// expect(imKommentar).toBe(4);",
     ].join("\n");
-    const probeCode = nurCode(probe, "F7-KALIBRIERUNG");
-    const probeZaehl = nurCode(probe, "F7-KALIBRIERUNG", "leeren");
+    const probeBefund = erwartungsstellen(probe, "F7-KALIBRIERUNG.ts");
     const ganz = { von: 0, bis: probe.length };
-    expect(stellenImCode(probeCode, probeZaehl, "expect(echt).toBe(1);", ganz)).toHaveLength(1);
-    // Der Wortlaut IST da — nur eben als Inhalt einer Zeichenkette. Der Suchbegriff ist wörtlich
-    // derselbe wie oben gefunden wird; damit trennt die zweite Bedingung und nicht ein Suchfehler.
-    expect(probeCode).toContain("expect(gefaelscht).toBe(2)");
-    expect(stellenImCode(probeCode, probeZaehl, "expect(gefaelscht).toBe(2)", ganz)).toHaveLength(
-      0,
-    );
-    // DIE LÜCKE, benannt: derselbe Wortlaut in einem Regex-Literal wird NICHT getrennt. Diese Zeile
-    // ist keine Zusicherung, sondern der festgehaltene Stand — sie wird rot, sobald ein
-    // Folgeauftrag die Stelle mit einer AST-Prüfung entscheidet, und muss dann mitgezogen werden.
-    expect(stellenImCode(probeCode, probeZaehl, "expect(imRegex).toBe(3)", ganz)).toHaveLength(1);
+    expect(erwartungLaeuft(probe, probeBefund, "expect(echt).toBe(1);", ganz)).toHaveLength(1);
+    for (const gefaelscht of [
+      "expect(gefaelscht).toBe(2)",
+      "expect(imRegex).toBe(3)",
+      "expect(imKommentar).toBe(4)",
+    ]) {
+      // Der Wortlaut IST da — der Suchbegriff ist wörtlich derselbe, der oben gefunden wird; damit
+      // trennt die zweite Bedingung und nicht ein Suchfehler.
+      expect([gefaelscht, probe.includes(gefaelscht)]).toEqual([gefaelscht, true]);
+      expect([gefaelscht, erwartungLaeuft(probe, probeBefund, gefaelscht, ganz)]).toEqual([
+        gefaelscht,
+        [],
+      ]);
+    }
 
     expect(NAMENTLICHE_ERWARTUNGEN.length).toBeGreaterThan(8);
     for (const akte of NAMENTLICHE_ERWARTUNGEN) {
       // Der Grund ist Pflicht, in derselben Länge wie in F1 und F6.
       expect([akte.datei, akte.warum.length > 60]).toEqual([akte.datei, true]);
       const code = bestandCode(akte.datei);
-      const zaehlbar = bestandErwartungen(akte.datei);
-      expect([akte.datei, "Gleichlage", zaehlbar.length]).toEqual([
+      const roh = bestand(akte.datei);
+      const befund = bestandsstellen(akte.datei);
+      // Dieselbe Gleichlage wie in F4: Fallgrenzen im ausgeblendeten Text, Aufrufstellen in der
+      // rohen Quelle — beide nur deckungsgleich, weil `nurCode` längentreu ist.
+      expect([akte.datei, "Gleichlage", roh.length]).toEqual([
         akte.datei,
         "Gleichlage",
         code.length,
@@ -2444,7 +2449,7 @@ describe("JOB 3550 F: der Freigabe-Wächter — die KI-Freigabe bleibt eine name
           // Eine geführte Zeile, die nicht mit `expect(` beginnt, könnte die zweite Bedingung nie
           // erfüllen — dann wäre der Eintrag stumm statt streng.
           expect([erwartung, erwartung.startsWith("expect(")]).toEqual([erwartung, true]);
-          const gefunden = stellenImCode(code, zaehlbar, erwartung, bereich);
+          const gefunden = erwartungLaeuft(roh, befund, erwartung, bereich);
           expect([akte.datei, fall.testname, erwartung, gefunden.length > 0]).toEqual([
             akte.datei,
             fall.testname,
