@@ -10,6 +10,10 @@ import {
   ModelEmptyResponseError,
   classifyModelFailure,
 } from "../../services/reasoner/src/model-errors";
+// JOB 3570: die Grundfreigabe im Aufbau. Der Client dieses Falls sitzt als PRIMÄRER Provider und
+// zählt damit als öffentlicher Anbieter (`service.ts:508`) — ohne Freigabe käme statt der
+// gemessenen Meldung „keine Antwort geliefert" die Auskunft über eine gesperrte Kante.
+import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 
 // AUFTRAG-mega18 Block E (SCRUM-544): `content ?? ""` machte drei verschiedene Zustände zu EINEM
 // stillen leeren String — eine leere Antwort galt als Ergebnis. Kein Netzaufruf hier: `fetch` wird
@@ -158,6 +162,7 @@ describe("SCRUM-544: der leere Zustand kommt ehrlich oben an, ohne Aufrufer zu z
     const reasoner = new Reasoner(
       new ModelProvider(localClient({ choices: [{ message: { content: "" } }] })),
     );
+    await erteileKiFreigabe(reasoner);
 
     const fehler = await reasoner
       .assistText("Pumpe bei über 80 Grad abschalten", "de")

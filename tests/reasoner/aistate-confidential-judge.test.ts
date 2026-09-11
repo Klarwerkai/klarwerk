@@ -5,6 +5,10 @@
 // als "confidential" (Cloud-only vertraulich) bzw. "no-model" (gar kein Modell) — NIE als stilles Urteil.
 import { describe, expect, it } from "vitest";
 import { Reasoner } from "../../services/reasoner";
+// JOB 3570: die Grundfreigabe im Aufbau. Sie ist hier die Voraussetzung dafür, dass die gemessene
+// Ursache „confidential" bzw. „no-model" bleibt — ohne sie wäre der Grund die fehlende Freigabe,
+// und die drei Fälle unten prüften eine andere Sperre als die, um die es ihnen geht.
+import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 
 // Spy-Provider (Cloud ODER lokal) mit getrennten Zählern auf beiden Judge-Flächen. `isAvailable`=true
 // und ein eigener Name (≠ deterministischer Fallback) → der Reasoner zählt ihn als verdrahtetes Modell.
@@ -51,6 +55,10 @@ describe("D-AISTATE V1: judge-Kette vertraulichkeitsbewusst (Cloud-Egress 0 bei 
   it("vertraulich + nur Cloud ⇒ Cloud-Judge EXAKT 0, Ausgang ehrlich 'confidential' (kein Urteil)", async () => {
     const cloud = spyProvider("cloud");
     const reasoner = new Reasoner(cloud.provider); // nur Cloud, kein lokales Modell
+    // SPERRFALL MIT GRUNDFREIGABE: die Null unten soll an der VERTRAULICHKEIT liegen, nicht an
+    // einer fehlenden Adminfreigabe. Die Freigabe für VERTRAULICHES bleibt ungesetzt — das ist die Sperre,
+    // die hier gemessen wird.
+    await erteileKiFreigabe(reasoner);
     const conflict = await reasoner.judgeConflictOutcome("A", "B", "de", true);
     const duplicate = await reasoner.judgeDuplicateOutcome("A", "B", "de", true);
     // Cloud hat den vertraulichen Text NIE gesehen …
@@ -64,6 +72,7 @@ describe("D-AISTATE V1: judge-Kette vertraulichkeitsbewusst (Cloud-Egress 0 bei 
   it("NICHT vertraulich + Cloud ⇒ die Cloud urteilt normal (Gegenprobe: kein Fehl-Ausschluss)", async () => {
     const cloud = spyProvider("cloud");
     const reasoner = new Reasoner(cloud.provider);
+    await erteileKiFreigabe(reasoner);
     const conflict = await reasoner.judgeConflictOutcome("A", "B", "de", false);
     expect(cloud.conflictCalls()).toBe(1);
     expect(conflict.verdict).not.toBeNull();
@@ -75,6 +84,7 @@ describe("D-AISTATE V1: judge-Kette vertraulichkeitsbewusst (Cloud-Egress 0 bei 
     const local = spyProvider("local");
     // Konstruktor: (primary/cloud, fallback?, modelRuns?, presets?, secondary/local).
     const reasoner = new Reasoner(cloud.provider, undefined, undefined, undefined, local.provider);
+    await erteileKiFreigabe(reasoner);
     const conflict = await reasoner.judgeConflictOutcome("A", "B", "de", true);
     const duplicate = await reasoner.judgeDuplicateOutcome("A", "B", "de", true);
     // Cloud bleibt außen vor …

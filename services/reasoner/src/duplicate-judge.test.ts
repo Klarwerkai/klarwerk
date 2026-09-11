@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { type ModelClient, ModelProvider, parseDuplicateResponse } from "./provider-model";
 import { Reasoner } from "./service";
+import { erteileKiFreigabe } from "./testhelfer-ki-freigabe";
 
 function fakeClient(reply: string): ModelClient {
   return { name: "fake", complete: async () => reply };
@@ -61,6 +62,9 @@ describe("Berater-Konzept Duplikate 04.07. (Stufe D2): judgeDuplicate über die 
 
   it("Reasoner mit Modell urteilt; ohne Modell ehrlich null", async () => {
     const withModel = new Reasoner(new ModelProvider(fakeClient(dupJson)));
+    // JOB 3570: die Grundfreigabe im Aufbau — „mit Modell urteilt" verlangt einen echten Aufruf.
+    // `withoutModel` bekommt keine: dort ist kein Anbieter verdrahtet, das belegt die Null.
+    await erteileKiFreigabe(withModel);
     expect((await withModel.judgeDuplicate("A", "B"))?.beziehung).toBe("teilweise");
 
     const withoutModel = new Reasoner();

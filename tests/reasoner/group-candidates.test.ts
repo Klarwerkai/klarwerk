@@ -12,6 +12,13 @@ import {
   deterministicCandidateGroups,
   normalizeCandidateGroups,
 } from "../../services/reasoner";
+// JOB 3570: die Grundfreigabe im Aufbau. Die Fälle unten unterscheiden `model-error`,
+// `model-timeout`, `confidential` und `no-model` voneinander — ohne Freigabe fielen sie alle auf
+// dieselbe Ursache zusammen, und genau diese Unterscheidung ist der Gegenstand der Datei.
+import {
+  erteileKiFreigabe,
+  mitKiFreigabe,
+} from "../../services/reasoner/src/testhelfer-ki-freigabe";
 
 const CANDIDATES: GroupCandidateInput[] = [
   { id: "a", title: "Pumpe warten", theme: "Wartung" },
@@ -136,7 +143,9 @@ describe("WP-IC-4: Reasoner.groupCandidates (Fallback-Muster + Protokoll)", () =
           ],
         }),
     });
-    const res = await new Reasoner(provider).groupCandidates(CANDIDATES, "de");
+    const reasoner = new Reasoner(provider);
+    await erteileKiFreigabe(reasoner);
+    const res = await reasoner.groupCandidates(CANDIDATES, "de");
     expect(res.demo).toBe(false);
     expect(res.fallbackReason).toBeUndefined();
     expect(res.groups.flatMap((g) => g.ids).sort()).toEqual(["a", "b", "c", "d"]);
@@ -149,7 +158,9 @@ describe("WP-IC-4: Reasoner.groupCandidates (Fallback-Muster + Protokoll)", () =
         throw new Error("Modell-API antwortete mit 529");
       },
     });
-    const err = await new Reasoner(failing).groupCandidates(CANDIDATES, "de");
+    const fehlerhaft = new Reasoner(failing);
+    await erteileKiFreigabe(fehlerhaft);
+    const err = await fehlerhaft.groupCandidates(CANDIDATES, "de");
     expect(err.demo).toBe(true);
     expect(err.fallbackReason).toBe("model-error");
     const timingOut = new ModelProvider({
@@ -158,7 +169,9 @@ describe("WP-IC-4: Reasoner.groupCandidates (Fallback-Muster + Protokoll)", () =
         throw new ModelTimeoutError("Zeitlimit", 30000);
       },
     });
-    const timeout = await new Reasoner(timingOut).groupCandidates(CANDIDATES, "de");
+    const langsam = new Reasoner(timingOut);
+    await erteileKiFreigabe(langsam);
+    const timeout = await langsam.groupCandidates(CANDIDATES, "de");
     expect(timeout.fallbackReason).toBe("model-timeout");
   });
 
@@ -171,7 +184,11 @@ describe("WP-IC-4: Reasoner.groupCandidates (Fallback-Muster + Protokoll)", () =
         return JSON.stringify({ groups: [{ title: "Alles", ids: ["a", "b", "c", "d"] }] });
       },
     });
-    const res = await new Reasoner(cloud).groupCandidates(CANDIDATES, "de", true);
+    // SPERRFALL MIT GRUNDFREIGABE: die Null unten liegt an der VERTRAULICHKEIT, nicht an einer
+    // fehlenden Adminfreigabe. Die Freigabe für VERTRAULICHES bleibt ungesetzt — das ist die Sperre hier.
+    const reasoner = new Reasoner(cloud);
+    await erteileKiFreigabe(reasoner);
+    const res = await reasoner.groupCandidates(CANDIDATES, "de", true);
     expect(res.demo).toBe(true);
     expect(res.fallbackReason).toBe("confidential");
     expect(cloudCalls).toBe(0); // die Vertraulichkeits-DURCHSETZUNG bleibt unangetastet
@@ -185,13 +202,15 @@ describe("WP-IC-4: Reasoner.groupCandidates (Fallback-Muster + Protokoll)", () =
       complete: async () => JSON.stringify({ groups: [{ title: "X", ids: ["a"] }] }),
     });
     const reasoner = new Reasoner(cloud);
-    await reasoner.setTaskConfig({ global: "deterministic", perTask: {} });
+    await reasoner.setTaskConfig(mitKiFreigabe({ global: "deterministic", perTask: {} }));
     const res = await reasoner.groupCandidates(CANDIDATES, "de", true);
     expect(res.demo).toBe(true);
     expect(res.fallbackReason).toBe("no-model");
     // Auch als reine perTask-Wahl (global cloud-geeignet, group bewusst deterministisch).
     const perTask = new Reasoner(cloud);
-    await perTask.setTaskConfig({ global: "auto", perTask: { group: "deterministic" } });
+    await perTask.setTaskConfig(
+      mitKiFreigabe({ global: "auto", perTask: { group: "deterministic" } }),
+    );
     const res2 = await perTask.groupCandidates(CANDIDATES, "de", true);
     expect(res2.fallbackReason).toBe("no-model");
   });
@@ -209,6 +228,10 @@ describe("WP-IC-4: Reasoner.groupCandidates (Fallback-Muster + Protokoll)", () =
     });
     const loaded = await reasoner.loadPersistedPolicy();
     expect(loaded.source).toBe("load-error");
+    // NACH dem Laden: die fail-closed Policy soll die Ursache sein, nicht die fehlende Freigabe.
+    // Vor dem Laden gesetzt wäre sie hier wirkungslos — `loadPersistedPolicy` schreibt die
+    // wirksame Zuordnung neu.
+    await erteileKiFreigabe(reasoner);
     const res = await reasoner.groupCandidates(CANDIDATES, "de", true);
     expect(res.demo).toBe(true);
     expect(res.fallbackReason).toBe("no-model");
@@ -220,7 +243,7 @@ describe("WP-IC-4: Reasoner.groupCandidates (Fallback-Muster + Protokoll)", () =
       complete: async () => JSON.stringify({ groups: [{ title: "X", ids: ["a"] }] }),
     });
     const reasoner = new Reasoner(cloud);
-    await reasoner.setTaskConfig({ global: "local", perTask: {} });
+    await reasoner.setTaskConfig(mitKiFreigabe({ global: "local", perTask: {} }));
     const res = await reasoner.groupCandidates(CANDIDATES, "de", true);
     expect(res.demo).toBe(true);
     // Die Cloud war per Policy NIE zulässig — Vertraulichkeit ist nicht die entscheidende Ursache.
@@ -246,11 +269,9 @@ describe("WP-IC-4: Reasoner.groupCandidates (Fallback-Muster + Protokoll)", () =
           ],
         }),
     });
-    const res = await new Reasoner(cloud, undefined, undefined, undefined, local).groupCandidates(
-      CANDIDATES,
-      "de",
-      true,
-    );
+    const reasoner = new Reasoner(cloud, undefined, undefined, undefined, local);
+    await erteileKiFreigabe(reasoner);
+    const res = await reasoner.groupCandidates(CANDIDATES, "de", true);
     expect(res.demo).toBe(false);
     expect(res.fallbackReason).toBeUndefined();
     expect(cloudCalls).toBe(0);
@@ -267,13 +288,9 @@ describe("WP-IC-4: Reasoner.groupCandidates (Fallback-Muster + Protokoll)", () =
         throw new ModelTimeoutError("Zeitlimit", 30000);
       },
     });
-    const timeout = await new Reasoner(
-      cloud,
-      undefined,
-      undefined,
-      undefined,
-      timingOut,
-    ).groupCandidates(CANDIDATES, "de", true);
+    const langsam = new Reasoner(cloud, undefined, undefined, undefined, timingOut);
+    await erteileKiFreigabe(langsam);
+    const timeout = await langsam.groupCandidates(CANDIDATES, "de", true);
     expect(timeout.demo).toBe(true);
     expect(timeout.fallbackReason).toBe("model-timeout");
     const failing = new ModelProvider({
@@ -282,11 +299,9 @@ describe("WP-IC-4: Reasoner.groupCandidates (Fallback-Muster + Protokoll)", () =
         throw new Error("Modell-API antwortete mit 529");
       },
     });
-    const err = await new Reasoner(cloud, undefined, undefined, undefined, failing).groupCandidates(
-      CANDIDATES,
-      "de",
-      true,
-    );
+    const kaputt = new Reasoner(cloud, undefined, undefined, undefined, failing);
+    await erteileKiFreigabe(kaputt);
+    const err = await kaputt.groupCandidates(CANDIDATES, "de", true);
     expect(err.demo).toBe(true);
     expect(err.fallbackReason).toBe("model-error");
   });

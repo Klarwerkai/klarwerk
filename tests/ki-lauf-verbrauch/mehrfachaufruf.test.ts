@@ -15,6 +15,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { InMemoryModelRunRepo } from "../../services/model-runs";
 import { DeterministicProvider, ModelProvider, Reasoner } from "../../services/reasoner";
 import { chunkForExtract } from "../../services/reasoner/src/provider-model";
+// JOB 3570: die Grundfreigabe im Aufbau — der Fall zählt DREI echte Modellaufrufe; ohne sie wäre
+// die gemessene Summe die von null Aufrufen.
+import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 import { alsAntwort, cloudClient, cloudKoerper } from "./hilfe";
 
 const SATZ = "Der Pruefdruck betraegt 16 bar und wird vor Inbetriebnahme geprueft. ";
@@ -46,6 +49,7 @@ describe("JOB 3074 V2: der Verbrauch eines Laufs ist die Summe seiner Modellaufr
       new DeterministicProvider(),
       repo,
     );
+    await erteileKiFreigabe(reasoner);
     await reasoner.extract(DOKUMENT, "de");
 
     expect(n, "drei Abschnitte, drei Modellaufrufe").toBe(3);

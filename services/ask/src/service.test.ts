@@ -250,6 +250,11 @@ describe("AskService", () => {
       extract: async () => ({ points: [], note: null, demo: false }),
       select: () => [],
     };
+    // OFFEN (JOB 3570): `seen` bleibt nur gefüllt, wenn der als Cloud verdrahtete Provider
+    // wirklich gefragt wird — unter dem Kern von JOB 3549 braucht dieser Aufbau die
+    // Grundfreigabe. Sie ist von `services/ask` aus nicht setzbar: der Testhelfer liegt in
+    // `services/reasoner/src`, und der Import dorthin verletzt die Modulgrenze. Der Nachtrag ist
+    // ein Re-Export in `services/reasoner/index.ts` — außerhalb der Zielpfade von JOB 3570.
     const ask = new AskService({
       reasoner: new Reasoner(capturing),
       koService: ctx.koService,

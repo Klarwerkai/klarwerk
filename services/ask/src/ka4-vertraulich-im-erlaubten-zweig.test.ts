@@ -86,6 +86,12 @@ async function aufbauen() {
     author: "anna",
   });
 
+  // OFFEN (JOB 3570): KA4-V0/V1 verlangen `gesehen.length === 1`, also einen tatsächlichen Aufruf
+  // des als Cloud verdrahteten Mitschreibers. Unter dem Kern von JOB 3549 braucht dieser Aufbau
+  // deshalb die Grundfreigabe. Sie ist von `services/ask` aus nicht setzbar: der Testhelfer liegt
+  // in `services/reasoner/src/testhelfer-ki-freigabe.ts`, und der Import dorthin verletzt die
+  // Modulgrenze (`dependency-cruiser` „module-boundaries"). Der Nachtrag ist ein Re-Export in
+  // `services/reasoner/index.ts` — außerhalb der Zielpfade von JOB 3570.
   const { provider, gesehen } = mitschreiber();
   const ask = new AskService({
     reasoner: new Reasoner(provider),

@@ -5,6 +5,13 @@
 import { describe, expect, it } from "vitest";
 import type { ReasonerProvider } from "../../services/reasoner/src/provider";
 import { Reasoner } from "../../services/reasoner/src/service";
+// JOB 3570: die Grundfreigabe im Aufbau. Der Key-Test (`probe`) IST ein echter Aufruf an den
+// öffentlichen Anbieter — ohne Freigabe fände er nicht statt, und „active"/„unreachable"/
+// „billable" wären keine Messung mehr, sondern die Auskunft über eine gesperrte Kante.
+import {
+  erteileKiFreigabe,
+  mitKiFreigabe,
+} from "../../services/reasoner/src/testhelfer-ki-freigabe";
 
 // Kompaktes Modell-Provider-Fake: nur isAvailable + probe (mehr braucht der Erreichbarkeits-Pfad nicht).
 function modelProvider(probe: () => Promise<unknown>): ReasonerProvider {
@@ -26,8 +33,9 @@ describe("PAKET 2: reasonerReachability — Zustandsmaschine", () => {
     expect(r.publicStatus().mode).toBe("deterministic");
   });
 
-  it("Modell konfiguriert, aber noch nicht geprüft → unverified (kein Fake-Grün)", () => {
+  it("Modell konfiguriert, aber noch nicht geprüft → unverified (kein Fake-Grün)", async () => {
     const r = new Reasoner(modelProvider(async () => "OK"));
+    await erteileKiFreigabe(r);
     expect(r.reachabilityState()).toBe("unverified");
     expect(r.publicStatus().reachable).toBe("unverified");
     // active/mode bleiben die Konfigurations-Wahrheit (rückwärtskompatibel).
@@ -35,8 +43,9 @@ describe("PAKET 2: reasonerReachability — Zustandsmaschine", () => {
     expect(r.publicStatus().mode).toBe("cloud");
   });
 
-  it("recordReachability: true → active, false → unreachable", () => {
+  it("recordReachability: true → active, false → unreachable", async () => {
     const r = new Reasoner(modelProvider(async () => "OK"));
+    await erteileKiFreigabe(r);
     r.recordReachability(true);
     expect(r.reachabilityState()).toBe("active");
     r.recordReachability(false);
@@ -45,6 +54,7 @@ describe("PAKET 2: reasonerReachability — Zustandsmaschine", () => {
 
   it("refreshReachabilityIfStale: erreichbares Modell → nach dem Probe active", async () => {
     const r = new Reasoner(modelProvider(async () => "OK"));
+    await erteileKiFreigabe(r);
     r.refreshReachabilityIfStale();
     await flush();
     expect(r.reachabilityState()).toBe("active");
@@ -56,6 +66,7 @@ describe("PAKET 2: reasonerReachability — Zustandsmaschine", () => {
         throw new Error("401 key expired");
       }),
     );
+    await erteileKiFreigabe(r);
     r.refreshReachabilityIfStale();
     await flush();
     expect(r.reachabilityState()).toBe("unreachable");
@@ -69,7 +80,7 @@ describe("PAKET 2: reasonerReachability — Zustandsmaschine", () => {
     const localUp = modelProvider(async () => "OK");
     const r = new Reasoner(cloudDown, undefined, undefined, undefined, localUp);
     // answer ist AUSDRÜCKLICH auf cloud gestellt; alle anderen Aufgaben bleiben auto (Cloud→Lokal).
-    await r.setTaskConfig({ global: "auto", perTask: { answer: "cloud" } });
+    await r.setTaskConfig(mitKiFreigabe({ global: "auto", perTask: { answer: "cloud" } }));
     r.refreshReachabilityIfStale();
     await flush();
     const pub = r.publicStatus();
@@ -93,6 +104,7 @@ describe("PAKET 2: reasonerReachability — Zustandsmaschine", () => {
       undefined,
       modelProvider(down),
     );
+    await erteileKiFreigabe(r);
     r.refreshReachabilityIfStale();
     await flush();
     const pub = r.publicStatus();
@@ -100,8 +112,9 @@ describe("PAKET 2: reasonerReachability — Zustandsmaschine", () => {
     expect(Object.values(pub.tasks).every((v) => v === false)).toBe(true);
   });
 
-  it("Ladefall/Start (noch kein Probe): unverified zählt als nutzbar — Task-Karte graut NICHT vorschnell aus", () => {
+  it("Ladefall/Start (noch kein Probe): unverified zählt als nutzbar — Task-Karte graut NICHT vorschnell aus", async () => {
     const r = new Reasoner(modelProvider(async () => "OK"));
+    await erteileKiFreigabe(r);
     expect(r.publicStatus().reachable).toBe("unverified");
     expect(r.publicStatus().tasks.answer).toBe(true);
   });
@@ -114,6 +127,7 @@ describe("PAKET 2: reasonerReachability — Zustandsmaschine", () => {
         return "OK";
       }),
     );
+    await erteileKiFreigabe(r);
     r.refreshReachabilityIfStale();
     await flush();
     expect(probes).toBe(1);

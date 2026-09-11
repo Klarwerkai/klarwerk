@@ -13,6 +13,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { InMemoryModelRunRepo } from "../../services/model-runs";
 import { DeterministicProvider, ModelProvider, Reasoner } from "../../services/reasoner";
+// JOB 3570: die Grundfreigabe im Aufbau — beide Läufe müssen das Modell WIRKLICH befragen
+// (`expect(n).toBe(2)`), sonst gibt es keine zwei Verbrauchswerte, die getrennt bleiben könnten.
+import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 import { alsAntwort, cloudClient, cloudKoerper } from "./hilfe";
 
 afterEach(() => {
@@ -40,6 +43,7 @@ describe("JOB 3074 V1: zwei gleichzeitige Läufe vermischen ihren Verbrauch nich
       new DeterministicProvider(),
       repo,
     );
+    await erteileKiFreigabe(reasoner);
     await Promise.all([
       reasoner.assistText("Erster roher Satz.", "de"),
       reasoner.assistText("Zweiter roher Satz.", "de"),

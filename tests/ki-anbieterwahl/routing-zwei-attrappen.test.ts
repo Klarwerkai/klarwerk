@@ -577,6 +577,11 @@ describe("JOB 3134 N: die Nebenwege folgen derselben Wahl — Weltwissen, Urteil
 //   F4  Je EINZELNEM Testfall der drei angefassten Dateien: der Erwartungsboden und die
 //       vollzählige Liste der erlaubten Freigabe-Aufrufe (Auftrag §3.3: „KEINE Aufweichung").
 //   F5  Der Vertrag des Helfers, gemessen statt behauptet (Auftrag §4).
+//   F6  Jede Datei der Fläche steht in EINEM der drei Register — jede künftige kostet eine
+//       Entscheidung statt eines stillen Rots im Tor (eigener Abschnitt weiter unten).
+//   F7  NAMENTLICH geführte Erwartungen stehen im Code da, nicht in einer Zeichenkette: Datei,
+//       Testname, Wortlaut. Nicht
+//       „die Summe stimmt noch", sondern „genau diese Zeile läuft" (eigener Abschnitt weiter unten).
 //
 // WAS RUNDE 2 AN DIESEM BLOCK GEÄNDERT HAT — drei nachgewiesene Löcher, alle von Prüfer BEN
 // gemessen und nicht vermutet:
@@ -588,6 +593,44 @@ describe("JOB 3134 N: die Nebenwege folgen derselben Wahl — Weltwissen, Urteil
 //       gezählt (dieser Block ist abgeschnitten), und zwar je Fall einzeln.
 //   (c) F2 nahm diese ganze Datei aus. Ausgerechnet ihre eigenen Sperr-Fälle waren damit unbewacht.
 //       Jetzt ist nur noch der Block ab der Überschrift oben ausgenommen.
+//
+// WAS JOB 3570 RUNDE 2 GEÄNDERT HAT — zwei Löcher, beide von Prüfer BEN an echtem Material
+// gemessen (Runde 1, Korrekturpflichten 1 und 2):
+//   (d) F4 zählte `expect(` im ROHTEXT, Kommentare eingeschlossen. BEN löschte in
+//       `tests/ki-lauf-verbrauch/ehrlich.test.ts` einzeln `expect(laeufe).toHaveLength(1)` und
+//       `expect(datensatz.status).toBe("error")` — beide Male blieben alle 38 Fälle grün, weil die
+//       Prosa in `:65` den Boden mitfüllte (roh 14 gegen ausführbar 13). Gezählt wird jetzt nur
+//       noch AUSFÜHRBARER Code; `nurCode` blendet Kommentare längentreu aus.
+//   (e) Führte eine Datei ihre Freigabe im VORSPANN, war jeder ihrer Fälle betroffen, aber keiner
+//       einzeln geführt — V3c hing allein am Dateiboden, und eine zusätzliche Erwartung in einem
+//       anderen Fall hätte seinen Verlust ausgeglichen. F4 verlangt jetzt: VORSPANN gibt frei →
+//       die Datei ist vollzählig zu führen.
+//
+// WAS JOB 3570 RUNDE 3 GEÄNDERT HAT — ein Loch, wieder von Prüfer BEN an echtem Material gemessen
+// (Runde 2, Korrekturpflicht 1):
+//   (f) (d) blendete Kommentare aus, Zeichenketten nicht. BEN hat in
+//       `tests/ki-lauf-verbrauch/ehrlich.test.ts:121` die Prüfung `expect(datensatz.status)`
+//       `.toBe("error")` durch `void 'expect(…)';` ersetzt — dieselben Zeichen, nur als
+//       Zeichenkette — und alle 38 Fälle blieben grün: der Wortlaut bezahlte den Boden weiter.
+//       `nurCode` hat jetzt ZWEI Stufen. Erkannt wird auf der Stufe, die Literale ERHÄLT (Fallköpfe
+//       und Freigabe-Argumente sind Zeichenketten), GEZÄHLT auf der Stufe, die den Inhalt von
+//       ZEICHENKETTEN und VORLAGEN leert. Beide sind längentreu auf derselben Quelle, und F4 prüft
+//       diese Gleichlage je Datei nach, ehe es sich auf sie verlässt. Was in `${…}` steht, läuft
+//       und zählt weiter mit.
+//
+// WAS JOB 3570 RUNDE 4 GEÄNDERT HAT — eine Zusicherung wird ZURÜCKGENOMMEN, auf Weisung der
+// Steuerung vom 11.09. („der Wächter wird kleiner, nicht noch einmal versucht"):
+//   (g) Runde 3 leerte auch den Inhalt von REGEX-Literalen und nannte das Ergebnis die
+//       „literalfreie Stufe". Die Zusicherung trug nicht: ein Regex-Literal fängt an einem `/` an,
+//       das ohne Parser nicht von einer Division zu unterscheiden ist, und BEN hat mit
+//       `void /expect(datensatz.status).toBe("error");/;` genau diese Stelle getroffen — F4 und F7
+//       blieben grün. Statt es ein viertes Mal mit Zeichenvergleichen zu versuchen, leert die
+//       zählende Stufe Regex-Literale jetzt GAR NICHT MEHR, und die verbleibende Lücke steht
+//       ausdrücklich als gemessener Fall in den Kalibrierungen von F4 und F7: ein Wortlaut in einem
+//       Regex-Literal bezahlt den Boden weiter. Was F4 und F7 TRAGEN, ist damit unverändert und
+//       dreifach belegt (Prüfer BEN, Runde 3): namentlicher Schutz, Löschprobe, Stringprobe. Die
+//       Unterscheidung „ausführbar oder nur Wortlaut" gehört einem Folgeauftrag mit AST-Prüfung;
+//       sie ist eine Parseraufgabe und keine Textsuche.
 //
 // WARUM DIESER BLOCK IN DIESER DATEI STEHT und nicht in einer eigenen: die Zielpfade des Auftrags
 // zählen 57 Testdateien EINZELN auf (Auftrag §2b, mit Begründung — ein breiter Pfad hätte fünf
@@ -637,6 +680,200 @@ const FREIGABE_ERLAUBT: ReadonlyMap<string, string> = new Map([
       "Modell ist ein Fake. Ohne Freigabe antwortet der deterministische Ersatz, und U4–U8c prüfen " +
       "nicht mehr Quellenwortlaut gegen Prosa (JOB 3500: 5 rote Fälle genau dort).",
   ],
+  // ---- JOB 3570 · DER NACHTRAG. Zweiunddreißig Bestandsdateien, je mit ihrem eigenen Grund. ----
+  [
+    "tests/reasoner/dual-provider.test.ts",
+    'Die Kette Cloud → lokal → deterministischer Ersatz, gemessen an der ANTWORT ("CLOUD", ' +
+      '"LOCAL"). Ohne Grundfreigabe fällt die Cloud aus jeder Kette, und die vier Fälle prüften ' +
+      "nicht mehr die Reihenfolge der Backends, sondern dreimal dieselbe Sperre.",
+  ],
+  [
+    "tests/reasoner/aistate-confidential-judge.test.ts",
+    "Die vertraulichkeitsbewusste Judge-Kette. Der Ausgang ist ehrlich UNTERSCHIEDEN: " +
+      '„confidential" (Cloud da, aber vertraulich) gegen „no-model" (gar kein Modell). Ohne ' +
+      "Freigabe wäre er in beiden Fällen derselbe, und genau diese Unterscheidung ist der Inhalt.",
+  ],
+  [
+    "tests/reasoner/aistate-egress-guard.test.ts",
+    "Nur der letzte Fall trägt sie: Cloud-Primary + vertrauliches Paar → complete 0 und Ausgang " +
+      '„confidential". Die Null soll an der Vertraulichkeit liegen, nicht an der Erlaubnis. Die ' +
+      "übrigen Fälle bauen nur den lokalen Secondary oder gar keinen Reasoner.",
+  ],
+  [
+    "tests/reasoner/reasoner-reachability.test.ts",
+    "Der Key-Test (`probe`) ist ein echter Aufruf an die öffentliche KI. Ohne Freigabe fände er " +
+      'nicht statt, und „active"/„unreachable"/`tasks[t]` wären keine Messung mehr, sondern die ' +
+      "Auskunft über eine gesperrte Kante — dieselbe Begründung wie bei V2/V3 des Verbindungstests.",
+  ],
+  [
+    "tests/reasoner/local-empty-response.test.ts",
+    "Ein Fall: der Client sitzt als PRIMARY und zählt damit als öffentlicher Anbieter " +
+      "(`service.ts:508`). Er muss antworten dürfen, damit die geprüfte Meldung „Die KI hat keine " +
+      'Antwort geliefert" überhaupt entsteht. Der `probeLocal`-Fall bleibt ohne Freigabe.',
+  ],
+  [
+    "tests/reasoner/import-criteria.test.ts",
+    'Jeder Fall pinnt eine URSACHE: `model-error`, `confidential`, `no-model`, „nichts gefragt". ' +
+      "Ohne Freigabe hätten alle dieselbe Ursache — die fehlende Erlaubnis —, und die Datei " +
+      "prüfte statt des ehrlichen Ausfall-Vertrags nur noch die Sperre.",
+  ],
+  [
+    "tests/reasoner/group-candidates.test.ts",
+    "Dieselbe Ursachen-Unterscheidung für `groupCandidates` (model-error, model-timeout, " +
+      "confidential, no-model) plus der Erfolgsfall mit validierten KI-Gruppen (demo false). Die " +
+      "fünf reinen Validierungsfälle oben bauen keinen Reasoner und bekommen nichts.",
+  ],
+  [
+    "tests/reasoner/extract-source-language.test.ts",
+    "Ein Fall: der Durchstich Reasoner → Provider mit der Nicht-übersetzen-Regel im Prompt. Ohne " +
+      "Freigabe wird kein Prompt gesendet (`systems.length > 0` fiele), und der Schalter wäre " +
+      "nicht mehr bis zum Provider verfolgbar. Die vier Prompt-Fälle prüfen den Provider direkt.",
+  ],
+  [
+    "tests/reasoner/fallback-reason.test.ts",
+    "Die Datei trennt `no-model` von `model-error`/`model-timeout` — dafür muss ein Modell " +
+      'wirklich VERSUCHT werden. Ohne Freigabe stünde überall „kein Modell", und auch das ' +
+      "PII-freie Diagnose-Log entstünde nicht, weil kein Versuch protokolliert würde.",
+  ],
+  [
+    "tests/reasoner/describe-image.test.ts",
+    "Der Vision-Weg: Modelltext, harter Deckel, leere Antwort, Timeout, Protokoll und der " +
+      "vertrauliche Fall mit Vision-Spy 0. Alles davon setzt voraus, dass der Bildaufruf erlaubt " +
+      'ist; ohne Freigabe bliebe nur „gesperrt". Die Bausteinfälle bekommen keine.',
+  ],
+  [
+    "tests/reasoner/mega67-billable-je-aufgabe.test.ts",
+    '`billable` ist die Aussage „kostet dieser Klick wirklich etwas?" und liest die TATSÄCHLICHE ' +
+      "Kette der Aufgabe. Eine gesperrte Cloud kostet nichts — ohne Freigabe messen die Fälle " +
+      "nicht mehr die Abgrenzung gegen `tasks`/`mode`, sondern die Sperre.",
+  ],
+  [
+    "tests/reasoner/mega61-ki-kennzeichnung.test.ts",
+    "Ein Fall: `assist` mit ANTWORTENDEM Modell (demo false) — nur an einem echten Vorschlag ist " +
+      "prüfbar, dass er KEINE KI-Kennzeichnung trägt. Alle anderen Fälle laufen ohne Anbieter " +
+      "über den deterministischen Ersatz und bleiben unangetastet.",
+  ],
+  [
+    "tests/reasoner/job1164-wiretyp-dienstgrenze.test.ts",
+    "Der Titelvorschlag ist die gekürzte Beschreibung eines ECHTEN Vision-Aufrufs. Ohne Freigabe " +
+      'gibt es keine Beschreibung und damit keinen Unterschied zwischen „abgeleitet" und „Feld ' +
+      'abwesend" — die drei NEGATIV-Fälle ohne Modell bleiben ohne Freigabe.',
+  ],
+  [
+    "tests/ki-anbieterwahl/persistenz-und-migration.test.ts",
+    "C1 und C1b prüfen, an WELCHE Adresse die Anfrage nach dem Neustart geht (api.anthropic.com " +
+      "statt api.openai.com). Eine Anfrage, die nie stattfindet, hat keine Adresse. C2–C7 messen " +
+      "Persistenz, Migration und die ENV-Sperre und bekommen ausdrücklich keine Freigabe.",
+  ],
+  [
+    "tests/openai-anbieterfalle/openai-budget-parameter.test.ts",
+    "P1 und P6 fahren den Admin-Mini-Test über den DIENST (`reasoner.probe()`). Ohne Freigabe gibt " +
+      "es keinen Request, dessen Körper auf `max_completion_tokens` zu prüfen wäre — und kein " +
+      "`ok:false` für die leere Antwort. Die Client-Fälle bekommen keine.",
+  ],
+  [
+    "tests/openai-anbieterfalle/openai-sagt-warum-und-die-anbieterfalle-faellt.test.ts",
+    "N3 und N4 fahren die ganze Kette bis in die Extract-Note, die die BEGRÜNDUNG DES ANBIETERS " +
+      "trägt (400/401 mit Fremdtext). Ohne Anbieteraufruf gibt es keine Fremdmeldung, also auch " +
+      "keinen Schlüsselrest, dessen Tilgung zu belegen wäre.",
+  ],
+  [
+    "tests/ki-lauf-verbrauch/ehrlich.test.ts",
+    "Der Verbrauch eines Laufs kommt aus dem `usage`-Block einer echten Antwort. Ohne Freigabe " +
+      'gibt es keinen Aufruf, keinen Block und nichts zu unterscheiden — „das Feld FEHLT" wäre ' +
+      "dann trivial wahr statt gemessen. Die Freigabe steht an der einen Aufbaustelle.",
+  ],
+  [
+    "tests/ki-lauf-verbrauch/genau-einmal.test.ts",
+    "V6a zählt EINEN Modellaufruf über zwei Schreibversuche, V6b ZWEI bezahlte Versuche. Beides " +
+      "sind Aussagen über wirklich stattgefundene Aufrufe; ohne Freigabe wäre die gemessene Zahl " +
+      'in beiden Fällen null und das Gesetz „genau einmal" unbewacht.',
+  ],
+  [
+    "tests/ki-lauf-verbrauch/mehrfachaufruf.test.ts",
+    "Drei Abschnitte, drei Modellaufrufe, eine Summe (6000/180). Ohne Freigabe findet kein " +
+      "Abschnitt statt, und der Fall prüfte die Summe von nichts — die Halbheit „nur der letzte " +
+      'Wert", gegen die er ausdrücklich steht, wäre nicht mehr unterscheidbar.',
+  ],
+  [
+    "tests/ki-lauf-verbrauch/spur.test.ts",
+    "Zwei GLEICHZEITIGE Läufe an einer Client-Instanz; die Aussage ist, dass ihre Verbrauchswerte " +
+      "getrennt bleiben (100/10 und 7/3). Ohne Freigabe befragt keiner der beiden das Modell " +
+      "(`expect(n).toBe(2)` fiele), und es gäbe keine zwei Werte, die sich vermischen könnten.",
+  ],
+  [
+    "tests/ki-assist-leer/assist-budget-und-anweisung.test.ts",
+    "F3 und G3 gehen über den Dienst: die Meldung MIT dem Grund `finish_reason=length` und die " +
+      "freie Anweisung, die bis in den System-Prompt reist. Ohne Freigabe käme statt beider die " +
+      "Sperrmeldung. Die Budget-Fälle sprechen den Provider direkt an.",
+  ],
+  [
+    "tests/ki-assist-leer/assist-leere-antwort.test.ts",
+    "Die Meldung nennt Anbieter, Modell und Grund des VERSUCHS — ohne Versuch gibt es keinen " +
+      'Grund, und der Laufdatensatz („status error", „model gpt-6-astra") entsteht nicht. B3 ' +
+      "(ganz ohne Modell) und die vier Provider-Fälle bleiben ausdrücklich ohne Freigabe.",
+  ],
+  [
+    "tests/ki-assist-leer/assist-route-ehrliche-meldung.test.ts",
+    "Vier Fälle über die ECHTE Route gegen einen Cloud-Client, H4 verlangt ausdrücklich den 200er " +
+      "MIT Vorschlag. Ohne Freigabe wäre jede der vier Antworten dieselbe Sperrmeldung, und der " +
+      "Unterschied zwischen ehrlicher Meldung und echtem Vorschlag verschwände.",
+  ],
+  [
+    "tests/ki-assist-leer/assist-unveraendert-und-fragment.test.ts",
+    'Die Datei unterscheidet „keine ÄNDERUNGEN vorgeschlagen" von „keine ANTWORT geliefert" — ' +
+      "beides setzt eine echte Modellantwort voraus (Echo-Text, Korrektur, Fragment). Ohne " +
+      "Freigabe gäbe es keine, und die beiden Tatsachen fielen zu einer zusammen.",
+  ],
+  [
+    "services/reasoner/src/service.test.ts",
+    "Der Kern-Einheitstest des Dienstes: Modellantwort, Fallback-Pfad mit `fallback:true`, " +
+      "Laufprotokoll, wirksame Zuordnung (`effective`) und das Vertraulichkeits-Routing mit " +
+      "gezählten Providernamen. Ohne Freigabe bliebe von all dem der deterministische Ersatz. " +
+      "Persistenz-, ENV-Sperr- und `configStatus`-Fälle bekommen ausdrücklich keine.",
+  ],
+  [
+    "services/reasoner/src/confidential-fallback.test.ts",
+    "Die Harmonisierung von `confidential` gegen `no-model`/`model-error`/`model-timeout` über " +
+      "structure, describeImage und deriveImportCriteria. Jede dieser Ursachen setzt voraus, dass " +
+      "die Cloud ERLAUBT war und nur an der Einstufung oder der Zuordnung scheiterte.",
+  ],
+  [
+    "services/reasoner/src/job3353-vertraulichkeit-sperre.test.ts",
+    "Die Sperrmeldung behauptet, die Cloud wäre OHNE die Einstufung gelaufen — genau das setzt " +
+      "eine erteilte Adminfreigabe voraus. Ohne sie wäre `ConfidentialCloudBlockedError` eine " +
+      "Aussage über die falsche Ursache. S3 (keine Cloud verdrahtet) bleibt ohne Freigabe.",
+  ],
+  [
+    "services/reasoner/src/extract-failure.test.ts",
+    'Der echte Fehlergrund in der Note statt „Ohne KI-Modell", die gerettete gekürzte Antwort, ' +
+      "die abschnittsweise Extraktion. Alles davon verlangt einen stattgefundenen Modellaufruf; " +
+      "ohne Freigabe stünde überall genau die Meldung, gegen die die Datei antritt.",
+  ],
+  [
+    "services/reasoner/src/extract.test.ts",
+    "Ein Fall: der Fallback NACH einem echten, gescheiterten Modellversuch. Ohne Freigabe gäbe es " +
+      'keinen Versuch, sondern „kein Modell" — und das prüft der Fall direkt darüber schon. Alle ' +
+      "übrigen Fälle bauen keinen öffentlichen Anbieter.",
+  ],
+  [
+    "services/reasoner/src/model-concurrency.test.ts",
+    "Drei Fälle reichen den Auslastungsfehler des MODELLS durch (`ModelCapacityError` statt " +
+      "stillem null oder Fallback). Ohne Modellaufruf gibt es keinen solchen Fehler; die " +
+      "Semaphor- und Wrapper-Fälle bauen keinen Reasoner und bekommen nichts.",
+  ],
+  [
+    "services/reasoner/src/conflict-judge.test.ts",
+    'Ein Fall: „Reasoner mit echtem Modell urteilt" — das verlangt einen echten Aufruf. Sein ' +
+      "Gegenpart im selben Fall (`withoutModel`) bekommt ausdrücklich keine Freigabe, denn " +
+      "seine Null soll am fehlenden Anbieter liegen.",
+  ],
+  [
+    "services/reasoner/src/duplicate-judge.test.ts",
+    'Dasselbe für das Dubletten-Urteil: der Fall stellt „mit Modell urteilt" gegen „ohne Modell ' +
+      'ehrlich null". Ohne Freigabe wären beide Hälften null, und der Fall verlöre seine ' +
+      "Gegenprobe im eigenen Rumpf.",
+  ],
 ]);
 
 /**
@@ -648,6 +885,138 @@ const FREIGABE_ERLAUBT: ReadonlyMap<string, string> = new Map([
  * eine spätere Runde den Schalter nicht beiläufig irgendwo setzen — F2 wird rot.
  */
 const VERTRAULICH_ERLAUBT: readonly string[] = [];
+
+// ================================================================================================
+// F6 (JOB 3570) — DIE FLÄCHE HÄLT SICH SELBST VOLLSTÄNDIG.
+// ================================================================================================
+//
+// F1 bewacht, wer den Helfer benutzt. Er kann NICHT bewachen, wer ihn hätte benutzen müssen: eine
+// neue Testdatei, die einen Modellweg baut und keine Freigabe setzt, ist für F1 unsichtbar und
+// wird im Tor des Kerns still rot. Genau so ist der Nachtrag entstanden — JOB 3550 versorgte drei
+// Dateien, und dreiunddreißig weitere blieben liegen (`archiv/3550/runde-2/RUECKGABE.md:83`).
+//
+// F6 dreht das um: JEDE Datei der Fläche muss in EINEM der beiden Register stehen. Entweder sie
+// setzt die Freigabe (FREIGABE_ERLAUBT, mit Grund) oder sie setzt sie ausdrücklich NICHT
+// (OHNE_FREIGABE_MIT_GRUND, mit Grund). Damit kostet jede künftige Datei eine ENTSCHEIDUNG.
+
+/**
+ * DIE FLÄCHE — die Zielpfade von JOB 3570, wörtlich, und nichts darüber hinaus.
+ *
+ * Warum nicht das ganze Haus: die Bestandsdateien außerhalb dieser Pfade gehören anderen
+ * laufenden Aufträgen (Auftrag 3570 §4 und §10: „nicht in den Diff"). Ein Wächter, der Dateien
+ * verlangt, die dieser Auftrag nicht anfassen darf, wäre entweder rot oder eine Aufforderung zum
+ * Regelbruch. Die Messung, was außerhalb noch liegt, steht in der Rückgabe (Lieferung 6).
+ */
+const FLAECHE: readonly string[] = [
+  "tests/reasoner",
+  "tests/ki-anbieterwahl",
+  "tests/openai-anbieterfalle",
+  "tests/ki-lauf-verbrauch",
+  "tests/ki-assist-leer",
+  "services/reasoner/src",
+  "services/ask/src",
+  "services/app/src/routes/reasoner-egress.test.ts",
+  // Nachgereicht von der Steuerung (HINWEIS 11.09. 01:1x): Bestandstests, die NEBEN dem Quellcode
+  // liegen statt unter `tests/`, fielen durch das Suchmuster, aus dem die Liste von JOB 3550 kam.
+  // An genau diesen beiden ist der Kern JOB 3549 gescheitert — Runde 1 an `reasoner-routes`,
+  // Runde 2 an `reasoner-egress`.
+  "services/app/src/routes/reasoner-routes.test.ts",
+];
+
+/**
+ * Woran ein Modellweg im Quelltext erkennbar ist.
+ *
+ * Die drei Formen, in denen eine Testdatei überhaupt an ein Modell kommt: der Dienst selbst
+ * (`new Reasoner(`), die Kompositionswurzel mit ersetztem Reasoner (`buildServices`/`buildApp`)
+ * und der Provider direkt (`new ModelProvider(`). Der Import allein zählt nicht — ein Typ-Import
+ * baut keinen Weg.
+ */
+const MODELLWEG = /new Reasoner\(|new ModelProvider\(|buildServices\(|buildApp\(/;
+
+/**
+ * DAS DRITTE REGISTER · wer einen Modellweg baut und die Freigabe AUSDRÜCKLICH NICHT bekommt.
+ *
+ * Drei Sorten stehen hier, und der Grund sagt jedes Mal, welche:
+ *   (B) SPERRFALL — der Fall erwartet NULL Übertragungen. Eine Freigabe wäre hier nicht falsch,
+ *       sondern gefährlich: sie ist der Schalter, den der Fall gerade nicht braucht.
+ *   (C) BERÜHRT DEN WEG NICHT — kein öffentlicher Anbieter verdrahtet (kein `primary`, keine
+ *       `cloud`-Anbindung) oder gar kein `Reasoner`, sondern nur ein Provider/Client. Ohne
+ *       Entscheidungsstelle gibt es keine Freigabe zu setzen.
+ *   (X) BLOCKIERT — der Fall BRAUCHT die Grundfreigabe, kann sie in diesem Auftrag aber nicht
+ *       bekommen: der Helfer liegt in `services/reasoner/src` und ist über die Modulgrenze nicht
+ *       erreichbar (`dependency-cruiser` „module-boundaries"). Gemessen, nicht vermutet:
+ *       `npx depcruise --config .dependency-cruiser.cjs services` meldet
+ *       „error module-boundaries: services/app/src/routes/reasoner-egress.test.ts →
+ *       services/reasoner/src/testhelfer-ki-freigabe.ts". Nachgelesen in `.dependency-cruiser.cjs`
+ *       `:16-27`: über eine Modulgrenze ist AUSSCHLIESSLICH `services/<modul>/index.ts` erlaubt,
+ *       Schweregrad `error`. Der Helfer steht dort nicht (JOB 3570 Runde 2 nachgesehen).
+ *
+ *       DER NACHTRAG DAFÜR kostet zwei Zeilen, beide außerhalb der Zielpfade von JOB 3570:
+ *       einen Re-Export in `services/reasoner/index.ts` UND — weil dadurch ein Export ohne
+ *       Produktaufrufer entsteht — einen Eintrag in REGISTER 1 von
+ *       `tests/capture/aufrufer-waechter.test.ts`, neben dem, der für
+ *       `testhelfer-ki-freigabe.ts::erteileKiFreigabe` schon dort steht (`:774-783`).
+ *       SOLANGE ER FEHLT, bleibt der Torlauf des Kerns JOB 3549 an genau diesen zwei Dateien rot.
+ */
+const OHNE_FREIGABE_MIT_GRUND: ReadonlyMap<string, string> = new Map([
+  [
+    "tests/reasoner/model-run-context.test.ts",
+    "(C) Der Reasoner dieser Datei hat KEINEN Cloud-Provider — `:39` baut ihn mit `undefined` als " +
+      "primary und dem DeterministicProvider. Der Kopf `:23-25` nennt genau das als Hermetik: " +
+      "kein Modellaufruf, kein Egress. Eine Freigabe hätte hier nichts freizugeben.",
+  ],
+  [
+    "services/reasoner/src/provider-model.test.ts",
+    "(C) Prüft `ModelProvider` DIREKT, ohne `Reasoner`: es gibt keine Zuordnung, kein " +
+      "`setTaskConfig` und damit keine Stelle, an der eine Freigabe wirken könnte. Die " +
+      "Entscheidung liegt im Dienst, nicht im Provider.",
+  ],
+  [
+    "services/reasoner/src/presets.test.ts",
+    "(C) Baut den Reasoner nur mit einem Preset-Repo (`:60`, `:81` — primary `undefined`) und " +
+      "prüft den Rundweg der Assist-Vorlagen. Kein öffentlicher Anbieter, kein Modellaufruf.",
+  ],
+  [
+    "services/ask/src/retrieval-topk.test.ts",
+    "(C) `new Reasoner()` ohne jeden Provider (`:21`) — die Datei messt die Kandidatenauswahl des " +
+      "deterministischen Ersatzes. Ohne öffentlichen Anbieter gibt es keine Übertragung.",
+  ],
+  [
+    "services/ask/src/service.integration.test.ts",
+    "(C) `new Reasoner()` ohne Provider (`:92`); gemessen wird die Postgres-Kette des " +
+      "AskService. Kein öffentlicher Anbieter, kein Modellweg nach draußen.",
+  ],
+  [
+    "services/ask/src/service.test.ts",
+    "(X) BLOCKIERT — ein Fall braucht die Grundfreigabe (`:210` FR-I18N-01: der Provider " +
+      "`capture` wird als Cloud verdrahtet und sein `answer` MUSS laufen, sonst ist `seen` leer). " +
+      "Der Helfer ist von `services/ask` aus nicht importierbar (Modulgrenze, s. Kopf dieses " +
+      "Registers). Die übrigen Fälle bauen `new Reasoner()` ohne Provider.",
+  ],
+  [
+    "services/ask/src/ka4-vertraulich-im-erlaubten-zweig.test.ts",
+    "(X) BLOCKIERT — KA4-V0/V1 verlangen `gesehen.length === 1`, also einen tatsächlichen Aufruf " +
+      "des als Cloud verdrahteten Mitschreibers (`:91`). Ohne Grundfreigabe fällt der Aufruf weg " +
+      "und die Kalibrierung des Falls mit ihm. Helfer über die Modulgrenze nicht erreichbar.",
+  ],
+  [
+    "services/app/src/routes/reasoner-egress.test.ts",
+    "(B) Drei Sperrfälle erwarten „Cloud-complete NIE aufgerufen“ (`:39`, `:52`, `:79`) — sie " +
+      "bekommen ausdrücklich KEINE Freigabe. (X) Der vierte Fall (`:106`, bewusst intern → " +
+      "complete läuft) bräuchte die Grundfreigabe, kann sie aber nicht bekommen: der Aufbau liegt " +
+      "in `services/app`, der Helfer in `services/reasoner/src` (Modulgrenze, s. Kopf).",
+  ],
+  [
+    "services/app/src/routes/reasoner-routes.test.ts",
+    "(C) B1–B9 ersetzen `assistText`/`structure` am Dienst durch Spione (`:153-164`, `:373-377`) — " +
+      "kein echter Anbieter, keine Stelle für eine Freigabe. (X) B10 (`:418-451`) fährt die GANZE " +
+      "Kette mit verdrahteter Cloud und braucht die Grundfreigabe: seine Aussage ist `409` mit " +
+      "Grund `unsaved_draft`, und die entsteht nur, wenn die Cloud ERLAUBT war und allein an der " +
+      "Vertraulichkeit scheiterte — ohne Freigabe wäre die Ursache „kein Modell“ und der Fall rot. " +
+      "Seine Null (`cloudAufrufe` 0, `:450`) bleibt dabei unangetastet. Auch hier sperrt die " +
+      "Modulgrenze den Helfer aus (s. Kopf dieses Registers).",
+  ],
+]);
 
 /**
  * DIE SCHNITTMARKE zwischen dem Bestandsteil dieser Datei und diesem Wächterblock.
@@ -661,28 +1030,223 @@ const VERTRAULICH_ERLAUBT: readonly string[] = [];
  */
 const SCHNITTMARKE = "F — DER FREIGABE-WÄCHTER";
 
-/** Alle Testquellen unterhalb von `tests/`, ohne den Kern — DIESE Datei eingeschlossen. */
-function testquellen(verzeichnis = "tests"): string[] {
+/**
+ * Die Wurzeln, die dieser Wächter liest.
+ *
+ * JOB 3570: bis hierher war es `tests/` allein. Der Nachtrag versorgt auch Tests, die IM Modul
+ * liegen (`services/reasoner/src/*.test.ts`, `services/ask/src/*.test.ts`,
+ * `services/app/src/routes/reasoner-egress.test.ts`). Sähe F1/F2 sie nicht, wäre der Helfer dort
+ * unbewacht benutzbar und die Freigabefelder von Hand schreibbar — das Loch wäre genau so groß wie
+ * die Zahl der Tests unterhalb von `services/`.
+ */
+const WURZELN: readonly string[] = ["tests", "services", "apps"];
+
+/**
+ * Was als Quelle gelesen wird: unter `tests/` jede `.ts`/`.tsx`, sonst nur die TESTS.
+ *
+ * Die Moduldateien selbst bleiben draußen: sie sind der Gegenstand der Freigabe, nicht ihr
+ * Benutzer — dieselbe Grenze, die `KERN` für `tests/admin-ki-freigabe/` zieht.
+ */
+function istQuelle(pfad: string): boolean {
+  if (!pfad.endsWith(".ts") && !pfad.endsWith(".tsx")) return false;
+  return pfad.startsWith("tests/") || pfad.includes(".test.");
+}
+
+function quellenUnter(verzeichnis: string): string[] {
   const gefunden: string[] = [];
   for (const eintrag of readdirSync(join(process.cwd(), verzeichnis), { withFileTypes: true })) {
-    if (eintrag.name === "node_modules" || eintrag.name.startsWith(".")) continue;
+    if (eintrag.name === "node_modules" || eintrag.name === "dist" || eintrag.name.startsWith("."))
+      continue;
     const relativ = `${verzeichnis}/${eintrag.name}`;
     if (eintrag.isDirectory()) {
-      gefunden.push(...testquellen(relativ));
-    } else if (relativ.endsWith(".ts") || relativ.endsWith(".tsx")) {
+      gefunden.push(...quellenUnter(relativ));
+    } else if (istQuelle(relativ)) {
       gefunden.push(relativ);
     }
   }
-  return gefunden.filter((p) => !p.startsWith(KERN));
+  return gefunden;
+}
+
+/** Alle Prüfquellen der drei Wurzeln, ohne den Kern — DIESE Datei eingeschlossen. */
+function testquellen(): string[] {
+  return WURZELN.flatMap((wurzel) => quellenUnter(wurzel)).filter((p) => !p.startsWith(KERN));
 }
 
 const lies = (pfad: string): string => readFileSync(join(process.cwd(), pfad), "utf8");
 
 /**
- * Der BESTANDSTEIL einer Datei: alles, was nicht dieser Wächterblock ist.
+ * BLENDET KOMMENTARE AUS — längentreu: Kommentartext wird zu Leerzeichen, Umbrüche bleiben stehen.
+ *
+ * WARUM ES DIESE ABTASTUNG BRAUCHT (Prüfer BEN, JOB 3570 Runde 1, Korrekturpflicht 1). F4 zählte
+ * `expect(` im ROHTEXT. In diesem Haus ist es üblich, in Kommentaren auf Erwartungen zu verweisen
+ * („Hier stand …") — neununddreißig Dateien tun das. Jede solche Zeile schenkte ihrer Datei einen
+ * Erwartungsboden, den kein Lauf einlöst. BEN hat in `tests/ki-lauf-verbrauch/ehrlich.test.ts` eine
+ * echte Erwartung GELÖSCHT, und die Suite blieb grün: der Kommentar in `:65` füllte die Lücke.
+ * Gemessen: die Datei zählt roh 14 Erwartungen, ausführbar 13 — genau das eine Guthaben, das die
+ * Löschung bezahlte. Ein Wächter, den man mit Prosa bezahlen kann, bewacht nichts.
+ *
+ * LÄNGENTREU ist kein Schmuck: F6 meldet Zeilennummern und `bestand` schneidet an einer
+ * Zeichenstelle. Fiele hier Text WEG statt leer zu werden, verschöben sich beide.
+ *
+ * Die Abtastung kennt Zeichenketten, Vorlagen (samt `${…}`), Regex-Literale und beide
+ * Kommentararten. Regex-Literale MÜSSEN dabei sein, das ist gemessen und nicht bedacht:
+ * `tests/reasoner/job1164-wiretyp-dienstgrenze.test.ts:164` und
+ * `tests/openai-anbieterfalle/openai-budget-parameter.test.ts:283` führen Anführungszeichen
+ * INNERHALB eines Literals — ohne diesen Zweig verlöre die Abtastung dort die Spur und hielte
+ * anschließend Code für Zeichenkette. Verliert sie sie doch, wirft sie: lieber rot als still
+ * falsch gezählt.
+ *
+ * ZWEI STUFEN, UND WARUM ES ZWEI SEIN MÜSSEN (Prüfer BEN, JOB 3570 Runde 2, Korrekturpflicht 1).
+ * `literale: "erhalten"` blendet nur Kommentare aus — diese Stufe braucht jeder, der am Text noch
+ * etwas WIEDERERKENNEN muss: die Fallköpfe (`it("B1 · …")`), die Freigabe-Aufrufe mitsamt ihren
+ * Argumenten (`mitKiFreigabe({ global: "openai", … })`) und die Sperr-Zeilen in F3 leben alle in
+ * Zeichenketten. `literale: "leeren"` blendet zusätzlich den INHALT von ZEICHENKETTEN und VORLAGEN
+ * aus — diese Stufe zählt Erwartungen. BEN hat in `tests/ki-lauf-verbrauch/ehrlich.test.ts:121` die
+ * echte Prüfung `expect(datensatz.status).toBe("error")` durch
+ * `void 'expect(datensatz.status).toBe("error")';` ersetzt: dieselben Zeichen, kein Lauf — und alle
+ * 38 Fälle blieben grün, weil der Wortlaut den Boden weiterbezahlte. Eine Erwartung, die man mit
+ * einem String bezahlen kann, ist keine Erwartung.
+ *
+ * Was in `${…}` steht, ist AUSFÜHRBARER Code und bleibt in beiden Stufen stehen — eine Erwartung
+ * in einer Einbettung läuft wirklich.
+ *
+ * DIE GRENZE, AUSDRÜCKLICH (JOB 3570 Runde 4, Weisung der Steuerung vom 11.09.). REGEX-LITERALE
+ * werden hier NICHT geleert, und ihr Anfang wird nur GERATEN — `istRegexStelle` sieht ein einzelnes
+ * Zeichen und kann `void /…/` nicht von einer Division unterscheiden. Runde 3 hat den Inhalt von
+ * Regex-Literalen mitgeleert und daraus eine „literalfreie Stufe" behauptet; BEN hat die Behauptung
+ * mit `void /expect(datensatz.status).toBe("error");/;` widerlegt. Ob eine Zeichenfolge
+ * ausführbarer Code ist, ist eine Frage an einen PARSER, nicht an einen Zeichenvergleich. Der
+ * Wortlaut-Ersatz durch ein Regex-Literal bleibt deshalb offen und ist in F4 und F7 als gemessene
+ * Lücke festgehalten statt stillschweigend zugedeckt; er gehört einem Folgeauftrag mit AST-Prüfung.
+ * Der Regex-Zweig unten bleibt trotzdem stehen, aber nur noch zum MITZÄHLEN der Anführungszeichen:
+ * ohne ihn verlöre die Abtastung an `job1164-wiretyp-dienstgrenze.test.ts:164` die Spur.
+ */
+function nurCode(
+  quelle: string,
+  wofuer: string,
+  literale: "erhalten" | "leeren" = "erhalten",
+): string {
+  const aus = quelle.split("");
+  const leere = (von: number, bis: number): void => {
+    for (let k = von; k < bis && k < aus.length; k++) if (aus[k] !== "\n") aus[k] = " ";
+  };
+  /** Literalinhalt — nur in der zählenden Stufe geleert, längentreu wie alles hier. */
+  const leereInhalt = (von: number, bis: number): void => {
+    if (literale === "leeren") leere(von, bis);
+  };
+  /**
+   * GERATEN, nicht entschieden: ein `/` beginnt vermutlich ein Regex-Literal, wenn davor kein Wert
+   * steht. Ein Schlüsselwort (`void /…/`) sieht wie ein Wert aus, also rät dieser Blick dort falsch.
+   * Das ist hingenommen: der Zweig hält nur die Anführungszeichen auseinander, er entscheidet
+   * nichts über Erwartungen (siehe „DIE GRENZE" im Kopf dieser Abtastung).
+   */
+  const istRegexStelle = (v: string): boolean => v === "" || !/[\w$)\]}"'`]/.test(v);
+  /** Je offener `${…}`-Einbettung die Klammertiefe, bei der sie wieder in die Vorlage zurückfällt. */
+  const einbettungen: number[] = [];
+  let tiefe = 0;
+  let inVorlage = false;
+  let vorher = "";
+  let i = 0;
+  while (i < quelle.length) {
+    const z = quelle.charAt(i);
+    if (inVorlage) {
+      if (z === "\\") {
+        leereInhalt(i, i + 2);
+        i += 2;
+      } else if (z === "`") {
+        inVorlage = false;
+        vorher = "`";
+        i += 1;
+      } else if (z === "$" && quelle.charAt(i + 1) === "{") {
+        einbettungen.push(tiefe);
+        tiefe += 1;
+        inVorlage = false;
+        vorher = "{";
+        i += 2;
+      } else {
+        leereInhalt(i, i + 1);
+        i += 1;
+      }
+      continue;
+    }
+    if (z === "/" && quelle.charAt(i + 1) === "/") {
+      const ende = quelle.indexOf("\n", i);
+      const bis = ende < 0 ? quelle.length : ende;
+      leere(i, bis);
+      i = bis;
+      continue;
+    }
+    if (z === "/" && quelle.charAt(i + 1) === "*") {
+      const ende = quelle.indexOf("*/", i + 2);
+      const bis = ende < 0 ? quelle.length : ende + 2;
+      leere(i, bis);
+      i = bis;
+      continue;
+    }
+    if (z === '"' || z === "'") {
+      i += 1;
+      const inhaltVon = i;
+      // Eine unbeendete Zeichenkette endet spätestens an der Zeile — sonst risse ein Tippfehler
+      // in einer fremden Datei den ganzen Rest des Wächters mit.
+      while (i < quelle.length && quelle.charAt(i) !== z && quelle.charAt(i) !== "\n") {
+        i += quelle.charAt(i) === "\\" ? 2 : 1;
+      }
+      leereInhalt(inhaltVon, i);
+      i += 1;
+      vorher = z;
+      continue;
+    }
+    if (z === "`") {
+      inVorlage = true;
+      i += 1;
+      continue;
+    }
+    if (z === "/" && istRegexStelle(vorher)) {
+      // ÜBERLESEN, NICHT LEEREN (Runde 4): der Inhalt bleibt in BEIDEN Stufen stehen. Wer ihn leert,
+      // behauptet damit, jedes Regex-Literal zu kennen — und diesen Anfang hier hat er nur geraten.
+      i += 1;
+      let klasse = false;
+      while (i < quelle.length) {
+        const r = quelle.charAt(i);
+        if (r === "\\") {
+          i += 2;
+          continue;
+        }
+        if (r === "[") klasse = true;
+        else if (r === "]") klasse = false;
+        else if (r === "\n") break;
+        else if (r === "/" && !klasse) break;
+        i += 1;
+      }
+      i += 1;
+      vorher = "/";
+      continue;
+    }
+    if (z === "{") tiefe += 1;
+    if (z === "}") {
+      tiefe -= 1;
+      if (einbettungen[einbettungen.length - 1] === tiefe) {
+        einbettungen.pop();
+        inVorlage = true;
+        i += 1;
+        continue;
+      }
+    }
+    if (!/\s/.test(z)) vorher = z;
+    i += 1;
+  }
+  if (inVorlage || einbettungen.length > 0) {
+    throw new Error(`Kommentar-Abtastung verlor die Spur in ${wofuer} — Zählung nicht belastbar`);
+  }
+  return aus.join("");
+}
+
+/**
+ * Der BESTANDSTEIL einer Datei: alles, was nicht dieser Wächterblock ist — ROH, mit Kommentaren.
  *
  * Für jede andere Datei ist das die ganze Datei. Nur diese hier wird geschnitten — und wenn die
- * Marke fehlt, ist die Trennung nicht mehr belegt: dann lieber rot als blind grün.
+ * Marke fehlt, ist die Trennung nicht mehr belegt: dann lieber rot als blind grün. Der Schnitt
+ * geschieht VOR dem Ausblenden, denn die Marke selbst steht in einem Kommentar.
  */
 function bestand(pfad: string): string {
   const quelle = lies(pfad);
@@ -692,8 +1256,39 @@ function bestand(pfad: string): string {
   return quelle.slice(0, schnitt);
 }
 
+/**
+ * Der Bestandsteil ohne Kommentare — die Grundlage jeder WIEDERERKENNUNG in F3 und F4.
+ *
+ * Literale bleiben hier stehen: Fallköpfe, Freigabe-Argumente und die Sperr-Zeilen von F3 sind
+ * Zeichenketten. Gezählt wird nicht hier, sondern in `bestandErwartungen`.
+ */
+const bestandCode = (pfad: string): string => nurCode(bestand(pfad), pfad);
+
+/**
+ * Derselbe Bestandsteil, zusätzlich ohne LITERALINHALT — die Grundlage jeder ZÄHLUNG in F4.
+ *
+ * Beide Abtastungen sind längentreu und gehen von derselben Quelle aus. Deshalb liegt ein Testfall
+ * in beiden an genau derselben Zeichenstelle, und F4 kann den Fall am erkennbaren Text abgrenzen und
+ * im zählbaren zählen. Diese Gleichlage ist keine Annahme: F4 prüft sie je Datei nach.
+ */
+const bestandErwartungen = (pfad: string): string => nurCode(bestand(pfad), pfad, "leeren");
+
+/** Ausführbare Erwartungen in einem Stück zählbaren Codes. */
+const erwartungen = (zaehlbar: string): number => (zaehlbar.match(/expect\(/g) ?? []).length;
+
 /** Der Kopf eines Testfalls — die Kennung davor („B1", „D5", „U8c") ist sein Schlüssel. */
-const FALL_KOPF = /\bit\(\s*[`"'](([A-Za-z]+\d+[a-z]?)\s*·)/g;
+const FALL_KOPF = /^it\(\s*[`"'](([A-Za-z]+\d+[a-z]?)\s*·)/;
+
+/**
+ * JEDER Fallkopf — auch der ohne Kennung.
+ *
+ * JOB 3570: die Dateien des Nachtrags folgen der Kennungs-Konvention („B1 · …") überwiegend NICHT.
+ * Ohne diesen zweiten Kopf lägen alle ihre Fälle in EINEM Stück, und ein gelöschtes `expect` in
+ * Fall 3 wäre durch ein neues in Fall 7 aufzuwiegen — genau das Loch, das Prüfer BEN in Runde 1
+ * von JOB 3550 gemessen hat (Korrektur (b) im Kopf dieses Blocks). Ein Fall ohne Kennung heißt
+ * deshalb nach seiner STELLE: `#1`, `#2`, …
+ */
+const FALL_KOPF_ALLE = /\bit\(\s*[`"']/g;
 
 /** Ein Freigabe-Aufruf, wörtlich mitsamt seinen Argumenten. */
 const FREIGABE_RUF = /(?:mit|erteile)KiFreigabe\([^)]*\)/g;
@@ -704,16 +1299,27 @@ const FREIGABE_RUF = /(?:mit|erteile)KiFreigabe\([^)]*\)/g;
  * Was VOR dem ersten Fall steht — Aufbauhelfer, Verdrahtung — heißt `VORSPANN` und wird genauso
  * bewacht: die Ask-Datei setzt ihre Freigabe genau dort, in `verdrahten`.
  */
-function faelle(quelle: string): Map<string, string> {
-  const koepfe = [...quelle.matchAll(FALL_KOPF)];
-  const stuecke = new Map<string, string>();
-  stuecke.set("VORSPANN", quelle.slice(0, koepfe[0]?.index ?? quelle.length));
+function fallStellen(quelle: string): Map<string, { readonly von: number; readonly bis: number }> {
+  const koepfe = [...quelle.matchAll(FALL_KOPF_ALLE)];
+  const stellen = new Map<string, { readonly von: number; readonly bis: number }>();
+  stellen.set("VORSPANN", { von: 0, bis: koepfe[0]?.index ?? quelle.length });
   koepfe.forEach((kopf, i) => {
-    // Gruppe 2 ist im Muster nicht optional; das `??` ist die Pflicht des Typs, nicht ein Fall.
-    const kennung = kopf[2] ?? "";
-    stuecke.set(kennung, quelle.slice(kopf.index ?? 0, koepfe[i + 1]?.index ?? quelle.length));
+    const stelle = kopf.index ?? 0;
+    // Gruppe 2 trägt die Kennung, wenn der Kopf eine führt; sonst zählt die Stelle.
+    const kennung = FALL_KOPF.exec(quelle.slice(stelle, stelle + 80))?.[2] ?? `#${i + 1}`;
+    // Zwei Fälle mit derselben Kennung würden sich sonst STILL überschreiben — der zweite wäre
+    // unbewacht. Deshalb bekommt der Zweite seine Stelle angehängt statt den Platz des Ersten.
+    const schluessel = stellen.has(kennung) ? `${kennung}#${i + 1}` : kennung;
+    stellen.set(schluessel, { von: stelle, bis: koepfe[i + 1]?.index ?? quelle.length });
   });
-  return stuecke;
+  return stellen;
+}
+
+/** Dieselbe Zerlegung als Text — für F3, das am Wortlaut prüft und nicht zählt. */
+function faelle(quelle: string): Map<string, string> {
+  return new Map(
+    [...fallStellen(quelle)].map(([schluessel, s]) => [schluessel, quelle.slice(s.von, s.bis)]),
+  );
 }
 
 /** Die beiden Formen, in denen die Grundfreigabe in diesen drei Dateien überhaupt vorkommt. */
@@ -723,10 +1329,41 @@ const AM_REASONER = "erteileKiFreigabe(reasoner)";
 
 /** Was über einen einzelnen Testfall festgeschrieben ist. */
 interface Fallakte {
-  /** Zahl der `expect(` im Fall, Stand Basisstand 15d49dd. BODEN: dazu ja, weg nein. */
+  /** Zahl der `expect(` im Fall, ausgezählt am Basisstand. BODEN: dazu ja, weg nein. */
   readonly boden: number;
   /** Die erlaubten Freigabe-Aufrufe, wörtlich und VOLLZÄHLIG — mehr ist so rot wie weniger. */
   readonly freigaben: readonly string[];
+}
+
+/**
+ * Was über eine ganze DATEI festgeschrieben ist (JOB 3570).
+ *
+ * WARUM DIESE ZWEITE EBENE. JOB 3550 führte drei Dateien und konnte jeden ihrer Fälle einzeln
+ * auflisten. Der Nachtrag versorgt dreiunddreißig weitere mit zusammen über dreihundert Fällen;
+ * jeden davon einzeln einzutragen, auch die unveränderten, hieße jede fremde Änderung an einer
+ * dieser Dateien künstlich rot zu machen (Auftrag 3570 §3.4 zieht die Grenze ausdrücklich:
+ * „Unveränderte Fälle brauchen keinen Eintrag"). Weggelassen wird deshalb nur die AUFZÄHLUNG,
+ * nicht die Bewachung:
+ *
+ *   `gesamtboden` — die Summe der `expect(` über den ganzen Bestandsteil. Eine gelöschte Erwartung
+ *                   und ein gelöschter GANZER Fall fallen hier auf, auch wenn der Fall nicht
+ *                   einzeln geführt wird.
+ *   `freigaben`   — die ANZAHL aller Freigabe-Aufrufe der Datei. Eine zusätzliche Freigabe in
+ *                   einem nicht geführten Fall ist damit so rot wie eine in einem geführten.
+ *   `formen`      — die verschiedenen WORTLAUTE, vollzählig und sortiert. `freigaben` allein
+ *                   zählte nur; erst der Wortlaut schließt aus, dass eine Grundfreigabe still
+ *                   gegen eine großzügigere getauscht wird (`{ vertraulicheInhalte: true }`).
+ *   `faelle`      — je GEÄNDERTEM Fall (und je Sperrfall) Boden und exakte Liste, wie bisher.
+ *   `vollzaehlig` — nur die drei Dateien von JOB 3550: dort ist `faelle` KOMPLETT, und die
+ *                   Gleichheit der Schlüsselmengen bleibt geprüft. Ohne diese Marke wäre die
+ *                   Prüfung von Runde 2 stillschweigend verlorengegangen.
+ */
+interface Dateiakte {
+  readonly gesamtboden: number;
+  readonly freigaben: number;
+  readonly formen: readonly string[];
+  readonly faelle: Readonly<Record<string, Fallakte>>;
+  readonly vollzaehlig?: true;
 }
 
 /**
@@ -736,59 +1373,761 @@ interface Fallakte {
  * aus dem Stand nach dem Einbau der Freigabe. Beides zusammen ist die Zusicherung aus Auftrag §3.3
  * in messbarer Form: keine Erwartung gesenkt, keine Freigabe dazugeschmuggelt.
  */
-const FALLAKTEN: Readonly<Record<string, Readonly<Record<string, Fallakte>>>> = {
+const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
   [DIESE_DATEI]: {
-    VORSPANN: { boden: 0, freigaben: [] },
-    A1: { boden: 7, freigaben: [] },
-    A2: { boden: 2, freigaben: [] },
-    B1: { boden: 11, freigaben: [ZUORDNUNG('"openai"')] },
-    B2: { boden: 10, freigaben: [ZUORDNUNG('"anthropic"')] },
-    B3: {
-      boden: 1,
-      freigaben: [ZUORDNUNG('"openai"'), ZUORDNUNG('"anthropic"'), ZUORDNUNG('"openai"')],
+    gesamtboden: 105,
+    freigaben: 23,
+    formen: [
+      AM_REASONER,
+      "mitKiFreigabe(konfig)",
+      ZUORDNUNG('"anthropic"'),
+      ZUORDNUNG('"openai"', '{ assist: "anthropic" }'),
+      ZUORDNUNG('"openai"'),
+      ZUORDNUNG("wahl"),
+    ],
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: { boden: 0, freigaben: [] },
+      A1: { boden: 7, freigaben: [] },
+      A2: { boden: 2, freigaben: [] },
+      B1: { boden: 11, freigaben: [ZUORDNUNG('"openai"')] },
+      B2: { boden: 10, freigaben: [ZUORDNUNG('"anthropic"')] },
+      B3: {
+        boden: 1,
+        freigaben: [ZUORDNUNG('"openai"'), ZUORDNUNG('"anthropic"'), ZUORDNUNG('"openai"')],
+      },
+      B4: {
+        boden: 8,
+        freigaben: [ZUORDNUNG('"openai"', '{ assist: "anthropic" }'), ZUORDNUNG('"openai"')],
+      },
+      B5: { boden: 7, freigaben: [ZUORDNUNG('"anthropic"'), ZUORDNUNG('"openai"')] },
+      B6: { boden: 4, freigaben: [ZUORDNUNG('"openai"'), ZUORDNUNG('"anthropic"')] },
+      B7: { boden: 4, freigaben: [AM_REASONER] },
+      D1: { boden: 6, freigaben: [ZUORDNUNG('"openai"')] },
+      D2: { boden: 4, freigaben: [ZUORDNUNG('"anthropic"')] },
+      D3: { boden: 5, freigaben: [ZUORDNUNG('"openai"')] },
+      D4: { boden: 14, freigaben: [ZUORDNUNG('"anthropic"')] },
+      D5: { boden: 3, freigaben: [ZUORDNUNG("wahl")] },
+      D6: { boden: 4, freigaben: [ZUORDNUNG('"openai"'), ZUORDNUNG('"anthropic"')] },
+      N1: { boden: 7, freigaben: [ZUORDNUNG("wahl")] },
+      N2: { boden: 2, freigaben: [ZUORDNUNG("wahl")] },
+      N3: { boden: 4, freigaben: ["mitKiFreigabe(konfig)"] },
+      N4: { boden: 2, freigaben: [ZUORDNUNG("wahl")] },
     },
-    B4: {
-      boden: 8,
-      freigaben: [ZUORDNUNG('"openai"', '{ assist: "anthropic" }'), ZUORDNUNG('"openai"')],
-    },
-    B5: { boden: 7, freigaben: [ZUORDNUNG('"anthropic"'), ZUORDNUNG('"openai"')] },
-    B6: { boden: 4, freigaben: [ZUORDNUNG('"openai"'), ZUORDNUNG('"anthropic"')] },
-    B7: { boden: 4, freigaben: [AM_REASONER] },
-    D1: { boden: 6, freigaben: [ZUORDNUNG('"openai"')] },
-    D2: { boden: 4, freigaben: [ZUORDNUNG('"anthropic"')] },
-    D3: { boden: 5, freigaben: [ZUORDNUNG('"openai"')] },
-    D4: { boden: 14, freigaben: [ZUORDNUNG('"anthropic"')] },
-    D5: { boden: 3, freigaben: [ZUORDNUNG("wahl")] },
-    D6: { boden: 4, freigaben: [ZUORDNUNG('"openai"'), ZUORDNUNG('"anthropic"')] },
-    N1: { boden: 7, freigaben: [ZUORDNUNG("wahl")] },
-    N2: { boden: 2, freigaben: [ZUORDNUNG("wahl")] },
-    N3: { boden: 4, freigaben: ["mitKiFreigabe(konfig)"] },
-    N4: { boden: 2, freigaben: [ZUORDNUNG("wahl")] },
   },
   "tests/openai-cloud-anbieter/cloud-wahl-verbindungstest.test.tsx": {
-    VORSPANN: { boden: 0, freigaben: [] },
-    V1: { boden: 9, freigaben: [] },
-    V2: { boden: 10, freigaben: [AM_REASONER] },
-    V3: { boden: 7, freigaben: [ZUORDNUNG('"cloud"')] },
-    V4: { boden: 7, freigaben: [] },
-    V4b: { boden: 9, freigaben: [] },
+    gesamtboden: 42,
+    freigaben: 2,
+    formen: [AM_REASONER, ZUORDNUNG('"cloud"')],
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: { boden: 0, freigaben: [] },
+      V1: { boden: 9, freigaben: [] },
+      V2: { boden: 10, freigaben: [AM_REASONER] },
+      V3: { boden: 7, freigaben: [ZUORDNUNG('"cloud"')] },
+      V4: { boden: 7, freigaben: [] },
+      V4b: { boden: 9, freigaben: [] },
+    },
   },
   "tests/ask/job2659-ask-seite-mounted.test.tsx": {
-    VORSPANN: { boden: 1, freigaben: [AM_REASONER] },
-    U1: { boden: 3, freigaben: [] },
-    U2: { boden: 3, freigaben: [] },
-    U3: { boden: 5, freigaben: [] },
-    U4: { boden: 4, freigaben: [] },
-    U5: { boden: 3, freigaben: [] },
-    U6: { boden: 4, freigaben: [] },
-    U7: { boden: 4, freigaben: [] },
-    U7b: { boden: 1, freigaben: [] },
-    U8: { boden: 4, freigaben: [] },
-    U8b: { boden: 2, freigaben: [] },
-    U8c: { boden: 1, freigaben: [] },
-    U6b: { boden: 2, freigaben: [] },
+    gesamtboden: 37,
+    freigaben: 1,
+    formen: [AM_REASONER],
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: { boden: 1, freigaben: [AM_REASONER] },
+      U1: { boden: 3, freigaben: [] },
+      U2: { boden: 3, freigaben: [] },
+      U3: { boden: 5, freigaben: [] },
+      U4: { boden: 4, freigaben: [] },
+      U5: { boden: 3, freigaben: [] },
+      U6: { boden: 4, freigaben: [] },
+      U7: { boden: 4, freigaben: [] },
+      U7b: { boden: 1, freigaben: [] },
+      U8: { boden: 4, freigaben: [] },
+      U8b: { boden: 2, freigaben: [] },
+      U8c: { boden: 1, freigaben: [] },
+      U6b: { boden: 2, freigaben: [] },
+    },
+  },
+  // ---- JOB 3570 · DER NACHTRAG. `gesamtboden`/`boden` ausgezählt am Basisstand 53d9b1e ----
+  // (`git show 53d9b1e:<datei>`), die Freigabe-Zahlen und -Listen am Stand nach dem Einbau. Die
+  // Fälle ohne Kennung heißen nach ihrer Stelle (`#1`, `#2`, …), s. `FALL_KOPF_ALLE`.
+  "tests/reasoner/dual-provider.test.ts": {
+    gesamtboden: 23,
+    freigaben: 5,
+    formen: [
+      "erteileKiFreigabe(r)",
+      'mitKiFreigabe({ global: "auto", perTask: { assist: "local" } })',
+    ],
+    faelle: {
+      "#1": { boden: 1, freigaben: ["erteileKiFreigabe(r)"] },
+      "#2": { boden: 2, freigaben: ["erteileKiFreigabe(r)"] },
+      "#3": { boden: 1, freigaben: ["erteileKiFreigabe(r)"] },
+      "#4": {
+        boden: 2,
+        freigaben: ['mitKiFreigabe({ global: "auto", perTask: { assist: "local" } })'],
+      },
+      "#5": { boden: 6, freigaben: ["erteileKiFreigabe(r)"] },
+    },
+  },
+  "tests/reasoner/aistate-confidential-judge.test.ts": {
+    gesamtboden: 15,
+    freigaben: 3,
+    formen: ["erteileKiFreigabe(reasoner)"],
+    faelle: {
+      "#1": { boden: 4, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#2": { boden: 3, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#3": { boden: 6, freigaben: ["erteileKiFreigabe(reasoner)"] },
+    },
+  },
+  "tests/reasoner/aistate-egress-guard.test.ts": {
+    gesamtboden: 25,
+    freigaben: 1,
+    formen: ["erteileKiFreigabe(reasoner)"],
+    faelle: {
+      "#8": { boden: 2, freigaben: ["erteileKiFreigabe(reasoner)"] },
+    },
+  },
+  "tests/reasoner/reasoner-reachability.test.ts": {
+    gesamtboden: 21,
+    freigaben: 8,
+    formen: [
+      "erteileKiFreigabe(r)",
+      'mitKiFreigabe({ global: "auto", perTask: { answer: "cloud" } })',
+    ],
+    faelle: {
+      "#2": { boden: 4, freigaben: ["erteileKiFreigabe(r)"] },
+      "#3": { boden: 2, freigaben: ["erteileKiFreigabe(r)"] },
+      "#4": { boden: 1, freigaben: ["erteileKiFreigabe(r)"] },
+      "#5": { boden: 2, freigaben: ["erteileKiFreigabe(r)"] },
+      "#6": {
+        boden: 3,
+        freigaben: ['mitKiFreigabe({ global: "auto", perTask: { answer: "cloud" } })'],
+      },
+      "#7": { boden: 2, freigaben: ["erteileKiFreigabe(r)"] },
+      "#8": { boden: 2, freigaben: ["erteileKiFreigabe(r)"] },
+      "#9": { boden: 2, freigaben: ["erteileKiFreigabe(r)"] },
+    },
+  },
+  "tests/reasoner/local-empty-response.test.ts": {
+    gesamtboden: 34,
+    freigaben: 1,
+    formen: ["erteileKiFreigabe(reasoner)"],
+    faelle: {
+      "#8": { boden: 5, freigaben: ["erteileKiFreigabe(reasoner)"] },
+    },
+  },
+  "tests/reasoner/import-criteria.test.ts": {
+    gesamtboden: 12,
+    freigaben: 6,
+    formen: [
+      "erteileKiFreigabe(r)",
+      'mitKiFreigabe({ global: "auto", perTask: { select: "deterministic" } })',
+    ],
+    faelle: {
+      "#1": { boden: 1, freigaben: ["erteileKiFreigabe(r)"] },
+      "#3": { boden: 2, freigaben: ["erteileKiFreigabe(r)"] },
+      "#4": { boden: 1, freigaben: ["erteileKiFreigabe(r)"] },
+      "#5": { boden: 1, freigaben: ["erteileKiFreigabe(r)"] },
+      "#6": { boden: 4, freigaben: ["erteileKiFreigabe(r)"] },
+      "#7": {
+        boden: 2,
+        freigaben: ['mitKiFreigabe({ global: "auto", perTask: { select: "deterministic" } })'],
+      },
+    },
+  },
+  "tests/reasoner/group-candidates.test.ts": {
+    gesamtboden: 48,
+    freigaben: 11,
+    formen: [
+      "erteileKiFreigabe(fehlerhaft)",
+      "erteileKiFreigabe(kaputt)",
+      "erteileKiFreigabe(langsam)",
+      "erteileKiFreigabe(reasoner)",
+      'mitKiFreigabe({ global: "auto", perTask: { group: "deterministic" } })',
+      'mitKiFreigabe({ global: "deterministic", perTask: {} })',
+      'mitKiFreigabe({ global: "local", perTask: {} })',
+    ],
+    faelle: {
+      "#8": { boden: 3, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#9": {
+        boden: 3,
+        freigaben: ["erteileKiFreigabe(fehlerhaft)", "erteileKiFreigabe(langsam)"],
+      },
+      "#10": { boden: 4, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#11": {
+        boden: 3,
+        freigaben: [
+          'mitKiFreigabe({ global: "deterministic", perTask: {} })',
+          'mitKiFreigabe({ global: "auto", perTask: { group: "deterministic" } })',
+        ],
+      },
+      "#12": { boden: 3, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#13": { boden: 2, freigaben: ['mitKiFreigabe({ global: "local", perTask: {} })'] },
+      "#14": { boden: 3, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#15": { boden: 4, freigaben: ["erteileKiFreigabe(langsam)", "erteileKiFreigabe(kaputt)"] },
+    },
+  },
+  "tests/reasoner/extract-source-language.test.ts": {
+    gesamtboden: 12,
+    freigaben: 1,
+    formen: ["erteileKiFreigabe(reasoner)"],
+    faelle: {
+      "#5": { boden: 2, freigaben: ["erteileKiFreigabe(reasoner)"] },
+    },
+  },
+  "tests/reasoner/fallback-reason.test.ts": {
+    gesamtboden: 36,
+    freigaben: 5,
+    formen: ["erteileKiFreigabe(reasoner)"],
+    faelle: {
+      "#2": { boden: 2, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#3": { boden: 2, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#4": { boden: 1, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#5": { boden: 2, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#7": { boden: 5, freigaben: ["erteileKiFreigabe(reasoner)"] },
+    },
+  },
+  "tests/reasoner/describe-image.test.ts": {
+    gesamtboden: 44,
+    freigaben: 11,
+    formen: ["erteileKiFreigabe(reasoner)"],
+    faelle: {
+      "#2": { boden: 3, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#3": { boden: 1, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#4": { boden: 2, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#5": { boden: 3, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#6": { boden: 2, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#7": { boden: 2, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#8": { boden: 4, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#10": { boden: 3, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#11": { boden: 2, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#12": { boden: 1, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#13": { boden: 4, freigaben: ["erteileKiFreigabe(reasoner)"] },
+    },
+  },
+  "tests/reasoner/mega67-billable-je-aufgabe.test.ts": {
+    gesamtboden: 17,
+    freigaben: 5,
+    formen: [
+      "erteileKiFreigabe(r)",
+      'mitKiFreigabe({ global: "auto", perTask: { extract: "deterministic" } })',
+      'mitKiFreigabe({ global: "auto", perTask: { structure: "local" } })',
+    ],
+    faelle: {
+      "#3": { boden: 2, freigaben: ["erteileKiFreigabe(r)"] },
+      "#4": {
+        boden: 4,
+        freigaben: ['mitKiFreigabe({ global: "auto", perTask: { structure: "local" } })'],
+      },
+      "#5": {
+        boden: 2,
+        freigaben: ['mitKiFreigabe({ global: "auto", perTask: { extract: "deterministic" } })'],
+      },
+      "#6": { boden: 2, freigaben: ["erteileKiFreigabe(r)"] },
+      "#7": { boden: 2, freigaben: ["erteileKiFreigabe(r)"] },
+    },
+  },
+  "tests/reasoner/mega61-ki-kennzeichnung.test.ts": {
+    gesamtboden: 23,
+    freigaben: 1,
+    formen: ["erteileKiFreigabe(mitModell)"],
+    faelle: {
+      "#7": { boden: 2, freigaben: ["erteileKiFreigabe(mitModell)"] },
+    },
+  },
+  "tests/reasoner/job1164-wiretyp-dienstgrenze.test.ts": {
+    gesamtboden: 26,
+    freigaben: 5,
+    formen: ["erteileKiFreigabe(reasoner)"],
+    faelle: {
+      "#1": { boden: 3, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#2": { boden: 1, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#4": { boden: 1, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#5": { boden: 2, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#6": { boden: 4, freigaben: ["erteileKiFreigabe(reasoner)"] },
+    },
+  },
+  "tests/ki-anbieterwahl/persistenz-und-migration.test.ts": {
+    gesamtboden: 58,
+    freigaben: 2,
+    formen: ["erteileKiFreigabe(zweite)"],
+    faelle: {
+      C1: { boden: 8, freigaben: ["erteileKiFreigabe(zweite)"] },
+      C1b: { boden: 6, freigaben: ["erteileKiFreigabe(zweite)"] },
+    },
+  },
+  "tests/openai-anbieterfalle/openai-budget-parameter.test.ts": {
+    gesamtboden: 44,
+    freigaben: 2,
+    formen: ["erteileKiFreigabe(reasoner)"],
+    faelle: {
+      "#1": { boden: 7, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#6": { boden: 5, freigaben: ["erteileKiFreigabe(reasoner)"] },
+    },
+  },
+  "tests/openai-anbieterfalle/openai-sagt-warum-und-die-anbieterfalle-faellt.test.ts": {
+    gesamtboden: 72,
+    freigaben: 2,
+    formen: ["erteileKiFreigabe(reasoner)"],
+    faelle: {
+      "#14": { boden: 4, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#15": { boden: 2, freigaben: ["erteileKiFreigabe(reasoner)"] },
+    },
+  },
+  // Die Freigabe steht hier im VORSPANN (`laufUndDatensatz` baut ALLE Fälle) — damit ist jeder
+  // Fall ein betroffener Fall und wird einzeln geführt, nicht nur der Aufbau. Genau hier hat
+  // Prüfer BEN die Löschung von `expect(datensatz.status).toBe("error")` in V3c durchgehen sehen.
+  "tests/ki-lauf-verbrauch/ehrlich.test.ts": {
+    gesamtboden: 13,
+    freigaben: 1,
+    formen: ["erteileKiFreigabe(reasoner)"],
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: { boden: 1, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#1": { boden: 2, freigaben: [] },
+      V3a: { boden: 4, freigaben: [] },
+      V3b: { boden: 3, freigaben: [] },
+      V3c: { boden: 2, freigaben: [] },
+      V3d: { boden: 1, freigaben: [] },
+    },
+  },
+  "tests/ki-lauf-verbrauch/genau-einmal.test.ts": {
+    gesamtboden: 8,
+    freigaben: 2,
+    formen: ["erteileKiFreigabe(reasoner)"],
+    faelle: {
+      V6a: { boden: 4, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      V6b: { boden: 4, freigaben: ["erteileKiFreigabe(reasoner)"] },
+    },
+  },
+  "tests/ki-lauf-verbrauch/mehrfachaufruf.test.ts": {
+    gesamtboden: 7,
+    freigaben: 1,
+    formen: ["erteileKiFreigabe(reasoner)"],
+    faelle: {
+      V2: { boden: 7, freigaben: ["erteileKiFreigabe(reasoner)"] },
+    },
+  },
+  "tests/ki-lauf-verbrauch/spur.test.ts": {
+    gesamtboden: 6,
+    freigaben: 1,
+    formen: ["erteileKiFreigabe(reasoner)"],
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: { boden: 0, freigaben: [] },
+      V1: { boden: 6, freigaben: ["erteileKiFreigabe(reasoner)"] },
+    },
+  },
+  "tests/ki-assist-leer/assist-budget-und-anweisung.test.ts": {
+    gesamtboden: 23,
+    freigaben: 2,
+    formen: ["erteileKiFreigabe(reasoner)"],
+    faelle: {
+      "#8": { boden: 3, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#11": { boden: 1, freigaben: ["erteileKiFreigabe(reasoner)"] },
+    },
+  },
+  "tests/ki-assist-leer/assist-leere-antwort.test.ts": {
+    gesamtboden: 38,
+    freigaben: 8,
+    formen: ["erteileKiFreigabe(reasoner)"],
+    faelle: {
+      "#5": { boden: 4, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#6": { boden: 1, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#8": { boden: 2, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#9": { boden: 1, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#10": { boden: 6, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#11": { boden: 9, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#12": { boden: 2, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#13": { boden: 1, freigaben: ["erteileKiFreigabe(reasoner)"] },
+    },
+  },
+  // Auch hier trägt der VORSPANN die Freigabe (`baueDienste` für alle vier Fälle) — also
+  // vollzählig, sonst hinge jeder der vier allein am Dateiboden.
+  "tests/ki-assist-leer/assist-route-ehrliche-meldung.test.ts": {
+    gesamtboden: 11,
+    freigaben: 1,
+    formen: ["erteileKiFreigabe(services.reasoner)"],
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: { boden: 2, freigaben: ["erteileKiFreigabe(services.reasoner)"] },
+      "#1": { boden: 3, freigaben: [] },
+      "#2": { boden: 2, freigaben: [] },
+      "#3": { boden: 1, freigaben: [] },
+      "#4": { boden: 3, freigaben: [] },
+    },
+  },
+  "tests/ki-assist-leer/assist-unveraendert-und-fragment.test.ts": {
+    gesamtboden: 29,
+    freigaben: 7,
+    formen: ["erteileKiFreigabe(reasoner)"],
+    faelle: {
+      "#1": { boden: 5, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#2": { boden: 2, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#3": { boden: 1, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#4": { boden: 2, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#5": { boden: 6, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#6": { boden: 1, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#8": { boden: 4, freigaben: ["erteileKiFreigabe(reasoner)"] },
+    },
+  },
+  "services/reasoner/src/service.test.ts": {
+    gesamtboden: 174,
+    freigaben: 20,
+    formen: [
+      "erteileKiFreigabe(reasoner)",
+      'mitKiFreigabe({ global: "auto", perTask: { structure: "deterministic" } })',
+      'mitKiFreigabe({ global: "cloud", perTask: {} })',
+      'mitKiFreigabe({ global: "deterministic", perTask: {} })',
+    ],
+    faelle: {
+      "#10": { boden: 2, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#11": { boden: 2, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#12": { boden: 2, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#13": { boden: 10, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#14": { boden: 3, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#20": { boden: 3, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#21": { boden: 2, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#22": { boden: 1, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#23": { boden: 3, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#24": { boden: 1, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#25": {
+        boden: 3,
+        freigaben: ['mitKiFreigabe({ global: "auto", perTask: { structure: "deterministic" } })'],
+      },
+      "#26": { boden: 1, freigaben: ['mitKiFreigabe({ global: "deterministic", perTask: {} })'] },
+      "#44": { boden: 3, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#45": { boden: 1, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#48": { boden: 2, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#49": { boden: 2, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#50": { boden: 2, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#51": { boden: 7, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#52": { boden: 1, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#53": { boden: 2, freigaben: ['mitKiFreigabe({ global: "cloud", perTask: {} })'] },
+    },
+  },
+  "services/reasoner/src/confidential-fallback.test.ts": {
+    gesamtboden: 32,
+    freigaben: 15,
+    formen: [
+      "erteileKiFreigabe(reasoner)",
+      'mitKiFreigabe({ global: "auto", perTask: { select: "deterministic" } })',
+      'mitKiFreigabe({ global: "auto", perTask: { structure: "deterministic" } })',
+      'mitKiFreigabe({ global: "auto", perTask: { structure: "local" } })',
+      'mitKiFreigabe({ global: "deterministic", perTask: {} })',
+    ],
+    faelle: {
+      "#1": { boden: 3, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#2": { boden: 2, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#3": {
+        boden: 1,
+        freigaben: ['mitKiFreigabe({ global: "auto", perTask: { structure: "deterministic" } })'],
+      },
+      "#4": {
+        boden: 1,
+        freigaben: ['mitKiFreigabe({ global: "auto", perTask: { structure: "local" } })'],
+      },
+      "#5": { boden: 2, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#6": { boden: 2, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#7": { boden: 1, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#9": { boden: 4, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#11": { boden: 2, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#12": { boden: 1, freigaben: ['mitKiFreigabe({ global: "deterministic", perTask: {} })'] },
+      "#13": { boden: 3, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#14": { boden: 2, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#16": {
+        boden: 1,
+        freigaben: ['mitKiFreigabe({ global: "auto", perTask: { select: "deterministic" } })'],
+      },
+      "#17": { boden: 2, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#18": { boden: 1, freigaben: ["erteileKiFreigabe(reasoner)"] },
+    },
+  },
+  "services/reasoner/src/job3353-vertraulichkeit-sperre.test.ts": {
+    gesamtboden: 18,
+    freigaben: 5,
+    formen: ["erteileKiFreigabe(reasoner)"],
+    faelle: {
+      "#1": { boden: 4, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#2": { boden: 3, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#4": { boden: 1, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#5": { boden: 3, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#6": { boden: 5, freigaben: ["erteileKiFreigabe(reasoner)"] },
+    },
+  },
+  "services/reasoner/src/extract-failure.test.ts": {
+    gesamtboden: 45,
+    freigaben: 8,
+    formen: [
+      "erteileKiFreigabe(reasoner)",
+      'mitKiFreigabe({ global: "auto", perTask: { extract: "deterministic" } })',
+    ],
+    faelle: {
+      "#1": { boden: 5, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#3": {
+        boden: 1,
+        freigaben: ['mitKiFreigabe({ global: "auto", perTask: { extract: "deterministic" } })'],
+      },
+      "#4": { boden: 3, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#5": { boden: 3, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#7": { boden: 2, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#8": { boden: 2, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#11": { boden: 3, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#12": { boden: 2, freigaben: ["erteileKiFreigabe(reasoner)"] },
+    },
+  },
+  "services/reasoner/src/extract.test.ts": {
+    gesamtboden: 41,
+    freigaben: 1,
+    formen: ["erteileKiFreigabe(reasoner)"],
+    faelle: {
+      "#15": { boden: 2, freigaben: ["erteileKiFreigabe(reasoner)"] },
+    },
+  },
+  "services/reasoner/src/model-concurrency.test.ts": {
+    gesamtboden: 26,
+    freigaben: 3,
+    formen: ["erteileKiFreigabe(reasoner)"],
+    faelle: {
+      "#8": { boden: 1, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#9": { boden: 1, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      "#10": { boden: 1, freigaben: ["erteileKiFreigabe(reasoner)"] },
+    },
+  },
+  "services/reasoner/src/conflict-judge.test.ts": {
+    gesamtboden: 23,
+    freigaben: 1,
+    formen: ["erteileKiFreigabe(withModel)"],
+    faelle: {
+      "#13": { boden: 2, freigaben: ["erteileKiFreigabe(withModel)"] },
+    },
+  },
+  "services/reasoner/src/duplicate-judge.test.ts": {
+    gesamtboden: 14,
+    freigaben: 1,
+    formen: ["erteileKiFreigabe(withModel)"],
+    faelle: {
+      "#6": { boden: 2, freigaben: ["erteileKiFreigabe(withModel)"] },
+    },
   },
 };
+
+// ================================================================================================
+// F7 (JOB 3570 Runde 3) — NAMEN STATT ZAHLEN.
+// ================================================================================================
+//
+// DIE ANWEISUNG DER STEUERUNG (HINWEIS 11.09. 03:2x), wörtlich: „Die Wurzel ist immer dieselbe: ein
+// Waechter, der ZAEHLT, laesst sich austricksen. Durch einen Kommentar, durch einen String, durch
+// eine neue Zutat, durch eine Umformulierung. … Bau ihn namentlich. Der Waechter fuehrt eine LISTE:
+// welche Datei, welcher Testname, welche Erwartung muss dort AUSFUEHRBAR vorhanden sein."
+//
+// Zwei Runden Geschichte belegen sie: Runde 1 bezahlte ein Kommentar den Boden, Runde 2 ein String.
+// Beides waren Wege, eine SUMME zu erreichen, ohne die geschützte Erwartung zu erfüllen. Eine Summe
+// hat viele Wege; ein Name hat einen.
+//
+// F7 führt deshalb je Datei und Testnamen die Erwartungen WÖRTLICH, die dort stehen müssen, und
+// prüft für jede zwei Dinge zusammen:
+//   1. der Wortlaut steht im Bestandsteil der Datei (Kommentare sind ausgeblendet — eine Erwähnung
+//      in Prosa zählt nicht), UND
+//   2. an DERSELBEN Zeichenstelle steht in der zählenden Stufe noch ein `expect(` — der Wortlaut ist
+//      also nicht der Inhalt einer Zeichenkette oder einer Vorlage.
+// Damit fällt `void 'expect(datensatz.status).toBe("error")';` durch, und eine Umformulierung
+// ebenso: sie trägt den geführten Namen nicht mehr.
+//
+// WIE WEIT DAS TRÄGT, ausdrücklich (Runde 4): Punkt 2 unterscheidet Zeichenketten und Vorlagen vom
+// Code, aber NICHT Regex-Literale — `void /expect(…)/;` genügt ihm weiterhin. Ob eine Zeichenfolge
+// ausgeführt wird, entscheidet ein Parser und kein Zeichenvergleich; drei Runden Zeichenvergleich
+// haben das belegt. Die Lücke ist in der Kalibrierung von F7 gemessen festgehalten und gehört einem
+// Folgeauftrag mit AST-Prüfung. Was F7 heute trägt — Name, Datei, Wortlaut, keine Zeichenkette —
+// trägt es belegt (Prüfer BEN, Runde 3: Löschprobe und Stringprobe machen F7 rot).
+//
+// WAS F7 (NOCH) NICHT IST: keine vollständige Abschrift aller 803 Erwartungen der Fläche. Geführt
+// sind die, deren Verlust gefährlich wäre — jede NULL eines Sperrfalls und je Datei die Erwartung,
+// die ohne die Grundfreigabe gar nicht mehr messbar wäre. Was fehlt, steht in der Rückgabe; das
+// Register wächst durch Zeilen, nicht durch Umbau.
+interface NamentlicheDatei {
+  readonly datei: string;
+  /** Warum diese Datei namentlich geführt wird — was ihr Verlust kostet. */
+  readonly warum: string;
+  readonly faelle: readonly {
+    /** Ein Stück des Testnamens, eindeutig in der Datei — kein Zählindex, der beim Einfügen rutscht. */
+    readonly testname: string;
+    /** Wörtlich, einzeilig, beginnt mit `expect(` — und darf nicht in einer Zeichenkette stehen. */
+    readonly erwartungen: readonly string[];
+  }[];
+}
+
+const NAMENTLICHE_ERWARTUNGEN: readonly NamentlicheDatei[] = [
+  {
+    datei: DIESE_DATEI,
+    warum:
+      "Die drei Sperr-Fälle dieser Datei tragen die Null, an der die Adminfreigabe gemessen wird: " +
+      "A2 speichert nur, D5 und N4 dürfen trotz Grundfreigabe NICHTS übertragen.",
+    faelle: [
+      {
+        testname: "A2 · die Wahl kennt beide Anbieter",
+        erwartungen: ["expect(reasoner.getTaskConfig()).toEqual({"],
+      },
+      {
+        testname: "D5 · vertrauliche Eingabe ohne Freigabe",
+        erwartungen: [
+          "expect([wahl, extern(anfragen).length]).toEqual([wahl, 0]);",
+          'expect([wahl, ergebnis.fallbackReason]).toEqual([wahl, "confidential"]);',
+        ],
+      },
+      {
+        testname: "N4 · vertrauliches Paar bei expliziter Wahl",
+        erwartungen: [
+          "expect([wahl, extern(anfragen).length]).toEqual([wahl, 0]);",
+          'expect([wahl, konflikt]).toEqual([wahl, { verdict: null, failure: "confidential" }]);',
+        ],
+      },
+    ],
+  },
+  {
+    datei: "tests/ki-lauf-verbrauch/ehrlich.test.ts",
+    warum:
+      "Die Datei, an der Prüfer BEN beide Löcher gemessen hat. V3c unterscheidet „Verbrauch da, " +
+      'Status bleibt error" von „alles gut"; V3b hält die Gegenrichtung (kein Modell, kein Feld).',
+    faelle: [
+      {
+        testname: "V3c · gescheitert NACH gemeldetem Verbrauch",
+        erwartungen: ['expect(datensatz.status).toBe("error");'],
+      },
+      {
+        testname: "V3b · rein deterministischer Lauf",
+        erwartungen: ['expect(Object.hasOwn(datensatz, "verbrauch")).toBe(false);'],
+      },
+    ],
+  },
+  {
+    datei: "tests/ki-lauf-verbrauch/spur.test.ts",
+    warum:
+      "Ohne die Zwei ist nicht belegt, dass ÜBERHAUPT zwei Läufe das Modell befragt haben — dann " +
+      "wäre die Trennung der Verbrauchswerte die Trennung von nichts.",
+    faelle: [
+      {
+        testname: "V1 · jeder Lauf trägt genau seinen eigenen Wert",
+        erwartungen: [
+          'expect(n, "beide Läufe haben wirklich das Modell befragt").toBe(2);',
+          'expect(gemessen).toEqual(["100/10", "7/3"]);',
+        ],
+      },
+    ],
+  },
+  {
+    datei: "tests/ki-lauf-verbrauch/genau-einmal.test.ts",
+    warum:
+      'Das Gesetz „genau einmal bezahlt" hängt an gezählten ECHTEN Aufrufen; fällt die Zählung, ' +
+      "ist ein zweiter bezahlter Aufruf nicht mehr von einem zweiten Schreibversuch zu trennen.",
+    faelle: [
+      {
+        testname: "V6a · ein Modellaufruf",
+        erwartungen: ['expect(aufrufe, "genau EIN echter Modellaufruf in diesem Lauf").toBe(1);'],
+      },
+      {
+        testname: "V6b · zwei Versuche",
+        erwartungen: ['expect(lauf?.model).toBe("claude-sonnet-4-6");'],
+      },
+    ],
+  },
+  {
+    datei: "tests/reasoner/dual-provider.test.ts",
+    warum:
+      "Die Reihenfolge Cloud → lokal → Ersatz ist nur an der ANTWORT zu erkennen. Ohne diese drei " +
+      "Erwartungen prüfte die Datei dreimal dieselbe Sperre statt der Kette (Auftrag §2).",
+    faelle: [
+      {
+        testname: "auto: das Cloud-Modell arbeitet zuerst",
+        erwartungen: ['expect((await r.assistText("roh", "de")).text).toBe("CLOUD");'],
+      },
+      {
+        testname: "auto: fällt der Cloud-Aufruf aus",
+        erwartungen: ['expect(res.text).toBe("LOCAL");', "expect(res.demo).toBe(false);"],
+      },
+    ],
+  },
+  {
+    datei: "tests/reasoner/aistate-egress-guard.test.ts",
+    warum:
+      "Der einzige Fall dieser Datei MIT Grundfreigabe ist ein Sperrfall: die Null soll an der " +
+      "Vertraulichkeit liegen, nicht an der Erlaubnis. Beides zusammen ist die Aussage.",
+    faelle: [
+      {
+        testname: "Cloud-Primary + vertraulich",
+        erwartungen: [
+          "expect(completes).toBe(0);",
+          'expect(out).toEqual({ verdict: null, failure: "confidential" });',
+        ],
+      },
+    ],
+  },
+  {
+    datei: "services/reasoner/src/job3353-vertraulichkeit-sperre.test.ts",
+    warum:
+      "Die Sperrmeldung behauptet, die Cloud wäre OHNE die Einstufung gelaufen. Fällt die " +
+      'Cloud-Null oder die Gegenprobe S3 („gar keine Cloud"), ist das eine Aussage über die ' +
+      "falsche Ursache.",
+    faelle: [
+      {
+        testname: "S1 POSITIV",
+        erwartungen: [
+          "expect(fehler).toBeInstanceOf(ConfidentialCloudBlockedError);",
+          "expect(calls()).toBe(0);",
+        ],
+      },
+      {
+        testname: "S3 NEGATIV",
+        erwartungen: ["expect(fehler).not.toBeInstanceOf(ConfidentialCloudBlockedError);"],
+      },
+      { testname: "S6 POSITIV am ECHTEN Bestand", erwartungen: ["expect(calls()).toBe(0);"] },
+    ],
+  },
+  {
+    datei: "services/app/src/routes/reasoner-egress.test.ts",
+    warum:
+      "Die drei Sperrfälle hier sind der Grund, warum diese Datei AUSDRÜCKLICH keine Freigabe " +
+      "bekommt (Register 3). Der vierte ist ihre Gegenprobe: ohne ihn wäre die Null trivial.",
+    faelle: [
+      {
+        testname: "extract: Upload (transient-document) OHNE Stufe",
+        erwartungen: ["expect(complete).not.toHaveBeenCalled();"],
+      },
+      {
+        testname: "assist: Editor-Text (draft) ohne Stufe",
+        erwartungen: [
+          "expect(complete).not.toHaveBeenCalled();",
+          'expect(koerper.reason).toBe("unsaved_draft");',
+        ],
+      },
+      {
+        testname: "extract: transient-document + koId eines INTERNEN KOs",
+        erwartungen: ["expect(complete).not.toHaveBeenCalled();"],
+      },
+      {
+        testname: "Positiv: bewusst intern",
+        erwartungen: ["expect(complete).toHaveBeenCalled();"],
+      },
+    ],
+  },
+  {
+    datei: "services/app/src/routes/reasoner-routes.test.ts",
+    warum:
+      "B10 fährt die GANZE Kette mit verdrahteter Cloud: seine 409 mit Grund `unsaved_draft` und " +
+      "seine Cloud-Null sind zusammen die Aussage, an der der Kern JOB 3549 in Runde 1 rot wurde.",
+    faelle: [
+      {
+        testname: "B10 — DIE GANZE KETTE",
+        erwartungen: [
+          "expect(cloudAufrufe).toBe(0);",
+          'expect(body.reason).toBe("unsaved_draft");',
+        ],
+      },
+    ],
+  },
+];
 
 describe("JOB 3550 F: der Freigabe-Wächter — die KI-Freigabe bleibt eine namentliche Ausnahme", () => {
   it("F1 · genau die Dateien im Register benutzen den Helfer — keine mehr, keine weniger", () => {
@@ -824,7 +2163,7 @@ describe("JOB 3550 F: der Freigabe-Wächter — die KI-Freigabe bleibt eine name
   });
 
   it("F3 · die Sperr-Fälle dieser Datei: genau die Freigabe, die ihnen zusteht — und ihre Null", () => {
-    const stuecke = faelle(bestand(DIESE_DATEI));
+    const stuecke = faelle(bestandCode(DIESE_DATEI));
     const hole = (fall: string): string => {
       const text = stuecke.get(fall);
       expect([fall, text !== undefined]).toEqual([fall, true]);
@@ -852,14 +2191,123 @@ describe("JOB 3550 F: der Freigabe-Wächter — die KI-Freigabe bleibt eine name
   });
 
   it("F4 · je Fall: der Erwartungsboden und die vollzählige Liste der Freigabe-Aufrufe", () => {
-    for (const [datei, akten] of Object.entries(FALLAKTEN)) {
-      const stuecke = faelle(bestand(datei));
-      // Kein Fall verschwindet und keiner kommt unbemerkt dazu — sonst wäre der Boden zu umgehen,
-      // indem man den Fall gleich mitnimmt.
-      expect([datei, [...stuecke.keys()].sort()]).toEqual([datei, Object.keys(akten).sort()]);
+    // KALIBRIERUNG (JOB 3570 Runde 2, Korrekturpflicht 1 von Prüfer BEN): der Boden zählt
+    // AUSFÜHRBARE Erwartungen. Eine Zeile Prosa, die eine Erwartung nur ERWÄHNT, zählt nicht —
+    // sonst bezahlt ein Kommentar die Löschung eines Tests. Beides hier an einem Muster gemessen,
+    // damit die Regel nicht bloß im Kopftext behauptet steht.
+    const muster = [
+      'const w = "nicht // ein Kommentar";',
+      "// Hier stand einmal expect(alt).toBe(1) — Prosa, kein Lauf.",
+      "/* auch das nicht: expect(auch).toBe(2) */",
+      "expect(echt).toBe(3);",
+      "expect(zeichen).toMatch(/[\"']/);",
+    ].join("\n");
+    const gedampft = nurCode(muster, "KALIBRIERUNG");
+    expect(erwartungen(gedampft)).toBe(2);
+    expect(gedampft).toContain('const w = "nicht // ein Kommentar";');
+    expect(gedampft).not.toContain("Prosa, kein Lauf");
+    // Längentreu: Zeilennummern und Schnittstellen dürfen sich nicht verschieben.
+    expect(gedampft.length).toBe(muster.length);
+    expect(gedampft.split("\n")).toHaveLength(muster.split("\n").length);
+    // Und die Abtastung greift auf ECHTEM Material, nicht nur am Muster: diese beiden Dateien
+    // führen je eine Erwähnung in Prosa, die vor der Korrektur als Boden mitzählte.
+    for (const belegt of [
+      "tests/ki-lauf-verbrauch/ehrlich.test.ts",
+      "tests/ki-lauf-verbrauch/spur.test.ts",
+    ]) {
+      const roh = (bestand(belegt).match(/expect\(/g) ?? []).length;
+      const echt = erwartungen(bestandCode(belegt));
+      expect([belegt, roh > echt]).toEqual([belegt, true]);
+    }
+
+    // ZWEITE KALIBRIERUNG (JOB 3570 Runde 3, Korrekturpflicht 1 von Prüfer BEN): der WORTLAUT einer
+    // Erwartung IN EINER ZEICHENKETTE ist kein Lauf. BEN hat in `ehrlich.test.ts:121` die echte
+    // Prüfung durch `void 'expect(datensatz.status).toBe("error")';` ersetzt — Kommentare waren
+    // ausgeblendet, Zeichenketten nicht, und der Boden blieb bezahlt. Gezählt wird jetzt auf der
+    // Stufe `leeren`. Was in `${…}` steht, LÄUFT und zählt weiter mit; das ist der Unterschied
+    // zwischen „Literal" und „Literalinhalt" und hier an einem Muster festgehalten.
+    const literale = [
+      "void 'expect(alsZeichenkette).toBe(1)';",
+      'void "expect(inAnfuehrungszeichen).toBe(2)";',
+      "void `expect(inVorlage).toBe(3)`;",
+      "void `Vorlage mit ${expect(inEinbettung).toBe(4)} darin`;",
+      // Der Klammerauf im Regex steht ABSICHTLICH ungeschützt (eine Gruppe): nur so trägt die Zeile
+      // überhaupt ein zählbares `expect(`. Mit `\\(` fiele sie aus beiden Zählungen heraus und die
+      // Kalibrierung prüfte am Regex-Zweig nichts — gemessen im ersten Lauf (erwartet 6, gezählt 5).
+      "expect(text).toMatch(/expect(alsRegex)/);",
+      // DIE OFFENE LÜCKE, hier gemessen statt beschwiegen (Runde 4, Weisung der Steuerung vom
+      // 11.09.): diese Zeile führt KEINE Erwartung aus, zählt aber eine. Ein Regex-Literal beginnt
+      // an einem `/`, das ohne Parser nicht von einer Division zu trennen ist — nach `void` rät die
+      // Abtastung falsch, und genau dort hat BEN in Runde 3 getroffen. Die Zählung leert deshalb
+      // Regex-Inhalt gar nicht mehr, statt Vollständigkeit vorzugeben. Wer die Lücke schließt
+      // (Folgeauftrag, AST-Prüfung), macht diese Zeile rot und trägt sie hier nach.
+      "void /expect(imRegexLiteral).toBe(5);/;",
+    ].join("\n");
+    const ohneInhalt = nurCode(literale, "KALIBRIERUNG LITERALE", "leeren");
+    // Vier werden gezählt: die Erwartung in der Einbettung, die echte `toMatch`-Prüfung — und die
+    // beiden Wortlaute in Regex-Literalen, von denen KEINER läuft. Zeichenkette und Vorlage sind
+    // weg, das Regex-Literal nicht: das ist der Stand, nicht das Ziel.
+    expect(erwartungen(ohneInhalt)).toBe(4);
+    expect(ohneInhalt).toContain("expect(inEinbettung).toBe(4)");
+    expect(ohneInhalt).toContain("expect(text).toMatch(");
+    for (const verschwunden of ["alsZeichenkette", "inAnfuehrungszeichen", "inVorlage"]) {
+      expect([verschwunden, ohneInhalt.includes(verschwunden)]).toEqual([verschwunden, false]);
+    }
+    for (const geblieben of ["alsRegex", "imRegexLiteral"]) {
+      expect([geblieben, "Lücke", ohneInhalt.includes(geblieben)]).toEqual([
+        geblieben,
+        "Lücke",
+        true,
+      ]);
+    }
+    // Längentreu auch hier — davon hängt die Gleichlage der beiden Stufen ab (s. u.).
+    expect(ohneInhalt.length).toBe(literale.length);
+    expect(ohneInhalt.split("\n")).toHaveLength(literale.split("\n").length);
+    // Und der Unterschied ist der Betrag, den die Gegenprobe von BEN aus Runde 2 bezahlt hat: die
+    // schwächere Stufe zählt alle sieben Vorkommen, die zählende die drei Zeichenketten-Wortlaute
+    // nicht mehr.
+    expect(erwartungen(nurCode(literale, "KALIBRIERUNG LITERALE"))).toBe(7);
+
+    for (const [datei, dateiakte] of Object.entries(FALLAKTEN)) {
+      const akten = dateiakte.faelle;
+      const code = bestandCode(datei);
+      const zaehlbar = bestandErwartungen(datei);
+      // DIE GLEICHLAGE, geprüft statt angenommen: nur weil beide Stufen längentreu auf derselben
+      // Quelle arbeiten, darf F4 einen Fall am erkennbaren Text abgrenzen und im zählbaren zählen.
+      // Wäre sie verletzt, zählte der Wächter den falschen Fall — still und grün.
+      expect([datei, "Gleichlage", zaehlbar.length]).toEqual([datei, "Gleichlage", code.length]);
+      const ganzerBestand = code.replace(/\s+/g, " ");
+      const stellen = fallStellen(code);
+      // WO DER AUFBAU GETEILT IST, IST JEDER FALL BETROFFEN (Korrekturpflicht 2 von Prüfer BEN).
+      // Steht die Freigabe im VORSPANN, läuft JEDER Fall der Datei durch sie hindurch — dann ist
+      // „nur die geänderten Fälle führen" keine Grenze mehr, sondern ein Loch: in `ehrlich.test.ts`
+      // hing V3c allein am Dateiboden, und eine zusätzliche Erwartung in einem anderen Fall hätte
+      // den Verlust seiner Fehlerstatus-Prüfung ausgeglichen. Solche Dateien sind vollzählig.
+      if ((akten.VORSPANN?.freigaben.length ?? 0) > 0) {
+        const wozu = "VORSPANN gibt frei → die Datei ist vollzählig zu führen";
+        expect([datei, wozu, dateiakte.vollzaehlig === true]).toEqual([datei, wozu, true]);
+      }
+      // DIE DATEI ALS GANZES (JOB 3570): der Boden über alle Fälle und die Zahl der Freigaben.
+      // Ein gelöschter Fall, eine gelöschte Erwartung und eine zusätzliche Freigabe IRGENDWO in
+      // der Datei fallen hier auf — auch in einem Fall, der unten nicht einzeln geführt wird.
+      const alleRufe = [...ganzerBestand.matchAll(FREIGABE_RUF)].map((t) => t[0]);
+      expect([datei, erwartungen(zaehlbar) >= dateiakte.gesamtboden]).toEqual([datei, true]);
+      expect([datei, alleRufe.length]).toEqual([datei, dateiakte.freigaben]);
+      expect([datei, [...new Set(alleRufe)].sort()]).toEqual([datei, [...dateiakte.formen].sort()]);
+      // Und für die drei Dateien von JOB 3550, deren Fallliste KOMPLETT ist, bleibt es dabei:
+      // kein Fall verschwindet und keiner kommt unbemerkt dazu.
+      if (dateiakte.vollzaehlig) {
+        expect([datei, [...stellen.keys()].sort()]).toEqual([datei, Object.keys(akten).sort()]);
+      }
       for (const [fall, akte] of Object.entries(akten)) {
-        const text = (stuecke.get(fall) ?? "").replace(/\s+/g, " ");
-        const zahl = (text.match(/expect\(/g) ?? []).length;
+        // Ein geführter Fall, den es nicht mehr gibt (umbenannt, verschoben, gelöscht), ist ein
+        // Loch und keine Kleinigkeit: die Akte bewachte dann nichts mehr.
+        expect([datei, fall, stellen.has(fall)]).toEqual([datei, fall, true]);
+        const stelle = stellen.get(fall) ?? { von: 0, bis: 0 };
+        const text = code.slice(stelle.von, stelle.bis).replace(/\s+/g, " ");
+        // Gezählt wird auf der Stufe `leeren`, an DERSELBEN Stelle — ein Wortlaut in einem Literal
+        // ersetzt keine Erwartung.
+        const zahl = erwartungen(zaehlbar.slice(stelle.von, stelle.bis));
         expect([datei, fall, zahl >= akte.boden]).toEqual([datei, fall, true]);
         expect([datei, fall, [...text.matchAll(FREIGABE_RUF)].map((t) => t[0])]).toEqual([
           datei,
@@ -915,5 +2363,136 @@ describe("JOB 3550 F: der Freigabe-Wächter — die KI-Freigabe bleibt eine name
     expect(gesehen[0]?.global).toBe("auto");
     expect(gesehen[0]?.perTask).toEqual({ select: "anthropic" });
     expect((gesehen[0] as { kiFreigabe?: unknown }).kiFreigabe).toEqual({ oeffentlicheKi: true });
+  });
+
+  it("F7 · namentlich geführte Erwartungen stehen da und nicht in einer Zeichenkette", () => {
+    /**
+     * WAS GEPRÜFT WIRD: der Wortlaut steht im Code UND an seiner Zeichenstelle beginnt auch in der
+     * zählenden Stufe noch ein `expect(`. Beides zusammen, denn einzeln ist jedes zu haben: den
+     * Wortlaut hat auch ein String, das `expect(` hat auch eine andere Erwartung.
+     *
+     * WAS NICHT GEPRÜFT WIRD (Runde 4, ausdrücklich): ob die Stelle WIRKLICH ausgeführt wird. Die
+     * zählende Stufe leert Zeichenketten und Vorlagen, Regex-Literale nicht — ein Wortlaut in einem
+     * Regex-Literal genügt dieser Prüfung weiterhin. Die Kalibrierung unten misst beides, das
+     * Getragene und die Lücke. Ein früherer Name dieses Falls hieß „AUSFÜHRBAR"; er versprach mehr,
+     * als zwei Abtaststufen halten können, und ist deshalb zurückgenommen.
+     */
+    const stellenImCode = (
+      code: string,
+      zaehlbar: string,
+      erwartung: string,
+      bereich: { readonly von: number; readonly bis: number },
+    ): number[] => {
+      const gefunden: number[] = [];
+      for (let i = code.indexOf(erwartung); i >= 0; i = code.indexOf(erwartung, i + 1)) {
+        if (i >= bereich.von && i < bereich.bis && zaehlbar.startsWith("expect(", i)) {
+          gefunden.push(i);
+        }
+      }
+      return gefunden;
+    };
+
+    // KALIBRIERUNG: die Unterscheidung selbst, an einem Muster gemessen — und daneben die Lücke,
+    // ebenfalls gemessen. Ohne die erste Hälfte wäre die Trennung eine Behauptung über zwei
+    // Abtastungen, ohne die zweite eine Behauptung über ihre Reichweite; beides hat Runden gekostet.
+    const probe = [
+      "expect(echt).toBe(1);",
+      "void 'expect(gefaelscht).toBe(2)';",
+      // Dieselbe Fälschung, nur in einem Regex-Literal statt in einer Zeichenkette — BENs Gegenprobe
+      // aus Runde 3. Sie kommt hier durch, und das steht so da, weil es so ist.
+      "void /expect(imRegex).toBe(3);/;",
+    ].join("\n");
+    const probeCode = nurCode(probe, "F7-KALIBRIERUNG");
+    const probeZaehl = nurCode(probe, "F7-KALIBRIERUNG", "leeren");
+    const ganz = { von: 0, bis: probe.length };
+    expect(stellenImCode(probeCode, probeZaehl, "expect(echt).toBe(1);", ganz)).toHaveLength(1);
+    // Der Wortlaut IST da — nur eben als Inhalt einer Zeichenkette. Der Suchbegriff ist wörtlich
+    // derselbe wie oben gefunden wird; damit trennt die zweite Bedingung und nicht ein Suchfehler.
+    expect(probeCode).toContain("expect(gefaelscht).toBe(2)");
+    expect(stellenImCode(probeCode, probeZaehl, "expect(gefaelscht).toBe(2)", ganz)).toHaveLength(
+      0,
+    );
+    // DIE LÜCKE, benannt: derselbe Wortlaut in einem Regex-Literal wird NICHT getrennt. Diese Zeile
+    // ist keine Zusicherung, sondern der festgehaltene Stand — sie wird rot, sobald ein
+    // Folgeauftrag die Stelle mit einer AST-Prüfung entscheidet, und muss dann mitgezogen werden.
+    expect(stellenImCode(probeCode, probeZaehl, "expect(imRegex).toBe(3)", ganz)).toHaveLength(1);
+
+    expect(NAMENTLICHE_ERWARTUNGEN.length).toBeGreaterThan(8);
+    for (const akte of NAMENTLICHE_ERWARTUNGEN) {
+      // Der Grund ist Pflicht, in derselben Länge wie in F1 und F6.
+      expect([akte.datei, akte.warum.length > 60]).toEqual([akte.datei, true]);
+      const code = bestandCode(akte.datei);
+      const zaehlbar = bestandErwartungen(akte.datei);
+      expect([akte.datei, "Gleichlage", zaehlbar.length]).toEqual([
+        akte.datei,
+        "Gleichlage",
+        code.length,
+      ]);
+      const stellen = [...fallStellen(code)];
+      expect([akte.datei, akte.faelle.length > 0]).toEqual([akte.datei, true]);
+
+      for (const fall of akte.faelle) {
+        // Der Testname wird im KOPFBEREICH des Falls gesucht, nicht in seinem Rumpf: ein Fall, der
+        // den Namen eines anderen nur erwähnt, ist nicht dieser Fall.
+        const treffer = stellen.filter(([, s]) =>
+          code.slice(s.von, Math.min(s.bis, s.von + 300)).includes(fall.testname),
+        );
+        // Genau einer. Null heißt umbenannt oder gelöscht, zwei heißt: der Name trennt nicht mehr.
+        expect([akte.datei, fall.testname, treffer.length]).toEqual([akte.datei, fall.testname, 1]);
+        const bereich = treffer[0]?.[1] ?? { von: 0, bis: 0 };
+        for (const erwartung of fall.erwartungen) {
+          // Eine geführte Zeile, die nicht mit `expect(` beginnt, könnte die zweite Bedingung nie
+          // erfüllen — dann wäre der Eintrag stumm statt streng.
+          expect([erwartung, erwartung.startsWith("expect(")]).toEqual([erwartung, true]);
+          const gefunden = stellenImCode(code, zaehlbar, erwartung, bereich);
+          expect([akte.datei, fall.testname, erwartung, gefunden.length > 0]).toEqual([
+            akte.datei,
+            fall.testname,
+            erwartung,
+            true,
+          ]);
+        }
+      }
+    }
+  });
+
+  it("F6 · jede Datei der Fläche steht in EINEM der beiden Register — mit Grund", () => {
+    // Die Fläche selbst absuchen, nicht eine Namensliste pflegen: genau daran ist JOB 3550
+    // vorbeigelaufen (drei versorgte Dateien, dreiunddreißig liegengeblieben).
+    const inDerFlaeche = testquellen().filter((p) =>
+      FLAECHE.some((ort) => p === ort || p.startsWith(`${ort}/`)),
+    );
+    // KALIBRIERUNG: eine leere Fläche würde jede Aussage unten grün machen, ohne etwas zu prüfen.
+    expect(inDerFlaeche.length).toBeGreaterThan(40);
+
+    const unversorgt: string[] = [];
+    const mitModellweg: string[] = [];
+    for (const pfad of inDerFlaeche) {
+      // Auf dem AUSFÜHRBAREN suchen: ein auskommentierter Aufbau baut keinen Weg nach draußen und
+      // soll keinen Registereintrag verlangen. Die Abtastung ist längentreu, die Zeilennummer in
+      // der Fehlermeldung bleibt deshalb die der echten Datei.
+      const zeilen = nurCode(lies(pfad), pfad).split("\n");
+      const treffer = zeilen.findIndex((zeile) => MODELLWEG.test(zeile));
+      if (treffer < 0) continue;
+      mitModellweg.push(pfad);
+      if (FREIGABE_ERLAUBT.has(pfad) || OHNE_FREIGABE_MIT_GRUND.has(pfad)) continue;
+      unversorgt.push(
+        `baut einen Modellweg, steht in keinem der beiden Register: ${pfad}:${treffer + 1}`,
+      );
+    }
+    expect(unversorgt).toEqual([]);
+
+    // Die andere Richtung: kein Eintrag ohne Träger. Ein Register, das Dateien führt, die es
+    // nicht mehr gibt (oder die keinen Modellweg mehr bauen), verwaltet Papier statt Code.
+    const ohneTraeger = [...OHNE_FREIGABE_MIT_GRUND.keys()].filter(
+      (p) => !mitModellweg.includes(p),
+    );
+    expect(ohneTraeger).toEqual([]);
+
+    // Und der Grund ist auch hier Pflicht, in derselben Länge wie in F1 — eine Zeile „passt
+    // schon" wäre der Anfang vom Ende dieses Registers.
+    for (const [datei, grund] of OHNE_FREIGABE_MIT_GRUND) {
+      expect([datei, grund.length > 60]).toEqual([datei, true]);
+    }
   });
 });

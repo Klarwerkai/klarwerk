@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { type ModelClient, ModelProvider, parseConflictResponse } from "./provider-model";
 import { Reasoner } from "./service";
+import { erteileKiFreigabe } from "./testhelfer-ki-freigabe";
 
 function fakeClient(reply: string): ModelClient {
   return { name: "fake", complete: async () => reply };
@@ -119,6 +120,10 @@ describe("Berater-Konzept 04.07. (Stufe 2): judgeConflict über die Provider-Ket
 
   it("Reasoner mit echtem Modell urteilt; ohne Modell ehrlich null", async () => {
     const withModel = new Reasoner(new ModelProvider(fakeClient(conflictJson)));
+    // JOB 3570: die Grundfreigabe im Aufbau — „mit echtem Modell urteilt" verlangt einen echten
+    // Aufruf. Der Gegenpart `withoutModel` bekommt keine: dort ist kein Anbieter verdrahtet, und
+    // genau das soll die Null belegen.
+    await erteileKiFreigabe(withModel);
     expect((await withModel.judgeConflict("Farbe blau", "Farbe rot"))?.relation).toBe(
       "widerspruch",
     );

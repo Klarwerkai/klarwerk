@@ -12,6 +12,7 @@ import {
   parseExtractResponse,
 } from "./provider-model";
 import { Reasoner } from "./service";
+import { erteileKiFreigabe } from "./testhelfer-ki-freigabe";
 
 const DOC =
   "Wartungsbericht Linie L4.\n" +
@@ -165,7 +166,12 @@ describe("PMO-FEA-0006: ehrlicher Fallback ohne Modell (G-2/FR-RSN-04)", () => {
         throw new Error("Netzfehler");
       },
     });
-    const res = await new Reasoner(flaky).extract(DOC);
+    const reasoner = new Reasoner(flaky);
+    // JOB 3570: die Grundfreigabe im Aufbau — der Fall messt den Fallback NACH einem echten,
+    // gescheiterten Modellversuch. Ohne Freigabe gaebe es keinen Versuch, sondern nur „kein Modell",
+    // und das prueft der Fall darueber schon. Alle anderen Faelle bauen keinen oeffentlichen Anbieter.
+    await erteileKiFreigabe(reasoner);
+    const res = await reasoner.extract(DOC);
     expect(res.points).toHaveLength(0);
     expect(res.demo).toBe(true);
   });

@@ -16,6 +16,13 @@
 import { describe, expect, it } from "vitest";
 import type { ReasonerProvider } from "../../services/reasoner/src/provider";
 import { Reasoner } from "../../services/reasoner/src/service";
+// JOB 3570: die Grundfreigabe im Aufbau. `billable` ist die Aussage „kostet dieser Klick wirklich
+// etwas?" und liest die TATSÄCHLICHE Kette der Aufgabe — eine gesperrte Cloud kostet nichts. Ohne
+// Freigabe messen die Fälle unten also nicht mehr die Abgrenzung gegen `tasks`/`mode`.
+import {
+  erteileKiFreigabe,
+  mitKiFreigabe,
+} from "../../services/reasoner/src/testhelfer-ki-freigabe";
 
 function modelProvider(name: string, probe: () => Promise<unknown>): ReasonerProvider {
   return { name, isAvailable: () => true, probe } as unknown as ReasonerProvider;
@@ -48,8 +55,10 @@ describe("mega67 G · billable je Aufgabe — kostet dieser Klick wirklich etwas
     expect(pub.billable.structure).toBe(false); // … aber nicht kostenpflichtig
   });
 
-  it("Cloud verdrahtet → kostenpflichtig", () => {
-    const pub = new Reasoner(modelProvider("cloud", OK)).publicStatus();
+  it("Cloud verdrahtet → kostenpflichtig", async () => {
+    const r = new Reasoner(modelProvider("cloud", OK));
+    await erteileKiFreigabe(r);
+    const pub = r.publicStatus();
     expect(pub.mode).toBe("cloud");
     expect(pub.billable.structure).toBe(true);
   });
@@ -64,7 +73,7 @@ describe("mega67 G · billable je Aufgabe — kostet dieser Klick wirklich etwas
       undefined,
       modelProvider("local", OK),
     );
-    await r.setTaskConfig({ global: "auto", perTask: { structure: "local" } });
+    await r.setTaskConfig(mitKiFreigabe({ global: "auto", perTask: { structure: "local" } }));
     const pub = r.publicStatus();
     expect(pub.mode).toBe("cloud"); // die hausweite Stufe sagt weiter „cloud" …
     expect(pub.tasks.structure).toBe(true); // … und die Aufgabe ist nutzbar …
@@ -75,7 +84,7 @@ describe("mega67 G · billable je Aufgabe — kostet dieser Klick wirklich etwas
 
   it("Aufgabe deterministisch gestellt → nicht kostenpflichtig", async () => {
     const r = new Reasoner(modelProvider("cloud", OK));
-    await r.setTaskConfig({ global: "auto", perTask: { extract: "deterministic" } });
+    await r.setTaskConfig(mitKiFreigabe({ global: "auto", perTask: { extract: "deterministic" } }));
     const pub = r.publicStatus();
     expect(pub.billable.extract).toBe(false);
     expect(pub.billable.answer).toBe(true);
@@ -85,6 +94,7 @@ describe("mega67 G · billable je Aufgabe — kostet dieser Klick wirklich etwas
   // durch, kostet der Klick nichts — der Satz wäre sonst wieder eine falsche Tatsachenaussage.
   it("Cloud verdrahtet, aber zuletzt UNERREICHBAR → nicht kostenpflichtig", async () => {
     const r = new Reasoner(modelProvider("cloud", DOWN));
+    await erteileKiFreigabe(r);
     r.refreshReachabilityIfStale();
     await flush();
     const pub = r.publicStatus();
@@ -94,8 +104,10 @@ describe("mega67 G · billable je Aufgabe — kostet dieser Klick wirklich etwas
 
   // Startfall, spiegelbildlich zu `tasks`: „unverified" (noch kein Probe) zählt als erreichbar —
   // sonst behauptete die Oberfläche direkt nach dem Start „kostenlos", was sie nicht weiß.
-  it("Cloud verdrahtet, noch kein Probe (unverified) → kostenpflichtig", () => {
-    const pub = new Reasoner(modelProvider("cloud", OK)).publicStatus();
+  it("Cloud verdrahtet, noch kein Probe (unverified) → kostenpflichtig", async () => {
+    const r = new Reasoner(modelProvider("cloud", OK));
+    await erteileKiFreigabe(r);
+    const pub = r.publicStatus();
     expect(pub.reachable).toBe("unverified");
     expect(pub.billable.structure).toBe(true);
   });

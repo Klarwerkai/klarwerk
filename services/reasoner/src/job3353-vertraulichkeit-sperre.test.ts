@@ -3,6 +3,10 @@ import { DeterministicProvider } from "./provider";
 import { ModelProvider } from "./provider-model";
 import type { ModelClient } from "./provider-model";
 import { ConfidentialCloudBlockedError, Reasoner } from "./service";
+// JOB 3570: die Grundfreigabe im Aufbau. Die Sperrmeldung dieses Auftrags behauptet, die Cloud
+// wäre OHNE die Einstufung gelaufen — genau das setzt eine erteilte Adminfreigabe voraus. S3 baut
+// gar keine Cloud und bekommt deshalb keine.
+import { erteileKiFreigabe } from "./testhelfer-ki-freigabe";
 import type { AssistResult } from "./types";
 
 // ================================================================================================
@@ -84,6 +88,10 @@ describe("JOB 3353 B · der Reasoner belegt die Vertraulichkeitssperre selbst", 
   it("S1 POSITIV — vertraulich, Cloud verdrahtet, kein Ergebnis → ConfidentialCloudBlockedError, Cloud-Spy 0", async () => {
     const { client, calls } = cloudSpyClient();
     const reasoner = new Reasoner(new ModelProvider(client), new WerfenderProvider("ersatz"));
+    // SPERRFALL MIT GRUNDFREIGABE: `calls()` bleibt 0, weil der Lauf VERTRAULICH ist — nicht weil
+    // die Adminfreigabe fehlte. Genau darauf beruht die Meldung („umstufen oder lokale KI wählen"):
+    // sie behauptet, die Cloud wäre sonst gelaufen. Die Freigabe für VERTRAULICHES bleibt ungesetzt.
+    await erteileKiFreigabe(reasoner);
 
     const fehler = await reasoner.assistText(TEXT, "en", "Spelling", true).catch((e: unknown) => e);
 
@@ -110,6 +118,7 @@ describe("JOB 3353 B · der Reasoner belegt die Vertraulichkeitssperre selbst", 
       undefined,
       lokal,
     );
+    await erteileKiFreigabe(reasoner);
 
     const fehler = await reasoner.assistText(TEXT, "en", "Spelling", true).catch((e: unknown) => e);
 
@@ -134,6 +143,7 @@ describe("JOB 3353 B · der Reasoner belegt die Vertraulichkeitssperre selbst", 
   it("S4 NEGATIV — NICHT vertraulicher Lauf ohne Ergebnis → gewöhnlicher Fehler", async () => {
     const { client } = cloudSpyClient();
     const reasoner = new Reasoner(new ModelProvider(client), new WerfenderProvider("ersatz"));
+    await erteileKiFreigabe(reasoner);
 
     const fehler = await reasoner
       .assistText(TEXT, "en", "Spelling", false)
@@ -161,6 +171,7 @@ describe("JOB 3353 B · der Reasoner belegt die Vertraulichkeitssperre selbst", 
       undefined,
       lokal,
     );
+    await erteileKiFreigabe(reasoner);
 
     const res = await reasoner.assistText(TEXT, "en", "Spelling", true);
 
@@ -178,6 +189,8 @@ describe("JOB 3353 B · der Reasoner belegt die Vertraulichkeitssperre selbst", 
     // Lage hat Codex am 8.9. um 21:57 live gemessen.
     const { client, calls } = cloudSpyClient();
     const reasoner = new Reasoner(new ModelProvider(client), new DeterministicProvider());
+    // SPERRFALL MIT GRUNDFREIGABE, wie S1: die Null liegt an der Einstufung, nicht an der Freigabe.
+    await erteileKiFreigabe(reasoner);
 
     const fehler = await reasoner.assistText(TEXT, "en", "Spelling", true).catch((e: unknown) => e);
 

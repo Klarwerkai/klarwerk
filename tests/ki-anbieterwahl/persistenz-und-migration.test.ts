@@ -15,6 +15,11 @@ import {
   type ReasonerPolicyRepo,
 } from "../../services/reasoner/src/reasoner-policy";
 import { Reasoner, ReasonerPolicyLockedError } from "../../services/reasoner/src/service";
+// JOB 3570: die Grundfreigabe im Aufbau — nur in C1 und C1b, den beiden Fällen, die wirklich
+// etwas hinausschicken. C2–C7 messen Persistenz, Migration, Schreibfehler und die ENV-Sperre;
+// dort ist der Schreibweg selbst der Gegenstand (C3/C4 erwarten seine Ablehnung), eine Freigabe
+// wäre dort nicht setzbar und hätte auch nichts zu erlauben.
+import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 import type {
   ReasonerTaskConfig,
   ReasonerTaskConfigEingabe,
@@ -103,6 +108,12 @@ describe("JOB 3134 C: Persistenz über den Neustart der Instanz", () => {
     expect(cfg.policySource).toBe("db");
     expect(cfg.migration).toBeUndefined();
 
+    // JOB 3570: die Grundfreigabe im Aufbau, NACH dem Laden und unmittelbar vor der einzigen
+    // Übertragung dieses Falls. Sie lässt Zuordnung und Migrationsmeldung unangetastet
+    // (`erteileKiFreigabe` schreibt `global`/`perTask` unverändert zurück) und ist die
+    // Voraussetzung dafür, dass die Anfrage überhaupt an einen Anbieter geht — sonst prüfte
+    // `urls` nicht mehr den EMPFÄNGER, sondern nur noch die Sperre.
+    await erteileKiFreigabe(zweite);
     await zweite.assistText("nach dem Neustart", "de");
     expect(urls).toEqual([ANTHROPIC_URL]);
   });
@@ -132,6 +143,9 @@ describe("JOB 3134 C: Persistenz über den Neustart der Instanz", () => {
     expect(cfg.taskConfig).toEqual({ global: "anthropic", perTask: { select: "openai" } });
     expect(cfg.provider).toBe("anthropic:claude-sonnet-4-6");
     expect(cfg.effectiveAnbieter.select).toBe("openai");
+    // Wie in C1: die Grundfreigabe unmittelbar vor der Übertragung, nach allen Aussagen über den
+    // gespeicherten TEXT (`zeile.data` oben) — die bleibt davon unberührt.
+    await erteileKiFreigabe(zweite);
     await zweite.assistText("nach dem Neustart", "de");
     expect(urls).toEqual([ANTHROPIC_URL]);
   });

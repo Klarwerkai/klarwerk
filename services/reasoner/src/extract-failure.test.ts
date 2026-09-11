@@ -9,6 +9,10 @@ import {
   salvageTruncatedExtract,
 } from "./provider-model";
 import { Reasoner } from "./service";
+// JOB 3570: die Grundfreigabe im Aufbau. Die Datei lebt davon, dass ein Modell WIRKLICH gefragt
+// wird — der echte Fehlergrund in der Note, die gerettete gekuerzte Antwort, die Abschnitte. Ohne
+// Freigabe stuende ueberall „Ohne KI-Modell", also genau die Meldung, gegen die sie antritt.
+import { erteileKiFreigabe, mitKiFreigabe } from "./testhelfer-ki-freigabe";
 
 // SCRUM-411 (Pedi-Test 03.07.): Extract meldete „kein KI-Modell" trotz grünem Key-Test.
 // Ursache 1: max_tokens 1024 für ALLE Aufrufe — das Punkte-JSON realer Dokumente wurde
@@ -28,6 +32,7 @@ describe("SCRUM-411: Extract-Fehler ehrlich benennen + Antwort-Limit", () => {
     const reasoner = new Reasoner(
       new ModelProvider(failingClient("Modell-API antwortete mit 500")),
     );
+    await erteileKiFreigabe(reasoner);
     const result = await reasoner.extract(DOC, "de");
     expect(result.points).toEqual([]);
     expect(result.note).toContain("fehlgeschlagen");
@@ -46,7 +51,9 @@ describe("SCRUM-411: Extract-Fehler ehrlich benennen + Antwort-Limit", () => {
 
   it("bewusst Deterministisch gestellt → weiterhin kein-Modell-Meldung (kein Fehler-Text)", async () => {
     const reasoner = new Reasoner(new ModelProvider(failingClient("egal")));
-    await reasoner.setTaskConfig({ global: "auto", perTask: { extract: "deterministic" } });
+    await reasoner.setTaskConfig(
+      mitKiFreigabe({ global: "auto", perTask: { extract: "deterministic" } }),
+    );
     const result = await reasoner.extract(DOC, "de");
     expect(result.note).toContain("Ohne KI-Modell");
   });
@@ -57,6 +64,7 @@ describe("SCRUM-411: Extract-Fehler ehrlich benennen + Antwort-Limit", () => {
       complete: async () => '{"points": [{"title": "abgeschn',
     };
     const reasoner = new Reasoner(new ModelProvider(truncated));
+    await erteileKiFreigabe(reasoner);
     const result = await reasoner.extract(DOC, "de");
     expect(result.points).toEqual([]);
     expect(result.note).toContain("kein gültiges JSON");
@@ -76,6 +84,7 @@ describe("SCRUM-411: Extract-Fehler ehrlich benennen + Antwort-Limit", () => {
         '{"title": "Dritter Punkt bricht mitten im Feld a',
     };
     const reasoner = new Reasoner(new ModelProvider(truncated));
+    await erteileKiFreigabe(reasoner);
     const result = await reasoner.extract(DOC, "de");
     expect(result.points.map((p) => p.title)).toEqual([
       "Schmierintervall der Dosierpumpe",
@@ -108,7 +117,9 @@ describe("SCRUM-411: Extract-Fehler ehrlich benennen + Antwort-Limit", () => {
         '{"points": [{"title": "Schmierintervall", "summary": "Alle 200 h.", "sourceExcerpt": "alle 200 Betriebsstunden"}]}\n' +
         "```\nHoffe, das hilft! {Ende}",
     };
-    const result = await new Reasoner(new ModelProvider(wrapped)).extract(DOC, "de");
+    const reasoner = new Reasoner(new ModelProvider(wrapped));
+    await erteileKiFreigabe(reasoner);
+    const result = await reasoner.extract(DOC, "de");
     expect(result.points.map((p) => p.title)).toEqual(["Schmierintervall"]);
     expect(result.note).toBeNull();
   });
@@ -122,7 +133,9 @@ describe("SCRUM-411: Extract-Fehler ehrlich benennen + Antwort-Limit", () => {
       complete: async () =>
         '{"points": [{"title": "Schmierintervall", "summary": "Alle 200 h.", "sourceExcerpt": "Dosierpumpe P2 ist alle 200 Betriebsstunden"}]}',
     };
-    const result = await new Reasoner(new ModelProvider(client)).extract(pdfDoc, "de");
+    const reasoner = new Reasoner(new ModelProvider(client));
+    await erteileKiFreigabe(reasoner);
+    const result = await reasoner.extract(pdfDoc, "de");
     expect(result.points).toHaveLength(1);
     expect(result.note).toBeNull();
   });
@@ -166,7 +179,9 @@ describe("SCRUM-411: Extract-Fehler ehrlich benennen + Antwort-Limit", () => {
         return '{"points": []}';
       },
     };
-    const result = await new Reasoner(new ModelProvider(client)).extract(longDoc, "de");
+    const reasoner = new Reasoner(new ModelProvider(client));
+    await erteileKiFreigabe(reasoner);
+    const result = await reasoner.extract(longDoc, "de");
     expect(result.points.map((p) => p.title).sort()).toEqual([
       "Pumpe schmieren",
       "Ventil schließen",
@@ -185,7 +200,9 @@ describe("SCRUM-411: Extract-Fehler ehrlich benennen + Antwort-Limit", () => {
           ? '{"points": [{"title": "Wert X", "summary": "s", "sourceExcerpt": "Wert X einhalten"}]}'
           : '{"points": []}',
     };
-    const result = await new Reasoner(new ModelProvider(client)).extract(longDoc, "de");
+    const reasoner = new Reasoner(new ModelProvider(client));
+    await erteileKiFreigabe(reasoner);
+    const result = await reasoner.extract(longDoc, "de");
     expect(result.points).toHaveLength(1);
     expect(result.points[0]?.title).toBe("Wert X");
   });

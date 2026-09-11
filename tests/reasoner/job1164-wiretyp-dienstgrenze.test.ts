@@ -32,6 +32,10 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { ModelProvider, Reasoner } from "../../services/reasoner";
+// JOB 3570: die Grundfreigabe im Aufbau. Der Titel ist die gekürzte Beschreibung eines ECHTEN
+// Vision-Aufrufs — ohne Freigabe findet der Aufruf nicht statt, und der Unterschied zwischen
+// „abgeleitet" und „nicht vorhanden" verschwindet. Die Fälle ohne Modell bekommen keine.
+import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 
 const PNG_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==";
 
@@ -61,9 +65,11 @@ function describeRumpf(datei: string): string {
 
 describe("JOB 1164 · Dienstgrenze — der Vorschlag kommt aus describeImage heraus", () => {
   it("POSITIV: mit Vision-Modell trägt das Ergebnis den abgeleiteten Titel", async () => {
-    const res = await new Reasoner(
+    const reasoner = new Reasoner(
       visionMit("Eine Kreiselpumpe mit blauem Gehäuse auf einem Prüfstand."),
-    ).describeImage(PNG_URL, "de");
+    );
+    await erteileKiFreigabe(reasoner);
+    const res = await reasoner.describeImage(PNG_URL, "de");
 
     expect(res.titelVorschlag).toBeDefined();
     expect(res.titelVorschlag?.grund).toBe("abgeleitet");
@@ -75,9 +81,9 @@ describe("JOB 1164 · Dienstgrenze — der Vorschlag kommt aus describeImage her
   });
 
   it("POSITIV: der Titel ist der ERSTE Satz — die Erzählung bleibt draußen", async () => {
-    const res = await new Reasoner(
-      visionMit("Ein Kegelradgetriebe. Daneben liegt ein Schlüssel."),
-    ).describeImage(PNG_URL, "de");
+    const reasoner = new Reasoner(visionMit("Ein Kegelradgetriebe. Daneben liegt ein Schlüssel."));
+    await erteileKiFreigabe(reasoner);
+    const res = await reasoner.describeImage(PNG_URL, "de");
 
     expect(res.titelVorschlag?.titel).toBe("Ein Kegelradgetriebe");
   });
@@ -93,7 +99,9 @@ describe("JOB 1164 · Dienstgrenze — der Vorschlag kommt aus describeImage her
   });
 
   it("NEGATIV: leerer Modelltext erzeugt keinen Titel aus dem Nichts", async () => {
-    const res = await new Reasoner(visionMit("   ")).describeImage(PNG_URL, "de");
+    const reasoner = new Reasoner(visionMit("   "));
+    await erteileKiFreigabe(reasoner);
+    const res = await reasoner.describeImage(PNG_URL, "de");
 
     expect("titelVorschlag" in res).toBe(false);
   });
@@ -102,11 +110,11 @@ describe("JOB 1164 · Dienstgrenze — der Vorschlag kommt aus describeImage her
     // Cloud-Vision ist verdrahtet, das Bild ist vertraulich → die Cloud fällt aus der Kette, es
     // gibt keinen Text, und es darf auch keinen Titel geben. Würde hier ein Feld erscheinen, wäre
     // der Egress-Ausschluss inhaltlich unterlaufen.
-    const res = await new Reasoner(visionMit("Der Bauplan der Anlage XY-7.")).describeImage(
-      PNG_URL,
-      "de",
-      true,
-    );
+    // SPERRFALL MIT GRUNDFREIGABE: dass kein Titel entsteht, liegt an der VERTRAULICHKEIT — nicht
+    // an einer fehlenden Adminfreigabe. Die Freigabe für VERTRAULICHES bleibt ungesetzt.
+    const reasoner = new Reasoner(visionMit("Der Bauplan der Anlage XY-7."));
+    await erteileKiFreigabe(reasoner);
+    const res = await reasoner.describeImage(PNG_URL, "de", true);
 
     expect(res.fallbackReason).toBe("confidential");
     expect("titelVorschlag" in res).toBe(false);
@@ -114,7 +122,9 @@ describe("JOB 1164 · Dienstgrenze — der Vorschlag kommt aus describeImage her
 
   it("die bestehende Zusage bleibt unangetastet: aiGenerated wird weiter zentral gesetzt", async () => {
     // Das additive Feld darf nichts verdrängen. Beide Rückgabewege der Methode werden geprüft.
-    const mitModell = await new Reasoner(visionMit("Eine Pumpe.")).describeImage(PNG_URL, "de");
+    const reasoner = new Reasoner(visionMit("Eine Pumpe."));
+    await erteileKiFreigabe(reasoner);
+    const mitModell = await reasoner.describeImage(PNG_URL, "de");
     const ohneModell = await new Reasoner().describeImage(PNG_URL, "de");
 
     expect(mitModell.aiGenerated?.task).toBe("describe");

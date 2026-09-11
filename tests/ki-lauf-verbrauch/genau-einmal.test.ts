@@ -24,6 +24,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ModelRunRecord, ModelRunRepo } from "../../services/model-runs";
 import { DeterministicProvider, ModelProvider, Reasoner } from "../../services/reasoner";
+// JOB 3570: die Grundfreigabe im Aufbau. Beide Fälle zählen ECHTE Modellaufrufe — ohne Freigabe
+// gäbe es keinen einzigen, und „genau einmal gezählt" wäre die Aussage über eine Null.
+import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 import { alsAntwort, cloudClient, cloudKoerper, lokalKoerper, lokalerClient } from "./hilfe";
 
 // Ein Protokollspeicher, dessen n-ter Schreibversuch scheitert und der sonst normal arbeitet — die
@@ -67,6 +70,7 @@ describe("JOB 3074 V6: jeder Provider-Versuch geht genau einmal in den Laufverbr
       new DeterministicProvider(),
       repo,
     );
+    await erteileKiFreigabe(reasoner);
     await reasoner.assistText("Roher Satz, der geglättet werden soll.", "de");
 
     expect(aufrufe, "genau EIN echter Modellaufruf in diesem Lauf").toBe(1);
@@ -101,6 +105,7 @@ describe("JOB 3074 V6: jeder Provider-Versuch geht genau einmal in den Laufverbr
       undefined,
       new ModelProvider(cloudClient()),
     );
+    await erteileKiFreigabe(reasoner);
     await reasoner.assistText("Roher Satz, der geglättet werden soll.", "de");
 
     const laeufe = await repo.recent(10);

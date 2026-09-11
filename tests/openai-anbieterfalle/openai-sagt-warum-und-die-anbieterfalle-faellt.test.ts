@@ -39,6 +39,10 @@ import {
 } from "../../services/reasoner/src/model-errors";
 import { ModelProvider } from "../../services/reasoner/src/provider-model";
 import { Reasoner } from "../../services/reasoner/src/service";
+// JOB 3570: die Grundfreigabe im Aufbau — nur in N3 und N4, den beiden Fällen, die die ganze Kette
+// über den Dienst fahren. Die Note trägt dort die BEGRÜNDUNG DES ANBIETERS; ohne Freigabe gäbe es
+// keinen Anbieteraufruf, keine Fremdmeldung und damit nichts zu tilgen.
+import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 
 // Der Schlüsselbund wird nie befragt (der Schlüssel steht in der Env) — beide Zugriffe sind
 // trotzdem stillgelegt, damit der Lauf auf jedem Rechner gleich ist.
@@ -357,7 +361,9 @@ describe("JOB 3122 · die Kette hinter der Meldung bleibt intakt", () => {
     if (!client) {
       throw new Error("Kein Cloud-Client aus der Env — die Probe misst dann gar nichts.");
     }
-    const ergebnis = await new Reasoner(new ModelProvider(client)).extract(
+    const reasoner = new Reasoner(new ModelProvider(client));
+    await erteileKiFreigabe(reasoner);
+    const ergebnis = await reasoner.extract(
       "Protokoll: Dosierpumpe P2 alle 200 Betriebsstunden mit Fett Typ Z schmieren.",
       "de",
     );
@@ -386,7 +392,9 @@ describe("JOB 3122 · die Kette hinter der Meldung bleibt intakt", () => {
       if (!client) {
         throw new Error("Kein Cloud-Client aus der Env — die Probe misst dann gar nichts.");
       }
-      const ergebnis = await new Reasoner(new ModelProvider(client)).extract(
+      const reasoner = new Reasoner(new ModelProvider(client));
+      await erteileKiFreigabe(reasoner);
+      const ergebnis = await reasoner.extract(
         "Protokoll: Dosierpumpe P2 alle 200 Betriebsstunden mit Fett Typ Z schmieren.",
         "de",
       );

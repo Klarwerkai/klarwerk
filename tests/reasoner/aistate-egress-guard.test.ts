@@ -13,6 +13,10 @@ import {
   createCappedLocalClientFromEnv,
   isConfirmedLocalOrigin,
 } from "../../services/reasoner";
+// JOB 3570: die Grundfreigabe im Aufbau — nur im letzten Fall, der einen CLOUD-Primary verdrahtet.
+// Die übrigen Fälle bauen entweder gar keinen Reasoner oder nur den lokalen Secondary; dort gibt
+// es keinen öffentlichen Anbieter, für den eine Freigabe zu erteilen wäre.
+import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 
 const DUP_JSON =
   '{"beziehung":"verschieden","gemeinsame_aussagen":[],"nur_in_a":"","nur_in_b":"","empfehlung":"getrennt_lassen","confidence":0.9,"begruendung":"ok"}';
@@ -149,6 +153,9 @@ describe("V1: das ECHTE Paar-Bit reist bis ModelClient.complete (kein hartes fal
     };
     const cloud = cappedModelClient(raw, { rejectsConfidential: true });
     const reasoner = new Reasoner(new ModelProvider(cloud));
+    // SPERRFALL MIT GRUNDFREIGABE: `completes` bleibt bei 0, weil das Paar VERTRAULICH ist — nicht
+    // weil die Adminfreigabe fehlte. Die Freigabe für VERTRAULICHES bleibt ungesetzt.
+    await erteileKiFreigabe(reasoner);
     const out = await reasoner.judgeDuplicateOutcome("A", "B", "de", true);
     expect(completes).toBe(0);
     expect(out).toEqual({ verdict: null, failure: "confidential" });

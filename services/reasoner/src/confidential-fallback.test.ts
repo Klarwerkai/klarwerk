@@ -3,6 +3,11 @@ import { ModelProvider } from "./provider-model";
 import type { ModelClient } from "./provider-model";
 import type { ReasonerPolicyRepo } from "./reasoner-policy";
 import { Reasoner } from "./service";
+// JOB 3570: die Grundfreigabe im Aufbau. Die Datei unterscheidet `confidential` von `no-model`,
+// `model-error` und `model-timeout` — jede dieser Ursachen setzt voraus, dass die Cloud ERLAUBT
+// war und nur an der Einstufung bzw. der Zuordnung scheiterte. Die drei Fälle ohne Modell
+// (`new Reasoner()`) bekommen keine Freigabe: dort ist kein öffentlicher Anbieter verdrahtet.
+import { erteileKiFreigabe, mitKiFreigabe } from "./testhelfer-ki-freigabe";
 import type { ReasonerTaskConfig } from "./types";
 
 // WP-SHIP9-S2 (bens Folgeschnitt B4): die in Slice 1 für groupCandidates etablierte Ursachen-
@@ -60,6 +65,9 @@ describe("WP-SHIP9-S2: structure — confidential-Harmonisierung", () => {
   it("vertraulich + Cloud konfiguriert (auto) → fallbackReason confidential, Cloud-Spy 0", async () => {
     const { client, calls } = cloudSpyClient();
     const reasoner = new Reasoner(new ModelProvider(client));
+    // SPERRFALL MIT GRUNDFREIGABE: `calls()` bleibt 0 wegen der EINSTUFUNG, nicht wegen einer
+    // fehlenden Adminfreigabe. Die Freigabe für VERTRAULICHES bleibt in allen Fällen dieser Datei ungesetzt.
+    await erteileKiFreigabe(reasoner);
     const res = await reasoner.structure("Geheimer Text.", "de", true);
     expect(res.demo).toBe(true);
     expect(res.fallbackReason).toBe("confidential");
@@ -69,6 +77,7 @@ describe("WP-SHIP9-S2: structure — confidential-Harmonisierung", () => {
   it("nicht vertraulich + Cloud konfiguriert → echtes Modell-Ergebnis (kein Fallback)", async () => {
     const { client } = cloudSpyClient();
     const reasoner = new Reasoner(new ModelProvider(client));
+    await erteileKiFreigabe(reasoner);
     const res = await reasoner.structure("Öffentlicher Text.", "de", false);
     expect(res.demo).toBe(false);
     expect(res.fallbackReason).toBeUndefined();
@@ -77,7 +86,9 @@ describe("WP-SHIP9-S2: structure — confidential-Harmonisierung", () => {
   it("deterministisch gestellt + vertraulich → no-model, NICHT confidential", async () => {
     const { client } = cloudSpyClient();
     const reasoner = new Reasoner(new ModelProvider(client));
-    await reasoner.setTaskConfig({ global: "auto", perTask: { structure: "deterministic" } });
+    await reasoner.setTaskConfig(
+      mitKiFreigabe({ global: "auto", perTask: { structure: "deterministic" } }),
+    );
     const res = await reasoner.structure("Geheimer Text.", "de", true);
     expect(res.fallbackReason).toBe("no-model");
   });
@@ -85,7 +96,9 @@ describe("WP-SHIP9-S2: structure — confidential-Harmonisierung", () => {
   it("local-Policy ohne lokales Modell + vertraulich → no-model, NICHT confidential", async () => {
     const { client } = cloudSpyClient();
     const reasoner = new Reasoner(new ModelProvider(client));
-    await reasoner.setTaskConfig({ global: "auto", perTask: { structure: "local" } });
+    await reasoner.setTaskConfig(
+      mitKiFreigabe({ global: "auto", perTask: { structure: "local" } }),
+    );
     const res = await reasoner.structure("Geheimer Text.", "de", true);
     expect(res.fallbackReason).toBe("no-model");
   });
@@ -102,6 +115,9 @@ describe("WP-SHIP9-S2: structure — confidential-Harmonisierung", () => {
     );
     const loaded = await reasoner.loadPersistedPolicy();
     expect(loaded.source).toBe("load-error");
+    // NACH dem Laden: `loadPersistedPolicy` schreibt die wirksame Zuordnung neu, eine vorher
+    // gesetzte Freigabe wäre wirkungslos. So bleibt die Ursache die fail-closed Policy.
+    await erteileKiFreigabe(reasoner);
     const res = await reasoner.structure("Geheimer Text.", "de", true);
     expect(res.fallbackReason).toBe("no-model");
   });
@@ -115,6 +131,7 @@ describe("WP-SHIP9-S2: structure — confidential-Harmonisierung", () => {
       undefined,
       new ModelProvider(throwingClient("Zeitlimit überschritten")),
     );
+    await erteileKiFreigabe(reasoner);
     const res = await reasoner.structure("Geheimer Text.", "de", true);
     expect(res.fallbackReason).toBe("model-timeout");
     expect(calls()).toBe(0); // Cloud bleibt trotz lokalem Versuch aussen vor
@@ -129,6 +146,7 @@ describe("WP-SHIP9-S2: structure — confidential-Harmonisierung", () => {
       undefined,
       new ModelProvider(throwingClient("Modell-API antwortete mit 500")),
     );
+    await erteileKiFreigabe(reasoner);
     const res = await reasoner.structure("Geheimer Text.", "de", true);
     expect(res.fallbackReason).toBe("model-error");
   });
@@ -146,6 +164,8 @@ describe("WP-SHIP9-S2: describeImage — confidential-Harmonisierung", () => {
   it("vertraulich + Cloud-Vision konfiguriert → confidential, Vision-Spy 0", async () => {
     const { client, calls } = cloudSpyClient();
     const reasoner = new Reasoner(new ModelProvider(client));
+    // SPERRFALL MIT GRUNDFREIGABE, wie oben bei `structure`.
+    await erteileKiFreigabe(reasoner);
     const res = await reasoner.describeImage(IMG, "de", true);
     expect(res.demo).toBe(true);
     expect(res.text).toBeNull();
@@ -168,6 +188,7 @@ describe("WP-SHIP9-S2: describeImage — confidential-Harmonisierung", () => {
       undefined,
       new ModelProvider(throwingClient("Modell-API antwortete mit 500")),
     );
+    await erteileKiFreigabe(reasoner);
     const res = await reasoner.describeImage(IMG, "de", true);
     expect(res.fallbackReason).toBe("model-error");
     expect(calls()).toBe(0);
@@ -176,7 +197,7 @@ describe("WP-SHIP9-S2: describeImage — confidential-Harmonisierung", () => {
   it("deterministisch + vertraulich → no-model, NICHT confidential", async () => {
     const { client } = cloudSpyClient();
     const reasoner = new Reasoner(new ModelProvider(client), undefined, undefined, undefined);
-    await reasoner.setTaskConfig({ global: "deterministic", perTask: {} });
+    await reasoner.setTaskConfig(mitKiFreigabe({ global: "deterministic", perTask: {} }));
     const res = await reasoner.describeImage(IMG, "de", true);
     expect(res.fallbackReason).toBe("no-model");
   });
@@ -186,6 +207,8 @@ describe("WP-SHIP9-S2: deriveImportCriteria — confidential-Harmonisierung", ()
   it("vertraulich + Cloud konfiguriert (auto) → confidential, completeRaw-Spy 0", async () => {
     const { client, calls } = cloudSpyClient();
     const reasoner = new Reasoner(new ModelProvider(client));
+    // SPERRFALL MIT GRUNDFREIGABE, wie oben bei `structure`.
+    await erteileKiFreigabe(reasoner);
     const res = await reasoner.deriveImportCriteria("finde alles zu Pumpen", "de", true);
     expect(res.criteria).toBeNull();
     expect(res.fallbackReason).toBe("confidential");
@@ -199,6 +222,7 @@ describe("WP-SHIP9-S2: deriveImportCriteria — confidential-Harmonisierung", ()
         '{"themes":["Pumpen"],"keywords":[],"authors":[],"yearFrom":null,"yearTo":null}',
     };
     const reasoner = new Reasoner(new ModelProvider(client));
+    await erteileKiFreigabe(reasoner);
     const res = await reasoner.deriveImportCriteria("finde alles zu Pumpen", "de", false);
     expect(res.fallbackReason).toBeNull();
     expect(res.criteria).not.toBeNull();
@@ -213,7 +237,9 @@ describe("WP-SHIP9-S2: deriveImportCriteria — confidential-Harmonisierung", ()
   it("deterministisch (select) + vertraulich → no-model, NICHT confidential", async () => {
     const { client } = cloudSpyClient();
     const reasoner = new Reasoner(new ModelProvider(client));
-    await reasoner.setTaskConfig({ global: "auto", perTask: { select: "deterministic" } });
+    await reasoner.setTaskConfig(
+      mitKiFreigabe({ global: "auto", perTask: { select: "deterministic" } }),
+    );
     const res = await reasoner.deriveImportCriteria("egal", "de", true);
     expect(res.fallbackReason).toBe("no-model");
   });
@@ -221,6 +247,7 @@ describe("WP-SHIP9-S2: deriveImportCriteria — confidential-Harmonisierung", ()
   it("leerer Prompt → kein Ausfall (fallbackReason null), auch vertraulich", async () => {
     const { client } = cloudSpyClient();
     const reasoner = new Reasoner(new ModelProvider(client));
+    await erteileKiFreigabe(reasoner);
     const res = await reasoner.deriveImportCriteria("   ", "de", true);
     expect(res.fallbackReason).toBeNull();
     expect(res.criteria).toBeNull();
@@ -237,6 +264,7 @@ describe("WP-SHIP9-S2: deriveImportCriteria — confidential-Harmonisierung", ()
       failingPolicyRepo,
     );
     await reasoner.loadPersistedPolicy();
+    await erteileKiFreigabe(reasoner);
     const res = await reasoner.deriveImportCriteria("egal", "de", true);
     expect(res.fallbackReason).toBe("no-model");
   });

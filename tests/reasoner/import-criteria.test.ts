@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { ModelProvider, Reasoner } from "../../services/reasoner";
 import type { ModelClient } from "../../services/reasoner/src/provider-model";
+// JOB 3570: die Grundfreigabe im Aufbau. Jeder Fall unten pinnt eine URSACHE (`model-error`,
+// `confidential`, `no-model`, „nichts gefragt"); ohne Freigabe wäre die Ursache in allen Fällen
+// dieselbe — die fehlende Erlaubnis —, und die Unterscheidung, um die es hier geht, verschwände.
+import {
+  erteileKiFreigabe,
+  mitKiFreigabe,
+} from "../../services/reasoner/src/testhelfer-ki-freigabe";
 
 // IC-3 (Import-Cockpit): der Reasoner leitet aus einem Freitext-Prompt Auswahl-Kriterien ab — NUR
 // über ein echtes Modell. WP-SAMMEL20-FIX (bens Fix 1+2): das Ergebnis ist jetzt EHRLICH
@@ -18,6 +25,7 @@ describe("IC-3: Reasoner.deriveImportCriteria (ehrlicher Ausfall-Vertrag)", () =
         client('Hier ist die Auswahl: {"themes":["wartung"],"keywords":["e5"]} — fertig.'),
       ),
     );
+    await erteileKiFreigabe(r);
     expect(await r.deriveImportCriteria("alles zu Wartung und E5", "de", false)).toEqual({
       criteria: { themes: ["wartung"], keywords: ["e5"] },
       fallbackReason: null,
@@ -42,6 +50,7 @@ describe("IC-3: Reasoner.deriveImportCriteria (ehrlicher Ausfall-Vertrag)", () =
       },
     };
     const r = new Reasoner(new ModelProvider(counting));
+    await erteileKiFreigabe(r);
     expect(await r.deriveImportCriteria("   ", "de", false)).toEqual({
       criteria: null,
       fallbackReason: null,
@@ -51,6 +60,7 @@ describe("IC-3: Reasoner.deriveImportCriteria (ehrlicher Ausfall-Vertrag)", () =
 
   it("Modell ohne JSON → ehrlich model-error (kein Raten)", async () => {
     const r = new Reasoner(new ModelProvider(client("Ich bin mir nicht sicher.")));
+    await erteileKiFreigabe(r);
     expect(await r.deriveImportCriteria("x", "de", false)).toEqual({
       criteria: null,
       fallbackReason: "model-error",
@@ -65,6 +75,7 @@ describe("IC-3: Reasoner.deriveImportCriteria (ehrlicher Ausfall-Vertrag)", () =
       },
     };
     const r = new Reasoner(new ModelProvider(boom));
+    await erteileKiFreigabe(r);
     expect(await r.deriveImportCriteria("x", "de", false)).toEqual({
       criteria: null,
       fallbackReason: "model-error",
@@ -84,6 +95,9 @@ describe("IC-3: Reasoner.deriveImportCriteria (ehrlicher Ausfall-Vertrag)", () =
       },
     };
     const r = new Reasoner(new ModelProvider(spy));
+    // SPERRFALL MIT GRUNDFREIGABE: die Null unten liegt an der VERTRAULICHKEIT, nicht an einer
+    // fehlenden Adminfreigabe — die Freigabe für VERTRAULICHES bleibt ungesetzt.
+    await erteileKiFreigabe(r);
     const result = await r.deriveImportCriteria("alles Vertrauliche", "de", true);
     expect(cloudCalls).toBe(0); // der Satz verlässt die Maschine NIE Richtung Cloud
     expect(result).toEqual({ criteria: null, fallbackReason: "confidential" });
@@ -105,7 +119,7 @@ describe("IC-3: Reasoner.deriveImportCriteria (ehrlicher Ausfall-Vertrag)", () =
       },
     };
     const r = new Reasoner(new ModelProvider(spy));
-    await r.setTaskConfig({ global: "auto", perTask: { select: "deterministic" } });
+    await r.setTaskConfig(mitKiFreigabe({ global: "auto", perTask: { select: "deterministic" } }));
     const result = await r.deriveImportCriteria("egal", "de", true);
     expect(cloudCalls).toBe(0);
     expect(result.fallbackReason).toBe("no-model");

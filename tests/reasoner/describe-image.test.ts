@@ -14,6 +14,10 @@ import {
 } from "../../services/reasoner";
 import type { ModelClient } from "../../services/reasoner";
 import { parseImageDataUrl } from "../../services/reasoner/src/model-client";
+// JOB 3570: die Grundfreigabe im Aufbau. Der Vision-Weg geht durch denselben Chokepoint wie der
+// Textweg; ohne Freigabe gäbe es keinen Modelltext, keinen Deckel und keine unterschiedene
+// Ursache mehr — nur noch „gesperrt". Die reinen Bausteinfälle unten bekommen sie nicht.
+import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 
 const PNG_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==";
 
@@ -32,7 +36,9 @@ describe("WP-BILD-1c: describeImage — ehrlicher Vorschlag, ehrlicher Fallback"
       complete: async () => "",
       completeVision: async () => "  Eine Kreiselpumpe mit blauem Gehäuse auf einem Prüfstand.  ",
     });
-    const res = await new Reasoner(provider).describeImage(PNG_URL, "de");
+    const reasoner = new Reasoner(provider);
+    await erteileKiFreigabe(reasoner);
+    const res = await reasoner.describeImage(PNG_URL, "de");
     expect(res.text).toBe("Eine Kreiselpumpe mit blauem Gehäuse auf einem Prüfstand.");
     expect(res.demo).toBe(false);
     expect(res.fallbackReason).toBeUndefined();
@@ -44,7 +50,9 @@ describe("WP-BILD-1c: describeImage — ehrlicher Vorschlag, ehrlicher Fallback"
       complete: async () => "",
       completeVision: async () => "x".repeat(2000),
     });
-    const res = await new Reasoner(provider).describeImage(PNG_URL, "de");
+    const reasoner = new Reasoner(provider);
+    await erteileKiFreigabe(reasoner);
+    const res = await reasoner.describeImage(PNG_URL, "de");
     expect(res.text?.length).toBe(MAX_IMAGE_DESCRIPTION_LENGTH);
   });
 
@@ -54,7 +62,9 @@ describe("WP-BILD-1c: describeImage — ehrlicher Vorschlag, ehrlicher Fallback"
       complete: async () => "",
       completeVision: async () => "   ",
     });
-    const res = await new Reasoner(provider).describeImage(PNG_URL, "de");
+    const reasoner = new Reasoner(provider);
+    await erteileKiFreigabe(reasoner);
+    const res = await reasoner.describeImage(PNG_URL, "de");
     expect(res.text).toBeNull();
     expect(res.demo).toBe(false);
   });
@@ -65,7 +75,9 @@ describe("WP-BILD-1c: describeImage — ehrlicher Vorschlag, ehrlicher Fallback"
       complete: async () => "nur Text",
       // KEIN completeVision — der Provider wirft ehrlich, die Kette fällt durch.
     });
-    const res = await new Reasoner(provider).describeImage(PNG_URL, "de");
+    const reasoner = new Reasoner(provider);
+    await erteileKiFreigabe(reasoner);
+    const res = await reasoner.describeImage(PNG_URL, "de");
     expect(res.text).toBeNull();
     expect(res.demo).toBe(true);
     expect(res.fallbackReason).toBe("model-error");
@@ -79,7 +91,9 @@ describe("WP-BILD-1c: describeImage — ehrlicher Vorschlag, ehrlicher Fallback"
         throw new ModelTimeoutError("Modell-API überschritt das Zeitlimit von 30000 ms", 30000);
       },
     });
-    const res = await new Reasoner(provider).describeImage(PNG_URL, "de");
+    const reasoner = new Reasoner(provider);
+    await erteileKiFreigabe(reasoner);
+    const res = await reasoner.describeImage(PNG_URL, "de");
     expect(res.text).toBeNull();
     expect(res.fallbackReason).toBe("model-timeout");
   });
@@ -92,7 +106,9 @@ describe("WP-BILD-1c: describeImage — ehrlicher Vorschlag, ehrlicher Fallback"
         throw new Error("Modell-API antwortete mit 529");
       },
     });
-    const res = await new Reasoner(provider).describeImage(PNG_URL, "de");
+    const reasoner = new Reasoner(provider);
+    await erteileKiFreigabe(reasoner);
+    const res = await reasoner.describeImage(PNG_URL, "de");
     expect(res.text).toBeNull();
     expect(res.fallbackReason).toBe("model-error");
   });
@@ -110,6 +126,7 @@ describe("WP-BILD-1c: describeImage — ehrlicher Vorschlag, ehrlicher Fallback"
       },
       recent: async () => runs,
     });
+    await erteileKiFreigabe(reasoner);
     await reasoner.describeImage(PNG_URL, "de");
     expect(runs.length).toBe(1);
     expect(runs[0]?.task).toBe("describe");
@@ -153,7 +170,9 @@ describe("WP-BILD-1f: Dokument-Kontext beim Vorschlag (Egress folgt dem Bild)", 
 
   it("öffentlicher Beitrag: der Kontext geht IM Vision-User-Prompt mit; withContext=true", async () => {
     const spy = visionSpy();
-    const res = await new Reasoner(new ModelProvider(spy.client)).describeImage(
+    const reasoner = new Reasoner(new ModelProvider(spy.client));
+    await erteileKiFreigabe(reasoner);
+    const res = await reasoner.describeImage(
       PNG_URL,
       "de",
       false,
@@ -166,11 +185,9 @@ describe("WP-BILD-1f: Dokument-Kontext beim Vorschlag (Egress folgt dem Bild)", 
 
   it("ohne Kontext bleibt der Prompt unverändert und withContext ist NICHT gesetzt", async () => {
     const spy = visionSpy();
-    const res = await new Reasoner(new ModelProvider(spy.client)).describeImage(
-      PNG_URL,
-      "de",
-      false,
-    );
+    const reasoner = new Reasoner(new ModelProvider(spy.client));
+    await erteileKiFreigabe(reasoner);
+    const res = await reasoner.describeImage(PNG_URL, "de", false);
     expect(res.withContext).toBeUndefined();
     expect(spy.userPrompts[0]).toBe("Beschreibe dieses Bild für die Fußnote.");
   });
@@ -179,7 +196,9 @@ describe("WP-BILD-1f: Dokument-Kontext beim Vorschlag (Egress folgt dem Bild)", 
     const spy = visionSpy();
     // Ziffer als Füllzeichen: kommt im Base-/Trenn-Prompt nicht vor, deshalb zählt sie NUR den Kontext.
     const huge = "9".repeat(MAX_IMAGE_CONTEXT_LENGTH + 500);
-    await new Reasoner(new ModelProvider(spy.client)).describeImage(PNG_URL, "de", false, huge);
+    const reasoner = new Reasoner(new ModelProvider(spy.client));
+    await erteileKiFreigabe(reasoner);
+    await reasoner.describeImage(PNG_URL, "de", false, huge);
     const contextChars = (spy.userPrompts[0]?.match(/9/g) ?? []).length;
     expect(contextChars).toBe(MAX_IMAGE_CONTEXT_LENGTH);
   });
@@ -188,6 +207,9 @@ describe("WP-BILD-1f: Dokument-Kontext beim Vorschlag (Egress folgt dem Bild)", 
     const spy = visionSpy();
     const capped = cappedModelClient(spy.client, { rejectsConfidential: true });
     const reasoner = new Reasoner(new ModelProvider(capped));
+    // SPERRFALL MIT GRUNDFREIGABE: der Vision-Spy bleibt bei 0, weil der Beitrag VERTRAULICH ist
+    // — nicht weil die Adminfreigabe fehlte. Die Freigabe für VERTRAULICHES bleibt ungesetzt.
+    await erteileKiFreigabe(reasoner);
     const res = await reasoner.describeImage(
       PNG_URL,
       "de",

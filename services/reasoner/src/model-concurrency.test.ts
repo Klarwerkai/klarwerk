@@ -9,6 +9,7 @@ import {
 } from "./model-concurrency";
 import { type ModelClient, ModelProvider } from "./provider-model";
 import { Reasoner } from "./service";
+import { erteileKiFreigabe } from "./testhelfer-ki-freigabe";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -171,11 +172,15 @@ describe("SCRUM-498 B2: Reasoner reicht ModelCapacityError durch (kein Fallback/
 
   it("judgeDuplicate → ModelCapacityError (nicht still null)", async () => {
     const reasoner = new Reasoner(new ModelProvider(throwing));
+    // JOB 3570: die Grundfreigabe im Aufbau. Der Fall messt, dass der Auslastungsfehler des
+    // MODELLS durchreicht — ohne Freigabe gäbe es keinen Modellaufruf und damit keinen Fehler.
+    await erteileKiFreigabe(reasoner);
     await expect(reasoner.judgeDuplicate("a", "b")).rejects.toBeInstanceOf(ModelCapacityError);
   });
 
   it("answer → ModelCapacityError (nicht deterministischer Fallback)", async () => {
     const reasoner = new Reasoner(new ModelProvider(throwing));
+    await erteileKiFreigabe(reasoner);
     // mega53 A1: „Wie entlüfte ich die Pumpe?" teilte mit dem KO nur das Wort „Pumpe" —
     // „entlüfte" trifft „entlüften" literal nicht. Seit der absoluten Mindestsubstanz wäre das
     // eine Wissenslücke und das Modell würde gar nicht erst gefragt; dieser Test misst aber die
@@ -195,6 +200,7 @@ describe("SCRUM-498 B2: Reasoner reicht ModelCapacityError durch (kein Fallback/
       },
     };
     const reasoner = new Reasoner(new ModelProvider(client));
+    await erteileKiFreigabe(reasoner);
     await reasoner.judgeDuplicate("a", "b").catch(() => undefined);
     await reasoner.answer("Pumpe nach dem Anfahren entlüften?", KNOWLEDGE).catch(() => undefined);
     expect(seen.length).toBeGreaterThanOrEqual(2);

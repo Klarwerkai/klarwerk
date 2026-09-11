@@ -8,6 +8,13 @@ import {
   openAiCompatibleClient,
 } from "../../services/reasoner/src/model-client";
 import type { ModelClient } from "../../services/reasoner/src/provider-model";
+// JOB 3570: die Grundfreigabe im Aufbau — dieselbe, die ein Administrator im Betrieb setzt. Ohne
+// sie sperrt der Kern (JOB 3549) jeden Weg zur öffentlichen KI, und jeder Fall unten prüfte nur
+// noch diese Sperre statt der Kette Cloud → lokal → Ersatz.
+import {
+  erteileKiFreigabe,
+  mitKiFreigabe,
+} from "../../services/reasoner/src/testhelfer-ki-freigabe";
 
 // SCRUM-424 (Pedi 03.07., VIP-Vorbereitung): zwei KI-Backends parallel — Claude-Cloud UND
 // der eigene lokale LLM (OpenAI-kompatibel, z. B. vLLM/Qwen). Standard „auto": Cloud → lokal
@@ -33,6 +40,7 @@ describe("SCRUM-424: zwei KI-Backends (Cloud + lokaler LLM)", () => {
       undefined,
       new ModelProvider(local("LOCAL")),
     );
+    await erteileKiFreigabe(r);
     expect((await r.assistText("roh", "de")).text).toBe("CLOUD");
   });
 
@@ -44,6 +52,7 @@ describe("SCRUM-424: zwei KI-Backends (Cloud + lokaler LLM)", () => {
       undefined,
       new ModelProvider(local("LOCAL")),
     );
+    await erteileKiFreigabe(r);
     const res = await r.assistText("roh", "de");
     expect(res.text).toBe("LOCAL");
     expect(res.demo).toBe(false); // echtes Modell, kein deterministischer Ersatz
@@ -62,6 +71,7 @@ describe("SCRUM-424: zwei KI-Backends (Cloud + lokaler LLM)", () => {
       undefined,
       new ModelProvider({ name: "local:x", complete: async () => boom() }),
     );
+    await erteileKiFreigabe(r);
     const res = await r.structure("nur roher Text", "de");
     expect(res.demo).toBe(true); // deterministischer Ersatz hat geantwortet
   });
@@ -74,12 +84,12 @@ describe("SCRUM-424: zwei KI-Backends (Cloud + lokaler LLM)", () => {
       undefined,
       new ModelProvider(local("LOCAL")),
     );
-    await r.setTaskConfig({ global: "auto", perTask: { assist: "local" } });
+    await r.setTaskConfig(mitKiFreigabe({ global: "auto", perTask: { assist: "local" } }));
     expect((await r.assistText("roh", "de")).text).toBe("LOCAL");
     expect(r.configStatus().effectiveProvider.assist).toBe("local");
   });
 
-  it("configStatus weist den lokalen LLM ehrlich aus + welche KI je Aufgabe zuerst arbeitet", () => {
+  it("configStatus weist den lokalen LLM ehrlich aus + welche KI je Aufgabe zuerst arbeitet", async () => {
     const r = new Reasoner(
       new ModelProvider(cloud("CLOUD")),
       undefined,
@@ -87,6 +97,9 @@ describe("SCRUM-424: zwei KI-Backends (Cloud + lokaler LLM)", () => {
       undefined,
       new ModelProvider(local("LOCAL")),
     );
+    // Die Freigabe steht hier NICHT wegen `cloudConfigured` (das ist Verdrahtung), sondern wegen
+    // `effectiveProvider.structure` — die Aussage, WER zuerst arbeitet, hängt an der Erlaubnis.
+    await erteileKiFreigabe(r);
     const cfg = r.configStatus();
     expect(cfg.cloudConfigured).toBe(true);
     expect(cfg.localConfigured).toBe(true);

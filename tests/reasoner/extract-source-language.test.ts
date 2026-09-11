@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 import type { ModelClient } from "../../services/reasoner/src/provider-model";
 import { ModelProvider } from "../../services/reasoner/src/provider-model";
 import { Reasoner } from "../../services/reasoner/src/service";
+// JOB 3570: die Grundfreigabe im Aufbau — nur im Durchstich-Fall, der wirklich über den Dienst
+// geht. Die vier Prompt-Fälle prüfen `ModelProvider` direkt; dort gibt es keine Zuordnung und
+// damit keine Stelle, an der eine Freigabe wirken könnte.
+import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 
 // SCRUM-451 (Pedi 05.07.): Ergebnis-Sprache der Dokument-Extraktion — Systemsprache (Default)
 // oder Originalsprache des Dokuments. Getestet: der Prompt bekommt die Nicht-übersetzen-Regel
@@ -62,7 +66,9 @@ describe("SCRUM-451: Extraktion in Originalsprache des Dokuments", () => {
 
   it("Reasoner reicht den Schalter bis zum Provider durch", async () => {
     const { client, systems } = capturingClient();
-    await new Reasoner(new ModelProvider(client)).extract(DOC, "de", undefined, true);
+    const reasoner = new Reasoner(new ModelProvider(client));
+    await erteileKiFreigabe(reasoner);
+    await reasoner.extract(DOC, "de", undefined, true);
     expect(systems.length).toBeGreaterThan(0);
     expect(systems[0]).toContain("SPRACHE DES DOKUMENTS");
   });

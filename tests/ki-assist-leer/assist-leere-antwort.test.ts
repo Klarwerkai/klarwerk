@@ -27,6 +27,11 @@ import {
   cappedModelClient,
 } from "../../services/reasoner";
 import { ModelEmptyResponseError, ModelHttpError } from "../../services/reasoner/src/model-errors";
+// JOB 3570: die Grundfreigabe im Aufbau. Die Faelle unten brauchen ein Modell, das WIRKLICH
+// gefragt wird — die Meldung nennt Anbieter, Modell und Grund des Versuchs. Ohne Freigabe gaebe es
+// keinen Versuch und keinen Grund. B3 (ganz ohne Modell) und die reinen Provider-Faelle A1-A4
+// bekommen keine: dort ist gar kein oeffentlicher Anbieter verdrahtet.
+import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 import type { AssistResult, ReasonerLocale } from "../../services/reasoner/src/types";
 
 const ROHTEXT = "die pumpe wurde am montag notirt und die anzahl stimmt nicht";
@@ -93,6 +98,7 @@ describe("JOB 3276 B · der deterministische Ersatz reicht kein Original als Vor
   // Vorschlag, sondern eine Meldung.
   it("B1 Modell leer + deterministischer Ersatz → ehrliche Meldung statt geglättetem Original", async () => {
     const reasoner = new Reasoner(new ModelProvider(client("")));
+    await erteileKiFreigabe(reasoner);
 
     const fehler = await reasoner.assistText(ROHTEXT, "de").catch((e: unknown) => e);
     expect(fehler).toBeInstanceOf(Error);
@@ -106,6 +112,7 @@ describe("JOB 3276 B · der deterministische Ersatz reicht kein Original als Vor
 
   it("B2 dieselbe Lage auf Englisch — die Vorführung am 11.09. läuft auf Englisch", async () => {
     const reasoner = new Reasoner(new ModelProvider(client("")));
+    await erteileKiFreigabe(reasoner);
 
     const fehler = await reasoner.assistText(ROHTEXT, "en").catch((e: unknown) => e);
     expect((fehler as Error).message).toContain("The AI returned no answer");
@@ -127,6 +134,7 @@ describe("JOB 3276 B · der deterministische Ersatz reicht kein Original als Vor
     const vorschlag = "Die Pumpe wurde am Montag notiert; die Anzahl stimmt nicht.";
     echterErsatz.assistText = async (): Promise<AssistResult> => ({ text: vorschlag, demo: true });
     const reasoner = new Reasoner(new ModelProvider(client("")), echterErsatz);
+    await erteileKiFreigabe(reasoner);
 
     const ergebnis = await reasoner.assistText(ROHTEXT, "de");
     expect(ergebnis.demo).toBe(true);
@@ -145,6 +153,7 @@ describe("JOB 3276 B · der deterministische Ersatz reicht kein Original als Vor
       demo: true,
     });
     const reasoner = new Reasoner(new ModelProvider(client("")), kosmetischerErsatz);
+    await erteileKiFreigabe(reasoner);
 
     await expect(reasoner.assistText(ROHTEXT, "de")).rejects.toThrow(
       /Die KI hat keine Antwort geliefert/,
@@ -156,6 +165,7 @@ describe("JOB 3276 C · der Fehlschlag steht im Laufprotokoll (Anbieter, Modell,
   it("C1 der assist-Lauf wird als Fehler mit Anbieter, Modell und Grund geschrieben", async () => {
     const repo = new InMemoryModelRunRepo();
     const reasoner = new Reasoner(new ModelProvider(client("")), new DeterministicProvider(), repo);
+    await erteileKiFreigabe(reasoner);
 
     await reasoner.assistText(ROHTEXT, "de").catch(() => undefined);
 
@@ -181,6 +191,7 @@ describe("JOB 3276 C · der Fehlschlag steht im Laufprotokoll (Anbieter, Modell,
       new DeterministicProvider(),
       repo,
     );
+    await erteileKiFreigabe(reasoner);
 
     const ergebnis = await reasoner.interview(["Bei Überdruck Ventil X schließen."], "de");
     expect(ergebnis.demo).toBe(true);
@@ -204,6 +215,7 @@ describe("JOB 3276 C · der Fehlschlag steht im Laufprotokoll (Anbieter, Modell,
       new DeterministicProvider(),
       repo,
     );
+    await erteileKiFreigabe(reasoner);
 
     await reasoner.assistText(ROHTEXT, "de");
 
@@ -221,6 +233,7 @@ describe("JOB 3276 D · die Meldung ist lokalisiert und sagt, was gilt", () => {
   for (const [locale, muster] of faelle) {
     it(`D-${locale} die Meldung beginnt mit dem festen Satz und nennt danach den Grund`, async () => {
       const reasoner = new Reasoner(new ModelProvider(client("")));
+      await erteileKiFreigabe(reasoner);
 
       const fehler = await reasoner.assistText(ROHTEXT, locale).catch((e: unknown) => e);
       expect((fehler as Error).message).toMatch(muster);

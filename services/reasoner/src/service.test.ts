@@ -9,6 +9,12 @@ import {
   Reasoner,
   ReasonerPolicyLockedError,
 } from "./service";
+// JOB 3570: die Grundfreigabe im Aufbau — überall dort, wo ein ÖFFENTLICHER Anbieter verdrahtet
+// ist und der Fall etwas über seine tatsächliche Benutzung sagt (Modellantwort, Fallback-Grund,
+// Protokolleintrag, wirksame Zuordnung). Ausdrücklich NICHT dort, wo gar kein Anbieter steht
+// (`new Reasoner()`), wo nur die Verdrahtung ausgelesen wird (`configStatus`) und wo der
+// Schreibweg selbst der Gegenstand ist (Persistenz, ENV-Sperre, abgewiesene Zuordnung).
+import { erteileKiFreigabe, mitKiFreigabe } from "./testhelfer-ki-freigabe";
 import type { ReasonerTaskConfig, ReasonerTaskConfigEingabe } from "./types";
 import type {
   AnswerResult,
@@ -183,6 +189,7 @@ describe("Reasoner", () => {
       select: () => [],
     };
     const reasoner = new Reasoner(fakeModel);
+    await erteileKiFreigabe(reasoner);
     expect(reasoner.status()).toEqual({ active: true, provider: "fake-model", mode: "model" });
     // FR-RSN-02: Fachlogik unverändert, Verhalten kommt vom getauschten Provider.
     expect((await reasoner.answer("egal", KOS)).answer).toBe("Modell-Antwort");
@@ -238,6 +245,7 @@ describe("Reasoner", () => {
       select: () => [],
     };
     const reasoner = new Reasoner(recordingModel);
+    await erteileKiFreigabe(reasoner);
     await reasoner.assistText("text", "de", "Formuliere klarer");
     expect(seen).toBe("Formuliere klarer");
     // Ohne Instruction wird auch keine durchgereicht (undefined).
@@ -269,6 +277,7 @@ describe("Reasoner", () => {
       },
     };
     const reasoner = new Reasoner(offlineModel);
+    await erteileKiFreigabe(reasoner);
     expect(reasoner.status().active).toBe(false);
     expect((await reasoner.answer("Überdruck Ventil", KOS)).demo).toBe(true);
   });
@@ -293,6 +302,7 @@ describe("Reasoner", () => {
       select: () => [],
     };
     const reasoner = new Reasoner(flakyModel);
+    await erteileKiFreigabe(reasoner);
     // Trotz verfügbarem (aber fehlerhaftem) Modell liefert der Fallback ein Ergebnis.
     const res = await reasoner.answer("Überdruck Ventil", KOS);
     expect(res.answered).toBe(true);
@@ -348,6 +358,7 @@ describe("Reasoner", () => {
       select: () => [],
     };
     const reasoner = new Reasoner(phrasingModel);
+    await erteileKiFreigabe(reasoner);
     const res = await reasoner.interview(["Kernaussage"]);
     expect(res.demo).toBe(false);
     expect(res.question).toBe("Modell-Frage?");
@@ -473,6 +484,7 @@ describe("SCRUM-164: ModelRun-Protokoll", () => {
   it("erfolgreicher structure-Run erzeugt einen Record (success, kein Fallback, kein Demo)", async () => {
     const runs = new InMemoryModelRunRepo();
     const reasoner = new Reasoner(okModel(), undefined, runs);
+    await erteileKiFreigabe(reasoner);
     await reasoner.structure("Rohtext.", "de");
     const recent = await runs.recent();
     expect(recent).toHaveLength(1);
@@ -495,6 +507,7 @@ describe("SCRUM-164: ModelRun-Protokoll", () => {
     const runs = new InMemoryModelRunRepo();
     // Default-Fallback = DeterministicProvider (liefert demo:true).
     const reasoner = new Reasoner(throwingProvider("flaky-model"), undefined, runs);
+    await erteileKiFreigabe(reasoner);
     await reasoner.structure("Rohtext.", "de");
     const recent = await runs.recent();
     expect(recent[0]).toMatchObject({
@@ -510,6 +523,7 @@ describe("SCRUM-164: ModelRun-Protokoll", () => {
   it("interview mit Locale schreibt die Locale in den Record", async () => {
     const runs = new InMemoryModelRunRepo();
     const reasoner = new Reasoner(okModel(), undefined, runs);
+    await erteileKiFreigabe(reasoner);
     await reasoner.interview([], "en");
     const recent = await runs.recent();
     expect(recent[0]).toMatchObject({ task: "interview", locale: "en", status: "success" });
@@ -522,6 +536,7 @@ describe("SCRUM-164: ModelRun-Protokoll", () => {
       throwingProvider("broken-fallback"),
       runs,
     );
+    await erteileKiFreigabe(reasoner);
     const secret = "GEHEIMER ROHTEXT 4711";
     await expect(reasoner.structure(secret, "de")).rejects.toThrow();
     const recent = await runs.recent();
@@ -532,6 +547,7 @@ describe("SCRUM-164: ModelRun-Protokoll", () => {
 
   it("ohne ModelRun-Repo bleibt der Reasoner funktionsfähig (No-op)", async () => {
     const reasoner = new Reasoner(okModel());
+    await erteileKiFreigabe(reasoner);
     const res = await reasoner.structure("Rohtext.", "de");
     expect(res.title).toBe("T");
   });
@@ -540,7 +556,9 @@ describe("SCRUM-164: ModelRun-Protokoll", () => {
 describe("KI-Verwaltung v1: Task-Zuordnung (02.07.2026)", () => {
   it("deterministic je Aufgabe erzwingt den Fallback trotz verfügbarem Modell", async () => {
     const r = new Reasoner(okModel());
-    await r.setTaskConfig({ global: "auto", perTask: { structure: "deterministic" } });
+    await r.setTaskConfig(
+      mitKiFreigabe({ global: "auto", perTask: { structure: "deterministic" } }),
+    );
     const cfg = r.configStatus();
     expect(cfg.effective.structure).toBe("deterministic");
     expect(cfg.effective.assist).toBe("model");
@@ -550,7 +568,7 @@ describe("KI-Verwaltung v1: Task-Zuordnung (02.07.2026)", () => {
 
   it("global deterministic gilt für alle Aufgaben ohne Override", async () => {
     const r = new Reasoner(okModel());
-    await r.setTaskConfig({ global: "deterministic", perTask: {} });
+    await r.setTaskConfig(mitKiFreigabe({ global: "deterministic", perTask: {} }));
     for (const v of Object.values(r.configStatus().effective)) {
       expect(v).toBe("deterministic");
     }
@@ -861,6 +879,7 @@ describe("SCRUM-167: ModelRun-Protokoll für answer/select", () => {
   it("answer erzeugt einen Record (success, kein Demo bei Modell) ohne Frage-/Antworttext", async () => {
     const runs = new InMemoryModelRunRepo();
     const reasoner = new Reasoner(okModel(), undefined, runs);
+    await erteileKiFreigabe(reasoner);
     await reasoner.answer("Was tun bei Überdruck am Ventil?", KOS, "de");
     const recent = await runs.recent();
     const rec = recent.find((r) => r.task === "answer");
@@ -881,6 +900,7 @@ describe("SCRUM-167: ModelRun-Protokoll für answer/select", () => {
   it("answer-Fallback: primary scheitert → fallback:true, demo:true", async () => {
     const runs = new InMemoryModelRunRepo();
     const reasoner = new Reasoner(throwingProvider("flaky-model"), undefined, runs);
+    await erteileKiFreigabe(reasoner);
     await reasoner.answer("Frage?", KOS, "de");
     const rec = (await runs.recent()).find((r) => r.task === "answer");
     expect(rec).toMatchObject({ status: "success", fallback: true, demo: true });
@@ -985,6 +1005,7 @@ describe("SCRUM-502 Schicht 2: Vertraulichkeit routet an der Cloud vorbei", () =
     const cloud = recordingProvider("cloud", calls);
     const local = recordingProvider("local", calls);
     const reasoner = new Reasoner(cloud, new DeterministicProvider(), undefined, undefined, local);
+    await erteileKiFreigabe(reasoner);
 
     const res = await reasoner.structure("Geheimer Rohtext.", "de", true);
 
@@ -996,6 +1017,9 @@ describe("SCRUM-502 Schicht 2: Vertraulichkeit routet an der Cloud vorbei", () =
     const calls: string[] = [];
     const cloud = recordingProvider("cloud", calls);
     const reasoner = new Reasoner(cloud, new DeterministicProvider());
+    // SPERRFALL MIT GRUNDFREIGABE: die leere Aufrufliste liegt an der VERTRAULICHKEIT, nicht an
+    // einer fehlenden Adminfreigabe. Die Freigabe für VERTRAULICHES bleibt in dieser Datei überall ungesetzt.
+    await erteileKiFreigabe(reasoner);
 
     const res = await reasoner.structure("Geheimer Rohtext.", "de", true);
 
@@ -1007,6 +1031,7 @@ describe("SCRUM-502 Schicht 2: Vertraulichkeit routet an der Cloud vorbei", () =
     const calls: string[] = [];
     const cloud = recordingProvider("cloud", calls);
     const reasoner = new Reasoner(cloud, new DeterministicProvider());
+    await erteileKiFreigabe(reasoner);
 
     const res = await reasoner.structure("Normaler Rohtext.", "de", false);
 
@@ -1018,6 +1043,9 @@ describe("SCRUM-502 Schicht 2: Vertraulichkeit routet an der Cloud vorbei", () =
     const calls: string[] = [];
     const cloud = recordingProvider("cloud", calls);
     const reasoner = new Reasoner(cloud, new DeterministicProvider());
+    // SPERRFALL MIT GRUNDFREIGABE, wie oben: die drei Aktionen bleiben ohne Cloud-Aufruf, weil der
+    // Text vertraulich ist — und der Fehler ist deshalb die Einstufung, nicht die Erlaubnis.
+    await erteileKiFreigabe(reasoner);
 
     // JOB 3276: assist liefert in dieser Lage keinen „Vorschlag" mehr — es gibt keinen. Die
     // Vertraulichkeit nimmt die Cloud aus der Kette, und der deterministische Ersatz könnte nur
@@ -1045,6 +1073,7 @@ describe("SCRUM-502 Schicht 2: Vertraulichkeit routet an der Cloud vorbei", () =
     const calls: string[] = [];
     const cloud = recordingProvider("cloud", calls);
     const reasoner = new Reasoner(cloud, new DeterministicProvider());
+    await erteileKiFreigabe(reasoner);
 
     await reasoner.assistText("Text.", "de", undefined, false);
     await reasoner.interview(["Antwort."], "de", false);
@@ -1060,7 +1089,7 @@ describe("SCRUM-502 Schicht 2: Vertraulichkeit routet an der Cloud vorbei", () =
     const cloud = recordingProvider("cloud", calls);
     const local = recordingProvider("local", calls);
     const reasoner = new Reasoner(cloud, new DeterministicProvider(), undefined, undefined, local);
-    await reasoner.setTaskConfig({ global: "cloud", perTask: {} }); // explizit NICHT auto
+    await reasoner.setTaskConfig(mitKiFreigabe({ global: "cloud", perTask: {} })); // explizit NICHT auto
 
     const res = await reasoner.structure("Geheimer Rohtext.", "de", true);
 

@@ -14,6 +14,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 import { ModelProvider, Reasoner, cappedModelClient } from "../../services/reasoner";
+import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 
 const ROHTEXT = "die pumpe wurde am montag notirt und die anzahl stimmt nicht";
 const apps: ReturnType<typeof buildApp>[] = [];
@@ -36,6 +37,10 @@ async function aufbauen(modellAntwort: string) {
       ),
     ),
   );
+  // JOB 3570: die Grundfreigabe im Aufbau, an der EINEN Stelle, die alle vier Fälle dieser Datei
+  // baut. Alle vier fahren die echte Route gegen einen Cloud-Client — H4 verlangt sogar
+  // ausdrücklich den 200er mit Vorschlag. Ohne Freigabe wäre jede Antwort dieselbe Sperrmeldung.
+  await erteileKiFreigabe(services.reasoner);
   const app = buildApp(services);
   apps.push(app);
   const email = `assist-leer-${Math.random().toString(36).slice(2)}@example.test`;

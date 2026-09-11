@@ -14,6 +14,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ModelProvider, Reasoner, createCappedCloudClientFromEnv } from "../../services/reasoner";
 import type { ModelClient } from "../../services/reasoner";
 import { ModelEmptyResponseError } from "../../services/reasoner/src/model-errors";
+// JOB 3570: die Grundfreigabe im Aufbau — nur in F3 und G3, den beiden Fällen, die über den DIENST
+// gehen. Ohne sie käme statt der gemessenen Meldung („finish_reason=length") die Auskunft über
+// eine gesperrte Kante. Die Budget- und Prompt-Fälle sprechen den Provider direkt an.
+import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 
 const KEIN_SCHLUESSELBUND = (): undefined => undefined;
 const KEIN_SPEICHERN = (): boolean => false;
@@ -147,6 +151,7 @@ describe("JOB 3276 F · eine abgerissene Antwort ist ein Fehler mit Grund, kein 
   it("F3 durch die ganze Kette: der Nutzer bekommt die Meldung MIT diesem Grund", async () => {
     stubFetch({ choices: [{ finish_reason: "length", message: { content: "" } }] });
     const reasoner = new Reasoner(new ModelProvider(openAiClient()));
+    await erteileKiFreigabe(reasoner);
 
     const fehler = await reasoner.assistText("die pumpe wurde notirt", "de").catch((e) => e);
 
@@ -183,6 +188,7 @@ describe("JOB 3276 G · die Anweisung des Nutzers geht nachweislich mit", () => 
   it("G3 die Anweisung erreicht das Modell auch über den Dienst (Reasoner → Provider → Client)", async () => {
     const gesendet = stubFetch(geglaettet("Überarbeitet."));
     const reasoner = new Reasoner(new ModelProvider(openAiClient()));
+    await erteileKiFreigabe(reasoner);
 
     await reasoner.assistText("die pumpe wurde notirt", "de", "Fasse kürzer");
 

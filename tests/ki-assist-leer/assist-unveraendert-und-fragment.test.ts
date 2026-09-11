@@ -31,6 +31,11 @@ import {
   createCappedCloudClientFromEnv,
 } from "../../services/reasoner";
 import { ModelEmptyResponseError } from "../../services/reasoner/src/model-errors";
+// JOB 3570: die Grundfreigabe im Aufbau. I1-I6 und J2 gehen ueber den DIENST und brauchen eine
+// echte Modellantwort — den Echo-Text, die Korrektur, das Fragment. Ohne Freigabe gaebe es keine
+// Antwort, und die Unterscheidung „keine Aenderungen" / „keine Antwort" verschwaende. J1/J3/J4
+// sprechen den Provider direkt an und bekommen keine.
+import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 
 const ROHTEXT = "die pumpe wurde am montag notirt und die anzahl stimmt nicht";
 
@@ -76,6 +81,7 @@ afterEach(() => {
 describe("JOB 3276 I · ein unverändert zurückgegebener Text ist kein Vorschlag", () => {
   it("I1 das Modell echot den Text → ehrliche Meldung „keine Änderungen“, nicht der Text", async () => {
     const reasoner = new Reasoner(new ModelProvider(client(ROHTEXT)));
+    await erteileKiFreigabe(reasoner);
 
     const fehler = await reasoner.assistText(ROHTEXT, "de").catch((e: unknown) => e);
     expect(fehler).toBeInstanceOf(Error);
@@ -90,6 +96,7 @@ describe("JOB 3276 I · ein unverändert zurückgegebener Text ist kein Vorschla
 
   it("I2 dieselbe Lage auf Englisch (Vorführung am 11.09.)", async () => {
     const reasoner = new Reasoner(new ModelProvider(client(ROHTEXT)));
+    await erteileKiFreigabe(reasoner);
 
     const fehler = await reasoner.assistText(ROHTEXT, "en").catch((e: unknown) => e);
     expect(fehler).toBeInstanceOf(Error);
@@ -101,6 +108,7 @@ describe("JOB 3276 I · ein unverändert zurückgegebener Text ist kein Vorschla
   it("I3 nur anderer Leerraum/Zeilenumbruch ist keine Änderung", async () => {
     const nurLeerraum = "  die pumpe wurde am montag notirt\n   und die anzahl stimmt nicht  ";
     const reasoner = new Reasoner(new ModelProvider(client(nurLeerraum)));
+    await erteileKiFreigabe(reasoner);
 
     await expect(reasoner.assistText(ROHTEXT, "de")).rejects.toThrow(
       /keine Änderungen vorgeschlagen/,
@@ -112,6 +120,7 @@ describe("JOB 3276 I · ein unverändert zurückgegebener Text ist kein Vorschla
     // Rechtschreibkorrektur an genau diesen Stellen als „nichts getan" abgewiesen.
     const korrigiert = "Die pumpe wurde am montag notirt und die anzahl stimmt nicht.";
     const reasoner = new Reasoner(new ModelProvider(client(korrigiert)));
+    await erteileKiFreigabe(reasoner);
 
     const ergebnis = await reasoner.assistText(ROHTEXT, "de");
     expect(ergebnis.demo).toBe(false);
@@ -121,6 +130,7 @@ describe("JOB 3276 I · ein unverändert zurückgegebener Text ist kein Vorschla
   it("I5 der Versuch steht mit Anbieter, Modell und Grund im Laufprotokoll", async () => {
     const repo = new InMemoryModelRunRepo();
     const reasoner = new Reasoner(new ModelProvider(client(ROHTEXT)), undefined, repo);
+    await erteileKiFreigabe(reasoner);
 
     await reasoner.assistText(ROHTEXT, "de").catch(() => undefined);
 
@@ -137,6 +147,7 @@ describe("JOB 3276 I · ein unverändert zurückgegebener Text ist kein Vorschla
   it("I6 leerer Eingabetext bleibt der Bestandsweg — kein behaupteter Ausfall", async () => {
     // Ohne Text gibt es nichts zu ändern; hier wäre eine Ausfallmeldung selbst eine Unwahrheit.
     const reasoner = new Reasoner(new ModelProvider(client("")));
+    await erteileKiFreigabe(reasoner);
 
     const ergebnis = await reasoner.assistText("   ", "de");
     expect(ergebnis.text).toBe("");
@@ -164,6 +175,7 @@ describe("JOB 3276 J · ein am Token-Limit abgerissener Satz ist kein Vorschlag"
   it("J2 durch die ganze Kette: der Mensch bekommt die Meldung MIT diesem Grund", async () => {
     stubFetch({ choices: [{ finish_reason: "length", message: { content: FRAGMENT } }] });
     const reasoner = new Reasoner(new ModelProvider(openAiClient()));
+    await erteileKiFreigabe(reasoner);
 
     const fehler = await reasoner.assistText(ROHTEXT, "de").catch((e: unknown) => e);
 

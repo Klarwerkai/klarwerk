@@ -41,6 +41,11 @@ import {
 } from "../../services/reasoner/src/model-errors";
 import { ModelProvider } from "../../services/reasoner/src/provider-model";
 import { Reasoner } from "../../services/reasoner/src/service";
+// JOB 3570: die Grundfreigabe im Aufbau — nur in den beiden Fällen, die den Admin-Mini-Test über
+// den DIENST fahren (`reasoner.probe()`). Der Ping ist ein echter Aufruf an OpenAI; ohne Freigabe
+// gäbe es keinen Request, dessen Körper man auf `max_completion_tokens` prüfen könnte. Die
+// übrigen Fälle sprechen den Client direkt an — dort gibt es keine Zuordnung und keine Freigabe.
+import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 
 const KEIN_SCHLUESSELBUND = (): undefined => undefined;
 const KEIN_SPEICHERN = (): boolean => false;
@@ -121,7 +126,9 @@ afterEach(() => {
 describe("JOB 3222 · der Admin-Mini-Test erreicht den OpenAI-Anbieter", () => {
   it("P1: der Ein-Wort-Ping liefert ok:true statt HTTP 400 — und braucht genau EINEN Aufruf", async () => {
     const { koerper } = nachgestellterOpenAiAnbieter();
-    const ergebnis = await new Reasoner(new ModelProvider(cloudClient())).probe();
+    const reasoner = new Reasoner(new ModelProvider(cloudClient()));
+    await erteileKiFreigabe(reasoner);
+    const ergebnis = await reasoner.probe();
     // Der Live-Befund war `ok:false, mode:"model"` mit 400 im Detail. Beides ist weg.
     expect(ergebnis.ok).toBe(true);
     expect(ergebnis.mode).toBe("model");
@@ -221,7 +228,9 @@ describe("JOB 3222 · 200 mit leerem Inhalt bleibt ein ehrlicher Fehler", () => 
     expect((fehler as ModelEmptyResponseError).reason).toBe("truncated");
     expect(meldung(fehler)).toContain("max_completion_tokens=1024");
     // Und der Admin-Test sagt dann eben nicht „ok".
-    const ergebnis = await new Reasoner(new ModelProvider(cloudClient())).probe();
+    const reasoner = new Reasoner(new ModelProvider(cloudClient()));
+    await erteileKiFreigabe(reasoner);
+    const ergebnis = await reasoner.probe();
     expect(ergebnis.ok).toBe(false);
     expect(ergebnis.mode).toBe("model");
   });

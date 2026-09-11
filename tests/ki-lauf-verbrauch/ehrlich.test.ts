@@ -20,6 +20,7 @@ import {
   Reasoner,
   type ReasonerProvider,
 } from "../../services/reasoner";
+import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 import { alsAntwort, cloudClient, cloudKoerper, lokalKoerper, lokalerClient } from "./hilfe";
 
 // Ein Ersatz-Provider, der selbst ausfällt — nur so entsteht ein Datensatz mit `status: "error"`.
@@ -58,6 +59,11 @@ async function laufUndDatensatz(
 ): Promise<ModelRunRecord> {
   const repo = new InMemoryModelRunRepo();
   const reasoner = new Reasoner(primary, fallback, repo);
+  // JOB 3570: die Grundfreigabe im Aufbau, an der EINEN Stelle, die alle Fälle dieser Datei baut.
+  // Vier von fünf brauchen einen echten Modellaufruf (sonst gibt es keinen `usage`-Block zu
+  // bewerten); V3b übergibt gar keinen Anbieter, dort ist sie ohne Wirkung — sie behauptet dann
+  // auch nichts, weil `expect(datensatz.demo).toBe(true)` weiterhin den Ersatzmodus messt.
+  await erteileKiFreigabe(reasoner);
   try {
     await aufgabe(reasoner);
   } catch {

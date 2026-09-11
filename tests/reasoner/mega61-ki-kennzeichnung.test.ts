@@ -17,6 +17,7 @@
 import { describe, expect, it } from "vitest";
 import { KI_ERZEUGENDE_AUFGABEN, aiGeneratedMark } from "../../services/model-runs";
 import { ModelProvider, Reasoner } from "../../services/reasoner";
+import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 
 // Ohne Provider läuft ausschließlich der deterministische Rückfall — kein Modell, kein Egress.
 // Genau das prüft die Betriebsmodus-Angabe unten mit ab.
@@ -82,6 +83,10 @@ describe("mega61 F2 · die ausgenommenen Aufgaben tragen die Kennzeichnung NICHT
         complete: async () => "Das Ventil ist bei Überdruck zu schließen.",
       }),
     );
+    // JOB 3570: die Grundfreigabe im Aufbau — dieser Fall braucht ein ANTWORTENDES Modell
+    // (`demo: false`). Ohne sie gäbe es keinen Vorschlag, an dem die fehlende Kennzeichnung zu
+    // prüfen wäre. Alle anderen Fälle dieser Datei laufen ohne öffentlichen Anbieter.
+    await erteileKiFreigabe(mitModell);
 
     const res = await mitModell.assistText("Ventil schließen.", "de");
     expect(res.demo).toBe(false);

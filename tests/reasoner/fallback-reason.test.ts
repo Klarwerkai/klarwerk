@@ -15,6 +15,10 @@ import {
   classifyModelFailure,
 } from "../../services/reasoner";
 import type { StructureResult } from "../../services/reasoner";
+// JOB 3570: die Grundfreigabe im Aufbau. Die ganze Datei lebt davon, `no-model` von
+// `model-error`/`model-timeout` zu unterscheiden — ein Modell muss dafür wirklich VERSUCHT werden.
+// Ohne Freigabe wäre jeder dieser Fälle „kein Modell", und die Unterscheidung wäre weg.
+import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 
 describe("WP-D8: fallbackReason am Structure-Ergebnis (echter Reasoner)", () => {
   it("kein Modell in der Kette → demo:true + fallbackReason no-model", async () => {
@@ -32,6 +36,7 @@ describe("WP-D8: fallbackReason am Structure-Ergebnis (echter Reasoner)", () => 
       },
     });
     const reasoner = new Reasoner(failingModel);
+    await erteileKiFreigabe(reasoner);
     const result = await reasoner.structure("Ventil vor der Prüfung entlasten.");
     expect(result.demo).toBe(true);
     expect(result.fallbackReason).toBe("model-error");
@@ -47,6 +52,7 @@ describe("WP-D8: fallbackReason am Structure-Ergebnis (echter Reasoner)", () => 
       },
     });
     const reasoner = new Reasoner(timeoutModel);
+    await erteileKiFreigabe(reasoner);
     const result = await reasoner.structure("Ventil vor der Prüfung entlasten.");
     expect(result.demo).toBe(true);
     expect(result.fallbackReason).toBe("model-timeout");
@@ -62,6 +68,7 @@ describe("WP-D8: fallbackReason am Structure-Ergebnis (echter Reasoner)", () => 
       },
     });
     const reasoner = new Reasoner(timeoutModel);
+    await erteileKiFreigabe(reasoner);
     const result = await reasoner.structure("Ventil vor der Prüfung entlasten.");
     expect(result.fallbackReason).toBe("model-timeout");
   });
@@ -81,6 +88,7 @@ describe("WP-D8: fallbackReason am Structure-Ergebnis (echter Reasoner)", () => 
       }),
     } as unknown as ConstructorParameters<typeof Reasoner>[0];
     const reasoner = new Reasoner(okModel);
+    await erteileKiFreigabe(reasoner);
     const result = await reasoner.structure("Ventil vor der Prüfung entlasten.");
     expect(result.demo).toBe(false);
     expect(result.fallbackReason).toBeUndefined();
@@ -132,6 +140,7 @@ describe("WP-D10: angereichertes, PII-freies Fallback-Log", () => {
   async function captureFallbackLog(complete: () => Promise<string>): Promise<string> {
     const failingModel = new ModelProvider({ name: "anthropic:test", complete });
     const reasoner = new Reasoner(failingModel);
+    await erteileKiFreigabe(reasoner);
     const lines: string[] = [];
     const originalWrite = process.stderr.write.bind(process.stderr);
     process.stderr.write = ((chunk: string | Uint8Array) => {
