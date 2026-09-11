@@ -3061,19 +3061,28 @@ export function CaptureArbeitsraum({
           verlassenGespeichertRef.current = true;
         }
         if (filePoints && filePoints.length > 0 && fileName) {
-          const all = filePoints.map(({ title, summary, sourceExcerpt }) => ({
-            title,
-            summary,
-            sourceExcerpt,
-          }));
+          // JOB 3600: die Punkte gehen als SIE SELBST hinein, nicht als Abschrift. Bis hierher stand
+          // hier ein `filePoints.map(...)` auf drei Felder — die Rückmeldung liess sich danach nicht
+          // mehr auf die Liste beziehen, aus der sie kam. Die Nutzlast ist unverändert:
+          // `draftPayloadFromPoint` liest nur `title`, `summary` und `sourceExcerpt`.
           const result = await createPointDrafts(
-            all,
+            filePoints,
             fileName,
             normalizeExtractLocale(i18n.language),
             (p) => endpoints.drafts.create(p),
           );
           void qc.invalidateQueries({ queryKey: ["drafts"] });
           if (result.failed.length > 0) {
+            // JOB 3600, DER KERN: was gelungen ist, verlässt die Liste — VOR dem Wurf. Der Dialog
+            // bleibt offen und sein Knopf wird wieder freigegeben; der zweite Druck ist damit der
+            // naheliegendste Handgriff, und er lief bis hierher erneut über ALLE Punkte. Die schon
+            // gespeicherten Entwürfe entstanden ein zweites Mal.
+            //
+            // EIN WAHRHEITSORT: `filePoints` selbst. Keine Merkliste daneben, kein zweites Ref —
+            // die Liste der offenen Punkte IST der Zustand der Fläche, und der nächste Lauf des
+            // Wächter-Effekts (er trägt `filePoints` in seiner Abhängigkeitsliste) nimmt genau ihn.
+            const gelungen = new Set<SelectableExtractPoint>(result.createdPoints);
+            setFilePoints(filePoints.filter((p) => !gelungen.has(p)));
             const grund = t(CAPTURE_FILE_TEXT.draftsPartial, { failed: result.failed.join(", ") });
             setErr(grund);
             // Nicht wechseln: Dialog bleibt offen — und er nennt den Grund selbst (JOB 3572 R2).

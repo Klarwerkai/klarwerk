@@ -20,6 +20,26 @@ import { vi } from "vitest";
 /** Der Serverbestand. Wird je Fall in `grundzustand()` (huelle.tsx) frisch gesetzt. */
 export const server = { bestand: {} as Record<string, unknown> };
 
+/** Die Punkte, die die KI-Auswertung des Dateiwegs zurückgibt. Je Fall gesetzt. */
+export const extrakt = {
+  punkte: [] as { title: string; summary: string; sourceExcerpt: string }[],
+};
+
+/**
+ * JOB 3600: Titel, deren Anlage scheitert — und zwar SOLANGE sie hier stehen, nicht einmalig.
+ * Genau das ist der Fall, um den es geht: derselbe Punkt scheitert beim zweiten Druck wieder,
+ * während die anderen längst angelegt sind.
+ */
+const createFehlerTitel = new Set<string>();
+
+/** Ab jetzt scheitert `drafts.create` für GENAU diese Titel (leere Liste = wieder alle gelingen). */
+export function lasseCreateScheiternFuer(...titel: readonly string[]): void {
+  createFehlerTitel.clear();
+  for (const t of titel) {
+    createFehlerTitel.add(t);
+  }
+}
+
 let riegel: (() => void) | null = null;
 let warte: Promise<void> | null = null;
 /**
@@ -64,10 +84,52 @@ export const draftsList = vi.fn(
   async () => JSON.parse(JSON.stringify(Object.values(server.bestand))) as unknown[],
 );
 
+/** Der Titel, unter dem eine Anlage-Nutzlast im Bestand landet — auch der Messschlüssel unten. */
+function titelAus(payload: unknown): string {
+  return (payload as { title?: string } | null)?.title ?? "";
+}
+
+let neuZaehler = 0;
+
+/**
+ * JOB 3600: jede Anlage bekommt eine EIGENE Kennung. Bis hierher schrieb jede auf dieselbe
+ * (`neu-1`) — eine doppelt angelegte Entwurfsreihe sah im Bestand danach aus wie eine einfache,
+ * und genau der Schaden dieses Auftrags (Doppelungen in „Meine Entwürfe") wäre unsichtbar
+ * geblieben. Kein Fall dieses Ordners hat sich je auf `neu-1` berufen.
+ */
 export const draftsCreate = vi.fn(async (payload: unknown) => {
-  server.bestand["neu-1"] = { id: "neu-1", updatedAt: "2026-09-10T12:00:00.000Z", payload };
-  return { id: "neu-1" };
+  if (createFehlerTitel.has(titelAus(payload))) {
+    throw new Error(`Anlage abgelehnt: ${titelAus(payload)}`);
+  }
+  neuZaehler += 1;
+  const id = `neu-${neuZaehler}`;
+  server.bestand[id] = { id, updatedAt: "2026-09-10T12:00:00.000Z", payload };
+  return { id };
 });
+
+/**
+ * Wie oft je Titel eine Anlage VERSUCHT wurde — gezählt an den Aufrufen selbst, nicht an einem
+ * zweiten Buch daneben. Gescheiterte Versuche zählen mit; was davon im Bestand gelandet ist, sagt
+ * `bestandJeTitel()`.
+ */
+export function anlageversucheJeTitel(): Record<string, number> {
+  const zaehler: Record<string, number> = {};
+  for (const [payload] of draftsCreate.mock.calls) {
+    const titel = titelAus(payload);
+    zaehler[titel] = (zaehler[titel] ?? 0) + 1;
+  }
+  return zaehler;
+}
+
+/** Wie oft je Titel ein Entwurf WIRKLICH im Bestand steht — das, was „Meine Entwürfe" zeigt. */
+export function bestandJeTitel(): Record<string, number> {
+  const zaehler: Record<string, number> = {};
+  for (const eintrag of Object.values(server.bestand)) {
+    const titel = titelAus((eintrag as { payload?: unknown } | null)?.payload);
+    zaehler[titel] = (zaehler[titel] ?? 0) + 1;
+  }
+  return zaehler;
+}
 
 export const draftsUpdate = vi.fn(async (id: string, payload: unknown) => {
   await bremse.passiere();
@@ -96,6 +158,9 @@ export const draftsPromote = vi.fn(async (id: string) => {
 export async function attrappenZuruecksetzen(): Promise<void> {
   await bremse.loslassen();
   naechsterUpdateFehler = null;
+  createFehlerTitel.clear();
+  extrakt.punkte = [];
+  neuZaehler = 0;
 }
 
 /** Das Modul `api/auth`, wie die Testdateien es in ihrer `vi.mock`-Fabrik zurückgeben. */
@@ -131,6 +196,9 @@ export function endpointsAttrappe(): Record<string, unknown> {
       status: ok({ active: true, mode: "cloud", reachable: "active" }),
       config: ok(null),
       structure: vi.fn(async () => ({})),
+      // JOB 3600: der Dateiweg braucht die KI-Auswertung — sie liefert genau die Punkte, die der
+      // Fall in `extrakt.punkte` gelegt hat. Ohne sie gäbe es in diesem Ordner keine `filePoints`.
+      extract: vi.fn(async () => ({ points: extrakt.punkte, note: null, demo: false })),
       interview: vi.fn(async () => ({ question: "", done: true, demo: false })),
       assist: vi.fn(async () => ({ text: "" })),
       describeImage: vi.fn(async () => ({ text: "", demo: false })),

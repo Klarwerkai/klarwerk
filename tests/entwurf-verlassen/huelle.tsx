@@ -43,6 +43,7 @@ import { AuthProvider } from "../../apps/web/src/app/AuthContext";
 import { ImageDescribeProvider } from "../../apps/web/src/app/ImageDescribeContext";
 import { ModalBoundaryProvider, ModalRegion } from "../../apps/web/src/app/ModalBoundaryContext";
 import {
+  GuardedLink,
   NavGuardModalBoundaryBridge,
   NavGuardProvider,
 } from "../../apps/web/src/app/NavGuardContext";
@@ -132,6 +133,31 @@ function Grenze({ children }: { children: ReactNode }): JSX.Element {
   });
 }
 
+/**
+ * JOB 3600: der Weg aus der Fläche heraus, den NICHT der Verlassen-Knopf der Entwurfskarte geht.
+ * Er steht hier, weil der Dateiweg ohne geöffneten Entwurf läuft — dort gibt es den Knopf mit
+ * Absicht nicht (`Capture.tsx`: `draftId === null ? null : …`), wohl aber jeden Menü- und
+ * Kachelklick der App. Gebaut wird er deshalb NICHT nach: es ist das Produktbauteil `GuardedLink`
+ * selbst, dasselbe, das im Betrieb in Menü, Kacheln und Werkzeugzeile hängt.
+ *
+ * Er steht nur im Baum, wenn ein Fall ihn anfordert (`mount(url, modus, true)`) — die Bestandsfälle
+ * mounten unverändert.
+ */
+function wechselLinkKnoten(): ReturnType<typeof createElement> {
+  return createElement(
+    GuardedLink,
+    { to: "/start", "data-testid": "wechsel-probe" } as never,
+    "woanders hin",
+  );
+}
+
+/** Der Menü-/Kachelweg aus der Fläche heraus. `null`, wenn der Fall ihn nicht angefordert hat. */
+export function wechselLink(): HTMLAnchorElement | null {
+  return container.querySelector<HTMLAnchorElement>("[data-testid=wechsel-probe]");
+}
+
+let mitWechselLink = false;
+
 function baum(modus: CaptureMode | undefined): ReturnType<typeof createElement> {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return createElement(
@@ -171,6 +197,9 @@ function baum(modus: CaptureMode | undefined): ReturnType<typeof createElement> 
                         element: createElement(CaptureArbeitsraum, { modus }),
                       }),
                     ),
+                    // Er liegt IM Seitenbereich, nicht daneben: bei offenem Dialog sperrt ihn die
+                    // Modalgrenze genau wie jeden anderen Ausgang der Seite.
+                    ...(mitWechselLink ? [wechselLinkKnoten()] : []),
                   ),
                 ),
               ),
@@ -182,8 +211,13 @@ function baum(modus: CaptureMode | undefined): ReturnType<typeof createElement> 
   );
 }
 
-export async function mount(url: string, modus: CaptureMode | undefined): Promise<void> {
+export async function mount(
+  url: string,
+  modus: CaptureMode | undefined,
+  wechselwegImBaum = false,
+): Promise<void> {
   startUrl = url;
+  mitWechselLink = wechselwegImBaum;
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -224,9 +258,28 @@ export function knopf(teil: string): HTMLButtonElement {
   return btn;
 }
 
-export async function klick(btn: HTMLButtonElement): Promise<void> {
+/** Ein Klick wie von Hand. Nimmt jedes Bedienelement — Knopf wie Verweis (JOB 3600). */
+export async function klick(el: HTMLElement): Promise<void> {
   await act(async () => {
-    btn.click();
+    el.click();
+    await flush();
+  });
+}
+
+/**
+ * Eine Datei in die Erfassungsfläche geben — über die ECHTE Ablegezone des Produkts
+ * (`CaptureFileImport`, `data-testid=capture-dropzone`) und damit über denselben `onExtractFile`-
+ * Seam wie der Dateiwähler. Nichts nachgebaut: es ist der Weg, den ein Mensch geht.
+ */
+export async function dateiAblegen(datei: File): Promise<void> {
+  const zone = container.querySelector<HTMLElement>("[data-testid=capture-dropzone]");
+  if (!zone) {
+    throw new Error("Ablegezone des Datei-Imports nicht gefunden");
+  }
+  const ev = new Event("drop", { bubbles: true, cancelable: true });
+  Object.defineProperty(ev, "dataTransfer", { value: { files: [datei] } });
+  await act(async () => {
+    zone.dispatchEvent(ev);
     await flush();
   });
 }

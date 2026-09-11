@@ -50,21 +50,34 @@ export function mergedDraftFromPoints(
 
 // Entwürfe EINZELN anlegen — ein Teilfehler kippt nicht den ganzen Stapel (SCRUM-374-Muster);
 // fehlgeschlagene Punkte werden ehrlich (per Titel) zurückgemeldet.
-export async function createPointDrafts(
-  points: readonly ExtractedPoint[],
+//
+// JOB 3600: UND die gelungenen werden ehrlich zurückgemeldet — als die Punkte SELBST (`createdPoints`),
+// nicht als Zahl und nicht als Titelliste. Bis hierher erfuhr der Aufrufer nur, WIE VIELE gelungen
+// sind. Wer nach einem Teilfehler noch einmal anlief, lief deshalb wieder über ALLE Punkte und legte
+// die bereits gespeicherten ein zweites Mal an (sichtbar in „Meine Entwürfe" als Doppelung, die
+// niemand angelegt hat). `created` bleibt unverändert stehen — es wird ergänzt, nicht ersetzt.
+//
+// Der Typparameter trägt den Punkttyp des Aufrufers durch (z. B. `SelectableExtractPoint`): nur so
+// sind die zurückgemeldeten Punkte IDENTISCH mit denen, die hineingegeben wurden, und der Aufrufer
+// kann sie aus seiner eigenen Liste nehmen, ohne sie über Titel wiederzuerkennen. Titel sind dafür
+// untauglich — zwei Punkte einer Datei dürfen denselben tragen.
+export async function createPointDrafts<P extends ExtractedPoint>(
+  points: readonly P[],
   fileName: string,
   locale: ExtractSectionLocale,
   create: (payload: DraftPayload) => Promise<unknown>,
-): Promise<{ created: number; failed: string[] }> {
+): Promise<{ created: number; failed: string[]; createdPoints: P[] }> {
   let created = 0;
   const failed: string[] = [];
+  const createdPoints: P[] = [];
   for (const point of points) {
     try {
       await create(draftPayloadFromPoint(point, fileName, locale));
       created += 1;
+      createdPoints.push(point);
     } catch {
       failed.push(point.title);
     }
   }
-  return { created, failed };
+  return { created, failed, createdPoints };
 }
