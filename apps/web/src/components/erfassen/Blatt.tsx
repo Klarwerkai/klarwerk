@@ -336,6 +336,29 @@ export function Blatt({
   // danach ersetzte: das Fenster aus §2 des Auftrags, nur kürzer.
   const [loadingDraft, setLoadingDraft] = useState(() => resumeDraftId !== null);
   const [err, setErr] = useState<string | null>(null);
+  // ==============================================================================================
+  // JOB 3633 — DER HALBE LADEVORGANG, ÜBER DEN DIESES BLATT GESCHWIEGEN HAT.
+  // ==============================================================================================
+  //
+  // DER BEFUND, im echten Chromium an der echten Fastify-App gemessen (Fall A7 in
+  // `tests/entwurf-aus-adresse/adresse-entwurf-chromium.test.ts`, rot im Lauf
+  // 19fe05381142467c8b0796f8fb9d7828): Beruft sich ein Entwurf auf ein gesichertes Original, das es
+  // nicht mehr gibt, hält der Server den übernommenen Text ZURÜCK — `bodyHtml: null` — und sagt
+  // ausdrücklich, warum: `anchorsMissing` am Entwurfsumschlag (`services/capture/src/service.ts`,
+  // `withAnchorCheck`). Das Expertenformular liest das Feld und erklärt die Lage
+  // (`pages/Capture.tsx`, `resumeAnchorsMissing`). DIESES Blatt las es nirgends: `/erfassen?draft=<id>`
+  // öffnete den Entwurf mit Titel und Bereich, der ganze übernommene Text fehlte, und die Fläche
+  // sagte dazu KEIN WORT. Gemessen: Titelfeld gefüllt, Lagezeile `null`.
+  //
+  // DAS IST DIESELBE KLASSE WIE DIE WEISSE SEITE, nur eine Stufe kleiner — eine Fläche, die auf die
+  // Frage „wo ist mein Text?" nichts antwortet. Und sie ist teurer als ein sichtbarer Fehler: nichts
+  // sieht kaputt aus, also sucht der Mensch den Fehler bei sich.
+  //
+  // EINE ZAHL UND KEIN INHALT. Gebraucht wird genau eine Auskunft — GIBT ES zurückgehaltenen Text?
+  // Welche Objektkennungen fehlen, ist für diese Fläche ohne Verwendung: sie zeigt keine Ankerliste
+  // und bietet keine Neubindung an (s. die drei Absätze bei `BlattLage`). Ein hier gehaltener
+  // Kennungsvorrat wäre Zustand ohne Leser.
+  const [rumpfZurueckgehalten, setRumpfZurueckgehalten] = useState(0);
   const [staleConflict, setStaleConflict] = useState(false);
   const [reloadNonce, setReloadNonce] = useState(0);
   const loadedUpdatedAtRef = useRef<string | null>(null);
@@ -722,6 +745,9 @@ export function Blatt({
     setKategorie("");
     savedStateRef.current = { title: "", bodyHtml: "", confidentiality: "intern", kategorie: "" };
     bodyNieGeliefertRef.current = false;
+    // JOB 3633: Ein neues Blatt trägt keinen Befund über den Entwurf, den es gerade verlassen hat —
+    // derselbe Grund wie beim Merker eine Zeile darüber.
+    setRumpfZurueckgehalten(0);
     setSubmittedKo(null);
     setActiveDraftId(null);
     // JOB 3106 (UX-01): ein neues Blatt spricht nicht mehr über die Sicherung des alten.
@@ -794,6 +820,10 @@ export function Blatt({
       // Zweiges: die Adresse nennt keinen Entwurf, es ist also nichts zu laden — und ein Blatt ohne
       // Ladevorgang ist bereit.
       setLoadingDraft(false);
+      // JOB 3633: UND DER BEFUND ÜBER DEN ZURÜCKGEHALTENEN RUMPF ENDET HIER MIT. Er gehört dem
+      // Entwurf, den die Adresse nennt; nennt sie keinen, gibt es keinen Rumpf, über den zu sprechen
+      // wäre. Derselbe Grund und dieselbe Stelle wie beim Merker darüber (JOB 3106 R3).
+      setRumpfZurueckgehalten(0);
       return;
     }
     // ============================================================================================
@@ -846,6 +876,11 @@ export function Blatt({
     diktatVomBlattTrennen();
     setLetzteAktion({ art: "laden" });
     setErr(null);
+    // JOB 3633: Der Befund des VORIGEN Entwurfs darf nicht über diesen Ladevorgang hinweg stehen
+    // bleiben — bis die Antwort da ist, weiss niemand, ob dieser hier einen Anker verloren hat.
+    // Hier und nicht im `.then`: ein Befund, der während des Ladens noch vom alten Entwurf stammt,
+    // wäre genau die Aussage ohne Voraussetzung, die §9 verbietet.
+    setRumpfZurueckgehalten(0);
 
     endpoints.drafts
       .get(resumeDraftId)
@@ -857,6 +892,10 @@ export function Blatt({
         const loadedBody = frontDoorBodyFromDraft(draft.payload);
         // JOB 2705 (R2-23 a): `null` IST NICHT `""` — der Unterschied, den der String nicht trägt.
         bodyNieGeliefertRef.current = draft.payload.bodyHtml === null;
+        // JOB 3633: UND HIER WIRD GELESEN, WAS DER SERVER AUSDRÜCKLICH GESAGT HAT. Das Feld steht am
+        // Umschlag und nicht in der Nutzlast, weil es ein Befund ÜBER den Entwurf ist (api/types.ts).
+        // Gefragt wird nur nach der Anzahl — die Begründung steht an der Zustandszeile oben.
+        setRumpfZurueckgehalten(draft.anchorsMissing?.length ?? 0);
         // JOB 3082 (Q3 a): NUR EINE GÜLTIGE STUFE ZÄHLT ALS WAHL. Was hier ankommt, ist Drahtwert
         // — ein fehlendes Feld, `null` oder ein unbekannter String sind KEINE Einstufung. Dieselbe
         // Prüfung wie in `vertraulichkeitsAuskunft` (lib/confidentiality.ts:119-121) und wie
@@ -3036,6 +3075,7 @@ export function Blatt({
             erfolg={submittedKo}
             kostet={strukturKostet && (structure.isPending || assist.isPending)}
             uebernommen={structureAccepted || assistAccepted}
+            rumpfZurueckgehalten={rumpfZurueckgehalten}
             keptRichBody={structureKeptRichBody}
             titleAdopted={structureTitleAdopted}
             aufNeuLaden={
@@ -3106,6 +3146,7 @@ function BlattLage({
   erfolg,
   kostet,
   uebernommen,
+  rumpfZurueckgehalten,
   keptRichBody,
   titleAdopted,
   aufNeuLaden,
@@ -3117,6 +3158,11 @@ function BlattLage({
   erfolg: Pick<KnowledgeObject, "id" | "title"> | null;
   kostet: boolean;
   uebernommen: boolean;
+  /**
+   * JOB 3633: Wie viele gesicherte Originale der Server nicht mehr findet — und damit: ob er den
+   * übernommenen Text zurückgehalten hat. `0` heisst „vollständig geladen".
+   */
+  rumpfZurueckgehalten: number;
   keptRichBody: boolean;
   titleAdopted: boolean;
   aufNeuLaden: (() => void) | null;
@@ -3213,6 +3259,52 @@ function BlattLage({
     return (
       <p data-testid="blatt-lage" className="pointer-events-auto text-[13px] text-muted">
         <AiCostHint billable />
+      </p>
+    );
+  }
+  // ==============================================================================================
+  // JOB 3633 — DER ZURÜCKGEHALTENE TEXT BEKOMMT SEINEN SATZ.
+  // ==============================================================================================
+  //
+  // ER STEHT ZULETZT, UND DAS IST GEMESSEN GEGEN DIE LAGE, IN DER ER GEBRAUCHT WIRD. Diese Fläche
+  // führt EINE Zeile; jede Einordnung nimmt also einer anderen Lage ihren Platz. Im Augenblick, auf
+  // den es ankommt — der Mensch öffnet `/erfassen?draft=<id>` und sein Text fehlt —, ist keine der
+  // anderen Lagen wahr: kein Fehler, keine Einreichung, keine KI-Übernahme, kein laufender
+  // KI-Aufruf. Der Satz steht also trotz letzter Stelle sofort da.
+  //
+  // WEITER OBEN WÄRE ER TEURER: er gilt, solange der Entwurf offen ist, und hätte damit den
+  // Kostenhinweis der KI (`kostet`) für die ganze Zeit verdrängt — eine Zusage über GELD, die genau
+  // dann fehlte, wenn sie gilt. Ein stehender Satz darf keinen laufenden verdecken.
+  //
+  // EIN SATZ, NICHT DIE KARTE DES EXPERTENFORMULARS. `pages/Capture.tsx` zeigt für dieselbe Lage
+  // eine Karte mit drei Absätzen und zwei Knöpfen (AUFTRAG-mega20 Block D). Das ist dort richtig und
+  // wäre hier falsch: diese Fläche führt EINE Zeile (Zustandsmodell §9, s. den Kopf dieser
+  // Komponente). Der Wortlaut ist deshalb ZITIERT und nicht neu gedichtet — derselbe
+  // i18n-Schlüssel, den die Karte als Überschrift trägt. Ein zweiter Satz für dieselbe Lage wäre
+  // eine zweite Wahrheit, und die dreisprachige Pflege hätte zwei Orte statt einem.
+  //
+  // AUSDRÜCKLICH NICHT ÜBERNOMMEN werden die beiden Wege der Karte und ihr Satz
+  // `capture.anchorsMissingNext`. Beide sagen etwas, das auf DIESER Fläche nicht stimmt:
+  //   · „Als Entwurf speichern ist gesperrt" — hier ist es das nicht, und es MUSS es nicht sein: der
+  //     Speicherweg dieses Blattes lässt den Rumpf-Schlüssel in genau dieser Lage WEG (JOB 2705,
+  //     s. `bodyNieGeliefertRef` im Speicherzweig). Der partielle Merge des Servers lässt den
+  //     gespeicherten Text damit stehen — es gibt nichts zu sperren. Eine Sperre zu behaupten, die
+  //     es nicht gibt, wäre dieselbe ungedeckte Zusage, die AUFTRAG-mega22 Block F beseitigt hat.
+  //   · „Original erneut auswählen" — das öffnet im Expertenformular das Übernahme-Panel. Dieses
+  //     Blatt hat keines; ein Knopf, der hier nichts täte, wäre eine Fläche, die spricht, ohne etwas
+  //     zu sagen.
+  // Was der Mensch hier tun kann, ist genau das, was ohnehin offen steht: weiterschreiben, sichern,
+  // oder über „Datei ▾ → Formular (Experten)" die Fläche betreten, die die Neubindung kann.
+  if (rumpfZurueckgehalten > 0) {
+    return (
+      <p
+        data-testid="blatt-lage"
+        // WIE VIELE Originale fehlen, steht am Knoten und nicht im Satz: die eine Zeile bleibt
+        // dieselbe, und ein Prüfstand kann den Befund am Wert festmachen statt am Wortlaut.
+        data-anker-fehlt={rumpfZurueckgehalten}
+        className="pointer-events-auto text-[13px] text-trust-crit-text"
+      >
+        {t("capture.anchorsMissingTitle")}
       </p>
     );
   }
