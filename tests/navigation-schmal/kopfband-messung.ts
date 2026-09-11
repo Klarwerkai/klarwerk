@@ -17,6 +17,17 @@
 // keinen Browser: sie reitet auf `tests/design/h6-chromium.ts`, dem gemeinsamen Prüfstand. Über
 // dessen Importhülle ordnet sich jede Datei, die dieses Werkzeug benutzt, von selbst in die
 // serielle Browser-Gruppe ein (`tests/tor-inventar/browser-gruppe.ts`).
+//
+// ================================================================================================
+// JOB 3582 — UND DER EINE SCHALTER FÜR DIE FIRMEN-CI WOHNT SEITDEM EBENFALLS HIER.
+// ================================================================================================
+//
+// Bis JOB 3582 standen Anmeldung, `PUT /api/admin/branding` und die Bereitschaft „das Logo ist
+// gezeichnet" in `kopfband-ci-chromium.test.ts`. JOB 3582 misst dieselbe Zeile ein drittes Mal —
+// mit gedeckeltem Logokasten (`tests/chr-navigation-ci-logo/`). Ein abgeschriebener Schalter wäre
+// derselbe Fehler wie eine zweite Kopie des Messcodes: zwei Wege, die Firmen-CI einzuschalten, und
+// beim nächsten Vertragswechsel wird einer nachgeführt und der andere nicht. Der Schalter steht
+// deshalb hier, EINMAL, und beide Messdateien importieren ihn.
 import { expect } from "vitest";
 import { type BrowserFn, type Seite, type Stand, fn, wechsle } from "../design/h6-chromium";
 
@@ -175,14 +186,16 @@ export function freierRaum(m: Messung, fuge: number): number {
  *
  * Bis JOB 3571 war das EIN Schalter („streng" ja/nein), weil es genau zwei Lagen gab: die Breiten,
  * die JOB 3525 baut, und die eine, die dem Bestand von JOB 3060 gehört. JOB 3571 hat mit aktiver
- * Firmen-CI eine DRITTE Lage gemessen, und sie ist der Grund für die Auftrennung: bei 390 px trägt
- * die Zeile die Breite des Firmenlogos nicht mehr — `scrollWidth` übersteigt `clientWidth`, und der
- * rechteste Kasten (Konto-Kreis) steht rund 20 px ausserhalb des Fensters (gemessen in
- * `kopfband-ci-chromium.test.ts`, Fall CI5). Was dort WEITERHIN hält, ist alles andere: die Zeile
- * ist 56 px hoch, nichts bricht um, nichts überlappt. Ein einziger Schalter hätte mit den zwei
- * gefallenen Aussagen auch diese dritte fallen lassen — und „zu breit" und „die Elemente schneiden
- * einander" sind für einen Menschen zwei verschiedene Fehler. Die schwächeren Aussagen stehen jetzt
- * genau an ihrer Achse; die übrigen beissen weiter.
+ * Firmen-CI eine DRITTE Lage gemessen und deshalb die drei Achsen getrennt: „zu breit" und „die
+ * Elemente schneiden einander" sind für einen Menschen zwei verschiedene Fehler, und ein einziger
+ * Schalter hätte mit der einen gefallenen Aussage auch die andere fallen lassen.
+ *
+ * DER ANLASS DIESER AUFTRENNUNG IST SEIT JOB 3582 FORT, die Auftrennung bleibt. Die damalige dritte
+ * Lage war der Befund CI5: bei 390 px trug die Zeile die Breite des Firmenlogos nicht, der
+ * Konto-Kreis stand rund 20 px ausserhalb des Fensters. Seit der Logokasten eine Obergrenze hat
+ * (`shell/Logo.tsx`, JOB 3582) ist bei 390 px wieder ALLES zugesichert. Die getrennten Achsen stehen
+ * trotzdem weiter hier: sie beschreiben, was eine Zusage sagen KANN, nicht was heute rot ist — und
+ * die nächste enge Lage kommt bestimmt.
  */
 export interface Zusage {
   /** L3 — kein Überlauf: `scrollWidth` übersteigt `clientWidth` nicht. */
@@ -258,4 +271,176 @@ export function pruefeZeile(m: Messung, breite: number, zusage: Zusage, kennung:
       `${breite}px: „${nach.name}“ überlappt „${vor.name}“ (${nach.links} < ${vor.rechts})`,
     ).toBeGreaterThanOrEqual(vor.rechts - 1);
   }
+}
+
+// ================================================================================================
+// DIE FIRMEN-CI — EINGESCHALTET ÜBER DEN ECHTEN WEG, EINMAL FÜR ALLE MESSDATEIEN (JOB 3582).
+// ================================================================================================
+
+/** Die echte Fastify-App der Bühne (`tests/design/h6-chromium.ts`). */
+export type Buehne = NonNullable<Stand["app"]>;
+
+/**
+ * Die Anmeldedaten der Bühne.
+ *
+ * Sie stehen hier ein zweites Mal, und das ist bewusst: `starte()` registriert und meldet dieses
+ * ERSTE Konto selbst an (`tests/design/h6-chromium.ts`, Ersteinrichtung → Admin) und reicht seinen
+ * Bearer nicht heraus. Der Rückruf `vorbereiten` bekommt nur die App. Da eine Messung mit Firmen-CI
+ * den echten Adminweg drücken MUSS (`users.manage`), meldet sie sich ein zweites Mal an demselben
+ * Konto an. Ginge das Konto der Bühne je verloren, wäre der Fall sofort rot (HTTP 401), nicht
+ * still grün.
+ */
+export const BUEHNEN_KONTO = { email: "pedi@job3065.test", password: "geheim12345" } as const;
+
+/** Der Bearer der Bühne — über die echte Anmelderoute, nicht aus einem gebauten Token. */
+export async function meldeAn(app: Buehne): Promise<string> {
+  const antwort = await app.inject({
+    method: "POST",
+    url: "/api/auth/login",
+    payload: { email: BUEHNEN_KONTO.email, password: BUEHNEN_KONTO.password },
+  });
+  if (antwort.statusCode !== 200) {
+    throw new Error(
+      `Anmeldung der Bühne: HTTP ${antwort.statusCode} — ${antwort.body.slice(0, 160)}`,
+    );
+  }
+  return (antwort.json() as { token: string }).token;
+}
+
+/**
+ * Die Firmen-CI über den ECHTEN Adminweg schalten und die Antwort des Servers zurückgeben.
+ *
+ * Der Rückgabewert ist nicht Zierde: er ist der Beleg, dass der Server die Schaltung wirklich
+ * übernommen hat. Ein `PUT`, der 403 sagt, während der Test weiterläuft, wäre genau die stille
+ * Lücke, gegen die die Voraussetzungsfälle (CI0, L0) stehen.
+ */
+export async function schalteCi(
+  app: Buehne,
+  bearer: string,
+  an: boolean,
+): Promise<{ profil: string | null; aktiv: boolean; version: number }> {
+  const antwort = await app.inject({
+    method: "PUT",
+    url: "/api/admin/branding",
+    headers: { authorization: `Bearer ${bearer}` },
+    payload: { profil: an ? "advisor" : null, aktiv: an },
+  });
+  if (antwort.statusCode !== 200) {
+    throw new Error(
+      `PUT /api/admin/branding (an=${an}): HTTP ${antwort.statusCode} — ${antwort.body.slice(0, 160)}`,
+    );
+  }
+  const gestellt = antwort.json() as { profil: string | null; aktiv: boolean; version: number };
+  if (gestellt.aktiv !== an || (an && gestellt.profil !== "advisor")) {
+    throw new Error(`der Server hat die Schaltung nicht übernommen: ${JSON.stringify(gestellt)}`);
+  }
+  return gestellt;
+}
+
+/**
+ * Die Bereitschaft, auf die JEDE Messung mit Firmen-CI wartet: das Firmenlogo ist gezeichnet UND
+ * sein Bild ist wirklich geladen. Ohne das Zweite wäre die Breite des `<img>` (`h-5`, `w-auto`)
+ * schlicht 0 — die Marke sähe schmaler aus, als sie ist, und der Lauf hielte ein Nichts für ein
+ * Ergebnis.
+ */
+export const LOGO_STEHT: Bereitschaft = {
+  pruefung: fn(`() => {
+    const bild = document.querySelector('[data-testid="kopfband-firmenlogo"] img');
+    if (!bild) return false;
+    const span = bild.parentElement;
+    return span.offsetParent !== null && bild.complete && bild.naturalWidth > 0
+      && span.getBoundingClientRect().width > 0;
+  }`),
+  was: "das Firmenlogo ist gezeichnet und sein Bild geladen",
+};
+
+/**
+ * Was `MESSUNG` nicht beantwortet: steht das Logo wirklich da, wie breit ist sein Kasten, und in
+ * welchem Verhältnis steht seine gezeichnete Breite zur Breite der Bilddatei?
+ *
+ * DAS LETZTE IST DIE FRAGE VON JOB 3582: `bildNaturBreite`/`bildNaturHoehe` sind die Masse der
+ * ORIGINALDATEI. Aus ihnen folgt, wie breit das Bild bei 20 px Höhe (`h-5`) OHNE Deckelung wäre —
+ * und nur so lässt sich messen, ob eine Deckelung an einer Breite GREIFT oder eben nicht (§5.4:
+ * bei 1280 px darf sie nicht greifen). Eine gepinnte Zahl an ihrer Stelle wäre wieder der
+ * Überschlag, den JOB 3571 abgelöst hat.
+ */
+export interface LogoBefund {
+  logoDa: boolean;
+  logoGezeichnet: boolean;
+  logoBreite: number;
+  logoHoehe: number;
+  bildBreite: number;
+  bildHoehe: number;
+  bildGeladen: boolean;
+  bildNaturBreite: number;
+  bildNaturHoehe: number;
+  markeBreite: number;
+  markeText: string;
+  fensterBreite: number;
+}
+
+export const LOGO_BEFUND = fn(`() => {
+  const band = document.querySelector('header[data-testid="kopfband"]');
+  if (!band) return null;
+  const logo = band.querySelector('[data-testid="kopfband-firmenlogo"]');
+  const bild = logo ? logo.querySelector('img') : null;
+  const marke = band.querySelector('.kw-kopfband-marke');
+  const lr = logo ? logo.getBoundingClientRect() : null;
+  const br = bild ? bild.getBoundingClientRect() : null;
+  return {
+    logoDa: logo !== null,
+    logoGezeichnet: logo !== null && logo.offsetParent !== null,
+    logoBreite: lr ? lr.width : 0,
+    logoHoehe: lr ? lr.height : 0,
+    bildBreite: br ? br.width : 0,
+    bildHoehe: br ? br.height : 0,
+    bildGeladen: bild ? (bild.complete && bild.naturalWidth > 0) : false,
+    bildNaturBreite: bild ? bild.naturalWidth : 0,
+    bildNaturHoehe: bild ? bild.naturalHeight : 0,
+    markeBreite: marke ? marke.getBoundingClientRect().width : 0,
+    markeText: marke ? (marke.innerText || '').trim() : '',
+    fensterBreite: window.innerWidth,
+  };
+}`);
+
+/** Nur den Logobefund an der STEHENDEN Seite lesen — ohne Neuaufbau, ohne zweite Breitenstellung. */
+export async function liesLogoBefund(stand: Stand): Promise<LogoBefund> {
+  const seite = seiteRoh(stand);
+  const b = await seite.evaluate<LogoBefund | null>(LOGO_BEFUND);
+  if (b === null) {
+    throw new Error("kein Kopfband in der Seite");
+  }
+  return b;
+}
+
+/** Die Kopfbandzeile an der STEHENDEN Seite messen — ohne Neuaufbau (für Messungen nach einem
+ * Eingriff in die Seite, etwa einem ausgetauschten Logobild). */
+export async function messeStehend(stand: Stand): Promise<Messung> {
+  const seite = seiteRoh(stand);
+  const m = await seite.evaluate<Messung | null>(MESSUNG);
+  expect(m, "an der stehenden Seite steht kein Kopfband").not.toBeNull();
+  if (m === null) {
+    throw new Error("unerreichbar");
+  }
+  return m;
+}
+
+/**
+ * Messen MIT eingeschalteter Firmen-CI — und zwar nachweislich: erst wenn das Logo gezeichnet ist,
+ * wird gemessen, und danach wird noch einmal nachgesehen, dass es beim Messen wirklich stand.
+ */
+export async function messeMitCi(
+  stand: Stand,
+  breite: number,
+  hoehe: number,
+): Promise<{ m: Messung; logo: LogoBefund }> {
+  const m = await messe(stand, breite, hoehe, LOGO_STEHT);
+  const logo = await liesLogoBefund(stand);
+  expect(
+    logo.logoGezeichnet,
+    `${breite}px: gemessen wurde OHNE Firmenlogo — der Lauf misst nichts`,
+  ).toBe(true);
+  expect(logo.bildGeladen, `${breite}px: das Firmenlogo ist ein leeres Bild`).toBe(true);
+  expect(logo.logoBreite, `${breite}px: das Firmenlogo ist 0 px breit`).toBeGreaterThan(0);
+  return { m, logo };
 }
