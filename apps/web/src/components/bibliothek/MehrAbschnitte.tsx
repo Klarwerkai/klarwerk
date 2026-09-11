@@ -49,6 +49,7 @@ import { containsExternalUnchecked } from "../../lib/externalProvenance";
 import { toSourcePayload as externalToSourcePayload } from "../../lib/externalSearch";
 import { fileToThumbDataUrl, readFileAsDataUrl } from "../../lib/files";
 import { belegOriginal, evidenceRows } from "../../lib/koEvidence";
+import { koHistoryNote } from "../../lib/koHistoryNote";
 import { koAuditEvents, lineageSummary } from "../../lib/koLineage";
 import { koOverview } from "../../lib/koOverview";
 import {
@@ -1235,7 +1236,13 @@ export function MehrAbschnitte({
               <div className="font-mono text-[11px] text-muted-2">
                 v{h.version} · {new Date(h.at).toLocaleDateString(i18n.language)}
               </div>
-              <div className="text-[12.5px] text-text">{h.note || nameOf(h.author)}</div>
+              {/* JOB 3627: der Vermerk geht durch den EINEN Ort, der ihn anzeigbar macht
+                  (`koHistoryNote.ts`) — feste Dienst-Vermerke über den Katalog, fremder Text
+                  wörtlich. Der Rückfall auf den Autornamen bleibt Zeichen für Zeichen: leer
+                  kommt leer zurück. */}
+              <div className="text-[12.5px] text-text">
+                {koHistoryNote(h.note, t) || nameOf(h.author)}
+              </div>
             </li>
           ))}
         </ol>
@@ -1591,7 +1598,11 @@ export function MehrAbschnitte({
                         </p>
                       );
                     })()}
-                    <p className="mt-1 font-mono text-[10.5px] text-muted-2">{v.note}</p>
+                    {/* JOB 3627: derselbe eine Ort wie in der Historie (`:1238`) — keine zweite
+                        Tabelle, kein zweites `t(…)` daneben. */}
+                    <p className="mt-1 font-mono text-[10.5px] text-muted-2">
+                      {koHistoryNote(v.note, t)}
+                    </p>
                     <button
                       type="button"
                       data-bib-fassung={v.key}

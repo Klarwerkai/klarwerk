@@ -3031,6 +3031,15 @@ const de = {
   "ko.evFresh.missing": "Evidence fehlt",
   "ko.evFresh.neutral": "kein Evidence-Anlass",
   "ko.evFresh.counts": "v{{version}} · aktuell {{current}} · älter {{older}}",
+  // JOB 3627: die Vermerke, die der DIENST fest in Historie und Schnappschüsse schreibt
+  // (`services/knowledge-object/src/service.ts`, Fundstellen an der Tabelle in
+  // `apps/web/src/lib/koHistoryNote.ts`). Der DEUTSCHE Wert ist Zeichen für Zeichen das Wort, das
+  // der Dienst speichert — sonst änderte sich die deutsche Fläche still mit.
+  "ko.historyNote.created": "erstellt",
+  "ko.historyNote.createdFromDocument": "erstellt (Dokumentinhalt übernommen)",
+  "ko.historyNote.createdBackfilled": "erstellt (nachgezogen)",
+  "ko.historyNote.revised": "überarbeitet",
+  "ko.historyNote.revisedFromDocument": "überarbeitet (Dokumentinhalt übernommen)",
   "ko.snapshotsTitle": "Versions-Snapshots",
   "ko.snapshotsEmpty": "Noch keine gespeicherten Voll-Snapshots vorhanden.",
   "ko.snapshotInitial": "Ausgangsversion — kein Vorgänger-Diff.",
@@ -8446,6 +8455,12 @@ const en: typeof de = {
   "ko.evFresh.missing": "evidence missing",
   "ko.evFresh.neutral": "no evidence expected",
   "ko.evFresh.counts": "v{{version}} · current {{current}} · older {{older}}",
+  // JOB 3627: die englische Seite der festen Dienst-Vermerke (de `:3038-3042`).
+  "ko.historyNote.created": "created",
+  "ko.historyNote.createdFromDocument": "created (document content adopted)",
+  "ko.historyNote.createdBackfilled": "created (backfilled)",
+  "ko.historyNote.revised": "revised",
+  "ko.historyNote.revisedFromDocument": "revised (document content adopted)",
   "ko.snapshotsTitle": "Version snapshots",
   "ko.snapshotsEmpty": "No stored full snapshots yet.",
   "ko.snapshotInitial": "Initial version — no previous diff.",
@@ -13355,6 +13370,12 @@ const nl: typeof de = {
   "ko.evFresh.missing": "Evidence ontbreekt",
   "ko.evFresh.neutral": "geen aanleiding voor evidence",
   "ko.evFresh.counts": "v{{version}} · actueel {{current}} · ouder {{older}}",
+  // JOB 3627: die niederländische Seite der festen Dienst-Vermerke (de `:3038-3042`).
+  "ko.historyNote.created": "aangemaakt",
+  "ko.historyNote.createdFromDocument": "aangemaakt (documentinhoud overgenomen)",
+  "ko.historyNote.createdBackfilled": "aangemaakt (nagetrokken)",
+  "ko.historyNote.revised": "herzien",
+  "ko.historyNote.revisedFromDocument": "herzien (documentinhoud overgenomen)",
   "ko.snapshotsTitle": "Versie-snapshots",
   "ko.snapshotsEmpty": "Nog geen opgeslagen volledige snapshots aanwezig.",
   "ko.snapshotInitial": "Beginversie — geen diff met voorganger.",

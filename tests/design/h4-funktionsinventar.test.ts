@@ -891,30 +891,15 @@ describe("JOB 3063 · H4 · Funktionsinventar — jede Funktion an ihrem neuen O
    * nicht an (§10). Verschwindet ein Rückfall, wird F19b rot und der Eintrag gehört gestrichen.
    */
   const BEKANNTER_RUECKFALL: readonly Ausnahme[] = [
-    {
-      teil: "Mehr · historie",
-      wort: "erstellt",
-      grund:
-        "GEMESSENER RÜCKFALL (JOB 3602, Lieferung 1): die englische Historie liest " +
-        "„v1 · 9/11/2026 erstellt“ — Datum englisch, der Vermerk deutsch. Er hat im Katalog " +
-        "GAR KEINEN Eintrag: der Server schreibt ihn als deutsches Wort in den Datensatz " +
-        '(`services/knowledge-object/src/service.ts:1816`, `history: [{ … note: "erstellt" }]`), ' +
-        "die Fläche zeigt ihn wörtlich. Deshalb ist es kein Katalogfehler, den man in " +
-        "`apps/web/src/i18n.ts` beheben könnte, und deshalb steht hier eine Fundstelle im Dienst " +
-        "statt im Katalog. Gemeldet und NICHT repariert: das Produkt bleibt in dieser Runde " +
-        "unberührt (§10), die Behebung ist eine eigene Zeile.",
-    },
-    {
-      teil: "Mehr · schnappschuesse",
-      wort: "erstellt",
-      grund:
-        "Derselbe Vermerk aus derselben Quelle, zweite Fundstelle: die Schnappschüsse tragen ihn " +
-        "aus `services/knowledge-object/src/service.ts:1935` (`this.snapshot(ko, author, " +
-        '"erstellt")`). Englisch gelesen: „Initial version — no previous diff. erstellt Open ' +
-        "version“. Er steht als EIGENER Eintrag hier und nicht mit dem der Historie zusammen, " +
-        "weil beide Abschnitte einzeln verschwinden können — wird einer übersetzt, soll F19b " +
-        "genau diesen einen Eintrag als tot melden.",
-    },
+    // JOB 3627: HEUTE STEHT HIER KEIN GEMESSENER RÜCKFALL OFFEN. Die zwei Einträge, die bis
+    // hierher standen — „Mehr · historie · erstellt" und „Mehr · schnappschuesse · erstellt" —
+    // sind GESTRICHEN, weil ihr Befund behoben ist und nicht, weil ihn jemand leiser gestellt hat:
+    // der Vermerk läuft seit diesem Auftrag durch `apps/web/src/lib/koHistoryNote.ts` und liest
+    // sich auf Englisch „created" (`MehrAbschnitte.tsx:1238`/`:1594`, Katalog
+    // `ko.historyNote.*`). Der Kommentar oben verlangt genau diese Streichung, sobald ein
+    // Rückfall verschwindet — eine Ausnahme, die nichts mehr deckt, meldet F19b als tot.
+    // Die Liste bleibt als LEERE Liste stehen: sie ist die Stelle, an der der nächste gemessene
+    // Fund einzutragen ist.
   ];
 
   const AUSNAHMEN: readonly Ausnahme[] = [...VON_NATUR_GLEICH, ...BEKANNTER_RUECKFALL];
