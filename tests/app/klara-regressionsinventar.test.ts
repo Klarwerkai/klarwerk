@@ -764,6 +764,19 @@ const INVENTAR: readonly string[] = [
   // K2 hat die beiden gemeldet, das Inventar nimmt sie nicht still auf.
   "tests/demo-firmen-ci-verbraucher/marke-quelle.test.ts",
   "tests/demo-firmen-ci-verbraucher/word-marke.test.ts",
+  // JOB 3584 (11.09.2026) KI-FREIE-ANWEISUNG: die Browsermessung der KI-Palette des Blattes bei
+  // 390 px. Sie kommt ueber die Inhaltsachse `palette` herein — nicht wegen einer Farbe, sondern
+  // wegen des WORTES: die Achse sucht unter anderem `palette` im Text, und diese Datei nennt die
+  // KI-Palette des Standardeditors in jeder zweiten Zeile. „klara" steht nicht im Pfad, K5 bleibt
+  // deshalb unveraendert.
+  // DER EINTRAG STEHT TROTZDEM HIER UND WIRD NICHT WEGDEFINIERT: dieses Inventar pinnt die
+  // ABGELEITETE Menge, nicht eine Auswahl. Die Achse enger zu stellen (etwa `themes\.css|--ai:` ohne
+  // `palette`) waere eine Aenderung an einem fremden Waechter und an der Klara-Regressionsmenge —
+  // eine eigene Zeile, nicht ein Nebenzug dieses Auftrags. K2 hat die Datei gemeldet, das Inventar
+  // nimmt sie nicht still auf. GEMESSEN, NICHT GESETZT: der Torlauf meldete vor dieser Zeile
+  // `neu im Baum, aber nicht im gepinnten Inventar … + "tests/ki-freie-anweisung/
+  // ki-palette-390px-chromium.test.ts"`.
+  "tests/ki-freie-anweisung/ki-palette-390px-chromium.test.ts",
 ];
 
 // ------------------------------------------------------------------------------------------------

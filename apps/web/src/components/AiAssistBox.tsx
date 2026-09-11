@@ -192,11 +192,32 @@ export function AiAssistInstructions({
     <div className="mt-2">
       {(presets.data ?? []).map((p) => (
         <div key={p.id} className="mb-2">
+          {/*
+            JOB 3584 — `max-w-full break-words`: GEMESSEN, nicht vermutet.
+
+            DER BEFUND, im echten Chromium bei 390 px an der gebauten Anwendung
+            (`tests/ki-freie-anweisung/ki-palette-390px-chromium.test.ts`, Fall B1/B2 am Basisstand
+            `9b70025`), wörtlich: „die Vorlage „Instandhaltungsuebergabeprotokollzusammenfassung"
+            endet rechts ausserhalb (x=398 von 390) — expected 398 to be less than or equal to 390".
+            Der Name einer Vorlage kommt vom Admin der Organisation; ein einzelnes langes Wort hat
+            hier keinen Umbruchpunkt, und der Knopf wuchs auf 333 px in einer 304 px breiten Fläche.
+            Er schob sich damit aus der Palette (rechts 398 gegen Palette 382) und aus dem Fenster;
+            was darüber hinausragt, liegt hinter dem Seitwärtsrollen der Menüfläche und ist nicht
+            zu lesen. In jsdom ist das unsichtbar: dort ist jedes Rechteck null.
+
+            WARUM BEIDE KLASSEN UND NICHT EINE. `break-words` (`overflow-wrap: break-word`) allein
+            genügt NICHT: es geht nicht in die Berechnung der min-content-Breite ein, der Knopf
+            bliebe also so breit wie sein längstes Wort — dieselbe Lehre steht im Haus schon
+            geschrieben (`apps/web/src/index.css:74-78`). `max-w-full` deckelt den Knopf auf die
+            Breite seiner Fläche, und erst darin bricht `break-words` das Wort um. Beide zusammen
+            sind die kleinste Änderung, die den gemessenen Überlauf behebt; die Kalibrierung K des
+            Prüfstandes nimmt sie zurück und verlangt, dass die Messung wieder rot wird.
+          */}
           <button
             type="button"
             disabled={disabled}
             onClick={() => onRun(p.instruction)}
-            className="rounded-pill border border-dashed border-ai-dashed px-2.5 py-1 text-[12px] font-semibold text-muted hover:border-ink/30 hover:text-text disabled:opacity-50"
+            className="max-w-full break-words rounded-pill border border-dashed border-ai-dashed px-2.5 py-1 text-[12px] font-semibold text-muted hover:border-ink/30 hover:text-text disabled:opacity-50"
           >
             {p.name}
           </button>

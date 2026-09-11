@@ -79,6 +79,18 @@ export interface Seite {
   goto(url: string, opts?: Record<string, unknown>): Promise<unknown>;
   waitForFunction(fn: BrowserFn, arg?: unknown, opts?: Record<string, unknown>): Promise<unknown>;
   evaluate<T>(fn: BrowserFn, arg?: unknown): Promise<T>;
+  /**
+   * JOB 3584: die Tastatur steht HIER und nicht in der Testdatei — dieselbe Lehre, die JOB 3564 für
+   * `h4-harness.ts` bezahlt hat (dort `:93-99`). Schlank: nur `press`, das einzige, was der
+   * Tastaturweg der KI-Palette wirklich ruft; wer `type` braucht, trägt es hier nach, nicht bei sich.
+   */
+  keyboard: { press(taste: string): Promise<void> };
+  /**
+   * JOB 3584: dieselbe Seite in einem anderen Fenster. Die Bühne fährt auf 1280×800 an (das Maß des
+   * Mockups); die schmale Lage (390 px) ist keine zweite Bühne, sondern dasselbe Fenster, schmaler
+   * gestellt — ein zweiter `buehneAufbauen` wäre ein zweiter Browser und zweite Tor-Last.
+   */
+  setViewportSize(groesse: { width: number; height: number }): Promise<void>;
 }
 
 interface Browser {
@@ -146,6 +158,18 @@ export interface Buehne {
 export type Skript = Record<string, unknown>;
 
 /**
+ * JOB 3584 — DAS FENSTER, IN DEM DIE BÜHNE ANFÄHRT.
+ *
+ * Die Vorgabe bleibt 1280×800 (das Maß des Mockups, s. `:207`): kein Bestandsverbraucher ändert sich
+ * dadurch. Wer schmal misst, gibt es hier an, statt sich nach dem Aufbau selbst umzustellen — die
+ * erste Fahrt findet dann schon das richtige Fenster vor, und nichts wird zweimal gezeichnet.
+ */
+export interface Fenster {
+  width: number;
+  height: number;
+}
+
+/**
  * Baut die Bühne auf und fährt sie an `pfad` (Vorgabe `/erfassen`). Wirft NICHT: ein Fehlschlag
  * steht in `fehler`, damit der Testfall ihn benennen kann statt in einem Hook zu sterben.
  */
@@ -153,6 +177,7 @@ export async function buehneAufbauen(
   pfad = "/erfassen",
   wartetAuf = '[data-testid="blatt"]',
   skript: Skript = {},
+  fenster: Fenster = { width: 1280, height: 800 },
 ): Promise<Buehne> {
   const seitenfehler: string[] = [];
   let browser: Browser | null = null;
@@ -204,8 +229,8 @@ export async function buehneAufbauen(
       args: ["--no-sandbox", "--disable-gpu", "--single-process", "--no-zygote"],
     });
     const version = browser.version();
-    // 1280×800 wie das Mockup.
-    const seite = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    // Vorgabe 1280×800 wie das Mockup; `fenster` stellt die schmale Lage schon beim Anfahren.
+    const seite = await browser.newPage({ viewport: fenster });
     seite.on("pageerror", (e: unknown) => {
       seitenfehler.push(String(e).split("\n")[0] ?? "");
     });
