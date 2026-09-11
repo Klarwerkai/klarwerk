@@ -14,9 +14,15 @@
 //
 // WIE HIER GEMESSEN WIRD — UND WAS DAS NICHT BEWEIST: jsdom hat keine Layout-Engine; ob Text
 // wirklich abgeschnitten wird, kann hier NIEMAND messen. Geprüft wird deshalb die Struktur, die
-// darüber entscheidet: Das Etikett darf kein Nachkomme des `truncate`-Trägers sein und muss
+// darüber entscheidet: Das Etikett darf kein Nachkomme des kürzenden Trägers sein und muss
 // `shrink-0` tragen. Solange das gilt, kürzt der Titel und das Etikett bleibt stehen. Die
 // optische Endabnahme bleibt beim Design-Lead.
+//
+// JOB 3462 (REVIEW26-AUFGABEN-SCHMAL): der kürzende Träger in der AUFGABENLISTE ist nicht mehr
+// `truncate` (eine Zeile), sondern `line-clamp-2` (zwei Zeilen, dann „…") — der Prüferlauf vom
+// 08.09. fand die einzeilig gekappten Titel unlesbar. Die Zusage dieses Tests bleibt dieselbe: das
+// Etikett hängt NICHT im gekürzten Teil. Auf „Risiko & Lücken" (`Risk.tsx`) steht weiter `truncate`.
+// Die Breiten selbst misst `tests/review26-aufgaben-schmal/aufgaben-schmal-chromium.test.ts`.
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { Gap } from "../../apps/web/src/api/types";
@@ -129,10 +135,12 @@ describe("Sprach-Etikett an der Wissenslücke (Aufgabenliste)", () => {
     expect(etikett()).not.toBeNull();
   });
 
-  it("das Etikett steht NICHT im abgeschnittenen Titel — sonst fällt es als Erstes weg", () => {
+  it("das Etikett steht NICHT im gekürzten Titel — sonst fällt es als Erstes weg", () => {
     mount(MyTasks);
     const el = etikett();
     expect(el).not.toBeNull();
+    // JOB 3462: der kürzende Träger ist `line-clamp-2`; `truncate` gibt es in der Zeile nicht mehr.
+    expect(el?.closest(".line-clamp-2")).toBeNull();
     expect(el?.closest(".truncate")).toBeNull();
   });
 
@@ -141,14 +149,23 @@ describe("Sprach-Etikett an der Wissenslücke (Aufgabenliste)", () => {
     expect(etikett()?.className).toContain("shrink-0");
   });
 
-  it("der Titel selbst bleibt der kürzende Teil (`truncate` sitzt am Titel)", () => {
-    // Gegenprobe zur vorigen Zusage: Verschwände `truncate` ganz, wäre der Etikett-Test trivial
-    // grün und die Zeile bräche stattdessen um.
+  it("der Titel selbst bleibt der kürzende Teil (`line-clamp-2` sitzt am Titel, kein `truncate`)", () => {
+    // Gegenprobe zur vorigen Zusage: Verschwände die Kürzungsregel ganz, wäre der Etikett-Test
+    // trivial grün und die Zeile wüchse stattdessen unbegrenzt.
     mount(MyTasks);
-    const titel = Array.from(container.querySelectorAll(".truncate")).find((e) =>
+    const titel = Array.from(container.querySelectorAll(".line-clamp-2")).find((e) =>
       e.textContent?.includes("countersunk screws"),
     );
     expect(titel).toBeDefined();
+    // JOB 3462, Ablösung: der einzeilige Schnitt ist ERSETZT, nicht ergänzt — kein zweiter
+    // Kürzungsweg für denselben Text.
+    expect(titel?.classList.contains("truncate")).toBe(false);
+    expect(
+      Array.from(container.querySelectorAll('[data-testid="task-zeile"] .truncate')).filter(
+        (e) => !(e instanceof HTMLDivElement),
+      ),
+      "in der Aufgabenzeile kürzt außer der Autorenzeile nichts mehr einzeilig",
+    ).toEqual([]);
   });
 });
 

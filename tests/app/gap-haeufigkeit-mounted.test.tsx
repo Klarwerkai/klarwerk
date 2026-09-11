@@ -148,9 +148,12 @@ describe("D-032 · die Häufigkeit steht an der Wissenslücke", () => {
     expect(haeufigkeit()).toBeNull();
   });
 
-  it("die Häufigkeit steht NICHT im abgeschnittenen Titel — sonst fällt sie als Erstes weg", () => {
+  it("die Häufigkeit steht NICHT im gekürzten Titel — sonst fällt sie als Erstes weg", () => {
     // Genau der Befund, den das Sprach-Etikett schon einmal gekostet hat.
+    // JOB 3462: der kürzende Träger des Titels ist `line-clamp-2` (zwei Zeilen), `truncate` gibt
+    // es in der Aufgabenzeile nicht mehr — geprüft wird gegen beides.
     mount([luecke({ askCount: 7 })]);
+    expect(haeufigkeit()?.closest(".line-clamp-2")).toBeNull();
     expect(haeufigkeit()?.closest(".truncate")).toBeNull();
   });
 

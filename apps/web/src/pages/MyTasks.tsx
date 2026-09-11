@@ -62,6 +62,19 @@ import { type WorkSeverity, groupTasks, severityForType } from "../lib/workCente
 //
 // Gemessen: `tests/design/h5-funktionsinventar.test.ts` (Info-Symbol öffnet den Erklärsatz, Knopf
 // öffnet die CTAs) und die bestehenden Aufgaben-Tests, die auf denselben Wortlauten stehen.
+//
+// ------------------------------------------------------------------------------------------------
+// JOB 3462 · REVIEW26 — GESTALTUNGSVERMERK: DIE ZEILE IST SCHMALFEST, NICHT NEU.
+// ------------------------------------------------------------------------------------------------
+// Der Prüferlauf vom 08.09. fand bei 390 px Titel und Phasen nach wenigen Worten mit „…" gekappt;
+// der lange eigene Reviewtitel war nicht eindeutig lesbar. Der Titel darf deshalb auf ZWEI Zeilen
+// umbrechen und wird erst danach gekürzt — zwei Zeilen genügen jedem Titel des Belegs, während eine
+// Liste aus fünfzeiligen Titeln keine Liste mehr wäre, sondern eine Textwand (die von JOB 3064
+// oben). Für den Restfall liegt der volle Titel im `title`-Attribut. Die Phase hat Vorrang vor dem
+// Kürzen, weil sie die Aussage „was ist als Nächstes zu tun" trägt; ein Typ ohne Phase ist eine
+// halbe Auskunft, also bricht der Meta-Anfang um statt zu kürzen, und die `shrink-0`-Anhänge
+// behalten ihren Platz hinter ihm. Bei Desktopbreite ändert sich nichts: alles bleibt einzeilig.
+// Gemessen in Chromium: `tests/review26-aufgaben-schmal/aufgaben-schmal-chromium.test.ts`.
 
 const GRUPPEN_PUNKT: Record<WorkSeverity, string> = {
   critical: "bg-trust-crit-fill",
@@ -388,19 +401,32 @@ export function MyTasks(): JSX.Element {
                         className={`h-2 w-2 shrink-0 rounded-full ${GRUPPEN_PUNKT[it.severity]}`}
                       />
                       <Link to={it.to} className="min-w-0 flex-1 hover:opacity-80">
-                        <span className="block truncate text-[14px] text-text">{it.label}</span>
+                        {/* JOB 3462: `line-clamp-2` ist die EINZIGE Kürzungsregel am Titel — zwei
+                            Zeilen, dann „…"; kein `truncate` mehr. `break-words` bricht auch ein
+                            überlanges Einzelwort, statt es aus dem Rahmen ragen zu lassen. */}
+                        <span
+                          title={it.label}
+                          className="line-clamp-2 break-words text-[14px] text-text"
+                        >
+                          {it.label}
+                        </span>
                         {/* §4: EINE Meta-Zeile statt vier Pillen — Typ · Phase · Sprache ·
                               Häufigkeit · Review-Zustand.
                               GAP-SPRACHHERKUNFT / JOB 1111 D-032: Sprach-Etikett und Häufigkeit
-                              bleiben `shrink-0` und stehen AUSSERHALB des kürzenden Teils. Genau
+                              bleiben `shrink-0` und stehen AUSSERHALB des kürzbaren Teils. Genau
                               das war ihr Bauzweck: als Anhang am Titel fielen sie dem `truncate`
                               zuerst zum Opfer — bei den langen Titeln, für die sie gedacht sind.
-                              Der kürzende Teil ist jetzt der Anfang der Meta-Zeile. */}
+                              Der kürzbare Teil ist der Anfang der Meta-Zeile.
+                              JOB 3462: dieser Anfang KÜRZT nicht mehr, er bricht um (`break-words`,
+                              kein `truncate`) — die Phase verschwand im Schmalfall als Erstes. Die
+                              Anhänge stehen weiter in ihrer Reihenfolge hinter ihm; ist die Zeile
+                              voll, rücken sie geschlossen in die nächste (`flex-wrap`, derselbe
+                              Mechanismus wie die Aufgabenzeile selbst). */}
                         <span
                           data-testid="task-meta"
-                          className="mt-0.5 flex items-baseline gap-1.5 text-[12.5px] text-muted-2"
+                          className="mt-0.5 flex flex-wrap items-baseline gap-x-1.5 text-[12.5px] text-muted-2"
                         >
-                          <span className="min-w-0 truncate">
+                          <span className="min-w-0 break-words">
                             {t(it.typeKey)} · {t("task.phaseLabel")}{" "}
                             {t(phaseLabelKey(knowledgeOsPhase(it.typeKey)))}
                           </span>
