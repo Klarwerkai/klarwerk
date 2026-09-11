@@ -109,19 +109,22 @@ function teilfehlerSatz(...titel: readonly string[]): string {
 }
 
 // ================================================================================================
-// EIN BEFUND, DER HIER NICHT REPARIERT WIRD — UND DESHALB HIER STEHT, STATT VERSTECKT ZU SEIN.
+// DER BEFUND VON HIER IST BEHOBEN — JOB 3621.
 // ================================================================================================
 //
-// Der Wächter-Rückruf speichert VOR den Datei-Punkten den EINTRAG (`saveDraft`), und seine
-// Bedingung zählt die geladene Datei mit (`Capture.tsx`: `hasUnsavedEntry` enthält
-// `Boolean(fileName) || fileText.trim().length > 0`). Nach einem erfolgreichen `saveDraft` räumt
-// `saveDraft.onSuccess` das Formular, aber NICHT `fileName`/`fileText` — beim zweiten Druck läuft
-// der Eintrags-Zweig deshalb erneut und legt einen ZWEITEN leeren Entwurf mit dem Rückfalltitel an.
+// Bis JOB 3621 stand hier ein gemessener, aber ausdrücklich nicht reparierter Fund: der
+// Wächter-Rückruf speicherte VOR den Datei-Punkten den EINTRAG (`saveDraft`), und seine Bedingung
+// zählte die geladene Datei mit (`hasUnsavedEntry` enthielt `Boolean(fileName)` und `fileText`).
+// Der erste Druck legte deshalb NEBEN den Punktentwürfen einen leeren Entwurf mit dem
+// Rückfalltitel an, der zweite nach einem Teilfehler noch einen. Die beiden Zeilen unten haben
+// das mit 1 bzw. 2 festgehalten und den, der es behebt, genau hierher geführt.
 //
-// Das ist ein eigener Fund am `saveDraft`-Zweig, nicht am Dateiweg: Auftrag §5 nennt ihn nicht,
-// und jede Änderung dort berührt JEDEN Speicherweg der Wache (D1–D7 und die mega22-Fälle). Er wird
-// hier deshalb GEMESSEN und benannt, nicht repariert. Wird er behoben, wird diese Zeile rot und
-// führt den, der es tut, genau hierher.
+// SEIT JOB 3621 gilt: die geladene Datei löst den Eintrags-Zweig nicht mehr aus, solange der
+// DATEIWEG sie in diesem Durchlauf trägt (`Capture.tsx`, `hasUnsavedEntryOhneDatei` und der
+// Rückfall an derselben Bedingung). Die Zahlen unten sind deshalb 0 — und sie bleiben die Probe:
+// nimmt jemand die zwei Datei-Glieder in die Bedingung zurück, stehen hier wieder 1 und 2.
+// Was der Eintrags-Zweig weiterhin tut, wenn wirklich etwas getippt wurde, misst die
+// Nachbardatei `dateiweg-eintragsentwurf-mounted.test.tsx` (E3).
 const EINTRAGS_TITEL = "Entwurf";
 
 /** Die Anlageversuche der DATEI-PUNKTE — ohne den Eintrags-Entwurf von oben. */
@@ -183,8 +186,8 @@ describe("JOB 3600 · der Teilfehler des Dateiwegs beim Verlassen", () => {
 
     // Alle drei Punkte wurden versucht, zwei sind angelegt.
     expect(punkteversuche()).toEqual({ [P1.title]: 1, [P2.title]: 1, [P3.title]: 1 });
-    // Der Eintrags-Entwurf von oben — beim ERSTEN Druck ist er der gewollte (s. BEFUND oben).
-    expect(anlageversucheJeTitel()[EINTRAGS_TITEL]).toBe(1);
+    // Kein Eintragsentwurf daneben (JOB 3621).
+    expect(anlageversucheJeTitel()[EINTRAGS_TITEL] ?? 0).toBe(0);
     expect(bestandJeTitel()[P1.title]).toBe(1);
     expect(bestandJeTitel()[P2.title]).toBeUndefined();
     expect(bestandJeTitel()[P3.title]).toBe(1);
@@ -221,9 +224,8 @@ describe("JOB 3600 · der Teilfehler des Dateiwegs beim Verlassen", () => {
     // Und das, was der Mensch danach in „Meine Entwürfe" findet, ist genau das: kein Duplikat.
     expect(bestandJeTitel()[P1.title]).toBe(1);
     expect(bestandJeTitel()[P3.title]).toBe(1);
-    // DER BENANNTE FREMDBEFUND (s. oben): der Eintrags-Entwurf entsteht beim zweiten Druck erneut.
-    // Kein Soll — ein gemessener, hier nicht beauftragter Fund am `saveDraft`-Zweig.
-    expect(anlageversucheJeTitel()[EINTRAGS_TITEL]).toBe(2);
+    // Auch über beide Drücke zusammen entsteht kein Eintragsentwurf (JOB 3621).
+    expect(anlageversucheJeTitel()[EINTRAGS_TITEL] ?? 0).toBe(0);
 
     // Nichts anderes ist dabei angefasst worden.
     expect(draftsUpdate).not.toHaveBeenCalled();

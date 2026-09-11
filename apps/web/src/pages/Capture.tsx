@@ -2611,16 +2611,21 @@ export function CaptureArbeitsraum({
       draft.title.trim().length > 0 ||
       (draft.conditions?.some((c) => c.trim().length > 0) ?? false) ||
       (draft.measures?.some((mm) => mm.trim().length > 0) ?? false));
-  const hasUnsavedEntry =
+  // JOB 3621: DERSELBE EINTRAG, OHNE DIE GELADENE DATEI — und zwar als eigener, benannter Begriff,
+  // weil GENAU EIN Aufrufer ihn braucht: der Speicher-Zweig der Navigationswache (`:3056` unten).
+  // Dort trägt die Datei bereits der DATEIWEG darunter; zählte sie hier noch einmal mit, würde
+  // derselbe Zustand ZWEIMAL gespeichert — einmal als Punktentwürfe, einmal als leerer Eintrag mit
+  // dem Rückfalltitel. Es gibt trotzdem nur EINEN Wahrheitsort für die Feldliste: `hasUnsavedEntry`
+  // wird unten AUS diesem Prädikat gebildet, die Datei-Glieder kommen dort dazu. Eine zweite
+  // Abschrift der Felder wäre die Stelle, an der die beiden beim nächsten neuen Feld auseinander-
+  // laufen.
+  const hasUnsavedEntryOhneDatei =
     raw.trim().length > 0 ||
     bodyHtml.trim().length > 0 ||
     draftHasContent ||
     // Geführtes Interview: begonnene Antworten oder gerade getippte Antwort.
     ivAnswer.trim().length > 0 ||
     ivAnswers.some((a) => a.trim().length > 0) ||
-    // Aus Datei: hochgeladene Datei / eingelesener Text (auch VOR der KI-Auswertung).
-    Boolean(fileName) ||
-    fileText.trim().length > 0 ||
     // Erweiterte Felder, Metadaten und Anhänge zählen ebenfalls als „etwas eingetragen".
     category.trim().length > 0 ||
     asset.trim().length > 0 ||
@@ -2628,6 +2633,14 @@ export function CaptureArbeitsraum({
     images.length > 0 ||
     docs.length > 0 ||
     pendingSources.length > 0;
+  const hasUnsavedEntry =
+    hasUnsavedEntryOhneDatei ||
+    // Aus Datei: hochgeladene Datei / eingelesener Text (auch VOR der KI-Auswertung).
+    // Bug (Pedi 05.07.): OHNE diese zwei Glieder wäre `isCaptureDirty` bei einer bloss geladenen,
+    // noch nicht ausgewerteten Datei falsch — die Wache fragte nicht mehr, und die Datei wäre beim
+    // Wechsel still weg. Sie bleiben deshalb hier stehen (gemessen in E4).
+    Boolean(fileName) ||
+    fileText.trim().length > 0;
   // In „Aus Datei" ausgewertete Funde (filePoints) — die ganze Tabelle darf nicht still verloren gehen.
   const hasUnsavedFilePoints = Boolean(filePoints && filePoints.length > 0);
   const hasUnsaved = hasUnsavedEntry || hasUnsavedFilePoints;
@@ -2980,9 +2993,11 @@ export function CaptureArbeitsraum({
   //   · GIBT ES etwas zu speichern? — das ist NICHT dieselbe Frage, und sie wird je nach Aufrufer
   //     verschieden beantwortet. Der KNOPF verlangt getippten Inhalt (er soll ein leeres Formular
   //     nicht zum Speichern anbieten). Die WACHE hat ihr eigenes, WEITERES Dirty-Prädikat
-  //     (`hasUnsavedEntry || hasUnsavedMeta || ivStarted || ivResult`) — sie muss auch einen Stand
-  //     sichern, in dem NUR Prüferauswahl, Vertraulichkeit oder eine halbe Quelle geändert wurden,
-  //     ohne dass je ein Titel getippt wurde (`saveDraft` setzt dafür einen Ersatztitel).
+  //     (`hasUnsavedEntryOhneDatei || hasUnsavedMeta || ivStarted || ivResult`, JOB 3621) — sie muss
+  //     auch einen Stand sichern, in dem NUR Prüferauswahl, Vertraulichkeit oder eine halbe Quelle
+  //     geändert wurden, ohne dass je ein Titel getippt wurde (`saveDraft` setzt dafür einen
+  //     Ersatztitel). Was sie NICHT mehr allein daraus ableitet, ist die geladene Datei: die trägt
+  //     der Dateiweg unter demselben Rückruf (Begründung dort, am Zweig selbst).
   //
   // Beide Fragen in ein Prädikat zu ziehen, wäre die bequeme Vereinheitlichung — und sie wäre
   // falsch: die Wache verlöre genau die Zustände, für die sie gebaut wurde. Das Tor beantwortet
@@ -3025,7 +3040,34 @@ export function CaptureArbeitsraum({
         // ein vorliegendes Interview-Ergebnis (ivResult) lösen die Persistenz aus; vorher endete der
         // Callback hier ohne saveDraft und die Navigation lief trotzdem weiter. saveDraft persistiert
         // diese Felder vollständig (s. DraftPayload/interviewForDraft oben).
-        if (hasUnsavedEntry || hasUnsavedMeta || ivStarted || ivResult) {
+        // JOB 3621: DIE GELADENE DATEI ZÄHLT HIER NICHT MEHR MIT — SIE HAT SCHON EINEN TRÄGER.
+        //
+        // Die Trennung aus `:2988`–`:3003` bleibt unangetastet: die Wache hat bewusst ein WEITERES
+        // Dirty-Prädikat als der sichtbare Knopf und muss auch einen Stand sichern, in dem NUR
+        // Prüferauswahl, Vertraulichkeit oder eine halbe Quelle geändert wurden (`saveDraft` setzt
+        // dafür einen Ersatztitel). Der Rückfalltitel war also nie der Fehler. Falsch war, dass die
+        // geladene DATEI diesen Zweig auslöste, obwohl der Dateiweg direkt darunter genau sie
+        // trägt: ein Druck legte drei Punktentwürfe UND einen leeren „Entwurf" an, ein zweiter nach
+        // einem Teilfehler einen weiteren (JOB 3600 hat den Fund gemessen und benannt).
+        //
+        // DER RÜCKFALL DAHINTER IST KEIN ZWEITER WEG, SONDERN DIE ZUSAGE „NICHTS GEHT STILL
+        // VERLOREN": greift der Dateiweg in DIESEM Durchlauf nicht (keine Punkte oder kein
+        // Dateiname), trägt die Datei niemand — dann speichert wieder dieser Zweig, wie bisher.
+        //
+        // EHRLICH DAZU, WEIL ES GEMESSEN IST: heute erreicht diesen Rückfall kein Bedienweg. Ohne
+        // Punkte ist `hasPendingFileImport` wahr (`:2780`), die Datei steht damit in
+        // `unsavableDirtyReasons`, und der Dialog bietet gar kein „Entwurf speichern und wechseln"
+        // an (E4 misst genau das). Umgekehrt gibt es keinen Zustand mit Punkten OHNE Dateinamen:
+        // wo `filePoints` geleert wird, fallen `fileName`/`fileText` mit (`:1297`, `:1544`). Nimmt
+        // man den Rückfall heraus, bleibt der gesamte Bestand grün. Er steht hier trotzdem — als
+        // Riegel gegen einen künftigen vierten Dateizustand, nicht als gemessener Weg.
+        if (
+          hasUnsavedEntryOhneDatei ||
+          hasUnsavedMeta ||
+          ivStarted ||
+          ivResult ||
+          (!(filePoints && filePoints.length > 0 && fileName) && hasUnsavedEntry)
+        ) {
           // AUFTRAG-mega22 Block F: DASSELBE Tor wie der sichtbare Knopf. Bis mega21 rief dieser
           // Zweig `saveDraft.mutateAsync()` DIREKT und umging damit die Sperre, die daneben sichtbar
           // stand. Ist das Tor zu, wird NICHT gespeichert und NICHT gewechselt: der Dialog bleibt
@@ -3106,6 +3148,9 @@ export function CaptureArbeitsraum({
   }, [
     isCaptureDirty,
     hasUnsavedEntry,
+    // JOB 3621: das Prädikat, an dem der Speicher-Zweig oben jetzt hängt — es gehört in die Liste,
+    // sonst bliebe die Wache mit einem überholten Stand gesetzt.
+    hasUnsavedEntryOhneDatei,
     hasUnsavedMeta,
     ivStarted,
     ivResult,
