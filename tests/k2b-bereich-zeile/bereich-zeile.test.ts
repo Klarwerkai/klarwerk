@@ -128,15 +128,33 @@ async function zurueckAufDieFlaeche(
   await warteAufErsteOption(erwarteterErsterWert);
 }
 
-/** Senden und auf die Nutzlast warten, die dabei wirklich hinausging. */
+/** Ist der Sendeknopf gerade bedienbar? (Der Riegel aus JOB 3594 schlaegt genau hier auf.) */
+const KNOPF_ZU = "() => document.getElementById('send-btn').disabled";
+
+/**
+ * Senden und auf die Nutzlast warten, die dabei wirklich hinausging.
+ *
+ * JOB 3594 K2b (NEBENLAUF): das Warten hoert nicht beim EINTREFFEN des POST auf, sondern erst am
+ * ENDE des Laufs. Grund ist der Riegel dieses Jobs — `sendeEntwurf` nimmt keinen zweiten Lauf an,
+ * solange einer offen ist, und der Knopf ist so lange sichtbar zu. Die Buehne zeichnet den POST
+ * beim Eintritt auf; die Antwort (und damit das Ende des Laufs) kommt erst danach. Ohne diese
+ * zweite Warteschleife misst der naechste Handgriff einen Knopf, der noch zu ist, und ein zweites
+ * `sendenUndLesen` liefe in den Riegel statt in einen Versand. Genau daran fiel F6 in der
+ * Tor-Messung dieses Jobs („expected true to be false", Zeile `send-btn.disabled`).
+ */
 async function sendenUndLesen(): Promise<Record<string, unknown>> {
   const bu = buehne();
   const vorher = bu.posts.length;
+  expect(await lies<boolean>(KNOPF_ZU), "der Sendeknopf war schon vor dem Klick zu").toBe(false);
   expect(await lies<boolean>(KLICK, "#send-btn")).toBe(true);
   for (let i = 0; i < 100 && bu.posts.length === vorher; i += 1) {
     await new Promise((r) => setTimeout(r, 50));
   }
   expect(bu.posts.length, "kein POST /api/drafts angekommen").toBe(vorher + 1);
+  for (let i = 0; i < 100 && (await lies<boolean>(KNOPF_ZU)); i += 1) {
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  expect(await lies<boolean>(KNOPF_ZU), "der Sendeknopf blieb nach dem Lauf gesperrt").toBe(false);
   const post = bu.posts[vorher];
   expect(post?.url).toBe("/api/drafts");
   return (post as { koerper: Record<string, unknown> }).koerper;

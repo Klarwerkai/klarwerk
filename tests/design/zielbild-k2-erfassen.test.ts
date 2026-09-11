@@ -534,40 +534,84 @@ describe.runIf(zielbildDa)(
       expect(await lies<boolean>(SICHTBAR, "#send-status")).toBe(false);
     }, 40_000);
 
-    it("R2 · zwei Sendungen, vertauschte Antwortreihenfolge: A gehalten, B markiert und gesendet (201 sofort), dann A freigegeben — die Karte bleibt bei B, A veraendert nichts", async () => {
+    // JOB 3594 K2b NEBENLAUF (11.09.2026) — DIESER FALL MISST SEIT HEUTE ETWAS ANDERES, UND DAS IST
+    // SEIN PUNKT. Bis hierher stellte er ZWEI GLEICHZEITIGE Sendungen aus DERSELBEN Sitzung her (A
+    // gehalten, dann B gesendet) und mass, dass der spaete Ruecklauf von A nichts mehr veraendert.
+    // GENAU DIESE GLEICHZEITIGKEIT WAR DER SCHADEN: zwei Klicks ergaben ZWEI Entwuerfe auf dem
+    // Server — gemessen am Basisstand e2cb078 in tests/k2b-nebenlauf, Fall A1, woertlich
+    // „abgesetzte POST /api/drafts nach zwei Klicks: 2" —, und die Flaeche zeigt nur EINEN Link;
+    // der zweite Entwurf wurde nie gesehen und nie weggeraeumt. Seit JOB 3594 nimmt `sendeEntwurf`
+    // keinen zweiten Lauf an, solange einer offen ist. Der zweite Klick kann also nicht mehr
+    // stattfinden, und was er ausloeste, ist nicht mehr herstellbar.
+    // WAS DER FALL DESHALB JETZT MISST: dieselbe Bedienfolge, aber ihr wahres Ergebnis — waehrend A
+    // unterwegs ist, geht KEIN zweiter POST hinaus, beide Eingaenge sind sichtbar zu, der Satz
+    // bleibt der vorhandene `sendBusy`; A bestaetigt, die Sperre faellt, danach geht B und wird zur
+    // Ergebniszeile. Dieselbe Probe noch einmal ueber einen FEHLSCHLAG (413), weil ein Knopf, der
+    // danach grau bliebe, schlimmer waere als die geschlossene Luecke.
+    // KEINE ABSCHWAECHUNG: die Aussage „ein ueberholter Ruecklauf veraendert nichts" wird nicht
+    // fallen gelassen, sie wird staerker — es gibt keinen ueberholten Lauf mehr. Die drei
+    // Laufnummer-Pruefungen (`sendeLaufAktuell`) bleiben unangetastet im Bestand; dass sie damit in
+    // einer Sitzung unerreichbar geworden sind, steht ehrlich in der Rueckgabe von JOB 3594 und
+    // wird hier nicht stillschweigend weggemessen. Der Markierungswechsel WAEHREND eines Laufs
+    // bleibt moeglich und wird von R1 unveraendert gemessen (Bestaetigung fuer A als Satz + Knopf
+    // „Oeffnen", Karte bleibt bei B).
+    it("R2 · waehrend A unterwegs ist, nimmt der Knopf KEINEN zweiten Lauf an: kein zweiter POST, A bestaetigt, danach geht B — und nach einem Fehlschlag ebenso", async () => {
       const bu = buehne();
       await lies<number>(MARKIEREN, "Absatz A zwei.");
       await warten("() => document.getElementById('capture-titel').value === 'Absatz A zwei.'");
       bu.plan.drafts = { status: 201, body: { id: "draft-A2" }, halten: true };
+      const vorher = bu.posts.length;
       await lies<boolean>(KLICK, "#send-btn");
       await bis(() => bu.gehalten() === 1, "die zurueckgehaltene Antwort fuer A");
+      // Waehrend A laeuft: beide Eingaenge sind sichtbar zu, und der Satz ist der von vorher.
+      expect(await lies<string | null>(ATTR, ["#send-btn", "disabled"])).not.toBeNull();
+      expect(await lies<string | null>(ATTR, ["#capture-dokument-link", "aria-disabled"])).toBe(
+        "true",
+      );
+      expect(await lies<string>(TEXT, "#send-status")).toBe(wort("de", "sendBusy"));
+      // B markieren und ein zweites Mal klicken — es geht NICHTS hinaus.
       await lies<number>(MARKIEREN, "Absatz B zwei.");
       await warten("() => document.getElementById('capture-titel').value === 'Absatz B zwei.'");
       bu.plan.drafts = { status: 201, body: { id: "draft-B2" } };
       await lies<boolean>(KLICK, "#send-btn");
-      await warten(ERGEBNIS_DA);
-      expect(await lies<string | null>(ATTR, ["#open-link", "href"])).toContain("draft=draft-B2");
-      expect(await lies<boolean>(SICHTBAR, "#send-status")).toBe(false);
-      // Jetzt trifft die aeltere Antwort A ein: sie ist ein Ruecklauf eines ueberholten Laufs.
-      await bu.freigeben();
       await new Promise((r) => setTimeout(r, 300));
+      expect(bu.posts, "der zweite Klick hat einen zweiten Entwurf angelegt").toHaveLength(
+        vorher + 1,
+      );
+      // A kommt an. Die Karte zeigt B, also steht die Bestaetigung als Satz + Knopf „Oeffnen“ da
+      // (R1 misst diesen Zweig ausfuehrlich) — und beide Eingaenge sind wieder offen.
+      await bu.freigeben();
+      await warten("() => document.getElementById('send-status').className === 'status ok'");
+      expect(await lies<string | null>(ATTR, ["#send-btn", "disabled"])).toBeNull();
+      expect(
+        await lies<string | null>(ATTR, ["#capture-dokument-link", "aria-disabled"]),
+      ).toBeNull();
+      // Jetzt geht B — und wird zur Ergebniszeile.
+      await lies<boolean>(KLICK, "#send-btn");
+      await warten(ERGEBNIS_DA);
+      expect(bu.posts).toHaveLength(vorher + 2);
       expect(await lies<string | null>(ATTR, ["#open-link", "href"])).toContain("draft=draft-B2");
-      expect(await lies<boolean>(SICHTBAR, "#capture-ergebnis")).toBe(true);
       expect(await lies<boolean>(SICHTBAR, "#send-status")).toBe(false);
-      expect(await lies<boolean>(SICHTBAR, "#send-status-btn")).toBe(false);
-      // Gegenrichtung: ein ueberholter FEHLER veraendert ebenfalls nichts.
+      // Gegenrichtung: auch ein FEHLSCHLAG loest die Sperre.
       bu.plan.drafts = { status: 413, body: {}, halten: true };
       await lies<number>(MARKIEREN, "Absatz C.");
       await warten("() => document.getElementById('capture-titel').value === 'Absatz C.'");
+      const vorC = bu.posts.length;
       await lies<boolean>(KLICK, "#send-btn");
       await bis(() => bu.gehalten() === 1, "die zurueckgehaltene 413-Antwort");
       await lies<number>(MARKIEREN, "Absatz D.");
       await warten("() => document.getElementById('capture-titel').value === 'Absatz D.'");
+      await lies<boolean>(KLICK, "#send-btn");
+      await new Promise((r) => setTimeout(r, 300));
+      expect(bu.posts, "waehrend des 413-Laufs ging ein zweiter Entwurf hinaus").toHaveLength(
+        vorC + 1,
+      );
+      await bu.freigeben();
+      await warten("() => document.getElementById('send-status').className === 'status warn'");
+      expect(await lies<string | null>(ATTR, ["#send-btn", "disabled"])).toBeNull();
       bu.plan.drafts = { status: 201, body: { id: "draft-D" } };
       await lies<boolean>(KLICK, "#send-btn");
       await warten(ERGEBNIS_DA);
-      await bu.freigeben();
-      await new Promise((r) => setTimeout(r, 300));
       expect(await lies<boolean>(SICHTBAR, "#send-status")).toBe(false);
       expect(await lies<string | null>(ATTR, ["#open-link", "href"])).toContain("draft=draft-D");
       // Wieder der Zielbild-Zustand fuer die Folgefaelle.

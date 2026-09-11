@@ -2238,7 +2238,34 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // GEMESSEN: tests/k2b-bereich-zeile (F6/F7/F8 neu, dazu die Kalibrierungen K-d/K-e, die den
     // Stand von Runde 4 im Speicher wiederherstellen und F6 bzw. F8 fallen lassen), die sechs
     // Abnahmepfade des Auftrags und der Waechterlauf.
-    const PIN = "13d5056a13299b0f1ae379caf9d250b3ae03f291be967bd1cd219c41cfd7e8f5";
+    // JOB 3594 K2b NEBENLAUF (11.09.2026) — DER SENDEWEG NIMMT KEINEN ZWEITEN LAUF MEHR AN.
+    // VORHERHASH (Stand JOB 3555 R5): `13d5056a13299b0f1ae379caf9d250b3ae03f291be967bd1cd219c41cfd7e8f5`.
+    // ANLASS, gemessen und nicht vermutet: zwei Klicks auf „Senden", waehrend der erste
+    // `POST /api/drafts` noch offen war, ergaben ZWEI Entwuerfe auf dem Server — Fall A1 in
+    // tests/k2b-nebenlauf gab auf dem Basisstand „abgesetzte POST /api/drafts nach zwei Klicks: 2"
+    // aus. Sichtbar war nur EIN Link; der zweite Entwurf wurde nie gesehen und nie weggeraeumt.
+    // Die drei vorhandenen Laufnummer-Pruefungen liegen allesamt HINTER dem `fetch` — sie halten
+    // die Anzeige zurueck, nicht den POST.
+    // GEAENDERT wurde AUSSCHLIESSLICH Skript, an vier Stellen: `captureSendeLauf` traegt seit
+    // RUNDE 2 das Kennzeichen des OFFENEN Laufs (`null` = keiner) und ist damit ZUGLEICH die Sperre
+    // — es gibt keinen zweiten Zustand daneben, der abweichen koennte (BEN, Runde 1: die Kopie der
+    // Laufnummer war genau das); eine Wache am Eingang von `sendeEntwurf` (vor jedem Word-Zugriff,
+    // deckt Knopf, Textlink und „Erneut senden"); der laufende Satz `sendBusy` ebenfalls am Eingang
+    // statt erst vor dem `fetch` (BEN, Korrekturpflicht 1: bei langsamem Word stand die Sperre
+    // sonst ohne Erklaerung da) — die zwei spaeteren Setzungen desselben Satzes sind dafuer
+    // entfallen; und eine Freigabe in `showSendStatus`/`hideSendStatus` (jeder Satz ausser
+    // `sendBusy` beendet den Lauf — auch die drei Ausgaenge ohne Ruecklauf, die sonst einen
+    // dauerhaft grauen Knopf hinterlassen haetten).
+    // KEINE AUSLIEFERUNGSFRAGE: kein neues Element, kein neuer Woerterbuchschluessel, keine neue
+    // CSS-Regel (der gesperrte Textlink nutzt die vorhandene `#capture-dokument-link[aria-disabled=
+    // "true"]`), keine neue Abrufstelle, kein neues Abrufziel, kein Manifest, keine CSP-Aenderung,
+    // kein neues Recht, kein Sideload. Der Mensch liest waehrend des Laufs weiterhin genau
+    // `sendBusy` — die Aenderung NIMMT eine Moeglichkeit weg (den doppelten Entwurf), sie behauptet
+    // nichts Neues; sie sagt den vorhandenen Satz nur FRUEHER.
+    // GEMESSEN: tests/k2b-nebenlauf (15 Faelle, A1 auf dem Basisstand rot; A3b und N5 neu in
+    // Runde 2), I17 im Funktionsinventar, die Abnahmepfade des Auftrags und der Waechterlauf.
+    // ZWISCHENHASH (Stand Runde 1): `5809612dca9295f9e15304c71e697dc1e8a88ba4a8ceeac51fbb6eca32685794`.
+    const PIN = "c1f5a9fc50b27e77a43cc946dff43dc57cfdcc9b2d4d1d70fdc6bad06958b53a";
     const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
     expect(
       ist,

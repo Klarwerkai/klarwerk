@@ -292,6 +292,13 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // k2-buehne.ts; sie schneidet KEINE KW-Marken und nutzt die Panel-Fixture nicht. A2 hat die
   // Datei gemeldet, das Verzeichnis nimmt sie nicht still auf.
   "tests/k2b-bereich-zeile/bereich-zeile.test.ts": "pfad",
+  // JOB 3594 (K2b NEBENLAUF): die zwei Nebenlauf-Fragen der Erfassen-Flaeche — zwei Klicks auf
+  // „Senden" und zwei ueberholende `/api/categories`-Abrufe. Anders als die zwei Zeilen darueber
+  // faehrt sie NICHT ueber eine Chromium-Buehne, sondern ueber die Panel-Fixture (der Antwort-
+  // zeitpunkt muss in der Hand des Tests liegen); sie haengt deshalb an ZWEI Griffen: `pfad` (der
+  // ausgelieferte Pfad steht im Kopfkommentar) und `fixture`. A2 hat die Datei gemeldet, das
+  // Verzeichnis nimmt sie nicht still auf.
+  "tests/k2b-nebenlauf/zweiter-klick-und-spaeter-abruf.test.ts": "pfad,fixture",
   // JOB 3094 (KA7): die Konfliktkarte — Pfadliteral im Kopfkommentar, Klara-Panel-Fixture.
   "tests/ka7-konflikt-im-panel/konfliktkarte-mounted.test.ts": "pfad,fixture",
   "tests/klara-panel/p7-office-erkennung-am-fenster.test.tsx": "pfad,fixture",

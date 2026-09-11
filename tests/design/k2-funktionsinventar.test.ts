@@ -33,6 +33,7 @@
 // | — (neu) Zeile „Titel“                              | #capture-titel, editierbar, reist als Titel       | I14  |
 // | — (neu) ohne Markierung                            | #capture-leer „Markiere Text in Word.“, Knopf grau| I15  |
 // | — (neu) Zeile „Bereich“ (JOB 3555)                 | #capture-bereich aus GET /api/categories, reist als category | I16 |
+// | — (neu) offener Versand (JOB 3594)                 | #send-btn und #capture-dokument-link sind zu, Satz bleibt sendBusy | I17 |
 //
 // JOB 3506 K2b (10.09.2026) — DER „NEUE ORT“ VON I3–I6 IST WEITERGEZOGEN. JOB 3057 hat die vier
 // Erklaersaetze in ein „?“-Menue IN der Erfassen-Flaeche gestellt und in seiner RUECKGABE selbst
@@ -361,6 +362,39 @@ describe("JOB 3057 · K2 · Funktionsinventar „heute → neuer Ort“ — jede
     // Ein Fehler ist keine Leere: die zwei Saetze sind wirklich zwei.
     expect(kaputt.t("captureBereichFehler")).not.toBe(kaputt.t("captureBereichLeer"));
     expect(kaputt.q("#send-btn")?.disabled).toBe(false);
+  });
+
+  it("I17 · NEU: waehrend ein Versand offen ist, sind BEIDE Eingaenge zu — und der Satz bleibt der vorhandene `sendBusy`", async () => {
+    const p = oeffnen({
+      routes: {
+        "/api/categories": reply(200, { categories: [] }),
+        "/api/drafts": reply(201, { id: "d-c" }),
+      },
+    });
+    await p.flush();
+    p.setTab("capture");
+    await p.flush();
+    expect(p.q("#send-btn")?.disabled).toBe(false);
+
+    // BEWUSST OHNE `flush`: `sendeEntwurf` laeuft bis zum `fetch` synchron durch, der POST steht
+    // also jetzt offen — genau der Augenblick, in dem Pedi ein zweites Mal klickt.
+    p.q("#send-btn")?.click();
+    expect(p.q("#send-btn")?.disabled, "der Knopf bleibt bedienbar, waehrend gesendet wird").toBe(
+      true,
+    );
+    expect(p.q("#capture-dokument-link")?.getAttribute("aria-disabled")).toBe("true");
+    // Kein neuer Satz, kein neuer Schluessel, keine Warnfarbe: der laufende Satz von vorher.
+    expect(p.text("#send-status")).toBe(p.t("sendBusy"));
+    expect(p.q("#send-status")?.className).toBe("status");
+    expect(p.q("#send-btn")?.title).toBe("");
+
+    p.q("#send-btn")?.click();
+    await p.flush();
+    await p.flush();
+    expect(posts(p), "zwei Klicks haben zwei Entwuerfe angelegt").toHaveLength(1);
+    // Und danach ist beides wieder offen — die Sperre haengt nicht.
+    expect(p.q("#send-btn")?.disabled).toBe(false);
+    expect(p.q("#capture-dokument-link")?.getAttribute("aria-disabled")).toBeNull();
   });
 
   it("Vollstaendigkeit · keine heutige Kennung der Erfassen-Flaeche fehlt ohne Nachfolger, keine alte steht daneben", async () => {

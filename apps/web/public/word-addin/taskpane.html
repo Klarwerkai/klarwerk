@@ -3663,7 +3663,30 @@
     // gesendet) veraendert weder Karte noch Status noch Link; ein Ruecklauf des aktuellen Laufs
     // wird nur dann zur Ergebniszeile der Karte, wenn die Karte noch DIESELBE Markierung zeigt —
     // sonst gehoert die Bestaetigung zum gesendeten Inhalt und nicht zur neuen Markierung.
-    var captureSendeLauf = 0;
+    //
+    // JOB 3594 K2b (NEBENLAUF), RUNDE 2 — AUS DER NUMMER WURDE DAS KENNZEICHEN DES OFFENEN LAUFS:
+    // `null` heisst „kein Versand unterwegs", jeder andere Wert IST der Lauf, der den Sendeweg
+    // gerade haelt. Damit steht die Frage „laeuft gerade einer?" in DERSELBEN Veraenderlichen wie
+    // die Frage „gehoert dieser Ruecklauf noch dazu?" — es gibt nichts zu synchronisieren und
+    // nichts, was auseinanderlaufen koennte.
+    //
+    // WARUM ES DIESEN ZUSTAND BRAUCHT: die drei Pruefungen mit `sendeLaufAktuell` liegen allesamt
+    // HINTER dem `fetch("/api/drafts", …)`. Sie halten die ANZEIGE eines ueberholten Laufs zurueck —
+    // den zweiten POST verhindern sie nicht. Gemessen am Stand davor: zwei Klicks auf „Senden",
+    // waehrend der erste POST offen ist, ergaben ZWEI Entwuerfe auf dem Server
+    // (`tests/k2b-nebenlauf/…`, Fall A1: „abgesetzte POST /api/drafts nach zwei Klicks: 2"), und
+    // die Flaeche zeigt nur EINEN Link. Der zweite Entwurf wird nie gesehen und nie weggeraeumt.
+    //
+    // WARUM EIN FRISCHES OBJEKT UND KEIN HOCHZAEHLER: das Kennzeichen muss zweierlei koennen —
+    // eindeutig sein (ein Ruecklauf darf nie zu einem SPAETEREN Lauf passen) und „keiner" sagen
+    // koennen. Ein Zaehler kann das nur mit einer zweiten Veraenderlichen daneben (Hoechststand UND
+    // offener Lauf); genau die hat BEN in Runde 1 als zweiten Zustand beanstandet. Ein frisches
+    // Objekt ist von sich aus einmalig, `null` ist von sich aus „keiner". Verglichen wird nur auf
+    // Gleichheit (`sendeLaufAktuell`) — gerechnet wird mit dem Wert nirgends.
+    //
+    // GESETZT an GENAU EINER Stelle (`sendeEntwurf`), GELOEST an genau einer
+    // (`sendeSperreLoesen`), GELESEN von `updateSendState` und `sendeLaufAktuell`.
+    var captureSendeLauf = null;
     var sendStatusUrl = null;
 
     // ============================================================================================
@@ -3729,11 +3752,17 @@
         sendBtn.title = "";
         // JOB 3057 K2 (§5.3): frei nur mit Anmeldung, Word UND einer Markierung — ohne
         // Erklaersatz am Knopf; ohne Markierung sagt es die Karte selbst („Markiere Text in Word.").
-        sendBtn.disabled = !(signedIn && officeUsable() && captureMarkierung.length > 0);
+        // JOB 3594 K2b: und nicht, solange ein Versand offen ist. KEIN neuer Satz am Knopf — der
+        // Grund steht bereits im Statusfeld („Wird gesendet …", `sendBusy`), und zwei Saetze zu
+        // derselben Sache waeren einer zu viel. Der Titel bleibt deshalb leer.
+        sendBtn.disabled = !(signedIn && officeUsable() && captureMarkierung.length > 0) ||
+          captureSendeLauf !== null;
       }
       // Der Textlink „Ganzes Dokument uebernehmen" haengt an Anmeldung und Word, nicht an der
-      // Markierung — er ist der Weg, wenn nichts markiert ist.
-      if (signedIn && officeUsable()) {
+      // Markierung — er ist der Weg, wenn nichts markiert ist. JOB 3594 K2b: waehrend eines offenen
+      // Versands ist auch er zu — er endet im selben POST, und die vorhandene Anzeige dafuer
+      // (`aria-disabled`, Stil `#capture-dokument-link[aria-disabled="true"]`) steht schon da.
+      if (signedIn && officeUsable() && captureSendeLauf === null) {
         dokLink.removeAttribute("aria-disabled");
       } else {
         dokLink.setAttribute("aria-disabled", "true");
@@ -4808,6 +4837,26 @@
     // hat, s. zeigeEntwurfsErgebnis) oder nichts. "busy" ist der ruhige Zwischenzustand ohne
     // Warnfarbe.
     var sendStatusAktion = null;
+    // JOB 3594 K2b — DIE EINE STELLE, AN DER DIE SPERRE DES SENDEWEGS FAELLT.
+    //
+    // WARUM SIE HIER SITZT UND NICHT SIEBENMAL VERTEILT: ein Sendelauf hat MEHR Ausgaenge als der
+    // Blick auf `sendeEntwurf` vermuten laesst — Erfolg, Nicht-201, Wurf, Leertext, und dazu drei
+    // Ausgaenge, die gar keinen Ruecklauf haben (`readSelection` ohne Text-Zugriff,
+    // `readWholeDocument` ohne Word und sein `catch`; sie steigen aus, ohne ihren Rueckruf zu
+    // rufen). Ein von Hand an jeden Ausgang gehaengtes „Sperre loesen" haette genau diese drei
+    // vergessen — und ein Knopf, der nach einem Word-Fehlschlag fuer immer grau bleibt, waere
+    // schlimmer als die Luecke, die dieser Job schliesst.
+    // WAS STATTDESSEN GILT, und es ist keine Hilfskonstruktion, sondern der Zustand selbst: „busy"
+    // IST der offene Lauf. Jeder Ausgang — ausnahmslos — endet damit, dass der Mensch einen ANDEREN
+    // Satz liest oder gar keinen; beides laeuft durch diese zwei Funktionen. Ein Ausgang ohne
+    // Freigabe muesste also ein Ausgang ohne Satz sein, und den gibt es nicht.
+    // RUNDE 2 (BEN): geloest wird das EINE Kennzeichen `captureSendeLauf` — es gibt keinen zweiten
+    // Sperrzustand mehr, der hier unabhaengig zurueckgesetzt werden koennte.
+    function sendeSperreLoesen() {
+      if (captureSendeLauf === null) { return; }
+      captureSendeLauf = null;
+      updateSendState();
+    }
     function showSendStatus(kind, text, aktion, url) {
       var el = document.getElementById("send-status");
       var knopf = document.getElementById("send-status-btn");
@@ -4824,6 +4873,8 @@
         knopf.textContent = "";
         knopf.className = "ghost capture-knopf hidden";
       }
+      // JOB 3594 K2b: jeder Satz ausser dem laufenden beendet den Lauf.
+      if (kind !== "busy") { sendeSperreLoesen(); }
     }
     function hideSendStatus() {
       var el = document.getElementById("send-status");
@@ -4832,10 +4883,17 @@
       sendStatusAktion = null;
       sendStatusUrl = null;
       document.getElementById("send-status-btn").className = "ghost capture-knopf hidden";
+      // JOB 3594 K2b: kein Satz mehr = kein offener Lauf mehr (der Erfolgsweg geht hier durch,
+      // bevor die Ergebniszeile gezeichnet wird).
+      sendeSperreLoesen();
     }
     // Runde 3: gehoert ein Ruecklauf noch zum aktuellen Sendelauf? Aeltere Laeufe veraendern nichts.
+    // JOB 3594 K2b Runde 2: seit `captureSendeLauf` das Kennzeichen des OFFENEN Laufs ist, sagt
+    // dieselbe Frage zugleich „ist dieser Lauf ueberhaupt noch offen?" — ein Ruecklauf, der nach dem
+    // Ende seines eigenen Laufs eintrifft (Satz steht schon, Sperre ist gefallen), schreibt nichts
+    // mehr. Das ist keine Abschwaechung, sondern genau die Zusage von Runde 3, nur frueher gueltig.
     function sendeLaufAktuell(lauf) {
-      return lauf === captureSendeLauf;
+      return captureSendeLauf !== null && lauf === captureSendeLauf;
     }
     // Netzausfall (fetch verwirft) wird als EIGENER Satz gesagt — „offline" statt eines rohen
     // Browsertexts; alles andere behaelt sein Detail.
@@ -5646,14 +5704,33 @@
         showSendStatus("warn", t("noOffice"));
         return;
       }
+      // JOB 3594 K2b: DIE EINE ENTSCHEIDUNG, ob ein zweiter Lauf angenommen wird — und sie faellt
+      // VOR jedem Word-Zugriff und damit lange vor dem POST. Sie deckt alle drei Eingaenge, weil
+      // alle drei hier hindurchgehen: den Knopf (`sendSelection`), den Textlink „Ganzes Dokument
+      // uebernehmen" (`sendDocument`) und „Erneut senden" am Fehlersatz. Kein Satz und kein neuer
+      // Zustand: der Mensch liest weiterhin `sendBusy`, und der Knopf steht sichtbar still
+      // (`updateSendState`). Ein Hinweis wie „laeuft schon" waere hier eine Behauptung ueber einen
+      // Klick, den es sichtbar gar nicht geben kann.
+      if (captureSendeLauf !== null) { return; }
       captureLetzterUmfang = scope;
       hideSendStatus();
       captureErgebnis = null;
       renderCapture();
-      // JOB 3057 Runde 3 (BEN): dieser Lauf bekommt seine Nummer und merkt sich die Markierung,
+      // JOB 3057 Runde 3 (BEN): dieser Lauf bekommt sein Kennzeichen und merkt sich die Markierung,
       // die JETZT auf der Karte steht. Alles, was spaeter zurueckkommt, prueft beides.
-      captureSendeLauf += 1;
+      // JOB 3594 K2b: ab hier haelt DIESER Lauf den Sendeweg. Der Knopf und der Textlink gehen
+      // sofort zu — nicht erst beim `fetch`, denn zwischen hier und dem POST liegt der Word-Zugriff,
+      // und genau in dieser Wartezeit klickt ein Mensch ein zweites Mal.
+      captureSendeLauf = {};
       var lauf = captureSendeLauf;
+      // JOB 3594 K2b RUNDE 2 (BEN, Korrekturpflicht 1) — DER SATZ STEHT, BEVOR WORD GEFRAGT WIRD.
+      // Bis Runde 1 wurde `sendBusy` erst in `finish` gesetzt, also NACH dem Word-Zugriff (und nach
+      // dem Nachholen der Bilder). Bei einem langsamen Word sah der Mensch in genau dieser Spanne
+      // einen grauen Knopf OHNE Erklaerung — die Sperre war da, der Grund nicht. Gemessen mit
+      // zurueckgehaltenem Word-Rueckruf: `expected '' to be 'Sende …'`. Sperre und Satz beginnen
+      // deshalb gemeinsam; ein eigener Satz dafuer entsteht nicht, es ist der vorhandene.
+      showSendStatus("busy", t("sendBusy"));
+      updateSendState();
       var gesendeteMarkierung = captureMarkierung.join("\n");
       // JOB 3057 K2: der Titel aus der Zeile „Titel". Fuer die Markierung ist er immer gesetzt
       // (vorbelegt = dieselbe Ableitung wie der Sendeweg); fuer das Dokument nur, wenn ein Mensch
@@ -5682,7 +5759,9 @@
         var prepared = bereichWahl
           ? prepareWordDraftRequest(html, text, titelWunsch, bereichWahl)
           : prepareWordDraftRequest(html, text, titelWunsch);
-        showSendStatus("busy", t("sendBusy"));
+        // JOB 3594 K2b RUNDE 2: hier stand `showSendStatus("busy", t("sendBusy"))`. Der Satz steht
+        // seit dieser Runde schon am Eingang von `sendeEntwurf` — ein zweites Setzen waere eine
+        // zweite Stelle fuer denselben Zustand und koennte den ersten nur noch wiederholen.
         fetch("/api/drafts", {
           method: "POST",
           credentials: "include",
@@ -5857,7 +5936,9 @@
     // Meldung `sendImagesMissing` gemeldet, nicht mit einer neu erfundenen.
     function sendeDocxDatei(bytes, titelWunsch, lauf, gesendeteMarkierung) {
       if (!sendeLaufAktuell(lauf)) { return; }
-      showSendStatus("busy", t("sendBusy"));
+      // JOB 3594 K2b RUNDE 2: auch hier stand `showSendStatus("busy", …)` — derselbe Grund wie im
+      // Auswahl-Weg: der Satz steht seit dem Eingang von `sendeEntwurf`, und dieser Weg kommt nur
+      // von dort.
       var b64 = "";
       var block = 0x8000;
       for (var i = 0; i < bytes.length; i += block) {

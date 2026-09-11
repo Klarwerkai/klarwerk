@@ -529,8 +529,13 @@ const INVENTAR: readonly string[] = [
   // ausgelieferten Aufgabenfenster gemessen — gefunden ueber dieselbe Achse `taskpane` wie die
   // Zeile darunter (der Pfad traegt kein „klara"). K2 hat sie gemeldet, das Inventar nimmt sie
   // nicht still auf.
+  // JOB 3594 (K2b NEBENLAUF, 11.09.2026): die zwei Nebenlauf-Fragen der Erfassen-Flaeche — ein
+  // zweiter Klick auf „Senden" waehrend eines offenen Laufs und zwei ueberholende Bereichs-Abrufe.
+  // Gefunden ueber die Achse `taskpane` (Panel-Fixture; der Pfad traegt kein „klara"). K2 hat die
+  // Datei gemeldet, das Inventar nimmt sie nicht still auf.
   "tests/k2b-bereich-zeile/bereich-zeile.test.ts",
   "tests/k2b-erfassen-reste/k2b-menue-und-link.test.ts",
+  "tests/k2b-nebenlauf/zweiter-klick-und-spaeter-abruf.test.ts",
   "tests/ka7-konflikt-im-panel/konfliktkarte-mounted.test.ts",
   "tests/klara-panel/p7-office-erkennung-am-fenster.test.tsx",
   // JOB 3019 D1 hatte hier `ka5-markierung-reist-mit.test.tsx` (unter tests/klara-panel) stehen
