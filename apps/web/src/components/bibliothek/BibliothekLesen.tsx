@@ -18,7 +18,11 @@ import {
 } from "../../lib/appendToArticle";
 import { applyBodyAssist, applyBodyAssistBlock, bodyTextForAssist } from "../../lib/bodyAiAssist";
 import { appendExtractSections, normalizeExtractLocale } from "../../lib/bodyExtract";
-import { editorFilesFromAttachments } from "../../lib/bodyFileLink";
+import {
+  bodyFileLinksFromHtml,
+  editorFilesFromAttachments,
+  objectRawHref,
+} from "../../lib/bodyFileLink";
 import type { OriginalDocument, OriginalRefCache } from "../../lib/captureAttachments";
 import { fileSourcePayload } from "../../lib/captureFromFile";
 import {
@@ -204,6 +208,10 @@ export function BibliothekLesen({
   // zweimal hintereinander anspringbar bleibt (zwischendurch von Hand zugeklappt).
   const [sprungZiel, setSprungZiel] = useState<Sprungziel | null>(null);
   const mehrId = useId();
+  // JOB 3474 · REVIEW26: der Fließtext als Sprungziel — der Kopfknopf zur Originaldatei holt IHREN
+  // Link (er steht schon im Text) ins Bild und gibt ihm den Fokus. Der Bezug geht über den
+  // gezeichneten Baum, nicht über eine zweite Adressrechnung.
+  const textRef = useRef<HTMLDivElement | null>(null);
   const [loeschenOffen, setLoeschenOffen] = useState(false);
   const [reworkSavedFor, setReworkSavedFor] = useState<string | null>(null);
   const reworkSaved = reviewReworkContext && reworkSavedFor === koId;
@@ -534,6 +542,43 @@ export function BibliothekLesen({
   const anhaenge = ko.attachments ?? [];
   const bilder = anhaenge.filter((a) => a.mime.startsWith("image/")).length;
   const quellen = ko.sources ?? [];
+  // ================================================================================================
+  // JOB 3474 · REVIEW26 — DIE DRITTE MENGE, DIE DER KOPF BISHER NICHT KANNTE.
+  // ================================================================================================
+  //
+  // Prüferbefund (NUTZERBEFUNDE-AN-CLAUDE-20260908.md:47-51, Posten 4): „Am Kopf … Anhänge · keine
+  // … Eine funktionierende Original-DOCX ist erst nach dem langen Text verlinkt."
+  //
+  // GEMESSENE URSACHE: der Ganzdokument-Import legt das Original in den Object-Store und hängt es
+  // als Body-Datei-Referenz an den Text (`pages/Capture.tsx:1336-1349`); ein `KoAttachment` entsteht
+  // dabei NICHT — `finalizeCaptureSubmit` bekommt sein `original` nur im Warteschlangen-Weg
+  // (`Capture.tsx:1810-1812`). Die beiden Zeilen darüber können diese Datei also gar nicht sehen.
+  //
+  // GELESEN WIRD DER TEXT, DER WIRKLICH DASTEHT: bei aktiver Lesevariante ist das ihr Fließtext,
+  // sonst das Original. Sonst zeigte der Kopf auf einen Link, den die Fläche gerade nicht zeichnet.
+  const gezeichneterText = gelesen ? (gelesen.bodyHtml ?? null) : ko.bodyHtml;
+  const originalDateien = bodyFileLinksFromHtml(gezeichneterText);
+  /**
+   * JOB 3474: der Weg vom Kopf zur Originaldatei. Ihr Link steht schon im Fließtext (er kommt aus
+   * `fileLinkHtml` und wird von `SanitizedHtml` gezeichnet) — der Knopf holt ihn ins Bild und gibt
+   * ihm den Fokus. Kein zweiter Download-Weg und keine zweite Adresse: von dort führt derselbe
+   * Link weiter, den ein Mensch am Textende auch angeklickt hätte.
+   *
+   * Findet sich der Link nicht (der Sanitizer hat ihn verworfen), geschieht NICHTS — lieber ein
+   * wirkungsloser Knopf als ein Sprung, der irgendwohin führt.
+   */
+  const springeZurDatei = (objectId: string): void => {
+    const href = objectRawHref(objectId);
+    if (!href) {
+      return;
+    }
+    const ziel = textRef.current?.querySelector<HTMLAnchorElement>(`.attachment a[href="${href}"]`);
+    if (!ziel) {
+      return;
+    }
+    ziel.scrollIntoView({ block: "start" });
+    ziel.focus();
+  };
   /**
    * Der Sprung vom Kopf in einen Abschnitt hinter „Mehr". Erst aufklappen — `MehrAbschnitte` ist
    * sonst gar nicht gemountet —, dann das Ziel setzen. Der `nonce` zählt hoch, damit derselbe
@@ -1027,7 +1072,17 @@ export function BibliothekLesen({
                 der Knopf bleibt aktiv und führt in den Abschnitt mit dem ehrlichen Leersatz
                 (`ko.sourcesEmpty` / `ko.attachmentsEmpty`). Kein Erklärsatz daneben: der
                 Textmesser (`tests/design/zielbild-h4-kein-erklaertext.test.ts`) zieht Knopftexte
-                ab, freien Text nicht. Und NUR Zahlen — keine Quellentitel, keine Dateinamen. */}
+                ab, freien Text nicht.
+
+                JOB 3474 · REVIEW26 — DIE REGEL „NUR ZAHLEN" IST PRÄZISIERT, NICHT AUFGEHOBEN.
+                Sie lautete: „keine Quellentitel, keine Dateinamen". Der Prüferbefund hat gezeigt,
+                wo sie zu weit ging: über eine Originaldatei, die IM Text hängt und in KEINER der
+                beiden Mengen steht, sagte der Kopf mit „Anhänge · keine" etwas Falsches — und eine
+                blosse Zahl hätte den Befund nicht behoben („eindeutig benennen"). Deshalb gilt
+                jetzt: über Quellen und Anhänge stehen weiter NUR Zahlen (das hält
+                tests/berichtskopf-spruenge/kopf-fuehrt-zu-quellen-und-anhaengen.test.tsx, Fall A8,
+                unverändert fest), und daneben stehen — nur wenn es sie wirklich gibt — die Dateien
+                mit Namen, die es sonst nirgends am Kopf gäbe. */}
             <div data-testid="bib-kopf-spruenge" className="flex flex-wrap gap-2">
               <button
                 type="button"
@@ -1041,6 +1096,35 @@ export function BibliothekLesen({
                   ? t("lib.lesen.sprung.quellen", { count: quellen.length })
                   : t("lib.lesen.sprung.quellenLeer")}
               </button>
+              {/* JOB 3474 · REVIEW26: die Originaldatei im Bericht — dieselbe Bauform, damit
+                  Tabulator, Eingabe- und Leertaste ohne `tabIndex`-Nachbau wirken. Sie steht VOR
+                  dem Anhangknopf (Variante A des Auftrags), weil sie die Aussage daneben
+                  einschränkt. Ohne Datei-Referenz erscheint sie GAR NICHT — „Originaldatei · keine"
+                  wäre über einen Eintrag ohne Dateiimport eine Aussage ohne Gegenstand. */}
+              {originalDateien.length > 0 ? (
+                <button
+                  type="button"
+                  data-testid="bib-sprung-originaldatei"
+                  onClick={() => springeZurDatei(originalDateien[0]?.objectId ?? "")}
+                  // Bei mehreren steht die Zahl im Knopf; der zugängliche Name UNTERSCHEIDET sie,
+                  // damit ohne Sicht nicht nur „zwei Dateien" ankommt. Bei genau einer trägt der
+                  // sichtbare Text den Namen schon — dann kein zweiter, abweichender Name.
+                  {...(originalDateien.length > 1
+                    ? {
+                        "aria-label": t("lib.lesen.sprung.originaldateienNamen", {
+                          count: originalDateien.length,
+                          names: originalDateien.map((d) => d.name).join(", "),
+                        }),
+                      }
+                    : {})}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-hairline bg-surface px-2.5 py-[5px] text-[12px] font-semibold text-text hover:bg-hairline-soft"
+                >
+                  <FileText size={13} aria-hidden className="text-muted" />
+                  {originalDateien.length > 1
+                    ? t("lib.lesen.sprung.originaldateien", { count: originalDateien.length })
+                    : t("lib.lesen.sprung.originaldatei", { name: originalDateien[0]?.name ?? "" })}
+                </button>
+              ) : null}
               <button
                 type="button"
                 data-testid="bib-sprung-anhaenge"
@@ -1049,9 +1133,15 @@ export function BibliothekLesen({
                 className="inline-flex items-center gap-1.5 rounded-lg border border-hairline bg-surface px-2.5 py-[5px] text-[12px] font-semibold text-text hover:bg-hairline-soft"
               >
                 <Paperclip size={13} aria-hidden className="text-muted" />
+                {/* JOB 3474 · Lieferung 4: solange eine Originaldatei im Text hängt, steht hier
+                    NICHT die unqualifizierte Leerfassung. Der Knopf spricht dann enger — über die
+                    WEITEREN Anhänge — und behauptet nicht mehr, es gebe nichts. Eine Zahl braucht
+                    diese Einschränkung nicht: sie ist keine Verneinung. */}
                 {anhaenge.length > 0
                   ? t("lib.lesen.sprung.anhaenge", { count: anhaenge.length })
-                  : t("lib.lesen.sprung.anhaengeLeer")}
+                  : originalDateien.length > 0
+                    ? t("lib.lesen.sprung.anhaengeLeerNebenDatei")
+                    : t("lib.lesen.sprung.anhaengeLeer")}
               </button>
             </div>
             <h1
@@ -1062,6 +1152,7 @@ export function BibliothekLesen({
               {gelesen ? gelesen.title : ko.title}
             </h1>
             <div
+              ref={textRef}
               data-testid="bib-text"
               data-bib-text="text"
               className="text-[15.5px] leading-[1.7] text-text"

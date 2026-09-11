@@ -3743,6 +3743,19 @@ const de = {
   "lib.lesen.sprung.quellenLeer": "Quellen und Belege · keine",
   "lib.lesen.sprung.anhaenge": "Anhänge · {{count}}",
   "lib.lesen.sprung.anhaengeLeer": "Anhänge · keine",
+  // JOB 3474 · REVIEW26: die Originaldatei, die IM Bericht hängt (Body-Datei-Referenz aus dem
+  // Dateiimport), steht jetzt am Kopf — und zwar mit NAMEN, nicht nur als Zahl: der Prüferbefund
+  // verlangt „eindeutig benennen". Das Wort ist dasselbe, das der Dateiimport schon benutzt
+  // (`capture.originalAttachFailed`: „Originaldatei"), damit für dieselbe Sache kein zweites
+  // Vokabular entsteht. Trägt der Bericht keine, erscheint der Knopf NICHT — eine Leerfassung
+  // „Originaldatei · keine" gäbe es hier bewusst nicht.
+  "lib.lesen.sprung.originaldatei": "Originaldatei · {{name}}",
+  "lib.lesen.sprung.originaldateien": "Originaldateien · {{count}}",
+  "lib.lesen.sprung.originaldateienNamen": "Originaldateien · {{count}}: {{names}}",
+  // Und der Anhangknopf daneben sagt dann nicht mehr unqualifiziert „keine": solange eine
+  // Originaldatei im Text hängt, spricht er ENGER — über die WEITEREN Anhänge, die es wirklich
+  // nicht gibt. Ohne Datei im Text bleibt `anhaengeLeer` unverändert stehen.
+  "lib.lesen.sprung.anhaengeLeerNebenDatei": "Weitere Anhänge · keine",
   // ==============================================================================================
   // AUFTRAG-BASIC-u2 — DIE SUCHE SAGT, WORIN SIE SUCHT.
   // ==============================================================================================
@@ -8990,6 +9003,12 @@ const en: typeof de = {
   "lib.lesen.sprung.quellenLeer": "Sources and evidence · none",
   "lib.lesen.sprung.anhaenge": "Attachments · {{count}}",
   "lib.lesen.sprung.anhaengeLeer": "Attachments · none",
+  // JOB 3474 · REVIEW26 — see the German entry for the finding. Same wording as the file import
+  // (`capture.originalAttachFailed`: „Original file“).
+  "lib.lesen.sprung.originaldatei": "Original file · {{name}}",
+  "lib.lesen.sprung.originaldateien": "Original files · {{count}}",
+  "lib.lesen.sprung.originaldateienNamen": "Original files · {{count}}: {{names}}",
+  "lib.lesen.sprung.anhaengeLeerNebenDatei": "Further attachments · none",
   // AUFTRAG-BASIC-u2 — see the German entry for the finding.
   "lib.allStatus": "All statuses",
   "lib.allTypes": "All knowledge types",
@@ -13875,6 +13894,12 @@ const nl: typeof de = {
   "lib.lesen.sprung.quellenLeer": "Bronnen en bewijs · geen",
   "lib.lesen.sprung.anhaenge": "Bijlagen · {{count}}",
   "lib.lesen.sprung.anhaengeLeer": "Bijlagen · geen",
+  // JOB 3474 · REVIEW26 — zie de Duitse regel voor de bevinding. Zelfde woord als de bestandsimport
+  // (`capture.originalAttachFailed`: „Origineel bestand“).
+  "lib.lesen.sprung.originaldatei": "Origineel bestand · {{name}}",
+  "lib.lesen.sprung.originaldateien": "Originele bestanden · {{count}}",
+  "lib.lesen.sprung.originaldateienNamen": "Originele bestanden · {{count}}: {{names}}",
+  "lib.lesen.sprung.anhaengeLeerNebenDatei": "Overige bijlagen · geen",
   // AUFTRAG-BASIC-u2 — zie de Duitse regel voor de bevinding.
   "lib.allStatus": "Alle statussen",
   "lib.allTypes": "Alle kennissoorten",

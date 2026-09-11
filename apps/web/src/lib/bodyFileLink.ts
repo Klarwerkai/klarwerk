@@ -5,7 +5,7 @@
 // Upload, keine Validierung (die Datei-Referenz ist Evidence/Anhang, KEIN Status-/Trust-/Validierungs-
 // Signal). Server- und FE-Sanitizer behalten genau die schmale `attachment`-Div-Klasse + sichere Links.
 
-import { isEmptyHtml } from "./richText";
+import { htmlToPlainText, isEmptyHtml } from "./richText";
 
 // Object-Store-IDs sind Wort-/Bindestrich-Token; alles andere wird abgelehnt (kein Pfad-/Scheme-Trick).
 const OBJECT_ID_RE = /^[\w-]+$/;
@@ -65,6 +65,144 @@ export function applyBodyFileLink(
     return base;
   }
   return isEmptyHtml(base) ? next : base + next;
+}
+
+// ================================================================================================
+// JOB 3474 · REVIEW26 — DIESES MODUL KONNTE SEINE EIGENE FORM SCHREIBEN, ABER NICHT LESEN.
+// ================================================================================================
+//
+// DER BEFUND (`gespraech/advisor-freitag/NUTZERBEFUNDE-AN-CLAUDE-20260908.md:47-51`, Posten 4): am
+// Kopf eines aus einer Datei erfassten Berichts stand „Anhänge · keine", während die funktionierende
+// Original-DOCX erst nach dem langen Text verlinkt war.
+//
+// DIE GEMESSENE URSACHE: der Ganzdokument-Import legt das Original in den Object-Store und hängt es
+// als Body-Datei-Referenz an den Entwurfstext (`pages/Capture.tsx:1336-1349`, `fileLinkHtml`) — ein
+// `KoAttachment` entsteht dabei NICHT (`finalizeCaptureSubmit` bekommt sein `original` nur im
+// Warteschlangen-Weg, `Capture.tsx:1810-1812`). Beide Kopfzähler der Lesefläche hängen aber an
+// `ko.attachments` / `ko.sources`. Die Datei war deshalb am Kopf unsichtbar.
+//
+// WARUM DER LESEWEG HIER WOHNT UND NICHT IN EINEM ZWEITEN SCANNER: die Form gehört diesem Modul.
+// Der einzige vorhandene bodyHtml-Leser ist `extractBodyImages` (`lib/bodyImages.ts:152`) — er sucht
+// `figure`/`img`/`figcaption` über einen Tiefenzähler und liefert `BodyImage`; `div.attachment > a`
+// kennt er nicht. Schreib- und Leseseite stehen jetzt nebeneinander und teilen dieselbe Strenge:
+// akzeptiert wird ausschließlich, was `objectRawHref` selbst schreiben würde (Rundlauf-Prüfung
+// unten). Ein Pfad-Trick (`/api/objects/../raw`) oder eine fremde Adresse ergibt NICHTS.
+// DOM-frei wie der Rest der Datei: reine Zeichenarbeit, im Node-Tor prüfbar.
+export interface BodyFileRef {
+  objectId: string;
+  name: string;
+}
+
+// Ein `div` unmittelbar gefolgt von einem `<a>…</a>` — die Form, die `fileLinkHtml` schreibt.
+// Klasse und Adresse werden danach GEPRÜFT, nicht schon hier gefiltert: so bleibt die Regel an einer
+// Stelle lesbar, und Attributreihenfolge/Anführungszeichen dürfen sich ändern (der Sanitizer baut
+// Tags neu auf, `richText.ts`).
+const BODY_FILE_BLOCK_RE = /<div\b([^>]*)>\s*<a\b([^>]*)>([\s\S]*?)<\/a>/gi;
+
+// ================================================================================================
+// RUNDE 2 · BENS BEFUND — EIN `href=` IM TEXT EINES ANDEREN ATTRIBUTS WAR DIE ADRESSE.
+// ================================================================================================
+//
+// HIER STAND EIN SUCHENDER ATTRIBUTLESER: `new RegExp("\\s" + name + "\\s*=\\s*(…)").exec(tag)`.
+// Er sucht den Namen IRGENDWO im Tag und weiß nichts von Anführungszeichengrenzen. Bens Gegenprobe,
+// nachgemessen und in R12/F-N5 festgehalten — sie überlebt auch `sanitizeHtml`, weil `title` am `<a>`
+// ein erlaubtes Attribut mit freiem Text ist:
+//
+//     <a title="Hinweis href=/api/objects/fake/raw " href="https://fremd.example/x">Fremd.docx</a>
+//
+// Der alte Leser fand das `href=` IM `title` zuerst und lieferte `/api/objects/fake/raw`. Der Kopf
+// behauptete daraufhin „Originaldatei · Fremd.docx" — eine Datei, die es nicht gibt, und ein Knopf,
+// der ins Leere führt (das Sprungziel existiert nicht, `springeZurDatei` endet wirkungslos). Genau
+// die Zusage „eine fremde `href` liefert NICHTS" war damit gebrochen.
+//
+// DIE ANTWORT IST NICHT EIN SCHÄRFERER SUCHAUSDRUCK, SONDERN EIN ANDERES VERFAHREN: die Attributliste
+// wird EINMAL SEQUENTIELL von links nach rechts zerlegt. Ein zitierter Wert wird dabei VOLLSTÄNDIG
+// verbraucht; was in ihm steht, kann baulich nie mehr als Attributname gelesen werden. Das ist der
+// Unterschied zwischen „ich suche `href`" und „ich weiß, welches Zeichen zum Wert gehört".
+//
+// FAIL-CLOSED: stolpert die Zerlegung über etwas, das kein Attribut ist (unbalanciertes
+// Anführungszeichen, exotischer Name), liefert sie `null` — und der ganze Block wird verworfen. Ein
+// unlesbares Tag ergibt KEINE Datei, nie eine halb geratene. Echte Inhalte kostet das nichts: der
+// Sanitizer lässt am `div` nur `class`, am `<a>` nur `href` und `title` durch (`richText.ts:59-60`,
+// `:109-118`), und `fileLinkHtml` escapt `<`, `>`, `&` und `"` im Namen.
+//
+// (Der Attributleser der Bildergalerie, `bodyImages.ts:83`, trägt dieselbe Schwäche. Er ist hier
+// KEIN Zielpfad und bleibt unangetastet — genannt, damit die Stelle nicht unbemerkt bleibt.)
+const ATTRIBUT_RE = /([A-Za-z_:][-\w:.]*)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+)))?/y;
+
+function tagAttribute(attributListe: string): Map<string, string> | null {
+  const attribute = new Map<string, string>();
+  const leerraum = /\s*/y;
+  const attribut = new RegExp(ATTRIBUT_RE.source, "y");
+  let i = 0;
+  while (i < attributListe.length) {
+    leerraum.lastIndex = i;
+    leerraum.exec(attributListe);
+    i = leerraum.lastIndex;
+    if (i >= attributListe.length) {
+      break;
+    }
+    // Der Schrägstrich eines selbstschließenden Tags ist kein Attribut — aber NUR am Ende. Ein `/`
+    // MITTEN in der Liste ist kein Tag-Abschluss, sondern ein Zeichen aus einem Wert, dessen
+    // Anführungszeichen nicht aufgegangen ist; dort wird abgebrochen statt weitergeraten.
+    if (attributListe[i] === "/") {
+      if (i === attributListe.length - 1) {
+        break;
+      }
+      return null;
+    }
+    attribut.lastIndex = i;
+    const m = attribut.exec(attributListe);
+    if (!m) {
+      return null; // fail-closed: hier steht kein Attribut, also ist das Tag unlesbar
+    }
+    const name = (m[1] ?? "").toLowerCase();
+    // Erstes Vorkommen gilt — dieselbe Regel wie im DOM, wo ein doppeltes Attribut ignoriert wird.
+    if (!attribute.has(name)) {
+      attribute.set(name, m[2] ?? m[3] ?? m[4] ?? "");
+    }
+    i = attribut.lastIndex;
+  }
+  return attribute;
+}
+
+// Die Gegenrichtung zu `escapeText` ist NICHT selbstgebaut: `htmlToPlainText` ist die kanonische
+// Reduktion dieses Hauses (`richText.ts:450`, Server-Zwilling `services/structure/src/sanitize.ts`),
+// und `mega85` erhebt jede zweite Rohreduktion als Befund. Sie leistet genau das Nötige in EINEM
+// Durchlauf: Inline-Auszeichnung verschwindet spurlos (kein Zwischenraum vor dem Satzzeichen — der
+// mega84-Fehler), Entities werden einmal dekodiert (nie doppelt), Whitespace wird geglättet.
+
+// Die Body-Datei-Referenzen eines Berichts LESEN, in der Reihenfolge ihres Auftretens.
+export function bodyFileLinksFromHtml(bodyHtml: string | null | undefined): BodyFileRef[] {
+  const out: BodyFileRef[] = [];
+  if (!bodyHtml) {
+    return out;
+  }
+  // Frische Regex je Aufruf (kein geteilter `lastIndex` über Aufrufe hinweg).
+  const marken = new RegExp(BODY_FILE_BLOCK_RE.source, "gi");
+  let m: RegExpExecArray | null;
+  // biome-ignore lint/suspicious/noAssignInExpressions: Standard-Regex-Iteration.
+  while ((m = marken.exec(bodyHtml)) !== null) {
+    const divAttribute = tagAttribute(m[1] ?? "");
+    const linkAttribute = tagAttribute(m[2] ?? "");
+    if (!divAttribute || !linkAttribute) {
+      continue; // unlesbares Tag → keine Datei (fail-closed, s. oben)
+    }
+    if (!(divAttribute.get("class") ?? "").split(/\s+/).includes("attachment")) {
+      continue;
+    }
+    const href = (linkAttribute.get("href") ?? "").trim();
+    // DIE STRENGE IST DIE DER SCHREIBSEITE, nicht eine zweite Auslegung: die Id wird nur dann
+    // anerkannt, wenn `objectRawHref` aus ihr GENAU diese Adresse gebaut hätte.
+    const id = href.slice("/api/objects/".length, -"/raw".length);
+    if (objectRawHref(id) !== href) {
+      continue;
+    }
+    const name =
+      htmlToPlainText(m[3] ?? "") || htmlToPlainText(linkAttribute.get("title") ?? "") || "Datei";
+    out.push({ objectId: id, name });
+  }
+  return out;
 }
 
 export interface EditorFile {
