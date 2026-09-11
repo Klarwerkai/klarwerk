@@ -160,6 +160,24 @@ const INVENTAR: readonly string[] = [
   // dazwischen die Rückfrage statt eines Links auf den überholten Stand. K2 meldete den Pfad
   // (Achse `name`, `tests/klara-browser/`), das Inventar nimmt ihn nicht still auf.
   "tests/klara-browser/zwischenablage.test.ts",
+  // JOB 3606: die drei Befunde vom 11.09. an der Leiste im Browser — die neue Übernahme, die auf
+  // einen offenen Vorgang trifft (sie verschwand stumm, Befunde a und b), der Tabwechsel, der
+  // während eines Vorgangs verlorenging, und der Grund, den der Server seiner Abweisung mitgibt.
+  // K2 meldet den Pfad (Achse `name`, `klara-browser-bedienung`); das Inventar nimmt ihn nicht
+  // still auf.
+  "tests/klara-browser-bedienung/uebernahme-nachfrage.test.ts",
+  // JOB 3606: dieselben Befunde eine Ebene höher — an der gemounteten Leiste, wo Pedi sie gesehen
+  // hat: die benannte wartende Seite, beide Griffe, und der Satz des Servers in der Zustandszeile.
+  "tests/klara-browser-bedienung/leiste-nachfrage.test.ts",
+  // JOB 3606 · Nachtrag 14:45: der Entwurf, den Pedi in der Weboberfläche gelöscht hatte und auf
+  // den die Leiste weiter schrieb — 404 als eigener Zustand, „als neuen Entwurf sichern", keine
+  // zweite Anfrage an die tote Kennung; dazu die Vorschau, die nur noch den Inhalt zeigt.
+  "tests/klara-browser-bedienung/geloeschter-entwurf.test.ts",
+  // JOB 3606 R4 · Pflichtlieferung 4: die Kompaktregeln der im Chrome gemessenen Rettungsfassung
+  // 0.4.1 — Inhaltshöhe als Fensteranteil, haftende Speicherzeile, zugeklappter Konto-Kasten — und
+  // die Zusicherung, dass es für die Höhe des Inhaltsfeldes nur EINE Wahrheit gibt. Keine Geometrie:
+  // die Datei sagt selbst, dass sie den Vertrag zwischen `panel.html` und `panel.css` misst.
+  "tests/klara-browser-bedienung/kompakte-flaeche.test.ts",
   // JOB 3366 KI-FRAGMENT-SICHTBAR: der Fragment-Hinweis am geladenen Aufgabenfenster — eine am
   // Token-Limit abgeschnittene Antwort wird im Panel als unvollständig gekennzeichnet. K2 meldete
   // den Pfad (Achse `name`, `flaeche-klara-panel`); die zwei Geschwisterdateien desselben Jobs
@@ -988,7 +1006,22 @@ describe("JOB 920 · K — das Klara-Regressionsinventar ist ableitbar, nicht be
     // wird von keiner Inhaltsachse gefunden. GEMESSEN, NICHT GESETZT: mit dem Inventareintrag und
     // noch unverändertem Zähler meldete der Lauf `expected 50 to be 49`.
     // JOB 3413: der Dokumentationswächter unter browser-doku ergänzt die Namensachse.
-    expect(nurName.length).toBe(51);
+    // JOB 3606: `tests/klara-browser-bedienung/uebernahme-nachfrage.test.ts` trägt „klara“ im PFAD.
+    // GEMESSEN, NICHT GESETZT: mit dem Inventareintrag und noch unverändertem Zähler meldete der
+    // Lauf `expected 52 to be 51` (Cloud-Lauf cd93d119b4a649ba8f1cd2b094a3db63); erst danach wurde
+    // diese Zeile angefasst. Mit der zweiten Datei desselben Jobs (`leiste-nachfrage.test.ts`)
+    // stieg die Namensachse auf 53.
+    // JOB 3606 · Nachtrag 14:45: die dritte Datei (`geloeschter-entwurf.test.ts`, der 404-Rückweg)
+    // steht ebenfalls nur über den Pfad. GEMESSEN, NICHT GESETZT: mit dem Inventareintrag und noch
+    // unverändertem Zähler meldete der Lauf `expected 54 to be 53` (11.09. 15:42, lokal — die
+    // Cloud wies zu diesem Zeitpunkt jede Arbeitsprüfung mit „Alle Arbeitsprüfplätze der
+    // Zusatzserver sind belegt" ab); erst danach wurde diese Zeile angefasst.
+    // JOB 3606 R4: die vierte Datei (`kompakte-flaeche.test.ts`, die Kompaktregeln aus der im Chrome
+    // gemessenen Rettungsfassung 0.4.1) steht ebenfalls nur über den Pfad. GEMESSEN, NICHT GESETZT:
+    // mit dem Inventareintrag und noch unverändertem Zähler meldete der Lauf `expected 55 to be 54`
+    // (11.09. 18:56, lokal — die Cloud wies auch jetzt wieder jede Arbeitsprüfung mit „Alle
+    // Arbeitsprüfplätze der Zusatzserver sind belegt" ab); erst danach wurde diese Zeile angefasst.
+    expect(nurName.length).toBe(55);
     expect(verfehlt.length).toBeGreaterThanOrEqual(25);
     expect(verfehlt.length + nurName.length).toBe(GEFUNDEN.length);
   });

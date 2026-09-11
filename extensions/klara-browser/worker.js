@@ -36,11 +36,27 @@
    * genau dafür zurückgewiesen. Sie wohnen deshalb bei ihrem Erzeuger. Kommt `types.d.ts` einmal
    * zu einem Auftrag, ziehen beide dorthin und diese drei Typen fallen ersatzlos weg — es ist eine
    * Ortsangabe, keine zweite Wahrheit.
+   * JOB 3606 ergänzt hier, aus demselben Grund und mit derselben Abmachung:
+   * `pendingTab`/`pendingSource` — die Seite, die eine neue Übernahme wollte, während noch ein
+   * offener Vorgang lag; `activeTabId` — der zuletzt gesehene aktive Tab, aus dem `sourceChanged`
+   * auch dann folgt, wenn der Merker `sourceChangedId` nie gesetzt wurde; `reason` — der Satz, den
+   * der Server seiner Abweisung mitgegeben hat.
    * @typedef {{ id?: number, url?: string, title?: string }} Reiter
-   * @typedef {import("./types").State & { lastTab?: Reiter }} Zustand
-   * @typedef {import("./types").View & { canCapture?: boolean }} Sicht
+   * @typedef {{ url: string, title: string }} Herkunft
+   * @typedef {import("./types").State & { lastTab?: Reiter, pendingTab?: Reiter | null, pendingSource?: Herkunft | null, activeTabId?: number }} Zustand
+   * @typedef {import("./types").View & { canCapture?: boolean, pendingSource?: Herkunft, reason?: string }} Sicht
    */
   const ready = chrome.storage.session.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" });
+  /**
+   * JOB 3606: EIN Schreibweg in den Sitzungszustand, der die drei neuen Felder mitträgt. Die
+   * Signatur des Chrome-Anschlusses in `types.d.ts` kennt nur `State`; `types.d.ts` steht nicht in
+   * den Zielpfaden dieses Auftrags (dieselbe Abmachung wie oben bei `Zustand`/`Sicht`). Statt an
+   * fünf Aufrufstellen zu tricksen, steht die Erweiterung EINMAL hier. Zieht `Zustand` einmal nach
+   * `types.d.ts`, fällt diese Funktion ersatzlos weg.
+   * @param {Zustand} zustand
+   */
+  const merke = (zustand) =>
+    chrome.storage.session.set(/** @type {Partial<import("./types").State>} */ (zustand));
   let busy = false;
   let captureBusy = false;
 
@@ -489,10 +505,47 @@
   async function put(work) {
     await chrome.storage.session.set({ work });
   }
-  /** @param {Zustand} state @param {string} [status] @returns {Sicht} */
-  function view(state, status) {
+  /**
+   * JOB 3606: ABGESCHLOSSEN — der Entwurf ist angelegt, frisch nachgelesen und bestätigt
+   * (`stateView` setzt `draftId`/`updatedAt` erst nach `matches`), und es hängt keine unklare
+   * Anlage daran. Ein solcher Vorgang lebt auf dem Server; die Kopie in der Leiste ist nur noch
+   * seine Ansicht und darf die nächste Übernahme nicht blockieren. Alles andere — Vorschau,
+   * Bearbeitung, gescheitertes oder unklares Sichern — gilt als OFFEN und blockiert weiter, dann
+   * aber sichtbar und mit Wahl (s. `capture`).
+   * @param {import("./types").Work} work
+   */
+  const fertig = (work) => work.status === "saved" && Boolean(work.draftId) && !work.pendingCreate;
+  /**
+   * JOB 3606 · Nachtrag 14:45 — DER ENTWURF IST WEG; DIE KENNUNG WIRD FALLEN GELASSEN, DER TEXT NICHT.
+   *
+   * Was einmal 404 war, wird nicht wieder angefragt: bliebe `draftId` stehen, ginge JEDES weitere
+   * Sichern wieder als `PUT` auf dieselbe tote Kennung und scheiterte gleich — Pedi käme aus der
+   * Schleife nie heraus. Also fällt alles weg, was auf den gelöschten Entwurf zeigt, und NUR das:
+   * Auswahl, Umfang, Inhalt und das ausgefüllte Formular (`work.form`, `work.variants`) bleiben
+   * unangetastet. Das nächste Speichern nimmt damit den Anlageweg — der Text wird ein NEUER Entwurf.
+   *
+   * `savedLevel` geht mit: es ist die Einstufung des gelöschten Entwurfs und der Grund, aus dem der
+   * PUT-Weg „Offen" sperrt (`classification_locked`). Ein neuer Entwurf trägt diese Sperre nicht.
+   * `operations` geht mit: diese Vorgangsschlüssel gehören zu dem Entwurf, den es nicht mehr gibt;
+   * unter einem alten Schlüssel zu senden hiesse, den Server nach genau diesem Vorgang zu fragen.
+   * `pendingCreate` bleibt stehen — eine unklare Anlage ist eine eigene Lage mit eigenem Weg
+   * (`aufloesen`); an beiden Aufrufstellen hier ist sie ohnehin null.
+   * @param {import("./types").Work} work
+   */
+  function vergessen(work) {
+    work.draftId = null;
+    work.receipt = null;
+    work.updatedAt = null;
+    work.savedLevel = "";
+    work.operations = [];
+  }
+  /** @param {Zustand} state @param {string} [status] @param {string} [grundText] @returns {Sicht} */
+  function view(state, status, grundText) {
     const w = state.work;
     return {
+      // JOB 3606 · Befund (c): der Satz des Servers reist NEBEN dem Zustand, nie an seiner Stelle.
+      // Die Leiste hängt ihn hinter ihren eigenen Satz; fehlt er, bleibt alles wie bisher.
+      ...(grundText ? { reason: grundText } : {}),
       status:
         status ??
         w?.status ??
@@ -500,11 +553,17 @@
           ? state.captureStatus
           : "no_selection"),
       pendingCapture: state.pendingCapture === true,
+      // JOB 3606 · Befund (a)+(b): WELCHE Seite wartet. Ohne diese Angabe war „Es ist bereits eine
+      // Vorschau offen" eine Meldung über nichts Greifbares — mit ihr kann die Leiste die wartende
+      // Seite benennen und zur Wahl stellen. Sie steht nur, wenn wirklich eine wartet.
+      ...(state.pendingCapture === true && state.pendingSource
+        ? { pendingSource: state.pendingSource }
+        : {}),
       // JOB 3524 · Lieferung 3+4: DASS eine neue Übernahme von hier aus überhaupt beginnen kann.
       // Sie braucht einen Tab (laufende Übernahme oder zuletzt gelesener); ohne einen steht in der
       // Leiste kein Knopf, der nichts tun könnte. Die Zusage ist bewusst schwach: „es gibt einen
       // Tab", nicht „das Lesen wird gelingen" — das entscheidet sich erst am Zugriff (s. oben).
-      canCapture: Boolean(state.work?.selection || state.lastTab),
+      canCapture: Boolean(state.work?.selection || state.lastTab || state.pendingTab),
       ...(state.auth ? { user: { id: state.auth.id, email: state.auth.email } } : {}),
       ...(w
         ? {
@@ -513,11 +572,30 @@
             variants: w.variants,
             mode: w.mode,
             aiChat: aiChat(w.selection.url),
-            // Die Vorschau IST der Entwurfskörper, nicht seine Beschreibung.
-            preview: bodyPieces(w, w.form),
+            // JOB 3606 · Nachtrag 14:53 — DIE VORSCHAU ZEIGT DEN ÜBERNOMMENEN INHALT, SONST NICHTS.
+            //
+            // Bis hierher stand hier der GANZE Entwurfskörper (`bodyPieces`): Titelzeile, Herkunft,
+            // „Seite", „Ursprüngliche Quelle", „Erfasst", „Umfang", „Vertraulichkeit", der
+            // Beleghinweis, „Kontext" und die Lückenliste — und erst ganz unten, hinter der
+            // Zwischenüberschrift „Übernommener Inhalt", der Text des Menschen. Wer nachsehen
+            // wollte, was Klara gelesen hat, musste durch einen technischen Block scrollen.
+            //
+            // Was GESPEICHERT wird, ist davon unberührt: `payload()` baut den vollen Körper
+            // weiterhin aus `bodyPieces` (s. `bodyHtml`). Geändert ist allein die ANSICHT. Die
+            // Angaben, die hier herausfallen, sind in der Leiste weiter da — Seite, Quelle,
+            // Erfasst, Umfang und die Lücken stehen dort als eigene Felder, nicht als Textwand.
+            preview: chosen(w).nodes,
             gaps: chosen(w).gaps,
             form: w.form,
-            sourceChanged: state.sourceChangedId === w.id,
+            // JOB 3606 · Befund (b): KEIN STILLER MISCHZUSTAND. Bis hierher hing dieser Satz allein
+            // an `sourceChangedId` — einem Merker, den `changed()` bei `busy || captureBusy` gar
+            // nicht erst setzt. Ein Tabwechsel während eines Sicherns war damit für immer verloren,
+            // und die Leiste zeigte danach den fremden Inhalt, als gehörte er zur offenen Seite.
+            // Deshalb zählt jetzt AUCH der zuletzt gesehene aktive Tab: steht er nicht auf dem Tab
+            // dieser Übernahme, ist die Herkunft eine andere — und das steht da.
+            sourceChanged:
+              state.sourceChangedId === w.id ||
+              (typeof state.activeTabId === "number" && state.activeTabId !== w.selection.tabId),
             attempted: w.operations.length > 0,
             // JOB 3280 R3: DASS eine Anlage unklar ist. Die Leiste hält daran den Inhalt still und
             // sagt, was das nächste Sichern tun wird — sie behauptet dabei keinen Entwurf.
@@ -538,6 +616,25 @@
     };
   }
   const DRAFT_ID = /^[\w-]{1,128}$/;
+  // JOB 3606 · Befund (c). Die Obergrenze ist die einer LESBAREN Zeile, nicht die eines Protokolls:
+  // die Leiste ist schmal, und ein langer Serverfehler drängt den Inhalt weg.
+  const GRUND_MAX = 200;
+  /**
+   * Die Meldung einer abweisenden Antwort, oder "" — sie ist Fremdtext und wird nie zum Zustand.
+   * @param {Response} response @returns {Promise<string>}
+   */
+  async function grund(response) {
+    try {
+      const body = await response.json();
+      const text = body?.message;
+      if (typeof text !== "string") return "";
+      // Zeilenumbrüche und Steuerzeichen raus: die Zustandszeile ist EINE Zeile.
+      const eine = text.replace(/\p{C}+/gu, " ").trim();
+      return eine.length > GRUND_MAX ? `${eine.slice(0, GRUND_MAX - 1)}…` : eine;
+    } catch {
+      return "";
+    }
+  }
   /** @param {"login" | "logout" | "save" | "read" | "update"} kind @param {import("./types").Auth | null} auth @param {object | null} [body] @param {string} [id] @returns {Promise<import("./types").Wire | null>} */
   async function api(kind, auth, body, id) {
     // Fixed operation table. No URL/method/headers from messages or page data.
@@ -569,22 +666,46 @@
       ...(body ? { body: JSON.stringify(body) } : {}),
       signal: AbortSignal.timeout(20000),
     });
-    if (!response.ok)
-      throw new Error(
-        response.status === 401
-          ? "expired"
-          : response.status === 403
-            ? "denied"
-            : response.status === 409
-              ? "conflict"
-              : response.status === 413
-                ? "too_large"
-                : response.status === 429
-                  ? "rate_limited"
-                  : response.status >= 500
-                    ? "server_error"
-                    : "rejected",
-      );
+    if (!response.ok) {
+      /** @type {Record<number, string>} */
+      const codes = {
+        401: "expired",
+        403: "denied",
+        409: "conflict",
+        413: "too_large",
+        429: "rate_limited",
+      };
+      // JOB 3606 · Nachtrag 14:45 — 404 IST „GIBT ES NICHT MEHR", NICHT „DEINE ANGABEN SIND FALSCH".
+      //
+      // Pedi hatte seine Entwürfe in der Weboberfläche gelöscht; die Leiste hielt `work.draftId`
+      // aber weiter fest und schickte `PUT /api/drafts/:id`. Der Server antwortete 404
+      // (`{ error: "NOT_FOUND", message: "Entwurf nicht gefunden." }`) — und weil 404 hier fehlte,
+      // fiel die Antwort in den Sammelfall `rejected`: „Der Server hat abgelehnt. Angaben prüfen."
+      // Das schickt den Menschen auf die falsche Fährte: seine Angaben waren tadellos, es gab nur
+      // den Entwurf nicht mehr (Codex, im echten Chromium gemessen; der Anlageweg antwortete
+      // demselben Stand mit 201).
+      //
+      // NUR die beiden Wege, die eine Entwurfskennung tragen, deuten 404 so. Eine 404 auf
+      // `login`/`logout`/`save` sagt nichts über einen Entwurf aus — sie bleibt der Sammelfall.
+      const code =
+        response.status === 404 && (kind === "read" || kind === "update")
+          ? "draft_missing"
+          : (codes[response.status] ?? (response.status >= 500 ? "server_error" : "rejected"));
+      const fehler = /** @type {Error & { grund?: string }} */ (new Error(code));
+      // JOB 3606 · Befund (c): DER GRUND DER ABWEISUNG GEHÖRT DEM MENSCHEN.
+      //
+      // `rejected` ist der Sammelfall für alles, was nicht 401/403/409/413/429/5xx ist — in der
+      // Praxis die 400 des Anlegewegs. Die Route antwortet dort MIT einer Meldung
+      // (`{ error: "BAD_REQUEST", message }`, capture-routes.ts, Gestaltprüfung aus JOB 2690 D1).
+      // Bis hierher wurde der Rumpf nie gelesen, und Pedi las „Der Server hat abgelehnt. Angaben
+      // prüfen." — ein Satz, der nicht sagt, WELCHE Angabe. Jetzt reist die Meldung mit.
+      //
+      // Sie ist FREMDTEXT und wird als solcher behandelt: nur ein `message`-Feld vom Typ Text, auf
+      // eine Zeile normalisiert, auf `GRUND_MAX` gekürzt, nie als Ersatz für den Zustandssatz,
+      // immer als Zusatz dahinter. Nicht lesbar oder leer → die Zeile bleibt wie bisher.
+      fehler.grund = await grund(response);
+      throw fehler;
+    }
     if (kind === "logout") return null;
     if (
       (kind === "save" && ![200, 201].includes(response.status)) ||
@@ -617,14 +738,22 @@
       // JOB 3280 R3: die unklare Erstanlage, die sich nicht mehr zeichengleich wiederholen lässt.
       // Sie ist eine Nutzerlage mit klarem nächsten Schritt und darf nicht als „uncertain" enden.
       "unresolved_create",
+      // JOB 3606: der Entwurf, den es auf dem Server nicht mehr gibt. Auch er ist eine Nutzerlage
+      // mit einem klaren nächsten Schritt — als neuer Entwurf sichern — und kein Ausfall.
+      "draft_missing",
     ];
     const status = known.includes(code) ? code : "uncertain";
+    // JOB 3606 · Befund (c): die Meldung des Servers, falls die Antwort eine trug.
+    const grundText =
+      typeof (/** @type {{grund?: unknown}} */ (error)?.grund) === "string"
+        ? /** @type {{grund: string}} */ (error).grund
+        : "";
     if (status === "expired") await chrome.storage.session.set({ auth: null });
     if (state.work) {
       state.work.status = status;
       await put(state.work);
     }
-    return view(await read(), status);
+    return view(await read(), status, grundText);
   }
   /**
    * JOB 3279: Der Server verankert Bildhüllen beim Sanitisieren (`data-image-id`, sanitize.ts
@@ -669,6 +798,13 @@
         await put(state.work);
         return view(state, "saved");
       } catch (error) {
+        // JOB 3606: derselbe Fall auf dem Leseweg. „Status erneut prüfen" auf einen gelöschten
+        // Entwurf ist eine 404 — auch sie bindet nicht weiter an die tote Kennung, sonst fragte
+        // jeder weitere Druck auf denselben Knopf wieder dieselbe.
+        if (error instanceof Error && error.message === "draft_missing" && state.work) {
+          vergessen(state.work);
+          await put(state.work);
+        }
         return failure(state, error);
       }
     }
@@ -692,9 +828,19 @@
         "save",
         "cancel",
         "recapture",
+        // JOB 3606: „Offene Übernahme behalten" — der zweite Ausgang der Nachfrage.
+        "keep",
       ].includes(message.type)
     )
       return { status: "invalid_message" };
+    // Er sendet nichts, ändert den offenen Vorgang nicht und braucht keine Kennung: er räumt allein
+    // die Nachfrage weg, die `capture()` gestellt hat. Die neue Auswahl bleibt ungelesen — genau
+    // das hat der Mensch hier gewählt.
+    if (message.type === "keep") {
+      if (busy || captureBusy) return view(await read(), "busy");
+      await merke({ pendingCapture: false, pendingTab: null, pendingSource: null });
+      return view(await read());
+    }
     if (message.type === "state") {
       if (busy || captureBusy) return view(await read(), "saving");
       busy = true;
@@ -740,14 +886,19 @@
       try {
         const state = /** @type {Zustand} */ (await read());
         const s = state.work?.selection;
-        // Der Tab der laufenden Übernahme, sonst der zuletzt erfolgreich gelesene. Beides steht im
-        // eigenen Zustand — die Leiste hat kein `tabs`-Recht und darf den offenen Tab nicht raten.
-        tab = s ? { id: s.tabId, url: s.url, title: s.title } : state.lastTab;
+        // JOB 3606: ZUERST DIE SEITE, DIE WARTET. Wartet eine Übernahme (`pendingTab`, gesetzt in
+        // `capture`, wenn ein offener Vorgang sie aufgehalten hat), dann ist sie die gemeinte —
+        // „übernehmen und ersetzen" meint genau SIE und nicht die alte. Ohne wartende Seite bleibt
+        // es beim bisherigen Weg: der Tab der laufenden Übernahme, sonst der zuletzt gelesene.
+        // Alles steht im eigenen Zustand — die Leiste hat kein `tabs`-Recht und rät keinen Tab.
+        tab = state.pendingTab ?? (s ? { id: s.tabId, url: s.url, title: s.title } : state.lastTab);
         if (tab)
-          await chrome.storage.session.set({
+          await merke({
             work: null,
             captureStatus: null,
             pendingCapture: false,
+            pendingTab: null,
+            pendingSource: null,
           });
       } finally {
         busy = false;
@@ -822,10 +973,14 @@
       if (message.type === "cancel") {
         // Cancel never sends a draft request. A prior uncertain request cannot be undone.
         const uncertain = state.work.operations.length > 0;
-        await chrome.storage.session.set({
+        // JOB 3606: die Nachfrage ist mit dem Verwerfen beantwortet, ihr Tab aber bleibt stehen —
+        // er ist die Seite, die Pedi gemeint hat, und „Neue Übernahme" soll danach SIE lesen und
+        // nicht die eben verworfene. Die Nachfrage selbst (`pendingSource`) ist erledigt.
+        await merke({
           work: null,
           captureStatus: null,
           pendingCapture: false,
+          pendingSource: null,
         });
         return view(await read(), uncertain ? "cancelled_uncertain" : "cancelled");
       }
@@ -1092,15 +1247,30 @@
     // entsteht daraus NICHT — `view()` gibt ihn nur bei bestätigtem `saved`.
     work.receipt = work.draftId;
     await put(work);
-    const draft = await api(
-      "update",
-      auth,
-      // `expectedUpdatedAt` ist der Stand, den DIESE Leiste zuletzt gesehen hat. Hat inzwischen
-      // jemand denselben Entwurf in Klarwerk bearbeitet, gibt es 409 statt eines stillen
-      // Überschreibens (capture/src/service.ts pruefeStand).
-      { ...sent, ...(work.updatedAt ? { expectedUpdatedAt: work.updatedAt } : {}) },
-      work.draftId,
-    );
+    /** @type {import("./types").Wire | null} */
+    let draft;
+    try {
+      draft = await api(
+        "update",
+        auth,
+        // `expectedUpdatedAt` ist der Stand, den DIESE Leiste zuletzt gesehen hat. Hat inzwischen
+        // jemand denselben Entwurf in Klarwerk bearbeitet, gibt es 409 statt eines stillen
+        // Überschreibens (capture/src/service.ts pruefeStand).
+        { ...sent, ...(work.updatedAt ? { expectedUpdatedAt: work.updatedAt } : {}) },
+        work.draftId,
+      );
+    } catch (error) {
+      // JOB 3606 · Nachtrag 14:45: DER FALL, AN DEM PEDI HEUTE GESCHEITERT IST. Der Entwurf ist in
+      // Klarwerk gelöscht — dieser Weg führt nicht mehr hin und wird deshalb hier abgeräumt, bevor
+      // der Fehler weiterreist. `failure()` schreibt danach den Zustand `draft_missing`, und die
+      // Leiste sagt, was gilt: der Entwurf ist nicht mehr da, das nächste Speichern legt einen
+      // neuen an. Der Text bleibt dabei stehen — `vergessen()` fasst ihn nicht an.
+      if (error instanceof Error && error.message === "draft_missing") {
+        vergessen(work);
+        await put(work);
+      }
+      throw error;
+    }
     if (!matches(draft, sent, auth.id) || draft.id !== work.draftId)
       throw new Error("verify_failed");
     work.receipt = draft.id;
@@ -1204,12 +1374,46 @@
     captureBusy = true;
     try {
       const state = await read();
-      // Never overwrite a pending selection with another tab's content.
-      if (state.work) {
-        await chrome.storage.session.set({ pendingCapture: true });
+      const source = info?.frameUrl ?? info?.pageUrl ?? tab?.url;
+      // ==========================================================================================
+      // JOB 3606 · DIE URSACHE DER BEFUNDE (a) UND (b) — HIER STAND EIN STUMMES `return`.
+      // ==========================================================================================
+      //
+      // Bis hierher hiess es: `if (state.work) { pendingCapture = true; return; }` — VOR
+      // `executeScript`. Lag also noch irgendein Vorgang im Zustand, wurde die Seite gar nicht
+      // erst gelesen. Nach aussen sah das aus wie zwei verschiedene Fehler, war aber einer:
+      //   (a) „Markierung · nicht vorhanden" trotz markiertem Text — es wurde nie nachgesehen.
+      //   (b) Leiste zeigt Titel/Inhalt einer FREMDEN Seite — der alte Stand blieb einfach stehen.
+      // Pedi hat beides am 11.09. selbst gefunden (Bildbelege 14:20 und 14:23).
+      //
+      // ZWEI DINGE ÄNDERN SICH, DIE ABSICHT NICHT:
+      //
+      // 1. FERTIG IST NICHT OFFEN. Ein Vorgang mit bestätigtem Entwurf (`draftId` nach dem
+      //    Nachlesen in `stateView`, Status `saved`, keine unklare Anlage) ist ABGESCHLOSSEN: er
+      //    liegt auf dem Server und wird durch eine neue Übernahme weder überschrieben noch
+      //    gelöscht — genau das sagt schon der `recapture`-Weg. Er darf die nächste Übernahme
+      //    also nicht blockieren, und tut es ab hier nicht mehr.
+      //
+      // 2. EIN OFFENER VORGANG BLOCKIERT WEITER — ABER NICHT MEHR STUMM. Eine begonnene,
+      //    ungesicherte Übernahme darf nicht von einem anderen Tab überschrieben werden; das war
+      //    und bleibt richtig. Neu ist, dass der Mensch davon ERFÄHRT und einen Griff hat: welche
+      //    Seite wartet, steht in `pendingSource`, und der wartende Tab in `pendingTab` — daraus
+      //    baut die Leiste die Frage „übernehmen und ersetzen, oder die alte behalten?".
+      //    `recapture` nimmt dann diesen Tab, nicht mehr den alten.
+      if (state.work && !fertig(state.work)) {
+        /** @type {Zustand} */
+        const wartend = {
+          pendingCapture: true,
+          ...(tab?.id !== undefined && supported(source)
+            ? {
+                pendingTab: { id: tab.id, url: source ?? "", title: tab.title ?? "" },
+                pendingSource: { url: source ?? "", title: tab.title ?? "" },
+              }
+            : {}),
+        };
+        await merke(wartend);
         return;
       }
-      const source = info?.frameUrl ?? info?.pageUrl ?? tab?.url;
       let status = "unsupported";
       if (tab?.id !== undefined && supported(source) && (!info?.frameId || info.frameId === 0)) {
         try {
@@ -1283,15 +1487,28 @@
               // die Leiste hat kein `tabs`-Recht und darf den offenen Tab nicht raten. Abgemeldet
               // wird er mit allem anderen: `logout` ruft `storage.session.clear()`.
               /** @type {Zustand} */
-              const merken = { lastTab: { id: tab.id, url: s.url, title: s.title } };
-              await chrome.storage.session.set(merken);
+              // JOB 3606: derselbe Griff beweist auch, WELCHER Tab gerade aktiv ist — Symbol und
+              // Kontextmenü wirken nur auf ihn. Ohne diese Zeile stünde nach einer Übernahme noch
+              // der zuvor gemerkte fremde Tab da, und `sourceChanged` meldete eine Abweichung, die
+              // es nicht gibt.
+              const merken = {
+                lastTab: { id: tab.id, url: s.url, title: s.title },
+                activeTabId: tab.id,
+              };
+              await merke(merken);
             }
           } else status = "source_changed";
         } catch {
           status = "capture_failed";
         }
       }
-      await chrome.storage.session.set({ captureStatus: status, pendingCapture: false });
+      // JOB 3606: die Nachfrage ist beantwortet — sie und der Tab, auf den sie zeigte, gehen weg.
+      await merke({
+        captureStatus: status,
+        pendingCapture: false,
+        pendingTab: null,
+        pendingSource: null,
+      });
     } finally {
       captureBusy = false;
       await nachholen();
@@ -1339,6 +1556,12 @@
   });
   /** @param {number} tabId @param {string} [url] */
   async function changed(tabId, url) {
+    // JOB 3606 · Befund (b): DER WECHSEL WIRD IMMER FESTGEHALTEN, auch während gearbeitet wird.
+    // Vorher stieg diese Zeile bei `busy || captureBusy` aus — wer den Tab wechselte, während die
+    // Leiste sicherte, dessen Wechsel war danach nicht mehr nachweisbar. Der aktive Tab ist eine
+    // Tatsache über den Browser, kein Ergebnis eines Vorgangs; er wird deshalb unabhängig von jeder
+    // Sperre gemerkt, und `view()` liest ihn (s. `sourceChanged`).
+    await merke({ activeTabId: tabId });
     const state = await read();
     if (!state.work || busy || captureBusy) return;
     if (tabId !== state.work.selection.tabId || (url && url !== state.work.selection.url)) {

@@ -148,7 +148,8 @@ describe("JOB 3278 · CHR-02 — die Leiste steht neben der Seite, nicht an ihre
     expect(MANIFEST.permissions).toContain("sidePanel");
     // JOB 3279 (Pflichtlieferung 5): dieselbe Fassung, eine Stufe weiter.
     // JOB 3280 (Pflichtlieferung 4): und noch eine — Zwischenablage und derselbe Entwurf.
-    expect(MANIFEST.version).toBe("0.4.0");
+    // JOB 3606: 0.4.1 — die Übernahme-Nachfrage und der 404-Rückweg sind eine neue Fassung.
+    expect(MANIFEST.version).toBe("0.4.1");
     // Side Panel gibt es ab Chrome 114; das Paket verlangt ohnehin schon 120.
     expect(Number(MANIFEST.minimum_chrome_version)).toBeGreaterThanOrEqual(114);
     // Kein neuer Host, keine Dauerrechte — der Auftrag verbietet beides ausdrücklich.
@@ -435,6 +436,10 @@ describe("JOB 3278 · CHR-03 — Vorschau, Zustände und beide Sprachen", () => 
     // es in den Umfangshinweis des VIERTEN Umfangs (`info-clipboard`), über `t()` in einem
     // Textbaustein, nie als eigener `data-i18n`-Knoten. Es ist eine Beschriftung („hier ist noch
     // nichts eingefügt"), keine Zustandszeile und trägt deshalb keinen Ton.
+    // JOB 3606: `pendingFrom` steht aus demselben Grund hier — `panel.js` baut es in die Zeile der
+    // WARTENDEN Seite (`#pending-source`), über `t()` in einem Textbaustein vor Titel und Adresse,
+    // nie als eigener `data-i18n`-Knoten. Es ist eine Beschriftung („Wartet:"), keine Zustandszeile:
+    // das Ereignis meldet `pendingCapture` darüber, und das trägt einen eigenen Knoten.
     const KEINE_ZUSTANDSZEILE = new Set([
       "signedOut",
       "scopeEmpty",
@@ -442,6 +447,7 @@ describe("JOB 3278 · CHR-03 — Vorschau, Zustände und beide Sprachen", () => 
       "scopeNone",
       "chars",
       "images",
+      "pendingFrom",
     ]);
     const zustaende = Object.keys(texte.de ?? {}).filter(
       (schluessel) =>

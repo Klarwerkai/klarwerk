@@ -5,8 +5,15 @@
 globalThis.KLARA_TEXT = {
   de: {
     language: "Sprache",
+    // JOB 3606: der alte Satz schickte Pedi auf einen Umweg („zuerst verwerfen, dann neu
+    // markieren") und nannte die wartende Seite nicht. Jetzt ist es eine Frage mit zwei Griffen.
     pendingCapture:
-      "Es ist bereits eine Vorschau offen. Die neue Auswahl wurde nicht übernommen. Zuerst diese Auswahl verwerfen und danach die neue Passage erneut markieren.",
+      "Es liegt noch eine offene Übernahme in der Leiste. Die neue Auswahl wurde deshalb noch nicht gelesen.",
+    pendingReplace: "Neue Auswahl übernehmen und ersetzen",
+    pendingKeep: "Offene Übernahme behalten",
+    // Die wartende Seite wird BENANNT, nicht beschrieben: Titel und Adresse kommen aus dem Tab, auf
+    // den die neue Übernahme zeigte.
+    pendingFrom: "Wartet:",
     refresh: "Status erneut prüfen",
     unreviewed: "Browser · Ungeprüfter Entwurf",
     account: "Klarwerk-Anmeldung",
@@ -147,6 +154,11 @@ globalThis.KLARA_TEXT = {
       "Bitte die Herkunft des eingefügten Textes angeben. Ohne diese Angabe wird nichts gespeichert.",
     unresolved_create:
       "Ein Speicherversuch ist unbestätigt: Umfang und eingefügter Text bleiben unverändert, bis er geklärt ist. Bitte erneut speichern — dieselbe Sendung wird wiederholt, es entsteht kein zweiter Entwurf. Es wurde nichts gesendet und nichts verworfen.",
+    // JOB 3606: der Entwurf ist in Klarwerk gelöscht. Der Satz sagt das — und er sagt genau, was
+    // das nächste „Speichern“ tun wird, weil das der einzige Weg zurück ist. Kein „Angaben prüfen“:
+    // die Angaben waren in Ordnung.
+    draft_missing:
+      "Dieser Entwurf ist in Klarwerk nicht mehr vorhanden; er wurde dort gelöscht. Der Text steht unverändert hier. „Speichern“ legt ihn jetzt als NEUEN Entwurf an.",
     saving: "Vorgang läuft. Bitte warten.",
     busy: "Ein Vorgang läuft bereits. Bitte warten und anschließend erneut versuchen.",
     saved: "Als ungeprüfter Entwurf gespeichert; vollständigen Inhalt bestätigt.",
@@ -200,7 +212,10 @@ globalThis.KLARA_TEXT = {
   en: {
     language: "Language",
     pendingCapture:
-      "A preview is already open. The new selection was not captured. Discard this selection first, then select the new passage again.",
+      "A capture is still open in the panel. The new selection has therefore not been read yet.",
+    pendingReplace: "Capture the new selection and replace",
+    pendingKeep: "Keep the open capture",
+    pendingFrom: "Waiting:",
     refresh: "Check status again",
     unreviewed: "Browser · Unreviewed draft",
     account: "Klarwerk sign-in",
@@ -314,6 +329,8 @@ globalThis.KLARA_TEXT = {
     origin_missing: "Please state the origin of the pasted text. Without it nothing is saved.",
     unresolved_create:
       "One save attempt is unconfirmed: the scope and the pasted text stay unchanged until it is resolved. Please save again — the same request is repeated, so no second draft is created. Nothing was sent and nothing was discarded.",
+    draft_missing:
+      "This draft no longer exists in Klarwerk; it was deleted there. Your text is still here, unchanged. “Save” now creates it as a NEW draft.",
     saving: "Operation in progress. Please wait.",
     busy: "An operation is already running. Please wait, then try again.",
     saved: "Saved as an unreviewed draft; complete content confirmed.",

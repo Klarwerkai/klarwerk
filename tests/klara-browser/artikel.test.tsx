@@ -382,8 +382,23 @@ describe("JOB 3279 · Umfang, Bilder und Herkunft in der Klara-Seitenleiste", ()
       await view.settle();
       expect(view.el("status").textContent).toContain("ungeprüfter Entwurf gespeichert");
       const draft = await draftVon(app, h);
-      // Der gespeicherte Körper und die gezeichnete Vorschau sind DASSELBE Markup.
-      expect(view.el("content").innerHTML).toBe(alsMarkup(String(draft.payload.bodyHtml)));
+      // JOB 3606 · Nachtrag 14:53 — DIE VORSCHAU IST DER ÜBERNOMMENE INHALT, NICHT DER GANZE KÖRPER.
+      //
+      // Bis hierher stand hier `toBe(alsMarkup(bodyHtml))`: die Leiste zeichnete den vollständigen
+      // Entwurfskörper, also zuerst Titelzeile, Herkunft, Seite, Quelle, Erfassungszeit, Umfang,
+      // Einstufung, Beleghinweis und Kontext — und erst darunter den Text, den Klara gelesen hat.
+      // Pedi musste durch diesen Block scrollen, um sein eigenes Material zu sehen.
+      //
+      // Die Zusicherung dieses Falls bleibt dieselbe und wird genauer: was gezeichnet ist, steht
+      // ZEICHENGLEICH im Gespeicherten — am Ende, hinter „Übernommener Inhalt". Bild, Beschriftung
+      // und Tabelle gehen dabei nicht verloren; das misst der Rest dieses Falls weiter.
+      const gespeichert = alsMarkup(String(draft.payload.bodyHtml));
+      expect(gespeichert.endsWith(view.el("content").innerHTML)).toBe(true);
+      // Und die Angaben, die die Vorschau vorher füllten, stehen weiter im Entwurf — nur nicht
+      // mehr in der Vorschau. Beides zusammen ist der Unterschied zwischen „ruhiger" und „weniger".
+      expect(view.el("content").innerHTML).not.toContain("Seite / Page");
+      expect(gespeichert).toContain("Seite / Page: Testseite");
+      expect(gespeichert).toContain("Kontext / Context");
       // Und das Bild ist nach dem Wiederöffnen wirklich da, mit Beschriftung und Quelle.
       const wieder = new JSDOM(`<div id="p">${draft.payload.bodyHtml}</div>`);
       const bild = wieder.window.document.querySelector("figure img");

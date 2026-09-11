@@ -1,4 +1,4 @@
-# Klara Browser · 0.4.0
+# Klara Browser · 0.4.1
 
 Paketordner / Package directory: **`extensions/klara-browser/`** (mit / containing `manifest.json`). Direkt ladbare lokale Dateien, kein npm-Installieren, Bündeln oder Webserver nötig / Load the local files directly; no npm install, bundling or web server needed. JavaScript wird mit TypeScript `strict` und `checkJs` geprüft / JavaScript is checked with TypeScript `strict` and `checkJs`.
 
@@ -7,7 +7,7 @@ Paketordner / Package directory: **`extensions/klara-browser/`** (mit / containi
 ## Installation und Bedienung · Deutsch
 
 1. Chrome ab Version 120 öffnen, `chrome://extensions` aufrufen und den Entwicklermodus aktivieren.
-2. **Entpackte Erweiterung laden** wählen und den Paketordner auswählen. Angezeigte Version: **0.4.0**, Name: **Klara · Browser**. Unter „Fehler“ darf kein Ladefehler stehen. Erweiterung an die Symbolleiste anheften. Vor der Vorführung den Reload-Abschnitt unten beachten.
+2. **Entpackte Erweiterung laden** wählen und den Paketordner auswählen. Angezeigte Version: **0.4.1**, Name: **Klara · Browser**. Unter „Fehler“ darf kein Ladefehler stehen. Erweiterung an die Symbolleiste anheften. Vor der Vorführung den Reload-Abschnitt unten beachten.
 3. In einem normalen Chrome-Fenster eine HTTP(S)-Webseite öffnen, etwa eine Drucker- oder Schnittstellenanleitung. Für eine Markierung freigegebenen Testtext auswählen und Rechtsklick → **In Klarwerk übernehmen**. Ohne Markierung das Erweiterungssymbol oder **Alt+Umschalt+K** verwenden; bei belegtem Kürzel unter `chrome://extensions/shortcuts` neu zuweisen.
 4. Die Vorschau erscheint als **Chrome-Seitenleiste neben der Seite**. Sie bleibt beim Tabwechsel offen und behält die ursprünglich erfasste Quelle; ein Hinweis meldet den geänderten aktiven Tab. Den Umfang bewusst wählen, vollständigen übernommenen Inhalt, Lücken, Seitentitel, Quellenadresse und UTC-Erfassungszeit prüfen. Titel bearbeiten, optional Kontext ergänzen und Vertraulichkeit bewusst wählen oder erkennbar offen lassen.
 5. In der Seitenleiste am bestehenden Klarwerk-Konto anmelden. Anmeldung und Vorschau erzeugen keinen Entwurf. Das Kontextmenü folgt der Chrome-Sprache; der Umschalter in der Seitenleiste wechselt die Vorschau zwischen Deutsch und Englisch, ohne Inhalt und Quelle zu ersetzen.
@@ -45,7 +45,7 @@ Beleg: **09.09.2026, App 1.0.0-beta.1.230**, `BROWSER-ABNAHME.md`, „Tatsächli
 ## Installation and use · English
 
 1. In Chrome 120 or later, open `chrome://extensions` and enable **Developer mode**.
-2. Choose **Load unpacked** and select **`extensions/klara-browser/`**. Verify **Klara · Browser**, version **0.4.0**, and no loading errors. Pin the extension. Before demonstrating it, follow the reload section below.
+2. Choose **Load unpacked** and select **`extensions/klara-browser/`**. Verify **Klara · Browser**, version **0.4.1**, and no loading errors. Pin the extension. Before demonstrating it, follow the reload section below.
 3. Open a normal HTTP(S) webpage, such as printer or interface setup instructions. For a selection, select approved test text and right-click **Capture in Klarwerk**. Without a selection, use the extension icon or **Alt+Shift+K**; configure conflicting shortcuts at `chrome://extensions/shortcuts`.
 4. The preview opens as a **Chrome side panel beside the page**. It stays open across tab switches and retains the originally captured source; a notice identifies a changed active tab. Choose the scope deliberately and review all captured content, gaps, page title, source address and UTC capture time. Edit the title, add optional context, and choose confidentiality or explicitly leave it unclassified.
 5. Sign into your existing Klarwerk account in the side panel. Sign-in and preview do not create a draft. The context menu follows Chrome’s language; the panel’s German/English switch changes labels while preserving content and source.

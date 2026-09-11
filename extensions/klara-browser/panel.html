@@ -57,9 +57,31 @@
           <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 6h16"></path><path d="M4 11h16"></path><path d="M4 16h10"></path><path d="M4 21h6"></path></svg>
           <div class="actions"><button type="button" id="neu-rest" data-i18n="newCapture" hidden></button></div>
         </div>
-        <p id="pending-capture" class="hint" data-i18n="pendingCapture" hidden></p>
-        <section aria-labelledby="account-title">
-          <h2 id="account-title" data-i18n="account"></h2>
+        <!-- JOB 3606 · Befund (a)+(b): DIE NACHFRAGE, DIE ES VORHER NICHT GAB.
+             Eine neue Übernahme, die auf einen offenen Vorgang traf, verschwand stumm: `capture()`
+             kehrte zurück, BEVOR die Seite gelesen wurde. Sichtbar war davon nur ein Hinweissatz
+             ohne Griff — Pedi las „Markierung · nicht vorhanden" und sah den Inhalt einer fremden
+             Seite. Hier steht ab jetzt, WELCHE Seite wartet (`#pending-source`, aus `pendingSource`
+             des Workers, nie geraten), und die Entscheidung ist ein Griff: ersetzen oder behalten.
+             Beide Knöpfe sind echte Wege im Worker — `recapture` liest die wartende Seite, `keep`
+             legt die Nachfrage weg und lässt den offenen Vorgang unangetastet. -->
+        <div id="pending-capture" class="hint" hidden>
+          <p data-i18n="pendingCapture"></p>
+          <p id="pending-source" hidden></p>
+          <div class="actions">
+            <button type="button" id="pending-replace" data-i18n="pendingReplace"></button>
+            <button type="button" id="pending-keep" data-i18n="pendingKeep"></button>
+          </div>
+        </div>
+        <!-- JOB 3606 R2: Der Konto-Block klappt zu — das ist die Kompaktheit, die `<details>` OHNE
+             eine einzige CSS-Zeile mitbringt.
+             R4: und er trägt seine Überschrift wieder, wie in der gemessenen 0.4.1. Sie steht
+             `sr-only`, also für die Vorlesestimme und nicht für die Fläche — ein `<summary>` ist
+             keine Überschrift, wer mit Überschriften durch die Leiste springt, fände den Block
+             sonst nicht. Sichtbar stünde er doppelt da. Bis Runde 3 fehlte er ganz, weil
+             `.sr-only` in `panel.css` wohnt und diese Datei nicht in den Zielpfaden stand. -->
+        <details id="account-details" class="account-details"><summary data-i18n="account"></summary>
+          <h2 id="account-title" class="sr-only" data-i18n="account"></h2>
           <p id="account"></p>
           <p class="hint">https://app.klarwerk.ai</p>
           <form id="login-form">
@@ -68,7 +90,7 @@
             <button type="submit" id="login" data-i18n="login"></button>
           </form>
           <button type="button" id="logout" data-i18n="logout" hidden></button>
-        </section>
+        </details>
         <!-- JOB 3524 · Lieferung 5: DIE REIHENFOLGE DER FLÄCHE.
              Inhaltsquelle wählen · Inhalt des GEWÄHLTEN Umfangs · Titel, Vertraulichkeit, kurze
              Quellenangabe · Details (zugeklappt) · Speichern und Verwerfen. Die langen Anleitungs-
@@ -76,7 +98,10 @@
              `#source-changed`, `#scope-none`, `#gaps-box`, `#image-note`) und die Zustandszeile
              mit den drei Zwischenablage-Ausgängen stehen ausdrücklich NICHT darin. -->
         <section id="preview" aria-labelledby="preview-title" hidden>
-          <h2 id="preview-title" data-i18n="preview"></h2>
+          <!-- R4: die Überschrift der Karte bleibt für die Vorlesestimme (die Karte nennt sie in
+               `aria-labelledby`), kostet aber keine Zeile Fläche — was in der Karte steht, ist am
+               Inhalt zu erkennen. So gemessen in der Rettungsfassung 0.4.1. -->
+          <h2 id="preview-title" class="sr-only" data-i18n="preview"></h2>
           <p id="ai-chat" class="badge" data-i18n="aiChat" hidden></p>
           <p id="source-changed" class="hint" data-i18n="sourceChanged" hidden></p>
           <fieldset id="scope-box">
@@ -117,17 +142,30 @@
               <p class="hint" data-i18n="originHintClip"></p>
             </div>
           </fieldset>
+
+          <p class="source-line"><span data-i18n="source"></span>: <span id="source"></span></p>
+          <!-- JOB 3606 R2: `#gaps-box` und `#image-note` stehen hier und NICHT im Aufklapper.
+               Die kompakte Umsortierung hatte beide nach `#details` verschoben; das bricht die
+               Zusage von JOB 3524 („konkrete Warnungen sind keine Erläuterung"), die
+               `tests/chrome-einfuegen-leerzustand/leerzustand-und-umfang.test.ts:201` bewacht —
+               was nicht übernommen wurde, darf nicht hinter einem Klick verschwinden. -->
           <div id="gaps-box" hidden><h3 data-i18n="gapsTitle"></h3><ul id="gaps"></ul></div>
-          <h3 data-i18n="content"></h3>
+          <!-- R4: „Inhalt" ebenso — das Feld darunter ist der Inhalt, ein Etikett darüber sagt
+               nichts dazu. Für die Vorlesestimme bleibt es die Überschrift des Abschnitts.
+               `#image-note` und `#gaps-box` bleiben SICHTBAR: sie sind Warnungen, keine Etiketten. -->
+          <h3 class="sr-only" data-i18n="content"></h3>
           <p id="image-note" class="hint" data-i18n="imageNote" hidden></p>
+
           <div id="content" class="content" tabindex="0"></div>
           <label for="title" data-i18n="title"></label><input id="title" maxlength="90" />
-          <label for="context" data-i18n="context"></label><textarea id="context" maxlength="4000" rows="3"></textarea>
+
           <label for="confidentiality" data-i18n="confidentiality"></label>
           <select id="confidentiality"><option value="" data-i18n="open"></option><option value="intern" data-i18n="internal"></option><option value="vertraulich" data-i18n="confidential"></option><option value="streng_vertraulich" data-i18n="strict"></option></select>
-          <dl><dt data-i18n="page"></dt><dd id="page"></dd><dt data-i18n="source"></dt><dd id="source"></dd><dt data-i18n="captured"></dt><dd id="captured"></dd><dt data-i18n="scopeLabel"></dt><dd id="scope-value"></dd></dl>
+
           <details id="details">
             <summary data-i18n="detailsTitle"></summary>
+            <label for="context" data-i18n="context"></label><textarea id="context" maxlength="4000" rows="3"></textarea>
+            <dl><dt data-i18n="page"></dt><dd id="page"></dd><dt data-i18n="captured"></dt><dd id="captured"></dd><dt data-i18n="scopeLabel"></dt><dd id="scope-value"></dd></dl>
             <p class="hint" data-i18n="scopeHint"></p>
             <p class="hint" data-i18n="contentHint"></p>
             <p class="hint" data-i18n="summaryHint"></p>
@@ -138,7 +176,7 @@
             <p class="hint" data-i18n="sessionHint"></p>
           </details>
           <label class="confirm"><input type="checkbox" id="confirm" /><span data-i18n="confirm"></span></label>
-          <div class="actions"><button type="button" id="save" class="primary" data-i18n="save" disabled></button><button type="button" id="cancel" data-i18n="cancel"></button></div>
+          <div class="actions save-actions"><button type="button" id="save" class="primary" data-i18n="save" disabled></button><button type="button" id="cancel" data-i18n="cancel"></button></div>
         </section>
       </div>
     </main>

@@ -13,7 +13,10 @@
    * und Runde 1 wurde genau dafür zurückgewiesen. Der Typ wohnt deshalb bei seinem einzigen Leser.
    * Kommt `types.d.ts` einmal zu einem Auftrag, zieht `canCapture` dorthin und dieser Typ fällt
    * ersatzlos weg — es ist eine Ortsangabe, keine zweite Wahrheit.
-   * @typedef {import("./types").View & { canCapture?: boolean }} Sicht
+   * JOB 3606 ergänzt zwei Felder nach derselben Abmachung: `pendingSource` — welche Seite auf die
+   * Übernahme wartet, damit die Nachfrage sie BENENNEN kann statt „eine neue Auswahl"; `reason` —
+   * der Satz, den der Server seiner Abweisung mitgab, den die Zustandszeile anhängt.
+   * @typedef {import("./types").View & { canCapture?: boolean, pendingSource?: { url: string, title: string }, reason?: string }} Sicht
    */
   // JOB 3279 (Pedi 08.09.): Deutsch ist der Standard. Die Browsersprache entscheidet NICHT mehr —
   // sie greift nur, wenn die gespeicherte Wahl gar nicht gelesen werden kann.
@@ -116,6 +119,10 @@
       // JOB 3280 R3: der Inhalt steht still, bis die unklare Anlage geklärt ist. Nichts ging
       // verloren und nichts wurde gesendet — eine Nachfrage, kein Ausfall.
       "unresolved_create",
+      // JOB 3606: der gelöschte Entwurf. Gelb und nicht rot, weil nichts verloren ist: der Text
+      // steht unverändert in der Leiste, und der nächste Griff („Speichern") legt ihn neu an.
+      // Rot wäre hier eine Übertreibung — kaputt ist nichts, der Entwurf ist nur weg.
+      "draft_missing",
     ],
     "": [
       "no_selection",
@@ -258,9 +265,21 @@
               : "previewState"
         : next.status,
     );
+    // JOB 3606 · Befund (c): „Der Server hat abgelehnt. Angaben prüfen." sagt nicht, WELCHE Angabe.
+    // Trug die Antwort eine Meldung, steht sie ab jetzt dahinter — als Zusatz, nie als Ersatz, und
+    // als Fremdtext (`textContent`, nie Markup). Ohne Meldung ist die Zeile unverändert.
+    if (typeof next.reason === "string" && next.reason)
+      $("status").textContent = `${$("status").textContent} · ${next.reason}`;
     $("status").className = ton(next.status);
     $("rest").hidden = Boolean(next.selection);
     $("pending-capture").hidden = !next.pendingCapture;
+    // JOB 3606 · Befund (a)+(b): die wartende Seite wird BENANNT. Der Worker schickt sie nur, wenn
+    // wirklich eine wartet; fehlt sie, bleibt die Zeile weg statt eine Seite zu behaupten.
+    const wartend = next.pendingSource;
+    $("pending-source").hidden = !next.pendingCapture || !wartend;
+    $("pending-source").textContent = wartend
+      ? `${t("pendingFrom")} ${wartend.title || wirt(wartend.url)} · ${wartend.url}`
+      : "";
     $("account").textContent = next.user?.email ?? t("signedOut");
     $("login-form").hidden = Boolean(next.user);
     $("logout").hidden = !next.user;
@@ -634,6 +653,23 @@
       if ($(id).hidden) return;
       neueUebernahme();
     });
+  // JOB 3606 · Befund (a)+(b): DIE ZWEI GRIFFE DER NACHFRAGE.
+  //
+  // „Übernehmen und ersetzen" ist dieselbe Handlung wie „Neue Übernahme" — derselbe `recapture`.
+  // Der Unterschied liegt im Worker: wartet eine Seite (`pendingTab`), liest er SIE und nicht mehr
+  // den Tab der alten Übernahme. Kein zweiter Erfassungsweg, nur ein anderer Ausgangspunkt.
+  //
+  // „Offene Übernahme behalten" sendet nichts ans Netz und verändert den offenen Vorgang nicht —
+  // es legt allein die Nachfrage weg. Die neue Auswahl ist damit nicht übernommen; das sagt der
+  // Satz darüber, und nichts anderes wird behauptet.
+  $("pending-replace").addEventListener("click", () => {
+    if (busy || $("pending-capture").hidden) return;
+    neueUebernahme();
+  });
+  $("pending-keep").addEventListener("click", () => {
+    if (busy || $("pending-capture").hidden) return;
+    void send({ type: "keep" });
+  });
   $("save").addEventListener("click", () => {
     if (busy || $("save").disabled || !$("confirm").checked) return;
     $("confirm").checked = false;
