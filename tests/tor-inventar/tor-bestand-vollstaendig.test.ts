@@ -311,8 +311,21 @@ describe("JOB 3131 T2 · die Browser-Gruppe ist genau die Menge mit Chromium in 
     //     verlangt das Zielbild `design/klarwerk/Main.dc.html` (h1-chromium.ts:172-174), das dem
     //     Cloud-Prüfstand nicht vorliegt, und reicht weder eine eigene Route-Regel für ein
     //     gesperrtes Stück noch `addInitScript` für den `vite:preloadError`-Mitschnitt heraus.
-    expect(graph.startdateien.length).toBe(25);
+    // JOB 3560 (UX-28): eine weitere eigene Startstelle — die Tastaturmessung der Fassungskarten
+    // (`tests/ux28-fassungen/tastatur-im-browser-chromium.test.tsx`). Anlass ist BENs Prüflücke 6 an
+    // JOB 3475 R2 (`archiv/3475/runde-2/ben.md:27`) und dahinter Pedis Befund „Tab überspringt die
+    // Karten": die gemounteten Fälle prüfen die BAUART des Knopfes und eine selbst berechnete
+    // Kandidatenliste (`tests/ux28-fassungen/flaeche.tsx:186`), nie eine gedrückte Taste. Sie MUSS
+    // Playwright selbst starten, weil jsdom an einem `<button>` KEINE Vorgabehandlung auf `keydown`
+    // ausführt — ein dort abgeschicktes `Enter` bewirkt nichts — und weil jsdom die Tabulator-Taste
+    // überhaupt nicht kennt; Fokusreihenfolge und Fokusverlust bei entferntem Element sind dort
+    // nicht messbar. Kein bestehender Prüfstand trägt sie: `h4-harness.ts`, `h6-chromium.ts` und
+    // `schmal-buehne.ts` verlangen alle `apps/web/dist`, das der Arbeitsprüfung ohne vorherigen Bau
+    // nicht vorliegt. Die Last bleibt klein: EIN Browser, EINE Seite, sechs Fälle, kein `dist`, im
+    // eigenen Lauf 1,444 s, Abbau 138,89 ms (gemessen 11.09.2026, Cloud-Lauf c6ea358ac0af56d6fea983a5).
+    expect(graph.startdateien.length).toBe(26);
     for (const bekannt of [
+      "tests/ux28-fassungen/tastatur-im-browser-chromium.test.tsx",
       "tests/ladefehler-alter-tab/echter-ladefehler-chromium.test.ts",
       "tests/ladefehler-alter-tab/pedis-fall-chromium.test.ts",
       "tests/ux25-beleg-zum-original/belegkarte-schmal-chromium.test.tsx",
