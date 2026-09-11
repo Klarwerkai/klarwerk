@@ -25,11 +25,22 @@
 //       schneiden — der Fall, den ein reiner „ist da"-Test nie fände
 //
 // UND DIE ZUSAGE DES AUFTRAGS, an der Breite, für die sie gebaut ist:
-//   B1  760 px (die untere Kante des Punkte-Bands, der ENGSTE Fall): „Meine Entwürfe" und
-//       „Gehe zu …" stehen sichtbar im Fenster, nicht angeschnitten
+//   B1  760 px (die untere Kante des Bands, der ENGSTE Fall): „Gehe zu …" steht sichtbar im
+//       Fenster, nicht angeschnitten — und KEIN Navigationspunkt steht daneben (JOB 3605)
 //   B2  390 px: der Menü-Knopf trägt ein Wort, das der Browser wirklich ZEICHNET (`innerText` —
 //       nicht `textContent`, das auch Verborgenes trüge)
 //   B3  1280 px: kein Menü-Knopf, die volle Punktreihe — die breite Ansicht ist unberührt
+//
+// NACHGEFÜHRT JOB 3605 (11.09.2026, Pedis Vorgabe über Codex, Nachricht 0bd3a41e): B1 verlangte bis
+// dahin, dass „Meine Entwürfe" bei 760 px IM KOPFBAND steht. Genau das hat Pedi als Sonderstellung
+// beanstandet („normaler Teil der gesamten Navigation, keine Sonderstellung / kein immer sichtbarer
+// Sonderknopf"). Der Fall ist umgedreht, nicht gestrichen: er misst jetzt, dass dort KEIN Punkt
+// steht — in Chromium, am gezeichneten Baum. Die Zeile ist dadurch KÜRZER geworden; L1–L4 bleiben
+// unverändert und beissen weiter.
+//
+// 800 px UND 1000 px SIND NEU in der Breitenliste — §5 des Auftrags JOB 3605 verlangt sie
+// ausdrücklich. 800 liegt mitten im Band und war bisher nur in jsdom gemessen; 1000 liegt in der
+// BREITEN Bauform und steht deshalb, wie 900, unter derselben benannten Ausnahme (`STRENG`).
 //
 // EHRLICHE GRENZEN, ausdrücklich benannt:
 //   · Gemessen wird DEUTSCH. Das ist der bindende Fall: „Meine Entwürfe" und „Gehe zu …" sind
@@ -108,7 +119,11 @@ async function messe(breite: number): Promise<Messung> {
 // fremde Aussage: sie könnte diesen Job rot machen für etwas, das er weder verursacht noch
 // verändert hat. Gemessen wird die Enge trotzdem, sie steht als Zahl im Lauf (`console.log`
 // unten) — verschwiegen wird nichts, nur nicht behauptet.
-const STRENG = new Set([390, 600, 760, 768, 899, 1280]);
+//
+// 1000 px IST AUS DEMSELBEN GRUND AUSGENOMMEN (JOB 3605, §5): auch das ist die breite Bauform von
+// JOB 3060, nur eine Handbreit weiter. Gemessen wird sie, weil Pedis Auftrag sie nennt; zugesichert
+// wird sie nicht, weil ihr Platzbedarf diesem Job nicht gehört und JOB 3605 an ihr nichts ändert.
+const STRENG = new Set([390, 600, 760, 800, 768, 899, 1280]);
 
 /** L1–L4 in einem Stück: die vier Aussagen gehören zusammen, sie beschreiben EINE Zeile. */
 function pruefeZeile(m: Messung, breite: number): void {
@@ -121,7 +136,7 @@ function pruefeZeile(m: Messung, breite: number): void {
 }
 
 describe("JOB 3525 · L · die Kopfbandzeile trägt auf jeder Breite", () => {
-  for (const breite of [390, 600, 760, 768, 899, 900, 1280]) {
+  for (const breite of [390, 600, 760, 768, 800, 899, 900, 1000, 1280]) {
     it(`${breite} px: 56 px hoch, kein Umbruch${STRENG.has(breite) ? ", kein Überlauf, keine Überlappung" : " (Überlauf gemessen, nicht zugesichert)"}`, async () => {
       const m = await messe(breite);
       pruefeZeile(m, breite);
@@ -130,17 +145,28 @@ describe("JOB 3525 · L · die Kopfbandzeile trägt auf jeder Breite", () => {
 });
 
 describe("JOB 3525 · B · die gesuchten Wege stehen da, wo der Auftrag sie verlangt", () => {
-  it("B1 · 760 px (der engste Fall des Bands): „Meine Entwürfe“ und „Gehe zu …“ stehen sichtbar", async () => {
-    const m = await messe(760);
-    pruefeZeile(m, 760);
-    expect(m.punkte, "„Meine Entwürfe“ steht bei 760px nicht im Kopfband").toContain("entwuerfe");
-    // GEZEICHNET, nicht nur im Baum: `innerText` ist leer, wenn der Browser nichts malt.
-    expect(m.entwuerfeText, "der Punkt ist leer").toBe("Meine Entwürfe");
-    expect(m.geheZuText, "„Gehe zu …“ steht bei 760px nicht im Kopfband").toContain("Gehe zu");
-    expect(m.geheZuText, "das Kürzel fehlt").toContain("⌘K");
-    // Und der Menü-Knopf steht daneben — der Rest der Punkte bleibt erreichbar.
-    expect(m.menueText, "der Menü-Knopf fehlt bei 760px").toBe("Menü");
-  });
+  // B1 fährt seit JOB 3605 das GANZE Band ab (760, 800, 899) statt nur seine untere Kante. Die
+  // Kante bleibt der engste Fall und damit der wichtigste; die zwei anderen Breiten nennt §5 des
+  // Auftrags ausdrücklich, und eine Zusage über ein Band, die nur an einem Rand gemessen ist,
+  // schweigt über seine Mitte.
+  for (const breite of [760, 800, 899]) {
+    it(`B1 · ${breite} px: „Gehe zu …“ steht sichtbar, und KEIN Punkt steht bevorzugt daneben`, async () => {
+      const m = await messe(breite);
+      pruefeZeile(m, breite);
+      // DIE ZUSAGE VON JOB 3605, in Chromium am gezeichneten Baum: kein Navigationspunkt oben.
+      expect(
+        m.punkte,
+        `${breite}px: im Kopfband steht ein bevorzugter Punkt (${m.punkte.join(", ")})`,
+      ).toEqual([]);
+      expect(m.entwuerfeText, `${breite}px: „Meine Entwürfe“ wird oben noch gezeichnet`).toBe("");
+      // GEZEICHNET, nicht nur im Baum: `innerText` ist leer, wenn der Browser nichts malt.
+      expect(m.geheZuText, `${breite}px: „Gehe zu …“ steht nicht im Kopfband`).toContain("Gehe zu");
+      expect(m.geheZuText, `${breite}px: das Kürzel fehlt`).toContain("⌘K");
+      // Und der Menü-Knopf steht daneben — die Punkte bleiben über ihn erreichbar. DASS sie es
+      // wirklich sind, misst `kein-sonderpunkt-schmal.test.tsx` (N2/N3); hier geht es um die Zeile.
+      expect(m.menueText, `${breite}px: der Menü-Knopf fehlt`).toBe("Menü");
+    }, 90_000);
+  }
 
   it("B2 · 390 px: der Menü-Knopf trägt ein WORT, das der Browser zeichnet", async () => {
     const m = await messe(390);

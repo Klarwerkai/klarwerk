@@ -9,9 +9,18 @@
 // „rund 45 px", eine Rechnung, kein Beleg. Genau diese Rechnung prüft diese Datei nach.
 //
 // WAS DER MENSCH DAVON HAT: Wer KLARWERK mit eingeschaltetem Demo-Erscheinungsbild in einem
-// schmalen Fenster benutzt, findet „Meine Entwürfe" und „Gehe zu …" genauso vollständig wie ohne.
-// Der Handgriff, der das zeigt: Admin → Vorführdaten → Demo-Erscheinungsbild einschalten, Fenster
-// auf 760 px ziehen. Bis heute fuhr kein Test der Maschine diesen Handgriff.
+// schmalen Fenster benutzt, findet „Gehe zu …" und den beschrifteten Menü-Knopf genauso vollständig
+// wie ohne. Der Handgriff, der das zeigt: Admin → Vorführdaten → Demo-Erscheinungsbild einschalten,
+// Fenster auf 760 px ziehen. Bis JOB 3571 fuhr kein Test der Maschine diesen Handgriff.
+//
+// NACHGEFÜHRT JOB 3605 (11.09.2026, Pedis Vorgabe über Codex, Nachricht 0bd3a41e): bis dahin stand
+// auf diesem Band zusätzlich „Meine Entwürfe" — allein neben dem Logo. Pedi hat genau das
+// beanstandet: „normaler Teil der gesamten Navigation, keine Sonderstellung / kein immer sichtbarer
+// Sonderknopf". Der Punkt ist fort; CI4 misst deshalb jetzt die UMGEKEHRTE Zusage, und §5(d) des
+// Auftrags verlangt ausdrücklich, dass auch das MIT Firmen-CI gemessen wird und nicht überschlagen:
+// JOB 3571 hat gezeigt, dass die CI die Kante verschiebt. Die Zeile ist durch diese Änderung KÜRZER
+// geworden — CI5 (seit JOB 3582 eine Zusage, kein offener Befund mehr) bleibt davon unberührt und
+// wird unverändert weiter gemessen.
 //
 // WIE DIE CI HIER EINGESCHALTET WIRD — über den ECHTEN Weg, nicht über eine Attrappe:
 // `PUT /api/admin/branding` an der echten Fastify-App, mit dem Adminrecht der Bühne
@@ -109,6 +118,13 @@ const KENNUNG = "JOB 3571";
 // ZUGESICHERT werden seit JOB 3582 SECHS Breiten — die fünf des Punkte-Bands und seiner Nachbarn
 // UND 390 px, wo bis dahin der Befund CI5 lag. Alle sechs tragen die Zeile MIT Logo restlos.
 //
+// JOB 3605 ERGÄNZT ZWEI WEITERE — §5 jenes Auftrags nennt beide ausdrücklich:
+//   · 800 px liegt mitten im Punkte-Band (760–899 px) und trägt die Zeile wie seine Nachbarn.
+//   · 1000 px gehört der BREITEN Bauform wie 900 px — anders als 900 px liegt es aber AUSSERHALB
+//     von `LOGO_OHNE_PLATZ_QUERY` (900–999 px, `shell/Logo.tsx`): dort steht seit JOB 3582 wieder
+//     ein Logokasten, genau wie bei 1280 px. Es bekommt deshalb dieselbe Zusage wie 1280 px, nicht
+//     die Ausnahme von 900 px.
+//
 // EINE BREITE BLEIBT BESONDERS, und zwar aus einem anderen Grund als vorher: bei 900 px — der
 // schmalsten Breite der BREITEN Bauform — steht seit JOB 3582 GAR KEIN Firmenlogo mehr. Die Zeile
 // trägt es dort in keiner Grösse: schon ohne Firmen-CI bleiben nur rund 16 px bis zur Fensterkante,
@@ -122,7 +138,7 @@ const KENNUNG = "JOB 3571";
 //     überlappt, 56 px Höhe, kein Umbruch.
 //   · NICHT ZUGESICHERT: die ZUSAMMENSETZUNG der breiten Bauform — welche Elemente dort stehen und
 //     wie breit sie sind. Das ist der Bestand von JOB 3060 und wird hier nicht neu erhoben.
-const ZUGESICHERT = [390, 600, 760, 768, 899, 1280] as const;
+const ZUGESICHERT = [390, 600, 760, 768, 800, 899, 1000, 1280] as const;
 /**
  * Die Breite der BREITEN Bauform an ihrem engen Ende — dort steht kein Firmenlogo.
  *
@@ -137,7 +153,7 @@ const OHNE_LOGOKASTEN: readonly { breite: number; grund: string }[] = [
   },
 ];
 /** Alle gemessenen Breiten, in der Reihenfolge der Schwesterdatei. */
-const ALLE = [390, 600, 760, 768, 899, 900, 1280] as const;
+const ALLE = [390, 600, 760, 768, 800, 899, 900, 1000, 1280] as const;
 /** Der Spaltenabstand der schmalen Zeile (`shell/Kopfband.tsx`, `columnGap`). */
 const SCHMALE_FUGE = 20;
 
@@ -163,8 +179,11 @@ let zuwachs = 0;
 // waren fort, und alle 26 Fälle blieben grün. Ein Wächter, den der bewachte Fehler abschalten kann,
 // bewacht nichts.
 //
-// DESHALB WIRD DIE PFLICHT JETZT AUS DER ZUSAGE BESTIMMT. Die Zusage ist `SCHMAL_PUNKTE_QUERY` in
-// `shell/Kopfband.tsx`: sie SAGT, für welche Breiten das Band gilt. Ausgewertet wird sie nicht von
+// DESHALB WIRD DIE PFLICHT JETZT AUS DER ZUSAGE BESTIMMT. Die Zusage ist `SCHMAL_GEHEZU_QUERY` in
+// `shell/Kopfband.tsx`: sie SAGT, für welche Breiten das Band gilt. (Sie hiess bis JOB 3605
+// `SCHMAL_PUNKTE_QUERY` — umbenannt, weil sie seitdem nichts mehr über Punkte aussagt, sondern nur
+// noch über „Gehe zu …". Bricht dieser Lauf mit „keine Quelle" ab, ist das der erste Ort, an dem
+// nachzusehen ist.) Ausgewertet wird sie nicht von
 // einem selbstgebauten Parser, sondern von der Medienabfrage-Maschine desselben Chromium, der die
 // Seite zeichnet (`window.matchMedia`) — dieselbe Maschine, an der im Produkt `useMediaQuery.ts`
 // hängt. Damit trägt die Zusage jede Form, die CSS kennt, und sie wandert von selbst mit: verschiebt
@@ -177,19 +196,19 @@ let zuwachs = 0;
 // läuft nicht still mit einer Annahme weiter.
 const KOPFBAND_QUELLE = new URL("../../apps/web/src/shell/Kopfband.tsx", import.meta.url);
 
-function liesPunkteQuery(): string {
+function liesBandQuery(): string {
   const quelle = readFileSync(KOPFBAND_QUELLE, "utf8");
-  const treffer = /SCHMAL_PUNKTE_QUERY\s*=\s*"([^"]+)"/.exec(quelle)?.[1];
+  const treffer = /SCHMAL_GEHEZU_QUERY\s*=\s*"([^"]+)"/.exec(quelle)?.[1];
   if (!treffer) {
     throw new Error(
-      "in shell/Kopfband.tsx steht kein `SCHMAL_PUNKTE_QUERY` mehr — die Zusage dieses Laufs hat keine Quelle",
+      "in shell/Kopfband.tsx steht kein `SCHMAL_GEHEZU_QUERY` mehr — die Zusage dieses Laufs hat keine Quelle",
     );
   }
   return treffer;
 }
 
-/** Die Zusage des Punkte-Bands, wörtlich aus dem Produkt. */
-const PUNKTE_QUERY = liesPunkteQuery();
+/** Die Zusage des oberen schmalen Bands, wörtlich aus dem Produkt. */
+const BAND_QUERY = liesBandQuery();
 
 /** Gilt die Zusage an der STEHENDEN Breite? Chromium beantwortet das mit seiner eigenen Maschine. */
 const PASST = fn("(q) => window.matchMedia(q).matches");
@@ -199,7 +218,7 @@ async function bandZugesagt(): Promise<boolean> {
   if (seite === null) {
     throw new Error(`Bühne steht nicht: ${stand.fehler ?? "unbekannt"}`);
   }
-  return await seite.evaluate<boolean>(PASST, PUNKTE_QUERY);
+  return await seite.evaluate<boolean>(PASST, BAND_QUERY);
 }
 
 interface TextKasten {
@@ -216,13 +235,18 @@ interface TextKasten {
  * gesuchten Wege vollständig und ungeschnitten im Fenster? Das ist kein zweites Messraster — die
  * Lagen aller Kästen kommen weiter aus `MESSUNG`, der Logokasten aus `LOGO_BEFUND`; hier steht nur,
  * was NUR diese Datei fragt.
+ *
+ * JOB 3605: die Liste trug bis zum 11.09.2026 einen zweiten Eintrag,
+ * `['entwuerfe', '[data-kopfband-punkt="entwuerfe"]']`. Er ist fort, weil der Punkt fort ist — und
+ * er wird NICHT als stiller Restwächter behalten: dass oben kein Punkt mehr steht, misst CI4 aus dem
+ * gemeinsamen Werkzeug (`m.punkte`, `m.entwuerfeText`), und zwar unbedingt und vor jedem
+ * Rücksprung. Ein Selektor, der nie mehr trifft, sähe hier nur nach Sorgfalt aus.
  */
 const TEXT_KAESTEN = fn(`() => {
   const band = document.querySelector('header[data-testid="kopfband"]');
   if (!band) return null;
   const texte = [];
   const sel = [
-    ['entwuerfe', '[data-kopfband-punkt="entwuerfe"]'],
     ['gehezu', '[data-testid="kopfband-gehezu"]'],
   ];
   for (const [name, s] of sel) {
@@ -370,47 +394,66 @@ describe("JOB 3571 · CI3/CI4 · die zwei gesuchten Wege stehen auch mit Logo vo
   }, 90_000);
 
   // ==============================================================================================
-  // CI4 — DIE ZUSAGE VON JOB 3525 IN IHRER ENGSTEN LAGE, MIT LOGO.
+  // CI4 — DIE ZUSAGE DES BANDS IN IHRER ENGSTEN LAGE, MIT LOGO.
   // ==============================================================================================
   //
-  // Geprüft wird an JEDER schmalen Breite der Liste, für die `SCHMAL_PUNKTE_QUERY` das Band ZUSAGT
-  // — nicht an einer fest eingetragenen Zahl und ausdrücklich NICHT daran, ob das Band im gemessenen
-  // Baum gerade steht (siehe der Block über `PUNKTE_QUERY`: genau daran ist Runde 1 gescheitert).
+  // Geprüft wird an JEDER schmalen Breite der Liste, für die `SCHMAL_GEHEZU_QUERY` das Band ZUSAGT —
+  // nicht an einer fest eingetragenen Zahl und ausdrücklich NICHT daran, ob das Band im gemessenen
+  // Baum gerade steht (siehe der Block über `BAND_QUERY`: genau daran ist Runde 1 gescheitert).
   // Das ist der Unterschied zwischen „760 px ist grün" und „die Zusage gilt, wo sie gilt":
   // verschiebt jemand die untere Kante, wandert dieser Fall von selbst mit und misst die neue,
-  // engere Lage; verschwinden die Wege innerhalb des zugesagten Bands, wird er rot.
+  // engere Lage; verschwindet der Weg innerhalb des zugesagten Bands, wird er rot.
+  //
+  // NACHGEFÜHRT JOB 3605 — WAS DAS BAND SEITDEM ZUSAGT, IST EIN ANDERES:
+  // Bis zum 11.09.2026 hing an der Abfrage ZWEIERLEI, und dieser Fall las beides aus derselben
+  // Zahl: „Meine Entwürfe" stand oben UND „Gehe zu …". Pedi hat den ersten Teil beanstandet
+  // („normaler Teil der gesamten Navigation, keine Sonderstellung"), der Punkt ist fort. Der Fall
+  // prüft deshalb jetzt ZWEI Aussagen statt einer, und beide werden schärfer:
+  //
+  //   (1) AN DER ZUSAGE HÄNGT „GEHE ZU …" — dieselbe Bauart wie bisher, beide Richtungen beissen:
+  //       er fehlt, wo das Band ihn zusagt → rot; er steht, wo es ihn nicht zusagt → rot.
+  //   (2) UNABHÄNGIG VON DER ZUSAGE STEHT OBEN KEIN NAVIGATIONSPUNKT. Diese Aussage gilt auf JEDER
+  //       schmalen Breite und hängt an gar keiner Abfrage — genau das ist Pedis Vorgabe. Sie steht
+  //       deshalb VOR dem Rücksprung und kann von ihm nicht übersprungen werden; käme die
+  //       Sonderstellung an irgendeiner schmalen Breite zurück, wäre dieser Fall rot.
   //
   // 1280 px steht hier NICHT: dort gilt die BREITE Bauform (kein Menü-Knopf, volle Punktreihe), und
   // die ist der Bestand von JOB 3060. Ihre Zeile misst CI1 mit, ihre Zusammensetzung ist nicht die
   // Zusage dieses Jobs.
   for (const breite of ALLE.filter((b) => b < 900)) {
-    it(`CI4 · ${breite} px mit Firmen-CI: „Meine Entwürfe“ und „Gehe zu …“ stehen vollständig im Fenster`, async () => {
+    it(`CI4 · ${breite} px mit Firmen-CI: „Gehe zu …“ steht vollständig im Fenster, kein Punkt daneben`, async () => {
       const { m, logo, texte } = await messeMitCiUndTexten(breite);
-      // ZUERST DIE ZUSAGE, DANN DER BAUM. Beide Richtungen beissen: ein fehlendes Band an einer
-      // zugesagten Breite ebenso wie ein Band an einer Breite, für die es niemand zugesagt hat.
-      const zugesagt = await bandZugesagt();
-      const bandSteht = m.punkte.includes("entwuerfe");
+
+      // (2) ZUERST DIE AUSSAGE, DIE AN KEINER ABFRAGE HÄNGT (JOB 3605). Sie steht vor jedem
+      // Rücksprung: ein Wächter, den ein `return` überspringen kann, bewacht die halbe Strecke.
       expect(
-        bandSteht,
+        m.punkte,
+        `${breite}px: im Kopfband steht ein bevorzugter Navigationspunkt (${m.punkte.join(", ")}) — Pedis Vorgabe vom 11.09.2026 verlangt keinen`,
+      ).toEqual([]);
+      expect(m.entwuerfeText, `${breite}px: „Meine Entwürfe“ wird oben noch gezeichnet`).toBe("");
+
+      // (1) ZUERST DIE ZUSAGE, DANN DER BAUM. Beide Richtungen beissen: ein fehlender Knopf an einer
+      // zugesagten Breite ebenso wie ein Knopf an einer Breite, für die es ihn niemand zugesagt hat.
+      const zugesagt = await bandZugesagt();
+      const knopfSteht = texte.some((t) => t.name === "gehezu");
+      expect(
+        knopfSteht,
         zugesagt
-          ? `${breite}px: „${PUNKTE_QUERY}" sagt das Punkte-Band zu — im gezeichneten Kopfband steht es nicht`
-          : `${breite}px: „${PUNKTE_QUERY}" sagt hier KEIN Punkte-Band zu — im gezeichneten Kopfband steht trotzdem eines`,
+          ? `${breite}px: „${BAND_QUERY}" sagt „Gehe zu …" oben zu — im gezeichneten Kopfband steht es nicht`
+          : `${breite}px: „${BAND_QUERY}" sagt hier KEIN „Gehe zu …" oben zu — im gezeichneten Kopfband steht trotzdem eines`,
       ).toBe(zugesagt);
       if (!zugesagt) {
-        // Ausserhalb des zugesagten Bands führt der beschriftete Menü-Knopf; das ist die Bauform von
-        // JOB 3525 und keine Lücke. Der Rücksprung hängt an der ZUSAGE, nicht am Baum — sonst
-        // schaltete sich dieser Fall von genau dem Fehler ab, den er finden soll.
-        expect(m.menueText, `${breite}px: kein Punkte-Band und kein beschrifteter Menü-Knopf`).toBe(
+        // Ausserhalb des zugesagten Bands führt allein der beschriftete Menü-Knopf; das ist die
+        // Bauform von JOB 3525 und keine Lücke. Der Rücksprung hängt an der ZUSAGE, nicht am Baum —
+        // sonst schaltete sich dieser Fall von genau dem Fehler ab, den er finden soll.
+        expect(m.menueText, `${breite}px: kein „Gehe zu …" und kein beschrifteter Menü-Knopf`).toBe(
           "Menü",
         );
         console.log(
-          `${KENNUNG} · CI4 · ${breite}px · ausserhalb der Zusage „${PUNKTE_QUERY}" — der Menü-Knopf führt`,
+          `${KENNUNG} · CI4 · ${breite}px · ausserhalb der Zusage „${BAND_QUERY}" — der Menü-Knopf führt allein`,
         );
         return;
       }
-      const namen = texte.map((t) => t.name);
-      expect(namen, `${breite}px: „Meine Entwürfe“ fehlt`).toContain("entwuerfe");
-      expect(namen, `${breite}px: „Gehe zu …“ fehlt`).toContain("gehezu");
       for (const t of texte) {
         // GEZEICHNET, nicht nur im Baum: `innerText` ist leer, wenn der Browser nichts malt.
         expect(t.text, `${breite}px: „${t.name}“ ist leer`).not.toBe("");
@@ -426,12 +469,9 @@ describe("JOB 3571 · CI3/CI4 · die zwei gesuchten Wege stehen auch mit Logo vo
           `${breite}px: „${t.name}“ ist beschnitten (${t.scrollBreite} > ${t.clientBreite})`,
         ).toBeLessThanOrEqual(t.clientBreite + 1);
       }
-      expect(m.entwuerfeText, `${breite}px: der Punkt trägt nicht seinen ganzen Namen`).toBe(
-        "Meine Entwürfe",
-      );
       expect(m.geheZuText, `${breite}px: „Gehe zu …“ steht nicht im Kopfband`).toContain("Gehe zu");
       expect(m.geheZuText, `${breite}px: das Kürzel fehlt`).toContain("⌘K");
-      // Und der Menü-Knopf steht daneben — der Rest der Punkte bleibt erreichbar.
+      // Und der Menü-Knopf steht daneben — die Punkte bleiben über ihn erreichbar.
       expect(m.menueText, `${breite}px: der Menü-Knopf fehlt`).toBe("Menü");
     }, 90_000);
   }

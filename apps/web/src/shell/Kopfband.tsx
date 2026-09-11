@@ -3,29 +3,39 @@ import { type FormEvent, type Ref, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useGuardedNavigate } from "../app/NavGuardContext";
 import { KontoMenue } from "./KontoMenue";
-import { KopfbandPunkte, KopfbandPunkteSchmal } from "./KopfbandPunkte";
+import { KopfbandPunkte } from "./KopfbandPunkte";
 import { Logo } from "./Logo";
 import { ZahnradMenue } from "./ZahnradMenue";
 import { useMediaQuery } from "./useMediaQuery";
 
 // ================================================================================================
 // JOB 3525 · CHR-NAVIGATION-SCHMAL — DIE SCHMALE BREITE ZERFÄLLT IN ZWEI BÄNDER, NICHT IN EINES.
+// JOB 3605 — UND AUF DEM OBEREN DER BEIDEN STEHT KEIN NAVIGATIONSPUNKT MEHR, NUR NOCH „GEHE ZU …".
 // ================================================================================================
 //
 // PEDIS BEFUND (10.09. 09:05, Bildschirmfoto bei Codex): mit schmalerem Fenster waren die
 // Menüpunkte fort, sichtbar war nur ein Symbol — der Weg zu „Meine Entwürfe" und „Gehe zu …" war
 // nicht zu finden. Das Symbol trug bis hierher NUR ein `aria-label`; fürs Auge stand dort nichts.
 //
+// PEDIS VORGABE (11.09. Vormittag, über Codex, Nachricht 0bd3a41e): „Meine Entwürfe" stand daraufhin
+// allein neben dem Logo. Er verlangt „normaler Teil der gesamten Navigation, keine Sonderstellung /
+// kein immer sichtbarer Sonderknopf". Der Punkt ist deshalb fort von hier
+// (`KopfbandPunkte.tsx`, Block „JOB 3605"); das Band selbst BLEIBT, weil „Gehe zu …" weiter darauf
+// steht. Es ist kein Navigationspunkt, sondern eine Funktion — §3.3 des Auftrags lässt es stehen.
+// DESHALB HEISST DIE KONSTANTE JETZT ANDERS: sie sagt seit JOB 3605 nichts mehr über Punkte aus,
+// und ein Name, der das täte, wäre eine Behauptung ohne Deckung.
+//
 // DIE OBERE GRENZE IST ZWINGEND DIESELBE WIE `NARROW_QUERY` (899 px). Läge sie auch nur ein Pixel
-// daneben, entstünde genau die Zwischenbreite, die der Auftrag verbietet: eine, in der weder die
-// Punkte noch der beschriftete Menü-Knopf ihre Rolle voll ausfüllen. Der Test
+// daneben, entstünde genau die Zwischenbreite, die der Auftrag verbietet: eine, in der weder
+// „Gehe zu …" noch der beschriftete Menü-Knopf ihre Rolle voll ausfüllen. Der Test
 // `tests/navigation-schmal/kopfband-schmal.test.tsx` (Fall G) rechnet diesen Anschluss aus BEIDEN
 // Quelltexten nach, damit ein späterer Umbau die Fuge nicht still aufreißt.
 //
 // DIE UNTERE GRENZE IST 760 px, UND SIE IST BELEGT — in Chromium am gebauten Produkt, mit und ohne
-// aktive Firmen-CI. Die Zeile aus Menü-Knopf, Wortmarke, „Meine Entwürfe", „Gehe zu … ⌘K", Zahnrad
-// und Konto trägt in der langen Sprache (DE); 64 px Seitenpolster, drei Fugen à 20 px (`gap-5`,
-// s. u.), der Rest Inhalt.
+// aktive Firmen-CI. Die Zeile besteht seit JOB 3605 aus Menü-Knopf, Wortmarke, „Gehe zu … ⌘K",
+// Zahnrad und Konto — sie ist um „Meine Entwürfe" KÜRZER geworden, nicht länger. Gemessen wird
+// weiter in der langen Sprache (DE); 64 px Seitenpolster, Fugen à 20 px (`gap-5`, s. u.), der Rest
+// Inhalt.
 //
 // OHNE Firmen-CI: `tests/navigation-schmal/kopfband-schmal-chromium.test.ts` (JOB 3525), Fälle L1–L4
 // und B1 bei genau 760 px — scrollWidth 760 / clientWidth 760.
@@ -33,13 +43,17 @@ import { useMediaQuery } from "./useMediaQuery";
 // MIT Firmen-CI: `tests/navigation-schmal/kopfband-ci-chromium.test.ts` (JOB 3571), Fälle CI0–CI4.
 // Gemessen am 11.09.2026: das Firmenlogo neben der Wortmarke (`Logo.tsx`) kostet 110,3 px, nicht die
 // hier früher überschlagenen „rund 45 px" — die Wortmarke wächst von 92,2 px auf 202,5 px. Die
-// 760-px-Kante trägt das trotzdem: bei 760 px bleiben MIT Logo noch 58,5 px frei — scrollWidth 760 /
-// clientWidth 760, nichts umgebrochen, nichts angeschnitten, nichts überlappt. (Der freie Raum OHNE
-// Logo steht im Lauf ebenfalls, wird hier aber NICHT als Zahl behauptet: er schwankte zwischen zwei
-// Läufen um 10 px, weil rechts die Kontodarstellung des jeweiligen Bestands mitmisst. Die 58,5 px
-// mit Logo waren in beiden Läufen gleich.) Der
-// frühere Satz „der Überschlag steht hier als Begründung, NICHT als Beleg" ist damit eingelöst; die
-// Zahl 760 bleibt, weil die Messung sie trägt, nicht weil die Rechnung stimmte.
+// 760-px-Kante trägt das: scrollWidth 760 / clientWidth 760, nichts umgebrochen, nichts
+// angeschnitten, nichts überlappt. Der frühere Satz „der Überschlag steht hier als Begründung,
+// NICHT als Beleg" ist damit eingelöst; die Zahl 760 bleibt, weil die Messung sie trägt, nicht weil
+// die Rechnung stimmte.
+//
+// DIE RESERVE IST SEIT JOB 3605 GRÖSSER, und zwar gemessen statt überschlagen: mit dem Wegfall von
+// „Meine Entwürfe" bleiben bei 760 px MIT Logo 182,5 px frei statt der 58,5 px, die JOB 3571 dort
+// gemessen hatte (Lauf vom 11.09.2026, Fall CI0: „freier Raum bei 760 px: ohne CI 303,8 px → mit CI
+// 182,5 px"). Die Kante bleibt trotzdem bei 760 px: sie trennt nicht „passt / passt nicht", sondern
+// zwei Bedienformen — unter 760 px führt allein der Menü-Knopf. Eine Schwelle wegen gewonnenen
+// Platzes zu verschieben, wäre eine Layoutentscheidung, die dieser Auftrag nicht trägt.
 //
 // WAS DIESELBE MESSUNG AUSSERHALB DIESES BANDS GEFUNDEN HAT (Fall CI5, Befund, hier NICHT behoben):
 // Unter 760 px und in der breiten Bauform bei 900 px reicht der Platz mit aktiver Firmen-CI nicht —
@@ -52,9 +66,9 @@ import { useMediaQuery } from "./useMediaQuery";
 // 760 ist zugleich die Zahl, die das Produkt an dieser Stelle bereits führt (`useMediaQuery.ts`,
 // `TABLET_LESE_QUERY`: „das Band ZWISCHEN Telefon und Desktop"). Eine EIGENE Konstante steht hier
 // trotzdem, weil die beiden Bänder verschiedene Fragen beantworten — die Bibliothek entscheidet
-// über ihre Lesespalten, das Kopfband über seine Punkte. Verschiebt die Bibliothek ihre
+// über ihre Lesespalten, das Kopfband über „Gehe zu …". Verschiebt die Bibliothek ihre
 // Leseschwelle, soll das Kopfband nicht mitwandern.
-export const SCHMAL_PUNKTE_QUERY = "(min-width: 760px) and (max-width: 899px)";
+export const SCHMAL_GEHEZU_QUERY = "(min-width: 760px) and (max-width: 899px)";
 
 // ================================================================================================
 // JOB 3060 · H1 — DAS EINE KOPFBAND (Mockup design/klarwerk/Main.dc.html Z.17-34).
@@ -99,9 +113,9 @@ export function Kopfband({
   // JOB 3525: das obere der beiden schmalen Bänder (760–899 px). Der Wert wird IMMER gelesen, auch
   // breit — `narrow` entscheidet danach, ob er überhaupt etwas bedeutet. Ein Haken darf nicht
   // hinter einer Bedingung stehen.
-  const punkteSchmal = useMediaQuery(SCHMAL_PUNKTE_QUERY);
+  const geheZuSchmal = useMediaQuery(SCHMAL_GEHEZU_QUERY);
   /** Das UNTERE schmale Band (< 760 px): dort führt allein der beschriftete Menü-Knopf. */
-  const nurMenue = narrow && !punkteSchmal;
+  const nurMenue = narrow && !geheZuSchmal;
 
   // Das Kopfbandinventar gilt in JEDEM Zustand — auch in der Rollen-Vorschau des Admins. Der
   // Rückweg „Zur Admin-Ansicht" wohnt deshalb ausschließlich im Zahnrad-Menü (RollenVorschau.tsx),
@@ -120,8 +134,14 @@ export function Kopfband({
   // ==============================================================================================
   //
   // SACHE: der Abstand zwischen den Blöcken ist BREIT unverändert 36 px (`gap-9`, Mockup
-  // Main.dc.html) und SCHMAL 20 px. Das ist keine Verschönerung, sondern der Platz, aus dem
-  // Lieferung 2 bezahlt wird: drei Fugen à 36 px sind auf 760 px gut ein Siebtel der ganzen Zeile.
+  // Main.dc.html) und SCHMAL 20 px. Das war der Platz, aus dem JOB 3525 seine Lieferung 2 bezahlt
+  // hat: Fugen à 36 px sind auf 760 px ein spürbarer Teil der ganzen Zeile.
+  //
+  // JOB 3605 hat jene Lieferung zurückgenommen (der Punkt ist fort, Begründung oben) — der schmale
+  // Abstand BLEIBT trotzdem 20 px. Er ist kein Gegenstück zu einem einzelnen Punkt, sondern der
+  // Abstand, in dem die schmale Zeile gemessen wurde und in dem sie weiter gemessen wird
+  // (`kopfband-messung.ts`, `SCHMALE_FUGE`); ihn jetzt zu verstellen hiesse, eine belegte Zeile
+  // ohne Not gegen eine ungemessene zu tauschen.
   //
   // FORM (Runde 2, nach ROT): in Runde 1 stand der Abstand als eingesetzte Klasse in einem
   // Vorlagentext (className={`kw-kopfband … ${abstand} …`}). Das hat ZWEI Prüfer gebrochen, die den
@@ -180,10 +200,11 @@ export function Kopfband({
         </button>
       ) : null}
       <Logo />
-      {/* JOB 3525 · Lieferung 2: auf dem oberen schmalen Band bleiben die zentralen Punkte OBEN
-          stehen, statt vollständig hinter den Knopf zu wandern. Breit ändert sich nichts. */}
+      {/* JOB 3605: schmal steht hier NICHTS mehr. Bis dahin zog `KopfbandPunkteSchmal` auf dem Band
+          760–899 px „Meine Entwürfe" allein neben das Logo; Pedi hat am 11.09. genau das als
+          Sonderstellung beanstandet. Die Navigation wohnt schmal vollständig hinter dem
+          beschrifteten Menü-Knopf. Breit ändert sich nichts. */}
       {narrow ? null : <KopfbandPunkte />}
-      {narrow && punkteSchmal ? <KopfbandPunkteSchmal /> : null}
       <div className="ml-auto flex min-w-0 shrink items-center gap-4">
         {/* ==========================================================================================
             JOB 3503 · TEIL 3b — „GEHE ZU …" STEHT OBEN, NICHT NUR HINTER DEM ZAHNRAD.
@@ -208,7 +229,9 @@ export function Kopfband({
             trägt bei 1280 px unverändert seine gemessenen 260 px (Zielbild V12).
 
             SCHMAL, SEIT JOB 3525: der Knopf steht auf dem OBEREN schmalen Band (760–899 px)
-            ebenfalls hier — er ist einer der beiden Wege, die Pedi am 10.09. gesucht hat. Nur
+            ebenfalls hier — er ist einer der beiden Wege, die Pedi am 10.09. gesucht hat. Seit
+            JOB 3605 ist er dort das EINZIGE, was oben steht: die Navigationspunkte sind ins Menü
+            gewandert, er nicht, weil er keiner ist (§3.3 jenes Auftrags). Nur
             unter 760 px entfällt er, und dann führt die Beschriftung des Menü-Knopfes dorthin: die
             Zeile „Gehe zu …" steht unverändert im Zahnrad-Menü, das der Drawer mitträgt
             (`DrawerMenue.tsx`, `ZahnradEintraege`). Ein zweiter Bau entsteht dadurch nicht — es ist

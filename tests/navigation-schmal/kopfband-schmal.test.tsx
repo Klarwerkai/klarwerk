@@ -20,11 +20,34 @@
 // bleiben, nichts überlappt" wird deshalb NICHT hier gemessen, sondern im Browser —
 // `tests/navigation-schmal/kopfband-schmal-chromium.test.ts`.
 //
+// ================================================================================================
+// NACHFÜHRUNG JOB 3605 (11.09.2026) — WAS SICH AN DEN ZUSAGEN DIESER DATEI GEÄNDERT HAT UND WARUM.
+// ================================================================================================
+//
+// PEDIS VORGABE vom 11.09. Vormittag (über Codex, Nachricht 0bd3a41e, zum Bildschirmfoto
+// „Screenshot 2026-09-11 at 09.16.52.png"): auf dem Band 760–899 px stand „Meine Entwürfe" allein
+// neben dem Logo. Er verlangt „normaler Teil der gesamten Navigation, keine Sonderstellung / kein
+// immer sichtbarer Sonderknopf"; der Zugang solle „wie die übrigen Punkte ins Menü wandern".
+//
+// DIE FÄLLE C, D UND H DIESER DATEI MASSEN GENAU DAS ALTE VERSPRECHEN („oben steht `entwuerfe`")
+// und sind deshalb nachgeführt — nicht still, sondern hier begründet. Die Pflicht eines Tests kommt
+// aus der ZUSAGE; ändert sich die Zusage, ändert sich der Test mitsamt seiner Begründung.
+//
+// WAS UNVERÄNDERT BLEIBT, weil es nie an diesem einen Punkt hing: dass der Menü-Knopf ein Wort
+// trägt (A), dass er auf jeder schmalen Breite in die volle Navigation führt (B, H), dass die
+// breite Bauform unberührt ist (E, F) und dass die Bänder lückenlos anschliessen (G). Das sind die
+// Zusagen von JOB 3525, und sie sind es, die Pedis Befund vom 10.09. („ich finde es nicht")
+// wirklich beantworten.
+//
+// DIE POSITIVE FORM der neuen Zusage steht in einer EIGENEN Datei, nicht hier:
+// `tests/navigation-schmal/kein-sonderpunkt-schmal.test.tsx` misst bei 760, 800 und 899 px, dass
+// KEIN Punkt oben steht und dass „Meine Entwürfe" über das Menü seine Route öffnet.
+//
 // DIE FÄLLE:
 //   A  schmal (390): der Menü-Knopf trägt ein WORT, und der zugängliche Name enthält es
 //   B  schmal (390): die Punkte sind nicht oben — aber der Knopf öffnet den Drawer, und darin
 //      stehen „Meine Entwürfe" UND „Gehe zu …"  → höchstens zwei Wege
-//   C  Tablet-Band (768): „Meine Entwürfe" und „Gehe zu …" stehen OBEN → ein Weg
+//   C  Tablet-Band (768): „Gehe zu …" steht OBEN; die Punkte stehen im Menü (JOB 3605)
 //   D  EN: dieselben zwei Bänder mit den englischen Wörtern
 //   E  breit (1280): unverändert — kein Menü-Knopf, die volle Punktreihe der Rolle, Suchfeld
 //   F  INVARIANZ: eine Breite, die das neue Band bejaht, ändert die BREITE Ansicht um kein Zeichen
@@ -75,7 +98,7 @@ import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import { canSee, kopfbandItems } from "../../apps/web/src/app/navigation";
 import i18n from "../../apps/web/src/i18n";
 import { AppShell } from "../../apps/web/src/shell/AppShell";
-import { SCHMAL_PUNKTE_QUERY } from "../../apps/web/src/shell/Kopfband";
+import { SCHMAL_GEHEZU_QUERY } from "../../apps/web/src/shell/Kopfband";
 import { NARROW_QUERY } from "../../apps/web/src/shell/useMediaQuery";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -318,14 +341,24 @@ describe("JOB 3525 · B · schmal (390 px): der Weg geht über den beschrifteten
 });
 
 // ================================================================================================
-describe("JOB 3525 · C · Tablet-Band (768 px): die zwei gesuchten Wege stehen OBEN", () => {
-  it("„Meine Entwürfe“ steht im Kopfband und führt auf /entwuerfe", async () => {
+describe("JOB 3525 · C · Tablet-Band (768 px): „Gehe zu …“ steht OBEN, die Punkte im Menü", () => {
+  // NACHGEFÜHRT JOB 3605 (11.09.2026, Pedis Vorgabe über Codex): dieser Fall verlangte bis dahin
+  // `punkteOben() === ["entwuerfe"]` — also genau die Sonderstellung, die Pedi beanstandet hat
+  // („keine Sonderstellung / kein immer sichtbarer Sonderknopf"). Umgedreht wird er nicht bloss
+  // abgeschwächt, sondern als AUSSAGE gehalten: oben steht KEIN Punkt, und der Punkt ist trotzdem
+  // da — eine Zeile weiter, im Menü, mit demselben Namen und demselben Ziel.
+  it("oben steht kein Punkt — „Meine Entwürfe“ wohnt im Menü, mit Name und Ziel", async () => {
     setzeBreite(768);
     await montiere();
-    expect(punkteOben(), "„Meine Entwürfe“ steht auf 768 px nicht oben").toEqual(["entwuerfe"]);
-    const punkt = kopfband().querySelector<HTMLAnchorElement>('a[data-kopfband-punkt="entwuerfe"]');
-    expect(punkt?.getAttribute("href")).toBe("/entwuerfe");
-    expect(punkt?.textContent).toContain(i18n.t("mob.drafts"));
+    expect(punkteOben(), "auf 768 px steht ein Punkt bevorzugt im Kopfband").toEqual([]);
+    const knopf = menueKnopf();
+    expect(knopf, "auf 768 px gibt es keinen Menü-Knopf").not.toBeNull();
+    if (knopf) {
+      await klick(knopf);
+    }
+    const zeile = drawer()?.querySelector<HTMLAnchorElement>('a[href="/entwuerfe"]');
+    expect(zeile, "„Meine Entwürfe“ steht auf 768 px weder oben noch im Menü").not.toBeNull();
+    expect(zeile?.textContent).toContain(i18n.t("mob.drafts"));
   });
 
   it("„Gehe zu … ⌘K“ steht daneben — derselbe Knopf wie breit, keine zweite Bauform", async () => {
@@ -337,7 +370,7 @@ describe("JOB 3525 · C · Tablet-Band (768 px): die zwei gesuchten Wege stehen 
     expect(knopf?.textContent, "das Kürzel fehlt am Knopf").toContain("⌘K");
   });
 
-  it("der beschriftete Menü-Knopf bleibt daneben stehen — der Rest der Punkte ist nicht fort", async () => {
+  it("der beschriftete Menü-Knopf trägt die ganze Navigation — kein Punkt ist fort", async () => {
     setzeBreite(768);
     await montiere();
     expect(menueKnopf()?.textContent?.trim()).toBe("Menü");
@@ -345,7 +378,8 @@ describe("JOB 3525 · C · Tablet-Band (768 px): die zwei gesuchten Wege stehen 
     if (knopf) {
       await klick(knopf);
     }
-    // Die volle Navigation steht weiterhin im Drawer — was oben steht, ist eine AUSWAHL, kein Ersatz.
+    // NACHGEFÜHRT JOB 3605: bis dahin war der Drawer die volle Navigation NEBEN einer Auswahl oben.
+    // Seit Pedis Vorgabe ist er sie ALLEIN — dieselbe Erwartung, nur ohne den zweiten Ort.
     for (const item of kopfbandItems().filter((i) => SICHTBARE_PUNKTE.includes(i.id))) {
       expect(
         drawer()?.querySelector(`a[href="${item.path}"]`),
@@ -354,17 +388,24 @@ describe("JOB 3525 · C · Tablet-Band (768 px): die zwei gesuchten Wege stehen 
     }
   });
 
-  it("was oben steht, ist wirklich ein Kopfbandpunkt — keine erfundene Nebenliste", async () => {
+  // NACHGEFÜHRT JOB 3605: der Fall hiess „was oben steht, ist wirklich ein Kopfbandpunkt — keine
+  // erfundene Nebenliste" und verlangte dafür, dass oben ÜBERHAUPT etwas steht. Diese Voraussetzung
+  // ist mit der Sonderstellung fortgefallen. Geblieben ist die Frage dahinter, und sie ist jetzt
+  // schärfer zu stellen: es darf oben gar keine Auswahl mehr geben — weder eine erfundene noch eine
+  // aus echten Ids gebaute. Genau daran wäre der alte Bau rot geworden.
+  it("es gibt oben gar keine Auswahl mehr — auch keine aus echten Ids gebaute", async () => {
     setzeBreite(768);
     await montiere();
-    const erlaubt = kopfbandItems().map((i) => i.id);
     expect(
-      punkteOben().length,
-      "es steht gar nichts oben — der Fall prüfte nichts",
-    ).toBeGreaterThan(0);
-    for (const id of punkteOben()) {
-      expect(erlaubt, `„${id}“ ist gar kein Kopfbandpunkt`).toContain(id);
-    }
+      kopfband().querySelectorAll("[data-kopfband-punkt]").length,
+      `oben steht eine Auswahl: ${punkteOben().join(", ")}`,
+    ).toBe(0);
+    // Und das Kopfband trägt auch keine leere Ansage: ein `<nav>` ohne Inhalt wäre für Assistenz
+    // eine Überschrift über nichts.
+    expect(
+      kopfband().querySelector(".kw-kopfband-punkte"),
+      "im Kopfband steht ein leerer Punkte-Behälter",
+    ).toBeNull();
   });
 
   it("das Suchfeld bleibt schmal fort (Nicht-Ziel §6) — die Suche läuft über die Bibliothek", async () => {
@@ -387,16 +428,21 @@ describe("JOB 3525 · D · dieselben Zusagen auf Englisch", () => {
     expect((knopf?.getAttribute("aria-label") ?? "").toLowerCase()).toContain("menu");
   });
 
-  it("768 px: „My drafts“ und „Go to …“ stehen oben", async () => {
+  // NACHGEFÜHRT JOB 3605 (Pedis Vorgabe vom 11.09.2026): der Fall hiess „768 px: „My drafts“ und
+  // „Go to …“ stehen oben" und pinnte damit die Sonderstellung auch auf Englisch. Beide Hälften
+  // bleiben geprüft — nur an ihrem jetzigen Ort: „Go to …" oben, „My drafts" im Menü.
+  it("768 px: „Go to …“ steht oben, „My drafts“ im Menü", async () => {
     await i18n.changeLanguage("en");
     setzeBreite(768);
     await montiere();
-    expect(punkteOben()).toEqual(["entwuerfe"]);
-    expect(kopfband().querySelector('a[data-kopfband-punkt="entwuerfe"]')?.textContent).toContain(
-      "My drafts",
-    );
+    expect(punkteOben()).toEqual([]);
     expect(geheZuOben()?.textContent).toContain("Go to …");
     expect(menueKnopf()?.textContent?.trim()).toBe("Menu");
+    const knopf = menueKnopf();
+    if (knopf) {
+      await klick(knopf);
+    }
+    expect(drawer()?.querySelector('a[href="/entwuerfe"]')?.textContent).toContain("My drafts");
   });
 });
 
@@ -423,10 +469,16 @@ describe("JOB 3525 · E · breit (1280 px) bleibt, was es war", () => {
 // nicht erzählt, sie wird gegen einen Sollwert gehalten. Der Sollwert ist hier das gerenderte
 // Kopfband selbst — Zeichen für Zeichen.
 //
-// DIE STÖRUNG IST DER BEWEIS: `SCHMAL_PUNKTE_QUERY` wird künstlich auf `true` gezwungen, während
-// `NARROW_QUERY` (1280 px) weiter `false` sagt. Wäre das neue Band irgendwo NICHT an `narrow`
-// gebunden, stünde jetzt ein zweites `<nav>` oder ein Menü-Knopf im Baum und die Zeichenketten
-// gingen auseinander. Sie tun es nicht.
+// DIE STÖRUNG IST DER BEWEIS: `SCHMAL_GEHEZU_QUERY` wird künstlich auf `true` gezwungen, während
+// `NARROW_QUERY` (1280 px) weiter `false` sagt. Wäre das Band irgendwo NICHT an `narrow` gebunden,
+// stünde jetzt eine andere Zusammensetzung im Baum und die Zeichenketten gingen auseinander. Sie
+// tun es nicht.
+//
+// NACHGEFÜHRT JOB 3605 (nur die Begründung, nicht die Messung): an diesem Band hing bis zum
+// 11.09.2026 ZWEIERLEI — die schmale Punktauswahl und „Gehe zu …". Die Auswahl ist mit Pedis
+// Vorgabe fort; das Band trägt nur noch den Knopf. Der Satz „ein zweites `<nav>` stünde im Baum",
+// der hier früher stand, beschreibt damit eine Bauform, die es nicht mehr gibt. Die Aussage des
+// Falls ist unberührt: die breite Ansicht bleibt zeichengleich, was das Band auch sagt.
 describe("JOB 3525 · F · Invarianz der breiten Ansicht", () => {
   it("1280 px mit und ohne bejahtes Schmalband ergeben ZEICHENGLEICH dasselbe Kopfband", async () => {
     setzeBreite(1280);
@@ -434,7 +486,7 @@ describe("JOB 3525 · F · Invarianz der breiten Ansicht", () => {
     const ohne = kopfband().outerHTML;
     abbauen();
 
-    setzeBreite(1280, { query: SCHMAL_PUNKTE_QUERY, antwort: true });
+    setzeBreite(1280, { query: SCHMAL_GEHEZU_QUERY, antwort: true });
     await montiere();
     const mit = kopfband().outerHTML;
 
@@ -445,7 +497,7 @@ describe("JOB 3525 · F · Invarianz der breiten Ansicht", () => {
 // ================================================================================================
 describe("JOB 3525 · G · die Bänder schliessen lückenlos an", () => {
   it("die obere Grenze des Schmalbands ist DIESELBE wie die von NARROW_QUERY", () => {
-    const obenSchmal = /\(max-width:\s*(\d+)px\)/.exec(SCHMAL_PUNKTE_QUERY)?.[1];
+    const obenSchmal = /\(max-width:\s*(\d+)px\)/.exec(SCHMAL_GEHEZU_QUERY)?.[1];
     const obenNarrow = /\(max-width:\s*(\d+)px\)/.exec(NARROW_QUERY)?.[1];
     expect(obenNarrow, "NARROW_QUERY hat keine max-width mehr").toBeDefined();
     expect(
@@ -455,14 +507,14 @@ describe("JOB 3525 · G · die Bänder schliessen lückenlos an", () => {
   });
 
   it("das Schmalband liegt VOLLSTÄNDIG innerhalb des schmalen Bereichs", () => {
-    const unten = Number(/\(min-width:\s*(\d+)px\)/.exec(SCHMAL_PUNKTE_QUERY)?.[1]);
+    const unten = Number(/\(min-width:\s*(\d+)px\)/.exec(SCHMAL_GEHEZU_QUERY)?.[1]);
     expect(Number.isFinite(unten)).toBe(true);
     // Jede Breite, die das Punkte-Band bejaht, muss auch „schmal" sein — sonst zeigte das
     // Kopfband auf einer breiten Ansicht plötzlich die schmale Auswahl.
     for (const breite of [unten, unten + 1, 800, 899]) {
       expect(passt(NARROW_QUERY, breite), `${breite}px ist nicht schmal`).toBe(true);
     }
-    expect(passt(SCHMAL_PUNKTE_QUERY, unten - 1), `${unten - 1}px liegt noch im Band`).toBe(false);
+    expect(passt(SCHMAL_GEHEZU_QUERY, unten - 1), `${unten - 1}px liegt noch im Band`).toBe(false);
   });
 });
 
@@ -473,6 +525,14 @@ describe("JOB 3525 · G · die Bänder schliessen lückenlos an", () => {
 // Der Verlauf wird nicht behauptet, sondern abgefahren: an jeder dieser Breiten steht ENTWEDER die
 // volle Punktreihe ODER ein Knopf, der ein Wort trägt und in die Navigation führt. Ein Zustand, in
 // dem beides fehlt, wäre genau Pedis Befund — und er kommt hier nicht vor.
+//
+// NACHGEFÜHRT JOB 3605: das „ENTWEDER … ODER" war bis zum 11.09.2026 keines. Auf dem Band
+// 760–899 px galt eine dritte, gemischte Lage — ein Knopf UND ein einzelner Punkt daneben —, und
+// dieser Fall liess sie stillschweigend durch, weil er den Knopfzweig nicht zu Ende prüfte. Seit
+// Pedis Vorgabe („keine Sonderstellung / kein immer sichtbarer Sonderknopf") gibt es die Mischung
+// nicht mehr, und der Fall sagt das jetzt auch: wo ein Knopf steht, steht sonst nichts. Damit deckt
+// er den GANZEN Verlauf ab — auch 320, 599 und 759 px, die `kein-sonderpunkt-schmal.test.tsx`
+// nicht misst.
 describe("JOB 3525 · H · der Breitenverlauf hat keine stumme Stelle", () => {
   for (const breite of [320, 599, 759, 760, 768, 899, 900, 1280]) {
     it(`${breite} px: entweder alle Punkte oben oder ein beschrifteter Weg dorthin`, async () => {
@@ -486,7 +546,11 @@ describe("JOB 3525 · H · der Breitenverlauf hat keine stumme Stelle", () => {
         );
         return;
       }
-      // Schmal: der Knopf trägt ein Wort — nicht nur ein Zeichen.
+      // Schmal: ENTWEDER heisst entweder — neben dem Knopf steht kein bevorzugter Punkt (JOB 3605).
+      expect(punkteOben(), `${breite}px: neben dem Menü-Knopf steht ein bevorzugter Punkt`).toEqual(
+        [],
+      );
+      // Und der Knopf trägt ein Wort — nicht nur ein Zeichen.
       expect(knopf.textContent?.trim().length, `${breite}px: der Knopf ist stumm`).toBeGreaterThan(
         0,
       );

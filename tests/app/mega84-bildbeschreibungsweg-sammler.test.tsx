@@ -1683,20 +1683,34 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // nicht gerechnet. GENAU ZWEI Bauteile kommen hinzu, beide in `shell/KopfbandPunkte.tsx`:
     //
     //     + `KopfbandPunkt` — EIN Punkt des Kopfbands. Das ist eine HERAUSLÖSUNG, keine neue
-    //       Fläche: derselbe Baum stand vorher inline in `KopfbandPunkte`. Er bekommt einen Namen,
-    //       weil das schmale Band dieselben Punkte ein zweites Mal zeigt und eine Abschrift zwei
-    //       Orte schüfe, an denen Aktivregel, Zähler und Fokusring auseinanderlaufen können.
+    //       Fläche: derselbe Baum stand vorher inline in `KopfbandPunkte`. Er bekam einen Namen,
+    //       weil das schmale Band damals dieselben Punkte ein zweites Mal zeigte und eine Abschrift
+    //       zwei Orte geschaffen hätte, an denen Aktivregel, Zähler und Fokusring auseinanderlaufen.
     //     + `KopfbandPunkteSchmal` — die Auswahl der Punkte, die auf dem Band 760–899 px oben
-    //       stehen bleiben. Sie filtert `useSichtbareKopfbandPunkte`, führt also keine zweite
-    //       Quelle, und gibt `null`, wenn die Rolle keinen davon sehen darf.
+    //       stehen blieben. Sie filterte `useSichtbareKopfbandPunkte`, führte also keine zweite
+    //       Quelle, und gab `null`, wenn die Rolle keinen davon sehen durfte. (Fort seit JOB 3605,
+    //       siehe unten.)
     //
     // Dieselbe Begründung wie oben, und sie trägt hier genauso: Die Auflage verbietet, dass eine
     // UMSTELLUNG die Erhebung verschiebt — nicht, dass der Quellbaum wächst. Die zwei Zahlen, an
     // denen Stufe 2 wirklich hängt, sind unverändert: `anbieter` 1 und `traeger` 2. Keines der
     // beiden Bauteile bietet eine Bildbeschreibung an (kein `ANGEBOT_MUSTER`) und keines trägt
     // einen eigenen Titel (kein `documentTitle`-Prop) — sie erscheinen nur in der Grundmenge.
+    //
+    // JOB 3605 (ENTWUERFE-MENUEPUNKT OHNE SONDERSTELLUNG): `komponenten` von 376 auf 375
+    // ZURÜCKGEZOGEN — wieder am Lauf dieses Arbeitsbaums gemessen (der Fall meldete `gemessen: 375
+    // Komponenten · 1 Anbieter · 2 Traeger`), nicht gerechnet. GENAU EINES der zwei oben genannten
+    // Bauteile fällt weg: `KopfbandPunkteSchmal`. Pedi hat am 11.09.2026 (über Codex, Nachricht
+    // 0bd3a41e) verlangt, „Meine Entwürfe" sei „normaler Teil der gesamten Navigation, keine
+    // Sonderstellung"; die schmale Auswahl, die jenes Bauteil war, ist damit ersatzlos fort.
+    // `KopfbandPunkt` BLEIBT — es hat weiterhin einen Aufrufer (`KopfbandPunkte`) und trägt die
+    // vollständige Regel eines Punktes.
+    //
+    // Die zwei Zahlen, an denen Stufe 2 hängt, sind auch durch diese Rücknahme unverändert
+    // (`anbieter` 1, `traeger` 2): das entfallene Bauteil bot keine Bildbeschreibung an und trug
+    // keinen eigenen Titel — es stand nur in der Grundmenge.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 376,
+      komponenten: 375,
       anbieter: 1,
       traeger: 2,
     });
