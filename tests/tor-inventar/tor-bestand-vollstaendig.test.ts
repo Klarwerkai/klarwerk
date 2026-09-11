@@ -331,8 +331,23 @@ describe("JOB 3131 T2 · die Browser-Gruppe ist genau die Menge mit Chromium in 
     // `schmal-buehne.ts` verlangen alle `apps/web/dist`, das der Arbeitsprüfung ohne vorherigen Bau
     // nicht vorliegt. Die Last bleibt klein: EIN Browser, EINE Seite, sechs Fälle, kein `dist`, im
     // eigenen Lauf 1,444 s, Abbau 138,89 ms (gemessen 11.09.2026, Cloud-Lauf c6ea358ac0af56d6fea983a5).
-    expect(graph.startdateien.length).toBe(26);
+    // JOB 3591 (DEMO-FIRMEN-CI ANMELDEMASKE): eine weitere eigene Startstelle — die GAST-Bühne der
+    // Anmeldemaske (`tests/demo-firmen-ci-anmeldung/gast-buehne.ts`). Sie MUSS Playwright selbst
+    // starten, und zwar aus einem Grund, der an keiner bestehenden Bühne zu beheben ist: alle
+    // vorhandenen Prüfstände melden einen Admin AN. `h6-chromium.ts` registriert und meldet an
+    // (`:243-253`) und setzt danach auf JEDEN `/api/*`-Aufruf der Seite den Bearer (`:307`) — also
+    // auch auf `me` (`apps/web/src/app/AuthContext.tsx:99`); `s.user` ist gesetzt und `App.tsx:88-92`
+    // rendert die `AppShell`. Die Anmeldemaske ist aber genau die Fläche VOR der Anmeldung: auf jener
+    // Bühne kommt sie nie vor. Gemessen, nicht angenommen — Fall L1 in
+    // `anmeldemaske-marke-chromium.test.ts` fährt h6-chromium hoch und zählt dort 1 × `main` und
+    // 0 × `auth-brand-panel`/`auth-brand-compact`. Die Gast-Bühne unterscheidet sich in GENAU EINER
+    // Zeile: kein `authorization`. `h6-chromium.ts` dafür zu erweitern war verboten — sie ist
+    // Zielpfad des gleichzeitig laufenden JOB 3587, und zwei Bahnen an derselben Datei sind
+    // ausgeschlossen. Die Last bleibt klein: EIN Browser, EINE Seite, elf Fälle (der L1-Fall reitet
+    // auf h6-chromium und startet keinen eigenen zusätzlichen Dauerbrowser).
+    expect(graph.startdateien.length).toBe(27);
     for (const bekannt of [
+      "tests/demo-firmen-ci-anmeldung/gast-buehne.ts",
       "tests/ux28-fassungen/tastatur-im-browser-chromium.test.tsx",
       "tests/ladefehler-alter-tab/echter-ladefehler-chromium.test.ts",
       "tests/ladefehler-alter-tab/pedis-fall-chromium.test.ts",
