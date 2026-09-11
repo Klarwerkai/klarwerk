@@ -276,13 +276,15 @@ function profilAusAblage(wert: string | null): BrandingProfil | null {
  *   Wahl wirklich zugewiesen wird — gegen einen Stellvertreter-Pool in
  *   `tests/demo-firmen-ci-haltbarkeit/`, dessen eigene Treue `stellvertreter-treue.test.ts` misst
  *   (ein Stellvertreter, der ergänzt, was im SQL fehlt, macht jeden Test darüber wertlos).
- *   Ergänzend prüft `branding-settings.integration.test.ts` gegen echtes Postgres: N1 die
- *   lückenlosen Versionen einer bestehenden Zeile, N2 den gleichzeitigen Erst-Insert, N3 den
- *   erlaubten älteren Vorher-Schnappschuss und N4 das Warten auf die Zeilensperre samt Weiterzählen
- *   nach COMMIT. Der Stellvertreter bleibt der schnelle Formwächter; echte Sperren kann er nicht
- *   messen. Der separate Integrationslauf braucht Postgres und meldet ohne Datenbank SKIP —
- *   JOB 3590 konnte in seiner Cloud nur diesen Skip messen, keinen erfolgreichen Postgres-Lauf.
- *   Ein solcher Lauf sowie die Messung über mehrere Prozesse/Server hinweg stehen weiterhin aus.
+ *   `branding-settings.integration.test.ts` enthält ergänzend G1/G2 für drei überlappende
+ *   Schreiber auf leerer/bestehender Tabelle, G3 für den erlaubten älteren Vorher-Schnappschuss
+ *   und G4 für das Weiterzählen nach COMMIT. PostgreSQL muss die wartenden Schreiber vor der
+ *   Freigabe der Sperre melden. Dieser Nachweis gehört in den getrennten Integrationslauf
+ *   (`test:integration`), NICHT ins Tor; der Stellvertreter bleibt dessen schneller Formwächter.
+ *   NOCH KEIN ERFOLGREICHER POSTGRES-NACHWEIS: In JOB 3595 scheitert der Containerstart am
+ *   gesperrten Docker-Zugriff. Der Lauf schlägt fehl, statt fehlende Infrastruktur zu überspringen.
+ *   Echte Gleichzeitigkeit und beide SQL-Gegenproben bleiben damit ungemessen; ebenso mehrere
+ *   Prozesse/Server und Replikation. Die vorhandenen Testfälle allein belegen die Zusage nicht.
  */
 export class PgBrandingSettingsRepo implements BrandingSettingsRepo {
   constructor(private readonly pool: Pool) {}

@@ -1,19 +1,19 @@
 import { setTimeout as warte } from "node:timers/promises";
-import { Pool, type PoolClient } from "pg";
+import type { Pool, PoolClient } from "pg";
 import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { guardedLocalPgTestUrl } from "../../db-tx";
 import {
-  BRANDING_SETTINGS_SCHEMA,
   BRANDING_VORGABE,
   type BrandingStand,
   type BrandingWahl,
   PgBrandingSettingsRepo,
 } from "./branding-settings";
+import { createPool, migrate } from "./db";
 
-// JOB 3590 · echte Gleichzeitigkeit ergänzt die schnelle SQL-Formprüfung des Stellvertreters.
+// JOB 3595 · echte Gleichzeitigkeit ergänzt die schnelle SQL-Formprüfung des Stellvertreters.
 // Lauf: `KLARWERK_SKIP_KEYCHAIN=1 npx vitest run --config vitest.integration.config.ts services/app/src/branding-settings.integration.test.ts`
-// Lokale Wegwerf-Testdatenbank (gesichert), sonst postgres:16-alpine, sonst ausdrücklich SKIP.
+// Ausschließlich Wegwerf-Container: fehlendes Docker lässt den Aufbau scheitern, kein grüner Ersatz.
+// vitest.integration.config.ts sammelt diese Datei; vitest.config.ts schließt *.integration.test.ts aus.
 // Die Produktkonstante ist absichtlich privat; der Drahtschlüssel wird hier unabhängig geprüft.
 const BRANDING_SCHLUESSEL = "branding_settings";
 const SPERR_WARTEFRIST_MS = 250;
@@ -22,54 +22,33 @@ const WAHL_A: BrandingWahl = { profil: "advisor", aktiv: true };
 const WAHL_B: BrandingWahl = { profil: null, aktiv: false };
 type Wechsel = Awaited<ReturnType<PgBrandingSettingsRepo["setze"]>>;
 
-describe("JOB 3590 · Markenwahl unter echten Postgres-Zeilensperren", () => {
+describe("JOB 3595 · Markenwahl unter echten Postgres-Zeilensperren", () => {
   let container: StartedTestContainer | undefined;
-  let pool: Pool | undefined;
-  let available = false;
-
-  function oeffnePool(connectionString: string): Pool {
-    // Sperrhalter, zwei Schreiber und Beobachter brauchen vier verschiedene Verbindungen.
-    return new Pool({
-      connectionString,
-      max: 4,
-      connectionTimeoutMillis: 5_000,
-      statement_timeout: 15_000,
-    });
-  }
+  let pool: Pool;
 
   beforeAll(async () => {
-    const localUrl = guardedLocalPgTestUrl();
-    if (localUrl) {
-      try {
-        pool = oeffnePool(localUrl);
-        await pool.query("SELECT 1");
-        available = true;
-      } catch {
-        process.stderr.write(
-          "[KLARWERK] Pg-Integrationssuite ÜBERSPRUNGEN: KLARWERK_PG_TEST_URL gesetzt, aber keine Verbindung möglich.\n",
-        );
-      }
-      return;
-    }
-    if (process.env.KLARWERK_PG_TEST_URL) {
-      return; // Sicherung lehnt URL ab: kein Testcontainers-Fallback.
-    }
     try {
       container = await new GenericContainer("postgres:16-alpine")
         .withEnvironment({ POSTGRES_PASSWORD: "test", POSTGRES_DB: "klarwerk_test" })
         .withExposedPorts(5432)
         .withWaitStrategy(Wait.forLogMessage(/database system is ready to accept connections/, 2))
         .start();
-      pool = oeffnePool(
-        `postgresql://postgres:test@${container.getHost()}:${container.getMappedPort(5432)}/klarwerk_test`,
-      );
-      await pool.query("SELECT 1");
-      available = true;
-    } catch {
-      process.stderr.write(
-        "[KLARWERK] Pg-Integrationssuite ÜBERSPRUNGEN: kein Docker/Postgres verfügbar.\n",
+    } catch (cause) {
+      throw new Error(
+        "Postgres-Aufbau: Containerstart fehlgeschlagen; keine Nebenläufigkeitsmessung",
+        {
+          cause,
+        },
       );
     }
+    pool = createPool(
+      `postgresql://postgres:test@${container.getHost()}:${container.getMappedPort(5432)}/klarwerk_test`,
+    );
+    // Drei Schreiber, Sperrhalter und Beobachter müssen gleichzeitig verbunden sein können.
+    pool.options.max = 5;
+    pool.options.connectionTimeoutMillis = 5_000;
+    pool.options.statement_timeout = 15_000;
+    await migrate(pool);
   });
 
   afterAll(async () => {
@@ -80,17 +59,9 @@ describe("JOB 3590 · Markenwahl unter echten Postgres-Zeilensperren", () => {
     }
   });
 
-  function requirePool(ctx: { skip: () => void }): Pool {
-    if (!available || !pool) {
-      ctx.skip();
-      throw new Error("unreachable"); // ctx.skip() bricht ab; nur fürs Typing.
-    }
-    return pool;
-  }
-
   async function reset(p: Pool): Promise<void> {
-    await p.query("DROP TABLE IF EXISTS branding_settings");
-    await p.query(BRANDING_SETTINGS_SCHEMA);
+    // Die produktive Migration erzeugt die Tabelle; jeder Fall setzt nur seine Testdaten zurück.
+    await p.query("DELETE FROM branding_settings");
   }
 
   async function gespeicherterStand(p: Pool): Promise<BrandingStand> {
@@ -118,24 +89,34 @@ describe("JOB 3590 · Markenwahl unter echten Postgres-Zeilensperren", () => {
                SELECT a.pid FROM pg_stat_activity a
                JOIN sperrkette s ON s.pid = ANY(pg_blocking_pids(a.pid))
                WHERE a.datname = current_database() AND a.wait_event_type = 'Lock'
+                 AND a.state = 'active' AND a.query LIKE '%INSERT INTO branding_settings%'
              ) SELECT (count(*) - 1)::int AS n FROM sperrkette`,
             [pid.rows[0]?.pid],
           );
           return res.rows[0]?.n;
         },
-        { timeout: SPERR_ANLAUF_FRIST_MS, interval: 20 },
+        {
+          timeout: SPERR_ANLAUF_FRIST_MS,
+          interval: 20,
+          message: `Sperrüberlappung vor COMMIT: ${anzahl} aktive Postgres-Schreiber erwartet`,
+        },
       )
       .toBe(anzahl);
   }
 
-  async function gleichzeitig(p: Pool, leer = false): Promise<[Wechsel, Wechsel]> {
+  async function gleichzeitig(
+    p: Pool,
+    wahlen: readonly BrandingWahl[],
+    leer = false,
+  ): Promise<Wechsel[]> {
+    expect(p.options.max).toBeGreaterThanOrEqual(wahlen.length + 2);
     const halter = await p.connect();
-    let vorgaenge: [Promise<Wechsel>, Promise<Wechsel>] | undefined;
+    let vorgaenge: Promise<Wechsel>[] = [];
     try {
       await halter.query("BEGIN");
-      // Bei vorhandener Zeile entstehen beide Anweisungs-Schnappschüsse vor der Freigabe.
-      // Auf leerer Tabelle gibt es noch keine Zeilensperre: SHARE hält dort beide Inserts an,
-      // lässt aber auch bei G1/G2 ungesperrte Vorablesungen vor der ersten Änderung durch.
+      // Bei vorhandener Zeile entstehen alle Anweisungs-Schnappschüsse vor der Freigabe.
+      // Auf leerer Tabelle gibt es noch keine Zeilensperre: SHARE hält dort alle Inserts an,
+      // lässt aber auch beim Erst-Insert ungesperrte Vorablesungen vor der ersten Änderung durch.
       // Das ist echte PG-Synchronisation, keine nachgebaute Antwort oder SQL-Ersetzung.
       if (leer) {
         await halter.query("LOCK TABLE branding_settings IN SHARE MODE");
@@ -144,71 +125,97 @@ describe("JOB 3590 · Markenwahl unter echten Postgres-Zeilensperren", () => {
           BRANDING_SCHLUESSEL,
         ]);
       }
-      vorgaenge = [
-        new PgBrandingSettingsRepo(p).setze(WAHL_A),
-        new PgBrandingSettingsRepo(p).setze(WAHL_B),
-      ];
+      vorgaenge = wahlen.map(async (wahl, index) => {
+        try {
+          return await new PgBrandingSettingsRepo(p).setze(wahl);
+        } catch (cause) {
+          const code =
+            cause && typeof cause === "object" && "code" in cause ? cause.code : "unbekannt";
+          throw new Error(`setze-Aufruf ${index + 1}: Postgres-Fehlercode ${code}`, { cause });
+        }
+      });
       const wechsel = Promise.all(vorgaenge);
-      // Fehler sofort behandeln, aber nach dem Freigeben der Sperre unverändert weiterreichen.
-      void wechsel.catch(() => undefined);
-      await warteAufBlockierte(p, halter, 2);
+      // Beide Zweige werden sofort behandelt; nach Freigabe werden ALLE Fehler berichtet.
+      const ergebnis = wechsel.then(
+        (werte) => ({ werte }),
+        () => ({ werte: undefined }),
+      );
+      await warteAufBlockierte(p, halter, wahlen.length);
       await halter.query("COMMIT");
-      return await wechsel;
+      const { werte } = await ergebnis;
+      if (!werte) {
+        const alle = await Promise.allSettled(vorgaenge);
+        const fehler = alle.flatMap((r) => (r.status === "rejected" ? [r.reason] : []));
+        throw new AggregateError(fehler, fehler.map((e: Error) => e.message).join("; "));
+      }
+      return werte;
     } finally {
       try {
         await halter.query("ROLLBACK");
       } finally {
         halter.release();
-        await Promise.allSettled(vorgaenge ?? []);
+        await Promise.allSettled(vorgaenge);
       }
     }
   }
 
-  it("N1 · bestehende Zeile: zwei Schaltvorgänge liefern genau v+1 und v+2", async (ctx) => {
-    const p = requirePool(ctx);
-    await reset(p);
-    await new PgBrandingSettingsRepo(p).setze({ profil: "advisor", aktiv: false });
-    const vorher = await gespeicherterStand(p);
+  // Drei verschiedene Eingaben; jede Rückgabe wird ihrer Eingabe zugeordnet, damit auch ein
+  // zusammengemischtes profil/aktiv-Paar beim letzten Schreiber nicht als gültig durchgeht.
+  const wahlen: readonly BrandingWahl[] = [WAHL_A, WAHL_B, { profil: "advisor", aktiv: false }];
 
-    const [a, b] = await gleichzeitig(p);
-
-    expect(a.nachher.version).not.toBe(b.nachher.version);
-    expect([a.nachher.version, b.nachher.version].sort((x, y) => x - y)).toEqual([
-      vorher.version + 1,
-      vorher.version + 2,
+  async function pruefeVersionen(k: number, wechsel: Wechsel[]): Promise<void> {
+    expect(wechsel).toHaveLength(wahlen.length);
+    expect(wechsel.map((w) => w.nachher.version).sort((a, b) => a - b)).toEqual([
+      k + 1,
+      k + 2,
+      k + 3,
     ]);
-    const letzter = a.nachher.version > b.nachher.version ? a.nachher : b.nachher;
-    expect(await new PgBrandingSettingsRepo(p).lies()).toEqual(letzter);
-    expect((await gespeicherterStand(p)).version).toBe(vorher.version + 2);
+    expect(new Set(wechsel.map((w) => w.nachher.version)).size).toBe(3);
+    for (const [index, w] of wechsel.entries()) {
+      expect(w.nachher).toEqual({ ...wahlen[index], version: w.nachher.version });
+    }
+    const letzter = wechsel.find((w) => w.nachher.version === k + 3);
+    expect(letzter).toBeDefined();
+    expect(await gespeicherterStand(pool)).toEqual(letzter?.nachher);
+    expect(await new PgBrandingSettingsRepo(pool).lies()).toEqual(letzter?.nachher);
+  }
+
+  it("G1 · leere Tabelle: drei gleichzeitige Erst-Inserts liefern exakt 1, 2, 3", async () => {
+    await reset(pool);
+    expect(await new PgBrandingSettingsRepo(pool).lies()).toEqual(BRANDING_VORGABE);
+    const wechsel = await gleichzeitig(pool, wahlen, true);
+    await pruefeVersionen(0, wechsel);
+    expect(wechsel.find((w) => w.nachher.version === 1)?.vorher).toEqual(BRANDING_VORGABE);
   });
 
-  it("N2 · leere Tabelle: zwei erste Schaltvorgänge liefern 1 und 2, genau eine Zeile", async (ctx) => {
-    const p = requirePool(ctx);
-    await reset(p);
-    expect(await new PgBrandingSettingsRepo(p).lies()).toEqual(BRANDING_VORGABE);
-
-    const [a, b] = await gleichzeitig(p, true);
-
-    expect([a.nachher.version, b.nachher.version].sort((x, y) => x - y)).toEqual([1, 2]);
-    const letzter = a.nachher.version === 2 ? a.nachher : b.nachher;
-    expect(await gespeicherterStand(p)).toEqual(letzter);
-    expect(await new PgBrandingSettingsRepo(p).lies()).toEqual(letzter);
+  it("G2 · bestehende Zeile: drei gleichzeitige Schreiber liefern exakt k+1, k+2, k+3", async () => {
+    await reset(pool);
+    const k = 17;
+    await pool.query("INSERT INTO branding_settings VALUES ($1, $2, $3, $4)", [
+      BRANDING_SCHLUESSEL,
+      null,
+      true,
+      k,
+    ]);
+    expect(await gespeicherterStand(pool)).toEqual({ profil: null, aktiv: true, version: k });
+    await pruefeVersionen(k, await gleichzeitig(pool, wahlen));
   });
 
-  it("N3 · vorher darf einen Zwischenstand überspringen; nachher bleibt exakt", async (ctx) => {
-    const p = requirePool(ctx);
+  it("G3 · vorher darf einen Zwischenstand überspringen; nachher bleibt exakt", async () => {
+    const p = pool;
     await reset(p);
     await new PgBrandingSettingsRepo(p).setze({ profil: "advisor", aktiv: false });
     const ursprung = await gespeicherterStand(p);
-    const [a, b] = await gleichzeitig(p);
+    const wechsel = await gleichzeitig(p, [WAHL_A, WAHL_B]);
+    const a = wechsel[0];
+    const b = wechsel[1];
+    if (!a || !b) throw new Error("Zwei vollständige Schreibergebnisse erwartet");
     const erster = a.nachher.version < b.nachher.version ? a : b;
     const zweiter = erster === a ? b : a;
 
     // Bewusst schwächer als „unmittelbarer Vorgänger“: vorher stammt aus dem Anweisungs-
     // schnappschuss, nachher aus der gesperrten Zeile. Die Barriere macht hier beide alten
     // Schnappschüsse sichtbar und belegt das erlaubte Überspringen im Audit tatsächlich.
-    expect([ursprung]).toContainEqual(erster.vorher);
-    expect([ursprung, erster.nachher]).toContainEqual(zweiter.vorher);
     expect(a.vorher).toEqual(ursprung);
     expect(b.vorher).toEqual(ursprung);
     expect(zweiter.vorher.version).toBeLessThan(zweiter.nachher.version - 1);
@@ -218,8 +225,8 @@ describe("JOB 3590 · Markenwahl unter echten Postgres-Zeilensperren", () => {
     expect(await new PgBrandingSettingsRepo(p).lies()).toEqual(zweiter.nachher);
   });
 
-  it("N4 · wartet auf die Zeilensperre und zählt nach COMMIT vom gespeicherten Wert weiter", async (ctx) => {
-    const p = requirePool(ctx);
+  it("G4 · wartet auf die Zeilensperre und zählt nach COMMIT vom gespeicherten Wert weiter", async () => {
+    const p = pool;
     await reset(p);
     const repo = new PgBrandingSettingsRepo(p);
     await repo.setze(WAHL_A);
