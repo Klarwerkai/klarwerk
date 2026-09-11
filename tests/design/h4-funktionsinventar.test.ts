@@ -52,6 +52,24 @@ const MENUE_LESEN = `(testId) => {
 // liest dieselbe Reihe in Englisch.
 const SEGMENT_LESEN = `() => [...document.querySelectorAll('[data-testid="bib-segment"] button')].map((b) => (b.textContent || '').trim())`;
 
+// Der Leerzustand der Suche — er steht hier und nicht zweimal in der Datei: F18 hält ihn auf
+// Deutsch fest, F21 liest dieselbe Stelle in Englisch (JOB 3602). Das Suchwort trifft mit Absicht
+// nichts; `SUCHE_SETZEN` mit "" räumt das Feld wieder.
+const LEERWORT = "zzz-nichts-findet-das-xyz";
+
+const SUCHE_SETZEN = `(wort) => {
+  const feld = document.querySelector('[data-testid="bib-suche"]');
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+  setter.call(feld, wort);
+  feld.dispatchEvent(new Event('input', { bubbles: true }));
+}`;
+
+const LEER_LESEN = `() => {
+  const el = document.querySelector('[data-testid="bib-leer"]');
+  const k = document.querySelector('[data-testid="bib-leer-erfassen"]');
+  return { text: el.querySelector('p').textContent.trim(), knopf: k ? k.textContent.trim() : '' };
+}`;
+
 const MENUE_OFFEN = `(testId) => {
   const knopf = document.querySelector('[data-testid="' + testId + '"]');
   return !!knopf && knopf.getAttribute('aria-expanded') === 'true' && !!knopf.parentElement.querySelector('[role="menu"]');
@@ -68,7 +86,13 @@ let listenMenue: MenueInhalt | null = null;
 let filterMenue: MenueInhalt | null = null;
 let bereichMenue: MenueInhalt | null = null;
 let eintragMenue: MenueInhalt | null = null;
-let mehr: { abschnitte: string[]; texte: string[] } | null = null;
+let mehr: MehrLesung | null = null;
+/**
+ * Der Leerzustand in DEUTSCH, von F18 gelesen — der Massstab, gegen den F21 die englische Lesung
+ * hält. Er wird HIER genommen und nicht ein zweites Mal abgeschrieben: F18 misst ihn ohnehin, und
+ * eine zweite Abschrift wäre auch dann noch grün, wenn die deutsche Beschriftung sich ändert.
+ */
+let leerDe: { text: string; knopf: string } | null = null;
 
 async function menueOeffnen(testId: string): Promise<void> {
   const s = (stand as H4Stand).seite;
@@ -134,6 +158,32 @@ async function mehrAufklappen(): Promise<void> {
 }
 
 /**
+ * In der Seite: jeder aufgeklappte Abschnitt unter „Mehr" mit seiner Kennung und seinem Text.
+ *
+ * JOB 3602: dieser Block stand bis heute AUSGESCHRIEBEN in `beforeAll`. F20 liest dieselbe Fläche
+ * in Englisch — und zwar mit demselben Leser, nicht mit einer Abschrift davon. Eine zweite
+ * Abschrift wäre genau die, die beim nächsten Umbau auseinanderläuft, und der Vergleich EN gegen
+ * DE verglich dann zwei verschiedene Messungen statt zwei Sprachen.
+ */
+const MEHR_LESEN = `() => {
+  const els = [...document.querySelectorAll('[data-bib-abschnitt]')];
+  return {
+    abschnitte: els.map((e) => e.getAttribute('data-bib-abschnitt')),
+    texte: els.map((e) => (e.innerText || '').replace(/\\s+/g, ' ')),
+  };
+}`;
+
+interface MehrLesung {
+  abschnitte: string[];
+  texte: string[];
+}
+
+/** Die EINE Lesung der „Mehr"-Fläche: `beforeAll` nimmt sie auf Deutsch, F20 auf Englisch. */
+async function mehrLesen(): Promise<MehrLesung> {
+  return await (stand as H4Stand).seite.evaluate<MehrLesung>(fn(MEHR_LESEN));
+}
+
+/**
  * Ein Aufräumschritt, der den eigentlichen Befund nicht überschreibt.
  *
  * Scheitert die Wiederherstellung selbst, wäre ihr Wurf das Letzte, was Vitest sieht — und der
@@ -184,15 +234,7 @@ describe("JOB 3063 · H4 · Funktionsinventar — jede Funktion an ihrem neuen O
       eintragMenue = await menue("bib-eintrag-menue");
       // „Mehr" aufklappen und die dreizehn Abschnitte samt ihrer Inhalte lesen.
       await mehrAufklappen();
-      mehr = await stand.seite.evaluate<{ abschnitte: string[]; texte: string[] }>(
-        fn(`() => {
-          const els = [...document.querySelectorAll('[data-bib-abschnitt]')];
-          return {
-            abschnitte: els.map((e) => e.getAttribute('data-bib-abschnitt')),
-            texte: els.map((e) => (e.innerText || '').replace(/\\s+/g, ' ')),
-          };
-        }`),
-      );
+      mehr = await mehrLesen();
       console.info(
         `JOB 3063 H4 · Inventar · Liste ${JSON.stringify(listenMenue)} · Filter ${JSON.stringify(filterMenue)} · Bereich ${JSON.stringify(bereichMenue)} · Eintrag ${JSON.stringify(eintragMenue)} · Mehr ${JSON.stringify(mehr?.abschnitte)}`,
       );
@@ -439,26 +481,17 @@ describe("JOB 3063 · H4 · Funktionsinventar — jede Funktion an ihrem neuen O
   it("F18 · Leerzustand: EIN Satz plus Knopf „Erfassen“", async () => {
     expect(fehler).toBeNull();
     const s = (stand as H4Stand).seite;
-    await s.evaluate(
-      fn(`() => {
-        const feld = document.querySelector('[data-testid="bib-suche"]');
-        const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-        setter.call(feld, 'zzz-nichts-findet-das-xyz');
-        feld.dispatchEvent(new Event('input', { bubbles: true }));
-      }`),
-    );
+    await s.evaluate(fn(SUCHE_SETZEN), LEERWORT);
     await s.waitForFunction(
       fn(`() => !!document.querySelector('[data-testid="bib-leer"]')`),
       undefined,
       { timeout: 20_000 },
     );
-    const leer = await s.evaluate<{ text: string; knopf: string }>(
-      fn(`() => {
-        const el = document.querySelector('[data-testid="bib-leer"]');
-        const k = document.querySelector('[data-testid="bib-leer-erfassen"]');
-        return { text: el.querySelector('p').textContent.trim(), knopf: k ? k.textContent.trim() : '' };
-      }`),
-    );
+    const leer = await s.evaluate<{ text: string; knopf: string }>(fn(LEER_LESEN));
+    // JOB 3602, rein additiv: derselbe Leerzustand, den dieser Fall auf Deutsch festhält, ist der
+    // Massstab für F21 in Englisch — aus DIESER Sitzung und DIESER Bühne, nicht aus einer zweiten
+    // Abschrift. Keine der zwei Aussagen darunter ändert sich dadurch.
+    leerDe = leer;
     expect(leer.text).toBe("Nichts gefunden.");
     expect(leer.knopf).toBe("Erfassen");
   }, 60_000);
@@ -596,8 +629,22 @@ describe("JOB 3063 · H4 · Funktionsinventar — jede Funktion an ihrem neuen O
 
   /** Wie der Ursprungsfall vergleicht: `toBe`/`===`, `startsWith` oder `includes`. */
   type Trefferart = "gleich" | "beginnt" | "enthaelt";
-  /** Welcher Teil der Fläche gelesen wird — die vier Menüs und der Status-Umschalter. */
-  type Flaechenteil = "Status-Umschalter" | "Liste" | "Filter" | "Bereich" | "Eintrag";
+  /**
+   * Welcher Teil der Fläche gelesen wird.
+   *
+   * Die ersten fünf liest F19 (die vier Menüs und der Status-Umschalter). JOB 3602 nimmt die
+   * Abschnitte unter „Mehr" (F20, je ein Teil `Mehr · <Kennung>`) und den Leerzustand (F21) dazu —
+   * in DIESELBE Aufzählung und nicht in eine zweite daneben, damit Sollwerte, Ausnahmen, Kennung
+   * und Meldung für alle Teile dieselben bleiben.
+   */
+  type Flaechenteil =
+    | "Status-Umschalter"
+    | "Liste"
+    | "Filter"
+    | "Bereich"
+    | "Eintrag"
+    | `Mehr · ${string}`
+    | "Leerzustand";
   /** Ob der Fall die Untermenü-Titel liest, die Einträge, oder beides zusammen (`alles`). */
   type Lesestelle = "gruppen" | "eintraege" | "alles";
 
@@ -659,6 +706,132 @@ describe("JOB 3063 · H4 · Funktionsinventar — jede Funktion an ihrem neuen O
     { fall: "F14", teil: "Eintrag", wo: "alles", wort: "Ablehnen", art: "gleich" },
     { fall: "F14", teil: "Eintrag", wo: "alles", wort: "Re-Validierung starten", art: "gleich" },
     { fall: "F14", teil: "Eintrag", wo: "alles", wort: "Wissensobjekt löschen", art: "gleich" },
+
+    // ----------------------------------------------------------------------------------------
+    // JOB 3602 · DIE ABSCHNITTE UNTER „MEHR" UND DER LEERZUSTAND — die Stellen, die F19 NICHT
+    // liest und die deshalb bis heute unbewacht waren (`archiv/3585/runde-1/RUECKGABE.md:94`).
+    // ----------------------------------------------------------------------------------------
+    //
+    // WOHER DIE WÖRTER KOMMEN. Wo ein Fall oben die deutsche Beschriftung schon festhält, trägt
+    // der Sollwert SEINEN Namen: F16 (`Externe Quelle hinzufügen`, `:399`), F17 (`Sicherheit`
+    // bzw. `Best Practice`, `:433`/`:435`), F18 (`Nichts gefunden.`, `Erfassen`). Die übrigen
+    // hält kein älterer Fall — sie tragen `F20`, weil DIESER Fall sie ab jetzt hält. Gegen das
+    // Vergammeln schützt beide Arten derselbe Satz: F19b Satz 4 verlangt von JEDEM Sollwert, dass
+    // er sich in der DEUTSCHEN Lesung derselben Bühne zeigt.
+    //
+    // ALLE SIND GEMESSEN, nicht aus dem Katalog geraten (Lieferung 1 dieses Auftrags, an der
+    // laufenden Bühne): jedes Wort steht in der deutschen Lesung seines Abschnitts und fehlt in
+    // der englischen. Beispiel `Mehr · belege`: DE „Belege › Sicherheit noch nicht bewertet …
+    // Vertrauen 99 Reife Nutzbar … Output-Eignung ja IP-Sensitivität nicht bewertet", EN
+    // „Evidence › Confidence not rated yet … Trust 99 Maturity Usable … Output eligibility yes
+    // IP sensitivity not rated".
+    //
+    // WAS AUSDRÜCKLICH NICHT HIER STEHT — und warum. `Pedi` (F17 `:436`) und `Konstruktion`
+    // (Provenienz, Herkunftskette) sind DATENWERTE: der Autor und die Abteilung des
+    // Wissensobjekts, von einem Menschen eingegeben. Sie stehen in beiden Sprachen gleich da und
+    // sollen es auch — sie zu übersetzen wäre der Fehler. Ein Sollwert daraus würde also einen
+    // Rückfall melden, wo keiner ist. Dieselbe Begründung hat JOB 3585 für `Konstruktion · 1` und
+    // `Produktion · 1` im Menü „Bereich" festgehalten (`archiv/3585/runde-1/RUECKGABE.md:66`).
+    // Ebenso draussen bleibt der Fliesstext des Wissensobjekts selbst, der im Abschnitt
+    // „Schnappschüsse" als Vorschau steht („Halterungen und Profile sind ohne waagerechte
+    // Oberseiten …") — auch das ist Inhalt und keine Beschriftung.
+    {
+      fall: "F20",
+      teil: "Mehr · quellen",
+      wo: "eintraege",
+      wort: "Quellen und Belege",
+      art: "enthaelt",
+    },
+    {
+      fall: "F16",
+      teil: "Mehr · quellen",
+      wo: "eintraege",
+      wort: "Externe Quelle hinzufügen",
+      art: "enthaelt",
+    },
+    { fall: "F17", teil: "Mehr · belege", wo: "eintraege", wort: "Sicherheit", art: "enthaelt" },
+    { fall: "F20", teil: "Mehr · belege", wo: "eintraege", wort: "Vertrauen", art: "enthaelt" },
+    { fall: "F20", teil: "Mehr · belege", wo: "eintraege", wort: "Reife", art: "enthaelt" },
+    {
+      fall: "F20",
+      teil: "Mehr · belege",
+      wo: "eintraege",
+      wort: "Output-Eignung",
+      art: "enthaelt",
+    },
+    {
+      fall: "F20",
+      teil: "Mehr · belege",
+      wo: "eintraege",
+      wort: "IP-Sensitivität",
+      art: "enthaelt",
+    },
+    {
+      fall: "F20",
+      teil: "Mehr · provenienz",
+      wo: "eintraege",
+      wort: "Provenienz",
+      art: "enthaelt",
+    },
+    {
+      fall: "F17",
+      teil: "Mehr · provenienz",
+      wo: "eintraege",
+      wort: "Best Practice",
+      art: "enthaelt",
+    },
+    {
+      fall: "F20",
+      teil: "Mehr · provenienz",
+      wo: "eintraege",
+      wort: "Vertraulichkeit",
+      art: "enthaelt",
+    },
+    {
+      fall: "F20",
+      teil: "Mehr · provenienz",
+      wo: "eintraege",
+      wort: "Streng vertraulich",
+      art: "enthaelt",
+    },
+    {
+      fall: "F20",
+      teil: "Mehr · provenienz",
+      wo: "eintraege",
+      wort: "Neuen Autor wählen",
+      art: "enthaelt",
+    },
+    {
+      fall: "F20",
+      teil: "Mehr · konflikt",
+      wo: "eintraege",
+      wort: "Konflikt eröffnen",
+      art: "enthaelt",
+    },
+    {
+      fall: "F20",
+      teil: "Mehr · kommentare",
+      wo: "eintraege",
+      wort: "Noch keine Kommentare.",
+      art: "enthaelt",
+    },
+    {
+      fall: "F20",
+      teil: "Mehr · anhaenge",
+      wo: "eintraege",
+      wort: "Foto anhängen",
+      art: "enthaelt",
+    },
+    { fall: "F20", teil: "Mehr · historie", wo: "eintraege", wort: "erstellt", art: "enthaelt" },
+    {
+      fall: "F20",
+      teil: "Mehr · schnappschuesse",
+      wo: "eintraege",
+      wort: "erstellt",
+      art: "enthaelt",
+    },
+    { fall: "F18", teil: "Leerzustand", wo: "eintraege", wort: "Nichts gefunden.", art: "gleich" },
+    { fall: "F18", teil: "Leerzustand", wo: "eintraege", wort: "Erfassen", art: "gleich" },
   ];
 
   interface Ausnahme {
@@ -717,7 +890,32 @@ describe("JOB 3063 · H4 · Funktionsinventar — jede Funktion an ihrem neuen O
    * (Rückgabe, Lieferung 6) und NICHT in dieser Runde repariert — der Auftrag fasst das Produkt
    * nicht an (§10). Verschwindet ein Rückfall, wird F19b rot und der Eintrag gehört gestrichen.
    */
-  const BEKANNTER_RUECKFALL: readonly Ausnahme[] = [];
+  const BEKANNTER_RUECKFALL: readonly Ausnahme[] = [
+    {
+      teil: "Mehr · historie",
+      wort: "erstellt",
+      grund:
+        "GEMESSENER RÜCKFALL (JOB 3602, Lieferung 1): die englische Historie liest " +
+        "„v1 · 9/11/2026 erstellt“ — Datum englisch, der Vermerk deutsch. Er hat im Katalog " +
+        "GAR KEINEN Eintrag: der Server schreibt ihn als deutsches Wort in den Datensatz " +
+        '(`services/knowledge-object/src/service.ts:1816`, `history: [{ … note: "erstellt" }]`), ' +
+        "die Fläche zeigt ihn wörtlich. Deshalb ist es kein Katalogfehler, den man in " +
+        "`apps/web/src/i18n.ts` beheben könnte, und deshalb steht hier eine Fundstelle im Dienst " +
+        "statt im Katalog. Gemeldet und NICHT repariert: das Produkt bleibt in dieser Runde " +
+        "unberührt (§10), die Behebung ist eine eigene Zeile.",
+    },
+    {
+      teil: "Mehr · schnappschuesse",
+      wort: "erstellt",
+      grund:
+        "Derselbe Vermerk aus derselben Quelle, zweite Fundstelle: die Schnappschüsse tragen ihn " +
+        "aus `services/knowledge-object/src/service.ts:1935` (`this.snapshot(ko, author, " +
+        '"erstellt")`). Englisch gelesen: „Initial version — no previous diff. erstellt Open ' +
+        "version“. Er steht als EIGENER Eintrag hier und nicht mit dem der Historie zusammen, " +
+        "weil beide Abschnitte einzeln verschwinden können — wird einer übersetzt, soll F19b " +
+        "genau diesen einen Eintrag als tot melden.",
+    },
+  ];
 
   const AUSNAHMEN: readonly Ausnahme[] = [...VON_NATUR_GLEICH, ...BEKANNTER_RUECKFALL];
 
@@ -740,12 +938,84 @@ describe("JOB 3063 · H4 · Funktionsinventar — jede Funktion an ihrem neuen O
       trifft(l, s),
     ) ?? null;
 
-  /** Die Lesung der Fläche in Englisch — von F19 gemessen, von F19b weiterbenutzt. */
+  interface Fund {
+    sollwert: Sollwert;
+    gefunden: string;
+  }
+
+  /**
+   * Ein Ausschnitt statt einer Textwand.
+   *
+   * Die Menüeinträge, die F19 liest, sind kurze Beschriftungen — sie stehen unverkürzt in der
+   * Meldung, und zwar Zeichen für Zeichen so wie bisher. Ein Abschnitt unter „Mehr" ist dagegen
+   * ein ganzer Absatz (gemessen: bis 640 Zeichen); dort wäre die ganze Lesung in der Meldung
+   * keine Auskunft mehr, sondern eine Wand, in der der Fund untergeht. Gezeigt wird deshalb das
+   * Fundstück mit seiner Umgebung — WELCHES Wort wo steht, bleibt lesbar (Lehre JOB 3573/3581).
+   */
+  const AUSSCHNITT = 120;
+  const kurz = (label: string, wort: string): string => {
+    if (label.length <= AUSSCHNITT) return label;
+    const i = Math.max(0, label.indexOf(wort));
+    const von = Math.max(0, i - 40);
+    const bis = Math.min(label.length, i + wort.length + 40);
+    return `${von > 0 ? "…" : ""}${label.slice(von, bis)}${bis < label.length ? "…" : ""}`;
+  };
+
+  /** Die EINE Meldung für einen deutschen Rückfall — F19, F20 und F21 melden gleich. */
+  const meldung = (f: Fund): string =>
+    `${f.sollwert.fall} · ${f.sollwert.teil}: erwartet eine ENGLISCHE Beschriftung, gefunden „${kurz(f.gefunden, f.sollwert.wort)}“ (die deutsche Beschriftung „${f.sollwert.wort}“ steht unübersetzt da)`;
+
+  /** Eine „Mehr"-Lesung als Flächenteile — einmal für Deutsch (F18/`beforeAll`), einmal für F20. */
+  const mehrAlsTeile = (lesung: MehrLesung): [Flaechenteil, MenueInhalt][] =>
+    lesung.abschnitte.map((k, i): [Flaechenteil, MenueInhalt] => [
+      `Mehr · ${k}`,
+      { gruppen: [], eintraege: [lesung.texte[i] ?? ""] },
+    ]);
+
+  /** Der Leerzustand als Flächenteil — einmal aus F18 (Deutsch), einmal aus F21 (Englisch). */
+  const leerAlsTeil = (leer: { text: string; knopf: string }): [Flaechenteil, MenueInhalt] => [
+    "Leerzustand",
+    { gruppen: [], eintraege: [leer.text, leer.knopf] },
+  ];
+
+  /** Die fünf Teile, die F19 selbst öffnet und liest. */
+  const MENUE_TEILE: readonly Flaechenteil[] = [
+    "Status-Umschalter",
+    "Liste",
+    "Filter",
+    "Bereich",
+    "Eintrag",
+  ];
+
+  /** Die Lesung der Fläche in Englisch — von F19/F20/F21 gefüllt, von F19b weiterbenutzt. */
   let lesungEn: Map<Flaechenteil, MenueInhalt> | null = null;
   /** Dieselbe Fläche in Deutsch, in DERSELBEN Sitzung gelesen — der Massstab für F19b. */
   let lesungDe: Map<Flaechenteil, MenueInhalt> | null = null;
   /** Was von den deutschen Sollwerten in der englischen Lesung stehen geblieben ist. */
-  let deutschGeblieben: { sollwert: Sollwert; gefunden: string }[] | null = null;
+  let deutschGeblieben: Fund[] | null = null;
+
+  /**
+   * Die Sollwerte GENANNTER Flächenteile gegen die englische Lesung halten.
+   *
+   * Der eine Weg, auf dem F19, F20 und F21 urteilen: die Funde wandern in `deutschGeblieben` —
+   * die EINE Menge, aus der F19b danach seine Aussagen zieht —, zurück kommen die Meldungen, die
+   * KEINE Ausnahme deckt. Ohne diesen gemeinsamen Schritt hätte jeder der drei Fälle seine eigene
+   * Auswertung, und die Ausnahmeliste träfe je nach Fall eine andere Entscheidung.
+   */
+  const bewerten = (teile: readonly Flaechenteil[]): string[] => {
+    const en = lesungEn as Map<Flaechenteil, MenueInhalt>;
+    const bekannt = new Set(AUSNAHMEN.map((a) => kennung(a.teil, a.wort)));
+    const funde = DEUTSCHE_SOLLWERTE.filter((s) => teile.includes(s.teil)).flatMap(
+      (sollwert): Fund[] => {
+        const gefunden = treffer(en, sollwert);
+        return gefunden === null ? [] : [{ sollwert, gefunden }];
+      },
+    );
+    deutschGeblieben = [...(deutschGeblieben ?? []), ...funde];
+    return funde
+      .filter((f) => !bekannt.has(kennung(f.sollwert.teil, f.sollwert.wort)))
+      .map(meldung);
+  };
 
   it("F19 · auf Englisch spricht die Bibliothek Englisch — ausser an den hier benannten Stellen", async () => {
     expect(fehler).toBeNull();
@@ -770,6 +1040,18 @@ describe("JOB 3063 · H4 · Funktionsinventar — jede Funktion an ihrem neuen O
       // Der deutsche Massstab wird deshalb HIER genommen, aus derselben Sitzung und derselben
       // Bühne wie die englische Lesung gleich darauf — nicht aus einer zweiten Abschrift.
       lesungDe = await bestand();
+      // JOB 3602 · DIE DEUTSCHE SEITE DER NEUEN TEILE, aus DERSELBEN Sitzung: die Abschnitte unter
+      // „Mehr" hat `beforeAll` gelesen, den Leerzustand F18. Beide stehen hier und nicht erst in
+      // F20/F21, damit F19b Satz 4 („jeder Sollwert zeigt sich in DEUTSCH") auch dann urteilen
+      // kann, wenn F20 oder F21 scheitern — sonst sähe ein Ausfall dort wie eine veraltete
+      // Prüfmenge aus.
+      for (const [teil, inhalt] of mehrAlsTeile(mehr as MehrLesung)) {
+        lesungDe.set(teil, inhalt);
+      }
+      if (leerDe !== null) {
+        const [teil, inhalt] = leerAlsTeil(leerDe);
+        lesungDe.set(teil, inhalt);
+      }
       await spracheSetzen(stand as H4Stand, "en");
       await s.waitForFunction(
         fn(
@@ -802,43 +1084,205 @@ describe("JOB 3063 · H4 · Funktionsinventar — jede Funktion an ihrem neuen O
       expect(alles(inhalt).length, `„${teil}“ ist in Englisch leer`).toBeGreaterThan(0);
     }
 
-    deutschGeblieben = DEUTSCHE_SOLLWERTE.flatMap((sollwert) => {
-      const gefunden = treffer(en, sollwert);
-      return gefunden === null ? [] : [{ sollwert, gefunden }];
-    });
+    // JEDE MELDUNG NENNT WELCHE Beschriftung in WELCHEM Menü — ein nackter Wahrheitswert oder
+    // eine blosse Anzahl wäre keine Aussage (Lehre JOB 3573/3581). Seit JOB 3602 fällt das Urteil
+    // im gemeinsamen `bewerten`, damit F20 und F21 nicht je eine eigene Auswertung bekommen.
+    const offen = bewerten(MENUE_TEILE);
     console.info(
       `JOB 3585 F19 · englische Lesung: ${JSON.stringify(Object.fromEntries(en))} · auf Englisch deutsch geblieben: ${JSON.stringify(
-        deutschGeblieben.map((f) => kennung(f.sollwert.teil, f.sollwert.wort)),
+        (deutschGeblieben as Fund[]).map((f) => kennung(f.sollwert.teil, f.sollwert.wort)),
       )}`,
     );
-
-    const bekannt = new Set(AUSNAHMEN.map((a) => kennung(a.teil, a.wort)));
-    // JEDE MELDUNG NENNT WELCHE Beschriftung in WELCHEM Menü — ein nackter Wahrheitswert oder
-    // eine blosse Anzahl wäre keine Aussage (Lehre JOB 3573/3581).
     expect(
-      deutschGeblieben
-        .filter((f) => !bekannt.has(kennung(f.sollwert.teil, f.sollwert.wort)))
-        .map(
-          (f) =>
-            `${f.sollwert.fall} · ${f.sollwert.teil}: erwartet eine ENGLISCHE Beschriftung, gefunden „${f.gefunden}“ (die deutsche Beschriftung „${f.sollwert.wort}“ steht unübersetzt da)`,
-        ),
+      offen,
       "auf Englisch deutsch geblieben, ohne Eintrag in VON_NATUR_GLEICH oder BEKANNTER_RUECKFALL",
     ).toEqual([]);
     expect(seitenfehler, "Chromium meldete beim Sprachwechsel einen Seitenfehler").toEqual([]);
   }, 180_000);
 
+  // ------------------------------------------------------------------------------------------
+  // F20/F21 · DIESELBE FRAGE FÜR DIE STELLEN, DIE F19 NICHT SIEHT: „MEHR" UND DER LEERZUSTAND.
+  // ------------------------------------------------------------------------------------------
+  //
+  // DER REST, DEN JOB 3585 SELBST BENANNT HAT (`archiv/3585/runde-1/RUECKGABE.md:94`): „F19 liest
+  // die VIER MENÜS UND DEN STATUS-UMSCHALTER, nicht die ganze Fläche. Die Abschnitte unter ‚Mehr‘
+  // (F16/F17) und der Leerzustand (F18) sind damit NICHT dauerhaft überwacht — sie sind in dieser
+  // Runde einmal gemessen …, aber ein späterer Rückfall dort fiele F19 nicht auf."
+  //
+  // WARUM DAS EINE EIGENE RUNDE WERT WAR — die Gefahr ist echt und sie ist gemessen. Ein Fall, der
+  // „Mehr" auf Englisch lesen will, muss die Abschnitte NACH dem Sprachwechsel wieder aufklappen;
+  // genau daran ist JOB 3576 im Tor dreimal gescheitert (`archiv/3576/runde-1/RUECKGABE.md:64`).
+  // Der Unterschied ist die Hausregel dieser Datei: dort stand der neu ladende Fall VOR F16, hier
+  // steht er dahinter. Wenn F20 die Fläche anfasst, haben F16 und F17 ihren Schnappschuss aus
+  // `beforeAll` längst gelesen — F20 kann ihnen nichts mehr nehmen.
+  //
+  // GEMESSEN AM BASISSTAND `4dfc4f0` (Lieferung 1 dieses Auftrags), damit hier nichts geglaubt
+  // wird: unmittelbar nach `spracheSetzen(stand,"en")` stehen NULL `[data-bib-abschnitt]` in der
+  // Seite und `bib-mehr` meldet `aria-expanded="false"` — der Sprachwechsel lädt neu, und die
+  // Fläche kommt zugeklappt zurück. `mehrAufklappen()` geht danach ein zweites Mal und liefert
+  // dieselben 13 Abschnitte wie auf Deutsch (2307 Zeichen EN gegen 2396 Zeichen DE). Nach der
+  // Rückstellung auf Deutsch misst F16 unverändert `{"quelleAnlegen":1,"externSuchen":1,
+  // "beitragMelden":1,"stufeAendern":2,"koppeln":2,"kommentieren":1,"anhang":1,
+  // "konfliktMelden":2}` und der Leerzustand liest wieder „Nichts gefunden."/„Erfassen".
+  //
+  // WARUM F20 UND F21 IHRE SPRACHE JE SELBST SETZEN, statt die von F19 weiterzubenutzen: F19 geht
+  // in seinem `finally` IMMER auf Deutsch zurück, auch wenn er scheitert — darauf verlassen sich
+  // die deutschen Fälle darunter. Ein Fall, der auf die Sprache eines anderen Falls baut, wäre
+  // grün oder rot je nachdem, ob der andere durchgelaufen ist; jeder setzt deshalb seine Lage
+  // selbst her und gibt sie selbst zurück.
+
+  it("F20 · auch die Abschnitte unter „Mehr“ sprechen auf Englisch Englisch", async () => {
+    expect(fehler).toBeNull();
+    const s = (stand as H4Stand).seite;
+    const de = mehr as MehrLesung;
+    let en: MehrLesung | null = null;
+    let seitenfehler: string[] = [];
+    try {
+      await spracheSetzen(stand as H4Stand, "en");
+      await s.waitForFunction(
+        fn(
+          `() => !!document.querySelector('[data-testid="bib-zeile"]') && !!document.querySelector('[data-testid="bib-titel"]')`,
+        ),
+        undefined,
+        { timeout: 30_000 },
+      );
+      // DER SCHRITT, UM DEN ES GEHT. Ohne ihn liest der Fall eine zugeklappte Fläche — und die
+      // Gegenprobe dazu ist Pflicht (Lieferung 5a): nimmt man diese Zeile heraus, ist F20 ROT,
+      // nicht still grün.
+      await mehrAufklappen();
+      en = await mehrLesen();
+      seitenfehler = [...(stand as H4Stand).seitenfehler];
+    } finally {
+      await aufraeumen("F20", async () => {
+        await spracheSetzen(stand as H4Stand, "de");
+      });
+    }
+    const gelesen = en as MehrLesung;
+    lesungEn = lesungEn ?? new Map<Flaechenteil, MenueInhalt>();
+    for (const [teil, inhalt] of mehrAlsTeile(gelesen)) {
+      lesungEn.set(teil, inhalt);
+    }
+
+    // ERFOLGREICH LEER IST NICHT ERFOLGREICH (§9). Eine zugeklappte Fläche fände selbstverständlich
+    // nichts Deutsches — sie hat ja gar nichts. Der Massstab ist die DEUTSCHE Lesung derselben
+    // Sitzung und derselben Bühne (`beforeAll`, über denselben Leser `mehrLesen`), und die
+    // Meldung sagt, um wie viel die englische danebenliegt.
+    expect(
+      `${gelesen.abschnitte.length} Abschnitte`,
+      `die englische Lesung von „Mehr“ deckt sich nicht mit der deutschen — EN ${JSON.stringify(gelesen.abschnitte)} · DE ${JSON.stringify(de.abschnitte)}`,
+    ).toBe(`${de.abschnitte.length} Abschnitte`);
+    expect(
+      gelesen.abschnitte,
+      "in Englisch stehen andere Abschnitte unter „Mehr“ als in Deutsch",
+    ).toEqual(de.abschnitte);
+    expect(
+      gelesen.abschnitte.filter((_, i) => (gelesen.texte[i] ?? "").length === 0),
+      "Abschnitte, die in Englisch KEINEN Text haben — über sie ist nichts gesagt",
+    ).toEqual([]);
+    const zeichenEn = gelesen.texte.join(" ").length;
+    const zeichenDe = de.texte.join(" ").length;
+    console.info(
+      `JOB 3602 F20 · „Mehr“ englisch: ${gelesen.abschnitte.length} Abschnitte / ${zeichenEn} Zeichen (deutsch: ${de.abschnitte.length} / ${zeichenDe}) · ${JSON.stringify(
+        gelesen.abschnitte.map((k, i) => `${k}: ${gelesen.texte[i]}`),
+      )}`,
+    );
+    // Eine englische Lesung, die auf einen Bruchteil der deutschen zusammenfällt, ist keine
+    // Übersetzung, sondern eine halb gezeichnete Fläche. Die Hälfte ist die Grenze, unter der
+    // Gemessenes nicht mehr trägt (gemessen: 2307 gegen 2396 Zeichen, also 96 %).
+    expect(
+      `${zeichenEn > zeichenDe / 2}`,
+      `die englische Lesung von „Mehr“ ist verkümmert: ${zeichenEn} Zeichen gegen ${zeichenDe} in Deutsch`,
+    ).toBe("true");
+
+    expect(
+      bewerten(mehrAlsTeile(gelesen).map(([teil]) => teil)),
+      "in „Mehr“ auf Englisch deutsch geblieben, ohne Eintrag in VON_NATUR_GLEICH oder BEKANNTER_RUECKFALL",
+    ).toEqual([]);
+    expect(seitenfehler, "Chromium meldete beim Sprachwechsel einen Seitenfehler").toEqual([]);
+  }, 180_000);
+
+  it("F21 · auch der Leerzustand der Suche spricht auf Englisch Englisch", async () => {
+    expect(fehler).toBeNull();
+    const s = (stand as H4Stand).seite;
+    let leerEn: { text: string; knopf: string } | null = null;
+    let seitenfehler: string[] = [];
+    try {
+      await spracheSetzen(stand as H4Stand, "en");
+      await s.waitForFunction(
+        fn(
+          `() => !!document.querySelector('[data-testid="bib-zeile"]') && !!document.querySelector('[data-testid="bib-titel"]')`,
+        ),
+        undefined,
+        { timeout: 30_000 },
+      );
+      // DERSELBE WEG, DEN F18 FÄHRT (`:442-461`), nur in Englisch: ein Suchwort, das nichts
+      // findet, und dann der Satz und der Knopf, die dastehen.
+      await s.evaluate(fn(SUCHE_SETZEN), LEERWORT);
+      await s.waitForFunction(
+        fn(`() => !!document.querySelector('[data-testid="bib-leer"]')`),
+        undefined,
+        { timeout: 20_000 },
+      );
+      leerEn = await s.evaluate<{ text: string; knopf: string }>(fn(LEER_LESEN));
+      seitenfehler = [...(stand as H4Stand).seitenfehler];
+    } finally {
+      // ZWEI DINGE GEHEN ZURÜCK, nicht eines: das Suchfeld und die Sprache. Bliebe das Suchwort
+      // stehen, fänden die Fälle darunter eine leere Liste vor, die sie nie gesetzt haben.
+      await aufraeumen("F21 · Suchfeld", async () => {
+        await s.evaluate(fn(SUCHE_SETZEN), "");
+        await s.waitForFunction(
+          fn(`() => !document.querySelector('[data-testid="bib-leer"]')`),
+          undefined,
+          { timeout: 20_000 },
+        );
+      });
+      await aufraeumen("F21", async () => {
+        await spracheSetzen(stand as H4Stand, "de");
+      });
+    }
+    const gelesen = leerEn as { text: string; knopf: string };
+    lesungEn = lesungEn ?? new Map<Flaechenteil, MenueInhalt>();
+    const [teil, inhalt] = leerAlsTeil(gelesen);
+    lesungEn.set(teil, inhalt);
+    console.info(`JOB 3602 F21 · Leerzustand englisch: ${JSON.stringify(gelesen)}`);
+
+    // ERFOLGREICH LEER IST NICHT ERFOLGREICH (§9): ein Leerzustand ohne Satz oder ohne Knopf ist
+    // keine Übersetzung, sondern eine nicht fertig gezeichnete Fläche.
+    expect(gelesen.text.length, "der Leerzustand hat in Englisch keinen Satz").toBeGreaterThan(0);
+    expect(gelesen.knopf.length, "der Leerzustand hat in Englisch keinen Knopf").toBeGreaterThan(0);
+    expect(
+      bewerten(["Leerzustand"]),
+      "im Leerzustand auf Englisch deutsch geblieben, ohne Eintrag in VON_NATUR_GLEICH oder BEKANNTER_RUECKFALL",
+    ).toEqual([]);
+    expect(seitenfehler, "Chromium meldete beim Sprachwechsel einen Seitenfehler").toEqual([]);
+  }, 180_000);
+
   it("F19b · die Ausnahmeliste kann nicht vergammeln — jeder Eintrag muss sich noch zeigen", () => {
-    // KEIN SCHEINBELEG (Lehre JOB 3578 R1): geprüft wird gegen das, was F19 WIRKLICH aus der
-    // Fläche gelesen hat, nicht gegen eine zweite Abschrift der Liste. Ist F19 nicht bis zur
-    // Lesung gekommen, sagt dieser Fall das — statt still grün zu sein.
+    // KEIN SCHEINBELEG (Lehre JOB 3578 R1): geprüft wird gegen das, was F19, F20 und F21 WIRKLICH
+    // aus der Fläche gelesen haben, nicht gegen eine zweite Abschrift der Liste. Ist einer von
+    // ihnen nicht bis zur Lesung gekommen, sagt dieser Fall das — statt still grün zu sein.
+    //
+    // WARUM ER SEIT JOB 3602 HINTER F20/F21 STEHT statt unmittelbar hinter F19: er urteilt über
+    // die Ausnahmeliste als GANZE, und die deckt seit dieser Runde auch „Mehr" und den
+    // Leerzustand ab. Stünde er davor, wären die dortigen Einträge bei jedem Lauf „tot" — nicht
+    // weil sie erledigt sind, sondern weil ihre Lesung noch gar nicht stattgefunden hat.
     expect(
       deutschGeblieben,
-      "F19 hat nichts gelesen — dieser Fall sagt allein nichts",
+      "F19/F20/F21 haben nichts gelesen — dieser Fall sagt allein nichts",
     ).not.toBeNull();
-    const gefunden = new Set(
-      (deutschGeblieben as { sollwert: Sollwert; gefunden: string }[]).map((f) =>
-        kennung(f.sollwert.teil, f.sollwert.wort),
+    const en = lesungEn as Map<Flaechenteil, MenueInhalt> | null;
+    expect(en, "die englische Lesung fehlt — dieser Fall sagt allein nichts").not.toBeNull();
+    // UND ZWAR VOLLSTÄNDIG: fehlt ein Flächenteil in der englischen Lesung, sind seine Sollwerte
+    // „nicht gefunden" und seine Ausnahmen sähen „tot" aus. Das wäre eine Aussage über einen
+    // ausgefallenen Fall, nicht über das Produkt — deshalb steht hier der Teil beim Namen.
+    expect(
+      [...new Set(DEUTSCHE_SOLLWERTE.map((sollwert) => sollwert.teil))].filter(
+        (t) => !(en as Map<Flaechenteil, MenueInhalt>).has(t),
       ),
+      "Flächenteile, die in ENGLISCH gar nicht gelesen wurden",
+    ).toEqual([]);
+    const gefunden = new Set(
+      (deutschGeblieben as Fund[]).map((f) => kennung(f.sollwert.teil, f.sollwert.wort)),
     );
 
     // (1) Ein Eintrag, der sich nicht mehr zeigt, ist erledigt — und gehört gestrichen, nicht
@@ -876,6 +1320,12 @@ describe("JOB 3063 · H4 · Funktionsinventar — jede Funktion an ihrem neuen O
     // gibt — und wäre grün, ohne etwas zu decken.
     const de = lesungDe as Map<Flaechenteil, MenueInhalt> | null;
     expect(de, "F19 hat die deutsche Lesung nicht hergestellt").not.toBeNull();
+    expect(
+      [...new Set(DEUTSCHE_SOLLWERTE.map((sollwert) => sollwert.teil))].filter(
+        (t) => !(de as Map<Flaechenteil, MenueInhalt>).has(t),
+      ),
+      "Flächenteile, die in DEUTSCH gar nicht gelesen wurden",
+    ).toEqual([]);
     expect(
       DEUTSCHE_SOLLWERTE.filter(
         (sollwert) => treffer(de as Map<Flaechenteil, MenueInhalt>, sollwert) === null,
