@@ -30,6 +30,13 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 process.env.KLARWERK_SKIP_KEYCHAIN = "1";
 
 import { buildApp, buildServices } from "../../services/app/src/build-app";
+import {
+  SICHT_TOLERANZ_PX,
+  type Schrittmessung,
+  ersterSichtverlust,
+  imFenster,
+  ueberDemFenster,
+} from "../pruefen-listennavigation/sichtregel";
 
 const DIST = resolve(process.cwd(), "apps/web/dist");
 const ORIGIN = "http://klarwerk.test";
@@ -711,5 +718,515 @@ describe("JOB 2935 · D2 · dieselbe Karte im Classic-Standard und bei Word-nahe
     // neben den Inhalt rutschen — dann waere der Titel erneut in Gefahr.
     expect(l.band.breite / l.karte.breite).toBeGreaterThan(0.7);
     expect(l.band.oben).toBeGreaterThan(l.karte.oben);
+  });
+});
+
+// ==================================================================================================
+// JOB 3593 · L — DIE LANGE WARTESCHLANGE: bleibt beim Durchgehen auch der ARTIKEL im Bild?
+// ==================================================================================================
+//
+// PEDIS SATZ, um den es geht: „links durch die Artikelliste gehen und rechts den passenden Artikel
+// sehen, OHNE jeden Artikel einzeln anzuklicken." JOB 3504 hat die eine Hälfte gebaut und gemessen
+// (Pfeiltaste und Rad schalten weiter, rechts steht der richtige Artikel) — und ben hat an derselben
+// Runde die andere Hälfte als ungemessen benannt (`archiv/3504/runde-1/ben.md:24`, Prüflücke 6):
+//
+//     „Browserfall mit langer Liste ergänzen: Auswahl UND rechten Artikel im Viewport messen.
+//      `scrollIntoView` bewegt möglicherweise die gesamte Seite; tatsächlicher Sichtverlust ist
+//      eine UNBEWIESENE HYPOTHESE."
+//
+// Ungemessen war sie, weil sie in jsdom gar nicht stellbar ist: dort gibt es kein Layout, jeder
+// Kasten ist null gross, und `scrollIntoView` ist ein Spion ohne Wirkung. Sie ist auch keine
+// Wertfrage („welcher Titel steht rechts"), sondern eine Geometriefrage („steht er im Bild").
+//
+// DIESER BLOCK STELLT SIE AN DER ECHTEN SEITE. Er reitet auf demselben Aufbau wie D1/D2 — gebaute
+// Anwendung aus `apps/web/dist`, echte Fastify-App, echte Wissensobjekte über `services.ko.create`
+// — und ist deshalb KEINE neue Chromium-Startstelle im Sinne von
+// `tests/tor-inventar/tor-bestand-vollstaendig.test.ts`: diese Datei steht dort längst.
+//
+// VIER ZAHLEN JE SCHRITT, an derselben Stelle erhoben (Auftrag §5.2): der Kasten des aktiven
+// Eintrags, der Kasten der Karte, die Fenstergrösse und die Rollposition der Seite. Aus ihnen
+// folgen ZWEI getrennte Aussagen — „die Auswahl ist im Fenster" (die Zusage von JOB 3504) und „die
+// Karte ist im Fenster" (die ungeprüfte). Die Regel dahinter steht als benannte Grösse in
+// `tests/pruefen-listennavigation/sichtregel.ts`, nicht als Zahl in den Fällen.
+//
+// BEIDE BEDIENWEGE, weil Pedi ausdrücklich beides verlangt hat und weil sie im Produkt über
+// verschiedene Zuhörer laufen: `onKeyDown` am `<ul>` (`Validation.tsx:1103`) gegen den nativen
+// Radlauf mit `passive: false` (`:730-739`). Ein „analog" wäre hier eine Behauptung.
+const LANGE_LISTE = 40;
+const SCHRITTE = 30;
+const EINTRAG_ANKER = '[data-testid="pruefen-warteschlange-eintrag"]';
+const SCHLANGE_ANKER = '[data-testid="pruefen-warteschlange"]';
+/**
+ * Eine Rastung eines gewöhnlichen Mausrads. Das Produkt schaltet ab `RAD_SCHWELLE_PX = 40`
+ * (`Validation.tsx:196`) und setzt die Summe danach zurück — ein Schub von 100 px ist also genau
+ * EIN Schritt, so wie ein Rastpunkt für einen Menschen genau ein Schritt ist.
+ */
+const RASTE_PX = 100;
+
+/**
+ * In der Seite: die vier Zahlen des Auftrags, plus die Kopplung „steht rechts wirklich dieser
+ * Artikel" — und plus die Antwort auf eine Frage, die der Auftrag so nicht vorgesehen hatte.
+ *
+ * WARUM `window.scrollY` ALLEIN NICHT REICHT (Befund der ersten Messung, Cloud-Lauf
+ * ac00d70ed02946f494558b783656d3e4): Nach vierzehn Radschritten war die Warteschlange nach oben aus
+ * dem Fenster gewandert — und `window.scrollY` stand trotzdem auf 0. Es rollt also nicht das
+ * Fenster, sondern ein Bereich INNERHALB der Seite. Stünde hier nur `window.scrollY`, meldete die
+ * Messung „die Seite hat sich nicht bewegt", während vor den Augen des Nutzers alles wandert — eine
+ * wahre Zahl, die das Gegenteil des Sachverhalts nahelegt. Gemessen wird deshalb BEIDES: das
+ * Fenster und der nächste wirklich rollende Vorfahre der Liste, mit Namen.
+ */
+const LANG_MESSEN = `([eintragAnker, karteAnker, schlangeAnker]) => {
+  const alle = [...document.querySelectorAll(eintragAnker)];
+  const aktiv = document.querySelector(eintragAnker + '[aria-current="true"]');
+  const karte = document.querySelector(karteAnker);
+  const schlange = document.querySelector(schlangeAnker);
+  const kasten = (el) => { const r = el.getBoundingClientRect(); return { oben: r.top, unten: r.bottom, links: r.left, rechts: r.right }; };
+  const kartenTitel = karte ? karte.querySelector('a[data-text="titel"]') : null;
+  // Die Kette der Bereiche, die WIRKLICH rollen — eigene Rollregel UND mehr Inhalt als Platz.
+  // Beides zusammen, weil ein 'overflow: auto' ohne Überlauf nichts bewegt und deshalb nichts
+  // erklärt. Gesucht wird AB DER LISTE SELBST, nicht erst ab ihrem Elternteil: seit JOB 3593 ist
+  // sie der innerste Rollbereich, und genau das soll die Messung zeigen statt voraussetzen.
+  const kette = [];
+  let p = schlange;
+  while (p && p !== document.body && kette.length < 2) {
+    const st = getComputedStyle(p);
+    if (/(auto|scroll|overlay)/.test(st.overflowY) && p.scrollHeight > p.clientHeight + 1) {
+      kette.push({
+        name: p.tagName + '[' + (p.getAttribute('data-testid') || p.className.toString().slice(0, 40)) + ']',
+        top: Math.round(p.scrollTop * 100) / 100,
+      });
+    }
+    p = p.parentElement;
+  }
+  return {
+    anzahl: alle.length,
+    index: aktiv ? alle.indexOf(aktiv) : -1,
+    auswahlTitel: aktiv ? (aktiv.textContent || '').trim() : null,
+    auswahl: aktiv ? kasten(aktiv) : null,
+    karte: karte ? kasten(karte) : null,
+    kartenTitel: kartenTitel ? (kartenTitel.textContent || '').trim() : null,
+    schlange: schlange ? kasten(schlange) : null,
+    fensterHoehe: document.documentElement.clientHeight,
+    fensterBreite: document.documentElement.clientWidth,
+    rollposition: Math.round(window.scrollY * 100) / 100,
+    rollerName: kette[0] ? kette[0].name : 'keiner',
+    rollerTop: kette[0] ? kette[0].top : 0,
+    huelleName: kette[1] ? kette[1].name : 'keiner',
+    huelleTop: kette[1] ? kette[1].top : 0,
+  };
+}`;
+
+/**
+ * Den Tastaturfokus auf den bereits gewählten Eintrag setzen — OHNE zu klicken und OHNE zu rollen.
+ *
+ * Beides mit Absicht: Ein Klick ist eine bewusste Auswahl und führt im schmalen Weg den Blick
+ * (`Validation.tsx:1127-1137`) — gemessen werden soll aber das Durchgehen, nicht das Anklicken.
+ * Und `focus()` ohne `preventScroll` rollte selbst, womit die erste Messung schon verstellt wäre.
+ */
+const FOKUS_AUF_AUSWAHL = `(eintragAnker) => {
+  const el = document.querySelector(eintragAnker + '[aria-current="true"]');
+  if (!el) return false;
+  el.focus({ preventScroll: true });
+  return document.activeElement === el;
+}`;
+
+/** Warten, bis die Auswahl GENAU auf dieser Stelle steht — der Beleg, dass ein Schritt ein Schritt war. */
+const INDEX_IST = `([eintragAnker, ziel]) => {
+  const alle = [...document.querySelectorAll(eintragAnker)];
+  const aktiv = document.querySelector(eintragAnker + '[aria-current="true"]');
+  return !!aktiv && alle.indexOf(aktiv) === ziel;
+}`;
+
+const GENUG_EINTRAEGE = `([eintragAnker, wieviele]) =>
+  document.querySelectorAll(eintragAnker).length >= wieviele`;
+
+/**
+ * Der Ist-Zustand für den Fall, dass ein Schritt NICHT ankommt.
+ *
+ * WARUM DAS EINE EIGENE ERHEBUNG IST (Lehre aus JOB 3575, Wächterfall W3): Ein nacktes
+ * „page.waitForFunction: Timeout 15000ms exceeded" nennt weder den Bedienweg noch den Schritt noch
+ * den Grund, und die erste Messung dieses Blocks ist genau daran hängen geblieben — fünf rote Fälle,
+ * kein einziger Hinweis, WAS nicht ankam. Gemessen wird deshalb, was die drei denkbaren Ursachen
+ * unterscheidet: die Liste ist kürzer als gedacht (`anzahl`), die Auswahl steht woanders (`index`),
+ * oder die Eingabe landet am falschen Ort (`fokus` bei der Taste, `unterDemZeiger` beim Rad).
+ */
+const ZUSTAND = `([eintragAnker, x, y]) => {
+  const alle = [...document.querySelectorAll(eintragAnker)];
+  const aktiv = document.querySelector(eintragAnker + '[aria-current="true"]');
+  const a = document.activeElement;
+  const unter = (x >= 0 && y >= 0) ? document.elementFromPoint(x, y) : null;
+  const benennen = (el) => el
+    ? el.tagName + '[' + (el.getAttribute('data-testid') || '') + ']„' + (el.textContent || '').trim().slice(0, 30) + '"'
+    : 'keiner';
+  return {
+    anzahl: alle.length,
+    index: aktiv ? alle.indexOf(aktiv) : -1,
+    fokus: benennen(a),
+    unterDemZeiger: benennen(unter),
+    rollposition: Math.round(window.scrollY),
+  };
+}`;
+
+/**
+ * Nur die vier Ränder — bewusst NICHT der `Kasten` von D1/D2: der verspricht zusätzlich `breite`,
+ * und diese Messung erhebt sie nicht. Ein Typ, der mehr zusagt als gemessen wird, ist eine stille
+ * Unwahrheit gegenüber dem nächsten Leser.
+ */
+interface Randkasten {
+  oben: number;
+  unten: number;
+  links: number;
+  rechts: number;
+}
+
+interface LangMessung {
+  anzahl: number;
+  index: number;
+  auswahlTitel: string | null;
+  auswahl: Randkasten | null;
+  karte: Randkasten | null;
+  kartenTitel: string | null;
+  schlange: Randkasten | null;
+  fensterHoehe: number;
+  fensterBreite: number;
+  rollposition: number;
+  rollerName: string;
+  rollerTop: number;
+  huelleName: string;
+  huelleTop: number;
+}
+
+/**
+ * Playwright-Eingaben, als Strukturtyp statt als Typimport — dieselbe Bauform wie `Seite`/`Browser`
+ * oben. Ein direkter Typimport aus `playwright` hat in JOB 3176 eine Rüge gekostet, und er ist hier
+ * auch nicht nötig: gebraucht werden genau drei Verben.
+ */
+interface Eingabeseite extends Seite {
+  keyboard: { press(taste: string): Promise<void> };
+  mouse: {
+    move(x: number, y: number): Promise<void>;
+    wheel(dx: number, dy: number): Promise<void>;
+  };
+}
+interface EingabeBrowser {
+  newPage(opts: Record<string, unknown>): Promise<Eingabeseite>;
+  close(): Promise<void>;
+}
+
+/** Ein Bedienweg, vollständig gemessen: dreissig Schritte, je vier Zahlen. */
+interface Weglauf {
+  start: LangMessung;
+  schritte: Schrittmessung[];
+  /** Der Titel, der nach dem letzten Schritt rechts stand — die Nutzenkette bis zur Karte. */
+  letzterKartenTitel: string | null;
+  letzterAuswahlTitel: string | null;
+}
+
+let browser3: EingabeBrowser | null = null;
+let app3: ReturnType<typeof buildApp> | null = null;
+let fehler3: string | null = null;
+let taste: Weglauf | null = null;
+let rad: Weglauf | null = null;
+
+describe("JOB 3593 · L · lange Warteschlange — Auswahl UND Artikel im Fenster, echte Seite in Chromium", () => {
+  beforeAll(async () => {
+    try {
+      if (!existsSync(join(DIST, "index.html"))) {
+        throw new Error("apps/web/dist fehlt — vorher ./tools/build (im Tor laeuft es immer)");
+      }
+      const services = buildServices();
+      app3 = buildApp(services);
+      await app3.ready();
+      await app3.inject({
+        method: "POST",
+        url: "/api/auth/register",
+        payload: { name: "Pedi", email: "pedi@job3593.test", password: "geheim12345" },
+      });
+      const login = await app3.inject({
+        method: "POST",
+        url: "/api/auth/login",
+        payload: { email: "pedi@job3593.test", password: "geheim12345" },
+      });
+      const token = (login.json() as { token: string }).token;
+      const me = await app3.inject({
+        method: "GET",
+        url: "/api/auth/me",
+        headers: { authorization: `Bearer ${token}` },
+      });
+      const autorId = (me.json() as { id: string }).id;
+      // Die lange Liste. Die Titel sind durchnummeriert und zweistellig, damit im Protokoll auf den
+      // ersten Blick steht, WELCHER Artikel gerade gewählt ist — und damit die Kopplung „links
+      // gewählt = rechts gezeigt" eine Aussage und kein Zufallstreffer ist.
+      for (let i = 1; i <= LANGE_LISTE; i += 1) {
+        await services.ko.create({
+          title: `Artikel ${String(i).padStart(2, "0")} der langen Warteschlange`,
+          statement: "Halterungen und Profile ohne waagerechte Oberseiten ausfuehren.",
+          type: "best_practice",
+          category: "Allgemein",
+          author: autorId,
+        } as never);
+      }
+
+      const require = createRequire(import.meta.url);
+      const { chromium } = require("playwright") as {
+        chromium: { launch(o: Record<string, unknown>): Promise<EingabeBrowser> };
+      };
+      // OHNE `--single-process`/`--no-zygote`, aus demselben gemessenen Grund wie bei D2: ein
+      // Einzelprozess-Chromium überlebt einen weiteren Start im selben Node-Prozess nicht.
+      browser3 = await chromium.launch({
+        headless: true,
+        args: ["--no-sandbox", "--disable-gpu"],
+      });
+
+      const a = app3;
+      /** Dieselbe Weiche wie in D1/D2: `/api/*` an die echte App, alles andere aus `dist`. */
+      const weicheLegen = async (s: Eingabeseite): Promise<void> => {
+        await s.route(`${ORIGIN}/**`, async (route) => {
+          const req = route.request();
+          const url = new URL(req.url());
+          if (url.pathname.startsWith("/api/")) {
+            const kopf: Record<string, string> = {};
+            for (const [k, v] of Object.entries(req.headers())) {
+              if (!["host", "origin", "referer", "cookie"].includes(k.toLowerCase())) kopf[k] = v;
+            }
+            kopf.authorization = `Bearer ${token}`;
+            const body = req.postData();
+            const res = await a.inject({
+              method: req.method() as "GET",
+              url: url.pathname + url.search,
+              headers: kopf,
+              ...(body !== null ? { payload: body } : {}),
+            });
+            await route.fulfill({
+              status: res.statusCode,
+              body: res.body,
+              headers: {
+                "content-type": (res.headers["content-type"] as string) ?? "application/json",
+              },
+            });
+            return;
+          }
+          const d = distDatei(url.pathname);
+          await route.fulfill({ status: 200, body: d.body, contentType: d.typ });
+        });
+      };
+
+      /**
+       * EIN Bedienweg, dreissig Schritte weit — jeder Weg auf einer EIGENEN Seite, damit das Rad
+       * nicht dort anfängt, wo die Pfeiltaste aufgehört hat.
+       *
+       * Nach jedem Schritt wird ZUERST gewartet, bis die Auswahl wirklich eine Stelle weiter steht
+       * (`INDEX_IST`), und erst dann gemessen. Das ist kein Komfort, sondern der Messaufbau: React
+       * schreibt den Zustandswechsel im nächsten Anstrich, und `scrollIntoView` läuft in genau
+       * diesem Anstrich. Ohne das Warten läse die Messung den Stand VOR der Bewegung — und das
+       * Warten belegt zugleich, dass dreissig Schritte wirklich dreissig Schritte waren.
+       */
+      const wegMessen = async (weg: "taste" | "rad"): Promise<Weglauf> => {
+        const s = await (browser3 as EingabeBrowser).newPage({
+          viewport: { width: 1280, height: 900 },
+        });
+        await s.addInitScript(
+          `try { localStorage.setItem("kw.designTheme", "modern"); } catch (e) {}`,
+        );
+        await weicheLegen(s);
+        await s.goto(`${ORIGIN}/validierung`, { waitUntil: "load", timeout: 60_000 });
+        await s.waitForFunction(fn("(sel) => document.querySelector(sel) !== null"), KARTE_ANKER, {
+          timeout: 30_000,
+        });
+        await s.waitForFunction(fn(GENUG_EINTRAEGE), [EINTRAG_ANKER, LANGE_LISTE], {
+          timeout: 30_000,
+        });
+        const anker = [EINTRAG_ANKER, KARTE_ANKER, SCHLANGE_ANKER];
+        const start = await s.evaluate<LangMessung | null>(fn(LANG_MESSEN), anker);
+        if (!start || !start.auswahl || !start.karte || !start.schlange) {
+          throw new Error(`${weg}: die Ausgangslage war nicht vollstaendig zu messen`);
+        }
+        if (weg === "taste") {
+          // Der Tastenlauf hängt an der LISTE und fängt nur, was aus ihr aufsteigt — ohne Fokus in
+          // der Liste käme die Pfeiltaste dort nie an (genau diese Grenze misst
+          // `pfeiltasten.test.tsx`). Dass er wirklich sitzt, ist ein Messwert, keine Annahme.
+          const gesetzt = await s.evaluate<boolean>(fn(FOKUS_AUF_AUSWAHL), EINTRAG_ANKER);
+          if (!gesetzt) {
+            throw new Error("der Fokus liess sich nicht auf den gewaehlten Eintrag setzen");
+          }
+        }
+        let letzte = start;
+        const schritte: Schrittmessung[] = [];
+        for (let i = 1; i <= SCHRITTE; i += 1) {
+          let zeigerX = -1;
+          let zeigerY = -1;
+          if (weg === "taste") {
+            await s.keyboard.press("ArrowDown");
+          } else {
+            // Der Zeiger muss ÜBER der Liste stehen, sonst gehört das Rad der Seite (so ist es
+            // gebaut, `Validation.tsx:745-749`). Er wird deshalb vor jedem Schub neu gesetzt — die
+            // Liste wandert ja mit, während die Fläche rollt.
+            //
+            // AUF DIE MITTE DES SICHTBAREN TEILS, und das ist eine Korrektur aus der Messung: Die
+            // erste Fassung setzte ihn auf „Listenoberkante + 10 px, mindestens aber y = 10". Nach
+            // vierzehn Radschritten war die Liste oben aus dem Fenster gewandert, die Untergrenze
+            // griff — und y = 10 liegt im Kopfband der Anwendung. Gemessen wurde dort dann
+            // `A[]„Fragen"`, das Rad gehörte der Seite, und der fünfzehnte Schritt kam nie an
+            // (Cloud-Lauf ac00d70ed02946f494558b783656d3e4). Die Mitte des sichtbaren Ausschnitts
+            // hat diese Kante nicht.
+            const k = letzte.schlange as Randkasten;
+            zeigerX = Math.round((k.links + k.rechts) / 2);
+            zeigerY = Math.round(
+              (Math.max(k.oben, 0) + Math.min(k.unten, letzte.fensterHoehe)) / 2,
+            );
+            await s.mouse.move(zeigerX, zeigerY);
+            await s.mouse.wheel(0, RASTE_PX);
+          }
+          try {
+            await s.waitForFunction(fn(INDEX_IST), [EINTRAG_ANKER, i], { timeout: 15_000 });
+          } catch (e) {
+            const z = await s.evaluate<unknown>(fn(ZUSTAND), [EINTRAG_ANKER, zeigerX, zeigerY]);
+            throw new Error(
+              `${weg}: Schritt ${i} kam nicht an — erwartet Index ${i}, gemessen ${JSON.stringify(z)} (${String(e).split("\n")[0]})`,
+            );
+          }
+          const m = await s.evaluate<LangMessung | null>(fn(LANG_MESSEN), anker);
+          if (!m || !m.auswahl || !m.karte || !m.schlange) {
+            throw new Error(`${weg}: Schritt ${i} war nicht vollstaendig zu messen`);
+          }
+          schritte.push({
+            schritt: i,
+            index: m.index,
+            auswahl: m.auswahl,
+            karte: m.karte,
+            fensterHoehe: m.fensterHoehe,
+            rollposition: m.rollposition,
+            rollerTop: m.rollerTop,
+            rollerName: m.rollerName,
+            huelleTop: m.huelleTop,
+            huelleName: m.huelleName,
+          });
+          letzte = m;
+        }
+        const lauf: Weglauf = {
+          start,
+          schritte,
+          letzterKartenTitel: letzte.kartenTitel,
+          letzterAuswahlTitel: letzte.auswahlTitel,
+        };
+        // DER BEFUND, als Zahl und nicht als Eindruck (Auftrag §5.3) — und ausgegeben, SOBALD ein
+        // Weg fertig ist, nicht erst wenn beide es sind. In der ersten Messung lief der Tastenweg
+        // vollständig durch, brach der Radweg danach ab, und weil das Protokoll am Ende stand, war
+        // der fertige Befund der Taste mit verloren.
+        console.info(
+          `JOB 3593 L · ${weg} · Auswahl ${JSON.stringify(ersterSichtverlust(schritte, "auswahl"))} · Karte ${JSON.stringify(ersterSichtverlust(schritte, "karte"))}`,
+        );
+        console.info(
+          `JOB 3593 L · ${weg} · Start ${JSON.stringify({ anzahl: start.anzahl, auswahl: start.auswahl, karte: start.karte, fensterHoehe: start.fensterHoehe })} · Stuetzstellen ${JSON.stringify(schritte.filter((x) => [1, 10, 20, SCHRITTE].includes(x.schritt)))} · rechts „${lauf.letzterKartenTitel}"`,
+        );
+        return lauf;
+      };
+
+      taste = await wegMessen("taste");
+      rad = await wegMessen("rad");
+    } catch (e) {
+      fehler3 = String(e).split("\n").slice(0, 3).join(" | ");
+      // Ins Protokoll, nicht nur in die Zusicherung: vitest kürzt den erwarteten Wert einer
+      // fehlgeschlagenen `toBeNull()`-Zusicherung auf wenige Zeichen („'TimeoutError: page.wait…'"),
+      // und genau die Zeichen dahinter sind der Befund.
+      console.info(`JOB 3593 L · ABBRUCH · ${fehler3}`);
+    }
+  }, 300_000);
+
+  afterAll(async () => {
+    await browser3?.close();
+    await app3?.close();
+  }, 60_000);
+
+  it("L0 · die Buehne steht: vierzig offene Artikel, und dreissig Schritte sind dreissig Schritte", () => {
+    expect(fehler3).toBeNull();
+    expect(taste).not.toBeNull();
+    expect(rad).not.toBeNull();
+    for (const lauf of [taste, rad]) {
+      // Ohne diese Zeilen könnte der Block unbemerkt an einer kurzen Liste messen — und dann sagte
+      // ein grünes L2 nichts über Pedis Fall aus.
+      expect(
+        lauf?.start.anzahl,
+        "die Warteschlange ist kuerzer als bestellt",
+      ).toBeGreaterThanOrEqual(LANGE_LISTE);
+      expect(lauf?.start.index, "zu Beginn ist der erste Eintrag gewaehlt").toBe(0);
+      expect(lauf?.schritte.at(-1)?.index).toBe(SCHRITTE);
+      // Die Nutzenkette bis zur Karte: rechts steht wirklich der Artikel, der links gewählt ist.
+      expect(lauf?.letzterKartenTitel).toBe(lauf?.letzterAuswahlTitel);
+      expect(lauf?.letzterKartenTitel).toContain("Artikel 31");
+    }
+  });
+
+  it("L1 · Pfeiltaste: die Auswahl bleibt im Fenster — die Zusage aus JOB 3504, hier in Pixeln", () => {
+    expect(fehler3).toBeNull();
+    const befund = ersterSichtverlust(taste?.schritte ?? [], "auswahl");
+    expect(
+      befund.schritt,
+      `die Auswahl verlaesst das Fenster bei Schritt ${befund.schritt} (${befund.fehlbetragPx} px)`,
+    ).toBeNull();
+  });
+
+  it("L2 · Pfeiltaste: und die KARTE des gewaehlten Artikels bleibt im Fenster", () => {
+    expect(fehler3).toBeNull();
+    const befund = ersterSichtverlust(taste?.schritte ?? [], "karte");
+    expect(
+      befund.schritt,
+      `die Karte verlaesst das Fenster bei Schritt ${befund.schritt} (${befund.fehlbetragPx} px ueber dem Rand, Rollposition ${befund.rollposition})`,
+    ).toBeNull();
+  });
+
+  it("L3 · Mausrad: die Auswahl bleibt im Fenster", () => {
+    expect(fehler3).toBeNull();
+    const befund = ersterSichtverlust(rad?.schritte ?? [], "auswahl");
+    expect(
+      befund.schritt,
+      `die Auswahl verlaesst das Fenster bei Schritt ${befund.schritt} (${befund.fehlbetragPx} px)`,
+    ).toBeNull();
+  });
+
+  it("L4 · Mausrad: und die KARTE des gewaehlten Artikels bleibt im Fenster", () => {
+    expect(fehler3).toBeNull();
+    const befund = ersterSichtverlust(rad?.schritte ?? [], "karte");
+    expect(
+      befund.schritt,
+      `die Karte verlaesst das Fenster bei Schritt ${befund.schritt} (${befund.fehlbetragPx} px ueber dem Rand, Rollposition ${befund.rollposition})`,
+    ).toBeNull();
+  });
+
+  it("L6 · und die Bewegung liegt jetzt in der LISTE, nicht mehr in der Huelle darum", () => {
+    expect(fehler3).toBeNull();
+    for (const [name, lauf] of [
+      ["Pfeiltaste", taste],
+      ["Mausrad", rad],
+    ] as const) {
+      const letzte = lauf?.schritte.at(-1);
+      expect(letzte, `${name}: kein letzter Schritt gemessen`).toBeTruthy();
+      if (!letzte) continue;
+      // DER STRUKTURELLE KERN DER REPARATUR, und ohne ihn sagten L2/L4 nichts Dauerhaftes: Vor
+      // JOB 3593 war der innerste rollende Bereich um die Liste herum die Huelle der Anwendung
+      // (`MAIN[flex-1 overflow-y-auto …]`), und die traegt die Karte gleich mit — deshalb wanderte
+      // sie mit hinaus. Jetzt rollt die Liste selbst. Faellt diese Zeile, ist der alte Weg zurueck.
+      expect(letzte.rollerName, `${name}: es rollt ${letzte.rollerName}`).toContain(
+        "pruefen-warteschlange",
+      );
+      // Und die Bewegung liegt wirklich dort: die Liste ist weit gerollt, die Huelle kaum.
+      expect(letzte.rollerTop, `${name}: die Liste hat sich nicht bewegt`).toBeGreaterThan(
+        letzte.huelleTop,
+      );
+    }
+  });
+
+  it("L5 · die Regel selbst taugt: sie erkennt einen Kasten, der nachweislich ausserhalb liegt", () => {
+    // Gegenprobe zur Elle (Auftrag §8.2b). Ohne sie könnte `imFenster` alles durchwinken und L2/L4
+    // wären grün, ohne etwas zu messen. Die Zahlen sind echte Lagen, keine erfundenen: ein Kasten
+    // knapp über dem Rand, einer weit darüber, einer unter dem Fenster, einer sauber im Bild.
+    const hoehe = 900;
+    expect(imFenster({ oben: 138.5, unten: 392.75 }, hoehe)).toBe(true);
+    expect(imFenster({ oben: -SICHT_TOLERANZ_PX, unten: 200 }, hoehe)).toBe(true);
+    expect(imFenster({ oben: -30, unten: 200 }, hoehe)).toBe(false);
+    expect(imFenster({ oben: -2, unten: 200 }, hoehe)).toBe(false);
+    expect(imFenster({ oben: 950, unten: 1200 }, hoehe)).toBe(false);
+    expect(ueberDemFenster({ oben: -30, unten: 200 })).toBe(30);
+    expect(ueberDemFenster({ oben: 138.5, unten: 392.75 })).toBe(0);
   });
 });

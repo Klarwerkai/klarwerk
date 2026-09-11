@@ -74,8 +74,25 @@ export interface Brett {
   container: HTMLDivElement;
   /** Jeder `scrollIntoView`-Aufruf der Fläche — jsdom kennt die Methode nicht von selbst. */
   springen: Fn;
+  /**
+   * Der QueryClient dieser Montage. Er steht hier, seit JOB 3593 die Lage „Bestand da, Auffrischung
+   * gescheitert" messen muss: die entsteht nur, wenn eine ERFOLGREICHE Antwort schon im Cache liegt
+   * und eine NACHFOLGENDE scheitert (`zaehler.ts:131,145`) — das lässt sich nur auslösen, wenn man
+   * die Abfrage von aussen für ungültig erklären kann.
+   */
+  qc: QueryClient;
   abbauen: () => void;
 }
+
+/**
+ * Welche Antwort die Warteschlangen-Abfrage gibt — und damit, welche der Lagen die Fläche zeigt
+ * (`flaechenZustand`, `zaehler.ts:116`).
+ */
+export type Boardantwort =
+  | { art: "bestand"; titel: readonly string[] }
+  | { art: "leer" }
+  | { art: "erstfehler" }
+  | { art: "laedt" };
 
 export async function flush(): Promise<void> {
   await act(async () => {
@@ -86,8 +103,37 @@ export async function flush(): Promise<void> {
 const originalScroll = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollIntoView");
 
 export async function mounteBrett(titel: readonly string[]): Promise<Brett> {
+  const brett = await montiere({ art: "bestand", titel });
+  expect(eintraege(brett), "die Warteschlange steht").toHaveLength(titel.length);
+  brett.springen.mockClear();
+  return brett;
+}
+
+/**
+ * Dieselbe Fläche in einer ANDEREN Lage montieren — laden, leer oder Erstfehler.
+ *
+ * Sie liegt neben `mounteBrett`, weil die dortige Zusicherung („die Warteschlange steht") in genau
+ * diesen Lagen zu Recht nicht gilt: dort gibt es keine Warteschlange, und das IST die Aussage, die
+ * gemessen wird (JOB 3593, §9 des Auftrags).
+ */
+export async function mounteLage(antwort: Boardantwort): Promise<Brett> {
+  return montiere(antwort);
+}
+
+async function montiere(antwort: Boardantwort): Promise<Brett> {
   await i18n.changeLanguage("de");
-  (endpoints.validation.board as unknown as Fn).mockResolvedValue(zeilen(titel) as never);
+  const board = endpoints.validation.board as unknown as Fn;
+  if (antwort.art === "bestand") {
+    board.mockResolvedValue(zeilen(antwort.titel) as never);
+  } else if (antwort.art === "leer") {
+    board.mockResolvedValue([] as never);
+  } else if (antwort.art === "erstfehler") {
+    board.mockRejectedValue(new Error("die Warteschlange war nicht zu holen"));
+  } else {
+    // „Lädt" heisst: es kommt (noch) gar keine Antwort — eine Zusage, die nie erfüllt wird. Kein
+    // `setTimeout`, weil die Lage kein Zeitpunkt ist, sondern ein Zustand.
+    board.mockReturnValue(new Promise(() => {}) as never);
+  }
   (endpoints.directory.list as unknown as Fn).mockResolvedValue([
     { id: "u9", name: "Erfasser" },
   ] as never);
@@ -116,12 +162,20 @@ export async function mounteBrett(titel: readonly string[]): Promise<Brett> {
       ),
     );
   });
-  for (let i = 0; i < 8 && container.querySelectorAll(KARTE).length === 0; i += 1) {
+  // Auf die Karte warten, solange eine kommen KANN. In den Lagen ohne Bestand kommt keine — dort
+  // wären acht Durchläufe reine Wartezeit, und das Ausbleiben der Karte ist kein Fehler, sondern
+  // die Lage selbst. Ein fester Durchlauf bleibt trotzdem: die Fläche muss einmal zeichnen dürfen.
+  if (antwort.art === "bestand") {
+    for (let i = 0; i < 8 && container.querySelectorAll(KARTE).length === 0; i += 1) {
+      await flush();
+    }
+  } else {
     await flush();
   }
   const brett: Brett = {
     container,
     springen,
+    qc,
     abbauen: () => {
       act(() => root.unmount());
       qc.clear();
@@ -133,8 +187,6 @@ export async function mounteBrett(titel: readonly string[]): Promise<Brett> {
       }
     },
   };
-  expect(eintraege(brett), "die Warteschlange steht").toHaveLength(titel.length);
-  springen.mockClear();
   return brett;
 }
 

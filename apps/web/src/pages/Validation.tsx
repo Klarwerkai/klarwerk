@@ -713,6 +713,17 @@ export function Validation(): JSX.Element {
     // gewandert ist — beim Klick geschieht das ausdrücklich NICHT (das Ziel ist ja getroffen worden
     // und steht damit schon im Blick; JOB 3464 misst genau das). Der Zielknopf steht bereits im
     // Baum, bevor React neu zeichnet: die Liste ändert sich beim Schalten nicht, nur ihre Markierung.
+    //
+    // UND DER ARTIKEL RECHTS BLEIBT ES AUCH — das ist seit JOB 3593 der zweite Teil der Zusage.
+    // `scrollIntoView` rollt den nächsten Vorfahren, der rollen KANN. Bis hierher war das nicht die
+    // Liste (sie hatte weder Höhe noch eigene Rollregel), sondern der Hauptbereich der Hülle
+    // (`<main class="flex-1 overflow-y-auto …">`) — und in dem liegt die Karte gleich mit. Gemessen
+    // an vierzig offenen Artikeln bei 1280×900 (`tests/design/job2935-validierung-fussband.test.ts`,
+    // Block L): ab dem FÜNFZEHNTEN Schritt stand die Karte 38,5 px über dem Fensterrand, bei
+    // Schritt 20 war sie ganz draussen (oben −259,5 / unten −5,25 px), bei Schritt 30 bei −702,5 px.
+    // Wer sich durch die Liste arbeitete, las ab da nichts mehr — genau das, was Pedi nicht wollte.
+    // Die Liste hat deshalb jetzt ihren EIGENEN Rollbereich (weiter unten am `<ul>`); dieser Aufruf
+    // bleibt unverändert und wirkt nur noch in ihr.
     warteschlangeRef.current
       ?.querySelectorAll<HTMLElement>('[data-testid="pruefen-warteschlange-eintrag"]')
       ?.[i + delta]?.scrollIntoView({ block: "nearest", behavior: "instant" });
@@ -1096,10 +1107,24 @@ export function Validation(): JSX.Element {
             // oder irgendwo sonst auf der Seite kommt hier nie an — die Liste ist die Grenze.
             // Der Fokus wohnt in den EINTRÄGEN (es sind Knöpfe); die Liste trägt nur die
             // Weiterschaltung und bekommt deshalb weder Rolle noch eigene Fokussierbarkeit.
+            //
+            // JOB 3593: die Liste rollt SELBST — und nur in der breiten Bauform, in der rechts
+            // überhaupt eine Karte daneben steht. Ohne diese zwei Regeln fand `auswahlSchieben`
+            // keinen rollbaren Vorfahren innerhalb der Fläche und bewegte den Hauptbereich der
+            // Hülle; die Karte wanderte dabei mit aus dem Bild (Zahlen an `auswahlSchieben`).
+            //
+            // `70vh` ist kein gegriffener Wert, sondern das Maß, das dieselbe Fläche für ihr
+            // Menüblatt schon benutzt (`PruefenMenue.tsx:106`). Es hält die Liste vollständig im
+            // Fenster — und genau das ist die Bedingung dafür, dass `scrollIntoView` nach ihr
+            // keinen weiteren Vorfahren mehr rollen muss.
+            //
+            // Der SCHMALE Weg bleibt unberührt (`lg:` greift erst ab 1024 px): dort steht die Karte
+            // unter der Liste, nicht neben ihr, und die bewusste Auswahl führt den Blick ausdrücklich
+            // zu ihr (`:1127-1137`). Eine gedeckelte Liste wäre dort eine Verschlechterung.
             <ul
               ref={warteschlangeRef}
               data-testid="pruefen-warteschlange"
-              className="flex flex-col gap-1"
+              className="flex flex-col gap-1 lg:max-h-[70vh] lg:overflow-y-auto"
               onKeyDown={(e) => {
                 if (e.key !== "ArrowDown" && e.key !== "ArrowUp") {
                   return;
