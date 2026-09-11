@@ -51,14 +51,16 @@ const ASK_CANDIDATE_PREFILTER_LIMIT = 200;
 // JOB 531 — DIE VORAUSWAHL DARF SICH NICHT AUF DIE RANGFOLGE DER DATENQUELLE VERLASSEN.
 // ================================================================================================
 //
-// DER BEFUND. Die Deckelung der Vorauswahl war richtig, ihre Annahme war es nicht: sie setzte
-// voraus, dass die Quelle RELEVANZ-bewusst deckelt. Die beiden Adapter tun das unterschiedlich —
-//   · InMemoryKoRepo sortiert (Term-Trefferzahl ↓, validiert, Trust ↓) und schneidet danach,
-//   · PgKoRepo sortiert `ORDER BY (status='validiert') DESC, trust DESC LIMIT n` OHNE Relevanzmaß.
-// Solange der Bestand klein ist, fällt das nicht auf. Wächst er, füllen schwach relevante, aber
-// validierte Objekte mit hohem Trust das Limit, und der eigentlich passende Treffer fällt aus der
-// Vorauswahl — im Produktionsadapter, nicht im Testadapter. Dieselbe Frage, derselbe Bestand,
-// zwei Ergebnisse; die Abweichung beginnt genau dort, wo niemand mehr nachzählt.
+// DER HISTORISCHE BEFUND (JOB 531). Die Deckelung der Vorauswahl war richtig, ihre Annahme
+// war es nicht: sie setzte voraus, dass jede Quelle RELEVANZ-bewusst deckelt. Damals sortierte
+// PgKoRepo nur nach validiert/Trust. Bei wachsendem Bestand verdrängten schwach relevante,
+// validierte Objekte mit hohem Trust den passenden Treffer — anders als im Speicherbestand.
+// Diese frühere Abweichung begründete den adapterunabhängigen Weg unten.
+// HEUTE haben beide Adapter dieselbe Rangfolge vor dem Limit:
+//   · InMemoryKoRepo sortiert (Term-Trefferzahl ↓, validiert ↓, Trust ↓) und schneidet danach,
+//   · PgKoRepo sortiert (Term-Trefferzahl ↓, validiert ↓, Trust ↓) und deckelt in der Abfrage.
+// Beleg: services/knowledge-object/src/repo-pg.ts, JOB 3583. Die Härtung gegen schwächere
+// Quellen bleibt sinnvoll; sie setzt diese heutige Übereinstimmung nicht voraus.
 //
 // DIE LÖSUNG, adapterunabhängig und weiterhin gedeckelt: je Fragebegriff EINE eigene, hart
 // begrenzte Quellabfrage; die Vereinigung wird nach der Zahl der abgedeckten Fragebegriffe

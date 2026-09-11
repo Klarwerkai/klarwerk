@@ -9,28 +9,25 @@ import { DEFAULT_TOP_K, Reasoner, queryTokens } from "../../services/reasoner";
 // JOB 531 · ASK-TOPK-SCALING — DER SKALIERUNGSVERTRAG DER KANDIDATEN-VORAUSWAHL.
 // ================================================================================================
 //
-// DER BEFUND, DEN DIESER VERTRAG FESTHÄLT. Die Ask-Vorauswahl ist gedeckelt (gut), aber sie war
-// darauf angewiesen, dass die Datenquelle RELEVANZ-bewusst deckelt. Genau das tun die beiden
-// Adapter UNTERSCHIEDLICH:
+// DER HISTORISCHE BEFUND (JOB 531). Die Ask-Vorauswahl war darauf angewiesen, dass die
+// Datenquelle RELEVANZ-bewusst deckelt. Damals sortierte PgKoRepo nur nach validiert/Trust,
+// der Speicherbestand dagegen zuerst nach Term-Trefferzahl. Bei wachsendem Bestand konnten
+// schwach relevante, validierte Objekte mit hohem Trust den passenden Treffer verdrängen.
 //
-//   · InMemoryKoRepo.findCandidates sortiert nach (Term-Trefferzahl ↓, validiert, Trust ↓) und
-//     schneidet DANACH auf `limit`. Ein hochrelevanter Treffer überlebt den Deckel immer.
-//   · PgKoRepo.findCandidates sortiert `ORDER BY (status='validiert') DESC, trust DESC LIMIT n` —
-//     OHNE Relevanzmaß. Wächst der Bestand, füllen schwach relevante, validierte Objekte mit
-//     hohem Trust das Limit, und der eigentlich passende Treffer fällt aus der Vorauswahl.
-//
-// Das ist keine Testlücke, sondern eine Verhaltensdifferenz zwischen Test-/Dev-Adapter und dem
-// Produktionsadapter: dieselbe Frage, derselbe Bestand, ein anderes Ergebnis — und zwar erst
-// AB einer bestimmten Bestandsgröße, also genau dann, wenn niemand mehr hinsieht.
+// HEUTE: Seit JOB 3583 gilt auch in services/knowledge-object/src/repo-pg.ts die Trefferzahl zuerst.
+//   · InMemoryKoRepo.findCandidates sortiert (Term-Trefferzahl ↓, validiert ↓, Trust ↓).
+//   · PgKoRepo.findCandidates sortiert (Term-Trefferzahl ↓, validiert ↓, Trust ↓).
+// Der Doppelgänger bildet die Rangfolge des Produktionsadapters
+// VOR JOB 3583 nach — bewusst die schwächere Quelle als die Produktion, gegen die dieser Vertrag härtet.
 //
 // DER VERTRAG, den dieser Test bindet, ist deshalb adapterunabhängig formuliert:
 //   Die Vorauswahl von Ask muss einen Treffer, der MEHR Fragetoken abdeckt als die Störer,
 //   auch dann erreichen, wenn die Datenquelle ausschließlich nach (validiert, Trust) deckelt.
 // Die Deckelung selbst bleibt Pflicht: es wird nie der ganze Bestand geladen.
 //
-// Der Doppelgänger unten bildet die Pg-Rangfolge exakt nach (ODER-Match, dann validiert/Trust,
-// dann hartes Limit). Er ist bewusst kein Mock mit Wunschverhalten, sondern die ehrliche
-// Nachbildung des Produktionsadapters.
+// Der Doppelgänger bildet die Rangfolge des Produktionsadapters
+// VOR JOB 3583 nach — bewusst die schwächere Quelle als die Produktion, gegen die dieser Vertrag härtet.
+// ODER-Match, dann validiert/Trust, dann hartes Limit.
 
 const FRAGE = "Wie wird der Spezialzylinder SPZ42 gewartet?";
 // Die Texte der Objekte werden AUS den echten Fragetoken gebaut. Damit hängt der Vertrag nicht an
@@ -46,9 +43,11 @@ interface Aufruf {
 }
 
 /**
- * Doppelgänger des PRODUKTIONSADAPTERS (PgKoRepo-Semantik):
+ * Der Doppelgänger bildet die Rangfolge des Produktionsadapters
+ * VOR JOB 3583 nach — bewusst die schwächere Quelle als die Produktion, gegen die dieser Vertrag härtet.
+ *
  * ODER-Treffer über die Terme, Rangfolge (validiert zuerst, Trust absteigend), hartes Limit.
- * KEIN Relevanzmaß — genau das ist der Unterschied zum In-Memory-Adapter.
+ * KEIN Relevanzmaß — die adapterunabhängige Härtung braucht weiterhin genau diese schwache Quelle.
  */
 function pgAehnlicherKoService(bestand: readonly KnowledgeObject[]): {
   koService: KoService;
