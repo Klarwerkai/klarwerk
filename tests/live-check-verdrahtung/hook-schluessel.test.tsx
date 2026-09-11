@@ -13,7 +13,11 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 const zaehler = vi.hoisted(() => ({
   nutzlasten: [] as Record<string, unknown>[],
-  antwort: { status: "done", similar: [], conflicts: [] } as Record<string, unknown>,
+  antwort: { status: "done", similar: [], conflicts: [] } as
+    | Record<string, unknown>
+    | Promise<Record<string, unknown>>,
+  fehler: null as Error | null,
+  renderLagen: [] as string[],
 }));
 
 // Nur der Transport ist gestellt; der echte `endpoints.knowledge.check`-Serializer bleibt in Kraft
@@ -28,6 +32,7 @@ vi.mock("../../apps/web/src/api/client", async () => {
       ...echt.api,
       post: vi.fn(async (_pfad: string, body: Record<string, unknown>) => {
         zaehler.nutzlasten.push(body);
+        if (zaehler.fehler) throw zaehler.fehler;
         return zaehler.antwort;
       }),
     },
@@ -58,6 +63,7 @@ function Sonde(props: {
     props.stand,
     DEBOUNCE,
   );
+  zaehler.renderLagen.push(`${checkStatus}/${verdict.status}`);
   return createElement("span", { "data-testid": "lage" }, `${checkStatus}/${verdict.status}`);
 }
 
@@ -66,16 +72,19 @@ async function zeigen(props: {
   herkunft?: ReasonerProvenance;
   stand?: number;
 }): Promise<void> {
+  zaehler.renderLagen = [];
   await act(async () => {
     root.render(createElement(Sonde, props));
   });
 }
 
-// Echte Zeit: der Haken entprellt über `setTimeout`, und die Antwort kommt über Mikroaufgaben zurück.
-async function abwarten(): Promise<void> {
+// Nur die virtuelle Uhr löst die Entprellung aus. Kein langsamer Prüfkasten kann sie während
+// zeigen() schlagen. Danach zählt der beobachtete Zustand; 5000 ms sind nur die Abbruchschwelle.
+async function abwarten(erwartet = "done/new"): Promise<void> {
   await act(async () => {
-    await new Promise((r) => setTimeout(r, DEBOUNCE + 20));
+    await vi.advanceTimersByTimeAsync(DEBOUNCE);
   });
+  await vi.waitFor(() => expect(lage()).toBe(erwartet), { timeout: 5000 });
 }
 
 function lage(): string {
@@ -89,6 +98,8 @@ const HERKUNFT = (draftId: string): ReasonerProvenance => ({
 });
 
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  zaehler.fehler = null;
   zaehler.nutzlasten = [];
   zaehler.antwort = { status: "done", similar: [], conflicts: [] };
   container = document.createElement("div");
@@ -99,6 +110,7 @@ afterEach(() => {
   act(() => root.unmount());
   container.remove();
   vi.clearAllMocks();
+  vi.useRealTimers();
 });
 
 it("H1 · NUR die Entwurfskennung wechselt: das ist eine neue Frage", async () => {
@@ -109,6 +121,7 @@ it("H1 · NUR die Entwurfskennung wechselt: das ist eine neue Frage", async () =
   // Der alte Befund gilt SOFORT nicht mehr — vor der Antwort steht „wird geprüft", nie „done"
   // (Zustandsmodell §9: keine Aussage ohne frische Grundlage).
   expect(lage()).toBe("checking/checking");
+  expect(zaehler.renderLagen[0]).toBe("checking/checking");
   await abwarten();
   expect(zaehler.nutzlasten).toHaveLength(2);
   expect(zaehler.nutzlasten[1]?.draftId).toBe("d-b");
@@ -122,6 +135,7 @@ it("H2 · derselbe Anker, aber ein NEU GESETZTER gespeicherter Stand: auch das i
   expect(zaehler.nutzlasten).toHaveLength(1);
   await zeigen({ text: TEXT, herkunft: HERKUNFT("d-a"), stand: 2 });
   expect(lage()).toBe("checking/checking");
+  expect(zaehler.renderLagen[0]).toBe("checking/checking");
   await abwarten();
   expect(zaehler.nutzlasten).toHaveLength(2);
 });
@@ -137,4 +151,58 @@ it("H3 · GEGENKONTROLLE: ändert sich nichts, wird auch nicht neu gefragt", asy
   await abwarten();
   expect(zaehler.nutzlasten).toHaveLength(1);
   expect(lage()).toBe("done/new");
+});
+
+it("H4 · Transportfehler zeigt failed/unavailable", async () => {
+  zaehler.fehler = new Error("Transport unterbrochen");
+  await zeigen({ text: TEXT, herkunft: HERKUNFT("d-a"), stand: 1 });
+  expect(lage()).toBe("checking/checking");
+  await abwarten("failed/unavailable");
+  expect(zaehler.nutzlasten).toHaveLength(1);
+});
+
+it("H5 · Text unter der Mindestlänge bleibt idle ohne Anfrage", async () => {
+  await zeigen({ text: "kurz", herkunft: HERKUNFT("d-a"), stand: 1 });
+  expect(lage()).toBe("idle/idle");
+  await abwarten("idle/idle");
+  expect(zaehler.nutzlasten).toHaveLength(0);
+});
+
+it.each(["erfolg", "fehler"])(
+  "H6 · Wechsel bei laufender Anfrage verwirft verspäteten %s des alten Schlüssels",
+  async (ausgang) => {
+    let antworten!: (wert: Record<string, unknown>) => void;
+    let scheitern!: (grund: Error) => void;
+    zaehler.antwort = new Promise<Record<string, unknown>>((resolve, reject) => {
+      antworten = resolve;
+      scheitern = reject;
+    });
+    await zeigen({ text: TEXT, herkunft: HERKUNFT("d-a"), stand: 1 });
+    await abwarten("checking/checking");
+    expect(zaehler.nutzlasten).toHaveLength(1);
+
+    zaehler.antwort = { status: "pending", similar: [], conflicts: [] };
+    await zeigen({ text: TEXT, herkunft: HERKUNFT("d-b"), stand: 1 });
+    expect(lage()).toBe("checking/checking");
+    expect(zaehler.renderLagen[0]).toBe("checking/checking");
+    await abwarten("pending/pending");
+    expect(zaehler.nutzlasten).toHaveLength(2);
+    expect(zaehler.nutzlasten[1]?.draftId).toBe("d-b");
+
+    await act(async () => {
+      if (ausgang === "erfolg") antworten({ status: "done", similar: [], conflicts: [] });
+      else scheitern(new Error("Alter Transport gescheitert"));
+    });
+    expect(lage()).toBe("pending/pending");
+  },
+);
+
+it("H7 · Wechsel vor der Entprellung bricht den alten Zeitgeber ab", async () => {
+  await zeigen({ text: TEXT, herkunft: HERKUNFT("d-a"), stand: 1 });
+  await zeigen({ text: TEXT, herkunft: HERKUNFT("d-b"), stand: 1 });
+  expect(lage()).toBe("checking/checking");
+  expect(zaehler.nutzlasten).toHaveLength(0);
+  await abwarten();
+  expect(zaehler.nutzlasten).toHaveLength(1);
+  expect(zaehler.nutzlasten[0]?.draftId).toBe("d-b");
 });
