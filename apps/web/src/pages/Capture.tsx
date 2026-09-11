@@ -12,7 +12,7 @@ import {
   Volume2,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
@@ -35,6 +35,7 @@ import { useSession } from "../app/AuthContext";
 import { ImageDescribeProvider } from "../app/ImageDescribeContext";
 import {
   GuardedLink,
+  NavGuardSaveError,
   useGuardedNavigate,
   useNavGuard,
   useUnloadGuard,
@@ -1062,7 +1063,17 @@ export function CaptureArbeitsraum({
   const [fileAbgeschnitten, setFileAbgeschnitten] = useState<AbbruchBefund | null>(null);
   const [fileQueue, setFileQueue] = useState<FileDraftQueue | null>(null);
 
-  const fail = (e: unknown): void => setErr(e instanceof ApiError ? e.message : t("state.error"));
+  // JOB 3572 Runde 2 (bens Korrekturpflicht 1): DIE EINE FORMEL für den Satz, den ein Fehler dem
+  // Menschen sagt. Sie stand bis hierher nur in `fail` und damit nur auf dem Weg in den
+  // Fehlerkasten. Seit die Navigationswache den Grund IM Dialog zeigen muss (der Kasten der Seite
+  // liegt dann im gesperrten Hintergrund), braucht ihn ein zweiter Aufrufer — und zwar denselben
+  // Satz, nicht einen zweiten. `useCallback`, weil der zweite Aufrufer im Wächter-Effekt sitzt: eine
+  // bei jedem Render neu gebaute Funktion wäre dort eine Abhängigkeit, die sich jedes Mal ändert.
+  const fehlersatz = useCallback(
+    (e: unknown): string => (e instanceof ApiError ? e.message : t("state.error")),
+    [t],
+  );
+  const fail = (e: unknown): void => setErr(fehlersatz(e));
 
   // JOB 3196 R2: der sichtbare Text der Meldung — beim Rendern gebildet, aus der HEUTIGEN Importart
   // und der HEUTIGEN Sprache. Ein zwischenzeitlicher Modus- oder Sprachwechsel wirkt damit sofort,
@@ -3020,13 +3031,30 @@ export function CaptureArbeitsraum({
           // stand. Ist das Tor zu, wird NICHT gespeichert und NICHT gewechselt: der Dialog bleibt
           // offen (der throw hält ihn), und die Seite nennt den Grund. Ein stiller Wechsel wäre
           // hier das Schlimmste — er liesse den Nutzer glauben, sein Stand sei gesichert.
+          //
+          // JOB 3572 Runde 2 (bens Korrekturpflicht 1): der Grund wird nicht nur GESETZT, sondern
+          // mit dem Fehler weitergereicht. „Die Seite nennt den Grund" stimmte im DOM und war für
+          // den Menschen falsch: solange der Wache-Dialog offen ist, sperrt die Modalgrenze den
+          // Fehlerkasten der Seite per `inert`. Es ist Zeichen für Zeichen DERSELBE Satz — er steht
+          // nur zusätzlich dort, wo der Mensch in diesem Augenblick hinsieht.
           if (!speicherTor.erlaubt) {
-            if (speicherTor.grund) {
-              setErr(speicherTor.grund);
-            }
-            throw new Error("speicherTorGeschlossen");
+            const grund = speicherTor.grund ?? t("state.error");
+            setErr(grund);
+            throw new NavGuardSaveError(grund);
           }
-          await saveDraft.mutateAsync();
+          try {
+            await saveDraft.mutateAsync();
+          } catch (e) {
+            // `saveDraft.onError` hat den Satz bereits in den Fehlerkasten geschrieben (`fail`);
+            // hier reist DERSELBE weiter. Einzige Ausnahme ist 409 DRAFT_STALE: dort zeigt die Seite
+            // bewusst keinen Fehlerkasten, sondern ihre Konfliktkarte — dann nennt der Dialog den
+            // Satz genau dieser Karte, statt die rohe Servermeldung zu wiederholen.
+            throw new NavGuardSaveError(
+              e instanceof ApiError && e.code === "DRAFT_STALE"
+                ? t("fd.draftStale")
+                : fehlersatz(e),
+            );
+          }
           // RUNDE 5, KP1: ab hier IST geschrieben. Wurde dieser Rückruf aus dem Verlassen-Weg
           // heraus ausgelöst („Entwurf speichern und wechseln"), meldet der `proceed`-Zweig unten
           // deshalb „gespeichert" statt „verworfen".
@@ -3046,9 +3074,10 @@ export function CaptureArbeitsraum({
           );
           void qc.invalidateQueries({ queryKey: ["drafts"] });
           if (result.failed.length > 0) {
-            setErr(t(CAPTURE_FILE_TEXT.draftsPartial, { failed: result.failed.join(", ") }));
-            // Nicht wechseln: Dialog bleibt offen, die Seite zeigt die Fehlermeldung.
-            throw new Error("draftsPartial");
+            const grund = t(CAPTURE_FILE_TEXT.draftsPartial, { failed: result.failed.join(", ") });
+            setErr(grund);
+            // Nicht wechseln: Dialog bleibt offen — und er nennt den Grund selbst (JOB 3572 R2).
+            throw new NavGuardSaveError(grund);
           }
           push(
             "success",
@@ -3077,6 +3106,8 @@ export function CaptureArbeitsraum({
     saveDraft,
     setGuard,
     qc,
+    // JOB 3572 R2: der Wächter formuliert den Grund jetzt selbst mit (s. `fehlersatz` oben).
+    fehlersatz,
     i18n.language,
     t,
     push,

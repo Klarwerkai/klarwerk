@@ -382,16 +382,52 @@ const FREMDE: readonly Fremdrelation[] = [
   // eigener Text nannte: „Faellt der Hinweis auf einer der beiden Seiten weg, faellt diese Groesse
   // aus der Liste." JOB 3063 (H4) hat `pages/Library.tsx` zum reinen Adress-Adapter gemacht; der
   // Hinweis steht dort nicht mehr, und mit ihm die Doppelung — ERSATZLOS weg, kein Auseinanderlaufen.
-  {
-    dritt: "apps/web/src/auth/AuthScreens.tsx",
-    groessen: [25],
-    was: "GEMESSEN: ein `FirstStatement` um `state.error`, geteilt mit `Capture:783`.",
-  },
-  {
-    dritt: "apps/web/src/pages/Duplicates.tsx",
-    groessen: [25],
-    was: "GEMESSEN: derselbe `state.error`-Block wie in `AuthScreens`.",
-  },
+  // ==============================================================================================
+  // JOB 3572 (ENTWURF-VERLASSEN REST) · ZWEI EINTRAEGE FALLEN WEG — UND ZWAR OHNE AUSEINANDERLAUFEN.
+  // ==============================================================================================
+  //
+  // BIS HIERHER standen hier `apps/web/src/auth/AuthScreens.tsx` [25] und
+  // `apps/web/src/pages/Duplicates.tsx` [25], beide mit demselben Satz:
+  // „GEMESSEN: ein `FirstStatement` um `state.error`, geteilt mit `Capture:783`."
+  // Gemeint war in allen drei Dateien DIESELBE Variablendeklaration (SyntaxKind `FirstStatement`
+  // = `VariableStatement`), 25 Knoten gross:
+  //
+  //     const fail /* bzw. onError */ = (e: unknown): void =>
+  //       setErr(e instanceof ApiError ? e.message : t("state.error"));
+  //
+  // WAS SICH GEAENDERT HAT, und warum es kein Vergessen ist: `Capture.tsx` hat seit JOB 3572
+  // Runde 2 einen ZWEITEN Aufrufer fuer diesen Satz. Scheitert das Speichern aus dem Dialog der
+  // Navigationswache heraus, sperrt die Modalgrenze den Fehlerkasten der Seite per `inert` — der
+  // Grund muss also zusaetzlich IM Dialog stehen (Bens Befund, JOB 3572 Runde 1, KP1). Damit beide
+  // Orte Zeichen fuer Zeichen DENSELBEN Satz zeigen und nicht zwei Formulierungen entstehen, ist
+  // der Ausdruck in den Helfer `fehlersatz` gezogen; `fail` ruft ihn nur noch:
+  //
+  //     const fehlersatz = useCallback(
+  //       (e: unknown): string => (e instanceof ApiError ? e.message : t("state.error")),
+  //       [t],
+  //     );
+  //     const fail = (e: unknown): void => setErr(fehlersatz(e));
+  //
+  // Die Deklaration `fail` ist damit kleiner als 25 Knoten und keine Zwillingsdeklaration mehr.
+  // DER SATZ SELBST ist unveraendert — derselbe Ausdruck, dieselbe Bedingung, derselbe
+  // Rueckfallschluessel `state.error`. Es ist also kein einseitiges Auseinanderlaufen, sondern der
+  // Wegfall einer ZUFALLSGLEICHHEIT, die keine gepflegte gemeinsame Quelle war (der alte Eintrag
+  // sagte selbst „GEMESSEN", nicht „GELESEN").
+  //
+  // DIE ANDERE SEITE WURDE NICHT VERGESSEN, SIE BRAUCHT DIE AENDERUNG NICHT: `AuthScreens.tsx` und
+  // `Duplicates.tsx` haben je genau EINEN Aufrufer fuer ihren Satz; ein Helfer davor waere dort
+  // eine Zeile ohne Zweck. Beide stehen ausserdem nicht in den Zielpfaden von JOB 3572 (dessen §4
+  // ist abschliessend).
+  //
+  // WAS DIESER WAECKTER JETZT NICHT MEHR SIEHT: Die Gleichheit zwischen `AuthScreens.tsx` und
+  // `Duplicates.tsx` BESTEHT WEITER — beide tragen die Deklaration unveraendert. Sie war fuer
+  // diesen Waechter aber noch nie sichtbar: er misst nur Paare, an denen eine BEWACHTE Seite
+  // beteiligt ist (`BEWACHT` oben), und beide Dateien kamen allein ueber `Capture.tsx` herein. Das
+  // ist die bekannte Grenze aus der Herkunft dieses Falls, keine neue Luecke.
+  //
+  // WER SIE WIEDERHERSTELLT — etwa indem `Capture.tsx` den Helfer eines Tages nicht mehr braucht —
+  // traegt beide Eintraege hier wieder ein.
+  // ==============================================================================================
 ];
 
 interface Dreifach {

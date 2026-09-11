@@ -38,6 +38,30 @@ import {
 // (Bleiben · Verwerfen · Entwurf speichern). Der Router ist ein klassischer BrowserRouter,
 // daher kein useBlocker — die Navigationsquellen (Sidebar, Command-Palette) rufen `guard()`.
 
+// ── JOB 3572 RUNDE 2 (bens Korrekturpflicht 1): DER GRUND GEHÖRT IN DEN DIALOG ────────────────────
+//
+// DER BEFUND. Scheitert das Speichern aus dem Dialog heraus, bleibt der Dialog offen — richtig, damit
+// nichts verloren geht. Der GRUND stand bis hierher aber ausschliesslich im Fehlerkasten der SEITE
+// (`Capture.tsx` `err`). Sobald der Dialog offen ist, sperrt die Modalgrenze den Hintergrund per
+// `inert` (`ModalBoundaryContext.tsx:121`) — für Tastatur und Screenreader ist dieser Kasten dann
+// nicht vorhanden. Der Mensch stand also vor einem Dialog, der beim Klicken nichts tut und nichts
+// sagt. Gemessen von Ben in Runde 1 mit echter Grenze: `{"gefunden":true,"inert":true,"imDialog":false}`.
+//
+// DIE BAUFORM. Der Grund reist MIT DEM FEHLER. Die Seite formuliert ihn weiterhin an genau einer
+// Stelle (sie schreibt denselben Satz in ihren Fehlerkasten) und wirft ihn in dieser Hülle; die Wache
+// zeigt ihn, solange ihr Dialog offen ist. KEIN neuer Text und keine zweite Formulierung: es ist
+// Zeichen für Zeichen derselbe Satz.
+//
+// Warum eine eigene Fehlerklasse und nicht `e.message` von allem: ein unerwarteter Fehler (ein Bug im
+// Rückruf, ein TypeError) trägt eine technische Meldung, die niemandem hilft und Innenleben ausplaudert.
+// Nur ein AUSDRÜCKLICH formulierter Grund wird gezeigt; alles andere fällt auf `state.error` zurück.
+export class NavGuardSaveError extends Error {
+  constructor(grund: string) {
+    super(grund);
+    this.name = "NavGuardSaveError";
+  }
+}
+
 export interface DirtyGuard {
   isDirty: () => boolean;
   save: () => Promise<void>;
@@ -178,6 +202,10 @@ export function NavGuardProvider({ children }: { children: ReactNode }): JSX.Ele
   const guardRef = useRef<DirtyGuard | null>(null);
   const [pending, setPending] = useState<PendingNav | null>(null);
   const [saving, setSaving] = useState(false);
+  // JOB 3572 Runde 2: der Grund des zuletzt gescheiterten Speicherversuchs AUS DIESEM DIALOG —
+  // `null`, solange nichts gescheitert ist. Er steht hier und nicht in einem Ref, weil der Dialog
+  // ihn beim nächsten Render zeigen muss (Begründung an `NavGuardSaveError`).
+  const [saveError, setSaveError] = useState<string | null>(null);
   // AUFTRAG-mega5 Block A: beim Öffnen des Dialogs EINMAL eingefroren — die Liste ändert sich nicht
   // mitten im offenen Dialog (kein Knopf, der unter dem Zeiger erscheint/verschwindet).
   const [unsavable, setUnsavable] = useState<string[]>([]);
@@ -209,6 +237,10 @@ export function NavGuardProvider({ children }: { children: ReactNode }): JSX.Ele
   const applyPending = useCallback((next: PendingNav | null): void => {
     pendingRef.current = next;
     setPending(next);
+    // JOB 3572 Runde 2: jeder Wechsel des Slots räumt den Fehlergrund. Ein Grund aus einem
+    // vorherigen Versuch darf weder in einem frisch geöffneten Dialog stehen noch nach dem
+    // Schliessen weiterleben — er gehört genau zu DIESEM offenen Dialog.
+    setSaveError(null);
   }, []);
 
   const setGuard = useCallback((guard: DirtyGuard | null): void => {
@@ -300,6 +332,31 @@ export function NavGuardProvider({ children }: { children: ReactNode }): JSX.Ele
     active?.proceed();
   };
 
+  // ── JOB 3572: KEIN AUSGANG, SOLANGE AUS DIESEM DIALOG HERAUS GESCHRIEBEN WIRD ──────────────────
+  //
+  // Es ist BENS BEFUND aus JOB 3526 (Runde 2, Korrekturpflicht 1) — nur an der anderen Stelle. Für
+  // den Knopf AUF DER SEITE ist er dort geschlossen (`Capture.tsx`: `verlassenGesperrt`, Sperre am
+  // Knopf UND im Handler); IM Dialog stand er offen: `saveAndGo` setzt `saving`, wartet auf
+  // `active.save()` und wechselt erst danach — in genau diesem Fenster war „Verwerfen und wechseln"
+  // anklickbar. Wer ihn drückte, wurde weggeschickt, und der laufende Schreibvorgang überschrieb
+  // danach genau den Entwurf, den dieser Knopf zu erhalten versprach.
+  //
+  // DIE ZUSAGE HÄNGT AM KNOPF, NICHT AM VORGANG: auf ihm steht „der gespeicherte Entwurf bleibt
+  // unverändert erhalten" (`capture.leaveDraft.keepsDraftHint`). Ein Ausgang, der eine Zusage macht,
+  // die ein laufender Vorgang gleich darauf bricht, ist schlimmer als kein Ausgang.
+  //
+  // AN BEIDEN ENDEN, dieselbe Bauform wie auf der Seite: sichtbar am Knopf (`disabled`) und wirksam
+  // hier im Handler (Tastatur, Klick im selben Tick). EIN Wahrheitsort: beides liest DAS `saving`,
+  // das `saveAndGo` unten setzt und in `finally` zurücknimmt — kein zweites Flag, kein Ref daneben.
+  // `runPending` selbst bleibt bewusst ungesperrt: der Erfolgsweg von `saveAndGo` läuft durch
+  // dieselbe Funktion, und zwar BEVOR `finally` `saving` löscht.
+  const discardAndGo = (): void => {
+    if (saving) {
+      return;
+    }
+    runPending();
+  };
+
   const saveAndGo = async (): Promise<void> => {
     const active = guardRef.current;
     if (!active) {
@@ -307,12 +364,24 @@ export function NavGuardProvider({ children }: { children: ReactNode }): JSX.Ele
       return;
     }
     setSaving(true);
+    setSaveError(null);
     try {
       await active.save();
       runPending();
-    } catch {
-      // Speichern fehlgeschlagen: Dialog offen lassen — die Seite zeigt die Fehlermeldung.
-      // Nicht wechseln, damit nichts verloren geht.
+    } catch (e) {
+      // Speichern fehlgeschlagen: Dialog offen lassen, nicht wechseln, damit nichts verloren geht.
+      //
+      // JOB 3572, Lieferung 4: DIESER Zweig ist gemessen, in beiden Spielarten — der Server lehnt ab
+      // (`tests/entwurf-verlassen/dialog-speicherfall-mounted.test.tsx`, Fall D4) und das Speichertor
+      // der Seite ist zu, bevor der Dialog aufgeht (Fall D5). Beide Male steht danach genau EIN
+      // Dialog, die Adresse ist unverändert, der Bestand ist unverändert.
+      //
+      // RUNDE 2 (bens Korrekturpflicht 1): und der Grund steht IM Dialog. Vorher stand hier „die
+      // Seite zeigt die Fehlermeldung" — das stimmte im DOM und war für den Menschen falsch: die
+      // Seite liegt in diesem Augenblick im gesperrten Hintergrund (Begründung an
+      // `NavGuardSaveError`). Gezeigt wird nur ein ausdrücklich formulierter Grund; sonst der
+      // allgemeine Satz, den die App überall für unerklärte Fehler benutzt.
+      setSaveError(e instanceof NavGuardSaveError ? e.message : t("state.error"));
     } finally {
       setSaving(false);
     }
@@ -358,7 +427,11 @@ export function NavGuardProvider({ children }: { children: ReactNode }): JSX.Ele
                   gemessen: „Verwerfen und wechseln" rendert rgb(104,112,120) — Zeichen für Zeichen
                   dieselbe Farbe wie „Hier bleiben" daneben. Unterscheidbar waren die beiden allein
                   am Text, und hinter einem davon liegt Datenverlust. Dieser Dialog ist zugleich das
-                  Weggehen aus Erfassen UND aus Mobil — er erklärt beide Live-Befunde auf einmal. */}
+                  Weggehen aus Erfassen UND aus Mobil — er erklärt beide Live-Befunde auf einmal.
+                  JOB 3572: hier steht bewusst KEINE Speicher-Sperre. In diesem Zweig gibt es kein
+                  „Entwurf speichern und wechseln" (genau das ist sein Zweck), also läuft `saveAndGo`
+                  nie an und `saving` ist hier beweisbar falsch — ein `disabled={saving}` wäre
+                  Zierrat, der eine Bedingung vorspiegelt, die es an dieser Stelle nicht gibt. */}
               <Button variant="danger" onClick={runPending}>
                 {t("nav.guard.discard")}
               </Button>
@@ -367,6 +440,19 @@ export function NavGuardProvider({ children }: { children: ReactNode }): JSX.Ele
         ) : (
           <>
             <p className="text-[13px] leading-relaxed text-text">{t("nav.guard.body")}</p>
+            {/* JOB 3572 Runde 2 (bens Korrekturpflicht 1): der Grund des gescheiterten Speicherns —
+                HIER, im Dialog, der den Fokus hält, und nicht im Fehlerkasten der Seite, den die
+                Modalgrenze in diesem Augenblick per `inert` gesperrt hat. `role="alert"`, damit er
+                auch angesagt wird und nicht nur dasteht; die Marke ist der Messpunkt der Tests. */}
+            {saveError === null ? null : (
+              <p
+                role="alert"
+                data-navguard-save-error=""
+                className="mt-3 rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] leading-relaxed text-trust-crit-text"
+              >
+                {saveError}
+              </p>
+            )}
             <div className="mt-4 flex flex-wrap justify-end gap-2">
               <Button variant="ghost" onClick={close}>
                 {t("nav.guard.stay")}
@@ -375,8 +461,10 @@ export function NavGuardProvider({ children }: { children: ReactNode }): JSX.Ele
                   gemessen: „Verwerfen und wechseln" rendert rgb(104,112,120) — Zeichen für Zeichen
                   dieselbe Farbe wie „Hier bleiben" daneben. Unterscheidbar waren die beiden allein
                   am Text, und hinter einem davon liegt Datenverlust. Dieser Dialog ist zugleich das
-                  Weggehen aus Erfassen UND aus Mobil — er erklärt beide Live-Befunde auf einmal. */}
-              <Button variant="danger" onClick={runPending}>
+                  Weggehen aus Erfassen UND aus Mobil — er erklärt beide Live-Befunde auf einmal.
+                  JOB 3572: und er ist zu, solange aus diesem Dialog heraus geschrieben wird
+                  (Begründung an `discardAndGo`). */}
+              <Button variant="danger" disabled={saving} onClick={discardAndGo}>
                 {t("nav.guard.discard")}
               </Button>
               <Button variant="primary" disabled={saving} onClick={() => void saveAndGo()}>
