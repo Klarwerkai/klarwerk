@@ -24,6 +24,7 @@ import { extname, join, resolve } from "node:path";
 process.env.KLARWERK_SKIP_KEYCHAIN = "1";
 
 import { buildApp, buildServices } from "../../services/app/src/build-app";
+import { ORTSZEILE_WORTE, type OrtszeileSprache } from "../support/ortszeileWorte";
 
 export const WURZEL = resolve(process.cwd());
 export const DIST = resolve(WURZEL, "apps/web/dist");
@@ -337,6 +338,119 @@ export async function h4Stand(
     koOffenId: offen.id,
     seitenfehler,
   };
+}
+
+// ==================================================================================================
+// JOB 3576 · DIE SPRACHWAHL WOHNT IN DER VORRICHTUNG — EINMAL, HIER.
+// ==================================================================================================
+//
+// WARUM HIER UND NICHT IN DEN TESTDATEIEN. Derselbe Griff wie bei der Tastatur (JOB 3564, `Seite`
+// oben): `ortszeile-390px-browser.test.ts:21-29` hatte sich den Weg „Speicher setzen, neu laden,
+// warten" selbst gebaut und behielt ihn bei sich. Der nächste Fall, der eine Sprache braucht
+// (`h4-funktionsinventar.test.ts` F08/F08c), hätte ihn abgeschrieben — und die zweite Abschrift
+// wäre die, die beim nächsten Umbau vergessen wird. Wer die Sprache für eine ANDERE Fläche braucht,
+// erweitert den Warteschritt hier, statt sich einen zweiten Setzer zu bauen.
+//
+// ADDITIV: `h4Stand` bleibt unverändert und setzt von sich aus KEINE Sprache. Was ohne Zutun gilt,
+// ist damit weiterhin die Vorgabe des Produkts (`lib/sprachwahl.ts:26`, `STANDARD_SPRACHE = "de"`)
+// — gemessen am 11.09. an dieser Bühne: `<html lang>` „de", `kw.sprache` leer (null),
+// `navigator.language` „en-US". Genau darum war das Funktionsinventar bis JOB 3576 grün, ohne je
+// eine Sprache gewählt zu haben.
+
+/** Der Speicherschlüssel der Sprachwahl des Produkts (`apps/web/src/lib/sprachwahl.ts:23`). */
+const SPRACHE_SCHLUESSEL = "kw.sprache";
+
+/** Wie lange auf die angewandte Sprache gewartet wird, bevor der Schritt aufgibt. */
+const SPRACHE_FRIST_MS = 30_000;
+
+/** In der Seite: die angewandte Sprache und, wenn sie da ist, die Texte der Ortszeile. */
+const ORTSZEILE_LESEN = `() => {
+  const zeile = document.querySelector('[data-testid="library-scope-bar"]');
+  const gruppe = zeile ? zeile.querySelector('fieldset') : null;
+  return {
+    lang: document.documentElement.lang,
+    da: !!zeile,
+    label: gruppe ? gruppe.getAttribute('aria-label') : null,
+    knoepfe: zeile ? [...zeile.querySelectorAll('button[aria-pressed]')].map((b) => (b.textContent || '').trim()) : [],
+  };
+}`;
+
+/**
+ * Die Sprachwahl des Produkts setzen, die Seite neu laden und warten, bis die Sprache WIRKLICH
+ * angewandt ist.
+ *
+ * Der Rückkehrpunkt ist ein ZUSTAND und keine Frist (Lehre JOB 3152 T1b): gewartet wird, bis das
+ * Produkt selbst sagt, dass es diese Sprache spricht (`<html lang>`, gesetzt von
+ * `apps/web/src/lib/htmlLang.ts`) UND die Ortszeile gezeichnet ist. Ein `waitForTimeout` an dieser
+ * Stelle wäre auf einem leeren Rechner zu lang und auf einem vollen zu kurz.
+ *
+ * GEWARTET WIRD AUSDRÜCKLICH NICHT AUF DIE ERWARTETEN BESCHRIFTUNGEN, so naheliegend das wäre. Ein
+ * Setzer, der auf sie wartet, verwandelt JEDE falsche Beschriftung in eine Zeitüberschreitung —
+ * und nimmt damit dem aufrufenden Fall die Aussage weg, die er treffen soll: er könnte nie mehr
+ * mit „erwartet X, gefunden Y" rot werden. Gemessen, nicht befürchtet: mit einer verstellten
+ * englischen Übersetzung (Gegenprobe R2) lief die erste Fassung 30 s in die Frist, statt F08c den
+ * Vergleich zu überlassen. Der Setzer stellt die Lage her, der Fall urteilt.
+ *
+ * DREI AUSGÄNGE, alle mit dem, was ein Mensch zum Weiterkommen braucht:
+ *   · die Seite meldet einen `pageerror` → Ende mit dessen Text (§9: keine Wartezeit verstreichen
+ *     lassen, wenn die Fläche schon kaputt ist); gezählt werden nur NEUE Fehler dieses Schritts.
+ *   · die Frist läuft ab, die Ortszeile stand aber da → erwartete Sprache, angewandte Sprache,
+ *     zuletzt gelesener Text, Wartedauer.
+ *   · die Frist läuft ab und die Ortszeile war nie da → dieselbe Meldung, zusätzlich als
+ *     „lastabhaengig" gekennzeichnet (Lehre JOB 3138): dann ist die Seite nicht fertig geworden,
+ *     und über die Sprache ist damit NICHTS gesagt.
+ */
+export async function spracheSetzen(
+  stand: H4Stand,
+  sprache: OrtszeileSprache,
+  pfad = "/bibliothek",
+): Promise<void> {
+  const soll = ORTSZEILE_WORTE[sprache];
+  const fehlerVorher = stand.seitenfehler.length;
+  await stand.seite.evaluate(
+    fn(
+      "([schluessel, wert]) => { try { localStorage.setItem(schluessel, wert); } catch (e) {} return null; }",
+    ),
+    [SPRACHE_SCHLUESSEL, sprache],
+  );
+  await stand.seite.goto(`${ORIGIN}${pfad}`, { waitUntil: "load", timeout: 60_000 });
+  const beginn = Date.now();
+  let zuletzt: string | null = null;
+  for (;;) {
+    const neueFehler = stand.seitenfehler.slice(fehlerVorher);
+    if (neueFehler.length > 0) {
+      throw new Error(
+        `Sprache ${sprache}: die Seite meldete einen Fehler statt der Ortszeile — ${neueFehler[0]}`,
+      );
+    }
+    const gelesen = await stand.seite.evaluate<{
+      lang: string;
+      da: boolean;
+      label: string | null;
+      knoepfe: string[];
+    }>(fn(ORTSZEILE_LESEN));
+    if (gelesen.da) {
+      zuletzt = `lang=${gelesen.lang} · ${gelesen.label} · ${gelesen.knoepfe.join(" · ")}`;
+      if (gelesen.lang === sprache) {
+        return;
+      }
+    }
+    if (Date.now() - beginn >= SPRACHE_FRIST_MS) {
+      break;
+    }
+    await stand.seite.waitForTimeout(100);
+  }
+  const gewartet = Date.now() - beginn;
+  const kopf = `Sprache ${sprache}: nach ${gewartet} ms`;
+  const erwartet = `erwartet <html lang="${sprache}"> und die Ortszeile (${soll.label} · ${soll.meine} · ${soll.alle})`;
+  // Die Lage entscheidet über die Aussage: stand die Zeile nie da, ist NICHTS über die Sprache
+  // gesagt — dann ist die Umgebung nicht fertig geworden und nicht das Produkt falsch.
+  const lastabhaengig = "lastabhaengig: die Seite ist nicht fertig geworden";
+  throw new Error(
+    zuletzt === null
+      ? `${kopf} war die Ortszeile überhaupt nicht da (${erwartet}) — ${lastabhaengig}, über die Sprache ist damit nichts gesagt.`
+      : `${kopf} hat die Seite die Sprache nicht angewandt (${erwartet}, zuletzt gelesen „${zuletzt}").`,
+  );
 }
 
 /** In der Seite: CSS-Pfad eines Elements (nth-child-Kette bis body) — der Selektor als Beleg. */

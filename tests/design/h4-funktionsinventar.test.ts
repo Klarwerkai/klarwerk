@@ -14,7 +14,8 @@
 // EIN FALL JE FUNKTION. Fällt eine weg, trägt der rote Fall ihren Namen.
 import { existsSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { type H4Stand, MOCKUP, ORIGIN, fn, h4Stand } from "./h4-harness";
+import { ORTSZEILE_WORTE } from "../support/ortszeileWorte";
+import { type H4Stand, MOCKUP, ORIGIN, fn, h4Stand, spracheSetzen } from "./h4-harness";
 
 // In der Seite: den Menüknopf drücken. Das ÖFFNEN ist ein React-Zustandswechsel — die Fläche
 // entsteht deshalb erst im nächsten Zeichnen, nicht im selben `evaluate`. Darum drei Schritte:
@@ -84,6 +85,64 @@ async function menue(testId: string): Promise<MenueInhalt> {
   return inhalt;
 }
 
+/**
+ * „Mehr" aufklappen und jeden Abschnitt öffnen — der Stand, den `beforeAll` herstellt und den die
+ * Fälle ab F16 an derselben lebenden Seite weiterlesen.
+ *
+ * Er steht als eigener Schritt hier, weil ihn ZWEI Stellen brauchen: `beforeAll` stellt ihn her,
+ * F08b stellt ihn nach dem Breitenwechsel wieder her. Bis JOB 3576 stand derselbe Block zweimal in
+ * dieser Datei; die dritte Abschrift wäre die gewesen, die beim nächsten Umbau vergessen wird.
+ *
+ * Jeder Abschnitt zeichnet seinen Inhalt ERST beim Aufklappen (`MehrAbschnitte`) — deshalb erst
+ * öffnen, dann warten, dann lesen. In einem Zug gelesen stünde überall nur der Titel.
+ *
+ * WARUM HIER WEITER EINE FRIST STEHT UND KEIN ZUSTANDSWARTEN, obwohl Lehre JOB 3152 T1b das sonst
+ * verlangt: die Abschnitte sind React-GESTEUERT (`MehrAbschnitte.tsx:151-153`,
+ * `<details open={offen}>` mit `{offen ? children : null}`). Ein von aussen gesetztes `open`
+ * überlebt nur, wenn die Fläche danach nicht noch einmal zeichnet. Ein Zustandswarten ändert daran
+ * NICHTS — es kann nur feststellen, dass es im Augenblick des Blicks stimmte. Gemessen in zwei
+ * Torläufen (Cloud-Läufe 2498545238f7b359ed5eadeb und 45d6a1b96bc35678a4d5fb82): nach einem
+ * Neuladen kam der Schritt mit „alle Abschnitte offen, Knotenzahl in Ruhe" zurück, und F16 las
+ * Sekunden später trotzdem alle acht Zahlen als 0. Die Antwort darauf ist die Hausregel dieser
+ * Datei (s. den F13-Block am Ende): Fälle, die NEU LADEN, stehen am Ende. Seit JOB 3576 tun F08
+ * und F08c das; dieser Schritt läuft damit wieder nur an einer stehenden Seite, wo er seit JOB
+ * 3063 trägt.
+ */
+async function mehrAufklappen(): Promise<void> {
+  const s = (stand as H4Stand).seite;
+  await s.evaluate(
+    fn(
+      `() => { const b = document.querySelector('[data-testid="bib-mehr"]'); if (b && b.getAttribute('aria-expanded') !== 'true') b.click(); }`,
+    ),
+  );
+  await s.waitForFunction(
+    fn(`() => document.querySelectorAll('[data-bib-abschnitt]').length > 0`),
+    undefined,
+    { timeout: 20_000 },
+  );
+  await s.evaluate(
+    fn(
+      `() => { for (const d of document.querySelectorAll('[data-bib-abschnitt]')) d.open = true; }`,
+    ),
+  );
+  await s.waitForTimeout(2500);
+}
+
+/**
+ * Ein Aufräumschritt, der den eigentlichen Befund nicht überschreibt.
+ *
+ * Scheitert die Wiederherstellung selbst, wäre ihr Wurf das Letzte, was Vitest sieht — und der
+ * wirkliche Grund (die Messung davor) verschwände. Er wird deshalb gemeldet und nicht geworfen;
+ * sichtbar wird er dann ohnehin an den Fällen darunter, die auf denselben Stand schauen.
+ */
+async function aufraeumen(fall: string, schritt: () => Promise<void>): Promise<void> {
+  try {
+    await schritt();
+  } catch (e) {
+    console.warn(`JOB 3576 · ${fall}: Wiederherstellung gescheitert — ${String(e).split("\n")[0]}`);
+  }
+}
+
 describe("JOB 3063 · H4 · Funktionsinventar — jede Funktion an ihrem neuen Ort, in Chromium geöffnet", () => {
   beforeAll(async () => {
     try {
@@ -93,24 +152,7 @@ describe("JOB 3063 · H4 · Funktionsinventar — jede Funktion an ihrem neuen O
       bereichMenue = await menue("bib-menue-bereich");
       eintragMenue = await menue("bib-eintrag-menue");
       // „Mehr" aufklappen und die dreizehn Abschnitte samt ihrer Inhalte lesen.
-      await stand.seite.evaluate(
-        fn(
-          `() => { const b = document.querySelector('[data-testid="bib-mehr"]'); if (b && b.getAttribute('aria-expanded') !== 'true') b.click(); }`,
-        ),
-      );
-      await stand.seite.waitForFunction(
-        fn(`() => document.querySelectorAll('[data-bib-abschnitt]').length > 0`),
-        undefined,
-        { timeout: 20_000 },
-      );
-      // Jeder Abschnitt zeichnet seinen Inhalt ERST beim Aufklappen (`MehrAbschnitte`) — deshalb
-      // erst öffnen, dann warten, dann lesen. In einem Zug gelesen stünde überall nur der Titel.
-      await stand.seite.evaluate(
-        fn(
-          `() => { for (const d of document.querySelectorAll('[data-bib-abschnitt]')) d.open = true; }`,
-        ),
-      );
-      await stand.seite.waitForTimeout(2500);
+      await mehrAufklappen();
       mehr = await stand.seite.evaluate<{ abschnitte: string[]; texte: string[] }>(
         fn(`() => {
           const els = [...document.querySelectorAll('[data-bib-abschnitt]')];
@@ -217,39 +259,6 @@ describe("JOB 3063 · H4 · Funktionsinventar — jede Funktion an ihrem neuen O
     expect(filterMenue?.eintraege.some((e) => e === "keine")).toBe(true);
   });
 
-  it("F08 · Geltungsbereich (JOB 381: Meine Ablage · Alle Inhalte) — Ortszeile über dem Suchfeld", async () => {
-    expect(fehler).toBeNull();
-    // Der Geltungsbereich ist KEIN Filter, sondern der Bestand, auf den die Filter erst wirken —
-    // deshalb steht er offen auf der Seite und nicht hinter einem Menü (`R-17`/`R-19` im
-    // UI-Smoke). Ohne Klick, ohne Aufklappen: gemessen wird, was ein Mensch sofort sieht.
-    const befund = await (stand as H4Stand).seite.evaluate<{
-      da: boolean;
-      knoepfe: string[];
-      selects: number;
-      vorDerSuche: boolean;
-    } | null>(
-      fn(`() => {
-        const zeile = document.querySelector('[data-testid="library-scope-bar"]');
-        if (!zeile) return null;
-        const suche = document.querySelector('#bib-suche');
-        const knoepfe = [...zeile.querySelectorAll('button[aria-pressed]')];
-        return {
-          da: zeile.getBoundingClientRect().height > 0,
-          knoepfe: knoepfe.map((b) => (b.textContent || '').trim()),
-          selects: zeile.querySelectorAll('select').length,
-          vorDerSuche: !!suche && zeile.getBoundingClientRect().top < suche.getBoundingClientRect().top,
-        };
-      }`),
-    );
-    expect(befund, "die Ortszeile [data-testid=library-scope-bar] fehlt").not.toBeNull();
-    expect(befund?.da).toBe(true);
-    expect(befund?.knoepfe).toEqual(["Meine Ablage", "Alle Inhalte"]);
-    expect(befund?.selects, "der Umschalter ist nie ein Auswahlmenü").toBe(0);
-    expect(befund?.vorDerSuche, "die Ortszeile steht nicht über dem Suchfeld").toBe(true);
-    // Und er steht nicht ZUSÄTZLICH im Filtermenü — ein zweiter Ort für dieselbe Sache.
-    expect(filterMenue?.gruppen.some((g) => g.startsWith("Geltungsbereich"))).toBe(false);
-  });
-
   it("F08b · Geltungsbereich auch schmal auf der Seite — nie in ein Auswahlmenü gespart (R-19)", async () => {
     expect(fehler).toBeNull();
     // `NARROW_QUERY` = `(max-width: 899px)` (`shell/useMediaQuery.ts`) ist die Schwelle, an der die
@@ -274,22 +283,7 @@ describe("JOB 3063 · H4 · Funktionsinventar — jede Funktion an ihrem neuen O
     // Das Zeichnen nach dem Breitenwechsel schliesst die aufgeklappten `details` wieder — die
     // Fälle darunter lesen dieselbe lebende Seite, also wird der Stand aus `beforeAll` hier
     // wiederhergestellt statt sie stillschweigend zugeklappt zurückzulassen.
-    await s.evaluate(
-      fn(
-        `() => { const b = document.querySelector('[data-testid="bib-mehr"]'); if (b && b.getAttribute('aria-expanded') !== 'true') b.click(); }`,
-      ),
-    );
-    await s.waitForFunction(
-      fn(`() => document.querySelectorAll('[data-bib-abschnitt]').length > 0`),
-      undefined,
-      { timeout: 20_000 },
-    );
-    await s.evaluate(
-      fn(
-        `() => { for (const d of document.querySelectorAll('[data-bib-abschnitt]')) d.open = true; }`,
-      ),
-    );
-    await s.waitForTimeout(2500);
+    await mehrAufklappen();
     expect(schmal.sichtbar, "die Ortszeile verschwindet auf schmalen Geräten").toBe(true);
     expect(schmal.knoepfe).toBe(2);
     expect(schmal.selects).toBe(0);
@@ -441,6 +435,117 @@ describe("JOB 3063 · H4 · Funktionsinventar — jede Funktion an ihrem neuen O
     expect(leer.text).toBe("Nichts gefunden.");
     expect(leer.knopf).toBe("Erfassen");
   }, 60_000);
+
+  // ------------------------------------------------------------------------------------------
+  // F08 · DER GELTUNGSBEREICH — UND ZWAR IN EINER SPRACHE, DIE DER FALL SELBST GESETZT HAT.
+  // ------------------------------------------------------------------------------------------
+  //
+  // CODEX ZU JOB 3489 (`archiv/3489/runde-1/ben.md:29`, Prüflücke b): dieser Fall pinnte am
+  // gebauten Produkt das deutsche Beschriftungspaar, „ohne je eine Sprache zu setzen — grün allein,
+  // weil DE die Vorgabe ist; ein englischer Fall fehlt dort".
+  //
+  // DAS WAR NACHGEMESSEN RICHTIG (11.09., an dieser Bühne): `<html lang>` stand auf „de",
+  // `localStorage["kw.sprache"]` war leer (null), und `navigator.language` sagte „en-US". Die Fläche
+  // sprach Deutsch, weil das Produkt ohne gespeicherte Wahl Deutsch spricht (`lib/sprachwahl.ts:26`)
+  // — der Fall mass also die Vorgabe der Umgebung, nicht die Übersetzung. Ein vorgesetztes
+  // `kw.sprache="en"` machte ihn rot mit `expected [ 'My collection', 'All content' ] to deeply
+  // equal [ 'Meine Ablage', 'Alle Inhalte' ]`.
+  //
+  // SEITDEM: F08 setzt DE selbst, F08c prüft dieselbe Zeile in EN, und die Sollwerte kommen aus
+  // `tests/support/ortszeileWorte.ts` statt aus Literalen an drei Orten.
+  //
+  // WARUM DIESE BEIDEN FÄLLE AM ENDE DER DATEI STEHEN — dieselbe Hausregel wie für F13 unten: sie
+  // LADEN DIE ANWENDUNG NEU (eine Sprachwahl gilt erst nach dem Neuladen, `lib/sprachwahl.ts:33`).
+  // Alle Fälle davor messen an EINER stehenden Seite. Die erste Fassung stand noch hinter F08b und
+  // stellte den Stand danach wieder her; das war MESSBAR nicht genug: die Abschnitte unter „Mehr"
+  // sind React-gesteuert (`MehrAbschnitte.tsx:151-153`), und nach einem Neuladen zeichnet die
+  // Fläche sekundenlang weiter und verwirft das von aussen gesetzte `open`. F16 las daraufhin in
+  // ZWEI Torläufen alle acht Zahlen als 0 (Cloud-Läufe 2498545238f7b359ed5eadeb und
+  // 45d6a1b96bc35678a4d5fb82), obwohl der Wiederherstellungsschritt „alle offen, Knotenzahl in
+  // Ruhe" gemeldet hatte. Ein Wiederherstellen, das nur im Augenblick des Blicks stimmt, ist keine
+  // Wiederherstellung — der Umzug ans Ende beseitigt die Frage, statt sie zu verwalten.
+  interface OrtszeileBefund {
+    da: boolean;
+    label: string | null;
+    knoepfe: string[];
+    selects: number;
+    vorDerSuche: boolean;
+  }
+
+  const ORTSZEILE_MESSEN = `() => {
+    const zeile = document.querySelector('[data-testid="library-scope-bar"]');
+    if (!zeile) return null;
+    const suche = document.querySelector('#bib-suche');
+    const gruppe = zeile.querySelector('fieldset');
+    const knoepfe = [...zeile.querySelectorAll('button[aria-pressed]')];
+    return {
+      da: zeile.getBoundingClientRect().height > 0,
+      label: gruppe ? gruppe.getAttribute('aria-label') : null,
+      knoepfe: knoepfe.map((b) => (b.textContent || '').trim()),
+      selects: zeile.querySelectorAll('select').length,
+      vorDerSuche: !!suche && zeile.getBoundingClientRect().top < suche.getBoundingClientRect().top,
+    };
+  }`;
+
+  it("F08 · Geltungsbereich (JOB 381) in ausdrücklich gesetztem DE — Ortszeile über dem Suchfeld", async () => {
+    expect(fehler).toBeNull();
+    // Der Geltungsbereich ist KEIN Filter, sondern der Bestand, auf den die Filter erst wirken —
+    // deshalb steht er offen auf der Seite und nicht hinter einem Menü (`R-17`/`R-19` im
+    // UI-Smoke). Ohne Klick, ohne Aufklappen: gemessen wird, was ein Mensch sofort sieht.
+    await spracheSetzen(stand as H4Stand, "de");
+    const befund = await (stand as H4Stand).seite.evaluate<OrtszeileBefund | null>(
+      fn(ORTSZEILE_MESSEN),
+    );
+    expect(befund, "die Ortszeile [data-testid=library-scope-bar] fehlt").not.toBeNull();
+    expect(befund?.da).toBe(true);
+    expect(befund?.knoepfe).toEqual([ORTSZEILE_WORTE.de.meine, ORTSZEILE_WORTE.de.alle]);
+    expect(befund?.selects, "der Umschalter ist nie ein Auswahlmenü").toBe(0);
+    expect(befund?.vorDerSuche, "die Ortszeile steht nicht über dem Suchfeld").toBe(true);
+    // Und er steht nicht ZUSÄTZLICH im Filtermenü — ein zweiter Ort für dieselbe Sache.
+    expect(filterMenue?.gruppen.some((g) => g.startsWith(ORTSZEILE_WORTE.de.label))).toBe(false);
+  }, 90_000);
+
+  it("F08c · dieselbe Ortszeile in EN — die Fläche spricht die GESETZTE Sprache, nicht die Vorgabe", async () => {
+    expect(fehler).toBeNull();
+    // DER FALL, DEN CODEX VERLANGT HAT. Er misst dieselben Aussagen wie F08, nur in einer Sprache,
+    // die hier ausdrücklich gewählt wird. Fällt eine der drei Übersetzungen wieder auf Deutsch
+    // zurück — der Rückfall, den Codex am 09.09. LIVE gefunden hat —, trägt dieser rote Fall ihren
+    // Namen, statt dass es erst bei einer Handprobe auffällt.
+    const s = (stand as H4Stand).seite;
+    let befund: OrtszeileBefund | null = null;
+    let filterEn: MenueInhalt = { gruppen: [], eintraege: [] };
+    let seitenfehler: string[] = [];
+    try {
+      await spracheSetzen(stand as H4Stand, "en");
+      befund = await s.evaluate<OrtszeileBefund | null>(fn(ORTSZEILE_MESSEN));
+      // „Nicht zusätzlich im Filtermenü" wird GEÖFFNET UND GELESEN, nicht aus einem leeren Selektor
+      // geschlossen — und in EN gegen die englische Beschriftung, sonst prüfte der Satz nichts.
+      filterEn = await menue("bib-menue-filter");
+      seitenfehler = [...(stand as H4Stand).seitenfehler];
+    } finally {
+      // Die Sprache geht IMMER auf die Vorgabe zurück, auch wenn dieser Fall scheitert: der
+      // F13-Block darunter liest deutsche Beschriftungen („Fragen", die Zustandspille). Die
+      // aufgeklappten Abschnitte braucht hier niemand mehr — F16 und F17 sind längst gelaufen,
+      // und F13 lädt ohnehin selbst neu.
+      await aufraeumen("F08c", async () => {
+        await spracheSetzen(stand as H4Stand, "de");
+      });
+    }
+    expect(befund, "die Ortszeile [data-testid=library-scope-bar] fehlt in EN").not.toBeNull();
+    expect(befund?.da).toBe(true);
+    expect(befund?.knoepfe).toEqual([ORTSZEILE_WORTE.en.meine, ORTSZEILE_WORTE.en.alle]);
+    expect(befund?.label, "der zugängliche Gruppenname ist nicht übersetzt").toBe(
+      ORTSZEILE_WORTE.en.label,
+    );
+    expect(befund?.selects, "der Umschalter ist nie ein Auswahlmenü").toBe(0);
+    expect(befund?.vorDerSuche, "die Ortszeile steht nicht über dem Suchfeld").toBe(true);
+    expect(
+      [...filterEn.gruppen, ...filterEn.eintraege].some((e) =>
+        e.startsWith(ORTSZEILE_WORTE.en.label),
+      ),
+    ).toBe(false);
+    expect(seitenfehler, "Chromium meldete beim Sprachwechsel einen Seitenfehler").toEqual([]);
+  }, 120_000);
 
   // ------------------------------------------------------------------------------------------
   // F13 · DIE VERBINDLICHE AKTION DER LESEFLÄCHE — FÜR JEDEN EINTRAG DIESELBE.
