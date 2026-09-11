@@ -1700,6 +1700,15 @@ describe("mega72 Block A: die Bauformen aus bens Befund (Register A17) sieht die
       // JOB 3063 (H4): das Studio hängt jetzt an der Lesefläche der Bibliothek — `KnowledgeDetail`
       // ist nur noch die Route. Der Einbinder hat den Namen gewechselt, nicht die Sache.
       "apps/web/src/components/bibliothek/BibliothekLesen.tsx → <KnowledgeInputStudio>",
+      // JOB 3637 (ZUGEWACHSEN, sichtbare Entscheidung): die Rückfrage „Wissensobjekt löschen?"
+      // hing im Textfluss der Lesespalte — auf einem langen Objekt mehrere Bildschirmhöhen unter
+      // dem Menü, das sie auslöst, und im Bearbeiten-Modus gar nicht gerendert. Für Pedi sah das
+      // aus wie „geht nicht" (Befund 11.09.). Sie liegt jetzt in der Overlay-Ebene, und zwar über
+      // `Modal` statt über eine eigene Bauform — genau damit sie an der EINEN Modalgrenze hängt.
+      // Sie erbt deren Scheibe: markerlos, nicht gegen die Shell abgegrenzt (siehe die benannte
+      // Blindheit im Kopf dieser Datei). Gemessen wird sie in
+      // `tests/wissensobjekt-loeschen/rueckfrage-im-blick-mounted.test.tsx`.
+      "apps/web/src/components/bibliothek/BibliothekLesen.tsx → <Modal>",
       "apps/web/src/pages/Capture.tsx → <KnowledgeInputStudio>",
       "apps/web/src/pages/Capture.tsx → <Modal>",
       // JOB 3061 · H2 (Ablösung): `Conflicts.tsx → <Modal>` und `Duplicates.tsx → <Modal>` standen

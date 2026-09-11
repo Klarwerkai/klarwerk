@@ -64,6 +64,7 @@ import { EditorContentQuality } from "../EditorContentQuality";
 import { KnowledgeInputStudio } from "../KnowledgeInputStudio";
 import { KoRevisionSummary } from "../KoRevisionSummary";
 import { LesevarianteHinweis } from "../LesevarianteHinweis";
+import { Modal } from "../Modal";
 import { RichTextEditor } from "../RichTextEditor";
 import { RoleLink } from "../RoleLink";
 import { SanitizedHtml } from "../SanitizedHtml";
@@ -283,6 +284,10 @@ export function BibliothekLesen({
     },
     onError: (e) => setErr(e instanceof ApiError ? e.message : t("state.error")),
   });
+  // JOB 3637: der Fehlschlag wird NICHT mehr als Toast in die untere rechte Ecke geschoben,
+  // sondern steht in der Rückfrage selbst — dort, wo geklickt wurde, und er bleibt stehen, statt
+  // nach ein paar Sekunden zu verfallen. Deshalb hält die Mutation ihren Fehler (kein `onError`
+  // mehr, das ihn wegmeldet); gelesen wird er unten aus `removeKo.error`.
   const removeKo = useMutation({
     mutationFn: () => endpoints.ko.remove(koId),
     onSuccess: () => {
@@ -291,8 +296,49 @@ export function BibliothekLesen({
       push("success", t("ko.deleteDone"));
       onGeloescht();
     },
-    onError: (e) => push("error", e instanceof ApiError ? e.message : t("state.error")),
   });
+  const loeschFehler = removeKo.error
+    ? removeKo.error instanceof ApiError
+      ? removeKo.error.message
+      : t("state.error")
+    : null;
+  // ================================================================================================
+  // JOB 3637 R2 · BEN-KORREKTURPFLICHT 1 — EIN LAUFENDER LÖSCHAUFRUF GEHT NICHT MEHR VERLOREN.
+  // ================================================================================================
+  //
+  // DER FEHLER AUS RUNDE 1, gemessen von BEN: `loeschenSchliessen` setzte die Mutation IMMER zurück.
+  // Escape, der Schliessen-Knopf und der Klick auf den Hintergrund laufen alle drei durch `onClose`
+  // von `Modal` — wer also bestätigte und dann Escape drückte, warf den Sperrzustand (`isPending`)
+  // UND die spätere Fehlerantwort weg. BENs Gegenprobe wörtlich: `{"gesperrt":false,"fehlerSichtbar":false}`.
+  // Der Aufruf war längst beim Server; die Fläche behauptete, es sei nichts los.
+  //
+  // DIE ABHILFE STEHT AN ZWEI STELLEN, UND BEIDE SIND NÖTIG:
+  //   1. ZURÜCKGESETZT WIRD NUR, WENN NICHTS UNTERWEGS IST. Ein `reset()` mitten im Aufruf ist das
+  //      Vergessen einer Tatsache, nicht das Schliessen einer Fläche.
+  //   2. OFFEN IST DIE RÜCKFRAGE AUCH DANN, WENN EIN AUFRUF LÄUFT ODER GESCHEITERT IST. Deshalb ist
+  //      `offen` hier ABGELEITET und nicht bloss der Schalter `loeschenOffen`.
+  //
+  // WARUM ABGELEITET UND NICHT „Schliessen einfach verbieten": ein Schliessen-Knopf, der nichts tut,
+  // wäre eine Scheinfunktion. Escape und der Knopf WIRKEN weiter — sie setzen den Schalter um. Die
+  // Fläche bleibt nur so lange stehen, wie es etwas zu sagen gibt: der Aufruf läuft (beide Knöpfe
+  // sind sichtbar gesperrt), oder er ist gescheitert (der Grund steht da). Danach schliesst
+  // derselbe Handgriff sie wirklich — dann greift `reset()`, `offen` wird falsch, die Fläche geht.
+  //
+  // Was daraus FOLGT und der Grund für Korrekturpflicht 1 war: eine zweite Freigabe ist während des
+  // Aufrufs nicht möglich. Der Bestätigungsknopf hängt an `removeKo.isPending`, und der Weg zum
+  // Menü liegt hinter der offenen, gesperrten Fläche.
+  const loeschenOffenEffektiv = loeschenOffen || removeKo.isPending || removeKo.isError;
+  /**
+   * Die Rückfrage schliessen. Solange der Löschaufruf unterwegs ist, nimmt das NUR den Schalter
+   * zurück — die Fläche bleibt stehen (s. `loeschenOffenEffektiv`) und die Mutation behält ihren
+   * Zustand. Erst wenn nichts mehr läuft, verfällt auch der Fehlschlag der letzten Runde.
+   */
+  const loeschenSchliessen = (): void => {
+    setLoeschenOffen(false);
+    if (!removeKo.isPending) {
+      removeKo.reset();
+    }
+  };
   const save = useMutation({
     mutationFn: async () => {
       if (!edit) {
@@ -721,6 +767,13 @@ export function BibliothekLesen({
                       <MenuePunkt
                         testId="bib-menue-loeschen"
                         onClick={() => {
+                          // Frisch beginnen — aber NIE einen laufenden Aufruf vergessen (R2,
+                          // Korrekturpflicht 1). Erreichbar ist dieser Punkt währenddessen ohnehin
+                          // nicht (die Rückfrage steht davor); die Bedingung hält die Regel trotzdem
+                          // an der Stelle fest, an der zurückgesetzt wird.
+                          if (!removeKo.isPending) {
+                            removeKo.reset();
+                          }
                           setLoeschenOffen(true);
                           schliessen();
                         }}
@@ -1298,23 +1351,6 @@ export function BibliothekLesen({
                 </div>
               </div>
             ) : null}
-            {loeschenOffen ? (
-              <div className="flex flex-wrap items-center gap-2 rounded-card border border-hairline bg-page p-4">
-                <span className="min-w-0 flex-1 text-[12.5px] font-semibold text-text">
-                  {t("ko.deleteQ")}
-                </span>
-                <Button variant="ghost" onClick={() => setLoeschenOffen(false)}>
-                  {t("ko.deleteKeep")}
-                </Button>
-                <Button
-                  variant="danger"
-                  disabled={removeKo.isPending}
-                  onClick={() => removeKo.mutate()}
-                >
-                  {t("ko.deleteYes")}
-                </Button>
-              </div>
-            ) : null}
             {err ? (
               <div className="rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text">
                 {err}
@@ -1322,6 +1358,73 @@ export function BibliothekLesen({
             ) : null}
           </>
         )}
+        {/* ============================================================================================
+            JOB 3637 · DIE RÜCKFRAGE ZUM LÖSCHEN STEHT DA, WO GEKLICKT WURDE.
+            ============================================================================================
+            Pedis Befund (11.09.): „wissensprojekt loeschen geht nicht" — das Menü schliesst sich,
+            sonst nichts. Gemessen (`tests/wissensobjekt-loeschen/rueckfrage-im-blick-mounted.test.tsx`)
+            war es zweierlei, und BEIDES an DIESER Stelle:
+
+              1. Die Rückfrage stand im Textfluss der Lesespalte, mit 2.614 Zeichen Text vor ihr —
+                 auf einem langen Objekt mehrere Bildschirmhöhen unterhalb des Menüs. Gerendert
+                 wurde sie also; gesehen hat sie niemand.
+              2. Sie stand INNERHALB des Sonst-Zweigs von `edit ? … : …`, der Menükopf aber
+                 ausserhalb. Im Bearbeiten-Modus erzeugte der Menüpunkt deshalb GAR NICHTS.
+
+            Beides erledigt derselbe Umzug: die Rückfrage hängt jetzt an der Wurzel dieser Fläche —
+            also in JEDER Lage, nicht nur im Lesemodus — und in der Overlay-Ebene der App
+            (`components/Modal.tsx`: `fixed inset-0 z-50`, portiert in den Modalgrenzen-Anker).
+            Kein zweiter Löschweg, keine neue Berechtigung: `darfLoeschen` entscheidet weiter
+            allein über den Menüpunkt, und es gibt genau einen Aufruf von `endpoints.ko.remove`.
+
+            `Modal` statt einer eigenen Overlay-Bauform, weil daran die eine Modalgrenze hängt
+            (Esc, gesperrter Hintergrund, Fokus in die Fläche und beim Schliessen zurück auf den
+            Auslöser). Eine zweite Mechanik daneben ist keine Doppelung, sondern eine stille
+            Ablösung — die Begründung steht ausgeschrieben in `Modal.tsx:12-21`. */}
+        <Modal
+          open={loeschenOffenEffektiv}
+          onClose={loeschenSchliessen}
+          title={t("ko.deleteButton")}
+          panelMarker="data-bib-loeschen"
+        >
+          {/* `aria-busy` trägt den laufenden Aufruf maschinenlesbar — zusammen mit den beiden
+              gesperrten Knöpfen ist das der sichtbare Beleg, dass gerade etwas läuft. Ein
+              AUSGESCHRIEBENER Satz („Wird gelöscht …") bräuchte einen neuen Katalogeintrag in
+              `i18n.ts`, und die Datei steht nicht in den Zielpfaden dieser Runde; ein Text aus einer
+              fremden Gattung („Lädt …", „Wird angehängt …") wäre geborgt und falsch. Die Lücke ist
+              in der Rückgabe benannt, nicht verschwiegen. */}
+          <div
+            data-testid="bib-loeschen-rueckfrage"
+            aria-busy={removeKo.isPending}
+            className="flex flex-wrap items-center gap-2"
+          >
+            <span className="min-w-0 flex-1 text-[12.5px] font-semibold text-text">
+              {t("ko.deleteQ")}
+            </span>
+            <Button variant="ghost" disabled={removeKo.isPending} onClick={loeschenSchliessen}>
+              {t("ko.deleteKeep")}
+            </Button>
+            <Button
+              variant="danger"
+              disabled={removeKo.isPending}
+              onClick={() => removeKo.mutate()}
+            >
+              {t("ko.deleteYes")}
+            </Button>
+          </div>
+          {/* Der Grund am Bedienort. Er steht NUR im Fehlerfall und behauptet nichts darüber
+              hinaus: gescheitert ist das Löschen, der Eintrag ist unverändert da, die Rückfrage
+              bleibt offen. Keine Ersatzmeldung, wenn der Server keine mitgibt — dann der
+              allgemeine Satz aus dem Katalog. */}
+          {loeschFehler ? (
+            <p
+              data-testid="bib-loeschen-fehler"
+              className="mt-3 rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text"
+            >
+              {loeschFehler}
+            </p>
+          ) : null}
+        </Modal>
       </div>
     </ImageDescribeProvider>
   );
