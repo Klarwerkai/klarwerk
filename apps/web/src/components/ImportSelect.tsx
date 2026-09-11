@@ -17,6 +17,9 @@ import { useTranslation } from "react-i18next";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import type { ImportPreviewEntry, ImportSelectCriteria, ImportSelectResponse } from "../api/types";
+// JOB 3640: die EINE i18next-Instanz der Anwendung — dieselbe, die `useTranslation` bedient. Sie
+// wird hier nur ERWEITERT (s. `registriereRahmenTexte` unten), nie umkonfiguriert.
+import i18nInstanz from "../i18n";
 import { clearFacetSelection } from "../lib/facetFilter";
 // AUFTRAG-mega27 Block B: DIESELBE Filter-Technik wie die Bibliothek — Schiene, aktive Leiste,
 // Bereichsfilter. Kein zweiter Nachbau neben einer ausgereiften, getesteten Technik.
@@ -97,7 +100,200 @@ const IMPORT_MORE_FILTERS_STORAGE_KEY = "klarwerk.import.select.filters.moreOpen
 // Referenz und liefe umsonst.
 const NO_ENTRIES: readonly ImportPreviewEntry[] = [];
 
-export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Element {
+// ================================================================================================
+// JOB 3640 · DIE TEXTE DES VORFÜHRRAHMENS — DE/EN/NL, IN DER EINEN i18next-INSTANZ.
+// ================================================================================================
+//
+// WARUM SIE HIER WOHNEN UND NICHT IN `i18n.ts`: Runde 1 hat die Schlüssel in den zentralen Katalog
+// geschrieben. Das war ein ZIELPFAD-VERSTOSS (Urteil Runde 1: „ZIELPFAD-VERSTOSS:
+// apps/web/src/i18n.ts") — die Datei steht nicht in den Zielpfaden dieses Auftrags, und ein Diff
+// ausserhalb der Zielpfade ist ungeprüfter Code. §4.5 des Auftrags verlangt trotzdem „DE/EN
+// vollständig". Beides geht zusammen, weil das Haus den Fall schon kennt: die Texte der
+// Lesevariante wohnen seit JOB 3326 R4 ebenfalls BEI IHRER FUNKTION (`lib/lesevariante.ts`) und
+// nicht im Katalog.
+//
+// DER UNTERSCHIED IST NUR DIE VERDRAHTUNG, NICHT DER MECHANISMUS: `lesevariante` wird in `i18n.ts`
+// in die drei Sprachobjekte gespreizt; dieses Bündel meldet sich selbst an derselben, EINEN
+// i18next-Instanz an. Es gibt danach genau ein `t()`, genau einen Ressourcenspeicher und genau
+// einen Ort je Schlüssel — keine zweite Übersetzungswahrheit, kein zweiter Nachschlageweg. Die
+// Aufrufstellen unten schreiben `t("imp.rahmen…")` wie jeder andere Text der Anwendung.
+//
+// `addResourceBundle` mit FLACHEM Objekt, nicht `addResource`: der Katalog in `i18n.ts` ist flach
+// (Schlüssel mit Punkten sind EIN Schlüssel, keine Verschachtelung) — dieselbe Begründung wie in
+// `tests/web/job2660-hilfe-fremdtext-ui.test.tsx:252`. `deep`/`overwrite` stehen auf `true`, damit
+// der Aufruf idempotent ist: beide Zielpfad-Dateien rufen ihn (s. `registriereRahmenTexte` unten),
+// und welche von beiden zuerst geladen wird, darf keine Rolle spielen.
+//
+// NACHFOLGE, ausdrücklich benannt: Sobald `i18n.ts` in den Zielpfaden eines Auftrags steht, gehören
+// diese drei Objekte in den Katalog — die Aufrufstellen ändern sich dabei um KEIN Zeichen.
+//
+// NL steht hier, weil die Anwendung drei Sprachen führt und ein fehlendes Bündel stillschweigend
+// auf Deutsch zurückfiele. Ein niederländischer Satz, der heimlich deutsch ist, ist kein Rückfall,
+// sondern eine falsche Auskunft.
+const RAHMEN_TEXTE_DE = {
+  "imp.rahmen.titel": "Für welche Firma führst du vor?",
+  "imp.rahmen.erklaerung":
+    "Trage das Wort ein, das die Seiten dieser Firma im Titel tragen. Solange der Rahmen gilt, zeigen Eingrenzen, Vorschau und Übernahme ausschließlich Seiten mit diesem Wort im Titel. Es wird nichts umbenannt, nichts verschoben und nichts gelöscht.",
+  "imp.rahmen.feldLabel": "Firma oder Demobereich",
+  "imp.rahmen.platzhalter": "z. B. Advisor",
+  "imp.rahmen.setzen": "Rahmen setzen",
+  "imp.rahmen.aktiv": "Rahmen: {{firma}}",
+  "imp.rahmen.aufheben": "Rahmen aufheben",
+  "imp.rahmen.umfang_one": "1 Seite im Rahmen",
+  "imp.rahmen.umfang_other": "{{count}} Seiten im Rahmen",
+  "imp.rahmen.umfangLaeuft": "Seitenzahl wird gezählt …",
+  "imp.rahmen.umfangFehler": "Seitenzahl nicht abrufbar.",
+  "imp.rahmen.umfangVeraltet": "Auffrischung fehlgeschlagen — die Zahl ist die zuletzt gemessene.",
+  "imp.rahmen.umfangErneut": "Erneut zählen",
+  "imp.rahmen.umfangUngemessen":
+    "Seitenzahl noch nicht gemessen — sie wird beim Erkunden ermittelt.",
+  "imp.rahmen.leer":
+    "Keine geladene Seite trägt „{{firma}}“ im Titel. Der Rahmen ist leer — prüfe die Schreibweise oder hebe ihn auf.",
+  "imp.rahmen.landkarteUngerahmt":
+    "Autoren, Themen, Quellen und Zeitraum darunter zählen den GESAMTEN Bestand: die Erkundung kann nicht nach Rahmen zählen. Gerahmt sind die Seitenzahl oben und alle folgenden Schritte.",
+  "imp.rahmen.seitenImRahmen": "Seiten im Rahmen",
+  "imp.rahmen.vonGesamt": "von {{total}} im Gesamtbestand",
+  // Eigene Beschriftung, weil der Rahmen technisch ein `titleContains` ist, fachlich aber der
+  // Rahmen und nicht ein vom Menschen gesetztes Titelkriterium.
+  "imp.rahmen.critRahmen": "Rahmen (Firma)",
+  "imp.rahmen.titelbefundUngerahmt":
+    "Diese Zahl zählt den Gesamtbestand, nicht den Rahmen — deshalb gibt es dazu keinen Umschaltknopf, solange der Rahmen gilt.",
+  // Runde 4 (BEN-Korrekturpflicht 1): der Rahmen hat gewechselt, die angezeigte Liste gehört noch
+  // zur Abfrage davor. Sie wird NICHT geleert (LEHREN §7), aber sie ist ab sofort nichts, woraus
+  // man auswählen, gruppieren oder übernehmen kann.
+  "imp.rahmen.wechselLaeuft":
+    "Der Rahmen gilt jetzt für „{{firma}}“. Die Liste unten stammt noch aus der Abfrage davor und wird im neuen Rahmen neu geholt — bis dahin lässt sich daraus nichts auswählen, gruppieren oder übernehmen.",
+  "imp.rahmen.wechselLaeuftOhne":
+    "Der Rahmen ist aufgehoben. Die Liste unten stammt noch aus der Abfrage im Rahmen davor und wird ohne Rahmen neu geholt — bis dahin lässt sich daraus nichts auswählen, gruppieren oder übernehmen.",
+  "imp.rahmen.wechselFehler":
+    "Die Vorschau im Rahmen „{{firma}}“ konnte nicht geholt werden. Die Liste unten stammt weiter aus der Abfrage davor; Auswählen, Gruppieren und Übernehmen bleiben gesperrt, bis die Vorschau im aktuellen Rahmen steht. „Vorschau aktualisieren“ versucht es erneut.",
+  "imp.rahmen.wechselFehlerOhne":
+    "Die Vorschau ohne Rahmen konnte nicht geholt werden. Die Liste unten stammt weiter aus der Abfrage im Rahmen davor; Auswählen, Gruppieren und Übernehmen bleiben gesperrt, bis die Vorschau zum aktuellen Stand passt. „Vorschau aktualisieren“ versucht es erneut.",
+  "imp.rahmen.wechselGruppenGesperrt":
+    "Gruppieren und Übernehmen stehen erst wieder bereit, wenn die Vorschau im aktuellen Rahmen steht — was hier stand, gehörte zur Abfrage davor.",
+};
+
+const RAHMEN_TEXTE_EN: typeof RAHMEN_TEXTE_DE = {
+  "imp.rahmen.titel": "Which company are you presenting for?",
+  "imp.rahmen.erklaerung":
+    "Enter the word that this company's pages carry in their title. While the frame applies, narrowing, preview and import show only pages with that word in the title. Nothing is renamed, moved or deleted.",
+  "imp.rahmen.feldLabel": "Company or demo area",
+  "imp.rahmen.platzhalter": "e.g. Advisor",
+  "imp.rahmen.setzen": "Set frame",
+  "imp.rahmen.aktiv": "Frame: {{firma}}",
+  "imp.rahmen.aufheben": "Remove frame",
+  "imp.rahmen.umfang_one": "1 page inside the frame",
+  "imp.rahmen.umfang_other": "{{count}} pages inside the frame",
+  "imp.rahmen.umfangLaeuft": "Counting pages …",
+  "imp.rahmen.umfangFehler": "Page count unavailable.",
+  "imp.rahmen.umfangVeraltet": "Refresh failed — this is the last measured number.",
+  "imp.rahmen.umfangErneut": "Count again",
+  "imp.rahmen.umfangUngemessen": "Page count not measured yet — it is determined when you explore.",
+  "imp.rahmen.leer":
+    "No loaded page carries “{{firma}}” in its title. The frame is empty — check the spelling or remove it.",
+  "imp.rahmen.landkarteUngerahmt":
+    "Authors, themes, sources and time range below count the ENTIRE source: exploring cannot count per frame. Framed are the page count above and every following step.",
+  "imp.rahmen.seitenImRahmen": "Pages inside the frame",
+  "imp.rahmen.vonGesamt": "of {{total}} in the entire source",
+  "imp.rahmen.critRahmen": "Frame (company)",
+  "imp.rahmen.titelbefundUngerahmt":
+    "This number counts the entire source, not the frame — that is why there is no switch button while the frame applies.",
+  "imp.rahmen.wechselLaeuft":
+    "The frame now applies to “{{firma}}”. The list below still comes from the previous request and is being fetched again inside the new frame — until then nothing in it can be selected, grouped or imported.",
+  "imp.rahmen.wechselLaeuftOhne":
+    "The frame has been removed. The list below still comes from the request inside the previous frame and is being fetched again without a frame — until then nothing in it can be selected, grouped or imported.",
+  "imp.rahmen.wechselFehler":
+    "The preview inside the frame “{{firma}}” could not be fetched. The list below still comes from the previous request; selecting, grouping and importing stay locked until the preview matches the current frame. “Refresh preview” tries again.",
+  "imp.rahmen.wechselFehlerOhne":
+    "The preview without a frame could not be fetched. The list below still comes from the request inside the previous frame; selecting, grouping and importing stay locked until the preview matches the current state. “Refresh preview” tries again.",
+  "imp.rahmen.wechselGruppenGesperrt":
+    "Grouping and importing become available again once the preview matches the current frame — what stood here belonged to the previous request.",
+};
+
+const RAHMEN_TEXTE_NL: typeof RAHMEN_TEXTE_DE = {
+  "imp.rahmen.titel": "Voor welk bedrijf geef je de demo?",
+  "imp.rahmen.erklaerung":
+    "Vul het woord in dat de pagina's van dit bedrijf in de titel dragen. Zolang het kader geldt, tonen afbakenen, voorbeeld en overname uitsluitend pagina's met dat woord in de titel. Er wordt niets hernoemd, verplaatst of verwijderd.",
+  "imp.rahmen.feldLabel": "Bedrijf of demogebied",
+  "imp.rahmen.platzhalter": "bijv. Advisor",
+  "imp.rahmen.setzen": "Kader instellen",
+  "imp.rahmen.aktiv": "Kader: {{firma}}",
+  "imp.rahmen.aufheben": "Kader opheffen",
+  "imp.rahmen.umfang_one": "1 pagina binnen het kader",
+  "imp.rahmen.umfang_other": "{{count}} pagina's binnen het kader",
+  "imp.rahmen.umfangLaeuft": "Aantal pagina's wordt geteld …",
+  "imp.rahmen.umfangFehler": "Aantal pagina's niet op te halen.",
+  "imp.rahmen.umfangVeraltet": "Verversen mislukt — dit is het laatst gemeten aantal.",
+  "imp.rahmen.umfangErneut": "Opnieuw tellen",
+  "imp.rahmen.umfangUngemessen":
+    "Aantal pagina's nog niet gemeten — het wordt bij het verkennen bepaald.",
+  "imp.rahmen.leer":
+    "Geen geladen pagina draagt „{{firma}}“ in de titel. Het kader is leeg — controleer de schrijfwijze of hef het op.",
+  "imp.rahmen.landkarteUngerahmt":
+    "Auteurs, thema's, bronnen en periode hieronder tellen de VOLLEDIGE bron: verkennen kan niet per kader tellen. Gekaderd zijn het aantal pagina's hierboven en alle volgende stappen.",
+  "imp.rahmen.seitenImRahmen": "Pagina's binnen het kader",
+  "imp.rahmen.vonGesamt": "van {{total}} in de volledige bron",
+  "imp.rahmen.critRahmen": "Kader (bedrijf)",
+  "imp.rahmen.titelbefundUngerahmt":
+    "Dit aantal telt de volledige bron, niet het kader — daarom is er geen omschakelknop zolang het kader geldt.",
+  "imp.rahmen.wechselLaeuft":
+    "Het kader geldt nu voor „{{firma}}“. De lijst hieronder komt nog uit de vorige aanvraag en wordt binnen het nieuwe kader opnieuw opgehaald — tot dan kan er niets uit worden gekozen, gegroepeerd of overgenomen.",
+  "imp.rahmen.wechselLaeuftOhne":
+    "Het kader is opgeheven. De lijst hieronder komt nog uit de aanvraag binnen het vorige kader en wordt zonder kader opnieuw opgehaald — tot dan kan er niets uit worden gekozen, gegroepeerd of overgenomen.",
+  "imp.rahmen.wechselFehler":
+    "Het voorbeeld binnen het kader „{{firma}}“ kon niet worden opgehaald. De lijst hieronder komt nog steeds uit de vorige aanvraag; kiezen, groeperen en overnemen blijven geblokkeerd totdat het voorbeeld bij het huidige kader past. „Voorbeeld verversen“ probeert het opnieuw.",
+  "imp.rahmen.wechselFehlerOhne":
+    "Het voorbeeld zonder kader kon niet worden opgehaald. De lijst hieronder komt nog steeds uit de aanvraag binnen het vorige kader; kiezen, groeperen en overnemen blijven geblokkeerd totdat het voorbeeld bij de huidige stand past. „Voorbeeld verversen“ probeert het opnieuw.",
+  "imp.rahmen.wechselGruppenGesperrt":
+    "Groeperen en overnemen zijn pas weer beschikbaar als het voorbeeld bij het huidige kader past — wat hier stond, hoorde bij de vorige aanvraag.",
+};
+
+/**
+ * Die Texte des Rahmens an der EINEN i18next-Instanz anmelden.
+ *
+ * IDEMPOTENT und ohne Reihenfolgeannahme: beide Flächen des Rahmens rufen ihn beim Laden ihres
+ * Moduls (hier direkt darunter, in `ImportExplore.tsx` neben dem Import). Wer zuerst geladen wird,
+ * spielt damit keine Rolle — und ein Test, der nur EINE der beiden Flächen mountet, hat die Texte
+ * trotzdem. Genau das war die Falle: ein stiller Verlass auf die Modulreihenfolge hätte die
+ * englische Fläche im falschen Einstieg auf Rohschlüssel zurückfallen lassen.
+ */
+export function registriereRahmenTexte(): void {
+  i18nInstanz.addResourceBundle("de", "translation", RAHMEN_TEXTE_DE, true, true);
+  i18nInstanz.addResourceBundle("en", "translation", RAHMEN_TEXTE_EN, true, true);
+  i18nInstanz.addResourceBundle("nl", "translation", RAHMEN_TEXTE_NL, true, true);
+}
+
+registriereRahmenTexte();
+
+// ================================================================================================
+// JOB 3640 · DER VORFÜHRRAHMEN BINDET AUCH DIESEN SCHRITT.
+// ================================================================================================
+//
+// Der Rahmen ist ein Titelwort (WARUM genau dieses Merkmal: Kopf von `ImportExplore.tsx`). Er
+// kommt von oben herein und reist als `titleContains` in JEDER Anfrage dieses Schritts mit. Damit
+// ist er KEIN vorbelegter Filter, den man wegklicken kann: es gibt hier kein Bedienelement, das
+// ihn entfernt — aufheben kann ihn nur die Leiste oben.
+//
+// DASS ER AUCH GRUPPIERUNG UND ÜBERNAHME BINDET, ist kein zweiter Mechanismus: beide laufen über
+// `preview.criteria`, also über die Kriterien, die der SERVER als effektiv benutzt zurückmeldet —
+// und dort steht der Rahmen, weil die Klick-Kriterien die KI-Deutung schlagen
+// (`{...derived.criteria, ...clickCriteria}`, routes/confluence-import-routes.ts).
+//
+// DIE EINE STELLE, AN DER MAN AUS DEM RAHMEN HERAUSFIELE, ist der Umschaltknopf des Titelbefunds
+// (JOB 3356): er fordert die Vorschau mit GENAU den Server-Kriterien `{titleContains: [satz]}` an.
+// Mehrere Einträge in `titleContains` wirken als ODER (`matchesTitleContains`) — den Rahmen dort
+// mit hineinzulegen würde die Auswahl also AUSWEITEN statt sie zu rahmen. Der Knopf entfällt
+// deshalb, solange ein Rahmen gilt, und der Titelbefund sagt dazu ausdrücklich, dass seine Zahl
+// den Gesamtbestand zählt. Eine Zahl, die den Rahmen ignoriert, muss als solche dastehen.
+export function ImportSelect({
+  chip,
+  rahmen = null,
+}: {
+  chip: ImportChipCriteria;
+  // Der gültige Vorführrahmen (Titelwort) oder `null`. Optional, damit Aufrufer ohne Rahmen
+  // zeichengleich bleiben — ohne Rahmen verhält sich dieser Schritt exakt wie bisher.
+  rahmen?: string | null;
+}): JSX.Element {
   const { t, i18n } = useTranslation();
   // AUFTRAG-mega9 Block E-5 (KW-E2E-009): Bilanz und Review-Abfrage nach der Übernahme GEMEINSAM
   // auffrischen. ImportGroups bleibt bewusst ohne react-query-Abhängigkeit (dokumentiert an
@@ -130,6 +326,14 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
   // wie eine Aussage über den Satz, der gerade im Feld steht. Er wird NUR aus einer erfolgreichen
   // Antwort gesetzt (zusammen mit `preview`, im selben latest-wins-Zweig) — nie aus dem Eingabefeld.
   const [previewPrompt, setPreviewPrompt] = useState("");
+  // JOB 3640 (Runde 4, BEN-Korrekturpflicht 1): DER RAHMEN, MIT DEM DIESE ANTWORT GEHOLT WURDE.
+  // Genau derselbe Gedanke wie `previewPrompt` eine Zeile darüber, eine Ebene ernster: ohne ihn
+  // konnte die Fläche nicht sagen, ZU WELCHEM Rahmen die angezeigte Liste gehört — nach einem
+  // Rahmenwechsel stand die alte, ungerahmte Auswahl unverändert da und liess sich gruppieren und
+  // ÜBERNEHMEN, während oben „Rahmen: Advisor" zu lesen war (bens Zustandsgegenprobe Runde 3:
+  // `{"criteria":{},"includeIds":["basic1"],…}`). Er wird NUR aus einer erfolgreichen Antwort
+  // gesetzt, im selben latest-wins-Zweig wie `preview` — nie aus dem Prop.
+  const [previewRahmen, setPreviewRahmen] = useState<string | null>(null);
   const latestRef = useRef(createLatestWins());
   // WP-SHIP9-S2 Paket 2 (D3–D7): Ansichts-Zustand der Trefferliste (Suche/Filter-Chip/Ausblenden/
   // Gruppierung). Rein für die DARSTELLUNG — die Auswahl selbst bleibt in checkedRows (Originalindex).
@@ -171,6 +375,9 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
     chip.themes,
     chip.authors,
     chip.spaces,
+    // JOB 3640: ein gewechselter oder aufgehobener Rahmen ist eine andere Eingrenzung — die Leiste
+    // nimmt den Schritten 4+5 dafür ihre Haken zurück, wie bei jedem anderen Kriterium auch.
+    rahmen,
     yearFrom,
     yearTo,
     limit,
@@ -188,6 +395,8 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
       ...(chip.themes.length > 0 ? { themes: chip.themes } : {}),
       ...(chip.authors.length > 0 ? { authors: chip.authors } : {}),
       ...(chip.spaces.length > 0 ? { spaces: chip.spaces } : {}),
+      // JOB 3640: der Rahmen. Genau EIN Eintrag — mehrere wären ein ODER und damit kein Rahmen.
+      ...(rahmen !== null ? { titleContains: [rahmen] } : {}),
       ...(from !== undefined ? { yearFrom: from } : {}),
       ...(to !== undefined ? { yearTo: to } : {}),
       ...(parsedLimit !== undefined ? { limit: parsedLimit } : {}),
@@ -199,7 +408,12 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
   // Satz reist NICHT mit: sonst käme die KI-Deutung (Thema) über UND wieder dazu und der Titelweg
   // fände dasselbe Nichts. Ohne Übergabe bleibt alles wie bisher (Satz + Klick-Filter).
   const select = useMutation<
-    { requestId: number; data: ImportSelectResponse; gesendeterSatz: string },
+    {
+      requestId: number;
+      data: ImportSelectResponse;
+      gesendeterSatz: string;
+      gesendeterRahmen: string | null;
+    },
     unknown,
     // `undefined` = „wie bisher" (Satz + Klick-Filter); nur der Titelweg reicht eine fertige
     // Kriterienmenge herein. Bewusst nicht `void` im Vertrag: das erlaubte zwar den argumentlosen
@@ -213,6 +427,13 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
       // JOB 3356 R2: der GESENDETE Satz reist mit der Antwort zurück — die Anzeige darf ihre
       // Zuordnung nicht aus dem Eingabefeld ableiten, das sich inzwischen geändert haben kann.
       const gesendeterSatz = override ? "" : prompt.trim();
+      // JOB 3640 R4: WELCHER Rahmen in dieser Anfrage steckt — dieselbe Regel wie beim Satz, und
+      // aus demselben Grund: das Prop kann sich ändern, während die Anfrage unterwegs ist. Der
+      // Titelweg (`override`) schickt AUSDRÜCKLICH nur `{titleContains: [satz]}` und damit KEINEN
+      // Rahmen; seine Antwort gehört deshalb zu keinem. Sein Knopf existiert ohnehin nur, solange
+      // kein Rahmen gilt (s. Kopf dieser Datei) — beides sagt dasselbe, hier steht es auch dann
+      // richtig da, wenn der Knopf je wieder unter einem Rahmen erschiene.
+      const gesendeterRahmen = override === undefined ? rahmen : null;
       const data = await endpoints.admin.import.select({
         prompt: gesendeterSatz,
         criteria: override ?? buildCriteria(),
@@ -221,14 +442,15 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
         // WP-VIP2-GATE-2 (bens Fix 1): die Eigeneinstufung reist IMMER mit (Pflichtfeld).
         promptConfidential,
       });
-      return { requestId, data, gesendeterSatz };
+      return { requestId, data, gesendeterSatz, gesendeterRahmen };
     },
-    onSuccess: ({ requestId, data, gesendeterSatz }) => {
+    onSuccess: ({ requestId, data, gesendeterSatz, gesendeterRahmen }) => {
       if (!latestRef.current.isCurrent(requestId)) {
         return; // ältere Antwort — verwerfen, die neuere Vorschau bleibt stehen
       }
       setPreview(data);
       setPreviewPrompt(gesendeterSatz);
+      setPreviewRahmen(gesendeterRahmen);
       // WP-SHIP9-S1b: auch Vorgemerktes startet abgewählt (Queue-Schutz), bleibt aber anwählbar.
       setCheckedRows(
         data.preview.map((entry) => entry.alreadyImported !== true && entry.alreadyQueued !== true),
@@ -246,6 +468,9 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
     chip.themes,
     chip.authors,
     chip.spaces,
+    // JOB 3640: ein gewechselter Rahmen ist eine ECHTE Filteränderung — eine offene Vorschau lädt
+    // dafür nach, wie bei Chips, Jahren und Deckel.
+    rahmen,
     yearFrom,
     yearTo,
     limit,
@@ -268,9 +493,18 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
   // nicht und liegt ausserhalb der Zielpfade dieses Auftrags. Die Zeile entsteht deshalb hier — und
   // wird in DIESELBE Liste gehängt, nicht in einen zweiten Kasten daneben: ohne sie stünde nach dem
   // Titel-Klick „Keine Eingrenzung — alles würde passen." über einer titelgefilterten Liste.
+  // JOB 3640: Gilt ein Rahmen, IST dieses `titleContains` der Rahmen — buildCriteria schickt genau
+  // ihn, und die Klick-Kriterien schlagen serverseitig die KI-Deutung. Dann trägt die Zeile die
+  // Beschriftung des Rahmens statt der eines vom Menschen gesetzten Titelkriteriums; beides in
+  // DERSELBEN Liste, nicht in zwei Kästen nebeneinander.
+  // Runde 4: die Beschriftung hängt am Rahmen DIESER Antwort (`previewRahmen`), nicht am gerade
+  // gültigen Prop — die Zeile beschreibt, was der Server für diese Liste benutzt hat. Nach einem
+  // Rahmenwechsel stünde sonst die Beschriftung des neuen Rahmens über dem Wort des alten.
   const titleCriteriaLine =
     preview && (preview.criteria.titleContains?.length ?? 0) > 0
-      ? `${t("imp.select.critTitle")}: ${(preview.criteria.titleContains ?? []).join(", ")}`
+      ? `${previewRahmen !== null ? t("imp.rahmen.critRahmen") : t("imp.select.critTitle")}: ${(
+          preview.criteria.titleContains ?? []
+        ).join(", ")}`
       : null;
   const criteriaLines = preview
     ? [
@@ -312,7 +546,33 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
   const alreadyImportedCount = preview?.alreadyImported ?? 0;
   const alreadyQueuedCount = preview?.alreadyQueued ?? 0;
 
+  // ==============================================================================================
+  // JOB 3640 (Runde 4) · EIN GEWECHSELTER RAHMEN ENTWERTET DIE ALTE LISTE SOFORT.
+  // ==============================================================================================
+  //
+  // BENS BEFUND (Runde 3, ROT): Vorschau und Gruppen reisten dem Rahmen nur NACH — das Nachladen
+  // ist um 350 ms verzögert und kann scheitern. In genau diesem Fenster stand unter „Rahmen:
+  // Advisor" weiterhin die alte, ungerahmte Auswahl, und ihr Übernehmen-Knopf schickte sie
+  // tatsächlich ab. Der Rahmen ist aber eine ZUSAGE („ausschließlich Seiten mit diesem Wort im
+  // Titel") — sie darf keine Sekunde lang falsch sein.
+  //
+  // DIE REGEL, EINE ZEILE: Gehört die angezeigte Antwort nicht zum aktuell gültigen Rahmen, ist sie
+  // eine ALTE AUSKUNFT und keine Grundlage mehr zum Handeln. Sie bleibt sichtbar (LEHREN §7: eine
+  // gescheiterte Auffrischung leert nichts), sagt aber, wozu sie gehört — und alles, was aus ihr
+  // etwas MACHEN würde (anhaken, Massenaktionen, gruppieren, übernehmen), ist gesperrt, bis die
+  // Vorschau im aktuellen Rahmen steht. Das gilt in beide Richtungen: ein gesetzter, ein
+  // gewechselter und ein aufgehobener Rahmen sind derselbe Fall.
+  //
+  // KEIN ZWEITER FILTERWEG: die alte Liste wird hier NICHT clientseitig nachgefiltert. Der
+  // Titelvergleich wohnt im Server (`matchesTitleContains`, services/library-analytics/src/select.ts);
+  // ihn hier nachzubauen hiesse, zwei Wahrheiten darüber zu führen, was im Rahmen liegt. Die eine
+  // Antwort, die zählt, kommt vom Server — bis sie da ist, wird gewartet, nicht geraten.
+  const rahmenVeraltet = preview !== null && previewRahmen !== rahmen;
+
   const toggleRow = (index: number): void => {
+    if (rahmenVeraltet) {
+      return;
+    }
     setCheckedRows((prev) => prev.map((on, i) => (i === index ? !on : on)));
   };
 
@@ -387,6 +647,9 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
   // F2: „Alle wählen" wirkt nur auf bulk-wählbare sichtbare Zeilen; „Alle abwählen" leert GLOBAL
   // (auch weggefilterte, aber gewählte Treffer) — Beschriftung und Wirkung fallen nie auseinander.
   const toggleAll = (): void => {
+    if (rahmenVeraltet) {
+      return;
+    }
     if (allVisibleChecked) {
       setCheckedRows((prev) => clearAllSelected(prev));
     } else {
@@ -397,6 +660,9 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
   // Zeilen (F1: importierte/vorgemerkte bleiben aus); ABWÄHLEN wirkt auf ALLE Zeilen der Gruppe (auch
   // bewusst wieder-angewählte bekannte Einträge).
   const setGroupSelected = (groupRowsArg: readonly PreviewRow[], value: boolean): void => {
+    if (rahmenVeraltet) {
+      return;
+    }
     setCheckedRows((prev) =>
       value
         ? setRowsSelected(prev, bulkSelectableRows(groupRowsArg), true)
@@ -635,6 +901,25 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
             </p>
           ) : null}
 
+          {/* JOB 3640 R4: der Rahmen hat gewechselt — die Liste darunter gehört zur Abfrage davor.
+              Sie bleibt lesbar, aber sie ist ab hier keine Grundlage zum Handeln mehr (Begründung
+              an `rahmenVeraltet`). Der Satz sagt, WAS jetzt gilt, WOHER die Liste stammt und WAS
+              gesperrt ist — und im Fehlerfall, wie es weitergeht. */}
+          {rahmenVeraltet ? (
+            <p
+              data-testid="rahmen-gewechselt"
+              className="mt-1.5 rounded-btn bg-trust-warn-bg px-3 py-2 text-[12px] text-trust-warn-text"
+            >
+              {select.isError
+                ? rahmen !== null
+                  ? t("imp.rahmen.wechselFehler", { firma: rahmen })
+                  : t("imp.rahmen.wechselFehlerOhne")
+                : rahmen !== null
+                  ? t("imp.rahmen.wechselLaeuft", { firma: rahmen })
+                  : t("imp.rahmen.wechselLaeuftOhne")}
+            </p>
+          ) : null}
+
           {/* Effektiv benutzte Kriterien — Transparenz. Leer → „alles". */}
           {criteriaLines.length > 0 ? (
             <ul className="mt-1.5 space-y-0.5 text-[11.5px] text-muted-2">
@@ -682,7 +967,17 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
                     })
                   : t("imp.select.titleFallbackNone", { query: titleFallback.query })}
               </p>
-              {titleFallback.matched > 0 && titleFallbackGrund === null ? (
+              {/* JOB 3640: Die Zahl des Titelbefunds entsteht serverseitig OHNE den Rahmen
+                  (`filterImportItems(items, {titleContains: [query]})`). Solange ein Rahmen gilt,
+                  steht sie deshalb ausdrücklich als Zahl über den Gesamtbestand da — und der
+                  Umschaltknopf entfällt, weil er genau aus dem Rahmen herausführen würde
+                  (Begründung im Kopf dieser Datei). */}
+              {rahmen !== null ? (
+                <p data-testid="titelbefund-ungerahmt" className="mt-1 text-[11.5px] text-muted-2">
+                  {t("imp.rahmen.titelbefundUngerahmt")}
+                </p>
+              ) : null}
+              {titleFallback.matched > 0 && titleFallbackGrund === null && rahmen === null ? (
                 <div className="mt-2">
                   <Button variant="outline" onClick={() => select.mutate(titleFallback.criteria)}>
                     {t("imp.select.titleFallbackCta", { count: titleFallback.matched })}
@@ -744,7 +1039,14 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
                 }
               />
 
-              <div className="min-w-0">
+              {/* JOB 3640 R4: die SPERRE der entwerteten Liste — ein `fieldset disabled`, also die
+                  Browser-eigene Regel, die JEDES Bedienelement darin erfasst: die Haken der Zeilen,
+                  die Massenaktionen UND die Gruppen-Haken im Baum (`ImportPreviewTree`, eigene
+                  Datei). Kein nachgebautes Deaktivieren an einem Dutzend Stellen, das eine davon
+                  vergessen könnte. Die Handler oben sind zusätzlich verriegelt (`rahmenVeraltet`) —
+                  die Sperre soll nicht davon abhängen, dass ein Klick nur über die Fläche kommt.
+                  Die Filterschiene links bleibt bedienbar: sie ändert die SICHT, nicht die Auswahl. */}
+              <fieldset disabled={rahmenVeraltet} className="m-0 min-w-0 border-0 p-0">
                 {/* B3: die aktive-Filter-Leiste über der TREFFERLISTE — jede aktive Wahl als
                     entfernbare Pille, mit demselben Zurücksetzen wie in der Bibliothek. */}
                 <FacetActiveBar
@@ -786,9 +1088,13 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
                     counts={langCounts}
                     label={languageLabel}
                     buttonText={(lang, n) => t("imp.select.deselectLang", { lang, n })}
-                    onDeselect={(lang) =>
-                      setCheckedRows((prev) => deselectLanguage(prev, entries, lang))
-                    }
+                    onDeselect={(lang) => {
+                      // R4: dieselbe Verriegelung wie an den übrigen Auswahl-Wegen.
+                      if (rahmenVeraltet) {
+                        return;
+                      }
+                      setCheckedRows((prev) => deselectLanguage(prev, entries, lang));
+                    }}
                   />
                 </div>
 
@@ -867,7 +1173,7 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
                     renderRow={renderRow}
                   />
                 )}
-              </div>
+              </fieldset>
             </div>
           ) : (
             <p className="mt-2 text-[12px] text-muted-2">{t("imp.select.empty")}</p>
@@ -881,7 +1187,24 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
               Neu-Mount den kompletten aufgebauten Zustand (Gruppen/Zweit-Auswahl/Bilanz), sodass
               die sichtbaren Gruppen NIE von der aktuellen Auswahl abweichen (und ein in-flight
               /group der alten Auswahl auf der abgemeldeten Instanz ins Leere läuft). */}
-          {preview.preview.length > 0
+          {/* JOB 3640 R4: GEHÖRT DIE ANGEZEIGTE ANTWORT NICHT ZUM GÜLTIGEN RAHMEN, GIBT ES HIER
+              NICHTS ZU GRUPPIEREN UND NICHTS ZU ÜBERNEHMEN. Das ist die Stelle, an der bens
+              Gegenprobe durchkam: `ImportGroups` bekam weiter `preview.criteria` der alten Abfrage
+              und schickte sie ab. Statt des Schritts steht hier eine Zeile, die sagt, warum er
+              fehlt — und er kommt von selbst wieder, sobald die Vorschau im aktuellen Rahmen
+              steht. Ausgebaut statt nur ausgegraut: der aufgebaute Gruppen-Zustand gehörte zur
+              alten Auswahl, ein laufendes /group daran läuft auf der abgemeldeten Instanz ins
+              Leere (dieselbe Begründung wie beim Key darunter). */}
+          {rahmenVeraltet ? (
+            <p
+              data-testid="rahmen-gruppen-gesperrt"
+              className="mt-3 border-t border-hairline pt-3 text-[12px] text-muted"
+            >
+              {t("imp.rahmen.wechselGruppenGesperrt")}
+            </p>
+          ) : null}
+
+          {preview.preview.length > 0 && !rahmenVeraltet
             ? (() => {
                 // Derselbe Wert wie der React-Key — EINE Quelle, damit „was wurde gruppiert" und
                 // „was setzt den Schritt zurück" nicht auseinanderlaufen können.

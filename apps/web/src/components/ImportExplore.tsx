@@ -6,9 +6,15 @@
 // aktiver Zustand deutlich, große Trefferfläche) — sie speisen die Auswahl-Vorschau (ImportSelect).
 // WP-IC-PAKET-1 (Teil 2): abgeleitete Themen (aus Titeln, deterministisch) sind dezent gekennzeichnet.
 // WP-IC-PAKET-1 (Teil 4): „davon bereits importiert"-Zeile aus dem Quell-Referenz-Abgleich.
-import { useMutation } from "@tanstack/react-query";
-import { Images, Loader2, Search, Users } from "lucide-react";
-import { type MouseEvent as ReactMouseEvent, useEffect, useRef, useState } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { Building2, Images, Loader2, Search, Users } from "lucide-react";
+import {
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ApiError } from "../api/client";
@@ -22,12 +28,246 @@ import {
   toExploreView,
 } from "../lib/importExplore";
 import { JSON_SOURCE_IDS } from "../lib/importSourceGallery";
-import { ImportSelect } from "./ImportSelect";
+import { toReasonerLocale } from "../lib/reasonerLocale";
+import { usePersistentString } from "../lib/usePersistentValue";
+import { ImportSelect, registriereRahmenTexte } from "./ImportSelect";
 // AUFTRAG-ic7-import-vision: EHRLICHE Quellen-Galerie (Systeme + Dateien) mit Zustandsbadges.
 import { ImportSourceGallery } from "./ImportSourceGallery";
 // WP-COCKPIT-LINIE: Schritt-Überschriften (1 Quelle · 2 Erkunden) + Meilenstein-Meldung an die Leiste.
 import { ImportStepHeading, useImportSource, useReportImportStage } from "./ImportStepper";
-import { Button, Card } from "./ui";
+import { Button, Card, TextInput } from "./ui";
+
+// ================================================================================================
+// JOB 3640 · DER VORFÜHRRAHMEN — „FÜR WELCHE FIRMA FÜHRE ICH VOR?"
+// ================================================================================================
+//
+// PEDIS BEFUND (11.09., über Codex): Er hatte „bereits verlangt, die Firma eingeben/auswählen zu
+// können, für die er vorführt; danach sollen nur deren Daten sichtbar sein, z. B. beim
+// Confluence-Import". Er fand die Auswahl nicht — es GAB sie nicht. Ausdrücklich: „Themenwort
+// ‚Demo' als nachträglicher Suchfilter reicht nicht."
+//
+// ------------------------------------------------------------------------------------------------
+// WELCHES MERKMAL TRENNT DEN BESTAND WIRKLICH? (Auftrag §4.3)
+// ------------------------------------------------------------------------------------------------
+// Geprüft in der vom Auftrag vorgegebenen Reihenfolge, mit den Zahlen aus Pedis Bildbeleg
+// (`gespraech/feedback-20260911-admin-loeschen/confluence-ohne-demo-firmenfilter.png`, 110 Seiten):
+//
+//   QUELLE (`spaces`)      1 Quelle für alle 110 Seiten. Ein Quellenfilter kann hier NICHTS
+//                          trennen — genau deshalb blendet diese Fläche die Space-Chips bei einer
+//                          einzigen Quelle bis heute aus (`view.spaces.length > 1`, s. unten).
+//   AUTOR (`authors`)      1 Autor („Peter Kohnert", 110). Trennt ebenfalls nichts.
+//   THEMA (`themes`)       10 Gruppen, ALLE mit „abgeleitet" gekennzeichnet: sie stammen nicht aus
+//                          Quell-Labels, sondern werden deterministisch aus je EINEM Titelwort
+//                          erzeugt (`services/library-analytics/src/themes.ts`). 27 der 110 Seiten
+//                          tragen dabei gar kein Thema („(ohne Thema) 27"), und die Liste ist auf
+//                          die Top 12 gedeckelt. Ein Thema ist ein Wort, keine Firma; als Rahmen
+//                          wäre es lückenhaft (27 Seiten fielen durch) und zufällig.
+//   TITEL (`titleContains`, JOB 3356)
+//                          Substring-Vergleich im kanonisierten Titel, UND-verknüpft mit allen
+//                          anderen Kriterienarten (`filterImportItems`). Das ist in diesem Bestand
+//                          das EINZIGE Merkmal, das überhaupt trennen kann.
+//
+// DESHALB IST DER RAHMEN EIN TITELWORT — UND KEINE AUSWAHLLISTE ERFUNDENER FIRMEN. Das Produkt
+// kennt keine Firmenzugehörigkeit je Seite; weder Quelle noch Autor noch Label sagen etwas darüber.
+// Eine Liste „Advisor / Basic / …" wäre eine Behauptung über Daten, die niemand geschrieben hat
+// (Auftrag §5: „Nichts umetikettieren"). Der Mensch nennt das Wort, das SEINE Seiten im Titel
+// tragen, und die Fläche sagt ihm mit einer GEMESSENEN Zahl, wie viele Seiten das sind — auch die 0.
+//
+// ------------------------------------------------------------------------------------------------
+// WAS GERAHMT IST — UND WAS AUSDRÜCKLICH NICHT (Auftrag §4.4 und §5)
+// ------------------------------------------------------------------------------------------------
+// GERAHMT (der Rahmen reist als `titleContains` mit und lässt sich nicht wegklicken):
+//   · die Seitenzahl im Erkunden — eigens gemessen, s. `useRahmenUmfang` unten,
+//   · Eingrenzen/Vorschau: `ImportSelect.buildCriteria` legt ihn in JEDE Anfrage,
+//   · Gruppierung und Übernahme: sie laufen über `preview.criteria` des Servers, und dort steht der
+//     Rahmen, weil die Klick-Kriterien die KI-Deutung schlagen (`{...derived, ...clickCriteria}`,
+//     `routes/confluence-import-routes.ts`).
+//
+// NICHT GERAHMT, und deshalb SICHTBAR SO BENANNT: die Landkarte der Erkundung (Autoren, Themen,
+// Quellen, Zeitraum, „davon bereits importiert"). Die Erkundungs-Route nimmt keine Kriterien
+// entgegen und liefert nur fertige Aggregate; diese Zahlen nachzubauen hieße, ein zweites
+// Aggregat neben dem des Servers zu führen. Eine ehrliche Lücke ist besser als ein Filter, der
+// Vollständigkeit behauptet (Auftrag §5) — die Fläche schreibt deshalb an die Landkarte, dass sie
+// den Gesamtbestand zählt, statt eine gerahmte Zahl vorzutäuschen.
+//
+// GESPEICHERT wird der Rahmen pro Browser (`usePersistentString`, dieselbe fehlertolerante Grenze
+// wie jede andere überlebende Anzeigewahl). Damit muss Pedi nicht vor jeder Vorführung daran
+// denken — und er sieht in der Leiste jederzeit, dass ein Rahmen gilt.
+const VORFUEHRRAHMEN_SPEICHER = "klarwerk.import.vorfuehrrahmen";
+
+// DIE TEXTE DES RAHMENS (DE/EN/NL) wohnen bei ihrer Funktion, in `ImportSelect.tsx` — mit voller
+// Begründung dort. Sie melden sich an der EINEN i18next-Instanz an; `t("imp.rahmen…")` unten ist
+// danach ein Nachschlag wie jeder andere. Der Aufruf steht hier NOCH EINMAL und ist idempotent:
+// er darf nicht davon abhängen, welches der beiden Module zuerst geladen wird.
+registriereRahmenTexte();
+
+/**
+ * Der GEMESSENE Umfang des Rahmens.
+ *
+ * `zahl === null` heißt „noch nicht gemessen" und NICHT „0" (LEHREN §7: die Fläche unterscheidet
+ * unbekannt von leer). Eine Zahl steht hier ausschließlich aus einer erfolgreichen Antwort.
+ */
+interface RahmenUmfang {
+  zahl: number | null;
+  laeuft: boolean;
+  fehler: boolean;
+  erneut: () => void;
+}
+
+/**
+ * Die Seitenzahl des Rahmens — über die BESTEHENDE, READ-ONLY Auswahl-Route, mit genau einem
+ * Kriterium.
+ *
+ * WARUM ÜBERHAUPT EIN EIGENER AUFRUF: Die Erkundungs-Route kennt keine Kriterien, ihr `totalCount`
+ * ist immer der ganze Bestand. Ohne diese Messung stünde über einem gerahmten Import weiter die
+ * ungerahmte 110 — „eine Zahl, die den Rahmen ignoriert, wäre schlimmer als kein Rahmen"
+ * (Auftrag §4.4). Gemessen wird mit derselben Filterfunktion, die danach auch die Vorschau
+ * auswählt; es entsteht kein zweiter Zählweg.
+ *
+ * OHNE SATZ UND OHNE MODELL: `prompt: ""` — die Route leitet nur bei nicht-leerem Satz Kriterien
+ * ab, ruft also weder Reasoner noch Cloud. `promptConfidential: true` ist das fail-safe Pflichtfeld
+ * des Vertrags; es gibt hier keinen Satz, der irgendwohin gehen könnte. `limit: 1` hält die Antwort
+ * klein — `matched` zählt serverseitig VOR dem Deckel (`filterImportItems`) und bleibt exakt.
+ *
+ * KEINE HINTERGRUND-AUFFRISCHUNG: gemessen wird, wenn ein Rahmen UND eine Landkarte da sind, und
+ * danach nur noch auf ausdrückliche Handlung (Erkunden-Knopf, „Erneut zählen"). Scheitert eine
+ * Auffrischung, bleibt die zuletzt erfolgreich gemessene Zahl stehen und wird als solche benannt.
+ */
+function useRahmenUmfang(
+  rahmen: string | null,
+  landkarteDa: boolean,
+  erkundungsLauf: number,
+): RahmenUmfang {
+  const { i18n } = useTranslation();
+  const abfrage = useQuery({
+    queryKey: ["import-vorfuehrrahmen-umfang", "confluence", rahmen, erkundungsLauf],
+    enabled: rahmen !== null && landkarteDa,
+    staleTime: Number.POSITIVE_INFINITY,
+    refetchOnWindowFocus: false,
+    retry: false,
+    queryFn: async (): Promise<number> => {
+      const antwort = await endpoints.admin.import.select({
+        prompt: "",
+        criteria: { titleContains: [rahmen ?? ""], limit: 1 },
+        locale: toReasonerLocale(i18n.language),
+        promptConfidential: true,
+      });
+      return antwort.matched;
+    },
+  });
+  return {
+    zahl: abfrage.data ?? null,
+    laeuft: abfrage.isFetching,
+    fehler: abfrage.isError,
+    erneut: () => {
+      void abfrage.refetch();
+    },
+  };
+}
+
+/**
+ * Die sichtbare Wahl VOR dem Erkunden — und danach die Leiste, die zeigt, dass sie gilt.
+ *
+ * Zwei Zustände, ein Griff zurück: ohne Rahmen ein benanntes Feld mit Knopf, mit Rahmen eine
+ * Leiste mit Namen, gemessener Seitenzahl und „Rahmen aufheben". Die Leiste steht ganz oben in der
+ * Karte und bleibt über alle Schritte sichtbar.
+ */
+function VorfuehrrahmenKasten({
+  rahmen,
+  umfang,
+  setzen,
+  aufheben,
+}: {
+  rahmen: string | null;
+  umfang: RahmenUmfang;
+  setzen: (firma: string) => void;
+  aufheben: () => void;
+}): JSX.Element {
+  const { t } = useTranslation();
+  const [entwurf, setEntwurf] = useState("");
+
+  if (rahmen === null) {
+    const uebernehmen = (): void => {
+      const wort = entwurf.trim();
+      if (wort.length > 0) {
+        setzen(wort);
+        setEntwurf("");
+      }
+    };
+    return (
+      <div
+        data-testid="vorfuehrrahmen-wahl"
+        className="mb-4 rounded-card border border-hairline bg-page px-3 py-2.5"
+      >
+        <span className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-text">
+          <Building2 size={14} /> {t("imp.rahmen.titel")}
+        </span>
+        <p className="mt-1 text-[12px] text-muted">{t("imp.rahmen.erklaerung")}</p>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <TextInput
+            value={entwurf}
+            onChange={(e) => setEntwurf(e.target.value)}
+            onKeyDown={(e: ReactKeyboardEvent<HTMLInputElement>) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                uebernehmen();
+              }
+            }}
+            placeholder={t("imp.rahmen.platzhalter")}
+            aria-label={t("imp.rahmen.feldLabel")}
+            className="w-56"
+          />
+          <Button disabled={entwurf.trim().length === 0} onClick={uebernehmen}>
+            {t("imp.rahmen.setzen")}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      data-testid="vorfuehrrahmen-leiste"
+      className="mb-4 rounded-card border border-ink/30 bg-page px-3 py-2.5"
+    >
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+        <span className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-text">
+          <Building2 size={14} /> {t("imp.rahmen.aktiv", { firma: rahmen })}
+        </span>
+        {/* Die Zahl hängt an ihrer Voraussetzung: gemessen / wird gemessen / nicht abrufbar /
+            noch gar nicht gemessen — vier Zustände, vier eigene Sätze, nie eine erfundene Zahl. */}
+        <span data-testid="vorfuehrrahmen-umfang" className="text-[12px] text-muted">
+          {umfang.zahl !== null
+            ? t("imp.rahmen.umfang", { count: umfang.zahl })
+            : umfang.laeuft
+              ? t("imp.rahmen.umfangLaeuft")
+              : umfang.fehler
+                ? t("imp.rahmen.umfangFehler")
+                : t("imp.rahmen.umfangUngemessen")}
+        </span>
+        {/* Eine gescheiterte Auffrischung leert die zuletzt gemessene Zahl NICHT — sie sagt, dass
+            sie die zuletzt gemessene ist (LEHREN §7). */}
+        {umfang.zahl !== null && umfang.fehler ? (
+          <span className="text-[12px] text-trust-warn-text">{t("imp.rahmen.umfangVeraltet")}</span>
+        ) : null}
+        {umfang.fehler ? (
+          <Button variant="ghost" onClick={umfang.erneut} disabled={umfang.laeuft}>
+            {t("imp.rahmen.umfangErneut")}
+          </Button>
+        ) : null}
+        <Button variant="ghost" onClick={aufheben}>
+          {t("imp.rahmen.aufheben")}
+        </Button>
+      </div>
+      {/* Der leere Rahmen ist kein stilles Nichts — er sagt, dass er leer ist, und warum. */}
+      {umfang.zahl === 0 ? (
+        <p className="mt-1.5 text-[12px] text-trust-warn-text">
+          {t("imp.rahmen.leer", { firma: rahmen })}
+        </p>
+      ) : null}
+    </div>
+  );
+}
 
 // Die Kern-Platzhalter kommen sprach-neutral aus IC-1 („(ohne Autor)"/„(ohne Label)"); hier auf die
 // lokalisierten Anzeigetexte abbilden, damit die Landkarte in jeder UI-Sprache ehrlich lesbar ist.
@@ -97,9 +337,15 @@ function ExploreMap({
   alreadyQueued,
   failedPages,
   abbruch,
+  rahmen,
+  umfang,
 }: {
   view: ExploreView;
   truncated: boolean;
+  // JOB 3640: der gültige Vorführrahmen (Titelwort) und seine gemessene Seitenzahl. `null` = kein
+  // Rahmen — dann verhält sich diese Landkarte zeichengleich wie vorher.
+  rahmen: string | null;
+  umfang: RahmenUmfang;
   alreadyImported: number;
   // WP-SHIP9-S1b (bens GELB): getrennt vom Import — offene Kandidaten sind nur „vorgemerkt".
   alreadyQueued: number;
@@ -137,12 +383,31 @@ function ExploreMap({
           {t("imp.explore.failedPages", { n: failedPages })}
         </p>
       ) : null}
-      {/* Kennzahlen */}
+      {/* Kennzahlen.
+          JOB 3640: Gilt ein Rahmen UND ist seine Seitenzahl GEMESSEN, steht sie hier statt der
+          ungerahmten Gesamtzahl — mit der Gesamtzahl als ehrlicher Bezugsgröße darunter. Ist sie
+          (noch) nicht gemessen, bleibt die Gesamtzahl mit ihrer eigenen Beschriftung stehen: eine
+          gerahmte Zahl zu behaupten, die niemand gezählt hat, wäre schlimmer als keine. */}
       <div className="grid grid-cols-3 gap-2">
-        <Stat label={t("imp.explore.pages")} value={String(view.totalCount)} />
+        {rahmen !== null && umfang.zahl !== null ? (
+          <Stat
+            label={t("imp.rahmen.seitenImRahmen")}
+            value={String(umfang.zahl)}
+            note={t("imp.rahmen.vonGesamt", { total: view.totalCount })}
+          />
+        ) : (
+          <Stat label={t("imp.explore.pages")} value={String(view.totalCount)} />
+        )}
         <Stat label={t("imp.explore.sources")} value={String(view.distinctSources)} />
         <Stat label={t("imp.explore.period")} value={view.period} />
       </div>
+      {/* Auftrag §5: die Landkarte kann nicht gerahmt zählen (die Erkundungs-Route nimmt keine
+          Kriterien entgegen) — dann sagt sie es, statt gerahmte Zahlen vorzutäuschen. */}
+      {rahmen !== null ? (
+        <p data-testid="rahmen-landkarte-hinweis" className="mt-2 text-[12px] text-trust-warn-text">
+          {t("imp.rahmen.landkarteUngerahmt")}
+        </p>
+      ) : null}
       {/* WP-IC-PAKET-1 (Teil 4, IC-6a): ehrlicher Import-Status über die Quell-Referenzen —
           WP-SHIP9-S1b: importiert (lebender KO-Anker) und vorgemerkt (offener Kandidat) getrennt. */}
       {alreadyImported > 0 ? (
@@ -273,7 +538,10 @@ function ExploreMap({
       {/* IC-3: prompt-/filtergesteuerte Auswahl-Vorschau — die Chips der Landkarte sind die Filter.
           READ-ONLY (kein Übernahme-Button; das ist IC-4). */}
       {view.totalCount > 0 ? (
-        <ImportSelect chip={{ themes: selThemes, authors: selAuthors, spaces: selSpaces }} />
+        <ImportSelect
+          chip={{ themes: selThemes, authors: selAuthors, spaces: selSpaces }}
+          rahmen={rahmen}
+        />
       ) : null}
     </div>
   );
@@ -319,11 +587,22 @@ const GALERIE_ANKER = "import-source-gallery";
 // Adresse, nicht zwei.
 const ERKLAERSEITE_PFAD = "/demonstration/importwege.html";
 
-function Stat({ label, value }: { label: string; value: string }): JSX.Element {
+function Stat({
+  label,
+  value,
+  note,
+}: {
+  label: string;
+  value: string;
+  // JOB 3640: die Bezugsgröße unter der Kennzahl („von 110 im Gesamtbestand") — nur gesetzt, wo es
+  // wirklich eine gibt; ohne sie sieht die Kachel zeichengleich aus wie bisher.
+  note?: string;
+}): JSX.Element {
   return (
     <div className="rounded-card border border-hairline bg-page px-3 py-2">
       <div className="text-[18px] font-semibold leading-tight text-text">{value}</div>
       <div className="mt-0.5 text-[11px] uppercase tracking-wide text-muted-2">{label}</div>
+      {note !== undefined ? <div className="mt-0.5 text-[11px] text-muted-2">{note}</div> : null}
     </div>
   );
 }
@@ -336,6 +615,23 @@ export function ImportExplore(): JSX.Element {
 
   const view = explore.data ? toExploreView(explore.data.summary) : null;
   const errorMessage = explore.error instanceof ApiError ? explore.error.message : t("state.error");
+
+  // JOB 3640: der gültige Vorführrahmen. Gespeichert wird der rohe Text; gültig ist er erst nach
+  // dem Trimmen — ein Rahmen aus Leerzeichen ist kein Rahmen.
+  const [rahmenRoh, setRahmenRoh] = usePersistentString(VORFUEHRRAHMEN_SPEICHER, "");
+  const rahmen = rahmenRoh.trim().length > 0 ? rahmenRoh.trim() : null;
+  // Welcher Erkundungslauf gilt gerade? Die Zahl gehört in den Abfrageschlüssel, damit ein neuer
+  // Lauf auch eine neue Messung des Rahmens verlangt: sonst stünde neben einer frisch erkundeten
+  // Landkarte eine Rahmenzahl aus dem Lauf davor. Gezählt wird an der HANDLUNG (unten, `erkunden`)
+  // und nicht in einem Effekt — ein Effekt würde bei jeder Neuzeichnung erneut messen wollen.
+  const [erkundungsLauf, setErkundungsLauf] = useState(0);
+  const umfang = useRahmenUmfang(rahmen, view !== null, erkundungsLauf);
+
+  // Der Erkunden-Weg — EINE Stelle für beide Auslöser (Knopf und Confluence-Kachel).
+  const erkunden = (): void => {
+    setErkundungsLauf((lauf) => lauf + 1);
+    explore.mutate();
+  };
 
   // WP-COCKPIT-LINIE: Landkarte da → Meilenstein "explored" an die Schritt-Leiste melden und die
   // Ansicht zum neuen Schritt scrollen (Muster aus R7 — der Schrittwechsel darf nicht vom
@@ -432,7 +728,7 @@ export function ImportExplore(): JSX.Element {
   const handleActivate = (id: string): void => {
     if (id === "confluence") {
       chooseSource("confluence");
-      explore.mutate();
+      erkunden();
       return;
     }
     if ((JSON_SOURCE_IDS as readonly string[]).includes(id)) {
@@ -442,6 +738,15 @@ export function ImportExplore(): JSX.Element {
 
   return (
     <Card className="mb-5">
+      {/* JOB 3640: die Wahl der Firma steht VOR allem anderen und bleibt sichtbar, solange sie
+          gilt — sie rahmt jeden folgenden Schritt. Begründung im Kopf dieser Datei. */}
+      <VorfuehrrahmenKasten
+        rahmen={rahmen}
+        umfang={umfang}
+        setzen={setRahmenRoh}
+        aufheben={() => setRahmenRoh("")}
+      />
+
       {/* WP-COCKPIT-LINIE Schritt 1: Quelle wählen. */}
       <ImportStepHeading step="source" />
 
@@ -470,7 +775,7 @@ export function ImportExplore(): JSX.Element {
             <Button
               variant={view ? "outline" : "primary"}
               disabled={explore.isPending}
-              onClick={() => explore.mutate()}
+              onClick={erkunden}
             >
               {explore.isPending ? (
                 <Loader2 size={15} className="animate-spin" />
@@ -498,6 +803,8 @@ export function ImportExplore(): JSX.Element {
             <div ref={mapRef} className="scroll-mt-4">
               <ExploreMap
                 view={view}
+                rahmen={rahmen}
+                umfang={umfang}
                 truncated={explore.data?.truncated ?? false}
                 alreadyImported={explore.data?.alreadyImported ?? 0}
                 alreadyQueued={explore.data?.alreadyQueued ?? 0}

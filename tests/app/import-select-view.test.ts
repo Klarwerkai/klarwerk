@@ -83,11 +83,28 @@ describe("IC-3: summarizeSelectCriteria", () => {
 describe("IC-3: Verdrahtung im Import-Cockpit", () => {
   it("ImportExplore rendert die Auswahl-Komponente ImportSelect (Chips der Landkarte als Filter)", () => {
     const src = read("apps/web/src/components/ImportExplore.tsx");
-    expect(src).toContain('import { ImportSelect } from "./ImportSelect"');
+    // JOB 3640 NACHGEFÜHRT, NICHT GELOCKERT (zweimal, und beide Male aus demselben Grund: der
+    // Aufruf ist GEWACHSEN, die Zusage nicht).
+    //  · Die Importzeile führt seit diesem Job neben der Komponente noch die Anmeldung der
+    //    Rahmen-Texte mit (`registriereRahmenTexte`) — gepinnt wird deshalb, DASS aus
+    //    "./ImportSelect" importiert wird und DASS `ImportSelect` darin steht, nicht die exakte
+    //    Zeichenfolge der Klammer.
+    //  · Der Aufruf trägt ein zweites Attribut (`rahmen`) und steht deshalb über mehrere Zeilen;
+    //    ein Pin auf die alte EINZEILIGE Schreibweise wäre ab jetzt ein Pin auf die Formatierung.
+    // Was geprüft wird, bleibt dasselbe: Import und Chip-Zuführung. Eine gelöschte Chip-Zuführung
+    // oder ein entfernter Import machen diesen Fall weiterhin rot.
+    const importzeile = /import \{([^}]*)\} from "\.\/ImportSelect";/.exec(src)?.[1] ?? "";
+    expect(importzeile).toContain("ImportSelect");
     // WP-IC-PAKET-1 (Teil 3): die Landkarten-Chips (Themen/Autoren/Spaces) speisen die Auswahl.
-    expect(src).toContain(
-      "<ImportSelect chip={{ themes: selThemes, authors: selAuthors, spaces: selSpaces }} />",
-    );
+    expect(src).toContain("<ImportSelect");
+    expect(src).toContain("chip={{ themes: selThemes, authors: selAuthors, spaces: selSpaces }}");
+  });
+
+  // JOB 3640: der Vorführrahmen reist von der Erkundung in die Auswahl — sonst wäre er eine
+  // Beschriftung ohne Wirkung.
+  it("ImportExplore reicht den Vorführrahmen an ImportSelect weiter", () => {
+    const src = read("apps/web/src/components/ImportExplore.tsx");
+    expect(src).toContain("rahmen={rahmen}");
   });
 
   it("ImportSelect verdrahtet den READ-ONLY select-Client und das View-Model", () => {

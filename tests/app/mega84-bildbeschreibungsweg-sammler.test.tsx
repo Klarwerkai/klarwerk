@@ -1709,8 +1709,32 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // Die zwei Zahlen, an denen Stufe 2 hängt, sind auch durch diese Rücknahme unverändert
     // (`anbieter` 1, `traeger` 2): das entfallene Bauteil bot keine Bildbeschreibung an und trug
     // keinen eigenen Titel — es stand nur in der Grundmenge.
+    //
+    // JOB 3640 (DEMO-FIRMA WAEHLEN): `komponenten` von 375 auf 376 NACHGEZOGEN — am Lauf dieses
+    // Arbeitsbaums gemessen (der Fall meldete `gemessen: 376 Komponenten · 1 Anbieter · 2 Traeger ·
+    // Grundmenge 475 Quelldateien`), nicht gerechnet. GENAU EIN Bauteil kommt hinzu:
+    //
+    //     + `VorfuehrrahmenKasten` (`components/ImportExplore.tsx:175`) — die sichtbare Wahl „Für
+    //       welche Firma führst du vor?" vor dem Erkunden und, sobald sie gilt, die Leiste mit
+    //       Namen, gemessener Seitenzahl und „Rahmen aufheben". Das ist eine NEUE Fläche und keine
+    //       Herauslösung: den Begriff „die Firma, für die ich vorführe" gab es im Produkt vorher
+    //       nicht, weder als Auswahl noch als Bindung über die Importschritte.
+    //
+    // GEGENPROBE dazu, gemessen statt behauptet: mit der Deklaration UND ihrer Einbindung
+    // kleingeschrieben (`vorfuehrrahmenKasten`) meldet dieser Fall wieder `gemessen: 375
+    // Komponenten` und wird gegen den ALTEN Pin grün — `alsKomponente` (oben, :453) verlangt einen
+    // Großbuchstaben am Namensanfang; die +1 ist damit genau dieses Bauteil und kein zweiter Fund,
+    // der sich hinter derselben Zahl versteckt. Danach hashgleich zurückgenommen
+    // (`ImportExplore.tsx` = 7ed00d665daca7737d7a1cbcd44ce6e7338502974a964e186276ad1751287429 vor
+    // und nach der Probe).
+    //
+    // Dieselbe Begründung wie oben, und sie trägt hier genauso: Die Auflage verbietet, dass eine
+    // UMSTELLUNG die Erhebung verschiebt — nicht, dass der Quellbaum wächst. Die zwei Zahlen, an
+    // denen Stufe 2 wirklich hängt, bleiben unverändert: `anbieter` 1 und `traeger` 2. Der Kasten
+    // zeigt kein Bild, bietet keine Bildbeschreibung an (kein `ANGEBOT_MUSTER`) und trägt keinen
+    // eigenen Titel (kein `documentTitle`-Prop) — er erscheint nur in der Grundmenge.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 375,
+      komponenten: 376,
       anbieter: 1,
       traeger: 2,
     });
