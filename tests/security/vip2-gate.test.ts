@@ -10,7 +10,7 @@
 //    WP-VIP2-GATE-2 zog den Guard nach; vorher galt dort nur Authentifizierung).
 import { pbkdf2Sync } from "node:crypto";
 import type { Pool } from "pg";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type AppServices, buildApp, buildServices } from "../../services/app/src/build-app";
 import {
   AuthService,
@@ -254,6 +254,19 @@ describe("WP-VIP2-GATE B2: Token-at-Rest — nur Hashes im Repo, Migration idemp
 describe("WP-VIP2-GATE B3: Cookie-Härtung — Secure in Produktion erzwungen", () => {
   const savedNodeEnv = process.env.NODE_ENV;
   const savedCookieSecure = process.env.COOKIE_SECURE;
+  // JOB 3655 (Startvertrag): Seit dieser Welle verlangt `buildApp` in Produktion die Pflichtwerte
+  // aus `services/app/src/start-vertrag.ts` (DATABASE_URL, APP_BASE_URL) und wirft sonst. Dieser
+  // Block baut Apps ABSICHTLICH mit NODE_ENV=production, sein Gegenstand ist aber die
+  // Cookie-Härtung. Er stattet die Umgebung deshalb aus, damit er weiterhin genau das misst, was
+  // er misst — nicht den Startvertrag. Die Werte sind erfunden und erreichen nichts: buildApp
+  // baut hier eine In-Memory-Komposition, es wird keine Verbindung aufgebaut.
+  const savedDatabaseUrl = process.env.DATABASE_URL;
+  const savedAppBaseUrl = process.env.APP_BASE_URL;
+
+  beforeEach(() => {
+    process.env.DATABASE_URL = "postgresql://test:test@localhost:5432/klarwerk_test";
+    process.env.APP_BASE_URL = "https://test.invalid";
+  });
 
   afterEach(() => {
     if (savedNodeEnv === undefined) {
@@ -265,6 +278,16 @@ describe("WP-VIP2-GATE B3: Cookie-Härtung — Secure in Produktion erzwungen", 
       delete process.env.COOKIE_SECURE;
     } else {
       process.env.COOKIE_SECURE = savedCookieSecure;
+    }
+    if (savedDatabaseUrl === undefined) {
+      delete process.env.DATABASE_URL;
+    } else {
+      process.env.DATABASE_URL = savedDatabaseUrl;
+    }
+    if (savedAppBaseUrl === undefined) {
+      delete process.env.APP_BASE_URL;
+    } else {
+      process.env.APP_BASE_URL = savedAppBaseUrl;
     }
   });
 

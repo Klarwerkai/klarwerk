@@ -253,6 +253,37 @@ import { ImportAccessService } from "./services/import-access-service";
 import { KlaraSessionService } from "./services/klara-session-service";
 import { type AnhangQuellen, sichtbarkeitsfilterFuer } from "./sichtbarkeit";
 import { type SlideConverter, createSofficeSlideConverter } from "./slide-converter";
+// JOB 3655: der Startvertrag — die EINE Stelle, die alle Umgebungswerte namentlich führt, den
+// Start bei fehlenden Pflichtwerten verweigert und beim Hochfahren ohne Geheimniswerte berichtet,
+// was diese Instanz hat und was ihr fehlt.
+import { ermittleBestand, pruefeStartvertrag, startbericht } from "./start-vertrag";
+
+// ================================================================================================
+// JOB 3655 RUNDE 2 · KORREKTURPFLICHT 1 — DIE SAMMELPRÜFUNG LÄUFT VOR JEDEM ANDEREN STARTSCHRITT.
+// ================================================================================================
+//
+// DER BEFUND (BEN, Runde 1): In Runde 1 stand diese Prüfung im Rumpf von `buildApp`. Das ist zu
+// spät. `server.ts` ruft `assertPersistentStore(...)` (Zeile 108), lange bevor es `buildApp`
+// (Zeile 124) erreicht — fehlten BEIDE Pflichtwerte, brach der alte Speicherwächter zuerst ab und
+// nannte nur `DATABASE_URL`. Der Betreiber startete neu, trug sie nach und erfuhr erst dann von
+// `APP_BASE_URL`. Genau das sollte der Vertrag beenden. Gemessen mit
+// `NODE_ENV=production node --import tsx services/app/src/server.ts`: `APP_BASE_URL` kam im ganzen
+// Prozessausgabetext nicht vor.
+//
+// WARUM AUF MODULEBENE UND NICHT IN `server.ts`, WO ES HINGEHÖRTE: `services/app/src/server.ts`
+// steht nicht in den Zielpfaden dieses Auftrags (auch nicht nach den Ergänzungen der Steuerung),
+// und ein Pfad ausserhalb der Zielpfade wird nicht angefasst. Der Modulrumpf ist der einzige
+// verbleibende Punkt, der NACHWEISLICH früher liegt: `server.ts:6` importiert dieses Modul, und
+// ein importiertes Modul wird vollständig ausgewertet, bevor die erste Anweisung des Importeurs
+// läuft. Die Prüfung greift damit für ALLE drei Einstiegspunkte, die dieses Modul laden —
+// `server.ts`, `seed.ts` und `dev-persist.ts`.
+//
+// WAS SIE NICHT TUT: In Nicht-Produktion prüft sie nichts (s. `fehlendePflichtwerte`), Testläufe
+// und Entwicklung bleiben unberührt. Der Aufruf im Rumpf von `buildApp` bleibt daneben bestehen
+// und ist kein zweiter Weg, sondern derselbe: dieselbe reine Funktion, ein zweites Mal gerufen für
+// den Fall, dass eine App erst NACH einer Umgebungsänderung gebaut wird (genau so misst es
+// `tests/security/vip2-gate.test.ts`, das `NODE_ENV` zur Laufzeit umstellt).
+pruefeStartvertrag(process.env);
 
 // Composition-Root des modularen Monolithen: verdrahtet ALLE Module zu EINER App.
 // Jeder Import läuft über die öffentliche index.ts des jeweiligen Moduls.
@@ -1180,6 +1211,11 @@ export const ERLAUBTE_FEHLERTYPEN: ReadonlySet<string> = new Set([
   "ReasonerPolicyLockedError",
   "ReceiptSecretError",
   "SlideConvertError",
+  // JOB 3655: der Startvertrag. Der Name darf ins Protokoll — er trägt keine Nutzerdaten und keinen
+  // Wert, sondern nur die Auskunft „ein Pflichtwert der Umgebung fehlt" (die Namen selbst stehen in
+  // der Meldung, nicht im Typ). Er steht damit genau neben `StoragePersistenceError`, dem Wächter
+  // derselben Art.
+  "StartvertragError",
   "StoragePersistenceError",
   "TranscriberConfidentialError",
   "ValidationError",
@@ -1257,6 +1293,12 @@ export const ERLAUBTE_FEHLERCODES: ReadonlySet<string> = new Set([
   "NO_FORMULIERER",
   "NO_INPUT",
   "NO_SOURCES",
+  // JOB 3655 R2: der Code, mit dem der Schreibweg der KI-Zuordnung antwortet, solange
+  // KLARWERK_REASONER_POLICY gesetzt ist (reasoner-routes.ts:699). Er stand bisher nur als
+  // Antwortfeld im Quelltext und wurde vom Sammler nicht erhoben; der Startbericht führt ihn jetzt
+  // als eigenes Feld (`Startmangel.code`) und damit kann er im Protokoll erscheinen. Sein Name
+  // trägt keine Nutzerdaten — er sagt, welcher Zweig lief, und genau dafür ist die Liste da.
+  "REASONER_POLICY_ENV_LOCKED",
   "SEARCH_PROJECTION_NOT_READY",
   "STALE_WRITE",
   "UNKNOWN_ART",
@@ -1509,6 +1551,18 @@ export function buildApp(
   // SCRUM-490 R3 (B2, Fix 4): trustProxy gezielt aus env (KLARWERK_TRUST_PROXY) — request.ip = echte
   // Client-IP hinter dem bekannten Proxy-Hop; Default (unset) = false = Socket-Peer (heutiges Verhalten).
   // NIE blanket (spoofbar). Siehe resolveTrustProxy.
+  // JOB 3655 — DER STARTVERTRAG, VOR ALLEM ANDEREN UND SYNCHRON.
+  //
+  // WARUM GENAU HIER, vor der ersten Zeile Aufbau: Es gibt in dieser Funktion bereits einen
+  // start-abbrechenden Konfigurationswächter derselben Art — `authRoutes()` ruft weiter unten
+  // `assertCookieSecurityConfig()` und lässt `buildApp` werfen, wenn in Produktion jemand das
+  // Secure-Flag abschalten will. Der Startvertrag ist dieselbe Bauart, nur breiter, und steht
+  // deshalb an derselben Stelle im Ablauf, nur früher: Eine Instanz, der ein Pflichtwert fehlt,
+  // soll gar nicht erst entstehen — nicht entstehen und dann nie bereit werden.
+  //
+  // FEHLT ETWAS, NENNT DIE MELDUNG ALLE FEHLENDEN NAMEN AUF EINMAL (StartvertragError), damit
+  // niemand dreimal neu startet, um drei Namen zu erfahren.
+  pruefeStartvertrag(process.env);
   const app = Fastify({
     trustProxy: resolveTrustProxy(),
     logger: baueLoggerOptionen(opts.log),
@@ -1538,6 +1592,36 @@ export function buildApp(
   // wird dann nie ready und die Suche bleibt fail-closed.
   app.addHook("onReady", async () => {
     await stelleSuchprojektionBereit(services.ko);
+    // JOB 3655 — DER STARTBERICHT. Er ist BEWUSST erst hier angesiedelt und BEWUSST nicht
+    // start-entscheidend: ein Bericht ist kein Betriebsmittel. Scheitert der Bestandsbefund, sagt
+    // er „unbekannt" (nie „leer") und der Start geht weiter. Die start-entscheidende Prüfung ist
+    // schon gelaufen — synchron, ganz oben in dieser Funktion.
+    //
+    // Der Bestand wird über `listForSearch` gezählt, nicht über `list`: derselbe Bestand, aber ohne
+    // die Rumpf-Inhalte — die Frage lautet „wie viele", nicht „welche".
+    const bestand = await ermittleBestand(
+      {
+        wissensobjekte: () => services.ko.listForSearch({}),
+        konten: () => services.auth.listUsers(),
+      },
+      // RUNDE 2, KORREKTURPFLICHT 2: Der Fehler selbst geht NICHT in den Bericht, sondern hier
+      // durch den `err`-Serializer dieser Datei — den einen Kanal, der dafür gebaut ist. Er lässt
+      // Typ, Code und Herkunft stehen und ersetzt Meldung und Stack durch eine Konstante. Ein
+      // Treiberfehler, der die Verbindungszeichenkette in seiner Meldung trägt, kommt damit nicht
+      // mehr ins Protokoll — und die Diagnose („welche Abfrage, welcher Fehlertyp, welche Zeile")
+      // bleibt trotzdem vollständig.
+      (quelle, fehler) => {
+        app.log.warn(
+          { err: fehler instanceof Error ? fehler : new Error("Bestandsabfrage gescheitert") },
+          `Bestandsabfrage gescheitert: ${quelle}`,
+        );
+      },
+    );
+    // Der Bericht geht als FELDOBJEKT in die Logzeile, nicht als fertiger Satz — nur so übersteht
+    // jeder Vertragsname die Senke unverändert (s. `Startmangel` in start-vertrag.ts: `senkeUeberWert`
+    // lässt reine GROSSBUCHSTABEN_MIT_UNTERSTRICH durch, ein Satz mit einem 24-Zeichen-Namen darin
+    // wird dagegen zu `[redacted]`).
+    app.log.info({ startvertrag: startbericht(process.env, bestand) }, "KLARWERK Startbericht");
   });
   const guards = makeGuards(services.auth);
 
