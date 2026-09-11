@@ -47,6 +47,11 @@ const MENUE_LESEN = `(testId) => {
   };
 }`;
 
+// Der Status-Umschalter ist kein Menü, sondern eine Knopfreihe — er wird deshalb eigens gelesen.
+// Er steht hier und nicht zweimal in der Datei: F02 hält seine deutschen Beschriftungen fest, F19
+// liest dieselbe Reihe in Englisch.
+const SEGMENT_LESEN = `() => [...document.querySelectorAll('[data-testid="bib-segment"] button')].map((b) => (b.textContent || '').trim())`;
+
 const MENUE_OFFEN = `(testId) => {
   const knopf = document.querySelector('[data-testid="' + testId + '"]');
   return !!knopf && knopf.getAttribute('aria-expanded') === 'true' && !!knopf.parentElement.querySelector('[role="menu"]');
@@ -147,6 +152,32 @@ describe("JOB 3063 · H4 · Funktionsinventar — jede Funktion an ihrem neuen O
   beforeAll(async () => {
     try {
       stand = await h4Stand("/bibliothek", "pedi@job3063-c.test");
+      // JOB 3585 · DIE SPRACHE WIRD HIER GESETZT, BEVOR IRGENDEIN FALL EINE BESCHRIFTUNG LIEST.
+      //
+      // CODEX ZU JOB 3489 (`archiv/3489/runde-1/ben.md:29`, Prüflücke b) hat das für F08 gesagt;
+      // es galt für die ganze Datei. JOB 3576 hat es für F08 behoben und den Rest ausdrücklich
+      // liegen gelassen (`archiv/3576/runde-1/RUECKGABE.md:65`).
+      //
+      // GEMESSEN AM BASISSTAND `9b70025` (Lieferung 1 dieses Auftrags): in der Seite stand
+      // `{"lang":"de","gespeichert":null,"navigator":"en-US"}` — die Fläche sprach Deutsch, weil
+      // `STANDARD_SPRACHE = "de"` (`apps/web/src/lib/sprachwahl.ts:26`) gilt, wenn niemand gewählt
+      // hat; der Browser dieser Bühne spricht Englisch. Setzt man `kw.sprache="en"` von aussen
+      // vor, werden 28 der 51 Fälle rot (`28 failed | 22 passed | 1 skipped`) — eine Datei, die
+      // 28 rote Fälle bekommt, weil jemand die Sprache der UMGEBUNG ändert, misst die Umgebung
+      // und nicht das Produkt. Mit dieser einen Zeile übersteht sie denselben Angriff.
+      //
+      // DIE DREI WARTESCHRITTE DANACH sind nicht Vorsicht, sondern Pflicht: `spracheSetzen` lädt
+      // neu und kommt zurück, sobald `<html lang>` und die Ortszeile stehen — die Liste und die
+      // Lesespalte holen ihre Daten in zwei weiteren Zügen (`h4-harness.ts:316-326`). Ohne sie
+      // läse F17 in eine halb gezeichnete Fläche.
+      await spracheSetzen(stand, "de");
+      await stand.seite.waitForFunction(
+        fn(
+          `() => !!document.querySelector('[data-testid="bib-zeile"]') && !!document.querySelector('[data-testid="bib-titel"]')`,
+        ),
+        undefined,
+        { timeout: 30_000 },
+      );
       listenMenue = await menue("bib-liste-menue");
       filterMenue = await menue("bib-menue-filter");
       bereichMenue = await menue("bib-menue-bereich");
@@ -197,11 +228,7 @@ describe("JOB 3063 · H4 · Funktionsinventar — jede Funktion an ihrem neuen O
 
   it("F02 · Facette Status — Umschalter Alle · Validiert · Offen", async () => {
     expect(fehler).toBeNull();
-    const texte = await (stand as H4Stand).seite.evaluate<string[]>(
-      fn(
-        `() => [...document.querySelectorAll('[data-testid="bib-segment"] button')].map((b) => b.textContent.trim())`,
-      ),
-    );
+    const texte = await (stand as H4Stand).seite.evaluate<string[]>(fn(SEGMENT_LESEN));
     expect(texte).toEqual(["Alle", "Validiert", "Offen"]);
   });
 
@@ -546,6 +573,319 @@ describe("JOB 3063 · H4 · Funktionsinventar — jede Funktion an ihrem neuen O
     ).toBe(false);
     expect(seitenfehler, "Chromium meldete beim Sprachwechsel einen Seitenfehler").toEqual([]);
   }, 120_000);
+
+  // ------------------------------------------------------------------------------------------
+  // F19 · DIE GEMESSENE LISTE: WELCHE BESCHRIFTUNG DER BIBLIOTHEK AUF ENGLISCH DEUTSCH BLEIBT.
+  // ------------------------------------------------------------------------------------------
+  //
+  // WOZU ER DA IST. Seit dem `beforeAll` oben setzt diese Datei ihre Sprache selbst — sie misst
+  // damit ehrlich, aber sie sähe immer noch nicht, ob die Fläche auf ENGLISCH auch wirklich
+  // Englisch spricht. Genau das ist der Rückfall, den Codex am 09.09. für drei Beschriftungen des
+  // Geltungsbereichs von Hand gefunden hat. F19 macht daraus eine Messung über die ganze Fläche:
+  // dieselben Beschriftungen, die die Fälle oben auf Deutsch festhalten, dürfen in der englischen
+  // Lesung NICHT mehr vorkommen — und wo sie es doch tun, steht es namentlich in der Liste unten.
+  //
+  // WARUM ER HIER STEHT UND NICHT WEITER OBEN: dieselbe Hausregel wie für F08/F08c und F13 — er
+  // LÄDT DIE ANWENDUNG NEU (`spracheSetzen`). Alle Fälle davor messen an EINER stehenden Seite;
+  // ein Neuladen mittendrin hat im Tor dreimal F16 zerstört (`archiv/3576/runde-1/RUECKGABE.md:64`).
+  //
+  // ER PRÜFT MIT DER REGEL DES URSPRUNGSFALLS. Jeder Sollwert trägt dieselbe Trefferart, mit der
+  // ihn sein Fall oben prüft (`gleich`, `beginnt`, `enthaelt`). Die Frage, die F19 stellt, ist
+  // dadurch scharf: „wäre die Behauptung dieses Falls in Englisch NOCH IMMER wahr?" — ist sie es,
+  // ist die Beschriftung nicht übersetzt worden.
+
+  /** Wie der Ursprungsfall vergleicht: `toBe`/`===`, `startsWith` oder `includes`. */
+  type Trefferart = "gleich" | "beginnt" | "enthaelt";
+  /** Welcher Teil der Fläche gelesen wird — die vier Menüs und der Status-Umschalter. */
+  type Flaechenteil = "Status-Umschalter" | "Liste" | "Filter" | "Bereich" | "Eintrag";
+  /** Ob der Fall die Untermenü-Titel liest, die Einträge, oder beides zusammen (`alles`). */
+  type Lesestelle = "gruppen" | "eintraege" | "alles";
+
+  interface Sollwert {
+    /** Der Fall oben, der diese Beschriftung auf Deutsch festhält — für die Fehlermeldung. */
+    fall: string;
+    teil: Flaechenteil;
+    wo: Lesestelle;
+    wort: string;
+    art: Trefferart;
+  }
+
+  /**
+   * Die deutschen Beschriftungen, die die Fälle oben gegen die Fläche halten.
+   *
+   * ABGESCHRIEBEN AUS DEN FÄLLEN, und das ist Absicht: ein Sollwert, der zur Laufzeit aus `i18n`
+   * käme, vergliche die Quelle mit sich selbst und wäre auch dann grün, wenn alles auf Deutsch
+   * zurückfiele — dieselbe Begründung wie im Kopf von `tests/support/ortszeileWorte.ts`.
+   * Dass die Abschrift nicht vergammeln kann, ist nicht gehofft, sondern geprüft: F19b hält jeden
+   * Eintrag dieser Tabelle gegen die DEUTSCHE Lesung derselben Bühne.
+   *
+   * DIE MENGE IST GEMESSEN, nicht geschätzt: es sind genau die Fälle, die am Basisstand `9b70025`
+   * mit von aussen vorgesetztem `kw.sprache="en"` rot wurden (Lieferung 1, `28 failed | 22 passed
+   * | 1 skipped`), soweit ihre Beschriftungen in den vier Menüs oder im Status-Umschalter stehen.
+   * NICHT hier stehen F16 (`Externe Quelle hinzufügen`), F17 und F18 (`Nichts gefunden.`,
+   * `Erfassen`): sie lesen die Abschnitte unter „Mehr" bzw. den Leerzustand, nicht die Menüs.
+   */
+  const DEUTSCHE_SOLLWERTE: readonly Sollwert[] = [
+    { fall: "F02", teil: "Status-Umschalter", wo: "eintraege", wort: "Alle", art: "gleich" },
+    { fall: "F02", teil: "Status-Umschalter", wo: "eintraege", wort: "Validiert", art: "gleich" },
+    { fall: "F02", teil: "Status-Umschalter", wo: "eintraege", wort: "Offen", art: "gleich" },
+    { fall: "F04", teil: "Filter", wo: "gruppen", wort: "Reife", art: "beginnt" },
+    { fall: "F04", teil: "Filter", wo: "gruppen", wort: "Schlagwort", art: "beginnt" },
+    { fall: "F04", teil: "Filter", wo: "gruppen", wort: "Vertraulichkeit", art: "beginnt" },
+    { fall: "F04", teil: "Filter", wo: "gruppen", wort: "Autor", art: "beginnt" },
+    { fall: "F04", teil: "Filter", wo: "gruppen", wort: "Herkunft", art: "beginnt" },
+    { fall: "F04", teil: "Filter", wo: "gruppen", wort: "Wissensart", art: "beginnt" },
+    { fall: "F04", teil: "Filter", wo: "gruppen", wort: "Sprache", art: "beginnt" },
+    { fall: "F04", teil: "Filter", wo: "gruppen", wort: "Alter", art: "beginnt" },
+    { fall: "F04", teil: "Filter", wo: "gruppen", wort: "Vertrauen", art: "beginnt" },
+    { fall: "F05", teil: "Filter", wo: "gruppen", wort: "Zuletzt geändert", art: "beginnt" },
+    { fall: "F06", teil: "Filter", wo: "gruppen", wort: "Sortieren", art: "beginnt" },
+    { fall: "F06", teil: "Filter", wo: "eintraege", wort: "Relevanz", art: "enthaelt" },
+    { fall: "F06", teil: "Filter", wo: "eintraege", wort: "Titel", art: "enthaelt" },
+    { fall: "F06", teil: "Filter", wo: "eintraege", wort: "Vertrauen", art: "enthaelt" },
+    { fall: "F06", teil: "Filter", wo: "eintraege", wort: "Zuletzt geändert", art: "enthaelt" },
+    { fall: "F07", teil: "Filter", wo: "gruppen", wort: "Untergruppen", art: "beginnt" },
+    { fall: "F07", teil: "Filter", wo: "eintraege", wort: "keine", art: "gleich" },
+    { fall: "F09", teil: "Liste", wo: "alles", wort: "Sichten", art: "beginnt" },
+    { fall: "F09", teil: "Liste", wo: "alles", wort: "Export", art: "beginnt" },
+    { fall: "F10", teil: "Liste", wo: "eintraege", wort: "JSON", art: "gleich" },
+    { fall: "F10", teil: "Liste", wo: "eintraege", wort: "Text (Markdown)", art: "gleich" },
+    { fall: "F10", teil: "Liste", wo: "eintraege", wort: "MediaWiki", art: "gleich" },
+    { fall: "F10", teil: "Liste", wo: "eintraege", wort: "HTML (Druck/PDF)", art: "gleich" },
+    { fall: "F11", teil: "Liste", wo: "alles", wort: "Re-Import", art: "enthaelt" },
+    { fall: "F14", teil: "Eintrag", wo: "alles", wort: "Bearbeiten", art: "gleich" },
+    { fall: "F14", teil: "Eintrag", wo: "alles", wort: "Validieren", art: "gleich" },
+    { fall: "F14", teil: "Eintrag", wo: "alles", wort: "Bedingt", art: "gleich" },
+    { fall: "F14", teil: "Eintrag", wo: "alles", wort: "Ablehnen", art: "gleich" },
+    { fall: "F14", teil: "Eintrag", wo: "alles", wort: "Re-Validierung starten", art: "gleich" },
+    { fall: "F14", teil: "Eintrag", wo: "alles", wort: "Wissensobjekt löschen", art: "gleich" },
+  ];
+
+  interface Ausnahme {
+    teil: Flaechenteil;
+    wort: string;
+    /** Eine Zeile, warum dieser Eintrag hier steht — sonst ist die Liste eine Freistellung. */
+    grund: string;
+  }
+
+  /**
+   * AUSNAHMEART (i) — VON NATUR GLEICH. Eigennamen, Formatnamen und Lehnwörter, die in beiden
+   * Sprachen dasselbe Wort sind. Hier ist NICHTS zu reparieren; wäre eines davon „übersetzt",
+   * wäre das der Fehler.
+   *
+   * WAS DIE ZWEI ARTEN TRENNT, ist eine MESSUNG und kein Gefühl: führt der englische Katalog für
+   * diese Beschriftung einen EIGENEN Eintrag, der zufällig gleich lautet, ist sie von Natur
+   * gleich; fehlt der Eintrag und springt i18next auf Deutsch zurück, ist sie ein RÜCKFALL und
+   * gehört in die Liste darunter. Jeder Eintrag hier nennt deshalb seine Fundstelle im Katalog.
+   */
+  const VON_NATUR_GLEICH: readonly Ausnahme[] = [
+    {
+      teil: "Liste",
+      wort: "MediaWiki",
+      grund:
+        "Eigenname der Wiki-Software, in keiner Sprache übersetzt — eigener englischer Eintrag " +
+        "`lib.format.mediawiki` (`apps/web/src/i18n.ts:8957`, de `:3673`).",
+    },
+    {
+      teil: "Liste",
+      wort: "JSON",
+      grund:
+        "Formatname, kein Wort einer Sprache — eigener englischer Eintrag `lib.format.json` " +
+        "(`apps/web/src/i18n.ts:8955`, de `:3671`).",
+    },
+    {
+      teil: "Liste",
+      wort: "Text (Markdown)",
+      grund:
+        "„Text“ und „Markdown“ sind in DE und EN dasselbe Wort — eigener englischer Eintrag " +
+        "`lib.format.markdown` (`apps/web/src/i18n.ts:8956`, de `:3672`).",
+    },
+    {
+      teil: "Liste",
+      wort: "Export",
+      grund:
+        "Lehnwort, in beiden Sprachen dasselbe — und NACHGEMESSEN kein Rückfall: der englische " +
+        "Katalog führt `lib.export` mit einem EIGENEN Eintrag „Export“ (`apps/web/src/i18n.ts:8954`, " +
+        "neben `:3670` de und `:13839` nl). Hier ist nichts durchgefallen, hier steht die " +
+        "englische Übersetzung.",
+    },
+  ];
+
+  /**
+   * AUSNAHMEART (ii) — BEKANNTER RÜCKFALL. Eine Beschriftung, die auf Englisch GEMESSEN deutsch
+   * bleibt. Jeder Eintrag hier ist ein Befund am Produkt, kein Freibrief: er wird gemeldet
+   * (Rückgabe, Lieferung 6) und NICHT in dieser Runde repariert — der Auftrag fasst das Produkt
+   * nicht an (§10). Verschwindet ein Rückfall, wird F19b rot und der Eintrag gehört gestrichen.
+   */
+  const BEKANNTER_RUECKFALL: readonly Ausnahme[] = [];
+
+  const AUSNAHMEN: readonly Ausnahme[] = [...VON_NATUR_GLEICH, ...BEKANNTER_RUECKFALL];
+
+  /** Der Schlüssel, unter dem Fund und Ausnahme dieselbe Beschriftung meinen. */
+  const kennung = (teil: Flaechenteil, wort: string): string => `${teil} · „${wort}“`;
+
+  const labelsVon = (inhalt: MenueInhalt, wo: Lesestelle): string[] =>
+    wo === "gruppen" ? inhalt.gruppen : wo === "eintraege" ? inhalt.eintraege : alles(inhalt);
+
+  const trifft = (label: string, s: Sollwert): boolean =>
+    s.art === "gleich"
+      ? label === s.wort
+      : s.art === "beginnt"
+        ? label.startsWith(s.wort)
+        : label.includes(s.wort);
+
+  /** Die Beschriftung, die den Sollwert trifft — oder `null`, wenn keine ihn trifft. */
+  const treffer = (lesung: Map<Flaechenteil, MenueInhalt>, s: Sollwert): string | null =>
+    labelsVon(lesung.get(s.teil) ?? { gruppen: [], eintraege: [] }, s.wo).find((l) =>
+      trifft(l, s),
+    ) ?? null;
+
+  /** Die Lesung der Fläche in Englisch — von F19 gemessen, von F19b weiterbenutzt. */
+  let lesungEn: Map<Flaechenteil, MenueInhalt> | null = null;
+  /** Dieselbe Fläche in Deutsch, in DERSELBEN Sitzung gelesen — der Massstab für F19b. */
+  let lesungDe: Map<Flaechenteil, MenueInhalt> | null = null;
+  /** Was von den deutschen Sollwerten in der englischen Lesung stehen geblieben ist. */
+  let deutschGeblieben: { sollwert: Sollwert; gefunden: string }[] | null = null;
+
+  it("F19 · auf Englisch spricht die Bibliothek Englisch — ausser an den hier benannten Stellen", async () => {
+    expect(fehler).toBeNull();
+    const s = (stand as H4Stand).seite;
+    const bestand = async (): Promise<Map<Flaechenteil, MenueInhalt>> => {
+      // Die Menüs werden WIRKLICH geöffnet und gelesen (die Regel aus F08c): ein Menü, das in
+      // Englisch gar nicht aufgeht, darf nicht als „nichts Deutsches gefunden" durchgehen.
+      const m = new Map<Flaechenteil, MenueInhalt>();
+      m.set("Status-Umschalter", {
+        gruppen: [],
+        eintraege: await s.evaluate<string[]>(fn(SEGMENT_LESEN)),
+      });
+      m.set("Liste", await menue("bib-liste-menue"));
+      m.set("Filter", await menue("bib-menue-filter"));
+      m.set("Bereich", await menue("bib-menue-bereich"));
+      m.set("Eintrag", await menue("bib-eintrag-menue"));
+      return m;
+    };
+    let seitenfehler: string[] = [];
+    try {
+      // An dieser Stelle steht die Fläche auf Deutsch (F08c stellt sie in seinem `finally` her).
+      // Der deutsche Massstab wird deshalb HIER genommen, aus derselben Sitzung und derselben
+      // Bühne wie die englische Lesung gleich darauf — nicht aus einer zweiten Abschrift.
+      lesungDe = await bestand();
+      await spracheSetzen(stand as H4Stand, "en");
+      await s.waitForFunction(
+        fn(
+          `() => !!document.querySelector('[data-testid="bib-zeile"]') && !!document.querySelector('[data-testid="bib-titel"]')`,
+        ),
+        undefined,
+        { timeout: 30_000 },
+      );
+      lesungEn = await bestand();
+      seitenfehler = [...(stand as H4Stand).seitenfehler];
+    } finally {
+      // Die Sprache geht IMMER auf Deutsch zurück, auch wenn dieser Fall scheitert: der F13-Block
+      // darunter liest deutsche Beschriftungen („Fragen", die Zustandspille).
+      await aufraeumen("F19", async () => {
+        await spracheSetzen(stand as H4Stand, "de");
+      });
+    }
+    const en = lesungEn as Map<Flaechenteil, MenueInhalt>;
+    const de = lesungDe as Map<Flaechenteil, MenueInhalt>;
+
+    // ERFOLGREICH LEER IST NICHT ERFOLGREICH (§9). Eine leere englische Lesung würde jede
+    // Aussage „nichts Deutsches mehr da" wertlos machen — sie ist deshalb ROT, und der
+    // Vergleich mit der deutschen Lesung derselben Sitzung sagt, um wie viel sie danebenliegt.
+    for (const [teil, inhalt] of en) {
+      const soll = de.get(teil) as MenueInhalt;
+      expect(
+        `${teil}: ${inhalt.gruppen.length} Gruppen / ${inhalt.eintraege.length} Einträge`,
+        `die englische Lesung von „${teil}“ deckt sich nicht mit der deutschen — EN ${JSON.stringify(alles(inhalt))} · DE ${JSON.stringify(alles(soll))}`,
+      ).toBe(`${teil}: ${soll.gruppen.length} Gruppen / ${soll.eintraege.length} Einträge`);
+      expect(alles(inhalt).length, `„${teil}“ ist in Englisch leer`).toBeGreaterThan(0);
+    }
+
+    deutschGeblieben = DEUTSCHE_SOLLWERTE.flatMap((sollwert) => {
+      const gefunden = treffer(en, sollwert);
+      return gefunden === null ? [] : [{ sollwert, gefunden }];
+    });
+    console.info(
+      `JOB 3585 F19 · englische Lesung: ${JSON.stringify(Object.fromEntries(en))} · auf Englisch deutsch geblieben: ${JSON.stringify(
+        deutschGeblieben.map((f) => kennung(f.sollwert.teil, f.sollwert.wort)),
+      )}`,
+    );
+
+    const bekannt = new Set(AUSNAHMEN.map((a) => kennung(a.teil, a.wort)));
+    // JEDE MELDUNG NENNT WELCHE Beschriftung in WELCHEM Menü — ein nackter Wahrheitswert oder
+    // eine blosse Anzahl wäre keine Aussage (Lehre JOB 3573/3581).
+    expect(
+      deutschGeblieben
+        .filter((f) => !bekannt.has(kennung(f.sollwert.teil, f.sollwert.wort)))
+        .map(
+          (f) =>
+            `${f.sollwert.fall} · ${f.sollwert.teil}: erwartet eine ENGLISCHE Beschriftung, gefunden „${f.gefunden}“ (die deutsche Beschriftung „${f.sollwert.wort}“ steht unübersetzt da)`,
+        ),
+      "auf Englisch deutsch geblieben, ohne Eintrag in VON_NATUR_GLEICH oder BEKANNTER_RUECKFALL",
+    ).toEqual([]);
+    expect(seitenfehler, "Chromium meldete beim Sprachwechsel einen Seitenfehler").toEqual([]);
+  }, 180_000);
+
+  it("F19b · die Ausnahmeliste kann nicht vergammeln — jeder Eintrag muss sich noch zeigen", () => {
+    // KEIN SCHEINBELEG (Lehre JOB 3578 R1): geprüft wird gegen das, was F19 WIRKLICH aus der
+    // Fläche gelesen hat, nicht gegen eine zweite Abschrift der Liste. Ist F19 nicht bis zur
+    // Lesung gekommen, sagt dieser Fall das — statt still grün zu sein.
+    expect(
+      deutschGeblieben,
+      "F19 hat nichts gelesen — dieser Fall sagt allein nichts",
+    ).not.toBeNull();
+    const gefunden = new Set(
+      (deutschGeblieben as { sollwert: Sollwert; gefunden: string }[]).map((f) =>
+        kennung(f.sollwert.teil, f.sollwert.wort),
+      ),
+    );
+
+    // (1) Ein Eintrag, der sich nicht mehr zeigt, ist erledigt — und gehört gestrichen, nicht
+    // stehen gelassen. Sonst wüchse die Liste zu einer Sammlung von Behauptungen ohne Befund.
+    expect(
+      AUSNAHMEN.filter((a) => !gefunden.has(kennung(a.teil, a.wort))).map(
+        (a) =>
+          `${kennung(a.teil, a.wort)} steht in der Ausnahmeliste, kommt in der englischen Lesung aber NICHT mehr vor — übersetzt, Eintrag streichen (Grund war: ${a.grund})`,
+      ),
+      "tote Einträge in der Ausnahmeliste",
+    ).toEqual([]);
+
+    // (2) Und umgekehrt: ein neuer Rückfall darf sich nicht lautlos dazustellen.
+    const bekannt = new Set(AUSNAHMEN.map((a) => kennung(a.teil, a.wort)));
+    expect(
+      [...gefunden].filter((k) => !bekannt.has(k)),
+      "gemessener deutscher Rückfall ohne Eintrag in der Ausnahmeliste",
+    ).toEqual([]);
+
+    // (3) Die zwei Ausnahmearten werden getrennt geführt — dieselbe Beschriftung kann nicht
+    // „von Natur gleich" UND „bekannter Rückfall" sein. Ohne diesen Satz verschwände ein
+    // deutscher Rückfall, indem ihn jemand in die harmlose Liste schreibt.
+    const naturgleich = new Set(VON_NATUR_GLEICH.map((a) => kennung(a.teil, a.wort)));
+    expect(
+      BEKANNTER_RUECKFALL.map((a) => kennung(a.teil, a.wort)).filter((k) => naturgleich.has(k)),
+      "dieselbe Beschriftung steht in beiden Ausnahmearten",
+    ).toEqual([]);
+    for (const a of AUSNAHMEN) {
+      expect(a.grund.length, `${kennung(a.teil, a.wort)} hat keine Begründung`).toBeGreaterThan(20);
+    }
+
+    // (4) DIE PRÜFMENGE SELBST TRÄGT (das Muster aus JOB 3576 Fall 11): jeder deutsche Sollwert
+    // muss sich in der DEUTSCHEN Lesung derselben Bühne zeigen. Wird eine Beschriftung im Produkt
+    // umbenannt und diese Tabelle nicht nachgezogen, prüfte F19 sonst ein Wort, das es nicht mehr
+    // gibt — und wäre grün, ohne etwas zu decken.
+    const de = lesungDe as Map<Flaechenteil, MenueInhalt> | null;
+    expect(de, "F19 hat die deutsche Lesung nicht hergestellt").not.toBeNull();
+    expect(
+      DEUTSCHE_SOLLWERTE.filter(
+        (sollwert) => treffer(de as Map<Flaechenteil, MenueInhalt>, sollwert) === null,
+      ).map(
+        (sollwert) =>
+          `${sollwert.fall} · ${kennung(sollwert.teil, sollwert.wort)} steht in DEUTSCH nicht auf der Fläche — die Prüfmenge von F19 ist veraltet`,
+      ),
+      "veraltete Sollwerte",
+    ).toEqual([]);
+  });
 
   // ------------------------------------------------------------------------------------------
   // F13 · DIE VERBINDLICHE AKTION DER LESEFLÄCHE — FÜR JEDEN EINTRAG DIESELBE.
