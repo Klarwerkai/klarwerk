@@ -13,6 +13,7 @@ import {
 import { useSession } from "../app/AuthContext";
 import { readHistoryIndex } from "../app/navHistory";
 import { EmptyStateCtas } from "../components/EmptyStateCtas";
+import { HelpTip } from "../components/HelpTip";
 import { KoAuthorLine } from "../components/trust";
 import { PageHeader } from "../components/ui";
 import { gapLocaleTag } from "../lib/gapLocaleTag";
@@ -312,6 +313,19 @@ export function MyTasks(): JSX.Element {
 
   return (
     <div className="mx-auto max-w-4xl">
+      {/* ==========================================================================================
+          JOB 3669 — DIE SEITENHILFE DIESER SEITE (Zahnrad → „Seitenhilfe").
+          ==========================================================================================
+          Vorhanden war hier nur der Nav-Erklärsatz aus `help.tasks.*` („Hier sammeln sich die dir
+          zugewiesenen Validierungs- und Rückfrage-Aufgaben …"), den das Zahnrad-Menü aus der Route
+          ableitet. Er nennt nicht, was die Fläche BEDIENBAR macht: die drei Dringlichkeitsfarben,
+          die Filterreihe mit ihren echten Zahlen, das „i" je Zeile (der Erklärsatz „was ist zu
+          tun") und den Knopf „Wie geht es weiter?" im Leerzustand. Der Tipp hier ergänzt genau das
+          und wiederholt den Kapitelsatz nicht.
+
+          Er rendert nichts im Sichtfeld (`components/HelpTip.tsx`): die Zeilenform von JOB 3064
+          bleibt unverändert. */}
+      <HelpTip title={t("seitenhilfe.aufgaben.title")} body={t("seitenhilfe.aufgaben.body")} />
       <PageHeader title={t("nav.tasks")} pageKey="aufgaben" />
       {/* §4: EIN Segment statt sechs Monopillen — die Zähler bleiben, die Schrift wird Fließtext. */}
       <fieldset

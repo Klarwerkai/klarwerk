@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { HelpTip } from "../components/HelpTip";
 import { LesevarianteHinweis } from "../components/LesevarianteHinweis";
 import { SanitizedHtml } from "../components/SanitizedHtml";
 import { BibliothekFlaeche } from "../components/bibliothek/BibliothekFlaeche";
@@ -87,6 +88,19 @@ export function KnowledgeDetail(): JSX.Element {
 
   return (
     <div data-testid="page-wissen">
+      {/* ==========================================================================================
+          JOB 3669 — DIE SEITENHILFE DIESER SEITE (Zahnrad → „Seitenhilfe").
+          ==========================================================================================
+          `/wissen/:id` ist keine Navigationsstation, also gibt es hier auch keinen Nav-Erklärsatz:
+          das Zahnrad zeigte unter „Seitenhilfe" den Leersatz — auf der Seite, auf der ein Neuling
+          zum ersten Mal ein einzelnes Wissensobjekt vor sich hat. Der Text sagt, was er da liest
+          (dieselbe Fläche wie die Bibliothek, dieser Eintrag vorgewählt), wo das Übrige liegt
+          (hinter „Mehr") und was der nächste Schritt ist.
+
+          Die Leseübersetzung wird ausdrücklich als solche benannt — der Text verspricht keine
+          Übersetzung, sondern sagt, WANN eine dasteht. Kein Sichtfeld-Element: `HelpTip` rendert
+          nichts. */}
+      <HelpTip title={t("seitenhilfe.wissen.title")} body={t("seitenhilfe.wissen.body")} />
       {variante ? (
         <Card className="mb-3" data-testid="lesevariante-leseansicht">
           <LesevarianteHinweis

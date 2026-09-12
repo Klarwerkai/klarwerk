@@ -227,6 +227,67 @@ const de = {
   "menue.status": "Status",
   "menue.seitenhilfe": "Seitenhilfe",
   "menue.seitenhilfe.leer": "Zu dieser Seite gibt es keine Erklärung.",
+  // ================================================================================================
+  // JOB 3669 — DIE SEITENHILFE DES ERSTEN WEGS: Start → Bibliothek → Aufgaben → Wissensobjekt.
+  // ================================================================================================
+  // Pedi (11.09.): „damit wir einen Demo-Account aushändigen können und eine Person, die damit noch
+  // nie gearbeitet hat, sich relativ schnell einarbeitet." Diese vier Seiten hatten bis hierher
+  // GAR KEINE Hilfequelle — kein `HelpTip`, kein Kapitel, nichts. Wer sie zum ersten Mal öffnete,
+  // fand im Zahnrad unter „Seitenhilfe" den Leersatz oben.
+  //
+  // Jeder Text beantwortet DREI Fragen in dieser Reihenfolge: Was ist das hier? Was kann ich tun?
+  // Was ist der nächste Schritt? Er beschreibt NUR, was die Seite wirklich hat — der Ort des
+  // Suchfelds, der Name des Menüs, der Knopf, der erst im Leerzustand erscheint.
+  //
+  // /bibliothek und /aufgaben tragen zusätzlich den Nav-Erklärsatz ihres Hilfekapitels
+  // (`help.library.*`, `help.tasks.*`), den das Zahnrad-Menü VOR die Tipps setzt
+  // (`shell/ZahnradMenue.tsx`, `useNavErklaerung`). Die Texte hier wiederholen ihn deshalb nicht:
+  // sie sagen, wo auf der Fläche die Dinge liegen und was als Nächstes zu tun ist.
+  //
+  // ------------------------------------------------------------------------------------------------
+  // RUNDE 2 — BENS ZWEI KORREKTURPFLICHTEN: EIN HILFETEXT GILT FÜR JEDE ROLLE UND JEDE BREITE.
+  // ------------------------------------------------------------------------------------------------
+  // Ben hat den Text von Runde 1 nicht gelesen, sondern nachgestellt — und zweimal fand die Montage
+  // etwas anderes vor, als hier stand:
+  //   1. ALS BETRACHTER ist der Knopf „Erfassen" im leeren Bestand KEIN Weg: `RoleLink` rendert
+  //      ihn dann als `div` mit `aria-disabled="true"` und dem Wort „Kein Zugriff"
+  //      (`components/RoleLink.tsx:88-103`, `/erfassen` verlangt „Experte", `app/navigation.ts`).
+  //      Eine uneingeschränkte Handlungszusage war damit für die Hälfte der Demo-Zugänge falsch.
+  //   2. SCHMAL GIBT ES DAS NEBENEINANDER NICHT: unter 760 px trägt genau EINE Fläche die Seite
+  //      (`components/bibliothek/BibliothekFlaeche.tsx:942`, `zeigeListe`/`zeigeBericht`) — mit
+  //      einer Wahl der Bericht, und der Rückweg steht oben als Knopf „Zurück zu Bibliothek".
+  //      „Links die Liste" war dort eine Ortsangabe auf eine Fläche, die gar nicht da ist.
+  // Beide Texte nennen jetzt die Bedingung MIT der Zusage. Gemessen wird das nicht am Wortlaut,
+  // sondern an der Fläche: `tests/seitenhilfe-luecken/…` stellt Rolle und Breite ein und vergleicht
+  // die Zusage mit dem, was wirklich im Baum steht.
+  //
+  // ------------------------------------------------------------------------------------------------
+  // RUNDE 3 — BENS DRITTE KORREKTURPFLICHT: „DANEBEN" WAR AUCH FALSCH.
+  // ------------------------------------------------------------------------------------------------
+  // Runde 2 schrieb über das Tablet-Band (760–899 px): „holt „Trefferliste einblenden" sie daneben".
+  // Ben hat den Schalter GEDRÜCKT statt ihn nur zu zählen, und die Liste kommt nicht daneben: sie
+  // liegt als Schublade ÜBER dem Eintrag (`BibliothekFlaeche.tsx:947` wählt `darueber`,
+  // `BibliothekListe.tsx:96` setzt es um: `absolute bottom-0 left-0 top-12 z-20 w-[380px]` mit
+  // Schlagschatten). Der Eintrag rückt also nicht zur Seite, er wird verdeckt.
+  //
+  // Der Satz sagt das jetzt — und nennt auch den Weg zurück („Trefferliste ausblenden"), denn eine
+  // Schublade, die man nicht wieder loswird, wäre eine halbe Auskunft. Gemessen wird er zweimal:
+  // gemountet nach dem KLICK (`data-lage="darueber"`, `absolute`, `z-20`, und nach dem zweiten
+  // Klick ist die Liste wieder aus dem Baum) und in Chromium an der gebauten Seite, wo sich die
+  // Rechtecke von Liste und Bericht wirklich ÜBERLAPPEN — mit der Eichung, dass sie es breit
+  // (1620 px, Spaltenlage) NICHT tun.
+  "seitenhilfe.start.title": "Startseite: fragen und sehen, was ansteht",
+  "seitenhilfe.start.body":
+    "Das ist die Startseite: Hier fragst du das Wissen und siehst, was gerade auf dich wartet. Tipp deine Frage in das Feld — die Antwort zeigt dir die Seite „Fragen“; die Karte „FÜR DICH“ listet deine offenen Punkte, „ZULETZT“ die letzten Änderungen im Bestand, der Verweis „Meine Entwürfe“ unter dem Feld führt zu deinen begonnenen Erfassungen (nur wenn du erfassen darfst), und das Menü „…“ oben rechts öffnet weitere Übersichten. Nächster Schritt: Frage eintippen und Eingabetaste drücken — oder eine Zeile in „FÜR DICH“ anklicken, sie führt direkt dorthin, wo die Sache erledigt wird.",
+  "seitenhilfe.bibliothek.title": "Bibliothek: der ganze Bestand",
+  "seitenhilfe.bibliothek.body":
+    "Das ist der gesamte Wissensbestand. Auf einem breiten Bildschirm steht links die Liste und rechts der Eintrag, den du gerade liest; auf einem schmalen Gerät trägt immer nur eines von beiden die Fläche — ohne Wahl die Liste, mit Wahl der Eintrag, und oben bringt dich der Knopf „Zurück zu Bibliothek“ wieder in die Liste (auf dem Tablet legt „Trefferliste einblenden“ sie als Schublade ÜBER den Eintrag, „Trefferliste ausblenden“ nimmt sie wieder weg). Gesucht wird über das Suchfeld oben im Kopfband; Filter, Sortierung, gespeicherte Sichten und Export liegen im Menü „…“ über der Liste. Nächster Schritt: Klick einen Eintrag an und lies ihn — ist die Liste leer, führt der Knopf „Erfassen“ dorthin, wo neues Wissen entsteht, sofern deine Rolle das Erfassen erlaubt; sonst steht dort „Kein Zugriff“.",
+  "seitenhilfe.aufgaben.title": "Meine Aufgaben: was von dir erledigt werden will",
+  "seitenhilfe.aufgaben.body":
+    "Hier steht deine Arbeit an einer Stelle: Prüfungen, Konflikte, fällige Revalidierungen, offene Wissenslücken und Objekte, die zur Nacharbeit an dich zurückgingen. Der farbige Punkt zeigt die Dringlichkeit (rot „Kritisch“, gelb „Heute“, grün „Später“), die Knopfreihe oben filtert nach Art und nennt die Anzahl, und das „i“ an einer Zeile sagt dir, was dort zu tun ist. Nächster Schritt: Klick die oberste Zeile an — sie führt an die Stelle, an der die Aufgabe erledigt wird, sofern diese Fläche für deine Rolle freigegeben ist; sonst bleibt der Weg zu (Konflikte, Risiko und Lebenszyklus sind nicht für jede Rolle offen). Steht „Nichts offen.“, zeigt „Wie geht es weiter?“ die möglichen nächsten Wege.",
+  "seitenhilfe.wissen.title": "Wissensobjekt: eine Aussage und ihre Belege",
+  "seitenhilfe.wissen.body":
+    "Du liest ein einzelnes Wissensobjekt — dieselbe Fläche wie in der Bibliothek, nur mit diesem Eintrag vorgewählt: auf einem breiten Bildschirm steht die Liste links und seine Aussage mit Status und Quelle rechts, auf einem schmalen Gerät trägt der Eintrag die Fläche allein und der Knopf „Zurück zu Bibliothek“ oben führt in die Liste. Alles Weitere — Quellen und Anhänge, Versionen, Historie, Kommentare, Konflikte — liegt hinter der Zeile „Mehr“; steht deine Oberfläche auf einer anderen Sprache und gibt es eine Leseübersetzung, steht sie oben, ausdrücklich als Übersetzung benannt. Nächster Schritt: Lies die Aussage, sieh auf Status und Quelle, und öffne „Mehr“, wenn du wissen willst, worauf sie sich stützt.",
   // JOB 3337: der Zugang heißt jetzt, was er ist. „Weitere Bereiche" war eine Restekiste,
   // „Schnellnavigation" ein Fachwort — Pedi: „Die Direktfunktion ist … schwer zu erkennen."
   // Die SCHLÜSSEL bleiben, damit kein Aufrufer und kein Pin ins Leere greift.
@@ -6176,6 +6237,20 @@ const en: typeof de = {
   "menue.status": "Status",
   "menue.seitenhilfe": "Page help",
   "menue.seitenhilfe.leer": "There is no explanation for this page.",
+  // JOB 3669 — page help for the first path: Start → Library → My Tasks → knowledge object.
+  // Same three questions in the same order: What is this? What can I do here? What is the next step?
+  "seitenhilfe.start.title": "Start page: ask, and see what is waiting",
+  "seitenhilfe.start.body":
+    "This is the start page: here you ask your knowledge base a question and see what is waiting for you. Type your question into the field — the answer appears on the “Ask” page; the “FOR YOU” card lists your open items, “RECENT” the latest changes in the stock, the link “My drafts” below the field leads to the captures you started (only if you are allowed to capture), and the “…” menu at the top right opens further overviews. Next step: type your question and press Enter — or click a line in “FOR YOU”, it takes you straight to where the matter gets done.",
+  "seitenhilfe.bibliothek.title": "Library: the whole stock",
+  "seitenhilfe.bibliothek.body":
+    "This is your entire knowledge stock. On a wide screen the list stands on the left and the entry you are reading on the right; on a narrow device only one of the two fills the surface — the list without a selection, the entry with one, and the button “Back to Library” at the top takes you back to the list (on a tablet, “Show result list” slides it in as a drawer OVER the entry, “Hide result list” takes it away again). You search with the search field at the top of the header bar; filters, sorting, saved views and export sit in the “…” menu above the list. Next step: click an entry and read it — if the list is empty, the “Capture” button leads to where new knowledge is created, provided your role is allowed to capture; otherwise it says “No access”.",
+  "seitenhilfe.aufgaben.title": "My Tasks: what is waiting for you to do",
+  "seitenhilfe.aufgaben.body":
+    "This is your work in one place: validations, conflicts, due revalidations, open knowledge gaps and objects that came back to you for rework. The coloured dot shows the urgency (red “Critical”, yellow “Today”, green “Later”), the row of buttons above filters by type and states the count, and the “i” on a line tells you what has to be done there. Next step: click the topmost line — it takes you to where the task gets done, provided that area is enabled for your role; otherwise the way stays closed (conflicts, risk and lifecycle are not open to every role). If it says “Nothing open.”, “What happens next?” shows the possible next moves.",
+  "seitenhilfe.wissen.title": "Knowledge object: one statement and its evidence",
+  "seitenhilfe.wissen.body":
+    "You are reading a single knowledge object — the same surface as the library, only with this entry preselected: on a wide screen the list on the left and its statement with status and source on the right, on a narrow device the entry fills the surface alone and the button “Back to Library” at the top leads to the list. Everything else — sources and attachments, versions, history, comments, conflicts — sits behind the “More” line; if your interface is set to another language and a reading translation exists, it stands at the top, explicitly named as a translation. Next step: read the statement, check status and source, and open “More” when you want to know what it rests on.",
   "menue.weitereBereiche": "Areas",
   "menue.schnellnavigation": "Go to …",
   "menue.darstellung": "Appearance",
@@ -11121,6 +11196,19 @@ const nl: typeof de = {
   "menue.status": "Status",
   "menue.seitenhilfe": "Paginahulp",
   "menue.seitenhilfe.leer": "Voor deze pagina is er geen uitleg.",
+  // JOB 3669 — paginahulp voor de eerste weg: Start → Bibliotheek → Mijn taken → kennisobject.
+  "seitenhilfe.start.title": "Startpagina: vragen en zien wat er wacht",
+  "seitenhilfe.start.body":
+    "Dit is de startpagina: hier stel je een vraag aan de kennis en zie je wat er op je wacht. Typ je vraag in het veld — het antwoord staat op de pagina “Vragen”; de kaart “VOOR JOU” toont je openstaande punten, “RECENT” de laatste wijzigingen in de voorraad, de verwijzing “Mijn concepten” onder het veld leidt naar je begonnen vastleggingen (alleen als je mag vastleggen), en het menu “…” rechtsboven opent verdere overzichten. Volgende stap: typ je vraag en druk op Enter — of klik een regel in “VOOR JOU” aan, die brengt je direct naar de plek waar de zaak wordt afgehandeld.",
+  "seitenhilfe.bibliothek.title": "Bibliotheek: de hele voorraad",
+  "seitenhilfe.bibliothek.body":
+    "Dit is de volledige kennisvoorraad. Op een breed scherm staat links de lijst en rechts het item dat je leest; op een smal apparaat vult telkens maar één van beide het vlak — zonder keuze de lijst, met keuze het item, en bovenaan brengt de knop “Terug naar Bibliotheek” je weer in de lijst (op een tablet schuift “Resultatenlijst tonen” hem als lade OVER het item, “Resultatenlijst verbergen” haalt hem weer weg). Zoeken doe je met het zoekveld bovenin de kopbalk; filters, sortering, opgeslagen weergaven en export zitten in het menu “…” boven de lijst. Volgende stap: klik een item aan en lees het — is de lijst leeg, dan leidt de knop “Vastleggen” naar de plek waar nieuwe kennis ontstaat, voor zover je rol vastleggen toestaat; anders staat er “Geen toegang”.",
+  "seitenhilfe.aufgaben.title": "Mijn taken: wat er van jou wordt verwacht",
+  "seitenhilfe.aufgaben.body":
+    "Hier staat je werk op één plek: validaties, conflicten, openstaande hervalidaties, open kennishiaten en objecten die voor nawerk bij jou terugkwamen. De gekleurde stip toont de urgentie (rood “Kritiek”, geel “Vandaag”, groen “Later”), de knoppenrij erboven filtert op soort en noemt het aantal, en de “i” bij een regel zegt wat daar te doen is. Volgende stap: klik de bovenste regel aan — die brengt je naar de plek waar de taak wordt afgerond, voor zover dat gebied is vrijgegeven voor jouw rol; anders blijft de weg dicht (conflicten, risico en levenscyclus zijn niet voor elke rol open). Staat er “Niets open.”, dan toont “Hoe gaat het verder?” de mogelijke volgende wegen.",
+  "seitenhilfe.wissen.title": "Kennisobject: één uitspraak en haar bewijs",
+  "seitenhilfe.wissen.body":
+    "Je leest één kennisobject — hetzelfde vlak als de bibliotheek, alleen met dit item voorgeselecteerd: op een breed scherm links de lijst en rechts de uitspraak met status en bron, op een smal apparaat vult het item het vlak alleen en brengt de knop “Terug naar Bibliotheek” bovenaan je naar de lijst. Al het overige — bronnen en bijlagen, versies, historie, opmerkingen, conflicten — zit achter de regel “Meer”; staat je interface op een andere taal en bestaat er een leesvertaling, dan staat die bovenaan, uitdrukkelijk als vertaling benoemd. Volgende stap: lees de uitspraak, kijk naar status en bron, en open “Meer” als je wilt weten waarop ze steunt.",
   "menue.weitereBereiche": "Gebieden",
   "menue.schnellnavigation": "Ga naar …",
   "menue.darstellung": "Weergave",

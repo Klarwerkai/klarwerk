@@ -16,6 +16,7 @@ import {
 // JOB 3015 D5: das Suchfeld der Konsole navigiert wie die Topbar-Suche — durch den Eingabe-Wächter.
 import { useGuardedNavigate } from "../app/NavGuardContext";
 import { useRole } from "../app/RoleContext";
+import { HelpTip } from "../components/HelpTip";
 import { RoleLink } from "../components/RoleLink";
 import { OverflowMenu } from "../components/start/OverflowMenu";
 import { Seitenblatt } from "../components/start/Seitenblatt";
@@ -247,6 +248,22 @@ export function Start(): JSX.Element {
 
   return (
     <div className="mx-auto flex min-h-full max-w-5xl flex-col">
+      {/* ==========================================================================================
+          JOB 3669 — DIE SEITENHILFE DIESER SEITE. SIE STEHT IM ZAHNRAD, NICHT IM BILD.
+          ==========================================================================================
+          Pedi (11.09.): eine Person, die noch nie mit Klarwerk gearbeitet hat, soll sich „relativ
+          schnell einarbeiten". `/start` hatte dafür bis hierher KEINE Hilfequelle: das Zahnrad-Menü
+          zeigte unter „Seitenhilfe" den Leersatz, und die drei Erklärstücke von `startHelp`
+          (Wissenskreis, Arbeitsübersicht, Dringlichkeitspunkte) liegen im „…"-Menü dieser Seite —
+          sie erklären BLÖCKE, nicht die Seite. Dieser eine Text erklärt die Seite: was sie ist, was
+          man hier tun kann, was der nächste Schritt ist. Er wiederholt die drei nicht.
+
+          `HelpTip` rendert NICHTS (`components/HelpTip.tsx`) — er meldet Titel und Text bei der
+          Seitenhilfe an. Das Zielbild dieser Seite (≤ 40 Zeichen Erklärtext im Sichtfeld,
+          `tests/design/zielbild-h5-kein-erklaertext.test.ts`) bleibt damit unberührt, und Pedis
+          Vorgabe vom 04.09. — „Erklärung gehört hinter Zahnrad/Profil, nicht ins Sichtfeld" —
+          auch. Eine Sprechblase oder eine Tour ist hier ausdrücklich NICHT gebaut. */}
+      <HelpTip title={t("seitenhilfe.start.title")} body={t("seitenhilfe.start.body")} />
       <div className="flex justify-end">
         <OverflowMenu
           label={t("start.menu.label")}
