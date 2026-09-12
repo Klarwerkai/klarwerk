@@ -63,8 +63,13 @@ import { useMediaQuery } from "./useMediaQuery";
 //     110,3 px, und 20,5 px davon standen draussen. Mit 44 px kostet er 66 px, und der Konto-Kreis
 //     endet rund 24 px INNERHALB des Fensters.
 //   · NACH OBEN — 1000 px, die erste Breite oberhalb der Spanne unten, an der die BREITE Bauform
-//     den Kasten wieder trägt. Dort bleiben mit 44 px rund 31 px Reserve bis zur Fensterkante
-//     (Fall L2). Mehr trägt die Zeile dort nicht; deshalb endet diese Stufe nicht früher.
+//     den Kasten wieder trägt. Dort steht die Zeile mit 44 px restlos im Fenster (Fall L2, und
+//     gemessen Fälle K0/K1 in `tests/chr-kopfband-1000/`: der rechteste Kasten endet bei 968,0 px
+//     von 1000 px). Mehr trägt die Zeile dort nicht; deshalb endet diese Stufe nicht früher.
+//     NACHGEFÜHRT JOB 3641 (11.09.2026): bis dahin stand hier „rund 31 px Reserve bis zur
+//     Fensterkante". Reserve ist das nicht — die 32,0 px bis zur Kante sind das Seitenpolster
+//     (`px-8`), der freie Zwischenraum der Zeile ist an dieser Breite 0,0 px. Der ausgeschriebene
+//     Beleg steht unten bei `LOGO_OHNE_PLATZ_QUERY`.
 const LOGO_MAX_BREITE_PX = 44;
 
 // WARUM 132 px IN DER BREITEN ZEILE, und warum dort überhaupt eine zweite Zahl steht.
@@ -114,9 +119,18 @@ const LOGO_BREITE_ZEILE_QUERY = "(min-width: 1280px)";
 // DESHALB STEHT DAS LOGO DORT NICHT — und zwar sichtbar als benannte Regel mit ihrer Zahl, nicht
 // als stilles `hidden`. Die obere Kante ist gemessen: mit einer Deckelung auf 56 px trug die breite
 // Bauform den Kasten ab 980 px (rechter Rand 977,2 px), bei 970 px stand er noch 7,2 px draussen.
-// 1000 px steht hier als die nächste runde Kante darüber; mit der jetzigen Deckelung auf 44 px
-// bleiben bei 1000 px rund 31 px Reserve. BEIDE Seiten sind gemessen (Fall L2: 999 px ohne Kasten,
-// 1000 px mit Kasten, beide restlos im Fenster).
+// 1000 px steht hier als die nächste runde Kante darüber. BEIDE Seiten sind gemessen (Fall L2:
+// 999 px ohne Kasten, 1000 px mit Kasten, beide restlos im Fenster).
+//
+// NACHGEFÜHRT JOB 3641 (11.09.2026) — BIS DAHIN STAND HIER EIN SATZ ZU VIEL: „mit der jetzigen
+// Deckelung auf 44 px bleiben bei 1000 px rund 31 px Reserve". Die Zahl gibt es, die RESERVE nicht.
+// Gemessen bei 1000 px mit Firmen-CI (`tests/chr-kopfband-1000/`, Fälle K0/K1): der rechteste
+// Kasten („konto") endet bei 968,0 px, also 32,0 px vor der Fensterkante — und diese 32,0 px sind
+// das Seitenpolster der Zeile (`px-8`), das dort ohnehin steht. Der freie Zwischenraum der Zeile,
+// die einzige Zahl, die „Reserve" heissen dürfte, ist an dieser Breite mit UND ohne Firmen-CI
+// gemessene 0,0 px: bezahlt wird der Logokasten vom Suchfeld, das im selben Lauf um genau den
+// Betrag schrumpft, um den die Wortmarke wächst. Der Kasten PASST bei 1000 px — das ist die
+// Aussage, und sie ist gemessen. Luft hat er dort keine.
 //
 // WAS DAMIT NICHT BEHAUPTET WIRD: dass 900 px die richtige Kante der breiten Bauform ist. Dass die
 // Zeile dort schon ohne Firmen-CI an ihre Grenze stösst, ist der Bestand von JOB 3060 und gehört

@@ -41,25 +41,70 @@ import { useMediaQuery } from "./useMediaQuery";
 // und B1 bei genau 760 px — scrollWidth 760 / clientWidth 760.
 //
 // MIT Firmen-CI: `tests/navigation-schmal/kopfband-ci-chromium.test.ts` (JOB 3571), Fälle CI0–CI4.
-// Gemessen am 11.09.2026: das Firmenlogo neben der Wortmarke (`Logo.tsx`) kostet 110,3 px, nicht die
-// hier früher überschlagenen „rund 45 px" — die Wortmarke wächst von 92,2 px auf 202,5 px. Die
-// 760-px-Kante trägt das: scrollWidth 760 / clientWidth 760, nichts umgebrochen, nichts
-// angeschnitten, nichts überlappt. Der frühere Satz „der Überschlag steht hier als Begründung,
-// NICHT als Beleg" ist damit eingelöst; die Zahl 760 bleibt, weil die Messung sie trägt, nicht weil
-// die Rechnung stimmte.
+// Gemessen am 11.09.2026: das Firmenlogo neben der Wortmarke (`Logo.tsx`) kostet die Zeile mehr als
+// die hier früher überschlagenen „rund 45 px". Die 760-px-Kante trägt das: scrollWidth 760 /
+// clientWidth 760, nichts umgebrochen, nichts angeschnitten, nichts überlappt. Der frühere Satz
+// „der Überschlag steht hier als Begründung, NICHT als Beleg" ist damit eingelöst; die Zahl 760
+// bleibt, weil die Messung sie trägt, nicht weil die Rechnung stimmte.
+//
+// JEDE ZAHL TRÄGT AB HIER DIE BREITE, FÜR DIE SIE GILT — nachgeführt JOB 3641 (11.09.2026). Bis
+// dahin standen an dieser Stelle „110,3 px" und „202,5 px" ohne Breitenangabe. Das war bis JOB 3582
+// richtig (damals galt eine Grösse für jede Breite) und ist es seitdem nicht mehr: der Logokasten
+// hat eine ZWEISTUFIGE Obergrenze (`LOGO_MAX_BREITE_PX` = 44 px, ab `LOGO_BREITE_ZEILE_QUERY` =
+// 1280 px `LOGO_MAX_BREITE_BREIT_PX` = 132 px). Die zwei alten Zahlen sind die UNGEDECKELTEN und
+// gelten heute nur noch ab 1280 px:
+//   · IN DIESEM BAND (760–899 px), gemessen JOB 3641 am 11.09.2026, Lauf 738ade52… · Fall CI0 bei
+//     760 px: Bild 44,0 px → Logokasten 56,0 px; die Wortmarke wächst von 92,2 px auf 158,2 px,
+//     also um 66,0 px. Dieselben drei Werte misst JOB 3641 im selben Lauf bei 1000 px.
+//   · AB 1280 px (`LOGO_BREITE_ZEILE_QUERY`) greift die Deckelung für das heutige Bild NICHT: dort
+//     steht es mit 88,3 px, der Logokasten mit 100,3 px, die Wortmarke mit 202,5 px — die alten
+//     Zahlen, an ihrer heutigen Breite. Gemessen wird das nicht hier, sondern in
+//     `tests/chr-navigation-ci-logo/logokasten-chromium.test.ts` (Fälle L4a/L4b, JOB 3582).
 //
 // DIE RESERVE IST SEIT JOB 3605 GRÖSSER, und zwar gemessen statt überschlagen: mit dem Wegfall von
-// „Meine Entwürfe" bleiben bei 760 px MIT Logo 182,5 px frei statt der 58,5 px, die JOB 3571 dort
-// gemessen hatte (Lauf vom 11.09.2026, Fall CI0: „freier Raum bei 760 px: ohne CI 303,8 px → mit CI
-// 182,5 px"). Die Kante bleibt trotzdem bei 760 px: sie trennt nicht „passt / passt nicht", sondern
+// „Meine Entwürfe" bleibt bei 760 px MIT Logo viel mehr frei als die 58,5 px, die JOB 3571 dort
+// gemessen hatte. Heute sind es 226,8 px (JOB 3641, 11.09.2026, Lauf 738ade52…, Fall CI0: „freier
+// Raum bei 760 px: ohne CI 303,8 px → mit CI 226,8 px"). Die hier bis dahin stehende Zahl 182,5 px
+// war die von JOB 3605 gemessene und ist seit JOB 3582 überholt: der gedeckelte Logokasten kostet
+// die Zeile 44,3 px weniger als der ungedeckelte, um den jener Lauf noch rechnete.
+// Die Kante bleibt trotzdem bei 760 px: sie trennt nicht „passt / passt nicht", sondern
 // zwei Bedienformen — unter 760 px führt allein der Menü-Knopf. Eine Schwelle wegen gewonnenen
 // Platzes zu verschieben, wäre eine Layoutentscheidung, die dieser Auftrag nicht trägt.
 //
-// WAS DIESELBE MESSUNG AUSSERHALB DIESES BANDS GEFUNDEN HAT (Fall CI5, Befund, hier NICHT behoben):
-// Unter 760 px und in der breiten Bauform bei 900 px reicht der Platz mit aktiver Firmen-CI nicht —
-// bei 390 px steht der Konto-Kreis 20,5 px, bei 900 px 109,5 px rechts ausserhalb des Fensters. Das
-// Band 760–899 px, um das es hier geht, ist davon nicht betroffen; die Ursache ist die Breite des
-// Logokastens (`Logo.tsx`) und gehört einem eigenen Auftrag.
+// WAS DIESELBE MESSUNG AUSSERHALB DIESES BANDS GEFUNDEN HAT (Fall CI5) — UND WIE ES HEUTE STEHT.
+//
+// BIS ZUM 11.09.2026 STAND HIER EIN OFFENER BEFUND: „Unter 760 px und in der breiten Bauform bei
+// 900 px reicht der Platz mit aktiver Firmen-CI nicht — bei 390 px steht der Konto-Kreis 20,5 px,
+// bei 900 px 109,5 px rechts ausserhalb des Fensters." Der Satz ist fort, weil er nicht mehr gilt;
+// was an seine Stelle tritt, ist gemessen und nicht behauptet:
+//
+//   · BEHOBEN DURCH JOB 3582. Der Logokasten hat seitdem eine benannte Obergrenze
+//     (`LOGO_MAX_BREITE_PX`, `Logo.tsx`), und in der einen Spanne, in der die Zeile ihn in KEINER
+//     Grösse trägt, steht er gar nicht (`LOGO_OHNE_PLATZ_QUERY`, 900–999 px).
+//   · 390 px IST SEITDEM ZUGESICHERT wie jede andere Breite (`kopfband-ci-chromium.test.ts`,
+//     `ZUGESICHERT`, Fall CI1). CI5 sagt heute das Gegenteil des alten Befunds und wird rot, wenn
+//     der Überschuss zurückkommt.
+//   · 1000 px, gemessen JOB 3641 (11.09.2026, Läufe 738ade52… und — nach der Korrektur des
+//     Bereitschaftsnachweises in Runde 2, zeichengleiche Zahlen — 6638f0f1…,
+//     `tests/chr-kopfband-1000/`, Fälle K0/K1/K2):
+//     der rechteste Kasten („konto") endet bei 968,0 px in einem 1000 px breiten Fenster, also
+//     32,0 px INNERHALB; kein Überschuss auf der Zeilenachse (scrollWidth 1000 / clientWidth 1000)
+//     und keiner auf der Dokumentachse (1000 / 1000) — es steht also auch kein waagerechter
+//     Rollbalken da. Die 32,0 px sind das Seitenpolster (`px-8`), KEINE Reserve: der freie Raum der
+//     Zeile ist dort mit UND ohne Firmen-CI gemessene 0,0 px. Bezahlt wird der Logokasten vom
+//     Suchfeld, das im selben Lauf von 92,8 px auf 26,8 px schrumpft — genau die 66,0 px, um die
+//     die Wortmarke wächst. Das Suchfeld ist Bestand von JOB 3060 und wird hier nur gemessen.
+//     ZU DEN ZAHLEN DIESER ZEILE GEHÖRT IHR LAUF: Textbreiten hängen an den Schriften der
+//     Maschine. Auf dem Arbeitsrechner misst derselbe Fall 110,8 px → 44,8 px statt
+//     92,8 px → 26,8 px. Der UNTERSCHIED ist in beiden Umgebungen zeichengleich 66,0 px, und
+//     die Aussage — konto endet bei 968,0 px, freier Raum 0,0 px — ebenfalls.
+//   · DASS DIE DECKELUNG DAS TRÄGT, ist an derselben Stelle gegengeprobt (JOB 3641, Lauf
+//     2a321f97…, wiederholt in Runde 2 als Lauf 0c1abc94… mit denselben Zahlen):
+//     `LOGO_MAX_BREITE_PX` von 44 auf 132 gestellt — also auf einen Wert, der für das
+//     heutige Bild nicht mehr greift — und bei 1000 px kommen die alten Zahlen zurück, Konto-Kreis
+//     9,5 px draussen, scrollWidth 1010 / clientWidth 1000.
+//
+// Das Band 760–899 px, um das es hier geht, war von dem Befund nie betroffen.
 //
 // jsdom könnte keine dieser Fragen beantworten: dort gibt es kein Layout.
 //
