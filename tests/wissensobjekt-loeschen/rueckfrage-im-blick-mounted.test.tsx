@@ -615,4 +615,68 @@ describe("JOB 3637 · die Rückfrage zum Löschen steht da, wo geklickt wurde", 
     expect(enthaelt(i18n.t("ko.deleteDone"))).toBe(true);
     expect(ort).toBe("/bibliothek");
   });
+
+  // ==============================================================================================
+  // JOB 3777 — EIN SCHON GELÖSCHTES WISSENSOBJEKT IST KEIN FEHLER.
+  // ==============================================================================================
+  //
+  // DIE DRIFT, die `archiv/3637/runde-2/RUECKGABE.md:64` als Rest ausgeschrieben hat: derselbe
+  // 404 des Servers („zwischen Öffnen und Bestätigen hat jemand anderes gelöscht") wird auf zwei
+  // Flächen gegensätzlich beantwortet — die Prüfliste meldet Erfolg (`pages/Validation.tsx:296`,
+  // `ko.deleteAlreadyGone`), die Bibliothek einen roten Satz in der offenen Rückfrage. Gemessen
+  // vor der Reparatur an genau diesem Prüfstand: Rückfrage steht (`rueckfrage() != null`),
+  // Fehlerkasten trägt „Wissensobjekt nicht gefunden.", keine Erfolgsmeldung.
+  //
+  // L12 hält die neue Wahrheit, L13 ihre GRENZE: nur der 404 ist „war schon weg". Ohne L13 wäre
+  // L12 auch dann grün, wenn jeder beliebige Fehlschlag zur Erfolgsmeldung würde.
+
+  it("L12 · war das Objekt schon weg (404), ist das kein Fehler: Rückfrage zu, Erfolgsmeldung, zurück in die Bibliothek", async () => {
+    box.loeschAntwort = { art: "fehler", status: 404, text: "Wissensobjekt nicht gefunden." };
+    await loeschenWaehlen();
+    await klick(jaKnopf() as HTMLButtonElement);
+
+    // 1. DIE RÜCKFRAGE IST WIRKLICH ZU. Die Halbheit, die hier ausgeschlossen wird: ein `onError`,
+    //    das nur meldet — `removeKo.isError` hielte `loeschenOffenEffektiv` weiter offen
+    //    (`BibliothekLesen.tsx:330`), und der Nutzer stünde vor Erfolgsmeldung UND offenem Dialog.
+    expect(rueckfrage(), "die Rückfrage bleibt stehen, obwohl das Objekt weg ist").toBeNull();
+    // 2. UND KEIN FEHLERKASTEN — auch kein leerer.
+    expect(
+      document.body.querySelector('[data-testid="bib-loeschen-fehler"]'),
+      "der rote Satz steht da, obwohl nichts schiefging",
+    ).toBeNull();
+    // 3. DER WORTLAUT KOMMT AUS DEM KATALOG, nicht aus diesem Test: `ko.deleteAlreadyGone` sagt,
+    //    was wirklich geschah („war bereits nicht mehr vorhanden"), nicht „gelöscht" — DIESER
+    //    Aufruf hat nichts gelöscht. Und nicht `ko.deleteDone`, sonst wäre es eine Behauptung.
+    expect(
+      enthaelt(i18n.t("ko.deleteAlreadyGone")),
+      "keine Meldung darüber, dass das Objekt schon weg war",
+    ).toBe(true);
+    expect(enthaelt(i18n.t("ko.deleteDone")), "die Fläche behauptet, SIE habe gelöscht").toBe(
+      false,
+    );
+    // 4. DER AUFRUFER ERFÄHRT ES — dieselbe Stelle, an der L4 den Erfolgsweg misst: `onGeloescht`
+    //    nimmt die tote Kennung aus der Adresse (`BibliothekFlaeche.tsx:1889`) und führt von
+    //    `/wissen/:id` in die Bibliothek. Ohne diesen Handgriff zeigte die Adresse weiter auf ein
+    //    Objekt, das es nicht mehr gibt.
+    expect(ort, "die Adresse zeigt weiter auf die tote Kennung").toBe("/bibliothek");
+  });
+
+  it("L13 · die Grenze: ein echter Fehlschlag (403) wird NICHT als schon-weg gemeldet", async () => {
+    box.loeschAntwort = { art: "fehler", status: 403, text: "Dafür fehlt dir das Recht." };
+    await loeschenWaehlen();
+    await klick(jaKnopf() as HTMLButtonElement);
+
+    expect(
+      enthaelt(i18n.t("ko.deleteAlreadyGone")),
+      "ein 403 wird als schon-weg gemeldet — die Statusgrenze ist aufgeweicht",
+    ).toBe(false);
+    expect(
+      rueckfrage(),
+      "die Rückfrage schliesst sich nach einem echten Fehlschlag",
+    ).not.toBeNull();
+    expect(
+      document.body.querySelector('[data-testid="bib-loeschen-fehler"]')?.textContent?.trim(),
+    ).toBe("Dafür fehlt dir das Recht.");
+    expect(ort, "ein echter Fehlschlag führt trotzdem aus dem Bericht heraus").toBe("/wissen/ko-1");
+  });
 });

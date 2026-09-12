@@ -22,7 +22,16 @@
 // fremde Browsertests.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import i18n from "../../apps/web/src/i18n";
 import { type H4Stand, ORIGIN, fn, h4Stand } from "../design/h4-harness";
+
+/**
+ * JOB 3777: die erwarteten Sätze kommen aus DEM Katalog, den die gebaute Seite selbst benutzt —
+ * nicht aus einer hier abgeschriebenen Zeichenkette. Sonst wäre eine Umformulierung im Katalog ein
+ * stiller Testfehlschlag statt einer bewussten Entscheidung. `getFixedT` statt `changeLanguage`:
+ * die Sprache wird gelesen, nicht umgestellt (die Seite läuft auf „de", s. `i18n.ts:16348`).
+ */
+const de = i18n.getFixedT("de");
 
 /**
  * Sechzig Abschnitte — das „lange Objekt" aus Pedis Fall. Genau daran hängt die Messung: bei einem
@@ -106,6 +115,30 @@ const LAGE_FN = `() => {
 const LISTE_FN = `() => [...document.querySelectorAll('[data-testid="bib-zeile"]')]
   .map((z) => (z.textContent || '').trim())`;
 
+/**
+ * JOB 3777 · was nach dem Bestätigen auf der Fläche STEHT — in einem Zug gemessen, damit die vier
+ * Aussagen aus demselben Augenblick stammen. `LAGE_FN` kann das nicht: verschwindet die Rückfrage,
+ * gibt es dort nur noch `{ da: false }`, und ob daneben ein Fehlerkasten oder eine Meldung steht,
+ * wäre ungemessen. Die Meldungen liegen in den `<output>`-Kästen des Toast-Bereichs
+ * (`shell/ToastViewport.tsx:22-26`).
+ */
+const NACH_BESTAETIGEN_FN = `() => ({
+  rueckfrageDa: document.querySelector('[data-testid="bib-loeschen-rueckfrage"]') !== null,
+  fehlertext: (() => {
+    const f = document.querySelector('[data-testid="bib-loeschen-fehler"]');
+    return f ? (f.textContent || '').trim() : null;
+  })(),
+  meldungen: [...document.querySelectorAll('output')].map((o) => (o.textContent || '').trim()),
+  adresse: location.pathname + location.search,
+})`;
+
+interface NachBestaetigen {
+  rueckfrageDa: boolean;
+  fehlertext: string | null;
+  meldungen: string[];
+  adresse: string;
+}
+
 const OFFENER_BERICHT_FN = `() => {
   const t = document.querySelector('[data-testid="bib-titel"]');
   return { titel: t ? (t.textContent || '').trim() : null, pfad: location.pathname + location.search };
@@ -176,6 +209,50 @@ interface Lage {
 const lage = (): Promise<Lage> => seite().evaluate<Lage>(fn(LAGE_FN));
 const liste = (): Promise<string[]> => seite().evaluate<string[]>(fn(LISTE_FN));
 
+// ==================================================================================================
+// JOB 3777 · DIE LÜCKE DER VORRICHTUNG, DIE DIESER FALL AUFGEDECKT HAT — UND WARUM SIE HIER STEHT.
+// ==================================================================================================
+//
+// GEMESSEN, nicht vermutet (Sonde in dieser Runde, auf der laufenden Seite):
+//     {"uuid":"undefined","sicher":false,"ursprung":"http://klarwerk.test","outputs":0}
+// `window.isSecureContext` ist FALSCH, und `crypto.randomUUID` gibt es in Chromium nur im sicheren
+// Kontext. Die Vorrichtung bedient die gebaute Seite unter `http://klarwerk.test` (`h4-harness.ts:32`)
+// — also unter einem Ursprung, der weder `https` noch `localhost` ist.
+//
+// DIE FOLGE: JEDE Meldung der App stirbt dort. `ToastProvider.push` holt sich als Erstes eine
+// Kennung über `crypto.randomUUID()` (`apps/web/src/app/ToastContext.tsx:36`); der Aufruf wirft
+// „TypeError: crypto.randomUUID is not a function", und der Rest des Zweigs läuft nicht mehr.
+// Kein Toast erschien je in dieser Vorrichtung — auch der Erfolgsweg von B4 hat nie einen gezeigt.
+// Dass B4 trotzdem grün war, lag an der Reihenfolge: die Ausnahme erreicht `seitenfehler` erst
+// NACH der Zusicherung. Ein Wächter, der so knapp danebenliegt, ist keiner.
+//
+// WARUM EIN ERSATZ UND KEIN AUSKLAMMERN: die Lücke gehört der VORRICHTUNG, nicht dem Produkt. Im
+// echten Betrieb läuft Klarwerk über `https` (Coolify) und in der Entwicklung über `localhost` —
+// beides sichere Kontexte, beide haben `crypto.randomUUID`. Ein Fall, der die Meldung deshalb
+// ungemessen liesse, verschöbe eine Zusicherung des Auftrags auf niemanden.
+//
+// DER ERSATZ IST KEIN PLATZHALTER: er baut die Kennung aus `crypto.getRandomValues` (das es auch
+// im unsicheren Kontext gibt) und liefert eine echte UUID der Fassung 4 — dasselbe Format, das die
+// Norm zusagt. Die Fläche bekommt also keine Sonderbehandlung, nur den Browserdienst, den ihr der
+// Ursprung dieser Vorrichtung vorenthält.
+//
+// GRENZE, ausdrücklich benannt: dieselbe Lücke trifft jeden anderen Browserfall über
+// `tests/design/h4-harness.ts`, der eine Meldung messen will. Dort gehört der Ersatz eigentlich hin
+// — die Datei steht nicht in den Zielpfaden dieser Runde. In der Rückgabe benannt, nicht behoben.
+const UUID_ERSATZ_FN = `() => {
+  if (typeof crypto.randomUUID === "function") { return; }
+  crypto.randomUUID = () => {
+    const b = crypto.getRandomValues(new Uint8Array(16));
+    b[6] = (b[6] & 0x0f) | 0x40;
+    b[8] = (b[8] & 0x3f) | 0x80;
+    const h = [...b].map((x) => x.toString(16).padStart(2, "0"));
+    return [
+      h.slice(0, 4).join(""), h.slice(4, 6).join(""), h.slice(6, 8).join(""),
+      h.slice(8, 10).join(""), h.slice(10, 16).join(""),
+    ].join("-");
+  };
+}`;
+
 describe("JOB 3637 R2 · Löschen im echten Browser (gebaute Seite, echtes Backend)", () => {
   beforeAll(async () => {
     try {
@@ -199,6 +276,10 @@ describe("JOB 3637 R2 · Löschen im echten Browser (gebaute Seite, echtes Backe
         idA = a.id;
         idB = b.id;
       });
+      // Zweimal, und beide Male sind nötig: `evaluate` versorgt das SCHON GELADENE Dokument, in dem
+      // B1–B3 arbeiten; `addInitScript` jedes spätere (B4 lädt über `oeffnen` neu).
+      await stand.seite.evaluate(fn(UUID_ERSATZ_FN));
+      await stand.seite.addInitScript(`(${UUID_ERSATZ_FN})();`);
     } catch (e) {
       fehler = String(e).split("\n").slice(0, 4).join(" | ");
     }
@@ -288,15 +369,26 @@ describe("JOB 3637 R2 · Löschen im echten Browser (gebaute Seite, echtes Backe
     expect(bericht.titel).toContain("Wegwerf A");
   }, 90_000);
 
-  it("B3 · scheitert das Löschen am Server, steht der ECHTE Grund am Bedienort", async () => {
+  // ==============================================================================================
+  // JOB 3777 · B3 IST UMGEZOGEN, NICHT VERDOPPELT — der 404 ist kein Fehlschlag.
+  // ==============================================================================================
+  //
+  // BIS HIERHER hat dieser Fall die Gegenwahrheit GEPINNT: `l.da === true` („die Rückfrage
+  // verschwindet, obwohl nichts gelöscht wurde") und `l.fehlertext === "Wissensobjekt nicht
+  // gefunden."`. Der Herstellungsweg war schon damals richtig und bleibt Zeichen für Zeichen
+  // stehen — nur die ERWARTUNG war falsch: wer ein Objekt löscht, das schon weg ist, hat sein
+  // Ziel erreicht und darf nicht in einem Dialog sitzenbleiben, den er selbst wegklicken muss.
+  // Die Prüfliste sagt das in derselben Lage schon lange (`pages/Validation.tsx:296`); die
+  // Bibliothek zieht hier nach, im echten Browser gegen den echten Server.
+  it("B3 · war das Objekt schon weg, schliesst die Rückfrage und die Liste ist frisch", async () => {
     expect(fehler).toBeNull();
     await loeschenWaehlen();
     expect((await lage()).da).toBe(true);
 
-    // Ein ECHTER Serverfehler, nicht einer aus einem Mock: das Objekt verschwindet zwischen dem
-    // Öffnen der Rückfrage und dem Bestätigen (derselbe Weg, den auch die Oberfläche geht). Der
-    // nächste DELETE läuft damit in das Sichtbarkeitstor `sichtbaresKoOder404`
-    // (`services/app/src/routes/ko-routes.ts:1707`) und antwortet mit 404.
+    // Ein ECHTER 404, nicht einer aus einem Mock: das Objekt verschwindet zwischen dem Öffnen der
+    // Rückfrage und dem Bestätigen (derselbe Weg, den auch die Oberfläche geht — genau Pedis
+    // „jemand anderes war schneller"). Der nächste DELETE läuft damit in das Sichtbarkeitstor
+    // `sichtbaresKoOder404` (`services/app/src/routes/ko-routes.ts:1707`) und antwortet mit 404.
     const weg = await stand?.app.inject({
       method: "DELETE",
       url: `/api/kos/${idA}`,
@@ -304,15 +396,34 @@ describe("JOB 3637 R2 · Löschen im echten Browser (gebaute Seite, echtes Backe
     });
     expect(
       weg?.statusCode,
-      `Vorbereitung des Fehlerfalls misslang: ${weg?.body?.slice(0, 120)}`,
+      `Vorbereitung des 404-Falls misslang: ${weg?.body?.slice(0, 120)}`,
     ).toBeLessThan(400);
 
     await knopfDruecken("Ja, löschen");
-    const l = await lage();
-    expect(l.da, "die Rückfrage verschwindet, obwohl nichts gelöscht wurde").toBe(true);
-    expect(l.fehlertext, "der Grund steht nicht in der Rückfrage").toBe(
-      "Wissensobjekt nicht gefunden.",
+    const nach = await seite().evaluate<NachBestaetigen>(fn(NACH_BESTAETIGEN_FN));
+
+    // 1. DIE RÜCKFRAGE IST WEG — kein Dialog, den der Nutzer selbst wegklicken muss.
+    expect(nach.rueckfrageDa, "die Rückfrage steht noch da, obwohl das Objekt weg ist").toBe(false);
+    // 2. UND KEIN ROTER SATZ. Vorher stand hier „Wissensobjekt nicht gefunden.".
+    expect(nach.fehlertext, "der rote Satz steht da, obwohl nichts schiefging").toBeNull();
+    // 3. GELESEN WIRD DER SATZ AUS DEM KATALOG — er behauptet nicht „gelöscht" (das hat DIESER
+    //    Aufruf nicht getan), sondern dass es schon weg war und die Liste neu geholt wurde.
+    expect(nach.meldungen.some((m) => m.includes(de("ko.deleteAlreadyGone")))).toBe(true);
+    expect(
+      nach.meldungen.some((m) => m.includes(de("ko.deleteDone"))),
+      "die Fläche behauptet, SIE habe gelöscht",
+    ).toBe(false);
+    // 4. DIE ADRESSE ZEIGT NICHT MEHR AUF DIE TOTE KENNUNG (`BibliothekFlaeche.tsx:1889`).
+    expect(nach.adresse).not.toContain(idA);
+
+    // 5. UND DIE LISTE IST WIRKLICH FRISCH — der zweite Halbsatz der Meldung („Liste
+    //    aktualisiert.") ist nur zulässig, weil `invalidate()` im selben Zweig läuft. Gemessen am
+    //    tatsächlichen Bestand der Liste, nicht am Cache.
+    await warteAuf(
+      `() => ![...document.querySelectorAll('[data-testid="bib-zeile"]')].some((z) => (z.textContent || '').includes('Wegwerf A'))`,
+      "Wegwerf A steht nach dem 404 weiter in der Liste — der Halbsatz über die aufgefrischte Liste wäre falsch",
     );
+    expect((await liste()).some((z) => z.includes("Wegwerf A"))).toBe(false);
   }, 90_000);
 
   it("B4 · zwei Löschungen hintereinander tragen beide — echte Liste, echter Server", async () => {

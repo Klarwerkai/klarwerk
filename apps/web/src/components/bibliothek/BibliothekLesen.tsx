@@ -48,6 +48,7 @@ import {
   reworkValidationHref,
 } from "../../lib/reviewReworkContext";
 import { useAuthorName } from "../../lib/useAuthorName";
+import { isStaleKoDeleteError } from "../../lib/validationDelete";
 import {
   type FeedbackVerdict,
   buildValidationFeedback,
@@ -284,10 +285,25 @@ export function BibliothekLesen({
     },
     onError: (e) => setErr(e instanceof ApiError ? e.message : t("state.error")),
   });
-  // JOB 3637: der Fehlschlag wird NICHT mehr als Toast in die untere rechte Ecke geschoben,
+  // JOB 3637: der ECHTE Fehlschlag wird NICHT als Toast in die untere rechte Ecke geschoben,
   // sondern steht in der Rückfrage selbst — dort, wo geklickt wurde, und er bleibt stehen, statt
-  // nach ein paar Sekunden zu verfallen. Deshalb hält die Mutation ihren Fehler (kein `onError`
-  // mehr, das ihn wegmeldet); gelesen wird er unten aus `removeKo.error`.
+  // nach ein paar Sekunden zu verfallen. Deshalb meldet `onError` ihn NICHT weg, sondern lässt ihn
+  // bei der Mutation liegen; gelesen wird er unten aus `removeKo.error`.
+  //
+  // ================================================================================================
+  // JOB 3777 · EIN SCHON GELÖSCHTES WISSENSOBJEKT IST KEIN FEHLSCHLAG.
+  // ================================================================================================
+  //
+  // Antwortet der Server mit 404, war das Objekt zwischen Öffnen der Rückfrage und dem Bestätigen
+  // schon weg — jemand anderes (oder ein zweites Fenster) war schneller. Der Wunsch des Nutzers ist
+  // damit erfüllt, nicht gescheitert: er bekommt denselben Abschluss wie beim Löschen, nur mit dem
+  // ehrlicheren Satz (`ko.deleteAlreadyGone` sagt „war bereits nicht mehr vorhanden", nicht
+  // „gelöscht" — DIESER Aufruf hat nichts gelöscht).
+  //
+  // DIE ENTSCHEIDUNG „schon weg?" HAT GENAU EINE QUELLE IM HAUS: `isStaleKoDeleteError`
+  // (`lib/validationDelete.ts:32`). Dieselbe Funktion beantwortet den 404 in der Prüfliste seit
+  // jeher als Erfolg (`pages/Validation.tsx:296`) — bis JOB 3777 war die Bibliothek die einzige
+  // Fläche, die dieselbe Tatsache gegenteilig las. Hier steht deshalb KEINE eigene Statusabfrage.
   const removeKo = useMutation({
     mutationFn: () => endpoints.ko.remove(koId),
     onSuccess: () => {
@@ -296,12 +312,40 @@ export function BibliothekLesen({
       push("success", t("ko.deleteDone"));
       onGeloescht();
     },
+    onError: (e) => {
+      if (!isStaleKoDeleteError(e)) {
+        return; // echter Fehlschlag: bleibt liegen und wird unten am Bedienort gelesen.
+      }
+      // Zeichengleich zum Erfolgsweg oben — nur der Satz ist ein anderer. `invalidate()` ist der
+      // Grund, aus dem der zweite Halbsatz („Liste aktualisiert.") überhaupt zulässig ist, und
+      // `onGeloescht()` nimmt die jetzt tote Kennung aus der Adresse (`BibliothekFlaeche.tsx:1889`).
+      setLoeschenOffen(false);
+      invalidate();
+      push("success", t("ko.deleteAlreadyGone"));
+      onGeloescht();
+    },
   });
-  const loeschFehler = removeKo.error
-    ? removeKo.error instanceof ApiError
-      ? removeKo.error.message
-      : t("state.error")
-    : null;
+  // DIE HALBHEIT, DIE HIER AUSGESCHLOSSEN WIRD: ein `onError`, das nur meldet, reicht NICHT. Der
+  // Fehler bleibt an der Mutation liegen, `removeKo.isError` bliebe wahr — und damit hielte
+  // `loeschenOffenEffektiv` (unten) die Rückfrage offen. Der Nutzer stünde vor einer Erfolgsmeldung
+  // UND einem Dialog, den er selbst wegklicken muss; genau das, was dieser Auftrag beseitigt.
+  //
+  // ABGELEITET statt `removeKo.reset()` im Zweig oben, aus zwei Gründen: (1) `reset()` innerhalb
+  // des eigenen `useMutation`-Aufrufs griffe auf `removeKo` zu, bevor die Bindung steht — TypeScript
+  // kann den Typ dann nicht mehr schliessen. (2) Die Ableitung sagt die Sache selbst: ein „war schon
+  // weg" IST kein Fehlerzustand dieser Fläche, es ist nur der andere Ausgang.
+  //
+  // Der 404 bleibt danach an der Mutation liegen, und das schadet nichts: er zeichnet keinen roten
+  // Satz mehr und hält nichts offen. `loeschenSchliessen` setzt ihn zurück, sobald jemand die
+  // Rückfrage wieder bewusst schliesst, und beim Wechsel des Eintrags baut `key={gewaehltEffektiv}`
+  // die Fläche ohnehin neu (`BibliothekFlaeche.tsx:1870`).
+  const schonWeg = isStaleKoDeleteError(removeKo.error);
+  const loeschFehler =
+    removeKo.error && !schonWeg
+      ? removeKo.error instanceof ApiError
+        ? removeKo.error.message
+        : t("state.error")
+      : null;
   // ================================================================================================
   // JOB 3637 R2 · BEN-KORREKTURPFLICHT 1 — EIN LAUFENDER LÖSCHAUFRUF GEHT NICHT MEHR VERLOREN.
   // ================================================================================================
@@ -327,7 +371,13 @@ export function BibliothekLesen({
   // Was daraus FOLGT und der Grund für Korrekturpflicht 1 war: eine zweite Freigabe ist während des
   // Aufrufs nicht möglich. Der Bestätigungsknopf hängt an `removeKo.isPending`, und der Weg zum
   // Menü liegt hinter der offenen, gesperrten Fläche.
-  const loeschenOffenEffektiv = loeschenOffen || removeKo.isPending || removeKo.isError;
+  //
+  // JOB 3777 · UND `schonWeg` IST HIER AUSGENOMMEN. „Gescheitert" heisst: es gibt etwas zu sagen,
+  // das der Nutzer noch nicht weiss. Beim 404 weiss er es schon — er hat gerade die Meldung
+  // bekommen, die Liste ist frisch, die Adresse zeigt nicht mehr auf die tote Kennung. Bliebe die
+  // Fläche auch dann stehen, wäre aus der Reparatur genau die Falle geworden, die L10 verbietet.
+  const loeschenOffenEffektiv =
+    loeschenOffen || removeKo.isPending || (removeKo.isError && !schonWeg);
   /**
    * Die Rückfrage schliessen. Solange der Löschaufruf unterwegs ist, nimmt das NUR den Schalter
    * zurück — die Fläche bleibt stehen (s. `loeschenOffenEffektiv`) und die Mutation behält ihren
@@ -1412,10 +1462,13 @@ export function BibliothekLesen({
               {t("ko.deleteYes")}
             </Button>
           </div>
-          {/* Der Grund am Bedienort. Er steht NUR im Fehlerfall und behauptet nichts darüber
-              hinaus: gescheitert ist das Löschen, der Eintrag ist unverändert da, die Rückfrage
-              bleibt offen. Keine Ersatzmeldung, wenn der Server keine mitgibt — dann der
-              allgemeine Satz aus dem Katalog. */}
+          {/* Der Grund am Bedienort. Er steht NUR beim ECHTEN Fehlschlag (403, 500, ein Fehler
+              ohne Antwort) und behauptet nichts darüber hinaus: gescheitert ist das Löschen, der
+              Eintrag ist unverändert da, die Rückfrage bleibt offen. Keine Ersatzmeldung, wenn der
+              Server keine mitgibt — dann der allgemeine Satz aus dem Katalog.
+              JOB 3777 · DER 404 GEHÖRT NICHT MEHR HIERHER: dort ist der Eintrag gerade NICHT
+              unverändert da, er ist weg. Dieser Fall verlässt die Fläche oben über den
+              `onError`-Zweig von `removeKo` — Rückfrage zu, Meldung `ko.deleteAlreadyGone`. */}
           {loeschFehler ? (
             <p
               data-testid="bib-loeschen-fehler"
