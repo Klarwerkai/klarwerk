@@ -125,13 +125,26 @@ const flush = async (): Promise<void> => {
 
 // Die Sonde auf die ADRESSE: sie zeigt, was in der Leiste stünde, und sie kann zurückgehen. Beides
 // braucht F1 — die Kennung UND der unverschmutzte Zurück-Weg (`replace: true`).
+//
+// ZWEI KNOTEN, NICHT EINER (JOB 3611; die Begründung wohnt an EINER Stelle:
+// `tests/adresse-ist-kein-pfad/adresse-ist-kein-pfad.test.ts`, Ursprung
+// `tests/app-sprachschalter/wechsel-ohne-verlust.test.tsx:120-138`). Bis JOB 3611 stand hier EIN
+// Knoten mit `pathname` und `search` in einer Zeichenkette; `expect(adresse()).toBe("/erfassen")`
+// sah damit wie eine Routenprüfung aus, behauptete aber stillschweigend „und kein Abfrageteil" —
+// und genau den trägt dieses Blatt wenige Zeilen später nach. Der Wächter in
+// `tests/adresse-ist-kein-pfad/` macht die Rückkehr dieser Form rot.
 function Adresse(): JSX.Element {
   const ort = useLocation();
   const gehe = useNavigate();
   return createElement(
     "div",
     null,
-    createElement("span", { "data-testid": "adresse" }, `${ort.pathname}${ort.search}`),
+    createElement("span", { key: "pfad", "data-testid": "adresse-pfad", children: ort.pathname }),
+    createElement("span", {
+      key: "abfrage",
+      "data-testid": "adresse-abfrage",
+      children: ort.search,
+    }),
     createElement(
       "button",
       { type: "button", "data-testid": "zurueck", onClick: () => gehe(-1) },
@@ -140,7 +153,15 @@ function Adresse(): JSX.Element {
   );
 }
 
-async function mount(url: string, seite: "blatt" | "arbeitsraum" = "blatt"): Promise<void> {
+/**
+ * EIN ZIEL FÜR DEN AUFBAU — entweder ein geschriebener Weg oder die zwei Teile, die die Sonde
+ * GETRENNT gelesen hat. Die zwei Teile werden hier bewusst NICHT zu einer Zeichenkette gefügt:
+ * `MemoryRouter` nimmt `{ pathname, search }` unmittelbar, also braucht F4 keine zusammengesetzte
+ * Adresse, um das Neuladen über den Weg zu fahren, den das Blatt selbst hinterlassen hat.
+ */
+type Ziel = string | { pfad: string; abfrage: string };
+
+async function mount(ziel: Ziel, seite: "blatt" | "arbeitsraum" = "blatt"): Promise<void> {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -161,7 +182,13 @@ async function mount(url: string, seite: "blatt" | "arbeitsraum" = "blatt"): Pro
               null,
               createElement(
                 MemoryRouter,
-                { initialEntries: ["/zwischenstand", url], initialIndex: 1 },
+                {
+                  initialEntries: [
+                    "/zwischenstand",
+                    typeof ziel === "string" ? ziel : { pathname: ziel.pfad, search: ziel.abfrage },
+                  ],
+                  initialIndex: 1,
+                },
                 createElement(
                   ImageDescribeProvider,
                   null,
@@ -201,8 +228,21 @@ function unmount(): void {
   container.remove();
 }
 
-function adresse(): string {
-  return container.querySelector('[data-testid="adresse"]')?.textContent ?? "";
+/** DIE ROUTE, und nur sie. Ein `?` kann hier nicht vorkommen — und wenn doch, sagt es der Wurf. */
+function routenPfad(): string {
+  const wert = container.querySelector('[data-testid="adresse-pfad"]')?.textContent ?? "";
+  if (wert.includes("?")) {
+    throw new Error(`Der Pfadknoten trägt einen Abfrageteil: „${wert}"`);
+  }
+  return wert;
+}
+
+/** DIE VOLLE ADRESSE — beide Teile, GETRENNT. Bewusst keine zusammengesetzte Zeichenkette. */
+function adresse(): { pfad: string; abfrage: string } {
+  return {
+    pfad: routenPfad(),
+    abfrage: container.querySelector('[data-testid="adresse-abfrage"]')?.textContent ?? "",
+  };
 }
 
 function pruefknopf(name: string): HTMLButtonElement {
@@ -287,7 +327,10 @@ afterEach(() => {
 describe("JOB 3106 (UX-01): der gesicherte Entwurf bleibt erreichbar", () => {
   it("F1: nach dem Sichern trägt die Adresse ?draft=<kennung> — und der Zurück-Weg bleibt sauber", async () => {
     await mount("/erfassen");
-    expect(adresse()).toBe("/erfassen");
+    // Die Route, und GETRENNT davon die Zusage, die vorher stillschweigend mitlief: noch trägt die
+    // Adresse keinen Abfrageteil. Erst sie macht den Vergleich unten zu einer echten Messung.
+    expect(routenPfad()).toBe("/erfassen");
+    expect(adresse().abfrage, "vor dem Sichern steht keine Kennung in der Adresse").toBe("");
 
     await tippeTitel(TITEL);
     await tippeRumpf(RUMPF);
@@ -296,13 +339,15 @@ describe("JOB 3106 (UX-01): der gesicherte Entwurf bleibt erreichbar", () => {
     const gespeichert = await box.liste();
     expect(gespeichert).toHaveLength(1);
     const kennung = gespeichert[0]?.id as string;
-    // DER BEFUND N-0005, umgedreht: die Adresse trägt die Kennung aus der SERVERANTWORT.
-    expect(adresse()).toBe(`/erfassen?draft=${kennung}`);
+    // DER BEFUND N-0005, umgedreht: die Adresse trägt die Kennung aus der SERVERANTWORT — und die
+    // Route hat sich dabei NICHT bewegt. Zwei Aussagen, beide ausgeschrieben.
+    expect(adresse()).toEqual({ pfad: "/erfassen", abfrage: `?draft=${kennung}` });
 
     // `replace: true`: das Festhalten der Kennung ist kein Schritt des Menschen. Ein „Zurück"
     // führt dorthin, wo er vor dem Blatt war — nicht auf das Blatt ohne Kennung.
     await click(pruefknopf("zurueck"));
-    expect(adresse()).toBe("/zwischenstand");
+    expect(routenPfad()).toBe("/zwischenstand");
+    expect(adresse().abfrage, "der Zurück-Weg hat einen Abfrageteil mitgeschleppt").toBe("");
   });
 
   it("F2: die Bestätigungszeile nennt den Titel und öffnet über die Tastatur die eigenen Entwürfe", async () => {
@@ -373,7 +418,10 @@ describe("JOB 3106 (UX-01): der gesicherte Entwurf bleibt erreichbar", () => {
     // DAS NEULADEN GEHT ÜBER DIE ADRESSE, DIE DAS BLATT SELBST HINTERLASSEN HAT — nicht über eine
     // im Test zusammengebaute. Genau das tut ein Mensch, der F5 drückt: er lädt, was in der Leiste
     // steht. Trüge die Adresse die Kennung nicht, stünde hier gleich ein leeres Blatt.
+    // Weitergegeben werden BEIDE TEILE, getrennt (JOB 3611) — `mount` nimmt sie so, wie sie gelesen
+    // wurden, und niemand muss sie dafür zu einer Zeichenkette fügen.
     const nachSichern = adresse();
+    expect(nachSichern).toEqual({ pfad: "/erfassen", abfrage: `?draft=${kennung}` });
     unmount();
 
     box.zaehler.create = 0;
@@ -408,7 +456,7 @@ describe("JOB 3106 (UX-01): der gesicherte Entwurf bleibt erreichbar", () => {
     await click(buttonByText(i18n.t("erfassen.mehr.entwuerfe")));
     await click(buttonByText("Wartungsfenster L4"));
 
-    expect(adresse()).toBe(`/erfassen?draft=${kennung}`);
+    expect(adresse()).toEqual({ pfad: "/erfassen", abfrage: `?draft=${kennung}` });
     expect(titelfeld().value).toBe("Wartungsfenster L4");
 
     await tippeRumpf("<p>Nur im Stillstand, mit Freischaltung.</p>");
@@ -452,8 +500,10 @@ describe("JOB 3106 (UX-01): der gesicherte Entwurf bleibt erreichbar", () => {
     } finally {
       window.confirm = vorherigesConfirm;
     }
-    // Das Blatt ist leer, und die Adresse trägt keinen Entwurf mehr.
-    expect(adresse()).toBe("/erfassen");
+    // Das Blatt ist leer, und die Adresse trägt keinen Entwurf mehr. „Kein Entwurf mehr" ist hier
+    // die eigentliche Zusage — sie steht deshalb als eigene Zeile da, nicht im Pfadvergleich versteckt.
+    expect(routenPfad()).toBe("/erfassen");
+    expect(adresse().abfrage, "die verworfene Kennung steht noch in der Adresse").toBe("");
     expect(titelfeld().value).toBe("");
     expect(container.querySelector('[data-testid="blatt-entwurf-gespeichert"]')).toBeNull();
 
@@ -463,7 +513,7 @@ describe("JOB 3106 (UX-01): der gesicherte Entwurf bleibt erreichbar", () => {
     await click(buttonByText(TITEL));
 
     // DAS IST DER BEFUND: hier stand in Runde 2 die richtige Adresse über einem leeren Blatt.
-    expect(adresse()).toBe(`/erfassen?draft=${kennung}`);
+    expect(adresse()).toEqual({ pfad: "/erfassen", abfrage: `?draft=${kennung}` });
     expect(titelfeld().value).toBe(TITEL);
     expect(editor().innerHTML).toContain("Schmierstellen");
 

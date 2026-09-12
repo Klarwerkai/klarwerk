@@ -122,9 +122,20 @@ const flush = async (): Promise<void> => {
   }
 };
 
+// ZWEI KNOTEN, NICHT EINER (JOB 3611; die Begründung wohnt an EINER Stelle:
+// `tests/adresse-ist-kein-pfad/adresse-ist-kein-pfad.test.ts`, Ursprung
+// `tests/app-sprachschalter/wechsel-ohne-verlust.test.tsx:120-138`). Bis JOB 3611 trug EIN Knoten
+// `pathname` und `search` in einer Zeichenkette, und `expect(loc()).toBe(START)` stellte sie gegen
+// einen reinen PFAD — also gegen eine Aussage, die es nicht war. `START` bleibt ein Pfad und wird
+// nur noch gegen den Pfadteil gestellt; die volle Adresse wird als beide Teile behauptet.
 function LocationProbe(): JSX.Element {
-  const loc = useLocation();
-  return createElement("span", { "data-testid": "loc" }, `${loc.pathname}${loc.search}`);
+  const ort = useLocation();
+  return createElement(
+    "span",
+    null,
+    createElement("span", { key: "pfad", "data-testid": "loc-pfad", children: ort.pathname }),
+    createElement("span", { key: "abfrage", "data-testid": "loc-abfrage", children: ort.search }),
+  );
 }
 
 async function mount(url: string): Promise<void> {
@@ -183,8 +194,21 @@ function unmount(): void {
   container.remove();
 }
 
-function loc(): string {
-  return container.querySelector("[data-testid=loc]")?.textContent ?? "";
+/** DIE ROUTE, und nur sie. Ein `?` kann hier nicht vorkommen — und wenn doch, sagt es der Wurf. */
+function routenPfad(): string {
+  const wert = container.querySelector("[data-testid=loc-pfad]")?.textContent ?? "";
+  if (wert.includes("?")) {
+    throw new Error(`Der Pfadknoten trägt einen Abfrageteil: „${wert}"`);
+  }
+  return wert;
+}
+
+/** DIE VOLLE ADRESSE — beide Teile, GETRENNT. Bewusst keine zusammengesetzte Zeichenkette. */
+function adresse(): { pfad: string; abfrage: string } {
+  return {
+    pfad: routenPfad(),
+    abfrage: container.querySelector("[data-testid=loc-abfrage]")?.textContent ?? "",
+  };
 }
 
 // Der Wächter-Dialog rendert im Provider (außerhalb des Seitenbaums) — deshalb am document lesen.
@@ -334,7 +358,10 @@ describe("mega11 Block B-2: JEDER Shell-Ausgang läuft durch den Wächter", () =
       await exit.run();
 
       expect(guardAsked(), "der Wächter hat nicht gefragt").toBe(true);
-      expect(loc(), "trotz Warnung gewechselt").toBe(START);
+      // Die Route steht still — und GETRENNT davon die Zusage, die vorher stillschweigend mitlief:
+      // es ist auch kein Abfrageteil dazugekommen.
+      expect(routenPfad(), "trotz Warnung gewechselt").toBe(START);
+      expect(adresse().abfrage, "trotz Warnung hat sich die Adresse bewegt").toBe("");
       unmount();
     });
 
@@ -347,7 +374,11 @@ describe("mega11 Block B-2: JEDER Shell-Ausgang läuft durch den Wächter", () =
       await exit.run();
 
       expect(guardAsked()).toBe(false);
-      expect(loc()).not.toBe(`${START}?draft=${id}`);
+      // Die VOLLE Adresse hat sich bewegt — beide Teile zusammen, als eine Aussage über die Adresse.
+      expect(adresse(), "ohne Verlust muss der Ausgang sofort wechseln").not.toEqual({
+        pfad: START,
+        abfrage: `?draft=${id}`,
+      });
       unmount();
     });
   }
@@ -360,7 +391,8 @@ describe("mega11 Block B-2: JEDER Shell-Ausgang läuft durch den Wächter", () =
 
     // Weder Warnung (nichts geht verloren) noch In-App-Wechsel.
     expect(guardAsked()).toBe(false);
-    expect(loc()).toBe(START);
+    expect(routenPfad()).toBe(START);
+    expect(adresse().abfrage, "der Modifikator-Klick hat die Adresse bewegt").toBe("");
     unmount();
   });
 });
@@ -397,7 +429,7 @@ describe("mega11 Block B-1: Neuladen/Tab-Schließen warnt ebenfalls", () => {
     expect(beforeUnloadBlocked(), "geleerter Body galt als sauber").toBe(true);
     await click(anchorTo(await kontoOeffnen(), "/profil"));
     expect(guardAsked()).toBe(true);
-    expect(loc()).toBe(`${START}?draft=${id}`);
+    expect(adresse()).toEqual({ pfad: START, abfrage: `?draft=${id}` });
     unmount();
   });
 
