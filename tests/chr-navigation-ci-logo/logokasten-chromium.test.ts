@@ -68,8 +68,12 @@
 //   · Bei 900 px wird NUR zugesichert, dass nichts ausserhalb des Fensters steht und kein Überschuss
 //     bleibt. Die volle Zusage über die ZUSAMMENSETZUNG der breiten Bauform gehört JOB 3060 und wird
 //     hier nicht neu erhoben.
+//   · Der Ladenachweis (JOB 3616, siehe unten) liest in der SCHMALEN Bauform keinen gezeichneten
+//     Zähler ab, weil das Kopfband dort nur den Punkt „Entwürfe" zeigt (`SCHMAL_PUNKT_IDS` in
+//     `shell/KopfbandPunkte.tsx`). Unter 900 px trägt ihn deshalb allein die ausgelieferte Antwort;
+//     der gezeichnete Zähler wird ab 900 px gemessen. Der Lauf sagt je Breite, welche Hälfte trug.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { type Stand, fn, starte } from "../design/h6-chromium";
+import { ORIGIN, type Stand, fn, starte } from "../design/h6-chromium";
 import {
   type Bereitschaft,
   LOGO_STEHT,
@@ -90,12 +94,24 @@ import {
   SPANNE_NAME,
   regelnOderAbbruch,
 } from "./deckelung-quelle";
+import {
+  type AnkunftBefund,
+  type Ankunftsurteil,
+  type Rechteck,
+  type SichtBefund,
+  beurteileAnkunft,
+  beurteileSicht,
+  statusListe,
+  zeilenUnterschied,
+} from "./ruhe-und-sicht";
 
 const HOEHE = 800;
 /** Die Startbreite ist die engste gemessene — dort war der Befund am sichtbarsten. */
 const START_BREITE = 390;
 /** Die Kennung, unter der die gemessenen Zahlen im Lauf stehen. */
 const KENNUNG = "JOB 3582";
+/** Die Kennung der Zahlen, die JOB 3616 dazugestellt hat (Ladenachweis, Sichtbarkeit, L7). */
+const KENNUNG_3616 = "JOB 3616";
 
 /**
  * Die vier Regeln, wörtlich aus dem Produkt.
@@ -212,7 +228,7 @@ function protokolliere(fall: string, breite: number, m: Messung, logo: LogoBefun
 
 /**
  * ================================================================================================
- * DIE RUHEMESSUNG — JEDE Zahl dieser Datei stammt aus einer Zeile, die sich nicht mehr ändert.
+ * DIE RUHEMESSUNG — JEDE Zahl dieser Datei stammt aus einem NACHGEWIESENEN Endzustand.
  * ================================================================================================
  *
  * DER ANLASS IST GEMESSEN, NICHT VERMUTET, und er ist zweimal aufgetreten:
@@ -223,15 +239,58 @@ function protokolliere(fall: string, breite: number, m: Messung, logo: LogoBefun
  *     899,2 px als rechten Rand — 15 px Unterschied.
  *
  * BEIDES HAT DIESELBE URSACHE: die Kopfbandzeile ist beim ersten Zeichnen noch nicht fertig. Der
- * Zähler am Punkt „Prüfen" kommt erst mit seiner Abfrage (`app/useNavBadges.ts`) und macht den Punkt
- * dann rund 15 px breiter; der aktive Punkt trägt `font-semibold` (`shell/KopfbandPunkte.tsx`). Wer
- * misst, bevor das steht, misst einen Zwischenstand — und einen, den kein Mensch je sieht.
+ * Zähler am Punkt „Prüfen" kommt erst mit seiner Abfrage (`app/useNavBadges.ts` → `GET
+ * /api/validation/board`) und macht den Punkt dann rund 15 px breiter; der aktive Punkt trägt
+ * `font-semibold` (`shell/KopfbandPunkte.tsx`). Wer misst, bevor das steht, misst einen
+ * Zwischenstand — und einen, den kein Mensch je sieht.
+ *
+ * WAS DAVON IN DIESER BÜHNE GEMESSEN IST, gehört an dieselbe Stelle wie die Behauptung: das
+ * Prüf-Board dieser Bühne ist LEER (`GET /api/validation/board` → 0 Einträge, Fall L7 gibt die Zahl
+ * aus). Ein Zähler mit 0 wird nicht gezeichnet; die 15 px oben stammen aus den Läufen von JOB 3582
+ * und sind hier nicht nachstellbar. Die Ursache der zwei Befunde ist damit NICHT nachgemessen — der
+ * Ladenachweis unten hängt deshalb am nachgewiesenen EINTREFFEN der Antwort, nicht an einer
+ * erwarteten Breite.
  *
  * DIE ANTWORT IST NICHT EINE GRÖSSERE TOLERANZ. Eine Toleranz, die 15 px schluckt, schluckt auch
- * einen echten Layoutfehler von 15 px — und genau solche Fehler soll diese Datei finden. Gemessen
- * wird stattdessen erst, wenn die Zeile SICH NICHT MEHR ÄNDERT: zwei aufeinanderfolgende Messungen
- * im Abstand von 250 ms müssen in Namen und Breiten aller Kästen übereinstimmen. Kommt sie nicht
- * zur Ruhe, bricht der Fall ab — mit Grund, statt mit einer Zufallszahl.
+ * einen echten Layoutfehler von 15 px — und genau solche Fehler soll diese Datei finden.
+ *
+ * UND SIE IST SEIT JOB 3616 AUCH NICHT MEHR EINE UHR. Bis dahin genügten zwei gleiche Stichproben
+ * im Abstand von 250 ms. Das beweist keinen Ladezustand: kommt die Zähler-Antwort NACH der zweiten
+ * Stichprobe, waren die ersten zwei gleich — und die Datei mass still den Stand VOR dem Zähler.
+ * Genau das hat der Prüfer an JOB 3582 benannt (`archiv/3582/runde-2/ben.md:30`: „Die Ruhemessung
+ * beweist keinen endgültigen Ladezustand: Badge-Antwort gezielt verzögern und anschließend
+ * messen"). Gemessen wird deshalb erst, wenn BEIDES gilt:
+ *
+ *   1. DIE ANTWORT IST ERFOLGREICH IM BROWSER ANGEKOMMEN — abgelesen an der Ressourcen-Zeitleiste
+ *      DES DOKUMENTS (`performance.getEntriesByType("resource")`). Ein Eintrag entsteht dort erst,
+ *      wenn die Ressource fertig empfangen ist (`responseEnd`); die Zeitleiste gehört dem Dokument
+ *      und beginnt mit jedem Seitenaufbau neu, die Zuordnung ist also baulich gegeben.
+ *
+ *      RUNDE 2 HAT DORT AUFGEHÖRT, UND DAS WAR ZU FRÜH: „empfangen“ ist nicht „erfolgreich“. Eine
+ *      mit HTTP 503 beantwortete Abfrage erzeugt denselben Eintrag — der Prüfer hat die
+ *      Zähler-Quelle gestört und bekam `nachweisErbracht:true` nach 355 ms bei
+ *      `timing:[{status:503,ende:65.5}]`: eine nicht geladene Zeile bekam einen fertigen Messwert
+ *      (BEN, JOB 3616 R2, Korrekturpflicht 1). Gezählt wird deshalb nur ein Eintrag mit 2xx
+ *      (`responseStatus`, gleiche Quelle); ein empfangener Fehler lässt den Lauf weiter warten und
+ *      steht im Abbruchgrund. Geurteilt wird in `beurteileAnkunft` (`ruhe-und-sicht.ts`), gemessen
+ *      am gebauten Produkt in L11a (dauerhaftes 503) und L11b (503, dann verzögerter Erfolg).
+ *
+ *      RUNDE 1 HAT DAS AN DER FALSCHEN STELLE GEMESSEN, und der Prüfer hat es nachgewiesen: dort
+ *      zählte ein Schritt IN `stand.antworten.vorAuslieferung`, also VOR `route.fulfill`. Wer die
+ *      echte Auslieferung danach weitere 2000 ms zurückhielt, bekam eine fertige Ruhemessung nach
+ *      424 ms — mit `nachweisErbracht:true`, obwohl im Browser nichts angekommen war (BEN, JOB 3616
+ *      R1, Korrekturpflicht 1). Ein Zählschritt am Server ist kein Ankunftsnachweis. Was vom Server
+ *      bleibt, ist reine Diagnose: `stand.abrufe` sagt, ob die FRAGE überhaupt gestellt wurde, und
+ *      steht nur in den Meldungen — nie in der Bedingung.
+ *   2. WO DER PUNKT „PRÜFEN" GEZEICHNET IST, STEHT SEIN ZÄHLER — am Browser abgelesen und gegen die
+ *      Zahl gelegt, die die echte Route `GET /api/validation/board` im selben Lauf liefert. In der
+ *      schmalen Bauform zeigt das Kopfband diesen Punkt gar nicht (`SCHMAL_PUNKT_IDS`, nur
+ *      „entwuerfe"); dort trägt allein 1. den Nachweis, und der Lauf sagt das.
+ *
+ * DANACH ERST kommt die alte Bedingung dazu: zwei aufeinanderfolgende Messungen müssen in Namen,
+ * Breiten UND LAGEN aller Kästen übereinstimmen (`zeilenUnterschied`; die Lage kam mit JOB 3616
+ * dazu). Bleibt der Nachweis aus oder kommt die Zeile nicht zur Ruhe, bricht der Fall ab — MIT
+ * GRUND und mit Zahl, statt mit einem Zwischenstand.
  *
  * WAS DAS FÜR DIE ZAHLEN BEDEUTET: sie sind der ENDZUSTAND, also der engste. Bei 900 px sind das
  * 899,2 px bei 900 px Fensterbreite — 0,8 px Luft. Diese 0,8 px sind der Bestand von JOB 3060 und
@@ -240,40 +299,301 @@ function protokolliere(fall: string, breite: number, m: Messung, logo: LogoBefun
  */
 const pause = (ms: number): Promise<void> => new Promise((fertig) => setTimeout(fertig, ms));
 
-/** Zwei Messungen gelten als gleich, wenn jeder Kasten denselben Namen und dieselbe Breite hat. */
-function zeileGleich(a: Messung, b: Messung): boolean {
-  if (a.kaesten.length !== b.kaesten.length) {
-    return false;
+/** Die Abfrage, mit der der Zähler am Punkt „Prüfen" kommt (`app/useNavBadges.ts`). */
+const ZAEHLER_PFAD = "/api/validation/board";
+/** Der Kopfbandpunkt, der diesen Zähler trägt (`app/navigation.ts`, `badgeKey: "validation"`). */
+const ZAEHLER_PUNKT = "validierung";
+/**
+ * Wie lange auf die Ankunft der Antwort gewartet wird, bevor der Fall mit Grund abbricht.
+ *
+ * Veränderlich, weil Fall L8 den Abbruch selbst misst: er hält die Antwort an und stellt die Frist
+ * kurz, statt den Lauf 20 s lang anzuhalten. Ausserhalb von L8 steht hier immer `NACHWEIS_FRIST_MS`.
+ */
+const NACHWEIS_FRIST_MS = 20_000;
+let nachweisFristMs = NACHWEIS_FRIST_MS;
+/** Wie lange danach auf den gezeichneten Zähler gewartet wird. */
+const ZAEHLER_FRIST_MS = 10_000;
+/** Die Ruhemessung: höchstens zwölf Stichproben im Abstand von 250 ms. */
+const RUHE_VERSUCHE = 12;
+const RUHE_PAUSE_MS = 250;
+
+/** Ist der Nachweis für den laufenden Seitenaufbau schon erbracht? */
+let nachweisErbracht = false;
+/** Künstlicher Verzug der Zähler-Antwort in ms — nur Fall L7 stellt ihn. */
+let zaehlerVerzugMs = 0;
+/** Solange gesetzt, hält die Auslieferung der Zähler-Antwort an — nur Fall L8 stellt sie. */
+let zaehlerSperre: Promise<void> | null = null;
+let zaehlerFreigabe: (() => void) | null = null;
+/**
+ * Wie viele der nächsten Zähler-Abfragen mit HTTP 503 beantwortet werden — nur Fall L11b stellt es.
+ *
+ * WARUM NICHT `stand.stoerung`: der Schalter der Bühne stört DAUERHAFT (`h6-chromium.ts:295`), und
+ * L11a nutzt ihn genau dafür. L11b braucht die andere Hälfte — eine Fehlerantwort, der ein ECHTER
+ * Wiederholungsabruf des Produkts folgt (`retry: 1`, `apps/web/src/main.tsx:44`). Gezählt statt
+ * über die Uhr geschaltet, weil ein Zeitgeber ein Wettrennen mit genau jenem Abruf wäre: käme er
+ * zu früh, liefe der Fall grün, ohne je einen Fehler gemessen zu haben.
+ */
+let zaehlerFehlerMale = 0;
+/** Wie viele Fehlerantworten dieser Lauf wirklich ausgeliefert hat — Beleg, keine Annahme. */
+let zaehlerFehlerGeliefert = 0;
+/** Die Zahl, die der Zähler zeigen muss — aus der echten Route, einmal je Lauf gelesen. */
+let zaehlerSoll: number | null = null;
+
+/**
+ * Den Auslieferungspunkt der Bühne anzapfen — ausschliesslich, um die Antwort ZURÜCKZUHALTEN.
+ *
+ * `stand.antworten.vorAuslieferung` ist der dafür vorgesehene Griff (`tests/design/h6-chromium.ts`:
+ * „dieselbe echte Antwort gezielt verzögern"). Er läuft unmittelbar VOR `route.fulfill`. Der Körper
+ * wird nicht angefasst, und es wird hier NICHTS gezählt: ein Schritt an dieser Stelle sagt nur,
+ * dass die Antwort abgeschickt WIRD, nicht dass sie angekommen ist (Korrekturpflicht 1). Das Warten
+ * ist die letzte Handlung vor der Rückgabe — es gibt in dieser Datei keine Stelle „danach" mehr.
+ */
+function zapfeAuslieferungAn(): void {
+  const vorher = stand.antworten.vorAuslieferung;
+  stand.antworten.vorAuslieferung = async (url: URL, body: string): Promise<string> => {
+    const weiter = vorher ? await vorher(url, body) : body;
+    if (url.pathname === ZAEHLER_PFAD) {
+      if (zaehlerVerzugMs > 0) {
+        await pause(zaehlerVerzugMs);
+      }
+      if (zaehlerSperre !== null) {
+        await zaehlerSperre;
+      }
+    }
+    return weiter;
+  };
+}
+
+/** Die Zähler-Antwort anhalten, bis sie ausdrücklich freigegeben wird (Fall L8). */
+function halteZaehlerAntwortAn(): void {
+  if (zaehlerSperre !== null) {
+    return;
   }
-  return a.kaesten.every((k, i) => {
-    const anderer = b.kaesten[i];
-    return (
-      anderer !== undefined &&
-      anderer.name === k.name &&
-      Math.abs(anderer.rechts - anderer.links - (k.rechts - k.links)) < 0.01
-    );
+  zaehlerSperre = new Promise<void>((frei) => {
+    zaehlerFreigabe = frei;
   });
 }
 
-/** An der STEHENDEN Seite messen, bis sich zwei Messungen in Folge gleichen. */
-async function beruhige(breite: number, erste: Messung): Promise<Messung> {
-  let vorher = erste;
-  for (let versuch = 0; versuch < 12; versuch++) {
-    await pause(250);
+/**
+ * Die Weiche, die die nächsten `zaehlerFehlerMale` Zähler-Abfragen mit HTTP 503 beantwortet.
+ *
+ * Sie wird EINMAL gelegt (`beforeAll`) und ist im Normalfall wirkungslos: steht der Zähler auf 0,
+ * reicht sie die Abfrage unverändert an die Weiche der Bühne weiter (`fallback`), die sie wie jede
+ * andere an die echte App stellt. Playwright ruft die zuletzt gelegte Weiche zuerst.
+ */
+async function legeFehlerWeiche(): Promise<void> {
+  await seiteRoh(stand).route(`${ORIGIN}${ZAEHLER_PFAD}*`, async (route) => {
+    if (zaehlerFehlerMale > 0) {
+      zaehlerFehlerMale -= 1;
+      zaehlerFehlerGeliefert += 1;
+      await route.fulfill({
+        status: 503,
+        body: JSON.stringify({ error: "job3616-fehlerantwort" }),
+        headers: { "content-type": "application/json" },
+      });
+      return;
+    }
+    await (route as unknown as { fallback(): Promise<void> }).fallback();
+  });
+}
+
+/** Die angehaltene Zähler-Antwort freigeben — im `finally` jedes Falls, der sie angehalten hat. */
+function gibZaehlerAntwortFrei(): void {
+  const frei = zaehlerFreigabe;
+  zaehlerSperre = null;
+  zaehlerFreigabe = null;
+  if (frei) {
+    frei();
+  }
+}
+
+/** Vor jedem Seitenaufbau: der Nachweis des vorigen Dokuments gilt nicht mehr. */
+function neuerSeitenaufbau(): void {
+  nachweisErbracht = false;
+}
+
+/** Die Zahl am Punkt „Prüfen", wie die echte Route sie hergibt — einmal je Lauf. */
+async function zaehlerSollwert(): Promise<number> {
+  if (zaehlerSoll !== null) {
+    return zaehlerSoll;
+  }
+  const app = stand.app;
+  if (!app) {
+    throw new Error("keine App an der Bühne");
+  }
+  const antwort = await app.inject({
+    method: "GET",
+    url: ZAEHLER_PFAD,
+    headers: { authorization: `Bearer ${bearer}` },
+  });
+  if (antwort.statusCode !== 200) {
+    throw new Error(`GET ${ZAEHLER_PFAD}: HTTP ${antwort.statusCode}`);
+  }
+  const liste = antwort.json() as unknown[];
+  zaehlerSoll = liste.length;
+  return zaehlerSoll;
+}
+
+/** In der Seite: steht der Punkt „Prüfen", und welche Zahl trägt sein Zähler? */
+const ZAEHLER_STAND = fn(`(punkt) => {
+  const a = document.querySelector('[data-kopfband-punkt="' + punkt + '"]');
+  if (!a) return { punktDa: false, zaehlerDa: false, text: '' };
+  const z = a.querySelector('.kw-kopfband-zaehler');
+  return {
+    punktDa: a.offsetParent !== null,
+    zaehlerDa: z !== null,
+    text: z ? (z.textContent || '').trim() : '',
+  };
+}`);
+
+const ZAEHLER_STEHT = fn(`(arg) => {
+  const a = document.querySelector('[data-kopfband-punkt="' + arg.punkt + '"]');
+  if (!a) return false;
+  const z = a.querySelector('.kw-kopfband-zaehler');
+  return z !== null && (z.textContent || '').trim() === arg.soll;
+}`);
+
+interface ZaehlerStand {
+  punktDa: boolean;
+  zaehlerDa: boolean;
+  text: string;
+}
+
+/**
+ * IST DIE ANTWORT IM BROWSER ANGEKOMMEN? Gefragt wird die Ressourcen-Zeitleiste DES DOKUMENTS.
+ *
+ * Ein `PerformanceResourceTiming`-Eintrag entsteht erst, wenn der Browser die Antwort vollständig
+ * empfangen hat; `responseEnd` ist der Zeitpunkt. Die Zeitleiste gehört dem Dokument und beginnt
+ * bei jeder Navigation neu — ein Eintrag stammt also zwangsläufig aus DIESEM Seitenaufbau.
+ *
+ * MITGELESEN WIRD DER EMPFANGENE STATUS (`responseStatus`, gleiche Quelle, gleicher Eintrag), denn
+ * „empfangen" und „erfolgreich" sind zwei Aussagen. Geurteilt wird nicht hier, sondern in
+ * `beurteileAnkunft` (`ruhe-und-sicht.ts`) — dort, wo dasselbe Urteil mit gebauten Zeitleisten
+ * gegengeprüft wird.
+ *
+ * `pufferVoll` ist die ehrliche Grenze dieser Quelle: läuft die Zeitleiste über, fehlen Einträge,
+ * und „nicht angekommen" wäre eine Falschaussage. Der Puffer wird beim Aufbau auf 1000 gestellt
+ * (`beforeAll`), und wenn er trotzdem voll läuft, bricht der Nachweis mit diesem Grund ab, statt
+ * weiterzuraten. `statusLesbar` ist die zweite Grenze: gäbe dieser Browser den Status nicht her,
+ * wäre ein empfangener Fehler von einer erfolgreichen Antwort nicht zu unterscheiden.
+ */
+const ANKUNFT = fn(`(pfad) => {
+  let statusLesbar = false;
+  try {
+    statusLesbar = typeof PerformanceResourceTiming !== 'undefined'
+      && 'responseStatus' in PerformanceResourceTiming.prototype;
+  } catch (x) { statusLesbar = false; }
+  let eintraege = [];
+  try {
+    eintraege = performance.getEntriesByType('resource').filter((e) => {
+      try { return new URL(e.name, location.href).pathname === pfad; } catch (x) { return false; }
+    });
+  } catch (x) { eintraege = []; }
+  return {
+    eintraege: eintraege.map((e) => ({
+      responseEnd: e.responseEnd,
+      status: typeof e.responseStatus === 'number' ? e.responseStatus : 0,
+    })),
+    pufferVoll: window.__kwPufferVoll === true,
+    statusLesbar: statusLesbar,
+  };
+}`);
+
+/** Ein Befund ohne jeden Eintrag — der Stand vor der ersten Ablesung. */
+const KEINE_ANKUNFT: AnkunftBefund = { eintraege: [], pufferVoll: false, statusLesbar: true };
+
+/** Die Ankunft an der STEHENDEN Seite ablesen. */
+async function liesAnkunft(): Promise<AnkunftBefund> {
+  return await seiteRoh(stand).evaluate<AnkunftBefund>(ANKUNFT, ZAEHLER_PFAD);
+}
+
+/**
+ * DER LADENACHWEIS — ohne ihn wird nicht gemessen.
+ *
+ * Er gilt je Seitenaufbau genau einmal; die Fälle, die nach einem Eingriff an der STEHENDEN Seite
+ * noch einmal beruhigen (L4b, L6), erben ihn und warten nicht ein zweites Mal.
+ */
+async function ladeNachweis(breite: number): Promise<void> {
+  if (nachweisErbracht) {
+    return;
+  }
+  const begonnen = Date.now();
+  let urteil: Ankunftsurteil = beurteileAnkunft(KEINE_ANKUNFT);
+  for (;;) {
+    urteil = beurteileAnkunft(await liesAnkunft());
+    if (urteil.art === "abbruch") {
+      throw new Error(
+        `bei ${breite}px trägt der Ankunftsnachweis für ${ZAEHLER_PFAD} nicht: ${urteil.meldung}`,
+      );
+    }
+    if (urteil.art === "angekommen") {
+      break;
+    }
+    if (Date.now() - begonnen > nachweisFristMs) {
+      throw new Error(
+        `bei ${breite}px liegt nach ${(nachweisFristMs / 1000).toFixed(1)} s keine erfolgreich empfangene Antwort auf ${ZAEHLER_PFAD} vor — ${urteil.meldung} ` +
+          `(${stand.abrufe.get(ZAEHLER_PFAD) ?? 0} Abrufe am Server seit Laufbeginn) — es wird NICHT still zu früh gemessen`,
+      );
+    }
+    await pause(25);
+  }
+  const seite = seiteRoh(stand);
+  const soll = await zaehlerSollwert();
+  const jetzt = await seite.evaluate<ZaehlerStand>(ZAEHLER_STAND, ZAEHLER_PUNKT);
+  if (jetzt.punktDa && soll > 0) {
+    try {
+      await seite.waitForFunction(
+        ZAEHLER_STEHT,
+        { punkt: ZAEHLER_PUNKT, soll: String(soll) },
+        { timeout: ZAEHLER_FRIST_MS },
+      );
+    } catch (e) {
+      const stand2 = await seite.evaluate<ZaehlerStand>(ZAEHLER_STAND, ZAEHLER_PUNKT);
+      const gezeichnet = stand2.zaehlerDa ? `„${stand2.text}“` : "kein Zähler";
+      throw new Error(
+        `bei ${breite}px steht der Zähler am Punkt „${ZAEHLER_PUNKT}“ nicht auf ${soll} (gezeichnet: ${gezeichnet}), ` +
+          `obwohl die Antwort da ist — gemessen würde sonst ein Zwischenstand. Eine Zahl gilt im Produkt nur 30 s lang als frisch (ZAEHLER_FRISCHE_MS, lib/loadingState.ts); danach verschwindet der Zähler wieder. — ${String(e)}`,
+      );
+    }
+  }
+  const dauer = Date.now() - begonnen;
+  console.log(
+    `${KENNUNG_3616} · Ladenachweis · ${breite}px · Antwort auf ${ZAEHLER_PFAD} im Browser angekommen nach ${dauer} ms ` +
+      `(${urteil.meldung}; ` +
+      `${stand.abrufe.get(ZAEHLER_PFAD) ?? 0} Abrufe am Server) · Punkt „${ZAEHLER_PUNKT}“ ` +
+      `${jetzt.punktDa ? `gezeichnet, Zähler soll ${soll} sein` : "in dieser Bauform nicht gezeichnet — Nachweis allein über die Ankunft"}`,
+  );
+  nachweisErbracht = true;
+}
+
+/**
+ * An der STEHENDEN Seite messen, bis der Ladenachweis steht UND sich zwei Messungen in Folge
+ * gleichen — in Namen, Breiten und Lagen.
+ */
+async function beruhige(breite: number): Promise<Messung> {
+  await ladeNachweis(breite);
+  let vorher = await messeStehend(stand);
+  let letzter = "keine zweite Messung";
+  for (let versuch = 0; versuch < RUHE_VERSUCHE; versuch++) {
+    await pause(RUHE_PAUSE_MS);
     const jetzt = await messeStehend(stand);
-    if (zeileGleich(vorher, jetzt)) {
+    const unterschied = zeilenUnterschied(vorher, jetzt);
+    if (unterschied === null) {
       return jetzt;
     }
+    letzter = unterschied;
     vorher = jetzt;
   }
   throw new Error(
-    `bei ${breite}px kam die Kopfbandzeile in 3 s nicht zur Ruhe — zwei Messungen in Folge waren nie gleich`,
+    `bei ${breite}px kam die Kopfbandzeile in ${((RUHE_VERSUCHE * RUHE_PAUSE_MS) / 1000).toFixed(1)} s nicht zur Ruhe — zuletzt: ${letzter}`,
   );
 }
 
-/** Seite an der Breite aufbauen und erst messen, wenn die Zeile steht. */
+/** Seite an der Breite aufbauen und erst messen, wenn die Zeile nachweislich steht. */
 async function messeRuhig(breite: number, bereit?: Bereitschaft): Promise<Messung> {
-  return await beruhige(breite, await messe(stand, breite, HOEHE, bereit));
+  neuerSeitenaufbau();
+  await messe(stand, breite, HOEHE, bereit);
+  return await beruhige(breite);
 }
 
 /**
@@ -290,6 +610,97 @@ async function geltendeGrenze(): Promise<{ grenze: number; breitZugesagt: boolea
 }
 
 /**
+ * ================================================================================================
+ * „DAS FIRMENLOGO STEHT" HEISST: EIN MENSCH SIEHT ES (JOB 3616).
+ * ================================================================================================
+ *
+ * BIS JOB 3616 HIESS ES: das Bild ist geladen und breiter als 0 px. Der Prüfer hat das an JOB 3582
+ * benannt (`archiv/3582/runde-2/ben.md:30`: „beweist positive Bildmaße, keine Erkennbarkeit"), und
+ * eine Woche später stand dieselbe Krankheit als Korrekturpflicht in LEHREN.md (11.09. 08:21:35,
+ * JOB 3584: „Sichtbarkeitsmesser vervollständigen: Höhe, Fenstergrenzen und abschneidende Vorfahren
+ * berücksichtigen"). Ein Logo mit Höhe 0, mit `opacity: 0`, hinter einem abschneidenden Vorfahren
+ * oder aus dem Fenster geschoben war für diese Datei vorhanden.
+ *
+ * DIESE FUNKTION SAMMELT DESHALB ZAHLEN, KEIN URTEIL: das Rechteck des gezeichneten Bildes, das
+ * seines Kastens, das Fenster und die ganze Kette der Vorfahren mit `display`, `visibility`,
+ * `opacity` und beiden Überlaufachsen. Geurteilt wird in `ruhe-und-sicht.ts` — dort, wo dasselbe
+ * Urteil mit gebauten Lagen gegengeprüft wird (`ruhe-und-sicht-waechter.test.ts`, S0–S14). Eine
+ * visuelle Referenzaufnahme wäre die andere Möglichkeit gewesen; sie wäre eine neue Infrastruktur
+ * und eine neue Fehlerquelle, und sie könnte „ausserhalb des Fensters" gar nicht sehen.
+ */
+const SICHT_BEFUND = fn(`() => {
+  const band = document.querySelector('header[data-testid="kopfband"]');
+  if (!band) return null;
+  const kasten = band.querySelector('[data-testid="kopfband-firmenlogo"]');
+  const bild = kasten ? kasten.querySelector('img') : null;
+  const viereck = (el) => {
+    const r = el.getBoundingClientRect();
+    return { links: r.left, rechts: r.right, oben: r.top, unten: r.bottom };
+  };
+  // DIE FLÄCHE, DIE EIN ABSCHNEIDENDES ELEMENT WIRKLICH ZEIGT: Polsterkante statt äusserer Kante.
+  // \`clientLeft\`/\`clientTop\` sind die Rahmenbreiten, \`clientWidth\`/\`clientHeight\` ziehen Rahmen UND
+  // Rollleisten schon ab. Genau daran ist Runde 1 gescheitert (Prüfer: 20 px Rahmen, 15 px des
+  // Bildes abgeschnitten, Befund trotzdem „sichtbar").
+  const innenViereck = (el) => {
+    const r = el.getBoundingClientRect();
+    const links = r.left + (typeof el.clientLeft === 'number' ? el.clientLeft : 0);
+    const oben = r.top + (typeof el.clientTop === 'number' ? el.clientTop : 0);
+    const breite = typeof el.clientWidth === 'number' ? el.clientWidth : (r.right - r.left);
+    const hoehe = typeof el.clientHeight === 'number' ? el.clientHeight : (r.bottom - r.top);
+    return { links: links, rechts: links + breite, oben: oben, unten: oben + hoehe };
+  };
+  const benenne = (el) => {
+    const id = el.getAttribute ? el.getAttribute('data-testid') : null;
+    const klasse = typeof el.className === 'string' ? el.className.trim().split(/\\s+/)[0] : '';
+    return el.tagName.toLowerCase() + (id ? '[data-testid=' + id + ']' : (klasse ? '.' + klasse : ''));
+  };
+  const kette = [];
+  for (let e = bild; e; e = e.parentElement) {
+    const s = getComputedStyle(e);
+    const deckkraft = Number.parseFloat(s.opacity);
+    kette.push({
+      name: benenne(e),
+      rechteck: viereck(e),
+      innen: innenViereck(e),
+      display: s.display,
+      sichtbarkeit: s.visibility,
+      deckkraft: Number.isFinite(deckkraft) ? deckkraft : 1,
+      ueberlaufX: s.overflowX,
+      ueberlaufY: s.overflowY,
+    });
+  }
+  return {
+    gefunden: kasten !== null && bild !== null,
+    bildGeladen: bild ? (bild.complete && bild.naturalWidth > 0) : false,
+    gezeichnet: bild !== null && bild.offsetParent !== null,
+    kette,
+    kastenRechteck: kasten ? viereck(kasten) : null,
+    fenster: { breite: window.innerWidth, hoehe: window.innerHeight },
+  };
+}`);
+
+/** Den Sichtbefund an der STEHENDEN Seite lesen. */
+async function liesSicht(): Promise<SichtBefund> {
+  const b = await seiteRoh(stand).evaluate<SichtBefund | null>(SICHT_BEFUND);
+  if (b === null) {
+    throw new Error("kein Kopfband in der Seite");
+  }
+  return b;
+}
+
+/**
+ * Die EINE Zusicherung „das Firmenlogo steht" — eine Regel, ein Ort, beide Aufrufer (die
+ * Ruhemessung jedes Falls und L5) fällen dasselbe Urteil mit denselben Zahlen.
+ */
+function verlangeSichtbar(breite: number, sicht: SichtBefund): void {
+  const urteil = beurteileSicht(sicht);
+  expect(
+    urteil.sichtbar,
+    `${breite}px: das Firmenlogo ist nicht sichtbar — ${urteil.gruende.join(" · ")} (${urteil.masse})`,
+  ).toBe(true);
+}
+
+/**
  * Messen MIT eingeschalteter Firmen-CI an einer beliebigen Breite — und dabei die ZUSAGE prüfen.
  *
  * Der Ablauf ist bewusst zweistufig: erst fragt Chromium seine eigene `matchMedia`, ob das Produkt
@@ -297,9 +708,13 @@ async function geltendeGrenze(): Promise<{ grenze: number; breitZugesagt: boolea
  * geladene Bild gewartet — sonst hinge jede Zahl davon ab, ob die Markenantwort rechtzeitig kam.
  * Sagt es keines zu, muss auch keines dastehen. In beiden Fällen wird RUHIG gemessen (siehe oben).
  */
-async function messeMitZusage(
-  breite: number,
-): Promise<{ m: Messung; logo: LogoBefund; zugesagt: boolean; grenze: number }> {
+async function messeMitZusage(breite: number): Promise<{
+  m: Messung;
+  logo: LogoBefund;
+  sicht: SichtBefund;
+  zugesagt: boolean;
+  grenze: number;
+}> {
   const seite = seiteRoh(stand);
   // Die Breite muss stehen, bevor `matchMedia` etwas Gültiges sagen kann — deshalb erst eine
   // Messung an der Breite, dann die Frage nach der Zusage, dann die eigentliche Ruhemessung.
@@ -309,6 +724,7 @@ async function messeMitZusage(
   const { grenze } = await geltendeGrenze();
   const m = await messeRuhig(breite, zugesagt ? LOGO_STEHT : undefined);
   const logo = await liesLogoBefund(stand);
+  const sicht = await liesSicht();
   // BEIDE RICHTUNGEN BEISSEN. Ein fehlendes Logo an einer zugesagten Breite ebenso wie ein Logo an
   // einer Breite, an der die Zeile es nicht trägt.
   expect(
@@ -318,10 +734,9 @@ async function messeMitZusage(
       : `${breite}px: „${OHNE_PLATZ}" sagt hier KEIN Firmenlogo zu — im gezeichneten Kopfband steht trotzdem eines`,
   ).toBe(zugesagt);
   if (zugesagt) {
-    expect(logo.bildGeladen, `${breite}px: das Firmenlogo ist ein leeres Bild`).toBe(true);
-    expect(logo.logoBreite, `${breite}px: das Firmenlogo ist 0 px breit`).toBeGreaterThan(0);
+    verlangeSichtbar(breite, sicht);
   }
-  return { m, logo, zugesagt, grenze };
+  return { m, logo, sicht, zugesagt, grenze };
 }
 
 beforeAll(async () => {
@@ -335,6 +750,23 @@ beforeAll(async () => {
       await schalteCi(app, bearer, true);
     },
   );
+  // Der Auslieferungspunkt wird angezapft, BEVOR der erste Fall misst — sonst hätte der erste
+  // Seitenaufbau keinen Ladenachweis.
+  if (stand.fehler === null) {
+    zapfeAuslieferungAn();
+    await legeFehlerWeiche();
+    // Die Ressourcen-Zeitleiste trägt vorgabegemäss 250 Einträge. Der Ankunftsnachweis liest sie;
+    // liefe sie über, fehlte der gesuchte Eintrag. Sie wird deshalb vergrössert, und ein Überlauf
+    // wird gemerkt, damit der Nachweis ihn melden kann statt „nicht angekommen" zu behaupten.
+    // `addInitScript` wirkt ab der nächsten Navigation — jeder Fall baut die Seite neu auf.
+    await seiteRoh(stand).addInitScript(
+      `try {
+         performance.setResourceTimingBufferSize(1000);
+         window.__kwPufferVoll = false;
+         performance.addEventListener("resourcetimingbufferfull", () => { window.__kwPufferVoll = true; });
+       } catch (e) {}`,
+    );
+  }
 }, 180_000);
 
 afterAll(async () => {
@@ -367,7 +799,9 @@ describe("JOB 3582 · L0 · die Voraussetzung wird selbst gemessen, nicht geglau
 
     // AUS → messen. Der Vergleichswert entsteht am SELBEN Stand, in DIESEM Lauf.
     await schalteCi(app, bearer, false);
-    const ohne = await messe(stand, START_BREITE, HOEHE);
+    // RUHIG, wie jede Zahl dieser Datei seit JOB 3616 — auch der Vergleichswert ohne CI. Ein
+    // Zwischenstand als Vergleichswert machte die Aussage „mit CI ist die Marke breiter" wertlos.
+    const ohne = await messeRuhig(START_BREITE);
     const logoOhne = await liesLogoBefund(stand);
     expect(logoOhne.logoGezeichnet, "ausgeschaltet steht trotzdem ein Firmenlogo im Kopfband").toBe(
       false,
@@ -541,7 +975,7 @@ describe("JOB 3582 · L4 · bei 1280 px greift die Deckelung nicht", () => {
     const seite = seiteRoh(stand);
     const genommen = await seite.evaluate<boolean>(SETZE_DECKEL, "none");
     expect(genommen, "am gezeichneten Kopfband war kein Firmenlogo zu finden").toBe(true);
-    const ohneDeckel = await beruhige(BREITE_BAUFORM, await messeStehend(stand));
+    const ohneDeckel = await beruhige(BREITE_BAUFORM);
     const logoOhneDeckel = await liesLogoBefund(stand);
     protokolliere("L4b ohne Deckelung", BREITE_BAUFORM, ohneDeckel, logoOhneDeckel);
 
@@ -619,25 +1053,407 @@ describe("JOB 3582 · L4 · bei 1280 px greift die Deckelung nicht", () => {
 // Pedis Vorgabe „Produktidentität erkennbar halten" und die Zusage „NEBEN, NICHT ANSTELLE" gelten
 // unverändert. Diese Datei misst deshalb ausdrücklich BEIDES an jeder Breite: die Wortmarke trägt
 // ihr Wort — IMMER, auch in der Spanne ohne Logokasten —, und wo die Zeile das Logo trägt, ist es
-// gezeichnet, geladen und grösser als null.
-describe("JOB 3582 · L5 · KLARWERK bleibt stehen, das Firmenlogo bleibt erkennbar", () => {
+// SICHTBAR.
+//
+// WAS „SICHTBAR" SEIT JOB 3616 HEISST, steht nicht hier, sondern an der einen Stelle, an der es
+// auch gegengeprüft wird (`ruhe-und-sicht.ts` · `beurteileSicht`): Breite UND Höhe grösser als
+// null, das Bild geladen und im Layout, kein `display: none` / `visibility: hidden` / `opacity: 0`
+// an ihm oder einem Vorfahren, innerhalb des Fensters, und kein Vorfahr schneidet es ab —
+// ROLLBARE VORFAHREN EINGESCHLOSSEN. Vorher genügten „geladen" und „breiter als 0 px": ein Logo
+// mit Höhe 0 oder hinter einer Rollfläche galt als vorhanden. Die Zahlen des Urteils stehen im
+// Lauf, auch wenn der Fall grün ist.
+describe("JOB 3582 · L5 · KLARWERK bleibt stehen, das Firmenlogo bleibt SICHTBAR", () => {
   for (const breite of ALLE) {
-    it(`L5 · ${breite} px mit Firmen-CI: Wortmarke gezeichnet, Firmenlogo wie zugesagt`, async () => {
-      const { logo, zugesagt } = await messeMitZusage(breite);
+    it(`L5 · ${breite} px mit Firmen-CI: Wortmarke gezeichnet, Firmenlogo wie zugesagt sichtbar`, async () => {
+      const { logo, sicht, zugesagt } = await messeMitZusage(breite);
       // `markeText` ist `innerText` — er ist leer, wenn der Browser nichts malt. `textContent`
       // trüge auch Verborgenes und wäre hier die schwächere Aussage.
       expect(logo.markeText, `${breite}px: die Wortmarke zeichnet kein Wort`).toContain("KLARWERK");
       if (!zugesagt) {
+        console.log(
+          `${KENNUNG_3616} · L5 · ${breite}px · kein Logokasten zugesagt — nichts zu sehen`,
+        );
         return;
       }
-      expect(logo.bildGeladen, `${breite}px: das Firmenlogo ist ein leeres Bild`).toBe(true);
-      expect(logo.bildBreite, `${breite}px: das Firmenlogo ist 0 px breit`).toBeGreaterThan(0);
-      expect(
-        logo.bildHoehe,
-        `${breite}px: das Firmenlogo ist 0 px hoch — eingepasst heisst nicht zusammengedrückt`,
-      ).toBeGreaterThan(0);
+      const urteil = beurteileSicht(sicht);
+      console.log(`${KENNUNG_3616} · L5 · ${breite}px · ${urteil.masse}`);
+      verlangeSichtbar(breite, sicht);
     }, 120_000);
   }
+});
+
+// ================================================================================================
+// L7 — DER RUHEBEWEIS WIRD SELBST GEMESSEN: EINE VERZÖGERTE ZÄHLER-ANTWORT DARF DIE ZAHL NICHT
+// VERÄNDERN.
+// ================================================================================================
+//
+// DAS IST DER VORSCHLAG DES PRÜFERS, ausgeführt (`archiv/3582/runde-2/ben.md:30`: „Badge-Antwort
+// gezielt verzögern und anschließend messen"). Ohne diesen Fall wäre der Ladenachweis eine
+// Behauptung: er liefe jedes Mal durch, weil die Antwort ohnehin früh kommt, und niemand wüsste,
+// ob er überhaupt etwas trägt.
+//
+// DER FALL MISST DREI ZAHLEN AN DERSELBEN BREITE:
+//   · ENDE — der ruhige Lauf ohne Verzug.
+//   · NAIV — wie die Datei bis JOB 3616 gemessen hätte: zwei Stichproben im Abstand von 250 ms,
+//     ohne jeden Ladenachweis, WÄHREND die Zähler-Antwort künstlich zurückgehalten wird. Das ist
+//     hier kein Prüfweg, sondern der GEGENSTAND der Messung — die Zahl, die der alte Stand
+//     geliefert hätte.
+//   · SPÄT — derselbe Seitenaufbau, aber zu Ende gemessen mit dem Nachweis von JOB 3616.
+//
+// DREI AUSSAGEN, JEDE FÜR SICH:
+//   1. Als die alte Art „Ruhe" meldete, war die Antwort nachweislich NOCH NICHT IM BROWSER: die
+//      Ressourcen-Zeitleiste des Dokuments trug keinen Eintrag für `/api/validation/board`, obwohl
+//      der Server die Frage längst gesehen hatte (`stand.abrufe` > 0). Das ist der Satz des
+//      Prüfers, gemessen — und zwar an der Stelle, an der Runde 1 danebengriff: die Antwort wird
+//      zurückgehalten, NACHDEM der Server sie erzeugt hat, unmittelbar vor `route.fulfill`. Ein
+//      Zählschritt an dieser Stelle hätte sie schon als „da" gewertet (BEN, R1, Korrekturpflicht 1).
+//   2. Der neue Weg hat auf die Ankunft GEWARTET — der Lauf dauert mindestens so lange wie der
+//      Verzug. Ohne den Ladenachweis ist genau diese Zusicherung rot (gemessen: 644 ms statt
+//      2500 ms, Lauf ae68849d…).
+//   3. Und er misst trotzdem denselben Endzustand wie der ruhige Lauf, Kasten für Kasten.
+//
+// WAS DIESER BESTAND NICHT HERGIBT, und das steht hier, weil ein Kommentar, der das Gegenteil der
+// Messung sagt, selbst ein Befund ist: die Bühne dieser Datei hat KEIN Prüfobjekt —
+// `GET /api/validation/board` liefert eine leere Liste (der Fall gibt die Zahl aus). Ein Zähler mit
+// 0 wird im Kopfband nicht gezeichnet (`sichtbarerZaehler` in `shell/KopfbandPunkte.tsx`), also
+// verändert die zurückgehaltene Antwort HIER die Geometrie nicht. Die 15 px, die JOB 3582 als
+// Anlass gemessen hat (884,2 px gegen 899,2 px bei 900 px), kommen deshalb aus diesem Bestand nicht
+// zustande; der vierte Vergleich (NAIV ≠ SPÄT) steht darum unter der Bedingung, dass überhaupt eine
+// Zahl zu zeichnen ist, und sagt es im Lauf, wenn er ausfällt.
+//
+// GEMESSEN WIRD BEI 900 px: dort steht die BREITE Bauform mit der vollen Punktreihe, dort wäre der
+// Zähler gezeichnet, und dort ist die Zeile am engsten (0,8 px Luft).
+const ZAEHLER_BREITE = 900;
+/**
+ * Der Verzug ist länger als die alte Ruhemessung im ungünstigsten Fall dauern kann
+ * (`RUHE_VERSUCHE` × `RUHE_PAUSE_MS` = 3 s). Nur so ist sicher, dass die alte Art fertig ist,
+ * BEVOR die Antwort da sein kann — sonst bewiese Aussage 1 nichts.
+ */
+const VERZUG_MS = 4_000;
+
+/**
+ * DIE ALTE ART ZU MESSEN, absichtlich erhalten — aber NICHT als Prüfweg.
+ *
+ * Sie steht ausschliesslich hier, als GEGENSTAND von L7: zwei Stichproben im Abstand von 250 ms,
+ * ohne jeden Ladenachweis. Kein anderer Fall dieser Datei ruft sie; gemessen und zugesichert wird
+ * überall mit `beruhige`.
+ */
+async function zweiStichproben(): Promise<Messung> {
+  let vorher = await messeStehend(stand);
+  for (let versuch = 0; versuch < RUHE_VERSUCHE; versuch++) {
+    await pause(RUHE_PAUSE_MS);
+    const jetzt = await messeStehend(stand);
+    if (zeilenUnterschied(vorher, jetzt) === null) {
+      return jetzt;
+    }
+    vorher = jetzt;
+  }
+  throw new Error("die zwei Stichproben kamen nie überein — der Vergleichswert von L7 fehlt");
+}
+
+describe("JOB 3616 · L7 · eine verzögerte Zähler-Antwort verändert die gemessene Zahl nicht mehr", () => {
+  it(`L7 · ${ZAEHLER_BREITE} px: mit ${VERZUG_MS} ms zurückgehaltener Zähler-Antwort wird der ENDZUSTAND gemessen`, async () => {
+    const soll = await zaehlerSollwert();
+    const ende = await messeRuhig(ZAEHLER_BREITE);
+    protokolliere("L7 ohne Verzug", ZAEHLER_BREITE, ende, await liesLogoBefund(stand));
+
+    // Der Verzug wirkt ab dem NÄCHSTEN Seitenaufbau; es steht kein zweiter Aufbau davor, dessen
+    // späte Antwort den Nachweis fälschlich erfüllen könnte.
+    zaehlerVerzugMs = VERZUG_MS;
+    const begonnen = Date.now();
+    let naiv: Messung;
+    let spaet: Messung;
+    let abrufeBeiNaiv = 0;
+    let ankunftBeiNaiv: Ankunftsurteil = beurteileAnkunft(KEINE_ANKUNFT);
+    try {
+      neuerSeitenaufbau();
+      await messe(stand, ZAEHLER_BREITE, HOEHE);
+      naiv = await zweiStichproben();
+      // DER STAND IN DEM AUGENBLICK, in dem die alte Art „Ruhe" gemeldet hat.
+      abrufeBeiNaiv = stand.abrufe.get(ZAEHLER_PFAD) ?? 0;
+      ankunftBeiNaiv = beurteileAnkunft(await liesAnkunft());
+      // UND DIE NEUE ART: derselbe Seitenaufbau, zu Ende gemessen.
+      spaet = await beruhige(ZAEHLER_BREITE);
+    } finally {
+      zaehlerVerzugMs = 0;
+    }
+    const dauer = Date.now() - begonnen;
+    protokolliere("L7 naiv (alte Art)", ZAEHLER_BREITE, naiv, null);
+    protokolliere("L7 mit Verzug", ZAEHLER_BREITE, spaet, null);
+    console.log(
+      `${KENNUNG_3616} · L7 · ${ZAEHLER_BREITE}px · Zähler soll ${soll} sein · Verzug ${VERZUG_MS} ms · ` +
+        `verzögerter Lauf ${dauer} ms · bei „Ruhe" der alten Art: ${abrufeBeiNaiv} Abrufe am Server / ${ankunftBeiNaiv.fertig} Antworten im Browser · ` +
+        `rechtester Kasten: ohne Verzug ${Math.max(...ende.kaesten.map((k) => k.rechts)).toFixed(1)} px · ` +
+        `naiv ${Math.max(...naiv.kaesten.map((k) => k.rechts)).toFixed(1)} px · mit Nachweis ${Math.max(...spaet.kaesten.map((k) => k.rechts)).toFixed(1)} px`,
+    );
+
+    // 1. DIE ALTE ART HAT NACHWEISLICH GEMESSEN, BEVOR DIE ANTWORT IM BROWSER WAR.
+    expect(
+      abrufeBeiNaiv,
+      `${ZAEHLER_BREITE}px: der Server hat die Zähler-Abfrage gar nicht gesehen — dann hält dieser Fall nichts zurück`,
+    ).toBeGreaterThan(0);
+    expect(
+      ankunftBeiNaiv.fertig,
+      `${ZAEHLER_BREITE}px: als die zwei Stichproben „Ruhe" meldeten, war die Antwort schon im Browser (${ankunftBeiNaiv.fertig} Einträge in der Zeitleiste) — dann misst dieser Fall nichts`,
+    ).toBe(0);
+    // 2. DER NEUE WEG HAT AUF SIE GEWARTET.
+    expect(
+      dauer,
+      `${ZAEHLER_BREITE}px: der verzögerte Lauf war kürzer als der Verzug — auf die Antwort wurde nicht gewartet`,
+    ).toBeGreaterThanOrEqual(VERZUG_MS);
+    // 3. UND MISST TROTZDEM DENSELBEN ENDZUSTAND.
+    expect(
+      zeilenUnterschied(ende, spaet),
+      `${ZAEHLER_BREITE}px: mit zurückgehaltener Zähler-Antwort wurde eine ANDERE Zeile gemessen als im ruhigen Lauf`,
+    ).toBeNull();
+    // 4. Die geometrische Hälfte — nur dort aussagekräftig, wo überhaupt eine Zahl zu zeichnen ist.
+    if (soll > 0) {
+      expect(
+        zeilenUnterschied(naiv, spaet),
+        `${ZAEHLER_BREITE}px: die zwei Stichproben ohne Ladenachweis lieferten schon denselben Endzustand — dann kostet der Zähler keine Breite (Zähler soll ${soll} sein)`,
+      ).not.toBeNull();
+    } else {
+      console.log(
+        `${KENNUNG_3616} · L7 · das Prüf-Board dieser Bühne ist leer (${soll}), der Zähler wird also gar nicht gezeichnet — die GEOMETRISCHE Hälfte ist in diesem Bestand NICHT gemessen; gemessen sind der Ladezustand (1) und das Warten (2)`,
+      );
+    }
+  }, 180_000);
+});
+
+// ================================================================================================
+// L8 — BLEIBT DIE ANTWORT GANZ AUS, BRICHT DER FALL AB. MIT GRUND, NICHT MIT EINER ZUFALLSZAHL.
+// ================================================================================================
+//
+// Die dritte Korrekturpflicht-Hälfte des Prüfers („dauerhaft ausbleibende Antwort führt zum
+// begründeten Abbruch", BEN JOB 3616 R1). Ohne diesen Fall wäre der Abbruchweg des Ladenachweises
+// ungefahrener Code — und ein Abbruch, den nie jemand ausgelöst hat, ist eine Behauptung.
+//
+// DIE ANTWORT WIRD ANGEHALTEN, NICHT VERZÖGERT: ein Halt, den der Fall selbst freigibt, lässt
+// keinen Zeitgeber im Lauf zurück. Die Frist wird für diesen einen Fall kurz gestellt (1,5 s statt
+// 20 s), damit der Beleg nicht 20 s kostet; die Frist ist die einzige Grösse, die sich ändert.
+const ABBRUCH_FRIST_MS = 1_500;
+
+describe("JOB 3616 · L8 · ohne Antwort im Browser wird nicht gemessen", () => {
+  it(`L8 · ${START_BREITE} px: die angehaltene Zähler-Antwort führt zum begründeten Abbruch`, async () => {
+    halteZaehlerAntwortAn();
+    nachweisFristMs = ABBRUCH_FRIST_MS;
+    let fehler: unknown = null;
+    let ankunft: Ankunftsurteil = beurteileAnkunft(KEINE_ANKUNFT);
+    try {
+      neuerSeitenaufbau();
+      await messe(stand, START_BREITE, HOEHE);
+      ankunft = beurteileAnkunft(await liesAnkunft());
+      await beruhige(START_BREITE);
+    } catch (e) {
+      fehler = e;
+    } finally {
+      nachweisFristMs = NACHWEIS_FRIST_MS;
+      gibZaehlerAntwortFrei();
+    }
+    console.log(
+      `${KENNUNG_3616} · L8 · ${START_BREITE}px · angehaltene Antwort · ${stand.abrufe.get(ZAEHLER_PFAD) ?? 0} Abrufe am Server, ` +
+        `${ankunft.fertig} Antworten im Browser · Abbruch: ${fehler === null ? "KEINER" : String(fehler).split("\n")[0]}`,
+    );
+    expect(
+      fehler,
+      `${START_BREITE}px: die Ruhemessung wurde fertig, obwohl die Zähler-Antwort den Browser nie erreicht hat — genau das darf nicht sein`,
+    ).not.toBeNull();
+    expect(String(fehler), "der Abbruch nennt seinen Grund nicht").toContain(
+      "NICHT IM BROWSER ANGEKOMMEN",
+    );
+    expect(String(fehler), "der Abbruch nennt die Abfrage nicht").toContain(ZAEHLER_PFAD);
+    // Die Gegenrichtung: derselbe Aufbau mit freigegebener Antwort kommt durch. Ohne sie wäre ein
+    // Nachweis, der IMMER abbricht, von einem tragenden nicht zu unterscheiden.
+    const m = await messeRuhig(START_BREITE);
+    expect(
+      m.kaesten.length,
+      `${START_BREITE}px: nach der Freigabe wurde nichts gemessen`,
+    ).toBeGreaterThan(2);
+  }, 180_000);
+});
+
+// ================================================================================================
+// L11 — EINE EMPFANGENE FEHLERANTWORT IST KEIN LADENACHWEIS.
+// ================================================================================================
+//
+// DER ANLASS IST GEMESSEN, NICHT VERMUTET (BEN, JOB 3616 R2, Korrekturpflicht 1). Der Nachweis der
+// Runde 2 fragte die Ressourcen-Zeitleiste nur, OB ein Eintrag fertig empfangen ist. Der Prüfer hat
+// die Zähler-Quelle gestört und bekam `nachweisErbracht:true` nach 355 ms mit
+// `timing:[{status:503,ende:65.5}]`: eine nicht geladene Zeile bekam einen fertigen Messwert. Und
+// die zweite Hälfte des Nachweises fing das nicht auf — sie hängt am GEZEICHNETEN Zähler, und der
+// entfällt bei leerem Prüf-Board (Sollwert 0) und in der schmalen Bauform ohnehin.
+//
+// GEMESSEN WIRD DESHALB BEI 390 px, also genau dort: schmale Bauform, der Punkt „Prüfen" ist gar
+// nicht gezeichnet, das Board ist leer. Wenn der Nachweis HIER trägt, trägt er ohne jede Hilfe.
+//
+// ZWEI FÄLLE, WEIL ES ZWEI AUSSAGEN SIND:
+//   · L11a — die Quelle antwortet DAUERHAFT mit 503 (der Störschalter der Bühne, derselbe Griff,
+//     mit dem der Prüfer gemessen hat). Erwartet wird ein Abbruch MIT GRUND, der den Status nennt —
+//     und danach, als Gegenrichtung am selben Stand, ein grüner Lauf mit der erfolgreichen LEEREN
+//     Antwort. Ohne die Gegenrichtung wäre ein Nachweis, der jede Zeitleiste ablehnt, von einem
+//     tragenden nicht zu unterscheiden.
+//   · L11b — die Quelle antwortet EINMAL mit 503, und danach folgt der echte Wiederholungsabruf des
+//     Produkts, künstlich verzögert. Erwartet wird, dass der erste Eintrag KEINE vorzeitige
+//     Freigabe bewirkt: solange nur der Fehler dasteht, wird nicht gemessen, und der Messwert
+//     entsteht erst mit der erfolgreichen Antwort.
+const FEHLER_FRIST_MS = 2_500;
+/** Der Verzug des Wiederholungsabrufs — deutlich über den 250 ms zweier Stichproben. */
+const WIEDERHOLUNG_VERZUG_MS = 1_200;
+
+/** Was der Browser über den Punkt „Prüfen" hergibt — für die Protokollzeile der L11-Fälle. */
+async function zaehlerLage(): Promise<string> {
+  const z = await seiteRoh(stand).evaluate<ZaehlerStand>(ZAEHLER_STAND, ZAEHLER_PUNKT);
+  return `Punkt „${ZAEHLER_PUNKT}“ ${z.punktDa ? "gezeichnet" : "in dieser Bauform NICHT gezeichnet"}, ${z.zaehlerDa ? `Zähler „${z.text}“` : "kein Zähler"}`;
+}
+
+/** Warten, bis der Fehlereintrag wirklich in der Zeitleiste steht — vorher misst L11b nichts. */
+async function warteAufEintrag(frist: number): Promise<AnkunftBefund> {
+  const begonnen = Date.now();
+  for (;;) {
+    const befund = await liesAnkunft();
+    if (befund.eintraege.some((e) => e.responseEnd > 0)) {
+      return befund;
+    }
+    if (Date.now() - begonnen > frist) {
+      throw new Error(
+        `in ${(frist / 1000).toFixed(1)} s kam gar kein Eintrag für ${ZAEHLER_PFAD} in die Zeitleiste — dann misst L11b nichts`,
+      );
+    }
+    await pause(25);
+  }
+}
+
+describe("JOB 3616 · L11 · ein empfangener HTTP-Fehler ist kein fertiger Ladezustand", () => {
+  it(`L11a · ${START_BREITE} px: dauerhaftes HTTP 503 auf die Zähler-Abfrage bricht mit Grund ab`, async () => {
+    const soll = await zaehlerSollwert();
+    stand.stoerung = ZAEHLER_PFAD;
+    nachweisFristMs = FEHLER_FRIST_MS;
+    let fehler: unknown = null;
+    let urteil: Ankunftsurteil = beurteileAnkunft(KEINE_ANKUNFT);
+    let lage = "nicht gelesen";
+    try {
+      neuerSeitenaufbau();
+      await messe(stand, START_BREITE, HOEHE);
+      await beruhige(START_BREITE);
+    } catch (e) {
+      fehler = e;
+    } finally {
+      urteil = beurteileAnkunft(await liesAnkunft());
+      lage = await zaehlerLage();
+      nachweisFristMs = NACHWEIS_FRIST_MS;
+      stand.stoerung = null;
+    }
+    console.log(
+      `${KENNUNG_3616} · L11a · ${START_BREITE}px · Zähler soll ${soll} sein · ${lage} · ` +
+        `Zeitleiste: ${urteil.fertig} empfangen (${statusListe(urteil.status)}), davon ${urteil.erfolgreich} erfolgreich · ` +
+        `${stand.abrufe.get(ZAEHLER_PFAD) ?? 0} Abrufe am Server · Abbruch: ${fehler === null ? "KEINER" : String(fehler).split("\n")[0]}`,
+    );
+
+    // DIE VORAUSSETZUNG: die Antwort IST angekommen — dieser Fall ist nicht L8 mit anderem Namen.
+    expect(
+      urteil.fertig,
+      `${START_BREITE}px: es kam gar keine Antwort in der Zeitleiste an — dann misst dieser Fall die ausbleibende Antwort (L8) statt die empfangene Fehlerantwort`,
+    ).toBeGreaterThan(0);
+    expect(
+      urteil.status.every((s) => s === 503),
+      `${START_BREITE}px: die Zeitleiste trägt andere Status als 503 (${statusListe(urteil.status)}) — die Störung hat nicht gegriffen`,
+    ).toBe(true);
+    // UND DIE LAGE, IN DER DIE ZWEITE HÄLFTE DES NACHWEISES NICHTS BEITRÄGT.
+    expect(
+      soll,
+      `${START_BREITE}px: das Prüf-Board dieser Bühne ist nicht mehr leer (${soll}) — dann trüge auch der gezeichnete Zähler, und dieser Fall misst nicht mehr die Lücke, aus der er entstanden ist`,
+    ).toBe(0);
+
+    // DIE AUSSAGE.
+    expect(
+      fehler,
+      `${START_BREITE}px: mit HTTP 503 auf ${ZAEHLER_PFAD} wurde zu Ende gemessen — eine nicht geladene Zeile bekam einen fertigen Messwert`,
+    ).not.toBeNull();
+    expect(String(fehler), "der Abbruch nennt den empfangenen Status nicht").toContain("HTTP 503");
+    expect(String(fehler), "der Abbruch nennt die Abfrage nicht").toContain(ZAEHLER_PFAD);
+    expect(String(fehler), "der Abbruch nennt seinen Grund nicht").toContain(
+      "kein fertiger Ladezustand",
+    );
+
+    // DIE GEGENRICHTUNG: dieselbe Abfrage, erfolgreich und LEER beantwortet.
+    const m = await messeRuhig(START_BREITE);
+    const nachher = beurteileAnkunft(await liesAnkunft());
+    console.log(
+      `${KENNUNG_3616} · L11a · Gegenrichtung · ${nachher.meldung} · ${m.kaesten.length} Kästen gemessen`,
+    );
+    expect(
+      nachher.art,
+      `${START_BREITE}px: die erfolgreiche leere Antwort trug den Nachweis nicht — ${nachher.meldung}`,
+    ).toBe("angekommen");
+    expect(nachher.erfolgreich, "kein erfolgreicher Eintrag nach der Freigabe").toBeGreaterThan(0);
+    expect(
+      m.kaesten.length,
+      `${START_BREITE}px: nach der Freigabe wurde nichts gemessen`,
+    ).toBeGreaterThan(2);
+  }, 180_000);
+
+  it(`L11b · ${START_BREITE} px: erst nach dem verzögerten Wiederholungsabruf wird gemessen`, async () => {
+    zaehlerFehlerMale = 1;
+    zaehlerFehlerGeliefert = 0;
+    zaehlerVerzugMs = WIEDERHOLUNG_VERZUG_MS;
+    let befundBeimFehler: AnkunftBefund = KEINE_ANKUNFT;
+    let nachher: Ankunftsurteil = beurteileAnkunft(KEINE_ANKUNFT);
+    let dauer = 0;
+    let lage = "nicht gelesen";
+    try {
+      neuerSeitenaufbau();
+      await messe(stand, START_BREITE, HOEHE);
+      befundBeimFehler = await warteAufEintrag(30_000);
+      const begonnen = Date.now();
+      await beruhige(START_BREITE);
+      dauer = Date.now() - begonnen;
+      nachher = beurteileAnkunft(await liesAnkunft());
+      lage = await zaehlerLage();
+    } finally {
+      zaehlerFehlerMale = 0;
+      zaehlerVerzugMs = 0;
+    }
+    const urteilBeimFehler = beurteileAnkunft(befundBeimFehler);
+    const fehlerEnde = Math.max(
+      ...befundBeimFehler.eintraege.filter((e) => e.responseEnd > 0).map((e) => e.responseEnd),
+    );
+    console.log(
+      `${KENNUNG_3616} · L11b · ${START_BREITE}px · ${lage} · ${zaehlerFehlerGeliefert} Fehlerantwort(en) ausgeliefert · ` +
+        `beim Fehlereintrag: ${urteilBeimFehler.art} (${statusListe(urteilBeimFehler.status)}, responseEnd ${fehlerEnde.toFixed(0)} ms) · ` +
+        `danach: ${nachher.art} (${statusListe(nachher.status)}, responseEnd ${nachher.responseEnd.toFixed(0)} ms) · ` +
+        `nach dem Fehlereintrag noch ${dauer} ms gewartet · ${stand.abrufe.get(ZAEHLER_PFAD) ?? 0} Abrufe am Server`,
+    );
+
+    // DIE VORAUSSETZUNG: es gab wirklich eine Fehlerantwort, und sie stand in der Zeitleiste.
+    expect(zaehlerFehlerGeliefert, "es wurde gar keine Fehlerantwort ausgeliefert").toBe(1);
+    expect(
+      urteilBeimFehler.status,
+      `${START_BREITE}px: der erste Eintrag trug nicht den Status 503 (${statusListe(urteilBeimFehler.status)})`,
+    ).toContain(503);
+
+    // 1. DER ERSTE EINTRAG GIBT NICHTS FREI.
+    expect(
+      urteilBeimFehler.art,
+      `${START_BREITE}px: mit nur einer empfangenen Fehlerantwort in der Zeitleiste galt der Ladenachweis als erbracht — genau das ist die vorzeitige Freigabe`,
+    ).toBe("wartet");
+
+    // 2. GEMESSEN WIRD ERST MIT DER ERFOLGREICHEN ANTWORT — und die kam nachweislich später.
+    expect(
+      nachher.art,
+      `${START_BREITE}px: nach dem Wiederholungsabruf trug der Nachweis nicht — ${nachher.meldung}`,
+    ).toBe("angekommen");
+    expect(nachher.erfolgreich, "kein erfolgreicher Eintrag nach der Wiederholung").toBeGreaterThan(
+      0,
+    );
+    expect(
+      nachher.responseEnd - fehlerEnde,
+      `${START_BREITE}px: die erfolgreiche Antwort kam nicht messbar nach der Fehlerantwort (${nachher.responseEnd.toFixed(0)} ms gegen ${fehlerEnde.toFixed(0)} ms)`,
+    ).toBeGreaterThanOrEqual(WIEDERHOLUNG_VERZUG_MS);
+    expect(
+      dauer,
+      `${START_BREITE}px: nach dem Fehlereintrag wurde nur ${dauer} ms gewartet — kürzer als der Verzug des Wiederholungsabrufs`,
+    ).toBeGreaterThanOrEqual(WIEDERHOLUNG_VERZUG_MS);
+  }, 180_000);
 });
 
 // ================================================================================================
@@ -675,7 +1491,7 @@ describe("JOB 3582 · L6 · auch ein sehr breites Logo sprengt die Zeile nicht",
 
       // Auch hier RUHIG: der Bildtausch geschieht an der stehenden Seite, ein Neuaufbau würde ihn
       // wegwerfen — beruhigt wird deshalb ohne Neuaufbau.
-      const m = await beruhige(breite, await messeStehend(stand));
+      const m = await beruhige(breite);
       const logo = await liesLogoBefund(stand);
       protokolliere("L6", breite, m, logo);
 
@@ -701,6 +1517,131 @@ describe("JOB 3582 · L6 · auch ein sehr breites Logo sprengt die Zeile nicht",
 });
 
 // ================================================================================================
+// L10 — DER SICHTMESSER WIRD AM GEZEICHNETEN PRODUKT KALIBRIERT: RAHMEN UND ROLLFLÄCHE.
+// ================================================================================================
+//
+// DER ANLASS IST EINE GEMESSENE FEHLFREIGABE, keine Vermutung. Der Prüfer hat in Runde 1 dem
+// Logokasten im Browser `overflow: auto` und einen 20-px-Rahmen gegeben: das Bild begann bei
+// 125,47 px, die innere Begrenzung lag bei 140,47 px — 15 px waren abgeschnitten, und der Befund
+// sagte `sichtbar:true, gruende:[]`. Ursache: geprüft wurde gegen `getBoundingClientRect()`, also
+// gegen die ÄUSSERE Kante samt Rahmen (BEN, JOB 3616 R1, Korrekturpflicht 2).
+//
+// DIESER FALL STELLT GENAU DAS HER UND HÄLT ES FEST. Er misst in beide Richtungen am selben
+// gezeichneten Kopfband:
+//   (a) die Rollfläche ist SCHMALER als das Bild → der Befund muss rot sein, und die Voraussetzung
+//       wird vorher gemessen: das Bild liegt noch INNERHALB der äusseren Kante (sonst hätte auch
+//       der alte Stand rot gesagt und der Fall bewiese nichts);
+//   (b) dieselbe Rollfläche, nur breit genug → grün. Ohne die Gegenrichtung wäre ein Messer, der
+//       jeden rollbaren Vorfahren ablehnt, von einem richtigen nicht zu unterscheiden.
+//
+// Der Eingriff geschieht am Inline-Stil der gezeichneten Elemente — derselbe Griff wie L4b und L6 —
+// und wird am Ende zurückgenommen; der nächste Fall baut die Seite ohnehin neu auf.
+const SETZE_ROLLFLAECHE = fn(`(arg) => {
+  const kasten = document.querySelector('[data-testid="kopfband-firmenlogo"]');
+  const bild = kasten ? kasten.querySelector('img') : null;
+  if (!kasten || !bild) return null;
+  const vorher = bild.getBoundingClientRect();
+  // Das Bild behält seine gezeichnete Grösse, damit der Kasten es nicht einfach mitschrumpft —
+  // gemessen werden soll die Beschneidung, nicht eine neue Bildbreite.
+  bild.style.width = vorher.width + 'px';
+  bild.style.minWidth = vorher.width + 'px';
+  bild.style.maxWidth = 'none';
+  bild.style.flexShrink = '0';
+  kasten.style.boxSizing = 'content-box';
+  kasten.style.overflow = 'auto';
+  kasten.style.border = arg.rahmen + 'px solid rgba(0,0,0,0)';
+  kasten.style.width = (vorher.width - arg.fehlend) + 'px';
+  kasten.style.height = (vorher.height + 10) + 'px';
+  return { bildBreite: vorher.width, bildHoehe: vorher.height };
+}`);
+
+const NIMM_ROLLFLAECHE_ZURUECK = fn(`() => {
+  const kasten = document.querySelector('[data-testid="kopfband-firmenlogo"]');
+  const bild = kasten ? kasten.querySelector('img') : null;
+  if (!kasten || !bild) return false;
+  for (const eigenschaft of ['width', 'minWidth', 'maxWidth', 'flexShrink']) { bild.style[eigenschaft] = ''; }
+  for (const eigenschaft of ['boxSizing', 'overflow', 'border', 'width', 'height']) { kasten.style[eigenschaft] = ''; }
+  return true;
+}`);
+
+/** Die Zahlen des Logokastens aus dem Sichtbefund — äussere Kante und Schnittfläche. */
+function logoKnoten(sicht: SichtBefund): { rechteck: Rechteck; innen: Rechteck } {
+  const k = sicht.kette.find((x) => x.name.includes("kopfband-firmenlogo"));
+  if (k === undefined) {
+    throw new Error(
+      `die Kette des Sichtbefundes trägt keinen Logokasten: ${sicht.kette.map((x) => x.name).join(" → ")}`,
+    );
+  }
+  return { rechteck: k.rechteck, innen: k.innen };
+}
+
+describe("JOB 3616 · L10 · ein gerahmter, rollbarer Vorfahr schneidet ab — und das wird gemessen", () => {
+  it(`L10 · ${START_BREITE} px: 20 px Rahmen und zu schmale Rollfläche machen den Befund rot`, async () => {
+    const { sicht, zugesagt } = await messeMitZusage(START_BREITE);
+    expect(zugesagt, `${START_BREITE}px: hier steht gar kein Logokasten`).toBe(true);
+    verlangeSichtbar(START_BREITE, sicht);
+    const seite = seiteRoh(stand);
+    const RAHMEN = 20;
+    const FEHLEND = 15;
+    try {
+      // (a) DIE BESCHNEIDUNG.
+      const gesetzt = await seite.evaluate<{ bildBreite: number; bildHoehe: number } | null>(
+        SETZE_ROLLFLAECHE,
+        { rahmen: RAHMEN, fehlend: FEHLEND },
+      );
+      expect(gesetzt, "am gezeichneten Kopfband war kein Firmenlogo zu finden").not.toBeNull();
+      const eng = await liesSicht();
+      const bildEng = eng.kette[0];
+      const kastenEng = logoKnoten(eng);
+      if (bildEng === undefined) {
+        throw new Error("der Sichtbefund trägt kein Bild");
+      }
+      const urteilEng = beurteileSicht(eng);
+      console.log(
+        `${KENNUNG_3616} · L10 · ${START_BREITE}px · Rahmen ${RAHMEN} px · Bild ${bildEng.rechteck.links.toFixed(2)} … ${bildEng.rechteck.rechts.toFixed(2)} px · ` +
+          `Schnittfläche ${kastenEng.innen.links.toFixed(2)} … ${kastenEng.innen.rechts.toFixed(2)} px · äussere Kante ${kastenEng.rechteck.links.toFixed(2)} … ${kastenEng.rechteck.rechts.toFixed(2)} px · ` +
+          `abgeschnitten ${(bildEng.rechteck.rechts - kastenEng.innen.rechts).toFixed(2)} px · Urteil: ${urteilEng.sichtbar ? "sichtbar" : urteilEng.gruende.join(" · ")}`,
+      );
+      // DIE VORAUSSETZUNG, die diesen Fall überhaupt tragen: das Bild ragt über die SCHNITTFLÄCHE
+      // hinaus, liegt aber noch innerhalb der ÄUSSEREN Kante. Genau dazwischen lag die Fehlfreigabe.
+      expect(
+        bildEng.rechteck.rechts - kastenEng.innen.rechts,
+        `${START_BREITE}px: die Rollfläche schneidet das Bild gar nicht ab — dann misst dieser Fall nichts`,
+      ).toBeGreaterThan(1);
+      expect(
+        bildEng.rechteck.rechts,
+        `${START_BREITE}px: das Bild ragt schon über die ÄUSSERE Kante hinaus — dann wäre auch der Stand vor dieser Runde rot, und der Fall belegt die Rahmenkorrektur nicht`,
+      ).toBeLessThanOrEqual(kastenEng.rechteck.rechts + 1);
+      expect(
+        urteilEng.sichtbar,
+        `${START_BREITE}px: ein um ${(bildEng.rechteck.rechts - kastenEng.innen.rechts).toFixed(1)} px beschnittenes Firmenlogo gilt als sichtbar`,
+      ).toBe(false);
+      expect(urteilEng.gruende.join(" · "), "der Grund nennt die Beschneidung nicht").toContain(
+        "schneidet das Firmenlogo ab",
+      );
+
+      // (b) DIE GEGENRICHTUNG: dieselbe Rollfläche, nur breit genug.
+      await seite.evaluate(SETZE_ROLLFLAECHE, { rahmen: RAHMEN, fehlend: -20 });
+      const weit = await liesSicht();
+      const urteilWeit = beurteileSicht(weit);
+      const kastenWeit = logoKnoten(weit);
+      console.log(
+        `${KENNUNG_3616} · L10 · ${START_BREITE}px · Gegenrichtung · Schnittfläche ${kastenWeit.innen.links.toFixed(2)} … ${kastenWeit.innen.rechts.toFixed(2)} px · ` +
+          `Urteil: ${urteilWeit.sichtbar ? "sichtbar" : urteilWeit.gruende.join(" · ")}`,
+      );
+      expect(
+        urteilWeit.sichtbar,
+        `${START_BREITE}px: ein rollbarer Vorfahr, der NICHTS abschneidet, wurde abgelehnt: ${urteilWeit.gruende.join(" · ")}`,
+      ).toBe(true);
+    } finally {
+      await seite.evaluate<boolean>(NIMM_ROLLFLAECHE_ZURUECK);
+    }
+    // UND DER EINGRIFF IST ZURÜCKGENOMMEN: derselbe Kasten ist wieder sichtbar.
+    verlangeSichtbar(START_BREITE, await liesSicht());
+  }, 180_000);
+});
+
+// ================================================================================================
 // L9 — OHNE FIRMEN-CI ÄNDERT SICH NICHTS. Der Beleg, dass die Regeln nur dort wirken, wo sie sollen.
 // ================================================================================================
 //
@@ -716,7 +1657,9 @@ describe("JOB 3582 · L9 · ohne Firmen-CI ist die Zeile unverändert", () => {
     try {
       await schalteCi(app, bearer, false);
       for (const breite of [390, 760, 900] as const) {
-        const m = await messe(stand, breite, HOEHE);
+        // Auch hier RUHIG (JOB 3616): dieser Fall sichert bei 900 px zu, dass nichts ausserhalb des
+        // Fensters steht — eine solche Aussage über einen Zwischenstand wäre eine Zufallszahl.
+        const m = await messeRuhig(breite);
         const logo = await liesLogoBefund(stand);
         protokolliere("L9 ohne CI", breite, m, logo);
         expect(logo.logoDa, `${breite}px: ohne Firmen-CI steht trotzdem ein Logokasten da`).toBe(
