@@ -29,6 +29,7 @@ import { endpoints } from "../api/endpoints";
 import { useDuplicates, useKos } from "../api/hooks";
 import type { KnowledgeObject, OverlapEntry } from "../api/types";
 import { AiCheckBoardCaveat } from "../components/AiCheckCoverageHint";
+import { HelpTip } from "../components/HelpTip";
 import { PruefenKopf } from "../components/pruefen/PruefenKopf";
 import { PruefenMehr, PruefenMehrBlock, PruefenMehrZeile } from "../components/pruefen/PruefenMehr";
 import {
@@ -228,6 +229,30 @@ export function Duplicates(): JSX.Element {
 
   return (
     <div className="mx-auto max-w-[1040px]">
+      {/* ==========================================================================================
+          JOB 3671 — DIE SEITENHILFE DIESER FLÄCHE (Zahnrad → „Seitenhilfe").
+          ==========================================================================================
+
+          Die Fläche hatte schon eine Erklärung, aber nicht dort, wo das Zahnrad sie sammelt: das
+          „?" neben der Überschrift (`hilfeMenue`) sagt, WIE Dubletten gefunden werden. Was fehlte,
+          ist die Entscheidungsfrage — was die vier Knöpfe bewirken und was gilt, wenn man sich
+          vertut. Genau die zwei Texte melden sich hier an; `HelpTip` rendert dabei NICHTS
+          (components/HelpTip.tsx), die Fläche bleibt unverändert ruhig.
+
+          SIE STEHEN AUSSERHALB VON `duplikatFlaeche` — also auch dann, wenn gerade kein Paar offen
+          ist, die Liste lädt oder der Abruf gescheitert ist. Eine Hilfe, die erst erscheint, wenn
+          man schon eine Karte vor sich hat, fehlt genau dem, der nicht weiterweiss.
+
+          Die Doppelung mit dem „?" ist bewusst vermieden: der Erkennungsweg steht NUR dort, und der
+          Text hier verweist darauf. */}
+      <HelpTip
+        title={t("dup.seitenhilfe.flaeche.titel")}
+        body={t("dup.seitenhilfe.flaeche.text", { mehr: t("pruefen.more") })}
+      />
+      <HelpTip
+        title={t("dup.seitenhilfe.entscheidung.titel")}
+        body={t("dup.seitenhilfe.entscheidung.text", { bibliothek: t("nav.library") })}
+      />
       <PruefenKopf aktiv="duplikate" hilfe={hilfeMenue} />
       <div data-testid="pruefen-flaeche" className="space-y-[22px]">
         {lage.auffrischungGescheitert ? <PruefenNichtFrisch /> : null}

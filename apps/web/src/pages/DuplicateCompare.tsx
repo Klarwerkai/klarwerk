@@ -16,6 +16,7 @@ import { useTranslation } from "react-i18next";
 import { Link, useParams } from "react-router-dom";
 import { useConflicts, useDuplicates, useKos } from "../api/hooks";
 import type { Conflict, KnowledgeObject, OverlapEntry } from "../api/types";
+import { HelpTip } from "../components/HelpTip";
 import { PruefenKopf } from "../components/pruefen/PruefenKopf";
 import { PruefenMehr, PruefenMehrBlock } from "../components/pruefen/PruefenMehr";
 import {
@@ -187,7 +188,32 @@ export function DuplicateCompare({ kind }: { kind: DuplicateCompareKind }): JSX.
     ? duplicates.data?.find((item) => item.id === id)
     : conflicts.data?.find((item) => item.id === id);
 
-  const kopf = <PruefenKopf aktiv={isDuplicate ? "duplikate" : "konflikte"} />;
+  // ==============================================================================================
+  // JOB 3671 — DIE SEITENHILFE DIESER SEITE (Zahnrad → „Seitenhilfe").
+  // ==============================================================================================
+  //
+  // SIE SITZT IM `kopf` UND NICHT IM HAUPTZWEIG: die Seite kehrt für „lädt", „Fehler" und „nicht
+  // gefunden" früh zurück, und `kopf` ist der einzige Bau, den ALLE vier Rückgaben teilen. Wer auf
+  // „nicht gefunden" landet, ist genau der, der die Erklärung braucht — dort wäre eine Hilfe im
+  // Hauptzweig nicht da.
+  //
+  // KEINE DOPPELUNG DER LEGENDE: der Text verweist auf die vorhandene Ampel-Legende im „Mehr"
+  // (unten, `dcmp.legendHelpTitle`) und trägt ihren Titel per Einsetzung, statt die drei Farben ein
+  // zweites Mal zu erklären. `brett` ist die Reiterbeschriftung der aufrufenden Fläche — dieselbe
+  // Seite dient Duplikaten UND Konflikten, und der Rückweg heisst je nach Aufruf anders.
+  const kopf = (
+    <>
+      <HelpTip
+        title={t("dcmp.seitenhilfe.titel")}
+        body={t("dcmp.seitenhilfe.text", {
+          mehr: t("pruefen.more"),
+          legende: t("dcmp.legendHelpTitle"),
+          brett: t(isDuplicate ? "pruefen.tab.duplikate" : "pruefen.tab.konflikte"),
+        })}
+      />
+      <PruefenKopf aktiv={isDuplicate ? "duplikate" : "konflikte"} />
+    </>
+  );
 
   if (loading) {
     return (

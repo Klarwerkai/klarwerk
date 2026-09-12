@@ -3611,6 +3611,38 @@ const de = {
   // REVIEW26 (JOB 3469): „NN % gleich" ist ERSETZT, nicht ergänzt — die Beschriftung verschwieg,
   // welche Messung dahinterstand. An ihrer Stelle stehen die benannten `dup.lead.*`-Schlüssel.
   "dup.keepNote": "Getrennt lassen; maßgeblich ist: {{title}}.",
+  // ==============================================================================================
+  // JOB 3671 — DIE SEITENHILFE DER DUBLETTENFLÄCHE (Zahnrad → „Seitenhilfe").
+  // ==============================================================================================
+  //
+  // Pedi 04.09.: „Erklärung gehört hinter Zahnrad/Profil, nicht ins Sichtfeld." Diese zwei Texte
+  // melden sich über `HelpTip` bei der Seitenhilfe an und stehen deshalb NICHT auf der Fläche.
+  //
+  // Jede Zusage hier ist am Quelltext geprüft, und zwar an dieser Stelle:
+  //   · nebeneinander / schmal untereinander → `PruefenPaar` ist `flex-col sm:flex-row`
+  //     (components/pruefen/PruefenPaar.tsx:138); unter 640 px ist „Links" die OBERE Karte, weil
+  //     Karte „a" zuerst gerendert wird und `dup.side.left` genau auf `pair.a` wirkt.
+  //   · gelbe Markierung → `teileFuer` (pages/Duplicates.tsx:110-116): Eigenanteil, wenn er
+  //     wörtlich im Text steht, sonst der Rest um die gemeinsamen Zitate; sonst gar nichts.
+  //   · „schließen mit Grund, nichts am Wissen" → `OverlapService.close`
+  //     (services/conflicts/src/overlap-service.ts:732-749) schreibt AUSSCHLIESSLICH `status`,
+  //     `resolution` und `closedAt` des Fundes plus einen Audit-Eintrag. Kein Wissensobjekt wird
+  //     angefasst — auch „Beide behalten, verknüpfen" legt keine Verknüpfung an.
+  //   · „nicht wieder öffnen" → die Statusroute kennt „offen" ausdrücklich NICHT als Ziel
+  //     (services/app/src/routes/overlap-routes.ts:204-205); `unresolved()` filtert Geschlossene
+  //     hart heraus (overlap-service.ts:933), und der Reiterzähler liest dieselbe Liste.
+  //   · „Rolle" → `/duplikate` verlangt `minRole: "controller"` (app/navigation.ts:240) und die
+  //     vier Abschlüsse verlangen `ko.validate` (overlap-routes.ts:156/174/219/254), das genau
+  //     controller und admin haben (services/rbac/src/policy.ts:14-17). Wer die Fläche also
+  //     überhaupt sieht, darf auch entscheiden; schwächere Rollen bekommen `RoleNotice`
+  //     (routes.tsx:186) statt der Fläche. Darum verspricht der Text keinen gesperrten Weg.
+  "dup.seitenhilfe.flaeche.titel": "Duplikate: was diese Fläche zeigt",
+  "dup.seitenhilfe.flaeche.text":
+    "Du siehst ein Paar fast gleicher Wissensobjekte nebeneinander; auf schmalen Fenstern stehen die beiden Karten untereinander — dann meint „Links behalten“ die obere Karte und „Rechts behalten“ die untere. Gelb markiert ist der Teil, der nicht zu den gemeinsamen Aussagen gehört: der Eigenanteil, wenn er wörtlich im Text steht, sonst der Rest um die gemeinsamen Zitate herum; findet sich keines von beidem, bleibt der Text unmarkiert statt geraten. Die Prozentpille ist Ähnlichkeit beziehungsweise Modellwahrscheinlichkeit und kein Beweis für ein Duplikat. Zahlen, gemeinsame Aussagen, Eigenanteile, Empfehlung und Status liegen im Aufklapper „{{mehr}}“ an jeder Karte; wie Dubletten überhaupt gefunden werden, erklärt das „?“ neben der Überschrift. Gibt es mehr als ein Paar, blätterst du mit den Pfeilen in der Kopfzeile.",
+  "dup.seitenhilfe.entscheidung.titel":
+    "Was deine Entscheidung bewirkt — und was, wenn sie falsch war",
+  "dup.seitenhilfe.entscheidung.text":
+    "Alle vier Knöpfe tun dasselbe eine: sie schließen diesen Fund mit dem gewählten Grund und halten ihn mit deinem Namen und der Zeit fest. An den beiden Wissensobjekten ändert keiner von ihnen etwas — nichts wird zusammengeführt, nichts gelöscht, und auch „Beide behalten, verknüpfen“ legt keine Verknüpfung in den Objekten an, sondern hält diesen Grund fest. Ein geschlossener Fund lässt sich hier nicht wieder öffnen: er verschwindet aus der Liste und aus der Zahl am Reiter. Verloren ist damit nichts, denn beide Objekte stehen unverändert in „{{bibliothek}}“ — wer sich vertan hat, ändert sie dort. Willst du noch nicht entscheiden, wähle im Menü „···“ an der Karte „Status setzen“ → „In Bearbeitung“, solange der Fund noch offen ist; das hält ihn offen. Entscheiden darf, wer Wissen prüfen darf; mit einer schwächeren Rolle führt der Weg hierher nicht auf diese Fläche, sondern auf einen Hinweis, welche Rolle sie braucht.",
   // SCRUM-486 (Entdichtung): Führungszeile pro Karte + neutraler „entfernt"-Hinweis statt Roh-UUID.
   "board.koRemoved": "Objekt entfernt",
   "board.detailsShow": "Details ansehen",
@@ -5636,6 +5668,24 @@ const de = {
     "Jeder Abschnitt bekommt eine Farbe aus dem Textabgleich: Grün = die Inhalte decken sich weitgehend, Gelb = teilweise oder unklar (genauer ansehen), Rot = die Texte weichen ab. Rot bedeutet nur Unterschied, kein bewiesener Widerspruch — die Farben sind eine Lesehilfe, kein Urteil, und es wird nichts automatisch zusammengeführt.",
   "dcmp.onlyForComparison":
     "Nur zum Vergleich: Es wird nichts zusammengeführt, gelöscht oder validiert, und keine Entscheidung wird gespeichert.",
+  // ==============================================================================================
+  // JOB 3671 — DIE SEITENHILFE DER VERGLEICHSSEITE (Zahnrad → „Seitenhilfe").
+  // ==============================================================================================
+  //
+  // DIESE SEITE HAT SCHON EINE HILFE: die Legende „Was bedeuten die Ampelfarben?" steht als Block
+  // im Aufklapper „Mehr" (pages/DuplicateCompare.tsx:341). Sie wird hier NICHT wiederholt — der
+  // Text VERWEIST auf sie und trägt ihren Titel per Einsetzung, damit keine zweite Wahrheit
+  // entsteht (Auftrag §4.3). Was die Legende nicht sagt, steht hier: wo man ist, dass nichts
+  // gespeichert wird, und wo entschieden wird.
+  //
+  // `{{brett}}` ist die Reiterbeschriftung der aufrufenden Fläche (`pruefen.tab.*`) — die Seite
+  // dient Duplikaten UND Konflikten, und der Text muss für beide stimmen.
+  //
+  // „nichts gespeichert" ist am Quelltext geprüft: `DuplicateCompare` ruft keine Mutation auf; die
+  // Seite liest `useDuplicates`, `useConflicts`, `useKos` und sonst nichts.
+  "dcmp.seitenhilfe.titel": "Vergleichen, nicht entscheiden",
+  "dcmp.seitenhilfe.text":
+    "Hier stehen dieselben zwei Objekte wie auf dem Brett einander gegenüber; auf schmalen Fenstern untereinander — die obere Karte ist die, die im Vergleich Feld für Feld „Links“ heißt. Im Aufklapper „{{mehr}}“ liegen Ähnlichkeit, Unsicherheit, Textunterschied und dieser Feldvergleich; was die drei Ampelfarben bedeuten, erklärt dort die Legende „{{legende}}“ — sie wird hier nicht wiederholt. Gespeichert wird auf dieser Seite nichts: sie führt nicht zusammen, löscht nicht, validiert nicht und hält keine Entscheidung fest. Falsch machen kannst du hier also nichts; entschieden wird auf dem Brett „{{brett}}“, und der gleichnamige Reiter oben führt dorthin zurück.",
   "dcmp.sourceDuplicate": "Duplikatvergleich: {{relation}}",
   "dcmp.sourceConflict": "Konfliktvergleich: {{type}}",
   "dcmp.sectionCompareUnavailable":
@@ -9046,6 +9096,15 @@ const en: typeof de = {
   "dup.side.both": "Keep both, link them",
   "dup.side.none": "Not a duplicate",
   "dup.keepNote": "Keep separate; authoritative: {{title}}.",
+  // JOB 3671 — page help of the duplicates board; the reasoning and the checked source lines are
+  // written out once at the German keys.
+  "dup.seitenhilfe.flaeche.titel": "Duplicates: what this surface shows",
+  "dup.seitenhilfe.flaeche.text":
+    "You see a pair of almost identical knowledge objects side by side; on narrow windows the two cards sit one below the other — “Keep left” then means the upper card and “Keep right” the lower one. Highlighted in yellow is the part that does not belong to the shared statements: the object’s own part if it appears verbatim in the text, otherwise the remainder around the shared quotes; if neither can be found, the text stays unmarked instead of guessed. The percentage pill is similarity or model probability, not proof of a duplicate. Numbers, shared statements, own parts, recommendation and status live in the “{{mehr}}” disclosure on each card; how duplicates are found in the first place is explained by the “?” next to the heading. If there is more than one pair, the arrows in the header line page through them.",
+  "dup.seitenhilfe.entscheidung.titel":
+    "What your decision does — and what happens if it was wrong",
+  "dup.seitenhilfe.entscheidung.text":
+    "All four buttons do the same one thing: they close this finding with the reason you picked and record it with your name and the time. Neither of them changes the two knowledge objects — nothing is merged, nothing is deleted, and even “Keep both, link them” creates no link inside the objects but records that reason. A closed finding cannot be reopened here: it leaves the list and the number on the tab. Nothing is lost by that, because both objects remain unchanged in “{{bibliothek}}” — if you got it wrong, you change them there. If you do not want to decide yet, choose “Set status” → “In progress” in the “···” menu on the card while the finding is still open; that keeps it open. Deciding is for those who may review knowledge; with a weaker role the way here does not lead to this surface but to a notice telling you which role it needs.",
   // SCRUM-486 (de-densify): lead line per card + neutral "removed" hint instead of a raw UUID.
   "board.koRemoved": "Item removed",
   "board.detailsShow": "Show details",
@@ -10816,6 +10875,11 @@ const en: typeof de = {
     "Each section gets a colour from the text comparison: green = the contents largely match, yellow = partial or unclear (take a closer look), red = the texts differ. Red only means a difference, not a proven contradiction — the colours are a reading aid, not a verdict, and nothing is merged automatically.",
   "dcmp.onlyForComparison":
     "For comparison only: nothing is merged, deleted or validated, and no decision is saved.",
+  // JOB 3671 — page help of the comparison page. It POINTS AT the existing colour legend instead
+  // of repeating it; the legend's own title is inserted as {{legende}}. Reasoning at the DE keys.
+  "dcmp.seitenhilfe.titel": "Compare, do not decide",
+  "dcmp.seitenhilfe.text":
+    "This page puts the same two objects as the board opposite each other; on narrow windows one below the other — the upper card is the one called “Left” in the field-by-field comparison. The “{{mehr}}” disclosure holds similarity, uncertainty, text difference and that field comparison; what the three signal colours mean is explained there by the legend “{{legende}}” — it is not repeated here. Nothing is saved on this page: it does not merge, delete or validate, and it records no decision. So there is nothing you can get wrong here; decisions are made on the “{{brett}}” board, and the tab of the same name at the top leads back there.",
   "dcmp.sourceDuplicate": "Duplicate comparison: {{relation}}",
   "dcmp.sourceConflict": "Conflict comparison: {{type}}",
   "dcmp.sectionCompareUnavailable":
@@ -14025,6 +14089,13 @@ const nl: typeof de = {
   "dup.side.both": "Beide behouden, koppelen",
   "dup.side.none": "Geen duplicaat",
   "dup.keepNote": "Gescheiden laten; doorslaggevend is: {{title}}.",
+  // JOB 3671 — paginahulp van het duplicatenbord; de onderbouwing staat bij de DE-sleutels.
+  "dup.seitenhilfe.flaeche.titel": "Duplicaten: wat dit scherm laat zien",
+  "dup.seitenhilfe.flaeche.text":
+    "Je ziet een paar bijna gelijke kennisobjecten naast elkaar; op smalle vensters staan de twee kaarten onder elkaar — dan bedoelt „Links behouden“ de bovenste kaart en „Rechts behouden“ de onderste. Geel gemarkeerd is het deel dat niet bij de gemeenschappelijke uitspraken hoort: het eigen deel als dat letterlijk in de tekst staat, anders de rest rond de gemeenschappelijke citaten; is geen van beide te vinden, dan blijft de tekst ongemarkeerd in plaats van geraden. De procentpil is gelijkenis of modelwaarschijnlijkheid en geen bewijs van een duplicaat. Getallen, gemeenschappelijke uitspraken, eigen delen, aanbeveling en status staan in de uitklapper „{{mehr}}“ bij elke kaart; hoe duplicaten überhaupt gevonden worden, legt het „?“ naast de kop uit. Zijn er meer paren, dan blader je met de pijlen in de kopregel.",
+  "dup.seitenhilfe.entscheidung.titel": "Wat jouw beslissing doet — en wat als ze verkeerd was",
+  "dup.seitenhilfe.entscheidung.text":
+    "Alle vier knoppen doen hetzelfde ene: ze sluiten deze bevinding met de gekozen reden en leggen die vast met jouw naam en de tijd. Aan de twee kennisobjecten verandert geen van hen iets — er wordt niets samengevoegd, niets verwijderd, en ook „Beide behouden, koppelen“ legt geen koppeling in de objecten aan, maar houdt die reden vast. Een gesloten bevinding kan hier niet opnieuw worden geopend: ze verdwijnt uit de lijst en uit het getal op het tabblad. Daarmee is niets verloren, want beide objecten staan onveranderd in „{{bibliothek}}“ — wie zich vergist heeft, wijzigt ze daar. Wil je nog niet beslissen, kies dan in het menu „···“ bij de kaart „Status instellen“ → „In behandeling“ zolang de bevinding nog open is; dat houdt ze open. Beslissen mag wie kennis mag controleren; met een zwakkere rol leidt de weg hierheen niet naar dit scherm, maar naar een melding welke rol ervoor nodig is.",
   "board.koRemoved": "Object verwijderd",
   "board.detailsShow": "Details bekijken",
   "con.leadKicker": "Tegenstrijdigheid",
@@ -15802,6 +15873,11 @@ const nl: typeof de = {
     "Elke sectie krijgt een kleur uit de tekstvergelijking: groen = de inhoud komt grotendeels overeen, geel = gedeeltelijk of onduidelijk (nauwkeuriger bekijken), rood = de teksten wijken af. Rood betekent alleen verschil, geen bewezen tegenspraak — de kleuren zijn een leeshulp, geen oordeel, en er wordt niets automatisch samengevoegd.",
   "dcmp.onlyForComparison":
     "Alleen ter vergelijking: er wordt niets samengevoegd, verwijderd of gevalideerd, en geen beslissing wordt opgeslagen.",
+  // JOB 3671 — paginahulp van de vergelijkingspagina. Ze VERWIJST naar de bestaande kleurenlegenda
+  // in plaats van die te herhalen; de titel van de legenda komt als {{legende}} mee.
+  "dcmp.seitenhilfe.titel": "Vergelijken, niet beslissen",
+  "dcmp.seitenhilfe.text":
+    "Hier staan dezelfde twee objecten als op het bord tegenover elkaar; op smalle vensters onder elkaar — de bovenste kaart is die welke in de vergelijking veld voor veld „Links“ heet. In de uitklapper „{{mehr}}“ staan gelijkenis, onzekerheid, tekstverschil en die veldvergelijking; wat de drie stoplichtkleuren betekenen, legt daar de legenda „{{legende}}“ uit — dat wordt hier niet herhaald. Op deze pagina wordt niets opgeslagen: ze voegt niet samen, verwijdert niet, valideert niet en houdt geen beslissing vast. Verkeerd doen kun je hier dus niets; beslist wordt op het bord „{{brett}}“, en het tabblad met dezelfde naam bovenaan leidt daarheen terug.",
   "dcmp.sourceDuplicate": "Duplicaatvergelijking: {{relation}}",
   "dcmp.sourceConflict": "Conflictvergelijking: {{type}}",
   "dcmp.sectionCompareUnavailable":
