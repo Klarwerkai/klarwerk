@@ -8,7 +8,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { KeyRound, Sparkles, Trash2 } from "lucide-react";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ApiError } from "../api/client";
+import { ApiError, api } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import type {
   ExternalKnowledgeStage,
@@ -20,6 +20,7 @@ import { useToast } from "../app/ToastContext";
 import { Abfragehuelle } from "../components/einstellungen/Abfragehuelle";
 import { Detailkarte } from "../components/einstellungen/Detailkarte";
 import { Button, Field, TextInput } from "../components/ui";
+import i18n from "../i18n";
 import {
   type AiAccessState,
   aiAccessRows,
@@ -285,6 +286,231 @@ function KiFehlerbereich({
   );
 }
 
+// ================================================================================================
+// JOB 3783 · DIE ADMINFREIGABE FÜR DIE ÖFFENTLICHE KI — UND DIE FOLGESCHALTUNG, DIE NICHTS VERLIERT.
+// ================================================================================================
+//
+// DER ZUSTAND VORHER: der Kern sperrt seit `1.0.0-beta.1.326` („nur `true` zählt",
+// `services/reasoner/src/service.ts:658-660`), der Schreibweg existiert
+// (`PUT /api/reasoner/config`, Rumpffeld `kiFreigabe`) — aber `kiFreigabe` kam in `apps/web/src`
+// NULL mal vor. Niemand konnte die öffentliche KI freischalten, ohne die Schnittstelle von Hand zu
+// rufen.
+//
+// DER FEHLER, AN DEM JOB 3501 DREIMAL GESCHEITERT IST (Prüferurteil, Runde 3, wörtlich): „verwirft
+// die PUT-Antwort und wartet die Aktualisierung nicht ab. Danach sind die Schalter wieder bedienbar
+// und schreiben einen veralteten Zielstand."
+//
+// Das ist kein Anzeigefehler, sondern ein Zustandsfehler: die Basis der nächsten Schaltung kam aus
+// der ABFRAGE. Die hinkt nach einem erfolgreichen PUT so lange hinterher, wie das Nachladen
+// braucht — und ein zweiter Klick in diesem Fenster schrieb den Stand von VOR dem ersten zurück.
+//
+// DIE KORREKTUR HAT GENAU EINEN SATZ: die Basis jeder Schaltung ist die zuletzt vom Server
+// BESTÄTIGTE Antwort, nie der Nachhall der Abfrage. Drei Teile tragen ihn:
+//
+//   1  Der PUT antwortet mit dem frischen `configStatus` (`reasoner-routes.ts:863`). Diese Antwort
+//      wird ÜBERNOMMEN (`bestaetigt`) und ist ab da die Basis — für Anzeige UND Rumpf des nächsten
+//      PUT. Das Nachladen darf beliebig lange dauern.
+//   2  Die Bestätigung gilt, bis die Abfrage sie EINGEHOLT hat. Dass ein danach eintreffender Abruf
+//      nicht älter sein kann, trägt `invalidateQueries` unmittelbar nach der Bestätigung: es bricht
+//      einen laufenden Abruf ab und startet ihn neu (`cancelRefetch` ist die Vorgabe). Ein Abruf,
+//      der VOR dem PUT begann und dessen Antwort den Stand von vorher trägt, kommt damit nicht
+//      mehr an. GEMESSEN, nicht geglaubt: Fall V5 in `tests/admin-ki-oberflaeche/`.
+//   3  Scheitert das Nachladen, sagt die Fläche das und SPERRT weitere Änderungen — sie rät nicht.
+//
+// WARUM DIE SCHALTER SONST BEDIENBAR BLEIBEN (Auftrag §6 verbietet „ohne verlässlichen Stand"):
+// weil ein verlässlicher Stand VORLIEGT — die bestätigte Antwort des Servers selbst.
+//
+// WAS HIER NICHT PASSIERT: kein zweites Protokoll (der Server schreibt es, `FREIGABE_ZIEL`), keine
+// zweite Rechteprüfung als Ersatz (der Server prüft `users.manage`), kein Eingriff in den Kern.
+//
+// ------------------------------------------------------------------------------------------------
+// RUNDE 2 — WAS RUNDE 1 ÜBERSEHEN HAT: ES SIND ZWEI SCHREIBER AUF DERSELBEN KONFIGURATION.
+// ------------------------------------------------------------------------------------------------
+//
+// Runde 1 hat das Zeitfenster zwischen PUT und Nachladen geschlossen — aber nur für die Abfrage.
+// Der Prüfer hat den zweiten Schreiber gefunden und den Verlust GEMESSEN (BEN, Runde 1, wörtlich):
+//
+//   „Eine verspätete Zuordnungs-PUT-Antwort kann eine bestätigte Freigabe überschreiben; die
+//    nächste Schaltung löscht sie tatsächlich." · „Beide Mutationen können gleichzeitig laufen."
+//    · „Antwortankunft wird dadurch mit Aktualität verwechselt."
+//
+// SEIN ABLAUF, Schritt für Schritt — und warum am Ende `[false,true]` im Protokoll stand:
+//   1  Zuordnung speichern. Der Server verarbeitet den PUT; seine Antwort trägt die Freigabe von
+//      JETZT (`{false,false}`) und bleibt unterwegs hängen.
+//   2  Öffentliche KI einschalten. Dieser PUT kommt durch, der Server steht auf `{true,false}`,
+//      die Karte übernimmt die Bestätigung. Alle GETs hängen.
+//   3  Die ALTE Zuordnungsantwort trifft ein. Runde 1 übernahm sie vorbehaltlos
+//      (`setBestaetigt(standAus(daten))`, Zeile 516) — die Basis fiel auf `{false,false}` zurück.
+//   4  Vertrauliches bestätigen. Der Rumpf entsteht aus dieser zurückgefallenen Basis und schreibt
+//      `{oeffentlicheKi:false, vertraulicheInhalte:true}`. Die Freigabe war nicht nur falsch
+//      angezeigt, sie war WEG — im unabhängigen GET und im echten Audit.
+//
+// DIE KORREKTUR HAT WIEDER GENAU EINEN SATZ: Zuordnung und Freigabe sind EIN Schreibkanal mit EINER
+// Nummernfolge. Daraus folgen die zwei Zusagen, die der Prüfer verlangt:
+//
+//   A  EIN SCHREIBEN ZUR ZEIT. Solange irgendein PUT auf `reasoner.config` unterwegs ist, ist der
+//      geltende Stand offen — dann sperren BEIDE Bedienungen einander, nicht nur sich selbst
+//      (Auftrag §4: „weitere Änderungen bis zu einem verlässlichen Stand sperren"). Die Sperre
+//      hängt nicht am `disabled`-Merkmal allein: `schreibnummer()` zieht sie synchron beim Auslösen,
+//      also auch dann, wenn zwei Klicks in dasselbe Bild fallen und noch kein `disabled` steht.
+//      Schritt 2 des Ablaufs oben ist damit gar nicht mehr möglich.
+//   B  EINE ANTWORT ZÄHLT NUR VORWÄRTS. Übernommen wird eine PUT-Antwort nur, wenn ihre Nummer
+//      nicht kleiner ist als die der geltenden Bestätigung. Ankunft ist nicht Aktualität; die
+//      Nummer wird beim ABSENDEN gezogen. Schritt 3 des Ablaufs oben liefe damit ins Leere.
+//
+// A allein würde BENs Ablauf schon brechen. B steht daneben, weil A eine Bedienregel ist und B eine
+// Zustandsregel: solange nur A trüge, hinge die Richtigkeit des gespeicherten Standes daran, dass
+// keine Bedienung je an der Sperre vorbeikommt. Mit B ist das Zurückfallen strukturell unmöglich.
+
+/** Die beiden Schalter der Adminfreigabe — genau der Rumpf, den `PUT /api/reasoner/config` kennt. */
+interface KiFreigabeStand {
+  readonly oeffentlicheKi: boolean;
+  readonly vertraulicheInhalte: boolean;
+}
+
+/**
+ * Der bestätigte Stand der Karte: Zuordnung UND Freigabe, so wie der Server sie zuletzt meldete.
+ *
+ * Die Zuordnung gehört dazu, weil der Schreibweg EINER ist: ein fehlendes `global` liest der Server
+ * als „auto" (`reasoner-routes.ts:799`). Ein Freigabe-PUT, der die Zuordnung aus einer veralteten
+ * Abfrage mitschickte, stellte sie nebenbei zurück — derselbe Fehler, anderes Feld.
+ */
+interface KiStand {
+  readonly global: string;
+  readonly perTask: Record<string, string>;
+  readonly freigabe: KiFreigabeStand;
+}
+
+/** Eine stabile leere Zuordnung — sonst bekäme jeder Rendergang ein neues Objekt. */
+const KEINE_AUFGABEN: Record<string, string> = {};
+
+/**
+ * Die Freigabe aus einer Serverantwort — „nur `true` zählt", wortgleich zur Lesart des Servers
+ * (`services/app/src/routes/reasoner-routes.ts:279-289` und `service.ts:658-660`): `false`,
+ * „fehlt" und ein fremder Wert sind dasselbe, nämlich NICHT freigegeben.
+ *
+ * Gelesen wird aus `unknown` und nicht über den Clienttyp: `ReasonerConfigStatus.taskConfig`
+ * (`api/types.ts:1845`) kennt das Feld heute nicht, und `api/types.ts` steht nicht in den
+ * Zielpfaden dieses Auftrags. Die Laufzeitprüfung ist hier ohnehin der härtere Vertrag — ein
+ * älterer Server schickt das Feld gar nicht.
+ */
+function freigabeAus(konfig: ReasonerConfigStatus | undefined): KiFreigabeStand {
+  const taskConfig: Record<string, unknown> | undefined = konfig?.taskConfig;
+  const roh = taskConfig?.kiFreigabe;
+  const feld = typeof roh === "object" && roh !== null ? (roh as Record<string, unknown>) : {};
+  return {
+    oeffentlicheKi: feld.oeffentlicheKi === true,
+    vertraulicheInhalte: feld.vertraulicheInhalte === true,
+  };
+}
+
+/** Der Stand aus einer Serverantwort — aus der Abfrage ODER aus der Antwort eines PUT. */
+function standAus(konfig: ReasonerConfigStatus | undefined): KiStand {
+  return {
+    global: konfig?.taskConfig.global ?? "auto",
+    perTask: konfig?.taskConfig.perTask ?? KEINE_AUFGABEN,
+    freigabe: freigabeAus(konfig),
+  };
+}
+
+/**
+ * RUNDE 2, Zusage B als Regel: zählt eine eingetroffene Schreibantwort vorwärts?
+ *
+ * `geltendeNummer` ist die der aktuellen Bestätigung (`null`: es gibt noch keine). Eine Antwort,
+ * deren Nummer KLEINER ist, wurde vor der geltenden Bestätigung abgeschickt und trägt den Stand von
+ * damals — sie wird verworfen, nicht übernommen. Gleichstand zählt (dieselbe Antwort, nichts Neues).
+ *
+ * Diese Regel steht als eigene Funktion, damit sie für sich messbar ist: der Schreibkanal
+ * (`schreibnummer`) lässt immer nur EIN Schreiben zu und macht das Überholen im Betrieb unmöglich —
+ * ohne eigene Prüfung wäre die Regel damit eine Behauptung ohne Beleg.
+ */
+export function antwortZaehlt(geltendeNummer: number | null, antwortNummer: number): boolean {
+  return geltendeNummer === null || antwortNummer >= geltendeNummer;
+}
+
+function gleicheFreigabe(a: KiFreigabeStand, b: KiFreigabeStand): boolean {
+  return a.oeffentlicheKi === b.oeffentlicheKi && a.vertraulicheInhalte === b.vertraulicheInhalte;
+}
+
+/** Hat die Abfrage den bestätigten Stand eingeholt — Zuordnung und Freigabe? */
+function gleicherStand(a: KiStand, b: KiStand): boolean {
+  return (
+    a.global === b.global &&
+    gleichePerTask(a.perTask, b.perTask) &&
+    gleicheFreigabe(a.freigabe, b.freigabe)
+  );
+}
+
+// ------------------------------------------------------------------------------------------------
+// DIE SÄTZE DER FREIGABE — und warum sie in dieser Datei stehen.
+// ------------------------------------------------------------------------------------------------
+// Die Zielpfade dieses Auftrags sind diese Datei und `tests/admin-ki-oberflaeche/`; das Wörterbuch
+// `apps/web/src/i18n.ts` gehört NICHT dazu. Die Sätze werden deshalb hier gehalten und als
+// Ressourcenbündel nachgereicht: derselbe Namensraum („translation"), dieselben Schlüssel, dieselbe
+// Prüfbarkeit über `i18n.getResource(<sprache>, "translation", <schlüssel>)`. `overwrite: false`
+// heißt: zieht das Wörterbuch die Sätze später zu sich, gewinnt es — nicht diese Datei.
+const FREIGABE_TEXTE_DE = {
+  "adm.ai.freigabe.titel": "Freigabe für die öffentliche KI",
+  "adm.ai.freigabe.oeffentlich": "Öffentliche KI erlauben",
+  "adm.ai.freigabe.vertraulich": "Auch vertrauliche Inhalte an die öffentliche KI",
+  "adm.ai.freigabe.stand": "Öffentliche KI: {{oeffentlich}} · Vertrauliches: {{vertraulich}}",
+  "adm.ai.freigabe.an": "freigegeben",
+  "adm.ai.freigabe.aus": "gesperrt",
+  "adm.ai.freigabe.wirkungslos":
+    "Ohne die Grundfreigabe wirkungslos — es geht nichts an eine öffentliche KI.",
+  "adm.ai.freigabe.vertraulichWarnung":
+    "Damit gehen auch als vertraulich eingestufte Texte an den externen Anbieter. Bitte ausdrücklich bestätigen.",
+  "adm.ai.freigabe.vertraulichJa": "Ja, auch Vertrauliches freigeben",
+  "adm.ai.freigabe.abbrechen": "Abbrechen",
+  "adm.ai.freigabe.gespeichert": "Freigabe gespeichert.",
+  "adm.ai.freigabe.nachladen": "Vom Server bestätigt — der Stand wird nachgeladen.",
+  "adm.ai.freigabe.nachladenFehler":
+    "Der Stand konnte nicht nachgeladen werden — weitere Änderungen sind bis dahin gesperrt.",
+} as const;
+const FREIGABE_TEXTE_EN = {
+  "adm.ai.freigabe.titel": "Public AI clearance",
+  "adm.ai.freigabe.oeffentlich": "Allow public AI",
+  "adm.ai.freigabe.vertraulich": "Also send confidential content to the public AI",
+  "adm.ai.freigabe.stand": "Public AI: {{oeffentlich}} · Confidential: {{vertraulich}}",
+  "adm.ai.freigabe.an": "cleared",
+  "adm.ai.freigabe.aus": "blocked",
+  "adm.ai.freigabe.wirkungslos":
+    "Without the basic clearance this has no effect — nothing goes to a public AI.",
+  "adm.ai.freigabe.vertraulichWarnung":
+    "This sends text classified as confidential to the external provider as well. Please confirm explicitly.",
+  "adm.ai.freigabe.vertraulichJa": "Yes, also clear confidential content",
+  "adm.ai.freigabe.abbrechen": "Cancel",
+  "adm.ai.freigabe.gespeichert": "Clearance saved.",
+  "adm.ai.freigabe.nachladen": "Confirmed by the server — reloading the state.",
+  "adm.ai.freigabe.nachladenFehler":
+    "The state could not be reloaded — further changes are blocked until it is.",
+} as const;
+const FREIGABE_TEXTE_NL = {
+  "adm.ai.freigabe.titel": "Vrijgave voor de openbare AI",
+  "adm.ai.freigabe.oeffentlich": "Openbare AI toestaan",
+  "adm.ai.freigabe.vertraulich": "Ook vertrouwelijke inhoud naar de openbare AI",
+  "adm.ai.freigabe.stand": "Openbare AI: {{oeffentlich}} · Vertrouwelijk: {{vertraulich}}",
+  "adm.ai.freigabe.an": "vrijgegeven",
+  "adm.ai.freigabe.aus": "geblokkeerd",
+  "adm.ai.freigabe.wirkungslos":
+    "Zonder de basisvrijgave heeft dit geen effect — er gaat niets naar een openbare AI.",
+  "adm.ai.freigabe.vertraulichWarnung":
+    "Hiermee gaat ook als vertrouwelijk aangemerkte tekst naar de externe aanbieder. Bevestig dit uitdrukkelijk.",
+  "adm.ai.freigabe.vertraulichJa": "Ja, ook vertrouwelijke inhoud vrijgeven",
+  "adm.ai.freigabe.abbrechen": "Annuleren",
+  "adm.ai.freigabe.gespeichert": "Vrijgave opgeslagen.",
+  "adm.ai.freigabe.nachladen": "Door de server bevestigd — de stand wordt opnieuw geladen.",
+  "adm.ai.freigabe.nachladenFehler":
+    "De stand kon niet opnieuw worden geladen — verdere wijzigingen zijn tot dan geblokkeerd.",
+} as const;
+i18n.addResourceBundle("de", "translation", FREIGABE_TEXTE_DE, true, false);
+i18n.addResourceBundle("en", "translation", FREIGABE_TEXTE_EN, true, false);
+i18n.addResourceBundle("nl", "translation", FREIGABE_TEXTE_NL, true, false);
+
+/** Ein Schalter der Freigabe: Kästchen, Beschriftung — statische Klassen, kein Zustand in der Kette. */
+const FREIGABE_ZEILE = "flex items-start gap-2 text-[12.5px] font-semibold text-text";
+const FREIGABE_KASTEN = "mt-0.5 h-4 w-4 shrink-0 accent-ai disabled:opacity-50";
+
 export function KiDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element {
   const { t } = useTranslation();
   const qc = useQueryClient();
@@ -294,8 +520,68 @@ export function KiDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element 
   const [aiPerTask, setAiPerTask] = useState<Record<string, string> | null>(null);
   // Pedi-Feedback 02.07. („etwas unübersichtlich"): Feinabstimmung je Einsatz eingeklappt.
   const [showAiDetail, setShowAiDetail] = useState(false);
-  const effGlobal = aiGlobal ?? aiConfig.data?.taskConfig.global ?? "auto";
-  const effPerTask = aiPerTask ?? aiConfig.data?.taskConfig.perTask ?? {};
+  // JOB 3783: DER BESTÄTIGTE STAND (Begründung im Block über dieser Komponente). Er lebt, bis die
+  // Abfrage ihn eingeholt hat — und nur er ist Basis von Anzeige und nächstem Rumpf. `nummer` ist
+  // die des Schreibens, das ihn erzeugt hat (Runde 2, Zusage B).
+  const [bestaetigt, setBestaetigt] = useState<{
+    stand: KiStand;
+    um: number;
+    nummer: number;
+  } | null>(null);
+  // Runde 2, der EINE Schreibkanal für Zuordnung UND Freigabe. Beides sind Refs und keine Zustände:
+  // sie müssen SYNCHRON beim Auslösen gelten, nicht erst im nächsten Bild — sonst käme ein zweiter
+  // Klick, der in dasselbe Bild fällt, an der Sperre vorbei (Zusage A).
+  const letzteNummer = useRef(0);
+  /** Die Nummer des laufenden Schreibens — `null` heißt: der Kanal ist frei. */
+  const laufendesSchreiben = useRef<number | null>(null);
+  /**
+   * Zieht die Nummer für ein Schreiben — oder `null`, wenn schon eines unterwegs ist. Wer hier
+   * `null` bekommt, schreibt NICHT: der geltende Stand ist bis zur Antwort offen.
+   */
+  const schreibnummer = (): number | null => {
+    if (laufendesSchreiben.current !== null) {
+      return null;
+    }
+    letzteNummer.current += 1;
+    laufendesSchreiben.current = letzteNummer.current;
+    return letzteNummer.current;
+  };
+  /**
+   * Eine bestätigte Antwort wird die neue Basis — aber nur VORWÄRTS (Zusage B). Die verspätete
+   * Antwort eines früheren Schreibens trägt den Stand von damals; sie darf eine neuere Bestätigung
+   * nicht ersetzen. Genau daran ist Runde 1 gescheitert (BENs Gegenprobe, Audit `[false,true]`).
+   */
+  const uebernehmen = (antwort: ReasonerConfigStatus, nummer: number): void => {
+    setBestaetigt((alt) =>
+      antwortZaehlt(alt?.nummer ?? null, nummer)
+        ? { stand: standAus(antwort), um: Date.now(), nummer }
+        : alt,
+    );
+  };
+  /** Der Kanal wird frei, sobald das Schreiben beantwortet ist — erfolgreich oder nicht. */
+  const kanalFreigeben = (nummer: number): void => {
+    if (laufendesSchreiben.current === nummer) {
+      laufendesSchreiben.current = null;
+    }
+  };
+  // Die Ablösung, synchron vor dem Rendern (dieselbe Bauform wie das Störungsgedächtnis der Hülle,
+  // `components/einstellungen/Abfragehuelle.tsx:130-135`). ZWEI Wege führen hinaus, beide sicher:
+  //   · ein Abruf, der NACH der Bestätigung im Cache landete — weil `invalidateQueries` einen noch
+  //     laufenden abbricht und neu startet, hat er auch nach ihr begonnen und ist nicht älter (V5);
+  //   · ein Abruf, der denselben Stand meldet — dann ist die Bestätigung schlicht überflüssig.
+  // Der zweite Weg ist nicht Zierde: in einem Lauf ohne echte Latenz können beide Zeitstempel in
+  // dieselbe Millisekunde fallen, und die Karte behauptete sonst ewig „wird nachgeladen".
+  if (
+    bestaetigt !== null &&
+    aiConfig.data !== undefined &&
+    (aiConfig.dataUpdatedAt > bestaetigt.um ||
+      gleicherStand(standAus(aiConfig.data), bestaetigt.stand))
+  ) {
+    setBestaetigt(null);
+  }
+  const basis = bestaetigt?.stand ?? standAus(aiConfig.data);
+  const effGlobal = aiGlobal ?? basis.global;
+  const effPerTask = aiPerTask ?? basis.perTask;
   // SCRUM-525 P.5 (WP-C): per Deploy-ENV festgelegt → die Karte sperrt die Auswahl und sagt es.
   const gesperrt = aiConfig.data?.policySource === "env";
   // Key-Test (Pedi 02.07.): echter Mini-Modellaufruf; Ergebnis bleibt sichtbar stehen — bis die
@@ -304,9 +590,15 @@ export function KiDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element 
   const aiSave = useMutation({
     // JOB 3134: der Entwurf wird als PAYLOAD mitgegeben, nicht aus dem Zustand gelesen — nur so
     // weiss der Erfolgsfall unten, WAS gesendet wurde.
-    mutationFn: (payload: { global: string; perTask: Record<string, string> }) =>
-      endpoints.reasoner.updateConfig(payload),
-    onSuccess: (_daten, payload) => {
+    // Runde 2: `nummer` reist als Variable mit, NICHT im Rumpf — `updateConfig` bekommt nur die
+    // beiden Felder, die die Route kennt (`reasoner-routes.ts:744-751`).
+    mutationFn: (payload: {
+      global: string;
+      perTask: Record<string, string>;
+      nummer: number;
+    }) => endpoints.reasoner.updateConfig({ global: payload.global, perTask: payload.perTask }),
+    onSuccess: (daten, payload) => {
+      kanalFreigeben(payload.nummer);
       void qc.invalidateQueries({ queryKey: ["reasonerConfig"] });
       // AUFTRAG kimodus-live: die Topbar-Badges hängen an EIGENEN Queries — ohne diese
       // Invalidierung springt die Topbar erst nach Hard-Reload auf den neuen Modus.
@@ -318,6 +610,14 @@ export function KiDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element 
       setAiPerTask((aktuell) =>
         aktuell === null || gleichePerTask(aktuell, payload.perTask) ? null : aktuell,
       );
+      // JOB 3783 (Korrekturpflicht 1 des Prüfers, „verwirft die PUT-Antwort", 3501 R3): auch DIESER
+      // Weg übernimmt jetzt, was der Server bestätigt hat. `daten` ist der frische `configStatus`
+      // (`reasoner-routes.ts:863`) — samt der Freigabe, die das Speichern der Zuordnung bewusst
+      // NICHT mitschickt und die der Server deshalb unverändert lässt (Vertrag §3, JOB 3549).
+      //
+      // RUNDE 2: und zwar über `uebernehmen`, also nur VORWÄRTS. Verspätet eingetroffen trägt diese
+      // Antwort eine Freigabe von vor der letzten Bestätigung — sie darf sie nicht zurücksetzen.
+      uebernehmen(daten, payload.nummer);
       // JOB 3134: ein altes Prüfergebnis gilt nicht für die neue Zuordnung — weg damit, bis neu
       // geprüft wird (P03 Lieferumfang 3).
       aiTest.reset();
@@ -325,8 +625,73 @@ export function KiDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element 
     },
     // Bei Speicherfehler bleibt der Entwurf stehen (Hinweis „nicht gespeichert") und der Server
     // behält den alten Stand — die Statuszeile zeigt weiter die gespeicherte Zuordnung.
-    onError: (e) => push("error", e instanceof ApiError ? e.message : t("state.error")),
+    onError: (e, payload) => {
+      kanalFreigeben(payload.nummer);
+      push("error", e instanceof ApiError ? e.message : t("state.error"));
+    },
   });
+  // JOB 3783: die ausdrückliche Bestätigung des ZWEITEN, teureren Schalters (Vertrag §5). Sie ist
+  // ein Zwischenschritt der Fläche, keine zweite Entscheidung: gesendet wird erst auf „Ja".
+  const [vertraulichFrage, setVertraulichFrage] = useState(false);
+  // JOB 3783: der Schreibweg der Freigabe — DERSELBE Endpunkt wie die Zuordnung, kein zweiter
+  // Adminweg (JOB 3549: „ein zweiter Adminweg wäre ein zweites Recht, ein zweites Protokoll").
+  //
+  // Er geht bewusst nicht über `endpoints.reasoner.updateConfig`: dessen Signatur
+  // (`api/endpoints.ts:613`) kennt `kiFreigabe` nicht, und `api/endpoints.ts` steht nicht in den
+  // Zielpfaden dieses Auftrags. Sein Platz dort steht in der Rückgabe unter ABWEICHUNGEN.
+  const freigabeSpeichern = useMutation({
+    mutationFn: (auftrag: { naechste: KiFreigabeStand; nummer: number }) =>
+      api.put<ReasonerConfigStatus>("/reasoner/config", {
+        // Die BESTÄTIGTE Zuordnung, nicht der Entwurf: ein Klick auf einen Freigabeschalter darf
+        // keine ungespeicherte Anbieterwahl nebenbei übernehmen — und keine gespeicherte verlieren.
+        // RUNDE 2: `basis` ist hier verlässlich, weil der Kanal frei war — es kann kein Schreiben
+        // unterwegs sein, dessen Antwort diese Zuordnung gerade ändert.
+        global: basis.global,
+        perTask: basis.perTask,
+        kiFreigabe: auftrag.naechste,
+      }),
+    onSuccess: (antwort, auftrag) => {
+      kanalFreigeben(auftrag.nummer);
+      uebernehmen(antwort, auftrag.nummer);
+      setVertraulichFrage(false);
+      // Unmittelbar nach der Bestätigung, und das ist Teil 2 des Zustandsmodells oben: ein noch
+      // laufender Abruf wird abgebrochen und neu gestartet. Sonst käme seine VOR dem PUT erzeugte
+      // Antwort später an und überholte die Bestätigung mit dem alten Stand (Fall V5).
+      void qc.invalidateQueries({ queryKey: ["reasonerConfig"] });
+      invalidateAiState(qc);
+      push("success", t("adm.ai.freigabe.gespeichert"));
+    },
+    // 409 (ENV-Sperre), 503 (nicht protokollierbar) und jeder andere Fehler: die Freigabe hat NICHT
+    // gewechselt, `bestaetigt` bleibt unberührt, und die Meldung des Servers steht an der Karte.
+    onError: (e, auftrag) => {
+      kanalFreigeben(auftrag.nummer);
+      push("error", e instanceof ApiError ? e.message : t("state.error"));
+    },
+  });
+  /** Zuordnung speichern — über den EINEN Kanal, mit Nummer (Runde 2, Zusage A). */
+  const zuordnungSpeichern = (): void => {
+    const nummer = schreibnummer();
+    if (nummer === null) {
+      return;
+    }
+    aiSave.mutate({ global: effGlobal, perTask: effPerTask, nummer });
+  };
+  /** Freigabe schalten — derselbe Kanal, dieselbe Nummernfolge. */
+  const freigabeSchalten = (naechste: KiFreigabeStand): void => {
+    const nummer = schreibnummer();
+    if (nummer === null) {
+      return;
+    }
+    freigabeSpeichern.mutate({ naechste, nummer });
+  };
+  // Gescheitertes Nachladen heißt: die Karte kennt den geltenden Stand nicht mehr sicher. Dann wird
+  // nicht geraten, sondern gesperrt (Auftrag §7c) — die Hülle hält die Daten daneben sichtbar.
+  const nachladenGescheitert = aiConfig.isError;
+  // RUNDE 2 (BEN: „Beide Mutationen können gleichzeitig laufen."): solange IRGENDEIN Schreiben auf
+  // `reasoner.config` unterwegs ist, ist der geltende Stand offen — dann sperren Freigabe und
+  // Zuordnung einander, nicht nur sich selbst.
+  const schreibenLaeuft = aiSave.isPending || freigabeSpeichern.isPending;
+  const schalterGesperrt = gesperrt || schreibenLaeuft || nachladenGescheitert;
   /** Der lesbare Name eines Auswahlwerts — für Hinweise neben dem Feld. */
   const wahlName = (wahl: string): string => {
     if (wahl === "openai" || wahl === "anthropic") {
@@ -519,6 +884,132 @@ export function KiDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element 
                 {t("adm.ai.envLocked")}
               </output>
             ) : null}
+            {/* ==========================================================================
+              JOB 3783 · DIE FREIGABE. Zwei Schalter, gespeist aus `taskConfig.kiFreigabe`,
+              geschrieben über denselben Adminweg wie die Zuordnung. Die Basis ist `basis` —
+              der bestätigte Stand, nicht `konfig`. Genau darin liegt der Unterschied zu
+              JOB 3501: `konfig` hinkt nach einem PUT so lange nach, wie das Nachladen braucht.
+              ========================================================================== */}
+            <div className="space-y-1.5 border-t border-hairline pt-2.5">
+              <p className="text-[12.5px] font-semibold text-text">{t("adm.ai.freigabe.titel")}</p>
+              <label className={FREIGABE_ZEILE}>
+                <input
+                  type="checkbox"
+                  data-testid="ki-freigabe-oeffentlich"
+                  className={FREIGABE_KASTEN}
+                  checked={basis.freigabe.oeffentlicheKi}
+                  disabled={schalterGesperrt}
+                  onChange={(e) =>
+                    freigabeSchalten({ ...basis.freigabe, oeffentlicheKi: e.target.checked })
+                  }
+                />
+                <span>{t("adm.ai.freigabe.oeffentlich")}</span>
+              </label>
+              <label className={FREIGABE_ZEILE}>
+                <input
+                  type="checkbox"
+                  data-testid="ki-freigabe-vertraulich"
+                  className={FREIGABE_KASTEN}
+                  checked={basis.freigabe.vertraulicheInhalte}
+                  disabled={schalterGesperrt}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      // Erweiterung: erst die Warnung, dann die ausdrückliche Bestätigung.
+                      setVertraulichFrage(true);
+                      return;
+                    }
+                    // Rücknahme führt in die sichere Richtung und braucht keine Rückfrage.
+                    setVertraulichFrage(false);
+                    freigabeSchalten({ ...basis.freigabe, vertraulicheInhalte: false });
+                  }}
+                />
+                <span>{t("adm.ai.freigabe.vertraulich")}</span>
+              </label>
+              {/* Der zweite Schalter ohne den ersten ist WIRKUNGSLOS (`service.ts:658-660`) — das
+                steht da, statt dass die Karte eine Wirkung behauptet, die es nicht gibt. Er bleibt
+                trotzdem bedienbar: beide Einschaltreihenfolgen müssen möglich sein. */}
+              {basis.freigabe.vertraulicheInhalte && !basis.freigabe.oeffentlicheKi ? (
+                <output
+                  data-testid="ki-freigabe-wirkungslos"
+                  className="block rounded-btn bg-trust-warn-bg px-2.5 py-1.5 text-[12px] text-trust-warn-text"
+                >
+                  {t("adm.ai.freigabe.wirkungslos")}
+                </output>
+              ) : null}
+              {vertraulichFrage ? (
+                <div
+                  data-testid="ki-freigabe-vertraulich-frage"
+                  className="rounded-btn bg-trust-warn-bg px-2.5 py-1.5 text-[12px] text-trust-warn-text"
+                >
+                  <p className="font-semibold">{t("adm.ai.freigabe.vertraulichWarnung")}</p>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      data-testid="ki-freigabe-vertraulich-ja"
+                      disabled={schalterGesperrt}
+                      onClick={() =>
+                        freigabeSchalten({ ...basis.freigabe, vertraulicheInhalte: true })
+                      }
+                      className="inline-flex h-7 items-center rounded-btn border border-trust-warn-text/40 px-2.5 text-[11.5px] font-semibold hover:bg-trust-warn-text/10 disabled:opacity-50"
+                    >
+                      {t("adm.ai.freigabe.vertraulichJa")}
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="ki-freigabe-vertraulich-nein"
+                      onClick={() => setVertraulichFrage(false)}
+                      className="inline-flex h-7 items-center rounded-btn px-2.5 text-[11.5px] font-semibold hover:bg-trust-warn-text/10"
+                    >
+                      {t("adm.ai.freigabe.abbrechen")}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+              {/* Was GILT — aus dem bestätigten Stand, nicht aus dem Kästchen daneben. */}
+              <output data-testid="ki-freigabe-stand" className="block text-[12px] text-muted">
+                {t("adm.ai.freigabe.stand", {
+                  oeffentlich: basis.freigabe.oeffentlicheKi
+                    ? t("adm.ai.freigabe.an")
+                    : t("adm.ai.freigabe.aus"),
+                  vertraulich: basis.freigabe.vertraulicheInhalte
+                    ? t("adm.ai.freigabe.an")
+                    : t("adm.ai.freigabe.aus"),
+                })}
+              </output>
+              {nachladenGescheitert ? (
+                <output
+                  data-testid="ki-freigabe-nachladen-fehler"
+                  className="flex flex-wrap items-center gap-2 rounded-btn bg-trust-warn-bg px-2.5 py-1.5 text-[12px] font-semibold text-trust-warn-text"
+                >
+                  <span className="flex-1">{t("adm.ai.freigabe.nachladenFehler")}</span>
+                  <button
+                    type="button"
+                    data-testid="ki-freigabe-erneut"
+                    onClick={() => void aiConfig.refetch()}
+                    className="inline-flex items-center rounded-btn px-2 py-0.5 hover:bg-trust-warn-text/10"
+                  >
+                    {t("loadstate.error.retry")}
+                  </button>
+                </output>
+              ) : bestaetigt !== null ? (
+                <output
+                  data-testid="ki-freigabe-nachladen"
+                  className="block text-[12px] text-muted-2"
+                >
+                  {t("adm.ai.freigabe.nachladen")}
+                </output>
+              ) : null}
+              {freigabeSpeichern.isError ? (
+                <p
+                  data-testid="ki-freigabe-fehler"
+                  className="rounded-btn bg-trust-crit-bg px-2.5 py-1.5 text-[12px] text-trust-crit-text"
+                >
+                  {freigabeSpeichern.error instanceof ApiError
+                    ? freigabeSpeichern.error.message
+                    : t("state.error")}
+                </p>
+              ) : null}
+            </div>
             {/* JOB 3134: ein abgelöster Wert (`cloud`/`model`) aus dem Bestand wurde beim Laden auf
               einen Anbieter überführt — sichtbar, nicht still; „übernehmen" schreibt den neuen Wert. */}
             {konfig.migration ? (
@@ -656,10 +1147,19 @@ export function KiDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element 
               </div>
             ) : null}
             <div className="flex flex-wrap items-center gap-2">
+              {/* RUNDE 2: derselbe Kanal wie die Freigabe — dieser Knopf ruht auch, solange eine
+                Freigabe unterwegs ist, und bei gescheitertem Nachladen (Auftrag §7c: „sperrt
+                weitere Änderungen"). Sein Rumpf trägt `basis.perTask` mit; aus einer Abfrage, die
+                den Stand nicht mehr sicher kennt, wäre das ein geratener Wert. */}
               <Button
                 variant="primary"
-                disabled={gesperrt || aiSave.isPending || (aiGlobal === null && aiPerTask === null)}
-                onClick={() => aiSave.mutate({ global: effGlobal, perTask: effPerTask })}
+                disabled={
+                  gesperrt ||
+                  schreibenLaeuft ||
+                  nachladenGescheitert ||
+                  (aiGlobal === null && aiPerTask === null)
+                }
+                onClick={zuordnungSpeichern}
               >
                 <Sparkles size={14} />
                 {t("adm.ai.save")}

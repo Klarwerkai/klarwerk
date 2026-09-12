@@ -672,6 +672,18 @@ describe("JOB 3134 N: die Nebenwege folgen derselben Wahl — Weltwissen, Urteil
 // AUSDRÜCKLICHE GRENZE: `tests/admin-ki-freigabe/**` steht außerhalb der Fläche. Diese Dateien
 // gehören dem Kern JOB 3549 und dürfen die Feldnamen selbstverständlich schreiben — sie sind das
 // Modul, nicht sein Benutzer.
+//
+// JOB 3783 NACHGEFÜHRT — DIE ZWEITE EIGENTÜMERWURZEL: `tests/admin-ki-oberflaeche/**` misst die
+// BEDIENUNG derselben Freigabe (`AdminKiDetails.tsx`, Schalter, Rumpf des Adminwegs, Protokoll).
+// Sie nennt die Feldnamen aus demselben Grund wie der Kern: sie sind ihr GEGENSTAND, nicht ein
+// Mittel, um nebenbei etwas anderes hinauszulassen. Genau davor schützt F2 — vor dem Aufbau, der
+// sich still eine Freigabe erteilt, um eine fremde Messung grün zu bekommen.
+//
+// WARUM NICHT ÜBER DAS REGISTER `FREIGABE_ERLAUBT`: dessen Bedingung ist die BENUTZUNG des Helfers
+// (F1 verlangt sie wörtlich). Die Oberflächen-Dateien setzen aber gar keine Freigabe auf — sie
+// schalten über die echte Fläche und lesen danach den echten Server. Ein Registereintrag ohne
+// Helferbenutzung machte F1 rot, und ein Helferaufruf, den niemand braucht, wäre eine Zeile, die
+// nur den Wächter bedient. Die Wurzel ist deshalb der ehrliche Ort.
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import type {
@@ -691,8 +703,13 @@ const HELFER = "testhelfer-ki-freigabe";
 /** Diese Datei selbst — sie bewacht, also darf sie die Namen nennen und den Vertrag messen. */
 const DIESE_DATEI = "tests/ki-anbieterwahl/routing-zwei-attrappen.test.ts";
 
-/** Der Kern (JOB 3549) mitsamt seinen eigenen Tests: nicht Benutzer, sondern Eigentümer. */
-const KERN = "tests/admin-ki-freigabe/";
+/**
+ * Die Eigentümer der Freigabe mitsamt ihren eigenen Tests: nicht Benutzer, sondern Gegenstand.
+ *
+ * `tests/admin-ki-freigabe/` — der Kern (JOB 3549: Recht, Protokoll, Wirkung an der Route).
+ * `tests/admin-ki-oberflaeche/` — die Bedienung (JOB 3783: Schalter, Rumpf, Folgeschaltung).
+ */
+const EIGENTUEMER: readonly string[] = ["tests/admin-ki-freigabe/", "tests/admin-ki-oberflaeche/"];
 
 /**
  * DAS REGISTER · wer die KI-Freigabe im Testaufbau setzen darf — je Zeile mit Grund.
@@ -1280,7 +1297,7 @@ const WURZELN: readonly string[] = ["tests", "services", "apps"];
  * Was als Quelle gelesen wird: unter `tests/` jede `.ts`/`.tsx`, sonst nur die TESTS.
  *
  * Die Moduldateien selbst bleiben draußen: sie sind der Gegenstand der Freigabe, nicht ihr
- * Benutzer — dieselbe Grenze, die `KERN` für `tests/admin-ki-freigabe/` zieht.
+ * Benutzer — dieselbe Grenze, die `EIGENTUEMER` für die beiden Freigabe-Wurzeln zieht.
  */
 function istQuelle(pfad: string): boolean {
   if (!pfad.endsWith(".ts") && !pfad.endsWith(".tsx")) return false;
@@ -1302,9 +1319,11 @@ function quellenUnter(verzeichnis: string): string[] {
   return gefunden;
 }
 
-/** Alle Prüfquellen der drei Wurzeln, ohne den Kern — DIESE Datei eingeschlossen. */
+/** Alle Prüfquellen der drei Wurzeln, ohne die Eigentümer — DIESE Datei eingeschlossen. */
 function testquellen(): string[] {
-  return WURZELN.flatMap((wurzel) => quellenUnter(wurzel)).filter((p) => !p.startsWith(KERN));
+  return WURZELN.flatMap((wurzel) => quellenUnter(wurzel)).filter(
+    (p) => !EIGENTUEMER.some((wurzel) => p.startsWith(wurzel)),
+  );
 }
 
 const lies = (pfad: string): string => readFileSync(join(process.cwd(), pfad), "utf8");
