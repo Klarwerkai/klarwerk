@@ -59,6 +59,16 @@ import { ORIGIN, type Seite, type Strecke, fn, strecke } from "../design/h1-chro
 type Sprache = "de" | "en";
 type Flaeche = "import" | "erfassen";
 
+// Wie `Seite` in h1-chromium: nur die hier benötigte Fläche der bereits gestarteten Seite.
+// Ein direkter Paketimport wird vom Tor als weitere Browser-Startstelle gezählt; dieser Test
+// startet aber ausschließlich über die gemeinsame `strecke`.
+interface DateidialogSeite extends Seite {
+  waitForEvent(
+    ereignis: "filechooser",
+    optionen: { timeout: number },
+  ): Promise<{ element(): { getAttribute(name: string): Promise<string | null> } }>;
+}
+
 interface Rechteck {
   left: number;
   right: number;
@@ -538,5 +548,233 @@ describe("JOB 3190 · die Dateikachel bei 320/360/390 px", () => {
       undefined,
       { timeout: 30_000 },
     );
+  });
+  // ==============================================================================================
+  // JOB 3299 · UX-18-R3 — der Prüfrest aus gespraech/CODEX-ANTWORT-97.md:8 und
+  // gespraech/CODEX-ANTWORT-98.md:7; Bens Prüflücke: archiv/3190/runde-2/ben.md:31.
+  // Ausgangslücken, am heutigen Bestand: B1 :385–401 endet an der Kachel; B2/B3 :410 und
+  // B4 :468 setzen den Fokus; B4 :503–536 klickt den Menüweg programmatisch (Helfer :162–178
+  // ebenso). B :385–541 ist DE-only und misst keine Fokusanzeige.
+  // R4/R5 (:280–287/:337–344) tragen die schmalen Namen bereits; keine zweite Breitenmatrix.
+  // Nachführung 09.09.2026 / JOB 3341: die Wegzeile ist ersatzlos entfernt, die Kachel öffnet
+  // direkt die Dateiauswahl. Daher zwei Bedienungsstationen statt vier: Kachel → Auswahlknopf.
+  // Die echten Zeiger-/Tab-Proben und der Fokusvergleich bleiben; Sprachbelege kommen jetzt
+  // vom Kachelnamen und Auswahlknopf. B1–B4 bleiben auf dem von 3341 nachgeführten Stand.
+  describe("JOB 3299 · UX-18-R3 · der Restweg, wirklich begangen", () => {
+    const KACHEL = '[data-id="docx"]';
+    const AUSWAHL = '[data-testid="capture-file-pick"]';
+
+    // Reine Erhebung, keine Bedienung. Auch verdeckende Vorfahren werden mitgemessen.
+    const STATION = `(sel) => {
+      const el = document.querySelector(sel);
+      if (!el) throw new Error('Station fehlt: ' + sel);
+      const r = el.getBoundingClientRect();
+      const css = getComputedStyle(el);
+      const verborgen = [];
+      for (let e = el; e; e = e.parentElement) {
+        const s = getComputedStyle(e);
+        if (e.hidden || e.getAttribute('aria-hidden') === 'true' || s.display === 'none' ||
+            s.visibility === 'hidden' || s.visibility === 'collapse' || s.opacity === '0') {
+          verborgen.push(e.tagName + ':' + (e.getAttribute('data-testid') || e.id || ''));
+        }
+      }
+      return {
+        aktiv: document.activeElement === el,
+        tag: el.tagName, testid: el.getAttribute('data-testid'), id: el.getAttribute('data-id'),
+        text: (el.textContent || '').trim().slice(0, 90), verborgen,
+        left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width, height: r.height,
+        fenster: innerWidth, fensterhoehe: innerHeight,
+        visibility: css.visibility, opacity: css.opacity,
+        outlineStyle: css.outlineStyle, outlineWidth: css.outlineWidth,
+        outlineColor: css.outlineColor, boxShadow: css.boxShadow,
+      };
+    }`;
+    interface Stationsmass {
+      aktiv: boolean;
+      verborgen: string[];
+      left: number;
+      right: number;
+      top: number;
+      bottom: number;
+      width: number;
+      height: number;
+      fenster: number;
+      fensterhoehe: number;
+      outlineStyle: string;
+      outlineWidth: string;
+      outlineColor: string;
+      boxShadow: string;
+    }
+
+    async function anker(seite: Seite, sel: string): Promise<void> {
+      await seite.waitForFunction(fn("(sel) => !!document.querySelector(sel)"), sel, {
+        timeout: 30_000,
+      });
+    }
+
+    async function vorbereitet(sprache: Sprache): Promise<Seite> {
+      if (!stand) throw new Error("Chromium-Prüfstand fehlt");
+      const { seite } = stand;
+      await seite.setViewportSize({ width: 390, height: 720 });
+      // Nur der /import-Zweig: der gemeinsame Helfer bedient hier keinerlei Elemente.
+      await oeffneFlaeche(seite, "import", sprache);
+      // Vor der Bedienung müssen auch die Schriften stehen; kein nachträgliches Nachscrollen.
+      await seite.evaluate(fn(RUHE));
+      expect(
+        await seite.evaluate<string>(fn("() => document.documentElement.lang")),
+        `UX-18-R3 ${sprache}: Sprachwahl vor dem Lesen der Kachel`,
+      ).toBe(sprache);
+      await anker(seite, `${KACHEL} [data-tile-name]`);
+      const ansage = await seite.evaluate<{ name: string; schritte: string[] }>(
+        fn(`(sel) => ({
+          name: document.querySelector(sel + ' [data-tile-name]').innerText.trim(),
+          schritte: [...document.querySelectorAll(sel + ' [data-tile-steps]')]
+            .map((el) => el.textContent.trim()),
+        })`),
+        KACHEL,
+      );
+      console.info(`JOB 3299 · ${sprache} · Kachel: ${JSON.stringify(ansage)}`);
+      expect(ansage.name, `UX-18-R3 ${sprache}: sichtbarer Kachelname`).toBe(
+        i18n.getFixedT(sprache)("imp.gallery.file.docx"),
+      );
+      expect(ansage.schritte, `UX-18-R3 ${sprache}: keine Restschritte seit JOB 3341`).toEqual([]);
+      return seite;
+    }
+
+    function sichtbar(m: Stationsmass, beleg: string, unterkanteRundung = 0): void {
+      expect(m.verborgen, beleg).toEqual([]);
+      expect(m.width, beleg).toBeGreaterThan(0);
+      expect(m.height, beleg).toBeGreaterThan(0);
+      expect(m.fenster, beleg).toBe(390);
+      expect(m.left, beleg).toBeGreaterThanOrEqual(0);
+      expect(m.right, beleg).toBeLessThanOrEqual(390);
+      expect(m.top, beleg).toBeGreaterThanOrEqual(0);
+      expect(m.bottom, beleg).toBeLessThanOrEqual(m.fensterhoehe + unterkanteRundung);
+    }
+
+    async function tabStation(seite: Seite, sel: string, name: string): Promise<void> {
+      await anker(seite, sel);
+      // Falls das Produkt beim Öffnen bereits fokussiert: ausschließlich per Tastatur weggehen,
+      // um DENSELBEN Knoten unfokussiert zu messen, dann regulär wieder mit Tab erreichen.
+      const istAktiv = () =>
+        seite.evaluate<boolean>(
+          fn("(sel) => document.activeElement === document.querySelector(sel)"),
+          sel,
+        );
+      if (await istAktiv()) await seite.keyboard.press("Shift+Tab");
+      const vorher = await seite.evaluate<Stationsmass>(fn(STATION), sel);
+      expect(vorher.aktiv, `${name}: keine unfokussierte Grundlage ${JSON.stringify(vorher)}`).toBe(
+        false,
+      );
+      let tabs = 0;
+      while (!(await istAktiv()) && tabs < 80) {
+        await seite.keyboard.press("Tab");
+        tabs++;
+      }
+      const letzterFokus = await seite.evaluate<string>(
+        fn(`() => {
+        const el = document.activeElement;
+        return JSON.stringify({tag: el?.tagName, testid: el?.getAttribute('data-testid'),
+          id: el?.getAttribute('data-id'), text: (el?.textContent || '').trim().slice(0, 90)});
+      }`),
+      );
+      expect(
+        await istAktiv(),
+        `${name}: nach ${tabs} Tabs; zuletzt fokussiert ${letzterFokus}`,
+      ).toBe(true);
+      // Laufende CSS-Übergänge beenden lassen; kein fester Wartewert als Messgrundlage.
+      await seite.evaluate(
+        fn(`(sel) => Promise.all(document.querySelector(sel).getAnimations()
+        .map((animation) => animation.finished.catch(() => {})))`),
+        sel,
+      );
+      const nachher = await seite.evaluate<Stationsmass>(fn(STATION), sel);
+      const beleg = `${name}: ${tabs} Tabs; vorher=${JSON.stringify(vorher)}; fokussiert=${JSON.stringify(nachher)}`;
+      console.info(`JOB 3299 · keyboard.press · ${beleg}`);
+      expect(nachher.aktiv, beleg).toBe(true);
+      // JOB 3672 R2: Der native Tab-Bildlauf rundet an der Kachel auf ganze CSS-Pixel;
+      // gemessen: bottom=720.34375 bei 720 px Fensterhöhe. Nur deren unterer Außenrand erhält
+      // maximal einen halben Pixel Rundungsspielraum. Am Auswahlknopf bleiben ALLE Grenzen exakt,
+      // ebenso an der Kachel die Oberkante und Seiten. Kein Nachscrollen oder Fokusgriff im Test.
+      // Auch bei einer verletzten Kachelgrenze bis zum Auswahlknopf messen. Der Fall bleibt rot;
+      // so verdeckt ein Fehler an der ersten Station nicht die Bildlage der zweiten.
+      expect.soft(() => sichtbar(nachher, beleg, sel === KACHEL ? 0.5 : 0), beleg).not.toThrow();
+      const outlineGeaendert =
+        nachher.outlineStyle !== vorher.outlineStyle ||
+        nachher.outlineWidth !== vorher.outlineWidth ||
+        nachher.outlineColor !== vorher.outlineColor;
+      const outline =
+        nachher.outlineStyle !== "none" &&
+        Number.parseFloat(nachher.outlineWidth) > 0 &&
+        nachher.outlineColor !== "transparent" &&
+        !/rgba\([^)]*, 0\)$/.test(nachher.outlineColor) &&
+        outlineGeaendert;
+      const schatten = nachher.boxShadow !== "none" && nachher.boxShadow !== vorher.boxShadow;
+      expect(
+        outline || schatten,
+        `${beleg}; keine sichtbare Fokusanzeige gegenüber unfokussiert`,
+      ).toBe(true);
+    }
+
+    async function dateiauswahl(seite: Seite, sprache: Sprache, name: string): Promise<void> {
+      await anker(seite, AUSWAHL);
+      await seite.evaluate(fn(RUHE));
+      expect(new URL(seite.url()).pathname, name).toBe("/erfassen");
+      expect(
+        await seite.evaluate<string>(fn("() => document.documentElement.lang")),
+        `${name}: Sprache am Ziel`,
+      ).toBe(sprache);
+      expect(
+        await seite.evaluate<string>(
+          fn("(sel) => document.querySelector(sel).innerText.trim()"),
+          AUSWAHL,
+        ),
+        `${name}: sichtbarer Auswahlknopf`,
+      ).toBe(i18n.getFixedT(sprache)("capture.file.pick"));
+      const m = await seite.evaluate<Stationsmass>(fn(STATION), AUSWAHL);
+      const accept = await seite.evaluate<string>(
+        fn(`() => document.querySelector('input[type="file"]')?.getAttribute('accept') || ''`),
+      );
+      const beleg = `${name}: capture-file-pick=${JSON.stringify(m)}; accept=${accept}`;
+      console.info(`JOB 3299 · ${beleg}`);
+      expect(accept, beleg).toContain(".docx");
+      expect(accept, beleg).toContain(".pdf");
+      sichtbar(m, beleg);
+    }
+
+    for (const sprache of ["de", "en"] as const) {
+      // JOB 3672: JOB 3378 hat den Bildlauf zum data-wegziel bereits repariert. Die beiden
+      // M1-Fehlerpins aus JOB 3299 werden reguläre Zusagen; alle Geometriegrenzen bleiben bestehen.
+      it(`M1 · ${sprache} · echte Maus bis zur sichtbaren Dateiauswahl in einem Schritt`, async () => {
+        const seite = await vorbereitet(sprache);
+        console.info(`JOB 3299 · ${sprache} · seite.click ${KACHEL}`);
+        await seite.click(KACHEL);
+        // Keine weitere Bedienung: nach dem einen Klick muss das Ziel im Fenster stehen.
+        await dateiauswahl(seite, sprache, `M1 ${sprache}`);
+        const maus = seite as DateidialogSeite;
+        // Die strenge Bildlage ist VOR dem Plattformklick geprüft. Dieser wartet zusätzlich auf
+        // eine stabile Klickfläche; ein zuvor gemessener Koordinatenpunkt kann bei Layoutwechseln
+        // unter Last bereits veraltet sein. Kein programmatischer DOM-Klick.
+        const [dialog] = await Promise.all([
+          maus.waitForEvent("filechooser", { timeout: 5_000 }),
+          seite.click(AUSWAHL),
+        ]);
+        expect(await dialog.element().getAttribute("type"), `M1 ${sprache}: Dateidialog`).toBe(
+          "file",
+        );
+      });
+
+      it(`M2/M3 · ${sprache} · nur Tab/Enter mit sichtbarem Fokus an beiden Stationen`, async () => {
+        const seite = await vorbereitet(sprache);
+        // Einzig erlaubter Startpunkt; kein programmatischer Fokus auf eine Zielstation.
+        await seite.evaluate(fn("() => document.body.focus()"));
+        await tabStation(seite, KACHEL, `${sprache} Kachel docx`);
+        await seite.keyboard.press("Enter");
+        // Der Tab-Lauf geht ohne Menüumweg weiter; seine Scrollwirkung ist echte Bedienung.
+        await tabStation(seite, AUSWAHL, `${sprache} Dateiauswahl capture-file-pick`);
+        await dateiauswahl(seite, sprache, `M2/M3 ${sprache} am Auswahlknopf`);
+        await seite.keyboard.press("Enter");
+      });
+    }
   });
 });
