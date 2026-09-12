@@ -282,6 +282,9 @@ it("beide Original-afterAll messen den echten Chromium-Abschluss", async () => {
   // fahren ausdrücklich OHNE Farbe: das ist die Lage des Tors, und auch sie muss grün bleiben.
   const r = await lauf({ farbe: true });
   const ausgabe = klartext(r.ausgabe);
+  // Eine leere Ausgabe (Unterprozess gar nicht gestartet) darf nicht als „Muster nicht getroffen"
+  // durchgehen, sondern muss sich als das melden, was sie ist.
+  expect(ausgabe, "der Unterprozess hat nichts geschrieben").not.toBe("");
   expect(ausgabe).toMatch(/Test Files\s+2 passed/);
   expect(r.code).toBe(0);
   expect(ausgabe.match(/Chromium-Abbau · .* · [0-9.]+ms · Grenze/g)).toHaveLength(DATEIEN.length);
@@ -291,6 +294,7 @@ it("beide Original-afterAll messen den echten Chromium-Abschluss", async () => {
 it("beide Original-afterAll: dauerhaft fehlender Abschluss bleibt als Dateifehler rot", async () => {
   const r = await lauf({ fehlend: true });
   const ausgabe = klartext(r.ausgabe);
+  expect(ausgabe, "der Unterprozess hat nichts geschrieben").not.toBe("");
   expect(r.code).toBe(1);
   expect(ausgabe).toMatch(/Test Files\s+2 failed/);
   expect(ausgabe).toContain("Abbaugrenze überschritten");
@@ -372,13 +376,18 @@ it("R2 · vorhandene Abbauproben sind für den Produkt-Collector unsichtbar", as
   await mitProbedateien({ fehlend: true }, async (_ordner, dateien) => {
     expect(dateien).toHaveLength(2);
     for (const datei of dateien) expect(existsSync(datei)).toBe(true);
-    const { stdout } = await promisify(execFile)(process.execPath, [
+    const r = await promisify(execFile)(process.execPath, [
       "node_modules/vitest/vitest.mjs",
       "list",
       "--filesOnly",
       "abbau-",
     ]);
-    for (const datei of dateien) expect(stdout).not.toContain(basename(datei));
+    // Auch hier entfärbt, und zwar strenger statt schwächer: eine Farbfolge MITTEN in einem Pfad
+    // liesse ein `not.toContain` falsch grün werden — die Probedatei wäre sichtbar und niemand sähe es.
+    // KEINE „nicht leer"-Vorbedingung wie in den Fällen oben: hier ist die LEERE Liste das erwartete
+    // Ergebnis, der Filter „abbau-" darf nichts finden. Eine leere Ausgabe ist also kein Verdacht.
+    const liste = klartext(r.stdout);
+    for (const datei of dateien) expect(liste).not.toContain(basename(datei));
   });
 });
 
