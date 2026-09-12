@@ -170,6 +170,7 @@ describe("mega29 B2 · ein bereits offenes Paar verbraucht KEINEN Platz unter de
       { cap: CAP, coverage },
     );
     expect(coverage).toEqual({
+      skippedReasons: {},
       available: 6,
       selected: CAP,
       alreadyOpen: 0,
@@ -255,6 +256,8 @@ describe("mega29 B3 · die zusammengefasste Zahl ist eine konservative MINDEST-A
       aborted: true,
     };
     expect(mergeCoverage(conflictRun, duplicateRun)).toEqual({
+      // Altprotokolle ohne Klassen bleiben lesbar; neue Läufe zählen die Gründe separat.
+      skippedReasons: {},
       available: 100,
       selected: 5,
       // „übersprungen, weil schon bekannt" ist eine AUSLASSUNG — konservativ zählt die größere.

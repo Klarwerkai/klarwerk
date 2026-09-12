@@ -8,7 +8,7 @@
 //     Menge und die Tatsache der Deckelung stehen am Ergebnis.
 // A3: ein wegen Kapazität abgebrochener oder teilweise übersprungener Lauf ist als unvollständig
 //     erkennbar — nach derselben Regel.
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createAiCheckRunner } from "../../services/app/src/ai-check-worker";
 import { type AppServices, buildServices } from "../../services/app/src/build-app";
 import { detectConflictsForKo } from "../../services/app/src/conflict-detection";
@@ -207,6 +207,7 @@ describe("mega28 A2 · ein gedeckelter Lauf liest sich NICHT wie ein vollständi
       settings: services.overlapSettings,
     });
     expect(coverage).toEqual({
+      skippedReasons: {},
       available: 3,
       selected: 3,
       alreadyOpen: 0,
@@ -278,6 +279,7 @@ describe("mega28 A2 · ein gedeckelter Lauf liest sich NICHT wie ein vollständi
       },
     );
     expect(merged).toEqual({
+      skippedReasons: {},
       available: 100,
       selected: 5,
       alreadyOpen: 2,
@@ -308,12 +310,12 @@ describe("mega28 A3 · Kapazitätsabbruch und übersprungene Kandidaten sind erk
       // mega31 A1: ein gültiges Nicht-Treffer-URTEIL (nicht `null` — das ist im Reasoner-Vertrag
       // ausnahmslos ein Fehlerausgang). Nur so belegt der Test, dass ZWEI Vergleiche wirklich zu
       // Ende liefen, bevor der dritte in den Rückstau lief.
-      judgeDuplicate: async () => {
+      judgeDuplicateOutcome: async () => {
         calls += 1;
         if (calls >= 3) {
           throw capacityError;
         }
-        return VERSCHIEDEN;
+        return { verdict: VERSCHIEDEN };
       },
       judgeConflict: async () => KEIN_KONFLIKT,
     } as unknown as AppServices["reasoner"];
@@ -342,11 +344,14 @@ describe("mega28 A3 · Kapazitätsabbruch und übersprungene Kandidaten sind erk
     }
     const subj = await makeKo(services, "Subjekt", "subjekt aussage im betrieb ohne deckung");
 
+    // JOB 3484: der beabsichtigte Judge-Fehler muss wirklich ausgelöst werden.
+    // Mutation: zurück auf judgeConflict verdrahten → Aufrufnachweis rot (sonst nur TypeError).
+    const failedJudge = vi.fn(async () => {
+      throw new Error("Modell antwortete nicht verwertbar");
+    });
     const reasoner = {
       status: () => ({ active: true, provider: "spy", mode: "model" }),
-      judgeConflict: async () => {
-        throw new Error("Modell antwortete nicht verwertbar");
-      },
+      judgeConflictOutcome: failedJudge,
       judgeDuplicate: async () => null,
     } as unknown as AppServices["reasoner"];
 
@@ -360,6 +365,7 @@ describe("mega28 A3 · Kapazitätsabbruch und übersprungene Kandidaten sind erk
     expect(coverage.aborted).toBe(false);
     expect(coverage.skipped).toBeGreaterThan(0);
     expect(coverage.skipped).toBe(coverage.attempted);
+    expect(failedJudge).toHaveBeenCalledTimes(coverage.attempted);
     expect(coverage.completed).toBe(0);
     expect(isCompleteRun(coverage)).toBe(false);
   });

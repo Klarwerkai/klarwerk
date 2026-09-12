@@ -245,14 +245,16 @@ describe("mega33 C1 · eine Invariante, drei Spiegel — jede Bedingung einzeln 
     });
     const reasoner = {
       status: () => ({ active: true, provider: "spy", mode: "model" }),
-      judgeDuplicate: async () => ({
-        beziehung: "verschieden" as const,
-        aspects: [],
-        nurInA: "",
-        nurInB: "",
-        empfehlung: "getrennt_lassen" as const,
-        confidence: 0.9,
-        begruendung: "Andere Sachverhalte.",
+      judgeDuplicateOutcome: async () => ({
+        verdict: {
+          beziehung: "verschieden" as const,
+          aspects: [],
+          nurInA: "",
+          nurInB: "",
+          empfehlung: "getrennt_lassen" as const,
+          confidence: 0.9,
+          begruendung: "Andere Sachverhalte.",
+        },
       }),
       judgeConflict: async () => null,
     } as unknown as ReturnType<typeof buildServices>["reasoner"];
@@ -345,19 +347,21 @@ describe("mega32 B · attempted = completed + skipped gilt nur ohne Abbruch", ()
     const capacityError = Object.assign(new Error("busy"), { name: "ModelCapacityError" });
     const reasoner = {
       status: () => ({ active: true, provider: "spy", mode: "model" }),
-      judgeDuplicate: async () => {
+      judgeDuplicateOutcome: async () => {
         calls += 1;
         if (calls >= 3) {
           throw capacityError;
         }
         return {
-          beziehung: "verschieden" as const,
-          aspects: [],
-          nurInA: "",
-          nurInB: "",
-          empfehlung: "getrennt_lassen" as const,
-          confidence: 0.9,
-          begruendung: "Andere Sachverhalte.",
+          verdict: {
+            beziehung: "verschieden" as const,
+            aspects: [],
+            nurInA: "",
+            nurInB: "",
+            empfehlung: "getrennt_lassen" as const,
+            confidence: 0.9,
+            begruendung: "Andere Sachverhalte.",
+          },
         };
       },
       judgeConflict: async () => null,

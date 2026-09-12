@@ -69,6 +69,8 @@ export interface DetectionCoverage {
   // jeden Kandidatenfehler einzeln und läuft weiter — genau die Stelle, an der bens JR-2 einen
   // Teilausfall unsichtbar fand).
   skipped: number;
+  // Nur im Serverlauf; Altprotokolle ohne Gründe bleiben lesbar. Neue Läufe füllen es immer.
+  skippedReasons?: Partial<Record<ComparisonFailureReason, number>>;
   // selected < available ⇒ der Lauf ist KEIN vollständiger Abgleich. Bewusst aus beiden Ursachen
   // gespeist (Deckel UND fachliche Vorauswahl): der Leser fragt „wurde alles angesehen?", nicht
   // „welcher Mechanismus hat gekürzt?". Ein „nein" aus zwei Gründen bleibt ein „nein".
@@ -102,7 +104,25 @@ export interface DetectionCoverage {
 // WARUM HIER UND NICHT JE SCHLEIFE: dieselbe Regel zweimal auszulegen ist genau der Weg, auf dem
 // die beiden Wege auseinanderlaufen — und der Grund, aus dem dieser Befund zweimal repariert und
 // zweimal wiedergefunden wurde. Eine Regel, eine Umsetzung, beide Wege rufen sie auf.
-export type ComparisonOutcome = "completed" | "skipped";
+// Geschlossene, anbieterneutrale Klassen; Reihenfolge ist der vereinbarte Stichentscheid.
+export type ComparisonFailureReason =
+  | "no-model"
+  | "confidential"
+  | "auth"
+  | "rate-limit"
+  | "unreachable"
+  | "bad-response"
+  | "model-timeout"
+  | "model-error";
+
+export interface ComparisonJudgement<T> {
+  verdict: T | null;
+  failureReason?: ComparisonFailureReason;
+}
+
+export type ComparisonOutcome<T> =
+  | { status: "completed"; verdict: T }
+  | { status: "skipped"; verdict: null; reason: ComparisonFailureReason };
 
 // Die Regel als TYPWÄCHTER: sie beantwortet „hat der Reasoner geurteilt?" UND verengt den Typ, damit
 // der Aufrufer danach ohne zweite Prüfung mit dem Urteil weiterarbeiten kann. Ohne die Verengung
@@ -112,8 +132,17 @@ export function isValidVerdict<T>(verdict: T | null | undefined): verdict is T {
   return verdict !== null && verdict !== undefined;
 }
 
-export function comparisonOutcome(verdict: unknown): ComparisonOutcome {
-  return isValidVerdict(verdict) ? "completed" : "skipped";
+export function comparisonOutcome<T extends object>(
+  result: T | null | ComparisonJudgement<T>,
+): ComparisonOutcome<T> {
+  // Bestandsaufrufer (Selbsttests/Dry-run) dürfen weiterhin ein reines Urteil liefern.
+  const judgement =
+    result && "verdict" in result
+      ? (result as ComparisonJudgement<T>)
+      : { verdict: result as T | null };
+  return isValidVerdict(judgement.verdict)
+    ? { status: "completed", verdict: judgement.verdict }
+    : { status: "skipped", verdict: null, reason: judgement.failureReason ?? "model-error" };
 }
 
 export function emptyCoverage(): DetectionCoverage {
@@ -124,6 +153,7 @@ export function emptyCoverage(): DetectionCoverage {
     attempted: 0,
     completed: 0,
     skipped: 0,
+    skippedReasons: {},
     capped: false,
     aborted: false,
   };
@@ -142,7 +172,15 @@ export function emptyCoverage(): DetectionCoverage {
 // Identität attempted = completed + skipped NICHT mehr (sie gilt je Einzellauf). Deshalb zeigt die
 // Oberfläche aus dem zusammengefassten Protokoll nur `completed` gegen `available` — als Mindestwert.
 export function mergeCoverage(a: DetectionCoverage, b: DetectionCoverage): DetectionCoverage {
+  const skippedReasons: NonNullable<DetectionCoverage["skippedReasons"]> = {};
+  for (const coverage of [a, b]) {
+    for (const reason of Object.keys(coverage.skippedReasons ?? {}) as ComparisonFailureReason[]) {
+      skippedReasons[reason] =
+        (skippedReasons[reason] ?? 0) + (coverage.skippedReasons?.[reason] ?? 0);
+    }
+  }
   return {
+    skippedReasons,
     available: Math.max(a.available, b.available),
     selected: Math.min(a.selected, b.selected),
     alreadyOpen: Math.max(a.alreadyOpen, b.alreadyOpen),

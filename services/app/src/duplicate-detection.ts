@@ -16,6 +16,7 @@ import {
 import type { EmbeddingProvider, EmbeddingStore } from "../../embedding";
 import { type KnowledgeObject, type KoService, isConfidential } from "../../knowledge-object";
 import type { Reasoner } from "../../reasoner";
+import { comparisonFailureReason } from "./conflict-detection";
 import { DETECTION_CANDIDATE_CAP } from "./detection-cap";
 
 // K0-2: Erkennungs-Gegenstand ist der Kerntext (title+statement+conditions+measures), nicht bodyHtml.
@@ -97,7 +98,10 @@ export async function detectDuplicatesForKo(
     await deps.overlaps.detectForSubject(
       subjectSubject,
       pool,
-      (a, b, confidential) => deps.reasoner.judgeDuplicate(a, b, "de", confidential),
+      async (a, b, confidential) => {
+        const outcome = await deps.reasoner.judgeDuplicateOutcome(a, b, "de", confidential);
+        return { verdict: outcome.verdict, failureReason: comparisonFailureReason(outcome) };
+      },
       {
         minConfidence,
         // AUFTRAG-mega28 A1 (Pedi 26.07.): Hier stand bis mega27 GAR KEIN cap — der Weg legte den

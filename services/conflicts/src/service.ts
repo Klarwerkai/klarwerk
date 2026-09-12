@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { AuditService } from "../../audit";
 import type { TxContext } from "../../db-tx";
-import { type DetectionCoverage, isValidVerdict } from "./coverage";
+import { type ComparisonJudgement, type DetectionCoverage, comparisonOutcome } from "./coverage";
 import {
   type ConflictVerdict,
   type DetectSubject,
@@ -255,7 +255,11 @@ export class ConflictService {
     pool: readonly DetectSubject[],
     // D-AISTATE PAKET 1 (bens V1): der judge bekommt die restriktivste PAAR-Vertraulichkeit — der
     // Reasoner nimmt bei `true` die Cloud aus der Kette (kein Egress vertraulichen Textes).
-    judge: (coreA: string, coreB: string, confidential: boolean) => Promise<ConflictVerdict | null>,
+    judge: (
+      coreA: string,
+      coreB: string,
+      confidential: boolean,
+    ) => Promise<ConflictVerdict | null | ComparisonJudgement<ConflictVerdict>>,
     // D-AISTATE PAKET 4 (bens V5): `isCurrent` prüft vor dem Persistieren, ob beide gebundenen KO-
     // Versionen noch aktuell sind (Stale-Schreibschutz gegen den revise-Race).
     //
@@ -346,9 +350,9 @@ export class ConflictService {
       }
       attempted += 1;
       writeCoverage();
-      let verdict: ConflictVerdict | null;
+      let result: ConflictVerdict | null | ComparisonJudgement<ConflictVerdict>;
       try {
-        verdict = await judge(
+        result = await judge(
           subjectCore,
           coreText(cand),
           Boolean(subject.confidential) || Boolean(cand.confidential),
@@ -357,19 +361,24 @@ export class ConflictService {
         // Ein Modellfehler darf die Erkennung (und das Einreichen) nie kippen — aber er darf seit
         // AUFTRAG-mega28 A3 auch nicht mehr unsichtbar bleiben: bens JR-2 fand genau hier den
         // Teilausfall, der wie ein sauberer Lauf aussah. Der übersprungene Kandidat wird gezählt.
-        skipped += 1;
-        writeCoverage();
-        continue;
+        result = null;
       }
       // AUFTRAG-mega31 A1 (bens ROT-1): NICHT „normal zurückgekehrt" zählt, sondern „hat geurteilt".
       // Ein 429/no-model/confidential/Parsefehler kommt aus dem Reasoner als `null` zurück, nicht als
       // Wurf — der stand hier bisher als fehlerfrei abgeschlossener Vergleich. Die Regel wohnt in
       // coverage.ts, damit beide Wege sie nicht getrennt auslegen.
-      if (!isValidVerdict(verdict)) {
+      const outcome = comparisonOutcome<ConflictVerdict>(result);
+      if (outcome.status === "skipped") {
         skipped += 1;
+        if (coverage) {
+          coverage.skippedReasons ??= {};
+          const reasons = coverage.skippedReasons;
+          reasons[outcome.reason] = (reasons[outcome.reason] ?? 0) + 1;
+        }
         writeCoverage();
         continue;
       }
+      const verdict = outcome.verdict;
       completed += 1;
       writeCoverage();
       const decision = decideFromVerdict(

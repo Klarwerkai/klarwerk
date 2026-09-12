@@ -10,8 +10,57 @@ import {
   emptyCoverage,
 } from "../../conflicts";
 import { type KnowledgeObject, type KoService, isConfidential } from "../../knowledge-object";
-import type { Reasoner } from "../../reasoner";
+import type {
+  ConflictJudgeOutcome,
+  DuplicateJudgeOutcome,
+  ModelFailureInfo,
+  Reasoner,
+} from "../../reasoner";
 import { DETECTION_CANDIDATE_CAP } from "./detection-cap";
+
+// RT-001 (bens Sammel-Review 3): die STRUKTURIERTE, anbieterneutrale Reasoner-Fehlerklasse
+// (ModelFailureInfo: {failureClass, status?}) → ehrliche, nutzerverständliche Ursache. Das ist der
+// PRIMÄRE Weg im normalen Providerpfad (der Reasoner-Ausgang trägt providerFailure); die Regex in ai-check-worker
+// ist nur noch ENG BEGRENZTER Fallback für geworfene, uneingeordnete Fehler. Es wird nie Rohtext/
+// Anbietername/Status in die Anzeige geführt — nur die Klasse entscheidet den reason-Key.
+export function reasonFromModelFailure(
+  info: ModelFailureInfo,
+): keyof NonNullable<DetectionCoverage["skippedReasons"]> {
+  switch (info.failureClass) {
+    case "timeout":
+      return "model-timeout";
+    case "parse":
+      return "bad-response";
+    case "network":
+      return "unreachable";
+    case "http": {
+      const s = info.status;
+      if (s === 401 || s === 403) {
+        return "auth";
+      }
+      if (s === 429) {
+        return "rate-limit";
+      }
+      if (typeof s === "number" && s >= 500 && s <= 599) {
+        return "unreachable";
+      }
+      // Sonstiger HTTP-Status (z. B. 4xx ohne bekannte Bedeutung) → ehrlich generisch.
+      return "model-error";
+    }
+    default:
+      return "model-error";
+  }
+}
+
+// Nur die anbieterneutrale Klasse verlässt den Reasoner-Adapter. Kein Rohtext und kein
+// Raten aus der Paar-Stufe: no-model/confidential bestimmt weiterhin das Reasoner-Routing.
+export function comparisonFailureReason(
+  outcome: ConflictJudgeOutcome | DuplicateJudgeOutcome,
+): keyof NonNullable<DetectionCoverage["skippedReasons"]> {
+  return outcome.providerFailure
+    ? reasonFromModelFailure(outcome.providerFailure)
+    : (outcome.failure ?? "model-error");
+}
 
 // K0-2: Erkennungs-Gegenstand ist der Kerntext (title+statement+conditions+measures), nicht bodyHtml.
 // D-AISTATE PAKET 1 (bens V1): die Vertraulichkeits-MARKE (Boolean, kein Text) + die Inhaltsversion
@@ -76,7 +125,10 @@ export async function detectConflictsForKo(
     await deps.conflicts.detectForSubject(
       toDetectSubject(subject),
       pool,
-      (a, b, confidential) => deps.reasoner.judgeConflict(a, b, "de", confidential),
+      async (a, b, confidential) => {
+        const outcome = await deps.reasoner.judgeConflictOutcome(a, b, "de", confidential);
+        return { verdict: outcome.verdict, failureReason: comparisonFailureReason(outcome) };
+      },
       {
         // AUFTRAG-mega28 A1 (Pedi 26.07.): Hier stand bis mega27 `Number.POSITIVE_INFINITY` mit dem
         // Kommentar „bens V2: KEIN stiller Cap 8 im Live-Pfad — jeder Kandidat wird dem Judge

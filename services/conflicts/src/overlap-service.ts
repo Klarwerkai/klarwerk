@@ -1,7 +1,12 @@
 import { randomUUID } from "node:crypto";
 import type { AuditService } from "../../audit";
 import type { TxContext } from "../../db-tx";
-import { type ComparisonOutcome, type DetectionCoverage, comparisonOutcome } from "./coverage";
+import {
+  type ComparisonJudgement,
+  type ComparisonOutcome,
+  type DetectionCoverage,
+  comparisonOutcome,
+} from "./coverage";
 import { coreText } from "./detect";
 import {
   type DetectSubject,
@@ -210,7 +215,11 @@ export class OverlapService {
     // D-AISTATE PAKET 1 (bens V1): der judge bekommt die restriktivste PAAR-Vertraulichkeit — der
     // Reasoner nimmt bei `true` die Cloud aus der Kette. Die DETERMINISTISCHE Deckungsprüfung (lokal)
     // läuft für JEDES Paar, auch das vertrauliche (kein Egress).
-    judge: (coreA: string, coreB: string, confidential: boolean) => Promise<OverlapVerdict | null>,
+    judge: (
+      coreA: string,
+      coreB: string,
+      confidential: boolean,
+    ) => Promise<OverlapVerdict | null | ComparisonJudgement<OverlapVerdict>>,
     // D-AISTATE PAKET 4 (bens V5): `isCurrent` = Stale-Schreibschutz vor dem Persistieren.
     options: {
       cap?: number;
@@ -330,8 +339,13 @@ export class OverlapService {
           open,
           created,
         );
-        if (outcome === "skipped") {
+        if (outcome.status === "skipped") {
           skipped += 1;
+          if (coverage) {
+            coverage.skippedReasons ??= {};
+            const reasons = coverage.skippedReasons;
+            reasons[outcome.reason] = (reasons[outcome.reason] ?? 0) + 1;
+          }
         } else {
           completed += 1;
         }
@@ -358,7 +372,11 @@ export class OverlapService {
     subject: DetectSubject,
     cand: DetectSubject,
     subjectCore: string,
-    judge: (coreA: string, coreB: string, confidential: boolean) => Promise<OverlapVerdict | null>,
+    judge: (
+      coreA: string,
+      coreB: string,
+      confidential: boolean,
+    ) => Promise<OverlapVerdict | null | ComparisonJudgement<OverlapVerdict>>,
     options: {
       minConfidence?: number;
       actor?: string;
@@ -370,7 +388,7 @@ export class OverlapService {
     // AUFTRAG-mega31 A1: der Rückgabewert ist der AUSGANG des Vergleichs (hat das Modell geurteilt?),
     // nicht „ist ein Eintrag entstanden?". Ein gültiges „verschieden" ist ein Urteil und damit
     // abgeschlossen, obwohl nichts angelegt wird; ein `null` aus einem Providerfehler ist es nicht.
-  ): Promise<ComparisonOutcome> {
+  ): Promise<ComparisonOutcome<OverlapVerdict>> {
     const lexicalScore = lexicalOverlapScore(subject, cand);
     const candidacy = exhaustiveOverlapCandidacy(lexicalScore);
     const pairConfidential = Boolean(subject.confidential) || Boolean(cand.confidential);
@@ -390,10 +408,11 @@ export class OverlapService {
     //  - Kein zulässiges Modell (vertraulich+cloud-only bzw. gar keins): die deterministische Ebene
     //    trägt allein; der Aufrufer (aiCheck-Runner) schließt den Lauf ehrlich confidential/no-model
     //    ab, NICHT done (der judge-Callback meldet den Ausgang über den Outcome-Vertrag).
-    const verdict = await this.modelVerdict(subjectCore, candCore, judge, pairConfidential);
+    const result = await this.modelVerdict(subjectCore, candCore, judge, pairConfidential);
     // AUFTRAG-mega31 A1: der Ausgang steht HIER fest und hängt allein am Urteil — jeder weitere
     // Ausstieg unten (kein anlegbares Profil, stale) ist ein Ergebnis des Urteils, kein Ausfall.
-    const outcome = comparisonOutcome(verdict);
+    const outcome = comparisonOutcome<OverlapVerdict>(result);
+    const verdict = outcome.verdict;
     const modelBuilt = verdict
       ? OverlapService.buildFromVerdict(verdict, subjectCore, candCore, options.minConfidence)
       : null;
@@ -577,9 +596,13 @@ export class OverlapService {
   private async modelVerdict(
     coreA: string,
     coreB: string,
-    judge: (coreA: string, coreB: string, confidential: boolean) => Promise<OverlapVerdict | null>,
+    judge: (
+      coreA: string,
+      coreB: string,
+      confidential: boolean,
+    ) => Promise<OverlapVerdict | null | ComparisonJudgement<OverlapVerdict>>,
     confidential: boolean,
-  ): Promise<OverlapVerdict | null> {
+  ): Promise<OverlapVerdict | null | ComparisonJudgement<OverlapVerdict>> {
     try {
       return await judge(coreA, coreB, confidential);
     } catch (err) {
@@ -624,11 +647,17 @@ export class OverlapService {
   private async modelBuild(
     coreA: string,
     coreB: string,
-    judge: (coreA: string, coreB: string, confidential: boolean) => Promise<OverlapVerdict | null>,
+    judge: (
+      coreA: string,
+      coreB: string,
+      confidential: boolean,
+    ) => Promise<OverlapVerdict | null | ComparisonJudgement<OverlapVerdict>>,
     confidential: boolean,
     minConfidence?: number,
   ): Promise<BuiltOverlap | null> {
-    const verdict = await this.modelVerdict(coreA, coreB, judge, confidential);
+    const { verdict } = comparisonOutcome<OverlapVerdict>(
+      await this.modelVerdict(coreA, coreB, judge, confidential),
+    );
     return verdict ? OverlapService.buildFromVerdict(verdict, coreA, coreB, minConfidence) : null;
   }
 

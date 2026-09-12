@@ -17,6 +17,7 @@ import {
   createAiCheckWorker,
 } from "../../services/app/src/ai-check-worker";
 import { type AppServices, buildApp, buildServices } from "../../services/app/src/build-app";
+import type { ConflictJudgeOutcome, DuplicateJudgeOutcome } from "../../services/reasoner";
 
 type Reasoner = AppServices["reasoner"];
 
@@ -69,20 +70,42 @@ describe("WP-SHIP8-FINAL (a): revise waehrend laufendem Job → alter Lauf No-op
       release = resolve;
     });
     let judgeCalls = 0;
-    const judge = async (): Promise<null> => {
+    const judge = async (): Promise<void> => {
       judgeCalls += 1;
       await gate;
-      return null;
     };
     const { app, services, userId, headers } = await appWithUser((s) => {
-      const judgeOutcome = async (): Promise<{ verdict: null }> => ({ verdict: await judge() });
       s.reasoner = {
         status: () => ({ active: true, provider: "fake-model", mode: "model" }),
-        judgeConflict: judge,
-        judgeDuplicate: judge,
-        // WP-SHIP8-CLOSE (bens F1): der Runner befragt den Ergebnis-Vertrag — gleiche Gate-Logik.
-        judgeConflictOutcome: judgeOutcome,
-        judgeDuplicateOutcome: judgeOutcome,
+        // JOB 3484: gleiche Gate-Logik, danach gültige Nicht-Treffer statt Nullurteile.
+        // Mutation: beide Urteile durch null ersetzen → der versionsgebundene done-Fall wird rot.
+        judgeConflictOutcome: async (): Promise<ConflictJudgeOutcome> => {
+          await judge();
+          return {
+            verdict: {
+              relation: "kein_konflikt",
+              older: null,
+              confidence: 0.9,
+              begruendung: "Kein Widerspruch",
+              zitat_a: "",
+              zitat_b: "",
+            },
+          };
+        },
+        judgeDuplicateOutcome: async (): Promise<DuplicateJudgeOutcome> => {
+          await judge();
+          return {
+            verdict: {
+              beziehung: "verschieden",
+              aspects: [],
+              nurInA: "",
+              nurInB: "",
+              empfehlung: "getrennt_lassen",
+              confidence: 0.9,
+              begruendung: "Verschiedene Aussagen",
+            },
+          };
+        },
       } as unknown as Reasoner;
     });
     await createKo(app, headers, "Bestand"); // Pool leer → laeuft ohne Judge durch

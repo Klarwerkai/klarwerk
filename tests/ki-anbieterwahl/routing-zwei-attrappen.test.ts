@@ -702,6 +702,18 @@ const KERN = "tests/admin-ki-freigabe/";
  */
 const FREIGABE_ERLAUBT: ReadonlyMap<string, string> = new Map([
   [
+    "tests/review26-teilpruefung-ursache/fixture.ts",
+    "JOB 3484 misst echte Judge-Ausgänge bis zum Runner: ohne Grundfreigabe entstünde no-model " +
+      "statt des injizierten Providerfehlers. Vertrauliche Paare bleiben gesperrt; der Aufbau " +
+      "erteilt ausschließlich die Grundfreigabe, nie eine Freigabe vertraulicher Inhalte.",
+  ],
+  [
+    "tests/review26-teilpruefung-ursache/ursache-je-klasse.test.ts",
+    "JOB 3484 baut für die Gegenlage Cloud ausgeschlossen plus lokaler Netzfehler einen eigenen " +
+      "Reasoner. Die Grundfreigabe erhält den normalen Aufbau; die Cloud-Null und der echte lokale " +
+      "Aufruf bleiben gepinnt. Der widersprüchliche Outcome wird separat ohne Erweiterung injiziert.",
+  ],
+  [
     DIESE_DATEI,
     "Misst den NETZWEG mit zwei Transportattrappen: ohne Grundfreigabe ginge nichts hinaus und " +
       "B1–B7/D1–D6/N2–N3 prüften nur noch die Sperre statt der Empfängerwahl. A2 bekommt gar " +
@@ -1599,6 +1611,27 @@ interface Dateiakte {
  * in messbarer Form: keine Erwartung gesenkt, keine Freigabe dazugeschmuggelt.
  */
 const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
+  // JOB 3484 R10: nur Register/Fallakten nachgeführt; F1–F7 und die leere Vertraulichkeitsliste
+  // bleiben unverändert. Mutation: einen Eintrag entfernen → F1 rot; Cloud-Null löschen → F4 rot.
+  "tests/review26-teilpruefung-ursache/fixture.ts": {
+    gesamtboden: 0, // Aufbauhelfer ohne eigene Erwartungen; seine Verbraucher messen die Ausgänge.
+    vollzaehlig: true,
+    faelle: { VORSPANN: { boden: 0, freigaben: ["erteileKiFreigabe(services.reasoner)"] } },
+  },
+  "tests/review26-teilpruefung-ursache/ursache-je-klasse.test.ts": {
+    gesamtboden: 22,
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: { boden: 0, freigaben: [] },
+      "#1": { boden: 2, freigaben: [] },
+      "#2": { boden: 2, freigaben: [] },
+      "#3": { boden: 3, freigaben: [] },
+      "#4": { boden: 4, freigaben: [] },
+      "#5": { boden: 5, freigaben: ["erteileKiFreigabe(f.services.reasoner)"] },
+      "#6": { boden: 3, freigaben: [] },
+      "#7": { boden: 3, freigaben: [] },
+    },
+  },
   [DIESE_DATEI]: {
     gesamtboden: 105,
     vollzaehlig: true,

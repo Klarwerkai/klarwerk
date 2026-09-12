@@ -22,22 +22,45 @@ import {
   shouldReEnqueueAiCheck,
 } from "../../services/app/src/ai-check-worker";
 import { type AppServices, buildApp, buildServices } from "../../services/app/src/build-app";
+import type { ConflictJudgeOutcome, DuplicateJudgeOutcome } from "../../services/reasoner";
 
 type Reasoner = AppServices["reasoner"];
 
 // Fake-Reasoner mit AKTIVEM Modell: nur die drei vom Pruef-Pfad genutzten Flaechen (status +
 // beide judge-Funktionen) — der uebrige Reasoner-Vertrag wird in diesen Tests nicht beruehrt.
-function fakeModelReasoner(judge: () => Promise<null>): Reasoner {
-  // WP-SHIP8-CLOSE (bens F1): der Runner befragt den Ergebnis-Vertrag (judge*Outcome) — der Fake
-  // delegiert auf denselben judge (verdict null ohne failure = sauberer Nicht-Treffer; ein
-  // geworfener Fehler wirft weiter, exakt wie der echte ModelCapacityError-Durchreich-Pfad).
-  const outcome = async (): Promise<{ verdict: null }> => ({ verdict: await judge() });
+function fakeModelReasoner(beforeJudge: () => Promise<void>): Reasoner {
+  // JOB 3484: Nicht-Treffer sind gültige Urteile. Das gemeinsame Gate darf weiterhin hängen
+  // oder werfen; erst nach seiner Auflösung liefern die Outcome-Methoden das jeweilige Urteil.
+  // Mutation: beide Urteile durch null ersetzen → der done-Fall (b) wird rot.
   return {
     status: () => ({ active: true, provider: "fake-model", mode: "model" }),
-    judgeConflict: judge,
-    judgeDuplicate: judge,
-    judgeConflictOutcome: outcome,
-    judgeDuplicateOutcome: outcome,
+    judgeConflictOutcome: async (): Promise<ConflictJudgeOutcome> => {
+      await beforeJudge();
+      return {
+        verdict: {
+          relation: "kein_konflikt",
+          older: null,
+          confidence: 0.9,
+          begruendung: "Kein Widerspruch",
+          zitat_a: "",
+          zitat_b: "",
+        },
+      };
+    },
+    judgeDuplicateOutcome: async (): Promise<DuplicateJudgeOutcome> => {
+      await beforeJudge();
+      return {
+        verdict: {
+          beziehung: "verschieden",
+          aspects: [],
+          nurInA: "",
+          nurInB: "",
+          empfehlung: "getrennt_lassen",
+          confidence: 0.9,
+          begruendung: "Verschiedene Aussagen",
+        },
+      };
+    },
   } as unknown as Reasoner;
 }
 
@@ -86,7 +109,7 @@ describe("WP-SUBMIT-ASYNC (a): der Submit blockiert nicht mehr auf die KI-Pruefu
     const { app, services, headers } = await appWithUser((s) => {
       // Modell aktiv, aber jedes Urteil haengt fuer immer — der ALTE synchrone Pfad wuerde hier
       // nie antworten (das war Pedis 1:28-min-Messung, nur unendlich).
-      s.reasoner = fakeModelReasoner(() => new Promise<null>(() => {}));
+      s.reasoner = fakeModelReasoner(() => new Promise<void>(() => {}));
     });
     // Erster Beitrag: Pool leer → sein Pruef-Job laeuft ohne Modell-Urteil durch.
     await createKo(app, headers, "Bestand");
@@ -103,7 +126,7 @@ describe("WP-SUBMIT-ASYNC (a): der Submit blockiert nicht mehr auf die KI-Pruefu
 
   it("Promote-Weg (Draft → KO) antwortet ebenfalls prompt 201 + aiCheck pending trotz haengendem Reasoner", async () => {
     const { app, services, headers } = await appWithUser((s) => {
-      s.reasoner = fakeModelReasoner(() => new Promise<null>(() => {}));
+      s.reasoner = fakeModelReasoner(() => new Promise<void>(() => {}));
     });
     await createKo(app, headers, "Bestand");
     await services.aiCheckWorker?.idle();
@@ -134,9 +157,9 @@ describe("WP-SUBMIT-ASYNC (a): der Submit blockiert nicht mehr auf die KI-Pruefu
 });
 
 describe("WP-SUBMIT-ASYNC (b): der Hintergrund-Job laeuft NACH der Antwort und schreibt done", () => {
-  it("Fake-Modell (judge → null) → nach idle() steht aiCheck done mit finishedAt", async () => {
+  it("Fake-Modell (gültige Nicht-Treffer) → nach idle() steht aiCheck done mit finishedAt", async () => {
     const { app, services, headers } = await appWithUser((s) => {
-      s.reasoner = fakeModelReasoner(async () => null);
+      s.reasoner = fakeModelReasoner(async () => {});
     });
     await createKo(app, headers, "Bestand");
     const created = await createKo(app, headers, "Neuer Beitrag");
@@ -149,7 +172,7 @@ describe("WP-SUBMIT-ASYNC (b): der Hintergrund-Job laeuft NACH der Antwort und s
 
   it("resolve ist ein Feld-MERGE: requestedAt des Job-Vermerks bleibt beim done-Write erhalten", async () => {
     const { app, services, headers } = await appWithUser((s) => {
-      s.reasoner = fakeModelReasoner(async () => null);
+      s.reasoner = fakeModelReasoner(async () => {});
     });
     const created = await createKo(app, headers, "Merge-Beweis");
     await services.aiCheckWorker?.idle();

@@ -31,8 +31,7 @@ import type { ConflictService } from "../../conflicts";
 //    nach der Stale-Frist, der einen FRISCHEN Vermerk mit neuer Version setzt).
 import { mergeCoverage } from "../../conflicts";
 import type { AiCheck, AiCheckCoverage, KoService } from "../../knowledge-object";
-import type { ModelFailureInfo, Reasoner } from "../../reasoner";
-import type { ConflictJudgeOutcome, DuplicateJudgeOutcome } from "../../reasoner";
+import type { Reasoner } from "../../reasoner";
 import { detectConflictsForKo } from "./conflict-detection";
 import { type SemanticPrefilter, detectDuplicatesForKo } from "./duplicate-detection";
 
@@ -83,37 +82,9 @@ export interface AiCheckRunOutcome {
   fallbackReason?: AiCheckFailureReason;
 }
 
-// RT-001 (bens Sammel-Review 3): die STRUKTURIERTE, anbieterneutrale Reasoner-Fehlerklasse
-// (ModelFailureInfo: {failureClass, status?}) → ehrliche, nutzerverständliche Ursache. Das ist der
-// PRIMÄRE Weg im normalen Providerpfad (der Reasoner-Ausgang trägt providerFailure); die Regex unten
-// ist nur noch ENG BEGRENZTER Fallback für geworfene, uneingeordnete Fehler. Es wird nie Rohtext/
-// Anbietername/Status in die Anzeige geführt — nur die Klasse entscheidet den reason-Key.
-export function reasonFromModelFailure(info: ModelFailureInfo): AiCheckFailureReason {
-  switch (info.failureClass) {
-    case "timeout":
-      return "model-timeout";
-    case "parse":
-      return "bad-response";
-    case "network":
-      return "unreachable";
-    case "http": {
-      const s = info.status;
-      if (s === 401 || s === 403) {
-        return "auth";
-      }
-      if (s === 429) {
-        return "rate-limit";
-      }
-      if (typeof s === "number" && s >= 500 && s <= 599) {
-        return "unreachable";
-      }
-      // Sonstiger HTTP-Status (z. B. 4xx ohne bekannte Bedeutung) → ehrlich generisch.
-      return "model-error";
-    }
-    default:
-      return "model-error";
-  }
-}
+// Der bestehende Klassifizierer bleibt über diese Fassade verfügbar. Die Implementierung liegt
+// bei der Detection, damit beide Adapter ihn ohne Zyklus Worker -> Detection -> Worker nutzen.
+export { reasonFromModelFailure } from "./conflict-detection";
 
 // RT-001: reine, anbieter-AGNOSTISCHE Klassifizierung eines gefangenen Providerfehlers → ehrliche
 // Ursache. ENG BEGRENZTER Fallback (bens Sammel-Review 3): Wo der strukturierte Reasoner-Weg greift
@@ -492,73 +463,44 @@ export interface AiCheckRunnerDeps {
 // bleiben stehen — nur der Status ist ehrlich failed). Ein GEWORFENER Fehler (ModelCapacityError-
 // Backpressure, Erkennungsfehler über den Log-Haken) zählt weiter als model-error. Ohne aktives
 // Modell lief nur der deterministische Anteil → ehrlich failed/no-model. Nur ein Lauf ohne
-// jeden Fehler ist done. Die detect*-Kerne sehen unverändert die alte judge-Fläche
-// (verdict | null) — keine Kernlogik-Änderung, nur Beobachtung.
+// jeden Fehler ist done. Die detect*-Kerne erhalten Urteil UND neutrale Ursache.
 export function createAiCheckRunner(deps: AiCheckRunnerDeps): AiCheckRunner {
   return async (koId: string): Promise<AiCheckRunOutcome> => {
     let failure: unknown = null;
-    // RT-001 (bens Sammel-Review 3): die FEINE, strukturierte Providerfehler-Klasse (aus dem
-    // Reasoner-Ausgang providerFailure → reasonFromModelFailure) — auth/rate-limit/unreachable/
-    // bad-response/model-timeout. Sie GEWINNT vor der groben Judge-Ursache und wird NICHT wieder auf
-    // „model-error" reduziert. Der grobe Rückfall greift nur, wenn nichts Feineres vorliegt.
-    let structuredReason: AiCheckFailureReason | null = null;
-    let coarseJudge: "model-error" | "model-timeout" | null = null;
-    // D-AISTATE PAKET 1 (bens V1): war die KI-Ebene für IRGENDEIN Paar wegen Vertraulichkeit blockiert
-    // (Cloud raus, kein lokales Modell)? Dann schließt der Lauf ehrlich mit fallbackReason "confidential"
-    // ab — NICHT als schlichtes "done". Ein echter Modellfehler wiegt schwerer und gewinnt (s. unten).
-    let confidentialBlocked = false;
     const captureFailure = (msg: string, err: unknown): void => {
       failure = failure ?? err ?? new Error(msg);
     };
-    // RT-001: den GANZEN Judge-Ausgang lesen — die strukturierte providerFailure hat Vorrang, die grobe
-    // failure ist nur Rückfall. So bleibt die feine Ursache des normalen Providerpfads erhalten.
-    const noteJudgeOutcome = (outcome: ConflictJudgeOutcome | DuplicateJudgeOutcome): void => {
-      if (outcome.providerFailure) {
-        structuredReason = structuredReason ?? reasonFromModelFailure(outcome.providerFailure);
-      }
-      const reported = outcome.failure;
-      if (reported === "model-error" || reported === "model-timeout") {
-        coarseJudge = coarseJudge ?? reported;
-      } else if (reported === "confidential") {
-        confidentialBlocked = true;
-      }
-      // "no-model" trägt der status().active-Check unten — kein Fehler eines Modells.
-    };
     // Schmaler Beobachtungs-Wrapper NUR über die zwei Judge-Flächen, die die detect*-Pfade
     // nutzen — kein Reasoner-Umbau, kein verändertes Routing (der echte Reasoner urteilt über
-    // den F1-Ergebnis-Vertrag; die Kerne bekommen weiter verdict | null).
+    // den F1-Ergebnis-Vertrag; die Kerne bekommen Urteil und neutrale Ursache).
     // Der Struktur-Cast ist bewusst: die detect*-Deps tippen `Reasoner`, brauchen aber genau
     // diese zwei Methoden.
     // D-AISTATE PAKET 1 (bens V1): die Paar-Vertraulichkeit (vom Detection-Kern gesetzt) reicht bis in
     // den Reasoner durch — er nimmt bei `confidential` die Cloud aus der Judge-Kette (kein Egress). Die
     // Signatur spiegelt EXAKT die echte Facade (coreA, coreB, locale, confidential): der App-Root-
-    // Callback ruft judgeConflict(a, b, "de", confidential) — locale ist das dritte Argument.
+    // Callback ruft judgeConflictOutcome(a, b, "de", confidential) — locale ist das dritte Argument.
     const observedReasoner = {
-      judgeConflict: async (
+      judgeConflictOutcome: async (
         a: string,
         b: string,
         locale: "de" | "en" = "de",
         confidential = false,
       ) => {
         try {
-          const outcome = await deps.reasoner.judgeConflictOutcome(a, b, locale, confidential);
-          noteJudgeOutcome(outcome);
-          return outcome.verdict;
+          return await deps.reasoner.judgeConflictOutcome(a, b, locale, confidential);
         } catch (err) {
           failure = failure ?? err;
           throw err;
         }
       },
-      judgeDuplicate: async (
+      judgeDuplicateOutcome: async (
         a: string,
         b: string,
         locale: "de" | "en" = "de",
         confidential = false,
       ) => {
         try {
-          const outcome = await deps.reasoner.judgeDuplicateOutcome(a, b, locale, confidential);
-          noteJudgeOutcome(outcome);
-          return outcome.verdict;
+          return await deps.reasoner.judgeDuplicateOutcome(a, b, locale, confidential);
         } catch (err) {
           failure = failure ?? err;
           throw err;
@@ -583,24 +525,45 @@ export function createAiCheckRunner(deps: AiCheckRunnerDeps): AiCheckRunner {
       },
       captureFailure,
     );
-    const coverage: AiCheckCoverage = mergeCoverage(conflictCoverage, duplicateCoverage);
-    // RT-001: die feinere strukturierte Klasse gewinnt vor der groben Judge-Ursache; die grobe greift
-    // nur, wenn nichts Feineres vorliegt. So bleibt der normale Providerpfad (401/429/5xx/Parse) ehrlich
-    // fein statt pauschal „model-error".
-    const judgeReason = structuredReason ?? coarseJudge;
-    if (judgeReason !== null) {
-      return { ok: false, fallbackReason: judgeReason, coverage };
-    }
+    // Interne Gründe nie persistieren: vollständige Projektion auf den bestehenden Drahtvertrag.
+    const merged = mergeCoverage(conflictCoverage, duplicateCoverage);
+    const coverage: AiCheckCoverage = {
+      available: merged.available,
+      selected: merged.selected,
+      alreadyOpen: merged.alreadyOpen,
+      attempted: merged.attempted,
+      completed: merged.completed,
+      skipped: merged.skipped,
+      capped: merged.capped,
+      aborted: merged.aborted,
+    };
+    // Laufweite Fehler haben Vorrang vor einzelnen Vergleichsausfällen, auch bei Kapazitätsabbruch.
+    // Job-Frist und Queue-Überlauf werden weiterhin außerhalb dieses Runners abgeschlossen.
     if (failure !== null) {
-      // RT-001: ENG BEGRENZTER Regex-Fallback NUR für geworfene, uneingeordnete Fehler (z. B.
-      // ModelCapacityError → model-error; Detection-/Backpressurefehler über den Log-Haken). Der
-      // strukturierte Weg oben hat hier bereits Vorrang gehabt.
       return { ok: false, fallbackReason: classifyAiCheckFailure(failure), coverage };
     }
-    // bens V1: eine vertraulichkeitsbedingte KI-Blockade ist ehrlich "confidential" (Cloud-only), NICHT
-    // "done" — geprüft wurde nur die (lokale) deterministische Ebene, nicht per zulässigem Modell.
-    if (confidentialBlocked) {
-      return { ok: false, fallbackReason: "confidential", coverage };
+    // Häufigste Klasse gewinnt; bei Gleichstand die erste aus der vereinbarten Klassenreihenfolge.
+    // Ausschließlich die zusammengeführte Abdeckung entscheidet, nicht die Reihenfolge der Aufrufe.
+    let comparisonReason: AiCheckFailureReason | undefined;
+    let highestCount = 0;
+    for (const reason of [
+      "no-model",
+      "confidential",
+      "auth",
+      "rate-limit",
+      "unreachable",
+      "bad-response",
+      "model-timeout",
+      "model-error",
+    ] as const) {
+      const count = merged.skippedReasons?.[reason] ?? 0;
+      if (count > highestCount) {
+        highestCount = count;
+        comparisonReason = reason;
+      }
+    }
+    if (merged.skipped > 0) {
+      return { ok: false, fallbackReason: comparisonReason ?? "model-error", coverage };
     }
     if (!deps.reasoner.status().active) {
       return { ok: false, fallbackReason: "no-model", coverage };
