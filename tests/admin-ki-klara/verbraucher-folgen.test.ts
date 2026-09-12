@@ -46,21 +46,14 @@ import {
   type KlaraPolicyQuelle,
   KlaraSessionService,
 } from "../../services/app/src/services/klara-session-service";
-import { InMemoryKlaraSessionRepo, type KlaraPolicyInput } from "../../services/reasoner";
+import { InMemoryKlaraSessionRepo } from "../../services/reasoner";
 
 const JETZT = Date.parse("2026-09-10T09:00:00.000Z");
 
-/**
- * Die Policyquelle MIT dem Ergebnis der zentralen Freigabe.
- *
- * `KlaraPolicyQuelle` führt das Feld heute nicht (die Datei liegt ausserhalb der Zielpfade). Der
- * Dienst reicht seine Quelle unverändert an `resolveKlaraPolicy` weiter — genau diese Durchreiche
- * wird hier benutzt und mitgemessen. Ein eigener Typ statt eines `as never`: was hereingereicht
- * wird, soll lesbar dastehen und nicht in einer Typlüge verschwinden.
- */
-type QuelleMitFreigabe = KlaraPolicyQuelle & {
-  zentralFreigegeben?: KlaraPolicyInput["zentralFreigegeben"];
-};
+// NACHGEFÜHRT DURCH JOB 3767: hier stand ein eigener Typ `QuelleMitFreigabe`, weil
+// `KlaraPolicyQuelle` das Feld nicht führte und der Dienst es nur über `...quelle` durchreichte.
+// Seit JOB 3767 führt sie es selbst (`klara-session-service.ts`, Lieferung 2) — der Hilfstyp wäre
+// jetzt eine Verdopplung, und dass das Feld im echten Vertrag steht, ist gerade der Punkt.
 
 const AKTEUR = "nutzer-1";
 const INSTANZ = "inst-1";
@@ -77,7 +70,7 @@ interface Aufbau {
 }
 
 async function aufbauen(start: boolean | undefined): Promise<Aufbau> {
-  const quelle: QuelleMitFreigabe = {
+  const quelle: KlaraPolicyQuelle = {
     choice: "cloud",
     source: "db",
     effectiveAnswerProvider: "cloud",
@@ -186,20 +179,39 @@ describe("JOB 3502 · V — beide Verbraucher folgen der einen zentralen Freigab
     expect(await wordWeg(a)).toBe(false);
   });
 
-  it("V5 · FEHLT das Feld, verhalten sich beide Wege wie heute", async () => {
-    // Die Zusage von JOB 3502: solange die Kompositionswurzel die Freigabe nicht lieferte, änderte
-    // er NICHTS am laufenden Betrieb — ohne sie wäre er eine stille Abschaltung gewesen.
+  it("V5 · FEHLT das Feld, bleiben beide Wege zu — wie bei einem ausdrücklichen NEIN", async () => {
+    // ============================================================================================
+    // UMGEKEHRT DURCH JOB 3767. Der alte Vertrag dieses Falls ist abgelöst.
+    // ============================================================================================
     //
-    // SEIT JOB 3666 IST DIESER ZUSTAND KEIN PRODUKTIONSZUSTAND MEHR: die Wurzel liefert immer ein
-    // `boolean` (gemessen in `wurzel-verdrahtung.test.ts` an der Policyversion, die ohne Feld gar
-    // kein Freigabesegment trüge). Der Fall bleibt trotzdem stehen, und zwar als BAUZUSTAND: er
-    // beschreibt, was ein Aufrufer bekommt, der das Feld nicht reicht — und er ist die Kalibrierung
-    // für V1, das sonst nicht zeigen könnte, dass dort wirklich die Freigabe sperrt.
+    // ER LAUTETE: „FEHLT das Feld, verhalten sich beide Wege wie heute", also durchlässig — die
+    // Einspiel-Schonung von JOB 3502, damit ein Auftrag ohne gelegte Verdrahtung den Betrieb nicht
+    // still abschaltete. Seit JOB 3666 liegt die Verdrahtung, und JOB 3767 hat die Lesart auf
+    // `=== true` verschärft: ein Aufrufer, der das Feld nicht reicht, ist eine VERGESSENE WURZEL
+    // und die sperrt.
+    //
+    // Gemessen an BEIDEN Verbrauchern, nicht am Resolver allein — das ist die Aufgabe dieser Datei.
+    // Und mit erteilter Zustimmung, damit sichtbar ist, dass hier der ADMIN-Grund sperrt und nicht
+    // die fehlende Bestätigung des Menschen.
     const a = await aufbauen(undefined);
-    expect((await a.dienst.pruefeExterneAusfuehrung(a.sitzung, a.bindung)).erlaubt).toBe(false);
     await a.dienst.grantConsent(a.sitzung, a.bindung);
-    expect((await a.dienst.pruefeExterneAusfuehrung(a.sitzung, a.bindung)).erlaubt).toBe(true);
-    expect(await wordWeg(a)).toBe(true);
+    expect(await klaraWeg(a)).toEqual({ erlaubt: false, grund: "policy_incomplete" });
+    expect(await wordWeg(a)).toBe(false);
+    expect(a.protokoll[0]).toEqual({ entscheidung: "blockiert", grund: "policy_incomplete" });
+
+    // DIE KALIBRIERUNG: derselbe Aufbau, nur das Feld auf `true` gelegt, läuft — sonst wäre dieser
+    // Fall auch dann grün, wenn die Umstellung den externen Weg vollständig zugemauert hätte.
+    // Die Zustimmung von oben trägt dabei NICHT: sie wurde unter der Policyversion `…:gesperrt`
+    // erteilt, und der Wechsel entwertet sie (Z7) — der Klara-Weg meldet das als
+    // `CONSENT_RECONFIRMATION_REQUIRED`, also die Deckungsprüfung, nicht mehr die Adminsperre.
+    // Deshalb wird erneut zugestimmt, genau den Weg, den auch ein Mensch ginge.
+    a.setzeFreigabe(true);
+    expect(await klaraWeg(a)).toEqual({
+      erlaubt: false,
+      grund: "CONSENT_RECONFIRMATION_REQUIRED",
+    });
+    await a.dienst.grantConsent(a.sitzung, a.bindung);
+    expect(await klaraWeg(a)).toEqual({ erlaubt: true, grund: null });
   });
 });
 
@@ -265,7 +277,14 @@ describe("JOB 3502 · S — die Entscheidung fällt an genau einer Stelle", () =
     const code = ohneKommentar(POLICY);
     expect((code.match(/zentralFreigegeben\??:\s*boolean/g) ?? []).length).toBe(1);
     // Und es wird an genau einer Stelle ausgewertet — plus einmal in der Policyversion (Z7).
-    expect((code.match(/input\.zentralFreigegeben/g) ?? []).length).toBe(3);
+    //
+    // NACHGEFÜHRT DURCH JOB 3767: hier stand 3. Die dritte Lesung war der Sonderzweig
+    // `if (input.zentralFreigegeben === undefined) return basis;` in `klaraPolicyVersion` — die
+    // Einspiel-Schonung von JOB 3502, die ein fehlendes Feld auf die alte Version abbildete. Sie
+    // ist ersatzlos entfallen (`=== true ? "frei" : "gesperrt"`), nicht verschoben: zwei Lesungen
+    // sind ab jetzt die vollständige Auswertung. Steigt die Zahl wieder, steht irgendwo eine
+    // dritte Meinung über dasselbe Feld.
+    expect((code.match(/input\.zentralFreigegeben/g) ?? []).length).toBe(2);
     // Die Schalternamen der Adminfreigabe kommen im Resolver nicht vor. Sie werden hier bewusst
     // NICHT als Literal genannt (das wäre derselbe Fehler eine Ebene höher, s. JOB 3550 F2),
     // sondern aus dem echten Vertrag gelesen: was `types.ts` führt, darf `klara-policy.ts` nicht

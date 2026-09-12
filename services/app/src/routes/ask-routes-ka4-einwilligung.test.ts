@@ -214,6 +214,11 @@ describe("KA4 · D2 · die Einwilligung, ungemockt bis zu den Flags", () => {
       localConfigured: false,
       providerLabel: "anthropic",
       modelLabel: "claude",
+      // NACHGEFÜHRT DURCH JOB 3767: die zentrale Adminfreigabe wird fail-closed gelesen
+      // (`klara-policy.ts`, `=== true`). Ohne diese Zeile hiesse der Grund unten
+      // `policy_incomplete` statt `external_consent_missing` — und dieser Fall misst gerade den
+      // Unterschied zwischen Adminsperre und Zustimmungssperre.
+      zentralFreigegeben: true,
       now: 1_700_000_000_000,
     };
 

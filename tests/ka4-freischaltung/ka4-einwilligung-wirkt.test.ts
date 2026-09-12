@@ -67,6 +67,12 @@ const CLOUD_LAGE = {
   localConfigured: false,
   providerLabel: CLOUD_ANBIETER,
   modelLabel: CLOUD_MODELL,
+  // NACHGEFÜHRT DURCH JOB 3767: die zentrale Adminfreigabe wird fail-closed gelesen
+  // (`klara-policy.ts`, `zentralFreigegeben === true`) — ein weggelassenes Feld heisst gesperrt.
+  // Diese Datei misst, dass die EINWILLIGUNG des Menschen wirkt (S1 bis S4). Ohne diese Zeile
+  // stünde vor jedem Fall die Adminsperre, und „gesperrt" bewiese nichts mehr über die
+  // Einwilligung. Die Adminfreigabe selbst misst `tests/admin-ki-klara/`.
+  zentralFreigegeben: true,
 };
 
 /**

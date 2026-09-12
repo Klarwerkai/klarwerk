@@ -50,19 +50,21 @@
 // keine unüberwindbare Adminsperre obendrauf.
 //
 // ------------------------------------------------------------------------------------------------
-// WARUM „FELD FEHLT" NICHT DASSELBE IST WIE „NICHT FREIGEGEBEN"
+// WARUM „FELD FEHLT" DASSELBE IST WIE „NICHT FREIGEGEBEN" (JOB 3767)
 // ------------------------------------------------------------------------------------------------
 //
 // Pedis Entscheidung ist gefallen und steht hier nicht zur Debatte (10.09. 21:25, wörtlich zitiert
 // in `services/reasoner/src/types.ts`): „Keine Freigabe, kein Egress … Im Zweifel gilt: gesperrt."
 // Ein vorhandenes `false` ist die Aussage des Administrators — und sie sperrt.
 //
-// Ein FEHLENDES Feld ist dagegen keine Aussage des Administrators, sondern ein BAUZUSTAND: die
-// Verdrahtung in der Kompositionswurzel liegt ausserhalb der Zielpfade dieses Auftrags (s.
-// RUECKGABE) und steht noch nicht. Bis sie steht, bekommt der Resolver gar keine Auskunft zu sehen,
-// und dann darf sich NICHTS ändern — weder zum Guten noch zum Schlechten. Sobald sie steht, kommt
-// immer ein `boolean` an und der Fall entfällt. Z6 misst beide Seiten dieser Unterscheidung
-// gegeneinander.
+// HIER STAND DAS GEGENTEIL, und es hatte drei Tage lang seinen Grund: ein fehlendes Feld sei keine
+// Aussage des Administrators, sondern ein BAUZUSTAND, denn die Verdrahtung in der
+// Kompositionswurzel lag ausserhalb der Zielpfade von JOB 3502 und stand noch nicht. Sie steht seit
+// JOB 3666 (`build-app.ts`, gemessen in `wurzel-verdrahtung.test.ts`), und JOB 3767 hat die Lesart
+// nachgezogen: `zentralFreigegeben === true` statt `!== false`. Ein Aufrufer ohne das Feld ist
+// seither keine unfertige Instanz mehr, sondern eine VERGESSENE WURZEL — und die darf nicht
+// freischalten, was kein Administrator freigegeben hat. Z6 und Z9 messen die neue Gleichheit
+// (fehlendes Feld = ausdrückliches `false`), Z10 die Kalibrierung dagegen.
 import { describe, expect, it } from "vitest";
 import {
   type KlaraPolicyInput,
@@ -173,33 +175,42 @@ describe("JOB 3502 · Z — die zentrale Freigabe entscheidet, Klara wiederholt 
     expect(widerspruch.blockedReason).toBe("policy_incomplete");
   });
 
-  it("Z6 · FEHLT das Feld, verhält sich der Resolver Feld für Feld wie heute", () => {
-    // Die Zusage von JOB 3502: bis die Verdrahtung steht, darf sich NICHTS ändern — weder zum Guten
-    // noch zum Schlechten. Gemessen als exakte Gleichheit der ganzen Auflösung, nicht an einem
-    // einzelnen Feld.
+  it("Z6 · FEHLT das Feld, verhält sich der Resolver Feld für Feld wie bei einem ausdrücklichen NEIN", () => {
+    // ============================================================================================
+    // UMGEKEHRT DURCH JOB 3767. Was dieser Fall bis dahin pinnte, ist abgelöst.
+    // ============================================================================================
     //
-    // SEIT JOB 3666 STEHT SIE (`build-app.ts`, Policyquelle des `KlaraSessionService`), und damit
-    // beschreibt dieser Fall keinen Produktionszustand mehr, sondern den BAUZUSTAND eines Aufrufers,
-    // der das Feld nicht reicht. Er bleibt stehen, weil `klara-policy.ts:430` weiterhin `!== false`
-    // liest — solange diese Lesart gilt, gehört ihr Verhalten gemessen. Wird sie eines Tages auf
-    // `=== true` verschärft (fail-closed auch für einen vergesslichen Aufrufer), ist DIESER Fall die
-    // Stelle, die das merkt: die Gleichheit unten fällt dann, und das ist richtig so.
+    // ER LAUTETE: „FEHLT das Feld, verhält sich der Resolver Feld für Feld wie heute" — die
+    // Einspiel-Schonung von JOB 3502, damit ein Auftrag, dessen Verdrahtung noch nicht lag, den
+    // laufenden Betrieb nicht still abschaltete. Seit JOB 3666 liegt sie (`build-app.ts`,
+    // Policyquelle des `KlaraSessionService`), und JOB 3767 hat die Lesart auf `=== true`
+    // verschärft. Der Fall behält deshalb seine BAUFORM — exakte Gleichheit ganzer Auflösungen,
+    // nicht ein einzelnes Feld — und kehrt seinen Vergleichspartner um: das fehlende Feld wird
+    // nicht mehr gegen „erlaubt" gemessen, sondern gegen das ausdrückliche `false`.
+    //
+    // DASS ES DIESELBE Auflösung ist und nicht bloss dieselbe Sperre, ist der Punkt: es gibt keine
+    // zweite Sperrstufe für die vergessene Wurzel, keinen eigenen Grund, keine eigene Meldung.
     for (const zugestimmt of [false, true]) {
-      const heute = resolveKlaraPolicy(lage({ externalConsentGranted: zugestimmt }));
+      const ausdruecklichNein = resolveKlaraPolicy(
+        lage({ externalConsentGranted: zugestimmt, zentralFreigegeben: false }),
+      );
+      const ohneFeld = resolveKlaraPolicy(lage({ externalConsentGranted: zugestimmt }));
       const mitUndefined = resolveKlaraPolicy(
         lage({ externalConsentGranted: zugestimmt, zentralFreigegeben: undefined }),
       );
-      expect(mitUndefined).toEqual(heute);
+      expect(ohneFeld).toEqual(ausdruecklichNein);
+      // Weggelassen und ausdrücklich `undefined` sind derselbe Fall — sonst hinge die Sicherheit
+      // daran, WIE ein Aufrufer sein Objekt baut.
+      expect(mitUndefined).toEqual(ausdruecklichNein);
     }
-    // UND DIE GEGENSEITE, damit „wie heute" nicht heimlich „immer erlaubt" bedeutet: ein
-    // vorhandenes `false` ist etwas ANDERES als ein fehlendes Feld. Das ist die Stelle, an der
-    // Pedis „im Zweifel gesperrt" wirkt, sobald die Verdrahtung steht.
+    // UND DIE KALIBRIERUNG, damit „gleich wie NEIN" nicht heimlich „immer gesperrt" bedeutet: die
+    // einzige Belegung, die etwas anderes ergibt, ist das ausdrückliche JA.
     const ohneFeld = resolveKlaraPolicy(lage({ externalConsentGranted: true }));
-    const ausdruecklichNein = resolveKlaraPolicy(
-      lage({ externalConsentGranted: true, zentralFreigegeben: false }),
+    const ausdruecklichJa = resolveKlaraPolicy(
+      lage({ externalConsentGranted: true, zentralFreigegeben: true }),
     );
-    expect(ohneFeld.executionAllowed).toBe(true);
-    expect(ausdruecklichNein.executionAllowed).toBe(false);
+    expect(ohneFeld.executionAllowed).toBe(false);
+    expect(ausdruecklichJa.executionAllowed).toBe(true);
   });
 
   it("Z7 · ein Widerruf der Freigabe entwertet eine erteilte Zustimmung — über die Policyversion", () => {
@@ -210,13 +221,60 @@ describe("JOB 3502 · Z — die zentrale Freigabe entscheidet, Klara wiederholt 
     const frei = klaraPolicyVersion({ ...lage(), zentralFreigegeben: true });
     const gesperrt = klaraPolicyVersion({ ...lage(), zentralFreigegeben: false });
     expect(frei).not.toBe(gesperrt);
-    // Und die Rückwärtsverträglichkeit ist Teil derselben Zusage: ohne Feld bleibt die Version
-    // Zeichen für Zeichen die von heute — sonst entwertete allein dieser Auftrag jede laufende
-    // Sitzung und jede erteilte Zustimmung im Bestand.
-    expect(klaraPolicyVersion({ choice: "cloud", source: "db" })).toBe("policy:db:cloud");
+    // NACHGEFÜHRT DURCH JOB 3767. Hier stand die Einspiel-Schonung von JOB 3502: „ohne Feld bleibt
+    // die Version Zeichen für Zeichen die von heute". Sie war nötig, solange keine Wurzel das Feld
+    // lieferte; seit JOB 3666 liefert die einzige Konstruktionsstelle im Produkt immer ein
+    // `boolean`, im Bestand trägt also jede Version ohnehin ihr Segment. Ein fehlendes Feld heisst
+    // ab jetzt auch in der Kennung `gesperrt` — sonst trüge eine Sitzung unter einer vergessenen
+    // Wurzel eine Kennung, die von der alten Welt nicht zu unterscheiden ist.
+    expect(klaraPolicyVersion({ choice: "cloud", source: "db" })).toBe("policy:db:cloud:gesperrt");
     expect(klaraPolicyVersion({ ...lage(), zentralFreigegeben: undefined })).toBe(
-      "policy:db:cloud",
+      "policy:db:cloud:gesperrt",
     );
+    // Und sie ist ununterscheidbar vom ausdrücklichen NEIN — dieselbe Aussage wie in Z6, hier auf
+    // der Versionsebene.
+    expect(klaraPolicyVersion({ choice: "cloud", source: "db" })).toBe(gesperrt);
+  });
+
+  it("Z9 · eine Wurzel, die das Feld vergisst, ist gesperrt — nicht frei", () => {
+    // ============================================================================================
+    // JOB 3767 · DIE FAIL-CLOSED-PROBE. Sie ist der Grund dieses Auftrags.
+    // ============================================================================================
+    //
+    // Aufbau: exakt die Lage des Positivfalls Z4 („erst die Bestätigung führt aus") — Adminwahl
+    // `cloud`, Cloud verdrahtet, Anbieter benannt, Zustimmung erteilt. Der EINZIGE Unterschied ist,
+    // dass `zentralFreigegeben` gar nicht erst hereingereicht wird, wie es eine zweite
+    // Kompositionswurzel täte, die die Zeile aus `build-app.ts` vergisst.
+    //
+    // Bis JOB 3767 lief genau diese Lage durch (`!== false` bei `undefined` ist WAHR): eine
+    // vergessene Verdrahtung schaltete öffentliche KI frei, ohne dass ein Administrator je
+    // zugestimmt hätte. Ab jetzt sperrt sie — mit demselben einen Adminsgrund wie ein
+    // ausdrückliches `false`.
+    const vergessen = resolveKlaraPolicy(lage({ externalConsentGranted: true }));
+    expect(vergessen.executionAllowed).toBe(false);
+    expect(vergessen.blockedReason).toBe("policy_incomplete");
+    // Und es ist WIRKLICH derselbe Grund, nicht bloss derselbe Name: keine zweite Sperrstufe, keine
+    // eigene Meldung. Feld für Feld gemessen gegen das ausdrückliche `false` (Z1).
+    const ausdruecklichNein = resolveKlaraPolicy(
+      lage({ externalConsentGranted: true, zentralFreigegeben: false }),
+    );
+    expect(vergessen).toEqual(ausdruecklichNein);
+    // Auch die Versionskennung verschweigt es nicht: eine Sitzung unter einer vergessenen Wurzel
+    // trägt nicht die Kennung der alten Welt, sondern `…:gesperrt` (Lieferung 3).
+    expect(vergessen.policyVersion.endsWith(":gesperrt")).toBe(true);
+    // Und der Zustimmungsknopf erscheint gar nicht erst — hier hülfe keine Zustimmung.
+    expect(vergessen.externalConsentProvider).toBeNull();
+  });
+
+  it("Z10 · der neue Wächter sperrt nicht einfach alles — mit `true` bleibt derselbe Aufbau erlaubt", () => {
+    // Der Gegenbeweis zu Z9. Ohne ihn wäre Z9 auch dann grün, wenn die Umstellung den externen Weg
+    // vollständig zugemauert hätte — eine stille Abschaltung statt eines Fail-closed.
+    const freigegeben = resolveKlaraPolicy(
+      lage({ externalConsentGranted: true, zentralFreigegeben: true }),
+    );
+    expect(freigegeben.executionAllowed).toBe(true);
+    expect(freigegeben.blockedReason).toBeNull();
+    expect(freigegeben.policyVersion.endsWith(":frei")).toBe(true);
   });
 
   it("Z8 · der Resolver merkt sich die Freigabe nicht — kein eigener Zwischenspeicher", () => {

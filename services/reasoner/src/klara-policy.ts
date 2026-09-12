@@ -147,23 +147,28 @@ export interface KlaraPolicyInput {
    * „darf öffentliche KI überhaupt benutzt werden?" Die Vertraulichkeitsgrenze bleibt, wo sie
    * heute entschieden wird (`service.ts`), und der Egress-Riegel ebenfalls.
    *
-   * WAS `undefined` HEISST — und was es NICHT heisst. Es heisst „diese Instanz reicht die zentrale
-   * Auskunft noch nicht herein", also ein BAUZUSTAND, keine Aussage des Administrators. Es ist
-   * ausdrücklich NICHT die Lesart „im Zweifel erlaubt": sobald die Verdrahtung steht (s. unten),
-   * kommt hier immer ein `boolean` an und der Fall entfällt. Ein vorhandenes `false` ist dagegen
-   * die Aussage des Administrators und sperrt — Z6 misst beide Seiten gegeneinander.
+   * WAS EIN FEHLENDES FELD HEISST — GESPERRT (JOB 3767). Bis dahin hiess es „diese Instanz reicht
+   * die zentrale Auskunft noch nicht herein", ein Bauzustand, und der Resolver liess alles wie
+   * bisher. Diese Schonung war an die fehlende Verdrahtung geknüpft, und die liegt seit JOB 3666:
+   * ein Aufrufer ohne das Feld ist ab jetzt keine unfertige Instanz, sondern eine VERGESSENE
+   * WURZEL. Sie bekommt dieselbe Antwort wie ein ausdrückliches `false` — Feld für Feld dieselbe
+   * Auflösung, gemessen in `tests/admin-ki-klara/zentrale-freigabe.test.ts` Z6 und Z9.
+   *
+   * WARUM DAS FELD TROTZDEM OPTIONAL BLEIBT: ein Pflichtfeld zwänge jede Testattrappe im Repo zur
+   * Änderung, ohne etwas sicherer zu machen. Die Sicherheit sitzt in der Auswertung („nur `true`
+   * zählt"), nicht in der Typform.
    *
    * PEDIS ENTSCHEIDUNG IST GEFALLEN und steht dieser Datei nicht zur Disposition (10.09. 21:25,
    * über Codex 07cc6d07, wörtlich zitiert in `./types` bei `ReasonerKiFreigabe`): „Öffentliche KI
    * nur nach AUSDRÜCKLICHER Adminfreigabe. Keine Freigabe, kein Egress — auch nicht bei einer
-   * Instanz, die heute läuft. … Im Zweifel gilt: gesperrt." Die Verdrahtung bildet deshalb
-   * „keine Freigabe" auf `false` ab, nicht auf „weglassen".
+   * Instanz, die heute läuft. … Im Zweifel gilt: gesperrt."
    *
-   * DIE VERDRAHTUNG, die dieser Auftrag nicht legen darf (sie liegt ausserhalb seiner Zielpfade):
-   * in `services/app/src/build-app.ts`, in der Policyquelle des `KlaraSessionService`, als
+   * DIE VERDRAHTUNG STEHT, und zwar an genau einer Stelle: in `services/app/src/build-app.ts`, in
+   * der Policyquelle des `KlaraSessionService` (der einzigen Konstruktionsstelle des Dienstes im
+   * Produkt), als
    *     zentralFreigegeben: config.taskConfig.kiFreigabe?.oeffentlicheKi === true
    * Das ist Zeichen für Zeichen die Lesart des Kerns („nur `true` zählt; `false` und fehlt sperren
-   * gleich"). Solange sie fehlt, ändert dieser Auftrag am laufenden Betrieb nichts (Z6, V6).
+   * gleich") — und seit JOB 3767 liest dieser Resolver sie ebenso.
    */
   readonly zentralFreigegeben?: boolean | undefined;
   /** Erzeugungszeitpunkt (ms). Injiziert, damit die Auflösung reproduzierbar ist. */
@@ -422,12 +427,30 @@ export function resolveKlaraPolicy(input: KlaraPolicyInput): KlaraResolution {
   // verlangt der Befund: keine weitere unüberwindbare Meldung, wenn eine gültige zentrale
   // Autorisierung vorliegt.
   //
-  // `!== false` UND NICHT `=== true`: der Unterschied ist der Bauzustand, nicht die Bedeutung. Ein
-  // vorhandenes `false` sperrt (Aussage des Administrators); ein fehlendes Feld heisst „diese
-  // Instanz reicht die Auskunft noch nicht herein" und lässt alles wie bisher. Sobald die
-  // Verdrahtung steht, kommt immer ein `boolean` an und beide Schreibweisen fallen zusammen — die
-  // ausführliche Begründung steht bei `zentralFreigegeben`.
-  const zentralErlaubt = input.zentralFreigegeben !== false;
+  // ================================================================================================
+  // JOB 3767 — `=== true`: EIN FEHLENDES FELD HEISST GESPERRT.
+  // ================================================================================================
+  //
+  // Bis hierher stand `!== false`, und das war an eine Bedingung geknüpft: solange keine Wurzel das
+  // Feld lieferte, hätte ein `=== true` jede laufende Instanz still abgeschaltet. DIE BEDINGUNG IST
+  // ERLOSCHEN — seit JOB 3666 reicht die Kompositionswurzel das Feld herein
+  // (`services/app/src/build-app.ts`, Policyquelle des `KlaraSessionService`:
+  // `zentralFreigegeben: config.taskConfig.kiFreigabe?.oeffentlicheKi === true`), und sie ist die
+  // einzige Konstruktionsstelle des Dienstes im Produkt (gepinnt in
+  // `tests/app/job2666-stufe-die-nur-der-client-behauptet.test.ts`).
+  //
+  // Ein fehlendes Feld ist damit kein Bauzustand mehr, sondern eine VERGESSENE WURZEL — ein
+  // Aufrufer, der die Auskunft nicht durchreicht. Der darf nicht freischalten, was kein
+  // Administrator freigegeben hat: Pedi 10.09. 21:25, „Keine Freigabe, kein Egress … Im Zweifel
+  // gilt: gesperrt." Es ist dieselbe Lesart, die der Kern seit JOB 3549 führt
+  // (`Reasoner.oeffentlicheKiErlaubt()`): nur `true` zählt, `false` und „fehlt" sperren gleich.
+  //
+  // ES ENTSTEHT KEINE ZWEITE SPERRSTUFE: das Ergebnis fliesst in dieselbe Konjunktion darunter und
+  // endet in demselben einen Grund `policy_incomplete` — dem Grund, den keine Nutzerzustimmung
+  // wegklicken kann. Gemessen in `tests/admin-ki-klara/zentrale-freigabe.test.ts` Z9 (fehlendes
+  // Feld ergibt Feld für Feld dieselbe Auflösung wie ein ausdrückliches `false`) und Z10 (mit
+  // `true` bleibt derselbe Aufbau erlaubt — die Umstellung mauert nicht zu).
+  const zentralErlaubt = input.zentralFreigegeben === true;
   const externAutorisiert =
     adminConfiguredMode === "external" && input.cloudConfigured && zentralErlaubt;
 
@@ -552,13 +575,23 @@ export function klaraPolicyVersion(
   // POLICYversion und nicht in die Konfigurationsversion: sie ist eine Wahl des Administrators,
   // keine Verdrahtung.
   //
-  // OHNE FELD BLEIBT DIE VERSION ZEICHEN FÜR ZEICHEN DIE VON HEUTE. Ein bedingungslos angehängtes
-  // Segment hätte jede laufende Sitzung und jede erteilte Zustimmung im Bestand allein durch das
-  // Einspielen dieses Auftrags entwertet — eine Nebenwirkung, die niemand bestellt hat.
-  if (input.zentralFreigegeben === undefined) {
-    return basis;
-  }
-  return `${basis}:${input.zentralFreigegeben ? "frei" : "gesperrt"}`;
+  // ================================================================================================
+  // JOB 3767 — DAS SEGMENT STEHT JETZT IMMER, UND EIN FEHLENDES FELD HEISST DARIN `gesperrt`.
+  // ================================================================================================
+  //
+  // Bis hierher gab ein fehlendes Feld die Version Zeichen für Zeichen wie vor JOB 3502 zurück. Das
+  // war die EINSPIEL-SCHONUNG jenes Auftrags: ein bedingungslos angehängtes Segment hätte damals
+  // jede laufende Sitzung und jede erteilte Zustimmung im Bestand allein durch das Einspielen
+  // entwertet. Sie ist VERBRAUCHT — seit JOB 3666 LIVE ist, liefert die einzige
+  // Konstruktionsstelle im Produkt (`build-app.ts`, Policyquelle des `KlaraSessionService`) immer
+  // ein `boolean`, und der Zweig war im Betrieb unerreichbar. Die Umstellung entwertet deshalb
+  // keine laufende Zustimmung: im Bestand trägt jede Version ohnehin schon ihr Segment.
+  //
+  // WARUM SIE TROTZDEM NÖTIG IST: sperrte nur der Resolver (oben, `=== true`) und bliebe die
+  // Version auf der alten Lesart, trüge eine Sitzung unter einer VERGESSENEN Wurzel eine Kennung,
+  // die von der alten Welt nicht zu unterscheiden ist — die Auflösung sagte „gesperrt", ihre
+  // Kennung verschwiege es. Beide lesen jetzt dasselbe: nur `true` heisst `frei`.
+  return `${basis}:${input.zentralFreigegeben === true ? "frei" : "gesperrt"}`;
 }
 
 export function klaraConfigurationVersion(

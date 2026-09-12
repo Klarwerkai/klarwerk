@@ -934,6 +934,10 @@ describe("N11b: Word-Riegel mit realem KA4-Dienst", () => {
           localConfigured: false,
           providerLabel: "anthropic",
           modelLabel: "claude",
+          // NACHGEFÜHRT DURCH JOB 3767: ein weggelassenes `zentralFreigegeben` heisst seither
+          // gesperrt (`klara-policy.ts`, `=== true`). Diese Attrappe stellt einen Betrieb dar,
+          // in dem allein die Dokumentzustimmung entscheidet — die Adminfreigabe gehört dazu.
+          zentralFreigegeben: true,
         }),
       });
       const session = await dienst.createSession("u1", "instance-1", {

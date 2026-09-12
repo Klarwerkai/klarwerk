@@ -38,6 +38,12 @@ function aufbau(over: Partial<KlaraPolicyQuelle> = {}, eigenesRepo?: InMemoryKla
     providerLabel: "Cloud-Anbieter",
     modelLabel: "cloud-modell",
     localProviderLabel: "Lokaler Anbieter",
+    // NACHGEFÜHRT DURCH JOB 3767: die zentrale Adminfreigabe wird fail-closed gelesen
+    // (`klara-policy.ts`, `zentralFreigegeben === true`), ein weggelassenes Feld heisst gesperrt.
+    // Diese Datei misst Sitzung, Bindung, Frist und Zustimmungsdeckung — nicht die Freigabe. Ohne
+    // diese Zeile endeten ihre externen Fälle alle in `policy_incomplete` und prüften nicht mehr
+    // ihren Gegenstand. Die Freigabe misst `tests/admin-ki-klara/`.
+    zentralFreigegeben: true,
     ...over,
   };
   const repo = eigenesRepo ?? new InMemoryKlaraSessionRepo();
@@ -161,6 +167,11 @@ describe("W1 S4 R2 · ROT-2 · dieselbe Resolution über Create, GET, Grant, Rev
         providerLabel: "Cloud-Anbieter",
         modelLabel: "cloud-modell",
         localProviderLabel: "Lokaler Anbieter",
+        // NACHGEFÜHRT DURCH JOB 3767: diese Quelle stellt DIESELBE Lage nach einem Neustart dar.
+        // Sie muss der Basisattrappe oben Feld für Feld gleichen — seit die Freigabe in
+        // `klaraPolicyVersion` eingeht, wäre ein weggelassenes Feld hier eine ANDERE Policyversion,
+        // die Auflösung würde erneuert und der Fall prüfte nicht mehr die Persistenz.
+        zentralFreigegeben: true,
       }),
       now: () => T0 + 1000,
       newId: () => `neu-${++zaehler}`,

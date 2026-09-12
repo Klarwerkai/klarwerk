@@ -34,6 +34,13 @@ function eingabe(over: Partial<KlaraPolicyInput> = {}): KlaraPolicyInput {
     modelLabel: "test-modell-1",
     localProviderLabel: "Lokaler Testanbieter",
     externalConsentGranted: false,
+    // NACHGEFÜHRT DURCH JOB 3767. Seit `klara-policy.ts` die zentrale Adminfreigabe fail-closed
+    // liest (`zentralFreigegeben === true`), ist ein weggelassenes Feld die Aussage „gesperrt".
+    // Diese Datei misst NICHT die Freigabe — sie misst Modusabbildung, Anbieterbindung,
+    // Zustimmung und Versionen. Ohne diese Zeile stünde vor jedem ihrer Fälle eine Adminsperre,
+    // und sie prüften alle dasselbe statt ihres eigenen Gegenstands. Die Freigabe selbst misst
+    // `tests/admin-ki-klara/zentrale-freigabe.test.ts`.
+    zentralFreigegeben: true,
     now: JETZT,
     resolutionId: "res-1",
     ...over,

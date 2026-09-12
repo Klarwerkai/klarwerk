@@ -60,6 +60,8 @@ const CLOUD_LAGE: {
   localConfigured: boolean;
   providerLabel: string;
   modelLabel: string;
+  // NACHGEFÜHRT DURCH JOB 3767, s. Belegung unten.
+  zentralFreigegeben: boolean;
 } = {
   choice: "cloud",
   source: "db",
@@ -68,6 +70,10 @@ const CLOUD_LAGE: {
   localConfigured: false,
   providerLabel: CLOUD_ANBIETER,
   modelLabel: CLOUD_MODELL,
+  // JOB 3767: die zentrale Adminfreigabe wird fail-closed gelesen (`klara-policy.ts`,
+  // `zentralFreigegeben === true`) — ein weggelassenes Feld heisst gesperrt. Diese Datei misst den
+  // Memo-Weg, nicht die Freigabe; ohne diese Zeile sperrte der Adminsgrund vor ihm.
+  zentralFreigegeben: true,
 };
 
 const nurWennFreigegeben = KLARA_EXTERNAL_EXECUTION_MIGRATED ? it : it.skip;

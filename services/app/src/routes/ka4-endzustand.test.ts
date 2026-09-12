@@ -55,6 +55,10 @@ const CLOUD_LAGE = {
   localConfigured: false,
   providerLabel: "anthropic",
   modelLabel: "claude",
+  // NACHGEFÜHRT DURCH JOB 3767: ein weggelassenes `zentralFreigegeben` heisst seither gesperrt
+  // (`klara-policy.ts`, `=== true`). „Betrieb MIT verdrahteter Cloud" muss die Adminfreigabe
+  // ab jetzt AUSSPRECHEN — sonst misst diese Datei die Freigabe statt der Bindung.
+  zentralFreigegeben: true,
 };
 
 /**

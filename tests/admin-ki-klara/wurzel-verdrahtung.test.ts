@@ -5,11 +5,16 @@
 // WAS HIER FEHLTE UND WARUM ES GEFÄHRLICH WAR. JOB 3502 hat den Resolver auf die zentrale
 // Adminfreigabe eingerichtet (`zentralFreigegeben`) und beide Verbraucher daran gemessen
 // (`verbraucher-folgen.test.ts`). Die VERDRAHTUNG lag ausserhalb seiner Zielpfade und blieb liegen:
-// im ganzen Produkt setzte keine einzige Stelle das Feld. `klara-policy.ts:430` liest
+// im ganzen Produkt setzte keine einzige Stelle das Feld. Der Resolver las die Freigabe damals mit
 // `input.zentralFreigegeben !== false` — bei einem nie gesetzten Feld ist das `undefined !== false`
 // und damit WAHR. Klara und der Word-Weg verhielten sich also so, als wäre die öffentliche KI
 // zentral freigegeben, während der Kern (`service.ts`, `oeffentlicheKiErlaubt`) seit JOB 3549
 // umgekehrt entscheidet: „nur `true` zählt". Zwei Wege, eine Regel, zwei Antworten.
+//
+// SEIT JOB 3767 LIEST AUCH DER RESOLVER `=== true` (`klara-policy.ts`), ein fehlendes Feld heisst
+// dort gesperrt. Diese Datei behält trotzdem ihren eigenen Gegenstand: sie misst nicht die LESART,
+// sondern dass die echte Wurzel das Feld tatsächlich und richtig belegt. Beides braucht es —
+// fail-closed schützt vor der vergessenen Wurzel, diese Datei vor der falsch belegten.
 //
 // WAS DIESE DATEI MISST, UND ZWAR AN DER ECHTEN WURZEL. `verbraucher-folgen.test.ts` reicht die
 // Freigabe selbst herein — es misst den Dienst, nicht die Wurzel, und sagt das im Kopf ausdrücklich.
@@ -17,11 +22,15 @@
 // und echter Zustimmung über HTTP. Eingesetzt ist NUR der Modelltransport — als Spion, damit „kein
 // Egress" gezählt und nicht abgeleitet wird.
 //
-// DER DIREKTE NACHWEIS, DASS DAS FELD GESETZT IST, hängt nicht an einer Ableitung: `policyVersion`
-// trägt seit JOB 3502 ein Segment `:frei`/`:gesperrt` — und bei einem FEHLENDEN Feld trägt sie gar
-// keines (`klaraPolicyVersion`, `klara-policy.ts:558`). Die Anwesenheit des Segments ist damit die
-// Aussage „die Wurzel liefert ein `boolean`", und sein Wert die Aussage „sie liefert das richtige".
-// Deshalb steht sie in jedem Fall unten — sie unterscheidet „verdrahtet" von „zufällig gleich".
+// DER DIREKTE NACHWEIS, DASS DAS FELD RICHTIG GESETZT IST, hängt nicht an einer Ableitung:
+// `policyVersion` trägt seit JOB 3502 ein Segment `:frei`/`:gesperrt` (`klaraPolicyVersion`).
+//
+// NACHGEFÜHRT DURCH JOB 3767: hier stand, ein FEHLENDES Feld trüge gar kein Segment, und die blosse
+// ANWESENHEIT des Segments sei damit der Nachweis der Verdrahtung. Das gilt nicht mehr — ein
+// fehlendes Feld ergibt jetzt ebenfalls `:gesperrt`. Es bleibt der stärkere Nachweis, und der ist
+// es, der die Fälle unten trägt: W2 verlangt `:frei`, und `:frei` kann NUR aus einem hereinge-
+// reichten `true` entstehen. W3 misst dazu den Wechsel an EINER laufenden Instanz — beides zusammen
+// unterscheidet „verdrahtet" von „zufällig gleich", ohne sich auf das leere Segment zu stützen.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { draftProvenance } from "../../apps/web/src/lib/reasonerProvenance";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
@@ -178,7 +187,8 @@ describe("JOB 3666 · W — Klara und Word folgen der zentralen Freigabe an der 
     const a = await aufbauen(false);
     const status = await klaraStatus(a);
 
-    // Die Wurzel LIEFERT das Feld — sonst trüge die Policyversion gar kein Segment.
+    // Die Wurzel meldet die Sperre auch in der Kennung. Seit JOB 3767 belegt DIESE Zeile allein
+    // die Verdrahtung nicht mehr (ein fehlendes Feld ergäbe dasselbe) — das tut W2 mit `:frei`.
     expect(status.policyVersion.endsWith(":gesperrt")).toBe(true);
     // Und sie liefert es als ADMIN-Grund: die Zustimmung ist im Aufbau bereits erteilt.
     expect(status.executionAllowed).toBe(false);

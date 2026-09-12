@@ -120,6 +120,21 @@ export interface KlaraPolicyQuelle {
   providerLabel: string;
   modelLabel?: string | undefined;
   localProviderLabel?: string | undefined;
+  /**
+   * JOB 3767 · DAS ERGEBNIS DER ZENTRALEN ADMINFREIGABE — hier benannt, damit es niemand
+   * stillschweigend verliert.
+   *
+   * Die Wurzel setzt es seit JOB 3666 (`build-app.ts`), und der Dienst reicht seine Quelle mit
+   * `...quelle` an `resolveKlaraPolicy` weiter. Bis hierher WIRKTE das nur, weil `tsc` ein
+   * überschüssiges Feld in einem durchgereichten Objekt nicht meldet: wer der Policyquelle in
+   * `build-app.ts` eines Tages eine ausdrückliche Typannotation gibt, entfernte das Feld ohne eine
+   * einzige Fehlermeldung — und ohne Freigabe ginge dann öffentliche KI hinaus.
+   *
+   * OPTIONAL UND NICHT PFLICHT, mit Absicht: ein Pflichtfeld zwänge jede Testattrappe im Repo zur
+   * Änderung, ohne etwas sicherer zu machen. Die Sicherheit kommt aus `klara-policy.ts`
+   * (`zentralFreigegeben === true`) — dort heisst ein fehlendes Feld gesperrt.
+   */
+  zentralFreigegeben?: boolean | undefined;
 }
 
 export interface KlaraSessionServiceDeps {
