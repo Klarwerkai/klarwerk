@@ -105,6 +105,16 @@ interface Buehne {
   readonly standtyp: string;
   /** Wofür die Bühne da ist — ein Satz, damit die Meldung ohne Nachschlagen verständlich ist. */
   readonly zweck: string;
+  /**
+   * Wie viele Felder ihre `Seite` heute führt — die Untergrenze von V3, JE BÜHNE.
+   *
+   * Bis JOB 3775 stand hier EINE Zahl für alle drei (`>= 6`). Die war für h6 (7 Felder) knapp und
+   * für h4 (nach dem Abräumen 14) bedeutungslos: h4 hätte acht Felder verlieren können, ohne dass
+   * ein Fall rot geworden wäre — und mit jedem verlorenen Feld wäre eine Aufweitung in den
+   * Verbraucherdateien wieder „berechtigt" geworden, lautlos. Eine Untergrenze, die den heutigen
+   * Bestand nicht mehr berührt, ist eine stillgelegte Prüfung. Gemessen am Basisstand `8208f57`.
+   */
+  readonly mindestFelder: number;
 }
 
 const BUEHNEN: readonly Buehne[] = [
@@ -115,6 +125,10 @@ const BUEHNEN: readonly Buehne[] = [
     seitentyp: "Seite",
     standtyp: "H4Stand",
     zweck: "die gebaute Bibliothek in Chromium, 1620 px, mit echtem Bestand und echter Fastify-App",
+    // Die neun von JOB 3564 (route, addInitScript, goto, waitForFunction, waitForTimeout,
+    // setViewportSize, keyboard, evaluate, on) plus die fünf von JOB 3775 (mouse, setInputFiles,
+    // reload, click, selectOption). `keyboard.type` ist ein Unterfeld und zählt hier nicht mit.
+    mindestFelder: 14,
   },
   {
     kurz: "h6",
@@ -123,6 +137,8 @@ const BUEHNEN: readonly Buehne[] = [
     seitentyp: "Seite",
     standtyp: "Stand",
     zweck: "die gebauten Admin- und Profilflächen in Chromium, mit einspeisbarer Störung",
+    // route, addInitScript, goto, waitForFunction, evaluate, on, waitForTimeout.
+    mindestFelder: 7,
   },
   {
     kurz: "h3",
@@ -131,6 +147,8 @@ const BUEHNEN: readonly Buehne[] = [
     seitentyp: "Seite",
     standtyp: "Buehne",
     zweck: "das gebaute Erfassungsblatt in Chromium, auf `localhost` und mit Serverwahrheit",
+    // route, addInitScript, on, goto, waitForFunction, evaluate, keyboard, setViewportSize.
+    mindestFelder: 8,
   },
 ] as const;
 
@@ -148,11 +166,18 @@ const NICHT_BETRETEN = new Set(["node_modules", "dist", ".git", ".local", "cover
 // DER ALTBESTAND — WAS GEZÄHLT UND BENANNT, ABER AUFTRAGSGEMÄSS NICHT ANGEFASST WIRD.
 // ==================================================================================================
 //
-// JOB 3564 hat den Altbestand an h4 registriert; JOB 3609 tut dasselbe für h6 und h3. Die Bühnen
-// selbst gehören anderen laufenden Jobs (h4 → 3602, h6 → 3587, h3 → 3584), und die Verbraucher
-// gehören ihren eigenen Zeilen: ein Feld in `Seite` einzutragen hiesse, eine fremde Zielpfaddatei zu
-// ändern. Also stehen sie hier — namentlich, mit genau den Feldern, die ihnen heute zugestanden
-// werden.
+// JOB 3564 hat den Altbestand an h4 registriert; JOB 3609 tat dasselbe für h6 und h3. Sie standen
+// hier, weil die Bühnen damals fremden laufenden Jobs gehörten (h6 → 3587, h3 → 3584): ein Feld in
+// `Seite` einzutragen hiesse dann, eine fremde Zielpfaddatei zu ändern. Also stehen sie hier —
+// namentlich, mit genau den Feldern, die ihnen heute zugestanden werden.
+//
+// h4 IST ABGERÄUMT (JOB 3775) UND BLEIBT ES. Die vier h4-Zeilen sind weg, weil ihre Felder jetzt in
+// `Seite` von `tests/design/h4-harness.ts` stehen — `mouse`, `setInputFiles`, `reload`, `click`,
+// `selectOption` und `keyboard.type`, je mit dem Verbraucher daneben, der sie bestellt hat. Die
+// Sperre von damals ist Geschichte: JOB 3602 ist archiviert, die Bühne gehört keinem laufenden Job
+// mehr. Was verhindert, dass die Liste für h4 wieder wächst, ist nicht dieser Kommentar, sondern
+// V10 unten: er wird rot, sobald hier auch nur EINE Zeile mit `buehne: "h4"` steht. Für h6 und h3
+// gilt das ausdrücklich NICHT — ihre Bühnen tragen ihre Felder noch nicht.
 //
 // Das ist kein Freibrief, sondern eine Schranke in BEIDE Richtungen:
 //   · Ein Feld, das NICHT in der Zeile steht, macht V1 rot — auch in einer alten Datei.
@@ -162,8 +187,9 @@ const NICHT_BETRETEN = new Set(["node_modules", "dist", ".git", ".local", "cover
 //     nachgereicht wird, ist eine Karteileiche und macht V2 rot.
 //   · Auch die Bühne der Zeile wird geprüft: wandert eine Datei auf eine andere Bühne, ist der
 //     Eintrag falsch und V2 rot.
+//   · Und für eine abgeräumte Bühne nimmt die Liste gar nichts mehr an — V10.
 // Wer eine dieser Zeilen abräumen will, trägt das Feld in `Seite` der genannten Bühne ein und löscht
-// die Zeile.
+// die Zeile. Ist die letzte Zeile einer Bühne weg, gehört ihr Kurzname in `ABGERAEUMT` bei V10.
 interface Altzeile {
   /** Die Bühne, gegen die gemessen wird — muss mit dem Befund übereinstimmen (V2). */
   readonly buehne: string;
@@ -174,45 +200,13 @@ interface Altzeile {
 }
 
 const ALTBESTAND: ReadonlyMap<string, Altzeile> = new Map<string, Altzeile>([
-  // ---- Bühne h4 (JOB 3564, unverändert übernommen) ---------------------------------------------
-  [
-    "tests/anhang-upload-tastatur/foto-anhaengen-tastatur.test.ts",
-    {
-      buehne: "h4",
-      felder: ["mouse", "setInputFiles"],
-      grund: "echte Maus und echter Dateidialog — JOB 3564, Folgezeile 1",
-    },
-  ],
-  [
-    "tests/klara-webhilfe-schmal/klara-hilfe-chromium.test.ts",
-    {
-      buehne: "h4",
-      felder: ["reload"],
-      grund:
-        "das Neuladen der Seite im Word-Hilfe-Fall — JOB 3564, Folgezeile 2. Die Datei schreibt " +
-        "ausserdem `interface SeiteMitTastatur extends Seite` (:10) und `SeiteMitReload extends " +
-        "SeiteMitTastatur` (:96); `keyboard.press` ist seit JOB 3564 in `Seite` und damit bezahlt, " +
-        "übrig bleibt `reload`. EINE Zeile, nicht zwei — die Datei ist h4-Verbraucherin, sonst nichts.",
-    },
-  ],
-  [
-    "tests/bibliothek-sichten/sichten-chromium.test.ts",
-    {
-      buehne: "h4",
-      felder: ["keyboard.type"],
-      grund: "Tippen statt nur Tastendruck — JOB 3564, Folgezeile 3",
-    },
-  ],
-  [
-    "tests/quellen-anker-im-formular/belegstelle-ueberlebt-neuladen-chromium.test.ts",
-    {
-      buehne: "h4",
-      felder: ["keyboard.type", "click", "focus", "selectOption", "reload"],
-      grund:
-        "die breiteste Aufweitung im h4-Bestand (Tippen, Klicken, Fokussieren, Auswählen, Neuladen)" +
-        " — JOB 3564, Folgezeile 4, und der eigentliche Kandidat für den nächsten Zug an h4",
-    },
-  ],
+  // ---- Bühne h4: KEINE ZEILE MEHR (JOB 3775) ----------------------------------------------------
+  //
+  // Hier standen vier Zeilen (JOB 3564, Folgezeilen 1–4). Sie sind gelöscht, nicht auskommentiert:
+  // `foto-anhaengen-tastatur` (mouse, setInputFiles), `klara-hilfe-chromium` (reload),
+  // `sichten-chromium` (keyboard.type) und `belegstelle-ueberlebt-neuladen-chromium` (keyboard.type,
+  // click, selectOption, reload) reichen sich nichts mehr nach — ihre Eigeninterfaces und Casts sind
+  // entfernt, die Felder stehen in `Seite` der Bühne. V10 hält die Stelle frei.
   // ---- Bühne h6 (JOB 3609; Runde 1 fand acht Dateien, Runde 3 misst zehn) ----------------------
   //
   // Der Auftrag ging von SECHS Dateien aus (`archiv/3564/runde-3/RUECKGABE.md:40`). Runde 1 fand
@@ -379,8 +373,11 @@ const ERWARTETE_VERBRAUCHER: ReadonlyMap<string, readonly string[]> = new Map<
   string,
   readonly string[]
 >([
-  // Gemessen am Basisstand `4dfc4f0`: h4 = 12, h6 = 17, h3 = 6 Verbraucher. Die h4-Menge ist
-  // unverändert die von JOB 3564 — der Umbau auf das Register hat an ihr nichts verschoben.
+  // NEU GEMESSEN AM BASISSTAND `8208f57` (JOB 3775): h4 = 15, h6 = 25, h3 = 8 Verbraucher. Die
+  // Listen von JOB 3609 (12 / 17 / 6, Stand `4dfc4f0`) waren damit keine Untergrenze mehr, die noch
+  // beisst: h4 hätte drei Verbraucher verlieren dürfen, h6 acht, h3 zwei — ohne dass ein Fall rot
+  // geworden wäre. Eine Untergrenze, die den heutigen Bestand nicht mehr berührt, ist eine
+  // stillgelegte Prüfung; deshalb stehen hier die heute gemessenen Mengen, nicht die von damals.
   [
     "h4",
     [
@@ -394,13 +391,21 @@ const ERWARTETE_VERBRAUCHER: ReadonlyMap<string, readonly string[]> = new Map<
       "tests/bibliothek/job3068-deckung-sichtbar.test.tsx",
       "tests/klara-webhilfe-schmal/klara-hilfe-chromium.test.ts",
       "tests/quellen-anker-im-formular/belegstelle-ueberlebt-neuladen-chromium.test.ts",
+      "tests/review26-originaldatei-kopf/kopf-datei-in-chromium.test.ts",
+      "tests/seitenhilfe-luecken/tablet-schublade-chromium.test.ts",
       "tests/tor-bereitschaft/verzoegerte-antworten.test.ts",
       "tests/ux21-tablet-lesemodus/tablet-chromium.test.ts",
+      "tests/wissensobjekt-loeschen/loeschen-in-chromium.test.ts",
     ],
   ],
   [
     "h6",
     [
+      "tests/chr-kopfband-1000/kopfband-1000-chromium.test.ts",
+      "tests/chr-navigation-ci-logo/logokasten-chromium.test.ts",
+      "tests/chr-navigation-sprachen/sprachschritt-ausgaenge.test.ts",
+      "tests/demo-firmen-ci-anmeldung/anmeldemaske-marke-chromium.test.ts",
+      "tests/demo-firmen-ci-anmeldung/gast-buehne.ts",
       "tests/design/job3337-palette-flaches-fenster-chromium.test.ts",
       "tests/einstellungen-schmal/ux12b-einstellungen-schmal-chromium.test.ts",
       "tests/ki-fehlerhilfe/wiederholen-tastatur-chromium.test.ts",
@@ -411,19 +416,24 @@ const ERWARTETE_VERBRAUCHER: ReadonlyMap<string, readonly string[]> = new Map<
       "tests/navigation-schmal/kopfband-schmal-chromium.test.ts",
       "tests/profil-schmal/schmal-buehne.ts",
       "tests/profil-schmal/ux13-profil-320.test.ts",
+      "tests/review26-aufgaben-schmal/aufgaben-schmal-chromium.test.ts",
       "tests/review26-pruefen-schmal/pruefen-schmal-chromium.test.ts",
       "tests/rollenvorschau-sperre/rollenraster-schmal-chromium.test.ts",
+      "tests/seitenhilfe-dubletten/seitenhilfe-chromium.test.ts",
       "tests/tor-bereitschaft/t1b-hooks.test.ts",
       "tests/tor-bereitschaft/t1b-raster.test.ts",
       "tests/tor-bereitschaft/t1e-ableitung.test.ts",
       "tests/tor-bereitschaft/verzoegerte-antworten.test.ts",
       "tests/tor-chromium-abbau/probe-beschriftet-sich-als-probe.test.ts",
+      "tests/vorfuehrdaten-getrennt/netzwerk-chromium.test.ts",
     ],
   ],
   [
     "h3",
     [
+      "tests/entwurf-aus-adresse/adresse-entwurf-chromium.test.ts",
       "tests/import-anleitung-modus/tastatur-importart-chromium.test.ts",
+      "tests/ki-freie-anweisung/ki-palette-390px-chromium.test.ts",
       "tests/ux19-speichern-oeffnen-reload/ganzdokument-am-echten-server.test.ts",
       "tests/ux19-speichern-oeffnen-reload/ux19-buehne.ts",
       "tests/ux19-speichern-oeffnen-reload/vorlesehilfe-ganzdokument.test.ts",
@@ -1142,7 +1152,7 @@ function aufweitungenAusBaum(sf: ts.SourceFile, datei: string): Aufweitung[] {
       const auf = aufloesen(n.type, lokal);
       if (auf.art === "mitglieder") {
         const felder = felderAus(auf.mitglieder, sf, lokal);
-        // Auch hier durch die Klammern hindurch: `as unknown as (KMaus)` nennt denselben Typ.
+        // Auch hier durch die Klammern hindurch: `as unknown as (KZieh)` nennt denselben Typ.
         const ziel = ohneKlammern(n.type);
         const zielName =
           ts.isTypeReferenceNode(ziel) && ts.isIdentifier(ziel.typeName)
@@ -1202,8 +1212,19 @@ function zeile(a: Aufweitung): string {
 //
 // Die Fälle sind Quelltext im Speicher, keine echten Dateien: so kalibriert sich der Wächter, ohne
 // dass jemand eine Verbraucherdatei absichtlich verunreinigen müsste. Jeder Fall benutzt DIESELBE
-// unbekannte Seitenfunktion (`mouse.click`), damit allein Schreibweise und Bühne sich unterscheiden.
-const MAUS = "{ click(x: number, y: number): Promise<void> }";
+// unbekannte Seitenfunktion, damit allein Schreibweise und Bühne sich unterscheiden.
+//
+// DAS PROBEFELD MUSS UNBEKANNT BLEIBEN, UND DAS IST KEINE FORMSACHE (JOB 3775). Bis dahin war es
+// `mouse.click` — und `mouse` war genau eines der Felder, die JOB 3775 in `Seite` von h4 eingetragen
+// hat. In dem Augenblick hätten alle h4-Fälle der Kalibrierung „kein Fund" gemessen und der Fall
+// wäre rot geworden: richtig laut, aber aus dem falschen Grund. Genauso stand es um das Unterfeld
+// `keyboard.type`. Beide sind ersetzt, und V6 misst seither ausdrücklich nach, dass das Probefeld an
+// KEINER Bühne bekannt ist — sonst kalibrierte die Kalibrierung irgendwann nur noch ihr Schweigen.
+/** Das Probefeld: eine Seitenfunktion, die keine der drei Bühnen führt. V6 misst genau das nach. */
+const UNGEDECKT = "dragAndDrop";
+const ZIEHEN = "{ starten(von: string, nach: string): Promise<void> }";
+/** Dasselbe eine Ebene tiefer: ein Unterfeld von `keyboard`, das keine Bühne kennt. */
+const UNGEDECKT_UNTER = "insertText";
 /** Ein Feld, das JEDE der drei Bühnen selbst kennt — der Negativfall darf daran nicht anschlagen. */
 const BEKANNTES_FELD = "{ goto(url: string): Promise<unknown> }";
 
@@ -1228,20 +1249,20 @@ function kalibrierfaelle(): Kalibrierfall[] {
     const kopf = `import type { ${b.seitentyp}, ${b.standtyp} } from "${pfad}";\ndeclare function seite(): ${b.standtyp}["seite"];\n`;
     faelle.push({
       name: `${b.kurz} · Schreibweise 1: Interface-Erweiterung`,
-      quelle: `${kopf}interface KMaus extends ${b.seitentyp} { mouse: ${MAUS} }\nasync function probe(): Promise<void> { await (seite() as unknown as KMaus).mouse.click(1, 2); }`,
-      erwartet: ["mouse"],
+      quelle: `${kopf}interface KZieh extends ${b.seitentyp} { ${UNGEDECKT}: ${ZIEHEN} }\nasync function probe(): Promise<void> { await (seite() as unknown as KZieh).${UNGEDECKT}.starten("a", "b"); }`,
+      erwartet: [UNGEDECKT],
       buehne: b.kurz,
     });
     faelle.push({
       name: `${b.kurz} · Schreibweise 2: Cast auf ein Typliteral`,
-      quelle: `${kopf}async function probe(): Promise<void> {\n  await (seite() as unknown as { mouse: ${MAUS} }).mouse.click(1, 2);\n}`,
-      erwartet: ["mouse"],
+      quelle: `${kopf}async function probe(): Promise<void> {\n  await (seite() as unknown as { ${UNGEDECKT}: ${ZIEHEN} }).${UNGEDECKT}.starten("a", "b");\n}`,
+      erwartet: [UNGEDECKT],
       buehne: b.kurz,
     });
     faelle.push({
       name: `${b.kurz} · Schreibweise 3: Typalias über den indizierten Zugriff`,
-      quelle: `${kopf}type KMaus = ${b.standtyp}["seite"] & { mouse: ${MAUS} };\ndeclare const k: KMaus;\n`,
-      erwartet: ["mouse"],
+      quelle: `${kopf}type KZieh = ${b.standtyp}["seite"] & { ${UNGEDECKT}: ${ZIEHEN} };\ndeclare const k: KZieh;\n`,
+      erwartet: [UNGEDECKT],
       buehne: b.kurz,
     });
     // ---- Schreibweise 3, zwei Tarnungen (Korrekturpflicht 1, Prüfer BEN zu JOB 3609 Runde 1) ----
@@ -1256,8 +1277,8 @@ function kalibrierfaelle(): Kalibrierfall[] {
     // derselbe Wortlaut als Kommentar (kein Fund) — sonst belegt der Fall nur die halbe Aussage.
     faelle.push({
       name: `${b.kurz} · Schreibweise 3a: indizierter Zugriff, die rechte Typseite geklammert`,
-      quelle: `${kopf}type KMaus = (${b.standtyp}["seite"] & { mouse: ${MAUS} });\ndeclare const k: KMaus;\n`,
-      erwartet: ["mouse"],
+      quelle: `${kopf}type KZieh = (${b.standtyp}["seite"] & { ${UNGEDECKT}: ${ZIEHEN} });\ndeclare const k: KZieh;\n`,
+      erwartet: [UNGEDECKT],
       buehne: b.kurz,
     });
     faelle.push({
@@ -1268,14 +1289,14 @@ function kalibrierfaelle(): Kalibrierfall[] {
     });
     faelle.push({
       name: `${b.kurz} · Gegenstück zu 3a: der geklammerte Wortlaut als KOMMENTAR`,
-      quelle: `${kopf}// type KMaus = (${b.standtyp}["seite"] & { mouse: ${MAUS} });\nexport const nichts3a = 1;\n`,
+      quelle: `${kopf}// type KZieh = (${b.standtyp}["seite"] & { ${UNGEDECKT}: ${ZIEHEN} });\nexport const nichts3a = 1;\n`,
       erwartet: [],
       buehne: "",
     });
     faelle.push({
       name: `${b.kurz} · Schreibweise 3b: indizierter Zugriff über einen lokalen Behälteralias`,
-      quelle: `${kopf}type KStand = ${b.standtyp};\ntype KMaus = KStand["seite"] & { mouse: ${MAUS} };\ndeclare const k: KMaus;\n`,
-      erwartet: ["mouse"],
+      quelle: `${kopf}type KStand = ${b.standtyp};\ntype KZieh = KStand["seite"] & { ${UNGEDECKT}: ${ZIEHEN} };\ndeclare const k: KZieh;\n`,
+      erwartet: [UNGEDECKT],
       buehne: b.kurz,
     });
     faelle.push({
@@ -1286,7 +1307,7 @@ function kalibrierfaelle(): Kalibrierfall[] {
     });
     faelle.push({
       name: `${b.kurz} · Gegenstück zu 3b: der Alias-Wortlaut als KOMMENTAR`,
-      quelle: `${kopf}// type KStand = ${b.standtyp};\n// type KMaus = KStand["seite"] & { mouse: ${MAUS} };\nexport const nichts3b = 1;\n`,
+      quelle: `${kopf}// type KStand = ${b.standtyp};\n// type KZieh = KStand["seite"] & { ${UNGEDECKT}: ${ZIEHEN} };\nexport const nichts3b = 1;\n`,
       erwartet: [],
       buehne: "",
     });
@@ -1310,8 +1331,8 @@ function kalibrierfaelle(): Kalibrierfall[] {
       .join("\n");
     faelle.push({
       name: `${b.kurz} · Schreibweise 3c: lange RÜCKWÄRTS deklarierte Behälterkette (${KETTENGLIEDER} Glieder)`,
-      quelle: `${kopf}type KMaus = KK${KETTENGLIEDER - 1}["seite"] & { mouse: ${MAUS} };\n${kette}\ndeclare const k: KMaus;\n`,
-      erwartet: ["mouse"],
+      quelle: `${kopf}type KZieh = KK${KETTENGLIEDER - 1}["seite"] & { ${UNGEDECKT}: ${ZIEHEN} };\n${kette}\ndeclare const k: KZieh;\n`,
+      erwartet: [UNGEDECKT],
       buehne: b.kurz,
     });
 
@@ -1321,7 +1342,7 @@ function kalibrierfaelle(): Kalibrierfall[] {
     // also gibt es keinen Fund. Ohne diesen Fall wäre „bricht von selbst ab" eine reine Behauptung.
     faelle.push({
       name: `${b.kurz} · Grenze: Ringschluss im Behälteralias — kein Fund, und kein Hänger`,
-      quelle: `${kopf}type ZA = ZB;\ntype ZB = ZA;\ntype KMaus = ZA["seite"] & { mouse: ${MAUS} };\ndeclare const k: KMaus;\n`,
+      quelle: `${kopf}type ZA = ZB;\ntype ZB = ZA;\ntype KZieh = ZA["seite"] & { ${UNGEDECKT}: ${ZIEHEN} };\ndeclare const k: KZieh;\n`,
       erwartet: [],
       buehne: "",
     });
@@ -1332,7 +1353,7 @@ function kalibrierfaelle(): Kalibrierfall[] {
     // dort eine Schuld, die es nicht gibt. Also wird die Grenze GEMESSEN statt geschlossen — und
     // damit sie nicht bloß „der Testkörper sagt nichts" heisst, steht direkt daneben der GEGENPOL:
     // derselbe Rumpf, Zeichen für Zeichen, nur mit direktem Bühnenimport. Er MUSS melden.
-    const rumpfAusDritterHand = `interface KMaus extends ${b.seitentyp} { mouse: ${MAUS} }\nasync function probe(): Promise<void> { await (seite() as unknown as KMaus).mouse.click(1, 2); }`;
+    const rumpfAusDritterHand = `interface KZieh extends ${b.seitentyp} { ${UNGEDECKT}: ${ZIEHEN} }\nasync function probe(): Promise<void> { await (seite() as unknown as KZieh).${UNGEDECKT}.starten("a", "b"); }`;
     faelle.push({
       name: `${b.kurz} · Grenze: Verbraucher AUS DRITTER HAND (über einen re-exportierenden Helfer) wird nicht gesehen`,
       quelle: `import type { ${b.seitentyp} } from "./ein-helfer-der-die-buehne-benutzt";\ndeclare function seite(): ${b.seitentyp};\n${rumpfAusDritterHand}`,
@@ -1342,7 +1363,7 @@ function kalibrierfaelle(): Kalibrierfall[] {
     faelle.push({
       name: `${b.kurz} · Gegenpol zur Grenze: derselbe Rumpf, nur direkt an der Bühne — meldet`,
       quelle: `${kopf}${rumpfAusDritterHand}`,
-      erwartet: ["mouse"],
+      erwartet: [UNGEDECKT],
       buehne: b.kurz,
     });
 
@@ -1352,14 +1373,14 @@ function kalibrierfaelle(): Kalibrierfall[] {
     // verliert den Verbraucher zweiter Hand, nicht den Helfer, der die Aufweitung wirklich schreibt.
     faelle.push({
       name: `${b.kurz} · der re-exportierende Helfer selbst importiert die Bühne — und wird gesehen`,
-      quelle: `${kopf}export type SeiteMitMaus = ${b.seitentyp} & { mouse: ${MAUS} };\nexport type { ${b.seitentyp} };\n`,
-      erwartet: ["mouse"],
+      quelle: `${kopf}export type SeiteMitZiehen = ${b.seitentyp} & { ${UNGEDECKT}: ${ZIEHEN} };\nexport type { ${b.seitentyp} };\n`,
+      erwartet: [UNGEDECKT],
       buehne: b.kurz,
     });
 
     faelle.push({
       name: `${b.kurz} · Gegenstück: derselbe Wortlaut als KOMMENTAR wird nicht gefunden`,
-      quelle: `${kopf}// interface KMaus extends ${b.seitentyp} { mouse: ${MAUS} }\n// type KMaus = ${b.standtyp}["seite"] & { mouse: ${MAUS} };\n// await (seite() as unknown as { mouse: ${MAUS} }).mouse.click(1, 2);\nexport const nichts = 1;\n`,
+      quelle: `${kopf}// interface KZieh extends ${b.seitentyp} { ${UNGEDECKT}: ${ZIEHEN} }\n// type KZieh = ${b.standtyp}["seite"] & { ${UNGEDECKT}: ${ZIEHEN} };\n// await (seite() as unknown as { ${UNGEDECKT}: ${ZIEHEN} }).${UNGEDECKT}.starten("a", "b");\nexport const nichts = 1;\n`,
       erwartet: [],
       buehne: "",
     });
@@ -1376,20 +1397,22 @@ function kalibrierfaelle(): Kalibrierfall[] {
     const kopf = `import type { ${h4.seitentyp}, ${h4.standtyp} } from "${importPfad(h4)}";\ndeclare function seite(): ${h4.standtyp}["seite"];\n`;
     faelle.push({
       name: "h4 · Typalias hinter einem Cast (die Lücke aus JOB 3564 Runde 2)",
-      quelle: `${kopf}type KMaus = { mouse: ${MAUS} };\nasync function probe(): Promise<void> { await (seite() as unknown as KMaus).mouse.click(1, 2); }`,
-      erwartet: ["mouse"],
+      quelle: `${kopf}type KZieh = { ${UNGEDECKT}: ${ZIEHEN} };\nasync function probe(): Promise<void> { await (seite() as unknown as KZieh).${UNGEDECKT}.starten("a", "b"); }`,
+      erwartet: [UNGEDECKT],
       buehne: "h4",
     });
     faelle.push({
       name: "h4 · Schnittmenge mit `Seite` unmittelbar im Cast",
-      quelle: `${kopf}async function probe(): Promise<void> {\n  await (seite() as unknown as (${h4.seitentyp} & { mouse: ${MAUS} })).mouse.click(1, 2);\n}`,
-      erwartet: ["mouse"],
+      quelle: `${kopf}async function probe(): Promise<void> {\n  await (seite() as unknown as (${h4.seitentyp} & { ${UNGEDECKT}: ${ZIEHEN} })).${UNGEDECKT}.starten("a", "b");\n}`,
+      erwartet: [UNGEDECKT],
       buehne: "h4",
     });
     faelle.push({
       name: "h4 · verstecktes Unterfeld über einen Typalias",
-      quelle: `${kopf}type KTasten = { press(taste: string): Promise<void>; type(text: string): Promise<void> };\ninterface KSeite extends ${h4.seitentyp} { keyboard: KTasten }\nasync function probe(): Promise<void> { await (seite() as KSeite).keyboard.type("abc"); }`,
-      erwartet: ["keyboard.type"],
+      // Das Unterfeld ist seit JOB 3775 `insertText` und nicht mehr `type`: `keyboard.type` steht
+      // jetzt in `Seite` von h4 und wäre hier „bekannt" — der Fall prüfte dann nichts mehr.
+      quelle: `${kopf}type KTasten = { press(taste: string): Promise<void>; ${UNGEDECKT_UNTER}(text: string): Promise<void> };\ninterface KSeite extends ${h4.seitentyp} { keyboard: KTasten }\nasync function probe(): Promise<void> { await (seite() as KSeite).keyboard.${UNGEDECKT_UNTER}("abc"); }`,
+      erwartet: [`keyboard.${UNGEDECKT_UNTER}`],
       buehne: "h4",
     });
   }
@@ -1509,14 +1532,21 @@ describe("JOB 3609 · die Seiten-Typisierung wohnt in der Vorrichtung — an JED
         `Diese Verbraucher von ${b.pfad} sind aus der Prüfmenge verschwunden`,
       ).toEqual([]);
       // Und die Grundlage selbst: `Seite` muss Felder haben, sonst wäre jede Aufweitung „bekannt".
+      // Die Untergrenze ist die GEMESSENE Feldzahl DIESER Bühne (`mindestFelder`) und nicht mehr
+      // eine gemeinsame Sechs — ein verlorenes Feld macht in den Verbraucherdateien lautlos eine
+      // Aufweitung wieder berechtigt, also muss der Verlust hier auffallen.
       const felder = felderVon(b.kurz);
+      console.info(
+        `JOB 3775 · V3-${b.kurz}: ${felder.size} Felder in \`${b.seitentyp}\` (Untergrenze ${b.mindestFelder}) — ${[...felder.keys()].join(", ")}`,
+      );
       expect(
         [...felder.keys()],
         `${b.pfad}: \`${b.seitentyp}\` kennt \`goto\` nicht mehr`,
       ).toContain("goto");
-      expect(felder.size, `${b.pfad}: \`${b.seitentyp}\` ist leergelaufen`).toBeGreaterThanOrEqual(
-        6,
-      );
+      expect(
+        felder.size,
+        `${b.pfad}: \`${b.seitentyp}\` hat Felder verloren — gemessen ${felder.size}, festgenagelt ${b.mindestFelder}`,
+      ).toBeGreaterThanOrEqual(b.mindestFelder);
     });
   }
 
@@ -1546,9 +1576,26 @@ describe("JOB 3609 · die Seiten-Typisierung wohnt in der Vorrichtung — an JED
 
   it("V6 · kalibriert: derselbe Verstoß wird in JEDER Schreibweise und an JEDER Bühne gefunden", () => {
     // Ohne diesen Fall hängt V1 an Schreibweise und Bühne: JOB 3564 Runde 2 sah
-    // `interface X { mouse … }` hinter einem Cast, `type X = { mouse … }` aber nicht; und bis JOB
+    // `interface X { … }` hinter einem Cast, `type X = { … }` aber nicht; und bis JOB
     // 3609 sah niemand dasselbe an h6 oder h3. Beides ist derselbe Verstoß, also muss beides
     // denselben Fund erzeugen — mit Datei, Zeile, Typname, BÜHNE und Feld.
+
+    // ZUERST DIE VORAUSSETZUNG DER GANZEN KALIBRIERUNG (JOB 3775): das Probefeld darf an KEINER
+    // Bühne bekannt sein. Trägt es jemand in eine `Seite` ein, messen alle Fälle dieser Bühne
+    // plötzlich „kein Fund" — die Kalibrierung wäre dann zwar rot, aber niemand sähe warum. Diese
+    // zwei Zeilen sagen es. Genau das ist beim Umbau von `mouse` und `keyboard.type` passiert.
+    for (const b of BUEHNEN) {
+      const felder = felderVon(b.kurz);
+      expect(
+        [...felder.keys()],
+        `${b.pfad} kennt „${UNGEDECKT}" jetzt selbst — die Kalibrierung braucht ein anderes Probefeld`,
+      ).not.toContain(UNGEDECKT);
+      expect(
+        felder.get("keyboard") ?? [],
+        `${b.pfad} kennt „keyboard.${UNGEDECKT_UNTER}" jetzt selbst — Probe-Unterfeld wechseln`,
+      ).not.toContain(UNGEDECKT_UNTER);
+    }
+
     const rest: string[] = [];
     for (const fall of KALIBRIERFAELLE) {
       const befund = kalibriere(fall);
@@ -1673,5 +1720,43 @@ describe("JOB 3609 · die Seiten-Typisierung wohnt in der Vorrichtung — an JED
       ts.ScriptKind.TS,
     );
     expect(deklarationsZahl(knoten(dreiDeklarationen))).toBe(3);
+  });
+
+  it("V10 · die Bühne h4 ist abgeräumt — und der ALTBESTAND nimmt für sie keine Zeile mehr an", () => {
+    // WARUM NUR h4 UND NICHT ALLE DREI. V1 und V2 halten den Altbestand in beide Richtungen, aber
+    // keiner von beiden verhindert, dass er WÄCHST: die nächste h4-Datei, die sich `dragAndDrop`
+    // selbst nachreicht, bekäme heute einfach eine fünfte Zeile, und der Gewinn von JOB 3564 wäre
+    // still wieder weg. Für h4 ist diese Tür ab JOB 3775 zu — die Bühne hat ihre Felder, also gibt
+    // es keinen Grund mehr, an ihr etwas zuzugestehen.
+    //
+    // h6 UND h3 BLEIBEN AUSDRÜCKLICH ZUGELASSEN. Ihre Bühnen tragen ihre Felder noch nicht (h6 kennt
+    // `setViewportSize` nicht, h3 kein `waitForLoadState`), und ihre Verbraucher gehören fremden
+    // Zielpfaden. Ein Fall, der sie hier mitverböte, wäre am Tag seiner Entstehung rot und würde
+    // abgeschaltet statt erfüllt. Wer h6 oder h3 abräumt, erweitert diese Menge um seinen Kurznamen.
+    const ABGERAEUMT = ["h4"] as const;
+    // Ohne diese Zeile wäre der Fall nach einer Umbenennung im Register lautlos grün: er prüfte dann
+    // eine Bühne, die es nicht mehr gibt.
+    for (const kurz of ABGERAEUMT) {
+      expect(
+        BUEHNEN.map((b) => b.kurz),
+        `Die abgeräumte Bühne „${kurz}" steht nicht mehr im Register — dieser Fall bewacht nichts`,
+      ).toContain(kurz);
+    }
+    const rueckfall: string[] = [];
+    for (const [datei, zeile_] of ALTBESTAND) {
+      if (!ABGERAEUMT.includes(zeile_.buehne as (typeof ABGERAEUMT)[number])) {
+        continue;
+      }
+      const buehne = BUEHNEN.find((b) => b.kurz === zeile_.buehne);
+      const ort = `\`export interface ${buehne?.seitentyp ?? "Seite"}\` von \`${buehne?.pfad ?? "der Bühne"}\``;
+      const weg = `trage das Feld in ${ort} ein und lösche diese Altzeile`;
+      rueckfall.push(
+        `${datei}: reicht sich „${zeile_.felder.join(", ")}" selbst nach — ${weg}. Die Bühne \`${zeile_.buehne}\` ist seit JOB 3775 abgeräumt und nimmt keinen Neuzugang mehr an.`,
+      );
+    }
+    expect(
+      rueckfall,
+      `Für diese Bühnen gibt es keinen Altbestand mehr: ${ABGERAEUMT.join(", ")}`,
+    ).toEqual([]);
   });
 });

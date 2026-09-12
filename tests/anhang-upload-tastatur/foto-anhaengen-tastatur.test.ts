@@ -182,16 +182,6 @@ const PNG_1X1 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 const ANHANG_NAME = "pruefbild.png";
 
-/** Die Methoden der echten Playwright-Seite, die die schlanke `Seite`-Schnittstelle nicht führt. */
-interface Bedienung {
-  keyboard: { press(taste: string): Promise<void> };
-  mouse: { click(x: number, y: number): Promise<void> };
-  setInputFiles(
-    selektor: string,
-    dateien: { name: string; mimeType: string; buffer: Buffer }[],
-  ): Promise<void>;
-}
-
 let stand: H4Stand | null = null;
 let fehler: string | null = null;
 
@@ -216,7 +206,6 @@ let englisch: EnglischeMessung | null = null;
 const enText = (schluessel: string): string => i18n.t(schluessel, { lng: "en" });
 
 const seite = (): H4Stand["seite"] => (stand as H4Stand).seite;
-const bedienung = (): Bedienung => seite() as unknown as Bedienung;
 
 /** „Mehr" aufklappen und darin NUR den Abschnitt „Anhänge" — jeder weitere Abschnitt brächte
  *  fremde Bedienelemente in die Tab-Kette und machte die Messung unscharf. */
@@ -261,7 +250,7 @@ async function tabbenBis(marke: string, entfernenMarke: string): Promise<Fokus[]
   }
   const kette: Fokus[] = [];
   for (let i = 0; i < 8; i++) {
-    await bedienung().keyboard.press("Tab");
+    await seite().keyboard.press("Tab");
     const f = await aktiv();
     kette.push(f);
     if (f.name === marke) {
@@ -300,16 +289,16 @@ describe("JOB 3126 · UX-23 — der Auslöser „Foto anhängen“ ist ein Bedie
       if (fokusAmAusloeser.name === marke) {
         // Shift+Tab führt zurück — der Abnahmeweg aus UIUX-AUFTRAEGE-13 §UX-23 nennt beide
         // Richtungen.
-        await bedienung().keyboard.press("Shift+Tab");
+        await seite().keyboard.press("Shift+Tab");
         zurueck = await aktiv();
-        await bedienung().keyboard.press("Tab");
+        await seite().keyboard.press("Tab");
 
         // 3 · Enter und Leertaste, je gegen den Zähler am echten Dateifeld.
         const vorEnter = await zaehler();
-        await bedienung().keyboard.press("Enter");
+        await seite().keyboard.press("Enter");
         enterKlicks = { vor: vorEnter, nach: await zaehler() };
         const vorSpace = await zaehler();
-        await bedienung().keyboard.press("Space");
+        await seite().keyboard.press("Space");
         spaceKlicks = { vor: vorSpace, nach: await zaehler() };
       }
 
@@ -319,14 +308,14 @@ describe("JOB 3126 · UX-23 — der Auslöser „Foto anhängen“ ist ein Bedie
       const r = await seite().evaluate<{ x: number; y: number } | null>(fn(RECHTECK), marke);
       const vorMaus = await zaehler();
       if (r) {
-        await bedienung().mouse.click(r.x, r.y);
+        await seite().mouse.click(r.x, r.y);
       }
       mausKlicks = { vor: vorMaus, nach: await zaehler() };
 
       // 5 · Die ganze Kette: eine echte Datei ins Feld, dann muss eine zweite Kachel entstehen.
       //     Das misst `onChange` → Vorschau → Upload → `attach` → Rücklauf, also genau das, was
       //     beim Umbau vom `<label>` zum `<button>` hätte verloren gehen können.
-      await bedienung().setInputFiles(`${BEREICH} input[type="file"]`, [
+      await seite().setInputFiles(`${BEREICH} input[type="file"]`, [
         { name: ANHANG_NAME, mimeType: "image/png", buffer: Buffer.from(PNG_1X1, "base64") },
       ]);
       await seite().waitForFunction(
@@ -357,7 +346,7 @@ describe("JOB 3126 · UX-23 — der Auslöser „Foto anhängen“ ist ein Bedie
       const enFokus = await aktiv();
       const enVor = await zaehler();
       if (enFokus.name === markeEn) {
-        await bedienung().keyboard.press("Enter");
+        await seite().keyboard.press("Enter");
       }
       englisch = {
         inventar: enInventar,

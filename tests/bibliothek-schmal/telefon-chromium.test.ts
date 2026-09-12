@@ -10,17 +10,13 @@
 // mehr Instanzen kippen im Gesamttor fremde Browsertests (`h6-chromium.ts:317-324`).
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { type H4Stand, ORIGIN, type Seite, TITEL_FREI, fn, h4Stand } from "../design/h4-harness";
+import { type H4Stand, ORIGIN, TITEL_FREI, fn, h4Stand } from "../design/h4-harness";
 
-/**
- * JOB 3121 R2: für C5 wird eine ECHTE Enter-Taste gebraucht, kein nachgebautes Ereignis — geprüft
- * wird ja gerade, was der Browser beim Auslösen von selbst tut (rollen). `Seite` ist die schmale
- * Sicht des Prüfstands auf die Playwright-Seite; das Objekt dahinter ist die volle Seite. Diese
- * Erweiterung nennt nur, was hier zusätzlich benutzt wird — `h4-harness.ts` ist nicht Zielpfad.
- */
-interface SeiteMitTastatur extends Seite {
-  keyboard: { press(taste: string): Promise<void> };
-}
+// JOB 3121 R2 hatte sich hier ein `interface SeiteMitTastatur extends Seite { keyboard: { press } }`
+// gebaut, ausdrücklich mit der Begründung „`h4-harness.ts` ist nicht Zielpfad". Seit JOB 3564 steht
+// `keyboard` in `Seite` selbst; die Erweiterung war nur noch eine Wiederholung. JOB 3775 hat
+// `keyboard` um `type` ergänzt — damit war die verengende Wiederholung nicht bloß überflüssig,
+// sondern ein Typfehler (TS2430). Sie ist entfernt, der Zugriff geht direkt über `Seite`.
 
 /** So viele zusätzliche Einträge, dass die Liste auf 390 px sicher über mehrere Bildschirme läuft. */
 const ZUSATZ = 40;
@@ -228,7 +224,7 @@ describe("JOB 3121 · UX-14 · die Bibliothek auf dem Telefon (Chromium, gebaute
     expect(imBericht.fokus).toBe("bib-zurueck");
 
     // Der Rückweg mit der ECHTEN Enter-Taste auf dem fokussierten Knopf.
-    await (s.seite as SeiteMitTastatur).keyboard.press("Enter");
+    await s.seite.keyboard.press("Enter");
     await s.seite.waitForFunction(
       fn(`() => !!document.querySelector('[data-testid="bib-liste"]')`),
       undefined,

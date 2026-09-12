@@ -20,17 +20,7 @@
 // echte Fastify-App, echte Dienste, echte Anmeldung. Kein Nachbau, kein zweiter Weg. Fehlt `dist`
 // (kein `./tools/build` gelaufen), wird der Fall ROT und sagt warum — kein stilles Überspringen.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { type H4Stand, type Seite, fn, h4Stand } from "../design/h4-harness";
-
-/** Playwright kann mehr, als die schlanke Schnittstelle der Vorrichtung nennt. */
-interface Bedienung {
-  keyboard: { press(taste: string): Promise<void>; type(text: string): Promise<void> };
-  click(selektor: string): Promise<void>;
-  focus(selektor: string): Promise<void>;
-  selectOption(selektor: string, wert: string): Promise<unknown>;
-  reload(opts?: Record<string, unknown>): Promise<unknown>;
-}
-const hand = (s: Seite): Bedienung => s as unknown as Bedienung;
+import { type H4Stand, fn, h4Stand } from "../design/h4-harness";
 
 const ANHANG_NAME = "Pruefprotokoll.pdf";
 const BEZEICHNUNG = "Seite 4, Absatz 2";
@@ -114,13 +104,13 @@ async function frischUndAufgeklappt(sprache?: string): Promise<void> {
   if (sprache) {
     await s.evaluate(fn(`(l) => localStorage.setItem("kw.sprache", l)`), sprache);
   }
-  await hand(s).reload({ waitUntil: "load", timeout: 60_000 });
+  await s.reload({ waitUntil: "load", timeout: 60_000 });
   await s.waitForFunction(
     fn(`() => !!document.querySelector('[data-testid="bib-sprung-quellen"]')`),
     undefined,
     { timeout: 30_000 },
   );
-  await hand(s).click('[data-testid="bib-sprung-quellen"]');
+  await s.click('[data-testid="bib-sprung-quellen"]');
   await s.waitForFunction(
     fn(`() => { const d = document.querySelector('[data-bib-abschnitt="quellen"]');
                return !!(d && d.open && d.querySelector('button')); }`),
@@ -154,7 +144,7 @@ async function tabBisKnopf(): Promise<boolean> {
     if (da) {
       return true;
     }
-    await hand(s).keyboard.press("Tab");
+    await s.keyboard.press("Tab");
   }
   return false;
 }
@@ -229,8 +219,8 @@ describe("JOB 3133 · UX-22 — die Belegstelle in Chromium: anhängen, neu lade
     const zahlVorher = vorher.quellenTitel.length;
 
     // Bezeichnung tippen — ohne sie wäre der Knopf ohnehin hart abgeschaltet und der Fall leer.
-    await hand(s).click('[data-bib-abschnitt="quellen"] input');
-    await hand(s).keyboard.type(BEZEICHNUNG);
+    await s.click('[data-bib-abschnitt="quellen"] input');
+    await s.keyboard.type(BEZEICHNUNG);
     // Der Knopf, SOLANGE der Fokus noch im Eingabefeld steht — der Vergleichswert für unten.
     const ohneFokus = (await messen()).knopfOutline;
 
@@ -250,7 +240,7 @@ describe("JOB 3133 · UX-22 — die Belegstelle in Chromium: anhängen, neu lade
     console.log(`JOB 3133 C1 · Fokus: ohne „${ohneFokus}“ · mit „${amKnopf.knopfOutline}“`);
     expect(amKnopf.knopfOutline, "der Fokus ist am Knopf nicht zu sehen").not.toBe(ohneFokus);
 
-    await hand(s).keyboard.press("Enter");
+    await s.keyboard.press("Enter");
     await s.waitForTimeout(500);
     const nachher = await messen();
     expect(nachher.quellenTitel.length, "die gesperrte Aktion wurde ausgeführt").toBe(zahlVorher);
@@ -264,9 +254,9 @@ describe("JOB 3133 · UX-22 — die Belegstelle in Chromium: anhängen, neu lade
     const vorher = await messen();
     const zahlVorher = vorher.quellenTitel.length;
 
-    await hand(s).click('[data-bib-abschnitt="quellen"] input');
-    await hand(s).keyboard.type(BEZEICHNUNG);
-    await hand(s).selectOption('[data-bib-abschnitt="quellen"] select', objektId);
+    await s.click('[data-bib-abschnitt="quellen"] input');
+    await s.keyboard.type(BEZEICHNUNG);
+    await s.selectOption('[data-bib-abschnitt="quellen"] select', objektId);
     await s.waitForTimeout(200);
 
     const mitAnker = await messen();
@@ -275,7 +265,7 @@ describe("JOB 3133 · UX-22 — die Belegstelle in Chromium: anhängen, neu lade
     expect(mitAnker.knopfBeschriebenVon).toBeNull();
 
     expect(await tabBisKnopf()).toBe(true);
-    await hand(s).keyboard.press("Enter");
+    await s.keyboard.press("Enter");
     await s.waitForFunction(
       fn(`(n) => document.querySelectorAll('[data-bib-abschnitt="quellen"] li').length > n`),
       zahlVorher,

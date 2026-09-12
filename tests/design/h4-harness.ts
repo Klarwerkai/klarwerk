@@ -93,13 +93,48 @@ export interface Seite {
   /**
    * JOB 3564: die Tastatur steht HIER und nicht in den Testdateien. SIEBEN Browserprüfungen haben
    * sich `keyboard` bis dahin je selbst nachgereicht (Interface oder Cast; gemessen am Basisstand
-   * `efca6a6`) — dieselbe Arbeit siebenmal. Schlank wie der Rest: nur `press`, das einzige, was die
-   * Verbraucher wirklich rufen; wer `type` braucht, trägt es hier nach, nicht bei sich.
-   * `tests/design-vorrichtung/seiten-typ-waechter.test.ts` hält den Ort fest.
+   * `efca6a6`) — dieselbe Arbeit siebenmal. Schlank wie der Rest: nur was die Verbraucher wirklich
+   * rufen. `tests/design-vorrichtung/seiten-typ-waechter.test.ts` hält den Ort fest.
+   *
+   * JOB 3775 hat `type` nachgetragen — genau auf dem Weg, den der Satz von JOB 3564 vorschrieb
+   * („wer `type` braucht, trägt es hier nach, nicht bei sich"). Bestellt von
+   * `tests/bibliothek-sichten/sichten-chromium.test.ts:66` und
+   * `tests/quellen-anker-im-formular/belegstelle-ueberlebt-neuladen-chromium.test.ts:223`.
    */
-  keyboard: { press(taste: string): Promise<void> };
+  keyboard: { press(taste: string): Promise<void>; type(text: string): Promise<void> };
   evaluate<T>(fn: BrowserFn, arg?: unknown): Promise<T>;
   on(ereignis: string, handler: (arg: unknown) => void): void;
+
+  // ---- JOB 3775 · DER REST DES h4-ALTBESTANDS, an seinen Aufrufstellen gemessen ------------------
+  //
+  // Bis hierher reichten sich VIER Verbraucher dieser Bühne die Felder unten je selbst nach — als
+  // Interface (`SeiteMitTastatur`, `SeiteMitReload`, `KeyboardPage`) oder als Cast (`Bedienung`).
+  // `tests/design-vorrichtung/seiten-typ-waechter.test.ts` führte sie als ALTBESTAND, weil die Bühne
+  // damals einem laufenden Job gehörte. Sie stehen jetzt hier, EINMAL; die vier Altzeilen sind
+  // gelöscht, und V10 dort lässt für h4 keine neue nachwachsen.
+  //
+  // JEDE SIGNATUR IST DIE GEMESSENE MINDESTFORM, abgeschrieben von der Aufrufstelle, nicht von
+  // Playwright. KEIN `import type` aus `playwright`: `tests/tor-inventar/browser-gruppe.ts:199`
+  // zählt über `ts.isImportDeclaration` und läse auch einen reinen Typimport als weitere
+  // Browser-Startstelle (Lehre JOB 3672 R2).
+
+  /** Der echte Zeigerklick an Bildschirmkoordinaten — `foto-anhaengen-tastatur.test.ts:311`. */
+  mouse: { click(x: number, y: number): Promise<void> };
+  /** Eine echte Datei in ein `input[type=file]` — `foto-anhaengen-tastatur.test.ts:318`. */
+  setInputFiles(
+    selektor: string,
+    dateien: { name: string; mimeType: string; buffer: Buffer }[],
+  ): Promise<void>;
+  /**
+   * Das echte Neuladen (F5). Zwei Verbraucher, zwei Aufrufformen: `{ waitUntil }` in
+   * `klara-hilfe-chromium.test.ts:455`, `{ waitUntil, timeout }` in
+   * `belegstelle-ueberlebt-neuladen-chromium.test.ts:107` — dieselbe offene Form wie `goto` oben.
+   */
+  reload(opts?: Record<string, unknown>): Promise<unknown>;
+  /** Der Klick auf einen Selektor — `belegstelle-ueberlebt-neuladen-chromium.test.ts:113`. */
+  click(selektor: string): Promise<void>;
+  /** Eine Auswahl in einem `select` setzen — `belegstelle-ueberlebt-neuladen-chromium.test.ts:259`. */
+  selectOption(selektor: string, wert: string): Promise<unknown>;
 }
 interface Browser {
   version(): string;

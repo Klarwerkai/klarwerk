@@ -7,9 +7,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { type H4Stand, ORIGIN, type Seite, fn, h4Stand } from "../design/h4-harness";
 
-interface SeiteMitTastatur extends Seite {
-  keyboard: { press(taste: string): Promise<void> };
-}
 interface Rechteck {
   left: number;
   right: number;
@@ -93,9 +90,6 @@ function imBild(rect: Rechteck, breite: number): void {
 // Der Hilfe-Link steht AUSSERHALB des nativen details, wie im unveränderten T1.
 type WordRoute = "/start" | "/import";
 type Sprache = "de" | "en";
-interface SeiteMitReload extends SeiteMitTastatur {
-  reload(opts: { waitUntil: "load" }): Promise<unknown>;
-}
 interface WordRechteck extends Rechteck {
   top: number;
   bottom: number;
@@ -163,13 +157,9 @@ async function wordHinweisOeffnen(seite: Seite, route: WordRoute, sprache: Sprac
   );
 }
 
-async function wordOeffnen(
-  route: WordRoute,
-  breite: number,
-  sprache: Sprache,
-): Promise<SeiteMitReload> {
+async function wordOeffnen(route: WordRoute, breite: number, sprache: Sprache): Promise<Seite> {
   if (!stand) throw new Error("Chromium-Prüfstand fehlt");
-  const seite = stand.seite as SeiteMitReload;
+  const { seite } = stand;
   await seite.setViewportSize({ width: breite, height: breite === 320 ? 640 : 900 });
   // Echte persistierte Produktschalter; /import verlangt Admin + Stufe 2 (navigation.ts:278–282).
   await seite.evaluate(
@@ -258,7 +248,7 @@ function wordLinkLesbar(m: WordMessung, sprache: Sprache): void {
   expect(m.hilfe.bottom).toBeLessThanOrEqual(m.hoehe);
 }
 
-async function wordTastatur(seite: SeiteMitTastatur, sprache: Sprache): Promise<void> {
+async function wordTastatur(seite: Seite, sprache: Sprache): Promise<void> {
   const fokus = () =>
     seite.evaluate<string>(
       fn(`() => {
@@ -351,7 +341,7 @@ describe("JOB 3144 · Klara-Webhilfe in Chromium", () => {
 
   it("T1 · Word-Vorschau: echte Tab-Taste erreicht den Hilfe-Link, Enter öffnet /hilfe", async () => {
     if (!stand) throw new Error("Chromium-Prüfstand fehlt");
-    const seite = stand.seite as SeiteMitTastatur;
+    const { seite } = stand;
     await seite.evaluate(fn('() => localStorage.setItem("kw.sprache", "de")'));
     await seite.goto(`${ORIGIN}/start`, { waitUntil: "load" });
     await seite.waitForFunction(

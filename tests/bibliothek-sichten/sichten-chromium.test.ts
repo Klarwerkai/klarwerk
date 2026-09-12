@@ -1,16 +1,13 @@
 // P04: gebaute Produktseite, echte Tastatur, berechnetes Layout. Keine CSS-Kopie.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { SPRACHE_STORAGE_KEY } from "../../apps/web/src/lib/sprachwahl";
-import { type H4Stand, ORIGIN, type Seite, fn, h4Stand } from "../design/h4-harness";
+import { type H4Stand, ORIGIN, fn, h4Stand } from "../design/h4-harness";
 
-interface KeyboardPage extends Seite {
-  keyboard: { press(key: string): Promise<void>; type(text: string): Promise<void> };
-}
 let stand: H4Stand;
 const LONG_NAME = `${"Wartungsunterlagen_".repeat(9)}Schluss_A`;
 const OTHER_NAME = `${"Wartungsunterlagen_".repeat(9)}Schluss_B`;
 async function enter(selector: string): Promise<void> {
-  const page = stand.seite as KeyboardPage;
+  const page = stand.seite;
   expect(
     await page.evaluate<boolean>(
       fn(`(selector) => {
@@ -34,7 +31,7 @@ async function summary(text: string): Promise<void> {
       text,
     ),
   ).toBe(true);
-  await (stand.seite as KeyboardPage).keyboard.press("Enter");
+  await stand.seite.keyboard.press("Enter");
 }
 
 describe("P04 · Name und Eingabe bei 360/1440 px (Chromium)", () => {
@@ -49,7 +46,7 @@ describe("P04 · Name und Eingabe bei 360/1440 px (Chromium)", () => {
   it.each([360, 1440])(
     "%i px · langer Name ist vollständig lesbar, Tab/Enter speichern und rufen die Sicht auf",
     async (width) => {
-      const page = stand.seite as KeyboardPage;
+      const page = stand.seite;
       await page.setViewportSize({ width, height: 900 });
       await page.goto(`${ORIGIN}/bibliothek?raum=meine&zustand=validiert`, { waitUntil: "load" });
       await page.waitForFunction(fn(`() => document.querySelector('[data-testid="bib-zeile"]')`));
@@ -163,7 +160,7 @@ describe("P04 · Name und Eingabe bei 360/1440 px (Chromium)", () => {
   );
 
   it("UX-29 C · Hinweis bei 320/390 px in DE/EN ohne Überlauf; Name und Speichern bleiben erreichbar", async () => {
-    const page = stand.seite as KeyboardPage;
+    const page = stand.seite;
     for (const width of [320, 390]) {
       for (const language of ["de", "en"]) {
         await page.setViewportSize({ width, height: 740 });
