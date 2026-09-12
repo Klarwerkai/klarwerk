@@ -316,6 +316,59 @@ export type CreateFromDocumentResponse = KnowledgeObject & {
   followUpsRecorded?: FollowUpsRecorded;
 };
 
+// ================================================================================================
+// JOB 3782 — DIE FRIST DES ENTWURFSABRUFS. DIE ZAHL IST GEMESSEN, NICHT GEGRIFFEN.
+// ================================================================================================
+//
+// Die Bahn des JOB 3633 hat diesen Auftrag ausdrücklich mit EINER Abwägung zurückgelegt
+// (`archiv/3633/runde-2/RUECKGABE.md:34`, wörtlich): „eine Frist bricht auch das Laden grosser
+// Entwürfe ab." Genau diese Abwägung entscheidet diese Zahl, und sie steht auf vier Stützen:
+//
+//   1. DER SERVERANTEIL, GEMESSEN. `tests/entwurf-laden-zeitgrenze/frist-messung.test.ts` legt einen
+//      Entwurf von drei Vierteln des Parserlimits an (`DRAFTS_BODY_LIMIT` = 5 MiB,
+//      `capture-routes.ts:164`; grösser nimmt dieser Server keinen an) und holt ihn dreimal wieder:
+//      3,77 MiB Nutzlast, 28/27/28 ms allein auf dem Rechner, 60/123/119 ms im Lauf neben einem
+//      zweiten Prüfstand (12.09.2026; schlechtester gemessener Wert: 123 ms). Darin steckt die echte
+//      Rechteprüfung, die echte Ankerprüfung (`resumeDraft`) und die echte JSON-Serialisierung.
+//      Der Server ist also NICHT der Grund, warum ein Abruf lange dauert — nicht einmal unter Last,
+//      nicht einmal beim grösstmöglichen Entwurf.
+//   1b. DER BROWSERANTEIL, EBENFALLS GEMESSEN — einmalig am 12.09.2026 an der ECHTEN gebauten
+//      Anwendung (`apps/web/dist`) in einem echten Chromium auf der Bühne `tests/design/h3-blatt-buehne`,
+//      mit demselben Entwurf: Abruf 79/75/76 ms, `JSON.parse` 4/5/4 ms, und der GANZE sichtbare Weg
+//      — Adresse öffnen bis der Titel im Blatt steht — 312 ms. Auch der Browser ist also nicht der
+//      Grund. (Die Messung war ein Einmallauf und steht bewusst nicht als Prüfstand im Tor: sie
+//      startet einen Browser, und ihre Aussage hält `frist-messung.test.ts` billiger.)
+//   2. DIE LEITUNG, GERECHNET — und als Rechnung benannt, weil sie in keiner der beiden Messungen
+//      vorkommt: beide fahren im selben Rechner, kein Kabel dazwischen. Ein Entwurf an der
+//      Obergrenze sind 5 MiB = 41,9 Mbit. Auf einer absichtlich schlechten Verbindung (2 Mbit/s,
+//      gedrosseltes Mobilnetz) braucht allein die Übertragung 21,0 s. 21,0 s + Serveranteil +
+//      Browseranteil ergeben rund 21,5 s Bedarf; 25 s lassen darüber gut drei Sekunden Luft.
+//   3. DIE GEGENPROBE AM HAUS. Der Speicherweg fährt `FRONT_DOOR_SAVE_TIMEOUT_MS = 30000`
+//      (`lib/captureFrontDoor.ts:15`) für DIESELBE Datenmenge — und zwar in der SCHWEREREN
+//      Richtung: Speichern lädt hoch, Laden lädt herunter, und Heimat- wie Mobilanschlüsse sind
+//      nach oben langsamer als nach unten. Eine Ladefrist ÜBER der bewährten Speicherfrist wäre
+//      deshalb nicht vorsichtig, sondern unbegründet. 25 s bleibt darunter.
+//
+// ================================================================================================
+// DIE RECHNUNG IST SEIT RUNDE 2 SELBST EIN PRÜFSTAND — sonst wäre sie nur Prosa neben einer Zahl.
+// ================================================================================================
+// bens Befund der Runde 1, wörtlich: „begründet den entscheidenden Leitungsanteil rechnerisch …
+// Das belegt eine Timeout-Grenze, aber keine am grossen Entwurf gemessene Kalibrierung." Er hatte
+// recht: wer diese Zahl auf 90 000 gesetzt hätte, wäre durch jeden Prüfstand gekommen, und der
+// Absatz hier wäre still falsch geworden. Der Fall M2 in `tests/entwurf-laden-zeitgrenze/
+// frist-messung.test.ts` rechnet die drei Posten deshalb in jedem Lauf nach und klammert die Frist
+// von BEIDEN Seiten ein: nicht unter dem Bedarf (sonst schnitte sie den grössten Entwurf ab) und
+// nicht mehr als fünf Sekunden darüber (sonst wäre der Aufschlag durch nichts gedeckt). Wer die
+// Zahl ändert, ändert entweder die Posten mit — oder der Lauf meldet sich mit allen dreien.
+//
+// WAS DIESE ZAHL NICHT IST: eine Aussage darüber, wie lange ein Abruf im Feld dauert. GEMESSEN ist
+// der Serveranteil (in jedem Lauf), ÜBERNOMMEN der Browseranteil (Einmallauf oben, in M2 als
+// grosszügige Schranke von 500 ms geführt), GERECHNET die Leitung. Die Frist schneidet deshalb
+// nichts ab, was in dieser Rechnung Platz hat — und der Fall T3 in `tests/entwurf-laden-zeitgrenze/`
+// hält das auf der FLÄCHE fest: derselbe 3,8-MiB-Entwurf, der knapp innerhalb der Frist antwortet,
+// steht danach vollständig im Blatt — erste Zeile, letzte Zeile, alle dreissig Abbildungen.
+export const DRAFT_LOAD_TIMEOUT_MS = 25_000;
+
 export const endpoints = {
   ko: {
     list: (f?: KoFilter) => api.get<KnowledgeObject[]>(`/kos${qs(f)}`),
@@ -433,7 +486,11 @@ export const endpoints = {
   },
   drafts: {
     list: () => api.get<Draft[]>("/drafts"),
-    get: (id: string) => api.get<Draft>(`/drafts/${id}`),
+    // JOB 3782: DER EINE ABRUF MIT FRIST. Er ist der Weg, auf dem `/erfassen?draft=<id>` das Blatt
+    // füllt — und der einzige, der hier eine Frist bekommt: `list` und die übrigen Lesewege bleiben
+    // unverändert, weil dieser Auftrag nur DIESEN Hänger gemessen hat. Die Zahl steht begründet
+    // oben an `DRAFT_LOAD_TIMEOUT_MS`; die Bauform ist die des Nachbarn `slides.convert`.
+    get: (id: string) => api.getWithTimeout<Draft>(`/drafts/${id}`, DRAFT_LOAD_TIMEOUT_MS),
     // SCRUM-395-Beifang (BUG): Body war fälschlich als { payload } verschachtelt — der Server
     // erwartet die DraftPayload-Felder FLACH (wie update/promote). Folge: frisch gespeicherte
     // Entwürfe verloren Titel & Inhalte bis zum ersten Update. Jetzt konsistent flach.

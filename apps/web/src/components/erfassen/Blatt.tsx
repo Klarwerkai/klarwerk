@@ -201,9 +201,24 @@ function kiFehlerMeldung(err: unknown, rueckfall: string): string {
 
 // JOB 2705 (R2-23 b), unverändert übernommen: Der LADEPFAD meldet einen LADEFEHLER. Eine fachliche
 // Servermeldung gewinnt; alles Technische („Failed to fetch") bekommt den ehrlichen Satz.
+//
+// ================================================================================================
+// JOB 3782 — MIT EINER AUSNAHME, UND SIE HAT EINEN GRUND.
+// ================================================================================================
+// Seit diesem Auftrag hat der Entwurfsabruf eine Frist (`api/endpoints.ts`, `DRAFT_LOAD_TIMEOUT_MS`).
+// Läuft sie ab, wirft der Client einen `ApiError(408, "TIMEOUT", …)` — und dessen Meldung ist ein
+// DEUTSCHER TECHNIKSATZ aus `api/client.ts` („… wurde clientseitig abgebrochen"), der in einer
+// englischen oder niederländischen Fläche nichts zu suchen hat. Die Regel von JOB 2705 („die
+// Servermeldung gewinnt") trägt hier nicht: dieser Fehler kommt gar nicht vom Server, es ist die
+// eigene Fläche, die aufgehört hat zu warten. Also gilt für ihn der übersetzte Rückfallsatz
+// `fd.errLoadFailed`, den es in DE/EN/NL bereits gibt — kein neuer Katalogschlüssel.
+//
+// GEPRÜFT WERDEN BEIDE KENNZEICHEN (`code` UND `status`), weil sie zusammen die eine Quelle
+// bezeichnen: `client.ts` setzt beide in derselben Zeile. Ein Server, der 408 ohne diesen Code
+// schickte, wäre eine fachliche Auskunft und behielte seinen Satz.
 function ladeFehlerMeldung(err: unknown, rueckfall: string): string {
   if (err instanceof ApiError) {
-    return err.message;
+    return err.code === "TIMEOUT" && err.status === 408 ? rueckfall : err.message;
   }
   return rueckfall;
 }
