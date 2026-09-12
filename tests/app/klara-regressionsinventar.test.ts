@@ -118,6 +118,13 @@ const ACHSEN: Achse[] = [
 // aufgenommen; nachgefuehrt wurde genau dieser eine Eintrag.
 // ------------------------------------------------------------------------------------------------
 const INVENTAR: readonly string[] = [
+  // JOB 3502 ADMIN-KI-FREIGABE VERBRAUCHER: Klara und der Word-Weg folgen der zentralen
+  // Adminfreigabe. Beide Pfade tragen „klara" im PFAD (das Verzeichnis war im Auftrag §4
+  // abschliessend vorgegeben) und kommen deshalb ueber die NAMENSachse herein — sie zaehlen in K5.
+  // GEMESSEN, NICHT GESETZT: K2 hat beide gemeldet („expected [ …(2) ] to deeply equal []"), erst
+  // danach wurden diese Zeilen angefasst.
+  "tests/admin-ki-klara/verbraucher-folgen.test.ts",
+  "tests/admin-ki-klara/zentrale-freigabe.test.ts",
   // JOB 3438 BILDVERKLEINERUNG-SICHTBAR: die Bildbilanz des Dokument-Wegs im Aufgabenfenster —
   // der gemountete Fall am ausgelieferten Panel und die Woerterbuchprobe der neuen Schluessel.
   // K2 hat beide gemeldet; keine traegt „klara" im Pfad, sie kommen ueber die Achse `taskpane`.
@@ -1039,7 +1046,12 @@ describe("JOB 920 · K — das Klara-Regressionsinventar ist ableitbar, nicht be
     // mit dem Inventareintrag und noch unverändertem Zähler meldete der Lauf `expected 55 to be 54`
     // (11.09. 18:56, lokal — die Cloud wies auch jetzt wieder jede Arbeitsprüfung mit „Alle
     // Arbeitsprüfplätze der Zusatzserver sind belegt" ab); erst danach wurde diese Zeile angefasst.
-    expect(nurName.length).toBe(55);
+    // JOB 3502 KONFLIKTRUNDE 1: die zwei Prüfungen unter `tests/admin-ki-klara/` tragen „klara“ im
+    // PFAD und werden von keiner Inhaltsachse gefunden — sie prüfen den Resolver und seine beiden
+    // Verbraucher, nicht die Fläche. Vereinigung mit der bereits gelandeten JOB-3606-Kette (51 -> 55);
+    // mit den zwei neuen Inventareinträgen und noch unverändertem Zähler meldete der Lauf
+    // `expected 57 to be 55`; erst danach wurde diese Zeile angefasst.
+    expect(nurName.length).toBe(57);
     expect(verfehlt.length).toBeGreaterThanOrEqual(25);
     expect(verfehlt.length + nurName.length).toBe(GEFUNDEN.length);
   });

@@ -128,6 +128,44 @@ export interface KlaraPolicyInput {
   readonly localProviderLabel?: string | undefined;
   /** Liegt für die betrachtete Sitzung eine gültige externe Zustimmung vor? */
   readonly externalConsentGranted: boolean;
+  /**
+   * ==============================================================================================
+   * DAS ERGEBNIS DER ZENTRALEN ADMINFREIGABE — EIN URTEIL, KEINE ZWEITE KONFIGURATION (JOB 3502).
+   * ==============================================================================================
+   *
+   * WER ENTSCHEIDET. Nicht dieser Resolver. Die eine Entscheidung fällt seit JOB 3549 in
+   * `Reasoner.oeffentlicheKiErlaubt()` (`services/reasoner/src/service.ts`) über
+   * `taskConfig.kiFreigabe` (`ReasonerKiFreigabe` in `./types`). Hier steht ihr ERGEBNIS, damit
+   * Klara und der Word-Weg sich danach richten können.
+   *
+   * WARUM EIN `boolean` UND NICHT `ReasonerKiFreigabe`. Die Adminfreigabe hat zwei Schalter —
+   * Grundfreigabe und die getrennte Freigabe für VERTRAULICHE Inhalte. Den zweiten kann dieser
+   * Resolver nicht beantworten: er erfährt die Einstufung eines Inhalts nirgends. Trüge er die
+   * ganze Struktur, stünde hier ein Feld, das er nicht liest — eine Zusage, die er nicht halten
+   * kann, und eine zweite Stelle, an der die Schalternamen nachgezogen werden müssten, sobald der
+   * Vertrag sich rührt. Er bekommt deshalb genau die Antwort auf die eine Frage, die er stellt:
+   * „darf öffentliche KI überhaupt benutzt werden?" Die Vertraulichkeitsgrenze bleibt, wo sie
+   * heute entschieden wird (`service.ts`), und der Egress-Riegel ebenfalls.
+   *
+   * WAS `undefined` HEISST — und was es NICHT heisst. Es heisst „diese Instanz reicht die zentrale
+   * Auskunft noch nicht herein", also ein BAUZUSTAND, keine Aussage des Administrators. Es ist
+   * ausdrücklich NICHT die Lesart „im Zweifel erlaubt": sobald die Verdrahtung steht (s. unten),
+   * kommt hier immer ein `boolean` an und der Fall entfällt. Ein vorhandenes `false` ist dagegen
+   * die Aussage des Administrators und sperrt — Z6 misst beide Seiten gegeneinander.
+   *
+   * PEDIS ENTSCHEIDUNG IST GEFALLEN und steht dieser Datei nicht zur Disposition (10.09. 21:25,
+   * über Codex 07cc6d07, wörtlich zitiert in `./types` bei `ReasonerKiFreigabe`): „Öffentliche KI
+   * nur nach AUSDRÜCKLICHER Adminfreigabe. Keine Freigabe, kein Egress — auch nicht bei einer
+   * Instanz, die heute läuft. … Im Zweifel gilt: gesperrt." Die Verdrahtung bildet deshalb
+   * „keine Freigabe" auf `false` ab, nicht auf „weglassen".
+   *
+   * DIE VERDRAHTUNG, die dieser Auftrag nicht legen darf (sie liegt ausserhalb seiner Zielpfade):
+   * in `services/app/src/build-app.ts`, in der Policyquelle des `KlaraSessionService`, als
+   *     zentralFreigegeben: config.taskConfig.kiFreigabe?.oeffentlicheKi === true
+   * Das ist Zeichen für Zeichen die Lesart des Kerns („nur `true` zählt; `false` und fehlt sperren
+   * gleich"). Solange sie fehlt, ändert dieser Auftrag am laufenden Betrieb nichts (Z6, V6).
+   */
+  readonly zentralFreigegeben?: boolean | undefined;
   /** Erzeugungszeitpunkt (ms). Injiziert, damit die Auflösung reproduzierbar ist. */
   readonly now: number;
   /**
@@ -360,7 +398,38 @@ export function resolveKlaraPolicy(input: KlaraPolicyInput): KlaraResolution {
   // Der Widerspruch bliebe unsichtbar. Als Blockade mit dem Grund `policy_incomplete` steht er im
   // Panel und im Protokoll — und der Ask-Weg fällt trotzdem nicht aus: er bleibt in der Enge und
   // antwortet deterministisch (`ask-routes.ts`, `ka4Freigabe` liefert `false`).
-  const externAutorisiert = adminConfiguredMode === "external" && input.cloudConfigured;
+  //
+  // ================================================================================================
+  // JOB 3502 — DIE ZENTRALE FREIGABE IST DER DRITTE TEIL DERSELBEN ADMINFRAGE.
+  // ================================================================================================
+  //
+  // `externAutorisiert` beantwortet seit JOB 3079 R2 genau eine Frage: HAT DER ADMINISTRATOR den
+  // externen Weg autorisiert? Bis heute las sie zwei Tatsachen der Konfiguration — die Wahl und die
+  // Verdrahtung. Die zentrale Freigabe (JOB 3549) ist die dritte, und sie ist die unmittelbarste
+  // von allen: der Administrator sagt dort ausdrücklich, ob öffentliche KI benutzt werden darf.
+  //
+  // SIE KOMMT IN DIESE KONJUNKTION UND NICHT DANEBEN, und das ist der ganze Auftrag. Eine eigene
+  // Sperrstufe für die Freigabe wäre eine ZWEITE Sperre neben der vorhandenen — genau das, was
+  // beseitigt werden soll. So bleibt es EINE Entscheidung mit EINEM Grund: fehlt die
+  // Adminautorisierung, gleich aus welchem der drei Teile, heisst das Ergebnis
+  // `policy_incomplete` — und `policy_incomplete` ist ausdrücklich der Grund, den keine Zustimmung
+  // beseitigt (`zustimmungWuerdeTragen` unten). Das ist richtig so: eine Adminentscheidung kann
+  // kein Nutzer wegklicken.
+  //
+  // WAS DAMIT ENTFÄLLT, wenn die Freigabe VORLIEGT: es kommt nichts Zusätzliches mehr obendrauf.
+  // Vor dem Menschen steht dann nur noch SEINE Bestätigung, und die ist mit benanntem Empfänger
+  // erteilbar (`external_consent_missing` mit gefülltem `externalConsentProvider`). Genau das
+  // verlangt der Befund: keine weitere unüberwindbare Meldung, wenn eine gültige zentrale
+  // Autorisierung vorliegt.
+  //
+  // `!== false` UND NICHT `=== true`: der Unterschied ist der Bauzustand, nicht die Bedeutung. Ein
+  // vorhandenes `false` sperrt (Aussage des Administrators); ein fehlendes Feld heisst „diese
+  // Instanz reicht die Auskunft noch nicht herein" und lässt alles wie bisher. Sobald die
+  // Verdrahtung steht, kommt immer ein `boolean` an und beide Schreibweisen fallen zusammen — die
+  // ausführliche Begründung steht bei `zentralFreigegeben`.
+  const zentralErlaubt = input.zentralFreigegeben !== false;
+  const externAutorisiert =
+    adminConfiguredMode === "external" && input.cloudConfigured && zentralErlaubt;
 
   let blockedReason: KlaraDeviationReason | null = null;
   if (effectiveMode === "external") {
@@ -468,8 +537,28 @@ export function resolveKlaraPolicy(input: KlaraPolicyInput): KlaraResolution {
  * stabil über Neustarts, weil es nur aus Konfigurationswerten entsteht — nie aus einem Zeitpunkt
  * oder einer Zufallszahl.
  */
-export function klaraPolicyVersion(input: Pick<KlaraPolicyInput, "choice" | "source">): string {
-  return `policy:${input.source}:${input.choice}`;
+export function klaraPolicyVersion(
+  input: Pick<KlaraPolicyInput, "choice" | "source" | "zentralFreigegeben">,
+): string {
+  const basis = `policy:${input.source}:${input.choice}`;
+  // ================================================================================================
+  // JOB 3502 — DER WIDERRUF DER FREIGABE MUSS EINE ERTEILTE ZUSTIMMUNG ENTWERTEN.
+  // ================================================================================================
+  //
+  // Eine Zustimmung ist an Policy- und Konfigurationsversion gebunden (`klara-session-service.ts`,
+  // Deckungsprüfung). Bliebe die zentrale Freigabe aus beiden heraus, überlebte eine bereits
+  // erteilte Zustimmung ihren Widerruf — die zentrale Entscheidung wäre für jede laufende Sitzung
+  // wirkungslos, und genau das macht eine zentrale Entscheidung wertlos. Sie gehört in die
+  // POLICYversion und nicht in die Konfigurationsversion: sie ist eine Wahl des Administrators,
+  // keine Verdrahtung.
+  //
+  // OHNE FELD BLEIBT DIE VERSION ZEICHEN FÜR ZEICHEN DIE VON HEUTE. Ein bedingungslos angehängtes
+  // Segment hätte jede laufende Sitzung und jede erteilte Zustimmung im Bestand allein durch das
+  // Einspielen dieses Auftrags entwertet — eine Nebenwirkung, die niemand bestellt hat.
+  if (input.zentralFreigegeben === undefined) {
+    return basis;
+  }
+  return `${basis}:${input.zentralFreigegeben ? "frei" : "gesperrt"}`;
 }
 
 export function klaraConfigurationVersion(
