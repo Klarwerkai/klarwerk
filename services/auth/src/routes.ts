@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
 import type { Mailer } from "../../notifications";
-import { type Sprache, meldung } from "./meldungen";
+import { type Meldungsschluessel, type Sprache, meldung } from "./meldungen";
 import { HINWEIS_TEXT_VERSION, hinweisFaellig } from "./notice";
 import { type OidcProvider, OidcUnreachableError, createPkcePair, randomToken } from "./oidc";
 import { LoginRateLimiter } from "./rate-limit";
@@ -680,18 +680,68 @@ export function authRoutes(
       },
     );
 
-    // Admin ändert Rolle / gibt frei / setzt Passwort zurück — ein Endpunkt (§2.2).
+    // Admin ändert Rolle / gibt frei / setzt Passwort zurück / befristet den Zugang — ein
+    // Endpunkt (§2.2).
+    //
+    // JOB 3755 (DEMO-ZUGANG-GAESTE T2): DER SCHREIBWEG ZUR BEFRISTUNG.
+    //
+    // JOB 3665 hat alles gebaut, was unter dieser Route liegt — das Feld am Konto (`types.ts:51`),
+    // den Setzer samt Aussperrschutz und Datumsprüfung (`service.ts:401`) und die Sperre beim
+    // Anmelden. Nur der Weg von außen fehlte: der Body kannte `role`, `approve`, `password`, und
+    // damit war die Zusage „sein Zugang läuft ab" im Produkt vorhanden und unerreichbar. Gelesen
+    // wurde das Feld schon immer mit (`PublicUser`, `GET /api/users`) — es fehlte genau diese Hälfte.
+    //
+    // DREI EINGABEN, DREI VERSCHIEDENE AUSSAGEN, und die Unterscheidung ist keine Feinheit:
+    //   · ein String  ⇒ „befriste auf diesen Zeitpunkt"
+    //   · `null`      ⇒ „NIMM die Befristung" (der Weg zurück; ohne ihn wäre jede Befristung eine
+    //                   Falle, aus der nur Löschen und Neuanlegen des Kontos herausführte)
+    //   · FEHLEND     ⇒ „ich sage dazu nichts". Ein Aufruf, der nur die Rolle ändert, darf eine
+    //                   bestehende Befristung nicht löschen — sonst verschwände sie still, und
+    //                   niemand wüsste, wann.
+    //
+    // KEINE ZWEITE REGEL AN DIESER STELLE: ob eine Zeichenkette ein lesbares Ablaufdatum ist und ob
+    // sie den letzten unbefristeten Admin aussperren würde, entscheidet ALLEIN der Dienst. Die
+    // Route reicht durch und übersetzt den Wurf über `sendError` (403). Läge das Urteil auch hier,
+    // liefen zwei Auslegungen desselben Begriffs auseinander.
+    //
+    // JOB 3755 R2 (BEN-Befund): EINE TYPANGABE IST KEINE PRÜFUNG — deshalb steht `unknown` da.
+    //
+    // Runde 1 schrieb hier `accessExpiresAt?: string | null`. Das ist eine BEHAUPTUNG über fremde
+    // Eingabe: der Typprüfer sieht von einem HTTP-Rumpf nichts, und gemessen kam beides durch:
+    //   · `["2026-09-11T13:00:00.000Z"]` ⇒ 200, und im Konto stand danach ein ARRAY. Die
+    //     Datumsprüfung des Dienstes wandelt ihr Argument still in eine Zeichenkette um
+    //     (`ISO_ZEITSTEMPEL.exec`), und ein einelementiges Array wird dabei zu genau seinem Inhalt.
+    //     Entstanden wäre ein Bestand, den `types.ts:51` (`accessExpiresAt?: string`) ausschließt.
+    //   · `{"toString": "kein Datum"}` ⇒ 500. Die Umwandlung wirft, der Wurf ist kein `AuthError`,
+    //     und der Mensch bekommt einen Serverfehler statt einer Ablehnung.
+    // GEPRÜFT WIRD DESHALB DIE FORM — String, `null`, nichts —, und zwar VOR jedem Schreiben: ein
+    // Aufruf, der zur Hälfte ausgeführt wird (Rolle geändert, Befristung abgelehnt), wäre die
+    // schlechtere Hälfte der beiden.
     app.put<{
       Params: { id: string };
-      Body: { role?: Role; approve?: boolean; password?: string };
+      // `unknown` und nicht `string | null`: was hier hereinkommt, bestimmt der Client. Der
+      // Vertrag nach außen bleibt `string | null | fehlend` — er wird eine Zeile weiter unten
+      // DURCHGESETZT statt nur aufgeschrieben.
+      Body: { role?: Role; approve?: boolean; password?: string; accessExpiresAt?: unknown };
     }>("/api/users/:id", async (request, reply) => {
       const admin = await requireAdmin(request, reply);
       if (!admin) {
         return;
       }
       const { id } = request.params;
-      const { role, approve, password } = request.body;
+      const { role, approve, password, accessExpiresAt } = request.body;
       try {
+        // Derselbe Fehlervertrag wie ein unlesbares Datum (403, „Unerwarteter Fehler.") — ein
+        // eigener Satz für „falscher Typ" wäre ein neuer Katalogschlüssel, und `meldungen.ts`
+        // gehört in diesem Takt JOB 3756. Beides ist dieselbe Sorte Eingabe: eine, die eine
+        // Oberfläche nie erzeugen dürfte.
+        if (
+          accessExpiresAt !== undefined &&
+          accessExpiresAt !== null &&
+          typeof accessExpiresAt !== "string"
+        ) {
+          throw new AuthError("FORBIDDEN", "INTERNAL" satisfies Meldungsschluessel);
+        }
         let user: PublicUser | undefined;
         if (approve === true) {
           user = await service.approveUser(id, admin.id);
@@ -701,6 +751,16 @@ export function authRoutes(
         }
         if (password) {
           await service.resetPassword(id, password, admin.id);
+        }
+        // ZULETZT, und die Reihenfolge ist die Aussage: `user` trägt danach den Stand MIT der
+        // soeben geschriebenen Befristung. Käme die Antwort aus dem Ergebnis von `approveUser`
+        // oder `changeRole`, meldete die Oberfläche „gespeichert" und zeigte den Stand von davor.
+        if (accessExpiresAt !== undefined) {
+          user = await service.setAccessExpiry(
+            id,
+            accessExpiresAt === null ? undefined : accessExpiresAt,
+            admin.id,
+          );
         }
         if (user) {
           reply.code(200).send(user);
