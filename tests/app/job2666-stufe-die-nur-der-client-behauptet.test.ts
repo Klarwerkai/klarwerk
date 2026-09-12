@@ -56,6 +56,7 @@ import { draftProvenance } from "../../apps/web/src/lib/reasonerProvenance";
 import { type LogSenke, buildApp, buildServices } from "../../services/app/src/build-app";
 import type { Confidentiality } from "../../services/knowledge-object";
 import { KLARA_EXTERNAL_EXECUTION_MIGRATED } from "../../services/reasoner";
+import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 
 type Dienste = ReturnType<typeof buildServices>;
 type App = ReturnType<typeof buildApp>;
@@ -373,6 +374,16 @@ describe("JOB 2666 D2 · V — die Verdrahtung: das EINE KA4-Tor an /api/reasone
     "V2 · POSITIV, echt: bestätigte Einwilligung über die Route → der Riegel fällt, die Deklaration gilt (structure nicht erzwungen vertraulich)",
     async () => {
       const { services, s, app, zeilen } = appBauen();
+      // JOB 3666: DIE DRITTE BEDINGUNG — die zentrale Adminfreigabe. Seit die Kompositionswurzel sie
+      // an das Sitzungstor durchreicht (`build-app.ts`, `zentralFreigegeben`), ist ein Betrieb ohne
+      // sie einer, in dem der Administrator die öffentliche KI nie erlaubt hat; das Tor blockiert
+      // dann mit `policy_incomplete`, und dieser POSITIVfall könnte den Riegel gar nicht fallen
+      // sehen (gemessen: „expected true to be false" an `:386`). Sie steht VOR `cloudVerdrahten`,
+      // damit sie durch dessen `taskConfig`-Spread mitreist. Nur DIESER Fall bekommt sie — die
+      // Sperrfälle V0/V1/V3 messen weiterhin ihre eigenen Gründe.
+      // KEIN `vertraulicheInhalte`: der Fall zeigt gerade, dass die Einwilligung die
+      // Vertraulichkeit NICHT aufhebt; der zweite Schalter würde genau das verwischen.
+      await erteileKiFreigabe(services.reasoner);
       // JOB 3033: die zweite Bedingung, ohne die auch die freigeschaltete Konstante nichts bewirkt
       // (s. V0) — ein Betrieb MIT verdrahtetem Cloud-Anbieter.
       cloudVerdrahten(services);

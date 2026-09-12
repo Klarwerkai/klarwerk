@@ -36,6 +36,7 @@ import { describe, expect, it } from "vitest";
 import { type AppServices, buildApp, buildServices } from "../../services/app/src/build-app";
 import type { ZurufAntwort, ZurufModell } from "../../services/app/src/routes/klara-session-routes";
 import { KLARA_EXTERNAL_EXECUTION_MIGRATED } from "../../services/reasoner";
+import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 
 const ANBIETER = "anbieter-eins";
 const MODELL_LABEL = "modell-eins";
@@ -102,6 +103,17 @@ interface Aufbau {
  */
 async function aufbau(opts: { modell?: ZurufModell } = {}): Promise<Aufbau> {
   const services = buildServices();
+  // JOB 3666: DIE GRUNDFREIGABE GEHÖRT ZUR LAGE „BETRIEB MIT CLOUD" — seit die Kompositionswurzel
+  // die zentrale Adminfreigabe an das Sitzungstor durchreicht
+  // (`build-app.ts`, `zentralFreigegeben`), ist ein Betrieb ohne sie ein Betrieb, in dem der
+  // Administrator die öffentliche KI NIE erlaubt hat. Dort sperrt das Tor mit `policy_incomplete`,
+  // und R3/R4/R5 hätten statt der Zustimmung nur noch diese Sperre gemessen (gemessen: drei rote
+  // Fälle, „expected 403 to be 200/503"). Sie steht VOR `alsCloudVerdrahtetMelden`, damit sie durch
+  // dessen `taskConfig`-Spread mitreist; die Sperrfälle R1/R2 bleiben davon unberührt, weil ihnen
+  // die ZUSTIMMUNG fehlt und keine Freigabe sie ersetzt.
+  // KEIN `vertraulicheInhalte`: das KO ist intern eingestuft, und die Vertraulichkeitsgrenze ist
+  // nicht die Frage dieser Datei.
+  await erteileKiFreigabe(services.reasoner);
   alsCloudVerdrahtetMelden(services);
   if (opts.modell) {
     // GENAU DAS FELD, das `assembleServices` in Produktion aus dem gecappten Cloud-Client füllt

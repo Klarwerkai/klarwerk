@@ -1087,6 +1087,28 @@ const FREIGABE_ERLAUBT: ReadonlyMap<string, string> = new Map([
       "Modellnamen). Ohne Freigabe endete jeder Lauf „no-model“ und die Route hätte nichts zu " +
       "protokollieren. Der Schnappschuss ist nicht vertraulich eingestuft.",
   ],
+  // ---- JOB 3666 · die Verdrahtung der zentralen Freigabe in die Kompositionswurzel. ----
+  [
+    "tests/app/job2666-stufe-die-nur-der-client-behauptet.test.ts",
+    "GENAU EIN Fall braucht sie: V2, der POSITIVfall, in dem die bestätigte Einwilligung den " +
+      "KA4-Riegel fallen lässt. Seit JOB 3666 blockiert das Sitzungstor ohne Adminfreigabe mit " +
+      "`policy_incomplete`, und der Fall sähe den Riegel nie fallen. Die Sperrfälle V0/V1/V3 " +
+      "bekommen nichts — sie messen ihre eigenen Gründe.",
+  ],
+  [
+    "tests/ka6-memo-panel/memo-registrierung.test.ts",
+    "Der Memo-Weg des Word-Panels an der ECHTEN Komposition. Die Datei stellt ausdrücklich einen " +
+      "Betrieb MIT verdrahteter Cloud auf; seit JOB 3666 gehört die Grundfreigabe zu dieser Lage, " +
+      "sonst sperrt das Sitzungstor mit `policy_incomplete` und R3/R4/R5 prüften die Sperre statt " +
+      "der Zustimmung. Die Sperrfälle R1/R2 hängen an der fehlenden ZUSTIMMUNG, nicht an ihr.",
+  ],
+  [
+    "tests/admin-ki-klara/wurzel-verdrahtung.test.ts",
+    "Misst an der ECHTEN Wurzel, dass Klara und der Word-Weg der Adminfreigabe folgen. Die Datei " +
+      "BRAUCHT beide Lagen: W1 ist der Sperrfall und bekommt nichts, W2/W3 brauchen die " +
+      "Grundfreigabe, sonst prüften sie statt der Freigabe nur „kein Modell“. Nie mehr als die " +
+      "Grundfreigabe — der zweite Schalter hat mit dieser Frage nichts zu tun.",
+  ],
 ]);
 
 /**
@@ -2401,6 +2423,54 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
       "#2": { boden: 8, freigaben: [] },
       "#3": { boden: 2, freigaben: [] },
       "#4": { boden: 1, freigaben: [] },
+    },
+  },
+  // JOB 3666: NICHT vollzählig — der VORSPANN gibt nichts frei, die Freigabe steht in genau einem
+  // Fall. WARUM SIE UNTER `V1` STEHT und nicht unter `V2`: V2 ist mit `nurWennFreigegeben(…)`
+  // geschrieben statt mit `it(…)`, und die Fallzerlegung dieses Wächters erkennt nur `it(`. V2 liegt
+  // deshalb im Textbereich von V1. Das ist ein Artefakt der Hülle, kein Sperrfall mit stiller
+  // Freigabe: der Aufruf steht im Rumpf von V2 (`:373`), V1 ruft ihn nicht.
+  "tests/app/job2666-stufe-die-nur-der-client-behauptet.test.ts": {
+    gesamtboden: 54,
+    faelle: {
+      VORSPANN: { boden: 0, freigaben: [] },
+      V0: { boden: 4, freigaben: [] },
+      V1: { boden: 12, freigaben: ["erteileKiFreigabe(services.reasoner)"] },
+      V3: { boden: 3, freigaben: [] },
+    },
+  },
+  // JOB 3666: der gemeinsame Aufbau `aufbau()` erteilt die Freigabe, also ist auch diese Datei
+  // vollzählig zu führen. R1 und R2 sind die Sperrfälle — sie stehen mit leerer Liste da, und ihre
+  // Sperre hängt an der fehlenden ZUSTIMMUNG, die keine Adminfreigabe ersetzt.
+  "tests/ka6-memo-panel/memo-registrierung.test.ts": {
+    gesamtboden: 42,
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: { boden: 1, freigaben: ["erteileKiFreigabe(services.reasoner)"] },
+      R0: { boden: 1, freigaben: [] },
+      R1: { boden: 2, freigaben: [] },
+      R2: { boden: 6, freigaben: [] },
+      R3: { boden: 5, freigaben: [] },
+      R4: { boden: 11, freigaben: [] },
+      R5: { boden: 7, freigaben: [] },
+      R6: { boden: 3, freigaben: [] },
+      R7: { boden: 3, freigaben: [] },
+      R8: { boden: 2, freigaben: [] },
+      R9: { boden: 1, freigaben: [] },
+    },
+  },
+  // JOB 3666: VOLLZÄHLIG, und nicht aus Fleiß — der gemeinsame Aufbau `aufbauen()` erteilt die
+  // Freigabe, also läuft JEDER Fall durch sie hindurch (die Regel gleich unter `Dateiakte`).
+  // W1 ist der Sperrfall und steht deshalb namentlich mit leerer Liste: eine Freigabe, die sich
+  // dorthin verirrt, macht F4 rot — und genau daran hängt die Aussage der ganzen Datei.
+  "tests/admin-ki-klara/wurzel-verdrahtung.test.ts": {
+    gesamtboden: 28,
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: { boden: 9, freigaben: ["erteileKiFreigabe(services.reasoner)"] },
+      W1: { boden: 6, freigaben: [] },
+      W2: { boden: 5, freigaben: [] },
+      W3: { boden: 8, freigaben: ["erteileKiFreigabe(a.services.reasoner)"] },
     },
   },
 };

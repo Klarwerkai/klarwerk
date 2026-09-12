@@ -20,13 +20,18 @@
 // WAS DIESE DATEI NICHT BEWEIST — ausdrücklich, damit Grün nicht mehr behauptet als es trägt
 // ------------------------------------------------------------------------------------------------
 //
-// Die zentrale Freigabe wird der Kompositionswurzel entstammen (`build-app.ts`, Feld in
-// `KlaraPolicyQuelle`). Beide Dateien liegen AUSSERHALB der Zielpfade dieses Auftrags; ihr
-// Nachziehen steht in der RUECKGABE als offener Punkt. Diese Datei reicht die Freigabe deshalb an
-// derselben Stelle herein, an der die Wurzel sie später hereinreichen wird — über die
+// Die zentrale Freigabe entstammt der Kompositionswurzel (`build-app.ts`, Policyquelle des
+// `KlaraSessionService`). Sie lag ausserhalb der Zielpfade von JOB 3502; diese Datei reicht die
+// Freigabe deshalb an derselben Stelle herein, an der die Wurzel sie hereinreicht — über die
 // Policyquelle des Dienstes. Gemessen ist damit: Dienst und Route TRAGEN sie durch und richten
-// sich nach ihr. NICHT gemessen ist, dass die Produktionswurzel sie heute schon liefert; sie tut
-// es nicht.
+// sich nach ihr.
+//
+// NACHGEFÜHRT DURCH JOB 3666. Bis dahin stand hier „NICHT gemessen ist, dass die Produktionswurzel
+// sie heute schon liefert; sie tut es nicht" — und das stimmte, drei Tage lang: kein einziger
+// Aufrufer setzte das Feld. Seit JOB 3666 setzt es die Wurzel
+// (`build-app.ts`: `zentralFreigegeben: config.taskConfig.kiFreigabe?.oeffentlicheKi === true`),
+// und DASS sie es tut, misst `wurzel-verdrahtung.test.ts` an der echten Instanz — nicht diese
+// Datei. Die Arbeitsteilung bleibt: hier der Durchgriff von Dienst und Route, dort die Wurzel.
 //
 // WO DAS RECHT DER ROLLE GEPRÜFT WIRD — und warum nicht hier. „Darf DIESE Rolle die Freigabe
 // ändern" ist eine Frage der Route und wird seit JOB 3549 dort serverseitig geprüft und auditiert
@@ -182,8 +187,14 @@ describe("JOB 3502 · V — beide Verbraucher folgen der einen zentralen Freigab
   });
 
   it("V5 · FEHLT das Feld, verhalten sich beide Wege wie heute", async () => {
-    // Solange die Kompositionswurzel die Freigabe nicht liefert, ändert dieser Auftrag NICHTS am
-    // laufenden Betrieb. Ohne diese Zusage wäre er eine stille Abschaltung.
+    // Die Zusage von JOB 3502: solange die Kompositionswurzel die Freigabe nicht lieferte, änderte
+    // er NICHTS am laufenden Betrieb — ohne sie wäre er eine stille Abschaltung gewesen.
+    //
+    // SEIT JOB 3666 IST DIESER ZUSTAND KEIN PRODUKTIONSZUSTAND MEHR: die Wurzel liefert immer ein
+    // `boolean` (gemessen in `wurzel-verdrahtung.test.ts` an der Policyversion, die ohne Feld gar
+    // kein Freigabesegment trüge). Der Fall bleibt trotzdem stehen, und zwar als BAUZUSTAND: er
+    // beschreibt, was ein Aufrufer bekommt, der das Feld nicht reicht — und er ist die Kalibrierung
+    // für V1, das sonst nicht zeigen könnte, dass dort wirklich die Freigabe sperrt.
     const a = await aufbauen(undefined);
     expect((await a.dienst.pruefeExterneAusfuehrung(a.sitzung, a.bindung)).erlaubt).toBe(false);
     await a.dienst.grantConsent(a.sitzung, a.bindung);

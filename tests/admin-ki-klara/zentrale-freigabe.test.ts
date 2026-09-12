@@ -174,9 +174,16 @@ describe("JOB 3502 · Z — die zentrale Freigabe entscheidet, Klara wiederholt 
   });
 
   it("Z6 · FEHLT das Feld, verhält sich der Resolver Feld für Feld wie heute", () => {
-    // Die Verdrahtung entsteht ausserhalb der Zielpfade dieses Auftrags. Bis sie steht, darf sich
-    // NICHTS ändern — weder zum Guten noch zum Schlechten. Gemessen als exakte Gleichheit der
-    // ganzen Auflösung, nicht an einem einzelnen Feld.
+    // Die Zusage von JOB 3502: bis die Verdrahtung steht, darf sich NICHTS ändern — weder zum Guten
+    // noch zum Schlechten. Gemessen als exakte Gleichheit der ganzen Auflösung, nicht an einem
+    // einzelnen Feld.
+    //
+    // SEIT JOB 3666 STEHT SIE (`build-app.ts`, Policyquelle des `KlaraSessionService`), und damit
+    // beschreibt dieser Fall keinen Produktionszustand mehr, sondern den BAUZUSTAND eines Aufrufers,
+    // der das Feld nicht reicht. Er bleibt stehen, weil `klara-policy.ts:430` weiterhin `!== false`
+    // liest — solange diese Lesart gilt, gehört ihr Verhalten gemessen. Wird sie eines Tages auf
+    // `=== true` verschärft (fail-closed auch für einen vergesslichen Aufrufer), ist DIESER Fall die
+    // Stelle, die das merkt: die Gleichheit unten fällt dann, und das ist richtig so.
     for (const zugestimmt of [false, true]) {
       const heute = resolveKlaraPolicy(lage({ externalConsentGranted: zugestimmt }));
       const mitUndefined = resolveKlaraPolicy(

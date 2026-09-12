@@ -1835,6 +1835,31 @@ export function buildApp(
       return {
         choice: gewaehlterAnbieter ? "cloud" : antwortWahl,
         source: config.policySource,
+        // ==========================================================================================
+        // JOB 3666 — DIE ZENTRALE KI-FREIGABE, HIER UND NUR HIER DURCHGEREICHT.
+        // ==========================================================================================
+        //
+        // JOB 3502 hat den Resolver auf dieses Feld eingerichtet und in `klara-policy.ts:162-166`
+        // wörtlich aufgeschrieben, welche Zeile hier fehlt. Solange sie fehlte, war das Feld im
+        // ganzen Produkt nirgends gesetzt — und `klara-policy.ts:430` liest
+        // `input.zentralFreigegeben !== false`, was bei `undefined` WAHR ergibt. Klara und der
+        // Word-Weg verhielten sich also, als wäre die öffentliche KI freigegeben, während der Kern
+        // (`reasoner/src/service.ts`, `oeffentlicheKiErlaubt`) seit JOB 3549 genau umgekehrt
+        // entscheidet. Zwei Wege, eine Regel, zwei Antworten — das ist der Fehler, den Pedi am
+        // 11.09. benannt hat („gleiche Funktionen anders behandeln auf jeweiligen Seiten").
+        //
+        // `=== true` IST DIE LESART DES KERNS, ZEICHEN FÜR ZEICHEN: nur `true` zählt, `false` und
+        // „fehlt" sperren gleich (Pedi 10.09. 21:25: „Im Zweifel gilt: gesperrt"). Hier wird sie
+        // nicht ENTSCHIEDEN, sondern DURCHGEREICHT — die Entscheidungsstelle bleibt im Kern, und
+        // eine zweite Sperre gibt es auch nach diesem Auftrag nicht. Der zweite Schalter der
+        // Adminfreigabe (vertrauliche Inhalte) bleibt bewusst draussen: der Klara-Resolver erfährt
+        // die Einstufung eines Inhalts nirgends und könnte ihn nicht beantworten; die
+        // Vertraulichkeitsgrenze bleibt, wo sie heute gezogen wird.
+        //
+        // ES IST DIESELBE FRISCHE LESUNG wie alles andere hier oben (`configStatus()` je Zugriff):
+        // eine Rücknahme der Freigabe wirkt ohne Neustart, und sie entwertet laufende Zustimmungen,
+        // weil das Feld in `klaraPolicyVersion` eingeht.
+        zentralFreigegeben: config.taskConfig.kiFreigabe?.oeffentlicheKi === true,
         effectiveAnswerProvider: config.effectiveProvider.answer ?? "deterministic",
         cloudConfigured: gewaehlterAnbieter
           ? config.cloudProviders[gewaehlterAnbieter].configured
