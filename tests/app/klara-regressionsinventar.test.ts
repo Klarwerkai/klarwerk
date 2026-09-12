@@ -790,6 +790,18 @@ const INVENTAR: readonly string[] = [
   // `neu im Baum, aber nicht im gepinnten Inventar … + "tests/ki-freie-anweisung/
   // ki-palette-390px-chromium.test.ts"`.
   "tests/ki-freie-anweisung/ki-palette-390px-chromium.test.ts",
+  // JOB 3609 (11.09.2026) BIBLIOTHEK-VORSCHAU-AUFKLAPPER REST 2: der Seiten-Typ-Waechter der
+  // Design-Vorrichtung. Er ist AUSDRUECKLICH KEIN Klara-Test — er liest Quelltext und startet
+  // nichts, „klara" steht nicht in seinem Pfad, K5 bleibt deshalb unveraendert (`nurName` = 51).
+  // Gefunden hat ihn die Inhaltsachse `palette`, und zwar an EINER Stelle: sein Buehnenregister
+  // nennt den Verbraucher `tests/design/job3337-palette-flaches-fenster-chromium.test.ts`
+  // namentlich — einmal in der festgenagelten Pruefmenge, einmal als Schluessel im ALTBESTAND.
+  // Das Wort steht also in einem DATEIPFAD, nicht in einer Farbaussage; die Achse trifft hier
+  // weiter, als sie zielt. Der Eintrag steht trotzdem hier und nicht als Ausnahme im Sammler:
+  // dieses Inventar pinnt die ABGELEITETE Menge (s. den Absatz zu `panel-marke.test.ts` oben), und
+  // die Achse zu verengen hiesse, einen fremden Waechter zu schwaechen, um die eigene Datei
+  // hindurchzulassen. K2 hat die Datei gemeldet, das Inventar nimmt sie nicht still auf.
+  "tests/design-vorrichtung/seiten-typ-waechter.test.ts",
 ];
 
 // ------------------------------------------------------------------------------------------------
