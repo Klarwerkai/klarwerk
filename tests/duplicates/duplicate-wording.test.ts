@@ -22,8 +22,17 @@ describe("SCRUM-486 D: ehrliches Merge-Wording", () => {
     expect(i18n).toContain("Strong overlap — link");
   });
 
-  it("das Intro sagt ehrlich, dass es kein automatisches Zusammenführen gibt", () => {
-    expect(i18n).toContain("Ein automatisches Zusammenführen gibt es bewusst nicht.");
-    expect(i18n).toContain("There is deliberately no automatic merge.");
+  // JOB 3771 NACHGEFÜHRT — und zwar verschärft, nicht gelockert. Der alte Pin verlangte den Satz
+  // „Ein automatisches Zusammenführen gibt es bewusst nicht." Der sagt die halbe Wahrheit: er
+  // verneint das AUTOMATISCHE Zusammenführen und stellt damit ein manuelles in Aussicht, das es
+  // nicht gibt — `OverlapService` hat keinen Merge-Weg, `"merged"` steht allein als Typwert für
+  // Stufe D5 (services/conflicts/src/overlap-types.ts:11). Verlangt ist jetzt die ganze Wahrheit:
+  // die Entscheidung hält einen Grund fest und ändert an den Beiträgen nichts.
+  it("das Intro verspricht überhaupt kein Zusammenführen — auch kein manuelles", () => {
+    expect(i18n).toContain("an den beiden Beiträgen ändert sie nichts.)");
+    expect(i18n).toContain("it changes nothing in the two contributions.)");
+    // Der alte Halbsatz ist restlos weg, nicht danebengelegt.
+    expect(i18n).not.toContain("Ein automatisches Zusammenführen gibt es bewusst nicht.");
+    expect(i18n).not.toContain("There is deliberately no automatic merge.");
   });
 });

@@ -14,7 +14,7 @@ const de = {
     "Klarwerk antwortet ausschließlich aus euren eigenen Wissensobjekten — nie aus allgemeinem Modellwissen. Zu jeder Antwort siehst du, welche Quellen sie getragen haben und in welchem Zustand sie sind. Fehlt die Grundlage, sagt es das ehrlich, statt zu raten. Prüfe die genannten Quellen, bevor du dich darauf verlässt.",
   "dup.help.detection.title": "Wie Dubletten erkannt werden",
   "dup.help.detection.body":
-    "„Textidentisch“ findet die Heuristik ohne KI; „wahrscheinlich“ beurteilt das Modell inhaltlich. Zusammenführen passiert nie automatisch — du entscheidest bewusst, was verschmolzen wird.",
+    "„Textidentisch“ findet die Heuristik ohne KI; „wahrscheinlich“ beurteilt das Modell inhaltlich. Entscheiden musst du selbst — und deine Entscheidung hält nur einen Abschlussgrund fest: an den beiden Objekten ändert sie nichts, gelöscht wird keines, beide bleiben.",
   "extpage.help.scope.title": "Was die externe Suche darf",
   "extpage.help.scope.body":
     "Externe Treffer sind Recherchehilfe, kein geprüftes Wissen: nichts wird automatisch importiert oder von Kolleg:innen validiert. Ist die externe Abfrage vom Admin gesperrt, bleibt der Bereich leer.",
@@ -3576,7 +3576,7 @@ const de = {
   "dup.kicker": "Duplikate-Board",
   "dup.title": "Doppelungen klären — ein Thema, eine Quelle",
   "dup.intro":
-    "Automatisch erkannte Überschneidungen zwischen Beiträgen. Sehr hohe Textdeckung wird auch ohne KI gefunden; die feineren Fälle prüft das Modell. Du entscheidest: als verwandt verlinken, getrennt lassen oder als Fehlalarm schließen. (Ein automatisches Zusammenführen gibt es bewusst nicht.)",
+    "Automatisch erkannte Überschneidungen zwischen Beiträgen. Sehr hohe Textdeckung wird auch ohne KI gefunden; die feineren Fälle prüft das Modell. Du entscheidest: als verwandt vermerken, getrennt lassen oder als Fehlalarm schließen. (Jede dieser Entscheidungen hält nur ihren Grund fest; an den beiden Beiträgen ändert sie nichts.)",
   "dup.empty": "Keine offenen Überschneidungen.",
   "dup.relation.identisch": "Identisch",
   "dup.relation.a_enthaelt_b": "A enthält B",
@@ -3631,7 +3631,7 @@ const de = {
   "dup.closeSubmit": "Abschliessen",
   "dup.reason.merged": "Zusammengeführt",
   "dup.reason.kept_separate": "Bewusst getrennt gelassen",
-  "dup.reason.linked_related": "Als verwandt verlinkt",
+  "dup.reason.linked_related": "Als verwandt vermerkt",
   "dup.reason.dismissed": "Fehlalarm — kein Duplikat",
   "dup.reason.participant_deleted": "Beteiligter Beitrag entfernt",
   "dup.reason.superseded": "Gegenstandslos geworden",
@@ -3643,7 +3643,7 @@ const de = {
   // bleiben bestehen, es wird nichts zusammengeführt und nichts gelöscht.
   "dup.side.left": "Links behalten",
   "dup.side.right": "Rechts behalten",
-  "dup.side.both": "Beide behalten, verknüpfen",
+  "dup.side.both": "Beide behalten, als verwandt vermerken",
   "dup.side.none": "Kein Duplikat",
   // REVIEW26 (JOB 3469): „NN % gleich" ist ERSETZT, nicht ergänzt — die Beschriftung verschwieg,
   // welche Messung dahinterstand. An ihrer Stelle stehen die benannten `dup.lead.*`-Schlüssel.
@@ -3664,7 +3664,7 @@ const de = {
   //   · „schließen mit Grund, nichts am Wissen" → `OverlapService.close`
   //     (services/conflicts/src/overlap-service.ts:732-749) schreibt AUSSCHLIESSLICH `status`,
   //     `resolution` und `closedAt` des Fundes plus einen Audit-Eintrag. Kein Wissensobjekt wird
-  //     angefasst — auch „Beide behalten, verknüpfen" legt keine Verknüpfung an.
+  //     angefasst — auch „Beide behalten, als verwandt vermerken" legt keine Verknüpfung an.
   //   · „nicht wieder öffnen" → die Statusroute kennt „offen" ausdrücklich NICHT als Ziel
   //     (services/app/src/routes/overlap-routes.ts:204-205); `unresolved()` filtert Geschlossene
   //     hart heraus (overlap-service.ts:933), und der Reiterzähler liest dieselbe Liste.
@@ -3679,7 +3679,7 @@ const de = {
   "dup.seitenhilfe.entscheidung.titel":
     "Was deine Entscheidung bewirkt — und was, wenn sie falsch war",
   "dup.seitenhilfe.entscheidung.text":
-    "Alle vier Knöpfe tun dasselbe eine: sie schließen diesen Fund mit dem gewählten Grund und halten ihn mit deinem Namen und der Zeit fest. An den beiden Wissensobjekten ändert keiner von ihnen etwas — nichts wird zusammengeführt, nichts gelöscht, und auch „Beide behalten, verknüpfen“ legt keine Verknüpfung in den Objekten an, sondern hält diesen Grund fest. Ein geschlossener Fund lässt sich hier nicht wieder öffnen: er verschwindet aus der Liste und aus der Zahl am Reiter. Verloren ist damit nichts, denn beide Objekte stehen unverändert in „{{bibliothek}}“ — wer sich vertan hat, ändert sie dort. Willst du noch nicht entscheiden, wähle im Menü „···“ an der Karte „Status setzen“ → „In Bearbeitung“, solange der Fund noch offen ist; das hält ihn offen. Entscheiden darf, wer Wissen prüfen darf; mit einer schwächeren Rolle führt der Weg hierher nicht auf diese Fläche, sondern auf einen Hinweis, welche Rolle sie braucht.",
+    "Alle vier Knöpfe tun dasselbe eine: sie schließen diesen Fund mit dem gewählten Grund und halten ihn mit deinem Namen und der Zeit fest. An den beiden Wissensobjekten ändert keiner von ihnen etwas — nichts wird zusammengeführt, nichts gelöscht, und auch „Beide behalten, als verwandt vermerken“ legt keine Verknüpfung in den Objekten an, sondern hält diesen Grund fest. Ein geschlossener Fund lässt sich hier nicht wieder öffnen: er verschwindet aus der Liste und aus der Zahl am Reiter. Verloren ist damit nichts, denn beide Objekte stehen unverändert in „{{bibliothek}}“ — wer sich vertan hat, ändert sie dort. Willst du noch nicht entscheiden, wähle im Menü „···“ an der Karte „Status setzen“ → „In Bearbeitung“, solange der Fund noch offen ist; das hält ihn offen. Entscheiden darf, wer Wissen prüfen darf; mit einer schwächeren Rolle führt der Weg hierher nicht auf diese Fläche, sondern auf einen Hinweis, welche Rolle sie braucht.",
   // SCRUM-486 (Entdichtung): Führungszeile pro Karte + neutraler „entfernt"-Hinweis statt Roh-UUID.
   "board.koRemoved": "Objekt entfernt",
   "board.detailsShow": "Details ansehen",
@@ -6297,7 +6297,7 @@ const en: typeof de = {
     "Klarwerk answers only from your own knowledge objects — never from general model knowledge. For every answer you see which sources carried it and what state they are in. If the basis is missing, it says so honestly instead of guessing. Check the cited sources before relying on them.",
   "dup.help.detection.title": "How duplicates are detected",
   "dup.help.detection.body":
-    "“Text-identical” is found by the heuristic without AI; “likely” is judged by the model on content. Merging never happens automatically — you deliberately decide what gets merged.",
+    "“Text-identical” is found by the heuristic without AI; “likely” is judged by the model on content. The decision is yours — and it records nothing but a closing reason: it changes neither of the two objects, deletes neither, both stay.",
   "extpage.help.scope.title": "What external search may do",
   "extpage.help.scope.body":
     "External hits are research support, not verified knowledge: nothing is imported automatically or validated by colleagues. If the admin has disabled external lookup, the area stays empty.",
@@ -9128,7 +9128,7 @@ const en: typeof de = {
   "dup.kicker": "Duplicates board",
   "dup.title": "Resolve duplicates — one topic, one source",
   "dup.intro":
-    "Overlaps between contributions, detected automatically. Very high text overlap is found even without AI; the subtler cases are checked by the model. You decide: link as related, keep separate, or close as a false alarm. (There is deliberately no automatic merge.)",
+    "Overlaps between contributions, detected automatically. Very high text overlap is found even without AI; the subtler cases are checked by the model. You decide: note as related, keep separate, or close as a false alarm. (Each of these decisions records its reason only; it changes nothing in the two contributions.)",
   "dup.empty": "No open overlaps.",
   "dup.relation.identisch": "Identical",
   "dup.relation.a_enthaelt_b": "A contains B",
@@ -9177,7 +9177,7 @@ const en: typeof de = {
   "dup.closeSubmit": "Close",
   "dup.reason.merged": "Merged",
   "dup.reason.kept_separate": "Deliberately kept separate",
-  "dup.reason.linked_related": "Linked as related",
+  "dup.reason.linked_related": "Noted as related",
   "dup.reason.dismissed": "False alarm — not a duplicate",
   "dup.reason.participant_deleted": "Participating item removed",
   "dup.reason.superseded": "No longer applicable",
@@ -9186,7 +9186,7 @@ const en: typeof de = {
   "dup.action.linkRelated": "Link as related",
   "dup.side.left": "Keep left",
   "dup.side.right": "Keep right",
-  "dup.side.both": "Keep both, link them",
+  "dup.side.both": "Keep both, note as related",
   "dup.side.none": "Not a duplicate",
   "dup.keepNote": "Keep separate; authoritative: {{title}}.",
   // JOB 3671 — page help of the duplicates board; the reasoning and the checked source lines are
@@ -9197,7 +9197,7 @@ const en: typeof de = {
   "dup.seitenhilfe.entscheidung.titel":
     "What your decision does — and what happens if it was wrong",
   "dup.seitenhilfe.entscheidung.text":
-    "All four buttons do the same one thing: they close this finding with the reason you picked and record it with your name and the time. Neither of them changes the two knowledge objects — nothing is merged, nothing is deleted, and even “Keep both, link them” creates no link inside the objects but records that reason. A closed finding cannot be reopened here: it leaves the list and the number on the tab. Nothing is lost by that, because both objects remain unchanged in “{{bibliothek}}” — if you got it wrong, you change them there. If you do not want to decide yet, choose “Set status” → “In progress” in the “···” menu on the card while the finding is still open; that keeps it open. Deciding is for those who may review knowledge; with a weaker role the way here does not lead to this surface but to a notice telling you which role it needs.",
+    "All four buttons do the same one thing: they close this finding with the reason you picked and record it with your name and the time. Neither of them changes the two knowledge objects — nothing is merged, nothing is deleted, and even “Keep both, note as related” creates no link inside the objects but records that reason. A closed finding cannot be reopened here: it leaves the list and the number on the tab. Nothing is lost by that, because both objects remain unchanged in “{{bibliothek}}” — if you got it wrong, you change them there. If you do not want to decide yet, choose “Set status” → “In progress” in the “···” menu on the card while the finding is still open; that keeps it open. Deciding is for those who may review knowledge; with a weaker role the way here does not lead to this surface but to a notice telling you which role it needs.",
   // SCRUM-486 (de-densify): lead line per card + neutral "removed" hint instead of a raw UUID.
   "board.koRemoved": "Item removed",
   "board.detailsShow": "Show details",
@@ -11347,7 +11347,7 @@ const nl: typeof de = {
     "Klarwerk antwoordt uitsluitend uit jullie eigen kennisobjecten — nooit uit algemene modelkennis. Bij elk antwoord zie je welke bronnen het gedragen hebben en in welke staat ze zijn. Ontbreekt de basis, dan zegt het dat eerlijk in plaats van te gokken. Controleer de genoemde bronnen voordat je erop vertrouwt.",
   "dup.help.detection.title": "Hoe duplicaten worden herkend",
   "dup.help.detection.body":
-    "„Tekstidentiek“ vindt de heuristiek zonder AI; „waarschijnlijk“ beoordeelt het model inhoudelijk. Samenvoegen gebeurt nooit automatisch — jij beslist bewust wat wordt samengevoegd.",
+    "„Tekstidentiek“ vindt de heuristiek zonder AI; „waarschijnlijk“ beoordeelt het model inhoudelijk. Beslissen moet je zelf — en jouw beslissing legt alleen een afsluitreden vast: aan de twee objecten verandert ze niets, geen van beide wordt verwijderd, beide blijven.",
   "extpage.help.scope.title": "Wat externe zoekopdracht mag",
   "extpage.help.scope.body":
     "Externe treffers zijn onderzoekshulp, geen geverifieerde kennis: niets wordt automatisch geïmporteerd of door collega’s gevalideerd. Heeft de beheerder externe opvraging uitgeschakeld, dan blijft het gebied leeg.",
@@ -14161,7 +14161,7 @@ const nl: typeof de = {
   "dup.kicker": "Duplicaten-Board",
   "dup.title": "Dubbelingen oplossen — één thema, één bron",
   "dup.intro":
-    "Automatisch herkende overlappingen tussen bijdragen. Zeer hoge tekstdekking wordt ook zonder AI gevonden; de subtielere gevallen controleert het model. Jij beslist: als verwant koppelen, gescheiden laten of als vals alarm sluiten. (Een automatisch samenvoegen bestaat bewust niet.)",
+    "Automatisch herkende overlappingen tussen bijdragen. Zeer hoge tekstdekking wordt ook zonder AI gevonden; de subtielere gevallen controleert het model. Jij beslist: als verwant noteren, gescheiden laten of als vals alarm sluiten. (Elk van deze beslissingen legt alleen haar reden vast; aan de twee bijdragen verandert ze niets.)",
   "dup.empty": "Geen openstaande overlappingen.",
   "dup.relation.identisch": "Identiek",
   "dup.relation.a_enthaelt_b": "A bevat B",
@@ -14207,7 +14207,7 @@ const nl: typeof de = {
   "dup.closeSubmit": "Afsluiten",
   "dup.reason.merged": "Samengevoegd",
   "dup.reason.kept_separate": "Bewust gescheiden gelaten",
-  "dup.reason.linked_related": "Als verwant gekoppeld",
+  "dup.reason.linked_related": "Als verwant genoteerd",
   "dup.reason.dismissed": "Vals alarm — geen duplicaat",
   "dup.reason.participant_deleted": "Betrokken bijdrage verwijderd",
   "dup.reason.superseded": "Niet meer van toepassing geworden",
@@ -14216,7 +14216,7 @@ const nl: typeof de = {
   "dup.action.linkRelated": "Als verwant koppelen",
   "dup.side.left": "Links behouden",
   "dup.side.right": "Rechts behouden",
-  "dup.side.both": "Beide behouden, koppelen",
+  "dup.side.both": "Beide behouden, als verwant noteren",
   "dup.side.none": "Geen duplicaat",
   "dup.keepNote": "Gescheiden laten; doorslaggevend is: {{title}}.",
   // JOB 3671 — paginahulp van het duplicatenbord; de onderbouwing staat bij de DE-sleutels.
@@ -14225,7 +14225,7 @@ const nl: typeof de = {
     "Je ziet een paar bijna gelijke kennisobjecten naast elkaar; op smalle vensters staan de twee kaarten onder elkaar — dan bedoelt „Links behouden“ de bovenste kaart en „Rechts behouden“ de onderste. Geel gemarkeerd is het deel dat niet bij de gemeenschappelijke uitspraken hoort: het eigen deel als dat letterlijk in de tekst staat, anders de rest rond de gemeenschappelijke citaten; is geen van beide te vinden, dan blijft de tekst ongemarkeerd in plaats van geraden. De procentpil is gelijkenis of modelwaarschijnlijkheid en geen bewijs van een duplicaat. Getallen, gemeenschappelijke uitspraken, eigen delen, aanbeveling en status staan in de uitklapper „{{mehr}}“ bij elke kaart; hoe duplicaten überhaupt gevonden worden, legt het „?“ naast de kop uit. Zijn er meer paren, dan blader je met de pijlen in de kopregel.",
   "dup.seitenhilfe.entscheidung.titel": "Wat jouw beslissing doet — en wat als ze verkeerd was",
   "dup.seitenhilfe.entscheidung.text":
-    "Alle vier knoppen doen hetzelfde ene: ze sluiten deze bevinding met de gekozen reden en leggen die vast met jouw naam en de tijd. Aan de twee kennisobjecten verandert geen van hen iets — er wordt niets samengevoegd, niets verwijderd, en ook „Beide behouden, koppelen“ legt geen koppeling in de objecten aan, maar houdt die reden vast. Een gesloten bevinding kan hier niet opnieuw worden geopend: ze verdwijnt uit de lijst en uit het getal op het tabblad. Daarmee is niets verloren, want beide objecten staan onveranderd in „{{bibliothek}}“ — wie zich vergist heeft, wijzigt ze daar. Wil je nog niet beslissen, kies dan in het menu „···“ bij de kaart „Status instellen“ → „In behandeling“ zolang de bevinding nog open is; dat houdt ze open. Beslissen mag wie kennis mag controleren; met een zwakkere rol leidt de weg hierheen niet naar dit scherm, maar naar een melding welke rol ervoor nodig is.",
+    "Alle vier knoppen doen hetzelfde ene: ze sluiten deze bevinding met de gekozen reden en leggen die vast met jouw naam en de tijd. Aan de twee kennisobjecten verandert geen van hen iets — er wordt niets samengevoegd, niets verwijderd, en ook „Beide behouden, als verwant noteren“ legt geen koppeling in de objecten aan, maar houdt die reden vast. Een gesloten bevinding kan hier niet opnieuw worden geopend: ze verdwijnt uit de lijst en uit het getal op het tabblad. Daarmee is niets verloren, want beide objecten staan onveranderd in „{{bibliothek}}“ — wie zich vergist heeft, wijzigt ze daar. Wil je nog niet beslissen, kies dan in het menu „···“ bij de kaart „Status instellen“ → „In behandeling“ zolang de bevinding nog open is; dat houdt ze open. Beslissen mag wie kennis mag controleren; met een zwakkere rol leidt de weg hierheen niet naar dit scherm, maar naar een melding welke rol ervoor nodig is.",
   "board.koRemoved": "Object verwijderd",
   "board.detailsShow": "Details bekijken",
   "con.leadKicker": "Tegenstrijdigheid",
