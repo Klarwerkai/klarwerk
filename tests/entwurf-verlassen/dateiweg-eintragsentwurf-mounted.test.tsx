@@ -32,6 +32,7 @@ vi.mock("../../apps/web/src/api/endpoints", async () =>
 
 import i18n from "../../apps/web/src/i18n";
 import {
+  anlageNutzlasten,
   anlageversucheJeTitel,
   bestandJeTitel,
   draftsCreate,
@@ -49,6 +50,7 @@ import {
   knopf,
   mount,
   sichtbar,
+  speichernKnopfDa,
   tippe,
   wacheDialoge,
   waehle,
@@ -76,13 +78,6 @@ const P3 = {
   summary: "Jede Schicht trägt ihre Störungen ein.",
   sourceExcerpt: "Störungen gehören in das Schichtbuch der jeweiligen Schicht.",
 };
-
-/** Die Nutzlasten, mit denen eine Anlage unter diesem Titel versucht wurde. */
-function anlagen(titel: string): Record<string, unknown>[] {
-  return draftsCreate.mock.calls
-    .map(([p]) => p as Record<string, unknown>)
-    .filter((p) => p?.title === titel);
-}
 
 /** Die Datei in die Fläche geben — ohne Auswertung. Danach steht nur der Dateizustand. */
 async function dateiEinlesen(): Promise<void> {
@@ -116,13 +111,6 @@ async function speichernUndWechseln(): Promise<void> {
 /** Die erweiterten Felder aufklappen — dort liegen Domäne, Vertraulichkeit und Schlagworte. */
 async function erweiterteFelderOeffnen(): Promise<void> {
   await klick(knopf(i18n.t("capture.advanced.title")));
-}
-
-/** Steht der Knopf „Entwurf speichern und wechseln" im offenen Dialog? */
-function speichernKnopfDa(): boolean {
-  return [...document.querySelectorAll("[data-navguard-dialog] button")].some((b) =>
-    (b.textContent ?? "").replace(/\s+/g, " ").includes(i18n.t("nav.guard.save")),
-  );
 }
 
 beforeEach(async () => {
@@ -209,7 +197,7 @@ describe("JOB 3621 · der Dateiweg legt keinen leeren Eintragsentwurf daneben", 
     expect(anlageversucheJeTitel()[EINTRAGS_TITEL]).toBe(1);
     expect(bestandJeTitel()[EINTRAGS_TITEL]).toBe(1);
     // Er trägt, was getippt wurde — sonst wäre er selbst der leere Entwurf, den dieser Job abstellt.
-    expect(anlagen(EINTRAGS_TITEL)[0]?.category).toBe("Instandhaltung");
+    expect(anlageNutzlasten(EINTRAGS_TITEL)[0]?.category).toBe("Instandhaltung");
     // Die Punkte gehen unverändert mit.
     expect(bestandJeTitel()[P1.title]).toBe(1);
     expect(bestandJeTitel()[P2.title]).toBe(1);
@@ -232,7 +220,7 @@ describe("JOB 3621 · der Dateiweg legt keinen leeren Eintragsentwurf daneben", 
     await speichernUndWechseln();
 
     expect(anlageversucheJeTitel()[EINTRAGS_TITEL]).toBe(1);
-    expect(anlagen(EINTRAGS_TITEL)[0]?.confidentiality).toBe("vertraulich");
+    expect(anlageNutzlasten(EINTRAGS_TITEL)[0]?.confidentiality).toBe("vertraulich");
     expect(bestandJeTitel()[P1.title]).toBe(1);
     expect(bestandJeTitel()[P2.title]).toBe(1);
     expect(bestandJeTitel()[P3.title]).toBe(1);

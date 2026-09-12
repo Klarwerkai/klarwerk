@@ -382,6 +382,32 @@ interface FileWholeDraftSavedState {
   fileName: string;
 }
 
+/**
+ * JOB 3770 RUNDE 4: die Eingabe des Ganzdokument-Wegs (`fileWholeDraft`). Sie steht hier als Typ,
+ * weil sie jetzt ZWEI Aufrufer hat — den sichtbaren Knopf der Ganzdokument-Karte und den
+ * Speicherzweig der Navigationswache — und beide dieselbe Menge übergeben müssen. Die Felder sind
+ * die des Helfers (`wholeDocumentDraftPayload`), nicht eine eigene Auswahl daraus.
+ */
+interface GanzdokumentEingabe {
+  fileName: string;
+  text: string;
+  html?: string;
+  sourceKind?: WholeDocumentSourceKind;
+}
+
+/**
+ * JOB 3770 RUNDE 4: WER TRÄGT DIE GELADENE DATEI IN DIESEM DURCHLAUF — und womit.
+ *
+ * Zwei Träger, und zwar in dieser Rangfolge: solange der Mensch Funde ANGEHAKT hat, tragen die
+ * Punktentwürfe die Datei (so war es immer). Hat er alle weggeklickt, trägt der Ganzdokument-Entwurf
+ * sie — Volltext, Quellenvermerk, Originalreferenz. `null` heisst: niemand trägt sie, und GENAU dann
+ * muss der Rückfallzweig der Wache einspringen. Die ausgeschriebene Begründung steht am Begriff
+ * `dateiTraeger` in der Komponente.
+ */
+type DateiTraeger =
+  | { art: "punkte"; punkte: SelectableExtractPoint[]; fileName: string }
+  | { art: "ganzdokument"; eingabe: GanzdokumentEingabe };
+
 // ==================================================================================================
 // F-0007 (JOB 2942 D1) — EIN GELADENES BEISPIEL WIRD NICHT UNBEMERKT ECHTES WISSEN
 // ==================================================================================================
@@ -1048,6 +1074,86 @@ export function CaptureArbeitsraum({
   // Originalsprache des Dokuments (nichts übersetzen; Belegstellen sind ohnehin wörtlich).
   const [fileLang, setFileLang] = useState<"system" | "source">("system");
   const [filePoints, setFilePoints] = useState<SelectableExtractPoint[] | null>(null);
+  // ==============================================================================================
+  // JOB 3770 — EIN WAHRHEITSORT FÜR „WAS BEIM SPEICHERN WIRKLICH HINAUSGEHT".
+  // ==============================================================================================
+  //
+  // Der Mensch hakt in der Punkteliste ab, was er behalten will, und klickt die anderen Funde weg
+  // (`captureFromFile.ts`, `togglePoint`/`setAllSelected`). GESPEICHERT wird deshalb NIE `filePoints`,
+  // sondern genau diese Auswahl — und zwar an BEIDEN Stellen, die Entwürfe aus Punkten anlegen: am
+  // sichtbaren Knopf der Liste (`doSaveDrafts` unten) und im Speicherzweig der Navigationswache.
+  // Der zweite übergab bis JOB 3770 die ganze Liste; wer einen Fund weggeklickt und dann die Fläche
+  // verlassen hatte, fand ihn danach in „Meine Entwürfe" (Befund der Bahn von JOB 3621).
+  //
+  // WARUM ALS BENANNTER BEGRIFF UND NICHT ZWEIMAL ALS FILTER: dieselbe Begründung, die JOB 3621
+  // unten für `hasUnsavedEntryOhneDatei` geschrieben hat. Eine zweite Abschrift ist die Stelle, an
+  // der die beiden beim nächsten Feld auseinanderlaufen — und die zweite hätte niemand geprüft.
+  //
+  // Die Punkte bleiben dabei SIE SELBST (`SelectableExtractPoint`, keine Abschrift): nur so kann der
+  // Teilfehlerpfad die gelungenen aus `filePoints` nehmen, ohne sie über Titel wiederzuerkennen
+  // (JOB 3600). `useMemo`, weil der Wert als Abhängigkeit am Wächter-Effekt hängt.
+  const zuSpeicherndePunkte = useMemo<SelectableExtractPoint[]>(
+    () => (filePoints ?? []).filter((p) => p.selected),
+    [filePoints],
+  );
+  // ==============================================================================================
+  // JOB 3770 RUNDE 4 — DIE EINGABE DES GANZDOKUMENT-WEGS, EINMAL GEBILDET.
+  // ==============================================================================================
+  //
+  // Sie stand bis hierher nur am sichtbaren Knopf der Ganzdokument-Karte (`:5471` unten). Seit die
+  // Navigationswache denselben Weg gehen muss (Begründung am Träger-Begriff darunter), gibt es einen
+  // zweiten Aufrufer — und damit dieselbe Frage wie bei `zuSpeicherndePunkte`: ein Begriff oder zwei
+  // Abschriften. Zwei Abschriften wären die Stelle, an der beim nächsten Feld (ein weiterer
+  // Formatanteil, eine weitere Kennung) nur die eine nachgeführt wird, und die zweite hätte niemand
+  // geprüft. `null` heisst: es gibt nichts, was dieser Weg tragen könnte (keine Datei, kein Text).
+  const ganzdokumentEingabe = useMemo<GanzdokumentEingabe | null>(
+    () =>
+      fileName && fileText.trim().length > 0
+        ? {
+            fileName,
+            text: fileText,
+            ...(fileRich?.html ? { html: fileRich.html } : {}),
+            ...(fileRich ? { sourceKind: fileRich.kind } : {}),
+          }
+        : null,
+    [fileName, fileText, fileRich],
+  );
+  // ==============================================================================================
+  // JOB 3770 RUNDE 4 — WER TRÄGT DIE GELADENE DATEI, WENN DER MENSCH DIE FLÄCHE VERLÄSST?
+  // ==============================================================================================
+  //
+  // DER BEFUND, DER DIESEN BEGRIFF ERZWUNGEN HAT (Prüfer BEN, Runde 3 dieses Jobs). Runde 3 hat die
+  // Auswahl richtig geachtet: bei „alle Funde abgewählt" legt der Dateiweg keinen Punktentwurf mehr
+  // an, und der Rückfallzweig der Wache springt ein, damit der Wechsel nicht ins Nichts führt. Nur
+  // war der, der dort einsprang, `saveDraft` — und der sichert den Stand der FLÄCHE. Die Fläche war
+  // in diesem Fall leer: gespeichert wurde ein Entwurf mit dem Rückfalltitel und einer leeren
+  // Aussage, ohne Dateitext, ohne Dateinamen, ohne Originalreferenz. „Nichts geht still verloren"
+  // war damit als ANLAGE erfüllt und als ZUSAGE gebrochen — der Mensch hätte nach dem Wechsel einen
+  // leeren Entwurf und seine Datei nirgends. Eine Anlage, aus der der Stand nicht zurückkommt, ist
+  // keine Sicherung.
+  //
+  // DIE ANTWORT STEHT SEIT WP-D2 IM PRODUKT und musste nur benutzt werden: der GANZDOKUMENT-Weg
+  // (`fileWholeDraft`, `:1364` unten). Er trägt genau das, was hier zu tragen ist — den Volltext als
+  // Aussage, den Quellenvermerk mit dem Dateinamen im Rumpf und das Original als geprüfte Referenz
+  // im Objektspeicher. Er ist derselbe Weg, den der sichtbare Knopf „Ganzes Dokument als einen
+  // Entwurf" geht; die Wache erfindet also keinen zweiten Speicherweg, sondern greift auf den
+  // vorhandenen zurück, wenn die Punkte die Datei nicht mehr tragen.
+  //
+  // WARUM EIN BEGRIFF UND KEINE ZWEI BEDINGUNGEN: es ist EINE Frage — „trägt in diesem Durchlauf
+  // jemand die Datei, und wer?" — und sie wird an ZWEI Stellen des Wächter-Rückrufs gestellt (am
+  // Rückfallzweig und am Dateiweg selbst). Genau dass sie dort zweimal getrennt formuliert war, ist
+  // der Fehler, den dieser Job in drei Runden abgetragen hat. Dass der Begriff den Dateinamen
+  // MITFÜHRT, ist kein Zierrat: er macht das zweite `&& fileName` am Aufrufer unnötig, das sonst
+  // allein für die Typverengung dort stünde und beim nächsten Umbau leise auseinanderliefe.
+  const dateiTraeger = useMemo<DateiTraeger | null>(
+    () =>
+      zuSpeicherndePunkte.length > 0 && fileName
+        ? { art: "punkte", punkte: zuSpeicherndePunkte, fileName }
+        : ganzdokumentEingabe
+          ? { art: "ganzdokument", eingabe: ganzdokumentEingabe }
+          : null,
+    [zuSpeicherndePunkte, fileName, ganzdokumentEingabe],
+  );
   // SCRUM-435: ausgewählte Erkenntnis(se) für den „an bestehenden Artikel anhängen"-Picker.
   const [appendPts, setAppendPts] = useState<{ points: ExtractedPoint[]; fileName: string } | null>(
     null,
@@ -1477,9 +1583,14 @@ export function CaptureArbeitsraum({
     if (!filePoints || !fileName) {
       return;
     }
-    const chosen = filePoints
-      .filter((p) => p.selected)
-      .map(({ title, summary, sourceExcerpt }) => ({ title, summary, sourceExcerpt }));
+    // JOB 3770: DIESELBE Menge wie der Speicherzweig der Navigationswache — der eine benannte
+    // Begriff oben, nicht ein zweiter Filter daneben. Die Abbildung auf die drei Drahtfelder bleibt
+    // hier: die Mutation nimmt die Nutzlast, nicht die Listeneinträge.
+    const chosen = zuSpeicherndePunkte.map(({ title, summary, sourceExcerpt }) => ({
+      title,
+      summary,
+      sourceExcerpt,
+    }));
     if (chosen.length < 2) {
       return;
     }
@@ -3051,22 +3162,30 @@ export function CaptureArbeitsraum({
         // einem Teilfehler einen weiteren (JOB 3600 hat den Fund gemessen und benannt).
         //
         // DER RÜCKFALL DAHINTER IST KEIN ZWEITER WEG, SONDERN DIE ZUSAGE „NICHTS GEHT STILL
-        // VERLOREN": greift der Dateiweg in DIESEM Durchlauf nicht (keine Punkte oder kein
-        // Dateiname), trägt die Datei niemand — dann speichert wieder dieser Zweig, wie bisher.
+        // VERLOREN": trägt die Datei in DIESEM Durchlauf niemand (`dateiTraeger === null`: keine
+        // Datei oder kein lesbarer Inhalt), dann speichert wieder dieser Zweig, wie bisher.
         //
-        // EHRLICH DAZU, WEIL ES GEMESSEN IST: heute erreicht diesen Rückfall kein Bedienweg. Ohne
-        // Punkte ist `hasPendingFileImport` wahr (`:2780`), die Datei steht damit in
-        // `unsavableDirtyReasons`, und der Dialog bietet gar kein „Entwurf speichern und wechseln"
-        // an (E4 misst genau das). Umgekehrt gibt es keinen Zustand mit Punkten OHNE Dateinamen:
-        // wo `filePoints` geleert wird, fallen `fileName`/`fileText` mit (`:1297`, `:1544`). Nimmt
-        // man den Rückfall heraus, bleibt der gesamte Bestand grün. Er steht hier trotzdem — als
-        // Riegel gegen einen künftigen vierten Dateizustand, nicht als gemessener Weg.
+        // JOB 3770: BEIDE STELLEN STELLEN JETZT DIESELBE FRAGE, und sie tun es am selben Begriff
+        // (`dateiTraeger`). Das ist keine Feinheit, sondern der Unterschied zwischen einer Auswahl,
+        // die gilt, und einem stillen Verlust: seit der Dateiweg nur noch die ANGEHAKTEN Punkte
+        // anlegt, tragen die Punkte bei „alle abgewählt" nichts mehr. Fragte dieser Rückfall weiter
+        // nach `filePoints.length > 0`, hielte er die Datei für getragen, während sie niemand trägt
+        // — der Mensch wechselte die Seite und hätte nichts.
+        //
+        // JOB 3770 RUNDE 4 (bens Korrekturpflicht 1): UND DIESER ZWEIG IST NICHT DER TRÄGER DER
+        // DATEI, AUCH NICHT IM RÜCKFALL. `saveDraft` sichert den Stand der FLÄCHE; in „alles
+        // abgewählt" ist die Fläche oft leer, und heraus ging in Runde 3 ein Entwurf mit
+        // Rückfalltitel und leerer Aussage — eine Anlage ohne den Stand, den sie zu sichern behauptet.
+        // Die Datei trägt ab hier der Ganzdokument-Weg unten (`art: "ganzdokument"`). Beide Zweige
+        // können nebeneinander laufen, und dann tun sie Verschiedenes: dieser sichert den EINTRAG
+        // (getippte Domäne, Vertraulichkeit, halbe Quelle — die Zustände, für die die Wache ihr
+        // weiteres Dirty-Prädikat hat), der andere die DATEI. Gemessen: A2c.
         if (
           hasUnsavedEntryOhneDatei ||
           hasUnsavedMeta ||
           ivStarted ||
           ivResult ||
-          (!(filePoints && filePoints.length > 0 && fileName) && hasUnsavedEntry)
+          (dateiTraeger === null && hasUnsavedEntry)
         ) {
           // AUFTRAG-mega22 Block F: DASSELBE Tor wie der sichtbare Knopf. Bis mega21 rief dieser
           // Zweig `saveDraft.mutateAsync()` DIREKT und umging damit die Sperre, die daneben sichtbar
@@ -3102,14 +3221,50 @@ export function CaptureArbeitsraum({
           // deshalb „gespeichert" statt „verworfen".
           verlassenGespeichertRef.current = true;
         }
-        if (filePoints && filePoints.length > 0 && fileName) {
+        // ==========================================================================================
+        // JOB 3770 RUNDE 4 — DIE DATEI GEHT ÜBER IHREN TRÄGER HINAUS, UND ZWAR ÜBER GENAU EINEN.
+        // ==========================================================================================
+        //
+        // „Alle Funde abgewählt" ist nicht „nichts zu sichern": die DATEI liegt weiter auf der
+        // Fläche. Sie geht deshalb den Weg, den der sichtbare Knopf der Ganzdokument-Karte geht —
+        // dieselbe Mutation, dieselbe Eingabe (`ganzdokumentEingabe`), dieselben Grenzprüfungen,
+        // derselbe Original-Upload. Kein zweiter Speicherweg, kein eigener Payload-Bau hier:
+        // `fileWholeDraft` ist der EINE Ort, an dem aus einer geladenen Datei ein Entwurf wird.
+        //
+        // WAS DER MENSCH DANACH HAT: einen Entwurf mit dem Volltext als Aussage, dem Quellenvermerk
+        // „Quelle: <Dateiname>, gesamtes Dokument" im Rumpf und dem Original als geprüfte Referenz
+        // im Objektspeicher. Fortsetzen bringt genau das wieder auf die Fläche (A2 misst beides).
+        // Seine WEGGEKLICKTEN Funde sind damit keine Entwürfe geworden — seine Auswahl gilt —, aber
+        // die Datei, aus der sie kamen, ist nicht verloren.
+        if (dateiTraeger?.art === "ganzdokument") {
+          try {
+            await fileWholeDraft.mutateAsync(dateiTraeger.eingabe);
+          } catch (e) {
+            // Derselbe Satz, den der Fehlerkasten der Seite zeigt (`fileWholeDraft.onError`) —
+            // er reist hier mit, weil die Modalgrenze den Kasten bei offenem Dialog sperrt
+            // (Begründung am `saveDraft`-Zweig oben, JOB 3572 R2). Nicht gewechselt wird ohnehin:
+            // der Wurf hält den Dialog offen, und NICHTS behauptet „gesichert".
+            throw new NavGuardSaveError(
+              e instanceof DraftPayloadTooLargeError
+                ? t(CAPTURE_FILE_TEXT.tooLargeForImport)
+                : fehlersatz(e),
+            );
+          }
+        }
+        if (dateiTraeger?.art === "punkte") {
           // JOB 3600: die Punkte gehen als SIE SELBST hinein, nicht als Abschrift. Bis hierher stand
           // hier ein `filePoints.map(...)` auf drei Felder — die Rückmeldung liess sich danach nicht
           // mehr auf die Liste beziehen, aus der sie kam. Die Nutzlast ist unverändert:
           // `draftPayloadFromPoint` liest nur `title`, `summary` und `sourceExcerpt`.
+          //
+          // JOB 3770: und es sind die AUSGEWÄHLTEN Punkte, dieselbe Menge wie am sichtbaren Knopf
+          // der Liste. Was der Mensch weggeklickt hat, wird hier nicht einmal VERSUCHT — ein
+          // Versuch, der am Server scheitert, wäre derselbe Schaden mit Glück. Name und Punkte
+          // kommen aus dem Träger-Begriff, der sie zusammen hält: zwei Quellen für „dieselbe Datei"
+          // wären zwei Gelegenheiten, sie auseinanderlaufen zu lassen.
           const result = await createPointDrafts(
-            filePoints,
-            fileName,
+            dateiTraeger.punkte,
+            dateiTraeger.fileName,
             normalizeExtractLocale(i18n.language),
             (p) => endpoints.drafts.create(p),
           );
@@ -3122,9 +3277,26 @@ export function CaptureArbeitsraum({
             //
             // EIN WAHRHEITSORT: `filePoints` selbst. Keine Merkliste daneben, kein zweites Ref —
             // die Liste der offenen Punkte IST der Zustand der Fläche, und der nächste Lauf des
-            // Wächter-Effekts (er trägt `filePoints` in seiner Abhängigkeitsliste) nimmt genau ihn.
+            // Wächter-Effekts nimmt genau ihn (über `zuSpeicherndePunkte`, das aus ihr entsteht und
+            // in der Abhängigkeitsliste unten steht).
+            //
+            // JOB 3770: GEFILTERT WIRD ÜBER DIE GANZE LISTE, nicht über die ausgewählten Punkte —
+            // und das ist Absicht. Heraus geht genau, was WIRKLICH angelegt wurde; die ABGEWÄHLTEN
+            // Funde bleiben stehen, denn sie wurden nicht gespeichert und stehen weiter zur Wahl.
+            // Nähme man sie hier mit, verlöre der Mensch beim zweiten Druck Funde, die er nur
+            // weggehakt und nicht verworfen hatte (A3 misst genau das).
+            //
+            // JOB 3770 RUNDE 2: als Setter-Funktion, nicht über `filePoints` aus der Closure. Bis
+            // hierher verengte die Bedingung darüber (`filePoints && filePoints.length > 0`) den Typ
+            // gleich mit; seit sie `zuSpeicherndePunkte` fragt, tut sie das nicht mehr, und
+            // `filePoints.filter` war `TS18047: 'filePoints' is possibly 'null'` (Tor Runde 1).
+            // Der Setter mit `pts` ist die Form, die diese Datei auch sonst nimmt (`:5526`, `:5535`,
+            // `:5557`), und er liest den Zustand zum Zeitpunkt des Schreibens statt den vom Beginn
+            // des `await` — dieselbe Menge, ein Grund weniger, dass sie es nicht ist. `null` bleibt
+            // `null`: dieser Zweig läuft nur bei `failed.length > 0`, es bleibt also immer mindestens
+            // ein Punkt stehen, und eine leere Liste entstünde hier ohnehin nicht.
             const gelungen = new Set<SelectableExtractPoint>(result.createdPoints);
-            setFilePoints(filePoints.filter((p) => !gelungen.has(p)));
+            setFilePoints((pts) => (pts ? pts.filter((p) => !gelungen.has(p)) : pts));
             const grund = t(CAPTURE_FILE_TEXT.draftsPartial, { failed: result.failed.join(", ") });
             setErr(grund);
             // Nicht wechseln: Dialog bleibt offen — und er nennt den Grund selbst (JOB 3572 R2).
@@ -3132,7 +3304,10 @@ export function CaptureArbeitsraum({
           }
           push(
             "success",
-            t(CAPTURE_FILE_TEXT.draftsSaved, { count: result.created, name: fileName }),
+            t(CAPTURE_FILE_TEXT.draftsSaved, {
+              count: result.created,
+              name: dateiTraeger.fileName,
+            }),
           );
           setFilePoints(null);
           setFileName(null);
@@ -3155,9 +3330,21 @@ export function CaptureArbeitsraum({
     ivStarted,
     ivResult,
     unsavableDirtyReasons,
-    filePoints,
-    fileName,
+    // JOB 3770: der Begriff, den BEIDE Zweige oben fragen — er gehört in die Liste, sonst bliebe die
+    // Wache mit einer überholten Auswahl gesetzt und speicherte einen weggeklickten Fund doch.
+    // Er ERSETZT `filePoints` hier (bis Runde 2 stand beides da): der Rückruf liest die Liste nicht
+    // mehr selbst — der Teilfehlerpfad schreibt sie über den Setter mit `pts` (`:3299`) — und
+    // `dateiTraeger` entsteht ohnehin aus ihr, ändert sich also mit jeder ihrer Änderungen.
+    // Beides zugleich nannte Biome eine Abhängigkeit zu viel (`useExhaustiveDependencies`).
+    //
+    // JOB 3770 RUNDE 4: er ERSETZT zusätzlich `zuSpeicherndePunkte` und `fileName` — beide stehen in
+    // ihm, und der Rückruf fragt sie nicht mehr einzeln. Eine Abhängigkeit, die der Rückruf nicht
+    // liest, wäre hier nicht „sicherheitshalber mehr", sondern eine zweite Stelle, an der jemand
+    // beim nächsten Umbau rät, welche der beiden die wahre ist.
+    dateiTraeger,
     saveDraft,
+    // JOB 3770 RUNDE 4: der Ganzdokument-Weg, der die Datei bei „alles abgewählt" trägt.
+    fileWholeDraft,
     setGuard,
     qc,
     // JOB 3572 R2: der Wächter formuliert den Grund jetzt selbst mit (s. `fehlersatz` oben).
@@ -5397,22 +5584,19 @@ export function CaptureArbeitsraum({
                           <div className="mt-2 flex flex-wrap items-center gap-2">
                             <Button
                               variant="primary"
+                              // JOB 3770 RUNDE 4: GESPERRT AN DEMSELBEN BEGRIFF, DER AUCH HINAUSGEHT.
+                              // Hier standen die Bedingung (`!fileName`, leerer Text) und der
+                              // Eingabe-Bau zweimal dasselbe sagend nebeneinander; jetzt sagt
+                              // `ganzdokumentEingabe === null` beides, und der Speicherzweig der
+                              // Navigationswache fragt denselben Begriff (Begründung dort).
                               disabled={
-                                fileWholeDraft.isPending ||
-                                fileBusy ||
-                                !fileName ||
-                                fileText.trim().length === 0
+                                fileWholeDraft.isPending || fileBusy || ganzdokumentEingabe === null
                               }
                               onClick={() => {
-                                if (!fileName) {
+                                if (ganzdokumentEingabe === null) {
                                   return;
                                 }
-                                fileWholeDraft.mutate({
-                                  fileName,
-                                  text: fileText,
-                                  ...(fileRich?.html ? { html: fileRich.html } : {}),
-                                  ...(fileRich ? { sourceKind: fileRich.kind } : {}),
-                                });
+                                fileWholeDraft.mutate(ganzdokumentEingabe);
                               }}
                             >
                               {fileWholeDraft.isPending ? (

@@ -18,7 +18,15 @@
 import { vi } from "vitest";
 
 /** Der Serverbestand. Wird je Fall in `grundzustand()` (huelle.tsx) frisch gesetzt. */
-export const server = { bestand: {} as Record<string, unknown> };
+export const server = {
+  bestand: {} as Record<string, unknown>,
+  // JOB 3770 RUNDE 4: der Objektspeicher. Der Ganzdokument-Weg legt das ORIGINAL dort ab, BEVOR er
+  // den Entwurf anlegt (WP-D2 „Original ist heilig", `Capture.tsx` `fileWholeDraft`), und verlinkt
+  // es im Rumpf. Ohne diesen Bestand wäre „die Originalreferenz überlebt" nicht messbar: der
+  // Platzhalter-Proxy der Attrappe unten liefert für unbekannte Endpunkte eine leere Liste, und
+  // `ref.id` wäre `undefined` — der Link fiele still weg und der Test hätte nichts bemerkt.
+  objekte: {} as Record<string, { ref: Record<string, unknown>; data: string }>,
+};
 
 /** Die Punkte, die die KI-Auswertung des Dateiwegs zurückgibt. Je Fall gesetzt. */
 export const extrakt = {
@@ -103,8 +111,14 @@ export const draftsCreate = vi.fn(async (payload: unknown) => {
   }
   neuZaehler += 1;
   const id = `neu-${neuZaehler}`;
-  server.bestand[id] = { id, updatedAt: "2026-09-10T12:00:00.000Z", payload };
-  return { id };
+  const angelegt = { id, updatedAt: "2026-09-10T12:00:00.000Z", payload };
+  server.bestand[id] = angelegt;
+  // JOB 3770 RUNDE 4: der ANGELEGTE ENTWURF geht zurück, nicht bloss seine Kennung. Der echte
+  // Endpunkt antwortet mit `Draft` (`api.post<Draft>("/drafts")`), und Aufrufer lesen daraus weiter
+  // — der Ganzdokument-Weg etwa bildet seine Quittung mit `draftTitle(draft, …)`, das `draft.payload`
+  // liest. Mit `{ id }` allein warf genau dieser Weg einen TypeError, und zwar NACH der erfolgreichen
+  // Anlage: die Attrappe hätte damit einen Fehler erfunden, den der Server nie geschickt hätte.
+  return JSON.parse(JSON.stringify(angelegt)) as unknown;
 });
 
 /**
@@ -120,6 +134,71 @@ export function anlageversucheJeTitel(): Record<string, number> {
   }
   return zaehler;
 }
+
+/**
+ * Die Nutzlasten der Anlageversuche in der Reihenfolge der Aufrufe — ohne Titel ALLE, mit Titel nur
+ * die unter ihm versuchten. Gelesen wird damit, was wirklich zum Server ginge, nicht was danach im
+ * Bestand übrig ist.
+ *
+ * JOB 3770 RUNDE 4: stand als eigene Abschrift in `dateiweg-eintragsentwurf-mounted.test.tsx` (dort
+ * nur mit Titel) und wird jetzt von zwei Dateien gebraucht — also hierher, einmal (Lehre 3550/3571).
+ */
+export function anlageNutzlasten(titel?: string): Record<string, unknown>[] {
+  const alle = draftsCreate.mock.calls.map(([payload]) => payload as Record<string, unknown>);
+  return titel === undefined ? alle : alle.filter((p) => titelAus(p) === titel);
+}
+
+/**
+ * JOB 3770 RUNDE 4: DIE NUTZLAST, DIE WIRKLICH IM BESTAND LIEGT — nicht bloss ihr Titel.
+ *
+ * Der Grund für diesen Messer (bens Befund Runde 3): ein Träger, der nur unter dem Rückfalltitel
+ * ZÄHLBAR ist, beweist nichts über „nichts geht still verloren". Gemessen wurde damals eine Anlage,
+ * deren Nutzlast `{"title":"Entwurf","statement":"", …}` war — der geladene Dateistand stand nirgends
+ * darin. Eine Sicherung ist sie erst, wenn der Inhalt oder eine verwendbare Originalreferenz in ihr
+ * steht, und genau das liest dieser Helfer heraus.
+ */
+export function nutzlastJeTitel(titel: string): Record<string, unknown> | null {
+  for (const eintrag of Object.values(server.bestand)) {
+    const payload = (eintrag as { payload?: unknown } | null)?.payload;
+    if (titelAus(payload) === titel) {
+      return payload as Record<string, unknown>;
+    }
+  }
+  return null;
+}
+
+/** Die Kennung, unter der ein Entwurf im Bestand liegt — sie ist der Weg ins „Fortsetzen". */
+export function kennungJeTitel(titel: string): string | null {
+  for (const [id, eintrag] of Object.entries(server.bestand)) {
+    if (titelAus((eintrag as { payload?: unknown } | null)?.payload) === titel) {
+      return id;
+    }
+  }
+  return null;
+}
+
+let objektZaehler = 0;
+
+/**
+ * Der Objekt-Upload des Originals (`endpoints.objects.upload`). Er legt wirklich ab und gibt eine
+ * eigene Kennung je Aufruf zurück — nur so fällt ein doppelter Upload auf, und nur so trägt der
+ * Rumpf des Entwurfs danach eine Referenz, die auf etwas VORHANDENES zeigt.
+ */
+export const objectsUpload = vi.fn(
+  async (input: { name: string; mime: string; data: string }): Promise<Record<string, unknown>> => {
+    objektZaehler += 1;
+    const ref = {
+      id: `obj-${objektZaehler}`,
+      name: input.name,
+      mime: input.mime,
+      size: input.data.length,
+      kind: "document",
+      createdAt: "2026-09-10T12:00:00.000Z",
+    };
+    server.objekte[ref.id] = { ref, data: input.data };
+    return ref;
+  },
+);
 
 /** Wie oft je Titel ein Entwurf WIRKLICH im Bestand steht — das, was „Meine Entwürfe" zeigt. */
 export function bestandJeTitel(): Record<string, number> {
@@ -161,6 +240,8 @@ export async function attrappenZuruecksetzen(): Promise<void> {
   createFehlerTitel.clear();
   extrakt.punkte = [];
   neuZaehler = 0;
+  objektZaehler = 0;
+  server.objekte = {};
 }
 
 /** Das Modul `api/auth`, wie die Testdateien es in ihrer `vi.mock`-Fabrik zurückgeben. */
@@ -192,6 +273,11 @@ export function endpointsAttrappe(): Record<string, unknown> {
       remove: draftsRemove,
       promote: draftsPromote,
     },
+    // JOB 3770 RUNDE 4: der Objektspeicher gehört ausdrücklich in die Attrappe und nicht in den
+    // Platzhalter-Proxy darunter — der Ganzdokument-Weg lädt das Original hier hoch und verlinkt
+    // dessen Kennung im Rumpf des Entwurfs (`fileLinkHtml`). Aus dem Proxy käme eine leere Liste,
+    // die Kennung wäre `undefined`, und `fileLinkHtml` liesse den Link STILL weg.
+    objects: { upload: objectsUpload },
     reasoner: {
       status: ok({ active: true, mode: "cloud", reachable: "active" }),
       config: ok(null),

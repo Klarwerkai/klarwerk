@@ -190,15 +190,32 @@ const FREMDE: readonly Fremdrelation[] = [
   // Rueckgabe unter ABWEICHUNGEN gemeldet: dieselbe Extraktionsantwort wird dort weiterhin ohne
   // Fragment-Hinweis gezeigt, obwohl der Server das Feld auch dorthin sendet. Wer das nachzieht,
   // stellt die 27 wieder her — und traegt sie hier wieder ein.
+  // JOB 3770 (ENTWURF-VERLASSEN): EINE DER ZWEI 36ER IST WEG — UND ZWAR DURCH ZUSAMMENLEGUNG.
+  //
+  // Die zwei 36-Knoten-Bloecke waren derselbe Satz an zwei Stellen in `Capture.tsx`: die Auswahl der
+  // angehakten Punkte auf die drei Drahtfelder abbilden (`filter((p) => p.selected).map(({ title,
+  // summary, sourceExcerpt }) => …)`), einmal im Speichern-Zweig der Punkteliste (`doSaveDrafts`) und
+  // einmal im Anhaengen-Zweig (`requestAppendToArticle`). Genau diese Abschrift war der Grund, aus
+  // dem der Speicherzweig der Navigationswache die Auswahl NICHT achtete: sie stand nirgends als
+  // Begriff, also stand sie an der dritten Stelle gar nicht. Seit JOB 3770 bildet
+  // `zuSpeicherndePunkte` die Menge EINMAL; `doSaveDrafts` bildet nur noch ab. Der Anhaengen-Zweig
+  // traegt seinen Block unveraendert weiter — deshalb bleibt je dritte Datei EINE 36 stehen.
+  //
+  // DIE ANDERE SEITE IST NICHT VERGESSEN, SIE IST EINE ANDERE SACHE: in `captureFromFile.ts` steht
+  // derselbe Satz in `buildFileQueue` (:199), in `BodyExtractPanel.tsx` in dessen eigener Liste
+  // (:274). Beide stehen NICHT in den Zielpfaden von JOB 3770 (§4 ist abschliessend) und beide
+  // haben ihren eigenen Zweck; hier wurde eine Doppelung INNERHALB von `Capture.tsx` aufgeloest,
+  // nicht eine Seite einer fremden Paarung verbogen.
   {
     dritt: "apps/web/src/components/BodyExtractPanel.tsx",
-    groessen: [199, 36, 36, 33, 29, 29, 29, 28],
+    groessen: [199, 36, 33, 29, 29, 29, 28],
     was:
       "GELESEN: die Punkteliste nach dem Auslesen — dieselbe `<ul>` mit Auswahlkaestchen, " +
       "denselben `CAPTURE_FILE_TEXT`-Schluesseln und demselben `togglePoint`; nur der Setter " +
       "heisst anders (`setFilePoints` gegen `setPoints`), was der Fingerabdruck bewusst ignoriert. " +
       "Dazu der OCR-nicht-verfuegbar-Zweig und die Vertraulichkeits-Auswahlliste. Der frueher " +
-      "hier gepinnte 27-Knoten-Erfolgszweig ist mit JOB 3366 einseitig gewachsen (Kommentar oben).",
+      "hier gepinnte 27-Knoten-Erfolgszweig ist mit JOB 3366 einseitig gewachsen (Kommentar oben); " +
+      "die zweite 36 ist mit JOB 3770 weggefallen (Kommentar oben).",
   },
   {
     dritt: "apps/web/src/pages/Ask.tsx",
@@ -250,11 +267,14 @@ const FREMDE: readonly Fremdrelation[] = [
   },
   {
     dritt: "apps/web/src/lib/captureFromFile.ts",
-    groessen: [36, 36],
+    // JOB 3770: aus zwei wird einer — die Abschrift im Speichern-Zweig der Punkteliste ist zum
+    // Begriff `zuSpeicherndePunkte` zusammengelegt (Begruendung am Eintrag `BodyExtractPanel.tsx`
+    // oben). Uebrig bleibt der Anhaengen-Zweig (`requestAppendToArticle`).
+    groessen: [36],
     was:
-      "GEMESSEN: zwei `FirstStatement`-Bloecke zu je 36 Knoten, die `Capture` an zwei Stellen " +
-      "(1128 und 1174) mit dem Auslese-Helfer teilt — dieselben zwei, die auch in " +
-      "`BodyExtractPanel` stehen.",
+      "GEMESSEN: ein `FirstStatement`-Block zu 36 Knoten, den `Capture` (Anhaengen-Zweig der " +
+      "Punkteliste) mit `buildFileQueue` des Auslese-Helfers teilt — derselbe, der auch in " +
+      "`BodyExtractPanel` steht.",
   },
   // Die Datei ist mit dem Wegfall von `vhelp` (42 Knoten) in der Reihenfolge nach hinten gerutscht:
   // die Messung sortiert nach dem groessten Block je Datei, und der ist hier jetzt 35 — seit dem

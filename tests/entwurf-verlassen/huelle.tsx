@@ -284,6 +284,56 @@ export async function dateiAblegen(datei: File): Promise<void> {
   });
 }
 
+/**
+ * JOB 3770: die Fundzeilen der Punkteliste („Aus Datei"), in der Reihenfolge der Fläche — Titel und
+ * Hakenzustand, so wie ein Mensch sie sieht. Erkannt werden sie an dem, was NUR sie tragen:
+ * Auswahlkästchen UND Belegstellen-Beschriftung (`Capture.tsx`, Punkteliste). Andere Listen der
+ * Seite (Prüfer, Anhänge) zählen damit nicht mit.
+ */
+export function fundzeilen(): { titel: string; angehakt: boolean }[] {
+  const zeilen: { titel: string; angehakt: boolean }[] = [];
+  for (const li of [...container.querySelectorAll("li")]) {
+    const kaestchen = li.querySelector<HTMLInputElement>("input[type=checkbox]");
+    const titel = li.querySelector<HTMLElement>("label > span > span");
+    if (
+      !kaestchen ||
+      !titel ||
+      !(li.textContent ?? "").includes(i18n.t("capture.file.excerptLabel"))
+    ) {
+      continue;
+    }
+    zeilen.push({ titel: (titel.textContent ?? "").trim(), angehakt: kaestchen.checked });
+  }
+  return zeilen;
+}
+
+/**
+ * JOB 3770: das Auswahlkästchen EINES Funds, an seinem sichtbaren Titel gefunden. Abgewählt wird
+ * damit über das echte Bedienelement der Liste (`Capture.tsx`, `checked`/`togglePoint`) — ein Test,
+ * der `filePoints` von aussen verstellt, misst die Attrappe und nicht die Fläche.
+ */
+export function fundKaestchen(titel: string): HTMLInputElement {
+  for (const li of [...container.querySelectorAll("li")]) {
+    const kaestchen = li.querySelector<HTMLInputElement>("input[type=checkbox]");
+    const gefunden = li.querySelector<HTMLElement>("label > span > span");
+    if (kaestchen && (gefunden?.textContent ?? "").trim() === titel) {
+      return kaestchen;
+    }
+  }
+  throw new Error(`Auswahlkästchen des Funds „${titel}" nicht gefunden`);
+}
+
+/**
+ * Steht der Knopf „Entwurf speichern und wechseln" im offenen Dialog? JOB 3770: er stand bis
+ * hierher als eigene Abschrift in `dateiweg-eintragsentwurf-mounted.test.tsx` (E4) und wird
+ * jetzt von zwei Dateien gebraucht — er gehört deshalb hierher, nicht zweimal dorthin.
+ */
+export function speichernKnopfDa(): boolean {
+  return [...document.querySelectorAll("[data-navguard-dialog] button")].some((b) =>
+    (b.textContent ?? "").replace(/\s+/g, " ").includes(i18n.t("nav.guard.save")),
+  );
+}
+
 /** Ein Feld des Experten-Formulars, an seiner sichtbaren Beschriftung gefunden. */
 export function feld(label: string): HTMLInputElement | HTMLTextAreaElement {
   const l = [...container.querySelectorAll("label")].find(
