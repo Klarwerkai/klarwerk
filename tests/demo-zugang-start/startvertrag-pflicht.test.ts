@@ -120,38 +120,51 @@ describe("JOB 3655 A · der Startvertrag verweigert den Start bei fehlenden Pfli
     }
   });
 
-  it("A7 · DATABASE_URL-Regel und der bestehende Speicherwächter sagen dasselbe", () => {
-    // KEINE ZWEITE WAHRHEIT: `assertPersistentStore` (storage-guard.ts) ist die Stelle, die den
-    // Start heute schon abbricht. Der Vertrag BESCHREIBT dieselbe Regel — und dieser Vergleich hält
-    // fest, dass beide über dieselben vier Lagen gleich urteilen. Liefe eine auseinander, hätte der
-    // Betreiber zwei widersprüchliche Auskünfte darüber, ob seine Instanz startet.
+  it("A7 · GENAU EINER verweigert den Start — der Vertrag. Der Speicherwächter wirft nicht mehr", () => {
+    // ============================================================================================
+    // JOB 3776 RUNDE 2 — DIESER FALL HAT SEINE AUSSAGE GEWECHSELT, UND DAS IST DER PUNKT.
+    // ============================================================================================
+    //
+    // BIS RUNDE 1 stand hier „beide Prüfer urteilen gleich": `assertPersistentStore` warf, und der
+    // Vertrag vermisste `DATABASE_URL` — über vier Lagen deckungsgleich. Das war die Beschreibung
+    // von ZWEI Wegen zur selben Absage. Genau die hat BEN (Runde 1, Korrekturpflicht 2) als
+    // Verstoss gegen Prüfpunkt 7 beanstandet; der Wurf ist entfernt.
+    //
+    // WAS JETZT GEPRÜFT WIRD, ist die Eigenschaft, auf die es ankommt: Es gibt GENAU EINEN, der
+    // den Start verweigert, und das ist der Vertrag. Der Wächter warnt nur noch. Die Deckungs-
+    // gleichheit von früher wäre heute sogar falsch — im Override-Fall lässt der Vertrag durch,
+    // während der Wächter weiterhin (richtig) warnt.
     const lagen = [
-      { nodeEnv: "production", db: undefined, override: undefined },
-      { nodeEnv: "production", db: "postgres://x@y/z", override: undefined },
-      { nodeEnv: "production", db: undefined, override: "1" },
-      { nodeEnv: "test", db: undefined, override: undefined },
+      { nodeEnv: "production", db: undefined, override: undefined, verweigert: true },
+      { nodeEnv: "production", db: "postgres://x@y/z", override: undefined, verweigert: false },
+      { nodeEnv: "production", db: undefined, override: "1", verweigert: false },
+      { nodeEnv: "test", db: undefined, override: undefined, verweigert: false },
     ] as const;
     for (const lage of lagen) {
-      const waechterBricht = (() => {
-        try {
+      // 1. Der Wächter wirft in KEINER Lage mehr. Käme hier wieder ein Wurf, gäbe es zwei Wege.
+      expect(
+        () =>
           assertPersistentStore({
             databaseUrl: lage.db,
             nodeEnv: lage.nodeEnv,
             allowInMemoryProd: lage.override,
             journalActive: false,
-          });
-          return false;
-        } catch {
-          return true;
-        }
-      })();
+          }),
+        `Lage ${JSON.stringify(lage)}: assertPersistentStore wirft wieder — der alte, abgelöste Weg ist zurück (JOB 3776, Prüfpunkt 7).`,
+      ).not.toThrow();
+
+      // 2. Und der Vertrag verweigert GENAU DANN, wenn Produktion ohne DATABASE_URL und ohne den
+      //    benannten Override läuft — die Lage, in der früher der Wurf stand.
       const vertragVermisst = fehlendePflichtwerte({
         NODE_ENV: lage.nodeEnv,
         DATABASE_URL: lage.db,
         KLARWERK_ALLOW_INMEMORY_PROD: lage.override,
         APP_BASE_URL: "https://demo.example",
       }).includes("DATABASE_URL");
-      expect(vertragVermisst, `Lage ${JSON.stringify(lage)}`).toBe(waechterBricht);
+      expect(
+        vertragVermisst,
+        `Lage ${JSON.stringify(lage)}: der Startvertrag urteilt nicht wie zugesagt. Seit der Wurf in storage-guard.ts entfernt ist, ist er der EINZIGE, der diesen Start verhindert.`,
+      ).toBe(lage.verweigert);
     }
   });
 });

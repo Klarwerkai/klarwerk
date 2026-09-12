@@ -259,31 +259,32 @@ import { type SlideConverter, createSofficeSlideConverter } from "./slide-conver
 import { ermittleBestand, pruefeStartvertrag, startbericht } from "./start-vertrag";
 
 // ================================================================================================
-// JOB 3655 RUNDE 2 · KORREKTURPFLICHT 1 — DIE SAMMELPRÜFUNG LÄUFT VOR JEDEM ANDEREN STARTSCHRITT.
+// JOB 3776 — WO DER STARTVERTRAG GERUFEN WIRD: AM EINSTIEGSPUNKT. HIER NICHT MEHR.
 // ================================================================================================
 //
-// DER BEFUND (BEN, Runde 1): In Runde 1 stand diese Prüfung im Rumpf von `buildApp`. Das ist zu
-// spät. `server.ts` ruft `assertPersistentStore(...)` (Zeile 108), lange bevor es `buildApp`
-// (Zeile 124) erreicht — fehlten BEIDE Pflichtwerte, brach der alte Speicherwächter zuerst ab und
-// nannte nur `DATABASE_URL`. Der Betreiber startete neu, trug sie nach und erfuhr erst dann von
-// `APP_BASE_URL`. Genau das sollte der Vertrag beenden. Gemessen mit
-// `NODE_ENV=production node --import tsx services/app/src/server.ts`: `APP_BASE_URL` kam im ganzen
-// Prozessausgabetext nicht vor.
+// AN DIESER STELLE STAND BIS JOB 3776 EIN `pruefeStartvertrag(process.env)` AUF MODULEBENE. Es ist
+// ersatzlos entfernt, und der Begründungsblock dazu ebenfalls: er begründete eine Notlösung, die es
+// nicht mehr gibt. JOB 3655 Runde 2 hatte den Aufruf in den Modulrumpf gelegt, weil `server.ts`
+// damals nicht in den Zielpfaden stand, und hat den Preis dafür selbst ausgeschrieben.
 //
-// WARUM AUF MODULEBENE UND NICHT IN `server.ts`, WO ES HINGEHÖRTE: `services/app/src/server.ts`
-// steht nicht in den Zielpfaden dieses Auftrags (auch nicht nach den Ergänzungen der Steuerung),
-// und ein Pfad ausserhalb der Zielpfade wird nicht angefasst. Der Modulrumpf ist der einzige
-// verbleibende Punkt, der NACHWEISLICH früher liegt: `server.ts:6` importiert dieses Modul, und
-// ein importiertes Modul wird vollständig ausgewertet, bevor die erste Anweisung des Importeurs
-// läuft. Die Prüfung greift damit für ALLE drei Einstiegspunkte, die dieses Modul laden —
-// `server.ts`, `seed.ts` und `dev-persist.ts`.
+// DER PREIS WAR DIE FORM DER MELDUNG. Modulrumpf heisst: der Code läuft beim `import`, also bevor
+// die erste Anweisung des Importeurs ausgeführt wird. Der Fänger `start().catch(...)` in
+// `server.ts` sitzt um `start()` und wurde deshalb NIE erreicht. Wer eine Instanz mit
+// unvollständiger Umgebung hochfuhr, bekam eine Stapelspur aus dem Modulladen — die Meldung kam
+// darin vor, sah aber wie ein Programmabsturz aus statt wie eine Auskunft.
 //
-// WAS SIE NICHT TUT: In Nicht-Produktion prüft sie nichts (s. `fehlendePflichtwerte`), Testläufe
-// und Entwicklung bleiben unberührt. Der Aufruf im Rumpf von `buildApp` bleibt daneben bestehen
-// und ist kein zweiter Weg, sondern derselbe: dieselbe reine Funktion, ein zweites Mal gerufen für
-// den Fall, dass eine App erst NACH einer Umgebungsänderung gebaut wird (genau so misst es
-// `tests/security/vip2-gate.test.ts`, das `NODE_ENV` zur Laufzeit umstellt).
-pruefeStartvertrag(process.env);
+// DER VERTRAG WIRD JETZT DORT GERUFEN, WO ER HINGEHÖRT — an den Einstiegspunkten, jeweils als
+// erste Anweisung des Laufs, sodass der Abbruch durch den Fänger des jeweiligen Prozesses geht:
+//   · `services/app/src/server.ts` — erste Anweisung von `start()`, vor `assertPersistentStore`.
+//   · `services/app/src/seed.ts`   — erste Anweisung von `runSeed()` nach der Produktionssperre.
+// Gemessen und festgehalten wird das von `tests/demo-zugang-start/vertrag-am-einstiegspunkt.test.ts`
+// (der Ort) und `tests/demo-zugang-start/echter-serverstart.test.ts` F5 (die Wirkung am Prozess).
+//
+// WAS DAS FÜR DIESE DATEI BEDEUTET: Der Aufruf im RUMPF von `buildApp` (weiter unten) bleibt und
+// ist kein zweiter Weg zum selben Zweck. Er deckt einen anderen Fall ab — eine App, die erst NACH
+// einer Umgebungsänderung gebaut wird; genau so misst es `tests/security/vip2-gate.test.ts`, das
+// `NODE_ENV` zur Laufzeit umstellt. Der Modulrumpf-Aufruf hingegen lief einmal je Prozess beim
+// Laden und konnte das nicht leisten.
 
 // Composition-Root des modularen Monolithen: verdrahtet ALLE Module zu EINER App.
 // Jeder Import läuft über die öffentliche index.ts des jeweiligen Moduls.
@@ -1213,10 +1214,13 @@ export const ERLAUBTE_FEHLERTYPEN: ReadonlySet<string> = new Set([
   "SlideConvertError",
   // JOB 3655: der Startvertrag. Der Name darf ins Protokoll — er trägt keine Nutzerdaten und keinen
   // Wert, sondern nur die Auskunft „ein Pflichtwert der Umgebung fehlt" (die Namen selbst stehen in
-  // der Meldung, nicht im Typ). Er steht damit genau neben `StoragePersistenceError`, dem Wächter
-  // derselben Art.
+  // der Meldung, nicht im Typ).
+  //
+  // JOB 3776 RUNDE 2: Hier stand daneben `StoragePersistenceError`, der Wächter derselben Art aus
+  // `storage-guard.ts`. Diese Klasse gibt es nicht mehr — der Startvertrag verweigert den Start
+  // jetzt allein, und der zweite Weg ist entfernt (Prüfpunkt 7). Der Eintrag ist deshalb mit ihr
+  // gegangen: ein Name in dieser Liste, zu dem keine Klasse mehr gehört, ist eine Leiche.
   "StartvertragError",
-  "StoragePersistenceError",
   "TranscriberConfidentialError",
   "ValidationError",
   "ZurufError",

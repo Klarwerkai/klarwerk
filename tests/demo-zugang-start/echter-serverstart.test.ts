@@ -24,6 +24,12 @@ const WURZEL = join(__dirname, "..", "..");
 interface Lauf {
   code: number | null;
   ausgabe: string;
+  /**
+   * JOB 3776: die Fehlerausgabe FÜR SICH. `ausgabe` führt stdout und stderr zusammen und taugt
+   * deshalb für „kommt dieser Name vor" — aber nicht für „was steht ZUERST da". Genau das ist
+   * hier der Gegenstand: der Betreiber liest die erste Zeile.
+   */
+  fehlerausgabe: string;
 }
 
 /**
@@ -45,7 +51,36 @@ function starteServer(env: Record<string, string>): Lauf {
       ...env,
     },
   });
-  return { code: ergebnis.status, ausgabe: `${ergebnis.stdout ?? ""}${ergebnis.stderr ?? ""}` };
+  return {
+    code: ergebnis.status,
+    ausgabe: `${ergebnis.stdout ?? ""}${ergebnis.stderr ?? ""}`,
+    fehlerausgabe: ergebnis.stderr ?? "",
+  };
+}
+
+/**
+ * JOB 3776 Runde 2: derselbe Aufbau für den ZWEITEN gemessenen Einstiegspunkt, den CLI-Seed.
+ * `seed.ts` hat in Runde 1 einen eigenen Fänger bekommen (`runSeed().catch(...)` statt
+ * `void runSeed()`); ohne Prozesstest wäre genau der ungedeckt (BEN, Runde 1, Prüfpunkt 6).
+ */
+function starteSeed(env: Record<string, string>): Lauf {
+  const ergebnis = spawnSync("node", ["--import", "tsx", "services/app/src/seed.ts"], {
+    cwd: WURZEL,
+    encoding: "utf8",
+    timeout: 90_000,
+    env: {
+      PATH: process.env.PATH ?? "",
+      HOME: process.env.HOME ?? "",
+      TMPDIR: process.env.TMPDIR ?? "/tmp",
+      KLARWERK_SKIP_KEYCHAIN: "1",
+      ...env,
+    },
+  });
+  return {
+    code: ergebnis.status,
+    ausgabe: `${ergebnis.stdout ?? ""}${ergebnis.stderr ?? ""}`,
+    fehlerausgabe: ergebnis.stderr ?? "",
+  };
 }
 
 describe("JOB 3655 F · der echte Serverstart", () => {
@@ -97,6 +132,63 @@ describe("JOB 3655 F · der echte Serverstart", () => {
     expect(lauf.code, `Ausgabe: ${lauf.ausgabe}`).not.toBe(0);
   }, 120_000);
 
+  it("F5 · JOB 3776 · der Abbruch ist EINE lesbare Zeile, keine Stapelspur", () => {
+    // ============================================================================================
+    // JOB 3776 · R1 — DIE WIRKUNG, GEMESSEN AM LAUFENDEN PROZESS.
+    // ============================================================================================
+    //
+    // F1 und F2 messen, DASS die Namen vorkommen. Das war nach JOB 3655 erfüllt — und trotzdem sah
+    // der Betreiber einen Programmabsturz. Denn der Vertrag stand im MODULRUMPF von `build-app.ts`
+    // (Zeile 286), also in dem Code, der beim `import` läuft; der Fänger `start().catch(...)` sitzt
+    // um `start()` und wurde nie erreicht.
+    //
+    // DIE IST-AUSGABE VOR DIESER RUNDE, wörtlich gemessen am Stand 8208f57 mit
+    // `NODE_ENV=production node --import tsx services/app/src/server.ts`:
+    //
+    //   /…/services/app/src/start-vertrag.ts:927
+    //       throw new StartvertragError(fehlend);
+    //             ^
+    //   StartvertragError: KLARWERK-Start abgebrochen: 2 Pflichtwert(e) … — APP_BASE_URL, DATABASE_URL. …
+    //       at pruefeStartvertrag (…/start-vertrag.ts:927:11)
+    //       at <anonymous> (…/services/app/src/build-app.ts:286:1)
+    //       at ModuleJob.run (node:internal/modules/esm/module_job:439:25)
+    //   Node.js v24.16.0
+    //
+    // Für Pedi ist das der Unterschied zwischen „ich sehe, was fehlt" und „da ist etwas kaputt".
+    // Gemessen wird deshalb die ERSTE ZEILE und die ABWESENHEIT der Ladespur.
+    const lauf = starteServer({ NODE_ENV: "production" });
+    const ersteZeile = lauf.fehlerausgabe.split("\n").find((z) => z.trim() !== "") ?? "";
+
+    expect(
+      ersteZeile,
+      `Die erste Fehlerzeile lautet '${ersteZeile}'. Erwartet ist die gewohnte Form ` +
+        `'Serverstart fehlgeschlagen: …' aus server.ts (start().catch). Volle Ausgabe:\n${lauf.fehlerausgabe}`,
+    ).toMatch(/^Serverstart fehlgeschlagen: /);
+
+    // Und sie trägt die vollständige Auskunft — nicht nur den Kopf einer Stapelspur.
+    expect(ersteZeile).toContain("DATABASE_URL");
+    expect(ersteZeile).toContain("APP_BASE_URL");
+    expect(ersteZeile).toContain("Pflichtwert(e)");
+
+    // Keine Spur aus dem Modulladen. Diese drei Marken sind genau die, die die Ist-Ausgabe oben
+    // trug; taucht eine wieder auf, steht der Wurf wieder vor dem Fänger.
+    for (const marke of [
+      "at ModuleJob.run",
+      "asyncRunEntryPointWithESMLoader",
+      "at pruefeStartvertrag (",
+    ]) {
+      expect(
+        lauf.fehlerausgabe,
+        `'${marke}' steht wieder in der Ausgabe — der Abbruch kommt aus dem Modulladen, nicht aus ` +
+          `start(). Volle Ausgabe:\n${lauf.fehlerausgabe}`,
+      ).not.toContain(marke);
+    }
+
+    // Der Fänger beendet mit 1 (server.ts: process.exit(1)) — ein Wurf beim Modulladen endete mit 1
+    // ohne unser Zutun, deshalb ist das kein Beleg für sich, aber es gehört zur gewohnten Form.
+    expect(lauf.code, `Ausgabe:\n${lauf.fehlerausgabe}`).toBe(1);
+  }, 120_000);
+
   it("F4 · ausserhalb der Produktion verlangt der Vertrag nichts", () => {
     // Entwicklung und Desktopbetrieb dürfen weiterhin ohne Ausstattung hochkommen. Der Prozess
     // horcht dann wirklich; deshalb wird er über einen unbrauchbaren Port sofort wieder beendet
@@ -104,5 +196,58 @@ describe("JOB 3655 F · der echte Serverstart", () => {
     const lauf = starteServer({ NODE_ENV: "test", PORT: "-1" });
     expect(lauf.ausgabe).not.toContain("Pflichtwert(e)");
     expect(lauf.ausgabe).not.toContain("StartvertragError");
+  }, 120_000);
+});
+
+// ================================================================================================
+// JOB 3776 RUNDE 2 · S — DER ZWEITE EINSTIEGSPUNKT ALS ECHTER PROZESS: DER CLI-SEED.
+// ================================================================================================
+//
+// DIE LÜCKE, GEGEN DIE DIESER BLOCK STEHT (BEN, Runde 1, Prüfpunkt 6): Runde 1 hat `seed.ts` den
+// Vertrag UND einen Fänger gegeben (`runSeed().catch(...)` statt `void runSeed()`), aber nur am
+// Quelltext geprüft (R2/2). Ohne Prozesstest wäre die Zusage „auch hier EINE lesbare Zeile" eine
+// Behauptung: ein `void`-Aufruf hätte den Wurf als unbehandelte Zurückweisung stehen lassen, und
+// Node schreibt dafür eine Stapelspur — exakt der Mangel, gegen den JOB 3776 angetreten ist.
+describe("JOB 3776 S · der echte Seed-Prozess", () => {
+  it("S1 · in Produktion greift die Seed-Sperre VOR dem Vertrag", () => {
+    // Die Reihenfolge ist Absicht und in seed.ts begründet: Wer `seed:demo` versehentlich in
+    // Produktion aufruft, soll erfahren, dass dieser Lauf gar nicht stattfindet — nicht, welche
+    // Pflichtwerte einem Lauf fehlten, den es nicht gibt.
+    const lauf = starteSeed({ NODE_ENV: "production" });
+    expect(lauf.ausgabe).toContain("In Produktion deaktiviert");
+    expect(lauf.ausgabe).not.toContain("Pflichtwert(e)");
+  }, 120_000);
+
+  it("S2 · mit SEED_ALLOW_PROD=1 und fehlenden Pflichtwerten: EINE lesbare Zeile, keine Stapelspur", () => {
+    const lauf = starteSeed({ NODE_ENV: "production", SEED_ALLOW_PROD: "1" });
+    const ersteZeile = lauf.fehlerausgabe.split("\n").find((z) => z.trim() !== "") ?? "";
+    expect(
+      ersteZeile,
+      `Die erste Fehlerzeile lautet '${ersteZeile}'. Erwartet ist die gewohnte Form ` +
+        `'[seed:demo] Abbruch: …' aus dem Fänger in seed.ts. Volle Ausgabe:\n${lauf.fehlerausgabe}`,
+    ).toMatch(/^\[seed:demo\] Abbruch: /);
+    expect(ersteZeile).toContain("DATABASE_URL");
+    expect(ersteZeile).toContain("APP_BASE_URL");
+
+    // Keine unbehandelte Zurückweisung: genau das erzeugte `void runSeed()` vor Runde 1.
+    for (const marke of [
+      "at ModuleJob.run",
+      "UnhandledPromiseRejection",
+      "at pruefeStartvertrag (",
+    ]) {
+      expect(
+        lauf.fehlerausgabe,
+        `'${marke}' steht in der Ausgabe — der Wurf läuft am Fänger vorbei. Volle Ausgabe:\n${lauf.fehlerausgabe}`,
+      ).not.toContain(marke);
+    }
+  }, 120_000);
+
+  it("S3 · KALIBRIERUNG: ausserhalb der Produktion läuft der Seed vollständig durch", () => {
+    // Ohne diese Gegenrichtung wäre S2 auch dann grün, wenn der Vertrag im Seed IMMER abbräche —
+    // und der Entwicklungs- und Vorführweg wäre kaputt, ohne dass es jemand merkt.
+    const lauf = starteSeed({ NODE_ENV: "test" });
+    expect(lauf.ausgabe).not.toContain("Pflichtwert(e)");
+    expect(lauf.ausgabe).not.toContain("[seed:demo] Abbruch:");
+    expect(lauf.ausgabe, `Ausgabe:\n${lauf.ausgabe}`).toContain("[seed:demo] Fertig:");
   }, 120_000);
 });

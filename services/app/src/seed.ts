@@ -4,6 +4,8 @@ import { TERMINAL, amTerminalUebergeben } from "./kennwort-uebergabe";
 // G27 R2 (Entscheidung 15 §A): derselbe kanonische Startupvertrag, den auch App-Ready fährt.
 import { stelleSuchprojektionBereit } from "./search-projection-startup";
 import { type SeedResult, seedDemo } from "./seed-demo";
+// JOB 3776: derselbe Startvertrag, den auch `server.ts` am Einstiegspunkt fährt.
+import { pruefeStartvertrag } from "./start-vertrag";
 
 // SCRUM-156/181: CLI-Runner für den Demo-Seed. Die eigentliche Seed-Logik liegt in `seed-demo.ts`
 // (bewusst ohne build-app-Import, um Zyklen zu vermeiden). Hier nur die Service-Verdrahtung.
@@ -17,6 +19,21 @@ export async function runSeed(): Promise<void> {
     process.exitCode = 1;
     return;
   }
+  // ==============================================================================================
+  // JOB 3776 — DER STARTVERTRAG GILT AUCH FÜR DIESEN EINSTIEGSPUNKT.
+  // ==============================================================================================
+  //
+  // WARUM ER HIER STEHT: Bis JOB 3776 hing die Vertragsprüfung am Modulrumpf von `build-app.ts`
+  // und griff für diesen Runner nur als Nebenwirkung des Imports. Mit dem Umzug nach `server.ts`
+  // wäre sie hier ersatzlos entfallen — ein Seed-Lauf in Produktion (`SEED_ALLOW_PROD=1`) liefe
+  // dann ohne jede Vertragsprüfung gegen eine unvollständig ausgestattete Instanz.
+  //
+  // UND WARUM ERST HIER, eine Zeile NACH der Produktionssperre: Die Sperre darüber ist eine
+  // Absage an den Lauf überhaupt. Stünde der Vertrag davor, bekäme wer `seed:demo` versehentlich
+  // in Produktion aufruft eine Auskunft über fehlende Pflichtwerte — für einen Lauf, der ohnehin
+  // nicht stattfindet. Die Sperre ist die richtige Antwort; der Vertrag ist die erste Anweisung
+  // des Laufs, der wirklich beginnt, und steht VOR jeder Verbindung und jedem Dienst.
+  pruefeStartvertrag(process.env);
   const databaseUrl = process.env.DATABASE_URL;
   let services: AppServices;
   if (databaseUrl) {
@@ -128,5 +145,14 @@ export async function runSeed(): Promise<void> {
 
 // Nur ausführen, wenn die Datei direkt gestartet wird (nicht beim Import in Tests).
 if (process.argv[1]?.endsWith("seed.ts")) {
-  void runSeed();
+  // JOB 3776 — DERSELBE FÄNGER WIE IN `server.ts`, UND AUS DEMSELBEN GRUND.
+  //
+  // `void runSeed()` liess einen Wurf als unbehandelte Zurückweisung stehen: Node schreibt dann
+  // eine Stapelspur und beendet mit 1. Für den Startvertrag wäre das exakt der Mangel, gegen den
+  // JOB 3776 steht — eine lesbare Auskunft, die wie ein Programmabsturz aussieht. Hier steht
+  // deshalb die gewohnte Form, mit dem Präfix dieses Befehls.
+  runSeed().catch((error) => {
+    console.error(`[seed:demo] Abbruch: ${String(error)}`);
+    process.exitCode = 1;
+  });
 }

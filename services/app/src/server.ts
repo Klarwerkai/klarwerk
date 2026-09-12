@@ -9,6 +9,9 @@ import { buildDevPersistServices } from "./dev-persist";
 import { type FactoryReset, factoryResetUnavailable } from "./factory-reset";
 import { registerNoindexHook } from "./noindex-hook";
 import { registerSecurityHeaders } from "./security-headers";
+// JOB 3776: der Startvertrag wird am Einstiegspunkt gerufen — als erste Anweisung von `start()`,
+// damit sein Abbruch durch `start().catch(...)` läuft und als EINE lesbare Zeile erscheint.
+import { pruefeStartvertrag } from "./start-vertrag";
 import { assertPersistentStore, normalizeEnv } from "./storage-guard";
 import { resolveTrashSweepIntervalMs, startTrashSweepScheduler } from "./trash-sweep-scheduler";
 import { registerWebStatic } from "./web-static";
@@ -96,15 +99,42 @@ function makeFactoryReset(journal: string | undefined): FactoryReset {
 }
 
 async function start(): Promise<void> {
+  // ==============================================================================================
+  // JOB 3776 — DER STARTVERTRAG, ALS ERSTE ANWEISUNG DES EINSTIEGSPUNKTS.
+  // ==============================================================================================
+  //
+  // WARUM HIER UND NICHT IM MODULRUMPF VON `build-app.ts`, wo er bis JOB 3776 stand: Ein Wurf im
+  // Modulrumpf geschieht beim `import` — also bevor die erste Anweisung dieser Datei läuft — und
+  // erreicht den Fänger `start().catch(...)` am Ende dieser Datei deshalb NIE. Der Betreiber bekam
+  // eine Stapelspur aus dem Modulladen (`at ModuleJob.run`), in der die Meldung zwar vorkam, die
+  // aber wie ein Programmabsturz aussah. Gemessen am Stand 8208f57, erste Zeile:
+  // `/…/services/app/src/start-vertrag.ts:927`. JOB 3655 Runde 2 hat diesen Preis selbst
+  // ausgeschrieben und den Grund genannt: `server.ts` stand damals nicht in den Zielpfaden.
+  //
+  // JETZT GILT DIE GEWOHNTE FORM: der Wurf läuft durch `start().catch(...)` und erscheint als EINE
+  // Zeile `Serverstart fehlgeschlagen: …` mit ALLEN fehlenden Werten auf einmal.
+  //
+  // UND ER STEHT VOR `assertPersistentStore` (unten): Fehlen BEIDE Pflichtwerte, nennte der
+  // Speicherwächter nur `DATABASE_URL` und schnitte die Sammelmeldung ab — genau BENs Befund aus
+  // JOB 3655 Runde 1. In Nicht-Produktion prüft der Vertrag nichts (s. `fehlendePflichtwerte`),
+  // Entwicklung und Desktopbetrieb bleiben unberührt.
+  pruefeStartvertrag(process.env);
   // EINE Quelle der Wahrheit (ben-Review ROT-1): DATABASE_URL genau hier am Rand normalisieren
   // (trim; leer/whitespace → undefined). Derselbe Wert speist ALLE vier Verwendungen — Guard,
   // Pg-vs-InMemory/Journal-Verzweigung, Factory-Reset-Erkennung und Modus-Log — sodass Guard-Entscheid
   // und tatsächliche Verzweigung nie auseinanderlaufen. Kein zweites rohes process.env.DATABASE_URL.
   const databaseUrl = normalizeEnv(process.env.DATABASE_URL);
   const journal = devPersistFile();
-  // Betriebssicherheit (SCRUM-498 B3): in Produktion NIE still auf InMemory/Journal starten. Ohne
-  // DATABASE_URL (→ PgKoRepo) bricht der Start FAIL-CLOSED ab — außer KLARWERK_ALLOW_INMEMORY_PROD=1
-  // ist bewusst gesetzt, dann nur eine laute, pfad-genaue Warnung.
+  // Betriebssicherheit (SCRUM-498 B3): in Produktion NIE still auf InMemory/Journal starten.
+  //
+  // JOB 3776 RUNDE 2 — WER HIER WAS TUT, hat sich verschoben und der alte Satz stimmte nicht mehr:
+  // Bis dahin stand hier „bricht der Start FAIL-CLOSED ab". Das tut `assertPersistentStore` nicht
+  // mehr; der Wurf ist entfernt, weil der Startvertrag oben (Zeile 121) dieselbe Lage mit derselben
+  // Ausnahme schon abfängt — zwei Wege zur selben Absage waren einer zu viel (Prüfpunkt 7).
+  // Ohne DATABASE_URL in Produktion bricht der Start also WEITERHIN ab, nur eben am Vertrag.
+  // Was hier bleibt, ist die laute, pfad-genaue WARNUNG: sie ist im bewusst überstimmten Fall
+  // (KLARWERK_ALLOW_INMEMORY_PROD=1) der einzige Hinweis darauf, dass diese Instanz ihre Daten bei
+  // jedem Neustart verliert.
   const storageDecision = assertPersistentStore({
     databaseUrl,
     nodeEnv: process.env.NODE_ENV,
