@@ -289,29 +289,99 @@ class JsonRoundTripDraftRepo implements DraftRepo {
     return Promise.resolve();
   }
 
-  findById(id: string): Promise<Draft | undefined> {
+  // JOB 3668: `data ? 'deletedAt'` am JSON gelesen — das Vorhandensein des Schlüssels, nicht sein
+  // Wahrheitswert; genau wie in `repo-pg.ts` und `repo.ts`.
+  #gelesen(id: string): (Draft & { deletedAt?: string; deletedBy?: string }) | undefined {
     const row = this.rows.get(id);
-    return Promise.resolve(row ? (JSON.parse(row) as Draft) : undefined);
+    return row ? (JSON.parse(row) as Draft & { deletedAt?: string }) : undefined;
+  }
+
+  #getrasht(id: string): boolean {
+    const d = this.#gelesen(id);
+    return d !== undefined && "deletedAt" in d;
+  }
+
+  findById(id: string): Promise<Draft | undefined> {
+    return Promise.resolve(this.#getrasht(id) ? undefined : this.#gelesen(id));
   }
 
   update(draft: Draft): Promise<void> {
-    this.rows.set(draft.id, JSON.stringify(draft));
+    if (!this.#getrasht(draft.id)) {
+      this.rows.set(draft.id, JSON.stringify(draft));
+    }
     return Promise.resolve();
   }
 
   // JOB 2684 D3: dieselbe Bedingung wie in repo-pg.ts (`data->>'updatedAt' = $3`), am JSON gelesen.
   updateWennStand(draft: Draft, erwarteterStand: string): Promise<boolean> {
-    const row = this.rows.get(draft.id);
-    if (!row || (JSON.parse(row) as Draft).updatedAt !== erwarteterStand) {
+    const gespeichert = this.#gelesen(draft.id);
+    if (!gespeichert || this.#getrasht(draft.id) || gespeichert.updatedAt !== erwarteterStand) {
       return Promise.resolve(false);
     }
     this.rows.set(draft.id, JSON.stringify(draft));
     return Promise.resolve(true);
   }
 
-  delete(id: string): Promise<void> {
-    this.rows.delete(id);
+  // JOB 3668: auch dieses Doppel löscht WEICH — sonst misst der JSON-Rundlauf eine Semantik, die
+  // es in keiner der beiden Betriebsablagen mehr gibt.
+  delete(id: string, geloeschtVon?: string, zeitpunkt?: string): Promise<void> {
+    const draft = this.#gelesen(id);
+    if (!draft || this.#getrasht(id)) {
+      return Promise.resolve();
+    }
+    this.rows.set(
+      id,
+      JSON.stringify({
+        ...draft,
+        deletedAt: zeitpunkt ?? new Date().toISOString(),
+        ...(geloeschtVon === undefined ? {} : { deletedBy: geloeschtVon }),
+      }),
+    );
     return Promise.resolve();
+  }
+
+  listTrashed(fuerAutor?: string): Promise<(Draft & { deletedAt: string; deletedBy?: string })[]> {
+    return Promise.resolve(
+      [...this.rows.keys()]
+        .filter((id) => this.#getrasht(id))
+        .map((id) => this.#gelesen(id) as Draft & { deletedAt: string; deletedBy?: string })
+        .filter((d) => fuerAutor === undefined || d.originalAuthor === fuerAutor)
+        .sort((a, b) => b.deletedAt.localeCompare(a.deletedAt)),
+    );
+  }
+
+  findTrashed(
+    id: string,
+  ): Promise<(Draft & { deletedAt: string; deletedBy?: string }) | undefined> {
+    return Promise.resolve(
+      this.#getrasht(id)
+        ? (this.#gelesen(id) as Draft & { deletedAt: string; deletedBy?: string })
+        : undefined,
+    );
+  }
+
+  restore(id: string): Promise<Draft | undefined> {
+    if (!this.#getrasht(id)) {
+      return Promise.resolve(undefined);
+    }
+    const {
+      deletedAt: _at,
+      deletedBy: _von,
+      ...zurueck
+    } = this.#gelesen(id) as Draft & {
+      deletedAt?: string;
+      deletedBy?: string;
+    };
+    this.rows.set(id, JSON.stringify(zurueck));
+    return Promise.resolve(zurueck as Draft);
+  }
+
+  purge(id: string): Promise<boolean> {
+    if (!this.#getrasht(id)) {
+      return Promise.resolve(false);
+    }
+    this.rows.delete(id);
+    return Promise.resolve(true);
   }
 
   // JOB 2696 (R2-33): auch dieses Doppel muss die Autorenfrage beantworten koennen — der Vertrag

@@ -2079,7 +2079,16 @@ export function buildApp(
               input: { ...input, author: input.author.trim() ? input.author : user.id },
             };
           },
-          discard: (draftId) => services.capture.deleteDraft(draftId),
+          // JOB 3668 RUNDE 2 — DER ZWEITE ÜBERNAHMEWEG, und er wurde in Runde 1 übersehen.
+          //
+          // `discard` heisst hier VERBRAUCHT, nicht gelöscht: die Zeile läuft erst, wenn das
+          // Wissensobjekt vollständig steht (`ko-routes.ts:1534`, der Vertrag darüber bei `:114`).
+          // Solange sie `deleteDraft` rief, landete ein übernommener Entwurf seit Runde 1 im
+          // PAPIERKORB — von dort wiederherstellbar und danach eine Dublette neben dem Objekt, das
+          // aus ihm geworden ist. Gemessen von Codex: Übernahme 201, danach „Papierkorb: 1,
+          // Wiederherstellen: 200". `POST /api/drafts/:id/promote` (`capture-routes.ts:1541`) war
+          // bereits umgestellt; dies ist der zweite Weg zum selben Ziel.
+          discard: (draftId) => services.capture.entwurfVerbraucht(draftId),
           // AUFTRAG-mega21 Block B: Entwurfsaktualisierung UND Erstanlage in EINEM Vorgang. Die
           // Sichtbarkeitsregel ist DIESELBE Funktion wie oben (canSeeDraft) und dieselbe wie auf
           // `PUT /api/drafts/:id` — es entsteht keine zweite Auffassung davon, wer einen Entwurf

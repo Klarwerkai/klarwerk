@@ -72,9 +72,15 @@ vi.mock("../../apps/web/src/api/endpoints", async () => {
   return {
     endpoints: {
       drafts: {
+        // JOB 3668 (Nachführung): DAS NACHGEBAUTE `GET /api/drafts` TRIMMT DEN PAPIERKORB, wie die
+        // echte Route es tut (`visibleDraftsFor`, `services/app/src/routes/capture-routes.ts`).
+        // `listDrafts()` liefert seit dem Entwurfs-Papierkorb AUCH die gelöschten Entwürfe — die
+        // Referenzprüfung zählt über diese Liste die Anker, und ein getrashter Entwurf muss seinen
+        // behalten. Wer einem Menschen eine Liste zeigt, trimmt selbst. Ein Prüfstand, der das
+        // nicht täte, zeigte eine Liste, die es in der Anwendung nicht gibt.
         list: vi.fn(async () => {
           box.zaehler.list += 1;
-          return svc.listDrafts();
+          return (await svc.listDrafts()).filter((d) => !("deletedAt" in d));
         }),
         get: vi.fn(async (id: string) => {
           box.zaehler.get += 1;

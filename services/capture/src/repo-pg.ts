@@ -71,9 +71,34 @@ interface DraftRow {
   data: Draft;
 }
 
-/** JOB 2684 D3: die Schreibanweisung mit Standbedingung — exportiert, damit ein Test sie pinnt. */
-export const DRAFT_UPDATE_WENN_STAND_SQL =
-  "UPDATE drafts SET data=$2 WHERE id=$1 AND data->>'updatedAt' = $3";
+// ================================================================================================
+// JOB 3668 — DER PAPIERKORB DER ENTWÜRFE, UND WARUM ER OHNE SCHEMASTUFE AUSKOMMT.
+// ================================================================================================
+//
+// DAS PRÄDIKAT IST WÖRTLICH DAS DES WISSENSOBJEKTS: `NOT (data ? 'deletedAt')` steht dort an
+// `missingActive`, `setAiCheck` und `setTrust` (`knowledge-object/src/repo-pg.ts:493`, `:623`,
+// `:683`). Es fragt nach dem VORHANDENSEIN des Schlüssels im Dokument — deshalb braucht dieser
+// Papierkorb KEINE Spalte, KEINE Migrationsstufe und damit auch keinen Rückweg, den jemand fahren
+// müsste. Er ist additiv von Natur aus: ein Dokument bekommt zwei Schlüssel mehr.
+//
+// UND DESHALB AUCH KEINE GENERIERTE SPALTE, anders als beim Wissensobjekt (`repo-pg.ts:223`
+// `deleted_at`). Dort MUSS das Papierkorbprädikat vor dem `LIMIT` und vor dem Cursor wirken, sonst
+// liefert eine Seite weniger Zeilen als versprochen (die Begründung steht ausgeschrieben bei
+// `:185`). Die Entwurfsabfragen haben weder Deckel noch Cursor — sie liefern die Entwürfe EINES
+// Autors, und für den Autorfilter liegt der Index seit JOB 2696 bereits richtig. Eine Spalte, die
+// nichts trägt, wäre eine Migration ohne Aufgabe.
+const IM_PAPIERKORB = "data ? 'deletedAt'";
+const AKTIV = `NOT (${IM_PAPIERKORB})`;
+
+/**
+ * JOB 2684 D3: die Schreibanweisung mit Standbedingung — exportiert, damit ein Test sie pinnt.
+ *
+ * JOB 3668: um die Papierkorb-Bedingung erweitert. Sie steht im SELBEN `WHERE` und ändert deshalb
+ * nichts am Compare-and-Swap: `rowCount` entscheidet weiterhin, und ein getrashter Entwurf ist
+ * jetzt schlicht kein gültiger Stand. Ohne sie könnte ein Schreiber, der den Stand von VOR der
+ * Löschung hält, den Entwurf still zurück ins Leben holen.
+ */
+export const DRAFT_UPDATE_WENN_STAND_SQL = `UPDATE drafts SET data=$2 WHERE id=$1 AND ${AKTIV} AND data->>'updatedAt' = $3`;
 
 export class PgDraftRepo implements DraftRepo {
   constructor(private readonly pool: Pool) {}
@@ -131,13 +156,22 @@ export class PgDraftRepo implements DraftRepo {
     return { angelegt: false, bestehend: treffer };
   }
 
+  // JOB 3668: DER PAPIERKORB IST HIER AUSGEBLENDET — die tragende Zeile. Jeder Einzelzugriff auf
+  // einen Entwurf läuft durch diese Methode (Dienst, Routen, Fortsetzen, Einreichen); dass sie
+  // einen getrashten Entwurf nicht herausgibt, macht ihn für alle gewöhnlichen Wege nicht
+  // vorhanden, ohne dass eine einzige dieser Stellen davon wissen muss.
   async findById(id: string): Promise<Draft | undefined> {
-    const res = await this.pool.query<DraftRow>("SELECT data FROM drafts WHERE id=$1", [id]);
+    const res = await this.pool.query<DraftRow>(
+      `SELECT data FROM drafts WHERE id=$1 AND ${AKTIV}`,
+      [id],
+    );
     return res.rows[0]?.data;
   }
 
+  // JOB 3668: dieselbe Bedingung wie in `updateWennStand` — kein Schreibweg holt einen getrashten
+  // Entwurf zurück ins Leben, auch nicht der ohne Standprüfung.
   async update(draft: Draft): Promise<void> {
-    await this.pool.query("UPDATE drafts SET data=$2 WHERE id=$1", [
+    await this.pool.query(`UPDATE drafts SET data=$2 WHERE id=$1 AND ${AKTIV}`, [
       draft.id,
       JSON.stringify(draft),
     ]);
@@ -158,10 +192,106 @@ export class PgDraftRepo implements DraftRepo {
     return res.rowCount === 1;
   }
 
-  async delete(id: string): Promise<void> {
-    await this.pool.query("DELETE FROM drafts WHERE id=$1", [id]);
+  /**
+   * JOB 3668 — HIER STAND DER BEFUND: `DELETE FROM drafts WHERE id=$1`.
+   *
+   * Pedi am 11.09.2026: *„Ich habe eben alle Entwürfe gelöscht. Nicht einer befindet sich im
+   * Papierkorb."* Er hatte recht, und diese Zeile war der Grund — die Zeile war danach fort, es
+   * gab keinen Ort, an dem ein Papierkorb hätte entstehen können.
+   *
+   * `data || $2::jsonb` FÜGT HINZU, es ersetzt nicht: der ganze übrige Entwurf bleibt Zeichen für
+   * Zeichen stehen, weshalb `restore` ihn vollständig zurückgeben kann und nicht als Hülle. Die
+   * Bedingung `NOT (data ? 'deletedAt')` macht den Aufruf idempotent: ein zweites Löschen
+   * verschiebt den ursprünglichen Zeitpunkt nicht (sonst liesse sich eine Papierkorbfrist durch
+   * Wiederholen verlängern) und löscht erst recht nicht hart.
+   *
+   * DER ZEITPUNKT KOMMT AUS NODE, nicht aus `now()`. Damit steht in beiden Ablagen dieselbe Uhr,
+   * und ein Test, der die Speicherablage misst, sagt etwas über den Betrieb aus.
+   */
+  async delete(id: string, geloeschtVon?: string, zeitpunkt?: string): Promise<void> {
+    const vermerk = {
+      deletedAt: zeitpunkt ?? new Date().toISOString(),
+      ...(geloeschtVon === undefined ? {} : { deletedBy: geloeschtVon }),
+    };
+    await this.pool.query(`UPDATE drafts SET data = data || $2::jsonb WHERE id=$1 AND ${AKTIV}`, [
+      id,
+      JSON.stringify(vermerk),
+    ]);
   }
 
+  // JOB 3668: DIE EINZIGE HARTE LÖSCHUNG DES ADAPTERS — wörtlich die Anweisung, die bis zu diesem
+  // Auftrag in `delete` stand. Sie ist nicht verschwunden, sie hat ihren richtigen Namen bekommen.
+  //
+  // RUNDE 2 — DIE PAPIERKORB-BEDINGUNG STEHT JETZT IM SELBEN `WHERE`, und das ist kein Feinschliff.
+  // Der echte PostgreSQL-Lauf vom 12.09. hat genau hier gehalten (`P3`): `purge` auf einen
+  // LEBENDEN Entwurf gab `true` — die Ablage entfernte, was der Dienst zu schützen behauptete, und
+  // die Bedingung im Dienst kam einen Schritt zu spät. Dasselbe Fenster verlor im Nebenlauf einen
+  // gerade wiederhergestellten Entwurf. Jetzt entscheidet PostgreSQL Bedingung und Löschung in
+  // EINER Anweisung; wer verliert, bekommt `rowCount 0` und daraus im Dienst ein ehrliches 404.
+  //
+  // DER SICHERE FALL IST DER NORMALFALL: ohne Wort entfernt diese Methode nur aus dem Papierkorb.
+  // `auchLebende` setzt allein der Verbrauchsweg (`entwurfVerbraucht`) — ein Entwurf, aus dem
+  // gerade ein Wissensobjekt geworden ist, hat den Papierkorb nie gesehen und muss trotzdem
+  // gehen. Es bleibt EINE Mechanik: dieselbe Methode, dieselbe Anweisung, ein Prädikat mehr oder
+  // weniger. `rowCount` sagt ehrlich, ob etwas entfernt wurde.
+  async purge(id: string, auchLebende = false): Promise<boolean> {
+    const res = await this.pool.query(
+      `DELETE FROM drafts WHERE id=$1${auchLebende ? "" : ` AND ${IM_PAPIERKORB}`}`,
+      [id],
+    );
+    return res.rowCount === 1;
+  }
+
+  // JOB 3668: `data - 'deletedAt' - 'deletedBy'` streift GENAU die zwei Papierkorb-Schlüssel ab und
+  // lässt den Rest unberührt — der Speicher-Spiegel tut mit seinem Rest-Destrukturieren dasselbe.
+  // `RETURNING data` liefert den wiederhergestellten Stand aus DERSELBEN Anweisung; ein zweiter
+  // Lesezugriff hätte ein Fenster, in dem jemand anderes schreibt.
+  async restore(id: string): Promise<Draft | undefined> {
+    const res = await this.pool.query<DraftRow>(
+      `UPDATE drafts SET data = data - 'deletedAt' - 'deletedBy'
+        WHERE id=$1 AND ${IM_PAPIERKORB}
+        RETURNING data`,
+      [id],
+    );
+    return res.rows[0]?.data;
+  }
+
+  async findTrashed(
+    id: string,
+  ): Promise<(Draft & { deletedAt: string; deletedBy?: string }) | undefined> {
+    const res = await this.pool.query<DraftRow>(
+      `SELECT data FROM drafts WHERE id=$1 AND ${IM_PAPIERKORB}`,
+      [id],
+    );
+    return res.rows[0]?.data as (Draft & { deletedAt: string; deletedBy?: string }) | undefined;
+  }
+
+  // JOB 3668: die Papierkorb-Sicht. Die Eingrenzung auf den Autor geschieht IN DER ABFRAGE (JOB
+  // 2696s Lehre: sonst verlassen bis zu 5 MiB fremder Rümpfe die Datenbank, bevor irgendjemand
+  // filtert) und benutzt denselben Ausdruck `data->>'originalAuthor'`, auf dem
+  // `drafts_original_author_idx` seit JOB 2696 liegt. Sortiert nach Löschzeitpunkt absteigend —
+  // dieselbe Reihenfolge wie `KoService.trashed`.
+  async listTrashed(
+    fuerAutor?: string,
+  ): Promise<(Draft & { deletedAt: string; deletedBy?: string })[]> {
+    const res =
+      fuerAutor === undefined
+        ? await this.pool.query<DraftRow>(
+            `SELECT data FROM drafts WHERE ${IM_PAPIERKORB} ORDER BY data->>'deletedAt' DESC`,
+          )
+        : await this.pool.query<DraftRow>(
+            `SELECT data FROM drafts
+              WHERE ${IM_PAPIERKORB} AND data->>'originalAuthor' = $1
+              ORDER BY data->>'deletedAt' DESC`,
+            [fuerAutor],
+          );
+    return res.rows.map((row) => row.data as Draft & { deletedAt: string; deletedBy?: string });
+  }
+
+  // JOB 3668: BEWUSST OHNE Papierkorbfilter — die Begründung steht am Vertrag (`DraftRepo.list`):
+  // über diese Liste zählt die Referenzprüfung, ob ein gesichertes Original noch gebraucht wird,
+  // und der Anker eines getrashten Entwurfs muss mitzählen, sonst kommt er ohne sein Original
+  // zurück. Wer einem Menschen eine Liste zeigt, trimmt selbst (`GET /api/drafts`).
   async list(): Promise<Draft[]> {
     const res = await this.pool.query<DraftRow>(
       "SELECT data FROM drafts ORDER BY data->>'createdAt'",

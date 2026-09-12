@@ -395,8 +395,14 @@ describe("mega20 A: Folgeschritte sind Nacharbeit, nicht Erfolgsdefinition", () 
 
   it("wirft die Entwurfs-Rücknahme, bleibt der Entwurf stehen — sichtbar, nicht verschwiegen", async () => {
     const services = buildServices();
-    vi.spyOn(services.capture, "deleteDraft").mockRejectedValue(
-      new Error("Entwurf-Löschen kaputt"),
+    // JOB 3668 RUNDE 2: Die Entwurfs-Rücknahme dieses Weges heisst seit diesem Auftrag
+    // `entwurfVerbraucht` und nicht mehr `deleteDraft` — ein übernommener Entwurf ist VERBRAUCHT
+    // (hart), nicht gelöscht (weich, in den Papierkorb). Der Fall misst unverändert dasselbe: dass
+    // ein Fehlschlag DIESES Schrittes den 201-Erfolg nicht kippt und ehrlich gemeldet wird. Wäre
+    // der Spion auf dem alten Namen geblieben, hätte er ins Leere gezielt, nichts mehr scheitern
+    // lassen — und der Fall wäre grün geblieben, ohne noch etwas zu decken.
+    vi.spyOn(services.capture, "entwurfVerbraucht").mockRejectedValue(
+      new Error("Entwurf-Rücknahme kaputt"),
     );
     const app = buildApp(services);
     await app.inject({

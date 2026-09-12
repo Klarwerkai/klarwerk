@@ -352,6 +352,14 @@ const REGISTER: Record<string, Eintrag> = {
   // --- Entwürfe: eigener Bestand, nach Eigentümer begrenzt -----------------------------------
   "GET /api/drafts": { urteil: "EIGENER_BESTAND", grund: "visibleDraftsFor — Eigentümerlogik." },
   "GET /api/drafts/:id": { urteil: "EIGENER_BESTAND", grund: "requireVisibleDraft." },
+  // JOB 3668 (Entwurfs-Papierkorb): derselbe Bestand, dieselbe Eigentümerlogik — nur die gelöschten
+  // Entwürfe. Zweifach begrenzt: die Ablage lädt fremde gar nicht erst (`listTrashed(user.id)`), und
+  // `canSeeDraft` entscheidet danach noch einmal. Ein Entwurf ist ohnehin kein Wissensobjekt; was
+  // hier herausgeht, hat der Fragende selbst geschrieben.
+  "GET /api/drafts/trash": {
+    urteil: "EIGENER_BESTAND",
+    grund: "listTrashed(user.id) + canSeeDraft — dieselbe Eigentümerlogik wie GET /api/drafts.",
+  },
   // JOB 1171 D1: die ableitende Auskunft. Zweifach begrenzt — derselbe Torwächter wie die
   // Einzelroute darüber, UND ihre Antwort trägt gar keinen Inhalt: `{ art, herkunft }` sind eine
   // Kennung und Feldnamen (`payload.title`, `anchorsMissing`), kein Titel, keine Kernaussage,
@@ -512,6 +520,11 @@ const REGISTER: Record<string, Eintrag> = {
     "PUT /api/drafts/:id": "eigener Entwurf.",
     "DELETE /api/drafts/:id": "eigener Entwurf.",
     "POST /api/drafts/:id/promote": "eigener Entwurf → eigenes KO.",
+    // JOB 3668: die zwei schreibenden Papierkorb-Wege. Beide gehen durch
+    // `requireVisibleTrashedDraft` (dasselbe `canSeeDraft`) und tragen keinen fremden Inhalt
+    // hinaus: `restore` gibt den EIGENEN Entwurf zurück, `purge` antwortet mit 204 ohne Rumpf.
+    "POST /api/drafts/:id/restore": "eigener Entwurf aus dem Papierkorb.",
+    "DELETE /api/drafts/trash/:id": "eigener Entwurf — 204 ohne Inhalt.",
     "POST /api/objects": "Upload — owner aus der Anmeldung.",
     "POST /api/library/import": "ko.create.",
     "POST /api/library/import/candidates": "ko.create.",

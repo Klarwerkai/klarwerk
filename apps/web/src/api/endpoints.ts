@@ -452,7 +452,31 @@ export const endpoints = {
         ...payload,
         ...(opts?.expectedUpdatedAt ? { expectedUpdatedAt: opts.expectedUpdatedAt } : {}),
       }),
+    // JOB 3668: `remove` legt den Entwurf in den PAPIERKORB, es vernichtet ihn nicht mehr. Der
+    // Aufruf, die Adresse und die Antwort (204) bleiben zeichengleich — der Entwurf verschwindet
+    // aus `list()` wie zuvor, ist aber unter `trash()` wieder auffindbar.
     remove: (id: string) => api.del<void>(`/drafts/${id}`),
+    // ==========================================================================================
+    // JOB 3668 — DER PAPIERKORB DER ENTWÜRFE: DIESELBEN DREI METHODEN WIE BEIM WISSENSOBJEKT.
+    // ==========================================================================================
+    // Wörtlich die Namen und die Reihenfolge von `kos.trash`/`kos.restore`/`kos.purge` (`:342-344`)
+    // — Pedis Befund war, dass gleiche Funktionen auf verschiedenen Seiten verschieden behandelt
+    // werden. Hier gibt es deshalb kein zweites Wort für dasselbe.
+    //
+    // DER TYP IST `Draft & { deletedAt: string }` UND NICHT EINE SCHMALE ZEILE wie `TrashedKo`:
+    // Der KO-Papierkorb ist eine ADMIN-Auskunft über fremde Objekte und gibt bewusst keine Inhalte
+    // heraus. Dieser hier zeigt dem Autor SEINE EIGENEN Entwürfe — also genau das, was er über
+    // `list()` ohnehin sähe, plus den Löschzeitpunkt. `deletedAt` ist PFLICHT: die Liste sortiert
+    // und beschriftet danach, ein optionales Feld machte beides zur Vermutung.
+    //
+    // DER TYP WIRD HIER AUFGESCHRIEBEN UND NICHT IN `api/types.ts` (kein Zielpfad dieses Auftrags,
+    // s. Rückgabe): `deletedAt` ist PFLICHT — was im Papierkorb liegt, hat einen Löschzeitpunkt, und
+    // die Liste sortiert und beschriftet danach. `deletedBy` ist OPTIONAL und wird nicht geraten:
+    // der Server setzt ihn aus der Anmeldung, aber Altbestand könnte ihn nicht tragen. Die Fläche
+    // zeigt dann den Zeitpunkt allein statt eines erfundenen Namens.
+    trash: () => api.get<(Draft & { deletedAt: string; deletedBy?: string })[]>("/drafts/trash"),
+    restore: (id: string) => api.post<Draft>(`/drafts/${id}/restore`),
+    purge: (id: string) => api.del<void>(`/drafts/trash/${id}`),
     // SCRUM-395: optionaler Prüfer-Vorschlag auch auf dem Entwurfs-Weg.
     // AUFTRAG-mega22 Block H: `operationId` macht den Promote WIEDERHOLBAR (derselbe Vertrag wie
     // `createFromDocument`, s. services/app/src/routes/capture-routes.ts) und `draftPayload` lässt

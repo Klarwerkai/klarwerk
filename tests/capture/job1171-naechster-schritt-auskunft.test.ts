@@ -87,9 +87,29 @@ class ZaehlendesRepo implements DraftRepo {
     return this.inner.updateWennStand(draft, erwarteterStand);
   }
 
-  delete(id: string): Promise<void> {
+  delete(id: string, geloeschtVon?: string, zeitpunkt?: string): Promise<void> {
     this.schreibzugriffe += 1;
-    return this.inner.delete(id);
+    return this.inner.delete(id, geloeschtVon, zeitpunkt);
+  }
+
+  // JOB 3668: die drei Papierkorb-Wege. `listTrashed`/`findTrashed` lesen (zählen also nicht mit),
+  // `restore` und `purge` schreiben — dieselbe Unterscheidung, nach der dieses Doppel misst.
+  listTrashed(fuerAutor?: string) {
+    return this.inner.listTrashed(fuerAutor);
+  }
+
+  findTrashed(id: string) {
+    return this.inner.findTrashed(id);
+  }
+
+  restore(id: string): Promise<Draft | undefined> {
+    this.schreibzugriffe += 1;
+    return this.inner.restore(id);
+  }
+
+  purge(id: string): Promise<boolean> {
+    this.schreibzugriffe += 1;
+    return this.inner.purge(id);
   }
 
   findById(id: string): Promise<Draft | undefined> {

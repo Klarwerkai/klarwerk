@@ -195,23 +195,41 @@ describe("JOB 2684 D3 · C · zwei Prozesse OHNE Stand (Mobil, Offline-Warteschl
       },
       update: (d) => repo.update(d),
       updateWennStand: (d, s) => repo.updateWennStand(d, s),
-      delete: (id) => repo.delete(id),
+      delete: (id, von, zeit) => repo.delete(id, von, zeit),
       list: () => repo.list(),
       // 2684 D6: `listByAuthor` kam mit 2696 in die Schnittstelle — nur durchgereicht, nicht benutzt.
       listByAuthor: (autor) => repo.listByAuthor(autor),
+      // 3668: die Papierkorb-Wege kamen mit dem Entwurfs-Papierkorb dazu — hier nur durchgereicht.
+      listTrashed: (autor) => repo.listTrashed(autor),
+      findTrashed: (id) => repo.findTrashed(id),
+      restore: (id) => repo.restore(id),
+      purge: (id) => repo.purge(id),
     };
     const p = new CaptureService({ repo: loeschend });
     await expect(p.continueDraft(draft.id, { statement: "X" }, "anna")).rejects.toMatchObject({
       code: "NOT_FOUND",
     });
-    expect(await repo.list()).toEqual([]);
+    // JOB 3668 (Nachführung): „verschwindet" heisst seit dem Entwurfs-Papierkorb „liegt im
+    // Papierkorb", nicht „ist aus dem Bestand entfernt" — `repo.list()` trägt ihn deshalb weiter
+    // (die Referenzprüfung zählt seinen Anker). Die AUSSAGE DIESES FALLES ist davon unberührt und
+    // wird hier sogar schärfer geprüft als vorher: Der gescheiterte Schreibversuch hat den Entwurf
+    // weder zurückgeholt (`findById` bleibt leer) noch seinen Text verändert — im Papierkorb steht
+    // die alte Aussage, nicht das „X" der Verliererin.
+    expect(await repo.findById(draft.id)).toBeUndefined();
+    expect((await repo.listTrashed()).map((d) => d.id)).toEqual([draft.id]);
+    expect((await repo.findTrashed(draft.id))?.payload.statement).toBe("U");
   });
 });
 
 describe("JOB 2684 D3 · D · die Pg-Anweisung, gepinnt", () => {
   it("die Bedingung steht im WHERE derselben Anweisung, die schreibt; rowCount entscheidet — 1 = geschrieben, 0 = nicht", async () => {
+    // JOB 3668 (Nachführung des Pins): die Standbedingung steht unverändert im WHERE derselben
+    // Anweisung — daneben steht jetzt die Papierkorb-Bedingung, im SELBEN WHERE. Sie ändert am
+    // Compare-and-Swap nichts (`rowCount` entscheidet weiter), sie erklärt einen getrashten
+    // Entwurf zu keinem gültigen Stand: sonst holte ein Schreiber mit dem Stand von VOR der
+    // Löschung den Entwurf still zurück ins Leben.
     expect(DRAFT_UPDATE_WENN_STAND_SQL).toMatch(
-      /^UPDATE drafts SET data=\$2 WHERE id=\$1 AND data->>'updatedAt' = \$3$/,
+      /^UPDATE drafts SET data=\$2 WHERE id=\$1 AND NOT \(data \? 'deletedAt'\) AND data->>'updatedAt' = \$3$/,
     );
     const gesehen: { sql: string; params: unknown[] }[] = [];
     const poolMit = (rowCount: number) =>

@@ -68,10 +68,42 @@ function mitKanonischerAussage<T extends Partial<DraftPayload>>(payload: T): T {
   return gekuerzt === payload.statement ? payload : { ...payload, statement: gekuerzt };
 }
 
+/**
+ * JOB 3668 — LIEGT DIESER ENTWURF IM PAPIERKORB?
+ *
+ * DASSELBE PRÄDIKAT WIE IN DER ABLAGE: das VORHANDENSEIN des Schlüssels, nicht sein Wahrheitswert
+ * — zeichengleich `data ? 'deletedAt'` in PostgreSQL (`capture/src/repo-pg.ts`) und
+ * `"deletedAt" in draft` im Speicher (`capture/src/repo.ts`). Eine dritte Auslegung wäre genau der
+ * Unterschied, an dem eine Ablage stillschweigend etwas anderes meldet als die andere.
+ *
+ * DER `in`-OPERATOR UND NICHT `draft.deletedAt !== undefined`, obwohl `Draft` das Feld seit diesem
+ * Auftrag führt: In PostgreSQL entscheidet `data ? 'deletedAt'` über das Vorhandensein des
+ * Schlüssels. Ein Dokument mit `"deletedAt": null` läge dort im Papierkorb und hier nicht — ein
+ * stiller Unterschied zwischen zwei Ablagen ist genau die Sorte Fehler, die Tests grün und den
+ * Betrieb falsch macht.
+ */
+function imPapierkorb(draft: Draft): boolean {
+  return "deletedAt" in draft;
+}
+
+/**
+ * JOB 3668 — HIER WIRD DER PAPIERKORB AUS DER LISTE GENOMMEN, und zwar genau hier.
+ *
+ * `DraftRepo.list`/`listByAuthor` liefern seit dem Entwurfs-Papierkorb AUCH die gelöschten
+ * Entwürfe, und das ist Absicht: über diese Listen zählt die Referenzprüfung
+ * (`build-app.ts:756`, `:2339`), ob ein gesichertes Original noch gebraucht wird — der Anker eines
+ * getrashten Entwurfs muss mitzählen, sonst käme er nach dem Wiederherstellen ohne sein Original
+ * zurück. Die ausgeschriebene Abwägung steht am Vertrag in `capture/src/repo.ts`.
+ *
+ * Wer aber einem MENSCHEN eine Liste zeigt, trimmt selbst — und das ist diese Funktion, dieselbe,
+ * die schon entscheidet, wer welchen Entwurf sieht. Eine zweite Stelle dafür gibt es nicht: jeder
+ * EINZEL-Zugriff läuft über `findById`, und das gibt einen getrashten Entwurf gar nicht heraus.
+ */
 function visibleDraftsFor(user: SessionUser, drafts: Draft[]): Draft[] {
+  const lebende = drafts.filter((draft) => !imPapierkorb(draft));
   return user.role === "admin"
-    ? drafts
-    : drafts.filter((draft) => draft.originalAuthor === user.id);
+    ? lebende
+    : lebende.filter((draft) => draft.originalAuthor === user.id);
 }
 
 async function requireVisibleDraft(
@@ -87,6 +119,36 @@ async function requireVisibleDraft(
   }
   if (!canSeeDraft(user, draft)) {
     reply.code(403).send({ error: "FORBIDDEN", message: "Entwurf nicht verfuegbar." });
+    return undefined;
+  }
+  return draft;
+}
+
+/**
+ * JOB 3668 — DASSELBE TOR, NUR AUF DEM PAPIERKORB.
+ *
+ * Es ist bewusst eine eigene Funktion und kein Zweig in `requireVisibleDraft`: Die beiden lesen
+ * aus zwei verschiedenen Sichten (`getDraft` gibt einen getrashten Entwurf ausdrücklich NICHT
+ * heraus). Das PRÄDIKAT ist dasselbe und kein zweites — `canSeeDraft`, derselbe Aufruf.
+ *
+ * DIE ANTWORT IST EINE ANDERE, und zwar bewusst: 404 AUCH DANN, wenn der Entwurf existiert und nur
+ * jemand anderem gehört. `requireVisibleDraft` unterscheidet an dieser Stelle 404 von 403, weil ein
+ * LEBENDER fremder Entwurf ein Gegenüber hat, mit dem man reden kann („gibt es, du darfst nicht").
+ * Ein GELÖSCHTER hat das nicht: Vor diesem Auftrag war seine Kennung nach dem Löschen schlicht
+ * nicht mehr auffindbar. Hielte der Papierkorb sie mit 403 am Leben, wäre über ihn erfragbar, dass
+ * es einen fremden Entwurf gegeben hat — der Papierkorb hätte eine Auskunft HINZUGEFÜGT, und genau
+ * das verbietet §4.5. Es ist dieselbe Richtung, in die mega80 die Wissensobjekte gebracht hat
+ * (`ko-routes.ts`: 404 statt 403, damit die blosse Existenz nicht erfragbar ist).
+ */
+async function requireVisibleTrashedDraft(
+  capture: CaptureService,
+  id: string,
+  user: SessionUser,
+  reply: FastifyReply,
+): Promise<Draft | undefined> {
+  const draft = await capture.findTrashedDraft(id);
+  if (!draft || !canSeeDraft(user, draft)) {
+    reply.code(404).send({ error: "NOT_FOUND", message: "Entwurf nicht im Papierkorb." });
     return undefined;
   }
   return draft;
@@ -1195,6 +1257,83 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
       },
     );
 
+    // ============================================================================================
+    // JOB 3668 — DER PAPIERKORB DER ENTWÜRFE. GLEICHE WORTE, GLEICHE REIHENFOLGE WIE BEIM
+    // WISSENSOBJEKT (`ko-routes.ts:1717/1729/1741`).
+    // ============================================================================================
+    //
+    // Pedi am 11.09.2026: *„Am schlimmsten finde ich, dass wir gleiche Funktionen anders behandeln
+    // auf jeweiligen Seiten."* Deshalb heissen diese drei Adressen wörtlich wie ihre Vorbilder:
+    // `…/trash` (Liste), `…/:id/restore` (zurückholen), `…/trash/:id` (endgültig).
+    //
+    // DIE EINE ABWEICHUNG, und sie ist die wichtige: DIE RECHTE. Der KO-Papierkorb verlangt
+    // `users.manage` — er ist das Aufräumwerkzeug eines Admins über FREMDE Objekte. Dieser hier
+    // ist die Rückholmöglichkeit eines Menschen für SEINE EIGENEN Entwürfe; Pedis Versprechen
+    // lautet „wer löscht, kann zurückholen", nicht „wer löscht, bittet einen Admin". Deshalb
+    // dieselbe Berechtigung (`ko.create`) und dieselbe Sichtbarkeitsregel (`canSeeDraft`) wie auf
+    // allen anderen Entwurfsrouten. Der Papierkorb fügt damit KEINE Sichtbarkeit hinzu: wer einen
+    // Entwurf sehen darf, sieht ihn auch dort — wer nicht, sieht ihn dort auch nicht.
+    //
+    // `/api/drafts/trash` UND `/api/drafts/:id` NEBENEINANDER: Fastifys Router zieht das statische
+    // Segment dem Platzhalter vor, ein Entwurf mit der Kennung „trash" könnte die Liste also nicht
+    // verdecken. Es ist dieselbe Konstellation, die `ko-routes.ts` seit SCRUM-422 fährt.
+    app.get("/api/drafts/trash", async (request, reply) => {
+      const user = await guards.requirePermission("ko.create", request, reply);
+      if (!user) {
+        return;
+      }
+      try {
+        // Die Eingrenzung geschieht IN DER ABLAGE (JOB 2696s Lehre) — ein Nicht-Admin bekommt
+        // fremde Entwürfe gar nicht erst geladen. `canSeeDraft` bleibt trotzdem die Stelle, die
+        // entscheidet: liefe beides je auseinander, fängt der Filter hier es ab. Eine
+        // Sichtbarkeitsregel durch eine Ersparnis zu ersetzen wäre der falsche Handel.
+        const geloescht = await capture.listTrashedDrafts(
+          user.role === "admin" ? undefined : user.id,
+        );
+        reply.code(200).send(geloescht.filter((draft) => canSeeDraft(user, draft)));
+      } catch (error) {
+        sendError(reply, error);
+      }
+    });
+
+    app.post<{ Params: { id: string } }>("/api/drafts/:id/restore", async (request, reply) => {
+      const user = await guards.requirePermission("ko.create", request, reply);
+      if (!user) {
+        return;
+      }
+      try {
+        // DIESELBE 404/403-UNTERSCHEIDUNG WIE `requireVisibleDraft`, nur auf dem Papierkorb: Wer
+        // ihn nicht sehen darf, erfährt auch hier nicht, dass es ihn gibt. `requireVisibleDraft`
+        // selbst ist hier NICHT brauchbar — es liest über `getDraft`, und das gibt einen
+        // getrashten Entwurf bewusst nicht heraus.
+        if (!(await requireVisibleTrashedDraft(capture, request.params.id, user, reply))) {
+          return;
+        }
+        reply.code(200).send(await capture.restoreDraft(request.params.id));
+      } catch (error) {
+        sendError(reply, error);
+      }
+    });
+
+    app.delete<{ Params: { id: string } }>("/api/drafts/trash/:id", async (request, reply) => {
+      const user = await guards.requirePermission("ko.create", request, reply);
+      if (!user) {
+        return;
+      }
+      try {
+        if (!(await requireVisibleTrashedDraft(capture, request.params.id, user, reply))) {
+          return;
+        }
+        // DER ZWEITE GRIFF, und er kann den ersten nicht überspringen: `purgeTrashedDraft` verlangt
+        // einen Eintrag im Papierkorb und antwortet sonst 404. Diese Adresse kann einen LEBENDEN
+        // Entwurf also nicht unwiederbringlich entfernen.
+        await capture.purgeTrashedDraft(request.params.id);
+        reply.code(204).send();
+      } catch (error) {
+        sendError(reply, error);
+      }
+    });
+
     app.delete<{ Params: { id: string } }>("/api/drafts/:id", async (request, reply) => {
       const user = await guards.requirePermission("ko.create", request, reply);
       if (!user) {
@@ -1204,7 +1343,12 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
         if (!(await requireVisibleDraft(capture, request.params.id, user, reply))) {
           return;
         }
-        await capture.deleteDraft(request.params.id);
+        // JOB 3668: DERSELBE ENDPUNKT, NEUE BEDEUTUNG — er legt den Entwurf in den Papierkorb,
+        // statt ihn zu vernichten. Die Antwort bleibt 204, der Aufrufer merkt keinen Unterschied:
+        // der Entwurf verschwindet aus `GET /api/drafts` wie zuvor. Geprüfte Aufrufer stehen in
+        // der Rückgabe dieses Jobs. `user.id` reist mit, damit der Papierkorb sagen kann, WER
+        // gelöscht hat — bis hierher wusste das niemand.
+        await capture.deleteDraft(request.params.id, user.id);
         reply.code(204).send();
       } catch (error) {
         sendError(reply, error);
@@ -1388,7 +1532,13 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
               ? ([{ id: operationId, actor: user.id, fingerprint }] as const)
               : ([] as const)),
           );
-          await capture.deleteDraft(request.params.id);
+          // JOB 3668 — HIER WIRD NICHT GELÖSCHT, HIER WIRD VERBRAUCHT. Der Entwurf ist gerade zum
+          // Wissensobjekt geworden; läge er danach im Papierkorb, liesse er sich wiederherstellen
+          // und stünde als Dublette neben dem Objekt aus ihm — mit Inhalt, aber ohne dessen
+          // Prüfung und Historie. Deshalb der eigene Weg `entwurfVerbraucht` (hart) und nicht
+          // `deleteDraft` (weich). Es sind zwei verschiedene Vorgänge, die nur zufällig beide
+          // dazu führen, dass der Entwurf aus der Liste verschwindet.
+          await capture.entwurfVerbraucht(request.params.id);
           const reviewers = [...new Set(body.reviewerIds ?? [])].filter((id) => id !== user.id);
           if (reviewers.length > 0) {
             await validation.assign(created.id, reviewers, user.id);

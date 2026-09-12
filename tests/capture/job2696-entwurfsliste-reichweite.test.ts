@@ -55,8 +55,23 @@ class MessendeAblage implements DraftRepo {
   updateWennStand(d: Draft, erwarteterStand: string) {
     return this.innen.updateWennStand(d, erwarteterStand);
   }
-  delete(id: string) {
-    return this.innen.delete(id);
+  delete(id: string, geloeschtVon?: string, zeitpunkt?: string) {
+    return this.innen.delete(id, geloeschtVon, zeitpunkt);
+  }
+  // JOB 3668: die Papierkorb-Wege — durchgereicht. `listTrashed` grenzt in der ECHTEN Ablage
+  // selbst ein (dieselbe Ersparnis, die dieser Test für `listByAuthor` belegt); hier wird nur der
+  // Vertrag erfüllt, gemessen wird die Entwurfsliste.
+  listTrashed(fuerAutor?: string) {
+    return this.innen.listTrashed(fuerAutor);
+  }
+  findTrashed(id: string) {
+    return this.innen.findTrashed(id);
+  }
+  restore(id: string) {
+    return this.innen.restore(id);
+  }
+  purge(id: string) {
+    return this.innen.purge(id);
   }
   async list(): Promise<Draft[]> {
     return this.#zaehle(await this.innen.list(), "list()");

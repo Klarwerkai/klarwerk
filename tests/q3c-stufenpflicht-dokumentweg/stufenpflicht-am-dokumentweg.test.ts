@@ -85,7 +85,12 @@ function beobachter(services: ReturnType<typeof buildServices>) {
     benachrichtigung: vi.spyOn(services.mailer, "send"),
     pruefVermerk: vi.spyOn(services.ko, "markAiCheckPending"),
     einreihung: vi.spyOn(worker as NonNullable<typeof worker>, "enqueue"),
-    entwurfsLoeschung: vi.spyOn(services.capture, "deleteDraft"),
+    // JOB 3668 RUNDE 2: DERSELBE VORGANG, NEUER NAME. Die Dokumentübernahme nimmt den Entwurf
+    // nicht mehr über `deleteDraft` (weich, Papierkorb) zurück, sondern über `entwurfVerbraucht`
+    // (hart) — ein übernommener Entwurf ist verbraucht und darf nicht wiederherstellbar sein,
+    // sonst stünde er als Dublette neben dem Wissensobjekt aus ihm. Was dieser Beobachter misst,
+    // bleibt unverändert: DASS der Entwurf zurückgenommen wurde und mit welcher Kennung.
+    entwurfsRuecknahme: vi.spyOn(services.capture, "entwurfVerbraucht"),
   };
 }
 
@@ -256,7 +261,7 @@ describe("JOB 3569 (Q3 c): die Abweisung am Dokumentweg löst KEINE Nacharbeit a
     // dahinter und feuert hier nie. Der Test hält den IST-Zustand fest, damit ein späterer Wechsel
     // des Namens auffällt, statt unbemerkt zu bleiben.
     expect((abgewiesen.json() as { error: string }).error).toBe("INCOMPLETE");
-    expect(spione.entwurfsLoeschung).not.toHaveBeenCalled();
+    expect(spione.entwurfsRuecknahme).not.toHaveBeenCalled();
     expect(await bestand(app, headers)).toHaveLength(0);
     // Der Entwurf steht unverändert im Bestand — nichts wurde nebenbei vernichtet.
     expect((await app.inject({ method: "GET", url: "/api/drafts", headers })).json()).toHaveLength(
@@ -275,7 +280,7 @@ describe("JOB 3569 (Q3 c): die Abweisung am Dokumentweg löst KEINE Nacharbeit a
       documents: bündel(objectId),
     });
     expect(angelegt.statusCode).toBe(201);
-    expect(spione.entwurfsLoeschung).toHaveBeenCalledWith(mitStufe);
+    expect(spione.entwurfsRuecknahme).toHaveBeenCalledWith(mitStufe);
     await services.aiCheckWorker?.idle();
   });
 });

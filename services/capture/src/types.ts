@@ -129,7 +129,51 @@ export interface Draft {
    * wie bisher. Die anderen Aufrufer (Mobil, Offline-Queue, `from-docx`) hängen daran.
    */
   createOperation?: DraftCreateOperation;
+  /**
+   * JOB 3668 (Papierkorb) — GESETZT BEIM WEICHEN LÖSCHEN.
+   *
+   * DIE FORM IST ÜBERNOMMEN, NICHT ERFUNDEN: zeichengleich die zwei Felder des Wissensobjekts
+   * (`knowledge-object/src/types.ts:354-355`) und aus demselben Grund IM DOKUMENT statt in einer
+   * Spalte — additiv, ohne Migration, ohne Rückweg, den jemand fahren müsste.
+   *
+   * EIN GETRASHTER ENTWURF IST FÜR ALLE GEWÖHNLICHEN WEGE NICHT VORHANDEN. Durchgesetzt wird das
+   * an EINER Stelle, nämlich `DraftRepo.findById` (beide Ablagen blenden ihn dort aus) — damit
+   * sehen Dienst, Fortsetzen, Speichern, Einreichen, der nächste Schritt und jede Route ihn nicht,
+   * ohne dass eine einzige dieser Stellen davon wissen muss.
+   *
+   * DREI GRÜNDE, AUS DENEN EIN ENTWURF VERSCHWINDET, und nur der erste führt hierher:
+   *   1. Der Mensch löscht ihn         → Papierkorb (`CaptureService.deleteDraft`), umkehrbar.
+   *   2. Ein Promote hat ihn VERBRAUCHT → `CaptureService.entwurfVerbraucht`, HART. Läge er im
+   *      Papierkorb, liesse er sich wiederherstellen und stünde als Dublette neben dem
+   *      Wissensobjekt, das aus ihm geworden ist.
+   *   3. Endgültiges Löschen aus dem Papierkorb → `CaptureService.purgeTrashedDraft`, HART.
+   *
+   * `deletedBy` IST OPTIONAL und wird NICHT geraten: der Promote-Weg und Altbestand tragen ihn
+   * nicht, und wo niemand ihn gesetzt hat, steht nichts statt einer erfundenen Person. Die
+   * Papierkorbzeile sagt dann „wann", nicht „von wem" (REGELN §7: „unbekannt" ist etwas anderes
+   * als „leer"). Das Wissensobjekt fällt an dieser Stelle auf `"system"` zurück
+   * (`knowledge-object/src/service.ts:3484`) — dieser Name wäre hier eine Behauptung über einen
+   * Menschen.
+   */
+  deletedAt?: string;
+  deletedBy?: string;
 }
+
+/**
+ * JOB 3668 — EIN ENTWURF, VON DEM FESTSTEHT, DASS ER IM PAPIERKORB LIEGT.
+ *
+ * Der Unterschied zu `Draft` mit optionalem `deletedAt` ist kein Zierrat: die Papierkorb-Sicht und
+ * das Wiederherstellen verlassen sich auf den Löschzeitpunkt (sie sortieren danach und zeigen ihn
+ * an). Ein optionales Feld zwänge an jeder dieser Stellen zu einem `?? ""`, und damit wäre die
+ * Reihenfolge des Papierkorbs eine Vermutung. Dieselbe Trennung führt das Wissensobjekt mit
+ * `TrashedKo` (`knowledge-object/src/types.ts:362`).
+ *
+ * ANDERS ALS `TrashedKo` IST DIES DER GANZE ENTWURF, keine Metadatenzeile. `TrashedKo` ist eine
+ * ADMIN-Auskunft über fremde Objekte und gibt deshalb bewusst keine Inhalte heraus. Der
+ * Entwurfs-Papierkorb ist die Rückholmöglichkeit des Menschen für SEINE EIGENEN Entwürfe — er
+ * zeigt dem Autor, was er ohnehin sehen darf, und die Wiederherstellung braucht den vollen Stand.
+ */
+export type EntwurfImPapierkorb = Draft & { deletedAt: string };
 
 // ================================================================================================
 // JOB 1171 D1 (KA8 Stufe 1a) — DER NAECHSTE SINNVOLLE SCHRITT ZU EINEM ENTWURF.

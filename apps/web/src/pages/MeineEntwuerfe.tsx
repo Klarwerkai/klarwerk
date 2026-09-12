@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { endpoints } from "../api/endpoints";
@@ -96,6 +96,72 @@ export function MeineEntwuerfe(): JSX.Element {
     navigate(`/erfassen?draft=${encodeURIComponent(id)}`);
   };
 
+  // ================================================================================================
+  // JOB 3668 — DER PAPIERKORB, VON HIER AUS ERREICHBAR.
+  // ================================================================================================
+  //
+  // Pedi am 11.09.2026: *„Ich habe eben alle Entwürfe gelöscht. Nicht einer befindet sich im
+  // Papierkorb."* Seit diesem Auftrag legt `DELETE /api/drafts/:id` den Entwurf in den Papierkorb,
+  // und hier steht der Weg zurück.
+  //
+  // DERSELBE SCHLÜSSELSTAMM `["drafts"]` WIE DIE LISTE, und das ist kein Zufall: `invalidateQueries`
+  // trifft mit dem Stamm BEIDE Abfragen. Wer löscht, sieht den Entwurf in derselben Bewegung aus der
+  // Liste verschwinden und im Papierkorb erscheinen — ohne dass irgendein Aufruf zweimal von Hand
+  // für ungültig erklärt werden müsste. Ein eigener, unabhängiger Schlüssel wäre ein zweiter
+  // Bestand, der auseinanderlaufen kann.
+  //
+  // KEINE EIGENEN TEXTE: Die Wörter sind DIESELBEN, die der Papierkorb der Wissensobjekte benutzt
+  // (`adm.trash.*`, dreisprachig vorhanden) — genau Pedis Punkt, dass gleiche Funktionen nicht auf
+  // jeder Seite anders heissen dürfen. Was heute noch fehlt, steht in der Rückgabe dieses Jobs:
+  // `capture.discardDraftQ` sagt weiterhin „Entwurf endgültig löschen?", und das stimmt seit diesem
+  // Auftrag nicht mehr — `apps/web/src/i18n.ts` ist dafür kein Zielpfad.
+  const papierkorb = useQuery({
+    queryKey: ["drafts", "papierkorb"],
+    queryFn: () => endpoints.drafts.trash(),
+  });
+  const geloescht = papierkorb.data ?? [];
+  const [confirmPurgeId, setConfirmPurgeId] = useState<string | null>(null);
+
+  const entwurfZurueckholen = useMutation({
+    mutationFn: (id: string) => endpoints.drafts.restore(id),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["drafts"] });
+      push("success", t("adm.trash.restored"));
+    },
+    onError: (e: unknown) => push("error", e instanceof Error ? e.message : t("state.error")),
+  });
+
+  // DER ZWEITE GRIFF. Er ist ausdrücklich getrennt vom ersten: erst fragt diese Fläche nach, dann
+  // geht der Aufruf hinaus — und der Server prüft zusätzlich, dass der Entwurf wirklich im
+  // Papierkorb liegt (`purgeTrashedDraft`). Ein Klick allein kann einen lebenden Entwurf also auf
+  // keinem Weg unwiederbringlich entfernen.
+  const entwurfEndgueltigLoeschen = useMutation({
+    mutationFn: (id: string) => endpoints.drafts.purge(id),
+    onSuccess: () => {
+      setConfirmPurgeId(null);
+      void qc.invalidateQueries({ queryKey: ["drafts"] });
+      push("success", t("adm.trash.purged"));
+    },
+    onError: (e: unknown) => {
+      // §4b.5 wie beim Löschen: bei einem Fehler bleibt der Eintrag STEHEN — entfernt ist nur, was
+      // der Server bestätigt hat; die Rückfrage geht zu, damit die Zeile wieder bedienbar ist.
+      setConfirmPurgeId(null);
+      push("error", e instanceof Error ? e.message : t("state.error"));
+    },
+  });
+
+  const zeitpunkt = (wert: string): string => {
+    const datum = new Date(wert);
+    return Number.isNaN(datum.getTime())
+      ? wert
+      : new Intl.DateTimeFormat("de-DE", { dateStyle: "short", timeStyle: "short" }).format(datum);
+  };
+
+  // Nie ein erfundener Name: ohne Eintrag im Verzeichnis steht die Kennung da, und ohne bekannten
+  // Löschenden steht nur der Zeitpunkt — „unbekannt" ist etwas anderes als „leer".
+  const geloeschtVon = (id: string | undefined): string | undefined =>
+    id === undefined ? undefined : ((directory.data ?? []).find((e) => e.id === id)?.name ?? id);
+
   const laedt = drafts.isLoading;
   const gestoert = drafts.isError;
   const leer = bestand.length === 0 && !laedt && !gestoert;
@@ -179,6 +245,118 @@ export function MeineEntwuerfe(): JSX.Element {
         onDiscard={(id) => entwurfLoeschen.mutate(id)}
         onResume={(d) => entwurfOeffnen(d.id)}
       />
+
+      {/* Der Weg zurück. Er steht UNTER der Liste und nicht neben ihr: der Papierkorb ist die
+          Ausnahme, nicht die Hauptsache — und er trägt seine Zahl, damit man ihn nicht öffnen muss,
+          um zu sehen, ob etwas drin ist. */}
+      <section data-testid="entwuerfe-papierkorb" className="mt-6 border-t border-hairline pt-3">
+        {/* KEIN AUFKLAPPER, und das ist eine übernommene Entscheidung und keine eigene: JOB 3503
+            hat aus „Meine Entwürfe" einen Ort gemacht, der ohne Handbewegung dasteht, und der
+            Wächter dieses Auftrags (`tests/entwuerfe-menuepunkt/kopfband-und-uebersicht.test.tsx`)
+            hält es fest. Ein Papierkorb, den man erst aufklappen muss, wäre genau der Aufklapper
+            an neuer Stelle — und Pedis Befund war ja, dass er ihn NICHT gefunden hat. */}
+        <p
+          data-testid="entwuerfe-papierkorb-titel"
+          className="text-[12.5px] font-semibold text-ink"
+        >
+          {t("adm.trash.title")}
+          {geloescht.length > 0 ? ` (${geloescht.length})` : ""}
+        </p>
+
+        <div className="mt-2">
+          {papierkorb.isError ? (
+            <p
+              data-testid="entwuerfe-papierkorb-fehler"
+              role="alert"
+              className="text-[12.5px] text-muted"
+            >
+              {t("state.error")}
+              <button
+                type="button"
+                data-testid="entwuerfe-papierkorb-erneut"
+                onClick={() => {
+                  void papierkorb.refetch();
+                }}
+                className="ml-2 font-semibold underline"
+              >
+                {t("erfassen.erneutVersuchen")}
+              </button>
+            </p>
+          ) : null}
+
+          {/* Der Bestand bleibt STEHEN, wenn nur die Auffrischung scheitert (REGELN §7): die
+                Fehlerzeile tritt NEBEN die Liste, nicht an ihre Stelle. */}
+          {geloescht.length === 0 && !papierkorb.isLoading && !papierkorb.isError ? (
+            <p data-testid="entwuerfe-papierkorb-leer" className="text-[12.5px] text-muted">
+              {t("adm.trash.empty")}
+            </p>
+          ) : null}
+
+          <ul className="space-y-2">
+            {geloescht.map((d) => {
+              const name = geloeschtVon(d.deletedBy);
+              return (
+                <li
+                  key={d.id}
+                  data-testid={`entwuerfe-papierkorb-zeile-${d.id}`}
+                  className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-btn border border-hairline px-2.5 py-1.5 text-[12.5px]"
+                >
+                  <span className="font-semibold text-text">
+                    {d.payload.title?.trim() || t("capture.draftFallbackTitle")}
+                  </span>
+                  <span className="text-muted">
+                    {name === undefined
+                      ? zeitpunkt(d.deletedAt)
+                      : t("adm.trash.deletedMeta", { name, date: zeitpunkt(d.deletedAt) })}
+                  </span>
+                  {confirmPurgeId === d.id ? (
+                    <span className="ml-auto flex items-center gap-2">
+                      <span className="text-muted">{t("adm.trash.purgeQ")}</span>
+                      <button
+                        type="button"
+                        data-testid={`entwuerfe-papierkorb-endgueltig-nein-${d.id}`}
+                        onClick={() => setConfirmPurgeId(null)}
+                        className="font-semibold underline"
+                      >
+                        {t("adm.trash.keep")}
+                      </button>
+                      <button
+                        type="button"
+                        data-testid={`entwuerfe-papierkorb-endgueltig-ja-${d.id}`}
+                        disabled={entwurfEndgueltigLoeschen.isPending}
+                        onClick={() => entwurfEndgueltigLoeschen.mutate(d.id)}
+                        className="font-semibold text-danger underline disabled:opacity-50"
+                      >
+                        {t("adm.trash.purge")}
+                      </button>
+                    </span>
+                  ) : (
+                    <span className="ml-auto flex items-center gap-3">
+                      <button
+                        type="button"
+                        data-testid={`entwuerfe-papierkorb-zurueck-${d.id}`}
+                        disabled={entwurfZurueckholen.isPending}
+                        onClick={() => entwurfZurueckholen.mutate(d.id)}
+                        className="font-semibold text-ink underline disabled:opacity-50"
+                      >
+                        {t("adm.trash.restore")}
+                      </button>
+                      <button
+                        type="button"
+                        data-testid={`entwuerfe-papierkorb-endgueltig-${d.id}`}
+                        onClick={() => setConfirmPurgeId(d.id)}
+                        className="font-semibold text-muted underline"
+                      >
+                        {t("adm.trash.purge")}
+                      </button>
+                    </span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      </section>
     </div>
   );
 }

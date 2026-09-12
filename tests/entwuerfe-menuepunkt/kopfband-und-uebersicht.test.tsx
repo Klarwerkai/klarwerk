@@ -84,7 +84,12 @@ vi.mock("../../apps/web/src/api/endpoints", async () => {
     box.zeit += 60_000;
     return (await svc.createDraft(p, "u1")).id;
   };
-  box.bestand = async () => svc.listDrafts();
+  // JOB 3668 (Nachführung): DAS NACHGEBAUTE `GET /api/drafts` TRIMMT DEN PAPIERKORB, wie die echte
+  // Route (`visibleDraftsFor`, `services/app/src/routes/capture-routes.ts`). `listDrafts()` liefert
+  // seit dem Entwurfs-Papierkorb AUCH die gelöschten Entwürfe, damit die Referenzprüfung ihre Anker
+  // weiter zählt; wer einem Menschen eine Liste zeigt, trimmt selbst.
+  const lebende = async () => (await svc.listDrafts()).filter((d) => !("deletedAt" in d));
+  box.bestand = lebende;
   const ok = <T,>(v: T) => vi.fn(async () => v);
   return {
     endpoints: {
@@ -104,7 +109,7 @@ vi.mock("../../apps/web/src/api/endpoints", async () => {
               };
             });
           }
-          return svc.listDrafts();
+          return lebende();
         }),
         get: vi.fn(async (id: string) => svc.getDraft(id)),
         create: vi.fn(async (p: P) => svc.createDraft(p, "u1")),

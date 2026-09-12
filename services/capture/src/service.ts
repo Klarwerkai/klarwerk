@@ -7,7 +7,13 @@ import {
 import { sanitizeHtml } from "../../structure";
 import { DRAFT_LIMITS } from "./draft-limits";
 import type { DraftRepo } from "./repo";
-import { CaptureError, type Draft, type DraftPayload, type NaechsterSchritt } from "./types";
+import {
+  CaptureError,
+  type Draft,
+  type DraftPayload,
+  type EntwurfImPapierkorb,
+  type NaechsterSchritt,
+} from "./types";
 
 export interface CaptureServiceDeps {
   repo: DraftRepo;
@@ -824,9 +830,115 @@ export class CaptureService {
     });
   }
 
-  async deleteDraft(id: string): Promise<void> {
+  // ==============================================================================================
+  // JOB 3668 — DREI GRÜNDE, AUS DENEN EIN ENTWURF VERSCHWINDET. SIE SIND NICHT DASSELBE.
+  // ==============================================================================================
+  //
+  // Bis zu diesem Auftrag hatten alle drei denselben Weg — `deleteDraft` → `repo.delete` → die
+  // Zeile war fort. Pedi am 11.09.2026: *„Ich habe eben alle Entwürfe gelöscht. Nicht einer
+  // befindet sich im Papierkorb."* Er hatte recht, und für EINEN der drei Gründe war es falsch:
+  //
+  //   1. DER MENSCH LÖSCHT IHN            → `deleteDraft`, weich. Umkehrbar.
+  //   2. EIN PROMOTE HAT IHN VERBRAUCHT   → `entwurfVerbraucht`, hart. Er ist zum Wissensobjekt
+  //                                         geworden; im Papierkorb wäre er wiederherstellbar und
+  //                                         stünde als Dublette neben dem Objekt aus ihm.
+  //   3. ENDGÜLTIG AUS DEM PAPIERKORB     → `purgeTrashedDraft`, hart. Genau hier ist die harte
+  //                                         Löschung das Gewollte.
+  //
+  // Alle drei enden in DERSELBEN Mechanik der Ablage (`delete` weich, `purge` hart) — es gibt
+  // keinen vierten Weg und keinen Bypass.
+
+  /**
+   * FALL 1 — LÖSCHEN HEISST: IN DEN PAPIERKORB.
+   *
+   * `actor` ist der Mensch, der gelöscht hat. Er ist OPTIONAL und wird nicht geraten: die Route
+   * kennt ihn und gibt ihn mit, der Bestandsaufrufer ohne Angabe erzeugt einen Eintrag, der „wann"
+   * sagt und nicht „von wem". Eine erfundene Person wäre eine Behauptung.
+   *
+   * `require` bleibt davor stehen: ein Entwurf, der schon im Papierkorb liegt, ist für diesen Weg
+   * nicht vorhanden (`findById` gibt ihn nicht heraus) — der zweite Klick auf „löschen" ergibt 404
+   * und nicht still einen neuen Löschzeitpunkt.
+   */
+  async deleteDraft(id: string, actor?: string): Promise<void> {
     await this.require(id);
-    await this.repo.delete(id);
+    await this.repo.delete(id, actor, new Date(this.now()).toISOString());
+  }
+
+  /**
+   * FALL 2 — DER ENTWURF IST VERBRAUCHT: aus ihm ist ein Wissensobjekt geworden.
+   *
+   * HART, und der eigene Name ist die halbe Begründung: Wer diesen Weg liest, sieht, dass hier
+   * nicht gelöscht, sondern abgeschlossen wird. Ein verbrauchter Entwurf im Papierkorb wäre
+   * wiederherstellbar — und der Mensch hielte danach zwei Fassungen desselben Wissens, eine davon
+   * ohne Prüfung und ohne Historie.
+   *
+   * KEIN `require` DAVOR: Der Aufrufer (`POST /api/drafts/:id/promote`) hat den Entwurf gerade
+   * gelesen, geprüft und übernommen. Eine zweite Existenzprüfung an dieser Stelle könnte einen
+   * gelungenen Promote nachträglich mit 404 beantworten, obwohl das Wissensobjekt schon steht —
+   * genau der Mangel, den mega22 Block H für diesen Weg geschlossen hat.
+   */
+  async entwurfVerbraucht(id: string): Promise<void> {
+    // `auchLebende` — DAS IST DIE EINZIGE STELLE IM PRODUKT, DIE DIESES WORT SETZT, und sie sagt
+    // damit genau das, was hier gilt: Dieser Entwurf lebt, er lag nie im Papierkorb, und er fällt
+    // trotzdem. Den Verbrauch an den Papierkorbstatus zu binden hiesse, einen übernommenen Entwurf
+    // erst „löschen" zu müssen, damit er verschwinden darf — und dazwischen wäre er
+    // wiederherstellbar, also genau die Dublette, die dieser Weg verhindert.
+    await this.repo.purge(id, true);
+  }
+
+  /** FALL 3 — DIE PAPIERKORB-SICHT. Ohne Autor die Admin-Sicht; die Route entscheidet, welche. */
+  listTrashedDrafts(fuerAutor?: string): Promise<EntwurfImPapierkorb[]> {
+    return this.repo.listTrashed(fuerAutor);
+  }
+
+  /** JOB 3668: der EINE Eintrag im Papierkorb — für die Rechteprüfung der Route vor jedem Griff. */
+  findTrashedDraft(id: string): Promise<EntwurfImPapierkorb | undefined> {
+    return this.repo.findTrashed(id);
+  }
+
+  /**
+   * JOB 3668 — ZURÜCK AUS DEM PAPIERKORB, vollständig.
+   *
+   * Es wird nichts neu zusammengesetzt: die zwei Papierkorb-Felder fallen weg, der Rest des
+   * Dokuments steht unverändert. Deshalb kommen Titel, Rumpf, Quellen, Zeiten und Vertraulichkeit
+   * zurück und nicht eine Hülle. `NOT_FOUND`, wenn er nicht im Papierkorb lag — dieselbe Antwort
+   * und derselbe Satzbau wie `KoService.restore` (`knowledge-object/src/service.ts:3519`).
+   */
+  async restoreDraft(id: string): Promise<Draft> {
+    const zurueck = await this.repo.restore(id);
+    if (!zurueck) {
+      throw new CaptureError("NOT_FOUND", "Entwurf nicht im Papierkorb.");
+    }
+    return zurueck;
+  }
+
+  /**
+   * FALL 3 — ENDGÜLTIG LÖSCHEN, und der zweite Griff kann den ersten NICHT überspringen.
+   *
+   * RUNDE 2 — HIER STAND EIN DATENVERLUST, und er stand genau zwischen zwei Zeilen. Der Weg war
+   * `findTrashed`, dann `purge`. Codex hat gemessen, was zwischen die beiden `await` passt:
+   *
+   *     Promise.allSettled([svc.purgeTrashedDraft(id), svc.restoreDraft(id)])
+   *     → fulfilled, fulfilled · Bestand: 0
+   *
+   * Beide Zusagen erfüllt, der Entwurf fort. Der Mensch hatte ihn zurückgeholt, bekam „gelungen"
+   * gesagt und hielt danach nichts — die eine Zusage dieses Auftrags, gebrochen im Nebenlauf.
+   *
+   * DIE BEDINGUNG IST DESHALB IN DIE LÖSCHENDE ANWEISUNG GEWANDERT: `purge(id)` entfernt nur, was
+   * im Papierkorb liegt — Bedingung und Löschung sind unteilbar, es gibt kein Fenster mehr. Was
+   * hier bleibt, ist die ÜBERSETZUNG des Ergebnisses: `false` heisst „lag nicht (mehr) im
+   * Papierkorb" und wird zu `NOT_FOUND`, mit demselben Wortlaut wie `KoService.purgeTrashed`. Der
+   * Vollzug wird nicht mehr behauptet, sondern von der Ablage berichtet.
+   *
+   * DIE ABWEICHUNG VOM VORBILD, ausdrücklich: `KoService.purgeTrashed`
+   * (`knowledge-object/src/service.ts:3531`) prüft weiterhin VOR dem Löschen und trägt dasselbe
+   * Fenster. Hier wird es geschlossen — gleiche Worte nach aussen, ein schärferes Innen. Das
+   * Wissensobjekt nachzuziehen ist nicht Teil dieses Auftrags und steht in der Rückgabe als REST.
+   */
+  async purgeTrashedDraft(id: string): Promise<void> {
+    if (!(await this.repo.purge(id))) {
+      throw new CaptureError("NOT_FOUND", "Entwurf nicht im Papierkorb.");
+    }
   }
 
   // Brücke zu knowledge-object: Autor = Originalautor des Entwurfs (FR-CAP-07).

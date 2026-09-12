@@ -347,6 +347,16 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "PUT /api/drafts/:id": { protection: "ko.create" },
   "DELETE /api/drafts/:id": { protection: "ko.create" },
   "POST /api/drafts/:id/promote": { protection: "ko.create" },
+  // JOB 3668 (Entwurfs-Papierkorb): DIESELBE Berechtigung und DERSELBE Torwächter wie die übrigen
+  // Entwurfsrouten — `canSeeDraft`, nur auf der Papierkorb-Sicht (`requireVisibleTrashedDraft`).
+  // BEWUSST NICHT `users.manage` wie beim Papierkorb der Wissensobjekte (`POST /api/kos/:id/restore`):
+  // jener ist das Aufräumwerkzeug eines Admins über FREMDE Objekte, dieser die Rückholmöglichkeit
+  // eines Menschen für SEINE EIGENEN Entwürfe. Er fügt keine Sichtbarkeit hinzu — wer einen Entwurf
+  // sehen darf, sieht ihn auch im Papierkorb; wer nicht, bekommt 404 (nicht 403, damit über den
+  // Papierkorb nicht einmal die Existenz eines fremden Entwurfs erfragbar wird).
+  "GET /api/drafts/trash": { protection: "ko.create" },
+  "POST /api/drafts/:id/restore": { protection: "ko.create" },
+  "DELETE /api/drafts/trash/:id": { protection: "ko.create" },
 
   // --- Ask (ask-routes.ts) ---
   // JOB 1591 D2 (W5): Die Route entscheidet seit D1 ZUSAETZLICH je Zeile — auf dem
