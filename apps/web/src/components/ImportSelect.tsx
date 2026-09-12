@@ -130,6 +130,11 @@ const NO_ENTRIES: readonly ImportPreviewEntry[] = [];
 // NL steht hier, weil die Anwendung drei Sprachen führt und ein fehlendes Bündel stillschweigend
 // auf Deutsch zurückfiele. Ein niederländischer Satz, der heimlich deutsch ist, ist kein Rückfall,
 // sondern eine falsche Auskunft.
+//
+// JOB 3772: das Bündel trägt seit diesem Auftrag AUCH die drei Sätze der gewechselten Eingrenzung
+// (`imp.eingrenzung…`). Es heisst weiter `RAHMEN_TEXTE`, weil es ein Transportweg ist und kein
+// Themenordner — und weil `i18n.ts` weiterhin nicht in den Zielpfaden steht, gilt die NACHFOLGE
+// oben unverändert für alle Schlüssel darin.
 const RAHMEN_TEXTE_DE = {
   "imp.rahmen.titel": "Für welche Firma führst du vor?",
   "imp.rahmen.erklaerung":
@@ -171,6 +176,17 @@ const RAHMEN_TEXTE_DE = {
     "Die Vorschau ohne Rahmen konnte nicht geholt werden. Die Liste unten stammt weiter aus der Abfrage im Rahmen davor; Auswählen, Gruppieren und Übernehmen bleiben gesperrt, bis die Vorschau zum aktuellen Stand passt. „Vorschau aktualisieren“ versucht es erneut.",
   "imp.rahmen.wechselGruppenGesperrt":
     "Gruppieren und Übernehmen stehen erst wieder bereit, wenn die Vorschau im aktuellen Rahmen steht — was hier stand, gehörte zur Abfrage davor.",
+  // JOB 3772: dieselbe Lage eine Eingrenzung weiter (Chips, Jahre, Deckel). Die Sätze nennen die
+  // TREFFERZAHL ausdrücklich mit, weil sie direkt darüber steht und sonst als Aussage über die
+  // gerade gültige Eingrenzung gelesen würde — und sie sagen, was WEITER geht: anhaken. Der Rahmen
+  // hat eigene Sätze, weil er mehr sperrt und den Schritt ganz ausbaut; ein gemeinsamer Text müsste
+  // für einen der beiden Fälle lügen.
+  "imp.eingrenzung.wechselLaeuft":
+    "Die Trefferzahl darüber und die Liste darunter gehören noch zur Eingrenzung davor; die Vorschau zur aktuellen Eingrenzung wird gerade geholt. Bis dahin lässt sich daraus nichts gruppieren und nichts übernehmen — anhaken und abwählen bleiben möglich.",
+  "imp.eingrenzung.wechselFehler":
+    "Die Vorschau zur aktuellen Eingrenzung konnte nicht geholt werden. Die Trefferzahl darüber und die Liste darunter gehören weiter zur Eingrenzung davor; Gruppieren und Übernehmen bleiben gesperrt, bis die Vorschau zur aktuellen Eingrenzung passt. „Vorschau aktualisieren“ versucht es erneut.",
+  "imp.eingrenzung.gruppenGesperrt":
+    "Gruppieren und Übernehmen stehen erst wieder bereit, wenn die Vorschau zur aktuellen Eingrenzung passt — was hier steht, gehört zur Eingrenzung davor.",
 };
 
 const RAHMEN_TEXTE_EN: typeof RAHMEN_TEXTE_DE = {
@@ -208,6 +224,12 @@ const RAHMEN_TEXTE_EN: typeof RAHMEN_TEXTE_DE = {
     "The preview without a frame could not be fetched. The list below still comes from the request inside the previous frame; selecting, grouping and importing stay locked until the preview matches the current state. “Refresh preview” tries again.",
   "imp.rahmen.wechselGruppenGesperrt":
     "Grouping and importing become available again once the preview matches the current frame — what stood here belonged to the previous request.",
+  "imp.eingrenzung.wechselLaeuft":
+    "The hit count above and the list below still belong to the previous narrowing; the preview for the current narrowing is being fetched. Until then nothing in it can be grouped or imported — selecting and deselecting stay possible.",
+  "imp.eingrenzung.wechselFehler":
+    "The preview for the current narrowing could not be fetched. The hit count above and the list below still belong to the previous narrowing; grouping and importing stay locked until the preview matches the current narrowing. “Refresh preview” tries again.",
+  "imp.eingrenzung.gruppenGesperrt":
+    "Grouping and importing become available again once the preview matches the current narrowing — what stands here belongs to the previous narrowing.",
 };
 
 const RAHMEN_TEXTE_NL: typeof RAHMEN_TEXTE_DE = {
@@ -246,6 +268,12 @@ const RAHMEN_TEXTE_NL: typeof RAHMEN_TEXTE_DE = {
     "Het voorbeeld zonder kader kon niet worden opgehaald. De lijst hieronder komt nog steeds uit de aanvraag binnen het vorige kader; kiezen, groeperen en overnemen blijven geblokkeerd totdat het voorbeeld bij de huidige stand past. „Voorbeeld verversen“ probeert het opnieuw.",
   "imp.rahmen.wechselGruppenGesperrt":
     "Groeperen en overnemen zijn pas weer beschikbaar als het voorbeeld bij het huidige kader past — wat hier stond, hoorde bij de vorige aanvraag.",
+  "imp.eingrenzung.wechselLaeuft":
+    "Het aantal treffers hierboven en de lijst hieronder horen nog bij de vorige afbakening; het voorbeeld voor de huidige afbakening wordt opgehaald. Tot dan kan er niets uit worden gegroepeerd of overgenomen — aanvinken en afvinken blijven mogelijk.",
+  "imp.eingrenzung.wechselFehler":
+    "Het voorbeeld voor de huidige afbakening kon niet worden opgehaald. Het aantal treffers hierboven en de lijst hieronder horen nog steeds bij de vorige afbakening; groeperen en overnemen blijven geblokkeerd totdat het voorbeeld bij de huidige afbakening past. „Voorbeeld verversen“ probeert het opnieuw.",
+  "imp.eingrenzung.gruppenGesperrt":
+    "Groeperen en overnemen zijn pas weer beschikbaar als het voorbeeld bij de huidige afbakening past — wat hier staat, hoort bij de vorige afbakening.",
 };
 
 /**
@@ -334,6 +362,20 @@ export function ImportSelect({
   // `{"criteria":{},"includeIds":["basic1"],…}`). Er wird NUR aus einer erfolgreichen Antwort
   // gesetzt, im selben latest-wins-Zweig wie `preview` — nie aus dem Prop.
   const [previewRahmen, setPreviewRahmen] = useState<string | null>(null);
+  // JOB 3772: DIE EINGRENZUNG, MIT DER DIESE ANTWORT GEHOLT WURDE — derselbe Schnappschuss-Weg wie
+  // `previewPrompt` und `previewRahmen` darüber, nur für die ganze Kriterienmenge (Chips, Jahre,
+  // Deckel, Rahmen). Er trägt den CLIENT-Schlüssel `criteriaKey`, nicht `preview.criteria`.
+  //
+  // WARUM NICHT `preview.criteria`: der Server meldet die EFFEKTIV benutzten Kriterien zurück und
+  // mischt dort die KI-Deutung des Satzes hinein (`{...derived.criteria, ...clickCriteria}`,
+  // routes/confluence-import-routes.ts — s. Kopf dieser Datei). Ein Vergleich „Server-Kriterien
+  // gegen clientseitig gebaute Kriterien" wäre überall dort ungleich, wo der Server etwas ergänzt
+  // oder eine eigene Kriterienmenge zurückmeldet — und sperrte die Fläche dauerhaft, ohne dass sich
+  // etwas geändert hätte. GEMESSEN, nicht vermutet: mit diesem Vergleich stand der Titelbefund-Weg
+  // sofort und dauerhaft gesperrt da (Gegenprobe C der Rückgabe, Fall „TITELBEFUND").
+  // Verglichen wird deshalb Client-Schlüssel gegen Client-Schlüssel.
+  // `null` = es gab noch nie eine erfolgreiche Antwort.
+  const [previewKriterien, setPreviewKriterien] = useState<string | null>(null);
   const latestRef = useRef(createLatestWins());
   // WP-SHIP9-S2 Paket 2 (D3–D7): Ansichts-Zustand der Trefferliste (Suche/Filter-Chip/Ausblenden/
   // Gruppierung). Rein für die DARSTELLUNG — die Auswahl selbst bleibt in checkedRows (Originalindex).
@@ -387,6 +429,25 @@ export function ImportSelect({
     beginGeneration(generationKey);
   }, [generationKey, beginGeneration]);
 
+  // WP-IC-PAKET-1 (Teil 3): DER SCHLÜSSEL DER EINGRENZUNG — alles, was der Mensch hier einstellen
+  // kann und was in `buildCriteria` landet, als ein vergleichbarer Wert. Er steuert das verzögerte
+  // Nachladen (Effekt weiter unten).
+  // JOB 3772: er steht jetzt VOR der Mutation, weil deren `mutationFn` ihn als Schnappschuss mit
+  // zurückgibt (`gesendeteKriterien`). Ein Vorgriff aus der Closure heraus wäre zwar gelaufen, aber
+  // beim Lesen eine Falle. Der Satz gehört bewusst NICHT hinein: er wird per Knopf angefordert, und
+  // seine Zuordnung führt `previewPrompt`.
+  const criteriaKey = JSON.stringify([
+    chip.themes,
+    chip.authors,
+    chip.spaces,
+    // JOB 3640: ein gewechselter Rahmen ist eine ECHTE Filteränderung — eine offene Vorschau lädt
+    // dafür nach, wie bei Chips, Jahren und Deckel.
+    rahmen,
+    yearFrom,
+    yearTo,
+    limit,
+  ]);
+
   const buildCriteria = (): ImportSelectCriteria => {
     const parsedLimit = parsedPositiveInt(limit);
     const from = parsedPositiveInt(yearFrom);
@@ -413,6 +474,7 @@ export function ImportSelect({
       data: ImportSelectResponse;
       gesendeterSatz: string;
       gesendeterRahmen: string | null;
+      gesendeteKriterien: string;
     },
     unknown,
     // `undefined` = „wie bisher" (Satz + Klick-Filter); nur der Titelweg reicht eine fertige
@@ -434,6 +496,13 @@ export function ImportSelect({
       // kein Rahmen gilt (s. Kopf dieser Datei) — beides sagt dasselbe, hier steht es auch dann
       // richtig da, wenn der Knopf je wieder unter einem Rahmen erschiene.
       const gesendeterRahmen = override === undefined ? rahmen : null;
+      // JOB 3772: die Eingrenzung, die beim START dieser Anfrage galt. Auch für den Titelweg
+      // (`override`) wird der GERADE GÜLTIGE Client-Schlüssel vermerkt, obwohl dieser Weg eine
+      // eigene Kriterienmenge schickt: sein Ergebnis ist genau das, was der Mensch mit dem Knopf
+      // angefordert hat, und es wird von keinem Nachladen abgelöst (der Knopf ändert `criteriaKey`
+      // nicht). Ihn hier als „gehört zu keiner Eingrenzung" zu vermerken hiesse, den Titelweg
+      // dauerhaft zu sperren — die Sperre soll den Menschen schützen, nicht seinen Knopf abschaffen.
+      const gesendeteKriterien = criteriaKey;
       const data = await endpoints.admin.import.select({
         prompt: gesendeterSatz,
         criteria: override ?? buildCriteria(),
@@ -442,15 +511,16 @@ export function ImportSelect({
         // WP-VIP2-GATE-2 (bens Fix 1): die Eigeneinstufung reist IMMER mit (Pflichtfeld).
         promptConfidential,
       });
-      return { requestId, data, gesendeterSatz, gesendeterRahmen };
+      return { requestId, data, gesendeterSatz, gesendeterRahmen, gesendeteKriterien };
     },
-    onSuccess: ({ requestId, data, gesendeterSatz, gesendeterRahmen }) => {
+    onSuccess: ({ requestId, data, gesendeterSatz, gesendeterRahmen, gesendeteKriterien }) => {
       if (!latestRef.current.isCurrent(requestId)) {
         return; // ältere Antwort — verwerfen, die neuere Vorschau bleibt stehen
       }
       setPreview(data);
       setPreviewPrompt(gesendeterSatz);
       setPreviewRahmen(gesendeterRahmen);
+      setPreviewKriterien(gesendeteKriterien);
       // WP-SHIP9-S1b: auch Vorgemerktes startet abgewählt (Queue-Schutz), bleibt aber anwählbar.
       setCheckedRows(
         data.preview.map((entry) => entry.alreadyImported !== true && entry.alreadyQueued !== true),
@@ -464,17 +534,6 @@ export function ImportSelect({
   if (preview !== null) {
     hasPreviewRef.current = true;
   }
-  const criteriaKey = JSON.stringify([
-    chip.themes,
-    chip.authors,
-    chip.spaces,
-    // JOB 3640: ein gewechselter Rahmen ist eine ECHTE Filteränderung — eine offene Vorschau lädt
-    // dafür nach, wie bei Chips, Jahren und Deckel.
-    rahmen,
-    yearFrom,
-    yearTo,
-    limit,
-  ]);
   const mutateRef = useRef(select.mutate);
   mutateRef.current = select.mutate;
   const lastCriteriaKeyRef = useRef(criteriaKey);
@@ -567,7 +626,37 @@ export function ImportSelect({
   // Titelvergleich wohnt im Server (`matchesTitleContains`, services/library-analytics/src/select.ts);
   // ihn hier nachzubauen hiesse, zwei Wahrheiten darüber zu führen, was im Rahmen liegt. Die eine
   // Antwort, die zählt, kommt vom Server — bis sie da ist, wird gewartet, nicht geraten.
-  const rahmenVeraltet = preview !== null && previewRahmen !== rahmen;
+  //
+  // ==============================================================================================
+  // JOB 3772 · DIESELBE FRAGE, EINE EINGRENZUNG WEITER — EINE REGEL, ZWEI SCHÄRFEN.
+  // ==============================================================================================
+  //
+  // DER REST AUS JOB 3640 R4, wörtlich: „Dieselbe Bauart von Lücke besteht weiterhin für die
+  // ÜBRIGEN Eingrenzungen (Themen-/Autoren-Chips, Jahre, Deckel): auch dort liegen zwischen der
+  // Änderung und der neu geholten Vorschau 350 ms, in denen eine schon gebaute Gruppierung der
+  // vorherigen Eingrenzung übernommen werden kann."
+  //
+  // ES GIBT DESHALB GENAU EINE STELLE, DIE FRAGT „GEHÖRT DIE ANGEZEIGTE ANTWORT ZUR GEGENWART?" —
+  // die Zeile `kriterienVeraltet` hier. Sie vergleicht den Schnappschuss der Eingrenzung, mit der
+  // die angezeigte Antwort GEHOLT wurde, gegen die Eingrenzung, die JETZT gilt.
+  //
+  // DER RAHMENFALL IST IHRE TEILMENGE, KEIN ZWEITER MECHANISMUS: der Rahmen steckt selbst in
+  // `criteriaKey` (s. dort), ein Rahmenwechsel macht die Antwort also immer auch kriterien-veraltet.
+  // `rahmenVeraltet` ist von hier ab nur noch die SCHÄRFERE Lesart derselben einen Frage, ausdrücklich
+  // aus ihr abgeleitet (`kriterienVeraltet && …`), damit die beiden nie auseinanderlaufen können.
+  //
+  // WARUM ZWEI SCHÄRFEN UND NICHT EINE:
+  //   · RAHMEN — eine Ausschließlichkeits-Zusage („ausschließlich Seiten mit diesem Wort im Titel").
+  //     Sie darf keine Sekunde falsch sein, deshalb ist alles gesperrt, auch das blosse Anhaken, und
+  //     der Gruppen-/Übernahmeschritt wird ausgebaut. Ein Rahmen wechselt selten und bewusst.
+  //   · EINGRENZUNG — keine Zusage, sondern eine Frage an den Server. Falsch wäre allein, die alte
+  //     ANTWORT abzuschicken; gesperrt ist deshalb genau das, was etwas ABSCHICKT (Gruppieren,
+  //     Übernehmen). Anhaken bleibt, und das LIVE-Nachladen bleibt unverändert: das Fenster ist
+  //     ~350 ms lang und öffnet sich bei JEDEM Chip-Klick — wer hier mehr sperrt als nötig, macht
+  //     die Fläche bei normaler Bedienung unbenutzbar.
+  const kriterienVeraltet =
+    preview !== null && (previewKriterien !== criteriaKey || previewRahmen !== rahmen);
+  const rahmenVeraltet = kriterienVeraltet && previewRahmen !== rahmen;
 
   const toggleRow = (index: number): void => {
     if (rahmenVeraltet) {
@@ -918,6 +1007,20 @@ export function ImportSelect({
                   ? t("imp.rahmen.wechselLaeuft", { firma: rahmen })
                   : t("imp.rahmen.wechselLaeuftOhne")}
             </p>
+          ) : kriterienVeraltet ? (
+            /* JOB 3772: die schwächere Schärfe derselben Regel — die Eingrenzung hat gewechselt.
+               Der Satz steht DIREKT unter der Trefferzahl und nennt sie ausdrücklich mit: sie ist
+               eine Aussage über die Eingrenzung von vorhin, nicht über die, die jetzt gilt. Er sagt
+               auch, was WEITER geht (anhaken) — eine Sperre, die mehr behauptet als sie tut, ist
+               ihrerseits eine falsche Auskunft. */
+            <p
+              data-testid="eingrenzung-gewechselt"
+              className="mt-1.5 rounded-btn bg-trust-warn-bg px-3 py-2 text-[12px] text-trust-warn-text"
+            >
+              {select.isError
+                ? t("imp.eingrenzung.wechselFehler")
+                : t("imp.eingrenzung.wechselLaeuft")}
+            </p>
           ) : null}
 
           {/* Effektiv benutzte Kriterien — Transparenz. Leer → „alles". */}
@@ -1202,6 +1305,20 @@ export function ImportSelect({
             >
               {t("imp.rahmen.wechselGruppenGesperrt")}
             </p>
+          ) : kriterienVeraltet ? (
+            /* JOB 3772: hier wird AUSGEGRAUT, nicht ausgebaut — anders als beim Rahmen eine Zeile
+               darüber, und aus einem gemessenen Grund: das Fenster ist ~350 ms lang und öffnet sich
+               bei JEDEM Chip-Klick, bei jeder getippten Jahresziffer und bei jedem Tastendruck im
+               Deckel-Feld. Ein Ausbau liesse den ganzen Schritt dabei flackern. Verloren geht
+               dadurch nichts: trifft die neue Antwort ein, wirft der React-Key darunter
+               (`JSON.stringify(preview.criteria)` + gewählte IDs) den aufgebauten Gruppen-Zustand
+               ohnehin weg — gemessen in `rahmenwechsel-entwertet-die-alte-auswahl.test.tsx`. */
+            <p
+              data-testid="eingrenzung-gruppen-gesperrt"
+              className="mt-3 border-t border-hairline pt-3 text-[12px] text-muted"
+            >
+              {t("imp.eingrenzung.gruppenGesperrt")}
+            </p>
           ) : null}
 
           {preview.preview.length > 0 && !rahmenVeraltet
@@ -1212,44 +1329,68 @@ export function ImportSelect({
                   [...selectedCandidateIds].sort(),
                 )}`;
                 return (
-                  <ImportGroups
-                    key={groupKey}
-                    criteria={preview.criteria}
-                    selectedCandidateIds={selectedCandidateIds}
-                    aiAvailable={groupAi.available}
-                    aiBillable={groupBillable}
-                    // AUFTRAG-mega59 BLOCK F2: die Vertraulichkeit des gewählten Stapels — ohne sie
-                    // schwieg die Vorwarnung bei aktivem Reasoner und log damit über das, was danach
-                    // als „Ohne KI gruppiert" erschien.
-                    stackConfidential={stackConfidential}
-                    // AUFTRAG-mega9 Block E-4 (KW-E2E-008): schon gruppiert, aber zu einer ANDEREN
-                    // Auswahl ⇒ der Knopf heißt „Gruppierung aktualisieren".
-                    groupingStale={lastGroupedKey !== null && lastGroupedKey !== groupKey}
-                    onGrouped={() => setLastGroupedKey(groupKey)}
-                    // AUFTRAG-mega9 Block E-5 (KW-E2E-009): Review-Queue und Bilanz GEMEINSAM
-                    // auffrischen — sonst zeigt der Verlauf neben dem frischen „1 offen" noch die
-                    // Zahlen von vor der Übernahme.
-                    onApplied={() => {
-                      void qc.invalidateQueries({ queryKey: ["import-candidates"] });
-                      // Übernommene Kandidaten werden zu Wissensobjekten — dieselben Begleiter, die
-                      // auch die Review-Entscheidung in Stufe2 auffrischt.
-                      void qc.invalidateQueries({ queryKey: ["kos"] });
-                      void qc.invalidateQueries({ queryKey: ["library"] });
-                      void qc.invalidateQueries({ queryKey: ["validation"] });
-                      // JOB 3288 (BEN, Runde 3+4): DER KOPF DERSELBEN SEITE. Seit Lieferung 3
-                      // hinterlässt jede Übernahme einen `ImportRun`
-                      // (`confluence-import-routes.ts:1143`), und der Zugangskasten oben liest
-                      // daraus die Zeile „Zuletzt erfolgreich abgeschlossener Import"
-                      // (`import-access-service.ts:90` → `findLastSuccessAt`). Diese Zeile ist die
-                      // EINZIGE Stelle, an der der Selektivimport überhaupt sichtbar wird — und
-                      // ohne diese Zeile blieb sie im offenen Fenster auf „ist bisher nicht
-                      // festgehalten" stehen, während der Server den Abschluss längst kannte. Pedi
-                      // hatte genau das vor sich (Codex-Livebefund df052186, 36 Seiten importiert).
-                      // Sie gehört hierher und nicht an den Kopf: WER etwas bewirkt hat, frischt
-                      // auf — dieselbe Regel wie bei den vier Zeilen darüber.
-                      void qc.invalidateQueries({ queryKey: ["import-access", "confluence"] });
+                  // JOB 3772 · DER ABSENDEWEG IST VERRIEGELT, NICHT NUR AUSGEGRAUT.
+                  //
+                  // `disabled` am `fieldset` ist die browsereigene Regel und erfasst JEDES
+                  // Bedienelement darin — dieselbe Doktrin wie an der Trefferliste oben, kein
+                  // nachgebautes Deaktivieren an einem Dutzend Knöpfen, das einen vergessen könnte.
+                  //
+                  // Der `onClickCapture` daneben ist der RIEGEL: `ImportGroups` gruppiert und
+                  // übernimmt in eigener Sache (`endpoints.admin.import.group/apply`) und liegt
+                  // ausserhalb der Zielpfade dieses Auftrags — ein Handler-Verschluss wie an
+                  // `toggleRow` ist dort nicht zu setzen. Er wird deshalb hier gesetzt, eine Ebene
+                  // höher: der Klick wird in der EINFANGENDEN Phase abgefangen und erreicht die
+                  // Knöpfe darin gar nicht. Die Sperre hängt damit nicht daran, dass ein Browser
+                  // `fieldset disabled` an einer Schaltfläche wirklich durchsetzt.
+                  <fieldset
+                    disabled={kriterienVeraltet}
+                    onClickCapture={(ereignis) => {
+                      if (kriterienVeraltet) {
+                        ereignis.preventDefault();
+                        ereignis.stopPropagation();
+                      }
                     }}
-                  />
+                    className="m-0 min-w-0 border-0 p-0"
+                  >
+                    <ImportGroups
+                      key={groupKey}
+                      criteria={preview.criteria}
+                      selectedCandidateIds={selectedCandidateIds}
+                      aiAvailable={groupAi.available}
+                      aiBillable={groupBillable}
+                      // AUFTRAG-mega59 BLOCK F2: die Vertraulichkeit des gewählten Stapels — ohne sie
+                      // schwieg die Vorwarnung bei aktivem Reasoner und log damit über das, was danach
+                      // als „Ohne KI gruppiert" erschien.
+                      stackConfidential={stackConfidential}
+                      // AUFTRAG-mega9 Block E-4 (KW-E2E-008): schon gruppiert, aber zu einer ANDEREN
+                      // Auswahl ⇒ der Knopf heißt „Gruppierung aktualisieren".
+                      groupingStale={lastGroupedKey !== null && lastGroupedKey !== groupKey}
+                      onGrouped={() => setLastGroupedKey(groupKey)}
+                      // AUFTRAG-mega9 Block E-5 (KW-E2E-009): Review-Queue und Bilanz GEMEINSAM
+                      // auffrischen — sonst zeigt der Verlauf neben dem frischen „1 offen" noch die
+                      // Zahlen von vor der Übernahme.
+                      onApplied={() => {
+                        void qc.invalidateQueries({ queryKey: ["import-candidates"] });
+                        // Übernommene Kandidaten werden zu Wissensobjekten — dieselben Begleiter, die
+                        // auch die Review-Entscheidung in Stufe2 auffrischt.
+                        void qc.invalidateQueries({ queryKey: ["kos"] });
+                        void qc.invalidateQueries({ queryKey: ["library"] });
+                        void qc.invalidateQueries({ queryKey: ["validation"] });
+                        // JOB 3288 (BEN, Runde 3+4): DER KOPF DERSELBEN SEITE. Seit Lieferung 3
+                        // hinterlässt jede Übernahme einen `ImportRun`
+                        // (`confluence-import-routes.ts:1143`), und der Zugangskasten oben liest
+                        // daraus die Zeile „Zuletzt erfolgreich abgeschlossener Import"
+                        // (`import-access-service.ts:90` → `findLastSuccessAt`). Diese Zeile ist die
+                        // EINZIGE Stelle, an der der Selektivimport überhaupt sichtbar wird — und
+                        // ohne diese Zeile blieb sie im offenen Fenster auf „ist bisher nicht
+                        // festgehalten" stehen, während der Server den Abschluss längst kannte. Pedi
+                        // hatte genau das vor sich (Codex-Livebefund df052186, 36 Seiten importiert).
+                        // Sie gehört hierher und nicht an den Kopf: WER etwas bewirkt hat, frischt
+                        // auf — dieselbe Regel wie bei den vier Zeilen darüber.
+                        void qc.invalidateQueries({ queryKey: ["import-access", "confluence"] });
+                      }}
+                    />
+                  </fieldset>
                 );
               })()
             : null}
