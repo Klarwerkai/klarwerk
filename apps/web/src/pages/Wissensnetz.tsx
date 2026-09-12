@@ -44,6 +44,7 @@ import type {
   Themenkarte,
   Themenknoten,
 } from "../api/types";
+import { HelpTip } from "../components/HelpTip";
 import { Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
 import { textbreite } from "../lib/graphLayout";
 
@@ -1582,6 +1583,14 @@ export function Wissensnetz(): JSX.Element {
   const metrik = netz.data;
   return (
     <div className="space-y-4">
+      {/* JOB 3742: die Seitenhilfe dieser Fläche. `HelpTip` rendert NICHTS (JOB 3060 · H1) — er
+          meldet Titel und Text beim Sammler der Hülle an, und das Zahnrad-Menü listet sie unter
+          „Seitenhilfe". Sie steht BEWUSST vor jeder Fallunterscheidung: sie beschreibt die Seite,
+          nicht ihren Inhalt, und gehört deshalb auch dann da hin, wenn noch keine Karte da ist. */}
+      <HelpTip
+        title={t("seitenhilfe.wissensnetz.titel")}
+        body={t("seitenhilfe.wissensnetz.text")}
+      />
       <PageHeader kicker={t("wissensnetz.kicker")} title={t("wissensnetz.title")} />
       {metrik === undefined ? (
         netz.isLoading || netz.isError ? (

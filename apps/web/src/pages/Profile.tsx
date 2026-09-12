@@ -16,6 +16,7 @@ import { Detailkarte } from "../components/einstellungen/Detailkarte";
 import { EinstellungenSeite } from "../components/einstellungen/Seite";
 import { Zeile, Zeilenkarte } from "../components/einstellungen/Zeilenkarte";
 import { Avatar, Button, Field, TextInput } from "../components/ui";
+import { useSeitenhilfeAnmeldung } from "../shell/SeitenhilfeContext";
 
 const SPRACHEN = ["de", "en", "nl"] as const;
 
@@ -149,6 +150,17 @@ export function Profile(): JSX.Element {
   const [busy, setBusy] = useState(false);
   const [detail, setDetail] = useState<null | "passwort" | "wirkung">(null);
   const zurueck = (): void => setDetail(null);
+  // JOB 3742 · DIE SEITENHILFE DIESER FLÄCHE — und warum hier der HAKEN steht und nicht der
+  // Baustein, den die anderen fünf Seiten dieses Auftrags nehmen.
+  //
+  // `tests/design/zielbild-h6-kein-erklaertext.test.ts` (Fall Q) zählt im Quelltext der
+  // Einstellungs- und Profilseiten die Vorkommen jenes Bausteins und verlangt NULL: JOB 3065 hat
+  // die zwölf Sprechblasen dieser Flächen in die „?"-Menüs der Detailkarten verlegt, und diese
+  // Zusage gilt weiter. Der Baustein ist ohnehin nur eine Hülle um genau diesen Haken
+  // (`components/`, seit JOB 3060 · H1) — der Weg ist derselbe, kein zweiter. Die Anmeldung steht
+  // VOR der Fallunterscheidung „Detailkarte oder Zeilenliste": sie beschreibt die Seite und bleibt
+  // deshalb auch stehen, während eine Detailkarte offen ist.
+  useSeitenhilfeAnmeldung(t("seitenhilfe.profil.titel"), t("seitenhilfe.profil.text"));
 
   return (
     <EinstellungenSeite titel={t("nav.profile")} seitenSchluessel="profil">

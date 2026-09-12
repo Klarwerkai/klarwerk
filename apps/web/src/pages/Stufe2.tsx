@@ -43,6 +43,7 @@ import type {
 import { useRole } from "../app/RoleContext";
 import { useToast } from "../app/ToastContext";
 import { ExamplePackages } from "../components/ExamplePackages";
+import { HelpTip } from "../components/HelpTip";
 import { ImportAccessPanel } from "../components/ImportAccessPanel";
 import { ImportCleanup } from "../components/ImportCleanup";
 import { ImportExplore } from "../components/ImportExplore";
@@ -127,6 +128,14 @@ import { isModelConfigured, reasonerModeTone } from "../lib/reasonerStatus";
 // Der Parameter ist BEWUSST ganz entfernt und nicht bloss optional gemacht: ein optionaler
 // `ticket`-Prop waere die Einladung, den Chip beim naechsten Mal wieder zu setzen.
 // Festgehalten wird das am gemounteten Kopf in `Stufe2.kopf.test.tsx` (Bloecke A1/A2).
+//
+// JOB 3742 — UND HIER STEHT AUSDRÜCKLICH KEINE SEITENHILFE.
+//
+// Diese Datei liefert VIER eigenständige Seiten (`Capital`, `GraphView`, `ImportReview`,
+// `Output`, geroutet in `routes.tsx:121-126`). Ein Erklärsatz an diesem gemeinsamen Kopf stünde
+// auf allen vieren gleich und erklärte keine — er könnte nur sagen, was „Stufe 2" ist, und das
+// beantwortet nicht die Frage „was kann ich HIER tun?". Jede der vier Seiten meldet ihre eigene
+// Seitenhilfe deshalb bei sich selbst an (`HelpTip` unmittelbar unter ihrem Kopf).
 function Stufe2Header({ titleKey }: { titleKey: string }): JSX.Element {
   const { t } = useTranslation();
   return <PageHeader kicker={t("s2.kicker")} title={t(titleKey)} />;
@@ -196,6 +205,9 @@ export function Output(): JSX.Element {
     <div className="mx-auto max-w-3xl">
       {/* Herkunft: SCRUM-117 (D-021: Vorgangsnummer als Kommentar, nicht als sichtbarer Chip). */}
       <Stufe2Header titleKey="nav.output" />
+      {/* JOB 3742: die eigene Seitenhilfe dieser Seite. Sie rendert nichts (JOB 3060 · H1) und
+          erscheint allein im Zahnrad-Menü unter „Seitenhilfe". */}
+      <HelpTip title={t("seitenhilfe.output.titel")} body={t("seitenhilfe.output.text")} />
 
       <Card className="mb-4">
         <SectionLabel>{t("out.kindTitle")}</SectionLabel>
@@ -909,6 +921,10 @@ export function ImportReview(): JSX.Element {
     <div className="mx-auto max-w-3xl">
       {/* Herkunft: SCRUM-116 (D-021: Vorgangsnummer als Kommentar, nicht als sichtbarer Chip). */}
       <Stufe2Header titleKey="nav.import" />
+      {/* JOB 3742: die eigene Seitenhilfe dieser Seite — rendert nichts, steht im Zahnrad. Der Satz
+          verspricht den Confluence-Weg NICHT, er nennt die Berechtigung: der Zugangskasten rendert
+          für alle, die das Recht nicht tragen, gar nichts (`ImportAccessPanel`). */}
+      <HelpTip title={t("seitenhilfe.import.titel")} body={t("seitenhilfe.import.text")} />
       <KlaraPathTeaser surface="import" />
 
       {/* WP-COCKPIT-LINIE: der geführte Fünf-Schritte-Fluss — Leiste oben zeigt, wo man steht;
@@ -1965,11 +1981,16 @@ function EvidenceFreshnessCard(): JSX.Element {
 }
 
 export function Capital(): JSX.Element {
+  const { t } = useTranslation();
   const snapshot = useManagementSnapshot();
   return (
     <div className="mx-auto max-w-3xl">
       {/* Herkunft: SCRUM-120 (D-021: Vorgangsnummer als Kommentar, nicht als sichtbarer Chip). */}
       <Stufe2Header titleKey="nav.capital" />
+      {/* JOB 3742: die eigene Seitenhilfe dieser Seite — rendert nichts, steht im Zahnrad. Sie
+          steht VOR der Abfrage: sie beschreibt die Seite, nicht ihren Bestand, und gehört auch auf
+          die leere und die ladende Fläche. */}
+      <HelpTip title={t("seitenhilfe.kapital.titel")} body={t("seitenhilfe.kapital.text")} />
       <QueryState query={snapshot}>
         {(snap) =>
           snap.overview.totalKos === 0 ? (
@@ -2034,6 +2055,10 @@ export function GraphView(): JSX.Element {
     <div className="mx-auto max-w-3xl">
       {/* Herkunft: SCRUM-119 (D-021: Vorgangsnummer als Kommentar, nicht als sichtbarer Chip). */}
       <Stufe2Header titleKey="nav.graph" />
+      {/* JOB 3742: die eigene Seitenhilfe dieser Seite — rendert nichts, steht im Zahnrad. Der Satz
+          verspricht den Sprung nur unter seiner Voraussetzung: klickbar ist ein Punkt erst, wenn
+          sein Objekt im Bestand bekannt ist (`isNavigableNode`, weiter unten). */}
+      <HelpTip title={t("seitenhilfe.graph.titel")} body={t("seitenhilfe.graph.text")} />
       <QueryState query={graphQ} emptyText={t("s2.graphEmpty")}>
         {(raw) => {
           if (raw.nodes.length === 0) {

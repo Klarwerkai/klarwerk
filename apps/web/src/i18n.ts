@@ -6000,6 +6000,39 @@ const de = {
   "einst.marke.schalter": "Firmen-CI verwenden",
   "einst.marke.ohneProfil": "Ohne Firmenprofil gibt es nichts zu verwenden.",
   "einst.marke.gespeichert": "Erscheinungsbild übernommen.",
+  // ==============================================================================================
+  // JOB 3742 — DIE SEITENHILFE DER SECHS STILLEN FLÄCHEN.
+  // ==============================================================================================
+  //
+  // Wissensnetz, Profil und die vier Stufe-2-Seiten (Wissenskapital, Wissensgraph, Import, Output)
+  // zeigten im Zahnrad unter „Seitenhilfe" die Leermeldung. Jeder Satz hier beantwortet die Frage
+  // „WAS KANN ICH HIER TUN und was ist der nächste Schritt?" — nicht „was ist diese Seite?": die
+  // zweite Frage gehört ins Hilfekapitel (`lib/helpTopics.ts`), das der Nav-Erklärsatz eine Zeile
+  // darüber in dieselbe Liste bringt (`ZahnradMenue.tsx:50`).
+  //
+  // KEIN SATZ BEHAUPTET EINEN ZUSTAND. Die Seitenhilfe hat keine Daten: sie beschreibt die Seite,
+  // nicht ihren Inhalt, und steht deshalb auch da, wenn nichts geladen ist. „Hier siehst du, dass
+  // alles geprüft ist" wäre eine Aussage über den Bestand ohne frische Grundlage — verboten.
+  // Wo eine Möglichkeit an einer Berechtigung hängt (Confluence-Import) oder an der Datenlage
+  // (ein Graphpunkt ohne Objekt im Bestand), sagt der Satz das, statt es zu versprechen.
+  "seitenhilfe.wissensnetz.titel": "Ein Thema wählen und seine Objekte ansehen",
+  "seitenhilfe.wissensnetz.text":
+    "Wähle ein Thema aus: daneben erscheint, welche Wissensobjekte dazugehören, und ein Link öffnet sie alle in der Bibliothek. Ist das Fenster zu schmal für die Zeichnung, steht dieselbe Auskunft in Sätzen. Nächster Schritt: ein Thema anwählen und eines der genannten Objekte öffnen.",
+  "seitenhilfe.profil.titel": "Sprache, Passwort und Abmelden",
+  "seitenhilfe.profil.text":
+    "Hier stehen dein Name, deine E-Mail-Adresse und deine Rolle. Du kannst die Sprache der Oberfläche umstellen, dein Passwort ändern, deine eigenen Beiträge nachsehen und dich abmelden. Nächster Schritt: die Zeile anklicken, die du ändern willst — die Sprache wechselst du direkt in ihrer Zeile.",
+  "seitenhilfe.kapital.titel": "Den Bestand in Zahlen lesen",
+  "seitenhilfe.kapital.text":
+    "Diese Seite fasst zusammen, wie viel Wissen vorhanden ist, wie viel davon geprüft wurde und was noch offen ist — dazu eine Schätzung, welchen Wert das bedeutet. Die Annahmen dieser Schätzung trägst du selbst ein. Nächster Schritt: eine Annahme ändern und ablesen, wie sich die Schätzung mitbewegt.",
+  "seitenhilfe.graph.titel": "Vom Punkt zum Wissensobjekt springen",
+  "seitenhilfe.graph.text":
+    "Jeder Punkt ist ein Wissensobjekt; eine graue Linie heißt, dass zwei dasselbe Schlagwort tragen, eine rote gestrichelte Linie steht für einen gemeldeten Widerspruch. Nächster Schritt: einen Punkt anklicken — gehört er zu einem Objekt aus dem Bestand, führt er dich dorthin.",
+  "seitenhilfe.import.titel": "Wissen von außen hereinholen und prüfen",
+  "seitenhilfe.import.text":
+    "Hier bringst du Wissen aus anderen Systemen herein: eine JSON-Datei auswählen oder auf die Fläche ziehen; mit der nötigen Berechtigung lässt sich auch ein Confluence-Import starten. Jeder Beitrag landet als Vorschlag in der Prüfliste, mit Volltext und Quelle. Nächster Schritt: einen Vorschlag lesen und ihn annehmen, ablehnen oder eine Rückfrage stellen.",
+  "seitenhilfe.output.titel": "Ein Dokument aus geprüftem Wissen erzeugen",
+  "seitenhilfe.output.text":
+    "Wähle die Art des Dokuments, kreuze die Wissensobjekte an, die hineingehören, und bring sie in die Reihenfolge, in der sie stehen sollen. Das erzeugte Dokument kannst du kopieren oder als Markdown-Datei laden; darunter steht, aus welchen Objekten es entstanden ist. Nächster Schritt: eine Art wählen und die erste Quelle ankreuzen.",
 };
 
 const en: typeof de = {
@@ -10926,6 +10959,25 @@ const en: typeof de = {
   "einst.marke.schalter": "Use company CI",
   "einst.marke.ohneProfil": "Without a company profile there is nothing to use.",
   "einst.marke.gespeichert": "Appearance applied.",
+  // JOB 3742 — page help for the six quiet surfaces; mirror of the DE keys (see the note there).
+  "seitenhilfe.wissensnetz.titel": "Pick a topic and look at its objects",
+  "seitenhilfe.wissensnetz.text":
+    "Pick a topic: next to it you see which knowledge objects belong to it, and one link opens all of them in the library. If the window is too narrow for the drawing, the same information is given in sentences. Next step: pick a topic and open one of the objects listed.",
+  "seitenhilfe.profil.titel": "Language, password and signing out",
+  "seitenhilfe.profil.text":
+    "This is where your name, your e-mail address and your role are shown. You can switch the language of the interface, change your password, look at your own contributions and sign out. Next step: click the row you want to change — the language you switch right in its own row.",
+  "seitenhilfe.kapital.titel": "Reading the holdings as figures",
+  "seitenhilfe.kapital.text":
+    "This page sums up how much knowledge there is, how much of it has been checked and what is still open — plus an estimate of what that is worth. You enter the assumptions behind that estimate yourself. Next step: change one assumption and read off how the estimate moves with it.",
+  "seitenhilfe.graph.titel": "Jump from a dot to the knowledge object",
+  "seitenhilfe.graph.text":
+    "Every dot is a knowledge object; a grey line means that two of them carry the same tag, a red dashed line stands for a reported contradiction. Next step: click a dot — if it belongs to an object in the holdings, it takes you there.",
+  "seitenhilfe.import.titel": "Bring knowledge in from outside and check it",
+  "seitenhilfe.import.text":
+    "This is where you bring knowledge in from other systems: choose a JSON file or drag it onto the area; with the necessary permission a Confluence import can be started as well. Every contribution lands in the review list as a proposal, with full text and source. Next step: read a proposal and accept it, reject it or ask a question.",
+  "seitenhilfe.output.titel": "Produce a document from checked knowledge",
+  "seitenhilfe.output.text":
+    "Choose the kind of document, tick the knowledge objects that belong in it and put them into the order they should appear in. The document produced can be copied or downloaded as a Markdown file; below it you see which objects it came from. Next step: choose a kind and tick the first source.",
 };
 
 const nl: typeof de = {
@@ -15848,6 +15900,26 @@ const nl: typeof de = {
   "einst.marke.schalter": "Bedrijfs-CI gebruiken",
   "einst.marke.ohneProfil": "Zonder bedrijfsprofiel valt er niets te gebruiken.",
   "einst.marke.gespeichert": "Uiterlijk overgenomen.",
+  // JOB 3742 — paginahulp voor de zes stille vlakken; spiegel van de DE-sleutels (zie de
+  // toelichting daar). NL steht hier vollständig, weil `nl: typeof de` jeden Schlüssel verlangt.
+  "seitenhilfe.wissensnetz.titel": "Een thema kiezen en zijn objecten bekijken",
+  "seitenhilfe.wissensnetz.text":
+    "Kies een thema: ernaast verschijnt welke kennisobjecten erbij horen, en één link opent ze allemaal in de bibliotheek. Is het venster te smal voor de tekening, dan staat dezelfde informatie in zinnen. Volgende stap: een thema aanklikken en een van de genoemde objecten openen.",
+  "seitenhilfe.profil.titel": "Taal, wachtwoord en afmelden",
+  "seitenhilfe.profil.text":
+    "Hier staan je naam, je e-mailadres en je rol. Je kunt de taal van de interface omzetten, je wachtwoord wijzigen, je eigen bijdragen bekijken en je afmelden. Volgende stap: klik op de regel die je wilt wijzigen — de taal wissel je direct in haar eigen regel.",
+  "seitenhilfe.kapital.titel": "Het bestand in cijfers lezen",
+  "seitenhilfe.kapital.text":
+    "Deze pagina vat samen hoeveel kennis er is, hoeveel daarvan gecontroleerd is en wat nog open staat — plus een schatting van wat dat waard is. De aannames achter die schatting vul je zelf in. Volgende stap: een aanname wijzigen en aflezen hoe de schatting meebeweegt.",
+  "seitenhilfe.graph.titel": "Van een punt naar het kennisobject springen",
+  "seitenhilfe.graph.text":
+    "Elk punt is een kennisobject; een grijze lijn betekent dat twee objecten hetzelfde trefwoord dragen, een rode stippellijn staat voor een gemelde tegenspraak. Volgende stap: klik op een punt — hoort het bij een object uit het bestand, dan brengt het je daarheen.",
+  "seitenhilfe.import.titel": "Kennis van buiten binnenhalen en controleren",
+  "seitenhilfe.import.text":
+    "Hier haal je kennis uit andere systemen binnen: kies een JSON-bestand of sleep het op het vlak; met de nodige rechten kun je ook een Confluence-import starten. Elke bijdrage komt als voorstel in de controlelijst, met volledige tekst en bron. Volgende stap: een voorstel lezen en het aannemen, afwijzen of een vraag stellen.",
+  "seitenhilfe.output.titel": "Een document uit gecontroleerde kennis maken",
+  "seitenhilfe.output.text":
+    "Kies de soort document, vink de kennisobjecten aan die erin horen en zet ze in de volgorde waarin ze moeten staan. Het gemaakte document kun je kopiëren of als Markdown-bestand downloaden; eronder staat uit welke objecten het is ontstaan. Volgende stap: een soort kiezen en de eerste bron aanvinken.",
 };
 
 void i18n.use(initReactI18next).init({
