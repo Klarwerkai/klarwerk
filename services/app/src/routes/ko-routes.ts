@@ -289,6 +289,26 @@ function fromDocumentFingerprintInput(body: FromDocumentBody): unknown {
   };
 }
 
+// ================================================================================================
+// JOB 3569 (Q3 c) — DIE STUFENPFLICHT IN EINEM SATZ, FÜR BEIDE ÖFFENTLICHEN ANLAGEWEGE.
+// ================================================================================================
+//
+// JOB 3429 hat diese Antwort für `POST /api/kos` eingeführt; JOB 3569 gibt sie zusätzlich dem
+// Dokumentweg. Sie steht hier EINMAL und nicht zweimal kopiert: zwei Wächter mit auseinander
+// laufenden Sätzen wären zwei Auffassungen derselben Pflicht, und der Mensch an der Oberfläche
+// bekäme je nach Tür eine andere Begründung für dasselbe Versäumnis.
+//
+// Die Begründungen (kein Vorgabewert, nur das FEHLEN, warum an der Route und nicht im Dienst)
+// stehen ausgeschrieben an den beiden Aufrufstellen — sie sind dort verschieden genug, um nicht
+// hierher zu passen.
+function sendMissingConfidentiality(reply: FastifyReply): void {
+  reply.code(400).send({
+    error: "MISSING_CONFIDENTIALITY",
+    message:
+      "Vertraulichkeitsstufe fehlt — ein Wissensobjekt entsteht nur mit ausdrücklicher Einstufung.",
+  });
+}
+
 interface KoQuery {
   type?: KnowledgeType;
   status?: KoStatus;
@@ -1047,12 +1067,12 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
           // diese Prüfung gehört. Zwei Prüfungen für denselben Wert wären zwei Auslegungen.
           //
           // BESTAND BLEIBT UNANGETASTET: das wirkt nur auf neue Anlagen, rückwirkend ändert sich nichts.
+          //
+          // JOB 3569: der Satz selbst steht jetzt in `sendMissingConfidentiality` (oben im Modul) —
+          // der Dokumentweg `POST /api/kos/from-document` gibt dieselbe Antwort und darf dafür
+          // keinen zweiten Wortlaut erfinden. An der PRÜFUNG ändert das nichts.
           if (input.confidentiality === undefined) {
-            reply.code(400).send({
-              error: "MISSING_CONFIDENTIALITY",
-              message:
-                "Vertraulichkeitsstufe fehlt — ein Wissensobjekt entsteht nur mit ausdrücklicher Einstufung.",
-            });
+            sendMissingConfidentiality(reply);
             return;
           }
           const created = await ko.create({ ...input, author: user.id });
@@ -1303,6 +1323,49 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             ...rest
           } = body.create ?? ({} as Omit<CreateKoInput, "author">);
           input = { ...rest, author: user.id } as CreateKoInput;
+        }
+        // ==========================================================================================
+        // JOB 3569 (Q3 c) — AUCH DURCH DIE ZWEITE TÜR ENTSTEHT KEIN UNEINGESTUFTES WISSENSOBJEKT.
+        // ==========================================================================================
+        //
+        // DER BEFUND. JOB 3429 hat die Stufenpflicht an `POST /api/kos` gesetzt (oben, derselbe
+        // Fehlercode, derselbe Satz) und in seiner Testdatei drei Anlagewege gezählt
+        // (`tests/q3c-stufenpflicht/stufenpflicht-am-schreibweg.test.ts:7-10`). Die Zählung war
+        // unvollständig: DIESE Route trägt dieselbe Berechtigung (`ko.create`, oben) und hat
+        // denselben Effekt (ein neues Wissensobjekt, unten `ko.createWithDocuments`) — zwischen
+        // beiden Zeilen stand keine Prüfung der Stufe. Der FRISCHE Zweig baut seine Eingabe direkt
+        // aus dem Client-Rumpf (`body.create`, nur `sources`/`importCandidateId` werden verworfen);
+        // ein Rumpf ohne `confidentiality` legte an. Eine Pflicht, die nur der Client kennt, ist
+        // keine.
+        //
+        // WARUM HIER UND NICHT WEITER OBEN. Erst an dieser Zeile ist `input` für BEIDE Zweige
+        // zusammengestellt — der Entwurfs-Zweig kennt seine Eingabe erst nach `applyAndLoad`
+        // (oben). Eine Prüfung am ROHEN Rumpf gäbe es nur für den frischen Weg und läge ausserdem
+        // über dem Wiederholungs-Nachschlag: die Wiederholung eines GELUNGENEN Entwurfsvorgangs
+        // trägt die Stufe nicht im Rumpf (sie stand im Entwurf, der inzwischen verbraucht ist) und
+        // bekäme dann 400 für etwas, das längst geglückt ist.
+        //
+        // WARUM NICHT IM DIENST. Unverändert der Grund von oben (`ko.create` ist auch der Weg von
+        // Import, Seed und Altbestand): ein bewusst UNEINGESTUFTES Objekt muss herstellbar bleiben,
+        // sonst gäbe es keine Fixtures mehr für „nie eingestuft"
+        // (`confidentialityProvenance: "unknown"`). Verschärft wird der ÖFFENTLICHE Schreibweg.
+        //
+        // WIE DER ENTWURFS-ZWEIG HEUTE DASTEHT (gemessen, nicht angenommen, JOB 3569 Lieferung 1):
+        // er ist bereits zu, aber an anderer Stelle und unter anderem Namen. `applyAndLoad` ruft
+        // `capture.toKoInput` (build-app.ts), und das wirft seit JOB 3082 `CaptureError`
+        // `INCOMPLETE`, sobald `confidentiality` fehlt oder ungültig ist
+        // (`services/capture/src/service.ts`, `KO_PFLICHTFELDER`) — über `sendError` wird daraus
+        // 400 `INCOMPLETE`. Der Wächter hier feuert für diesen Zweig also nie; das ist kein
+        // Grund, ihn auf den frischen Zweig zu verengen. Die Grenze steht an EINER Stelle für
+        // beide, und wenn der Entwurfs-Zugang eines Tages eine Eingabe ohne Stufe durchreicht,
+        // fängt sie diese auf, statt sie durchzulassen.
+        //
+        // NUR DAS FEHLEN steht hier. Ein VORHANDENER, aber ungültiger Wert (auch `null`) wird vom
+        // Dienst abgewiesen (`INVALID_CONFIDENTIALITY`) — zwei Prüfungen für denselben Wert wären
+        // zwei Auslegungen. Kein Vorgabewert, kein stilles „intern".
+        if (input.confidentiality === undefined) {
+          sendMissingConfidentiality(reply);
+          return;
         }
         // ---- KAPAZITÄT: derselbe Anhangs-Vertrag wie `attach` und `append-document` -------------
         const limits = (await uploadLimits.get()) ?? DEFAULT_UPLOAD_LIMITS;

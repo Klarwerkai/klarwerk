@@ -181,6 +181,10 @@ describe("JOB 2684 D3 · POST /api/kos/from-document mit gesehenem Stand", () =>
           statement: "Frisch, ohne Entwurf",
           type: "best_practice",
           category: "Instandhaltung",
+          // JOB 3569: der Dokumentweg verlangt die Stufe jetzt genauso wie `POST /api/kos` seit
+          // JOB 3429. Nachgeführte Vorbedingung, keine abgeschwächte Behauptung — dieser Fall
+          // misst unverändert, dass der Weg OHNE Entwurf keinen `expectedUpdatedAt` braucht.
+          confidentiality: "intern",
         },
         documents: [
           {

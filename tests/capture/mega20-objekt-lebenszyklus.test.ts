@@ -237,7 +237,10 @@ describe("mega20 C: die modulübergreifende Referenzprüfung in services/app", (
       headers,
       payload: {
         operationId: "lebenszyklus-anhang-1",
-        create: INHALT,
+        // JOB 3569: die Stufe ist am Dokumentweg jetzt Pflicht — dieselbe Nachführung, die
+        // JOB 3429 in dieser Datei schon für `POST /api/kos` gemacht hat (unten, `confidentiality:
+        // "intern"`). Gemessen wird hier unverändert die Referenzprüfung, nicht die Einstufung.
+        create: { ...INHALT, confidentiality: "intern" },
         documents: [
           {
             anchor: { objectId: ref.id, name: "P.pdf", mime: "application/pdf" },
@@ -350,7 +353,9 @@ describe("mega20 C: die modulübergreifende Referenzprüfung in services/app", (
       headers,
       payload: {
         operationId: "lebenszyklus-papierkorb-1",
-        create: INHALT,
+        // JOB 3569: siehe oben — nachgeführte Vorbedingung, damit die Anlage überhaupt zustande
+        // kommt. Geprüft bleibt, dass ein GETRASHTES Objekt seine Anhänge weiter hält.
+        create: { ...INHALT, confidentiality: "intern" },
         documents: [
           {
             anchor: { objectId: ref.id, name: "P.pdf", mime: "application/pdf" },
