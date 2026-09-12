@@ -7,6 +7,7 @@ import { useSession } from "../app/AuthContext";
 import { GuardedLink, useGuardedNavigate } from "../app/NavGuardContext";
 import { useToast } from "../app/ToastContext";
 import { CaptureDraftList } from "../components/CaptureDraftList";
+import { HelpTip } from "../components/HelpTip";
 
 // ==================================================================================================
 // JOB 3503 · ENTWUERFE-MENUEPUNKT — DIE EIGENE ÜBERSICHT DER ENTWÜRFE.
@@ -112,9 +113,15 @@ export function MeineEntwuerfe(): JSX.Element {
   //
   // KEINE EIGENEN TEXTE: Die Wörter sind DIESELBEN, die der Papierkorb der Wissensobjekte benutzt
   // (`adm.trash.*`, dreisprachig vorhanden) — genau Pedis Punkt, dass gleiche Funktionen nicht auf
-  // jeder Seite anders heissen dürfen. Was heute noch fehlt, steht in der Rückgabe dieses Jobs:
-  // `capture.discardDraftQ` sagt weiterhin „Entwurf endgültig löschen?", und das stimmt seit diesem
-  // Auftrag nicht mehr — `apps/web/src/i18n.ts` ist dafür kein Zielpfad.
+  // jeder Seite anders heissen dürfen.
+  //
+  // ERLEDIGT MIT JOB 3768: Hier stand, `capture.discardDraftQ` sage weiterhin „Entwurf endgültig
+  // löschen?" und `apps/web/src/i18n.ts` sei kein Zielpfad. Er war es in jenem Auftrag nicht, in
+  // diesem schon — die Rückfrage lautet jetzt in DE/EN/NL „Löschen? Der Entwurf wandert in den
+  // Papierkorb und ist unter ‚Meine Entwürfe' wiederherstellbar." und sagt damit dasselbe wie die
+  // Seitenhilfe oben und wie dieser Abschnitt. Die Bauform „Verb? Folge." ist die des
+  // Wissensobjekts (`ko.deleteQ`) — gleiche Funktion, gleiche Worte. „Endgültig" steht nur noch am
+  // zweiten Griff, der es wirklich ist (`adm.trash.purgeQ`, unten).
   const papierkorb = useQuery({
     queryKey: ["drafts", "papierkorb"],
     queryFn: () => endpoints.drafts.trash(),
@@ -168,6 +175,21 @@ export function MeineEntwuerfe(): JSX.Element {
 
   return (
     <div data-testid="page-entwuerfe" className="pt-6">
+      {/* ============================================================================================
+          JOB 3768 — DIE SEITENHILFE DIESER SEITE (Zahnrad → „Seitenhilfe").
+          ============================================================================================
+          Diese Seite war die einzige des ersten Wegs (ankommen, Bestand ansehen, eigene Aufgaben,
+          ein Objekt lesen, die eigenen Entwürfe fortsetzen) ohne eigenen Erklärtext — und zwar aus
+          einem Grund, der nichts mit der Sache zu tun hatte: während JOB 3669 lag diese Datei bei
+          JOB 3668 (Papierkorb), die Steuerung hat sie deshalb herausgenommen. Das Zahnrad zeigte
+          hier bis eben „Zu dieser Seite gibt es keine Erklärung."; ein Hilfekapitel für `/entwuerfe`
+          gibt es ebenfalls nicht (`lib/helpTopics.ts` führt keine Route `/entwuerfe`), es gab hier
+          also gar keinen Satz.
+          `HelpTip` rendert NICHTS im Sichtfeld (`components/HelpTip.tsx:11`) — er meldet Titel und
+          Text bei der Seitenhilfe an. Die Fläche von JOB 3503/3668 bleibt Zeile für Zeile, wie sie
+          war. */}
+      <HelpTip title={t("seitenhilfe.entwuerfe.title")} body={t("seitenhilfe.entwuerfe.body")} />
+
       {/* Der wahre Suchraum, bevor gesucht wird — dieselben zwei Sätze wie im Arbeitsraum
           (AUFTRAG-BASIC-u2): die Admin-Ansicht bekommt ihren eigenen, statt einer Behauptung über
           „deine" Entwürfe. Daneben der Weg dorthin, wo validiertes Wissen steht. */}

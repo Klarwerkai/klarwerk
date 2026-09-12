@@ -288,6 +288,23 @@ const de = {
   "seitenhilfe.wissen.title": "Wissensobjekt: eine Aussage und ihre Belege",
   "seitenhilfe.wissen.body":
     "Du liest ein einzelnes Wissensobjekt — dieselbe Fläche wie in der Bibliothek, nur mit diesem Eintrag vorgewählt: auf einem breiten Bildschirm steht die Liste links und seine Aussage mit Status und Quelle rechts, auf einem schmalen Gerät trägt der Eintrag die Fläche allein und der Knopf „Zurück zu Bibliothek“ oben führt in die Liste. Alles Weitere — Quellen und Anhänge, Versionen, Historie, Kommentare, Konflikte — liegt hinter der Zeile „Mehr“; steht deine Oberfläche auf einer anderen Sprache und gibt es eine Leseübersetzung, steht sie oben, ausdrücklich als Übersetzung benannt. Nächster Schritt: Lies die Aussage, sieh auf Status und Quelle, und öffne „Mehr“, wenn du wissen willst, worauf sie sich stützt.",
+  // JOB 3768 — die fünfte Seite desselben Wegs. Sie fehlte hier nur, weil ihre Datei während
+  // JOB 3669 bei JOB 3668 (Entwurfs-Papierkorb) lag; der Grund ist mit dessen Auslieferung entfallen.
+  //
+  // JEDER SATZ IST AN DER FLÄCHE GEMESSEN (`pages/MeineEntwuerfe.tsx`, `components/CaptureDraftList.tsx`):
+  //   · Der Ersteller-Filter ist eine ADMIN-Auskunft (`CaptureDraftList.tsx:245` — `isAdmin`); wer
+  //     die Rolle nicht hat, findet ihn nicht. Deshalb steht der Vorbehalt im Satz und nicht daneben
+  //     (Korrekturpflicht 1 aus JOB 3669 R1: keine Bedienung versprechen, die es für den Betrachter
+  //     nicht gibt).
+  //   · „Wiederherstellen"/„Endgültig löschen" sind die Wörter, die der Papierkorb wirklich trägt
+  //     (`adm.trash.restore`/`adm.trash.purge`) — kein zweites Wort für dieselbe Handlung.
+  //   · KEINE Aufbewahrungsfrist: es gibt keine (JOB 3668, Rückgabe R1). „Von selbst leert er sich
+  //     nicht" ist die wahre Auskunft, kein Versprechen über 28 Tage.
+  //   · KEINE Aussage über den BESTAND (§9): nirgends steht, dass Entwürfe oder gelöschte Entwürfe
+  //     da sind — nur, was mit ihnen geschieht und wo man nachsieht.
+  "seitenhilfe.entwuerfe.title": "Meine Entwürfe: begonnene Erfassungen fortsetzen",
+  "seitenhilfe.entwuerfe.body":
+    "Hier stehen die Erfassungen, die als Entwurf gespeichert und noch nicht zu einem Wissensobjekt geworden sind — dieselben Entwürfe, die auch der Editor und der Arbeitsraum zeigen, nur an einem eigenen Ort; einen zweiten Entwurfsspeicher gibt es nicht. Als Administrator siehst du hier die Entwürfe aller Ersteller, und die Auswahl „Alle Ersteller“ über der Liste grenzt sie auf eine Person ein; ohne diese Rolle stehen hier nur deine eigenen, und diese Auswahl gibt es dann nicht. Das Suchfeld über der Liste durchsucht ausschließlich diese Entwürfe und kein Wissen aus der Bibliothek, „Sortieren“ ordnet sie nach Stand oder Titel. Gelöschte Entwürfe gehen in den „Papierkorb“ unter der Liste: „Wiederherstellen“ holt einen zurück, „Endgültig löschen“ entfernt ihn wirklich, und von selbst leert sich der Papierkorb nicht. Nächster Schritt: Klick „Fortsetzen“ an einer Zeile — der Entwurf öffnet sich im Editor, und noch nicht gespeicherte Eingaben werden vorher abgefragt; steht die Liste leer da, führt „Erfassen“ dorthin, wo ein neuer Entwurf entsteht.",
   // JOB 3337: der Zugang heißt jetzt, was er ist. „Weitere Bereiche" war eine Restekiste,
   // „Schnellnavigation" ein Fachwort — Pedi: „Die Direktfunktion ist … schwer zu erkennen."
   // Die SCHLÜSSEL bleiben, damit kein Aufrufer und kein Pin ins Leere greift.
@@ -2022,9 +2039,29 @@ const de = {
   "capture.draftSaved": "Entwurf gespeichert.",
   "capture.draftUpdated": "Entwurf aktualisiert.",
   "capture.draftDiscarded": "Entwurf gelöscht.",
-  // Bugfix (Pedi 04.07.): Entwürfe werden derzeit endgültig gelöscht (kein Papierkorb) —
-  // deshalb ehrliche Nachfrage vor dem Löschen, keine „verschoben"-Behauptung.
-  "capture.discardDraftQ": "Entwurf endgültig löschen?",
+  // Bugfix (Pedi 04.07.): ehrliche Nachfrage vor dem Löschen, keine Behauptung, die der Zustand
+  // nicht hergibt. Bis JOB 3668 stand hier „Entwurf endgültig löschen?" — mit der Begründung,
+  // Entwürfe würden endgültig gelöscht, weil es keinen Papierkorb gebe.
+  //
+  // JOB 3768: DIESE VORAUSSETZUNG IST WEG. Seit JOB 3668 (LIVE am 12.09.2026) legt
+  // `DELETE /api/drafts/:id` den Entwurf in den Papierkorb, und „Meine Entwürfe" zeigt ihn dort
+  // samt „Wiederherstellen" (`pages/MeineEntwuerfe.tsx:252`). Der alte Satz war damit die stärkere
+  // Aussage ohne ihre Voraussetzung — und er widersprach der Seitenhilfe derselben Fläche, die den
+  // Papierkorb erklärt. ENDGÜLTIG heisst jetzt nur noch, was es auch ist: der zweite Griff IM
+  // Papierkorb (`adm.trash.purge`/`adm.trash.purgeQ`).
+  //
+  // BAUFORM WÖRTLICH VON `ko.deleteQ` (:995) ÜBERNOMMEN — „Verb? Folge.": Das Wissensobjekt sagt
+  // seit langem „Löschen? Der Beitrag wandert in den Papierkorb …". Zwei Gründe, und beide sind
+  // gemessen: (1) Gleiche Funktionen heissen gleich (Pedi). (2) Der Sammler
+  // `tests/app/mega45-loeschbestaetigung-sammler.test.ts:83` erntet zerstörende Rückfragen aus
+  // DIESEM Katalog über ihr VERB (löschen/verwerfen/entfernen/leeren) und hält dann an ihrer
+  // Knopfgruppe fest, dass genau ein Knopf die Warnfarbe trägt. Eine Frage ohne Verb („Entwurf in
+  // den Papierkorb legen?") fällt aus der Ernte — die Farbregel gälte für diese Fläche dann
+  // stillschweigend nicht mehr. Der Ort heisst „Meine Entwürfe" und nicht „unter der Liste": diese
+  // Rückfrage steht auch im Editor und im Arbeitsraum, und dort gibt es den Papierkorb-Abschnitt
+  // nicht. KEINE FRIST wie beim Wissensobjekt („28 Tage") — der Entwurfs-Papierkorb hat keine.
+  "capture.discardDraftQ":
+    "Löschen? Der Entwurf wandert in den Papierkorb und ist unter „Meine Entwürfe“ wiederherstellbar.",
   "capture.discardDraftKeep": "Behalten",
   "capture.discardDraftYes": "Löschen",
   "capture.imageError": "„{{name}}“ konnte nicht als Bild gelesen werden.",
@@ -6408,6 +6445,10 @@ const en: typeof de = {
   "seitenhilfe.wissen.title": "Knowledge object: one statement and its evidence",
   "seitenhilfe.wissen.body":
     "You are reading a single knowledge object — the same surface as the library, only with this entry preselected: on a wide screen the list on the left and its statement with status and source on the right, on a narrow device the entry fills the surface alone and the button “Back to Library” at the top leads to the list. Everything else — sources and attachments, versions, history, comments, conflicts — sits behind the “More” line; if your interface is set to another language and a reading translation exists, it stands at the top, explicitly named as a translation. Next step: read the statement, check status and source, and open “More” when you want to know what it rests on.",
+  // JOB 3768 — the fifth page of the same path; see the German entry for what each sentence rests on.
+  "seitenhilfe.entwuerfe.title": "My drafts: pick up what you started",
+  "seitenhilfe.entwuerfe.body":
+    "These are the captures saved as a draft that have not become a knowledge object yet — the same drafts the editor and the workspace show, only in a place of their own; this is not a second draft store. As an administrator you see the drafts of all creators here, and the “All creators” selector above the list narrows them down to one person; without that role only your own drafts stand here, and that selector is not there. The search field above the list covers only these drafts and no knowledge from the library, “Sort” orders them by when they were saved or by title. Deleted drafts go to the “Recycle bin” below the list: “Restore” brings one back, “Delete permanently” really removes it, and the recycle bin does not empty itself. Next step: click “Resume” on a line — the draft opens in the editor, and unsaved input is asked about beforehand; if the list stands empty, “Capture” leads to where a new draft is created.",
   "menue.weitereBereiche": "Areas",
   "menue.schnellnavigation": "Go to …",
   "menue.darstellung": "Appearance",
@@ -7893,7 +7934,10 @@ const en: typeof de = {
   "capture.draftSaved": "Draft saved.",
   "capture.draftUpdated": "Draft updated.",
   "capture.draftDiscarded": "Draft deleted.",
-  "capture.discardDraftQ": "Delete draft permanently?",
+  // JOB 3768 — see the German entry: since JOB 3668 the draft goes to the recycle bin, so the old
+  // “permanently” was a claim the product no longer backs.
+  "capture.discardDraftQ":
+    "Delete? The draft moves to the recycle bin and can be restored under “My drafts”.",
   "capture.discardDraftKeep": "Keep",
   "capture.discardDraftYes": "Delete",
   "capture.imageError": "“{{name}}” could not be read as an image.",
@@ -11450,6 +11494,10 @@ const nl: typeof de = {
   "seitenhilfe.wissen.title": "Kennisobject: één uitspraak en haar bewijs",
   "seitenhilfe.wissen.body":
     "Je leest één kennisobject — hetzelfde vlak als de bibliotheek, alleen met dit item voorgeselecteerd: op een breed scherm links de lijst en rechts de uitspraak met status en bron, op een smal apparaat vult het item het vlak alleen en brengt de knop “Terug naar Bibliotheek” bovenaan je naar de lijst. Al het overige — bronnen en bijlagen, versies, historie, opmerkingen, conflicten — zit achter de regel “Meer”; staat je interface op een andere taal en bestaat er een leesvertaling, dan staat die bovenaan, uitdrukkelijk als vertaling benoemd. Volgende stap: lees de uitspraak, kijk naar status en bron, en open “Meer” als je wilt weten waarop ze steunt.",
+  // JOB 3768 — de vijfde pagina van dezelfde weg; zie de Duitse regel voor de grondslag per zin.
+  "seitenhilfe.entwuerfe.title": "Mijn concepten: verder met wat je begon",
+  "seitenhilfe.entwuerfe.body":
+    "Hier staan de vastleggingen die als concept zijn opgeslagen en nog geen kennisobject zijn geworden — dezelfde concepten die ook de editor en de werkruimte tonen, alleen op een eigen plek; een tweede conceptopslag is dit niet. Als beheerder zie je hier de concepten van alle makers, en de keuze “Alle makers” boven de lijst beperkt ze tot één persoon; zonder die rol staan hier alleen je eigen concepten en bestaat die keuze niet. Het zoekveld boven de lijst doorzoekt uitsluitend deze concepten en geen kennis uit de bibliotheek, “Sorteren” ordent ze op moment van opslaan of op titel. Verwijderde concepten gaan naar de “Prullenbak” onder de lijst: “Herstellen” haalt er een terug, “Definitief verwijderen” haalt hem er echt af, en de prullenbak leegt zichzelf niet. Volgende stap: klik “Hervatten” bij een regel — het concept opent in de editor, en nog niet opgeslagen invoer wordt eerst gevraagd; staat de lijst leeg, dan leidt “Vastleggen” naar de plek waar een nieuw concept ontstaat.",
   "menue.weitereBereiche": "Gebieden",
   "menue.schnellnavigation": "Ga naar …",
   "menue.darstellung": "Weergave",
@@ -12926,7 +12974,9 @@ const nl: typeof de = {
   "capture.draftSaved": "Concept opgeslagen.",
   "capture.draftUpdated": "Concept bijgewerkt.",
   "capture.draftDiscarded": "Concept verwijderd.",
-  "capture.discardDraftQ": "Concept definitief verwijderen?",
+  // JOB 3768 — zie de Duitse regel: sinds JOB 3668 gaat het concept naar de prullenbak.
+  "capture.discardDraftQ":
+    "Verwijderen? Het concept gaat naar de prullenbak en is te herstellen onder “Mijn concepten”.",
   "capture.discardDraftKeep": "Behouden",
   "capture.discardDraftYes": "Verwijderen",
   "capture.imageError": "„{{name}}“ kon niet als afbeelding worden gelezen.",

@@ -30,7 +30,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  * nur die breite Ansicht. Eine Hilfe, die einem Betrachter einen gesperrten Knopf als Weg verkauft,
  * blieb dabei grün. Ab hier stellt jeder Fall die Rolle selbst ein.
  */
-const sitzung = vi.hoisted(() => ({ rolle: "admin" as "admin" | "viewer" }));
+// JOB 3768: „experte" kommt dazu. `/entwuerfe` trägt `minRole: "experte"` (`app/navigation.ts:158`)
+// — eine Betrachterin kommt auf diese Seite gar nicht, wohl aber eine Expertin, und GENAU bei ihr
+// entscheidet sich, ob der Ersteller-Filter der Hilfe eine Bedienung verspricht, die sie nicht hat.
+const sitzung = vi.hoisted(() => ({ rolle: "admin" as "admin" | "viewer" | "experte" }));
 
 vi.mock("../../apps/web/src/api/auth", () => ({
   authApi: {
@@ -53,7 +56,12 @@ vi.mock("../../apps/web/src/api/auth", () => ({
 // RUNDE 2: EINE Quelle ist von aussen setzbar — die Konflikte. Der Aufgaben-Text sagt „klick die
 // oberste Zeile an, sie führt an die Stelle, an der du sie erledigst". Ob das auch für einen
 // Betrachter gilt, ist erst zu sehen, wenn wirklich eine Zeile da ist (`bestand.konflikte`).
-const bestand = vi.hoisted(() => ({ konflikte: [] as unknown[] }));
+//
+// JOB 3768: eine ZWEITE setzbare Quelle — die Entwürfe. Die Seitenhilfe selbst braucht sie nicht
+// (sie ist eine Aussage über die SEITE), aber die Rückfrage vor dem Löschen lässt sich ohne eine
+// echte Zeile gar nicht anklicken. Vorgabe bleibt leer, damit die Hilfefälle oben unverändert an
+// einem frisch ausgehändigten Demo-Zugang messen.
+const bestand = vi.hoisted(() => ({ konflikte: [] as unknown[], entwuerfe: [] as unknown[] }));
 
 vi.mock("../../apps/web/src/api/endpoints", () => {
   const ANTWORTEN: Record<string, unknown> = {
@@ -64,7 +72,13 @@ vi.mock("../../apps/web/src/api/endpoints", () => {
   const make = (pfad: string): unknown =>
     new Proxy(
       vi.fn(async () =>
-        pfad === "conflicts.list" ? bestand.konflikte : pfad in ANTWORTEN ? ANTWORTEN[pfad] : [],
+        pfad === "conflicts.list"
+          ? bestand.konflikte
+          : pfad === "drafts.list"
+            ? bestand.entwuerfe
+            : pfad in ANTWORTEN
+              ? ANTWORTEN[pfad]
+              : [],
       ),
       {
         get(target, prop, recv) {
@@ -93,6 +107,7 @@ import { routePathAllows } from "../../apps/web/src/app/navigation";
 import i18n from "../../apps/web/src/i18n";
 import { KnowledgeDetail } from "../../apps/web/src/pages/KnowledgeDetail";
 import { Library } from "../../apps/web/src/pages/Library";
+import { MeineEntwuerfe } from "../../apps/web/src/pages/MeineEntwuerfe";
 import { MyTasks } from "../../apps/web/src/pages/MyTasks";
 import { Start } from "../../apps/web/src/pages/Start";
 import { AppShell } from "../../apps/web/src/shell/AppShell";
@@ -103,12 +118,15 @@ Element.prototype.scrollIntoView = () => {};
 window.scrollTo = () => {};
 
 /**
- * Die vier Seiten des ersten Wegs — ankommen, Bestand ansehen, eigene Aufgaben, ein Objekt lesen.
+ * Die FÜNF Seiten des ersten Wegs — ankommen, Bestand ansehen, eigene Aufgaben, ein Objekt lesen,
+ * die eigenen Entwürfe fortsetzen.
  *
- * „Meine Entwürfe" (`pages/MeineEntwuerfe.tsx`) gehört zu diesem Weg, steht aber nicht in dieser
- * Tabelle: die Datei lag während dieses Auftrags bei JOB 3668 (Entwurfs-Papierkorb), und die
- * Steuerung hat sie deshalb am 12.09. ausdrücklich herausgenommen. Sie kommt als eigener Auftrag —
- * dann gehört sie HIER hinein, nicht in einen zweiten Wächter.
+ * ERLEDIGT MIT JOB 3768: „Meine Entwürfe" (`pages/MeineEntwuerfe.tsx`) stand hier bis dahin NICHT,
+ * und zwar aus einem Grund, der nichts mit der Sache zu tun hatte — die Datei lag während JOB 3669
+ * bei JOB 3668 (Entwurfs-Papierkorb), und die Steuerung hat sie am 12.09. ausdrücklich
+ * herausgenommen („Mein Schnittfehler, nicht deiner."). JOB 3668 ist seit dem 12.09. LIVE; die
+ * Seite steht deshalb jetzt HIER in dieser Tabelle, wie es die Notiz von damals verlangt hat, und
+ * NICHT in einem zweiten Wächter.
  */
 const SEITEN = [
   { id: "start", pfad: "/start", muster: "/start", seite: Start, schluessel: "seitenhilfe.start" },
@@ -132,6 +150,13 @@ const SEITEN = [
     muster: "/wissen/:id",
     seite: KnowledgeDetail,
     schluessel: "seitenhilfe.wissen",
+  },
+  {
+    id: "entwuerfe",
+    pfad: "/entwuerfe",
+    muster: "/entwuerfe",
+    seite: MeineEntwuerfe,
+    schluessel: "seitenhilfe.entwuerfe",
   },
 ] as const;
 
@@ -302,6 +327,11 @@ beforeEach(async () => {
   setBreite(BREIT);
   sitzung.rolle = "admin";
   bestand.konflikte = [];
+  bestand.entwuerfe = [];
+  // Suche und Sortierung der Entwurfsliste liegen PRO BROWSER in `localStorage`
+  // (`lib/draftListView.ts`). Ein Restfilter aus einem Nachbarfall liesse die Zeile verschwinden,
+  // die der Löschfall gleich anklickt — dann prüfte er nichts und bliebe still grün.
+  localStorage.clear();
 });
 
 afterEach(async () => {
@@ -318,7 +348,7 @@ describe("JOB 3669 · der erste Weg erklärt sich selbst — im Zahnrad-Menü, n
       const liste = await seitenhilfe();
       expect(liste).toContain(normal(text("de", `${seite.schluessel}.title`)));
       expect(liste).toContain(normal(text("de", `${seite.schluessel}.body`)));
-      // Der Leersatz ist damit weg — auf jeder der vier Seiten.
+      // Der Leersatz ist damit weg — auf jeder der fünf Seiten.
       expect(liste).not.toContain(normal(text("de", "menue.seitenhilfe.leer")));
     });
 
@@ -342,7 +372,7 @@ describe("JOB 3669 · der erste Weg erklärt sich selbst — im Zahnrad-Menü, n
     });
   }
 
-  it("jede der vier Seiten hat ihren Text in ALLEN drei Sprachen — und keine Sprache erbt eine andere", () => {
+  it("jede der fünf Seiten hat ihren Text in ALLEN drei Sprachen — und keine Sprache erbt eine andere", () => {
     for (const seite of SEITEN) {
       const koerper = SPRACHEN.map((s) => text(s, `${seite.schluessel}.body`));
       const titel = SPRACHEN.map((s) => text(s, `${seite.schluessel}.title`));
@@ -607,6 +637,281 @@ describe("JOB 3669 R2 · was die Seitenhilfe zusagt, hält die Seite — je Roll
       expect(
         String(i18n.getResource(sprache, "translation", "seitenhilfe.bibliothek.body")),
       ).toContain(wort);
+    }
+  });
+});
+
+// ================================================================================================
+// JOB 3768 · S2 — DER SPRACHWÄCHTER MISST DIE RESSOURCE UND DIE GEZEICHNETE LISTE, JE SPRACHE.
+// ================================================================================================
+//
+// KORREKTURPFLICHT AUS JOB 3742 R1 (Prüfer Ben, 12.09. 09:51), wörtlich: „S2 um direkte Prüfung der
+// jeweiligen Sprachressource für Titel und Text ergänzen; anschließend den DOM-Inhalt damit
+// vergleichen." Die Fälle oben messen je Seite DE und EN — NIEDERLÄNDISCH stand bisher nur in einem
+// reinen Textvergleich. `i18n.ts` setzt `fallbackLng: "de"`: fehlte ein NL-Schlüssel ganz, stünde in
+// der aufgeklappten Liste der DEUTSCHE Satz, und kein Fall dieser Datei hätte es bemerkt.
+//
+// Deshalb zweistufig, und in dieser Reihenfolge: erst der Wert aus der EIGENEN Ressource der
+// Sprache (`getResourceBundle`, ohne Rückfallkette), dann derselbe Wert in der Liste — und in EN/NL
+// darf der deutsche Satz dort NICHT stehen.
+
+/** Der Wert EINER Sprache aus ihrer eigenen Ressource — ohne Rückfall auf „de". */
+function sprachressource(sprache: string, schluessel: string): unknown {
+  const bundle = i18n.getResourceBundle(sprache, "translation") as
+    | Record<string, unknown>
+    | undefined;
+  return bundle?.[schluessel];
+}
+
+describe("JOB 3768 · S2 · jede Seite des ersten Wegs spricht Deutsch, Englisch und Niederländisch", () => {
+  for (const sprache of SPRACHEN) {
+    for (const seite of SEITEN) {
+      it(`${seite.id}/${sprache}: Titel UND Text dieser Sprache stehen in der Liste`, async () => {
+        const roherTitel = sprachressource(sprache, `${seite.schluessel}.title`);
+        const roherText = sprachressource(sprache, `${seite.schluessel}.body`);
+        expect(
+          typeof roherTitel === "string" && roherTitel.trim().length > 0,
+          `${seite.id}/${sprache}: ${seite.schluessel}.title fehlt in der Ressource „${sprache}" (gelesen: ${JSON.stringify(roherTitel)}) — der deutsche Rückfall zählt hier nicht`,
+        ).toBe(true);
+        expect(
+          typeof roherText === "string" && roherText.trim().length > 0,
+          `${seite.id}/${sprache}: ${seite.schluessel}.body fehlt in der Ressource „${sprache}" (gelesen: ${JSON.stringify(roherText)}) — der deutsche Rückfall zählt hier nicht`,
+        ).toBe(true);
+
+        const titel = normal(roherTitel as string);
+        const koerper = normal(roherText as string);
+        const deKoerper = normal(sprachressource("de", `${seite.schluessel}.body`) as string);
+        if (sprache !== "de") {
+          expect(
+            koerper,
+            `${seite.id}/${sprache}: der Text ist wörtlich der deutsche — das ist keine Übersetzung`,
+          ).not.toBe(deKoerper);
+        }
+
+        await i18n.changeLanguage(sprache);
+        await mount(seite);
+        const liste = await seitenhilfe();
+        expect(liste, `${seite.id}/${sprache}: der Titel fehlt in der Liste`).toContain(titel);
+        expect(liste, `${seite.id}/${sprache}: der Text fehlt in der Liste`).toContain(koerper);
+        if (sprache !== "de") {
+          expect(
+            liste,
+            `${seite.id}/${sprache}: in der Liste steht der DEUTSCHE Text — die Seite ist auf den Rückfall „de" gefallen`,
+          ).not.toContain(deKoerper);
+        }
+      });
+    }
+  }
+});
+
+// ================================================================================================
+// JOB 3768 · D — DIE RÜCKFRAGE VOR DEM LÖSCHEN BEHAUPTET KEINE ENDGÜLTIGE LÖSCHUNG.
+// ================================================================================================
+//
+// `capture.discardDraftQ` hiess bis zu diesem Auftrag „Entwurf endgültig löschen?" (en „Delete
+// draft permanently?", nl „Concept definitief verwijderen?"). Seit JOB 3668 legt
+// `DELETE /api/drafts/:id` den Entwurf in den PAPIERKORB, und derselbe Bildschirm zeigt ihn dort
+// samt „Wiederherstellen". Der Satz war damit die stärkere Aussage ohne ihre Voraussetzung — und er
+// widersprach der Seitenhilfe, die zwei Zentimeter weiter oben den Papierkorb erklärt. Genau dieser
+// Widerspruch (Hilfe gegen Fläche) hat JOB 3670 R1 rot gemacht.
+//
+// ENDGÜLTIG bleibt richtig für den ZWEITEN Griff — `adm.trash.purgeQ` im Papierkorb. Dieser Wächter
+// prüft deshalb nur die erste Rückfrage und lässt die zweite ausdrücklich stehen.
+const ENDGUELTIG = { de: "endgültig", en: "permanently", nl: "definitief" } as const;
+
+/** Ein Entwurf, wie ihn `GET /api/drafts` liefert — genug Felder für Titel, Datum und Zeile. */
+const EIN_ENTWURF = {
+  id: "e-1",
+  payload: { title: "Ventilwartung Nord 2026" },
+  originalAuthor: "u1",
+  lastEditor: "u1",
+  createdAt: "2026-09-10T08:00:00.000Z",
+  updatedAt: "2026-09-11T09:30:00.000Z",
+};
+
+function ressource(sprache: string, schluessel: string): string {
+  return String(sprachressource(sprache, schluessel));
+}
+
+describe("JOB 3768 · D · die Rückfrage vor dem Löschen sagt, was wirklich geschieht", () => {
+  for (const sprache of SPRACHEN) {
+    it(`D1 · ${sprache}: sie verspricht keine endgültige Löschung, sondern nennt den Papierkorb`, () => {
+      const frage = ressource(sprache, "capture.discardDraftQ");
+      const papierkorb = ressource(sprache, "adm.trash.title");
+      expect(
+        frage.toLowerCase(),
+        `${sprache}: „${frage}" behauptet weiter eine endgültige Löschung — seit JOB 3668 landet der Entwurf im Papierkorb`,
+      ).not.toContain(ENDGUELTIG[sprache]);
+      expect(
+        frage.toLowerCase(),
+        `${sprache}: „${frage}" nennt den Ort nicht, an den der Entwurf wirklich geht („${papierkorb}")`,
+      ).toContain(papierkorb.toLowerCase());
+      // GEGENSTÜCK, und es ist kein Formfehler: der zweite Griff IM Papierkorb ist endgültig — dort
+      // MUSS das Wort stehen. Ohne diese Zeile wäre der Fall auch grün, wenn jemand beide Rückfragen
+      // weichspült und der Mensch vor dem wirklich zerstörenden Knopf keine Warnung mehr liest.
+      expect(
+        ressource(sprache, "adm.trash.purgeQ").toLowerCase(),
+        `${sprache}: die Rückfrage VOR dem endgültigen Löschen hat ihr Warnwort verloren`,
+      ).toContain(ENDGUELTIG[sprache]);
+      // UND SIE BEHÄLT IHR VERB. Das ist keine Stilfrage, sondern die Bedingung dafür, dass eine
+      // ANDERE Regel überhaupt noch greift: `tests/app/mega45-loeschbestaetigung-sammler.test.ts:83`
+      // erntet zerstörende Rückfragen aus dem DE-Katalog über ihr Verb und hält an ihrer Knopfgruppe
+      // fest, dass genau ein Knopf die Warnfarbe trägt. Eine verbfreie Frage („Entwurf in den
+      // Papierkorb legen?") fällt lautlos aus dieser Ernte — in der ersten Fassung dieses Auftrags
+      // ist genau das passiert, der Sammler wurde rot, und der Text wurde korrigiert, nicht er.
+      expect(
+        frage.toLowerCase(),
+        `${sprache}: „${frage}" trägt kein zerstörendes Verb mehr — der mega45-Sammler erntet sie dann nicht mehr, und die Farbregel ihrer Knopfgruppe gilt stillschweigend nicht mehr`,
+      ).toContain(ressource(sprache, "capture.discardDraftYes").toLowerCase());
+    });
+
+    it(`D2 · ${sprache}: an der gemounteten Seite steht genau dieser Satz an der Zeile — und der Papierkorb darunter`, async () => {
+      bestand.entwuerfe = [EIN_ENTWURF];
+      await i18n.changeLanguage(sprache);
+      await mount(SEITEN[4]);
+
+      await click(container.querySelector('[data-loeschen="e-1"]'));
+      const zeile = container.querySelector('[data-entwurfszeile="e-1"]');
+      expect(zeile, `${sprache}: die Entwurfszeile fehlt — D2 hat nichts gemessen`).not.toBeNull();
+      const zeilentext = normal(zeile?.textContent ?? "");
+      expect(zeilentext, `${sprache}: die Rückfrage steht nicht an der Zeile`).toContain(
+        normal(ressource(sprache, "capture.discardDraftQ")),
+      );
+      expect(
+        zeilentext.toLowerCase(),
+        `${sprache}: an der Zeile steht weiterhin eine endgültige Löschung`,
+      ).not.toContain(ENDGUELTIG[sprache]);
+
+      // Und die Zusage der Rückfrage ist auf DIESER Fläche einlösbar: der Papierkorb steht darunter.
+      const papierkorb = container.querySelector('[data-testid="entwuerfe-papierkorb"]');
+      expect(
+        papierkorb,
+        `${sprache}: die Rückfrage nennt den Papierkorb, aber auf der Seite gibt es keinen`,
+      ).not.toBeNull();
+      expect(normal(papierkorb?.textContent ?? "")).toContain(
+        normal(ressource(sprache, "adm.trash.title")),
+      );
+    });
+  }
+});
+
+// ================================================================================================
+// JOB 3768 · E — WAS DIE SEITENHILFE ZUSAGT, HÄLT DIESE FLÄCHE (Rolle und Lage eingestellt).
+// ================================================================================================
+//
+// Die naheliegende Fehllieferung dieses Auftrags wäre ein aus dem Kopf geschriebener Hilfetext, der
+// Suche, Filter oder eine Aufbewahrungsfrist verspricht, die es hier nicht gibt (JOB 3669 R1,
+// 3741 R1, 3670 R1 — alle drei aus diesem Grund rot). Die Fälle unten messen deshalb jede
+// Beschriftung, die der Text nennt, an der gemounteten Seite — und den Rollenvorbehalt an der
+// Rolle, für die er gilt.
+const ADMIN_VORBEHALT = {
+  de: "Als Administrator",
+  en: "As an administrator",
+  nl: "Als beheerder",
+} as const;
+
+/** Die Anführungszeichen, in denen die Hilfetexte dieser Sprache eine Beschriftung zitieren. */
+const ANFUEHRUNG = { de: ["„", "“"], en: ["“", "”"], nl: ["“", "”"] } as const;
+
+/** Eine echte Beschriftung, zitiert wie im Hilfetext — kein selbst erfundenes Wort. */
+function zitiert(sprache: (typeof SPRACHEN)[number], schluessel: string): string {
+  const [auf, zu] = ANFUEHRUNG[sprache];
+  return `${auf}${ressource(sprache, schluessel)}${zu}`;
+}
+
+describe("JOB 3768 · E · die Zusage der Entwurfs-Hilfe und die Fläche im selben Lauf", () => {
+  it("E1 · MIT einer Zeile als ADMIN: Fortsetzen, Ersteller-Auswahl und Papierkorb stehen wirklich da", async () => {
+    sitzung.rolle = "admin";
+    bestand.entwuerfe = [EIN_ENTWURF];
+    await mount(SEITEN[4]);
+
+    // Die FLÄCHE.
+    const fortsetzen = container.querySelector('[data-entwurf-fortsetzen="e-1"]');
+    expect(fortsetzen).not.toBeNull();
+    expect(normal(fortsetzen?.textContent ?? "")).toContain(ressource("de", "capture.resume"));
+    const ersteller = container.querySelector('[data-testid="entwurfsliste-ersteller"]');
+    expect(ersteller, "der Ersteller-Filter fehlt für den Admin").not.toBeNull();
+    expect(normal(ersteller?.textContent ?? "")).toContain(
+      ressource("de", "capture.draftAuthorAll"),
+    );
+    expect(container.querySelector('[data-testid="entwurfsliste-suche"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="entwuerfe-papierkorb"]')).not.toBeNull();
+
+    // Die ZUSAGE nennt genau diese Beschriftungen — und zwar die echten, nicht eigene Wörter.
+    const zusage = normal(ressource("de", "seitenhilfe.entwuerfe.body"));
+    for (const schluessel of [
+      "capture.resume",
+      "capture.draftAuthorAll",
+      "adm.trash.title",
+      "adm.trash.restore",
+      "adm.trash.purge",
+    ]) {
+      expect(zusage, `die Hilfe nennt ${schluessel} nicht mit seinem Wort`).toContain(
+        zitiert("de", schluessel),
+      );
+    }
+    // Und sie steht auch wirklich im Zahnrad dieser Seite.
+    expect(await seitenhilfe()).toContain(zusage);
+  });
+
+  it("E2 · OHNE Entwürfe: „Erfassen“ ist der Weg, den die Hilfe für diese Lage nennt", async () => {
+    bestand.entwuerfe = [];
+    await mount(SEITEN[4]);
+    const erfassen = container.querySelector('[data-testid="entwuerfe-leer-erfassen"]');
+    expect(erfassen, "der Leerzustand hat keinen Weg").not.toBeNull();
+    expect(erfassen?.getAttribute("href")).toBe("/erfassen");
+    expect(normal(erfassen?.textContent ?? "")).toContain(ressource("de", "lib.liste.erfassen"));
+    const zusage = normal(ressource("de", "seitenhilfe.entwuerfe.body"));
+    expect(zusage).toContain(zitiert("de", "lib.liste.erfassen"));
+    // §9: die Hilfe beschreibt die leere Lage, sie BEHAUPTET sie nicht.
+    expect(zusage).not.toContain(normal(ressource("de", "erfassen.entwuerfe.keine")));
+  });
+
+  it("E3 · dieselbe Zeile als EXPERTIN: die Ersteller-Auswahl gibt es nicht — und die Hilfe sagt es vorher", async () => {
+    sitzung.rolle = "experte";
+    bestand.entwuerfe = [EIN_ENTWURF];
+    await mount(SEITEN[4]);
+    // Die FLÄCHE: kein Ersteller-Filter (`CaptureDraftList.tsx`, `isAdmin`), und der Suchraum-Satz
+    // spricht von „deinen" Entwürfen statt von allen.
+    expect(
+      container.querySelector('[data-testid="entwurfsliste-ersteller"]'),
+      "ohne Admin-Rolle darf es den Ersteller-Filter nicht geben",
+    ).toBeNull();
+    const suchraum = normal(
+      container.querySelector('[data-testid="entwuerfe-suchraum"]')?.textContent ?? "",
+    );
+    expect(suchraum).toContain(normal(ressource("de", "capture.draftScope.note")));
+    expect(suchraum).not.toContain(normal(ressource("de", "capture.draftScope.noteAdmin")));
+    // GEGENPROBE zur Rolle steht in E1: dort ist derselbe Filter da.
+    // Die ZUSAGE hängt die Auswahl ausdrücklich an die Admin-Rolle, statt sie allen zu versprechen.
+    const zusage = normal(ressource("de", "seitenhilfe.entwuerfe.body"));
+    expect(zusage).toContain(ADMIN_VORBEHALT.de);
+    expect(zusage.indexOf(ADMIN_VORBEHALT.de)).toBeLessThan(
+      zusage.indexOf(zitiert("de", "capture.draftAuthorAll")),
+    );
+    expect(await seitenhilfe()).toContain(ADMIN_VORBEHALT.de);
+  });
+
+  it("E4 · in allen drei Sprachen trägt die Zusage den Rollenvorbehalt und die echten Beschriftungen", () => {
+    for (const sprache of SPRACHEN) {
+      const zusage = normal(ressource(sprache, "seitenhilfe.entwuerfe.body"));
+      expect(zusage, `${sprache}: der Rollenvorbehalt fehlt`).toContain(ADMIN_VORBEHALT[sprache]);
+      for (const schluessel of [
+        "capture.resume",
+        "capture.draftAuthorAll",
+        "lib.liste.erfassen",
+        "adm.trash.title",
+        "adm.trash.restore",
+        "adm.trash.purge",
+      ]) {
+        expect(zusage, `${sprache}: die Hilfe nennt ${schluessel} nicht mit seinem Wort`).toContain(
+          zitiert(sprache, schluessel),
+        );
+      }
+      // KEINE AUFBEWAHRUNGSFRIST: es gibt keine (JOB 3668, Rückgabe R1) — also steht auch keine da.
+      expect(zusage, `${sprache}: die Hilfe erfindet eine Frist`).not.toMatch(
+        /\d+\s*(Tag|day|dag)/,
+      );
     }
   });
 });
