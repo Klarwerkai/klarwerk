@@ -14,11 +14,12 @@ import { useSession } from "../app/AuthContext";
 import { readHistoryIndex } from "../app/navHistory";
 import { EmptyStateCtas } from "../components/EmptyStateCtas";
 import { HelpTip } from "../components/HelpTip";
+import { StaleMarker } from "../components/LoadState";
 import { KoAuthorLine } from "../components/trust";
 import { PageHeader } from "../components/ui";
 import { gapLocaleTag } from "../lib/gapLocaleTag";
 import { type KoAuthorParts, koAuthorParts } from "../lib/koAuthor";
-import { groupLoadPhase } from "../lib/loadingState";
+import { groupLoadPhase, isGroupStale } from "../lib/loadingState";
 import { reworkHref } from "../lib/reviewReworkContext";
 import { type ReviewWorkView, reviewWorkView } from "../lib/reviewSignals";
 import { knowledgeOsPhase, phaseLabelKey, taskAction } from "../lib/taskAction";
@@ -248,7 +249,38 @@ export function MyTasks(): JSX.Element {
   // die Liste oben gebaut ist. Zusammengehörig und atomar: erst wenn jede geliefert hat, darf über
   // den Bestand etwas ausgesagt werden. Ein gescheiterter Refetch bei vorhandenen Daten bleibt
   // `loaded` — die Liste bleibt sichtbar, sie schlägt nicht auf „Nichts offen." um.
-  const ladephase = groupLoadPhase([board, conflicts, lifecycle, gaps, audit, kos]);
+  const quellen = [board, conflicts, lifecycle, gaps, audit, kos];
+  const ladephase = groupLoadPhase(quellen);
+
+  // ==============================================================================================
+  // JOB 3762 · RUNDE 2 — „NICHTS OFFEN." DARF NICHT AUS EINEM GESCHEITERTEN NACHLAUF KOMMEN.
+  // ==============================================================================================
+  // Der Kommentar darüber beschreibt die eine Hälfte richtig: ein gescheiterter Refetch bei
+  // vorhandenen Daten bleibt `loaded`, die Liste bleibt stehen (REGELN §7, erster Satz). Die ZWEITE
+  // Hälfte desselben Satzes fehlte hier: „mit dem Hinweis Stand von <Zeit> · Auffrischung
+  // fehlgeschlagen". Ohne sie stand „Nichts offen." — eine Tatsachenaussage über JETZT — unverändert
+  // da, obwohl der letzte Versuch, das nachzuprüfen, gescheitert war. Das ist genau der Fehler, den
+  // JOB 3118 auf der Startseite behoben hat und den Auftrag §9 („Cache mit gescheiterter
+  // Auffrischung") für JEDE der drei Flächen verlangt.
+  //
+  // KEIN DRITTER WEG (Auftrag §5 Lieferung 6): die Markierung ist der vorhandene `StaleMarker`
+  // (`components/LoadState.tsx:30`) mit dem vorhandenen Satz `loadstate.stale` — dasselbe Bauteil,
+  // das Analytics und Bereitschaft schon tragen, und derselbe Wortlaut wie in der Datenlagezeile der
+  // Startseite. `isGroupStale()` beantwortet die Frage über GENAU dieselben Quellen wie `ladephase`
+  // darüber; eine zweite Quellenliste wäre die Drift, gegen die `arbeitsQuellen` auf `pages/Start.tsx`
+  // gebaut ist. Gemessen in `tests/demo-leerbestand/aufgaben-leerbestand.test.tsx` (L5-Auf-c).
+  //
+  // OFFEN UND BENANNT: der ANGEHALTENE Abruf (offline) ist damit nicht abgedeckt — `isGroupStale`
+  // kennt nur `isError`, und „Auffrischung fehlgeschlagen" wäre offline die falsche Auskunft (die
+  // Lehre aus JOB 3118). Dafür fehlt ein Offline-Bauteil neben `StaleMarker`, und das liegt in
+  // `components/LoadState.tsx` — ausserhalb der Zielpfade dieses Auftrags. L5-Auf-d hält den
+  // Ist-Zustand fest.
+  const nachlaufGescheitert = isGroupStale(quellen);
+  const erneutHolen = (): void => {
+    for (const quelle of quellen) {
+      void quelle.refetch();
+    }
+  };
 
   // ── Die Listenposition überlebt das Öffnen einer Aufgabe ──────────────────────────────────────
   // Gerechnet wird in `lib/taskViewState.ts`; hier wird nur gelesen und gesetzt.
@@ -352,6 +384,14 @@ export function MyTasks(): JSX.Element {
         ))}
       </fieldset>
       <div className="space-y-6">
+        {/* Über der Liste und nicht in ihr: der Satz gilt für ALLES, was darunter steht — für die
+            Zeilen ebenso wie für „Nichts offen.". Dieselbe Stelle, an der die Bibliothek ihren
+            gleichlautenden Hinweis trägt (`BibliothekListe.tsx:326`). */}
+        {nachlaufGescheitert ? (
+          <div data-testid="task-stand-veraltet">
+            <StaleMarker onRetry={erneutHolen} />
+          </div>
+        ) : null}
         {gesamtSichtbar === 0 ? (
           // GENAU EINE Zeile für die ganze Liste — und der Weg dahinter bleibt derselbe Knopf mit
           // denselben `EmptyStateCtas`. Beim gefilterten Leerstand nennt der Satz den Filter als

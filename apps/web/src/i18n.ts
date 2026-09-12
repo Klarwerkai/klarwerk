@@ -822,6 +822,15 @@ const de = {
   "start.zuletzt.heute": "heute",
   "start.zuletzt.gestern": "gestern",
   "start.zuletzt.leer": "Noch nichts erfasst.",
+  // JOB 3762 · Lieferung 2/5: der Satz der LEEREN Instanz. Er sagt genau zwei Dinge, und beide sind
+  // gemessen: der Bestand ist leer (`useKos` hat erfolgreich und frisch `[]` geliefert) und wo der
+  // erste Schritt liegt. Keine Ursache, keine Vermutung, keine Zahl — das wäre eine Behauptung, die
+  // die Fläche nicht messen kann (Lehre JOB 3741 R2 / JOB 3670 R1).
+  "start.leer.ersterSchritt": "Noch kein Wissen im Bestand — das erste erfassen",
+  // JOB 3762 · Runde 2: die Einordnung DIESER Zeile, solange ein Abruf läuft. Der bestätigte Stand
+  // bleibt stehen (§9: „ohne zu flackern"), und daneben steht, dass er gerade nachgeprüft wird —
+  // dieselbe Wortwahl wie `editor.imageSearch.refreshing`. Sie behauptet nichts über den Ausgang.
+  "start.leer.auffrischung": "wird aufgefrischt …",
   "start.menu.label": "Mehr zu dieser Seite",
   "start.menu.ueber": "Über KLARWERK",
   "start.menu.klara": "Klara in Word",
@@ -6875,6 +6884,8 @@ const en: typeof de = {
   "start.zuletzt.heute": "today",
   "start.zuletzt.gestern": "yesterday",
   "start.zuletzt.leer": "Nothing captured yet.",
+  "start.leer.ersterSchritt": "No knowledge in the collection yet — capture the first one",
+  "start.leer.auffrischung": "refreshing …",
   "start.menu.label": "More about this page",
   "start.menu.ueber": "About KLARWERK",
   "start.menu.klara": "Klara in Word",
@@ -11910,6 +11921,8 @@ const nl: typeof de = {
   "start.zuletzt.heute": "vandaag",
   "start.zuletzt.gestern": "gisteren",
   "start.zuletzt.leer": "Nog niets vastgelegd.",
+  "start.leer.ersterSchritt": "Nog geen kennis in de collectie — leg de eerste vast",
+  "start.leer.auffrischung": "wordt ververst …",
   "start.menu.label": "Meer over deze pagina",
   "start.menu.ueber": "Over KLARWERK",
   "start.menu.klara": "Klara in Word",

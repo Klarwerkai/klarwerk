@@ -54,7 +54,14 @@ vi.mock("../../apps/web/src/api/endpoints", () => {
       conflicts: { list: ok([]) },
       lifecycle: { pending: ok([]) },
       gaps: { summary: ok({ open: 0, byPriority: { hoch: 0, mittel: 0, niedrig: 0 } }) },
-      ko: { list: ok([]) },
+      // JOB 3762: EIN Wissensobjekt statt der leeren Liste. Bei LEEREM Bestand sagt die Startseite
+      // seit Lieferung 2 „Noch kein Wissen im Bestand — das erste erfassen" statt „Nichts offen."
+      // (`pages/Start.tsx`) — dieser Test misst aber die LADELAGE, nicht den leeren Bestand. Auf
+      // Lage, Zähler und Wiederholen-Weg hat der Eintrag keinen Einfluss: `kos` geht nur in die
+      // Gesamtlage ein (`lib/eigeneKollision.ts:488-508`) und in keine Arbeitszeile.
+      ko: {
+        list: ok([{ id: "ko-1", title: "Ventil V1 prüfen", status: "validiert", author: "u1" }]),
+      },
       learningPaths: {
         // Fall 1: ein Pfad MIT Schritten — sonst gibt es kein Fenster.
         // Fall 2: `null` — die Rolle hat keinen Pfad. Umgeschaltet ueber `d.pfad.wert`.

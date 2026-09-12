@@ -24,11 +24,13 @@ import { FuerDichKarte, ZuletztKarte } from "../components/start/StartKarten";
 import { StartPanelInhalt } from "../components/start/StartPanel";
 import {
   type ForYouQuelle,
+  type ForYouZeile,
   type Kartenlage,
   auffrischungLaeuft,
   forYouGesamt,
   forYouLage,
   forYouZeilen,
+  zeigtBestand,
 } from "../components/start/forYou";
 import {
   START_PANEL_IDS,
@@ -149,6 +151,26 @@ export function Start(): JSX.Element {
 
   // FUNKE-FIX2 P0: die kritischen Lücken kommen aus dem aggregierten Summary (byPriority.hoch),
   // nicht aus geladenen Gap-Volltexten — kein Fragetext gelangt in den Browser.
+  //
+  // ==============================================================================================
+  // JOB 3762 · LIEFERUNG 1 — DIE ANTWORT WIRD GEPRÜFT, NICHT GEGLAUBT.
+  // ==============================================================================================
+  // HIER STAND `gapsSummary.data?.byPriority.hoch ?? 0`. Der Optional-Zugriff endete vor
+  // `byPriority`: er schützte `data`, nicht das Feld darin. `GapsSummary` (`api/types.ts:689`) sagt
+  // `byPriority: Record<GapPriority, number>` zu — das ist eine Zusage über den Server, keine
+  // Eigenschaft der Antwort. Eine frisch aufgesetzte, LEERE Instanz, die `{}` liefert, erfüllt den
+  // Typ nicht; der Zugriff warf, bevor `?? 0` je zum Zug kam, und die Startseite der Demo war beim
+  // allerersten Öffnen weiss. Das `?? 0` dahinter täuschte eine Vollständigkeit vor, die es nicht
+  // hatte. Gemessen in `tests/demo-leerbestand/start-leere-instanz.test.tsx` (L1).
+  //
+  // WARUM `0` BEI FEHLENDER GRUNDLAGE DASTEHEN DARF: Der Wert wird nirgends als Aussage angezeigt.
+  // Er geht als ZÄHLWERT in die Arbeitsübersicht, und `forYouZeilen()` (`components/start/forYou.ts`)
+  // lässt jede Zeile mit `count <= 0` aus — aus `0` entsteht also kein Satz „keine kritische Lücke",
+  // sondern gar nichts. Was die Karte über ihren Datenstand sagt, entscheidet daneben allein die
+  // `Datenlagezeile` (`components/start/StartKarten.tsx`) aus `kartenlage` — und `gapsSummary` ist
+  // eine ihrer Quellen. Stünde die `0` dagegen als Zahl auf der Fläche, wäre sie eine Erfindung.
+  const kritischeLuecken =
+    typeof gapsSummary.data?.byPriority?.hoch === "number" ? gapsSummary.data.byPriority.hoch : 0;
   const arbeit = buildWorkOverview({
     ...workSignalsFrom({
       board: board.data ?? [],
@@ -157,7 +179,7 @@ export function Start(): JSX.Element {
       gaps: [],
       learningOpenSteps: learningOpenSteps(learningPath.data, learningProgress.data),
     }),
-    criticalGaps: gapsSummary.data?.byPriority.hoch ?? 0,
+    criticalGaps: kritischeLuecken,
   });
 
   // A27 · JOB 3025: die Auskunft über die EIGENEN Objekte. Sie geht als LAGE hinein, nicht als
@@ -226,6 +248,101 @@ export function Start(): JSX.Element {
     })),
     kollision,
   });
+
+  // ==============================================================================================
+  // JOB 3762 · LIEFERUNG 2 — DER ERSTE BLICK IN EINE LEERE INSTANZ NENNT DEN ERSTEN SCHRITT.
+  // ==============================================================================================
+  // Die Demo startet gegen eine garantiert LEERE Datenhaltung (Pedis Zeile DEMO-ZUGANG-START).
+  // Bis hierher sagte die Startseite dort „Nichts offen." (`components/start/StartKarten.tsx`,
+  // `task.none`) und „Noch nichts erfasst." (`start.zuletzt.leer`). Beide Sätze stimmen, und beide
+  // sagen nur die Hälfte: dass hier nichts IST, nicht, was der erste Schritt WÄRE.
+  //
+  // KEIN ZWEITES LEERZUSTANDSMUSTER (Auftrag §5 Lieferung 6, §8 Punkt 7). Der erste Schritt wird
+  // eine ZEILE in „FÜR DICH" und läuft durch `FuerDichZeile` — dieselbe Bauform, derselbe
+  // `RoleLink`, derselbe `data-h5-zeile`-Anker wie jede andere Zeile. Das Vorbild steht zwei
+  // Blöcke höher und ist kein neues: die Erststart-Zeile (§5a von JOB 3064,
+  // `forYou.ts:325-334`) ist genau das — eine FÜHRUNGSZEILE, die die Fläche beisteuert, weil nur
+  // sie die Bedingung kennt. Weil die Zeile dadurch „Nichts offen." ersetzt (die Karte zeigt ihre
+  // Verneinung nur bei `sichtbar.length === 0`), steht die schwächere Aussage nicht daneben.
+  //
+  // `count: 0` IST DIE ZWEITE HÄLFTE DER EHRLICHKEIT: die Pille der Karte summiert `count`
+  // (`forYouGesamt`). Eine `1` behauptete einen offenen Vorgang — es ist aber keiner offen, es ist
+  // nur noch nichts da. Mit `0` bleibt die Pille aus.
+  //
+  // ----------------------------------------------------------------------------------------------
+  // RUNDE 2, KORREKTURPFLICHT 1 (Ben): EIN BESTÄTIGTER LEERSTAND VERSCHWINDET NICHT BEIM AUFFRISCHEN.
+  // ----------------------------------------------------------------------------------------------
+  // Runde 1 hängte diese Zeile an `entwarnungErlaubt(kartenlage)` — online, `frisch`, KEIN laufender
+  // Abruf. Bens Messung an der gemounteten Seite: leer laden, dann die KO-Auffrischung anhalten
+  // (`fetchStatus === "fetching"` bestätigt) ⇒ Karteninhalt wörtlich `""`. Die Karte wurde beim
+  // Auffrischen LEER — weder der Leersatz noch die bisherige Verneinung stand da. Das ist genau das
+  // Flackern, das §9 des Auftrags verbietet: „War der Cache leer, bleibt der Leersatz stehen, ohne
+  // zu flackern", und REGELN §7, erster Satz: „Niemals Karte, Stufe, Zahlen oder Herkunft leeren."
+  //
+  // DIE UNTERSCHEIDUNG, die Runde 1 fehlte, ist die zwischen einer NEUEN Behauptung und einem SCHON
+  // BESTÄTIGTEN Stand. `entwarnungErlaubt()` beantwortet die erste Frage richtig und die zweite gar
+  // nicht. Die zweite beantwortet `zeigtBestand()` (`forYou.ts`) — dieselbe Funktion, die entscheidet,
+  // ob die ZEILEN der Karte dastehen dürfen, und sie ist genau dafür gebaut: `frisch` und `veraltet`,
+  // also „es liegt eine erfolgreich geholte Antwort vor". `forYouLage()` liefert beide Lagen NUR,
+  // wenn JEDE Quelle schon einmal geantwortet hat (`forYou.ts:117`) — ein Erstabruf ohne bestätigten
+  // Stand ist `laedt` oder `gescheitert`, und dort entsteht hier weiterhin kein Satz.
+  //
+  // DIESE ZEILE IST DESHALB EINE ZEILE UND KEINE VERNEINUNG DER KARTE: sie folgt der Regel der
+  // WERTE (bleiben sichtbar, werden markiert), nicht der Regel der VERNEINUNG (nur aus `frisch`).
+  // Das ist kein Schlupfloch, sondern der Unterschied, den REGELN §7 macht: der zuletzt erfolgreich
+  // geholte Stand bleibt stehen, die Datenlagezeile ordnet ihn ein. Und weil die Zeile jetzt
+  // dasteht, ist `hatStand` in der `Datenlagezeile` wahr — offline steht deshalb „Stand von zuletzt
+  // — ohne Netzverbindung nicht aktuell prüfbar" statt des Satzes ohne Stand
+  // (`StartKarten.tsx:239`, `forYou.ts:220-224`).
+  //
+  // DIE DREI BEDINGUNGEN (Auftrag §9, REGELN §7 „Wissenslücke statt Erfindung"):
+  //   · `zeigtBestand(kartenlage.lage)` — es liegt eine erfolgreich geholte Antwort ALLER Quellen
+  //     vor. Beim Laden und bei einer Störung ohne Stand steht hier nichts (L5a/L5b/L5c2).
+  //   · `bestandLeer` — der Bestand ist wirklich leer, aus derselben Quelle, die die Bibliothek für
+  //     „Noch keine Einträge." liest (`useKos`). `kos.data !== undefined` steht ausdrücklich davor:
+  //     `(kos.data ?? []).length === 0` wäre für einen NIE beantworteten Abruf ebenfalls wahr.
+  //   · `!wartendeArbeit` — es wartet sonst nichts. Steht etwas an, ist DAS der erste Schritt.
+  //
+  // OFFEN GESAGT: die erste der drei ist heute EIN ZWEITER AUSDRUCK DERSELBEN REGEL — die Karte
+  // prüft sie schon selbst (`StartKarten.tsx:205`, `sichtbar = bestand ? … : []`), und deshalb wird
+  // L5a/L5b/L5c2 auch rot, wenn man sie HIER entfernt und dort belässt: gemessen, sie bleiben grün.
+  // Sie steht trotzdem da, aus demselben Grund, aus dem `entwarnungErlaubt()` seinen Onlinezustand
+  // ausdrücklich führt, statt ihn aus `forYouLage` zu folgern (`forYou.ts:184-188`): eine Zusage,
+  // die nur aus dem Zusammenspiel zweier Stellen folgt, ist keine Zusage dieser Stelle. Und sie ist
+  // nicht nur Zierde — `bestandLeer` steht und fällt damit, dass `kos` in `arbeitsQuellen` steht.
+  // Nähme jemand es dort heraus, deckte die Lage den Bestandsabruf nicht mehr, und `kos.data !==
+  // undefined` wäre der einzige verbliebene Riegel.
+  //
+  // RUNDE 2, KORREKTURPFLICHT 2 (Ben): `wartendeArbeit` ZÄHLT DIE ERSTEINRICHTUNGSZEILE NICHT MIT.
+  // Runde 1 verlangte `zeilen.length === 0`. Beim ERSTEN Besuch einer Administratorin — dem einzigen
+  // Besuch, für den dieser Auftrag gebaut ist — steht dort aber die Erststart-Führungszeile (§5a,
+  // `forYou.ts:325-334`), und sie verdrängte die Auskunft über den leeren Bestand genau bei der
+  // Person, die sie am nötigsten hat. Die Erststart-Zeile ist selbst eine FÜHRUNGSZEILE und keine
+  // wartende Arbeit; zwei Führungszeilen nebeneinander („so richtest du ein" · „so kommt das erste
+  // Wissen herein") sind zwei verschiedene erste Schritte und kein doppelter Satz. Gemessen in L2f.
+  const bestandLeer = kos.data !== undefined && kos.data.length === 0;
+  const wartendeArbeit = zeilen.some((z) => z.id !== "ersteinrichtung");
+  const ersterSchritt: ForYouZeile | null =
+    zeigtBestand(kartenlage.lage) && bestandLeer && !wartendeArbeit
+      ? {
+          id: "erster-schritt",
+          severity: "later",
+          textKey: "start.leer.ersterSchritt",
+          // DIE AUFFRISCHUNG WIRD BENANNT (Bens Korrekturpflicht 1, zweite Hälfte; §9 „die
+          // Datenlagezeile sagt, dass aufgefrischt wird"). Sie steht im META-Platz DIESER Zeile und
+          // nicht in der `Datenlagezeile`: die schweigt während eines laufenden Abrufs bewusst
+          // (`forYou.ts:225-227`, JOB 3118 nach Bens Korrekturpflicht — ein Satz über den LETZTEN
+          // Versuch, während der nächste schon läuft, wäre falsch), und `forYou.ts`/`StartKarten.tsx`
+          // liegen ausserhalb der Zielpfade dieses Auftrags (§4). Der Meta-Platz ist kein neues
+          // Muster: jede Zeile trägt dort ihre Einordnung (Zahl oder Bereichsname,
+          // `StartKarten.tsx:250`). Gemessen in L5d.
+          ...(kartenlage.auffrischung ? { metaKey: "start.leer.auffrischung" } : {}),
+          to: "/erfassen",
+          count: 0,
+        }
+      : null;
+  const kartenZeilen = ersterSchritt ? [...zeilen, ersterSchritt] : zeilen;
+
   // JOB 3098 · Q6b RUNDE 2, KORREKTURPFLICHT 1: der Weg heraus führt über GENAU die Quellen, die
   // hineinführen — dieselbe Liste, keine zweite. `liveWall` steht bewusst nicht darunter: sie trägt
   // die Karte „ZULETZT" und hat ihren eigenen Weg (s. unten). Ein Wiederholen, das eine fremde
@@ -363,8 +480,8 @@ export function Start(): JSX.Element {
         <div className="mt-[18px] grid w-[900px] max-w-full grid-cols-1 gap-6 sm:grid-cols-2">
           <FuerDichKarte
             kartenlage={kartenlage}
-            zeilen={zeilen}
-            gesamt={forYouGesamt(zeilen)}
+            zeilen={kartenZeilen}
+            gesamt={forYouGesamt(kartenZeilen)}
             onWiederholen={wiederholen}
           />
           {/* Die Lage dieser Karte kommt aus IHRER Quelle (`liveWall`), nicht aus der Gruppe

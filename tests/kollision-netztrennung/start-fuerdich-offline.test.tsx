@@ -247,6 +247,29 @@ const DUBLETTE: EigenerBefund = {
   deckung: { lage: "kein_lauf", geprueft: null, bestand: null },
 };
 
+/**
+ * JOB 3762 — WARUM DER BESTAND DIESER VORRICHTUNG NICHT MEHR LEER IST.
+ *
+ * Diese Datei kalibriert an mehreren Stellen mit „Nichts offen." (`task.none`): S-6, S-10, S-12 und
+ * S-11a verlangen, dass die Verneinung bei frischem, leerem Abruf ZU RECHT dasteht, und messen
+ * daran, dass sie offline bzw. während eines Nachlaufs verschwindet. Die Verneinung ist eine
+ * Aussage über offene VORGÄNGE.
+ *
+ * Bis JOB 3762 war der Bestand (`ko.list`) hier zugleich LEER — und seitdem sagt die Startseite in
+ * genau diesem Fall etwas Stärkeres: „Noch kein Wissen im Bestand — das erste erfassen"
+ * (`pages/Start.tsx`, Lieferung 2). Sie ersetzt „Nichts offen." dort, weil die Karte ihre
+ * Verneinung nur ohne Zeilen zeigt. Die vier Kalibrierungen wollten aber nie den leeren BESTAND
+ * messen, sondern die leere AUFGABENLAGE.
+ *
+ * Deshalb trägt die Vorrichtung jetzt ein Wissensobjekt. Auf das, was diese Datei prüft, hat es
+ * keinen Einfluss: `kos` geht laut `lib/eigeneKollision.ts:488-508` allein in die Gesamtlage ein
+ * und filtert die Befunde ausdrücklich NICHT — die Kollisionszeile entsteht weiter allein aus
+ * `duplicate-signal` und `conflicts`. Die Lage bleibt dieselbe wie vorher (Daten vorhanden,
+ * frisch); nur die Aussage „hier ist überhaupt noch nichts" trifft nicht mehr zu, und genau das
+ * soll sie in diesen vier Fällen auch nicht.
+ */
+const BESTAND = [{ id: "ko-1", title: "Ventil V1 prüfen", status: "validiert", author: "u1" }];
+
 /** Die Karte „ZULETZT" hat ihre eigene Quelle — Z2b/Z4b brauchen sie einmal leer, einmal gefüllt. */
 const LEERE_WAND = { saved: [], helped: [], helpedToday: 0 };
 const WAND_MIT_EINTRAG = {
@@ -433,7 +456,8 @@ async function neuBetreten(): Promise<void> {
 beforeEach(async () => {
   await i18n.changeLanguage("de");
   box.kanal = {
-    kos: leerAntwort,
+    // JOB 3762: ein Objekt statt der leeren Liste — die Begründung steht bei `BESTAND` oben.
+    kos: async () => BESTAND,
     conflicts: leerAntwort,
     signal: leerAntwort,
     wall: async () => LEERE_WAND,
