@@ -1,5 +1,5 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
-import type { AuthService, Role } from "../../auth";
+import { type AuthService, type Role, meldung, sprache } from "../../auth";
 import { type Permission, can } from "../../rbac";
 
 // Gemeinsamer HTTP-Baustein der App: Auth-Guard, RBAC-Guard und einheitliches
@@ -86,10 +86,20 @@ const INTERNAL_ONLY_CODES: ReadonlySet<string> = new Set(["SEARCH_PROJECTION_NOT
 // Die EINE generische interne Antwort. Maskierungszweig und Auffangzweig senden bytegleich dieselbe
 // Gestalt — zwei getrennte Literale könnten auseinanderlaufen und den maskierten Fall von außen
 // wieder unterscheidbar machen. Ein Orakel „dieser Fehler ist der Projektionsfehler" wäre nur eine
-// leisere Form desselben Lecks. Der Meldungstext selbst bleibt unverändert (§1: „bestehende
-// generische interne Fehlermeldung").
+// leisere Form desselben Lecks. Der Meldungstext bleibt inhaltlich derselbe (§1: „bestehende
+// generische interne Fehlermeldung") — ohne Sprachkopf und mit `de` steht wörtlich der frühere Satz
+// „Unerwarteter Fehler." da; er kommt nur nicht mehr aus einem Literal, sondern aus dem Katalog.
+//
+// JOB 3568 (Q9-FREMDE-FLÄCHEN): aus der KONSTANTE ist eine FUNKTION geworden, weil der Text jetzt
+// vom `Accept-Language`-Kopf der konkreten Anfrage abhängt und deshalb erst beim Senden feststeht.
+// Die Zusicherung von G27 verschiebt sich damit von „dasselbe Objekt" auf „derselbe Aufruf mit
+// derselben Anfrage" — sie ist nicht mehr von der Sprache trennbar und wird deshalb je Sprache
+// geprüft (`tests/q9-fremde-flaechen/interne-antwort.test.ts`, R4). Zwei getrennte AUFRUFE sind
+// erlaubt, zwei getrennte Literale nach wie vor nicht.
 const INTERNAL_ERROR_STATUS = 500;
-const INTERNAL_ERROR_BODY = { error: "INTERNAL", message: "Unerwarteter Fehler." } as const;
+function internalErrorBody(request: FastifyRequest): { error: string; message: string } {
+  return { error: "INTERNAL", message: meldung("INTERNAL", sprache(request)) };
+}
 
 /**
  * G27 R1 (KW-ARCH-G27-HTTP-MASKIERUNG-07): wahr genau dann, wenn `error` einen rein internen
@@ -107,6 +117,15 @@ export function isInternalOnlyError(error: unknown): boolean {
   return INTERNAL_ONLY_CODES.has(String((error as { code: unknown }).code));
 }
 
+/**
+ * JOB 3568: `sendError` braucht die Anfrage, um den Sprachkopf zu lesen — und holt sie sich über
+ * `reply.request` statt über einen zweiten Parameter. Der Grund ist gemessen und nicht gewählt:
+ * `git grep -n "sendError" -- services` zählt rund 50 Aufrufstellen, ALLE in `services/app/src/routes/**`
+ * und `build-app.ts`, also ALLE ausserhalb der Zielpfade dieses Auftrags. Eine Signaturänderung
+ * hätte jede einzelne mitziehen müssen und damit ungeprüften Code in den Diff gebracht
+ * (Auftrag §5.3). `reply.request` ist seit Fastify 4 Teil des öffentlichen Vertrags
+ * (`node_modules/fastify/types/reply.d.ts:47`) und immer an dieselbe Anfrage gebunden wie `reply`.
+ */
 export function sendError(reply: FastifyReply, error: unknown): void {
   if (error && typeof error === "object" && "code" in error) {
     const code = String((error as { code: unknown }).code);
@@ -126,7 +145,7 @@ export function sendError(reply: FastifyReply, error: unknown): void {
         { err: error, code },
         "Interner Betriebsfehler maskiert (HTTP 500 INTERNAL).",
       );
-      reply.code(INTERNAL_ERROR_STATUS).send(INTERNAL_ERROR_BODY);
+      reply.code(INTERNAL_ERROR_STATUS).send(internalErrorBody(reply.request));
       return;
     }
     // SCRUM-496: NUR Domänen-Fehlercodes (KoError/LibraryError/… — GROSSBUCHSTABEN_MIT_UNTERSTRICH,
@@ -139,7 +158,9 @@ export function sendError(reply: FastifyReply, error: unknown): void {
       return;
     }
   }
-  reply.code(INTERNAL_ERROR_STATUS).send(INTERNAL_ERROR_BODY);
+  // Derselbe Aufruf mit derselben Anfrage wie im Maskierungszweig oben — nicht ein zweiter Text,
+  // der auseinanderlaufen könnte. Genau das prüft R4 je Sprache bytegleich nach.
+  reply.code(INTERNAL_ERROR_STATUS).send(internalErrorBody(reply.request));
 }
 
 export function makeGuards(auth: AuthService): Guards {
@@ -150,7 +171,12 @@ export function makeGuards(auth: AuthService): Guards {
     const token = tokenFromRequest(request);
     const user = token ? await auth.authenticate(token) : undefined;
     if (!user) {
-      reply.code(401).send({ error: "UNAUTHENTICATED", message: "Nicht angemeldet." });
+      // JOB 3568 (Q9): der Text aus dem Katalog, der Draht unverändert — Code `UNAUTHENTICATED`
+      // und Status 401 bleiben buchstäblich stehen (gepinnt in
+      // `tests/app/i-834-ab-r1-r5-guardvertrag.test.ts:162`).
+      reply
+        .code(401)
+        .send({ error: "UNAUTHENTICATED", message: meldung("NOT_SIGNED_IN", sprache(request)) });
       return undefined;
     }
     return { id: user.id, role: user.role };
@@ -166,6 +192,11 @@ export function makeGuards(auth: AuthService): Guards {
       return undefined;
     }
     if (!can(user.role, permission)) {
+      // BEWUSST NOCH DEUTSCH: der Satz trägt einen dynamischen Rechtenamen, für den es im Katalog
+      // weder einen Schlüssel noch eine Einsetzstelle gibt; einen anzulegen hiesse
+      // `services/auth/src/meldungen.ts` anzufassen (JOB 3562). Zusätzlich pinnt
+      // `tests/app/i-834-ab-r1-r5-guardvertrag.test.ts:170` den Wortlaut. Die Stelle steht namentlich
+      // in der Ausnahmeliste von `tests/q9-fremde-flaechen/keine-deutschen-literale.test.ts`.
       reply.code(403).send({ error: "FORBIDDEN", message: `Recht fehlt: ${permission}` });
       return undefined;
     }

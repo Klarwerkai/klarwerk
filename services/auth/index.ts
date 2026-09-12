@@ -43,5 +43,15 @@ export {
   type OidcProvider,
   type TokenExchanger,
 } from "./src/oidc";
+// JOB 3568 (Q9-FREMDE-FLÄCHEN): der Meldungskatalog und der EINE Kopfleser werden über die
+// Modulgrenze erreichbar. Grund: `services/app/src/http.ts` und `services/rbac/src/guard.ts` senden
+// dieselben drei Sätze (`NOT_SIGNED_IN`, `INTERNAL`) und trugen sie bis hierher als deutsche
+// Literale im Code. Sie brauchen den Katalog, keinen eigenen — ein zweiter `accept-language`-Parser
+// oder eine Kopie der Texte wäre genau die Doppelquelle, die JOB 3449 beseitigt hat.
+// `sprache` bleibt deshalb die eine Lesestelle (`./src/routes:94-95`) und wird exportiert, nicht
+// nachgebaut. Die Modulkante ist nicht neu: beide Dateien importieren schon heute `Role` von hier.
+export { MELDUNGEN, meldung } from "./src/meldungen";
+export type { Meldungsschluessel, Sprache } from "./src/meldungen";
+export { sprache } from "./src/routes";
 export { AuthError } from "./src/types";
 export type { Role, User, PublicUser, Session, AuthErrorCode } from "./src/types";

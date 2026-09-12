@@ -93,7 +93,7 @@ function tokenFromRequest(request: FastifyRequest): string | undefined {
 
 // Genau eine Lesestelle für den Kopf; jeder Fehlerpfad löst erst beim Senden auf.
 // Regionalvarianten, Prioritäten und ausgeschlossene Sprachen (q=0) werden beachtet.
-function sprache(request: FastifyRequest): Sprache {
+export function sprache(request: FastifyRequest): Sprache {
   const kopf = request.headers["accept-language"] ?? "";
   let gewaehlt: Sprache = "de";
   let prioritaet = 0;
