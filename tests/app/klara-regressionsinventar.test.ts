@@ -802,6 +802,14 @@ const INVENTAR: readonly string[] = [
   // die Achse zu verengen hiesse, einen fremden Waechter zu schwaechen, um die eigene Datei
   // hindurchzulassen. K2 hat die Datei gemeldet, das Inventar nimmt sie nicht still auf.
   "tests/design-vorrichtung/seiten-typ-waechter.test.ts",
+  // JOB 3787 (12.09.2026): der Wortlaut-Waechter ueber die Duplikat-FAQ. Er gehoert wirklich in
+  // die Klara-Regressionsmenge und nicht nur formal hinein: jede FAQ-Antwort wird ueber
+  // `allFaqEntries` zum `KlaraEntry` `kind: "faq"`, und die Datei misst genau diesen Weg — sie
+  // ruft `allFaqEntries`, `searchKlara` und `rankKlara` auf und prueft den KI-Ausschnitt
+  // (`title.slice(0, 160)` / `body.slice(0, 700)` aus `KlaraAssistant.tsx`). Gefunden hat sie die
+  // Inhaltsachse; „klara" steht nicht in ihrem Pfad, K5 bleibt deshalb unveraendert. K2 hat sie
+  // gemeldet, das Inventar nimmt sie nicht still auf.
+  "tests/faq-dubletten-wahrheit/faq-sagt-kein-verschmelzen.test.ts",
 ];
 
 // ------------------------------------------------------------------------------------------------

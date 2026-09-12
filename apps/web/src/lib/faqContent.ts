@@ -390,9 +390,9 @@ export const FAQ_CONTENT: readonly FaqItem[] = [
   {
     id: "faq.konflikte.6",
     route: "/duplikate",
-    question: "Was ist ein Duplikat, und soll ich zwei ähnliche Artikel zusammenführen?",
+    question: "Was ist ein Duplikat, und was tue ich mit zwei ähnlichen Artikeln?",
     answer:
-      "Ein Duplikat liegt vor, wenn zwei Einträge inhaltlich dasselbe sagen — die App erkennt Überschneidungen automatisch und zeigt, wie stark sich zwei Einträge decken, samt Empfehlung. Zusammenführen ist dann meist sinnvoll: ein Eintrag statt zwei halber. Das Zusammenführen bleibt ein bewusster menschlicher Schritt — automatisch verschmolzen wird nichts.",
+      "Ein Duplikat liegt vor, wenn zwei Einträge inhaltlich dasselbe sagen — die App erkennt Überschneidungen automatisch und zeigt, wie stark sich zwei Einträge decken, samt Empfehlung. Aus zwei Einträgen wird dabei nie einer: KLARWERK legt keinen gemeinsamen Eintrag an, löscht keinen der beiden und schreibt keinen um — beide bleiben unverändert bestehen. Du schließt den Fund stattdessen mit einem Grund ab: bewusst getrennt gelassen, als verwandt vermerkt oder Fehlalarm. Dieser Grund bleibt mit Zeitpunkt und Person am Vorgang stehen, nachlesbar in der Liste und im Prüfprotokoll.",
   },
   // ---- Bus-Faktor und Risiko ----
   {
