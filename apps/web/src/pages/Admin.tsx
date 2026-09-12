@@ -52,6 +52,7 @@ import { GuardedLink, useGuardedNavigate } from "../app/NavGuardContext";
 import { useRole } from "../app/RoleContext";
 import { ALL_ITEMS, ROLES, type Role, anzeigeNameKey, canSee, roleAllows } from "../app/navigation";
 import { isAdminDetailId, verwaltungsPfadTeile } from "../app/navigationGliederung";
+import { HelpTip } from "../components/HelpTip";
 import { Fehlerbox } from "../components/einstellungen/Abfragehuelle";
 import { Detailkarte } from "../components/einstellungen/Detailkarte";
 import { EinstellungenSeite } from "../components/einstellungen/Seite";
@@ -447,6 +448,23 @@ export function Admin(): JSX.Element {
         </>
       ) : (
         <>
+          {/* ======================================================================================
+              JOB 3670 · DIE SEITENHILFE DIESER ÜBERSICHT — im Zahnrad, nicht im Sichtfeld.
+              ======================================================================================
+              `HelpTip` zeichnet nichts (JOB 3060, `components/HelpTip.tsx:11`); er meldet Titel und
+              Text beim Sammler an, und das Zahnrad-Menü listet sie unter „Seitenhilfe". Pedis
+              Vorgabe vom 04.09. steht wörtlich in `shell/SeitenhilfeContext.tsx:16-20`: „Erklärung
+              gehört hinter Zahnrad/Profil, nicht ins Sichtfeld."
+
+              ER STEHT IM ÜBERSICHTSZWEIG, NICHT ÜBER BEIDEN. Ist eine Detailkarte offen, rendert
+              der Zweig darüber AUSSCHLIESSLICH Pfadzeile und Karte — von den sieben Themen, den
+              Zeilenwerten und der Themenleiste ist dann nichts zu sehen. Ein Text, der sie
+              beschreibt, wäre dort eine Aussage über eine Fläche, auf der man gar nicht steht;
+              die Karte bringt ihre eigene mit. */}
+          <HelpTip
+            title={t("seitenhilfe.admin.uebersicht.titel")}
+            body={t("seitenhilfe.admin.uebersicht.text")}
+          />
           {section === "konten" ? (
             <>
               <Zeilenkarte testId="flaeche-nutzer">

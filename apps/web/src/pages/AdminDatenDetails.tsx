@@ -30,6 +30,9 @@ import { useToast } from "../app/ToastContext";
 // AUFTRAG-mega64 Block A: der Demodaten-Knopf steht hinter dem Betriebsschalter — dieselbe
 // fail-closed Regel wie jede andere geschaltete Fläche (mega46 F2).
 import { FeatureGate } from "../components/FeatureGate";
+// JOB 3670: die Seitenhilfe dieser vier Karten — je Karte ein eigener Text, weil es vier
+// Bildschirme sind. `HelpTip` rendert nichts; er meldet beim Sammler an, das Zahnrad listet.
+import { HelpTip } from "../components/HelpTip";
 import { Abfragehuelle } from "../components/einstellungen/Abfragehuelle";
 import { Detailkarte } from "../components/einstellungen/Detailkarte";
 import { Button, Field, TextInput } from "../components/ui";
@@ -480,6 +483,11 @@ export function DemodatenDetail({ onZurueck }: { onZurueck: () => void }): JSX.E
       testId="detail-demodaten"
       hilfe={[{ titel: t("adm.seedTitle"), text: t("adm.seedHint") }]}
     >
+      {/* JOB 3670: die Seitenhilfe dieses Bildschirms. Sie sagt, was das „?"-Menü der Karte nicht
+          sagt: dass hier ZWEI verschiedene Bestände wohnen (Kommentar unten, Z. 252-253), dass die
+          Einmalkennwörter nur dieses eine Mal dastehen, und dass das Entfernen beide zugleich
+          mitnimmt (`services/app/src/routes/admin-routes.ts:154`). */}
+      <HelpTip title={t("seitenhilfe.admin.demo.titel")} body={t("seitenhilfe.admin.demo.text")} />
       {/* ==========================================================================================
           JOB 3636 · KARTE 1 — DIE ALLGEMEINEN DEMODATEN.
           ==========================================================================================
@@ -771,6 +779,10 @@ export function WerkseinstellungenDetail({ onZurueck }: { onZurueck: () => void 
         { titel: t("adm.factory.title"), text: t("adm.factory.hint") },
       ]}
     >
+      {/* JOB 3670: AUSSERHALB der Hülle, und das ist der Punkt. „Nicht verfügbar" ist genau der
+          Zustand, in dem jemand wissen will, warum — und die Hilfe muss ihn erklären können, ohne
+          dass der Statusabruf geglückt sein muss. */}
+      <HelpTip title={t("seitenhilfe.admin.werk.titel")} body={t("seitenhilfe.admin.werk.text")} />
       {/* Die Hülle steht davor: „In dieser Installation nicht verfügbar" ist eine TATSACHENAUSSAGE
           und darf nur aus einer erfolgreichen Antwort stammen — nicht aus einem gescheiterten
           Abruf, der nichts über die Installation weiß. */}
@@ -903,6 +915,15 @@ export function PapierkorbDetail({ onZurueck }: { onZurueck: () => void }): JSX.
       testId="detail-papierkorb"
       hilfe={[{ titel: t("adm.trash.title"), text: t("adm.trash.help") }]}
     >
+      {/* JOB 3670: Die Frist ist hier die Folge, die man kennen muss. Sie läuft auch ohne Zutun ab;
+          entfernt wird der Eintrag dann vom Aufräumlauf des Servers
+          (`services/knowledge-object/src/service.ts:3453-3468`, angestoßen beim Start und
+          periodisch, `services/app/src/server.ts:180,195-205`) — deshalb „beim nächsten
+          Aufräumlauf" und nicht „auf die Minute". */}
+      <HelpTip
+        title={t("seitenhilfe.admin.papierkorb.titel")}
+        body={t("seitenhilfe.admin.papierkorb.text")}
+      />
       {/* JOB 3065 R2: `QueryState` zeigt bei einem Fehler zwar einen Satz, aber KEINEN Weg zurück.
           Die Hülle bringt „nicht abrufbar" mit „Erneut versuchen" und hält vorhandene Einträge bei
           gestörter Auffrischung sichtbar. */}
@@ -985,6 +1006,13 @@ export function AuditDetail({ onZurueck }: { onZurueck: () => void }): JSX.Eleme
   const audit = useAudit();
   return (
     <Detailkarte titel={t("adm.auditTitle")} onZurueck={onZurueck} testId="detail-audit">
+      {/* JOB 3670: Diese Karte hatte bisher überhaupt keine Hilfequelle — weder ein „?"-Menü noch
+          einen Eintrag im Zahnrad. Der Text sagt das Wichtigste zuerst: hier wird nur gelesen, und
+          die vollständige Kette samt Prüfknopf wohnt woanders. */}
+      <HelpTip
+        title={t("seitenhilfe.admin.audit.titel")}
+        body={t("seitenhilfe.admin.audit.text")}
+      />
       <Abfragehuelle abfrage={audit}>
         {(entries) => {
           const userEntries = entries

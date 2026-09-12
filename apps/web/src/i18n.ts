@@ -6094,6 +6094,64 @@ const de = {
   "seitenhilfe.output.titel": "Ein Dokument aus geprüftem Wissen erzeugen",
   "seitenhilfe.output.text":
     "Wähle die Art des Dokuments, kreuze die Wissensobjekte an, die hineingehören, und bring sie in die Reihenfolge, in der sie stehen sollen. Das erzeugte Dokument kannst du kopieren oder als Markdown-Datei laden; darunter steht, aus welchen Objekten es entstanden ist. Nächster Schritt: eine Art wählen und die erste Quelle ankreuzen.",
+  // ================================================================================================
+  // JOB 3670 — DIE SEITENHILFE DER VIER VERWALTUNGSFLÄCHEN.
+  // ================================================================================================
+  //
+  // Wer einen Demo-Zugang herrichtet, arbeitet zuerst im Admin. Im Zahnrad stand unter
+  // „Seitenhilfe" bis hierher die Leermeldung; die Mechanik (JOB 3060, `components/HelpTip.tsx`)
+  // war fertig, sie war auf diesen Flächen nur nie benutzt worden. Je Bildschirm EIN Eintrag, der
+  // drei Fragen beantwortet: Was stelle ich hier ein? Was bewirkt es? Was ist der nächste Schritt?
+  //
+  // JEDE ZUSAGE IST NACHGESEHEN, nicht erinnert — an drei Fallen, an denen JOB 3669 und JOB 3741
+  // am selben Vormittag gescheitert sind:
+  //   ROLLE   `/admin` trägt `minRole: "admin"` (`app/navigation.ts:283-288`); jede andere Rolle
+  //           bekommt `RoleNotice` statt der Seite (`routes.tsx:184-187`). Diese zwölf Texte
+  //           sprechen also ausschliesslich zu Administratoren — das ist die einzige Rolle, die
+  //           sie je zu Gesicht bekommt.
+  //   BREITE  Die Themenspalte VERSCHWINDET schmal nicht, sie wandert nach oben
+  //           (`components/einstellungen/Seite.tsx:41-44`: `flex-row flex-wrap` bis `sm`, darüber
+  //           `sm:w-[200px] sm:flex-col`). Deshalb steht in der Übersichtshilfe „über dem Inhalt
+  //           statt links daneben" und nicht „links".
+  //   URSACHE Ein fehlender Bereich liegt hier NICHT an der Rolle: `canSee`
+  //           (`app/navigation.ts:492-497`) blendet auch bei ausreichender Rolle aus, wenn Stufe 2
+  //           aus ist. Genau das sagen die Übersichts- und die Rollenhilfe.
+  "seitenhilfe.admin.uebersicht.titel": "Verwaltung — was hier eingestellt wird",
+  "seitenhilfe.admin.uebersicht.text":
+    "Sieben Themen: Benutzer und Rollen, KI, Quellen und Daten, Vorführdaten, Sicherheit und Nachweise, Berichte und Analyse, System. Jede Zeile nennt rechts ihren heutigen Wert; ein Klick öffnet die Karte dazu, und Thema und Karte stehen danach in der Adresse — ein Lesezeichen oder ein Neuladen kommt genau hierher zurück. Auf schmalen Fenstern steht die Themenleiste über dem Inhalt statt links daneben. Steht bei einem Bereich „Modul aus“, liegt das nicht an deiner Rolle, sondern am Schalter „Erweiterte Module“ unter System. Für einen Demo-Zugang fängst du bei Benutzer und Rollen an und lädst danach unter Vorführdaten die Demodaten.",
+  "seitenhilfe.admin.nutzer.titel": "Ein Konto verwalten",
+  "seitenhilfe.admin.nutzer.text":
+    "Hier gehört dieses eine Konto dir: Wartet es noch auf Freigabe, steht der Freigabe-Knopf da; ist es freigegeben, stattdessen die Rollenauswahl. Dazu ein neues Passwort und das Löschen. Ein neues Passwort beendet alle offenen Sitzungen dieses Menschen — er muss sich danach neu anmelden. Den letzten freigegebenen Administrator schützt der Server: Herabstufen und Löschen weist er ab, damit sich niemand selbst aussperrt. Was eine Rolle überhaupt darf, steht in der Übersicht unter „Benutzer und Rollen“ in ihrer eigenen Karte.",
+  "seitenhilfe.admin.nutzerNeu.titel": "Ein Konto anlegen",
+  "seitenhilfe.admin.nutzerNeu.text":
+    "Name, E-Mail, Passwort mit mindestens acht Zeichen samt Wiederholung gegen Vertipper, und die Rolle. Ein hier angelegtes Konto ist sofort freigegeben und kann sich anmelden — anders als eines, das sich selbst registriert hat und auf deine Freigabe wartet. Fehlt etwas, nennt ein Klick auf „Anlegen“ die fehlenden Felder beim Namen; der Knopf ist nie stumm ausgegraut. Danach steht das Konto in der Liste unter „Benutzer und Rollen“.",
+  "seitenhilfe.admin.ansichtRolle.titel": "Ansicht als Rolle",
+  "seitenhilfe.admin.ansichtRolle.text":
+    "Du siehst die Oberfläche so, wie eine andere Rolle sie sieht; deine echten Rechte am Server bleiben unverändert Administrator. Die Folge, mit der niemand rechnet: Die Verwaltung ist nur für Administratoren sichtbar. Wählst du hier eine andere Rolle, verschwindet sie im selben Augenblick, und diese Karte schliesst sich mit. Zurück kommst du deshalb nicht über diese Karte, sondern über „Zur Admin-Ansicht“ im Zahnradmenü.",
+  "seitenhilfe.admin.rolle.titel": "Was diese Rolle darf",
+  "seitenhilfe.admin.rolle.text":
+    "Eine Auskunft, kein Schalter: oben die Freiheiten dieser Rolle in Worten, darunter je Gruppe die Bereiche, die ihre Rolle freigibt. Ein „·2“ markiert einen Bereich, der zusätzlich den Schalter „Erweiterte Module“ unter System braucht — ohne ihn bleibt er auch dann unsichtbar, wenn die Rolle reicht. Die Rolle eines Menschen änderst du nicht hier, sondern in seinem Konto unter „Benutzer und Rollen“.",
+  "seitenhilfe.admin.demo.titel": "Vorführdaten laden und entfernen",
+  "seitenhilfe.admin.demo.text":
+    "Zwei Knöpfe, zwei verschiedene Bestände: „Demodaten laden“ legt den allgemeinen Demo-Bestand an, der Paketknopf darunter lädt genau das benannte Demopaket. Legt der allgemeine Lauf neue Konten an, stehen deren Einmalkennwörter genau einmal hier — ein Neuladen verliert sie, der Server nennt sie kein zweites Mal. „Alle Demodaten entfernen“ räumt beides zugleich weg, auch die Bausteine des Pakets. Das Demo-Erscheinungsbild ganz unten wechselt nur Logo und Farben, für alle Anwender dieser Installation; es lädt und löscht keine Daten.",
+  "seitenhilfe.admin.werk.titel": "Werkseinstellungen",
+  "seitenhilfe.admin.werk.text":
+    "Der Werksreset löscht alle Daten und beendet danach den Server; die Anwendung muss von Hand neu gestartet werden. Deshalb zwei Stufen: erst dein eigenes Passwort, dann die ausdrückliche Warnung. Es gibt ihn nicht in jeder Installation — steht hier „In dieser Installation nicht verfügbar“, ist der Weg auf diesem Server nicht eingebaut, und daran ändert kein Schalter etwas. Nur die Vorführdaten wirst du stattdessen unter Vorführdaten los.",
+  "seitenhilfe.admin.papierkorb.titel": "Papierkorb",
+  "seitenhilfe.admin.papierkorb.text":
+    "Gelöschte Wissensobjekte liegen hier zwischen. Je Eintrag stehen der Mensch, der gelöscht hat, das Datum und die Zahl der verbleibenden Tage. „Wiederherstellen“ holt das Objekt zurück in die Bibliothek; „Endgültig löschen“ fragt einmal nach und ist danach nicht mehr rückgängig zu machen. Tust du nichts, entfernt der Server den Eintrag nach Ablauf der Frist von selbst — beim nächsten Aufräumlauf, nicht auf die Minute genau.",
+  "seitenhilfe.admin.audit.titel": "Benutzeränderungen",
+  "seitenhilfe.admin.audit.text":
+    "Eine reine Auskunft ohne Bedienelemente: die jüngsten Einträge zu Konten und Anmeldung, je Zeile Zeitpunkt, Aktion und die Kennung des Ausführenden. Hier lässt sich nichts ändern und nichts löschen — die Liste ist das Ergebnis dessen, was anderswo getan wurde. Die vollständige, hash-verkettete Kette samt Prüfknopf steht unter „Sicherheit und Nachweise“ im Prüfprotokoll.",
+  "seitenhilfe.admin.protokoll.titel": "Prüfprotokoll",
+  "seitenhilfe.admin.protokoll.text":
+    "Das hash-verkettete Protokoll dieser Anlage, hier mit den jüngsten Einträgen im Klartext: Ereignis, ausgeführt von, betroffen. „Kette prüfen“ rechnet die Verkettung wirklich nach und meldet eines von drei Ergebnissen — bestätigt, lückenlos aber nicht nachrechenbar, oder nicht bestätigt; „Drucken“ gibt genau diesen Auszug aus. Steht statt eines Namens nur eine Kennung, sagt die Zeile daneben warum — und die Gründe bedeuten Verschiedenes: „Konto nicht mehr vorhanden“ ist eine Aussage über das Konto, sie fällt erst nach einem vollständig geladenen Verzeichnis, in dem die Kennung fehlt. „Name wird geladen“ und „Name nicht abrufbar“ sagen dagegen nichts über das Konto, sondern nur über den Abruf. Bei einem betroffenen Objekt steht die Kennung ganz ohne Zusatz: dort wird im Kontoverzeichnis gar nicht nachgeschlagen.",
+  "seitenhilfe.admin.datenschutz.titel": "Datenschutz und Sicherheit",
+  "seitenhilfe.admin.datenschutz.text":
+    "Eine Liste der Eigenschaften, die diese Anlage wirklich hat — kein Versprechen und kein Schalter; einstellen lässt sich hier nichts. Der Kasten am Fuss trennt ausdrücklich gemessene Werte von Ziel- und Beispielwerten, damit im Gespräch niemand das eine für das andere hält. „Drucken“ gibt die Liste als Auszug aus, etwa für eine Rückfrage aus der Rechtsabteilung.",
+  "seitenhilfe.admin.bereitschaft.titel": "Bereitschaft",
+  "seitenhilfe.admin.bereitschaft.text":
+    "Die Checkliste vor einer Vorführung: KI, validierte Objekte, offene Prüfungen, Uploadgrenzen, externe Recherche und Demodaten — je Zeile eine Ampel aus echten Zahlen. Sie stellt nichts ein, sie liest sechs Quellen und sagt, was fehlt. Fällt eine davon aus, steht statt einer geratenen Null „nicht abrufbar“ mit einem Knopf, der alle sechs neu abruft. Die Zeile „Demodaten“ führt direkt auf die Karte, auf der du sie lädst.",
 };
 
 const en: typeof de = {
@@ -11053,6 +11111,45 @@ const en: typeof de = {
   "seitenhilfe.output.titel": "Produce a document from checked knowledge",
   "seitenhilfe.output.text":
     "Choose the kind of document, tick the knowledge objects that belong in it and put them into the order they should appear in. The document produced can be copied or downloaded as a Markdown file; below it you see which objects it came from. Next step: choose a kind and tick the first source.",
+  // JOB 3670 — page help for the four administration surfaces; mirror of the DE keys. The three
+  // checked facts behind these texts are documented at the DE block: admin-only route, the theme
+  // bar moves above the content when narrow, and a missing area is caused by stage 2, not by role.
+  "seitenhilfe.admin.uebersicht.titel": "Administration — what you set here",
+  "seitenhilfe.admin.uebersicht.text":
+    "Seven themes: users and roles, AI, sources and data, demo and sample data, security and evidence, reports and analysis, system. Every row names its current value on the right; a click opens the card behind it, and theme and card then live in the address — a bookmark or a reload lands right back here. On narrow windows the theme bar sits above the content instead of to its left. Where an area says “Module off”, your role is not the reason: the “Advanced modules” switch under System is. To prepare a demo account, start at users and roles, then load the demo data under demo and sample data.",
+  "seitenhilfe.admin.nutzer.titel": "Managing one account",
+  "seitenhilfe.admin.nutzer.text":
+    "This single account is yours to handle here: while it is still waiting for approval you get the approve button, once approved the role selector instead. Plus a new password and deletion. A new password ends every open session of that person — they have to sign in again afterwards. The server protects the last approved administrator: it refuses both demotion and deletion, so nobody can lock themselves out. What a role is allowed to do at all is shown in its own card under “Users and roles”.",
+  "seitenhilfe.admin.nutzerNeu.titel": "Creating an account",
+  "seitenhilfe.admin.nutzerNeu.text":
+    "Name, e-mail, a password of at least eight characters with a repeat field against typos, and the role. An account created here is approved immediately and can sign in — unlike one that registered itself and waits for your approval. If something is missing, clicking “Create” names the missing fields; the button is never silently greyed out. Afterwards the account appears in the list under “Users and roles”.",
+  "seitenhilfe.admin.ansichtRolle.titel": "View as role",
+  "seitenhilfe.admin.ansichtRolle.text":
+    "You see the interface the way another role sees it; your real permissions on the server stay administrator. The consequence nobody expects: administration is visible to administrators only. Pick another role here and it disappears in the same instant, taking this card with it. That is why the way back is not this card but “Back to admin view” in the gear menu.",
+  "seitenhilfe.admin.rolle.titel": "What this role may do",
+  "seitenhilfe.admin.rolle.text":
+    "Information, not a switch: at the top this role's freedoms in words, below them the areas its role unlocks, grouped. A “·2” marks an area that additionally needs the “Advanced modules” switch under System — without it the area stays invisible even when the role would suffice. You do not change a person's role here but in their account under “Users and roles”.",
+  "seitenhilfe.admin.demo.titel": "Loading and removing demo data",
+  "seitenhilfe.admin.demo.text":
+    "Two buttons, two different stocks: “Load demo data” creates the general demo stock, the package button below it loads exactly the named demo package. If the general run creates new accounts, their one-time passwords appear here exactly once — a reload loses them, the server will not name them a second time. “Remove all demo data” clears both at once, including the package's building blocks. The demo appearance at the very bottom only switches logo and colours, for every user of this installation; it loads and deletes no data.",
+  "seitenhilfe.admin.werk.titel": "Factory reset",
+  "seitenhilfe.admin.werk.text":
+    "The factory reset deletes all data and then shuts the server down; the application has to be restarted by hand. Hence two stages: first your own password, then the explicit warning. It does not exist in every installation — if this card says “Not available in this installation”, the path is not built into this server, and no switch changes that. Demo data alone is what you remove under demo and sample data instead.",
+  "seitenhilfe.admin.papierkorb.titel": "Recycle bin",
+  "seitenhilfe.admin.papierkorb.text":
+    "Deleted knowledge objects rest here. Each entry names the person who deleted it, the date and the number of days left. “Restore” brings the object back into the library; “Delete permanently” asks once and cannot be undone afterwards. If you do nothing, the server removes the entry by itself once the deadline passes — at the next cleanup run, not to the minute.",
+  "seitenhilfe.admin.audit.titel": "User changes",
+  "seitenhilfe.admin.audit.text":
+    "Pure information without controls: the most recent entries about accounts and sign-in, each line with time, action and the identifier of whoever acted. Nothing can be changed or deleted here — the list is the result of what was done elsewhere. The complete hash-chained trail including its verify button lives under “Security and evidence” in the audit trail.",
+  "seitenhilfe.admin.protokoll.titel": "Audit trail",
+  "seitenhilfe.admin.protokoll.text":
+    "The hash-chained trail of this installation, shown here with its most recent entries in plain words: event, performed by, affected. “Verify chain” really recomputes the chaining and reports one of three outcomes — confirmed, unbroken but not recomputable, or not confirmed; “Print” outputs exactly this extract. Where an identifier stands instead of a name, the line next to it says why — and the reasons mean different things: “Account no longer exists” is a statement about the account, and it is only made after a fully loaded directory in which the identifier is absent. “Loading name” and “Name unavailable” say nothing about the account, only about the retrieval. Next to an affected object the identifier stands with no addition at all: nothing is looked up in the account directory there.",
+  "seitenhilfe.admin.datenschutz.titel": "Privacy and security",
+  "seitenhilfe.admin.datenschutz.text":
+    "A list of the properties this installation really has — no promise and no switch; there is nothing to set here. The box at the foot explicitly separates measured values from target and example values, so that nobody mistakes one for the other in a conversation. “Print” outputs the list as an extract, for a question from legal for instance.",
+  "seitenhilfe.admin.bereitschaft.titel": "Readiness",
+  "seitenhilfe.admin.bereitschaft.text":
+    "The checklist before a demo: AI, validated objects, open reviews, upload limits, external research and demo data — one indicator per row, built from real numbers. It sets nothing; it reads six sources and says what is missing. If one of them fails, you get “not retrievable” with a button that refetches all six instead of a guessed zero. The “Demo data” row leads straight to the card where you load it.",
 };
 
 const nl: typeof de = {
@@ -16008,6 +16105,46 @@ const nl: typeof de = {
   "seitenhilfe.output.titel": "Een document uit gecontroleerde kennis maken",
   "seitenhilfe.output.text":
     "Kies de soort document, vink de kennisobjecten aan die erin horen en zet ze in de volgorde waarin ze moeten staan. Het gemaakte document kun je kopiëren of als Markdown-bestand downloaden; eronder staat uit welke objecten het is ontstaan. Volgende stap: een soort kiezen en de eerste bron aanvinken.",
+  // JOB 3670 — paginahulp van de vier beheerschermen; spiegel van de DE-sleutels. De drie
+  // nagekeken feiten staan bij het DE-blok: de route is alleen voor beheerders, de themabalk
+  // verschuift op smalle vensters naar boven, en een ontbrekend gebied ligt aan trap 2, niet
+  // aan de rol.
+  "seitenhilfe.admin.uebersicht.titel": "Beheer — wat je hier instelt",
+  "seitenhilfe.admin.uebersicht.text":
+    "Zeven thema's: gebruikers en rollen, AI, bronnen en gegevens, demogegevens, veiligheid en bewijs, rapporten en analyse, systeem. Elke regel noemt rechts haar huidige waarde; een klik opent de kaart erachter, en thema en kaart staan daarna in het adres — een bladwijzer of een herlaadbeurt komt precies hier terug. Op smalle vensters staat de themabalk boven de inhoud in plaats van links ernaast. Staat er bij een gebied „Module uit“, dan ligt dat niet aan je rol maar aan de schakelaar „Uitgebreide modules“ onder Systeem. Voor een demotoegang begin je bij gebruikers en rollen en laad je daarna de demogegevens onder demogegevens.",
+  "seitenhilfe.admin.nutzer.titel": "Eén account beheren",
+  "seitenhilfe.admin.nutzer.text":
+    "Dit ene account beheer je hier: wacht het nog op vrijgave, dan staat de vrijgaveknop er; is het vrijgegeven, dan in plaats daarvan de rolkeuze. Daarbij een nieuw wachtwoord en het verwijderen. Een nieuw wachtwoord beëindigt alle open sessies van die persoon — hij moet zich daarna opnieuw aanmelden. De laatste vrijgegeven beheerder beschermt de server: verlagen en verwijderen weigert hij, zodat niemand zichzelf buitensluit. Wat een rol überhaupt mag, staat in haar eigen kaart onder „Gebruikers en rollen“.",
+  "seitenhilfe.admin.nutzerNeu.titel": "Een account aanmaken",
+  "seitenhilfe.admin.nutzerNeu.text":
+    "Naam, e-mail, een wachtwoord van minstens acht tekens met een herhaalveld tegen typefouten, en de rol. Een hier aangemaakt account is meteen vrijgegeven en kan zich aanmelden — anders dan een account dat zichzelf heeft geregistreerd en op jouw vrijgave wacht. Ontbreekt er iets, dan noemt een klik op „Aanmaken“ de ontbrekende velden bij naam; de knop is nooit stil uitgegrijsd. Daarna staat het account in de lijst onder „Gebruikers en rollen“.",
+  "seitenhilfe.admin.ansichtRolle.titel": "Weergave als rol",
+  "seitenhilfe.admin.ansichtRolle.text":
+    "Je ziet de interface zoals een andere rol die ziet; je echte rechten op de server blijven beheerder. Het gevolg waar niemand op rekent: het beheer is alleen voor beheerders zichtbaar. Kies je hier een andere rol, dan verdwijnt het op datzelfde moment, en deze kaart gaat mee. De weg terug loopt daarom niet via deze kaart maar via „Naar adminweergave“ in het tandwielmenu.",
+  "seitenhilfe.admin.rolle.titel": "Wat deze rol mag",
+  "seitenhilfe.admin.rolle.text":
+    "Een inlichting, geen schakelaar: bovenaan de vrijheden van deze rol in woorden, daaronder per groep de gebieden die haar rol vrijgeeft. Een „·2“ markeert een gebied dat daarnaast de schakelaar „Uitgebreide modules“ onder Systeem nodig heeft — zonder die blijft het onzichtbaar, ook als de rol volstaat. De rol van een mens wijzig je niet hier, maar in zijn account onder „Gebruikers en rollen“.",
+  "seitenhilfe.admin.demo.titel": "Demogegevens laden en verwijderen",
+  "seitenhilfe.admin.demo.text":
+    "Twee knoppen, twee verschillende voorraden: „Demogegevens laden“ maakt de algemene demovoorraad aan, de pakketknop eronder laadt precies het genoemde demopakket. Maakt de algemene run nieuwe accounts aan, dan staan hun eenmalige wachtwoorden hier precies één keer — een herlaadbeurt verliest ze, de server noemt ze geen tweede keer. „Alle demogegevens verwijderen“ ruimt beide tegelijk op, ook de bouwstenen van het pakket. Het demo-uiterlijk onderaan wisselt alleen logo en kleuren, voor alle gebruikers van deze installatie; het laadt en verwijdert geen gegevens.",
+  "seitenhilfe.admin.werk.titel": "Fabrieksinstellingen",
+  "seitenhilfe.admin.werk.text":
+    "De fabrieksreset verwijdert alle gegevens en sluit daarna de server af; de toepassing moet met de hand opnieuw worden gestart. Vandaar twee trappen: eerst je eigen wachtwoord, dan de uitdrukkelijke waarschuwing. Hij bestaat niet in elke installatie — staat hier „In deze installatie niet beschikbaar“, dan is de weg op deze server niet ingebouwd, en geen enkele schakelaar verandert daar iets aan. Alleen de demogegevens raak je in plaats daarvan kwijt onder demogegevens.",
+  "seitenhilfe.admin.papierkorb.titel": "Prullenbak",
+  "seitenhilfe.admin.papierkorb.text":
+    "Verwijderde kennisobjecten liggen hier tussen. Per regel staan de mens die verwijderde, de datum en het aantal resterende dagen. „Herstellen“ haalt het object terug in de bibliotheek; „Definitief verwijderen“ vraagt één keer na en is daarna niet meer terug te draaien. Doe je niets, dan verwijdert de server de regel na afloop van de termijn vanzelf — bij de volgende opruimronde, niet op de minuut precies.",
+  "seitenhilfe.admin.audit.titel": "Gebruikerswijzigingen",
+  "seitenhilfe.admin.audit.text":
+    "Een zuivere inlichting zonder bedieningselementen: de jongste regels over accounts en aanmelding, per regel tijdstip, actie en de kenmerk van wie handelde. Hier valt niets te wijzigen en niets te verwijderen — de lijst is het resultaat van wat elders is gedaan. De volledige, hash-geketende keten met haar controleknop staat onder „Veiligheid en bewijs“ in het controleprotocol.",
+  "seitenhilfe.admin.protokoll.titel": "Controleprotocol",
+  "seitenhilfe.admin.protokoll.text":
+    "Het hash-geketende protocol van deze installatie, hier met de jongste regels in gewone woorden: gebeurtenis, uitgevoerd door, betrokkene. „Keten controleren“ rekent de keten werkelijk na en meldt één van drie uitkomsten — bevestigd, sluitend maar niet na te rekenen, of niet bevestigd; „Afdrukken“ geeft precies dit uittreksel. Staat er in plaats van een naam alleen een kenmerk, dan zegt de regel ernaast waarom — en die redenen betekenen iets verschillends: „Account bestaat niet meer“ is een uitspraak over het account, en die valt pas na een volledig geladen directory waarin het kenmerk ontbreekt. „Naam wordt geladen“ en „Naam niet beschikbaar“ zeggen daarentegen niets over het account, alleen over het ophalen. Bij een betrokken object staat het kenmerk zonder enige toevoeging: daar wordt in de accountdirectory helemaal niet opgezocht.",
+  "seitenhilfe.admin.datenschutz.titel": "Privacy en veiligheid",
+  "seitenhilfe.admin.datenschutz.text":
+    "Een lijst van de eigenschappen die deze installatie werkelijk heeft — geen belofte en geen schakelaar; er valt hier niets in te stellen. Het kader onderaan scheidt uitdrukkelijk gemeten waarden van streef- en voorbeeldwaarden, zodat niemand in een gesprek het een voor het ander houdt. „Afdrukken“ geeft de lijst als uittreksel, bijvoorbeeld voor een vraag van de juridische afdeling.",
+  "seitenhilfe.admin.bereitschaft.titel": "Gereedheid",
+  "seitenhilfe.admin.bereitschaft.text":
+    "De checklist vóór een demonstratie: AI, gevalideerde objecten, openstaande toetsingen, uploadgrenzen, extern onderzoek en demogegevens — per regel een stoplicht uit echte getallen. Ze stelt niets in; ze leest zes bronnen en zegt wat ontbreekt. Valt er één uit, dan staat er „niet opvraagbaar“ met een knop die alle zes opnieuw ophaalt, in plaats van een geraden nul. De regel „Demogegevens“ leidt rechtstreeks naar de kaart waar je ze laadt.",
 };
 
 void i18n.use(initReactI18next).init({

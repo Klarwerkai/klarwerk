@@ -12,6 +12,9 @@ import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import { useAnalytics, useAudit, useDirectory, useValidationBoard } from "../api/hooks";
 import { useToast } from "../app/ToastContext";
+// JOB 3670: die Seitenhilfe dieser drei Karten — je Karte ein eigener Text, weil es drei
+// Bildschirme sind. `HelpTip` rendert nichts; er meldet beim Sammler an, das Zahnrad listet.
+import { HelpTip } from "../components/HelpTip";
 import { StaleMarker } from "../components/LoadState";
 import { Abfragehuelle, Fehlerbox } from "../components/einstellungen/Abfragehuelle";
 import { Detailkarte } from "../components/einstellungen/Detailkarte";
@@ -167,6 +170,37 @@ export function PruefprotokollDetail({ onZurueck }: { onZurueck: () => void }): 
           { titel: t("adm.sich.auditTitle"), text: t("adm.sich.auditIntro") },
         ]}
       >
+        {/* JOB 3670: AUSSERHALB der Hülle — der Erklärtext gilt auch, während die Kette noch lädt
+            oder ihr Abruf gescheitert ist.
+
+            RUNDE 2 · KORREKTURPFLICHT 1 DES PRÜFERS. Hier stand: „steht neben einem Beteiligten nur
+            eine Kennung, konnte das Verzeichnis nicht gelesen werden, und die Karte behauptet dann
+            nichts über das Konto." Beides war falsch, und BEN hat es gemessen. Eine Kennung ohne
+            Namen hat VIER verschiedene Ursachen, und `lib/auditEventDetail.ts` hält sie streng
+            auseinander — jede mit ihrem eigenen Hinweis neben der Kennung:
+
+              `audit.detail.nameLoading`     Verzeichnis lädt, oder es läuft eine Auffrischung nach
+                                             (`auditEventDetail.ts:168,180`) — Aussage über den
+                                             ABRUF, nicht über das Konto.
+              `audit.detail.nameUnavailable` Abruf gescheitert, oder der Bestand ist veraltet
+                                             (`:171,184`) — ebenfalls nur über den Abruf.
+              `audit.detail.accountGone`     Verzeichnis ERFOLGREICH und abgeschlossen geladen, die
+                                             Kennung fehlt darin (`:187`). Das ist sehr wohl eine
+                                             Tatsachenaussage ÜBER das Konto: „Konto nicht mehr
+                                             vorhanden". Genau dieser Fall fehlte im alten Text.
+              (kein Hinweis)                 Ein Ziel, das gar kein Konto ist (`objektZeile`,
+                                             `:196-203`) — dort wird nichts nachgeschlagen, und nur
+                                             DORT behauptet die Karte wirklich nichts.
+
+            Der Hilfetext nennt jetzt alle vier und sagt, welche eine Aussage ist und welche nicht.
+            Gepinnt wird das nicht durch Abschreiben, sondern ABGELEITET: der Wächter
+            `tests/seitenhilfe-admin/protokollhilfe-geladene-zustaende.test.tsx` stellt die drei
+            Verzeichnislagen mit echten Daten her, liest den Hinweis, den die Karte TATSÄCHLICH
+            zeichnet, und verlangt genau dieses Wort im Hilfetext. */}
+        <HelpTip
+          title={t("seitenhilfe.admin.protokoll.titel")}
+          body={t("seitenhilfe.admin.protokoll.text")}
+        />
         <Abfragehuelle abfrage={audit}>
           {(entries) => {
             const recent = entries.slice(-12).reverse();
@@ -258,6 +292,13 @@ export function DatenschutzDetail({ onZurueck }: { onZurueck: () => void }): JSX
         kopfAktion={<DruckKnopf />}
         hilfe={[{ titel: t("adm.sich.dataTitle"), text: t("adm.sich.dataHelp") }]}
       >
+        {/* JOB 3670: „einstellen lässt sich hier nichts" ist der ehrliche Kern dieser Karte — sie
+            rendert eine feste Liste (`lib/securityStatements.ts`) und den Abgrenzungskasten,
+            kein einziges Bedienelement ausser dem Drucken. */}
+        <HelpTip
+          title={t("seitenhilfe.admin.datenschutz.titel")}
+          body={t("seitenhilfe.admin.datenschutz.text")}
+        />
         <ul className="space-y-2.5">
           {SECURITY_POINTS.map((p) => (
             <li key={p.id} className="flex items-start gap-2.5">
@@ -351,6 +392,13 @@ export function BereitschaftDetail({
           { titel: t("adm.ready.title"), text: t("adm.ready.note") },
         ]}
       >
+        {/* JOB 3670: VOR der Weiche, nicht in einem ihrer Zweige. Gerade der Fehlerzustand ein paar
+            Zeilen tiefer ist der Moment, in dem der Satz über den Wiederholknopf gebraucht wird —
+            hinge die Hilfe im Erfolgszweig, wäre sie genau dann weg. */}
+        <HelpTip
+          title={t("seitenhilfe.admin.bereitschaft.titel")}
+          body={t("seitenhilfe.admin.bereitschaft.text")}
+        />
         {/* AUFTRAG-mega3 Block B (bens D9): dauerhaft gescheiterte tragende Quelle ⇒ ehrlicher
             Fehlerzustand mit Wiederholen; Stale-Daten bleiben sichtbar, aber markiert. */}
         {ohneBestand ? (

@@ -11,7 +11,11 @@
 // Absatz, ein Hinweis, eine Einleitung — alles davon zählt. Deshalb steht darunter die Kalibrierung
 // K: ein eingefügter Satz MUSS das Messer ausschlagen lassen, sonst wäre die Zusage still grün.
 //
-// Dazu die Quelltextzählung: `HelpTip` kommt in den Einstellungs- und Profilseiten NULL mal vor.
+// Dazu der Quelltextfall Q. Er hat am 04.09. gezählt, dass `HelpTip` in den Einstellungs- und
+// Profilseiten NULL mal vorkommt — damals zeichnete der Baustein noch eine Sprechblase, und seine
+// Abwesenheit war gleichbedeutend mit „hier steht kein Erklärtext". JOB 3060 hat ihn am selben Tag
+// ausgehöhlt: er rendert seither `null`. Seit JOB 3670 pinnt Q deshalb die VORAUSSETZUNG statt des
+// Stellvertreters — `HelpTip` zeichnet nichts —, und die Wirkung messen weiter D und T in Chromium.
 // Die zwölf Aufrufe von gestern sind nicht gelöscht, sondern in das eine „?"-Menü je Detailkarte
 // gewandert (`Detailkarte.tsx`) — was dort steht, prüft `tests/design/h6-funktionsinventar.test.ts`.
 import { existsSync, readFileSync, readdirSync } from "node:fs";
@@ -349,23 +353,80 @@ describe("JOB 3065 H6 · kein Erklärtext im Sichtfeld — gemessen in Chromium"
     );
   }, 60_000);
 
-  it("Q · `HelpTip` kommt in den Einstellungs- und Profilseiten NULL mal vor", () => {
+  // ================================================================================================
+  // JOB 3670 — NACHFÜHRUNG VON FALL Q: DIE VORAUSSETZUNG WAR WEGGEFALLEN, DIE ZUSAGE NICHT.
+  // ================================================================================================
+  //
+  // WAS HIER STAND: „`HelpTip` kommt in den Einstellungs- und Profilseiten NULL mal vor." Das war am
+  // 04.09. die richtige Zusage, denn damals ZEICHNETE `HelpTip` etwas: einen „?"-Knopf neben dem
+  // Feld, der ein Popover mit Titel, Text und Link öffnete. Ihn aus diesen Seiten zu verbannen war
+  // gleichbedeutend mit „hier steht kein Erklärtext im Sichtfeld".
+  //
+  // WAS SICH AM SELBEN TAG GEÄNDERT HAT: JOB 3060 hat `HelpTip` ausgehöhlt. Er rendert seither
+  // NICHTS (`apps/web/src/components/HelpTip.tsx`: Rückgabetyp `null`, keine einzige JSX-Marke im
+  // ganzen Baustein); er meldet Titel und Text nur noch beim Sammler an, und gelesen werden sie im
+  // Zahnrad unter „Seitenhilfe". Damit misst die alte Zeile seit dem 04.09. nicht mehr, was sie zu
+  // messen glaubt: ein Vorkommen von `HelpTip` ist kein Erklärtext im Sichtfeld mehr.
+  //
+  // WARUM DAS KEINE ABSCHWÄCHUNG IST — und das ist der Punkt, an dem dieser Fall nachgeführt und
+  // nicht gestrichen wird: Die Zusage „kein Erklärtext im Sichtfeld" hängt gar nicht an dieser
+  // Zeile. Sie hängt am TEXTMESSER (Fälle T und D oben), und der misst den ECHTEN sichtbaren DOM in
+  // Chromium — er ist von dieser Änderung unberührt und bleibt grün. Was hier stand, war ein
+  // Quelltext-STELLVERTRETER für eine Bauart, die es nicht mehr gibt.
+  //
+  // WAS JETZT HIER STEHT, ist die VORAUSSETZUNG dieses Stellvertreters, ausdrücklich gemacht:
+  // `HelpTip` darf nichts zeichnen. Das fängt die echte Rückkehr des alten Zustands — jemand baut
+  // dem Baustein wieder eine Sprechblase ein — an ihrer Wurzel, und zwar für ALLE Flächen auf
+  // einmal statt nur für sechs Dateien. Die Fälle D und T darunter messen weiterhin die Wirkung.
+  it("Q · `HelpTip` zeichnet nichts — die Voraussetzung, auf der Fall D und T ruhen", () => {
+    const pfad = join(WURZEL, "apps/web/src/components/HelpTip.tsx");
+    // Die Komponente ist NICHT gelöscht — sie trägt die Seitenhilfe aller Flächen.
+    expect(existsSync(pfad), "HelpTip.tsx fehlt ganz").toBe(true);
+    const quelle = readFileSync(pfad, "utf8");
+    // Kalibrierung: es wurde wirklich etwas gelesen (eine leere Datei wäre trivial grün).
+    expect(quelle.length, "HelpTip.tsx ist leer — der Fall hat nichts gemessen").toBeGreaterThan(
+      200,
+    );
+    // 1. Der Rückgabetyp ist `null`. Ein `JSX.Element` hier wäre die Rückkehr der Sprechblase.
+    expect(
+      /export function HelpTip\([\s\S]*?\):\s*null\s*\{/.test(quelle),
+      "HelpTip gibt nicht mehr `null` zurück — zeichnet er wieder etwas, steht Erklärtext im Sichtfeld",
+    ).toBe(true);
+    // 2. Und im ganzen Baustein steht keine einzige JSX-Marke. Der Typ allein genügte nicht:
+    //    ein Nebenzweig könnte trotzdem etwas in ein Portal zeichnen.
+    for (const marke of ["/>", "</"]) {
+      expect(
+        quelle.includes(marke),
+        `HelpTip enthält die JSX-Marke „${marke}" — er zeichnet wieder`,
+      ).toBe(false);
+    }
+    // 3. Er meldet weiter beim EINEN Sammler an; eine zweite Hilfemechanik entsteht nicht.
+    expect(
+      quelle.includes("useSeitenhilfeAnmeldung"),
+      "HelpTip meldet sich nicht mehr bei der Seitenhilfe an — die Texte wären dann nirgends lesbar",
+    ).toBe(true);
+
+    // 4. Die Einstellungs- und Profilseiten gibt es weiterhin, und sie holen ihre Hilfe
+    //    ausschliesslich über die zwei erlaubten Wege: den `hilfe`-Prop der `Detailkarte`
+    //    (das „?"-Menü der Karte) und diesen stummen `HelpTip`. Ein dritter Weg — eine eigene
+    //    Sprechblase, ein eigenes Popover — wäre wieder Erklärtext im Sichtfeld.
     const seiten = join(WURZEL, "apps/web/src/pages");
     const dateien = readdirSync(seiten).filter(
       (d) => (d.startsWith("Admin") || d.startsWith("Profile")) && d.endsWith(".tsx"),
     );
-    // Kalibrierung: die Dateien gibt es überhaupt (sonst zählte der Fall eine leere Menge).
-    expect(dateien.length).toBeGreaterThanOrEqual(6);
-    const treffer: string[] = [];
+    expect(
+      dateien.length,
+      "die Einstellungs-/Profilseiten sind verschwunden",
+    ).toBeGreaterThanOrEqual(6);
+    const fremdeHilfe: string[] = [];
     for (const d of dateien) {
-      const quelle = readFileSync(join(seiten, d), "utf8");
-      const anzahl = (quelle.match(/HelpTip/g) ?? []).length;
-      if (anzahl > 0) {
-        treffer.push(`${d}: ${anzahl}`);
+      const seite = readFileSync(join(seiten, d), "utf8");
+      // `HilfeMenue` ist der SICHTBARE Teil der Detailkarte. Wer ihn selbst montiert, stellt eine
+      // zweite Sprechblase neben die der Karte.
+      if (/<HilfeMenue\b/.test(seite)) {
+        fremdeHilfe.push(`${d}: eigenes <HilfeMenue>`);
       }
     }
-    expect(treffer, `HelpTip lebt noch: ${treffer.join(", ")}`).toEqual([]);
-    // Und die Komponente selbst ist NICHT gelöscht — sie trägt die Hilfe anderer Flächen weiter.
-    expect(existsSync(join(WURZEL, "apps/web/src/components/HelpTip.tsx"))).toBe(true);
+    expect(fremdeHilfe, `zweite Hilfemechanik: ${fremdeHilfe.join(", ")}`).toEqual([]);
   });
 });

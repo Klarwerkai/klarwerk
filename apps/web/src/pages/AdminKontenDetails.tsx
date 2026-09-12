@@ -12,6 +12,11 @@ import { useUsers } from "../api/hooks";
 import { useRole } from "../app/RoleContext";
 import { useToast } from "../app/ToastContext";
 import { NAV_GROUPS, ROLES, type Role, roleAllows } from "../app/navigation";
+// JOB 3670: die Seitenhilfe dieser vier Karten. `HelpTip` rendert nichts, er meldet Titel und Text
+// beim Sammler an (`shell/SeitenhilfeContext.tsx`); gelesen wird im Zahnrad unter „Seitenhilfe".
+// JE KARTE EIN EIGENER TEXT: die vier Karten sind vier Bildschirme, und ein gemeinsamer Satz an der
+// Dateiwurzel stünde auf allen vieren gleich und erklärte keine.
+import { HelpTip } from "../components/HelpTip";
 import { Abfragehuelle } from "../components/einstellungen/Abfragehuelle";
 import { Detailkarte } from "../components/einstellungen/Detailkarte";
 import { freiheitenSchluessel, kiWahlFrei } from "../components/einstellungen/rollenFreiheiten";
@@ -75,12 +80,28 @@ export function NutzerDetail({
   // genau EIN Knopf trägt die Warnfarbe, keiner die neutrale Vorgabe).
   const [confirmRemove, setConfirmRemove] = useState(false);
 
+  /**
+   * JOB 3670: die Seitenhilfe DIESER Karte — und sie steht in BEIDEN Zweigen.
+   *
+   * Sie beschreibt den Bildschirm, nicht seinen Inhalt: welche Handgriffe hier wohnen und was sie
+   * bewirken. Das gilt auch, solange die Kontenliste noch lädt oder ihr Abruf gescheitert ist —
+   * hinge sie am geladenen Nutzer, stünde im Zahnrad genau dann die Leermeldung, wenn jemand
+   * wissen will, wo er gelandet ist. Ein Bauteil, zwei Ausgänge; keine zweite Fassung.
+   */
+  const seitenhilfe = (
+    <HelpTip
+      title={t("seitenhilfe.admin.nutzer.titel")}
+      body={t("seitenhilfe.admin.nutzer.text")}
+    />
+  );
+
   // JOB 3065 R2: „Dieses Konto gibt es nicht mehr" ist eine Tatsachenaussage. Sie darf NUR aus
   // einer erfolgreichen Antwort entstehen, in der das Konto fehlt — nicht daraus, dass die Liste
   // gerade lädt oder ihr Abruf gescheitert ist (dieselbe Klasse wie LEHREN 3002/3027).
   if (!nutzer) {
     return (
       <Detailkarte titel={t("adm.sec.konten")} onZurueck={onZurueck} testId="detail-nutzer">
+        {seitenhilfe}
         <Abfragehuelle abfrage={users}>
           {() => <p className="text-[12.5px] text-muted-2">{t("einst.konten.nutzerWeg")}</p>}
         </Abfragehuelle>
@@ -102,6 +123,7 @@ export function NutzerDetail({
   // Rolle, Freigeben, Passwort, Löschen — liegt jetzt in der Hülle und trägt deren Auskunft.
   return (
     <Detailkarte titel={nutzer.name} onZurueck={onZurueck} testId="detail-nutzer">
+      {seitenhilfe}
       <Abfragehuelle abfrage={users} testId="huelle-nutzer">
         {() => (
           <>
@@ -254,6 +276,15 @@ export function NutzerAnlegenDetail({ onZurueck }: { onZurueck: () => void }): J
       testId="detail-nutzer-neu"
       hilfe={[{ titel: t("adm.createTitle"), text: t("adm.createHint") }]}
     >
+      {/* JOB 3670: Das „?"-Menü der Karte (`hilfe` oben) und die Seitenhilfe im Zahnrad sind zwei
+          Orte mit zwei Umfängen, keine zwei Mechaniken: `adm.createHint` erklärt seit JOB 3065 das
+          FORMULAR dieser Karte, der Eintrag hier erklärt den BILDSCHIRM — Folge der Anlage
+          (sofort freigegeben) und nächster Schritt. Eine zweite Hilfemechanik entsteht dadurch
+          nicht; `HelpTip` bleibt der eine Weg in die Seitenhilfe. */}
+      <HelpTip
+        title={t("seitenhilfe.admin.nutzerNeu.titel")}
+        body={t("seitenhilfe.admin.nutzerNeu.text")}
+      />
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label={t("adm.name")}>
           <TextInput
@@ -345,6 +376,13 @@ export function AnsichtAlsRolleDetail({ onZurueck }: { onZurueck: () => void }):
   const { role, setRole } = useRole();
   return (
     <Detailkarte titel={t("role.viewAs")} onZurueck={onZurueck} testId="detail-ansicht-rolle">
+      {/* JOB 3670: Diese Karte hat die überraschendste Folge der ganzen Verwaltung — eine fremde
+          Rolle nimmt die Verwaltung weg (Kommentar unten, `routes.tsx:184-187`). Genau das steht im
+          Hilfetext, samt dem Rückweg, der die Sperre überlebt (`shell/RollenVorschau.tsx:104`). */}
+      <HelpTip
+        title={t("seitenhilfe.admin.ansichtRolle.titel")}
+        body={t("seitenhilfe.admin.ansichtRolle.text")}
+      />
       {/* ============================================================================================
           JOB 3124 UX-12 · EIN NAME JE ROLLE — UND ER PASST AUCH AUF DIE SCHMALE FLÄCHE.
           ============================================================================================
@@ -437,6 +475,13 @@ export function RolleDetail({
   const worte = freiheitenSchluessel(rolle).map((k) => t(k));
   return (
     <Detailkarte titel={t(`role.name.${rolle}`)} onZurueck={onZurueck} testId="detail-rolle">
+      {/* JOB 3670: Der Hilfetext nennt die Ursache, an der JOB 3741 gescheitert ist — ein „·2"
+          markiert einen Bereich, den `canSee` (`app/navigation.ts:492-497`) auch bei AUSREICHENDER
+          Rolle ausblendet, solange Stufe 2 aus ist. Nicht die Rolle ist dann der Grund. */}
+      <HelpTip
+        title={t("seitenhilfe.admin.rolle.titel")}
+        body={t("seitenhilfe.admin.rolle.text")}
+      />
       <div className="text-[13px] text-muted">
         {worte.length > 0 ? worte.join(", ") : t("einst.wert.keine")}
         {kiWahlFrei(rolle) ? ` · ${t("einst.rollen.kiWahl")}` : ""}
