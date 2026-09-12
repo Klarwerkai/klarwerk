@@ -68,8 +68,23 @@ describe("JOB 3593 · der eigene Rollbereich der Warteschlange", () => {
     // Beide Teile sind nötig und tun Verschiedenes: die Deckelung schafft den Überlauf, erst die
     // Rollregel macht das Element zu einem Rollbereich. Ohne eines von beiden sucht
     // `scrollIntoView` weiter nach aussen und bewegt wieder die Hülle samt Karte.
-    expect(klassen).toContain(`${BREITE_STUFE}max-h-[70vh]`);
+    //
+    // JOB 3625: Der Deckel ist keine Prozentzahl mehr (`max-h-[70vh]` rechnete den Kopf über der
+    // Liste nicht mit, gemessen in `tests/design/job2935-validierung-fussband.test.ts`). Er
+    // entsteht jetzt aus dem Flex-Kasten der Spalte: `min-h-0` erlaubt der Liste — und nur ihr —,
+    // unter ihre Inhaltshöhe zu schrumpfen, und der Rest der Spalte behält seine natürliche Höhe.
+    expect(klassen).toContain(`${BREITE_STUFE}min-h-0`);
     expect(klassen).toContain(`${BREITE_STUFE}overflow-y-auto`);
+    // Ohne die Spalte darüber wäre `min-h-0` wirkungslos: Schrumpfen kann nur, was in einer
+    // Flex-Spalte mit begrenzter Höhe steht. Deshalb hängt die Zusage an BEIDEN Stellen, und
+    // beide stehen hier.
+    const spalte = ul?.parentElement;
+    const spaltenKlassen = (spalte?.className ?? "").split(/\s+/);
+    for (const k of ["flex", "h-full", "min-h-0", "flex-col"]) {
+      expect(spaltenKlassen, `der Spalte fehlt ${BREITE_STUFE}${k}`).toContain(
+        `${BREITE_STUFE}${k}`,
+      );
+    }
   });
 
   it("F2 · und keine dieser Regeln gilt im schmalen Fenster — jede trägt die Breitenstufe", async () => {
@@ -79,7 +94,9 @@ describe("JOB 3593 · der eigene Rollbereich der Warteschlange", () => {
     // Höhe deckelt oder Überlauf regelt, gilt nur in der breiten Bauform. Käme später eine dritte
     // Rollregel ohne `lg:` dazu, fiele dieser Fall — der schmale Weg soll unberührt bleiben
     // (dort führt die bewusste Auswahl den Blick zur Karte, `Validation.tsx:1127-1137`).
-    const rollend = klassen.filter((k) => /(^|:)(max-h-|overflow-)/.test(k));
+    // JOB 3625: `min-h-` gehört seit der Ablösung von `70vh` in dieselbe Reihe — es ist jetzt der
+    // Teil, der die Höhe der Liste überhaupt deckelbar macht.
+    const rollend = klassen.filter((k) => /(^|:)(max-h-|min-h-|overflow-)/.test(k));
     expect(rollend.length, "keine einzige Rollregel gefunden — F2 prüfte nichts").toBeGreaterThan(
       0,
     );

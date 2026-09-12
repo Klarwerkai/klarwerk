@@ -1084,13 +1084,24 @@ export function Validation(): JSX.Element {
   }
 
   return (
-    <div className="mx-auto max-w-[1040px]">
+    // JOB 3625: In der BREITEN Bauform ist die Fläche so hoch wie der Platz, den die Hülle ihr
+    // lässt (`AppShell.tsx:144` reicht ihre Höhe über `kw-inhalt h-full` durch) — und nicht so
+    // hoch wie ihr Inhalt. Nur so kann die Liste weiter unten ihren Deckel aus dem WIRKLICH
+    // verfügbaren Platz nehmen statt aus einer Prozentzahl vom Fenster. Alles daran trägt `lg:`;
+    // im schmalen Fenster wächst die Fläche wie bisher mit ihrem Inhalt.
+    <div className="mx-auto max-w-[1040px] lg:flex lg:h-full lg:flex-col">
       {kopf}
       {isDemoContext(params) ? <DemoBanner surface="validation" /> : null}
       {schmal ? facetSchiene : null}
-      <div data-testid="pruefen-flaeche" className="flex flex-col items-start gap-6 lg:flex-row">
+      <div
+        data-testid="pruefen-flaeche"
+        className="flex flex-col items-start gap-6 lg:min-h-0 lg:flex-1 lg:flex-row"
+      >
         {/* ---- Die Warteschlange (Pruefen.dc.html Z.43–50) ---------------------------------- */}
-        <div className="w-full shrink-0 lg:w-[260px]">
+        {/* `lg:h-full` holt die Höhe der Fläche in die Spalte (`items-start` streckt sie nicht von
+            selbst), `lg:min-h-0` erlaubt ihren Kindern, kleiner zu werden als ihr Inhalt. Erst
+            beides zusammen macht die Liste unten deckelbar. */}
+        <div className="w-full shrink-0 lg:flex lg:h-full lg:w-[260px] lg:min-h-0 lg:flex-col">
           {lage.auffrischungGescheitert ? <PruefenNichtFrisch /> : null}
           {lage.lage === "laedt" ? <PruefenPlatzhalter /> : null}
           {lage.lage === "erstfehler" ? (
@@ -1113,10 +1124,27 @@ export function Validation(): JSX.Element {
             // keinen rollbaren Vorfahren innerhalb der Fläche und bewegte den Hauptbereich der
             // Hülle; die Karte wanderte dabei mit aus dem Bild (Zahlen an `auswahlSchieben`).
             //
-            // `70vh` ist kein gegriffener Wert, sondern das Maß, das dieselbe Fläche für ihr
-            // Menüblatt schon benutzt (`PruefenMenue.tsx:106`). Es hält die Liste vollständig im
-            // Fenster — und genau das ist die Bedingung dafür, dass `scrollIntoView` nach ihr
-            // keinen weiteren Vorfahren mehr rollen muss.
+            // JOB 3625: DER DECKEL IST KEINE PROZENTZAHL MEHR. JOB 3593 hat ihn auf `70vh` gesetzt
+            // und dazu behauptet, das halte die Liste vollständig im Fenster. Das stimmte nicht:
+            // Prozent vom Fenster rechnet den Kopf ÜBER der Liste nicht mit. GEMESSEN am 11.09.
+            // (`tests/design/job2935-validierung-fussband.test.ts`, Block L, Cloud-Lauf
+            // fd8f48791cf0b46b1eb58b04): der Kopf ist 138,5 px hoch und von der Fensterhöhe
+            // unabhängig; die Liste reichte damit bis 768,5 px, während der sichtbare Teil der
+            // Hülle schon bei 683 px endete. Diese 85,5 px Überhang sind genau die 86 px, die die
+            // Hülle danach doch noch rollte (`archiv/3593/runde-1/RUECKGABE.md:64`, dort als
+            // unerklärt notiert) — und mit ihr wanderte die Karte 3,5 px unter das Kopfband. Bei
+            // 1280×420 waren es 205,5 px Überhang und 206 px Hüllenbewegung.
+            //
+            // STATTDESSEN NIMMT DIE LISTE DEN PLATZ, DER WIRKLICH DA IST: Die Spalte darüber ist
+            // eine Flex-Spalte in voller Höhe der Fläche; `lg:min-h-0` erlaubt dieser Liste — und
+            // nur ihr —, unter ihre Inhaltshöhe zu schrumpfen. Alles über ihr (Kopf der Fläche,
+            // der Hinweis auf einen nicht frischen Stand) behält seine natürliche Höhe und wird
+            // damit automatisch abgezogen. Ein Wachsen gibt es nicht (`flex-grow` bleibt 0): eine
+            // kurze Liste bleibt so hoch wie ihre Einträge.
+            //
+            // Erst dadurch liegt die Liste vollständig im sichtbaren Teil der Hülle — und genau das
+            // ist die Bedingung dafür, dass `scrollIntoView` nach ihr keinen weiteren Vorfahren
+            // mehr rollen muss.
             //
             // Der SCHMALE Weg bleibt unberührt (`lg:` greift erst ab 1024 px): dort steht die Karte
             // unter der Liste, nicht neben ihr, und die bewusste Auswahl führt den Blick ausdrücklich
@@ -1124,7 +1152,7 @@ export function Validation(): JSX.Element {
             <ul
               ref={warteschlangeRef}
               data-testid="pruefen-warteschlange"
-              className="flex flex-col gap-1 lg:max-h-[70vh] lg:overflow-y-auto"
+              className="flex flex-col gap-1 lg:min-h-0 lg:overflow-y-auto"
               onKeyDown={(e) => {
                 if (e.key !== "ArrowDown" && e.key !== "ArrowUp") {
                   return;
