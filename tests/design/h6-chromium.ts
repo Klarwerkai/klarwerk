@@ -130,6 +130,12 @@ export interface Seite {
   waitForFunction(fn: BrowserFn, arg?: unknown, opts?: Record<string, unknown>): Promise<unknown>;
   evaluate<T>(fn: BrowserFn, arg?: unknown): Promise<T>;
   on(ereignis: string, hoerer: (arg: unknown) => void): void;
+  /**
+   * JOB 3587: die Pause ZWISCHEN zwei Abfragen eines Zustands — nicht die Wartezeit AUF ihn. Der
+   * Unterschied steht bei `setzeSprache` unten; gewartet wird dort auf `<html lang>`, diese
+   * Millisekunden halten nur die Abfrageschleife davon ab, den Browser zu belagern.
+   */
+  waitForTimeout(ms: number): Promise<void>;
 }
 interface Browser {
   version(): string;
@@ -360,6 +366,223 @@ export async function wechsle(stand: Stand, pfad: string, warteAuf: string): Pro
   } catch (e) {
     stand.fehler = String(e).split("\n").slice(0, 3).join(" | ");
   }
+}
+
+// ==================================================================================================
+// JOB 3587 · DIE SPRACHWAHL WOHNT AUCH AN DIESEM PRÜFSTAND IN DER VORRICHTUNG — EINMAL, HIER.
+// ==================================================================================================
+//
+// WARUM HIER UND NICHT IN DEN TESTDATEIEN. Derselbe Griff, den JOB 3576 für den anderen Prüfstand
+// gemacht hat (`tests/design/h4-harness.ts:344-352`): `tests/d1-meine-entwuerfe/`
+// `zugang-schmal-chromium.test.ts:260-281` hatte sich den Weg „Speicher setzen, neu laden, warten"
+// selbst gebaut, und die nächste Datei, die eine Sprache braucht, hätte ihn abgeschrieben. Die
+// zweite Abschrift ist die, die beim nächsten Umbau vergessen wird. Wer die Sprache für eine ANDERE
+// h6-Fläche braucht, übergibt hier seinen Warteanker, statt sich einen zweiten Setzer zu bauen.
+//
+// WARUM ES TROTZDEM ZWEI SETZER IM HAUS GIBT (hier und `h4-harness.ts:403`), und das kein Doppel
+// ist: es sind zwei getrennte Bühnen mit je eigenem Stand-Typ, eigener Seite und eigenem
+// Warteanker — h4 wartet auf die Ortszeile der Bibliothek, h6 auf den Anker, den der Aufrufer
+// nennt. Ein gemeinsamer dritter Setzer müsste beide Stände kennen; das wäre eine Abstraktion über
+// genau zwei Fälle. Was wirklich EINE Quelle hat, ist der Speicherschlüssel des Produkts, und der
+// steht im Produkt (`apps/web/src/lib/sprachwahl.ts:23`).
+//
+// ADDITIV: `starte` bleibt unverändert und setzt von sich aus KEINE Sprache. Was ohne Zutun gilt,
+// ist damit weiterhin die Vorgabe des Produkts (`lib/sprachwahl.ts:26`, `STANDARD_SPRACHE = "de"`)
+// — alle Bestandsläufe dieses Prüfstands messen weiter Deutsch.
+
+/** Der Speicherschlüssel der Sprachwahl des Produkts (`apps/web/src/lib/sprachwahl.ts:23`). */
+const SPRACHE_SCHLUESSEL = "kw.sprache";
+
+/** Wie lange auf die angewandte Sprache gewartet wird, bevor der Schritt aufgibt. */
+const SPRACHE_FRIST_MS = 30_000;
+
+/** Der Abstand zwischen zwei Blicken auf den Zustand — keine Wartezeit AUF ihn. */
+const SPRACHE_TAKT_MS = 100;
+
+/** In der Seite: die Sprachwahl des Produkts in den Speicher schreiben. */
+const SPRACHE_SETZEN =
+  "([schluessel, wert]) => { try { localStorage.setItem(schluessel, wert); } catch (e) {} return null; }";
+
+/** In der Seite: die angewandte Sprache und der Warteanker mit dem Text, den er wirklich zeigt. */
+const SPRACHE_LESEN = `(sel) => {
+  const anker = document.querySelector(sel);
+  return {
+    lang: document.documentElement.lang,
+    da: anker !== null,
+    text: anker ? (anker.innerText || '').replace(/\\s+/g, ' ').trim().slice(0, 160) : null,
+  };
+}`;
+
+/**
+ * Die Sprachwahl des Produkts setzen, die Seite neu laden und warten, bis die Sprache WIRKLICH
+ * angewandt ist.
+ *
+ * Der Rückkehrpunkt ist ein ZUSTAND und keine Frist (Lehre JOB 3152 T1b): gewartet wird, bis das
+ * Produkt selbst sagt, dass es diese Sprache spricht (`<html lang>`, gesetzt von
+ * `apps/web/src/lib/htmlLang.ts`) UND der übergebene Anker gezeichnet ist. Ein `waitForTimeout` an
+ * dieser Stelle wäre auf einem leeren Rechner zu lang und auf einem vollen zu kurz.
+ *
+ * DER ANKER IST FLÄCHENUNABHÄNGIG und kommt vom Aufrufer — voreingestellt ist das Kopfband, das auf
+ * JEDER Fläche dieses Prüfstands steht. Damit trägt der Schritt `/start` ebenso wie `/admin` oder
+ * `/profil`, ohne dass jemand eine zweite Fassung braucht.
+ *
+ * GEWARTET WIRD AUSDRÜCKLICH NICHT AUF DIE ERWARTETEN BESCHRIFTUNGEN, so naheliegend das wäre. Ein
+ * Setzer, der auf sie wartet, verwandelt JEDE falsche Übersetzung in eine Zeitüberschreitung — und
+ * nimmt dem aufrufenden Fall die Aussage weg, die er treffen soll: er könnte nie mehr mit
+ * „erwartet X, gefunden Y" rot werden. Gemessen, nicht befürchtet: genau das ist JOB 3576 in
+ * seiner ersten Fassung passiert (`h4-harness.ts:387-392`). Der Setzer stellt die Lage her, der
+ * Fall urteilt.
+ *
+ * VIER AUSGÄNGE, alle mit dem, was ein Mensch zum Weiterkommen braucht:
+ *   · die Seite meldet einen `pageerror` → Ende mit dessen Text (§9: keine Wartezeit verstreichen
+ *     lassen, wenn die Fläche schon kaputt ist); gezählt werden nur NEUE Fehler dieses Schritts.
+ *     GEWACHT WIRD AB DEM ERSTEN AUGENBLICK, auch WÄHREND der Aufbau noch läuft — das ist BENs
+ *     Korrekturpflicht 3 an Runde 1: dort stand die Fehlerprüfung hinter dem `await goto(...)`, und
+ *     eine Seite, die beim Aufbau abstürzt und dann hängt, kam als Navigations-Zeitüberschreitung
+ *     heraus. Gemessen in `tests/chr-navigation-sprachen/sprachschritt-ausgaenge.test.ts`, Fall A2:
+ *     vorher 4004 ms bis zum Ende der Navigation, jetzt der Text des Fehlers.
+ *   · der Aufbau selbst scheitert → Ende mit dem Pfad UND dem Fehler des Aufbaus.
+ *   · die Frist läuft ab, der Anker stand aber da → erwartete Sprache, angewandte Sprache, zuletzt
+ *     gelesener Text, Wartedauer, Zahl der Blicke.
+ *   · die Frist läuft ab und der Anker war nie da → dieselbe Meldung, zusätzlich als
+ *     „lastabhaengig" gekennzeichnet (Lehre JOB 3138): dann ist die FLÄCHE nicht fertig geworden.
+ *     Die zuletzt gelesene Sprache steht auch dann dabei (BENs zweiter Fund: sie wurde gelesen und
+ *     weggeworfen) — sie ist die einzige Angabe, mit der sich „Seite nicht fertig" von „Sprache kam
+ *     nicht an" unterscheiden lässt.
+ *
+ * ZURÜCK KOMMT DIE GEMESSENE LAGE, und zwar die vom RÜCKKEHRPUNKT, also vor jedem weiteren
+ * Seitenaufbau. Das ist der Unterschied zwischen einer Zusage und einem Gefühl: in der Messdatei
+ * folgt auf diesen Schritt immer ein `messe(...)` mit eigenem Neuaufbau, und der wendet die Sprache
+ * seinerseits an — ein Schritt, der GAR NICHT wartet, blieb dort grün (BENs Gegenprobe A). Wer
+ * `setzeSprache` benutzt, prüft die Sprache am Rückgabewert, nicht am nächsten Aufbau.
+ */
+export interface SprachLage {
+  /** Die verlangte Sprache. */
+  sprache: string;
+  /** `<html lang>` am Rückkehrpunkt — gelesen VOR jedem weiteren Seitenaufbau. */
+  lang: string;
+  /** Was der Warteanker am Rückkehrpunkt zeigte (gekürzt auf 160 Zeichen). */
+  text: string;
+  /** Wie lange auf den Zustand gewartet wurde, in ms. */
+  wartedauer: number;
+  /** Wie viele Blicke der Zustand gebraucht hat (1 = beim ersten Blick schon da). */
+  versuche: number;
+}
+
+const pause = (ms: number): Promise<void> =>
+  new Promise((fertig) => {
+    setTimeout(fertig, ms);
+  });
+
+export async function setzeSprache(
+  stand: Stand,
+  sprache: string,
+  pfad = "/start",
+  warteAuf = 'header[data-testid="kopfband"]',
+  /** Nur für die Prüfung der Ausgänge selbst: kürzere Frist, engerer Takt. */
+  optionen: { fristMs?: number; taktMs?: number } = {},
+): Promise<SprachLage> {
+  const frist = optionen.fristMs ?? SPRACHE_FRIST_MS;
+  const takt = optionen.taktMs ?? SPRACHE_TAKT_MS;
+  const seite = stand.seite;
+  if (seite === null) {
+    throw new Error(`Bühne steht nicht: ${stand.fehler ?? "unbekannt"}`);
+  }
+  const fehlerVorher = stand.seitenfehler.length;
+  const neuerSeitenfehler = (): string | undefined => stand.seitenfehler.slice(fehlerVorher)[0];
+  await seite.evaluate(fn(SPRACHE_SETZEN), [SPRACHE_SCHLUESSEL, sprache]);
+
+  // Die Wahl wirkt erst beim nächsten Aufbau (`lib/sprachwahl.ts:35`, `i18n.ts`): der Neuaufbau ist
+  // Teil dieses Schritts, eine Messung ohne ihn wäre eine Messung der alten Sprache.
+  //
+  // AUFBAU UND FEHLERWACHE LAUFEN NEBENEINANDER. Die Wache zählt mit einer eigenen Uhr (`pause`)
+  // und nicht über die Seite: eine Seite, die im Aufbau hängt, beantwortet keinen Seitenaufruf
+  // mehr — eine Wache, die dafür die Seite fragen müsste, hinge mit ihr.
+  let aufbauFertig = false;
+  const aufbau = (async (): Promise<string | null> => {
+    try {
+      await seite.goto(`${ORIGIN}${pfad}`, { waitUntil: "load", timeout: 60_000 });
+      return null;
+    } catch (e) {
+      return `der Aufbau von ${pfad} scheiterte: ${String(e)}`;
+    } finally {
+      aufbauFertig = true;
+    }
+  })();
+  const wache = (async (): Promise<string | null> => {
+    for (;;) {
+      const fehler = neuerSeitenfehler();
+      if (fehler !== undefined) {
+        return fehler;
+      }
+      if (aufbauFertig) {
+        return null;
+      }
+      await pause(Math.min(takt, 50));
+    }
+  })();
+  const zuerst = await Promise.race([aufbau, wache]);
+  // Der Seitenfehler hat immer den Vorrang: er sagt, WARUM der Aufbau nichts wurde.
+  const fehlerJetzt = neuerSeitenfehler();
+  if (fehlerJetzt !== undefined) {
+    throw new Error(
+      `Sprache ${sprache}: die Seite meldete einen Fehler statt der Fläche — ${fehlerJetzt}`,
+    );
+  }
+  if (zuerst !== null) {
+    throw new Error(`Sprache ${sprache}: ${zuerst}`);
+  }
+
+  const wartenAb = Date.now();
+  let zuletztLang: string | null = null;
+  let zuletztText: string | null = null;
+  let ankerGesehen = false;
+  let versuche = 0;
+  for (;;) {
+    const fehler = neuerSeitenfehler();
+    if (fehler !== undefined) {
+      throw new Error(
+        `Sprache ${sprache}: die Seite meldete einen Fehler statt der Fläche — ${fehler}`,
+      );
+    }
+    versuche += 1;
+    const gelesen = await seite.evaluate<{
+      lang: string;
+      da: boolean;
+      text: string | null;
+    }>(fn(SPRACHE_LESEN), warteAuf);
+    // Die gelesene Sprache wird IMMER gemerkt, auch ohne Anker: das Produkt hat geantwortet.
+    zuletztLang = gelesen.lang;
+    if (gelesen.da) {
+      ankerGesehen = true;
+      zuletztText = gelesen.text;
+      if (gelesen.lang === sprache) {
+        return {
+          sprache,
+          lang: gelesen.lang,
+          text: gelesen.text ?? "",
+          wartedauer: Date.now() - wartenAb,
+          versuche,
+        };
+      }
+    }
+    if (Date.now() - wartenAb >= frist) {
+      break;
+    }
+    await seite.waitForTimeout(takt);
+  }
+  const gewartet = Date.now() - wartenAb;
+  const kopf = `Sprache ${sprache}: nach ${gewartet} ms und ${versuche} Blicken`;
+  const erwartet = `erwartet <html lang="${sprache}">`;
+  const anker = `Anker „${warteAuf}" auf ${pfad}`;
+  const gelesen = `zuletzt gelesen lang=${zuletztLang ?? "—"}${zuletztText === null ? "" : ` · „${zuletztText}"`}`;
+  // Die Lage entscheidet über die Aussage: stand der Anker nie da, ist über die FLÄCHE nichts
+  // gesagt — dann ist die Umgebung nicht fertig geworden und nicht das Produkt falsch.
+  throw new Error(
+    ankerGesehen
+      ? `${kopf} hat die Seite die Sprache nicht angewandt (${erwartet}, ${anker}, ${gelesen}).`
+      : `${kopf} war der ${anker} überhaupt nicht da (${erwartet}, ${gelesen}) — lastabhaengig: die Seite ist nicht fertig geworden, über die FLÄCHE ist damit nichts gesagt.`,
+  );
 }
 
 export async function beende(stand: Stand): Promise<void> {
