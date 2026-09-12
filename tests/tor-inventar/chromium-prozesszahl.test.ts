@@ -3,12 +3,16 @@
 // Der Playwright-Import ordnet diesen Fall der seriellen Browsergruppe zu (unten nachgerechnet).
 // Einzelaufrufe außerhalb tools/test müssen ebenfalls unter tools/browserdeckel.sh laufen.
 // Das Maximum gilt nur für die beiden CDP-Stichproben: Spitzen dazwischen erhebt niemand.
+// JOB 3581: Ein Ausfall ist nicht mehr pauschal erlaubt. Wie schwer er wiegt, entscheidet
+// `prozesszahl-ausfall.ts` an EINER Tatsache — kam `chromium.launch()` zurück? Nur der verweigerte
+// Start ist eine Umgebungsgrenze und bleibt grün; alles danach ist ein Befund und färbt rot.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { loadavg } from "node:os";
 import { join } from "node:path";
 import { type Browser, chromium } from "playwright";
 import { expect, it } from "vitest";
 import { WURZEL, ermittleBrowserbefund } from "./browser-gruppe";
+import { klassifiziereAusfall } from "./prozesszahl-ausfall";
 
 async function begrenzt<T>(arbeit: Promise<T>, ms: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -46,14 +50,18 @@ it("C1 · ein Chromium: Prozesszahl bei einer und vier gleichzeitig offenen Seit
   }> = [];
   const fehler: string[] = [];
   let browser: Browser | undefined;
+  // Kam der Start zurück? Die eine beobachtete Tatsache, an der die Ausfallklasse hängt
+  // (`prozesszahl-ausfall.ts`) — nicht der Wortlaut einer Fehlermeldung.
+  let gestartet = false;
   try {
     // Genau ein launch; kein Retry bei Sandbox-/CDP-Fehlern und keine erfundene Ersatzanzahl.
     browser = await chromium.launch({ headless: true, timeout: 10_000 });
-    const gestartet = browser;
+    gestartet = true;
+    const offen = browser;
     await begrenzt(
       (async () => {
-        const cdp = await gestartet.newBrowserCDPSession();
-        const kontext = await gestartet.newContext();
+        const cdp = await offen.newBrowserCDPSession();
+        const kontext = await offen.newContext();
         for (const anzahl of last.seiten) {
           while (kontext.pages().length < anzahl) {
             const seite = await kontext.newPage();
@@ -92,6 +100,12 @@ it("C1 · ein Chromium: Prozesszahl bei einer und vier gleichzeitig offenen Seit
     maximum: gemessen ? Math.max(...messungen.map((m) => m.prozesse)) : null,
     messungen,
     fehler,
+    // Wie schwer wiegt der Ausfall? Im Gutfall gibt es keinen: `null`, nicht ein beschönigendes
+    // Urteil. Beurteilt wird an genau einer Stelle, in `prozesszahl-ausfall.ts`.
+    ausfall: gemessen ? null : klassifiziereAusfall({ gestartet, fehler }),
+    // Eigener Zeitstempel: ohne ihn sieht ein liegen gebliebener Beleg eines früheren Laufs aus
+    // wie der von heute — im Ausfall ist `messungen` leer und trägt gar kein `zeit`.
+    erstelltAm: new Date().toISOString(),
     last: { ...last, nach: loadavg() },
     dauerMs: Date.now() - beginn,
     browsergruppe: befund.ketten.get(datei),
@@ -103,14 +117,29 @@ it("C1 · ein Chromium: Prozesszahl bei einer und vier gleichzeitig offenen Seit
   console.log(
     gemessen
       ? `Chromium-Prozesszahl: Maximum ${beleg.maximum}; ${messungen.map((m) => `${m.seiten} Seiten: ${m.prozesse}`).join("; ")}; ${beleg.dauerMs}ms`
-      : `Chromium-Prozesszahl: nicht gemessen — ${fehler.join("\n")}; ${beleg.dauerMs}ms`,
+      : `Chromium-Prozesszahl: nicht gemessen (Klasse ${beleg.ausfall?.klasse}) — ${beleg.ausfall?.grund}; ${beleg.dauerMs}ms`,
   );
   // Auch der erlaubte Ausfall muss einen lesbaren, ehrlichen Beleg hinterlassen.
   expect(JSON.parse(readFileSync(ziel, "utf8"))).toEqual(beleg);
   expect(beleg.dauerMs).toBeLessThan(60_000);
+  // Der Zeitstempel stammt aus DIESEM Lauf — sonst wäre er nur hingeschrieben und ein Beleg von
+  // vorgestern bliebe unerkannt.
+  expect(Date.parse(beleg.erstelltAm)).toBeGreaterThanOrEqual(beginn);
+  expect(Date.parse(beleg.erstelltAm)).toBeLessThanOrEqual(Date.now());
   if (!gemessen) {
     expect(beleg.maximum).toBeNull();
     expect(fehler.length).toBeGreaterThan(0);
+    // NICHT jeder Ausfall ist gleich viel wert: ein verweigerter Browserstart ist eine Grenze
+    // dieser Umgebung, alles NACH einem gelungenen Start ist ein Befund über Chromium und diese
+    // Maschine. Nur die erste Lage darf grün bleiben.
+    const urteil = klassifiziereAusfall({ gestartet, fehler });
+    // Der geschriebene Beleg trägt genau das Urteil, an dem dieser Fall hängt — kein zweites,
+    // freundlicheres daneben.
+    expect(beleg.ausfall).toEqual(urteil);
+    expect(
+      urteil.erlaubt,
+      `Chromium-Prozesszahl NICHT gemessen, Klasse ${urteil.klasse}: ${urteil.grund}`,
+    ).toBe(true);
   } else {
     expect(messungen.map((m) => m.seiten)).toEqual(last.seiten);
   }
