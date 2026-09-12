@@ -611,12 +611,20 @@ neue Aufrufform). H2 bis H5 wären dann still grün: ${leer.join(" · ")}`,
 // Beide Listen sind gepinnt und alphabetisch. Sie zu pflegen kostet eine Zeile; ohne sie sagt kein
 // Test, WELCHE Schlüssel ihre Quelle gewechselt haben — nur noch, dass irgendetwas anders ist.
 
-/** Zweites Argument eines `new AuthError(` unter services/auth/src (gemessen: 17 Stellen, alle in
- *  `service.ts`). */
+/** Zweites Argument eines `new AuthError(` unter services/auth/src (gemessen: 21 Stellen, alle in
+ *  `service.ts`).
+ *
+ *  `INTERNAL` kam mit JOB 3665 hinzu: `setAccessExpiry` lehnt ein unparsbares Ablaufdatum ab
+ *  (`service.ts:411`). Der Schlüssel ist kein neuer — er stand schon in `AUS_DER_ROUTE`, der Dienst
+ *  wirft ihn jetzt zusätzlich selbst. Die Frage, die H2 mitstellt, ist damit beantwortet: einen
+ *  eigenen Routenfall in EN/NL braucht dieser Weg nicht, denn `INTERNAL` hat ihn bereits
+ *  (`GEMESSEN_VON.INTERNAL` → server.test.ts · R12). H4 und H3.2 verschieben sich dadurch nicht:
+ *  H4 misst gegen den Katalog, und die Vereinigung aus Wurf und Route enthielt `INTERNAL` schon. */
 const GEWORFEN = [
   "ACCOUNT_NOT_FOUND",
   "CURRENT_PASSWORD_INCORRECT",
   "EMAIL_TAKEN",
+  "INTERNAL",
   "INVALID_CREDENTIALS",
   "LAST_ADMIN_DELETION",
   "LAST_ADMIN_DEMOTION",

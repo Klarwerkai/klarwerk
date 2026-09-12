@@ -33,6 +33,22 @@ export interface User {
   // Adresse" (der Uebergangsweg in AuthService.loginWithOidc).
   oidcIssuer?: string;
   oidcSubject?: string;
+  // JOB 3665 (DEMO-ZUGANG-GAESTE T1): DER ZUGANG, DER VON SELBST ENDET.
+  //
+  // Pedis vierte Zusage zum Demo-Zugang — „sein Zugang laeuft ab" — trug die Anmeldung bis hierher
+  // nicht: ein einmal freigegebenes Konto blieb fuer immer freigegeben. ISO-8601, dieselbe Form wie
+  // `createdAt` und `noticeAckAt`.
+  //
+  // OPTIONAL UND OHNE VORGABEWERT, und das ist keine Bequemlichkeit: „kein Ablauf" ist der gueltige
+  // NORMALZUSTAND jedes regulaeren Kontos. Ein Vorgabewert wuerde jedem Bestandskonto eine
+  // Befristung andichten, die niemand beschlossen hat — dieselbe Begruendung, mit der
+  // `notice_ack_at` NULL-bar bleibt.
+  //
+  // DIES IST KEIN ZWEITER FREIGABEWEG neben `approved`. Es ist eine ZUSAETZLICHE Bedingung, die an
+  // genau einer Stelle ausgewertet wird (`AuthService.zugangAbgelaufen`). Und es ist NICHT der
+  // Ablauf einer Sitzung: `Session.expiresAt` hat seine eigene, unberuehrte Bedeutung — zwei
+  // Ablaufbegriffe, die sich vermischen, waeren der eigentliche Fehler.
+  accessExpiresAt?: string;
 }
 
 export interface Session {

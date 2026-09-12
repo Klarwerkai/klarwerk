@@ -198,7 +198,14 @@ const REGISTER: readonly string[] = [
   // undurchsichtige Zeichenketten nebeneinander. Ein Dreher waere hier sogar leiser — die
   // Auflösung sucht nach dem PAAR (Aussteller, Subjekt), fände das Konto nie wieder, und der
   // Fehler saehe aus wie ein Problem des Identitaetsanbieters.
-  "services/auth/src/repo-pg.ts | name,email,password_salt,password_hash,role,approved,created_at,notice_ack_at,notice_ack_version,oidc_issuer,oidc_subject | praefix:notice_ack: notice_ack_at=$9, notice_ack_version=$10 · praefix:oidc: oidc_issuer=$11, oidc_subject=$12 · praefix:password: password_salt=$4, password_hash=$5 · zeitstempel: created_at=$8, notice_ack_at=$9",
+  //
+  // JOB 3665 (DEMO-ZUGANG-GAESTE T1): `access_expires_at=$13` ist dazugekommen und macht die
+  // Zeitstempelgruppe DREIGLIEDRIG. Es ist die schaerfste Stelle der drei: landete `created_at` in
+  // `access_expires_at`, truege jedes Konto eine Befristung auf seinen eigenen Anlagetag und waere
+  // ab dem Schreibvorgang ausgesperrt. GEDECKT — `tests/auth/job2413-nutzlast-user-update.test.ts`
+  // prueft die neue Spalte in GRUPPE 2 mit einem eigenen, von den anderen beiden verschiedenen
+  // Wert.
+  "services/auth/src/repo-pg.ts | name,email,password_salt,password_hash,role,approved,created_at,notice_ack_at,notice_ack_version,oidc_issuer,oidc_subject,access_expires_at | praefix:notice_ack: notice_ack_at=$9, notice_ack_version=$10 · praefix:oidc: oidc_issuer=$11, oidc_subject=$12 · praefix:password: password_salt=$4, password_hash=$5 · zeitstempel: created_at=$8, notice_ack_at=$9, access_expires_at=$13",
   // touchSession — laeuft ueber `cas()`, nicht ueber `casMitConsent`. UNGEDECKT.
   "services/reasoner/src/klara-policy-store.ts | last_activity_at,expires_at | zeitstempel: last_activity_at=$3, expires_at=$4",
   // rebindSession — drei drehbare Gruppen auf einmal, die dichteste Stelle im Baum. Gedeckt durch

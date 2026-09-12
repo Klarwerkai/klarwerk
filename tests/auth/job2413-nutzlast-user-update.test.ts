@@ -80,6 +80,11 @@ const NUTZER: NutzerWerte = {
   // dieser Datei geht — beide optional, beide Zeichenketten, keine schließt die andere aus.
   oidcIssuer: "WERT-AUSSTELLER",
   oidcSubject: "WERT-SUBJEKT",
+  // JOB 3665: die dreizehnte Spalte, und sie gehört zur schärfsten Untergruppe dieser Datei — sie
+  // ist der DRITTE ISO-Zeitstempel neben `created_at` und `notice_ack_at`. Ein Dreher zwischen
+  // ihnen erzeugt keinen Typfehler, sondern eine Befristung auf dem Anlagedatum: das Konto wäre
+  // ab dem Schreibvorgang sofort und dauerhaft ausgesperrt.
+  accessExpiresAt: "2026-03-03T00:00:00.000Z",
 } as NutzerWerte;
 
 /**
@@ -109,12 +114,13 @@ async function update(): Promise<Anweisung> {
 }
 
 describe("JOB 2413 · die Nutzlast von PgUserRepo.update", () => {
-  it("KALIBRIERUNG: die Anweisung geht raus und trägt zwölf Parameter", async () => {
+  it("KALIBRIERUNG: die Anweisung geht raus und trägt dreizehn Parameter", async () => {
     // Ohne diesen Fall wäre jede Zuordnung unten still erfüllt, wenn gar nichts gesendet würde.
     // JOB 2686 (R2-7): waren zehn, sind zwölf — `oidc_issuer` und `oidc_subject` sind dazugekommen.
+    // JOB 3665: waren zwölf, sind dreizehn — `access_expires_at` ist dazugekommen.
     const a = await update();
 
-    expect(a.params).toHaveLength(12);
+    expect(a.params).toHaveLength(13);
     expect(a.text, "das UPDATE bindet den Nutzer nicht über die Id").toMatch(/WHERE\s+id=\$1/i);
     expect(a.params[0], "an $1 steht nicht die Id").toBe("WERT-ID");
   });
@@ -135,9 +141,11 @@ describe("JOB 2413 · die Nutzlast von PgUserRepo.update", () => {
     ).toBe("WERT-HASH");
   });
 
-  it("GRUPPE 2 — die beiden Zeitstempel stehen nicht über Kreuz", async () => {
-    // `created_at` und `notice_ack_at` sind beides ISO-Zeitstempel. Ein Dreher setzt das
-    // Anlagedatum auf den Zeitpunkt der Kenntnisnahme — und umgekehrt.
+  it("GRUPPE 2 — die drei Zeitstempel stehen nicht über Kreuz", async () => {
+    // `created_at`, `notice_ack_at` und (seit JOB 3665) `access_expires_at` sind alle drei ISO-
+    // Zeitstempel. Ein Dreher setzt das Anlagedatum auf den Zeitpunkt der Kenntnisnahme — und
+    // umgekehrt. Der dritte ist der gefährlichste: landete `created_at` in `access_expires_at`,
+    // trüge jedes Konto eine Befristung auf seinen eigenen Anlagetag und wäre sofort ausgesperrt.
     const a = await update();
 
     expect(wertFuerSpalte(a, "created_at"), "`created_at` trägt nicht das Anlagedatum").toBe(
@@ -147,6 +155,10 @@ describe("JOB 2413 · die Nutzlast von PgUserRepo.update", () => {
       wertFuerSpalte(a, "notice_ack_at"),
       "`notice_ack_at` trägt nicht den Zeitpunkt der Kenntnisnahme",
     ).toBe("2026-02-02T00:00:00.000Z");
+    expect(
+      wertFuerSpalte(a, "access_expires_at"),
+      "`access_expires_at` trägt nicht den Ablaufzeitpunkt des Zugangs",
+    ).toBe("2026-03-03T00:00:00.000Z");
   });
 
   it("GRUPPE 3 — notice_ack_at und notice_ack_version stehen nicht über Kreuz", async () => {
@@ -199,6 +211,7 @@ describe("JOB 2413 · die Nutzlast von PgUserRepo.update", () => {
       NUTZER.createdAt,
       NUTZER.noticeAckAt,
       NUTZER.noticeAckVersion,
+      NUTZER.accessExpiresAt,
       NUTZER.name,
       NUTZER.email,
     ];

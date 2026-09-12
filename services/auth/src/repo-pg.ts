@@ -36,6 +36,12 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS notice_ack_version text;
 -- geprueft wurde — und da alle denselben Wert traegen, waeren sie untereinander verwechselbar.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS oidc_issuer text;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS oidc_subject text;
+-- JOB 3665 (DEMO-ZUGANG-GAESTE T1): das Ablaufdatum eines Zugangs (ISO-8601).
+-- NULL-bar und OHNE Vorgabewert, aus demselben Grund wie notice_ack_at daneben: „keine
+-- Befristung" ist der gueltige Normalzustand jedes regulaeren Kontos. Ein Vorgabewert wuerde jedem
+-- Bestandskonto eine Befristung andichten — und da die Spalte den Zugang SPERRT, waere das keine
+-- kosmetische Unsauberkeit, sondern ein Aussperren der ganzen Instanz bei der naechsten Migration.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS access_expires_at text;
 -- Ein Subjekt gehoert zu genau EINEM Konto. Ohne diese Zusage koennte ein zweites Konto dieselbe
 -- Identitaet tragen, und welches der beiden die Anmeldung bekommt, entschiede die Zeilenreihenfolge.
 -- PARTIELL, weil unverknuepfte Bestandskonten (beide Spalten NULL) sich nicht gegenseitig
@@ -136,6 +142,10 @@ interface UserRow {
   // hat — `toUser` faellt dann auf „nicht verknuepft" zurueck, was fuer sie richtig ist.
   oidc_issuer?: string | null;
   oidc_subject?: string | null;
+  // JOB 3665: dieselbe Vorsicht wie oben — eine Bestandsinstanz VOR der Migration hat die Spalte
+  // nicht, und `toUser` faellt dann auf „nicht befristet" zurueck. Das ist fuer sie richtig: eine
+  // fehlende Spalte darf keinen Zugang sperren.
+  access_expires_at?: string | null;
 }
 
 function toUser(row: UserRow): User {
@@ -156,6 +166,20 @@ function toUser(row: UserRow): User {
     // verknuepft" ist ein Zustand des Kontos, kein leerer Wert an ihm.
     ...(row.oidc_issuer ? { oidcIssuer: row.oidc_issuer } : {}),
     ...(row.oidc_subject ? { oidcSubject: row.oidc_subject } : {}),
+    // JOB 3665: NULL heisst „nie befristet" — Feld fehlt, nicht `null`.
+    //
+    // JOB 3665 R2 (BEN-Befund 5): AUSDRUECKLICH AUF NULL GEPRUEFT und NICHT auf Wahrheitswert, und
+    // das ist der Unterschied zwischen dieser Spalte und ihren Nachbarn. Ein leerer String ist hier
+    // KEIN „nichts": er ist ein vorhandener, aber unlesbarer Wert. Der Dienst behandelt beide
+    // verschieden — bei „nie befristet" schweigt er, bei einem unlesbaren Wert laesst er herein UND
+    // schreibt einen Vermerk. Ginge `""` hier als NULL durch, verschwaende der kaputte Bestand
+    // lautlos und die Diagnose, die ihn finden soll, liefe nie.
+    //
+    // Die Nachbarfelder bleiben bewusst unveraendert: dort ist `""` tatsaechlich gleichbedeutend
+    // mit „kein Vermerk"/„nicht verknuepft", und ihre Bedeutung gehoert nicht zu diesem Auftrag.
+    ...(row.access_expires_at === null || row.access_expires_at === undefined
+      ? {}
+      : { accessExpiresAt: row.access_expires_at }),
   };
 }
 
@@ -188,7 +212,7 @@ export class PgUserRepo implements UserRepo {
 
   async insert(user: User): Promise<void> {
     await this.pool.query(
-      "INSERT INTO users(id,name,email,password_salt,password_hash,role,approved,created_at,oidc_issuer,oidc_subject) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
+      "INSERT INTO users(id,name,email,password_salt,password_hash,role,approved,created_at,oidc_issuer,oidc_subject,access_expires_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)",
       [
         user.id,
         user.name,
@@ -203,6 +227,10 @@ export class PgUserRepo implements UserRepo {
         // lassen. `null` statt `undefined`, weil der Treiber sonst nichts einzusetzen hat.
         user.oidcIssuer ?? null,
         user.oidcSubject ?? null,
+        // JOB 3665: ein Konto kann schon bei der Anlage befristet sein — ein Demo-Zugang ist genau
+        // das. Fehlte die Spalte hier, entstuende jeder Gast unbefristet und muesste in einem
+        // zweiten Schritt befristet werden; zwischen beiden Schritten waere er unbegrenzt offen.
+        user.accessExpiresAt ?? null,
       ],
     );
   }
@@ -227,8 +255,8 @@ export class PgUserRepo implements UserRepo {
   // (nicht etwa die E-Mail-Unique) den DO-NOTHING-Pfad auslöst.
   async tryClaimBootstrapAdmin(user: User): Promise<boolean> {
     const res = await this.pool.query(
-      `INSERT INTO users(id,name,email,password_salt,password_hash,role,approved,created_at,bootstrap_admin,oidc_issuer,oidc_subject)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8,true,$9,$10)
+      `INSERT INTO users(id,name,email,password_salt,password_hash,role,approved,created_at,bootstrap_admin,oidc_issuer,oidc_subject,access_expires_at)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,true,$9,$10,$11)
        ON CONFLICT (bootstrap_admin) WHERE bootstrap_admin DO NOTHING
        RETURNING id`,
       [
@@ -244,6 +272,10 @@ export class PgUserRepo implements UserRepo {
         // Spalten wäre ausgerechnet das erste und mächtigste Konto das einzige unverknüpfte.
         user.oidcIssuer ?? null,
         user.oidcSubject ?? null,
+        // JOB 3665: auch dieser Weg legt ein Konto an, und er ist der einzige, der es fuer das
+        // ERSTE Konto tut. Fehlte die Spalte, waere ausgerechnet das maechtigste Konto der Instanz
+        // das einzige, dessen Befristung beim Anlegen verloren ginge.
+        user.accessExpiresAt ?? null,
       ],
     );
     return (res.rowCount ?? 0) > 0;
@@ -256,7 +288,7 @@ export class PgUserRepo implements UserRepo {
   async update(user: User, tx?: TxContext): Promise<void> {
     const ziel = tx ? pgQueryable(tx) : poolQueryable(this.pool);
     await ziel.query(
-      "UPDATE users SET name=$2,email=$3,password_salt=$4,password_hash=$5,role=$6,approved=$7,created_at=$8,notice_ack_at=$9,notice_ack_version=$10,oidc_issuer=$11,oidc_subject=$12 WHERE id=$1",
+      "UPDATE users SET name=$2,email=$3,password_salt=$4,password_hash=$5,role=$6,approved=$7,created_at=$8,notice_ack_at=$9,notice_ack_version=$10,oidc_issuer=$11,oidc_subject=$12,access_expires_at=$13 WHERE id=$1",
       [
         user.id,
         user.name,
@@ -275,6 +307,11 @@ export class PgUserRepo implements UserRepo {
         // und liefe bei jedem Anmelden erneut über den E-Mail-Zweig.
         user.oidcIssuer ?? null,
         user.oidcSubject ?? null,
+        // JOB 3665: `?? null` und nicht weglassen — genau dieser Weg NIMMT die Befristung wieder
+        // (`AuthService.setAccessExpiry` mit `undefined`). Stuende die Spalte nicht in der
+        // SET-Liste, liesse sich eine einmal gesetzte Befristung nie mehr entfernen, und ein Gast
+        // waere dauerhaft ausgesperrt.
+        user.accessExpiresAt ?? null,
       ],
     );
   }

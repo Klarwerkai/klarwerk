@@ -23,6 +23,58 @@ const RESET_TTL_MS = 60 * 60 * 1000; // FR-AUTH-08: Reset-Token 1 Stunde gültig
 const ROLLEN_RANG: Record<Role, number> = { viewer: 0, experte: 1, controller: 2, admin: 3 };
 
 /**
+ * JOB 3665 R2 (BEN-Befund 4): WAS ALS ABLAUFDATUM GILT — und warum `Date.parse` allein zu wenig ist.
+ *
+ * `Date.parse("09/12/2026")` liefert eine gültige Zahl. Ob das der 9. Dezember oder der 12.
+ * September ist, entscheidet die Auslegung des Laufzeitsystems — bei einem Wert, der einen Menschen
+ * AUSSPERRT, ist das kein Schönheitsfehler, sondern drei Monate Unterschied. Ebenso `"2026-09-11T12:00:00"`
+ * ohne Zonenangabe: JavaScript liest das als ORTSZEIT, und damit hinge der Ablauf davon ab, in
+ * welcher Zeitzone der Server gerade steht.
+ *
+ * Verlangt wird deshalb die Form, die das Haus ohnehin schreibt (`new Date(...).toISOString()`),
+ * mit ausdrücklicher Zone. Sekunden und Millisekunden dürfen fehlen, ein Zonenversatz statt `Z` ist
+ * erlaubt — das sind dieselben Zeitpunkte, nur anders notiert.
+ *
+ * UND DIE FORM ALLEIN REICHT AUCH NICHT, gemessen beim Bau dieser Runde: `Date.parse` liefert für
+ * `"2026-02-30T00:00:00Z"` KEIN NaN, sondern rechnet still auf den 2. März um. Ein Ablaufdatum, das
+ * zwei Tage von dem abweicht, was dort geschrieben steht, ist genau die leise Sorte Fehler, gegen
+ * die dieser Auftrag gebaut ist. Der Kalendertag wird deshalb nachgerechnet.
+ *
+ * EINE Regel für BEIDE Richtungen (BEN-Befund 5): Der Setzer lässt nur solche Werte herein, und die
+ * Ablaufprüfung erkennt nur solche als Aussage an. Gäbe es zwei Begriffe von „gültiges Ablaufdatum",
+ * könnte ein Wert, den der Setzer nie durchgelassen hätte, trotzdem jemanden aussperren.
+ */
+const ISO_ZEITSTEMPEL =
+  /^(\d{4})-(\d{2})-(\d{2})T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})$/;
+
+/** Der Zeitpunkt eines Ablaufwertes — oder `undefined`, wenn der Wert keine lesbare Aussage ist. */
+function ablaufZeitpunkt(wert: string): number | undefined {
+  const form = ISO_ZEITSTEMPEL.exec(wert);
+  if (form === null) {
+    return undefined;
+  }
+  const zeitpunkt = Date.parse(wert);
+  if (Number.isNaN(zeitpunkt)) {
+    return undefined;
+  }
+  // Der Überlauf-Nachweis: trägt der geschriebene Tag denselben Kalendertag wie der gelesene?
+  // `setUTCFullYear` statt `Date.UTC`, weil letzteres zweistellige Jahre ins 20. Jahrhundert legt.
+  const jahr = Number(form[1]);
+  const monat = Number(form[2]);
+  const tag = Number(form[3]);
+  const probe = new Date(0);
+  probe.setUTCFullYear(jahr, monat - 1, tag);
+  if (
+    probe.getUTCFullYear() !== jahr ||
+    probe.getUTCMonth() !== monat - 1 ||
+    probe.getUTCDate() !== tag
+  ) {
+    return undefined;
+  }
+  return zeitpunkt;
+}
+
+/**
  * JOB 2686 (R2-8): eigene Sitzungsdauer für SSO-Anmeldungen.
  *
  * VORGABE IST DAS HEUTIGE VERHALTEN (14 Tage) — ausdrücklich, nicht aus Bequemlichkeit. Der
@@ -192,6 +244,13 @@ export class AuthService {
     if (!user.approved) {
       throw new AuthError("NOT_APPROVED", "NOT_APPROVED" satisfies Meldungsschluessel);
     }
+    // JOB 3665: unmittelbar nach der Freigabe-Prüfung, und mit DERSELBEN Meldung. Ein abgelaufener
+    // Zugang IST ein Zugang, der nicht mehr freigegeben ist — dieselbe Aussage, derselbe Weg
+    // zurück (der Admin nimmt die Befristung). Ein neu erfundener Schlüssel fiele im Katalog auf
+    // „Unerwarteter Fehler." und sagte dem Menschen weniger, nicht mehr.
+    if (await this.zugangAbgelaufen(user)) {
+      throw new AuthError("NOT_APPROVED", "NOT_APPROVED" satisfies Meldungsschluessel);
+    }
     const token = this.genToken();
     // Token-at-Rest: nur der Hash wird persistiert; der Klartext geht ausschliesslich an den Client.
     await this.sessions.create({
@@ -201,6 +260,171 @@ export class AuthService {
     });
     await this.record(user.id, "auth.login", user.id);
     return { token, user: toPublic(user) };
+  }
+
+  // ==============================================================================================
+  // JOB 3665 (DEMO-ZUGANG-GAESTE T1) — DIE ABLAUFREGEL, EINMAL UND AN EINER STELLE.
+  // ==============================================================================================
+  //
+  // Sie wird von DREI Wegen gerufen — `login`, `loginWithOidc`, `authenticate` — und das ist keine
+  // Vorsicht, sondern Notwendigkeit: eine Sitzung lebt 14 Tage (`SESSION_TTL_MS`), und
+  // `authenticate` prüfte bis hierher ausschließlich die Frist der SITZUNG, nie den Zustand des
+  // KONTOS. Ein Auftrag, der nur `login` schließt, ließe einen abgelaufenen Gast bis zu zwei
+  // Wochen weiter arbeiten.
+  //
+  // WARUM SIE MEHR TUT ALS URTEILEN, und warum sie trotzdem EINE Funktion bleibt: Urteil, Vermerk
+  // und das Beenden der Sitzungen gehören zum selben Übergang. Lägen sie getrennt, müsste jeder
+  // der drei Wege sie einzeln zusammensetzen — und der erste, der eine Zeile vergisst, erzeugte
+  // genau die Halbheit „Zutritt verweigert, Sitzung lebt weiter".
+  //
+  // DREI ENTSCHEIDUNGEN, die hier fallen:
+  //
+  //   · `<=`, nicht `<`. Der Ablaufzeitpunkt selbst gilt schon als abgelaufen — dieselbe Richtung,
+  //     die der Sitzungsablauf unten (`session.expiresAt <= this.now()`) und der Reset-Token schon
+  //     fahren. Zwei Ablaufbegriffe mit verschiedener Grenze wären eine Fehlerquelle ohne Nutzen.
+  //
+  //   · EIN UNLESBARER WERT SPERRT NICHT. Ein kaputtes Datum ist ein Fehler der Datenhaltung, keine
+  //     Aussage über den Menschen davor; es darf niemanden auf Verdacht aussperren. Aber es darf
+  //     auch nicht schweigend durchgehen — sonst sucht es nie jemand. Deshalb der eigene Vorgang
+  //     `user.access-expiry-unreadable`. (Schreibend gilt das Gegenteil: `setAccessExpiry` lässt
+  //     einen solchen Wert gar nicht erst herein.)
+  //
+  //   · `this.now()` IST DIE EINZIGE ZEITQUELLE. Kein `Date.now()`, kein zwischengespeichertes
+  //     Urteil: jeder der drei Wege entscheidet neu, mit dem Konto, das er gerade gelesen hat.
+  //
+  // DIE REIHENFOLGE VERMERK-DANN-LÖSCHEN ist dieselbe Überlegung wie in `acknowledgeNotice`: Von
+  // den beiden möglichen halben Zuständen ist nur einer erträglich. Ein Vermerk ohne gelöschte
+  // Sitzung ist harmlos — der Zutritt ist trotzdem zu, weil jeder Aufruf neu prüft, und der
+  // nächste Versuch holt das Löschen nach (`recordOnce` schreibt dabei keine zweite Zeile). Eine
+  // gelöschte Sitzung ohne Vermerk wäre der Verlust des Nachweises, und den holt nichts nach.
+  //
+  // JOB 3665 R2: DAS URTEIL selbst steht in `istAbgelaufen` und NICHT hier. Der Grund ist der
+  // Aussperrschutz (BEN-Befund 1): `isLastApprovedAdmin` muss dieselbe Frage stellen dürfen, ohne
+  // dabei Sitzungen zu löschen und Vermerke zu schreiben. Ein zweites, eigenes Urteil dort wäre
+  // genau die Doppelung, gegen die dieser Abschnitt gebaut ist — dann könnten „darf nicht herein"
+  // und „zählt noch als Admin" auseinanderlaufen.
+  private async zugangAbgelaufen(user: User): Promise<boolean> {
+    const roh = user.accessExpiresAt;
+    if (roh === undefined) {
+      return false; // „nie befristet" — der Normalzustand jedes regulären Kontos.
+    }
+    if (ablaufZeitpunkt(roh) === undefined) {
+      await this.record(user.id, "user.access-expiry-unreadable", user.id, {
+        accessExpiresAt: roh,
+      });
+      return false;
+    }
+    if (!this.istAbgelaufen(user)) {
+      return false;
+    }
+    // EINMAL je Übergang, nicht je Klopfversuch: die Event-Id bindet den Vermerk an DIESE
+    // Befristung. Ein zweiter abgewiesener Versuch schreibt keine zweite Zeile; verlängert der
+    // Admin den Zugang und läuft er erneut ab, ist das ein neuer Übergang und bekommt eine eigene.
+    // Der Prüfpfad soll den Übergang festhalten, nicht einen hartnäckigen Browser-Tab.
+    await this.recordEinmal(
+      `user.access-expired:${user.id}:${roh}`,
+      user.id,
+      "user.access-expired",
+      user.id,
+      {
+        // Nur der Ablaufzeitpunkt. Keine IP, keine Browserkennung — dieselbe Grenze, die `types.ts`
+        // für den Hinweis-Vermerk zieht.
+        expiresAt: roh,
+      },
+    );
+    await this.sessions.deleteByUser(user.id);
+    return true;
+  }
+
+  /**
+   * JOB 3665 R2: WANN ENDET DER ZUGANG DIESES KONTOS — oder `undefined`, wenn er nie endet.
+   *
+   * Die eine Quelle für beide Fragen darunter. Ein unlesbarer Wert ergibt hier `undefined`, also
+   * „endet nie": dieselbe Nachsicht wie in `zugangAbgelaufen`, und sie wirkt in beide Richtungen
+   * richtig — ein kaputtes Datum sperrt niemanden aus, und es entzieht auch keinem Admin seine
+   * schützende Stimme.
+   */
+  private ablaufDesZugangs(user: User): number | undefined {
+    return user.accessExpiresAt === undefined ? undefined : ablaufZeitpunkt(user.accessExpiresAt);
+  }
+
+  /**
+   * Ist der Zugang dieses Kontos JETZT abgelaufen? Reines Urteil, ohne Nebenwirkung — damit es auch
+   * dort gestellt werden kann, wo eine Nebenwirkung falsch wäre.
+   */
+  private istAbgelaufen(user: User): boolean {
+    const ende = this.ablaufDesZugangs(user);
+    return ende !== undefined && ende <= this.now();
+  }
+
+  /**
+   * JOB 3665 R3 (BEN-Befund 1, zweiter Anlauf): ENDET DER ZUGANG DIESES KONTOS NIE?
+   *
+   * DER UNTERSCHIED ZU `istAbgelaufen` IST DER GANZE BEFUND DIESER RUNDE. Runde 2 zählte für den
+   * Aussperrschutz, wer JETZT hereinkommt. Das ist zu wenig, und die Reproduktion braucht nicht
+   * einmal Nebenläufigkeit: zwei Admins, den einen auf jetzt + 1 Stunde befristen (erlaubt, der
+   * andere ist ja noch da), dann den anderen auf jetzt + 2 Stunden (ebenfalls erlaubt, denn beide
+   * kommen JETZT noch herein) — und drei Stunden später kommt niemand mehr hinein. Der Schutz hat
+   * beide Schritte durchgelassen und dabei zugesehen, wie die Instanz sich selbst zusperrt.
+   *
+   * Eine Befristung ist ein Zugang MIT ENDE. Zwei Enden schützen einander nicht, sie liegen nur
+   * verschieden weit weg. Gezählt wird deshalb, wer DAUERHAFT verwalten kann — und das ist genau,
+   * wer gar kein Ende trägt.
+   *
+   * DIE ZUSAGE, DIE DARAUS FOLGT: Solange die Instanz mit einem unbefristeten Admin beginnt (das
+   * tut sie — der Bootstrap-Admin entsteht ohne Befristung), kann kein Weg über diesen Dienst die
+   * Menge der unbefristeten Admins auf null bringen. Jeder Schritt, der den letzten von ihnen
+   * befristen, herabstufen oder löschen würde, wird abgewiesen.
+   */
+  private istUnbefristet(user: User): boolean {
+    return this.ablaufDesZugangs(user) === undefined;
+  }
+
+  /**
+   * JOB 3665: Der Admin setzt die Befristung — oder nimmt sie wieder.
+   *
+   * Gebaut nach dem Vorbild von `approveUser`: ein Konto, ein Akteur, ein Eintrag im Prüfprotokoll.
+   * `undefined` entfernt die Befristung; das Feld verschwindet dann ganz (die Spalte wird NULL),
+   * statt einen leeren Wert zu tragen — „nie befristet" ist ein Zustand des Kontos, kein Wert an ihm.
+   *
+   * DER AUSSPERRSCHUTZ ist keine Zutat, sondern dieselbe Regel, die das Haus für die Herabstufung
+   * schon gezogen hat: die Instanz darf nie ohne Verwaltungsrecht dastehen. Eine Befristung auf dem
+   * letzten freigegebenen Admin wäre sogar heimtückischer als eine Herabstufung — sie fiele erst
+   * auf, wenn niemand mehr hereinkäme, der sie zurücknehmen könnte. Geprüft wird NUR beim Setzen:
+   * eine Befristung zu NEHMEN kann niemanden aussperren.
+   *
+   * EIN UNLESBARES DATUM KOMMT NICHT HINEIN. Es gibt keinen Meldungstext für diesen Fall (der
+   * Katalog ist in diesem Takt gehalten), und einen zu erfinden hieße, dem Menschen „Unerwarteter
+   * Fehler." zu zeigen — genau das ist es hier aber auch: eine Eingabe, die eine Oberfläche nie
+   * erzeugen dürfte.
+   */
+  async setAccessExpiry(
+    userId: string,
+    expiresAt: string | undefined,
+    actorId: string,
+  ): Promise<PublicUser> {
+    const user = await this.requireUser(userId);
+    if (expiresAt !== undefined) {
+      // JOB 3665 R2 (BEN-Befund 4): geprüft wird die FORM, nicht nur die Parsbarkeit. `Date.parse`
+      // allein nimmt `"09/12/2026"` an und legt dabei selbst fest, welcher Tag gemeint ist.
+      if (ablaufZeitpunkt(expiresAt) === undefined) {
+        throw new AuthError("FORBIDDEN", "INTERNAL" satisfies Meldungsschluessel);
+      }
+      if (await this.isLastApprovedAdmin(userId)) {
+        throw new AuthError("FORBIDDEN", "LAST_ADMIN_DEMOTION" satisfies Meldungsschluessel);
+      }
+    }
+    const { accessExpiresAt: _bisher, ...ohneBefristung } = user;
+    const aktualisiert: User =
+      expiresAt === undefined ? ohneBefristung : { ...user, accessExpiresAt: expiresAt };
+    await this.users.update(aktualisiert);
+    await this.record(
+      actorId,
+      "user.access-expiry-set",
+      userId,
+      expiresAt === undefined ? { entfernt: true } : { expiresAt },
+    );
+    return toPublic(aktualisiert);
   }
 
   // FR-AUTH-07: SSO-Login. Bereits verifizierte OIDC-Claims → Sitzung. Optional
@@ -259,6 +483,12 @@ export class AuthService {
       await this.record(account.id, "user.oidc-provisioned", account.id);
     }
     if (!account.approved) {
+      throw new AuthError("NOT_APPROVED", "NOT_APPROVED" satisfies Meldungsschluessel);
+    }
+    // JOB 3665: hier, und ausdrücklich VOR dem Rollenabgleich. Ein abgelaufenes Konto darf keine
+    // Nebenwirkung mehr auslösen — weder eine Herabstufung noch einen Protokolleintrag über eine
+    // Rolle, die es gar nicht mehr ausüben kann. Wer nicht herein darf, wird nicht mehr angefasst.
+    if (await this.zugangAbgelaufen(account)) {
       throw new AuthError("NOT_APPROVED", "NOT_APPROVED" satisfies Meldungsschluessel);
     }
     // JOB 2686 (R2-8): der Rollenabgleich, VOR der Sitzung — sonst traegt die frische Sitzung noch
@@ -524,7 +754,21 @@ export class AuthService {
       return undefined;
     }
     const user = await this.users.findById(session.userId);
-    return user ? toPublic(user) : undefined;
+    if (!user) {
+      return undefined;
+    }
+    // JOB 3665: DAS DRITTE TOR, und das eigentlich entscheidende. Bis hierher prüfte diese Methode
+    // ausschliesslich die Frist der SITZUNG (oben) und gab den Nutzer danach ohne jede weitere
+    // Bedingung zurück. Eine Sitzung lebt 14 Tage — ein Gast, dessen Zugang heute abliefe, wäre
+    // ohne diese Zeilen bis zu zwei Wochen weiter im Haus.
+    //
+    // `undefined` ist die richtige Antwort und kein Notbehelf: es ist der vorhandene Weg zu „Nicht
+    // angemeldet.", derselbe, den eine abgelaufene oder unbekannte Sitzung nimmt. Die Sitzung
+    // selbst ist zu diesem Zeitpunkt bereits beendet (s. `zugangAbgelaufen`).
+    if (await this.zugangAbgelaufen(user)) {
+      return undefined;
+    }
+    return toPublic(user);
   }
 
   // SCRUM-450: reine Passwort-Prüfung eines Nutzers (Re-Authentifizierung vor kritischen,
@@ -687,10 +931,39 @@ export class AuthService {
   }
 
   // SCRUM-443: Ist dieser Nutzer der letzte freigegebene Admin? (Grundlage des Last-Admin-Schutzes.)
+  //
+  // JOB 3665 R2 (BEN-Befund 1): EIN ABGELAUFENER ADMIN SCHÜTZT NICHTS MEHR.
+  //
+  // Bis hierher zählte diese Stelle jeden Admin mit `approved: true`. Seit es Befristungen gibt,
+  // ist das zu wenig, und der Fehler war belegt: zwei Admins, der erste abgelaufen — dann galt der
+  // zweite nicht als der letzte, durfte befristet werden, und danach kam NIEMAND mehr herein. Der
+  // Schutz, der genau diesen Zustand verhindern soll, hat ihn zugelassen.
+  //
+  // Der Grund war ein Begriffsbruch, kein Tippfehler: „freigegeben" war einmal dasselbe wie
+  // „kommt herein". Mit der Befristung sind das zwei verschiedene Aussagen geworden, und gemeint
+  // ist hier die zweite.
+  //
+  // JOB 3665 R3 (BEN-Befund 1, zweiter Anlauf): UND ZWAR DAUERHAFT, NICHT NUR HEUTE.
+  //
+  // Runde 2 zählte `!istAbgelaufen` — wer JETZT hereinkommt. Auch das war noch zu wenig: zwei
+  // Admins nacheinander in die ZUKUNFT befristen ging durch, weil bei jedem Schritt beide noch
+  // hereinkamen, und nach Ablauf beider Fristen stand die Instanz ohne Verwaltung da. Zwei Enden
+  // schützen einander nicht, sie liegen nur verschieden weit weg. Gezählt wird deshalb
+  // `istUnbefristet`: wer gar kein Ende trägt.
+  //
+  // WIRKT AUCH AUF `changeRole` UND `deleteUser`, und das ist Absicht: dieselbe Lücke stand dort
+  // (den letzten unbefristeten Admin herabstufen oder löschen, während ein befristeter die Zählung
+  // deckt). Eine eigene Prüfung nur für die Befristung hätte die Instanz an zwei von drei Türen
+  // weiter aussperrbar gelassen.
+  //
+  // Der Bestand ändert sich dadurch nicht: ein Konto ohne `accessExpiresAt` ist unbefristet, und
+  // vor diesem Job hatte keines eines.
   private async isLastApprovedAdmin(userId: string): Promise<boolean> {
     const users = await this.users.list();
-    const approvedAdmins = users.filter((u) => u.role === "admin" && u.approved);
-    return approvedAdmins.length <= 1 && approvedAdmins.some((u) => u.id === userId);
+    const dauerhafteAdmins = users.filter(
+      (u) => u.role === "admin" && u.approved && this.istUnbefristet(u),
+    );
+    return dauerhafteAdmins.length <= 1 && dauerhafteAdmins.some((u) => u.id === userId);
   }
 
   // FR-RBAC-02: Audit-Eintrag je Admin-Aktion (sofern Audit verdrahtet).
@@ -708,6 +981,23 @@ export class AuthService {
         payload ? { actor, action, target, payload } : { actor, action, target },
         tx,
       );
+    }
+  }
+
+  // JOB 3665: dasselbe wie `record`, aber mit stabiler Event-Id — der Eintrag entsteht EINMAL,
+  // auch wenn der Vorgang mehrfach erkannt wird. Die Idempotenz liegt in der Ablage
+  // (Pg: partieller Unique-Index + ON CONFLICT DO NOTHING; InMemory: Set-Wächter), nicht in einem
+  // Merker in diesem Prozess: ein Merker wäre nach jedem Neustart leer und die Zusage „einmal"
+  // damit nur so lange wahr, wie der Server läuft.
+  private async recordEinmal(
+    eventId: string,
+    actor: string,
+    action: string,
+    target: string,
+    payload: Record<string, unknown>,
+  ): Promise<void> {
+    if (this.audit) {
+      await this.audit.recordOnce(eventId, { actor, action, target, payload });
     }
   }
 
