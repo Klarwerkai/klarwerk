@@ -153,6 +153,157 @@ export const HELP_TOPICS: readonly HelpTopicDef[] = [
     to: "/mobile",
     tags: ["mobile", "offline", "pwa", "unterwegs"],
   },
+  // ==============================================================================================
+  // JOB 3741 · SEITENHILFE-LÜCKEN — ZEHN MENÜPUNKTE HATTEN KEINEN ERKLÄRSATZ.
+  // ==============================================================================================
+  //
+  // DER BEFUND (Steuerung, 12.09.2026, am main-Stand erhoben): Die Mechanik war vollständig gebaut,
+  // es fehlten die KAPITEL. `shell/ZahnradMenue.tsx:39-48` holt zu der Seite, auf der jemand steht,
+  // den Erklärsatz ihres Hilfekapitels; gibt es keines, steht dort die Leermeldung
+  // `menue.seitenhilfe.leer` (`:57`). Genau die sah ein Neuling auf zehn Menüpunkten — auf einer
+  // Fläche, die Pedi als Demo-Zugang aushändigen will, damit sich jemand „relativ schnell
+  // einarbeitet" (`gespraech/UEBERGABE-20260911-ABSCHLUSS/AKTEN/SICHTBARES-GESPRAECH.jsonl:695`).
+  //
+  // DIE ROUTE IST NICHT ABGETIPPT, sondern gegen `app/navigation.ts` gepinnt: die Kennung jedes
+  // Kapitels hier unten ist die `id` SEINES Menüpunkts, und `to` ist dessen `path`. Der Wächter
+  // `tests/seitenhilfe-navkapitel/jeder-menuepunkt-hat-einen-erklaersatz.test.ts` (P1) rechnet
+  // beides nach, und seine Sollmenge erhebt er aus `NAV_GROUPS`/`FOOT_ITEMS` — kommt morgen ein
+  // Menüpunkt ohne Kapitel dazu, wird er von selbst rot. Eine hier abgeschriebene Routenliste wäre
+  // die zweite Wahrheit, vor der `lib/navHilfe.ts:13-16` warnt.
+  //
+  // DREI ROUTEN BLEIBEN AUSDRÜCKLICH OHNE KAPITEL, jede mit ihrem Grund:
+  //   · `/admin`     — die begründete Ausnahme seit JOB 3028 (`navHilfe.ts:29-43`): das dort
+  //                    liegende `firststart` beantwortet eine ANDERE Frage.
+  //   · `/start`, `/entwuerfe` — JOB 3669 baut dort die andere Hälfte (Tipps IN der Seite). Zwei
+  //                    Bahnen an derselben Aussage sind verboten.
+  //
+  // KEIN TEXT HIER BEHAUPTET EINEN ZUSTAND. Die Kapitel sind statische Sätze aus `i18n.ts`, ohne
+  // Abruf und ohne Cache; ein Satz wie „hier ist alles geprüft" wäre eine Aussage über Daten ohne
+  // Datengrundlage. Sie sagen, was die Seite TUT, und nennen keine Zahl (dieselbe Regel wie oben
+  // bei `uploadLimits` — Zahlen kommen vom Server, nie aus einem Kapiteltext).
+  {
+    id: "wissensnetz",
+    titleKey: "help.wissensnetz.title",
+    bodyKey: "help.wissensnetz.body",
+    to: "/wissensnetz",
+    // Die Merkmale tragen den Menüpunkt-Namen in allen drei Sprachen (`nav.wissensnetz`), damit die
+    // Suche auf `/hilfe` die Seite unter dem Wort findet, unter dem sie im Menü steht.
+    tags: ["themenkarte", "topic map", "themakaart", "wissensnetz", "themen", "topics", "netz"],
+  },
+  {
+    id: "extern",
+    titleKey: "help.extern.title",
+    bodyKey: "help.extern.body",
+    to: "/extern",
+    tags: [
+      "externes wissen",
+      "external knowledge",
+      "externe kennis",
+      "extern",
+      "quellen",
+      "sources",
+      "recherche",
+    ],
+  },
+  {
+    id: "konflikte",
+    titleKey: "help.konflikte.title",
+    bodyKey: "help.konflikte.body",
+    to: "/konflikte",
+    tags: [
+      "konflikte",
+      "conflicts",
+      "conflicten",
+      "widerspruch",
+      "auflösen",
+      "zweitmeinung",
+      "gilt",
+    ],
+  },
+  {
+    id: "duplikate",
+    titleKey: "help.duplikate.title",
+    bodyKey: "help.duplikate.body",
+    to: "/duplikate",
+    tags: [
+      "duplikate",
+      "duplicates",
+      "duplicaten",
+      "doppelt",
+      "dublette",
+      "überschneidung",
+      "verknüpfen",
+    ],
+  },
+  {
+    id: "analytics",
+    titleKey: "help.analytics.title",
+    bodyKey: "help.analytics.body",
+    to: "/analytics",
+    tags: [
+      "analytics & audit",
+      "analytics",
+      "audit",
+      "kennzahlen",
+      "protokoll",
+      "log",
+      "statistik",
+    ],
+  },
+  {
+    id: "output",
+    titleKey: "help.output.title",
+    bodyKey: "help.output.body",
+    to: "/output",
+    tags: ["auswertungen", "reports", "rapportages", "dokument", "document", "erzeugen"],
+  },
+  {
+    id: "import",
+    titleKey: "help.import.title",
+    bodyKey: "help.import.body",
+    to: "/import",
+    tags: [
+      "import & quellen",
+      "import & sources",
+      "import & bronnen",
+      "importkandidaten",
+      "vorschläge",
+      "übernehmen",
+      "ablehnen",
+    ],
+  },
+  {
+    id: "graph",
+    titleKey: "help.graph.title",
+    bodyKey: "help.graph.body",
+    to: "/graph",
+    tags: ["wissensgraph", "knowledge graph", "kennisgraaf", "graph", "knoten", "verbindungen"],
+  },
+  {
+    id: "hilfe",
+    titleKey: "help.hilfe.title",
+    bodyKey: "help.hilfe.body",
+    to: "/hilfe",
+    tags: ["hilfe", "help", "hilfekapitel", "handbuch", "anleitung", "nachschlagen"],
+  },
+  {
+    id: "profil",
+    titleKey: "help.profil.title",
+    bodyKey: "help.profil.body",
+    to: "/profil",
+    tags: [
+      "profil",
+      "profile",
+      "profiel",
+      "konto",
+      "account",
+      "sprache",
+      "language",
+      "passwort",
+      "abmelden",
+      "meine wirkung",
+    ],
+  },
 ];
 
 // Bereits aufgelöste, durchsuchbare Repräsentation eines Kapitels.

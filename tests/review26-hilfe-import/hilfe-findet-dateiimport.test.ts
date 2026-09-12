@@ -292,9 +292,13 @@ describe("JOB 3468 · R — die Route ist belegt, nicht geraten", () => {
 });
 
 describe("JOB 3468 · V — der bestehende Bestand bleibt unberührt", () => {
-  it("V1: HELP_TOPICS führt elf Kapitel mit eindeutigen IDs und internen Routen", () => {
-    expect(HELP_TOPICS).toHaveLength(11);
-    expect(new Set(HELP_TOPICS.map((t) => t.id)).size).toBe(11);
+  // JOB 3741 (SEITENHILFE-LUECKEN): elf → einundzwanzig. Zehn Kapitel sind für die zehn Menüpunkte
+  // dazugekommen, die im Zahnrad nur die Leermeldung trugen. Der Bestand, um den es HIER geht,
+  // bleibt unberührt — dass `fileimport` weiter allein auf `/erfassen?weg=datei` liegt und
+  // `/erfassen` seinen eigenen Erklärsatz behält, misst V3 unverändert weiter.
+  it("V1: HELP_TOPICS führt einundzwanzig Kapitel mit eindeutigen IDs und internen Routen", () => {
+    expect(HELP_TOPICS).toHaveLength(21);
+    expect(new Set(HELP_TOPICS.map((t) => t.id)).size).toBe(21);
     for (const topic of HELP_TOPICS) {
       expect(topic.to.startsWith("/"), `${topic.id}: keine interne Route`).toBe(true);
       expect(topic.tags.length, `${topic.id}: ohne Merkmale`).toBeGreaterThan(0);

@@ -4977,6 +4977,55 @@ const de = {
   "help.trust.title": "Vertrauen",
   "help.trust.body":
     "Jede Aussage trägt einen Reifegrad aus Validierung und Nutzung. Vertrauen ist Evidenz, nicht Wahrheit.",
+  // JOB 3741 (SEITENHILFE-LUECKEN): die zehn Menüpunkte, die im Zahnrad unter „Seitenhilfe" bis
+  // hierher nur die Leermeldung trugen. Jeder Text beantwortet drei Fragen — was ist das hier, was
+  // kann ich tun, was ist der nächste Schritt — ohne Fachwort, ohne Zahl und ohne eine Aussage über
+  // den Datenstand (die wäre ohne Abruf unwahr; siehe Kopf von `lib/helpTopics.ts`).
+  "help.wissensnetz.title": "Themenkarte",
+  // RUNDE 2, Korrekturpflicht 1 (Codex/BEN): Runde 1 beschrieb ausschließlich die Zeichnung. Die
+  // gibt es auf schmalen Fenstern GAR NICHT — unter 900 px (`pages/Wissensnetz.tsx`, `LESEN_UNTER`)
+  // tritt die Leseansicht an ihre Stelle, und den Umschalter gibt es dann auch nicht. Der Text
+  // nennt jetzt beide Darstellungen mit ihrem echten nächsten Schritt und beschriftet den
+  // Umschalter mit seinen echten Wörtern (`wissensnetz.lesen.netz`/`.lesen`) — wer sie umbenennt,
+  // macht `tests/seitenhilfe-navkapitel/die-texte-stimmen-mit-der-seite.test.tsx` (K1) rot.
+  "help.wissensnetz.body":
+    "Die Themenkarte zeigt den Wissensbestand von oben: welche Themen es gibt und welche davon zusammen in denselben freigegebenen Wissensobjekten vorkommen. Auf einem breiten Fenster wählst du oben zwischen „Netz“ und „Lesen“ — das Netz zeichnet jedes Thema als Kreis und legt dir die Wissensobjekte dazu an die Seite, sobald du einen Kreis anklickst; ist das Fenster schmal, gibt es die Zeichnung nicht und auch nichts zu wählen, sondern gleich die Leseansicht. In beiden Fällen steht darunter zu jedem Thema ein Satz mit dem Weg zu seinen Objekten: such dir das Thema, das dich betrifft, und geh von dort weiter.",
+  "help.extern.title": "Externes Wissen",
+  "help.extern.body":
+    "Hier durchsuchst du Quellen außerhalb von Klarwerk, ohne vorher ein Wissensobjekt öffnen zu müssen. Du gibst einen Suchbegriff ein und bekommst die Treffer mit ihrer Adresse zurück; ist die externe Suche abgeschaltet oder nicht erreichbar, sagt die Seite das offen, statt eine leere Liste zu zeigen. Gefundenes wandert nicht von selbst in den Bestand — was du brauchst, erfasst du anschließend als eigenes Wissensobjekt.",
+  "help.konflikte.title": "Konflikte",
+  "help.konflikte.body":
+    "Ein Konflikt ist ein Widerspruch: zwei Wissensobjekte sagen etwas über dieselbe Sache, und beides zusammen kann nicht stimmen. Die Seite stellt die zwei Aussagen nebeneinander und lässt dich wählen, welche gilt, ob beide je nach Zusammenhang gelten oder ob gar kein Widerspruch vorliegt. Deine Wahl wird als Vermerk festgehalten, gelöscht wird nichts; nimm dir ein Paar vor und lies beide Aussagen, bevor du entscheidest.",
+  "help.duplikate.title": "Duplikate",
+  "help.duplikate.body":
+    "Zwei Wissensobjekte, die weitgehend dasselbe sagen, landen hier als Paar. Anders als beim Konflikt widersprechen sie sich nicht, sie doppeln sich. Du entscheidest, welche Seite maßgeblich ist, ob beide bleiben und verknüpft werden oder ob es gar kein Duplikat ist; zusammengeführt und gelöscht wird dabei nichts, es entsteht ein Vermerk. Nimm dir ein Paar vor und vergleiche die beiden Texte.",
+  "help.analytics.title": "Analytics & Audit",
+  "help.analytics.body":
+    "Diese Seite bündelt die Auswertung über den gesamten Bestand und daneben das Protokoll der Vorgänge: Kennzahlen zu Validierung, Vertrauen, Lücken und Auslastung auf der einen Seite, die nachvollziehbare Liste dessen, was geschehen ist, auf der anderen. Du kannst das Protokoll nach Art des Vorgangs und nach handelnder Person filtern, um einer einzelnen Frage nachzugehen. Such dir eine Kennzahl aus und geh ihrer Herkunft im Protokoll nach.",
+  "help.output.title": "Auswertungen",
+  "help.output.body":
+    "Aus vorhandenem Wissen entsteht hier ein Dokument. Du wählst die Art des Dokuments, stellst die Wissensobjekte zusammen, die hineingehören, und bringst sie in die Reihenfolge, in der sie erscheinen sollen; eine Vorschau zeigt die Zusammenstellung, bevor das Dokument erzeugt wird. Beginne mit der Art des Dokuments, danach wählst du die Quellen dazu aus.",
+  "help.import.title": "Import & Quellen",
+  // RUNDE 2, Korrekturpflicht 3 (Codex/BEN): „danach rückt der nächste nach" war falsch. Die
+  // Prüfliste zeigt JEDEN Kandidaten, auch den entschiedenen (`listImportCandidates` filtert nicht,
+  // `services/library-analytics/src/service.ts`; `pages/Stufe2.tsx` rendert `candidates.map`), und
+  // sie liegt in einem standardmäßig ZUGEKLAPPTEN Bereich (`components/ImportHistory.tsx`: ein
+  // `<details>` ohne `open`). Beides steht jetzt im Text und wird von K3 gemessen.
+  "help.import.body":
+    "Hier läuft der Import fremder Quellen: oben wählst du eine Quelle, siehst nach, was in ihr steht, und legst daraus Vorschläge an — hineingelesen wird nur, was du auswählst. Die Vorschläge selbst liegen darunter im zugeklappten Bereich „Review-Verlauf“, dessen Zähler nennt, wie viele davon offen sind; klapp ihn auf und entscheide einen mit „Annehmen“ oder „Ablehnen“, oder hinterlege eine Notiz. Entschiedene Vorschläge verschwinden nicht und schieben nichts nach — sie bleiben mit ihrem Stand in der Liste stehen, den nächsten offenen suchst du dir selbst.",
+  "help.graph.title": "Wissensgraph",
+  "help.graph.body":
+    "Der Wissensgraph zeichnet die einzelnen Wissensobjekte und ihre Verbindungen als Netz — näher am Objekt als die Themenkarte, die nach Themen zusammenfasst. Ein Klick auf einen Knoten führt zu dem Wissensobjekt dahinter, und mit der Tastatur springst du von Knoten zu Knoten. Fang bei einem Objekt an, das du kennst, und folge seinen Linien.",
+  "help.hilfe.title": "Hilfe",
+  "help.hilfe.body":
+    "Auf dieser Seite stehen alle Hilfekapitel beieinander, mit einem Suchfeld darüber; jedes Kapitel trägt einen Link auf die Seite, um die es geht. Gesucht wird in Titel, Text und Schlagwörtern der Kapitel — tipp also ruhig das Wort ein, mit dem du dein Problem beschreiben würdest. Gibt es dazu nichts, sagt die Seite das offen, statt ein unpassendes Kapitel zu zeigen.",
+  "help.profil.title": "Profil",
+  // RUNDE 2, Korrekturpflicht 2 (Codex/BEN): „liegt das an deiner Rolle" war falsch — `canSee`
+  // (`app/navigation.ts`) blendet einen Bereich AUCH bei ausreichender Rolle aus, wenn die
+  // erweiterten Module ausgeschaltet sind. Der Text nennt jetzt beide Gründe; K2 belegt sie an
+  // derselben Funktion mit unveränderter Rolle.
+  "help.profil.body":
+    "Im Profil stehen deine eigenen Angaben: Name und Rolle, E-Mail-Adresse, die Sprache der Oberfläche und der Weg zum Abmelden. Du kannst die Sprache hier umstellen und dein Passwort ändern; unter „Meine Wirkung“ siehst du Zahlen ausschließlich zu deinen eigenen Beiträgen. Fehlen dir Bereiche im Menü, kann das an deiner Rolle liegen — sie steht hier neben deinem Namen — oder daran, dass die erweiterten Module ausgeschaltet sind; diesen Schalter führt „Einstellungen“, und er braucht Verwaltungsrechte.",
   "mob.title": "Schnell festhalten",
   "mob.sub": "An der Anlage. In unter zwei Minuten.",
   "mob.dictate": "Diktat aufnehmen",
@@ -10249,6 +10298,37 @@ const en: typeof de = {
   "help.trust.title": "Trust",
   "help.trust.body":
     "Every statement carries a maturity grade from validation and use. Trust is evidence, not truth.",
+  // JOB 3741 (SEITENHILFE-LUECKEN) — see the German block for the reasoning.
+  "help.wissensnetz.title": "Topic map",
+  "help.wissensnetz.body":
+    "The topic map shows the body of knowledge from above: which topics exist, and which of them appear together in the same released knowledge objects. On a wide window you choose at the top between “Network” and “Reading” — the network draws every topic as a circle and puts the matching knowledge objects beside it as soon as you click one; on a narrow window there is no drawing and nothing to choose, the reading view stands there instead. In both cases a sentence per topic sits below it, with the way to its objects: find the topic that concerns you and go on from there.",
+  "help.extern.title": "External knowledge",
+  "help.extern.body":
+    "Here you search sources outside Klarwerk without having to open a knowledge object first. You type a search term and get the hits back with their address; if external search is switched off or unreachable, the page says so openly instead of showing an empty list. Nothing found here moves into the stock by itself — whatever you need, you capture afterwards as your own knowledge object.",
+  "help.konflikte.title": "Conflicts",
+  "help.konflikte.body":
+    "A conflict is a contradiction: two knowledge objects say something about the same matter, and both together cannot be true. The page puts the two statements side by side and lets you choose which one holds, whether both hold depending on context, or whether there is no contradiction at all. Your choice is kept as a note, nothing is deleted; take one pair and read both statements before you decide.",
+  "help.duplikate.title": "Duplicates",
+  "help.duplikate.body":
+    "Two knowledge objects that say largely the same thing land here as a pair. Unlike a conflict they do not contradict each other, they overlap. You decide which side is authoritative, whether both stay and get linked, or whether it is no duplicate at all; nothing is merged and nothing is deleted, a note is written instead. Take one pair and compare the two texts.",
+  "help.analytics.title": "Analytics & Audit",
+  "help.analytics.body":
+    "This page bundles the evaluation across the whole stock and, next to it, the log of what happened: figures on validation, trust, gaps and workload on one side, the traceable list of events on the other. You can filter the log by kind of event and by the person who acted, to follow a single question. Pick one figure and trace its origin in the log.",
+  "help.output.title": "Reports",
+  "help.output.body":
+    "A document is assembled here from knowledge that already exists. You pick the kind of document, put together the knowledge objects that belong in it and bring them into the order in which they should appear; a preview shows the assembly before the document is generated. Start with the kind of document, then choose the sources for it.",
+  "help.import.title": "Import & Sources",
+  "help.import.body":
+    "This is where importing from outside sources happens: at the top you choose a source, look at what is in it and turn that into proposals — only what you select gets read in. The proposals themselves sit below in the collapsed “Review history” section, whose counter says how many of them are open; open it up and decide one with “Accept” or “Reject”, or attach a note. Decided proposals do not disappear and push nothing up — they stay in the list with their state, and you pick the next open one yourself.",
+  "help.graph.title": "Knowledge Graph",
+  "help.graph.body":
+    "The knowledge graph draws the individual knowledge objects and their connections as a net — closer to the object than the topic map, which groups by topic. A click on a node leads to the knowledge object behind it, and with the keyboard you jump from node to node. Start at an object you know and follow its lines.",
+  "help.hilfe.title": "Help",
+  "help.hilfe.body":
+    "This page keeps every help chapter together, with a search field above it; each chapter carries a link to the page it is about. The search covers title, text and keywords of the chapters — so type in the word you would use to describe your problem. If there is nothing on it, the page says so openly instead of showing an unrelated chapter.",
+  "help.profil.title": "Profile",
+  "help.profil.body":
+    "Your own details live in the profile: name and role, email address, the language of the interface and the way to sign out. You can switch the language here and change your password; under “My impact” you see figures about your own contributions only. If areas are missing from your menu, it can be down to your role — it stands next to your name here — or to the advanced modules being switched off; that switch lives under “Settings” and needs administration rights.",
   "mob.title": "Capture quickly",
   "mob.sub": "At the asset. In under two minutes.",
   "mob.dictate": "Record dictation",
@@ -15244,6 +15324,37 @@ const nl: typeof de = {
   "help.trust.title": "Vertrouwen",
   "help.trust.body":
     "Elke uitspraak draagt een rijpheidsgraad uit validatie en gebruik. Vertrouwen is bewijs, geen waarheid.",
+  // JOB 3741 (SEITENHILFE-LUECKEN) — zie het Duitse blok voor de onderbouwing.
+  "help.wissensnetz.title": "Themakaart",
+  "help.wissensnetz.body":
+    "De themakaart toont de kennisvoorraad van bovenaf: welke thema's er zijn en welke daarvan samen in dezelfde vrijgegeven kennisobjecten voorkomen. Op een breed venster kies je bovenaan tussen „Netwerk“ en „Lezen“ — het netwerk tekent elk thema als cirkel en zet de bijbehorende kennisobjecten ernaast zodra je op een cirkel klikt; is het venster smal, dan is er geen tekening en valt er ook niets te kiezen, maar staat er meteen de leesweergave. In beide gevallen staat daaronder per thema een zin met de weg naar de objecten: zoek het thema dat jou aangaat en ga van daaruit verder.",
+  "help.extern.title": "Externe kennis",
+  "help.extern.body":
+    "Hier doorzoek je bronnen buiten Klarwerk, zonder eerst een kennisobject te hoeven openen. Je typt een zoekterm in en krijgt de treffers met hun adres terug; is het externe zoeken uitgeschakeld of onbereikbaar, dan zegt de pagina dat eerlijk in plaats van een lege lijst te tonen. Wat je vindt, komt niet vanzelf in de voorraad — wat je nodig hebt, leg je daarna zelf als kennisobject vast.",
+  "help.konflikte.title": "Conflicten",
+  "help.konflikte.body":
+    "Een conflict is een tegenspraak: twee kennisobjecten zeggen iets over dezelfde zaak, en samen kunnen ze niet allebei kloppen. De pagina zet de twee uitspraken naast elkaar en laat je kiezen welke geldt, of ze allebei gelden afhankelijk van de context, of dat er helemaal geen tegenspraak is. Je keuze wordt als notitie vastgelegd, er wordt niets verwijderd; neem een paar en lees beide uitspraken voordat je beslist.",
+  "help.duplikate.title": "Duplicaten",
+  "help.duplikate.body":
+    "Twee kennisobjecten die grotendeels hetzelfde zeggen, komen hier als paar terecht. Anders dan bij een conflict spreken ze elkaar niet tegen, ze overlappen. Jij bepaalt welke kant leidend is, of ze allebei blijven en gekoppeld worden, of dat het helemaal geen duplicaat is; er wordt niets samengevoegd en niets verwijderd, er komt een notitie. Neem een paar en vergelijk de twee teksten.",
+  "help.analytics.title": "Analytics & audit",
+  "help.analytics.body":
+    "Deze pagina bundelt de analyse over de hele voorraad en daarnaast het logboek van wat er gebeurd is: kengetallen over validatie, vertrouwen, hiaten en werklast aan de ene kant, de navolgbare lijst met gebeurtenissen aan de andere. Je kunt het logboek filteren op soort gebeurtenis en op de persoon die handelde, om één vraag te volgen. Kies een kengetal en zoek de herkomst ervan in het logboek.",
+  "help.output.title": "Rapportages",
+  "help.output.body":
+    "Hier ontstaat een document uit kennis die er al is. Je kiest de soort document, stelt de kennisobjecten samen die erin horen en zet ze in de volgorde waarin ze moeten verschijnen; een voorbeeld toont de samenstelling voordat het document wordt aangemaakt. Begin met de soort document, daarna kies je de bronnen erbij.",
+  "help.import.title": "Import & bronnen",
+  "help.import.body":
+    "Hier loopt het importeren van externe bronnen: bovenaan kies je een bron, kijk je wat erin staat en maak je daar voorstellen van — alleen wat jij selecteert wordt ingelezen. De voorstellen zelf liggen daaronder in het dichtgeklapte gedeelte „Review-geschiedenis“, waarvan de teller zegt hoeveel ervan openstaan; klap het open en beslis er een met „Aannemen“ of „Afwijzen“, of zet er een notitie bij. Besliste voorstellen verdwijnen niet en schuiven niets door — ze blijven met hun stand in de lijst staan, en het volgende openstaande zoek je zelf uit.",
+  "help.graph.title": "Kennisgraaf",
+  "help.graph.body":
+    "De kennisgraaf tekent de afzonderlijke kennisobjecten en hun verbindingen als een net — dichter bij het object dan de themakaart, die per thema groepeert. Een klik op een knooppunt leidt naar het kennisobject erachter, en met het toetsenbord spring je van knooppunt naar knooppunt. Begin bij een object dat je kent en volg zijn lijnen.",
+  "help.hilfe.title": "Help",
+  "help.hilfe.body":
+    "Op deze pagina staan alle helphoofdstukken bij elkaar, met een zoekveld erboven; elk hoofdstuk heeft een link naar de pagina waar het over gaat. Er wordt gezocht in titel, tekst en trefwoorden van de hoofdstukken — typ dus gerust het woord in waarmee je je probleem zou omschrijven. Is er niets over, dan zegt de pagina dat eerlijk in plaats van een onpassend hoofdstuk te tonen.",
+  "help.profil.title": "Profiel",
+  "help.profil.body":
+    "In het profiel staan je eigen gegevens: naam en rol, e-mailadres, de taal van de interface en de weg om af te melden. Je kunt hier de taal omzetten en je wachtwoord wijzigen; onder „Mijn impact“ zie je uitsluitend getallen over je eigen bijdragen. Mis je onderdelen in je menu, dan kan dat aan je rol liggen — die staat hier naast je naam — of eraan dat de uitgebreide modules uitgeschakeld zijn; die schakelaar staat onder „Instellingen“ en vraagt beheerdersrechten.",
   "mob.title": "Snel vastleggen",
   "mob.sub": "Bij de installatie. In minder dan twee minuten.",
   "mob.dictate": "Dictaat opnemen",

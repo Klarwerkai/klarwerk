@@ -175,12 +175,20 @@ describe("JOB 3028 U3 → H1 · der Satz der Seitenhilfe kommt aus HELP_TOPICS �
   });
 
   it("ein NEUES Kapitel zieht den Satz von selbst nach — nichts muss nachgetragen werden", async () => {
-    // `/extern` hat im echten Bestand kein Kapitel. Hier bekommt es eines — und zwar nur hier.
-    lage.topics = [kapitel("tasks", "/aufgaben"), kapitel("extern", "/extern")];
+    // Der gesetzte Bestand trägt hier ein Kapitel, das es im Produkt NICHT gibt, und der Fall liest
+    // den unaufgelösten i18n-Schlüssel als Beleg: er belegt damit die KETTE (Kapitel → Satz), nicht
+    // einen Text.
+    //
+    // JOB 3741 (SEITENHILFE-LUECKEN): bis dahin stand hier `kapitel("extern", "/extern")` mit der
+    // Begründung „`/extern` hat im echten Bestand kein Kapitel". Das stimmt nicht mehr — `/extern`
+    // hat seither eines, und `help.extern.body` löste dadurch zu echtem Text auf statt zum
+    // Schlüssel. Die Kennung ist deshalb eine, die in `i18n.ts` bewusst NICHT vorkommt; die
+    // Aussage des Falls ist dieselbe geblieben.
+    lage.topics = [kapitel("tasks", "/aufgaben"), kapitel("gibtesnichtimbestand", "/extern")];
     await mountKopfband("/extern");
     try {
       const text = await seitenhilfeOeffnen();
-      expect(text).toContain("help.extern.body");
+      expect(text).toContain("help.gibtesnichtimbestand.body");
       expect(container.querySelector('[data-testid="seitenhilfe-liste"]')).not.toBeNull();
     } finally {
       act(() => root.unmount());

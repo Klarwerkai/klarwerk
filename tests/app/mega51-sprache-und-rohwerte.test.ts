@@ -159,7 +159,17 @@ describe("mega51 G2 · Trust — die Scheibe ist in mega52 geschnitten", () => {
     // `tests/app/mega52-vertrauenswert-sammler.test.ts` über die WERTE.
     // UX-27: Titel und Meta-Erklärung heißen auf EN jetzt „review status“; zwei sichtbare
     // Trust-Nennungen entfallen. Keine Änderung an Bezeichnern oder Berechnungen.
-    expect(zaehlung).toEqual(["de: 27", "en: 89", "nl: 28"]);
+    //
+    // JOB 3741 (SEITENHILFE-LUECKEN): en 89 → 90, de und nl UNVERÄNDERT. Die eine Nennung steht im
+    // englischen Text des neuen Hilfekapitels zu `/analytics` („figures on validation, trust, gaps
+    // and workload“) und benennt damit genau die Kachel, die dort steht: `ana.avgTrust` heißt auf
+    // EN „Avg trust“ (`i18n.ts`, englischer Block). Das ist der von E2 ausdrücklich erlaubte Fall —
+    // „trust" ist im Englischen ein normales Wort und bewusst nicht übersetzt. Dass die Scheibe
+    // geschnitten BLEIBT, sieht man an den beiden anderen Zahlen: die deutschen und
+    // niederländischen Fassungen desselben Kapitels sagen „Vertrauen" bzw. „vertrouwen", genau wie
+    // die Kacheln dort (`ana.avgTrust` = „Ø Vertrauen"/„Ø vertrouwen"). Den Beweis über die WERTE
+    // führt weiterhin `tests/app/mega52-vertrauenswert-sammler.test.ts`.
+    expect(zaehlung).toEqual(["de: 27", "en: 90", "nl: 28"]);
   });
 });
 

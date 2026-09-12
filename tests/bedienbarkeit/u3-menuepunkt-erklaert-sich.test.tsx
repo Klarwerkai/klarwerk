@@ -261,8 +261,12 @@ describe("JOB 3028 U3 → H1 · der Erklärsatz zum Menüpunkt steht in der Seit
     expect(container.querySelectorAll("header span.sr-only").length).toBe(0);
   });
 
+  // JOB 3741 (SEITENHILFE-LUECKEN): `/wissensnetz` und `/konflikte` haben seither ein Kapitel und
+  // taugen nicht mehr als Beleg für den Leersatz. Die AUSSAGE des Falls bleibt und ist dieselbe —
+  // sie wird jetzt an den beiden Seiten gemessen, die absichtlich keines haben: `/start` und
+  // `/entwuerfe` gehören zu JOB 3669 (Tipps IN der Seite).
   it("U3-3: Seiten ohne Hilfekapitel bekommen den ehrlichen Leersatz — ein Hinweis, der überall steht, sagt nichts", async () => {
-    for (const pfad of ["/wissensnetz", "/konflikte"]) {
+    for (const pfad of ["/start", "/entwuerfe"]) {
       await mountKopfband(pfad);
       await seitenhilfeOeffnen();
       expect(seitenhilfeText(), `${pfad} zeigt einen Satz ohne Kapitel`).toContain(
@@ -283,9 +287,14 @@ describe("JOB 3028 U3 → H1 · der Erklärsatz zum Menüpunkt steht in der Seit
     expect(container.textContent ?? "").not.toContain(de("help.firststart.body"));
   });
 
-  it("U3-5: die MENGE stimmt — acht Seiten, berechnet aus Navigation und Hilfekapiteln, nicht aufgezählt", async () => {
+  // JOB 3741 (SEITENHILFE-LUECKEN): acht → achtzehn. Die Rechnung selbst ist unverändert (sie wird
+  // weiter aus Navigation × Hilfekapiteln GEBILDET und nicht aufgezählt); zehn Menüpunkte haben ihr
+  // Kapitel bekommen. Die Untergrenze steht gegen eine Rechnung, die gar nichts fände.
+  it("U3-5: die MENGE stimmt — achtzehn Seiten, berechnet aus Navigation und Hilfekapiteln, nicht aufgezählt", async () => {
     const erwartet = erwartetePfadeMitSatz();
-    expect(erwartet.length, "die Rechnung aus NAV_GROUPS × HELP_TOPICS ergibt nicht acht").toBe(8);
+    expect(erwartet.length, "die Rechnung aus NAV_GROUPS × HELP_TOPICS ergibt nicht achtzehn").toBe(
+      18,
+    );
     const imDom: string[] = [];
     for (const item of erreichbareEintraege()) {
       await mountKopfband(item.path);

@@ -205,9 +205,13 @@ describe("JOB 3338 · A — der Suchbegriff findet die ISO-Erklärung, in beiden
     // Kapitel (das neue `fileimport`). Die Zahl ist hier ABGELEITET und nicht mehr getippt: sie
     // bleibt damit bei jedem weiteren Kapitel richtig, und der Fall prüft weiterhin genau das, was
     // er prüfen soll — dass BEIDE Listen auf der Fläche ankommen und keine dabei verlorengeht.
+    // JOB 3741 (SEITENHILFE-LUECKEN): von 15 auf 25 — `HELP_TOPICS` führt seit diesem Job
+    // einundzwanzig Kapitel (zehn neue für die Menüpunkte ohne Erklärsatz). Die abgeleitete Zeile
+    // darüber bleibt der eigentliche Wächter; die getippte Zahl darunter ist der Gegenhalt gegen
+    // eine Ableitung, die beide Seiten gleichzeitig verlöre.
     const alle = sichtbareKapitel();
     expect(alle.length).toBe(HELP_TOPICS.length + ISO_HELP_TOPICS.length);
-    expect(alle.length, "der sichtbare Bestand ist nicht mehr fünfzehn Kapitel").toBe(15);
+    expect(alle.length, "der sichtbare Bestand ist nicht mehr fünfundzwanzig Kapitel").toBe(25);
     for (const id of ["firststart", "capture", "ask", "library", "validation", "tasks"]) {
       expect(alle, `${id} fehlt in der ungefilterten Hilfe`).toContain(id);
     }

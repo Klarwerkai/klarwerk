@@ -42,9 +42,16 @@ describe("SCRUM-219: helpTopics", () => {
   // JOB 3468 (REVIEW26-HILFE-IMPORT): von 10 auf 11. GENAU EIN Kapitel kommt dazu — `fileimport`,
   // der in der Hilfe bisher unauffindbare Dateiimport. Kein bestehendes Kapitel ist weggefallen;
   // dass die Zahl nicht nur hochgesetzt wurde, hält der nächste Fall fest (er nennt die Kennung).
-  it("HELP_TOPICS: 11 Kapitel, eindeutige IDs, nur interne Routen", () => {
-    expect(HELP_TOPICS).toHaveLength(11);
-    expect(new Set(HELP_TOPICS.map((t) => t.id)).size).toBe(11);
+  //
+  // JOB 3741 (SEITENHILFE-LUECKEN): von 11 auf 21. ZEHN Kapitel kommen dazu — je eines für die zehn
+  // Menüpunkte, die im Zahnrad unter „Seitenhilfe" bis dahin nur die Leermeldung trugen. Auch hier
+  // ist kein bestehendes Kapitel weggefallen und keines umsortiert: die elf geerbten stehen im
+  // nächsten Fall unverändert VORNE, die zehn neuen dahinter. Dass die Menge der neuen sich aus
+  // `app/navigation.ts` ERGIBT und nicht aus dieser Liste, misst
+  // `tests/seitenhilfe-navkapitel/jeder-menuepunkt-hat-einen-erklaersatz.test.ts` (E2).
+  it("HELP_TOPICS: 21 Kapitel, eindeutige IDs, nur interne Routen", () => {
+    expect(HELP_TOPICS).toHaveLength(21);
+    expect(new Set(HELP_TOPICS.map((t) => t.id)).size).toBe(21);
     for (const topic of HELP_TOPICS) {
       expect(topic.to.startsWith("/")).toBe(true);
       expect(topic.tags.length).toBeGreaterThan(0);
@@ -67,6 +74,18 @@ describe("SCRUM-219: helpTopics", () => {
       "lifecycle",
       "stufe2",
       "mobile",
+      // JOB 3741: die zehn neuen, in Menü-Reihenfolge angehängt. Ihre Kennungen sind die `id` des
+      // jeweiligen Menüpunkts aus `app/navigation.ts` — dort gepinnt (P1 des neuen Wächters).
+      "wissensnetz",
+      "extern",
+      "konflikte",
+      "duplikate",
+      "analytics",
+      "output",
+      "import",
+      "graph",
+      "hilfe",
+      "profil",
     ]);
   });
 });

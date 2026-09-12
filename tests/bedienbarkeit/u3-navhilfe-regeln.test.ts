@@ -29,7 +29,8 @@ describe("JOB 3028 U3 · navHilfeFor — Regel 1: genau ein Kapitel auf der Rout
         item.path !== "/admin" && HELP_TOPICS.filter((t) => t.to === item.path).length === 1,
     );
     // Ohne diese Untergrenze wäre der Fall auch dann grün, wenn die Zuordnung gar nichts fände.
-    expect(treffer.length, "kein einziger Menüpunkt mit Kapitel — die Fläche fehlt").toBe(8);
+    // JOB 3741 (SEITENHILFE-LUECKEN): 8 → 18. Zehn Menüpunkte haben ihr Kapitel bekommen.
+    expect(treffer.length, "kein einziger Menüpunkt mit Kapitel — die Fläche fehlt").toBe(18);
     for (const item of treffer) {
       const kapitel = HELP_TOPICS.find((t) => t.to === item.path);
       expect(navHilfeFor(item.path), `falsches Kapitel an ${item.path}`).toEqual({
@@ -44,11 +45,20 @@ describe("JOB 3028 U3 · navHilfeFor — Regel 2: kein Kapitel ⇒ null", () => 
   // JOB 3503: es sind zwölf. „Meine Entwürfe" (`/entwuerfe`) ist dazugekommen und hat kein
   // Hilfekapitel — und bekommt deshalb keinen Hinweis. Ein erfundenes Kapitel wäre die Alternative
   // gewesen; Fehlen ist die ehrliche Auskunft.
-  it("die zwölf Menüpunkte ohne Kapitel bekommen nichts — Fehlen ist die ehrliche Auskunft", () => {
+  //
+  // JOB 3741 (SEITENHILFE-LUECKEN): es sind noch ZWEI. Zehn der zwölf haben ihr Kapitel bekommen;
+  // übrig bleiben `/start` und `/entwuerfe`, weil JOB 3669 dort die andere Hälfte der Seitenhilfe
+  // baut (Tipps IN der Seite) und zwei Bahnen an derselben Aussage verboten sind. Die Regel dieses
+  // Falls gilt unverändert: wo kein Kapitel liegt, wird auch keiner erfunden.
+  it("die zwei Menüpunkte ohne Kapitel bekommen nichts — Fehlen ist die ehrliche Auskunft", () => {
     const ohne = ALL_ITEMS.filter(
       (item) => HELP_TOPICS.filter((t) => t.to === item.path).length === 0,
     ).map((item) => item.path);
-    expect(ohne.length, "die Menge der kapitellosen Punkte ist nicht mehr zwölf").toBe(12);
+    expect(ohne.length, "die Menge der kapitellosen Punkte ist nicht mehr zwei").toBe(2);
+    expect([...ohne].sort(), "es sind nicht mehr /start und /entwuerfe").toEqual([
+      "/entwuerfe",
+      "/start",
+    ]);
     for (const pfad of ohne) {
       expect(navHilfeFor(pfad), `${pfad} bekommt einen Hinweis ohne Kapitel`).toBeNull();
     }
@@ -85,7 +95,7 @@ describe("JOB 3028 U3 · navHilfeFor — Regel 4: die eine ausgeschriebene Ausna
 // nicht dass sie „ungefähr passt". Ein Punkt, der in keinen Topf fällt, wäre ein stiller Rest, und
 // genau aus einem stillen Rest entsteht die nächste falsche Zahl.
 describe("JOB 3028 U3 · die Aufteilung der Menüpunkte geht ohne Rest auf", () => {
-  it("21 gesamt = 8 mit Hinweis + 12 ohne Kapitel + 0 mehrdeutig + 1 begründete Ausnahme", () => {
+  it("21 gesamt = 18 mit Hinweis + 2 ohne Kapitel + 0 mehrdeutig + 1 begründete Ausnahme", () => {
     const kapitelZu = (pfad: string): number =>
       HELP_TOPICS.filter((topic) => topic.to === pfad).length;
 
@@ -99,9 +109,13 @@ describe("JOB 3028 U3 · die Aufteilung der Menüpunkte geht ohne Rest auf", () 
 
     // JOB 3503: 20 → 21 (der Kopfband-Punkt „Meine Entwürfe"), und er fällt in den Topf „ohne
     // Kapitel" (11 → 12). Die Summe geht weiter ohne Rest auf — genau das prüft der Fall.
+    //
+    // JOB 3741: die Gesamtzahl bleibt 21 (kein neuer Menüpunkt), ZEHN Punkte wandern aber vom Topf
+    // „ohne Kapitel" in den Topf „mit Hinweis": 8 → 18 und 12 → 2. Die Summe geht weiter ohne Rest
+    // auf, und die Ausnahme bleibt genau eine.
     expect(ALL_ITEMS.length, "gesamt").toBe(21);
-    expect(mitHinweis.length, "mit Hinweis").toBe(8);
-    expect(ohneKapitel.length, "ohne Kapitel").toBe(12);
+    expect(mitHinweis.length, "mit Hinweis").toBe(18);
+    expect(ohneKapitel.length, "ohne Kapitel").toBe(2);
     expect(mehrdeutig.length, "mehrdeutig").toBe(0);
     expect(
       ausnahme.map((i) => i.path),
@@ -115,8 +129,9 @@ describe("JOB 3028 U3 · die Aufteilung der Menüpunkte geht ohne Rest auf", () 
     ).toBe(ALL_ITEMS.length);
 
     // Und die Zahl, um die es in der Rückgabe ging: STUMM sind zwölf, nicht elf — seit JOB 3503
-    // dreizehn (zwölf ohne Kapitel plus `/admin` als begründete Ausnahme).
+    // dreizehn (zwölf ohne Kapitel plus `/admin` als begründete Ausnahme). Seit JOB 3741 sind es
+    // DREI: `/start` und `/entwuerfe` (beide bei JOB 3669) plus `/admin` als begründete Ausnahme.
     const stumm = ALL_ITEMS.filter((i) => navHilfeFor(i.path) === null);
-    expect(stumm.length, "stumme Menüpunkte").toBe(13);
+    expect(stumm.length, "stumme Menüpunkte").toBe(3);
   });
 });
