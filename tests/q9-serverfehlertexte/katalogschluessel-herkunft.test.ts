@@ -2,10 +2,10 @@
 // JOB 3612 · Q9-KATALOGSPRACHE — WOHER JEDER SCHLÜSSEL KOMMT UND WELCHER DAVON GEMESSEN WIRD.
 // ================================================================================================
 //
-// WOZU DIESE DATEI NEBEN `katalog.test.ts` STEHT. S1 dort verlangt von jedem der 27 Schlüssel drei
+// WOZU DIESE DATEI NEBEN `katalog.test.ts` STEHT. S1 dort verlangt von jedem der 28 Schlüssel drei
 // verschiedene Sprachfassungen. Damit ist die Lücke GESCHLOSSEN — hier wird sie BENANNT: welcher
 // Schlüssel kommt überhaupt woher, und welcher wird heute über eine echte Route gemessen? Ohne
-// diese Antwort bleibt „ist übersetzt" eine Zusage ohne Umfang, und niemand sieht, dass 19 von 27
+// diese Antwort bleibt „ist übersetzt" eine Zusage ohne Umfang, und niemand sieht, dass 19 von 28
 // Schlüsseln nie einen englischen oder niederländischen Satz an einem echten Draht zeigen.
 //
 // Codex hat die drei auffälligsten selbst genannt — `OIDC_STATE_INVALID`, `ALREADY_SETUP`,
@@ -619,8 +619,17 @@ neue Aufrufform). H2 bis H5 wären dann still grün: ${leer.join(" · ")}`,
  *  wirft ihn jetzt zusätzlich selbst. Die Frage, die H2 mitstellt, ist damit beantwortet: einen
  *  eigenen Routenfall in EN/NL braucht dieser Weg nicht, denn `INTERNAL` hat ihn bereits
  *  (`GEMESSEN_VON.INTERNAL` → server.test.ts · R12). H4 und H3.2 verschieben sich dadurch nicht:
- *  H4 misst gegen den Katalog, und die Vereinigung aus Wurf und Route enthielt `INTERNAL` schon. */
+ *  H4 misst gegen den Katalog, und die Vereinigung aus Wurf und Route enthielt `INTERNAL` schon.
+ *
+ *  `ACCESS_EXPIRED` kam mit JOB 3756 hinzu — die Zahl der Stellen bleibt 21, zwei davon tragen nur
+ *  einen anderen Schlüssel: die beiden Ablauf-Würfe in `login` und `loginWithOidc` liehen sich bis
+ *  dahin `NOT_APPROVED` (der FEHLERCODE bleibt dort `NOT_APPROVED`, nur der Meldungsschlüssel
+ *  wechselt — H2 liest das zweite Argument, nicht das erste). Anders als bei `INTERNAL` ist das ein
+ *  NEUER Katalogschlüssel: er verschiebt H3.2 (die Vereinigung muss ihn decken, und sie tut es über
+ *  diese Liste) und H4 (er hat von Anfang an einen Routenfall in EN/NL, s. `GEMESSEN_VON`, und
+ *  gehört deshalb NICHT in `OHNE_ROUTENFALL`). */
 const GEWORFEN = [
+  "ACCESS_EXPIRED",
   "ACCOUNT_NOT_FOUND",
   "CURRENT_PASSWORD_INCORRECT",
   "EMAIL_TAKEN",
@@ -1129,7 +1138,7 @@ function routenfall(satz: string): string[] {
 }
 
 /**
- * DIE LISTE (Lieferung 3). 19 von 27 Schlüsseln zeigen heute nirgends einen englischen oder
+ * DIE LISTE (Lieferung 3). 19 von 28 Schlüsseln zeigen heute nirgends einen englischen oder
  * niederländischen Satz an einem echten Draht. Gemessen, nicht abgeschrieben — Codex' drei
  * Beispiele (`OIDC_STATE_INVALID`, `ALREADY_SETUP`, `UNKNOWN_ROLE`) stehen darin.
  */
@@ -1164,6 +1173,12 @@ const OHNE_ROUTENFALL = [
  *  auch dann grün bliebe, wenn der Fallabtaster nichts mehr findet und alles „ungemessen" heisst
  *  — dann müsste nur die eine Liste wachsen, und niemand sähe, dass die Deckung verschwand. */
 const GEMESSEN_VON = {
+  // JOB 3756: der erste Schlüssel des Katalogs, der seinen Routenfall am Tag seiner Einführung
+  // mitbringt. Beide Fremdsprachen hängen an EINEM Fall — fällt er aus, wandert der Schlüssel in
+  // einem Zug nach `OHNE_ROUTENFALL`, und H4 nennt ihn.
+  ACCESS_EXPIRED: [
+    "tests/demo-zugang-gaeste-meldung/ablauf-meldung.test.ts · M3 dieselbe Lage auf Englisch und Niederländisch",
+  ],
   INTERNAL: [
     "tests/q9-serverfehlertexte/server.test.ts · R12 Auffangfehler EN verbirgt interne Details",
   ],
@@ -1225,7 +1240,7 @@ Sprache sei noch gemessen.`,
 
 it("H4.9 der Fallabtaster findet die Fälle des Routentests dieses Ordners", () => {
   // Ohne diesen Pin könnte der Abtaster an einer neuen Schreibweise scheitern: er fände keine
-  // Fälle mehr, H4 wüchse auf alle 27 Schlüssel — und das sähe aus wie ein Deckungsverlust im
+  // Fälle mehr, H4 wüchse auf alle 28 Schlüssel — und das sähe aus wie ein Deckungsverlust im
   // Produkt, nicht wie ein kaputtes Werkzeug.
   const eigen = STAENDE.find((s) => s.ort === "tests/q9-serverfehlertexte/server.test.ts");
   expect(eigen, "der Routentest dieses Ordners nennt keinen EN/NL-Satz mehr").toBeDefined();

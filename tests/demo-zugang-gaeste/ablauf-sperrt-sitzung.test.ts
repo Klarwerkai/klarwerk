@@ -65,9 +65,11 @@ describe("JOB 3665 B · die Befristung beendet die laufende Sitzung", () => {
 
     k.vorstellen(2 * STUNDE);
 
+    // JOB 3756: derselbe Meldungsschlüssel wie am Passwort-Eingang — dieselbe Lage darf nicht je
+    // nach Anmeldeart etwas anderes sagen. Der Fehlercode bleibt `NOT_APPROVED` (403).
     await expect(k.service.loginWithOidc(gastClaims(), true, "viewer")).rejects.toMatchObject({
       code: "NOT_APPROVED",
-      message: "NOT_APPROVED",
+      message: "ACCESS_EXPIRED",
     });
     expect(await k.sessions.find(hashTokenAtRest(ersteAnmeldung.token))).toBeUndefined();
     expect(await k.service.authenticate(ersteAnmeldung.token)).toBeUndefined();

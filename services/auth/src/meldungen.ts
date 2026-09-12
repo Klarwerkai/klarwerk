@@ -15,6 +15,17 @@ export const MELDUNGEN = {
     en: "Your account has not been approved yet.",
     nl: "Je account is nog niet goedgekeurd.",
   },
+  // JOB 3756: der Nachbar von NOT_APPROVED und ausdrücklich nicht dasselbe. „Noch nicht
+  // freigegeben" und „abgelaufen" sind zwei verschiedene Lagen mit zwei verschiedenen Wegen zurück
+  // (Freigabe erteilen · Befristung nehmen oder verlängern); ein gemeinsamer Satz schickte die
+  // Hälfte der Betroffenen in die falsche Richtung. Der Text nennt bewusst weder Datum noch Konto
+  // noch einen Zuständigen: er steht vor jedem abgelaufenen Zugang gleich da und weiß von alldem
+  // nichts.
+  ACCESS_EXPIRED: {
+    de: "Ihr Zugang ist abgelaufen.",
+    en: "Your access has expired.",
+    nl: "Je toegang is verlopen.",
+  },
   WEAK_PASSWORD: {
     de: "Passwort muss mindestens 8 Zeichen haben.",
     en: "Password must be at least 8 characters long.",

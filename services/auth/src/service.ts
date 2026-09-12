@@ -244,12 +244,18 @@ export class AuthService {
     if (!user.approved) {
       throw new AuthError("NOT_APPROVED", "NOT_APPROVED" satisfies Meldungsschluessel);
     }
-    // JOB 3665: unmittelbar nach der Freigabe-Prüfung, und mit DERSELBEN Meldung. Ein abgelaufener
-    // Zugang IST ein Zugang, der nicht mehr freigegeben ist — dieselbe Aussage, derselbe Weg
-    // zurück (der Admin nimmt die Befristung). Ein neu erfundener Schlüssel fiele im Katalog auf
-    // „Unerwarteter Fehler." und sagte dem Menschen weniger, nicht mehr.
+    // JOB 3756: unmittelbar nach der Freigabe-Prüfung, aber mit EIGENER Meldung. JOB 3665 musste
+    // sich hier noch `NOT_APPROVED` leihen, weil ein unbekannter Schlüssel im Katalog auf
+    // „Unerwarteter Fehler." fällt (`meldungen.ts`) und `meldungen.ts` damals einem anderen Job
+    // gehörte. Der Schlüssel steht jetzt im Katalog, und die geliehene Aussage war falsch: dieses
+    // Konto WAR freigegeben, und der Weg zurück ist ein anderer (der Admin nimmt oder verlängert
+    // die Befristung, er gibt nicht neu frei).
+    //
+    // DER FEHLERCODE BLEIBT `NOT_APPROVED`, und das ist keine Nachlässigkeit: er trägt den
+    // HTTP-Status 403 (`routes.ts`) und den Vertrag der Clients, die auf ihn prüfen. Fachlich hat
+    // sich nichts geändert — nur der Satz, den ein Mensch liest, sagt jetzt die Wahrheit.
     if (await this.zugangAbgelaufen(user)) {
-      throw new AuthError("NOT_APPROVED", "NOT_APPROVED" satisfies Meldungsschluessel);
+      throw new AuthError("NOT_APPROVED", "ACCESS_EXPIRED" satisfies Meldungsschluessel);
     }
     const token = this.genToken();
     // Token-at-Rest: nur der Hash wird persistiert; der Klartext geht ausschliesslich an den Client.
@@ -393,10 +399,11 @@ export class AuthService {
    * auf, wenn niemand mehr hereinkäme, der sie zurücknehmen könnte. Geprüft wird NUR beim Setzen:
    * eine Befristung zu NEHMEN kann niemanden aussperren.
    *
-   * EIN UNLESBARES DATUM KOMMT NICHT HINEIN. Es gibt keinen Meldungstext für diesen Fall (der
-   * Katalog ist in diesem Takt gehalten), und einen zu erfinden hieße, dem Menschen „Unerwarteter
-   * Fehler." zu zeigen — genau das ist es hier aber auch: eine Eingabe, die eine Oberfläche nie
-   * erzeugen dürfte.
+   * EIN UNLESBARES DATUM KOMMT NICHT HINEIN. Es gibt keinen eigenen Meldungstext für diesen Fall;
+   * der Admin liest „Unerwarteter Fehler." — genau das ist es hier auch: eine Eingabe, die eine
+   * Oberfläche nie erzeugen dürfte. (JOB 3756: der Katalog ist nicht mehr gesperrt, ein eigener
+   * Satz wäre also machbar. Er bleibt ein eigener Auftrag — dieser hier ändert den Satz für den
+   * ABGELAUFENEN GAST, nicht den für den Admin mit einer kaputten Eingabe.)
    */
   async setAccessExpiry(
     userId: string,
@@ -488,8 +495,10 @@ export class AuthService {
     // JOB 3665: hier, und ausdrücklich VOR dem Rollenabgleich. Ein abgelaufenes Konto darf keine
     // Nebenwirkung mehr auslösen — weder eine Herabstufung noch einen Protokolleintrag über eine
     // Rolle, die es gar nicht mehr ausüben kann. Wer nicht herein darf, wird nicht mehr angefasst.
+    // JOB 3756: derselbe Schlüssel wie in `login`. Sagte dieselbe Lage je nach Anmeldeart etwas
+    // anderes, wäre der neue Satz nur eine halbe Wahrheit.
     if (await this.zugangAbgelaufen(account)) {
-      throw new AuthError("NOT_APPROVED", "NOT_APPROVED" satisfies Meldungsschluessel);
+      throw new AuthError("NOT_APPROVED", "ACCESS_EXPIRED" satisfies Meldungsschluessel);
     }
     // JOB 2686 (R2-8): der Rollenabgleich, VOR der Sitzung — sonst traegt die frische Sitzung noch
     // die alte, zu hohe Rolle.

@@ -11,11 +11,14 @@
 // eigenen Beleg, weil eine geschlossene Anmeldung allein einen Gast noch bis zu 14 Tage im Haus
 // ließe (`SESSION_TTL_MS`).
 //
-// WARUM `NOT_APPROVED` UND KEIN EIGENER FEHLERCODE: `services/auth/src/meldungen.ts` bildet jeden
-// unbekannten Schlüssel auf „Unerwarteter Fehler." ab, und der Katalog gehört in diesem Takt einem
-// anderen Job. Ein abgelaufener Zugang IST ein Zugang, der nicht mehr freigegeben ist — dieselbe
-// Aussage, die `NOT_APPROVED` trägt, und derselbe Weg zurück (`approveUser` bzw. das Entfernen der
-// Befristung). Der genauere Satz ist ein Folgeposten, keine Auslassung.
+// WARUM DER FEHLERCODE `NOT_APPROVED` BLEIBT, DER MELDUNGSSCHLÜSSEL ABER NICHT: Der Code trägt den
+// HTTP-Status 403 und den Vertrag der Clients — daran hat sich nichts geändert. Der SATZ dagegen
+// war falsch: JOB 3665 musste sich hier noch `NOT_APPROVED` leihen (der Katalog gehörte damals
+// einem anderen Job), und ein abgelaufener Gast las „Konto ist noch nicht freigegeben.", obwohl
+// sein Konto freigegeben WAR. Seit JOB 3756 trägt der Wurf `ACCESS_EXPIRED` („Ihr Zugang ist
+// abgelaufen."); der Weg zurück ist ein anderer als bei fehlender Freigabe, nämlich das Nehmen oder
+// Verlängern der Befristung. Der Satz an der echten Route steht in
+// `tests/demo-zugang-gaeste-meldung/ablauf-meldung.test.ts`.
 import { describe, expect, it } from "vitest";
 import {
   GAST_PASSWORT,
@@ -51,9 +54,10 @@ describe("JOB 3665 A · die Befristung sperrt die Anmeldung", () => {
 
     k.vorstellen(2 * STUNDE);
 
+    // JOB 3756: der Code bleibt `NOT_APPROVED` (403), der Meldungsschlüssel ist der eigene.
     await expect(gastAnmelden(k)).rejects.toMatchObject({
       code: "NOT_APPROVED",
-      message: "NOT_APPROVED",
+      message: "ACCESS_EXPIRED",
     });
   });
 
