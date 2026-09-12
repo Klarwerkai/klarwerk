@@ -123,6 +123,25 @@ describe("W0 · der Kommentarschneider, auf dem Wächter C steht", () => {
     expect(rein).toContain("const r = 2;");
   });
 
+  it("W0.6 der Schnitt ist LÄNGENTREU — jedes Zeichen behält seine Stelle", () => {
+    // JOB 3580: Bis dahin wurde ein ZEILENkommentar ersatzlos entfernt (der Blockkommentar schon
+    // immer durch Leerzeichen ersetzt). Für A, B und C reichte das, weil sie nur Zeilennummern
+    // brauchen. `erzeugungsstellen` sucht die Struktur aber im einen Schnitt und schneidet den
+    // Argumenttext aus dem anderen aus — verschieben sich die Indizes, schneidet es daneben und
+    // meldet Unsinn oder nichts. Dieser Fall hält die Zusage fest, die der Kopfkommentar der
+    // Funktion schon immer gab.
+    const quelle = [
+      'const a = 1; // "Satz A" mit / und "',
+      '/* Zeile1 */ const b = "echt"; /* Zeile2',
+      "Zeile3 */ const c = /https?:\\/\\//;",
+    ].join("\n");
+    const rein = ohneKommentare(quelle);
+    expect(rein).toHaveLength(quelle.length);
+    for (const suche of ['const b = "echt";', "const c = /https?:\\/\\//;"]) {
+      expect(rein.indexOf(suche)).toBe(quelle.indexOf(suche));
+    }
+  });
+
   it("W0.5 der geschnittene Katalog trägt alle Fassungen noch — der Schneider frisst keine Texte", () => {
     const rein = ohneKommentare(KATALOG_QUELLE);
     for (const { schluessel, sprache, text } of FASSUNGEN) {
