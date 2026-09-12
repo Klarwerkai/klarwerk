@@ -1,5 +1,5 @@
 import type { Pool } from "pg";
-import { type TxContext, pgQueryable, poolQueryable } from "../../db-tx";
+import { type TxContext, pgQueryable, poolQueryable, withPgTx } from "../../db-tx";
 import type { PasswordResetRepo, ResetToken, SessionRepo, UserRepo } from "./repo";
 import { TOKEN_HASH_PREFIX, hashTokenAtRest } from "./service";
 import type { Role, Session, User } from "./types";
@@ -316,8 +316,37 @@ export class PgUserRepo implements UserRepo {
     );
   }
 
-  async delete(id: string): Promise<void> {
-    await this.pool.query("DELETE FROM users WHERE id=$1", [id]);
+  // JOB 3784: derselbe Weg wie `update` darüber — ohne tx die normale Pool-Query (heutiges
+  // Verhalten unverändert), MIT tx auf dem Transaktions-Client des Aussperrschutzes.
+  async delete(id: string, tx?: TxContext): Promise<void> {
+    const ziel = tx ? pgQueryable(tx) : poolQueryable(this.pool);
+    await ziel.query("DELETE FROM users WHERE id=$1", [id]);
+  }
+
+  // JOB 3784: EINE echte Transaktion (BEGIN … COMMIT/ROLLBACK, ein Client, in jedem Fall
+  // freigegeben) — der Vertrag von services/db-tx, hier nur benutzt und nicht nachgebaut.
+  withAdminGuard<T>(fn: (tx?: TxContext) => Promise<T>): Promise<T> {
+    return withPgTx(this.pool, (tx) => fn(tx));
+  }
+
+  /**
+   * JOB 3784: die gesperrte Lesung des Aussperrschutzes.
+   *
+   * ` FOR UPDATE` GENAU DANN, WENN EIN `tx` DA IST. Ohne Transaktion gäbe es nichts, was die Sperre
+   * halten könnte — sie fiele mit der Anweisung, wäre also wirkungslos, und ein Lesevorgang, der
+   * unbeteiligte Schreiber ausbremst, wäre der einzige messbare Effekt.
+   *
+   * VERENGT AUF `role='admin' AND approved`: gesperrt wird, was die Antwort ändern könnte, und
+   * nicht die ganze Tabelle. Ein Gast, der sich im selben Moment registriert, wartet nicht.
+   */
+  async listAdminsForGuard(tx?: TxContext): Promise<User[]> {
+    const ziel = tx ? pgQueryable(tx) : poolQueryable(this.pool);
+    const res = await ziel.query<UserRow>(
+      `SELECT * FROM users WHERE role='admin' AND approved = true ORDER BY created_at${
+        tx ? " FOR UPDATE" : ""
+      }`,
+    );
+    return res.rows.map(toUser);
   }
 }
 

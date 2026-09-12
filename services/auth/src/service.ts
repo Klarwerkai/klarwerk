@@ -411,20 +411,29 @@ export class AuthService {
     actorId: string,
   ): Promise<PublicUser> {
     const user = await this.requireUser(userId);
-    if (expiresAt !== undefined) {
-      // JOB 3665 R2 (BEN-Befund 4): geprüft wird die FORM, nicht nur die Parsbarkeit. `Date.parse`
-      // allein nimmt `"09/12/2026"` an und legt dabei selbst fest, welcher Tag gemeint ist.
-      if (ablaufZeitpunkt(expiresAt) === undefined) {
-        throw new AuthError("FORBIDDEN", "INTERNAL" satisfies Meldungsschluessel);
-      }
-      if (await this.isLastApprovedAdmin(userId)) {
-        throw new AuthError("FORBIDDEN", "LAST_ADMIN_DEMOTION" satisfies Meldungsschluessel);
-      }
-    }
     const { accessExpiresAt: _bisher, ...ohneBefristung } = user;
     const aktualisiert: User =
       expiresAt === undefined ? ohneBefristung : { ...user, accessExpiresAt: expiresAt };
-    await this.users.update(aktualisiert);
+    if (expiresAt === undefined) {
+      // Das NEHMEN einer Befristung kann niemanden aussperren (s. oben) — kein Rahmen, keine
+      // Sperre. Eine Sperre ohne Aussperrgefahr wäre reine Bremse.
+      await this.users.update(aktualisiert);
+    } else {
+      // JOB 3665 R2 (BEN-Befund 4): geprüft wird die FORM, nicht nur die Parsbarkeit. `Date.parse`
+      // allein nimmt `"09/12/2026"` an und legt dabei selbst fest, welcher Tag gemeint ist.
+      // Sie steht VOR dem Rahmen: eine Eingabe, die eine Oberfläche nie erzeugen dürfte, soll
+      // keine Sperre nehmen müssen, um abgewiesen zu werden.
+      if (ablaufZeitpunkt(expiresAt) === undefined) {
+        throw new AuthError("FORBIDDEN", "INTERNAL" satisfies Meldungsschluessel);
+      }
+      // JOB 3784: Prüfung UND Schreiben in EINEM Rahmen — s. UserRepo.withAdminGuard.
+      await this.users.withAdminGuard(async (tx) => {
+        if (await this.isLastApprovedAdmin(userId, tx)) {
+          throw new AuthError("FORBIDDEN", "LAST_ADMIN_DEMOTION" satisfies Meldungsschluessel);
+        }
+        await this.users.update(aktualisiert, tx);
+      });
+    }
     await this.record(
       actorId,
       "user.access-expiry-set",
@@ -808,11 +817,6 @@ export class AuthService {
       throw new AuthError("FORBIDDEN", "SELF_DEMOTION_FORBIDDEN" satisfies Meldungsschluessel);
     }
     const user = await this.requireUser(userId);
-    // SCRUM-443 (Last-Admin-Schutz): der letzte aktive Admin darf nicht herabgestuft werden —
-    // sonst gäbe es niemanden mehr mit Verwaltungsrecht (System ausgesperrt).
-    if (user.role === "admin" && role !== "admin" && (await this.isLastApprovedAdmin(userId))) {
-      throw new AuthError("FORBIDDEN", "LAST_ADMIN_DEMOTION" satisfies Meldungsschluessel);
-    }
     // JOB 3140 (UX-11): DIE ALTE ROLLE WIRD GESPEICHERT, BEVOR SIE ÜBERSCHRIEBEN WIRD.
     //
     // Bis hierher schrieb der Eintrag nur `{ role }` — die NEUE Rolle. Die alte stand eine Zeile
@@ -824,8 +828,20 @@ export class AuthService {
     // oder umbenannt wird. Nachträglich anreichern lässt sich das nie: der Bestand behält seine
     // Lücke und zeigt sie ehrlich als „nicht gespeichert" (apps/web/src/lib/auditEventDetail.ts).
     const previousRole = user.role;
-    user.role = role;
-    await this.users.update(user);
+    // JOB 3784: Prüfung UND Schreiben in EINEM Rahmen — s. UserRepo.withAdminGuard.
+    await this.users.withAdminGuard(async (tx) => {
+      // SCRUM-443 (Last-Admin-Schutz): der letzte aktive Admin darf nicht herabgestuft werden —
+      // sonst gäbe es niemanden mehr mit Verwaltungsrecht (System ausgesperrt).
+      if (
+        previousRole === "admin" &&
+        role !== "admin" &&
+        (await this.isLastApprovedAdmin(userId, tx))
+      ) {
+        throw new AuthError("FORBIDDEN", "LAST_ADMIN_DEMOTION" satisfies Meldungsschluessel);
+      }
+      user.role = role;
+      await this.users.update(user, tx);
+    });
     await this.record(actorId, "user.role-change", userId, {
       role,
       previousRole,
@@ -931,10 +947,13 @@ export class AuthService {
   // ist geschützt (kein Selbst-Aussperren des Systems).
   async deleteUser(userId: string, actorId: string): Promise<void> {
     const user = await this.requireUser(userId);
-    if (user.role === "admin" && user.approved && (await this.isLastApprovedAdmin(userId))) {
-      throw new AuthError("FORBIDDEN", "LAST_ADMIN_DELETION" satisfies Meldungsschluessel);
-    }
-    await this.users.delete(userId);
+    // JOB 3784: Prüfung UND Schreiben in EINEM Rahmen — s. UserRepo.withAdminGuard.
+    await this.users.withAdminGuard(async (tx) => {
+      if (user.role === "admin" && user.approved && (await this.isLastApprovedAdmin(userId, tx))) {
+        throw new AuthError("FORBIDDEN", "LAST_ADMIN_DELETION" satisfies Meldungsschluessel);
+      }
+      await this.users.delete(userId, tx);
+    });
     await this.sessions.deleteByUser(userId);
     await this.record(actorId, "user.delete", userId);
   }
@@ -967,8 +986,21 @@ export class AuthService {
   //
   // Der Bestand ändert sich dadurch nicht: ein Konto ohne `accessExpiresAt` ist unbefristet, und
   // vor diesem Job hatte keines eines.
-  private async isLastApprovedAdmin(userId: string): Promise<boolean> {
-    const users = await this.users.list();
+  // JOB 3784: DIE FRAGE WIRD JETZT UNTER DER SPERRE GESTELLT, UND DIE ANTWORT BLEIBT DIESELBE.
+  //
+  // Neu ist zweierlei. Erstens der `tx`: er kommt aus `UserRepo.withAdminGuard` und bindet diese
+  // Lesung an die Transaktion, in der unmittelbar danach geschrieben wird — sonst läge zwischen
+  // Prüfung und Schreiben weiterhin ein Fenster für einen zweiten Schreiber (der ganze Grund von
+  // JOB 3784). Zweitens die Lesung selbst: `listAdminsForGuard` statt `list`, weil nur die
+  // Admin-Zeilen gesperrt werden sollen und nicht die ganze Tabelle.
+  //
+  // DIE BEDINGUNG DARUNTER IST WÖRTLICH DIESELBE GEBLIEBEN, obwohl `listAdminsForGuard` Rolle und
+  // Freigabe schon zusagt. Das ist Absicht und keine Doppelung aus Versehen: WER ZÄHLT, entscheidet
+  // diese eine Stelle, und die Verengung der Sperre darf daran nichts ändern dürfen. Liefe die
+  // Auswahl auseinander — etwa weil jemand die Abfrage weiter fasst —, bliebe das Urteil trotzdem
+  // richtig.
+  private async isLastApprovedAdmin(userId: string, tx?: TxContext): Promise<boolean> {
+    const users = await this.users.listAdminsForGuard(tx);
     const dauerhafteAdmins = users.filter(
       (u) => u.role === "admin" && u.approved && this.istUnbefristet(u),
     );
