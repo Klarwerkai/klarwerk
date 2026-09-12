@@ -19,15 +19,12 @@ import { DEFAULT_TOP_K, Reasoner, queryTokens } from "../../services/reasoner";
 //   · PgKoRepo.findCandidates sortiert (Term-Trefferzahl ↓, validiert ↓, Trust ↓).
 // Der Doppelgänger bildet die Rangfolge des Produktionsadapters
 // VOR JOB 3583 nach — bewusst die schwächere Quelle als die Produktion, gegen die dieser Vertrag härtet.
+// ODER-Match, dann validiert/Trust, dann hartes Limit.
 //
 // DER VERTRAG, den dieser Test bindet, ist deshalb adapterunabhängig formuliert:
 //   Die Vorauswahl von Ask muss einen Treffer, der MEHR Fragetoken abdeckt als die Störer,
 //   auch dann erreichen, wenn die Datenquelle ausschließlich nach (validiert, Trust) deckelt.
 // Die Deckelung selbst bleibt Pflicht: es wird nie der ganze Bestand geladen.
-//
-// Der Doppelgänger bildet die Rangfolge des Produktionsadapters
-// VOR JOB 3583 nach — bewusst die schwächere Quelle als die Produktion, gegen die dieser Vertrag härtet.
-// ODER-Match, dann validiert/Trust, dann hartes Limit.
 
 const FRAGE = "Wie wird der Spezialzylinder SPZ42 gewartet?";
 // Die Texte der Objekte werden AUS den echten Fragetoken gebaut. Damit hängt der Vertrag nicht an
@@ -48,8 +45,12 @@ interface Aufruf {
  *
  * ODER-Treffer über die Terme, Rangfolge (validiert zuerst, Trust absteigend), hartes Limit.
  * KEIN Relevanzmaß — die adapterunabhängige Härtung braucht weiterhin genau diese schwache Quelle.
+ *
+ * JOB 3617: Der Name sagt deshalb, was die Quelle TUT, und nicht mehr, wem sie ähnelt. Sie hiess
+ * `pgAehnlicherKoService`, und das war seit JOB 3583 eine Behauptung über `PgKoRepo`, die nicht
+ * mehr stimmte. Bewacht von `tests/ask-rangfolge-kommentar/`.
  */
-function pgAehnlicherKoService(bestand: readonly KnowledgeObject[]): {
+function schwachSortierendeQuelle(bestand: readonly KnowledgeObject[]): {
   koService: KoService;
   aufrufe: Aufruf[];
   geladeneZeilen: () => number;
@@ -150,7 +151,7 @@ describe("JOB 531: Ask-Kandidatenvorauswahl skaliert adapterunabhängig", () => 
     expect(TERME.length).toBeGreaterThanOrEqual(2);
 
     const { bestand, zielId } = bestandMitEinemPassendenTreffer();
-    const { koService, aufrufe } = pgAehnlicherKoService(bestand);
+    const { koService, aufrufe } = schwachSortierendeQuelle(bestand);
     const { ask } = askMit(koService);
 
     const { result, gap } = await ask.ask(FRAGE);
@@ -172,7 +173,7 @@ describe("JOB 531: Ask-Kandidatenvorauswahl skaliert adapterunabhängig", () => 
 
   it("hält die Anzahl der Quellabfragen unabhängig von der Fragelänge beschränkt", async () => {
     const { bestand } = bestandMitEinemPassendenTreffer();
-    const { koService, aufrufe } = pgAehnlicherKoService(bestand);
+    const { koService, aufrufe } = schwachSortierendeQuelle(bestand);
     const { ask } = askMit(koService);
 
     // Eine absichtlich sehr lange Frage darf die Datenquelle nicht beliebig oft anfragen.
@@ -190,7 +191,7 @@ describe("JOB 531: Ask-Kandidatenvorauswahl skaliert adapterunabhängig", () => 
         ko(`filter-${i}`, `Filter F${i} wechseln`, `Filter F${i} tauschen.`, "validiert", 90),
       );
     }
-    const { koService } = pgAehnlicherKoService(bestand);
+    const { koService } = schwachSortierendeQuelle(bestand);
     const { ask } = askMit(koService);
 
     const { result, gap } = await ask.ask("Wie hoch ist der aktuelle Wechselkurs?");
