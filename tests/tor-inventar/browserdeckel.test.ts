@@ -1,7 +1,7 @@
 // JOB 3150: echte Unterprozesse, aber markierte Lastsonden statt Chromium/Servern.
 // V0 misst die heutige Verdrahtung vor dem Bau; F6 kalibriert dieselben Fenster ohne Deckel.
 // Basisstand: der unmittelbare Elterncommit des Prüfstands (wird beim Einbau gesetzt)
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   chmodSync,
@@ -1134,6 +1134,212 @@ fs.openSync = function(pfad, ...args) {
     );
     expect(lauf.ausgabe).not.toMatch(/PID-Datei fehlt|PID-Datei nie geschrieben/);
   });
+
+  // JOB 3800: Der Wettlauf zwischen Fund und Öffnen eines Haltereintrags. Bis hierher prüfte das
+  // Werkzeug erst [ -f ] und öffnete danach getrennt; ein zweiter Wartender, der denselben toten
+  // Halter berechtigt aufräumt, traf genau dieses Fenster (JOB 3768, tor-main.1.err:31688 und
+  // tor-main.2.err:31698). Der DEBUG-Haken erzwingt das Fenster in JEDEM Lauf, nicht gelegentlich.
+  async function verschwindenderEintrag(gnade: string, grund: string, fall: string) {
+    const { ort, env } = werk();
+    const tot = starte(ort, env, process.execPath, ["-e", "process.exit(0)"]);
+    await tot.fertig;
+    const pid = tot.kind.pid as number;
+    expect(() => process.kill(pid, 0)).toThrow();
+    const lock = env.KLARWERK_BROWSERDECKEL_LOCK;
+    const journal = `${lock}.jsonl`;
+    const id = "wettlauf-verschwunden";
+    mkdirSync(lock);
+    const datei = join(lock, `pid-${id}`);
+    writeFileSync(datei, `${pid} 1 browser ${id}\n`);
+    const nehmen = {
+      ereignis: "nehmen",
+      id,
+      pid,
+      art: "browser",
+      zeit: 1,
+      deckel: true,
+      gewartetMs: 0,
+    };
+    const historie = `${JSON.stringify(nehmen)}\n`;
+    writeFileSync(journal, historie);
+    const hook = join(ort, "verschwinden.bash");
+    const beobachtet = join(ort, "beobachtungen");
+    // Der zweite Wartende hat den toten Halter bereits vollständig bearbeitet: Journalfenster
+    // geschlossen, Eintrag entfernt. Der Haken tut genau das, unmittelbar vor dem Öffnen.
+    writeFileSync(
+      hook,
+      // `set -T` vererbt den Haken auch in Funktionen: er sitzt damit unmittelbar vor dem
+      // echten Öffnen, gleich ob das `read` im Hauptlauf oder in einer Hilfsfunktion steht.
+      `set -T\ntrap 'case "$BASH_COMMAND" in *"read -r halter"*) if [ -f "$PIDZIEL" ]; then printf "%s\\n" "$VERWAIST" >> "$JOURNAL"; command rm -f "$PIDZIEL"; printf "entfernt\\n" >> "$BEOBACHTET"; fi ;; esac; :' DEBUG\n`,
+    );
+    const lauf = await starte(
+      ort,
+      {
+        ...env,
+        BASH_ENV: hook,
+        PIDZIEL: datei,
+        JOURNAL: journal,
+        BEOBACHTET: beobachtet,
+        VERWAIST: JSON.stringify({ ...nehmen, ereignis: "verwaist", zeit: 2 }),
+        KLARWERK_BROWSERDECKEL_GNADE: gnade,
+      },
+      "./tools/browserdeckel.sh",
+      ["smoke", "true"],
+    ).fertig;
+    console.log(`${fall} Gnade ${gnade} exit=${lauf.code}\n${lauf.ausgabe}`);
+    // Erzwungen, nicht abgewartet: genau eine Entfernung, und zwar im Öffnungsfenster.
+    expect(readFileSync(beobachtet, "utf8")).toBe("entfernt\n");
+    expect(lauf.stderr, "berechtigtes Entfernen ist kein Fehler und gehört nicht auf stderr").toBe(
+      gnade === "0"
+        ? "⚠ Browserdeckel: Gnadenfrist 0s — ein Schloss ohne PID-Datei wird ohne Wartefenster entfernt; nur für Messungen\n"
+        : "",
+    );
+    expect(lauf.code, lauf.ausgabe).toBe(0);
+    expect(lauf.ausgabe).toContain(`${grund}`);
+    expect(lauf.ausgabe).not.toContain("PID-Datei unlesbar");
+    expect(existsSync(datei)).toBe(false);
+    expect(existsSync(lock)).toBe(false);
+    const text = readFileSync(journal, "utf8");
+    expect(text.startsWith(historie)).toBe(true);
+    expect(text.match(/"ereignis":"verwaist"/g)).toHaveLength(1);
+    expect(ueberlappendePaare(fensterAusProtokoll(journal))).toEqual([]);
+  }
+
+  it.each([
+    ["0", "PID-Datei inzwischen entfernt"],
+    ["1", "PID-Datei nie geschrieben"],
+  ])(
+    "F26 · zwischen Fund und Öffnen entfernter Haltereintrag schweigt auf stderr (Gnade %s)",
+    (gnade, grund) => verschwindenderEintrag(gnade, grund, "F26"),
+  );
+
+  // JOB 3376 verlangt für Wettlaufreparaturen einen Belastungsfall über den Produktpfad mit
+  // Zähler (LEHREN.md): ein einzelner Dateilauf belegt eine Zusicherung nicht dauerhaft.
+  it("F26c · 40 erzwungene Wettläufe verletzen die stderr-Zusicherung keinmal", async () => {
+    const fehler: string[] = [];
+    for (let n = 1; n <= 40; n++) {
+      try {
+        await verschwindenderEintrag("0", "PID-Datei inzwischen entfernt", `F26c Runde ${n}`);
+      } catch (error) {
+        fehler.push(`Runde ${n}: ${String(error)}`);
+      }
+    }
+    console.log(`F26c: ${fehler.length} von 40 Runden verletzten die Zusicherung`);
+    expect(fehler.join("\n")).toBe("");
+  }, 120_000);
+
+  // JOB 3800, Gegenstück zu F26: was nicht verschwunden ist, wird nicht verschwiegen.
+  it.skipIf(process.getuid?.() === 0)(
+    "F27 · unlesbarer Haltereintrag behält die Diagnose des Betriebssystems auf stderr",
+    async () => {
+      const { ort, env } = werk();
+      const lock = env.KLARWERK_BROWSERDECKEL_LOCK;
+      mkdirSync(lock);
+      const datei = join(lock, "pid-gesperrt");
+      writeFileSync(datei, "4711 1 browser gesperrt\n");
+      chmodSync(datei, 0o000);
+      try {
+        const lauf = await starte(
+          ort,
+          { ...env, KLARWERK_BROWSERDECKEL_GNADE: "0", KLARWERK_BROWSERDECKEL_TIMEOUT: "1" },
+          "./tools/browserdeckel.sh",
+          ["smoke", "node", env.SONDE],
+        ).fertig;
+        console.log(`F27 exit=${lauf.code}\n${lauf.stderr}`);
+        expect(lauf.code, lauf.ausgabe).toBe(1);
+        expect(lauf.stderr).toContain("Permission denied");
+        expect(lauf.stderr).toContain(`PID-Datei unlesbar: ${datei}`);
+        expect(lauf.ausgabe).not.toMatch(/PID-Datei fehlt|PID-Datei nie geschrieben/);
+        expect(existsSync(datei)).toBe(true);
+        expect(existsSync(join(ort, "smoke.start"))).toBe(false);
+      } finally {
+        chmodSync(datei, 0o644);
+      }
+    },
+  );
+
+  // JOB 3800 R2, Codex' erster Gegenfall: Das Suchrecht am Schloss wird unmittelbar vor dem Öffnen
+  // entzogen. Dann sieht `[ -e ]` den Eintrag NICHT, obwohl nichts entfernt wurde — eine negative
+  // Existenzprüfung ist kein Beweis für ENOENT. Nur die Diagnose des Öffnens darf entscheiden.
+  it.skipIf(process.getuid?.() === 0)(
+    "F28 · entzogenes Suchrecht zwischen Fund und Öffnen wird nicht als Entfernung ausgegeben",
+    async () => {
+      const { ort, env } = werk();
+      const lock = env.KLARWERK_BROWSERDECKEL_LOCK;
+      mkdirSync(lock);
+      const datei = join(lock, "pid-verdeckt");
+      writeFileSync(datei, "4711 1 browser verdeckt\n");
+      const hook = join(ort, "rechte.bash");
+      writeFileSync(
+        hook,
+        // Wie in F26: `set -T`, damit der Haken den Öffnungsmoment auch in einer Funktion trifft.
+        `set -T\ntrap 'case "$BASH_COMMAND" in *"read -r halter"*) if [ -x "$SCHLOSS" ]; then command chmod 000 "$SCHLOSS"; printf "entzogen\\n" >> "$BEOBACHTET"; fi ;; esac; :' DEBUG\n`,
+      );
+      const beobachtet = join(ort, "beobachtungen");
+      try {
+        const lauf = await starte(
+          ort,
+          {
+            ...env,
+            BASH_ENV: hook,
+            SCHLOSS: lock,
+            BEOBACHTET: beobachtet,
+            KLARWERK_BROWSERDECKEL_GNADE: "0",
+            KLARWERK_BROWSERDECKEL_TIMEOUT: "1",
+          },
+          "./tools/browserdeckel.sh",
+          ["smoke", "node", env.SONDE],
+        ).fertig;
+        console.log(`F28 exit=${lauf.code}\n${lauf.stderr}`);
+        expect(readFileSync(beobachtet, "utf8")).toBe("entzogen\n");
+        expect(lauf.stderr, "EACCES ist kein Entfernungsbeleg").toContain("Permission denied");
+        expect(lauf.ausgabe).not.toContain("inzwischen entfernt");
+        expect(lauf.code, lauf.ausgabe).toBe(1);
+        expect(existsSync(join(ort, "smoke.start"))).toBe(false);
+      } finally {
+        chmodSync(lock, 0o755);
+      }
+    },
+  );
+
+  // JOB 3800 R2, Codex' zweiter Gegenfall: eine FIFO ohne Schreiber. Sie wird nie geöffnet, sonst
+  // hinge das Werkzeug im open(2) und die zugesagte Zeitgrenze käme nie zum Zug.
+  it("F29 · FIFO ohne Schreiber hebelt die Zeitgrenze nicht aus", async () => {
+    const { ort, env } = werk();
+    const lock = env.KLARWERK_BROWSERDECKEL_LOCK;
+    mkdirSync(lock);
+    const datei = join(lock, "pid-fifo");
+    const mk = spawnSync("mkfifo", [datei]);
+    expect(mk.status, String(mk.stderr)).toBe(0);
+    const lauf = starte(
+      ort,
+      { ...env, KLARWERK_BROWSERDECKEL_GNADE: "0", KLARWERK_BROWSERDECKEL_TIMEOUT: "2" },
+      "./tools/browserdeckel.sh",
+      ["smoke", "node", env.SONDE],
+    );
+    const start = Date.now();
+    // Eigene Wache: ohne sie bliebe ein hängendes Werkzeug bis zum Vitest-Abbruch stehen.
+    const wache = new Promise<"haenger">((loesen) => setTimeout(() => loesen("haenger"), 15_000));
+    try {
+      const ergebnis = await Promise.race([lauf.fertig, wache]);
+      const dauer = Date.now() - start;
+      console.log(`F29 dauerMs=${dauer} ergebnis=${JSON.stringify(ergebnis)}`);
+      expect(ergebnis, "Zeitgrenze 2s muss auch bei einer FIFO greifen").not.toBe("haenger");
+      const lage = ergebnis as { code: number | null; ausgabe: string; stderr: string };
+      expect(dauer).toBeLessThan(10_000);
+      expect(lage.code, lage.ausgabe).toBe(1);
+      expect(lage.stderr).toContain(
+        `⚠ Browserdeckel: Haltereintrag ist keine gewöhnliche Datei, wird nicht geöffnet: ${datei}`,
+      );
+      expect(lage.stderr).toContain(`PID-Datei ist keine gewöhnliche Datei: ${datei}`);
+      // Einmal je Eintrag, nicht zehnmal je Sekunde: die Warnung darf das Torprotokoll nicht fluten.
+      expect(lage.stderr.match(/wird nicht geöffnet/g)).toHaveLength(1);
+      expect(existsSync(join(ort, "smoke.start"))).toBe(false);
+      expect(existsSync(datei)).toBe(true);
+    } finally {
+      lauf.kind.kill("SIGKILL");
+    }
+  }, 30_000);
 
   it.each(["falsch", "1.5", "-1"])(
     "G1 · ungültige Gnadenfrist %s bricht vor dem Befehl ab",

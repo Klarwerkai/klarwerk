@@ -17,6 +17,11 @@
 # Gnadenfrist bleibt rmdir erfolglos, bis zur Zeitgrenze. Rückweg: nach derselben Halterprüfung
 # und dem Beenden aller beteiligten Läufe die defekte Datei entfernen, dann rmdir am Schloss.
 # Gnadenfrist 0 schaltet das Wartefenster für ein Schloss ohne PID-Datei aus (mit Startwarnung).
+# JOB 3800: Ein Haltereintrag, der zwischen Fund und Öffnen verschwindet, ist kein Fehler, sondern
+# der aufgeräumte tote Wettlauf eines zweiten Wartenden — still übergehen. Belegt wird das allein
+# durch die C-Diagnose „No such file or directory“; jede andere Öffnungsdiagnose bleibt wörtlich auf
+# stderr und führt weiter zu „PID-Datei unlesbar“. Sonderdateien (FIFO, Gerät) werden gar nicht erst
+# geöffnet — sonst blockierte das Öffnen, und die Zeitgrenze käme nie zum Zug.
 # Basisstand: der unmittelbare Elterncommit des Prüfstands (wird beim Einbau gesetzt)
 set -euo pipefail
 art="${1:-}"
@@ -57,6 +62,10 @@ mkdir -p "$wurzel/.local/run"
 angefragt="$(node -e 'process.stdout.write(String(Date.now()))')"
 kennung="$$-$angefragt"
 piddatei="$lock/pid-$kennung"
+# JOB 3800: eigener Kanal für die Öffnungsdiagnose eines Haltereintrags. Eine Kommandoersetzung
+# scheidet aus: sie liefe in einer Subshell und gäbe die gelesenen Felder nicht zurück. Datei je
+# Lauf (Kennung), im Aufräumen entfernt; NIE im Schloss, sonst scheiterte das rmdir daran.
+oeffnungsfehler="$wurzel/.local/run/browserdeckel-oeffnung-$kennung"
 genommen=0
 besitzt=0
 gewartet=0
@@ -190,6 +199,17 @@ for (const zeile of text.trim().split('\n')) {
 NODE
 }
 
+# JOB 3800 R2: Ein Öffnungsversuch, dessen Diagnose erhalten bleibt. Die Klammer MUSS sein: stünde
+# `2>` an derselben einfachen Befehlszeile, wendete Bash die Umleitungen der Reihe nach an und die
+# Meldung der zuerst scheiternden Eingabeumleitung ginge noch am Kanal vorbei (selbst gemessen).
+# `local LC_ALL=C` gilt nur für diesen Aufruf (danach wieder der alte Wert) und erreicht keinen
+# Kindprozess — wie bei kill/rmdir rechtfertigt nur die eindeutige C-Diagnose eine Ausnahme.
+# Die gelesenen Felder bleiben absichtlich global: sie werden unten weiterverwendet.
+lies_haltereintrag() {
+  local LC_ALL=C
+  { read -r halter seit halterart halterid < "$1"; } 2>"$oeffnungsfehler"
+}
+
 aufraeumen() {
   rc=$?
   trap - EXIT INT TERM
@@ -219,6 +239,7 @@ aufraeumen() {
       esac
     fi
   fi
+  rm -f "$oeffnungsfehler"
   exit "$rc"
 }
 trap aufraeumen EXIT
@@ -226,16 +247,50 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 if [ "$an" = 1 ]; then
+  # JOB 3800: Ohne Eintrag im Schloss läuft die Schleife gar nicht, statt das unaufgelöste
+  # Muster als Pfad zu behandeln. Nur so ist ein fehlgeschlagenes Öffnen immer ein echter
+  # Eintrag — und „inzwischen entfernt“ eine wahre Aussage statt einer Mustermeldung.
+  shopt -s nullglob
   ohne_pid_seit=-1
   letzte_pruefwarnung=''
+  letzte_typwarnung=''
   while ! mkdir "$lock" 2>/dev/null; do
     gewartet=1
     gueltige_pid=0; raeumen=0; pid_frist_abgelaufen=0
     halter='unbekannt'; seit='unbekannt'
     pidgrund='PID-Datei fehlt'
     for datei in "$lock"/pid-*; do
-      [ -f "$datei" ] || continue
-      if ! read -r halter seit halterart halterid < "$datei"; then
+      # JOB 3800 R2: EINE Typprüfung, keine Existenzprüfung. Eine Sonderdatei (FIFO ohne Schreiber,
+      # Gerät) blockiert das Öffnen für immer; die Zeitgrenze unten käme nie zum Zug (Codex 12.09.).
+      # Diese Prüfung entscheidet NIE über Existenz: sieht sie nichts (Eintrag weg, Rechte entzogen),
+      # wird geöffnet, und die Diagnose des Öffnens entscheidet. Damit bleibt der Wettlauf behoben.
+      if [ -e "$datei" ] && [ ! -f "$datei" ]; then
+        pidgrund="PID-Datei ist keine gewöhnliche Datei: $datei"
+        # Einmal je Eintrag, nicht zehnmal je Sekunde bis zur Zeitgrenze (wie letzte_pruefwarnung).
+        if [ "$letzte_typwarnung" != "$datei" ]; then
+          echo "⚠ Browserdeckel: Haltereintrag ist keine gewöhnliche Datei, wird nicht geöffnet: $datei" >&2
+          letzte_typwarnung="$datei"
+        fi
+        continue
+      fi
+      # JOB 3800: Das Öffnen IST die Existenzprüfung. Eine getrennte Prüfung davor war der Wettlauf:
+      # ein zweiter Wartender darf denselben als tot erkannten Haltereintrag zwischen Prüfung und
+      # Öffnen berechtigt entfernen, und Bash meldete das Öffnen dann als Fehler auf stderr
+      # (JOB 3768: tor-main.1.err:31688 F24h 29/30, tor-main.2.err:31698 F24c 7/40).
+      if ! lies_haltereintrag "$datei"; then
+        oeffnungsgrund="$(cat "$oeffnungsfehler")"
+        # NUR die eindeutige C-Diagnose belegt das Entfernen. Ein fehlgeschlagenes [ -e ] belegte es
+        # nicht: entzogenes Suchrecht am Schloss sieht genauso aus und verschwiege EACCES (Codex).
+        case "$oeffnungsgrund" in
+          *'No such file or directory')
+            # Der Normalfall eines aufgeräumten toten Wettlaufs: kein Wort auf stderr, nur der
+            # beobachtete Grund für eine spätere Fristmeldung derselben Runde.
+            pidgrund="PID-Datei inzwischen entfernt: $datei"; continue ;;
+        esac
+        # Jede andere Diagnose wörtlich weiter — gemessen ist „Permission denied" (gesperrte Datei
+        # F27, entzogenes Suchrecht F28), kein pauschales 2>/dev/null. Leer bleibt die Diagnose
+        # beim reinen Dateiende (leere/abgeschnittene Datei); Sonderdateien kommen hier nie an.
+        if [ -n "$oeffnungsgrund" ]; then printf '%s\n' "$oeffnungsgrund" >&2; fi
         pidgrund="PID-Datei unlesbar: $datei"; continue
       fi
       case "$halter" in ''|*[!0-9]*|0) pidgrund="PID-Datei unbrauchbar: $datei"; continue ;; esac
