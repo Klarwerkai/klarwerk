@@ -921,6 +921,21 @@ const INVENTAR: readonly string[] = [
   // „neu im Baum, aber nicht im gepinnten Inventar — Inventar nachfuehren: expected [ Array(1) ]
   // to deeply equal []".
   "tests/ki-palette-fingertipp/ki-palette-fingertipp-chromium.test.ts",
+  // JOB 3890 (13.09.2026) DAS DUPLIKATE-KAPITEL MISST DEN SCHNITT, MIT DEM KLARA ES WEITERREICHT:
+  // der neue Fall DU5g liest `apps/web/src/components/KlaraAssistant.tsx` und holt sich die Grenze
+  // aus `body: e.body.slice(0, 700)`, statt eine 700 im Test zu wiederholen. Damit nennt die Datei
+  // den Bauteilnamen `KlaraAssistant` und kommt ueber die Inhaltsachse `komponente` herein —
+  // GEMESSEN: von den sieben Achsen trifft genau diese eine.
+  // AUSDRUECKLICH KEIN Klara-Test: sie montiert `/duplikate` und misst dessen Seitenhilfe; „klara"
+  // steht nicht in ihrem Pfad, K5 (Namensmenge) bleibt deshalb unveraendert. Der Eintrag steht
+  // trotzdem hier — dieses Inventar pinnt die ABGELEITETE Menge, nicht eine Auswahl, und der Bezug
+  // ist echt: aendert jemand den Schnitt in `KlaraAssistant.tsx`, geht es diese Datei an.
+  // GEMESSEN, NICHT GESETZT: vor dieser Zeile meldete K2 woertlich „neu im Baum, aber nicht im
+  // gepinnten Inventar — Inventar nachfuehren: expected [ Array(1) ] to deeply equal []"
+  // (Cloud-Lauf 3cf879a8ce44b73450cab036). Eigenbeitrag der Achse `komponente` an diesem Stand
+  // (13.09.2026, 1920 Testdateien, Menge 187): 12 Dateien — die Zahlen im K4-Kommentar sind der
+  // Stand vom 12.09. und werden hier nicht nachgezogen; K4 sichert keine von ihnen zu.
+  "tests/seitenhilfe-navkapitel/duplikate-am-seitenverhalten.test.tsx",
 ];
 
 // ------------------------------------------------------------------------------------------------

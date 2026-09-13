@@ -26,19 +26,47 @@
 //   · Die Routen- und Kapitelrechnung (`app/navigation.ts` × `HELP_TOPICS`) steht nebenan und wird
 //     hier nicht ein zweites Mal erhoben; die Zuordnung kommt aus `navHilfeFor` (der EINEN Stelle).
 //
-// ZWEI SAETZE STIMMEN NICHT — sie werden gemessen und als NACHFUEHR-PIN festgehalten, NICHT
-// repariert (`i18n.ts` ist in diesem Takt von JOB 3761/3762/3786 gehalten):
-//   DU4b        der geschlossene Fund faellt aus dem Abruf — „geloescht wird nichts" sieht fuer
-//               einen Neuling genau so aus wie geloescht (Fehlertyp wie JOB 3795, REST Punkt 2).
-//   DU5c/d/e    „ob beide bleiben und VERKNUEPFT WERDEN" — die drei ANDEREN Hilfetexte derselben
-//               Flaeche verneinen genau das, und zwei davon stehen im Zahnrad untereinander.
-// Sie sind HEUTE GRUEN (sie pinnen das gemessene Verhalten) und werden rot, sobald der Text
-// nachgefuehrt ist; ihre Fehlermeldung nennt die Nachfuehrung woertlich.
+// EINGELOEST AM 13.09.2026 (JOB 3890): der Halbsatz „ob beide bleiben und VERKNUEPFT WERDEN" ist
+// weg. Das Kapitel nennt die dritte Wahl jetzt so, wie ihr Knopf sie beschriftet (`dup.side.both`),
+// verneint die Verknuepfung in den Objekten mit DENSELBEN Worten wie der Zahnradtext und sagt,
+// wohin ein entschiedener Fund geht.
+//
+// DU5c, DU5d und DU5e messen darum nicht mehr den Widerspruch, sondern
+// die UEBEREINSTIMMUNG zweier Quellen — je Schluessel ein Fall, je Sprache eine eigene Meldung
+// (die Tabelle `UEBEREINSTIMMUNG` unten). Die `NACHFUEHR-PIN`-Form dieser drei Faelle ist abgeloest,
+// nicht verdoppelt: es gibt keinen zweiten Ort, der dieselbe Uebereinstimmung noch einmal misst.
+//
+// RUNDE 3 (13.09.2026) — WAS ZURUECKGEBAUT WURDE UND WARUM, jeweils GEMESSEN. Runde 2 hatte den
+// Ortsnamen („Bibliothek"/„Library"/„Bibliotheek", `nav.library`) zusaetzlich ins KAPITEL gesetzt;
+// im Tor wurden davon ZWEI fremde Waechter rot, beide ausserhalb der Zielpfade:
+//   (1) `tests/review26-hilfe-import/hilfe-findet-dateiimport.test.ts:311` (V2) — die Hilfe-Suche
+//       ist eine Teilstring-Suche ueber Titel + Text + Merkmale (`lib/helpTopics.ts:318-330`), also
+//       fand „bibliothek" plotzlich auch dieses Kapitel: „expected [ 'library', 'duplikate' ] to
+//       deeply equal [ 'library' ]".
+//   (2) `tests/app/f0304-klara-assistenzflaeche.test.tsx` (A3) — „topic:duplikate: Text beschnitten
+//       (700/714)": Klara reicht Hilfetexte bei 700 Zeichen beschnitten an die Modellkante
+//       (`KlaraAssistant.tsx:310`), der deutsche Wert war 714, der niederlaendische 706 Zeichen lang.
+// Der Ortsname steht deshalb wieder NUR im Zahnradtext (`dup.seitenhilfe.entscheidung.text`), und
+// DU5c misst ihn dort weiter — als die jetzt EINZIGE Stelle, die ihn traegt. Auf `/hilfe` steht das
+// Kapitel ohne diesen Nachbarn (`Help.tsx:163`); dass der Leser den Ort dort nicht erfaehrt, ist
+// offen gemeldet und NICHT hier weggeredet. Neu ist DU5g: er haelt die Laenge je Sprache am
+// GELESENEN Schnitt der Anwendung fest, damit ein wachsender Kapiteltext nicht wieder erst im Tor
+// auffaellt.
+//
+// NICHT eingeloest, und darum unveraendert gepinnt:
+//   DU4b        der geschlossene Fund faellt aus dem Abruf (`unresolved()`,
+//               `services/conflicts/src/overlap-service.ts:933`) — „geloescht wird nichts" sieht
+//               fuer einen Neuling genau so aus wie geloescht (Fehlertyp wie JOB 3795, REST
+//               Punkt 2). JOB 3890 hat die ANZEIGE ausdruecklich nicht geaendert (das waere eine
+//               Produktentscheidung); geaendert ist nur, dass das Kapitel diesen Weg jetzt SAGT.
+//               DU4b bleibt und bestellt seine Loeschung erst, wenn sich die Anzeige aendert.
 //
 // RUNDE 2 (bens Korrekturpflichten zu Runde 1): jeder der FUENF Hilfeschluessel dieser Flaeche hat
 // jetzt seinen EIGENEN Fall (DU5a–DU5e, s. dort), und die Nachher-Ablesung in DU3b haengt an einem
 // nachweislich ERFOLGREICH ABGESCHLOSSENEN Abruf nach der Entscheidung — kalibriert von DU3d
 // (verzoegerte Antwort) und DU3e (ausbleibende Antwort).
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // ------------------------------------------------------------------------------------------------
@@ -310,6 +338,95 @@ function behauptung(satzteil: string): void {
     `${ROUTE}: die Behauptung „${satzteil}“ steht nicht mehr in ${kapitelSchluessel().bodyKey} — dieser Fall misst sie am Seitenverhalten und misst ohne sie nichts`,
   ).toContain(satzteil);
 }
+
+/**
+ * WAS DAS KAPITEL MIT DEN ANDEREN TEXTEN DERSELBEN FLAECHE TEILT (JOB 3890) — je Sprache woertlich.
+ *
+ * Bis 3890 versprach das Kapitel eine Verknuepfung, die der Dienst nicht anlegt; die drei anderen
+ * Hilfetexte verneinten sie. Jetzt tragen beide Seiten DIESELBEN Worte, und genau das messen DU3a,
+ * DU5c, DU5d und DU5e: links die Stelle im KAPITEL, rechts die im Geschwistertext. Woertlich und
+ * je Sprache, weil der Mensch die Sprache liest, die er eingestellt hat, und nicht den deutschen
+ * Rueckfall — laeuft eine Sprache davon, nennt die Meldung sie.
+ */
+const UEBEREINSTIMMUNG = {
+  /** DU3a (`dup.side.both`) und DU5e (`dup.intro`): wie die dritte Wahl heisst. */
+  verwandt: {
+    de: "als verwandt vermerken",
+    en: "note as related",
+    nl: "als verwant noteren",
+  },
+  /**
+   * DU3a: die dritte Wahl, wie das Kapitel sie in seiner AUFZAEHLUNG nennt — je Sprache.
+   *
+   * Warum das neben `verwandt` noch einmal steht (Gegenprobe G2/G3 dieser Runde, gemessen): das
+   * Kapitel nennt den Knopf ZWEIMAL — in der Aufzaehlung der vier Wahlen und noch einmal im Zitat
+   * der Verneinung („und auch ‚als verwandt vermerken‘ legt keine Verknuepfung … an"). Ein Test,
+   * der nur `verwandt` sucht, bleibt darum GRUEN, wenn allein die AUFZAEHLUNG auf „verknuepft
+   * werden" zurueckfaellt — genau das ist in G2 passiert. Fuer Deutsch fing das die Anmeldung
+   * `behauptung()` ab; EN und NL hatten keinen solchen Waechter. Jetzt haben sie einen.
+   */
+  dritteWahl: {
+    de: "beide bleiben und als verwandt vermerkt werden",
+    en: "both stay and are recorded as related",
+    nl: "ze allebei blijven en als verwant genoteerd worden",
+  },
+  /** DU5c, Kapitel UND `dup.seitenhilfe.entscheidung.text`: keine Verknuepfung in den Objekten. */
+  keineVerknuepfung: {
+    de: "legt keine Verknüpfung in den Objekten an",
+    en: "creates no link inside the objects",
+    nl: "legt geen koppeling in de objecten aan",
+  },
+  /** DU5c, beide Texte: wohin der entschiedene Fund geht (gemessen in DU4b). */
+  ausDerListe: {
+    de: "aus der Liste und aus der Zahl am Reiter",
+    en: "leaves the list and the number on the tab",
+    nl: "uit de lijst en uit het getal op het tabblad",
+  },
+  /**
+   * DU5c, NUR der Zahnradtext: WO die beiden Objekte nach der Entscheidung stehen.
+   *
+   * RUNDE 2 HATTE DIESE AUSKUNFT AUCH IM KAPITEL (bens Korrekturpflicht 1), RUNDE 3 HAT SIE DORT
+   * WIEDER HERAUSGENOMMEN — gemessen, nicht aus Bequemlichkeit: die Hilfe-Suche ist eine
+   * Teilstring-Suche ueber Titel + Text + Merkmale (`lib/helpTopics.ts:318-330`), und
+   * `tests/review26-hilfe-import/hilfe-findet-dateiimport.test.ts:311` haelt fest, dass eine Suche
+   * nach „bibliothek" GENAU `["library"]` liefert. Mit dem Ortsnamen im Kapitel lieferte sie
+   * `["library", "duplikate"]` — Tor rot, und diese Datei darf den fremden Pin nicht anfassen.
+   * Dazu kam der Schnitt bei 700 Zeichen (s. DU5g).
+   *
+   * Was bleibt, steht hier: der Zahnradtext ist damit die EINZIGE Stelle, die den Ort nennt. Faellt
+   * er dort weg, nennt ihn keiner mehr — genau das macht dieser Eintrag rot. Auf `/hilfe` steht das
+   * Kapitel ohne ihn (`apps/web/src/pages/Help.tsx:163`); dort erfaehrt der Leser den Ort heute
+   * nicht (offener Punkt der Rueckgabe, keine Behauptung dieses Falls).
+   *
+   * `{{bibliothek}}` ist der Platzhalter fuer den Namen, den die Navigation traegt (`nav.library`):
+   * der Zahnradtext setzt ihn zur LAUFZEIT ein (`Duplicates.tsx:254`). Er wird vor dem Vergleich
+   * ersetzt — benennt die Navigation die Bibliothek um, wird dieser Fall rot, statt den Menschen
+   * auf einen Punkt zu schicken, den es nicht mehr gibt.
+   */
+  bibliothekNachbar: {
+    de: "unverändert in „{{bibliothek}}“",
+    en: "unchanged in “{{bibliothek}}”",
+    nl: "onveranderd in „{{bibliothek}}“",
+  },
+  /** DU5d, Kapitelseite: beide Objekte bleiben unveraendert (gemessen in DU3b/DU4a). */
+  beideBleiben: {
+    de: "beide Wissensobjekte bleiben unverändert bestehen",
+    en: "both knowledge objects stay unchanged",
+    nl: "beide kennisobjecten blijven ongewijzigd bestaan",
+  },
+  /** DU5d, Geschwisterseite `dup.help.detection.body`: dieselbe Zusage. */
+  nichtsAnObjekten: {
+    de: "an den beiden Objekten ändert sie nichts",
+    en: "it changes neither of the two objects",
+    nl: "aan de twee objecten verandert ze niets",
+  },
+  /** DU5e, Geschwisterseite `dup.intro`: dieselbe Zusage, dort „Beitraege" genannt. */
+  nichtsAnBeitraegen: {
+    de: "an den beiden Beiträgen ändert sie nichts",
+    en: "it changes nothing in the two contributions",
+    nl: "aan de twee bijdragen verandert ze niets",
+  },
+} as const;
 
 let container: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
@@ -645,14 +762,14 @@ describe("JOB 3804 DU2 · ein Paar zugleich, und seine zwei Texte nebeneinander"
 });
 
 // ================================================================================================
-// DU3 · B3 — „Du entscheidest, welche Seite maßgeblich ist, ob beide bleiben und verknüpft werden
-//             oder ob es gar kein Duplikat ist."
+// DU3 · B3 — „Du entscheidest, welche Seite maßgeblich ist, ob beide bleiben und als verwandt
+//             vermerkt werden oder ob es gar kein Duplikat ist."
 // ================================================================================================
 describe("JOB 3804 DU3 · die vier Wahlen und eine wirklich ausgefuehrte", () => {
   it("DU3a: das Aktionsband bietet GENAU die vier Knoepfe an, an den echten Beschriftungen", async () => {
     behauptung("Du entscheidest");
     behauptung("welche Seite maßgeblich ist");
-    behauptung("ob beide bleiben und verknüpft werden");
+    behauptung("ob beide bleiben und als verwandt vermerkt werden");
     behauptung("ob es gar kein Duplikat ist");
     await montiere();
 
@@ -682,10 +799,38 @@ describe("JOB 3804 DU3 · die vier Wahlen und eine wirklich ausgefuehrte", () =>
       wert("dup.side.both"),
       wert("dup.side.none"),
     ]);
+
+    // ============================================================================================
+    // UND DAS KAPITEL SAGT, WAS DER KNOPF SAGT (JOB 3890) — in jeder Sprache mit dessen Worten.
+    // ============================================================================================
+    //
+    // Das ist der Pruefstein des Kapitels: es darf nicht mehr versprechen als die Beschriftung, auf
+    // die der Mensch gleich danach klickt. Der Knopf `dup.side.both` heisst selbst schon ehrlich
+    // „als verwandt vermerken"; laeuft er dem Kapitel wieder davon — etwa zurueck auf
+    // „verknuepfen" —, wird GENAU dieser Fall rot und nennt die Sprache.
+    for (const lng of SPRACHEN) {
+      const kern = UEBEREINSTIMMUNG.verwandt[lng];
+      const wahl = UEBEREINSTIMMUNG.dritteWahl[lng];
+      expect(
+        wert("dup.side.both", lng),
+        `/duplikate (${lng}): die Beschriftung von \`dup.side.both\` nennt die dritte Wahl nicht mehr „${kern}“ — dann sagt der Knopf etwas anderes als das Kapitel darueber`,
+      ).toContain(kern);
+      expect(
+        kapitel(lng),
+        `/duplikate (${lng}): das Kapitel nennt die dritte Wahl nicht „${kern}“, also nicht mit den Worten ihres eigenen Knopfes`,
+      ).toContain(kern);
+      // Und zwar DORT, wo es die vier Wahlen aufzaehlt — nicht bloss im Zitat der Verneinung
+      // weiter hinten im selben Satz (s. `dritteWahl` oben: ohne diese Zeile blieb der Fall in
+      // G2/G3 gruen, obwohl EN bzw. NL in der Aufzaehlung wieder „verknuepft werden" versprach).
+      expect(
+        kapitel(lng),
+        `/duplikate (${lng}): die Aufzaehlung des Kapitels sagt nicht „${wahl}“ — dort verspricht es dann wieder etwas anderes als sein eigener Knopf`,
+      ).toContain(wahl);
+    }
   });
 
   it("DU3b: eine WIRKLICH ausgefuehrte Wahl — und an beiden Wissensobjekten aendert sich nichts", async () => {
-    behauptung("ob beide bleiben und verknüpft werden");
+    behauptung("ob beide bleiben und als verwandt vermerkt werden");
     behauptung("zusammengeführt und gelöscht wird dabei nichts");
     // ZWEI Befunde ueber demselben Paar: nach der Wahl am ersten steht das Paar am zweiten weiter
     // da — nur so sind „vorher" und „nachher" zwei Ablesungen DESSELBEN gezeichneten DOM.
@@ -752,7 +897,7 @@ describe("JOB 3804 DU3 · die vier Wahlen und eine wirklich ausgefuehrte", () =>
     // NACHHER — wieder aus dem Abruf der Seite. An den ZWEI OBJEKTEN hat sich nichts geaendert.
     expect(
       { a: karte("a"), b: karte("b") },
-      "/duplikate: die Wahl hat die gezeichneten Wissensobjekte veraendert — „verknüpft“ oder „zusammengeführt“ waere genau das",
+      "/duplikate: die Wahl hat die gezeichneten Wissensobjekte veraendert — eine Verknüpfung in den Objekten oder ein Zusammenführen waere genau das",
     ).toEqual(vorher);
     expect(
       d.lies().kos,
@@ -962,7 +1107,7 @@ describe("JOB 3804 DU4 · was nach der Entscheidung wirklich dasteht", () => {
 });
 
 // ================================================================================================
-// DU5 · VIER TEXTE FUER DIESELBE FLAECHE — und einer sagt etwas anderes als die drei anderen.
+// DU5 · VIER TEXTE FUER DIESELBE FLAECHE — und seit JOB 3890 sagen sie alle dasselbe.
 // ================================================================================================
 //
 // `/duplikate` traegt VIER Hilfequellen: das Kapitel `help.duplikate.body` (Zahnrad → Seitenhilfe,
@@ -973,7 +1118,11 @@ describe("JOB 3804 DU4 · was nach der Entscheidung wirklich dasteht", () => {
 // JOB 3771 hat am Dienst gemessen und die drei letzten auf die Wahrheit gebracht
 // (`archiv/3771/runde-1/RUECKGABE.md:47`: „Alle vier Knoepfe tun dasselbe eine: sie schliessen
 // diesen Fund mit dem gewaehlten Grund … An den beiden Wissensobjekten aendert keiner von ihnen
-// etwas."). Das KAPITEL hat es nicht angefasst — es lag ausserhalb seiner Zielpfade.
+// etwas."). Das KAPITEL hat es nicht angefasst — es lag ausserhalb seiner Zielpfade; JOB 3890 hat
+// es nachgezogen. DU5c/DU5d/DU5e messen seither je Schluessel, dass Kapitel und Geschwistertext
+// DIESELBE Aussage tragen: ein Fall je Schluessel, eine Meldung je Sprache, und die Verstellung des
+// GEGENSTUECKS macht den Fall genauso rot wie die des Kapitels (das ist der Unterschied zu einem
+// Text, der nur gegen sich selbst geprueft wird).
 //
 // EINZELN BEISSEND, NICHT ALS MENGE (bens Korrekturpflicht 1 und seine Promptverbesserung,
 // Runde 1): jeder der FUENF Textschluessel hat hier seinen EIGENEN Fall an der Flaeche, an der er
@@ -1028,8 +1177,8 @@ describe("JOB 3804 DU5 · der Vierfachtext derselben Flaeche", () => {
     ).toContain("{{mehr}}");
   });
 
-  it("DU5c · NACHFUEHR-PIN: `dup.seitenhilfe.entscheidung.text` steht UNTER dem Kapitel und sagt das Gegenteil", async () => {
-    behauptung("ob beide bleiben und verknüpft werden");
+  it("DU5c: `dup.seitenhilfe.entscheidung.text` steht UNTER dem Kapitel — und sagt dasselbe", async () => {
+    behauptung("ob beide bleiben und als verwandt vermerkt werden");
     const gelesen = await seitenhilfe();
     const entscheidung = wert("dup.seitenhilfe.entscheidung.text").replace(
       "{{bibliothek}}",
@@ -1039,59 +1188,106 @@ describe("JOB 3804 DU5 · der Vierfachtext derselben Flaeche", () => {
       gelesen,
       "/duplikate: `dup.seitenhilfe.entscheidung.text` steht nicht in der Seitenhilfe — seine HelpTip-Anmeldung (`Duplicates.tsx:252-255`) fehlt",
     ).toContain(entscheidung);
-    // BEIDE stehen dem Menschen in EINER Liste vor Augen — das ist der Kern des Befundes.
+    // BEIDE stehen dem Menschen in EINER Liste vor Augen — darum muessen sie dasselbe sagen.
     expect(
       gelesen,
-      "/duplikate: Kapitel und Zahnradtext stehen nicht in derselben Liste — dann sieht der Mensch den Widerspruch nicht untereinander",
+      "/duplikate: Kapitel und Zahnradtext stehen nicht in derselben Liste — dann liest der Mensch sie nicht untereinander",
     ).toContain(kapitel());
     expect(
       gelesen.indexOf(entscheidung),
       "/duplikate: der Zahnradtext steht VOR dem Kapitel — die Reihenfolge der Seitenhilfe ist eine andere geworden",
     ).toBeGreaterThan(gelesen.indexOf(kapitel()));
 
-    // DER WIDERSPRUCH, gemessen an den zwei Schluesseln:
-    //   `help.duplikate.body`                 (apps/web/src/i18n.ts, DE heute :5046-5047)
-    //   `dup.seitenhilfe.entscheidung.text`   (apps/web/src/i18n.ts, DE heute :3690-3691)
-    expect(
-      kapitel(),
-      "/duplikate: das Kapitel verspricht keine Verknuepfung mehr. Jetzt DU5c auf die Anmeldung zurueckbauen und die Zusage des Kapitels am Verhalten neu belegen.",
-    ).toContain("verknüpft werden");
-    expect(
-      wert("dup.seitenhilfe.entscheidung.text"),
-      "/duplikate: der Zahnradtext verneint die Verknuepfung nicht mehr — dann ist nicht mehr der eine, sondern der andere Text nachzufuehren. Jetzt DU5c neu ausrichten.",
-    ).toContain("legt keine Verknüpfung in den Objekten an");
+    // ============================================================================================
+    // DIE UEBEREINSTIMMUNG (JOB 3890, vorher NACHFUEHR-PIN) — gemessen an ZWEI Schluesseln:
+    //   `help.duplikate.body`                 (apps/web/src/i18n.ts, DE/EN/NL)
+    //   `dup.seitenhilfe.entscheidung.text`   (apps/web/src/i18n.ts, DE/EN/NL)
+    // ============================================================================================
+    //
+    // ZWEI Aussagen teilen sie sich: dass „als verwandt vermerken" KEINE Verknuepfung in den
+    // Objekten anlegt (`overlap-service.ts:673-675` → `close`, `:732-749`) und wohin der
+    // entschiedene Fund geht (`unresolved()`, `:933`; auf der Flaeche gemessen in DU4b). Die dritte
+    // Auskunft — WO die beiden Objekte danach stehen — traegt seit Runde 3 allein der Zahnradtext
+    // (`bibliothekNachbar`, s. dort, mit der gemessenen Begruendung). Weil hier BEIDE Texte gelesen
+    // werden, wird dieser Fall auch dann rot, wenn nicht das Kapitel, sondern sein Gegenstueck
+    // ausschert.
+    for (const lng of SPRACHEN) {
+      const benennung = (muster: string): string =>
+        muster.replace("{{bibliothek}}", wert("nav.library", lng));
+      const nachbar = benennung(wert("dup.seitenhilfe.entscheidung.text", lng));
+      const keine = UEBEREINSTIMMUNG.keineVerknuepfung[lng];
+      const liste = UEBEREINSTIMMUNG.ausDerListe[lng];
+      const woNachbar = benennung(UEBEREINSTIMMUNG.bibliothekNachbar[lng]);
+      expect(
+        nachbar,
+        `/duplikate (${lng}): der Zahnradtext verneint die Verknuepfung nicht mehr mit „${keine}“ — dann sagen die zwei Texte im Zahnrad wieder Verschiedenes`,
+      ).toContain(keine);
+      expect(
+        kapitel(lng),
+        `/duplikate (${lng}): das Kapitel verneint die Verknuepfung nicht mit „${keine}“ — es verspricht dann mehr als der Dienst tut`,
+      ).toContain(keine);
+      expect(
+        nachbar,
+        `/duplikate (${lng}): der Zahnradtext sagt nicht mehr „${liste}“ — dann steht das Kapitel mit dieser Auskunft allein`,
+      ).toContain(liste);
+      expect(
+        kapitel(lng),
+        `/duplikate (${lng}): das Kapitel sagt nicht „${liste}“ — dann bleibt offen, wohin der entschiedene Fund geht (DU4b)`,
+      ).toContain(liste);
+      expect(
+        nachbar,
+        `/duplikate (${lng}): der Zahnradtext sagt nicht mehr „${woNachbar}“ — dann nennt auf dieser Flaeche NIEMAND mehr den Ort, an dem die zwei Objekte weiter stehen; das Kapitel darf ihn nicht nennen (Hilfe-Suche, s. \`bibliothekNachbar\`)`,
+      ).toContain(woNachbar);
+    }
   });
 
-  it("DU5d · NACHFUEHR-PIN: `dup.help.detection.body` steht im „?“ und verneint, was das Kapitel zusagt", async () => {
+  it("DU5d: `dup.help.detection.body` steht im „?“ — und das Kapitel sagt dieselbe Wirkung zu", async () => {
     const gelesen = await fragezeichen();
     expect(
       gelesen,
       "/duplikate: `dup.help.detection.body` steht nicht im „?“ — der Erkennungsblock (`Duplicates.tsx:218-220`) fehlt",
     ).toContain(wert("dup.help.detection.body"));
-    expect(
-      wert("dup.help.detection.body"),
-      "/duplikate: `dup.help.detection.body` verneint die Wirkung an den Objekten nicht mehr. Jetzt DU5d neu ausrichten.",
-    ).toContain("an den beiden Objekten ändert sie nichts");
-    expect(
-      kapitel(),
-      "/duplikate: das Kapitel sagt keine Wirkung an den Objekten mehr zu — die vier Quellen sagen jetzt dasselbe. Jetzt DU5d auf die Anmeldung zurueckbauen.",
-    ).toContain("beide bleiben und verknüpft werden");
+    // Der „?"-Text verneint jede Wirkung an den beiden Objekten; das Kapitel sagt seit JOB 3890
+    // dasselbe von der positiven Seite („beide bleiben unveraendert bestehen"). Gemessen ist das in
+    // DU3b (die gezeichneten Objekte sind vorher und nachher gleich) und DU4a (keines verschwindet).
+    for (const lng of SPRACHEN) {
+      const verneinung = UEBEREINSTIMMUNG.nichtsAnObjekten[lng];
+      const bleiben = UEBEREINSTIMMUNG.beideBleiben[lng];
+      expect(
+        wert("dup.help.detection.body", lng),
+        `/duplikate (${lng}): \`dup.help.detection.body\` verneint die Wirkung an den Objekten nicht mehr mit „${verneinung}“`,
+      ).toContain(verneinung);
+      expect(
+        kapitel(lng),
+        `/duplikate (${lng}): das Kapitel sagt nicht „${bleiben}“ — dann sagt das „?“ etwas anderes als die Seitenhilfe`,
+      ).toContain(bleiben);
+    }
   });
 
-  it("DU5e · NACHFUEHR-PIN: `dup.intro` steht im „?“ und verneint es ebenso", async () => {
+  it("DU5e: `dup.intro` steht im „?“ — und nennt die dritte Wahl wie das Kapitel", async () => {
     const gelesen = await fragezeichen();
     expect(
       gelesen,
       "/duplikate: `dup.intro` steht nicht im „?“ — der Einleitungsblock (`Duplicates.tsx:221-226`) fehlt",
     ).toContain(wert("dup.intro"));
-    expect(
-      wert("dup.intro"),
-      "/duplikate: `dup.intro` verneint die Wirkung an den Beitraegen nicht mehr. Jetzt DU5e neu ausrichten.",
-    ).toContain("an den beiden Beiträgen ändert sie nichts");
-    expect(
-      kapitel(),
-      "/duplikate: das Kapitel sagt keine Wirkung an den Objekten mehr zu — die vier Quellen sagen jetzt dasselbe. Jetzt DU5e auf die Anmeldung zurueckbauen.",
-    ).toContain("beide bleiben und verknüpft werden");
+    // `dup.intro` zaehlt die drei Entscheidungen bei ihrem Namen auf und verneint jede Wirkung an
+    // den beiden Beitraegen. Seit JOB 3890 nennt das Kapitel die dritte Wahl mit genau diesem Namen.
+    for (const lng of SPRACHEN) {
+      const verneinung = UEBEREINSTIMMUNG.nichtsAnBeitraegen[lng];
+      const kern = UEBEREINSTIMMUNG.verwandt[lng];
+      expect(
+        wert("dup.intro", lng),
+        `/duplikate (${lng}): \`dup.intro\` verneint die Wirkung an den Beitraegen nicht mehr mit „${verneinung}“`,
+      ).toContain(verneinung);
+      expect(
+        wert("dup.intro", lng),
+        `/duplikate (${lng}): \`dup.intro\` nennt die dritte Wahl nicht mehr „${kern}“`,
+      ).toContain(kern);
+      expect(
+        kapitel(lng),
+        `/duplikate (${lng}): das Kapitel nennt die dritte Wahl nicht „${kern}“ wie das „?“ darueber`,
+      ).toContain(kern);
+    }
   });
 
   it("DU5f: „welche Seite maßgeblich ist“ reicht genau bis zum Vermerk — und keinen Schritt weiter", async () => {
@@ -1128,6 +1324,45 @@ describe("JOB 3804 DU5 · der Vierfachtext derselben Flaeche", () => {
     expect(d.lies().kos, "/duplikate: „maßgeblich“ hat die Wissensobjekte veraendert").toEqual(
       kosVorher,
     );
+  });
+
+  // ----------------------------------------------------------------------------------------------
+  // DU5g (JOB 3890 RUNDE 3) — DER SATZ, DEN KLARA WEITERREICHT, IST DERSELBE SATZ.
+  // ----------------------------------------------------------------------------------------------
+  //
+  // WAS IN RUNDE 2 PASSIERT IST, gemessen im Tor: das gewachsene Kapitel war in DE 714 und in NL 706
+  // Zeichen lang. Klara schneidet jeden Schnipsel, den sie an die Modellkante reicht, bei 700
+  // (`apps/web/src/components/KlaraAssistant.tsx:310`) — der deutsche Text ging also GEKUERZT
+  // hinaus, und weggefallen war ausgerechnet sein ehrlicher Schluss. Gemeldet hat es
+  // `tests/app/f0304-klara-assistenzflaeche.test.tsx` („topic:duplikate: Text beschnitten
+  // (700/714)"), und zwar ERST im Tor.
+  //
+  // WARUM DIESER FALL TROTZ A3 STEHT und ihn nicht verdoppelt: A3 misst den WIRKLICH uebertragenen
+  // Anfragekoerper — das ist mehr, aber es ist nur DEUTSCH (`locale: "de"`) und nur, solange das
+  // Kapitel unter den zwoelf bestplatzierten Schnipseln bleibt. Die niederlaendische Fassung lag mit
+  // 706 Zeichen genauso ueber dem Schnitt und wurde von NICHTS bemerkt. Hier steht darum die
+  // sprachweise Grenze, und zwar am GELESENEN Schnitt der Anwendung, nicht an einer im Test
+  // wiederholten 700 (das war der Fehler, den JOB 3830 an `faq-sagt-kein-verschmelzen.test.ts:199`
+  // geruegt hat: ein Waechter, der seine eigene Konstante misst, bleibt gruen, wenn die Anwendung
+  // sich aendert).
+  it("DU5g: das Kapitel passt in JEDER Sprache in den Schnitt, mit dem Klara es weiterreicht", () => {
+    const quelle = readFileSync(
+      join(__dirname, "..", "..", "apps", "web", "src", "components", "KlaraAssistant.tsx"),
+      "utf8",
+    );
+    const roh = /body:\s*e\.body\.slice\(0,\s*(\d+)\)/.exec(quelle)?.[1];
+    expect(
+      roh,
+      "KlaraAssistant.tsx schneidet den Schnipseltext nicht mehr mit `e.body.slice(0, …)` — dieser Fall liest die Grenze dort und misst ohne sie nichts",
+    ).toBeDefined();
+    const schnitt = Number(roh);
+    for (const lng of SPRACHEN) {
+      const text = kapitel(lng);
+      expect(
+        text.length,
+        `/duplikate (${lng}): das Kapitel ist ${text.length} Zeichen lang und wird auf dem Weg zur KI bei ${schnitt} abgeschnitten (KlaraAssistant.tsx) — der Schluss des Satzes geht dabei still verloren`,
+      ).toBeLessThanOrEqual(schnitt);
+    }
   });
 });
 

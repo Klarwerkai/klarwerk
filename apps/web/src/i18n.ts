@@ -5043,8 +5043,30 @@ const de = {
   "help.konflikte.body":
     "Ein Konflikt ist ein Widerspruch: zwei Wissensobjekte sagen etwas über dieselbe Sache, und beides zusammen kann nicht stimmen. Die Seite stellt die zwei Aussagen nebeneinander und lässt dich wählen, welche gilt, ob beide je nach Zusammenhang gelten oder ob gar kein Widerspruch vorliegt. Deine Wahl wird als Vermerk festgehalten, gelöscht wird nichts; nimm dir ein Paar vor und lies beide Aussagen, bevor du entscheidest.",
   "help.duplikate.title": "Duplikate",
+  // JOB 3890 — DER HALBSATZ SAGT JETZT, WAS DER KNOPF SAGT. Bis hierher versprach das Kapitel „ob
+  // beide bleiben und verknüpft werden" — verknüpft wird nichts: `linkRelated` ruft
+  // `close(id, by, note, "linked_related", …)` (services/conflicts/src/overlap-service.ts:673-675),
+  // und `close` schreibt AUSSCHLIESSLICH `status`, `resolution` und `closedAt` plus einen
+  // Audit-Eintrag (`:732-749`). Der Text trägt darum die Worte des Knopfes selbst (`dup.side.both`,
+  // `:3655`) und die Verneinung des Zahnradtextes darunter (`:3691`); wohin der entschiedene Fund
+  // geht, sagt `unresolved()` (`:933`, auf der Fläche gemessen in DU4b).
+  //
+  // DER ORT STEHT HIER NICHT, UND ZWAR GEMESSEN (Runde 3, zwei fremde Wächter im Tor rot):
+  //   (1) Die Hilfe-Suche ist eine Teilstring-Suche über Titel + Text + Merkmale
+  //       (`lib/helpTopics.ts:318-330`). Sobald das Kapitel „Bibliothek" wörtlich nannte, fand die
+  //       Suche nach „bibliothek" auch dieses Kapitel — und
+  //       `tests/review26-hilfe-import/hilfe-findet-dateiimport.test.ts:311` hält fest, dass sie
+  //       GENAU `["library"]` liefert („expected [ 'library', 'duplikate' ] to deeply equal
+  //       [ 'library' ]"). Dieser Test liegt außerhalb der Zielpfade dieses Jobs.
+  //   (2) Klara reicht jeden Hilfetext bei 700 Zeichen beschnitten an die Modellkante
+  //       (`components/KlaraAssistant.tsx:310`); mit dem Ortssatz war dieser Wert 714 Zeichen lang
+  //       und ging gekürzt hinaus (`tests/app/f0304-klara-assistenzflaeche.test.tsx`, A3:
+  //       „topic:duplikate: Text beschnitten (700/714)"). Die Länge hält jetzt DU5g fest.
+  // WO die beiden Objekte danach stehen, sagt auf `/duplikate` weiterhin der Zahnradtext darunter
+  // (`dup.seitenhilfe.entscheidung.text`, `:3691`, gemessen in DU5c); auf `/hilfe` steht das
+  // Kapitel ohne ihn (`pages/Help.tsx:163`) — dort fehlt die Auskunft. Das ist offen gemeldet.
   "help.duplikate.body":
-    "Zwei Wissensobjekte, die weitgehend dasselbe sagen, landen hier als Paar. Anders als beim Konflikt widersprechen sie sich nicht, sie doppeln sich. Du entscheidest, welche Seite maßgeblich ist, ob beide bleiben und verknüpft werden oder ob es gar kein Duplikat ist; zusammengeführt und gelöscht wird dabei nichts, es entsteht ein Vermerk. Nimm dir ein Paar vor und vergleiche die beiden Texte.",
+    "Zwei Wissensobjekte, die weitgehend dasselbe sagen, landen hier als Paar. Anders als beim Konflikt widersprechen sie sich nicht, sie doppeln sich. Du entscheidest, welche Seite maßgeblich ist, ob beide bleiben und als verwandt vermerkt werden oder ob es gar kein Duplikat ist; zusammengeführt und gelöscht wird dabei nichts, es entsteht ein Vermerk, und auch „als verwandt vermerken“ legt keine Verknüpfung in den Objekten an. Der entschiedene Fund verschwindet aus der Liste und aus der Zahl am Reiter; verloren ist damit nichts, denn beide Wissensobjekte bleiben unverändert bestehen. Nimm dir ein Paar vor und vergleiche die beiden Texte.",
   "help.analytics.title": "Analytics & Audit",
   "help.analytics.body":
     "Diese Seite bündelt die Auswertung über den gesamten Bestand und daneben das Protokoll der Vorgänge: Kennzahlen zu Validierung, Vertrauen, Lücken und Auslastung auf der einen Seite, die nachvollziehbare Liste dessen, was geschehen ist, auf der anderen. Du kannst das Protokoll nach Art des Vorgangs und nach handelnder Person filtern, um einer einzelnen Frage nachzugehen. Such dir eine Kennzahl aus und geh ihrer Herkunft im Protokoll nach.",
@@ -10404,8 +10426,13 @@ const en: typeof de = {
   "help.konflikte.body":
     "A conflict is a contradiction: two knowledge objects say something about the same matter, and both together cannot be true. The page puts the two statements side by side and lets you choose which one holds, whether both hold depending on context, or whether there is no contradiction at all. Your choice is kept as a note, nothing is deleted; take one pair and read both statements before you decide.",
   "help.duplikate.title": "Duplicates",
+  // JOB 3890 — see the German block: the half-sentence now says what the button says, and the
+  // wording is taken from `dup.side.both` and `dup.seitenhilfe.entscheidung.text` of this language.
+  // Round 3: the place is NOT named here — see the German block for the two measured reasons (the
+  // help search is a substring search, and Klara cuts every snippet at 700 characters). On
+  // `/duplikate` the sentence below the chapter still names it.
   "help.duplikate.body":
-    "Two knowledge objects that say largely the same thing land here as a pair. Unlike a conflict they do not contradict each other, they overlap. You decide which side is authoritative, whether both stay and get linked, or whether it is no duplicate at all; nothing is merged and nothing is deleted, a note is written instead. Take one pair and compare the two texts.",
+    "Two knowledge objects that say largely the same thing land here as a pair. Unlike a conflict they do not contradict each other, they overlap. You decide which side is authoritative, whether both stay and are recorded as related, or whether it is no duplicate at all; nothing is merged and nothing is deleted, a note is written instead, and even “note as related” creates no link inside the objects. The decided finding leaves the list and the number on the tab; nothing is lost by that, because both knowledge objects stay unchanged. Take one pair and compare the two texts.",
   "help.analytics.title": "Analytics & Audit",
   "help.analytics.body":
     "This page bundles the evaluation across the whole stock and, next to it, the log of what happened: figures on validation, trust, gaps and workload on one side, the traceable list of events on the other. You can filter the log by kind of event and by the person who acted, to follow a single question. Pick one figure and trace its origin in the log.",
@@ -15448,8 +15475,13 @@ const nl: typeof de = {
   "help.konflikte.body":
     "Een conflict is een tegenspraak: twee kennisobjecten zeggen iets over dezelfde zaak, en samen kunnen ze niet allebei kloppen. De pagina zet de twee uitspraken naast elkaar en laat je kiezen welke geldt, of ze allebei gelden afhankelijk van de context, of dat er helemaal geen tegenspraak is. Je keuze wordt als notitie vastgelegd, er wordt niets verwijderd; neem een paar en lees beide uitspraken voordat je beslist.",
   "help.duplikate.title": "Duplicaten",
+  // JOB 3890 — zie het Duitse blok: de halve zin zegt nu wat de knop zegt; de woorden komen uit
+  // `dup.side.both` en `dup.seitenhilfe.entscheidung.text` van deze taal.
+  // Ronde 3: de plek staat hier NIET — zie het Duitse blok voor de twee gemeten redenen (de
+  // hulpzoekfunctie zoekt op deelreeks, en Klara knipt elk fragment bij 700 tekens af). Op
+  // `/duplikate` noemt de zin onder het hoofdstuk de plek nog steeds.
   "help.duplikate.body":
-    "Twee kennisobjecten die grotendeels hetzelfde zeggen, komen hier als paar terecht. Anders dan bij een conflict spreken ze elkaar niet tegen, ze overlappen. Jij bepaalt welke kant leidend is, of ze allebei blijven en gekoppeld worden, of dat het helemaal geen duplicaat is; er wordt niets samengevoegd en niets verwijderd, er komt een notitie. Neem een paar en vergelijk de twee teksten.",
+    "Twee kennisobjecten die grotendeels hetzelfde zeggen, komen hier als paar terecht. Anders dan bij een conflict spreken ze elkaar niet tegen, ze overlappen. Jij bepaalt welke kant leidend is, of ze allebei blijven en als verwant genoteerd worden, of dat het helemaal geen duplicaat is; er wordt niets samengevoegd en niets verwijderd, er komt een notitie, en ook „als verwant noteren“ legt geen koppeling in de objecten aan. De besliste bevinding verdwijnt uit de lijst en uit het getal op het tabblad; daarmee is niets verloren, want beide kennisobjecten blijven ongewijzigd bestaan. Neem een paar en vergelijk de twee teksten.",
   "help.analytics.title": "Analytics & audit",
   "help.analytics.body":
     "Deze pagina bundelt de analyse over de hele voorraad en daarnaast het logboek van wat er gebeurd is: kengetallen over validatie, vertrouwen, hiaten en werklast aan de ene kant, de navolgbare lijst met gebeurtenissen aan de andere. Je kunt het logboek filteren op soort gebeurtenis en op de persoon die handelde, om één vraag te volgen. Kies een kengetal en zoek de herkomst ervan in het logboek.",
