@@ -2,12 +2,11 @@ import { useMutation } from "@tanstack/react-query";
 import { ExternalLink, Globe } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import { ExternalUrlText } from "../components/ExternalUrlText";
 import { HelpTip } from "../components/HelpTip";
 import { Button, Card, PageHeader, SectionLabel, TextInput } from "../components/ui";
-import { buildExternalSearchView } from "../lib/externalKnowledge";
+import { buildExternalSearchView, klassifiziereSuchfehler } from "../lib/externalKnowledge";
 
 // SCRUM-225: eigenständiger External-Knowledge-Einstieg. Schließt die Lücke aus SCRUM-224 —
 // externe Quellen ohne vorher geöffnetes KO durchsuchbar. Nutzt ausschließlich die vorhandene
@@ -21,17 +20,16 @@ export function ExternalKnowledge(): JSX.Element {
     mutationFn: (q: string) => endpoints.external.search(q),
   });
 
-  const err = search.error;
+  // JOB 3802: EIN Aufruf ordnet den Wurf ein — vorher standen hier drei `instanceof`-Zweige, von
+  // denen einer nie griff: `err instanceof Error ? err.message : t("ext.unavailable")` (alte
+  // Zeile 32). Ein `TypeError` aus `fetch` IST eine `Error`-Instanz, also gewann immer `err.message`
+  // und der Rückfall war toter Code — auf der Fläche stand „Failed to fetch" (Safari: „Load failed",
+  // Firefox: „NetworkError when attempting to fetch resource"). Maßgeblich ist `ApiError`: nur der
+  // entsteht aus einer echten Serverantwort (`api/client.ts:39-43`, `:81-85`).
   const view = buildExternalSearchView({
     pending: search.isPending,
     hasSearched,
-    error: err
-      ? {
-          status: err instanceof ApiError ? err.status : undefined,
-          code: err instanceof ApiError ? err.code : undefined,
-          message: err instanceof Error ? err.message : t("ext.unavailable"),
-        }
-      : null,
+    error: klassifiziereSuchfehler(search.error),
     results: search.data,
   });
 
@@ -80,6 +78,15 @@ export function ExternalKnowledge(): JSX.Element {
 
         {view.kind === "error" ? (
           <Card className="border-dashed text-center text-sm text-danger">{view.message}</Card>
+        ) : null}
+
+        {/* JOB 3802: kein Wort vom Server — also der Hauskatalogsatz, in der Sprache des Nutzers,
+            in derselben Kartenform wie der Fehlerfall. Keine Aussage über Treffer, keine darüber,
+            ob die externe Suche abgeschaltet ist: beides weiß ohne Antwort niemand. */}
+        {view.kind === "unreachable" ? (
+          <Card className="border-dashed text-center text-sm text-danger">
+            {t("ext.unavailable")}
+          </Card>
         ) : null}
 
         {view.kind === "loading" ? (

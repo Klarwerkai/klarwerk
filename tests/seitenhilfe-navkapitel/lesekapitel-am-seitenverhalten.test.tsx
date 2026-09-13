@@ -420,10 +420,17 @@ describe("JOB 3796 E · /extern — der Erklärsatz gegen das Verhalten von `Ext
 
   it("E1c-3: NICHT ERREICHBAR OHNE SERVERANTWORT (Netzabbruch) — auch dann steht ein Satz da, keine leere Liste", async () => {
     // Der zweite Weg in „nicht erreichbar": die Anfrage kommt gar nicht bis zu einer Antwort.
-    // `api/client.ts` wirft dann KEINEN `ApiError`, sondern den rohen Netzfehler durch —
-    // `pages/ExternalKnowledge.tsx:32` zeigt dessen `message`. Der Satz ist damit technisch und
-    // unübersetzt; ER STEHT ABER DA, und er ist von „Keine Treffer“ unterscheidbar. Genau das
-    // misst dieser Fall, und genau so steht es in der Rückgabe.
+    // `api/client.ts` wirft dann KEINEN `ApiError`, sondern den rohen Netzfehler durch.
+    //
+    // NACHGEZOGEN IN JOB 3802 — die ABSICHT dieses Falls ist unverändert („auch dann steht ein Satz
+    // da, keine leere Liste"), nur die gemessene Zeichenkette war überholt: bis JOB 3802 stand hier
+    // der Browser-Innentext („Failed to fetch"; Safari „Load failed", Firefox „NetworkError when
+    // attempting to fetch resource") — drei fremde Zeichenketten für dieselbe Lage, keine davon ein
+    // Satz für einen Menschen. Seitdem ordnet `lib/externalKnowledge.ts` den Wurf ein
+    // (`klassifiziereSuchfehler` → Sichtvariante `unreachable`) und die Seite setzt den
+    // HAUSKATALOGSATZ `ext.unavailable` in der Sprache des Nutzers. Geprüft wird deshalb der
+    // Katalogschlüssel, nicht ein hier abgeschriebener deutscher Satz — und zusätzlich, dass der
+    // Browser-Innentext NICHT mehr dasteht.
     d.setzeAntwort("external.search", async () => {
       throw new TypeError("Failed to fetch");
     });
@@ -432,8 +439,12 @@ describe("JOB 3796 E · /extern — der Erklärsatz gegen das Verhalten von `Ext
 
     const text = sichtbar();
     expect(text, "/extern Netzabbruch: die Seite schweigt — weder Meldung noch Hinweis").toContain(
-      "Failed to fetch",
+      de("ext.unavailable"),
     );
+    expect(
+      text,
+      "/extern Netzabbruch: dort steht der Browser-Innentext — kein Satz für einen Menschen (JOB 3802)",
+    ).not.toContain("Failed to fetch");
     expect(
       text,
       "/extern Netzabbruch: dort steht „Keine Treffer“ statt eines Fehlerhinweises",
