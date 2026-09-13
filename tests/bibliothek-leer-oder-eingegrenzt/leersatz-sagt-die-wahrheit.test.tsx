@@ -24,6 +24,22 @@
 // LEEREN Bestand — die Wertprüfung warf die Facette weg, und mit ihr die Information, dass
 // überhaupt eingegrenzt wurde. B7b ist deshalb umgedreht (er pinnte bis dahin die Unwahrheit),
 // B7c–B7e halten die drei Grenzen dieses Wegs.
+//
+// JOB 3913 · DER LEBENSZYKLUS DIESES BEFUNDS — B10–B12 messen die andere Hälfte der Zusage.
+// Der Befund `verworfeneEingrenzung` wird GESETZT in `BibliothekFlaeche.tsx:428` (aus
+// `droppedFacetDimensions`, vorher gegen nachher derselben Wertprüfung), GELÖSCHT in `:654` über
+// `keimVerbrauchen()` — dem gemeinsamen Griff von „Filter zurücksetzen" (`:693`) und dem Anwenden
+// einer gemerkten Sicht (`:717`) — und GELESEN einzig in `:1270` (`anyFilterActive`). B7b–B7e
+// halten das Setzen; das LÖSCHEN hielt bis JOB 3913 kein Fall, obwohl der Kommentar `:651-653`
+// beide Bedienwege ausdrücklich nennt. B10 (gemerkte Sicht, `:488`) und B11 (Zurücksetzen,
+// `:522`) fahren je einen davon an der gemounteten Fläche und lesen danach den Satz über den
+// BESTAND; B12 (`:545`) hält die Gegenrichtung — eine Sicht, die selbst eingrenzt, lässt den Satz
+// über die AUSWAHL stehen, also kommt der Bestandssatz nicht nach JEDER Bedienung zurück. Alle
+// drei messen zusätzlich, ob der Rücksetzweg `facet.reset` angeboten wird (`BibliothekFlaeche.tsx:1815-1822`,
+// er hängt an derselben Größe): bei verworfener Eingrenzung ja, nach B10/B11 nicht mehr.
+//
+// GEMESSEN, NICHT BEHAUPTET: entfernt man `setVerworfeneEingrenzung([])` aus `keimVerbrauchen()`,
+// werden B10 und B11 rot und die fünfzehn Bestandsfälle bleiben grün (JOB 3913, Gegenprobe V1).
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { KnowledgeObject } from "../../apps/web/src/api/types";
@@ -120,6 +136,15 @@ import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
 import i18n from "../../apps/web/src/i18n";
 import { Library } from "../../apps/web/src/pages/Library";
+// JOB 3913: die Handgriffe an dieser Fläche gibt es genau einmal (`tests/library/support/bib-flaeche`).
+// Sie werden importiert, nicht nachgebaut — ein zweiter Menühelfer wäre der Anfang zweier Fassungen.
+import {
+  eintragText,
+  menueEintrag,
+  menueOeffnen,
+  suche,
+  tippe,
+} from "../library/support/bib-flaeche";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 Element.prototype.scrollIntoView = () => {};
@@ -179,10 +204,69 @@ function ressource(sprache: Sprache, schluessel: string): string {
 const BESTANDSSATZ = (s: Sprache = "de"): string => ressource(s, "lib.liste.leer");
 const AUSWAHLSATZ = (s: Sprache = "de"): string => ressource(s, "lib.liste.leerSuche");
 
+// ------------------------------------------------------------------------------------------------
+// JOB 3913 — DIE ZWEI BEDIENWEGE, DIE DEN BEFUND WIEDER LÖSCHEN (B10–B12).
+// ------------------------------------------------------------------------------------------------
+
+function element<T extends HTMLElement>(selektor: string): T {
+  const el = container.querySelector<T>(selektor);
+  if (!el) {
+    throw new Error(`Element fehlt: ${selektor}`);
+  }
+  return el;
+}
+
+/**
+ * Der Rücksetzweg `facet.reset` im Menü „Filter" — `undefined`, wenn er NICHT angeboten wird.
+ * Bauform von `tests/library/mega59-nullzustand-mounted.test.tsx:137-145`; gesucht wird über die
+ * Beschriftung und nicht über `menueEintrag`, weil hier auch die ABWESENHEIT gemessen wird
+ * (`menueEintrag` wirft dann) — der Eintrag hängt an `anyFilterActive`
+ * (`BibliothekFlaeche.tsx:1815`), also an genau der Größe, um die es in B10/B11 geht.
+ */
+function ruecksetzEintrag(): HTMLButtonElement | undefined {
+  const menue = menueOeffnen(container, "bib-menue-filter");
+  const label = ressource("de", "facet.reset");
+  return [...menue.querySelectorAll('[role="menuitem"]')].find((b) => eintragText(b) === label) as
+    | HTMLButtonElement
+    | undefined;
+}
+
+/** Eine Sicht über den echten Bedienweg merken (`tests/bibliothek-sichten/sichten-mounted.test.tsx:134-138`). */
+function sichtSpeichern(name: string): void {
+  menueOeffnen(container, "bib-liste-menue");
+  tippe(element<HTMLInputElement>("#bib-sichtname"), name);
+  const knopf = element<HTMLButtonElement>('[data-testid="bib-sicht-speichern"]');
+  expect(knopf.disabled, `„${name}" lässt sich nicht speichern`).toBe(false);
+  act(() => {
+    knopf.click();
+  });
+}
+
+/** Eine gemerkte Sicht über den echten Bedienweg anwenden (ebenda, `:139-141`). */
+function sichtAnwenden(name: string): void {
+  const eintrag = menueEintrag(menueOeffnen(container, "bib-liste-menue"), name);
+  act(() => {
+    eintrag.click();
+  });
+}
+
+/**
+ * Auf die entprellte Suchfortschreibung warten (`LIBRARY_SEARCH_DEBOUNCE_MS`), statt mit festen
+ * Wartezeiten zu raten — dieselbe Bauform wie `sichten-mounted.test.tsx:149-153`.
+ */
+async function entprellung(): Promise<void> {
+  await act(async () => {
+    await new Promise((fertig) => setTimeout(fertig, 360));
+  });
+}
+
 beforeEach(async () => {
   await i18n.changeLanguage("de");
   lage.suche = abfrage([]);
   lage.bestand = abfrage([]);
+  // JOB 3913: gemerkte Sichten liegen im `localStorage` und überlebten sonst den Fall, der sie
+  // angelegt hat (`sichten-mounted.test.tsx:158`). Kein Fall darf vom Nachlass eines anderen leben.
+  window.localStorage.clear();
 });
 
 afterEach(abbauen);
@@ -387,6 +471,104 @@ describe("JOB 3788 · der Leersatz sagt die Wahrheit über den Bestand", () => {
         abbauen();
       }
     }
+  });
+
+  // ==============================================================================================
+  // JOB 3913 · B10–B12 — WAS DIE ADRESSE GESETZT HAT, MUSS DIE BEDIENUNG WIEDER LÖSCHEN KÖNNEN.
+  // ==============================================================================================
+  // B7b–B7e halten fest, dass eine verworfene Facette eine Eingrenzung BLEIBT. Die andere Hälfte
+  // derselben Zusage steht im Produkt seit JOB 3877 als Kommentar (`BibliothekFlaeche.tsx:651-653`)
+  // und war ungemessen: wer danach eine gemerkte Sicht anwendet oder die Filter zurücksetzt, hat
+  // nichts mehr eingegrenzt — dann ist „Nichts gefunden." die Falschaussage, und zwar eine, die
+  // bliebe, bis die Seite neu geladen wird. Gemessen wird an der gemounteten Fläche über
+  // `pages/Library`, mit den echten Bedienwegen (Menü „…" für Sichten, Menü „Filter" für das
+  // Zurücksetzen) — nicht durch Schreiben in den `localStorage` und einen zweiten Mount: der misst
+  // den Mount, nicht das Anwenden, und bliebe grün, selbst wenn `keimVerbrauchen()` den Befund
+  // stehen liesse.
+  it("B10 · JOB 3913 (a): eine gemerkte NEUTRALE Sicht bringt den Satz über den BESTAND zurück", () => {
+    // Ausgangslage wie B7c: leerer Bestand, ein Wert in der Adresse, den auch ein gefüllter Bestand
+    // nicht kennt — der geteilte Link auf der frisch aufgesetzten Instanz.
+    lage.bestand = abfrage([]);
+    lage.suche = abfrage([]);
+    mount("/bibliothek?tag=gibtesnicht");
+    expect(leersatz(), "Ausgangslage: die Eingrenzung ist verworfen, gilt aber").toBe(
+      AUSWAHLSATZ(),
+    );
+    // GEMESSEN, NICHT GERATEN (Lieferung 3): der Rücksetzweg hängt an derselben Größe wie der Satz
+    // (`anyFilterActive`), wird bei verworfener Eingrenzung also ANGEBOTEN. Der Mensch liest hier
+    // „Nichts gefunden." und hat einen Weg zurück — kein Produktbefund zu melden.
+    expect(ruecksetzEintrag(), "bei verworfener Eingrenzung fehlt der Weg zurück").toBeTruthy();
+    // WARUM DIESE SICHT NEUTRAL IST, und warum sie genau hier entsteht: gespeichert wird
+    // `currentViewState` (`BibliothekFlaeche.tsx:522`) mit q, facetSel, range, groupBy, segment und
+    // scope — in dieser Lage stehen alle sechs auf Standard, denn die Wertprüfung hat die Facette
+    // weggeräumt. Der Befund `verworfeneEingrenzung` gehört NICHT zum Zustand einer Sicht; genau
+    // deshalb lässt sich die neutrale Sicht hier über den echten Bedienweg merken (das Untermenü
+    // „Sicht speichern" steht überhaupt nur bei `anyFilterActive`, `:1595`).
+    sichtSpeichern("Ganzer Bestand");
+    expect(leersatz(), "das blosse Merken ändert die Lage nicht").toBe(AUSWAHLSATZ());
+    sichtAnwenden("Ganzer Bestand");
+    // `applyView` → `keimVerbrauchen()` (`:717`, `:649-655`): der Befund ist weg, also ist nichts
+    // mehr eingegrenzt — und über den leeren Bestand ist „Noch keine Einträge." wieder wahr.
+    expect(
+      leersatz(),
+      "nach der gemerkten Sicht behauptet die Fläche weiter eine Eingrenzung",
+    ).toBe(BESTANDSSATZ());
+    expect(
+      ruecksetzEintrag(),
+      "nichts ist mehr eingegrenzt — ein Rücksetzweg zeigte auf nichts",
+    ).toBeUndefined();
+  });
+
+  it("B11 · JOB 3913 (b): „Filter zurücksetzen“ bringt den Satz über den BESTAND zurück", () => {
+    lage.bestand = abfrage([]);
+    lage.suche = abfrage([]);
+    mount("/bibliothek?tag=gibtesnicht");
+    expect(leersatz(), "Ausgangslage: die Eingrenzung ist verworfen, gilt aber").toBe(
+      AUSWAHLSATZ(),
+    );
+    const knopf = ruecksetzEintrag();
+    expect(knopf, "bei verworfener Eingrenzung fehlt der Weg zurück").toBeTruthy();
+    act(() => {
+      knopf?.click();
+    });
+    // `onResetFilters` (`:691-698`) geht über DENSELBEN Griff `keimVerbrauchen()` wie die Sicht —
+    // der Kommentar `:651-653` nennt beide Wege, und beide werden hier gefahren.
+    expect(leersatz(), "nach dem Zurücksetzen behauptet die Fläche weiter eine Eingrenzung").toBe(
+      BESTANDSSATZ(),
+    );
+    expect(
+      ruecksetzEintrag(),
+      "nichts ist mehr eingegrenzt — ein Rücksetzweg zeigte auf nichts",
+    ).toBeUndefined();
+  });
+
+  it("B12 · JOB 3913 (c): eine Sicht, die SELBST eingrenzt, lässt den Satz über die AUSWAHL stehen", async () => {
+    // DIE GEGENRICHTUNG ZU B10/B11, und sie trägt deren Beweislast mit: ohne sie wären beide auch
+    // dann grün, wenn nach JEDER Bedienung der Bestandssatz käme. Hier ist der Befund aus der
+    // Adresse nach dem Anwenden ebenfalls gelöscht — aber die Sicht bringt ihre EIGENE Eingrenzung
+    // mit (ein Suchwort), und die trägt den Satz über die Auswahl weiter.
+    lage.bestand = abfrage([]);
+    lage.suche = abfrage([]);
+    mount("/bibliothek?tag=gibtesnicht");
+    suche(container, "ventil");
+    await entprellung();
+    sichtSpeichern("Nur Ventile");
+    // Zurück auf die Ausgangslage: ohne Suchwort steht der Auswahlsatz allein wegen der verworfenen
+    // Eingrenzung da (wie B7c). Das Suchfeld ist leer — die Sicht bringt ihr Wort gleich selbst mit.
+    suche(container, "");
+    await entprellung();
+    expect(element<HTMLInputElement>('[data-testid="bib-suche"]').value).toBe("");
+    expect(leersatz()).toBe(AUSWAHLSATZ());
+    sichtAnwenden("Nur Ventile");
+    await entprellung();
+    expect(
+      element<HTMLInputElement>('[data-testid="bib-suche"]').value,
+      "die Sicht hat ihr Suchwort nicht mitgebracht — dann misst dieser Fall nichts",
+    ).toBe("ventil");
+    expect(leersatz(), "eine eingrenzende Sicht darf den Bestandssatz nicht herbeiführen").toBe(
+      AUSWAHLSATZ(),
+    );
+    expect(ruecksetzEintrag(), "die Sicht grenzt ein — der Weg zurück gehört dazu").toBeTruthy();
   });
 
   it("KALIBRIERUNG · mit sichtbaren Treffern steht überhaupt kein Leersatz da", () => {
