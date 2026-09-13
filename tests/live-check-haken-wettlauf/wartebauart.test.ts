@@ -626,3 +626,69 @@ it("W7 · nicht-relative Spezifizierer gehören nicht zu diesem Vertrag", () => 
     0, 0, 0,
   ]);
 });
+
+// --------------------------------------------------------------------------------------------------
+// Die zwei ungemessenen Ränder der Kanonisierung — Prüfer BEN, JOB 3882 R3, Prüfpunkt 6 und
+// PROMPTVERBESSERUNG: „Ergänze die Grenzkalibrierung um einen gebrochenen Symlink und eine symbolisch
+// verlinkte Testwurzel; prüfe Fehlermeldung beziehungsweise unveränderte Erhebung."
+//
+// (a) DER TOTE VERWEIS ist ein anderer Zustand als „keine Datei da" (`:518`): dort findet der
+//     Kandidatenschritt (`:304-306`) überhaupt keinen Verzeichniseintrag, hier einen, dessen Ziel
+//     fehlt. Entschieden wird er richtig, weil `existsSync` dem Verweis FOLGT und für ein fehlendes
+//     Ziel `false` liefert — der Spezifizierer landet damit in `unaufloesbar` und macht W1 rot.
+//     Zählte der tote Eintrag als Treffer, stürbe `realpathSync` (`:314`) mit `ENOENT` und nähme die
+//     ganze Erhebung mit; ein geworfener Fehler ist hier ausdrücklich KEIN zulässiger Ausgang (§9).
+//     Das gilt auch, wenn der Wortlaut des Verweisziels nach draussen zeigt: die Grenzprüfung `:295`
+//     sieht nur den lexikalischen Namen `./link`, und `ausserhalb` erreicht nur ein EXISTIERENDES
+//     Ziel. Beide Fälle waren bis hierher nur ohne Verweis gemessen.
+//
+// (b) DIE VERLINKTE WURZEL deckt die drei `realpathSync` in `:275-277`, die bis hierher LEERLÄUFE
+//     waren: `buehne` (`:472`) kanonisiert ihre Wurzel selbst, jede Bühne kam also bereits kanonisch
+//     bei `erhebe` an — wer die drei Zeilen entfernte, blieb grün. Der Fall unten ruft `erhebe`
+//     deshalb ein zweites Mal über einen Verweis AUF die Wurzel, ohne vorheriges `realpath`: genau so
+//     kommt ein Prüfplatz mit verlinktem Arbeitsverzeichnis an (`/tmp` → `/private/tmp`,
+//     Container-Bind-Mount). Er muss zeichengleich dasselbe urteilen wie die kanonische Wurzel.
+// --------------------------------------------------------------------------------------------------
+
+it("W7 · ein toter Verweis innerhalb der Bühne wird gemeldet, nicht verschwiegen", () => {
+  const wurzel = buehne({ "start.test.ts": "import './link';\n" });
+  // `link.ts` gibt es als Verzeichniseintrag, `gibt-es-nicht.ts` nicht.
+  symlinkSync(join(wurzel, "gibt-es-nicht.ts"), join(wurzel, "link.ts"));
+  const erhebung = erhebe(join(wurzel, "start.test.ts"), wurzel);
+  expect(erhebung.unaufloesbar).toEqual(["start.test.ts → ./link"]);
+  expect(erhebung.dateien).toEqual(["start.test.ts"]);
+  expect(erhebung.stellen).toEqual([]);
+  expect(erhebung.ausserhalb).toEqual([]);
+  expect([erhebung.relativ, erhebung.innerhalb]).toEqual([1, 1]);
+});
+
+it("W7 · ein toter Verweis nach draussen bleibt unaufloesbar, nicht ausserhalb", () => {
+  const fremd = buehne({ "timer.ts": HELFER });
+  const wurzel = buehne({ "start.test.ts": "import './link';\n" });
+  // Das Ziel LÄGE ausserhalb — es existiert aber nicht, also entscheidet der Kandidatenschritt.
+  symlinkSync(join(fremd, "gibt-es-nicht.ts"), join(wurzel, "link.ts"));
+  const erhebung = erhebe(join(wurzel, "start.test.ts"), wurzel);
+  expect(erhebung.unaufloesbar).toEqual(["start.test.ts → ./link"]);
+  expect(erhebung.dateien).toEqual(["start.test.ts"]);
+  expect(erhebung.stellen).toEqual([]);
+  expect(erhebung.ausserhalb).toEqual([]);
+  expect([erhebung.relativ, erhebung.innerhalb]).toEqual([1, 1]);
+});
+
+it("W7 · eine symbolisch verlinkte Wurzel liefert zeichengleich dieselbe Erhebung", () => {
+  const wurzel = buehne({ "start.test.ts": "import './link';\n", "echt/helfer.ts": HELFER });
+  symlinkSync(join(wurzel, "echt/helfer.ts"), join(wurzel, "link.ts"));
+  const ort = buehne({});
+  const ueberLink = join(ort, "verlinkt");
+  symlinkSync(wurzel, ueberLink);
+
+  const kanonisch = erhebe(join(wurzel, "start.test.ts"), wurzel);
+  // Der Anker: der kanonische Ausgang steht selbst fest — sonst bestünde der Vergleich unten auch
+  // dann, wenn BEIDE Läufe gleich falsch würden.
+  expect(kanonisch.dateien).toEqual(["start.test.ts", "echt/helfer.ts"]);
+  expect(kanonisch.stellen).toEqual(["echt/helfer.ts:1 · Name: setTimeout"]);
+
+  // Start UND Grenze über den Linkweg, ohne vorheriges `realpath`. EINE Zusicherung über das ganze
+  // Objekt: ein neues Feld, das über den Linkweg auseinanderliefe, rutschte sonst durch.
+  expect(erhebe(join(ueberLink, "start.test.ts"), ueberLink)).toEqual(kanonisch);
+});
