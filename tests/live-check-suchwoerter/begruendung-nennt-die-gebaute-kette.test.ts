@@ -28,6 +28,29 @@ import { describe, expect, it } from "vitest";
 // Der PostgreSQL-Adapter (`search-projection-repo-pg.ts`) wird NICHT gelesen; was nur dort steht,
 // gilt hier nicht als belegt. Das ist dieselbe Grenze wie beim Messstand (`messstand.ts:43`) und
 // bleibt als REST benannt.
+//
+// ================================================================================================
+// JOB 3911 · WAS DIESER WÄCHTER LIEST — UND WAS ER WEITERHIN NICHT LIEST.
+// ================================================================================================
+//
+// BEN fand an JOB 3881 zwei offene Türen (Prüfpunkt 6 seines Urteils). Beide sind zu, und die Fälle
+// H1/H2 unten halten sie zu:
+//   · EINE NENNUNG BRAUCHT KEINE RÜCKSTRICHE MEHR. Gelesen wird jeder Rückstrich-Ausdruck UND jeder
+//     Name in Aufrufform (`name(`) — siehe `NENNUNG`. Wer „entscheidend ist koCandidateScore(x)"
+//     schreibt, wird geprüft wie der, der Rückstriche setzt.
+//   · EINE FUNDSTELLE MUSS AUF CODE ZEIGEN. Ein `· AUFRUF …`-Verweis gilt nur, wenn der Name im
+//     ausführbaren Teil der Zeile steht — siehe `nurCode`. Angehängter Kommentar, Zeichenkettenwert
+//     und Blockkommentar-Innenzeile sind kein Aufruf mehr.
+//
+// WAS ER NICHT PRÜFT, ausdrücklich und ohne Beschönigung:
+//   · POSTGRESQL-PARITÄT. Ob der PostgreSQL-Adapter dieselbe Teilzeichenketten-Regel hat, ist hier
+//     nicht gemessen (s. „DIE GRENZE" oben). Das braucht einen eigenen Integrationstest.
+//   · DEN TATSÄCHLICHEN EDITORSTATUS. Was der Nutzer im Editor sieht, misst dieser Wächter nicht;
+//     er liest Quelltext, keine Oberfläche. Ebenfalls eigener Schnitt.
+//   · OB DER AUFRUF DER RICHTIGE IST. Ein `· AUFRUF`-Verweis belegt, dass im Zeilenbereich ein
+//     Aufruf dieses NAMENS in Code steht — nicht, dass es derjenige ist, den die Kette meint.
+//   · DEN `· RUMPF`-ZWEIG AM AUSFÜHRBAREN TEIL. Er prüft die Rohzeilen auf eine Deklarationsform,
+//     wie seit JOB 3881; eine Deklaration in einem Kommentar bliebe dort unentdeckt.
 
 const WURZEL = resolve(__dirname, "../..");
 const KC = "services/app/src/knowledge-check.ts";
@@ -398,11 +421,21 @@ function eigeneNamen(text: string): Set<string> {
 /**
  * WAS ALS „NENNUNG EINER FUNKTION" GILT — fail-closed, und das ist Absicht.
  *
- * Gelesen wird jeder Rückstrich-Ausdruck des Blocks, der GANZ eine Namensform ist (`foo`, `foo()`,
- * `Klasse.foo`). Beginnt sein letztes Glied klein, ist es eine Funktions-/Methodennennung und muss
- * auf der Kette liegen. Grossbuchstabe am Anfang (Klassen, Typen) und VERSALIEN (Konstanten) sind
- * keine Nennung. Alles mit Leerzeichen, Klammerinhalt oder Operatoren (`w.length > 3`) fällt schon
- * an der Namensform heraus.
+ * Gelesen wird in EINEM Durchgang (`NENNUNG`) zweierlei, und beides geht danach durch dieselben
+ * Filter — es gibt keine zweite Sammelstelle:
+ *   (a) jeder Rückstrich-Ausdruck des Blocks (`foo`, `foo()`, `Klasse.foo`);
+ *   (b) jede UNFORMATIERTE Nennung in Aufrufform, also ein Name, dem unmittelbar `(` folgt
+ *       („entscheidend ist koCandidateScore(kandidat)"). Bis JOB 3911 wurde (b) gar nicht erst
+ *       angesehen: wer die Rückstriche wegliess, wurde nicht geprüft, und B2 blieb still. Die
+ *       Schreibweise entscheidet nicht mehr, ob eine Behauptung nachgemessen wird.
+ * Ein Leerzeichen vor der Klammer zählt NICHT als Aufrufform — sonst wäre jedes Wort vor einer
+ * Klammerbemerkung („der Fall (V2)") eine Nennung. Ebenso wenig zählt ein führender Punkt
+ * (`.slice(0, 12)`): das ist keine Namensform, genau wie in (a).
+ *
+ * Beginnt das letzte Glied klein, ist es eine Funktions-/Methodennennung und muss auf der Kette
+ * liegen. Grossbuchstabe am Anfang (Klassen, Typen) und VERSALIEN (Konstanten) sind keine Nennung.
+ * Alles mit Leerzeichen, Klammerinhalt oder Operatoren (`w.length > 3`) fällt schon an der
+ * Namensform heraus.
  *
  * Wer einen anderen Kleinbuchstaben-Ausdruck in Rückstriche setzt, bekommt Rot. Das ist die bewusst
  * enge Seite dieses Wächters: lieber ein Rot zu viel als eine Behauptung, die niemand nachprüft.
@@ -415,6 +448,8 @@ function eigeneNamen(text: string): Set<string> {
  * sie ist bewusst und wird von Fall K4 unten in beide Richtungen gemessen.
  */
 const NAMENSFORM = /^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*(?:\(\))?$/;
+/** Gruppe 1: der Rückstrich-Ausdruck. Gruppe 2: die unformatierte Nennung in Aufrufform. */
+const NENNUNG = /`([^`\n]+)`|(?<![\w$.])([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\(/g;
 const VERGANGENHEIT =
   /bis JOB \d+|bis heute|bis zu diesem Auftrag|früher|damals|historisch|seinerzeit|nicht mehr|stand hier|falsch stand|ist deshalb ERSETZT/i;
 
@@ -432,8 +467,8 @@ function genannteFunktionen(block: string): string[] {
     if (VERGANGENHEIT.test(satz)) {
       continue;
     }
-    for (const treffer of satz.matchAll(/`([^`\n]+)`/g)) {
-      const roh = (treffer[1] ?? "").trim();
+    for (const treffer of satz.matchAll(NENNUNG)) {
+      const roh = (treffer[1] ?? treffer[2] ?? "").trim();
       if (!NAMENSFORM.test(roh)) {
         continue;
       }
@@ -489,29 +524,99 @@ function fundstellen(block: string): Verweis[] {
   return raus;
 }
 
-function bereich(pfad: string, von: number, bis: number): string[] {
-  return lesen(pfad)
-    .split("\n")
-    .slice(Math.max(0, von - 1), bis);
+function bereich(text: string, von: number, bis: number): string[] {
+  return text.split("\n").slice(Math.max(0, von - 1), bis);
+}
+
+/**
+ * DERSELBE QUELLTEXT, ABER NUR SEIN AUSFÜHRBARER TEIL — die eine Stelle, an der „ist das Code?"
+ * entschieden wird.
+ *
+ * Jedes Zeichen eines Kommentars und jedes Zeichen eines Zeichenketten-, Vorlagen- oder
+ * Musterliterals wird zu einem Leerzeichen; Zeilenumbrüche bleiben stehen. Länge, Zeilennummern und
+ * Spalten sind damit unverändert — ein Treffer in diesem Text ist ein Treffer in ausführbarem Code,
+ * und nur dort. Gelesen wird derselbe TypeScript-Baum wie beim Baumgang, Token für Token samt
+ * führender Kommentare.
+ *
+ * WAS DAS ABLÖST: bis JOB 3911 fragte `belegt` mit `/^\s*(?:\/\/|\*|\/\*)/`, ob eine Zeile mit einem
+ * Kommentarzeichen BEGINNT. Diese Zeilenmusterprüfung sah drei Scheinbelege als Aufruf an (BEN zu
+ * JOB 3881, Prüfpunkt 6): den an eine Codezeile angehängten Kommentar, den Zeichenkettenwert und die
+ * Innenzeile eines Blockkommentars ohne führendes Sternchen. Sie ist ERSETZT, nicht ergänzt — es
+ * gibt daneben keinen zweiten Weg, einen Aufruf zu belegen.
+ */
+const AUSGEBLENDET: ReadonlySet<ts.SyntaxKind> = new Set([
+  ts.SyntaxKind.StringLiteral,
+  ts.SyntaxKind.NoSubstitutionTemplateLiteral,
+  ts.SyntaxKind.TemplateHead,
+  ts.SyntaxKind.TemplateMiddle,
+  ts.SyntaxKind.TemplateTail,
+  ts.SyntaxKind.RegularExpressionLiteral,
+]);
+
+/** Der Baumgang je Datei ist teuer und rein — einmal je Pfad genügt. */
+const NUR_CODE = new Map<string, string>();
+
+function nurCode(pfad: string): string {
+  const bekannt = NUR_CODE.get(pfad);
+  if (bekannt !== undefined) {
+    return bekannt;
+  }
+  const text = lesen(pfad);
+  const datei = ast(text, pfad);
+  const zeichen = text.split("");
+  const ausblenden = (von: number, bis: number): void => {
+    for (let i = von; i < bis && i < zeichen.length; i += 1) {
+      if (zeichen[i] !== "\n") {
+        zeichen[i] = " ";
+      }
+    }
+  };
+  const gehe = (k: ts.Node): void => {
+    // BEIDE Richtungen: `getLeadingCommentRanges` sammelt erst ab dem ersten Zeilenumbruch und
+    // übergeht damit genau den ANGEHÄNGTEN Kommentar (`const x = 1; // foo(y)`) — der ist nachlaufende
+    // Trivia des vorangehenden Tokens. Gemessen: ohne die zweite Schleife blieb H2 (angehängter
+    // Kommentar) grün, mit ihr wird er abgewiesen.
+    for (const r of ts.getLeadingCommentRanges(text, k.getFullStart()) ?? []) {
+      ausblenden(r.pos, r.end);
+    }
+    for (const r of ts.getTrailingCommentRanges(text, k.getEnd()) ?? []) {
+      ausblenden(r.pos, r.end);
+    }
+    if (AUSGEBLENDET.has(k.kind)) {
+      ausblenden(k.getStart(datei), k.getEnd());
+    }
+    for (const kind of k.getChildren(datei)) {
+      gehe(kind);
+    }
+  };
+  gehe(datei);
+  const raus = zeichen.join("");
+  NUR_CODE.set(pfad, raus);
+  return raus;
 }
 
 function belegt(verweis: Verweis): string | undefined {
-  const zeilen = bereich(verweis.pfad, verweis.von, verweis.bis);
-  if (zeilen.length === 0) {
+  const roh = bereich(lesen(verweis.pfad), verweis.von, verweis.bis);
+  if (roh.length === 0) {
     return "der Zeilenbereich liegt ausserhalb der Datei";
   }
   const name = verweis.name.replace(/[$]/g, "\\$");
-  const deklaration = new RegExp(
-    `^\\s*(?:export\\s+)?(?:async\\s+)?(?:function\\s+)?${name}\\s*[(<]`,
-  );
-  const aufruf = new RegExp(`[.\\s(]${name}\\s*\\(`);
-  const kommentar = /^\s*(?:\/\/|\*|\/\*)/;
-  const treffer = zeilen.some((z) =>
-    verweis.art === "RUMPF" ? deklaration.test(z) : !kommentar.test(z) && aufruf.test(z),
-  );
-  return treffer
-    ? undefined
-    : `${verweis.pfad}:${verweis.von}-${verweis.bis} trägt ${verweis.art === "RUMPF" ? "keine Deklaration" : "keinen ausführbaren Aufruf"} von „${verweis.name}"; gelesener Bereich: ${zeilen.join(" ⏎ ").slice(0, 240)}`;
+  const muster =
+    verweis.art === "RUMPF"
+      ? new RegExp(`^\\s*(?:export\\s+)?(?:async\\s+)?(?:function\\s+)?${name}\\s*[(<]`)
+      : new RegExp(`[.\\s(]${name}\\s*\\(`);
+  // RUMPF behält seine Bedeutung und liest die Rohzeilen; AUFRUF misst am ausführbaren Teil.
+  const gemessen =
+    verweis.art === "RUMPF" ? roh : bereich(nurCode(verweis.pfad), verweis.von, verweis.bis);
+  if (gemessen.some((z) => muster.test(z))) {
+    return undefined;
+  }
+  // Steht der Name im Rohtext, im Code aber nicht, sagt die Meldung WARUM sie ihn verwirft.
+  const schein =
+    verweis.art === "AUFRUF" && roh.some((z) => muster.test(z))
+      ? " (der Name steht dort nur in einem Kommentar oder in einer Zeichenkette, nicht in Code)"
+      : "";
+  return `${verweis.pfad}:${verweis.von}-${verweis.bis} trägt ${verweis.art === "RUMPF" ? "keine Deklaration" : "keinen ausführbaren Aufruf"}${schein} von „${verweis.name}"; gelesener Bereich: ${roh.join(" ⏎ ").slice(0, 240)}`;
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -608,6 +713,28 @@ const FREMDTEXT = [
   ["Zeichenkette", (s: string) => `\nexport const scheinbeleg = ${JSON.stringify(s)};\n`],
   ["Falltitel", (s: string) => `\nit(${JSON.stringify(`… ${s} …`)}, () => {});\n`],
 ] as const;
+
+// ------------------------------------------------------------------------------------------------
+// DIE DREI SCHEINBELEG-ZEILEN (Fall H2) — sie stehen HIER, in dieser Datei.
+// ------------------------------------------------------------------------------------------------
+//
+// `belegt` schlägt eine ECHTE Datei an einer ECHTEN Zeile auf; eine Attrappe im Speicher würde den
+// Leser gar nicht messen. Also liefert dieser Wächter die Zeilen selbst. Jede der drei trägt
+// `findSearchHits` in Aufrufform, und keine davon ist ein Aufruf: die erste in einem ANGEHÄNGTEN
+// Kommentar, die zweite in einem ZEICHENKETTENWERT, die dritte als INNENZEILE eines
+// Blockkommentars, die nicht mit einem Sternchen beginnt. Ihre Zeilennummern werden zur Laufzeit
+// über die Marke gesucht (`zeileVon`), damit sie beim Umbauen dieser Datei nicht veralten.
+
+const SELBST = "tests/live-check-suchwoerter/begruendung-nennt-die-gebaute-kette.test.ts";
+const SCHEIN_ENDKOMMENTAR = "H2a"; // findSearchHits(entwurf) — angehängter Kommentar, kein Aufruf
+const SCHEIN_ZEICHENKETTE = "H2b — findSearchHits(entwurf) als blosser Zeichenkettenwert";
+/*
+H2c — findSearchHits(entwurf): Innenzeile eines Blockkommentars ohne führendes Sternchen.
+*/
+const SCHEIN_BLOCKKOMMENTAR = "H2c";
+
+/** Die Fundstellenzeile, hinter die Fall H2 seinen Scheinbeleg-Verweis hängt. */
+const LISTENANKER = "//   · AUFRUF findCandidates — services/app/src/knowledge-check.ts:389";
 
 describe("JOB 3881: die Begründung der Suchwortregel nennt die gebaute Kette", () => {
   it("B1 · die Kette wird aus dem Quelltext gebaut: findCandidates → findSearchHits → findActive", () => {
@@ -721,4 +848,58 @@ describe("JOB 3881: die Begründung der Suchwortregel nennt die gebaute Kette", 
     // Die Fundstellen bleiben davon unberührt — jede Verstellung rötet ihren EIGENEN Fall.
     expect(befund(pruefeFundstellen, ohneMarke)).toBe(befund(pruefeFundstellen, kc));
   });
+
+  // ==============================================================================================
+  // JOB 3911 — DIE ZWEI TÜREN, DIE BEN AN JOB 3881 OFFEN FAND (Prüfpunkt 6 seines Urteils).
+  // ==============================================================================================
+
+  it("H1 · eine UNFORMATIERTE Nennung einer kettenfremden Funktion ist rot wie eine formatierte", () => {
+    // Derselbe Name, dieselbe Aussage über HEUTE — nur ohne Rückstriche. Vor JOB 3911 las
+    // `genannteFunktionen` ausschliesslich Rückstrich-Ausdrücke; dieser Satz erzeugte keinen
+    // einzigen Treffer, `daneben` blieb leer und B2 schwieg zu einer Funktion, die das Produkt
+    // nicht ruft. Die Schreibweise darf nicht entscheiden, ob eine Behauptung geprüft wird.
+    const unformatiert = ersetzen(
+      kc,
+      "WARUM DETERMINISTISCH: eine reine Funktion.",
+      `Entscheidend ist ${BLIND}(kandidat). WARUM DETERMINISTISCH: eine reine Funktion.`,
+    );
+    const fehler = abgewiesen(() => pruefeKettentreue(unformatiert));
+    expect(fehler).toContain("B2 Kettentreue");
+    expect(fehler).toContain(`„${BLIND}"`);
+    // Trennschärfe wie bei K4: die Fundstellen bleiben Wort für Wort beim alten Urteil.
+    expect(befund(pruefeFundstellen, unformatiert)).toBe(befund(pruefeFundstellen, kc));
+  });
+
+  for (const [form, marke] of [
+    ["angehängter Kommentar", SCHEIN_ENDKOMMENTAR],
+    ["Zeichenkette", SCHEIN_ZEICHENKETTE],
+    ["Innenzeile eines Blockkommentars", SCHEIN_BLOCKKOMMENTAR],
+  ] as const) {
+    it(`H2 · eine Fundstelle auf einen Scheinbeleg (${form}) gilt NICHT als Aufruf`, () => {
+      // Vor JOB 3911 prüfte `belegt` nur, ob die Zeile mit einem Kommentarzeichen BEGINNT. Alle drei
+      // Formen tun das nicht — sie kamen als „ausführbarer Aufruf" durch, und ein Verweis auf sie war
+      // damit „belegt". Wer der Fundstelle folgte, landete auf Text statt auf Code.
+      const selbst = lesen(SELBST).split("\n");
+      const nr = selbst.findIndex((z) => z.includes(marke));
+      // Die Marke muss ZUERST auf ihrer eigenen Scheinbeleg-Zeile stehen. Schreibt jemand sie
+      // weiter oben in einen Kommentar, zeigte der Verweis auf eine harmlose Zeile und der Fall
+      // wäre aus dem falschen Grund rot — dann lieber hier abbrechen.
+      expect(
+        nr >= 0 && (selbst[nr] ?? "").includes("findSearchHits("),
+        `Scheinbeleg-Zeile „${marke}" nicht gefunden oder ohne Aufrufform: ${selbst[nr] ?? "<keine>"}`,
+      ).toBe(true);
+      const ort = `${SELBST}:${nr + 1}`;
+      const verstellt = ersetzen(
+        kc,
+        LISTENANKER,
+        `${LISTENANKER}\n//   · AUFRUF findSearchHits — ${ort}`,
+      );
+      const fehler = abgewiesen(() => pruefeFundstellen(verstellt));
+      expect(fehler).toContain("B3 Fundstellen");
+      expect(fehler).toContain(ort);
+      expect(fehler).toContain("nur in einem Kommentar oder in einer Zeichenkette, nicht in Code");
+      // Trennschärfe: die Kettentreue bleibt Wort für Wort beim alten Urteil.
+      expect(befund(pruefeKettentreue, verstellt)).toBe(befund(pruefeKettentreue, kc));
+    });
+  }
 });
