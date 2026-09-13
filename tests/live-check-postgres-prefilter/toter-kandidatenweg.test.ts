@@ -75,10 +75,23 @@
 // Importe über den Alias `@/…`, und den löste bis dahin keines der beiden Programme auf — der
 // Träger dahinter war `any`, der Wächter schwieg dort STILL. Die Alias-Regel kommt jetzt aus
 // `apps/web/tsconfig.json` (s. `typprogramm.ts`, `webAliase`), gelesen statt nachgebaut.
+// Seit JOB 3895 ist dazu die `.tsx`-FLÄCHE gemessen statt angenommen. Der grösste Teil der Web-App
+// sind `.tsx`-Dateien; dass der Prüfer dort antwortet, stand bis dahin nur als Begründung in
+// `typprogramm.ts` und in keinem Fall. Jetzt zählt der Produktflächenfall die `.tsx`-Dateien und
+// die, für die der Prüfer wirklich einen Typ nennt, ein Gegenbeleg misst das an einer namentlich
+// benannten Produktdatei, und die Kalibrierung kann `.tsx`-Quellen überhaupt erst stellen (die Art
+// der gestellten Quelle kommt jetzt aus ihrer Endung, s. `typprogramm.ts`, `gestelltesProgramm`).
 //
 // IHRE GRENZE — seit JOB 3867 genau EINE, nicht mehr zwei —, benannt statt verschwiegen und
 // gemessen statt behauptet: einen Empfänger, dessen Typ auch der Typprüfer nicht kennt — `any`,
-// `unknown` oder ein Fehlertyp —, sieht diese Datei nicht.
+// `unknown` oder ein Fehlertyp —, sieht diese Datei nicht. JOB 3895 VERKLEINERT sie für `.tsx`
+// und hebt sie nicht auf: eine `.tsx`-Quelle wird jetzt als TSX gelesen und ihr JSX typisiert, aber
+// ein Empfänger ohne Auskunft bleibt ungesehen, gleich in welcher Datei er steht.
+//
+// WAS AUCH NACH JOB 3895 OFFEN IST und deshalb hier steht statt als erledigt zu gelten: ob auf der
+// echten `.tsx`-Fläche überhaupt ein Repository-Träger vorkommt, ist NICHT gezeigt — die Erhebung
+// sagt allein, dass keine der gelesenen Produktdateien `findCandidates` eines Repository-Typs ruft.
+// Und die Zahl der aufgelösten `@/…`-Importe gibt der Fall weiterhin nicht aus (JOB 3867, REST).
 // Eine Auskunft, die der Prüfer nicht hat, darf sie nicht erfinden. Der Fall steht unten als
 // Kalibrierung „bleibt ungesehen". Ausdrücklich KEINE Lücke, sondern die Gegenrichtung: ein FREMDER
 // Typ mit derselben Gestalt (`KoService` trägt dieselbe Methode) bleibt grün — auch das steht unten
@@ -92,6 +105,7 @@ import { join } from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import {
+  GRENZE_MODUL,
   type Quelle,
   WURZEL,
   ohneKommentare,
@@ -531,11 +545,16 @@ function aufrufeIn(datei: string, text: string): Aufruf[] {
  * zwei Auskunftsquellen. `leseFehler` bleibt leer, weil dieser Prüfweg ihn nie liest
  * (`kandidatenaufrufe` fragt ausschliesslich den Baum).
  */
-function quelleImProgramm(umgebung: Typumgebung, datei: string): Quelle {
+function baumImProgramm(umgebung: Typumgebung, datei: string): ts.SourceFile {
   const ast = umgebung.quelle(datei);
   if (ast === undefined) {
     throw new Error(`${datei} liegt nicht im Typprogramm — der Prüfer könnte sie nicht beurteilen`);
   }
+  return ast;
+}
+
+function quelleImProgramm(umgebung: Typumgebung, datei: string): Quelle {
+  const ast = baumImProgramm(umgebung, datei);
   return { datei, text: ast.text, gestrippt: ohneKommentare(ast.text), ast, leseFehler: [] };
 }
 
@@ -575,6 +594,110 @@ function empfaengerTypen(quelle: Quelle, pruefer: ts.TypeChecker): string[] {
 /** Die Produktfläche: `services/**` und `apps/**`, ohne Testdateien (`quelldateien`). */
 function produktdateien(): string[] {
   return [...quelldateien("services"), ...quelldateien("apps")].map(posix);
+}
+
+// ------------------------------------------------------------------------------------------------
+// JOB 3895 — TRÄGT DIE JSX-TYPISIERUNG? EINE ERHEBUNG, KEIN ZWEITER PRÜFWEG.
+// ------------------------------------------------------------------------------------------------
+//
+// WOZU. `typprogramm.ts` setzt für das Produktprogramm `jsx` und die DOM-Bibliothek und begründete
+// das bis JOB 3895 nur in Prosa: ohne sie „verlöre der Prüfer dort jeden Typ". Geprüft hat das
+// nichts. Die Web-Fläche besteht aber überwiegend aus `.tsx`, und solange ungemessen ist, ob der
+// Prüfer dort antwortet, ist jedes Grün des Produktflächenfalls für diesen Teil ein SCHWEIGEN und
+// kein Befund — dieselbe stille Falsch-entwarnung wie beim `@/…`-Alias (JOB 3867).
+//
+// WIE GEMESSEN WIRD: an der JSX-Stelle selbst. Ein JSX-Element ist der einzige Knoten, dessen Typ
+// ausschliesslich an der JSX-Zusage hängt — steht `jsx` nicht in den Optionen, liefert der Prüfer
+// dort keinen Typ mehr, während jeder gewöhnliche Bezeichner der Datei unberührt bleibt. Genau
+// deshalb misst die Rückbauprobe R3 hier und nicht am Empfänger.
+//
+// WIE `empfaengerTypen` darüber: das hier beanstandet nichts und zählt nichts in die Funde. Es ist
+// die Gegenprobe gegen den stillen Ausfall, nicht ein zweiter Begriff von „Aufrufer".
+
+interface JsxStelle {
+  readonly knoten: ts.JsxElement | ts.JsxSelfClosingElement | ts.JsxFragment;
+  /** Der Tag-Name, an dem die Stelle wiederzuerkennen ist — `<>` beim Fragment. */
+  readonly etikett: string;
+  readonly zeile: number;
+}
+
+/**
+ * Die JSX-Stellen EINES Baumes.
+ *
+ * `ts.SourceFile` statt `Quelle`: gebraucht wird allein der Baum des Programms, und `Quelle` würde
+ * für jede der 181 `.tsx`-Dateien zusätzlich `ohneKommentare` über den ganzen Text laufen lassen —
+ * Arbeit, die hier niemand liest. `nurErste` bricht ab, sobald die erste Stelle steht: die
+ * Flächenerhebung fragt je Datei genau einmal.
+ */
+function jsxStellen(ast: ts.SourceFile, nurErste = false): JsxStelle[] {
+  const raus: JsxStelle[] = [];
+  const besuche = (knoten: ts.Node): void => {
+    if (nurErste && raus.length > 0) {
+      return;
+    }
+    if (ts.isJsxElement(knoten) || ts.isJsxSelfClosingElement(knoten) || ts.isJsxFragment(knoten)) {
+      const etikett = ts.isJsxFragment(knoten)
+        ? "<>"
+        : (ts.isJsxElement(knoten) ? knoten.openingElement : knoten).tagName.getText(ast);
+      raus.push({
+        knoten,
+        etikett,
+        zeile: ast.getLineAndCharacterOfPosition(knoten.getStart(ast)).line + 1,
+      });
+    }
+    ts.forEachChild(knoten, besuche);
+  };
+  ts.forEachChild(ast, besuche);
+  return raus;
+}
+
+/** Welchen Typ der Prüfer für JEDE JSX-Stelle EINER Datei nennt — `<tag>:<zeile> → <Typ>`. */
+function jsxGestalten(umgebung: Typumgebung, datei: string): string[] {
+  return jsxStellen(baumImProgramm(umgebung, datei)).map(
+    (stelle) =>
+      `${stelle.etikett}:${stelle.zeile} → ${umgebung.pruefer.typeToString(
+        umgebung.pruefer.getTypeAtLocation(stelle.knoten),
+      )}`,
+  );
+}
+
+interface JsxDeckung {
+  /** Wie viele der gelesenen Produktdateien auf `.tsx` enden. */
+  readonly tsx: number;
+  /** Wie viele davon überhaupt JSX führen — an den übrigen ist nichts zu fragen. */
+  readonly mitJsx: number;
+  /** Für wie viele davon der Prüfer einen Typ nennt, der nicht `any`/`unknown`/Fehlertyp ist. */
+  readonly typisiert: number;
+}
+
+/**
+ * Die `.tsx`-Deckung der Produktfläche, an der ERSTEN JSX-Stelle je Datei gemessen.
+ *
+ * Die erste Stelle genügt und ist Absicht: gefragt ist, ob der Prüfer für DIESE Datei antwortet —
+ * fehlt die JSX-Zusage, fällt sie für die ganze Datei aus, nicht für einzelne Elemente. Eine Frage
+ * je Datei statt je Element hält den Preis im Tor bei einer Grössenordnung, die der Kostenblock in
+ * `typprogramm.ts` ausweist.
+ */
+function jsxDeckung(umgebung: Typumgebung, dateien: readonly string[]): JsxDeckung {
+  let tsx = 0;
+  let mitJsx = 0;
+  let typisiert = 0;
+  for (const datei of dateien) {
+    if (!datei.endsWith(".tsx")) {
+      continue;
+    }
+    tsx++;
+    const erste = jsxStellen(baumImProgramm(umgebung, datei), true)[0];
+    if (erste === undefined) {
+      continue;
+    }
+    mitJsx++;
+    const typ = umgebung.pruefer.getTypeAtLocation(erste.knoten);
+    if ((typ.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) === 0) {
+      typisiert++;
+    }
+  }
+  return { tsx, mitJsx, typisiert };
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -803,11 +926,60 @@ describe("JOB 3607 · (a) der Kandidatenweg der Adapter hat im Produkt keinen Au
       kandidatenaufrufe(quelleImProgramm(umgebung, datei), umgebung.pruefer),
     );
     expect(funde.map(meldung)).toEqual([]);
+    const erhebungMs = Date.now() - beginn;
+    // JOB 3895, Lieferung 1: WORÜBER dieses Grün überhaupt eine Aussage ist. Der grösste Teil der
+    // Web-Fläche ist `.tsx`; antwortete der Prüfer dort nicht, wäre „0 Aufrufer" für diesen Teil ein
+    // Schweigen und kein Befund — dieselbe Hausregel wie `expect(dateien.length)` oben, eine Ebene
+    // tiefer. Die Zahlen stehen in der Ausgabe und werden hier NICHT festgenagelt: die Fläche wächst,
+    // und ein Pin darauf wäre bei jedem neuen Bauteil rot. Festgenagelt ist die AUSSAGE — keine
+    // `.tsx`-Datei mit JSX, für die der Prüfer keinen Typ nennt.
+    const jsxBeginn = Date.now();
+    const deckung = jsxDeckung(umgebung, dateien);
+    const deckungMs = Date.now() - jsxBeginn;
+    expect(deckung.tsx).toBeGreaterThan(0);
+    expect(deckung.typisiert).toBe(deckung.mitJsx);
     process.stdout.write(
       `\nJOB 3607 — (a) gelesen: ${dateien.length} Produktdateien, 0 Aufrufer` +
         ` — Syntaxbaum UND Typprüfer (JOB 3840; Programmaufbau ${umgebung.aufbauMs} ms,` +
-        ` Erhebung ${Date.now() - beginn} ms).\n`,
+        ` Erhebung ${erhebungMs} ms).\n` +
+        `JOB 3895 — (a) davon ${deckung.tsx} auf .tsx endend, ${deckung.mitJsx} mit JSX,` +
+        ` für ${deckung.typisiert} davon nennt der Prüfer einen Typ (nicht any/unknown/Fehlertyp)` +
+        ` — ${deckung.tsx - deckung.mitJsx} ohne JSX, an denen nichts zu fragen ist` +
+        ` (${deckungMs} ms).\n`,
     );
+  });
+
+  // JOB 3895 — DER GEGENBELEG AUF DER ECHTEN `.tsx`-FLÄCHE, als Gegenstück zum `.ts`-Gegenbeleg
+  // darüber. Er beantwortet die Frage, die der Produktflächenfall für sich allein offen lässt:
+  // antwortet der Prüfer auf der Web-Fläche überhaupt? Fiele die JSX-Auskunft aus, stünde an jeder
+  // JSX-Stelle ein Fehlertyp, `repoTypname` verwürfe ihn wie `any`, und die ganze Web-Fläche wäre
+  // wieder still grün — ein Schweigen, das wie eine Entwarnung aussieht.
+  //
+  // WORAN ER NICHT HÄNGT, und das ist gemessen statt angenommen: NICHT an den Zusätzen `jsx` und
+  // DOM-Bibliothek in `typprogramm.ts`. Nimmt man beide aus `produktprogramm` heraus, bleibt dieser
+  // Fall grün (R3, Lauf df19a4517685c1ed414c5137; nach dem Rebase auf die geänderte Produktfläche
+  // wiederholt, Lauf 26fb6d9dbf614bbaedf56d0a, gleiches Ergebnis) — die Produktdateien holen die
+  // React-Typen selbst
+  // herein. Was er festhält, ist also der ZUSTAND der Fläche und nicht die Wirkung einer Option; rot
+  // wird er, wenn die Typauskunft über `apps/web/src/**` verloren geht, gleich woran es lag. Die
+  // Zusage in `typprogramm.ts` sagt das jetzt genauso; an eine Option gebunden ist allein die
+  // Kalibrierung (Fall „die JSX-Zusage trägt auch in der Kalibrierung", R2).
+  //
+  // DIE DATEI IST NAMENTLICH GEWÄHLT UND NICHT BELIEBIG: `ModalBoundaryContext.tsx` ist die
+  // Modalgrenze der Shell, die `tools/modalgrenze.ts` als `GRENZE_MODUL` führt — sie verschwindet
+  // nicht nebenbei. Sie trägt genau zwei JSX-Stellen, und zwar die beiden Bauformen, auf die es
+  // ankommt: ein BAUTEIL (`ModalBoundaryCtx.Provider`, dessen Typ aus der Nachbardatei kommt) und
+  // ein eingebautes DOM-Element (`div`, das ohne die DOM-Bibliothek keinen Typ hätte).
+  //
+  // ZEILEN UND ETIKETTEN STEHEN MIT IN DER ERWARTUNG, mit Absicht: wird die Datei umgebaut, wird
+  // dieser Fall ROT und jemand liest ihn — statt dass er still zu einer Zusicherung über nichts
+  // wird. Genau das ist die Bauform, gegen die diese Datei überhaupt steht.
+  it("JOB 3895 · Gegenbeleg auf der ECHTEN `.tsx`-Fläche: der Prüfer nennt Element, nicht any", () => {
+    const umgebung = produktprogramm(produktdateien());
+    expect(jsxGestalten(umgebung, GRENZE_MODUL)).toEqual([
+      "ModalBoundaryCtx.Provider:188 → Element",
+      "div:216 → Element",
+    ]);
   });
 
   it("JOB 3840 · das Typprogramm löst wirklich auf: der Dienst-Empfänger heisst KoService, nicht any", () => {
@@ -881,8 +1053,20 @@ describe("JOB 3607 · (b) die ehrliche Marke steht an allen vier Stellen", () =>
 //   · `traeger-relativ.ts` — `./nachbar-repo`         → löste schon vorher auf (also liegt es NICHT
 //                                                       am Ordner `apps/web/`, sondern am Alias)
 //   · `traeger-alias-dienst.ts` — `@/probe/nachbar-dienst` → bleibt grün (scharf, nicht nur streng)
+//
+// JOB 3895 — DAZU DIE `.tsx`-BAUFORM DERSELBEN FLÄCHE, zwei weitere Proben unter demselben Ordner.
+// `FLAECHE` ist die Gestalt, in der die Web-App wirklich geschrieben ist: eine Komponente, die ihren
+// Träger aus der Nachbardatei holt und ihn INNERHALB des JSX ruft. Dass der Aufruf im JSX steht, ist
+// Absicht — so hängt der Fund an der Parse-Art und nicht bloss an der Modulauflösung.
+//   · `flaeche-alias.tsx`        — `@/probe/nachbar-repo`   → muss `KoRepo` auflösen (die Lücke)
+//   · `flaeche-alias-dienst.tsx` — `@/probe/nachbar-dienst` → bleibt grün (scharf, nicht nur streng)
 const WEB_PROBE = "apps/web/src/probe";
 const PROBE = "const y = hol();\nconst z = y.findCandidates({});\n";
+const FLAECHE =
+  "export function Flaeche() {\n" +
+  "  const y = hol();\n" +
+  '  return <section className="probe">{y.findCandidates({}).length}</section>;\n' +
+  "}\n";
 const PROBEN: ReadonlyMap<string, string> = new Map([
   [
     "services/probe/src/nachbar-repo.ts",
@@ -919,6 +1103,11 @@ const PROBEN: ReadonlyMap<string, string> = new Map([
   [
     `${WEB_PROBE}/traeger-alias-dienst.ts`,
     `import { hol } from '@/probe/nachbar-dienst';\n${PROBE}`,
+  ],
+  [`${WEB_PROBE}/flaeche-alias.tsx`, `import { hol } from '@/probe/nachbar-repo';\n${FLAECHE}`],
+  [
+    `${WEB_PROBE}/flaeche-alias-dienst.tsx`,
+    `import { hol } from '@/probe/nachbar-dienst';\n${FLAECHE}`,
   ],
 ]);
 
@@ -1155,6 +1344,39 @@ describe("JOB 3607 · Kalibrierung (a): was als Aufrufer zählt und was nicht", 
   //
   // Dass dieses Grün eine MESSUNG und kein Ausfall ist, belegen die Fälle darüber: sie laufen im
   // GLEICHEN gestellten Programm und lösen dort `KoRepo` auf. Wäre die Auflösung tot, wären sie rot.
+  // JOB 3895 — DIE `.tsx`-FLÄCHE, DIE DIE KALIBRIERUNG BIS HIERHER GAR NICHT STELLEN KONNTE.
+  //
+  // Die drei Fälle darüber liegen alle in `.ts`-Dateien; die Web-Fläche besteht aber überwiegend aus
+  // `.tsx`. Eine gestellte `.tsx`-Quelle erzeugte der Wirt in `typprogramm.ts` bis zu diesem Job hart
+  // als `ts.ScriptKind.TS` — ihr JSX war damit ein Syntaxfehler, der Aufruf zerfiel, und der Fall war
+  // GRÜN, WEIL die Auskunft fehlte. GEMESSEN vor der Reparatur (R1, Lauf 4c1345e7e42ef6c94cffc3ef):
+  // `scriptKind=3` (TS), vier Parse-Fehler ab „'>' expected.", `funde=[]`, und der Empfänger des
+  // Aufrufs war ein leerer Ausdruck mit dem Typ `any`.
+  //
+  // ZWEI ZUSAGEN, ZWEI FÄLLE, weil es zwei Ursachen waren und eine davon sonst ungeprüft bliebe:
+  //   · die PARSE-ART (`quelleAus`, aus der Endung) trägt den Fund — der Fall hier;
+  //   · die JSX-OPTION samt DOM-Bibliothek trägt die Typisierung — der Fall danach.
+  // Ohne den zweiten wäre der erste auch dann grün, wenn `jsx` in den Kalibrierungsoptionen gar
+  // nichts beiträgt; die Rückbauprobe R2 misst genau diese Trennung.
+  it("JOB 3895 · ein `findCandidates`-Aufruf in einer `.tsx`-Fläche wird gesehen", () => {
+    expect(imProgramm(`${WEB_PROBE}/flaeche-alias.tsx`)).toEqual(["typpruefer:y:KoRepo"]);
+  });
+
+  it("JOB 3895 · die JSX-Zusage trägt auch in der Kalibrierung: der Prüfer nennt Element", () => {
+    // Dieselbe Frage wie auf der Produktfläche, im gestellten Programm gestellt. Sie hängt allein an
+    // `jsx` und der DOM-Bibliothek in `optionen(…)` — der Empfänger `y` bliebe ohne sie unberührt.
+    expect(jsxGestalten(gestelltesProgramm(PROBEN), `${WEB_PROBE}/flaeche-alias.tsx`)).toEqual([
+      "section:4 → Element",
+    ]);
+  });
+
+  it("JOB 3895 · Gegenrichtung auf der `.tsx`-Fläche: derselbe Bau mit KoService bleibt grün", () => {
+    // Ein Wächter, der den echten Produktweg beanstandet, wäre wertlos — dieselbe Begründung wie
+    // oben bei `REPO_TYPEN`. Die Probe ist zeichengleich mit der darüber, allein die Nachbardatei
+    // trägt einen anderen Typ derselben Gestalt.
+    expect(imProgramm(`${WEB_PROBE}/flaeche-alias-dienst.tsx`)).toEqual([]);
+  });
+
   it("bleibt ungesehen: ein Träger, dessen Typ auch der Typprüfer nicht kennt", () => {
     expect(imProgramm("services/probe/src/traeger-unbekannt.ts")).toEqual([]);
   });

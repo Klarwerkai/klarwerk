@@ -25,7 +25,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import ts from "typescript";
-import { WURZEL, posix } from "../../tools/modalgrenze";
+import { WURZEL, posix, quelleAus } from "../../tools/modalgrenze";
 
 export interface Typumgebung {
   readonly pruefer: ts.TypeChecker;
@@ -103,8 +103,34 @@ function webAliase(): ts.CompilerOptions {
  *
  * VIER ZUSÄTZE, jeder mit Grund:
  *   · `jsx`/DOM-Bibliothek: `tsconfig.json` ist Node-rein (es schliesst `tests/**\/*.tsx` aus und
- *     kennt `apps/` nicht als Einstieg). Die Produktfläche enthält aber `apps/web/src/**.tsx`; ohne
- *     diese beiden Zusätze verlöre der Prüfer dort jeden Typ und die Erhebung wäre still schwächer.
+ *     kennt `apps/` nicht als Einstieg). Die Produktfläche enthält aber `apps/web/src/**.tsx`.
+ *
+ *     JOB 3895 — HIER STAND EINE BEGRÜNDUNG, DIE NIE JEMAND NACHGEMESSEN HAT, und sie war für das
+ *     PRODUKTPROGRAMM FALSCH. Der Satz lautete: „ohne diese beiden Zusätze verlöre der Prüfer dort
+ *     jeden Typ und die Erhebung wäre still schwächer."
+ *
+ *     GEMESSEN, beide Zusätze aus `produktprogramm` herausgenommen, 759 Produktdateien (Lauf
+ *     df19a4517685c1ed414c5137): die Deckung bleibt bei 177 von 177 JSX-führenden `.tsx`-Dateien,
+ *     der Gegenbeleg auf `ModalBoundaryContext.tsx` bleibt `Element`, und kein Fall der Datei wird
+ *     rot. Einzeln geprüft, nur `jsx` heraus (Lauf 7df450dbe79fdf629e9de7b9): ebenfalls unverändert.
+ *     NACH DEM REBASE AUF `e82f890` WIEDERHOLT, weil sich mit ihm die PRODUKTFLÄCHE geändert hat
+ *     (`AiAssistBox.tsx`, `Menue.tsx`, `BibliothekFlaeche.tsx`) und ein Befund über sie damit neu zu
+ *     erheben war (Lauf 26fb6d9dbf614bbaedf56d0a): gleiches Ergebnis, 177 von 177.
+ *
+ *     Der Grund ist der Sache nach einleuchtend: die Produktdateien holen die React-Typen selbst
+ *     herein, und mit ihnen die globale `JSX`-Auskunft — das Programm braucht die Zusage dafür nicht.
+ *
+ *     WAS DAMIT GEMESSEN IST UND WAS NICHT: gemessen ist der Typ der JSX-STELLEN (der Gegenstand
+ *     dieses Wächters) und das Ergebnis der Erhebung. NICHT gemessen ist, ob andere Typen derselben
+ *     Dateien ohne die DOM-Bibliothek zerfallen (`HTMLDivElement` und Verwandte) — deshalb bleiben
+ *     beide Zusätze stehen, statt auf eine Messung hin entfernt zu werden, die sie nicht deckt.
+ *
+ *     IN DER KALIBRIERUNG unten trägt `jsx` sehr wohl, und DAS ist gemessen und gebunden: die
+ *     gestellten Quellen holen keine React-Typen herein, also kommt die JSX-Auskunft dort allein aus
+ *     dieser Zusage. Der Fall „JOB 3895 · die JSX-Zusage trägt auch in der Kalibrierung" in
+ *     `toter-kandidatenweg.test.ts` hält das fest; nimmt man `jsx` aus `gestelltesProgramm` heraus,
+ *     wird er rot und nennt `section:4 → any` statt `Element` (R2, Lauf 330aaa53a578c8e3bd02dda5;
+ *     auf der Basis `e82f890` erneut gemessen, Lauf 99983ae74c945e5430ccd25e, gleiches Ergebnis).
  *   · `paths` der Web-Fläche (JOB 3867, s. `webAliase`): aus demselben Grund, eine Ebene tiefer —
  *     ohne sie löst kein `@/…`-Import auf und der Prüfer schweigt dort, statt zu antworten.
  *   · `types: []`: gefragt ist der Typ EINES Empfängers, nicht eine vollständige Typprüfung. Die
@@ -159,6 +185,32 @@ let produkt: Typumgebung | undefined;
  * Netto +0,31 s auf die Datei und +0,31 s auf die Gruppe — und darin stecken auch die drei neuen
  * Fälle, nicht nur die Auflösung.
  *
+ * WAS DIE `.tsx`-MESSUNG DAZU KOSTET — GEMESSEN (JOB 3895, 13.09.2026, dieselbe Befehlszeile,
+ * dieselben 759 Produktdateien, alle Läufe auf dem GETEILTEN Arbeitsprüfplatz der Cloud):
+ *
+ *     VORHER   Datei 5260 ms (Fall 5001 ms; Aufbau 3456 + Erhebung 1534) · 25 Fälle · Gruppe 6,37 s
+ *              (Lauf a0c023d40eeb43ffb3f4d6ac83725190, Basisstand ece535ba)
+ *     NACHHER  Datei 6130 ms (Fall 5505 ms; Aufbau 3674 + Erhebung 1671 + Deckung 149) · 29 Fälle
+ *              · Gruppe 7,29 s (Lauf dfa80d8f5ad8491888c2be9831765749)
+ *
+ * Dieses Paar allein sagte: +0,87 s auf die Datei, +0,92 s auf die Gruppe. ES SAGT DAS NICHT, und
+ * das ist der eigentliche Befund dieser Messung: DER PLATZ STREUT VIEL STÄRKER ALS DER EFFEKT.
+ * Derselbe bytegleiche Endstand lief eine halbe Stunde später auf einem freien Platz mit
+ *
+ *     ENDSTAND  Datei 3145 ms (Aufbau 1969 + Erhebung 715 + Deckung 84) · 29 Fälle · Gruppe 3,85 s
+ *               (Lauf 4961738b9a305675bdfa5126)
+ *
+ * — also SCHNELLER als der VORHER-Lauf mit 6,37 s. Eine Aussage „der Job kostet +0,9 s" wäre aus
+ * diesen Zahlen nicht zu belegen; sie stünde nur da, weil zwei Läufe zufällig so gefallen sind.
+ *
+ * WAS SICH BELEGEN LÄSST, weil es sich selbst misst: die `.tsx`-Deckung — 181 Dateien gefiltert,
+ * 177 Bäume bis zur ERSTEN JSX-Stelle durchlaufen, 177 Typfragen — schreibt ihre eigene Zahl in die
+ * Ausgabe des Falls. Sie lag in sechs Läufen bei 84, 120, 149, 150, 155, 166 ms. Das ist der Preis
+ * dieses Jobs im Tor; er ist um eine Grössenordnung kleiner als die Streuung des Platzes (derselbe
+ * Programmaufbau: 1969 bis 4032 ms über dieselben sechs Läufe). Ein Aufschlag durch `jsx` in
+ * `gestelltesProgramm` ist NICHT nachweisbar: das gestellte Programm ist klein, und die vier neuen
+ * Fälle zusammen laufen in unter einer halben Sekunde.
+ *
  * DER PLATZ STREUT STÄRKER ALS DER EFFEKT, und auch das ist gemessen statt geschätzt: dieselben 25
  * Fälle liefen im selben Fenster fünfmal, zwischen Datei 2658 ms (Aufbau 1807 ms) und Datei 4026 ms
  * (Aufbau 2738 ms) — OHNE Alias-Auskunft ebenso wie mit. Die schärfste Paarung ist die Rückbauprobe:
@@ -196,6 +248,23 @@ const gestellte = new WeakMap<ReadonlyMap<string, string>, Typumgebung>();
  * der Platte (Rückfall auf den echten Übersetzer-Wirt).
  *
  * Auch hier wird je Quellenmenge genau EINMAL gebaut — alle Fälle teilen ein Programm.
+ *
+ * JOB 3895 — DIE ART DER GESTELLTEN QUELLE KOMMT AUS IHRER ENDUNG. Bis hierher erzeugte der Wirt
+ * JEDE gestellte Quelle als `ts.ScriptKind.TS`. Eine gestellte `.tsx`-Quelle wurde damit als `.ts`
+ * geparst, ihr JSX war ein Syntaxfehler, und die Kalibrierung konnte für die Web-Fläche — die
+ * überwiegend aus `.tsx` besteht — gar keinen Fall stellen. GEMESSEN vor der Reparatur (Lauf
+ * 4c1345e7e42ef6c94cffc3ef): `scriptKind=3` (TS), vier Parse-Fehler („'>' expected.", „';'
+ * expected.", „',' expected.", „Unterminated regular expression literal."), der Empfänger des
+ * `findCandidates`-Aufrufs zerfiel zu einem leeren Ausdruck mit dem Typ `any` — und der Fall war
+ * still grün, WEIL die Auskunft fehlte. Dieselbe Falsch-entwarnung wie bei `directoryExists` unten
+ * und beim `@/…`-Alias oben.
+ *
+ * DIE REGEL WIRD ANGEWANDT, NICHT NACHGEBAUT: `quelleAus` (`tools/modalgrenze.ts`) entscheidet
+ * bereits an der Endung zwischen `ts.ScriptKind.TSX` und `ts.ScriptKind.TS`. Der Wirt ruft sie,
+ * statt eine zweite Endungsregel neben sie zu stellen; `tools/modalgrenze.ts` bleibt unverändert und
+ * bekommt nur einen Aufrufer mehr. Mitgekauft ist dabei ihr `ts.ScriptTarget.Latest` und ihr
+ * `setParentNodes: true` — letzteres entspricht dem `true` an `createCompilerHost` unten, ersteres
+ * ist für die gestellten Quellen ohne Belang, weil die Typprüfung ihr Ziel aus `options` nimmt.
  */
 export function gestelltesProgramm(quellen: ReadonlyMap<string, string>): Typumgebung {
   const bekannt = gestellte.get(quellen);
@@ -222,7 +291,15 @@ export function gestelltesProgramm(quellen: ReadonlyMap<string, string>): Typumg
       ordnerName = oben;
     }
   }
-  const eigene = optionen({ lib: ["lib.es2022.d.ts"] });
+  // JOB 3895: DIESELBE FRAGE WIE DAS PRODUKTPROGRAMM. Ohne `jsx` und die DOM-Bibliothek stellte die
+  // Kalibrierung eine ANDERE Frage als `produktprogramm` oben — sie konnte die Zusage dort also
+  // grundsätzlich nicht prüfen. Beide Zusätze laufen durch dasselbe `optionen(…)`; eine zweite
+  // Optionsquelle entsteht nicht.
+  const eigene = optionen({
+    jsx: ts.JsxEmit.ReactJSX,
+    lib: ["lib.es2022.d.ts", "lib.dom.d.ts", "lib.dom.iterable.d.ts"],
+    skipLibCheck: true,
+  });
   const basis = ts.createCompilerHost(eigene, true);
   const wirt: ts.CompilerHost = {
     ...basis,
@@ -230,7 +307,7 @@ export function gestelltesProgramm(quellen: ReadonlyMap<string, string>): Typumg
       const text = inhalte.get(posix(name));
       return text === undefined
         ? basis.getSourceFile(name, stand, aufFehler, neu)
-        : ts.createSourceFile(name, text, stand, true, ts.ScriptKind.TS);
+        : quelleAus(name, text).ast;
     },
     fileExists: (name) => inhalte.has(posix(name)) || basis.fileExists(name),
     readFile: (name) => inhalte.get(posix(name)) ?? basis.readFile(name),
