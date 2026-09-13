@@ -878,7 +878,7 @@ describe("JOB 3801 · der erste Nutzerweg, am Stück", () => {
 
     // (xvii) F11 · DER SEHR LANGE FELDNAME. 50 000 Zeichen in EINEM Schlüssel: die Meldung darf ihn
     //        nicht mitschleppen, sondern muss ihn abschneiden und das sagen. WAS DAS ABSCHNEIDET, IST
-    //        `nimm(JSON.stringify(feld))` in `strecke.ts` — und genau darauf zielt die bestellte
+    //        `nimm(…)` im Objektzweig von `strecke.ts` — und genau darauf zielt die bestellte
     //        Gegenprobe (b). In Runde 2 fiel sie nicht auf, weil `istwertVon` das Ergebnis hinterher
     //        noch einmal schnitt: der Schlüssel entstand ganz und verschwand danach wieder, die
     //        Meldung blieb kurz, und der Fall belegte nichts. Seit Runde 3 schneidet nichts mehr
@@ -901,8 +901,16 @@ describe("JOB 3801 · der erste Nutzerweg, am Stück", () => {
       "F11: aus einem unbewertbaren Eintrag darf kein Treffer folgen",
     ).toBe(false);
     expect(f11.direkt.fehlschlag, "F11: die Meldung nennt den Platz nicht").toMatch(/Platz 0/);
-    // DER SCHLÜSSEL SELBST, angeschnitten und mit „…" beendet: das ist die Spur von
-    // `nimm(JSON.stringify(feld))`. Ohne `nimm` stünde hier der ganze Name.
+    // DER SCHLÜSSEL SELBST, angeschnitten und mit „…" beendet. Seit JOB 3897 wird an dieser Stelle
+    // ZWEIMAL geschnitten: einmal VOR `JSON.stringify` (das spart den Zwischenwert — was diese Zeile
+    // gerade NICHT sieht, dafür F14b) und einmal in `nimm` (das kürzt die Ausgabe und setzt das
+    // „…", und das ist die Spur hier).
+    //
+    // WAS OHNE `nimm` DASTÜNDE, GEMESSEN STATT VERMUTET (JOB 3897 R2, BEN-Korrekturpflicht 1): NICHT
+    // mehr der ganze Name — das galt bis zum Vorschneiden und ist seither falsch. Es stünde das schon
+    // vorgeschnittene Präfix da, auf DIESEM Weg 58 Zeichen (Vorrat 60 je genanntem Platz minus die
+    // zwei Klammern), und zwar OHNE Kürzungsmerkmal: `{"xxx…58…":1}`. Genau daran wird die Zeile
+    // unten rot — sie prüft das „…", nicht die Länge.
     expect(
       f11.direkt.fehlschlag,
       `F11: die Meldung verschweigt, dass der Feldname abgeschnitten wurde: ${f11.direkt.fehlschlag.slice(0, 200)}`,
@@ -994,6 +1002,174 @@ describe("JOB 3801 · der erste Nutzerweg, am Stück", () => {
       gutTief.eintraege.some((treffer) => treffer.id === "ko-1"),
       "der gültige Treffer ging verloren",
     ).toBe(true);
+
+    // ============================================================================================
+    // (xxi) F14a · DIE AUSGABE BLEIBT WORTGLEICH — und dieser Fall ist AUSDRÜCKLICH KEIN roter Fall.
+    //
+    // JOB 3897 schneidet den Schlüssel schon VOR `JSON.stringify` (`strecke.ts`, Fall `"object"`).
+    // Das darf die Meldung nicht verändern, nur den Weg dorthin verbilligen. F14a hält genau das
+    // fest: vor wie nach der Reparatur grün. Wer ihn später rot sieht, hat die AUSGABE verändert —
+    // nicht eine Gegenprobe bestanden. Was die Reparatur wirklich bewirkt, misst F14b darunter.
+    //
+    // VERGLICHEN WIRD JEDER FALL MIT SEINER EIGENEN ERWARTETEN ZEICHENKETTE, gerechnet nach der
+    // ABGELÖSTEN Fassung (`JSON.stringify` des GANZEN Schlüssels, danach `nimm`) — nicht die zwei
+    // Fassungen gegeneinander. Ein Vergleich zweier Läufe desselben Standes wäre immer grün.
+    // ============================================================================================
+    // Der Rahmen der Meldung, GEMESSEN wie in F13: `0` druckt sich in genau einem Zeichen aus, also
+    // trennt dieses eine Zeichen Kopf und Fuss. Was dazwischen steht, ist der Istwert selbst.
+    const f14Rahmen = liesTrefferliste(0).fehlschlag.split("0");
+    expect(f14Rahmen, "F14a: der Rahmen der Meldung ist nicht mehr eindeutig").toHaveLength(2);
+    const [meldungKopf, meldungFuss] = f14Rahmen as [string, string];
+    const istwertAus = (rohe: unknown): string => {
+      const meldung = liesTrefferliste(rohe).fehlschlag;
+      expect(
+        meldung.startsWith(meldungKopf) && meldung.endsWith(meldungFuss),
+        `F14a: die Meldung hat einen anderen Rahmen: ${meldung.slice(0, 200)}`,
+      ).toBe(true);
+      return meldung.slice(meldungKopf.length, meldung.length - meldungFuss.length);
+    };
+    // `ISTWERT_ZEICHEN` aus `strecke.ts`, hier als Zahl aufgeschrieben, weil die Konstante dort
+    // nicht ausgeführt wird (kein `export`). Sie gilt auf diesem Weg ungeteilt: „es kam gar keine
+    // Liste" bekommt den VOLLEN Vorrat, keine fünf Plätze à `ISTWERT_JE_MELDUNG` wie eine Liste.
+    const ISTWERT_ZEICHEN_HIER = 300;
+    /**
+     * Die erwartete Ausgabe für `{ <schluessel>: 1 }`, gerechnet nach der Fassung VOR JOB 3897.
+     * Zwei Zeichen sind vor der Schleife für `{}` bezahlt (`strecke.ts`, `zahle("{}")`), danach
+     * schneidet `nimm` bei Überlänge und hängt „…" an; der Wert `1` kommt nur noch durch, wenn nach
+     * Schlüssel und Doppelpunkt Vorrat übrig ist.
+     */
+    const wieVorDerReparatur = (schluessel: string): string => {
+      let vorrat = ISTWERT_ZEICHEN_HIER - 2;
+      const voll = JSON.stringify(schluessel);
+      const gedruckterSchluessel = voll.length > vorrat ? `${voll.slice(0, vorrat)}…` : voll;
+      vorrat -= gedruckterSchluessel.length + 1;
+      return `{${gedruckterSchluessel}:${vorrat > 0 ? "1" : "…"}}`;
+    };
+    // NUL als benannte Konstante und nicht als unsichtbares Zeichen im Quelltext: dort wäre es von
+    // einem Leerzeichen nicht zu unterscheiden, und genau diese Verwechslung hat in Runde 1 den
+    // bestellten Fall (iii) gekostet (BENs Promptverbesserung).
+    const NUL = "\u0000";
+    const f14aFaelle: readonly (readonly [string, string])[] = [
+      ["50 000 × x — der Schlüssel aus F11", langerFeldname],
+      ['50 000 × " — jedes Zeichen verdoppelt sich beim Serialisieren', '"'.repeat(50_000)],
+      ["50 000 × Leerzeichen — wird beim Serialisieren NICHT länger", " ".repeat(50_000)],
+      // DER BESTELLTE FALL (iii) AUS LIEFERUNG 2, sichtbar geschrieben statt als unsichtbares
+      // Zeichen (BEN zu R1): NUL wird beim Serialisieren zur sechsstelligen Escape-Folge
+      // (Backslash, u, vier Ziffern), also sechs Zeichen für eines. U+0001 bleibt daneben stehen —
+      // dieselbe Form, ein anderer Zeichenwert; der Fall kostet nichts und zeigt, dass die Rechnung
+      // nicht am Sonderfall „Zeichenwert 0" hängt.
+      ["50 000 × NUL — sechs Zeichen für eines", NUL.repeat(50_000)],
+      ["50 000 × U+0001 — jedes Zeichen wird sechs Zeichen lang", "\u0001".repeat(50_000)],
+      // DER EINZIGE FALL, IN DEM DER SCHNITT DIE SERIALISIERUNG WIRKLICH ANDERS BEGINNEN LÄSST: das
+      // führende `x` schiebt die Emoji-Paare auf ungerade Plätze, der Schnitt bei 298 trennt also ein
+      // Paar. Der abgeschnittene Rest ist eine einzelne Ersatzstelle und wird zu `\ud83d` (sechs
+      // Zeichen) statt roh geschrieben — was erst NACH dem 298. Zeichen steht und deshalb nichts an
+      // der Ausgabe ändert. Ohne diesen Fall bliebe die Begründung an der Reparatur eine Behauptung.
+      ["ein Ersatzzeichenpaar wird mittendrin geschnitten", `x${"😀".repeat(1_000)}`],
+      ["genau so lang wie der Vorrat an dieser Stelle (298)", "x".repeat(298)],
+      ["ein Zeichen kürzer (297)", "x".repeat(297)],
+      ["das längste, das ganz durchkommt (296)", "x".repeat(296)],
+      ["der leere Schlüssel", ""],
+    ];
+    for (const [was, schluessel] of f14aFaelle) {
+      const gemessen = istwertAus({ [schluessel]: 1 });
+      expect(
+        gemessen,
+        `F14a ${was}: die Reparatur hat die Meldung verändert, nicht nur verbilligt — ${gemessen.slice(0, 200)}`,
+      ).toBe(wieVorDerReparatur(schluessel));
+    }
+    // UND DIE GRENZE NOCH EINMAL AUSGESCHRIEBEN, ohne jede Rechnung: 298 und 297 Zeichen tragen
+    // BEIDE ein „…", weil die zwei Anführungszeichen mitzählen; erst bei 296 kommt der Schlüssel
+    // ganz durch. Diese drei Zeilen fielen auch dann noch auf, wenn `wieVorDerReparatur` sich irrte.
+    //
+    // WIE EMPFINDLICH DAS IST, GEMESSEN STATT GESCHÄTZT (JOB 3897, drei Verstellungen am Schnitt in
+    // `strecke.ts`): EIN Zeichen zu früh geschnitten bleibt bytegleich und macht NICHTS rot — das
+    // schliessende Anführungszeichen fällt ohnehin weg. Zwei Zeichen zu früh macht F11 rot (das „…"
+    // verschwindet). Ein verändertes Escaping macht F14a rot und F11 nicht — das ist der Teil, den
+    // nur diese Fälle bewachen: F11 kennt nur ein `x`, das beim Serialisieren nie länger wird.
+    expect(istwertAus({ "": 1 }), "F14a: der leere Schlüssel").toBe('{"":1}');
+    expect(istwertAus({ ["x".repeat(296)]: 1 }), "F14a: 296 Zeichen kommen ganz durch").toBe(
+      `{"${"x".repeat(296)}":…}`,
+    );
+    expect(istwertAus({ ["x".repeat(297)]: 1 }), "F14a: 297 Zeichen werden geschnitten").toBe(
+      `{"${"x".repeat(297)}…:…}`,
+    );
+    expect(istwertAus({ ["x".repeat(298)]: 1 }), "F14a: 298 Zeichen werden geschnitten").toBe(
+      `{"${"x".repeat(297)}…:…}`,
+    );
+
+    // ============================================================================================
+    // (xxii) F14b · WAS DER SERIALISIERER ZU SEHEN BEKOMMT — der rote Fall dieses Jobs.
+    //
+    // F11 und F14a lesen das ERGEBNIS, und das ist vor wie nach der Reparatur dasselbe. Der
+    // Unterschied liegt im ZWISCHENWERT: `nimm(JSON.stringify(feld))` baute erst den ganzen
+    // serialisierten Schlüssel und behielt davon 300 Zeichen. Gemessen wird deshalb, WIE LANG das
+    // Argument war, das `JSON.stringify` bekommen hat — nicht, was hinten herauskam.
+    //
+    // WARUM NICHT DER SPEICHER, obwohl der Auftrag ihn bestellt hat: siehe den Block darunter.
+    // ============================================================================================
+    const f14bFaelle: readonly (readonly [string, string])[] = [
+      ...f14aFaelle,
+      ["2 Millionen Anführungszeichen", '"'.repeat(2_000_000)],
+    ];
+    const gesehen: number[] = [];
+    const echteSerialisierung = JSON.stringify;
+    try {
+      // Der Horchposten ruft die echte Fassung auf und verändert nichts an ihr — er zählt nur mit,
+      // wie lang das Argument war. Zurückgesetzt wird er im `finally`, damit kein späterer Fall in
+      // dieser Datei mit einer verstellten Serialisierung läuft.
+      JSON.stringify = ((wert: unknown, ...rest: readonly unknown[]) => {
+        if (typeof wert === "string") gesehen.push(wert.length);
+        return (echteSerialisierung as unknown as (...args: readonly unknown[]) => string)(
+          wert,
+          ...rest,
+        );
+      }) as typeof JSON.stringify;
+      for (const [was, schluessel] of f14bFaelle) {
+        gesehen.length = 0;
+        liesTrefferliste({ [schluessel]: 1 });
+        // OHNE DIESE ZEILE WÄRE DER FALL BLIND: sieht der Horchposten gar keinen Aufruf, misst er
+        // nichts und bliebe trotzdem grün — genau die Art Zusicherung, an der JOB 3866 Runde 2
+        // gescheitert ist.
+        expect(
+          gesehen.length,
+          `F14b ${was}: der Serialisierer wurde gar nicht gerufen — die Probe misst nichts`,
+        ).toBeGreaterThan(0);
+        const laengste = Math.max(...gesehen);
+        expect(
+          laengste,
+          `F14b ${was}: der Schlüssel entstand ganz, bevor er geschnitten wurde — ${laengste} Zeichen gingen in JSON.stringify, obwohl höchstens ${ISTWERT_ZEICHEN_HIER} davon überleben können`,
+        ).toBeLessThanOrEqual(ISTWERT_ZEICHEN_HIER);
+      }
+    } finally {
+      JSON.stringify = echteSerialisierung;
+    }
+    expect(JSON.stringify, "F14b: der Horchposten blieb stehen").toBe(echteSerialisierung);
+
+    // ============================================================================================
+    // (xxiii) DIE BESTELLTE SPEICHERPROBE — GEBAUT, FÜNFMAL GEMESSEN UND WIEDER VERWORFEN.
+    //
+    // Bestellt war (JOB 3897, Lieferung 3): ein Schlüssel aus 20 Millionen Anführungszeichen, der
+    // Zuwachs aus `process.memoryUsage()` um den Aufruf herum, Maximum aus `heapUsed` und `rss`,
+    // fünf Läufe, Grenze 16 MB. Genau so gebaut und gefahren — und die Zahlen tragen die Grenze
+    // nicht (Zuwachs je Lauf, in derselben Reihenfolge gemessen):
+    //   · VORHER  (`nimm(JSON.stringify(feld))`):  38,1 · −14,2 · 36,6 · 0,0 · 0,0 MB
+    //   · NACHHER (`feld.slice(…)` davor):          0,0 ·   0,0 ·  0,0 · 0,0 · 0,0 MB
+    //   · Nullmessung (kurzer Schlüssel), beide Stände: fünfmal 0,0 MB — sie schlägt nicht an.
+    //
+    // NUR ZWEI DER FÜNF VORHER-LÄUFE lagen über 16 MB (38,1 und 36,6), verlangt waren vier — die
+    // Zahl stand in Runde 1 falsch als „drei" hier und ist nachgezählt (BEN). Der Grund ist bekannt
+    // und macht die Bauart untauglich: gemessen wird VOR und NACH dem Aufruf, nicht währenddessen.
+    // Sobald der Haufen einmal um 40 MB gewachsen ist, findet der nächste 40-MB-Zwischenwert schon
+    // Platz und ist beim zweiten Messpunkt längst wieder eingesammelt — Zuwachs 0,0 MB, obwohl
+    // dieselbe Verschwendung stattgefunden hat. Eine solche Probe wird still blind, sobald irgendein
+    // Fall vor ihr den Haufen wachsen lässt, und meldet dann grün, ohne etwas zu messen; das ist der
+    // Fehler aus JOB 3866 Runde 2, und deshalb steht sie hier NICHT (Lieferung 5, die Notbremse).
+    //
+    // AN IHRER STELLE STEHT F14b: dieselbe Aussage, aber gezählt statt geschätzt — was in
+    // `JSON.stringify` hineingeht, hängt weder an der Aufräumlaufzeit noch an der Reihenfolge der
+    // Fälle. Vorher 50 000 (bzw. 2 000 000) Zeichen, nachher höchstens 300.
+    // ============================================================================================
   });
 
   it("W3 · VERKABELUNG: eine verfälschte Ähnlichkeitsliste der Prüfroute erreicht die Zusage der Strecke", async () => {

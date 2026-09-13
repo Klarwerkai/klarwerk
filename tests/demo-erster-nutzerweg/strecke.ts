@@ -994,6 +994,18 @@ function istwertVon(eintrag: unknown, zeichen: number = ISTWERT_ZEICHEN): string
  * danach sicher geschrieben werden. Der Vorrat darf dabei kurz ins Minus laufen (ein abgeschnittenes
  * Stück kostet ein Zeichen mehr als übrig war); jede Schleife und jeder Einstieg prüfen ihn danach,
  * also ist der Überhang durch die TIEFE begrenzt und nicht durch den Eintrag.
+ *
+ * ZUERST SCHNEIDEN, DANN DRUCKEN — DIE REGEL DIESER FUNKTION, FÜR WERT UND SCHLÜSSEL (JOB 3897).
+ * `nimm` schneidet erst, wenn sein Argument schon fertig dasteht: es begrenzt die AUSGABE, nicht den
+ * Aufwand. Jede Zeichenkette wird deshalb VOR `JSON.stringify` auf `Math.max(vorrat.zeichen, 0)`
+ * geschnitten. Für den WERT gilt das seit JOB 3849 (die Lehre steht dort: „gekürzt wurde nach dem
+ * vollständigen Serialisieren"), für den SCHLÜSSEL erst seit JOB 3897 — bis dahin stand hier
+ * `nimm(JSON.stringify(feld))`, und ein Feldname von 50 000 Zeichen entstand vollständig, um eine
+ * Zeile später verworfen zu werden. Was der Serialisierer je zu sehen bekommt, ist seither gemessen
+ * und nicht zugesagt: `durchstich.test.ts` F14b zählt die Länge jedes Arguments von `JSON.stringify`,
+ * F14a hält daneben fest, dass die Ausgabe dieselbe blieb.
+ *
+ * NUR ZEICHENKETTEN. Der `bigint`-Zweig kann die Regel nicht halten und sagt an seiner Zeile, warum.
  */
 function drucke(wert: unknown, tiefe: number, vorrat: { zeichen: number }): string {
   const zahle = (text: string): string => {
@@ -1017,7 +1029,7 @@ function drucke(wert: unknown, tiefe: number, vorrat: { zeichen: number }): stri
   }
   switch (typeof wert) {
     case "string":
-      // ZUERST schneiden, DANN drucken: eine Zeichenkette von 10 MB darf nicht erst ganz entstehen.
+      // Die Regel dieser Funktion (Kopf): eine Zeichenkette von 10 MB darf nicht erst ganz entstehen.
       return nimm(JSON.stringify(wert.slice(0, Math.max(vorrat.zeichen, 0))));
     case "object": {
       const felder = Object.keys(wert as object);
@@ -1027,7 +1039,15 @@ function drucke(wert: unknown, tiefe: number, vorrat: { zeichen: number }): stri
       for (const feld of felder) {
         if (gedruckt.length >= ISTWERT_GLIEDER || vorrat.zeichen <= 0) break;
         if (gedruckt.length > 0) zahle(",");
-        const schluessel = nimm(JSON.stringify(feld));
+        // ZUERST SCHNEIDEN, DANN DRUCKEN — hier genauso wie beim Wert, und die AUSGABE ändert sich
+        // dadurch nicht. Das ist eine Rechnung, keine Zuversicht: (1) Ist der Schlüssel höchstens so
+        // lang wie der Vorrat, schneidet `slice` gar nichts weg. (2) Ist er länger, dann ist die
+        // geschnittene Fassung mit ihren zwei Anführungszeichen selbst schon länger als der Vorrat —
+        // `nimm` schneidet also in beiden Fassungen — und die ersten `vorrat.zeichen` Zeichen sind
+        // dieselben: sie stammen aus den Schlüsselzeichen bis `vorrat.zeichen - 2`, die hier wie dort
+        // gleich geschrieben werden. Auch ein mitten durchtrenntes Ersatzzeichenpaar ändert daran
+        // nichts: seine abweichende Schreibweise (`\ud83d` statt roh) beginnt erst dahinter.
+        const schluessel = nimm(JSON.stringify(feld.slice(0, Math.max(vorrat.zeichen, 0))));
         zahle(":");
         gedruckt.push(
           `${schluessel}:${drucke((wert as Record<string, unknown>)[feld], tiefe - 1, vorrat)}`,
@@ -1036,6 +1056,11 @@ function drucke(wert: unknown, tiefe: number, vorrat: { zeichen: number }): stri
       return `{${gedruckt.join(",")}${gedruckt.length < felder.length ? zahle("…") : ""}}`;
     }
     case "bigint":
+      // HIER GILT DIE REGEL VON OBEN NICHT, und das ist benannt statt versteckt (JOB 3897, §10).
+      // `10n ** 500000n` ergibt über 500 000 Zeichen, die alle entstehen, bevor `nimm` 300 behält.
+      // Ein Schnitt davor gibt es nicht: eine Dezimaldarstellung lässt sich nicht abschneiden, ohne
+      // sie zu berechnen. Was statt der Zahl dastünde, ist eine eigene Entscheidung und ein eigener
+      // Auftrag — kein Einzeiler wie bei der Zeichenkette.
       return nimm(`${wert}n`);
     case "function":
       return nimm("[Funktion]");
