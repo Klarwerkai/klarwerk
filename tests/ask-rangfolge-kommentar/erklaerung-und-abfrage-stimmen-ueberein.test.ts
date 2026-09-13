@@ -38,6 +38,32 @@ function genauEins<T>(werte: readonly T[], meldung: string): T {
 }
 
 /**
+ * JOB 3826 — EIN Weg, gelesenen Quelltext wirklich AUSZUFÜHREN: für W1 (Produktionsmethode) wie für
+ * W6 (Attrappe des Vertrags). Der Printer entfernt Kommentare, `transpileModule` nimmt die Typen
+ * weg, `runInNewContext` führt das Ergebnis mit Zeitlimit in einem eigenen Kontext aus. Ein
+ * Kommentar, ein String-Literal oder ein Falltitel kann darin keine Anweisung ersetzen — die Lehre
+ * aus JOB 3570 R3 / 3579 R1. Die Vorrichtung steht deshalb genau EINMAL, nicht zweimal.
+ */
+const PRINTER = ts.createPrinter({ removeComments: true });
+
+function drucke(knoten: ts.Node, datei: ts.SourceFile): string {
+  return PRINTER.printNode(ts.EmitHint.Unspecified, knoten, datei);
+}
+
+async function fuehreGelesenAus(
+  gelesen: readonly string[],
+  rumpf: string,
+  umgebung: Record<string, unknown>,
+): Promise<void> {
+  const code = `${gelesen.join("\n")}\n${rumpf}`;
+  await runInNewContext(
+    ts.transpileModule(code, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText,
+    umgebung,
+    { timeout: 1_000 },
+  );
+}
+
+/**
  * Nimmt eine Prüfung entgegen, die ROT sein MUSS, und gibt ihre Meldung zum Weiterprüfen zurück.
  * Bleibt sie grün, sagt das dieser Helfer und nicht ein stilles `rejects.toThrow` — genau das war
  * BENs Befund aus Runde 1 („Erwartetes Rot blieb aus: promise resolved undefined").
@@ -93,25 +119,21 @@ async function pgRangfolge(text: string, pfad = PG): Promise<Gelesen> {
       ts.isMethodDeclaration(n) && ts.isIdentifier(n.name) && n.name.text === "findCandidates",
   );
   if (!methode?.body) throw fehler("PgKoRepo.findCandidates nicht gefunden");
-  const printer = ts.createPrinter({ removeComments: true });
-  const drucke = (n: ts.Node): string => printer.printNode(ts.EmitHint.Unspecified, n, datei);
   const konstanten = ["KO_CANDIDATE_SEARCH", "KO_CANDIDATE_SEARCH_EXPRESSIONS"].map((name) => {
     const deklaration = datei.statements
       .filter(ts.isVariableStatement)
       .flatMap((n) => [...n.declarationList.declarations])
       .find((n) => ts.isIdentifier(n.name) && n.name.text === name);
     if (!deklaration?.initializer) throw fehler(`Suchfeld-Konstante ${name} nicht gefunden`);
-    return `const ${name} = ${drucke(deklaration.initializer)};`;
+    return `const ${name} = ${drucke(deklaration.initializer, datei)};`;
   });
   const abfragen: string[] = [];
-  const code = `${konstanten.join("\n")}
-    class GelesenerAdapter { ${drucke(methode)} }
-    const adapter = new GelesenerAdapter();
-    adapter.pool = pool;
-    adapter.findCandidates({ terms: ["ventil", "pumpe"], limit: 3 });`;
   try {
-    await runInNewContext(
-      ts.transpileModule(code, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText,
+    await fuehreGelesenAus(
+      [...konstanten, `class GelesenerAdapter { ${drucke(methode, datei)} }`],
+      `const adapter = new GelesenerAdapter();
+      adapter.pool = pool;
+      adapter.findCandidates({ terms: ["ventil", "pumpe"], limit: 3 });`,
       {
         pool: {
           query(sql: string) {
@@ -120,14 +142,13 @@ async function pgRangfolge(text: string, pfad = PG): Promise<Gelesen> {
           },
         },
       },
-      { timeout: 1_000 },
     );
   } catch (error) {
-    throw fehler(`Abfrage nicht lesbar: ${String(error)}; Methode: ${drucke(methode)}`);
+    throw fehler(`Abfrage nicht lesbar: ${String(error)}; Methode: ${drucke(methode, datei)}`);
   }
   const sql = genauEins(
     abfragen,
-    `W1: ${pfad}: Kandidatenabfrage fehlt/mehrdeutig; gelesener Ausschnitt: ${drucke(methode)}`,
+    `W1: ${pfad}: Kandidatenabfrage fehlt/mehrdeutig; gelesener Ausschnitt: ${drucke(methode, datei)}`,
   );
   const maske = maskiere(sql);
   const bereiche = sortierstufen(maske);
@@ -430,6 +451,193 @@ const FREMDTEXT = [
   ["Falltitel", (s: string) => `\nit(${JSON.stringify(s)}, () => {});\n`],
 ] as const;
 
+// ================================================================================================
+// JOB 3826 · W6 — DER WÄCHTER MISST DEN DOPPELGÄNGER, NICHT NUR SEINEN NAMEN.
+// ================================================================================================
+//
+// WARUM ES DIESEN FALL GIBT. BENs Messung in `archiv/3601/runde-1/ben.md:24`, wörtlich: „Ich habe
+// den Doppelgänger in `ask-retrieval-topk-scaling-contract.test.ts:70-73` auf die heutige
+// Pg-Rangfolge nachgezogen (Trefferzahl zuerst) — also genau die nach §10 verbotene Änderung, die
+// den Härtungsvertrag zerstört. Ergebnis: `Tests 22 passed (22)`, beide Dateien grün. W3 prüft nur
+// die Prosa; nichts prüft, dass der Doppelgänger tatsächlich noch OHNE Relevanzmaß sortiert. Die
+// Prosa würde dann lügen, und kein Lauf würde rot."
+//
+// W1–W5 urteilen über Quelltext, Prosa und NAMEN; keiner führt die Attrappe je aus. W6 führt sie
+// aus — über denselben Weg wie W1 (drucken ohne Kommentare, transpilieren, `runInNewContext`).
+//
+// WAS W6 ZUSICHERT: Die Attrappe ist RELEVANZBLIND — sie liefert den Treffer, der ALLE Fragebegriffe
+// abdeckt, innerhalb ihres Limits NICHT, und sie schneidet wirklich auf das Limit.
+//
+// DER GESTELLTE BESTAND ALS PIN (gemessen, nicht geschätzt): drei Störer `stoerer-0..2` treffen NUR
+// „spz42", sind `validiert`, Trust 99; ein Ziel `ziel-deckt-alle-terme` trifft alle DREI Begriffe,
+// ist `validiert`, hat aber Trust 60; `limit` = 3. Relevanzblind sortiert liefert die Attrappe genau
+// (stoerer-0 → stoerer-1 → stoerer-2). Zieht jemand die Trefferzahl nach vorn, liefert sie
+// (ziel-deckt-alle-terme → stoerer-0 → stoerer-1) — und W6 ist rot, mit Datei, Zeile und beiden
+// Reihenfolgen.
+//
+// JOB 3826 R2 (BEN, Korrekturpflichten 1 und 2): JEDE rote W6-Meldung wird aus dem WIRKLICH
+// gelieferten Ergebnis GEBAUT, nie vorausgesetzt. Runde 1 schrieb in jede Rangfolge-Meldung
+// „sortiert RELEVANZBEWUSST und liefert „ziel-deckt-alle-terme"" — BEN hat das mit einer umgedrehten
+// Störerreihenfolge widerlegt (geliefert: stoerer-2 → stoerer-1 → stoerer-0, das Ziel gar nicht
+// dabei). Und auch die Limit-Meldung nennt beide ID-Reihenfolgen: eine Anzahl ersetzt keine IDs.
+//
+// WAS W6 AUSDRÜCKLICH NICHT ZUSICHERT: ob der Ask-Pfad im PRODUKT sich unter einer relevanzblinden
+// Quelle richtig verhält — das misst der Vertrag selbst (`tests/ask/…-contract.test.ts:149`). Auch
+// die `InMemoryKoRepo`-Zeile `services/ask/src/service.ts:60` bleibt ungelesen (die zweite, kleinere
+// Lücke aus `ben.md:24`); sie gehört in eine eigene Zeile, sobald `repo.ts` frei ist.
+const W6_TERME = ["spz42", "wartung", "druckspeicher"] as const;
+const W6_STOERER = ["stoerer-0", "stoerer-1", "stoerer-2"] as const;
+const W6_ZIEL = "ziel-deckt-alle-terme";
+const W6_LIMIT = W6_STOERER.length;
+
+function w6Bestand(): readonly Record<string, unknown>[] {
+  return [
+    ...W6_STOERER.map((id, i) => ({
+      id,
+      title: `Sammelhinweis ${i}`,
+      statement: `Allgemeiner Hinweis zu ${W6_TERME[0]} ohne weiteren Zusammenhang.`,
+      status: "validiert",
+      trust: 99,
+    })),
+    {
+      id: W6_ZIEL,
+      title: `Spezialzylinder ${W6_TERME[0]} warten`,
+      statement: `Vor der ${W6_TERME[1]} den ${W6_TERME[2]} entleeren.`,
+      status: "validiert",
+      trust: 60,
+    },
+  ];
+}
+
+interface Doppelgaenger {
+  /** Die IDs in der Reihenfolge, in der die ausgeführte Attrappe sie WIRKLICH geliefert hat. */
+  readonly geliefert: readonly string[];
+  /** Ihr Name, so wie er im Vertrag steht — nie vorausgesetzt, immer gelesen. */
+  readonly name: string;
+  /** `<pfad>:<zeile>` ihrer Deklaration: der Ort, den jede rote Meldung nennt (BEN, Pflicht 2). */
+  readonly ort: string;
+}
+
+/**
+ * Holt die Attrappe mit dem vorhandenen `attrappe()` (strukturell, nicht über den Namen), druckt sie
+ * OHNE Kommentare, befreit sie von den Typen und RUFT SIE AUF. Jeder Ausfall ist rot mit Grund und
+ * mit dem gelesenen Ausschnitt — nie „nicht gefunden, also in Ordnung" (Zustandsmodell, wie W5).
+ */
+async function fuehreAttrappeAus(text: string, pfad = VERTRAG): Promise<Doppelgaenger> {
+  const mock = attrappe(text, pfad);
+  const gedruckt = drucke(mock, mock.getSourceFile());
+  const fehler = (grund: string): Error =>
+    new Error(`W6: ${pfad}: ${grund}; gelesener Ausschnitt: ${gedruckt}`);
+  const name = mock.name?.text;
+  if (name === undefined) {
+    throw fehler("die Attrappe hat keinen Namen und ist so nicht aufrufbar");
+  }
+  const aufzeichnung: { lauf?: Promise<unknown> } = {};
+  let geliefert: unknown;
+  try {
+    await fuehreGelesenAus(
+      [gedruckt],
+      `const gebaut = ${name}(bestand);
+      const quelle =
+        gebaut && typeof gebaut.findCandidates === "function"
+          ? gebaut
+          : gebaut && gebaut.koService && typeof gebaut.koService.findCandidates === "function"
+            ? gebaut.koService
+            : undefined;
+      if (quelle === undefined) {
+        throw new Error("der Rückgabewert trägt kein aufrufbares findCandidates");
+      }
+      aufzeichnung.lauf = Promise.resolve(quelle.findCandidates(anfrage)).then((seite) =>
+        Array.from(seite, (ko) => String(ko && ko.id)),
+      );`,
+      { aufzeichnung, bestand: w6Bestand(), anfrage: { terms: [...W6_TERME], limit: W6_LIMIT } },
+    );
+    if (aufzeichnung.lauf === undefined) {
+      throw new Error("die Attrappe hat keine Kandidatenabfrage begonnen");
+    }
+    geliefert = await aufzeichnung.lauf;
+  } catch (error) {
+    throw fehler(`die Attrappe lief nicht: ${String(error)}`);
+  }
+  if (!Array.isArray(geliefert)) {
+    throw fehler(`die Attrappe lieferte keine Liste: ${String(geliefert)}`);
+  }
+  return {
+    geliefert: [...(geliefert as string[])],
+    name,
+    ort: zeileVon(text, pfad, `function ${name}`),
+  };
+}
+
+/** Beide Reihenfolgen, in jeder roten W6-Meldung: eine Anzahl ersetzt keine IDs (BEN, Pflicht 2). */
+function w6Reihenfolgen(lauf: Doppelgaenger): string {
+  return `geliefert (${lauf.geliefert.join(" → ")}), erwartet (${W6_STOERER.join(" → ")})`;
+}
+
+/**
+ * JOB 3826 R2 — DER GRUND WIRD AUS DEM ERGEBNIS ABGELEITET (BEN, Korrekturpflicht 1).
+ *
+ * Runde 1 behauptete in JEDER roten Rangfolge-Meldung einen gelieferten Zieltreffer. BENs Messung
+ * widerlegte das: bei umgedrehter Störerreihenfolge kamen ausschliesslich `stoerer-2 → stoerer-1 →
+ * stoerer-0` zurück, das Ziel war gar nicht dabei — die Meldung nannte einen Treffer, den es nicht
+ * gab. Deshalb entscheidet hier `geliefert`, welcher der beiden Gründe dasteht, und die Stelle des
+ * Ziels wird gezählt, nicht vermutet.
+ */
+function w6Rangfolge(lauf: Doppelgaenger): string {
+  const stelle = lauf.geliefert.indexOf(W6_ZIEL);
+  const grund =
+    stelle >= 0
+      ? `sortiert RELEVANZBEWUSST: „${W6_ZIEL}" steht an Stelle ${stelle + 1} von ${W6_LIMIT} — damit härtet ${VERTRAG} gegen eine Quelle, die das Problem nicht mehr hat`
+      : `hält „${W6_ZIEL}" zwar draussen, liefert aber nicht die gemessene (validiert ↓, Trust ↓)-Auswahl — ihre Relevanzblindheit ist damit nicht mehr belegt`;
+  return `W6 Rangfolge: ${lauf.ort}: die Attrappe \`${lauf.name}\` ${grund}; ${w6Reihenfolgen(lauf)}`;
+}
+
+async function pruefeAttrappe(text: string, pfad = VERTRAG): Promise<void> {
+  const lauf = await fuehreAttrappeAus(text, pfad);
+  // ERST das Limit: eine unwirksame Deckelung soll an ihrem EIGENEN Grund scheitern, nicht am
+  // Rangfolge-Grund — sonst nennt die Meldung eine Ursache, die nicht die Ursache ist.
+  expect(
+    lauf.geliefert.length,
+    `W6 Limit: ${lauf.ort}: die Attrappe \`${lauf.name}\` schneidet nicht auf das Limit ${W6_LIMIT}; ${w6Reihenfolgen(lauf)}`,
+  ).toBe(W6_LIMIT);
+  expect(lauf.geliefert, w6Rangfolge(lauf)).toEqual([...W6_STOERER]);
+}
+
+// BENs Mutation aus `ben.md:24`, wörtlich nachgebaut: die Zahl der abgedeckten Terme als ERSTE
+// Sortierstufe. Sie geschieht NUR im Speicher — die Vertragsdatei wird gelesen, nie geschrieben.
+const REINE_RANGFOLGE =
+  'Number(b.status === "validiert") - Number(a.status === "validiert") || b.trust - a.trust';
+const TREFFERZAHL_ZUERST = `${[
+  'terms.filter((t) => (b.title + " " + b.statement).toLowerCase().includes(t)).length',
+  'terms.filter((t) => (a.title + " " + a.statement).toLowerCase().includes(t)).length',
+].join(" - ")} || `;
+const SORT_ANKER = "const sortiert = [...treffer].sort(";
+const NACHGEZOGEN = () => ersetzen(vertrag, REINE_RANGFOLGE, TREFFERZAHL_ZUERST + REINE_RANGFOLGE);
+
+// Dieselbe Trefferzahl als BLINDER TEXT. W6 muss dabei GRÜN bleiben, denn das Verhalten ist
+// unverändert; ein Wächter, der hier rot wird, ist ein Wörterbuch und kein Messgerät (3570 R3,
+// 3579 R1). Ein Falltitel ist nur auf DATEIEBENE blind: `it(...)` im Rumpf der Attrappe wäre ein
+// Aufruf und damit gerade kein blinder Text. Das ist die bewusste Grenze dieser Kalibrierung.
+const SCHEINSTUFEN = [
+  [
+    "Kommentar in der Attrappe",
+    (blind: string) => ersetzen(vertrag, SORT_ANKER, `// ${blind}\n      ${SORT_ANKER}`),
+  ],
+  [
+    "Stringliteral in der Attrappe",
+    (blind: string) =>
+      ersetzen(
+        vertrag,
+        SORT_ANKER,
+        `const scheinbeleg = ${JSON.stringify(blind)};\n      ${SORT_ANKER}`,
+      ),
+  ],
+  [
+    "Falltitel in der Datei",
+    (blind: string) => `${vertrag}\nit(${JSON.stringify(blind)}, () => {});\n`,
+  ],
+] as const;
+
 describe("JOB 3601: Erklärung und Abfrage stimmen überein", () => {
   it("W1 liest die gebaute ORDER BY-Kette aus der AST-Methode", async () => {
     const gelesen = await pgRangfolge(pg);
@@ -672,6 +880,124 @@ describe("JOB 3601: Erklärung und Abfrage stimmen überein", () => {
         /W5: tests\/ask\/ask-retrieval-topk-scaling-contract.test.ts: Attrappe .* fehlt\/mehrdeutig; gefunden: 0/,
       );
     }
+  });
+
+  // ==============================================================================================
+  // JOB 3826 · W6 — DIE FÄLLE. Der Kopf dieser Wache steht oben bei `W6_TERME`.
+  // ==============================================================================================
+
+  it("W6: die AUSGEFÜHRTE Attrappe lässt den passenden Treffer ausserhalb des Limits", async () => {
+    // Kalibrierung des gestellten Bestands: ohne mehrere Begriffe und ohne genau so viele Störer,
+    // wie das Limit trägt, entscheidet er die Frage nicht — dann wäre dieses Grün wertlos.
+    expect(W6_TERME.length, "W6: der Bestand braucht mehrere Fragebegriffe").toBeGreaterThanOrEqual(
+      2,
+    );
+    expect(W6_STOERER.length, "W6: die Störer müssen das Limit allein füllen").toBe(W6_LIMIT);
+    await pruefeAttrappe(vertrag);
+  });
+
+  it("W6 Gegenprobe: der nachgezogene Doppelgänger ist rot — mit Ort, Zeile und beiden Reihenfolgen", async () => {
+    // DIE ABNAHME DIESES AUFTRAGS: genau BENs Mutation, die am 3601-Stand `Tests 22 passed` ergab.
+    const defekt = NACHGEZOGEN();
+    const name = attrappe(defekt).name?.text ?? "";
+    const fehler = await abgewiesen(pruefeAttrappe(defekt));
+    expect(fehler).toMatch(
+      /W6 Rangfolge: tests\/ask\/ask-retrieval-topk-scaling-contract\.test\.ts:\d+:/,
+    );
+    expect(fehler).toContain(zeileVon(defekt, VERTRAG, `function ${name}`));
+    expect(fehler).toContain(`geliefert (${W6_ZIEL} → ${W6_STOERER[0]} → ${W6_STOERER[1]})`);
+    expect(fehler).toContain(`erwartet (${W6_STOERER.join(" → ")})`);
+    // Der Grund ist hier der starke — und er ist gedeckt: das Ziel steht WIRKLICH an Stelle 1.
+    expect(fehler).toContain(`sortiert RELEVANZBEWUSST: „${W6_ZIEL}" steht an Stelle 1 von 3`);
+  });
+
+  it("W6 Kalibrierung: ein unwirksames Limit ist rot mit EIGENEM Grund, nicht mit dem Rangfolge-Grund", async () => {
+    // Die zweite Halbheit, die ausgeschlossen sein muss: nur den Sortiervergleich prüfen und das
+    // Limit vergessen. Hier ändert sich das Verhalten wirklich, aber nicht die Sortierung.
+    const defekt = ersetzen(
+      vertrag,
+      "sortiert.slice(0, Math.max(0, Math.floor(query.limit)))",
+      "sortiert",
+    );
+    const fehler = await abgewiesen(pruefeAttrappe(defekt));
+    expect(fehler).toMatch(
+      /W6 Limit: tests\/ask\/ask-retrieval-topk-scaling-contract\.test\.ts:\d+:/,
+    );
+    expect(fehler).toContain(`schneidet nicht auf das Limit ${W6_LIMIT}`);
+    expect(fehler).toContain(`geliefert (${W6_STOERER.join(" → ")} → ${W6_ZIEL})`);
+    // BEN, Korrekturpflicht 2: auch der Limitfehler nennt die ERWARTETE ID-Reihenfolge. Runde 1
+    // meldete hier nur `expected 4 to be 3` — eine Anzahl schickt den Nächsten wieder auf die Suche.
+    expect(fehler).toContain(`erwartet (${W6_STOERER.join(" → ")})`);
+    expect(fehler).not.toContain("W6 Rangfolge");
+  });
+
+  it("W6 Kalibrierung: umgedrehte Störer sind rot, OHNE einen Zieltreffer zu behaupten", async () => {
+    // BENs Widerlegung aus Runde 1, als dauerhafter Fall: geliefert werden ausschliesslich die drei
+    // Störer, nur in anderer Reihenfolge. Rot muss das sein — aber mit dem Grund, den das Ergebnis
+    // hergibt. Eine Meldung, die hier „liefert ziel-deckt-alle-terme" behauptet, ist eine Erfindung.
+    const defekt = ersetzen(
+      vertrag,
+      "return Promise.resolve(seite);",
+      "return Promise.resolve([...seite].reverse());",
+    );
+    const fehler = await abgewiesen(pruefeAttrappe(defekt));
+    expect(fehler).toMatch(
+      /W6 Rangfolge: tests\/ask\/ask-retrieval-topk-scaling-contract\.test\.ts:\d+:/,
+    );
+    expect(fehler).toContain(`geliefert (${[...W6_STOERER].reverse().join(" → ")})`);
+    expect(fehler).toContain(`erwartet (${W6_STOERER.join(" → ")})`);
+    expect(fehler).toContain(`hält „${W6_ZIEL}" zwar draussen`);
+    expect(fehler).not.toContain("RELEVANZBEWUSST");
+    expect(fehler).not.toContain(`„${W6_ZIEL}" steht an Stelle`);
+  });
+
+  for (const [wo, verstellen] of SCHEINSTUFEN) {
+    it(`W6 Kalibrierung: die Trefferzahl als ${wo} lässt W6 GRÜN — gemessen wird Verhalten`, async () => {
+      const arbeitskopie = verstellen(TREFFERZAHL_ZUERST + REINE_RANGFOLGE);
+      expect(arbeitskopie, "W6: die Kalibrierung erreicht den Vertrag nicht").not.toBe(vertrag);
+      // Die echte Sortierstufe steht unverändert da: verstellt ist ausschliesslich blinder Text.
+      expect(arbeitskopie).toContain(REINE_RANGFOLGE);
+      await pruefeAttrappe(arbeitskopie);
+    });
+  }
+
+  it("W6 Zustandsmodell: verlorene Attrappe ist rot mit Grund, nicht still grün", async () => {
+    for (const [, einbetten] of FREMDTEXT) {
+      const defekt =
+        ersetzen(vertrag, "findCandidates(query: KoCandidateQuery)", "sucheKandidaten(query)") +
+        einbetten("findCandidates(query) { return []; }");
+      await expect(pruefeAttrappe(defekt)).rejects.toThrow(
+        /Attrappe \(Funktion mit ausführbarem findCandidates\) fehlt\/mehrdeutig; gefunden: 0/,
+      );
+    }
+  });
+
+  it("W6 Zustandsmodell: eine werfende Attrappe ist rot mit dem gelesenen Ausschnitt", async () => {
+    // Ohne erfolgreichen Lauf gibt es kein Urteil, sondern einen roten Fall — nie die negative
+    // Aussage „keine Relevanzstufe vorhanden" auf der Grundlage eines Ausfalls.
+    const defekt = ersetzen(vertrag, "bestand.filter((ko) => {", "nichtVorhanden((ko) => {");
+    const name = attrappe(defekt).name?.text ?? "";
+    const fehler = await abgewiesen(pruefeAttrappe(defekt));
+    expect(fehler).toMatch(
+      /W6: tests\/ask\/ask-retrieval-topk-scaling-contract\.test\.ts: die Attrappe lief nicht: ReferenceError/,
+    );
+    expect(fehler).toContain(`gelesener Ausschnitt: function ${name}`);
+  });
+
+  it("W6 Zustandsmodell: eine hängende Attrappe läuft ins Zeitlimit und ist rot mit Grund", async () => {
+    // BEN Runde 1, „NICHT GEPRÜFT": das Zeitlimit war bis hier eine Zusage ohne Messung. Eine
+    // Attrappe, die nicht zurückkommt, darf den Lauf weder hängen lassen noch still grün sein.
+    const defekt = ersetzen(
+      vertrag,
+      "const seite = sortiert.slice(",
+      "for (;;) {}\n      const seite = sortiert.slice(",
+    );
+    const name = attrappe(defekt).name?.text ?? "";
+    const fehler = await abgewiesen(pruefeAttrappe(defekt));
+    expect(fehler).toMatch(
+      /W6: tests\/ask\/ask-retrieval-topk-scaling-contract\.test\.ts: die Attrappe lief nicht: Error: Script execution timed out/,
+    );
+    expect(fehler).toContain(`gelesener Ausschnitt: function ${name}`);
   });
 
   // Beide Wortformen, und das ist kein Fleiß: mit `Produktionsadapters?` OHNE Wortgrenze nimmt der
