@@ -237,10 +237,27 @@ describe("B1/B3/B4 · Wiederverwendung und Anordnung (Quell-Inspektion)", () => 
 describe("B5 · Auswahl- und Übernahme-Semantik bleibt unverändert", () => {
   const src = read("apps/web/src/components/ImportSelect.tsx");
 
+  // JOB 3799 (Nachführung des Pins): DIE REGEL IST GEBLIEBEN, IHR ORT HAT SICH GEÄNDERT. Die
+  // Vorab-Abwahl wohnt seit diesem Auftrag in `vorgabeHaken` und gilt dort für jeden Eintrag, für
+  // den es nichts zu übertragen gibt (erste Antwort, fehlende `id`, Rahmenwechsel). Die Zeile, auf
+  // die dieser Pin bis hierher zeigte, war der blinde Rücksetzer bei JEDER Antwort — sie ist
+  // ERSETZT, nicht ergänzt, und genau das hält die letzte Erwartung fest (sonst stünden zwei Wege
+  // nebeneinander, und der alte gewänne).
   it("Vorab-Abwahl bereits importierter UND vorgemerkter Einträge bleibt", () => {
-    expect(src).toContain(
+    expect(src).toContain("return entry.alreadyImported !== true && entry.alreadyQueued !== true;");
+    expect(src).toContain("neueEintraege.map(vorgabeHaken)");
+    expect(src).toContain("return vorher ?? vorgabeHaken(entry);");
+    expect(src).not.toContain(
       "data.preview.map((entry) => entry.alreadyImported !== true && entry.alreadyQueued !== true)",
     );
+  });
+
+  // JOB 3799: die gefährlichste Verwechslung, an der Quelle festgehalten — `checkedRows` ist ein
+  // Feld über den ORIGINALINDEX der angezeigten Antwort; die neue Antwort ist eine andere Liste.
+  // Übertragen werden darf deshalb nur über die Identität, nie über den Platz.
+  it("JOB 3799: die Auswahl wird über entry.id übertragen, nie über den Index", () => {
+    expect(src).toContain("alterStand.set(entry.id, alteHaken[index] === true)");
+    expect(src).toContain("entry.id !== undefined ? alterStand.get(entry.id) : undefined");
   });
 
   it("latest-wins, Live-Aktualisierung und candidateIdOf-Weitergabe bleiben verdrahtet", () => {

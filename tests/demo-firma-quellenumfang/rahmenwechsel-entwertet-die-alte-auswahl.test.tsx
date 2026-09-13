@@ -935,3 +935,435 @@ describe("JOB 3772 · eine gewechselte Eingrenzung entwertet die alte Liste zum 
     }
   });
 });
+
+// ================================================================================================
+// JOB 3799 · WER IM 350-MS-FENSTER ANHAKT, BEHÄLT SEINEN HAKEN.
+// ================================================================================================
+//
+// DERSELBE TATORT, EIN SCHRITT WEITER — und deshalb dieselbe Datei: die Fälle oben haben das
+// Fenster aufgemacht und ausdrücklich zugesagt, dass darin „anhaken und abwählen möglich" bleiben
+// (`imp.eingrenzung.wechselLaeuft`, Fall „ANHAKEN BLEIBT"). Genau diese Zusage brach 350 ms später:
+// `onSuccess` baute `checkedRows` bei JEDER erfolgreichen Antwort neu aus der Vorgabe. Eine
+// Nachbardatei müsste Mounten, Klicken, Attrappe und Rührer verdoppeln.
+//
+// WAS DIESE FÄLLE MESSEN, und zwar am ABGESCHICKTEN KÖRPER (`applyMock`), nicht an der Anwesenheit
+// eines Hakens im DOM: die Entscheidung des Menschen kommt beim Server an — oder sie kommt
+// belegbar nicht an und die Fläche sagt es.
+//
+// EIGENE ATTRAPPE, EIN GRUND: die Fälle oben kennen nur Zeilen, die in der VORGABE ANGEHAKT sind.
+// An ihnen sähe ein bewusst gesetzter Haken genauso aus wie der Rücksetzer — der Fall wäre blind.
+// Unterscheidbar wird es erst an einer Zeile, die die Vorgabe ABWÄHLT (bereits importiert /
+// vorgemerkt), und an einer Liste, die ihre REIHENFOLGE ändert.
+
+interface Zeile {
+  id: string;
+  title: string;
+  hasImage: boolean;
+  themes: string[];
+  alreadyImported?: boolean;
+  alreadyQueued?: boolean;
+}
+
+/** Die Zeile, an der sich ein bewusstes Anhaken von der Vorgabe unterscheiden lässt. */
+const SEITE_BEKANNT: Zeile = {
+  id: "bekannt1",
+  title: "[Basic] Wartungsplan aus dem Bestand",
+  hasImage: false,
+  themes: ["Basic"],
+  alreadyImported: true,
+};
+const SEITE_ZWEIT: Zeile = {
+  id: "zweit1",
+  title: "[Basic] Prüfliste Linie 4",
+  hasImage: false,
+  themes: ["Basic"],
+};
+const SEITE_DRITT: Zeile = {
+  id: "dritt1",
+  title: "[Basic] Schichtübergabe Freitag",
+  hasImage: false,
+  themes: ["Basic"],
+};
+/** Einträge, die es in der Antwort davor NICHT gab — einer frisch, einer bereits vorgemerkt. */
+const SEITE_FRISCH: Zeile = {
+  id: "frisch1",
+  title: "[Frisch] Erst in dieser Antwort",
+  hasImage: false,
+  themes: ["Frisch"],
+};
+const SEITE_FRISCH_VORGEMERKT: Zeile = {
+  id: "frisch2",
+  title: "[Frisch] Neu und schon vorgemerkt",
+  hasImage: false,
+  themes: ["Frisch"],
+  alreadyQueued: true,
+};
+
+/**
+ * Die Auswahl-Attrappe dieser Fälle: VOR der Eingrenzung die eine Liste, nach ihr die andere.
+ * Der Rahmenweg (`titleContains`) liefert ABSICHTLICH dieselbe zweite Liste wie die Eingrenzung —
+ * nur so misst der Rahmenfall wirklich den Rahmenwechsel und nicht bloss eine andere Liste.
+ */
+function antworten(vorher: readonly Zeile[], nachher: readonly Zeile[]): void {
+  selectMock.mockImplementation(async (body: { criteria: Record<string, unknown> }) => {
+    // Die Umfangsmessung des Rahmens (ImportExplore) — sie zählt nur und füllt keine Vorschau.
+    if (body.criteria.limit === 1) {
+      return { ...GERAHMT, preview: [] };
+    }
+    if (Array.isArray(body.criteria.titleContains) || eingegrenzt(body.criteria)) {
+      return {
+        matched: nachher.length,
+        limited: false,
+        truncated: false,
+        criteria: body.criteria,
+        preview: nachher,
+      };
+    }
+    return {
+      matched: vorher.length,
+      limited: false,
+      truncated: false,
+      criteria: {},
+      preview: vorher,
+    };
+  });
+}
+
+/** Der gemeinsame Ausgangspunkt: die Vorschau steht offen, ungerahmt, ohne Eingrenzung. */
+async function vorschauOffen(vorher: readonly Zeile[], nachher: readonly Zeile[]): Promise<void> {
+  await mount();
+  await klicken(i18n.t("imp.explore.cta"));
+  antworten(vorher, nachher);
+  await klicken(i18n.t("imp.select.previewCta"));
+  expect(sichtbarerText()).toContain(vorher[0]?.title ?? "");
+}
+
+/** Einen Zeilen-Haken umlegen — der Weg, den der Mensch geht. */
+async function hakenKlicken(titelTeil: string): Promise<void> {
+  await act(async () => {
+    zeilenHaken(titelTeil).click();
+  });
+  await act(flush);
+}
+
+/**
+ * Die Auswahl WIRKLICH abschicken und den gesendeten Körper lesen. Gemessen wird hier und nicht am
+ * DOM: ein Haken, der gesetzt aussieht, aber nicht mitreist, wäre genau die Scheinfunktion.
+ */
+async function abgeschickteIds(): Promise<string[]> {
+  await gruppieren();
+  await klicken(i18n.t("imp.groups.applyCta", { n: 1 }));
+  const koerper = applyMock.mock.calls.at(-1)?.[0] as { selectedCandidateIds: string[] };
+  return koerper.selectedCandidateIds;
+}
+
+describe("JOB 3799 · der Haken, den die Fläche erlaubt, überlebt das Nachladen", () => {
+  it("DER HAKEN IM FENSTER ÜBERLEBT: was im 350-ms-Fenster angehakt wird, reist mit", async () => {
+    // Die neue Antwort trägt DIESELBEN Einträge in ANDERER Reihenfolge — die Zuordnung darf nur
+    // über `entry.id` laufen.
+    await vorschauOffen([SEITE_BEKANNT, SEITE_ZWEIT], [SEITE_ZWEIT, SEITE_BEKANNT]);
+
+    vi.useFakeTimers();
+    await chipKlicken(THEMA);
+    // Das Fenster ist offen, die Anfrage läuft noch nicht — und die Fläche sagt zu, dass hier
+    // angehakt werden darf.
+    expect(container.querySelector('[data-testid="eingrenzung-gewechselt"]')).not.toBeNull();
+    expect(zeilenHaken(SEITE_BEKANNT.title).checked).toBe(false);
+    await hakenKlicken(SEITE_BEKANNT.title);
+    expect(zeilenHaken(SEITE_BEKANNT.title).checked).toBe(true);
+
+    await nachDemNachladen();
+
+    // Der Haken steht noch — und er steht nicht nur da, er wird abgeschickt.
+    expect(zeilenHaken(SEITE_BEKANNT.title).checked).toBe(true);
+    expect(await abgeschickteIds()).toEqual([SEITE_ZWEIT.id, SEITE_BEKANNT.id]);
+    // Nichts ist weggefallen, also steht auch kein Satz darüber.
+    expect(container.querySelector('[data-testid="haken-weggefallen"]')).toBeNull();
+  });
+
+  it("DIE ABWAHL ÜBERLEBT AUCH: eine weggenommene Wahl kommt nicht angehakt zurück", async () => {
+    // Eine Abwahl ist dieselbe bewusste Entscheidung und wiegt schwerer: sie verhindert einen
+    // Import, den der Mensch NICHT will.
+    await vorschauOffen([SEITE_ZWEIT, SEITE_DRITT], [SEITE_ZWEIT, SEITE_DRITT]);
+
+    vi.useFakeTimers();
+    await chipKlicken(THEMA);
+    await hakenKlicken(SEITE_ZWEIT.title);
+    expect(zeilenHaken(SEITE_ZWEIT.title).checked).toBe(false);
+
+    await nachDemNachladen();
+
+    expect(zeilenHaken(SEITE_ZWEIT.title).checked).toBe(false);
+    expect(await abgeschickteIds()).toEqual([SEITE_DRITT.id]);
+  });
+
+  it("NEUE TREFFER BEKOMMEN DIE VORGABE — und der Index überträgt nichts", async () => {
+    // DIESER FALL IST DER ANKER GEGEN DIE VERWECHSLUNG: die neue Antwort ist länger UND anders
+    // sortiert. Eine Übertragung über den Originalindex setzte hier Haken auf fremde Seiten
+    // (bekannt1 stünde auf frisch1), eine Übertragung über `entry.id` trifft.
+    await vorschauOffen(
+      [SEITE_BEKANNT, SEITE_ZWEIT],
+      [SEITE_FRISCH, SEITE_FRISCH_VORGEMERKT, SEITE_ZWEIT, SEITE_BEKANNT],
+    );
+
+    vi.useFakeTimers();
+    await chipKlicken(THEMA);
+    await hakenKlicken(SEITE_BEKANNT.title); // bewusst an
+    await hakenKlicken(SEITE_ZWEIT.title); // bewusst aus
+
+    await nachDemNachladen();
+
+    // Der frische Eintrag steht auf der Vorgabe (an), der frische VORGEMERKTE ebenfalls (aus) —
+    // und die beiden bekannten tragen weiter die Entscheidung des Menschen.
+    expect(zeilenHaken(SEITE_FRISCH.title).checked).toBe(true);
+    expect(zeilenHaken(SEITE_FRISCH_VORGEMERKT.title).checked).toBe(false);
+    expect(zeilenHaken(SEITE_ZWEIT.title).checked).toBe(false);
+    expect(zeilenHaken(SEITE_BEKANNT.title).checked).toBe(true);
+    expect(await abgeschickteIds()).toEqual([SEITE_FRISCH.id, SEITE_BEKANNT.id]);
+  });
+
+  it("WAS WEGFÄLLT, WIRD GESAGT: mit Zahl, und nur für diesen einen Übergang", async () => {
+    await vorschauOffen([SEITE_ZWEIT, SEITE_DRITT], [SEITE_ZWEIT]);
+
+    vi.useFakeTimers();
+    await chipKlicken(THEMA);
+    // Beide stehen auf der Vorgabe „an" — der Mensch hat also zwei Haken, einer davon fällt weg.
+    expect(zeilenHaken(SEITE_ZWEIT.title).checked).toBe(true);
+    expect(zeilenHaken(SEITE_DRITT.title).checked).toBe(true);
+
+    await nachDemNachladen();
+
+    expect(container.querySelector('[data-testid="haken-weggefallen"]')).not.toBeNull();
+    const text = sichtbarerText();
+    expect(text).toContain("1 gesetzter Haken ist weggefallen");
+    expect(text).toContain("gehört nicht mehr zur aktuellen Eingrenzung");
+    // Die verbliebene Zeile ist weiter angehakt — der Satz spricht über HAKEN, nicht über Treffer.
+    expect(zeilenHaken(SEITE_ZWEIT.title).checked).toBe(true);
+    expect(await abgeschickteIds()).toEqual([SEITE_ZWEIT.id]);
+
+    // Und er beschreibt GENAU EINEN Übergang: die nächste Antwort ohne Wegfall löst ihn ab.
+    await klicken(i18n.t("imp.select.previewAgain"));
+    expect(container.querySelector('[data-testid="haken-weggefallen"]')).toBeNull();
+  });
+
+  it("RAHMENWECHSEL ÜBERTRÄGT NICHTS: dort war Anhaken nie erlaubt", async () => {
+    // Die gerahmte Antwort trägt DIESELBEN Einträge — was hier gilt, entscheidet also allein der
+    // Rahmenwechsel, nicht eine andere Liste.
+    await vorschauOffen([SEITE_BEKANNT, SEITE_ZWEIT], [SEITE_BEKANNT, SEITE_ZWEIT]);
+
+    await hakenKlicken(SEITE_BEKANNT.title); // an
+    await hakenKlicken(SEITE_ZWEIT.title); // aus
+
+    await rahmenSetzen(FIRMA);
+    await nachDemNachladen();
+
+    // Für ALLE Zeilen gilt wieder die Vorgabe — in beide Richtungen.
+    expect(zeilenHaken(SEITE_BEKANNT.title).checked).toBe(false);
+    expect(zeilenHaken(SEITE_ZWEIT.title).checked).toBe(true);
+    // Und es gibt nichts zu betrauern: kein Eintrag ist weggefallen, kein Satz steht da.
+    expect(container.querySelector('[data-testid="haken-weggefallen"]')).toBeNull();
+    expect(await abgeschickteIds()).toEqual([SEITE_ZWEIT.id]);
+  });
+
+  it("VERSPÄTETE ALTE ANTWORT ÜBERTRÄGT NICHTS: weder Auswahl noch Satz", async () => {
+    await vorschauOffen([SEITE_BEKANNT, SEITE_ZWEIT], [SEITE_ZWEIT]);
+    await hakenKlicken(SEITE_BEKANNT.title);
+
+    // Eine Auffrischung der ALTEN Eingrenzung ist noch unterwegs, als der Chip gesetzt wird.
+    const spaet = offen<Record<string, unknown>>();
+    selectMock.mockImplementationOnce(async () => spaet.versprechen);
+    await klicken(i18n.t("imp.select.previewAgain"));
+
+    await chipKlicken(THEMA);
+    await nachDemNachladen();
+    expect(sichtbarerText()).toContain("1 gesetzter Haken ist weggefallen");
+
+    // Jetzt kommt die überholte Antwort an — sie darf nichts davon anfassen.
+    await act(async () => {
+      spaet.aufloesen({
+        matched: 2,
+        limited: false,
+        truncated: false,
+        criteria: {},
+        preview: [SEITE_BEKANNT, SEITE_ZWEIT],
+      });
+      await flush();
+    });
+    await act(flush);
+
+    const text = sichtbarerText();
+    expect(text).not.toContain(SEITE_BEKANNT.title);
+    expect(text).toContain(SEITE_ZWEIT.title);
+    expect(text).toContain("1 gesetzter Haken ist weggefallen");
+    expect(await abgeschickteIds()).toEqual([SEITE_ZWEIT.id]);
+  });
+
+  it("HAKEN WÄHREND DER ANFRAGE: auch was nach dem Absenden angehakt wird, überlebt", async () => {
+    // Das Fenster ist nicht mit dem Absenden zu Ende: bis die Antwort da ist, steht die alte Liste
+    // weiter da und die Fläche erlaubt das Anhaken weiter. Ein Schnappschuss der Haken vom
+    // ANFRAGESTART verlöre genau diese Klicks — dieser Fall hält das fest.
+    await vorschauOffen([SEITE_BEKANNT, SEITE_ZWEIT], [SEITE_BEKANNT, SEITE_ZWEIT]);
+
+    const unterwegs = offen<Record<string, unknown>>();
+    selectMock.mockImplementationOnce(async () => unterwegs.versprechen);
+
+    vi.useFakeTimers();
+    await chipKlicken(THEMA);
+    const aufrufeVorher = selectMock.mock.calls.length;
+    await nachDemNachladen();
+    // Die Anfrage ist RAUS und hängt — genau dort hakt der Mensch jetzt an.
+    expect(selectMock.mock.calls.length).toBe(aufrufeVorher + 1);
+    await hakenKlicken(SEITE_BEKANNT.title);
+    expect(zeilenHaken(SEITE_BEKANNT.title).checked).toBe(true);
+
+    await act(async () => {
+      unterwegs.aufloesen({
+        matched: 2,
+        limited: false,
+        truncated: false,
+        criteria: { themes: [THEMA] },
+        preview: [SEITE_BEKANNT, SEITE_ZWEIT],
+      });
+      await flush();
+    });
+    await act(flush);
+
+    expect(zeilenHaken(SEITE_BEKANNT.title).checked).toBe(true);
+    expect(await abgeschickteIds()).toEqual([SEITE_BEKANNT.id, SEITE_ZWEIT.id]);
+  });
+
+  // ==============================================================================================
+  // RUNDE 2 (BENS KORREKTURPFLICHT 1) · EIN GEMESSENER WEGFALL IST KEINE AUSSAGE FÜR IMMER.
+  // ==============================================================================================
+  //
+  // BENS BEFUND, wörtlich: „Zwei Haken → Chip setzen → ein Haken fällt weg → Chip entfernen →
+  // Nachladen scheitert. Trotzdem steht weiterhin ‚sein Eintrag gehört nicht mehr zur aktuellen
+  // Eingrenzung‘. Diese Eingrenzung wurde gerade nicht erfolgreich geprüft."
+  //
+  // DIE ZAHL BLEIBT, DIE BEHAUPTUNG WIRD SCHWÄCHER — beides gehört zusammen: gemessen ist der
+  // Wegfall (LEHREN §7: eine misslungene Auffrischung löscht keine erhobene Auskunft), aber er
+  // wurde gegen die Eingrenzung gemessen, mit der die Liste darunter geholt wurde. Steht die nicht
+  // mehr zur Gegenwart (`kriterienVeraltet`), hängt die starke Aussage an einer Voraussetzung, die
+  // gerade fehlt — dann steht die schwächere da.
+  it("ZWEITER WECHSEL, GESCHEITERTES NACHLADEN: der Wegfall-Satz behauptet nichts über die ungeprüfte Eingrenzung", async () => {
+    await vorschauOffen([SEITE_ZWEIT, SEITE_DRITT], [SEITE_ZWEIT]);
+
+    vi.useFakeTimers();
+    await chipKlicken(THEMA);
+    await nachDemNachladen();
+    // Hier ist die starke Aussage RICHTIG: sie wurde gegen genau die Eingrenzung gemessen, die
+    // jetzt gilt.
+    expect(container.querySelector('[data-testid="haken-weggefallen"]')?.textContent).toContain(
+      "gehört nicht mehr zur aktuellen Eingrenzung",
+    );
+
+    // Jetzt nimmt der Mensch den Chip wieder weg — und das Nachladen scheitert.
+    selectMock.mockRejectedValue(new Error("Netz weg"));
+    await chipKlicken(THEMA);
+    await nachDemNachladen();
+
+    const satz = container.querySelector('[data-testid="haken-weggefallen"]');
+    expect(satz).not.toBeNull();
+    // Die erhobene Zahl steht weiter da …
+    expect(satz?.textContent).toContain("1 gesetzter Haken ist weggefallen");
+    // … aber nicht mehr als Auskunft über eine Eingrenzung, die niemand geholt hat.
+    expect(satz?.textContent).not.toContain("gehört nicht mehr zur aktuellen Eingrenzung");
+    expect(satz?.textContent).toContain("Zur jetzt eingestellten Eingrenzung sagt das nichts");
+
+    // Auswahl und Sperren bleiben unangetastet — der Satz ändert nichts an der Lage.
+    expect(zeilenHaken(SEITE_ZWEIT.title).checked).toBe(true);
+    expect(container.querySelector('[data-testid="eingrenzung-gewechselt"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="eingrenzung-gruppen-gesperrt"]')).not.toBeNull();
+    await uebernahmeDruecken();
+    expect(applyMock.mock.calls).toEqual([]);
+  });
+
+  it("ZWEITER WECHSEL, ANGEHALTENES NACHLADEN: derselbe Satz wartet — und die frische Antwort löst ihn ab", async () => {
+    await vorschauOffen([SEITE_ZWEIT, SEITE_DRITT], [SEITE_ZWEIT]);
+
+    vi.useFakeTimers();
+    await chipKlicken(THEMA);
+    await nachDemNachladen();
+    expect(container.querySelector('[data-testid="haken-weggefallen"]')?.textContent).toContain(
+      "gehört nicht mehr zur aktuellen Eingrenzung",
+    );
+
+    // Der zweite Wechsel, und die Anfrage dazu ist noch nicht einmal losgelaufen (350-ms-Fenster,
+    // die Zeit steht). Es gibt also nichts Gemessenes über die jetzt eingestellte Eingrenzung.
+    const aufrufeVorher = selectMock.mock.calls.length;
+    setValue(zahlenFeld(i18n.t("imp.select.yearFrom")), "2024");
+    await act(flush);
+    expect(selectMock.mock.calls.length).toBe(aufrufeVorher);
+
+    const satz = container.querySelector('[data-testid="haken-weggefallen"]');
+    expect(satz?.textContent).not.toContain("gehört nicht mehr zur aktuellen Eingrenzung");
+    expect(satz?.textContent).toContain("Zur jetzt eingestellten Eingrenzung sagt das nichts");
+
+    // Keine Sackgasse: die frische Antwort misst neu. Sie bringt keinen Wegfall — der Satz ist fort.
+    await nachDemNachladen();
+    expect(letzterSelect().criteria).toEqual({ themes: [THEMA], yearFrom: 2024 });
+    expect(container.querySelector('[data-testid="haken-weggefallen"]')).toBeNull();
+    expect(zeilenHaken(SEITE_ZWEIT.title).checked).toBe(true);
+  });
+
+  it("EN und NL: auch die schwächere Fassung steht in allen drei Sprachen da", async () => {
+    const FASSUNGEN = [
+      {
+        sprache: "en",
+        stark: "its entry no longer belongs to the current narrowing",
+        schwach: "says nothing about the narrowing set now",
+      },
+      {
+        sprache: "nl",
+        stark: "hoort niet meer bij de huidige afbakening",
+        schwach: "Over de nu ingestelde afbakening zegt dat niets",
+      },
+    ] as const;
+    for (const fassung of FASSUNGEN) {
+      await i18n.changeLanguage(fassung.sprache);
+      try {
+        await vorschauOffen([SEITE_ZWEIT, SEITE_DRITT], [SEITE_ZWEIT]);
+        vi.useFakeTimers();
+        await chipKlicken(THEMA);
+        await nachDemNachladen();
+        expect(container.querySelector('[data-testid="haken-weggefallen"]')?.textContent).toContain(
+          fassung.stark,
+        );
+
+        selectMock.mockRejectedValue(new Error("network gone"));
+        await chipKlicken(THEMA);
+        await nachDemNachladen();
+        const satz = container.querySelector('[data-testid="haken-weggefallen"]');
+        expect(satz).not.toBeNull();
+        expect(satz?.textContent).not.toContain(fassung.stark);
+        expect(satz?.textContent).toContain(fassung.schwach);
+      } finally {
+        vi.useRealTimers();
+        await unmount();
+        await i18n.changeLanguage("de");
+      }
+    }
+  });
+
+  it("EN und NL: der Wegfall-Satz steht in allen drei Sprachen da", async () => {
+    const FASSUNGEN = [
+      { sprache: "en", satz: "1 tick you had set has fallen away" },
+      { sprache: "nl", satz: "1 gezet vinkje is vervallen" },
+    ] as const;
+    for (const fassung of FASSUNGEN) {
+      await i18n.changeLanguage(fassung.sprache);
+      try {
+        await vorschauOffen([SEITE_ZWEIT, SEITE_DRITT], [SEITE_ZWEIT]);
+        vi.useFakeTimers();
+        await chipKlicken(THEMA);
+        await nachDemNachladen();
+        expect(container.querySelector('[data-testid="haken-weggefallen"]')).not.toBeNull();
+        expect(sichtbarerText()).toContain(fassung.satz);
+      } finally {
+        vi.useRealTimers();
+        await unmount();
+        await i18n.changeLanguage("de");
+      }
+    }
+  });
+});

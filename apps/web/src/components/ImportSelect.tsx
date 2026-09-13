@@ -187,6 +187,25 @@ const RAHMEN_TEXTE_DE = {
     "Die Vorschau zur aktuellen Eingrenzung konnte nicht geholt werden. Die Trefferzahl darüber und die Liste darunter gehören weiter zur Eingrenzung davor; Gruppieren und Übernehmen bleiben gesperrt, bis die Vorschau zur aktuellen Eingrenzung passt. „Vorschau aktualisieren“ versucht es erneut.",
   "imp.eingrenzung.gruppenGesperrt":
     "Gruppieren und Übernehmen stehen erst wieder bereit, wenn die Vorschau zur aktuellen Eingrenzung passt — was hier steht, gehört zur Eingrenzung davor.",
+  // JOB 3799: gesetzte Haken überleben das Nachladen (s. `uebertrageAuswahl`). Wo das nicht geht,
+  // weil der Eintrag in der neuen Antwort fehlt, sagt es die Fläche mit der ZAHL statt stumm zu
+  // sein. Der Satz behauptet nichts über die Liste: es fehlen Haken, keine Treffer — deshalb der
+  // zweite Halbsatz. Plural wie `imp.rahmen.umfang_one/_other`; die Einzahl nennt die „1"
+  // ausdrücklich mit, damit die Zahl in beiden Fällen dasteht.
+  "imp.eingrenzung.hakenWeggefallen_one":
+    "1 gesetzter Haken ist weggefallen: sein Eintrag gehört nicht mehr zur aktuellen Eingrenzung. An der Trefferliste selbst fehlt nichts.",
+  "imp.eingrenzung.hakenWeggefallen_other":
+    "{{count}} gesetzte Haken sind weggefallen: ihre Einträge gehören nicht mehr zur aktuellen Eingrenzung. An der Trefferliste selbst fehlt nichts.",
+  // JOB 3799 Runde 2 (BEN-Korrekturpflicht 1): DIESELBE ZAHL, OHNE DIE AUSSAGE ÜBER DIE GEGENWART.
+  // Der Wegfall ist gemessen — gegen die Eingrenzung, mit der die Liste darunter geholt wurde. Hat
+  // der Mensch danach erneut eingegrenzt (Nachladen unterwegs, gescheitert oder noch im 350-ms-
+  // Fenster), ist über die JETZT eingestellte Eingrenzung nichts geprüft. Die Zahl bleibt stehen
+  // (LEHREN §7: eine misslungene Auffrischung löscht keine erhobene Auskunft), die Behauptung wird
+  // schwächer — eine Tatsachenaussage hängt an ihrer Voraussetzung.
+  "imp.eingrenzung.hakenWeggefallenVeraltet_one":
+    "1 gesetzter Haken ist weggefallen: sein Eintrag gehörte nicht mehr zu der Eingrenzung, mit der die Liste darunter geholt wurde. Zur jetzt eingestellten Eingrenzung sagt das nichts — deren Vorschau steht noch aus.",
+  "imp.eingrenzung.hakenWeggefallenVeraltet_other":
+    "{{count}} gesetzte Haken sind weggefallen: ihre Einträge gehörten nicht mehr zu der Eingrenzung, mit der die Liste darunter geholt wurde. Zur jetzt eingestellten Eingrenzung sagt das nichts — deren Vorschau steht noch aus.",
 };
 
 const RAHMEN_TEXTE_EN: typeof RAHMEN_TEXTE_DE = {
@@ -230,6 +249,14 @@ const RAHMEN_TEXTE_EN: typeof RAHMEN_TEXTE_DE = {
     "The preview for the current narrowing could not be fetched. The hit count above and the list below still belong to the previous narrowing; grouping and importing stay locked until the preview matches the current narrowing. “Refresh preview” tries again.",
   "imp.eingrenzung.gruppenGesperrt":
     "Grouping and importing become available again once the preview matches the current narrowing — what stands here belongs to the previous narrowing.",
+  "imp.eingrenzung.hakenWeggefallen_one":
+    "1 tick you had set has fallen away: its entry no longer belongs to the current narrowing. Nothing is missing from the hit list itself.",
+  "imp.eingrenzung.hakenWeggefallen_other":
+    "{{count}} ticks you had set have fallen away: their entries no longer belong to the current narrowing. Nothing is missing from the hit list itself.",
+  "imp.eingrenzung.hakenWeggefallenVeraltet_one":
+    "1 tick you had set has fallen away: its entry no longer belonged to the narrowing the list below was fetched with. That says nothing about the narrowing set now — its preview is still outstanding.",
+  "imp.eingrenzung.hakenWeggefallenVeraltet_other":
+    "{{count}} ticks you had set have fallen away: their entries no longer belonged to the narrowing the list below was fetched with. That says nothing about the narrowing set now — its preview is still outstanding.",
 };
 
 const RAHMEN_TEXTE_NL: typeof RAHMEN_TEXTE_DE = {
@@ -274,6 +301,14 @@ const RAHMEN_TEXTE_NL: typeof RAHMEN_TEXTE_DE = {
     "Het voorbeeld voor de huidige afbakening kon niet worden opgehaald. Het aantal treffers hierboven en de lijst hieronder horen nog steeds bij de vorige afbakening; groeperen en overnemen blijven geblokkeerd totdat het voorbeeld bij de huidige afbakening past. „Voorbeeld verversen“ probeert het opnieuw.",
   "imp.eingrenzung.gruppenGesperrt":
     "Groeperen en overnemen zijn pas weer beschikbaar als het voorbeeld bij de huidige afbakening past — wat hier staat, hoort bij de vorige afbakening.",
+  "imp.eingrenzung.hakenWeggefallen_one":
+    "1 gezet vinkje is vervallen: de bijbehorende pagina hoort niet meer bij de huidige afbakening. Aan de trefferlijst zelf ontbreekt niets.",
+  "imp.eingrenzung.hakenWeggefallen_other":
+    "{{count}} gezette vinkjes zijn vervallen: de bijbehorende pagina's horen niet meer bij de huidige afbakening. Aan de trefferlijst zelf ontbreekt niets.",
+  "imp.eingrenzung.hakenWeggefallenVeraltet_one":
+    "1 gezet vinkje is vervallen: de bijbehorende pagina hoorde niet meer bij de afbakening waarmee de lijst hieronder is opgehaald. Over de nu ingestelde afbakening zegt dat niets — het voorbeeld daarvoor ontbreekt nog.",
+  "imp.eingrenzung.hakenWeggefallenVeraltet_other":
+    "{{count}} gezette vinkjes zijn vervallen: de bijbehorende pagina's hoorden niet meer bij de afbakening waarmee de lijst hieronder is opgehaald. Over de nu ingestelde afbakening zegt dat niets — het voorbeeld daarvoor ontbreekt nog.",
 };
 
 /**
@@ -292,6 +327,82 @@ export function registriereRahmenTexte(): void {
 }
 
 registriereRahmenTexte();
+
+// ================================================================================================
+// JOB 3799 · EIN HAKEN, DEN EIN MENSCH GESETZT HAT, ÜBERLEBT DAS NACHLADEN.
+// ================================================================================================
+//
+// WAS BIS HIERHER GALT: jede erfolgreiche Antwort baute `checkedRows` neu aus der Vorgabe
+// (`alreadyImported !== true && alreadyQueued !== true`). Im 350-ms-Fenster ist das ein gebrochenes
+// Versprechen: die Fläche sagt dort ausdrücklich „anhaken und abwählen bleiben möglich"
+// (`imp.eingrenzung.wechselLaeuft`), und 350 ms später war die Entscheidung ohne ein Wort fort.
+//
+// ÜBERTRAGEN WIRD ÜBER `entry.id` UND NIEMALS ÜBER DEN INDEX. `checkedRows` ist ein `boolean[]`
+// über den Originalindex der ANGEZEIGTEN Vorschau; die neue Antwort ist eine ANDERE Liste — andere
+// Länge, andere Reihenfolge. Index 2 der alten und Index 2 der neuen Antwort sind zwei verschiedene
+// Seiten: ein Übertragen per Index wäre keine Rettung, sondern setzte Haken auf fremde Seiten. Die
+// einzige belastbare Identität ist `entry.id` — dieselbe, mit der die Auswahl abgeschickt wird
+// (`selectedCandidateIds`).
+//
+// WO DIE IDENTITÄT FEHLT, WIRD NICHT GERATEN: ein Eintrag ohne `id` bekommt die Vorgabe. Vergessen
+// ist hier besser als verwechseln — und ein Haken ohne `id` könnte ohnehin nichts abschicken, der
+// Absendeweg lässt ihn fallen (`checkedRows[index] === true && entry.id`). Aus demselben Grund zählt
+// ein solcher Haken auch nicht als „weggefallen": an der Übernahme ändert sein Verlust nichts.
+
+/** Das Ergebnis einer Übertragung: die neuen Haken und was dabei nicht mitkam. */
+interface Auswahluebertrag {
+  haken: boolean[];
+  /** Angehakte Einträge der alten Antwort, deren `id` in der neuen nicht mehr vorkommt. */
+  weggefallen: number;
+}
+
+// WP-SHIP9-S1b: auch Vorgemerktes startet abgewählt (Queue-Schutz), bleibt aber anwählbar.
+function vorgabeHaken(entry: ImportPreviewEntry): boolean {
+  return entry.alreadyImported !== true && entry.alreadyQueued !== true;
+}
+
+/**
+ * Die Auswahl der ANGEZEIGTEN Antwort auf die NEUE Antwort übertragen.
+ *
+ * `uebertragen: false` ist der Rahmenwechsel (§ `rahmenVeraltet`): dort war das Anhaken nie erlaubt
+ * (`toggleRow` steigt aus), es gibt also keine Menschenentscheidung, die zu retten wäre — und die
+ * Ausschließlichkeits-Zusage des Rahmens duldet keine Auswahl, die zu einem anderen Rahmen gehört.
+ * `alteEintraege === null` ist die erste Antwort überhaupt. Beide Fälle sind die Vorgabe, wie bisher.
+ */
+function uebertrageAuswahl(
+  alteEintraege: readonly ImportPreviewEntry[] | null,
+  alteHaken: readonly boolean[],
+  neueEintraege: readonly ImportPreviewEntry[],
+  uebertragen: boolean,
+): Auswahluebertrag {
+  if (!uebertragen || alteEintraege === null) {
+    return { haken: neueEintraege.map(vorgabeHaken), weggefallen: 0 };
+  }
+  // Der alte Stand, nach Identität statt nach Platz. Käme eine `id` doppelt vor, gilt der zuletzt
+  // gelesene Zustand — unterscheiden liesse sie sich ohnehin nicht.
+  const alterStand = new Map<string, boolean>();
+  alteEintraege.forEach((entry, index) => {
+    if (entry.id) {
+      alterStand.set(entry.id, alteHaken[index] === true);
+    }
+  });
+  const neueIds = new Set(neueEintraege.flatMap((entry) => (entry.id ? [entry.id] : [])));
+  let weggefallen = 0;
+  for (const [id, angehakt] of alterStand) {
+    if (angehakt && !neueIds.has(id)) {
+      weggefallen += 1;
+    }
+  }
+  return {
+    haken: neueEintraege.map((entry) => {
+      // Kein `??`-Kurzschluss über `false`: ein bewusst ABGEWÄHLTER Eintrag trägt `false`, und das
+      // ist dieselbe Menschenentscheidung wie ein Haken (sie verhindert einen ungewollten Import).
+      const vorher = entry.id !== undefined ? alterStand.get(entry.id) : undefined;
+      return vorher ?? vorgabeHaken(entry);
+    }),
+    weggefallen,
+  };
+}
 
 // ================================================================================================
 // JOB 3640 · DER VORFÜHRRAHMEN BINDET AUCH DIESEN SCHRITT.
@@ -344,6 +455,23 @@ export function ImportSelect({
   // WP-IC-PAKET-1 (Teil 4): Auswahl-Zustand je Vorschau-Zeile — Standard: alles an, AUSSER bereits
   // importierte Einträge (Doppel-Import vermeiden); bewusstes Wieder-Anwählen bleibt möglich.
   const [checkedRows, setCheckedRows] = useState<boolean[]>([]);
+  // JOB 3799: DERSELBE Auswahlzustand, nur als Spiegel — wie `mutateRef` weiter unten. Die
+  // Übertragung im Erfolgszweig braucht die Haken so, wie sie beim EINTREFFEN der Antwort dastehen,
+  // nicht so, wie sie beim Anfragestart dastanden: dazwischen liegt die Anfragezeit, und die Fläche
+  // erlaubt das Anhaken dort ausdrücklich weiter (`imp.eingrenzung.wechselLaeuft`). Kein zweiter
+  // Auswahlzustand — der Spiegel führt keinen eigenen Wert, er zeigt denselben.
+  const checkedRowsRef = useRef<readonly boolean[]>(checkedRows);
+  checkedRowsRef.current = checkedRows;
+  // JOB 3799: WIE VIELE GESETZTE HAKEN die letzte erfolgreiche Antwort nicht übernehmen konnte,
+  // weil ihre Einträge nicht mehr vorkommen. 0 = dazu ist nichts zu sagen. Der Wert beschreibt
+  // GENAU EINEN Übergang und wird von jeder erfolgreichen Antwort neu gesetzt (auch auf 0). Ein
+  // gescheitertes Nachladen setzt ihn NICHT zurück: der Wegfall ist gemessen und die Haken fehlen
+  // weiterhin — eine misslungene Auffrischung löscht keine erhobene Auskunft (LEHREN §7).
+  // RUNDE 2: die ZAHL ist damit zeitlos, ihre AUSSAGE nicht. Gegen welche Eingrenzung sie gemessen
+  // wurde, führt `previewKriterien` mit; ob diese noch die gegenwärtige ist, beantwortet die eine
+  // Zeile `kriterienVeraltet`. Welcher der beiden Sätze dasteht, entscheidet deshalb dort unten die
+  // Anzeige — kein zweiter Veraltungsbegriff und kein zweiter Zustand daneben.
+  const [hakenWeggefallen, setHakenWeggefallen] = useState(0);
   // WP-IC-PAKET-1b (bens ROT-3): die angezeigte Vorschau liegt in EIGENEM State und wird NUR vom
   // latest-wins-Guard gesetzt — select.data (letzte SETTLED Mutation) könnte eine ältere, später
   // fertig gewordene Antwort sein und Vorschau + checkedRows rückwärts überschreiben.
@@ -475,6 +603,8 @@ export function ImportSelect({
       gesendeterSatz: string;
       gesendeterRahmen: string | null;
       gesendeteKriterien: string;
+      vorherigeAntwort: ImportSelectResponse | null;
+      vorherigerRahmen: string | null;
     },
     unknown,
     // `undefined` = „wie bisher" (Satz + Klick-Filter); nur der Titelweg reicht eine fertige
@@ -503,6 +633,13 @@ export function ImportSelect({
       // nicht). Ihn hier als „gehört zu keiner Eingrenzung" zu vermerken hiesse, den Titelweg
       // dauerhaft zu sperren — die Sperre soll den Menschen schützen, nicht seinen Knopf abschaffen.
       const gesendeteKriterien = criteriaKey;
+      // JOB 3799: DIE ANTWORT, DIE BEIM START DIESER ANFRAGE AUF DER FLÄCHE STAND — und der Rahmen,
+      // zu dem sie gehörte. Aus ihr kommt die Identität (`entry.id`) der Haken, die übertragen
+      // werden, und aus dem Rahmenvergleich die Frage, ob überhaupt übertragen werden darf. Derselbe
+      // Schnappschuss-Weg wie bei Satz, Rahmen und Kriterien darüber, aus demselben Grund: beide
+      // können sich ändern, während die Anfrage unterwegs ist.
+      const vorherigeAntwort = preview;
+      const vorherigerRahmen = previewRahmen;
       const data = await endpoints.admin.import.select({
         prompt: gesendeterSatz,
         criteria: override ?? buildCriteria(),
@@ -511,9 +648,25 @@ export function ImportSelect({
         // WP-VIP2-GATE-2 (bens Fix 1): die Eigeneinstufung reist IMMER mit (Pflichtfeld).
         promptConfidential,
       });
-      return { requestId, data, gesendeterSatz, gesendeterRahmen, gesendeteKriterien };
+      return {
+        requestId,
+        data,
+        gesendeterSatz,
+        gesendeterRahmen,
+        gesendeteKriterien,
+        vorherigeAntwort,
+        vorherigerRahmen,
+      };
     },
-    onSuccess: ({ requestId, data, gesendeterSatz, gesendeterRahmen, gesendeteKriterien }) => {
+    onSuccess: ({
+      requestId,
+      data,
+      gesendeterSatz,
+      gesendeterRahmen,
+      gesendeteKriterien,
+      vorherigeAntwort,
+      vorherigerRahmen,
+    }) => {
       if (!latestRef.current.isCurrent(requestId)) {
         return; // ältere Antwort — verwerfen, die neuere Vorschau bleibt stehen
       }
@@ -521,10 +674,20 @@ export function ImportSelect({
       setPreviewPrompt(gesendeterSatz);
       setPreviewRahmen(gesendeterRahmen);
       setPreviewKriterien(gesendeteKriterien);
-      // WP-SHIP9-S1b: auch Vorgemerktes startet abgewählt (Queue-Schutz), bleibt aber anwählbar.
-      setCheckedRows(
-        data.preview.map((entry) => entry.alreadyImported !== true && entry.alreadyQueued !== true),
+      // JOB 3799: DIE EINZIGE STELLE, DIE `checkedRows` AUS EINER ANTWORT SETZT. Übertragen wird
+      // über `entry.id`, nie über den Index (Begründung an `uebertrageAuswahl`); die Vorgabe lebt
+      // weiter, aber nur noch als der Fall „es gibt nichts zu übertragen": erste Antwort, fehlende
+      // `id`, gewechselter Rahmen. Sie steht damit auch weiterhin GENAU hier, nicht als zweiter Weg
+      // daneben. Der ganze Block hängt am latest-wins-Zweig oben — eine verspätete ältere Antwort
+      // überträgt weder Auswahl noch Wegfall-Satz.
+      const uebertrag = uebertrageAuswahl(
+        vorherigeAntwort?.preview ?? null,
+        checkedRowsRef.current,
+        data.preview,
+        vorherigerRahmen === gesendeterRahmen,
       );
+      setCheckedRows(uebertrag.haken);
+      setHakenWeggefallen(uebertrag.weggefallen);
     },
   });
 
@@ -1020,6 +1183,36 @@ export function ImportSelect({
               {select.isError
                 ? t("imp.eingrenzung.wechselFehler")
                 : t("imp.eingrenzung.wechselLaeuft")}
+            </p>
+          ) : null}
+
+          {/* JOB 3799: WAS NICHT ÜBERTRAGEN WERDEN KONNTE, WIRD GESAGT — mit der ZAHL, nicht mit
+              einer Ahnung. Der Satz steht NEBEN den beiden Sätzen darüber und nicht in ihnen: die
+              beschreiben, wozu die angezeigte Liste gehört, dieser beschreibt, was beim ÜBERGANG
+              zur angezeigten Liste mit der Auswahl geschah. Er erscheint deshalb auch dann, wenn
+              die Vorschau wieder zur Gegenwart passt (dort ist er sogar der Normalfall), und er
+              erscheint nie bei 0 und nie als Vorhersage: gezählt wird erst, wenn die neue Antwort
+              da ist. Der Rahmenwechsel erzeugt ihn nicht — dort war Anhaken nie erlaubt, es gibt
+              nichts zu betrauern (s. `uebertrageAuswahl`).
+
+              RUNDE 2 (BENS KORREKTURPFLICHT 1): ER HÄNGT AN DER ANTWORT, GEGEN DIE ER GEMESSEN
+              WURDE. „Gehört nicht mehr zur aktuellen Eingrenzung" ist genau so lange wahr, wie die
+              angezeigte Antwort DIE aktuelle Eingrenzung ist. Grenzt der Mensch danach erneut ein
+              (`kriterienVeraltet`: Fenster offen, Nachladen unterwegs oder gescheitert), ist über
+              die jetzt eingestellte Eingrenzung nichts geprüft — dann steht die schwächere Fassung
+              da. Die ZAHL bleibt in beiden Fällen dieselbe und wird nicht gelöscht: sie ist erhoben,
+              und die Haken fehlen wirklich. Es ist derselbe Gedanke wie eine Zeile darüber beim
+              Trefferzahl-Satz und wie am Titelbefund (`titleFallbackGrund`) — eine Tatsachenaussage
+              hängt an ihrer Voraussetzung, und fehlt die, steht die schwächere da, nicht die
+              starke. */}
+          {hakenWeggefallen > 0 ? (
+            <p
+              data-testid="haken-weggefallen"
+              className="mt-1.5 rounded-btn bg-trust-warn-bg px-3 py-2 text-[12px] text-trust-warn-text"
+            >
+              {kriterienVeraltet
+                ? t("imp.eingrenzung.hakenWeggefallenVeraltet", { count: hakenWeggefallen })
+                : t("imp.eingrenzung.hakenWeggefallen", { count: hakenWeggefallen })}
             </p>
           ) : null}
 
