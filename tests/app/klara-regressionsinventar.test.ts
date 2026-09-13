@@ -28,16 +28,23 @@ import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const WURZEL = join(__dirname, "..", "..");
+// JOB 3781 · WARUM `extensions` HIER NICHT STEHT, OBWOHL DIE SIEBTE ACHSE UEBER DIE ERWEITERUNG
+// redet: dieser Sammler sucht TESTdateien (`*.test.ts(x)`), und die liegen im ganzen Baum
+// ausschliesslich unter diesen drei Flaechen — gemessen, nicht angenommen: ein `find` ueber den
+// Baum (ohne `node_modules`) findet KEINE einzige Testdatei ausserhalb von `tests/`, `services/`
+// und `apps/`, unter `extensions/` insbesondere keine. Die Erweiterung wird also nicht deshalb
+// gefunden, weil ihr Paket durchsucht wuerde, sondern weil die Pruefungen, die sie laden, ihre
+// Bauteile im Text nennen. `extensions` hier aufzunehmen aenderte an der Menge nichts.
 const FLAECHEN = ["tests", "services", "apps"];
 
 /**
- * Die eigene Datei nimmt sich aus: sie nennt die Suchbegriffe aller sechs Achsen als DATEN und
+ * Die eigene Datei nimmt sich aus: sie nennt die Suchbegriffe aller sieben Achsen als DATEN und
  * wuerde sich sonst selbst einsammeln. Genau eine Ausnahme, hier benannt, in K6 dagegen kalibriert.
  */
 const SELBST = "tests/app/klara-regressionsinventar.test.ts";
 
 // ------------------------------------------------------------------------------------------------
-// DIE SECHS ACHSEN. Fuenf semantische (Inhalt) plus die Dateinamenssuche des D2-Verfahrens (Pfad).
+// DIE SIEBEN ACHSEN. Sechs semantische (Inhalt) plus die Dateinamenssuche des D2-Verfahrens (Pfad).
 // ------------------------------------------------------------------------------------------------
 //
 // `positiv` und `gegenprobe` sind BENs Prüflücke 2: Ohne die Positivdatei kann die Achse nicht
@@ -103,6 +110,40 @@ const ACHSEN: Achse[] = [
     muster: /themes\.css|--ai:|Farbdrift|palette/,
     zweck: "Palette und Farbtreue: Klara schreibt die Werkbank-Palette ein zweites Mal auf.",
     positiv: "tests/app/contrast-tokens-d5.test.ts",
+    gegenprobe: "tests/app/word-addin.test.ts",
+  },
+  // ----------------------------------------------------------------------------------------------
+  // JOB 3781 — DIE SIEBTE ACHSE. Sie schliesst die Luecke, die der Kommentar zu
+  // `panel-marke.test.ts` weiter unten seit JOB 3512 namentlich offen fuehrte.
+  // ----------------------------------------------------------------------------------------------
+  // DAS MUSTER IST GEMESSEN, NICHT GERATEN. Drei Fassungen wurden am Baum durchgerechnet (1876
+  // Testdateien, Menge der sechs Achsen: 177):
+  //   · `/extensions\/klara-browser/` allein — 11 Treffer, davon 2 neu. Sie findet
+  //     `panel-marke.test.ts` NICHT: jene Datei laedt die Leiste ueber `../klara-browser/panel-dom`
+  //     und nennt den Paketpfad nirgends. Damit bliebe der Auslöser dieses Auftrags ungedeckt.
+  //   · `/panel/` — 114 Treffer, davon 54 neu: Editorblöcke, Modalflaechen, Wissensstudio,
+  //     Sanitizing. Das ist keine Klara-Regressionsmenge mehr, sondern die halbe Web-App. Genau
+  //     diese Aufweitung ist die Gegenprobe C dieses Auftrags.
+  //   · die hier stehende Fassung — 20 Treffer, davon 6 neu, und jeder der sechs Neuzugaenge redet
+  //     nachweislich ueber die Erweiterung (Belege an den Inventareintraegen unten).
+  // WARUM SIE NICHT ZU WEIT IST: sie sucht DATEINAMEN mit Endung, keine Woerter. `panel` als
+  // CSS-Klasse, als React-Bauteil (`KlaraPanel` — dafuer ist `komponente` da) oder als deutsches
+  // Wort trifft sie nicht; nur `panel.html`, `panel.js`, `panel.css`, `worker.js` und der Paketpfad
+  // selbst. `panel.css` traegt heute 0 Dateien ALLEIN bei (`schnitt-pins.test.ts` nennt es, kommt
+  // aber schon ueber `name` herein) und bleibt trotzdem drin: es ist ein Bauteil der Leiste, und die
+  // Achse soll das Paket beschreiben, nicht die heutige Trefferliste.
+  // NICHT AUFGENOMMEN, WEIL GEMESSEN WIRKUNGSLOS: `i18n.js` und `selection.js` — beide Bauteile,
+  // beide ohne einen einzigen zusaetzlichen Treffer. K7 prueft sie trotzdem mit, und zwar am echten
+  // Paketinhalt statt an dieser Liste.
+  {
+    kennung: "erweiterung",
+    wo: "inhalt",
+    muster: /extensions\/klara-browser|panel\.(html|js|css)|worker\.js/,
+    zweck:
+      "Die Chrome-Erweiterung an ihren Bauteilen statt an ihrem Verzeichnisnamen. Noetig, weil die " +
+      "Namensachse nur den PFAD liest: eine Pruefung, die die Leiste wirklich laedt, aber nicht " +
+      "unter einem „klara“-Pfad liegt, fiel bis JOB 3781 aus der Regressionsmenge heraus.",
+    positiv: "tests/demo-firmen-ci-verbraucher/panel-marke.test.ts",
     gegenprobe: "tests/app/word-addin.test.ts",
   },
 ];
@@ -766,14 +807,17 @@ const INVENTAR: readonly string[] = [
   //     es als Drift-Waechter ueber die Bauform. Beide kommen ueber die Inhaltsachse `taskpane`
   //     herein; „klara" steht in keinem der Pfade — der Verzeichnisname war im Auftrag (§4)
   //     abschliessend vorgegeben —, K5 bleibt deshalb unveraendert.
-  //   · `panel-marke.test.ts` (die gemountete Chrome-Leiste) wird von KEINER der sechs Achsen
-  //     gefunden: er nennt weder das Aufgabenfenster noch das Word-Manifest noch die Token-Datei,
-  //     und die Chrome-Erweiterung erreichen die Achsen sonst nur ueber den Pfadnamen `klara`
-  //     (`tests/klara-browser/`), den dieses Verzeichnis nicht traegt. Ihn hier einzutragen machte
-  //     K6 rot („im Inventar, aber von keiner Achse gedeckt") — und das zu Recht: dieses Inventar
-  //     pinnt die ABGELEITETE Menge, es ist keine Wunschliste. Die Luecke wird damit benannt statt
-  //     umgangen; geschlossen wuerde sie durch eine Achse fuer die Erweiterung, und die ist ein
-  //     eigener Auftrag (`extensions/klara-browser` steht in keiner der sechs Achsen).
+  //   · `panel-marke.test.ts` (die gemountete Chrome-Leiste) war bis JOB 3781 der benannte blinde
+  //     Fleck: keine der damals sechs Achsen fand ihn — er nennt weder das Aufgabenfenster noch das
+  //     Word-Manifest noch die Token-Datei, und die Chrome-Erweiterung erreichten die Achsen sonst
+  //     nur ueber den Pfadnamen `klara` (`tests/klara-browser/`), den dieses Verzeichnis nicht
+  //     traegt. Ihn damals einzutragen haette K6 rot gemacht („im Inventar, aber von keiner Achse
+  //     gedeckt") — und das zu Recht: dieses Inventar pinnt die ABGELEITETE Menge, es ist keine
+  //     Wunschliste. SEIT JOB 3781 IST DIE LUECKE ZU, und zwar von der richtigen Seite: die Datei
+  //     kommt jetzt ueber die Inhaltsachse `erweiterung` herein (sie nennt `panel.html`, `panel.js`
+  //     und `worker.js` in ihrem Kopf), steht deshalb weiter unten im Inventar und ist nicht von
+  //     Hand hier eingetragen. K5 aendert sich dadurch NICHT: „klara" steht nach wie vor in keinem
+  //     dieser Pfade, die Namensmenge bleibt bei 58 — der verfehlte Rest wuchs von 119 auf 125.
   // K2 hat die beiden gemeldet, das Inventar nimmt sie nicht still auf.
   "tests/demo-firmen-ci-verbraucher/marke-quelle.test.ts",
   "tests/demo-firmen-ci-verbraucher/word-marke.test.ts",
@@ -821,6 +865,48 @@ const INVENTAR: readonly string[] = [
   // Inhaltsachse; „klara" steht nicht in ihrem Pfad, K5 bleibt deshalb unveraendert. K2 hat sie
   // gemeldet, das Inventar nimmt sie nicht still auf.
   "tests/faq-dubletten-wahrheit/faq-sagt-kein-verschmelzen.test.ts",
+  // ----------------------------------------------------------------------------------------------
+  // JOB 3781 (12.09.2026) — DIE SECHS DATEIEN, DIE DIE SIEBTE ACHSE `erweiterung` HEREINHOLT.
+  // ----------------------------------------------------------------------------------------------
+  // GEMESSEN, NICHT GESETZT: mit der neuen Achse und noch unveraendertem Inventar meldete der Lauf
+  // `neu im Baum, aber nicht im gepinnten Inventar — Inventar nachfuehren: expected [ …(6) ] to
+  // deeply equal []` und nannte genau diese sechs Pfade; erst danach wurden diese Zeilen angefasst.
+  // Die Menge waechst damit von 177 auf 183. K5 bleibt UNVERAENDERT bei 58: keiner der sechs Pfade
+  // traegt „klara", sie zaehlen alle in den verfehlten Rest (119 -> 125).
+  //
+  // JOB 3412: der Ehrlichkeitsnachweis des Einfuege-Knopfs. Er montiert die echte Leiste und laedt
+  // dafuer `panel.js`, `i18n.js` und `panel.html` in EIN Fenster (`:211`) — die Achse `erweiterung`
+  // findet ihn an genau diesen Namen. Keine der sechs alten Achsen fand ihn; „klara" steht nicht im
+  // Pfad, das Aufgabenfenster nennt er nicht.
+  "tests/browser-extension/einfuegen-ehrlich.test.tsx",
+  // JOB 3524: der Leerzustand und der vierte Umfang der Leiste, ebenfalls am gemounteten Paket
+  // (`panel.html`, `panel.js`, `i18n.js` im selben Fenster, `:34`). Achse `erweiterung`.
+  "tests/chrome-einfuegen-leerzustand/leerzustand-und-umfang.test.ts",
+  // JOB 3524 Lieferung 3+4: die Leiste ist nach Speichern und Verwerfen wieder bereit. Diese Datei
+  // kommt ALLEIN ueber `worker.js` herein (`capture()`, `:10`) — sie ist der Beleg dafuer, dass der
+  // Worker im Muster kein Beiwerk ist: ohne ihn bliebe sie ungedeckt.
+  "tests/chrome-einfuegen-leerzustand/neue-uebernahme.test.ts",
+  // JOB 3512: DER AUSLOESER DIESES AUFTRAGS — die gemountete Chrome-Leiste mit der Firmen-CI. Sie
+  // nennt `panel.html`, `panel.js` und `worker.js` in ihrem Kopf (`:5`) und kommt ueber die Achse
+  // `erweiterung` herein. Der Kommentar weiter oben, der sie seit JOB 3512 als offene Luecke
+  // fuehrte, ist entsprechend berichtigt statt stehengelassen.
+  "tests/demo-firmen-ci-verbraucher/panel-marke.test.ts",
+  // JOB 3633: die Chromium-Messung von `/erfassen?draft=<id>`. Sie ist KEINE Leistenmessung, aber
+  // sie haengt an ihr: die Nutzlast, gegen die sie prueft, ist die Gestalt aus
+  // `extensions/klara-browser/worker.js` (`payload()`, `:24`) — wer den Worker aendert, aendert
+  // diese Erwartung mit. Genau dafuer gehoert sie in die Regressionsmenge der Leiste.
+  "tests/entwurf-aus-adresse/adresse-entwurf-chromium.test.ts",
+  // JOB 2476: der Doppelungswaechter ueber dritte Dateien. Er laedt die Leiste NICHT — er nennt
+  // `extensions/klara-browser/types.d.ts` und `extensions/klara-browser/tsconfig.json` als die
+  // einzige Ausnahme seiner Grundmenge (`:124`) und trifft damit den Paketpfad im Muster. Die Achse
+  // trifft hier also weiter, als sie zielt. Der Eintrag steht trotzdem hier und die Achse wird
+  // dafuer NICHT verengt — dieselbe Lage und dieselbe Entscheidung wie bei
+  // `seiten-typ-waechter.test.ts` direkt darueber: dieses Inventar pinnt die ABGELEITETE Menge, es
+  // ist keine Auswahl. GEMESSEN: dies ist die einzige der 20 Dateien, die die Achse ALLEIN ueber
+  // den Paketpfad findet. Den Pfadzweig zu streichen, um sie loszuwerden, naehme der Achse genau
+  // ihren Griff auf Pruefungen, die ueber den QUELLBAUM der Erweiterung reden statt ueber ihre
+  // laufenden Bauteile — der Preis waere hoeher als der Gewinn.
+  "tests/structure/fremddoppelungen-kd-capture.test.ts",
 ];
 
 // ------------------------------------------------------------------------------------------------
@@ -923,7 +1009,8 @@ describe("JOB 920 · K — das Klara-Regressionsinventar ist ableitbar, nicht be
       }
     }
     expect(befunde, "Achse ohne tragende Kalibrierung").toEqual([]);
-    expect(ACHSEN, "weniger als sechs Achsen — eine ist weggefallen").toHaveLength(6);
+    // 6 -> 7 am 12.09.2026 (JOB 3781): die Achse `erweiterung` ist dazugekommen.
+    expect(ACHSEN, "weniger als sieben Achsen — eine ist weggefallen").toHaveLength(7);
   });
 
   it("K4 · der Eigenbeitrag jeder Achse ist gemessen, nicht angenommen", () => {
@@ -933,11 +1020,21 @@ describe("JOB 920 · K — das Klara-Regressionsinventar ist ableitbar, nicht be
       const ohne = mengeVon(ACHSEN.filter((a) => a.kennung !== achse.kennung));
       eigen.set(achse.kennung, GEFUNDEN.length - ohne.length);
     }
-    // Fuenf der sechs Achsen tragen heute mindestens eine Datei allein.
+    // Sechs der sieben Achsen tragen heute mindestens eine Datei allein.
+    // 5 -> 6 am 12.09.2026 (JOB 3781): die neue Achse `erweiterung` traegt 6 Dateien allein, die
+    // Schwelle steigt deshalb mit. Gemessene Eigenbeitraege an diesem Stand: name 22, taskpane 55,
+    // manifest 0, version 3, komponente 10, palette 34, erweiterung 6.
     const alleine = [...eigen.entries()].filter(([, n]) => n > 0).map(([k]) => k);
     expect(alleine.length, `Eigenbeitraege: ${JSON.stringify([...eigen])}`).toBeGreaterThanOrEqual(
-      5,
+      6,
     );
+    // JOB 3781: die neue Achse muss WIRKEN, nicht nur dastehen. Waere ihr Eigenbeitrag 0, faende sie
+    // ausschliesslich Dateien, die andere Achsen ohnehin holen — dann waere das Muster falsch
+    // gewaehlt und die Luecke aus dem 3512-Kommentar nur scheinbar geschlossen.
+    expect(
+      eigen.get("erweiterung"),
+      "die Achse `erweiterung` holt keine Datei allein herein — sie ist wirkungslos",
+    ).toBeGreaterThan(0);
     // UND DIE AUSNAHME WIRD BENANNT STATT VERSCHWIEGEN: `manifest` ist auf diesem Stand
     // vollstaendig von anderen Achsen ueberdeckt. Ihr Wegfall verkleinerte die Menge also NICHT —
     // die Achse bleibt trotzdem gebunden, weil sie ein eigenes Risiko traegt (Word findet die
@@ -1092,6 +1189,10 @@ describe("JOB 920 · K — das Klara-Regressionsinventar ist ableitbar, nicht be
     // denselben Weg herein — „klara“ im PFAD, von keiner Inhaltsachse gefunden. GEMESSEN, NICHT
     // GESETZT: mit dem Inventareintrag und noch unverändertem Zähler meldete der Lauf
     // `expected 58 to be 57`; erst danach wurde diese Zeile angefasst.
+    // JOB 3781 (12.09.2026): die siebte Achse `erweiterung` aendert diese Zahl NICHT — keiner der
+    // sechs Pfade, die sie hereinholt, traegt „klara". Sie alle fallen in `verfehlt`, der damit von
+    // 119 auf 125 steigt (Gesamtmenge 177 -> 183). Der methodische Kern dieses Falls wird dadurch
+    // nicht schwaecher, sondern staerker: die Dateinamenssuche verfehlt jetzt noch mehr.
     expect(nurName.length).toBe(58);
     expect(verfehlt.length).toBeGreaterThanOrEqual(25);
     expect(verfehlt.length + nurName.length).toBe(GEFUNDEN.length);
@@ -1120,5 +1221,38 @@ describe("JOB 920 · K — das Klara-Regressionsinventar ist ableitbar, nicht be
     console.log(
       `\nJOB 920 D4 — Klara-Regressionsinventar (${INVENTAR.length} Dateien, Git-Blob-SHA-1):\n${zeilen.join("\n")}\n`,
     );
+  });
+
+  it("K7 · jede Flaeche, die die Erweiterung wirklich laedt, wird von einer Achse erreicht", () => {
+    // ============================================================================================
+    // JOB 3781 — DER FALL, DER DIE LUECKE AUS DEM 3512-KOMMENTAR ZU EINER MESSUNG MACHT.
+    // ============================================================================================
+    // Die Bauteilnamen werden NICHT abgeschrieben, sondern am Paket selbst erhoben: was in
+    // `extensions/klara-browser/` als `.js`, `.html` oder `.css` liegt, IST die Leiste. Damit haengt
+    // dieser Fall nicht an einer Kopie des Achsenmusters, sondern an der Welt — kommt morgen ein
+    // siebtes Bauteil dazu, waechst die Pruefmenge von allein mit.
+    //
+    // EHRLICH ZUR REICHWEITE: heute nennen alle Treffer dieser Erhebung mindestens eines der vier
+    // Bauteile, die auch die Achse `erweiterung` fuehrt — insofern ist der Fall auf DIESEM Stand von
+    // ihr gedeckt. Er ist trotzdem keine Doppelung: `i18n.js` und `selection.js` stehen in KEINER
+    // Achse (sie trugen bei der Messung 0 zusaetzliche Dateien bei, deshalb wurden sie nicht
+    // aufgenommen). Eine kuenftige Pruefung, die nur eines von beiden laedt, macht diesen Fall rot
+    // und nicht die Achse — genau dafuer steht er hier.
+    const paket = join(WURZEL, "extensions", "klara-browser");
+    const bauteile = readdirSync(paket)
+      .filter((n) => /\.(js|html|css)$/.test(n))
+      .sort();
+    // Selbstschutz wie in K1: ein leeres Paket machte jede Aussage darunter wertlos.
+    expect(bauteile, `keine Bauteile unter ${relative(WURZEL, paket)} gefunden`).toContain(
+      "panel.js",
+    );
+    const nennt = new RegExp(bauteile.map((n) => n.replace(/\./g, "\\.")).join("|"));
+    const laden = ALLE.filter((kurz) => nennt.test(readFileSync(join(WURZEL, kurz), "utf8")));
+    expect(laden.length, "keine einzige Pruefung nennt ein Bauteil der Leiste").toBeGreaterThan(0);
+    const unerreicht = laden.filter((kurz) => !ACHSEN.some((a) => trifft(a, kurz)));
+    expect(
+      unerreicht,
+      `nennt Bauteile der Leiste (${bauteile.join(", ")}), wird aber von keiner Achse gefunden — laeuft damit bei einer Klara-Regression NICHT mit`,
+    ).toEqual([]);
   });
 });
