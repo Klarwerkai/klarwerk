@@ -123,6 +123,38 @@ interface Route {
     headers?: Record<string, string>;
   }): Promise<void>;
 }
+/**
+ * JOB 3819 · EIN ELEMENTGRIFF DER ECHTEN SEITE — hierher gezogen aus
+ * `tests/review26-pruefen-schmal/pruefen-schmal-chromium.test.ts` (dort gelöscht).
+ *
+ * Er wird von `locator` und `getByTestId` unten zurückgegeben. Genannt ist NUR, was die Verbraucher
+ * heute wirklich rufen — jedes Glied hat seine Aufrufstelle in `pruefen-schmal-chromium.test.ts`:
+ * `count` (:30), `last` (:84), `evaluate` (:85), `boundingBox` (:39), `textContent` (:91),
+ * `getAttribute` (:144), `isVisible` (:32), `click` (:33), `waitFor` (:34). Ein Playwright-Typimport
+ * käme nicht in Frage: er zählte im Torgraphen als weitere Browser-Startstelle
+ * (`tests/tor-inventar/browser-gruppe.ts`), und genau darum stand dieser Typ bis JOB 3819 in der
+ * Testdatei.
+ */
+export interface Elementgriff {
+  count(): Promise<number>;
+  last(): Elementgriff;
+  evaluate<T>(ausdruck: BrowserFn): Promise<T>;
+  boundingBox(): Promise<{ x: number; y: number; width: number; height: number } | null>;
+  textContent(): Promise<string | null>;
+  getAttribute(name: string): Promise<string | null>;
+  isVisible(): Promise<boolean>;
+  click(): Promise<void>;
+  waitFor(optionen: { state: "hidden" }): Promise<void>;
+}
+
+/**
+ * DIE SEITE DIESER BÜHNE — EINMAL HIER UND SONST NIRGENDS.
+ *
+ * Wer ein Feld der echten Playwright-Seite braucht, trägt es HIER ein, schlank und mit dem
+ * Verbraucher daneben, der es bestellt hat — nicht in seiner Testdatei. Ein Eigeninterface
+ * (`interface X extends Seite { … }`), ein Cast oder ein Typalias auf `Stand["seite"]` macht
+ * `tests/design-vorrichtung/seiten-typ-waechter.test.ts` (V1) rot, und das ist die Absicht.
+ */
 export interface Seite {
   route(url: string, handler: (route: Route) => Promise<void>): Promise<void>;
   addInitScript(script: string): Promise<void>;
@@ -136,6 +168,28 @@ export interface Seite {
    * Millisekunden halten nur die Abfrageschleife davon ab, den Browser zu belagern.
    */
   waitForTimeout(ms: number): Promise<void>;
+  /**
+   * JOB 3819 · BROWSER-ZURÜCK, die offene Form wie `goto` — bestellt von
+   * `tests/m6-import-erklaerweg/rundweg-tastatur-chromium.test.ts:177`
+   * (`goBack({ waitUntil: "load" })`), dem einzigen Verbraucher im ganzen h6-Bestand.
+   */
+  goBack(opts?: Record<string, unknown>): Promise<unknown>;
+  /**
+   * JOB 3819 · ELEMENTGRIFFE — bestellt von
+   * `tests/review26-pruefen-schmal/pruefen-schmal-chromium.test.ts` (`locator` :30/:39/:83/:84/
+   * :86/:107/:132/:144, `getByTestId` :31).
+   */
+  locator(selektor: string): Elementgriff;
+  getByTestId(kennung: string): Elementgriff;
+  /**
+   * JOB 3819 · DIE ECHTE MAUS. Sie bleibt AUSDRÜCKLICH schmal und wird NICHT zu einem
+   * `Record<string, unknown>` verwässert: V1 und V6 messen über die Unterfelder mit, ein breiter
+   * Platzhalter nähme ihnen die Schärfe (so hat JOB 3775 es an h4 entschieden). Bestellt von
+   * `tests/review26-pruefen-schmal/pruefen-schmal-chromium.test.ts:106` und
+   * `tests/review26-aufgaben-schmal/aufgaben-schmal-chromium.test.ts:322` — beide rufen
+   * `mouse.click(x, y)` mit zwei Zahlen, sonst nichts.
+   */
+  mouse: { click(x: number, y: number): Promise<void> };
 }
 interface Browser {
   version(): string;

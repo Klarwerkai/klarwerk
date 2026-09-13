@@ -66,9 +66,11 @@ const PHASE = `${t("task.phaseLabel")} ${t("cycle.validate.label")}`;
 const ERKLAERSATZ = t("task.explain.validation");
 
 // ---- Die Seite roh: die Bühne reicht sie durch, der Typ nennt nur, was hier gebraucht wird -------
+// JOB 3819: `mouse` stand hier und steht jetzt in `Seite` von `tests/design/h6-chromium.ts`.
+// `setViewportSize` bleibt vorerst hier — das Feld reichen sich auch Dateien fremder Zielpfade
+// nach (`gast-buehne.ts`, `kopfband-messung.ts`); es wandert in einem eigenen Zug.
 interface SeiteRoh extends Seite {
   setViewportSize(size: { width: number; height: number }): Promise<void>;
-  mouse: { click(x: number, y: number): Promise<void> };
 }
 
 interface Kasten {

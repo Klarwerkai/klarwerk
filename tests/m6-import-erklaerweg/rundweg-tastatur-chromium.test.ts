@@ -27,10 +27,13 @@ const ANKER_URL = `/import#${ANKER}`;
 const ERKLAERSEITE = "/demonstration/importwege.html";
 const ERKLAERLINK = `a[href="${ERKLAERSEITE}"]`;
 
+// JOB 3819: `goBack` stand hier und steht jetzt in `Seite` von `tests/design/h6-chromium.ts` —
+// der Aufruf (:177 unten) geht direkt über die Bühne. `setViewportSize` und `keyboard` bleiben
+// vorerst hier: beide Felder reichen sich auch Dateien fremder Zielpfade nach, sie wandern in
+// einem eigenen Zug (Altzeile in `tests/design-vorrichtung/seiten-typ-waechter.test.ts`).
 interface SeiteMitTastatur extends Seite {
   setViewportSize(groesse: { width: number; height: number }): Promise<void>;
   keyboard: { press(taste: string): Promise<void> };
-  goBack(opts?: Record<string, unknown>): Promise<unknown>;
 }
 
 interface Fokus {

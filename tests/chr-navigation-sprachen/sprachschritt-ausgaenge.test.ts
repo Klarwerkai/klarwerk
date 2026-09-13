@@ -123,6 +123,38 @@ class Buehne implements Seite {
     return null;
   }
   on(): void {}
+
+  // ---- JOB 3819 · was `setzeSprache` NICHT anfasst, aber `implements Seite` verlangt -------------
+  //
+  // Seit JOB 3819 führt `Seite` von h6 auch `goBack`, `locator`, `getByTestId` und `mouse` (die vier
+  // Felder, die vorher drei Testdateien sich selbst nachreichten). Dieser Stellvertreter sagt
+  // `implements Seite` — also muss er sie nennen. Das ist die KOPPLUNG, die hier gewollt ist: der
+  // Stellvertreter kann nicht hinter der echten Bühne zurückbleiben, und ein Cast statt `implements`
+  // hätte genau das zugelassen.
+  //
+  // GESTELLT IST KEINES DAVON, und das ist eine Aussage und kein Versäumnis: `setzeSprache` ruft
+  // ausschliesslich `evaluate`, `goto` und `waitForTimeout` — die Handgriffsliste oben führt Buch
+  // darüber, und die Fälle unten lesen sie. Wer einen dieser vier Wege künftig in `setzeSprache`
+  // hineinzieht, bekommt hier einen Satz und kein stilles `undefined`, das die Messung verfälscht.
+  async goBack(): Promise<unknown> {
+    throw new Error(nichtGestellt("goBack"));
+  }
+  locator(): never {
+    throw new Error(nichtGestellt("locator"));
+  }
+  getByTestId(): never {
+    throw new Error(nichtGestellt("getByTestId"));
+  }
+  readonly mouse = {
+    click: async (): Promise<void> => {
+      throw new Error(nichtGestellt("mouse.click"));
+    },
+  };
+}
+
+/** Der Satz, den ein ungestellter Weg der Stellvertreterseite wirft — kein stilles `undefined`. */
+function nichtGestellt(weg: string): string {
+  return `Die Stellvertreterseite stellt \`${weg}\` nicht: \`setzeSprache\` benutzt nur \`evaluate\`, \`goto\` und \`waitForTimeout\`. Wer \`${weg}\` dort hineinzieht, baut diesen Weg hier nach — er darf nicht stillschweigend nichts tun.`;
 }
 
 function machStand(seite: Seite | null, fehler: string | null = null): Stand {

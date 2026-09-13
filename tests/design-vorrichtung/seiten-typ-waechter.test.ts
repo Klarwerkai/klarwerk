@@ -137,8 +137,11 @@ const BUEHNEN: readonly Buehne[] = [
     seitentyp: "Seite",
     standtyp: "Stand",
     zweck: "die gebauten Admin- und Profilflächen in Chromium, mit einspeisbarer Störung",
-    // route, addInitScript, goto, waitForFunction, evaluate, on, waitForTimeout.
-    mindestFelder: 7,
+    // Die sieben von JOB 3065/3587 (route, addInitScript, goto, waitForFunction, evaluate, on,
+    // waitForTimeout) plus die vier von JOB 3819 (goBack, locator, getByTestId, mouse). Die Zahl
+    // wird MITGEFÜHRT und nicht stehen gelassen: eine Untergrenze, die den heutigen Bestand nicht
+    // mehr berührt, ist eine stillgelegte Prüfung (derselbe Grund wie oben bei h4).
+    mindestFelder: 11,
   },
   {
     kurz: "h3",
@@ -179,6 +182,15 @@ const NICHT_BETRETEN = new Set(["node_modules", "dist", ".git", ".local", "cover
 // V10 unten: er wird rot, sobald hier auch nur EINE Zeile mit `buehne: "h4"` steht. Für h6 und h3
 // gilt das ausdrücklich NICHT — ihre Bühnen tragen ihre Felder noch nicht.
 //
+// h6 IST ANGEFANGEN, ABER NICHT FERTIG (JOB 3819). Vier Felder sind dort bezahlt und stehen jetzt in
+// `Seite` von `tests/design/h6-chromium.ts`: `goBack`, `locator`, `getByTestId` und `mouse` (samt dem
+// Typ `Elementgriff`, der bis dahin in `pruefen-schmal-chromium.test.ts` wohnte). Es sind genau die
+// vier, die AUSSCHLIESSLICH die drei Dateien jenes Auftrags nachreichten. `setViewportSize`,
+// `keyboard` und `reload` blieben bewusst draussen: sie stehen auch in Dateien, die fremden Aufträgen
+// als Zielpfad gehören (`gast-buehne.ts` → JOB 3774, `kopfband-messung.ts` → Nachbarschaft JOB 3778)
+// — ein Eintrag hätte sie mitgerissen. Die zehn h6-Zeilen sind deshalb ZEHN GEBLIEBEN, nur kürzer;
+// h6 steht ausdrücklich NICHT in `ABGERAEUMT` bei V10, und eine solche Behauptung wäre falsch.
+//
 // Das ist kein Freibrief, sondern eine Schranke in BEIDE Richtungen:
 //   · Ein Feld, das NICHT in der Zeile steht, macht V1 rot — auch in einer alten Datei.
 //   · Eine alte Datei, die ihre Aufweitung LOSWIRD, macht V2 rot: dann gehört der Eintrag weg, sonst
@@ -215,6 +227,11 @@ const ALTBESTAND: ReadonlyMap<string, Altzeile> = new Map<string, Altzeile>([
   // die Nachbarn. Sie werden GEZÄHLT UND BENANNT, nicht umgebaut (AUFTRAG §10, dieselbe Schranke wie
   // bei JOB 3564) — dass sie überhaupt auffielen, ohne dass jemand danach suchte, ist der Zweck
   // dieses Wächters.
+  //
+  // JOB 3819 hat DREI dieser zehn Zeilen gekürzt, keine gelöscht: `rundweg-tastatur` (−goBack),
+  // `aufgaben-schmal` (−mouse) und `pruefen-schmal` (−locator, −getByTestId, −mouse). Alle drei
+  // tragen weiter gesperrte Felder, also bleiben sie stehen. Was hier steht, ist damit wieder genau
+  // die heutige Schuld und nicht die von gestern — V2 erzwingt das feldweise.
   [
     "tests/demo-firmen-ci-anmeldung/gast-buehne.ts",
     {
@@ -270,10 +287,11 @@ const ALTBESTAND: ReadonlyMap<string, Altzeile> = new Map<string, Altzeile>([
     "tests/m6-import-erklaerweg/rundweg-tastatur-chromium.test.ts",
     {
       buehne: "h6",
-      felder: ["setViewportSize", "keyboard", "goBack"],
+      felder: ["setViewportSize", "keyboard"],
       grund:
-        "Die breiteste Aufweitung im h6-Bestand (:30): Fenster verstellen, Tab drücken UND zurück " +
-        "navigieren. `goBack` hat sonst niemand — der Kandidat für den nächsten Zug an h6.",
+        "Fenster verstellen und Tab drücken (:34). `goBack` stand bis JOB 3819 daneben und ist " +
+        "seither in `Seite` von h6 bezahlt; offen sind nur noch die zwei Felder, die auch fremde " +
+        "Zielpfaddateien nachreichen.",
     },
   ],
   [
@@ -290,21 +308,23 @@ const ALTBESTAND: ReadonlyMap<string, Altzeile> = new Map<string, Altzeile>([
     "tests/review26-aufgaben-schmal/aufgaben-schmal-chromium.test.ts",
     {
       buehne: "h6",
-      felder: ["setViewportSize", "mouse"],
+      felder: ["setViewportSize"],
       grund:
-        "Neu im Baum seit Runde 2, von Runde 3 nachgemessen: `interface SeiteRoh extends Seite` " +
-        "(:69), schmales Fenster und echte Maus — dieselben zwei Felder, die die Nachbarin " +
-        "`pruefen-schmal-chromium.test.ts` schon nachreicht. Der nächste Abschreibfall an h6.",
+        "`interface SeiteRoh extends Seite` (:72), das schmale Fenster. Die echte Maus stand bis " +
+        "JOB 3819 daneben und ist seither in `Seite` von h6 bezahlt; `setViewportSize` bleibt, " +
+        "weil es auch `gast-buehne.ts` und `kopfband-messung.ts` nachreichen.",
     },
   ],
   [
     "tests/review26-pruefen-schmal/pruefen-schmal-chromium.test.ts",
     {
       buehne: "h6",
-      felder: ["locator", "getByTestId", "mouse", "keyboard"],
+      felder: ["keyboard"],
       grund:
-        "Die vier Felder einer ganzen Bedienfläche (:35) — Elementgriffe, echte Maus, echte Tasten. " +
-        "In der Akte von JOB 3564 nicht enthalten; von JOB 3609 nachgemessen.",
+        "Echte Tastenanschläge auf der Prüffläche (:17, `interface BedienbareSeite extends " +
+        "Seite`). Die drei übrigen Felder der Bedienfläche — `locator`, `getByTestId` und `mouse` " +
+        "— stehen seit JOB 3819 in `Seite` von h6, samt dem Typ `Elementgriff`, der bis dahin " +
+        "hier deklariert war.",
     },
   ],
   [
@@ -1220,6 +1240,13 @@ function zeile(a: Aufweitung): string {
 // wäre rot geworden: richtig laut, aber aus dem falschen Grund. Genauso stand es um das Unterfeld
 // `keyboard.type`. Beide sind ersetzt, und V6 misst seither ausdrücklich nach, dass das Probefeld an
 // KEINER Bühne bekannt ist — sonst kalibrierte die Kalibrierung irgendwann nur noch ihr Schweigen.
+//
+// JOB 3819 HAT DIESELBE FRAGE FÜR h6 GESTELLT und sie NICHT angenommen, sondern der Schranke
+// überlassen: die vier dort eingetragenen Felder (`goBack`, `locator`, `getByTestId`, `mouse`) sind
+// weder `dragAndDrop` noch `keyboard.insertText`, also bleibt die Kalibrierung an h6 scharf — und
+// zwar gemessen, nicht behauptet, denn die zwei Zeilen unten in V6 laufen über JEDE Bühne. Wer als
+// nächster ein Feld in eine `Seite` einträgt, braucht hier nichts nachzupflegen: er wird rot, wenn
+// er das Probefeld trifft, und still weitergelassen, wenn nicht.
 /** Das Probefeld: eine Seitenfunktion, die keine der drei Bühnen führt. V6 misst genau das nach. */
 const UNGEDECKT = "dragAndDrop";
 const ZIEHEN = "{ starten(von: string, nach: string): Promise<void> }";

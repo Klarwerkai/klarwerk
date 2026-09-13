@@ -2,15 +2,7 @@
 // Der letzte Knopf wird vor dem Klick an den unteren Viewportrand gescrollt. So kann
 // Playwrights eigener Bildlauf die fehlende Blickführung des Produkts nicht verdecken.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import {
-  type BrowserFn,
-  type Seite,
-  type Stand,
-  beende,
-  fn,
-  starte,
-  wechsle,
-} from "../design/h6-chromium";
+import { type Seite, type Stand, beende, fn, starte, wechsle } from "../design/h6-chromium";
 
 import baueFrisch from "./bau";
 
@@ -18,24 +10,11 @@ const KARTE = '[data-testid="pruefen-karte"]';
 const ZEILE = '[data-testid="pruefen-warteschlange-eintrag"]';
 let stand: Stand;
 
-// Wie im UX-12b-Hausmuster: die bereits gestartete Seite um ihre Bedienmethoden typisieren.
-// Ein direkter Playwright-Typimport zählt im Torgraphen als zusätzliche Startstelle;
-// tatsächlich startet hier ausschließlich h6-chromium den Browser.
-interface Elementgriff {
-  count(): Promise<number>;
-  last(): Elementgriff;
-  evaluate<T>(ausdruck: BrowserFn): Promise<T>;
-  boundingBox(): Promise<{ x: number; y: number; width: number; height: number } | null>;
-  textContent(): Promise<string | null>;
-  getAttribute(name: string): Promise<string | null>;
-  isVisible(): Promise<boolean>;
-  click(): Promise<void>;
-  waitFor(optionen: { state: "hidden" }): Promise<void>;
-}
+// JOB 3819: `Elementgriff`, `locator`, `getByTestId` und `mouse` standen hier und stehen jetzt in
+// `tests/design/h6-chromium.ts` — dieselbe Typaussage EINMAL, in der Bühne. Nur `keyboard` bleibt
+// vorerst hier: das Feld reichen sich auch Dateien fremder Zielpfade nach (job3337, ux12b,
+// wiederholen-tastatur, rollenraster), es wandert in einem eigenen Zug.
 interface BedienbareSeite extends Seite {
-  locator(selektor: string): Elementgriff;
-  getByTestId(kennung: string): Elementgriff;
-  mouse: { click(x: number, y: number): Promise<void> };
   keyboard: { press(taste: string): Promise<void> };
 }
 
