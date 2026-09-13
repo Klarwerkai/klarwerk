@@ -24,16 +24,85 @@
 //     überbrückte den Verlust, den sie messen sollte. Jetzt wird BEIDES gelesen — aus der
 //     Einzeladresse UND aus dem Listeneintrag, aus dem die Oberfläche wirklich fortsetzt.
 //   · Vom Original wurde nur der Status geprüft. Jetzt werden Länge und SHA-256 verglichen.
+//
+// JOB 3825 (BEN zu R2, Prüfpunkt 6): der Suchschritt bewies nichts über das DOKUMENT. Er suchte mit
+// „Überdruck" — einem Wort, das auch im selbst getippten Titel und in der selbst getippten Aussage
+// steht. D2 hielt die Folge sogar fest: der Lauf OHNE Dokument traf trotzdem, und das galt als
+// erwartet. Damit war die Strecke an ihrer wichtigsten Stelle blind — der Dokumentinhalt hätte
+// unterwegs verlorengehen können, ohne dass eine Zeile rot wird. JETZT sucht sie ZUSÄTZLICH mit
+// `DOKUMENTWORT` (nur in der Quelldatei), ein eigener Fall W1 misst diese Isolation am angelegten
+// Objekt, und D2 ist der Unterscheider: alte Suche grün, Dokumentsuche rot.
+//
+// JOB 3825 RUNDE 2 (BEN, Korrekturpflicht 1): die neue NEGATIVAUSSAGE war selbst blind. „Nicht
+// gefunden" ruhte allein auf dem Trefferwert, und der entsteht aus `alsListe` — das jedes
+// Fehlerobjekt in eine leere Liste verwandelt. Der Prüfer liess die Suchroute mit HTTP 200 und
+// `{error: …}` antworten: D2 und Ü1 blieben grün, obwohl gar keine Suche stattgefunden hatte.
+// JETZT steht vor JEDER Trefferbewertung `pruefeSuchantwort` (Status UND Antwortform, mit dem
+// Körper in der Meldung), und der neue Fall W2 hält diese Eigenschaft dauerhaft fest — als Fall,
+// nicht als Verstellprobe, die beim nächsten Umbau niemand wiederholt.
 import { describe, expect, it } from "vitest";
 import {
+  DOKUMENTWORT,
   EIGENER_TITEL,
   EIGENE_AUSSAGE,
   QUELLSATZ,
+  SUCHWORT,
   type Streckenbefund,
   type Wiedersehen,
   fahreStrecke,
+  liesSuchantwort,
   schliesse,
 } from "./strecke";
+
+/**
+ * DER ISOLATIONSWÄCHTER (JOB 3825, Lieferung 2) — die VORAUSSETZUNG jeder Aussage über die
+ * Dokumentsuche, und deshalb steht er VOR ihr, nicht daneben.
+ *
+ * WARUM ES IHN GIBT: Bis hierher trug `strecke.ts` die Zusage „das Suchwort kommt NUR aus der
+ * Datei" als Kommentar. Runde 2 zog mit `EIGENER_TITEL`/`EIGENE_AUSSAGE` einen zweiten Faden ein
+ * und widerlegte sie — der Kommentar blieb trotzdem stehen und log ein Release lang mit. Ein
+ * Kommentar kann eine Eigenschaft nicht halten; eine Messung kann es.
+ *
+ * Gemessen wird am TATSÄCHLICH angelegten Objekt, nicht an den Konstanten (s. `messeIsolation`).
+ */
+function pruefeIsolation(b: Streckenbefund): void {
+  expect(
+    b.isolation.gemessen,
+    `die Isolation von „${DOKUMENTWORT}" liess sich nicht messen: ${b.isolation.fehlschlag}`,
+  ).toBe(true);
+  expect(
+    b.isolation.imQuellsatz,
+    `„${DOKUMENTWORT}" steht gar nicht im Satz aus der Quelldatei („${QUELLSATZ}") — dann ist es kein Dokumentwort und ein Treffer darauf belegt nichts`,
+  ).toBe(true);
+  expect(
+    b.isolation.verletzteFelder,
+    `„${DOKUMENTWORT}" steht nicht nur im Dokument, sondern auch in diesen Kurzfeldern des angelegten Objekts: ${b.isolation.verletzteFelder.join(", ") || "—"}. Ein Treffer könnte dann aus der eigenen Tipparbeit stammen statt aus der Datei.`,
+  ).toEqual([]);
+}
+
+/**
+ * DIE VORAUSSETZUNG JEDER AUSSAGE ÜBER EINE SUCHE — und zwar VOR der Trefferbewertung, nicht daneben
+ * (JOB 3825 Runde 2, BEN Korrekturpflicht 1).
+ *
+ * WARUM ES SIE GIBT: „nicht gefunden" hing allein an `trifft === false`, und dieser Wert entstand aus
+ * `alsListe`, das jeden Nicht-Listen-Körper in `[]` verwandelt. BEN liess die Suchroute mit HTTP 200
+ * und `{error: "BEN_DOKUMENTSUCHE_DEFEKT"}` antworten: D2 und Ü1 blieben vollständig grün, obwohl
+ * überhaupt keine Suche stattgefunden hatte. Ein Fehlerobjekt ist kein leeres Ergebnis, und ein
+ * HTTP 200 allein belegt keine erfolgreiche Leersuche (Auftrag §9).
+ *
+ * Beide Zusagen tragen den KÖRPER in ihrer Meldung: eine rote Stelle soll sagen, WAS statt der Liste
+ * kam, nicht nur „erwartet 200, war 503".
+ */
+function pruefeSuchantwort(status: number, istListe: boolean, koerper: string, wo: string): void {
+  expect(
+    status,
+    `${wo}: die Suche antwortete mit HTTP ${status} statt 200 — Körper: ${koerper}. Ein Fehlschlag ist kein leeres Ergebnis.`,
+  ).toBe(200);
+  expect(
+    istListe,
+    `${wo}: die Suche antwortete zwar mit HTTP 200, aber nicht mit einer Trefferliste — Körper: ${koerper}. Ein Fehlerobjekt ist kein leeres Ergebnis, und „nicht gefunden" wäre hier eine Behauptung ohne Messung.`,
+  ).toBe(true);
+}
 
 /**
  * WAS NACH DEM SITZUNGSWECHSEL VOLLSTÄNDIG ZURÜCKGEKOMMEN SEIN MUSS. Zweimal angewandt — auf die
@@ -158,8 +227,47 @@ function pruefeStrecke(b: Streckenbefund): void {
   expect(b.fund.pruefungStand, "die Prüfung behauptet ein Urteil, das sie nicht gefällt hat").toBe(
     "pending",
   );
-  expect(b.fund.sucheStatus, "die Suche antwortete nicht").toBe(200);
+  pruefeSuchantwort(
+    b.fund.sucheStatus,
+    b.fund.sucheIstListe,
+    b.fund.sucheKoerper,
+    `GET /api/library/search?q=${SUCHWORT}`,
+  );
+  // DER DURCHGEHENDE FADEN: das Angelegte ist nach Sitzungswechsel und Anlage auffindbar. Dass
+  // `SUCHWORT` auch im selbst getippten Titel steht, ist hier kein Mangel — dieser Schritt misst
+  // den Faden als Ganzes. Was er NICHT belegt, ist die Dokumentsuche; die steht darunter.
   expect(b.fund.sucheTrifft, "das Geschriebene ist nicht auffindbar").toBe(true);
+
+  // ---- DIE DOKUMENTSUCHE, ISOLIERT (JOB 3825) -------------------------------------------------
+  // ZUERST DIE VORAUSSETZUNG. Ohne sie wäre alles Folgende eine starke Aussage ohne ihren Grund:
+  // ein Treffer auf ein Wort, das auch im Titel steht, sagt nichts über das Dokument.
+  pruefeIsolation(b);
+  pruefeSuchantwort(
+    b.fund.sucheDokumentStatus,
+    b.fund.sucheDokumentIstListe,
+    b.fund.sucheDokumentKoerper,
+    `GET /api/library/search?q=${DOKUMENTWORT}`,
+  );
+  // DAS NUTZERVERSPRECHEN DER DEMO, und erst hier ist es gemessen: „die Anwendung findet, was in
+  // MEINEM DOKUMENT steht." `DOKUMENTWORT` hat der Mensch nirgends getippt — es kann nur über
+  // Import, Entwurf, Sitzungsneuaufbau und Anlage bis in die Suchprojektion gekommen sein.
+  expect(
+    b.fund.sucheDokumentTrifft,
+    `„${DOKUMENTWORT}" steht nur in der Quelldatei und wurde nicht gefunden — der Dokumentinhalt ist unterwegs verlorengegangen`,
+  ).toBe(true);
+  // UND DER TIEFERE BELEG. Die Route liefert `KnowledgeObject[]` und trägt die `matched`-Flags
+  // nicht mit; ein Treffer allein sagt darum nur „irgendein Feld passte". Gefragt wird deshalb
+  // derselbe Suchvertrag eine Ebene tiefer. Ein FEHLENDER Treffer ist ein benannter Fehlschlag —
+  // die Flags werden nie aus einem `undefined` heraus behauptet.
+  expect(
+    b.fund.dokumentTreffer.gefunden,
+    `der gemeinsame Suchvertrag lieferte keinen Treffer auf das angelegte Objekt: ${b.fund.dokumentTreffer.fehlschlag}`,
+  ).toBe(true);
+  expect(b.fund.dokumentTreffer.flaggen, "der Treffer kam ohne seine matched-Flags").toBeDefined();
+  expect(
+    b.fund.dokumentTreffer.flaggen,
+    "der Treffer kam NICHT aus dem Dokumentrumpf",
+  ).toMatchObject({ body: true, title: false, statement: false, category: false, tag: false });
   // DER QUELLENWIEDERAUFRUF — die Frage jedes Demo-Besuchers: „und woher steht das?" Der Beleg am
   // Fund zeigt auf GENAU das Original, das in Schritt 3 gesichert wurde.
   expect(b.fund.belegObjektId, "der Fund trägt keinen Beleg auf ein Original").not.toBe("");
@@ -190,7 +298,8 @@ describe("JOB 3801 · der erste Nutzerweg, am Stück", () => {
       // Der Verlauf ist kein Schmuck: er ist die Liste der WIRKLICH gefallenen Adressen. Eine
       // Strecke, die nur die Hälfte der Schritte fährt, wäre sonst an den Einzelwerten nicht zu
       // erkennen. Gezählt wird gegen den gemessenen Stand dieses Laufs.
-      expect(lauf.befund.verlauf.length).toBe(21);
+      // 21 bis JOB 3801; die zweite Suche mit `DOKUMENTWORT` (JOB 3825) ist die 22. Adresse.
+      expect(lauf.befund.verlauf.length).toBe(22);
       expect([...new Set(lauf.befund.verlauf.map((s) => s.schritt))]).toEqual([
         "1 leer",
         "2 konto",
@@ -204,9 +313,15 @@ describe("JOB 3801 · der erste Nutzerweg, am Stück", () => {
   }, 120_000);
 
   it("D2 · §8 NICHT TRIVIAL GRÜN: ohne den Import wird dieselbe Prüffolge rot — am Dokumentinhalt", async () => {
-    // Derselbe Weg, ein Schritt fehlt: die Quelle kommt NICHT herein, der Mensch tippt selbst. Alles
-    // andere läuft unverändert — Konto, Speichern, Sitzungsneuaufbau, Anlage, Suche bleiben grün.
-    // Rot wird genau die Zusage, die der Import trägt: der Satz aus der Datei.
+    // Derselbe Weg, ein Schritt fehlt: die Quelle kommt NICHT herein, der Mensch tippt selbst.
+    // Konto, Speichern, Sitzungsneuaufbau und Anlage laufen unverändert und bleiben grün.
+    //
+    // UND HIER STEHT DER KERN (JOB 3825). Die alte Suche bleibt grün, OBWOHL nie ein Dokument da
+    // war — `SUCHWORT` steht eben auch im selbst getippten Titel, der Treffer entsteht aus der
+    // eigenen Tipparbeit. Bis Runde 2 war das der blinde Fleck: an dieser einen Zusage hätte man
+    // nicht unterscheiden können, ob der Dokumentinhalt die Strecke überlebt hat oder nie da war.
+    // Die Suche nach `DOKUMENTWORT` unterscheidet es — sie ist hier ROT, während sie in D1 grün
+    // ist. Genau dieser Unterschied ist das, was die Strecke jetzt über das Dokument beweist.
     const lauf = await fahreStrecke({ ohne: "import" });
     try {
       expect(() => pruefeStrecke(lauf.befund)).toThrow(/Quelldatei/);
@@ -215,7 +330,40 @@ describe("JOB 3801 · der erste Nutzerweg, am Stück", () => {
       expect(lauf.befund.konto.rolle).toBe("admin");
       expect(lauf.befund.entwurf.wiederoeffnenStatus).toBe(200);
       expect(lauf.befund.fund.anlageStatus).toBe(201);
-      expect(lauf.befund.fund.sucheTrifft).toBe(true);
+      pruefeSuchantwort(
+        lauf.befund.fund.sucheStatus,
+        lauf.befund.fund.sucheIstListe,
+        lauf.befund.fund.sucheKoerper,
+        `D2 · GET /api/library/search?q=${SUCHWORT}`,
+      );
+      expect(
+        lauf.befund.fund.sucheTrifft,
+        `„${SUCHWORT}" steht im selbst getippten Titel — dieser Treffer muss auch ohne Dokument kommen`,
+      ).toBe(true);
+      // ZUERST DIE VORAUSSETZUNG, DANN DIE NEGATIVAUSSAGE — und diese Reihenfolge ist der ganze
+      // Inhalt von BENs Korrekturpflicht 1. Vorher stand hier nur der Status; ein `{error: …}` mit
+      // HTTP 200 kam damit als „erfolgreich nichts gefunden" durch, und die unterscheidende Zeile
+      // darunter war eine Behauptung ohne Messung.
+      pruefeSuchantwort(
+        lauf.befund.fund.sucheDokumentStatus,
+        lauf.befund.fund.sucheDokumentIstListe,
+        lauf.befund.fund.sucheDokumentKoerper,
+        `D2 · GET /api/library/search?q=${DOKUMENTWORT}`,
+      );
+      // DIE UNTERSCHEIDENDE ZEILE. Ohne Dokument gibt es keinen Dokumenttreffer. Wäre sie `true`,
+      // käme der Treffer aus etwas anderem als der Datei, und der Nachweis wäre wertlos.
+      expect(
+        lauf.befund.fund.sucheDokumentTrifft,
+        `„${DOKUMENTWORT}" wurde gefunden, obwohl nie ein Dokument da war — dann steht das Wort nicht nur in der Datei`,
+      ).toBe(false);
+      // Und dieselbe Aussage eine Stufe tiefer: der gemeinsame Suchvertrag findet das Objekt nicht,
+      // und er sagt WARUM, statt fünf Flags aus dem Nichts zu behaupten.
+      expect(lauf.befund.fund.dokumentTreffer.gefunden).toBe(false);
+      expect(lauf.befund.fund.dokumentTreffer.flaggen).toBeUndefined();
+      expect(lauf.befund.fund.dokumentTreffer.fehlschlag).not.toBe("");
+      // Das Wort ist auch hier isoliert — die rote Stelle ist der fehlende Import, nicht ein
+      // schlecht gewähltes Suchwort.
+      pruefeIsolation(lauf.befund);
       // Das Produkt hat nichts erfunden: ohne Dokument steht kein Dokumentsatz im Entwurf — weder
       // beim Anlegen noch nach dem Sitzungswechsel, und auf keinem der beiden Ladewege.
       expect(lauf.befund.quelle.quellsatzImEntwurf).toBe(false);
@@ -265,13 +413,106 @@ describe("JOB 3801 · der erste Nutzerweg, am Stück", () => {
       expect(b.fund.anlageFehler).toBe("MISSING_DRAFT_ANCHOR");
       // NICHTS IST HALB ENTSTANDEN: kein Objekt, kein Fund, keine Quelle.
       expect(b.fund.koId).toBe("");
+      // Auf BEIDEN Suchwegen nichts — es entsteht gar kein Objekt, also auch keins, das ein
+      // Dokumentwort tragen könnte. Aber „nichts" gilt erst, wenn BEIDE Suchen mit einer echten
+      // Trefferliste geantwortet haben: hier sind beide Aussagen negativ, hier ruht also alles auf
+      // der Antwortform (BEN, Korrekturpflicht 1). Erst die Voraussetzung, dann die Aussage.
+      pruefeSuchantwort(
+        b.fund.sucheStatus,
+        b.fund.sucheIstListe,
+        b.fund.sucheKoerper,
+        `Ü1 · GET /api/library/search?q=${SUCHWORT}`,
+      );
+      pruefeSuchantwort(
+        b.fund.sucheDokumentStatus,
+        b.fund.sucheDokumentIstListe,
+        b.fund.sucheDokumentKoerper,
+        `Ü1 · GET /api/library/search?q=${DOKUMENTWORT}`,
+      );
       expect(b.fund.sucheTrifft).toBe(false);
+      expect(b.fund.sucheDokumentTrifft).toBe(false);
+      // Und der Dienst wurde ehrlich gar nicht erst gefragt, statt ein „nicht getroffen" zu
+      // behaupten, für das es kein Objekt gibt.
+      expect(b.fund.dokumentTreffer.gefragt).toBe(false);
+      expect(b.fund.dokumentTreffer.flaggen).toBeUndefined();
+      expect(b.isolation.gemessen, "ohne angelegtes Objekt ist die Isolation nicht messbar").toBe(
+        false,
+      );
       expect(b.fund.belegObjektId).toBe("");
       expect(b.fund.quelleStatus).toBe(404);
     } finally {
       await schliesse(lauf);
     }
   }, 120_000);
+
+  it("W1 · ISOLATIONSWÄCHTER: das Dokumentwort steht in der Datei — und in keinem Kurzfeld des angelegten Objekts", async () => {
+    // EIN EIGENER, DAUERHAFTER FALL, und das ist Absicht: die Eigenschaft, auf der der ganze
+    // Dokumentnachweis ruht, soll für sich rot werden können — mit einer Meldung, die das Wort und
+    // das verletzende Feld nennt. Als blosse Zeile innerhalb der Strecke wäre sie beim nächsten
+    // Umbau wieder das, was sie bis JOB 3825 war: ein Kommentar, den niemand nachmisst.
+    const lauf = await fahreStrecke();
+    try {
+      pruefeIsolation(lauf.befund);
+      // Und die Gegenrichtung in derselben Messung: `SUCHWORT` ist NICHT isoliert. Ohne diese
+      // Zeile könnte der Wächter zahnlos sein, ohne dass es auffiele — sie zeigt, dass er den
+      // Unterschied wirklich sieht und nicht jedes Wort durchwinkt.
+      expect(
+        EIGENER_TITEL.toLowerCase().includes(SUCHWORT.toLowerCase()),
+        `„${SUCHWORT}" steht nicht mehr im eigenen Titel — dann misst D2 den Unterschied nicht mehr`,
+      ).toBe(true);
+      expect(
+        EIGENER_TITEL.toLowerCase().includes(DOKUMENTWORT.toLowerCase()),
+        `„${DOKUMENTWORT}" steht im eigenen Titel`,
+      ).toBe(false);
+    } finally {
+      await schliesse(lauf);
+    }
+  }, 120_000);
+
+  it("W2 · ANTWORTFORM: ein Fehlerobjekt mit HTTP 200 und eine 503 sind kein Beleg für „nichts gefunden“", () => {
+    // DER DAUERHAFTE GEGENFALL ZU BENS GEGENPROBE (Runde 1, Prüflücke 6). Er braucht keine Strecke:
+    // gemessen wird das Paar, an dem die Blindheit hing — `liesSuchantwort` (was kam?) und
+    // `pruefeSuchantwort` (darf man daraus „nicht gefunden" lesen?). Als reine Verstellprobe wäre
+    // die Eigenschaft beim nächsten Umbau wieder weg; als Fall bleibt sie.
+    const fehlerkoerper = JSON.stringify({ error: "BEN_DOKUMENTSUCHE_DEFEKT" });
+    const wo = "W2";
+
+    // (i) DIE ECHTE LEERE TREFFERLISTE MUSS DURCHGEHEN. Ohne diese Zeile wäre die Zusage nur
+    //     streng und nicht richtig — Ü1 und D2 leben davon, dass eine leere Liste gilt.
+    const leer = liesSuchantwort({ statusCode: 200, payload: "[]" }, "ko-1");
+    expect(leer.istListe).toBe(true);
+    expect(leer.trifft).toBe(false);
+    expect(() => pruefeSuchantwort(leer.status, leer.istListe, leer.koerper, wo)).not.toThrow();
+
+    // (ii) HTTP 200 MIT FEHLEROBJEKT — genau die Verstellung, unter der D2 und Ü1 grün blieben.
+    const getarnt = liesSuchantwort({ statusCode: 200, payload: fehlerkoerper }, "ko-1");
+    expect(getarnt.istListe, "ein Fehlerobjekt wurde als Trefferliste gelesen").toBe(false);
+    // UND HIER STEHT DIE BLINDHEIT SELBST, festgehalten statt beschrieben: der Trefferwert allein
+    // ist von einer echten Leersuche NICHT zu unterscheiden. Genau an ihm hingen beide
+    // Negativaussagen, und genau deshalb reicht er nicht.
+    expect(getarnt.trifft).toBe(false);
+    expect(() => pruefeSuchantwort(getarnt.status, getarnt.istListe, getarnt.koerper, wo)).toThrow(
+      /BEN_DOKUMENTSUCHE_DEFEKT/,
+    );
+
+    // (iii) HTTP 503 — Status UND Körper müssen in der Meldung stehen. Ein „erwartet 200, war 503"
+    //       allein sagt dem Lesenden nicht, was der Server stattdessen ausgab.
+    const kaputt = liesSuchantwort({ statusCode: 503, payload: fehlerkoerper }, "ko-1");
+    const werfe503 = () => pruefeSuchantwort(kaputt.status, kaputt.istListe, kaputt.koerper, wo);
+    expect(werfe503).toThrow(/HTTP 503/);
+    expect(werfe503).toThrow(/BEN_DOKUMENTSUCHE_DEFEKT/);
+
+    // (iv) UND GAR KEIN JSON — ein Fehlerblatt eines Vorschalters. Kein `catch`, das daraus eine
+    //      leere Liste macht: es wird zum benannten Fehlschlag, mit dem Rumpf in der Meldung.
+    const blatt = liesSuchantwort(
+      { statusCode: 200, payload: "<html>Gateway Timeout</html>" },
+      "ko-1",
+    );
+    expect(blatt.istListe).toBe(false);
+    expect(() => pruefeSuchantwort(blatt.status, blatt.istListe, blatt.koerper, wo)).toThrow(
+      /Gateway Timeout/,
+    );
+  });
 
   it("Ü2 · die Strecke ist isoliert: ein zweiter Lauf sieht wieder eine leere Installation", async () => {
     // WARUM DAS HIERHER GEHÖRT und kein Selbstzweck ist: Schritt 1 behauptet „der Stand ist leer".

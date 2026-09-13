@@ -43,11 +43,30 @@
 //   (3) Die Leermessung las Listen über `alsListe`, das ein Fehlerobjekt in `[]` verwandelt — eine
 //       500er-Bestandsroute sah aus wie ein leerer Bestand. JETZT werden Status UND Antwortform
 //       der beiden Bestandsrouten eigene Messwerte.
+//
+// JOB 3825 — WAS BEN AN RUNDE 2 NOCH FEHLTE: der Suchschritt bewies nichts über das DOKUMENT.
+// `SUCHWORT` („Überdruck") steht auch im selbst getippten Titel und in der selbst getippten
+// Aussage; der Treffer konnte also allein aus der eigenen Tipparbeit entstehen — der Dokumentinhalt
+// hätte unterwegs verlorengehen können, und die Strecke wäre grün geblieben. Belegt hat das der
+// Bestand selbst: der Lauf OHNE Dokument (D2) traf trotzdem. JETZT sucht die Strecke ZUSÄTZLICH mit
+// `DOKUMENTWORT`, einem Wort, das ausschliesslich in der Quelldatei steht; ein Wächter misst diese
+// Eigenschaft je Lauf am angelegten Objekt (`Isolation`), und die Flags aus dem gemeinsamen
+// Suchvertrag belegen, dass der Treffer aus dem RUMPF kam (`Dokumenttreffer`). Der alte Suchschritt
+// bleibt unverändert daneben — er misst den durchgehenden Faden, nicht die Dokumentsuche.
+//
+// JOB 3825 RUNDE 2 — WAS BEN AN RUNDE 1 ZU RECHT ZERRISSEN HAT: die neue NEGATIVMESSUNG war blind.
+// „Nicht gefunden" wurde aus `alsListe` gelesen, und das macht aus jedem Fehlerobjekt eine leere
+// Liste. Der Prüfer liess die Route mit HTTP 200 und `{error: …}` antworten — D2 und Ü1 blieben
+// grün, obwohl gar keine Suche stattgefunden hatte. JETZT reisen Status, FORM und KÖRPER jeder
+// Suchantwort als eigene Messwerte mit (`Suchantwort`, `liesSuchantwort`), für BEIDE Suchen; die
+// Trefferbewertung darf erst gelesen werden, wenn Status und Form stimmen (`durchstich.test.ts`,
+// `pruefeSuchantwort`).
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { FastifyInstance } from "fastify";
-import { buildApp, buildServices } from "../../services/app/src/build-app";
+import { type AppServices, buildApp, buildServices } from "../../services/app/src/build-app";
+import type { KoSearchHit } from "../../services/knowledge-object";
 
 /** Die echte Quelldatei aus dem Testbestand. Ihr einziger Satz steht in `QUELLSATZ`. */
 export const QUELLDATEI = join(__dirname, "..", "fixtures", "sample.docx");
@@ -58,7 +77,19 @@ export const QUELLDATEI = join(__dirname, "..", "fixtures", "sample.docx");
  * dieser Satz sein — und nichts, was der Test selbst hineingeschrieben hat.
  */
 export const QUELLSATZ = "Ventil bei Überdruck schließen.";
-/** Das Wort, mit dem am Ende gesucht wird. Es kommt NUR aus der Datei, nicht aus dem Titel. */
+/**
+ * DAS WORT DES DURCHGEHENDEN FADENS. Es steht im Quellsatz — aber AUCH im selbst getippten Titel
+ * (`EIGENER_TITEL`) und in der selbst getippten Aussage (`EIGENE_AUSSAGE`). Ein Treffer darauf
+ * belegt deshalb NICHT, dass der Dokumentinhalt die Strecke überlebt hat: er entstünde ebenso aus
+ * der eigenen Tipparbeit. Was er belegt, ist der Faden als Ganzes — dass das Angelegte nach
+ * Sitzungswechsel und Anlage überhaupt auffindbar ist.
+ *
+ * Der isolierte Nachweis für die DOKUMENTSUCHE steht daneben und heisst `DOKUMENTWORT`.
+ * (Bis JOB 3825 stand hier „Es kommt NUR aus der Datei, nicht aus dem Titel." Das war in Runde 1
+ * wahr und wurde von Runde 2 mit `EIGENER_TITEL`/`EIGENE_AUSSAGE` widerlegt, ohne berichtigt zu
+ * werden — genau die Sorte Zusicherung, die ein Kommentar nicht tragen kann. Deshalb steht die
+ * Eigenschaft jetzt als MESSUNG da, s. `Isolation`.)
+ */
 export const SUCHWORT = "Überdruck";
 
 /**
@@ -68,6 +99,27 @@ export const SUCHWORT = "Überdruck";
  */
 export const EIGENER_TITEL = "Ventil bei Überdruck";
 export const EIGENE_AUSSAGE = "Bei Überdruck wird das Ventil geschlossen.";
+
+/**
+ * DAS ISOLIERTE DOKUMENTWORT (JOB 3825) — und der Unterschied zu `SUCHWORT` IST der Punkt.
+ *
+ * `SUCHWORT` steht im Quellsatz UND in den beiden selbst getippten Feldern. Die Trefferregel setzt
+ * ihren Suchtext aus Titel + Aussage + Bildunterschrift + Dokumenttext zusammen
+ * (`services/knowledge-object/src/search-projection.ts:758`) und prüft ihn mit
+ * `lower.includes(term)` (`effective-search-document.ts:120-122`). Ein Wort aus dem Titel trifft
+ * also OHNE JEDEN BEITRAG DES DOKUMENTS: ginge der Dokumentinhalt irgendwo auf der Strecke
+ * verloren, bliebe der alte Suchschritt grün. Genau das war der blinde Fleck (BEN zu JOB 3801 R2,
+ * Prüfpunkt 6) — und `durchstich.test.ts` hielt ihn sogar fest: der Lauf OHNE Dokument traf.
+ *
+ * `DOKUMENTWORT` steht AUSSCHLIESSLICH im Text der Quelldatei. „schließen" ist Teil von
+ * `QUELLSATZ`; `EIGENER_TITEL` enthält es nicht, und `EIGENE_AUSSAGE` enthält „geschlossen" — was
+ * für `includes` etwas anderes ist. Ein Treffer darauf kann nur aus dem Dokument stammen.
+ *
+ * DAS IST HIER KEINE ZUSICHERUNG PER KOMMENTAR. Die Eigenschaft wird je Lauf am TATSÄCHLICH
+ * angelegten Objekt gemessen (`Isolation`, `messeIsolation`) — ein Kommentar hat sie schon einmal
+ * überlebt, nachdem sie nicht mehr stimmte.
+ */
+export const DOKUMENTWORT = "schließen";
 
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
@@ -112,6 +164,49 @@ export interface Wiedersehen {
   /** Die Kennungen, auf die die wartenden Belegstellen zeigen (`pendingSources[].objectId`). */
   readonly belegObjekte: readonly string[];
   readonly belegZitat: string;
+}
+
+/**
+ * OB `DOKUMENTWORT` SEINEN NAMEN VERDIENT — gemessen, nicht behauptet (JOB 3825, Lieferung 2).
+ *
+ * Gelesen werden die Kurzfelder des TATSÄCHLICH ANGELEGTEN Objekts, so wie die Suche sie sieht
+ * (`KoService.effectiveSearchDocumentOf`) — nicht die Konstanten dieser Datei nacherzählt. Sonst
+ * prüfte der Wächter nur, was der Test ohnehin schon glaubt, und ein Produkt, das Titel oder
+ * Kategorie anders projiziert als hier getippt, käme unbemerkt durch.
+ */
+export interface Isolation {
+  /** Konnte überhaupt gemessen werden? Ohne angelegtes Objekt gibt es keine Felder zu lesen. */
+  readonly gemessen: boolean;
+  /** Der benannte Grund, wenn nicht gemessen werden konnte — sonst leer. */
+  readonly fehlschlag: string;
+  /** Steht das Wort im Satz aus der Quelldatei? Ohne das ist es kein Dokumentwort. */
+  readonly imQuellsatz: boolean;
+  /**
+   * Die Kurzfelder des angelegten Objekts, in denen das Wort EBENFALLS steht. Leer ist der gute
+   * Fall; jeder Eintrag hier macht einen Treffer als Dokumentbeleg wertlos.
+   */
+  readonly verletzteFelder: readonly string[];
+}
+
+/**
+ * DER TREFFER EINE STUFE TIEFER (JOB 3825, Lieferung 4). `GET /api/library/search` liefert
+ * `KnowledgeObject[]` (`services/app/src/routes/library-routes.ts:575`) — die `matched`-Flags
+ * reisen dort NICHT mit. Ohne sie sagt ein Treffer nur „irgendein Feld passte"; die Frage der
+ * Strecke ist aber „der RUMPF passte". Gefragt wird deshalb derselbe gemeinsame Suchvertrag
+ * (`KoService.findSearchHits`, service.ts:1669), nicht eine im Test nachgebaute Trefferregel.
+ */
+export interface Dokumenttreffer {
+  /** Wurde der Dienst überhaupt gefragt? Ohne angelegtes Objekt gibt es nichts zu fragen. */
+  readonly gefragt: boolean;
+  /** Kam ein Treffer auf `koId` zurück? */
+  readonly gefunden: boolean;
+  /** Der benannte Grund, wenn nicht gefragt oder nicht getroffen — sonst leer. */
+  readonly fehlschlag: string;
+  /**
+   * Die `matched`-Flags, WÖRTLICH wie der Dienst sie lieferte. `undefined`, wenn es keinen Treffer
+   * gab: ein fehlender Treffer wird nie in fünf `false` umgedeutet (Auftrag §9).
+   */
+  readonly flaggen: KoSearchHit["matched"] | undefined;
 }
 
 export interface Streckenbefund {
@@ -199,7 +294,24 @@ export interface Streckenbefund {
     /** Was die Prüfung über sich selbst sagt — „done" oder ehrlich „pending". */
     readonly pruefungStand: string;
     readonly sucheStatus: number;
+    /**
+     * KAM DIE ANTWORT ÜBERHAUPT ALS TREFFERLISTE? Siehe `Suchantwort` — ohne diesen Messwert ist
+     * `sucheTrifft: false` keine Aussage über die Abwesenheit eines Treffers.
+     */
+    readonly sucheIstListe: boolean;
+    /** Der Antwortkörper (gekürzt) — Diagnosematerial für eine rote Stelle, kein Prüfwert. */
+    readonly sucheKoerper: string;
     readonly sucheTrifft: boolean;
+    /**
+     * DIE ZWEITE SUCHE, mit `DOKUMENTWORT` (JOB 3825). Sie tritt NEBEN die erste, nicht an ihre
+     * Stelle: die erste misst den durchgehenden Faden, diese den Beitrag des Dokuments.
+     */
+    readonly sucheDokumentStatus: number;
+    readonly sucheDokumentIstListe: boolean;
+    readonly sucheDokumentKoerper: string;
+    readonly sucheDokumentTrifft: boolean;
+    /** Woher der Dokumenttreffer kam — Rumpf oder Kurzfeld. Siehe `Dokumenttreffer`. */
+    readonly dokumentTreffer: Dokumenttreffer;
     readonly belegObjektId: string;
     readonly quelleStatus: number;
     readonly quelleName: string;
@@ -212,6 +324,12 @@ export interface Streckenbefund {
     readonly rohLaenge: number;
     readonly rohAbdruck: string;
   };
+  /**
+   * DIE VORAUSSETZUNG JEDER AUSSAGE ÜBER DIE DOKUMENTSUCHE. Steht hier etwas drin, ist
+   * `fund.sucheDokumentTrifft` kein Dokumentbeleg mehr — deshalb wird sie VOR den Suchzusagen
+   * geprüft und nicht daneben.
+   */
+  readonly isolation: Isolation;
   readonly verlauf: readonly Schrittmessung[];
 }
 
@@ -500,14 +618,37 @@ export async function fahreStrecke(opt: { ohne?: Auslassung } = {}): Promise<Lau
   });
   merke("5 fund", "POST /api/knowledge/check (ohne Anmeldung)", ohneAnmeldung.statusCode);
 
-  // (b) DIE SUCHE. Gesucht wird mit einem Wort, das NUR aus der Datei stammt.
+  // (b) DIE SUCHE MIT DEM WORT DES DURCHGEHENDEN FADENS. `SUCHWORT` steht im Quellsatz UND in den
+  //     beiden selbst getippten Feldern — dieser Schritt belegt also, dass das Angelegte nach
+  //     Sitzungswechsel und Anlage überhaupt auffindbar ist, und AUSDRÜCKLICH NICHT, dass der
+  //     Dokumentinhalt die Strecke überlebt hat. Für den isolierten Nachweis siehe (b2)/(b3).
   const suche = await zweiteApp.inject({
     method: "GET",
     url: `/api/library/search?q=${encodeURIComponent(SUCHWORT)}`,
     headers: wieder,
   });
   merke("5 fund", `GET /api/library/search?q=${SUCHWORT}`, suche.statusCode);
-  const treffer = alsListe<{ id?: string }>(suche.json());
+  const suchantwort = liesSuchantwort(suche, koId);
+
+  // (b2) DIE ZWEITE SUCHE — mit dem Wort, das AUSSCHLIESSLICH in der Quelldatei steht. Derselbe
+  //      Weg, dieselbe Route, ein anderes Wort: nur dieser Treffer sagt „die Anwendung findet, was
+  //      in meinem Dokument steht". Kein `catch` — ein anderer Status ist ein eigener Messwert und
+  //      wird nie in „nicht gefunden" umgedeutet (Auftrag §9). Gelesen wird über `liesSuchantwort`,
+  //      damit Status, FORM und Körper mitreisen: ohne die Form wäre die Negativaussage von D2/Ü1
+  //      blind (BEN, Korrekturpflicht 1).
+  const sucheDok = await zweiteApp.inject({
+    method: "GET",
+    url: `/api/library/search?q=${encodeURIComponent(DOKUMENTWORT)}`,
+    headers: wieder,
+  });
+  merke("5 fund", `GET /api/library/search?q=${DOKUMENTWORT}`, sucheDok.statusCode);
+  const dokAntwort = liesSuchantwort(sucheDok, koId);
+
+  // (b3) EINE STUFE TIEFER, weil die Route sie nicht führt: die `matched`-Flags. Erst sie sagen,
+  //      dass der Treffer aus dem RUMPF kam und nicht aus einem Kurzfeld. Und daneben die
+  //      Voraussetzung dieser ganzen Aussage — die Isolation des Worts am angelegten Objekt.
+  const dokumentTreffer = await messeDokumenttreffer(services.ko, koId);
+  const isolation = await messeIsolation(services.ko, koId);
 
   // (c) DER QUELLENWIEDERAUFRUF. Vom Fund über den Beleg zurück auf das Original — die Kette, die
   //     einen Demo-Besucher überhaupt interessiert: „und woher steht das?"
@@ -591,8 +732,15 @@ export async function fahreStrecke(opt: { ohne?: Auslassung } = {}): Promise<Lau
           (pruefung.json() as { similar?: unknown }).similar,
         ).some((s) => s.id === koId),
         pruefungStand: String((pruefung.json() as { status?: string }).status ?? ""),
-        sucheStatus: suche.statusCode,
-        sucheTrifft: treffer.some((t) => t.id === koId),
+        sucheStatus: suchantwort.status,
+        sucheIstListe: suchantwort.istListe,
+        sucheKoerper: suchantwort.koerper,
+        sucheTrifft: suchantwort.trifft,
+        sucheDokumentStatus: dokAntwort.status,
+        sucheDokumentIstListe: dokAntwort.istListe,
+        sucheDokumentKoerper: dokAntwort.koerper,
+        sucheDokumentTrifft: dokAntwort.trifft,
+        dokumentTreffer,
         belegObjektId,
         quelleStatus: quelle.statusCode,
         // `GET /api/objects/:id` liefert das ganze gespeicherte Objekt (`{ ref, data }`), nicht die
@@ -604,6 +752,7 @@ export async function fahreStrecke(opt: { ohne?: Auslassung } = {}): Promise<Lau
         rohLaenge: roh.rawPayload.length,
         rohAbdruck: abdruckVon(roh.rawPayload),
       },
+      isolation,
       verlauf,
     },
   };
@@ -629,6 +778,58 @@ function ersterKeks(kopf: string | string[] | undefined): string {
  */
 function alsListe<T>(rohe: unknown): T[] {
   return Array.isArray(rohe) ? (rohe as T[]) : [];
+}
+
+/**
+ * EINE SUCHANTWORT ALS MESSWERT — Status, FORM und Körper zusammen. Und die Form ist hier der Punkt.
+ *
+ * BEN zu Runde 1 (Korrekturpflicht 1), mit eigener Gegenprobe belegt: die Negativaussagen von D2 und
+ * Ü1 („das Dokumentwort wurde NICHT gefunden") lasen ihre Trefferliste über `alsListe` — und das
+ * verwandelt JEDEN Nicht-Listen-Körper in `[]`. Eine Route, die mit HTTP 200 und `{error: …}`
+ * antwortet, sah damit aus wie eine erfolgreiche leere Suche: der Prüfer verstellte sie genau so,
+ * und die ganze Datei blieb grün. Ein Fehlerobjekt ist aber kein leeres Ergebnis — dieselbe Lehre,
+ * die für die Bestandsrouten in Runde 2 schon gezogen wurde (Kopf dieser Datei, Punkt 3), nur an der
+ * Suche nicht angewandt.
+ *
+ * Deshalb reisen drei Dinge mit: der STATUS (antwortete sie überhaupt?), die FORM (war es eine
+ * Liste?) und der KÖRPER (was kam sonst?). Erst mit allen dreien darf `trifft === false` als
+ * „nicht gefunden" gelesen werden; die beiden ersten sind in `durchstich.test.ts` eigene Zusagen VOR
+ * jeder Trefferbewertung, der dritte steht in ihren Meldungen, damit eine rote Stelle sagt, WAS
+ * statt der Liste kam, statt nur „erwartet 200, war 503".
+ *
+ * KEIN `catch`, das etwas umdeutet: ein nicht lesbarer Körper wird `istListe: false` — also ein
+ * benannter Fehlschlag — und nie eine leere Trefferliste.
+ */
+export interface Suchantwort {
+  readonly status: number;
+  readonly istListe: boolean;
+  /** Der Rumpf, auf 300 Zeichen gekürzt. Diagnosematerial für Meldungen, kein Prüfwert. */
+  readonly koerper: string;
+  /** Steht `koId` in der Liste? Aussagekräftig NUR, wenn `status === 200 && istListe`. */
+  readonly trifft: boolean;
+}
+
+export function liesSuchantwort(
+  antwort: { readonly statusCode: number; readonly payload: string },
+  koId: string,
+): Suchantwort {
+  let rohe: unknown;
+  try {
+    rohe = JSON.parse(antwort.payload);
+  } catch {
+    // Kein JSON — dann ist es erst recht keine Trefferliste. `undefined` fällt unten durch
+    // `Array.isArray` und `alsListe` in genau die schwächere Aussage.
+    rohe = undefined;
+  }
+  return {
+    status: antwort.statusCode,
+    istListe: Array.isArray(rohe),
+    koerper:
+      antwort.payload.length > 300
+        ? `${antwort.payload.slice(0, 300)}… (gekürzt)`
+        : antwort.payload,
+    trifft: alsListe<{ id?: string }>(rohe).some((t) => t.id === koId),
+  };
 }
 
 /**
@@ -671,6 +872,103 @@ function liesWiedersehen(p: Entwurfsantwort["payload"]): Wiedersehen {
     ankerName: String(anker[0]?.name ?? ""),
     belegObjekte: belege.filter((src) => src.objectId).map((src) => String(src.objectId)),
     belegZitat: String(belege[0]?.excerpt ?? ""),
+  };
+}
+
+/**
+ * DER TREFFER ÜBER DEN GEMEINSAMEN SUCHVERTRAG — mit den `matched`-Flags, die die HTTP-Antwort
+ * nicht führt.
+ *
+ * BEWUSST OHNE `limit`: die Bibliothek deckelt auf 200 (`LIBRARY_SEARCH_HIT_LIMIT`), weil sie eine
+ * Seite füllt. Hier wird EIN bestimmtes Objekt gesucht, und ein Deckel könnte es verschweigen —
+ * dann stünde „nicht aus dem Rumpf getroffen" da, wo „abgeschnitten" richtig wäre. Ohne Deckel
+ * bleibt die Treffermenge ungedeckelt (s. `KoSearchQuery`).
+ *
+ * KEIN ZWEITER SUCHVERTRAG: gefragt wird `findSearchHits`, dieselbe Methode, durch die auch
+ * `LibraryService.search` läuft — nur eine Ebene vor dem Verlust der Flags.
+ */
+async function messeDokumenttreffer(ko: AppServices["ko"], koId: string): Promise<Dokumenttreffer> {
+  if (!koId) {
+    return {
+      gefragt: false,
+      gefunden: false,
+      fehlschlag:
+        "es wurde kein Wissensobjekt angelegt — es gibt keinen Treffer, nach dem zu fragen wäre",
+      flaggen: undefined,
+    };
+  }
+  let hits: KoSearchHit[];
+  try {
+    // Kleingeschrieben wie in der Route (`LibraryService.search`: `query.trim().toLowerCase()`) —
+    // die Trefferregel vergleicht kleingeschrieben, ein Grossbuchstabe hier träfe nie.
+    hits = await ko.findSearchHits({ terms: [DOKUMENTWORT.toLowerCase()] });
+  } catch (fehler) {
+    // `findSearchHits` WIRFT, wenn keine Projektionsfassung freigegeben ist (service.ts:1669). Das
+    // ist ein benannter Fehlschlag, keine Abwesenheit eines Treffers.
+    return {
+      gefragt: true,
+      gefunden: false,
+      fehlschlag: `findSearchHits warf: ${fehler instanceof Error ? fehler.message : String(fehler)}`,
+      flaggen: undefined,
+    };
+  }
+  const treffer = hits.find((h) => h.koId === koId);
+  if (!treffer) {
+    return {
+      gefragt: true,
+      gefunden: false,
+      fehlschlag: `„${DOKUMENTWORT}" traf ${hits.length} Objekt(e), aber nicht das angelegte (${koId})`,
+      flaggen: undefined,
+    };
+  }
+  return { gefragt: true, gefunden: true, fehlschlag: "", flaggen: treffer.matched };
+}
+
+/**
+ * OB DAS DOKUMENTWORT WIRKLICH ISOLIERT IST — am angelegten Objekt gemessen, je Lauf neu.
+ *
+ * Gelesen wird das zusammengesetzte Suchdokument (`effectiveSearchDocumentOf`), also GENAU die
+ * Feldtexte, gegen die die Trefferregel läuft — nicht die Konstanten dieser Datei und nicht die
+ * Ladung, die hingeschickt wurde. Ein Produkt, das Titel oder Kategorie anders projiziert als hier
+ * getippt, käme sonst unbemerkt durch.
+ *
+ * `bodyText` steht ABSICHTLICH NICHT in der Liste: dort SOLL das Wort stehen. Geprüft wird nur,
+ * dass es in keinem KURZFELD steht — denn nur dann kann ein Treffer aus dem Rumpf stammen.
+ */
+async function messeIsolation(ko: AppServices["ko"], koId: string): Promise<Isolation> {
+  const wort = DOKUMENTWORT.toLowerCase();
+  const imQuellsatz = QUELLSATZ.toLowerCase().includes(wort);
+  if (!koId) {
+    return {
+      gemessen: false,
+      fehlschlag: "es wurde kein Wissensobjekt angelegt — es gibt keine Felder zu lesen",
+      imQuellsatz,
+      verletzteFelder: [],
+    };
+  }
+  const dokument = await ko.effectiveSearchDocumentOf(koId);
+  if (!dokument) {
+    return {
+      gemessen: false,
+      fehlschlag: `für ${koId} steht kein zusammengesetztes Suchdokument bereit`,
+      imQuellsatz,
+      verletzteFelder: [],
+    };
+  }
+  const kurzfelder: readonly (readonly [string, string])[] = [
+    ["titel", dokument.titleText],
+    ["aussage", dokument.statementText],
+    ["kategorie", dokument.categoryText],
+    ["schlagwort", dokument.tagText],
+    ["bildunterschrift", dokument.captionText],
+  ];
+  return {
+    gemessen: true,
+    fehlschlag: "",
+    imQuellsatz,
+    verletzteFelder: kurzfelder
+      .filter(([, text]) => text.toLowerCase().includes(wort))
+      .map(([name]) => name),
   };
 }
 
