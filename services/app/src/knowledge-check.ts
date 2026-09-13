@@ -246,14 +246,12 @@ const CANDIDATE_LIMIT = 40;
 // ================================================================================================
 //
 // DER BEFUND, GEMESSEN (tests/live-check-suchwoerter/suchwoerter-aus-dem-ganzen-text.test.ts).
-// Bis heute stand hier `.slice(0, 12)` über die Einfügereihenfolge eines `Set` — also wörtlich die
-// zwölf ERSTEN Wörter über drei Zeichen, nicht die zwölf tragenden. Diese Wortliste ist die EINZIGE
-// Eingabe der Kandidaten-Vorauswahl (`deps.ko.findCandidates` unten), und die kennt keinen
-// Ersatzweg: passt kein Wort, ist die Kandidatenliste leer
-// (services/knowledge-object/src/repo-candidates.test.ts:72-77). Ein Entwurf mit vorangestellter
-// Kopfzeile — Herkunft, Datum, Status, Kategorie, wie die Browser-Erweiterung sie setzt — verbrauchte
-// damit alle zwölf Plätze für Beiwerk. Gemessen an derselben Sache mit und ohne Kopfzeile:
-// ohne 7 Wörter → 1 Kandidat → 1 Ähnlichkeitstreffer → 1 Judge-Aufruf; mit Kopfzeile 12
+// Bis JOB 3574 stand hier `.slice(0, 12)` über die Einfügereihenfolge eines `Set` — also wörtlich
+// die zwölf ERSTEN Wörter über drei Zeichen, nicht die zwölf tragenden. Diese Wortliste ist die
+// EINZIGE Eingabe der Kandidaten-Vorauswahl (`findCandidates` unten). Ein Entwurf mit
+// vorangestellter Kopfzeile — Herkunft, Datum, Status, Kategorie, wie die Browser-Erweiterung sie
+// setzt — verbrauchte damit alle zwölf Plätze für Beiwerk. Gemessen an derselben Sache mit und ohne
+// Kopfzeile: ohne 7 Wörter → 1 Kandidat → 1 Ähnlichkeitstreffer → 1 Judge-Aufruf; mit Kopfzeile 12
 // Kopfzeilenwörter → 0 Kandidaten → 0 Treffer → 0 Judge-Aufrufe, Status beide Male „done".
 //
 // DIE REGEL. Die verschiedenen Wörter über drei Zeichen werden NACH WORTLÄNGE ABSTEIGEND gereiht,
@@ -261,13 +259,68 @@ const CANDIDATE_LIMIT = 40;
 // Suchwörter. Die TEXTSTELLE spielt keine Rolle mehr — ein Wort am Textende hat dieselbe Chance wie
 // eines in der ersten Zeile.
 //
-// WARUM DIE LÄNGE UND NICHT DIE STELLE: die Vorauswahl des Repos ist ein ODER über TEILZEICHENKETTEN
-// (`koCandidateScore`, services/knowledge-object/src/repo.ts:261-270). Ein langes Wort ist dort das
-// trennscharfe: „überdrucksicherheitsventil" trifft genau den einen Gegenstand, „werk" oder „stand"
-// trifft alles oder nichts. Im Deutschen ist zugleich das lange Wort das fachliche — Komposita wie
-// „Rueckhaltebecken" oder „Ueberdrucksicherheitsventil" tragen den Sachverhalt, während das Beiwerk
-// einer Kopfzeile („Quelle", „Datum", „Status", „Werk", „Stand") kurz ist. Die Regel bleibt dabei
-// INHALTSBLIND: sie kennt keine Wortliste und keine Sprache, sie zählt Zeichen.
+// ================================================================================================
+// JOB 3881 · WOHIN DIESE WORTLISTE WIRKLICH GEHT — DIE KETTE, NICHT DER ADAPTER.
+// ================================================================================================
+//
+// WAS HIER FALSCH STAND. Bis JOB 3881 begründete dieser Block die Längenregel mit
+// `koCandidateScore`, einer Funktion des Repository-Adapters, die der Live-Check gar nicht erreicht
+// — ihr einziger Aufrufer ist die Adaptermethode `InMemoryKoRepo.findCandidates`, und die hat seit
+// G27 keinen Produktaufrufer mehr (JOB 3607, Banner in services/knowledge-object/src/repo.ts).
+// JOB 3574, 3583 und 3601 haben nacheinander an diesem toten Zweig gearbeitet, bevor das gemessen
+// wurde. Der alte Satz ist deshalb ERSETZT und steht nicht daneben.
+//
+// DIE KETTE, DIE WIRKLICH LÄUFT. Sie wird nicht behauptet, sondern aus dem Quelltext GEBAUT —
+// empfängertypbewusst über den TypeScript-AST, in
+// tests/live-check-suchwoerter/begruendung-nennt-die-gebaute-kette.test.ts. Nennt dieser Block eine
+// Funktion, die auf ihr nicht vorkommt, wird jener Wächter rot:
+//   `checkKnowledge` → `findCandidates` (KoService) → `findSearchHits` → `findActive`
+//   (Schnittstelle KoSearchProjectionRepo, gemessen an der Umsetzung InMemoryKoSearchProjectionRepo)
+//
+// FUNDSTELLEN — der Wächter schlägt jede dieser Zeilen nach; ausserhalb dieser Liste steht in
+// diesem Block bewusst KEIN Datei-Zeilen-Verweis, damit keine zweite, ungeprüfte Wahrheit entsteht:
+//   · AUFRUF findCandidates — services/app/src/knowledge-check.ts:389
+//   · RUMPF findCandidates — services/knowledge-object/src/service.ts:3244-3268
+//   · AUFRUF findSearchHits — services/knowledge-object/src/service.ts:3255
+//   · RUMPF findSearchHits — services/knowledge-object/src/service.ts:1669-1671
+//   · RUMPF findActive — services/knowledge-object/src/search-projection-repo.ts:708-807
+//   · RUMPF normalizeSearchTerms — services/knowledge-object/src/search-projection.ts:967-979
+//   · RUMPF expandSearchTerms — services/knowledge-object/src/search-projection.ts:1107-1127
+//   · RUMPF matchEffectiveSearchDocument — services/knowledge-object/src/effective-search-document.ts:116-148
+//   · RUMPF koCandidateScore — services/knowledge-object/src/repo.ts:282-291
+//
+// WARUM DIE LÄNGE UND NICHT DIE STELLE — AN DIESER KETTE GEMESSEN (Fall S1 im Messstand-Test).
+// `findActive` bereinigt die Wortliste (`normalizeSearchTerms`), ergänzt sie um deklarierte
+// Wortpaare (`expandSearchTerms`) und entscheidet je Bestandsobjekt mit
+// `matchEffectiveSearchDocument`: ein ODER über TEILZEICHENKETTEN, Feld für Feld. Gemessen mit dem
+// Bestandswort „Ueberdrucksicherheitsventil": ein Entwurf, dessen längstes Wort nur die
+// Teilzeichenkette „drucksicherheit" ist, liefert 1 Kandidaten. Die Teilzeichenketten-Regel gilt
+// also auf der ECHTEN Kette und nicht nur im toten Adapter. Ein langes Wort ist dort das
+// trennscharfe: „ueberdrucksicherheitsventil" trifft genau den einen Gegenstand, „werk" oder
+// „stand" trifft alles oder nichts. Im Deutschen ist zugleich das lange Wort das fachliche —
+// Komposita wie „Rueckhaltebecken" oder „Ueberdrucksicherheitsventil" tragen den Sachverhalt,
+// während das Beiwerk einer Kopfzeile („Quelle", „Datum", „Status", „Werk", „Stand") kurz ist. Die
+// Regel bleibt dabei INHALTSBLIND: sie kennt keine Wortliste und keine Sprache, sie zählt Zeichen.
+//
+// WAS DIESELBE MESSUNG ZUSÄTZLICH ZEIGT — EIN KANDIDAT IST NOCH KEIN TREFFER. Fall S1, drei
+// Entwürfe gegen denselben Bestand: mit der Teilzeichenkette „drucksicherheit" 1 Kandidat, aber 0
+// Ähnlichkeitstreffer und 0 Judge-Aufrufe (die Trigramm-Nähe bleibt unter SIMILAR_MIN_SCORE); mit
+// dem VOLLEN Wort 1 Kandidat, 1 Ähnlichkeitstreffer, 1 Judge-Aufruf; ohne jedes passende Wort 0
+// Kandidaten und 0 Treffer. Ein längeres Wort gewinnt damit zweimal: es kommt in die Vorauswahl,
+// UND es trägt die Textnähe. NICHT belegt ist, dass eine blosse Teilzeichenkette je sichtbar wird —
+// sie kommt herein und fällt an der Schwelle. OFFEN.
+//
+// „KEIN ERSATZWEG" — DER SATZ STIMMT NUR FAST, UND SEIN ALTER BELEG STIMMTE GAR NICHT. Er stützte
+// sich bis JOB 3881 auf den Test der Adaptermethode
+// (services/knowledge-object/src/repo-candidates.test.ts) und deckte damit den Produktionsweg
+// nicht. Auf der echten Kette gilt: passt kein Wort, ist die Kandidatenliste leer — mit der einen
+// Ausnahme `expandSearchTerms`, das deklarierte Wortpaare ergänzt (heute drei, SUCH_ZUORDNUNGEN in
+// services/knowledge-object/src/search-projection.ts). Der Beleg dafür ist jetzt Fall S1 am
+// Messstand, nicht mehr ein Adaptertest.
+//
+// NICHT GEDECKT — POSTGRESQL. Messstand und Wächter fahren die InMemory-Umsetzung der
+// Suchprojektion. Ob der PostgreSQL-Adapter dieselbe Teilzeichenketten-Regel hat, ist hier NICHT
+// gemessen; er ist auch nicht Teil der oben gebauten Kette. OFFEN, eigener Schnitt.
 //
 // WARUM DETERMINISTISCH: eine reine Funktion. Sortiert wird nach zwei Ganzzahlen (Wortlänge, dann
 // Fundstelle); der Vergleich ist total, das zweite Kriterium schließt jeden Gleichstand aus, die

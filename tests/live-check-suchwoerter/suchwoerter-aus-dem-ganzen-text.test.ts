@@ -11,8 +11,10 @@ import { type Messung, bestand, miss } from "./messstand";
 // eine ANDERE Prüfung als jemand, der denselben Fachinhalt ohne Kopfzeile eintippt: `terms()`
 // (knowledge-check.ts) nahm die zwölf ERSTEN Wörter über drei Zeichen, und die Kopfzeile lieferte
 // zwölf davon. Was hier nicht als Wort ankommt, kann später weder ähnlich noch widersprüchlich
-// werden — die Vorauswahl des Repos ist ein ODER über genau diese Wörter, ohne Ersatzweg
-// (services/knowledge-object/src/repo-candidates.test.ts:72-77).
+// werden — die Vorauswahl ist ein ODER über genau diese Wörter. JOB 3881 hat diese Zeile
+// berichtigt: sie stützte sich auf den Test der ADAPTERmethode (repo-candidates.test.ts), die das
+// Produkt seit G27 nicht mehr ruft. Der Beleg ist jetzt Fall S1 unten, gemessen an der wirklich
+// laufenden Kette — samt der einen Ausnahme, die es doch gibt (`expandSearchTerms`).
 //
 // GEMESSEN WIRD AN DER ECHTEN KETTE (s. messstand.ts): echter KoService auf InMemoryKoRepo mit
 // freigegebener Suchprojektion, echter ConflictService, `checkKnowledge` aus dem Produktpfad. Der
@@ -29,7 +31,7 @@ import { type Messung, bestand, miss } from "./messstand";
 // bei einem echten „nichts gefunden".
 //
 // DAS IST DER BEKANNTE, HINGENOMMENE PREIS DER ZWÖLF PLÄTZE, vom Produktcode selbst zugegeben
-// (services/app/src/knowledge-check.ts:284-295: „Ein Verlust bleibt möglich, wenn ein Gegenstand
+// (services/app/src/knowledge-check.ts:337-348: „Ein Verlust bleibt möglich, wenn ein Gegenstand
 // ausschließlich an einem der kürzesten Wörter eines langwortreichen Entwurfs hängt; das wird hier
 // nicht wegbehauptet."). Dieser Auftrag MISST ihn, er BEHEBT ihn NICHT: die Lücke bleibt offen.
 // Eine Behebung wäre eine Änderung der zwölf Plätze, also eine Schwellenänderung — und die liegt
@@ -96,10 +98,10 @@ const L2_ENTWURF =
 // Hälften unterscheiden sich ausschließlich durch die vorangestellten Metadaten.
 //
 // DER FACHTEXT ist so gebaut, dass sein EINZIGES Suchwort „gully" ist: jedes andere Wort hat
-// höchstens drei Zeichen und fällt schon an `TERM_MIN_LAENGE` (knowledge-check.ts:297, `w.length > 3`).
+// höchstens drei Zeichen und fällt schon an `TERM_MIN_LAENGE` (knowledge-check.ts:350, `w.length > 3`).
 // Damit hängt der Bestandsgegenstand nachweislich an genau diesem einen kurzen Wort — die
 // Gegenprobe „Gully aus dem Bestand entfernen" rötet die Gegenkontrolle (gemessen, s. Rückgabe).
-// Er ist mit 30 Zeichen zugleich lang genug für die Textmindestlänge (knowledge-check.ts:324,
+// Er ist mit 30 Zeichen zugleich lang genug für die Textmindestlänge (knowledge-check.ts:377,
 // `clean.length < 12` → „pending"), sonst käme der Live-Check gar nicht bis zur Vorauswahl.
 const L3_FACHTEXT = "Gully bei Eis zu, bei Tau auf.";
 
@@ -116,6 +118,25 @@ const L3_METADATEN =
   "Redaktionen Verteilung Erfassung Intranet Montags Quelle";
 const L3_OHNE_METADATEN = L3_FACHTEXT;
 const L3_MIT_METADATEN = `${L3_METADATEN} ${L3_FACHTEXT}`;
+
+// ------------------------------------------------------------------------------------------------
+// JOB 3881 · TRIFFT DIE PRODUKTIONSVORAUSWAHL AUF TEILZEICHENKETTEN? GEFRAGT, NICHT GERATEN.
+// ------------------------------------------------------------------------------------------------
+// Die Begründung der Auswahlregel stützte sich bis zu diesem Auftrag auf `koCandidateScore`
+// (services/knowledge-object/src/repo.ts) — eine Funktion ohne Produktaufrufer. Ob die WIRKLICH
+// laufende Kette (`deps.ko.findCandidates` → `KoService.findCandidates` → `findSearchHits` →
+// `KoSearchProjectionRepo.findActive`) dieselbe Teilzeichenketten-Regel hat, war damit unbelegt.
+// Dieser Fall fragt sie — mit demselben Messstand, ohne zweiten Aufbau.
+const TEIL_BESTAND = [
+  { title: "Ueberdrucksicherheitsventil", statement: "Bei 20 bar schliesst es selbsttaetig." },
+];
+// Das längste Wort ist eine echte TEILZEICHENKETTE des Bestandsworts („ueber|drucksicherheit|sventil").
+// Kein anderes Wort des Entwurfs kommt im Kandidatentext vor — der Treffer hängt an diesem einen.
+const TEIL_ENTWURF = "Die drucksicherheit am Kessel taeglich pruefen.";
+// Die Gegenrichtung: dasselbe Satzgerüst mit dem VOLLEN Wort.
+const VOLL_ENTWURF = "Das Ueberdrucksicherheitsventil am Kessel taeglich pruefen.";
+// Die dritte Richtung (§9): kein Wort trifft, auch nicht als Teilzeichenkette.
+const NICHTS_ENTWURF = "Der Rechengutkorb wird woechentlich entnommen.";
 
 /** Berichtszeile für die Rückgabe — wörtlich das, was gemessen wurde. */
 function bericht(name: string, m: Messung): string {
@@ -308,7 +329,7 @@ describe("JOB 3574: die Suchwörter des Live-Checks", () => {
   it("L1 · über zwölf Wörter: die Reihung der zwölf, vollständig festgenagelt", async () => {
     // Vierzehn verschiedene Wörter, darunter vier Paare gleicher Länge (17, 16, 15, 9 Zeichen).
     // Geprüft wird die VOLLE Liste in gelieferter Reihenfolge, nicht ihre Länge und nicht einzelne
-    // Wörter: die im Kommentar knowledge-check.ts:259-262 zugesagte Ordnung „nach Wortlänge
+    // Wörter: die im Kommentar knowledge-check.ts:257-260 zugesagte Ordnung „nach Wortlänge
     // absteigend, bei gleicher Länge nach erstem Vorkommen" war bisher als Ganzes unbewacht.
     // Die Liste steht literal da — sie wird nicht aus der Regel nachgerechnet.
     const m = await miss(await bestand(BESTAND), L1_ENTWURF);
@@ -332,8 +353,8 @@ describe("JOB 3574: die Suchwörter des Live-Checks", () => {
   it("L2 · gleich lange Wörter an der Auswahlgrenze: das früher vorkommende überlebt", async () => {
     // GENAU dreizehn Wörter auf zwölf Plätze — ein Platz zu wenig, und die beiden kürzesten sind
     // gleich lang (je fünf Zeichen). Über sie entscheidet allein der zweite Sortierschlüssel
-    // `|| a.fundstelle - b.fundstelle` (knowledge-check.ts:314). `fundstelle` ist der Rang des
-    // ERSTEN Vorkommens, weil `worte` aus einem `Set` in Einfügereihenfolge kommt (:301-308) —
+    // `|| a.fundstelle - b.fundstelle` (knowledge-check.ts:367). `fundstelle` ist der Rang des
+    // ERSTEN Vorkommens, weil `worte` aus einem `Set` in Einfügereihenfolge kommt (:354-361) —
     // das ist eine ausgeschriebene Regel, KEINE geerbte Sortierstabilität.
     const m = await miss(await bestand(BESTAND), L2_ENTWURF);
     console.log(`\n${bericht("L2", m)}`);
@@ -396,6 +417,55 @@ describe("JOB 3574: die Suchwörter des Live-Checks", () => {
     expect(b.terme).toEqual(["gully"]);
     expect(b.kandidaten).toBe(1);
     expect(b.similar).toHaveLength(1);
+  });
+
+  // ==============================================================================================
+  // JOB 3881 · S1 — DIE MESSUNG, AUF DER DIE NEUE BEGRÜNDUNG STEHT.
+  // ==============================================================================================
+  it("S1 · die echte Kette trifft auf Teilzeichenketten: 1 Kandidat, aber 0 Ähnlichkeitstreffer", async () => {
+    // GEMESSEN, NICHT VORWEGGENOMMEN. Derselbe Bestand für alle drei Läufe (der Live-Check
+    // persistiert nichts), derselbe Messstand wie oben — kein zweiter Aufbau.
+    const dienst = await bestand(TEIL_BESTAND);
+    const teil = await miss(dienst, TEIL_ENTWURF);
+    const voll = await miss(dienst, VOLL_ENTWURF);
+    const nichts = await miss(dienst, NICHTS_ENTWURF);
+    console.log(
+      `\n${bericht("S1(teil) längstes Wort ist Teilzeichenkette", teil)}\n${bericht("S1(voll) volles Wort", voll)}\n${bericht("S1(nichts) kein Wort trifft", nichts)}`,
+    );
+
+    // (a) DIE ANTWORT AUF DIE FRAGE DES AUFTRAGS: ja, die Produktionsvorauswahl trifft auf
+    //     TEILZEICHENKETTEN. „drucksicherheit" steht in keinem Feld des Bestandsobjekts als Wort —
+    //     nur als Teil von „Ueberdrucksicherheitsventil" — und liefert trotzdem 1 Kandidaten.
+    expect(teil.terme).toEqual(["drucksicherheit", "kessel", "taeglich", "pruefen"]);
+    expect(teil.kandidaten).toBe(1);
+    // (b) UND DIE GRENZE DESSELBEN BEFUNDS: der Kandidat wird kein Treffer. Die Trigramm-Nähe des
+    //     Entwurfs zum Bestandstext bleibt unter SIMILAR_MIN_SCORE, also keine Ähnlichkeit, kein
+    //     Judge-Aufruf — was auf dem Bildschirm ankommt, ist dasselbe wie bei „nichts gefunden".
+    //     (Codex' Promptverbesserung zu JOB 3854: Kandidatenverlust und Schwellenverlust sind zwei
+    //     verschiedene Dinge.)
+    expect(teil.similar).toEqual([]);
+    expect(teil.judgeAufrufe).toBe(0);
+    expect(teil.status).toBe("done");
+
+    // (c) DIE GEGENRICHTUNG mit dem VOLLEN Wort — dasselbe Satzgerüst, ein Wort getauscht: derselbe
+    //     eine Kandidat, aber jetzt auch 1 Ähnlichkeitstreffer und 1 Judge-Aufruf. Das lange Wort
+    //     gewinnt zweimal: in der Vorauswahl und an der Textnähe.
+    expect(voll.terme).toEqual(["ueberdrucksicherheitsventil", "kessel", "taeglich", "pruefen"]);
+    expect(voll.kandidaten).toBe(1);
+    expect(voll.similar).toHaveLength(1);
+    expect(voll.judgeAufrufe).toBe(1);
+    expect(voll.kandidatenIds).toEqual(teil.kandidatenIds);
+
+    // (d) §9 ZUSTANDSMODELL, festgenagelt und NICHT behoben: findet die Vorauswahl nichts, meldet
+    //     der Live-Check „done" mit leerer Trefferliste — denselben Befund wie ein geprüftes
+    //     „nichts gefunden". Das ist die bekannte Krankheit dieser Zeile; dieser Fall hält sie
+    //     fest und benennt sie als offen.
+    expect(nichts.terme).toEqual(["rechengutkorb", "wird", "woechentlich", "entnommen"]);
+    expect(nichts.kandidaten).toBe(0);
+    expect(nichts.similar).toEqual([]);
+    expect(nichts.conflicts).toEqual([]);
+    expect(nichts.status).toBe("done");
+    expect(nichts.judgeAufrufe).toBe(0);
   });
 
   it("T1b · queryTokens senkt die Mindestlänge — genau die Schwelle, die dieser Auftrag nicht anfasst", () => {
