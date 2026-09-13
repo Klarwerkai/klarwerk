@@ -63,6 +63,65 @@ vi.mock("../../apps/web/src/api/auth", () => ({
 // einem frisch ausgehändigten Demo-Zugang messen.
 const bestand = vi.hoisted(() => ({ konflikte: [] as unknown[], entwuerfe: [] as unknown[] }));
 
+/**
+ * JOB 3851 · DIE ANTWORT DES ENTWURFSABRUFS — in der Form, die das Blatt wirklich liest.
+ *
+ * Seit diesem Auftrag führt `mount()` auch die Route `/erfassen`; dort steht dieselbe Seite wie im
+ * echten Router (`routes.tsx:146`), und die holt den Entwurf über `endpoints.drafts.get(<id>)`
+ * (`components/erfassen/Blatt.tsx:900-901`). Die Attrappe antwortete an dieser Stelle mit `[]` —
+ * für EINEN Entwurf die falsche Form: `draft.payload` wäre `undefined`, und `frontDoorBodyFromDraft`
+ * (`lib/captureFrontDoor.ts:97`) stürbe darin, bevor irgendetwas zu messen wäre. Die richtige Form
+ * steht deshalb im SELBEN Register wie `ko.get` und `learningPaths.byRole`, nicht in einer zweiten
+ * Attrappe daneben.
+ *
+ * DER RUMPFTEXT IST ABSICHTLICH SPERRIG: keines seiner vier Wörter kommt in `apps/web/src/i18n.ts`
+ * vor (`grep -c` je Wort: 0). Ein Treffer im DOM kann also nur aus DIESEM Entwurf stammen — und
+ * nicht aus einem Sprachstring, der zufällig danebensteht.
+ *
+ * RUNDE 2 · SIE BELOHNT KEINE FALSCHE KENNUNG MEHR (bens Korrekturpflicht 1 zu Runde 1).
+ * Die Attrappe antwortete bis hierher auf JEDE Kennung mit diesem einen Entwurf. ben hat gemessen,
+ * was das wert war: `Blatt.tsx:901` von `.get(resumeDraftId)` auf `.get("ben-falscher-entwurf")`
+ * verstellt — und alle neuen Fälle blieben grün (`Tests 4 passed | 56 skipped (60)`). Gemessen war
+ * damit „das Blatt zeigt IRGENDEINEN Entwurf", nicht „es zeigt DIESEN".
+ * Also antwortet `fuer()` nur noch auf `e-1`, und auf alles andere so, wie der Server auf eine
+ * unbekannte Kennung antwortet: mit einem Fehlschlag (`GET /api/drafts/:id` → 404, der Client wirft
+ * einen `ApiError`, `api/client.ts:37-44`). Das Produkt hat dafür seinen eigenen Weg
+ * (`Blatt.tsx:958-976`) — es stürzt nicht, es zeigt nur eben NICHT den Entwurf.
+ */
+const ABRUF = vi.hoisted(() => {
+  const titel = "Ventilwartung Nord 2026";
+  const rumpf = "Kesselhaus Nordstrang Pruefprotokoll 3851";
+  const antwort = {
+    id: "e-1",
+    updatedAt: "2026-09-11T09:30:00.000Z",
+    payload: { title: titel, bodyHtml: `<p>${rumpf}</p>` },
+  };
+  return {
+    titel,
+    rumpf,
+    antwort,
+    fuer(kennung: unknown): typeof antwort {
+      if (kennung !== antwort.id) {
+        throw new Error(
+          `GET /drafts/${String(kennung)} → 404: diese Attrappe kennt nur „${antwort.id}"`,
+        );
+      }
+      return antwort;
+    },
+  };
+});
+
+/**
+ * JOB 3851 RUNDE 2 · DAS ABRUFBUCH — was wirklich gefragt wurde, nicht was geantwortet wurde.
+ *
+ * Die abweisende Attrappe oben deckt den Fall „falsche Kennung" nur MITTELBAR ab: sie lässt das
+ * Blatt leer, und E6 fällt darüber. Eine Prüfung, die den Istwert der Kennung NENNT, braucht ihn
+ * aber selbst — sonst stünde in der roten Meldung „kein Titel im Blatt" statt „gefragt wurde
+ * ben-falscher-entwurf". Deshalb schreibt jeder Aufruf hier seinen Pfad und seine Argumente mit;
+ * E8 liest sie. Das Buch wird in `beforeEach` geleert, sonst zählte ein Nachbarfall mit.
+ */
+const abrufe = vi.hoisted(() => ({ liste: [] as { pfad: string; argumente: unknown[] }[] }));
+
 vi.mock("../../apps/web/src/api/endpoints", () => {
   const ANTWORTEN: Record<string, unknown> = {
     "learningPaths.byRole": null,
@@ -71,15 +130,20 @@ vi.mock("../../apps/web/src/api/endpoints", () => {
   };
   const make = (pfad: string): unknown =>
     new Proxy(
-      vi.fn(async () =>
-        pfad === "conflicts.list"
-          ? bestand.konflikte
-          : pfad === "drafts.list"
-            ? bestand.entwuerfe
-            : pfad in ANTWORTEN
-              ? ANTWORTEN[pfad]
-              : [],
-      ),
+      vi.fn(async (...argumente: unknown[]) => {
+        abrufe.liste.push({ pfad, argumente });
+        if (pfad === "conflicts.list") {
+          return bestand.konflikte;
+        }
+        if (pfad === "drafts.list") {
+          return bestand.entwuerfe;
+        }
+        // JOB 3851: EIN Entwurf ist ein Objekt, keine Liste — und nur der GEFRAGTE (s. `ABRUF`).
+        if (pfad === "drafts.get") {
+          return ABRUF.fuer(argumente[0]);
+        }
+        return pfad in ANTWORTEN ? ANTWORTEN[pfad] : [];
+      }),
       {
         get(target, prop, recv) {
           if (prop in target || typeof prop === "symbol") {
@@ -98,13 +162,21 @@ import {
 } from "../../apps/web/node_modules/@tanstack/react-query";
 import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
-import { MemoryRouter, Route, Routes } from "../../apps/web/node_modules/react-router-dom";
+import {
+  MemoryRouter,
+  Route,
+  Routes,
+  useLocation,
+} from "../../apps/web/node_modules/react-router-dom";
 import { AuthProvider } from "../../apps/web/src/app/AuthContext";
 import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import { routePathAllows } from "../../apps/web/src/app/navigation";
 import i18n from "../../apps/web/src/i18n";
+// JOB 3851: die Seite, die der echte Router auf `/erfassen` zeigt (`routes.tsx:146`) — nur gelesen,
+// nie geändert. Begründung an der zweiten Route in `mount()`.
+import { Capture } from "../../apps/web/src/pages/Capture";
 import { KnowledgeDetail } from "../../apps/web/src/pages/KnowledgeDetail";
 import { Library } from "../../apps/web/src/pages/Library";
 import { MeineEntwuerfe } from "../../apps/web/src/pages/MeineEntwuerfe";
@@ -164,6 +236,28 @@ const SPRACHEN = ["de", "en", "nl"] as const;
 
 let container: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
+
+// ================================================================================================
+// JOB 3851 · WOHIN DER ROUTER WIRKLICH ZEIGT.
+// ================================================================================================
+//
+// Der Fortsetzen-Weg endet nicht am Knopf, sondern an einer ADRESSE — und die liest dieser Fühler
+// aus dem Router selbst, nicht aus einer Erwartung des Tests. Er rendert nichts; er hängt als
+// Geschwister des `AppShell` IM `MemoryRouter` und läuft damit bei jeder Navigation neu. Ohne ihn
+// bliebe nur der Umweg über `aria-current` am Kopfband — eine Anzeige über den Pfad, aber keine
+// Auskunft über die Abfrage (`?draft=…`), und genau die ist hier der Messgegenstand.
+let adresse = { pfad: "", suche: "" };
+
+function Adressfuehler(): null {
+  const ort = useLocation();
+  adresse = { pfad: ort.pathname, suche: ort.search };
+  return null;
+}
+
+/** Der Adresstext, so wie er gemessen wurde — für Fehlermeldungen, die den Istwert nennen. */
+function adresstext(): string {
+  return `${adresse.pfad}${adresse.suche}`;
+}
 
 const flush = async (): Promise<void> => {
   for (let i = 0; i < 25; i++) {
@@ -257,6 +351,8 @@ async function mount(seite: {
                 createElement(
                   MemoryRouter,
                   { initialEntries: [seite.pfad] },
+                  // JOB 3851: liest den Ort aus dem Router mit (Begründung an `Adressfuehler`).
+                  createElement(Adressfuehler),
                   createElement(
                     AppShell,
                     null,
@@ -267,6 +363,27 @@ async function mount(seite: {
                       createElement(Route, {
                         path: seite.muster,
                         element: createElement(seite.seite),
+                      }),
+                      // ========================================================================
+                      // JOB 3851 — DIE ZWEITE ROUTE, DAMIT EIN KLICK ÜBERHAUPT ETWAS MISST.
+                      // ========================================================================
+                      // Der Fortsetzen-Knopf der Entwurfsliste verlässt seine Seite
+                      // (`MeineEntwuerfe.tsx:96-98`: `/erfassen?draft=<id>`). Mit nur EINER Route
+                      // landete er auf einem Pfad ohne Route: React Router meldete „No routes
+                      // matched location", `<main>` blieb leer, und ein Fall, der danach etwas
+                      // erwartete, wäre unbegründet rot gewesen (gemessen, s. Block E5–E8 unten).
+                      //
+                      // SIE STEHT HIER UND NICHT IN EINER ZWEITEN MONTAGESTELLE: eine zweite
+                      // `mount`-Funktion wäre eine zweite Providerkette und damit eine zweite
+                      // Wahrheit über „echte Hülle". `Capture` ist dabei nicht gewählt, sondern
+                      // abgelesen — es ist die Seite, die auch der echte Router auf `/erfassen`
+                      // zeigt (`routes.tsx:146`, `PAGES.erfassen`).
+                      //
+                      // FÜR DIE FÜNF SEITEN AUS `SEITEN` ÄNDERT SIE NICHTS: keine von ihnen hat
+                      // das Muster `/erfassen`, die Route wird dort also nie gewählt.
+                      createElement(Route, {
+                        path: "/erfassen",
+                        element: createElement(Capture),
                       }),
                     ),
                   ),
@@ -328,6 +445,9 @@ beforeEach(async () => {
   sitzung.rolle = "admin";
   bestand.konflikte = [];
   bestand.entwuerfe = [];
+  adresse = { pfad: "", suche: "" };
+  // JOB 3851 R2: das Abrufbuch gehört zum EINZELNEN Fall (Begründung an `abrufe`).
+  abrufe.liste = [];
   // Suche und Sortierung der Entwurfsliste liegen PRO BROWSER in `localStorage`
   // (`lib/draftListView.ts`). Ein Restfilter aus einem Nachbarfall liesse die Zeile verschwinden,
   // die der Löschfall gleich anklickt — dann prüfte er nichts und bliebe still grün.
@@ -722,7 +842,9 @@ const ENDGUELTIG = { de: "endgültig", en: "permanently", nl: "definitief" } as 
 /** Ein Entwurf, wie ihn `GET /api/drafts` liefert — genug Felder für Titel, Datum und Zeile. */
 const EIN_ENTWURF = {
   id: "e-1",
-  payload: { title: "Ventilwartung Nord 2026" },
+  // JOB 3851: derselbe Titel wie in der Antwort des Entwurfsabrufs — EINE Quelle, damit Liste und
+  // geladenes Blatt nicht auseinanderlaufen können.
+  payload: { title: ABRUF.titel },
   originalAuthor: "u1",
   lastEditor: "u1",
   createdAt: "2026-09-10T08:00:00.000Z",
@@ -913,5 +1035,200 @@ describe("JOB 3768 · E · die Zusage der Entwurfs-Hilfe und die Fläche im selb
         /\d+\s*(Tag|day|dag)/,
       );
     }
+  });
+});
+
+// ================================================================================================
+// JOB 3851 · E5–E8 — DER „FORTSETZEN"-KNOPF WIRD GEDRÜCKT, NICHT NUR ANGESEHEN.
+// ================================================================================================
+//
+// CODEX' BESTELLUNG AUS JOB 3768 R1 (`archiv/3768/runde-1/ben.md:30`, Prüfpunkt 6), wörtlich:
+// „Nicht blockierend — E1 prüft Beschriftungen, aber keinen vollständigen Fortsetzen-Vorgang.
+// Ergänzungsvorschlag: Klick bis zum geladenen Editor samt Ungespeichert-Abfrage prüfen."
+//
+// WARUM EIN KLICK BIS HIERHER NICHTS MESSEN KONNTE: `mount()` registrierte GENAU EINE Route
+// (`seite.muster`, für diese Seite `/entwuerfe`). Der Knopf führt über `MeineEntwuerfe.tsx:96-98`
+// nach `/erfassen?draft=<id>` — auf einen Pfad, für den es hier keine Route gab.
+//
+// GEMESSEN AM BASISSTAND `639e514` (Wegwerffall, JOB 3851 Lieferung 1), und das Ergebnis ist
+// zweigeteilt — deshalb steht es hier und nicht als Behauptung:
+//   · DER ROUTER GING SEHR WOHL WEITER. Der Ort stand danach auf `/erfassen?draft=e-1`, und der
+//     Kopfband-Punkt „Erfassen" trug `aria-current="page"`. E5 unten war gegen die unveränderte
+//     Montagestelle also GRÜN — wer nur die Adresse prüft, misst die zweite Route gar nicht.
+//   · DIE SEITE ABER FEHLTE. React Router meldete `No routes matched location
+//     "/erfassen?draft=e-1"`, `<main>` trug danach 92 Zeichen leere Hülle (`<div
+//     data-modal-region="" …><div class="kw-inhalt h-full w-full"></div></div>`), und die
+//     Endpunkt-Attrappe bekam nach dem Klick KEINEN einzigen Aufruf — `drafts.get` lief nie.
+//     E6/E7 waren deshalb rot, mit genau dieser Diagnose.
+// Der Nutzen der zweiten Route hängt also an E6/E7, nicht an E5; E5 hält dafür fest, dass die
+// Adresse GENAU diesen Entwurf nennt, und wird rot, sobald der Knopf woanders hinführt.
+//
+// DESHALB TRÄGT `mount()` JETZT DIE ZWEITE ROUTE `/erfassen` — mit derselben Seite, die auch der
+// echte Router dort zeigt (`routes.tsx:146`, `PAGES.erfassen = Capture`) — und die Attrappe
+// beantwortet `drafts.get` in der Form, die das Blatt wirklich liest.
+
+/**
+ * Der Weg des Menschen bis zum Klick: eine Zeile in der Liste, dann „Fortsetzen".
+ *
+ * §9 des Auftrags: gemessen wird erst, wenn die Liste WIRKLICH trägt — dafür dient dieselbe
+ * Kalibrierung `[data-entwurfszeile="e-1"]`, die D2 schon benutzt, und keine zweite.
+ * Lieferung 7: die erwartete Beschriftung kommt aus `capture.resume` über `ressource()`, nicht als
+ * eigenes Wort — die Zusage der Hilfe und der gemessene Weg haben damit EINE Quelle.
+ */
+async function fortsetzenDruecken(): Promise<void> {
+  sitzung.rolle = "admin";
+  bestand.entwuerfe = [EIN_ENTWURF];
+  await mount(SEITEN[4]);
+  expect(
+    container.querySelector('[data-entwurfszeile="e-1"]'),
+    "die Entwurfszeile fehlt — ein Klick hätte hier nichts gemessen",
+  ).not.toBeNull();
+  const knopf = container.querySelector('[data-entwurf-fortsetzen="e-1"]');
+  expect(knopf, "an der Zeile steht kein Fortsetzen-Knopf").not.toBeNull();
+  expect(
+    normal(knopf?.textContent ?? ""),
+    "der Knopf trägt nicht die Beschriftung, die die Hilfe zusagt (`capture.resume`)",
+  ).toContain(ressource("de", "capture.resume"));
+  await click(knopf);
+}
+
+/**
+ * Eine echte Eingabe in ein React-Feld: der native Wert-Setzer plus das `input`-Ereignis. Genau so
+ * erreicht auch eine Tastatur den `onChange`-Weg des Feldes — ein `feld.value = …` allein sähe React
+ * nicht, und ein selbst gesetzter Zustand wäre nicht die Eingabe, die dieser Fall messen soll.
+ */
+async function tippen(feld: HTMLInputElement, wert: string): Promise<void> {
+  const setzer = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+  await act(async () => {
+    setzer?.call(feld, wert);
+    feld.dispatchEvent(new Event("input", { bubbles: true }));
+    await flush();
+  });
+}
+
+/** Der Weg heraus, den ein Mensch nimmt: der Kopfband-Punkt „Meine Entwürfe" (ein `GuardedLink`). */
+async function fortnavigieren(): Promise<void> {
+  const punkt = container.querySelector('[data-kopfband-punkt="entwuerfe"]');
+  expect(punkt, "im Kopfband steht kein Weg zurück zu den Entwürfen").not.toBeNull();
+  await click(punkt);
+}
+
+describe("JOB 3851 · E5–E8 · vom Knopf bis in den geladenen Entwurf", () => {
+  it("E5 · der Klick landet auf DIESEM Entwurf — am Router gemessen, nicht am Knopf", async () => {
+    await fortsetzenDruecken();
+    // (a) DER PFAD. Er wird einzeln und namentlich geprüft — „irgendwo steht e-1" wäre auch dann
+    // grün, wenn der Knopf auf einer beliebigen anderen Seite landete.
+    expect(
+      adresse.pfad,
+      `nach dem Klick steht der Router auf „${adresstext()}" statt auf „/erfassen"`,
+    ).toBe("/erfassen");
+    // (b) DER ABFRAGEWERT. Gelesen wird der benannte Parameter `draft`, nicht der Adresstext.
+    const gelesen = new URLSearchParams(adresse.suche).get("draft");
+    expect(
+      gelesen,
+      `die Abfrage „${adresse.suche === "" ? "(leer)" : adresse.suche}“ trägt unter „draft“ ${JSON.stringify(gelesen)} statt „e-1“`,
+    ).toBe("e-1");
+  });
+
+  it("E6 · das Blatt trägt den Entwurf — Titel UND Rumpf, jeder einzeln im DOM", async () => {
+    await fortsetzenDruecken();
+    // (1) DER TITEL — im Schreibfeld des Blattes (`Blatt.tsx:2684-2686`), nicht irgendwo im Text.
+    const titelfeld = container.querySelector('[data-testid="blatt-titel"]');
+    expect(
+      titelfeld,
+      `das Blatt hat kein Titelfeld; der Router steht auf „${adresstext()}“`,
+    ).not.toBeNull();
+    expect(
+      (titelfeld as HTMLInputElement | null)?.value,
+      `das Titelfeld trägt nicht den Titel des geladenen Entwurfs; der Router steht auf „${adresstext()}“`,
+    ).toBe(ABRUF.titel);
+    // (2) DER RUMPF — in der Schreibfläche (`Blatt.tsx:2769-2771`). Sein Wortlaut kommt aus der
+    // Antwort des Entwurfsabrufs und aus keiner Sprachressource (Begründung an `ABRUF`).
+    const schreibflaeche = container.querySelector('[data-testid="blatt-text"]');
+    expect(
+      schreibflaeche,
+      `das Blatt hat keine Schreibfläche; der Router steht auf „${adresstext()}“`,
+    ).not.toBeNull();
+    expect(
+      normal(schreibflaeche?.textContent ?? ""),
+      `der Rumpf des geladenen Entwurfs steht nicht im Blatt; gelesen: „${normal(schreibflaeche?.textContent ?? "").slice(0, 200)}“`,
+    ).toContain(ABRUF.rumpf);
+  });
+
+  it("E7a · MIT Änderung: der Weg heraus stellt die Ungespeichert-Rückfrage", async () => {
+    await fortsetzenDruecken();
+    const titelfeld = container.querySelector('[data-testid="blatt-titel"]');
+    expect(
+      titelfeld,
+      `ohne geladenes Blatt gibt es nichts zu ändern; Router: „${adresstext()}“`,
+    ).not.toBeNull();
+    // EINE ECHTE EINGABE, kein selbst gesetzter Zustand: derselbe `onChange`-Weg, den auch eine
+    // Tastatur nimmt (`Blatt.tsx:2694`), und damit dasselbe Dirty-Prädikat (`istSchmutzig`, `:1424`).
+    await tippen(titelfeld as HTMLInputElement, `${ABRUF.titel} und Ostrang`);
+    await fortnavigieren();
+    const dialog = container.querySelector("[data-navguard-dialog]");
+    expect(
+      dialog,
+      `keine Ungespeichert-Rückfrage; der Router ist nach „${adresstext()}“ weitergegangen`,
+    ).not.toBeNull();
+    // DER TEXT KOMMT AUS DER RESSOURCE, nicht aus einer im Test abgeschriebenen Zeichenkette.
+    const gesagt = normal(dialog?.textContent ?? "");
+    expect(gesagt).toContain(normal(ressource("de", "nav.guard.title")));
+    expect(gesagt).toContain(normal(ressource("de", "nav.guard.body")));
+    // Und die Navigation ist wirklich angehalten — die Rückfrage ist keine Zierde neben dem Wechsel.
+    expect(adresse.pfad, "trotz Rückfrage ist der Router weitergegangen").toBe("/erfassen");
+  });
+
+  it("E7b · GEGENPROBE OHNE Änderung: keine Rückfrage, der Wechsel geht durch", async () => {
+    await fortsetzenDruecken();
+    expect(
+      container.querySelector('[data-testid="blatt-titel"]'),
+      `ohne geladenes Blatt misst die Gegenprobe nichts; Router: „${adresstext()}“`,
+    ).not.toBeNull();
+    await fortnavigieren();
+    // Ohne diese Zeile wäre E7a auch von einer Wache erfüllt, die IMMER fragt.
+    expect(
+      container.querySelector("[data-navguard-dialog]"),
+      "eine Rückfrage ohne ungespeicherte Änderung — die Wache fragt immer",
+    ).toBeNull();
+    expect(adresse.pfad, `der Wechsel ging nicht durch; Router: „${adresstext()}“`).toBe(
+      "/entwuerfe",
+    );
+  });
+
+  // ==============================================================================================
+  // RUNDE 2 · E8 — WELCHE KENNUNG WURDE WIRKLICH ABGERUFEN?
+  // ==============================================================================================
+  //
+  // BENS KORREKTURPFLICHT 1 ZU RUNDE 1, wörtlich: „Im bestehenden Prüfaufbau die tatsächlich an
+  // `drafts.get` übergebene Kennung absichern. Beleg: `.get(\"ben-falscher-entwurf\")` macht einen
+  // neuen Fall mit gemessenem Istargument rot."
+  //
+  // Er hat die Lücke selbst aufgemacht: `Blatt.tsx:901` auf eine frei erfundene Kennung verstellt,
+  // und E5–E7 blieben grün. Der Grund lag NICHT in ihren Erwartungen, sondern in der Attrappe — sie
+  // gab jedem Frager denselben Entwurf. E5 misst die ADRESSE, E6 den INHALT; zwischen beiden lag der
+  // ungemessene Schritt „mit welcher Kennung geht die Fläche zum Server".
+  //
+  // ZWEI SPERREN, ABSICHTLICH GETRENNT: `ABRUF.fuer` weist eine fremde Kennung jetzt ab (dann fällt
+  // E6, weil das Blatt leer bleibt) — und DIESER Fall liest die Kennung selbst aus dem Abrufbuch.
+  // Nur so nennt die rote Meldung den Istwert („abgerufen wurde ben-falscher-entwurf") statt einer
+  // Folgeerscheinung („kein Titel im Blatt").
+  it("E8 · der Abruf fragt nach DIESER Kennung — am Istargument gemessen, nicht an der Antwort", async () => {
+    await fortsetzenDruecken();
+    const gefragt = abrufe.liste.filter((a) => a.pfad === "drafts.get").map((a) => a.argumente[0]);
+    // (1) ES WURDE ÜBERHAUPT ABGERUFEN. Ohne diese Zeile wäre (2) auch dann grün, wenn der Klick
+    // gar keinen Abruf auslöst — eine leere Liste erfüllt jede Allaussage.
+    expect(
+      gefragt.length,
+      `nach dem Klick hat die Fläche keinen Entwurf abgerufen; Router: „${adresstext()}“, Aufrufe dieses Laufs: ${abrufe.liste.map((a) => a.pfad).join(", ") || "(keine)"}`,
+    ).toBeGreaterThan(0);
+    // (2) UND AUSSCHLIESSLICH NACH `e-1`. Geprüft wird der Fremdanteil, nicht ein Einzelaufruf: das
+    // Blatt darf denselben Entwurf mehrfach holen (`Blatt.tsx:900`, `Capture.tsx:3047`), aber keine
+    // andere Kennung — und die rote Meldung trägt den gemessenen Wert.
+    const fremd = gefragt.filter((kennung) => kennung !== EIN_ENTWURF.id);
+    expect(
+      fremd,
+      `abgerufen wurde ${JSON.stringify(fremd)} statt „${EIN_ENTWURF.id}“ (alle Kennungen dieses Laufs: ${JSON.stringify(gefragt)})`,
+    ).toEqual([]);
   });
 });
