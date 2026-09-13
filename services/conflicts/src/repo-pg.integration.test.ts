@@ -5,6 +5,10 @@ import { guardedLocalPgTestUrl } from "../../db-tx";
 import { OVERLAP_SCHEMA, PgOverlapRepo } from "./overlap-repo-pg";
 import type { OverlapEntry } from "./overlap-types";
 import { CONFLICTS_SCHEMA, PgConflictRepo } from "./repo-pg";
+// JOB 3914: der Entscheidungsweg selbst — `dismiss`/`resolve` schreiben über `save()` →
+// `repo.update()`. Ohne ihn misse dieser Lauf einen nachgebauten Datensatz statt der Ablage,
+// die der Mensch auslöst.
+import { ConflictService } from "./service";
 import type { Conflict } from "./types";
 
 // D-AISTATE PAKET 4 (bens V5, aistate-fix4): echte Postgres-Belege für den ATOMAREN,
@@ -250,5 +254,100 @@ describe("aistate-fix4 (bens V5): insertIfVersionsCurrent gegen echtes Postgres"
     expect(row.resolution.reason).toBe("superseded");
     expect(row.resolution.by).toBeNull();
     expect(await repo.supersedeIfOpen("ocas1", supersededOverlap)).toBe(false);
+  });
+
+  // ==============================================================================================
+  // JOB 3914 — DER MENSCHLICHE VERMERK NACH EINEM NEUEN VERBINDUNGSAUFBAU.
+  // ==============================================================================================
+  // Bestellt von BEN zweimal: zu JOB 3887 (Prüfpunkt 6 — „Postgres: später Entscheidung nach
+  // erneuter Datenbankverbindung zurücklesen") und zu JOB 3888 („PostgreSQL-Vermerk nach erneutem
+  // Verbindungsaufbau"). Die sieben Bestandsfälle darüber rufen `update()` NIE auf, und der
+  // gemeinsame Bauer `conflict()` (:25-40) setzt `decision`/`decidedBy` fest auf null — der
+  // Freitext eines Menschen wurde hier also nie geschrieben und nie zurückgelesen. Genau das
+  // schließen die zwei Fälle hier, auf dem Schreibweg, den `ConflictService.save()`
+  // (service.ts:638-641) für JEDE Entscheidung nimmt: `repo.update()`, sonst nichts.
+  //
+  // WARUM EIN EIGENER POOL UND NICHT DER DER SUITE: „neuer Verbindungsaufbau" heißt, dass zwischen
+  // Schreiben und Lesen weder Verbindung noch Pool-Zustand überleben. Der Suite-Pool trägt aber
+  // Container und alle weiteren Fälle (afterAll :102-105) — ihn hier zu schließen, nähme jedem
+  // folgenden Fall die Datenbank. Geschrieben wird deshalb über einen EIGENEN Pool, der danach
+  // geschlossen wird, gelesen über einen FRISCHEN Pool auf dieselbe Datenbank mit einem frischen
+  // `PgConflictRepo`. Gating, `reset` und `requirePool` bleiben unverändert; ohne Infrastruktur
+  // wird sauber übersprungen, nie gefälscht.
+  //
+  // DER BELEG, DER IM TOR MITFÄHRT (ohne Docker, Paritätsteil): siehe
+  // `tests/konflikt-vermerk-postgres/vermerk-ueberlebt-die-postgres-ablage.test.ts`.
+  function verbindung(p: Pool): string {
+    const url = p.options.connectionString;
+    if (!url) {
+      throw new Error(
+        "Pool ohne connectionString — ein neuer Verbindungsaufbau wäre nicht messbar, also wird hier nichts behauptet.",
+      );
+    }
+    return url;
+  }
+
+  // Der Schreibvorgang läuft über den ECHTEN Entscheidungsweg, nicht über einen nachgebauten
+  // Datensatz: `ConflictService.dismiss`/`.resolve` (service.ts:153-164 / :189-200) gehen durch
+  // `save()` (:638-641), und `save()` ruft ausschliesslich `repo.update()` — also genau das
+  // Vollobjekt-UPDATE aus repo-pg.ts:108-113, um das es hier geht. Damit rötet auch eine
+  // Verstellung IM DIENST (etwa ein erfundener Notiztext) diese Fälle, statt an ihnen vorbeizugehen.
+  async function mitNeuemPool<T>(
+    p: Pool,
+    fn: (repo: PgConflictRepo, dienst: ConflictService) => Promise<T>,
+  ): Promise<T> {
+    const frisch = new Pool({ connectionString: verbindung(p) });
+    try {
+      const repo = new PgConflictRepo(frisch);
+      return await fn(repo, new ConflictService({ repo }));
+    } finally {
+      await frisch.end();
+    }
+  }
+
+  it("JOB 3914: die Entscheidung mit Freitext ist nach NEUEM Verbindungsaufbau vollständig lesbar", async (ctx) => {
+    const p = requirePool(ctx);
+    await reset(p);
+    await new PgConflictRepo(p).insert(conflict("vermerk1", { koAVersion: 2, koBVersion: 3 }));
+
+    await mitNeuemPool(p, (_repo, dienst) =>
+      dienst.resolve(
+        "vermerk1",
+        "controller-1",
+        "Quelle B gilt; A galt nur für die alte Baureihe.",
+      ),
+    );
+
+    // Neue Verbindung, neuer Pool, neues Repo — nichts aus dem Schreibvorgang überlebt im Prozess.
+    const zurueck = await mitNeuemPool(p, (repo) => repo.findById("vermerk1"));
+    expect(zurueck?.status).toBe("geloest");
+    expect(zurueck?.decidedBy).toBe("controller-1");
+    expect(zurueck?.decision).toBe("Quelle B gilt; A galt nur für die alte Baureihe.");
+    expect(zurueck?.resolutionReason).toBe("decided");
+  });
+
+  it('JOB 3914: „Fehlalarm ohne Notiz" bleibt null, „entschieden" trägt den Freitext — beides über eine neue Verbindung', async (ctx) => {
+    const p = requirePool(ctx);
+    await reset(p);
+    const start = new PgConflictRepo(p);
+    await start.insert(conflict("ohne"));
+    await start.insert(conflict("mit"));
+
+    await mitNeuemPool(p, async (_repo, dienst) => {
+      await dienst.dismiss("ohne", "controller-1"); // OHNE Notiz — `decision: note ?? null` (:159)
+      await dienst.resolve("mit", "controller-1", "Quelle B gilt.");
+    });
+
+    const gelesen = await mitNeuemPool(p, async (repo) => ({
+      ohne: await repo.findById("ohne"),
+      mit: await repo.findById("mit"),
+    }));
+    // Weder "" noch fehlend: die Ablage erfindet keinen Text und verliert auch keinen.
+    expect(gelesen.ohne?.decision).toBeNull();
+    expect(gelesen.ohne?.decidedBy).toBe("controller-1");
+    expect(gelesen.ohne?.resolutionReason).toBe("dismissed");
+    expect(gelesen.mit?.decision).toBe("Quelle B gilt.");
+    expect(gelesen.mit?.decidedBy).toBe("controller-1");
+    expect(gelesen.mit?.resolutionReason).toBe("decided");
   });
 });

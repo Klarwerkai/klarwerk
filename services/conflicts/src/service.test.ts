@@ -93,9 +93,14 @@ describe("ConflictService", () => {
   //   Entscheidung ablegt (`decidedBy`, `decision`, `resolutionReason`) und dass der Datensatz
   //   danach über `service.get(id)` vollständig zurückgelesen werden kann. Jede Zusicherung liest
   //   deshalb zurück — der Rückgabewert der Methode allein gilt hier NICHT als Beleg.
-  // NICHT BELEGT ist die Postgres-Ablage: `repo-pg.integration.test.ts` läuft nur unter
-  //   `test:integration` und fährt im Tor nicht mit. Ebenfalls nicht belegt: der HTTP-Weg und die
-  //   Oberfläche — über sie behaupten diese Fälle nichts.
+  // BELEGT ist seit JOB 3914 auch die POSTGRES-Ablage — an zwei Orten, nicht hier: der
+  //   Paritätsbeleg `tests/konflikt-vermerk-postgres/vermerk-ueberlebt-die-postgres-ablage.test.ts`
+  //   fährt IM TOR mit und hält `PgConflictRepo` an einem Doppelgänger-Pool feldweise gegen genau
+  //   diese In-Memory-Fassung (samt dem abgesetzten Vollobjekt-UPDATE); der echte Datenbankfall
+  //   nach NEUEM Verbindungsaufbau steht in `repo-pg.integration.test.ts` und fährt nur unter
+  //   `test:integration`.
+  // NICHT BELEGT durch DIESE Fälle sind der HTTP-Weg (den belegt JOB 3888 in
+  //   `tests/konflikt-vermerk-am-endpunkt/`) und die Oberfläche — über beide behaupten sie nichts.
   it("JOB 3887 D1: dismiss legt den vollständigen Vermerk ab — zurückgelesen über get", async () => {
     const c = await service.create(input({ type: "context" }));
     await service.dismiss(c.id, "controller-1", "Fehlalarm: andere Anlage");
