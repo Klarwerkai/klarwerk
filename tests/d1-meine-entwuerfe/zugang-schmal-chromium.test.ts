@@ -628,23 +628,43 @@ describe("JOB 3266 R2 · der Zugang zu den eigenen Entwürfen im echten Chromium
     );
     // Der Zustand von Runde 1, in der laufenden Seite wiederhergestellt: die Fläche hängt wieder
     // nur an `right-0` des umgebrochenen Werkzeugs.
-    const vorher = await s.evaluate<string>(
-      fn(
-        `() => { const el = document.querySelector('[data-testid="blatt-menue-mehr"]'); const alt = el.style.transform; el.style.transform = 'none'; return alt; }`,
-      ),
+    //
+    // ============================================================================================
+    // JOB 3778 · WARUM ENTFERNEN, MESSEN UND ZURÜCKSETZEN IN *EINER* AUSWERTUNG GESCHEHEN.
+    // ============================================================================================
+    // Bis hierher waren es DREI Playwright-Aufrufe: Ausgleich entfernen, dann messen, dann
+    // zurücksetzen. Zwischen zwei Aufrufen läuft die Seite aber weiter — und genau dort wohnt der
+    // Ausgleich: `components/erfassen/Menue.tsx` misst die Fläche, verschiebt sie und misst erneut
+    // (drei Anläufe je Öffnung, `:144-151`). Nimmt man die Verschiebung von aussen weg, ist das für
+    // diesen Effekt eine neue Lage: er rechnet nach und setzt sie WIEDER. Wer danach misst, misst
+    // die ausgeglichene Fläche — und der Fall wird rot, obwohl das Produkt genau das Richtige tut.
+    //
+    // GEMESSEN (JOB 3778, Nachzug 2, Cloud-Lauf 8c54fda4c948ce7127005b96, 390 px, DE): der
+    // Ausgleich ist `translate(258px, -109.25px)`; der Knopf „Mehr" endet bei x=80, die Fläche ist
+    // 330 px breit, ohne Ausgleich liegt sie also bei 80 − 330 = −250. Mit Ausgleich: −250 + 258 =
+    // 8. Genau diese 8 meldete das Tor zweimal („expected 8 to be less than 0"), während derselbe
+    // Fall einzeln grün war — ein Wettlauf, kein Zahlenfehler und keine Verhaltensänderung.
+    // Zum Beleg stand der Ausgleich beim Nachmessen schon wieder am Knoten (Fläche bei x=52).
+    //
+    // IN EINER AUSWERTUNG kann zwischen Entfernen und Messen kein Neuanstrich liegen: der Block
+    // unten ist EINE synchrone Aufgabe im Browser, `getBoundingClientRect()` liest das Layout
+    // darin sofort, und die Verschiebung ist am Ende derselben Aufgabe wieder da. Die Zusage des
+    // Falls bleibt Wort für Wort dieselbe (`links` muss unter 0 liegen) — sie ist nur nicht mehr
+    // vom Zufall abhängig. Die Seite bleibt, wie sie war; kein Zustand tritt nach aussen.
+    const ohne = await s.evaluate<Masse>(
+      fn(`() => {
+        const el = document.querySelector('[data-testid="blatt-menue-mehr"]');
+        const alt = el.style.transform;
+        el.style.transform = 'none';
+        const mass = (${MASSE})();
+        el.style.transform = alt;
+        return mass;
+      }`),
     );
-    const ohne = await s.evaluate<Masse>(fn(MASSE));
     expect(
       (ohne.flaeche as NonNullable<Masse["flaeche"]>).links,
       "ohne Ausgleich läge die Fläche im Fenster — dann misst dieser Prüfstand nichts",
     ).toBeLessThan(0);
-    // Zurückgesetzt, damit der nächste Fall auf dem echten Produktzustand misst.
-    await s.evaluate(
-      fn(
-        `(alt) => { document.querySelector('[data-testid="blatt-menue-mehr"]').style.transform = alt; }`,
-      ),
-      vorher,
-    );
     imFenster(await s.evaluate<Masse>(fn(MASSE)), "390 · nach Rücknahme der Kalibrierung");
   }, 120_000);
 
