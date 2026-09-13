@@ -44,6 +44,14 @@
 //       schon erkannte Alias. Dazu aus demselben Grund: die Weitergabe (`…findCandidates.call/
 //       apply/bind(…)`) und der verzweigte Träger (`cond ? this.repo : other`, `a ?? this.repo`).
 //
+//       JOB 3840: dazu der Träger AUS EINEM ANDEREN MODUL. Bis hierher las diese Datei jede Quelle
+//       für sich; ein Rückgabewert wie `const y = hol()` trägt seine Auskunft aber in der
+//       NACHBARDATEI, und die Grenze unten hielt das als „bleibt ungesehen" fest. Jetzt steht EIN
+//       `ts.Program` über der Produktfläche (`typprogramm.ts`), und der TYPPRÜFER antwortet dort, wo
+//       der Syntaxbaum schweigt: ZULETZT, nie zuerst, und nur für die drei namentlich aufgezählten
+//       Repository-Typen (`REPO_TYPEN`). Der Baumweg behält den Vorrang; es gibt keinen zweiten
+//       Prüfweg, keine zweite Ausgabeform und keine zweite Beanstandungsliste.
+//
 //   (b) DIE EHRLICHE MARKE STEHT. An den vier Stellen, an denen jemand als Nächstes landet, steht
 //       im Kommentarblock DIREKT über der Codezeile eine Marke, die den echten Weg namentlich
 //       nennt und die Methode als im Produkt nicht gerufen ausweist. Genau EIN Wegweiser trägt
@@ -58,13 +66,18 @@
 // ob die Projektion die richtigen Kandidaten liefert — das ist ein anderer Auftrag. Und sie
 // entfernt die Methode nicht: das ist eine Eigentümerentscheidung (öffentliche Modulschnittstelle).
 //
-// IHRE GRENZE, benannt statt verschwiegen: erkannt wird ein Träger, der im GLEICHEN Modul als
-// Alias, als Zerlegung, als getypter Träger oder als abgelöste Methode entsteht — die Schreibweise
-// des Aufrufs ist dabei gleichgültig (Klammern, `as`, `!`, `?.`, `["findCandidates"]`, `.call`).
-// Was bleibt: kommt der Träger ohne Typangabe und ohne repo-ähnlichen Namen aus einem ANDEREN Modul
-// herein (`const x = hol(); x.findCandidates()`), sieht diese Datei ihn nicht — dafür bräuchte es
-// den Typprüfer über das ganze Programm, nicht den Syntaxbaum je Datei. Der Fall steht unten als
-// Kalibrierung „bleibt ungesehen", damit die Grenze gemessen ist und nicht behauptet.
+// IHRE REICHWEITE: erkannt wird ein Träger, der im GLEICHEN Modul als Alias, als Zerlegung, als
+// getypter Träger oder als abgelöste Methode entsteht — die Schreibweise des Aufrufs ist dabei
+// gleichgültig (Klammern, `as`, `!`, `?.`, `["findCandidates"]`, `.call`). Seit JOB 3840 zählt
+// zusätzlich der Träger aus einem ANDEREN Modul, auch ohne Typangabe und ohne repo-ähnlichen Namen
+// (`const y = hol(); y.findCandidates({})`): ihn löst der Typprüfer über das ganze Programm auf.
+//
+// IHRE GRENZE, benannt statt verschwiegen und gemessen statt behauptet: einen Empfänger, dessen Typ
+// auch der Typprüfer nicht kennt — `any`, `unknown` oder ein Fehlertyp —, sieht diese Datei nicht.
+// Eine Auskunft, die der Prüfer nicht hat, darf sie nicht erfinden. Der Fall steht unten als
+// Kalibrierung „bleibt ungesehen". Ausdrücklich KEINE Lücke, sondern die Gegenrichtung: ein FREMDER
+// Typ mit derselben Gestalt (`KoService` trägt dieselbe Methode) bleibt grün — auch das steht unten
+// als Fall, denn ein Wächter, der den echten Produktweg beanstandet, wäre wertlos.
 //
 // SIE STEHT NEBEN `rangfolge-waechter.test.ts`, NICHT AN DESSEN STELLE: der dort prüft die GESTALT
 // der Abfrage (führt das `ORDER BY` die Term-Trefferzahl?), diese hier die Frage „wer ruft, und was
@@ -73,11 +86,21 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
-import { type Quelle, WURZEL, posix, quelldateien, quelleAus } from "../../tools/modalgrenze";
+import {
+  type Quelle,
+  WURZEL,
+  ohneKommentare,
+  posix,
+  quelldateien,
+  quelleAus,
+} from "../../tools/modalgrenze";
+import { type Typumgebung, gestelltesProgramm, produktprogramm } from "./typprogramm";
 
 const REPO = "services/knowledge-object/src/repo.ts";
 const REPO_PG = "services/knowledge-object/src/repo-pg.ts";
 const SERVICE = "services/knowledge-object/src/service.ts";
+/** JOB 3840: die Stelle, an der ein Empfänger von `findCandidates` im Produkt wirklich steht. */
+const ASK = "services/ask/src/service.ts";
 const ORDNER = "tests/live-check-postgres-prefilter";
 const SELBST = `${ORDNER}/toter-kandidatenweg.test.ts`;
 const NACHBAR = `${ORDNER}/rangfolge-waechter.test.ts`;
@@ -90,8 +113,13 @@ function lies(datei: string): string {
 // (a) KEIN PRODUKTAUFRUFER — am Syntaxbaum erhoben.
 // ------------------------------------------------------------------------------------------------
 
-/** Woran der Träger erkannt wurde — steht in jeder Beanstandung, damit sie nachprüfbar ist. */
-type Art = "name" | "alias" | "typ" | "abgeloest";
+/**
+ * Woran der Träger erkannt wurde — steht in jeder Beanstandung, damit sie nachprüfbar ist.
+ *
+ * JOB 3840: `typpruefer` ist die vierte ERKENNUNGSART, kein zweiter Prüfweg. Sie kommt nur zum Zug,
+ * wenn keine der drei anderen greift (s. `kandidatenaufrufe`).
+ */
+type Art = "name" | "alias" | "typ" | "abgeloest" | "typpruefer";
 
 interface Aufruf {
   readonly datei: string;
@@ -101,6 +129,14 @@ interface Aufruf {
   /** Der Name, an dem entschieden wurde. */
   readonly name: string;
   readonly art: Art;
+  /**
+   * JOB 3840, nur bei `art: "typpruefer"`: der Typname, den der Prüfer GELIEFERT hat.
+   *
+   * Bewusst das gemessene Ergebnis und nicht der Sollwert (Lehre JOB 3826 R1: „die Diagnose aus dem
+   * tatsächlich gelieferten Ergebnis ableiten"). Eine Meldung, die nur wiederholt, wonach gesucht
+   * wurde, sagt nichts darüber, was dasteht.
+   */
+  readonly typname?: string;
 }
 
 /**
@@ -199,6 +235,47 @@ function traegerNamen(ausdruck: ts.Expression | undefined): string[] {
 /** Heisst dieser Name nach einem Repository? (`repo`, `koRepo`, `this.repo`, Typ `PgKoRepo`.) */
 function istRepoName(name: string): boolean {
   return /^\w*[Rr]epo(sitory)?$/.test(name);
+}
+
+// ------------------------------------------------------------------------------------------------
+// JOB 3840 — WAS DER TYPPRÜFER ALS REPOSITORY GELTEN LÄSST. ENG, AUFGEZÄHLT, MIT GRUND.
+// ------------------------------------------------------------------------------------------------
+//
+// NAMENTLICH und NICHT über ein Muster: `istRepoName` darüber darf raten, weil ein selbst gewählter
+// Bezeichner (`repo`, `koRepo`) eine ABSICHT ausdrückt und ein Fehlgriff dort höchstens eine
+// Beanstandung zu viel erzeugt, die jemand liest. Der Typ ist etwas anderes — er kommt aus dem
+// Programm, trifft auch fremden Code und würde bei einem Muster (`/Repo$/`) jeden Bestand mitnehmen,
+// der zufällig so endet. Eine Aufzählung ist prüfbar: genau die Schnittstelle und ihre zwei
+// Umsetzungen (`repo.ts`, `repo-pg.ts`).
+//
+// `KoService` STEHT BEWUSST NICHT HIER. Er trägt dieselbe Methode und ist der ECHTE Produktweg —
+// stünde er drin, wäre dieser Wächter am Tag seiner Verschärfung falsch-rot. Die Kalibrierung unten
+// misst genau diese Gegenrichtung.
+const REPO_TYPEN: ReadonlySet<string> = new Set(["KoRepo", "InMemoryKoRepo", "PgKoRepo"]);
+
+/** Die Bestandteile eines Typs: `KoRepo | undefined` bietet zwei an, ein einfacher Typ einen. */
+function typteile(typ: ts.Type): readonly ts.Type[] {
+  return typ.isUnionOrIntersection() ? typ.types : [typ];
+}
+
+/**
+ * Der Repository-Typname des EMPFÄNGERS, soweit der Prüfer einen nennt — sonst `undefined`.
+ *
+ * `any`, `unknown` und der FEHLERTYP (intern ebenfalls `any`) zählen NICHT: sie sind keine Auskunft,
+ * sondern deren Fehlen. Genau sie sind die neue, unten gemessene Grenze dieser Datei — eine
+ * Beanstandung darauf zu stützen hiesse, aus „ich weiss es nicht" ein „ja" zu machen.
+ */
+function repoTypname(pruefer: ts.TypeChecker, empfaenger: ts.Expression): string | undefined {
+  for (const teil of typteile(pruefer.getTypeAtLocation(empfaenger))) {
+    if ((teil.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) {
+      continue;
+    }
+    const name = teil.aliasSymbol?.name ?? teil.getSymbol()?.getName();
+    if (name !== undefined && REPO_TYPEN.has(name)) {
+      return name;
+    }
+  }
+  return undefined;
 }
 
 /** Der Name einer Typangabe, soweit sie eine ist: `KoRepo`, `ko.KoRepo` → `KoRepo`. */
@@ -381,16 +458,17 @@ function nenntFindCandidates(ausdruck: ts.Expression): boolean {
  * (`deps.ko.findCandidates`, `this.koService.findCandidates`). Er ruft nicht das Repository, und
  * genau dieser Unterschied ist der Gegenstand dieser Datei.
  */
-function kandidatenaufrufe(quelle: Quelle): Aufruf[] {
+function kandidatenaufrufe(quelle: Quelle, pruefer?: ts.TypeChecker): Aufruf[] {
   const traeger = sammleTraeger(quelle);
   const raus: Aufruf[] = [];
-  const halte = (knoten: ts.Node, name: string, art: Art, text: string): void => {
+  const halte = (knoten: ts.Node, name: string, art: Art, text: string, typname?: string): void => {
     raus.push({
       datei: quelle.datei,
       zeile: quelle.ast.getLineAndCharacterOfPosition(knoten.getStart(quelle.ast)).line + 1,
       text: text.replace(/\s+/g, " "),
       name,
       art,
+      ...(typname === undefined ? {} : { typname }),
     });
   };
   const besuche = (knoten: ts.Node): void => {
@@ -412,6 +490,17 @@ function kandidatenaufrufe(quelle: Quelle): Aufruf[] {
           .find((k): k is { name: string; art: Art } => k.art !== undefined);
         if (treffer !== undefined) {
           halte(knoten, treffer.name, treffer.art, zugriff.expression.getText(quelle.ast));
+        } else if (pruefer !== undefined) {
+          // JOB 3840: DER TYPPRÜFER FRAGT ZULETZT. Erst wenn der Syntaxbaum keinen Träger nennt,
+          // wird der Typ des GLEICHEN Ausdrucks aufgelöst, den der Baumweg beurteilt hat — nicht
+          // eines anderen. Damit bleibt der Baumweg der Vorrang und dies eine Erkennungsart mehr,
+          // kein zweiter Prüfweg.
+          const empfaenger = auspacken(zugriff.expression);
+          const typname = repoTypname(pruefer, empfaenger);
+          if (typname !== undefined) {
+            const name = traegerNamen(zugriff.expression)[0] ?? empfaenger.getText(quelle.ast);
+            halte(knoten, name, "typpruefer", zugriff.expression.getText(quelle.ast), typname);
+          }
         }
       } else if (ts.isIdentifier(gerufen) && traeger.abgeloest.has(gerufen.text)) {
         halte(knoten, gerufen.text, "abgeloest", gerufen.text);
@@ -426,6 +515,56 @@ function kandidatenaufrufe(quelle: Quelle): Aufruf[] {
 /** Derselbe Prüfweg für einen Text, der nicht auf der Platte liegt (die Gegenproben unten). */
 function aufrufeIn(datei: string, text: string): Aufruf[] {
   return kandidatenaufrufe(quelleAus(datei, text));
+}
+
+/**
+ * JOB 3840: dieselbe `Quelle`, aber mit dem Baum DES PROGRAMMS.
+ *
+ * Der Prüfer beantwortet nur Fragen zu seinen eigenen Knoten; ein zweiter, nebenher geparster Baum
+ * derselben Datei wäre für ihn ein Fremdkörper und lieferte `any`. Deshalb wird hier der Baum des
+ * Programms in dieselbe Hülle gehängt, die der Syntaxbaum-Weg schon benutzt — EIN Baum, EIN Weg,
+ * zwei Auskunftsquellen. `leseFehler` bleibt leer, weil dieser Prüfweg ihn nie liest
+ * (`kandidatenaufrufe` fragt ausschliesslich den Baum).
+ */
+function quelleImProgramm(umgebung: Typumgebung, datei: string): Quelle {
+  const ast = umgebung.quelle(datei);
+  if (ast === undefined) {
+    throw new Error(`${datei} liegt nicht im Typprogramm — der Prüfer könnte sie nicht beurteilen`);
+  }
+  return { datei, text: ast.text, gestrippt: ohneKommentare(ast.text), ast, leseFehler: [] };
+}
+
+/** Die Beanstandungszeile eines Fundes — eine Form für alle Erkennungsarten. */
+function meldung(f: Aufruf): string {
+  return `${f.datei}:${f.zeile} — ${f.text} (${f.art}${f.typname === undefined ? "" : ` → ${f.typname}`})`;
+}
+
+/**
+ * JOB 3840, NUR für die Kalibrierung: welchen Typ der Prüfer für die Empfänger von
+ * `findCandidates` in einer Quelle nennt.
+ *
+ * Sie beanstandet nichts und zählt nichts — sie ist die Gegenprobe gegen die STILLE
+ * FALSCH-ENTWARNUNG: scheitert die Modulauflösung im Programm (andere `node_modules`, fehlendes
+ * `dist`, falsche Wurzel), ist JEDER Empfängertyp `any`, der Typprüfer findet nie etwas, und
+ * „0 Aufrufer" wäre kein Befund, sondern ein Ausfall. Dieselben Hüllenregeln wie in
+ * `kandidatenaufrufe` — ein zweiter Begriff von „Empfänger" darf hier nicht entstehen.
+ */
+function empfaengerTypen(quelle: Quelle, pruefer: ts.TypeChecker): string[] {
+  const raus: string[] = [];
+  const besuche = (knoten: ts.Node): void => {
+    if (ts.isCallExpression(knoten)) {
+      const gerufen = entbinde(auspacken(knoten.expression));
+      if (nenntFindCandidates(gerufen)) {
+        const zugriff = gerufen as ts.PropertyAccessExpression | ts.ElementAccessExpression;
+        const empfaenger = auspacken(zugriff.expression);
+        const typ = pruefer.getTypeAtLocation(empfaenger);
+        raus.push(`${empfaenger.getText(quelle.ast)} → ${pruefer.typeToString(typ)}`);
+      }
+    }
+    ts.forEachChild(knoten, besuche);
+  };
+  ts.forEachChild(quelle.ast, besuche);
+  return raus;
 }
 
 /** Die Produktfläche: `services/**` und `apps/**`, ohne Testdateien (`quelldateien`). */
@@ -650,11 +789,31 @@ describe("JOB 3607 · (a) der Kandidatenweg der Adapter hat im Produkt keinen Au
     expect(dateien.length).toBeGreaterThan(0);
     expect(dateien).toContain(REPO);
     expect(dateien).toContain(REPO_PG);
-    const funde = dateien.flatMap((datei) => aufrufeIn(datei, lies(datei)));
-    expect(funde.map((f) => `${f.datei}:${f.zeile} — ${f.text} (${f.art})`)).toEqual([]);
-    process.stdout.write(
-      `\nJOB 3607 — (a) gelesen: ${dateien.length} Produktdateien, 0 Aufrufer.\n`,
+    // JOB 3840: dieselbe Erhebung, jetzt mit dem Typprüfer als letzter Frage. Das Programm entsteht
+    // EINMAL (s. `typprogramm.ts`); die Zahlen unten sind gemessen, damit der Preis dieser
+    // Verschärfung im Tor nachlesbar ist und nicht behauptet werden muss.
+    const umgebung = produktprogramm(dateien);
+    const beginn = Date.now();
+    const funde = dateien.flatMap((datei) =>
+      kandidatenaufrufe(quelleImProgramm(umgebung, datei), umgebung.pruefer),
     );
+    expect(funde.map(meldung)).toEqual([]);
+    process.stdout.write(
+      `\nJOB 3607 — (a) gelesen: ${dateien.length} Produktdateien, 0 Aufrufer` +
+        ` — Syntaxbaum UND Typprüfer (JOB 3840; Programmaufbau ${umgebung.aufbauMs} ms,` +
+        ` Erhebung ${Date.now() - beginn} ms).\n`,
+    );
+  });
+
+  it("JOB 3840 · das Typprogramm löst wirklich auf: der Dienst-Empfänger heisst KoService, nicht any", () => {
+    // Ohne diesen Fall könnte der Fall darüber aus dem falschen Grund grün sein: ein Programm, das
+    // nichts auflöst, liefert überall `any` — und `any` zählt (bewusst) nicht als Repository. Der
+    // Empfänger in `services/ask/src/service.ts` ist der Gegenbeleg, den es dafür braucht: sein Typ
+    // MUSS bekannt sein, und er ist der DIENST, nicht das Repository.
+    const umgebung = produktprogramm(produktdateien());
+    expect(empfaengerTypen(quelleImProgramm(umgebung, ASK), umgebung.pruefer)).toEqual([
+      "this.koService → KoService",
+    ]);
   });
 
   it("der ECHTE Weg ist da und wird nicht mitgezählt: KoService.findCandidates ruft findSearchHits", () => {
@@ -699,9 +858,54 @@ describe("JOB 3607 · (b) die ehrliche Marke steht an allen vier Stellen", () =>
 // werden muss, wird rot — und was grün bleiben muss, bleibt grün. Ein Wächter, der alles beanstandet,
 // wäre so wertlos wie einer, der nichts beanstandet.
 
+// JOB 3840 — DIE GESTELLTEN QUELLEN FÜR DEN TYPPRÜFER, PAARWEISE.
+//
+// Warum hier mehr als ein Text nötig ist: `fall()` unten prüft EINE gestellte Quelle ohne Umgebung,
+// und genau das ist der Gegenstand dieser Erweiterung — die Auskunft über den Träger steht NICHT in
+// seiner Datei. Jedes Paar besteht deshalb aus einer Nachbardatei, die den Rückgabetyp von `hol()`
+// deklariert, und einer Probe, die den Träger ohne Typangabe und ohne repo-ähnlichen Namen aufnimmt.
+// Die drei Proben sind ZEICHENGLEICH; allein der Typ der Nachbardatei unterscheidet sie. Damit misst
+// die Kalibrierung den Typprüfer und nicht eine Schreibweise.
+const PROBE = "const y = hol();\nconst z = y.findCandidates({});\n";
+const PROBEN: ReadonlyMap<string, string> = new Map([
+  [
+    "services/probe/src/nachbar-repo.ts",
+    "export interface KoRepo { findCandidates(query: object): unknown[]; }\n" +
+      "export function hol(): KoRepo { throw new Error('Prüfdaten'); }\n",
+  ],
+  ["services/probe/src/traeger-repo.ts", `import { hol } from './nachbar-repo';\n${PROBE}`],
+  [
+    "services/probe/src/nachbar-dienst.ts",
+    "export interface KoService { findCandidates(query: object): unknown[]; }\n" +
+      "export function hol(): KoService { throw new Error('Prüfdaten'); }\n",
+  ],
+  ["services/probe/src/traeger-dienst.ts", `import { hol } from './nachbar-dienst';\n${PROBE}`],
+  [
+    "services/probe/src/nachbar-unbekannt.ts",
+    "export function hol(): any { throw new Error('Prüfdaten'); }\n",
+  ],
+  [
+    "services/probe/src/traeger-unbekannt.ts",
+    `import { hol } from './nachbar-unbekannt';\n${PROBE}`,
+  ],
+]);
+
 describe("JOB 3607 · Kalibrierung (a): was als Aufrufer zählt und was nicht", () => {
   const fall = (rumpf: string): string[] =>
     aufrufeIn("services/probe/src/probe.ts", rumpf).map((f) => `${f.art}:${f.name}`);
+
+  /**
+   * Derselbe Prüfweg an einem gestellten PROGRAMM — mit Typprüfer, wie auf der Produktfläche.
+   *
+   * Der gemessene Typname steht mit in der Zeile: eine Zusicherung, die nur `typpruefer:y` prüft,
+   * liesse offen, WORAUF der Prüfer aufgelöst hat (Lehre JOB 3826 R1).
+   */
+  const imProgramm = (datei: string): string[] => {
+    const umgebung = gestelltesProgramm(PROBEN);
+    return kandidatenaufrufe(quelleImProgramm(umgebung, datei), umgebung.pruefer).map(
+      (f) => `${f.art}:${f.name}${f.typname === undefined ? "" : `:${f.typname}`}`,
+    );
+  };
 
   it("ein eingespeister Produktaufrufer wird gefunden — in jeder Schreibweise", () => {
     expect(
@@ -864,13 +1068,29 @@ describe("JOB 3607 · Kalibrierung (a): was als Aufrufer zählt und was nicht", 
     expect(fall("class A { findCandidates(q) { return this.findSearchHits(q); } }")).toEqual([]);
   });
 
-  // DIE GRENZE, gemessen statt behauptet (s. Kopf): ein Träger ohne Typangabe, ohne repo-ähnlichen
-  // Namen und ohne sichtbare Zuweisung im selben Modul bleibt ungesehen. Dafür bräuchte es den
-  // Typprüfer über das ganze Programm. Wer die Zusicherung dieser Datei liest, liest hier ihr Ende.
-  it("bleibt ungesehen: ein Träger, den erst der Typprüfer als Repository erkennen könnte", () => {
-    expect(
-      fall("import { hol } from './x';\nconst y = hol();\nconst z = y.findCandidates({});"),
-    ).toEqual([]);
+  // JOB 3840 — DIE ABGELÖSTE GRENZE. Bis zu dieser Runde stand hier der Fall „bleibt ungesehen: ein
+  // Träger, den erst der Typprüfer als Repository erkennen könnte" mit der Erwartung `[]`. Er ist
+  // NICHT zusätzlich stehen geblieben, sondern umgestellt: zwei Aussagen über denselben Gegenstand,
+  // von denen eine falsch ist, sind genau die Art Unwahrheit, gegen die diese Datei gebaut ist.
+  it("JOB 3840 · ein Träger aus einem ANDEREN Modul zählt — der Typprüfer nennt ihn", () => {
+    expect(imProgramm("services/probe/src/traeger-repo.ts")).toEqual(["typpruefer:y:KoRepo"]);
+  });
+
+  it("JOB 3840 · Gegenrichtung: dieselbe Form über den DIENST bleibt grün", () => {
+    // Ohne diesen Fall wäre nur belegt, dass der Typprüfer streng ist, nicht dass er scharf ist:
+    // `KoService` trägt dieselbe Methode und dieselbe Gestalt, ist aber der ECHTE Produktweg.
+    expect(imProgramm("services/probe/src/traeger-dienst.ts")).toEqual([]);
+  });
+
+  // DIE NEUE GRENZE, gemessen statt behauptet (s. Kopf): kennt auch der Typprüfer den Typ des
+  // Empfängers nicht — `any`, `unknown` oder Fehlertyp —, bleibt der Träger ungesehen. Das ist keine
+  // Nachlässigkeit, sondern die Regel aus `repoTypname`: aus „ich weiss es nicht" darf keine
+  // Beanstandung werden. Wer die Zusicherung dieser Datei liest, liest hier ihr Ende.
+  //
+  // Dass dieses Grün eine MESSUNG und kein Ausfall ist, belegt der erste Fall dieser drei: er läuft
+  // im GLEICHEN gestellten Programm und löst dort `KoRepo` auf. Wäre die Auflösung tot, wäre er rot.
+  it("bleibt ungesehen: ein Träger, dessen Typ auch der Typprüfer nicht kennt", () => {
+    expect(imProgramm("services/probe/src/traeger-unbekannt.ts")).toEqual([]);
   });
 });
 
