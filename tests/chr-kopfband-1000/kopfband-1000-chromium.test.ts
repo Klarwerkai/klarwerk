@@ -86,11 +86,61 @@
 // Zusätzlich wird die Zeile als ÜBERSETZT nachgewiesen (der Knopf trägt „Gehe zu …", nicht seinen
 // Schlüssel): eine noch nicht geladene Sprachfassung ist die zweite Art, zu früh zu messen.
 //
+// ------------------------------------------------------------------------------------------------
+// JOB 3794 · ZWEI ANKUNFTSNACHWEISE STEHEN IM HAUS — UND SIE WERDEN SEITDEM GEGENEINANDER GEMESSEN
+// ------------------------------------------------------------------------------------------------
+//
+// DASS ES ZWEI GIBT, IST GEWACHSEN UND WAR BIS HIERHER UNGEPRÜFT. Dieselbe Frage — ist die Antwort
+// auf `/api/validation/board` im Browser angekommen? — wird in diesem Haus auf ZWEI Wegen
+// beantwortet, und von ihnen hängt ab, ob eine Kopfbandmessung einen Endzustand oder einen
+// Zwischenstand misst:
+//
+//   WEG 1 · DER EMPFANGSVERMERK (diese Datei, JOB 3641). `window.fetch` bekommt vor jedem
+//     Seitenskript einen Zwilling; eingetragen wird, wenn der Rumpf der Antwort in DIESEM Dokument
+//     vollständig gelesen ist. Er sagt „angekommen", wenn ein Eintrag mit `anzahl > 0` und 2xx steht.
+//   WEG 2 · DIE RESSOURCEN-ZEITLEISTE (`tests/chr-navigation-ci-logo/logokasten-chromium.test.ts`,
+//     Ablesung `ANKUNFT`, JOB 3616; geurteilt in `beurteileAnkunft`, `ruhe-und-sicht.ts`).
+//     `performance.getEntriesByType("resource")` trägt einen Eintrag, sobald der Browser die Antwort
+//     vollständig empfangen hat (`responseEnd`); gezählt wird nur, was 2xx trägt (`responseStatus`).
+//     Denselben Weg fährt seit JOB 3778 auch `tests/navigation-schmal/kopfband-ci-chromium.test.ts`.
+//
+// Beide waren je FÜR SICH gemessen; ob sie dasselbe sagen, stand nirgends — ausdrücklich bestellt in
+// `jobs/3778/runde-1/RUECKGABE.md` (REST): „Beide Wege sind je für sich gemessen; ob sie dasselbe
+// sagen, ist nirgends geprüft." K3 und K4 beantworten das: beide Ablesungen werden an EINEM
+// Seitenaufbau, an derselben Breite, für dieselbe Abfrage erhoben und gegeneinander gelegt.
+//
+// DAS URTEIL VON WEG 2 WIRD GEHOLT, NICHT NACHGEBAUT: `beurteileAnkunft` kommt aus
+// `ruhe-und-sicht.ts` — dieselbe Rechnung, die `logokasten-chromium.test.ts` fährt und die
+// `ruhe-und-sicht-waechter.test.ts` mit gebauten Zeitleisten gegenprüft. Ein hier abgeschriebenes
+// Urteil vergliche diese Datei mit sich selbst und wäre kein Vergleich. Doppelt ist nur die
+// ABLESUNG (`performance`-Griff und Puffergrösse) — der Befund steht seit JOB 3778 als REST im Haus
+// und wird erst aufgelöst, wenn ein Auftrag `kopfband-messung.ts` tragen darf.
+//
+// DIE BEREITSCHAFT BLEIBT AM VERMERK, UND DAS IST ABSICHT (Lieferung 4). Hinge `warteAufEndbreite`
+// an BEIDEN Wegen, könnte K3 den Widerspruch nicht mehr sehen: der Lauf bliebe vorher im Warten
+// hängen und stürbe an der Frist, statt die zwei Zahlen nebeneinander zu zeigen. Weg 2 steht deshalb
+// DANEBEN, ausschliesslich als Gegenmessung. Das ist die begründete Ausnahme von „ersetzen statt
+// danebenstellen": ein Vergleich braucht zwei Messungen. Wer die zweite Ablesung später für einen
+// vergessenen zweiten Messweg hält und sie wegräumt, nimmt diesem Haus den Vergleich.
+//
+// WAS GEMESSEN WURDE, steht in K3: beide Wege fällen dasselbe Urteil, und sie beschreiben dasselbe
+// Ereignis — der Vermerk trägt seinen Zeitpunkt auf DERSELBEN Dokumentuhr wie `responseEnd`, und er
+// folgt ihm zwangsläufig nach (der Rumpf ist erst nach dem letzten Byte lesbar). Der Abstand steht
+// als Zahl im Lauf. Damit ist die von `jobs/3778/runde-1/RUECKGABE.md` benannte ZUSAMMENLEGUNG in
+// `tests/navigation-schmal/kopfband-messung.ts` fachlich gedeckt — sie ist eine eigene Zeile und
+// ausdrücklich nicht Teil dieses Jobs.
+//
 // EHRLICHE GRENZEN, ausdrücklich benannt:
 //   · Gemessen wird DEUTSCH und das heute einzige Firmenprofil (`advisor`) — dieselbe Grenze wie in
 //     den Schwesterdateien (JOB 3525/3571), von diesem Job weder geschlossen noch verschlechtert.
 //   · Gemessen wird die Breite 1000 px. Über 1001–1279 px sagt diese Datei nichts.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {
+  type AnkunftBefund,
+  type Ankunftsurteil,
+  beurteileAnkunft,
+  statusListe,
+} from "../chr-navigation-ci-logo/ruhe-und-sicht";
 import { type Stand, fn, starte } from "../design/h6-chromium";
 import {
   type LogoBefund,
@@ -111,6 +161,8 @@ const HOEHE = 800;
 const BREITE = 1000;
 /** Die Kennung, unter der die gemessenen Zahlen im Lauf stehen. */
 const KENNUNG = "JOB 3641";
+/** Die Kennung der Zahlen, die JOB 3794 dazugestellt hat (der Vergleich der zwei Ankunftsnachweise). */
+const KENNUNG_3794 = "JOB 3794";
 /**
  * Die Fuge der BREITEN Bauform (`gap-9` am `<header>`, `shell/Kopfband.tsx`).
  *
@@ -170,8 +222,12 @@ const ZAEHLER_TEXTE = fn(`() => {
 const BOARD_PFAD = "/api/validation/board";
 
 // ================================================================================================
-// DER EMPFANGSVERMERK — DIE EINZIGE STELLE, AN DER „ANGEKOMMEN" ÜBERHAUPT ABLESBAR IST.
+// DER EMPFANGSVERMERK — WEG 1, UND DIE EINZIGE BEDINGUNG DER BEREITSCHAFT DIESER DATEI.
 // ================================================================================================
+//
+// Seit JOB 3794 steht daneben WEG 2, die Ressourcen-Zeitleiste (siehe Kopf). Sie trägt KEINE
+// Bereitschaft und wird nur gegen diesen Vermerk gelegt; „angekommen" ist in dieser Datei nach wie
+// vor genau das, was hier eingetragen ist.
 //
 // Er wird VOR jedem Seitenskript eingesetzt (`addInitScript`) und legt `window.fetch` einen
 // Zwilling um. Eingetragen wird erst, wenn der Rumpf der Antwort in DIESEM Dokument vollständig
@@ -209,6 +265,11 @@ const EMPFANGS_VERMERK = `(() => {
           status: antwort.status,
           laenge: laenge,
           zeichen: text.length,
+          // DER ZEITPUNKT AUF DER UHR DES DOKUMENTS (JOB 3794): performance.now() zählt vom selben
+          // Nullpunkt (timeOrigin) wie responseEnd der Ressourcen-Zeitleiste — erst dadurch sind
+          // die zwei Ankunftsnachweise nicht nur im Urteil, sondern auch im ZEITPUNKT vergleichbar.
+          // Er trägt keine Bereitschaft; er wird nur abgelesen.
+          zeitpunkt: performance.now(),
         };
       }, () => {});
       return antwort;
@@ -223,6 +284,8 @@ interface Empfang {
   /** Länge des empfangenen JSON-Feldes, oder -1, wenn die Antwort kein Feld war. */
   laenge: number;
   zeichen: number;
+  /** `performance.now()` beim vollständigen Lesen des Rumpfes — Uhr des Dokuments, JOB 3794. */
+  zeitpunkt: number;
 }
 
 const EMPFANG_DA = fn(`(pfad) => {
@@ -235,8 +298,139 @@ const EMPFANG_LESEN = fn(`(pfad) => {
   return (m && m[pfad]) ? m[pfad] : null;
 }`);
 
+// ================================================================================================
+// WEG 2 — DIE RESSOURCEN-ZEITLEISTE, UND BEIDE WEGE IN EINEM EINZIGEN GRIFF (JOB 3794).
+// ================================================================================================
+//
+// DIE ABLESUNG IST DIE VON `logokasten-chromium.test.ts` (`ANKUNFT`, JOB 3616), Feld für Feld:
+// `performance.getEntriesByType("resource")`, gefiltert auf den Pfad, mit `responseEnd` und
+// `responseStatus` je Eintrag, dazu die zwei ehrlichen Grenzen jener Quelle (übergelaufener Puffer,
+// nicht lesbarer Status). GEURTEILT WIRD NICHT HIER, sondern in `beurteileAnkunft`
+// (`ruhe-und-sicht.ts`) — importiert, nicht abgeschrieben: sonst verglichen K3/K4 diese Datei mit
+// sich selbst statt mit dem Weg, den die Schwesterdateien wirklich fahren.
+//
+// BEIDE ABLESUNGEN STEHEN IN EINEM `evaluate`, UND DAS IST DER PUNKT: zwei getrennte Griffe lägen
+// Millisekunden auseinander, und ein Unterschied wäre nicht mehr von dem Abstand zu trennen, den
+// der Vergleich gerade messen soll. Ein Griff, ein Augenblick, ein Dokument.
+const BEIDE_ABLESUNGEN = fn(`(pfad) => {
+  const m = window.__kw3641_empfang;
+  let statusLesbar = false;
+  try {
+    statusLesbar = typeof PerformanceResourceTiming !== 'undefined'
+      && 'responseStatus' in PerformanceResourceTiming.prototype;
+  } catch (x) { statusLesbar = false; }
+  let eintraege = [];
+  try {
+    eintraege = performance.getEntriesByType('resource').filter((e) => {
+      try { return new URL(e.name, location.href).pathname === pfad; } catch (x) { return false; }
+    });
+  } catch (x) { eintraege = []; }
+  return {
+    vermerk: (m && m[pfad]) ? m[pfad] : null,
+    ankunft: {
+      eintraege: eintraege.map((e) => ({
+        responseEnd: e.responseEnd,
+        status: typeof e.responseStatus === 'number' ? e.responseStatus : 0,
+      })),
+      pufferVoll: window.__kwPufferVoll === true,
+      statusLesbar: statusLesbar,
+    },
+  };
+}`);
+
+/** Was ein Griff hergibt: der Vermerk (Weg 1) und die rohe Zeitleiste (Weg 2), aus einem Augenblick. */
+interface ZweiAblesungen {
+  vermerk: Empfang | null;
+  ankunft: AnkunftBefund;
+}
+
+/** Dieselben zwei Ablesungen, die zweite bereits durch die gemeinsame Rechnung geurteilt. */
+interface ZweiUrteile {
+  vermerk: Empfang | null;
+  urteil: Ankunftsurteil;
+  befund: AnkunftBefund;
+}
+
+/**
+ * Die Ressourcen-Zeitleiste trägt vorgabegemäss nur 250 Einträge.
+ *
+ * WÖRTLICH DER GRIFF AUS `logokasten-chromium.test.ts` (`beforeAll`), und er gehört zur Ablesung,
+ * nicht zur Bequemlichkeit: liefe der Puffer über, fehlte der gesuchte Eintrag, und Weg 2 sagte
+ * „nicht angekommen", wo nur die Quelle unvollständig ist. `beurteileAnkunft` bricht bei einem
+ * gemerkten Überlauf mit Grund ab — aber nur, wenn ihn jemand merkt. Ohne diese Zeilen wäre Weg 2
+ * hier SCHWÄCHER als dort, und der Vergleich verglichen nicht dasselbe.
+ */
+const PUFFER_VERMERK = `try {
+  performance.setResourceTimingBufferSize(1000);
+  window.__kwPufferVoll = false;
+  performance.addEventListener("resourcetimingbufferfull", () => { window.__kwPufferVoll = true; });
+} catch (e) {}`;
+
+/**
+ * Die Uhr-Körnung, mit der die zwei Zeitpunkte verglichen werden.
+ *
+ * Beide Zahlen kommen vom selben Nullpunkt desselben Dokuments (`timeOrigin`), der Vergleich wäre
+ * also exakt — aber Chromium vergröbert Zeitangaben, und zwei Quellen müssen das nicht auf dasselbe
+ * Vielfache tun. 1 ms ist gemessen weit unter dem, was der Vermerk wirklich nachläuft (K3 gibt den
+ * Abstand als Zahl aus); sie deckt die Körnung ab und nicht mehr.
+ */
+const UHR_KOERNUNG_MS = 1;
+
 let stand: Stand;
 let bearer = "";
+
+/** Beide Ankunftsnachweise an der STEHENDEN Seite, aus EINEM Griff, mit dem gemeinsamen Urteil. */
+async function liesBeideAblesungen(): Promise<ZweiUrteile> {
+  const roh = await seiteRoh(stand).evaluate<ZweiAblesungen>(BEIDE_ABLESUNGEN, BOARD_PFAD);
+  return { vermerk: roh.vermerk, urteil: beurteileAnkunft(roh.ankunft), befund: roh.ankunft };
+}
+
+/**
+ * Sagt WEG 1 „angekommen"?
+ *
+ * Gefragt wird dasselbe wie bei Weg 2 — empfangen UND erfolgreich (2xx). Die Bereitschaft trennt
+ * beides in zwei Schritte (`EMPFANG_DA`, dann `expect(status).toBe(200)`); für den Vergleich muss
+ * Gleiches gegen Gleiches stehen, sonst hiesse ein empfangener HTTP-Fehler auf dem einen Weg
+ * „angekommen" und auf dem anderen nicht, und der Widerspruch läge im Massstab statt in der Sache.
+ */
+function vermerkSagtAngekommen(v: Empfang | null): boolean {
+  return v !== null && v.anzahl > 0 && v.status >= 200 && v.status < 300;
+}
+
+/** Weg 1 im Klartext, mit allen Zahlen, die er hergibt. */
+function vermerkText(v: Empfang | null): string {
+  if (v === null) {
+    return `der Vermerk sagt NICHT ANGEKOMMEN (kein Eintrag zu ${BOARD_PFAD} im Dokument)`;
+  }
+  return (
+    `der Vermerk sagt ${vermerkSagtAngekommen(v) ? "ANGEKOMMEN" : "NICHT ANGEKOMMEN"} ` +
+    `(${v.anzahl} vollständig gelesene Antwort(en), HTTP ${v.status}, ${v.laenge} Einträge im Feld, ` +
+    `${v.zeichen} Zeichen, gelesen bei ${v.zeitpunkt.toFixed(1)} ms)`
+  );
+}
+
+/** Weg 2 im Klartext, mit allen Zahlen, die er hergibt. */
+function zeitleisteText(u: Ankunftsurteil): string {
+  const wort =
+    u.art === "angekommen" ? "ANGEKOMMEN" : u.art === "wartet" ? "NICHT ANGEKOMMEN" : "ABBRUCH";
+  return (
+    `die Zeitleiste sagt ${wort} (${u.fertig} fertig empfangene Einträge, ${statusListe(u.status)}, ` +
+    `davon ${u.erfolgreich} erfolgreich, responseEnd ${u.responseEnd.toFixed(1)} ms)`
+  );
+}
+
+/**
+ * Die EINE Zeile, die jeder Bruch dieses Vergleichs trägt — beide Ablesungen, beide mit ihren Zahlen.
+ *
+ * „stimmt nicht überein" wäre die Meldung, die nichts sagt: wer sie liest, weiss nicht, WELCHER Weg
+ * was behauptet, und müsste den Lauf nachstellen, um es zu erfahren.
+ */
+function beideImKlartext(breite: number, a: ZweiUrteile): string {
+  return (
+    `bei ${breite}px ${vermerkText(a.vermerk)}, während ${zeitleisteText(a.urteil)} · ` +
+    `Urteil der gemeinsamen Rechnung: ${a.urteil.meldung}`
+  );
+}
 
 /**
  * Wie weit der rechteste gemessene Kasten aus dem Fenster ragt (negativ = er steht drinnen).
@@ -426,6 +620,9 @@ beforeAll(async () => {
   // Seite selbst neu auf (`messe` → `wechsle` → `goto`). Der Aufbau aus `starte` wird deshalb von
   // keinem Fall vermessen; er hat die Bühne nur hochgefahren.
   await seiteRoh(stand).addInitScript(EMPFANGS_VERMERK);
+  // Weg 2 liest die Ressourcen-Zeitleiste; sie wird dafür vergrössert und ihr Überlauf gemerkt
+  // (JOB 3794, Begründung an `PUFFER_VERMERK`). Auch das gilt ab dem nächsten Seitenaufbau.
+  await seiteRoh(stand).addInitScript(PUFFER_VERMERK);
 }, 180_000);
 
 afterAll(async () => {
@@ -653,6 +850,169 @@ describe("JOB 3641 · K2 · die Bereitschaft hängt am EMPFANG, nicht am abgeset
       ).toBeLessThanOrEqual(1);
     } finally {
       // Nichts bleibt hängen: die Weiche ist wieder die gewöhnliche, und kein Abruf wartet mehr.
+      oeffnen();
+      stand.antworten = {};
+    }
+  }, 180_000);
+});
+
+// ================================================================================================
+// K3 — SAGEN DIE ZWEI ANKUNFTSNACHWEISE DASSELBE? GEMESSEN, NICHT GEGLAUBT (JOB 3794).
+// ================================================================================================
+//
+// Bestellt in `jobs/3778/runde-1/RUECKGABE.md` (REST): zwei Wege, dieselbe Abfrage, je für sich
+// gemessen, nie gegeneinander. Hier stehen sie nebeneinander — EIN Seitenaufbau, EINE Breite, EIN
+// `evaluate`, und der Augenblick ist der, in dem WEG 1 „angekommen" sagt. Genau an diesem Augenblick
+// hängt die Bereitschaft dieser Datei; wenn Weg 2 hier etwas anderes sagt, misst eine der drei
+// Dateien dieser Messfamilie an einem anderen Zustand als die andere.
+//
+// DREI DINGE WERDEN VERGLICHEN, und jedes kann für sich brechen:
+//   (1) DAS URTEIL — beide sagen „angekommen".
+//   (2) DIE ZAHLEN — der Status, den der Vermerk gesehen hat, steht auch in der Zeitleiste, und die
+//       Zeitleiste hat mindestens so viele Antworten fertig, wie der Vermerk gelesen hat.
+//   (3) DER ZEITPUNKT — beide beschreiben DASSELBE Ereignis, auf derselben Dokumentuhr. Der Vermerk
+//       kann dem `responseEnd` nur NACHfolgen: der Rumpf ist erst nach dem letzten Byte lesbar.
+//       Läge er davor, beschrieben die zwei Ablesungen nicht dieselbe Antwort.
+//
+// WAS K3 NICHT BEHAUPTET: dass in jedem Augenblick beide dasselbe sagen. Zwischen `responseEnd` und
+// dem gelesenen Rumpf liegt ein echtes Fenster, in dem Weg 2 schon „ja" und Weg 1 noch „nein" sagt —
+// K3 misst dieses Fenster und gibt es als Zahl aus, statt es wegzumitteln. Die andere Richtung, auf
+// die es ankommt, ist gepinnt: sagt Weg 1 „ja", MUSS Weg 2 „ja" sagen.
+describe("JOB 3794 · K3 · die zwei Ankunftsnachweise werden gegeneinander gemessen", () => {
+  it(`K3 · ${BREITE} px: Vermerk und Zeitleiste an EINEM Seitenaufbau, in EINEM Augenblick`, async () => {
+    await messeMitCi(stand, BREITE, HOEHE);
+    // Der Augenblick, den WEG 1 bestimmt: seine eigene Bereitschaftsbedingung, unverändert.
+    await warteAufBoardEmpfang(BREITE);
+    const a = await liesBeideAblesungen();
+    console.log(`${KENNUNG_3794} · K3 · ${beideImKlartext(BREITE, a)}`);
+
+    // Die Voraussetzung des Vergleichs, selbst gemessen: OHNE erhobene Ablesung gäbe es nichts zu
+    // vergleichen, und „beide sagen dasselbe" wäre bei null Messungen die verbotene Aussage.
+    expect(
+      a.vermerk,
+      `WEG 1 IST NICHT ERHOBEN: kein Empfangsvermerk zu ${BOARD_PFAD} im Dokument — ohne ihn gibt es nichts zu vergleichen, und „beide sagen dasselbe" wäre bei null Messungen die verbotene Aussage · ${beideImKlartext(BREITE, a)}`,
+    ).not.toBeNull();
+    expect(
+      vermerkSagtAngekommen(a.vermerk),
+      `WEG 1 ist erhoben, sagt aber nicht „angekommen" — ${beideImKlartext(BREITE, a)}`,
+    ).toBe(true);
+    expect(
+      a.befund.statusLesbar,
+      `bei ${BREITE}px gibt dieser Browser den Status der Ressourcen-Zeitleiste nicht her — WEG 2 könnte einen empfangenen Fehler nicht von einer erfolgreichen Antwort unterscheiden, der Vergleich wäre wertlos (Chromium ${stand.version})`,
+    ).toBe(true);
+
+    // (1) DAS URTEIL. Hier fällt der Widerspruch, wenn es einen gibt.
+    expect(
+      a.urteil.art,
+      `WIDERSPRUCH DER ZWEI ANKUNFTSNACHWEISE: ${beideImKlartext(BREITE, a)}`,
+    ).toBe("angekommen");
+
+    // (2) DIE ZAHLEN. Zwei Wege, die dasselbe Urteil aus verschiedenen Antworten zögen, wären
+    // zufällig einig und nicht nachweislich.
+    expect(
+      a.urteil.status,
+      `WIDERSPRUCH IM STATUS: der Vermerk hat HTTP ${a.vermerk?.status} gelesen, die Zeitleiste kennt ${statusListe(a.urteil.status)} — ${beideImKlartext(BREITE, a)}`,
+    ).toContain(a.vermerk?.status);
+    expect(
+      a.urteil.fertig,
+      `WIDERSPRUCH IN DER ANZAHL: der Vermerk hat ${a.vermerk?.anzahl} Antwort(en) vollständig gelesen, die Zeitleiste trägt nur ${a.urteil.fertig} fertig empfangene — eine gelesene Antwort, die nie fertig empfangen wurde, kann es nicht geben — ${beideImKlartext(BREITE, a)}`,
+    ).toBeGreaterThanOrEqual(a.vermerk?.anzahl ?? 0);
+
+    // (3) DER ZEITPUNKT — dieselbe Uhr, dasselbe Ereignis, und die Reihenfolge, die baulich gilt.
+    const abstand = (a.vermerk?.zeitpunkt ?? 0) - a.urteil.responseEnd;
+    expect(
+      abstand,
+      `WIDERSPRUCH IM ZEITPUNKT: der Vermerk hat den Rumpf bei ${a.vermerk?.zeitpunkt.toFixed(1)} ms gelesen, die Zeitleiste nennt responseEnd ${a.urteil.responseEnd.toFixed(1)} ms — der Rumpf wäre ${(-abstand).toFixed(1)} ms VOR dem letzten Byte lesbar gewesen, die zwei Ablesungen beschreiben dann nicht dieselbe Antwort — ${beideImKlartext(BREITE, a)}`,
+    ).toBeGreaterThanOrEqual(-UHR_KOERNUNG_MS);
+
+    console.log(
+      `${KENNUNG_3794} · K3 · BEFUND: beide Wege sagen ANGEKOMMEN für ${BOARD_PFAD} · ` +
+        `derselbe Status (HTTP ${a.vermerk?.status}) · Vermerk ${a.vermerk?.anzahl} gelesen, ` +
+        `Zeitleiste ${a.urteil.fertig} fertig / ${a.urteil.erfolgreich} erfolgreich · ` +
+        `responseEnd ${a.urteil.responseEnd.toFixed(1)} ms → Rumpf gelesen ${a.vermerk?.zeitpunkt.toFixed(1)} ms ` +
+        `(der Vermerk folgt der Zeitleiste um ${abstand.toFixed(1)} ms nach; ` +
+        `Uhr-Körnung ${UHR_KOERNUNG_MS} ms) · Chromium ${stand.version}`,
+    );
+  }, 180_000);
+});
+
+// ================================================================================================
+// K4 — SPERREN BEIDE GEMEINSAM? SONST WÄRE DIE EINIGKEIT VON K3 WERTLOS (JOB 3794).
+// ================================================================================================
+//
+// K3 allein liesse die Halbheit offen, dass WEG 2 einfach IMMER „angekommen" sagt — dann wäre der
+// Vergleich trivial grün und bewiese nichts. Dieser Fall schliesst sie aus, mit der Ursache, die K2
+// schon einmal gebraucht hat: die Board-Antwort wird auf dem ECHTEN Auslieferungsweg zurückgehalten
+// (`Stand.antworten.vorAuslieferung`, JOB 3130). Solange sie dort hängt, KANN sie den Browser nicht
+// erreicht haben — gemessen wird also keine Uhr, sondern ein Zustand.
+//
+// Gezeigt wird in EINEM Lauf: gesperrt sagen BEIDE Wege „nicht angekommen", freigegeben sagen BEIDE
+// „angekommen". Das ist zugleich die Gegenrichtung zu K3: ein Urteil, das nie „nein" sagen kann, ist
+// von einem tragenden nicht zu unterscheiden.
+describe("JOB 3794 · K4 · beide Ankunftsnachweise sperren gemeinsam und öffnen gemeinsam", () => {
+  it("K4 · zurückgehaltene Board-Antwort: beide sagen „nicht angekommen“, nach der Freigabe beide „angekommen“", async () => {
+    const { davor, oeffnen } = tor();
+    let zurueckgehalten = 0;
+    const abrufeVorher = boardAbrufe();
+    stand.antworten.vorAuslieferung = async (url, body) => {
+      if (url.pathname === BOARD_PFAD) {
+        zurueckgehalten += 1;
+        await davor;
+      }
+      return body;
+    };
+    try {
+      await messeMitCi(stand, BREITE, HOEHE);
+      await warteBis(
+        () => boardAbrufe() > abrufeVorher,
+        30_000,
+        `die Seite hat ${BOARD_PFAD} gar nicht abgerufen`,
+      );
+      expect(
+        zurueckgehalten,
+        "die Antwort wurde nie zurückgehalten — dann prüft dieser Fall nichts",
+      ).toBeGreaterThan(0);
+
+      // GESPERRT: beide Wege, in einem Griff abgelesen, müssen „nicht angekommen" sagen.
+      const gesperrt = await liesBeideAblesungen();
+      console.log(
+        `${KENNUNG_3794} · K4 · gesperrt bei ${zurueckgehalten} zurückgehaltenen Board-Antworten · ` +
+          `Abrufzähler der Bühne ${abrufeVorher} → ${boardAbrufe()} · ${beideImKlartext(BREITE, gesperrt)}`,
+      );
+      expect(
+        vermerkSagtAngekommen(gesperrt.vermerk),
+        `WEG 1 sagt „angekommen", während ${zurueckgehalten} Board-Antwort(en) noch in der Weiche hängen — ${beideImKlartext(BREITE, gesperrt)}`,
+      ).toBe(false);
+      expect(
+        gesperrt.urteil.art,
+        `WEG 2 sagt „angekommen", während ${zurueckgehalten} Board-Antwort(en) noch in der Weiche hängen — die Ressourcen-Zeitleiste kann keinen Eintrag zu einer nie ausgelieferten Antwort tragen — ${beideImKlartext(BREITE, gesperrt)}`,
+      ).not.toBe("angekommen");
+
+      // FREIGEGEBEN: derselbe Griff, derselbe Seitenaufbau, das andere Urteil — auf beiden Wegen.
+      const freigegeben = Date.now();
+      oeffnen();
+      await warteAufBoardEmpfang(BREITE);
+      const offen = await liesBeideAblesungen();
+      const nachFreigabe = Date.now() - freigegeben;
+      console.log(
+        `${KENNUNG_3794} · K4 · nach der Freigabe (${nachFreigabe} ms) · ${beideImKlartext(BREITE, offen)}`,
+      );
+      expect(
+        vermerkSagtAngekommen(offen.vermerk),
+        `WEG 1 sagt nach der Freigabe immer noch nicht „angekommen" — ${beideImKlartext(BREITE, offen)}`,
+      ).toBe(true);
+      expect(
+        offen.urteil.art,
+        `WIDERSPRUCH NACH DER FREIGABE: WEG 1 hat umgeschlagen, WEG 2 nicht — ${beideImKlartext(BREITE, offen)}`,
+      ).toBe("angekommen");
+      console.log(
+        `${KENNUNG_3794} · K4 · BEFUND: beide Wege haben in DIESEM Seitenaufbau gemeinsam gesperrt und ` +
+          `gemeinsam geöffnet · gesperrt: Vermerk ${gesperrt.vermerk === null ? "kein Eintrag" : `${gesperrt.vermerk.anzahl} gelesen`}, ` +
+          `Zeitleiste ${gesperrt.urteil.fertig} fertig · offen: Vermerk ${offen.vermerk?.anzahl} gelesen bei ` +
+          `${offen.vermerk?.zeitpunkt.toFixed(1)} ms, Zeitleiste ${offen.urteil.fertig} fertig, responseEnd ` +
+          `${offen.urteil.responseEnd.toFixed(1)} ms (Abstand ${((offen.vermerk?.zeitpunkt ?? 0) - offen.urteil.responseEnd).toFixed(1)} ms)`,
+      );
+    } finally {
       oeffnen();
       stand.antworten = {};
     }
