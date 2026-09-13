@@ -130,6 +130,9 @@ const weiterKnopf = (): HTMLElement | null =>
   container.querySelector<HTMLElement>('[data-testid="task-wie-weiter"]');
 const standHinweis = (): HTMLElement | null =>
   container.querySelector<HTMLElement>('[data-testid="task-stand-veraltet"]');
+/** JOB 3808: die Markierung des RUHENDEN Abrufs — die andere Lage, eigener Anker (L5-Auf-d). */
+const pausiertHinweis = (): HTMLElement | null =>
+  container.querySelector<HTMLElement>('[data-testid="task-stand-pausiert"]');
 
 beforeEach(async () => {
   await i18n.changeLanguage("de");
@@ -246,26 +249,42 @@ describe("JOB 3762 · L5 · `/aufgaben` behauptet nichts ohne Grundlage", () => 
   });
 
   // ----------------------------------------------------------------------------------------------
-  // L5-Auf-d — BENANNTER RESTFALL, gemessen und ABSICHTLICH nicht grün gebogen.
+  // L5-Auf-d — UMGEDREHT VON IST-ZUSTAND AUF ZUSAGE (JOB 3808).
   // ----------------------------------------------------------------------------------------------
-  // Offline RUHT jeder Abruf (`fetchStatus: "paused"`), er scheitert nicht. `isGroupStale()`
-  // (`lib/loadingState.ts`) kennt nur `isError` und wird deshalb nicht wahr — „Nichts offen." steht
-  // ohne Markierung da. Der richtige Satz wäre einer über die VERBINDUNG, wie ihn die Startseite
-  // (`kollision.lage.pausiert`) und die Bibliothek (`lib.liste.offline`) führen; dafür fehlt ein
-  // Offline-Bauteil neben `StaleMarker` in `components/LoadState.tsx` — ausserhalb der Zielpfade
-  // dieses Auftrags (§4). Dieser Fall hält den Ist-Zustand fest, damit er nicht unbemerkt bleibt;
-  // wird er behoben, wird er rot und ist umzudrehen, nicht zu löschen.
-  it("L5-Auf-d · offline mit bestätigtem Leerstand ⇒ der Leersatz bleibt, aber OHNE Markierung (Ist-Zustand)", async () => {
+  // BIS HIERHER hielt dieser Fall einen MANGEL fest: offline RUHT jeder Abruf
+  // (`fetchStatus: "paused"`), er scheitert nicht; `isGroupStale()` kennt nur `isError` und wird
+  // deshalb nicht wahr — „Nichts offen." stand ohne Markierung da. Seine letzte Zusicherung lautete
+  // wörtlich `expect(standHinweis(), "Ist-Zustand, kein Sollzustand").toBeNull()`, und der Kommentar
+  // darüber sagte: „wird er behoben, wird er rot und ist umzudrehen, nicht zu löschen."
+  //
+  // JOB 3808 HAT IHN BEHOBEN, also ist er hier umgedreht — gedreht, nicht danebengestellt. Der
+  // Leersatz bleibt (REGELN §7), und darüber steht jetzt der vorhandene Satz der Startseite
+  // `kollision.lage.pausiertOhneStand` im neuen Bauteil `PausedMarker`
+  // (`components/LoadState.tsx`, Anker `task-stand-pausiert`).
+  //
+  // `standHinweis()` bleibt in seiner Zusicherung, aber mit der ANDEREN Bedeutung: der Anker
+  // `task-stand-veraltet` gehört dem GESCHEITERTEN Nachlauf (L5-Auf-c), und der ist offline
+  // weiterhin die falsche Auskunft. Dass er hier `null` ist, ist jetzt Teil der Zusage statt des
+  // Mangels. Die ausführliche Messung der Lage steht in `tests/aufgaben-offline-stand/`.
+  it("L5-Auf-d · offline mit bestätigtem Leerstand ⇒ der Leersatz bleibt, und er ist MARKIERT", async () => {
     const qc = await mount();
     expect(text(), "Vorbedingung").toContain(i18n.t("task.none"));
+    expect(pausiertHinweis(), "Vorbedingung: mit Netz steht nichts darüber").toBeNull();
     abbauen();
     onlineManager.setOnline(false);
     try {
       await mount("/aufgaben", qc);
       // Die Werte bleiben — das ist richtig (REGELN §7).
       expect(text()).toContain(i18n.t("task.none"));
-      // Und das ist der Mangel: keine Einordnung des Stands.
-      expect(standHinweis(), "Ist-Zustand, kein Sollzustand").toBeNull();
+      // Und das war der Mangel, hier ist seine Behebung: die Einordnung des Stands.
+      expect(pausiertHinweis(), "die nackte Verneinung war der Mangel").not.toBeNull();
+      expect((pausiertHinweis()?.textContent ?? "").trim()).toBe(
+        i18n.t("kollision.lage.pausiertOhneStand"),
+      );
+      // Und NICHT der Satz des gescheiterten Nachlaufs: ohne Netz gibt es keinen Versuch, der
+      // gescheitert sein könnte.
+      expect(standHinweis(), "„Auffrischung fehlgeschlagen“ wäre offline falsch").toBeNull();
+      expect(text()).not.toContain(i18n.t("loadstate.stale"));
     } finally {
       onlineManager.setOnline(true);
     }

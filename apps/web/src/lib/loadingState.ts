@@ -17,15 +17,35 @@
 // `loaded` (die Daten dürfen weiter angezeigt werden), ist aber über isGroupStale() als veraltet/
 // gestört ERKENNBAR — sie fällt NICHT in den Initialfehlerzustand zurück.
 //
+// VIERTE LAGE (JOB 3808): DER RUHENDE ABRUF. Ein gescheiterter Abruf und ein ANGEHALTENER Abruf sind
+// nicht dasselbe. Ohne Netz setzt react-query v5 `fetchStatus: "paused"` und KEINEN Fehler — es gibt
+// keinen gescheiterten Versuch, den man melden könnte, die Abfrage ruht (`components/start/forYou.ts:198-202`).
+// `isGroupStale()` wird deshalb offline nie wahr, und „Auffrischung fehlgeschlagen" wäre dort die
+// falsche Auskunft (die Lehre aus JOB 3118). Diese Lage beantwortet `gruppeAngehalten()` ganz unten —
+// als EIGENE Frage neben den drei Phasen, nicht als vierter Wert von `LoadPhase`: sie nimmt der
+// Anzeige nichts weg (die Daten bleiben stehen, REGELN §7), sie nimmt ihr nur das Recht auf die
+// Behauptung, der gezeigte Stand gelte für JETZT.
+//
 // DOM-frei, im Node-Gate testbar. Start, Navigation, Analytics und Bereitschaft teilen EINE Lösung.
 export type LoadPhase = "loading" | "loaded" | "error";
 
-// Minimal-Sicht auf ein react-query-Ergebnis: „schon Daten?" und „gerade im Fehlerzustand?".
+/**
+ * Der Abrufstatus eines react-query-Ergebnisses (v5 `fetchStatus`), hier als eigene Aufzählung
+ * geschrieben statt aus `@tanstack/react-query` importiert: diese Datei hat bewusst KEINE Importe
+ * und läuft im reinen Node-Gate. Die drei Werte sind die vollständige Aufzählung der Bibliothek.
+ */
+export type Abrufstatus = "fetching" | "paused" | "idle";
+
+// Minimal-Sicht auf ein react-query-Ergebnis: „schon Daten?", „gerade im Fehlerzustand?", „ruht der
+// Abruf?".
 // `isError` spiegelt react-query `status === "error"` (v5): initial ohne Daten ⇒ harter Fehler; mit
-// bereits vorhandenen Daten ⇒ Refetch-Fehler (stale). Optional, damit Bestandsaufrufe {data} gültig bleiben.
+// bereits vorhandenen Daten ⇒ Refetch-Fehler (stale). `fetchStatus` ist die ZWEITE, davon unabhängige
+// Achse von v5 und sagt, ob gerade geholt wird, gewartet wird oder nichts läuft. Beide optional, damit
+// Bestandsaufrufe {data} gültig bleiben.
 export interface HasData {
   readonly data: unknown;
   readonly isError?: boolean;
+  readonly fetchStatus?: Abrufstatus;
 }
 
 // Geladen erst, wenn ausnahmslos jede Quelle Daten (auch leere Arrays/Objekte) hat.
@@ -57,6 +77,32 @@ export function isGroupError(sources: readonly HasData[]): boolean {
 // Fehlerzustand (ein Refetch scheiterte). Die Daten bleiben sichtbar, sind aber als veraltet zu markieren.
 export function isGroupStale(sources: readonly HasData[]): boolean {
   return groupLoadPhase(sources) === "loaded" && sources.some((s) => s.isError === true);
+}
+
+/**
+ * RUHT der Abruf dieser Gruppe — ist also gerade gar kein Versuch möglich, den gezeigten Stand
+ * nachzuprüfen? Die vierte Lage aus dem Kopfkommentar, und NICHT dasselbe wie `isGroupStale()`.
+ *
+ * ZWEI GRÜNDE, EIN SATZ — dieselbe Oder-Verknüpfung wie `forYouLage()` sie in ihrem `gestoert` führt
+ * (`components/start/forYou.ts:115-116`), und aus demselben Grund an EINER Stelle statt an zweien:
+ *
+ *   · `!online` — das Gerät hat kein Netz. Dieser Teil MUSS dastehen und ist nicht aus `fetchStatus`
+ *     abzuleiten. Genau das war Codex' Befund R-1585 (`lib/netzzustand.ts:5-11`): innerhalb der
+ *     `staleTime` von 30 s (`main.tsx`) WILL niemand einen Abruf, die Abfrage steht auf `idle` statt
+ *     auf `paused` — und wer nur die Query-Skalare liest, liest daraus „frisch" und schreibt offline
+ *     eine Verneinung hin, die er nicht prüfen kann.
+ *   · `fetchStatus === "paused"` — an mindestens einer Quelle wartet ein GEWOLLTER Abruf auf das
+ *     Netz. Das ist die Lage selbst, unabhängig davon, ob der `onlineManager` sie schon gemeldet hat.
+ *
+ * `online` steht ausdrücklich im Kopf und hat KEINEN Vorgabewert, wie bei `forYouLage()`
+ * (`forYou.ts:108-110`): ein Vorgabewert wäre die Erlaubnis, ihn zu vergessen — und ihn zu vergessen
+ * ist genau der Fehler von R-1585.
+ *
+ * Die Funktionen darüber bleiben unberührt: eine ruhende Gruppe ist weiterhin `loaded`, ihre Werte
+ * bleiben sichtbar (REGELN §7), sie wird nur eingeordnet.
+ */
+export function gruppeAngehalten(sources: readonly HasData[], online: boolean): boolean {
+  return !online || sources.some((s) => s.fetchStatus === "paused");
 }
 
 // ================================================================================================

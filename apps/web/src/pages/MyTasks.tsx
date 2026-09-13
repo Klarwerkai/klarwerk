@@ -14,12 +14,15 @@ import { useSession } from "../app/AuthContext";
 import { readHistoryIndex } from "../app/navHistory";
 import { EmptyStateCtas } from "../components/EmptyStateCtas";
 import { HelpTip } from "../components/HelpTip";
-import { StaleMarker } from "../components/LoadState";
+import { PausedMarker, StaleMarker } from "../components/LoadState";
 import { KoAuthorLine } from "../components/trust";
 import { PageHeader } from "../components/ui";
 import { gapLocaleTag } from "../lib/gapLocaleTag";
 import { type KoAuthorParts, koAuthorParts } from "../lib/koAuthor";
-import { groupLoadPhase, isGroupStale } from "../lib/loadingState";
+import { groupLoadPhase, gruppeAngehalten, isGroupStale } from "../lib/loadingState";
+// JOB 3808: der Onlinezustand wird GEREICHT, nicht gedeutet — dieselbe eine Quelle wie auf der
+// Startseite (`pages/Start.tsx:47`), kein `navigator.onLine` daneben (`lib/netzzustand.ts:12-18`).
+import { useNetzOnline } from "../lib/netzzustand";
 import { reworkHref } from "../lib/reviewReworkContext";
 import { type ReviewWorkView, reviewWorkView } from "../lib/reviewSignals";
 import { knowledgeOsPhase, phaseLabelKey, taskAction } from "../lib/taskAction";
@@ -270,17 +273,33 @@ export function MyTasks(): JSX.Element {
   // darüber; eine zweite Quellenliste wäre die Drift, gegen die `arbeitsQuellen` auf `pages/Start.tsx`
   // gebaut ist. Gemessen in `tests/demo-leerbestand/aufgaben-leerbestand.test.tsx` (L5-Auf-c).
   //
-  // OFFEN UND BENANNT: der ANGEHALTENE Abruf (offline) ist damit nicht abgedeckt — `isGroupStale`
-  // kennt nur `isError`, und „Auffrischung fehlgeschlagen" wäre offline die falsche Auskunft (die
-  // Lehre aus JOB 3118). Dafür fehlt ein Offline-Bauteil neben `StaleMarker`, und das liegt in
-  // `components/LoadState.tsx` — ausserhalb der Zielpfade dieses Auftrags. L5-Auf-d hält den
-  // Ist-Zustand fest.
   const nachlaufGescheitert = isGroupStale(quellen);
   const erneutHolen = (): void => {
     for (const quelle of quellen) {
       void quelle.refetch();
     }
   };
+
+  // ==============================================================================================
+  // JOB 3808 · RUNDE 1 — UND OHNE NETZ SAGT DIE LISTE NICHT MEHR NUR „NICHTS OFFEN.".
+  // ==============================================================================================
+  // Der Block darüber schloss mit einem offenen Rest: der ANGEHALTENE Abruf war nicht abgedeckt.
+  // `isGroupStale` kennt nur `isError`; ohne Netz gibt es aber keinen gescheiterten Versuch, den man
+  // melden könnte — die Abfrage RUHT (`fetchStatus: "paused"`). „Auffrischung fehlgeschlagen" wäre
+  // dort die falsche Auskunft (die Lehre aus JOB 3118), und so stand „Nichts offen." offline
+  // unmarkiert da: eine Tatsachenaussage über JETZT aus einem Zwischenspeicher von vorhin.
+  //
+  // DER REST IST HIERMIT GEBAUT, nicht danebengelegt. Die Lage beantwortet `gruppeAngehalten()` im
+  // gemeinsamen Ladevertrag (`lib/loadingState.ts`) über GENAU dieselben `quellen` wie `ladephase`
+  // und `nachlaufGescheitert` darüber — keine zweite Quellenliste, kein zweites Datenlagemuster.
+  // Der Onlinezustand kommt aus der einen Quelle des Hauses (`lib/netzzustand.ts`).
+  //
+  // DIE VORFAHRT (`components/start/forYou.ts:220-224`): ruht der Abruf, steht NUR der Offline-Satz.
+  // Er ist die stärkere Auskunft — er sagt, WARUM gerade nichts geht, während „Auffrischung
+  // fehlgeschlagen" einen Versuch meldet, den es ohne Netz gar nicht gibt. Beide nebeneinander wären
+  // zwei Sätze über dieselbe Sache; unten im JSX entscheidet deshalb EINE Kette, kein zweites `if`.
+  const netzOnline = useNetzOnline();
+  const abrufRuht = gruppeAngehalten(quellen, netzOnline);
 
   // ── Die Listenposition überlebt das Öffnen einer Aufgabe ──────────────────────────────────────
   // Gerechnet wird in `lib/taskViewState.ts`; hier wird nur gelesen und gesetzt.
@@ -387,7 +406,14 @@ export function MyTasks(): JSX.Element {
         {/* Über der Liste und nicht in ihr: der Satz gilt für ALLES, was darunter steht — für die
             Zeilen ebenso wie für „Nichts offen.". Dieselbe Stelle, an der die Bibliothek ihren
             gleichlautenden Hinweis trägt (`BibliothekListe.tsx:326`). */}
-        {nachlaufGescheitert ? (
+        {abrufRuht ? (
+          // JOB 3808: „Stand sichtbar" heisst hier, dass wirklich Zeilen dastehen — nicht, dass es
+          // mal einen Abruf gab (`forYou.ts:212-215`). Bei leerer Liste steht deshalb der Satz OHNE
+          // Stand, und er steht dann genau über der Verneinung „Nichts offen." darunter.
+          <div data-testid="task-stand-pausiert">
+            <PausedMarker hatStand={gesamtSichtbar > 0} />
+          </div>
+        ) : nachlaufGescheitert ? (
           <div data-testid="task-stand-veraltet">
             <StaleMarker onRetry={erneutHolen} />
           </div>

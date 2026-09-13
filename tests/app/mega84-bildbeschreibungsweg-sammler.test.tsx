@@ -1753,8 +1753,36 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // `traeger` 2. Die Kennzeichnung zeigt kein Bild, bietet keine Bildbeschreibung an (kein
     // `ANGEBOT_MUSTER`) und trägt keinen eigenen Titel (kein `documentTitle`-Prop) — sie erscheint
     // nur in der Grundmenge.
+    //
+    // JOB 3808 (OHNE NETZ SAGT DIE AUFGABENLISTE NICHT „NICHTS OFFEN."): `komponenten` von 377 auf
+    // 378 NACHGEZOGEN — NACH dem Rebase auf JOB 3761 („MAN SIEHT DER DEMO AN …", der Eintrag direkt
+    // darüber) am Lauf DIESES Arbeitsbaums gemessen, nicht gerechnet; der wörtliche Fund steht unter
+    // PRUEFUNGEN in der Rückgabe. GENAU EIN weiteres Bauteil kommt hinzu, zusätzlich zu
+    // `DemoKennzeichen` oben:
+    //
+    //     + `PausedMarker` (`components/LoadState.tsx:70`) — die Markierung des RUHENDEN Abrufs,
+    //       das dritte Bauteil dieser Datei neben `LoadErrorState` und `StaleMarker`. Ohne Netz
+    //       gibt es keinen gescheiterten Versuch, den man melden könnte (die Abfrage ruht), und
+    //       „Auffrischung fehlgeschlagen" wäre dort die falsche Auskunft. Das ist eine NEUE Lage
+    //       und keine Herauslösung: `StaleMarker` bleibt unverändert für seinen Fall (Netz da,
+    //       Refetch gescheitert) und behält jeden seiner Aufrufer.
+    //
+    // GEGENPROBE dazu, gemessen statt behauptet: mit der Deklaration UND ihrer Einbindung
+    // kleingeschrieben (`pausedMarker` in `LoadState.tsx` und `pages/MyTasks.tsx`) meldet dieser
+    // Fall wieder `gemessen: 377 Komponenten` und wird gegen den NEUEN Pin rot — `alsKomponente`
+    // (oben, :453) verlangt einen Großbuchstaben am Namensanfang; die +1 ist damit genau dieses
+    // Bauteil und kein zweiter Fund, der sich hinter derselben Zahl versteckt. Danach hashgleich
+    // zurückgenommen (`LoadState.tsx` = b161d5d3a967fac638dd0fdcb690fdb4293e8e2c3dd4a7a599d3b0dfba7c81e0,
+    // `MyTasks.tsx` = b4ca3b67e58b877160400d9d3cdb7d93214a26c0e57ca94644ce958edb9fc277, je vor und
+    // nach der Probe).
+    //
+    // Dieselbe Begründung wie oben, und sie trägt hier genauso: Die Auflage verbietet, dass eine
+    // UMSTELLUNG die Erhebung verschiebt — nicht, dass der Quellbaum wächst. Die zwei Zahlen, an
+    // denen Stufe 2 wirklich hängt, bleiben unverändert: `anbieter` 1 und `traeger` 2. Die
+    // Markierung zeigt kein Bild, bietet keine Bildbeschreibung an (kein `ANGEBOT_MUSTER`) und
+    // trägt keinen eigenen Titel (kein `documentTitle`-Prop) — sie erscheint nur in der Grundmenge.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 377,
+      komponenten: 378,
       anbieter: 1,
       traeger: 2,
     });
