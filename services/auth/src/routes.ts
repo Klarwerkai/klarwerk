@@ -16,6 +16,26 @@ const STATUS_BY_CODE: Record<AuthErrorCode, number> = {
   NOT_FOUND: 404,
 };
 
+// JOB 3780: DIE VIER ROLLENNAMEN STEHEN GENAU EINMAL IN DIESER DATEI.
+//
+// Bis hierher führte der Anlege-Handler seine eigene Liste (`const roles: Role[]` im Rumpf von
+// POST /api/users), und der Änderungsweg hatte gar keine. Eine zweite Abschrift wären zwei
+// Auslegungen desselben Begriffs — sie liefen beim nächsten Rollenzuwachs auseinander, und der
+// stillere der beiden Wege ließe den neuen Namen dann nicht durch (oder, schlimmer, den alten
+// weiter hinein). Kein Export: außerhalb dieser Datei urteilt niemand über Rollennamen.
+const ROLLEN: readonly Role[] = ["viewer", "experte", "controller", "admin"];
+
+/**
+ * Formwächter für einen Rollennamen aus fremder Eingabe.
+ *
+ * Typwächter und nicht nur `boolean`: nach dieser Prüfung DARF der Wert als `Role` weitergereicht
+ * werden, weil er einer ist — ohne die Behauptung `as Role`, die dem Typprüfer etwas zusagt, was
+ * ein HTTP-Rumpf nie garantiert.
+ */
+function istBekannteRolle(wert: unknown): wert is Role {
+  return ROLLEN.includes(wert as Role);
+}
+
 const SESSION_COOKIE = "kw_session";
 const COOKIE_MAX_AGE = 14 * 24 * 60 * 60; // 14 Tage
 
@@ -637,7 +657,6 @@ export function authRoutes(
           password?: unknown;
           role?: unknown;
         };
-        const roles: Role[] = ["viewer", "experte", "controller", "admin"];
         if (typeof body.name !== "string" || body.name.trim().length === 0) {
           reply
             .code(400)
@@ -656,7 +675,7 @@ export function authRoutes(
             .send({ error: "WEAK_PASSWORD", message: meldung("WEAK_PASSWORD", sprache(request)) });
           return;
         }
-        if (body.role !== undefined && !roles.includes(body.role as Role)) {
+        if (body.role !== undefined && !istBekannteRolle(body.role)) {
           reply
             .code(400)
             .send({ error: "BAD_REQUEST", message: meldung("UNKNOWN_ROLE", sprache(request)) });
@@ -717,12 +736,37 @@ export function authRoutes(
     // GEPRÜFT WIRD DESHALB DIE FORM — String, `null`, nichts —, und zwar VOR jedem Schreiben: ein
     // Aufruf, der zur Hälfte ausgeführt wird (Rolle geändert, Befristung abgelehnt), wäre die
     // schlechtere Hälfte der beiden.
+    //
+    // JOB 3780 (DEMO-ZUGANG-GAESTE REST c): DIESELBE REGEL WIE BEIM ANLEGEN — FÜR ALLE VIER FELDER.
+    //
+    // JOB 3755 hat `accessExpiresAt` die Behauptung `string | null` weggenommen und eine Prüfung
+    // hingestellt. Seine eigene Rückgabe nannte, was dabei liegen blieb: `role`, `approve` und
+    // `password` standen weiter als Typangabe da, und der Typprüfer sieht von einem HTTP-Rumpf
+    // nichts. Gemessen am Stand `be5c09b`, an DERSELBEN Anwendung, mit DEMSELBEN Wert:
+    //
+    //     POST /api/users   {"role":"chef"}  →  400 „Unbekannte Rolle."   (:641-664 prüft)
+    //     PUT  /api/users/:id {"role":"chef"} →  200, und im Konto stand danach `role: "chef"` —
+    //                                            ein Wert, den `types.ts:1` nicht kennt.
+    //
+    // Dazu zwei stille Nachbarn: `{"password": 12345678}` ergab 500 (eine Zahl hat kein `.length`,
+    // die Längenprüfung des Dienstes ließ sie durch, `pbkdf2` warf), und `{"approve":"true"}` ergab
+    // 204 — der Aufrufer hielt die Freigabe für erteilt, das Konto war unverändert.
+    //
+    // DIE GRENZE BLEIBT, WO JOB 3755 SIE GEZOGEN HAT: hier urteilt die FORM (bekannter Rollenname ·
+    // Zeichenkette · Boolean), im Dienst die BEDEUTUNG (Passwortstärke, Aussperrschutz,
+    // Selbst-Herabstufung, Lesbarkeit des Datums). Zwei Fragen, zwei Stellen — sonst liefen zwei
+    // Auslegungen desselben Begriffs auseinander.
     app.put<{
       Params: { id: string };
-      // `unknown` und nicht `string | null`: was hier hereinkommt, bestimmt der Client. Der
-      // Vertrag nach außen bleibt `string | null | fehlend` — er wird eine Zeile weiter unten
-      // DURCHGESETZT statt nur aufgeschrieben.
-      Body: { role?: Role; approve?: boolean; password?: string; accessExpiresAt?: unknown };
+      // `unknown` und nicht `Role`/`boolean`/`string`: was hier hereinkommt, bestimmt der Client.
+      // Der Vertrag nach außen bleibt derselbe — er wird eine Zeile weiter unten DURCHGESETZT statt
+      // nur aufgeschrieben. Eine Typangabe ist keine Prüfung (JOB 3755 R2, BEN).
+      Body: {
+        role?: unknown;
+        approve?: unknown;
+        password?: unknown;
+        accessExpiresAt?: unknown;
+      };
     }>("/api/users/:id", async (request, reply) => {
       const admin = await requireAdmin(request, reply);
       if (!admin) {
@@ -731,10 +775,41 @@ export function authRoutes(
       const { id } = request.params;
       const { role, approve, password, accessExpiresAt } = request.body;
       try {
+        // ────────────────────────────────────────────────────────────────────────────────────────
+        // DIE FORMWACHE — SIE STEHT VOR JEDEM SCHREIBVORGANG, ALLE VIER FELDER IN EINEM BLOCK.
+        //
+        // Nicht zwischen den Schreibaufrufen und nicht je Feld kurz davor: ein Aufruf, der zur
+        // Hälfte ausgeführt wird (freigegeben, Rolle abgelehnt), wäre die schlechtere Hälfte der
+        // beiden — der Admin sähe einen Fehler, obwohl sein Aufruf das Konto verändert hat.
+        // ────────────────────────────────────────────────────────────────────────────────────────
+        //
+        // Byte-gleich zur Antwort beim Anlegen (:659-663) und aus derselben Liste geurteilt.
+        // Auch `""` und `null` fallen hier heraus: sie liefen bisher durch `if (role)` und wurden
+        // STILL verschluckt — 204 auf einen Aufruf, der nichts getan hat.
+        if (role !== undefined && !istBekannteRolle(role)) {
+          reply
+            .code(400)
+            .send({ error: "BAD_REQUEST", message: meldung("UNKNOWN_ROLE", sprache(request)) });
+          return;
+        }
+        // Dieselbe 400 „Passwort muss mindestens 8 Zeichen haben.", die das Anlegen gibt (:653-657)
+        // und die der Dienst für eine zu KURZE Zeichenkette liefert (`service.ts:840`). Die LÄNGE
+        // wird hier NICHT geprüft: über die Stärke urteilt allein der Dienst, sonst gäbe es zwei
+        // Stellen, an denen „zu schwach" ausgelegt wird.
+        if (password !== undefined && typeof password !== "string") {
+          reply
+            .code(400)
+            .send({ error: "WEAK_PASSWORD", message: meldung("WEAK_PASSWORD", sprache(request)) });
+          return;
+        }
         // Derselbe Fehlervertrag wie ein unlesbares Datum (403, „Unerwarteter Fehler.") — ein
         // eigener Satz für „falscher Typ" wäre ein neuer Katalogschlüssel, und `meldungen.ts`
         // gehört in diesem Takt JOB 3756. Beides ist dieselbe Sorte Eingabe: eine, die eine
-        // Oberfläche nie erzeugen dürfte.
+        // Oberfläche nie erzeugen dürfte. Der schwächere Satz ist bewusst gewählt und bleibt ein
+        // offener Punkt, kein Zielzustand.
+        if (approve !== undefined && typeof approve !== "boolean") {
+          throw new AuthError("FORBIDDEN", "INTERNAL" satisfies Meldungsschluessel);
+        }
         if (
           accessExpiresAt !== undefined &&
           accessExpiresAt !== null &&
@@ -746,10 +821,13 @@ export function authRoutes(
         if (approve === true) {
           user = await service.approveUser(id, admin.id);
         }
-        if (role) {
+        if (role !== undefined) {
           user = await service.changeRole(id, role, admin.id);
         }
-        if (password) {
+        // `!== undefined` statt `if (password)`: ein leerer String ist eine gültige FORM und ein
+        // ungültiges Passwort — er gehört dem Dienst vorgelegt und mit „zu schwach" abgelehnt,
+        // nicht stillschweigend übergangen.
+        if (password !== undefined) {
           await service.resetPassword(id, password, admin.id);
         }
         // ZULETZT, und die Reihenfolge ist die Aussage: `user` trägt danach den Stand MIT der

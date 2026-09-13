@@ -23,94 +23,26 @@
 // Befristung", ein FEHLENDES Feld heißt „ich sage dazu nichts". Behandelte die Route beides gleich,
 // löschte jeder Rollenwechsel still die Befristung eines Gastkontos — der Ablauf wäre weg, und
 // niemand sähe, wann er verschwunden ist.
-import Fastify, { type FastifyInstance, type LightMyRequestResponse } from "fastify";
+//
+// JOB 3780: DIE VERDRAHTUNG IST UMGEZOGEN, DIE FÄLLE SIND UNVERÄNDERT. `baueDraht`, `anmelden`,
+// `token`, `verwalte`, `ausDerListe` und `ich` standen bis hierher in dieser Datei; seit die
+// Formprüfung von `role`/`approve`/`password` (`eingabeform-am-aenderungsweg.test.ts`) denselben
+// Endpunkt misst, stehen sie in `./draht` — eine zweite Abschrift wäre ein zweiter Fastify-Aufbau
+// über demselben Endpunkt. Der Aufräum-Haken wird weiterhin HIER registriert (siehe `draht.ts`).
 import { afterEach, describe, expect, it } from "vitest";
 import { MELDUNGEN } from "../../services/auth/src/meldungen";
-import { authRoutes } from "../../services/auth/src/routes";
-import type { PublicUser } from "../../services/auth/src/types";
+import { STUNDE, adminUndGast } from "../demo-zugang-gaeste/aufbau";
 import {
-  GAST_PASSWORT,
-  type Kreis,
-  STUNDE,
-  adminUndGast,
-  baueKreis,
-} from "../demo-zugang-gaeste/aufbau";
+  anmelden,
+  ausDerListe,
+  baueDraht,
+  ich,
+  schliesseOffeneDraehte,
+  token,
+  verwalte,
+} from "./draht";
 
-interface Draht {
-  k: Kreis;
-  app: FastifyInstance;
-}
-
-const offen: FastifyInstance[] = [];
-
-afterEach(async () => {
-  for (const app of offen.splice(0)) {
-    await app.close();
-  }
-});
-
-async function baueDraht(): Promise<Draht> {
-  const k = baueKreis();
-  const app = Fastify();
-  await app.register(authRoutes(k.service));
-  await app.ready();
-  offen.push(app);
-  return { k, app };
-}
-
-function anmelden(app: FastifyInstance, email: string): Promise<LightMyRequestResponse> {
-  return app.inject({
-    method: "POST",
-    url: "/api/auth/login",
-    payload: { email, password: GAST_PASSWORT },
-  });
-}
-
-/** Die Anmeldung, die gelingen MUSS — sonst misst der Fall darunter nichts. */
-async function token(app: FastifyInstance, email: string): Promise<string> {
-  const antwort = await anmelden(app, email);
-  if (antwort.statusCode !== 200) {
-    throw new Error(`Anmeldung ${email} fehlgeschlagen: ${antwort.statusCode} ${antwort.body}`);
-  }
-  return antwort.json().token as string;
-}
-
-function verwalte(
-  app: FastifyInstance,
-  sitzung: string,
-  id: string,
-  body: Record<string, unknown>,
-): Promise<LightMyRequestResponse> {
-  return app.inject({
-    method: "PUT",
-    url: `/api/users/${id}`,
-    headers: { authorization: `Bearer ${sitzung}` },
-    payload: body,
-  });
-}
-
-/** Der Stand, den ein Mensch in der Nutzerliste sieht — nicht der aus der Antwort von eben. */
-async function ausDerListe(
-  app: FastifyInstance,
-  sitzung: string,
-  id: string,
-): Promise<PublicUser | undefined> {
-  const antwort = await app.inject({
-    method: "GET",
-    url: "/api/users",
-    headers: { authorization: `Bearer ${sitzung}` },
-  });
-  expect(antwort.statusCode, `GET /api/users: ${antwort.body}`).toBe(200);
-  return (antwort.json() as PublicUser[]).find((u) => u.id === id);
-}
-
-function ich(app: FastifyInstance, sitzung: string): Promise<LightMyRequestResponse> {
-  return app.inject({
-    method: "GET",
-    url: "/api/auth/me",
-    headers: { authorization: `Bearer ${sitzung}` },
-  });
-}
+afterEach(schliesseOffeneDraehte);
 
 describe("JOB 3755 · der Admin setzt die Befristung über die Schnittstelle", () => {
   it("R1 — setzen: die Antwort trägt den Wert, und die Nutzerliste zeigt ihn", async () => {
