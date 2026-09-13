@@ -85,6 +85,78 @@ describe("ConflictService", () => {
     expect(open).toHaveLength(1);
     expect(await service.badgeCount()).toBe(1);
   });
+
+  // JOB 3887 · WAS DIE FOLGENDEN FÄLLE BELEGEN — UND WAS NICHT.
+  // Geprüfte Zusage der Seitenhilfe, wörtlich: „Deine Wahl wird als Vermerk festgehalten, gelöscht
+  // wird nichts." (`apps/web/src/i18n.ts:5043-5044`, Schlüssel `help.konflikte.body`).
+  // BELEGT ist der DIENSTVERTRAG von `ConflictService` gegen `InMemoryConflictRepo`: WAS eine
+  //   Entscheidung ablegt (`decidedBy`, `decision`, `resolutionReason`) und dass der Datensatz
+  //   danach über `service.get(id)` vollständig zurückgelesen werden kann. Jede Zusicherung liest
+  //   deshalb zurück — der Rückgabewert der Methode allein gilt hier NICHT als Beleg.
+  // NICHT BELEGT ist die Postgres-Ablage: `repo-pg.integration.test.ts` läuft nur unter
+  //   `test:integration` und fährt im Tor nicht mit. Ebenfalls nicht belegt: der HTTP-Weg und die
+  //   Oberfläche — über sie behaupten diese Fälle nichts.
+  it("JOB 3887 D1: dismiss legt den vollständigen Vermerk ab — zurückgelesen über get", async () => {
+    const c = await service.create(input({ type: "context" }));
+    await service.dismiss(c.id, "controller-1", "Fehlalarm: andere Anlage");
+
+    const abgelegt = await service.get(c.id);
+    expect(abgelegt).toBeDefined();
+    expect(abgelegt?.status).toBe("geloest");
+    expect(abgelegt?.decidedBy).toBe("controller-1");
+    expect(abgelegt?.decision).toBe("Fehlalarm: andere Anlage");
+    expect(abgelegt?.resolutionReason).toBe("dismissed");
+  });
+
+  it('JOB 3887 D2: „festgehalten, gelöscht wird nichts" — und trotzdem weg von der Fläche', async () => {
+    // Zusage: „Deine Wahl wird als Vermerk festgehalten, gelöscht wird nichts."
+    // (`apps/web/src/i18n.ts:5043-5044`). Hälfte (i) dieses Falls belegt genau diesen Satz.
+    const c = await service.create(input());
+    const weiterOffen = await service.create(input({ koA: "ko3" }));
+    await service.resolve(c.id, "controller-1", "Quelle B gilt.");
+
+    const abgelegt = await service.get(c.id);
+    expect(abgelegt).toBeDefined();
+    expect(abgelegt?.decision).toBe("Quelle B gilt.");
+    expect(abgelegt?.decidedBy).toBe("controller-1");
+    expect(abgelegt?.resolutionReason).toBe("decided");
+
+    // Hälfte (ii) belegt, was derselbe Satz NICHT verspricht: von der Fläche (Board/Badge lesen
+    // `unresolved()`) ist das entschiedene Paar verschwunden. Beides gilt gleichzeitig.
+    expect((await service.unresolved()).map((k) => k.id)).toEqual([weiterOffen.id]);
+  });
+
+  it("JOB 3887 D3: dismiss ohne Notiz erfindet keinen Text", async () => {
+    const c = await service.create(input());
+    await service.dismiss(c.id, "controller-1");
+
+    const abgelegt = await service.get(c.id);
+    expect(abgelegt).toBeDefined();
+    expect(abgelegt?.decision).toBeNull(); // weder "" noch undefined
+    expect(abgelegt?.resolutionReason).toBe("dismissed");
+    expect(abgelegt?.decidedBy).toBe("controller-1");
+  });
+
+  it("JOB 3887 D4: ein abgelegter Vermerk wird nicht überschrieben", async () => {
+    const c = await service.create(input());
+    await service.resolve(c.id, "controller-1", "Quelle B gilt.");
+
+    // Beide Hälften in EINEM Lauf messbar (`expect.soft`): der Wurf UND der unveränderte Vermerk.
+    // Mit hartem `expect` bräche der Fall nach der ersten Abweichung ab und die eigentliche
+    // Aussage — kein Teilschreiben VOR dem Wurf — bliebe ungemessen.
+    let geworfen: unknown;
+    try {
+      await service.dismiss(c.id, "controller-2", "doch Fehlalarm");
+    } catch (error) {
+      geworfen = error;
+    }
+    expect.soft(geworfen).toMatchObject({ code: "ALREADY_RESOLVED" });
+
+    const nachher = await service.get(c.id);
+    expect.soft(nachher?.decidedBy).toBe("controller-1");
+    expect.soft(nachher?.decision).toBe("Quelle B gilt.");
+    expect.soft(nachher?.resolutionReason).toBe("decided");
+  });
 });
 
 describe("ConflictService — Audit (FR-AUD-01)", () => {
@@ -105,5 +177,19 @@ describe("ConflictService — Audit (FR-AUD-01)", () => {
       "conflict.second-opinion",
       "conflict.resolved",
     ]);
+  });
+
+  it('JOB 3887 D5: das Protokollwort des Fehlalarms nennt den Entscheider, nicht „system"', async () => {
+    const audit = new AuditService({ repo: new InMemoryAuditRepo() });
+    const service = new ConflictService({ repo: new InMemoryConflictRepo(), audit });
+    const c = await service.create(
+      { koA: "a", koB: "b", type: "truth", description: "x" },
+      "system",
+    );
+    await service.dismiss(c.id, "controller", "Fehlalarm: andere Anlage");
+
+    const eintraege = await audit.list();
+    expect(eintraege.map((e) => e.action)).toEqual(["conflict.created", "conflict.dismissed"]);
+    expect(eintraege.find((e) => e.action === "conflict.dismissed")?.actor).toBe("controller");
   });
 });
