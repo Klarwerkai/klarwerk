@@ -1170,6 +1170,262 @@ describe("JOB 3801 · der erste Nutzerweg, am Stück", () => {
     // `JSON.stringify` hineingeht, hängt weder an der Aufräumlaufzeit noch an der Reihenfolge der
     // Fälle. Vorher 50 000 (bzw. 2 000 000) Zeichen, nachher höchstens 300.
     // ============================================================================================
+
+    // ============================================================================================
+    // (xxiv)–(xxvii) JOB 3928 · DIE ZWEI LETZTEN STELLEN, AN DENEN „ZUERST SCHNEIDEN, DANN DRUCKEN"
+    // NICHT GILT — GEMESSEN, NICHT REPARIERT.
+    //
+    // WAS HIER GEMESSEN WIRD, SIND KOSTEN UND NICHT DIE AUSGABE. Die Ausgabe ist an beiden Stellen
+    // schon heute in Ordnung (F15b und F16b messen sie daneben, damit der Unterschied dasteht);
+    // teuer ist der Weg dorthin. Ein Fall, der nur die Ausgabe läse, wäre still grün und sagte über
+    // die Kosten nichts — deshalb steht vor jeder Zahl ein Horchposten und vor jeder Zahl die
+    // Zusicherung, dass er überhaupt gerufen wurde (die Lehre aus JOB 3866 Runde 2, F14b:1131).
+    //
+    // DAS SIND PINS AUF EINEN BEFUND, KEINE ZUSAGEN. Wird einer dieser Fälle eines Tages rot, ist
+    // der Kostenweg repariert worden — dann gehört der Fall UMGESCHRIEBEN (auf die dann gültige
+    // Grenze, mit der Reparatur im Kommentar) und NICHT geflickt. Wer nur die Zahl anpasst,
+    // verliert die Messung und behält eine Zeile, die nichts mehr bewacht.
+    //
+    // NUTZENKETTE: MASCHINENINTERN. Diagnoseeingabe → `istwertVon` → `drucke` → Fehlermeldung des
+    // Prüfstands. Keine Oberfläche ist berührt; der Nutzen ist, dass ein Fehlschlag im Demo-
+    // Durchstich bezahlbar bleibt und nicht selbst zum Ausfall wird.
+    // ============================================================================================
+    // Die beiden anderen Konstanten aus `strecke.ts`, hier wie `ISTWERT_ZEICHEN_HIER` als Zahl
+    // aufgeschrieben, weil sie dort nicht ausgeführt werden (kein `export`).
+    const ISTWERT_GLIEDER_HIER = 12;
+    const ISTWERT_TIEFE_HIER = 4;
+
+    // ============================================================================================
+    // (xxiv) F15 · DIE DEZIMALDARSTELLUNG EINES BigInt ENTSTEHT VOLLSTÄNDIG.
+    //
+    // `strecke.ts:1058-1064` sagt das an seiner eigenen Zeile, und diese Sätze stehen hier WÖRTLICH
+    // statt umformuliert:
+    //   „HIER GILT DIE REGEL VON OBEN NICHT, und das ist benannt statt versteckt (JOB 3897, §10).
+    //    `10n ** 500000n` ergibt über 500 000 Zeichen, die alle entstehen, bevor `nimm` 300 behält.
+    //    Ein Schnitt davor gibt es nicht: eine Dezimaldarstellung lässt sich nicht abschneiden, ohne
+    //    sie zu berechnen. Was statt der Zahl dastünde, ist eine eigene Entscheidung und ein eigener
+    //    Auftrag — kein Einzeiler wie bei der Zeichenkette."
+    // Dieser Fall MISST diesen Satz. Er repariert ihn nicht: was statt der Zahl dastehen soll, ist
+    // ausdrücklich nicht Sache dieses Prüfstands.
+    // ============================================================================================
+    // WARUM DER HORCHPOSTEN NICHT AUF `BigInt.prototype.toString` SITZT — gemessen, nicht vermutet.
+    // Genau dort war er bestellt. Die Zeichenkette entsteht in `strecke.ts:1064` aber über ein
+    // Vorlagenliteral (`${wert}n`), und die Sprache wandelt den Grundwert dabei selbst um, ohne die
+    // Methode des Prototyps zu fragen. Ein Horchposten dort sähe NIE einen Aufruf — ein Fall, der
+    // darauf baute, wäre entweder immer rot oder (schlimmer) blind. Die nächsten Zeilen messen genau
+    // das, statt es zu behaupten: derselbe Horchposten zählt bei einem direkten `.toString()` sehr
+    // wohl mit, bei der Vorlage nicht. Gemessen wird deshalb weiter unten am SCHNITT.
+    const echteBigIntSchreibweise = BigInt.prototype.toString;
+    let ueberDenPrototyp = 0;
+    let ueberDieVorlage = 0;
+    let vorlagenLaenge = 0;
+    try {
+      BigInt.prototype.toString = function (this: unknown, stellenwert?: number): string {
+        ueberDenPrototyp += 1;
+        return echteBigIntSchreibweise.call(this as bigint, stellenwert);
+      };
+      // Genau der Ausdruck aus `strecke.ts:1064`, nur hier statt dort.
+      vorlagenLaenge = `${10n ** 5000n}n`.length;
+      ueberDieVorlage = ueberDenPrototyp;
+      (10n ** 5000n).toString();
+    } finally {
+      BigInt.prototype.toString = echteBigIntSchreibweise;
+    }
+    expect(BigInt.prototype.toString, "F15: der Horchposten blieb stehen").toBe(
+      echteBigIntSchreibweise,
+    );
+    expect(
+      ueberDieVorlage,
+      `F15: das Vorlagenliteral geht doch über den Prototyp (${ueberDieVorlage} Aufrufe) — dann wäre der bestellte Horchposten der bessere Messpunkt`,
+    ).toBe(0);
+    expect(
+      ueberDenPrototyp,
+      "F15: der Horchposten zählt gar nichts — dann belegt seine Null oben nichts über das Vorlagenliteral",
+    ).toBe(1);
+    // Und was die Vorlage aus `strecke.ts:1064` kostet, steht schon hier, an genau demselben
+    // Ausdruck: 5001 Stellen plus das „n". Dieselbe Zahl misst die Probe unten am Weg des Produkts.
+    expect(
+      vorlagenLaenge,
+      `F15: die Vorlage ergab ${vorlagenLaenge} Zeichen statt 5002 — dann stimmt die Rechnung darunter nicht mehr`,
+    ).toBe(5002);
+
+    // UND JETZT DIE MESSUNG SELBST, am einzigen Punkt, an dem der fertige Text sichtbar wird: `nimm`
+    // schneidet ihn (`strecke.ts:1017`, `text.slice(0, vorrat.zeichen)`), und WORAUF geschnitten
+    // wird, ist so lang, wie der Text geworden ist. Der Horchposten sitzt deshalb auf
+    // `String.prototype.slice` und merkt sich die Länge jedes geschnittenen Textes — Bauform wie
+    // F14b: echte Fassung aus einer Variablen weiterrufen, im `finally` zurücksetzen, Rückkehr
+    // prüfen, und vor jeder Zahl belegen, dass er gerufen wurde.
+    const echterSchnitt = String.prototype.slice;
+    const geschnitten: number[] = [];
+    try {
+      String.prototype.slice = function (this: unknown, von?: number, bis?: number): string {
+        const text = String(this);
+        geschnitten.push(text.length);
+        return echterSchnitt.call(text, von, bis);
+      };
+      liesTrefferliste({ n: 10n ** 5000n });
+    } finally {
+      String.prototype.slice = echterSchnitt;
+    }
+    expect(String.prototype.slice, "F15: der Horchposten blieb stehen").toBe(echterSchnitt);
+    // OHNE DIESE ZEILE WÄRE DER FALL BLIND — dieselbe Notbremse wie F14b:1134.
+    expect(
+      geschnitten.length,
+      "F15: es wurde gar nicht geschnitten — die Probe misst nichts",
+    ).toBeGreaterThan(0);
+    // DIE ZAHL IST EXAKT UND NICHT „irgendein Überlauf": `10n ** 5000n` hat 5001 Stellen, und das
+    // „n" aus `${wert}n` macht 5002 Zeichen daraus. Beide Zahlen stehen hier nebeneinander, damit
+    // die Rechnung im Quelltext nachlesbar ist statt nur im Ergebnis.
+    const stellen = (10n ** 5000n).toString().length;
+    expect(stellen, "F15: die Dezimaldarstellung ist anders lang als gerechnet").toBe(5001);
+    const laengsterSchnitt = Math.max(...geschnitten, 0);
+    expect(
+      laengsterSchnitt,
+      `F15: die Zahl entstand nicht mehr ganz — geschnitten wurde ein Text von ${laengsterSchnitt} Zeichen, erwartet waren ${stellen + 1} (strecke.ts:1064, Vorlage aus Zahl und „n"), von denen höchstens ${ISTWERT_ZEICHEN_HIER} überleben können`,
+    ).toBe(stellen + 1);
+
+    // (xxv) F15b · … UND DIE AUSGABE HÄLT IHRE GRENZE TROTZDEM. Ohne diesen Fall bliebe offen, ob
+    //       F15 einen Kosten- oder einen Korrektheitsmangel beschreibt. Es ist ein KOSTENmangel:
+    //       5002 Zeichen entstehen, 294 Ziffern kommen an, und die Meldung bleibt im Vorrat.
+    const f15bIstwert = istwertAus({ n: 10n ** 5000n });
+    expect(
+      f15bIstwert.length,
+      `F15b: die Ausgabe sprengt ihren Vorrat — ${f15bIstwert.length} Zeichen statt höchstens ${F13_GRENZE}, Anfang: ${f15bIstwert.slice(0, 60)}`,
+    ).toBeLessThanOrEqual(F13_GRENZE);
+    expect(f15bIstwert, "F15b: die Ausgabe verschweigt, dass gekürzt wurde").toMatch(/…\}$/);
+    const ziffernInDerAusgabe = (f15bIstwert.match(/\d/g) ?? []).length;
+    expect(
+      ziffernInDerAusgabe,
+      `F15b: von ${stellen} Stellen kamen ${ziffernInDerAusgabe} an — das ist nicht mehr der Rest des Vorrats`,
+    ).toBe(294);
+    // Und es sind wirklich die Stellen dieser Zahl (eine 1, dann Nullen), nicht irgendein Platzhalter.
+    expect(f15bIstwert, "F15b: in der Ausgabe steht gar nicht die Zahl").toMatch(/^\{"n":10{50}/);
+
+    // ============================================================================================
+    // (xxvi) F16 · DIE VOLLSTÄNDIGE SCHLÜSSELLISTE ENTSTEHT, OBWOHL HÖCHSTENS ZWÖLF FELDER GEDRUCKT
+    //        WERDEN. `strecke.ts:1035` ruft `Object.keys(wert as object)`, bevor irgendetwas
+    //        geschnitten ist; gebraucht werden davon höchstens `ISTWERT_GLIEDER` = 12 Einträge
+    //        (`:1040` bricht ab), im tiefenerschöpften Fall sogar nur die ANZAHL (`:1036`) und für
+    //        das Schlusszeichen nur der Vergleich (`:1056`). Auch das ist ein Pin auf einen BEFUND:
+    //        wird er rot, wurde die Liste nicht mehr ganz gebaut — dann gehört er umgeschrieben.
+    // ============================================================================================
+    const VIELE_FELDER = 50_000;
+    const vieleFelder: Record<string, unknown> = {};
+    for (let i = 0; i < VIELE_FELDER; i += 1) vieleFelder[`f${i}`] = 1;
+    /** Hüllt einen Kern in `ebenen` Objektebenen — ITERATIV, damit das Bauen selbst nichts wirft. */
+    const umhuelle = (kern: unknown, ebenen: number): Record<string, unknown> => {
+      let ebene: unknown = kern;
+      for (let e = 0; e < ebenen; e += 1) ebene = { f0: ebene };
+      return ebene as Record<string, unknown>;
+    };
+    // Der tiefenerschöpfte Fall: dieselben 50 000 Felder, aber erst UNTERHALB von `ISTWERT_TIEFE`.
+    const tiefErschoepft = umhuelle(vieleFelder, ISTWERT_TIEFE_HIER);
+    const echteSchluesselliste = Object.keys;
+    const listen: number[] = [];
+    let flacheRufe = 0;
+    let flachsteListe = 0;
+    let tiefeRufe = 0;
+    let tiefsteListe = 0;
+    try {
+      // Gleiche Bauform, gleiche Rücknahme wie F14b und F15.
+      Object.keys = ((wert: object): string[] => {
+        const liste = echteSchluesselliste(wert);
+        listen.push(liste.length);
+        return liste;
+      }) as typeof Object.keys;
+      listen.length = 0;
+      liesTrefferliste(vieleFelder);
+      flacheRufe = listen.length;
+      flachsteListe = Math.max(...listen, 0);
+      listen.length = 0;
+      liesTrefferliste(tiefErschoepft);
+      tiefeRufe = listen.length;
+      tiefsteListe = Math.max(...listen, 0);
+    } finally {
+      Object.keys = echteSchluesselliste;
+    }
+    expect(Object.keys, "F16: der Horchposten blieb stehen").toBe(echteSchluesselliste);
+    // (a) WAS ENTSTEHT. Wieder erst die Notbremse, dann die Zahl.
+    expect(
+      flacheRufe,
+      "F16a: die Schlüsselliste wurde gar nicht geholt — die Probe misst nichts",
+    ).toBeGreaterThan(0);
+    expect(
+      flachsteListe,
+      `F16a: die Schlüsselliste entstand ganz — ${flachsteListe} Einträge, obwohl die Ausgabe höchstens ${ISTWERT_GLIEDER_HIER} Felder nennt`,
+    ).toBe(VIELE_FELDER);
+    expect(
+      tiefeRufe,
+      "F16c: die Schlüsselliste wurde gar nicht geholt — die Probe misst nichts",
+    ).toBeGreaterThan(0);
+    expect(
+      tiefsteListe,
+      `F16c: unterhalb der Tiefengrenze entstand die Liste ganz — ${tiefsteListe} Einträge, gebraucht wird dort nur ihre Länge (strecke.ts:1036)`,
+    ).toBe(VIELE_FELDER);
+    // (b) WAS ANKOMMT — dieselbe Eingabe, am Ergebnis gemessen. Beide Zahlen stehen nebeneinander,
+    //     und das ist der ganze Befund: 50 000 entstanden, 12 gedruckt.
+    const f16Istwert = istwertAus(vieleFelder);
+    const genannteFelder = (f16Istwert.match(/"f\d+":1/g) ?? []).length;
+    expect(
+      genannteFelder,
+      `F16b: die Ausgabe nennt ${genannteFelder} Felder von ${VIELE_FELDER} entstandenen, erlaubt sind ${ISTWERT_GLIEDER_HIER}: ${f16Istwert.slice(0, 200)}`,
+    ).toBe(ISTWERT_GLIEDER_HIER);
+    expect(
+      f16Istwert,
+      "F16b: die Ausgabe verschweigt, dass Felder fehlen (strecke.ts:1056)",
+    ).toMatch(/…\}$/);
+    expect(
+      f16Istwert.length,
+      `F16b: die Ausgabe sprengt ihren Vorrat — ${f16Istwert.length} Zeichen statt höchstens ${F13_GRENZE}`,
+    ).toBeLessThanOrEqual(F13_GRENZE);
+    // (c) UND DER TIEFENERSCHÖPFTE FALL: dort steht von der ganzen Liste nur ihre Länge.
+    const f16TiefIstwert = istwertAus(tiefErschoepft);
+    expect(
+      f16TiefIstwert,
+      `F16c: die Ausgabe nennt die Zahl der Felder unterhalb der Tiefengrenze nicht: ${f16TiefIstwert.slice(0, 200)}`,
+    ).toMatch(/\{… zu tief, Felder: 50000\}/);
+    expect(
+      f16TiefIstwert.length,
+      `F16c: die Ausgabe sprengt ihren Vorrat — ${f16TiefIstwert.length} Zeichen`,
+    ).toBeLessThanOrEqual(F13_GRENZE);
+
+    // ============================================================================================
+    // (xxvii) F17 · TIEFE OBJEKTVERSCHACHTELUNG — der letzte offene Diagnosefall aus JOB 3849
+    //         (BEN zu R2: „tiefe Objektverschachtelung und sehr lange Feldnamen als Diagnosefälle";
+    //         die langen Feldnamen hat JOB 3897 erledigt). Bisher gab es 10 000 Ebenen nur als
+    //         ARRAY (`tiefePayload`, (xiii)/(xv)), und `strecke.ts:933-934` sagt ausdrücklich, dass
+    //         sich Arrays und Objekte hier NICHT gleich verhalten. Deshalb stehen beide Körper hier
+    //         nebeneinander: gleich tief, und die Meldung nennt beim Array die LÄNGE, beim Objekt
+    //         die Zahl der FELDER — und beim Objekt kostet jede Ebene zusätzlich ihren Schlüssel.
+    // ============================================================================================
+    const f17Objekt = umhuelle(0, 10_000);
+    expect(
+      () => istwertAus(f17Objekt),
+      "F17: die Diagnose stürzte am 10 000 Ebenen tiefen Objekt ab, statt es zu melden",
+    ).not.toThrow();
+    const f17Istwert = istwertAus(f17Objekt);
+    expect(
+      f17Istwert,
+      `F17: die Meldung verschweigt, dass die Tiefe abgeschnitten wurde: ${f17Istwert.slice(0, 200)}`,
+    ).toMatch(/… zu tief, Felder: 1\}/);
+    expect(
+      (f17Istwert.match(/\{"f0":/g) ?? []).length,
+      `F17: die Ausgabe hört nicht nach ${ISTWERT_TIEFE_HIER} Ebenen auf: ${f17Istwert}`,
+    ).toBe(ISTWERT_TIEFE_HIER);
+    expect(
+      f17Istwert.length,
+      `F17: die Ausgabe sprengt ihren Vorrat — ${f17Istwert.length} Zeichen statt höchstens ${F13_GRENZE}`,
+    ).toBeLessThanOrEqual(F13_GRENZE);
+    // UND DERSELBE KÖRPER ALS ARRAY, aus (xv) geliehen statt neu gebaut: gleich tief, andere Angabe.
+    const f17Array = istwertAus({ f0: tiefeListe });
+    expect(
+      f17Array,
+      `F17: der gleich tiefe Array-Körper meldet seine Länge nicht: ${f17Array}`,
+    ).toMatch(/\[… zu tief, Länge 1\]/);
+    expect(
+      f17Array.length,
+      `F17: die Array-Ausgabe sprengt ihren Vorrat — ${f17Array.length} Zeichen`,
+    ).toBeLessThanOrEqual(F13_GRENZE);
   });
 
   it("W3 · VERKABELUNG: eine verfälschte Ähnlichkeitsliste der Prüfroute erreicht die Zusage der Strecke", async () => {
