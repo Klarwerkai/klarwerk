@@ -71,9 +71,14 @@
 // gleichgültig (Klammern, `as`, `!`, `?.`, `["findCandidates"]`, `.call`). Seit JOB 3840 zählt
 // zusätzlich der Träger aus einem ANDEREN Modul, auch ohne Typangabe und ohne repo-ähnlichen Namen
 // (`const y = hol(); y.findCandidates({})`): ihn löst der Typprüfer über das ganze Programm auf.
+// Seit JOB 3867 gilt das auch auf der WEB-FLÄCHE: `apps/web/src/**` schreibt seine modulinternen
+// Importe über den Alias `@/…`, und den löste bis dahin keines der beiden Programme auf — der
+// Träger dahinter war `any`, der Wächter schwieg dort STILL. Die Alias-Regel kommt jetzt aus
+// `apps/web/tsconfig.json` (s. `typprogramm.ts`, `webAliase`), gelesen statt nachgebaut.
 //
-// IHRE GRENZE, benannt statt verschwiegen und gemessen statt behauptet: einen Empfänger, dessen Typ
-// auch der Typprüfer nicht kennt — `any`, `unknown` oder ein Fehlertyp —, sieht diese Datei nicht.
+// IHRE GRENZE — seit JOB 3867 genau EINE, nicht mehr zwei —, benannt statt verschwiegen und
+// gemessen statt behauptet: einen Empfänger, dessen Typ auch der Typprüfer nicht kennt — `any`,
+// `unknown` oder ein Fehlertyp —, sieht diese Datei nicht.
 // Eine Auskunft, die der Prüfer nicht hat, darf sie nicht erfinden. Der Fall steht unten als
 // Kalibrierung „bleibt ungesehen". Ausdrücklich KEINE Lücke, sondern die Gegenrichtung: ein FREMDER
 // Typ mit derselben Gestalt (`KoService` trägt dieselbe Methode) bleibt grün — auch das steht unten
@@ -116,8 +121,8 @@ function lies(datei: string): string {
 /**
  * Woran der Träger erkannt wurde — steht in jeder Beanstandung, damit sie nachprüfbar ist.
  *
- * JOB 3840: `typpruefer` ist die vierte ERKENNUNGSART, kein zweiter Prüfweg. Sie kommt nur zum Zug,
- * wenn keine der drei anderen greift (s. `kandidatenaufrufe`).
+ * JOB 3840: `typpruefer` ist eine ERKENNUNGSART, kein zweiter Prüfweg. Sie kommt nur zum Zug, wenn
+ * keine der vier anderen greift (s. `kandidatenaufrufe`) — die Aufzählung unten führt fünf Werte.
  */
 type Art = "name" | "alias" | "typ" | "abgeloest" | "typpruefer";
 
@@ -864,8 +869,19 @@ describe("JOB 3607 · (b) die ehrliche Marke steht an allen vier Stellen", () =>
 // und genau das ist der Gegenstand dieser Erweiterung — die Auskunft über den Träger steht NICHT in
 // seiner Datei. Jedes Paar besteht deshalb aus einer Nachbardatei, die den Rückgabetyp von `hol()`
 // deklariert, und einer Probe, die den Träger ohne Typangabe und ohne repo-ähnlichen Namen aufnimmt.
-// Die drei Proben sind ZEICHENGLEICH; allein der Typ der Nachbardatei unterscheidet sie. Damit misst
-// die Kalibrierung den Typprüfer und nicht eine Schreibweise.
+// Alle Proben sind ZEICHENGLEICH; allein der Typ der Nachbardatei und der IMPORTWEG unterscheiden
+// sie. Damit misst die Kalibrierung den Typprüfer und nicht eine Schreibweise.
+//
+// JOB 3867 — DAZU DIE WEB-FLÄCHE, UND ZWAR ALS PAAR AUS ZWEI IMPORTWEGEN. Die Web-App schreibt ihre
+// modulinternen Importe über den Alias `@/…` (`apps/web/tsconfig.json:20`, `"@/*": ["src/*"]`), und
+// genau diese Schreibweise löste bis zu diesem Job in keinem der beiden Programme auf: der Träger
+// hatte dort den Typ `any`, `repoTypname` überspringt `any` — der Wächter war auf der ganzen
+// Web-Fläche STILL grün. Drei Proben halten das jetzt fest, alle unter DEMSELBEN Ordner:
+//   · `traeger-alias.ts`   — `@/probe/nachbar-repo`   → muss `KoRepo` auflösen (die geschlossene Lücke)
+//   · `traeger-relativ.ts` — `./nachbar-repo`         → löste schon vorher auf (also liegt es NICHT
+//                                                       am Ordner `apps/web/`, sondern am Alias)
+//   · `traeger-alias-dienst.ts` — `@/probe/nachbar-dienst` → bleibt grün (scharf, nicht nur streng)
+const WEB_PROBE = "apps/web/src/probe";
 const PROBE = "const y = hol();\nconst z = y.findCandidates({});\n";
 const PROBEN: ReadonlyMap<string, string> = new Map([
   [
@@ -887,6 +903,22 @@ const PROBEN: ReadonlyMap<string, string> = new Map([
   [
     "services/probe/src/traeger-unbekannt.ts",
     `import { hol } from './nachbar-unbekannt';\n${PROBE}`,
+  ],
+  [
+    `${WEB_PROBE}/nachbar-repo.ts`,
+    "export interface KoRepo { findCandidates(query: object): unknown[]; }\n" +
+      "export function hol(): KoRepo { throw new Error('Prüfdaten'); }\n",
+  ],
+  [`${WEB_PROBE}/traeger-alias.ts`, `import { hol } from '@/probe/nachbar-repo';\n${PROBE}`],
+  [`${WEB_PROBE}/traeger-relativ.ts`, `import { hol } from './nachbar-repo';\n${PROBE}`],
+  [
+    `${WEB_PROBE}/nachbar-dienst.ts`,
+    "export interface KoService { findCandidates(query: object): unknown[]; }\n" +
+      "export function hol(): KoService { throw new Error('Prüfdaten'); }\n",
+  ],
+  [
+    `${WEB_PROBE}/traeger-alias-dienst.ts`,
+    `import { hol } from '@/probe/nachbar-dienst';\n${PROBE}`,
   ],
 ]);
 
@@ -1082,13 +1114,47 @@ describe("JOB 3607 · Kalibrierung (a): was als Aufrufer zählt und was nicht", 
     expect(imProgramm("services/probe/src/traeger-dienst.ts")).toEqual([]);
   });
 
-  // DIE NEUE GRENZE, gemessen statt behauptet (s. Kopf): kennt auch der Typprüfer den Typ des
-  // Empfängers nicht — `any`, `unknown` oder Fehlertyp —, bleibt der Träger ungesehen. Das ist keine
-  // Nachlässigkeit, sondern die Regel aus `repoTypname`: aus „ich weiss es nicht" darf keine
-  // Beanstandung werden. Wer die Zusicherung dieser Datei liest, liest hier ihr Ende.
+  // JOB 3867 — DIE WEB-FLÄCHE, DIE BIS HIERHER STILL GRÜN WAR.
   //
-  // Dass dieses Grün eine MESSUNG und kein Ausfall ist, belegt der erste Fall dieser drei: er läuft
-  // im GLEICHEN gestellten Programm und löst dort `KoRepo` auf. Wäre die Auflösung tot, wäre er rot.
+  // Bis zu diesem Job kamen beide Programme allein mit der Wurzel-`tsconfig.json` aus, und die führt
+  // weder `baseUrl` noch `paths`. Jeder `@/…`-Import der Web-App blieb damit ein unauflösbares
+  // Modul, der Träger hatte den Typ `any`, und `repoTypname` überspringt `any` ausdrücklich. Der
+  // Wächter meldete dort also nichts, WEIL ihm die Auskunft fehlte — dieselbe stille Falsch-
+  // entwarnung, gegen die `typprogramm.ts:132-136` schon einmal gebaut wurde. GEMESSEN vor der
+  // Reparatur: dieser Fall lieferte `[]`.
+  //
+  // Jetzt liest `optionen()` die Alias-Auskunft zusätzlich aus `apps/web/tsconfig.json` (gelesen,
+  // nicht nachgebaut) und gibt sie BEIDEN Programmen — der echten Produktfläche wie den gestellten
+  // Quellen.
+  it("JOB 3867 · ein `@/…`-Import der Web-Fläche löst auf — der Typprüfer nennt KoRepo", () => {
+    expect(imProgramm(`${WEB_PROBE}/traeger-alias.ts`)).toEqual(["typpruefer:y:KoRepo"]);
+  });
+
+  it("JOB 3867 · es ist der ALIAS und nicht der Ordner: derselbe Ordner, relativ importiert", () => {
+    // Ohne diesen Fall bliebe offen, ob der Befund oben am Importweg hing oder daran, dass
+    // `apps/web/**` überhaupt im Programm liegt. Diese Probe ist zeichengleich mit der darüber,
+    // allein ihr Import ist relativ — und sie war schon VOR der Reparatur grün.
+    expect(imProgramm(`${WEB_PROBE}/traeger-relativ.ts`)).toEqual(["typpruefer:y:KoRepo"]);
+  });
+
+  it("JOB 3867 · Gegenrichtung über den Alias: `@/…` mit KoService bleibt grün", () => {
+    // Sonst wäre nur belegt, dass die Auflösung ETWAS findet, nicht dass sie das Richtige findet:
+    // `KoService` trägt dieselbe Methode und ist der echte Produktweg.
+    expect(imProgramm(`${WEB_PROBE}/traeger-alias-dienst.ts`)).toEqual([]);
+  });
+
+  // DIE GRENZE, gemessen statt behauptet (s. Kopf). Sie ist seit JOB 3867 genau EINE und nicht mehr
+  // zwei: kennt auch der Typprüfer den Typ des Empfängers nicht — `any`, `unknown` oder Fehlertyp —,
+  // bleibt der Träger ungesehen. Das ist keine Nachlässigkeit, sondern die Regel aus `repoTypname`:
+  // aus „ich weiss es nicht" darf keine Beanstandung werden. Wer die Zusicherung dieser Datei liest,
+  // liest hier ihr Ende.
+  //
+  // WAS HIER NICHT MEHR STEHT: der Importweg. Bis JOB 3867 war der `@/…`-Alias der Web-Fläche die
+  // zweite, unausgesprochene Grenze — unausgesprochen, weil sie sich als grüner Fall verkleidete.
+  // Sie ist geschlossen und durch die drei Fälle darüber belegt, nicht danebengestellt.
+  //
+  // Dass dieses Grün eine MESSUNG und kein Ausfall ist, belegen die Fälle darüber: sie laufen im
+  // GLEICHEN gestellten Programm und lösen dort `KoRepo` auf. Wäre die Auflösung tot, wären sie rot.
   it("bleibt ungesehen: ein Träger, dessen Typ auch der Typprüfer nicht kennt", () => {
     expect(imProgramm("services/probe/src/traeger-unbekannt.ts")).toEqual([]);
   });

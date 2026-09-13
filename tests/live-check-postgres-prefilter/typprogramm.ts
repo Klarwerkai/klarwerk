@@ -44,22 +44,81 @@ export interface Typumgebung {
 /** Die Grundlage der Übersetzeroptionen: dieselbe Datei, gegen die `npx tsc --noEmit` fährt. */
 const GRUNDLAGE = "tsconfig.json";
 
+/** Das Verzeichnis der Web-App — Anker ihrer eigenen Übersetzerkonfiguration. */
+const WEB = join("apps", "web");
+
+/** Die Übersetzeroptionen EINER Konfigurationsdatei, aus ihr gelesen statt nachgebaut. */
+function gelesen(datei: string, anker: string): ts.CompilerOptions {
+  const roh = ts.readConfigFile(join(anker, datei), (pfad) => readFileSync(pfad, "utf8"));
+  const config = (roh.config ?? {}) as { compilerOptions?: unknown };
+  return ts.convertCompilerOptionsFromJson(config.compilerOptions, anker).options;
+}
+
+/**
+ * JOB 3867 — DIE ALIAS-AUSKUNFT DER WEB-FLÄCHE, AUS `apps/web/tsconfig.json` GELESEN.
+ *
+ * WARUM SIE FEHLTE UND WARUM DAS SCHLIMMER WAR ALS EINE LÜCKE. Die Optionen beider Programme kamen
+ * bis JOB 3867 ausschliesslich aus der Wurzel-`tsconfig.json`, und die führt weder `baseUrl` noch
+ * `paths` — sie ist Node-rein und sagt das dort auch. Die Web-App schreibt ihre modulinternen
+ * Importe aber über `@/…` (`apps/web/tsconfig.json`, `"@/*": ["src/*"]`). Jeder dieser Importe war
+ * für den Prüfer ein unauflösbares Modul, jeder Träger dahinter hatte den Typ `any` — und `any`
+ * verwirft `repoTypname` ausdrücklich, weil aus „ich weiss es nicht" keine Beanstandung werden darf.
+ * Ergebnis war ein STILLES GRÜN über die ganze Web-Fläche: der Wächter schwieg, WEIL ihm die
+ * Auskunft fehlte. Dieselbe Falsch-entwarnung, gegen die der `directoryExists`-Haken unten schon
+ * einmal gebaut wurde.
+ *
+ * DASSELBE ARGUMENT WIE BEI `jsx`/DOM oben, nur eine Zeile später gezogen: die Produktfläche
+ * enthält `apps/web/src/**`, also braucht der Prüfer dort die Auskunft, die diese Fläche über sich
+ * selbst führt.
+ *
+ * ABSOLUT VERANKERT, und das ist kein Geschmack: `paths`-Einträge liest TypeScript sonst gegen
+ * `baseUrl` bzw. das Verzeichnis ihrer Konfigurationsdatei — beides kennt ein von Hand gebautes
+ * Optionsobjekt nicht, und der Prüfer löste dann gegen das falsche Verzeichnis auf. Die Ziele
+ * zeigen deshalb fertig auf `WURZEL/apps/web/src/*`.
+ *
+ * OHNE `baseUrl`, mit Grund: `baseUrl` wirkt auf JEDEN nicht-relativen Importnamen des ganzen
+ * Programms — auch auf die von `services/**`. Gefragt ist hier allein die Alias-Regel, also steht
+ * nur sie in den Optionen.
+ */
+function webAliase(): ts.CompilerOptions {
+  const wurzelWeb = join(WURZEL, WEB);
+  const optionenWeb = gelesen("tsconfig.json", wurzelWeb);
+  const muster = optionenWeb.paths;
+  if (muster === undefined) {
+    return {};
+  }
+  const anker = optionenWeb.baseUrl ?? wurzelWeb;
+  return {
+    paths: Object.fromEntries(
+      Object.entries(muster).map(([alias, ziele]) => [
+        alias,
+        ziele.map((ziel) => posix(join(anker, ziel))),
+      ]),
+    ),
+  };
+}
+
 /**
  * Die Optionen des Programms — aus `tsconfig.json` gelesen, nicht nachgebaut.
  *
- * DREI ZUSÄTZE, jeder mit Grund:
+ * VIER ZUSÄTZE, jeder mit Grund:
  *   · `jsx`/DOM-Bibliothek: `tsconfig.json` ist Node-rein (es schliesst `tests/**\/*.tsx` aus und
  *     kennt `apps/` nicht als Einstieg). Die Produktfläche enthält aber `apps/web/src/**.tsx`; ohne
  *     diese beiden Zusätze verlöre der Prüfer dort jeden Typ und die Erhebung wäre still schwächer.
+ *   · `paths` der Web-Fläche (JOB 3867, s. `webAliase`): aus demselben Grund, eine Ebene tiefer —
+ *     ohne sie löst kein `@/…`-Import auf und der Prüfer schweigt dort, statt zu antworten.
  *   · `types: []`: gefragt ist der Typ EINES Empfängers, nicht eine vollständige Typprüfung. Die
  *     globalen Typpakete tragen dazu nichts bei und sind der teuerste Teil des Aufbaus.
  *   · `noEmit`: dieses Programm schreibt nie eine Datei.
  */
 function optionen(zusatz: ts.CompilerOptions): ts.CompilerOptions {
-  const roh = ts.readConfigFile(join(WURZEL, GRUNDLAGE), (pfad) => readFileSync(pfad, "utf8"));
-  const config = (roh.config ?? {}) as { compilerOptions?: unknown };
-  const umgewandelt = ts.convertCompilerOptionsFromJson(config.compilerOptions, WURZEL);
-  return { ...umgewandelt.options, noEmit: true, types: [], ...zusatz };
+  return {
+    ...gelesen(GRUNDLAGE, WURZEL),
+    noEmit: true,
+    types: [],
+    ...webAliase(),
+    ...zusatz,
+  };
 }
 
 function umgebungAus(programm: ts.Program, beginn: number): Typumgebung {
@@ -90,6 +149,24 @@ let produkt: Typumgebung | undefined;
  * 1337 ms), weil der Baum jetzt aus dem Programm kommt statt je Datei neu geparst zu werden. Netto
  * kostet die Verschärfung rund 0,85 s im Tor. Zum Vergleich auf der Prüfmaschine der Cloud (andere
  * Leistung, dieselbe Richtung): 1515 ms → 3154 ms, davon Programmaufbau 2274 ms.
+ *
+ * WAS DIE ALIAS-AUFLÖSUNG DAZU KOSTET — GEMESSEN (JOB 3867, 13.09.2026, dieselbe Befehlszeile,
+ * dieselben 759 Produktdateien, alle Läufe auf dem GETEILTEN Arbeitsprüfplatz der Cloud):
+ *
+ *     VORHER   Datei 2350 ms (Fall 2235 ms; Aufbau 1625 ms + Erhebung 604 ms) · 22 Fälle · Gruppe 3,04 s
+ *     NACHHER  Datei 2658 ms (Fall 2517 ms; Aufbau 1807 ms + Erhebung  704 ms) · 25 Fälle · Gruppe 3,35 s
+ *
+ * Netto +0,31 s auf die Datei und +0,31 s auf die Gruppe — und darin stecken auch die drei neuen
+ * Fälle, nicht nur die Auflösung.
+ *
+ * DER PLATZ STREUT STÄRKER ALS DER EFFEKT, und auch das ist gemessen statt geschätzt: dieselben 25
+ * Fälle liefen im selben Fenster fünfmal, zwischen Datei 2658 ms (Aufbau 1807 ms) und Datei 4026 ms
+ * (Aufbau 2738 ms) — OHNE Alias-Auskunft ebenso wie mit. Die schärfste Paarung ist die Rückbauprobe:
+ * derselbe Baum, allein die Zeile `...webAliase()` entfernt → Aufbau 1797 ms, Datei 2748 ms; mit ihr
+ * Aufbau 1807 ms, Datei 2658 ms. Zehn Millisekunden Unterschied im Aufbau. Ein Aufschlag durch
+ * `paths` ist hier NICHT nachweisbar, und der Sache nach ist das erwartbar: `apps/web/src/**` liegt
+ * ohnehin vollständig in `rootNames`. Die Auflösung zieht keine Datei zusätzlich ins Programm, sie
+ * findet nur die schon vorhandene.
  */
 export function produktprogramm(dateien: readonly string[]): Typumgebung {
   if (produkt !== undefined) {
