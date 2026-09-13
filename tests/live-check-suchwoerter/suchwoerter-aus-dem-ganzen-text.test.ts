@@ -19,6 +19,25 @@ import { type Messung, bestand, miss } from "./messstand";
 // Lauscher schreibt die Wortliste mit, die wirklich übergeben wurde — die Auswahlregel wird
 // nirgends nachgebaut.
 
+// ================================================================================================
+// JOB 3854 · DER PREIS DER ZWÖLF PLÄTZE WIRD GEMESSEN — NICHT BEHOBEN.
+// ================================================================================================
+//
+// L3 unten hält einen VERLUST fest: hängt ein Bestandsgegenstand ausschließlich an einem KURZEN
+// Wort eines langwortreichen Entwurfs, fällt dieses Wort aus den zwölf Suchwörtern, der Gegenstand
+// wird nicht mehr gefunden — und der Live-Check meldet trotzdem „done", also denselben Befund wie
+// bei einem echten „nichts gefunden".
+//
+// DAS IST DER BEKANNTE, HINGENOMMENE PREIS DER ZWÖLF PLÄTZE, vom Produktcode selbst zugegeben
+// (services/app/src/knowledge-check.ts:284-295: „Ein Verlust bleibt möglich, wenn ein Gegenstand
+// ausschließlich an einem der kürzesten Wörter eines langwortreichen Entwurfs hängt; das wird hier
+// nicht wegbehauptet."). Dieser Auftrag MISST ihn, er BEHEBT ihn NICHT: die Lücke bleibt offen.
+// Eine Behebung wäre eine Änderung der zwölf Plätze, also eine Schwellenänderung — und die liegt
+// bei Pedi und Codex (archiv/3574/runde-2/RUECKGABE.md:49-50), nicht bei einem Test.
+//
+// Was sich durch diese Fälle ändert: die Auswahlregel kann nicht mehr unbemerkt strenger oder
+// schwächer werden, und der Zielkonflikt steht als Messwert da statt nur als Absatz im Kommentar.
+
 // Der Fachinhalt. Sieben Wörter über drei Zeichen; das Bestandsobjekt trägt denselben Sachverhalt.
 const FACHINHALT =
   "Rueckhaltebecken bei Frostgefahr vollstaendig entleeren, sonst friert die Leitung ein.";
@@ -50,6 +69,53 @@ const EIN_WORT_BESTAND = [{ title: "Überdrucksicherheitsventil", statement: "Be
 const EIN_WORT_ENTWURF =
   "Bitte Überdrucksicherheitsventil bei 20 bar zu. Quelle Intranet Portal Wiki Redaktion Datum " +
   "Montag Status Freigabe Kategorie Anweisung Bereich Werk Erfassung Ursprung Dokument Hinweis Stand";
+
+// ------------------------------------------------------------------------------------------------
+// JOB 3854 · DIE TEXTE DER DREI NEUEN FÄLLE.
+// ------------------------------------------------------------------------------------------------
+// L1: vierzehn verschiedene Wörter über drei Zeichen, darunter mehrere Paare GLEICHER Länge
+// (17, 16, 15 und 9 Zeichen), die alle in die Zwölf gehören. Die Reihung wird als Ganzes gemessen.
+const L1_ENTWURF =
+  "Binnenentwaesserung Regenrueckhaltung Kanalnetzbetrieb Schlammbehandlung Pumpwerkstoerung " +
+  "Belebungsbecken Rechengutpresse Nachklaerung Zulaufwert Sandfang9 Faulturm Gasmotor Abwasser Probelauf";
+
+// L2: GENAU dreizehn verschiedene Wörter über drei Zeichen — ein Platz zu wenig. Die elf mittleren
+// haben paarweise verschiedene Längen (16…6); die zwei KÜRZESTEN sind gleich lang (je fünf Zeichen)
+// und stehen bewusst am Anfang und am Ende des Textes. Über sie entscheidet der Gleichstand-Zweig.
+const L2_ENTWURF =
+  "Myzel Sauerstoffzufuhr Nachklaerbecken Betriebsstunde Schlammwasser Rechenanlage Pumpensumpf " +
+  "Ablaufwert Probelauf Faulturm Klaerer Zulauf Algen";
+
+// ------------------------------------------------------------------------------------------------
+// L3 · RUNDE 2, KORREKTURPFLICHT 1 (BEN): EIN Fachtext für BEIDE Hälften, nur Metadaten wandern.
+// ------------------------------------------------------------------------------------------------
+// Runde 1 verglich zwei VERSCHIEDENE Fachtexte („… Gully" gegen „Gully bei Frost pruefen.") und
+// schleppte damit „frost" und „pruefen" als zusätzliche Trefferwörter in die Gegenkontrolle: sie
+// blieb grün, auch wenn man „Gully" aus dem Bestand nahm — sie bewies also nicht, was sie behauptete
+// (ben.md Runde 1, Prüfpunkte 1/2/4). Deshalb steht der Fachtext jetzt GENAU EINMAL da; die beiden
+// Hälften unterscheiden sich ausschließlich durch die vorangestellten Metadaten.
+//
+// DER FACHTEXT ist so gebaut, dass sein EINZIGES Suchwort „gully" ist: jedes andere Wort hat
+// höchstens drei Zeichen und fällt schon an `TERM_MIN_LAENGE` (knowledge-check.ts:297, `w.length > 3`).
+// Damit hängt der Bestandsgegenstand nachweislich an genau diesem einen kurzen Wort — die
+// Gegenprobe „Gully aus dem Bestand entfernen" rötet die Gegenkontrolle (gemessen, s. Rückgabe).
+// Er ist mit 30 Zeichen zugleich lang genug für die Textmindestlänge (knowledge-check.ts:324,
+// `clean.length < 12` → „pending"), sonst käme der Live-Check gar nicht bis zur Vorauswahl.
+const L3_FACHTEXT = "Gully bei Eis zu, bei Tau auf.";
+
+// Der Bestandsgegenstand trägt denselben Sachverhalt. Kein Metadatenwort des Entwurfs kommt in
+// seinem Kandidatentext vor — auch nicht als Teilzeichenkette und auch nicht in der Kategorie
+// „Anlage 1", die `koCandidateText` mitliest (services/knowledge-object/src/repo.ts:270-274).
+const GULLY_BESTAND = [{ title: "Gully", statement: L3_FACHTEXT }];
+
+// Zwölf Metadatenwörter, JEDES länger als „Gully", in STRENG ABSTEIGENDER Länge (20, 16, 15, 14,
+// 13, 12, 11, 10, 9, 8, 7, 6). Mit dem Fachtext sind es dreizehn verschiedene Wörter über drei
+// Zeichen auf zwölf Plätze — „gully" ist das kürzeste und fällt.
+const L3_METADATEN =
+  "Verteilerinformation Ursprungsvermerk Bereichsleitung Dokumentenpfad Freigabestufe Datumsangabe " +
+  "Redaktionen Verteilung Erfassung Intranet Montags Quelle";
+const L3_OHNE_METADATEN = L3_FACHTEXT;
+const L3_MIT_METADATEN = `${L3_METADATEN} ${L3_FACHTEXT}`;
 
 /** Berichtszeile für die Rückgabe — wörtlich das, was gemessen wurde. */
 function bericht(name: string, m: Messung): string {
@@ -149,6 +215,11 @@ describe("JOB 3574: die Suchwörter des Live-Checks", () => {
     expect(c.terme).toHaveLength(12);
     expect(c.kandidaten).toBe(1);
     expect(c.similar).toHaveLength(1);
+    // JOB 3854 · BENs Prüflücke 6 wörtlich (archiv/3574/runde-2/ben.md:28): „V2 assertiert weiterhin
+    // weder Status noch Konflikte oder Judge-Zahl … diese ergänzen." Jede einzeln, gemessen:
+    expect(c.status).toBe("done");
+    expect(c.conflicts).toEqual([]);
+    expect(c.judgeAufrufe).toBe(1);
   });
 
   // ==============================================================================================
@@ -228,6 +299,103 @@ describe("JOB 3574: die Suchwörter des Live-Checks", () => {
     // Die beiden Listen sind NICHT dieselben: queryTokens stammt und schneidet anders.
     expect(qt).not.toEqual(a.terme);
     expect(nurHier.length + nurQt.length).toBeGreaterThan(0);
+  });
+
+  // ==============================================================================================
+  // JOB 3854 · L1/L2/L3 — DIE DREI VON BEN BENANNTEN PRÜFLÜCKEN (archiv/3574/runde-2/ben.md:28).
+  // ==============================================================================================
+
+  it("L1 · über zwölf Wörter: die Reihung der zwölf, vollständig festgenagelt", async () => {
+    // Vierzehn verschiedene Wörter, darunter vier Paare gleicher Länge (17, 16, 15, 9 Zeichen).
+    // Geprüft wird die VOLLE Liste in gelieferter Reihenfolge, nicht ihre Länge und nicht einzelne
+    // Wörter: die im Kommentar knowledge-check.ts:259-262 zugesagte Ordnung „nach Wortlänge
+    // absteigend, bei gleicher Länge nach erstem Vorkommen" war bisher als Ganzes unbewacht.
+    // Die Liste steht literal da — sie wird nicht aus der Regel nachgerechnet.
+    const m = await miss(await bestand(BESTAND), L1_ENTWURF);
+    console.log(`\n${bericht("L1", m)}`);
+    expect(m.terme).toEqual([
+      "binnenentwaesserung", // 19
+      "regenrueckhaltung", // 17, früher im Text
+      "schlammbehandlung", // 17, später im Text
+      "kanalnetzbetrieb", // 16, früher
+      "pumpwerkstoerung", // 16, später
+      "belebungsbecken", // 15, früher
+      "rechengutpresse", // 15, später
+      "nachklaerung", // 12
+      "zulaufwert", // 10
+      "sandfang9", // 9, früher
+      "probelauf", // 9, später
+      "faulturm", // 8 — der letzte Platz; „gasmotor" und „abwasser" (auch 8) fallen
+    ]);
+  });
+
+  it("L2 · gleich lange Wörter an der Auswahlgrenze: das früher vorkommende überlebt", async () => {
+    // GENAU dreizehn Wörter auf zwölf Plätze — ein Platz zu wenig, und die beiden kürzesten sind
+    // gleich lang (je fünf Zeichen). Über sie entscheidet allein der zweite Sortierschlüssel
+    // `|| a.fundstelle - b.fundstelle` (knowledge-check.ts:314). `fundstelle` ist der Rang des
+    // ERSTEN Vorkommens, weil `worte` aus einem `Set` in Einfügereihenfolge kommt (:301-308) —
+    // das ist eine ausgeschriebene Regel, KEINE geerbte Sortierstabilität.
+    const m = await miss(await bestand(BESTAND), L2_ENTWURF);
+    console.log(`\n${bericht("L2", m)}`);
+    expect(m.terme).toEqual([
+      "sauerstoffzufuhr", // 16
+      "nachklaerbecken", // 15
+      "betriebsstunde", // 14
+      "schlammwasser", // 13
+      "rechenanlage", // 12
+      "pumpensumpf", // 11
+      "ablaufwert", // 10
+      "probelauf", // 9
+      "faulturm", // 8
+      "klaerer", // 7
+      "zulauf", // 6
+      "myzel", // 5 — erstes Wort des Textes, überlebt den Gleichstand
+    ]);
+    expect(m.terme).toContain("myzel");
+    expect(m.terme).not.toContain("algen"); // 5 Zeichen, letztes Wort des Textes — fällt
+  });
+
+  it("L3 · ein kurzes Fachwort gegen lange Metadaten: der Treffer geht verloren, und niemand sieht es", async () => {
+    // DERSELBE Bestand UND DERSELBE FACHTEXT für beide Hälften (Korrekturpflicht 1 aus Runde 1) —
+    // die beiden Entwürfe unterscheiden sich in nichts als den vorangestellten Metadaten. Nur so
+    // ist belegt, dass die Metadaten den Verlust verursachen und nicht ein untauglicher
+    // Bestandseintrag oder ein zweites, nur in einer Hälfte vorhandenes Trefferwort.
+    const dienst = await bestand(GULLY_BESTAND);
+    const a = await miss(dienst, L3_MIT_METADATEN);
+    const b = await miss(dienst, L3_OHNE_METADATEN);
+    console.log(`\n${bericht("L3(a) mit Metadaten", a)}\n${bericht("L3(b) ohne Metadaten", b)}`);
+
+    // (a) DER VERLUST. „gully" ist kürzer als jedes der zwölf Metadatenwörter und fällt.
+    expect(a.terme).not.toContain("gully");
+    expect(a.terme).toEqual([
+      "verteilerinformation", // 20
+      "ursprungsvermerk", // 16
+      "bereichsleitung", // 15
+      "dokumentenpfad", // 14
+      "freigabestufe", // 13
+      "datumsangabe", // 12
+      "redaktionen", // 11
+      "verteilung", // 10
+      "erfassung", // 9
+      "intranet", // 8
+      "montags", // 7
+      "quelle", // 6
+    ]);
+    expect(a.kandidaten).toBe(0);
+    expect(a.similar).toEqual([]);
+    expect(a.conflicts).toEqual([]);
+    // UND NIEMAND SIEHT ES: kein „failed", kein Hinweis — derselbe Befund, den die Oberfläche bei
+    // einem echten „nichts gefunden" bekommt (Z1 unten). Genau das ist der gemessene Mangel.
+    expect(a.status).toBe("done");
+    expect(a.judgeAufrufe).toBe(0);
+
+    // (b) DIE GEGENKONTROLLE: derselbe Bestand, DERSELBE Fachtext, nur OHNE die Metadaten. Die
+    // Wortliste besteht aus GENAU EINEM Wort — daran und an nichts anderem hängt der Treffer. Nimmt
+    // man „Gully" aus dem Bestand, fällt diese Gegenkontrolle auf 0 Kandidaten / 0 Treffer
+    // (gemessen, Runde 2; genau das war in Runde 1 nicht der Fall).
+    expect(b.terme).toEqual(["gully"]);
+    expect(b.kandidaten).toBe(1);
+    expect(b.similar).toHaveLength(1);
   });
 
   it("T1b · queryTokens senkt die Mindestlänge — genau die Schwelle, die dieser Auftrag nicht anfasst", () => {
