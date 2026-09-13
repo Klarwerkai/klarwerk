@@ -79,7 +79,14 @@ it("Kante 3 bindet die erwarteten zwei Ereignisse am Originalaufruf", async () =
     container: { querySelectorAll: () => [1] },
     expect,
     pageText: () => "Ungespeicherte Eingabe",
-    path: () => "/erfassen",
+    // JOB 3773: hier stand `path: () => "/erfassen"`. Der Originalaufruf liest die Adresse seit
+    // diesem Auftrag über ZWEI Knoten (`ort-pfad`, `ort-abfrage`) und damit über `routenPfad()`
+    // statt über den zusammensetzenden `path()` — Begründung im Kopfblock von
+    // `tests/app/navguard-pop-mounted.test.tsx` über `Ortsmelder`. Die Sandkiste wertet GENAU
+    // diesen Originalaufruf aus und muss deshalb denselben Helfernamen kennen, sonst scheitert sie
+    // mit „routenPfad is not defined", ohne dass an der untersuchten Kante etwas fehlt. `path`
+    // steht hier nicht mehr daneben: den Helfer gibt es im Original nicht mehr.
+    routenPfad: () => "/erfassen",
     field: () => ({ value: "Doppelklick" }),
     clickDialog: async () => {
       throw new Error("Ende der untersuchten Kante");

@@ -92,10 +92,22 @@ const GLEICHHEIT = new Set(["toBe", "toEqual", "toStrictEqual"]);
 // DER ALTBESTAND — WAS JOB 3611 GEZÄHLT, ABER AUFTRAGSGEMÄSS NICHT UMGEBAUT HAT.
 // ==================================================================================================
 //
-// AUFTRAG §10 ist eindeutig: umgebaut werden die zwei Fundstellen aus §2, die übrigen werden
-// „gezählt und in den Altbestand geschrieben; das ist die Folgezeile für die Steuerung". Die Zeilen
-// stammen aus der Messung am Basisstand `4dfc4f0` und stehen hier als AUSKUNFT — wer aufräumt, weiß
-// damit, wohin er sieht.
+// AUFTRAG §10 (JOB 3611) ist eindeutig: umgebaut werden die zwei Fundstellen aus §2, die übrigen
+// werden „gezählt und in den Altbestand geschrieben; das ist die Folgezeile für die Steuerung". Die
+// Zeilen stammen aus der Messung am Basisstand `4dfc4f0` und stehen hier als AUSKUNFT — wer
+// aufräumt, weiß damit, wohin er sieht.
+//
+// JOB 3773 HAT DIE ERSTE DIESER FOLGEZEILEN ABGEARBEITET: den größten Schuldner,
+// `tests/app/navguard-pop-mounted.test.tsx` mit 20 Paarungen über einen einzigen Sondenknoten. Die
+// Datei hat jetzt zwei Knoten (`ort-pfad`, `ort-abfrage`) und zwei Helfer (`routenPfad()`,
+// `adresse()`); ihr Eintrag ist deshalb hier ENTFERNT und steht in `PFLICHT_SAUBER` unten. Kante 8
+// dort behauptet seither getrennt, was sie vorher in einem Satz vermischt hat: dass die Route auf
+// `/bibliothek` steht UND dass der Abfrageteil `?f=x` verschwunden ist.
+//
+// DIE RESTSCHULD, selbst gezählt und nicht geschätzt: bei JOB 3611 waren es 30 Paarungen in 7
+// Dateien, jetzt sind es 10 Paarungen in 6 Dateien (und 41 Zusammensetzungen im ganzen Testbaum;
+// V5 druckt beide Zahlen bei jedem Lauf). Die sechs Einträge unten stehen unverändert — Zeilen,
+// Gründe und Reihenfolge sind die von JOB 3611. Sie sind die nächsten Folgezeilen.
 //
 // DIE SCHRANKE GEHT IN BEIDE RICHTUNGEN:
 //   · Eine Datei, die NICHT hier steht und einen Befund trägt, macht V1 rot (auch ein neuer Ordner).
@@ -114,18 +126,6 @@ interface Altfall {
 }
 
 const ALTBESTAND: ReadonlyMap<string, Altfall> = new Map([
-  [
-    "tests/app/navguard-pop-mounted.test.tsx",
-    {
-      zeilen: [
-        257, 364, 384, 398, 400, 410, 414, 423, 434, 440, 460, 464, 480, 492, 503, 513, 520, 532,
-        538, 555,
-      ],
-      grund:
-        "Der größte Schuldner im Bestand (20 Paarungen über `path()`, Sonde `:82`). AUFTRAG §10 " +
-        "stellt `tests/app/**` ausdrücklich nach draußen; ein Umbau dieser Größe ist eine eigene Zeile.",
-    },
-  ],
   [
     "tests/entwuerfe-verwalten/blatt-entwuerfe-verwalten.test.tsx",
     {
@@ -177,13 +177,22 @@ const ALTBESTAND: ReadonlyMap<string, Altfall> = new Map([
 ]);
 
 // ==================================================================================================
-// DIE ZWEI FUNDSTELLEN DIESES AUFTRAGS — SIE SIND REPARIERT UND DÜRFEN NIE IN DEN ALTBESTAND.
+// DIE REPARIERTEN DATEIEN — SIE SIND SAUBER UND DÜRFEN NIE IN DEN ALTBESTAND.
 // ==================================================================================================
-// AUFTRAG §8.5: „der Wächter wird NICHT dadurch grün gemacht, dass Stellen in den Altbestand
-// wandern, die dieser Auftrag reparieren soll". V4 nagelt beides fest: kein Befund, kein Eintrag.
+// AUFTRAG §8.5 (JOB 3611): „der Wächter wird NICHT dadurch grün gemacht, dass Stellen in den
+// Altbestand wandern, die dieser Auftrag reparieren soll". V4 nagelt beides fest: kein Befund, kein
+// Eintrag — und zusätzlich keine Zusammensetzung, denn genau die ist der Rückfall.
+//
+// Die Liste wächst mit jeder abgearbeiteten Folgezeile. Wer eine Altbestandsdatei umbaut, streicht
+// sie oben und trägt sie HIER ein; nur so ist der nächste Rückfall ein Fehler und keine erneut
+// „zugestandene Schuld".
+//   · Die ersten zwei hat JOB 3611 selbst umgebaut (die Fundstellen aus seinem AUFTRAG §2).
+//   · Die dritte hat JOB 3773 umgebaut: der größte Schuldner, 20 Paarungen über einen einzigen
+//     Sondenknoten (Begründung im Block über dem ALTBESTAND).
 const PFLICHT_SAUBER = [
   "tests/entwurf-fortsetzen/blatt-entwurf-fortsetzen.test.tsx",
   "tests/capture/frontdoor-navguard-exits-mounted.test.tsx",
+  "tests/app/navguard-pop-mounted.test.tsx",
 ] as const;
 
 // ---- Quelltextgang -------------------------------------------------------------------------------
@@ -1263,15 +1272,15 @@ describe("JOB 3611 · eine Adresse ist kein Pfad: keine zusammengesetzte Adresse
     ).toEqual([]);
   });
 
-  it("V4 · die zwei Fundstellen aus AUFTRAG §2 sind sauber und stehen NICHT im Altbestand", () => {
+  it("V4 · die reparierten Dateien sind sauber und stehen NICHT im Altbestand", () => {
     for (const datei of PFLICHT_SAUBER) {
       expect(
         ERHEBUNG.befunde.filter((b) => b.datei === datei).map(zeige),
-        `${datei} ist von JOB 3611 umgebaut worden — hier darf keine Paarung zurückkehren`,
+        `${datei} ist von einem Auftrag umgebaut worden (s. PFLICHT_SAUBER) — hier darf keine Paarung zurückkehren`,
       ).toEqual([]);
       expect(
         ALTBESTAND.has(datei),
-        `${datei} darf nicht in den Altbestand wandern: dieser Auftrag hat sie repariert`,
+        `${datei} darf nicht in den Altbestand wandern: sie ist repariert (s. PFLICHT_SAUBER)`,
       ).toBe(false);
       expect(
         ERHEBUNG.zusammensetzungen.filter((z) => z.datei === datei).map((z) => z.quelltext),

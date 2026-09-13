@@ -60,14 +60,19 @@ async function wartePop(aktion: () => void, anzahl = 1): Promise<void> {
   });
 }
 
-/** Nach dem ersten POP muss auch der Router oder die Guard-Rückstellung angekommen sein. */
+/** Nach dem ersten POP muss auch der Router oder die Guard-Rückstellung angekommen sein.
+ *
+ * Beide Teile werden GETRENNT verglichen (Begründung über `Ortsmelder`): der Router ist erst dann
+ * angekommen, wenn Pfad UND Abfrageteil dem Fenster entsprechen — und eine Abweichung sagt danach,
+ * WELCHER der beiden noch unterwegs ist, statt eine Zeichenkettendifferenz zu zeigen. */
 async function warteRouter(): Promise<void> {
   await act(async () => {
     await vi.waitFor(
       () => {
-        expect(path(), `Router/Guard noch unterwegs: ${pageText()}`).toBe(
-          window.location.pathname + window.location.search,
-        );
+        expect(adresse(), `Router/Guard noch unterwegs: ${pageText()}`).toEqual({
+          pfad: window.location.pathname,
+          abfrage: window.location.search,
+        });
       },
       { timeout: 5_000, interval: 10 },
     );
@@ -77,9 +82,43 @@ async function warteRouter(): Promise<void> {
 /** Wie oft „save" gerufen wurde und ob es scheitern soll (Kante 6). */
 const saveState = { calls: 0, fail: false };
 
-function PathProbe(): JSX.Element {
+// ================================================================================================
+// JOB 3773 · DIE ADRESSE HAT ZWEI TEILE, UND HIER SAGEN SIE GETRENNT, WAS SIE MEINEN.
+// ================================================================================================
+//
+// BIS JOB 3773 stand hier EIN Sondenknoten, der Route und Abfrageteil zu EINER Zeichenkette
+// verkettete, und ein Helfer, der genau diese eine Zeichenkette zurückgab. Ein Vergleich dieses
+// Helfers gegen „/bibliothek" sah damit wie eine Routenprüfung aus, verglich aber PFAD UND
+// ABFRAGETEIL: stillschweigend behauptete jede der zwanzig Stellen zusätzlich „und es gibt keinen
+// Abfrageteil". Diese Datei war der größte Schuldner im Register
+// `tests/adresse-ist-kein-pfad/adresse-ist-kein-pfad.test.ts`.
+//
+// WARUM DAS TEUER IST, gemessen und nicht vermutet: der Fall wird ZEITABHÄNGIG, sobald irgendwer die
+// Adresse nachschreibt. Die Bibliothek tut genau das — entprellt nach 300 ms
+// (`apps/web/src/lib/useDebouncedValue.ts`) —, und der gleiche Fehler hat
+// `tests/app-sprachschalter/wechsel-ohne-verlust.test.tsx` dreifach kippen lassen (JOB 3531),
+// ohne dass die Fehlermeldung auf die Ursache zeigte; JOB 3559 hat ihn dort geheilt und ist hier
+// das Vorbild (`wechsel-ohne-verlust.test.tsx:118-181`).
+//
+// DESHALB ZWEI KNOTEN UND ZWEI HELFER, und ausdrücklich KEINE zusammengesetzte Zeichenkette
+// irgendwo in dieser Datei — auch nicht in `warteRouter` und nicht in einer Meldung:
+// `routenPfad()` gibt den Pfad und WIRFT, sobald sein Knoten ein `?` trägt; `adresse()` gibt beide
+// Teile GETRENNT. Die Verwechslung ist damit nicht mehr formulierbar, weil es die zusammengesetzte
+// Zeichenkette nicht mehr gibt — nicht bloß, weil niemand sie mehr benutzt.
+//
+// DIE ZWEI AUSSAGEN, die dahinterstehen (Kante 8 lebt von der Unterscheidung):
+//   PFAD        — „der POP hat die Route bewegt" bzw. „sie steht still".
+//   ABFRAGETEIL — eine ANDERE Zusage: ein POP, der nur den Abfrageteil ändert, läuft durch
+//                 (`NavGuardContext.tsx:285-290`, `shouldBlock` vergleicht nur `pathname`).
+// Beide werden ab hier getrennt behauptet, und beide werden behauptet.
+function Ortsmelder(): JSX.Element {
   const loc = useLocation();
-  return createElement("span", { "data-testid": "path" }, loc.pathname + loc.search);
+  return createElement(
+    "span",
+    null,
+    createElement("span", { key: "pfad", "data-testid": "ort-pfad", children: loc.pathname }),
+    createElement("span", { key: "abfrage", "data-testid": "ort-abfrage", children: loc.search }),
+  );
 }
 
 /** Baut die Vorgeschichte auf: echte Router-Navigation, also echte, gestempelte History-Einträge. */
@@ -154,7 +193,7 @@ async function mount(): Promise<void> {
         createElement(
           NavGuardProvider,
           null,
-          createElement(PathProbe),
+          createElement(Ortsmelder),
           createElement(Trail),
           createElement(
             Routes,
@@ -180,8 +219,24 @@ async function mount(): Promise<void> {
   });
 }
 
-function path(): string {
-  return container.querySelector<HTMLElement>("[data-testid=path]")?.textContent ?? "";
+/** DIE ROUTE, und nur sie. Ein `?` kann hier nicht vorkommen — der Wächter darunter sagt es laut. */
+function routenPfad(): string {
+  const wert = container.querySelector<HTMLElement>("[data-testid=ort-pfad]")?.textContent ?? "";
+  if (wert.includes("?")) {
+    throw new Error(`Der Pfadknoten trägt einen Abfrageteil: „${wert}"`);
+  }
+  return wert;
+}
+
+/**
+ * DIE VOLLE ADRESSE — beide Teile, getrennt. Bewusst KEINE zusammengesetzte Zeichenkette: genau die
+ * war der Fehler, den JOB 3773 hier abstellt (s. den Block über `Ortsmelder`).
+ */
+function adresse(): { pfad: string; abfrage: string } {
+  return {
+    pfad: routenPfad(),
+    abfrage: container.querySelector<HTMLElement>("[data-testid=ort-abfrage]")?.textContent ?? "",
+  };
 }
 
 function pageText(): string {
@@ -254,7 +309,7 @@ async function trailToCapture(): Promise<void> {
   await press("go-start");
   await press("go-lib");
   await press("go-capture");
-  expect(path()).toBe("/erfassen");
+  expect(routenPfad()).toBe("/erfassen");
 }
 
 // ── FÄHIGKEITSNACHWEIS ────────────────────────────────────────────────────────────────────────────
@@ -361,7 +416,7 @@ describe("Zurück-Wächter am echten Router", () => {
 
     // Die Adresszeile steht wieder auf dem UI-Ort — NICHT auf dem blockierten Ziel.
     expect(window.location.pathname).toBe("/erfassen");
-    expect(path()).toBe("/erfassen");
+    expect(routenPfad()).toBe("/erfassen");
     expect(readHistoryIndex()).toBe(idxBefore);
     // Der Dialog ist da …
     expect(pageText()).toContain("Ungespeicherte Eingabe");
@@ -381,7 +436,7 @@ describe("Zurück-Wächter am echten Router", () => {
     await back();
     await clickDialog("Hier bleiben");
 
-    expect(path()).toBe("/erfassen");
+    expect(routenPfad()).toBe("/erfassen");
     expect(readHistoryIndex()).toBe(idxBefore);
     expect(field().value).toBe("Bleib-Text");
     expect(pageText()).not.toContain("Ungespeicherte Eingabe");
@@ -395,9 +450,9 @@ describe("Zurück-Wächter am echten Router", () => {
     // … und nach dem Leeren des Feldes läuft Zurück/Vorwärts unverändert durch.
     await type("");
     await back();
-    expect(path()).toBe("/bibliothek");
+    expect(routenPfad()).toBe("/bibliothek");
     await forward();
-    expect(path()).toBe("/erfassen");
+    expect(routenPfad()).toBe("/erfassen");
   });
 
   // ── Kante 5 ──────────────────────────────────────────────────────────────────────────────────────
@@ -407,11 +462,11 @@ describe("Zurück-Wächter am echten Router", () => {
     await back();
     await clickDialog("Verwerfen und wechseln");
     // Genau EIN Schritt zurück — nicht zwei, nicht null.
-    expect(path()).toBe("/bibliothek");
+    expect(routenPfad()).toBe("/bibliothek");
     expect(pageText()).not.toContain("Ungespeicherte Eingabe");
     // Vorwärts führt wieder auf /erfassen: der Verlauf ist intakt, nicht abgeschnitten.
     await forward();
-    expect(path()).toBe("/erfassen");
+    expect(routenPfad()).toBe("/erfassen");
   });
 
   it('Kante 5: „Entwurf speichern und wechseln" speichert und wechselt genau einmal', async () => {
@@ -420,7 +475,7 @@ describe("Zurück-Wächter am echten Router", () => {
     await back();
     await clickDialog("Entwurf speichern und wechseln");
     expect(saveState.calls).toBe(1);
-    expect(path()).toBe("/bibliothek");
+    expect(routenPfad()).toBe("/bibliothek");
   });
 
   // ── Kante 2 ──────────────────────────────────────────────────────────────────────────────────────
@@ -431,13 +486,13 @@ describe("Zurück-Wächter am echten Router", () => {
 
     await back(2);
     // Zurückgestellt auf den Anker — nicht auf den Nachbarn.
-    expect(path()).toBe("/erfassen");
+    expect(routenPfad()).toBe("/erfassen");
     expect(readHistoryIndex()).toBe(idxBefore);
     expect(field().value).toBe("Mehrschritt");
 
     // Und „Verwerfen" landet auf dem ursprünglichen Ziel ZWEI Schritte zurück, nicht einem.
     await clickDialog("Verwerfen und wechseln");
-    expect(path()).toBe("/start");
+    expect(routenPfad()).toBe("/start");
   });
 
   // ── Kante 3 ──────────────────────────────────────────────────────────────────────────────────────
@@ -457,11 +512,11 @@ describe("Zurück-Wächter am echten Router", () => {
     expect(container.querySelectorAll("[role=dialog]").length).toBeLessThanOrEqual(1);
     const treffer = (pageText().match(/Ungespeicherte Eingabe/g) ?? []).length;
     expect(treffer).toBe(1);
-    expect(path()).toBe("/erfassen");
+    expect(routenPfad()).toBe("/erfassen");
     expect(field().value).toBe("Doppelklick");
 
     await clickDialog("Hier bleiben");
-    expect(path()).toBe("/erfassen");
+    expect(routenPfad()).toBe("/erfassen");
     expect(pageText()).not.toContain("Ungespeicherte Eingabe");
   });
 
@@ -477,7 +532,7 @@ describe("Zurück-Wächter am echten Router", () => {
     await clickDialog("Entwurf speichern und wechseln");
 
     expect(saveState.calls).toBe(1);
-    expect(path()).toBe("/erfassen");
+    expect(routenPfad()).toBe("/erfassen");
     expect(window.location.pathname).toBe("/erfassen");
     expect(readHistoryIndex()).toBe(idxBefore);
     expect(window.history.length).toBe(lenBefore);
@@ -489,7 +544,7 @@ describe("Zurück-Wächter am echten Router", () => {
     saveState.fail = false;
     await clickDialog("Entwurf speichern und wechseln");
     expect(saveState.calls).toBe(2);
-    expect(path()).toBe("/bibliothek");
+    expect(routenPfad()).toBe("/bibliothek");
   });
 
   // ── Kante 7 ──────────────────────────────────────────────────────────────────────────────────────
@@ -500,7 +555,7 @@ describe("Zurück-Wächter am echten Router", () => {
     // Bewusst wechseln (Verwerfen), damit die zweite bewachte Seite dran ist.
     await back();
     await clickDialog("Verwerfen und wechseln");
-    expect(path()).toBe("/start");
+    expect(routenPfad()).toBe("/start");
 
     // Zweite bewachte Seite: eigener Wächter, eigener Inhalt.
     await act(async () => {
@@ -510,32 +565,40 @@ describe("Zurück-Wächter am echten Router", () => {
     await back();
     // Der Wächter der ZWEITEN Seite greift (kein veralteter, kein abgemeldeter).
     expect(pageText()).toContain("Ungespeicherte Eingabe");
-    expect(path()).toBe("/erfassen");
+    expect(routenPfad()).toBe("/erfassen");
     expect(field().value).toBe("Seite zwei");
     await clickDialog("Hier bleiben");
 
     // Und nach dem Verlassen einer bewachten Seite blockiert NICHTS mehr (kein Zombie-Wächter).
     await type("");
     await back();
-    expect(path()).toBe("/start");
+    expect(routenPfad()).toBe("/start");
     expect(pageText()).not.toContain("Ungespeicherte Eingabe");
   });
 
   // ── Kante 8 ──────────────────────────────────────────────────────────────────────────────────────
-  it("Kante 8: POP auf denselben Pfad (nur Query) läuft durch, POP auf einen anderen Pfad wird angehalten", async () => {
+  it("Kante 8: POP auf denselben Pfad (nur Query) läuft durch — Route UND geleerter Abfrageteil einzeln behauptet —, POP auf einen anderen Pfad wird angehalten", async () => {
     await press("go-start");
     await press("go-lib");
     await press("go-lib-query");
-    expect(path()).toBe("/bibliothek?f=x");
-    // Auf /bibliothek gibt es keinen Wächter — der Query-POP läuft durch, wie er soll.
+    // Die volle Adresse, beide Teile getrennt: derselbe Pfad wie eben, und ein Abfrageteil dran.
+    expect(adresse()).toEqual({ pfad: "/bibliothek", abfrage: "?f=x" });
+    // Auf /bibliothek gibt es keinen Wächter — der Query-POP läuft durch, wie er soll. Das sind ZWEI
+    // Aussagen, und die zweite ist hier die interessantere: die Route hat sich NICHT bewegt (kein
+    // Pfadwechsel, also auch kein Wächtergrund), und der Abfrageteil ist WEG (der POP ist wirklich
+    // durchgelaufen und nicht aufgefangen worden). Bis JOB 3773 stand nur die erste geschrieben da
+    // und die zweite hing still an ihr — genau die Vermischung, die diese Datei abgestellt hat.
     await back();
-    expect(path()).toBe("/bibliothek");
+    expect(routenPfad()).toBe("/bibliothek");
+    expect(adresse().abfrage).toBe("");
 
     // Der Pfadwechsel dagegen wird bei schmutziger Seite angehalten (siehe Kante 10) — hier der
-    // Gegenpol: dieselbe Seite OHNE Eingabe lässt den Pfadwechsel durch.
+    // Gegenpol: dieselbe Seite OHNE Eingabe lässt den Pfadwechsel durch. Auch hier beides einzeln:
+    // die Route ist zurück auf /bibliothek, und es ist kein Abfrageteil dazugekommen.
     await press("go-capture");
     await back();
-    expect(path()).toBe("/bibliothek");
+    expect(routenPfad()).toBe("/bibliothek");
+    expect(adresse().abfrage).toBe("");
     expect(pageText()).not.toContain("Ungespeicherte Eingabe");
   });
 
@@ -552,7 +615,7 @@ describe("Zurück-Wächter am echten Router", () => {
 
     // Kein Dialog, Seite gewechselt — und der getippte Satz existiert nirgends mehr.
     expect(pageText()).not.toContain("Ungespeicherte Eingabe");
-    expect(path()).toBe("/bibliothek");
+    expect(routenPfad()).toBe("/bibliothek");
     expect(pageText()).not.toContain("Dieser Satz geht ohne Waechter verloren");
     expect(container.querySelector("[data-testid=feld-dirty]")).toBeNull();
   });
