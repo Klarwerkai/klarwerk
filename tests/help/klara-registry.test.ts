@@ -345,4 +345,418 @@ describe("Klara v1: konsolidierte Hilfe-Registry", () => {
     // Der Wächter misst wirklich etwas: die Karte ist nicht leer.
     expect(Object.keys(KLARA_SYNONYMS).length).toBeGreaterThanOrEqual(12);
   });
+
+  // ================================================================================================
+  // JOB 3874 — DIESELBE KARTE IM ENGLISCHEN UND NIEDERLÄNDISCHEN UI.
+  // ================================================================================================
+  // BEN zu JOB 3798 (`archiv/3798/runde-2/ben.md:28`, Prüfpunkt 6): „EN/NL-Wirkung … bleiben
+  // ungedeckt … ein ergänzender Folgeauftrag könnte die sprachabhängige Synonymwirkung separat
+  // prüfen." Der Wächter darüber (`:301`) beginnt mit `changeLanguage("de")`, und JEDER Synonymfall
+  // dieser Datei tut dasselbe — was die Karte in EN und NL tut, war bis hierher ungemessen.
+  //
+  // `searchKlara` und `rankKlara` nehmen KEINEN Sprachparameter (`klaraRegistry.ts:264`, `:289`) und
+  // ziehen die Ersetzung unverändert aus derselben Karte; die TEXTE dagegen kommen über das
+  // hereingereichte `t()` (`:194-199`) und sind sehr wohl übersetzt. Genau in dieser Fuge liegt das
+  // Thema dieses Blocks.
+  //
+  // GEMESSEN am Basisstand d8f15d5, 13.09.2026, über `resolveKlaraEntries(allKlaraEntries(), i18n.t)`
+  // und die Regel des Wächters oben (roher Kartenwert gegen normalisierten Titel+Text). Korpus in
+  // allen drei Sprachen 135 Einträge. Zielstämme × Sprache, Trefferzahlen:
+  //
+  //   Stamm            de    en    nl
+  //   validier         21     0     0
+  //   wissensobjekt    38     0     0
+  //   objekt           61     0     0
+  //   papierkorb        0     0     0   (der DE-Altbestand oben — fehlt in ALLEN drei Sprachen)
+  //   entfern           5     0     0
+  //   antwort          14     0     0
+  //   wissenslücke      3     0     0
+  //   duplikat          2     0     0
+  //
+  // ACHT von acht Zielstämmen tragen in EN und NL NICHTS. Das ist kein Übersetzungsfehler: der
+  // Katalog ist in beiden Sprachen vollständig und sagt dasselbe mit seinen eigenen Wörtern
+  // („Duplicates", „Validation", „knowledge gap"). Tot ist der DEUTSCHE KARTENWERT.
+  const FREMDSPRACHEN = ["en", "nl"] as const;
+
+  // Alle Zielstämme, ABGELEITET aus der Karte selbst — kein zweites Abbild (wie `:307`).
+  const ZIELSTAEMME: readonly string[] = [...new Set(Object.values(KLARA_SYNONYMS).flat())];
+
+  // DIE SCHRANKE IN BEIDE RICHTUNGEN, Bauart wie `ALTBESTAND` oben (`:274`), nur über die Achse
+  // Sprache × Zielstamm:
+  //   · Ein Paar, das NICHT hier steht und nichts trägt, macht den Fall rot.
+  //   · Ein Paar, das hier steht und wieder trägt, macht ihn ebenfalls rot — sonst verwaltet das
+  //     Register Gespenster.
+  // `statt` ist KEIN Kommentar, sondern eine zweite gemessene Behauptung: das fremdsprachige Wort,
+  // das an der Stelle des toten Stamms WIRKLICH im Korpus steht. Steht es nicht da, ist der Grund
+  // erfunden und der Fall wird rot. Das ist zugleich die Datengrundlage für die negative Aussage:
+  // „dieser Stamm trägt hier nicht" wird nur über einem Korpus behauptet, der in dieser Sprache
+  // nachweislich gefüllt und aufgelöst ist.
+  //
+  // `statt: null` heisst: es gibt kein Ersatzwort, weil der BEGRIFF fehlt — die einzige echte
+  // Hilfe-Lücke dieser Matrix.
+  //
+  // DIE BEHEBUNG, EINMAL FÜR ALLE ZEILEN MIT `statt !== null`: nicht der Katalog ist schuld, er
+  // sagt dasselbe mit seinen eigenen Wörtern. Tot ist der deutsche KARTENWERT. Es bräuchte also
+  // eine sprachabhängige Synonymkarte oder ein ehrliches Sprachgate wie bei `allFaqEntries`
+  // (`klaraRegistry.ts:204-207`) — beides eine Produktentscheidung mit Wirkung auf alle Aufrufer,
+  // und `klaraRegistry.ts` ist nach §10 KEIN Zielpfad dieses Auftrags. In der Rückgabe gemeldet.
+  // NUR die zwei `papierkorb`-Zeilen liegen anders; ihr abweichender Weg steht bei ihnen selbst.
+  interface Luecke {
+    readonly statt: string | null;
+    readonly grund: string;
+  }
+  const FREMDSPRACHIGE_LUECKEN: ReadonlyMap<string, Luecke> = new Map([
+    [
+      "en → validier",
+      {
+        statt: "validat",
+        grund:
+          "Der EN-Katalog ist in Ordnung: `nav.validation` (`i18n.ts:6395`) lautet „Validation“, " +
+          "`klara.page.validation` (`:10136`) „The review board … counts as validated“. Der " +
+          "deutsche Stamm „validier“ steckt in keinem dieser Wörter.",
+      },
+    ],
+    [
+      "nl → validier",
+      {
+        statt: "validat",
+        grund:
+          "Der NL-Katalog ist in Ordnung: `nav.validation` (`i18n.ts:11450`) lautet „Validatie“, " +
+          "`klara.page.validation` (`:15171`) „geldt een object als gevalideerd“. Auch hier fehlt " +
+          "dem deutschen Stamm das „ier“.",
+      },
+    ],
+    [
+      "en → wissensobjekt",
+      {
+        statt: "knowledge object",
+        grund:
+          "`klara.page.library` (`i18n.ts:10133`) sagt „All knowledge objects with status, trust " +
+          "and filters“ — der Begriff ist da, nur auf Englisch.",
+      },
+    ],
+    [
+      "nl → wissensobjekt",
+      {
+        statt: "kennisobject",
+        grund:
+          "`klara.page.library` (`i18n.ts:15168`) sagt „Alle kennisobjecten met status, vertrouwen " +
+          "en filters“.",
+      },
+    ],
+    [
+      "en → objekt",
+      {
+        statt: "object",
+        grund:
+          "Der zweite Stamm desselben Schlüssels scheitert an EINEM Buchstaben: EN schreibt " +
+          "„object“ mit c (`i18n.ts:10133`), die Karte „objekt“ mit k.",
+      },
+    ],
+    [
+      "nl → objekt",
+      {
+        statt: "object",
+        grund:
+          "Dasselbe eine c: `klara.page.validation` NL (`i18n.ts:15172`) sagt „geldt een object " +
+          "als gevalideerd“.",
+      },
+    ],
+    [
+      "en → papierkorb",
+      {
+        statt: null,
+        grund:
+          "KEIN Ersatzwort, und das ist der Unterschied zu allen anderen Zeilen hier: dieser Stamm " +
+          "trägt auch in DE nichts (siehe `ALTBESTAND` oben, `:274`). Klaras Löschhilfe " +
+          "`vhelp.deleteKo.body` sagt EN (`i18n.ts:10737`) „Removes this knowledge object " +
+          "permanently“ und kennt wie die deutsche Fassung weder Papierkorb noch " +
+          "Wiederherstellung, obwohl die Löschabfrage der Fläche 28 Tage verspricht. Das ist eine " +
+          "echte HILFE-LÜCKE in allen drei Sprachen; ihre Behebung bräuchte `apps/web/src/i18n.ts` " +
+          "und ist nach §10 draussen.",
+      },
+    ],
+    [
+      "nl → papierkorb",
+      {
+        statt: null,
+        grund:
+          "Wie EN: kein Ersatzwort, weil der BEGRIFF fehlt. `vhelp.deleteKo.body` NL " +
+          "(`i18n.ts:15778`) sagt „Verwijdert dit kennisobject definitief“ — kein Papierkorb, " +
+          "keine Wiederherstellung. Dieselbe Hilfe-Lücke wie in DE und EN, Behebung über " +
+          "`i18n.ts`, §10.",
+      },
+    ],
+    [
+      "en → entfern",
+      {
+        statt: "remove",
+        grund:
+          "`vhelp.deleteKo.body` EN (`i18n.ts:10737`) beginnt mit „Removes“; in DE trägt dieser " +
+          "Stamm mit 5 Treffern und rettet dort den Schlüssel „löschen“. In EN rettet ihn niemand.",
+      },
+    ],
+    [
+      "nl → entfern",
+      {
+        statt: "verwijder",
+        grund: "`vhelp.deleteKo.body` NL (`i18n.ts:15778`) sagt „Verwijdert … definitief“.",
+      },
+    ],
+    [
+      "en → antwort",
+      {
+        statt: "answer",
+        grund: "`klara.page.ask` EN (`i18n.ts:10131`) sagt „The answer is source-bound“.",
+      },
+    ],
+    [
+      "nl → antwort",
+      {
+        statt: "antwoord",
+        grund:
+          "`klara.page.ask` NL (`i18n.ts:15166`) sagt „Het antwoord is brongebonden“ — ein " +
+          "einziger Buchstabe Unterschied, und die Karte greift trotzdem nicht.",
+      },
+    ],
+    [
+      "en → wissenslücke",
+      {
+        statt: "knowledge gap",
+        grund:
+          "`klara.page.ask` EN (`i18n.ts:10131`) sagt „an honest knowledge gap is created“ — " +
+          "Klaras Kernversprechen steht da, nur nicht unter dem deutschen Wort.",
+      },
+    ],
+    [
+      "nl → wissenslücke",
+      {
+        statt: "kennishiaat",
+        grund: "`klara.page.ask` NL (`i18n.ts:15166`) sagt „dan ontstaat een eerlijk kennishiaat“.",
+      },
+    ],
+    [
+      "en → duplikat",
+      {
+        statt: "duplicat",
+        grund:
+          "Wieder das eine c: `nav.duplicates` EN (`i18n.ts:6397`) lautet „Duplicates“. Das trifft " +
+          "ALLE FÜNF Schlüssel, die JOB 3798 für das abgeschaffte Merge-Versprechen eingetragen " +
+          "hat — darunter „mergen“, das englische Alltagswort.",
+      },
+    ],
+    [
+      "nl → duplikat",
+      {
+        statt: "duplicat",
+        grund: "Dasselbe c: `nav.duplicates` NL (`i18n.ts:11452`) lautet „Duplicaten“.",
+      },
+    ],
+  ]);
+
+  it("Sprachweiter Ehrlichkeitswächter: was jeder Zielstamm in EN und NL tut, steht namentlich fest", async () => {
+    // BELEGT STATT GERATEN (Lieferung 1) und zugleich die Schranke gegen eine vierte Sprache: die
+    // geführten Sprachen kommen aus der i18n-Konfiguration selbst (`i18n.ts:16412`), nicht aus einer
+    // Liste im Test. Käme morgen `fr` dazu, ohne dass jemand FREMDSPRACHEN nachführt, liefe dieser
+    // Wächter stillschweigend an ihr vorbei — genau die Lücke, die dieser Auftrag für EN/NL
+    // schliesst. Deshalb wird sie hier laut (Hinweis BEN, Runde 1).
+    const gefuehrt = Object.keys(i18n.options.resources ?? {}).sort();
+    expect(gefuehrt, "i18n führt andere Sprachen als der Wächter kennt").toEqual(
+      ["de", ...FREMDSPRACHEN].sort(),
+    );
+    const tot: string[] = [];
+    const auferstanden: string[] = [];
+    const erfundeneGruende: string[] = [];
+    // Was dieser Fall WIRKLICH angefasst hat — die Grundlage der Matrixprüfung unten. Nicht zu
+    // verwechseln mit der Zahl der bekannten Lücken: geprüft wird jedes Paar, gelistet nur das tote.
+    const geprueft: string[] = [];
+    for (const lng of FREMDSPRACHEN) {
+      await i18n.changeLanguage(lng);
+      const resolved = resolveKlaraEntries(allKlaraEntries(), (k) => i18n.t(k));
+      // KEINE NEGATIVE AUSSAGE OHNE DATENGRUNDLAGE: bevor hier „trägt nicht" behauptet wird, steht
+      // fest, dass der Bestand dieser Sprache überhaupt da und aufgelöst ist. Ein Katalog, der auf
+      // rohe Schlüssel zurückfiele, würde sonst jeden Stamm scheinbar bestätigen.
+      expect(resolved.length, `${lng}: leerer Klara-Bestand`).toBeGreaterThanOrEqual(124);
+      for (const e of resolved) {
+        expect(e.title, `${lng}: roher Schlüssel statt Text (${e.titleKey})`).not.toBe(e.titleKey);
+        expect(e.body, `${lng}: roher Schlüssel statt Text (${e.bodyKey})`).not.toBe(e.bodyKey);
+      }
+      const korpus = resolved.map((e) => wieImText(`${e.title} ${e.body}`));
+      for (const stamm of ZIELSTAEMME) {
+        const zeile = `${lng} → ${stamm}`;
+        geprueft.push(zeile);
+        // Dieselbe Regel wie der DE-Wächter oben (`:320`): ROHER Kartenwert in normalisiertem
+        // Titel+Text — genau das, was `klaraRegistry.ts:280` zur Laufzeit tut.
+        const traegt = korpus.some((h) => h.includes(stamm));
+        const eintrag = FREMDSPRACHIGE_LUECKEN.get(zeile);
+        if (!traegt && eintrag === undefined) {
+          tot.push(
+            `${zeile} — Zielstamm „${stamm}“ steckt in KEINEM normalisierten Titel+Text des ${lng}-Bestands und steht in keiner Zeile von FREMDSPRACHIGE_LUECKEN: unbenannte Hilfe-Lücke`,
+          );
+        }
+        if (traegt && eintrag !== undefined) {
+          auferstanden.push(
+            `${zeile} — trägt wieder, die Zeile in FREMDSPRACHIGE_LUECKEN gehört gelöscht`,
+          );
+        }
+        // Der Grund lügt nicht: das benannte Ersatzwort muss im selben Korpus wirklich stehen.
+        if (eintrag?.statt != null && !korpus.some((h) => h.includes(eintrag.statt as string))) {
+          erfundeneGruende.push(
+            `${zeile} — als Ersatz ist „${eintrag.statt}“ benannt, das steckt aber selbst in keinem ${lng}-Text: der Grund stimmt nicht mehr`,
+          );
+        }
+      }
+    }
+    expect(tot, `Unbenannte fremdsprachige Lücken:\n${tot.join("\n")}`).toEqual([]);
+    expect(auferstanden, `Gespenster im Lückenregister:\n${auferstanden.join("\n")}`).toEqual([]);
+    expect(
+      erfundeneGruende,
+      `Lückenregister mit überholtem Grund:\n${erfundeneGruende.join("\n")}`,
+    ).toEqual([]);
+    // Die dritte Art Gespenst: eine Registerzeile für ein Paar, das es gar nicht mehr gibt — weil
+    // der Stamm aus der Karte entfernt wurde. Die Schleife oben käme daran nie vorbei, sie läuft
+    // über ZIELSTAEMME. Ohne diese Prüfung bliebe so eine Zeile stehen und nähme später ein
+    // gleichnamiges, neu eingetragenes Synonym stillschweigend unter ihren Schirm.
+    const gueltigePaare = new Set(
+      FREMDSPRACHEN.flatMap((lng) => ZIELSTAEMME.map((stamm) => `${lng} → ${stamm}`)),
+    );
+    const verwaist = [...FREMDSPRACHIGE_LUECKEN.keys()].filter((z) => !gueltigePaare.has(z));
+    expect(
+      verwaist,
+      `Registerzeilen ohne Paar in der Karte (Stamm entfernt?):\n${verwaist.join("\n")}`,
+    ).toEqual([]);
+    // Der Fall misst wirklich die volle Matrix und nicht ein Einzelwort.
+    //
+    // KORREKTURPFLICHT 1 (BEN, Runde 1): Hier stand
+    // `expect(FREMDSPRACHIGE_LUECKEN.size).toBe(ZIELSTAEMME.length * FREMDSPRACHEN.length)`. Das
+    // setzte die Zahl der BEKANNTEN LÜCKEN mit der Zahl der UNTERSUCHTEN PAARE gleich und verlangte
+    // damit, dass JEDES Paar tot ist. Ein Zielstamm, der in EN oder NL wirklich trägt, hat richtig
+    // KEINE Lückenzeile — und hätte den Fall trotzdem gerötet („expected 16 to be 18"). Falscher
+    // Alarm genau in dem Zustand, auf den diese Zeile hinarbeitet: eine Karte, die dort ankommt.
+    // Gleiches galt für die Gegenrichtung — eine behobene und darum gelöschte Lückenzeile hätte den
+    // Fall ebenso gerötet, obwohl die Matrix vollständig geprüft war.
+    //
+    // Gezählt wird jetzt, was der Fall tatsächlich angefasst hat: jedes Paar Sprache × Zielstamm
+    // genau einmal, keins doppelt, keins ausgelassen. Das hält die Vollständigkeit der Messung fest,
+    // ohne über ihr ERGEBNIS etwas vorzuschreiben. Ob ein Paar trägt oder tot ist, entscheiden
+    // allein die drei Sammler oben — und die decken alle vier Zustände ab:
+    //   tot + ungelistet  → rot (`tot`)            · tot + gelistet     → grün
+    //   trägt + gelistet  → rot (`auferstanden`)   · trägt + ungelistet → grün
+    expect(
+      [...geprueft].sort(),
+      "die Matrix wurde nicht vollständig durchlaufen (Paar doppelt oder ausgelassen)",
+    ).toEqual([...gueltigePaare].sort());
+    expect(ZIELSTAEMME.length).toBeGreaterThanOrEqual(8);
+    expect(FREMDSPRACHEN.length).toBeGreaterThanOrEqual(2);
+  });
+
+  // ================================================================================================
+  // DIE ZWEITE ACHSE: WAS DER NUTZER ERLEBT, WENN ER DEN SCHLÜSSEL TIPPT.
+  // ================================================================================================
+  // Nicht dieselbe Frage wie oben: ein SCHLÜSSEL kann literal treffen, obwohl sein Zielstamm tot
+  // ist — er steht dann zufällig selbst im fremdsprachigen Text. GEMESSEN am Basisstand d8f15d5
+  // über `searchKlara(resolved, schluessel)`, alle 12 Schlüssel × EN/NL:
+  //   EN: alle zwölf 0 Treffer.
+  //   NL: elf mal 0 — und „artikel" mit 3 Treffern, die AUS EINEM ANDEREN GRUND kommen.
+  // Zum Vergleich DE: freigeben 21 · freigabe 23 · genehmigen 21 · artikel 63 · beitrag 63 ·
+  // löschen 5 · frage 28 · verschmelzen/verschmolzen/mergen/zusammenführen/zusammenführung je 2.
+  const FREMDSPRACHIGE_WIRKUNG: ReadonlyMap<string, readonly string[]> = new Map([
+    [
+      // Der EINE Schlüssel der Karte, der zufällig ein niederländisches Wort IST. Er trifft rein
+      // LITERAL — beide Zielstämme („wissensobjekt", „objekt") sind in NL tot, siehe oben. Und er
+      // trifft etwas anderes als in DE: `shelp.ext.title` (`i18n.ts:15238`) meint mit „vakartikel"
+      // eine externe Fachquelle, `shelp.nb.title` (`:15252`) „het artikel dat je leest" das gelesene
+      // Objekt. Die Bibliotheksfläche `page:library`, die derselbe Schlüssel in DE trifft, ist NICHT
+      // dabei: `klara.page.library` NL (`:15168`) sagt „kennisobjecten", nicht „artikel".
+      "nl → artikel",
+      ["rev:sourcesLevel2", "sec:ext.title", "sec:nb.title"],
+    ],
+  ]);
+
+  it("Sprachweite Wirkungsschranke: kein Kartenschlüssel wirkt in EN/NL ungezählt", async () => {
+    const unerwartet: string[] = [];
+    const verloren: string[] = [];
+    for (const lng of FREMDSPRACHEN) {
+      await i18n.changeLanguage(lng);
+      const resolved = resolveKlaraEntries(allKlaraEntries(), (k) => i18n.t(k));
+      expect(resolved.length, `${lng}: leerer Klara-Bestand`).toBeGreaterThanOrEqual(124);
+      for (const schluessel of Object.keys(KLARA_SYNONYMS)) {
+        const zeile = `${lng} → ${schluessel}`;
+        const ids = searchKlara(resolved, schluessel).map((e) => e.id);
+        const erwartet = FREMDSPRACHIGE_WIRKUNG.get(zeile);
+        if (erwartet === undefined && ids.length > 0) {
+          unerwartet.push(
+            `${zeile} — findet ${ids.length} Treffer [${ids.join(", ")}], steht aber in keiner Zeile von FREMDSPRACHIGE_WIRKUNG: ungezählte Wirkung, die niemand geprüft hat`,
+          );
+        }
+        if (
+          erwartet !== undefined &&
+          [...ids].sort().join("|") !== [...erwartet].sort().join("|")
+        ) {
+          verloren.push(
+            `${zeile} — erwartet [${[...erwartet].sort().join(", ")}], gemessen [${[...ids].sort().join(", ")}]`,
+          );
+        }
+      }
+    }
+    expect(unerwartet, `Ungezählte fremdsprachige Wirkung:\n${unerwartet.join("\n")}`).toEqual([]);
+    expect(verloren, `Verschobene fremdsprachige Wirkung:\n${verloren.join("\n")}`).toEqual([]);
+  });
+
+  it("Wirkung EN: „mergen“ und „freigeben“ kommen im englischen UI nirgends an", async () => {
+    await i18n.changeLanguage("en");
+    const resolved = resolveKlaraEntries(allKlaraEntries(), (k) => i18n.t(k));
+    // „mergen" ist DER Fall, an dem beide Wege gleichzeitig reissen (`klaraRegistry.ts:240`):
+    // literal, weil der englische Text „merge" schreibt und „merge" das längere „mergen" nicht
+    // enthält (`haystack.includes` sucht die Teilkette in DIESER Richtung) — und über das Synonym,
+    // weil der Zielstamm „duplikat" gegen „Duplicates" am c scheitert.
+    expect(searchKlara(resolved, "mergen")).toEqual([]);
+    const duplikate = resolved.find((e) => e.id === "page:duplicates");
+    expect(duplikate, "page:duplicates fehlt im englischen Bestand").toBeDefined();
+    // Die Fläche IST da und redet sogar vom Mergen — erreichbar ist sie über dieses Wort trotzdem
+    // nicht. Genau das macht die Lücke zu einer Lücke und nicht zu einem fehlenden Thema.
+    const enText = wieImText(`${duplikate?.title} ${duplikate?.body}`);
+    expect(enText).toContain("merge");
+    expect(enText).toContain("duplicates");
+    expect(
+      enText.includes("mergen"),
+      "dann trüge das Wort literal und der Fall bewiese nichts",
+    ).toBe(false);
+    // Und der Altbestand der Karte, „freigeben → validier": dieselbe Geschichte an der
+    // Validierungsfläche (`i18n.ts:10136`).
+    expect(searchKlara(resolved, "freigeben")).toEqual([]);
+    const validierung = resolved.find((e) => e.id === "page:validation");
+    expect(wieImText(`${validierung?.title} ${validierung?.body}`)).toContain("validat");
+    // Gegenprobe derselben Anfrage in DE: dort führt sie sehr wohl auf die Validierung. Der
+    // Unterschied liegt also an der Sprache und nicht an der Anfrage.
+    await i18n.changeLanguage("de");
+    const de = resolveKlaraEntries(allKlaraEntries(), (k) => i18n.t(k));
+    expect(searchKlara(de, "freigeben").some((e) => e.route === "/validierung")).toBe(true);
+    expect(searchKlara(de, "mergen").some((e) => e.id === "page:duplicates")).toBe(true);
+  });
+
+  it("Wirkung NL: „artikel“ trifft literal — und landet woanders als in DE", async () => {
+    await i18n.changeLanguage("nl");
+    const resolved = resolveKlaraEntries(allKlaraEntries(), (k) => i18n.t(k));
+    const treffer = searchKlara(resolved, "artikel");
+    // Der Schlüssel trägt, seine BEIDEN Zielstämme sind tot: der Treffer stammt ausschliesslich aus
+    // dem Wort selbst. Belegt an einer Kopie ohne das Literal — dieselbe Bauart wie der
+    // literalfreie Fall oben (`:208`), nur umgekehrt gelesen.
+    expect(treffer.length).toBeGreaterThan(0);
+    const ohneLiteral = resolved.map((e) => ({
+      ...e,
+      title: e.title.replace(/artikel/gi, " "),
+      body: e.body.replace(/artikel/gi, " "),
+    }));
+    expect(
+      searchKlara(ohneLiteral, "artikel"),
+      "ohne das Literal bliebe ein Synonymträger übrig — dann wäre die Messung oben falsch",
+    ).toEqual([]);
+    // Und es ist NICHT dieselbe Wirkung wie in DE: die Bibliothek fehlt. Wer im NL-UI „artikel"
+    // tippt, bekommt externe Quellen und die Nachbarschaft, nicht den Bestand.
+    expect(treffer.some((e) => e.id === "page:library")).toBe(false);
+    await i18n.changeLanguage("de");
+    const de = resolveKlaraEntries(allKlaraEntries(), (k) => i18n.t(k));
+    expect(searchKlara(de, "artikel").some((e) => e.id === "page:library")).toBe(true);
+  });
 });
