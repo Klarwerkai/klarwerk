@@ -220,6 +220,10 @@ export type CaptureErrorCode =
   // (mehr) gibt. Fail-closed: lieber ein ehrlicher Abbruch als ein Wissensobjekt mit
   // Dokumentinhalt ohne Herkunft.
   | "MISSING_DRAFT_ANCHOR"
+  // JOB 3618 (Q3 c): niemand hat die Vertraulichkeitsstufe gewählt — derselbe Name, den die
+  // Anlagerouten für dasselbe Versäumnis schon tragen. NUR DAS FEHLEN; ein vorhandener, aber
+  // ungültiger Wert bleibt `INCOMPLETE`. Begründung: `services/capture/src/service.ts`.
+  | "MISSING_CONFIDENTIALITY"
   // JOB 2684 D1 (Review R2-17): der Aufrufer hat einen ÄLTEREN Stand des Entwurfs gelesen, als
   // jetzt gespeichert ist — ein zweiter Tab, das Studio, die Vordertür. Sein Schreiben würde still
   // überschreiben; deshalb Konflikt (409), nicht Merge.

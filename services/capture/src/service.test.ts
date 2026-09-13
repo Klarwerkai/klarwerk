@@ -138,7 +138,27 @@ describe("CaptureService", () => {
   });
 
   it("toKoInput verlangt vollständige Pflichtfelder", async () => {
+    // JOB 3618 NACHFÜHRUNG: Diesem Entwurf fehlt ALLES ausser dem Titel — auch die Stufe. Seit
+    // JOB 3618 hat genau deren FEHLEN einen eigenen, benannten Ausgang, und er steht VOR der
+    // Sammelprüfung (dieselbe Rangfolge wie am frischen Routenzweig, gemessen in
+    // `tests/q3c-stufe-gleicher-name/`). Der Pin wird deshalb auf den neuen Namen gestellt und
+    // nicht aufgeweicht: der Fall bricht weiterhin ab, nur heisst er jetzt, was er ist. Die
+    // Gegenseite — Abbruch OHNE dass die Stufe fehlt — steht unmittelbar darunter.
     const draft = await service.createDraft({ title: "nur Titel" }, "anna");
+    await expect(service.toKoInput(draft.id)).rejects.toMatchObject({
+      code: "MISSING_CONFIDENTIALITY",
+    });
+  });
+
+  it("toKoInput: auch MIT gültiger Stufe bleibt ein halber Entwurf INCOMPLETE", async () => {
+    // JOB 3618: Die Gegenseite des Falls darüber. Ohne sie sagte jener nichts darüber aus, WELCHES
+    // Pflichtfeld den Abbruch trägt — er wäre schon grün, wenn allein die fehlende Stufe ihn
+    // auslöste. Hier ist die Stufe gewählt und gültig, und es bricht trotzdem ab: die
+    // Sammelprüfung über `KO_PFLICHTFELDER` greift also unabhängig von ihr.
+    const draft = await service.createDraft(
+      { title: "nur Titel", confidentiality: "intern" },
+      "anna",
+    );
     await expect(service.toKoInput(draft.id)).rejects.toMatchObject({ code: "INCOMPLETE" });
   });
 });

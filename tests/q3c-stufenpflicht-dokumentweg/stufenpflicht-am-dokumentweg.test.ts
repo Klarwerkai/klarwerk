@@ -255,12 +255,19 @@ describe("JOB 3569 (Q3 c): die Abweisung am Dokumentweg löst KEINE Nacharbeit a
       documents: bündel(objectId),
     });
     expect(abgewiesen.statusCode).toBe(400);
-    // GEMESSEN (JOB 3569 Lieferung 1b), nicht angenommen: dieser Zweig war SCHON ZU — aber unter
-    // einem anderen Namen. `applyAndLoad` → `capture.toKoInput` wirft seit JOB 3082 `INCOMPLETE`
-    // (`services/capture/src/service.ts`, `KO_PFLICHTFELDER`); der neue Routen-Wächter liegt
-    // dahinter und feuert hier nie. Der Test hält den IST-Zustand fest, damit ein späterer Wechsel
-    // des Namens auffällt, statt unbemerkt zu bleiben.
-    expect((abgewiesen.json() as { error: string }).error).toBe("INCOMPLETE");
+    // JOB 3618 NACHFÜHRUNG — GENAU DER WECHSEL, AUF DEN DIESER PIN GEWARTET HAT.
+    //
+    // Hier stand bis JOB 3618 `INCOMPLETE`, mit dem gemessenen Befund von JOB 3569 Lieferung 1b:
+    // dieser Zweig war SCHON ZU, aber unter einem anderen Namen — `applyAndLoad` →
+    // `capture.toKoInput` brach mit dem Sammelcode der Pflichtfeldprüfung ab, der Routen-Wächter
+    // darunter feuerte für ihn nie. Der Pin war ausdrücklich gesetzt, „damit ein späterer Wechsel
+    // des Namens auffällt, statt unbemerkt zu bleiben". Er ist aufgefallen und wird hier
+    // NACHGEFÜHRT, nicht gelöscht: `toKoInput` hat für das FEHLEN der Stufe seit JOB 3618 einen
+    // eigenen Ausgang mit demselben Code und demselben Satz wie der frische Zweig
+    // (`tests/q3c-stufe-gleicher-name/gleicher-name-am-dokumentweg.test.ts`). Der Weg ist
+    // unverändert zu — er heisst jetzt an beiden Zweigen gleich. Die Zusicherungen darunter
+    // (keine Nacharbeit, kein Bestand, der Entwurf überlebt) stehen unverändert.
+    expect((abgewiesen.json() as { error: string }).error).toBe("MISSING_CONFIDENTIALITY");
     expect(spione.entwurfsRuecknahme).not.toHaveBeenCalled();
     expect(await bestand(app, headers)).toHaveLength(0);
     // Der Entwurf steht unverändert im Bestand — nichts wurde nebenbei vernichtet.

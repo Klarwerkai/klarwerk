@@ -959,12 +959,66 @@ export class CaptureService {
       );
     }
     const p = draft.payload;
+    // ============================================================================================
+    // JOB 3618 (Q3 c) — DASSELBE VERSÄUMNIS TRÄGT HIER DENSELBEN NAMEN WIE AN DER ROUTE.
+    // ============================================================================================
+    //
+    // (a) DER BEFUND. `POST /api/kos` und der FRISCHE Zweig von `POST /api/kos/from-document`
+    //     antworten auf eine fehlende Stufe mit 400 `MISSING_CONFIDENTIALITY` und dem Satz aus
+    //     `sendMissingConfidentiality` (`services/app/src/routes/ko-routes.ts`, gesetzt von JOB 3429
+    //     und JOB 3569). Der ENTWURFS-Zweig derselben Route landet hier — und hier trug das
+    //     Versäumnis bis zu diesem Auftrag den Sammelnamen `INCOMPLETE` der Prüfung darunter. Ein
+    //     Client, der „bitte Stufe wählen" statt „Entwurf unvollständig" sagen will, musste zwei
+    //     Namen kennen und raten, welcher kommt. Gemessen vor der Änderung: derselbe Entwurf über
+    //     `/api/kos/from-document` → 400 `INCOMPLETE`, derselbe Rumpf frisch → 400
+    //     `MISSING_CONFIDENTIALITY`.
+    //
+    // (b) WARUM HIER UND NICHT IN DER ROUTE. Die Route erreicht den Entwurfs-Zweig nicht: sie ruft
+    //     zuerst `applyAndLoad` (`services/app/src/build-app.ts`), das genau diese Funktion
+    //     aufruft — der Abbruch geschieht ÜBER dem dortigen Wächter, der für diesen Zweig deshalb
+    //     nie feuert. Ein zweiter Wächter weiter oben in der Route ginge nicht: `input` ist für den
+    //     Entwurfs-Zweig erst NACH `applyAndLoad` zusammengesetzt.
+    //
+    // (c) WARUM `=== undefined` UND NICHT `!isValidConfidentiality`. Ein vorhandener, aber
+    //     ungültiger Wert ist kein fehlender. Trüge er denselben Namen, gäbe es zwei Auslegungen
+    //     desselben Wertes — dieselbe Begründung, mit der die Route „NUR DAS FEHLEN" prüft und
+    //     `null` ausdrücklich beim Dienst lässt. Was hier vorhanden und ungültig ist, fällt
+    //     unverändert in die Sammelprüfung darunter und heisst weiter `INCOMPLETE`.
+    //
+    //     DIE STELLUNG IST GEMESSEN, nicht geraten: am frischen Zweig steht der Stufen-Wächter VOR
+    //     `ko.create`, ein Rumpf ohne Stufe UND ohne Titel antwortet dort `MISSING_CONFIDENTIALITY`.
+    //     Damit beide Wege dieselbe Rangfolge haben, steht diese Prüfung VOR der allgemeinen — und
+    //     zwar UNBEDINGT, nicht nur für sonst vollständige Entwürfe: eine Einschränkung auf „sonst
+    //     vollständig" gäbe dem Versäumnis wieder zwei Namen, je nachdem, was SONST noch fehlt.
+    //     Genau das ist die Mutation, mit der die Rangfolge gegengeprüft wird (RUECKGABE, GP2).
+    //
+    // (d) DER REST, ehrlich benannt: die zweite Ungleichheit bleibt offen. Ein vorhandener, aber
+    //     ungültiger Wert heisst am frischen Zweig `INVALID_CONFIDENTIALITY` (aus `ko.create`) und
+    //     hier `INCOMPLETE`. Sie zu vereinheitlichen berührt `services/knowledge-object` und ist
+    //     nicht Teil dieses Auftrags. Über die Fläche ist dieser Fall am Entwurfs-Zweig derzeit
+    //     ohnehin unerreichbar — `POST /api/drafts` weist einen ungültigen Wert schon vorher mit
+    //     400 `BAD_REQUEST` ab (gemessen, gepinnt in `tests/q3c-stufe-gleicher-name/`).
+    //
+    // KEIN VORGABEWERT, keine Normalisierung: „nie eingestuft" bleibt ausdrückbar, und ein stilles
+    // „intern" wäre genau die erfundene Einstufung, die JOB 3076/3082 abgeschafft haben.
+    if (p.confidentiality === undefined) {
+      throw new CaptureError(
+        "MISSING_CONFIDENTIALITY",
+        "Vertraulichkeitsstufe fehlt — ein Wissensobjekt entsteht nur mit ausdrücklicher Einstufung.",
+      );
+    }
     // JOB 3082 (Q3 a) — DIE STUFE STEHT JETZT IN DIESER PRÜFUNG.
     //
     // Codex hat den Weg daran vorbei gemessen (Befund R-1560, 05.09.): Entwurf ohne
     // `confidentiality` → Promote → Wissensobjekt mit `confidentiality: null`. Niemand sah der
     // Sache an, dass die Frage schlicht übersprungen worden war. Ein fehlendes ODER ungültiges Feld
     // ist deshalb dasselbe wie ein fehlender Titel: kein Wissensobjekt.
+    //
+    // JOB 3618: DAS FEHLEN kommt hier nicht mehr an — es hat oben seinen eigenen, benannten Ausgang
+    // (`MISSING_CONFIDENTIALITY`) und ist dort ABGELÖST, nicht daneben gestellt. Was diese Prüfung
+    // an der Stufe noch abfängt, ist ausschliesslich der VORHANDENE, aber ungültige Wert; deshalb
+    // steht `isValidConfidentiality` hier unverändert und wird nicht zu einer blossen
+    // Vorhandenheitsprüfung verdünnt.
     //
     // `isValidConfidentiality` und NICHT `normalizeConfidentiality`: eine Normalisierung machte aus
     // dem Übersprungenen ein „intern" und damit genau die erfundene Einstufung, die dieser Auftrag

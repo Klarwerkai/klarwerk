@@ -77,13 +77,18 @@ async function rundlauf(payload: DraftPayload): Promise<Rundlauf> {
 }
 
 describe("JOB 3082 · das Promote verlangt die Vertraulichkeitsstufe", () => {
-  it("F8 — OHNE Stufe: INCOMPLETE, und im Bestand steht nichts", async () => {
+  it("F8 — OHNE Stufe: MISSING_CONFIDENTIALITY, und im Bestand steht nichts", async () => {
+    // JOB 3618 NACHFÜHRUNG: Die Zusicherung dieses Falls ist unveraendert — ohne ausdrueckliche
+    // Wahl entsteht kein Wissensobjekt. Nur der NAME des Abbruchs ist seit JOB 3618 derselbe wie
+    // an den beiden oeffentlichen Anlagerouten (`MISSING_CONFIDENTIALITY` statt des Sammelcodes
+    // `INCOMPLETE`), damit ein Client nicht zwei Namen fuer ein Versaeumnis kennen muss. Der Pin
+    // wird mitgezogen und nicht aufgeweicht: die Bestandszaehlung darunter steht unveraendert.
     const { fehler, bestand } = await rundlauf(RUMPF);
 
     expect(
       fehler?.code,
       "ein Entwurf, bei dem niemand die Vertraulichkeit gewaehlt hat, wird zum Wissensobjekt",
-    ).toBe("INCOMPLETE");
+    ).toBe("MISSING_CONFIDENTIALITY");
     expect(bestand, "es ist trotz Abbruch ein Wissensobjekt entstanden").toBe(0);
   });
 

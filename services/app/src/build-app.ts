@@ -1287,6 +1287,10 @@ export const ERLAUBTE_FEHLERCODES: ReadonlySet<string> = new Set([
   "INVALID_STATUS",
   "INVALID_TYPE",
   "INVALID_UPLOAD_LIMITS",
+  // JOB 3618: ENTSCHEIDUNG — darf ins Protokoll (keine Nutzertexte, keine Kennung, geht über
+  // `http.ts` ohnehin als Antwortcode hinaus). Vom Wächter unten (`build-app.test.ts`) verlangt;
+  // Befund und Begründung stehen im Kommentarblock in `services/capture/src/service.ts`.
+  "MISSING_CONFIDENTIALITY",
   "MISSING_DOCUMENT_ANCHOR",
   "MISSING_DRAFT_ANCHOR",
   "NOT_APPROVED",
