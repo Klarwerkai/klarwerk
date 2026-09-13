@@ -39,6 +39,12 @@ const daten = vi.hoisted(() => ({
   // gescheiterten Abschluss. Ohne das käme man an den Zustand „Abschluss versucht, nichts
   // gespeichert" gar nicht heran.
   fehler: new Set<string>(),
+  // JOB 3844 (Codex an JOB 3771: „Meine Gegenprobe mit totem Knopf bleibt sonst grün."): jeder
+  // wirklich abgesetzte Endpunktaufruf, in Reihenfolge. Am `Proxy` unten liesse sich das nicht
+  // ablesen — er erzeugt bei JEDEM Property-Zugriff ein NEUES `vi.fn()`, `toHaveBeenCalled()` hätte
+  // also nie ein Objekt, an dem es hängen könnte. Deshalb hier, an der einen Stelle, die alle
+  // Aufrufe passieren.
+  aufrufe: [] as string[],
 }));
 
 vi.mock("../../apps/web/src/api/auth", () => ({
@@ -56,6 +62,9 @@ vi.mock("../../apps/web/src/api/endpoints", () => {
   const make = (pfad: string): unknown =>
     new Proxy(
       vi.fn(async () => {
+        // JOB 3844: VOR dem absichtlichen Scheitern — sonst zählte der Fehlerweg, um den es S12
+        // geht, als „nicht aufgerufen".
+        daten.aufrufe.push(pfad);
         if (daten.fehler.has(pfad)) {
           throw new Error(`Aufruf ${pfad} ist absichtlich gescheitert`);
         }
@@ -319,6 +328,7 @@ const vergleichTexte = (
 
 beforeEach(async () => {
   daten.fehler = new Set<string>();
+  daten.aufrufe = [];
   daten.antworten = {
     "duplicates.list": [PAAR],
     "duplicates.settings": { minConfidence: 0.5 },
@@ -830,11 +840,39 @@ describe("JOB 3771 · S12 — der „?“-Text steht in jedem Zustand gleich da"
     expect(verstoesse(text, VERSCHMELZUNGSZUSAGEN.de)).toEqual([]);
   });
 
+  // JOB 3844 (Codex an JOB 3771, Prüfpunkt 6): „S12 sollte den erfolgten Mutationsaufruf und die
+  // sichtbare Fehlermeldung verlangen, bevor es den fehlenden Abschlussgrund prüft. Meine
+  // Gegenprobe mit totem Knopf bleibt sonst grün." — Gemessen am Stand b20af96 stimmte das: mit
+  // `onClick={() => {}}` am dritten Knopf blieben alle 41 Fälle grün. Die drei Erwartungen unten
+  // sind ABWESENHEITEN; ein Knopf, der nichts tut, erfüllt sie mühelos. Deshalb steht jetzt VOR
+  // ihnen, was passiert sein MUSS, damit ihre Abwesenheit überhaupt etwas bedeutet.
   it("nach einem GESCHEITERTEN Abschluss steht kein Abschlussgrund da", async () => {
     daten.fehler.add("duplicates.linkRelated");
     await mounteBrett();
     await klick(container.querySelector('[data-testid="pruefen-knopf-beide-verknuepfen"]'));
 
+    // (i) Der Klick hat den Abschluss wirklich abgesetzt — sonst misst der Rest einen toten Knopf.
+    expect(
+      daten.aufrufe,
+      `der Klick hat keinen Abschluss abgesetzt; gemessene Aufrufe: ${daten.aufrufe.join(", ") || "keine"}`,
+    ).toContain("duplicates.linkRelated");
+
+    // (ii) Und der Mensch sieht, dass es schiefging. Die Attrappe wirft einen einfachen `Error`,
+    // keinen `ApiError` — `Duplicates.tsx:131-132` setzt in diesem Fall `t("state.error")`, und
+    // `:259-262` malt `err` als eigenen Kasten in `pruefen-flaeche`. Gemessen wird gegen die
+    // SPRACHRESSOURCE, nicht gegen einen abgeschriebenen Satz.
+    const erwartet = einzeilig(ressource("de", "state.error"));
+    const kaesten = [...container.querySelectorAll('[data-testid="pruefen-flaeche"] > div')].map(
+      (d) => einzeilig(d.textContent),
+    );
+    expect(
+      kaesten,
+      `die Fläche verschweigt den gescheiterten Abschluss; gemessene Kästen: ${JSON.stringify(
+        kaesten.map((k) => (k.length > 60 ? `${k.slice(0, 60)}…` : k)),
+      )}`,
+    ).toContain(erwartet);
+
+    // (iii) Erst jetzt die drei Abwesenheiten aus JOB 3771, unverändert.
     const alles = einzeilig(container.querySelector("main")?.textContent);
     expect(alles, "ein Abschlussgrund ohne gespeicherten Abschluss").not.toContain(
       ressource("de", "dup.reason.linked_related"),

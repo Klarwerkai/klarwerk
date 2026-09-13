@@ -47,6 +47,23 @@ import { allFaqEntries, rankKlara, searchKlara } from "../../apps/web/src/lib/kl
 // Das ist der springende Punkt: „Ein automatisches Zusammenführen gibt es bewusst nicht" stellt ein
 // MANUELLES in Aussicht und ist deshalb ebenso rot (derselbe Fehler, den JOB 3771 an `dup.intro`
 // gefunden hat).
+//
+// JOB 3844 ERGÄNZT SECHS STÄMME (Codex an JOB 3787, Prüfpunkt 6). Die sechs oben fangen nur die
+// Wörter, die 2026-09 auf der Fläche standen; eine Verschmelzungszusage in ANDEREN Wörtern rutschte
+// durch — gemessen an den Texten in `U2_SYNONYME` (vor dieser Ergänzung: `verbotsfunde` leer).
+//   · „verein" fängt vereinen/vereint/vereinst/Vereinigung — das nächstliegende deutsche Synonym.
+//     Bewusst der kurze Stamm: „vereinig" allein verfehlte „zu einem Eintrag vereint".
+//   · „fusion" fängt fusionieren/fusioniert/Fusion — der kaufmännische Rückfall.
+//   · „in einen eintrag" und „zu einem eintrag" fangen die UMSCHREIBUNG ohne Verb („in EINEN
+//     Eintrag überführt", „zu einem Eintrag gemacht"). Das Verb allein zu verbieten hilft nicht:
+//     es gibt beliebig viele („überführen", „machen", „gießen"); das ZIEL dagegen ist endlich.
+//   · „zusammenleg" fängt zusammenlegen/zusammenlegst, „zusammengeleg" das Partizip
+//     („zusammengelegt") — dieselbe „ge"-Falle wie bei „zusammengeführ"; der Schwesterwächter
+//     `tests/seitenhilfe-dubletten` führt „zusammengelegt" schon seit JOB 3771.
+// BEWUSST NICHT AUFGENOMMEN: „überführ" und „zusammenfass" — beide stehen in ehrlichen Sätzen
+// („in die Bibliothek überführt", „die Karte fasst zusammen, wie stark sich zwei Einträge
+// decken") und würden den Bestand falsch röten. Ihre Verschmelzungsbedeutung wird über das ZIEL
+// gefangen („in einen eintrag"/„zu einem eintrag"), nicht über das Verb.
 const VERBOTENE_STAEMME = [
   "verschmelz",
   "verschmolz",
@@ -54,6 +71,12 @@ const VERBOTENE_STAEMME = [
   "zusammenzuführ",
   "zusammengeführ",
   "merg",
+  "verein",
+  "fusion",
+  "in einen eintrag",
+  "zu einem eintrag",
+  "zusammenleg",
+  "zusammengeleg",
 ] as const;
 
 /** Alle Verbotsstämme, die in `text` stecken — leer heißt sauber. */
@@ -68,24 +91,70 @@ function verbotsfunde(text: string): string[] {
 // Jede Pflicht hängt an einer gemessenen Eigenschaft des Dienstes bzw. an dem, was die Fläche
 // wirklich anbietet. Die Wortwahl folgt dem Katalog (`dup.*`, Stand JOB 3771): „getrennt",
 // „verwandt", „Fehlalarm", „beide bleiben".
-const POSITIV_PFLICHT: readonly { readonly was: string; readonly muster: RegExp }[] = [
+//
+// JOB 3844 — DIE BEDEUTUNGSUMKEHR HÄNGT AN DER PFLICHT, DIE SIE UMKEHRT (Codex an JOB 3787: „Die
+// Positivmuster :79/:83 erkennen zudem Wörter, nicht jede mögliche Bedeutungsumkehr."). Deshalb
+// KEINE zweite Wortliste und kein zweiter Prüfweg, sondern ein Feld MEHR an derselben Pflicht:
+// `muster` sagt „das Wort steht da", `umkehr` sagt „es steht da und sagt das Gegenteil". Beides
+// läuft durch `fehlendePflicht` — wer die Pflicht erfüllt sieht, muss auch an der Umkehr vorbei.
+// Die Fenster (`[^.]{0,40}`) enden am Satzpunkt: eine Verneinung im NÄCHSTEN Satz gehört zu einer
+// anderen Aussage und darf den Bestand nicht röten.
+const POSITIV_PFLICHT: readonly {
+  readonly was: string;
+  readonly muster: RegExp;
+  readonly umkehr?: RegExp;
+}[] = [
   // Bleibt aus dem alten Satz erhalten: die Erkennung ist echt (`OverlapService` findet die Fälle).
-  { was: "automatische Erkennung", muster: /erkennt[^.]*automatisch/i },
+  // Umkehr: „erkennt Überschneidungen NICHT automatisch" bzw. „nicht automatisch erkannt".
+  {
+    was: "automatische Erkennung",
+    muster: /erkennt[^.]*automatisch/i,
+    umkehr:
+      /erkennt[^.]{0,40}\bnicht\b[^.]{0,20}automatisch|\bnicht\b[^.]{0,20}automatisch[^.]{0,20}erkann/i,
+  },
   // Der Deckungsgrad wird auf der Karte wirklich gezeigt (`dup.lead.*`).
   { was: "Deckungsgrad", muster: /decken/i },
   // Die Kernaussage: `close` fasst `repo.update` auf EINEN Eintrag — der andere bleibt unberührt.
-  { was: "beide Einträge bleiben", muster: /beide bleiben/i },
+  // Umkehr: die Verneinung steht hinter dem Pflichtwort („beide bleiben nicht bestehen") oder
+  // davor („nicht beide bleiben"). `\bnicht\b` und nicht `nicht`: „es wird nichts gelöscht" ist
+  // eine ehrliche Aussage und darf nicht röten.
+  {
+    was: "beide Einträge bleiben",
+    muster: /beide bleiben/i,
+    umkehr: /beide bleiben[^.]{0,40}\bnicht\b|\bnicht\b[^.]{0,20}beide bleiben/i,
+  },
   // `resolution.reason` — der Abschlussgrund ist das Einzige, was ein Abschluss festhält.
-  { was: "festgehaltener Grund", muster: /grund/i },
+  // Umkehr: das Pflichtwort in der FREMDEN Aussage („ohne Grund", „kein Grund").
+  { was: "festgehaltener Grund", muster: /grund/i, umkehr: /ohne grund|kein(?:en)? grund/i },
   // Die drei Ausgänge von `resolve`, in der Sprache der Fläche.
   { was: "die drei Abschlüsse", muster: /getrennt[\s\S]*verwandt[\s\S]*fehlalarm/i },
   // `resolution.by`/`.at` und `audit.record` — der Grund bleibt nachlesbar am Vorgang.
-  { was: "Grund bleibt nachlesbar", muster: /protokoll/i },
+  // Umkehr: „kein Protokoll", „ohne Protokoll", „ein Prüfprotokoll gibt es nicht".
+  {
+    was: "Grund bleibt nachlesbar",
+    muster: /protokoll/i,
+    umkehr: /protokoll[^.]{0,40}\bnicht\b|(?:kein|ohne)[^.]{0,20}protokoll/i,
+  },
 ];
 
-/** Welche Pflichtaussagen in `answer` FEHLEN — leer heißt vollständig. */
+/**
+ * Welche Pflichtaussagen in `answer` fehlen ODER ins Gegenteil verkehrt sind — leer heißt sauber.
+ * Die Umkehr meldet den GEMESSENEN Fund, nicht den Sollwert: man liest in der Fehlermeldung, welche
+ * Stelle des Textes angeschlagen hat.
+ */
 function fehlendePflicht(answer: string): string[] {
-  return POSITIV_PFLICHT.filter((p) => !p.muster.test(answer)).map((p) => p.was);
+  const beanstandet: string[] = [];
+  for (const p of POSITIV_PFLICHT) {
+    if (!p.muster.test(answer)) {
+      beanstandet.push(p.was);
+      continue;
+    }
+    const fund = p.umkehr?.exec(answer)?.[0];
+    if (fund !== undefined) {
+      beanstandet.push(`${p.was} — umgekehrt: „${fund}“`);
+    }
+  }
+  return beanstandet;
 }
 
 // Der Wortlaut am Basisstand be5c09b, Zeichen für Zeichen. Messmittel, siehe Kopf.
@@ -94,6 +163,156 @@ const HISTORISCH = {
   answer:
     "Ein Duplikat liegt vor, wenn zwei Einträge inhaltlich dasselbe sagen — die App erkennt Überschneidungen automatisch und zeigt, wie stark sich zwei Einträge decken, samt Empfehlung. Zusammenführen ist dann meist sinnvoll: ein Eintrag statt zwei halber. Das Zusammenführen bleibt ein bewusster menschlicher Schritt — automatisch verschmolzen wird nichts.",
 } as const;
+
+// ==================================================================================================
+// JOB 3844 — DIE BEDEUTUNGSUMKEHR (Codex an JOB 3787, Prüfpunkt 6: „Die Positivmuster :79/:83
+// erkennen zudem Wörter, nicht jede mögliche Bedeutungsumkehr.").
+// ==================================================================================================
+//
+// DER RAHMEN IST DAS MESSMITTEL: vier Sätze in der Bauform des echten Bestandes, die alle sechs
+// Pflichten erfüllen und keinen Verbotsstamm tragen. Jede Umkehr tauscht GENAU EINEN dieser Sätze
+// aus. Dadurch ist gemessen, dass allein die Umkehrung den Unterschied macht — und nicht ein
+// nebenher weggefallenes Pflichtwort.
+const RAHMEN = {
+  erkennung:
+    "Ein Duplikat liegt vor, wenn zwei Einträge inhaltlich dasselbe sagen — die App erkennt Überschneidungen automatisch und zeigt, wie stark sich zwei Einträge decken, samt Empfehlung.",
+  bestand: "Aus zwei Einträgen wird dabei nie einer: beide bleiben unverändert bestehen.",
+  abschluss:
+    "Du schließt den Fund stattdessen mit einem Grund ab: bewusst getrennt gelassen, als verwandt vermerkt oder Fehlalarm.",
+  protokoll:
+    "Dieser Grund bleibt mit Zeitpunkt und Person am Vorgang stehen, nachlesbar in der Liste und im Prüfprotokoll.",
+} as const;
+
+/** Der Rahmen mit ausgetauschtem Satz — die Umkehr, sonst nichts. */
+const umkehrtext = (ersatz: Partial<Record<keyof typeof RAHMEN, string>>): string =>
+  Object.values({ ...RAHMEN, ...ersatz }).join(" ");
+
+// U1 — DIE VERNEINTE KERNAUSSAGE. `/beide bleiben/i` trifft weiter, die Verneinung steht dahinter.
+const U1_KERNAUSSAGE = umkehrtext({
+  bestand:
+    "Aus zwei Einträgen wird am Ende einer: beide bleiben nicht bestehen, der schwächere Eintrag fällt beim Abschluss weg.",
+});
+
+// U2 — DIE VERSCHMELZUNGSZUSAGE MIT ANDEREN WÖRTERN. Jeder Text trägt GENAU EINEN der neuen
+// Stämme; damit ist beim Entschärfen eines einzelnen Eintrags eindeutig, welcher Text ihn braucht.
+const U2_SYNONYME: readonly { readonly stamm: string; readonly text: string }[] = [
+  {
+    stamm: "verein",
+    text: umkehrtext({
+      bestand: "Beide bleiben zunächst stehen, bis du sie am Ende zu EINEM Artikel vereinst.",
+    }),
+  },
+  {
+    stamm: "fusion",
+    text: umkehrtext({
+      bestand: "Beide bleiben sichtbar, bis KLARWERK die Inhalte beim Abschluss fusioniert.",
+    }),
+  },
+  {
+    stamm: "in einen eintrag",
+    text: umkehrtext({
+      bestand: "Beide bleiben stehen, bis der Abschluss ihre Inhalte in einen Eintrag überführt.",
+    }),
+  },
+  {
+    stamm: "zu einem eintrag",
+    text: umkehrtext({ bestand: "Beide bleiben offen, bis du sie zu einem Eintrag machst." }),
+  },
+  {
+    stamm: "zusammenleg",
+    text: umkehrtext({ bestand: "Beide bleiben erhalten, bis du sie zusammenlegst." }),
+  },
+  {
+    stamm: "zusammengeleg",
+    text: umkehrtext({
+      bestand: "Beide bleiben erhalten, bis sie beim Abschluss zusammengelegt werden.",
+    }),
+  },
+];
+
+// U3 — DIE VERNEINTE ERKENNUNGSZUSAGE.
+const U3_ERKENNUNG = umkehrtext({
+  erkennung:
+    "Ein Duplikat liegt vor, wenn zwei Einträge inhaltlich dasselbe sagen — die App erkennt Überschneidungen nicht automatisch, du musst sie selbst suchen; erst danach zeigt sie, wie stark sich zwei Einträge decken.",
+});
+
+// U4 — DAS PFLICHTWORT IN FREMDER AUSSAGE: „ohne Grund" erfüllt `/grund/i`, „kein Prüfprotokoll"
+// erfüllt `/protokoll/i`.
+const U4_OHNE_GRUND = umkehrtext({
+  abschluss:
+    "Du schließt den Fund ohne Grund ab: ob bewusst getrennt gelassen, als verwandt vermerkt oder Fehlalarm, hält KLARWERK nicht fest.",
+});
+const U4_KEIN_PROTOKOLL = umkehrtext({
+  protokoll: "Ein Prüfprotokoll dazu gibt es nicht; der Grund verschwindet mit dem Abschluss.",
+});
+
+// --------------------------------------------------------------------------------------------
+// DIE GEGENPROBEN — ausführbar, in der Bauart von `HISTORISCH`.
+// --------------------------------------------------------------------------------------------
+// Sie hängen NICHT an `faqContent.ts`: wer die Erweiterung später aufweicht, wird hier rot, auch
+// wenn der Bestand gerade sauber ist. Gemessen am Stand VOR diesem Job (b20af96) gingen alle elf
+// Texte durch beide Prüffunktionen sauber durch (`verbotsfunde` = [], `fehlendePflicht` = []) —
+// genau das war Codex' Befund.
+describe("JOB 3844: die Bedeutungsumkehr wird beanstandet — vier Bauformen", () => {
+  // Ohne diesen Fall messen die vier darunter womöglich den RAHMEN statt die Umkehrung.
+  it("der Rahmen ohne Umkehr ist sauber — die Umkehrtexte unterscheiden sich nur im einen Satz", () => {
+    expect(verbotsfunde(umkehrtext({}))).toEqual([]);
+    expect(fehlendePflicht(umkehrtext({}))).toEqual([]);
+  });
+
+  it("U1 — „beide bleiben nicht bestehen“ erfüllt das Pflichtwort und sagt das Gegenteil", () => {
+    // Kein Verbotsstamm — genau deshalb hat die Verbotsliste diesen Text nie erreicht.
+    expect(verbotsfunde(U1_KERNAUSSAGE)).toEqual([]);
+    expect(fehlendePflicht(U1_KERNAUSSAGE)).toEqual([
+      "beide Einträge bleiben — umgekehrt: „beide bleiben nicht“",
+    ]);
+  });
+
+  it("U2 — die Verschmelzungszusage in anderen Wörtern", () => {
+    for (const { stamm, text } of U2_SYNONYME) {
+      // Der positive Teil ist erfüllt: der Text fällt allein über die Verbotsliste.
+      expect(fehlendePflicht(text), stamm).toEqual([]);
+      expect(verbotsfunde(text), `„${stamm}“ wird nicht gefangen`).toEqual([stamm]);
+    }
+  });
+
+  it("U3 — „erkennt Überschneidungen nicht automatisch“", () => {
+    expect(verbotsfunde(U3_ERKENNUNG)).toEqual([]);
+    expect(fehlendePflicht(U3_ERKENNUNG)).toEqual([
+      "automatische Erkennung — umgekehrt: „erkennt Überschneidungen nicht automatisch“",
+    ]);
+  });
+
+  it("U4 — das Pflichtwort in der fremden Aussage („ohne Grund“, „kein Prüfprotokoll“)", () => {
+    expect(verbotsfunde(U4_OHNE_GRUND)).toEqual([]);
+    expect(fehlendePflicht(U4_OHNE_GRUND)).toEqual([
+      "festgehaltener Grund — umgekehrt: „ohne Grund“",
+    ]);
+    expect(verbotsfunde(U4_KEIN_PROTOKOLL)).toEqual([]);
+    expect(fehlendePflicht(U4_KEIN_PROTOKOLL)).toEqual([
+      "Grund bleibt nachlesbar — umgekehrt: „protokoll dazu gibt es nicht“",
+    ]);
+  });
+
+  // LIEFERUNG 5 — die schärfere Prüfung darf den echten Bestand nicht röten, und das wird EINZELN
+  // gezeigt: nicht „die Antwort ist grün", sondern „kein einziges neues Muster schlägt an".
+  it("der echte Bestand besteht jede neue Prüfung einzeln", () => {
+    const neu = U2_SYNONYME.map((s) => s.stamm);
+    for (const item of DUBLETTEN_FAQ) {
+      const ganz = `${item.question} ${item.answer}`;
+      for (const stamm of neu) {
+        expect(ganz.toLowerCase().includes(stamm), `${item.id}: „${stamm}“ schlägt an`).toBe(false);
+      }
+      for (const p of POSITIV_PFLICHT) {
+        expect(
+          p.umkehr?.exec(ganz)?.[0],
+          `${item.id}: die Umkehrprüfung zu „${p.was}“ hält den echten Satz für verkehrt`,
+        ).toBeUndefined();
+      }
+      expect(fehlendePflicht(item.answer), item.id).toEqual([]);
+    }
+  });
+});
 
 // FLÄCHE STATT KATALOG: die geprüfte Menge wird über die ROUTE ermittelt, nicht über die ID.
 // Kommt morgen eine zweite Duplikat-Antwort dazu, fällt sie ohne Zutun in denselben Wächter.
