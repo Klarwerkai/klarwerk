@@ -26,6 +26,10 @@ import { HOME_ROUTE } from "../app/navigation";
 import { type SyncResult, useOfflineQueue } from "../app/useOfflineQueue";
 // WP-UX-WOW-1 U1: Antwort-Markdown sicher rendern (React-Subset, kein HTML-Sink).
 import { AnswerMarkdown } from "../components/AnswerMarkdown";
+// JOB 3786: die Seitenhilfe dieser Fläche. `HelpTip` ZEICHNET NICHTS — er meldet Titel und Text
+// beim Sammler an (`shell/SeitenhilfeContext.tsx`), und das Zahnrad-Menü listet sie unter
+// „Seitenhilfe". Pedi (04.09.): „Erklärung gehört hinter Zahnrad/Profil, nicht ins Sichtfeld."
+import { HelpTip } from "../components/HelpTip";
 import { ConfidenceBar, KnowledgeTypeTag, StatusPill } from "../components/trust";
 import { selectAnswer } from "../lib/askResponse";
 import { deriveStatus } from "../lib/displayStatus";
@@ -280,6 +284,19 @@ export function Mobile(): JSX.Element {
 
   return (
     <div className="flex min-h-[520px] flex-col items-center gap-3 rounded-card bg-page p-6">
+      {/* JOB 3786 — DIE ERKLÄRUNG DIESER FLÄCHE, hinter dem Zahnrad statt im Sichtfeld.
+          Sie beantwortet die drei Fragen (was ist das hier · was kann ich tun · was geht hier
+          NICHT und wo geht es) und nennt die Berechtigung, weil die drei Reiter NICHT dasselbe
+          dürfen: Entwürfe brauchen `ko.create`, Fragen und Suchen nur `ko.read`.
+
+          BENANNTE GRENZE, gemessen und nicht behauptet (Beleg: tests/seitenhilfe-mobil/
+          handyflaeche-erklaert-sich.test.tsx, Fall M4): auf DIESER Route erreicht die Anmeldung
+          heute noch keinen Leser. `shell/AppShell.tsx:65-79` kehrt für `/mobile` VOR dem
+          `SeitenhilfeProvider` und vor dem Kopfband zurück — der Tipp meldet sich also beim
+          stummen Sammler (`SeitenhilfeContext.tsx:37`), und ein Zahnrad gibt es hier nicht.
+          Das Endglied der Kette gehört nach `shell/AppShell.tsx` und damit ausserhalb der
+          Zielpfade dieses Auftrags; es ist in der Rückgabe als offener Punkt benannt. */}
+      <HelpTip title={t("seitenhilfe.mobil.titel")} body={t("seitenhilfe.mobil.text")} />
       {/* B1b: /mobile wird OHNE AppShell/Topbar gerendert — ohne diesen Ausgang gäbe es keinen Weg
           zurück zur Vollversion. Immer sichtbar, oberhalb des Telefon-Rahmens.
           WP-SAMMEL20-FIX (bens Fix 4): der Rückweg läuft durch den NavGuard (ungespeicherte

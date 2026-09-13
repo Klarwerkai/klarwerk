@@ -6304,6 +6304,39 @@ const de = {
   "seitenhilfe.admin.bereitschaft.titel": "Bereitschaft",
   "seitenhilfe.admin.bereitschaft.text":
     "Die Checkliste vor einer Vorführung: KI, validierte Objekte, offene Prüfungen, Uploadgrenzen, externe Recherche und Demodaten — je Zeile eine Ampel aus echten Zahlen. Sie stellt nichts ein, sie liest sechs Quellen und sagt, was fehlt. Fällt eine davon aus, steht statt einer geratenen Null „nicht abrufbar“ mit einem Knopf, der alle sechs neu abruft. Die Zeile „Demodaten“ führt direkt auf die Karte, auf der du sie lädst.",
+  // ==============================================================================================
+  // JOB 3786 — DIE SEITENHILFE DER HANDYFLÄCHE (/mobile).
+  // ==============================================================================================
+  //
+  // EIN Eintrag, der die drei Fragen beantwortet: Was ist diese Fläche? Was kann ich hier tun? Was
+  // geht hier NICHT und wo geht es? Auf dem Telefon ist die dritte die wichtigste — deshalb steht
+  // sie ausgeschrieben da und wird nicht verschwiegen.
+  //
+  // JEDE ZUSAGE IST AM STAND d449e9b NACHGESEHEN, nicht erinnert — an den drei Fallen, an denen
+  // JOB 3669 und JOB 3741 am 12.09. gescheitert sind:
+  //   ROLLE   `/mobile` ist NICHT rollengesichert (`routes.tsx:218` steht ausserhalb
+  //           `GUARDED_ITEMS`) — jede Rolle kommt hier an, auch der Betrachter. Und die drei
+  //           Reiter können NICHT dasselbe: alle Entwurfsrouten verlangen `ko.create`
+  //           (`services/app/src/routes/capture-routes.ts:839`, `:1139`, `:1281`), Fragen und
+  //           Suchen nur `ko.read` (`ask-routes.ts:307`, `library-routes.ts:541`). Ein Betrachter
+  //           hat nach `services/rbac/src/policy.ts:14` ausschliesslich `ko.read`. Deshalb nennt
+  //           der Satz die Berechtigung AUSDRÜCKLICH und sagt, was der Betrachter hier kann —
+  //           statt „erfassen" pauschal zu versprechen (Korrekturpflicht aus JOB 3669 R1).
+  //   ANORDNUNG Beschrieben ist nur, was diese Fläche wirklich trägt: drei Reiter nebeneinander
+  //           (`Mobile.tsx:329-347`) in einem Telefonrahmen von 340 px (`:312`) und der Ausgang
+  //           „Zur Vollversion" ÜBER dem Rahmen (`:304-311`, `self-start`). Kein Wort über eine
+  //           Seitenleiste oder ein Kopfband — beides gibt es auf dieser Route nicht
+  //           (`shell/AppShell.tsx:65-79` kehrt vor dem Kopfband zurück).
+  //   URSACHE Offline ist NICHT alles vorgemerkt: die Warteschlange nimmt ausschliesslich das
+  //           Speichern von Entwürfen (`Mobile.tsx:164-179`), Fragen und Suchen melden ehrlich
+  //           eine fehlende Verbindung (`:520-527`, `:681-688`). Genau so steht es hier.
+  //
+  // Der Satz über die festen Blöcke ist die zweite ehrlich benannte Grenze: ein fortgesetzter
+  // Entwurf mit Rumpf zeigt seinen Fliesstext, Bilder und Tabellen aber nur als nummerierte
+  // Platzhalter an ihrer Stelle (`Mobile.tsx:361-365`, `draftBodyFromText`).
+  "seitenhilfe.mobil.titel": "Unterwegs erfassen, fragen und nachschlagen",
+  "seitenhilfe.mobil.text":
+    "Diese Fläche zeigt KLARWERK in Telefonbreite und hat drei Reiter: „Erfassen“ legt aus einem Titel und einem Text einen Entwurf an — dafür braucht man die Berechtigung zum Anlegen, ein Betrachter kann hier nur lesen; „Fragen“ und „Suchen“ stehen jeder Rolle offen und führen von einer Antwort oder einem Treffer in das Wissensobjekt. Ohne Verbindung wird allein das Speichern eines Entwurfs vorgemerkt und später nachgetragen; Fragen und Suchen sagen dann, dass sie eine Verbindung brauchen. Prüfen, Freigeben, Widersprüche klären und Textgestaltung mit Bildern und Tabellen gibt es hier NICHT — ein fortgesetzter Entwurf zeigt seine festen Blöcke nur als nummerierte Platzhalter. Nächster Schritt: einen Reiter antippen; für alles Übrige führt oben „Zur Vollversion“ zurück an das grosse Fenster.",
 };
 
 const en: typeof de = {
@@ -11358,6 +11391,14 @@ const en: typeof de = {
   "seitenhilfe.admin.bereitschaft.titel": "Readiness",
   "seitenhilfe.admin.bereitschaft.text":
     "The checklist before a demo: AI, validated objects, open reviews, upload limits, external research and demo data — one indicator per row, built from real numbers. It sets nothing; it reads six sources and says what is missing. If one of them fails, you get “not retrievable” with a button that refetches all six instead of a guessed zero. The “Demo data” row leads straight to the card where you load it.",
+  // JOB 3786 — page help for the phone surface (/mobile); mirror of the DE keys. The three checked
+  // facts behind this text are documented at the DE block: the route carries no role guard but the
+  // three tabs need different permissions (drafts `ko.create`, ask and search `ko.read`), the
+  // surface has only three tabs inside a 340 px phone frame plus the exit above it, and offline
+  // only draft saves are queued — ask and search report the missing connection.
+  "seitenhilfe.mobil.titel": "Capture, ask and look things up while you are out",
+  "seitenhilfe.mobil.text":
+    "This surface shows KLARWERK at phone width and has three tabs: “Capture” turns a title and a text into a draft — that needs the permission to create, a viewer can only read here; “Ask” and “Search” are open to every role and lead from an answer or a hit into the knowledge object. Without a connection only saving a draft is held back and sent on later; ask and search then tell you that they need a connection. Reviewing, releasing, resolving contradictions and text formatting with images and tables are NOT available here — a resumed draft shows its fixed blocks only as numbered placeholders. Next step: tap one of the tabs; for everything else “To full version” at the top takes you back to the big window.",
 };
 
 const nl: typeof de = {
@@ -16406,6 +16447,15 @@ const nl: typeof de = {
   "seitenhilfe.admin.bereitschaft.titel": "Gereedheid",
   "seitenhilfe.admin.bereitschaft.text":
     "De checklist vóór een demonstratie: AI, gevalideerde objecten, openstaande toetsingen, uploadgrenzen, extern onderzoek en demogegevens — per regel een stoplicht uit echte getallen. Ze stelt niets in; ze leest zes bronnen en zegt wat ontbreekt. Valt er één uit, dan staat er „niet opvraagbaar“ met een knop die alle zes opnieuw ophaalt, in plaats van een geraden nul. De regel „Demogegevens“ leidt rechtstreeks naar de kaart waar je ze laadt.",
+  // JOB 3786 — paginahulp van het telefoonscherm (/mobile); spiegel van de DE-sleutels. De drie
+  // nagekeken feiten staan bij het DE-blok: de route heeft geen rolbewaking, maar de drie
+  // tabbladen vragen verschillende rechten (concepten `ko.create`, vragen en zoeken `ko.read`);
+  // het scherm heeft alleen drie tabbladen in een telefoonlijst van 340 px plus de uitgang
+  // erboven; en offline wordt alleen het opslaan van een concept in de wachtrij gezet — vragen en
+  // zoeken melden de ontbrekende verbinding.
+  "seitenhilfe.mobil.titel": "Onderweg vastleggen, vragen en opzoeken",
+  "seitenhilfe.mobil.text":
+    "Dit scherm toont KLARWERK op telefoonbreedte en heeft drie tabbladen: „Vastleggen“ maakt van een titel en een tekst een concept — daarvoor heb je het recht om aan te maken nodig, een kijker kan hier alleen lezen; „Vragen“ en „Zoeken“ staan voor elke rol open en leiden van een antwoord of een treffer naar het kennisobject. Zonder verbinding wordt alleen het opslaan van een concept in de wachtrij gezet en later nagestuurd; vragen en zoeken zeggen dan dat ze een verbinding nodig hebben. Toetsen, vrijgeven, tegenstrijdigheden oplossen en tekstopmaak met afbeeldingen en tabellen zijn hier NIET mogelijk — een voortgezet concept toont zijn vaste blokken alleen als genummerde plaatsaanduidingen. Volgende stap: tik op een tabblad; voor al het andere ga je bovenaan via „Naar volledige versie“ terug naar het grote venster.",
 };
 
 void i18n.use(initReactI18next).init({
