@@ -518,6 +518,46 @@ interface Doppelgaenger {
   readonly ort: string;
 }
 
+// ================================================================================================
+// JOB 3850 · DIE FRIST DES ASYNCHRONEN ZWEIGS — DAS vm-ZEITLIMIT GREIFT NUR SYNCHRON.
+// ================================================================================================
+//
+// GEMESSEN, NICHT ANGENOMMEN: `runInNewContext(..., { timeout: 1_000 })` (`:62`) bricht
+// ausschliesslich eine synchron laufende Anweisung ab. Liefert die Attrappe ein Promise, das nie
+// auflöst, greift es überhaupt nicht — gewartet wird danach im TESTPROZESS, und dort gab es kein
+// Zeitlimit. Der Fall „ASYNCHRON hängende Attrappe" unten lief am Stand VOR dieser Frist 60007 ms
+// und endete mit Vitests eigenem `Test timed out in 60000ms.`: ohne Datei, ohne Zeile, ohne
+// gelesenen Ausschnitt. Genau das schliesst der Kopf von `fuehreAttrappeAus` aus.
+//
+// UND ZWAR AN ZWEI STELLEN, was erst die Messung zeigte. Die letzte Anweisung des Rumpfs ist die
+// ZUWEISUNG `aufzeichnung.lauf = …`; der Wert eines Zuweisungsausdrucks ist der zugewiesene Wert,
+// und damit gibt `runInNewContext` genau dieses Promise zurück (nachgemessen: der Rückgabewert ist
+// `=== aufzeichnung.lauf`). `fuehreGelesenAus` wartet es also bereits selbst ab — eine Frist allein
+// auf dem späteren `await aufzeichnung.lauf` wurde nie erreicht und liess den Fall weiter 60 s
+// hängen (auch das gemessen). Beide Wartestellen bekommen deshalb dieselbe Frist. Die zweite ist
+// kein Beiwerk: verschöbe jemand die Zuweisung aus der letzten Zeile, wäre sie die einzige.
+//
+// DIE FRIST IST ECHT LÄNGER als das vm-Zeitlimit (3000 gegen 1000 ms) und wird ERST NACH dessen
+// Ablauf scharf: `fuehreGelesenAus(…)` läuft synchron in die VM, bevor `mitFrist` den Zeitgeber
+// anlegt. Der synchrone Fall behält seinen eigenen Grund `Script execution timed out`; der
+// asynchrone Fall prüft ausdrücklich, dass seine Meldung diesen Wortlaut NICHT trägt. Der
+// Zeitgeber hält den Vitest-Prozess nicht am Leben: `unref` beim Anlegen, `clearTimeout` in jedem
+// Ausgang (gemessen an der Suite: kein Hinweis auf offene Handles).
+const W6_FRIST_MS = 3_000;
+const W6_FRIST_GRUND = `die Attrappe kam nicht zurück: ihre Kandidatenabfrage blieb nach ${W6_FRIST_MS} ms offen (asynchrones Hängen — das vm-Zeitlimit greift nur synchron)`;
+
+/** Nur diese Ursache; sie darf nicht in „die Attrappe lief nicht" wandern — sie LÄUFT ja noch. */
+class Frist extends Error {}
+
+function mitFrist<T>(lauf: Promise<T>): Promise<T> {
+  let uhr: ReturnType<typeof setTimeout> | undefined;
+  const frist = new Promise<never>((_, ablehnen) => {
+    uhr = setTimeout(() => ablehnen(new Frist(W6_FRIST_GRUND)), W6_FRIST_MS);
+    uhr.unref();
+  });
+  return Promise.race([lauf, frist]).finally(() => clearTimeout(uhr));
+}
+
 /**
  * Holt die Attrappe mit dem vorhandenen `attrappe()` (strukturell, nicht über den Namen), druckt sie
  * OHNE Kommentare, befreit sie von den Typen und RUFT SIE AUF. Jeder Ausfall ist rot mit Grund und
@@ -535,9 +575,10 @@ async function fuehreAttrappeAus(text: string, pfad = VERTRAG): Promise<Doppelga
   const aufzeichnung: { lauf?: Promise<unknown> } = {};
   let geliefert: unknown;
   try {
-    await fuehreGelesenAus(
-      [gedruckt],
-      `const gebaut = ${name}(bestand);
+    await mitFrist(
+      fuehreGelesenAus(
+        [gedruckt],
+        `const gebaut = ${name}(bestand);
       const quelle =
         gebaut && typeof gebaut.findCandidates === "function"
           ? gebaut
@@ -550,14 +591,17 @@ async function fuehreAttrappeAus(text: string, pfad = VERTRAG): Promise<Doppelga
       aufzeichnung.lauf = Promise.resolve(quelle.findCandidates(anfrage)).then((seite) =>
         Array.from(seite, (ko) => String(ko && ko.id)),
       );`,
-      { aufzeichnung, bestand: w6Bestand(), anfrage: { terms: [...W6_TERME], limit: W6_LIMIT } },
+        { aufzeichnung, bestand: w6Bestand(), anfrage: { terms: [...W6_TERME], limit: W6_LIMIT } },
+      ),
     );
     if (aufzeichnung.lauf === undefined) {
       throw new Error("die Attrappe hat keine Kandidatenabfrage begonnen");
     }
-    geliefert = await aufzeichnung.lauf;
+    geliefert = await mitFrist(aufzeichnung.lauf);
   } catch (error) {
-    throw fehler(`die Attrappe lief nicht: ${String(error)}`);
+    throw error instanceof Frist
+      ? fehler(error.message)
+      : fehler(`die Attrappe lief nicht: ${String(error)}`);
   }
   if (!Array.isArray(geliefert)) {
     throw fehler(`die Attrappe lieferte keine Liste: ${String(geliefert)}`);
@@ -637,6 +681,13 @@ const SCHEINSTUFEN = [
     (blind: string) => `${vertrag}\nit(${JSON.stringify(blind)}, () => {});\n`,
   ],
 ] as const;
+
+// JOB 3850 — eine ZWEITE Quelle, auf EINER Zeile. Sie muss den strukturellen Filter wirklich
+// passieren (Funktionsdeklaration mit ausführbarem `findCandidates`-Glied im Rumpf), und sie bleibt
+// einzeilig, weil `FREMDTEXT` sie sonst als `//`-Kommentar nicht blind halten könnte: ab der zweiten
+// Zeile wäre sie wieder Code, und die Gegenrichtung des Mehrdeutigkeitsfalls wäre wertlos.
+const ZWEITE_QUELLE =
+  "function nochEineSchwacheQuelle() { return { findCandidates(query) { return Promise.resolve([]); } }; }";
 
 describe("JOB 3601: Erklärung und Abfrage stimmen überein", () => {
   it("W1 liest die gebaute ORDER BY-Kette aus der AST-Methode", async () => {
@@ -972,6 +1023,45 @@ describe("JOB 3601: Erklärung und Abfrage stimmen überein", () => {
     }
   });
 
+  it("W6 Zustandsmodell: eine ZWEITE Attrappe ist rot mit „gefunden: 2“ — derselbe Text blind nicht", async () => {
+    // Die andere Hälfte der Meldung `fehlt/mehrdeutig`: bis JOB 3850 war ausschliesslich der
+    // „fehlt"-Zweig (`gefunden: 0`) gemessen. Geprüft wird der VOLLSTÄNDIGE Wortlaut, nicht das
+    // Vorkommen des Wortes „mehrdeutig" irgendwo in der Meldung.
+    const fehler = await abgewiesen(pruefeAttrappe(`${vertrag}\n${ZWEITE_QUELLE}\n`));
+    expect(fehler).toBe(
+      `W5: ${VERTRAG}: Attrappe (Funktion mit ausführbarem findCandidates) fehlt/mehrdeutig; gefunden: 2`,
+    );
+    // Gegenrichtung im selben Fall: DIESELBE zweite Quelle als Kommentar, Stringliteral und
+    // Falltitel. Der Filter misst Struktur, nicht Text — also bleibt W6 grün und `gefunden: 2`
+    // tritt nicht ein. Ohne diese Hälfte belegte der Fall nur, dass irgendetwas rot wird.
+    for (const [, einbetten] of FREMDTEXT) {
+      const blind = vertrag + einbetten(ZWEITE_QUELLE);
+      expect(blind, "W6: die Gegenrichtung erreicht den Vertrag nicht").not.toBe(vertrag);
+      await pruefeAttrappe(blind);
+    }
+  });
+
+  it("W6 Zustandsmodell: eine UMBENANNTE Attrappe bleibt sehend — neuer Name, neue Zeile", async () => {
+    // Die Zusage aus dem Kopf von `attrappe()` (`:248`): „eine Umbenennung macht ihn nicht blind,
+    // sondern lässt ihn weiter dieselbe Stelle prüfen." Der Bestand misst nur die VERBOTENE
+    // Umbenennung (W5, `pgAehnlicherKoService`); ein harmloser neuer Name war ungemessen.
+    const alt = attrappe(vertrag).name?.text ?? "";
+    const neu = "bewusstSchwachDeckelndeQuelle";
+    const umbenannt = vertrag.replaceAll(alt, neu);
+    expect(umbenannt, "W6: die Umbenennung erreicht den Vertrag nicht").not.toBe(vertrag);
+    expect(umbenannt).not.toContain(alt);
+    // Grün bleibt sie — und zwar mit der VOLLSTÄNDIGEN Auskunft des Läufers, nicht bloss „grün".
+    await pruefeAttrappe(umbenannt);
+    const lauf = await fuehreAttrappeAus(umbenannt);
+    expect(lauf.name, "W6: der gemeldete Name ist noch der alte").toBe(neu);
+    expect(lauf.ort).toBe(zeileVon(umbenannt, VERTRAG, `function ${neu}`));
+    expect(lauf.geliefert).toEqual([...W6_STOERER]);
+    // Der alte Anker existiert nicht mehr: der gemeldete Ort ist wirklich am NEUEN Namen gebildet.
+    expect(() => zeileVon(umbenannt, VERTRAG, `function ${alt}`)).toThrow(
+      `${VERTRAG}: keine Zeile trägt „function ${alt}“`,
+    );
+  });
+
   it("W6 Zustandsmodell: eine werfende Attrappe ist rot mit dem gelesenen Ausschnitt", async () => {
     // Ohne erfolgreichen Lauf gibt es kein Urteil, sondern einen roten Fall — nie die negative
     // Aussage „keine Relevanzstufe vorhanden" auf der Grundlage eines Ausfalls.
@@ -998,6 +1088,25 @@ describe("JOB 3601: Erklärung und Abfrage stimmen überein", () => {
       /W6: tests\/ask\/ask-retrieval-topk-scaling-contract\.test\.ts: die Attrappe lief nicht: Error: Script execution timed out/,
     );
     expect(fehler).toContain(`gelesener Ausschnitt: function ${name}`);
+  });
+
+  it("W6 Zustandsmodell: eine ASYNCHRON hängende Attrappe läuft in die EIGENE Frist", async () => {
+    // JOB 3826 R2, BENs Prüfpunkt 6: „Asynchrones Hängen wurde nicht geprüft." Der Fall darüber ist
+    // SYNCHRON und wird vom vm-Zeitlimit abgefangen — das greift ausschliesslich in der synchronen
+    // Ausführung. Ein Promise, das nie auflöst, entkommt ihm vollständig: das vm-Skript kehrt sofort
+    // zurück, gewartet wird danach im Testprozess. Bis JOB 3850 hing dort die ganze Datei.
+    const defekt = ersetzen(
+      vertrag,
+      "return Promise.resolve(seite);",
+      "return new Promise(() => {});",
+    );
+    const name = attrappe(defekt).name?.text ?? "";
+    const fehler = await abgewiesen(pruefeAttrappe(defekt));
+    expect(fehler).toMatch(/^W6: tests\/ask\/ask-retrieval-topk-scaling-contract\.test\.ts: /);
+    expect(fehler).toContain(W6_FRIST_GRUND);
+    expect(fehler).toContain(`gelesener Ausschnitt: function ${name}`);
+    // Sonst wäre dieser Zweig nur zufällig rot — nämlich über den Grund des SYNCHRONEN Falls.
+    expect(fehler).not.toContain("Script execution timed out");
   });
 
   // Beide Wortformen, und das ist kein Fleiß: mit `Produktionsadapters?` OHNE Wortgrenze nimmt der
