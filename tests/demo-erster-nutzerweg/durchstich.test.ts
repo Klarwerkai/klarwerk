@@ -40,6 +40,21 @@
 // JETZT steht vor JEDER Trefferbewertung `pruefeSuchantwort` (Status UND Antwortform, mit dem
 // Körper in der Meldung), und der neue Fall W2 hält diese Eigenschaft dauerhaft fest — als Fall,
 // nicht als Verstellprobe, die beim nächsten Umbau niemand wiederholt.
+//
+// JOB 3849 (BEN zu 3825 R2, Prüfpunkt 6 — ausdrücklich bestellt): `pruefeSuchantwort` prüfte, DASS
+// eine Liste kam, und nie, WAS darin steht. Am Stand davor gemessen: `["ko-1"]`, `[{}]`,
+// `[{"id":""}]` und `[{"id":null}]` gingen als „erfolgreich nichts gefunden" durch — bei `["ko-1"]`
+// stand das gesuchte Objekt buchstäblich in der Antwort; `[{"id":"ko-1"},null]` ergab sogar
+// `trifft: true`, weil `.some` den formlosen zweiten Eintrag nie erreichte; `[null]` riss den Lauf
+// mit einem `TypeError` aus `strecke.ts` ab. JETZT ist die EINTRAGSFORM die dritte Zusage, VOR jeder
+// Trefferbewertung, mit Platz im Array und Istwert in der Meldung; W2 hält alle sieben Körper
+// dauerhaft fest, und dieselbe Prüfung liegt auf der `similar`-Liste des Live-Checks.
+//
+// JOB 3849 RUNDE 2 (BEN Korrekturpflicht 1): die neue MELDUNG konnte selbst abstürzen. Ein gültiger,
+// tief verschachtelter Körper kam durch `JSON.parse` und tötete dann den Istwert
+// (`RangeError: Maximum call stack size exceeded`) — die Zusage „wirft nie" galt für die Bewertung
+// und nicht für den Bericht. W2 (xiii)–(xv) hält jetzt auch das fest: tief, breit, und auf beiden
+// Wegen. Eine Grenze, die erst nach dem vollständigen Serialisieren kürzt, ist keine Grenze.
 import { describe, expect, it } from "vitest";
 import {
   DOKUMENTWORT,
@@ -48,9 +63,11 @@ import {
   QUELLSATZ,
   SUCHWORT,
   type Streckenbefund,
+  type Suchantwort,
   type Wiedersehen,
   fahreStrecke,
   liesSuchantwort,
+  liesTrefferliste,
   schliesse,
 } from "./strecke";
 
@@ -90,10 +107,29 @@ function pruefeIsolation(b: Streckenbefund): void {
  * überhaupt keine Suche stattgefunden hatte. Ein Fehlerobjekt ist kein leeres Ergebnis, und ein
  * HTTP 200 allein belegt keine erfolgreiche Leersuche (Auftrag §9).
  *
- * Beide Zusagen tragen den KÖRPER in ihrer Meldung: eine rote Stelle soll sagen, WAS statt der Liste
+ * Alle Zusagen tragen den KÖRPER in ihrer Meldung: eine rote Stelle soll sagen, WAS statt der Liste
  * kam, nicht nur „erwartet 200, war 503".
+ *
+ * JOB 3849 — DIE DRITTE ZUSAGE, und sie steht mit Absicht VOR der Trefferbewertung. Bis hierher
+ * prüfte diese Funktion, DASS eine Liste kam, und nie, WAS darin steht. Gemessen am Stand davor:
+ * `["ko-1"]`, `[{}]`, `[{"id":""}]` und `[{"id":null}]` gingen als „erfolgreich nichts gefunden"
+ * durch — bei `["ko-1"]` stand das gesuchte Objekt buchstäblich in der Antwort. `[{"id":"ko-1"},null]`
+ * lieferte sogar `trifft: true`, weil `.some` den formlosen zweiten Eintrag nie erreichte, und
+ * `[null]` riss den Lauf mit einem `TypeError` ab, bevor eine dieser Zeilen überhaupt lief.
+ *
+ * Die Reihenfolge ist der Inhalt: Status → Listenform → EINTRAGSFORM → und erst danach darf ein
+ * Aufrufer `trifft` lesen. Stünde die neue Zusage hinter der Trefferbewertung, käme F6 als Treffer
+ * durch. Die Meldung trägt Platz im Array, Istwert des Eintrags und den Körper — ein blosser
+ * Wahrheitswert wäre wieder die „erwartet 200, war 503"-Meldung, die hier schon einmal zu wenig war.
  */
-function pruefeSuchantwort(status: number, istListe: boolean, koerper: string, wo: string): void {
+function pruefeSuchantwort(
+  status: number,
+  istListe: boolean,
+  eintraegeGueltig: boolean,
+  eintragsFehlschlag: string,
+  koerper: string,
+  wo: string,
+): void {
   expect(
     status,
     `${wo}: die Suche antwortete mit HTTP ${status} statt 200 — Körper: ${koerper}. Ein Fehlschlag ist kein leeres Ergebnis.`,
@@ -101,6 +137,10 @@ function pruefeSuchantwort(status: number, istListe: boolean, koerper: string, w
   expect(
     istListe,
     `${wo}: die Suche antwortete zwar mit HTTP 200, aber nicht mit einer Trefferliste — Körper: ${koerper}. Ein Fehlerobjekt ist kein leeres Ergebnis, und „nicht gefunden" wäre hier eine Behauptung ohne Messung.`,
+  ).toBe(true);
+  expect(
+    eintraegeGueltig,
+    `${wo}: es kam zwar eine Liste, aber ihre Einträge sind nicht bewertbar — ${eintragsFehlschlag}. Körper: ${koerper}. Ein formloser Eintrag ist keine Nicht-Übereinstimmung: „nicht gefunden" wäre hier eine Behauptung ohne Messung, und ein gültiger Eintrag daneben heilt ihn nicht.`,
   ).toBe(true);
 }
 
@@ -220,6 +260,14 @@ function pruefeStrecke(b: Streckenbefund): void {
   expect(b.fund.koAussage, "das Wissensobjekt trägt nicht die eigene Aussage").toBe(EIGENE_AUSSAGE);
   expect(b.fund.pruefungStatus, "die erlaubte Prüfung war nicht erlaubt").toBe(200);
   expect(b.fund.pruefungOhneAnmeldung, "dieselbe Prüfung lief auch ohne Anmeldung").toBe(401);
+  // ZUERST DIE FORM DER ÄHNLICHKEITSLISTE, DANN IHR TREFFER (JOB 3849, Lieferung 6). Dieselbe
+  // Schwäche wie an den Suchen, nur an der Prüfroute: `similar: ["ko-1"]` hätte hier ein stilles
+  // „die Prüfung findet den Doppelgänger nicht" ergeben, `similar: [null]` einen `TypeError` mitten
+  // in `fahreStrecke`. Derselbe Prüfweg, kein zweiter Formbegriff (`liesTrefferliste`).
+  expect(
+    b.fund.pruefungEintraegeGueltig,
+    `die Ähnlichkeitsliste des Live-Checks war nicht bewertbar — ${b.fund.pruefungEintragsFehlschlag}. Ohne bewertbare Einträge ist „die Prüfung findet nichts" eine Behauptung ohne Messung.`,
+  ).toBe(true);
   expect(b.fund.pruefungTrifft, "die Prüfung fand das eben Geschriebene nicht").toBe(true);
   // EHRLICHKEIT VOR OPTIK, und hier ist sie messbar: ohne Modell läuft KEIN Widerspruchsprüfer, und
   // der Live-Check sagt das („pending"), statt „done" zu behaupten. Ein „done" an dieser Stelle wäre
@@ -230,6 +278,8 @@ function pruefeStrecke(b: Streckenbefund): void {
   pruefeSuchantwort(
     b.fund.sucheStatus,
     b.fund.sucheIstListe,
+    b.fund.sucheEintraegeGueltig,
+    b.fund.sucheEintragsFehlschlag,
     b.fund.sucheKoerper,
     `GET /api/library/search?q=${SUCHWORT}`,
   );
@@ -245,6 +295,8 @@ function pruefeStrecke(b: Streckenbefund): void {
   pruefeSuchantwort(
     b.fund.sucheDokumentStatus,
     b.fund.sucheDokumentIstListe,
+    b.fund.sucheDokumentEintraegeGueltig,
+    b.fund.sucheDokumentEintragsFehlschlag,
     b.fund.sucheDokumentKoerper,
     `GET /api/library/search?q=${DOKUMENTWORT}`,
   );
@@ -333,6 +385,8 @@ describe("JOB 3801 · der erste Nutzerweg, am Stück", () => {
       pruefeSuchantwort(
         lauf.befund.fund.sucheStatus,
         lauf.befund.fund.sucheIstListe,
+        lauf.befund.fund.sucheEintraegeGueltig,
+        lauf.befund.fund.sucheEintragsFehlschlag,
         lauf.befund.fund.sucheKoerper,
         `D2 · GET /api/library/search?q=${SUCHWORT}`,
       );
@@ -347,6 +401,8 @@ describe("JOB 3801 · der erste Nutzerweg, am Stück", () => {
       pruefeSuchantwort(
         lauf.befund.fund.sucheDokumentStatus,
         lauf.befund.fund.sucheDokumentIstListe,
+        lauf.befund.fund.sucheDokumentEintraegeGueltig,
+        lauf.befund.fund.sucheDokumentEintragsFehlschlag,
         lauf.befund.fund.sucheDokumentKoerper,
         `D2 · GET /api/library/search?q=${DOKUMENTWORT}`,
       );
@@ -420,12 +476,16 @@ describe("JOB 3801 · der erste Nutzerweg, am Stück", () => {
       pruefeSuchantwort(
         b.fund.sucheStatus,
         b.fund.sucheIstListe,
+        b.fund.sucheEintraegeGueltig,
+        b.fund.sucheEintragsFehlschlag,
         b.fund.sucheKoerper,
         `Ü1 · GET /api/library/search?q=${SUCHWORT}`,
       );
       pruefeSuchantwort(
         b.fund.sucheDokumentStatus,
         b.fund.sucheDokumentIstListe,
+        b.fund.sucheDokumentEintraegeGueltig,
+        b.fund.sucheDokumentEintragsFehlschlag,
         b.fund.sucheDokumentKoerper,
         `Ü1 · GET /api/library/search?q=${DOKUMENTWORT}`,
       );
@@ -469,36 +529,48 @@ describe("JOB 3801 · der erste Nutzerweg, am Stück", () => {
     }
   }, 120_000);
 
-  it("W2 · ANTWORTFORM: ein Fehlerobjekt mit HTTP 200 und eine 503 sind kein Beleg für „nichts gefunden“", () => {
+  it("W2 · ANTWORTFORM: ein Fehlerobjekt, eine 503 und ein formloser Listeneintrag sind kein Beleg für „nichts gefunden“", () => {
     // DER DAUERHAFTE GEGENFALL ZU BENS GEGENPROBE (Runde 1, Prüflücke 6). Er braucht keine Strecke:
     // gemessen wird das Paar, an dem die Blindheit hing — `liesSuchantwort` (was kam?) und
     // `pruefeSuchantwort` (darf man daraus „nicht gefunden" lesen?). Als reine Verstellprobe wäre
     // die Eigenschaft beim nächsten Umbau wieder weg; als Fall bleibt sie.
     const fehlerkoerper = JSON.stringify({ error: "BEN_DOKUMENTSUCHE_DEFEKT" });
     const wo = "W2";
+    /** Genau die Zusage, die die Strecke an allen sechs Stellen fährt — keine nachgebaute. */
+    const zusageZu = (a: Suchantwort): void =>
+      pruefeSuchantwort(
+        a.status,
+        a.istListe,
+        a.eintraegeGueltig,
+        a.eintragsFehlschlag,
+        a.koerper,
+        wo,
+      );
 
     // (i) DIE ECHTE LEERE TREFFERLISTE MUSS DURCHGEHEN. Ohne diese Zeile wäre die Zusage nur
     //     streng und nicht richtig — Ü1 und D2 leben davon, dass eine leere Liste gilt.
     const leer = liesSuchantwort({ statusCode: 200, payload: "[]" }, "ko-1");
     expect(leer.istListe).toBe(true);
+    expect(leer.eintraegeGueltig).toBe(true);
     expect(leer.trifft).toBe(false);
-    expect(() => pruefeSuchantwort(leer.status, leer.istListe, leer.koerper, wo)).not.toThrow();
+    expect(() => zusageZu(leer)).not.toThrow();
 
     // (ii) HTTP 200 MIT FEHLEROBJEKT — genau die Verstellung, unter der D2 und Ü1 grün blieben.
     const getarnt = liesSuchantwort({ statusCode: 200, payload: fehlerkoerper }, "ko-1");
     expect(getarnt.istListe, "ein Fehlerobjekt wurde als Trefferliste gelesen").toBe(false);
+    // Und der neue Messwert deutet die fehlende Liste NICHT in bewertbare Einträge um: er sagt
+    // ehrlich, dass gar nichts zu bewerten war (JOB 3849).
+    expect(getarnt.eintraegeGueltig).toBe(false);
     // UND HIER STEHT DIE BLINDHEIT SELBST, festgehalten statt beschrieben: der Trefferwert allein
     // ist von einer echten Leersuche NICHT zu unterscheiden. Genau an ihm hingen beide
     // Negativaussagen, und genau deshalb reicht er nicht.
     expect(getarnt.trifft).toBe(false);
-    expect(() => pruefeSuchantwort(getarnt.status, getarnt.istListe, getarnt.koerper, wo)).toThrow(
-      /BEN_DOKUMENTSUCHE_DEFEKT/,
-    );
+    expect(() => zusageZu(getarnt)).toThrow(/BEN_DOKUMENTSUCHE_DEFEKT/);
 
     // (iii) HTTP 503 — Status UND Körper müssen in der Meldung stehen. Ein „erwartet 200, war 503"
     //       allein sagt dem Lesenden nicht, was der Server stattdessen ausgab.
     const kaputt = liesSuchantwort({ statusCode: 503, payload: fehlerkoerper }, "ko-1");
-    const werfe503 = () => pruefeSuchantwort(kaputt.status, kaputt.istListe, kaputt.koerper, wo);
+    const werfe503 = () => zusageZu(kaputt);
     expect(werfe503).toThrow(/HTTP 503/);
     expect(werfe503).toThrow(/BEN_DOKUMENTSUCHE_DEFEKT/);
 
@@ -509,8 +581,166 @@ describe("JOB 3801 · der erste Nutzerweg, am Stück", () => {
       "ko-1",
     );
     expect(blatt.istListe).toBe(false);
-    expect(() => pruefeSuchantwort(blatt.status, blatt.istListe, blatt.koerper, wo)).toThrow(
-      /Gateway Timeout/,
+    expect(() => zusageZu(blatt)).toThrow(/Gateway Timeout/);
+
+    // ============================================================================================
+    // (v)–(xi) JOB 3849 · DIE EINTRÄGE SELBST. Bis hierher prüfte W2, DASS eine Liste kam — nicht,
+    // WAS darin steht. Ein Server, der `["ko-1"]` statt `[{"id":"ko-1"}]` liefert, kam damit als
+    // „erfolgreich nichts gefunden" durch, obwohl das gesuchte Objekt buchstäblich in der Antwort
+    // stand; `[null]` riss den Lauf mit einem `TypeError` ab, bevor irgendeine Zusage greifen
+    // konnte. Beides sind Fälle, keine Verstellproben — dieselbe Begründung wie oben.
+    // ============================================================================================
+    const formlos = (payload: string) => {
+      // WIRFT NIE — das ist selbst die halbe Zusage. Stünde hier ein `TypeError`, wäre der Lauf an
+      // einer JS-Meldung zu Ende, bevor irgendeine Aussage über die Suche gemacht werden könnte.
+      const a = liesSuchantwort({ statusCode: 200, payload }, "ko-1");
+      return { antwort: a, zusage: () => zusageZu(a) };
+    };
+
+    // (v) F1 · `[null]` — der Eintrag, an dem die alte Lesart ABSTÜRZTE statt zu messen.
+    const f1 = formlos("[null]");
+    expect(f1.antwort.trifft, "F1: ein formloser Eintrag darf nie ein Treffer sein").toBe(false);
+    expect(f1.zusage, "F1: `[null]` ging als Trefferliste durch").toThrow(/Platz 0/);
+    expect(f1.zusage).toThrow(/null/);
+
+    // (vi) F2 · `[{}]` — ein Objekt ohne jede Kennung.
+    const f2 = formlos("[{}]");
+    expect(f2.antwort.trifft, "F2: ein Eintrag ohne Kennung darf nie ein Treffer sein").toBe(false);
+    expect(f2.zusage, "F2: `[{}]` ging als Trefferliste durch").toThrow(/Platz 0/);
+    expect(f2.zusage).toThrow(/\{\}/);
+
+    // (vii) F3 · `["ko-1"]` — DER FALL, DER DEN UNTERSCHIED MACHT. Das gesuchte Objekt STEHT in der
+    //       Antwort; nur seine Form fehlt. Wer hier „nicht gefunden" liest, behauptet das Gegenteil
+    //       dessen, was der Server geschickt hat. Deshalb muss der Istwert in der Meldung stehen.
+    const f3 = formlos('["ko-1"]');
+    expect(f3.antwort.trifft, "F3: eine blosse Zeichenkette ist kein Treffer").toBe(false);
+    expect(f3.zusage, 'F3: `["ko-1"]` ging als leere Trefferliste durch').toThrow(/Platz 0/);
+    expect(f3.zusage, "F3: die Meldung nennt den Istwert nicht").toThrow(/"ko-1"/);
+
+    // (viii) F4 · `[{"id":""}]` — eine leere Kennung ist keine Kennung.
+    const f4 = formlos('[{"id":""}]');
+    expect(f4.antwort.trifft, "F4: eine leere Kennung darf nie ein Treffer sein").toBe(false);
+    expect(f4.zusage, "F4: eine leere Kennung ging als gültiger Eintrag durch").toThrow(/Platz 0/);
+
+    // (ix) F5 · `[{"id":null}]` — das Feld ist da, der Wert ist es nicht.
+    const f5 = formlos('[{"id":null}]');
+    expect(f5.antwort.trifft, "F5: `id: null` darf nie ein Treffer sein").toBe(false);
+    expect(f5.zusage, 'F5: `{"id":null}` ging als gültiger Eintrag durch').toThrow(/Platz 0/);
+    expect(f5.zusage).toThrow(/\{"id":null\}/);
+
+    // (x) F6 · EIN GÜLTIGER EINTRAG HEILT KEINEN FORMLOSEN. Sonst genügte ein einziger sauberer
+    //     Treffer, um eine kaputte Liste als gemessen auszugeben — und der Platz im Array wäre die
+    //     einzige Angabe, die den zweiten Eintrag noch auffindbar macht.
+    const f6 = formlos('[{"id":"ko-1"},null]');
+    expect(f6.antwort.trifft, "F6: ein gültiger erster Eintrag heilte den formlosen zweiten").toBe(
+      false,
+    );
+    expect(f6.zusage, "F6: der formlose zweite Eintrag ging durch").toThrow(/Platz 1/);
+
+    // (xi) F7 · UND DIE BEIDEN GUTEN FÄLLE — ohne sie wäre die Zusage nur streng und nicht richtig,
+    //      dieselbe Begründung wie bei (i). D1 lebt vom Treffer, Ü1 und D2 von der leeren Liste.
+    const f7a = formlos('[{"id":"ko-1"}]');
+    expect(f7a.antwort.trifft, "F7: der gültige Treffer wurde nicht mehr gefunden").toBe(true);
+    expect(f7a.zusage, "F7: eine gültige Trefferliste wurde abgewiesen").not.toThrow();
+    const f7b = formlos("[]");
+    expect(f7b.antwort.eintraegeGueltig, "F7: die leere Liste gilt als bewertbar").toBe(true);
+    expect(f7b.antwort.trifft, "F7: die leere Liste trifft nicht").toBe(false);
+    expect(f7b.zusage, "F7: die echte leere Liste wurde abgewiesen").not.toThrow();
+
+    // (xii) DIESELBE PRÜFUNG AUF DER `similar`-SEITE DES LIVE-CHECKS. Sie hing an genau demselben
+    //       rohen `.some((s) => s.id === koId)` — nur ausserhalb jedes `try`, mitten in
+    //       `fahreStrecke`. Gemessen wird der WIRKLICH benutzte Prüfweg (`liesTrefferliste`), nicht
+    //       ein zweiter, hier nachgebauter Formbegriff.
+    const sNull = liesTrefferliste([null]);
+    expect(sNull.gueltig, "similar `[null]` galt als bewertbare Ähnlichkeitsliste").toBe(false);
+    expect(sNull.fehlschlag, "die Meldung nennt den Platz nicht").toMatch(/Platz 0/);
+    expect(sNull.eintraege, "aus einer formlosen Liste darf kein Treffer gerechnet werden").toEqual(
+      [],
+    );
+    const sText = liesTrefferliste(["ko-1"]);
+    expect(sText.gueltig, 'similar `["ko-1"]` galt als bewertbare Ähnlichkeitsliste').toBe(false);
+    expect(sText.fehlschlag, "die Meldung nennt den Istwert nicht").toMatch(/"ko-1"/);
+    expect(sText.eintraege).toEqual([]);
+    // Und die Gegenrichtung, damit die Zusage nicht nur streng ist: die echte Liste geht durch.
+    const sGut = liesTrefferliste([{ id: "ko-1", score: 0.9 }]);
+    expect(sGut.gueltig, "eine gültige Ähnlichkeitsliste wurde abgewiesen").toBe(true);
+    expect(sGut.eintraege.some((aehnlich) => aehnlich.id === "ko-1")).toBe(true);
+
+    // ============================================================================================
+    // (xiii)–(xv) JOB 3849 RUNDE 2 · DIE DIAGNOSE DARF NICHT SELBST ABSTÜRZEN. BEN Korrekturpflicht 1,
+    // von ihm gemessen, hier als Fall festgehalten: `"[".repeat(10000)+"0"+"]".repeat(10000)` ist
+    // gültiges JSON, `JSON.parse` nimmt es an (es arbeitet iterativ) — und dann starb die MELDUNG
+    // daran. `JSON.stringify` im Istwert läuft REKURSIV und warf `RangeError: Maximum call stack size
+    // exceeded`, hoch durch `liesTrefferliste`, `liesSuchantwort`, `fahreStrecke`. Ein Wächter, der
+    // beim Melden eines Fehlers stirbt, sagt über die Suche nichts — genau der Abbruch, gegen den (v)
+    // angetreten ist, nur eine Stelle weiter: nicht mehr in der Bewertung, sondern im Bericht.
+    // ============================================================================================
+    const tiefePayload = `${"[".repeat(10_000)}0${"]".repeat(10_000)}`;
+
+    // (xiii) F8 · DER TIEFE EINTRAG. Zuerst die Zusage selbst: hier darf NICHTS fliegen.
+    expect(
+      () => liesSuchantwort({ statusCode: 200, payload: tiefePayload }, "ko-1"),
+      "F8: die Diagnose stürzte selbst ab, statt den Eintrag zu melden",
+    ).not.toThrow();
+    const f8 = formlos(tiefePayload);
+    expect(f8.antwort.istListe, "F8: der tiefe Körper ist sehr wohl eine Liste").toBe(true);
+    expect(
+      f8.antwort.eintraegeGueltig,
+      "F8: ein verschachtelter Eintrag ist kein Objekt mit Kennung",
+    ).toBe(false);
+    expect(f8.antwort.trifft, "F8: aus einem unbewertbaren Eintrag darf kein Treffer folgen").toBe(
+      false,
+    );
+    expect(f8.zusage, "F8: der tiefe Eintrag ging als Trefferliste durch").toThrow(
+      /Platz 0 war \[/,
+    );
+    // UND DIE GRENZE GILT BEIM SCHREIBEN, nicht erst danach: vollständig serialisieren und dann
+    // kürzen war genau der Fehler — gekürzt wurde ein Text, der nie zustande kam.
+    expect(
+      f8.antwort.eintragsFehlschlag.length,
+      `F8: die Meldung wuchs mit der Schachtelung: ${f8.antwort.eintragsFehlschlag.slice(0, 200)}`,
+    ).toBeLessThan(600);
+    expect(
+      f8.antwort.eintragsFehlschlag,
+      "F8: die Meldung verschweigt, dass gekürzt wurde",
+    ).toMatch(/…/);
+
+    // (xiv) F9 · DIESELBE GRENZE IN DER BREITE. 5000 formlose Einträge dürfen keine 5000-fache
+    //       Meldung bauen: sie nennt den ersten Platz, sagt wie viele es insgesamt sind, und hört auf.
+    const breit = formlos(JSON.stringify(new Array(5000).fill(null)));
+    expect(breit.antwort.eintraegeGueltig, "F9: 5000 leere Einträge galten als bewertbar").toBe(
+      false,
+    );
+    expect(breit.antwort.trifft).toBe(false);
+    expect(
+      breit.antwort.eintragsFehlschlag,
+      "F9: die Meldung nennt den ersten Platz nicht",
+    ).toMatch(/Platz 0/);
+    expect(breit.antwort.eintragsFehlschlag, "F9: die Meldung nennt die Gesamtzahl nicht").toMatch(
+      /5000/,
+    );
+    expect(
+      breit.antwort.eintragsFehlschlag.length,
+      "F9: die Meldung wuchs mit der Länge der Liste",
+    ).toBeLessThan(600);
+
+    // (xv) UND DIESELBE ABSICHERUNG AUF DER `similar`-SEITE — derselbe Leser, deshalb derselbe Fall
+    //      und kein zweiter Formbegriff. Ohne diese Zeilen wäre die Härtung nur für die Suche belegt.
+    const tiefeListe = JSON.parse(tiefePayload) as unknown;
+    expect(
+      () => liesTrefferliste(tiefeListe),
+      "similar: die Diagnose stürzte selbst ab, statt den Eintrag zu melden",
+    ).not.toThrow();
+    const sTief = liesTrefferliste(tiefeListe);
+    expect(sTief.gueltig, "similar: ein tief verschachtelter Eintrag galt als bewertbar").toBe(
+      false,
+    );
+    expect(sTief.eintraege, "similar: aus einer formlosen Liste darf kein Treffer folgen").toEqual(
+      [],
+    );
+    expect(sTief.fehlschlag, "similar: die Meldung nennt den Platz nicht").toMatch(/Platz 0/);
+    expect(sTief.fehlschlag.length, "similar: die Meldung wuchs mit der Schachtelung").toBeLessThan(
+      600,
     );
   });
 

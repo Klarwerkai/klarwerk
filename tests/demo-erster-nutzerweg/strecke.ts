@@ -61,6 +61,37 @@
 // Suchantwort als eigene Messwerte mit (`Suchantwort`, `liesSuchantwort`), für BEIDE Suchen; die
 // Trefferbewertung darf erst gelesen werden, wenn Status und Form stimmen (`durchstich.test.ts`,
 // `pruefeSuchantwort`).
+//
+// JOB 3849 — DIESELBE BLINDHEIT EINE SCHICHT TIEFER, und BEN hat sie selbst bestellt (Prüfpunkt 6
+// zu 3825 R2): geprüft wurde, DASS eine Liste kam, nie, WAS darin steht. Gemessen am Stand vor
+// dieser Runde, nicht vermutet:
+//   · `[null]`                  → `liesSuchantwort` WARF `TypeError: Cannot read properties of null
+//                                 (reading 'id')` (:831) — der Lauf starb an einer JS-Meldung, bevor
+//                                 irgendeine Zusage greifen konnte. Genau das, was der Kommentar
+//                                 unten ausgeschlossen zu haben glaubte.
+//   · `["ko-1"]`, `[{}]`,       → `istListe: true`, `trifft: false`, alle Zusagen grün. Das gesuchte
+//     `[{"id":""}]`,              Objekt stand bei `["ko-1"]` BUCHSTÄBLICH in der Antwort, und die
+//     `[{"id":null}]`             Strecke las „nicht gefunden".
+//   · `[{"id":"ko-1"},null]`    → `trifft: TRUE`. `.some` bricht beim ersten Treffer ab und sieht den
+//                                 formlosen zweiten Eintrag nie: ein gültiger Eintrag HEILTE eine
+//                                 kaputte Liste.
+// JETZT ist die EINTRAGSFORM ein eigener Messwert neben Status und Listenform (`liesTrefferliste`,
+// `Trefferliste`): ein Eintrag gilt nur als gültig, wenn er ein Objekt (nicht `null`, kein Array)
+// mit nicht-leerer Zeichenketten-`id` ist. `trifft` wird ausschliesslich aus gültigen Einträgen
+// berechnet und ist bei jeder formlosen Liste `false` — „konnte nicht bewertet werden" steht als
+// eigener Messwert daneben (`eintraegeGueltig`/`eintragsFehlschlag`, mit Platz im Array und
+// Istwert), damit es nicht dasselbe Feld belegt wie „nicht getroffen". Derselbe Prüfweg liest die
+// `similar`-Liste des Live-Checks (`pruefungTrifft`), die an genau derselben Schwäche hing.
+//
+// JOB 3849 RUNDE 2 — UND DIE MELDUNG SELBST STARB NOCH. BEN prüfte die neue Fassung mit einem
+// gültigen, tief verschachtelten Körper (`"[".repeat(10000)+"0"+"]".repeat(10000)`): `JSON.parse`
+// nimmt ihn an, aber der Istwert in der Diagnose warf `RangeError: Maximum call stack size exceeded`
+// (`istwertVon` → `liesTrefferliste` → `liesSuchantwort` → `fahreStrecke`). Die Zusage „wirft nie"
+// war also für die BEWERTUNG eingelöst und für den BERICHT nicht — und ein Wächter, der beim Melden
+// stirbt, sagt über die Suche genauso wenig wie einer, der still „nicht gefunden" behauptet. Eine
+// Grenze, die erst NACH dem vollständigen Serialisieren kürzt, ist keine Grenze: `istwertVon`
+// schreibt jetzt nur noch begrenzt tief, begrenzt breit und begrenzt lang, und die Fehlermeldung
+// nennt höchstens `ISTWERT_MELDUNGEN` Plätze einzeln und zählt den Rest.
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -289,7 +320,18 @@ export interface Streckenbefund {
     readonly ankerQuelle: "wiedergeladen" | "alt";
     readonly pruefungStatus: number;
     readonly pruefungOhneAnmeldung: number;
-    /** Findet die Prüfung das eben Angelegte wieder? (`similar` des Live-Checks) */
+    /**
+     * TRUG DIE ÄHNLICHKEITSLISTE DES LIVE-CHECKS ÜBERHAUPT BEWERTBARE EINTRÄGE? (JOB 3849)
+     * `similar: [null]` riss den Lauf bis hierher mit einem `TypeError` ab, `similar: ["ko-1"]`
+     * ergab ein stilles `false` — dieselbe Schwäche wie bei den Suchen, nur an der Prüfroute.
+     */
+    readonly pruefungEintraegeGueltig: boolean;
+    /** Platz und Istwert jedes formlosen `similar`-Eintrags — leer, wenn bewertbar. */
+    readonly pruefungEintragsFehlschlag: string;
+    /**
+     * Findet die Prüfung das eben Angelegte wieder? (`similar` des Live-Checks) Berechnet nur aus
+     * Einträgen gültiger Form; ohne `pruefungEintraegeGueltig` ist ein `false` hier keine Aussage.
+     */
     readonly pruefungTrifft: boolean;
     /** Was die Prüfung über sich selbst sagt — „done" oder ehrlich „pending". */
     readonly pruefungStand: string;
@@ -301,6 +343,9 @@ export interface Streckenbefund {
     readonly sucheIstListe: boolean;
     /** Der Antwortkörper (gekürzt) — Diagnosematerial für eine rote Stelle, kein Prüfwert. */
     readonly sucheKoerper: string;
+    /** UND KAMEN BEWERTBARE EINTRÄGE? (JOB 3849) Ohne das ist `sucheTrifft` keine Aussage. */
+    readonly sucheEintraegeGueltig: boolean;
+    readonly sucheEintragsFehlschlag: string;
     readonly sucheTrifft: boolean;
     /**
      * DIE ZWEITE SUCHE, mit `DOKUMENTWORT` (JOB 3825). Sie tritt NEBEN die erste, nicht an ihre
@@ -309,6 +354,8 @@ export interface Streckenbefund {
     readonly sucheDokumentStatus: number;
     readonly sucheDokumentIstListe: boolean;
     readonly sucheDokumentKoerper: string;
+    readonly sucheDokumentEintraegeGueltig: boolean;
+    readonly sucheDokumentEintragsFehlschlag: string;
     readonly sucheDokumentTrifft: boolean;
     /** Woher der Dokumenttreffer kam — Rumpf oder Kurzfeld. Siehe `Dokumenttreffer`. */
     readonly dokumentTreffer: Dokumenttreffer;
@@ -617,6 +664,11 @@ export async function fahreStrecke(opt: { ohne?: Auslassung } = {}): Promise<Lau
     payload: { text: pruefText, source: "draft" },
   });
   merke("5 fund", "POST /api/knowledge/check (ohne Anmeldung)", ohneAnmeldung.statusCode);
+  // DIESELBE FORMPRÜFUNG WIE AN DEN SUCHEN, nicht eine zweite daneben (JOB 3849, Lieferung 6). Bis
+  // hierher lief die Trefferberechnung über die ROHEN `similar`-Einträge — ausserhalb jedes `try`,
+  // mitten in `fahreStrecke`: ein `similar: [null]` beendete den Lauf mit einem `TypeError`, statt
+  // einen benannten Befund zu liefern.
+  const aehnliche = liesTrefferliste((pruefung.json() as { similar?: unknown }).similar);
 
   // (b) DIE SUCHE MIT DEM WORT DES DURCHGEHENDEN FADENS. `SUCHWORT` steht im Quellsatz UND in den
   //     beiden selbst getippten Feldern — dieser Schritt belegt also, dass das Angelegte nach
@@ -728,17 +780,21 @@ export async function fahreStrecke(opt: { ohne?: Auslassung } = {}): Promise<Lau
         ankerQuelle,
         pruefungStatus: pruefung.statusCode,
         pruefungOhneAnmeldung: ohneAnmeldung.statusCode,
-        pruefungTrifft: alsListe<{ id?: string }>(
-          (pruefung.json() as { similar?: unknown }).similar,
-        ).some((s) => s.id === koId),
+        pruefungEintraegeGueltig: aehnliche.gueltig,
+        pruefungEintragsFehlschlag: aehnliche.fehlschlag,
+        pruefungTrifft: aehnliche.eintraege.some((aehnlich) => aehnlich.id === koId),
         pruefungStand: String((pruefung.json() as { status?: string }).status ?? ""),
         sucheStatus: suchantwort.status,
         sucheIstListe: suchantwort.istListe,
         sucheKoerper: suchantwort.koerper,
+        sucheEintraegeGueltig: suchantwort.eintraegeGueltig,
+        sucheEintragsFehlschlag: suchantwort.eintragsFehlschlag,
         sucheTrifft: suchantwort.trifft,
         sucheDokumentStatus: dokAntwort.status,
         sucheDokumentIstListe: dokAntwort.istListe,
         sucheDokumentKoerper: dokAntwort.koerper,
+        sucheDokumentEintraegeGueltig: dokAntwort.eintraegeGueltig,
+        sucheDokumentEintragsFehlschlag: dokAntwort.eintragsFehlschlag,
         sucheDokumentTrifft: dokAntwort.trifft,
         dokumentTreffer,
         belegObjektId,
@@ -780,32 +836,202 @@ function alsListe<T>(rohe: unknown): T[] {
   return Array.isArray(rohe) ? (rohe as T[]) : [];
 }
 
+/** Die eine Lesart für Diagnosetexte: 300 Zeichen, dann die Kürzung ausdrücklich benannt. */
+function gekuerzt(text: string): string {
+  return text.length > 300 ? `${text.slice(0, 300)}… (gekürzt)` : text;
+}
+
 /**
- * EINE SUCHANTWORT ALS MESSWERT — Status, FORM und Körper zusammen. Und die Form ist hier der Punkt.
+ * DIE ERWARTETE FORM EINES TREFFERLISTENEINTRAGS — VOLLSTÄNDIG, nicht als Stichwort.
  *
- * BEN zu Runde 1 (Korrekturpflicht 1), mit eigener Gegenprobe belegt: die Negativaussagen von D2 und
- * Ü1 („das Dokumentwort wurde NICHT gefunden") lasen ihre Trefferliste über `alsListe` — und das
- * verwandelt JEDEN Nicht-Listen-Körper in `[]`. Eine Route, die mit HTTP 200 und `{error: …}`
+ * Gültig ist NUR: ein Objekt, das nicht `null` ist, das kein Array ist, und dessen `id` eine
+ * NICHT-LEERE Zeichenkette ist. Ausdrücklich nicht genügt „hat irgendwie ein Feld `id`": `{"id":""}`
+ * und `{"id":null}` kamen bis JOB 3849 als gültige Einträge durch, und `["ko-1"]` ebenso.
+ */
+function istGueltigerEintrag(eintrag: unknown): eintrag is { readonly id: string } {
+  if (typeof eintrag !== "object" || eintrag === null || Array.isArray(eintrag)) return false;
+  const kennung = (eintrag as { id?: unknown }).id;
+  return typeof kennung === "string" && kennung !== "";
+}
+
+/** Wie weit ein Istwert überhaupt geschrieben wird, bevor „…" steht. Begründung: `istwertVon`. */
+const ISTWERT_TIEFE = 4;
+const ISTWERT_GLIEDER = 12;
+/** Wie viele formlose Einträge eine Meldung einzeln nennt, bevor sie nur noch zählt. */
+const ISTWERT_MELDUNGEN = 5;
+
+/**
+ * DER ISTWERT EINES EINTRAGS — gedruckt, ohne ihn je GANZ zu drucken (JOB 3849 Runde 2).
+ *
+ * BEN Korrekturpflicht 1, von ihm gemessen und in `durchstich.test.ts` (xiii) als Fall festgehalten:
+ * `JSON.stringify` und der Notweg `String(…)` laufen BEIDE rekursiv durch die Schachtelung. Der
+ * gültige Körper `"[".repeat(10000) + "0" + "]".repeat(10000)` kommt durch `JSON.parse` (das
+ * arbeitet iterativ) — und dann starb die DIAGNOSE daran: `RangeError: Maximum call stack size
+ * exceeded`, geworfen hier, hoch durch `liesTrefferliste`, `liesSuchantwort`, `fahreStrecke`. Damit
+ * war die Zusage „wirft nie" widerlegt, ausgerechnet an der Stelle, die den Fehler MELDEN soll.
+ *
+ * ERST KÜRZEN HALF NICHT, und das ist der ganze Punkt: gekürzt wurde nach dem vollständigen
+ * Serialisieren, also ein Text, der nie zustande kam. Deshalb entsteht hier gar kein vollständiger
+ * Text — TIEFE, GLIEDERZAHL und ZEICHENZAHL begrenzen schon das Schreiben, und jeder Zweig hört auf,
+ * sobald der Vorrat leer ist. Was wegfällt, steht als „…" da: der Platz im Array und die Art des
+ * Werts bleiben lesbar, denn genau die braucht der Mensch vor der Vorführung.
+ *
+ * KEIN `catch` — der Weg wirft nicht, statt einen Wurf umzudeuten. Ein `catch` würde den Istwert
+ * verlieren und wäre wieder die „erwartet 200, war 503"-Meldung, die hier schon zu wenig war.
+ */
+function istwertVon(eintrag: unknown): string {
+  return gekuerzt(drucke(eintrag, ISTWERT_TIEFE, { zeichen: 300 }));
+}
+
+function drucke(wert: unknown, tiefe: number, vorrat: { zeichen: number }): string {
+  if (vorrat.zeichen <= 0) return "…";
+  const nimm = (text: string): string => {
+    const stueck = text.length > vorrat.zeichen ? `${text.slice(0, vorrat.zeichen)}…` : text;
+    vorrat.zeichen -= stueck.length;
+    return stueck;
+  };
+  if (wert === null) return nimm("null");
+  if (Array.isArray(wert)) {
+    if (tiefe <= 0) return nimm(`[… zu tief, Länge ${wert.length}]`);
+    const glieder: string[] = [];
+    for (const glied of wert) {
+      if (glieder.length >= ISTWERT_GLIEDER || vorrat.zeichen <= 0) break;
+      vorrat.zeichen -= 1; // das Komma bzw. die Klammer, damit die Grenze wirklich hält
+      glieder.push(drucke(glied, tiefe - 1, vorrat));
+    }
+    return `[${glieder.join(",")}${glieder.length < wert.length ? "…" : ""}]`;
+  }
+  switch (typeof wert) {
+    case "string":
+      // ZUERST schneiden, DANN drucken: eine Zeichenkette von 10 MB darf nicht erst ganz entstehen.
+      return nimm(JSON.stringify(wert.slice(0, Math.max(vorrat.zeichen, 0))));
+    case "object": {
+      const felder = Object.keys(wert as object);
+      if (tiefe <= 0) return nimm(`{… zu tief, Felder: ${felder.length}}`);
+      const gedruckt: string[] = [];
+      for (const feld of felder) {
+        if (gedruckt.length >= ISTWERT_GLIEDER || vorrat.zeichen <= 0) break;
+        vorrat.zeichen -= 1;
+        const schluessel = nimm(JSON.stringify(feld));
+        gedruckt.push(
+          `${schluessel}:${drucke((wert as Record<string, unknown>)[feld], tiefe - 1, vorrat)}`,
+        );
+      }
+      return `{${gedruckt.join(",")}${gedruckt.length < felder.length ? "…" : ""}}`;
+    }
+    case "bigint":
+      return nimm(`${wert}n`);
+    case "function":
+      return nimm("[Funktion]");
+    case "symbol":
+      return nimm("[Symbol]");
+    default:
+      return nimm(String(wert));
+  }
+}
+
+/**
+ * EINE TREFFERLISTE ALS MESSWERT — und zwar samt ihrer EINTRÄGE (JOB 3849).
+ *
+ * WOZU: Bis hierher hiess „Form geprüft" genau `Array.isArray`. Was in der Liste stand, sah niemand
+ * an — die Trefferberechnung lief über die ROHEN Einträge. Die drei gemessenen Folgen stehen
+ * im Kopf dieser Datei. Ein formloser Eintrag ist weder ein Treffer noch eine Nicht-Übereinstimmung:
+ * er ist ein benannter Antwortfehler, und das ist ein eigener Zustand mit einem eigenen Feld.
+ *
+ * DIE BEIDEN AUSSAGEN BLEIBEN GETRENNT: `gueltig` sagt, ob überhaupt bewertet werden KONNTE,
+ * `treffer` (bzw. `Suchantwort.trifft`) sagt, ob gefunden wurde. Nur so lässt sich „konnte nicht
+ * bewertet werden" von „nicht gefunden" unterscheiden — genau die Unterscheidung, die der ganzen
+ * Reihe dieser Runden zugrunde liegt.
+ *
+ * EIN GÜLTIGER EINTRAG HEILT KEINEN FORMLOSEN: gemeldet werden ALLE formlosen Einträge mit Platz und
+ * Istwert, und `eintraege` bleibt in diesem Fall leer. Bis JOB 3849 lieferte `[{"id":"ko-1"},null]`
+ * ein `trifft: true`, weil `.some` beim ersten Treffer abbricht und den zweiten Eintrag nie sah.
+ *
+ * WIRFT NIE — und das schliesst die MELDUNG ein (Runde 2, BEN Korrekturpflicht 1). Eine Antwort, die
+ * keine Liste ist, wird zum benannten Fehlschlag, nicht zu `[]`; und ein Eintrag, den man nicht ganz
+ * ausdrucken kann (tief verschachtelt, sehr lang, sehr viele), wird trotzdem gemeldet, weil der
+ * Istwert begrenzt GESCHRIEBEN und nicht erst vollständig gebaut und dann gekürzt wird (`istwertVon`).
+ * Die Meldung selbst ist ebenfalls begrenzt: `ISTWERT_MELDUNGEN` Plätze einzeln, der Rest gezählt.
+ */
+export interface Trefferliste {
+  /** Kam eine Liste, und trägt JEDER ihrer Einträge die erwartete Form? */
+  readonly gueltig: boolean;
+  /** Der benannte Grund mit Platz und Istwert, wenn nicht — sonst leer. */
+  readonly fehlschlag: string;
+  /** Die Einträge gültiger Form. Leer, solange `gueltig` falsch ist. */
+  readonly eintraege: readonly { readonly id: string }[];
+}
+
+export function liesTrefferliste(rohe: unknown): Trefferliste {
+  if (!Array.isArray(rohe)) {
+    return {
+      gueltig: false,
+      fehlschlag: `es kam gar keine Liste, sondern ${istwertVon(rohe)} — es gibt keine Einträge, deren Form zu bewerten wäre`,
+      eintraege: [],
+    };
+  }
+  // EIN DURCHGANG, UND ER IST BEGRENZT. Gezählt werden alle formlosen Einträge, einzeln GENANNT nur
+  // die ersten `ISTWERT_MELDUNGEN` — sonst wüchse die Meldung mit der Liste (5000 formlose Einträge
+  // ergaben 5000 Istwerte), und die Grenze im Istwert selbst hielte die Diagnose trotzdem nicht klein.
+  // Der erste Platz ist der, den ein Mensch zuerst nachschlägt; die Gesamtzahl steht davor.
+  let formlose = 0;
+  const genannt: string[] = [];
+  for (const [platz, eintrag] of rohe.entries()) {
+    if (istGueltigerEintrag(eintrag)) continue;
+    formlose += 1;
+    if (genannt.length < ISTWERT_MELDUNGEN)
+      genannt.push(`Platz ${platz} war ${istwertVon(eintrag)}`);
+  }
+  if (formlose > 0) {
+    const weitere = formlose - genannt.length;
+    return {
+      gueltig: false,
+      fehlschlag: `${formlose} von ${rohe.length} Listeneinträgen haben nicht die erwartete Form (ein Objekt mit nicht-leerer Zeichenketten-Kennung „id"): ${genannt.join("; ")}${weitere > 0 ? ` … und ${weitere} weitere` : ""}`,
+      eintraege: [],
+    };
+  }
+  return { gueltig: true, fehlschlag: "", eintraege: rohe.filter(istGueltigerEintrag) };
+}
+
+/**
+ * EINE SUCHANTWORT ALS MESSWERT — Status, FORM, EINTRAGSFORM und Körper zusammen.
+ *
+ * BEN zu 3825 Runde 1 (Korrekturpflicht 1), mit eigener Gegenprobe belegt: die Negativaussagen von
+ * D2 und Ü1 („das Dokumentwort wurde NICHT gefunden") lasen ihre Trefferliste über `alsListe` — und
+ * das verwandelt JEDEN Nicht-Listen-Körper in `[]`. Eine Route, die mit HTTP 200 und `{error: …}`
  * antwortet, sah damit aus wie eine erfolgreiche leere Suche: der Prüfer verstellte sie genau so,
  * und die ganze Datei blieb grün. Ein Fehlerobjekt ist aber kein leeres Ergebnis — dieselbe Lehre,
  * die für die Bestandsrouten in Runde 2 schon gezogen wurde (Kopf dieser Datei, Punkt 3), nur an der
  * Suche nicht angewandt.
  *
- * Deshalb reisen drei Dinge mit: der STATUS (antwortete sie überhaupt?), die FORM (war es eine
- * Liste?) und der KÖRPER (was kam sonst?). Erst mit allen dreien darf `trifft === false` als
- * „nicht gefunden" gelesen werden; die beiden ersten sind in `durchstich.test.ts` eigene Zusagen VOR
- * jeder Trefferbewertung, der dritte steht in ihren Meldungen, damit eine rote Stelle sagt, WAS
+ * BEN zu 3825 Runde 2 (Prüfpunkt 6), ebenfalls bestellt und hier geliefert: dieselbe Blindheit galt
+ * eine Schicht tiefer für die EINTRÄGE. Deshalb reisen VIER Dinge mit: der STATUS (antwortete sie
+ * überhaupt?), die LISTENFORM (war es eine Liste?), die EINTRAGSFORM (taugt jeder Eintrag zur
+ * Bewertung?) und der KÖRPER (was kam sonst?). Erst mit allen vieren darf `trifft === false` als
+ * „nicht gefunden" gelesen werden; die ersten drei sind in `durchstich.test.ts` eigene Zusagen VOR
+ * jeder Trefferbewertung, der vierte steht in ihren Meldungen, damit eine rote Stelle sagt, WAS
  * statt der Liste kam, statt nur „erwartet 200, war 503".
  *
- * KEIN `catch`, das etwas umdeutet: ein nicht lesbarer Körper wird `istListe: false` — also ein
- * benannter Fehlschlag — und nie eine leere Trefferliste.
+ * KEIN `catch`, das etwas umdeutet, und KEIN WURF: ein nicht lesbarer Körper wird `istListe: false`,
+ * ein formloser Eintrag `eintraegeGueltig: false` — beides benannte Fehlschläge, nie eine leere
+ * Trefferliste und nie ein Abbruch der Strecke. „Kein Wurf" gilt seit Runde 2 auch für das SCHREIBEN
+ * der Meldung: BEN widerlegte den Satz mit einem tief verschachtelten Eintrag, an dem `JSON.stringify`
+ * in der Diagnose starb. Siehe `istwertVon`; gehalten wird die Aussage von `durchstich.test.ts` (xiii).
  */
 export interface Suchantwort {
   readonly status: number;
   readonly istListe: boolean;
   /** Der Rumpf, auf 300 Zeichen gekürzt. Diagnosematerial für Meldungen, kein Prüfwert. */
   readonly koerper: string;
-  /** Steht `koId` in der Liste? Aussagekräftig NUR, wenn `status === 200 && istListe`. */
+  /** Trägt JEDER Listeneintrag die erwartete Form? Siehe `Trefferliste`. */
+  readonly eintraegeGueltig: boolean;
+  /** Platz und Istwert jedes formlosen Eintrags — leer, wenn `eintraegeGueltig`. */
+  readonly eintragsFehlschlag: string;
+  /**
+   * Steht `koId` in der Liste? Berechnet AUSSCHLIESSLICH aus Einträgen gültiger Form und deshalb
+   * `false`, sobald einer formlos ist. Aussagekräftig NUR, wenn `status === 200 && istListe &&
+   * eintraegeGueltig` — sonst sagt `eintragsFehlschlag`, warum gar nicht bewertet werden konnte.
+   */
   readonly trifft: boolean;
 }
 
@@ -818,17 +1044,17 @@ export function liesSuchantwort(
     rohe = JSON.parse(antwort.payload);
   } catch {
     // Kein JSON — dann ist es erst recht keine Trefferliste. `undefined` fällt unten durch
-    // `Array.isArray` und `alsListe` in genau die schwächere Aussage.
+    // `Array.isArray` und `liesTrefferliste` in genau die schwächere Aussage.
     rohe = undefined;
   }
+  const liste = liesTrefferliste(rohe);
   return {
     status: antwort.statusCode,
     istListe: Array.isArray(rohe),
-    koerper:
-      antwort.payload.length > 300
-        ? `${antwort.payload.slice(0, 300)}… (gekürzt)`
-        : antwort.payload,
-    trifft: alsListe<{ id?: string }>(rohe).some((t) => t.id === koId),
+    koerper: gekuerzt(antwort.payload),
+    eintraegeGueltig: liste.gueltig,
+    eintragsFehlschlag: liste.fehlschlag,
+    trifft: liste.eintraege.some((treffer) => treffer.id === koId),
   };
 }
 
