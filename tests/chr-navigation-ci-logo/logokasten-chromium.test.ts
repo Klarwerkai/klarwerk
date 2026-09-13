@@ -58,9 +58,36 @@
 // noch ein zweiter Weg, die CI einzuschalten; die CI kommt denselben Weg wie beim Kunden
 // (`PUT /api/admin/branding` an der echten App, kein Route-Mock, keine Attrappe).
 //
+// ================================================================================================
+// DIE BINDENDE SPRACHE IST GEMESSEN — UND SIE IST NICHT DEUTSCH (JOB 3779).
+// ================================================================================================
+//
+// BIS HIERHER STAND AN DIESER STELLE EINE ANNAHME: „Gemessen wird DEUTSCH — der längste und damit
+// bindende Fall. Englisch und Niederländisch MIT Firmen-CI sind hier NICHT gemessen." Der Satz
+// stammt aus JOB 3571, drei Rückgaben haben den Rest bestellt (`archiv/3616/runde-3`,
+// `archiv/3605/runde-1`, `archiv/3641/runde-2`), und gemessen hatte ihn niemand. Jetzt ist er
+// gemessen — in den Fällen L12–L14 unten, am 12.09.2026, mit eingeschalteter Firmen-CI, in allen
+// drei Sprachen und auf denselben sieben Breiten wie L1/L3:
+//
+//   · DIE ANNAHME IST FALSCH. Die breiteste Sprache ist NIEDERLÄNDISCH, nicht Deutsch: die Gruppe
+//     aus Wortmarke und Punkten misst bei 900 px de 563,9 px · en 510,0 px · nl 626,3 px und bei
+//     1280 px de 704,5 px · en 641,3 px · nl 736,6 px. Wer Deutsch misst, hat die anderen NICHT
+//     mit. Die Zahlen stehen in L13 im Lauf, der bindende Fall als Pin (`BINDENDE_SPRACHE`).
+//   · WAS TRÄGT: auf allen sieben Breiten in de und en und auf sechs von sieben in nl steht mit
+//     Firmen-CI nichts ausserhalb des Fensters und bleibt kein Überschuss — bei 1280 px auch auf
+//     Niederländisch, mit sichtbarem Firmenlogo und 32,0 px Luft.
+//   · WAS NICHT TRÄGT: bei 900 px steht der Konto-Kreis auf Niederländisch 41,5 px ausserhalb des
+//     Fensters (42 px Überschuss). Das ist ein BEFUND mit Zahlen und keine Zusage; er ist in
+//     `SPRACH_BEFUND` gepinnt, wird in BEIDE Richtungen gehalten und liegt nicht am Firmenlogo —
+//     bei 900 px sagt `LOGO_OHNE_PLATZ_QUERY` gar keinen Logokasten zu. Seine Ursache liegt in
+//     fremden Zielpfaden (`i18n.ts`, `shell/Kopfband.tsx`); behoben wird er hier nicht.
+//
+// DIE SCHWESTERAUSSAGE IST DAMIT NOCH NICHT NACHGEFÜHRT: `tests/navigation-schmal/kopfband-ci-chromium.test.ts:50-51`
+// trägt dieselbe Annahme („Meine Entwürfe" sei länger als „My drafts") und ist NICHT Zielpfad
+// dieses Auftrags — sie gehört JOB 3778. Ihr Vergleich ist gegen ENGLISCH geführt und für Englisch
+// auch richtig; über Niederländisch sagt er nichts, und genau dort liegt der Befund.
+//
 // EHRLICHE GRENZEN, ausdrücklich benannt:
-//   · Gemessen wird DEUTSCH — der längste und damit bindende Fall. Englisch und Niederländisch MIT
-//     Firmen-CI sind hier NICHT gemessen; dieser Rest stammt aus JOB 3571 und bleibt offen.
 //   · Gemessen wird das heute EINZIGE Firmenprofil (`advisor`). Ein zweites gibt es nicht. Was
 //     stattdessen gemessen wird, ist die REGEL: L6 fährt denselben Lauf mit einem künstlich sehr
 //     breiten Bild am gezeichneten `<img>`. Das ist die Robustheit der Deckelung, nicht ein neues
@@ -68,12 +95,28 @@
 //   · Bei 900 px wird NUR zugesichert, dass nichts ausserhalb des Fensters steht und kein Überschuss
 //     bleibt. Die volle Zusage über die ZUSAMMENSETZUNG der breiten Bauform gehört JOB 3060 und wird
 //     hier nicht neu erhoben.
+//     UND SEIT JOB 3779 GILT AUCH DIESE HALBE ZUSAGE NICHT IN JEDER SPRACHE: auf Niederländisch
+//     steht bei 900 px etwas ausserhalb des Fensters. Das ist der gemessene Befund oben, gepinnt in
+//     `SPRACH_BEFUND` („nl/900") — die Zusage gilt dort für Deutsch und Englisch.
 //   · Der Ladenachweis (JOB 3616, siehe unten) liest in der SCHMALEN Bauform keinen gezeichneten
 //     Zähler ab, weil das Kopfband dort nur den Punkt „Entwürfe" zeigt (`SCHMAL_PUNKT_IDS` in
 //     `shell/KopfbandPunkte.tsx`). Unter 900 px trägt ihn deshalb allein die ausgelieferte Antwort;
 //     der gezeichnete Zähler wird ab 900 px gemessen. Der Lauf sagt je Breite, welche Hälfte trug.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { ORIGIN, type Stand, fn, starte } from "../design/h6-chromium";
+// Die Sprachmenge des Produkts — GELESEN statt abgeschrieben (JOB 3779, Fall L14b). `htmlLang.ts`
+// ist ausdrücklich DOM-frei und importfrei (sein Kopf: „importierbar aus node-env-Tests"), zieht
+// also nichts in diesen Lauf; derselbe Weg nehmen `tests/sprachpersistenz-neuladen/` und
+// `tests/app-sprachschalter/`. Ein Import von `i18n.ts` oder `Logo.tsx` wäre etwas anderes — der
+// zöge React und die Markenquelle mit.
+import { ERLAUBTE_SPRACHEN } from "../../apps/web/src/lib/htmlLang";
+import {
+  ORIGIN,
+  type SprachLage,
+  type Stand,
+  fn,
+  setzeSprache,
+  starte,
+} from "../design/h6-chromium";
 import {
   type Bereitschaft,
   LOGO_STEHT,
@@ -692,29 +735,38 @@ async function liesSicht(): Promise<SichtBefund> {
  * Die EINE Zusicherung „das Firmenlogo steht" — eine Regel, ein Ort, beide Aufrufer (die
  * Ruhemessung jedes Falls und L5) fällen dasselbe Urteil mit denselben Zahlen.
  */
-function verlangeSichtbar(breite: number, sicht: SichtBefund): void {
+function verlangeSichtbar(etikett: string, sicht: SichtBefund): void {
   const urteil = beurteileSicht(sicht);
   expect(
     urteil.sichtbar,
-    `${breite}px: das Firmenlogo ist nicht sichtbar — ${urteil.gruende.join(" · ")} (${urteil.masse})`,
+    `${etikett}: das Firmenlogo ist nicht sichtbar — ${urteil.gruende.join(" · ")} (${urteil.masse})`,
   ).toBe(true);
 }
 
-/**
- * Messen MIT eingeschalteter Firmen-CI an einer beliebigen Breite — und dabei die ZUSAGE prüfen.
- *
- * Der Ablauf ist bewusst zweistufig: erst fragt Chromium seine eigene `matchMedia`, ob das Produkt
- * an dieser Breite überhaupt ein Logo zusagt; sagt es eines zu, wird zusätzlich auf das gezeichnete,
- * geladene Bild gewartet — sonst hinge jede Zahl davon ab, ob die Markenantwort rechtzeitig kam.
- * Sagt es keines zu, muss auch keines dastehen. In beiden Fällen wird RUHIG gemessen (siehe oben).
- */
-async function messeMitZusage(breite: number): Promise<{
+/** Alles, was ein Lauf MIT Firmen-CI an einer Breite hergibt — Zahlen, noch kein Urteil. */
+interface CiLage {
   m: Messung;
   logo: LogoBefund;
   sicht: SichtBefund;
   zugesagt: boolean;
   grenze: number;
-}> {
+}
+
+/**
+ * ERHEBEN MIT EINGESCHALTETER FIRMEN-CI an einer beliebigen Breite — Zahlen sammeln, nicht urteilen.
+ *
+ * Der Ablauf ist bewusst zweistufig: erst fragt Chromium seine eigene `matchMedia`, ob das Produkt
+ * an dieser Breite überhaupt ein Logo zusagt; sagt es eines zu, wird zusätzlich auf das gezeichnete,
+ * geladene Bild gewartet — sonst hinge jede Zahl davon ab, ob die Markenantwort rechtzeitig kam.
+ * Sagt es keines zu, muss auch keines dastehen. In beiden Fällen wird RUHIG gemessen (siehe oben).
+ *
+ * WARUM DAS ERHEBEN VOM URTEILEN GETRENNT IST (JOB 3779): die Sprachreihe unten erhebt 21 Lagen in
+ * EINEM Durchgang (`beforeAll`) und urteilt danach je Fall. Ein `expect` im Durchgang machte aus
+ * einem gemessenen BEFUND einer Sprache einen Abbruch, der alle anderen Fälle mitnimmt — und nähme
+ * genau die Zahlen weg, um die es geht. Geurteilt wird deshalb in `messeMitZusage` (die Fälle
+ * L0–L11) und in L12 (die Sprachreihe) — mit derselben Erhebung darunter, nicht mit einer zweiten.
+ */
+async function erhebeMitCi(breite: number): Promise<CiLage> {
   const seite = seiteRoh(stand);
   // Die Breite muss stehen, bevor `matchMedia` etwas Gültiges sagen kann — deshalb erst eine
   // Messung an der Breite, dann die Frage nach der Zusage, dann die eigentliche Ruhemessung.
@@ -725,18 +777,33 @@ async function messeMitZusage(breite: number): Promise<{
   const m = await messeRuhig(breite, zugesagt ? LOGO_STEHT : undefined);
   const logo = await liesLogoBefund(stand);
   const sicht = await liesSicht();
-  // BEIDE RICHTUNGEN BEISSEN. Ein fehlendes Logo an einer zugesagten Breite ebenso wie ein Logo an
-  // einer Breite, an der die Zeile es nicht trägt.
-  expect(
-    logo.logoGezeichnet,
-    zugesagt
-      ? `${breite}px: „${OHNE_PLATZ}" sagt hier ein Firmenlogo zu — im gezeichneten Kopfband steht keines`
-      : `${breite}px: „${OHNE_PLATZ}" sagt hier KEIN Firmenlogo zu — im gezeichneten Kopfband steht trotzdem eines`,
-  ).toBe(zugesagt);
-  if (zugesagt) {
-    verlangeSichtbar(breite, sicht);
-  }
   return { m, logo, sicht, zugesagt, grenze };
+}
+
+/**
+ * STEHT DER LOGOKASTEN, WO DAS PRODUKT IHN ZUSAGT?
+ *
+ * BEIDE RICHTUNGEN BEISSEN. Ein fehlendes Logo an einer zugesagten Breite ebenso wie ein Logo an
+ * einer Breite, an der die Zeile es nicht trägt. Die Aussage hängt an der ZUSAGE und an keiner
+ * Geometrie — sie gilt deshalb auch dort, wo die Zeile selbst nicht mehr ins Fenster passt (L12).
+ */
+function verlangeLogoWieZugesagt(etikett: string, lage: CiLage): void {
+  expect(
+    lage.logo.logoGezeichnet,
+    lage.zugesagt
+      ? `${etikett}: „${OHNE_PLATZ}" sagt hier ein Firmenlogo zu — im gezeichneten Kopfband steht keines`
+      : `${etikett}: „${OHNE_PLATZ}" sagt hier KEIN Firmenlogo zu — im gezeichneten Kopfband steht trotzdem eines`,
+  ).toBe(lage.zugesagt);
+}
+
+/** Erheben UND urteilen — der Weg jedes Falls, der an einer einzelnen Breite misst. */
+async function messeMitZusage(breite: number): Promise<CiLage> {
+  const lage = await erhebeMitCi(breite);
+  verlangeLogoWieZugesagt(`${breite}px`, lage);
+  if (lage.zugesagt) {
+    verlangeSichtbar(`${breite}px`, lage.sicht);
+  }
+  return lage;
 }
 
 beforeAll(async () => {
@@ -1077,7 +1144,7 @@ describe("JOB 3582 · L5 · KLARWERK bleibt stehen, das Firmenlogo bleibt SICHTB
       }
       const urteil = beurteileSicht(sicht);
       console.log(`${KENNUNG_3616} · L5 · ${breite}px · ${urteil.masse}`);
-      verlangeSichtbar(breite, sicht);
+      verlangeSichtbar(`${breite}px`, sicht);
     }, 120_000);
   }
 });
@@ -1579,7 +1646,7 @@ describe("JOB 3616 · L10 · ein gerahmter, rollbarer Vorfahr schneidet ab — u
   it(`L10 · ${START_BREITE} px: 20 px Rahmen und zu schmale Rollfläche machen den Befund rot`, async () => {
     const { sicht, zugesagt } = await messeMitZusage(START_BREITE);
     expect(zugesagt, `${START_BREITE}px: hier steht gar kein Logokasten`).toBe(true);
-    verlangeSichtbar(START_BREITE, sicht);
+    verlangeSichtbar(`${START_BREITE}px`, sicht);
     const seite = seiteRoh(stand);
     const RAHMEN = 20;
     const FEHLEND = 15;
@@ -1637,7 +1704,7 @@ describe("JOB 3616 · L10 · ein gerahmter, rollbarer Vorfahr schneidet ab — u
       await seite.evaluate<boolean>(NIMM_ROLLFLAECHE_ZURUECK);
     }
     // UND DER EINGRIFF IST ZURÜCKGENOMMEN: derselbe Kasten ist wieder sichtbar.
-    verlangeSichtbar(START_BREITE, await liesSicht());
+    verlangeSichtbar(`${START_BREITE}px`, await liesSicht());
   }, 180_000);
 });
 
@@ -1678,4 +1745,421 @@ describe("JOB 3582 · L9 · ohne Firmen-CI ist die Zeile unverändert", () => {
       await schalteCi(app, bearer, true);
     }
   }, 180_000);
+});
+
+// ================================================================================================
+// JOB 3779 · L12–L14 — „DEUTSCH IST DER BINDENDE FALL" WAR EINE ANNAHME. JETZT IST ES EINE MESSUNG.
+// ================================================================================================
+//
+// DER SATZ STAND SEIT JOB 3571 IM KOPF DIESER DATEI und lautete: gemessen werde Deutsch, der
+// längste und damit bindende Fall — Englisch und Niederländisch seien damit mit. Drei Rückgaben
+// haben den Rest bestellt und keine ihn geschlossen (`archiv/3616/runde-3`, `archiv/3605/runde-1`,
+// `archiv/3641/runde-2`). Die Begründung der Schwesterdatei führt den Vergleich ausdrücklich gegen
+// ENGLISCH („Meine Entwürfe" ist länger als „My drafts"); NIEDERLÄNDISCH kommt darin gar nicht vor.
+//
+// UND DIE ANNAHME IST FALSCH. Sie war schon ohne Firmen-CI widerlegt: JOB 3587 hat dieselbe Zeile
+// in drei Sprachen OHNE CI gemessen und für Niederländisch bei 900 px 65 px Überschuss gefunden
+// (`kopfband-schmal-chromium.test.ts`, `ZEILE_BEFUND` „nl/900"). Was dort ausdrücklich offen blieb,
+// ist die KOMBINATION: „ob das Firmenlogo in der längeren niederländischen Zeile noch trägt, ist
+// auf keiner der beiden Seiten gemessen" (ebenda, Zeile 81-84). Das ist der Gegenstand hier.
+//
+// DREI AUSSAGEN, DREI FÄLLE:
+//   · L12 — die Zeile MIT Firmen-CI, in allen drei Sprachen, auf DENSELBEN sieben Breiten wie
+//     L1/L3. Wo sie trägt, wird sie zugesichert; wo sie nicht trägt, steht der BEFUND mit Zahlen
+//     (`SPRACH_BEFUND`) und wird in beide Richtungen gehalten — er wird auch rot, wenn ihn jemand
+//     behebt, damit niemand ihn stillschweigend aus dem Gedächtnis verliert.
+//   · L13 — die ANNAHME selbst: die gemessene Breite der Wortmarke-/Punkte-Gruppe über die drei
+//     Sprachen, mit Zahlen, und die Aussage, WELCHE Sprache die breiteste ist. Sie steht als
+//     gemessener Pin (`BINDENDE_SPRACHE`) und nicht mehr als Satz in einem Kommentar.
+//   · L14 — die Voraussetzung: der Sprachwechsel trägt wirklich. Ohne sie misst der Lauf womöglich
+//     dreimal dieselbe deutsche Zeile und nennt es drei Sprachen (dieselbe Krankheit wie L0 bei der
+//     Firmen-CI, nur eine Ebene höher).
+//
+// DER WEG IST DER VORHANDENE, IN JEDEM STÜCK: die Sprache setzt `setzeSprache` (`h6-chromium.ts`),
+// die CI schaltet `schalteCi` (`kopfband-messung.ts`), gemessen wird mit `erhebeMitCi` — also mit
+// demselben Ankunftsnachweis und denselben Urteilen aus `ruhe-und-sicht.ts` wie L7/L8/L11. Es
+// entsteht keine zweite Bühne, keine zweite Startstelle, kein zweiter CI-Schalter und kein eigener
+// Zugriff auf den Speicherschlüssel der Sprachwahl (der wohnt im Produkt, `lib/sprachwahl.ts`, und
+// wird ausschliesslich von `setzeSprache` bedient).
+//
+// ERHOBEN WIRD EINMAL, GEURTEILT WIRD DANACH — dieselbe Bauart wie die Sprachreihe der
+// Schwesterdatei (`kopfband-schmal-chromium.test.ts`, Abschnitt S). Der Grund ist nicht
+// Sparsamkeit: ein Vergleich zwischen zwei Sprachen trägt nur, wenn beide Werte am selben Stand
+// entstanden sind, und ein `expect` mitten im Durchgang nähme mit dem ersten Befund alle übrigen
+// Zahlen weg.
+//
+// WAS DIESE REIHE NICHT SAGT: sie ändert kein Produktverhalten und keine Fläche. Sichtbar wird sie
+// für einen Menschen erst dann, wenn die Zeile in einer Sprache bricht und der Lauf es mit Zahlen
+// sagt, statt es zu überschlagen.
+
+/** Die Kennung, unter der die Zahlen der Sprachreihe im Lauf stehen. */
+const KENNUNG_3779 = "JOB 3779";
+
+/**
+ * Die drei Sprachen, die dieser Lauf MISST.
+ *
+ * Sie stehen als eigene Liste da und nicht als `ERLAUBTE_SPRACHEN` selbst — dieselbe Entscheidung
+ * wie in der Schwesterdatei (`kopfband-schmal-chromium.test.ts:134`): diese Liste ist die ZUSAGE
+ * des Laufs („diese drei sind gemessen"), `ERLAUBTE_SPRACHEN` ist die FÄHIGKEIT des Produkts. Zwei
+ * verschiedene Aussagen; wer sie in eine Liste legt, kann nicht mehr sagen, dass sie übereinstimmen.
+ *
+ * DASS SIE HEUTE ÜBEREINSTIMMEN, IST DESHALB GEMESSEN und nicht angenommen: L14b legt beide Mengen
+ * gegeneinander. Käme eine vierte Sprache ins Produkt, wäre sie hier ungemessen — und der Lauf sagt
+ * es, statt sie stillschweigend zu übergehen.
+ */
+const SPRACHEN = ["de", "en", "nl"] as const;
+type Sprache = (typeof SPRACHEN)[number];
+
+const kombination = (sprache: Sprache, breite: number): string => `${sprache}/${breite}`;
+
+/** In der Seite: welche Sprache das Produkt am Messzeitpunkt WIRKLICH angewandt hat. */
+const ANGEWANDTE_SPRACHE = fn("() => document.documentElement.lang");
+
+/** Eine erhobene Lage samt der Sprache, in der sie nachweislich entstanden ist. */
+interface SprachErhebung {
+  ci: CiLage;
+  /** `<html lang>` am Messzeitpunkt — der Beleg, dass wirklich diese Sprache stand. */
+  lang: string;
+}
+
+const erhebung = new Map<string, SprachErhebung>();
+/** Was der Sprachschritt selbst am RÜCKKEHRPUNKT gemeldet hat — vor jedem weiteren Aufbau. */
+const rueckkehr = new Map<Sprache, SprachLage>();
+/** Was WIRKLICH gefahren wurde — die Gegenmenge zur Zusage, gezählt in L14b. */
+const gefahren: string[] = [];
+
+function hole(sprache: Sprache, breite: number): SprachErhebung {
+  const e = erhebung.get(kombination(sprache, breite));
+  if (e === undefined) {
+    throw new Error(
+      `${kombination(sprache, breite)} wurde nicht erhoben — die Erhebung ist unvollständig`,
+    );
+  }
+  return e;
+}
+
+/**
+ * DIE GRUPPE, UM DIE ES IN DER SPRACHFRAGE GEHT: die Wortmarke und die gezeichneten Punkte.
+ *
+ * Die Wortmarke steht mit darin, weil das Firmenlogo INNERHALB von `.kw-kopfband-marke` hängt
+ * (`shell/Logo.tsx`) — die Gruppe ist damit genau das, was mit CI und mit der Sprache zusammen
+ * wächst. Gezählt werden nur GEZEICHNETE Kästen; was der Browser nicht malt, hat `MESSUNG`
+ * (`kopfband-messung.ts`) bereits herausgenommen.
+ *
+ * ZWEI ZAHLEN, weil sie zwei verschiedene Dinge sagen: die SPANNE ist die Breite der Gruppe, wie
+ * ein Mensch sie sieht (Fugen eingeschlossen); die SUMME ist der reine Platzbedarf der Kästen ohne
+ * Fugen. Bei gleicher Zahl gezeichneter Punkte unterscheiden sie sich um einen sprachunabhängigen
+ * Betrag — L13 prüft ausdrücklich, dass beide dieselbe Sprache als breiteste nennen.
+ */
+interface Wortgruppe {
+  spanne: number;
+  summe: number;
+  teile: number;
+  je: string;
+}
+
+function wortgruppe(m: Messung): Wortgruppe {
+  const kaesten = m.kaesten.filter((k) => k.name === "marke" || k.name.startsWith("punkt:"));
+  if (kaesten.length === 0) {
+    return { spanne: 0, summe: 0, teile: 0, je: "keine Wortmarke, keine Punkte gezeichnet" };
+  }
+  return {
+    spanne: Math.max(...kaesten.map((k) => k.rechts)) - Math.min(...kaesten.map((k) => k.links)),
+    summe: kaesten.reduce((s, k) => s + (k.rechts - k.links), 0),
+    teile: kaesten.length,
+    je: kaesten.map((k) => `${k.name} ${(k.rechts - k.links).toFixed(1)} px`).join(", "),
+  };
+}
+
+// ================================================================================================
+// DIE BEFUNDE — WO DIE ZEILE MIT FIRMEN-CI IN EINER SPRACHE NICHT MEHR INS FENSTER PASST.
+// ================================================================================================
+//
+// Jeder Eintrag ist am 12.09.2026 durch die Messung dieser Runde entstanden und nicht vorsorglich:
+// er heisst „hier ist die Zusage schwächer, und zwar aus DIESEM gemessenen Grund". Behoben wird ein
+// Befund hier NICHT — seine Ursache läge in `apps/web/src/i18n.ts`, `shell/Kopfband.tsx` oder
+// `shell/Logo.tsx`, und alle drei liegen ausserhalb der Zielpfade dieses Auftrags (§10). Ein grüner
+// Lauf, der einen solchen Befund verschweigt, wäre eine Falschaussage.
+//
+// SIE WERDEN IN BEIDE RICHTUNGEN GEHALTEN: L12 wird auch dann rot, wenn ein Befund BEHOBEN ist —
+// dann ist die Aussage „hier trägt die Zeile nicht" nicht mehr wahr, und wer sie behoben hat, führt
+// den Pin nach. Dieselbe Bauart wie S4 in der Schwesterdatei.
+const SPRACH_BEFUND: ReadonlyMap<string, string> = new Map<string, string>([
+  [
+    "nl/900",
+    "BEFUND (gemessen 12.09.2026 in dieser Reihe): bei 900 px steht der Konto-Kreis auf NIEDERLÄNDISCH 41,5 px rechts ausserhalb des Fensters, und die Zeile verlangt 42 px mehr Platz als sie hat (scrollWidth 942 / clientWidth 900) — wo die deutsche Zeile 18,8 px Luft und 0 px Überschuss hat und die englische 32,0 px Luft. Die Ursache ist die längere Punktreihe (Gruppe Marke+Punkte de 563,9 px → nl 626,3 px), NICHT das Firmenlogo: bei 900 px sagt „LOGO_OHNE_PLATZ_QUERY“ gar keinen Logokasten zu (Fall L2), hier steht mit und ohne Firmen-CI dasselbe. Die Kante selbst ist der Bestand von JOB 3060 — bei 900 px beginnt die BREITE Bauform mit voller Punktreihe und Suchfeld und hat dort kaum Reserve; §10 dieses Auftrags lässt sie ausdrücklich unberührt, und eine Textänderung in `i18n.ts` wäre ein fremder Zielpfad. JOB 3587 hat denselben Befund OHNE Firmen-CI an einem früheren Stand gemessen (65 px Überschuss, 11.09.2026, `kopfband-schmal-chromium.test.ts`, `ZEILE_BEFUND` „nl/900“); dass es heute 42 px sind, liegt am Stand der Zeile und nicht an der CI — auch die deutsche Zeile hat hier inzwischen 18,8 px Luft statt 0",
+  ],
+]);
+
+/**
+ * DIE GEMESSENE ANTWORT AUF DIE FRAGE DIESES JOBS: welche Sprache ist der bindende Fall?
+ *
+ * Sie steht als Pin und nicht als Satz in einem Kommentar, denn nur ein Pin beisst: wird eine
+ * Beschriftung so geändert, dass eine andere Sprache die breiteste ist, wird L13 rot und der Befund
+ * gehört nachgeführt. Der Wert kommt aus der Messung dieser Runde, die Zahlen stehen in L13 im Lauf.
+ */
+const BINDENDE_SPRACHE: Sprache = "nl";
+
+describe("JOB 3779 · L12 · die Zeile mit Firmen-CI ist in allen drei Sprachen gemessen", () => {
+  beforeAll(async () => {
+    expect(stand.fehler, "die Bühne kam nicht hoch").toBeNull();
+    const seite = seiteRoh(stand);
+    const app = stand.app;
+    if (!app) {
+      throw new Error("keine App an der Bühne");
+    }
+    // Die Firmen-CI ist der Gegenstand dieser Reihe — sie wird nicht geglaubt, sondern gestellt.
+    // L9 oben schaltet sie am Ende wieder ein; ein zweiter Schalter entsteht dadurch nicht, es ist
+    // derselbe Weg (`schalteCi`), und sein Rückgabewert ist der Beleg.
+    const gestellt = await schalteCi(app, bearer, true);
+    expect(gestellt.aktiv, "die Firmen-CI stand vor der Sprachreihe nicht an").toBe(true);
+    try {
+      for (const sprache of SPRACHEN) {
+        // Auch „de" wird AUSDRÜCKLICH gesetzt: der Vergleichswert soll denselben Weg genommen haben
+        // wie die zwei anderen Sprachen, sonst verglichen wir zwei verschiedene Verfahren.
+        const begonnen = Date.now();
+        const lage = await setzeSprache(stand, sprache);
+        rueckkehr.set(sprache, lage);
+        console.log(
+          `${KENNUNG_3779} · Sprachschritt · ${sprache} · Rückkehrpunkt: lang=${lage.lang} nach ${lage.versuche} Blicken / ${lage.wartedauer} ms · Kopfband „${lage.text.slice(0, 70)}"`,
+        );
+        for (const breite of ALLE) {
+          const ci = await erhebeMitCi(breite);
+          const lang = await seite.evaluate<string>(ANGEWANDTE_SPRACHE);
+          erhebung.set(kombination(sprache, breite), { ci, lang });
+          gefahren.push(kombination(sprache, breite));
+          const g = wortgruppe(ci.m);
+          const urteil = beurteileSicht(ci.sicht);
+          console.log(
+            `${KENNUNG_3779} · ${sprache} · ${breite}px · lang=${lang} · rechtester Kasten ${Math.max(...ci.m.kaesten.map((k) => k.rechts)).toFixed(1)} px ` +
+              `(${draussen(ci.m).toFixed(1)} px ausserhalb, rechtester „${rechtester(ci.m)}") · scrollWidth ${ci.m.scrollBreite} / clientWidth ${ci.m.clientBreite} ` +
+              `(Überschuss ${ueberschuss(ci.m)} px) · Gruppe Marke+Punkte ${g.spanne.toFixed(1)} px Spanne / ${g.summe.toFixed(1)} px Summe aus ${g.teile} Kästen [${g.je}] · ` +
+              `Logo ${ci.zugesagt ? `zugesagt, Kasten ${ci.logo.logoBreite.toFixed(1)} px, Bild ${ci.logo.bildBreite.toFixed(1)} px (Stufe ${ci.grenze} px), ${urteil.sichtbar ? "sichtbar" : `NICHT sichtbar: ${urteil.gruende.join(" · ")}`}` : "an dieser Breite nicht zugesagt"}`,
+          );
+        }
+        console.log(
+          `${KENNUNG_3779} · Erhebung · ${sprache} · ${ALLE.length} Breiten in ${((Date.now() - begonnen) / 1000).toFixed(1)} s`,
+        );
+      }
+    } finally {
+      // Zurück auf die Vorgabe des Produkts (`lib/sprachwahl.ts`, `STANDARD_SPRACHE`): eine fremde
+      // Sprache, die im Speicher stehen bliebe, wäre eine stille Erblast für jeden Lauf danach.
+      await setzeSprache(stand, "de");
+    }
+  }, 900_000);
+
+  for (const sprache of SPRACHEN) {
+    for (const breite of ALLE) {
+      const befund = SPRACH_BEFUND.get(kombination(sprache, breite));
+      it(`L12 · ${sprache} / ${breite} px mit Firmen-CI: ${befund === undefined ? "nichts ausserhalb des Fensters, kein Überschuss" : "der gemessene BEFUND steht (nicht zugesichert)"}`, () => {
+        const e = hole(sprache, breite);
+        const m = e.ci.m;
+        const urteil = beurteileSicht(e.ci.sicht);
+        console.log(
+          `${KENNUNG_3779} · L12 · ${sprache} / ${breite}px · ${draussen(m).toFixed(1)} px ausserhalb („${rechtester(m)}") · Überschuss ${ueberschuss(m)} px · ` +
+            `Gruppe ${wortgruppe(m).spanne.toFixed(1)} px · Sicht: ${e.ci.zugesagt ? (urteil.sichtbar ? "sichtbar" : urteil.gruende.join(" · ")) : "kein Logo zugesagt"}` +
+            `${befund === undefined ? "" : ` · NICHT ZUGESICHERT: ${befund}`}`,
+        );
+
+        // DIE VORAUSSETZUNG: gemessen wurde WIRKLICH in dieser Sprache.
+        expect(
+          e.lang,
+          `${sprache} bei ${breite}px: erwartet <html lang="${sprache}">, angewandt „${e.lang}" — gemessen wurde damit eine andere Sprache`,
+        ).toBe(sprache);
+
+        // DIE ZUSAGE ÜBER DEN LOGOKASTEN GILT IN JEDER SPRACHE, auch dort, wo die Zeile nicht
+        // trägt: sie hängt an `LOGO_OHNE_PLATZ_QUERY` und an keiner Geometrie.
+        verlangeLogoWieZugesagt(`${sprache} bei ${breite}px`, e.ci);
+
+        if (befund !== undefined) {
+          // WELCHER KASTEN DEN UNTERSCHIED TRÄGT — eine nicht zugesicherte Achse OHNE Messung wäre
+          // genau die stille Lücke, gegen die dieser Auftrag steht. Verglichen wird gegen DEUTSCH
+          // an derselben Breite, aus demselben Durchgang.
+          const deutsch = hole("de", breite).ci.m;
+          const namen = [...new Set([...deutsch.kaesten, ...m.kaesten].map((k) => k.name))];
+          const jeKasten = namen.map((name) => {
+            const breiteVon = (mm: Messung): number => {
+              const k = mm.kaesten.find((x) => x.name === name);
+              return k === undefined ? 0 : k.rechts - k.links;
+            };
+            const delta = breiteVon(m) - breiteVon(deutsch);
+            return `${name} ${breiteVon(deutsch).toFixed(1)} → ${breiteVon(m).toFixed(1)} px (${delta >= 0 ? "+" : ""}${delta.toFixed(1)})`;
+          });
+          console.log(
+            `${KENNUNG_3779} · L12 · ${sprache} / ${breite}px · je Kasten gegen Deutsch: ${jeKasten.join(" · ")}`,
+          );
+          // DER BEFUND WIRD IN BEIDE RICHTUNGEN GEHALTEN. Ist er behoben, ist dieser Pin falsch.
+          expect(
+            draussen(m) > 1 || ueberschuss(m) > 1,
+            `${sprache} bei ${breite}px: der Befund ist nicht mehr messbar (${draussen(m).toFixed(1)} px ausserhalb, ${ueberschuss(m)} px Überschuss) — er ist behoben, dieser Pin gehört nachgeführt`,
+          ).toBe(true);
+          return;
+        }
+
+        // DIE ZUSAGE — dieselben zwei Achsen und dieselben Toleranzen wie L1/L3.
+        expect(
+          draussen(m),
+          `${sprache} bei ${breite}px: „${rechtester(m)}“ steht ${draussen(m).toFixed(1)} px rechts ausserhalb des Fensters`,
+        ).toBeLessThanOrEqual(1);
+        expect(
+          Math.min(...m.kaesten.map((k) => k.links)),
+          `${sprache} bei ${breite}px: ein Kasten steht links ausserhalb des Fensters`,
+        ).toBeGreaterThanOrEqual(-1);
+        expect(
+          ueberschuss(m),
+          `${sprache} bei ${breite}px: das Kopfband läuft über (${m.scrollBreite} > ${m.clientBreite})`,
+        ).toBeLessThanOrEqual(1);
+        if (e.ci.zugesagt) {
+          verlangeSichtbar(`${sprache} bei ${breite}px`, e.ci.sicht);
+        }
+      });
+    }
+  }
+
+  // ==============================================================================================
+  // L13 — DIE ANNAHME WIRD ZUR MESSUNG: WELCHE SPRACHE IST DIE BREITESTE?
+  // ==============================================================================================
+  //
+  // VERGLICHEN WIRD NUR, WO ES ETWAS ZU VERGLEICHEN GIBT. Unter 900 px zeigt das Kopfband gar
+  // keinen Navigationspunkt (JOB 3605: jeder Punkt gehört ins beschriftete Menü) — dort besteht die
+  // Gruppe allein aus der Wortmarke, und die ist in allen drei Sprachen dasselbe Wort. Die Breiten
+  // kommen deshalb aus der ERHEBUNG selbst und nicht aus einer zweiten Liste: gefahren wird, wo in
+  // ALLEN drei Sprachen mehr als die Wortmarke gezeichnet ist.
+  it(`L13 · die breiteste Sprache der Wortmarke-/Punkte-Gruppe ist gemessen — und es ist „${BINDENDE_SPRACHE}"`, () => {
+    const vergleichbar = ALLE.filter((b) =>
+      SPRACHEN.every((s) => wortgruppe(hole(s, b).ci.m).teile > 1),
+    );
+    expect(
+      vergleichbar.length,
+      `auf keiner der gemessenen Breiten (${ALLE.join(", ")} px) zeichnet das Kopfband in allen drei Sprachen mehr als die Wortmarke — dann vergleicht dieser Fall nichts`,
+    ).toBeGreaterThan(0);
+
+    for (const breite of vergleichbar) {
+      const gruppen = SPRACHEN.map((s) => ({ sprache: s, g: wortgruppe(hole(s, breite).ci.m) }));
+      const nachSpanne = [...gruppen].sort((a, b) => b.g.spanne - a.g.spanne);
+      const nachSumme = [...gruppen].sort((a, b) => b.g.summe - a.g.summe);
+      const breiteste = nachSpanne[0];
+      const zweite = nachSpanne[1];
+      if (breiteste === undefined || zweite === undefined || nachSumme[0] === undefined) {
+        throw new Error("unerreichbar");
+      }
+      console.log(
+        `${KENNUNG_3779} · L13 · ${breite}px · ${gruppen
+          .map(
+            (x) =>
+              `${x.sprache} ${x.g.spanne.toFixed(1)} px (Summe ${x.g.summe.toFixed(1)} px, ${x.g.teile} Kästen)`,
+          )
+          .join(
+            " · ",
+          )} → breiteste „${breiteste.sprache}", ${(breiteste.g.spanne - zweite.g.spanne).toFixed(1)} px vor „${zweite.sprache}"`,
+      );
+      // DIE ZWEI ZAHLEN MÜSSEN DIESELBE SPRACHE NENNEN — sonst hinge die Aussage an den Fugen und
+      // nicht an der Beschriftung, und „die breiteste Sprache" wäre eine Frage der Rechenart.
+      expect(
+        nachSumme[0].sprache,
+        `${breite}px: die Spanne nennt „${breiteste.sprache}" als breiteste, die reine Kästensumme „${nachSumme[0].sprache}" — dann ist „die breiteste Sprache" keine eindeutige Aussage`,
+      ).toBe(breiteste.sprache);
+      // 1 px Teilpixel-Toleranz wie überall in dieser Messfamilie: ein Vorsprung darunter wäre
+      // keine messbare Aussage, sondern eine Rundung.
+      expect(
+        breiteste.g.spanne - zweite.g.spanne,
+        `${breite}px: „${breiteste.sprache}" liegt nur ${(breiteste.g.spanne - zweite.g.spanne).toFixed(1)} px vor „${zweite.sprache}" — unter der Teilpixel-Toleranz ist „die breiteste Sprache" nicht messbar`,
+      ).toBeGreaterThan(1);
+      expect(
+        breiteste.sprache,
+        `${breite}px: die breiteste Sprache ist „${breiteste.sprache}" (${breiteste.g.spanne.toFixed(1)} px), gepinnt ist „${BINDENDE_SPRACHE}" — der bindende Fall hat sich verschoben, dieser Pin und der Kopf dieser Datei gehören nachgeführt`,
+      ).toBe(BINDENDE_SPRACHE);
+    }
+  });
+
+  // ==============================================================================================
+  // L14 — DIE VORAUSSETZUNG: DER SPRACHWECHSEL TRÄGT WIRKLICH.
+  // ==============================================================================================
+  //
+  // Ohne diesen Fall misst die Reihe womöglich dreimal dieselbe deutsche Zeile und nennt es drei
+  // Sprachen — grün und wertlos, der gefährlichste Zustand (dieselbe Krankheit wie L0 bei der
+  // Firmen-CI). DREI BELEGE, alle im selben Lauf gewonnen und keiner gepinnt:
+  //   · der SPRACHSCHRITT SELBST hat den Zustand abgewartet und meldet ihn am RÜCKKEHRPUNKT zurück,
+  //     also VOR jedem weiteren Seitenaufbau. Ohne diesen Beleg prüfte L14 nur das Ergebnis des
+  //     nächsten Aufbaus, und ein Schritt, der gar nicht wartet, käme damit durch (BENs Gegenprobe A
+  //     an JOB 3587 R1). Dass das Warten selbst trägt, messen die Fälle A1–A8 in
+  //     `tests/chr-navigation-sprachen/sprachschritt-ausgaenge.test.ts`.
+  //   · das PRODUKT sagt an JEDER gemessenen Breite selbst, dass es die Sprache spricht — das prüft
+  //     L12 oben je Fall (`<html lang>`, `lib/htmlLang.ts`).
+  //   · der gezeichnete Ankertext ist ein ANDERER als der deutsche. Der deutsche Wert kommt aus
+  //     demselben Durchgang, nicht aus `i18n.ts`: ein Sollwert aus derselben Quelle wie der Istwert
+  //     vergleicht die Quelle mit sich selbst und ist immer grün.
+  for (const sprache of SPRACHEN.filter((s) => s !== "de")) {
+    it(`L14a · ${sprache}: der Sprachschritt kehrt erst zurück, wenn die Seite die Sprache spricht`, () => {
+      const lage = rueckkehr.get(sprache);
+      const lageDe = rueckkehr.get("de");
+      expect(lage, `${sprache}: der Sprachschritt hat keine Lage zurückgemeldet`).toBeDefined();
+      expect(lageDe, "für Deutsch hat der Sprachschritt keine Lage zurückgemeldet").toBeDefined();
+      if (lage === undefined || lageDe === undefined) {
+        throw new Error("unerreichbar");
+      }
+      console.log(
+        `${KENNUNG_3779} · L14a · ${sprache} · lang=${lage.lang} nach ${lage.versuche} Blicken / ${lage.wartedauer} ms · ` +
+          `Kopfband „${lage.text.slice(0, 70)}" gegen deutsch „${lageDe.text.slice(0, 70)}"`,
+      );
+      expect(
+        lage.lang,
+        `${sprache}: der Sprachschritt kam zurück, während die Seite noch „${lage.lang}" sprach — gewartet wurde nicht auf den Zustand`,
+      ).toBe(sprache);
+      expect(
+        lage.text,
+        `${sprache}: am Rückkehrpunkt zeichnete das Kopfband kein Wort — dann ist über die Sprache der ZEILE nichts gesagt`,
+      ).not.toBe("");
+      expect(
+        lage.text,
+        `${sprache}: das Kopfband zeigte am Rückkehrpunkt wörtlich dasselbe wie auf Deutsch („${lageDe.text.slice(0, 70)}") — die Umstellung hat die Zeile nicht erreicht`,
+      ).not.toBe(lageDe.text);
+    });
+  }
+
+  // ==============================================================================================
+  // L14b — DIE PRÜFMENGE SELBST. Eine still ausgelassene Sprache darf nicht als grüner Lauf durchgehen.
+  // ==============================================================================================
+  //
+  // Die naheliegende Halbheit dieses Auftrags wäre gewesen, nur Englisch zu messen (die kürzere
+  // Sprache, die bequem grün wird) und Niederländisch mit demselben Überschlag zu überspringen, der
+  // schon die erste Lücke war. Dieser Fall zählt deshalb, was WIRKLICH gefahren wurde, gegen die
+  // zugesagte Liste — dieselbe Bauart wie S2 in der Schwesterdatei.
+  //
+  // UND DIE ZAHL STEHT ALS LITERAL DANEBEN. Das ist die Lehre aus JOB 3587 R3 (`LEHREN.md`,
+  // 11.09.2026: „Den unabhängigen Mengenpin um 800 und 1000 px ergänzen … jede dieser Breiten
+  // einzeln entfernen → Wächter ROT mit Breitenangabe"): ein Mengenvergleich, der seine Sollmenge
+  // aus DENSELBEN zwei Listen bildet, die er bewachen soll, geht mit, wenn jemand eine Breite oder
+  // eine Sprache aus ihnen streicht. Das Literal geht nicht mit. Es ist damit auch der Ort, an dem
+  // eine LEGITIME Erweiterung (eine achte Breite, eine vierte Sprache) einmal bewusst nachgeführt
+  // wird, statt still einzusickern.
+  //
+  // WAS ES NICHT IST: ein Pin AUSSERHALB dieser Datei. Der stünde in
+  // `tests/chr-navigation-sprachen/sprachweg-waechter.test.ts` (dort hält W2a/W2c genau das für die
+  // Schwesterdatei) und ist nach §10 dieses Auftrags nicht Zielpfad — benannt, nicht angefasst.
+  const ZUGESAGTE_KOMBINATIONEN = 21;
+  it(`L14b · alle ${ZUGESAGTE_KOMBINATIONEN} zugesagten Kombinationen Sprache × Breite wurden wirklich gefahren`, () => {
+    const zugesagt = SPRACHEN.flatMap((s) => ALLE.map((b) => kombination(s, b)));
+    expect(
+      zugesagt.length,
+      `die Prüfmenge dieser Reihe ist auf ${SPRACHEN.length} Sprachen × ${ALLE.length} Breiten = ${zugesagt.length} Kombinationen geschrumpft oder gewachsen (gepinnt: ${ZUGESAGTE_KOMBINATIONEN}) — wer sie ändert, führt diese Zahl und den Kopf dieser Datei nach`,
+    ).toBe(ZUGESAGTE_KOMBINATIONEN);
+    // UND DIE GEMESSENE MENGE DECKT DIE KÖNNENSMENGE DES PRODUKTS. Ohne diesen Satz wäre eine
+    // vierte Sprache im Produkt hier stillschweigend ungemessen, und der Kopf dieser Datei würde
+    // weiter „in allen drei Sprachen" behaupten, während es vier wären.
+    expect(
+      [...SPRACHEN].sort(),
+      `das Produkt kann die Sprachen [${[...ERLAUBTE_SPRACHEN].sort().join(", ")}] (\`lib/htmlLang.ts\`, ERLAUBTE_SPRACHEN), gemessen werden hier [${[...SPRACHEN].sort().join(", ")}] — die Differenz ist ungemessen, und der Kopf dieser Datei behauptet mehr, als der Lauf hergibt`,
+    ).toEqual([...ERLAUBTE_SPRACHEN].sort());
+    expect([...gefahren].sort(), "die gefahrene Prüfmenge weicht von der zugesagten ab").toEqual(
+      [...zugesagt].sort(),
+    );
+    expect(erhebung.size, "eine Kombination wurde zweimal gefahren oder überschrieben").toBe(
+      zugesagt.length,
+    );
+    console.log(
+      `${KENNUNG_3779} · L14b · ${zugesagt.length} Kombinationen gefahren (${SPRACHEN.join(", ")} × ${ALLE.join(", ")} px), ` +
+        `davon ${SPRACH_BEFUND.size} mit Befund: ${[...SPRACH_BEFUND.keys()].join(", ") || "keine"}`,
+    );
+  });
 });
