@@ -5,14 +5,17 @@
 // WOZU DIESE DATEI NEBEN `katalog.test.ts` STEHT. S1 dort verlangt von jedem der 28 Schlüssel drei
 // verschiedene Sprachfassungen. Damit ist die Lücke GESCHLOSSEN — hier wird sie BENANNT: welcher
 // Schlüssel kommt überhaupt woher, und welcher wird heute über eine echte Route gemessen? Ohne
-// diese Antwort bleibt „ist übersetzt" eine Zusage ohne Umfang, und niemand sieht, dass 19 von 28
+// diese Antwort bleibt „ist übersetzt" eine Zusage ohne Umfang, und niemand sieht, dass 15 von 28
 // Schlüsseln nie einen englischen oder niederländischen Satz an einem echten Draht zeigen.
+// (JOB 3612: 19 von 28. JOB 3785 hat den SSO-Weg gemessen — drei neue Fälle in
+// `sso-sprachfaelle.test.ts` — und eine falsche Auskunft berichtigt: `OIDC_UNREACHABLE` war nie
+// ungemessen, der Wächter konnte die Form nur nicht lesen, siehe K5.)
 //
 // Codex hat die drei auffälligsten selbst genannt — `OIDC_STATE_INVALID`, `ALREADY_SETUP`,
 // `UNKNOWN_ROLE` (`archiv/3449/runde-2/ben.md`, HINWEIS 2). Die Listen unten sind NACHGEMESSEN,
 // nicht abgeschrieben; die drei stehen darin.
 //
-// FÜNF WÄCHTER, FÜNF VERSCHIEDENE FRAGEN — keiner ersetzt den anderen:
+// SIEBEN WÄCHTER, SIEBEN VERSCHIEDENE FRAGEN — keiner ersetzt den anderen:
 //
 //   H1  Taugt der Abtaster?      Findet er zu jeder Stelle ein auswertbares Argument — und hält er
 //                                Zeichenketten und Kommentare heraus? (Ein Abtaster, der zu viel
@@ -30,6 +33,9 @@
 //   H5  Steht jeder im KATALOG?  Löst jeder wörtlich verwendete Schlüssel in `MELDUNGEN` auf?
 //   H6  Taugt der Fallabtaster?  Zählt H4 nur aktive Prüffälle — und erkennt er `skip`, `only` und
 //                                die `it.each`-Tabelle richtig?
+//   H7  Taugt der zweite Zugang? Erkennt H4 auch den Fall, der den Satz aus dem KATALOG holt
+//                                (`MELDUNGEN.X.en`) statt ihn abzuschreiben — und hält er dabei
+//                                dieselben Bedingungen ein wie beim Literal? (K5)
 //
 // WARUM H5 NICHT ÜBERFLÜSSIG IST. An den Wurfstellen trägt das heute der Typzusatz
 // `"…" satisfies Meldungsschluessel`. An den 19 `meldung("…", sprache)`-Aufrufen in `routes.ts`
@@ -92,6 +98,18 @@
 //             einen. Damit fällt auch die gleiche Verstellung am WÖRTLICHEN Satz auf:
 //             `sprachvertrag("Email or password is incorrect.")` ohne Antwortargument zählt nicht
 //             mehr. H6.14–H6.21 kalibrieren beide Richtungen einzeln.
+//
+//   K5  „Ein Wächter darf über sich selbst nichts Falsches behaupten." (JOB 3785.) Bis hierher
+//       zählte ein Satz nur, wenn er WÖRTLICH im Fall stand. `OIDC_UNREACHABLE` stand deshalb in
+//       `OHNE_ROUTENFALL`, und H4 sagte dazu „kein aktiver Fall sieht ihren Satz je an einer echten
+//       Antwort" — nachweislich falsch: `tests/q9-oidc-literalquelle/…` E.1 fährt einen echten
+//       Callback und hält `antwort.message` gegen `MELDUNGEN.OIDC_UNREACHABLE[sprache]`, in EN und
+//       NL. Ein Wächter, der die Lücke GRÖSSER meldet als sie ist, entwertet sein eigenes Urteil.
+//       Jetzt zählt neben dem Literal auch der Katalogzugriff (`MELDUNGEN.<SCHLUESSEL>.<sprache>`
+//       und `…[<sprachausdruck>]`) — unter denselben Bedingungen (a)–(f), nicht unter weicheren.
+//       Dazu gehört ein Eintrag mehr in `KEINE_BEOBACHTUNG`: der Zugriff bringt seine eigene
+//       Gliederkette mit, und ohne `MELDUNGEN` darin wäre Bedingung (f) für ihn leer gewesen.
+//       H7.1–H7.19 kalibrieren beide Richtungen einzeln.
 //
 // WAS H4 DAMIT BEWEIST UND WAS NICHT — ehrlich benannt. Bewiesen ist: der Satz steht in einem
 // aktiven, prüfenden Fall einer Datei, die die App über `app.inject(` fährt, er wird einem Aufruf
@@ -677,6 +695,11 @@ const NUR_UEBER_EINE_VARIABLE = ["OIDC_UNREACHABLE"];
  * Was sich zwischen gepinnter und gemessener Liste verschoben hat — namentlich. Ohne diesen Satz
  * meldet Vitest nur `expected [ 'ACCOUNT_NOT_FOUND', …(11) ] to deeply equal [ … ]`, und der
  * Mensch, der die Liste nachführen soll, muss selbst suchen, welcher Schlüssel gewandert ist.
+ *
+ * ZUERST DIE GEMESSENEN, DANN DIE GEPINNTEN. H4 führt eine Liste der UNGEMESSENEN und muss die
+ * Reihenfolge deshalb umdrehen — vor Runde 2 tat es das nicht, und die Meldung stand auf dem Kopf:
+ * BENs G3 nahm `OIDC_UNREACHABLE` die einzige Fremdsprachmessung, und H4 schrieb dazu „NEU
+ * gemessen: OIDC_UNREACHABLE". Wer das liest, sucht den neuen Fall, den es nicht gibt.
  */
 function verschiebung(gemessen: string[], gepinnt: string[]): string {
   const dazu = gemessen.filter((k) => !gepinnt.includes(k));
@@ -929,8 +952,16 @@ function anweisungsbereich(maske: string, pos: number, von: number, bis: number)
   return [a, b];
 }
 
-/** Namen, deren Gliederkette nichts über die Antwort sagt: die Prüfsprache selbst und das Protokoll. */
-const KEINE_BEOBACHTUNG = new Set(["expect", "console"]);
+/** Namen, deren Gliederkette nichts über die Antwort sagt: die Prüfsprache selbst und das Protokoll.
+ *
+ *  K5 (JOB 3785): `MELDUNGEN` gehört dazu, seit der Katalogzugriff als zweite Satzquelle zählt.
+ *  Ohne diesen Eintrag wäre Bedingung (f) für jede Katalogform leer — der Zugriff bringt seine
+ *  eigene Gliederkette mit, und `expect(meldung("USER_NOT_FOUND", s)).toBe(MELDUNGEN.USER_NOT_FOUND[s])`
+ *  (`tests/q9-oidc-literalquelle/…:663`, ein reiner Katalogfall ohne jede Route) hätte gegolten wie
+ *  eine Messung am Draht. Gemessen statt vermutet: mit `MELDUNGEN` ausserhalb dieser Liste verlässt
+ *  GENAU EIN Schlüssel `OHNE_ROUTENFALL` zu Unrecht — `USER_NOT_FOUND`, gedeckt allein von F.3, das
+ *  `meldung()` direkt aufruft und nie eine Antwort ansieht. H7.14 hält diese Richtung fest. */
+const KEINE_BEOBACHTUNG = new Set(["expect", "console", "MELDUNGEN"]);
 const GLIEDERWURZEL = /(?<![A-Za-z0-9_$.])([A-Za-z_$][A-Za-z0-9_$]*)\s*\./g;
 
 /**
@@ -1040,46 +1071,224 @@ function pruefstand(ort: string, roh: string): Stand {
 }
 
 /**
- * Die aktiven Prüffälle dieser Datei, die `satz` wirklich gegen eine Antwort halten — die sechs
- * Bedingungen aus K3 und K4 (Zeichenkette · aktiver Fall · mit `expect` · an einen Aufruf, nicht an
- * `it(` selbst · aus der Tabelle nur über einen im Rumpf verbrauchten Parameter · in einer
- * Anweisung, die die Antwort liest).
+ * Liegt `p` im Bereich eines Falls, der dort wirklich prüft? Die Bedingungen (b)–(f) aus K3 und K4
+ * (aktiver Fall · mit `expect` · an einen Aufruf, nicht an `it(` selbst · aus der Tabelle nur über
+ * einen im Rumpf verbrauchten Parameter · in einer Anweisung, die die Antwort liest). Die Stelle
+ * selbst kann ein wörtlicher Satz oder ein Katalogzugriff sein — für (b)–(f) macht das keinen
+ * Unterschied, und genau deshalb steht das hier einmal statt zweimal.
  */
-function messstellen(stand: Stand, satz: string): string[] {
-  if (satz === "") {
-    return [];
+function imFall(stand: Stand, fall: Fall, p: number): boolean {
+  // (b)+(c) im Bereich eines aktiven Falls mit `expect`.
+  if (p <= fall.von || p >= fall.bis) {
+    return false;
   }
-  const treffer: string[] = [];
-  for (let p = stand.rein.indexOf(satz); p >= 0; p = stand.rein.indexOf(satz, p + 1)) {
-    // (a) In einer Zeichenkette? In der Maske ist ihr Inhalt geleert, im echten Text steht er.
-    const ende = p + satz.length - 1;
-    if (stand.maske[p] !== " " || stand.maske[ende] !== " ") {
+  if (p < fall.offen) {
+    // (e) Die Stelle steht VOR der Namensklammer, also in der `each`-Tabelle. Sie zählt nur über
+    // den Parameter, den ihre Spalte bindet — und nur, wenn der Rumpf ihn wirklich prüft.
+    if (fall.tabelle < 0 || p < fall.tabelle) {
+      return false;
+    }
+    const spalte = spalteVon(stand.maske, fall.tabelle, p);
+    const name = spalte === null ? null : (fall.parameter[spalte] ?? null);
+    return name !== null && verbraucht(stand, fall, name);
+  }
+  // (d) einem Aufruf übergeben, und zwar nicht der `it(`-Klammer selbst — sonst zählte eine
+  // tote `const t = "…"` oder der Fallname als Messung; (f) in einer Anweisung, die liest.
+  const aufruf = stand.aufrufe[p] ?? -1;
+  return aufruf >= 0 && aufruf !== fall.offen && beobachtung(stand, fall, p);
+}
+
+/** Die beiden Sprachen, nach denen H4 fragt. Deutsch zählt nicht — es ist der Rückfall. */
+type Fremdsprache = "en" | "nl";
+
+// ------------------------------------------------------------------------------------------------
+// K5 (JOB 3785) · DER ZWEITE SATZZUGANG — EIN FALL DARF DEN SATZ AUCH AUS DEM KATALOG HOLEN
+// ------------------------------------------------------------------------------------------------
+//
+// DER BEFUND, der diese Erweiterung ausgelöst hat. `OIDC_UNREACHABLE` stand in `OHNE_ROUTENFALL`,
+// und H4 sagte dazu „kein aktiver Fall sieht ihren Satz je an einer echten Antwort". Das war
+// nachweislich falsch: `tests/q9-oidc-literalquelle/jeder-fehler-traegt-einen-katalogschluessel.test.ts`
+// E.1 fährt einen echten Callback über `app.inject(` und hält `antwort.message` gegen
+// `MELDUNGEN.OIDC_UNREACHABLE[sprache]` — in EN UND NL. Der Wächter sah es nicht, weil er den Satz
+// als LITERAL im Quelltext suchte; wer ihn aus dem Katalog HOLT statt ihn abzuschreiben, war
+// unsichtbar. Ein Wächter, der die Lücke grösser meldet, als sie ist, entwertet sein eigenes Urteil.
+//
+// ERKANNT WERDEN GENAU ZWEI SCHREIBWEISEN: `MELDUNGEN.<SCHLUESSEL>.<sprache>` und
+// `MELDUNGEN.<SCHLUESSEL>[<sprachausdruck>]`. Es gelten DIESELBEN Bedingungen wie für das Literal —
+// aktiver Fall, an einen Aufruf übergeben, Anweisung mit Beobachtung (`imFall`); der Zugang ist ein
+// zweiter Weg zur selben Stelle, keine zweite, weichere Regel.
+//
+// FEHLERRICHTUNG — laut, nicht still, an beiden Enden:
+//   ZU VIEL erkannt → der Schlüssel verlässt `OHNE_ROUTENFALL` und taucht in `GEMESSEN_VON` auf:
+//     H4 UND H4.2 werden rot und nennen Schlüssel, Datei und Fallnamen. Niemand kann es übersehen.
+//   ZU WENIG erkannt → der Schlüssel bleibt in `OHNE_ROUTENFALL` stehen, also in der Liste der
+//     ungemessenen: die Lücke wird zu gross gemeldet, nie zu klein. Das ist die sichere Seite.
+//   Eine dritte Schreibweise (`MELDUNGEN["X"].en`, ein Helfer, der den Satz zurückgibt) fällt
+//     bewusst in den zweiten Fall. Sie zählt NICHT, und der Schlüssel gilt weiter als ungemessen.
+//
+// DIE SPRACHE MUSS BELEGT SEIN — SONST GILT DER ZUGRIFF ALS UNGEMESSEN (Runde 2, BEN).
+// Bei `[<sprachausdruck>]` steht die Sprache nicht im Zugriff selbst. Runde 1 zählte einen solchen
+// Zugriff pauschal für EN UND NL, und genau das war der stille Deckungsverlust: BENs G3 stellte die
+// Tabelle von E.1 von `["en", "nl"]` auf `["de"]` um — die einzige echte Fremdsprachmessung von
+// `OIDC_UNREACHABLE` war weg, und H4/H4.2 blieben grün („Tests 177 passed"). Ein variabler Index ist
+// KEIN Sprachbeleg. Seit K5.2 gilt:
+//   `[ "en" ]` / `.en`  → wörtlich, die Sprache steht da, sie zählt.
+//   `[sprache]`         → nur, wenn die `each`-Tabelle DIESES Falls die Spalte, die `sprache` bindet,
+//                         mit dem wörtlichen Sprachwert füllt (`tabellenwerte`). `["de"]` belegt
+//                         weder EN noch NL; `["en"]` belegt EN und nicht NL.
+//   jeder andere Ausdruck (`[sprachen[0]]`, `[k as "en"]`, Tabelle aus einer Konstanten) → NICHT
+//                         belegbar, also NICHT gezählt.
+//
+// FEHLERRICHTUNG — laut, nicht still, an beiden Enden:
+//   ZU VIEL erkannt → der Schlüssel verlässt `OHNE_ROUTENFALL` und taucht in `GEMESSEN_VON` auf:
+//     H4 UND H4.2 werden rot und nennen Schlüssel, Datei und Fallnamen. Niemand kann es übersehen.
+//   ZU WENIG erkannt → der Schlüssel bleibt in `OHNE_ROUTENFALL` stehen, also in der Liste der
+//     ungemessenen: die Lücke wird zu gross gemeldet, nie zu klein. Das ist die sichere Seite, und
+//     jeder nicht belegbare Sprachausdruck fällt bewusst dorthin.
+//   Eine dritte Schreibweise (`MELDUNGEN["X"].en`, ein Helfer, der den Satz zurückgibt) fällt
+//     ebenfalls in den zweiten Fall. Sie zählt NICHT, und der Schlüssel gilt weiter als ungemessen.
+const KATALOG_ZUGRIFF =
+  /(?<![A-Za-z0-9_$.])MELDUNGEN\s*\.\s*([A-Z][A-Z0-9_]*)\s*(?:\.\s*([A-Za-z_$][A-Za-z0-9_$]*)|\[([^\]\n]*)\])/g;
+/** Ein wörtlicher Sprachindex — im ECHTEN Text gelesen, denn in der Maske ist er geleert. */
+const INDEX_LITERAL = /\[\s*(["'`])([A-Za-z-]*)\1\s*\]$/;
+/** Ein Index, der nur ein Name ist — der einzige nicht-wörtliche Ausdruck, der noch belegbar ist. */
+const INDEX_BEZEICHNER = /^\s*([A-Za-z_$][A-Za-z0-9_$]*)\s*$/;
+/** Ein wörtlicher Tabellenwert; alles andere ist kein Beleg. In der Maske stehen die Anführungs-
+ *  zeichen, der Inhalt kommt aus dem echten Text. */
+const TABELLENWERT = /^(["'`])([A-Za-z-]*)\1$/;
+
+/**
+ * Eine Stelle, an der der Satz aus dem Katalog geholt wird. `bezeichner === null` heisst: die
+ * Sprache stand wörtlich am Zugriff und ist damit schon belegt. Sonst trägt sie den Namen, dessen
+ * Tabellenspalte die Sprache erst belegen muss.
+ */
+type Katalogstelle = { pos: number; bezeichner: string | null };
+
+/**
+ * Die Stellen, an denen diese Datei den Satz `<schluessel>`/`<sprache>` AUS DEM KATALOG holt —
+ * ohne Rücksicht darauf, ob ein Fall sie prüft; das entscheidet `imFall`.
+ */
+function katalogstellen(stand: Stand, schluessel: string, sprache: Fremdsprache): Katalogstelle[] {
+  const gefunden: Katalogstelle[] = [];
+  // Gesucht wird in der MASKE: ein `MELDUNGEN.X.en`, das nur in einer Zeichenkette oder in einem
+  // Kommentar ausgeschrieben steht, ist dort geleert und damit kein Zugriff (H7.11, H7.17).
+  for (const treffer of stand.maske.matchAll(KATALOG_ZUGRIFF)) {
+    if (treffer[1] !== schluessel) {
       continue;
     }
+    const pos = treffer.index ?? 0;
+    // Das Glied `.en` steht in der Maske wie im Text; der Index `["en"]` nur im Text.
+    const roh = stand.rein.slice(pos, pos + treffer[0].length);
+    const gewaehlt = treffer[2] ?? INDEX_LITERAL.exec(roh)?.[2] ?? null;
+    if (gewaehlt !== null) {
+      // Wörtlich: die Sprache steht am Zugriff. `.de` und `["de"]` decken keine Fremdsprache.
+      if (gewaehlt === sprache) {
+        gefunden.push({ pos, bezeichner: null });
+      }
+      continue;
+    }
+    // K5.2: kein wörtlicher Index. Belegbar ist nur noch ein blosser NAME — über die `each`-Tabelle
+    // seines Falls. Jeder zusammengesetzte Ausdruck gilt als unbelegbar und damit als ungemessen.
+    const name = treffer[3] === undefined ? null : (INDEX_BEZEICHNER.exec(treffer[3])?.[1] ?? null);
+    if (name !== null) {
+      gefunden.push({ pos, bezeichner: name });
+    }
+  }
+  return gefunden;
+}
+
+/**
+ * K5.2 · Die wörtlichen Werte der `each`-Spalte, die `name` in diesem Fall bindet — oder `null`,
+ * wenn sich das nicht lesen lässt (keine Tabelle, der Name ist kein Parameter, die Zeilen sind
+ * keine wörtlichen Werte, Objekt- oder Vorlagentabelle). `null` ist die sichere Seite: kein Beleg.
+ * Die Gegenrichtung zu `spalteVon`, das aus einer Stelle die Spalte macht; hier wird aus dem
+ * Parameter die Spalte und daraus ihre Werte.
+ */
+function tabellenwerte(stand: Stand, fall: Fall, name: string): string[] | null {
+  if (fall.tabelle < 0) {
+    return null;
+  }
+  const spalte = fall.parameter.indexOf(name);
+  if (spalte < 0) {
+    return null;
+  }
+  let i = fall.tabelle + 1;
+  while (/\s/.test(stand.maske[i] ?? "")) {
+    i += 1;
+  }
+  if (stand.maske[i] !== "[") {
+    return null;
+  }
+  const werte: string[] = [];
+  for (const [von, bis] of elemente(stand.maske, i)) {
+    let a = von;
+    while (/\s/.test(stand.maske[a] ?? "")) {
+      a += 1;
+    }
+    // Eine flache Zeile (`it.each(["en", "nl"])`) ist Spalte 0; eine Zeile als Feld hat Spalten.
+    let bereich: [number, number] | undefined;
+    if (stand.maske[a] === "[") {
+      bereich = elemente(stand.maske, a)[spalte];
+    } else if (spalte === 0) {
+      bereich = [von, bis];
+    }
+    if (!bereich) {
+      return null;
+    }
+    const wert = TABELLENWERT.exec(stand.rein.slice(bereich[0], bereich[1]).trim())?.[2];
+    if (wert === undefined) {
+      return null;
+    }
+    werte.push(wert);
+  }
+  return werte.length > 0 ? werte : null;
+}
+
+/** K5.2 · Belegt die `each`-Tabelle dieses Falls, dass `name` wirklich `sprache` annimmt? */
+function spracheBelegt(stand: Stand, fall: Fall, name: string, sprache: Fremdsprache): boolean {
+  return tabellenwerte(stand, fall, name)?.includes(sprache) === true;
+}
+
+/**
+ * Die aktiven Prüffälle dieser Datei, die `satz` wirklich gegen eine Antwort halten. Zwei Zugänge
+ * zum selben Satz: er steht WÖRTLICH da (dann muss er in einer Zeichenkette liegen — Bedingung (a)
+ * aus K3), oder der Fall HOLT ihn über `katalog` aus `MELDUNGEN` (K5). Für alles Weitere gilt
+ * beidemal `imFall`.
+ */
+function messstellen(
+  stand: Stand,
+  satz: string,
+  katalog?: { schluessel: string; sprache: Fremdsprache },
+): string[] {
+  const treffer: string[] = [];
+  /** `weiter` ist die zusätzliche Bedingung des Katalogzugangs: die Sprache muss belegt sein. */
+  const melde = (p: number, weiter?: (fall: Fall) => boolean): void => {
     for (const fall of stand.faelle) {
-      // (b)+(c) im Bereich eines aktiven Falls mit `expect`.
-      if (p <= fall.von || p >= fall.bis) {
-        continue;
-      }
-      if (p < fall.offen) {
-        // (e) Der Satz steht VOR der Namensklammer, also in der `each`-Tabelle. Er zählt nur über
-        // den Parameter, den seine Spalte bindet — und nur, wenn der Rumpf ihn wirklich prüft.
-        if (fall.tabelle < 0 || p < fall.tabelle) {
-          continue;
-        }
-        const spalte = spalteVon(stand.maske, fall.tabelle, p);
-        const name = spalte === null ? null : (fall.parameter[spalte] ?? null);
-        if (name !== null && verbraucht(stand, fall, name)) {
-          treffer.push(`${stand.ort} · ${fall.name}`);
-        }
-        continue;
-      }
-      // (d) einem Aufruf übergeben, und zwar nicht der `it(`-Klammer selbst — sonst zählte eine
-      // tote `const t = "…"` oder der Fallname als Messung; (f) in einer Anweisung, die liest.
-      const aufruf = stand.aufrufe[p] ?? -1;
-      if (aufruf >= 0 && aufruf !== fall.offen && beobachtung(stand, fall, p)) {
+      if (imFall(stand, fall, p) && (weiter === undefined || weiter(fall))) {
         treffer.push(`${stand.ort} · ${fall.name}`);
       }
+    }
+  };
+  if (satz !== "") {
+    for (let p = stand.rein.indexOf(satz); p >= 0; p = stand.rein.indexOf(satz, p + 1)) {
+      // (a) In einer Zeichenkette? In der Maske ist ihr Inhalt geleert, im echten Text steht er.
+      const ende = p + satz.length - 1;
+      if (stand.maske[p] !== " " || stand.maske[ende] !== " ") {
+        continue;
+      }
+      melde(p);
+    }
+  }
+  if (katalog) {
+    const sprache = katalog.sprache;
+    for (const { pos, bezeichner } of katalogstellen(stand, katalog.schluessel, sprache)) {
+      // K5.2: Der wörtliche Zugriff bringt seine Sprache mit; der Bezeichner muss sie sich von der
+      // `each`-Tabelle DES FALLS belegen lassen, in dem er steht — deshalb erst hier, nicht schon
+      // in `katalogstellen`: dieselbe Stelle kann in keinem, einem oder mehreren Fällen liegen.
+      melde(
+        pos,
+        bezeichner === null ? undefined : (f) => spracheBelegt(stand, f, bezeichner, sprache),
+      );
     }
   }
   return [...new Set(treffer)];
@@ -1127,20 +1336,38 @@ function routentests(): { ort: string; roh: string }[] {
 
 const ROUTENTESTS = routentests();
 const FREMDSPRACHIG = Object.values(MELDUNGEN).flatMap((t) => [t.en, t.nl]);
+// K5 (JOB 3785): der Vorfilter muss dieselben zwei Zugänge kennen wie `messstellen`. Vorher liess
+// er nur Dateien durch, die einen Satz WÖRTLICH nennen — eine Datei, die ihn aus dem Katalog holt,
+// kam gar nicht erst in `STAENDE`, und die Erweiterung liefe ins Leere. Das grobe `MELDUNGEN.`
+// genügt hier: es ist der billige Vorfilter, die feine Entscheidung trifft `katalogstellen`.
+const KATALOG_GROB = /(?<![A-Za-z0-9_$.])MELDUNGEN\s*\./;
 // Der volle Abtast (Kommentare schneiden, Zeichenketten leeren, Fälle lesen) lohnt nur für Dateien,
-// die überhaupt einen dieser Sätze nennen — billig zuerst, teuer nur bei Verdacht.
-const STAENDE = ROUTENTESTS.filter((d) => FREMDSPRACHIG.some((s) => d.roh.includes(s))).map((d) =>
-  pruefstand(d.ort, d.roh),
-);
+// die überhaupt einen dieser Sätze nennen oder den Katalog anfassen — billig zuerst, teuer nur bei
+// Verdacht.
+const STAENDE = ROUTENTESTS.filter(
+  (d) => FREMDSPRACHIG.some((s) => d.roh.includes(s)) || KATALOG_GROB.test(d.roh),
+).map((d) => pruefstand(d.ort, d.roh));
 
-function routenfall(satz: string): string[] {
-  return STAENDE.flatMap((stand) => messstellen(stand, satz));
+function routenfall(schluessel: string, sprache: Fremdsprache): string[] {
+  const satz = MELDUNGEN[schluessel as keyof typeof MELDUNGEN][sprache];
+  return STAENDE.flatMap((stand) => messstellen(stand, satz, { schluessel, sprache }));
 }
 
 /**
- * DIE LISTE (Lieferung 3). 19 von 28 Schlüsseln zeigen heute nirgends einen englischen oder
- * niederländischen Satz an einem echten Draht. Gemessen, nicht abgeschrieben — Codex' drei
- * Beispiele (`OIDC_STATE_INVALID`, `ALREADY_SETUP`, `UNKNOWN_ROLE`) stehen darin.
+ * DIE LISTE. 15 von 28 Schlüsseln zeigen heute nirgends einen englischen oder niederländischen Satz
+ * an einem echten Draht. Gemessen, nicht abgeschrieben.
+ *
+ * „OHNE ROUTENFALL" HEISST SEIT JOB 3785 GENAU: kein aktiver Prüffall einer Datei, die die App über
+ * `app.inject(` fährt, hält den EN- oder NL-Satz dieses Schlüssels gegen eine echte Antwort —
+ * WEDER wörtlich abgeschrieben NOCH über `MELDUNGEN.<SCHLUESSEL>.<sprache>` aus dem Katalog geholt
+ * (K5). Bis dahin zählte nur der wörtliche Weg; `OIDC_UNREACHABLE` stand deshalb hier, obwohl
+ * `tests/q9-oidc-literalquelle/…` E.1 seinen Satz in beiden Sprachen vom Draht liest.
+ *
+ * Der SSO-Weg ist mit JOB 3785 herausgegangen — die vier `OIDC_*`-Schlüssel, die vorher unter
+ * „SSO. Der ganze Anmeldeweg über einen fremden Anbieter hat keinen einzigen Sprachfall." standen.
+ * Was bleibt, ist der Verwaltungsweg: Konto- und Rollenverwaltung sowie die Eingangsprüfungen der
+ * Routen. Codex' drei Beispiele waren `OIDC_STATE_INVALID` (jetzt gemessen), `ALREADY_SETUP` und
+ * `UNKNOWN_ROLE` — die letzten beiden stehen weiterhin darin.
  */
 const OHNE_ROUTENFALL = [
   // Konto- und Rollenverwaltung. Geworfen in `service.ts`; die Q9-Fälle fahren nur Anmeldung,
@@ -1162,11 +1389,6 @@ const OHNE_ROUTENFALL = [
   "REGISTRATION_DISABLED",
   "REGISTRATION_RATE_LIMITED",
   "UNKNOWN_ROLE",
-  // SSO. Der ganze Anmeldeweg über einen fremden Anbieter hat keinen einzigen Sprachfall.
-  "OIDC_DISABLED",
-  "OIDC_LOGIN_FAILED",
-  "OIDC_STATE_INVALID",
-  "OIDC_UNREACHABLE",
 ];
 
 /** Die Gegenliste: was heute gemessen IST, mit dem Fall, der es misst. Gepinnt, weil H4 sonst
@@ -1179,8 +1401,21 @@ const GEMESSEN_VON = {
   ACCESS_EXPIRED: [
     "tests/demo-zugang-gaeste-meldung/ablauf-meldung.test.ts · M3 dieselbe Lage auf Englisch und Niederländisch",
   ],
+  /**
+   * EHRLICH GELESEN: nur R12 hält den INTERNAL-Satz POSITIV gegen eine Antwort. Die vier anderen
+   * Einträge sind AUSSCHLÜSSE — sie prüfen, dass eine Route NICHT still auf `INTERNAL`
+   * zurückgefallen ist (`meldungen.ts:159-164`). Der Wächter unterscheidet `toBe` und `not.toBe`
+   * nicht; er sagt „dieser Satz wird in einem aktiven Fall an einer echten Antwort gehalten", und
+   * das stimmt auch für den Ausschluss. Für die Zusage „INTERNAL ist übersetzt" bürgt allein R12.
+   * Fiele R12 weg, bliebe dieser Eintrag stehen, ohne dass der Schlüssel noch positiv gemessen
+   * wäre — das ist die bekannte Grenze der Auskunft und kein Ersatz für den Fall selbst.
+   */
   INTERNAL: [
+    "tests/q9-oidc-literalquelle/jeder-fehler-traegt-einen-katalogschluessel.test.ts · E.1 der echte Callback liefert in %s den OIDC_UNREACHABLE-Satz, nicht INTERNAL",
     "tests/q9-serverfehlertexte/server.test.ts · R12 Auffangfehler EN verbirgt interne Details",
+    "tests/q9-serverfehlertexte/sso-sprachfaelle.test.ts · S1 OIDC_DISABLED · beide SSO-Türen antworten ohne Anbieter 501 auf %s",
+    "tests/q9-serverfehlertexte/sso-sprachfaelle.test.ts · S2 OIDC_STATE_INVALID · ein state, der nicht zum Plätzchen passt, antwortet 400 auf %s",
+    "tests/q9-serverfehlertexte/sso-sprachfaelle.test.ts · S3 OIDC_LOGIN_FAILED · ein gescheiterter Token-Tausch antwortet 401 auf %s",
   ],
   INVALID_CREDENTIALS: [
     "tests/q9-serverfehlertexte/server.test.ts · R1 Anmeldung EN: falsches Passwort und unbekanntes Konto bleiben unspezifisch",
@@ -1192,6 +1427,23 @@ const GEMESSEN_VON = {
   ],
   NOT_APPROVED: ["tests/q9-serverfehlertexte/server.test.ts · R9 gesperrtes Konto %s"],
   NOT_SIGNED_IN: ["tests/q9-serverfehlertexte/server.test.ts · R11 Auth-Guard EN"],
+  // JOB 3785 · der SSO-Weg. Drei neue Fälle in `sso-sprachfaelle.test.ts` lesen die drei Sätze
+  // wörtlich von der Antwort; jeder deckt EN und NL über seine `each`-Tabelle.
+  OIDC_DISABLED: [
+    "tests/q9-serverfehlertexte/sso-sprachfaelle.test.ts · S1 OIDC_DISABLED · beide SSO-Türen antworten ohne Anbieter 501 auf %s",
+  ],
+  OIDC_LOGIN_FAILED: [
+    "tests/q9-serverfehlertexte/sso-sprachfaelle.test.ts · S3 OIDC_LOGIN_FAILED · ein gescheiterter Token-Tausch antwortet 401 auf %s",
+  ],
+  OIDC_STATE_INVALID: [
+    "tests/q9-serverfehlertexte/sso-sprachfaelle.test.ts · S2 OIDC_STATE_INVALID · ein state, der nicht zum Plätzchen passt, antwortet 400 auf %s",
+  ],
+  // JOB 3785 · kein neuer Fall, sondern eine berichtigte Auskunft: E.1 misst diesen Satz seit JOB
+  // 3580 in EN und NL an einer echten Antwort — über den Katalog statt über eine Abschrift, und
+  // deshalb sah der Wächter es bis K5 nicht.
+  OIDC_UNREACHABLE: [
+    "tests/q9-oidc-literalquelle/jeder-fehler-traegt-einen-katalogschluessel.test.ts · E.1 der echte Callback liefert in %s den OIDC_UNREACHABLE-Satz, nicht INTERNAL",
+  ],
   RESET_RATE_LIMITED: [
     "tests/q9-serverfehlertexte/server.test.ts · R5b Zurücksetzen 429 EN: eigener Zähler",
   ],
@@ -1202,17 +1454,21 @@ const GEMESSEN_VON = {
 } as const satisfies Record<string, readonly string[]>;
 
 it("H4 genau die gepinnten Schlüssel werden von keinem aktiven Routenfall in EN/NL gemessen", () => {
-  const ungemessen = KATALOGSCHLUESSEL.filter((schluessel) => {
-    const texte = MELDUNGEN[schluessel as keyof typeof MELDUNGEN];
-    return routenfall(texte.en).length === 0 && routenfall(texte.nl).length === 0;
-  });
+  const ungemessen = KATALOGSCHLUESSEL.filter(
+    (schluessel) =>
+      routenfall(schluessel, "en").length === 0 && routenfall(schluessel, "nl").length === 0,
+  );
   expect(
     ungemessen,
     `Die Liste ist die ehrliche Auskunft über den Umfang: für diese Schlüssel sagt nur der
-Katalogwächter, dass sie übersetzt sind — kein aktiver Fall sieht ihren Satz je an einer echten
-Antwort. Bekommt einer davon einen Routenfall, gehört er aus der Liste heraus; verliert einer
-seinen — auch durch ein \`skip\` oder ein vergessenes \`only\` —, muss er hinein.
-Verschoben hat sich: ${verschiebung(ungemessen, OHNE_ROUTENFALL)}
+Katalogwächter, dass sie übersetzt sind — kein aktiver Fall hält ihren EN- oder NL-Satz je gegen
+eine echte Antwort, weder wörtlich abgeschrieben noch über \`MELDUNGEN.<SCHLUESSEL>.<sprache>\` aus
+dem Katalog geholt (K5). Bei einem Zugriff über einen Namen (\`[sprache]\`) zählt die Sprache nur,
+wenn die \`each\`-Tabelle des Falls sie wörtlich nennt (K5.2) — ein Fall, der auf Deutsch
+umgestellt wird, gehört in die Liste, auch wenn Datei und Fallname gleich bleiben.
+Bekommt einer davon einen Routenfall, gehört er aus der Liste heraus;
+verliert einer seinen — auch durch ein \`skip\` oder ein vergessenes \`only\` —, muss er hinein.
+Verschoben hat sich: ${verschiebung(OHNE_ROUTENFALL, ungemessen)}
 Gemessen über ${STAENDE.length} von ${ROUTENTESTS.length} Testdateien, die die App über \`${ROUTEN_MERKMAL}\` fahren.`,
   ).toEqual([...OHNE_ROUTENFALL].sort());
 });
@@ -1221,10 +1477,10 @@ it("H4.2 jeder gemessene Schlüssel nennt den aktiven Fall, der ihn misst", () =
   // Die Gegenrichtung zu H4. Wird ein Routenfall abgeschaltet oder sein Satzvergleich entfernt,
   // wird DIESER Fall rot und nennt Datei und Fallnamen — nicht nur „die Liste ist länger".
   const gemessen = Object.fromEntries(
-    KATALOGSCHLUESSEL.map((schluessel) => {
-      const texte = MELDUNGEN[schluessel as keyof typeof MELDUNGEN];
-      return [schluessel, [...new Set([...routenfall(texte.en), ...routenfall(texte.nl)])].sort()];
-    }).filter(([, orte]) => (orte as string[]).length > 0),
+    KATALOGSCHLUESSEL.map((schluessel) => [
+      schluessel,
+      [...new Set([...routenfall(schluessel, "en"), ...routenfall(schluessel, "nl")])].sort(),
+    ]).filter(([, orte]) => (orte as string[]).length > 0),
   );
   const erwartet = Object.fromEntries(
     Object.entries(GEMESSEN_VON).map(([k, v]) => [k, [...v].sort()]),
@@ -1236,6 +1492,21 @@ samt dem Fall, der ihn hält. Fällt ein Fall aus (\`skip\`, \`only\` woanders, 
 Satzvergleich), verschwindet er hier — und genau das soll auffallen, bevor jemand glaubt, die
 Sprache sei noch gemessen.`,
   ).toEqual(erwartet);
+});
+
+it("H4.3 die Verschiebungsmeldung nennt Verlust als Verlust, nicht als Gewinn", () => {
+  // Runde 2: H4 gab `verschiebung` seine Listen in der falschen Reihenfolge und meldete BENs G3 —
+  // einen VERLUST der Fremdsprachdeckung — als „NEU gemessen". Der Wächter hatte recht und log in
+  // der Begründung. Hier steht beide Richtungen fest, in der Form, in der H4 sie aufruft: erstes
+  // Argument die gemessene Lage, zweites die gepinnte.
+  const gepinnt = ["ALREADY_SETUP", "UNKNOWN_ROLE"];
+  // Ein Schlüssel hat einen Fall bekommen: er fehlt in den Ungemessenen.
+  expect(verschiebung(gepinnt, ["UNKNOWN_ROLE"])).toBe("NEU gemessen: ALREADY_SETUP");
+  // Ein Schlüssel hat seinen Fall verloren: er steht neu in den Ungemessenen.
+  expect(verschiebung(gepinnt, [...gepinnt, "OIDC_UNREACHABLE"])).toBe(
+    "NICHT MEHR gemessen: OIDC_UNREACHABLE",
+  );
+  expect(verschiebung(gepinnt, gepinnt)).toBe("keine");
 });
 
 it("H4.9 der Fallabtaster findet die Fälle des Routentests dieses Ordners", () => {
@@ -1403,4 +1674,244 @@ describe("H6 · der Fallabtaster zählt nur aktive Prüffälle", () => {
       expect(messstellen(pruefstand("X.ts", quelle), "SATZ")).toEqual(erwartet);
     });
   }
+});
+
+// ------------------------------------------------------------------------------------------------
+// H7 · KALIBRIERUNG DES ZWEITEN SATZZUGANGS (KORREKTURPFLICHT K5, JOB 3785)
+// ------------------------------------------------------------------------------------------------
+//
+// Dieselbe Frage wie H6, nur für die Form, in der ein Fall den Satz AUS DEM KATALOG holt. Jede
+// Form, die zählen SOLL, steht neben derselben Form, der die Prüfung fehlt — sonst wäre die
+// Erweiterung ein Wächter, der nur noch findet und nicht mehr unterscheidet. Die Fälle laufen durch
+// DENSELBEN Code wie H4 (`pruefstand`, `messstellen`), nicht durch eine Kopie; der Satz „SATZ"
+// kommt in keiner Quelle wörtlich vor, damit ausschliesslich der Katalogzugang misst.
+describe("H7 · der Katalogzugriff zählt — und nur, wenn der Fall wirklich prüft", () => {
+  const ERWARTE = "    expect(res.statusCode).toBe(401);\n";
+  const FAELLE: { form: string; quelle: string; sprache: Fremdsprache; erwartet: string[] }[] = [
+    {
+      form: "H7.1 Punktform in einem aktiven Fall, gegen die Antwort gehalten",
+      quelle: `it("R1", async () => {\n${ERWARTE}  expect(res.json().message).toBe(MELDUNGEN.OIDC_UNREACHABLE.en);\n});\n`,
+      sprache: "en",
+      erwartet: ["X.ts · R1"],
+    },
+    {
+      // Die Sprache am Zugriff ist verbindlich: derselbe Quelltext, andere Frage, kein Treffer.
+      form: "H7.2 Punktform `.en` deckt NL nicht",
+      quelle: `it("R1", async () => {\n${ERWARTE}  expect(res.json().message).toBe(MELDUNGEN.OIDC_UNREACHABLE.en);\n});\n`,
+      sprache: "nl",
+      erwartet: [],
+    },
+    {
+      form: "H7.3 Klammerform mit wörtlichem Sprachindex",
+      quelle: `it("R2", async () => {\n${ERWARTE}  expect(res.json().message).toBe(MELDUNGEN.OIDC_UNREACHABLE["nl"]);\n});\n`,
+      sprache: "nl",
+      erwartet: ["X.ts · R2"],
+    },
+    {
+      form: "H7.4 Klammerform mit wörtlichem `nl` deckt EN nicht",
+      quelle: `it("R2", async () => {\n${ERWARTE}  expect(res.json().message).toBe(MELDUNGEN.OIDC_UNREACHABLE["nl"]);\n});\n`,
+      sprache: "en",
+      erwartet: [],
+    },
+    {
+      // Genau die Form von E.1 in `tests/q9-oidc-literalquelle/`. Die Sprache steht nicht am
+      // Zugriff — belegt wird sie von der Tabelle, und die nennt hier beide Fremdsprachen wörtlich.
+      form: "H7.5 Klammerform mit einem Namen zählt für EN, weil die Tabelle EN nennt",
+      quelle: `it.each(["en", "nl"])("R3 %s", async (sprache) => {\n${ERWARTE}  expect(res.json().message).toBe(MELDUNGEN.OIDC_UNREACHABLE[sprache]);\n});\n`,
+      sprache: "en",
+      erwartet: ["X.ts · R3 %s"],
+    },
+    {
+      form: "H7.6 dieselbe Klammerform zählt auch für NL, weil die Tabelle NL nennt",
+      quelle: `it.each(["en", "nl"])("R3 %s", async (sprache) => {\n${ERWARTE}  expect(res.json().message).toBe(MELDUNGEN.OIDC_UNREACHABLE[sprache]);\n});\n`,
+      sprache: "nl",
+      erwartet: ["X.ts · R3 %s"],
+    },
+    {
+      // Deutsch ist der Rückfall und war nie die Frage von H4 — `.de` deckt nichts.
+      form: "H7.7 der deutsche Zugriff deckt keine Fremdsprache",
+      quelle: `it("R4", async () => {\n${ERWARTE}  expect(res.json().message).toBe(MELDUNGEN.OIDC_UNREACHABLE.de);\n});\n`,
+      sprache: "en",
+      erwartet: [],
+    },
+    {
+      form: "H7.8 ein anderer Schlüssel wird nicht verwechselt",
+      quelle: `it("R5", async () => {\n${ERWARTE}  expect(res.json().message).toBe(MELDUNGEN.OIDC_DISABLED.en);\n});\n`,
+      sprache: "en",
+      erwartet: [],
+    },
+    // --------------------------------------------------------------------------------------------
+    // DIE GEGENRICHTUNG · DIESELBE FORM, OHNE DASS SIE ETWAS PRÜFT
+    // --------------------------------------------------------------------------------------------
+    {
+      form: "H7.9 in einem it.skip zählt nichts",
+      quelle: `it.skip("R6", async () => {\n${ERWARTE}  expect(res.json().message).toBe(MELDUNGEN.OIDC_UNREACHABLE.en);\n});\n`,
+      sprache: "en",
+      erwartet: [],
+    },
+    {
+      form: "H7.10 ein describe.skip darüber schaltet den Fall ab",
+      quelle: `describe.skip("G", () => {\n  it("R6", async () => {\n${ERWARTE}    expect(res.json().message).toBe(MELDUNGEN.OIDC_UNREACHABLE.en);\n  });\n});\n`,
+      sprache: "en",
+      erwartet: [],
+    },
+    {
+      form: "H7.11 der Zugriff steht nur im Kommentar",
+      quelle: `it("R7", async () => {\n${ERWARTE}    // expect(x).toBe(MELDUNGEN.OIDC_UNREACHABLE.en);\n});\n`,
+      sprache: "en",
+      erwartet: [],
+    },
+    {
+      form: "H7.12 tote Zuweisung ohne jede Prüfung",
+      quelle: `it("R8", async () => {\n${ERWARTE}    const t = MELDUNGEN.OIDC_UNREACHABLE.en;\n});\n`,
+      sprache: "en",
+      erwartet: [],
+    },
+    {
+      form: "H7.13 blosse Erwähnung ohne Aufruf",
+      quelle: `it("R9", async () => {\n${ERWARTE}    MELDUNGEN.OIDC_UNREACHABLE.en;\n});\n`,
+      sprache: "en",
+      erwartet: [],
+    },
+    {
+      // Der Grund für `MELDUNGEN` in `KEINE_BEOBACHTUNG`: der Zugriff bringt seine eigene
+      // Gliederkette mit. Ohne diesen Eintrag hätte JEDE Katalogform Bedingung (f) erfüllt, und
+      // ein reiner Katalogfall ohne Route wäre als Messung am Draht durchgegangen.
+      form: "H7.14 an einen Aufruf übergeben, aber die Anweisung liest nichts aus der Antwort",
+      quelle: `it("R10", async () => {\n${ERWARTE}    expect(meldung("X", "en")).toBe(MELDUNGEN.OIDC_UNREACHABLE.en);\n});\n`,
+      sprache: "en",
+      erwartet: [],
+    },
+    {
+      form: "H7.15 ein Fall ohne expect prüft nichts",
+      quelle: `it("R11", async () => {\n  pruefe(res.json().message, MELDUNGEN.OIDC_UNREACHABLE.en);\n});\n`,
+      sprache: "en",
+      erwartet: [],
+    },
+    {
+      form: "H7.16 der Zugriff steht ausserhalb jedes Falls",
+      quelle: `const T = pruefe(res.json().message, MELDUNGEN.OIDC_UNREACHABLE.en);\nit("R12", () => {\n  expect(1).toBe(1);\n});\n`,
+      sprache: "en",
+      erwartet: [],
+    },
+    {
+      form: "H7.17 der Zugriff steht ausgeschrieben in einer Zeichenkette",
+      quelle: `it("R13", async () => {\n${ERWARTE}    pruefe(res.json().message, "MELDUNGEN.OIDC_UNREACHABLE.en");\n});\n`,
+      sprache: "en",
+      erwartet: [],
+    },
+    {
+      // Die Grenze der Erkennung, ausdrücklich festgehalten: eine dritte Schreibweise zählt NICHT,
+      // der Schlüssel bleibt in `OHNE_ROUTENFALL`. Die leise Seite ist die sichere.
+      form: "H7.18 die Klammerform am Katalog selbst wird nicht gelesen",
+      quelle: `it("R14", async () => {\n${ERWARTE}  expect(res.json().message).toBe(MELDUNGEN["OIDC_UNREACHABLE"].en);\n});\n`,
+      sprache: "en",
+      erwartet: [],
+    },
+    // --------------------------------------------------------------------------------------------
+    // K5.2 · DER NAME ALLEIN IST KEIN SPRACHBELEG (Runde 2, Korrekturpflicht 2 des Prüfers)
+    // --------------------------------------------------------------------------------------------
+    // BENs G3: die Tabelle von E.1 auf `["de"]` gestellt, Datei und Fallname unverändert. Runde 1
+    // zählte `[sprache]` pauschal für EN und NL — die einzige Fremdsprachmessung von
+    // `OIDC_UNREACHABLE` verschwand, und H4/H4.2 blieben grün. H7.20–H7.31 halten fest, dass die
+    // Sprache jetzt aus der Tabelle KOMMEN muss, sonst gilt der Zugriff als ungemessen.
+    {
+      form: "H7.20 die Tabelle nennt nur `de` — der Name belegt EN nicht (BENs G3)",
+      quelle: `it.each(["de"])("R3 %s", async (sprache) => {\n${ERWARTE}  expect(res.json().message).toBe(MELDUNGEN.OIDC_UNREACHABLE[sprache]);\n});\n`,
+      sprache: "en",
+      erwartet: [],
+    },
+    {
+      form: "H7.21 dieselbe `de`-Tabelle belegt auch NL nicht",
+      quelle: `it.each(["de"])("R3 %s", async (sprache) => {\n${ERWARTE}  expect(res.json().message).toBe(MELDUNGEN.OIDC_UNREACHABLE[sprache]);\n});\n`,
+      sprache: "nl",
+      erwartet: [],
+    },
+    {
+      // Der halbe Sprachverlust, der genauso still wäre: eine der beiden Sprachen fällt weg.
+      form: "H7.22 eine Tabelle nur mit `en` belegt EN — und NL gerade nicht",
+      quelle: `it.each(["en"])("R3 %s", async (sprache) => {\n${ERWARTE}  expect(res.json().message).toBe(MELDUNGEN.OIDC_UNREACHABLE[sprache]);\n});\n`,
+      sprache: "nl",
+      erwartet: [],
+    },
+    {
+      form: "H7.23 dieselbe `en`-Tabelle belegt EN sehr wohl — die Erkennung wird nicht blind",
+      quelle: `it.each(["en"])("R3 %s", async (sprache) => {\n${ERWARTE}  expect(res.json().message).toBe(MELDUNGEN.OIDC_UNREACHABLE[sprache]);\n});\n`,
+      sprache: "en",
+      erwartet: ["X.ts · R3 %s"],
+    },
+    {
+      // Mehrspaltig: die Sprache steht in Spalte 1, und nur ihre Werte belegen.
+      form: "H7.24 mehrspaltige Tabelle — nur die Spalte des Namens belegt",
+      quelle: `it.each([["a", "en"], ["b", "de"]])("R3 %s %s", async (weg, sprache) => {\n${ERWARTE}  expect(res.json().message).toBe(MELDUNGEN.OIDC_UNREACHABLE[sprache]);\n});\n`,
+      sprache: "nl",
+      erwartet: [],
+    },
+    {
+      form: "H7.25 dieselbe mehrspaltige Tabelle belegt EN aus Spalte 1",
+      quelle: `it.each([["a", "en"], ["b", "de"]])("R3 %s %s", async (weg, sprache) => {\n${ERWARTE}  expect(res.json().message).toBe(MELDUNGEN.OIDC_UNREACHABLE[sprache]);\n});\n`,
+      sprache: "en",
+      erwartet: ["X.ts · R3 %s %s"],
+    },
+    {
+      form: "H7.26 eine Tabelle aus einer Konstanten ist nicht lesbar — also kein Beleg",
+      quelle: `it.each(SPRACHEN)("R3 %s", async (sprache) => {\n${ERWARTE}  expect(res.json().message).toBe(MELDUNGEN.OIDC_UNREACHABLE[sprache]);\n});\n`,
+      sprache: "en",
+      erwartet: [],
+    },
+    {
+      form: "H7.27 ein Name ohne jede Tabelle belegt nichts",
+      quelle: `it("R3", async () => {\n${ERWARTE}  expect(res.json().message).toBe(MELDUNGEN.OIDC_UNREACHABLE[sprache]);\n});\n`,
+      sprache: "en",
+      erwartet: [],
+    },
+    {
+      // Der Name ist zwar da, aber er ist NICHT der Parameter dieses Falls — die Tabelle sagt über
+      // ihn nichts, auch wenn sie zufällig „en" enthält.
+      form: "H7.28 ein Name, den die Tabelle gar nicht bindet, belegt nichts",
+      quelle: `it.each(["en", "nl"])("R3 %s", async (weg) => {\n${ERWARTE}  expect(res.json().message).toBe(MELDUNGEN.OIDC_UNREACHABLE[sprache]);\n});\n`,
+      sprache: "en",
+      erwartet: [],
+    },
+    {
+      form: "H7.29 eine Objekttabelle bindet keine Spalte — kein Beleg",
+      quelle: `it.each([{ sprache: "en" }])("R3 %s", async ({ sprache }) => {\n${ERWARTE}  expect(res.json().message).toBe(MELDUNGEN.OIDC_UNREACHABLE[sprache]);\n});\n`,
+      sprache: "en",
+      erwartet: [],
+    },
+    {
+      // Ein zusammengesetzter Ausdruck ist nicht belegbar: er steht in keiner Tabellenspalte.
+      form: "H7.30 ein zusammengesetzter Sprachausdruck zählt nicht",
+      quelle: `it.each([["en"]])("R3 %s", async (sprachen) => {\n${ERWARTE}  expect(res.json().message).toBe(MELDUNGEN.OIDC_UNREACHABLE[sprachen[0]]);\n});\n`,
+      sprache: "en",
+      erwartet: [],
+    },
+    {
+      // Und die Gegenrichtung dazu: eine Tabellenzeile, die kein wörtlicher Wert ist, belegt nicht.
+      form: "H7.31 eine Tabellenzeile, die kein wörtlicher Wert ist, belegt nicht",
+      quelle: `it.each(["en", waehle()])("R3 %s", async (sprache) => {\n${ERWARTE}  expect(res.json().message).toBe(MELDUNGEN.OIDC_UNREACHABLE[sprache]);\n});\n`,
+      sprache: "en",
+      erwartet: [],
+    },
+  ];
+
+  for (const { form, quelle, sprache, erwartet } of FAELLE) {
+    it(form, () => {
+      const stand = pruefstand("X.ts", quelle);
+      expect(messstellen(stand, "SATZ", { schluessel: "OIDC_UNREACHABLE", sprache })).toEqual(
+        erwartet,
+      );
+    });
+  }
+
+  it("H7.19 der wörtliche Weg bleibt daneben gültig — es wird ergänzt, nicht ersetzt", () => {
+    // Ablösung wäre hier falsch: fast alle heutigen Messungen (R1–R12, M3) schreiben den Satz ab.
+    // Beide Zugänge müssen nebeneinander tragen, und zwar in EINEM Aufruf.
+    const quelle = `it("R1", async () => {\n${ERWARTE}  pruefe(res.json().message, "SATZ");\n});\nit("R2", async () => {\n${ERWARTE}  expect(res.json().message).toBe(MELDUNGEN.OIDC_UNREACHABLE.en);\n});\n`;
+    const stand = pruefstand("X.ts", quelle);
+    expect(messstellen(stand, "SATZ", { schluessel: "OIDC_UNREACHABLE", sprache: "en" })).toEqual([
+      "X.ts · R1",
+      "X.ts · R2",
+    ]);
+  });
 });
