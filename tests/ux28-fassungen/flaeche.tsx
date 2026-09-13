@@ -18,6 +18,31 @@
 // Tabulator-Reihenfolge als Menge der fokussierbaren Elemente in DOM-Reihenfolge, der Fokus über
 // `document.activeElement` und die AUSLÖSUNG über das Klick-Ereignis (das ein Browser an einem
 // nativen `<button>` aus Eingabe- UND Leertaste erzeugt). Keine Behauptung über die Taste selbst.
+//
+// JOB 3865 · DER ABBAU FRAGT ZUERST, OB ES ETWAS ABZUBAUEN GIBT — und zwar am ZUSTAND, nicht am
+// Fehler. Bis hierher räumte `abbauen()` bedingungslos (`act(() => root.unmount()); …`), obwohl
+// `container`, `root` und `qc` ihren Wert ERST in `flaecheMitFassungen()` bekommen. Ein Fall, der
+// vor dem Aufbau fiel, lief trotzdem in den gemeinsamen `afterEach` dieses Ordners — und der warf
+// dort `TypeError: Cannot read properties of undefined (reading 'unmount')`. Die ECHTE Ursache
+// stand damit nicht mehr in der Ausgabe, und eine Gegenprobe per `-t "<name>"` war an dieser Stelle
+// nicht mehr belastbar. Gemessen an einem gestellten Fall vor dem Umbau: zwei Fehler statt einem,
+// der zweite aus `flaeche.tsx:108`, nicht aus dem Fall.
+//
+// DIE DREI LAGEN, jede einzeln festgenagelt (`aenderungsangabe-an-der-karte.test.tsx`, Abschnitt U):
+//   nie aufgebaut / schon abgebaut → folgenlos, der `body` bleibt unangetastet      (U1, U2)
+//   aufgebaut                      → vollständig geräumt, samt `qc.clear()`         (jeder Fall)
+//   Abbau scheitert wirklich       → Wurf mit Grund, nichts verschluckt             (U3)
+// Eine vierte Lage gibt es nicht. `try { … } catch {}` um den Rumpf ist ausdrücklich NICHT der Weg:
+// es machte jeden künftigen Abbaufehler unsichtbar und diesen Ordner, der gegen Falschaussagen
+// antritt, in seiner eigenen Vorrichtung unehrlich.
+//
+// WARUM DAS KENNZEICHEN VOR DEM RENDERN GESETZT WIRD: ab `document.body.appendChild(container)` und
+// `root = createRoot(container)` hängt der Behälter wirklich im Dokument. Wirft das Rendern danach,
+// ist der gemeinsame `afterEach` der Einzige, der ihn noch wegräumt — stünde das Kennzeichen erst
+// hinter dem Rendern, bliebe genau dann ein Behälter im `body` liegen und der nächste Fall erbte ihn.
+//
+// SEINE EINE GRENZE: `montiert` ist Modulzustand und gilt deshalb je Testdatei — ein Fall, der die
+// Fläche in einem `beforeAll` aufbaute, wäre davon nicht gedeckt (im Ordner gibt es heute keinen).
 import {
   QueryClient,
   QueryClientProvider,
@@ -45,6 +70,13 @@ export const RUECKWEG_MARKE = "data-bib-fassung-zurueck";
 let container: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 let qc: QueryClient;
+/**
+ * JOB 3865: STEHT GERADE EINE FLÄCHE DIESER VORRICHTUNG IM DOKUMENT? Der einzige Zustand, an dem
+ * `abbauen()` unten entscheidet, ob es überhaupt etwas zu tun gibt (Begründung im Dateikopf).
+ *
+ * Er ist KEIN zweiter Abbauweg: er beantwortet eine Frage, er räumt nichts.
+ */
+let montiert = false;
 
 export const flush = async (): Promise<void> => {
   for (let i = 0; i < 25; i++) {
@@ -70,6 +102,10 @@ export async function flaecheMitFassungen(): Promise<void> {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
+  // AB HIER gibt es etwas abzubauen — bewusst VOR dem Rendern (Dateikopf): der Behälter hängt schon
+  // im `body`, und wirft das Rendern gleich, ist der gemeinsame `afterEach` der Einzige, der ihn
+  // noch wegräumt. Ein zweites `flaecheMitFassungen()` im selben Fall setzt ihn hier neu.
+  montiert = true;
   await act(async () => {
     root.render(
       createElement(
@@ -104,10 +140,34 @@ export async function flaecheMitFassungen(): Promise<void> {
   await abschnittOeffnen();
 }
 
+/**
+ * Die Fläche abbauen — gehört in jedes `afterEach` dieses Ordners und vor jeden zweiten Aufbau im
+ * selben Fall. Die drei Lagen und ihre Fälle stehen im Dateikopf.
+ */
 export function abbauen(): void {
+  if (!montiert) {
+    return;
+  }
+  // Sagt der Zustand „montiert", muss der Behälter auch wirklich im Dokument hängen. Tut er das
+  // nicht, LÜGT der Zustand — und das ist ein echter Befund, kein Grund zum Weitermachen: entweder
+  // lief `abbauen()` zweimal auf dieselbe Fläche, ohne sich zurückzusetzen, oder der Behälter wurde
+  // an dieser Vorrichtung vorbei entfernt. Die Meldung nennt, was GEMESSEN wurde, nicht den Sollwert.
+  if (!container.isConnected) {
+    throw new Error(
+      `flaeche.tsx: abbauen() steht auf „montiert", aber der Behälter hängt nicht im Dokument (body-Kinder: ${document.body.childElementCount}, Behälter-Kinder: ${container.childElementCount}) — abbauen() lief zweimal auf dieselbe Fläche, oder der Behälter wurde an flaeche.tsx vorbei entfernt`,
+    );
+  }
   act(() => root.unmount());
   container.remove();
+  // `qc.clear()` ist der DRITTE Handgriff dieser Vorrichtung (die Schwesterhülle
+  // `tests/entwurf-verlassen/huelle.tsx` hat ihn nicht, sie legt ihren `QueryClient` im Baum an).
+  // Er steht hinter dem Abbau des Baums: solange React noch abräumt, laufen die `useQuery`-Abrufe
+  // dieses Clients — erst danach ist sein Zwischenspeicher folgenlos zu leeren.
   qc.clear();
+  // Erst NACH dem gelungenen Abbau. Wirft eine der drei Zeilen darüber, bleibt der Zustand auf
+  // „montiert" stehen — der `afterEach` räumt dann wirklich noch einmal auf, statt eine halb
+  // abgebaute Fläche in den nächsten Fall zu tragen.
+  montiert = false;
 }
 
 export const abschnitt = (): HTMLDetailsElement | null =>
