@@ -17,8 +17,10 @@
 //                             zwei Breiten, damit jede Zahl der Marke zugeordnet werden kann.
 //   B3   Die Schwelle         1023 und 1025 px: nie beide Bauformen, nie keine.
 //   G    Die Gegenproben      JOB 3774: die drei Lücken der Sichtbarkeitsrechnung, jede einzeln von
-//                             aussen in die Seite eingebracht — und die eine Grenze, die die neue
-//                             Messung selbst hat.
+//                             aussen in die Seite eingebracht — und die Grenzen, die die neue
+//                             Messung selbst hat. JOB 3910 hat die vierte Lücke (Teilabdeckung mit
+//                             freiem Mittelpunkt, G-F) geschlossen und die zweite Grenze
+//                             (kein Kontrast, G-G) gemessen statt behauptet.
 //
 // SICHTBARKEIT WIRD GERECHNET, NICHT AUS `display` GESCHLOSSEN (Runde 3, Korrekturpflicht BEN).
 // Die erste Fassung leitete „steht da" aus `display !== none` und einer Rechteckgrösse > 0 ab. BEN
@@ -33,19 +35,37 @@
 // Zeile bestellt hat: Verdeckung durch ein darüberliegendes Element, `clip-path` und das Abschieben
 // aus dem Sichtfenster. Alle drei liessen Rechteckgrösse, `visibility` und `opacity` unverändert —
 // ein Gast konnte auf eine leere Platte schauen, während dreizehn Fälle grün waren. Dazu kommt jetzt
-// die TREFFERPUNKT-MESSUNG (`treffpunkt` in MESSE): `document.elementFromPoint` am Mittelpunkt des
-// Rechtecks muss das Element selbst oder einen seiner Nachfahren liefern.
+// die TREFFERPUNKT-MESSUNG (`treffpunkt` in MESSE): `document.elementFromPoint` muss das Element
+// selbst oder einen seiner Nachfahren liefern.
 //
 //   GEDECKT ist damit zusätzlich: ein deckendes Element darüber (es wird geliefert statt des
 //   gesuchten), `clip-path` (der geclippte Knoten ist nicht mehr trefferfähig, geliefert wird ein
 //   VORFAHR — deshalb gilt ein Vorfahr ausdrücklich NICHT als Treffer) und das Abschieben aus dem
 //   Fenster in JEDE Richtung (`elementFromPoint` antwortet dort mit `null`; gemessen in G-C, nicht
 //   angenommen).
-//   NICHT GEDECKT und hier ausdrücklich als Restschuld benannt: ein darüberliegendes Element mit
-//   `pointer-events: none`. `elementFromPoint` überspringt es und liefert das verdeckte Element —
-//   der Treffer gilt, obwohl der Gast nichts sieht. Diese Grenze ist gemessen (G-D), nicht vermutet.
-//   Ebenfalls nicht gedeckt: Teilverdeckung, die den Mittelpunkt freilässt, und eine Deckfarbe, die
-//   dem Untergrund gleicht (kein Kontrast wird gemessen, nur Anwesenheit).
+//
+// JOB 3910 — AUS DEM EINEN PUNKT WIRD EINE FLÄCHE, UND DIE ZWEITE GRENZE WIRD GEMESSEN.
+// Bis JOB 3910 fragte `treffpunkt` GENAU EINEN Punkt: den Mittelpunkt des Rechtecks. Eine Abdeckung,
+// die den Schriftzug zur Hälfte deckt und dabei den Mittelpunkt frei lässt, blieb damit unsichtbar
+// für die Messung — der Gast sah die halb verdeckte Wortmarke, die Zusage blieb grün. Gefragt werden
+// jetzt FÜNF Punkte (Mitte plus 25 %/75 % in Breite und Höhe), und `trifft` gilt nur, wenn JEDER von
+// ihnen das Element oder einen Nachfahren liefert.
+//
+//   ZUSÄTZLICH GEDECKT: die Teilabdeckung mit freiem Mittelpunkt — gemessen in G-F, wo der freie
+//   Mittelpunkt ausdrücklich nachgewiesen wird und trotzdem `trifft` fällt (3 von 5 Punkten).
+//   NICHT GEDECKT und hier ausdrücklich als Restschuld benannt, beide Grenzen GEMESSEN, keine bloss
+//   behauptet:
+//     · ein darüberliegendes Element mit `pointer-events: none`. `elementFromPoint` überspringt es
+//       und liefert das verdeckte Element — der Treffer gilt, obwohl der Gast nichts sieht. Gemessen
+//       in G-D, nicht vermutet.
+//     · eine Deckfarbe, die dem Untergrund gleicht. Gemessen wird ANWESENHEIT, nie Kontrast: steht
+//       der Schriftzug in der Farbe des Untergrunds hinter ihm, bleibt jede Zusage grün. Gemessen in
+//       G-G — die Hintergrundfarbe wird dort am wirklich dahinterliegenden Knoten abgelesen, nicht
+//       angenommen.
+//   NICHT GEDECKT und NICHT gemessen bleibt: eine Teilabdeckung, die alle fünf Punkte frei lässt
+//   (sehr schmale Streifen zwischen den Punkten, ein Loch um jeden Punkt herum). Fünf Punkte sind
+//   eine Stichprobe, keine Deckungsquote — jede weitere Verdichtung wäre eine neue Zusage und
+//   gehört in eine eigene Zeile.
 //
 // `gemalt` BLEIBT — aber nicht mehr als eigenständige Zusage. Kein Fall benutzt es allein; jede
 // Sichtbarkeitszusage läuft über den EINEN Satz `mussGemaltSein`, der beides fordert. Was `gemalt`
@@ -83,6 +103,27 @@ const PLATTE_HOEHE = 36;
 const BILD_HOEHE = 24;
 /** Weiss, wie `getComputedStyle` es serialisiert. */
 const WEISS = "rgb(255, 255, 255)";
+/**
+ * Wie viele Punkte `treffpunkt` je Element fragt (JOB 3910) — Mitte plus vier innenliegende.
+ * Die Zahl steht hier UND im Raster von `MESSE`; dass beide dieselbe ist, prüft G-F (`getroffen`
+ * eines unverdeckten Trägers muss genau diese Zahl sein).
+ */
+const PRUEFPUNKTE = 5;
+
+/**
+ * Der Blattknoten-Sucher als QUELLTEXTBAUSTEIN — eine Fassung für die Messung UND die Gegenproben.
+ *
+ * Er wird in `MESSE` (dort misst er den Träger) und in den Einbringhelfern des G-Blocks (dort ist er
+ * das Ziel der Verstellung) gebraucht. Zwei Abschriften wären zwei Begriffe davon, welcher Knoten
+ * „der Schriftzug" ist — und die Gegenprobe verstellte womöglich einen anderen Knoten, als die
+ * Messung misst.
+ */
+const BLATTKNOTEN_JS = `const blatt = (box, wort) => {
+  for (const e of Array.prototype.slice.call(box.querySelectorAll("*"))) {
+    if (e.children.length === 0 && (e.textContent || "").trim() === wort) return e;
+  }
+  return null;
+};`;
 
 /**
  * Was diese Datei über „zu sehen" weiss — zwei getrennte Auskünfte, bewusst nicht zu einer
@@ -100,10 +141,17 @@ interface Zusehen {
   opacity: number;
   /** Wirksame Sichtbarkeit, siehe `GEMALT` im Messprogramm. */
   gemalt: boolean;
-  /** Liefert `document.elementFromPoint` am Mittelpunkt dieses Element oder einen Nachfahren? */
+  /**
+   * Liefert `document.elementFromPoint` an ALLEN fünf Prüfpunkten dieses Element oder einen
+   * Nachfahren? Ein einziger Fehltreffer genügt für `false` (JOB 3910).
+   */
   trifft: boolean;
   /** Was dort wirklich steht — ausgeschrieben, damit ein Rotlauf lesbar ist. */
   treffer: string;
+  /** Wie viele der fünf Prüfpunkte getroffen haben — 5 heisst voll, 0 heisst gar nicht. */
+  getroffen: number;
+  /** Der Punkt, auf den sich `treffer` bezieht: der ERSTE Fehltreffer, sonst die Mitte. */
+  punktName: string;
   punktX: number;
   punktY: number;
 }
@@ -188,7 +236,7 @@ const MESSE = `([wurzel, immerWahr]) => {
   // ----------------------------------------------------------------------------------------------
   // DIE TREFFERPUNKT-MESSUNG (JOB 3774) — „steht da" heisst auch: am Ort wirklich getroffen.
   //
-  // Gefragt wird der Browser selbst: \`document.elementFromPoint\` am MITTELPUNKT des Rechtecks.
+  // Gefragt wird der Browser selbst: \`document.elementFromPoint\`.
   // Die Annahmeregel ist \`el.contains(oben)\` — das Element selbst oder einer seiner Nachfahren.
   //   · Ein VORFAHR gilt ausdrücklich NICHT als Treffer. Genau das kommt bei \`clip-path\` heraus:
   //     der geclippte Knoten ist nicht mehr trefferfähig, geliefert wird der Umschlag darüber.
@@ -199,10 +247,22 @@ const MESSE = `([wurzel, immerWahr]) => {
   //     Firmenplatte → \`img.h-6.w-auto\`, Markenspalte → \`p.text-xl\` der Nutzenzeile. Eine Regel
   //     „nur das Element selbst" hätte \`zeichenplatte\` in allen sechs Messpunkten und B3 bei
   //     1025 px aus falschem Grund rot gemacht — gemessen am Bestand, nicht geraten.
-  //   · KEINE Toleranz, kein zweiter Punkt, kein Raster: EIN Punkt, gemessen. Ein Raster wäre eine
-  //     Deckungsquote, und die müsste begründet werden, ohne dass sie hier etwas zusagt.
   // \`elementFromPoint\` WIRD AUCH DANN GEFRAGT, wenn der Punkt ausserhalb des Fensters liegt — dass
   // es dort \`null\` liefert, ist gemessen (Gegenprobe G-C) und nicht vorweggenommen.
+  //
+  // AUS DEM EINEN PUNKT WIRD DAS RASTER (JOB 3910). Bis dahin stand hier „kein zweiter Punkt, kein
+  // Raster: EIN Punkt". Der Satz hat eine Lücke gedeckt, die G-F jetzt vorführt: eine Abdeckung über
+  // der halben Wortmarke, die den Mittelpunkt frei lässt, liess \`trifft\` auf \`true\` — die Zusage
+  // blieb grün, während der Gast den Schriftzug halb verdeckt sah.
+  //   · Gefragt werden FÜNF Punkte: die Mitte und je einer bei 25 % und 75 % von Breite und Höhe.
+  //     \`trifft\` ist nur wahr, wenn JEDER von ihnen trägt — nicht eine Quote, kein Schwellenwert.
+  //   · Der ERSTE Fehltreffer trägt die Meldung (Name, Lage, was dort steht); \`getroffen\` sagt
+  //     zusätzlich, wie viele Punkte gehalten haben. Ein Rotlauf unterscheidet damit ohne Nachmessen
+  //     „ganz weg" (0 von 5) von „halb verdeckt" (3 von 5).
+  //   · Die Mitte steht ABSICHTLICH an erster Stelle: bei einer vollflächigen Verdeckung meldet die
+  //     Messung damit wörtlich dasselbe wie vor JOB 3910 (G-A, G-B, G-C bleiben unverändert).
+  //   · Fünf Punkte sind eine STICHPROBE, keine Deckungsquote. Was zwischen ihnen hindurchpasst,
+  //     bleibt ungemessen und steht als Restschuld im Kopf dieser Datei.
   // ----------------------------------------------------------------------------------------------
   const beschreibe = (el) => {
     if (!el) return "nichts";
@@ -212,18 +272,15 @@ const MESSE = `([wurzel, immerWahr]) => {
       : "";
     return el.tagName.toLowerCase() + (t ? '[data-testid="' + t + '"]' : "") + (k ? "." + k : "");
   };
-  const treffpunkt = (el) => {
-    if (!el) return { trifft: false, treffer: "steht gar nicht im Baum", punktX: 0, punktY: 0 };
-    const b = el.getBoundingClientRect();
-    const x = b.x + b.width / 2;
-    const y = b.y + b.height / 2;
-    if (b.width <= 0 || b.height <= 0) {
-      return {
-        trifft: false,
-        treffer: "Rechteck " + b.width.toFixed(1) + "×" + b.height.toFixed(1) + " — es gibt keinen Punkt zu prüfen",
-        punktX: x, punktY: y,
-      };
-    }
+  const RASTER = [
+    ["Mitte", 0.5, 0.5],
+    ["links oben", 0.25, 0.25],
+    ["rechts oben", 0.75, 0.25],
+    ["links unten", 0.25, 0.75],
+    ["rechts unten", 0.75, 0.75],
+  ];
+  /** EIN Punkt, wörtlich die Rechnung von JOB 3774 — jetzt fünfmal gefragt statt einmal. */
+  const einPunkt = (el, x, y) => {
     const oben = document.elementFromPoint(x, y);
     if (oben === null) {
       const lagen = [];
@@ -237,22 +294,54 @@ const MESSE = `([wurzel, immerWahr]) => {
         treffer: lagen.length > 0
           ? "elementFromPoint liefert nichts — der Prüfpunkt liegt " + lagen.join(" und ") + " ausserhalb" + fenster
           : "elementFromPoint liefert nichts, obwohl der Prüfpunkt INNERHALB" + fenster + " liegt",
-        punktX: x, punktY: y,
       };
     }
     return {
       trifft: el.contains(oben),
       treffer: el.contains(oben) ? beschreibe(oben) : beschreibe(oben) + " liegt darüber",
-      punktX: x, punktY: y,
     };
   };
+  const treffpunkt = (el) => {
+    if (!el) {
+      return { trifft: false, treffer: "steht gar nicht im Baum", getroffen: 0, punktName: "—", punktX: 0, punktY: 0 };
+    }
+    const b = el.getBoundingClientRect();
+    const mx = b.x + b.width / 2;
+    const my = b.y + b.height / 2;
+    if (b.width <= 0 || b.height <= 0) {
+      return {
+        trifft: false,
+        treffer: "Rechteck " + b.width.toFixed(1) + "×" + b.height.toFixed(1) + " — es gibt keinen Punkt zu prüfen",
+        getroffen: 0, punktName: "Mitte", punktX: mx, punktY: my,
+      };
+    }
+    let getroffen = 0;
+    let fehl = null;
+    let mitte = null;
+    for (const eintrag of RASTER) {
+      const name = eintrag[0];
+      const x = b.x + b.width * eintrag[1];
+      const y = b.y + b.height * eintrag[2];
+      const e = einPunkt(el, x, y);
+      if (name === "Mitte") mitte = e;
+      if (e.trifft) { getroffen += 1; continue; }
+      if (fehl === null) fehl = { name: name, x: x, y: y, treffer: e.treffer };
+    }
+    if (fehl !== null) {
+      return { trifft: false, treffer: fehl.treffer, getroffen: getroffen, punktName: fehl.name, punktX: fehl.x, punktY: fehl.y };
+    }
+    return { trifft: true, treffer: mitte.treffer, getroffen: getroffen, punktName: "Mitte", punktX: mx, punktY: my };
+  };
   // NUR FÜR DIE GEGENPROBE G-E: die Prüfung künstlich auf „immer wahr". \`miss\` übergibt immer
-  // \`false\`; allein der G-Block stellt den Schalter, um zu belegen, dass G-A/G-B/G-C wirklich an
+  // \`false\`; allein der G-Block stellt den Schalter, um zu belegen, dass G-A/G-B/G-C/G-F wirklich an
   // dieser Prüfung hängen und nicht an einer Nebenwirkung der Verstellung.
   const treffer = (el) => {
     const t = treffpunkt(el);
     if (!immerWahr) return t;
-    return { trifft: true, treffer: t.treffer + " · G-E: Prüfung künstlich auf immer wahr", punktX: t.punktX, punktY: t.punktY };
+    return {
+      trifft: true, treffer: t.treffer + " · G-E: Prüfung künstlich auf immer wahr",
+      getroffen: t.getroffen, punktName: t.punktName, punktX: t.punktX, punktY: t.punktY,
+    };
   };
   const r = (el) => {
     if (!el) return null;
@@ -263,21 +352,24 @@ const MESSE = `([wurzel, immerWahr]) => {
       x: b.x, y: b.y, breite: b.width, hoehe: b.height, rechts: b.right, unten: b.bottom,
       mitteY: b.y + b.height / 2,
       visibility: s.visibility, opacity: Number(s.opacity), gemalt: gemalt(el),
-      trifft: tp.trifft, treffer: tp.treffer, punktX: tp.punktX, punktY: tp.punktY,
+      trifft: tp.trifft, treffer: tp.treffer, getroffen: tp.getroffen,
+      punktName: tp.punktName, punktX: tp.punktX, punktY: tp.punktY,
     };
   };
   const sicht = (sel) => {
     const e = document.querySelector(sel);
     if (!e) return {
       da: false, display: "—", visibility: "—", opacity: 0, gemalt: false,
-      trifft: false, treffer: "steht gar nicht im Baum", punktX: 0, punktY: 0, breite: 0, hoehe: 0,
+      trifft: false, treffer: "steht gar nicht im Baum", getroffen: 0, punktName: "—",
+      punktX: 0, punktY: 0, breite: 0, hoehe: 0,
     };
     const b = e.getBoundingClientRect();
     const s = getComputedStyle(e);
     const tp = treffer(e);
     return {
       da: true, display: s.display, visibility: s.visibility, opacity: Number(s.opacity),
-      gemalt: gemalt(e), trifft: tp.trifft, treffer: tp.treffer, punktX: tp.punktX, punktY: tp.punktY,
+      gemalt: gemalt(e), trifft: tp.trifft, treffer: tp.treffer, getroffen: tp.getroffen,
+      punktName: tp.punktName, punktX: tp.punktX, punktY: tp.punktY,
       breite: b.width, hoehe: b.height,
     };
   };
@@ -286,14 +378,8 @@ const MESSE = `([wurzel, immerWahr]) => {
    * An ihm hängt die Produktidentität: \`textContent\` am Umschlag bliebe auch dann wahr, wenn der
    * Schriftzug selbst unsichtbar gestellt wäre.
    */
-  const wortknoten = (box, wort) => {
-    if (!box) return null;
-    const alle = Array.prototype.slice.call(box.querySelectorAll("*"));
-    for (const e of alle) {
-      if (e.children.length === 0 && (e.textContent || "").trim() === wort) return e;
-    }
-    return null;
-  };
+  ${BLATTKNOTEN_JS}
+  const wortknoten = (box, wort) => (box ? blatt(box, wort) : null);
   const box = document.querySelector(wurzel);
   const gruppe = box ? box.querySelector(":scope > span") : null;
   const kinder = gruppe ? Array.prototype.slice.call(gruppe.children) : [];
@@ -368,7 +454,9 @@ function mussGemaltSein(k: Zusehen | null, wo: string, was: string): void {
   ).toBe(true);
   expect(
     e.trifft,
-    `${wo}: ${was} wird zwar gemalt, ist an seinem Ort aber nicht zu treffen — am Trefferpunkt (${e.punktX.toFixed(1)}|${e.punktY.toFixed(1)}) steht ${e.treffer}`,
+    // Seit JOB 3910 nennt die Meldung auch, WIE VIEL getragen hat: 0 von 5 heisst „ganz weg",
+    // 3 von 5 heisst „teilweise verdeckt" — zwei verschiedene Befunde, ohne Nachmessen lesbar.
+    `${wo}: ${was} wird zwar gemalt, ist an seinem Ort aber nicht zu treffen — ${e.getroffen} von ${PRUEFPUNKTE} Prüfpunkten getroffen, am ersten Fehltreffer „${e.punktName}" (${e.punktX.toFixed(1)}|${e.punktY.toFixed(1)}) steht ${e.treffer}`,
   ).toBe(true);
 }
 
@@ -701,16 +789,47 @@ describe("JOB 3591 B · die Anmeldemaske in Chromium, an zwei Breiten und an der
   });
 });
 
+/** Was das Auflegen der halben Abdeckung (G-F) über sich selbst berichtet — alles GEMESSEN. */
+interface HalbeAbdeckung {
+  fehler: string;
+  /** Welcher Anteil der Schriftzug-Breite wirklich unter der Platte liegt (Soll: rund die Hälfte). */
+  anteil: number;
+  /** Steht am Mittelpunkt des Schriftzugs NACH dem Auflegen immer noch der Schriftzug? */
+  mitteFrei: boolean;
+  /** Was am Mittelpunkt steht — für den Rotlauf, falls `mitteFrei` fällt. */
+  mitte: string;
+  /** Die gemessenen Kanten, damit die Rückgabe Zahlen nennen kann und keine Absicht. */
+  wortX: number;
+  wortBreite: number;
+  platteRechts: number;
+}
+
+/** Die Farblage am Schriftzug (G-G) — Schriftfarbe und der Untergrund, der wirklich dahintersteht. */
+interface Farblage {
+  fehler: string;
+  /** `color` am Blattknoten, wie `getComputedStyle` sie serialisiert. */
+  farbe: string;
+  /** `background-color` am nächsten Vorfahren, der überhaupt deckt — gemessen, nicht angenommen. */
+  untergrund: string;
+  /** Welcher Knoten das ist, damit die Rückgabe ihn benennen kann. */
+  knoten: string;
+}
+
 // ==================================================================================================
-// JOB 3774 G · DIE GEGENPROBEN — die drei Lücken, einzeln eingebracht, und die eigene Grenze.
+// JOB 3774 G · DIE GEGENPROBEN — die drei Lücken, einzeln eingebracht, und die eigenen Grenzen.
 // ==================================================================================================
 //
 // WARUM DIE GEGENPROBEN HIER IN DER DATEI STEHEN und nicht nur in einer Rückgabe: eine Zusage, deren
 // Schärfe nur behauptet ist, ist bei der nächsten Änderung wieder stumpf. JOB 3591 hat seine
 // Gegenproben am PRODUKT gefahren (`invisible` an `BrandPanel.tsx`) und wieder zurückgenommen — der
-// Beleg hing damit an einer Änderung, die es heute nicht mehr gibt. Diese fünf Fälle bringen die
+// Beleg hing damit an einer Änderung, die es heute nicht mehr gibt. Diese sieben Fälle bringen die
 // Verstellung von AUSSEN über `seite.evaluate` in die laufende Seite ein, messen, nehmen sie zurück
 // und messen erneut. Das Produkt wird dafür nicht angefasst.
+//
+// A/B/C/F sind LÜCKEN, die geschlossen sind: vor ihrer Lieferung grün, danach rot.
+// D/G sind GRENZEN, die bleiben: sie sind grün und sollen es sein — steht eine von ihnen eines Tages
+// auf rot, ist die Grenze weg und der Kopf dieser Datei gehört nachgeführt.
+// E ist die Gegenrichtung: ohne die Prüfung sind A/B/C/F wieder blind.
 //
 // DIE EINBRINGHELFER SIND HIER EINGESPERRT. Sie stehen im Rumpf dieses `describe` und sind von
 // B1/B2/B3 nicht erreichbar: eine Bühne, die die Seite verstellen kann, darf die Messung der Zusagen
@@ -720,6 +839,8 @@ describe("JOB 3774 G · die Gegenproben zur Trefferpunkt-Messung", () => {
   /** Die Wortmarke-Gruppe in der bei 1280 px sichtbaren Bauform — das Ziel jeder Verstellung. */
   const GRUPPE = `${PANEL} > span`;
   const ABDECKUNG = "job3774-abdeckung";
+  /** Das Wort, an dessen BLATTKNOTEN G-F und G-G ansetzen — derselbe, den `MESSE` misst. */
+  const WORT = "KLARWERK";
 
   /** NUR FÜR GEGENPROBEN: einen Stil an ein Element hängen und den alten `style` verwahren. */
   const VERSTELLE = `([sel, stil]) => {
@@ -761,6 +882,102 @@ describe("JOB 3774 G · die Gegenproben zur Trefferpunkt-Messung", () => {
     if (d !== null) d.remove();
     return document.getElementById(id) === null ? "" : "die Abdeckung liess sich nicht entfernen";
   }`;
+  /**
+   * NUR FÜR GEGENPROBE G-F (JOB 3910): EINE Platte, die die Wortmarke zur HÄLFTE deckt und dabei den
+   * Mittelpunkt des Schriftzugs ausdrücklich frei lässt.
+   *
+   * Die rechte Kante der Platte liegt 1 px LINKS vom Mittelpunkt des Blattknotens — genau dort, wo
+   * die Einpunktmessung von JOB 3774 nachgesehen hat. Nach links reicht sie bis zur Kante der
+   * Wortmarke-Gruppe, deckt also die Zeichenplatte mit ab (zweiter Träger, wie in G-A).
+   *
+   * Sie BEHAUPTET das nicht, sondern misst es und gibt es zurück: `mitteFrei` fragt nach dem
+   * Auflegen \`elementFromPoint\` am Mittelpunkt, `anteil` nennt den wirklich verdeckten Bruchteil
+   * der Schriftzugbreite. Eine Gegenprobe, die ihre eigene Voraussetzung nur annimmt, belegt nichts.
+   */
+  const UEBERDECKE_HALB = `([wurzelSel, wort, id]) => {
+    ${BLATTKNOTEN_JS}
+    const leer = { fehler: "", anteil: 0, mitteFrei: false, mitte: "", wortX: 0, wortBreite: 0, platteRechts: 0 };
+    const box = document.querySelector(wurzelSel);
+    if (box === null) return Object.assign({}, leer, { fehler: "kein Element für " + wurzelSel });
+    const gruppe = box.querySelector(":scope > span");
+    if (gruppe === null) return Object.assign({}, leer, { fehler: "keine Wortmarke-Gruppe in " + wurzelSel });
+    const ziel = blatt(box, wort);
+    if (ziel === null) return Object.assign({}, leer, { fehler: "kein Blattknoten mit dem Wort " + wort });
+    const w = ziel.getBoundingClientRect();
+    const g = gruppe.getBoundingClientRect();
+    const mitteX = w.x + w.width / 2;
+    const mitteY = w.y + w.height / 2;
+    const rechts = mitteX - 1;
+    const breite = rechts - g.x;
+    if (breite <= 0) {
+      return Object.assign({}, leer, {
+        fehler: "links des Mittelpunkts ist kein Platz für eine Abdeckung (" + breite.toFixed(1) + " px)",
+      });
+    }
+    const d = document.createElement("div");
+    d.id = id;
+    d.setAttribute("data-testid", id);
+    d.setAttribute("style",
+      "position:fixed;left:" + g.x + "px;top:" + g.y + "px;width:" + breite + "px;height:" + g.height +
+      "px;background:rgb(220,0,0);z-index:2147483647;");
+    document.body.appendChild(d);
+    const oben = document.elementFromPoint(mitteX, mitteY);
+    return {
+      fehler: "",
+      anteil: (rechts - w.x) / w.width,
+      mitteFrei: oben !== null && ziel.contains(oben),
+      mitte: oben === null ? "nichts" : oben.tagName.toLowerCase() + (oben.id ? "#" + oben.id : ""),
+      wortX: w.x, wortBreite: w.width, platteRechts: rechts,
+    };
+  }`;
+  /**
+   * NUR FÜR GEGENPROBE G-G (JOB 3910): die Farblage am Schriftzug ABLESEN — nichts verstellen.
+   *
+   * Der Untergrund wird am nächsten Vorfahren gemessen, der überhaupt deckt (Alpha > 0); die
+   * Zwischenknoten sind durchsichtig und stehen nicht wirklich hinter dem Wort. Eine Konstante wäre
+   * eine Annahme über das Thema, und das Thema wählt die Anwendung selbst (`gast-buehne.ts:195`).
+   */
+  const FARBLAGE = `([wurzelSel, wort]) => {
+    ${BLATTKNOTEN_JS}
+    const leer = { fehler: "", farbe: "", untergrund: "", knoten: "" };
+    const box = document.querySelector(wurzelSel);
+    if (box === null) return Object.assign({}, leer, { fehler: "kein Element für " + wurzelSel });
+    const ziel = blatt(box, wort);
+    if (ziel === null) return Object.assign({}, leer, { fehler: "kein Blattknoten mit dem Wort " + wort });
+    let traeger = null;
+    for (let a = ziel; a !== null; a = a.parentElement) {
+      const bg = getComputedStyle(a).backgroundColor;
+      if (bg !== "transparent" && !/^rgba\\(.*,\\s*0\\)$/.test(bg)) { traeger = a; break; }
+    }
+    if (traeger === null) return Object.assign({}, leer, { fehler: "hinter dem Wort deckt kein einziger Vorfahr" });
+    const t = traeger.getAttribute("data-testid");
+    return {
+      fehler: "",
+      farbe: getComputedStyle(ziel).color,
+      untergrund: getComputedStyle(traeger).backgroundColor,
+      knoten: traeger.tagName.toLowerCase() + (t ? '[data-testid="' + t + '"]' : ""),
+    };
+  }`;
+  /** NUR FÜR GEGENPROBE G-G: die Schriftfarbe des Blattknotens stellen und den alten `style` verwahren. */
+  const FAERBE = `([wurzelSel, wort, farbe]) => {
+    ${BLATTKNOTEN_JS}
+    const box = document.querySelector(wurzelSel);
+    if (box === null) return "kein Element für " + wurzelSel;
+    const ziel = blatt(box, wort);
+    if (ziel === null) return "kein Blattknoten mit dem Wort " + wort;
+    ziel.setAttribute("data-job3910-vorher", ziel.getAttribute("style") || "");
+    ziel.setAttribute("style", (ziel.getAttribute("style") || "") + ";color:" + farbe);
+    const jetzt = getComputedStyle(ziel).color;
+    return jetzt === farbe ? "" : "die Schriftfarbe steht auf " + jetzt + " statt auf " + farbe;
+  }`;
+  const FAERBE_ZURUECK = `() => {
+    const el = document.querySelector("[data-job3910-vorher]");
+    if (el === null) return "nichts verwahrt";
+    const vorher = el.getAttribute("data-job3910-vorher");
+    if (vorher === "") el.removeAttribute("style"); else el.setAttribute("style", vorher);
+    el.removeAttribute("data-job3910-vorher");
+    return document.querySelector("[data-job3910-vorher]") === null ? "" : "es blieb eine Verstellung stehen";
+  }`;
 
   let g: GastStand;
   const gSeite = (): GastSeite => {
@@ -781,6 +998,24 @@ describe("JOB 3774 G · die Gegenproben zur Trefferpunkt-Messung", () => {
   };
   const zurueck = async (): Promise<void> => {
     expect(await gSeite().evaluate<string>(fn(NIMM_ZURUECK), GRUPPE)).toBe("");
+  };
+  /**
+   * Die halbe Abdeckung auflegen und ihre eigene Voraussetzung SOFORT belegen: der Mittelpunkt des
+   * Schriftzugs ist frei. Ohne diesen Beleg wäre G-F nur eine zweite Ausgabe von G-A.
+   */
+  const legeHalbAuf = async (wo: string): Promise<HalbeAbdeckung> => {
+    const halb = await gSeite().evaluate<HalbeAbdeckung>(fn(UEBERDECKE_HALB), [
+      PANEL,
+      WORT,
+      ABDECKUNG,
+    ]);
+    console.log(`JOB 3910 · ${wo} · halbe Abdeckung ${JSON.stringify(halb)}`);
+    expect(halb.fehler, `${wo}: die halbe Abdeckung liess sich nicht auflegen`).toBe("");
+    expect(
+      halb.mitteFrei,
+      `${wo}: der Mittelpunkt des Schriftzugs ist doch verdeckt — dort steht ${halb.mitte}`,
+    ).toBe(true);
+    return halb;
   };
 
   beforeAll(async () => {
@@ -872,7 +1107,13 @@ describe("JOB 3774 G · die Gegenproben zur Trefferpunkt-Messung", () => {
   });
 
   it("G-C · aus dem Fenster geschoben: nach oben und nach unten, beide Richtungen rot", async () => {
-    produktidentitaet(await missG("G-C vorher"), "G-C vorher");
+    // BENs Promptverbesserung zu JOB 3774 (`archiv/3774/runde-1/ben.md:41`), wörtlich: „In G-C
+    // zusätzlich die Zeichenplatten-Zusage vor, während und nach jeder Verstellung ausdrücklich
+    // prüfen." Bis dahin prüfte G-C nur `produktidentitaet` — die Platte wurde mitgeschoben, ohne
+    // dass ein Fall es festhielt.
+    const vorher = await missG("G-C vorher");
+    produktidentitaet(vorher, "G-C vorher");
+    zeichenplatte(vorher, "G-C vorher");
     for (const [richtung, stil, muster] of [
       ["nach oben", "transform: translateY(-9999px)", /px oberhalb/],
       ["nach unten", "transform: translateY(9999px)", /px unterhalb/],
@@ -896,6 +1137,12 @@ describe("JOB 3774 G · die Gegenproben zur Trefferpunkt-Messung", () => {
         ).toMatch(muster);
         expect(wort.treffer).toContain("elementFromPoint liefert nichts");
         expect(() => produktidentitaet(m, `G-C ${richtung}`)).toThrow(/nicht zu treffen/);
+        // Die Zeichenplatte wird mitgeschoben und muss ebenso fallen (BENs Promptverbesserung).
+        expect(
+          (m.zeichen as Rechteck).trifft,
+          `G-C ${richtung}: die abgeschobene Zeichenplatte gilt als getroffen`,
+        ).toBe(false);
+        expect(() => zeichenplatte(m, `G-C ${richtung}`)).toThrow(/nicht zu treffen/);
         // Und die zweite Hälfte des Sichtfensters, die bis JOB 3774 offen war.
         expect(() => imFenster(m, `G-C ${richtung}`)).toThrow(/aus dem Fenster/);
       } finally {
@@ -903,6 +1150,7 @@ describe("JOB 3774 G · die Gegenproben zur Trefferpunkt-Messung", () => {
       }
       const danach = await missG(`G-C ${richtung} zurückgenommen`);
       produktidentitaet(danach, `G-C ${richtung} zurückgenommen`);
+      zeichenplatte(danach, `G-C ${richtung} zurückgenommen`);
       imFenster(danach, `G-C ${richtung} zurückgenommen`);
     }
   });
@@ -929,10 +1177,136 @@ describe("JOB 3774 G · die Gegenproben zur Trefferpunkt-Messung", () => {
     produktidentitaet(await missG("G-D zurückgenommen"), "G-D zurückgenommen");
   });
 
-  it("G-E · kein Scheingrün: ohne die Trefferpunkt-Messung sind G-A, G-B und G-C wieder blind", async () => {
+  it("G-F · Teilabdeckung mit freiem Mittelpunkt: die halb verdeckte Wortmarke macht die Zusage rot", async () => {
+    const vorher = await missG("G-F vorher");
+    produktidentitaet(vorher, "G-F vorher");
+    zeichenplatte(vorher, "G-F vorher");
+    // Unverdeckt tragen ALLE Prüfpunkte. Diese Zeile pinnt zugleich die Rastergrösse: stünde in
+    // `MESSE` wieder ein einzelner Punkt, wäre `getroffen` hier 1 statt 5.
+    expect(
+      (vorher.klarwerkWort as Rechteck).getroffen,
+      "G-F: der unverdeckte Schriftzug trifft nicht an allen Prüfpunkten",
+    ).toBe(PRUEFPUNKTE);
+    try {
+      const halb = await legeHalbAuf("G-F");
+      // „Ungefähr die Hälfte" ist hier eine gemessene Zahl, keine Absicht: die Platte endet 1 px vor
+      // dem Mittelpunkt, deckt also die halbe Schriftzugbreite minus diesem einen Pixel.
+      expect(
+        halb.anteil,
+        `G-F: die Abdeckung deckt ${(halb.anteil * 100).toFixed(1)} % des Schriftzugs (${halb.wortBreite.toFixed(1)} px breit ab x ${halb.wortX.toFixed(1)}, Platte bis ${halb.platteRechts.toFixed(1)}) — das ist nicht rund die Hälfte`,
+      ).toBeGreaterThan(0.4);
+      expect(halb.anteil).toBeLessThan(0.5);
+      const m = await missG("G-F nachher");
+      const wort = m.klarwerkWort as Rechteck;
+      // DER BEFUND: die alte Rechnung bleibt unverdächtig — und bis JOB 3910 auch die neue, weil sie
+      // genau den einen Punkt fragte, den diese Abdeckung frei lässt.
+      expect(wort.gemalt, "G-F: `gemalt` sieht die Teilabdeckung erwartungsgemäss NICHT").toBe(
+        true,
+      );
+      expect(
+        (m.zeichen as Rechteck).gemalt,
+        "G-F: `gemalt` sieht die Teilabdeckung auch an der Platte nicht",
+      ).toBe(true);
+      expect(
+        wort.trifft,
+        `G-F: der halb verdeckte Schriftzug gilt als getroffen — ${wort.getroffen} von ${PRUEFPUNKTE} Punkten, „${wort.punktName}": ${wort.treffer}`,
+      ).toBe(false);
+      // DAS IST DER UNTERSCHIED ZU G-A: die Mitte trägt weiter, die linke Hälfte nicht. Genau drei
+      // Punkte bleiben — Mitte, rechts oben, rechts unten.
+      expect(
+        wort.getroffen,
+        `G-F: erwartet werden genau drei tragende Punkte, gemeldet sind ${wort.getroffen} (erster Fehltreffer „${wort.punktName}")`,
+      ).toBe(3);
+      expect(
+        wort.punktName,
+        "G-F: der erste Fehltreffer liegt nicht in der verdeckten Hälfte",
+      ).toBe("links oben");
+      expect(wort.treffer, "G-F: am ersten Fehltreffer steht nicht die Abdeckung").toContain(
+        ABDECKUNG,
+      );
+      // Der zweite Träger, wie in G-A: die Zeichenplatte liegt ganz unter der Platte.
+      expect(
+        (m.zeichen as Rechteck).trifft,
+        "G-F: die Zeichenplatte gilt trotz Abdeckung als getroffen",
+      ).toBe(false);
+      expect(
+        (m.zeichen as Rechteck).getroffen,
+        "G-F: die ganz verdeckte Zeichenplatte darf keinen einzigen Punkt tragen",
+      ).toBe(0);
+      // Die Zusagen selbst — nicht ein Hilfsfeld — werden rot, mit lesbarer Ursache.
+      expect(() => produktidentitaet(m, "G-F")).toThrow(/nicht zu treffen/);
+      expect(() => zeichenplatte(m, "G-F")).toThrow(/nicht zu treffen/);
+    } finally {
+      expect(await gSeite().evaluate<string>(fn(RAEUME_AB), ABDECKUNG)).toBe("");
+    }
+    const danach = await missG("G-F zurückgenommen");
+    produktidentitaet(danach, "G-F zurückgenommen");
+    zeichenplatte(danach, "G-F zurückgenommen");
+  });
+
+  it("G-G · die zweite Grenze: eine Deckfarbe gleich dem Untergrund wird NICHT gefunden", async () => {
+    const mitKontrast = await gSeite().evaluate<Farblage>(fn(FARBLAGE), [PANEL, WORT]);
+    console.log(`JOB 3910 · G-G Farblage vorher ${JSON.stringify(mitKontrast)}`);
+    expect(mitKontrast.fehler, "G-G: die Farblage liess sich nicht messen").toBe("");
+    // Ohne echten Kontrast im Ausgangszustand sagte der Vergleich unten nichts.
+    expect(
+      mitKontrast.farbe,
+      `G-G: Schrift und Untergrund sind schon vorher gleich (${mitKontrast.untergrund} an ${mitKontrast.knoten})`,
+    ).not.toBe(mitKontrast.untergrund);
+    const vorher = await missG("G-G vorher (mit Kontrast)");
+    produktidentitaet(vorher, "G-G vorher (mit Kontrast)");
+    zeichenplatte(vorher, "G-G vorher (mit Kontrast)");
+    try {
+      expect(
+        await gSeite().evaluate<string>(fn(FAERBE), [PANEL, WORT, mitKontrast.untergrund]),
+      ).toBe("");
+      const ohneKontrast = await gSeite().evaluate<Farblage>(fn(FARBLAGE), [PANEL, WORT]);
+      console.log(`JOB 3910 · G-G Farblage nachher ${JSON.stringify(ohneKontrast)}`);
+      // Der Unterschied zwischen den beiden Läufen liegt AM FARBWERT und an nichts sonst — gemessen,
+      // nicht gefolgert: die Schrift trägt jetzt den Untergrundwert, der Untergrund selbst ist gleich
+      // geblieben, und der Träger dahinter ist derselbe Knoten.
+      expect(ohneKontrast.farbe, "G-G: die Schriftfarbe steht nicht auf dem Untergrundwert").toBe(
+        mitKontrast.untergrund,
+      );
+      expect(ohneKontrast.untergrund, "G-G: der Untergrund hat sich mitverändert").toBe(
+        mitKontrast.untergrund,
+      );
+      expect(ohneKontrast.knoten, "G-G: hinter dem Wort steht ein anderer Knoten als vorher").toBe(
+        mitKontrast.knoten,
+      );
+      const m = await missG("G-G nachher (ohne Kontrast)");
+      const wort = m.klarwerkWort as Rechteck;
+      // ERWARTET GRÜN — und das ist kein Mangel dieses Auftrags, sondern die zweite gemessene Grenze:
+      // gemessen wird ANWESENHEIT, nie Kontrast. Der Schriftzug belegt seine Fläche, wird gezeichnet
+      // und ist an allen fünf Punkten zu treffen; dass er dieselbe Farbe hat wie der Grund dahinter,
+      // sieht keine Zeile dieser Datei. Der Gast sähe eine leere Platte.
+      // Steht diese Zeile eines Tages auf rot, ist die Grenze weg — dann gehört der Kopf nachgeführt.
+      expect(wort.gemalt, "G-G: die Grenze hat sich verschoben — `gemalt` sieht die Farbe").toBe(
+        true,
+      );
+      expect(wort.trifft, `G-G: die Grenze hat sich verschoben — ${wort.treffer}`).toBe(true);
+      expect(
+        wort.getroffen,
+        "G-G: die Grenze hat sich verschoben — nicht mehr alle Prüfpunkte tragen",
+      ).toBe(PRUEFPUNKTE);
+      produktidentitaet(m, "G-G");
+      zeichenplatte(m, "G-G");
+    } finally {
+      expect(await gSeite().evaluate<string>(fn(FAERBE_ZURUECK))).toBe("");
+    }
+    const zurueckgestellt = await gSeite().evaluate<Farblage>(fn(FARBLAGE), [PANEL, WORT]);
+    expect(zurueckgestellt.farbe, "G-G: die Schriftfarbe kam nicht zurück").toBe(mitKontrast.farbe);
+    const danach = await missG("G-G zurückgenommen");
+    produktidentitaet(danach, "G-G zurückgenommen");
+    zeichenplatte(danach, "G-G zurückgenommen");
+  });
+
+  it("G-E · kein Scheingrün: ohne die Trefferpunkt-Messung sind G-A, G-B, G-C und G-F wieder blind", async () => {
     // Der zweite Übergabewert stellt die Prüfung künstlich auf „immer wahr". Bleibt bei GENAU
-    // denselben drei Verstellungen dann alles grün, hängt das Rot der drei Fälle wirklich an dieser
+    // denselben vier Verstellungen dann alles grün, hängt das Rot der vier Fälle wirklich an dieser
     // Prüfung — und nicht an einer Nebenwirkung des Verstellens (Rechteck weg, `visibility`, Fokus).
+    // Seit JOB 3910 trägt dieser Fall die Teilabdeckung mit: eine Erweiterung DESSELBEN Satzes, kein
+    // zweiter G-E daneben.
     const abgedeckt = async (immerWahr: boolean): Promise<Rechteck> => {
       expect(await gSeite().evaluate<string>(fn(UEBERDECKE), [GRUPPE, ABDECKUNG, false])).toBe("");
       try {
@@ -951,18 +1325,29 @@ describe("JOB 3774 G · die Gegenproben zur Trefferpunkt-Messung", () => {
         await zurueck();
       }
     };
+    const halbAbgedeckt = async (immerWahr: boolean): Promise<Rechteck> => {
+      await legeHalbAuf(`G-E/F immerWahr=${immerWahr}`);
+      try {
+        return (await missG(`G-E Teilabdeckung immerWahr=${immerWahr}`, immerWahr))
+          .klarwerkWort as Rechteck;
+      } finally {
+        expect(await gSeite().evaluate<string>(fn(RAEUME_AB), ABDECKUNG)).toBe("");
+      }
+    };
     expect(
       (await abgedeckt(true)).trifft,
       "G-E/A: die abgeschaltete Prüfung meldet doch einen Fehltreffer",
     ).toBe(true);
     expect((await gestellt("clip-path: inset(100%)", true)).trifft, "G-E/B").toBe(true);
     expect((await gestellt("transform: translateY(-9999px)", true)).trifft, "G-E/C").toBe(true);
-    // Gegenrichtung in DERSELBEN Lage: mit eingeschalteter Prüfung sind genau diese drei rot.
+    expect((await halbAbgedeckt(true)).trifft, "G-E/F").toBe(true);
+    // Gegenrichtung in DERSELBEN Lage: mit eingeschalteter Prüfung sind genau diese vier rot.
     expect((await abgedeckt(false)).trifft, "G-E/A scharf").toBe(false);
     expect((await gestellt("clip-path: inset(100%)", false)).trifft, "G-E/B scharf").toBe(false);
     expect((await gestellt("transform: translateY(-9999px)", false)).trifft, "G-E/C scharf").toBe(
       false,
     );
+    expect((await halbAbgedeckt(false)).trifft, "G-E/F scharf").toBe(false);
     // Und nach allem: die Fläche steht wieder vollständig da.
     const danach = await missG("G-E Endstand");
     produktidentitaet(danach, "G-E Endstand");
