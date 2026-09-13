@@ -11,7 +11,7 @@
 // bekäme deren erster `abbauen()` einen Baum zu sehen, den er nicht angelegt hat — und acht Dateien
 // dieses Ordners hingen an dieser einen Hülle.
 //
-// WAS DIE VIER FÄLLE ZUSAMMEN BEWEISEN:
+// WAS DIE FÜNF FÄLLE ZUSAMMEN BEWEISEN:
 //   A  Mit der Konfiguration dieses Hauses (`vitest.config.ts`, als Ganzes übernommen) und ZWEI
 //      Dateien in EINEM Fork startet die zweite Datei sauber: kein Behälter, keine Adresse.
 //   B  Derselbe Lauf mit `--no-isolate` trägt den Rückstand sehr wohl hinüber, und zwar samt dem
@@ -21,11 +21,17 @@
 //      mehr. Die Sonde liest damit den echten Zustand und nicht eine Eigenschaft des Aufbaus.
 //   C  Ein Lauf, der gar keine Datei fährt, wird laut statt still grün — der teuerste Fehler
 //      dieser Bauform.
+//   E  Ein Lauf, dessen Probetest NACH der Sondenmeldung scheitert, ist ebenso wenig ein Befund:
+//      zwei gültige Meldungen liegen vor, der äussere Fall wird trotzdem rot — und seine Meldung
+//      trägt den Ursprungsfehler des Probetests OBEN, nicht nur irgendwo im Rohauszug.
 //
 // WAS A, B UND D AUSSERDEM FORDERN: dass ihr Unterprozess grün geworden ist (`fertigGeworden()`).
 // Die Sonde schreibt im MODULKOPF der Probedatei, also bevor ein Probetest gelaufen ist — zwei
 // gültige Meldungen beweisen deshalb keinen fertigen Lauf. Ohne diese Forderung blieben B und D
-// über einem roten Unterprozess grün; BEN hat das in Runde 1 gemessen.
+// über einem roten Unterprozess grün; BEN hat das in Runde 1 gemessen. Seit JOB 3912 steht diese
+// Forderung nicht mehr nur als Handmessung im Prüfbericht, sondern als eigener Fall E: er stellt
+// die täuschende Lage selbst her und misst, dass `fertigGeworden()` sie zurückweist und dass
+// `diagnose()` den Ursprungsfehler in die Meldung hebt.
 //
 // WAS ER NICHT KANN, ehrlich: er misst diesen Ordner und diese Hülle, unter `pool: forks`, Vitest
 // 2.1.9. Über andere Testordner, den Thread-Pool und den Browser-Aufruf (`vitest.browser.config.ts`)
@@ -74,6 +80,20 @@ let spur = "";
 
 /** Der Schalter, mit dem der Aufrufer entscheidet, ob die Probedateien ihren Baum stehen lassen. */
 const RAEUMT_AUF = "KLARWERK_3875_RAEUMT_AUF";
+
+/**
+ * JOB 3912: der zweite Schalter der Probedateien. Ist er gesetzt, scheitert in JEDER Probedatei ein
+ * Fall — und zwar NACH dem Modulkopf, der die Sondenmeldung schreibt. Genau die Lage also, gegen die
+ * `fertigGeworden()` steht: zwei gültige Meldungen über einem roten Unterprozess.
+ */
+const FEHLER_NACH_SONDE = "KLARWERK_3912_FEHLER_NACH_SONDE";
+
+/**
+ * Die Meldung, die der absichtlich scheiternde Probetest wirft. Sie ist fest, ohne Umlaute und
+ * nirgends sonst im Haus zu finden — Fall E erwartet sie unten wörtlich in der Meldung des äusseren
+ * Falls, und nur so hängt er an `diagnose()` statt bloss am Exit-Code.
+ */
+const FEHLERTEXT = "KLARWERK3912: Fehler nach gueltiger Sondenmeldung";
 
 interface Befund {
   readonly datei: string;
@@ -168,6 +188,15 @@ describe("Probe ${name}", () => {
       abbauen();
     }
   });
+
+  // Der Fall, der NACH der Sondenmeldung oben scheitert — er wird nur angemeldet, wenn der Aufrufer
+  // ihn anfordert (Fall E). Die Sondenmeldung im Modulkopf bleibt davon unberührt: sie ist längst
+  // geschrieben, wenn dieser Fall läuft, und genau das ist die Täuschung, um die es geht.
+  if (process.env.${FEHLER_NACH_SONDE} === "1") {
+    it("scheitert NACH der Sondenmeldung", () => {
+      throw new Error("${FEHLERTEXT}");
+    });
+  }
 });
 `;
 }
@@ -203,9 +232,14 @@ export default defineConfig({
  * EIN ECHTER VITEST-UNTERPROZESS über die Probedateien. `--pool=forks --poolOptions.forks.singleFork`
  * steht in JEDEM Fall: liefen die zwei Dateien in zwei Forks, wäre die Frage nach dem Rückstand
  * trivial mit „nein" beantwortet, ohne dass die Isolation etwas dazu beigetragen hätte. Der einzige
- * Unterschied zwischen den Fällen sind die `zusatz`-Flags und `raeumtAuf`.
+ * Unterschied zwischen den Fällen sind die `zusatz`-Flags, `raeumtAuf` und `fehlerNachSonde`.
  */
-function fahre(zusatz: readonly string[], filter: readonly string[] = [], raeumtAuf = false): Lauf {
+function fahre(
+  zusatz: readonly string[],
+  filter: readonly string[] = [],
+  raeumtAuf = false,
+  fehlerNachSonde = false,
+): Lauf {
   writeFileSync(spur, "");
   const umgebung: NodeJS.ProcessEnv = { ...process.env, KLARWERK_SKIP_KEYCHAIN: "1" };
   delete umgebung.KLARWERK_TESTGRUPPE;
@@ -213,6 +247,11 @@ function fahre(zusatz: readonly string[], filter: readonly string[] = [], raeumt
     umgebung[RAEUMT_AUF] = "1";
   } else {
     delete umgebung[RAEUMT_AUF];
+  }
+  if (fehlerNachSonde) {
+    umgebung[FEHLER_NACH_SONDE] = "1";
+  } else {
+    delete umgebung[FEHLER_NACH_SONDE];
   }
   const ergebnis = spawnSync(
     "npx",
@@ -244,16 +283,32 @@ function belege(lauf: Lauf): string {
 }
 
 /**
+ * Die Farbfolgen, mit denen Vitest seine Ausgabe einfärbt. Sie stehen MITTEN in den Wörtern, auf die
+ * `diagnose()` unten prüft, und werden deshalb vor jedem Mustervergleich entfernt. Das Steuerzeichen
+ * steht als `String.fromCharCode(27)` da und nicht roh in der Quelle: roh wäre es unsichtbar, und
+ * Biome weist es zurück (`lint/suspicious/noControlCharactersInRegex`).
+ */
+const FARBFOLGE = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
+
+/**
  * Die Zeilen, an denen ein gescheiterter Unterprozess erkennbar ist, VOR den Rohauszug gestellt.
  * Der Grund liegt an der Bauform: die Ausgabe eines echten Vitest-Laufs ist lang, und `belege()`
  * zeigt ihre letzten 1500 Zeichen — also die Zusammenfassung. Der NAME des gescheiterten Probetests
  * und seine Fehlermeldung stehen weiter oben und wären genau dann abgeschnitten, wenn man sie
  * braucht.
+ *
+ * JOB 3912, GEMESSEN: bis hierher löste diese Zusage nur die HÄLFTE ein. Das Muster wurde gegen die
+ * ROHE Zeile gehalten, und Vitest schreibt seine Fehlerzeile als `<rot><fett>Error<aus>: <Meldung>`
+ * — zwischen „Error" und dem Doppelpunkt steht eine Farbfolge, `Error:` traf deshalb nie. Gefunden
+ * wurden allein die `FAIL`- und `×`-Zeilen, also der NAME des Falls; seine MELDUNG stand nur in den
+ * letzten 1500 Zeichen von `belege()` und wäre bei längerer Ausgabe verloren gewesen. Gemessen am
+ * Ordnerlauf f592188f (Fall E: Ursprungsmeldung an Stelle 1785, Rohauszug schon ab Stelle 698).
+ * Jede Zeile wird jetzt OHNE Farbe geprüft — ausgegeben wird sie unverändert.
  */
 function diagnose(lauf: Lauf): string {
   const auffaellig = lauf.ausgabe
     .split("\n")
-    .filter((zeile) => /FAIL|AssertionError|Error:|✗|×/.test(zeile))
+    .filter((zeile) => /FAIL|AssertionError|Error:|✗|×/.test(zeile.replace(FARBFOLGE, "")))
     .slice(0, 12);
   return auffaellig.length === 0 ? belege(lauf) : `${auffaellig.join("\n")}\n${belege(lauf)}`;
 }
@@ -269,7 +324,8 @@ function diagnose(lauf: Lauf): string {
  * failed | 3 passed (4) — nur A rot, B und D weiterhin grün."
  *
  * Die Forderung steht HIER und nicht in den einzelnen Fällen, damit kein künftiger Fall sie
- * vergessen kann. Fall C ist ausgenommen und fordert sein Gegenteil (`code !== 0`) selbst.
+ * vergessen kann. Fall C ist ausgenommen und fordert sein Gegenteil (`code !== 0`) selbst; Fall E
+ * fordert diese Zurückweisung ausdrücklich und misst sie als einziger.
  */
 function fertigGeworden(lauf: Lauf): void {
   expect(
@@ -389,5 +445,61 @@ describe("JOB 3875 · dateiübergreifender Rückstand der Entwurf-verlassen-Hül
     expect(lauf.code, belege(lauf)).not.toBe(0);
     expect(lauf.ausgabe, belege(lauf)).toContain("No test files found");
     expect(lauf.befunde, "die Sonde hat gemeldet, obwohl keine Datei lief").toEqual([]);
+  });
+
+  // ==============================================================================================
+  // E · DIE LAGE, GEGEN DIE `fertigGeworden()` STEHT — ZWEI GÜLTIGE MELDUNGEN, EIN ROTER LAUF.
+  // ==============================================================================================
+  //
+  // Derselbe Lauf wie A, nur scheitert in beiden Probedateien ein Fall NACH dem Modulkopf. BEN hat
+  // diese Lage zu JOB 3875 von Hand gefahren (`archiv/3875/runde-2/ben.md:11`) und ausdrücklich
+  // einen dauerhaften Fall dafür bestellt; hier steht er. Er misst nicht den Unterprozess — den
+  // misst schon `lauf.code` —, sondern den MESSSTAND: dass `zweite()` den Befund zurückweist und
+  // dass die Meldung des äusseren Falls den Ursprungsfehler trägt statt nur „Exit 1".
+  it("E · ein Probetest scheitert NACH der Sondenmeldung — der Lauf ist kein Befund", () => {
+    const lauf = fahre([], [], false, true);
+    // (a) Der Unterprozess ist nicht grün geworden.
+    expect(lauf.code, `der Probetest hätte scheitern müssen\n${belege(lauf)}`).not.toBe(0);
+    // (b) … und die Sonde hat TROTZDEM zweimal gemeldet, aus zwei verschiedenen Dateien. Ohne diese
+    // Zusicherung misst E nicht die täuschende Lage, sondern nur irgendeinen kaputten Lauf.
+    expect(
+      lauf.befunde.map((b) => b.datei),
+      `die Sonde hat nicht genau zweimal gemeldet — dann liegt die täuschende Lage gar nicht vor\n${belege(lauf)}`,
+    ).toHaveLength(2);
+    expect(
+      new Set(lauf.befunde.map((b) => b.datei)).size,
+      `beide Meldungen kommen aus derselben Datei\n${belege(lauf)}`,
+    ).toBe(2);
+    // (c) Und genau dann weist `zweite()` den Befund zurück — mit dem Satz aus `fertigGeworden()`
+    // UND der wörtlichen Ursprungsmeldung des Probetests, die `diagnose()` vor den Rohauszug hebt.
+    let wurf: unknown = null;
+    try {
+      zweite(lauf);
+    } catch (fehler) {
+      wurf = fehler;
+    }
+    expect(
+      wurf,
+      `zweite() hat den Befund angenommen, obwohl der Unterprozess rot ist\n${belege(lauf)}`,
+    ).not.toBeNull();
+    const meldung = wurf instanceof Error ? wurf.message : String(wurf);
+    expect(meldung, `die Meldung nennt den Grund der Zurückweisung nicht\n${meldung}`).toContain(
+      "der Unterprozess ist nicht grün geworden",
+    );
+    expect(
+      meldung,
+      `die Meldung nennt den Ursprungsfehler des Probetests nicht\n${meldung}`,
+    ).toContain(FEHLERTEXT);
+    // … und er steht VOR dem Rohauszug. Diese Zeile ist GEMESSEN nötig und nicht vorsorglich: mit
+    // einer auf `belege(lauf)` reduzierten `diagnose()` blieb der Fall bis hierher grün (JOB 3912,
+    // Cloud-Lauf df8c8919ce20fe015f1067cf, Exit 0) — der Ursprungsfehler fällt heute AUCH noch in
+    // die letzten 1500 Zeichen. Darauf darf sich niemand verlassen: was `diagnose()` zusichert, ist
+    // die LAGE der Zeilen, und genau diese Zusicherung war bis JOB 3912 nicht eingelöst (der Grund
+    // steht im Kopf von `diagnose()`).
+    const rohauszug = belege(lauf);
+    expect(
+      meldung.indexOf(FEHLERTEXT),
+      `der Ursprungsfehler steht erst im Rohauszug — dann hängt er an dessen letzten 1500 Zeichen\n${meldung}`,
+    ).toBeLessThan(meldung.indexOf(rohauszug));
   });
 });
