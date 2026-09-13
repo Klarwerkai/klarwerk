@@ -2,6 +2,7 @@ import { Menu, Search } from "lucide-react";
 import { type FormEvent, type Ref, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useGuardedNavigate } from "../app/NavGuardContext";
+import { DemoKennzeichen } from "../auth/BrandPanel";
 import { KontoMenue } from "./KontoMenue";
 import { KopfbandPunkte } from "./KopfbandPunkte";
 import { Logo } from "./Logo";
@@ -208,12 +209,38 @@ export function Kopfband({
   const schmalerAbstand = narrow ? { columnGap: "20px" } : undefined;
 
   return (
-    <header
-      data-testid="kopfband"
-      className="kw-kopfband flex h-[56px] shrink-0 items-center gap-9 bg-ink px-8 text-white"
-      style={schmalerAbstand}
-    >
-      {/* ==========================================================================================
+    // ============================================================================================
+    // JOB 3761 · DIE DEMO-KENNZEICHNUNG STEHT ÜBER DER ZEILE, NICHT IN IHR.
+    // ============================================================================================
+    //
+    // Pedis Vorgabe (11.09. 17:20 über Codex, DEMO-ZUGANG-START): „man muss ihr ansehen, dass sie
+    // die Demo ist und nicht das Echte". Auf JEDER Seite, ohne Klick, ohne Adresszeile.
+    //
+    // WARUM EINE EIGENE ZEILE UND KEIN KASTEN IN DER KOPFBANDZEILE — das ist hier die ganze Frage.
+    // Die Zeile ist an ihren engen Breiten AUSGEMESSEN und an mehreren Stellen auf den Pixel
+    // zugesagt: bei 1000 px ist ihr freier Zwischenraum mit UND ohne Firmen-CI gemessene 0,0 px
+    // (JOB 3641, Fälle K0/K1, s. o.), bei 390 px hat JOB 3582 den Logokasten deckeln müssen, damit
+    // der Konto-Kreis überhaupt im Fenster bleibt. Ein zusätzlicher Kasten IN dieser Zeile nähme
+    // genau dort Breite weg und schöbe im schlimmsten Fall das Firmenlogo oder den Konto-Kreis
+    // hinaus — der Auftrag verlangt ausdrücklich das Gegenteil („darf die vorhandene Firmen-CI
+    // nicht verdrängen und nicht überlappen — auf 390 px wie auf 1280 px"). Eine eigene Zeile
+    // kostet die Kopfbandzeile NULL Breite; die Aussage gilt damit an jeder Breite aus der Bauform
+    // heraus und nicht erst aus einer Messung. Der Preis ist eine um die Bandhöhe tiefer
+    // beginnende Inhaltsfläche — auf der Vorführinstanz, und nur dort.
+    //
+    // FÜR DAS DOM DER ECHTEN INSTANZ ÄNDERT SICH NICHTS: Ist der Schalter aus (die Vorgabe), gibt
+    // `DemoKennzeichen` `null` zurück, und dieses Fragment rendert zeichengleich das `<header>`,
+    // das hier vorher allein stand. Die `<ModalRegion>` um das Kopfband trägt `display: contents`
+    // (`app/ModalBoundaryContext.tsx:201`), das Band wird in der Spalte der Hülle also ein eigenes
+    // Geschwister von `<main>` und liegt nie ÜBER dem Inhalt.
+    <>
+      <DemoKennzeichen form="band" />
+      <header
+        data-testid="kopfband"
+        className="kw-kopfband flex h-[56px] shrink-0 items-center gap-9 bg-ink px-8 text-white"
+        style={schmalerAbstand}
+      >
+        {/* ==========================================================================================
           E2E-017 · JOB 3525 — DER SCHMALE KOPF TRÄGT EIN WORT, NICHT NUR EIN ZEICHEN.
           ==========================================================================================
           Bis JOB 3525 stand hier ein `grid h-9 w-9`-Kästchen mit dem Hamburger und einem
@@ -231,27 +258,27 @@ export function Kopfband({
           `shrink-0`: der Knopf gibt keinen Platz ab — er ist auf dem unteren Band der einzige Weg
           in die Navigation. `-ml-3` und `h-9` sind unverändert, die Kopfbandhöhe von 56 px bleibt
           damit unberührt (im Browser gemessen, Fall L1). */}
-      {narrow ? (
-        <button
-          type="button"
-          ref={menuButtonRef}
-          data-testid="kopfband-menue"
-          aria-label={t("topbar.openMenu")}
-          onClick={() => onOpenMenu?.()}
-          className="-ml-3 flex h-9 shrink-0 items-center gap-1.5 rounded-btn px-1.5 text-hairline hover:text-white"
-        >
-          <Menu size={20} aria-hidden="true" />
-          <span className="text-[13px] leading-none">{t("topbar.menuShort")}</span>
-        </button>
-      ) : null}
-      <Logo />
-      {/* JOB 3605: schmal steht hier NICHTS mehr. Bis dahin zog `KopfbandPunkteSchmal` auf dem Band
+        {narrow ? (
+          <button
+            type="button"
+            ref={menuButtonRef}
+            data-testid="kopfband-menue"
+            aria-label={t("topbar.openMenu")}
+            onClick={() => onOpenMenu?.()}
+            className="-ml-3 flex h-9 shrink-0 items-center gap-1.5 rounded-btn px-1.5 text-hairline hover:text-white"
+          >
+            <Menu size={20} aria-hidden="true" />
+            <span className="text-[13px] leading-none">{t("topbar.menuShort")}</span>
+          </button>
+        ) : null}
+        <Logo />
+        {/* JOB 3605: schmal steht hier NICHTS mehr. Bis dahin zog `KopfbandPunkteSchmal` auf dem Band
           760–899 px „Meine Entwürfe" allein neben das Logo; Pedi hat am 11.09. genau das als
           Sonderstellung beanstandet. Die Navigation wohnt schmal vollständig hinter dem
           beschrifteten Menü-Knopf. Breit ändert sich nichts. */}
-      {narrow ? null : <KopfbandPunkte />}
-      <div className="ml-auto flex min-w-0 shrink items-center gap-4">
-        {/* ==========================================================================================
+        {narrow ? null : <KopfbandPunkte />}
+        <div className="ml-auto flex min-w-0 shrink items-center gap-4">
+          {/* ==========================================================================================
             JOB 3503 · TEIL 3b — „GEHE ZU …" STEHT OBEN, NICHT NUR HINTER DEM ZAHNRAD.
             ==========================================================================================
             Pedi (10.09. 06:48 über Codex): „Gehe zu" soll ebenfalls direkt sichtbar oben im Kopfband
@@ -281,48 +308,49 @@ export function Kopfband({
             Zeile „Gehe zu …" steht unverändert im Zahnrad-Menü, das der Drawer mitträgt
             (`DrawerMenue.tsx`, `ZahnradEintraege`). Ein zweiter Bau entsteht dadurch nicht — es ist
             derselbe Knopf, nur eine Bedingung weiter. */}
-        {nurMenue ? null : (
-          <button
-            type="button"
-            data-testid="kopfband-gehezu"
-            onClick={() => window.dispatchEvent(new Event("open-command-palette"))}
-            className="flex shrink-0 items-center gap-2 rounded-[9px] border border-hairline/25 px-2.5 py-[6px] text-[13px] leading-normal text-hairline outline-none hover:border-hairline/50 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-          >
-            <span>{t("menue.schnellnavigation")}</span>
-            {/* Kein neuer Textschlüssel: das Kürzel ist ein Zeichen, keine Übersetzung — genauso
-                steht es in der Zahnrad-Zeile (`ZahnradMenue.tsx`, `wert="⌘K"`). */}
-            <span className="rounded-[5px] bg-hairline/15 px-1.5 py-px font-mono text-[10.5px] text-hairline">
-              ⌘K
-            </span>
-          </button>
-        )}
-        {/* E2E-017: auf schmalen Breiten entfällt das Suchfeld (die Suche bleibt über die
-            Bibliothek erreichbar); Zahnrad und Konto bleiben. */}
-        {narrow ? null : (
-          <form
-            onSubmit={submitSearch}
-            className="kw-kopfband-suche flex w-[260px] min-w-0 items-center gap-2 rounded-[9px] bg-surface px-3 py-[7px] text-[13px] text-muted-2"
-          >
+          {nurMenue ? null : (
             <button
-              type="submit"
-              aria-label={t("topbar.search")}
-              className="grid shrink-0 place-items-center text-muted-2 hover:text-text"
+              type="button"
+              data-testid="kopfband-gehezu"
+              onClick={() => window.dispatchEvent(new Event("open-command-palette"))}
+              className="flex shrink-0 items-center gap-2 rounded-[9px] border border-hairline/25 px-2.5 py-[6px] text-[13px] leading-normal text-hairline outline-none hover:border-hairline/50 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
             >
-              <Search size={15} strokeWidth={1.8} aria-hidden="true" />
+              <span>{t("menue.schnellnavigation")}</span>
+              {/* Kein neuer Textschlüssel: das Kürzel ist ein Zeichen, keine Übersetzung — genauso
+                steht es in der Zahnrad-Zeile (`ZahnradMenue.tsx`, `wert="⌘K"`). */}
+              <span className="rounded-[5px] bg-hairline/15 px-1.5 py-px font-mono text-[10.5px] text-hairline">
+                ⌘K
+              </span>
             </button>
-            <input
-              type="search"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder={t("kopfband.suchen")}
-              aria-label={t("topbar.search")}
-              className="w-full min-w-0 bg-transparent text-[13px] leading-normal text-text outline-none placeholder:text-muted-2"
-            />
-          </form>
-        )}
-        <ZahnradMenue />
-        <KontoMenue />
-      </div>
-    </header>
+          )}
+          {/* E2E-017: auf schmalen Breiten entfällt das Suchfeld (die Suche bleibt über die
+            Bibliothek erreichbar); Zahnrad und Konto bleiben. */}
+          {narrow ? null : (
+            <form
+              onSubmit={submitSearch}
+              className="kw-kopfband-suche flex w-[260px] min-w-0 items-center gap-2 rounded-[9px] bg-surface px-3 py-[7px] text-[13px] text-muted-2"
+            >
+              <button
+                type="submit"
+                aria-label={t("topbar.search")}
+                className="grid shrink-0 place-items-center text-muted-2 hover:text-text"
+              >
+                <Search size={15} strokeWidth={1.8} aria-hidden="true" />
+              </button>
+              <input
+                type="search"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder={t("kopfband.suchen")}
+                aria-label={t("topbar.search")}
+                className="w-full min-w-0 bg-transparent text-[13px] leading-normal text-text outline-none placeholder:text-muted-2"
+              />
+            </form>
+          )}
+          <ZahnradMenue />
+          <KontoMenue />
+        </div>
+      </header>
+    </>
   );
 }

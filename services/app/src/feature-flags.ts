@@ -63,6 +63,29 @@ export const SCHALTER_REGISTRY = {
    * hat, geht einen Unangemeldeten nichts an, und diese Fläche liegt ohnehin hinter `users.manage`.
    */
   demodaten: "KLARWERK_DEMO_SEED",
+  /**
+   * JOB 3761: DIESE INSTANZ IST EINE VORFÜHR-INSTANZ, UND SIE SAGT ES SELBST.
+   *
+   * Pedis Satz (11.09. 17:20 über Codex, PRIORITAETEN.md/DEMO-ZUGANG-START): „und man muss ihr
+   * ansehen, dass sie die Demo ist und nicht das Echte". Unter `demo.klarwerk.io` steht eine zweite
+   * Anwendung neben der echten — gleiche Version, gleiches Aussehen, womöglich gleiches Firmenlogo.
+   * Ohne diesen Schalter unterscheidet sie nichts als die Adresszeile.
+   *
+   * WARUM NICHT `demodaten` (der Schalter direkt darüber), obwohl beide „Demo" heißen: Das sind zwei
+   * verschiedene Aussagen. `demodaten` ist ein WERKZEUG („dieser Betrieb darf Demokonten anlegen") —
+   * eine echte Instanz kann es eingeschaltet haben, und eine Vorführinstanz muss keine Demodaten
+   * geladen haben. Der eine Schalter für beides hieße: entweder trägt die echte Instanz ein
+   * Demo-Etikett, sobald jemand das Werkzeug freischaltet, oder die Vorführinstanz trägt keines,
+   * solange sie ihre Daten von Hand pflegt. Beides ist falsch, und das erste ist der schlimmere Fall.
+   *
+   * VORGABE AUS, aus demselben Grund wie bei `demodaten` und mit umgekehrter Wirkrichtung zu den
+   * Pflichtangaben in `SCHALTER_VORGABE_AN`: Der Schaden ist die stille ANWESENHEIT des Hinweises.
+   * Ein „Demo"-Etikett auf der ECHTEN Anwendung — nach einem Vertipper, einem kopierten
+   * Umgebungsblock, einem halb übernommenen Startskript — wäre schlimmer als gar keines: es machte
+   * echte Arbeit unglaubwürdig. Nur ein ausdrückliches `1`/`true` schaltet scharf; `"ja"`, `"on"`,
+   * leer und ungesetzt lassen die echte Instanz unbeschriftet.
+   */
+  demoInstanz: "KLARWERK_DEMO_INSTANZ",
 } as const;
 
 export type SchalterName = keyof typeof SCHALTER_REGISTRY;
@@ -107,7 +130,20 @@ export function vorgabeAn(name: SchalterName): boolean {
 // Statt eine zweite Route zu bauen (das wäre die zweite Wahrheit, die mega46 gerade beseitigt hat),
 // antwortet DIESELBE Auskunft ohne Sitzung mit dieser TEILMENGE. Alles andere bleibt hinter der
 // Anmeldung — welche Fähigkeiten ein Betrieb freigeschaltet hat, geht einen Unangemeldeten nichts an.
-const SCHALTER_VOR_ANMELDUNG = new Set<SchalterName>(["rechtsseiten", "hinweisbanner"]);
+//
+// JOB 3761 — UND WARUM DER DEMO-SCHALTER HIER STEHT, obwohl `demodaten` es ausdrücklich nicht tut.
+// Die Begründung dort lautet: „welche WERKZEUGE ein Betrieb freigeschaltet hat, geht einen
+// Unangemeldeten nichts an". Die Selbstauskunft „ich bin die Vorführinstanz" ist kein Werkzeug und
+// kein Fähigkeitszukauf, sondern eine Kennzeichnung, die genau für den Gast gedacht ist — und die
+// Anmeldemaske ist die erste Fläche, die er sieht, und die, auf der er sein Kennwort eintippt. Käme
+// der Hinweis erst nach der Anmeldung, käme er nach der Eingabe. Verraten wird damit nichts, was
+// nicht ohnehin jeder sehen soll: die Antwort bleibt reines Ja/Nein, ohne Variablennamen und ohne
+// Adresse (features-routes.ts:25-29, Sammler mega46-schalter-auskunft).
+const SCHALTER_VOR_ANMELDUNG = new Set<SchalterName>([
+  "rechtsseiten",
+  "hinweisbanner",
+  "demoInstanz",
+]);
 
 /**
  * DIE EINE AUSWERTUNGSREGEL. Zwei Richtungen, je nach Art des Schalters, und beide fail-safe in die

@@ -28,6 +28,12 @@ const SCHALTER_VARIABLEN = [
   // Eintrag in dieser Liste würde `schalterLeeren()` ihn stehen lassen — der VORGABE-Fall unten
   // prüfte dann nicht die Vorgabe, sondern die Testumgebung.
   "KLARWERK_DEMO_SEED",
+  // JOB 3761: die Selbstauskunft „diese Instanz ist die Vorführinstanz". Sie MUSS hier stehen, und
+  // zwar aus demselben Grund wie der Schalter darüber: `schalterLeeren()` würde sie sonst stehen
+  // lassen, und der VORGABE-Fall unten prüfte dann die Umgebung des Laufs statt die Vorgabe. Genau
+  // diese Vorgabe (aus) ist hier die eigentliche Zusage — ein Demo-Etikett auf der ECHTEN
+  // Anwendung wäre schlimmer als gar keines.
+  "KLARWERK_DEMO_INSTANZ",
 ] as const;
 
 // AUFTRAG-mega61: der erwartete Zustand ohne jede gesetzte Variable. Die drei alten Schalter sind
@@ -43,6 +49,10 @@ const VORGABE = {
   // Dass dieser Wert hier `false` ist, ist selbst die Zusage: wer ihn eines Tages auf `true`
   // ändert, muss diese Zeile anfassen und dabei über die Begründung stolpern.
   demodaten: false,
+  // JOB 3761: eine Instanz behauptet nicht von selbst, die Demo zu sein. Dass dieser Wert hier
+  // `false` steht, ist die Zusage — wer ihn eines Tages auf `true` ändert, muss diese Zeile
+  // anfassen und dabei über die Begründung stolpern.
+  demoInstanz: false,
 } as const;
 
 // Jeder Fall setzt die Schalter AUSDRÜCKLICH; die Vorgabe hat unten ihren eigenen Fall.
@@ -91,11 +101,18 @@ describe("mega46 F1 · die Auskunft über die gesetzten Schalter", () => {
     const res = await app.inject({ method: "GET", url: "/api/features" });
     expect(res.statusCode).toBe(200);
     const features = (res.json() as { features: Record<string, unknown> }).features;
-    expect(features).toEqual({ rechtsseiten: true, hinweisbanner: true });
+    // JOB 3761: die Teilmenge hat einen dritten Eintrag bekommen — die Kennzeichnung „Demo". Sie
+    // gehört hierher, weil die Anmeldemaske die erste Fläche ist, auf der sie zählt (ein Gast tippt
+    // dort sein Kennwort ein). Sie meldet hier `false`, weil nichts gesetzt ist: die Vorgabe bleibt
+    // auch VOR der Anmeldung „aus".
+    expect(features).toEqual({ rechtsseiten: true, hinweisbanner: true, demoInstanz: false });
     // Ausdrücklich: kein Wort über die gebuchten Fähigkeiten dieses Betriebs.
     expect(Object.keys(features)).not.toContain("herkunft");
     expect(Object.keys(features)).not.toContain("confluenceImport");
     expect(Object.keys(features)).not.toContain("expertMatching");
+    // JOB 3761: und kein Wort über die Werkzeuge — `demodaten` bleibt draußen, obwohl der
+    // Nachbarschalter `demoInstanz` jetzt drin ist. Zwei „Demo"-Schalter, zwei Zuständigkeiten.
+    expect(Object.keys(features)).not.toContain("demodaten");
     await app.close();
   });
 

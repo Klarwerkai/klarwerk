@@ -6027,6 +6027,13 @@ const de = {
   // verweigern kann, wäre als Einwilligung unwirksam — eine Scheineinwilligung täuscht eine
   // Rechtsgrundlage vor, die sie nicht hat. Was hier stattfindet, ist eine KENNTNISNAHME.
   // Der Sammler tests/legal/mega61-banner-wortlaut.test.ts hält das über alle drei Sprachen fest.
+  // JOB 3761: EIN Schlüssel für BEIDE Flächen (Anmeldemaske und Kopfband), weil es dieselbe
+  // Aussage ist — zwei Schlüssel liefen beim nächsten Umformulieren auseinander. Der Text sagt NUR,
+  // was feststeht: dass diese Instanz die Vorführinstanz ist. Er sagt NICHTS über den Bestand
+  // (eine Vorführinstanz muss keine Demodaten geladen haben), und es gibt bewusst keinen
+  // Gegentext für die echte Instanz („Produktivsystem", „keine Demo") — der wäre zeitabhängig und
+  // nicht belegbar, und die echte Instanz schreibt deshalb gar nichts.
+  "demo.kennzeichen": "Demo-Instanz",
   "notice.banner.aria": "Hinweis zur Nutzung dieser Anwendung",
   "notice.banner.title": "Kurz zur Kenntnis",
   "notice.banner.ai":
@@ -11195,6 +11202,8 @@ const en: typeof de = {
   "legal.privacy.s15.body":
     "We adapt this statement when the application or the legal situation changes. Version date:",
 
+  // JOB 3761: derselbe eine Schlüssel, s. die deutsche Fassung.
+  "demo.kennzeichen": "Demo instance",
   "notice.banner.aria": "Note on using this application",
   "notice.banner.title": "Briefly, for your information",
   "notice.banner.ai":
@@ -16236,6 +16245,8 @@ const nl: typeof de = {
   "legal.privacy.s15.body":
     "Wij passen deze verklaring aan wanneer de toepassing of de rechtssituatie verandert. Stand van deze versie:",
 
+  // JOB 3761: derselbe eine Schlüssel, s. die deutsche Fassung.
+  "demo.kennzeichen": "Demo-omgeving",
   "notice.banner.aria": "Kennisgeving over het gebruik van deze toepassing",
   "notice.banner.title": "Kort ter kennisname",
   "notice.banner.ai":

@@ -138,6 +138,16 @@ const SCHALTER_ERKLAERUNG: Record<SchalterName, { wofuer: string; ohneIhn: strin
     wofuer: "Das Laden der Demodaten (POST /api/admin/demo-seed) — legt Konten an.",
     ohneIhn: "Die Route ist nicht registriert. Vorgabe: aus, ohne Ausnahme.",
   },
+  // JOB 3761. Die Selbstauskunft der Instanz — NICHT dasselbe wie `demodaten` eine Zeile darüber:
+  // dort steht das WERKZEUG („darf Demokonten anlegen"), hier die KENNZEICHNUNG („ich bin die
+  // Vorführinstanz"). Wer eine zweite Instanz aufsetzt, schlägt genau hier nach, warum seine Demo
+  // aussieht wie das Echte — und findet den einen Wert, den er setzen muss.
+  demoInstanz: {
+    wofuer:
+      "Die Kennzeichnung dieser Instanz als Vorführ-Instanz (Kopfband auf jeder Seite und Anmeldemaske).",
+    ohneIhn:
+      "Die Instanz gibt sich NICHT als Demo zu erkennen — sie ist von der echten nur an der Adresszeile zu unterscheiden. Vorgabe: aus (nur 1/true schaltet an), damit die ECHTE Instanz nie ein Demo-Etikett trägt.",
+  },
 };
 
 const SCHALTER_WERTE: readonly Startwert[] = (

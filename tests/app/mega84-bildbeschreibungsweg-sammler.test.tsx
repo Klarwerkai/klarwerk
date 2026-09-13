@@ -1733,8 +1733,28 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // denen Stufe 2 wirklich hängt, bleiben unverändert: `anbieter` 1 und `traeger` 2. Der Kasten
     // zeigt kein Bild, bietet keine Bildbeschreibung an (kein `ANGEBOT_MUSTER`) und trägt keinen
     // eigenen Titel (kein `documentTitle`-Prop) — er erscheint nur in der Grundmenge.
+    // JOB 3761 (MAN SIEHT DER DEMO AN, DASS SIE DIE DEMO IST): `komponenten` von 376 auf 377
+    // NACHGEZOGEN — am Lauf dieses Arbeitsbaums gemessen (der Fall meldete `gemessen: 377
+    // Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 476 Quelldateien`), nicht gerechnet. GENAU
+    // EIN Bauteil kommt hinzu:
+    //
+    //     + `DemoKennzeichen` (`auth/BrandPanel.tsx`) — die sichtbare Kennzeichnung „Demo-Instanz"
+    //       auf der Anmeldemaske und über dem Kopfband. Eine NEUE Fläche und keine Herauslösung:
+    //       die Aussage „diese Instanz ist die Vorführinstanz" gab es im Produkt vorher an keiner
+    //       Stelle, weder als Schalter noch als Text.
+    //
+    // GEGENPROBE dazu, gemessen statt behauptet: mit der Deklaration UND ihren zwei Einbindungen
+    // kleingeschrieben (`demoKennzeichen`) meldet dieser Fall wieder `gemessen: 376 Komponenten`
+    // und wird gegen den ALTEN Pin grün — `alsKomponente` (oben, :453) verlangt einen
+    // Großbuchstaben am Namensanfang; die +1 ist damit genau dieses Bauteil und kein zweiter Fund
+    // hinter derselben Zahl. Danach hashgleich zurückgenommen.
+    //
+    // Die zwei Zahlen, an denen Stufe 2 wirklich hängt, bleiben unverändert: `anbieter` 1 und
+    // `traeger` 2. Die Kennzeichnung zeigt kein Bild, bietet keine Bildbeschreibung an (kein
+    // `ANGEBOT_MUSTER`) und trägt keinen eigenen Titel (kein `documentTitle`-Prop) — sie erscheint
+    // nur in der Grundmenge.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 376,
+      komponenten: 377,
       anbieter: 1,
       traeger: 2,
     });

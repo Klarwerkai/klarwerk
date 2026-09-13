@@ -39,6 +39,15 @@ vi.mock("../../apps/web/src/api/client", async (echt) => ({
   api: { get: d.get, put: d.put },
 }));
 
+// NACHGEFÜHRT JOB 3761: die öffentliche Strecke liest seit der Demo-Kennzeichnung die EINE
+// vorhandene Schalterauskunft (`useFeatures`, api/hooks.ts:163) — sie braucht damit denselben
+// QueryClient, den die Anwendung ohnehin an der Wurzel stellt (`main.tsx:54`). Ohne ihn bräche die
+// Montage mit „No QueryClient set" ab, und dieser Wächter meldete einen Markenfehler, den es nicht
+// gibt. Was er misst, ändert sich dadurch nicht: M3 bleibt scharf, nur genauer (s. dort).
+import {
+  QueryClient,
+  QueryClientProvider,
+} from "../../apps/web/node_modules/@tanstack/react-query";
 import { Fragment, act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { BrandCompact, BrandPanel } from "../../apps/web/src/auth/BrandPanel";
@@ -82,9 +91,14 @@ const flush = async (): Promise<void> => {
 
 /** Beide öffentlichen Bausteine zusammen — so stehen sie auch in `AuthScreens.tsx:84,88`. */
 async function stelleAuf(): Promise<void> {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   await act(async () => {
     root.render(
-      createElement(Fragment, null, createElement(BrandPanel), createElement(BrandCompact)),
+      createElement(
+        QueryClientProvider,
+        { client: qc },
+        createElement(Fragment, null, createElement(BrandPanel), createElement(BrandCompact)),
+      ),
     );
   });
 }
@@ -192,7 +206,7 @@ describe("JOB 3577 M · die Anmeldemaske trägt die Firmen-CI mit", () => {
     expect(kompakt().textContent).toContain("Reasoning System");
   });
 
-  it("M3 · das Mounten löst KEINEN eigenen Abruf aus", async () => {
+  it("M3 · das Mounten löst KEINEN eigenen Abruf nach dem Markenstand aus", async () => {
     uebernimmBranding(stand());
     d.get.mockClear();
     d.put.mockClear();
@@ -200,7 +214,33 @@ describe("JOB 3577 M · die Anmeldemaske trägt die Firmen-CI mit", () => {
     // Beide Flächen sind wirklich da — sonst prüfte dieser Fall nur, dass nichts gerendert wurde.
     expect(bild(panel())).not.toBeNull();
     expect(bild(kompakt())).not.toBeNull();
-    expect(d.get, "die Anmeldemaske fragt den Markenstand selbst ab").not.toHaveBeenCalled();
+
+    // NACHGEFÜHRT JOB 3761 — UND ZWAR GENAUER STATT SCHWÄCHER.
+    //
+    // Die Zusage dieses Falls war und ist: die Anmeldemaske holt sich den MARKENSTAND nicht selbst
+    // (das tut allein `lib/brandTheme.ts`, gedrosselt auf einen Abruf je Minute, :187-189). Bis
+    // JOB 3761 hat sie das über „gar kein Abruf" gemessen, weil es damals gar keinen gab. Seit der
+    // Demo-Kennzeichnung liest die Maske die EINE vorhandene Schalterauskunft (`/features`) — die
+    // ist kein zweiter Takt, sondern derselbe, den der Hinweistext auf dieser Maske schon benutzt
+    // (`legal/NoticeBanner.tsx:84`), mit `staleTime: Infinity` und ohne Retry.
+    //
+    // Der Fall zählt deshalb jetzt die Adressen statt der Aufrufe: nach `/branding` wird NICHT
+    // gefragt (die alte Zusage, unverändert), `/features` höchstens EINMAL (kein zweiter Takt),
+    // und sonst gar nichts. Ein neuer eigener Abruf der öffentlichen Strecke — auch nach
+    // `/branding` — macht diesen Fall weiterhin rot.
+    const adressen = d.get.mock.calls.map((c) => String(c[0]));
+    expect(
+      adressen.filter((a) => a.includes("branding")),
+      "die Anmeldemaske fragt den Markenstand selbst ab",
+    ).toEqual([]);
+    expect(
+      adressen.filter((a) => a !== "/features"),
+      "unbekannter Abruf der Anmeldemaske",
+    ).toEqual([]);
+    expect(
+      adressen.filter((a) => a === "/features").length,
+      "zweiter Takt auf die Auskunft",
+    ).toBeLessThanOrEqual(1);
     expect(d.put).not.toHaveBeenCalled();
   });
 

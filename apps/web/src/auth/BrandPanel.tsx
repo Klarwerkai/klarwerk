@@ -13,7 +13,100 @@
 // Bausteine der öffentlichen Strecke und haben außerhalb von ihr keinen Aufrufer.
 import { useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
+import { useFeatures } from "../api/hooks";
 import { BRAND_LOGO_ALT, abonniereBranding, aktuellesBranding } from "../lib/brandTheme";
+
+// ================================================================================================
+// JOB 3761 — MAN SIEHT DER DEMO AN, DASS SIE DIE DEMO IST.
+// ================================================================================================
+//
+// PEDIS SATZ, wörtlich (11.09. 17:20 über Codex, PRIORITAETEN.md/DEMO-ZUGANG-START, Punkt 2):
+// „und man muss ihr ansehen, dass sie die Demo ist und nicht das Echte". Unter `demo.klarwerk.io`
+// steht eine zweite Anwendung neben der echten: gleiche Version, gleiches Aussehen, seit
+// DEMO-FIRMEN-CI womöglich dasselbe Firmenlogo. Verdeckt man die Adresszeile, unterscheidet sie
+// nichts.
+//
+// WARUM DIE KENNZEICHNUNG IN DIESER DATEI WOHNT und nicht in der Hülle: Die Anmeldemaske ist die
+// erste Fläche, die ein Gast sieht, und die, auf der er sein Kennwort eintippt — er muss VOR der
+// Eingabe wissen, wo er sie macht. Das Kopfband holt sich denselben EINEN Leser von hier
+// (`shell/Kopfband.tsx`); die umgekehrte Richtung wäre falsch und ist unten bei `PublicLangSwitch`
+// schon begründet: ein Import aus der Shell hinge die öffentliche Strecke an eine Hülle, die sie
+// nicht hat (und zöge Konto-, Zahnrad- und Navigationsbausteine in das Anmeldebündel).
+//
+// EIN LESER, EIN SCHALTER, KEIN ZWEITER ABRUF: gelesen wird die vorhandene Auskunft
+// `GET /api/features` über den vorhandenen `useFeatures`-Weg (`api/hooks.ts:163`), der seinen
+// Zwischenspeicher unter dem Schlüssel `["features"]` führt und den `AuthContext.tsx:237` beim
+// Sitzungswechsel ausdrücklich verwirft. Der Schalter selbst steht an genau einer Stelle
+// (`services/app/src/feature-flags.ts`, `demoInstanz`).
+//
+// DAS ZUSTANDSMODELL DER AUSSAGE „das ist die Demo" — und es ist in jedem Zweig dasselbe:
+// Solange die Auskunft NICHT beantwortet ist (laden), NICHT kommt (5xx, Netz weg, offline) oder
+// „aus" sagt, steht hier NICHTS. Kein Platzhalter, kein Skelett, kein Springen. Eine positive
+// Behauptung ohne frische Grundlage wäre eine Erfindung, und die umgekehrte Aussage („dies ist das
+// Echtsystem") wird nirgends gemacht: sie wäre zeitabhängig und nicht belegbar. Ein bereits
+// bestätigter Stand bleibt stehen, weil `useFeatures` ihn hält (`staleTime: Infinity`, kein Retry)
+// — eine gescheiterte Auffrischung nimmt die Kennzeichnung also nicht weg und bringt kein
+// Fehlerbanner für diese Kleinigkeit.
+function useDemoInstanz(): boolean {
+  // Der EINE Zugriff auf die Auskunft für diesen Schalter im ganzen Frontend (Sammler
+  // `tests/app/mega46-schalter-eine-wahrheit.test.ts` zählt Leser, `tests/demo-kennzeichnung/`
+  // hält fest, dass es bei einem bleibt).
+  //
+  // WARUM DIE BREITERE FORM STATT `FeatureFlags`: `apps/web/src/api/types.ts` (`FeatureName`) ist
+  // NICHT Zielpfad dieses Auftrags und bleibt deshalb unangetastet — der Typ dort ist ein
+  // `Partial<Record<…>>` und lässt einen zusätzlichen Schlüssel der Nutzlast ausdrücklich zu
+  // (types.ts:2025). Gelesen wird also die Drahtform, wie sie kommt: ein Ja/Nein oder nichts.
+  const auskunft: { features?: Record<string, boolean | undefined> } | null | undefined =
+    useFeatures().data;
+  // `=== true`: „noch nicht da", „nicht gekommen" und „aus" sind für die Anzeige dasselbe —
+  // dieselbe fail-closed Richtung wie `FeatureGate` und `useHinweisbannerAn`.
+  return auskunft?.features?.demoInstanz === true;
+}
+
+/**
+ * Die Kennzeichnung selbst — EIN Text, zwei Formen.
+ *
+ * `marke`: die Plakette neben der Wortmarke auf der öffentlichen Strecke. Sie steht NEBEN der
+ * Marke und dem Firmenlogo, nie an deren Stelle.
+ * `band`: das durchgehende Band über dem Kopfband der angemeldeten Hülle. Es hat bewusst eine
+ * EIGENE Zeile und nimmt der Kopfbandzeile damit keinen Pixel Breite weg — das Firmenlogo
+ * (`shell/Logo.tsx`) behält auf 390 px wie auf 1280 px seinen gemessenen Platz, ohne dass diese
+ * Kennzeichnung die dort belegten Zahlen anfasst (JOB 3571/3582/3641).
+ *
+ * SIE IST TEIL DER HÜLLE, KEIN BANNER: kein Schließknopf, keine Kenntnisnahme, kein Merker. Sie
+ * verschwindet nicht, solange die Instanz die Vorführinstanz ist.
+ */
+export function DemoKennzeichen({ form }: { form: "marke" | "band" }): JSX.Element | null {
+  const { t } = useTranslation();
+  const an = useDemoInstanz();
+  if (!an) {
+    return null;
+  }
+  // Ein Textschlüssel für beide Flächen, weil es dieselbe Aussage ist (DE/EN/NL in `i18n.ts`).
+  // Die Farben sind vorhandene Token-Werte (dieselbe Paarung wie der Hinweis auf der Anmeldemaske,
+  // `AuthScreens.tsx`) — es entsteht keine neue CSS-Regel, die der Kontrastsammler messen müsste.
+  const wort = t("demo.kennzeichen");
+  if (form === "band") {
+    return (
+      <div
+        data-testid="demo-kennzeichen"
+        data-demo-form="band"
+        className="shrink-0 border-b border-trust-warn-fill/40 bg-trust-warn-bg px-4 py-1 text-center text-[12px] font-semibold uppercase tracking-[1.5px] text-trust-warn-text"
+      >
+        {wort}
+      </div>
+    );
+  }
+  return (
+    <span
+      data-testid="demo-kennzeichen"
+      data-demo-form="marke"
+      className="rounded-pill border border-trust-warn-fill/40 bg-trust-warn-bg px-2 py-[3px] text-[11px] font-semibold uppercase tracking-[1.5px] text-trust-warn-text"
+    >
+      {wort}
+    </span>
+  );
+}
 
 // ================================================================================================
 // JOB 3577 — DIE ANMELDEMASKE TRÄGT DIE FIRMEN-CI MIT. SIE IST DIE ERSTE FLÄCHE, DIE EIN GAST SIEHT.
@@ -91,6 +184,12 @@ function Wortmarke({ hell }: { hell: boolean }): JSX.Element {
           <img src={marke.logo} alt={BRAND_LOGO_ALT[profil]} className="h-6 w-auto" />
         </span>
       )}
+      {/* JOB 3761: NEBEN der Marke und NEBEN dem Firmenlogo, nie an deren Stelle — dieselbe Regel,
+          die JOB 3577 oben für das Firmenlogo ausschreibt. Sie steht hier im gemeinsamen Helfer und
+          damit auf BEIDEN öffentlichen Bausteinen: die Spalte am Desktop (`BrandPanel`) und der
+          Anker auf schmalen Geräten (`BrandCompact`). Nur in einem von beiden wäre sie auf genau
+          der Hälfte der Geräte unsichtbar. */}
+      <DemoKennzeichen form="marke" />
     </span>
   );
 }
