@@ -22,6 +22,10 @@
 # durch die C-Diagnose „No such file or directory“; jede andere Öffnungsdiagnose bleibt wörtlich auf
 # stderr und führt weiter zu „PID-Datei unlesbar“. Sonderdateien (FIFO, Gerät) werden gar nicht erst
 # geöffnet — sonst blockierte das Öffnen, und die Zeitgrenze käme nie zum Zug.
+# JOB 3820: Dieselbe C-Diagnose entsteht auch bei einem Verweis auf ein fehlendes Ziel — der Eintrag
+# bleibt dann liegen und wird nie lesbar. Das Schweigen gilt darum nur, wenn lstat den Eintrag danach
+# nicht mehr sieht. Gemessen sind ENOENT (entfernt und liegend), EACCES und ELOOP; EIO ist in dieser
+# Umgebung nicht auslösbar und läuft durch denselben Weitergabezweig.
 # Basisstand: der unmittelbare Elterncommit des Prüfstands (wird beim Einbau gesetzt)
 set -euo pipefail
 art="${1:-}"
@@ -285,7 +289,15 @@ if [ "$an" = 1 ]; then
           *'No such file or directory')
             # Der Normalfall eines aufgeräumten toten Wettlaufs: kein Wort auf stderr, nur der
             # beobachtete Grund für eine spätere Fristmeldung derselben Runde.
-            pidgrund="PID-Datei inzwischen entfernt: $datei"; continue ;;
+            # JOB 3820: nur, wenn der Eintrag danach auch wirklich fort ist. Ein Verweis auf ein
+            # fehlendes Ziel meldet dasselbe ENOENT, bleibt aber liegen und wird NIE lesbar; als
+            # „inzwischen entfernt“ ausgegeben wäre eine dauerhafte Lage ein flüchtiger Wettlauf,
+            # das rmdir der Frist scheiterte still an ihm, und der Abbruch an der Zeitgrenze nennte
+            # einen Grund, den ein Blick ins Schloss widerlegt (F31, 20/20 vor der Reparatur).
+            # `-L` fragt lstat und folgt dem Verweis nicht: ein POSITIVER Fortbestandsbeleg. Er
+            # kann nur zusätzlich melden, nie zusätzlich schweigen — die negative Existenzprüfung
+            # von F28 kehrt damit nicht zurück (entzogenes Suchrecht meldet ohnehin EACCES).
+            if [ ! -L "$datei" ]; then pidgrund="PID-Datei inzwischen entfernt: $datei"; continue; fi ;;
         esac
         # Jede andere Diagnose wörtlich weiter — gemessen ist „Permission denied" (gesperrte Datei
         # F27, entzogenes Suchrecht F28), kein pauschales 2>/dev/null. Leer bleibt die Diagnose

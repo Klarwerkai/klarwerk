@@ -1,5 +1,11 @@
 // JOB 3150: echte Unterprozesse, aber markierte Lastsonden statt Chromium/Servern.
 // V0 misst die heutige Verdrahtung vor dem Bau; F6 kalibriert dieselben Fenster ohne Deckel.
+// GRENZE DER MESSUNG am Diagnosezweig des Schlosses (tools/browserdeckel.sh:284-307): gemessen
+// sind ENOENT nach echtem Entfernen (F26/F26c), ENOENT trotz liegendem Eintrag (F31/F31c),
+// EACCES (F27/F28) und ELOOP (F30/F30b/F30c). NICHT gemessen ist EIO: ein Ein-/Ausgabefehler
+// braucht ein defektes Gerät oder eine einspeisende Dateisystemschicht und ist hier nicht ehrlich
+// auslösbar. Der Weitergabezweig selbst ist über ELOOP belegt; ein künftiger dritter errno läuft
+// durch denselben Zweig und braucht keinen eigenen Zweig, nur bei Bedarf einen eigenen Fall.
 // Basisstand: der unmittelbare Elterncommit des Prüfstands (wird beim Einbau gesetzt)
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -7,12 +13,14 @@ import {
   chmodSync,
   copyFileSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
   renameSync,
   rmSync,
+  symlinkSync,
   utimesSync,
   writeFileSync,
 } from "node:fs";
@@ -1340,6 +1348,117 @@ fs.openSync = function(pfad, ...args) {
       lauf.kind.kill("SIGKILL");
     }
   }, 30_000);
+
+  // JOB 3820: Der Diagnosezweig (tools/browserdeckel.sh:284-307) hat genau zwei Ausgänge —
+  // schweigen (aufgeräumter Wettlauf) oder die Diagnose des Betriebssystems wörtlich weitergeben.
+  // Gemessen war bis hierher nur die Entfernung (F26/F26c) und EACCES (F27/F28). F30/F31 messen
+  // die dritte Lage: ein Haltereintrag, der DASTEHT und trotzdem nie lesbar wird.
+  // Ein Wegwerfschloss mit einem einzigen Eintrag, Gnade 0 und Zeitgrenze 1s: die Frist läuft
+  // sofort ab, ihr rmdir scheitert am liegenden Eintrag, und der Lauf endet an der Zeitgrenze.
+  async function unlesbarerEintrag(fall: string, name: string, ziel: string) {
+    const { ort, env } = werk();
+    const lock = env.KLARWERK_BROWSERDECKEL_LOCK;
+    mkdirSync(lock);
+    const datei = join(lock, name);
+    // Relatives Ziel: der Eintrag hängt an keinem Pfad außerhalb des Wegwerfschlosses.
+    symlinkSync(ziel, datei);
+    const lauf = await starte(
+      ort,
+      { ...env, KLARWERK_BROWSERDECKEL_GNADE: "0", KLARWERK_BROWSERDECKEL_TIMEOUT: "1" },
+      "./tools/browserdeckel.sh",
+      ["smoke", "node", env.SONDE],
+    ).fertig;
+    console.log(`${fall} exit=${lauf.code}\n${lauf.stderr}`);
+    return { ort, lock, datei, lauf };
+  }
+
+  type Lauf = { code: number | null; ausgabe: string; stderr: string };
+
+  // (i) die Diagnose steht wörtlich da, (ii) sie wird nicht als Entfernung verschwiegen,
+  // (iii) der geschützte Befehl startet innerhalb der Zeitgrenze nicht.
+  function pruefeUnlesbar(ort: string, lock: string, datei: string, lauf: Lauf, diagnose: string) {
+    expect(lauf.stderr, "Diagnose des Betriebssystems wörtlich").toContain(`${datei}: ${diagnose}`);
+    expect(lauf.stderr).toContain(`PID-Datei unlesbar: ${datei}`);
+    expect(lauf.ausgabe, "was dasteht, wird nicht als entfernt ausgegeben").not.toContain(
+      "inzwischen entfernt",
+    );
+    expect(lauf.ausgabe).not.toMatch(/PID-Datei fehlt|PID-Datei nie geschrieben/);
+    expect(lauf.code, lauf.ausgabe).toBe(1);
+    expect(existsSync(join(ort, "smoke.start")), "der geschützte Befehl startet nicht").toBe(false);
+    // lstat, nicht existsSync: ein Verweis auf ein fehlendes Ziel „existiert" für stat nicht,
+    // liegt aber als Verzeichniseintrag da — genau darum scheitert auch das rmdir der Frist.
+    expect(lstatSync(datei).isSymbolicLink()).toBe(true);
+    expect(existsSync(lock), "das Schloss wird nicht übernommen").toBe(true);
+  }
+
+  // Dieselbe Zusicherung wie F25 für die anderen Gründe: die Meldung nennt den BEOBACHTETEN Grund.
+  function pruefeFristgrund(datei: string, lauf: Lauf) {
+    expect(lauf.stderr).toContain(
+      `✖ Browserdeckel Zeitgrenze 1s: PID unbekannt (PID-Datei unlesbar: ${datei}) hält seit unbekannt (Unix-ms); Abbruch`,
+    );
+  }
+
+  const SCHLEIFE = "Too many levels of symbolic links";
+  const FEHLT = "No such file or directory";
+
+  async function schleife(fall: string) {
+    return unlesbarerEintrag(fall, "pid-schleife", "pid-schleife");
+  }
+  async function toterVerweis(fall: string) {
+    return unlesbarerEintrag(fall, "pid-totverweis", "gibt-es-nicht-3820");
+  }
+
+  it("F30 · Verweisschleife: die ELOOP-Diagnose bleibt wörtlich stehen, der Befehl startet nie", async () => {
+    const { ort, lock, datei, lauf } = await schleife("F30");
+    pruefeUnlesbar(ort, lock, datei, lauf, SCHLEIFE);
+  }, 30_000);
+
+  it('F30b · Fristmeldung der Verweisschleife nennt „unlesbar", nicht „fehlt"', async () => {
+    const { datei, lauf } = await schleife("F30b");
+    pruefeFristgrund(datei, lauf);
+  }, 30_000);
+
+  it("F30c · 20 Wiederholungen der Verweisschleife verletzen die Zusicherung keinmal", async () => {
+    const fehler: string[] = [];
+    for (let n = 1; n <= 20; n++) {
+      try {
+        const { ort, lock, datei, lauf } = await schleife(`F30c Runde ${n}`);
+        pruefeUnlesbar(ort, lock, datei, lauf, SCHLEIFE);
+        pruefeFristgrund(datei, lauf);
+      } catch (error) {
+        fehler.push(`Runde ${n}: ${String(error)}`);
+      }
+    }
+    console.log(`F30c: ${fehler.length} von 20 Runden verletzten die Zusicherung`);
+    expect(fehler.join("\n")).toBe("");
+  }, 180_000);
+
+  // JOB 3820, das Gegenstück zu F26 auf derselben Diagnose: Ein Verweis auf ein fehlendes Ziel
+  // meldet beim Öffnen dasselbe ENOENT wie ein entfernter Eintrag — bleibt aber liegen und wird
+  // nie lesbar. Als „inzwischen entfernt" ausgegeben wäre eine DAUERHAFTE Lage als flüchtiger
+  // Wettlauf gemeldet, und der Mensch bekäme im Abbruch nach der Zeitgrenze einen Grund genannt,
+  // den ein Blick ins Schloss widerlegt. Deshalb entscheidet nicht die Diagnose allein, sondern
+  // zusätzlich der POSITIVE Fortbestandsbeleg per lstat (tools/browserdeckel.sh:289-300).
+  it("F31 · Verweis auf ein fehlendes Ziel wird nicht als aufgeräumter Wettlauf ausgegeben", async () => {
+    const { ort, lock, datei, lauf } = await toterVerweis("F31");
+    pruefeUnlesbar(ort, lock, datei, lauf, FEHLT);
+    pruefeFristgrund(datei, lauf);
+  }, 30_000);
+
+  it("F31c · 20 Wiederholungen des toten Verweises verletzen die Zusicherung keinmal", async () => {
+    const fehler: string[] = [];
+    for (let n = 1; n <= 20; n++) {
+      try {
+        const { ort, lock, datei, lauf } = await toterVerweis(`F31c Runde ${n}`);
+        pruefeUnlesbar(ort, lock, datei, lauf, FEHLT);
+        pruefeFristgrund(datei, lauf);
+      } catch (error) {
+        fehler.push(`Runde ${n}: ${String(error)}`);
+      }
+    }
+    console.log(`F31c: ${fehler.length} von 20 Runden verletzten die Zusicherung`);
+    expect(fehler.join("\n")).toBe("");
+  }, 180_000);
 
   it.each(["falsch", "1.5", "-1"])(
     "G1 · ungültige Gnadenfrist %s bricht vor dem Befehl ab",
