@@ -330,12 +330,57 @@ export class ValidationService {
     if (!ko) {
       throw new ValidationError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
     }
-    await this.koService.setValidationState(koId, { trust: TRUST_MAX, status: "validiert" });
+    // JOB 3789: DIE GELESENE FASSUNG BEKOMMT EINEN NAMEN — dieselbe Form wie `ratedVersion` in
+    // `rate` (:232). Der Admin entscheidet über den Text, den er gelesen hat; jeder folgende
+    // Schritt (Schreibvorgang, Beleg, Verweis) bindet sich an genau diese Zahl. Kein zweites
+    // `get`, keine zweite Quelle — sonst wäre die Fassung, über die entschieden wurde, nicht mehr
+    // dieselbe wie die, die geschrieben wird.
+    const geleseneFassung = ko.version;
+    // JOB 3789: Compare-and-Set gegen die gelesene Fassung. Es schützt vor „ein `revise` erhöht die
+    // Version zwischen dem `get` oben und diesem Schreibvorgang, und ‚validiert' samt Vertrauen 99
+    // springt auf einen Text über, den nie ein Mensch geprüft hat". Dieselbe Bindung tragen die
+    // beiden Schwesterstellen: der Bewertungsweg (`rate`, :247-251) und der Verweis weiter unten.
+    const gespeichert = await this.koService.setValidationState(
+      koId,
+      { trust: TRUST_MAX, status: "validiert" },
+      { expectedVersion: geleseneFassung },
+    );
+    // ==========================================================================================
+    // JOB 3789 — DER VERFEHLTE WETTLAUF WIRD ERKANNT, NICHT NUR ABGEFANGEN.
+    // ==========================================================================================
+    //
+    // `setValidationState` gibt bei verfehltem Compare-and-Set das UNVERAENDERTE Objekt zurueck
+    // (`knowledge-object/src/service.ts:4080-4081`); an seiner Version ist der No-op erkennbar.
+    //
+    // OHNE DIESE AUSWERTUNG LIEFE DER REST DER METHODE WEITER, und genau das waere der Schaden:
+    // der Auditeintrag `ko.admin-validated` stuende ueber einer Validierung, die nicht
+    // stattgefunden hat, `validators` nennte einen Traeger fuer eine Entscheidung ohne Wirkung,
+    // und die Antwort an den Menschen sagte „validiert, Vertrauen 99" ueber einen Stand, den
+    // niemand geschrieben hat. Ein Beleg ueber einen Vorgang, den es nicht gab, ist eine
+    // Falschaussage — und der Beleg IST hier das Versprechen. Der Verweis fiele ohnehin aus (sein
+    // CAS greift schon heute), sodass ausgerechnet der schlimmste Mischzustand entstuende:
+    // „validiert" ohne aufloesbaren Beleg.
+    //
+    // WAS STATTDESSEN GESCHIEHT: nichts wird geschrieben, und die Antwort traegt den Stand, der
+    // wirklich gespeichert ist. Die Stimmenzahlen kommen aus den Bewertungen DER JETZT GUELTIGEN
+    // Fassung (`stimmenAus` — dieselbe Zaehlung, die Board und Pruefstand lesen). Feste Nullen
+    // waeren eine Behauptung ueber Stimmen, die dieser Aufruf nie erhoben hat.
+    if (gespeichert.version !== geleseneFassung) {
+      const { votes } = stimmenAus(await this.ratings.listByKo(koId), gespeichert.version);
+      return {
+        ...votes,
+        trust: gespeichert.trust,
+        status: gespeichert.status,
+        // `null` ist die Hausform fuer „es gibt keine Entscheidung und damit keinen Beleg"
+        // (s. `ValidationDecisionRefWert`, :154-163) — hier ist sie woertlich wahr.
+        validationDecisionRef: null,
+      };
+    }
     const beleg = await this.audit?.record({
       actor: actorId,
       action: "ko.admin-validated",
       target: koId,
-      payload: { koVersion: ko.version },
+      payload: { koVersion: geleseneFassung },
     });
     // W3-C (Pedi 03.08.): auch die Admin-Entscheidung wird am KO festgehalten — und GENAU SIE ist
     // der Grund, warum das Rating als Träger ausschied: hier entsteht keins. Compare-and-Set gegen
@@ -343,7 +388,7 @@ export class ValidationService {
     const referenz = refAus(beleg);
     if (referenz) {
       await this.koService.setValidationDecisionRef(koId, referenz, {
-        expectedVersion: ko.version,
+        expectedVersion: geleseneFassung,
       });
     }
     // JOB 557: auch die Admin-Validierung ist eine abgeschlossene Validierung — und sie hat genau
