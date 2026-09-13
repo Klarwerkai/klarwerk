@@ -23,6 +23,11 @@
 // Brücke `NavGuardModalBoundaryBridge` darin, und der Seiteninhalt in einer `ModalRegion`.
 // `expect` steht hier, weil die Dialog-Zusagen unten Messungen SIND und nicht bloss Abfragen: sie
 // gehören zu den Messfenstern dieses Ordners und nicht in jede Testdatei abgeschrieben (JOB 3822).
+//
+// DIE EINE GRENZE, DIE NACH JOB 3864 NOCH OFFEN IST: der Zustand dieser Hülle (`container`, `root`,
+// `montiert`) ist modulweit und damit pro Testdatei. Was zwischen ZWEI Dateien EINES vitest-Laufs an
+// Rückstand bliebe, misst kein Fall — V1 bis V4 der Ganzdokument-Datei messen innerhalb einer Datei.
+// Alles andere an `abbauen()` ist gedeckt, siehe den Block darüber.
 import { expect } from "vitest";
 import {
   QueryClient,
@@ -255,12 +260,16 @@ export async function mount(
  * Das ist der Unterschied zwischen dieser Fassung und der naheliegenden Halbheit `try { … } catch {}`
  * um denselben Rumpf: die verschluckte jeden künftigen Abbaufehler mit und machte einen Ordner, der
  * gegen Falschaussagen antritt, in seiner eigenen Vorrichtung unehrlich. Was hier wirklich schiefgeht,
- * wirft weiterhin (gemessen in V3 der Ganzdokument-Datei; die Gegenprobe G3 rötet genau diesen Fall).
+ * wirft weiterhin — und zwar in BEIDEN Phasen des Abbaus, jede von einem eigenen Fall der
+ * Ganzdokument-Datei gemessen: mitten im `unmount` (V3, gerötet von der Gegenprobe G3) und beim
+ * `container.remove()` danach (V4, JOB 3864, gerötet, sobald genau diese Zeile fehlt oder umgangen
+ * wird). Keine der beiden Zeilen unten ist mehr ungedeckt.
  *
  * Die drei Lagen, jede einzeln gemessen:
  *   nie montiert / schon abgebaut → folgenlos (V1, V2)
  *   montiert                      → vollständig geräumt (jeder Fall dieses Ordners)
- *   Abbau scheitert wirklich      → Wurf mit Grund (V3)
+ *   Abbau scheitert wirklich      → Wurf mit Grund, in beiden Phasen: `unmount` (V3),
+ *                                   `container.remove()` (V4)
  */
 export function abbauen(): void {
   if (!montiert) {

@@ -498,7 +498,7 @@ describe("JOB 3822 · der Ganzdokument-Träger in seinen drei Fehlerwegen", () =
   });
 
   // ==============================================================================================
-  // V1–V3 · DIE VORRICHTUNG SELBST: DER ABBAU IST EHRLICH, UND JEDER FALL IST EINZELN FAHRBAR.
+  // V1–V4 · DIE VORRICHTUNG SELBST: DER ABBAU IST EHRLICH, UND JEDER FALL IST EINZELN FAHRBAR.
   // ==============================================================================================
   //
   // WARUM SIE HIER STEHEN und nicht in einer eigenen, attrappenreinen Datei — Codex' eigener
@@ -579,20 +579,35 @@ describe("JOB 3822 · der Ganzdokument-Träger in seinen drei Fehlerwegen", () =
 
     let gefangen: unknown = null;
     try {
-      abbauen();
-    } catch (e) {
-      gefangen = e;
+      try {
+        abbauen();
+      } catch (e) {
+        gefangen = e;
+      }
+
+      // Die Diagnose kommt aus dem GELIEFERTEN Ergebnis: was wirklich (oder eben nicht) geworfen wurde.
+      expect(
+        gefangen === null
+          ? "abbauen() lief ohne Fehler durch"
+          : String((gefangen as Error).message),
+        "ein echter Abbaufehler wäre damit unsichtbar",
+      ).toContain("V3: der Behälter verweigert das Entfernen seiner Kinder");
+    } finally {
+      // JOB 3864: die Verstellung geht zurück, AUCH WENN die Zusicherung darüber fällt (Codex zu
+      // JOB 3848, `ben.md:32`). Sonst bräche der Fall vor der Rücknahme ab und der vergiftete
+      // `removeChild` bliebe auf dem Behälter liegen.
+      // EHRLICH ZUM WIRKUNGSGRAD, gemessen und nicht behauptet: hier ist das VORSORGE. Der
+      // gemeinsame `afterEach` stolpert über GENAU DIESE Verstellung heute nicht, weil sein
+      // `container.remove()` nicht über `removeChild` des Behälters geht — der Basisstand mit
+      // absichtlich fallender Zusicherung meldete `Tests 1 failed | 8 passed` ohne Folgefehler.
+      // Bei V4 unten liegt es anders, und dort ist die Folge gemessen (GEGENPROBEN G5).
+      // HIER STEHT NUR DIE RÜCKNAHME: die Zusicherung, dass sie wirklich gegriffen hat, bleibt
+      // ausserhalb — im `finally` wäre sie eine Aussage über den Aufräumweg und nicht mehr über die
+      // Verstellung, und sie verdeckte bei einem gleichzeitigen Fehler den eigentlichen Befund.
+      Reflect.deleteProperty(behaelter, "removeChild");
     }
-
-    // Die Diagnose kommt aus dem GELIEFERTEN Ergebnis: was wirklich (oder eben nicht) geworfen wurde.
-    expect(
-      gefangen === null ? "abbauen() lief ohne Fehler durch" : String((gefangen as Error).message),
-      "ein echter Abbaufehler wäre damit unsichtbar",
-    ).toContain("V3: der Behälter verweigert das Entfernen seiner Kinder");
-
-    // Die Verstellung zurück — und zwar wirklich zurück: `removeChild` ist danach wieder die Methode
-    // von `Node.prototype`, nicht ein daraufgelegter Ersatz.
-    Reflect.deleteProperty(behaelter, "removeChild");
+    // Und zwar wirklich zurück: `removeChild` ist danach wieder die Methode von `Node.prototype`,
+    // nicht ein daraufgelegter Ersatz.
     expect(behaelter.removeChild, "die Verstellung ist nicht zurückgenommen").toBe(echtesEntfernen);
 
     // Und jetzt räumt derselbe Aufruf wirklich ab — der Wurf hat die Hülle nicht stillgelegt.
@@ -606,6 +621,90 @@ describe("JOB 3822 · der Ganzdokument-Träger in seinen drei Fehlerwegen", () =
     // stillgelegt": damit übergibt dieser Fall dem gemeinsamen `afterEach` denselben Zustand wie
     // jeder andere Fall der Datei — einen Baum, der abzubauen ist. Ein Fall, der nach einem
     // gewollten Wurf mit leerem `body` endete, mässe sonst nebenbei etwas anderes mit.
+    await mount("/erfassen", "datei", true);
+    expect(
+      document.body.contains(flaeche()),
+      `die Hülle mountet nach dem Abbaufehler nicht mehr (body-Kinder: ${document.body.childElementCount})`,
+    ).toBe(true);
+  });
+
+  // ==============================================================================================
+  // V4 · DERSELBE ANSPRUCH FÜR DIE ZWEITE PHASE — DER FEHLER NACH DEM `unmount`.
+  // ==============================================================================================
+  //
+  // V3 trifft ausdrücklich die `unmount`-Phase. Die Zeile DANACH (`huelle.tsx:288`,
+  // `container.remove()`) war damit von keinem Fall berührt: sie hätte ersatzlos verschwinden oder
+  // werfen können, ohne dass ein Test es meldete — der Schaden zeigte sich erst als fremder,
+  // verwirrender Folgefehler in einem anderen Fall. Bestellt von Codex zu JOB 3848
+  // (`archiv/3848/runde-1/ben.md:32`, Prüfpunkt 6, wörtlich): „`container.remove()`-Fehler
+  // (`huelle.tsx:279`) separat durch werfenden Ersatz prüfen." — die Zeile trägt am Stand dieser
+  // Runde die Nummer 288; Codex' Zählung ist die von JOB 3848.
+  it("V4 · der Abbaufehler NACH dem unmount bleibt ebenso sichtbar: container.remove() wirft", async () => {
+    await mount("/erfassen", "datei", true);
+    const behaelter = flaeche();
+    const echtesEntfernen = behaelter.remove;
+    // Der Ausgangspunkt der Phasenmessung unten: JETZT steht ein Baum im Behälter. Ohne diese Zeile
+    // wäre „der Behälter ist nach dem Wurf leer" auch an einem nie gefüllten Behälter wahr.
+    expect(
+      behaelter.childElementCount,
+      "vor dem Abbau steht gar kein Baum im Behälter — dann misst dieser Fall nicht, was er soll",
+    ).toBeGreaterThan(0);
+
+    // DIE VERSTELLUNG, wieder EIN Handgriff — und ausdrücklich ein ANDERER als in V3: nicht
+    // `removeChild` (darüber räumt React den Baum IM `unmount` ab), sondern `remove` des Behälters
+    // selbst. Das ist genau die Methode, die `huelle.tsx:288` NACH dem gelungenen `unmount` ruft.
+    Object.defineProperty(behaelter, "remove", {
+      configurable: true,
+      value: () => {
+        throw new Error("V4: der Behälter verweigert sein eigenes Entfernen");
+      },
+    });
+
+    let gefangen: unknown = null;
+    try {
+      try {
+        abbauen();
+      } catch (e) {
+        gefangen = e;
+      }
+
+      // Wie in V3: gemessen wird das GELIEFERTE Ergebnis, nicht der Sollwert.
+      expect(
+        gefangen === null
+          ? "abbauen() lief ohne Fehler durch"
+          : String((gefangen as Error).message),
+        "ein echter Abbaufehler wäre damit unsichtbar",
+      ).toContain("V4: der Behälter verweigert sein eigenes Entfernen");
+
+      // UND ES IST WIRKLICH DIE ANDERE PHASE. Das `unmount` ist gelungen — der Baum ist abgebaut,
+      // der Behälter leer —, gescheitert ist erst das Entfernen des Behälters: er hängt noch im
+      // `body`. Ohne diese zwei Zeilen wäre V4 nur eine zweite Fassung von V3.
+      expect(
+        behaelter.childElementCount,
+        `der Baum steht nach dem Wurf noch im Behälter (Kinder: ${behaelter.childElementCount}) — dann scheiterte schon das unmount, und das misst V3`,
+      ).toBe(0);
+      expect(
+        document.body.contains(behaelter),
+        `der Behälter hängt nach dem Wurf nicht mehr im body (body-Kinder: ${document.body.childElementCount}) — dann hat huelle.tsx:288 doch abgeräumt`,
+      ).toBe(true);
+    } finally {
+      // JOB 3864, aus demselben Grund wie in V3 — hier sogar mit gemessener Folge: fällt eine
+      // Zusicherung oben und bleibt das werfende `remove` liegen, wirft der gemeinsame `afterEach`
+      // seinerseits (GEGENPROBEN G5), und der Ordner meldet den Aufräumweg statt des echten Befunds.
+      Reflect.deleteProperty(behaelter, "remove");
+    }
+    expect(behaelter.remove, "die Verstellung ist nicht zurückgenommen").toBe(echtesEntfernen);
+
+    // Derselbe Aufruf räumt jetzt wirklich ab — auch dieser Wurf hat die Hülle nicht stillgelegt.
+    abbauen();
+    expect(
+      [...document.body.children].map((el) => el.tagName),
+      "nach dem geglückten zweiten Anlauf steht noch etwas im body",
+    ).toEqual([]);
+
+    // Und sie trägt wieder. Wie in V3 ist das die zweite Hälfte der Zusage UND die Gleichstellung
+    // mit jedem anderen Fall der Datei: der gemeinsame `afterEach` bekommt einen Baum, den es
+    // abzubauen gibt, und misst nicht nebenbei etwas anderes mit.
     await mount("/erfassen", "datei", true);
     expect(
       document.body.contains(flaeche()),
