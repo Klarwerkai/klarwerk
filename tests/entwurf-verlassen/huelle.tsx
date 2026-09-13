@@ -92,6 +92,20 @@ export function entwurf(
 
 let container: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
+/**
+ * JOB 3848: STEHT GERADE EIN BAUM DIESER HÜLLE IM DOKUMENT? Der einzige Zustand, an dem `abbauen()`
+ * unten entscheidet, ob es etwas zu tun gibt.
+ *
+ * Warum es ihn geben muss: `container` und `root` bekommen ihren Wert ERST in `mount()`. Ein Fall,
+ * der nichts montiert, lief bis hierher trotzdem in den gemeinsamen `afterEach(abbauen)` — und der
+ * warf dort `TypeError: Cannot read properties of undefined (reading 'unmount')`. Gemessen an S1
+ * der Ganzdokument-Datei (ben zu JOB 3822, `ben.md:21`): die Testlogik lief durch, der Lauf war
+ * trotzdem rot. Damit war JEDER Fall dieses Ordners, der keine Fläche montiert, einzeln nicht
+ * fahrbar — und eine Gegenprobe per `-t "<name>"` ist genau das, was Bahnen und Prüfer brauchen.
+ *
+ * Er ist KEIN zweiter Abbauweg: er beantwortet eine Frage, er räumt nichts.
+ */
+let montiert = false;
 let startUrl = "/erfassen";
 /** Wo die Fläche gerade steht — daran hängt „sie ist wirklich verlassen worden". */
 let letzteAdresse = "";
@@ -224,6 +238,9 @@ export async function mount(
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
+  // AB HIER gibt es etwas abzubauen — bewusst VOR dem Rendern: der Behälter hängt schon im `body`,
+  // und wirft das Rendern gleich, ist der gemeinsame `afterEach` der Einzige, der ihn noch wegräumt.
+  montiert = true;
   await act(async () => {
     root.render(baum(modus));
     await flush();
@@ -231,10 +248,39 @@ export async function mount(
   await act(flush);
 }
 
-/** Den Baum abbauen — gehört in jedes `afterEach` und vor jedes zweite `mount` im selben Fall. */
+/**
+ * Den Baum abbauen — gehört in jedes `afterEach` und vor jedes zweite `mount` im selben Fall.
+ *
+ * JOB 3848: ER FRAGT ZUERST, OB ES ETWAS ABZUBAUEN GIBT — und zwar am ZUSTAND, nicht am Fehler.
+ * Das ist der Unterschied zwischen dieser Fassung und der naheliegenden Halbheit `try { … } catch {}`
+ * um denselben Rumpf: die verschluckte jeden künftigen Abbaufehler mit und machte einen Ordner, der
+ * gegen Falschaussagen antritt, in seiner eigenen Vorrichtung unehrlich. Was hier wirklich schiefgeht,
+ * wirft weiterhin (gemessen in V3 der Ganzdokument-Datei; die Gegenprobe G3 rötet genau diesen Fall).
+ *
+ * Die drei Lagen, jede einzeln gemessen:
+ *   nie montiert / schon abgebaut → folgenlos (V1, V2)
+ *   montiert                      → vollständig geräumt (jeder Fall dieses Ordners)
+ *   Abbau scheitert wirklich      → Wurf mit Grund (V3)
+ */
 export function abbauen(): void {
+  if (!montiert) {
+    return;
+  }
+  // Sagt der Zustand „montiert", muss der Behälter auch wirklich im Dokument hängen. Tut er das
+  // nicht, LÜGT der Zustand — und das ist ein echter Befund, kein Grund zum Weitermachen: entweder
+  // lief `abbauen()` zweimal auf denselben Baum, ohne sich zurückzusetzen, oder der Behälter wurde
+  // an dieser Hülle vorbei entfernt. Die Meldung nennt, was GEMESSEN wurde, nicht den Sollwert.
+  if (!container.isConnected) {
+    throw new Error(
+      `huelle.tsx: abbauen() steht auf „montiert", aber der Behälter hängt nicht im Dokument (body-Kinder: ${document.body.childElementCount}, Behälter-Kinder: ${container.childElementCount}) — abbauen() lief zweimal auf denselben Baum, oder der Behälter wurde an huelle.tsx vorbei entfernt`,
+    );
+  }
   act(() => root.unmount());
   container.remove();
+  // Erst NACH dem gelungenen Abbau. Wirft eine der beiden Zeilen darüber, bleibt der Zustand auf
+  // „montiert" stehen — der `afterEach` räumt dann wirklich noch einmal auf, statt einen halb
+  // abgebauten Baum in den nächsten Fall zu tragen.
+  montiert = false;
 }
 
 /** Der Ausgangszustand jedes Falls: deutsche Oberfläche, leerer Speicher, EIN gespeicherter Entwurf. */

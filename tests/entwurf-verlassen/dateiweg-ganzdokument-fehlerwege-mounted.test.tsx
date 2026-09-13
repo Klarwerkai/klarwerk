@@ -76,6 +76,7 @@ import {
   adresse,
   dateiAblegen,
   erreichbareStellen,
+  flaeche,
   fundzeilen,
   grundStehtImDialogfeld,
   grundzustand,
@@ -494,5 +495,121 @@ describe("JOB 3822 · der Ganzdokument-Träger in seinen drei Fehlerwegen", () =
     await expect(
       objectsUpload({ name: DATEI, mime: "text/plain", data: "drei" }),
     ).resolves.toMatchObject({ name: DATEI });
+  });
+
+  // ==============================================================================================
+  // V1–V3 · DIE VORRICHTUNG SELBST: DER ABBAU IST EHRLICH, UND JEDER FALL IST EINZELN FAHRBAR.
+  // ==============================================================================================
+  //
+  // WARUM SIE HIER STEHEN und nicht in einer eigenen, attrappenreinen Datei — Codex' eigener
+  // Formulierungsvorschlag lautete „S1 in eine attrappenreine Testdatei verschieben"
+  // (`archiv/3822/runde-2/ben.md:21`), und er ist bewusst NICHT der gewählte Weg: eine zweite Datei
+  // verschöbe S1, ohne die Ursache zu beheben, und der nächste Fall des Ordners, der nichts montiert,
+  // fiele wieder in denselben `afterEach`. Behoben ist es deshalb an der EINEN Stelle
+  // (`huelle.tsx`, `abbauen()`), und gemessen wird es dort, wo der Befund entstanden ist.
+  //
+  // GEMESSEN WAR DER BEFUND SO, am Stand vor JOB 3848:
+  //   `npx vitest run …fehlerwege-mounted.test.tsx -t "S1"` → Exit 1,
+  //   `TypeError: Cannot read properties of undefined (reading 'unmount')`, `huelle.tsx:236:18`,
+  //   „1 failed | 5 skipped (6)". Im VOLLEN Dateilauf war S1 grün — der Fehler lebte allein in der
+  //   Einzelausführung, also genau dort, wo eine Gegenprobe gefahren wird.
+  it("V1 · ohne jeden Mount: abbauen() ist folgenlos, und die Hülle mountet danach normal", async () => {
+    // Der Aufruf steht ABSICHTLICH nackt und nicht in `expect(…).not.toThrow()`: wirft er, ist der
+    // ECHTE Fehler samt seiner Stelle in `huelle.tsx` der Befund — eine Umschreibung wäre weniger.
+    abbauen();
+
+    expect(
+      [...document.body.children].map((el) => el.tagName),
+      "abbauen() ohne Mount hat etwas im body hinterlassen oder daran gerührt",
+    ).toEqual([]);
+
+    // Und die Vorrichtung ist dabei heil geblieben: derselbe Fall mountet danach ganz normal. Ohne
+    // diese Hälfte wäre auch ein `abbauen()`, das die Hülle stillgelegt hat, hier grün.
+    await mount("/erfassen", "datei", true);
+    expect(
+      document.body.contains(flaeche()),
+      `die Fläche hängt nach dem Mount nicht im body (body-Kinder: ${document.body.childElementCount})`,
+    ).toBe(true);
+    expect(wechselLink(), "der Wechselweg fehlt in der gemounteten Fläche").not.toBeNull();
+  });
+
+  // Zwei Stellen im Bestand bauen MITTEN im Fall ab und danach noch einmal im `afterEach`
+  // (`dateiweg-abwahl-mounted.test.tsx:291`, `entwurf-verlassen-mounted.test.tsx:80`). Dass das
+  // durchgeht, war bis JOB 3848 ein Zufall des React-Verhaltens — hier wird es eine Zusage.
+  it("V2 · zweimal abgebaut: der zweite Aufruf fasst nichts mehr an", async () => {
+    await mount("/erfassen", "datei", true);
+    const behaelter = flaeche();
+    expect(
+      document.body.contains(behaelter),
+      `der Behälter hängt nach dem Mount nicht im body (body-Kinder: ${document.body.childElementCount})`,
+    ).toBe(true);
+
+    abbauen();
+    expect(
+      document.body.contains(behaelter),
+      `der Behälter hängt nach dem Abbau noch im body (body-Kinder: ${document.body.childElementCount})`,
+    ).toBe(false);
+
+    // DER KERN: derselbe Aufruf noch einmal. Er darf weder werfen noch irgendetwas anfassen.
+    abbauen();
+    expect(
+      [...document.body.children].map((el) => el.tagName),
+      "der zweite abbauen()-Aufruf hat den body verändert",
+    ).toEqual([]);
+  });
+
+  // Ohne diesen Fall wäre „ein echter Abbaufehler bleibt sichtbar" eine Behauptung: ein
+  // `try { … } catch {}` um denselben Rumpf machte V1 und V2 ebenso grün — und jeden künftigen
+  // Abbaufehler unsichtbar.
+  it("V3 · ein echter Abbaufehler bleibt sichtbar: abbauen() wirft und nennt den Grund", async () => {
+    await mount("/erfassen", "datei", true);
+    const behaelter = flaeche();
+    const echtesEntfernen = behaelter.removeChild;
+
+    // DIE VERSTELLUNG, eng gefasst und auf EINEN Handgriff beschränkt: der Behälter verweigert das
+    // Entfernen seiner Kinder. React räumt den Baum beim `unmount` genau darüber ab
+    // (`removeChildFromContainer` → `container.removeChild`) — der Abbau scheitert also MITTEN im
+    // `unmount` und nicht erst beim `container.remove()` danach.
+    Object.defineProperty(behaelter, "removeChild", {
+      configurable: true,
+      value: () => {
+        throw new Error("V3: der Behälter verweigert das Entfernen seiner Kinder");
+      },
+    });
+
+    let gefangen: unknown = null;
+    try {
+      abbauen();
+    } catch (e) {
+      gefangen = e;
+    }
+
+    // Die Diagnose kommt aus dem GELIEFERTEN Ergebnis: was wirklich (oder eben nicht) geworfen wurde.
+    expect(
+      gefangen === null ? "abbauen() lief ohne Fehler durch" : String((gefangen as Error).message),
+      "ein echter Abbaufehler wäre damit unsichtbar",
+    ).toContain("V3: der Behälter verweigert das Entfernen seiner Kinder");
+
+    // Die Verstellung zurück — und zwar wirklich zurück: `removeChild` ist danach wieder die Methode
+    // von `Node.prototype`, nicht ein daraufgelegter Ersatz.
+    Reflect.deleteProperty(behaelter, "removeChild");
+    expect(behaelter.removeChild, "die Verstellung ist nicht zurückgenommen").toBe(echtesEntfernen);
+
+    // Und jetzt räumt derselbe Aufruf wirklich ab — der Wurf hat die Hülle nicht stillgelegt.
+    abbauen();
+    expect(
+      [...document.body.children].map((el) => el.tagName),
+      "nach dem geglückten zweiten Anlauf steht noch etwas im body",
+    ).toEqual([]);
+
+    // Sie trägt danach auch wieder. Das ist nicht nur die zweite Hälfte der Zusage „nicht
+    // stillgelegt": damit übergibt dieser Fall dem gemeinsamen `afterEach` denselben Zustand wie
+    // jeder andere Fall der Datei — einen Baum, der abzubauen ist. Ein Fall, der nach einem
+    // gewollten Wurf mit leerem `body` endete, mässe sonst nebenbei etwas anderes mit.
+    await mount("/erfassen", "datei", true);
+    expect(
+      document.body.contains(flaeche()),
+      `die Hülle mountet nach dem Abbaufehler nicht mehr (body-Kinder: ${document.body.childElementCount})`,
+    ).toBe(true);
   });
 });
