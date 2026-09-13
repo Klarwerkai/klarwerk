@@ -537,6 +537,21 @@ interface Doppelgaenger {
 // hängen (auch das gemessen). Beide Wartestellen bekommen deshalb dieselbe Frist. Die zweite ist
 // kein Beiwerk: verschöbe jemand die Zuweisung aus der letzten Zeile, wäre sie die einzige.
 //
+// JOB 3868 — JEDE DER BEIDEN WARTESTELLEN TRÄGT JETZT IHREN EIGENEN FALL. Bis hierher war die
+// zweite eine geschriebene Zusage ohne Messung (BEN, `archiv/3850/runde-1/ben.md:33`). GEMESSEN am
+// 13.09.2026 (R1 der Rückgabe zu JOB 3868, Runde 2): mit entfernter Frist an `await aufzeichnung.lauf`
+// ist von den 51 Fällen dieser Datei GENAU EINER rot — der mit neutralem Abschluss, und der lief
+// dann 60014 ms in Vitests eigenes Zeitlimit. Die übrigen 50 bleiben grün: kein Bestandsfall
+// erreicht diese Stelle. Hergestellt wird sie über den Schalter `neutralerAbschluss` von
+// `fuehreAttrappeAus`: eine abschliessende Anweisung des Rumpfs, deren Wert NICHT das
+// Kandidaten-Promise ist, lässt `fuehreGelesenAus` sofort zurückkehren. Wer kalibriert was:
+//   · ERSTE Wartestelle (um `fuehreGelesenAus`): „eine ASYNCHRON hängende Attrappe …" und
+//     „eine VERSPÄTET antwortende Attrappe …" — beide bleiben grün, wenn die zweite Frist fällt.
+//   · ZWEITE Wartestelle (um `await aufzeichnung.lauf`): „mit NEUTRALEM Abschluss …" — der einzige
+//     Fall, den das Entfernen dieser Frist rot macht (gemessen, R1 der Rückgabe zu JOB 3868).
+// OFFEN BLEIBT: WELCHE Wartestelle greift, entscheidet weiterhin die Form des VM-Rumpfs und nicht
+// eine Zusicherung im Läufer. Wer den Rumpf umbaut, führt beide Fälle nach.
+//
 // DIE FRIST IST ECHT LÄNGER als das vm-Zeitlimit (3000 gegen 1000 ms) und wird ERST NACH dessen
 // Ablauf scharf: `fuehreGelesenAus(…)` läuft synchron in die VM, bevor `mitFrist` den Zeitgeber
 // anlegt. Der synchrone Fall behält seinen eigenen Grund `Script execution timed out`; der
@@ -546,16 +561,146 @@ interface Doppelgaenger {
 const W6_FRIST_MS = 3_000;
 const W6_FRIST_GRUND = `die Attrappe kam nicht zurück: ihre Kandidatenabfrage blieb nach ${W6_FRIST_MS} ms offen (asynchrones Hängen — das vm-Zeitlimit greift nur synchron)`;
 
+// WER DIESEN GRUND KALIBRIEREN WILL, VERSTELLT IHN NICHT HIER. Gemessen (R2a der Rückgabe zu JOB
+// 3868, Runde 2): mit verstelltem Wortlaut DIESER Konstante bleiben alle 51 Fälle grün — Erzeuger
+// und Zusicherung lesen dieselbe Konstante, die Mutation hebt sich auf. Erst die Verstellung auf der
+// ERZEUGERSEITE (`new Frist(grund)` in `mitFrist`) trennt: dann sind genau die drei Fälle rot, die
+// diesen Grund zusichern, und die beiden anderen Zustandsmodellfälle bleiben grün (R2b, gemessen).
+
 /** Nur diese Ursache; sie darf nicht in „die Attrappe lief nicht" wandern — sie LÄUFT ja noch. */
 class Frist extends Error {}
 
-function mitFrist<T>(lauf: Promise<T>): Promise<T> {
+/**
+ * Die Vorgabewerte sind die Frist des Wächters; Dauer und Grund sind trotzdem Parameter, weil der
+ * Fall der verspäteten Antwort NACH dem Fristfehler ein zweites Mal begrenzt warten muss (und dann
+ * mit einem anderen Grund rot ist). Das bleibt EINE Vorrichtung — kein zweiter Zeitgeberweg.
+ */
+function mitFrist<T>(lauf: Promise<T>, dauer = W6_FRIST_MS, grund = W6_FRIST_GRUND): Promise<T> {
   let uhr: ReturnType<typeof setTimeout> | undefined;
   const frist = new Promise<never>((_, ablehnen) => {
-    uhr = setTimeout(() => ablehnen(new Frist(W6_FRIST_GRUND)), W6_FRIST_MS);
+    uhr = setTimeout(() => ablehnen(new Frist(grund)), dauer);
     uhr.unref();
   });
   return Promise.race([lauf, frist]).finally(() => clearTimeout(uhr));
+}
+
+// ================================================================================================
+// JOB 3868 · DIE VERSPÄTETE ANTWORT — UND WARUM IHR ZEITGEBER IM TESTPROZESS LEBT.
+// ================================================================================================
+//
+// GEMESSEN, NICHT ANGENOMMEN (13.09.2026, eigener Lauf in derselben Vorrichtung): im Kontext von
+// `runInNewContext` gibt es KEINE Zeitgeber. `typeof setTimeout`, `typeof setInterval` und
+// `typeof queueMicrotask` sind dort allesamt `"undefined"`; `Object.getOwnPropertyNames(globalThis)`
+// zählt ausschliesslich Sprachglobale (Object … WebAssembly) und die vom Läufer hereingereichten
+// Namen. Eine Attrappe, die ABSICHTLICH zu spät antwortet, kann ihre Verzögerung dort also nicht
+// selbst bauen. Sie bekommt sie über die BESTEHENDE `umgebung` — ein zusätzlicher Eintrag
+// `verzoegere` —, und ausdrücklich nicht über einen zweiten Ausführungsweg neben `fuehreGelesenAus`.
+//
+// RUNDE 2 — BENs KORREKTURPFLICHT 1, UND SIE TRAF INS SCHWARZE. Runde 1 hat den Antwortzeitgeber
+// unmittelbar nach dem Fristfehler GELÖSCHT. Belegt war damit nur, dass bei Fristablauf noch etwas
+// offen war; die verspätete Auflösung trat NIE ein. BENs Gegenprobe: mit entferntem `aufloesen(wert)`
+// blieb die ganze Datei grün — ein Fall, der seinen eigenen Gegenstand verhindert. Jetzt WARTET der
+// Fall die Antwort ab, liest ihr Ergebnis und die beobachtete Reihenfolge (`w6Hergang`) und räumt
+// ERST DANACH ab. Kalibriert ist das mit R4 der Rückgabe: ohne `aufloesen(wert)` ist genau dieser
+// Fall rot, und zwar mit `W6_NACHFRIST_GRUND`.
+//
+// PROZESSHYGIENE: der Zeitgeber läuft im Testprozess und ist `unref`'t (hält Vitest nicht am Leben).
+// Solange er läuft, zählt ihn `offeneVerzoegerungen()`; feuert er, trägt er sich selbst aus. Der Fall
+// belegt beide Zahlen — 1 offen bei Fristablauf, 0 nach der Antwort — und `raeumeVerzoegerungen()`
+// findet am Ende nichts mehr vor.
+const W6_VERSPAETUNG_MS = W6_FRIST_MS + 1_000;
+/**
+ * Obergrenze für das Abwarten der verspäteten Antwort NACH dem Fristfehler. Zu diesem Zeitpunkt
+ * fehlen noch rund `W6_VERSPAETUNG_MS - W6_FRIST_MS` ms; die Grenze ist also reichlich bemessen und
+ * dient allein dazu, ein AUSBLEIBEN als roten Fall MIT GRUND zu melden statt als Vitest-Zeitlimit.
+ */
+const W6_NACHFRIST_MS = W6_VERSPAETUNG_MS;
+const W6_NACHFRIST_GRUND = `die verspätete Antwort der Attrappe kam auch ${W6_NACHFRIST_MS} ms nach dem Fristfehler nicht an`;
+const W6_HERGANG_FRIST = "die Frist hat zugeschlagen";
+const W6_HERGANG_ANTWORT = "die Attrappe hat geantwortet";
+
+/**
+ * Der beobachtete Hergang dieses Laufs, in der Reihenfolge des Eintreffens. Den Antworteintrag
+ * schreibt der Zeitgeber SELBST, im Augenblick seines Feuerns — die Reihenfolge wird also gelesen
+ * und nicht vom Fall hergestellt.
+ */
+const w6Hergang: string[] = [];
+
+interface Verzoegerung {
+  readonly ms: number;
+  /** Genau das Promise, das die Attrappe zurückgibt: der Fall wartet SEINE Auflösung ab. */
+  readonly antwort: Promise<unknown>;
+  /** Gesetzt, solange der Zeitgeber läuft; nach dem Feuern (oder Abräumen) `undefined`. */
+  uhr: ReturnType<typeof setTimeout> | undefined;
+}
+
+const verzoegerungen = new Set<Verzoegerung>();
+
+function verzoegere<T>(wert: T, ms: number): Promise<T> {
+  let ausloesen: (wert: T) => void = () => {
+    throw new Error("W6: die Verzögerung hat keinen Auflöser bekommen");
+  };
+  const antwort = new Promise<T>((aufloesen) => {
+    ausloesen = aufloesen;
+  });
+  const eintrag: Verzoegerung = { ms, antwort, uhr: undefined };
+  const uhr = setTimeout(() => {
+    eintrag.uhr = undefined;
+    w6Hergang.push(W6_HERGANG_ANTWORT);
+    ausloesen(wert);
+  }, ms);
+  uhr.unref();
+  eintrag.uhr = uhr;
+  verzoegerungen.add(eintrag);
+  return antwort;
+}
+
+/** Wie viele Verzögerungen JETZT offen sind: ihr Zeitgeber läuft, ihre Antwort steht aus. */
+function offeneVerzoegerungen(): number {
+  let offen = 0;
+  for (const eintrag of verzoegerungen) {
+    if (eintrag.uhr !== undefined) {
+      offen += 1;
+    }
+  }
+  return offen;
+}
+
+/** Die zuletzt angelegte Verzögerung; ohne sie kann kein Fall eine verspätete Antwort abwarten. */
+function letzteVerzoegerung(): Verzoegerung {
+  const letzte = [...verzoegerungen].at(-1);
+  if (letzte === undefined) {
+    throw new Error("W6: die Attrappe hat keine Verzögerung angelegt");
+  }
+  return letzte;
+}
+
+/**
+ * Setzt die Buchführung zurück (auch `w6Hergang`) und gibt zurück, wie viele Zeitgeber dabei NOCH
+ * LIEFEN — die Zahl ist der Beleg, nicht ein Nebeneffekt.
+ */
+function raeumeVerzoegerungen(): number {
+  const offen = offeneVerzoegerungen();
+  for (const eintrag of verzoegerungen) {
+    if (eintrag.uhr !== undefined) {
+      clearTimeout(eintrag.uhr);
+      eintrag.uhr = undefined;
+    }
+  }
+  verzoegerungen.clear();
+  w6Hergang.length = 0;
+  return offen;
+}
+
+interface W6Lauf {
+  /**
+   * JOB 3868 — hängt an den VM-Rumpf eine abschliessende Anweisung, deren Wert NICHT das
+   * Kandidaten-Promise ist. Ohne sie ist die letzte Anweisung die ZUWEISUNG `aufzeichnung.lauf = …`;
+   * `runInNewContext` gibt deren Wert zurück, und schon die ERSTE Wartestelle fängt ab. Mit ihr
+   * kehrt `fuehreGelesenAus` sofort zurück, und nur die ZWEITE kann noch warten. Vorgabe: aus —
+   * jeder Bestandsfall läuft unverändert durch dieselbe Funktion.
+   */
+  readonly neutralerAbschluss?: boolean;
 }
 
 /**
@@ -563,7 +708,11 @@ function mitFrist<T>(lauf: Promise<T>): Promise<T> {
  * OHNE Kommentare, befreit sie von den Typen und RUFT SIE AUF. Jeder Ausfall ist rot mit Grund und
  * mit dem gelesenen Ausschnitt — nie „nicht gefunden, also in Ordnung" (Zustandsmodell, wie W5).
  */
-async function fuehreAttrappeAus(text: string, pfad = VERTRAG): Promise<Doppelgaenger> {
+async function fuehreAttrappeAus(
+  text: string,
+  pfad = VERTRAG,
+  optionen: W6Lauf = {},
+): Promise<Doppelgaenger> {
   const mock = attrappe(text, pfad);
   const gedruckt = drucke(mock, mock.getSourceFile());
   const fehler = (grund: string): Error =>
@@ -572,7 +721,7 @@ async function fuehreAttrappeAus(text: string, pfad = VERTRAG): Promise<Doppelga
   if (name === undefined) {
     throw fehler("die Attrappe hat keinen Namen und ist so nicht aufrufbar");
   }
-  const aufzeichnung: { lauf?: Promise<unknown> } = {};
+  const aufzeichnung: { lauf?: Promise<unknown>; abgeschlossen?: boolean } = {};
   let geliefert: unknown;
   try {
     await mitFrist(
@@ -590,10 +739,19 @@ async function fuehreAttrappeAus(text: string, pfad = VERTRAG): Promise<Doppelga
       }
       aufzeichnung.lauf = Promise.resolve(quelle.findCandidates(anfrage)).then((seite) =>
         Array.from(seite, (ko) => String(ko && ko.id)),
-      );`,
-        { aufzeichnung, bestand: w6Bestand(), anfrage: { terms: [...W6_TERME], limit: W6_LIMIT } },
+      );${optionen.neutralerAbschluss === true ? "\n      aufzeichnung.abgeschlossen = true;" : ""}`,
+        {
+          aufzeichnung,
+          bestand: w6Bestand(),
+          anfrage: { terms: [...W6_TERME], limit: W6_LIMIT },
+          verzoegere,
+        },
       ),
     );
+    if (optionen.neutralerAbschluss === true && aufzeichnung.abgeschlossen !== true) {
+      // Sonst mässe der Fall still die ERSTE Wartestelle, obwohl er die zweite meint.
+      throw new Error("der neutrale Abschluss des VM-Rumpfs wurde nicht erreicht");
+    }
     if (aufzeichnung.lauf === undefined) {
       throw new Error("die Attrappe hat keine Kandidatenabfrage begonnen");
     }
@@ -636,8 +794,8 @@ function w6Rangfolge(lauf: Doppelgaenger): string {
   return `W6 Rangfolge: ${lauf.ort}: die Attrappe \`${lauf.name}\` ${grund}; ${w6Reihenfolgen(lauf)}`;
 }
 
-async function pruefeAttrappe(text: string, pfad = VERTRAG): Promise<void> {
-  const lauf = await fuehreAttrappeAus(text, pfad);
+async function pruefeAttrappe(text: string, pfad = VERTRAG, optionen: W6Lauf = {}): Promise<void> {
+  const lauf = await fuehreAttrappeAus(text, pfad, optionen);
   // ERST das Limit: eine unwirksame Deckelung soll an ihrem EIGENEN Grund scheitern, nicht am
   // Rangfolge-Grund — sonst nennt die Meldung eine Ursache, die nicht die Ursache ist.
   expect(
@@ -1107,6 +1265,86 @@ describe("JOB 3601: Erklärung und Abfrage stimmen überein", () => {
     expect(fehler).toContain(`gelesener Ausschnitt: function ${name}`);
     // Sonst wäre dieser Zweig nur zufällig rot — nämlich über den Grund des SYNCHRONEN Falls.
     expect(fehler).not.toContain("Script execution timed out");
+  });
+
+  it("W6 Zustandsmodell: mit NEUTRALEM Abschluss greift die ZWEITE Wartestelle (`await aufzeichnung.lauf`)", async () => {
+    // JOB 3868 — BENs Prüfpunkt 6 zu 3850 (`archiv/3850/runde-1/ben.md:33`), wörtlich bestellt:
+    // „Die zweite Wartestelle (`:600`) wird beim heutigen VM-Rückgabeverhalten nicht isoliert
+    // kalibriert. Folgeprobe: VM-Rumpf mit neutralem Abschluss versehen und weiterhin ein offenes
+    // Kandidaten-Promise erwarten." Dieselbe Verstellung wie im Fall darüber, nur der Rumpf endet
+    // neutral: `runInNewContext` gibt dann nicht mehr das Kandidaten-Promise zurück, die erste
+    // Wartestelle ist sofort durch, und allein die zweite kann noch warten. GEMESSEN: ohne die
+    // Frist an dieser zweiten Stelle ist genau DIESER Fall rot und sonst keiner.
+    const defekt = ersetzen(
+      vertrag,
+      "return Promise.resolve(seite);",
+      "return new Promise(() => {});",
+    );
+    const name = attrappe(defekt).name?.text ?? "";
+    const fehler = await abgewiesen(pruefeAttrappe(defekt, VERTRAG, { neutralerAbschluss: true }));
+    expect(fehler).toMatch(/^W6: tests\/ask\/ask-retrieval-topk-scaling-contract\.test\.ts: /);
+    expect(fehler).toContain(W6_FRIST_GRUND);
+    expect(fehler).toContain(`gelesener Ausschnitt: function ${name}`);
+    // Trennung der Gründe: nicht das vm-Zeitlimit (synchron) und nicht „die Attrappe lief nicht".
+    expect(fehler).not.toContain("Script execution timed out");
+    expect(fehler).not.toContain("der neutrale Abschluss des VM-Rumpfs wurde nicht erreicht");
+  });
+
+  it("W6 Zustandsmodell: eine VERSPÄTET antwortende Attrappe ist rot an der ERSTEN Wartestelle — und ihre Antwort trifft DANACH wirklich ein", async () => {
+    // JOB 3868 — die zweite Bestellung aus `ben.md:33` („Für verspätete Auflösung wäre ein eigener
+    // Fall nach Fristablauf sinnvoll") und zugleich sein „NICHT GEPRÜFT" aus `:37`. Der Unterschied
+    // zum Fall darüber: die Attrappe hängt NICHT, sie antwortet — nur zu spät, und mit einem sonst
+    // völlig KORREKTEN Ergebnis. Genau deshalb wäre sie ohne Frist ein spätes, stilles Grün.
+    // Die Wartestelle ist GEMESSEN und nicht angenommen: ohne neutralen Abschluss gibt der VM-Rumpf
+    // das Kandidaten-Promise zurück, also greift die ERSTE Frist (um `fuehreGelesenAus`).
+    // RUNDE 2, BENs Korrekturpflicht 1: Runde 1 löschte den Antwortzeitgeber gleich nach dem
+    // Fristfehler und prüfte damit nur einen GEPLANTEN, nie einen EINGETRETENEN späten Abschluss.
+    // Hier wird er abgewartet — erst der Fristfehler, dann die echte Antwort mit korrektem Ergebnis.
+    const defekt = ersetzen(
+      vertrag,
+      "return Promise.resolve(seite);",
+      `return verzoegere(seite, ${W6_VERSPAETUNG_MS});`,
+    );
+    const name = attrappe(defekt).name?.text ?? "";
+    expect(raeumeVerzoegerungen(), "W6: vor diesem Fall darf kein Zeitgeber offen sein").toBe(0);
+    const fehler = await abgewiesen(pruefeAttrappe(defekt));
+    w6Hergang.push(W6_HERGANG_FRIST);
+    expect(fehler).toMatch(/^W6: tests\/ask\/ask-retrieval-topk-scaling-contract\.test\.ts: /);
+    expect(fehler).toContain(W6_FRIST_GRUND);
+    expect(fehler).toContain(`gelesener Ausschnitt: function ${name}`);
+    expect(fehler).not.toContain("Script execution timed out");
+    // Die Antwort steht in diesem Augenblick wirklich noch aus — der Zeitgeber der Attrappe läuft.
+    expect(
+      offeneVerzoegerungen(),
+      `W6: die Verzögerung (${W6_VERSPAETUNG_MS} ms) war bei Fristablauf (${W6_FRIST_MS} ms) schon vorbei`,
+    ).toBe(1);
+    // DER NACHWEIS, den Runde 1 schuldig blieb: die verspätete Auflösung tritt danach WIRKLICH ein.
+    // Mit eigener Obergrenze, damit ihr Ausbleiben ein roter Fall mit Grund ist und nicht Vitests
+    // nacktes „Test timed out"; fehlt `aufloesen(wert)` in `verzoegere`, ist genau hier Schluss (R4).
+    const spaeteAntwort = await mitFrist(
+      letzteVerzoegerung().antwort,
+      W6_NACHFRIST_MS,
+      W6_NACHFRIST_GRUND,
+    );
+    // Die Reihenfolge wird GELESEN, nicht hergestellt: den Antworteintrag schreibt der Zeitgeber
+    // selbst, im Augenblick seines Feuerns. Käme die Antwort zu früh, stünde sie hier vorn.
+    expect(w6Hergang, "W6: die Antwort kam nicht NACH dem Fristfehler").toEqual([
+      W6_HERGANG_FRIST,
+      W6_HERGANG_ANTWORT,
+    ]);
+    // Und sie ist inhaltlich KORREKT — diese Attrappe war nie defekt, sie war nur zu spät. Genau
+    // deshalb wäre sie ohne Frist ein spätes, stilles Grün gewesen.
+    expect(
+      Array.isArray(spaeteAntwort),
+      `W6: die verspätete Antwort ist keine Liste: ${String(spaeteAntwort)}`,
+    ).toBe(true);
+    expect(
+      Array.from(spaeteAntwort as readonly { readonly id?: unknown }[], (ko) => String(ko?.id)),
+      "W6: die verspätete Antwort trägt nicht das sonst korrekte Ergebnis",
+    ).toEqual([...W6_STOERER]);
+    // Prozesshygiene: der Zeitgeber ist von SELBST abgelaufen, und es bleibt nichts für andere Fälle.
+    expect(offeneVerzoegerungen(), "W6: nach der Antwort darf kein Zeitgeber mehr laufen").toBe(0);
+    expect(raeumeVerzoegerungen(), "W6: das Abräumen findet nichts mehr vor").toBe(0);
   });
 
   // Beide Wortformen, und das ist kein Fleiß: mit `Produktionsadapters?` OHNE Wortgrenze nimmt der
