@@ -16,6 +16,9 @@
 //   B2   Marke AN             Platte, Grössenverhältnis, kein Überstand, kein Umbruch — dieselben
 //                             zwei Breiten, damit jede Zahl der Marke zugeordnet werden kann.
 //   B3   Die Schwelle         1023 und 1025 px: nie beide Bauformen, nie keine.
+//   G    Die Gegenproben      JOB 3774: die drei Lücken der Sichtbarkeitsrechnung, jede einzeln von
+//                             aussen in die Seite eingebracht — und die eine Grenze, die die neue
+//                             Messung selbst hat.
 //
 // SICHTBARKEIT WIRD GERECHNET, NICHT AUS `display` GESCHLOSSEN (Runde 3, Korrekturpflicht BEN).
 // Die erste Fassung leitete „steht da" aus `display !== none` und einer Rechteckgrösse > 0 ab. BEN
@@ -24,6 +27,30 @@
 // Sichtbarkeitszusage dieser Datei läuft jetzt über `gemalt` (siehe MESSE), das `visibility` (vererbt)
 // und `opacity` über die Vorfahrenkette mitrechnet. Und die Produktidentität hängt nicht mehr am
 // `textContent` des Umschlags, sondern am Blattknoten, der das Wort wirklich trägt.
+//
+// JOB 3774 — „STEHT DA" HEISST JETZT AUCH: AM ORT WIRKLICH GETROFFEN.
+// `gemalt` allein hat drei Lücken gelassen, die JOB 3591 im Quelltext selbst benannt und als eigene
+// Zeile bestellt hat: Verdeckung durch ein darüberliegendes Element, `clip-path` und das Abschieben
+// aus dem Sichtfenster. Alle drei liessen Rechteckgrösse, `visibility` und `opacity` unverändert —
+// ein Gast konnte auf eine leere Platte schauen, während dreizehn Fälle grün waren. Dazu kommt jetzt
+// die TREFFERPUNKT-MESSUNG (`treffpunkt` in MESSE): `document.elementFromPoint` am Mittelpunkt des
+// Rechtecks muss das Element selbst oder einen seiner Nachfahren liefern.
+//
+//   GEDECKT ist damit zusätzlich: ein deckendes Element darüber (es wird geliefert statt des
+//   gesuchten), `clip-path` (der geclippte Knoten ist nicht mehr trefferfähig, geliefert wird ein
+//   VORFAHR — deshalb gilt ein Vorfahr ausdrücklich NICHT als Treffer) und das Abschieben aus dem
+//   Fenster in JEDE Richtung (`elementFromPoint` antwortet dort mit `null`; gemessen in G-C, nicht
+//   angenommen).
+//   NICHT GEDECKT und hier ausdrücklich als Restschuld benannt: ein darüberliegendes Element mit
+//   `pointer-events: none`. `elementFromPoint` überspringt es und liefert das verdeckte Element —
+//   der Treffer gilt, obwohl der Gast nichts sieht. Diese Grenze ist gemessen (G-D), nicht vermutet.
+//   Ebenfalls nicht gedeckt: Teilverdeckung, die den Mittelpunkt freilässt, und eine Deckfarbe, die
+//   dem Untergrund gleicht (kein Kontrast wird gemessen, nur Anwesenheit).
+//
+// `gemalt` BLEIBT — aber nicht mehr als eigenständige Zusage. Kein Fall benutzt es allein; jede
+// Sichtbarkeitszusage läuft über den EINEN Satz `mussGemaltSein`, der beides fordert. Was `gemalt`
+// weiter leistet, ist die URSACHENAUSKUNFT: kippt eine Zusage, sagt die Meldung, ob nichts gemalt
+// wird (Grösse, `visibility`, durchsichtiger Vorfahr) oder ob am Trefferpunkt etwas anderes steht.
 //
 // DER MARKENSTAND KOMMT ÜBER DIE GANZE KETTE: `PUT /api/admin/branding` mit dem Admin-Bearer →
 // Ablage → `GET /api/branding` (öffentlich) → `lib/brandTheme.ts` → `BrandPanel`. Kein Zugriff in
@@ -57,30 +84,43 @@ const BILD_HOEHE = 24;
 /** Weiss, wie `getComputedStyle` es serialisiert. */
 const WEISS = "rgb(255, 255, 255)";
 
-interface Rechteck {
-  x: number;
-  y: number;
+/**
+ * Was diese Datei über „zu sehen" weiss — zwei getrennte Auskünfte, bewusst nicht zu einer
+ * verschmolzen (JOB 3774).
+ *
+ * `gemalt` beantwortet „wird hier überhaupt gezeichnet", `trifft` beantwortet „kommt am Ort dieses
+ * Elements auch dieses Element heraus". Erst beide zusammen sind die Zusage (`mussGemaltSein`);
+ * getrennt bleiben sie, damit ein Rotlauf ohne Nachmessen sagen kann, WELCHE Ursache greift.
+ */
+interface Zusehen {
   breite: number;
   hoehe: number;
-  rechts: number;
-  mitteY: number;
   /** Der BERECHNETE Wert am Element — `visibility` ist vererbt, trägt also die Vorfahren mit. */
   visibility: string;
   opacity: number;
   /** Wirksame Sichtbarkeit, siehe `GEMALT` im Messprogramm. */
   gemalt: boolean;
+  /** Liefert `document.elementFromPoint` am Mittelpunkt dieses Element oder einen Nachfahren? */
+  trifft: boolean;
+  /** Was dort wirklich steht — ausgeschrieben, damit ein Rotlauf lesbar ist. */
+  treffer: string;
+  punktX: number;
+  punktY: number;
 }
-interface Sichtbarkeit {
+interface Rechteck extends Zusehen {
+  x: number;
+  y: number;
+  rechts: number;
+  unten: number;
+  mitteY: number;
+}
+interface Sichtbarkeit extends Zusehen {
   da: boolean;
   display: string;
-  visibility: string;
-  opacity: number;
-  gemalt: boolean;
-  breite: number;
-  hoehe: number;
 }
 interface Messung {
   innerWidth: number;
+  innerHeight: number;
   theme: string;
   /** Firmenlogos im GANZEN Dokument — beide Bauformen zusammen (B1 verlangt 0). */
   firmenlogoZahl: number;
@@ -114,7 +154,7 @@ interface Messung {
  * eines davon `display:none`). Ein unskopiertes `querySelector` träfe das falsche und misste
  * Rechtecke der Grösse 0.
  */
-const MESSE = `(wurzel) => {
+const MESSE = `([wurzel, immerWahr]) => {
   // ----------------------------------------------------------------------------------------------
   // WIRKSAME SICHTBARKEIT — nicht aus \`display\` und Rechteckgrösse allein abgeleitet.
   //
@@ -131,9 +171,9 @@ const MESSE = `(wurzel) => {
   //   · \`opacity\`            — NICHT vererbt, sondern zusammengesetzt. Ein \`opacity:0\` an einem
   //                             Vorfahren lässt das Kind unverändert \`1\` melden; deshalb läuft
   //                             diese eine Eigenschaft die Vorfahrenkette hoch.
-  // Nicht abgedeckt und hier auch nicht behauptet: Verdeckung durch ein darüberliegendes Element,
-  // \`clip-path\`, Abschieben aus dem Sichtfenster. Für die vier Zusagen dieser Datei (Höhe,
-  // Seitenverhältnis, Kanten, Bauformwahl) ist keine davon der Weg, auf dem etwas verschwindet.
+  // \`gemalt\` DECKT NICHT: Verdeckung durch ein darüberliegendes Element, \`clip-path\`, Abschieben
+  // aus dem Sichtfenster. Alle drei lassen Grösse, \`visibility\` und \`opacity\` unverändert. Dafür
+  // steht seit JOB 3774 die Trefferpunkt-Messung darunter; \`gemalt\` bleibt die URSACHENAUSKUNFT.
   // ----------------------------------------------------------------------------------------------
   const gemalt = (el) => {
     if (!el) return false;
@@ -145,23 +185,100 @@ const MESSE = `(wurzel) => {
     }
     return true;
   };
+  // ----------------------------------------------------------------------------------------------
+  // DIE TREFFERPUNKT-MESSUNG (JOB 3774) — „steht da" heisst auch: am Ort wirklich getroffen.
+  //
+  // Gefragt wird der Browser selbst: \`document.elementFromPoint\` am MITTELPUNKT des Rechtecks.
+  // Die Annahmeregel ist \`el.contains(oben)\` — das Element selbst oder einer seiner Nachfahren.
+  //   · Ein VORFAHR gilt ausdrücklich NICHT als Treffer. Genau das kommt bei \`clip-path\` heraus:
+  //     der geclippte Knoten ist nicht mehr trefferfähig, geliefert wird der Umschlag darüber.
+  //     Wer Vorfahren durchgehen liesse, hätte die Lücke nur verschoben.
+  //   · Ein NACHFAHR gilt als Treffer, und das ist kein Zugeständnis, sondern die Messlage. Bei
+  //     1280 px mit Marke AN liefert \`elementFromPoint\` an VIER der neun gemessenen Träger einen
+  //     Nachfahren statt des Elements: Zeichenplatte → \`circle\`, Textblock → der KLARWERK-Span,
+  //     Firmenplatte → \`img.h-6.w-auto\`, Markenspalte → \`p.text-xl\` der Nutzenzeile. Eine Regel
+  //     „nur das Element selbst" hätte \`zeichenplatte\` in allen sechs Messpunkten und B3 bei
+  //     1025 px aus falschem Grund rot gemacht — gemessen am Bestand, nicht geraten.
+  //   · KEINE Toleranz, kein zweiter Punkt, kein Raster: EIN Punkt, gemessen. Ein Raster wäre eine
+  //     Deckungsquote, und die müsste begründet werden, ohne dass sie hier etwas zusagt.
+  // \`elementFromPoint\` WIRD AUCH DANN GEFRAGT, wenn der Punkt ausserhalb des Fensters liegt — dass
+  // es dort \`null\` liefert, ist gemessen (Gegenprobe G-C) und nicht vorweggenommen.
+  // ----------------------------------------------------------------------------------------------
+  const beschreibe = (el) => {
+    if (!el) return "nichts";
+    const t = el.getAttribute ? el.getAttribute("data-testid") : null;
+    const k = typeof el.className === "string"
+      ? el.className.trim().split(/\\s+/).filter(Boolean).slice(0, 3).join(".")
+      : "";
+    return el.tagName.toLowerCase() + (t ? '[data-testid="' + t + '"]' : "") + (k ? "." + k : "");
+  };
+  const treffpunkt = (el) => {
+    if (!el) return { trifft: false, treffer: "steht gar nicht im Baum", punktX: 0, punktY: 0 };
+    const b = el.getBoundingClientRect();
+    const x = b.x + b.width / 2;
+    const y = b.y + b.height / 2;
+    if (b.width <= 0 || b.height <= 0) {
+      return {
+        trifft: false,
+        treffer: "Rechteck " + b.width.toFixed(1) + "×" + b.height.toFixed(1) + " — es gibt keinen Punkt zu prüfen",
+        punktX: x, punktY: y,
+      };
+    }
+    const oben = document.elementFromPoint(x, y);
+    if (oben === null) {
+      const lagen = [];
+      if (y < 0) lagen.push((-y).toFixed(1) + " px oberhalb");
+      if (y >= window.innerHeight) lagen.push((y - window.innerHeight).toFixed(1) + " px unterhalb");
+      if (x < 0) lagen.push((-x).toFixed(1) + " px links");
+      if (x >= window.innerWidth) lagen.push((x - window.innerWidth).toFixed(1) + " px rechts");
+      const fenster = " des Fensters " + window.innerWidth + "×" + window.innerHeight;
+      return {
+        trifft: false,
+        treffer: lagen.length > 0
+          ? "elementFromPoint liefert nichts — der Prüfpunkt liegt " + lagen.join(" und ") + " ausserhalb" + fenster
+          : "elementFromPoint liefert nichts, obwohl der Prüfpunkt INNERHALB" + fenster + " liegt",
+        punktX: x, punktY: y,
+      };
+    }
+    return {
+      trifft: el.contains(oben),
+      treffer: el.contains(oben) ? beschreibe(oben) : beschreibe(oben) + " liegt darüber",
+      punktX: x, punktY: y,
+    };
+  };
+  // NUR FÜR DIE GEGENPROBE G-E: die Prüfung künstlich auf „immer wahr". \`miss\` übergibt immer
+  // \`false\`; allein der G-Block stellt den Schalter, um zu belegen, dass G-A/G-B/G-C wirklich an
+  // dieser Prüfung hängen und nicht an einer Nebenwirkung der Verstellung.
+  const treffer = (el) => {
+    const t = treffpunkt(el);
+    if (!immerWahr) return t;
+    return { trifft: true, treffer: t.treffer + " · G-E: Prüfung künstlich auf immer wahr", punktX: t.punktX, punktY: t.punktY };
+  };
   const r = (el) => {
     if (!el) return null;
     const b = el.getBoundingClientRect();
     const s = getComputedStyle(el);
+    const tp = treffer(el);
     return {
-      x: b.x, y: b.y, breite: b.width, hoehe: b.height, rechts: b.right, mitteY: b.y + b.height / 2,
+      x: b.x, y: b.y, breite: b.width, hoehe: b.height, rechts: b.right, unten: b.bottom,
+      mitteY: b.y + b.height / 2,
       visibility: s.visibility, opacity: Number(s.opacity), gemalt: gemalt(el),
+      trifft: tp.trifft, treffer: tp.treffer, punktX: tp.punktX, punktY: tp.punktY,
     };
   };
   const sicht = (sel) => {
     const e = document.querySelector(sel);
-    if (!e) return { da: false, display: "—", visibility: "—", opacity: 0, gemalt: false, breite: 0, hoehe: 0 };
+    if (!e) return {
+      da: false, display: "—", visibility: "—", opacity: 0, gemalt: false,
+      trifft: false, treffer: "steht gar nicht im Baum", punktX: 0, punktY: 0, breite: 0, hoehe: 0,
+    };
     const b = e.getBoundingClientRect();
     const s = getComputedStyle(e);
+    const tp = treffer(e);
     return {
       da: true, display: s.display, visibility: s.visibility, opacity: Number(s.opacity),
-      gemalt: gemalt(e), breite: b.width, hoehe: b.height,
+      gemalt: gemalt(e), trifft: tp.trifft, treffer: tp.treffer, punktX: tp.punktX, punktY: tp.punktY,
+      breite: b.width, hoehe: b.height,
     };
   };
   /**
@@ -184,6 +301,7 @@ const MESSE = `(wurzel) => {
   const bild = firmen ? firmen.querySelector("img") : null;
   return {
     innerWidth: window.innerWidth,
+    innerHeight: window.innerHeight,
     theme: document.documentElement.getAttribute("data-theme") || "classic (kein Attribut)",
     firmenlogoZahl: document.querySelectorAll('[data-testid="auth-firmenlogo"]').length,
     gruppe: r(gruppe),
@@ -218,7 +336,9 @@ const bauform = (breite: number): string => (breite < 1024 ? COMPACT : PANEL);
 
 async function miss(breite: number, hoehe: number, marke: string): Promise<Messung> {
   await verstelleFenster(stand, breite, hoehe);
-  const m = await seite().evaluate<Messung>(fn(MESSE), bauform(breite));
+  // Der zweite Übergabewert ist der G-E-Schalter. Hier steht er FEST auf `false`: die Messung der
+  // Zusagen kennt keinen Weg, sich selbst abzuschalten.
+  const m = await seite().evaluate<Messung>(fn(MESSE), [bauform(breite), false]);
   expect(m.innerWidth, "das Fenster steht nicht auf der verlangten Breite").toBe(breite);
   console.log(`JOB 3591 · Marke ${marke} · ${breite}×${hoehe} · ${JSON.stringify(m)}`);
   return m;
@@ -227,19 +347,28 @@ async function miss(breite: number, hoehe: number, marke: string): Promise<Messu
 /**
  * Der eine Satz, den jede Zusage dieser Datei über Sichtbarkeit spricht.
  *
- * Bewusst mit ausgeschriebenem Befund in der Meldung: kippt eine Zusage, soll in der Ausgabe stehen,
- * WARUM nichts zu sehen ist (Grösse null, `visibility:hidden`, durchsichtiger Vorfahr) — nicht bloss
- * „expected false to be true".
+ * ZWEI PRÜFUNGEN, SEIT JOB 3774, und beide müssen halten: das Element wird gezeichnet (`gemalt`)
+ * UND es wird an seinem eigenen Ort auch getroffen (`trifft`). Es gibt keinen zweiten Weg, in dieser
+ * Datei Sichtbarkeit zu behaupten; kein Fall benutzt `gemalt` allein.
+ *
+ * Bewusst ZWEI getrennte Zusicherungen mit ausgeschriebenem Befund: kippt eine Zusage, soll in der
+ * Ausgabe die URSACHE stehen — „wird nicht gemalt" (Grösse null, `visibility:hidden`, durchsichtiger
+ * Vorfahr) oder „am Trefferpunkt steht etwas anderes" (Verdeckung, `clip-path`, aus dem Fenster
+ * geschoben) — nicht bloss „expected false to be true".
  */
-function mussGemaltSein(k: Rechteck | null, wo: string, was: string): void {
+function mussGemaltSein(k: Zusehen | null, wo: string, was: string): void {
   expect(k, `${wo}: ${was} steht gar nicht im Baum`).not.toBeNull();
-  const e = k as Rechteck;
+  const e = k as Zusehen;
   expect(
     e.gemalt,
     // „am Element selbst" ist wörtlich zu nehmen: G8 (`opacity-0` an der Spalte) meldet an diesem
     // Blattknoten `visibility:visible` und `opacity 1` und ist trotzdem unsichtbar — der Grund liegt
     // dann bei einem Vorfahren, den `gemalt` mitrechnet, die zwei Zahlen hier aber nicht zeigen.
     `${wo}: ${was} steht im Baum, wird aber nicht gemalt — ${e.breite.toFixed(1)}×${e.hoehe.toFixed(1)} px, am Element selbst visibility:${e.visibility} und opacity ${e.opacity} (ein durchsichtiger oder verborgener VORFAHR zählt mit)`,
+  ).toBe(true);
+  expect(
+    e.trifft,
+    `${wo}: ${was} wird zwar gemalt, ist an seinem Ort aber nicht zu treffen — am Trefferpunkt (${e.punktX.toFixed(1)}|${e.punktY.toFixed(1)}) steht ${e.treffer}`,
   ).toBe(true);
 }
 
@@ -280,6 +409,10 @@ function zeichenplatte(m: Messung, wo: string): void {
  * sieht, und die Zahl, die mit dem Befund von JOB 3571 am Kopfband vergleichbar ist (dort ragte es
  * bei 390 px um 20,5 px hinaus). Die Gegenprobe G3 (`gap-2.5` → `gap-32`) belegt, dass diese Zusage
  * wirklich Geometrie misst: gemessene äusserste Kinderkante 430,0 px bei innerWidth 390.
+ *
+ * SEIT JOB 3774 AUCH SENKRECHT. Bis dahin prüfte diese Zusage nur waagerecht — die Hälfte der Frage
+ * „liegt es im Fenster" war offen, und ein nach oben oder unten geschobenes Element blieb grün.
+ * Gegenprobe G-C fährt beide Richtungen.
  */
 function imFenster(m: Messung, wo: string): void {
   expect(m.gruppe, `${wo}: die Wortmarke-Gruppe fehlt`).not.toBeNull();
@@ -295,6 +428,16 @@ function imFenster(m: Messung, wo: string): void {
   expect(
     Math.min(...kinder.map((k) => k.x)),
     `${wo}: die Wortmarke beginnt links ausserhalb des Fensters`,
+  ).toBeGreaterThanOrEqual(0);
+  const untersteKante = Math.max(...kinder.map((k) => k.unten));
+  expect(
+    untersteKante,
+    `${wo}: die Wortmarke ragt ${(untersteKante - m.innerHeight).toFixed(1)} px unten aus dem Fenster (unterste Kinderkante ${untersteKante.toFixed(1)} px bei innerHeight ${m.innerHeight})`,
+  ).toBeLessThanOrEqual(m.innerHeight);
+  const obersteKante = Math.min(...kinder.map((k) => k.y));
+  expect(
+    obersteKante,
+    `${wo}: die Wortmarke ragt ${(-obersteKante).toFixed(1)} px oben aus dem Fenster (oberste Kinderkante ${obersteKante.toFixed(1)} px)`,
   ).toBeGreaterThanOrEqual(0);
 }
 
@@ -515,7 +658,7 @@ describe("JOB 3591 B · die Anmeldemaske in Chromium, an zwei Breiten und an der
         const m = await miss(breite, 844, "AN");
         const formen = { panel: m.panel, compact: m.compact };
         const zeige = (s: Sichtbarkeit): string =>
-          `${s.display}/${s.visibility}/o${s.opacity} (${s.breite.toFixed(1)}×${s.hoehe.toFixed(1)}) gemalt=${s.gemalt}`;
+          `${s.display}/${s.visibility}/o${s.opacity} (${s.breite.toFixed(1)}×${s.hoehe.toFixed(1)}) gemalt=${s.gemalt} trifft=${s.trifft} [${s.treffer}]`;
         console.log(
           `JOB 3591 · B3 ${breite} px · panel=${zeige(m.panel)} · compact=${zeige(m.compact)}`,
         );
@@ -530,11 +673,9 @@ describe("JOB 3591 B · die Anmeldemaske in Chromium, an zwei Breiten und an der
         // DIE ZUSAGE „NIE KEINS" HÄNGT AN DER WIRKSAMEN SICHTBARKEIT, nicht an `display` und Mass:
         // BEN hat in Runde 2 mit einem einzigen `invisible` an `BrandPanel.tsx:114` eine Fläche
         // hergestellt, die `flex` und 512,5 × 844 px meldet und trotzdem unsichtbar ist. Genau das
-        // fängt diese Zeile ab.
-        expect(
-          formen[sichtbar].gemalt,
-          `bei ${breite} px steht ${sichtbar} da, wird aber nicht gemalt — ${zeige(formen[sichtbar])}`,
-        ).toBe(true);
+        // fängt diese Zeile ab — seit JOB 3774 über denselben EINEN Satz wie jede andere
+        // Sichtbarkeitszusage dieser Datei, also auch gegen Verdeckung und Abschieben.
+        mussGemaltSein(formen[sichtbar], `B3/${breite}`, `die Bauform ${sichtbar}`);
         // „Nie beide" ist die Zusage aus `BrandPanel.tsx:129-131`: zwei Wortmarken nebeneinander
         // wären eine Dopplung.
         expect(
@@ -546,10 +687,288 @@ describe("JOB 3591 B · die Anmeldemaske in Chromium, an zwei Breiten und an der
           formen[versteckt].gemalt,
           `bei ${breite} px wird ${versteckt} doch gemalt — ${zeige(formen[versteckt])}`,
         ).toBe(false);
+        // Die verschärfte Prüfung darf die weggeschaltete Bauform NICHT plötzlich als Treffer
+        // melden: ein Rechteck 0 × 0 hat keinen Punkt, an dem etwas zu treffen wäre.
+        expect(
+          formen[versteckt].trifft,
+          `bei ${breite} px wird ${versteckt} am Trefferpunkt doch getroffen — ${zeige(formen[versteckt])}`,
+        ).toBe(false);
         // Und nie keins: die gemessene Bauform trägt die Marke wirklich UND zeigt sie.
         produktidentitaet(m, `B3/${breite}`);
         expect(m.gruppe, `bei ${breite} px steht keine Wortmarke`).not.toBeNull();
       });
     }
+  });
+});
+
+// ==================================================================================================
+// JOB 3774 G · DIE GEGENPROBEN — die drei Lücken, einzeln eingebracht, und die eigene Grenze.
+// ==================================================================================================
+//
+// WARUM DIE GEGENPROBEN HIER IN DER DATEI STEHEN und nicht nur in einer Rückgabe: eine Zusage, deren
+// Schärfe nur behauptet ist, ist bei der nächsten Änderung wieder stumpf. JOB 3591 hat seine
+// Gegenproben am PRODUKT gefahren (`invisible` an `BrandPanel.tsx`) und wieder zurückgenommen — der
+// Beleg hing damit an einer Änderung, die es heute nicht mehr gibt. Diese fünf Fälle bringen die
+// Verstellung von AUSSEN über `seite.evaluate` in die laufende Seite ein, messen, nehmen sie zurück
+// und messen erneut. Das Produkt wird dafür nicht angefasst.
+//
+// DIE EINBRINGHELFER SIND HIER EINGESPERRT. Sie stehen im Rumpf dieses `describe` und sind von
+// B1/B2/B3 nicht erreichbar: eine Bühne, die die Seite verstellen kann, darf die Messung der Zusagen
+// nicht anfassen. Aus demselben Grund hat dieser Block eine EIGENE Bühne — sie läuft nacheinander mit
+// der von B (Vitest fährt die Blöcke einer Datei seriell), nie gleichzeitig.
+describe("JOB 3774 G · die Gegenproben zur Trefferpunkt-Messung", () => {
+  /** Die Wortmarke-Gruppe in der bei 1280 px sichtbaren Bauform — das Ziel jeder Verstellung. */
+  const GRUPPE = `${PANEL} > span`;
+  const ABDECKUNG = "job3774-abdeckung";
+
+  /** NUR FÜR GEGENPROBEN: einen Stil an ein Element hängen und den alten `style` verwahren. */
+  const VERSTELLE = `([sel, stil]) => {
+    const el = document.querySelector(sel);
+    if (el === null) return "kein Element für " + sel;
+    el.setAttribute("data-job3774-vorher", el.getAttribute("style") || "");
+    el.setAttribute("style", (el.getAttribute("style") || "") + ";" + stil);
+    return "";
+  }`;
+  /** NUR FÜR GEGENPROBEN: den verwahrten `style` zurückschreiben. */
+  const NIMM_ZURUECK = `(sel) => {
+    const el = document.querySelector(sel);
+    if (el === null) return "kein Element für " + sel;
+    const vorher = el.getAttribute("data-job3774-vorher");
+    if (vorher === null) return "nichts verwahrt für " + sel;
+    if (vorher === "") el.removeAttribute("style"); else el.setAttribute("style", vorher);
+    el.removeAttribute("data-job3774-vorher");
+    return "";
+  }`;
+  /**
+   * NUR FÜR GEGENPROBEN: eine deckende Platte genau über das Rechteck des Elements legen.
+   * `durchlaessig` ist G-D: dieselbe Platte mit `pointer-events: none`.
+   */
+  const UEBERDECKE = `([sel, id, durchlaessig]) => {
+    const el = document.querySelector(sel);
+    if (el === null) return "kein Element für " + sel;
+    const b = el.getBoundingClientRect();
+    const d = document.createElement("div");
+    d.id = id;
+    d.setAttribute("data-testid", id);
+    d.setAttribute("style",
+      "position:fixed;left:" + b.x + "px;top:" + b.y + "px;width:" + b.width + "px;height:" + b.height +
+      "px;background:rgb(220,0,0);z-index:2147483647;" + (durchlaessig ? "pointer-events:none;" : ""));
+    document.body.appendChild(d);
+    return "";
+  }`;
+  const RAEUME_AB = `(id) => {
+    const d = document.getElementById(id);
+    if (d !== null) d.remove();
+    return document.getElementById(id) === null ? "" : "die Abdeckung liess sich nicht entfernen";
+  }`;
+
+  let g: GastStand;
+  const gSeite = (): GastSeite => {
+    expect(g.fehler, "Gegenproben-Bühne kam nicht hoch").toBeNull();
+    return g.seite as GastSeite;
+  };
+  /** Jede Verstellung wird NEU gemessen — nie aus einer früheren Messung übernommen. */
+  const missG = async (wo: string, immerWahr = false): Promise<Messung> => {
+    const m = await gSeite().evaluate<Messung>(fn(MESSE), [PANEL, immerWahr]);
+    expect(m.innerWidth, `${wo}: die Gegenprobenbühne steht nicht auf 1280 px`).toBe(1280);
+    console.log(
+      `JOB 3774 · ${wo} · KLARWERK ${JSON.stringify(m.klarwerkWort)} · Zeichenplatte ${JSON.stringify(m.zeichen)}`,
+    );
+    return m;
+  };
+  const stelle = async (stil: string): Promise<void> => {
+    expect(await gSeite().evaluate<string>(fn(VERSTELLE), [GRUPPE, stil])).toBe("");
+  };
+  const zurueck = async (): Promise<void> => {
+    expect(await gSeite().evaluate<string>(fn(NIMM_ZURUECK), GRUPPE)).toBe("");
+  };
+
+  beforeAll(async () => {
+    await baueFrisch();
+    g = await starteGast("/", PANEL, 1280, 900);
+    expect(g.fehler, "Gegenproben-Bühne kam nicht hoch").toBeNull();
+    const version = await setzeMarke(g, { profil: "advisor", aktiv: true }, PANEL);
+    await gSeite().waitForFunction(
+      fn(`(sel) => {
+        const b = document.querySelector(sel + " img");
+        return b !== null && b.complete && b.naturalWidth > 0;
+      }`),
+      FIRMENLOGO,
+      { timeout: 15_000 },
+    );
+    console.log(
+      `JOB 3774 · Gegenproben-Bühne: ${g.version} · Thema ${g.theme} · Marke Version ${version}`,
+    );
+  }, 240_000);
+
+  afterAll(async () => {
+    await beendeGast(g);
+  });
+
+  it("G-A · Verdeckung: eine deckende Platte über der Wortmarke macht die Zusage rot", async () => {
+    const vorher = await missG("G-A vorher");
+    produktidentitaet(vorher, "G-A vorher");
+    zeichenplatte(vorher, "G-A vorher");
+    try {
+      expect(await gSeite().evaluate<string>(fn(UEBERDECKE), [GRUPPE, ABDECKUNG, false])).toBe("");
+      const m = await missG("G-A nachher");
+      const wort = m.klarwerkWort as Rechteck;
+      // DER BEFUND: die alte Rechnung bleibt unverdächtig — genau deshalb war dieser Fall bis
+      // JOB 3774 grün, während der Gast eine rote Platte anschaute.
+      expect(wort.gemalt, "G-A: `gemalt` sieht die Verdeckung erwartungsgemäss NICHT").toBe(true);
+      expect(
+        (m.zeichen as Rechteck).gemalt,
+        "G-A: `gemalt` sieht die Verdeckung auch an der Platte nicht",
+      ).toBe(true);
+      // Und die neue Prüfung greift, an beiden Trägern.
+      expect(
+        wort.trifft,
+        `G-A: der Schriftzug gilt trotz Abdeckung als getroffen — ${wort.treffer}`,
+      ).toBe(false);
+      expect(wort.treffer, "G-A: am Trefferpunkt steht nicht die Abdeckung").toContain(ABDECKUNG);
+      expect(
+        (m.zeichen as Rechteck).trifft,
+        "G-A: die Zeichenplatte gilt trotz Abdeckung als getroffen",
+      ).toBe(false);
+      // Die Zusage selbst — nicht ein Hilfsfeld — wird rot, mit lesbarer Ursache.
+      expect(() => produktidentitaet(m, "G-A")).toThrow(/nicht zu treffen/);
+      expect(() => zeichenplatte(m, "G-A")).toThrow(/nicht zu treffen/);
+    } finally {
+      expect(await gSeite().evaluate<string>(fn(RAEUME_AB), ABDECKUNG)).toBe("");
+    }
+    const danach = await missG("G-A zurückgenommen");
+    produktidentitaet(danach, "G-A zurückgenommen");
+    zeichenplatte(danach, "G-A zurückgenommen");
+  });
+
+  it("G-B · clip-path: eine weggeschnittene Wortmarke macht die Zusage rot", async () => {
+    const vorher = await missG("G-B vorher");
+    produktidentitaet(vorher, "G-B vorher");
+    try {
+      await stelle("clip-path: inset(100%)");
+      const m = await missG("G-B nachher");
+      const wort = m.klarwerkWort as Rechteck;
+      // `clip-path` ändert weder Layout noch `visibility` noch `opacity`: die alte Rechnung bleibt
+      // grün. Getroffen wird jetzt ein VORFAHR — und der gilt ausdrücklich nicht als Treffer.
+      expect(wort.gemalt, "G-B: `gemalt` sieht das Wegschneiden erwartungsgemäss NICHT").toBe(true);
+      expect(wort.breite, "G-B: `clip-path` darf das Rechteck nicht verändern").toBeCloseTo(
+        (vorher.klarwerkWort as Rechteck).breite,
+        3,
+      );
+      expect(
+        wort.trifft,
+        `G-B: der weggeschnittene Schriftzug gilt als getroffen — ${wort.treffer}`,
+      ).toBe(false);
+      expect(
+        (m.zeichen as Rechteck).trifft,
+        "G-B: die weggeschnittene Zeichenplatte gilt als getroffen",
+      ).toBe(false);
+      expect(() => produktidentitaet(m, "G-B")).toThrow(/nicht zu treffen/);
+      expect(() => zeichenplatte(m, "G-B")).toThrow(/nicht zu treffen/);
+    } finally {
+      await zurueck();
+    }
+    produktidentitaet(await missG("G-B zurückgenommen"), "G-B zurückgenommen");
+  });
+
+  it("G-C · aus dem Fenster geschoben: nach oben und nach unten, beide Richtungen rot", async () => {
+    produktidentitaet(await missG("G-C vorher"), "G-C vorher");
+    for (const [richtung, stil, muster] of [
+      ["nach oben", "transform: translateY(-9999px)", /px oberhalb/],
+      ["nach unten", "transform: translateY(9999px)", /px unterhalb/],
+    ] as const) {
+      try {
+        await stelle(stil);
+        const m = await missG(`G-C ${richtung} nachher`);
+        const wort = m.klarwerkWort as Rechteck;
+        expect(
+          wort.gemalt,
+          `G-C ${richtung}: \`gemalt\` sieht das Abschieben erwartungsgemäss NICHT`,
+        ).toBe(true);
+        // LIEFERUNG 2, GEMESSEN STATT ANGENOMMEN: für einen Punkt ausserhalb des Fensters
+        // antwortet `elementFromPoint` mit `null` — und die Meldung nennt die senkrechte Lage.
+        expect(wort.trifft, `G-C ${richtung}: der abgeschobene Schriftzug gilt als getroffen`).toBe(
+          false,
+        );
+        expect(
+          wort.treffer,
+          `G-C ${richtung}: die Meldung nennt die senkrechte Lage nicht`,
+        ).toMatch(muster);
+        expect(wort.treffer).toContain("elementFromPoint liefert nichts");
+        expect(() => produktidentitaet(m, `G-C ${richtung}`)).toThrow(/nicht zu treffen/);
+        // Und die zweite Hälfte des Sichtfensters, die bis JOB 3774 offen war.
+        expect(() => imFenster(m, `G-C ${richtung}`)).toThrow(/aus dem Fenster/);
+      } finally {
+        await zurueck();
+      }
+      const danach = await missG(`G-C ${richtung} zurückgenommen`);
+      produktidentitaet(danach, `G-C ${richtung} zurückgenommen`);
+      imFenster(danach, `G-C ${richtung} zurückgenommen`);
+    }
+  });
+
+  it("G-D · die eigene Grenze: eine Abdeckung mit `pointer-events: none` wird NICHT gefunden", async () => {
+    try {
+      expect(await gSeite().evaluate<string>(fn(UEBERDECKE), [GRUPPE, ABDECKUNG, true])).toBe("");
+      const m = await missG("G-D nachher");
+      const wort = m.klarwerkWort as Rechteck;
+      // ERWARTET GRÜN — und das ist kein Mangel dieses Auftrags, sondern die gemessene Grenze der
+      // Trefferpunkt-Messung: `elementFromPoint` überspringt ein Element mit `pointer-events:none`
+      // und liefert das verdeckte darunter. Der Gast sähe die rote Platte, die Messung nicht.
+      // Steht diese Zeile eines Tages auf rot, ist die Grenze weg — dann gehört der Kopf nachgeführt.
+      expect(wort.trifft, `G-D: die Grenze hat sich verschoben — ${wort.treffer}`).toBe(true);
+      expect(
+        wort.treffer,
+        "G-D: geliefert wird die Abdeckung statt des verdeckten Knotens",
+      ).not.toContain(ABDECKUNG);
+      produktidentitaet(m, "G-D");
+      zeichenplatte(m, "G-D");
+    } finally {
+      expect(await gSeite().evaluate<string>(fn(RAEUME_AB), ABDECKUNG)).toBe("");
+    }
+    produktidentitaet(await missG("G-D zurückgenommen"), "G-D zurückgenommen");
+  });
+
+  it("G-E · kein Scheingrün: ohne die Trefferpunkt-Messung sind G-A, G-B und G-C wieder blind", async () => {
+    // Der zweite Übergabewert stellt die Prüfung künstlich auf „immer wahr". Bleibt bei GENAU
+    // denselben drei Verstellungen dann alles grün, hängt das Rot der drei Fälle wirklich an dieser
+    // Prüfung — und nicht an einer Nebenwirkung des Verstellens (Rechteck weg, `visibility`, Fokus).
+    const abgedeckt = async (immerWahr: boolean): Promise<Rechteck> => {
+      expect(await gSeite().evaluate<string>(fn(UEBERDECKE), [GRUPPE, ABDECKUNG, false])).toBe("");
+      try {
+        return (await missG(`G-E Verdeckung immerWahr=${immerWahr}`, immerWahr))
+          .klarwerkWort as Rechteck;
+      } finally {
+        expect(await gSeite().evaluate<string>(fn(RAEUME_AB), ABDECKUNG)).toBe("");
+      }
+    };
+    const gestellt = async (stil: string, immerWahr: boolean): Promise<Rechteck> => {
+      await stelle(stil);
+      try {
+        return (await missG(`G-E ${stil} immerWahr=${immerWahr}`, immerWahr))
+          .klarwerkWort as Rechteck;
+      } finally {
+        await zurueck();
+      }
+    };
+    expect(
+      (await abgedeckt(true)).trifft,
+      "G-E/A: die abgeschaltete Prüfung meldet doch einen Fehltreffer",
+    ).toBe(true);
+    expect((await gestellt("clip-path: inset(100%)", true)).trifft, "G-E/B").toBe(true);
+    expect((await gestellt("transform: translateY(-9999px)", true)).trifft, "G-E/C").toBe(true);
+    // Gegenrichtung in DERSELBEN Lage: mit eingeschalteter Prüfung sind genau diese drei rot.
+    expect((await abgedeckt(false)).trifft, "G-E/A scharf").toBe(false);
+    expect((await gestellt("clip-path: inset(100%)", false)).trifft, "G-E/B scharf").toBe(false);
+    expect((await gestellt("transform: translateY(-9999px)", false)).trifft, "G-E/C scharf").toBe(
+      false,
+    );
+    // Und nach allem: die Fläche steht wieder vollständig da.
+    const danach = await missG("G-E Endstand");
+    produktidentitaet(danach, "G-E Endstand");
+    zeichenplatte(danach, "G-E Endstand");
+    imFenster(danach, "G-E Endstand");
+    expect(danach.firmenlogoZahl, "G-E Endstand: die Firmen-CI ist nicht mehr da").toBe(2);
+    expect(g.seitenfehler, "G-E Endstand: die Seite hat einen Fehler geworfen").toEqual([]);
   });
 });
