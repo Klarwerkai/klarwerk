@@ -55,6 +55,25 @@
 // (`RangeError: Maximum call stack size exceeded`) — die Zusage „wirft nie" galt für die Bewertung
 // und nicht für den Bericht. W2 (xiii)–(xv) hält jetzt auch das fest: tief, breit, und auf beiden
 // Wegen. Eine Grenze, die erst nach dem vollständigen Serialisieren kürzt, ist keine Grenze.
+//
+// JOB 3866 (BEN zu 3849 R2, Prüfpunkt 6 — beide Punkte ausdrücklich bestellt): (xiii)–(xv) speisen
+// ausschliesslich ARRAYS ein, der OBJEKTZWEIG derselben Druckhilfe war unvermessen. GEMESSEN am
+// Stand davor: ein Eintrag mit zwölf Feldern über sechs Ebenen hält seine Grenze (436 Zeichen, voll
+// verzweigt wie schmal), ein Feldname von 50 000 Zeichen ebenfalls — aber 5000 solche Einträge
+// ergaben 1761 Zeichen, weil fünf genannte Plätze je 311 Zeichen bekamen. Die Zusage „die Meldung
+// wächst nicht mit dem Eintrag" galt also für die ZAHL der Plätze und nicht für ihre LÄNGE; F9
+// (5000 × `null`) konnte das nicht zeigen. F10–F12 halten beide Zweige fest. Und W3 misst den
+// zweiten bestellten Punkt: dass die Ähnlichkeitsliste der Prüfroute wirklich durch diesen Leser
+// VERKABELT ist — als Fall mit verfälschter HTTP-Antwort, nicht als Verstellprobe.
+//
+// JOB 3866 RUNDE 3 (BEN Korrekturpflicht 1 und 2): Runde 2 gab jedem genannten Platz weniger Zeichen
+// und liess darunter die lückenhafte Buchführung von `drucke` stehen — Klammern, Doppelpunkte und
+// Auslassungszeichen wurden geschrieben, aber nicht bezahlt, und `istwertVon` schnitt das Ergebnis
+// hinterher auf Mass. Daran scheiterte auch die bestellte Gegenprobe zu F11: ohne
+// `nimm(JSON.stringify(feld))` entstand der 50 000 Zeichen lange Schlüssel ganz und verschwand im
+// Nachschnitt wieder, die Meldung blieb kurz, der Fall blieb grün. JETZT bezahlt `drucke` jedes
+// ausgegebene Zeichen, es wird nichts mehr nachgeschnitten, F11 liest den abgeschnittenen Schlüssel
+// selbst — und F13 misst die Schreibgrenze an dem einen Weg, der weder Plätze aufteilt noch kürzt.
 import { describe, expect, it } from "vitest";
 import {
   DOKUMENTWORT,
@@ -141,6 +160,22 @@ function pruefeSuchantwort(
   expect(
     eintraegeGueltig,
     `${wo}: es kam zwar eine Liste, aber ihre Einträge sind nicht bewertbar — ${eintragsFehlschlag}. Körper: ${koerper}. Ein formloser Eintrag ist keine Nicht-Übereinstimmung: „nicht gefunden" wäre hier eine Behauptung ohne Messung, und ein gültiger Eintrag daneben heilt ihn nicht.`,
+  ).toBe(true);
+}
+
+/**
+ * DIE VORAUSSETZUNG JEDER AUSSAGE ÜBER DIE ÄHNLICHKEITSLISTE DES LIVE-CHECKS — dieselbe Reihenfolge
+ * wie an den Suchen: erst die Form, dann der Treffer.
+ *
+ * EIGENE FUNKTION SEIT JOB 3866, und das ist ihr ganzer Zweck: W3 fährt GENAU diese Zusage gegen
+ * eine verfälschte Antwort der Prüfroute. Stünde sie weiter als lose Zeile in `pruefeStrecke`, hätte
+ * W3 sie nachbauen müssen — und ein nachgebauter Formbegriff misst die Strecke nicht (dieselbe Regel
+ * wie bei (xii)).
+ */
+function pruefeAehnlichkeitsliste(b: Streckenbefund, wo: string): void {
+  expect(
+    b.fund.pruefungEintraegeGueltig,
+    `${wo}: die Ähnlichkeitsliste des Live-Checks war nicht bewertbar — ${b.fund.pruefungEintragsFehlschlag}. Ohne bewertbare Einträge ist „die Prüfung findet nichts" eine Behauptung ohne Messung.`,
   ).toBe(true);
 }
 
@@ -264,10 +299,7 @@ function pruefeStrecke(b: Streckenbefund): void {
   // Schwäche wie an den Suchen, nur an der Prüfroute: `similar: ["ko-1"]` hätte hier ein stilles
   // „die Prüfung findet den Doppelgänger nicht" ergeben, `similar: [null]` einen `TypeError` mitten
   // in `fahreStrecke`. Derselbe Prüfweg, kein zweiter Formbegriff (`liesTrefferliste`).
-  expect(
-    b.fund.pruefungEintraegeGueltig,
-    `die Ähnlichkeitsliste des Live-Checks war nicht bewertbar — ${b.fund.pruefungEintragsFehlschlag}. Ohne bewertbare Einträge ist „die Prüfung findet nichts" eine Behauptung ohne Messung.`,
-  ).toBe(true);
+  pruefeAehnlichkeitsliste(b, "POST /api/knowledge/check");
   expect(b.fund.pruefungTrifft, "die Prüfung fand das eben Geschriebene nicht").toBe(true);
   // EHRLICHKEIT VOR OPTIK, und hier ist sie messbar: ohne Modell läuft KEIN Widerspruchsprüfer, und
   // der Live-Check sagt das („pending"), statt „done" zu behaupten. Ein „done" an dieser Stelle wäre
@@ -742,7 +774,278 @@ describe("JOB 3801 · der erste Nutzerweg, am Stück", () => {
     expect(sTief.fehlschlag.length, "similar: die Meldung wuchs mit der Schachtelung").toBeLessThan(
       600,
     );
+
+    // ============================================================================================
+    // (xvi)–(xviii) JOB 3866 · DERSELBE SATZ, DER ANDERE ZWEIG: OBJEKTE. (xiii)–(xv) speisen
+    // ausschliesslich ARRAYS ein — der Objektzweig der Druckhilfe (`strecke.ts`, `drucke`, Fall
+    // `"object"`) wurde von keinem Fall betreten. BEN hat ihn zu 3849 R2 (Prüfpunkt 6) ausdrücklich
+    // benannt: „tiefe Objektverschachtelung und sehr lange Feldnamen als Diagnosefälle".
+    // ============================================================================================
+    const EBENEN = 6;
+    const FELDER_JE_EBENE = 12;
+
+    // DIE FORM, UND WARUM SIE SO GEBAUT IST. Verlangt sind 12 Felder je Ebene über 6 Ebenen. Von
+    // den zwölf führt EINES weiter, die elf anderen sind Zahlen — und das ist eine Messfrage, keine
+    // Bequemlichkeit: eine Verzweigung, bei der ALLE zwölf weiterführen, hat auf Ebene 6
+    // 12^6 = 2.985.984 Blätter. Als Objekt ginge das noch (s. `vollVerzweigt`), als JSON-TEXT wären
+    // es ~24 MB für EINEN Eintrag — und Lieferung 1 verlangt jeden Fall auch über `liesSuchantwort`,
+    // F12 sogar 5000-fach. Das tiefe Feld steht ZUERST, sonst wäre der Vorrat von den elf flachen
+    // Feldern aufgebraucht, bevor der Drucker je eine Ebene tiefer käme, und der Fall misst die
+    // Tiefe gar nicht.
+    const tiefesObjekt = (ebenen: number): Record<string, unknown> => {
+      const ebene: Record<string, unknown> = {};
+      ebene.f0 = ebenen > 1 ? tiefesObjekt(ebenen - 1) : 0;
+      for (let i = 1; i < FELDER_JE_EBENE; i += 1) ebene[`f${i}`] = i;
+      return ebene;
+    };
+    // UND DIE VOLLE VERZWEIGUNG — nur auf dem direkten Weg, wo kein Text entstehen muss. Alle zwölf
+    // Felder jeder Ebene zeigen auf DASSELBE Kindobjekt: der Drucker kennt keine Verweise und sieht
+    // genau die Struktur, die 2.985.984 einzelne Blätter ergäben, ohne dass sie entstehen. Kein
+    // Zyklus — gebaut wird von unten nach oben.
+    const vollVerzweigt = (): Record<string, unknown> => {
+      let ebene: unknown = 0;
+      for (let e = 0; e < EBENEN; e += 1) {
+        const naechste: Record<string, unknown> = {};
+        for (let i = 0; i < FELDER_JE_EBENE; i += 1) naechste[`f${i}`] = ebene;
+        ebene = naechste;
+      }
+      return ebene as Record<string, unknown>;
+    };
+    const langerFeldname = "x".repeat(50_000);
+
+    /** Beide Wege aus Lieferung 1 in einer Messung: der direkte Leser UND die HTTP-Antwort. */
+    const beideWege = (eintraege: readonly unknown[]) => {
+      const payload = JSON.stringify(eintraege);
+      return {
+        direkt: liesTrefferliste(eintraege),
+        ueberHttp: liesSuchantwort({ statusCode: 200, payload }, "ko-1"),
+      };
+    };
+
+    /**
+     * Die Zeichengrenze einer Meldung, mit dem TATSÄCHLICH gemessenen Wert in ihrer eigenen roten
+     * Zeile (Lehre JOB 3826 R1: die Diagnose aus dem gelieferten Ergebnis ableiten, nicht aus dem
+     * Sollwert). Ein blosses „expected 1761 to be less than 600" sagt nicht, WAS da so lang wurde.
+     */
+    const bleibtKurz = (was: string, meldung: string): void => {
+      expect(
+        meldung.length,
+        `${was}: die Meldung wuchs mit dem Eintrag — ${meldung.length} Zeichen, Anfang: ${meldung.slice(0, 200)}`,
+      ).toBeLessThan(600);
+    };
+
+    // (xvi) F10 · DAS TIEFE, BREITE OBJEKT. Zuerst wieder die Zusage selbst: hier darf NICHTS
+    //       fliegen — der Objektzweig rekursiert genauso wie der Arrayzweig, an dem JOB 3849
+    //       Runde 1 gestorben ist.
+    const f10Eintraege = [tiefesObjekt(EBENEN)];
+    expect(
+      () => beideWege(f10Eintraege),
+      "F10: die Diagnose stürzte am tiefen Objekt ab, statt es zu melden",
+    ).not.toThrow();
+    const f10 = beideWege(f10Eintraege);
+    expect(f10.ueberHttp.istListe, "F10: der Körper ist sehr wohl eine Liste").toBe(true);
+    expect(
+      f10.direkt.gueltig,
+      "F10: ein tief verschachteltes Objekt ist kein Eintrag mit Kennung",
+    ).toBe(false);
+    expect(
+      f10.ueberHttp.eintraegeGueltig,
+      "F10: derselbe Eintrag galt über HTTP als bewertbar",
+    ).toBe(false);
+    expect(
+      f10.ueberHttp.trifft,
+      "F10: aus einem unbewertbaren Eintrag darf kein Treffer folgen",
+    ).toBe(false);
+    expect(
+      f10.direkt.eintraege,
+      "F10: aus einer formlosen Liste darf kein Treffer gerechnet werden",
+    ).toEqual([]);
+    expect(f10.direkt.fehlschlag, "F10: die Meldung nennt den Platz nicht").toMatch(/Platz 0/);
+    // UND SIE SAGT, WARUM SIE AUFHÖRT. Ohne die Tiefensperre des Objektzweigs stünde hier ein
+    // aufgerollter Baum statt einer Angabe — das ist die Zeile, die Gegenprobe (a) rot macht.
+    expect(
+      f10.direkt.fehlschlag,
+      "F10: die Meldung verschweigt, dass die Tiefe abgeschnitten wurde",
+    ).toMatch(/zu tief, Felder: 12/);
+    bleibtKurz("F10 direkt", f10.direkt.fehlschlag);
+    bleibtKurz("F10 über HTTP", f10.ueberHttp.eintragsFehlschlag);
+    // UND DIESELBE FORM VOLL VERZWEIGT — alle zwölf Felder jeder Ebene führen weiter, was auf Ebene 6
+    // 2.985.984 Blätter wären. Nur der direkte Weg, weil davon kein JSON-Text gebaut werden kann.
+    const f10VollEintrag = vollVerzweigt();
+    const f10Voll = liesTrefferliste([f10VollEintrag]);
+    expect(f10Voll.gueltig, "F10: die voll verzweigte Form galt als bewertbar").toBe(false);
+    bleibtKurz("F10 voll verzweigt", f10Voll.fehlschlag);
+
+    // (xvii) F11 · DER SEHR LANGE FELDNAME. 50 000 Zeichen in EINEM Schlüssel: die Meldung darf ihn
+    //        nicht mitschleppen, sondern muss ihn abschneiden und das sagen. WAS DAS ABSCHNEIDET, IST
+    //        `nimm(JSON.stringify(feld))` in `strecke.ts` — und genau darauf zielt die bestellte
+    //        Gegenprobe (b). In Runde 2 fiel sie nicht auf, weil `istwertVon` das Ergebnis hinterher
+    //        noch einmal schnitt: der Schlüssel entstand ganz und verschwand danach wieder, die
+    //        Meldung blieb kurz, und der Fall belegte nichts. Seit Runde 3 schneidet nichts mehr
+    //        nach, und die Zeile unten liest den abgeschnittenen Schlüssel selbst.
+    const f11Eintraege = [{ [langerFeldname]: 1 }];
+    expect(
+      () => beideWege(f11Eintraege),
+      "F11: die Diagnose stürzte am langen Feldnamen ab, statt ihn zu melden",
+    ).not.toThrow();
+    const f11 = beideWege(f11Eintraege);
+    expect(f11.direkt.gueltig, "F11: ein Objekt ohne Kennung galt als Eintrag mit Kennung").toBe(
+      false,
+    );
+    expect(
+      f11.ueberHttp.eintraegeGueltig,
+      "F11: derselbe Eintrag galt über HTTP als bewertbar",
+    ).toBe(false);
+    expect(
+      f11.ueberHttp.trifft,
+      "F11: aus einem unbewertbaren Eintrag darf kein Treffer folgen",
+    ).toBe(false);
+    expect(f11.direkt.fehlschlag, "F11: die Meldung nennt den Platz nicht").toMatch(/Platz 0/);
+    // DER SCHLÜSSEL SELBST, angeschnitten und mit „…" beendet: das ist die Spur von
+    // `nimm(JSON.stringify(feld))`. Ohne `nimm` stünde hier der ganze Name.
+    expect(
+      f11.direkt.fehlschlag,
+      `F11: die Meldung verschweigt, dass der Feldname abgeschnitten wurde: ${f11.direkt.fehlschlag.slice(0, 200)}`,
+    ).toMatch(/"x{10,}…/);
+    bleibtKurz("F11 direkt", f11.direkt.fehlschlag);
+    bleibtKurz("F11 über HTTP", f11.ueberHttp.eintragsFehlschlag);
+
+    // (xviii) F12 · BEIDES ZUSAMMEN, und DAS ist die Stelle, an der die Grenze wirklich gefallen ist.
+    //         5000 Einträge, von denen jeder ein solches Objekt ist. GEMESSEN am Stand vor diesem
+    //         Job: `fehlschlag` war 1761 Zeichen lang — fünf genannte Plätze à 311 Zeichen. F9
+    //         (5000 × `null`) konnte das nicht zeigen: `null` druckt sich in vier Zeichen aus, und
+    //         damit blieb die Meldung auch ohne die zweite Grenze klein.
+    const f12Eintraege = new Array(5000).fill(tiefesObjekt(EBENEN)) as unknown[];
+    expect(
+      () => beideWege(f12Eintraege),
+      "F12: die Diagnose stürzte an 5000 tiefen Objekten ab",
+    ).not.toThrow();
+    const f12 = beideWege(f12Eintraege);
+    expect(f12.direkt.gueltig, "F12: 5000 tiefe Objekte galten als bewertbar").toBe(false);
+    expect(
+      f12.ueberHttp.eintraegeGueltig,
+      "F12: dieselben Einträge galten über HTTP als bewertbar",
+    ).toBe(false);
+    expect(f12.ueberHttp.trifft, "F12: aus unbewertbaren Einträgen darf kein Treffer folgen").toBe(
+      false,
+    );
+    expect(f12.direkt.fehlschlag, "F12: die Meldung nennt den ersten Platz nicht").toMatch(
+      /Platz 0/,
+    );
+    expect(f12.direkt.fehlschlag, "F12: die Meldung nennt die Gesamtzahl nicht").toMatch(/5000/);
+    expect(f12.direkt.fehlschlag, "F12: die Meldung zählt den Rest nicht").toMatch(
+      /und 4995 weitere/,
+    );
+    bleibtKurz("F12 direkt", f12.direkt.fehlschlag);
+    bleibtKurz("F12 über HTTP", f12.ueberHttp.eintragsFehlschlag);
+
+    // ============================================================================================
+    // (xix) F13 · DIE SCHREIBGRENZE ALLEIN — und warum F10–F12 sie NICHT für sich messen.
+    //
+    // F10–F12 laufen über `liesTrefferliste`, und die verteilt ihren Vorrat auf fünf genannte Plätze
+    // (`ISTWERT_JE_MELDUNG`). Diese Aufteilung hält die MELDUNG kurz, auch wenn die Buchführung in
+    // `drucke` darunter Zeichen ausgibt, die sie nicht verbucht — und Runde 2 dieses Jobs ist genau
+    // daran gescheitert: sie baute die Aufteilung und liess die lückenhafte Buchführung stehen, weil
+    // `istwertVon` das Ergebnis zusätzlich noch nachträglich schnitt (BEN Korrekturpflicht 1).
+    //
+    // DER WEG „es kam gar keine Liste" hat beides nicht: ein einziger Istwert, der volle Vorrat
+    // `ISTWERT_ZEICHEN`, keine Plätze, kein Schnitt danach. Was hier gemessen wird, ist `drucke` und
+    // sonst nichts. Deshalb ist F13 die Zeile, die die Gegenproben (b) und (d) rot machen.
+    // ============================================================================================
+    expect(liesTrefferliste(0).gueltig, "F13: eine blosse Zahl ist keine Trefferliste").toBe(false);
+    // Der Rahmen dieser Meldung GEMESSEN statt abgezählt: `0` druckt sich in genau einem Zeichen aus,
+    // also ist alles ausser diesem einen Zeichen Rahmen. Was danach übrig bleibt, ist der Istwert.
+    const f13Rahmen = liesTrefferliste(0).fehlschlag.length - 1;
+    // Der Vorrat ist `ISTWERT_ZEICHEN` = 300. Dazu kommt ein Überhang: ein abgeschnittenes Stück
+    // kostet ein Zeichen mehr, als noch übrig war, und jede Ebene prüft den Vorrat erst danach — der
+    // Überhang hängt also an `ISTWERT_TIEFE` (4) und nicht am Eintrag. 320 lässt ihn zu und schlägt
+    // an, sobald eine Klammer, ein Doppelpunkt oder ein Auslassungszeichen unbezahlt bleibt.
+    const F13_GRENZE = 320;
+    // GEBAUT WIRD HIER NICHTS NEU: F13 nimmt genau die Formen, die F10 und F11 schon in der Hand
+    // haben, und schickt sie durch den anderen Weg. Das ist auch eine Kostenfrage — gemessen
+    // (Lieferung 7): mit eigens gebauten Formen kostete F13 rund 0,6 s, mit den geliehenen nichts,
+    // was sich vom Rauschen des geteilten Prüfplatzes abheben liesse.
+    const f13Faelle: readonly (readonly [string, unknown])[] = [
+      ["tiefes, breites Objekt", f10Eintraege[0]],
+      ["voll verzweigtes Objekt", f10VollEintrag],
+      ["50 000 Zeichen im Feldnamen", f11Eintraege[0]],
+      ["50 000 Zeichen im Wert", { text: langerFeldname }],
+    ];
+    for (const [was, rohe] of f13Faelle) {
+      const gemessen = liesTrefferliste(rohe);
+      expect(gemessen.gueltig, `F13 ${was}: ein Objekt galt als Trefferliste`).toBe(false);
+      const istwert = gemessen.fehlschlag.length - f13Rahmen;
+      expect(
+        istwert,
+        `F13 ${was}: der Istwert wurde geschrieben, ohne bezahlt zu werden — ${istwert} Zeichen statt höchstens ${F13_GRENZE}, Anfang: ${gemessen.fehlschlag.slice(0, 200)}`,
+      ).toBeLessThanOrEqual(F13_GRENZE);
+    }
+
+    // (xx) UND DIE GEGENRICHTUNG — ohne sie wäre die Zusage nur streng und nicht richtig, dieselbe
+    //       Begründung wie bei (xi). Ein GÜLTIGER Eintrag darf eine tief verschachtelte Ladung im
+    //       Feld `payload` tragen: geprüft wird die Kennung, nicht die Schlichtheit des Eintrags.
+    const gutTief = liesTrefferliste([{ id: "ko-1", payload: tiefesObjekt(EBENEN) }]);
+    expect(
+      gutTief.gueltig,
+      `ein gültiger Eintrag mit tiefer Ladung wurde abgewiesen: ${gutTief.fehlschlag}`,
+    ).toBe(true);
+    expect(gutTief.fehlschlag, "ein gültiger Eintrag erzeugte einen Fehlschlag").toBe("");
+    expect(
+      gutTief.eintraege.some((treffer) => treffer.id === "ko-1"),
+      "der gültige Treffer ging verloren",
+    ).toBe(true);
   });
+
+  it("W3 · VERKABELUNG: eine verfälschte Ähnlichkeitsliste der Prüfroute erreicht die Zusage der Strecke", async () => {
+    // BENs ZWEITER BESTELLTER PUNKT zu 3849 R2, wörtlich: „Die dauerhafte `similar`-Probe misst den
+    // Leser (durchstich.test.ts:729); ein dauerhafter HTTP-Gegenfall würde zusätzlich dessen
+    // VERKABELUNG bewachen." W2 (xii)/(xv) rufen `liesTrefferliste` direkt auf — sie belegen, dass
+    // der Leser richtig liest, und NICHT, dass `fahreStrecke` die Antwort der Prüfroute durch ihn
+    // schickt. Das hing bis heute an einer Verstellung, die BEN nach seiner Messung wieder
+    // zurückgenommen hat; hier bleibt es.
+    //
+    // Die Verfälschung sitzt als onSend-Hook auf GENAU `POST /api/knowledge/check` und liefert
+    // `similar: ["ko-1"]` — die Form fehlt, das Gesuchte steht buchstäblich in der Antwort. Sie
+    // hinterlässt nichts: sie hängt an der zweiten App DIESES Laufs und stirbt mit ihr.
+    const lauf = await fahreStrecke({ verfaelsche: "similar-formlos" });
+    try {
+      const b = lauf.befund;
+      // (1) DER WEG BIS HIERHER IST HEIL. Wäre er es nicht, stünde die rote Stelle für
+      //     „irgendetwas ging schief" statt für die Ähnlichkeitsliste (dieselbe Bauweise wie D2).
+      expect(b.konto.rolle).toBe("admin");
+      expect(b.fund.anlageStatus, "ohne angelegtes Objekt misst dieser Fall nichts").toBe(201);
+      expect(b.fund.pruefungStatus, "die Prüfroute antwortete gar nicht mit 200").toBe(200);
+      expect(b.fund.pruefungOhneAnmeldung, "die Verfälschung hat die 401 mitgenommen").toBe(401);
+      // (2) UND DIE VERFÄLSCHUNG BLIEB AN IHRER ADRESSE: beide Suchen sind unberührt.
+      expect(b.fund.sucheEintraegeGueltig, "die Verfälschung traf auch die Suche").toBe(true);
+      expect(b.fund.sucheTrifft).toBe(true);
+      // (3) DER KERN. Die verfälschte Liste kommt als BENANNTER Fehlschlag an — mit Platz und
+      //     Istwert —, nicht als „die Prüfung findet nichts" und nicht als `TypeError`.
+      expect(
+        b.fund.pruefungEintraegeGueltig,
+        `die formlose Ähnlichkeitsliste galt als bewertbar — dann läuft sie nicht mehr durch liesTrefferliste. Gemeldet wurde: „${b.fund.pruefungEintragsFehlschlag}"`,
+      ).toBe(false);
+      expect(b.fund.pruefungEintragsFehlschlag, "die Meldung nennt den Platz nicht").toMatch(
+        /Platz 0/,
+      );
+      expect(b.fund.pruefungEintragsFehlschlag, "die Meldung nennt den Istwert nicht").toMatch(
+        /"ko-1"/,
+      );
+      expect(
+        b.fund.pruefungTrifft,
+        "aus einer formlosen Ähnlichkeitsliste wurde ein Treffer gerechnet",
+      ).toBe(false);
+      // (4) UND BIS ZUR ZUSAGE DER STRECKE, mit der ECHTEN Prüffolge statt einer nachgebauten:
+      //     genau die Funktion, die D1 an dieser Stelle fährt, wird hier rot — und ihre Meldung
+      //     trägt den Grund. Ohne diese Zeile bliebe offen, ob der Messwert je eine Zusage erreicht.
+      expect(() => pruefeAehnlichkeitsliste(b, "W3")).toThrow(/Platz 0/);
+      expect(() => pruefeStrecke(b), "die ganze Prüffolge übersah die verfälschte Liste").toThrow(
+        /Ähnlichkeitsliste/,
+      );
+    } finally {
+      await schliesse(lauf);
+    }
+  }, 120_000);
 
   it("Ü2 · die Strecke ist isoliert: ein zweiter Lauf sieht wieder eine leere Installation", async () => {
     // WARUM DAS HIERHER GEHÖRT und kein Selbstzweck ist: Schritt 1 behauptet „der Stand ist leer".

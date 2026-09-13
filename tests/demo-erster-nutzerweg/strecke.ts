@@ -92,6 +92,13 @@
 // Grenze, die erst NACH dem vollständigen Serialisieren kürzt, ist keine Grenze: `istwertVon`
 // schreibt jetzt nur noch begrenzt tief, begrenzt breit und begrenzt lang, und die Fehlermeldung
 // nennt höchstens `ISTWERT_MELDUNGEN` Plätze einzeln und zählt den Rest.
+//
+// JOB 3866 — DERSELBE SATZ FÜR OBJEKTE, und der Rest des nachträglichen Kürzens ist weg. Gemessen:
+// 5000 Einträge mit zwölf Feldern über sechs Ebenen ergaben eine Meldung von 1761 Zeichen. Runde 2
+// gab jedem genannten Platz nur noch `ISTWERT_JE_MELDUNG` Zeichen — aber unter dieser Aufteilung
+// verbuchte `drucke` weiterhin keine Klammer, keinen Doppelpunkt und kein „…", und `istwertVon`
+// schnitt das Ergebnis hinterher auf Mass. Seit Runde 3 (BEN Korrekturpflicht 1) bezahlt `drucke`
+// JEDES ausgegebene Zeichen aus demselben Vorrat, und `istwertVon` schneidet nicht mehr nach.
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -170,6 +177,59 @@ const KONTO = {
  *                             (erfundene Objektkennung). Prüft den Übergang 4→5 am Ankertor.
  */
 export type Auslassung = "import" | "quellensicherung";
+
+/**
+ * DIE VERFÄLSCHUNG FÜR DIE VERKABELUNG (JOB 3866, BEN zu 3849 R2: „ein dauerhafter HTTP-Gegenfall
+ * würde zusätzlich dessen Verkabelung bewachen").
+ *
+ * WAS SIE VON EINER AUSLASSUNG UNTERSCHEIDET: eine Auslassung nimmt einen SCHRITT aus der Strecke,
+ * diese hier verfälscht die ANTWORT einer Adresse. Gebraucht wird sie, weil die dauerhafte Probe aus
+ * JOB 3849 (`durchstich.test.ts`, (xii)/(xv)) den LESER misst und nicht seine Verkabelung: dass die
+ * Ähnlichkeitsliste des Live-Checks wirklich durch `liesTrefferliste` läuft, hing an einer
+ * Verstellung, die BEN nach seiner Messung wieder zurückgenommen hat. Ein Fall, der bleibt, hält
+ * auch das fest — nähme jemand den Leser aus `fahreStrecke` wieder heraus, käme `similar: ["ko-1"]`
+ * erneut als „die Prüfung findet nichts" durch, und W3 wird rot.
+ *
+ *   · `"similar-formlos"` — `POST /api/knowledge/check` antwortet mit HTTP 200 und einer
+ *     Ähnlichkeitsliste, deren Eintrag eine blosse Zeichenkette ist (`similar: ["ko-1"]`): die Form
+ *     fehlt, das Gesuchte steht buchstäblich in der Antwort. Alle anderen Adressen bleiben
+ *     unberührt, damit die rote Stelle die Ähnlichkeitsliste ist und nicht „irgendetwas ging schief".
+ */
+export type Verfaelschung = "similar-formlos";
+
+/**
+ * Setzt die Verfälschung als `onSend`-Hook auf GENAU eine Adresse. Callback-Stil, nicht `async` —
+ * das ist die WP-E-Regel des Werks (`services/app/src/noindex-hook.ts:10`, Wächter
+ * `services/app/src/sync-onsend-hooks.test.ts`): ein asynchroner onSend-Hook öffnet das
+ * wrap-thenable-Doppel-Send-Fenster. Der Hook hängt an der ZWEITEN App eines Laufs und stirbt mit
+ * ihr (`schliesse`) — er kann nichts hinterlassen, und `fahreStrecke()` ohne Option baut ihn nie.
+ */
+function verfaelscheAehnlichkeitsliste(app: FastifyInstance): void {
+  app.addHook("onSend", (anfrage, antwort, rumpf, weiter) => {
+    if (anfrage.url !== "/api/knowledge/check" || typeof rumpf !== "string") {
+      weiter(null, rumpf);
+      return;
+    }
+    let gelesen: Record<string, unknown>;
+    try {
+      gelesen = JSON.parse(rumpf) as Record<string, unknown>;
+    } catch {
+      // Kein JSON (etwa ein Fehlerblatt): dann gibt es keine Ähnlichkeitsliste zu verfälschen.
+      weiter(null, rumpf);
+      return;
+    }
+    // NUR die erfolgreiche Antwort mit Liste: die Anfrage OHNE Anmeldung (401) trägt keine und muss
+    // ihre eigene Aussage behalten — sonst misst W3 zwei Dinge auf einmal.
+    if (!Array.isArray(gelesen.similar)) {
+      weiter(null, rumpf);
+      return;
+    }
+    const verfaelscht = JSON.stringify({ ...gelesen, similar: ["ko-1"] });
+    // Die Länge ändert sich; ohne diese Zeile schnitte `inject` den Körper an der alten Zahl ab.
+    antwort.header("content-length", String(Buffer.byteLength(verfaelscht)));
+    weiter(null, verfaelscht);
+  });
+}
 
 export interface Schrittmessung {
   /** Wie der Schritt im Auftrag heisst. */
@@ -393,7 +453,9 @@ interface Lauf {
  *
  * Der Aufrufer schliesst beide Apps (`schliesse`).
  */
-export async function fahreStrecke(opt: { ohne?: Auslassung } = {}): Promise<Lauf> {
+export async function fahreStrecke(
+  opt: { ohne?: Auslassung; verfaelsche?: Verfaelschung } = {},
+): Promise<Lauf> {
   const verlauf: Schrittmessung[] = [];
   const merke = (schritt: string, weg: string, status: number): void => {
     verlauf.push({ schritt, weg, status });
@@ -545,6 +607,8 @@ export async function fahreStrecke(opt: { ohne?: Auslassung } = {}): Promise<Lau
   merke("4 entwurf", `GET /api/drafts/${entwurfId} (alte Sitzung)`, alteSitzung.statusCode);
 
   const zweiteApp = buildApp(services);
+  // VOR `ready()`, sonst nimmt Fastify den Hook nicht mehr an. Ohne Option geschieht hier nichts.
+  if (opt.verfaelsche === "similar-formlos") verfaelscheAehnlichkeitsliste(zweiteApp);
   await zweiteApp.ready();
   const wiederAn = await zweiteApp.inject({
     method: "POST",
@@ -836,9 +900,12 @@ function alsListe<T>(rohe: unknown): T[] {
   return Array.isArray(rohe) ? (rohe as T[]) : [];
 }
 
-/** Die eine Lesart für Diagnosetexte: 300 Zeichen, dann die Kürzung ausdrücklich benannt. */
-function gekuerzt(text: string): string {
-  return text.length > 300 ? `${text.slice(0, 300)}… (gekürzt)` : text;
+/** Wieviel EIN Diagnosetext für sich allein wert ist. */
+const ISTWERT_ZEICHEN = 300;
+
+/** Die eine Lesart für Diagnosetexte: die Grenze, dann die Kürzung ausdrücklich benannt. */
+function gekuerzt(text: string, grenze: number = ISTWERT_ZEICHEN): string {
+  return text.length > grenze ? `${text.slice(0, grenze)}… (gekürzt)` : text;
 }
 
 /**
@@ -859,6 +926,32 @@ const ISTWERT_TIEFE = 4;
 const ISTWERT_GLIEDER = 12;
 /** Wie viele formlose Einträge eine Meldung einzeln nennt, bevor sie nur noch zählt. */
 const ISTWERT_MELDUNGEN = 5;
+/**
+ * WIEVIEL EIN EINZELN GENANNTER PLATZ IN EINER MELDUNG WERT IST — und warum das nicht dasselbe ist
+ * wie `ISTWERT_ZEICHEN` (JOB 3866, gemessen).
+ *
+ * Bis hierher bekam JEDER der fünf genannten Plätze die vollen 300 Zeichen. Bei ARRAYS fiel das nie
+ * auf: `[null]`, `[{}]`, `["ko-1"]` und auch der 10 000 Ebenen tiefe Array-Körper aus JOB 3849
+ * drucken sich in unter 30 Zeichen aus, fünf davon bleiben weit unter der Grenze. Bei OBJEKTEN
+ * nicht: ein Eintrag mit zwölf Feldern je Ebene füllt seine 300 Zeichen wirklich aus. GEMESSEN am
+ * Stand davor, mit 5000 solchen Einträgen: `fehlschlag` war 1761 Zeichen lang (5 × 311 plus Rahmen)
+ * — und damit war „die Meldung wächst nicht mit dem Eintrag" für den Objektzweig falsch, obwohl
+ * jeder EINZELNE Istwert seine Grenze hielt (436 Zeichen bei einem Eintrag, tief wie voll
+ * verzweigt).
+ *
+ * DIE GRENZE GILT BEIM SCHREIBEN, eine Ebene höher: die ganze Meldung gibt für Istwerte zusammen
+ * nicht mehr aus als ein einzelner Istwert allein wert war. Kein nachträgliches Kürzen der fertigen
+ * Meldung — das wäre wieder der Fehler aus JOB 3849 Runde 2, nur an anderer Stelle — und keine
+ * Absenkung von `ISTWERT_MELDUNGEN`: die Zahl der genannten Plätze ist eine Aussage über die
+ * Lesbarkeit, nicht über die Länge, und beide Grenzen bleiben deshalb nebeneinander stehen.
+ *
+ * UND DIESE GRENZE IST KEIN ERSATZ FÜR DIE BUCHFÜHRUNG IN `drucke` (Runde 3, BEN Korrekturpflicht 1).
+ * Sie teilt einen Vorrat auf fünf Plätze auf; dass ein EINZELNER Platz seinen Anteil einhält, leistet
+ * allein `drucke`. Runde 2 hatte nur diese Aufteilung gebaut und die unvollständige Buchführung
+ * darunter stehen lassen — F13 misst deshalb den Weg OHNE diese Aufteilung (`ISTWERT_ZEICHEN` voll,
+ * ein Istwert, keine Plätze), damit die Buchführung für sich geprüft ist.
+ */
+const ISTWERT_JE_MELDUNG = Math.floor(ISTWERT_ZEICHEN / ISTWERT_MELDUNGEN);
 
 /**
  * DER ISTWERT EINES EINTRAGS — gedruckt, ohne ihn je GANZ zu drucken (JOB 3849 Runde 2).
@@ -876,30 +969,51 @@ const ISTWERT_MELDUNGEN = 5;
  * sobald der Vorrat leer ist. Was wegfällt, steht als „…" da: der Platz im Array und die Art des
  * Werts bleiben lesbar, denn genau die braucht der Mensch vor der Vorführung.
  *
+ * UND ES GIBT KEIN NACHTRÄGLICHES KÜRZEN MEHR (JOB 3866 Runde 3, BEN Korrekturpflicht 1). Bis hierher
+ * stand hier `gekuerzt(drucke(…), zeichen)`: ein `drucke`, das sich verrechnete, blieb dadurch
+ * unsichtbar — die Einhaltung der Grenze stellte der Schnitt DANACH her, nicht die Buchführung. Jetzt
+ * ist `drucke` die einzige Grenze, und sie gilt beim Schreiben. Fällt sie, wird die Meldung lang, und
+ * genau das messen F10–F13 in `durchstich.test.ts`.
+ *
  * KEIN `catch` — der Weg wirft nicht, statt einen Wurf umzudeuten. Ein `catch` würde den Istwert
  * verlieren und wäre wieder die „erwartet 200, war 503"-Meldung, die hier schon zu wenig war.
  */
-function istwertVon(eintrag: unknown): string {
-  return gekuerzt(drucke(eintrag, ISTWERT_TIEFE, { zeichen: 300 }));
+function istwertVon(eintrag: unknown, zeichen: number = ISTWERT_ZEICHEN): string {
+  return drucke(eintrag, ISTWERT_TIEFE, { zeichen });
 }
 
+/**
+ * JEDES AUSGEGEBENE ZEICHEN WIRD BEZAHLT — und zwar aus demselben Vorrat (JOB 3866 Runde 3, BEN
+ * Korrekturpflicht 1). Vorher verbuchte nur `nimm` seine Textstücke, dazu ein pauschales `-= 1` je
+ * Glied; die Klammern jeder Ebene, der Doppelpunkt zwischen Schlüssel und Wert und jedes ausgegebene
+ * „…" entstanden umsonst. Bei Arrays fiel das nie auf (`[null]` druckt sich in vier Zeichen aus), bei
+ * zwölf Feldern über sechs Ebenen sehr wohl: dort sind die Strukturzeichen der Grossteil des Textes.
+ *
+ * DESHALB IST `zahle` DIE EINZIGE STELLE, AN DER AUSGABE ENTSTEHT. Die Rückgabe dieser Funktion ist
+ * genau so lang, wie hier abgebucht wurde — die Klammern werden VOR der Schleife bezahlt, weil sie
+ * danach sicher geschrieben werden. Der Vorrat darf dabei kurz ins Minus laufen (ein abgeschnittenes
+ * Stück kostet ein Zeichen mehr als übrig war); jede Schleife und jeder Einstieg prüfen ihn danach,
+ * also ist der Überhang durch die TIEFE begrenzt und nicht durch den Eintrag.
+ */
 function drucke(wert: unknown, tiefe: number, vorrat: { zeichen: number }): string {
-  if (vorrat.zeichen <= 0) return "…";
-  const nimm = (text: string): string => {
-    const stueck = text.length > vorrat.zeichen ? `${text.slice(0, vorrat.zeichen)}…` : text;
-    vorrat.zeichen -= stueck.length;
-    return stueck;
+  const zahle = (text: string): string => {
+    vorrat.zeichen -= text.length;
+    return text;
   };
+  if (vorrat.zeichen <= 0) return zahle("…");
+  const nimm = (text: string): string =>
+    zahle(text.length > vorrat.zeichen ? `${text.slice(0, vorrat.zeichen)}…` : text);
   if (wert === null) return nimm("null");
   if (Array.isArray(wert)) {
     if (tiefe <= 0) return nimm(`[… zu tief, Länge ${wert.length}]`);
+    zahle("[]"); // die beiden Klammern, bevor sie geschrieben werden
     const glieder: string[] = [];
     for (const glied of wert) {
       if (glieder.length >= ISTWERT_GLIEDER || vorrat.zeichen <= 0) break;
-      vorrat.zeichen -= 1; // das Komma bzw. die Klammer, damit die Grenze wirklich hält
+      if (glieder.length > 0) zahle(","); // genau ein Trennzeichen je Zwischenraum
       glieder.push(drucke(glied, tiefe - 1, vorrat));
     }
-    return `[${glieder.join(",")}${glieder.length < wert.length ? "…" : ""}]`;
+    return `[${glieder.join(",")}${glieder.length < wert.length ? zahle("…") : ""}]`;
   }
   switch (typeof wert) {
     case "string":
@@ -908,16 +1022,18 @@ function drucke(wert: unknown, tiefe: number, vorrat: { zeichen: number }): stri
     case "object": {
       const felder = Object.keys(wert as object);
       if (tiefe <= 0) return nimm(`{… zu tief, Felder: ${felder.length}}`);
+      zahle("{}");
       const gedruckt: string[] = [];
       for (const feld of felder) {
         if (gedruckt.length >= ISTWERT_GLIEDER || vorrat.zeichen <= 0) break;
-        vorrat.zeichen -= 1;
+        if (gedruckt.length > 0) zahle(",");
         const schluessel = nimm(JSON.stringify(feld));
+        zahle(":");
         gedruckt.push(
           `${schluessel}:${drucke((wert as Record<string, unknown>)[feld], tiefe - 1, vorrat)}`,
         );
       }
-      return `{${gedruckt.join(",")}${gedruckt.length < felder.length ? "…" : ""}}`;
+      return `{${gedruckt.join(",")}${gedruckt.length < felder.length ? zahle("…") : ""}}`;
     }
     case "bigint":
       return nimm(`${wert}n`);
@@ -943,15 +1059,21 @@ function drucke(wert: unknown, tiefe: number, vorrat: { zeichen: number }): stri
  * bewertet werden" von „nicht gefunden" unterscheiden — genau die Unterscheidung, die der ganzen
  * Reihe dieser Runden zugrunde liegt.
  *
- * EIN GÜLTIGER EINTRAG HEILT KEINEN FORMLOSEN: gemeldet werden ALLE formlosen Einträge mit Platz und
- * Istwert, und `eintraege` bleibt in diesem Fall leer. Bis JOB 3849 lieferte `[{"id":"ko-1"},null]`
+ * EIN GÜLTIGER EINTRAG HEILT KEINEN FORMLOSEN: GEZÄHLT werden alle formlosen Einträge, einzeln mit
+ * Platz und Istwert GENANNT die ersten `ISTWERT_MELDUNGEN`, der Rest gezählt — und `eintraege` bleibt
+ * in diesem Fall leer. Bis JOB 3849 lieferte `[{"id":"ko-1"},null]`
  * ein `trifft: true`, weil `.some` beim ersten Treffer abbricht und den zweiten Eintrag nie sah.
  *
  * WIRFT NIE — und das schliesst die MELDUNG ein (Runde 2, BEN Korrekturpflicht 1). Eine Antwort, die
  * keine Liste ist, wird zum benannten Fehlschlag, nicht zu `[]`; und ein Eintrag, den man nicht ganz
  * ausdrucken kann (tief verschachtelt, sehr lang, sehr viele), wird trotzdem gemeldet, weil der
  * Istwert begrenzt GESCHRIEBEN und nicht erst vollständig gebaut und dann gekürzt wird (`istwertVon`).
- * Die Meldung selbst ist ebenfalls begrenzt: `ISTWERT_MELDUNGEN` Plätze einzeln, der Rest gezählt.
+ * Die Meldung selbst ist ZWEIFACH begrenzt (JOB 3866): `ISTWERT_MELDUNGEN` Plätze einzeln, der Rest
+ * gezählt — UND je genanntem Platz nur `ISTWERT_JE_MELDUNG` Zeichen Istwert. Die zweite Grenze fehlte
+ * bis JOB 3866 und fiel erst am Objektzweig auf: 5000 Einträge mit je zwölf Feldern über sechs Ebenen
+ * ergaben eine Meldung von 1761 Zeichen, weil fünf Plätze à 311 Zeichen genannt wurden. Beide Grenzen
+ * stehen AUF der Buchführung von `drucke` und ersetzen sie nicht — dort wird seit Runde 3 auch jede
+ * Klammer, jeder Doppelpunkt und jedes „…" bezahlt, und ein nachträglicher Schnitt gibt es nicht mehr.
  */
 export interface Trefferliste {
   /** Kam eine Liste, und trägt JEDER ihrer Einträge die erwartete Form? */
@@ -970,9 +1092,11 @@ export function liesTrefferliste(rohe: unknown): Trefferliste {
       eintraege: [],
     };
   }
-  // EIN DURCHGANG, UND ER IST BEGRENZT. Gezählt werden alle formlosen Einträge, einzeln GENANNT nur
-  // die ersten `ISTWERT_MELDUNGEN` — sonst wüchse die Meldung mit der Liste (5000 formlose Einträge
-  // ergaben 5000 Istwerte), und die Grenze im Istwert selbst hielte die Diagnose trotzdem nicht klein.
+  // EIN DURCHGANG, UND ER IST ZWEIFACH BEGRENZT. Gezählt werden alle formlosen Einträge, einzeln
+  // GENANNT nur die ersten `ISTWERT_MELDUNGEN` — sonst wüchse die Meldung mit der Liste (5000 formlose
+  // Einträge ergaben 5000 Istwerte). Und JEDER genannte Platz bekommt nur `ISTWERT_JE_MELDUNG`
+  // Zeichen: die Zahl der Plätze allein hielt die Meldung nicht klein, sobald die Einträge ihre 300
+  // Zeichen wirklich ausfüllten (JOB 3866, gemessen: 1761 Zeichen am Objektzweig).
   // Der erste Platz ist der, den ein Mensch zuerst nachschlägt; die Gesamtzahl steht davor.
   let formlose = 0;
   const genannt: string[] = [];
@@ -980,7 +1104,7 @@ export function liesTrefferliste(rohe: unknown): Trefferliste {
     if (istGueltigerEintrag(eintrag)) continue;
     formlose += 1;
     if (genannt.length < ISTWERT_MELDUNGEN)
-      genannt.push(`Platz ${platz} war ${istwertVon(eintrag)}`);
+      genannt.push(`Platz ${platz} war ${istwertVon(eintrag, ISTWERT_JE_MELDUNG)}`);
   }
   if (formlose > 0) {
     const weitere = formlose - genannt.length;
