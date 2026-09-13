@@ -149,7 +149,45 @@ export function Menue({
   // entfernt (Gegenprobe A dieser Runde). Drei Anläufe je Öffnung sind mehr, als der Ausgleich je
   // braucht (er konvergiert im ersten), und sie machen aus einem möglichen Stillstand eine
   // Fläche, die im Zweifel nur nicht ganz sitzt.
+  // ==============================================================================================
+  // JOB 3769 — UND DASSELBE SENKRECHT: DIE FLÄCHE WURDE UNTEN ABGESCHNITTEN.
+  // ==============================================================================================
+  //
+  // DIE MESSUNG (echtes Chromium, gebaute Anwendung, 390×844, Fall B6 in
+  // `tests/ki-freie-anweisung/ki-palette-390px-chromium.test.ts`): die KI-Palette öffnet bei y=130
+  // und ist 426 px hoch, endet also bei y=556. Die Fläche, in der die Seite rollt, ist aber nur
+  // y=56–519 hoch (`shell/AppShell.tsx:102`, `main.flex-1 overflow-y-auto`) — darunter liegt der
+  // KI-Hinweis als GESCHWISTER und nimmt bei 390 px 325 px echten Layout-Platz (`AppShell.tsx:105-109`,
+  // dort ausdrücklich so gewollt). Vom 36 px hohen freien Eingabefeld (y=509–545) waren damit 10 px zu
+  // sehen und 26 px weggeschnitten; beim Ausführen-Knopf dasselbe. Das Rechteck lag im FENSTER
+  // (545 < 844) — und trotzdem sah der Mensch das Feld nicht. Nur die Rollfläche sagt die Wahrheit.
+  //
+  // WARUM DER GEMESSENE AUSGLEICH UND NICHT EIN FESTER ANKER. Es ist Zeile für Zeile die Mechanik,
+  // die oben schon waagerecht steht: gemessen wird das, worauf es ankommt — liegt die Fläche in dem
+  // Kasten, in dem sie zu sehen ist? —, und nur die Differenz wird ausgeglichen. Ein festes
+  // „nach oben öffnen" (`bottom-full`) wäre derselbe Fehler auf dem Kopf: über dem Werkzeug liegen
+  // hier nur 44 px (Werkzeug y=100–120, Kasten ab y=56), die Fläche stünde dann ganz draussen.
+  // Eine feste Höhenbegrenzung mit eigenem Rollen bringt die Zusage AUS §1 NICHT: das Eingabefeld
+  // ist das LETZTE Stück der Fläche, ein Deckel schneidet also genau es ab — statt vom Fensterrand
+  // eben von der eigenen Rollkante. Gemessen wäre das dieselbe Zahl.
+  //
+  // NUR NACH OBEN, UND NUR SO WEIT WIE PLATZ IST. Der Schub ist auf den Weg begrenzt, den die
+  // Oberkante bis zum oberen Rand des Kastens hat (`moeglich`) — eine Fläche, die höher ist als der
+  // Kasten, bleibt deshalb oben bündig und springt nicht zwischen zwei Rändern. Nach unten wird NIE
+  // verschoben: die Fläche öffnet unter ihrem Werkzeug, sie kann oben gar nicht hinausragen, und ein
+  // zweiter Ausgleich in der Gegenrichtung wäre genau das Schwingen, das der Kommentar oben beschreibt.
+  //
+  // WAS ES KOSTET, ausdrücklich benannt: um 45 px verschoben deckt die Palette bei 390 px ihr eigenes
+  // Werkzeug zu (Palette dann y=85–511, Werkzeug y=100–120). Sie zu schliessen geht weiter über
+  // Escape und über einen Klick ausserhalb (beides unten in EINER Mechanik) — nur der Klick auf das
+  // Werkzeug selbst liegt hinter der Fläche. Die Alternative wäre eine Fläche, deren untere 26 px
+  // niemand sieht, und das war der gemeldete Mangel.
+  //
+  // ES GILT FÜR JEDES MENÜ DIESER ZEILE und ändert doch nur die, die WIRKLICH abgeschnitten sind:
+  // liegt die Fläche im Kasten, bleibt der Versatz 0 und es steht kein `style` da — die Fläche ist
+  // dann zeichengleich die von vorher (gemessen: `tests/design` bleibt unverändert grün).
   const [versatz, setVersatz] = useState(0);
+  const [versatzHoch, setVersatzHoch] = useState(0);
   const versuche = useRef(0);
   useLayoutEffect(() => {
     if (!istOffen) {
@@ -157,8 +195,24 @@ export function Menue({
       if (versatz !== 0) {
         setVersatz(0);
       }
+      if (versatzHoch !== 0) {
+        setVersatzHoch(0);
+      }
       return;
     }
+    // Der KASTEN, in dem die Fläche wirklich zu sehen ist: die nächste Fläche darüber, die senkrecht
+    // wegschneidet (hier `main`), auf das Fenster beschnitten. Gibt es keine, ist es das Fenster
+    // selbst. Ohne diesen Blick misst die Prüfung gegen 844 px und übersieht die 519 px, die gelten.
+    const kasten = (el: HTMLElement): { oben: number; unten: number } => {
+      const fensterhoehe = document.documentElement.clientHeight;
+      for (let p = el.parentElement; p; p = p.parentElement) {
+        if (getComputedStyle(p).overflowY !== "visible") {
+          const pr = p.getBoundingClientRect();
+          return { oben: Math.max(pr.top, 0), unten: Math.min(pr.bottom, fensterhoehe) };
+        }
+      }
+      return { oben: 0, unten: fensterhoehe };
+    };
     const einpassen = (): void => {
       const el = flaeche.current;
       if (!el || versuche.current >= 3) {
@@ -178,9 +232,25 @@ export function Menue({
         const moeglich = Math.max(0, r.left - rand);
         neu = versatz - Math.min(schub, moeglich);
       }
-      if (Math.abs(neu - versatz) > 0.5) {
+      let neuHoch = versatzHoch;
+      const k = kasten(el);
+      if (r.bottom > k.unten - rand) {
+        const schub = r.bottom - (k.unten - rand);
+        // DER RAND GIBT SENKRECHT NACH, BEVOR INHALT VERSCHWINDET — und nur hier, nicht waagerecht.
+        // Waagerecht ist der Kasten das Fenster und weit genug; senkrecht ist er bei 390×844 gemessen
+        // 463 px hoch (y=56–519), und die Palette wird im höchsten Zustand (eigene Vorlagen UND der
+        // Satz zum gescheiterten Abruf) 470 px hoch — nötig wären dort 89 px Schub, mit 8 px Rand
+        // möglich nur 66. GEMESSEN mit diesem Rand: 4 px des Eingabefeldes blieben abgeschnitten
+        // („px":4), dann wäre der RAND der Grund, warum ein Mensch sein Feld nicht sieht. Also
+        // höchstens bis an die Oberkante des Kastens (74 px; Feld dann y=479–515 im Kasten bis 519).
+        // Im gewöhnlichen Fall ändert das nichts: dort sind 45 px nötig und 66 px bequem möglich.
+        const moeglich = Math.max(0, r.top - k.oben);
+        neuHoch = versatzHoch - Math.min(schub, moeglich);
+      }
+      if (Math.abs(neu - versatz) > 0.5 || Math.abs(neuHoch - versatzHoch) > 0.5) {
         versuche.current += 1;
         setVersatz(neu);
+        setVersatzHoch(neuHoch);
       }
     };
     einpassen();
@@ -190,8 +260,44 @@ export function Menue({
       einpassen();
     };
     window.addEventListener("resize", beiGroesse);
-    return () => window.removeEventListener("resize", beiGroesse);
-  }, [istOffen, versatz]);
+    // ============================================================================================
+    // JOB 3769 — EINE NEUE HÖHE DER FLÄCHE IST GENAUSO EINE NEUE LAGE.
+    // ============================================================================================
+    //
+    // GEMESSEN, nicht überlegt: ohne diese Beobachtung blieb der senkrechte Ausgleich beim ERSTEN
+    // Öffnen 0, obwohl die Palette 45 px zu tief stand (`translate(-206.281px, 0px)`); beim zweiten
+    // Öffnen stimmte er (`translate(-206.281px, -45px)`, Palette dann y=85–511 im Kasten y=56–519).
+    // Der Unterschied ist die Reihenfolge: dieser Ausgleich rechnet in dem Augenblick, in dem die
+    // Fläche erscheint — und da ist sie noch nicht fertig. Die eigenen KI-Vorlagen kommen aus einem
+    // Abruf und machen sie danach über 100 px höher, ohne dass sich ein Fenster ändert; der Hörer
+    // oben feuert dann nicht, und die Rechnung blieb auf dem ersten, falschen Stand stehen.
+    // Waagerecht fiel das nie auf: die Breite hängt hier nicht am Inhalt (`min-w`/`max-w` deckeln
+    // sie), die Höhe hängt daran.
+    //
+    // BEOBACHTET WIRD NUR DIE FLÄCHE, NICHT AUCH IHR KASTEN — weil GEMESSEN ist, dass die Fläche
+    // genügt: mit der Kastenbeobachtung daneben und ohne sie steht dieselbe Zahl (B6 grün, Palette
+    // y=85–511). Der Kasten wird zwar ebenfalls niedriger, sobald der KI-Hinweis unter der
+    // Inhaltsfläche seinen Platz nimmt (`shell/AppShell.tsx:105-109`, 325 px bei 390 px Breite) —
+    // aber das geschieht VOR dem Abruf der Vorlagen, die Neuberechnung holt es also mit. Eine
+    // zweite Beobachtung, die nachweislich nichts ändert, wäre eine Zeile, die etwas behauptet, was
+    // sie nicht leistet. Was damit NICHT abgedeckt ist und in der Rückgabe als REST steht: ein
+    // Kasten, der schrumpft, WÄHREND das Menü offen steht (etwa ein Hinweis, der dann erst
+    // erscheint) — dann bleibt die Fläche stehen, wo sie steht.
+    //
+    // ES SCHWINGT NICHT: eine Verschiebung ändert die GRÖSSE der Fläche nicht, die Beobachtung
+    // feuert also nicht wegen ihres eigenen Ergebnisses. Und wo es keinen `ResizeObserver` gibt
+    // (jsdom), bleibt alles wie zuvor — dieselbe Grenze, die `pages/Wissensnetz.tsx:716` zieht.
+    const el = flaeche.current;
+    const beobachter =
+      el && typeof ResizeObserver !== "undefined" ? new ResizeObserver(beiGroesse) : null;
+    if (beobachter !== null && el !== null) {
+      beobachter.observe(el);
+    }
+    return () => {
+      window.removeEventListener("resize", beiGroesse);
+      beobachter?.disconnect();
+    };
+  }, [istOffen, versatz, versatzHoch]);
 
   // Klick nach außen und Escape schließen — beides nur, solange DIESES Menü offen ist. Der Hörer
   // hängt am Dokument und nicht an der Hülle: ein Klick auf eine andere Stelle der Seite erreicht
@@ -286,9 +392,14 @@ export function Menue({
           className={`absolute z-40 mt-1.5 min-w-[220px] max-w-[min(340px,calc(100vw-1rem))] rounded-[10px] border border-hairline bg-surface p-1 shadow-tile ${
             gerahmt ? "right-0" : "left-0"
           }`}
-          // Der gemessene Ausgleich (s. oben). Ohne Verschiebung steht hier nichts — die Fläche
-          // bleibt dann zeichengleich die, die das Zielbild bei 1280 px misst.
-          style={versatz === 0 ? undefined : { transform: `translateX(${versatz}px)` }}
+          // Der gemessene Ausgleich, beide Achsen in EINER Verschiebung (s. oben). Ohne Verschiebung
+          // steht hier nichts — die Fläche bleibt dann zeichengleich die, die das Zielbild bei
+          // 1280 px misst.
+          style={
+            versatz === 0 && versatzHoch === 0
+              ? undefined
+              : { transform: `translate(${versatz}px, ${versatzHoch}px)` }
+          }
         >
           {children}
         </div>

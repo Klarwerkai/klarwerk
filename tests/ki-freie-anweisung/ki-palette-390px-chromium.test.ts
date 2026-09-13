@@ -38,10 +38,32 @@
 //     Handy höher als das Fenster, und die Seite senkrecht zu rollen ist der normale Weg dorthin.
 //     Gemessen wird das nicht gerechnet, sondern GEFAHREN (`scrollIntoView`, dann nachgemessen) —
 //     und zusätzlich, dass KEIN wegschneidender Vorfahre ein Stück unwiederbringlich hält.
-// Was diese Datei ausdrücklich NICHT belegt: dass am Handy alles OHNE Rollen gleichzeitig zu sehen
-// ist. Das ist bei 390×844 gemessen NICHT der Fall (die Zahlen stehen in der Rückgabe), und es zu
-// ändern hiesse, an der Hilfeform oder an der Menüsetzung (`Menue.tsx`) zu bauen — beides liegt
-// ausserhalb der Zielpfade dieses Auftrags und ist dort als REST benannt.
+// JOB 3769 — UND GENAU DAS, WAS RUNDE 3 HIER OFFEN LIESS, IST JETZT BELEGT.
+// Bis hierher stand an dieser Stelle: „Was diese Datei ausdrücklich NICHT belegt: dass am Handy
+// alles OHNE Rollen gleichzeitig zu sehen ist. Das ist bei 390×844 gemessen NICHT der Fall … und es
+// zu ändern hiesse, an der Hilfeform oder an der Menüsetzung (`Menue.tsx`) zu bauen." Der Satz war
+// wahr und ist es nicht mehr: der Erklärsatz jeder Vorlage stand ZWEIMAL da (`HelpTip` UND ein
+// sichtbarer Absatz mit demselben Aufruf), und die drei Absätze waren 86,3 + 86,3 + 155,3 px der
+// 664 px hohen Palette. Von den zwei Darbietungen ist eine geblieben; `Menue.tsx` musste dafür NICHT
+// angefasst werden (gemessen, Fall B6). Neu:
+//   · B6 misst die Zusage aus §1 — ohne jedes Rollen im Fenster.
+//   · K5 nimmt die Doppelung in der laufenden Seite zurück und verlangt, dass B6 wieder rot wird.
+//
+// JOB 3769 RUNDE 2 — UND DER SATZ IST AM TELEFON WIRKLICH ZU LESEN, NICHT NUR VORHANDEN.
+// Runde 1 hat den Satz an den `HelpTip` und an den `title` des Vorlagenknopfes gehängt und hier
+// notiert, was das offen lässt. Der Prüfer hat beides NACHGEFAHREN und als KEINEN Weg belegt: der
+// Klick auf das Zahnrad schliesst die Palette, mit ihr meldet sich der `HelpTip` ab
+// (`{"paletteOffen":false,"erklaerungLesbar":false}`), und ein `title` braucht ein Überfahren, das
+// es am Telefon nicht gibt. Seit Runde 2 liegt der Satz hinter einem „?"-Griff neben dem
+// Vorlagennamen und steht aufgeschlagen als Absatz da. Diese Datei misst beide Zustände:
+//   · B6 (zugeklappt): der Griff ist da und zu fassen, und NICHTS zeichnet die Anweisung.
+//   · B7 (aufgeschlagen): echte Bedienfolge bei 390×844 — Griff geklickt, Satz vollständig, ganz zu
+//     lesen und erreichbar; danach zugeklappt und B6 hält wieder.
+//   · K2 bricht GENAU diesen Absatz (gedeckelt, geleert) und den Griff — alle drei MÜSSEN rot werden.
+// Was diese Datei weiter ausdrücklich NICHT belegt: ein echtes `pointerdown`/`touchstart` einer
+// Fingerkuppe. Die Bühne trägt kein Zeigegerät (`h3-blatt-buehne.ts:75-94`) und ist kein Zielpfad;
+// geklickt wird über `element.click()`, denselben Weg, auf dem auch die Palette aufgeht. Auf dieser
+// Fläche hängt nichts an Zeigerereignissen. Steht als REST in der Rückgabe.
 //
 // FÄLLE
 // B1  Maus, 390 px: Palette offen, kein waagerechter Überlauf; jedes Stück senkrecht ERREICHBAR.
@@ -50,14 +72,21 @@
 // B4  nur Tastatur, freie Anweisung: gemessen wird der ausgehende `POST /api/reasoner`-Rumpf.
 // B5a Cache + gescheiterte Auffrischung, schmal: die Vorlagen BLEIBEN, der Satz kommt darunter dazu.
 // B5b gescheiterter Vorlagenabruf ganz, schmal: der Satz steht da, ist lesbar und verdrängt nichts.
-// K1  KALIBRIERUNG waagerecht: `max-w-full break-words` zurückgenommen → die Messung MUSS rot werden.
-// K2  KALIBRIERUNG senkrecht/Text: der Hilfesatz auf 1 px gedeckelt → die Messung MUSS rot werden.
-//     (Genau die Gegenprobe, an der Runde 1 grün geblieben ist.)
+// B6  390×844 OHNE Rollen: Vorlagen, freie Eingabe und Ausführen-Knopf im Fenster (JOB 3769).
+// B7  390×844 BEDIENT: der „?"-Griff schlägt die Erklärung auf, sie ist ganz zu lesen, danach hält
+//     B6 wieder (JOB 3769 R2, Korrekturpflicht 1 des Prüfers).
+// K1  KALIBRIERUNG waagerecht: Breitendeckel und `break-words` zurückgenommen → Messung MUSS rot.
+// K2  KALIBRIERUNG senkrecht/Text: der Vorlagentext auf 1 px gedeckelt UND die aufgeschlagene
+//     Erklärung gedeckelt, geleert und ihr Griff auf 4 px verkleinert → jede Messung MUSS rot
+//     werden. (Die 1-px-Gegenprobe, an der Runde 1 grün blieb — seit JOB 3769 R2 an der EINEN
+//     verbliebenen Darbietung des Satzes, die ein Mensch wirklich aufschlagen kann.)
 // K3  KALIBRIERUNG Erreichbarkeit: ein NICHT rollbarer Deckel über der Palette → die Messung MUSS
 //     rot werden. Ohne ihn hiesse „erreichbar" nur „scrollIntoView wurde gerufen".
 // K4  KALIBRIERUNG rollbare Beschneidung: eine weiterhin ROLLBARE, aber zu kleine Fläche über dem
 //     Stück → Erreichbarkeitsmesser UND Fokusmesser MÜSSEN rot werden. Genau die Gegenprobe, an der
 //     RUNDE 2 grün geblieben ist (Korrekturpflicht 1).
+// K5  KALIBRIERUNG von B6: der doppelte Absatz in der laufenden Seite zurückgeholt → B6 MUSS wieder
+//     rot werden, und die Doppelung selbst MUSS auffallen (JOB 3769).
 // P   die Seite hat während aller Messungen nichts geworfen.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -68,8 +97,10 @@ import { type Buehne, ORIGIN, type Seite, buehneAufbauen, fn } from "../design/h
 // An einer kurzen Vorlage fiele weder ein Überlauf noch ein abgeschnittener Name auf. Die zweite
 // ist der Fall, den ein gewöhnlicher Umbruch NICHT auflösen kann: ein einzelnes Wort ohne
 // Leerzeichen (48 Zeichen) — nur `overflow-wrap: break-word` bricht darin, alles andere schiebt es
-// über den Rand. Die dritte trägt die lange ANWEISUNG: sie steht als Hilfesatz unter dem Knopf
-// (`AiAssistBox.tsx:207-209`) und ist damit der längste Textblock der Palette.
+// über den Rand. Die dritte trägt die lange ANWEISUNG: sie stand bis JOB 3769 als 155,3 px hoher
+// Hilfesatz unter dem Knopf und war damit der längste Textblock der Palette; seit JOB 3769 R2 liegt
+// sie hinter dem „?"-Griff (`AiAssistBox.tsx`) — zugeklappt zeichnet sie nichts (B6/K5),
+// aufgeschlagen steht sie ganz da (B7/K2).
 const KURZ = { id: "v1", name: "Übergabe kurz", instruction: "Fasse die Übergabe in zwei Sätzen." };
 /** Ein einzelnes Wort ohne Umbruchpunkt. Die Länge steht nicht als Zahl da, sie wird in B0 gemessen. */
 const LANGER_NAME = "Instandhaltungsuebergabeprotokollzusammenfassung";
@@ -210,10 +241,32 @@ const MASSE = `(arg) => {
   const palette = document.querySelector('[data-testid="blatt-menue-ki"]');
   const knoepfe = palette ? [...palette.querySelectorAll('button')] : [];
   const treffer = (n) => knoepfe.find((x) => (x.textContent || '').replace(/\\s+/g, ' ').trim() === n) || null;
-  const hilfe = (n) => { const b = treffer(n); return b && b.parentElement ? b.parentElement.querySelector('p') : null; };
+  // JOB 3769 R2: die Erklärung der Vorlage liegt hinter einem GRIFF („?" neben dem Namen) und steht
+  // AUFGESCHLAGEN als Absatz auf der Fläche. Gemessen wird deshalb beides und getrennt:
+  //   · der GRIFF — ist er da, wie gross ist er, sagt er selbst, ob er offen ist (aria-expanded)?
+  //   · der ABSATZ — steht er da, wie liegt er, und welcher Wortlaut steht wirklich darin?
+  // Der Wortlaut kommt aus textContent und nicht aus einem Attribut: was ein Mensch liest, ist genau
+  // das, was gezeichnet ist. Runde 1 hat hier einen title geprüft — der Prüfer hat belegt, dass ein
+  // Attribut am Telefon kein Weg ist (ben.md R1, Korrekturpflicht 1/2).
+  // KEINE RÜCKWÄRTSHOCHKOMMAS IN DIESEM BLOCK: MASSE ist selbst ein Template-Literal, ein einzelnes
+  // Zeichen davon beendete es mitten im Kommentar (gemessen: TS1005 in dieser Runde).
+  const griff = (id) => palette ? palette.querySelector('[data-testid="ki-vorlage-hilfe-' + id + '"]') : null;
+  const absatz = (id) => palette ? palette.querySelector('[data-testid="ki-vorlage-satz-' + id + '"]') : null;
   const feld = palette ? palette.querySelector('input') : null;
   const knopf = feld && feld.parentElement ? feld.parentElement.querySelector('button') : null;
   const satz = palette ? palette.querySelector('[data-testid="ki-vorlagen-fehler"]') : null;
+  // UND DIE GEGENRICHTUNG (JOB 3769, §7 ABLÖSUNG): ZEICHNET in der Palette noch irgendetwas die
+  // Anweisung einer Vorlage? Gesucht wird an den BLÄTTERN (Elemente ohne Kindelemente), sonst meldete
+  // jeder Vorfahre denselben Treffer mit. Gesucht wird nach der ANWEISUNG selbst, nicht nach einem
+  // Stück des Erklärsatzes: die Anweisung ist sprachunabhängig und kommt in der Palette sonst
+  // nirgends vor — der Knopf trägt den NAMEN der Vorlage. Ein title ist ein Attribut und steht in
+  // keinem textContent; er kann diese Liste also nicht füllen.
+  const gezeichnet = (was) => {
+    if (!palette || !was) { return []; }
+    return [...palette.querySelectorAll('*')]
+      .filter((e) => e.children.length === 0 && (e.textContent || '').indexOf(was) >= 0)
+      .map((e) => e.tagName + '.' + String(e.className || '').slice(0, 40));
+  };
   // Die nächste Fläche über dem Stück, die WEGSCHNEIDET statt überstehen zu lassen. Nur sie sagt,
   // ob ein zu breites Kind hinter einem Seitwärtsrollen verschwindet — das Rechteck des Kindes
   // meldet auch dann seine volle Breite, wenn davon nichts zu sehen ist.
@@ -237,7 +290,7 @@ const MASSE = `(arg) => {
       : arg.heran === 'knopf' ? knopf
       : arg.heran === 'satz' ? satz
       : arg.heran.indexOf('vorlage:') === 0 ? treffer(namen[Number(arg.heran.slice(8))])
-      : arg.heran.indexOf('hilfe:') === 0 ? hilfe(namen[Number(arg.heran.slice(6))])
+      : arg.heran.indexOf('erklaerung:') === 0 ? absatz(arg.heran.slice(11))
       : null;
     if (ziel) { ziel.scrollIntoView({ block: 'center', inline: 'nearest' }); }
   }
@@ -247,16 +300,27 @@ const MASSE = `(arg) => {
     seitenbreite: document.documentElement.scrollWidth,
     seitenhoehe: document.documentElement.scrollHeight,
     rollstand: rd(window.scrollY),
+    // JOB 3769: WER HAT GEROLLT? window.scrollY allein genügt hier nicht — die Seite rollt nicht im
+    // Fenster, sondern in ihrer eigenen Fläche (MAIN.flex-1 overflow-y-auto, gemessen), und die
+    // Palette hat darin noch eine. „Ohne Rollen" ist nur belegt, wenn NICHTS gerollt ist.
+    gerollt: [...document.querySelectorAll('*')]
+      .filter((e) => e.scrollTop > 0)
+      .map((e) => (e.getAttribute('data-testid') || e.tagName) + ':' + Math.round(e.scrollTop)),
     heran: arg.heran || null,
   };
   if (!palette) {
-    return Object.assign(grund, { palette: null, vorlagen: [], hilfesaetze: [], rollflaechen: [], feld: null, knopf: null, satz: null });
+    return Object.assign(grund, { palette: null, vorlagen: [], griffe: [], griffeOffen: [], erklaerungen: [], erklaerungstexte: [], gezeichnet: [], rollflaechen: [], feld: null, knopf: null, satz: null });
   }
+  const ids = arg.ids || [];
   return Object.assign(grund, {
     rollflaechen: namen.map((n) => rollflaeche(treffer(n))),
     palette: r(palette),
     vorlagen: namen.map((n) => { const b = treffer(n); return b ? r(b) : null; }),
-    hilfesaetze: namen.map((n) => { const p = hilfe(n); return p ? r(p) : null; }),
+    griffe: ids.map((id) => { const g = griff(id); return g ? r(g) : null; }),
+    griffeOffen: ids.map((id) => { const g = griff(id); return g ? g.getAttribute('aria-expanded') === 'true' : null; }),
+    erklaerungen: ids.map((id) => { const a = absatz(id); return a ? r(a) : null; }),
+    erklaerungstexte: ids.map((id) => { const a = absatz(id); return a ? (a.textContent || '') : null; }),
+    gezeichnet: (arg.anweisungen || []).map((a) => gezeichnet(a)),
     feld: feld ? r(feld) : null,
     knopf: knopf ? r(knopf) : null,
     satz: satz ? r(satz) : null,
@@ -307,10 +371,21 @@ interface Masse {
   seitenbreite: number;
   seitenhoehe: number;
   rollstand: number;
+  /** JOB 3769: jede Fläche, die gerade GEROLLT ist (Marke:scrollTop). Leer heisst: nichts gerollt. */
+  gerollt: string[];
   heran: string | null;
   palette: Stueck | null;
   vorlagen: (Stueck | null)[];
-  hilfesaetze: (Stueck | null)[];
+  /** JOB 3769 R2: der „?"-Griff, hinter dem die Erklärung der Vorlage liegt — Lage und Grösse. */
+  griffe: (Stueck | null)[];
+  /** JOB 3769 R2: was der Griff SELBST über seinen Zustand sagt (`aria-expanded`). */
+  griffeOffen: (boolean | null)[];
+  /** JOB 3769 R2: der aufgeschlagene Erklärabsatz — nur da, wenn er wirklich gezeichnet ist. */
+  erklaerungen: (Stueck | null)[];
+  /** JOB 3769 R2: sein vollständiger Wortlaut (`textContent`), ungekürzt. */
+  erklaerungstexte: (string | null)[];
+  /** JOB 3769: welche Blätter der Palette die Anweisung noch ZEICHNEN. Leer heisst: keine Doppelung. */
+  gezeichnet: string[][];
   rollflaechen: (Rollflaeche | null)[];
   feld: Stueck | null;
   knopf: Stueck | null;
@@ -430,6 +505,43 @@ async function vorlagenAbwarten(): Promise<void> {
   );
 }
 
+/**
+ * WARTEN, BIS DIE LAGE DER PALETTE STEHT — nicht, bis sie passt (JOB 3769).
+ *
+ * Die Fläche setzt sich nach dem Öffnen noch: die eigenen Vorlagen kommen aus einem Abruf und machen
+ * sie höher, und der Kasten, in dem sie zu sehen ist, wird niedriger, sobald der KI-Hinweis unter der
+ * Inhaltsfläche seinen Platz nimmt. Der gemessene Ausgleich in `Menue.tsx` rechnet daraufhin neu.
+ * GEMESSEN: unmittelbar nach dem Öffnen stand `transform: translate(-206.281px, 0px)`, 60 ms später
+ * `translate(-206.281px, -45px)` — wer sofort misst, misst einen Zwischenstand.
+ *
+ * GEWARTET WIRD AUF RUHE, NICHT AUF DAS ERGEBNIS: verlangt werden drei gleiche Messungen in Folge
+ * (150 ms) und mindestens 200 ms seit dem Öffnen. Diese Funktion prüft NICHTS — sie hält die Lage
+ * nicht für gut, sie stellt nur fest, dass sie sich nicht mehr ändert. Kommt sie in 2 s nicht zur
+ * Ruhe, ist das ein Fehlschlag und kein Grund weiterzumessen: eine Fläche, die immer noch wandert,
+ * ist für einen Menschen keine Fläche.
+ */
+async function ruheAbwarten(lage: string): Promise<void> {
+  const s = seite();
+  const LESEN = `() => {
+    const p = document.querySelector('[data-testid="blatt-menue-ki"]');
+    if (!p) { return 'KEINE PALETTE'; }
+    const r = p.getBoundingClientRect();
+    return (Math.round(r.top * 10) / 10) + '/' + (Math.round(r.bottom * 10) / 10);
+  }`;
+  let gleich = 0;
+  let vorher = "";
+  for (let i = 0; i < 40; i++) {
+    await s.evaluate(fn("() => new Promise((r) => setTimeout(r, 50))"));
+    const jetzt = await s.evaluate<string>(fn(LESEN));
+    gleich = jetzt === vorher ? gleich + 1 : 0;
+    vorher = jetzt;
+    if (gleich >= 2 && i >= 3) {
+      return;
+    }
+  }
+  throw new Error(`${lage}: die Lage der Palette kommt in 2 s nicht zur Ruhe (${vorher})`);
+}
+
 /** Fenster stellen, Blatt mit Inhalt fahren, KI-Palette über die Maus öffnen. */
 async function paletteOeffnen(breite: number, mitVorlagen = true): Promise<void> {
   const s = await blattFahren(breite);
@@ -446,10 +558,80 @@ async function paletteOeffnen(breite: number, mitVorlagen = true): Promise<void>
   if (mitVorlagen) {
     await vorlagenAbwarten();
   }
+  await ruheAbwarten(`Palette bei ${breite} px`);
+}
+
+/**
+ * JOB 3769 R2 — DIE ERKLÄRUNG EINER VORLAGE AUFSCHLAGEN, WIE EIN MENSCH ES TUT.
+ *
+ * Der Griff wird ANGEKLICKT, nicht sein Zustand gesetzt: `element.click()` läuft durch dieselbe
+ * React-Behandlung wie eine Berührung, und genau dieselbe Bewegung öffnet weiter oben schon die
+ * Palette selbst (`paletteOeffnen`). Was damit NICHT belegt ist und in der Rückgabe steht: ein
+ * echtes `pointerdown/touchstart` einer Fingerkuppe — die Bühne trägt weder Maus noch Zeigegerät
+ * (`h3-blatt-buehne.ts:75-94`, `export interface Seite`), und sie ist kein Zielpfad dieses Auftrags.
+ * Auf dieser Fläche hängt nichts an Zeigerereignissen; der Klickweg ist der ganze Weg.
+ *
+ * GEWARTET WIRD AUF DEN ABSATZ UND DANN AUF RUHE: die Fläche wird höher, der gemessene senkrechte
+ * Ausgleich in `Menue.tsx` rechnet daraufhin neu. Wer sofort misst, misst einen Zwischenstand.
+ */
+async function erklaerungAufschlagen(id: string, lage: string): Promise<void> {
+  const s = seite();
+  const traf = await s.evaluate<boolean>(
+    fn(
+      `(id) => { const g = document.querySelector('[data-testid="ki-vorlage-hilfe-' + id + '"]'); if (!g) { return false; } g.click(); return true; }`,
+    ),
+    id,
+  );
+  expect(traf, `${lage}: der Erklärgriff der Vorlage „${id}" ist gar nicht da`).toBe(true);
+  await s.waitForFunction(
+    fn(`(id) => document.querySelector('[data-testid="ki-vorlage-satz-' + id + '"]') !== null`),
+    id,
+    { timeout: 10_000 },
+  );
+  await ruheAbwarten(`${lage} · Erklärung aufgeschlagen`);
+}
+
+/** Derselbe Griff, zurück — der Absatz MUSS danach fort sein. */
+async function erklaerungZuklappen(id: string, lage: string): Promise<void> {
+  const s = seite();
+  await s.evaluate(
+    fn(
+      `(id) => { const g = document.querySelector('[data-testid="ki-vorlage-hilfe-' + id + '"]'); if (g) { g.click(); } }`,
+    ),
+    id,
+  );
+  await s.waitForFunction(
+    fn(`(id) => document.querySelector('[data-testid="ki-vorlage-satz-' + id + '"]') === null`),
+    id,
+    { timeout: 10_000 },
+  );
+  await ruheAbwarten(`${lage} · Erklärung zugeklappt`);
+}
+
+/**
+ * Alles zurück an den Anfang — der Zustand, in dem ein Mensch die Palette öffnet (JOB 3769).
+ *
+ * Nötig, wo vorher `senkrechtErreichbar` gefahren ist: dessen `scrollIntoView` rollt die Fläche der
+ * Seite und die der Palette. Ohne diesen Rückweg misst `ohneRollenImFenster` einen gerollten Stand
+ * und nennt ihn „ohne Rollen" — und genau das darf es nicht (die Messung sagt es auch selbst, über
+ * `Masse.gerollt`).
+ */
+async function nachObenRollen(): Promise<void> {
+  await seite().evaluate(
+    fn(`() => {
+      window.scrollTo(0, 0);
+      for (const e of [...document.querySelectorAll('*')]) { if (e.scrollTop !== 0) { e.scrollTop = 0; } }
+    }`),
+  );
 }
 
 async function messen(lage: string, heran: string | null = null): Promise<Masse> {
-  const m = await seite().evaluate<Masse>(fn(MASSE), { namen: NAMEN, heran });
+  const m = await seite().evaluate<Masse>(fn(MASSE), {
+    namen: NAMEN,
+    ids: VORLAGEN.map((v) => v.id),
+    heran,
+    anweisungen: VORLAGEN.map((v) => v.instruction),
+  });
   console.info(`JOB 3584 · ${lage} · ${JSON.stringify(m)}`);
   return m;
 }
@@ -459,24 +641,16 @@ const STUECKE: { heran: string; was: string; hol: (m: Masse) => Stueck | null }[
   { heran: "vorlage:0", was: `die Vorlage „${KURZ.name}"`, hol: (m) => m.vorlagen[0] ?? null },
   { heran: "vorlage:1", was: `die Vorlage „${LANGER_NAME}"`, hol: (m) => m.vorlagen[1] ?? null },
   { heran: "vorlage:2", was: `die Vorlage „${LANGE.name}"`, hol: (m) => m.vorlagen[2] ?? null },
-  {
-    heran: "hilfe:0",
-    was: `der Hilfesatz zu „${KURZ.name}"`,
-    hol: (m) => m.hilfesaetze[0] ?? null,
-  },
-  {
-    heran: "hilfe:1",
-    was: `der Hilfesatz zu „${LANGER_NAME}"`,
-    hol: (m) => m.hilfesaetze[1] ?? null,
-  },
-  {
-    heran: "hilfe:2",
-    was: "der Hilfesatz der langen Anweisung",
-    hol: (m) => m.hilfesaetze[2] ?? null,
-  },
   { heran: "feld", was: "die freie Eingabe", hol: (m) => m.feld },
   { heran: "knopf", was: "der Ausführen-Knopf", hol: (m) => m.knopf },
 ];
+// JOB 3769: die drei Einträge „hilfe:0/1/2" stehen hier nicht mehr — und zwar mit Absicht. Diese
+// Liste ist der ERSTE BLICK auf die Palette: was ein Mensch sieht, ohne etwas zu tun. Die Erklärung
+// gehört seit JOB 3769 R2 nicht mehr dazu, sie liegt hinter ihrem Griff; ihre 86,3 + 86,3 + 155,3 px
+// waren der Grund, warum freie Eingabe und Ausführen-Knopf unter dem Fensterrand lagen. Gemessen
+// wird sie in dem Zustand, in dem es sie gibt — aufgeschlagen, in B7 und K2 (`erklaerungLesbar`).
+// Stünde sie hier, verlangte jeder Fall dieser Datei ein Rechteck von einem Knoten, den es
+// zugeklappt gar nicht gibt.
 
 /** Ein Stück steht wirklich da und trägt Fläche — auf beiden Achsen. */
 function vorhanden(st: Stueck | null, was: string, lage: string): Stueck {
@@ -599,12 +773,77 @@ function paletteWaagerecht(m: Masse, lage: string): void {
 function paletteTexteLesbar(m: Masse, lage: string): void {
   for (const [i, name] of NAMEN.entries()) {
     const v = m.vorlagen[i];
-    const h = m.hilfesaetze[i];
     expect(v, `${lage}: die Vorlage „${name}" steht nicht da`).not.toBeNull();
-    expect(h, `${lage}: der Hilfesatz zu „${name}" steht nicht da`).not.toBeNull();
     ganzLesbar(v as Stueck, `die Vorlage „${name}"`, lage);
-    ganzLesbar(h as Stueck, `der Hilfesatz zu „${name}"`, lage);
   }
+}
+
+/**
+ * JOB 3769 R2 — DER GRIFF ZUR ERKLÄRUNG IST DA, ZU FASSEN, UND ZUGEKLAPPT ZEICHNET ER NICHTS.
+ *
+ * Das ist die erste Hälfte der Zusage aus §1 „keine Erklärung geht dabei verloren". Runde 1 hat sie
+ * an einem `title` festgemacht, und der Prüfer hat im echten Chromium nachgefahren, dass ein
+ * Attribut am Telefon kein Weg ist (Korrekturpflicht 2: „Den Attributnachweis durch diesen
+ * Nutzertest ergänzen"). Gemessen wird ab hier der GRIFF, den ein Finger trifft:
+ *   (a) ER IST DA UND ER IST ZU FASSEN. Ein Rechteck mit Fläche, ganz im Fenster, mindestens 22 px
+ *       in beide Richtungen — darunter ist es kein Ziel für einen Finger, sondern eine Behauptung.
+ *   (b) ER SAGT SELBST, DASS ER ZU IST (`aria-expanded="false"`). Ohne diese Zeile hiesse
+ *       „zugeklappt" nur „ich habe gerade keinen Absatz gefunden".
+ *   (c) UND SOLANGE ER ZU IST, ZEICHNET NICHTS DIE ANWEISUNG. Genau das hat die Palette 664 px hoch
+ *       gemacht; §7 ABLÖSUNG verlangt, dass es keine zweite Stelle mehr gibt.
+ * Dass hinter dem Griff wirklich der Satz steht, ist die ANDERE Hälfte und steht in
+ * `erklaerungLesbar` (B7) — sie wird gefahren, nicht gelesen.
+ */
+function erklaerungGriffDa(m: Masse, lage: string): void {
+  for (const [i, v] of VORLAGEN.entries()) {
+    const g = vorhanden(m.griffe[i] ?? null, `der Erklärgriff der Vorlage „${v.name}"`, lage);
+    expect(
+      Math.min(g.breite, g.hoehe),
+      `${lage}: der Erklärgriff der Vorlage „${v.name}" ist nur ${g.breite}×${g.hoehe} px gross — kein Ziel für einen Finger`,
+    ).toBeGreaterThanOrEqual(22);
+    waagerechtImFenster(g, `der Erklärgriff der Vorlage „${v.name}"`, m, lage);
+    expect(
+      m.griffeOffen[i],
+      `${lage}: der Erklärgriff der Vorlage „${v.name}" sagt nicht, ob er auf oder zu ist (aria-expanded fehlt)`,
+    ).toBe(false);
+    expect(
+      m.gezeichnet[i] ?? [],
+      `${lage}: die Anweisung der Vorlage „${v.name}" wird bei ZUGEKLAPPTER Erklärung gezeichnet ` +
+        `— ${JSON.stringify(m.gezeichnet[i])}`,
+    ).toEqual([]);
+  }
+}
+
+/**
+ * JOB 3769 R2 — UND HINTER DEM GRIFF STEHT DER SATZ, VOLLSTÄNDIG UND ZU LESEN.
+ *
+ * Die zweite Hälfte, und die schwerere: der Prüfer hat Runde 1 daran zerlegt, dass „die Erklärung
+ * ist noch da" eine Zeichenkette in einem Attribut war, die niemand aufschlagen konnte
+ * (`{"paletteOffen":false,"erklaerungLesbar":false}`). Vier Aussagen, und jede einzelne wäre für
+ * sich zu wenig:
+ *   (a) der Absatz ist wirklich GEZEICHNET (ein Rechteck mit Fläche),
+ *   (b) sein WORTLAUT trägt die Anweisung der Vorlage Zeichen für Zeichen,
+ *   (c) er ist GANZ ZU LESEN — nichts von ihm ist in seiner eigenen Fläche abgeschnitten
+ *       (`scrollHeight <= clientHeight`, die 1-px-Lücke aus JOB 3584 R1),
+ *   (d) und er ist ERREICHBAR: kein Rand hält ihn unwiederbringlich fest.
+ * Der Griff selbst sagt dazu `aria-expanded="true"` — sonst wäre die Fläche offen und der
+ * Screenreader wüsste es nicht.
+ */
+function erklaerungLesbar(m: Masse, i: number, lage: string): Stueck {
+  const v = VORLAGEN[i] as (typeof VORLAGEN)[number];
+  const was = `die aufgeschlagene Erklärung der Vorlage „${v.name}"`;
+  const s = vorhanden(m.erklaerungen[i] ?? null, was, lage);
+  expect(
+    m.griffeOffen[i],
+    `${lage}: der Erklärgriff der Vorlage „${v.name}" sagt „zu", obwohl der Absatz steht`,
+  ).toBe(true);
+  expect(
+    m.erklaerungstexte[i] ?? "",
+    `${lage}: ${was} nennt ihre Anweisung nicht („${m.erklaerungstexte[i]}")`,
+  ).toContain(v.instruction);
+  ganzLesbar(s, was, lage);
+  nichtFort(s, was, lage);
+  return s;
 }
 
 /**
@@ -643,6 +882,44 @@ async function senkrechtErreichbar(
     `${lage}: ${was} bleibt nach dem Heranrollen unten draussen (y=${s.unten} von ${m.fensterhoehe}, ` +
       `Rollstand ${m.rollstand}, „${s.text}")`,
   ).toBeLessThanOrEqual(m.fensterhoehe);
+  return s;
+}
+
+/**
+ * OHNE JEDES ROLLEN im Fenster — die Zusage, die JOB 3584 ausdrücklich NICHT halten konnte.
+ *
+ * Sie ist strenger als `senkrechtErreichbar` (oben) und darf mit ihr nicht verwechselt werden:
+ * dort wird herangerollt und DANACH gemessen, hier wird NICHT gerollt. Gemessen wird der Zustand
+ * unmittelbar nach dem Öffnen der Palette — genau das, was ein Mensch am 390×844-Gerät sieht, ohne
+ * einen Finger zu bewegen. Drei Zusagen zusammen, sonst sagt „im Fenster" zu wenig:
+ *   · der Rollstand ist 0 (sonst wäre schon gerollt worden, und die Messung hiesse nichts),
+ *   · das Stück liegt ganz zwischen 0 und der Fensterhöhe (echte Rechtecke, nicht gerechnet),
+ *   · kein Rand darüber schneidet etwas weg — ein Rechteck kann im Fenster liegen und trotzdem
+ *     hinter der Rollfläche der Palette verborgen sein (`verluste`, dieselbe Lücke wie in Runde 2).
+ */
+function ohneRollenImFenster(st: Stueck | null, was: string, m: Masse, lage: string): Stueck {
+  const s = vorhanden(st, was, lage);
+  expect(
+    m.rollstand,
+    `${lage}: das Fenster war schon gerollt (Rollstand ${m.rollstand}) — dann sagt diese Messung nichts über „ohne Rollen"`,
+  ).toBe(0);
+  expect(
+    m.gerollt,
+    `${lage}: eine Fläche der Seite war schon gerollt (${JSON.stringify(m.gerollt)}) — dann sagt diese Messung nichts über „ohne Rollen"`,
+  ).toEqual([]);
+  expect(
+    s.oben,
+    `${lage}: ${was} beginnt oberhalb des Fensters (y=${s.oben}, „${s.text}")`,
+  ).toBeGreaterThanOrEqual(0);
+  expect(
+    s.unten,
+    `${lage}: ${was} steht ohne Rollen NICHT im Fenster (y=${s.oben}–${s.unten} von ${m.fensterhoehe}, ` +
+      `Palette ${m.palette?.hoehe} px hoch, „${s.text}")`,
+  ).toBeLessThanOrEqual(m.fensterhoehe);
+  expect(
+    s.verluste,
+    `${lage}: ${was} liegt im Fenster, aber ein Rand schneidet es weg — ${JSON.stringify(s.verluste)} („${s.text}")`,
+  ).toEqual([]);
   return s;
 }
 
@@ -750,6 +1027,7 @@ describe("JOB 3584 · die KI-Palette bei 390 px im echten Chromium", () => {
       const m = await messen(`B1a · ${breite}`);
       paletteWaagerecht(m, `B1a · ${breite}`);
       paletteTexteLesbar(m, `B1a · ${breite}`);
+      erklaerungGriffDa(m, `B1a · ${breite}`);
     }, 120_000);
 
     // B1b · DIE SENKRECHTE ACHSE, EHRLICH BENANNT (Korrekturpflicht 1 des Prüfers).
@@ -807,27 +1085,130 @@ describe("JOB 3584 · die KI-Palette bei 390 px im echten Chromium", () => {
         `${lage}: die Fläche „${rf.marke}" verbirgt den Namen hinter dem Seitwärtsrollen ` +
           `(${rf.textbreite} px Inhalt auf ${rf.sichtbreite} px Sicht)`,
       ).toBeLessThanOrEqual(rf.sichtbreite + 1);
-      // Und die lange Anweisung darunter schiebt nichts hinaus.
-      const satz = waagerechtImFenster(
-        m.hilfesaetze[2] ?? null,
-        "der Hilfesatz der langen Anweisung",
-        m,
-        lage,
+      // UND DIE LANGE ANWEISUNG (über 200 Zeichen). Sie war bis JOB 3769 der höchste Textblock der
+      // Fläche (155,3 px gemessen) und stand dort ungefragt; seit Runde 2 liegt sie hinter dem
+      // Erklärgriff. Beide Zustände werden gemessen, sonst sagt dieser Fall nur die Hälfte:
+      // zugeklappt zeichnet sie NICHTS, aufgeschlagen steht sie GANZ da — auch bei 390 px, auch mit
+      // ihren über 200 Zeichen. Danach wieder zu, damit die folgenden Fälle den Normalstand messen.
+      erklaerungGriffDa(m, lage);
+      await erklaerungAufschlagen(LANGE.id, lage);
+      const auf = await messen(`${lage} · lange Anweisung aufgeschlagen`);
+      const satz = erklaerungLesbar(auf, 2, lage);
+      console.info(
+        `JOB 3769 · ${lage} · lange Erklärung y=${satz.oben}–${satz.unten} (${satz.hoehe} px), ` +
+          `${satz.texthoehe} px Text auf ${satz.sichthoehe} px Fläche`,
       );
-      expect(satz.text.length, `${lage}: der Hilfesatz ist leer`).toBeGreaterThan(20);
-      ganzLesbar(satz, "der Hilfesatz der langen Anweisung", lage);
-      // Die Fläche als Ganzes bleibt heil — die lange Anweisung ist der längste Textblock darin.
+      expect(
+        auf.erklaerungstexte[2] ?? "",
+        `${lage}: der aufgeschlagene Erklärsatz trägt die lange Anweisung nicht`,
+      ).toContain(LANGE_ANWEISUNG);
+      await erklaerungZuklappen(LANGE.id, lage);
+      erklaerungGriffDa(await messen(`${lage} · wieder zugeklappt`), `${lage} · wieder zugeklappt`);
+      // Die Fläche als Ganzes bleibt heil.
       paletteWaagerecht(m, lage);
-      // Und der Hilfesatz, der den Prüfer in Runde 1 durchgelassen hat, ist auch senkrecht ganz da.
-      const herangerollt = await senkrechtErreichbar(
-        "hilfe:2",
-        "der Hilfesatz der langen Anweisung",
-        lage,
-        (x) => x.hilfesaetze[2] ?? null,
-      );
-      ganzLesbar(herangerollt, "der Hilfesatz der langen Anweisung (herangerollt)", lage);
-    }, 120_000);
+    }, 180_000);
   }
+
+  // ==============================================================================================
+  // B6 · DIE ZUSAGE, DIE JOB 3584 OFFEN LIESS: OHNE ROLLEN IM BILD (JOB 3769).
+  // ==============================================================================================
+  //
+  // JOB 3584 hat gemessen und ehrlich gemeldet, dass diese Zusage NICHT hielt (`archiv/3584/runde-2/
+  // RUECKGABE.md:47`: „Palette links=52 rechts=382 oben=130 unten=794, Höhe 664 px im 844 px hohen
+  // Fenster. Ohne Rollen NICHT im Fenster: die freie Eingabe (y=848,8–884,8) und der Ausführen-Knopf
+  // (y=849–884,5)") — und sie in eine eigene Zeile gelegt, weil sie mit den damaligen Zielpfaden
+  // nicht herzustellen war. Dies ist diese Zeile.
+  //
+  // GEMESSEN WIRD DER ERSTE BLICK, nicht die Erreichbarkeit: kein `scrollIntoView`, kein Tab, kein
+  // Rollstand. Was hier rot wird, sieht ein Mensch am Telefon nicht, ohne zu rollen — und die drei
+  // Vorlagen stehen mit im Fall, weil §1 sie ausdrücklich mitverspricht.
+  it("B6 · 390×844: beim Öffnen stehen Vorlagen, freie Eingabe und Ausführen-Knopf OHNE Rollen im Fenster", async () => {
+    await paletteOeffnen(390);
+    const lage = "B6 · 390×844";
+    const m = await messen(lage);
+    console.info(
+      `JOB 3769 · ${lage} · Palette y=${m.palette?.oben}–${m.palette?.unten} (${m.palette?.hoehe} px) im ` +
+        `${m.fenster}×${m.fensterhoehe} px Fenster · Eingabe y=${m.feld?.oben}–${m.feld?.unten} · ` +
+        `Knopf y=${m.knopf?.oben}–${m.knopf?.unten} · Rollstand ${m.rollstand}`,
+    );
+    // Die zwei Stücke des Auftrags ZUERST: sie tragen die Zahl aus §1, und sie sollen in der
+    // Fehlermeldung oben stehen, wenn sie fällt. Die drei Vorlagen danach — §1 verspricht sie mit.
+    const kern = STUECKE.filter((s) => s.heran === "feld" || s.heran === "knopf");
+    for (const st of [...kern, ...STUECKE.filter((s) => !kern.includes(s))]) {
+      ohneRollenImFenster(st.hol(m), st.was, m, lage);
+    }
+    // UND DER SATZ IST NICHT VERLOREN: dieselbe Messung belegt, dass jede Vorlage ihren Erklärgriff
+    // im Fenster trägt und zugeklappt nichts zeichnet — sonst hiesse „passt ins Fenster" nur „es
+    // steht weniger da". Dass hinter dem Griff wirklich der Satz steht, fährt B7.
+    erklaerungGriffDa(m, lage);
+  }, 120_000);
+
+  // ==============================================================================================
+  // B7 · UND DIE ANDERE HÄLFTE DERSELBEN ZUSAGE: DER SATZ IST AM TELEFON ZU LESEN (R2).
+  // ==============================================================================================
+  //
+  // DIE KORREKTURPFLICHT, wörtlich aus ben.md der Runde 1: „Einen tatsächlich bedienbaren mobilen
+  // Zugang zum unveränderten Erklärungssatz erhalten, ohne die bestätigte Sichtbarkeit von Eingabe
+  // und Knopf aufzugeben. Beleg: echte Bedienfolge bei 390×844 mit anschließend lesbarer
+  // vollständiger Erklärung."
+  //
+  // Der Prüfer hat den Weg der Runde 1 selbst gefahren — Zahnrad → Seitenhilfe — und
+  // `{"paletteOffen":false,"erklaerungLesbar":false}` gemessen: der Klick auf das Zahnrad schliesst
+  // die Palette, und mit ihr meldet sich der `HelpTip` wieder ab. Ein `title` half am Telefon
+  // ebenfalls nicht. Dieser Fall ist der Gegenbeweis, und er fährt die Bedienfolge, statt sie zu
+  // behaupten: Palette auf → „?" am Vorlagennamen angeklickt → Absatz gemessen → „?" noch einmal →
+  // Absatz fort und B6 hält wieder.
+  //
+  // DREI ZUSAGEN, UND ALLE DREI MÜSSEN ZUSAMMEN GELTEN:
+  //   · der Satz steht VOLLSTÄNDIG und ist GANZ ZU LESEN (`erklaerungLesbar`),
+  //   · er ist ERREICHBAR, ohne dass ein Rand ihn festhält (`senkrechtErreichbar`),
+  //   · und er KOSTET DIE ZUSAGE AUS §1 NICHT: zugeklappt steht die Palette wieder genau so da wie
+  //     in B6 — gemessen, nicht angenommen.
+  it("B7 · 390×844: der Erklärgriff schlägt den Satz auf, er ist ganz zu lesen, und danach hält B6 wieder", async () => {
+    await paletteOeffnen(390);
+    const lage = "B7 · 390×844";
+    const zu = await messen(`${lage} · vor dem Aufschlagen`);
+    erklaerungGriffDa(zu, `${lage} · vor dem Aufschlagen`);
+
+    await erklaerungAufschlagen(LANGE.id, lage);
+    const auf = await messen(`${lage} · aufgeschlagen`);
+    const s = erklaerungLesbar(auf, 2, lage);
+    console.info(
+      `JOB 3769 R2 · ${lage} · Palette zu ${zu.palette?.hoehe} px / auf ${auf.palette?.hoehe} px · ` +
+        `Erklärung y=${s.oben}–${s.unten} (${s.hoehe} px), ${s.texthoehe} px Text auf ${s.sichthoehe} px Fläche · ` +
+        `Rollstand ${auf.rollstand}`,
+    );
+    // Gefahren, nicht gerechnet: der Satz wird herangerollt und DANACH nachgemessen. Damit ist auch
+    // der Fall abgedeckt, dass er die Palette über ihre eigene Rollkante (`max-h-[420px]`) hinaus
+    // wachsen lässt — dann ist er verborgen, aber hervorzuholen, und das ist der normale Weg.
+    await senkrechtErreichbar(
+      `erklaerung:${LANGE.id}`,
+      `die aufgeschlagene Erklärung der Vorlage „${LANGE.name}"`,
+      lage,
+      (x) => x.erklaerungen[2] ?? null,
+    );
+    // UND NUR EINE: aufgeschlagen zeichnet GENAU EIN Blatt die Anweisung. Zwei wären die Doppelung
+    // von JOB 3769 zurück, nur eine Bedienung später (§7 ABLÖSUNG).
+    expect(
+      (auf.gezeichnet[2] ?? []).length,
+      `${lage}: die lange Anweisung wird ${(auf.gezeichnet[2] ?? []).length}-mal gezeichnet — ${JSON.stringify(auf.gezeichnet[2])}`,
+    ).toBe(1);
+    // Und die anderen beiden Vorlagen bleiben zu: EINE offene Erklärung, nicht drei.
+    for (const i of [0, 1]) {
+      expect(
+        auf.erklaerungen[i] ?? null,
+        `${lage}: die Vorlage „${NAMEN[i]}" hat sich mit aufgeschlagen — dann wächst die Palette um alle drei Sätze`,
+      ).toBeNull();
+    }
+
+    await erklaerungZuklappen(LANGE.id, lage);
+    await nachObenRollen();
+    const wiederZu = await messen(`${lage} · nach dem Zuklappen`);
+    for (const st of STUECKE) {
+      ohneRollenImFenster(st.hol(wiederZu), st.was, wiederZu, `${lage} · nach dem Zuklappen`);
+    }
+    erklaerungGriffDa(wiederZu, `${lage} · nach dem Zuklappen`);
+  }, 180_000);
 
   it("B3 · 390 px, NUR Tastatur: vom Werkzeug bis zum ausgelösten Lauf über eine VORLAGE", async () => {
     const s = await blattFahren(390);
@@ -911,12 +1292,12 @@ describe("JOB 3584 · die KI-Palette bei 390 px im echten Chromium", () => {
   // K1 · DIE KALIBRIERUNG DER WAAGERECHTEN ACHSE — ohne sie misst B1a/B2 nichts (JOB 3266 K, 3573).
   // ==============================================================================================
   //
-  // Zurückgenommen wird in der LAUFENDEN Seite GENAU das, was dieser Auftrag gesetzt hat:
-  // `max-w-full` und `break-words` am Vorlagenknopf (`AiAssistBox.tsx`). Beides zusammen ist die
+  // Zurückgenommen wird in der LAUFENDEN Seite GENAU das, was dieser Auftrag gesetzt hat: der
+  // Breitendeckel (`max-w-…`) und `break-words` am Vorlagenknopf (`AiAssistBox.tsx`). Beides ist die
   // Reparatur; beides zusammen wird hier weggenommen, und nichts sonst — `white-space` bleibt
   // `normal` wie am Basisstand, sonst kalibrierte dieser Fall gegen einen Zustand, den es nie gab.
   // Wird die Messung dann rot, hält B2 wirklich etwas; bleibt sie grün, misst B2 nichts.
-  it("K1 · 390 px: wird `max-w-full break-words` am Vorlagenknopf zurückgenommen, IST die Messung rot", async () => {
+  it("K1 · 390 px: wird der Breitendeckel und `break-words` am Vorlagenknopf zurückgenommen, IST die Messung rot", async () => {
     await paletteOeffnen(390);
     const s = seite();
     const vorher = await s.evaluate<string>(
@@ -962,50 +1343,162 @@ describe("JOB 3584 · die KI-Palette bei 390 px im echten Chromium", () => {
   // auf 1 px Fläche — und meldete wörtlich: „BEN GEGENPROBE: bestehende B1/B2-Prüfungen grün trotz
   // {"clientHeight":1,"scrollHeight":155}". Derselbe Griff, hier als fester Fall: er MUSS jetzt rot
   // machen. Bleibt er grün, sagt „der Text steht ganz da" wieder nichts über die senkrechte Achse.
-  it("K2 · 390 px: wird der lange Hilfesatz senkrecht auf 1 px gedeckelt, IST die Messung rot", async () => {
+  // JOB 3769 — WORAUF K2 JETZT ZEIGT, UND WARUM ES BEISST. Den Absatz, den Runde 2 hier auf 1 px
+  // gedeckelt hat, gibt es nicht mehr: er war die zweite, gezeichnete Darbietung desselben Satzes
+  // und der gemessene Grund, warum Eingabe und Knopf unter dem Fensterrand lagen (86,3 + 86,3 +
+  // 155,3 px von 664 px). Ein K2, das weiter nach einem `<p>` griffe, würde nach diesem Diff nichts
+  // mehr messen — genau der verlorene Wächter, den Lieferung 5 verbietet. Deshalb trifft dieser Fall
+  // ab hier die VERBLEIBENDEN zwei Darbietungen der Palette, jede mit ihrem eigenen Griff:
+  //   (a) den GEZEICHNETEN Text der Vorlage — der Knopf mit dem 48 Zeichen langen Namen, auf 1 px
+  //       gedeckelt. Das ist derselbe Griff wie in Runde 2 (`height:1px; overflow:hidden`) an dem
+  //       Textblock, der heute an dieser Stelle steht; `ganzLesbar` MUSS senkrecht rot werden.
+  //   (b) den AUFGESCHLAGENEN ERKLÄRSATZ — derselbe 1-px-Deckel auf dem Absatz, den der „?"-Griff
+  //       öffnet. `erklaerungLesbar` MUSS rot werden.
+  // RUNDE 2 — WORAUF (b) JETZT ZEIGT UND WARUM. Runde 1 hat hier einen `title` entfernt und das
+  // „die Erklärung ist noch da" genannt. Der Prüfer, wörtlich: „`erklaerungErreichbar` prüft
+  // Attributinhalt statt Erreichbarkeit … die Lesbarkeit der Erklärung wird nicht mehr geprüft"
+  // (Korrekturpflicht 2: „K2 muss die verbleibende lesbare Erklärung treffen. Beleg: fehlende oder
+  // abgeschnittene Erklärung macht den Test rot"). Also trifft (b) ab hier GENAU die verbliebene
+  // Darbietung — den gezeichneten Absatz — und zwar in ihren zwei Bruchweisen, weil eine allein
+  // durchliesse: ABGESCHNITTEN (1-px-Deckel) und FEHLEND (Text weg). Beides MUSS rot werden.
+  it("K2 · 390 px: wird der Vorlagentext auf 1 px gedeckelt ODER die Erklärung beschnitten/geleert, IST die Messung rot", async () => {
     await paletteOeffnen(390);
     const s = seite();
     // DER GESICHERTE STIL WIRD HEREINGEREICHT, nicht im Browser noch einmal gelesen. Liest die
     // Rücknahme ihn selbst, liest sie den SCHON verstellten Stand und schreibt genau den Deckel
-    // zurück, den sie wegnehmen soll. So ist dieser Fall im ersten Lauf rot geworden, wörtlich:
-    // „K2 · nach Rücknahme: der Hilfesatz zu „Übergabe ausführlich" ist senkrecht beschnitten
-    // (155 px Text auf 1 px Fläche) … expected 155 to be less than or equal to 2".
+    // zurück, den sie wegnehmen soll. So ist dieser Fall in JOB 3584 im ersten Lauf rot geworden.
     const GRIFF = `([n, hoehe, alt]) => {
       const b = [...document.querySelectorAll('[data-testid="blatt-menue-ki"] button')].find((x) => (x.textContent || '').trim() === n);
-      const p = b && b.parentElement ? b.parentElement.querySelector('p') : null;
-      if (!p) { return 'KEIN HILFESATZ'; }
-      const gesichert = p.getAttribute('style') || '';
-      if (hoehe === null) { if (alt) { p.setAttribute('style', alt); } else { p.removeAttribute('style'); } return gesichert; }
-      p.style.height = hoehe; p.style.overflow = 'hidden';
+      if (!b) { return 'KEINE VORLAGE'; }
+      const gesichert = b.getAttribute('style') || '';
+      if (hoehe === null) { if (alt) { b.setAttribute('style', alt); } else { b.removeAttribute('style'); } return gesichert; }
+      b.style.height = hoehe; b.style.minHeight = hoehe; b.style.overflow = 'hidden';
       return gesichert;
     }`;
-    const vorher = await s.evaluate<string>(fn(GRIFF), [LANGE.name, "1px", null]);
-    expect(vorher, "K2: der Hilfesatz zur langen Anweisung ist nicht da").not.toBe(
-      "KEIN HILFESATZ",
-    );
-    const gedeckelt = await messen("K2 · Hilfesatz auf 1 px");
-    const satz = gedeckelt.hilfesaetze[2] as Stueck;
+    const vorher = await s.evaluate<string>(fn(GRIFF), [LANGER_NAME, "1px", null]);
+    expect(vorher, "K2: die lange Vorlage ist nicht da").not.toBe("KEINE VORLAGE");
+    const gedeckelt = await messen("K2 · Vorlagentext auf 1 px");
+    const knopf = gedeckelt.vorlagen[1] as Stueck;
     console.info(
-      `JOB 3584 · K2 · ${satz.texthoehe} px Text auf ${satz.sichthoehe} px Fläche · overflow=${satz.eigenrollen}`,
+      `JOB 3584/3769 · K2 · ${knopf.texthoehe} px Text auf ${knopf.sichthoehe} px Fläche · overflow=${knopf.eigenrollen}`,
     );
     expect(
-      satz.texthoehe,
+      knopf.texthoehe,
       "K2: der Griff hat gar nicht gedeckelt — dann kalibriert dieser Fall nichts",
-    ).toBeGreaterThan(satz.sichthoehe + 1);
-    // Die Prüfung selbst, nicht nur die Zahl: beide Wege, die den Satz anfassen, MÜSSEN rot werden.
+    ).toBeGreaterThan(knopf.sichthoehe + 1);
+    // Die Prüfung selbst, nicht nur die Zahl: beide Wege, die den Text anfassen, MÜSSEN rot werden.
     expect(
-      () => ganzLesbar(satz, "der Hilfesatz der langen Anweisung", "K2"),
-      "K2: `ganzLesbar` lässt 155 px Text auf 1 px Fläche durch — genau die Lücke aus Runde 1",
+      () => ganzLesbar(knopf, `die Vorlage „${LANGER_NAME}"`, "K2"),
+      "K2: `ganzLesbar` lässt 44 px Text auf 1 px Fläche durch — genau die Lücke aus Runde 1",
     ).toThrow();
     expect(
       () => paletteTexteLesbar(gedeckelt, "K2"),
-      "K2: die Textprüfung von B1a lässt den gedeckelten Satz durch",
+      "K2: die Textprüfung von B1a lässt den gedeckelten Text durch",
     ).toThrow();
     // Zurück auf den echten Produktzustand, und er hält.
-    await s.evaluate(fn(GRIFF), [LANGE.name, null, vorher]);
+    await s.evaluate(fn(GRIFF), [LANGER_NAME, null, vorher]);
     const zurueck = await messen("K2 · nach Rücknahme");
     paletteTexteLesbar(zurueck, "K2 · nach Rücknahme");
-  }, 120_000);
+
+    // (b) DIE AUFGESCHLAGENE ERKLÄRUNG — der Weg, den B7 fährt, hier zweimal gebrochen.
+    //
+    // Erst aufgeschlagen wie ein Mensch, dann verstellt: sonst kalibriert dieser Teil einen Knoten,
+    // den es gar nicht gibt.
+    await erklaerungAufschlagen(LANGE.id, "K2");
+    const heil = await messen("K2 · Erklärung aufgeschlagen");
+    erklaerungLesbar(heil, 2, "K2 · Erklärung aufgeschlagen");
+
+    const SATZ = `([id, was, alt]) => {
+      const p = document.querySelector('[data-testid="ki-vorlage-satz-' + id + '"]');
+      if (!p) { return 'KEIN SATZ'; }
+      const gesichert = p.getAttribute('style') || '';
+      if (was === 'zurueck') { if (alt) { p.setAttribute('style', alt); } else { p.removeAttribute('style'); } return gesichert; }
+      if (was === 'deckel') { p.style.height = '1px'; p.style.minHeight = '1px'; p.style.overflow = 'hidden'; return gesichert; }
+      return 'UNBEKANNT';
+    }`;
+    // (b1) ABGESCHNITTEN: 155 px Text auf 1 px Fläche — genau der Griff, an dem JOB 3584 R1 grün
+    // geblieben ist, jetzt an dem Knoten, der den Satz heute trägt.
+    const satzStil = await s.evaluate<string>(fn(SATZ), [LANGE.id, "deckel", null]);
+    expect(satzStil, "K2: der aufgeschlagene Erklärsatz ist nicht da").not.toBe("KEIN SATZ");
+    const beschnitten = await messen("K2 · Erklärung auf 1 px gedeckelt");
+    const gedeckelterSatz = beschnitten.erklaerungen[2] as Stueck;
+    console.info(
+      `JOB 3769 R2 · K2 (b1) · ${gedeckelterSatz.texthoehe} px Erklärtext auf ${gedeckelterSatz.sichthoehe} px Fläche`,
+    );
+    expect(
+      gedeckelterSatz.texthoehe,
+      "K2: der Griff hat den Erklärsatz gar nicht gedeckelt — dann kalibriert dieser Teil nichts",
+    ).toBeGreaterThan(gedeckelterSatz.sichthoehe + 1);
+    expect(
+      () => erklaerungLesbar(beschnitten, 2, "K2 · Erklärung gedeckelt"),
+      "K2: `erklaerungLesbar` lässt 155 px Erklärtext auf 1 px Fläche durch — dann misst B7 die Lesbarkeit nicht",
+    ).toThrow();
+    await s.evaluate(fn(SATZ), [LANGE.id, "zurueck", satzStil]);
+    erklaerungLesbar(await messen("K2 · Deckel zurück"), 2, "K2 · Deckel zurück");
+
+    // (b2) FEHLEND: derselbe Absatz, der Text daraus entfernt. Ohne diese zweite Bruchweise hiesse
+    // „lesbar" nur „nicht beschnitten" — ein leerer Absatz ist genauso wenig eine Erklärung.
+    const LEEREN = `([id, text]) => {
+      const p = document.querySelector('[data-testid="ki-vorlage-satz-' + id + '"]');
+      if (!p) { return 'KEIN SATZ'; }
+      const gesichert = p.textContent || '';
+      p.textContent = text === null ? '' : text;
+      return gesichert;
+    }`;
+    const satzText = await s.evaluate<string>(fn(LEEREN), [LANGE.id, null]);
+    expect(satzText, "K2: der Erklärsatz trug schon am Anfang die Anweisung nicht").toContain(
+      LANGE_ANWEISUNG,
+    );
+    const geleert = await messen("K2 · Erklärung geleert");
+    expect(
+      () => erklaerungLesbar(geleert, 2, "K2 · Erklärung geleert"),
+      "K2: `erklaerungLesbar` hält einen leeren Absatz für eine Erklärung — dann belegt B7 nichts",
+    ).toThrow();
+    await s.evaluate(fn(LEEREN), [LANGE.id, satzText]);
+    const satzZurueck = await messen("K2 · Erklärung zurück");
+    erklaerungLesbar(satzZurueck, 2, "K2 · Erklärung zurück");
+
+    // (b3) UND DER GRIFF SELBST: ohne ihn kommt niemand an den Satz. `erklaerungGriffDa` MUSS das
+    // merken — sonst wäre „der Satz liegt hinter einem Griff" eine Zusage ohne Wächter.
+    //
+    // ZWEI BRUCHWEISEN, und die zweite ist der ROTE LAUF VON B7 AM STAND DER RUNDE 1: dort gab es
+    // den Griff gar nicht, der Satz hing an `HelpTip` und `title`, und der Prüfer hat gemessen,
+    // dass beides am Telefon kein Weg ist. Genau dieser Zustand wird hier in der laufenden Seite
+    // hergestellt (Griff fort) — und die Messung MUSS ihn melden. Ein Griff, den man nur nicht
+    // TREFFEN kann (4 px), ist die erste Bruchweise; einer, den es nicht gibt, die zweite.
+    await erklaerungZuklappen(LANGE.id, "K2");
+    const GRIFF_WEG = `([id, wie, alt]) => {
+      const g = document.querySelector('[data-testid="ki-vorlage-hilfe-' + id + '"]');
+      if (!g) { return 'KEIN GRIFF'; }
+      const gesichert = g.getAttribute('style') || '';
+      if (wie === 'winzig') { g.style.width = '4px'; g.style.height = '4px'; g.style.minWidth = '0'; return gesichert; }
+      if (wie === 'fort') { g.style.display = 'none'; return gesichert; }
+      if (alt) { g.setAttribute('style', alt); } else { g.removeAttribute('style'); }
+      return gesichert;
+    }`;
+    const griffStil = await s.evaluate<string>(fn(GRIFF_WEG), [LANGE.id, "winzig", null]);
+    expect(griffStil, "K2: der Erklärgriff ist nicht da").not.toBe("KEIN GRIFF");
+    const winzig = await messen("K2 · Erklärgriff auf 4 px");
+    expect(
+      () => erklaerungGriffDa(winzig, "K2 · Erklärgriff auf 4 px"),
+      "K2: `erklaerungGriffDa` hält einen 4-px-Griff für ein Ziel — dann misst B6 den Zugang nicht",
+    ).toThrow();
+    await s.evaluate(fn(GRIFF_WEG), [LANGE.id, "zurueck", griffStil]);
+    erklaerungGriffDa(await messen("K2 · Erklärgriff zurück"), "K2 · Erklärgriff zurück");
+
+    await s.evaluate(fn(GRIFF_WEG), [LANGE.id, "fort", null]);
+    const ohneGriff = await messen("K2 · Erklärgriff fort (Stand der Runde 1)");
+    expect(
+      ohneGriff.griffe[2],
+      "K2: der Griff hat sich gar nicht entfernen lassen — dann kalibriert dieser Teil nichts",
+    ).not.toBeNull();
+    expect(
+      () => erklaerungGriffDa(ohneGriff, "K2 · Erklärgriff fort"),
+      "K2: ohne jeden Erklärgriff bleibt die Messung grün — dann belegt B7 keinen Zugang, und der Stand der Runde 1 (`HelpTip` + `title`) käme wieder durch",
+    ).toThrow();
+    await s.evaluate(fn(GRIFF_WEG), [LANGE.id, "zurueck", griffStil]);
+    erklaerungGriffDa(await messen("K2 · Erklärgriff wieder da"), "K2 · Erklärgriff wieder da");
+  }, 180_000);
 
   // ==============================================================================================
   // K3 · DIE KALIBRIERUNG DER ERREICHBARKEIT — sonst hiesse „erreichbar" nur „scrollIntoView wurde
@@ -1137,31 +1630,37 @@ describe("JOB 3584 · die KI-Palette bei 390 px im echten Chromium", () => {
       `K4: die gedeckelte Fläche hat nichts zu verbergen (${zustand.inhalt} px Inhalt auf ${zustand.sicht} px Sicht)`,
     ).toBeGreaterThan(zustand.sicht + 1);
 
-    // (a) DER ERREICHBARKEITSMESSER. Der Hilfesatz wird herangerollt und bleibt trotzdem beschnitten
-    //     — von einem Rand, den Runde 2 entschuldigt hätte. Die Zahlen stehen in der Ausgabe.
-    const gerollt = await messen("K4 · Hilfesatz herangerollt", "hilfe:2");
-    const satz = gerollt.hilfesaetze[2] as Stueck;
-    expect(satz, "K4: der Hilfesatz der langen Anweisung ist nicht mehr da").not.toBeNull();
-    const rollbarWeg = satz.verluste.filter((v) => v.rollbar);
+    // (a) DER ERREICHBARKEITSMESSER. Das Stück wird herangerollt und bleibt trotzdem beschnitten —
+    //     von einem Rand, den Runde 2 entschuldigt hätte. Die Zahlen stehen in der Ausgabe.
+    //
+    //     JOB 3769: GEMESSEN WIRD DAS AM LANGEN VORLAGENKNOPF (46 px) und nicht mehr am Hilfesatz.
+    //     Den 155 px hohen Absatz gibt es nicht mehr — er war die zweite Darbietung desselben Satzes.
+    //     Der Knopf ist mit 46 px in einer 20 px hohen Fläche derselbe Fall: rollbar beschnitten und
+    //     in KEINEM Rollstand ganz zu sehen (`passt:false`). Kleiner darf der Deckel nicht werden,
+    //     sonst kalibriert dieser Fall bloss ein zweites Mal K3.
+    const gerollt = await messen("K4 · lange Vorlage herangerollt", "vorlage:1");
+    const stueck = gerollt.vorlagen[1] as Stueck;
+    expect(stueck, `K4: die Vorlage „${LANGER_NAME}" ist nicht mehr da`).not.toBeNull();
+    const rollbarWeg = stueck.verluste.filter((v) => v.rollbar);
     console.info(
-      `JOB 3584 · K4 · Hilfesatz ${satz.hoehe} px, y=${satz.oben}–${satz.unten} · verluste ${JSON.stringify(satz.verluste)}`,
+      `JOB 3584 · K4 · lange Vorlage ${stueck.hoehe} px, y=${stueck.oben}–${stueck.unten} · verluste ${JSON.stringify(stueck.verluste)}`,
     );
     expect(
       rollbarWeg.length,
-      `K4: nach dem Heranrollen schneidet kein ROLLBARER Rand mehr weg — dann ist dies nicht die Gegenprobe des Prüfers (${JSON.stringify(satz.verluste)})`,
+      `K4: nach dem Heranrollen schneidet kein ROLLBARER Rand mehr weg — dann ist dies nicht die Gegenprobe des Prüfers (${JSON.stringify(stueck.verluste)})`,
     ).toBeGreaterThan(0);
     expect(
-      () => ganzInDerSchnittflaeche(satz, "der Hilfesatz der langen Anweisung", "K4"),
-      "K4: `ganzInDerSchnittflaeche` lässt einen rollbar beschnittenen Satz durch — genau die Lücke aus Runde 2",
+      () => ganzInDerSchnittflaeche(stueck, `die Vorlage „${LANGER_NAME}"`, "K4"),
+      "K4: `ganzInDerSchnittflaeche` lässt ein rollbar beschnittenes Stück durch — genau die Lücke aus Runde 2",
     ).toThrow();
     await expect(
       senkrechtErreichbar(
-        "hilfe:2",
-        "der Hilfesatz der langen Anweisung",
+        "vorlage:1",
+        `die Vorlage „${LANGER_NAME}"`,
         "K4",
-        (x) => x.hilfesaetze[2] ?? null,
+        (x) => x.vorlagen[1] ?? null,
       ),
-      "K4: der Hilfesatz gilt in einer 20 px hohen Rollfläche als erreichbar — dann misst B1b nichts",
+      "K4: die lange Vorlage gilt in einer 20 px hohen Rollfläche als erreichbar — dann misst B1b nichts",
     ).rejects.toThrow();
 
     // (b) DER FOKUSMESSER. Fokussiert wird echt (der Browser rollt dabei selbst heran, so weit er
@@ -1192,10 +1691,10 @@ describe("JOB 3584 · die KI-Palette bei 390 px im echten Chromium", () => {
     const weg = await s.evaluate<string>(fn(DECKEL), [null, vorher]);
     expect(weg, "K4: der Deckel liess sich nicht zurücknehmen").toBe("ZURUECK");
     await senkrechtErreichbar(
-      "hilfe:2",
-      "der Hilfesatz der langen Anweisung",
+      "vorlage:1",
+      `die Vorlage „${LANGER_NAME}"`,
       "K4 · nach Rücknahme",
-      (x) => x.hilfesaetze[2] ?? null,
+      (x) => x.vorlagen[1] ?? null,
     );
     await senkrechtErreichbar(
       "knopf",
@@ -1216,6 +1715,104 @@ describe("JOB 3584 · die KI-Palette bei 390 px im echten Chromium", () => {
     expect(zurueckFokus, "K4: nach der Rücknahme trägt nichts mehr den Fokus").not.toBeNull();
     fokusLage(zurueckFokus as Fokus, "K4 · nach Rücknahme: Tabstopp lange Vorlage", 390);
   }, 180_000);
+
+  // ==============================================================================================
+  // K5 · DIE KALIBRIERUNG VON B6 — „passt ins Fenster" ist ohne sie nur eine Zufallsmessung.
+  // ==============================================================================================
+  //
+  // Zurückgenommen wird in der LAUFENDEN Seite GENAU das, was JOB 3769 entfernt hat: der ungefragt
+  // sichtbare Absatz mit dem Erklärsatz, je Vorlage einer, mit den Klassen, die er am Basisstand
+  // trug (`AiAssistBox.tsx:228-230` vor diesem Diff: `mt-1 whitespace-pre-wrap break-words
+  // text-[11.5px] text-muted`).
+  //
+  // WOHER DER TEXT KOMMT (R2): aus dem PRODUKT, nicht aus dem Prüfstand — jede Erklärung wird über
+  // ihren „?"-Griff aufgeschlagen, ihr Wortlaut gelesen und sie wieder zugeklappt. Damit ist die
+  // Rücknahme Zeichen für Zeichen die alte Fläche und keine Nachbildung. (Runde 1 las den Text aus
+  // dem `title`; den gibt es nicht mehr, und ein im Test hingeschriebener Satz wäre eine Attrappe.)
+  //
+  // ZWEI PRÜFUNGEN MÜSSEN DARAN ROT WERDEN, und sie sagen Verschiedenes:
+  //   · `ohneRollenImFenster` (B6): mit der Doppelung stehen freie Eingabe und Ausführen-Knopf wieder
+  //     unter dem Fensterrand — gemessen am Basisstand y=848,8–884,8 bzw. y=849–884,5 von 844.
+  //   · `erklaerungGriffDa` (§7 ABLÖSUNG): die Anweisung wird bei ZUGEKLAPPTEM Griff gezeichnet. Ohne
+  //     diese Hälfte liesse sich der Absatz morgen danebenstellen, ohne dass ein Wächter es merkt.
+  it("K5 · 390×844: wird der ungefragt sichtbare Absatz zurückgeholt, IST B6 wieder rot", async () => {
+    await paletteOeffnen(390);
+    const s = seite();
+    const vorher = await messen("K5 · vor der Rücknahme");
+    for (const st of STUECKE) {
+      ohneRollenImFenster(st.hol(vorher), st.was, vorher, "K5 · vor der Rücknahme");
+    }
+    // Die drei echten Erklärsätze, aus dem Produkt geholt — aufgeschlagen, gelesen, zugeklappt.
+    const saetze: string[] = [];
+    for (const v of VORLAGEN) {
+      await erklaerungAufschlagen(v.id, `K5 · ${v.id}`);
+      const gelesen = await messen(`K5 · ${v.id} aufgeschlagen`);
+      const text = gelesen.erklaerungstexte[VORLAGEN.indexOf(v)] ?? "";
+      expect(text, `K5: die Erklärung der Vorlage „${v.name}" ist leer`).toContain(v.instruction);
+      saetze.push(text);
+      await erklaerungZuklappen(v.id, `K5 · ${v.id}`);
+    }
+    const KLASSEN = "mt-1 whitespace-pre-wrap break-words text-[11.5px] text-muted";
+    const DOPPELUNG = `([klassen, ids, saetze]) => {
+      const p = document.querySelector('[data-testid="blatt-menue-ki"]');
+      if (!p) { return 'KEINE PALETTE'; }
+      if (klassen === null) {
+        const alte = [...p.querySelectorAll('[data-k5-doppelung]')];
+        if (alte.length === 0) { return 'KEINE DOPPELUNG'; }
+        for (const e of alte) { e.remove(); }
+        return 'ZURUECK';
+      }
+      let n = 0;
+      for (let i = 0; i < ids.length; i++) {
+        const g = p.querySelector('[data-testid="ki-vorlage-hilfe-' + ids[i] + '"]');
+        if (!g) { continue; }
+        const zeile = g.parentElement && g.parentElement.parentElement;
+        if (!zeile) { continue; }
+        const abs = document.createElement('p');
+        abs.setAttribute('data-k5-doppelung', '1');
+        abs.className = klassen;
+        abs.textContent = saetze[i];
+        zeile.appendChild(abs);
+        n++;
+      }
+      return String(n);
+    }`;
+    const wieviele = await s.evaluate<string>(fn(DOPPELUNG), [
+      KLASSEN,
+      VORLAGEN.map((v) => v.id),
+      saetze,
+    ]);
+    expect(
+      wieviele,
+      `K5: der Griff hat keine drei Absätze zurückgeholt (${wieviele}) — dann kalibriert dieser Fall nichts`,
+    ).toBe("3");
+    const mit = await messen("K5 · mit dem ungefragt sichtbaren Absatz");
+    console.info(
+      `JOB 3769 · K5 · Palette ohne Doppelung ${vorher.palette?.hoehe} px, mit Doppelung ${mit.palette?.hoehe} px ` +
+        `(Fenster ${mit.fensterhoehe} px) · Eingabe y=${mit.feld?.oben}–${mit.feld?.unten} · ` +
+        `Knopf y=${mit.knopf?.oben}–${mit.knopf?.unten}`,
+    );
+    expect(
+      () => ohneRollenImFenster(mit.feld, "die freie Eingabe", mit, "K5"),
+      "K5: die freie Eingabe steht auch MIT dem doppelten Absatz im Fenster — dann misst B6 nichts",
+    ).toThrow();
+    expect(
+      () => ohneRollenImFenster(mit.knopf, "der Ausführen-Knopf", mit, "K5"),
+      "K5: der Ausführen-Knopf steht auch MIT dem doppelten Absatz im Fenster — dann misst B6 nichts",
+    ).toThrow();
+    expect(
+      () => erklaerungGriffDa(mit, "K5"),
+      "K5: `erklaerungGriffDa` merkt den zurückgeholten Absatz nicht — dann darf er morgen wieder ungefragt danebenstehen",
+    ).toThrow();
+    // Zurück auf den echten Produktzustand, und dort hält B6 wieder — derselbe Weg, dieselbe Seite.
+    const weg = await s.evaluate<string>(fn(DOPPELUNG), [null]);
+    expect(weg, "K5: die Doppelung liess sich nicht wieder entfernen").toBe("ZURUECK");
+    const zurueck = await messen("K5 · nach Rücknahme");
+    for (const st of STUECKE) {
+      ohneRollenImFenster(st.hol(zurueck), st.was, zurueck, "K5 · nach Rücknahme");
+    }
+    erklaerungGriffDa(zurueck, "K5 · nach Rücknahme");
+  }, 120_000);
 
   // ==============================================================================================
   // B5 · DER GESCHEITERTE VORLAGENABRUF, SCHMAL — und warum er GANZ ZUM SCHLUSS steht.
@@ -1301,6 +1898,23 @@ describe("JOB 3584 · die KI-Palette bei 390 px im echten Chromium", () => {
       await senkrechtErreichbar(st.heran, st.was, lage, st.hol);
     }
     await senkrechtErreichbar("satz", "der Satz unter den Vorlagen", lage, (x) => x.satz);
+    // JOB 3769 — UND DIE ZUSAGE AUS §1 HÄLT AUCH IN DIESER HÖCHSTEN LAGE. §9 verlangt sie
+    // ausdrücklich hier: Vorlagen UND Fehlersatz zusammen ist der höchste Zustand der Palette. Neu
+    // gemessen, weil die Zeilen darüber gerollt haben — sonst wäre der Rollstand nicht 0 und die
+    // Aussage „ohne Rollen" ohne Grundlage.
+    await nachObenRollen();
+    await ruheAbwarten(lage);
+    const erstBlick = await messen(`${lage} · ohne Rollen`);
+    for (const st of STUECKE) {
+      ohneRollenImFenster(st.hol(erstBlick), st.was, erstBlick, `${lage} · ohne Rollen`);
+    }
+    ohneRollenImFenster(
+      erstBlick.satz,
+      "der Satz unter den Vorlagen",
+      erstBlick,
+      `${lage} · ohne Rollen`,
+    );
+    erklaerungGriffDa(erstBlick, `${lage} · ohne Rollen`);
   }, 180_000);
 
   it("B5b · 390 px: scheitert der Vorlagenabruf ganz, steht der Satz im Fenster und verdrängt nichts", async () => {
@@ -1339,6 +1953,13 @@ describe("JOB 3584 · die KI-Palette bei 390 px im echten Chromium", () => {
       m.vorlagen.filter((v) => v !== null),
       `${lage}: eine Vorlage steht trotz Fehler da`,
     ).toEqual([]);
+    // JOB 3769: auch in dieser Lage steht beides OHNE Rollen im Fenster. Ohne Vorlagen ist die
+    // Palette am kürzesten — die Zusage wäre hier am leichtesten zu halten, und gerade deshalb wird
+    // sie gemessen und nicht angenommen. `erklaerungGriffDa` gilt hier NICHT: es gibt keine
+    // Vorlage, die etwas zu erklären hätte.
+    ohneRollenImFenster(m.feld, "die freie Eingabe", m, lage);
+    ohneRollenImFenster(m.knopf, "der Ausführen-Knopf", m, lage);
+    ohneRollenImFenster(m.satz, "der Satz zum gescheiterten Vorlagenabruf", m, lage);
   }, 120_000);
 
   it("P · die Seite hat während aller Messungen nichts geworfen", () => {

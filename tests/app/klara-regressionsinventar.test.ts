@@ -790,6 +790,17 @@ const INVENTAR: readonly string[] = [
   // `neu im Baum, aber nicht im gepinnten Inventar … + "tests/ki-freie-anweisung/
   // ki-palette-390px-chromium.test.ts"`.
   "tests/ki-freie-anweisung/ki-palette-390px-chromium.test.ts",
+  // JOB 3769 (12.09.2026) KI-PALETTE INS HANDYFENSTER: der jsdom-Bestandswaechter des Standardeditors
+  // kommt ueber dieselbe Inhaltsachse `palette` herein — und zwar ueber EINEN neuen Satz: sein Fall F2
+  // nennt jetzt die Browsermessung namentlich (`ki-palette-390px-chromium.test.ts`), weil dort die
+  // Zahlen stehen, aus denen F2 seine neue Erwartung ableitet. Das Wort steht damit in einem
+  // DATEIPFAD, nicht in einer Farbaussage; „klara" steht nicht im Pfad, K5 bleibt unveraendert.
+  // DER EINTRAG STEHT TROTZDEM HIER UND WIRD NICHT WEGDEFINIERT: das Inventar pinnt die ABGELEITETE
+  // Menge. Den Verweis aus dem Kommentar zu streichen, um die Achse zu umgehen, waere genau das
+  // Wegdefinieren — und es naehme dem naechsten Leser den Beleg. GEMESSEN, NICHT GESETZT: der Lauf
+  // meldete vor dieser Zeile `neu im Baum, aber nicht im gepinnten Inventar … +
+  // "tests/ki-freie-anweisung/standardeditor-mounted.test.tsx"`.
+  "tests/ki-freie-anweisung/standardeditor-mounted.test.tsx",
   // JOB 3609 (11.09.2026) BIBLIOTHEK-VORSCHAU-AUFKLAPPER REST 2: der Seiten-Typ-Waechter der
   // Design-Vorrichtung. Er ist AUSDRUECKLICH KEIN Klara-Test — er liest Quelltext und startet
   // nichts, „klara" steht nicht in seinem Pfad, K5 bleibt deshalb unveraendert (`nurName` = 51).

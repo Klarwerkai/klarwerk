@@ -315,12 +315,51 @@ describe("JOB 3428 · freie KI-Anweisung im Standardeditor", () => {
     expect(editor().textContent).toBe("Der Kunde received den Router.");
   });
 
-  it("F2 · bestehende Vorlage zeigt ihre Anweisung, sendet sie unverändert und lässt sich ablehnen", async () => {
+  it("F2 · bestehende Vorlage erklärt sich auf Griff, sendet ihre Anweisung unverändert und lässt sich ablehnen", async () => {
     const id = await ownDraft();
     await click(byId("blatt-werkzeug-ki"));
-    expect(container.querySelector('[data-testid="blatt-menue-ki"]')?.textContent).toContain(
+    // JOB 3769 — DIE ERKLÄRUNG IST DA, UND ZWAR GENAU EINMAL.
+    //
+    // Bis JOB 3769 stand hier `menue.textContent).toContain(PRESET)`: die Anweisung wurde unter dem
+    // Vorlagenknopf als Absatz GEZEICHNET — und derselbe Satz stand daneben schon im `HelpTip`. Die
+    // drei Absätze waren 86,3 + 86,3 + 155,3 px der 664 px hohen Palette und der gemessene Grund,
+    // warum freie Eingabe und Ausführen-Knopf bei 390×844 unter dem Fensterrand lagen
+    // (`ki-palette-390px-chromium.test.ts` B6/K5). Von den zwei Darbietungen ist eine geblieben.
+    //
+    // RUNDE 2 — WARUM DIESER FALL JETZT KLICKT STATT EIN ATTRIBUT ZU LESEN. Runde 1 hat hier
+    // `button("Übergabe kurz").title` geprüft. Der Prüfer hat im echten Chromium belegt, dass weder
+    // der `title` noch der `HelpTip` am Telefon einen Weg zum Satz ergeben, und wörtlich verlangt:
+    // „Den Attributnachweis durch diesen Nutzertest ergänzen." Also wird die ANWESENHEIT weiter
+    // geprüft — aber an dem Weg, den ein Mensch nimmt: Griff zu → nichts gezeichnet; Griff geklickt
+    // → der Satz steht da, mit der Anweisung wörtlich darin; noch einmal geklickt → wieder fort.
+    // Die zweite Hälfte bleibt genauso wichtig wie vorher: ZUGEKLAPPT steht die Anweisung NICHT auf
+    // der Fläche. Ohne diese Zeile wäre der Absatz morgen wieder ungefragt danebengestellt.
+    const menue = (): Element | null => container.querySelector('[data-testid="blatt-menue-ki"]');
+    const satz = (): Element | null =>
+      container.querySelector('[data-testid="ki-vorlage-satz-vorlage-1"]');
+    expect(
+      menue()?.textContent,
+      "die Anweisung wird ungefragt auf der Fläche gezeichnet",
+    ).not.toContain(PRESET);
+    expect(satz(), "der Erklärabsatz steht schon vor dem Griff da").toBeNull();
+    const griff = byId("ki-vorlage-hilfe-vorlage-1");
+    expect(griff.getAttribute("aria-expanded"), "der Erklärgriff sagt nicht, dass er zu ist").toBe(
+      "false",
+    );
+    await click(griff);
+    expect(satz()?.textContent, "die aufgeschlagene Erklärung nennt die Anweisung nicht").toContain(
       PRESET,
     );
+    expect(
+      byId("ki-vorlage-hilfe-vorlage-1").getAttribute("aria-expanded"),
+      "der Erklärgriff sagt nicht, dass er auf ist",
+    ).toBe("true");
+    await click(byId("ki-vorlage-hilfe-vorlage-1"));
+    expect(satz(), "derselbe Griff klappt die Erklärung nicht wieder zu").toBeNull();
+    expect(
+      menue()?.textContent,
+      "nach dem Zuklappen steht die Anweisung immer noch auf der Fläche",
+    ).not.toContain(PRESET);
     await click(button("Übergabe kurz"));
     expect(box.requests[0]?.instruction).toBe(PRESET);
     expect(box.assist[0]?.draftId).toBe(id);
