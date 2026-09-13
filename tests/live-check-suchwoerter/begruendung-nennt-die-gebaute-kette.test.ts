@@ -42,15 +42,37 @@ import { describe, expect, it } from "vitest";
 //     ausführbaren Teil der Zeile steht — siehe `nurCode`. Angehängter Kommentar, Zeichenkettenwert
 //     und Blockkommentar-Innenzeile sind kein Aufruf mehr.
 //
+// ================================================================================================
+// JOB 3931 · EIN VERWEIS GILT NUR, WENN ER AUF DIE STELLE ZEIGT, DIE ER NENNT.
+// ================================================================================================
+//
+// Die zwei Reste, die JOB 3911 ausdrücklich offen liess (`archiv/3911/runde-1/RUECKGABE.md:63-64`),
+// sind zu; die Fälle H3/H4 halten sie zu:
+//   · DER `· RUMPF`-ZWEIG MISST DEN AUSFÜHRBAREN TEIL. Bis JOB 3931 prüfte er die ROHZEILEN — eine
+//     Deklarationsform in einer Blockkommentar-Innenzeile oder in einem Zeichenkettenwert galt als
+//     Rumpf. Beide Arten messen jetzt `nurCode`; der Rohbereich ist nur noch Quelle der Meldung.
+//   · EIN `· AUFRUF`-VERWEIS BRAUCHT MEHR ALS DEN NAMEN. Der Baumgang führt ein ORTSVERZEICHNIS
+//     (`Kette.orte`): je gelesener Aufrufstelle Name, Pfad und Zeile, am selben AST erhoben. Ein
+//     Aufrufverweis ist nur belegt, wenn eine verzeichnete Stelle dieses Namens im angegebenen Pfad
+//     UND Zeilenbereich liegt; sonst nennt die Meldung, wo der Gang Aufrufe dieses Namens wirklich
+//     gelesen hat (Lehre 3894 R2: gleichnamige Bindung ist kein Beleg).
+//
+// EINE FASSUNG, EIN ZEILENBILD. Weil das Ortsverzeichnis die Zeilen des ÜBERGEBENEN Textes trägt,
+// misst `belegt` für `knowledge-check.ts` ebenfalls die übergebene Fassung und nicht mehr die
+// Platte (`fassung`) — sonst verglichen Verweis und Ort zwei verschiedene Zeilenbilder. Damit eine
+// Kalibrierung der Fundstellenliste nicht nebenbei die Zeilennummern des Produkts verschiebt,
+// ERSETZEN H2, H3 und H4 die Ankerzeile, statt eine Zeile einzufügen (`mitVerweis`).
+//
 // WAS ER NICHT PRÜFT, ausdrücklich und ohne Beschönigung:
 //   · POSTGRESQL-PARITÄT. Ob der PostgreSQL-Adapter dieselbe Teilzeichenketten-Regel hat, ist hier
 //     nicht gemessen (s. „DIE GRENZE" oben). Das braucht einen eigenen Integrationstest.
 //   · DEN TATSÄCHLICHEN EDITORSTATUS. Was der Nutzer im Editor sieht, misst dieser Wächter nicht;
 //     er liest Quelltext, keine Oberfläche. Ebenfalls eigener Schnitt.
-//   · OB DER AUFRUF DER RICHTIGE IST. Ein `· AUFRUF`-Verweis belegt, dass im Zeilenbereich ein
-//     Aufruf dieses NAMENS in Code steht — nicht, dass es derjenige ist, den die Kette meint.
-//   · DEN `· RUMPF`-ZWEIG AM AUSFÜHRBAREN TEIL. Er prüft die Rohzeilen auf eine Deklarationsform,
-//     wie seit JOB 3881; eine Deklaration in einem Kommentar bliebe dort unentdeckt.
+//   · OB DER BAUMGANG DIESEN RUMPF BETRETEN HAT. Ein `· RUMPF`-Verweis belegt eine Deklaration in
+//     ausführbarem Code — nicht, dass die Kette dort hineingegangen ist. Das ist GEWOLLT und keine
+//     Nachlässigkeit: die Zeile `· RUMPF koCandidateScore — .../repo.ts:282-291` zeigt ABSICHTLICH
+//     auf einen Rumpf abseits der Kette; er ist ja der Befund, der JOB 3881 ausgelöst hat (B1).
+//     Wer diese Bindung verlangt, rötet B1/B3 aus dem falschen Grund.
 
 const WURZEL = resolve(__dirname, "../..");
 const KC = "services/app/src/knowledge-check.ts";
@@ -270,6 +292,13 @@ function empfaengerTyp(
   return undefined;
 }
 
+/** Eine Aufrufstelle, die der Baumgang WIRKLICH gelesen hat — Name, Datei, Zeile. */
+interface Aufrufort {
+  name: string;
+  pfad: string;
+  zeile: number;
+}
+
 interface Kette {
   /** Jeder Name, der auf dem Weg von `checkKnowledge` aus WIRKLICH aufgerufen wird. */
   namen: Set<string>;
@@ -277,6 +306,13 @@ interface Kette {
   rueckgrat: string[];
   /** Die betretenen Rümpfe, für die Diagnose. */
   ruempfe: string[];
+  /**
+   * DAS ORTSVERZEICHNIS (JOB 3931): je gelesener Aufrufstelle ein Eintrag. Es ist keine zweite
+   * Messung, sondern die Buchführung über dieselbe — bis JOB 3911 warf der Gang im Augenblick des
+   * Treffers alles ausser dem Namen weg, und ein `· AUFRUF`-Verweis konnte deshalb nur am NAMEN
+   * geprüft werden. Ein Verweis ist damit belegbar gegen die Stelle, nicht bloss gegen das Wort.
+   */
+  orte: Aufrufort[];
 }
 
 /**
@@ -302,6 +338,17 @@ function gebauteKette(quellen: ReadonlyMap<string, string>): Kette {
   const namen = new Set<string>();
   const rueckgrat: string[] = [];
   const ruempfe: string[] = [];
+  const orte: Aufrufort[] = [];
+  /**
+   * Der Ort EINES gelesenen Aufrufs, am selben Baum erhoben, an dem der Gang gerade steht — keine
+   * zweite Textzerlegung und keine zweite Suche. Gezählt wird die Zeile des NAMENS, nicht die des
+   * Klammerausdrucks: ein über mehrere Zeilen gesetzter Aufruf gehört dorthin, wo er benannt ist.
+   */
+  const vermerken = (namensknoten: ts.Node, name: string): void => {
+    const datei = namensknoten.getSourceFile();
+    const { line } = datei.getLineAndCharacterOfPosition(namensknoten.getStart(datei));
+    orte.push({ name, pfad: datei.fileName, zeile: line + 1 });
+  };
   const besucht = new Set<string>();
   const warteschlange: {
     knoten: ts.FunctionDeclaration | ts.MethodDeclaration;
@@ -331,6 +378,7 @@ function gebauteKette(quellen: ReadonlyMap<string, string>): Kette {
         const aus = k.expression;
         if (ts.isIdentifier(aus)) {
           namen.add(aus.text);
+          vermerken(aus, aus.text);
           const funktion = v.funktionen.get(aus.text);
           if (funktion) {
             rueckgrat.push(`${auftrag.ort} → ${aus.text}`);
@@ -338,6 +386,7 @@ function gebauteKette(quellen: ReadonlyMap<string, string>): Kette {
           }
         } else if (ts.isPropertyAccessExpression(aus)) {
           namen.add(aus.name.text);
+          vermerken(aus.name, aus.name.text);
           const traeger = empfaengerTyp(v, aus.expression, auftrag.umfeld);
           for (const ziel of traeger === undefined ? [] : methoden(v, traeger, aus.name.text)) {
             rueckgrat.push(`${auftrag.ort} → ${ziel.klasse}.${aus.name.text}`);
@@ -349,7 +398,7 @@ function gebauteKette(quellen: ReadonlyMap<string, string>): Kette {
     };
     ts.forEachChild(auftrag.knoten.body, gehe);
   }
-  return { namen, rueckgrat, ruempfe };
+  return { namen, rueckgrat, ruempfe, orte };
 }
 
 function quellenAus(kcText: string): ReadonlyMap<string, string> {
@@ -553,15 +602,21 @@ const AUSGEBLENDET: ReadonlySet<ts.SyntaxKind> = new Set([
   ts.SyntaxKind.RegularExpressionLiteral,
 ]);
 
-/** Der Baumgang je Datei ist teuer und rein — einmal je Pfad genügt. */
+/**
+ * Der Baumgang je Datei ist teuer und rein — einmal je FASSUNG genügt.
+ *
+ * Seit JOB 3931 ist der Schlüssel Pfad UND Text, nicht mehr der Pfad allein: `belegt` misst für
+ * `knowledge-check.ts` die ÜBERGEBENE Fassung, und eine Arbeitskopie ist eine andere Datei als die
+ * auf der Platte. Ein Speicher je Pfad hätte der zweiten Fassung die Code-Sicht der ersten gegeben.
+ */
 const NUR_CODE = new Map<string, string>();
 
-function nurCode(pfad: string): string {
-  const bekannt = NUR_CODE.get(pfad);
+function nurCode(pfad: string, text: string): string {
+  const schluessel = `${pfad} ${text}`;
+  const bekannt = NUR_CODE.get(schluessel);
   if (bekannt !== undefined) {
     return bekannt;
   }
-  const text = lesen(pfad);
   const datei = ast(text, pfad);
   const zeichen = text.split("");
   const ausblenden = (von: number, bis: number): void => {
@@ -591,12 +646,28 @@ function nurCode(pfad: string): string {
   };
   gehe(datei);
   const raus = zeichen.join("");
-  NUR_CODE.set(pfad, raus);
+  NUR_CODE.set(schluessel, raus);
   return raus;
 }
 
-function belegt(verweis: Verweis): string | undefined {
-  const roh = bereich(lesen(verweis.pfad), verweis.von, verweis.bis);
+/**
+ * DIE FASSUNG, DIE EINE PRÜFUNG SIEHT. Für `knowledge-check.ts` ist es die ÜBERGEBENE (Doktrin von
+ * K2), für jede andere Datei die auf der Platte.
+ *
+ * WARUM DAS SEIT JOB 3931 SEIN MUSS: der Baumgang arbeitet am übergebenen Text (`ketteZu`), und sein
+ * Ortsverzeichnis trägt dessen Zeilennummern. Läse `belegt` daneben die Platte, verglichen beide
+ * ZWEI VERSCHIEDENE ZEILENBILDER, sobald eine Kalibrierung Zeilen einfügt oder anhängt — der
+ * Verweis wäre gegen die eine, der Ort gegen die andere Fassung gemessen. Eine Fassung, ein
+ * Zeilenbild. Fall H4 hängt deshalb seinen unbesuchten Aufrufer wirklich an den übergebenen Text an
+ * und trifft ihn über seine Zeilennummer; gegen die Platte gemessen läge sie ausserhalb der Datei.
+ */
+function fassung(pfad: string, kcText: string): string {
+  return pfad === KC ? kcText : lesen(pfad);
+}
+
+function belegt(verweis: Verweis, orte: readonly Aufrufort[], kcText: string): string | undefined {
+  const text = fassung(verweis.pfad, kcText);
+  const roh = bereich(text, verweis.von, verweis.bis);
   if (roh.length === 0) {
     return "der Zeilenbereich liegt ausserhalb der Datei";
   }
@@ -605,18 +676,40 @@ function belegt(verweis: Verweis): string | undefined {
     verweis.art === "RUMPF"
       ? new RegExp(`^\\s*(?:export\\s+)?(?:async\\s+)?(?:function\\s+)?${name}\\s*[(<]`)
       : new RegExp(`[.\\s(]${name}\\s*\\(`);
-  // RUMPF behält seine Bedeutung und liest die Rohzeilen; AUFRUF misst am ausführbaren Teil.
-  const gemessen =
-    verweis.art === "RUMPF" ? roh : bereich(nurCode(verweis.pfad), verweis.von, verweis.bis);
-  if (gemessen.some((z) => muster.test(z))) {
-    return undefined;
-  }
-  // Steht der Name im Rohtext, im Code aber nicht, sagt die Meldung WARUM sie ihn verwirft.
-  const schein =
-    verweis.art === "AUFRUF" && roh.some((z) => muster.test(z))
+  // SEIT JOB 3931 MESSEN BEIDE ARTEN DEN AUSFÜHRBAREN TEIL. Bis dahin las der RUMPF-Zweig die
+  // Rohzeilen: eine Deklarationsform in einer Blockkommentar-Innenzeile oder in einem
+  // Zeichenkettenwert galt als Rumpf (Fall H3). Der Rohbereich ist nur noch Quelle der MELDUNG.
+  const gemessen = bereich(nurCode(verweis.pfad, text), verweis.von, verweis.bis);
+  if (!gemessen.some((z) => muster.test(z))) {
+    // Steht der Name im Rohtext, im Code aber nicht, sagt die Meldung WARUM sie ihn verwirft.
+    const schein = roh.some((z) => muster.test(z))
       ? " (der Name steht dort nur in einem Kommentar oder in einer Zeichenkette, nicht in Code)"
       : "";
-  return `${verweis.pfad}:${verweis.von}-${verweis.bis} trägt ${verweis.art === "RUMPF" ? "keine Deklaration" : "keinen ausführbaren Aufruf"}${schein} von „${verweis.name}"; gelesener Bereich: ${roh.join(" ⏎ ").slice(0, 240)}`;
+    const fehlt =
+      verweis.art === "RUMPF"
+        ? "keine Deklaration in ausführbarem Code"
+        : "keinen ausführbaren Aufruf";
+    return `${verweis.pfad}:${verweis.von}-${verweis.bis} trägt ${fehlt}${schein} von „${verweis.name}"; gelesener Bereich: ${roh.join(" ⏎ ").slice(0, 240)}`;
+  }
+  // EIN RUMPF-VERWEIS IST HIER FERTIG, UND DAS IST ABSICHT: er verlangt eine Deklaration in Code,
+  // NICHT dass der Baumgang diesen Rumpf betreten hat. Die Zeile `· RUMPF koCandidateScore …` zeigt
+  // ausdrücklich auf einen Rumpf ABSEITS der Kette — der Befund aus JOB 3881, gemessen in B1.
+  if (verweis.art === "RUMPF") {
+    return undefined;
+  }
+  // DER AUFRUF MUSS DER GEMEINTE SEIN (JOB 3931). Bis dahin genügte ein Aufruf DIESES NAMENS im
+  // Zeilenbereich — eine gleichnamige Attrappe in einer fremden Datei oder ein gleichnamiger Aufruf
+  // in einem Rumpf ohne Aufrufer galt als Beleg (Lehre 3894 R2: gleichnamige Bindung ist kein Beleg).
+  const gleichnamig = orte.filter((o) => o.name === verweis.name);
+  if (
+    gleichnamig.some(
+      (o) => o.pfad === verweis.pfad && o.zeile >= verweis.von && o.zeile <= verweis.bis,
+    )
+  ) {
+    return undefined;
+  }
+  const wirklich = [...new Set(gleichnamig.map((o) => `${o.pfad}:${o.zeile}`))].sort();
+  return `${verweis.pfad}:${verweis.von}-${verweis.bis} trägt einen Aufruf von „${verweis.name}", aber nicht den, den die Kette betreten hat; der Baumgang hat Aufrufe dieses Namens gelesen an: ${wirklich.length === 0 ? "keine" : wirklich.join(", ")}; gelesener Bereich: ${roh.join(" ⏎ ").slice(0, 240)}`;
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -653,7 +746,9 @@ function pruefeFundstellen(kcText: string): void {
     ohneVerweis,
     `B3 Fundstellen: ${KC}: der Begründungsblock nennt ${ohneVerweis.join(", ")} ohne Fundstellenzeile („· RUMPF <name> — <pfad>:<von>-<bis>")`,
   ).toEqual([]);
-  const falsch = verweise.map(belegt).filter((m): m is string => m !== undefined);
+  const falsch = verweise
+    .map((v) => belegt(v, kette.orte, kcText))
+    .filter((m): m is string => m !== undefined);
   expect(falsch, `B3 Fundstellen: ${KC}: ${falsch.join(" · ")}`).toEqual([]);
   // Kein Verweis an der Liste vorbei: sonst stünde daneben eine zweite, ungeprüfte Wahrheit.
   const inListe = new Set(
@@ -733,8 +828,75 @@ H2c — findSearchHits(entwurf): Innenzeile eines Blockkommentars ohne führende
 */
 const SCHEIN_BLOCKKOMMENTAR = "H2c";
 
-/** Die Fundstellenzeile, hinter die Fall H2 seinen Scheinbeleg-Verweis hängt. */
+/** Die Fundstellenzeile, die H2, H3 und H4 durch ihren eigenen Verweis ERSETZEN. */
 const LISTENANKER = "//   · AUFRUF findCandidates — services/app/src/knowledge-check.ts:389";
+
+/**
+ * Setzt `zeile` an die Stelle der Ankerzeile der Fundstellenliste.
+ *
+ * WARUM ERSETZEN UND NICHT EINFÜGEN (seit JOB 3931): eine eingefügte Zeile verschiebt jede
+ * KC-Zeile dahinter — auch die Aufrufstelle `:389`, auf die die Liste selbst zeigt. Seit `belegt`
+ * und das Ortsverzeichnis dieselbe ÜBERGEBENE Fassung messen, wäre der eigene Verweis der Liste in
+ * der Arbeitskopie dann zu Recht falsch, und jeder Fall wäre aus ZWEI Gründen rot. Ersetzen hält
+ * das Zeilenbild fest; `findCandidates` behält dabei seinen Verweis über die `· RUMPF`-Zeile, die
+ * Prüfung „jede Kettenfunktion hat einen Verweis" bleibt also erfüllt.
+ */
+function mitVerweis(text: string, zeile: string): string {
+  return ersetzen(text, LISTENANKER, `//   · ${zeile}`);
+}
+
+// ------------------------------------------------------------------------------------------------
+// DIE ZWEI SCHEINBELEG-ZEILEN FÜR DEN `· RUMPF`-ZWEIG (Fall H3) — auch sie stehen HIER.
+// ------------------------------------------------------------------------------------------------
+//
+// Beide tragen die DEKLARATIONSFORM `findSearchHits(` am Zeilenanfang und erfüllen damit das
+// RUMPF-Muster am ROHTEXT — und keine von beiden ist Code: die erste ist die Innenzeile eines
+// Blockkommentars ohne führendes Sternchen, die zweite der Wert einer Zeichenkette über zwei
+// Zeilen. Bis JOB 3931 galten beide als „Rumpf gefunden". Die Zeilennummern sucht Fall H3 zur
+// Laufzeit über die Marke; die Marke steht deshalb NUR auf der Zeile selbst und nirgends darüber.
+
+/*
+findSearchHits(query: KoSearchQuery) — H3a: Deklarationsform in einer Blockkommentar-Innenzeile.
+*/
+const SCHEIN_RUMPF_BLOCKKOMMENTAR = "H3a";
+
+const SCHEIN_RUMPF_TEXT = `
+findSearchHits(query: KoSearchQuery) — H3b: Deklarationsform als blosser Zeichenkettenwert.
+`;
+const SCHEIN_RUMPF_ZEICHENKETTE = "H3b";
+
+// ------------------------------------------------------------------------------------------------
+// DER FREMDE, ABER ECHTE AUFRUF (Fall H4) — eine örtliche Attrappe mit gleichnamiger Methode.
+// ------------------------------------------------------------------------------------------------
+//
+// Der Aufruf unten ist ausführbarer Code und wird beim Laden dieser Datei wirklich ausgeführt (Fall
+// H4 prüft das an seinem Rückgabewert). Nur ist es nicht die Aufrufstelle, die die Kette meint —
+// genau der Unterschied, den der Wächter bis JOB 3931 nicht sehen konnte. Wäre die Zeile kein Code,
+// stiesse Fall H4 schon am Codefilter aus JOB 3911 ab und prüfte die falsche Sache.
+const ATTRAPPE = {
+  findCandidates(_marke: string): string[] {
+    return [];
+  },
+};
+const FREMDER_AUFRUF = ATTRAPPE.findCandidates("H4a");
+/** Die Marke, über die Fall H4 die Zeile des fremden Aufrufs zur Laufzeit findet. */
+const FREMDAUFRUF_MARKE = "H4a";
+
+/**
+ * Der dritte Teil von Fall H4: ein ECHTER Aufruf von `findCandidates` in `knowledge-check.ts`
+ * SELBST, den der Baumgang nie betritt — `nieGerufen` hat keinen Aufrufer, seine Aufrufstelle steht
+ * deshalb in keinem Ortsverzeichnis. Angehängt wird der Block am DATEIENDE, damit kein Zeilenbild
+ * verrutscht. Er misst die Bindung an die ZEILE: Name und Pfad stimmen, die Zeile nicht.
+ */
+const UNBESUCHTER_AUFRUFER = `
+export async function nieGerufen(deps: {
+  ko: { findCandidates: (q: { terms: string[]; limit: number }) => Promise<unknown> };
+}): Promise<unknown> {
+  return await deps.ko.findCandidates({ terms: [], limit: 1 }); // H4c
+}
+`;
+/** Die Marke, über die Fall H4 die Zeile des unbesuchten Aufrufers zur Laufzeit findet. */
+const UNBESUCHT_MARKE = "H4c";
 
 describe("JOB 3881: die Begründung der Suchwortregel nennt die gebaute Kette", () => {
   it("B1 · die Kette wird aus dem Quelltext gebaut: findCandidates → findSearchHits → findActive", () => {
@@ -889,11 +1051,7 @@ describe("JOB 3881: die Begründung der Suchwortregel nennt die gebaute Kette", 
         `Scheinbeleg-Zeile „${marke}" nicht gefunden oder ohne Aufrufform: ${selbst[nr] ?? "<keine>"}`,
       ).toBe(true);
       const ort = `${SELBST}:${nr + 1}`;
-      const verstellt = ersetzen(
-        kc,
-        LISTENANKER,
-        `${LISTENANKER}\n//   · AUFRUF findSearchHits — ${ort}`,
-      );
+      const verstellt = mitVerweis(kc, `AUFRUF findSearchHits — ${ort}`);
       const fehler = abgewiesen(() => pruefeFundstellen(verstellt));
       expect(fehler).toContain("B3 Fundstellen");
       expect(fehler).toContain(ort);
@@ -902,4 +1060,111 @@ describe("JOB 3881: die Begründung der Suchwortregel nennt die gebaute Kette", 
       expect(befund(pruefeKettentreue, verstellt)).toBe(befund(pruefeKettentreue, kc));
     });
   }
+
+  // ==============================================================================================
+  // JOB 3931 — DIE ZWEI RESTE, DIE JOB 3911 AUSDRÜCKLICH OFFEN LIESS.
+  // ==============================================================================================
+
+  for (const [form, marke] of [
+    ["Innenzeile eines Blockkommentars", SCHEIN_RUMPF_BLOCKKOMMENTAR],
+    ["Zeichenkettenwert", SCHEIN_RUMPF_ZEICHENKETTE],
+  ] as const) {
+    it(`H3 · eine Fundstelle auf eine Deklarationsform ohne Code (${form}) gilt NICHT als Rumpf`, () => {
+      // Bis JOB 3931 mass der `· RUMPF`-Zweig die ROHZEILEN: beide Formen unten erfüllen das
+      // Deklarationsmuster am Rohtext, und ein Verweis auf sie galt damit als „belegt" — obwohl dort
+      // kein einziges ausführbares Zeichen steht. Wer der Fundstelle folgte, landete auf Text.
+      expect(
+        SCHEIN_RUMPF_TEXT,
+        "die zweite Form muss wirklich ein Zeichenkettenwert sein",
+      ).toContain("findSearchHits(");
+      const selbst = lesen(SELBST).split("\n");
+      const nr = selbst.findIndex((z) => z.includes(marke));
+      // Wie bei H2: die Marke muss ZUERST auf ihrer eigenen Zeile stehen, und diese Zeile muss die
+      // Deklarationsform am Zeilenanfang tragen — sonst wäre der Fall aus dem falschen Grund rot.
+      expect(
+        nr >= 0 && /^findSearchHits\s*\(/.test(selbst[nr] ?? ""),
+        `Scheinbeleg-Zeile „${marke}" nicht gefunden oder ohne Deklarationsform: ${selbst[nr] ?? "<keine>"}`,
+      ).toBe(true);
+      const ort = `${SELBST}:${nr + 1}`;
+      const verstellt = mitVerweis(kc, `RUMPF findSearchHits — ${ort}`);
+      const fehler = abgewiesen(() => pruefeFundstellen(verstellt));
+      expect(fehler).toContain("B3 Fundstellen");
+      expect(fehler).toContain(ort);
+      expect(fehler).toContain("keine Deklaration in ausführbarem Code");
+      expect(fehler).toContain("nur in einem Kommentar oder in einer Zeichenkette, nicht in Code");
+      // Trennschärfe wie H2: die Kettentreue bleibt Wort für Wort beim alten Urteil.
+      expect(befund(pruefeKettentreue, verstellt)).toBe(befund(pruefeKettentreue, kc));
+    });
+  }
+
+  it("H4 · ein `· AUFRUF`-Verweis zeigt auf die Aufrufstelle, die der Baumgang betreten hat", () => {
+    const echteAufrufe = fundstellen(begruendung(kc)).filter((v) => v.art === "AUFRUF");
+    expect(echteAufrufe.length, "die Liste trägt keinen einzigen AUFRUF-Verweis").toBeGreaterThan(
+      0,
+    );
+    const echterKandidatenAufruf = genauEins(
+      echteAufrufe.filter((v) => v.name === "findCandidates"),
+      "die Liste trägt nicht genau einen AUFRUF-Verweis auf findCandidates",
+    );
+
+    // (a) FREMDER, ABER ECHTER AUFRUF IN EINER ANDEREN DATEI. Die Attrappe oben ruft wirklich
+    //     `findCandidates` — bis JOB 3931 genügte dem Wächter der NAME in Code, und der Verweis galt
+    //     als belegt. Wer ihm folgte, landete auf einer Testattrappe statt auf dem Produktaufruf.
+    expect(FREMDER_AUFRUF, "die Attrappenzeile muss ausführbarer Code sein").toEqual([]);
+    const selbst = lesen(SELBST).split("\n");
+    const nrA = selbst.findIndex((z) => z.includes(FREMDAUFRUF_MARKE));
+    expect(
+      nrA >= 0 && (selbst[nrA] ?? "").includes(".findCandidates("),
+      `Attrappenzeile „${FREMDAUFRUF_MARKE}" nicht gefunden oder ohne Aufrufform: ${selbst[nrA] ?? "<keine>"}`,
+    ).toBe(true);
+    const ortA = `${SELBST}:${nrA + 1}`;
+    const verstelltA = mitVerweis(kc, `AUFRUF findCandidates — ${ortA}`);
+    const fehlerA = abgewiesen(() => pruefeFundstellen(verstelltA));
+    expect(fehlerA).toContain("B3 Fundstellen");
+    expect(fehlerA).toContain(ortA);
+    expect(fehlerA).toContain("nicht den, den die Kette betreten hat");
+    // Die Meldung trägt den Gegenbeweis: WO der Baumgang Aufrufe dieses Namens wirklich gelesen hat.
+    expect(fehlerA).toContain(`${echterKandidatenAufruf.pfad}:${echterKandidatenAufruf.von}`);
+    // Und ausdrücklich NICHT die Scheinbeleg-Begründung aus JOB 3911: die Zeile IST ja Code.
+    expect(fehlerA).not.toContain("nur in einem Kommentar");
+    expect(befund(pruefeKettentreue, verstelltA)).toBe(befund(pruefeKettentreue, kc));
+
+    // (b) DIE ZEILENBINDUNG, an derselben Datei und demselben Namen gemessen: `nieGerufen` ruft
+    //     `findCandidates` in ausführbarem Code, hat aber keinen Aufrufer — der Baumgang betritt den
+    //     Rumpf nie und verzeichnet die Stelle deshalb nicht. Pfad und Name stimmen, die Zeile nicht.
+    const mitAnhang = kc + UNBESUCHTER_AUFRUFER;
+    const nrC = mitAnhang.split("\n").findIndex((z) => z.includes(UNBESUCHT_MARKE)) + 1;
+    expect(
+      nrC,
+      `Zeile des unbesuchten Aufrufers („${UNBESUCHT_MARKE}") nicht gefunden`,
+    ).toBeGreaterThan(0);
+    const verstelltC = mitVerweis(mitAnhang, `AUFRUF findCandidates — ${KC}:${nrC}`);
+    const fehlerC = abgewiesen(() => pruefeFundstellen(verstelltC));
+    expect(fehlerC).toContain("B3 Fundstellen");
+    expect(fehlerC).toContain(`${KC}:${nrC}`);
+    expect(fehlerC).toContain("nicht den, den die Kette betreten hat");
+    expect(fehlerC).toContain(`${echterKandidatenAufruf.pfad}:${echterKandidatenAufruf.von}`);
+    expect(fehlerC).not.toContain("nur in einem Kommentar");
+
+    // (c) DIE GEGENRICHTUNG — ein Wächter, der nach dieser Härtung ALLES rötet, fällt hier durch.
+    //     Jeder echte AUFRUF-Verweis der Liste bleibt grün, auch an die Ankerstelle gesetzt.
+    expect(befund(pruefeFundstellen, kc)).toBe("GRÜN");
+    for (const echt of echteAufrufe) {
+      expect(
+        befund(pruefeFundstellen, mitVerweis(kc, `AUFRUF ${echt.name} — ${echt.pfad}:${echt.von}`)),
+        `der echte Verweis auf ${echt.name} wurde abgewiesen`,
+      ).toBe("GRÜN");
+      // Um ±1 Zeile verschoben ist derselbe Verweis rot. EHRLICH DAZU: die Nachbarzeile trägt den
+      // Namen überhaupt nicht, hier weist schon der Codefilter aus JOB 3911 ab — die Bindung an die
+      // Zeile des Ortsverzeichnisses misst Teil (b), wo der Name in Code, aber an falscher Stelle steht.
+      for (const versatz of [-1, 1]) {
+        const daneben = `${echt.pfad}:${echt.von + versatz}`;
+        const fehler = abgewiesen(() =>
+          pruefeFundstellen(mitVerweis(kc, `AUFRUF ${echt.name} — ${daneben}`)),
+        );
+        expect(fehler).toContain(daneben);
+        expect(fehler).toContain("keinen ausführbaren Aufruf");
+      }
+    }
+  });
 });
