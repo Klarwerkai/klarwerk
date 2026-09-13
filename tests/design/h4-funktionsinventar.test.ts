@@ -735,6 +735,17 @@ describe("JOB 3063 · H4 · Funktionsinventar — jede Funktion an ihrem neuen O
     // Ebenso draussen bleibt der Fliesstext des Wissensobjekts selbst, der im Abschnitt
     // „Schnappschüsse" als Vorschau steht („Halterungen und Profile sind ohne waagerechte
     // Oberseiten …") — auch das ist Inhalt und keine Beschriftung.
+    //
+    // JOB 3793 · DIE FÜNF ABSCHNITTE, DIE JOB 3602 OFFEN GELASSEN HAT. Bis hierher deckte diese
+    // Tabelle ACHT der dreizehn Abschnitte unter „Mehr" (quellen, belege, provenienz, konflikt,
+    // kommentare, anhaenge, historie, schnappschuesse); `extern`, `beitrag`, `kopplung`,
+    // `herkunftskette` und `nachbarschaft` trugen keinen einzigen Sollwert, und ein deutscher
+    // Rückfall dort wäre F20 nicht aufgefallen — ausdrücklich bestellt in
+    // `archiv/3602/runde-1/RUECKGABE.md:74`. Seit dieser Runde stehen sie am Ende der Tabelle
+    // (Block „JOB 3793"), und damit trägt JEDER der dreizehn Abschnitte mindestens einen Sollwert.
+    // Ihre Wörter sind an derselben laufenden Bühne gelesen, die F19b als Massstab nimmt, und
+    // nicht aus `i18n.ts` abgeschrieben; die deutsche Lesung, aus der sie stammen, steht über dem
+    // Block. Die acht älteren Einträge sind dabei nicht angefasst worden.
     {
       fall: "F20",
       teil: "Mehr · quellen",
@@ -832,6 +843,114 @@ describe("JOB 3063 · H4 · Funktionsinventar — jede Funktion an ihrem neuen O
     },
     { fall: "F18", teil: "Leerzustand", wo: "eintraege", wort: "Nichts gefunden.", art: "gleich" },
     { fall: "F18", teil: "Leerzustand", wo: "eintraege", wort: "Erfassen", art: "gleich" },
+
+    // ----------------------------------------------------------------------------------------
+    // JOB 3793 · DIE FÜNF ABSCHNITTE OHNE SOLLWERT — ab hier trägt jeder der dreizehn einen.
+    // ----------------------------------------------------------------------------------------
+    //
+    // DIE DEUTSCHE LESUNG, AUS DER DIESE WÖRTER STAMMEN, an der laufenden Bühne gemessen (nicht
+    // aus dem Katalog geraten) — sie steht hier, damit nachlesbar ist, was die Fläche wirklich
+    // liefert und was von ihr als Sollwert genommen wurde:
+    //   extern         „Externes Wissen › Auf der eingestellten Stufe darf gesucht, aber nicht
+    //                   angehängt werden. Ein Administrator kann das unter Verwaltung → Externes
+    //                   Wissen ändern. Suchen"
+    //   beitrag        „Quelle oder Beitrag melden › Beitrag einreichen"
+    //   kopplung       „Kopplung und Anlagen › Noch mit keiner Anlage gekoppelt. Mit Anlage
+    //                   koppeln"
+    //   herkunftskette „Herkunftskette › Ursprung Pedi Version v1 · 1 Änderung Quellen 1 Verwandt
+    //                   0 12.9.2026 Zuständigkeit einer Rolle geändert Pedi 12.9.2026 Bewertet
+    //                   Pedi 12.9.2026 Angelegt Pedi Im Wissensgraph ansehen →"
+    //   nachbarschaft  „Nachbarschaft › Keine Nachbarn über aussagekräftige Schlagwörter."
+    //
+    // ALLE TRAGEN `F20`, weil kein älterer Fall diese Beschriftungen hält: F16 zählt in `extern`,
+    // `beitrag` und `kopplung` nur Felder und Knöpfe (`:442-445`), kein Wort; F15 prüft bloss,
+    // dass die Abschnittskennung da ist. Die Regel dafür steht im Kopf des Blocks darüber.
+    //
+    // WAS AUCH HIER DRAUSSEN BLEIBT. `Pedi` (Ursprung, Bearbeiter der Ereigniszeilen) ist ein
+    // DATENWERT, dieselbe Begründung wie oben. Die Datumsangaben („12.9.2026") sind Zahlen, die
+    // das Produkt selbst sprachabhängig formatiert — kein Katalogwort. Und `Version`
+    // (`ko.lineageVersions`) ist GEMESSEN in beiden Sprachen dasselbe Wort
+    // (`apps/web/src/i18n.ts:3027` de, `:8701` en, die englische Lesung zeigt „Version v1 · 1
+    // change"): als Sollwert bräuchte es sofort einen Eintrag in `VON_NATUR_GLEICH` und deckte
+    // nichts, was die anderen drei Sollwerte dieses Abschnitts nicht schon decken.
+    {
+      fall: "F20",
+      teil: "Mehr · extern",
+      wo: "eintraege",
+      wort: "Externes Wissen",
+      art: "enthaelt",
+    },
+    { fall: "F20", teil: "Mehr · extern", wo: "eintraege", wort: "Suchen", art: "enthaelt" },
+    {
+      fall: "F20",
+      teil: "Mehr · beitrag",
+      wo: "eintraege",
+      wort: "Quelle oder Beitrag melden",
+      art: "enthaelt",
+    },
+    {
+      fall: "F20",
+      teil: "Mehr · beitrag",
+      wo: "eintraege",
+      wort: "Beitrag einreichen",
+      art: "enthaelt",
+    },
+    {
+      fall: "F20",
+      teil: "Mehr · kopplung",
+      wo: "eintraege",
+      wort: "Kopplung und Anlagen",
+      art: "enthaelt",
+    },
+    {
+      fall: "F20",
+      teil: "Mehr · kopplung",
+      wo: "eintraege",
+      wort: "Noch mit keiner Anlage gekoppelt.",
+      art: "enthaelt",
+    },
+    {
+      fall: "F20",
+      teil: "Mehr · kopplung",
+      wo: "eintraege",
+      wort: "Mit Anlage koppeln",
+      art: "enthaelt",
+    },
+    {
+      fall: "F20",
+      teil: "Mehr · herkunftskette",
+      wo: "eintraege",
+      wort: "Herkunftskette",
+      art: "enthaelt",
+    },
+    {
+      fall: "F20",
+      teil: "Mehr · herkunftskette",
+      wo: "eintraege",
+      wort: "Ursprung",
+      art: "enthaelt",
+    },
+    {
+      fall: "F20",
+      teil: "Mehr · herkunftskette",
+      wo: "eintraege",
+      wort: "Im Wissensgraph ansehen",
+      art: "enthaelt",
+    },
+    {
+      fall: "F20",
+      teil: "Mehr · nachbarschaft",
+      wo: "eintraege",
+      wort: "Nachbarschaft",
+      art: "enthaelt",
+    },
+    {
+      fall: "F20",
+      teil: "Mehr · nachbarschaft",
+      wo: "eintraege",
+      wort: "Keine Nachbarn über aussagekräftige Schlagwörter.",
+      art: "enthaelt",
+    },
   ];
 
   interface Ausnahme {
@@ -900,6 +1019,13 @@ describe("JOB 3063 · H4 · Funktionsinventar — jede Funktion an ihrem neuen O
     // Rückfall verschwindet — eine Ausnahme, die nichts mehr deckt, meldet F19b als tot.
     // Die Liste bleibt als LEERE Liste stehen: sie ist die Stelle, an der der nächste gemessene
     // Fund einzutragen ist.
+    //
+    // JOB 3793: auch die fünf neu aufgenommenen Abschnitte bringen keinen Eintrag mit. Ihre
+    // englische Lesung ist GEMESSEN vollständig übersetzt — `extern` „External knowledge … Search",
+    // `beitrag` „Report source or contribution › Submit contribution", `kopplung` „Asset coupling ›
+    // Not coupled to any asset yet. Couple with asset", `herkunftskette` „Origin chain › Origin …
+    // View in knowledge graph", `nachbarschaft` „Neighbourhood › No neighbours via meaningful
+    // tags." Die Liste bleibt deshalb leer, und das ist ein Befund und keine Auslassung.
   ];
 
   const AUSNAHMEN: readonly Ausnahme[] = [...VON_NATUR_GLEICH, ...BEKANNTER_RUECKFALL];
