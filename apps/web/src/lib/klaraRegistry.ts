@@ -218,7 +218,10 @@ export function allFaqEntries(language: string): ResolvedKlaraEntry[] {
 
 // Kleine Synonym-Karte für die tolerante Suche: Alltagswort → Wortstamm aus den Hilfetexten.
 // Bewusst klein und wartbar; wächst mit echten Anwenderfragen (Hilfe-Lücken-Schleife).
-const KLARA_SYNONYMS: Readonly<Record<string, readonly string[]>> = {
+// Exportiert für den Ehrlichkeitswächter in `tests/help/klara-registry.test.ts`: jeder Zielstamm
+// muss in mindestens einem aufgelösten deutschen Klara-Eintrag vorkommen — ein Stamm, den kein
+// Eintrag trägt, täuscht Hilfe vor, die es nicht gibt. EINE Karte, kein zweites Abbild.
+export const KLARA_SYNONYMS: Readonly<Record<string, readonly string[]>> = {
   freigeben: ["validier"],
   freigabe: ["validier"],
   genehmigen: ["validier"],
@@ -226,6 +229,17 @@ const KLARA_SYNONYMS: Readonly<Record<string, readonly string[]>> = {
   beitrag: ["wissensobjekt", "objekt"],
   löschen: ["papierkorb", "entfern"],
   frage: ["antwort", "wissenslücke"],
+  // JOB 3798: die Alltagswörter eines ABGESCHAFFTEN Versprechens. KLARWERK führt zwei Einträge nie
+  // zu einem zusammen — JOB 3771 hat „du entscheidest bewusst, was verschmolzen wird" von der
+  // Dublettenfläche genommen, JOB 3787 „Artikel zusammenführen" aus der FAQ. Wer diese Wörter
+  // gelesen hat, tippt sie weiter; ohne Synonym läuft er ins Leere (gemessen: 0 Treffer). Das
+  // Synonym belebt das Versprechen nicht wieder — es führt auf die Fläche, die sagt, was WIRKLICH
+  // passiert. Zielstamm ist überall `duplikat` (trägt über `nav.duplicates` = „Duplikate").
+  verschmelzen: ["duplikat"], // 3771, Infinitiv der Fläche
+  verschmolzen: ["duplikat"], // 3771, Partizip des gestrichenen Satzes
+  mergen: ["duplikat"], // das englische Alltagswort, das im Katalog nirgends steht
+  zusammenführen: ["duplikat"], // 3787, Wortlaut der alten FAQ-Frage — siehe Nachführ-Pin im Test
+  zusammenführung: ["duplikat"], // dasselbe als Substantiv; die Teilkette trägt es NICHT von selbst
 };
 
 // Pedi 05.07. (Bug): Eine Frage mit Satzzeichen — „Validierung?" — fand nichts, weil das
