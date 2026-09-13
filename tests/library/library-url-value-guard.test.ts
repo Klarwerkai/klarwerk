@@ -16,6 +16,7 @@ import {
   isFacetNoMatch,
 } from "../../apps/web/src/lib/facets";
 import {
+  droppedFacetDimensions,
   facetSelectionFromParams,
   knownFacetValues,
   pruneFacetSelectionToKnownValues,
@@ -154,5 +155,59 @@ describe("Block C: der Bestand ist die Werte-Grenze", () => {
     );
     expect(guarded.category).toBeUndefined();
     expect(guarded.origin).toEqual(["demo"]);
+  });
+
+  // ----------------------------------------------------------------------------------------------
+  // JOB 3877 · B7b — DIE MELDUNG NEBEN DER AUSWAHL, UND DIE GRENZE, DIE SIE NICHT VERSCHIEBT
+  // ----------------------------------------------------------------------------------------------
+  // Die Auswahl verliert beim Wegräumen die Information, dass überhaupt eingegrenzt wurde; auf einem
+  // leeren Bestand stand deshalb „Noch keine Einträge." unter einem Link, der eingegrenzt hat
+  // (`tests/bibliothek-leer-oder-eingegrenzt/leersatz-sagt-die-wahrheit.test.tsx`, B7b). Gemeldet
+  // wird das jetzt NEBEN der Auswahl — die Auswahl selbst bleibt Byte für Byte, was sie war.
+
+  it("JOB 3877: die Meldung nennt die verworfene Dimension — die Auswahl bleibt unangetastet", () => {
+    const fromUrl = facetSelectionFromParams(new URLSearchParams("category=erfunden"), KEYS);
+    const guarded = prune(fromUrl);
+
+    expect(droppedFacetDimensions(fromUrl, guarded)).toEqual(["category"]);
+
+    // Und dieselbe Eingabe liefert weiterhin GENAU die Auswahl von vorher: der Schlüssel fehlt, und
+    // kein Wert ist zu No-Match geworden. Das ist die uxpol4-Grenze, hier nachgemessen statt behauptet.
+    expect(guarded.category).toBeUndefined();
+    expect(Object.keys(guarded)).toEqual([]);
+    for (const value of Object.values(guarded)) {
+      expect(isFacetNoMatch(value)).toBe(false);
+    }
+  });
+
+  it("JOB 3877: teilweise überlebende, leere und No-Match-Dimensionen melden NICHTS", () => {
+    // Gemischt: „Anlage 1" überlebt, die Eingrenzung steht sichtbar im Menü — nichts ist verloren.
+    const gemischt = facetSelectionFromParams(
+      new URLSearchParams("category=Anlage+1&category=erfunden"),
+      KEYS,
+    );
+    expect(droppedFacetDimensions(gemischt, prune(gemischt))).toEqual([]);
+
+    // Eine leere Dimension hatte nichts zu verlieren.
+    expect(droppedFacetDimensions({ category: [] }, prune({ category: [] }))).toEqual([]);
+
+    // Und das strukturelle No-Match ist kein Wert: es überlebt die Prüfung und ist nie „verworfen".
+    const noMatch: FacetSelection = { category: FACET_NO_MATCH_SELECTION };
+    expect(droppedFacetDimensions(noMatch, prune(noMatch))).toEqual([]);
+  });
+
+  it("JOB 3877: der `origin`-Sondervertrag löst die Meldung NICHT aus", () => {
+    // `?origin=demo` auf leerem Bestand ist eine echte, ÜBERLEBENDE Auswahl (s. der Fall darüber).
+    // Sie zusätzlich als „verworfen" zu melden, hiesse denselben Filter zweimal zu zählen.
+    const emptyKnown = knownFacetValues([], KEYS);
+    const vorher: FacetSelection = { category: ["Instandhaltung"], origin: ["demo"] };
+    const nachher = pruneFacetSelectionToKnownValues(vorher, emptyKnown);
+    expect(droppedFacetDimensions(vorher, nachher)).toEqual(["category"]);
+
+    // Allein `origin` in der Adresse ⇒ gar keine Meldung.
+    const nurOrigin = facetSelectionFromParams(new URLSearchParams("origin=demo"), KEYS);
+    expect(
+      droppedFacetDimensions(nurOrigin, pruneFacetSelectionToKnownValues(nurOrigin, emptyKnown)),
+    ).toEqual([]);
   });
 });

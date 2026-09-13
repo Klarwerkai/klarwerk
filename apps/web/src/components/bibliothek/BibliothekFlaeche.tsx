@@ -76,6 +76,7 @@ import {
   sortLibrary,
 } from "../../lib/librarySort";
 import {
+  droppedFacetDimensions,
   facetSelectionFromParams,
   facetSelectionNeedsKnownValues,
   knownFacetValues,
@@ -291,6 +292,11 @@ export function BibliothekFlaeche({
   const [urlSeed, setUrlSeed] = useState<FacetSelection | null>(() =>
     facetSelectionFromParams(params, LIBRARY_FACET_PARAM_KEYS),
   );
+  // JOB 3877 · B7b: die Dimensionen, die die Wertprüfung des Keims VOLLSTÄNDIG verworfen hat. Das
+  // ist KEIN zweiter Auswahlspeicher — nichts hiervon filtert je einen Eintrag. Es hält allein
+  // fest, DASS eingegrenzt wurde, nachdem die Auswahl selbst die Information verloren hat
+  // (`droppedFacetDimensions` in `lib/libraryUrlFilters.ts`; gelesen einzig in `anyFilterActive`).
+  const [verworfeneEingrenzung, setVerworfeneEingrenzung] = useState<readonly string[]>([]);
   const [range, setRange] = useState<FacetRange>(() =>
     facetRangeFromParams(params, LIBRARY_RANGE_FROM_PARAM, LIBRARY_RANGE_TO_PARAM),
   );
@@ -414,7 +420,12 @@ export function BibliothekFlaeche({
       (all.data ?? []).map((k) => libraryFilterValues(k, now)),
       LIBRARY_FACET_PARAM_KEYS,
     );
-    setFacetSel(pruneFacetSelectionToKnownValues(seed, known));
+    const geprueft = pruneFacetSelectionToKnownValues(seed, known);
+    setFacetSel(geprueft);
+    // JOB 3877: was die Prüfung ganz weggeräumt hat, geht der Auswahl verloren und wird hier
+    // aufgehoben — sonst stünde gleich „Noch keine Einträge." unter einer Adresse, die eingegrenzt
+    // hat. Gelesen wird VORHER gegen NACHHER derselben Prüfung, nicht ein zweites Mal geprüft.
+    setVerworfeneEingrenzung(droppedFacetDimensions(seed, geprueft));
     setUrlSeed(null);
   }, [urlSeed, all.data, keimBrauchtBestand, bestandBestaetigt]);
 
@@ -635,7 +646,13 @@ export function BibliothekFlaeche({
 
   // Eine Wahl, die den Keim ERSETZT: sie kommt nicht aus der Adresse, sondern aus einer schon
   // geprüften oder ausdrücklich geleerten Quelle. Danach ist nichts Ungeprüftes mehr im Spiel.
-  const keimVerbrauchen = (): void => setUrlSeed(null);
+  const keimVerbrauchen = (): void => {
+    setUrlSeed(null);
+    // JOB 3877: Mit dem Keim geht auch sein Befund. „Filter zurücksetzen" und eine gemerkte Sicht
+    // ERSETZEN die Wahl aus der Adresse vollständig; danach ist nichts mehr verworfen worden, und
+    // „Noch keine Einträge." ist auf leerem Bestand wieder die richtige Auskunft.
+    setVerworfeneEingrenzung([]);
+  };
   // ================================================================================================
   // JOB 3115 R2 (Befund BEN, Korrekturpflicht 1) — EIN FILTERKLICK IST KEINE BESTÄTIGUNG.
   // ================================================================================================
@@ -666,6 +683,9 @@ export function BibliothekFlaeche({
       setUrlSeed(naechste);
       return;
     }
+    // JOB 3877: Ein Klick ins Filtermenü ist eine eigene, geprüfte Wahl — sie löst den Befund der
+    // Adresse ab. Was der Mensch jetzt gewählt hat, steht im Menü und zählt über `aktiveFilterZahl`.
+    setVerworfeneEingrenzung([]);
     setFacetSel(naechste);
   };
   const onResetFilters = (): void => {
@@ -1235,8 +1255,19 @@ export function BibliothekFlaeche({
     (groupBy === "none" ? 0 : 1);
   // „Diese Suche merken" hängt dagegen an JEDER getroffenen Wahl — der Geltungsbereich gehört in
   // eine gemerkte Sicht, also auch in diese Bedingung.
+  //
+  // JOB 3877 · B7b: `verworfeneEingrenzung` zählt HIER mit, in `aktiveFilterZahl` bewusst NICHT.
+  // Die zwei Begriffe laufen damit auseinander, und das ist die Absicht: die Zahl am Menü zeigt,
+  // was IM Menü steht — nach dem Verwerfen steht dort nichts, ein „Filter · 1" zeigte auf ein
+  // leeres Menü (der Kommentar zwei Absätze höher). „Wurde eingegrenzt?" ist die andere Frage: die
+  // Adresse hat ausdrücklich eingegrenzt, die Fläche hat unter dieser Eingrenzung gesucht, und
+  // „Noch keine Einträge." wäre darauf die zu starke Antwort. Es bleibt bei EINEM Ort, an dem
+  // „ist eingegrenzt" entschieden wird; die Liste bekommt ihn weiter als Prop `eingegrenzt`.
   const anyFilterActive =
-    trimmedQ.length > 0 || aktiveFilterZahl > 0 || scope !== DEFAULT_LIBRARY_SCOPE;
+    trimmedQ.length > 0 ||
+    aktiveFilterZahl > 0 ||
+    scope !== DEFAULT_LIBRARY_SCOPE ||
+    verworfeneEingrenzung.length > 0;
   const bereichGruppe = groups.find((g) => g.key === BEREICH_KEY);
   const bereichGewaehlt = facetSelectedValues(wirksameAuswahl[BEREICH_KEY]);
 
@@ -1322,9 +1353,11 @@ export function BibliothekFlaeche({
           // ============================================================================================
           // JOB 3788 · DER LEERSATZ DER LISTE BEKOMMT DIE EINGRENZUNG GESAGT — DEN VORHANDENEN AUSDRUCK.
           // ============================================================================================
-          // `anyFilterActive` (`:1238`) zählt JEDE getroffene Wahl: Suchwort, Facetten, Zeitraum,
+          // `anyFilterActive` (`:1266`) zählt JEDE getroffene Wahl: Suchwort, Facetten, Zeitraum,
           // Umschalter, Gruppierung und Geltungsbereich. Genau das ist die Frage, die der Leerzweig
           // stellen muss — bis JOB 3788 fragte er dort `q.trim()` und übersah die anderen fünf.
+          // JOB 3877 hat die siebte Wahl ergänzt: die Eingrenzung, die die Wertprüfung der Adresse
+          // verworfen hat und die in keinem Menü mehr steht.
           //
           // ES ENTSTEHT KEIN ZWEITER FILTERBEGRIFF. Der Ausdruck wird hier weder umgebaut noch
           // kopiert, sondern DURCHGEREICHT; seine beiden bisherigen Verbraucher („Diese Suche

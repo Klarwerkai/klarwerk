@@ -18,7 +18,12 @@
 // WAS HIER GEMESSEN WIRD: der gerenderte Satz unter `data-testid="bib-leer"` an der ECHTEN,
 // gemounteten Fläche (über `pages/Library`, seit JOB 3063 eine Hülle um `BibliothekFlaeche`) —
 // nicht der Rückgabewert einer Hilfsfunktion. Die Fälle halten BEIDE Richtungen: B1 hält fest, dass
-// der Bestandssatz nicht verschwindet, B3–B7 halten fest, dass er nicht zu weit greift.
+// der Bestandssatz nicht verschwindet, B3–B7e halten fest, dass er nicht zu weit greift.
+//
+// JOB 3877 · B7b: Der letzte Weg, auf dem er trotzdem zu weit griff, war die Adresse auf einem
+// LEEREN Bestand — die Wertprüfung warf die Facette weg, und mit ihr die Information, dass
+// überhaupt eingegrenzt wurde. B7b ist deshalb umgedreht (er pinnte bis dahin die Unwahrheit),
+// B7c–B7e halten die drei Grenzen dieses Wegs.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { KnowledgeObject } from "../../apps/web/src/api/types";
@@ -282,16 +287,53 @@ describe("JOB 3788 · der Leersatz sagt die Wahrheit über den Bestand", () => {
     expect(leersatz()).toBe(AUSWAHLSATZ());
   });
 
-  it("B7b · BENANNTER SONDERWEG: eine Facette auf leerem Bestand wird VERWORFEN, nicht ausgewertet", () => {
-    // Kein Mangel des Leersatzes, sondern die Wertprüfung der Adressfilter: „Anlage 1" kommt in
-    // einem leeren Bestand nicht vor, die Dimension fällt ganz weg — es steht danach KEINE
-    // Eingrenzung mehr, und der Bestandssatz ist die richtige Auskunft. Dieser Fall hält den
-    // Mechanismus fest, damit er nicht mit der Weiche aus B3 verwechselt wird; die Prüfung selbst
-    // ist Sache von `libraryUrlFilters.ts` und steht ausserhalb dieses Auftrags (§10).
+  it("B7b · JOB 3877: eine auf leerem Bestand VERWORFENE Facette bleibt eine Eingrenzung", () => {
+    // ==============================================================================================
+    // DER FALL, DER VOR JOB 3877 ROT WAR — und bis dahin die Unwahrheit festnagelte.
+    // ==============================================================================================
+    // „Anlage 1" kommt in einem leeren Bestand nicht vor; die Wertprüfung der Adressfilter räumt die
+    // Dimension weg (`libraryUrlFilters.ts`, uxpol4: ein Link darf kein strukturelles No-Match
+    // erzeugen, also fällt der Wert ersatzlos). Bis JOB 3877 war die Auswahl danach von „es wurde nie
+    // etwas gewählt" nicht mehr zu unterscheiden, und hier stand „Noch keine Einträge." — eine
+    // Aussage über den ganzen Wissensbestand, obwohl die Fläche unter einer Eingrenzung gesucht hat.
+    //
+    // Die Auswahl selbst ist unverändert geblieben (kein No-Match, keine Ersatzwerte); was verworfen
+    // wurde, meldet `droppedFacetDimensions` NEBEN ihr, und `anyFilterActive` zählt es mit.
     lage.bestand = abfrage([]);
     lage.suche = abfrage([]);
     mount("/bibliothek?category=Anlage+1");
+    expect(leersatz()).toBe(AUSWAHLSATZ());
+  });
+
+  it("B7c · JOB 3877 (a): leerer Bestand, unbekannter Wert in der Adresse ⇒ der Satz über die AUSWAHL", () => {
+    // Derselbe Kern wie B7b, aber mit einem Wert, den auch ein GEFÜLLTER Bestand nicht kennt — der
+    // Fall des geteilten Links auf einer frisch aufgesetzten Instanz. Er hängt an der Meldung der
+    // Wertprüfung; V1 (Meldung immer leer) und V2 (Meldung nicht verdrahtet) machen ihn rot.
+    lage.bestand = abfrage([]);
+    lage.suche = abfrage([]);
+    mount("/bibliothek?tag=gibtesnicht");
+    expect(leersatz()).toBe(AUSWAHLSATZ());
+  });
+
+  it("B7d · JOB 3877 (b): leerer Bestand, LEERE Adresse ⇒ weiterhin der Satz über den BESTAND", () => {
+    // Die Gegenprobe zu B7c, und sie trägt die halbe Beweislast: sie zeigt, dass die neue Bedingung
+    // wirklich am Befund der Wertprüfung hängt und nicht bedingungslos durchgereicht ist. V3 (die
+    // Bedingung fest auf `true`) macht genau diesen Fall rot, B7c bleibt dabei grün.
+    lage.bestand = abfrage([]);
+    lage.suche = abfrage([]);
+    mount("/bibliothek");
     expect(leersatz()).toBe(BESTANDSSATZ());
+  });
+
+  it("B7e · JOB 3877 (c): GEFÜLLTER Bestand, unbekannter Wert, 0 Treffer ⇒ der Satz über die AUSWAHL", () => {
+    // Hier war der alte Satz am deutlichsten falsch: zwei Einträge liegen im Bestand, die Adresse
+    // grenzt auf einen Wert ein, den es nicht gibt, die Suche liefert nichts — und „Noch keine
+    // Einträge." behauptete einen leeren Wissensbestand, den die Fläche in derselben Sekunde in der
+    // Hand hält. Er ist heute aus dem neuen Grund richtig: die verworfene Dimension zählt mit.
+    lage.bestand = abfrage(BESTAND);
+    lage.suche = abfrage([]);
+    mount("/bibliothek?category=Gibtesnicht");
+    expect(leersatz()).toBe(AUSWAHLSATZ());
   });
 
   it("B8 · die Weiche fällt in EN und NL nicht still auf Deutsch zurück", async () => {
@@ -324,17 +366,26 @@ describe("JOB 3788 · der Leersatz sagt die Wahrheit über den Bestand", () => {
       ["fehler", abfrage(undefined, { isError: true })],
       ["pausiert", abfrage([], { fetchStatus: "paused" })],
     ];
+    // JOB 3877: die zweite Adresse ist die NEUE Lage — eine Facette, die die Wertprüfung vollständig
+    // verwirft (`?category=Gibtesnicht`). Sie hält seit 3877 die Weiche offen (B7e); B9 hätte sie
+    // ohne diese Zeile nicht abgedeckt, denn die erste Adresse trägt eine ÜBERLEBENDE Facette.
+    const adressen = [
+      "/bibliothek?category=Anlage+1&tag=pumpe",
+      "/bibliothek?category=Gibtesnicht",
+    ];
     for (const [name, suche] of lagen) {
-      // Der Bestand bleibt bestätigt und gefüllt, damit die Facette die Wertprüfung übersteht
-      // (s. B7b) — gemessen wird also wirklich die Lage der Trefferabfrage, nicht ein Nebeneffekt.
-      lage.bestand = abfrage(BESTAND);
-      lage.suche = suche;
-      mount("/bibliothek?category=Anlage+1&tag=pumpe");
-      expect(leerfeld(), `${name}: kein Leerkasten`).toBeNull();
-      const alles = (container.textContent ?? "").replace(/\s+/g, " ");
-      expect(alles, `${name}: kein Bestandssatz`).not.toContain(BESTANDSSATZ());
-      expect(alles, `${name}: kein Auswahlsatz`).not.toContain(AUSWAHLSATZ());
-      abbauen();
+      for (const adresse of adressen) {
+        // Der Bestand bleibt bestätigt und gefüllt, damit die erste Facette die Wertprüfung
+        // übersteht — gemessen wird also wirklich die Lage der Trefferabfrage, nicht ein Nebeneffekt.
+        lage.bestand = abfrage(BESTAND);
+        lage.suche = suche;
+        mount(adresse);
+        expect(leerfeld(), `${name} · ${adresse}: kein Leerkasten`).toBeNull();
+        const alles = (container.textContent ?? "").replace(/\s+/g, " ");
+        expect(alles, `${name} · ${adresse}: kein Bestandssatz`).not.toContain(BESTANDSSATZ());
+        expect(alles, `${name} · ${adresse}: kein Auswahlsatz`).not.toContain(AUSWAHLSATZ());
+        abbauen();
+      }
     }
   });
 

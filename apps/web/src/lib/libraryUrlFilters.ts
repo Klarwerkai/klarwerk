@@ -209,7 +209,52 @@ export function pruneFacetSelectionToKnownValues(
     if (kept.length > 0) {
       pruned[key] = kept;
     }
-    // Bleibt nichts übrig, verschwindet die Dimension ganz: offen, kein Filter, kein No-Match.
+    // Bleibt nichts übrig, verschwindet die Dimension aus der AUSWAHL: offen, kein Filter, kein
+    // No-Match (die Grenze aus Punkt 1 oben). Damit ist der AUSWAHL danach nicht mehr anzusehen,
+    // dass hier überhaupt eingegrenzt wurde — deshalb meldet `droppedFacetDimensions` es NEBEN ihr
+    // (JOB 3877). Die Auswahl selbst bleibt Byte für Byte, was sie war.
   }
   return pruned;
+}
+
+// ── JOB 3877 · B7b: DIE VERWORFENE EINGRENZUNG BLEIBT EINE EINGRENZUNG ───────────────────────────
+//
+// DER BEFUND (Codex an JOB 3788, `archiv/3788/runde-2/RUECKGABE.md:76`): Auf einem LEEREN Bestand
+// räumt die Prüfung oben JEDE Facette aus der Adresse weg. `?category=Anlage 1` war danach von „es
+// wurde nie etwas gewählt" nicht mehr zu unterscheiden — und die Bibliothek schrieb „Noch keine
+// Einträge.", eine Aussage über den ganzen Wissensbestand, obwohl sie unter einer Eingrenzung
+// gesucht hatte, die sie selbst weggeräumt hat.
+//
+// WARUM DIE MELDUNG NEBEN DER AUSWAHL LÄUFT UND NICHT IN IHR: Der kurze Weg wäre, die verworfene
+// Dimension auf `FACET_NO_MATCH_SELECTION` zu setzen. Genau den verbietet Punkt 1 oben — ein Link
+// darf den strukturellen Zustand nicht erzeugen können. Die Auswahl bleibt deshalb unverändert;
+// was verlorenging, steht daneben.
+//
+// UND WARUM DIESE FUNKTION DEN BESTAND GAR NICHT KENNT: Sie liest allein das VORHER und das NACHHER
+// der einen Prüfung oben. Es entsteht damit kein zweiter Prüfweg, der auseinanderlaufen könnte —
+// weder eine zweite Wertelehre noch eine zweite Auslegung von `exemptKeys` (`origin` überlebt oben
+// und fehlt hier deshalb nie).
+//
+// Gemeldet wird nur die VOLLSTÄNDIG verworfene Dimension. Überlebt ein Wert (der gemischte Fall),
+// steht die Eingrenzung ohnehin sichtbar im Menü; eine leere Dimension hatte nichts zu verlieren,
+// und ein strukturelles No-Match ist kein Wert und wird oben nie geprüft.
+export function droppedFacetDimensions(
+  before: FacetSelection,
+  after: FacetSelection,
+): readonly string[] {
+  const dropped: string[] = [];
+  for (const [key, groupSelection] of Object.entries(before)) {
+    if (
+      groupSelection === undefined ||
+      isFacetNoMatch(groupSelection) ||
+      groupSelection.length === 0
+    ) {
+      continue;
+    }
+    const rest = after[key];
+    if (rest === undefined || (!isFacetNoMatch(rest) && rest.length === 0)) {
+      dropped.push(key);
+    }
+  }
+  return dropped;
 }
