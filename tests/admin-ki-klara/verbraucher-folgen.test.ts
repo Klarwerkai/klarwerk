@@ -38,6 +38,47 @@
 // (`tests/admin-ki-freigabe/rollen-und-protokoll.test.ts`, R3/R4). Der Klara-Resolver kennt keine
 // Rollen und soll keine kennen: eine zweite Rechteprüfung neben der echten wäre genau die zweite
 // Wahrheit, die dieser Auftrag beseitigt. Er bekommt das ERGEBNIS der zentralen Entscheidung.
+//
+// ------------------------------------------------------------------------------------------------
+// NACHGEFÜHRT DURCH JOB 3823 — WAS SEITHER HIER GEMESSEN IST, UND WAS WEITER DRAUSSEN BLEIBT
+// ------------------------------------------------------------------------------------------------
+//
+// CODEX HAT ZWEI LÜCKEN IN SEIN GRÜN-URTEIL ZU JOB 3767 GESCHRIEBEN (Prüfpunkt 6). Beide sind
+// jetzt geschlossen, und zwar hier, weil beide an den VERBRAUCHERN hängen:
+//
+//   1. DIE FORM DER LAGE. V5 reicht ein ausdrückliches `undefined` herein — der Schlüssel ist da,
+//      er trägt nur nichts. Eine vergessene Kompositionswurzel liefert ein Objekt, in dem der
+//      Schlüssel GAR NICHT VORKOMMT. Für `=== true` ist das dasselbe, aber gemessen war es an den
+//      Verbrauchern nicht (am Resolver schon: Z6/Z9). V6 misst die echte Auslassung, und der
+//      Aufbau `aufbauenVergesseneWurzel` sichert die Form selbst zu.
+//   2. DIE ENTWERTUNG DER ZUSTIMMUNG. V4 misst die WIRKUNG eines Widerrufs (nichts geht mehr
+//      hinaus) und gibt in seinem eigenen Kommentar zu, den MECHANISMUS nicht zu messen. V7 misst
+//      ihn — am `consentState` und an der `policyVersion` der Sitzung, nicht am ausbleibenden
+//      Erfolg. V8 misst dieselbe Frage in der Gegenrichtung: eine unter einer vergessenen Wurzel
+//      erteilte Zustimmung ist keine Abkürzung in die freigegebene Welt.
+//
+// WAS AUCH V7 NICHT BEWEIST, gemessen und nicht vermutet: dass die POLICYVERSIONS-HÄLFTE der
+// Deckungsprüfung die Entwertung trägt. Sie ist am Verbraucher nicht getrennt beobachtbar — die
+// Prüfung vergleicht denselben Übergang zusätzlich am Empfänger. Die Begründung samt Messung steht
+// im Fall selbst.
+//
+// DIE BEOBACHTUNGSKANTE der drei neuen Fälle ist `getSession(sessionId, bindung)` — die
+// `KlaraSessionView` mit `policyVersion`, `configurationVersion` und `consentState`. Sie ist die
+// öffentliche Auskunft des Dienstes über die Sitzung; „die Zustimmung trägt nicht mehr" wird dort
+// ABGELESEN und nicht aus einem ausbleibenden Erfolg geschlossen.
+//
+// WAS AUCH JETZT NICHT HIER STEHT: die echte Kompositionswurzel (`build-app.ts`) — sie misst
+// weiterhin `wurzel-verdrahtung.test.ts` an einer laufenden Instanz, und diese Arbeitsteilung ist
+// der Grund, warum es zwei Dateien sind. Ebenso draussen bleiben die Resolverebene für sich
+// (`zentrale-freigabe.test.ts`, Z6/Z7/Z9/Z10), die OBERFLÄCHE der Freigabe, der zweite Schalter der
+// Adminfreigabe (vertrauliche Inhalte) und der echte HTTP-Weg der Ask-Route: hier läuft `ka4Freigabe`
+// als Funktion, nicht als Route.
+//
+// DIE FÄLLE IM ÜBERBLICK. V1 ohne Freigabe · V2 mit Freigabe und Zustimmung · V3 mit Freigabe ohne
+// Zustimmung · V4 Widerruf, Wirkung · V5 Feld auf `undefined` · V6 Feld FEHLT ganz, beide Wege zu
+// und die Sitzung trägt `…:gesperrt`, ununterscheidbar vom ausdrücklichen NEIN · V7 Widerruf
+// ENTWERTET die Zustimmung, gemessen am Sitzungszustand, mit Rückweg · V8 die nachgetragene Zeile
+// heilt die alte Zustimmung nicht. S1–S4 binden die Bauform.
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -63,14 +104,31 @@ interface Aufbau {
   sitzung: string;
   bindung: { actorId: string; addinInstanceId: string; documentContextId: string };
   kopf: Record<string, string>;
+  /**
+   * JOB 3823 · die Policyquelle selbst, offen für die Fälle.
+   *
+   * Nicht der WERT der Freigabe wird damit prüfbar — den setzt und liest jeder Fall ohnehin —
+   * sondern die FORM der Lage: ob der Schlüssel `zentralFreigegeben` überhaupt vorkommt. Genau
+   * darin unterscheidet sich eine vergessene Wurzel von einem ausdrücklichen `undefined`.
+   */
+  quelle: KlaraPolicyQuelle;
   /** Die zentrale Freigabe zur Laufzeit umlegen — wie ein Administrator es täte. */
   setzeFreigabe: (f: boolean | undefined) => void;
   /** Was `ka4Freigabe` protokolliert hat — Entscheidung und Grund, sonst nichts. */
   protokoll: Array<{ entscheidung: string; grund?: string }>;
 }
 
-async function aufbauen(start: boolean | undefined): Promise<Aufbau> {
-  const quelle: KlaraPolicyQuelle = {
+/**
+ * JOB 3823 · L1 — DIE LAGE OHNE DAS EINE FELD.
+ *
+ * Alles, was ein Betrieb sonst braucht, damit der externe Weg an NICHTS ausser der Freigabe und
+ * der Zustimmung scheitert. Der Rückgabetyp lässt `zentralFreigegeben` nicht bloss weg, er hält es
+ * heraus: ein hier versehentlich wieder eingesetztes `zentralFreigegeben: undefined` wäre in
+ * diesem Objektliteral eine überschüssige Eigenschaft und damit ein Typfehler — kein stiller
+ * Bedeutungswechsel, der V6 unbemerkt entwertet.
+ */
+function grundlage(): Omit<KlaraPolicyQuelle, "zentralFreigegeben"> {
+  return {
     choice: "cloud",
     source: "db",
     effectiveAnswerProvider: "cloud",
@@ -78,8 +136,10 @@ async function aufbauen(start: boolean | undefined): Promise<Aufbau> {
     localConfigured: false,
     providerLabel: "anthropic",
     modelLabel: "claude",
-    zentralFreigegeben: start,
   };
+}
+
+async function ausQuelle(quelle: KlaraPolicyQuelle): Promise<Aufbau> {
   const dienst = new KlaraSessionService({
     repo: new InMemoryKlaraSessionRepo(),
     policy: () => quelle,
@@ -92,6 +152,7 @@ async function aufbauen(start: boolean | undefined): Promise<Aufbau> {
   const protokoll: Array<{ entscheidung: string; grund?: string }> = [];
   return {
     dienst,
+    quelle,
     sitzung: sicht.sessionId,
     bindung: {
       actorId: AKTEUR,
@@ -108,6 +169,30 @@ async function aufbauen(start: boolean | undefined): Promise<Aufbau> {
     },
     protokoll,
   };
+}
+
+/** Der Aufbau von V1 bis V5: das Feld IST da und trägt den übergebenen Wert — auch `undefined`. */
+async function aufbauen(start: boolean | undefined): Promise<Aufbau> {
+  return ausQuelle({ ...grundlage(), zentralFreigegeben: start });
+}
+
+/**
+ * JOB 3823 · L1 — DER AUFBAU EINER VERGESSENEN WURZEL: das Feld kommt gar nicht vor.
+ *
+ * WORAN MAN DEN UNTERSCHIED ERKENNT, und warum er hier zugesichert und nicht bloss beabsichtigt
+ * wird: `{ …, zentralFreigegeben: undefined }` und `{ … }` sind zur Laufzeit verschiedene Objekte
+ * (`"zentralFreigegeben" in quelle` ist einmal `true`, einmal `false`), für einen Vergleich mit
+ * `=== true` aber dasselbe. Genau deshalb hat Codex die Messung an der echten Auslassung bestellt:
+ * ein späterer Umbau könnte hier still wieder ein `undefined` einsetzen, und V6 bliebe grün, ohne
+ * noch zu messen, was sein Name sagt. Die Zusicherung fällt in diesem Fall auf.
+ */
+async function aufbauenVergesseneWurzel(): Promise<Aufbau> {
+  const quelle: KlaraPolicyQuelle = { ...grundlage() };
+  expect(
+    "zentralFreigegeben" in quelle,
+    "die Lage der vergessenen Wurzel trägt den Schlüssel doch",
+  ).toBe(false);
+  return ausQuelle(quelle);
 }
 
 /**
@@ -210,6 +295,157 @@ describe("JOB 3502 · V — beide Verbraucher folgen der einen zentralen Freigab
       erlaubt: false,
       grund: "CONSENT_RECONFIRMATION_REQUIRED",
     });
+    await a.dienst.grantConsent(a.sitzung, a.bindung);
+    expect(await klaraWeg(a)).toEqual({ erlaubt: true, grund: null });
+  });
+
+  it("V6 · FEHLT der Schlüssel ganz, sperren beide Verbraucher — und die Sitzung trägt `…:gesperrt`", async () => {
+    // ============================================================================================
+    // JOB 3823 · DIE ECHTE AUSLASSUNG, an den Verbrauchern gemessen.
+    // ============================================================================================
+    //
+    // WORIN SICH DIESER FALL VON V5 UNTERSCHEIDET: V5 reicht `zentralFreigegeben: undefined`
+    // herein — der Schlüssel steht im Objekt. Eine Kompositionswurzel, die die Zeile aus
+    // `build-app.ts` vergisst, baut ein Objekt OHNE den Schlüssel. Heute ist beides für
+    // `input.zentralFreigegeben === true` (`klara-policy.ts`) derselbe Fall; gemessen war es an den
+    // Verbrauchern nicht, und Codex hat genau diese Messung bestellt (JOB 3767, Prüfpunkt 6).
+    //
+    // WORIN ER SICH VON Z9 UNTERSCHEIDET: Z9 misst den Resolver für sich
+    // (`resolveKlaraPolicy(lage(…))`). Hier laufen der Klara-Weg, der Word-Weg und die Auskunft
+    // des Sitzungsdienstes — die Stationen, an denen ein Mensch die Wirkung hätte.
+    const a = await aufbauenVergesseneWurzel();
+    // Mit erteilter Zustimmung, damit sichtbar ist, dass der ADMIN-Grund sperrt und nicht die
+    // fehlende Bestätigung des Menschen.
+    await a.dienst.grantConsent(a.sitzung, a.bindung);
+
+    expect(await klaraWeg(a)).toEqual({ erlaubt: false, grund: "policy_incomplete" });
+    expect(await wordWeg(a)).toBe(false);
+    expect(a.protokoll[0]).toEqual({ entscheidung: "blockiert", grund: "policy_incomplete" });
+
+    // DIE VERSIONSKENNUNG AN DER SITZUNG, nicht am Resolver: was der Dienst über diese Sitzung
+    // nach aussen sagt, verschweigt die Sperre nicht.
+    const vergessen = await a.dienst.getSession(a.sitzung, a.bindung);
+    expect(vergessen.policyVersion.endsWith(":gesperrt")).toBe(true);
+
+    // UND SIE IST UNUNTERSCHEIDBAR VOM AUSDRÜCKLICHEN NEIN — Zeichen für Zeichen. Das ist die
+    // Aussage von Z6/Z9 auf der Resolverebene, hier an der Sitzung: es gibt keine zweite
+    // Sperrstufe für die vergessene Wurzel, keine eigene Kennung, keine eigene Meldung.
+    const nein = await aufbauen(false);
+    await nein.dienst.grantConsent(nein.sitzung, nein.bindung);
+    const ausdruecklich = await nein.dienst.getSession(nein.sitzung, nein.bindung);
+    expect(vergessen.policyVersion).toBe(ausdruecklich.policyVersion);
+    expect(await klaraWeg(nein)).toEqual({ erlaubt: false, grund: "policy_incomplete" });
+  });
+
+  it("V7 · der Widerruf ENTWERTET die Zustimmung — der Mechanismus, an den Verbrauchern", async () => {
+    // ============================================================================================
+    // JOB 3823 · DER FALL, DESSEN FEHLEN V4 OBEN SELBST ZUGIBT.
+    // ============================================================================================
+    //
+    // V4 misst die WIRKUNG: nach dem Widerruf geht nichts mehr hinaus. Das bliebe auch dann grün,
+    // wenn die Freigabe gar nicht in der Policyversion stünde — dann sperrte schon der Resolver.
+    // Hier wird der MECHANISMUS gemessen: dass der Widerruf die bereits erteilte Zustimmung
+    // ENTWERTET. Abgelesen wird er am `consentState` und an der `policyVersion` der
+    // `KlaraSessionView`, nicht aus einem ausbleibenden Erfolg geschlossen.
+    //
+    // GEGENPROBE, die diesen Fall von V4 trennt (JOB 3823 §6 b): nimmt man das Freigabesegment aus
+    // `klaraPolicyVersion` (`return basis;`), bleibt V4 grün und dieser Fall wird rot.
+    const a = await aufbauen(true);
+    await a.dienst.grantConsent(a.sitzung, a.bindung);
+    expect(await klaraWeg(a)).toEqual({ erlaubt: true, grund: null });
+    expect(await wordWeg(a)).toBe(true);
+    expect(a.protokoll[0]).toEqual({ entscheidung: "freigegeben", grund: undefined });
+
+    const vorher = await a.dienst.getSession(a.sitzung, a.bindung);
+    expect(vorher.consentState).toBe("granted");
+
+    a.setzeFreigabe(false);
+
+    // DIE ENTWERTUNG, abgelesen und nicht geschlossen: `consentState` ist der Wert, den die
+    // Deckungsprüfung wirklich schreibt (`klara-session-service.ts`, `invalidateSession` mit
+    // `consentState: "invalidated"`) — nachgelesen im Produkt, nicht geraten.
+    const nachher = await a.dienst.getSession(a.sitzung, a.bindung);
+    expect(nachher.consentState).toBe("invalidated");
+
+    // GENAU GESAGT, WAS DIESE EINE ZEILE TRÄGT UND WAS NICHT — selbst gemessen, nicht abgeleitet.
+    //
+    // Sie ist ÜBERBESTIMMT. Nimmt man BEIDE Policyversions-Vergleiche aus der Entwertung heraus
+    // (`klara-session-service.ts`: die Hälfte in `laden` UND die Bindung `policyVersion` in
+    // `pruefeConsentDeckung`), bleibt diese Zeile grün — gemessen, alle 25 Fälle der Gruppe grün.
+    // Der Grund steht in derselben Prüfung: sie vergleicht auch den EMPFÄNGER (Bindung `provider`),
+    // und der wechselt bei gesperrter Auflösung ohnehin auf den deterministischen Ersatzwert. Am
+    // Verbraucher ist die Policyversions-Hälfte der Deckungsprüfung damit nicht getrennt
+    // beobachtbar; wer sie einzeln pinnen will, muss das an der Prüfung selbst tun, nicht hier.
+    //
+    // WAS DIESER FALL DAGEGEN WIRKLICH BINDET, sind die drei Zeilen darunter: dass die SITZUNG
+    // ihre Grundlage als gewechselt ausweist und die Kennung das Freigabesegment führt. Sie werden
+    // rot, wenn das Segment aus `klaraPolicyVersion` verschwindet (Gegenprobe b) — und genau dann
+    // bleibt V4 grün. Das ist die Blindheit, die V4 im eigenen Kommentar zugibt.
+    expect(nachher.policyVersion).not.toBe(vorher.policyVersion);
+    expect(vorher.policyVersion.endsWith(":frei")).toBe(true);
+    expect(nachher.policyVersion.endsWith(":gesperrt")).toBe(true);
+
+    // Und der Klara-Weg nennt danach den DECKUNGSGRUND, nicht bloss „gesperrt": die Zustimmung ist
+    // weg, nicht übergangen.
+    expect(await klaraWeg(a)).toEqual({
+      erlaubt: false,
+      grund: "CONSENT_RECONFIRMATION_REQUIRED",
+    });
+    expect(await wordWeg(a)).toBe(false);
+    expect(a.protokoll[1]).toEqual({
+      entscheidung: "blockiert",
+      grund: "CONSENT_RECONFIRMATION_REQUIRED",
+    });
+
+    // DIE GEGENRICHTUNG, ohne die dieser Fall auch an einem vollständig zugemauerten Produkt grün
+    // wäre: nach Wiederfreigabe und ERNEUTER Zustimmung läuft derselbe Weg wieder.
+    a.setzeFreigabe(true);
+    await a.dienst.grantConsent(a.sitzung, a.bindung);
+    expect(await klaraWeg(a)).toEqual({ erlaubt: true, grund: null });
+    expect((await a.dienst.getSession(a.sitzung, a.bindung)).consentState).toBe("granted");
+  });
+
+  it("V8 · die nachgetragene Zeile heilt die alte Zustimmung nicht — die vergessene Wurzel ist keine Abkürzung", async () => {
+    // ============================================================================================
+    // JOB 3823 · „DIE VERGESSENE ZEILE WIRD NACHGETRAGEN".
+    // ============================================================================================
+    //
+    // Die Zustimmung entsteht unter einer Sitzung, deren Policyversion `…:gesperrt` trägt. Trüge
+    // sie anschliessend in die freigegebene Welt hinüber, wäre die vergessene Wurzel eine
+    // Abkürzung: der Mensch hätte einem Weg zugestimmt, den es damals gar nicht gab.
+    //
+    // NICHT DASSELBE WIE DIE V5-KALIBRIERUNG: die geht denselben Weg mit einem ausdrücklichen
+    // `undefined` und misst den GRUND am Klara-Weg. Hier fehlt der Schlüssel wirklich, und
+    // gemessen wird zusätzlich der Sitzungszustand — dass die alte Zustimmung nicht bloss
+    // übergangen, sondern ENTWERTET ist.
+    const a = await aufbauenVergesseneWurzel();
+    await a.dienst.grantConsent(a.sitzung, a.bindung);
+    const unterVergessen = await a.dienst.getSession(a.sitzung, a.bindung);
+    expect(unterVergessen.consentState).toBe("granted");
+
+    // Jemand trägt die Zeile nach — ab hier steht der Schlüssel im Objekt.
+    a.setzeFreigabe(true);
+    expect("zentralFreigegeben" in a.quelle).toBe(true);
+
+    // Erst die Entwertung, dann die Kennungen — und dieselbe Einschränkung wie in V7 gilt auch
+    // hier: die `consentState`-Zeile allein ist überbestimmt, die beiden Kennungszeilen sind es,
+    // die das Freigabesegment binden.
+    const nachgetragen = await a.dienst.getSession(a.sitzung, a.bindung);
+    expect(nachgetragen.consentState).toBe("invalidated");
+    expect(unterVergessen.policyVersion.endsWith(":gesperrt")).toBe(true);
+    expect(nachgetragen.policyVersion.endsWith(":frei")).toBe(true);
+    expect(await klaraWeg(a)).toEqual({
+      erlaubt: false,
+      grund: "CONSENT_RECONFIRMATION_REQUIRED",
+    });
+    expect(await wordWeg(a)).toBe(false);
+    expect(a.protokoll[0]).toEqual({
+      entscheidung: "blockiert",
+      grund: "CONSENT_RECONFIRMATION_REQUIRED",
+    });
+
+    // Es braucht eine NEUE Zustimmung — und mit ihr läuft der Weg. Ohne diesen Teil wäre der Fall
+    // auch dann grün, wenn die Reparatur überhaupt nichts mehr freischaltete.
     await a.dienst.grantConsent(a.sitzung, a.bindung);
     expect(await klaraWeg(a)).toEqual({ erlaubt: true, grund: null });
   });
