@@ -16,6 +16,32 @@
 // `:root` da. Genau das ist die Bauform, die „Ausschalten stellt den vorherigen Look wieder her"
 // beweisbar macht, statt sie zu behaupten.
 //
+// ------------------------------------------------------------------------------------------------
+// JOB 3845 · W14–W18: DIE ANLÄSSE, DIE NIEMAND ANFASST.
+// ------------------------------------------------------------------------------------------------
+// W1 bis W13 kommen ausnahmslos über `visibilitychange` zum zweiten Abruf (`sichtbarWerden`): der
+// `focus`-Zuhörer und die selbst nachstellende Minutenfrist des Markenblocks waren von keinem Fall
+// berührt — die Frist wurde hier nur AUFGEZEICHNET, um sie abzuräumen, und nie ausgelöst. Genau das
+// hat der Prüfer in `archiv/3512/runde-2/ben.md` bestellt (Prüfpunkt 6 und PROMPTVERBESSERUNG:
+// „simulierte Uhr ohne Ereignisse", „Sichere zeitgesteuertes Nachziehen ohne Fokuswechsel dauerhaft
+// ab"). W14–W18 schließen die Lücke am SELBEN Prüfstand — dieselbe Uhr, dieselbe Antwortfolge,
+// dieselbe Zählung; neu ist allein, dass die aufgezeichnete Frist jetzt auch `fn` und `ms` trägt und
+// deshalb gezielt fällig gestellt werden kann.
+//
+// ------------------------------------------------------------------------------------------------
+// EINE SCHREIBREGEL FÜR DIE KOMMENTARE DIESER DATEI — bitte beim Weiterschreiben beachten.
+// ------------------------------------------------------------------------------------------------
+// In der Prosa steht der Pfad des Aufgabenfensters NIE als Schrägstrich-Literal (Ordnername, `/`,
+// Dateiname) und nie eine Schnittmarke wörtlich (Präfix KW, Zusatz START oder END). Der Grund ist
+// kein Geschmack: `tests/klara-zerlegung/schnitt-pins.test.ts` leitet aus genau diesen beiden
+// Textmustern ab, WIE eine Testdatei am Aufgabenfenster hängt, und hält das Ergebnis gegen ein
+// gepinntes Verzeichnis. Dort steht für diese Datei `zusammengesetzt` — und das ist auch ihr
+// wirklicher Griff: sie baut den Pfad aus Segmenten (`TASKPANE`, unten) und lädt Markup und
+// Inline-Skript VOLLSTÄNDIG; sie schneidet keinen Markenblock heraus. In Runde 1 dieses Auftrags
+// haben zwei Erwähnungen in Kommentaren zusätzlich die Griffe `pfad` und `marken` ausgelöst und A2
+// dort rot gemacht — ein Griff, den es gar nicht gibt. Die Zeilenangaben sind seither dieselben
+// geblieben, nur die Schreibweise nennt die Muster nicht mehr wörtlich.
+//
 // Der Gate-`tsc` läuft ohne DOM-lib; DOM-Zugriffe gehen über schmale Struktur-Typen.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -83,6 +109,13 @@ const AUS = (version: number): Stand => ({ profil: null, aktiv: false, version, 
 const MARKEN_TOKEN = ["--brand", "--brand-deep", "--brand-text", "--ink", "--shadow-primary"];
 /** Die Signalfarben. Sie sind KEINE Marke und dürfen nie überschrieben werden (Auftrag L2). */
 const SIGNAL_TOKEN = ["--pos-bg", "--pos-text", "--warn-bg", "--warn-text"];
+/**
+ * Der eine Abstand, an dem Drosselung UND Frist hängen: `KW_MARKE_ABSTAND_MS = 60000`
+ * (`taskpane.html:13284` — dieselbe Datei, die `TASKPANE` oben aus Segmenten zusammensetzt). Er steht
+ * hier als eigener Wert und nicht aus dem Quelltext gelesen — sonst würde eine Änderung dort die
+ * Messung stillschweigend mitziehen.
+ */
+const KW_MARKE_ABSTAND_MS = 60_000;
 
 let brandingAbrufe: string[] = [];
 /**
@@ -143,7 +176,27 @@ async function leerlauf(runden = 20): Promise<void> {
  * Aufgezeichnet wird deshalb, WAS die geladene Fassung anhängt, und nach jedem Fall wieder gelöst.
  */
 const zuhoerer: { ziel: Ziel; typ: string; fn: Hoerer }[] = [];
-const fristen: unknown[] = [];
+/**
+ * JOB 3845: DIESELBE Liste, nur reicher. Bis hierher stand in ihr allein die `id`, weil sie nur zum
+ * Abräumen gebraucht wurde; jetzt trägt jeder Eintrag zusätzlich den Rückruf und die Verzögerung —
+ * und damit kann eine Frist gezielt FÄLLIG gestellt werden, statt nur gelöscht zu werden. Es
+ * entsteht kein zweiter Rekorder und kein `vi.useFakeTimers()`: der Aufräumvertrag unten räumt
+ * unverändert über `id` ab, und die dreizehn Bestandsfälle merken davon nichts.
+ */
+interface Frist {
+  id: unknown;
+  fn: () => void;
+  ms: number;
+}
+const fristen: Frist[] = [];
+/**
+ * Die Frist des Markenblocks aus dem zuletzt geladenen Fenster — oder `null`, wenn das Laden keine
+ * gestellt hat. Sie wird NICHT geraten: der Markenblock ist der letzte Code im Inline-Skript
+ * (`taskpane.html:13454` steht unmittelbar vor der Endmarke des Markenblocks `:13457` und vor
+ * `</script>` `:13458`), also ist `kwMarkeFristStellen()` die letzte Frist, die das Laden synchron
+ * stellt.
+ */
+let markenFrist: Frist | null = null;
 
 async function ladeFenster(folge: (Stand | null | "haengt")[]): Promise<void> {
   brandingFolge = [...folge];
@@ -156,7 +209,7 @@ async function ladeFenster(folge: (Stand | null | "haengt")[]): Promise<void> {
   const echterTimer = globalThis.setTimeout.bind(globalThis);
   vi.stubGlobal("setTimeout", (fn: () => void, ms: number) => {
     const id = echterTimer(fn, ms);
-    fristen.push(id);
+    fristen.push({ id, fn, ms });
     return id;
   });
   const quelle = readFileSync(TASKPANE, "utf8");
@@ -184,6 +237,7 @@ async function ladeFenster(folge: (Stand | null | "haengt")[]): Promise<void> {
       original(typ, fn);
     };
   }
+  const vorDemLaden = fristen.length;
   try {
     new Function(quelle.slice(skriptStart + "<script>".length, skriptEnde))();
   } finally {
@@ -191,6 +245,10 @@ async function ladeFenster(folge: (Stand | null | "haengt")[]): Promise<void> {
       ziel.addEventListener = original;
     }
   }
+  // Gemerkt wird die ZULETZT beim Laden gestellte Frist — und zwar hier, vor `leerlauf()`: was der
+  // erzwungene erste Abruf danach noch anhängt, gehört nicht mehr zum Laden.
+  const beimLaden = fristen.slice(vorDemLaden);
+  markenFrist = beimLaden[beimLaden.length - 1] ?? null;
   await leerlauf();
 }
 
@@ -199,6 +257,50 @@ async function sichtbarWerden(vorlaufMs = 61_000): Promise<void> {
   jetzt += vorlaufMs;
   umgebung.document.dispatchEvent(new umgebung.window.Event("visibilitychange"));
   await leerlauf();
+}
+
+/**
+ * Der dritte Anlass: die Minutenfrist wird fällig — OHNE dass irgendein Ereignis stattfindet.
+ *
+ * Ausgelöst wird ausschliesslich die gemerkte Markenfrist, und nur, wenn sie wirklich auf
+ * `KW_MARKE_ABSTAND_MS` steht. Eine fremde Frist wird NIE gefeuert. Die Uhr geht dabei genau um
+ * denselben Betrag vor, um den die Frist gestellt war — mehr wäre geschenkte Zeit und würde die
+ * Drosselung nicht mehr messen.
+ */
+async function markenFristFaellig(): Promise<void> {
+  expect(
+    markenFrist,
+    "keine Markenfrist gemerkt — die Fristenkette des Markenblocks ist abgerissen",
+  ).not.toBeNull();
+  const faellig = markenFrist as Frist;
+  expect(
+    faellig.ms,
+    `die gemerkte Frist steht auf ${faellig.ms} ms statt auf ${KW_MARKE_ABSTAND_MS} ms — das ist nicht die Markenfrist`,
+  ).toBe(KW_MARKE_ABSTAND_MS);
+  jetzt += KW_MARKE_ABSTAND_MS;
+  const vorher = fristen.length;
+  faellig.fn();
+  // Die Frist stellt sich im Rückruf selbst neu (`taskpane.html:13441`); genau dieser Neuzugang ist
+  // ab jetzt die Markenfrist. Kam keiner dazu, ist die Kette hier zu Ende — und der nächste Aufruf
+  // sagt das laut, statt still nichts zu tun.
+  const neu = fristen.slice(vorher);
+  markenFrist = neu[neu.length - 1] ?? null;
+  await leerlauf();
+}
+
+/**
+ * `document.hidden` stellen. jsdom leitet es aus `visibilityState` ab; überschrieben wird deshalb
+ * als eigene Eigenschaft am Dokument, und `hiddenFreigeben()` nimmt genau diese wieder weg.
+ */
+function hiddenStellen(wert: boolean): void {
+  Object.defineProperty(umgebung.document, "hidden", {
+    configurable: true,
+    get: () => wert,
+  });
+}
+
+function hiddenFreigeben(): void {
+  delete (umgebung.document as unknown as { hidden?: boolean }).hidden;
 }
 
 function wurzel(name: string): string {
@@ -218,15 +320,19 @@ function logoSichtbar(): boolean {
 beforeEach(() => {
   brandingAbrufe = [];
   jetzt = 1_700_000_000_000;
+  markenFrist = null;
 });
 
 afterEach(() => {
   for (const { ziel, typ, fn } of zuhoerer.splice(0)) {
     ziel.removeEventListener(typ, fn);
   }
-  for (const id of fristen.splice(0)) {
+  for (const { id } of fristen.splice(0)) {
     clearTimeout(id as ReturnType<typeof setTimeout>);
   }
+  markenFrist = null;
+  // Ein stehen gebliebenes `hidden` würde jeden FOLGENDEN Fall falsch messen (W18).
+  hiddenFreigeben();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   umgebung.document.body.innerHTML = "";
@@ -412,5 +518,103 @@ describe("JOB 3512 W · Klara im Word übernimmt die Firmen-CI", () => {
       "derselbe Stand wurde ein zweites Mal aufgetragen",
     ).toBe(0);
     expect(wurzel("--brand"), "und stehen bleibt er trotzdem").toBe("#0578b7");
+  });
+
+  it("W14 · KALIBRIERUNG: das Laden stellt wirklich eine Minutenfrist", async () => {
+    // Ohne diesen Fall wären W15 und W16 auch dann grün, wenn der Prüfstand gar keine Frist zu
+    // fassen bekäme — er behauptet deshalb beides: dass es sie gibt UND welche Verzögerung sie hat.
+    await ladeFenster([AN(4)]);
+    expect(markenFrist, "das Laden hat keine einzige Frist gestellt").not.toBeNull();
+    expect(
+      (markenFrist as Frist).ms,
+      "die zuletzt beim Laden gestellte Frist ist nicht die Minutenfrist des Markenblocks",
+    ).toBe(KW_MARKE_ABSTAND_MS);
+  });
+
+  it("W15 · die Marke kommt an, ohne dass irgendjemand das Fenster anfasst", async () => {
+    // ================================================================================================
+    // DER KERN DER BESTELLUNG (`archiv/3512/runde-2/ben.md`, Prüfpunkt 6).
+    // ================================================================================================
+    // Kein `sichtbarWerden`, kein `focus`, kein einziges Ereignis — nur die Uhr und die Frist, die
+    // sich das Fenster selbst gestellt hat. Genau so steht ein Aufgabenfenster in der Vorführung
+    // daneben, während Pedi im Browser umschaltet.
+    //
+    // Und diese Kante ist knapp: die Frist steht auf exakt `KW_MARKE_ABSTAND_MS`, die Drosselung
+    // vergleicht mit `<` (`taskpane.html:13428`, `jetzt - kwMarkeLetzterAbruf < KW_MARKE_ABSTAND_MS`).
+    // 60000 < 60000 ist falsch, der Abruf geht also GERADE NOCH durch. Stünde dort `<=`, käme die
+    // Marke ohne Ereignis nie an — und dieser Fall würde es melden.
+    await ladeFenster([AN(4), AUS(5)]);
+    expect(brandingAbrufe.length).toBe(1);
+    expect(wurzel("--brand")).toBe("#0578b7");
+    expect(logoSichtbar()).toBe(true);
+
+    await markenFristFaellig();
+
+    expect(brandingAbrufe.length, "die Frist hat keinen zweiten Abruf ausgelöst").toBe(2);
+    for (const token of MARKEN_TOKEN) {
+      expect(wurzel(token), `${token} blieb stehen, obwohl die Firmen-CI aus ist`).toBe("");
+    }
+    expect(logoSichtbar()).toBe(false);
+    expect(logo().hasAttribute("src")).toBe(false);
+  });
+
+  it("W16 · die Fristenkette reißt nicht ab — auch der zweite Blick kommt", async () => {
+    // Eine Frist, die nur EINMAL feuert, ist für ein Fenster, das stundenlang offen steht, so gut
+    // wie keine. Gemessen wird deshalb die Wiederstellung in `taskpane.html:13441`: zweimal fällig
+    // hintereinander, ohne jedes Ereignis.
+    await ladeFenster([AN(4), AUS(5), AN(6)]);
+    expect(wurzel("--brand")).toBe("#0578b7");
+
+    await markenFristFaellig();
+    expect(brandingAbrufe.length).toBe(2);
+    expect(wurzel("--brand"), "der erste Fristblick wirkte nicht").toBe("");
+    expect(logoSichtbar()).toBe(false);
+
+    await markenFristFaellig();
+    expect(brandingAbrufe.length, "nach dem ersten Blick kam kein zweiter mehr").toBe(3);
+    expect(wurzel("--brand"), "das erneute Einschalten kam nicht an").toBe("#0578b7");
+    expect(logoSichtbar()).toBe(true);
+  });
+
+  it("W17 · `focus` ist der dritte Anlass — und unterliegt derselben Drosselung", async () => {
+    // Das Ereignis geht an `window` (`taskpane.html:13452`), nicht an `document`; der bestehende
+    // Zuhörer-Mitschnitt räumt es hinterher wieder ab. Kein `visibilitychange` in diesem Fall.
+    await ladeFenster([AN(4), AUS(5)]);
+    expect(brandingAbrufe.length).toBe(1);
+
+    jetzt += 1_000;
+    umgebung.window.dispatchEvent(new umgebung.window.Event("focus"));
+    await leerlauf();
+    expect(brandingAbrufe.length, "die Drosselung greift beim Fokus nicht").toBe(1);
+    expect(wurzel("--brand")).toBe("#0578b7");
+
+    jetzt += 60_000;
+    umgebung.window.dispatchEvent(new umgebung.window.Event("focus"));
+    await leerlauf();
+    expect(brandingAbrufe.length, "der Fokus hat gar nicht nachgesehen").toBe(2);
+    expect(wurzel("--brand"), "das Ausschalten kam über den Fokus nicht an").toBe("");
+    expect(logoSichtbar()).toBe(false);
+  });
+
+  it("W18 · WEGschalten sieht nicht nach — ein Abruf ohne Adressaten wäre verschenkt", async () => {
+    // `taskpane.html:13449`: nur das SICHTBARwerden zählt. Ein weggeschaltetes Aufgabenfenster
+    // fragt nicht, und es leert auch nichts — der zuletzt bekannte Stand bleibt stehen.
+    await ladeFenster([AN(4), AUS(5)]);
+    expect(brandingAbrufe.length).toBe(1);
+
+    hiddenStellen(true);
+    jetzt += 61_000;
+    umgebung.document.dispatchEvent(new umgebung.window.Event("visibilitychange"));
+    await leerlauf();
+    expect(brandingAbrufe.length, "das weggeschaltete Fenster hat nachgesehen").toBe(1);
+    expect(wurzel("--brand"), "beim Wegschalten hat sich die Fläche verändert").toBe("#0578b7");
+    expect(logoSichtbar()).toBe(true);
+
+    // Dieselbe Uhr, dasselbe Ereignis — nur eben sichtbar. Jetzt und erst jetzt wird abgerufen.
+    hiddenStellen(false);
+    await sichtbarWerden(0);
+    expect(brandingAbrufe.length, "das zurückgeholte Fenster hat nicht nachgesehen").toBe(2);
+    expect(wurzel("--brand")).toBe("");
+    expect(logoSichtbar()).toBe(false);
   });
 });
