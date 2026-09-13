@@ -542,15 +542,25 @@ describe("W · C1 benutzt die Klassifizierung wirklich", () => {
 // Ersatz): Anwesenheit ist kein Beleg. W3 prueft die Waechterlogik deshalb an Attrappen, deren
 // Zweig sich NUR in der Ausfuehrungslage unterscheidet — damit steht der Negativfall dauerhaft im
 // Bestand und haengt nicht an einer von Hand wiederholten Gegenprobe.
+//
+// LANDKARTE (JOB 3838, bestellt von BEN an 3581 R2): welcher Fall welche Entscheidung von
+// `sofortAufgerufen` (`:289-310`) haelt. W3d → `:301-303`, Sofortaufruf ohne `async` zaehlt.
+// W3e → `:309` im Zweig false, async ohne `await` zaehlt nicht. W3f → `:309` im Zweig true.
+// W3g → `:290-292`, Generator-Ausschluss. W3h → `:306-308`, Klammern um den Aufruf abschaelen.
 
-/** Eine Attrappe in der Gestalt von C1: gleicher Import, gleicher `if (!gemessen)`-Zweig. */
-function c1Attrappe(zweigKoerper: string): ts.SourceFile {
+/**
+ * Eine Attrappe in der Gestalt von C1: gleicher Import, gleicher `if (!gemessen)`-Zweig. `kopf`
+ * bestimmt den Kopf des `it(...)`-Falls: ein `await` im Zweig ist nur in einem `async`-Koerper ein
+ * `AwaitExpression` — im gewoehnlichen Koerper liest der Parser `await` als Bezeichner, und der
+ * Fall maesse Parse-Schrott statt der Verzweigung (JOB 3838).
+ */
+function c1Attrappe(zweigKoerper: string, kopf: "() =>" | "async () =>" = "() =>"): ts.SourceFile {
   return baumAus(
     "tests/tor-inventar/attrappe.test.ts",
     [
       'import { expect, it } from "vitest";',
       `import { ${FUNKTION} } from "${MODUL}";`,
-      'it("Attrappe", () => {',
+      `it("Attrappe", ${kopf} {`,
       `  const ${SCHALTER} = false;`,
       "  const gestartet = false;",
       "  const fehler: string[] = [];",
@@ -562,14 +572,34 @@ function c1Attrappe(zweigKoerper: string): ts.SourceFile {
   );
 }
 
-/** Aufrufe und Erwartungen im einzigen Ausfallzweig einer Attrappe. */
-function attrappenbefund(ast: ts.SourceFile): { aufrufe: number; erwartungen: number } {
+/** Der einzige Ausfallzweig einer Attrappe — gemeinsame Grundlage von Syntaxbeleg und Zaehlung. */
+function attrappenzweig(ast: ts.SourceFile): ts.Statement {
   const zweige = ausfallzweige(ast);
   expect(zweige.length, "die Attrappe hat keinen Ausfallzweig").toBe(1);
-  const zweig = zweige[0] as ts.Statement;
+  return zweige[0] as ts.Statement;
+}
+
+/** Aufrufe und Erwartungen im einzigen Ausfallzweig einer Attrappe. */
+function attrappenbefund(ast: ts.SourceFile): { aufrufe: number; erwartungen: number } {
+  const zweig = attrappenzweig(ast);
   return {
     aufrufe: aufrufeIm(ast, zweig, FUNKTION).length,
     erwartungen: erlaubtErwartungen(ast, zweig, FUNKTION).length,
+  };
+}
+
+/**
+ * Welche Formen sind im Zweig der Attrappe wirklich ENTSTANDEN? Ohne diesen Beleg waere ein still
+ * anders geparster Zweig ein gruener Fall ohne Gegenstand — dieselbe Familie „Anwesenheit ist kein
+ * Beleg" wie oben. `ts.createSourceFile` wirft bei Schrott nicht, es liefert eine andere Gestalt:
+ * `await (…)` ausserhalb eines `async`-Koerpers wird zum Aufruf eines Bezeichners namens `await`.
+ */
+function zweigFormen(ast: ts.SourceFile): { awaits: number; generatoren: number } {
+  const knoten = alleKnoten(attrappenzweig(ast));
+  return {
+    awaits: knoten.filter((n) => ts.isAwaitExpression(n)).length,
+    generatoren: knoten.filter((n) => ts.isFunctionExpression(n) && n.asteriskToken !== undefined)
+      .length,
   };
 }
 
@@ -618,5 +648,59 @@ describe("W3 · nur eine ausgefuehrte Erwartung zaehlt", () => {
         c1Attrappe(["    void (async () => {", URTEIL, ERWARTUNG, "    })();"].join("\n")),
       ),
     ).toEqual({ aufrufe: 0, erwartungen: 0 });
+  });
+
+  it("W3f · ein abgewartetes async-Sofort zaehlt", () => {
+    // Der Gegenpol zu W3e: derselbe Koerper, nur mit `await` davor. Jetzt erreicht sein Scheitern
+    // den Fall wieder, also ist die Erwartung eine echte — `sofortAufgerufen:309` im Zweig true.
+    const ast = c1Attrappe(
+      ["    await (async () => {", URTEIL, ERWARTUNG, "    })();"].join("\n"),
+      "async () =>",
+    );
+    const formen = zweigFormen(ast);
+    expect(
+      formen.awaits,
+      `Im Zweig der W3f-Attrappe steht kein await-Knoten (gezaehlt: ${formen.awaits}). Dann ist die Form await (async () => …)() gar nicht entstanden und der Fall misst Parse-Schrott statt sofortAufgerufen:309.`,
+    ).toBe(1);
+    const befund = attrappenbefund(ast);
+    expect(
+      befund,
+      `await (async () => { … })() laeuft ab UND wird abgewartet, sofortAufgerufen:309 muss dafuer true liefern. Gezaehlt wurden ${befund.aufrufe} Aufrufe und ${befund.erwartungen} Erwartungen.`,
+    ).toEqual({ aufrufe: 1, erwartungen: 1 });
+  });
+
+  it("W3g · ein Generator zaehlt nicht", () => {
+    // Der Koerper eines Generators laeuft beim Aufruf gar nicht an — er liefert nur einen Iterator.
+    // Die Erwartung verpufft deshalb genauso wie in W3b. Das haelt sofortAufgerufen:290-292 fest.
+    const ast = c1Attrappe(["    void (function* () {", URTEIL, ERWARTUNG, "    })();"].join("\n"));
+    const formen = zweigFormen(ast);
+    expect(
+      formen.generatoren,
+      `Im Zweig der W3g-Attrappe steht keine Funktion mit asteriskToken (gezaehlt: ${formen.generatoren}). Dann ist die Form function* () {} gar nicht entstanden und der Fall misst Parse-Schrott statt sofortAufgerufen:290-292.`,
+    ).toBe(1);
+    const befund = attrappenbefund(ast);
+    expect(
+      befund,
+      `void (function* () { … })() ruft nur einen Iterator ab, der Koerper laeuft nie — sofortAufgerufen:290-292 muss das ausschliessen. Gezaehlt wurden ${befund.aufrufe} Aufrufe und ${befund.erwartungen} Erwartungen.`,
+    ).toEqual({ aufrufe: 0, erwartungen: 0 });
+  });
+
+  it("W3h · auch hinter Klammern um den Aufruf zaehlt das await", () => {
+    // Dieselbe Lage wie W3f, nur steht zwischen `await` und dem Aufruf ein Klammerpaar. Ohne die
+    // Schleife sofortAufgerufen:306-308 faende die Pruefung dort die Klammer statt des await.
+    const ast = c1Attrappe(
+      ["    await ((async () => {", URTEIL, ERWARTUNG, "    })());"].join("\n"),
+      "async () =>",
+    );
+    const formen = zweigFormen(ast);
+    expect(
+      formen.awaits,
+      `Im Zweig der W3h-Attrappe steht kein await-Knoten (gezaehlt: ${formen.awaits}). Dann ist die Form await ((async () => …)()) gar nicht entstanden und der Fall misst Parse-Schrott statt sofortAufgerufen:306-308.`,
+    ).toBe(1);
+    const befund = attrappenbefund(ast);
+    expect(
+      befund,
+      `await ((async () => { … })()) wird abgewartet, die Klammern um den Aufruf duerfen daran nichts aendern — sofortAufgerufen:306-308 schaelt sie ab. Gezaehlt wurden ${befund.aufrufe} Aufrufe und ${befund.erwartungen} Erwartungen.`,
+    ).toEqual({ aufrufe: 1, erwartungen: 1 });
   });
 });
