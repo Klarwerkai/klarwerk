@@ -67,6 +67,13 @@ function Wirt({ pausiert }: { pausiert: boolean }): JSX.Element {
   return createElement(BibliothekListe, {
     q,
     onQ: setQ,
+    // JOB 3788: welcher der zwei Leersätze gilt, entscheidet nicht mehr die Liste an `q.trim()`,
+    // sondern der Aufrufer (`eingegrenzt`, im Produkt `anyFilterActive`). Dieser Wirt hat genau
+    // EINE Eingrenzung — das Suchfeld —, also bildet er sie genau so ab. Damit misst dieser Test
+    // unverändert das, wofür er geschrieben ist (der Offline-Zweig gegen den Leerzweig), und nicht
+    // nebenbei die neue Weiche; die hat ihren eigenen Wächter in
+    // `tests/bibliothek-leer-oder-eingegrenzt/`.
+    eingegrenzt: q.trim().length > 0,
     ortszeile: null,
     segment: "alle" as const,
     onSegment: () => {},

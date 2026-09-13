@@ -40,6 +40,28 @@
 // 2. „Der Start-Test setzt vor jedem Fall den Erstbesuchsvermerk." Damit lief kein einziger Fall
 //    gegen den Besuch, für den dieser Auftrag gebaut ist. Der Vermerk bleibt in `beforeEach` — er
 //    hält die anderen Fälle frei von der zweiten Zeile —, und L2f nimmt ihn ausdrücklich weg.
+//
+// ------------------------------------------------------------------------------------------------
+// JOB 3788, RUNDE 2 — L5d UND L5e WARTEN NICHT MEHR IN RUNDEN, SONDERN AUF BEDINGUNGEN.
+// ------------------------------------------------------------------------------------------------
+// L5d war in vier fremden Torläufen die einzige rote Datei (jobs/3778/runde-1/tor.1.out:4182-4184,
+// jobs/3824/runde-2/tor.1.err:31879 ff.): die letzte Negativprüfung las „wird aufgefrischt …",
+// obwohl der Abruf fertig war. Die Messung zählte EINE Runde der Ereignisschleife (`flush()`), wo
+// drei Stufen nacheinander dran sind (Abschluss der Abfrage · Benachrichtigung durch den
+// `notifyManager` in EIGENEM Zeitgeber · React-Commit). Die kontrollierte Gegenprobe bei
+// `warteBis()` ordnet den Fehler dieser Reihenfolge zu: bei UNVERÄNDERTEM Produkt und um genau eine
+// Runde nach hinten geschobenem Abschluss fällt derselbe Fehler wortgleich.
+//
+// WAS DAMIT NICHT BEWIESEN IST: dass es im Produkt gar keinen zeitweiligen Fehler geben KANN. Rot
+// und Grün bei gleichem Code schliessen den nicht aus; belegt sind die vier Fehlläufe, die schwache
+// Synchronisierung im Test und die gemessene Zuordnung. Ein Halteglied, das die Anzeige über den
+// Abrufzustand hinaus stehen liesse, ist an der lesenden Stelle nicht zu sehen
+// (`components/start/forYou.ts:152`, `auffrischungLaeuft` liest allein `isFetching`) — geprüft,
+// nicht behauptet, und deshalb auch nicht weiter verallgemeinert.
+//
+// Die Fälle prüfen unverändert dasselbe; sie beobachten nur getrennt, was sie vorher vermuteten —
+// die laufende Abfrage (`fetchStatus`), den Abschluss (der festgehaltene Promise der
+// Ungültigmachung) und erst dann den Baum.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /** Ein Wissensobjekt, so schmal wie die Startseite es liest (Titel + Kennung). */
@@ -132,6 +154,49 @@ let root: ReturnType<typeof createRoot> | null = null;
 const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 
 /**
+ * WARTEN AUF EINE BEDINGUNG STATT AUF EINE ANZAHL RUNDEN (JOB 3788, Runde 2).
+ *
+ * `flush()` ist EIN `setTimeout(0)` — also genau eine Runde der Ereignisschleife. Zwischen dem
+ * Auflösen einer Abfrage und dem neu gezeichneten Baum liegen aber drei Stufen, die nicht in eine
+ * Runde passen müssen: (1) der Abschluss der Abfrage selbst (Mikrotasks im Wiederholer von
+ * react-query), (2) die Benachrichtigung der Beobachter und (3) der React-Commit.
+ *
+ * Stufe (2) AN DER INSTALLIERTEN FASSUNG NACHGELESEN, nicht aus dem Gedächtnis: der Planer des
+ * `notifyManager` ist vorbelegt mit `systemSetTimeoutZero`
+ * (`@tanstack/query-core/build/modern/notifyManager.js:3,18`), und der ist wörtlich
+ * `setTimeout(callback, 0)` (`.../timeoutManager.js:62-64`). Die Benachrichtigung bekommt also einen
+ * EIGENEN Zeitgeber, und wird er aus einer Zeitgeber-Rückrufung heraus gelegt, ist er erst in der
+ * nächsten Runde dran. Legt der Test seinen eigenen Zeitgeber davor, liest er den Baum von VORHIN.
+ * Deshalb wird hier auch NICHT am Planer gedreht (`setScheduler` wäre nur die Vorbelegung noch
+ * einmal) — verschoben wird der Abschluss, und zwar nur in der Gegenprobe.
+ *
+ * Genau das ist in vier fremden Torläufen passiert (jobs/3778/runde-1/tor.1.out:4182-4184,
+ * jobs/3824/runde-2/tor.1.err:31879 ff.): L5d las unter Last „wird aufgefrischt …", obwohl der
+ * Abruf schon fertig war. Hier gemessen, indem der Abschluss um genau eine Runde verschoben wurde:
+ * derselbe Fehler, wortgleich (Arbeitsprüfung fcdb6ad9a03c44b0b82e6c38ec115561, Exit 1).
+ *
+ * DIESER HELFER VERLÄNGERT KEINEN SCHLAF PAUSCHAL. Er dreht Runden, BIS die Bedingung gilt, und
+ * bricht sonst mit dem ZULETZT GESEHENEN Befund ab. Eine Anzeige, die dauerhaft stehen bleibt, wird
+ * dadurch nicht übersehen, sondern nach `runden` benannt — gemessen in Gegenprobe D.
+ */
+async function warteBis(
+  bedingung: () => boolean,
+  was: string,
+  befund: () => string,
+  runden = 40,
+): Promise<void> {
+  for (let i = 0; i < runden; i += 1) {
+    if (bedingung()) {
+      return;
+    }
+    await act(flush);
+  }
+  if (!bedingung()) {
+    throw new Error(`${was} — nicht eingetreten in ${runden} Runden. Zuletzt gesehen: ${befund()}`);
+  }
+}
+
+/**
  * Der Zwischenspeicher bleibt über einen Mount hinweg erhalten, wenn derselbe `QueryClient`
  * gereicht wird — das ist der Weg zur Lage `veraltet` (L5c): erst online leer laden, dann das Netz
  * trennen und am SELBEN Speicher neu betreten. Die Hausform steht in
@@ -199,6 +264,18 @@ function ersterSchrittZeile(): HTMLElement | null {
     }
   }
   return null;
+}
+
+/**
+ * Der Text DIESER Zeile — und `null`, wenn es sie gar nicht gibt. Die Unterscheidung ist wichtig:
+ * eine verschwundene Zeile hat keinen Text, und `""` enthält „wird aufgefrischt …" ebenfalls nicht.
+ * Eine Negativprüfung über `?? ""` wäre also auch dann grün, wenn der Leersatz beim Auffrischen
+ * WEGFIELE — genau der Fehler, den REGELN §7 verbietet. Deshalb gibt dieser Helfer `null` zurück,
+ * und jede Bedingung darüber verlangt die Zeile ausdrücklich (Gegenprobe E).
+ */
+function ersterSchrittText(): string | null {
+  const zeile = ersterSchrittZeile();
+  return zeile === null ? null : (zeile.textContent ?? "").replace(/\s+/g, " ");
 }
 
 beforeEach(async () => {
@@ -436,32 +513,64 @@ describe("JOB 3762 · L5 · „es ist nichts da“ und „ich weiß es nicht“ 
       new Promise((r) => {
         aufloesen = r;
       });
+
+    // DER PROMISE DER UNGÜLTIGMACHUNG WIRD FESTGEHALTEN, nicht mit `void` weggeworfen: er ist das
+    // einzige Zeichen, das den ABSCHLUSS des Nachlaufs wirklich meldet (er löst sich auf, wenn der
+    // neue Abruf durch ist). Alles andere unten wartet auf beobachtete Zustände, nicht auf Runden.
+    let invalidierung: Promise<void> = Promise.resolve();
     await act(async () => {
-      void qc.invalidateQueries({ queryKey: ["kos"] });
+      invalidierung = qc.invalidateQueries({ queryKey: ["kos"] });
       await flush();
     });
+
+    const laufzustand = (): string | undefined => qc.getQueryState(["kos", undefined])?.fetchStatus;
+
+    // ERSTE HÄLFTE — DIE AUFFRISCHUNG LÄUFT. Gewartet wird auf die LAUFENDE ABFRAGE (Zustand der
+    // Abfrage), getrennt von der Anzeige, die danach geprüft wird.
+    await warteBis(
+      () => laufzustand() === "fetching",
+      "der Nachlauf kommt in Gang",
+      () => `fetchStatus=${String(laufzustand())}`,
+    );
     // KALIBRIERUNG: der Abruf läuft wirklich — sonst misst dieser Fall nichts.
-    expect(qc.getQueryState(["kos", undefined])?.fetchStatus).toBe("fetching");
+    expect(laufzustand()).toBe("fetching");
     expect(
       kartentext(),
       "§9: War der Cache leer, bleibt der Leersatz stehen, ohne zu flackern",
     ).toContain(i18n.t("start.leer.ersterSchritt"));
     // Und er behauptet nicht, Auskunft über JETZT zu sein: die Zeile sagt, dass nachgeprüft wird.
-    expect(
-      (ersterSchrittZeile()?.textContent ?? "").replace(/\s+/g, " "),
-      "die laufende Auffrischung wird benannt",
-    ).toContain(i18n.t("start.leer.auffrischung"));
+    expect(ersterSchrittText(), "die laufende Auffrischung wird benannt").toContain(
+      i18n.t("start.leer.auffrischung"),
+    );
 
-    // Nach dem Abschluss ist der Stand wieder frisch — und der Zusatz verschwindet.
+    // ZWEITE HÄLFTE — DIE AUFFRISCHUNG IST BEENDET. Erst der Wert, dann der eingefangene Promise
+    // (die Abfrage ist fertig), dann der Baum (die Anzeige ist nachgezogen). Drei Bedingungen,
+    // einzeln beobachtet — nicht ein Zeitgeber, der für alle drei reichen soll.
     await act(async () => {
       aufloesen?.([]);
-      await flush();
+      await invalidierung;
     });
+    await warteBis(
+      () => laufzustand() === "idle",
+      "der Nachlauf ist abgeschlossen",
+      () => `fetchStatus=${String(laufzustand())}`,
+    );
+    expect(laufzustand(), "Vorbedingung der Negativprüfung: es läuft nichts mehr").toBe("idle");
+    await warteBis(
+      () => {
+        const text = ersterSchrittText();
+        // Die Zeile MUSS dabei stehen bleiben: verschwände sie, wäre die Negativprüfung darunter
+        // leer erfüllt — und §9 („der Leersatz bleibt") verletzt, ohne dass es jemand merkt.
+        return text !== null && !text.includes(i18n.t("start.leer.auffrischung"));
+      },
+      "der Zusatz über die laufende Auffrischung verschwindet, und der Leersatz bleibt dabei stehen",
+      () => `Zeile=${String(ersterSchrittText())} · Karte=${kartentext()}`,
+    );
     expect(kartentext()).toContain(i18n.t("start.leer.ersterSchritt"));
-    expect(
-      (ersterSchrittZeile()?.textContent ?? "").replace(/\s+/g, " "),
-      "ohne laufenden Abruf steht dort nichts",
-    ).not.toContain(i18n.t("start.leer.auffrischung"));
+    expect(ersterSchrittText(), "der Leersatz steht nach dem Abschluss noch da").not.toBeNull();
+    expect(ersterSchrittText(), "ohne laufenden Abruf steht dort nichts").not.toContain(
+      i18n.t("start.leer.auffrischung"),
+    );
   });
 
   it("L5e · leerer Cache, Auffrischung GESCHEITERT ⇒ der Leersatz bleibt, markiert als nicht frisch", async () => {
@@ -471,13 +580,22 @@ describe("JOB 3762 · L5 · „es ist nichts da“ und „ich weiß es nicht“ 
     box.kos = async () => {
       throw new Error("500");
     };
+    // Derselbe Weg wie in L5d, aus demselben Grund: der Promise wird festgehalten, und danach wird
+    // auf den BEOBACHTETEN Zustand gewartet. Vorher stand hier „zweite Runde ... unter Last war eine
+    // Runde zu wenig" — das war das Abzählen von Runden, an dem L5d in vier Torläufen zerbrach.
+    let invalidierung: Promise<void> = Promise.resolve();
     await act(async () => {
-      void qc.invalidateQueries({ queryKey: ["kos"] });
+      invalidierung = qc.invalidateQueries({ queryKey: ["kos"] });
       await flush();
     });
-    // Zweite Runde: der Fehlschlag steht im Speicher, der Neuanstrich folgt erst danach (unter Last
-    // war eine Runde zu wenig — s. `aufgaben-leerbestand.test.tsx`, L5-Auf-c).
-    await act(flush);
+    await act(async () => {
+      await invalidierung;
+    });
+    await warteBis(
+      () => kartentext().includes(i18n.t("loadstate.stale")),
+      "der gescheiterte Nachlauf ist in der Anzeige angekommen",
+      () => kartentext(),
+    );
     expect(kartentext(), "REGELN §7: ein gescheiterter Nachlauf leert die Karte nicht").toContain(
       i18n.t("start.leer.ersterSchritt"),
     );

@@ -13,6 +13,9 @@
 //         {q.trim() ? t("lib.liste.leerSuche") : t("lib.liste.leer")}
 //         … {leerAktion}
 //
+// (Die zitierte Zeile ist der Stand von JOB 3762. Seit JOB 3788 lautet sie
+// `{eingegrenzt ? t("lib.liste.leerSuche") : t("lib.liste.leer")}` — s. L3c unten.)
+//
 // Zwei verschiedene Sätze (`lib.liste.leer` „Noch keine Einträge." / `lib.liste.leerSuche` „Nichts
 // gefunden."), in DE, EN und NL vorhanden, dazu der erste Schritt als Knopf (`bib-leer-erfassen`,
 // `BibliothekFlaeche.tsx:1463`) — und die drei Ausschlüsse `laedt`/`fehler`/`pausiert` sind genau
@@ -23,13 +26,14 @@
 // WAS DIESE DATEI ALSO IST: der Wächter über eine vorhandene, gemessene Zusage — aus der Sicht der
 // frisch aufgesetzten Demo. Vertauscht jemand die zwei Sätze, werden L3 und L3b rot.
 //
-// EIN BENANNTER RESTFALL, gemessen und ABSICHTLICH nicht hier grün gebogen (s. L3c): die
-// Unterscheidung hängt allein am SUCHBEGRIFF (`q.trim()`), nicht an den übrigen Wahlen. Ein
-// gefüllter Bestand mit einem Segment- oder Facettenfilter ohne Treffer und leerem Suchfeld zeigt
-// deshalb „Noch keine Einträge." — eine Aussage über den BESTAND, obwohl nur die AUSWAHL leer ist.
-// Die Stelle liegt in `BibliothekListe.tsx`/`BibliothekFlaeche.tsx` und damit ausserhalb der
-// Zielpfade dieses Auftrags (§4); sie ist in der Rückgabe unter ABWEICHUNGEN benannt, nicht
-// angefasst. L3c hält den Ist-Zustand fest, damit er nicht unbemerkt bleibt.
+// DER BENANNTE RESTFALL IST EINGELÖST (JOB 3788). Er lautete: die Unterscheidung hängt allein am
+// SUCHBEGRIFF (`q.trim()`), nicht an den übrigen Wahlen — ein gefüllter Bestand mit einem Segment-
+// oder Facettenfilter ohne Treffer und leerem Suchfeld zeigte deshalb „Noch keine Einträge.", eine
+// Aussage über den BESTAND, obwohl nur die AUSWAHL leer war. Die Stelle lag in
+// `BibliothekListe.tsx`/`BibliothekFlaeche.tsx` und damit ausserhalb der Zielpfade von JOB 3762
+// (§4); sie war in dessen Rückgabe unter ABWEICHUNGEN benannt und nicht angefasst. L3c hielt den
+// Ist-Zustand fest, damit er nicht unbemerkt blieb — JOB 3788 hat die Weiche auf `eingegrenzt`
+// umgestellt, und L3c ist mitgedreht (nicht gelöscht, nicht abgeschwächt).
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { KnowledgeObject } from "../../apps/web/src/api/types";
@@ -195,16 +199,33 @@ describe("JOB 3762 · L3 · die leere Bibliothek", () => {
     ).not.toContain(i18n.t("lib.liste.leer"));
   });
 
-  it("L3c · BENANNTER RESTFALL: ohne Suchbegriff entscheidet nur `q` — ein Filter ohne Treffer sagt „Bestand leer“", () => {
-    // Bestand da, aber das Segment „Offen" (`?zustand=offen`, `BibliothekFlaeche.tsx:107`) passt
-    // auf keinen Eintrag — das einzige Objekt ist validiert. Das
-    // Suchfeld ist leer. `BibliothekListe.tsx:389` fragt nur `q.trim()` und wählt deshalb den
-    // BESTANDS-Satz. Das ist der in der Rückgabe benannte Restfall — er liegt ausserhalb der
-    // Zielpfade dieses Auftrags und wird hier festgehalten, nicht behauptet.
+  it("L3c · EINGELÖST (JOB 3788): ein Filter ohne Treffer sagt etwas über die AUSWAHL, nicht über den BESTAND", () => {
+    // ==============================================================================================
+    // DER RESTFALL AUS RUNDE 1/2 IST BEHOBEN — DIESE ZEILE IST UMGEDREHT, NICHT GELÖSCHT.
+    // ==============================================================================================
+    // WAS HIER BIS JOB 3788 STAND: derselbe Aufbau, aber mit der Erwartung `lib.liste.leer` und dem
+    // Zusatz „Ist-Zustand, kein Sollzustand". JOB 3762 hatte den Fall gemessen und ausdrücklich
+    // NICHT grün gebogen — `BibliothekListe.tsx` und `BibliothekFlaeche.tsx` lagen ausserhalb seiner
+    // Zielpfade (`jobs/3762/runde-2/RUECKGABE.md:51`: „L3c hält den Ist-Zustand fest und wird bei
+    // der Behebung rot — der Test ist dort umzudrehen, nicht zu löschen").
+    //
+    // JOB 3788 hat die Weiche berichtigt: sie fragt jetzt `eingegrenzt` (aus `anyFilterActive`,
+    // `BibliothekFlaeche.tsx:1238`) statt `q.trim()`. Damit ist dieser Fall vom Ist-Zustand zum
+    // Sollzustand geworden und die Erwartung dreht sich mit. Der Bestand ist da, das Segment
+    // „Offen" (`?zustand=offen`) passt auf kein validiertes Objekt, das Suchfeld ist leer — und die
+    // Fläche sagt genau das: nichts gefunden, nicht „nichts vorhanden".
+    //
+    // Der eigene Wächter des Falls samt Zeitraum, Geltungsbereich, EN/NL und den drei Lagen aus §9
+    // liegt in `tests/bibliothek-leer-oder-eingegrenzt/`; hier bleibt er aus der Sicht der frisch
+    // aufgesetzten Demo stehen, wo er gefunden wurde.
     lage.bestand = abfrage([KO]);
     lage.suche = abfrage([KO]);
     mount("/bibliothek?zustand=offen");
-    expect(leertext(), "Ist-Zustand, kein Sollzustand").toContain(i18n.t("lib.liste.leer"));
+    expect(leertext()).toContain(i18n.t("lib.liste.leerSuche"));
+    expect(
+      leertext(),
+      "„Noch keine Einträge.“ behauptete hier etwas über einen Bestand, der nicht leer ist",
+    ).not.toContain(i18n.t("lib.liste.leer"));
   });
 });
 

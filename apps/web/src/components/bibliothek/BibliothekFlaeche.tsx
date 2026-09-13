@@ -1319,6 +1319,19 @@ export function BibliothekFlaeche({
             resetWindow();
             setQ(wert);
           }}
+          // ============================================================================================
+          // JOB 3788 · DER LEERSATZ DER LISTE BEKOMMT DIE EINGRENZUNG GESAGT — DEN VORHANDENEN AUSDRUCK.
+          // ============================================================================================
+          // `anyFilterActive` (`:1238`) zählt JEDE getroffene Wahl: Suchwort, Facetten, Zeitraum,
+          // Umschalter, Gruppierung und Geltungsbereich. Genau das ist die Frage, die der Leerzweig
+          // stellen muss — bis JOB 3788 fragte er dort `q.trim()` und übersah die anderen fünf.
+          //
+          // ES ENTSTEHT KEIN ZWEITER FILTERBEGRIFF. Der Ausdruck wird hier weder umgebaut noch
+          // kopiert, sondern DURCHGEREICHT; seine beiden bisherigen Verbraucher („Diese Suche
+          // merken", `:1549`/`:1769`) lesen unverändert dieselbe Zeile. Ein eigener Ausdruck für den
+          // Leersatz wäre eine zweite Wahrheit über dieselbe Sache und liefe beim nächsten Filter
+          // auseinander (Auftrag Lieferung 2, Prüfpunkt 7).
+          eingegrenzt={anyFilterActive}
           ortszeile={
             // ======================================================================================
             // JOB 381 · DIE ORTSZEILE — WORIN WIRD GERADE GESUCHT (H4: als ruhige Zeile über der Liste).

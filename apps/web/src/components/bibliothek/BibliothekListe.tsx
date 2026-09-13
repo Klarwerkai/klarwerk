@@ -169,6 +169,7 @@ function ZeilenTitel({ zeile, gewaehlt }: { zeile: BibZeile; gewaehlt: boolean }
 export function BibliothekListe({
   q,
   onQ,
+  eingegrenzt,
   ortszeile,
   segment,
   onSegment,
@@ -188,6 +189,11 @@ export function BibliothekListe({
 }: {
   q: string;
   onQ: (wert: string) => void;
+  // JOB 3788: Hat der Mensch die Trefferliste irgendwie eingegrenzt — Suchwort, Facette, Zeitraum,
+  // Umschalter, Gruppierung oder Geltungsbereich? Der Aufrufer weiss es (er hält alle sechs
+  // Zustände), die Liste nicht; sie wertet die Antwort nur im Leerzweig aus (`:413`) und entscheidet
+  // damit, ob dort die Aussage über den BESTAND oder die über die AUSWAHL steht.
+  eingegrenzt: boolean;
   // JOB 381 · `P-1`: die Ortszeile — WORIN gerade gesucht wird. Sie steht ÜBER dem Suchfeld, weil
   // sie den Bestand benennt, auf den sich Suche, Umschalter und Menüs beziehen; die Tabreihenfolge
   // folgt damit der Leserichtung (`R-17`/`A-9`). Der Aufrufer baut sie, die Liste gibt ihr den Ort.
@@ -382,11 +388,29 @@ export function BibliothekListe({
             Abruf entstehen. Die dritte Lage `pausiert` (offline angehalten) war bis JOB 3099 keiner
             der beiden alten Zweige — und fiel damit in den Leerzweig. Sie hat seit JOB 3531 ihren
             eigenen Zweig direkt darüber; `!pausiert` hält die beiden auseinander, damit nie beide
-            Aussagen zugleich dastehen. */}
+            Aussagen zugleich dastehen.
+
+            ==========================================================================================
+            JOB 3788 — WELCHER DER ZWEI SÄTZE GILT, ENTSCHEIDET DIE FLÄCHE. NICHT MEHR DAS SUCHFELD.
+            ==========================================================================================
+            HIER STAND BIS JOB 3788 `q.trim() ? … : …`. Das war die falsche Frage: „Noch keine
+            Einträge." ist eine Aussage über den BESTAND, „Nichts gefunden." eine über die AUSWAHL —
+            und das Suchfeld ist nur EINE von sechs Wahlen, die die Auswahl einengen. Facetten,
+            Zeitraum, Umschalter, Gruppierung und Geltungsbereich zählten nicht mit; wer auf einer
+            gefüllten Bibliothek eine trefferlose Abteilung wählte und das Suchfeld leer liess,
+            bekam seinen Bestand für leer erklärt (gemessen von JOB 3762,
+            `jobs/3762/runde-1/RUECKGABE.md:42`). Der alte Weg ist ERSETZT, nicht ergänzt: `q.trim()`
+            entscheidet hier nichts mehr, `q` trägt nur noch das Suchfeld oben (`:281`).
+
+            WARUM DIE LISTE NICHT SELBST RECHNET: die Kopfzeilenmenüs kennen die Filterlogik, diese
+            Datei kennt sie nicht (s. `menues` in der Signatur). Der Aufrufer bildet den Ausdruck
+            EINMAL (`BibliothekFlaeche.tsx:1238`, `anyFilterActive` — derselbe, an dem „Diese Suche
+            merken" hängt) und reicht ihn durch. Ein zweiter Filterbegriff hier wären zwei Wahrheiten
+            über dieselbe Sache, die auseinanderlaufen, sobald eine Dimension dazukommt. */}
         {!laedt && !fehler && !pausiert && eintraege.length === 0 ? (
           <div data-testid="bib-leer" className="px-4 py-3">
             <p className="text-[12.5px] leading-relaxed text-muted">
-              {q.trim() ? t("lib.liste.leerSuche") : t("lib.liste.leer")}
+              {eingegrenzt ? t("lib.liste.leerSuche") : t("lib.liste.leer")}
             </p>
             <div className="mt-2">{leerAktion}</div>
           </div>

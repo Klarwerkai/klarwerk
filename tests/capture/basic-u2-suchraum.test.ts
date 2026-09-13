@@ -253,13 +253,24 @@ describe("BASIC-u2 · AK7 — Query, Filterung, Ranking und Sichtbarkeit sind un
     expect(librarySrc).toContain("const ranked = searchLibrary(koItems, trimmedQ);");
   });
 
-  it("der Leerzustand hängt weiter an derselben Verzweigung: mit Suchtext anders als ohne", () => {
+  it("der Leerzustand hängt weiter an derselben Verzweigung: eingegrenzt anders als nicht", () => {
     // Die Verzweigung ist mit der Liste umgezogen; sie ist dieselbe geblieben.
+    //
+    // JOB 3788 — NACHGEFÜHRT, NICHT GELOCKERT. AK7 sichert zu, dass Query, Filterung, Ranking und
+    // Sichtbarkeit unverändert sind; an keinem dieser vier ändert JOB 3788 etwas. Was sich ändert,
+    // ist die FRAGE im Leerzweig: nicht mehr „steht ein Suchwort da?" (`q.trim()`), sondern „hat
+    // der Mensch überhaupt irgendetwas eingegrenzt?" (`eingegrenzt`, aus `anyFilterActive`) — weil
+    // eine trefferlose Facette bei leerem Suchfeld sonst „Noch keine Einträge." über einen
+    // gefüllten Bestand behauptet. Die Zweierverzweigung selbst bleibt, und dass der alte
+    // Entscheider wirklich weg ist und nicht danebensteht, hält die zweite Zeile fest.
     const listeSrc = readFileSync(
       join(WEB_SRC, "components", "bibliothek", "BibliothekListe.tsx"),
       "utf8",
     );
-    expect(listeSrc).toContain('q.trim() ? t("lib.liste.leerSuche") : t("lib.liste.leer")');
+    expect(listeSrc).toContain('eingegrenzt ? t("lib.liste.leerSuche") : t("lib.liste.leer")');
+    expect(listeSrc, "der alte Weg ist ersetzt, nicht ergänzt").not.toContain(
+      'q.trim() ? t("lib.liste.leerSuche")',
+    );
   });
 
   it("der Gegenweg der Bibliothek läuft über das Rollentor, nicht über einen rohen Link", () => {

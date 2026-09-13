@@ -41,8 +41,19 @@ describe("W3 · der Leerzustand der Bibliothek unterscheidet „nichts gesucht�
     // (`lib.empty`/`lib.emptyQuery`). Beides gibt es nicht mehr: der Leerzustand der Liste ist
     // Pedis Vorgabe vom 04.09. gefolgt — EIN Satz plus EIN Knopf, kein Erklärabsatz. Die
     // Unterscheidung selbst, um die es W3 ging, ist geblieben.
+    // JOB 3788 — DIE UNTERSCHEIDUNG BLEIBT, IHRE FRAGE IST BERICHTIGT. Bis hierher stand hier der
+    // Pin auf `q.trim() ? …`. Das Suchfeld war aber nur EINE von sechs Wahlen, die die Trefferliste
+    // einengen; eine trefferlose Facette auf gefülltem Bestand liess die Liste „Noch keine
+    // Einträge." sagen — eine Falschaussage über den Bestand. Die Weiche fragt jetzt den Aufrufer
+    // (`eingegrenzt`, gespeist aus `anyFilterActive`). W3 selbst ist unberührt: es gibt weiterhin
+    // GENAU ZWEI Sätze und eine Verzweigung zwischen ihnen. Der Pin ist nachgeführt, nicht gelockert
+    // — er nennt die neue Zeile ganz, und dass `q.trim()` dort nichts mehr entscheidet, hält die
+    // Zeile darunter fest.
     const src = read("apps/web/src/components/bibliothek/BibliothekListe.tsx");
-    expect(src).toContain('q.trim() ? t("lib.liste.leerSuche") : t("lib.liste.leer")');
+    expect(src).toContain('eingegrenzt ? t("lib.liste.leerSuche") : t("lib.liste.leer")');
+    expect(src, "der alte Entscheider darf nicht daneben stehen bleiben").not.toContain(
+      'q.trim() ? t("lib.liste.leerSuche")',
+    );
     // Der Weg ins Erfassen bleibt im Leerzustand erreichbar (der frühere Erststart-Block).
     const flaeche = read("apps/web/src/components/bibliothek/BibliothekFlaeche.tsx");
     expect(flaeche).toContain("leerAktion=");

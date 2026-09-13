@@ -155,7 +155,14 @@ describe("AUFTRAG-mega59 D — null sichtbare Einträge sagen, WARUM", () => {
     // „pumpe". Beide Werte existieren wirklich im Bestand — die Kombination trifft keinen. Die
     // Suche liefert also weiter zwei Treffer, die Facetten zeigen keinen davon.
     mount("/bibliothek?category=Anlage+1&tag=pumpe");
-    expect(leerSatz()).toBe(de("lib.liste.leer"));
+    // JOB 3788 — NACHGEFÜHRT: HIER STAND `de("lib.liste.leer")`. Das war genau der Fehler, den
+    // JOB 3762 gemessen und JOB 3788 behoben hat: die Suche liefert zwei Treffer, die Facetten
+    // zeigen keinen — der Bestand ist also GEFÜLLT, und „Noch keine Einträge." war eine
+    // Falschaussage über ihn. Seit JOB 3788 entscheidet nicht mehr `q.trim()`, sondern
+    // `anyFilterActive` (`BibliothekFlaeche.tsx:1238`), und die Fläche sagt hier den Satz über die
+    // AUSWAHL. Was mega59 D zugesichert hat, ist unberührt und steht in den Zeilen darunter
+    // unverändert: der Zustand ist NICHT stumm, es steht EIN Satz da, und der Weg zurück ist da.
+    expect(leerSatz()).toBe(de("lib.liste.leerSuche"));
     // Der Zähler sagt ehrlich Null — die Fläche behauptet keine Treffer, die sie nicht zeigt.
     expect(listenZaehler(container)).toBe(0);
     expect(resetEintrag(), "der Weg zurück fehlt im Filter-Menü").toBeTruthy();
