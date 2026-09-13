@@ -180,12 +180,36 @@ export function kennungJeTitel(titel: string): string | null {
 let objektZaehler = 0;
 
 /**
+ * JOB 3822: der nächste Objekt-Upload scheitert EINMAL — der Fall „das Original kommt nicht in den
+ * Speicher, der Text aber schon" (`Capture.tsx:1499`). Form und Grund sind die von
+ * `lasseNaechstesUpdateScheitern` oben: ein Schalter, der sich beim ersten Aufruf VERBRAUCHT, keine
+ * stehende Umschaltung. Sonst scheiterte im Wiederholungsfall auch der zweite Anlauf, und „der
+ * Volltext ist trotzdem gesichert" liesse sich nicht vom Dauerausfall unterscheiden.
+ *
+ * WARUM DER FEHLER VON AUSSEN KOMMT und nicht hier festgelegt ist: `classifyUploadError`
+ * (`captureAttachments.ts:71`) trennt „zu groß" (Status 413 oder Größenwortlaut) von „Upload" —
+ * daran hängen ZWEI verschiedene Sätze an den Menschen (`Capture.tsx:1558-1565`). Der Fall wählt
+ * also, welchen der beiden Wege er messen will.
+ */
+let naechsterUploadFehler: unknown = null;
+
+/** Der nächste `objects.upload` wirft diesen Fehler, danach lädt er wieder normal hoch. */
+export function lasseNaechstenUploadScheitern(fehler: unknown): void {
+  naechsterUploadFehler = fehler;
+}
+
+/**
  * Der Objekt-Upload des Originals (`endpoints.objects.upload`). Er legt wirklich ab und gibt eine
  * eigene Kennung je Aufruf zurück — nur so fällt ein doppelter Upload auf, und nur so trägt der
  * Rumpf des Entwurfs danach eine Referenz, die auf etwas VORHANDENES zeigt.
  */
 export const objectsUpload = vi.fn(
   async (input: { name: string; mime: string; data: string }): Promise<Record<string, unknown>> => {
+    if (naechsterUploadFehler !== null) {
+      const fehler = naechsterUploadFehler;
+      naechsterUploadFehler = null;
+      throw fehler;
+    }
     objektZaehler += 1;
     const ref = {
       id: `obj-${objektZaehler}`,
@@ -237,6 +261,10 @@ export const draftsPromote = vi.fn(async (id: string) => {
 export async function attrappenZuruecksetzen(): Promise<void> {
   await bremse.loslassen();
   naechsterUpdateFehler = null;
+  // JOB 3822: der Upload-Einmalfehler gehört HIERHER. Ein Fall, der ihn setzt und dessen Upload dann
+  // gar nicht mehr stattfindet (Größenabbruch VOR dem Upload), liesse ihn sonst stehen — und der
+  // nächste Fall des Ordners verlöre sein Original ohne jeden Bezug zu seiner eigenen Lage.
+  naechsterUploadFehler = null;
   createFehlerTitel.clear();
   extrakt.punkte = [];
   neuZaehler = 0;

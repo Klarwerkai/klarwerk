@@ -46,17 +46,14 @@ import {
   adresse,
   bestand,
   entwurf,
-  erreichbareStellen,
   feld,
   flush,
-  gesperrteBereiche,
+  grundIstErreichbar,
   grundzustand,
-  imWacheDialog,
   klick,
   knopf,
   mount,
   sichtbar,
-  stellen,
   tippe,
   verlassenKnopf,
   wacheDialoge,
@@ -65,39 +62,15 @@ import {
 
 const ADRESSE = `/erfassen?draft=${ENTWURF_ID}`;
 
-/**
- * DIE PRÜFUNG, DIE IN RUNDE 1 GEFEHLT HAT (bens Korrekturpflicht 2).
- *
- * Runde 1 hat `sichtbar()` gefragt — also `body.textContent`. Das beantwortet nur, ob ein Satz
- * IRGENDWO im Baum steht. Im Betrieb steht er beim offenen Wache-Dialog aber im Fehlerkasten der
- * SEITE, und den sperrt die Modalgrenze per `inert` (`ModalBoundaryContext.tsx:121`): für Tastatur
- * und Screenreader ist er dann nicht da. Der Test war grün, der Mensch stand vor einem stummen
- * Dialog.
- *
- * Hier wird deshalb dreierlei verlangt:
- *  1. Die Grenze ist überhaupt scharf — mindestens ein Bereich ist gesperrt. Ohne diese Zeile
- *     hiesse „erreichbar" nur, dass nie etwas gesperrt war.
- *  2. Der Satz hat mindestens eine ERREICHBARE Stelle (nicht inert, nicht `hidden`,
- *     nicht `aria-hidden`).
- *  3. JEDE erreichbare Stelle liegt IM Dialog — nicht im gesperrten Hintergrund daneben.
- */
-function grundIstErreichbar(satz: string): void {
-  expect(gesperrteBereiche(), "die Modalgrenze sperrt gerade nichts").toBeGreaterThan(0);
-  const alle = stellen(satz);
-  const offen = erreichbareStellen(satz);
-  expect(alle.length, `„${satz}" steht nirgends im Baum`).toBeGreaterThan(0);
-  expect(
-    offen.length,
-    `„${satz}" steht nur im gesperrten oder verborgenen Teil (${alle.length} Fundstellen)`,
-  ).toBeGreaterThan(0);
-  expect(
-    offen.map((el) => imWacheDialog(el)),
-    `erreichbare Fundstellen ausserhalb des Wache-Dialogs: ${offen
-      .filter((el) => !imWacheDialog(el))
-      .map((el) => el.tagName)
-      .join(", ")}`,
-  ).toEqual(offen.map(() => true));
-}
+// DIE PRÜFUNG, DIE IN RUNDE 1 GEFEHLT HAT (bens Korrekturpflicht 2), heisst `grundIstErreichbar`
+// und steht seit JOB 3822 in der HÜLLE — dieselben drei Zusagen brauchen inzwischen drei Dateien
+// dieses Ordners, und die Begründung wohnt bei ihnen (`huelle.tsx`, `grundIstErreichbar`).
+//
+// Runde 1 hat `sichtbar()` gefragt — also `body.textContent`. Das beantwortet nur, ob ein Satz
+// IRGENDWO im Baum steht. Im Betrieb steht er beim offenen Wache-Dialog aber im Fehlerkasten der
+// SEITE, und den sperrt die Modalgrenze per `inert` (`ModalBoundaryContext.tsx:121`): für Tastatur
+// und Screenreader ist er dann nicht da. Der Test war grün, der Mensch stand vor einem stummen
+// Dialog.
 
 /** Der Titel, den der Server aktuell hält. */
 function titelImBestand(): string | undefined {

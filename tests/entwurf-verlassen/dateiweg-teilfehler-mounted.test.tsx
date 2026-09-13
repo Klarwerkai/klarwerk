@@ -48,15 +48,12 @@ import {
   abbauen,
   adresse,
   dateiAblegen,
-  erreichbareStellen,
-  gesperrteBereiche,
+  grundIstImDialog,
   grundzustand,
-  imWacheDialog,
   klick,
   knopf,
   mount,
   sichtbar,
-  stellen,
   wacheDialoge,
   wechselLink,
 } from "./huelle";
@@ -80,28 +77,11 @@ const P3 = {
   sourceExcerpt: "Störungen gehören in das Schichtbuch der jeweiligen Schicht.",
 };
 
-/**
- * DIESELBE Prüfung wie in der Nachbardatei (D4/D5): der Grund steht nicht bloss irgendwo im DOM,
- * sondern IM Dialog und für Tastatur und Screenreader erreichbar. Bei offenem Dialog sperrt die
- * Modalgrenze den Fehlerkasten der Seite per `inert` — ein `body.textContent`-Treffer allein wäre
- * hier also eine Scheinmessung.
- */
-function grundIstImDialog(satz: string): void {
-  expect(gesperrteBereiche(), "die Modalgrenze sperrt gerade nichts").toBeGreaterThan(0);
-  const alle = stellen(satz);
-  const offen = erreichbareStellen(satz);
-  expect(alle.length, `„${satz}" steht nirgends im Baum`).toBeGreaterThan(0);
-  expect(offen.length, `„${satz}" steht nur im gesperrten Teil`).toBeGreaterThan(0);
-  expect(
-    offen.map((el) => imWacheDialog(el)),
-    "erreichbare Fundstellen ausserhalb des Wache-Dialogs",
-  ).toEqual(offen.map(() => true));
-  // Und er steht an der Stelle, die der Dialog dafür hat — nicht irgendwo in seinem Fliesstext.
-  expect(document.querySelectorAll("[data-navguard-save-error]").length).toBe(1);
-  expect(
-    (document.querySelector("[data-navguard-save-error]")?.textContent ?? "").replace(/\s+/g, " "),
-  ).toContain(satz);
-}
+// DIESELBE Prüfung wie in der Nachbardatei (D4/D5): der Grund steht nicht bloss irgendwo im DOM,
+// sondern IM Dialog, an der Stelle, die der Dialog dafür hat, und für Tastatur und Screenreader
+// erreichbar. Bei offenem Dialog sperrt die Modalgrenze den Fehlerkasten der Seite per `inert` — ein
+// `body.textContent`-Treffer allein wäre hier also eine Scheinmessung. Sie heisst `grundIstImDialog`
+// und steht seit JOB 3822 in der HÜLLE, weil sie inzwischen drei Dateien dieses Ordners trägt.
 
 /** Der Satz, den der Teilfehler für genau diese Titel formuliert. */
 function teilfehlerSatz(...titel: readonly string[]): string {

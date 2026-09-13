@@ -21,6 +21,9 @@
 // den die Grenze im Betrieb per `inert` sperrt. Der Aufbau ist der der Shell
 // (`shell/AppShell.tsx:92-103`): `ModalBoundaryProvider` mit `<main>` als Portal-Anker, die
 // Brücke `NavGuardModalBoundaryBridge` darin, und der Seiteninhalt in einer `ModalRegion`.
+// `expect` steht hier, weil die Dialog-Zusagen unten Messungen SIND und nicht bloss Abfragen: sie
+// gehören zu den Messfenstern dieses Ordners und nicht in jede Testdatei abgeschrieben (JOB 3822).
+import { expect } from "vitest";
 import {
   QueryClient,
   QueryClientProvider,
@@ -463,10 +466,88 @@ export function imWacheDialog(el: HTMLElement): boolean {
 }
 
 /**
+ * JOB 3822: liegt dieser Knoten in einer Toast-Meldung? Der Viewport rendert jede Meldung als
+ * `<output>` (`shell/ToastViewport.tsx:22`) — und er hängt AUSSERHALB der Modalgrenze, ein Toast ist
+ * also auch bei offenem Dialog erreichbar. Wer prüft, wo ein Satz steht, muss ihn deshalb vom
+ * gesperrten Fehlerkasten der Seite unterscheiden können.
+ */
+export function imToast(el: HTMLElement): boolean {
+  return el.closest("output") !== null;
+}
+
+/**
  * Wie viele Bereiche die Modalgrenze gerade gesperrt hat. Null bedeutet: es liegt keine modale
  * Fläche über der App — ODER die Grenze ist gar nicht verdrahtet. Die Fälle prüfen das
  * ausdrücklich, damit „der Grund ist erreichbar" nicht bloss heisst, dass nichts gesperrt war.
  */
 export function gesperrteBereiche(): number {
   return document.querySelectorAll("[data-modal-region][inert]").length;
+}
+
+/**
+ * JOB 3822: DIE DREI ZUSAGEN ÜBER EINEN GRUND IM DIALOG — einmal, für alle Dateien dieses Ordners.
+ *
+ * Sie standen als zwei fast gleiche Abschriften in `dialog-speicherfall-mounted.test.tsx:84`
+ * (`grundIstErreichbar`) und `dateiweg-teilfehler-mounted.test.tsx:89` (`grundIstImDialog`, dieselben
+ * drei Zeilen plus die Feldprüfung). Mit dem dritten Aufrufer (dem Größenabbruch des
+ * Ganzdokument-Trägers) wären es drei geworden — also hierher, einmal (Lehre 3550/3571, wie schon
+ * `speichernKnopfDa` und `anlageNutzlasten` vor ihr). Keine Zusage wurde dabei verschärft oder
+ * aufgegeben: die Feldprüfung bleibt in `grundIstImDialog` und nur dort.
+ *
+ * WAS SIE ZUSAMMEN BEWEISEN:
+ *  1. Die Grenze ist überhaupt scharf — mindestens ein Bereich ist gesperrt. Ohne diese Zeile
+ *     hiesse „erreichbar" nur, dass nie etwas gesperrt war.
+ *  2. Der Satz hat mindestens eine ERREICHBARE Stelle (nicht inert, nicht `hidden`,
+ *     nicht `aria-hidden`).
+ *  3. JEDE erreichbare Stelle liegt IM Dialog — nicht im gesperrten Hintergrund daneben.
+ */
+export function grundIstErreichbar(satz: string): void {
+  expect(gesperrteBereiche(), "die Modalgrenze sperrt gerade nichts").toBeGreaterThan(0);
+  const alle = stellen(satz);
+  const offen = erreichbareStellen(satz);
+  expect(alle.length, `„${satz}" steht nirgends im Baum`).toBeGreaterThan(0);
+  expect(
+    offen.length,
+    `„${satz}" steht nur im gesperrten oder verborgenen Teil (${alle.length} Fundstellen)`,
+  ).toBeGreaterThan(0);
+  expect(
+    offen.map((el) => imWacheDialog(el)),
+    `erreichbare Fundstellen ausserhalb des Wache-Dialogs: ${offen
+      .filter((el) => !imWacheDialog(el))
+      .map((el) => el.tagName)
+      .join(", ")}`,
+  ).toEqual(offen.map(() => true));
+}
+
+/**
+ * Wie `grundIstErreichbar`, und zusätzlich: der Satz steht an der Stelle, die der Dialog dafür hat
+ * (`[data-navguard-save-error]`) — nicht irgendwo in seinem Fliesstext.
+ */
+export function grundIstImDialog(satz: string): void {
+  grundIstErreichbar(satz);
+  grundStehtImDialogfeld(satz);
+}
+
+/**
+ * JOB 3822: die SCHWÄCHERE, aber hier zutreffende Zusage — der Grund steht ERREICHBAR an der Stelle,
+ * die der Dialog dafür hat (`[data-navguard-save-error]`).
+ *
+ * WARUM ES SIE GEBEN MUSS: `grundIstImDialog` verlangt zusätzlich, dass es KEINE erreichbare
+ * Fundstelle ausserhalb des Dialogs gibt. Das trifft auf den Teilfehlerpfad zu (er schreibt den Satz
+ * nur mit `setErr` in den gesperrten Fehlerkasten), aber nicht auf jeden Weg: der Größenabbruch des
+ * Ganzdokument-Trägers meldet zusätzlich als TOAST (`Capture.tsx:1572`, `push("error", …)`), und der
+ * Viewport hängt ausserhalb der Modalgrenze. Gemessen (JOB 3822, B3): `[ false, true ]` statt
+ * `[ true, true ]`. Eine zweite, erreichbare Meldung desselben Satzes ist dort kein Fehler — die
+ * Zusage, die der Fall braucht, ist „im Dialogfeld und erreichbar", nicht „nirgends sonst".
+ */
+export function grundStehtImDialogfeld(satz: string): void {
+  expect(gesperrteBereiche(), "die Modalgrenze sperrt gerade nichts").toBeGreaterThan(0);
+  expect(document.querySelectorAll("[data-navguard-save-error]").length).toBe(1);
+  expect(
+    (document.querySelector("[data-navguard-save-error]")?.textContent ?? "").replace(/\s+/g, " "),
+  ).toContain(satz);
+  expect(
+    erreichbareStellen(satz).filter((el) => imWacheDialog(el)).length,
+    `„${satz}" steht im Dialog, ist dort aber nicht erreichbar`,
+  ).toBeGreaterThan(0);
 }
