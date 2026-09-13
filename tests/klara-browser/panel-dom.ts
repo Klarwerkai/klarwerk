@@ -67,6 +67,13 @@ export interface Fenster {
     typ: string,
     init?: { key?: string; bubbles?: boolean; cancelable?: boolean },
   ) => unknown;
+  /**
+   * JOB 3893: die Fristenuhr des Fensters. Sie steht hier, weil `panel.js` genau EINE Frist stellt
+   * — den Minutenblick der Marke (`markeFristStellen()`, `panel.js:1011-1016`) — und ein Fall ihn
+   * sonst gar nicht erreichen kann. Der Vertrag wächst dafür sichtbar mit, statt still auf `any`
+   * auszuweichen: der Rückgabewert ist `unknown`, denn keine Prüfung fasst eine Fristkennung an.
+   */
+  setTimeout(rueckruf: () => void, ms?: number): unknown;
   eval(quelle: string): unknown;
   close(): void;
 }
@@ -250,6 +257,38 @@ export async function mount(
         },
       },
     });
+  // ================================================================================================
+  // JOB 3893 · DER GRIFF AN DIE MARKENFRIST — der einzige Anlass, den eine offene Leiste wirklich hat.
+  // ================================================================================================
+  // `panel.js` hat drei Anlässe nachzusehen (`:1021-1025`): Sichtbarkeitswechsel, Fokus und die
+  // selbst gestellte Frist. Die ersten beiden kann ein Fall auslösen, die dritte bisher nicht: sie
+  // wird beim Auswerten von `panel.js` (unten) gestellt und liefe 60 Sekunden — länger, als je ein
+  // Fall wartet. Aufgezeichnet wird deshalb GENAU die Frist mit dem Markenabstand.
+  //
+  // VIER EIGENSCHAFTEN, die dieser Haken bewusst hat:
+  //   · Er löst nichts von selbst aus. Die Markenfrist wird NICHT an die echte Uhr gegeben, sondern
+  //     nur gemerkt — sie kann also weder nebenbei feuern noch nach `close()` weiterleben.
+  //   · Er fasst keine fremde Frist an. Jede andere Verzögerung geht unverändert an die echte
+  //     Fensteruhr; ein Haken, der JEDE Frist auslöste, würde messen, dass irgendein Rückruf lief,
+  //     statt dass der Minutenblick lief.
+  //   · Er stellt die Uhr nicht vor. Die Drosselung in `panel.js:1002` misst an `Date.now()`; ein
+  //     Helfer, der beides täte, wäre auch dann grün, wenn die Drosselung gar nicht mehr griffe.
+  //     Den Vorlauf macht der Fall selbst (`uhrVor()` in `panel-marke.test.ts`).
+  //   · ER SAMMELT, ER ÜBERSCHREIBT NICHT — und das ist BENs Befund aus Runde 1. Bis dahin stand
+  //     hier EIN Platz (`markenFrist = { rueckruf }`), den jede neue Frist überschrieb. Wer die
+  //     Selbstneustellung in `panel.js:1014` VERDOPPELT, stellt damit zwei Folgefristen; der
+  //     Prüfstand behielt davon eine und sah aus wie das gesunde Produkt. Er stellte also genau die
+  //     Einzigkeit selbst her, die `panel.js:1005` zusichert („immer genau eine offene") und die
+  //     P16 messen soll. Gemerkt wird deshalb JEDE Markenfrist; wie viele offen sind, ist über
+  //     `offeneMarkenFristen()` lesbar und wird von P16 ausdrücklich behauptet.
+  const MARKE_ABSTAND_MS = 60_000;
+  const markenFristen: { rueckruf: () => void }[] = [];
+  const echteFrist = win.setTimeout.bind(win);
+  win.setTimeout = (rueckruf: () => void, ms?: number) => {
+    if (ms !== MARKE_ABSTAND_MS) return echteFrist(rueckruf, ms);
+    markenFristen.push({ rueckruf });
+    return 0;
+  };
   win.eval(read("i18n.js"));
   win.eval(read("panel.js"));
   // A real response and its render microtask, never an arbitrary sleep.
@@ -275,6 +314,33 @@ export async function mount(
   const freigeben = async () => {
     if (!oeffne) throw new Error("freigeben() ohne haltErsteAntwort");
     oeffne();
+    await settle();
+  };
+  /**
+   * JOB 3893: die gemerkte Markenfrist EINMAL fällig werden lassen — der Minutenblick ohne jeden
+   * Sichtbarkeits- und Fokuswechsel. Der Rückruf holt nach (`markeHolen(false)`) und stellt sich
+   * dabei selbst neu; die neue Frist landet wieder hier, sodass ein Fall die Kette weiterdrehen
+   * kann.
+   *
+   * DER AUFRUF WIRFT IN BEIDE RICHTUNGEN, und beide Male sagt er etwas über das Produkt:
+   *   · KEINE offene Frist heisst, die Kette ist abgerissen — eine offen liegende Leiste zöge nie
+   *     wieder nach (`panel.js:1025` fehlt oder `:1014` stellt nicht neu).
+   *   · MEHRERE offene Fristen heissen, die Zusage aus `panel.js:1005` ist gebrochen. Hier wird
+   *     dann NICHT stillschweigend eine davon ausgewählt — genau das war der Fehler aus Runde 1
+   *     (BEN): ein Haken, der sich eine Frist heraussucht, macht aus einer verdoppelten Kette
+   *     wieder eine einfache und meldet Entwarnung, wo keine ist.
+   */
+  const offeneMarkenFristen = () => markenFristen.length;
+  const markenFristFaellig = async () => {
+    if (markenFristen.length !== 1) {
+      throw new Error(
+        markenFristen.length === 0
+          ? `keine Markenfrist gemerkt — panel.js hat keine Frist über ${MARKE_ABSTAND_MS} ms gestellt`
+          : `${markenFristen.length} offene Markenfristen statt genau einer — panel.js:1005 sichert „immer genau eine offene" zu`,
+      );
+    }
+    const frist = markenFristen.shift() as { rueckruf: () => void };
+    frist.rueckruf();
     await settle();
   };
   const el = (id: string) => win.document.getElementById(id) as Knoten;
@@ -316,6 +382,8 @@ export async function mount(
     settle,
     tick,
     freigeben,
+    markenFristFaellig,
+    offeneMarkenFristen,
     login,
     sprache,
     plain,

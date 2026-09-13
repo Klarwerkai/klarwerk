@@ -17,6 +17,8 @@ import { mount, schliesseFenster } from "../klara-browser/panel-dom";
 afterEach(schliesseFenster);
 
 const BRANDING = "https://app.klarwerk.ai/api/branding";
+/** Der Markenabstand aus `extensions/klara-browser/panel.js:810` — die Frist UND die Drosselung. */
+const MARKE_ABSTAND_MS = 60_000;
 
 interface Stand {
   profil: "advisor" | null;
@@ -148,6 +150,44 @@ async function anstossenOhneWarten(view: Sicht, vorlaufMs = 61_000): Promise<voi
   dok(view).dispatchEvent(new view.win.Event("visibilitychange"));
   for (let i = 0; i < 10; i += 1) await view.tick();
 }
+
+/**
+ * JOB 3893: das Fenster als Ereignisziel. `panel.js:1024` hängt den zweiten Anlass an `globalThis`
+ * — in der ausgewerteten Leiste ist das genau dieses Fenster, nicht `document`. Der schmale
+ * Vertrag oben (`Marken`) kennt nur das Dokument; hier steht die eine Fähigkeit daneben, die P17
+ * braucht.
+ */
+function fenster(view: Sicht): { dispatchEvent(ereignis: unknown): boolean } {
+  return view.win as unknown as { dispatchEvent(ereignis: unknown): boolean };
+}
+
+/**
+ * JOB 3893: die Leiste WEGSCHALTEN. `document.visibilityState` ist in jsdom ein Getter am Prototyp
+ * und nicht zuweisbar; gesetzt wird deshalb eine eigene, rücknehmbare Eigenschaft am Dokument
+ * selbst. `sichtbarkeitFreigeben()` löscht sie wieder, und dann greift der Prototyp-Getter mit
+ * seinem `"visible"` — genau der Wechsel, den P18 in der zweiten Hälfte braucht.
+ *
+ * Der `afterEach` darunter ist Sorgfalt, keine Notwendigkeit, und das wird hier nicht verschwiegen:
+ * dieser Prüfstand baut JE FALL ein eigenes Fenster (`mount()`), ein gesetzter Zustand kann also
+ * gar nicht in einen Folgefall erben. Im Schwesterfenster (`word-marke.test.ts`) teilen sich alle
+ * Fälle EIN Fenster — dort trägt dieselbe Rücknahme wirklich. Sie steht auch hier, damit der Weg
+ * nicht davon abhängt, wie der Prüfstand morgen gebaut ist.
+ */
+const sichtbarkeitZurueck: (() => void)[] = [];
+
+function versteckeLeiste(view: Sicht): void {
+  const doc = view.win.document as unknown as Record<string, unknown>;
+  Object.defineProperty(doc, "visibilityState", { configurable: true, value: "hidden" });
+  sichtbarkeitZurueck.push(() => {
+    delete doc.visibilityState;
+  });
+}
+
+function sichtbarkeitFreigeben(): void {
+  for (const zurueck of sichtbarkeitZurueck.splice(0)) zurueck();
+}
+
+afterEach(sichtbarkeitFreigeben);
 
 describe("JOB 3512 P · die Leiste übernimmt die Firmen-CI aus derselben Quelle", () => {
   it("P1 · aus: keine Markenvariable überschrieben, kein Logo", async () => {
@@ -362,5 +402,143 @@ describe("JOB 3512 P · die Leiste übernimmt die Firmen-CI aus derselben Quelle
       stil.removeProperty = echtLoeschen;
     }
     expect(wurzel(view, "--brand"), "und stehen bleibt er trotzdem").toBe("#0578b7");
+  });
+
+  // ================================================================================================
+  // JOB 3893 · P15–P18 — DIE ANLÄSSE, DIE BIS HIERHER VON KEINEM FALL BERÜHRT WAREN.
+  // ================================================================================================
+  //
+  // DIE BESTELLUNG steht in `jobs/3845/runde-1/RUECKGABE.md`, Abschnitt REST: „Die Chrome-Leiste hat
+  // dieselbe Lücke und bleibt laut §10 draußen — GEMELDET, nicht gebaut … Das gehört in eine eigene
+  // Zeile." Der Vorgängerauftrag hat den gleichen Blindfleck im Schwesterfenster geschlossen
+  // (`word-marke.test.ts`); hier wird die Leiste nachgezogen.
+  //
+  // WAS GEFEHLT HAT, wörtlich und nachzählbar: P1–P14 kommen AUSNAHMSLOS über `visibilitychange`
+  // herein — `sichtbarWerden()` und `anstossenOhneWarten()` senden beide genau dieses Ereignis, und
+  // einen dritten Weg gab es nicht. `panel.js` hat aber DREI Anlässe nachzusehen:
+  //
+  //     `panel.js:1021-1023`   `visibilitychange`, wenn die Leiste nicht weggeschaltet ist
+  //     `panel.js:1024`        `focus` an `globalThis`
+  //     `panel.js:1025`        `markeFristStellen()` — die selbst gestellte Frist
+  //
+  // Die dritte ist die wichtigste, und der Kommentar im Produkt sagt selbst warum (`:1018-1020`):
+  // eine Leiste, die während der Vorführung offen daneben steht, erzeugt WEDER Sichtbarkeits- NOCH
+  // Fokuswechsel — ohne die Frist zöge sie nie nach. Genau dieser Weg war ungedeckt: `panel.js:1025`
+  // ersatzlos zu streichen hätte bis hierher keinen einzigen Fall gerötet.
+  //
+  // NEU IST NUR DER ANSTOSS, nicht die Messung. Gemessen wird weiter an denselben zwei Stellen wie
+  // in P1–P14 (die fünf `MARKEN_TOKEN` an der Wurzel und `#marke-logo`), an derselben Uhr
+  // (`uhrVor()`), derselben Antwortfolge (`bahn()`) und derselben Zählung (`abrufe`). Der Griff an
+  // die Frist sitzt im gemeinsamen Prüfstand (`tests/klara-browser/panel-dom.ts`,
+  // `markenFristFaellig()`): er merkt sich JEDE Frist mit dem Abstand aus `panel.js:810` und löst
+  // auf Aufruf genau eine aus — er stellt die Uhr nicht vor und fasst keine fremde Frist an. Dass er
+  // SAMMELT und nicht überschreibt, ist BENs Korrekturpflicht aus Runde 1: sonst machte der
+  // Prüfstand aus einer verdoppelten Fristenkette wieder eine einfache, und P16 könnte die Zusage
+  // aus `panel.js:1005` gar nicht prüfen. Die Zahl der offenen Fristen liest `offeneMarkenFristen()`.
+
+  it("P15 · die offene Leiste zieht ALLEIN über die Frist nach — kein Sichtbarkeits-, kein Fokuswechsel", async () => {
+    const { h, abrufe } = bahn([AN(4), AUS(5)]);
+    const view = await mount({ an: h, auswahl: false });
+    expect(abrufe.length).toBe(1);
+    expect(wurzel(view, "--brand"), "der erste Stand kam nicht an").toBe("#0578b7");
+
+    // Ab hier wird KEIN Ereignis mehr gesendet. Die Leiste liegt offen daneben, niemand fasst sie
+    // an — und die Marke wird am Server ausgeschaltet.
+    uhrVor(view, 61_000);
+    await view.markenFristFaellig();
+
+    expect(abrufe.length, "die Frist hat keinen Blick ausgelöst").toBe(2);
+    for (const token of MARKEN_TOKEN) {
+      expect(wurzel(view, token), `${token} blieb stehen, obwohl die Firmen-CI aus ist`).toBe("");
+    }
+    expect(logo(view).hidden).toBe(true);
+    expect(logo(view).hasAttribute("src"), "ein leeres src wäre ein Abruf ins Leere").toBe(false);
+  });
+
+  it("P16 · jede Frist zieht EINMAL — es ist immer GENAU EINE offen, und sie stellt die nächste", async () => {
+    // Die Kette aus `panel.js:1011-1016`: kein `setInterval`, sondern „immer genau eine offene,
+    // gestellt NACH dem letzten Blick" (`:1005`). Diese Zusage hat ZWEI Kanten, und dieser Fall
+    // misst beide — die zweite erst seit Runde 2, auf BENs Befund hin:
+    //
+    //   · ZU WENIG: reisst die Wiederstellung ab, steht nach dem Blick keine Frist mehr. Die offene
+    //     Leiste bliebe für immer stehen, und man sähe es ihr nicht an.
+    //   · ZU VIEL: stellt der Rückruf ZWEI Folgefristen, wächst die Kette mit jedem Blick weiter an
+    //     — aus einem Minutenblick werden zwei, vier, acht. Genau das ist bis Runde 1 unsichtbar
+    //     geblieben, weil der Prüfstand nur EINEN Fristplatz hatte und die zweite still verwarf.
+    //
+    // Deshalb steht `offeneMarkenFristen()` VOR und NACH jedem Rückruf als eigene Behauptung da und
+    // nicht nur als Nebenwirkung von `markenFristFaellig()`.
+    const { h, abrufe } = bahn([AN(4), AUS(5), AN(6)]);
+    const view = await mount({ an: h, auswahl: false });
+    expect(abrufe.length).toBe(1);
+    expect(view.offeneMarkenFristen(), "nach dem Aufbau steht nicht genau EINE Markenfrist").toBe(
+      1,
+    );
+
+    uhrVor(view, 61_000);
+    await view.markenFristFaellig();
+    expect(abrufe.length, "der erste Fristblick fiel aus").toBe(2);
+    expect(wurzel(view, "--brand"), "das Ausschalten über die Frist wirkte nicht").toBe("");
+    expect(
+      view.offeneMarkenFristen(),
+      "nach dem ersten Blick steht nicht genau EINE Markenfrist — die Kette ist abgerissen oder sie wächst",
+    ).toBe(1);
+
+    uhrVor(view, 61_000);
+    await view.markenFristFaellig();
+    expect(abrufe.length, "die zweite Frist blickte nicht").toBe(3);
+    expect(wurzel(view, "--brand"), "das Wiedereinschalten über die Frist wirkte nicht").toBe(
+      "#0578b7",
+    );
+    expect(logo(view).hidden).toBe(false);
+    expect(
+      view.offeneMarkenFristen(),
+      "nach dem zweiten Blick steht nicht genau EINE Markenfrist — die Kette ist abgerissen oder sie wächst",
+    ).toBe(1);
+  });
+
+  it("P17 · der Fokuswechsel ist ein EIGENER Anlass — und er drosselt mit", async () => {
+    // `panel.js:1024`. Kein `visibilitychange` in diesem Fall: fiele der Zuhörer weg und prüfte man
+    // den Fokus weiter über die Sichtbarkeit, bliebe genau diese Zeile ungedeckt.
+    const { h, abrufe } = bahn([AUS(3), AN(4)]);
+    const view = await mount({ an: h, auswahl: false });
+    expect(abrufe.length).toBe(1);
+    expect(wurzel(view, "--brand")).toBe("");
+
+    uhrVor(view, 1_000);
+    fenster(view).dispatchEvent(new view.win.Event("focus"));
+    await view.settle();
+    expect(abrufe.length, "der Fokus hat die Drosselung übersprungen").toBe(1);
+    expect(wurzel(view, "--brand"), "und dabei die Marke angefasst").toBe("");
+
+    uhrVor(view, MARKE_ABSTAND_MS);
+    fenster(view).dispatchEvent(new view.win.Event("focus"));
+    await view.settle();
+    expect(abrufe.length, "der Fokus hat gar nicht nachgesehen").toBe(2);
+    expect(wurzel(view, "--brand"), "die eingeschaltete Marke kam nicht an").toBe("#0578b7");
+    expect(logo(view).hidden).toBe(false);
+  });
+
+  it("P18 · eine WEGGESCHALTETE Leiste sieht nicht nach", async () => {
+    // `panel.js:1022` prüft `visibilityState !== "hidden"`. Ein Blick im weggeschalteten Zustand
+    // wäre ein Abruf für niemanden — und er würde die Drosselung verbrauchen, sodass die Leiste im
+    // Augenblick des Wiederauftauchens NICHT nachsähe.
+    const { h, abrufe } = bahn([AN(4), AUS(5)]);
+    const view = await mount({ an: h, auswahl: false });
+    expect(wurzel(view, "--brand")).toBe("#0578b7");
+
+    versteckeLeiste(view);
+    await sichtbarWerden(view, 61_000);
+    expect(abrufe.length, "die weggeschaltete Leiste hat nachgesehen").toBe(1);
+    expect(wurzel(view, "--brand"), "und dabei die Marke angefasst").toBe("#0578b7");
+    expect(logo(view).hidden).toBe(false);
+
+    sichtbarkeitFreigeben();
+    await sichtbarWerden(view, 0);
+    expect(abrufe.length, "die wieder sichtbare Leiste hat nicht nachgesehen").toBe(2);
+    for (const token of MARKEN_TOKEN) {
+      expect(wurzel(view, token), `${token} blieb nach dem Ausschalten stehen`).toBe("");
+    }
+    expect(logo(view).hidden).toBe(true);
   });
 });
