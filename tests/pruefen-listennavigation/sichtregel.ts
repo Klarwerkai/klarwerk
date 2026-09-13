@@ -40,9 +40,16 @@ export const SICHT_TOLERANZ_PX = 1;
  * das ist die Korrekturpflicht, die Codex an JOB 3584 R2 erhoben hat (LEHREN.md 11.09. 10:45:27:
  * „In Erreichbarkeits- und Fokusmesser rollbare Vorfahren nicht pauschal ausnehmen").
  *
- * Der Ausschnitt ist das Rechteck des nächsten wirklich rollenden Vorfahren, in DENSELBEN
- * Fensterkoordinaten wie der Kasten. Gibt es keinen, wird er weggelassen — dann ist der sichtbare
- * Bereich genau das Fenster, und die Regel urteilt wie bisher.
+ * Der Ausschnitt ist das Rechteck des beschneidenden Vorfahren, in DENSELBEN Fensterkoordinaten wie
+ * der Kasten. Gibt es keinen, wird er weggelassen — dann ist der sichtbare Bereich genau das
+ * Fenster, und die Regel urteilt wie bisher.
+ *
+ * JOB 3812: „beschneidend" ist seit dieser Runde weiter gefasst als „rollend", und das ist eine
+ * Korrektur aus der Messung. `overflow: auto` beschneidet AUCH OHNE Überlauf, und `hidden`
+ * beschneidet genauso. Die Erhebung in `job2935-validierung-fussband.test.ts` sammelte bis dahin
+ * nur Bereiche mit echtem Überlauf; bei 1280×900 rollt nach JOB 3812 aber weder die Artikelspalte
+ * noch die Hülle, und der Ausschnitt wäre dort stillschweigend das ganze Fenster geworden — eine
+ * mildere Elle, genau da, wo L2/L4 die volle Sichtbarkeit der Karte verlangen.
  */
 export type Sichtausschnitt = Sichtkasten;
 
@@ -175,8 +182,24 @@ export interface Schrittmessung {
    * weg, ist es der nächste darüber. Gemessen, nicht vorausgesetzt.
    */
   auswahlAusschnitt: Sichtausschnitt;
-  /** Dasselbe für die KARTE — ihr nächster rollender Vorfahre ist die Hülle der Anwendung. */
+  /**
+   * Dasselbe für die KARTE. Bis JOB 3812 war das die Hülle der Anwendung — die rechte Spalte
+   * beschnitt nichts, also war der nächste beschneidende Vorfahre der Karte das `<main>`. Seit die
+   * Spalte ihren eigenen Rollbereich hat, ist SIE es. Der Name hat sich nicht geändert, die Sache
+   * schon; wer die HÜLLE meint, nimmt `karteHuelle`.
+   */
   karteAusschnitt: Sichtausschnitt;
+  /**
+   * JOB 3812 · DIE HÜLLE FÜR DIE KARTE, getrennt von ihrem Ausschnitt — der innerste beschneidende
+   * Bereich, der NICHT die Artikelspalte ist.
+   *
+   * Dieselbe Schärfung, die JOB 3625 für die Liste gemacht hat (`huelleTop`/`huelleName`): Solange
+   * die rechte Spalte nichts beschnitt, waren Ausschnitt und Hülle derselbe Kasten, und vier Fälle
+   * (L8/L10, L11, L12, L14) durften „Hülle" sagen und `karteAusschnitt` lesen. Seit JOB 3812 sind
+   * es zwei verschiedene Kästen — ohne diesen zweiten Wert hätten dieselben Zeilen klaglos etwas
+   * anderes gemessen als ihr Text behauptet.
+   */
+  karteHuelle: Sichtausschnitt;
   fensterHoehe: number;
   /** `window.scrollY` — die Rollposition des FENSTERS. */
   rollposition: number;

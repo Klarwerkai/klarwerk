@@ -34,6 +34,7 @@ import {
   SICHT_TOLERANZ_PX,
   type Schrittmessung,
   type Sichtausschnitt,
+  type Sichtkasten,
   ersterSichtverlust,
   fehlendeHoehe,
   imFenster,
@@ -760,6 +761,8 @@ const LANGE_LISTE = 40;
 const SCHRITTE = 30;
 const EINTRAG_ANKER = '[data-testid="pruefen-warteschlange-eintrag"]';
 const SCHLANGE_ANKER = '[data-testid="pruefen-warteschlange"]';
+/** JOB 3812: die rechte Spalte — seit dieser Runde ein eigener Rollbereich und ein eigener Anker. */
+const SPALTE_ANKER = '[data-testid="pruefen-artikelspalte"]';
 /**
  * Eine Rastung eines gewöhnlichen Mausrads. Das Produkt schaltet ab `RAD_SCHWELLE_PX = 40`
  * (`Validation.tsx:196`) und setzt die Summe danach zurück — ein Schub von 100 px ist also genau
@@ -797,18 +800,30 @@ const LANG_MESSEN = `([eintragAnker, karteAnker, schlangeAnker]) => {
   // Strecke, die der Bereich ÜBERHAUPT rollen kann — die Ursache hinter 'top', nicht nur eine
   // zweite Beobachtung. 'kasten' ist sein Rechteck: nur wer es kennt, kann sagen, ob ein Kind
   // von seinem eigenen Rollbereich ABGESCHNITTEN wird (Codex an JOB 3584 R2).
+  //
+  // JOB 3812 · DER AUSSCHNITT IST DER SCHAUFENSTERKASTEN, NICHT DER RAHMENKASTEN. Das ist wörtlich
+  // die Korrekturpflicht, die Codex an JOB 3611 R1 erhoben hat (LEHREN.md 2026-09-11:
+  // „Tatsächliche Schnittfläche der Vorfahren messen, einschliesslich Rahmen und gegebenenfalls
+  // Scrollleisten"). 'getBoundingClientRect()' liefert den RAHMENkasten; beschnitten wird aber am
+  // Innenrand des Rahmens und oberhalb einer waagerechten Rollleiste. 'clientTop' ist die
+  // Rahmenbreite oben, 'clientHeight' die Höhe des Schaufensters ohne Rahmen und ohne Leiste —
+  // beides zusammen ist die Kante, an der wirklich abgeschnitten wird.
+  const schaufenster = (el) => {
+    const r = el.getBoundingClientRect();
+    const oben = r.top + el.clientTop;
+    return { oben: oben, unten: oben + el.clientHeight };
+  };
   const rollKette = (start) => {
     const k = [];
     let p = start;
     while (p && p !== document.body && k.length < 3) {
       const st = getComputedStyle(p);
       if (/(auto|scroll|overlay)/.test(st.overflowY) && p.scrollHeight > p.clientHeight + 1) {
-        const r = p.getBoundingClientRect();
         k.push({
           name: p.tagName + '[' + (p.getAttribute('data-testid') || p.className.toString().slice(0, 40)) + ']',
           top: Math.round(p.scrollTop * 100) / 100,
           max: Math.round((p.scrollHeight - p.clientHeight) * 100) / 100,
-          kasten: { oben: r.top, unten: r.bottom },
+          kasten: schaufenster(p),
         });
       }
       p = p.parentElement;
@@ -817,7 +832,29 @@ const LANG_MESSEN = `([eintragAnker, karteAnker, schlangeAnker]) => {
   };
   const GANZES_FENSTER = { oben: 0, unten: fensterHoehe };
   const kette = schlange ? rollKette(schlange) : [];
-  const karteKette = karte ? rollKette(karte) : [];
+  // JOB 3812 · DER AUSSCHNITT DER KARTE IST DIE KLAMMER ALLER BESCHNEIDENDEN VORFAHREN, nicht
+  // mehr nur des innersten ROLLENDEN. Zwei Gründe, beide gemessen:
+  //   1. 'overflow: auto' beschneidet auch OHNE Überlauf. Bei 1280×900 rollt seit dieser Runde
+  //      weder die Artikelspalte noch die Hülle — der alte Weg ('karteKette[0] || GANZES_FENSTER')
+  //      hätte dort das ganze Fenster als Ausschnitt gemeldet und L2/L4 um ihre Aussage gebracht.
+  //   2. 'hidden' beschneidet genauso wie 'auto'. Wer nur rollende Vorfahren sammelt, übersieht es.
+  // Gesucht wird AB DEM ELTERNTEIL der Karte: ihr eigenes 'overflow-hidden' schneidet sie nicht ab.
+  const klammerAb = (start, ausnehmen) => {
+    let oben = 0;
+    let unten = fensterHoehe;
+    let p = start;
+    while (p && p !== document.documentElement) {
+      const st = getComputedStyle(p);
+      const raus = ausnehmen && (p.getAttribute('data-testid') || '') === ausnehmen;
+      if (!raus && /^(auto|scroll|overlay|hidden|clip)$/.test(st.overflowY)) {
+        const f = schaufenster(p);
+        oben = Math.max(oben, f.oben);
+        unten = Math.min(unten, f.unten);
+      }
+      p = p.parentElement;
+    }
+    return { oben: oben, unten: unten };
+  };
   // Die HÜLLE ist der innerste rollende Bereich, der NICHT die Warteschlange ist. Bis JOB 3625 war
   // es schlicht kette[1] — solange die Liste selbst rollt, ist das dasselbe. Fällt ihr Rollbereich
   // weg (Gegenprobe, Rückfall), rutscht die Hülle auf Platz eins, und kette[1] wäre dann ein
@@ -846,10 +883,20 @@ const LANG_MESSEN = `([eintragAnker, karteAnker, schlangeAnker]) => {
     huelleTop: huelle ? huelle.top : 0,
     huelleMax: huelle ? huelle.max : 0,
     // Der Ausschnitt der AUSWAHL ist der Rollbereich der Liste (die Auswahl liegt in ihr, die
-    // Kette beginnt an ihr — dasselbe Element). Der Ausschnitt der KARTE ist ihr eigener nächster
-    // rollender Vorfahre, getrennt gesucht: sie liegt in der Hülle, nicht in der Liste.
+    // Kette beginnt an ihr — dasselbe Element).
     auswahlAusschnitt: kette[0] ? kette[0].kasten : GANZES_FENSTER,
-    karteAusschnitt: karteKette[0] ? karteKette[0].kasten : GANZES_FENSTER,
+    // Der Ausschnitt der KARTE ist ihre eigene Klammer — seit JOB 3812 in aller Regel die
+    // Artikelspalte, die jetzt selbst rollt.
+    karteAusschnitt: karte ? klammerAb(karte.parentElement, null) : GANZES_FENSTER,
+    // JOB 3812 · UND DIE HÜLLE FÜR DIE KARTE, GETRENNT BENANNT — dieselbe Schärfung, die JOB 3625
+    // für die Liste gemacht hat ('huelle', oben): der innerste beschneidende Bereich, der NICHT
+    // die Artikelspalte ist. Vier Fälle (L8/L10, L11, L12, L14) sprechen von der „Hülle" und
+    // meinten bis hierher 'karteAusschnitt'; solange die rechte Spalte nichts beschnitt, war das
+    // dasselbe. Seit sie es tut, wären sie stillschweigend zu einer anderen Aussage geworden —
+    // deshalb steht die Hülle hier als eigener Messwert und nicht als Nebenbedeutung.
+    karteHuelle: karte
+      ? klammerAb(karte.parentElement, 'pruefen-artikelspalte')
+      : GANZES_FENSTER,
   };
 }`;
 
@@ -886,6 +933,413 @@ const KOPF_PROBE = `([schlangeAnker, probeHoehe]) => {
   probe.remove();
   const zurueck = kasten();
   return { probeHoehe: probeHoehe, vorher: vorher, nachher: nachher, zurueck: zurueck };
+}`;
+
+// ==================================================================================================
+// JOB 3812 · DIE ZWEI MESSUNGEN, DIE VOR DEM GRIFF STEHEN (Auftrag §5, Lieferungen 1 und 2).
+// ==================================================================================================
+//
+// Der Auftrag beginnt ausdrücklich NICHT mit dem Griff, sondern mit zwei Fragen, deren Antwort die
+// Bauform entscheidet:
+//   1. Was passiert heute, wenn jemand den unteren Teil des Artikels lesen will — ist er überhaupt
+//      erreichbar, und WAS bewegt sich dabei mit?
+//   2. Beschneidet ein eigener Rollbereich an der rechten Spalte das Menüblatt der Karte?
+// Beide Messungen bleiben nach der Reparatur stehen: aus der ersten wird L15, aus der zweiten L16.
+
+/**
+ * DEN ARTIKEL LESEN — die Messung zu Lieferung 1 und die Grundlage von L15.
+ *
+ * Sie tut, was ein Mensch tut, der den unteren Teil der Karte sehen will: sie sucht den nächsten
+ * WIRKLICH rollenden Bereich um die Karte (dieselbe Regel wie `rollKette` oben — eigene Rollregel
+ * UND echter Überlauf, gesucht ab der Karte selbst), rollt ihn bis ans Ende und misst dabei, was
+ * sich mitbewegt. Danach wird die Rollstellung zurückgenommen; `zurueck` ist der Beleg dafür.
+ *
+ * `traegtListe` ist die eigentliche Frage des Auftrags und deshalb ein eigener Messwert: Liegt die
+ * Warteschlange IN demselben Bereich, dann wandert sie beim Lesen zwangsläufig mit — und Pedis
+ * erste Hälfte („links durch die Artikelliste gehen") zerbricht an der zweiten.
+ *
+ * Gibt es gar keinen rollenden Bereich (`rollerName: 'keiner'`), ist das ein vollwertiges Ergebnis
+ * und keine Lücke: dann steht die Karte entweder schon ganz da — oder ihr unterer Teil ist dauerhaft
+ * unerreichbar. Welcher der beiden Fälle gilt, entscheiden die Kästen, nicht diese Funktion.
+ */
+const ARTIKEL_LESEN = `([kartenAnker, schlangeAnker, eintragAnker]) => {
+  const karte = document.querySelector(kartenAnker);
+  const schlange = document.querySelector(schlangeAnker);
+  const auswahl = document.querySelector(eintragAnker + '[aria-current="true"]');
+  if (!karte || !schlange || !auswahl) return null;
+  const kasten = (el) => { const r = el.getBoundingClientRect(); return { oben: r.top, unten: r.bottom }; };
+  const titelEl = karte.querySelector('a[data-text="titel"]');
+  const benennen = (el) => el.tagName + '[' + (el.getAttribute('data-testid') || el.className.toString().slice(0, 40)) + ']';
+  const rollend = (start) => {
+    let p = start;
+    while (p && p !== document.body) {
+      const st = getComputedStyle(p);
+      if (/(auto|scroll|overlay)/.test(st.overflowY) && p.scrollHeight > p.clientHeight + 1) return p;
+      p = p.parentElement;
+    }
+    return null;
+  };
+  const messen = () => ({
+    karte: kasten(karte),
+    kartentitel: titelEl ? kasten(titelEl) : null,
+    schlange: kasten(schlange),
+    auswahl: kasten(auswahl),
+  });
+  const fensterHoehe = document.documentElement.clientHeight;
+  // DER AUSSCHNITT DER KARTE IST DIE KLAMMER ALLER BESCHNEIDENDEN VORFAHREN, nicht nur des
+  // rollenden. 'hidden' beschneidet genauso wie 'auto', und wer nur den rollenden Bereich nähme,
+  // urteilte in genau der Lage zu milde, in der gar nichts rollt: dann wäre das ganze Fenster der
+  // Ausschnitt, obwohl die Hülle ihn längst enger macht.
+  // Beschnitten wird am SCHAUFENSTER (Innenrand des Rahmens, oberhalb einer waagerechten
+  // Rollleiste) und nicht am Rahmenkasten — Korrekturpflicht von Codex an JOB 3611 R1.
+  const klammer = () => {
+    let oben = 0;
+    let unten = fensterHoehe;
+    let p = karte.parentElement;
+    while (p && p !== document.documentElement) {
+      const st = getComputedStyle(p);
+      if (/^(auto|scroll|overlay|hidden|clip)$/.test(st.overflowY)) {
+        const r = p.getBoundingClientRect();
+        const o = r.top + p.clientTop;
+        oben = Math.max(oben, o);
+        unten = Math.min(unten, o + p.clientHeight);
+      }
+      p = p.parentElement;
+    }
+    return { oben: oben, unten: unten };
+  };
+  const vorher = messen();
+  const roller = rollend(karte);
+  if (!roller) {
+    const a = klammer();
+    return {
+      rollerName: 'keiner', traegtListe: false, max: 0, gerollt: 0,
+      ausschnitt: a, ausschnittNachher: a,
+      vorher: vorher, nachher: vorher, zurueck: vorher, fensterHoehe: fensterHoehe,
+    };
+  }
+  const anfang = roller.scrollTop;
+  const ausschnitt = klammer();
+  const max = Math.round((roller.scrollHeight - roller.clientHeight) * 100) / 100;
+  roller.scrollTop = roller.scrollHeight;
+  const gerollt = Math.round((roller.scrollTop - anfang) * 100) / 100;
+  const nachher = messen();
+  const ausschnittNachher = klammer();
+  roller.scrollTop = anfang;
+  return {
+    rollerName: benennen(roller),
+    traegtListe: roller.contains(schlange),
+    max: max, gerollt: gerollt,
+    ausschnitt: ausschnitt, ausschnittNachher: ausschnittNachher,
+    vorher: vorher, nachher: nachher, zurueck: messen(), fensterHoehe: fensterHoehe,
+  };
+}`;
+
+/**
+ * Die rechte Spalte PROBEWEISE zu einem Rollbereich machen — die Messung zu Lieferung 2, mit der
+ * die Falle aus §2(e) geprüft wird, BEVOR sie ins Produkt kommt.
+ *
+ * Gesetzt werden genau die drei Regeln, die die Reparatur setzen würde (`h-full`, `min-h-0`,
+ * `overflow-y-auto`), und zwar als Inline-Stil: so ist die Probe rückstandsfrei (`an: false` nimmt
+ * sie zurück) und verlangt keine Produktänderung für eine Messung. Die Spalte wird nicht geraten,
+ * sondern über die Karte gefunden — sie ist deren Elternteil (`Validation.tsx`, `{aktiv ? karte(aktiv) : null}`).
+ */
+const SPALTEN_PROBE = `([kartenAnker, an]) => {
+  const karte = document.querySelector(kartenAnker);
+  const spalte = karte && karte.parentElement;
+  if (!spalte) return null;
+  if (an) {
+    spalte.style.height = '100%';
+    spalte.style.minHeight = '0';
+    spalte.style.overflowY = 'auto';
+  } else {
+    spalte.style.height = '';
+    spalte.style.minHeight = '';
+    spalte.style.overflowY = '';
+  }
+  const r = spalte.getBoundingClientRect();
+  return {
+    oben: r.top, unten: r.bottom,
+    overflowY: getComputedStyle(spalte).overflowY,
+    rollt: spalte.scrollHeight > spalte.clientHeight + 1,
+  };
+}`;
+
+/**
+ * WIE VIEL VOM MENÜBLATT DER KARTE WIRKLICH ZU SEHEN IST.
+ *
+ * DIE KLAMMER ist der Kern dieser Messung: `overflow` beschneidet unabhängig von der
+ * Stapelreihenfolge, `z-40` hilft dagegen nicht. Gesammelt wird deshalb JEDER beschneidende
+ * Vorfahre — `hidden` und `clip` genauso wie `auto`/`scroll`, denn die Karte selbst trägt
+ * `overflow-hidden` (`Validation.tsx`, `overflow-hidden rounded-[14px] …`). Alle zusammen ergeben
+ * EIN Rechteck, das die vorhandene Elle (`sichtbareHoehe`, `ueberDemFenster`, `unterDemFenster`)
+ * als einen Ausschnitt lesen kann; ein zweiter Massstab entsteht nicht.
+ *
+ * WARUM DIE WANDERUNG AN DER `position` HÄNGT: Ein `fixed` gesetztes Blatt hat das FENSTER als
+ * enthaltenden Block und wird von `overflow` der Vorfahren NICHT beschnitten. Wer die Kette
+ * trotzdem abliefe, meldete eine Beschneidung, die es nicht gibt. Die Ausnahme von der Ausnahme
+ * steht mit drin und ist der Grund, warum hier nicht einfach „bei `fixed` gar nicht laufen" steht:
+ * Ein Vorfahre mit `transform`, `filter`, `perspective`, `will-change` oder `contain` wird selbst
+ * zum enthaltenden Block — ab ihm beschneidet die Kette wieder. Beides wird aus dem Browser
+ * gelesen, nicht aus dem Quelltext gewusst.
+ *
+ * `treffer` ist die UNABHÄNGIGE Gegenprobe zu dieser Rechnung und zugleich die zweite Hälfte von
+ * „vollständig sichtbar UND bedienbar": neun Punkte über die Höhe des Blatts, jeder mit
+ * `elementFromPoint` geprüft (derselbe Weg wie `ERREICHBAR_HELFER` in D1/D2). Ein abgeschnittener
+ * oder verdeckter Bereich trifft das Blatt nicht — egal, ob die Klammer ihn gefunden hat.
+ */
+const MENUE_LAGE = `([kartenAnker, kennung]) => {
+  const karte = document.querySelector(kartenAnker);
+  const ausloeser = document.querySelector('[data-testid="pruefen-menue-' + kennung + '"]');
+  const blatt = document.querySelector('[data-testid="pruefen-menue-panel-' + kennung + '"]');
+  if (!karte || !ausloeser || !blatt || !karte.parentElement) return null;
+  const kasten = (el) => { const r = el.getBoundingClientRect(); return { oben: r.top, unten: r.bottom }; };
+  const fensterHoehe = document.documentElement.clientHeight;
+  const br = blatt.getBoundingClientRect();
+  const position = getComputedStyle(blatt).position;
+  let oben = 0;
+  let unten = fensterHoehe;
+  const namen = [];
+  // Ein Vorfahre, der selbst enthaltender Block für fest positionierte Nachfahren wird.
+  const blockFuerFest = (st) =>
+    st.transform !== 'none' || st.perspective !== 'none' || st.filter !== 'none' ||
+    /transform|perspective|filter/.test(st.willChange) ||
+    /(paint|layout|strict|content)/.test(st.contain);
+  let wirksam = position !== 'fixed';
+  let p = blatt.parentElement;
+  while (p && p !== document.documentElement) {
+    const st = getComputedStyle(p);
+    if (!wirksam && blockFuerFest(st)) wirksam = true;
+    if (wirksam && /^(auto|scroll|overlay|hidden|clip)$/.test(st.overflowY)) {
+      // Schaufenster statt Rahmenkasten (Korrekturpflicht von Codex an JOB 3611 R1): beschnitten
+      // wird am Innenrand des Rahmens und oberhalb einer waagerechten Rollleiste.
+      const r = p.getBoundingClientRect();
+      const o = r.top + p.clientTop;
+      const u = o + p.clientHeight;
+      if (o > oben || u < unten) {
+        namen.push(p.tagName + '[' + (p.getAttribute('data-testid') || p.className.toString().slice(0, 40)) + ']' + Math.round(o) + '-' + Math.round(u));
+      }
+      oben = Math.max(oben, o);
+      unten = Math.min(unten, u);
+    }
+    p = p.parentElement;
+  }
+  const mitte = Math.round((br.left + br.right) / 2);
+  const trifft = (y) => {
+    if (y < 0 || y > fensterHoehe) return false;
+    const el = document.elementFromPoint(mitte, Math.round(y));
+    return !!el && (el === blatt || blatt.contains(el));
+  };
+  const PUNKTE = 9;
+  const fehlstellen = [];
+  for (let i = 0; i < PUNKTE; i += 1) {
+    const y = br.top + 2 + ((br.height - 4) * i) / (PUNKTE - 1);
+    if (!trifft(y)) fehlstellen.push(Math.round(y * 100) / 100);
+  }
+  const spalte = karte.parentElement;
+  return {
+    position: position,
+    blatt: { oben: br.top, unten: br.bottom },
+    hoehe: Math.round(br.height * 100) / 100,
+    breite: Math.round(br.width * 100) / 100,
+    ausloeser: kasten(ausloeser),
+    klammer: { oben: oben, unten: unten },
+    klammerNamen: namen,
+    spalte: kasten(spalte),
+    spalteOverflow: getComputedStyle(spalte).overflowY,
+    spalteRollt: spalte.scrollHeight > spalte.clientHeight + 1,
+    punkte: PUNKTE,
+    fehlstellen: fehlstellen,
+    fensterHoehe: fensterHoehe,
+    // JOB 3812 R3: die BREITE gehört mit erhoben — L18c ändert sie, und ohne diesen Wert wäre
+    // „die Fensterbreite hat sich wirklich geändert" eine Behauptung statt einer Messung.
+    fensterBreite: window.innerWidth,
+  };
+}`;
+
+/**
+ * JOB 3812 · RUNDE 2 — DIE BÜHNE VON L18: EIN FENSTER, DAS SICH ÄNDERT, WÄHREND DAS MENÜ OFFEN IST.
+ *
+ * WARUM EIN EIGENER WARTESCHRITT: `setViewportSize` kehrt zurück, sobald Chromium den Auftrag
+ * angenommen hat — nicht, sobald das Dokument die neue Höhe hat und React darauf gezeichnet hat.
+ * Gewartet wird deshalb auf BEIDES: die Höhe steht, UND sie steht fünf Bilder lang still. Dieselbe
+ * Bauform wie `RUHE` (dort für den Rollstand der Spalte), aus demselben Grund.
+ *
+ * AUSDRÜCKLICH NICHT gewartet wird auf die Zusicherung selbst („bis das Blatt wieder im Fenster
+ * liegt") — ein solcher Warteschritt könnte gar nicht scheitern und machte L18 zu einer Schleife,
+ * die ihr eigenes Ergebnis herbeiführt.
+ *
+ * JOB 3812 R3: gewartet wird seither auf BEIDE Maße, weil L18c die BREITE ändert und die Höhe
+ * dabei stehen lässt — ein Warteschritt nur auf die Höhe wäre dort sofort fertig und sagte nichts.
+ * Die Höhe kommt vom Dokument (`clientHeight`: der Wert, mit dem das Produkt rechnet), die Breite
+ * vom Fenster (`innerWidth`): `clientWidth` zöge einen etwaigen Rollbalken ab, und der Schritt
+ * wartete dann auf eine Zahl, die nie kommt.
+ */
+const FENSTER_STEHT = `([breite, hoehe]) => {
+  if (document.documentElement.clientHeight !== hoehe || window.innerWidth !== breite) {
+    window.__kwFensterZahl = 0; return false;
+  }
+  window.__kwFensterZahl = (window.__kwFensterZahl || 0) + 1;
+  return window.__kwFensterZahl >= 5;
+}`;
+
+/** Den Zähler zurücksetzen, bevor auf die nächste Fensterhöhe gewartet wird. */
+const FENSTER_ZURUECK = "() => { window.__kwFensterZahl = 0; return true; }";
+
+/**
+ * Die Artikelspalte ans Ende rollen — der zweite Weg, auf dem sich die Lage eines offenen Blatts
+ * verstellt. Gesetzt wird `scrollTop` und nicht das Rad: das Rad hängt am Zeiger und träfe bei
+ * offenem Menü dessen Schliessfläche; gemessen werden soll aber die Nachführung, nicht das
+ * Schliessen. Ein gesetzter `scrollTop` löst dasselbe `scroll`-Ereignis aus wie eine Geste.
+ */
+const SPALTE_ANS_ENDE = `(anker) => {
+  const el = document.querySelector(anker);
+  if (!el) return null;
+  el.scrollTop = el.scrollHeight;
+  return {
+    top: Math.round(el.scrollTop * 100) / 100,
+    max: Math.round((el.scrollHeight - el.clientHeight) * 100) / 100,
+  };
+}`;
+
+/**
+ * JOB 3812 · RUNDE 2, L19 — DEN NÄCHSTEN ARTIKEL WÄHLEN, NACHDEM DIE KARTE HERUNTERGEROLLT IST.
+ *
+ * Der Klick ist der Weg eines Menschen (nicht `setAktivId`), und der Titel im Blatt der Karte ist
+ * das Kennzeichen, an dem die Messung den Wechsel WIRKLICH erkennt — ein `aria-current` an der
+ * Liste sagt nur, was links markiert ist, nicht, was rechts steht.
+ */
+const ARTIKEL_WECHSELN = `([eintragAnker, kartenAnker]) => {
+  const alle = [...document.querySelectorAll(eintragAnker)];
+  const i = alle.findIndex((e) => e.getAttribute('aria-current') === 'true');
+  const ziel = alle[i + 1];
+  const karte = document.querySelector(kartenAnker);
+  const titelEl = karte && karte.querySelector('a[data-text="titel"]');
+  if (i === -1 || !ziel || !karte || !titelEl) return null;
+  const spalte = karte.parentElement;
+  const vorherTitel = titelEl.textContent;
+  ziel.click();
+  return {
+    von: i,
+    nach: i + 1,
+    vorherTitel: vorherTitel,
+    vorherTop: Math.round(spalte.scrollTop * 100) / 100,
+  };
+}`;
+
+/** Wo die Karte nach dem Wechsel steht — Rollstellung der Spalte, Kasten, Titel, Ausschnitt. */
+const WECHSEL_STAND = `([kartenAnker, schlangeAnker, eintragAnker]) => {
+  const karte = document.querySelector(kartenAnker);
+  const schlange = document.querySelector(schlangeAnker);
+  const auswahl = document.querySelector(eintragAnker + '[aria-current="true"]');
+  if (!karte || !schlange || !auswahl || !karte.parentElement) return null;
+  const kasten = (el) => { const r = el.getBoundingClientRect(); return { oben: r.top, unten: r.bottom }; };
+  const titelEl = karte.querySelector('a[data-text="titel"]');
+  const spalte = karte.parentElement;
+  let oben = 0;
+  let unten = document.documentElement.clientHeight;
+  let p = karte.parentElement;
+  while (p && p !== document.documentElement) {
+    const st = getComputedStyle(p);
+    if (/^(auto|scroll|overlay|hidden|clip)$/.test(st.overflowY)) {
+      const r = p.getBoundingClientRect();
+      const o = r.top + p.clientTop;
+      oben = Math.max(oben, o);
+      unten = Math.min(unten, o + p.clientHeight);
+    }
+    p = p.parentElement;
+  }
+  return {
+    titel: titelEl ? titelEl.textContent : null,
+    top: Math.round(spalte.scrollTop * 100) / 100,
+    max: Math.round((spalte.scrollHeight - spalte.clientHeight) * 100) / 100,
+    karte: kasten(karte),
+    kartentitel: titelEl ? kasten(titelEl) : null,
+    schlange: kasten(schlange),
+    auswahl: kasten(auswahl),
+    ausschnitt: { oben: oben, unten: unten },
+    fensterHoehe: document.documentElement.clientHeight,
+  };
+}`;
+
+/** Steht rechts schon ein ANDERER Artikel? Der Warteschritt zwischen Klick und Messung. */
+const ANDERER_ARTIKEL = `([kartenAnker, vorherTitel]) => {
+  const karte = document.querySelector(kartenAnker);
+  const titelEl = karte && karte.querySelector('a[data-text="titel"]');
+  return !!titelEl && titelEl.textContent !== vorherTitel;
+}`;
+
+/**
+ * JOB 3812 · Lieferung 4 — KOMMT MAN MIT DER TASTATUR BIS ANS ENDE DES ARTIKELS?
+ *
+ * Ein Rollbereich, den nur die Maus bewegen kann, ist keiner. Gemessen wird der Weg, den ein
+ * Mensch wirklich geht: vom letzten Eintrag der Liste EIN Tabschritt weiter (die rechte Spalte ist
+ * der nächste Halt in der Reihenfolge des Baums — sie steht vor ihrem eigenen Inhalt), dann die
+ * Taste, die ans Ende führt.
+ *
+ * Die AUSGANGSSTELLUNG wird gesetzt und nicht ertastet: bis zum letzten Eintrag sind es vierzig
+ * Tabschritte, die nichts belegen, was der erste nicht schon belegt. `focus({preventScroll:true})`
+ * ist derselbe Griff wie in `FOKUS_AUF_AUSWAHL` — kein Klick (der führte im schmalen Weg den
+ * Blick) und kein Rollen (das verstellte die Messung).
+ */
+const TASTATUR_START = `([spalteAnker, eintragAnker]) => {
+  const spalte = document.querySelector(spalteAnker);
+  const alle = [...document.querySelectorAll(eintragAnker)];
+  const letzter = alle[alle.length - 1];
+  if (!spalte || !letzter) return null;
+  letzter.focus({ preventScroll: true });
+  return {
+    steht: document.activeElement === letzter,
+    tabIndex: spalte.tabIndex,
+    max: Math.round((spalte.scrollHeight - spalte.clientHeight) * 100) / 100,
+  };
+}`;
+
+/**
+ * Warten, bis die Rollbewegung der Spalte STEHT — fünf aufeinanderfolgende Bilder ohne Änderung.
+ *
+ * Chromium rollt Tasteneingaben animiert. Wer direkt nach `keyboard.press` misst, liest den Stand
+ * VOR der Bewegung; genau daran ist die erste Fassung von L17 hängen geblieben (0 statt 193 px).
+ * Fünf Bilder sind rund 80 ms — lang genug, dass eine beginnende Animation nicht als Stillstand
+ * durchgeht, und kurz genug, dass echter Stillstand sofort gemeldet wird.
+ */
+const RUHE = `(anker) => {
+  const el = document.querySelector(anker);
+  if (!el) return false;
+  const jetzt = Math.round(el.scrollTop * 100) / 100;
+  const vorher = window.__kwRuheWert;
+  window.__kwRuheWert = jetzt;
+  window.__kwRuheZahl =
+    vorher !== undefined && Math.abs(jetzt - vorher) < 0.5 ? (window.__kwRuheZahl || 0) + 1 : 0;
+  return window.__kwRuheZahl >= 5;
+}`;
+
+/** Den Zähler zurücksetzen, bevor auf die nächste Ruhe gewartet wird. */
+const RUHE_ZURUECK = `(anker) => {
+  window.__kwRuheWert = undefined;
+  window.__kwRuheZahl = 0;
+  return document.querySelector(anker) !== null;
+}`;
+
+/** Wo der Fokus steht, wie weit die Spalte gerollt ist, und wo die vier Kästen liegen. */
+const TASTATUR_STAND = `([spalteAnker, schlangeAnker, eintragAnker, kartenAnker]) => {
+  const spalte = document.querySelector(spalteAnker);
+  const schlange = document.querySelector(schlangeAnker);
+  const auswahl = document.querySelector(eintragAnker + '[aria-current="true"]');
+  const karte = document.querySelector(kartenAnker);
+  if (!spalte || !schlange || !auswahl || !karte) return null;
+  const kasten = (el) => { const r = el.getBoundingClientRect(); return { oben: r.top, unten: r.bottom }; };
+  const a = document.activeElement;
+  return {
+    fokus: a ? a.tagName + '[' + (a.getAttribute('data-testid') || a.className.toString().slice(0, 30)) + ']' : 'keiner',
+    fokusIstSpalte: a === spalte,
+    top: Math.round(spalte.scrollTop * 100) / 100,
+    max: Math.round((spalte.scrollHeight - spalte.clientHeight) * 100) / 100,
+    karte: kasten(karte),
+    schlange: kasten(schlange),
+    auswahl: kasten(auswahl),
+    spalte: kasten(spalte),
+  };
 }`;
 
 /**
@@ -971,6 +1425,7 @@ interface LangMessung {
   huelleMax: number;
   auswahlAusschnitt: Sichtausschnitt;
   karteAusschnitt: Sichtausschnitt;
+  karteHuelle: Sichtausschnitt;
 }
 
 /**
@@ -984,6 +1439,8 @@ interface Eingabeseite extends Seite {
     move(x: number, y: number): Promise<void>;
     wheel(dx: number, dy: number): Promise<void>;
   };
+  /** JOB 3812 R2: die Fensterhöhe ÄNDERN, ohne die Seite neu zu laden — die Bühne von L18. */
+  setViewportSize(groesse: { width: number; height: number }): Promise<void>;
 }
 interface EingabeBrowser {
   newPage(opts: Record<string, unknown>): Promise<Eingabeseite>;
@@ -1002,6 +1459,118 @@ interface Kopfprobe {
 interface Probenlauf {
   huelleUnten: number;
   proben: Kopfprobe[];
+}
+
+/** JOB 3812: die vier Kästen einer Leseprobe, an EINEM Zeitpunkt erhoben. */
+interface Lesekaesten {
+  karte: Sichtkasten;
+  kartentitel: Sichtkasten | null;
+  schlange: Sichtkasten;
+  auswahl: Sichtkasten;
+}
+
+/** JOB 3812 · Lieferung 1: was geschieht, wenn jemand den unteren Teil des Artikels lesen will. */
+interface Leseprobe {
+  lage: string;
+  rollerName: string;
+  /** Liegt die Warteschlange IN dem Bereich, der beim Lesen der Karte rollt? Die Kernfrage. */
+  traegtListe: boolean;
+  /** `scrollHeight - clientHeight` des rollenden Bereichs — wie weit er ÜBERHAUPT kann. */
+  max: number;
+  /** Wie weit er wirklich gerollt ist. 0 bei `rollerName: 'keiner'`. */
+  gerollt: number;
+  ausschnitt: Sichtausschnitt;
+  ausschnittNachher: Sichtausschnitt;
+  vorher: Lesekaesten;
+  nachher: Lesekaesten;
+  zurueck: Lesekaesten;
+  fensterHoehe: number;
+}
+
+/** JOB 3812 · Lieferung 2: wie viel vom Menüblatt der Karte wirklich zu sehen ist. */
+interface Menuebefund {
+  lage: string;
+  /** Ob die rechte Spalte für diese Messung PROBEWEISE zum Rollbereich gemacht wurde. */
+  probe: boolean;
+  position: string;
+  blatt: Sichtkasten;
+  hoehe: number;
+  breite: number;
+  ausloeser: Sichtkasten;
+  klammer: Sichtausschnitt;
+  klammerNamen: string[];
+  spalte: Sichtkasten;
+  spalteOverflow: string;
+  spalteRollt: boolean;
+  /** Wie viele Punkte über die Höhe des Blatts abgetastet wurden. */
+  punkte: number;
+  /** Die y-Werte, an denen das Blatt NICHT getroffen wurde — abgeschnitten oder verdeckt. */
+  fehlstellen: number[];
+  fensterHoehe: number;
+  /** JOB 3812 R3: `window.innerWidth` zur Zeit der Messung — die Elle von L18c. */
+  fensterBreite: number;
+}
+
+/**
+ * JOB 3812 · RUNDE 2 · L18: EIN Schritt eines Weges, auf dem das Blatt die ganze Zeit offen bleibt.
+ * Der Name des Schritts steht in jeder Fehlermeldung — sonst wäre nicht zu sehen, WANN es brach.
+ */
+interface Menuewandel {
+  schritt: string;
+  befund: Menuebefund;
+  /** Nur beim Rollschritt gesetzt: wie weit die Artikelspalte wirklich gerollt ist. */
+  gerollt: { top: number; max: number } | null;
+}
+
+/** JOB 3812 · RUNDE 2 · L19: was rechts steht, nachdem die Spalte gerollt und gewechselt wurde. */
+interface Wechselstand {
+  titel: string | null;
+  /** Rollstellung der Artikelspalte. */
+  top: number;
+  max: number;
+  karte: Sichtkasten;
+  kartentitel: Sichtkasten | null;
+  schlange: Sichtkasten;
+  auswahl: Sichtkasten;
+  ausschnitt: Sichtausschnitt;
+  fensterHoehe: number;
+}
+
+interface Artikelwechsel {
+  lage: string;
+  von: number;
+  nach: number;
+  vorherTitel: string | null;
+  vorher: Wechselstand;
+  nachher: Wechselstand;
+}
+
+/** Was `SPALTEN_PROBE` zurückmeldet — der Beleg, dass die Probe wirklich sass. */
+interface Spaltenprobe {
+  oben: number;
+  unten: number;
+  overflowY: string;
+  rollt: boolean;
+}
+
+/** Ein Stand während des Tastaturwegs (Lieferung 4). */
+interface Tastaturstand {
+  fokus: string;
+  fokusIstSpalte: boolean;
+  top: number;
+  max: number;
+  karte: Sichtkasten;
+  schlange: Sichtkasten;
+  auswahl: Sichtkasten;
+  spalte: Sichtkasten;
+}
+
+/** Der ganze Tastaturweg einer Fensterlage: Ausgangsstellung, nach dem Tabschritt, nach „Ende". */
+interface Tastaturweg {
+  lage: string;
+  tabIndex: number;
+  nachTab: Tastaturstand;
+  nachEnde: Tastaturstand;
 }
 
 /** Ein Bedienweg, vollständig gemessen: dreissig Schritte, je vier Zahlen. */
@@ -1026,8 +1595,21 @@ interface Weglauf {
 // Hier wird gemessen. Zwei Lagen, beide breit genug für die zweispaltige Bauform (`lg:` greift ab
 // 1024 px), aber verschieden hoch: die bekannte HOHE und eine FLACHE deutlich unter der
 // hergeleiteten Grenze. Beide Lagen fahren beide Bedienwege auf je eigener Seite.
+//
+// JOB 3812 · UND EINE LAGE DAZWISCHEN. `archiv/3625/runde-2/RUECKGABE.md:66` hat als Rest notiert:
+// „Nur die Fensterhöhen 900 und 420 sind gemessen, Höhen dazwischen nicht." Zwei Stützstellen
+// können eine Regel vortäuschen, die in der Mitte nicht gilt — 1280×600 fährt deshalb denselben
+// Block mit denselben Zusicherungen. Das ist eine Messung mehr, kein neuer Massstab.
 const HOCH = { width: 1280, height: 900 };
+const MITTEL = { width: 1280, height: 600 };
 const FLACH = { width: 1280, height: 420 };
+/**
+ * JOB 3812 R3 · die fünfte Lage von L18c: GLEICH HOCH wie `FLACH`, nur schmaler. Sie ändert das
+ * Fenster ein weiteres Mal, ohne den senkrechten Platz anzufassen — so ist ein verstelltes Blatt
+ * eindeutig auf die Fensteränderung zurückzuführen und nicht auf neuen Platz. Breit bleibt sie
+ * deutlich über 1024 px: die breite Bauform darf dabei nicht umschlagen.
+ */
+const SCHMALER = { width: 1200, height: FLACH.height };
 
 /**
  * Wie weit sich die HÜLLE (`MAIN[flex-1 overflow-y-auto …]`, der Bereich, in dem die Karte liegt)
@@ -1063,8 +1645,21 @@ let taste: Weglauf | null = null;
 let rad: Weglauf | null = null;
 let tasteFlach: Weglauf | null = null;
 let radFlach: Weglauf | null = null;
+let tasteMittel: Weglauf | null = null;
+let radMittel: Weglauf | null = null;
 let probenHoch: Probenlauf | null = null;
 let probenFlach: Probenlauf | null = null;
+let probenMittel: Probenlauf | null = null;
+/** JOB 3812 · Lieferung 1, je Fensterlage eine Probe. */
+const leseproben: Leseprobe[] = [];
+/** JOB 3812 · Lieferung 2, je Fensterlage zwei Befunde: ohne und mit probeweisem Rollbereich. */
+const menuebefunde: Menuebefund[] = [];
+/** JOB 3812 · Lieferung 4, je Fensterlage ein Tastaturweg. */
+const tastaturwege: Tastaturweg[] = [];
+/** JOB 3812 · RUNDE 2, L18: EIN offenes Blatt, drei Änderungen unter ihm. */
+const menuewandel: Menuewandel[] = [];
+/** JOB 3812 · RUNDE 2, L19: ein Artikelwechsel aus heruntergerollter Karte. */
+let artikelwechsel: Artikelwechsel | null = null;
 
 /**
  * Die zwei Höhen der Kopfprobe. Zwei statt einer, damit L14 eine REGEL misst und keinen Zufall:
@@ -1157,19 +1752,15 @@ describe("JOB 3593 · L · lange Warteschlange — Auswahl UND Artikel im Fenste
       };
 
       /**
-       * EIN Bedienweg, dreissig Schritte weit — jeder Weg auf einer EIGENEN Seite, damit das Rad
-       * nicht dort anfängt, wo die Pfeiltaste aufgehört hat.
-       *
-       * Nach jedem Schritt wird ZUERST gewartet, bis die Auswahl wirklich eine Stelle weiter steht
-       * (`INDEX_IST`), und erst dann gemessen. Das ist kein Komfort, sondern der Messaufbau: React
-       * schreibt den Zustandswechsel im nächsten Anstrich, und `scrollIntoView` läuft in genau
-       * diesem Anstrich. Ohne das Warten läse die Messung den Stand VOR der Bewegung — und das
-       * Warten belegt zugleich, dass dreissig Schritte wirklich dreissig Schritte waren.
+       * Eine frische Seite auf der Prüffläche, in der gewünschten Fensterlage — der Auftakt, den
+       * alle Messungen dieses Blocks teilen (JOB 3812: bis dahin stand er zweimal wörtlich da).
+       * Gewartet wird auf BEIDES: die Karte rechts und die vollständige Liste links. Erst dann ist
+       * die Bühne die Bühne, von der die Zahlen erzählen.
        */
-      const wegMessen = async (
-        weg: "taste" | "rad",
-        lage: { width: number; height: number },
-      ): Promise<Weglauf> => {
+      const seiteOeffnen = async (lage: {
+        width: number;
+        height: number;
+      }): Promise<Eingabeseite> => {
         const s = await (browser3 as EingabeBrowser).newPage({
           viewport: { width: lage.width, height: lage.height },
         });
@@ -1184,6 +1775,24 @@ describe("JOB 3593 · L · lange Warteschlange — Auswahl UND Artikel im Fenste
         await s.waitForFunction(fn(GENUG_EINTRAEGE), [EINTRAG_ANKER, LANGE_LISTE], {
           timeout: 30_000,
         });
+        return s;
+      };
+
+      /**
+       * EIN Bedienweg, dreissig Schritte weit — jeder Weg auf einer EIGENEN Seite, damit das Rad
+       * nicht dort anfängt, wo die Pfeiltaste aufgehört hat.
+       *
+       * Nach jedem Schritt wird ZUERST gewartet, bis die Auswahl wirklich eine Stelle weiter steht
+       * (`INDEX_IST`), und erst dann gemessen. Das ist kein Komfort, sondern der Messaufbau: React
+       * schreibt den Zustandswechsel im nächsten Anstrich, und `scrollIntoView` läuft in genau
+       * diesem Anstrich. Ohne das Warten läse die Messung den Stand VOR der Bewegung — und das
+       * Warten belegt zugleich, dass dreissig Schritte wirklich dreissig Schritte waren.
+       */
+      const wegMessen = async (
+        weg: "taste" | "rad",
+        lage: { width: number; height: number },
+      ): Promise<Weglauf> => {
+        const s = await seiteOeffnen(lage);
         const anker = [EINTRAG_ANKER, KARTE_ANKER, SCHLANGE_ANKER];
         const start = await s.evaluate<LangMessung | null>(fn(LANG_MESSEN), anker);
         if (!start || !start.auswahl || !start.karte || !start.schlange || !start.kartentitel) {
@@ -1224,13 +1833,13 @@ describe("JOB 3593 · L · lange Warteschlange — Auswahl UND Artikel im Fenste
             // gehörte der Seite, der erste Radschritt kam nie an (Cloud-Lauf
             // fd8f48791cf0b46b1eb58b04: `unterDemZeiger: P[]„Diese Anwendung arbeitet mit k…"`).
             // Gemessen wird der Ausschnitt, nicht geraten.
+            //
+            // JOB 3812: gekappt wird gegen die HÜLLE (`karteHuelle`) und nicht mehr gegen
+            // `karteAusschnitt` — seit die Artikelspalte selbst beschneidet, sind das zwei
+            // verschiedene Kästen, und der Zeiger steht über der LISTE, nicht über der Karte.
             const k = letzte.schlange as Randkasten;
-            const sichtbarOben = Math.max(k.oben, 0, letzte.karteAusschnitt.oben);
-            const sichtbarUnten = Math.min(
-              k.unten,
-              letzte.fensterHoehe,
-              letzte.karteAusschnitt.unten,
-            );
+            const sichtbarOben = Math.max(k.oben, 0, letzte.karteHuelle.oben);
+            const sichtbarUnten = Math.min(k.unten, letzte.fensterHoehe, letzte.karteHuelle.unten);
             zeigerX = Math.round((k.links + k.rechts) / 2);
             zeigerY = Math.round((sichtbarOben + sichtbarUnten) / 2);
             await s.mouse.move(zeigerX, zeigerY);
@@ -1256,6 +1865,7 @@ describe("JOB 3593 · L · lange Warteschlange — Auswahl UND Artikel im Fenste
             kartentitel: m.kartentitel,
             auswahlAusschnitt: m.auswahlAusschnitt,
             karteAusschnitt: m.karteAusschnitt,
+            karteHuelle: m.karteHuelle,
             fensterHoehe: m.fensterHoehe,
             rollposition: m.rollposition,
             rollerTop: m.rollerTop,
@@ -1321,17 +1931,7 @@ describe("JOB 3593 · L · lange Warteschlange — Auswahl UND Artikel im Fenste
         width: number;
         height: number;
       }): Promise<Probenlauf> => {
-        const s = await (browser3 as EingabeBrowser).newPage({
-          viewport: { width: lage.width, height: lage.height },
-        });
-        await s.addInitScript(
-          `try { localStorage.setItem("kw.designTheme", "modern"); } catch (e) {}`,
-        );
-        await weicheLegen(s);
-        await s.goto(`${ORIGIN}/validierung`, { waitUntil: "load", timeout: 60_000 });
-        await s.waitForFunction(fn(GENUG_EINTRAEGE), [EINTRAG_ANKER, LANGE_LISTE], {
-          timeout: 30_000,
-        });
+        const s = await seiteOeffnen(lage);
         const m = await s.evaluate<LangMessung | null>(fn(LANG_MESSEN), [
           EINTRAG_ANKER,
           KARTE_ANKER,
@@ -1348,17 +1948,281 @@ describe("JOB 3593 · L · lange Warteschlange — Auswahl UND Artikel im Fenste
           }
           proben.push(p);
         }
-        const lauf: Probenlauf = { huelleUnten: m.karteAusschnitt.unten, proben };
+        // JOB 3812: `karteHuelle` statt `karteAusschnitt` — L14 fragt, ob die Liste im sichtbaren
+        // Teil der HÜLLE bleibt, und das ist seit dieser Runde nicht mehr derselbe Kasten.
+        const lauf: Probenlauf = { huelleUnten: m.karteHuelle.unten, proben };
         console.info(`JOB 3625 L14 · ${lage.width}x${lage.height} · ${JSON.stringify(lauf)}`);
         return lauf;
+      };
+
+      /**
+       * JOB 3812 · Lieferung 1 — den Artikel lesen, auf eigener Seite und ohne einen Schritt in
+       * der Liste. Die Seite wird danach geschlossen: die Probe nimmt ihre Rollstellung zwar
+       * selbst zurück (`zurueck`), aber eine frische Seite je Messung ist die Bauform dieses
+       * Blocks und hält die Messungen voneinander unabhängig.
+       */
+      const leseMessen = async (lage: {
+        width: number;
+        height: number;
+      }): Promise<Leseprobe> => {
+        const s = await seiteOeffnen(lage);
+        const p = await s.evaluate<Omit<Leseprobe, "lage"> | null>(fn(ARTIKEL_LESEN), [
+          KARTE_ANKER,
+          SCHLANGE_ANKER,
+          EINTRAG_ANKER,
+        ]);
+        if (!p) {
+          throw new Error(`Leseprobe ${lage.width}x${lage.height}: die Fläche war nicht zu messen`);
+        }
+        const probe: Leseprobe = { ...p, lage: `${lage.width}x${lage.height}` };
+        console.info(`JOB 3812 L15 · ${probe.lage} · ${JSON.stringify(probe)}`);
+        return probe;
+      };
+
+      /**
+       * JOB 3812 · Lieferung 2 — das „···"-Menü der Karte öffnen und messen, wie viel von seinem
+       * Blatt zu sehen ist. Einmal am Produktstand, einmal mit probeweise aufgesetztem
+       * Rollbereich an der rechten Spalte (§5.2).
+       *
+       * Öffnen, WARTEN, messen — die drei Schritte bleiben getrennt (Begründung an `MENUE_OEFFNEN`).
+       */
+      const menueMessen = async (
+        lage: { width: number; height: number },
+        probe: boolean,
+      ): Promise<Menuebefund> => {
+        const marke = `${lage.width}x${lage.height}${probe ? " + Probe" : ""}`;
+        const s = await seiteOeffnen(lage);
+        if (probe) {
+          const gesetzt = await s.evaluate<Spaltenprobe | null>(fn(SPALTEN_PROBE), [
+            KARTE_ANKER,
+            true,
+          ]);
+          if (!gesetzt) {
+            throw new Error(`Menü ${marke}: die rechte Spalte war nicht zu finden`);
+          }
+          console.info(`JOB 3812 L16 · ${marke} · Spaltenprobe ${JSON.stringify(gesetzt)}`);
+        }
+        const geoeffnet = await s.evaluate<boolean>(fn(MENUE_OEFFNEN), KARTE_ANKER);
+        if (!geoeffnet) {
+          throw new Error(`Menü ${marke}: das „···"-Menü der Karte war nicht zu finden`);
+        }
+        await s.waitForFunction(fn(BLATT_DA), undefined, { timeout: 30_000 });
+        const m = await s.evaluate<Omit<Menuebefund, "lage" | "probe"> | null>(fn(MENUE_LAGE), [
+          KARTE_ANKER,
+          "karte",
+        ]);
+        if (!m) {
+          throw new Error(`Menü ${marke}: das Blatt war nach dem Öffnen nicht zu messen`);
+        }
+        const befund: Menuebefund = { ...m, lage: `${lage.width}x${lage.height}`, probe };
+        console.info(`JOB 3812 L16 · ${marke} · ${JSON.stringify(befund)}`);
+        return befund;
+      };
+
+      /**
+       * JOB 3812 · RUNDE 2 — EIN OFFENES BLATT ÜBERLEBT, WAS SICH UNTER IHM ÄNDERT.
+       *
+       * DIE LÜCKE, DIE HIERHER FÜHRT (Prüfbericht der Runde 1, Korrekturpflicht 1): Runde 1 hat je
+       * Fensterlage eine FRISCHE Seite geöffnet und das Menü dort geöffnet — damit war jede Lage
+       * eine eigene Rechnung, und dass ein SCHON offenes Blatt seine Rechnung behält, blieb
+       * ungemessen. Genau dort sass der Fehler: `blattlage()` lief nur im Klick des Auslösers.
+       *
+       * DESHALB EINE EINZIGE SEITE UND EIN EINZIGES ÖFFNEN. Das Blatt bleibt über alle Schritte
+       * offen; gemessen wird nach jedem. Dass es offen GEBLIEBEN ist, ist selbst ein Messwert
+       * (`BLATT_DA` vor jeder Messung) — ein Menü, das beim Verkleinern einfach zuklappte, bestünde
+       * diesen Fall sonst, ohne die Zusage zu erfüllen.
+       *
+       * DREI SCHRITTE, jeder ein anderer Weg, die Rechnung zu verstellen:
+       *   1. 1280×900 → 1280×600 (die Lage dazwischen, HINWEIS 1)
+       *   2. 1280×600 → 1280×420 (die flache Lage des Auftrags)
+       *   3. die Artikelspalte bei 1280×420 ans Ende rollen — seit diesem Job rollt sie selbst.
+       */
+      const wandelMessen = async (): Promise<void> => {
+        const s = await seiteOeffnen(HOCH);
+        const geoeffnet = await s.evaluate<boolean>(fn(MENUE_OEFFNEN), KARTE_ANKER);
+        if (!geoeffnet) {
+          throw new Error('Wandel: das „···"-Menü der Karte war nicht zu finden');
+        }
+        await s.waitForFunction(fn(BLATT_DA), undefined, { timeout: 30_000 });
+        const messen = async (
+          schritt: string,
+          gerollt: { top: number; max: number } | null,
+        ): Promise<void> => {
+          // Zuerst: steht das Blatt überhaupt noch? Ein zugeklapptes Menü ist keine erfüllte
+          // Zusage, sondern ein anderer Befund — und `MENUE_LAGE` gäbe dafür nur `null` zurück.
+          const nochOffen = await s.evaluate<boolean>(fn(BLATT_DA));
+          if (!nochOffen) {
+            throw new Error(`Wandel ${schritt}: das Blatt ist nicht mehr offen`);
+          }
+          const m = await s.evaluate<Omit<Menuebefund, "lage" | "probe"> | null>(fn(MENUE_LAGE), [
+            KARTE_ANKER,
+            "karte",
+          ]);
+          if (!m) {
+            throw new Error(`Wandel ${schritt}: das Blatt war nicht zu messen`);
+          }
+          const eintrag: Menuewandel = {
+            schritt,
+            befund: { ...m, lage: schritt, probe: false },
+            gerollt,
+          };
+          console.info(`JOB 3812 L18 · ${schritt} · ${JSON.stringify(eintrag)}`);
+          menuewandel.push(eintrag);
+        };
+        await messen("1280x900 · frisch geoeffnet", null);
+        for (const ziel of [MITTEL, FLACH]) {
+          await s.evaluate<boolean>(fn(FENSTER_ZURUECK));
+          await s.setViewportSize(ziel);
+          await s.waitForFunction(fn(FENSTER_STEHT), [ziel.width, ziel.height], {
+            timeout: 30_000,
+          });
+          await messen(`auf ${ziel.width}x${ziel.height} verkleinert, Blatt blieb offen`, null);
+        }
+        const gerollt = await s.evaluate<{ top: number; max: number } | null>(
+          fn(SPALTE_ANS_ENDE),
+          SPALTE_ANKER,
+        );
+        if (!gerollt) {
+          throw new Error("Wandel: die Artikelspalte war zum Rollen nicht zu finden");
+        }
+        await s.evaluate<boolean>(fn(RUHE_ZURUECK), SPALTE_ANKER);
+        await s.waitForFunction(fn(RUHE), SPALTE_ANKER, { timeout: 15_000 });
+        await messen("1280x420, Artikelspalte ans Ende gerollt", gerollt);
+        // JOB 3812 R3 · DER FÜNFTE SCHRITT — der Weg, auf dem der Prüfbericht der Runde 2 das
+        // Blatt verloren hat: NACH dem Rollen noch einmal das Fenster ändern. Geändert wird die
+        // BREITE bei gleicher Höhe, und das aus einem Grund: so ist die einzige Neuigkeit das
+        // Ereignis selbst. Bliebe die Höhe nicht stehen, wäre am Ende nicht zu unterscheiden, ob
+        // sich das Blatt wegen des weggerollten Auslösers verstellt hat oder wegen des neuen
+        // Platzes.
+        await s.evaluate<boolean>(fn(FENSTER_ZURUECK));
+        await s.setViewportSize(SCHMALER);
+        await s.waitForFunction(fn(FENSTER_STEHT), [SCHMALER.width, SCHMALER.height], {
+          timeout: 30_000,
+        });
+        await messen(
+          `auf ${SCHMALER.width}x${SCHMALER.height} gezogen, nachdem die Spalte gerollt war`,
+          gerollt,
+        );
+      };
+
+      /**
+       * JOB 3812 · RUNDE 2 — EIN ANDERER ARTIKEL FÄNGT OBEN AN.
+       *
+       * Die zweite Prüflücke des Berichts: „Artikelwechsel nach heruntergerollter Karte". Gemessen
+       * in der flachen Lage, weil es nur dort etwas zu rollen gibt — bei 1280×900 passt die Karte
+       * ohne Rest, und der Fall prüfte nichts (`max` steht deshalb in der Zusicherung).
+       *
+       * Der Wechsel läuft über den KLICK auf den nächsten Listeneintrag, also den Weg eines
+       * Menschen, und gewartet wird auf den TITEL IM BLATT DER KARTE — nicht auf `aria-current`
+       * links, das nur sagt, was markiert ist, und nicht, was rechts steht.
+       */
+      const wechselMessen = async (): Promise<void> => {
+        const s = await seiteOeffnen(FLACH);
+        const anker = [KARTE_ANKER, SCHLANGE_ANKER, EINTRAG_ANKER];
+        const gerollt = await s.evaluate<{ top: number; max: number } | null>(
+          fn(SPALTE_ANS_ENDE),
+          SPALTE_ANKER,
+        );
+        if (!gerollt) {
+          throw new Error("Wechsel: die Artikelspalte war zum Rollen nicht zu finden");
+        }
+        await s.evaluate<boolean>(fn(RUHE_ZURUECK), SPALTE_ANKER);
+        await s.waitForFunction(fn(RUHE), SPALTE_ANKER, { timeout: 15_000 });
+        const vorher = await s.evaluate<Wechselstand | null>(fn(WECHSEL_STAND), anker);
+        const wechsel = await s.evaluate<{
+          von: number;
+          nach: number;
+          vorherTitel: string | null;
+          vorherTop: number;
+        } | null>(fn(ARTIKEL_WECHSELN), [EINTRAG_ANKER, KARTE_ANKER]);
+        if (!vorher || !wechsel) {
+          throw new Error("Wechsel: die Ausgangslage war nicht zu messen");
+        }
+        await s.waitForFunction(fn(ANDERER_ARTIKEL), [KARTE_ANKER, wechsel.vorherTitel], {
+          timeout: 30_000,
+        });
+        await s.evaluate<boolean>(fn(RUHE_ZURUECK), SPALTE_ANKER);
+        await s.waitForFunction(fn(RUHE), SPALTE_ANKER, { timeout: 15_000 });
+        const nachher = await s.evaluate<Wechselstand | null>(fn(WECHSEL_STAND), anker);
+        if (!nachher) {
+          throw new Error("Wechsel: der Stand nach dem Wechsel war nicht zu messen");
+        }
+        artikelwechsel = {
+          lage: `${FLACH.width}x${FLACH.height}`,
+          von: wechsel.von,
+          nach: wechsel.nach,
+          vorherTitel: wechsel.vorherTitel,
+          vorher,
+          nachher,
+        };
+        console.info(`JOB 3812 L19 · ${JSON.stringify(artikelwechsel)}`);
+      };
+
+      /**
+       * JOB 3812 · Lieferung 4 — der Tastaturweg in die rechte Spalte und bis ans Ende des
+       * Artikels. Drei Schritte, jeder gemessen: Ausgangsstellung setzen, EIN Tab, dann „Ende".
+       */
+      const tastaturMessen = async (lage: {
+        width: number;
+        height: number;
+      }): Promise<Tastaturweg> => {
+        const marke = `${lage.width}x${lage.height}`;
+        const s = await seiteOeffnen(lage);
+        const anker = [SPALTE_ANKER, SCHLANGE_ANKER, EINTRAG_ANKER, KARTE_ANKER];
+        const start = await s.evaluate<{
+          steht: boolean;
+          tabIndex: number;
+          max: number;
+        } | null>(fn(TASTATUR_START), [SPALTE_ANKER, EINTRAG_ANKER]);
+        if (!start) {
+          throw new Error(`Tastatur ${marke}: die rechte Spalte war nicht zu finden`);
+        }
+        if (!start.steht) {
+          throw new Error(`Tastatur ${marke}: der Fokus liess sich nicht in die Liste setzen`);
+        }
+        await s.keyboard.press("Tab");
+        await s.evaluate<boolean>(fn(RUHE_ZURUECK), SPALTE_ANKER);
+        await s.waitForFunction(fn(RUHE), SPALTE_ANKER, { timeout: 15_000 });
+        const nachTab = await s.evaluate<Tastaturstand | null>(fn(TASTATUR_STAND), anker);
+        await s.keyboard.press("End");
+        // GEMESSEN WIRD ERST, WENN DIE BEWEGUNG STEHT. Chromium rollt Tasteneingaben ANIMIERT;
+        // die erste Fassung dieser Messung las direkt nach dem Tastendruck und meldete „0 von 193
+        // px gerollt" (Cloud-Lauf 6f4e00d58bc8859d2e2c2ce2) — eine wahre Zahl zum falschen
+        // Zeitpunkt. `RUHE` wartet auf fünf Bilder ohne Veränderung; steht die Spalte wirklich
+        // still, ist die Bedingung sofort erfüllt, und der Fall meldet den echten Stillstand.
+        await s.evaluate<boolean>(fn(RUHE_ZURUECK), SPALTE_ANKER);
+        await s.waitForFunction(fn(RUHE), SPALTE_ANKER, { timeout: 15_000 });
+        const nachEnde = await s.evaluate<Tastaturstand | null>(fn(TASTATUR_STAND), anker);
+        if (!nachTab || !nachEnde) {
+          throw new Error(`Tastatur ${marke}: der Stand war nicht zu messen`);
+        }
+        const weg: Tastaturweg = { lage: marke, tabIndex: start.tabIndex, nachTab, nachEnde };
+        console.info(`JOB 3812 L17 · ${marke} · ${JSON.stringify(weg)}`);
+        return weg;
       };
 
       taste = await wegMessen("taste", HOCH);
       rad = await wegMessen("rad", HOCH);
       tasteFlach = await wegMessen("taste", FLACH);
       radFlach = await wegMessen("rad", FLACH);
+      tasteMittel = await wegMessen("taste", MITTEL);
+      radMittel = await wegMessen("rad", MITTEL);
       probenHoch = await probenMessen(HOCH);
       probenFlach = await probenMessen(FLACH);
+      probenMittel = await probenMessen(MITTEL);
+      for (const lage of [HOCH, MITTEL, FLACH]) {
+        leseproben.push(await leseMessen(lage));
+      }
+      for (const lage of [HOCH, MITTEL, FLACH]) {
+        for (const probe of [false, true]) {
+          menuebefunde.push(await menueMessen(lage, probe));
+        }
+      }
+      for (const lage of [HOCH, MITTEL, FLACH]) {
+        tastaturwege.push(await tastaturMessen(lage));
+      }
+      await wandelMessen();
+      await wechselMessen();
     } catch (e) {
       fehler3 = String(e).split("\n").slice(0, 3).join(" | ");
       // Ins Protokoll, nicht nur in die Zusicherung: vitest kürzt den erwarteten Wert einer
@@ -1379,7 +2243,9 @@ describe("JOB 3593 · L · lange Warteschlange — Auswahl UND Artikel im Fenste
     expect(rad).not.toBeNull();
     expect(tasteFlach).not.toBeNull();
     expect(radFlach).not.toBeNull();
-    for (const lauf of [taste, rad, tasteFlach, radFlach]) {
+    expect(tasteMittel).not.toBeNull();
+    expect(radMittel).not.toBeNull();
+    for (const lauf of [taste, rad, tasteFlach, radFlach, tasteMittel, radMittel]) {
       // Ohne diese Zeilen könnte der Block unbemerkt an einer kurzen Liste messen — und dann sagte
       // ein grünes L2 nichts über Pedis Fall aus.
       expect(
@@ -1481,46 +2347,92 @@ describe("JOB 3593 · L · lange Warteschlange — Auswahl UND Artikel im Fenste
   //   Titel  203,5–231    ( 27,5 px hoch)  →  4,0 px fehlen
   // In einem 420 px hohen Fenster bleiben für den Inhalt 171 px; die Karte ist 254,25 px hoch.
   // Sie GANZ zu zeigen ist dort keine Frage des Deckels an der linken Liste, sondern hiesse, die
-  // rechte Spalte oder die Bänder der Hülle umzubauen — beides ausserhalb dieses Auftrags
-  // (§5: „nur die linke Liste", §10). Der Rest ist durch Rollen der Hülle erreichbar; er steht als
-  // offener Punkt in der Rückgabe, nicht als grüner Fall.
+  // rechte Spalte oder die Bänder der Hülle umzubauen — beides lag ausserhalb von JOB 3625
+  // (§5: „nur die linke Liste", §10). Der Rest war nur durch Rollen der HÜLLE erreichbar, und in
+  // ihr liegt die Liste; er stand deshalb als offener Punkt in der Rückgabe, nicht als grüner Fall.
   //
-  // GEMESSEN WIRD DESHALB DAS, WAS DIESER JOB VERANTWORTET — dass beim Durchgehen der Liste rechts
+  // JOB 3812 HAT GENAU DIESEN PUNKT GESCHLOSSEN (Pedi am 12.09. 21:4x: „ja, rechts darf mit"):
+  // die rechte Spalte rollt jetzt selbst, der ganze Artikel ist lesbar, und die Liste steht dabei
+  // still. Gemessen wird das in L15; die Zahlen oben sind damit Geschichte und bleiben nur stehen,
+  // weil sie erklären, WOHER dieser Block kommt.
+  //
+  // GEMESSEN WIRD HIER DAS, WAS DIESER FALL VERANTWORTET — dass beim Durchgehen der Liste rechts
   // NICHTS WANDERT. Genau das war der Fehler aus JOB 3593 (die Karte rutschte bei Schritt 13 um
   // 3,5 px unter das Kopfband), und genau das hält die Reparatur:
-  //   1. Karte UND Titel beginnen an jedem der dreissig Schritte im sichtbaren Teil der Hülle —
-  //      weder darüber (abgerollt) noch darunter (weggeschoben).
-  //   2. Von beiden ist an jedem Schritt GLEICH VIEL zu sehen wie beim ersten. Rollt die Hülle auch
-  //      nur ein Stück, fällt diese Zeile.
-  //   3. Karte und Liste beginnen auf derselben Höhe — über der Karte verfällt kein Platz.
-  // Die Elle ist überall dieselbe (`SICHT_TOLERANZ_PX`, `ueberDemFenster`, `sichtbareHoehe`); es
-  // entsteht kein zweiter Massstab, nur eine andere — kleinere — Aussage als bei 1280×900, wo L2/L4
-  // weiterhin die VOLLE Sichtbarkeit der Karte verlangen.
-  const flacheKartenPruefung = (name: string, lauf: Weglauf | null): void => {
+  //   1. Karte UND Titel stehen an jedem der dreissig Schritte am GLEICHEN ORT wie beim ersten.
+  //   2. Keiner von beiden wandert über den sichtbaren Teil der Artikelspalte hinaus oder rutscht
+  //      tiefer unter sie als am Anfang.
+  //   3. Von beiden ist an jedem Schritt GLEICH VIEL zu sehen wie beim ersten.
+  //   4. Karte und Liste beginnen auf derselben Höhe — über der Karte verfällt kein Platz.
+  // Die Elle ist überall dieselbe (`SICHT_TOLERANZ_PX`, `ueberDemFenster`, `unterDemFenster`,
+  // `sichtbareHoehe`); es entsteht kein zweiter Massstab, nur eine andere — kleinere — Aussage als
+  // bei 1280×900, wo L2/L4 weiterhin die VOLLE Sichtbarkeit der Karte verlangen.
+  //
+  // ------------------------------------------------------------------------------------------
+  // JOB 3812 · WAS DIESE PRÜFUNG SEITHER ANDERS MISST — und warum sie dadurch mehr sagt.
+  // ------------------------------------------------------------------------------------------
+  // ZWEI ÄNDERUNGEN, beide erzwungen und beide hier benannt (Lieferung 5 des Auftrags):
+  //
+  // 1. DER RAHMEN IST NICHT MEHR DIE HÜLLE, SONDERN DIE ARTIKELSPALTE. `karteAusschnitt` war bis
+  //    JOB 3812 das `<main>` der Anwendung; seit die rechte Spalte selbst beschneidet, ist SIE es
+  //    (die Hülle heisst jetzt `karteHuelle` und wird in L11/L12/L14 gelesen). Das ist der engere
+  //    und richtigere Rahmen: was die Spalte abschneidet, sieht auch niemand.
+  //
+  // 2. „UNTER DEM SICHTBAREN TEIL" IST KEINE NULL MEHR, SONDERN EINE KONSTANTE. Gemessen bei
+  //    1280×420 (Cloud-Lauf 6f4e00d58bc8859d2e2c2ce2): die Artikelspalte reicht von 138,5 bis 199
+  //    — 60,5 px, weil `<main>` unten 28 px Innenabstand hat. Der Titel der Karte steht bei
+  //    203,5–231 und liegt damit von Anfang an 4,5 px UNTER dem Rand. Vor JOB 3812 reichte der
+  //    Rahmen bis 227, und der Titel war zu 23,5 von 27,5 px zu sehen.
+  //    Das ist eine ehrliche Verschlechterung am RUHENDEN Bild und der Preis dafür, dass der ganze
+  //    Artikel jetzt ohne Bewegung der Liste lesbar ist (L15) — sie steht in der Rückgabe und wird
+  //    nicht weggemessen. Die Zusage dieses Falls bleibt aber dieselbe: es bewegt sich NICHTS.
+  //    Verglichen wird deshalb mit dem ERSTEN SCHRITT statt mit der Null; was am Anfang unter dem
+  //    Rand lag, darf dort liegen — aber es darf nicht tiefer rutschen.
+  //
+  // NEU HINZUGEKOMMEN ist die schärfste der vier Zeilen: der Kasten steht an jedem Schritt am
+  // GLEICHEN ORT (`oben`), in Fensterkoordinaten. Sie braucht keinen Rahmen und keine Regel und
+  // fällt schon bei einem einzigen wandernden Pixel.
+  const karteStehtStill = (name: string, lauf: Weglauf | null): void => {
     const schritte = lauf?.schritte ?? [];
     expect(schritte.length, `${name}: keine Schritte gemessen`).toBe(SCHRITTE);
     const erste = schritte[0];
     if (!erste) return;
+    // Die KARTE muss von Anfang an zu sehen sein — sonst prüfte der Fall am Unsichtbaren. Für den
+    // Titel gilt das seit JOB 3812 nicht mehr (Grund oben, Punkt 2); dass er ERREICHBAR ist, misst
+    // L15, und dass er bei 1280×900 vollständig dasteht, L2/L4.
+    const karteZuerst = sichtbareHoehe(erste.karte, erste.fensterHoehe, erste.karteAusschnitt);
+    expect(
+      karteZuerst,
+      `${name}: die Karte war von Anfang an nicht zu sehen (Karte ${erste.karte.oben}–${erste.karte.unten}, Spalte ${erste.karteAusschnitt.oben}–${erste.karteAusschnitt.unten})`,
+    ).toBeGreaterThan(SICHT_TOLERANZ_PX);
     for (const [was, kastenVon] of [
       ["die Karte", (m: Schrittmessung) => m.karte],
       ["der Titel der Karte", (m: Schrittmessung) => m.kartentitel],
     ] as const) {
       const zuerst = sichtbareHoehe(kastenVon(erste), erste.fensterHoehe, erste.karteAusschnitt);
-      expect(zuerst, `${name}: ${was} war von Anfang an nicht zu sehen`).toBeGreaterThan(
-        SICHT_TOLERANZ_PX,
+      const obenZuerst = kastenVon(erste).oben;
+      const unterZuerst = unterDemFenster(
+        kastenVon(erste),
+        erste.fensterHoehe,
+        erste.karteAusschnitt,
       );
       for (const m of schritte) {
         const k = kastenVon(m);
+        const gewandert = Math.round(Math.abs(k.oben - obenZuerst) * 100) / 100;
+        expect(
+          gewandert,
+          `${name}: Schritt ${m.schritt}: ${was} steht bei ${k.oben} px statt bei ${obenZuerst} px wie beim ersten Schritt (${gewandert} px gewandert)`,
+        ).toBeLessThanOrEqual(SICHT_TOLERANZ_PX);
         const ueber = ueberDemFenster(k, m.karteAusschnitt);
         expect(
           ueber,
-          `${name}: Schritt ${m.schritt}: ${was} ist ${ueber} px ueber den sichtbaren Teil der Huelle gewandert (Kasten ab ${k.oben}, Huelle ab ${m.karteAusschnitt.oben})`,
+          `${name}: Schritt ${m.schritt}: ${was} ist ${ueber} px ueber den sichtbaren Teil der Artikelspalte gewandert (Kasten ab ${k.oben}, Spalte ab ${m.karteAusschnitt.oben})`,
         ).toBeLessThanOrEqual(SICHT_TOLERANZ_PX);
         const unter = unterDemFenster(k, m.fensterHoehe, m.karteAusschnitt);
         expect(
-          unter,
-          `${name}: Schritt ${m.schritt}: ${was} beginnt ${unter} px UNTER dem sichtbaren Teil der Huelle (Huelle bis ${m.karteAusschnitt.unten})`,
-        ).toBe(0);
+          Math.round((unter - unterZuerst) * 100) / 100,
+          `${name}: Schritt ${m.schritt}: ${was} beginnt ${unter} px unter dem sichtbaren Teil der Artikelspalte statt ${unterZuerst} px wie beim ersten Schritt (Spalte bis ${m.karteAusschnitt.unten})`,
+        ).toBeLessThanOrEqual(SICHT_TOLERANZ_PX);
         const sichtbar = sichtbareHoehe(k, m.fensterHoehe, m.karteAusschnitt);
         expect(
           Math.abs(sichtbar - zuerst),
@@ -1538,7 +2450,7 @@ describe("JOB 3593 · L · lange Warteschlange — Auswahl UND Artikel im Fenste
 
   it("L8 · FLACHES FENSTER · Pfeiltaste: Karte und Titel stehen still — gleicher Ort, gleich viel zu sehen, an jedem der 30 Schritte", () => {
     expect(fehler3).toBeNull();
-    flacheKartenPruefung("Pfeiltaste 1280x420", tasteFlach);
+    karteStehtStill("Pfeiltaste 1280x420", tasteFlach);
   });
 
   it("L9 · FLACHES FENSTER · Mausrad: die Auswahl bleibt im Bild", () => {
@@ -1552,7 +2464,41 @@ describe("JOB 3593 · L · lange Warteschlange — Auswahl UND Artikel im Fenste
 
   it("L10 · FLACHES FENSTER · Mausrad: Karte und Titel stehen still — gleicher Ort, gleich viel zu sehen, an jedem der 30 Schritte", () => {
     expect(fehler3).toBeNull();
-    flacheKartenPruefung("Mausrad 1280x420", radFlach);
+    karteStehtStill("Mausrad 1280x420", radFlach);
+  });
+
+  // ------------------------------------------------------------------------------------------
+  // JOB 3812 · DIE LAGE DAZWISCHEN (HINWEIS 1) — dieselben Aussagen bei 1280×600.
+  // ------------------------------------------------------------------------------------------
+  // `archiv/3625/runde-2/RUECKGABE.md:66`: „Nur die Fensterhöhen 900 und 420 sind gemessen, Höhen
+  // dazwischen nicht." Zwei Stützstellen können eine Regel vortäuschen, die in der Mitte nicht
+  // gilt; hier steht die dritte. Kein neuer Massstab — wörtlich dieselben Prüfungen wie L7–L10.
+  it("L13a · MITTLERES FENSTER 1280x600 · Pfeiltaste: die Auswahl bleibt im Bild", () => {
+    expect(fehler3).toBeNull();
+    const befund = ersterSichtverlust(tasteMittel?.schritte ?? [], "auswahl");
+    expect(
+      befund.schritt,
+      `die Auswahl ist bei Schritt ${befund.schritt} nicht mehr ganz zu sehen (${befund.fehlbetragPx} px fehlen, Rollposition ${befund.rollposition}, sichtbarer Bereich ${befund.bereichOben}–${befund.bereichUnten} in ${befund.rollerName})`,
+    ).toBeNull();
+  });
+
+  it("L13b · MITTLERES FENSTER 1280x600 · Pfeiltaste: Karte und Titel stehen still", () => {
+    expect(fehler3).toBeNull();
+    karteStehtStill("Pfeiltaste 1280x600", tasteMittel);
+  });
+
+  it("L13c · MITTLERES FENSTER 1280x600 · Mausrad: die Auswahl bleibt im Bild", () => {
+    expect(fehler3).toBeNull();
+    const befund = ersterSichtverlust(radMittel?.schritte ?? [], "auswahl");
+    expect(
+      befund.schritt,
+      `die Auswahl ist bei Schritt ${befund.schritt} nicht mehr ganz zu sehen (${befund.fehlbetragPx} px fehlen, Rollposition ${befund.rollposition}, sichtbarer Bereich ${befund.bereichOben}–${befund.bereichUnten} in ${befund.rollerName})`,
+    ).toBeNull();
+  });
+
+  it("L13d · MITTLERES FENSTER 1280x600 · Mausrad: Karte und Titel stehen still", () => {
+    expect(fehler3).toBeNull();
+    karteStehtStill("Mausrad 1280x600", radMittel);
   });
 
   it("L11 · die Restbewegung der HUELLE ist erklaert und festgenagelt — Ueberhang der Liste = gerollte Strecke", () => {
@@ -1562,6 +2508,8 @@ describe("JOB 3593 · L · lange Warteschlange — Auswahl UND Artikel im Fenste
       ["Mausrad 1280x900", rad],
       ["Pfeiltaste 1280x420", tasteFlach],
       ["Mausrad 1280x420", radFlach],
+      ["Pfeiltaste 1280x600", tasteMittel],
+      ["Mausrad 1280x600", radMittel],
     ] as const) {
       const schritte = lauf?.schritte ?? [];
       expect(schritte.length, `${name}: keine Schritte gemessen`).toBe(SCHRITTE);
@@ -1576,14 +2524,19 @@ describe("JOB 3593 · L · lange Warteschlange — Auswahl UND Artikel im Fenste
       // Gemessen im Ausgangszustand, bevor der erste Schritt etwas verschoben hat. Steht diese
       // Zeile, ist die Restbewegung erklärt statt nur begrenzt; und sie bleibt wahr, ob der
       // Überhang nun null ist (heute) oder wieder entsteht (Rückfall).
+      //
+      // JOB 3812: gelesen wird `karteHuelle` und nicht mehr `karteAusschnitt`. Die AUSSAGE dieses
+      // Falls ist Wort für Wort dieselbe geblieben („die Hülle rollt genau um den Überhang der
+      // Liste") — sie bezieht sich weiter auf die Hülle der Anwendung. Nur der Messwert, der sie
+      // trägt, heisst jetzt so, wie sie ihn nennt.
       const s = lauf?.start;
       const ueberhang =
         Math.round(
-          Math.max(0, (s?.auswahlAusschnitt.unten ?? 0) - (s?.karteAusschnitt.unten ?? 0)) * 100,
+          Math.max(0, (s?.auswahlAusschnitt.unten ?? 0) - (s?.karteHuelle.unten ?? 0)) * 100,
         ) / 100;
       expect(
         Math.abs(weiteste - ueberhang),
-        `${name}: die Huelle rollte ${weiteste} px, die Liste haengt aber ${ueberhang} px unter ihrem sichtbaren Teil (Liste bis ${s?.auswahlAusschnitt.unten}, Huelle bis ${s?.karteAusschnitt.unten})`,
+        `${name}: die Huelle rollte ${weiteste} px, die Liste haengt aber ${ueberhang} px unter ihrem sichtbaren Teil (Liste bis ${s?.auswahlAusschnitt.unten}, Huelle bis ${s?.karteHuelle.unten})`,
       ).toBeLessThanOrEqual(2 * SICHT_TOLERANZ_PX);
     }
   });
@@ -1597,6 +2550,7 @@ describe("JOB 3593 · L · lange Warteschlange — Auswahl UND Artikel im Fenste
     for (const [name, lauf] of [
       ["1280x900", taste],
       ["1280x420", tasteFlach],
+      ["1280x600", tasteMittel],
     ] as const) {
       const s = lauf?.start;
       const kopfHoehe = s?.schlange?.oben ?? -1;
@@ -1618,7 +2572,9 @@ describe("JOB 3593 · L · lange Warteschlange — Auswahl UND Artikel im Fenste
         schlangeUnten,
         `${name}: die Liste reicht bis ${schlangeUnten} px, das Fenster ist ${fensterHoehe} px hoch (Kopf ${kopfHoehe} px)`,
       ).toBeLessThanOrEqual(fensterHoehe + SICHT_TOLERANZ_PX);
-      const huelleUnten = s?.karteAusschnitt.unten ?? 0;
+      // JOB 3812: `karteHuelle` — der Satz dieses Falls spricht von der HÜLLE, und die ist seit
+      // dieser Runde nicht mehr derselbe Kasten wie der Ausschnitt der Karte.
+      const huelleUnten = s?.karteHuelle.unten ?? 0;
       expect(
         schlangeUnten,
         `${name}: die Liste reicht bis ${schlangeUnten} px, der sichtbare Teil der Huelle endet bei ${huelleUnten} px (Kopf ${kopfHoehe} px, Fenster ${fensterHoehe} px)`,
@@ -1636,6 +2592,7 @@ describe("JOB 3593 · L · lange Warteschlange — Auswahl UND Artikel im Fenste
     for (const [name, lauf] of [
       ["1280x900", probenHoch],
       ["1280x420", probenFlach],
+      ["1280x600", probenMittel],
     ] as const) {
       expect(lauf, `${name}: keine Kopfprobe gemessen`).not.toBeNull();
       expect(lauf?.proben.length, `${name}: nicht alle Proben gefahren`).toBe(PROBEN_HOEHEN.length);
@@ -1674,6 +2631,377 @@ describe("JOB 3593 · L · lange Warteschlange — Auswahl UND Artikel im Fenste
         ).toBeLessThanOrEqual(SICHT_TOLERANZ_PX);
       }
     }
+  });
+
+  // ==========================================================================================
+  // JOB 3812 · RECHTS DARF MIT — der ganze Artikel lesbar, ohne dass links etwas wandert.
+  // ==========================================================================================
+  //
+  // PEDIS SATZ hat zwei Hälften: „links durch die Artikelliste gehen und rechts den passenden
+  // Artikel sehen." JOB 3593/3625 haben die erste gebaut. Die zweite stimmte bei flachen Fenstern
+  // nicht: von der 254,25 px hohen Karte fehlten bei 1280×420 gemessene 82,5 px, und der einzige
+  // Weg zum Rest war, die HÜLLE zu rollen — in der die Liste mit liegt. Wer lesen wollte, verlor
+  // die Übersicht, die er gerade gewonnen hatte (`archiv/3625/runde-2/RUECKGABE.md`, REST).
+  //
+  // Pedi am 12.09. 21:4x: „ja, rechts darf mit." Damit ist die Grenze „nur die linke Liste" aus
+  // `PRIORITAETEN.md` aufgehoben — und nur sie.
+  //
+  // L15 MISST DEN ZWECK, NICHT DEN GRIFF (Prüfpunkt 1 des Auftrags): nicht „trägt die rechte
+  // Spalte ein `overflow-y-auto`", sondern „ist das Ende des Artikels erreichbar, WÄHREND Liste
+  // und Auswahl stillstehen". Beides in derselben Messung, in Pixeln.
+  const artikelLesbar = (p: Leseprobe | null): void => {
+    expect(p, "keine Leseprobe gemessen").not.toBeNull();
+    if (!p) return;
+    const name = p.lage;
+    // 1. DER ANFANG steht von sich aus im Bild — sonst wäre schon das erste Lesen ein Rollen.
+    const ueber = ueberDemFenster(p.vorher.karte, p.ausschnitt);
+    expect(
+      ueber,
+      `${name}: die Karte beginnt ${ueber} px ueber dem sichtbaren Bereich (Karte ab ${p.vorher.karte.oben}, Bereich ab ${p.ausschnitt.oben})`,
+    ).toBeLessThanOrEqual(SICHT_TOLERANZ_PX);
+    // 2. DAS ENDE ist erreichbar. `unterDemFenster` auf die Unterkante der Karte sagt genau das:
+    //    wie viele Pixel weit unterhalb des sichtbaren Bereichs sie NACH dem Rollen noch liegt.
+    //    Null heisst: wer rollt, kommt an. Ist gar nichts rollbar (`max: 0`), muss die Karte schon
+    //    ohne Rollen ganz dastehen — dann prüft dieselbe Zeile den Fall aus §5.1(c).
+    const ende = { oben: p.nachher.karte.unten, unten: p.nachher.karte.unten };
+    const fehlt =
+      Math.round(unterDemFenster(ende, p.fensterHoehe, p.ausschnittNachher) * 100) / 100;
+    //    DIE ELLE IST DIESELBE EINE (`SICHT_TOLERANZ_PX`) und kein Zugeständnis: `scrollHeight`
+    //    und `clientHeight` sind GANZE Zahlen, die Karte ist 254,25 px hoch. Gemessen bleiben
+    //    dadurch 0,75 px am Ende stehen (1280×420 und 1280×600, Cloud-Lauf
+    //    6f4e00d58bc8859d2e2c2ce2) — gebrochene Gerätepixel, genau der Fall, für den die Toleranz
+    //    in `sichtregel.ts` beschrieben ist. Ein echter Verlust ist zweistellig.
+    expect(
+      fehlt,
+      `${name}: das Ende des Artikels liegt nach dem Rollen noch ${fehlt} px unter dem sichtbaren Bereich (Karte bis ${p.nachher.karte.unten}, Bereich bis ${p.ausschnittNachher.unten}; es rollte ${p.rollerName} um ${p.gerollt} von ${p.max} px)`,
+    ).toBeLessThanOrEqual(SICHT_TOLERANZ_PX);
+    // 3. UND LINKS BEWEGT SICH NICHTS. Das ist die Zeile, die heute rot ist: die Karte liegt in
+    //    derselben Hülle wie die Liste, also wandert die Liste beim Lesen mit hinaus.
+    for (const [was, a, b] of [
+      ["die Liste", p.vorher.schlange, p.nachher.schlange],
+      ["die Auswahl", p.vorher.auswahl, p.nachher.auswahl],
+    ] as const) {
+      const gewandert = Math.round(Math.abs(b.oben - a.oben) * 100) / 100;
+      expect(
+        gewandert,
+        `${name}: ${was} ist beim Lesen des Artikels ${gewandert} px gewandert (von ${a.oben} auf ${b.oben}) — es rollte ${p.rollerName} um ${p.gerollt} px, und die Liste liegt darin: ${p.traegtListe}`,
+      ).toBeLessThanOrEqual(SICHT_TOLERANZ_PX);
+    }
+    // 4. DIE URSACHE, als eigener Messwert und nicht als Folgerung aus 3: der Bereich, der beim
+    //    Lesen rollt, trägt die Warteschlange NICHT. Fällt diese Zeile, ist der alte Weg zurück,
+    //    auch wenn die Liste zufällig gerade stehen blieb (kurze Liste, kein Überlauf).
+    expect(
+      p.traegtListe,
+      `${name}: der Artikel und die Liste liegen im selben Rollbereich (${p.rollerName}, ${p.max} px Rollstrecke)`,
+    ).toBe(false);
+    // 5. Und die Probe hinterlässt nichts: die Rollstellung ist zurückgenommen.
+    expect(
+      Math.abs(p.zurueck.karte.oben - p.vorher.karte.oben),
+      `${name}: nach der Probe steht die Karte bei ${p.zurueck.karte.oben} statt ${p.vorher.karte.oben}`,
+    ).toBeLessThanOrEqual(SICHT_TOLERANZ_PX);
+  };
+
+  it("L15 · der GANZE Artikel ist lesbar — und Liste und Auswahl stehen dabei still", () => {
+    expect(fehler3).toBeNull();
+    expect(leseproben.length, "nicht alle Fensterlagen gemessen").toBe(3);
+    for (const p of leseproben) {
+      artikelLesbar(p);
+    }
+  });
+
+  // ------------------------------------------------------------------------------------------
+  // L16 · DIE FALLE, DIE DIESEN AUFTRAG SCHWER MACHT (§2e).
+  // ------------------------------------------------------------------------------------------
+  // Das „···"-Menü der Karte ist nicht portalisiert; sein Blatt ist ein `absolute` gesetzter
+  // Nachfahre der Karte (`PruefenMenue.tsx`). Ein `overflow-y-auto` an der rechten Spalte wird
+  // damit zu seinem neuen Beschneider — und `z-40` hilft nicht, denn `overflow` beschneidet
+  // unabhängig von der Stapelreihenfolge. Bei 1280×420 ist die rechte Spalte rund 60 px hoch.
+  //
+  // GEMESSEN WIRD MIT DER VORHANDENEN ELLE (`ueberDemFenster`, `unterDemFenster`,
+  // `sichtbareHoehe`), nicht mit einer zweiten: wie viel vom Blatt liegt in der Klammer aller
+  // beschneidenden Vorfahren, geschnitten mit dem Fenster. Dazu die zweite Hälfte von „vollständig
+  // sichtbar UND bedienbar": ob die Fläche an ihren beiden Kanten wirklich getroffen wird.
+  //
+  // ZWEI MESSUNGEN JE FENSTERLAGE: am Produktstand und mit PROBEWEISE aufgesetztem Rollbereich an
+  // der rechten Spalte. Die zweite bleibt auch nach der Reparatur stehen — sie sagt, dass das
+  // Blatt einem zusätzlichen Rollbereich nicht zum Opfer fällt, und nicht bloss, dass gerade
+  // keiner da ist.
+  const menueVollSichtbar = (b: Menuebefund): void => {
+    const name = `${b.lage}${b.probe ? " + Probe" : ""}`;
+    expect(b.hoehe, `${name}: das Menueblatt hat keine Hoehe`).toBeGreaterThan(0);
+    const ueber = ueberDemFenster(b.blatt, b.klammer);
+    const unter = unterDemFenster(b.blatt, b.fensterHoehe, b.klammer);
+    const sichtbar = Math.round(sichtbareHoehe(b.blatt, b.fensterHoehe, b.klammer) * 100) / 100;
+    const beschnitten = b.klammerNamen.length > 0 ? b.klammerNamen.join(", ") : "nur das Fenster";
+    expect(
+      ueber,
+      `${name}: das Menueblatt ist ${ueber} px ueber den sichtbaren Bereich gewandert (Blatt ab ${b.blatt.oben}, Bereich ab ${b.klammer.oben}; beschnitten von ${beschnitten})`,
+    ).toBeLessThanOrEqual(SICHT_TOLERANZ_PX);
+    expect(
+      unter,
+      `${name}: das Menueblatt beginnt ${unter} px UNTER dem sichtbaren Bereich (Bereich bis ${b.klammer.unten})`,
+    ).toBe(0);
+    expect(
+      Math.round((b.hoehe - sichtbar) * 100) / 100,
+      `${name}: vom Menueblatt (${b.hoehe} px hoch, ${b.blatt.oben}–${b.blatt.unten}) sind nur ${sichtbar} px zu sehen — beschnitten auf ${b.klammer.oben}–${b.klammer.unten} von ${beschnitten} (rechte Spalte ${b.spalte.oben}–${b.spalte.unten}, overflow-y ${b.spalteOverflow}, rollt ${b.spalteRollt})`,
+    ).toBeLessThanOrEqual(SICHT_TOLERANZ_PX);
+    // Die unabhängige Gegenprobe zur Rechnung oben: neun Punkte, jeder muss das Blatt treffen.
+    expect(
+      b.fehlstellen,
+      `${name}: an ${b.fehlstellen.length} von ${b.punkte} Punkten ist das Menueblatt nicht zu treffen (y ${b.fehlstellen.join(", ")}) — dort ist es abgeschnitten oder verdeckt (Blatt ${b.blatt.oben}–${b.blatt.unten}, position ${b.position})`,
+    ).toEqual([]);
+  };
+
+  it("L16 · das Aktionsmenue der Karte bleibt vollstaendig sichtbar und bedienbar — in jeder Fensterlage, auch mit eigenem Rollbereich", () => {
+    expect(fehler3).toBeNull();
+    expect(menuebefunde.length, "nicht alle Menuelagen gemessen").toBe(6);
+    for (const b of menuebefunde) {
+      menueVollSichtbar(b);
+    }
+  });
+
+  // ------------------------------------------------------------------------------------------
+  // L17 · UND MIT DER TASTATUR ALLEIN (Lieferung 4).
+  // ------------------------------------------------------------------------------------------
+  // Ein Rollbereich, den nur die Maus bewegen kann, ist keiner. Die Pfeiltasten IN DER LISTE
+  // gehören weiterhin der Auswahl (`Validation.tsx`, `onKeyDown` am `<ul>`) — daran wird nichts
+  // genommen; es entsteht auch kein globaler Tastenfänger. Gemessen wird der Weg daneben: ein
+  // Tabschritt aus der Liste heraus in die rechte Spalte, dann „Ende".
+  it("L17 · der Rollbereich der Artikelspalte ist mit der Tastatur erreichbar und bis ans Ende bedienbar", () => {
+    expect(fehler3).toBeNull();
+    expect(tastaturwege.length, "nicht alle Fensterlagen gemessen").toBe(3);
+    for (const w of tastaturwege) {
+      // 1. Ein Tabschritt aus der Liste landet in der Spalte — sie ist ein Halt und kein Loch.
+      expect(w.tabIndex, `${w.lage}: die Spalte traegt tabIndex ${w.tabIndex}`).toBe(0);
+      expect(
+        w.nachTab.fokusIstSpalte,
+        `${w.lage}: nach einem Tabschritt steht der Fokus auf ${w.nachTab.fokus} statt auf der Artikelspalte`,
+      ).toBe(true);
+      // 2. „Ende" bringt die Spalte an ihr Ende — oder es gibt nichts zu rollen (hohe Fenster).
+      expect(
+        Math.round((w.nachEnde.max - w.nachEnde.top) * 100) / 100,
+        `${w.lage}: nach „Ende" steht die Spalte bei ${w.nachEnde.top} von ${w.nachEnde.max} px`,
+      ).toBeLessThanOrEqual(SICHT_TOLERANZ_PX);
+      // 3. Und links bewegt sich dabei nichts — dieselbe Zusage wie in L15, auf dem anderen Weg.
+      for (const [was, a, b] of [
+        ["die Liste", w.nachTab.schlange, w.nachEnde.schlange],
+        ["die Auswahl", w.nachTab.auswahl, w.nachEnde.auswahl],
+      ] as const) {
+        const gewandert = Math.round(Math.abs(b.oben - a.oben) * 100) / 100;
+        expect(
+          gewandert,
+          `${w.lage}: ${was} ist beim Rollen mit der Taste ${gewandert} px gewandert (von ${a.oben} auf ${b.oben})`,
+        ).toBeLessThanOrEqual(SICHT_TOLERANZ_PX);
+      }
+    }
+  });
+
+  // ------------------------------------------------------------------------------------------
+  // L18 · EIN SCHON OFFENES BLATT — die Lücke, die Runde 1 nicht sehen konnte.
+  // ------------------------------------------------------------------------------------------
+  // L16 öffnet je Fensterlage eine FRISCHE Seite. Damit rechnet das Produkt in jeder Lage neu, und
+  // ein Blatt, das seine Rechnung aus einer ANDEREN Lage mitschleppt, kommt dort nicht vor. Genau
+  // dort sass der Fehler der Runde 1 (Prüfbericht, Korrekturpflicht 1): bei 1280×900 geöffnet und
+  // auf 1280×420 verkleinert, behielt das Blatt einen Deckel von 630 px in einem 420 px hohen
+  // Fenster. L18 fährt deshalb EINE Seite, EIN Öffnen und drei Änderungen darunter.
+  //
+  // DIE ELLE IST DIESELBE (`menueVollSichtbar`) — kein zweiter Massstab für den zweiten Weg.
+  // Dazu kommt EINE Frage, die L16 nicht stellen kann: steht das Blatt noch an seinem Auslöser?
+  // Die zwei erlaubten Orte stehen in `PruefenMenue.tsx` (`BLATT_ABSTAND_PX` = 32 px unter dessen
+  // Oberkante, oder `BLATT_LUFT_PX` = 4 px darüber, wenn es nach oben aufklappt); ein Blatt, das
+  // nach dem Verkleinern zwar im Fenster liegt, aber irgendwo, hat die Zusage nicht erfüllt.
+  const BLATT_ABSTAND_PX = 32;
+  const BLATT_LUFT_PX = 4;
+  const amAusloeser = (b: Menuebefund): number =>
+    Math.round(
+      Math.min(
+        Math.abs(b.blatt.oben - (b.ausloeser.oben + BLATT_ABSTAND_PX)),
+        Math.abs(b.blatt.unten - (b.ausloeser.oben - BLATT_LUFT_PX)),
+      ) * 100,
+    ) / 100;
+
+  it("L18 · das schon offene Aktionsmenue ueberlebt eine Fensteraenderung — ganz sichtbar, ganz bedienbar, an seinem Ausloeser", () => {
+    expect(fehler3).toBeNull();
+    expect(menuewandel.length, "nicht alle fuenf Schritte des Wandels gemessen").toBe(5);
+    // Die ersten drei Schritte: frisch geöffnet, dann zweimal verkleinert. Hier gilt BEIDES.
+    for (const w of menuewandel.slice(0, 3)) {
+      menueVollSichtbar(w.befund);
+      const ab = amAusloeser(w.befund);
+      expect(
+        ab,
+        `${w.schritt}: das Blatt steht ${ab} px neben seinem erlaubten Ort (Blatt ${w.befund.blatt.oben}–${w.befund.blatt.unten}, Ausloeser ab ${w.befund.ausloeser.oben}, Fenster ${w.befund.fensterHoehe} px hoch)`,
+      ).toBeLessThanOrEqual(SICHT_TOLERANZ_PX);
+    }
+    // Und der Deckel ist WIRKLICH nachgerechnet und nicht bloss zufällig gross genug: im flachen
+    // Fenster muss das Blatt kürzer sein als im hohen. Ohne diese Zeile bestünde L18 auch ein
+    // Produkt, das den Deckel ganz weggelassen hätte.
+    const hoch = menuewandel[0];
+    const flach = menuewandel[2];
+    if (!hoch || !flach) return;
+    expect(
+      flach.befund.hoehe,
+      `nach dem Verkleinern ist das Blatt ${flach.befund.hoehe} px hoch wie vorher (${hoch.befund.hoehe} px) — es wurde nicht nachgerechnet`,
+    ).toBeLessThan(hoch.befund.hoehe);
+  });
+
+  // ------------------------------------------------------------------------------------------
+  // L18b · UND WENN DIE ARTIKELSPALTE UNTER DEM OFFENEN BLATT ROLLT.
+  // ------------------------------------------------------------------------------------------
+  // Der vierte Schritt derselben Seite. Das Blatt hängt seit Runde 1 am FENSTER (`position: fixed`)
+  // und folgt dem Auslöser NICHT, wenn die Spalte rollt — das ist eine Entscheidung mit Grund und
+  // keine Lücke: der Auslöser wandert dabei aus dem Bild (gemessen 163,5 → −29,5 px bei 193 px
+  // Rollweg), und ein Blatt, das ihm folgte, stünde bei 2,5 px über dem Kopfband der Anwendung.
+  //
+  // ZUGESICHERT WIRD DESHALB DAS SCHWÄCHERE UND WAHRE: das Blatt bleibt vollständig im Fenster und
+  // an allen neun Punkten bedienbar; seine Handlungen gelten weiter demselben Artikel. Dass der
+  // Schritt überhaupt etwas bewegt hat, ist ein eigener Messwert — ein Rollweg von 0 px prüfte
+  // nichts, und der Abstand zum Auslöser steht als Zahl da, statt verschwiegen zu werden.
+  it("L18b · rollt die Artikelspalte unter dem offenen Blatt, bleibt es ganz sichtbar und bedienbar", () => {
+    expect(fehler3).toBeNull();
+    expect(menuewandel.length, "nicht alle fuenf Schritte des Wandels gemessen").toBe(5);
+    const w = menuewandel[3];
+    const flach = menuewandel[2];
+    if (!w || !flach) return;
+    expect(
+      w.gerollt?.max ?? 0,
+      `die Artikelspalte hatte nichts zu rollen (max ${w.gerollt?.max}) — der Schritt pruefte nichts`,
+    ).toBeGreaterThan(0);
+    expect(
+      w.gerollt?.top ?? 0,
+      `die Artikelspalte ist nicht gerollt (top ${w.gerollt?.top} von ${w.gerollt?.max})`,
+    ).toBeGreaterThan(0);
+    // Der Auslöser hat sich dabei wirklich bewegt — sonst wäre die Aussage darunter leer.
+    const gewandert =
+      Math.round((flach.befund.ausloeser.oben - w.befund.ausloeser.oben) * 100) / 100;
+    expect(
+      gewandert,
+      `der Ausloeser steht nach dem Rollen noch bei ${w.befund.ausloeser.oben} statt vorher ${flach.befund.ausloeser.oben}`,
+    ).toBeGreaterThan(0);
+    // Die eigentliche Zusage, mit derselben Elle wie L16.
+    menueVollSichtbar(w.befund);
+    // Und der Abstand zum Auslöser als offene Zahl: er ist jetzt gross, weil der Auslöser
+    // weggerollt ist. Diese Zeile sagt nur, dass die Zahl gemessen wurde und nicht behauptet ist.
+    expect(
+      Number.isFinite(amAusloeser(w.befund)),
+      `der Abstand zum Ausloeser (${amAusloeser(w.befund)} px) ist keine Zahl`,
+    ).toBe(true);
+  });
+
+  // ------------------------------------------------------------------------------------------
+  // L18c · UND DANN ÄNDERT SICH DAS FENSTER NOCH EINMAL — die Lücke der Runde 2.
+  // ------------------------------------------------------------------------------------------
+  // DER BEFUND (Prüfbericht der Runde 2, Korrekturpflicht 1 und 2). L18b endet nach dem Rollen.
+  // Genau dahinter lag der Fehler: Runde 2 rechnete die Lage bei jedem `resize` neu aus dem
+  // Rechteck des Auslösers — und der ist nach dem Rollen aus dem Bild. Der Prüfer hat es mit einem
+  // dreissigfach wiederholten Artikel nachgemessen (Auslöser bei `top` −549,5 px): das Blatt stand
+  // danach bei −517,5 bis −269,5 px, vollständig über dem Fenster, an allen neun Punkten
+  // unbedienbar.
+  //
+  // AUF DIESER BÜHNE IST DER ARTIKEL KÜRZER (die Spalte rollt 193 px statt 713), und derselbe
+  // Fehler zeigt sich deshalb nicht als Verschwinden, sondern als SPRUNG: das Blatt säße danach
+  // bei 2,5 px statt bei 195,5 — über dem Kopfband der Anwendung, ohne Auslöser darunter. Es ist
+  // dieselbe Rechnung ohne Untergrenze, nur mit kleinerem Weg. Deshalb misst L18c BEIDES: die
+  // Zusage (ganz im Fenster, ganz bedienbar) und den Ort (das Blatt steht, wo es stand).
+  //
+  // WARUM DER ORT UND NICHT „AM AUSLÖSER": der Auslöser ist weggerollt — es gibt keinen richtigen
+  // Ort an ihm mehr. Die Zusage, die das Produkt hält, ist die aus L18b: das Blatt bleibt stehen.
+  // L18c verlangt, dass auch eine Fensteränderung daran nichts ändert.
+  it("L18c · nach dem Rollen zieht eine weitere Fensteraenderung das Blatt nicht von seinem Ort", () => {
+    expect(fehler3).toBeNull();
+    expect(menuewandel.length, "nicht alle fuenf Schritte des Wandels gemessen").toBe(5);
+    const vor = menuewandel[3];
+    const nach = menuewandel[4];
+    if (!vor || !nach) return;
+    // Der Fall prüft nur dann etwas, wenn der Auslöser wirklich aus dem Bild gerollt IST — sonst
+    // gäbe es die Zahl gar nicht, an der sich die alte Rechnung verrechnet hat.
+    expect(
+      vor.befund.ausloeser.oben,
+      `der Ausloeser steht bei ${vor.befund.ausloeser.oben} px und ist gar nicht aus dem Bild gerollt — L18c pruefte nichts`,
+    ).toBeLessThan(0);
+    // Und das Fenster hat sich wirklich geändert.
+    expect(
+      nach.befund.fensterBreite,
+      `die Fensterbreite ist mit ${nach.befund.fensterBreite} px dieselbe wie vorher (${vor.befund.fensterBreite} px) — es gab kein Ereignis`,
+    ).not.toBe(vor.befund.fensterBreite);
+    expect(
+      nach.befund.fensterHoehe,
+      "die Fensterhoehe hat sich mitgeaendert — dann sagt der Fall nichts ueber die Ursache",
+    ).toBe(vor.befund.fensterHoehe);
+    // 1. Die Zusage, mit derselben Elle wie L16, L18 und L18b.
+    menueVollSichtbar(nach.befund);
+    // 2. Und es steht noch da, wo es stand.
+    const versprung =
+      Math.round(Math.abs(nach.befund.blatt.oben - vor.befund.blatt.oben) * 100) / 100;
+    expect(
+      versprung,
+      `das Blatt ist durch die Fensteraenderung ${versprung} px gewandert (vorher ${vor.befund.blatt.oben}–${vor.befund.blatt.unten}, nachher ${nach.befund.blatt.oben}–${nach.befund.blatt.unten}, Ausloeser bei ${nach.befund.ausloeser.oben}, Fenster ${nach.befund.fensterBreite}x${nach.befund.fensterHoehe})`,
+    ).toBeLessThanOrEqual(SICHT_TOLERANZ_PX);
+  });
+
+  // ------------------------------------------------------------------------------------------
+  // L19 · EIN ANDERER ARTIKEL FÄNGT OBEN AN (die zweite Prüflücke des Berichts).
+  // ------------------------------------------------------------------------------------------
+  // Die rechte Spalte hat seit diesem Job eine Rollstellung, und dasselbe DOM-Element bleibt beim
+  // Wechsel der Auswahl stehen (die Karte ist eine Zeichenfunktion, keine Komponente). Ohne Zutun
+  // behielte es seinen `scrollTop` — wer bei 1280×420 ans Ende eines Artikels gerollt ist und dann
+  // den nächsten wählt, läse dessen Mitte. Gemessen wird der ganze Weg: rollen, wechseln, schauen.
+  it("L19 · nach einem Artikelwechsel steht der neue Artikel wieder an seinem Anfang", () => {
+    expect(fehler3).toBeNull();
+    expect(artikelwechsel, "kein Artikelwechsel gemessen").not.toBeNull();
+    const w = artikelwechsel;
+    if (!w) return;
+    // 1. Die Ausgangslage war wirklich heruntergerollt — sonst prüfte der Fall nichts.
+    expect(
+      w.vorher.max,
+      `${w.lage}: die Artikelspalte hatte nichts zu rollen (max ${w.vorher.max})`,
+    ).toBeGreaterThan(0);
+    expect(
+      w.vorher.top,
+      `${w.lage}: vor dem Wechsel stand die Spalte bei ${w.vorher.top} von ${w.vorher.max} px`,
+    ).toBeGreaterThan(0);
+    // 2. Es steht wirklich ein ANDERER Artikel da.
+    expect(
+      w.nachher.titel,
+      `${w.lage}: nach dem Wechsel steht derselbe Titel da (${w.nachher.titel})`,
+    ).not.toBe(w.vorherTitel);
+    // 3. Und er fängt oben an: die Rollstellung ist zurück auf null, und der Anfang der Karte
+    //    steht im sichtbaren Ausschnitt — beides, denn das eine ist der Griff und das andere der
+    //    Zweck.
+    expect(
+      w.nachher.top,
+      `${w.lage}: der neue Artikel steht ${w.nachher.top} px heruntergerollt da (von ${w.vorher.top} px beim alten, max ${w.nachher.max})`,
+    ).toBeLessThanOrEqual(SICHT_TOLERANZ_PX);
+    const ueber = ueberDemFenster(w.nachher.karte, w.nachher.ausschnitt);
+    expect(
+      ueber,
+      `${w.lage}: der neue Artikel beginnt ${ueber} px ueber dem sichtbaren Bereich (Karte ab ${w.nachher.karte.oben}, Bereich ab ${w.nachher.ausschnitt.oben})`,
+    ).toBeLessThanOrEqual(SICHT_TOLERANZ_PX);
+    // 4. Und links bewegt sich dabei nichts — dieselbe Zusage wie in L15 und L17.
+    //    NUR die Liste wird hier vorher/nachher verglichen: „die Auswahl" ist nach dem Wechsel ein
+    //    ANDERES Element (der nächste Eintrag), ihre Oberkante MUSS sich also unterscheiden. Für
+    //    sie gilt die Zusage in ihrer eigenen Form — sie steht sichtbar in der Liste.
+    const gewandert =
+      Math.round(Math.abs(w.nachher.schlange.oben - w.vorher.schlange.oben) * 100) / 100;
+    expect(
+      gewandert,
+      `${w.lage}: die Liste ist beim Artikelwechsel ${gewandert} px gewandert (von ${w.vorher.schlange.oben} auf ${w.nachher.schlange.oben})`,
+    ).toBeLessThanOrEqual(SICHT_TOLERANZ_PX);
+    //    Und die neue Auswahl ist in der Liste zu sehen. VOLLSTÄNDIG ist sie es bei 1280×420
+    //    nicht, und das ist ein Befund dieses Laufs und keine gelockerte Elle: die Liste zeigt in
+    //    dieser Fensterlage nur 60,5 px (138,5–199), der angeklickte zweite Eintrag steht bei
+    //    182,72–241,16 und reicht 42,16 px darunter hinaus. Das gehört dem KLICKWEG und nicht
+    //    diesem Auftrag: `auswahlSchieben` holt die Auswahl mit `scrollIntoView({block:"nearest"})`
+    //    ins Bild (das misst L1/L7), der Klick tut es bewusst nicht — wer klickt, hat sein Ziel
+    //    schon getroffen (JOB 3464). Zugesichert wird deshalb hier nur, dass der Wechsel die
+    //    Auswahl nicht ganz aus der Liste geschoben hat; die Zahlen stehen in der Meldung.
+    const sichtbar =
+      Math.round(
+        sichtbareHoehe(w.nachher.auswahl, w.nachher.fensterHoehe, w.nachher.schlange) * 100,
+      ) / 100;
+    expect(
+      sichtbar,
+      `${w.lage}: von der neuen Auswahl (${w.nachher.auswahl.oben}–${w.nachher.auswahl.unten}) ist in der Liste (${w.nachher.schlange.oben}–${w.nachher.schlange.unten}) nichts zu sehen`,
+    ).toBeGreaterThan(0);
   });
 
   it("L5 · die Regel selbst taugt: sie erkennt einen Kasten, der nachweislich ausserhalb liegt", () => {

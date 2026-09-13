@@ -693,6 +693,32 @@ export function Validation(): JSX.Element {
     aktivRef.current = aktiv?.id ?? null;
   });
 
+  // ------------------------------------------------------------------------------------------
+  // EIN ANDERER ARTIKEL FÄNGT OBEN AN (JOB 3812, Runde 2).
+  // ------------------------------------------------------------------------------------------
+  // Seit die rechte Spalte ihren eigenen Rollbereich hat, HAT sie eine Rollstellung — und die
+  // überlebt den Wechsel der Auswahl, weil dasselbe DOM-Element stehen bleibt: die Karte ist eine
+  // Zeichenfunktion und keine Komponente (`karte(aktiv)` weiter unten), das `<div>` darum wird
+  // nicht neu gehängt. Wer bei 1280×420 ans Ende eines Artikels gerollt ist und dann den nächsten
+  // wählt, landete damit mitten im neuen — Pedis Satz zu dieser Seite lautet aber „rechts den
+  // passenden Artikel sehen", nicht dessen Mitte. Gemessen wird das in L19 des Browserblocks
+  // (`tests/design/job2935-validierung-fussband.test.ts`), samt Gegenprobe ohne diese Zeilen.
+  //
+  // AM `id` UND NICHT AM OBJEKT: eine eintreffende Auffrischung liefert ein neues Objekt für
+  // denselben Artikel. Hinge der Effekt daran, spränge die Rollstellung bei jeder Auffrischung auf
+  // null — genau das, was das Zustandsmodell des Auftrags (§9) ausschliesst. Es entsteht kein
+  // Zuhörer und keine Taste: die Rollstellung gehört dem Artikel, der gezeigt wird.
+  const gezeigteId = aktiv?.id ?? null;
+  useEffect(() => {
+    const el = pruefbereichRef.current;
+    // `gezeigteId !== null` ist keine Formalie für den Abhängigkeitsprüfer: steht rechts gar kein
+    // Artikel (leere Warteschlange, Ladelage, Erstfehler), ist die Spalte kinderlos — dort gibt es
+    // keine Rollstellung, die zurückzusetzen wäre. Gemessen in `rollbereich-lagen.test.tsx` F9.
+    if (el && gezeigteId !== null) {
+      el.scrollTop = 0;
+    }
+  }, [gezeigteId]);
+
   /**
    * Die Auswahl um `delta` Einträge verschieben. Ohne `ausfuehren` wird nur GEFRAGT, ob der Schritt
    * überhaupt möglich ist — das braucht der Radlauf, um zu entscheiden, ob er das Ereignis
@@ -1207,7 +1233,48 @@ export function Validation(): JSX.Element {
         </div>
 
         {/* ---- Die eine Karte (Pruefen.dc.html Z.51–62) -------------------------------------- */}
-        <div ref={pruefbereichRef} tabIndex={schmal ? -1 : undefined} className="min-w-0 flex-1">
+        {/*
+            JOB 3812: DIE RECHTE SPALTE ROLLT JETZT SELBST — spiegelbildlich zur linken.
+
+            WAS SIE VORHER TAT: nichts. Sie trug `min-w-0 flex-1`, sonst keine Regel; ihre Höhe war
+            die Höhe der Karte, und die ragte aus der Fläche heraus (`items-start` am Elternteil
+            streckt sie nicht). Wer den unteren Teil des Artikels lesen wollte, musste die HÜLLE
+            rollen — und in der liegt die Liste mit.
+
+            GEMESSEN (Runde 1 dieses Jobs, `job2935-validierung-fussband.test.ts` L15, Cloud-Lauf
+            499bd2d50ed2dd054d59919d; die Karte ist in jeder Lage 138,5–392,75, also 254,25 px hoch):
+              1280×900 · sichtbare Hülle 56–683  · kein Überlauf   → nichts zu rollen, nichts fehlt
+              1280×600 · sichtbare Hülle 56–383  · MAIN rollt 10 px  → Liste und Auswahl wandern 10 px
+              1280×420 · sichtbare Hülle 56–227  · MAIN rollt 166 px → Liste und Auswahl wandern 166 px
+            Bei 1280×420 stand die Liste danach bei −27,5 px: sie war aus dem Bild, genau die
+            Übersicht, die JOB 3593/3625 gerade hergestellt hatten. Der untere Teil des Artikels war
+            also erreichbar — aber nur gegen den Preis, den Pedi nicht zahlen wollte.
+
+            DIE ERWEITERUNG IST FREIGEGEBEN. Bis zum 12.09. galt seine Grenze „nur die linke Liste"
+            (`PRIORITAETEN.md`, PRUEFEN-LISTENNAVIGATION); JOB 3625 hat den Rest deshalb ungeschnitten
+            zurückgegeben. Am 12.09. 21:4x sagte Pedi wörtlich: „ja, rechts darf mit."
+
+            WARUM DIESE DREI REGELN UND KEINE VIERTE: `lg:h-full` holt die Höhe der Fläche in die
+            Spalte (dieselbe Zeile wie links, `items-start` streckt sie nicht von selbst),
+            `lg:min-h-0` erlaubt ihr, unter die Höhe der Karte zu schrumpfen, und erst dann bewegt
+            `lg:overflow-y-auto` etwas. Kein Prozentdeckel: `vh` rechnet den Kopf über der Fläche
+            nicht mit — das ist die Lehre aus JOB 3625.
+
+            `tabIndex` GILT JETZT IN BEIDEN BAUFORMEN. Schmal bleibt es `-1` (der Klick führt den
+            Blick dorthin, ohne einen Tabstopp zu erzeugen); breit ist die Spalte ein Rollbereich,
+            und ein Rollbereich, den man nur mit der Maus bewegen kann, ist keiner. Dass ein Mensch
+            damit wirklich bis ans Ende kommt, misst L17 — mit der Taste, nicht mit dem Rad.
+
+            DER SCHMALE WEG BLEIBT UNBERÜHRT (`lg:` greift ab 1024 px): dort steht die Karte UNTER
+            der Liste, und `:1187` führt den Blick bewusst zu ihr. Eine gedeckelte Karte wäre dort
+            eine Verschlechterung — genau so steht es schon für die Liste weiter oben.
+        */}
+        <div
+          ref={pruefbereichRef}
+          data-testid="pruefen-artikelspalte"
+          tabIndex={schmal ? -1 : 0}
+          className="min-w-0 flex-1 lg:h-full lg:min-h-0 lg:overflow-y-auto"
+        >
           {aktiv ? karte(aktiv) : null}
         </div>
       </div>

@@ -35,7 +35,7 @@ vi.mock("../../apps/web/src/app/ToastContext", async (o) =>
 
 import { act } from "../../apps/web/node_modules/react";
 import { endpoints } from "../../apps/web/src/api/endpoints";
-import { type Brett, flush, mounteBrett, mounteLage } from "./kulisse";
+import { type Brett, eintrag, flush, kartenTitel, klick, mounteBrett, mounteLage } from "./kulisse";
 
 const TITEL = ["A", "B", "C", "D", "E", "F"] as const;
 const SCHLANGE = '[data-testid="pruefen-warteschlange"]';
@@ -153,5 +153,286 @@ describe("JOB 3593 · der eigene Rollbereich der Warteschlange", () => {
       brett.container.querySelector('[data-testid="pruefen-nicht-frisch"]'),
       "der Hinweis auf den nicht frischen Stand steht",
     ).not.toBeNull();
+  });
+});
+
+// ================================================================================================
+// JOB 3812 · DIE RECHTE SPALTE — dieselben Fragen, für den Rollbereich des Artikels.
+// ================================================================================================
+//
+// Auch das ist eine SICHTBARE Änderung (bei flachen Fenstern steht jetzt ein Rollbalken an der
+// Karte), und §9 des Auftrags verlangt für jede Lage eine Antwort. Die Wirkung misst der
+// Browserblock (L15/L17); hier steht, WO die Regeln hängen und was in den Lagen ohne Artikel
+// geschieht — die Frage, die jsdom beantworten kann und der Browser nur mit einem Bühnenumbau.
+describe("JOB 3812 · der eigene Rollbereich der Artikelspalte", () => {
+  const SPALTE = '[data-testid="pruefen-artikelspalte"]';
+  const spalte = (b: Brett): HTMLElement | null => b.container.querySelector<HTMLElement>(SPALTE);
+
+  it("F7 · Bestand: die Artikelspalte trägt einen eigenen Rollbereich — und jede Regel nur in der breiten Bauform", async () => {
+    brett = await mounteBrett(TITEL);
+    const el = spalte(brett);
+    expect(el, "die Artikelspalte steht").not.toBeNull();
+    const klassen = (el?.className ?? "").split(/\s+/).filter(Boolean);
+    // Dieselben drei Teile wie an der Liste, aus demselben Grund: `h-full` holt die Höhe der
+    // Fläche in die Spalte (`items-start` streckt sie nicht), `min-h-0` erlaubt ihr, unter die
+    // Höhe der Karte zu schrumpfen, und erst dann bewegt `overflow-y-auto` etwas.
+    for (const k of ["h-full", "min-h-0", "overflow-y-auto"]) {
+      expect(klassen, `der Artikelspalte fehlt ${BREITE_STUFE}${k}`).toContain(
+        `${BREITE_STUFE}${k}`,
+      );
+    }
+    // Und die Regel dahinter (wie F2): was hier Höhe deckelt oder Überlauf regelt, gilt NUR breit.
+    // Der schmale Weg führt den Blick bewusst zur Karte; eine gedeckelte Karte wäre dort eine
+    // Verschlechterung.
+    const rollend = klassen.filter((k) => /(^|:)(max-h-|min-h-|h-full|overflow-)/.test(k));
+    expect(rollend.length, "keine einzige Rollregel gefunden — F7 prüfte nichts").toBeGreaterThan(
+      0,
+    );
+    expect(rollend.filter((k) => !k.startsWith(BREITE_STUFE))).toEqual([]);
+    // Kein Prozentdeckel: `vh` rechnet den Kopf über der Fläche nicht mit (Lehre aus JOB 3625).
+    expect(klassen.filter((k) => /\[\d+vh\]/.test(k))).toEqual([]);
+  });
+
+  it("F8 · Bestand: die Spalte ist in der breiten Bauform ein Halt in der Tabreihenfolge", async () => {
+    brett = await mounteBrett(TITEL);
+    // Die Kulisse montiert in der BREITEN Lage (`kulisse.tsx:10`: kein `matchMedia`-Stub,
+    // `useMediaQuery` liefert `false`) — gemessen wird hier also der breite Wert. Ein Rollbereich,
+    // in den die Tastatur nicht kommt, ist keiner; dass ein Tabschritt aus der Liste wirklich
+    // dorthin führt und „Ende" wirklich rollt, misst L17 im echten Browser.
+    //
+    // GRENZE, ausdrücklich: der SCHMALE Wert (-1, damit der Klick den Blick führen kann, ohne
+    // einen Tabstopp zu erzeugen) ist hier nicht gemessen — diese Kulisse kennt die schmale Lage
+    // nicht. Er steht unverändert im Quelltext (`Validation.tsx`, `tabIndex={schmal ? -1 : 0}`).
+    expect(spalte(brett)?.getAttribute("tabindex")).toBe("0");
+  });
+
+  for (const [name, antwort] of [
+    ["leer", { art: "leer" } as const],
+    ["lädt", { art: "laedt" } as const],
+    ["Erstfehler", { art: "erstfehler" } as const],
+  ] as const) {
+    it(`F9 · ${name}: die Artikelspalte steht, ist aber leer — kein Artikel, also auch kein Rollbalken`, async () => {
+      brett = await mounteLage(antwort);
+      const el = spalte(brett);
+      expect(el, "die Artikelspalte steht auch ohne Artikel").not.toBeNull();
+      // §9 des Auftrags: „die rechte Spalte ist leer und darf keinen leeren Rollbalken zeigen."
+      // Der Rollbalken hängt am ÜBERLAUF, und ohne Kind gibt es keinen — das ist hier kein
+      // Argument, sondern der gemessene Zustand: die Spalte hat kein einziges Kind.
+      expect(el?.querySelector('[data-testid="pruefen-karte"]')).toBeNull();
+      expect(el?.childElementCount, "in der leeren Spalte steht etwas").toBe(0);
+    });
+  }
+
+  /**
+   * JOB 3812 · RUNDE 2 — DIE ROLLSTELLUNG MESSBAR MACHEN, WO ES KEIN LAYOUT GIBT.
+   *
+   * Der Prüfbericht der Runde 1 hat F10 zu Recht als zu schwach bezeichnet: „beweist nur
+   * Elementidentität, keine stabile Rollstellung". jsdom rechnet kein Layout, `scrollTop` ist dort
+   * immer 0 und lässt sich nicht rollen — die ZAHL ist hier also nicht zu messen.
+   *
+   * WAS SICH MESSEN LÄSST, ist der einzige Weg, auf dem die Rollstellung überhaupt springen kann:
+   * ein SCHREIBZUGRIFF auf `scrollTop`. Dieser Zähler hängt sich an genau dieses eine Element und
+   * schreibt jeden Zugriff mit. Damit sagt F10 „bei einer Auffrischung schreibt niemand" und F11
+   * „bei einem Artikelwechsel schreibt genau einer, und zwar eine Null" — beides Tatsachen über das
+   * Produkt und nicht über jsdom. Die WIRKUNG in Pixeln misst L19 im echten Browser.
+   */
+  const rollzaehler = (el: HTMLElement): { schreibt: number[]; setze: (v: number) => void } => {
+    let wert = 0;
+    const schreibt: number[] = [];
+    Object.defineProperty(el, "scrollTop", {
+      configurable: true,
+      get: () => wert,
+      set: (v: number) => {
+        wert = v;
+        schreibt.push(v);
+      },
+    });
+    return {
+      schreibt,
+      setze: (v: number) => {
+        wert = v;
+        schreibt.length = 0;
+      },
+    };
+  };
+
+  it("F10 · Auffrischung: die Spalte bleibt dieselbe, und niemand verstellt ihre Rollstellung", async () => {
+    brett = await mounteBrett(TITEL);
+    const vorher = spalte(brett);
+    expect(vorher, "die Artikelspalte steht").not.toBeNull();
+    if (!vorher) return;
+    // §9: „die Rollstellung darf durch eine eintreffende Auffrischung nicht springen." Zwei Gründe,
+    // beide hier gemessen: (1) die Spalte wird nicht neu gehängt — die Karte ist eine
+    // ZEICHENFUNKTION und keine innere Komponente (`Validation.tsx`, `karte(aktiv)`), und die
+    // Spalte steht ausserhalb jeder Lagen-Verzweigung; ein neu gehängtes Element fienge bei 0 an.
+    // (2) Der Nullsteller der Spalte hängt an der `id` des gezeigten Artikels und NICHT am Objekt:
+    // eine Auffrischung liefert ein neues Objekt für denselben Artikel, und daran darf sich nichts
+    // entscheiden. Ohne (2) spränge die Rollstellung bei jeder Auffrischung auf null.
+    const zaehler = rollzaehler(vorher);
+    zaehler.setze(120);
+    await act(async () => {
+      await brett.qc.invalidateQueries({ queryKey: ["validation", "board"] });
+    });
+    await flush();
+    expect(spalte(brett), "die Artikelspalte ist nach der Auffrischung eine andere").toBe(vorher);
+    expect(
+      zaehler.schreibt,
+      `die Auffrischung hat die Rollstellung verstellt (Schreibzugriffe: ${zaehler.schreibt.join(", ")})`,
+    ).toEqual([]);
+    expect(vorher.scrollTop, "die Rollstellung steht nicht mehr da, wo sie stand").toBe(120);
+  });
+
+  it("F11 · Artikelwechsel: der neue Artikel fängt oben an — die Rollstellung wird genau einmal genullt", async () => {
+    brett = await mounteBrett(TITEL);
+    const el = spalte(brett);
+    expect(el, "die Artikelspalte steht").not.toBeNull();
+    if (!el) return;
+    expect(kartenTitel(brett), "rechts steht der erste Artikel").toBe(TITEL[0]);
+    const zaehler = rollzaehler(el);
+    zaehler.setze(120);
+    // Der Weg eines Menschen: ein Klick auf den nächsten Eintrag der Liste.
+    await klick(eintrag(brett, 1));
+    expect(kartenTitel(brett), "rechts steht jetzt der zweite Artikel").toBe(TITEL[1]);
+    // Genau EINE Null, nicht zwei und nicht keine: keine sagt, der neue Artikel begänne in der
+    // Mitte des alten; mehrere sagen, dass hier mehr als eine Stelle an derselben Zahl dreht.
+    expect(
+      zaehler.schreibt,
+      `beim Artikelwechsel wurde die Rollstellung nicht genau einmal genullt (Schreibzugriffe: ${zaehler.schreibt.join(", ")})`,
+    ).toEqual([0]);
+  });
+});
+
+// ================================================================================================
+// JOB 3812 · RUNDE 3 — WOGEGEN DER ORT DES MENÜBLATTS GEKLEMMT IST, UND WER IHM ZUHÖRT.
+// ================================================================================================
+//
+// DER BEFUND, DER HIERHER FÜHRT (Prüfbericht der Runde 2, Korrekturpflichten 1–3): Das Blatt hängt
+// seit Runde 1 am Fenster (`position: fixed`), und Runde 2 hat seine Lage bei jedem `resize` neu
+// aus dem Rechteck des Auslösers gerechnet. Mit einem langen Artikel gemessen: Blatt bei 1280×900
+// geöffnet, Fenster auf 420 verkleinert, Artikelspalte 713 px ans Ende gerollt, dann die
+// Fensterbreite geändert — der Auslöser stand da bei `top` −549,5 px, und das Blatt landete bei
+// −517,5 bis −269,5 px, also vollständig über dem Fenster und an keinem Punkt mehr bedienbar.
+//
+// ZWEI FRAGEN, DIE JSDOM BEANTWORTEN KANN, und die zusammen genau diese Klasse schliessen:
+//   F12 · WAS geschrieben wird — eine Zahl von früher oder ein Ausdruck gegen das laufende Fenster.
+//   F13 · WER zuhört, solange das Blatt offen ist. Pedis Grenze (HINWEIS 4) lautet „kein neuer
+//         Handler überhaupt"; diese Frage ist eine Tatsache über das Produkt, keine Absichtserklärung.
+//
+// DIE WIRKUNG IN PIXELN misst weiterhin der Browserblock (L16/L18/L18b/L18c in
+// `tests/design/job2935-validierung-fussband.test.ts`) — hier steht, WAS an der Fläche hängt.
+describe("JOB 3812 · Runde 3 · der Ort des Menüblatts", () => {
+  const AUSLOESER = '[data-testid="pruefen-menue-karte"]';
+  const BLATT = '[data-testid="pruefen-menue-panel-karte"]';
+
+  /**
+   * Fenster und Auslöser stellen — jsdom rechnet kein Layout, also kommen beide Zahlen von hier.
+   * Genau das macht diesen Fall erst möglich: die Lage aus dem Prüfbericht (ein Auslöser weit
+   * ÜBER dem Fenster) ist im Browser nur mit einem langen Artikel und drei Schritten herzustellen,
+   * hier ist sie eine Angabe. Beide Wege messen dieselbe Rechnung.
+   */
+  const stellen = (el: HTMLElement, kasten: { top: number; right: number }): void => {
+    for (const [name, wert] of [
+      ["clientHeight", 420],
+      ["clientWidth", 1280],
+    ] as const) {
+      Object.defineProperty(document.documentElement, name, { value: wert, configurable: true });
+    }
+    el.getBoundingClientRect = () =>
+      ({
+        top: kasten.top,
+        bottom: kasten.top + 28,
+        left: kasten.right - 32,
+        right: kasten.right,
+        width: 32,
+        height: 28,
+        x: kasten.right - 32,
+        y: kasten.top,
+        toJSON: () => ({}),
+      }) as DOMRect;
+  };
+
+  afterEach(() => {
+    for (const name of ["clientHeight", "clientWidth"]) {
+      Reflect.deleteProperty(document.documentElement, name);
+    }
+  });
+
+  it("F12 · ein weggerollter Auslöser zieht das Blatt nicht aus dem Fenster — die Klemme hängt am Fenster", async () => {
+    brett = await mounteBrett(TITEL);
+    const knopf = brett.container.querySelector<HTMLElement>(AUSLOESER);
+    expect(knopf, "das Handlungsmenü der Karte steht").not.toBeNull();
+    if (!knopf) return;
+    // Die Lage des Prüfberichts: der Auslöser ist mit der Artikelspalte aus dem Bild gerollt.
+    stellen(knopf, { top: -549.5, right: 1160 });
+    await klick(knopf);
+    const blatt = brett.container.querySelector<HTMLElement>(BLATT);
+    expect(blatt, "das Blatt des Menüs steht").not.toBeNull();
+    if (!blatt) return;
+    const ort = blatt.style.getPropertyValue("--kw-blatt-ort");
+    // DIE EIGENTLICHE AUSSAGE. Ohne Klemme stünde hier `-517.5px` (−549,5 + 32) — die Zahl, mit
+    // der das Blatt im Prüfbericht über dem Fenster landete. Mit Klemme steht ein Ausdruck da,
+    // dessen Untergrenze die Randluft ist (8 px = BLATT_RAND_PX) und dessen Obergrenze am FENSTER
+    // hängt (`100%` ist bei `position: fixed` dessen Höhe, 72 px = BLATT_MINDEST_PX + BLATT_RAND_PX).
+    // Dass er gegen das Fenster rechnet und nicht gegen eine Zahl von früher, ist der ganze
+    // Unterschied: nur so gilt er auch nach der nächsten Fensteränderung noch.
+    expect(
+      ort,
+      `der Ort des Blatts ist „${ort}" — ohne Fensterbezug (100 %) ist er eine Zahl von früher, und ein weggerollter Auslöser zieht das Blatt mit sich`,
+    ).toBe("clamp(8px, -517.5px, calc(100% - 72px))");
+    // Und der Deckel hängt am selben Fenster: der kleinere aus dem Anteil zur Zeit des Klicks
+    // (0,7 × 420) und dem freien Platz unter dem Ort. L18 misst, dass er sich dabei WIRKLICH
+    // ändert (im flachen Fenster kürzer als im hohen).
+    expect(blatt.style.getPropertyValue("--kw-blatt-deckel")).toBe(
+      "min(294px, calc(100% - var(--kw-blatt-ort) - 8px))",
+    );
+    // Die zwei Klassen, die diese Werte lesen. Ohne sie stünden zwei richtige Zahlen an einer
+    // Fläche, die sie nicht benutzt — deshalb gehören sie in dieselbe Zusicherung.
+    const klassen = blatt.className.split(/\s+/);
+    expect(klassen, "das Blatt liest den Ort nicht").toContain("[top:var(--kw-blatt-ort)]");
+    expect(klassen, "das Blatt liest den Deckel nicht").toContain(
+      "[max-height:var(--kw-blatt-deckel)]",
+    );
+  });
+
+  /**
+   * Wer hängt sich während EINER Handlung ans Fenster? Gezählt werden die Arten, nicht die Zahl
+   * der Aufrufe — zweimal derselbe Zuhörer ist derselbe Zuhörer.
+   */
+  const zuhoerer = async (tun: () => Promise<void>): Promise<string[]> => {
+    const spion = vi.spyOn(window, "addEventListener");
+    await tun();
+    const typen = [...new Set(spion.mock.calls.map((c) => String(c[0])))].sort();
+    spion.mockRestore();
+    return typen;
+  };
+
+  it("F13 · solange das Blatt offen ist, hängt genau EIN Zuhörer am Fenster — der für Escape", async () => {
+    brett = await mounteBrett(TITEL);
+    // ERST EINE KONTROLLMESSUNG, und zwar mit einem Klick, der KEIN Menü öffnet: die Umgebung
+    // (jsdom, React, der Testlauf) hängt selbst etwas ans Fenster — gemessen ein `error`-Zuhörer.
+    // Was in beiden Messungen vorkommt, gehört nicht dem Menü und wird abgezogen. Ohne diesen
+    // Abzug müsste die Zusicherung Fremdnamen aufzählen und wäre nach dem nächsten Versionssprung
+    // der Umgebung falsch, ohne dass sich am Produkt etwas geändert hätte.
+    const fremd = await zuhoerer(() => klick(eintrag(brett, 1)));
+    const knopf = brett.container.querySelector<HTMLElement>(AUSLOESER);
+    expect(knopf, "das Handlungsmenü der Karte steht").not.toBeNull();
+    if (!knopf) return;
+    const beimOeffnen = await zuhoerer(() => klick(knopf));
+    expect(
+      brett.container.querySelector(BLATT),
+      "das Blatt ist gar nicht aufgegangen — F13 prüfte nichts",
+    ).not.toBeNull();
+    expect(
+      beimOeffnen,
+      `beim Öffnen kam kein Zuhörer für Escape dazu (gemessen: ${beimOeffnen.join(", ") || "keine"})`,
+    ).toContain("keydown");
+    // DIE EIGENTLICHE AUSSAGE. Runde 2 hatte hier einen zweiten Zuhörer (`resize`), der die Lage
+    // nachrechnete: er war die Ursache des Befunds (F12) UND ein Verstoss gegen Pedis Grenze
+    // „kein neuer Handler überhaupt". Seit Runde 3 rechnet das CSS, und hier hängt nichts mehr.
+    const eigene = beimOeffnen.filter((t) => !fremd.includes(t));
+    expect(
+      eigene,
+      `das Öffnen des Menüs hängt diese Zuhörer ans Fenster: ${eigene.join(", ") || "keine"} (Kontrollmessung ohne Menü: ${fremd.join(", ") || "keine"})`,
+    ).toEqual(["keydown"]);
   });
 });
