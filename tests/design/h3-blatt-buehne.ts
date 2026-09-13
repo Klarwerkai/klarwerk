@@ -86,6 +86,22 @@ export interface Seite {
    */
   keyboard: { press(taste: string): Promise<void> };
   /**
+   * JOB 3809: DAS ZEIGEGERÄT — und es steht HIER, aus demselben Grund wie die Tastatur darüber.
+   *
+   * Bis hierher war für diese Fläche ausschliesslich belegt, dass ein PROGRAMM sie auslösen kann:
+   * jeder Fall geht über `element.click()` in der Seite (`ki-palette-390px-chromium.test.ts:438`,
+   * `:1262`). Ob ein FINGER sie auslösen kann, war unbewiesen — und das ist die Bedienart des
+   * Geräts, für das die Fläche zuletzt zweimal umgebaut wurde. `tap(x, y)` erzeugt über Chromiums
+   * Touch-Emulation echte `touchstart`/`pointerdown`-Ereignisse (`isTrusted`), kein im Dokument
+   * abgesetzter Klick.
+   *
+   * SCHLANK: nur `tap`, das einzige, was der Fingerweg der KI-Palette wirklich ruft. Kein `mouse`,
+   * kein `swipe`, solange kein Fall sie braucht; wer mehr braucht, trägt es HIER nach, nicht bei
+   * sich. Das Tippen wirkt nur, wenn die Bühne mit `zeigegeraet = true` aufgebaut wurde (s. dort) —
+   * ohne Touch-Emulation weist Chromium `Input.dispatchTouchEvent` zurück.
+   */
+  touchscreen: { tap(x: number, y: number): Promise<void> };
+  /**
    * JOB 3584: dieselbe Seite in einem anderen Fenster. Die Bühne fährt auf 1280×800 an (das Maß des
    * Mockups); die schmale Lage (390 px) ist keine zweite Bühne, sondern dasselbe Fenster, schmaler
    * gestellt — ein zweiter `buehneAufbauen` wäre ein zweiter Browser und zweite Tor-Last.
@@ -172,12 +188,23 @@ export interface Fenster {
 /**
  * Baut die Bühne auf und fährt sie an `pfad` (Vorgabe `/erfassen`). Wirft NICHT: ein Fehlschlag
  * steht in `fehler`, damit der Testfall ihn benennen kann statt in einem Hook zu sterben.
+ *
+ * JOB 3809 — `zeigegeraet` IST ZUSCHALTBAR UND BLEIBT VORGABEMÄSSIG AUS. Eine eingeschaltete
+ * Touch-Emulation ist keine Kleinigkeit: sie stellt `@media (hover)` und `@media (pointer)` um
+ * (`hover: none`, `pointer: coarse`) und damit Endwerte, die die drei Zielbild-Messungen dieser
+ * Bühne gegen das Mockup vergleichen. Deshalb bekommt `newPage` ohne den Schalter Zeichen für
+ * Zeichen dasselbe Objekt wie bisher (`{ viewport: fenster }`), und die vier Bestandsverbraucher
+ * fahren unter unveränderten Bedingungen.
+ *
+ * `isMobile` wird ausdrücklich NICHT gesetzt: es stellt zusätzlich Viewport-Meta und Kennung um und
+ * wäre eine zweite Änderung in derselben Zeile.
  */
 export async function buehneAufbauen(
   pfad = "/erfassen",
   wartetAuf = '[data-testid="blatt"]',
   skript: Skript = {},
   fenster: Fenster = { width: 1280, height: 800 },
+  zeigegeraet = false,
 ): Promise<Buehne> {
   const seitenfehler: string[] = [];
   let browser: Browser | null = null;
@@ -230,7 +257,12 @@ export async function buehneAufbauen(
     });
     const version = browser.version();
     // Vorgabe 1280×800 wie das Mockup; `fenster` stellt die schmale Lage schon beim Anfahren.
-    const seite = await browser.newPage({ viewport: fenster });
+    // JOB 3809: `hasTouch` kommt NUR dazu, wenn es verlangt wurde — ohne den Schalter geht hier
+    // wörtlich `{ viewport: fenster }` hinaus, wie seit JOB 3584.
+    const seite = await browser.newPage({
+      viewport: fenster,
+      ...(zeigegeraet ? { hasTouch: true } : {}),
+    });
     seite.on("pageerror", (e: unknown) => {
       seitenfehler.push(String(e).split("\n")[0] ?? "");
     });
@@ -397,6 +429,27 @@ export const LESEN =
 /** In der Seite: die Breite eines Elements (Randmaß). */
 export const BREITE =
   "(sel) => { const el = document.querySelector(sel); return el ? el.getBoundingClientRect().width : null; }";
+
+/**
+ * In der Seite: der MITTELPUNKT eines Elements in FENSTERkoordinaten — oder `null`.
+ *
+ * JOB 3809: das ist genau die Zahl, die ein Tippen braucht (`Seite.touchscreen.tap(x, y)` rechnet
+ * in Fensterkoordinaten, nicht in Seitenkoordinaten). `null` steht für die zwei Zustände, die ein
+ * Fall nicht übergehen darf: das Element ist gar nicht da (Marke umbenannt), oder es trägt keine
+ * Fläche (0×0, ausgeblendet). Wer auf `null` tippt, tippt ins Leere — deshalb gibt es hier keinen
+ * Ersatzwert und keine 0/0-Notlösung, sondern `null`, an dem der Fall laut scheitern MUSS.
+ *
+ * `getBoundingClientRect()` und nicht `offsetLeft`: nur das Rechteck kennt Transformationen und
+ * Rollstände. Die Fläche wird über `width`/`height` geprüft, nicht über `offsetParent` — ein
+ * `position: fixed`-Element hat keinen `offsetParent` und wäre sonst fälschlich „nicht da".
+ */
+export const MITTE = `(sel) => {
+  const el = document.querySelector(sel);
+  if (!el) { return null; }
+  const b = el.getBoundingClientRect();
+  if (b.width <= 0 || b.height <= 0) { return null; }
+  return { x: Math.round((b.left + b.width / 2) * 10) / 10, y: Math.round((b.top + b.height / 2) * 10) / 10 };
+}`;
 
 /** In der Seite: den sichtbaren Text eines Werkzeugs finden und seinen Selektor liefern. */
 export const KNOPF_MIT_TEXT = `([wurzelSel, text]) => {

@@ -907,6 +907,20 @@ const INVENTAR: readonly string[] = [
   // ihren Griff auf Pruefungen, die ueber den QUELLBAUM der Erweiterung reden statt ueber ihre
   // laufenden Bauteile — der Preis waere hoeher als der Gewinn.
   "tests/structure/fremddoppelungen-kd-capture.test.ts",
+  // JOB 3809 (12.09.2026) DIE BUEHNE BEKOMMT EINEN FINGER: die Browsermessung DERSELBEN KI-Palette
+  // des Blattes, jetzt mit einem echten Zeigegeraet (`touchstart`/`pointerdown` statt
+  // `element.click()`). Sie kommt ueber GENAU DIESELBE Inhaltsachse `palette` herein wie ihre
+  // Nachbarin `ki-freie-anweisung/ki-palette-390px-chromium.test.ts` zwei Absaetze weiter oben —
+  // nicht wegen einer Farbe, sondern wegen des WORTES: die Achse sucht `palette` im Text, und diese
+  // Datei nennt die KI-Palette in jeder zweiten Zeile UND traegt sie im Verzeichnisnamen.
+  // AUSDRUECKLICH KEIN Klara-Test: sie misst `/erfassen` im Browser, ruehrt weder Aufgabenfenster
+  // noch Manifest an; „klara" steht nicht in ihrem Pfad, K5 bleibt deshalb unveraendert.
+  // Der Eintrag steht trotzdem hier: dieses Inventar pinnt die ABGELEITETE Menge, nicht eine
+  // Auswahl — die Achse zu verengen hiesse, einen fremden Waechter zu schwaechen, um die eigene
+  // Datei hindurchzulassen. GEMESSEN, NICHT GESETZT: vor dieser Zeile meldete K2 woertlich
+  // „neu im Baum, aber nicht im gepinnten Inventar — Inventar nachfuehren: expected [ Array(1) ]
+  // to deeply equal []".
+  "tests/ki-palette-fingertipp/ki-palette-fingertipp-chromium.test.ts",
 ];
 
 // ------------------------------------------------------------------------------------------------
