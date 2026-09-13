@@ -1306,6 +1306,173 @@ describe("JOB 3799 · der Haken, den die Fläche erlaubt, überlebt das Nachlade
     expect(zeilenHaken(SEITE_ZWEIT.title).checked).toBe(true);
   });
 
+  // ==============================================================================================
+  // JOB 3836 · MEHRERE WEGGEFALLENE HAKEN, WÄHREND EINE FOLGEANFRAGE WIRKLICH DRAUSSEN IST.
+  // ==============================================================================================
+  //
+  // BESTELLT VOM PRÜFER im GRÜN-Urteil zu JOB 3799 Runde 2 (Prüfpunkt 6), wörtlich: „Die dauerhaften
+  // neuen Tests prüfen Mehrzahl und tatsächlich ausstehende Folgeantwort NICHT ZUSAMMEN; meine
+  // Zusatzprobe schliesst diese Messlücke FÜR DIESEN STAND. Testvorschlag: diese DE/EN/NL-Folge
+  // DAUERHAFT neben Testzeile 1281 aufnehmen." Seine Zusatzprobe lief in ein Protokoll unter `/tmp`
+  // und ist damit fort; im Repo stand von ihr nichts. Ab hier steht sie.
+  //
+  // KEIN PRODUKTVERHALTEN IST NEU, und deshalb steht hier auch kein Produktpfad im Auftrag. Neu ist
+  // allein die dauerhafte MESSUNG: die Fälle darüber kennen „Nachladen gescheitert" (`:1248`) und
+  // „Anfrage noch nicht losgelaufen" (`:1281`) — beide mit EINEM Haken. Ungemessen blieben der dritte
+  // Nachladezustand „Anfrage raus und hängt" zusammen mit dem Wegfall-Satz und die MEHRZAHL in jedem
+  // der drei Zustände. Die Mehrzahl ist der Alltagsfall: wer eingrenzt, verliert selten genau einen
+  // Haken.
+  //
+  // WARUM DIE ZAHL UND DIE FASSUNG BEIDES GEMESSEN WERDEN: die Zahl sagt, WIE VIEL der Mensch
+  // verloren hat; die Fassung (stark/schwach) sagt, ob diese Auskunft über die JETZT eingestellte
+  // Eingrenzung überhaupt etwas behauptet. Die Fälle nageln deshalb den ganzen gezeichneten Satz
+  // fest, nicht nur einen Halbsatz — fiele i18next bei einem fehlenden `_other`-Schlüssel auf die
+  // Einzahl zurück, stünde dort „2 gesetzter Haken ist weggefallen", und genau das würde ein
+  // Teilstück-Vergleich durchlassen.
+  it("MEHRZAHL BEI HÄNGENDER FOLGEANFRAGE: zwei Haken weg — die Zahl bleibt, die starke Aussage fällt, die Übernahme ist gesperrt", async () => {
+    // Drei Einträge, alle in der Vorgabe angehakt (keiner trägt `alreadyImported`/`alreadyQueued`);
+    // die erste Eingrenzung bringt genau einen davon zurück → ZWEI Haken fallen weg.
+    await vorschauOffen([SEITE_ZWEIT, SEITE_DRITT, SEITE_FRISCH], [SEITE_ZWEIT]);
+
+    vi.useFakeTimers();
+    expect(zeilenHaken(SEITE_ZWEIT.title).checked).toBe(true);
+    expect(zeilenHaken(SEITE_DRITT.title).checked).toBe(true);
+    expect(zeilenHaken(SEITE_FRISCH.title).checked).toBe(true);
+
+    await chipKlicken(THEMA);
+    await nachDemNachladen();
+
+    // Hier ist die STARKE Fassung richtig: gemessen wurde gegen genau die Eingrenzung, die jetzt
+    // gilt. Wörtlich und vollständig — das hält die Zahl UND die Beugung der Mehrzahl fest.
+    expect(container.querySelector('[data-testid="haken-weggefallen"]')?.textContent).toBe(
+      "2 gesetzte Haken sind weggefallen: ihre Einträge gehören nicht mehr zur aktuellen Eingrenzung. An der Trefferliste selbst fehlt nichts.",
+    );
+
+    // GRUPPIEREN, SOLANGE DIE ANTWORT PASST — das ist die Voraussetzung dafür, dass die Sperre
+    // darunter überhaupt etwas messen kann: ohne aufgebauten Gruppen-Schritt gibt es keinen
+    // Übernahme-Knopf, und „es wurde nichts abgeschickt" wäre auch bei fehlender Sperre wahr.
+    await gruppieren();
+    expect(container.querySelector('[data-testid="eingrenzung-gruppen-gesperrt"]')).toBeNull();
+
+    // Die zweite Eingrenzung — und diesmal läuft die Anfrage WIRKLICH los und hängt (Bauform
+    // `:1207-1215`). Die Aufrufzahl ist der Unterschied zum Fall darüber, wo sie nicht einmal
+    // losgelaufen war; ohne sie wären die beiden Zustände nicht unterscheidbar.
+    const unterwegs = offen<Record<string, unknown>>();
+    selectMock.mockImplementationOnce(async () => unterwegs.versprechen);
+    const aufrufeVorher = selectMock.mock.calls.length;
+    setValue(zahlenFeld(i18n.t("imp.select.yearFrom")), "2024");
+    await act(flush);
+    await nachDemNachladen();
+    expect(selectMock.mock.calls.length).toBe(aufrufeVorher + 1);
+    expect(letzterSelect().criteria).toEqual({ themes: [THEMA], yearFrom: 2024 });
+
+    // DIE ERHOBENE ZAHL BLEIBT (LEHREN §7), DIE BEHAUPTUNG WIRD SCHWÄCHER — in der Mehrzahl.
+    expect(container.querySelector('[data-testid="haken-weggefallen"]')?.textContent).toBe(
+      "2 gesetzte Haken sind weggefallen: ihre Einträge gehörten nicht mehr zu der Eingrenzung, mit der die Liste darunter geholt wurde. Zur jetzt eingestellten Eingrenzung sagt das nichts — deren Vorschau steht noch aus.",
+    );
+
+    // DIE GESPERRTE ÜBERNAHME IM SELBEN ZUSTAND: die Auswahl bleibt unangetastet, der Riegel steht,
+    // und der Knopf ist DA (ausgegraut, nicht ausgebaut) — er schickt trotzdem nichts.
+    expect(zeilenHaken(SEITE_ZWEIT.title).checked).toBe(true);
+    expect(container.querySelector('[data-testid="eingrenzung-gewechselt"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="eingrenzung-gruppen-gesperrt"]')).not.toBeNull();
+    expect(await uebernahmeDruecken()).toBe(true);
+    expect(applyMock.mock.calls).toEqual([]);
+
+    // KEINE SACKGASSE: die hängende Antwort kommt an. Sie bringt den überlebenden Eintrag mit,
+    // verliert also keinen Haken — nach der Regel des Produkts (`ImportSelect.tsx:690`) ist der
+    // Befund damit ABGELÖST und der Kasten fort. Welcher der beiden möglichen Ausgänge gilt, hängt
+    // allein daran, ob die frische Antwort selbst einen Wegfall bringt; der andere Ausgang (neuer
+    // Wegfall → wieder die STARKE Fassung mit der neuen Zahl) steht im Fall darunter.
+    await act(async () => {
+      unterwegs.aufloesen({
+        matched: 2,
+        limited: false,
+        truncated: false,
+        criteria: { themes: [THEMA], yearFrom: 2024 },
+        preview: [SEITE_ZWEIT, SEITE_FRISCH],
+      });
+      await flush();
+    });
+    await act(flush);
+
+    expect(container.querySelector('[data-testid="haken-weggefallen"]')).toBeNull();
+    expect(container.querySelector('[data-testid="eingrenzung-gewechselt"]')).toBeNull();
+    expect(container.querySelector('[data-testid="eingrenzung-gruppen-gesperrt"]')).toBeNull();
+    expect(zeilenHaken(SEITE_ZWEIT.title).checked).toBe(true);
+    // Der wieder aufgetauchte Eintrag ist für die Fläche ein NEUER Treffer — er bekommt die Vorgabe,
+    // nicht seinen alten Haken zurück: übertragen wird nur aus der ANGEZEIGTEN Antwort.
+    expect(zeilenHaken(SEITE_FRISCH.title).checked).toBe(true);
+    // Und die Freigabe ist keine Behauptung am DOM: der freigegebene Weg schickt WIRKLICH ab.
+    expect(await abgeschickteIds()).toEqual([SEITE_ZWEIT.id, SEITE_FRISCH.id]);
+  });
+
+  it("MEHRZAHL WIRD ABGELÖST: die frische Antwort ersetzt den alten Befund durch ihren eigenen — wieder stark", async () => {
+    // Der zweite mögliche Ausgang, ebenfalls gemessen statt angenommen. Die Zahl läuft dabei von 1
+    // auf 2: eine Anzeige, die den alten Befund stehen liesse oder die beiden addierte, fiele hier.
+    await vorschauOffen([SEITE_ZWEIT, SEITE_DRITT, SEITE_FRISCH], [SEITE_ZWEIT, SEITE_DRITT]);
+
+    vi.useFakeTimers();
+    await chipKlicken(THEMA);
+    await nachDemNachladen();
+    expect(container.querySelector('[data-testid="haken-weggefallen"]')?.textContent).toContain(
+      "1 gesetzter Haken ist weggefallen",
+    );
+
+    const unterwegs = offen<Record<string, unknown>>();
+    selectMock.mockImplementationOnce(async () => unterwegs.versprechen);
+    const aufrufeVorher = selectMock.mock.calls.length;
+    setValue(zahlenFeld(i18n.t("imp.select.yearFrom")), "2024");
+    await act(flush);
+    await nachDemNachladen();
+    expect(selectMock.mock.calls.length).toBe(aufrufeVorher + 1);
+
+    // Die hängende Antwort bringt KEINEN der beiden verbliebenen Haken zurück — zwei fallen weg.
+    await act(async () => {
+      unterwegs.aufloesen({
+        matched: 1,
+        limited: false,
+        truncated: false,
+        criteria: { themes: [THEMA], yearFrom: 2024 },
+        preview: [SEITE_FRISCH],
+      });
+      await flush();
+    });
+    await act(flush);
+
+    expect(container.querySelector('[data-testid="haken-weggefallen"]')?.textContent).toBe(
+      "2 gesetzte Haken sind weggefallen: ihre Einträge gehören nicht mehr zur aktuellen Eingrenzung. An der Trefferliste selbst fehlt nichts.",
+    );
+    // An der Trefferliste selbst fehlt nichts: der frische Eintrag steht da und trägt die Vorgabe.
+    expect(zeilenHaken(SEITE_FRISCH.title).checked).toBe(true);
+    expect(await abgeschickteIds()).toEqual([SEITE_FRISCH.id]);
+  });
+
+  it("ERFOLGREICH LEERE ANTWORT: sie nennt ALLE verlorenen Haken — und behauptet es stark", async () => {
+    // Der zweite Teil der eigenen Messung des Prüfers (sein GRÜN-Urteil, „sowie erfolgreiche leere
+    // Antwort"). Genannt wird die VOLLSTÄNDIGE Zahl, drei von drei, nicht eine Teilzahl. Und weil
+    // diese Antwort gegen die geltende Eingrenzung erfolgreich gemessen wurde, ist die STARKE
+    // Fassung hier die richtige: „gehört nicht mehr zur aktuellen Eingrenzung" ist wahr.
+    await vorschauOffen([SEITE_ZWEIT, SEITE_DRITT, SEITE_FRISCH], []);
+
+    vi.useFakeTimers();
+    await chipKlicken(THEMA);
+    await nachDemNachladen();
+
+    expect(container.querySelector('[data-testid="haken-weggefallen"]')?.textContent).toBe(
+      "3 gesetzte Haken sind weggefallen: ihre Einträge gehören nicht mehr zur aktuellen Eingrenzung. An der Trefferliste selbst fehlt nichts.",
+    );
+    // Die Antwort war erfolgreich und gehört zur Gegenwart — kein Wechsel-Satz, keine Sperre.
+    expect(container.querySelector('[data-testid="eingrenzung-gewechselt"]')).toBeNull();
+    expect(container.querySelector('[data-testid="eingrenzung-gruppen-gesperrt"]')).toBeNull();
+    expect(letzterSelect().criteria).toEqual({ themes: [THEMA] });
+    // Und die Liste ist wirklich leer — sonst wäre der Wegfall keine drei Haken wert.
+    const text = sichtbarerText();
+    expect(text).not.toContain(SEITE_ZWEIT.title);
+    expect(text).not.toContain(SEITE_DRITT.title);
+    expect(text).not.toContain(SEITE_FRISCH.title);
+  });
+
   it("EN und NL: auch die schwächere Fassung steht in allen drei Sprachen da", async () => {
     const FASSUNGEN = [
       {
@@ -1359,6 +1526,64 @@ describe("JOB 3799 · der Haken, den die Fläche erlaubt, überlebt das Nachlade
         await nachDemNachladen();
         expect(container.querySelector('[data-testid="haken-weggefallen"]')).not.toBeNull();
         expect(sichtbarerText()).toContain(fassung.satz);
+      } finally {
+        vi.useRealTimers();
+        await unmount();
+        await i18n.changeLanguage("de");
+      }
+    }
+  });
+
+  // JOB 3836: dieselbe Folge wie im deutschen Fall weiter oben, in den beiden anderen Sprachen —
+  // und hier bei den Sprachfällen, nicht dort, weil sie deren Bauform teilt (`changeLanguage`,
+  // `try/finally` mit `useRealTimers`, `unmount`, Rücksetzen auf `de`). Gemessen wird der GANZE
+  // gezeichnete Satz: „geht analog" ist keine Messung, und eine fehlende Mehrzahlfassung fiele in
+  // einem Teilstück-Vergleich nicht auf.
+  it("EN und NL: die Mehrzahl bei hängender Folgeanfrage steht in allen drei Sprachen da", async () => {
+    const FASSUNGEN = [
+      {
+        sprache: "en",
+        stark:
+          "2 ticks you had set have fallen away: their entries no longer belong to the current narrowing. Nothing is missing from the hit list itself.",
+        schwach:
+          "2 ticks you had set have fallen away: their entries no longer belonged to the narrowing the list below was fetched with. That says nothing about the narrowing set now — its preview is still outstanding.",
+      },
+      {
+        sprache: "nl",
+        stark:
+          "2 gezette vinkjes zijn vervallen: de bijbehorende pagina's horen niet meer bij de huidige afbakening. Aan de trefferlijst zelf ontbreekt niets.",
+        schwach:
+          "2 gezette vinkjes zijn vervallen: de bijbehorende pagina's hoorden niet meer bij de afbakening waarmee de lijst hieronder is opgehaald. Over de nu ingestelde afbakening zegt dat niets — het voorbeeld daarvoor ontbreekt nog.",
+      },
+    ] as const;
+    for (const fassung of FASSUNGEN) {
+      await i18n.changeLanguage(fassung.sprache);
+      try {
+        await vorschauOffen([SEITE_ZWEIT, SEITE_DRITT, SEITE_FRISCH], [SEITE_ZWEIT]);
+        vi.useFakeTimers();
+        await chipKlicken(THEMA);
+        await nachDemNachladen();
+        // Die starke Wendung VOR dem zweiten Wechsel, mit der Zahl 2 und richtig gebeugt.
+        expect(container.querySelector('[data-testid="haken-weggefallen"]')?.textContent).toBe(
+          fassung.stark,
+        );
+
+        // Der zweite Wechsel, dessen Anfrage wirklich losläuft und hängt.
+        const unterwegs = offen<Record<string, unknown>>();
+        selectMock.mockImplementationOnce(async () => unterwegs.versprechen);
+        const aufrufeVorher = selectMock.mock.calls.length;
+        setValue(zahlenFeld(i18n.t("imp.select.yearFrom")), "2024");
+        await act(flush);
+        await nachDemNachladen();
+        expect(selectMock.mock.calls.length).toBe(aufrufeVorher + 1);
+
+        const satz = container.querySelector('[data-testid="haken-weggefallen"]');
+        expect(satz).not.toBeNull();
+        expect(satz?.textContent).not.toContain(fassung.stark);
+        expect(satz?.textContent).toBe(fassung.schwach);
+        // Auch hier bleibt die Auswahl bedienbar und das Absenden gesperrt.
+        expect(zeilenHaken(SEITE_ZWEIT.title).checked).toBe(true);
+        expect(container.querySelector('[data-testid="eingrenzung-gewechselt"]')).not.toBeNull();
       } finally {
         vi.useRealTimers();
         await unmount();
