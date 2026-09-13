@@ -27,6 +27,16 @@
 // GENAU diese Funktionen gegen einen präparierten Fassung-1-Bestand und misst die Zahlen.
 
 import { pathToFileURL } from "node:url";
+// JOB 3797: der Startvertrag — DIE VORHANDENE Prüfung, nicht eine zweite. Warum STATISCH, obwohl
+// die zwei Importe in `main()` dynamisch sind: der Kopfkommentar dort begründet sie damit, dass der
+// Testlauf „weder den Postgres-Treiber noch die App-Kompositionswurzel" zieht. Gemessen am
+// Basisstand 56d2995 mit einem Loader-Haken über die echten Modulauflösungen:
+// `tests/app/job2614-bodytext-kette.test.ts` lädt 359 Module, darunter `build-app` (1×) und
+// `start-vertrag` (1×) — es importiert `build-app` nämlich SELBST (:24-29), und `build-app.ts:259`
+// zieht `start-vertrag` mit. Ein statischer Import hier fügt dem Testlauf also GENAU NULL Module
+// hinzu (359 vorher, 359 nachher); der Postgres-Treiber bleibt in beiden Fällen draussen (0×).
+// Die Zusage wird damit nicht verletzt, und dynamisch wäre der Import nur umständlicher.
+import { pruefeStartvertrag } from "../services/app/src/start-vertrag";
 import { type KoService, SEARCH_PROJECTION_VERSION } from "../services/knowledge-object";
 
 // Die Zählung nennt die Betroffenen nach Sorte — jede der drei braucht den Nachzug, aber aus
@@ -139,6 +149,31 @@ function berichtAusgeben(bericht: NachziehBericht): void {
 }
 
 async function main(): Promise<void> {
+  // ==============================================================================================
+  // JOB 3797 — DER STARTVERTRAG STEHT VOR ALLEM ANDEREN, AUCH VOR DER EIGENEN MELDUNG.
+  // ==============================================================================================
+  //
+  // WARUM ZUERST. Dieses Werkzeug ist der VIERTE Einstiegspunkt, der die App-Kompositionswurzel
+  // lädt (JOB 3776, Lieferpunkt 1 und ABWEICHUNG 2). Der Vertrag nennt ALLE fehlenden Pflichtwerte
+  // in EINER Meldung; die eigene Meldung unten nennt EINEN. Stünde sie davor, erführe der Betreiber
+  // der Vorführ-Instanz `KLARWERK_DB_URL`, trüge es nach, startete neu — und erführe dann erst
+  // `APP_BASE_URL`. Genau diesen Weg soll der Vertrag beenden. Gemessen am Basisstand 56d2995:
+  // Produktion ohne alles gab hier Exit 2 mit der eigenen Meldung, und `APP_BASE_URL` kam im ganzen
+  // Ausgabetext nicht vor.
+  //
+  // WARUM DIE EIGENE MELDUNG TROTZDEM BLEIBT — das ist keine zweite Wahrheit, sondern eine andere
+  // Frage: der Vertrag prüft AUSSCHLIESSLICH in Produktion (`start-vertrag.ts:906`). In
+  // Entwicklung und im Testlauf verlangt er nichts, und ohne die Meldung unten stünde dort ein
+  // Absturz im Treiber statt eines Satzes. Sie deckt ausserdem `KLARWERK_DB_URL`, das im Katalog
+  // mit Absicht NICHT steht: es ist ein reiner Werkzeugwert (nur dieses Werkzeug und
+  // `tools/bodytext-zaehlung.ts` lesen ihn), und `start-vertrag.ts:868-871` schliesst solche Werte
+  // ausdrücklich aus.
+  //
+  // FOLGE, die gewollt ist und hier stehen soll: in Produktion verlangt der Vertrag `DATABASE_URL`
+  // auch dann, wenn `KLARWERK_DB_URL` gesetzt ist und dieses Werkzeug damit zufrieden wäre. Wer in
+  // Produktion `buildPgServices` ruft, setzt eine Instanz zusammen und muss deren Ausstattung
+  // haben — eine halb ausgestattete Komposition ist genau das, was der Vertrag verhindert.
+  pruefeStartvertrag(process.env);
   const url = process.env.KLARWERK_DB_URL ?? process.env.DATABASE_URL;
   if (!url) {
     process.stderr.write(
@@ -149,8 +184,14 @@ async function main(): Promise<void> {
   }
   const ausfuehren = process.argv.includes("--ausfuehren");
   const rebuild = process.argv.includes("--rebuild");
-  // Dynamische Importe: der Testlauf importiert nur die Funktionen oben und zieht damit weder den
-  // Postgres-Treiber noch die App-Kompositionswurzel.
+  // Dynamische Importe: der Testlauf importiert nur die Funktionen oben und zieht damit den
+  // Postgres-Treiber nicht mit.
+  // BERICHTIGT AM 12.09.2026 (JOB 3797), weil hier bis dahin auch „noch die App-Kompositionswurzel"
+  // stand: das stimmt nicht mehr. `tests/app/job2614-bodytext-kette.test.ts:24-29` importiert
+  // `services/app/src/build-app` inzwischen SELBST. Gemessen mit einem Loader-Haken über die echten
+  // Modulauflösungen: dieses Modul allein zieht 37 Module und darunter weder `build-app` noch
+  // `start-vertrag` noch `pg`; der Testlauf zieht 359, darunter `build-app` (1×), aber `pg` (0×).
+  // Die dynamischen Importe halten also weiterhin genau EINE Zusage — den Treiber — und die gilt.
   const { createPool } = await import("../services/app/src/db");
   const { buildPgServices } = await import("../services/app/src/build-app");
   const pool = createPool(url);
@@ -166,5 +207,21 @@ async function main(): Promise<void> {
 const invokedDirectly =
   process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (invokedDirectly) {
-  void main();
+  // JOB 3797 — DER FÄNGER. `void main()` machte aus jedem Wurf in `main()` eine unbehandelte
+  // Zurückweisung: gemessen am Basisstand 56d2995 zwölf Zeilen Stapelspur, erste Zeile ein
+  // Quelltextpfad, darin `at ModuleJob.run`. Hausmuster ist `seed.ts` (`runSeed().catch(...)`,
+  // Präfix `[seed:demo] Abbruch: …`, JOB 3776 ABWEICHUNG 3).
+  //
+  // EXIT 2 UND NICHT EINE NEUE ZAHL: die eigene Meldung oben setzt seit JOB 2614 `2` für „gar
+  // nicht angefangen — nichts gelesen, nichts geschrieben". Der Vertragsabbruch ist derselbe
+  // Sachverhalt; zwei Zahlen für eine Lage zwängen ein Aufrufskript zu einer Unterscheidung, die
+  // es nicht gibt. Wichtig ist nur, dass es nicht 0 ist.
+  //
+  // Zeilenumbrüche werden zusammengezogen, damit die Zusage „EINE lesbare Zeile" auch für einen
+  // mehrzeiligen fremden Fehlertext gilt — der Text geht dabei nicht verloren, nur der Umbruch.
+  main().catch((fehler: unknown) => {
+    const text = fehler instanceof Error ? `${fehler.name}: ${fehler.message}` : String(fehler);
+    process.stderr.write(`[bodytext-nachziehen] Abbruch: ${text.replace(/\s*\n\s*/g, " · ")}\n`);
+    process.exitCode = 2;
+  });
 }
