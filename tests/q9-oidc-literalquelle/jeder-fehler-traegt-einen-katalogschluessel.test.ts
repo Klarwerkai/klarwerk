@@ -131,11 +131,14 @@ function authQuellen(): string[] {
  * Kalibrierung an einer KOPIE des Extraktors waere keine (Lehre JOB 3562 R1: eine eigene
  * Musterkopie neben der gemeinsamen Funktion ist die Stelle, an der der Waechter blind wird).
  */
+/** Die eine Schreibweise einer Fundstelle — auch G3 unten benutzt sie, statt sie nachzubauen. */
+function alsZeile(s: ReturnType<typeof erzeugungsstellen>[number]): string {
+  return `${s.zeile} ${s.art} ${s.klasse}(${s.argumente.join(" | ")})`;
+}
+
 function stellenVon(quelle: string): string[] {
   const klassen = fehlerklassen([quelle]);
-  return erzeugungsstellen(quelle, klassen).map(
-    (s) => `${s.zeile} ${s.art} ${s.klasse}(${s.argumente.join(" | ")})`,
-  );
+  return erzeugungsstellen(quelle, klassen).map(alsZeile);
 }
 
 describe("D.0 · der Extraktor sieht jede Form, in der ein AuthError entstehen kann", () => {
@@ -358,6 +361,8 @@ describe("D.0 · der Extraktor sieht jede Form, in der ein AuthError entstehen k
       // Die Gegengrenze zur Aufloesung qualifizierter Namen (Runde 3): der letzte Teil eines
       // Punktnamens zaehlt nur, wenn er selbst eine Fehlerklasse ist. Ein beliebiges typisiertes
       // Feld darf den Waechter nicht ausloesen — sonst wird er beim ersten Fehlalarm abgeschaltet.
+      // DIESER Fall prueft den ANDEREN Namen (`Verbinder`); den GLEICHEN Namen an einem fremden
+      // Traeger pruefen G1/G2 unten — er wird gemeldet, und das ist die gemessene Grenze.
       form: "ein typisiertes Feld, das mit AuthError nichts zu tun hat",
       quelle:
         "class Dienst {\n" +
@@ -391,6 +396,98 @@ describe("D.0 · der Extraktor sieht jede Form, in der ein AuthError entstehen k
     // heute gilt — wird die Grenze eines Tages verschoben, wird er rot und verlangt eine
     // Entscheidung, statt die Luecke still wachsen zu lassen.
     expect(stellenVon('throw new (b ? AuthError : Error)("FORBIDDEN", "text");\n')).toEqual([]);
+  });
+
+  // G1/G2/G3 · DER PREIS DER AUFLOESUNG UEBER DEN LETZTEN PUNKTTEIL — gemessen statt verschwiegen.
+  // Die Grosszuegigkeit ist eine ENTSCHEIDUNG, woertlich in quelltext.ts:418-424: „Die Richtung ist
+  // bewusst gewaehlt: ein Waechter, der beim qualifizierten Namen wegsieht, ist genau dort blind, wo
+  // er gebraucht wird; meldet er dagegen einmal zu viel, steht die Stelle mit Datei und Zeile da und
+  // ein Mensch entscheidet." Ihr Preis, bewusst dem Blindsein vorgezogen: `nachArt` kennt Namen,
+  // keine Traeger — heisst IRGENDWO eine Fehlerklasse `Fehler`, meldet quelltext.ts:434-435 auch
+  // `new this.Fehler(…)` eines FREMDEN Objekts, ueber das gemeinsame `fehlerklassen(quellen)` in D
+  // (Zeile 580) sogar aus einer anderen Datei. WER G1-G3 ROT SIEHT, hat diese Entscheidung
+  // verschoben und muss sie NEU TREFFEN, nicht die Erwartung anpassen (bestellt: ben.md:30, 3580/R3).
+
+  // Ein und dieselbe fremde Stelle fuer alle drei Faelle — als Konstante, damit G1, G2 und G3
+  // nachweislich dasselbe messen und nicht drei aehnliche Quellen.
+  const FREMDER_TRAEGER =
+    "class Pool {\n" +
+    "  private readonly Fehler: typeof Verbindungsfehler = Verbindungsfehler;\n" +
+    '  f() { throw new this.Fehler("Zeitueberschreitung"); }\n' +
+    "}\n";
+  const ECHTER_ALIAS = "const Fehler: typeof AuthError = AuthError;\n";
+  const ECHTE_STELLE = 'throw new Fehler("FORBIDDEN", "satz");\n';
+  const GEMESSENE_FORM =
+    "Gemessen wird der fremde Traeger mit dem GLEICHEN letzten Namensteil: " +
+    "class Pool { private readonly Fehler: typeof Verbindungsfehler … } mit new this.Fehler(…), " +
+    "neben dem echten Alias const Fehler: typeof AuthError = AuthError.";
+  const GESCHUETZTE_STELLE =
+    "Geschuetzte Stelle: quelltext.ts:434-435 — dort wird der letzte Teil eines Punktnamens " +
+    "nachgeschlagen, der Traeger nicht. Das ist die bewusst gewaehlte Grenze (quelltext.ts:418-424), " +
+    "kein Fehler dieses Tests: wer sie verschiebt, trifft eine neue Entscheidung.";
+
+  /** Geliefert UND erwartet — beides, damit die Diagnose nicht nur die halbe Wahrheit zeigt. */
+  function befund(gefunden: readonly string[], erwartet: readonly string[]): string {
+    return `Geliefert (${gefunden.length}):\n${gefunden.join("\n") || "(keine Fundstelle)"}
+Erwartet (${erwartet.length}):\n${erwartet.join("\n") || "(keine Fundstelle)"}`;
+  }
+
+  it("D.0 GRENZE G1: echter und fremder Traeger mit gleichem Namen — BEIDE werden gemeldet", () => {
+    const gefunden = stellenVon(ECHTER_ALIAS + FREMDER_TRAEGER + ECHTE_STELLE);
+    const erwartet = [
+      '4 wurzel this.Fehler("Zeitueberschreitung")',
+      '6 wurzel Fehler("FORBIDDEN" | "satz")',
+    ];
+    expect(
+      gefunden,
+      `${GEMESSENE_FORM}\n${GESCHUETZTE_STELLE}
+Erwartet werden ZWEI Eintraege, nicht null: Pool.Fehler hat mit AuthError nichts zu tun und wird
+trotzdem gemeldet. Faellt der erste Eintrag weg, ist die zweite Stufe von artVon abgeschaltet —
+dann sind auch this.Fehler, deps.Fehler und t.AuthError wieder unsichtbar (JOB 3580 R3).
+${befund(gefunden, erwartet)}`,
+    ).toEqual(erwartet);
+  });
+
+  it("D.0 GRENZE G2: derselbe fremde Traeger ALLEIN — ohne den echten Namen kein Fund", () => {
+    const gefunden = stellenVon(FREMDER_TRAEGER);
+    expect(
+      gefunden,
+      `${GEMESSENE_FORM}\n${GESCHUETZTE_STELLE}
+G2 ist die Gegenprobe zu G1 und erst mit ihm zusammen ein Beleg: dieselbe fremde Stelle, aber OHNE
+den echten Alias in der Quelle. Der Fund in G1 haengt also an der Anwesenheit des Namens Fehler,
+nicht an der Form des fremden Traegers. Wird G2 rot, meldet artVon jeden Punktnamen — dann ist die
+Gegengrenze (D.0 schlaegt NICHT an bei: ein typisiertes Feld …) nur noch zufaellig gruen.
+${befund(gefunden, [])}`,
+    ).toEqual([]);
+  });
+
+  it("D.0 GRENZE G3: der echte Name in Datei A macht die fremde Stelle in Datei B sichtbar", () => {
+    // Kein zweiter Extraktor: genau die zwei Funktionen, die auch D benutzt (Zeile 580).
+    const a = ECHTER_ALIAS + ECHTE_STELLE;
+    const b = FREMDER_TRAEGER;
+    const gemeinsam = erzeugungsstellen(b, fehlerklassen([a, b])).map(alsZeile);
+    const alleine = erzeugungsstellen(b, fehlerklassen([b])).map(alsZeile);
+    const erwartet = ['3 wurzel this.Fehler("Zeitueberschreitung")'];
+    const reichweite =
+      "Geschuetzte Stelle: das gemeinsame fehlerklassen(quellen) in D " +
+      "(jeder-fehler-traegt-einen-katalogschluessel.test.ts:580) zusammen mit " +
+      "quelltext.ts:434-435. D sammelt die Klassen EINMAL ueber ALLE Dateien.";
+    expect(
+      gemeinsam,
+      `${GEMESSENE_FORM}\n${reichweite}
+Das ist die Kehrseite des Vorteils, den D dort beansprucht: derselbe Sammelschritt, der eine in
+oidc.ts geerbte Klasse in service.ts wiedererkennt, macht einen Alias Fehler in IRGENDEINER Datei
+zu einem Fund in JEDER Datei. Datei A haelt hier nur den echten Alias, Datei B nur die fremde Stelle.
+${befund(gemeinsam, erwartet)}`,
+    ).toEqual(erwartet);
+    expect(
+      alleine,
+      `${GEMESSENE_FORM}\n${reichweite}
+Dieselbe Datei B, aber allein gesammelt: ohne Datei A gibt es den Namen Fehler nicht, und die
+fremde Stelle verschwindet. Bleibt hier etwas stehen, haengt der Fund nicht an der Reichweite der
+Sammlung, und die Aussage von G3 waere falsch.
+${befund(alleine, [])}`,
+    ).toEqual([]);
   });
 
   it("D.0 alsLiteral trennt Literal von Nicht-Literal", () => {
