@@ -24,10 +24,10 @@
 // `expect` steht hier, weil die Dialog-Zusagen unten Messungen SIND und nicht bloss Abfragen: sie
 // gehören zu den Messfenstern dieses Ordners und nicht in jede Testdatei abgeschrieben (JOB 3822).
 //
-// DIE EINE GRENZE, DIE NACH JOB 3864 NOCH OFFEN IST: der Zustand dieser Hülle (`container`, `root`,
-// `montiert`) ist modulweit und damit pro Testdatei. Was zwischen ZWEI Dateien EINES vitest-Laufs an
-// Rückstand bliebe, misst kein Fall — V1 bis V4 der Ganzdokument-Datei messen innerhalb einer Datei.
-// Alles andere an `abbauen()` ist gedeckt, siehe den Block darüber.
+// DIESE GRENZE IST SEIT JOB 3875 GEMESSEN: `dateiuebergreifender-rueckstand.test.ts` fährt zwei
+// Dateien, die diese Hülle importieren, in EINEM Fork und liest den Anfangszustand der zweiten.
+// Wie main steht, ist er sauber (Fall A); mit `--no-isolate` trägt er Behälter, Adresse und das
+// jsdom-Dokument der Vordatei (Fall B). Modulweit bleibt er — was ihn trennt, ist die Isolation.
 import { expect } from "vitest";
 import {
   QueryClient,
