@@ -85,7 +85,22 @@ const bruecke = {
   wartendePut: [] as Array<() => void>,
   /** Jedes PUT auf /api/reasoner/config scheitert mit 503 — der Server sieht es nie. */
   gestoertesPut: false,
+  // RUNDE 2 (BENs Korrekturpflicht 1 an JOB 3813 R1): eine gestörte Antwort war bis hierher SOFORT
+  // da. Damit misst ein Fall, der danach nur feste Timerrunden abspult, gar nicht, ob er wartet —
+  // BENs Gegenprobe mit 250 ms Latenz machte S4 und Z5 rot („die Auffrischung fand gar nicht statt:
+  // expected 2 to be greater than 2" / „die Karte verschweigt den Schreibfehler: expected false to
+  // be true"). Seitdem sind die Fehlerantworten in S4/Z5 dauerhaft UNTERWEGS, und beide Fälle warten
+  // auf den beobachteten Abschluss (`warteBis`), nicht auf eine Anzahl Durchläufe.
+  /** Latenz jeder GESTÖRTEN Antwort in Millisekunden (0 = sofort, wie bisher). */
+  stoerungMs: 0,
 };
+
+/** Die Laufzeit einer gestörten Antwort — sie bildet die Leitung nach, nicht die Wartelogik. */
+async function unterwegs(): Promise<void> {
+  if (bruecke.stoerungMs > 0) {
+    await new Promise((r) => setTimeout(r, bruecke.stoerungMs));
+  }
+}
 
 function brueckeAufbauen(): void {
   (globalThis as unknown as { fetch: unknown }).fetch = async (
@@ -103,6 +118,7 @@ function brueckeAufbauen(): void {
       bruecke.putRuempfe.push(JSON.parse(init.body ?? "{}") as PutRumpf);
       if (bruecke.gestoertesPut) {
         // Vor dem Server: der Schreibvorgang findet gar nicht statt, die Karte bekommt einen Fehler.
+        await unterwegs();
         return {
           ok: false,
           status: 503,
@@ -113,6 +129,9 @@ function brueckeAufbauen(): void {
     }
     if (istKonfig && methode === "GET") {
       if (bruecke.gestoertesGet) {
+        // Erst unterwegs, DANN gezählt: der Zähler markiert die ANGEKOMMENE Antwort und ist damit
+        // das beobachtbare Ereignis, auf das S4 wartet — nicht der Moment des Abschickens.
+        await unterwegs();
         bruecke.beantworteteGets += 1;
         return {
           ok: false,
@@ -197,6 +216,7 @@ async function serverStarten(envGlobal?: string): Promise<AppServices> {
   bruecke.haltPut = false;
   bruecke.wartendePut = [];
   bruecke.gestoertesPut = false;
+  bruecke.stoerungMs = 0;
   brueckeAufbauen();
   // Der erste Registrierte ist der Bootstrap-Admin (`users.manage`).
   await bruecke.app.inject({
@@ -222,6 +242,22 @@ async function serverFreigabe(): Promise<Freigabestand | undefined> {
   });
   expect(res.statusCode, "unabhängiges GET scheiterte").toBe(200);
   return (res.json() as { taskConfig: { kiFreigabe?: Freigabestand } }).taskConfig.kiFreigabe;
+}
+
+/**
+ * Derselbe unabhängige Blick, aber auf die ZUORDNUNG (JOB 3813, additive Erweiterung des Aufbaus):
+ * `serverFreigabe` liest nur `taskConfig.kiFreigabe` und kann darum nicht belegen, dass ein
+ * Zuordnungsschreiben WIRKLICH angekommen ist. Z5 und S4 brauchen genau das — dass der Kanal nach
+ * einem Fehler bzw. nach der Erholung nicht nur bedienbar AUSSIEHT, sondern trägt.
+ */
+async function serverZuordnung(): Promise<string> {
+  const res = await bruecke.app.inject({
+    method: "GET",
+    url: "/api/reasoner/config",
+    headers: { authorization: `Bearer ${bruecke.token}` },
+  });
+  expect(res.statusCode, "unabhängiges GET scheiterte").toBe(200);
+  return (res.json() as { taskConfig: { global: string } }).taskConfig.global;
 }
 
 /** Die ECHTEN Protokollzeilen der Freigabe — über die echte Route, nicht am Dienst vorbei. */
@@ -251,6 +287,32 @@ const durchlaufen = async (): Promise<void> => {
     await new Promise((r) => setTimeout(r, 0));
   }
 };
+
+/**
+ * WARTEN AUF EIN BEOBACHTBARES EREIGNIS — nicht auf eine Anzahl Durchläufe (JOB 3813, Runde 2).
+ *
+ * BENs Urteil an Runde 1, wörtlich: „Ein Zählervergleich nach festen Timerdurchläufen ist kein
+ * ereignisbasiertes Warten." `durchlaufen()` spult 30 Nulltakte ab und wertet dabei NICHTS aus; ist
+ * die Antwort 250 ms unterwegs, ist sie danach noch nicht da, und der Fall urteilt über einen
+ * Zwischenstand. Hier wird stattdessen die BEDINGUNG selbst geprüft, bis sie gilt.
+ *
+ * `ABBRUCH_MS` ist eine Abbruchschwelle, keine Messgröße: der Fall behauptet nicht, dass es schnell
+ * geht, sondern nur, dass es überhaupt geschieht — dieselbe Bauform wie
+ * `tests/app-sprachschalter/wechsel-ohne-verlust.test.tsx:183-204` (LEHREN.md:2998). `lage` wird
+ * ERST im Fehlerfall gelesen und nennt dann den zuletzt gesehenen Zustand.
+ */
+async function warteBis(bedingung: () => boolean, lage: () => string): Promise<void> {
+  const ABBRUCH_MS = 10_000;
+  const start = Date.now();
+  while (!bedingung()) {
+    if (Date.now() - start > ABBRUCH_MS) {
+      throw new Error(`erwartetes Ereignis blieb aus — zuletzt gesehen: ${lage()}`);
+    }
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 10));
+    });
+  }
+}
 
 /** Der Vorrat der gemounteten Karte — V5 stößt darüber einen Abruf an, wie es der Browser täte. */
 let vorrat: QueryClient | null = null;
@@ -626,6 +688,121 @@ describe("JOB 3783 · S — was die Karte NICHT tut, wenn sie den Stand nicht ke
     });
     expect(kaestchen(c, "ki-freigabe-oeffentlich").checked).toBe(true);
   }, 60_000);
+
+  it("S4 · gescheitertes Nachladen hält einen bereitstehenden Zuordnungsentwurf — bis zur Erholung", async () => {
+    // WOHER DIESER FALL KOMMT (JOB 3813): BENs Prüfpunkt 6 an JOB 3783 R2, wörtlich — „Meine beiden
+    // grünen Gegenproben sollten als dauerhafte Tests ergänzt werden", benannt unter EIGENE MESSUNG
+    // als „fehlgeschlagenes Nachladen sperrt einen bereitstehenden Zuordnungsentwurf bis zur
+    // Erholung"; dazu seine Promptverbesserung: „Halte bei fehlgeschlagenem Nachladen einen
+    // Zuordnungsentwurf bereit und belege Sperre sowie anschließende Erholung über GET und Audit."
+    //
+    // WELCHE PRODUKTSTELLE ER FESTNAGELT: `AdminKiDetails.tsx:689`
+    // (`const nachladenGescheitert = aiConfig.isError;`) und `:1154-1162`, wo der Knopf
+    // „Zuordnung übernehmen" daran sperrt. Die Begründung steht im Produkt selbst (`:1150-1153`):
+    // sein Rumpf trägt `basis.perTask` mit — aus einer Abfrage, die den Stand nicht mehr sicher
+    // kennt, wäre das ein geratener Wert. S1 prüft diese Sperre nur am FREIGABESCHALTER, V4 die
+    // Erholung nur am Nachladehinweis; der ENTWURF der Zuordnung war in beidem ungemessen.
+    await serverStarten();
+    const c = await karteMounten();
+    /** Der Entwurf, wie die Fläche ihn zeigt — das Auswahlfeld selbst, nicht ein Zustand daneben. */
+    const entwurf = (): string =>
+      c.querySelector<HTMLSelectElement>('[data-testid="ki-wahl-global"]')?.value ?? "";
+
+    // Eine Freigabe GILT, bevor das Nachladen scheitert: so hat das Audit unten Inhalt, und die
+    // Erholung muss diesen bestätigten Stand unangetastet lassen.
+    await umlegen(c, "ki-freigabe-oeffentlich");
+    expect(await serverFreigabe()).toMatchObject({ oeffentlicheKi: true });
+    const putsVorher = bruecke.putRuempfe.length;
+
+    // Ein Entwurf steht BEREIT, die Abfrage ist gesund — sonst wäre der Knopf ohnehin aus
+    // (`:1160`: `aiGlobal === null && aiPerTask === null`) und die Sperre unten ungemessen.
+    await zuordnungWaehlen(c, "deterministic");
+    expect(speichernKnopf(c).disabled, "der Knopf ist mit Entwurf immer noch aus").toBe(false);
+
+    // JETZT scheitert das Nachladen — angestoßen wie im Browser (Fensterfokus, Wiedersehen), und
+    // die Fehlerantwort ist UNTERWEGS (250 ms), nicht sofort da. Genau diese Lage hat BEN an Runde 1
+    // gebaut und damit den alten, auf feste Durchläufe gestützten Fall rot gemacht; sie steht jetzt
+    // dauerhaft hier. Gewartet wird zweistufig auf Beobachtbares: erst auf das Promise der
+    // Auffrischung selbst, dann auf ihre Spuren — Zähler der ANGEKOMMENEN Antwort (`:131-141`) und
+    // der Hinweis an der Karte.
+    bruecke.stoerungMs = 250;
+    const getsVorher = bruecke.beantworteteGets;
+    bruecke.gestoertesGet = true;
+    await act(async () => {
+      // Das Promise wird NICHT verworfen (BENs Befund an Runde 1). `refetchQueries` löst auch bei
+      // Fehlern auf; der `catch` steht für den Fall, dass eine Abfrage ihn doch weiterreicht.
+      await (vorrat as QueryClient)
+        .refetchQueries({ queryKey: ["reasonerConfig"] })
+        .catch(() => undefined);
+    });
+    await warteBis(
+      () => bruecke.beantworteteGets > getsVorher && sichtbar(c, "ki-freigabe-nachladen-fehler"),
+      () =>
+        `beantwortete GETs ${bruecke.beantworteteGets} (vorher ${getsVorher}), Fehlerhinweis ${sichtbar(c, "ki-freigabe-nachladen-fehler")}`,
+    );
+
+    // (a) Der Knopf ist gesperrt. `soft`, damit die Mutation unten auch Punkt (b) erreicht: eine
+    // entfernte Sperre soll BEIDES zeigen — das fehlende Merkmal UND das Schreiben, das folgt.
+    expect
+      .soft(speichernKnopf(c).disabled, "die Zuordnung schreibt aus ungewissem Stand")
+      .toBe(true);
+    // (b) Und die Sperre ist ECHT: ein Klick schickt nichts. Gemessen wird die Wirkung, nicht das
+    // Merkmal — `klick` hält sich an `disabled` wie ein Browser (`:356-361`). Die Rümpfe werden im
+    // Moment des ABSCHICKENS gezählt (`:118`), nicht bei der Antwort: eine spät eintreffende
+    // Antwort kann diese Aussage nicht mehr kippen. Dass auch später keines nachkommt, sagt die
+    // Schlussbilanz unten: am Ende steht GENAU ein Schreiben mehr als vor der Störung.
+    await klick(speichernKnopf(c), "Zuordnung übernehmen");
+    expect(bruecke.putRuempfe.length, "trotz gescheitertem Nachladen geschrieben").toBe(putsVorher);
+    // (c) Der Entwurf ist dabei NICHT verlorengegangen — sperren heißt halten, nicht wegwerfen.
+    expect(entwurf(), "der Entwurf ist beim Nachladefehler verschwunden").toBe("deterministic");
+    expect(sichtbar(c, "ki-ungespeichert"), "die Karte sagt nicht mehr, dass etwas offen ist").toBe(
+      true,
+    );
+
+    // DIE ERHOLUNG, über die echte Fläche: der Knopf „Erneut laden" der Karte (`:985-992`).
+    // Wieder wird auf den beobachteten Abschluss gewartet: die Abfrage ist BEANTWORTET und der
+    // Fehlerhinweis der Karte ist weg — nicht „nach n Durchläufen wird es schon soweit sein".
+    bruecke.gestoertesGet = false;
+    const getsVorErholung = bruecke.beantworteteGets;
+    await klick(c.querySelector('[data-testid="ki-freigabe-erneut"]'), "Erneut laden");
+    await warteBis(
+      () =>
+        bruecke.beantworteteGets > getsVorErholung && !sichtbar(c, "ki-freigabe-nachladen-fehler"),
+      () =>
+        `beantwortete GETs ${bruecke.beantworteteGets} (vor der Erholung ${getsVorErholung}), Fehlerhinweis ${sichtbar(c, "ki-freigabe-nachladen-fehler")}`,
+    );
+
+    // (d) Die Sperre geht wieder AUF, der Entwurf steht noch, und er lässt sich speichern.
+    expect(speichernKnopf(c).disabled, "die Sperre hängt fest").toBe(false);
+    expect(entwurf(), "der Entwurf hat die Erholung nicht überlebt").toBe("deterministic");
+    await klick(speichernKnopf(c), "Zuordnung übernehmen");
+    expect(bruecke.putRuempfe.length, "nach der Erholung ging nichts hinaus").toBe(putsVorher + 1);
+    // Das Schreiben ist ABGESCHLOSSEN, wenn die Karte den Entwurf verbraucht hat — erst danach
+    // haben Server- und Auditblick unten überhaupt etwas zu sehen.
+    await warteBis(
+      () => !sichtbar(c, "ki-ungespeichert"),
+      () => "der Entwurfshinweis steht noch, das Schreiben ist nicht beantwortet",
+    );
+    const letzter = bruecke.putRuempfe[bruecke.putRuempfe.length - 1];
+    expect(letzter?.global).toBe("deterministic");
+    expect(letzter?.kiFreigabe, "das Speichern der Zuordnung nennt die Freigabe").toBeUndefined();
+    // UNABHÄNGIGER GET: die Zuordnung gilt wirklich, und die bestätigte Freigabe hat der Umweg
+    // nicht gekostet.
+    expect(await serverZuordnung(), "die Zuordnung kam nicht an").toBe("deterministic");
+    expect(await serverFreigabe(), "die Freigabe ging über den Umweg verloren").toMatchObject({
+      oeffentlicheKi: true,
+    });
+    // ECHTES AUDIT: genau die EINE Freigabezeile von oben. Weder der gesperrte Klick noch das
+    // Speichern nach der Erholung hat eine erzeugt oder eine zurückgenommen — das Speichern der
+    // Zuordnung erweitert keine Freigabe und schreibt darum richtigerweise keine Zeile
+    // (`services/app/src/routes/reasoner-routes.ts:759-767`).
+    expect((await protokoll()).map(nachher)).toEqual([[true, false]]);
+    // SCHLUSSBILANZ: über den ganzen Fall hinweg ist GENAU EIN Schreiben mehr hinausgegangen als vor
+    // der Störung — der gesperrte Klick hat also auch nicht verspätet noch eines nachgeschickt.
+    expect(bruecke.putRuempfe.length, "es ging doch ein zweites Schreiben hinaus").toBe(
+      putsVorher + 1,
+    );
+  }, 60_000);
 });
 
 // ================================================================================================
@@ -882,5 +1059,80 @@ describe("JOB 3783 · Z — Zuordnung und Freigabe schreiben dieselbe Konfigurat
     );
     await umlegen(c, "ki-freigabe-oeffentlich");
     expect(await serverFreigabe()).toMatchObject({ oeffentlicheKi: true });
+  }, 60_000);
+
+  it("Z5 · ein gescheitertes FREIGABE-Schreiben gibt den Kanal wieder frei", async () => {
+    // WOHER DIESER FALL KOMMT (JOB 3813): BENs Prüfpunkt 6 an JOB 3783 R2, wörtlich — „Z4 prüft
+    // dauerhaft nur den Zuordnungsfehler. Meine beiden grünen Gegenproben sollten als dauerhafte
+    // Tests ergänzt werden"; benannt unter EIGENE MESSUNG als „Freigabefehler gibt
+    // Zuordnungsspeichern wieder frei".
+    //
+    // WELCHE PRODUKTSTELLE ER FESTNAGELT: `AdminKiDetails.tsx:666-669` — `freigabeSpeichern.onError`
+    // ruft `kanalFreigeben`. Z4 (`:1044`) deckt nur den Zwilling `aiSave.onError` (`:628-631`), also
+    // EINE Richtung. Fehlte die Zeile hier, bliebe `laufendesSchreiben` (`:536`) nach einem
+    // gescheiterten Freigabeschreiben für immer belegt: `schreibnummer()` gäbe nur noch `null`, und
+    // die ZUORDNUNG käme nie mehr hinaus. Der Knopf sähe dabei bedienbar aus — `schreibenLaeuft`
+    // (`:693`) ist nach dem Fehler wieder falsch. Deshalb wird hier nicht `disabled` geprüft,
+    // sondern die WIRKUNG.
+    await serverStarten();
+    const c = await karteMounten();
+    // Der Entwurf steht bereit, BEVOR gestört wird — sonst wäre der Knopf unten ohnehin aus
+    // (`:1160`: `aiGlobal === null && aiPerTask === null`) und die Aussage leer.
+    await zuordnungWaehlen(c, "deterministic");
+    expect(speichernKnopf(c).disabled, "der Knopf ist mit Entwurf immer noch aus").toBe(false);
+
+    // Die Fehlerantwort ist UNTERWEGS (250 ms), nicht sofort da — BENs Gegenprobe an Runde 1 steht
+    // damit dauerhaft in diesem Fall. Gewartet wird danach auf den beobachteten Abschluss: der
+    // Schreibfehler ist an der Karte angekommen (`ki-freigabe-fehler`, `AdminKiDetails.tsx:1002`).
+    bruecke.stoerungMs = 250;
+    bruecke.gestoertesPut = true;
+    await umlegen(c, "ki-freigabe-oeffentlich");
+
+    // (a) Es ging wirklich ein FREIGABE-PUT hinaus — sonst misst dieser Fall nichts.
+    expect(bruecke.putRuempfe.length, "es ging gar kein Freigabeschreiben hinaus").toBe(1);
+    expect(bruecke.putRuempfe[0]?.kiFreigabe).toEqual({
+      oeffentlicheKi: true,
+      vertraulicheInhalte: false,
+    });
+    await warteBis(
+      () => sichtbar(c, "ki-freigabe-fehler"),
+      () =>
+        `der Schreibfehler ist nicht an der Karte angekommen; Stand: ${text(c, "ki-freigabe-stand")}`,
+    );
+    bruecke.gestoertesPut = false;
+    // (b) Der Server trägt die Freigabe NICHT — unabhängiges GET, an Tor und Karte vorbei.
+    expect(await serverFreigabe(), "das gestörte Schreiben kam doch an").toBeUndefined();
+    // (c) Und es steht keine Protokollzeile da: das Tor sitzt VOR dem Server (`:119-128`), es ist
+    // nichts geschehen, was zu belegen wäre — und die Karte behauptet auch nichts anderes.
+    expect((await protokoll()).length, "ein gescheitertes Schreiben steht im Protokoll").toBe(0);
+    expect(kaestchen(c, "ki-freigabe-oeffentlich").checked).toBe(false);
+    expect(sichtbar(c, "ki-freigabe-fehler"), "die Karte verschweigt den Schreibfehler").toBe(true);
+
+    // (d) DER KANAL IST WIEDER FREI — und zwar nicht nur dem Anschein nach.
+    expect(speichernKnopf(c).disabled, "die Zuordnung bleibt nach dem Fehler gesperrt").toBe(false);
+    expect(sichtbar(c, "ki-ungespeichert"), "der Entwurf ist beim Schreibfehler verschwunden").toBe(
+      true,
+    );
+    await klick(speichernKnopf(c), "Zuordnung übernehmen");
+    expect(bruecke.putRuempfe.length, "das Zuordnungsschreiben ging nicht hinaus").toBe(2);
+    // Und es ist BEANTWORTET — erst dann haben Server- und Auditblick unten etwas zu sehen.
+    await warteBis(
+      () => !sichtbar(c, "ki-ungespeichert"),
+      () => "der Entwurfshinweis steht noch, das Zuordnungsschreiben ist nicht beantwortet",
+    );
+    expect(bruecke.putRuempfe[1]?.global).toBe("deterministic");
+    expect(bruecke.putRuempfe[1]?.kiFreigabe, "das Speichern nennt die Freigabe").toBeUndefined();
+    // Unabhängiger GET: die Zuordnung GILT jetzt, die Freigabe steht weiterhin nicht da.
+    expect(await serverZuordnung(), "die Zuordnung kam nicht an").toBe("deterministic");
+    expect(await serverFreigabe(), "aus dem gescheiterten Klick wurde doch eine Freigabe").toBe(
+      undefined,
+    );
+    // Echtes Audit: unverändert leer. Die Zuordnung erweitert keine Freigabe und schreibt darum
+    // richtigerweise keine Zeile (`services/app/src/routes/reasoner-routes.ts:759-767`) — eine
+    // Zeile hier wäre eine Freigabe, die niemand erteilt hat.
+    expect((await protokoll()).length, "es steht eine Protokollzeile zu viel da").toBe(0);
+    expect(sichtbar(c, "ki-ungespeichert"), "der Entwurf steht nach dem Speichern noch offen").toBe(
+      false,
+    );
   }, 60_000);
 });
