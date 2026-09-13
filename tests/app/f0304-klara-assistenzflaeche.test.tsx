@@ -35,6 +35,10 @@
 // Antwort abgelegt (`erklaerAbrufe`), der gesendete Anfragekoerper verworfen. Der zweite
 // describe-Block am Dateiende misst daran, was Klara wirklich an die KI schickt — samt der fuenf
 // gemessenen Zahlen im Kopf dieses Blocks.
+//
+// JOB 3891 (13.09.2026) hat die Modellkante dieser Vorrichtung getrennt gezaehlt (Erreichbarkeits-
+// Ping gegen Generierung, je Fall zurueckgesetzt) und ihren Fehlerfall gemessen — Begruendung und
+// Messwerte im Kopf des zweiten Blocks.
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 process.env.KLARWERK_SKIP_KEYCHAIN = "1";
@@ -90,7 +94,22 @@ let drahtApp: FastifyInstance | null = null;
 let cookie: string | null = null;
 let vorherigerFetch: typeof globalThis.fetch;
 let letzterModellstatus = "(nie abgerufen)";
-let modellkanteAngefragt = 0;
+// JOB 3891: ZWEI Zaehler statt einem. Bis hierher stand hier EINE Zahl fuer JEDE absolute Anfrage
+// — den Erreichbarkeits-Ping GENAUSO wie die Generierung — und sie wurde nie zurueckgesetzt.
+// Eine daraus gebaute Zusicherung („die Modellkante wurde angefragt") war am Dateiende immer wahr,
+// weil die Faelle davor schon Aufrufe hinterlassen hatten; sie mass nichts. Getrennt und je Fall
+// zurueckgesetzt (`afterEach`) sagt jede Zahl etwas ueber GENAU DIESE Nutzerhandlung.
+let erreichbarkeitsPings = 0;
+let generierungsAufrufe = 0;
+// Fallgebunden: solange dies nicht 200 ist, antwortet NUR die Generierungskante mit diesem Status.
+// Der Erreichbarkeits-Ping bleibt gesund — sonst ist der KI-Knopf hart ausgegraut (`:41-43`), die
+// Handlung liefe nie, und ein Fehlerfall waere still gruen, ohne etwas gemessen zu haben.
+let generierungsStatus = 200;
+// Wie oft die Generierungskante den eingestellten Fehlerstatus WIRKLICH ausgeliefert hat. Ohne
+// diese Zahl koennte ein Fehlerfall gruen werden, weil sein Schadensfall gar nicht eintrat.
+let generierungsfehlerGeliefert = 0;
+// Die zuletzt generierende URL — Diagnose, damit ein Fehlschlag sagt, an welcher Kante gemessen wurde.
+let letzteGenerierungsUrl = "(nie)";
 const erklaerAbrufe: string[] = [];
 // JOB 3830: was der Client GESENDET hat. `erklaerAbrufe` legt die ANTWORT ab — die Anfrage wurde
 // bisher verworfen, und genau sie ist das letzte Glied, an dem der Hilfetext vor der KI noch
@@ -112,9 +131,34 @@ function drahtAufbauen(): void {
       // Der Erreichbarkeits-Ping bekommt eine gueltige Mini-Antwort; die Generierung bekommt eine
       // unbrauchbare, und das Ergebnis entsteht ueber den deterministischen Rueckfall der
       // Providerkette. Dieser Test erfindet also keinen Antworttext.
-      modellkanteAngefragt += 1;
+      //
+      // JOB 3891 — WAS `istGenerierung` IST UND WAS NICHT. Die Unterscheidung war schon da, wurde
+      // aber nur fuer die Nutzlast benutzt und fuer die Zaehlung weggeworfen. Sie ist eine HEURISTIK
+      // DIESER VORRICHTUNG (traegt der Rumpf das Wort `snippet` oder ist er laenger als 400 Zeichen)
+      // und KEINE Aussage ueber das Produkt: das Produkt kennzeichnet seine Modellanfragen nicht so.
+      // Aendert sich die Anfrageform, kann sie falsch trennen — deshalb ist jede Zusicherung, die auf
+      // ihr steht, mit einer Kalibrierung gepaart, die rot wird statt zu schweigen (A1, A5).
       const rumpf = init?.body === undefined || init.body === null ? "" : String(init.body);
       const istGenerierung = rumpf.includes("snippet") || rumpf.length > 400;
+      if (istGenerierung) {
+        generierungsAufrufe += 1;
+        letzteGenerierungsUrl = url;
+        if (generierungsStatus !== 200) {
+          generierungsfehlerGeliefert += 1;
+          const fehlerrumpf = JSON.stringify({
+            error: { message: "kw-job3891: die Generierungskante ist gestoert" },
+          });
+          return {
+            status: generierungsStatus,
+            statusText: String(generierungsStatus),
+            ok: false,
+            text: async () => fehlerrumpf,
+            json: async () => JSON.parse(fehlerrumpf),
+          };
+        }
+      } else {
+        erreichbarkeitsPings += 1;
+      }
       const nutzlast = istGenerierung ? {} : { choices: [{ message: { content: "bereit" } }] };
       return {
         status: 200,
@@ -235,7 +279,7 @@ async function fragen(frage: string): Promise<void> {
   // Bahn frueher still gescheitert: die Handlung lief gar nicht.
   expect(
     knopf.disabled,
-    `der KI-Knopf ist ausgegraut — die Frage wurde nie gestellt. Modellstatus: ${letzterModellstatus} · Modellkante angefragt: ${modellkanteAngefragt}`,
+    `der KI-Knopf ist ausgegraut — die Frage wurde nie gestellt. Modellstatus: ${letzterModellstatus} · Erreichbarkeits-Pings: ${erreichbarkeitsPings} · Generierungsaufrufe: ${generierungsAufrufe}`,
   ).toBe(false);
   await act(async () => {
     knopf.click();
@@ -278,6 +322,15 @@ afterEach(() => {
   cookie = null;
   erklaerAbrufe.length = 0;
   erklaerAnfragen.length = 0;
+  // JOB 3891: die Zaehler der Modellkante gehoeren dem einzelnen Fall — genau wie die beiden Listen
+  // darueber. Ohne diese Zeilen zaehlt die Handlung des Vorgaengerfalls mit, und A1/A5 messen nicht
+  // mehr ihre eigene Handlung.
+  erreichbarkeitsPings = 0;
+  generierungsAufrufe = 0;
+  generierungsfehlerGeliefert = 0;
+  letzteGenerierungsUrl = "(nie)";
+  // Die fallgebundene Stoerung wird IMMER zurueckgenommen, auch wenn der Fall vorzeitig abbrach.
+  generierungsStatus = 200;
 });
 
 describe("JOB 2959 · D1 · F-0304 — die Assistenzflaeche sagt, zu welcher Frage ihre Antwort gehoert", () => {
@@ -400,10 +453,55 @@ describe("JOB 2959 · D1 · F-0304 — die Assistenzflaeche sagt, zu welcher Fra
 // Belegt ist das an einem Punkt: die Modellkante dieser Vorrichtung GENERIERT nicht (`:79-94`),
 // und der Koerper entsteht trotzdem — er wird VOR dem Modellaufruf gebildet (A1 misst beides).
 //
-// NICHT GEMESSEN (ehrliche Reichweite): keine echte Modellantwort (die Kante ist eine Attrappe),
-// keine andere Sprache als `de` (`allFaqEntries` gibt EN/NL nichts), kein Browser — und nicht der
-// Zweig ohne jede Grundlage (`KlaraAssistant.tsx:300-303`, `setAiNoGrounding(true)`), in dem es
-// ehrlich GAR KEINEN Aufruf und damit keinen Anfragekoerper gibt.
+// ------------------------------------------------------------------------------------------------
+// JOB 3891 (13.09.2026) — DIE GENERIERUNGSKANTE WIRD PRO HANDLUNG GEZAEHLT, IHR FEHLERFALL GEMESSEN
+// ------------------------------------------------------------------------------------------------
+//
+// WAS HIER NICHT TRUG. A1 verlangte, „die Modellkante wurde angefragt" — gemessen an EINER Zahl, die
+// jeden Erreichbarkeits-Ping mitzaehlte und nie zurueckgesetzt wurde. Beim Eintritt in A1 stand sie
+// wegen der vier Faelle im ersten Block ohnehin ueber 0: die Zusicherung war wahr, ohne etwas zu
+// messen. BELEG, dass die Luecke bestand: zaehlt man in der Abfangstelle testweise NUR den Ping und
+// die Generierung gar nicht, bleibt A1 am Stand vor diesem Durchgang GRUEN (Cloud-Lauf eb40b0a4…,
+// „Tests 8 passed (8)"); mit der geschaerften Zusicherung ist dieselbe Verstellung ROT.
+//
+// WAS BEI EINEM FEHLER DER GENERIERUNGSKANTE WIRKLICH GESCHIEHT (gemessen, Cloud-Lauf 726fa66c…,
+// A5 mit HTTP 500 NUR auf der Generierung, Ping gesund): Der Fehler bleibt an der Modellkante
+// stehen. `Reasoner.runTask` (`services/reasoner/src/service.ts:1180-1245`) faengt ihn und geht ein
+// Glied weiter; geantwortet hat der deterministische Rueckfall — `POST /api/help/explain` liefert
+// weiter 200, der Koerper traegt `"demo":true`, `"knowledgeClass":"ungeprueft"`, `"trust":0`, und der
+// Antworttext ist der ZITIERTE `body` eines uebertragenen Schnipsels. Auf der Flaeche steht deshalb
+// KEINE Fehlermeldung und KEINE Wissensluecke, sondern die gewohnte Karte mit dem Etikett
+// „Ungeprüft" (`KlaraAssistant.tsx:531-534`) und der Frage darueber. Der Zweig `aiAsk.isError`
+// (`:498-501`, `state.error`) wird dabei NICHT erreicht — er gehoert einem Fehler der eigenen Route,
+// nicht der Modellkante. Der Mensch erfaehrt also nicht, dass das Modell ausgefallen ist; er bekommt
+// aber auch nichts Erfundenes.
+//
+// RUNDE 2 — WAS RUNDE 1 NICHT TRUG, UND WAS JETZT GEMESSEN IST. A5 pruefte den Antworttext
+// ausschliesslich am SERVERKOERPER (`erklaerAbrufe`), nie am Bildschirm. BEN hat die Luecke
+// vorgefuehrt: ersetzt man in `KlaraAssistant.tsx:563` den angezeigten Text durch „Der Mond besteht
+// aus Käse.", bleiben alle neun Faelle gruen. Ein korrekter Serverkoerper belegt eben keinen
+// korrekten sichtbaren Text. Zudem stand der Inhaltsnachweis hinter `if (answered && answer)` — fiel
+// die Antwort weg, entfiel stillschweigend auch ihre Pruefung.
+//
+// GEMESSEN (Messlauf 3b5425bd…, A5 mit HTTP 500 auf der Generierung): Der Antwortblock ist das
+// Element unmittelbar nach der Fragezeile — `div.text-[12px] leading-relaxed text-text`
+// (`AnswerMarkdown`, `KlaraAssistant.tsx:561-565`). Sein Text ist ZEICHENGLEICH mit `answer` aus dem
+// Serverkoerper (404 Zeichen), und `answer` ist wiederum zeichengleich mit dem `body` GENAU EINES
+// uebertragenen Schnipsels (`sec:nb.title`, zugleich die einzige gemeldete `source`) — der
+// deterministische Rueckfall gibt `best.statement` unveraendert zurueck (`provider.ts:1941-1944`).
+// A5 pinnt daraus die Kette „sichtbarer Text == gelieferter Text == uebertragener `body`" plus
+// `demo: true` und die Herkunft jeder tragenden Quelle. WELCHER Schnipsel zitiert wird und wie viele
+// Quellen es sind, wird NICHT gepinnt (Lehre JOB 3874 R1).
+//
+// NICHT GEMESSEN (ehrliche Reichweite): keine echte Modellantwort (die Kante ist eine Attrappe —
+// sie antwortet unbrauchbar oder mit einem Fehler, nie mit erzeugtem Text), keine andere Sprache als
+// `de` (`allFaqEntries` gibt EN/NL nichts), kein Browser — und nicht der Zweig ohne jede Grundlage
+// (`KlaraAssistant.tsx:300-303`, `setAiNoGrounding(true)`), in dem es ehrlich GAR KEINEN Aufruf und
+// damit keinen Anfragekoerper gibt. Ebenfalls offen: ob die Heuristik `istGenerierung` (`:142`) auch
+// bei kuenftigen Anfrageformen noch zwischen Ping und Generierung trennt — sie ist eine Eigenschaft
+// DIESER Vorrichtung, keine des Produkts. Und die Sichtbarkeitspruefung (`ausblendung`) reicht nur so
+// weit wie jsdom: `hidden`, `hidden`/`invisible` und Inline-Stil werden gesehen, eine Ausblendung
+// ueber ein Stylesheet oder ueber Groesse/Ueberdeckung nicht — dafuer braeuchte es den Browser.
 
 interface Anfragekoerper {
   question: string;
@@ -420,7 +518,7 @@ function letzterAnfragekoerper(): Anfragekoerper {
   const roh = erklaerAnfragen.at(-1);
   expect(
     typeof roh,
-    `kein Anfragekoerper von /api/help/explain — die Handlung lief nicht. Modellstatus: ${letzterModellstatus} · Modellkante angefragt: ${modellkanteAngefragt} · Antworten: ${erklaerAbrufe.length}`,
+    `kein Anfragekoerper von /api/help/explain — die Handlung lief nicht. Modellstatus: ${letzterModellstatus} · Erreichbarkeits-Pings: ${erreichbarkeitsPings} · Generierungsaufrufe: ${generierungsAufrufe} · Antworten: ${erklaerAbrufe.length}`,
   ).toBe("string");
   return JSON.parse(String(roh)) as Anfragekoerper;
 }
@@ -452,6 +550,43 @@ function verbotsfunde(text: string): string[] {
   return VERBOTENE_STAEMME.filter((stamm) => klein.includes(stamm));
 }
 
+/**
+ * Derselbe Text ohne JEDEN Leerraum. Gebraucht fuer den Vergleich „angezeigt == geliefert":
+ * `AnswerMarkdown` zerlegt den Antworttext in Bloecke (Absatz, Ueberschrift, Listenpunkt), und
+ * `textContent` setzt Blockgrenzen OHNE Leerzeichen wieder zusammen — ein Vergleich mit bloss
+ * normalisiertem Leerraum ginge daran kaputt, sobald ein Hilfetext zwei Absaetze hat.
+ * WAS ER NICHT SIEHT (ehrlich benannt): Marken, die der Renderer entfernt (`**fett**` wird `fett`).
+ * Der heute gemessene Antworttext traegt keine (Messlauf 3b5425bd…, 404 Zeichen, ein Absatz).
+ */
+const ohneLeerraum = (text: string): string => text.replace(/\s+/g, "");
+
+/**
+ * Die erste Ausblendung an `element` oder einem seiner Vorfahren bis einschliesslich `grenze` —
+ * oder `null`, wenn nichts ausblendet. Gemessen werden die Mittel, mit denen DIESES Produkt
+ * ausblendet: das `hidden`-Attribut, die Tailwind-Klassen `hidden`/`invisible` und der Inline-Stil.
+ * jsdom rechnet kein Layout und wendet keine Stylesheet-Regeln an; eine Ausblendung ueber eine
+ * CSS-Datei oder ueber Groesse/Ueberdeckung faende das hier NICHT (Grenze im Kopf des Blocks).
+ */
+function ausblendung(element: HTMLElement | null, grenze: HTMLElement | null): string | null {
+  let lauf: HTMLElement | null = element;
+  while (lauf) {
+    if (lauf.hasAttribute("hidden")) {
+      return `${lauf.tagName} traegt das Attribut hidden`;
+    }
+    if (lauf.classList.contains("hidden") || lauf.classList.contains("invisible")) {
+      return `${lauf.tagName} traegt die Klasse „${lauf.className}"`;
+    }
+    if (lauf.style.display === "none" || lauf.style.visibility === "hidden") {
+      return `${lauf.tagName} traegt den Inline-Stil „${lauf.style.cssText}"`;
+    }
+    if (lauf === grenze) {
+      return null;
+    }
+    lauf = lauf.parentElement;
+  }
+  return null;
+}
+
 // Der Wortlaut VOR JOB 3787 (Basisstand be5c09b), Zeichen fuer Zeichen der Satz, der die abgeschaffte
 // Zusage trug. Er ist hier NUR Messmittel: er belegt, dass `verbotsfunde` nicht konstant `[]` liefert.
 const HISTORISCHE_ZUSAGE =
@@ -473,12 +608,24 @@ describe("JOB 3830 · der KI-Ausschnitt wird am echten Anfragekoerper gemessen",
       "die Anfrage geht ohne jede Grundlage hinaus — dann waere jede folgende Messung gegenstandslos",
     ).toBeGreaterThan(0);
     expect(koerper.locale, "die Anfrage nennt ihre Sprache nicht").toBe("de");
-    // ZUSTANDSMODELL, belegt: die Modellkante wurde angefragt und generiert NICHT (`:79-94`) — der
-    // Anfragekoerper entsteht trotzdem, weil er VOR dem Modellaufruf gebildet wird.
+    // ZUSTANDSMODELL, belegt: in DIESER Handlung hat die Generierungskante wirklich gearbeitet und
+    // generiert NICHT brauchbar (die Attrappe liefert `{}`) — der Anfragekoerper entsteht trotzdem,
+    // weil er VOR dem Modellaufruf gebildet wird.
+    //
+    // JOB 3891: gemessen wird der GENERIERUNGSzaehler, nicht mehr die Summe aus Ping und Generierung
+    // (die stand beim Eintritt in diesen Fall wegen der Faelle darueber ohnehin schon ueber 0 und
+    // konnte gar nicht fallen). Und er wird gegen die Zahl der Clientanfragen gehalten statt gegen
+    // eine im Test gesetzte Konstante: JEDE Anfrage an /api/help/explain loest genau eine Generierung
+    // aus. Zaehlt ein Vorgaengerfall mit (fehlende Ruecksetzung) oder bleibt die Generierung aus,
+    // stimmt die Gleichung nicht mehr.
     expect(
-      modellkanteAngefragt,
-      "die Modellkante wurde nie angefragt — dann belegt dieser Fall nichts ueber die Reihenfolge",
+      generierungsAufrufe,
+      `in dieser Handlung wurde nie generiert — dann belegt dieser Fall nichts ueber die Reihenfolge. Erreichbarkeits-Pings: ${erreichbarkeitsPings} · Modellstatus: ${letzterModellstatus}`,
     ).toBeGreaterThan(0);
+    expect(
+      generierungsAufrufe,
+      `die Zahl der Generierungen gehoert nicht dieser Handlung: ${generierungsAufrufe} Generierungen auf ${erklaerAnfragen.length} Clientanfrage(n)`,
+    ).toBe(erklaerAnfragen.length);
   });
 
   it("A2 · DER KORRIGIERTE TEXT ERREICHT DAS MODELL: der Duplikateintrag ist unter den uebertragenen Schnipseln", async () => {
@@ -549,5 +696,151 @@ describe("JOB 3830 · der KI-Ausschnitt wird am echten Anfragekoerper gemessen",
     // GEGENPROBE OHNE PRODUKTVERSTELLUNG: die Pruefung ist keine Konstante. Auf dem Wortlaut VOR
     // JOB 3787 meldet dieselbe Funktion beide Staemme.
     expect(verbotsfunde(HISTORISCHE_ZUSAGE)).toEqual(["verschmolz", "zusammenführ"]);
+  });
+
+  it("A5 · DIE GENERIERUNGSKANTE ANTWORTET MIT EINEM FEHLER: der Ausschnitt geht trotzdem vollstaendig hinaus", async () => {
+    await vorrichtung();
+    // NUR die Generierung wird gestoert, der Erreichbarkeits-Ping bleibt gesund. Zurueckgenommen
+    // wird die Stoerung in `afterEach` — auch wenn dieser Fall vorzeitig abbricht.
+    generierungsStatus = 500;
+    await fragen(FRAGE_DUPLIKAT);
+
+    // (a) KALIBRIERUNG — beides muss eingetreten sein, sonst ist dieser Fall ROT statt still gruen:
+    // die Generierung wurde wirklich angefragt UND sie hat wirklich den Fehler geliefert.
+    expect(
+      generierungsAufrufe,
+      `die Generierungskante wurde in dieser Handlung nie angefragt — der Schadensfall trat nicht ein. Erreichbarkeits-Pings: ${erreichbarkeitsPings} · Modellstatus: ${letzterModellstatus}`,
+    ).toBeGreaterThan(0);
+    expect(
+      generierungsfehlerGeliefert,
+      `die Generierungskante hat nie den Fehler ausgeliefert (eingestellt: ${generierungsStatus}, zuletzt generierende URL: ${letzteGenerierungsUrl}, Generierungsaufrufe: ${generierungsAufrufe}) — ein Fall, der gruen wird, weil sein Schadensfall ausblieb, belegt nichts`,
+    ).toBeGreaterThan(0);
+    expect(
+      generierungsfehlerGeliefert,
+      `nicht jeder Generierungsaufruf bekam den Fehler: ${generierungsfehlerGeliefert} von ${generierungsAufrufe}`,
+    ).toBe(generierungsAufrufe);
+
+    // (b) DER KERN: der VOR dem Modellaufruf gebildete Ausschnitt ist vom Fehler unberuehrt —
+    // dieselben Zusicherungen wie in A1/A3.
+    const koerper = letzterAnfragekoerper();
+    expect(koerper.question, "die gesendete Frage ist nicht die getippte").toBe(FRAGE_DUPLIKAT);
+    expect(
+      koerper.snippets.map((s) => s.id),
+      `der Duplikateintrag fehlt in der Antwortgrundlage, obwohl der Fehler erst SPAETER eintritt. ${koerper.snippets.length} Schnipsel uebertragen`,
+    ).toContain(DUPLIKAT_ID);
+    const dublette = koerper.snippets.find((s) => s.id === DUPLIKAT_ID);
+    expect(
+      dublette?.body,
+      `der Text ist beschnitten: ${dublette?.body.length} von ${DUPLIKAT_QUELLE?.answer.length} Zeichen`,
+    ).toBe(DUPLIKAT_QUELLE?.answer);
+    expect(
+      dublette?.title,
+      `der Titel ist beschnitten: ${dublette?.title.length} von ${DUPLIKAT_QUELLE?.question.length} Zeichen`,
+    ).toBe(DUPLIKAT_QUELLE?.question);
+
+    // (c) WAS DER MENSCH DANACH SIEHT — erst gemessen, dann gepinnt (Messlauf 726fa66c… fuer das
+    // Verhalten der Kette, 3b5425bd… fuer den gerenderten Antwortblock; Zahlen und Wortlaut im
+    // Kopfkommentar dieses Blocks). Der Fehler bleibt an der Modellkante stehen: die
+    // Route antwortet weiter mit 200, die Providerkette faellt auf ihren deterministischen Rueckfall.
+    const flaeche = panel();
+    const frageZeile = flaeche?.querySelector<HTMLElement>("[data-testid=klara-ai-question]");
+    // KALIBRIERUNG DER ABLESUNG: ohne sie waere „kein Verbotsstamm sichtbar" die Aussage ueber eine
+    // leere Flaeche. Ihre Anwesenheit schliesst zugleich den nackten Fehlerzweig aus
+    // (`KlaraAssistant.tsx:498-501`, `aiAsk.isError` → nur `state.error` statt einer Karte).
+    expect(
+      frageZeile,
+      `keine KI-Antwortkarte auf der Flaeche — der Mensch sieht bei gestoerter Generierung nichts Ablesbares. Geliefert: ${erklaerAbrufe.at(-1)?.slice(0, 300)}`,
+    ).not.toBeNull();
+    const karte = frageZeile?.closest("div");
+    const sichtbar = (karte?.textContent ?? "").replace(/\s+/g, " ");
+    expect(sichtbar, "die Antwortkarte gehoert nicht zu dieser Frage").toContain(FRAGE_DUPLIKAT);
+    // KEINE ERFUNDENE ANTWORT. Der Nachweis laeuft in EINER Kette vom Bildschirm zurueck zur
+    // Quelle — und zwar in dieser Richtung, weil RUNDE 1 an der Gegenrichtung gescheitert ist:
+    // dort endete die Pruefung am Serverkoerper, und BEN konnte den ANGEZEIGTEN Text in
+    // `KlaraAssistant.tsx:563` durch „Der Mond besteht aus Käse." ersetzen, ohne dass ein einziger
+    // Fall rot wurde (Urteil Runde 1, Korrekturpflicht 1). Ein korrekter Serverkoerper belegt
+    // keinen korrekten sichtbaren Antworttext. Die Kette lautet jetzt:
+    //   sichtbarer Text  ==  Antworttext des Servers  ==  `body` eines uebertragenen Schnipsels.
+    // Reisst irgendein Glied, ist der Fall rot.
+    const antwort = JSON.parse(String(erklaerAbrufe.at(-1))) as {
+      answered: boolean;
+      answer?: string;
+      demo?: boolean;
+      sources: string[];
+    };
+    // `demo: true` — geantwortet hat der deterministische Rueckfall, nicht das Modell. Das Modell
+    // hat in diesem Fall KEIN Wort beigetragen (der Fehler ist oben gezaehlt).
+    expect(
+      antwort.demo,
+      `die sichtbare Antwort kommt nicht vom deterministischen Rueckfall, obwohl die Generierung mit ${generierungsStatus} gescheitert ist`,
+    ).toBe(true);
+    // GLIED 1 — es gibt ueberhaupt eine Antwort. Runde 1 hatte den Inhaltsnachweis hinter
+    // `if (antwort.answered && antwort.answer)` gestellt: faellt die Antwort weg, entfiel stillschweigend
+    // auch ihre Pruefung. Das ist jetzt eine Zusicherung, keine Bedingung mehr.
+    expect(
+      antwort.answered,
+      `der Server hat bei gestoerter Generierung gar nicht geantwortet (${String(erklaerAbrufe.at(-1)).slice(0, 300)}) — dann sagt dieser Fall nichts darueber, was der Mensch liest`,
+    ).toBe(true);
+    expect(
+      typeof antwort.answer === "string" && antwort.answer.length > 0,
+      `die Antwort traegt keinen Text (answer=${JSON.stringify(antwort.answer)}) — ohne Text gibt es nichts zu vergleichen`,
+    ).toBe(true);
+    const antworttext = String(antwort.answer);
+    // GLIED 2 — jede tragende Quelle ging vorher wirklich hinaus. Eine Quelle, die nicht in der
+    // Antwortgrundlage stand, waere genau die Erfindung, die Klara ausschliesst. Die Schleife
+    // braucht ihre eigene Kalibrierung: ueber eine leere Liste laeuft sie stumm durch.
+    const gesendeteKennungen = koerper.snippets.map((s) => s.id);
+    expect(
+      antwort.sources.length,
+      "die Antwort nennt keine einzige tragende Quelle — dann prueft die Schleife darunter nichts",
+    ).toBeGreaterThan(0);
+    for (const quelle of antwort.sources) {
+      expect(
+        gesendeteKennungen,
+        `die Antwort stuetzt sich auf „${quelle}" — diese Quelle ging nie hinaus`,
+      ).toContain(quelle);
+    }
+    // GLIED 3 — der Antworttext ist ZITIERT, nicht erzeugt: er ist zeichengleich mit dem `body`
+    // genau eines uebertragenen Schnipsels (`DeterministicProvider.answer` gibt `best.statement`
+    // unveraendert zurueck, `services/reasoner/src/provider.ts:1941-1944`). Gemessen im Messlauf
+    // 3b5425bd…: `sec:nb.title`, 404 Zeichen. WELCHER Schnipsel es ist, wird NICHT gepinnt — die
+    // Rangliste verschiebt sich mit jedem neuen Registry-Eintrag (Lehre JOB 3874 R1).
+    const woertlicheQuellen = koerper.snippets
+      .filter((s) => s.body === antworttext)
+      .map((s) => s.id);
+    expect(
+      woertlicheQuellen.length,
+      `der Antworttext steht in KEINEM uebertragenen Schnipsel woertlich — bei gescheiterter Generierung waere das eine Erfindung. Antwort (${antworttext.length} Zeichen): „${antworttext.slice(0, 200)}"`,
+    ).toBeGreaterThan(0);
+    // GLIED 4, DER KORREKTURPUNKT AUS RUNDE 1 — was WIRKLICH auf dem Bildschirm steht. Der
+    // Antwortblock ist das Element unmittelbar nach der Fragezeile (`AnswerMarkdown`,
+    // `KlaraAssistant.tsx:561-565`); gemessen: ein `div.text-[12px] leading-relaxed text-text`,
+    // dessen Text zeichengleich mit `antwort.answer` ist (Messlauf 3b5425bd…). Diese Zeile ist
+    // bewusst ein struktureller Pin: wandert die Anzeige oder faellt sie weg, wird der Fall rot
+    // und sagt mit Tag, Klasse und Text, was stattdessen dort steht.
+    const antwortBlock = frageZeile?.nextElementSibling as HTMLElement | null;
+    const sichtbarerAntworttext = antwortBlock?.textContent ?? "";
+    expect(
+      ohneLeerraum(sichtbarerAntworttext).length,
+      `unter der Frage steht kein Antworttext (${antwortBlock?.tagName ?? "kein Element"} · „${antwortBlock?.className ?? ""}") — der Mensch liest bei gestoerter Generierung nichts. Karte: „${sichtbar.slice(0, 300)}"`,
+    ).toBeGreaterThan(0);
+    expect(
+      ohneLeerraum(sichtbarerAntworttext),
+      `der ANGEZEIGTE Antworttext ist nicht der gelieferte — genau hier war Runde 1 blind. Angezeigt (${antwortBlock?.tagName ?? "?"} · „${antwortBlock?.className ?? ""}"): „${sichtbarerAntworttext.replace(/\s+/g, " ").trim().slice(0, 300)}" · geliefert: „${antworttext.slice(0, 300)}"`,
+    ).toBe(ohneLeerraum(antworttext));
+    // Und er ist nicht bloss im Baum, sondern mit den Mitteln ausgestellt, mit denen dieses Produkt
+    // ausblendet (Lehre: „Sichtbarkeit statt bloßer `textContent`-Anwesenheit messen", LEHREN.md
+    // JOB 3007 R1; „`hidden`-Utility und unsichtbare Vorfahren", JOB 3007 R2). Was jsdom NICHT
+    // kann, steht als Grenze im Kopf dieses Blocks.
+    expect(
+      ausblendung(antwortBlock, panel()),
+      `der Antworttext steht zwar im Baum, ist aber ausgeblendet: ${ausblendung(antwortBlock, panel())}`,
+    ).toBeNull();
+    // Zahlen, die nur zufaellig gelten (welcher Schnipsel zitiert wird, wie viele Quellen), werden
+    // NICHT gepinnt — die Rangliste verschiebt sich mit jedem neuen Registry-Eintrag.
+    expect(
+      verbotsfunde(sichtbar),
+      `die sichtbare Antwortkarte stellt ein Zusammenfuehren in Aussicht: „${sichtbar.slice(0, 300)}"`,
+    ).toEqual([]);
   });
 });
