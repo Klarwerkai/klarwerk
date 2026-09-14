@@ -247,6 +247,17 @@ const INVENTAR: readonly string[] = [
   // GEMESSEN, NICHT GESETZT: K2 hat sie gemeldet („expected [ Array(1) ] to deeply equal []",
   // Cloud-Lauf 92e789b3…), erst danach wurde diese Zeile angefasst.
   "tests/klara-antwort-formatierung/angezeigt-ist-geliefert-auch-formatiert.test.tsx",
+  // JOB 3898 (13.09.2026): was `rankKlara` AUSSERHALB von Deutsch tut — die Synonymkarte je Sprache
+  // beziffert, dieselbe fachliche Frage je Sprache am selben Massstab, die Wortlaengen-Asymmetrie
+  // zwischen `searchKlara` und `rankKlara` und die Groesse der FAQ-Luecke. Sachlich Klara-Regression
+  // im engsten Sinn: `rankKlara` waehlt die Eintraege aus, die Klara der KI als EINZIGE
+  // Antwortgrundlage mitgibt. Die Datei traegt „klara" im PFAD — der Verzeichnisname war in §4 des
+  // Auftrags abschliessend vorgegeben —, sie kommt also ueber die NAMENSachse herein und zaehlt in
+  // K5 (58 -> 59). GEMESSEN, NICHT GESETZT: mit der neuen Datei und noch unveraendertem Inventar
+  // meldete der Lauf 6e761b1c „neu im Baum, aber nicht im gepinnten Inventar — Inventar nachfuehren:
+  // expected [ Array(1) ] to deeply equal []" und K5 „expected 59 to be 58"; erst danach wurden
+  // diese Zeile und der Zaehler unten angefasst.
+  "tests/klara-ranking-sprachen/ranking-sprachweise.test.ts",
   // JOB 3138: eigenständiger Import-Erklärweg; keine Abnahme eines echten Jira-Imports.
   "tests/m6-import-erklaerweg/klara-importwege-dom.test.tsx",
   "tests/m6-import-erklaerweg/klara-importwege-browser.test.tsx",
@@ -1257,7 +1268,15 @@ describe("JOB 920 · K — das Klara-Regressionsinventar ist ableitbar, nicht be
     // vorgegeben, die Nachführung ist die Folge des Pfades, nicht einer Wahl. GEMESSEN, NICHT
     // GESETZT: mit dem Inventareintrag und noch unverändertem Zähler meldete der Lauf
     // `expected 59 to be 58` (Cloud-Lauf 92e789b3…); erst danach wurde diese Zeile angefasst.
-    expect(nurName.length).toBe(59);
+    // JOB 3898 (13.09.2026): die sprachweisen `rankKlara`-Faelle liegen unter
+    // `tests/klara-ranking-sprachen/` und tragen „klara" damit im PFAD — der Verzeichnisname war in
+    // §4 jenes Auftrags abschliessend vorgegeben. Keine Inhaltsachse findet sie. GEMESSEN, NICHT
+    // GESETZT: mit dem Inventareintrag und noch unveraendertem Zaehler meldete der Cloud-Lauf
+    // 6e761b1c `expected 59 to be 58`; erst danach wurde diese Zeile angefasst.
+    // KONFLIKTRUNDE 2 (JOB 3898, 14.09.2026): beide Nachfuehrungen (JOB 3918 und JOB 3898) kamen aus
+    // getrennten Basen mit demselben Ausgangswert 58 und wurden hier vereinigt — beide Dateien stehen
+    // jetzt im Inventar, der Zaehler wird nach dieser Zusammenfuehrung neu gemessen, nicht geschaetzt.
+    expect(nurName.length).toBe(60);
     expect(verfehlt.length).toBeGreaterThanOrEqual(25);
     expect(verfehlt.length + nurName.length).toBe(GEFUNDEN.length);
   });
