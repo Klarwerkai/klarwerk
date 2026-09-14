@@ -37,10 +37,15 @@ import {
   abraeumen,
   bruecke,
   erteilteSchalter,
+  getsBeantwortet,
   karteMounten,
+  karteRuht,
+  karteZeigt,
+  karteZeigtNicht,
   klick,
   nachher,
   protokoll,
+  putsAngekommen,
   serverFreigabe,
   serverStand,
   serverStarten,
@@ -48,6 +53,7 @@ import {
   speichernKnopf,
   text,
   umlegen,
+  und,
   wahlWert,
   zuordnungWaehlen,
 } from "./freigabe-buehne";
@@ -74,7 +80,14 @@ describe("JOB 3827 · G2 — gescheitertes Nachladen sperrt die Zuordnung, ohne 
     // ---- Der Nachladefehler, auf dem in S1:572-581 belegten Weg --------------------------------
     // Das GET ist gestört; die Freigabeschaltung selbst gelingt, ihr folgendes Nachladen scheitert.
     bruecke.gestoertesGet = true;
-    await umlegen(c, "ki-freigabe-oeffentlich");
+    // JOB 3943: gewartet wird auf den Abschluss BEIDER Wege — das Schreiben ist beim Server
+    // angekommen, das ihm folgende Nachladen ist gescheitert und die Karte sagt es. Vorher standen
+    // hier 30 Nulltakte, die von beidem nichts wussten.
+    await umlegen(
+      c,
+      "ki-freigabe-oeffentlich",
+      und(putsAngekommen(1), karteZeigt(c, "ki-freigabe-nachladen-fehler"), karteRuht()),
+    );
 
     // KALIBRIERUNG: die Schaltung GILT wirklich (unabhängiger GET) — die Karte weiß es nur nicht
     // mehr sicher, weil ihr Nachladen scheiterte. Ohne diesen Punkt misst der Fall nichts. Gemessen
@@ -104,7 +117,12 @@ describe("JOB 3827 · G2 — gescheitertes Nachladen sperrt die Zuordnung, ohne 
     ).toBe(true);
 
     // (c) DIE SPERRE IST ECHT — der Klick kommt beim Server nicht an.
-    await klick(speichernKnopf(c), "Zuordnung übernehmen");
+    // JOB 3943: gewartet wird auf `karteRuht()`. Das ist auch für eine Bedienung, die NICHTS
+    // auslösen darf, eine echte Bedingung: `mutate()` trägt eine Mutation SYNCHRON in den Vorrat
+    // ein. Wäre die Sperre durchlässig, stünde `isMutating()` sofort auf 1 und diese Zeile wartete
+    // den Vorgang ab — die Zusicherung darunter urteilte also über den ENDSTAND, nicht über ein
+    // Zeitfenster, in dem die Mutation noch nicht sichtbar war.
+    await klick(speichernKnopf(c), "Zuordnung übernehmen", karteRuht());
     expect(bruecke.angekommenePuts, "trotz Sperre geschrieben").toBe(angekommenNachFreigabe);
     expect(bruecke.putRuempfe.length, "trotz Sperre abgeschickt").toBe(1);
     expect((await serverStand()).global, "die geratene Zuordnung steht doch beim Server").toBe(
@@ -116,13 +134,26 @@ describe("JOB 3827 · G2 — gescheitertes Nachladen sperrt die Zuordnung, ohne 
 
     // ---- (e) DIE ERHOLUNG ----------------------------------------------------------------------
     bruecke.gestoertesGet = false;
-    await klick(c.querySelector('[data-testid="ki-freigabe-erneut"]'), "Erneut laden");
+    const getsVorErholung = bruecke.beantworteteGets;
+    await klick(
+      c.querySelector('[data-testid="ki-freigabe-erneut"]'),
+      "Erneut laden",
+      und(
+        getsBeantwortet(getsVorErholung + 1),
+        karteZeigtNicht(c, "ki-freigabe-nachladen-fehler"),
+        karteRuht(),
+      ),
+    );
     expect(sichtbar(c, "ki-freigabe-nachladen-fehler"), "der Hinweis bleibt stehen").toBe(false);
     expect(speichernKnopf(c).disabled, "die Sperre geht nach der Erholung nicht auf").toBe(false);
     expect(wahlWert(c), "die Erholung hat den Entwurf überschrieben").toBe("deterministic");
 
     // Und jetzt wird GENAU DIESER Entwurf geschrieben — unabhängiger GET und echtes Audit.
-    await klick(speichernKnopf(c), "Zuordnung übernehmen");
+    await klick(
+      speichernKnopf(c),
+      "Zuordnung übernehmen",
+      und(putsAngekommen(angekommenNachFreigabe + 1), karteRuht()),
+    );
     expect(bruecke.angekommenePuts, "der Klick nach der Erholung erreichte den Server nicht").toBe(
       angekommenNachFreigabe + 1,
     );

@@ -41,14 +41,19 @@ import {
   erteilteSchalter,
   kaestchen,
   karteMounten,
+  karteRuht,
+  karteZeigt,
   klick,
   nachher,
   protokoll,
+  putsAngekommen,
+  ruempfeAbgeschickt,
   serverFreigabe,
   serverStand,
   serverStarten,
   speichernKnopf,
   umlegen,
+  und,
   wahlWert,
   zuordnungWaehlen,
 } from "./freigabe-buehne";
@@ -75,7 +80,13 @@ describe("JOB 3827 · G1 — nach einem Freigabefehler schreibt die Zuordnung wi
 
     // ---- Das Freigabeschreiben scheitert -------------------------------------------------------
     bruecke.gestoertesPut = true;
-    await umlegen(c, "ki-freigabe-oeffentlich");
+    // JOB 3943: gewartet wird auf den ABSCHLUSS des Fehlschlags — der Rumpf ist draußen, die Karte
+    // sagt es (`ki-freigabe-fehler`) und hat nichts mehr offen. Vorher standen hier 30 Nulltakte.
+    await umlegen(
+      c,
+      "ki-freigabe-oeffentlich",
+      und(ruempfeAbgeschickt(1), karteZeigt(c, "ki-freigabe-fehler"), karteRuht()),
+    );
     bruecke.gestoertesPut = false;
 
     // KALIBRIERUNG: der Versuch ist wirklich hinausgegangen (sonst misst dieser Fall nichts) — und
@@ -103,7 +114,11 @@ describe("JOB 3827 · G1 — nach einem Freigabefehler schreibt die Zuordnung wi
 
     // (c) UND DAS IST KEINE OPTIK: der Klick schreibt WIRKLICH.
     const angekommenVorher = bruecke.angekommenePuts;
-    await klick(speichernKnopf(c), "Zuordnung übernehmen");
+    await klick(
+      speichernKnopf(c),
+      "Zuordnung übernehmen",
+      und(putsAngekommen(angekommenVorher + 1), karteRuht()),
+    );
     expect(bruecke.angekommenePuts, "der Klick erreichte den Server nicht").toBe(
       angekommenVorher + 1,
     );
@@ -123,7 +138,12 @@ describe("JOB 3827 · G1 — nach einem Freigabefehler schreibt die Zuordnung wi
     expect(kaestchen(c, "ki-freigabe-oeffentlich").disabled, "die Karte bleibt gesperrt").toBe(
       false,
     );
-    await umlegen(c, "ki-freigabe-oeffentlich");
+    const angekommenVorZweitem = bruecke.angekommenePuts;
+    await umlegen(
+      c,
+      "ki-freigabe-oeffentlich",
+      und(putsAngekommen(angekommenVorZweitem + 1), karteRuht()),
+    );
     const gesendet = erteilteSchalter(
       bruecke.putRuempfe[bruecke.putRuempfe.length - 1]?.kiFreigabe,
     );

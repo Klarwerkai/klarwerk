@@ -53,8 +53,45 @@
 //     Fälle dieses Auftrags messen ihr Ergebnis an der geschriebenen ZUORDNUNG.
 //   · `wahlWert` — der Wert, der im globalen Auswahlfeld steht; daran hängt die Aussage „der Entwurf
 //     ist nicht verloren gegangen".
-// FEHLT GEGENÜBER DEM VORBILD: `oeffneAeltesten`, `vertraulichEinschalten` und der Zugriff auf den
-// Vorrat der Karte — sie tragen nur Fälle, die hier nicht wiederholt werden.
+// FEHLT GEGENÜBER DEM VORBILD: `oeffneAeltesten` und `vertraulichEinschalten` — sie tragen nur
+// Fälle, die hier nicht wiederholt werden.
+//
+// ------------------------------------------------------------------------------------------------
+// JOB 3943 · WAS SICH GEGENÜBER JOB 3827 GEÄNDERT HAT — und warum
+// ------------------------------------------------------------------------------------------------
+// BENs Prüfpunkt 6 zu JOB 3827 (`archiv/3827/runde-1/ben.md:25`, wörtlich): „[Bühne:299] verwendet
+// feste Wartefolgen. Folgeprüfung: verzögerte Fehlerantworten und beobachtbare Request-Abschlüsse.
+// … überlappende Fehler durch kontrolliert gehaltene Antworten ergänzen."
+//
+//   1. DIE UHR IST RAUS. Die alte Wartefolge spulte 30 Nulltakte ab und wertete dabei NICHTS aus.
+//      Ein Wächter, der so synchronisiert, wird nicht rot, wenn das Produkt kaputtgeht, sondern
+//      wenn die Maschine langsam ist. An ihrer Stelle steht `warteBis(<Bedingung>)`: es wartet auf
+//      eine BENANNTE, beobachtbare Bedingung und wirft bei Überschreitung MIT DEREN NAMEN. Dass sie
+//      nicht zurückkommt, sichert `keine-uhr-in-diesem-ordner.test.ts` zu.
+//   2. FEHLERANTWORTEN SIND HALTE-FÄHIG. Der 503 kehrte bisher VOR dem Haltetor zurück; damit war
+//      der Fall „der Mensch klickt noch einmal, während der erste Fehler unterwegs ist" in dieser
+//      Bühne nicht herstellbar. Jetzt geht auch die gestörte Antwort durch `haltPut`/`haltGet`.
+//      Ihre WIRKUNG bleibt unverändert — nur ihr ZEITPUNKT ist steuerbar.
+//   3. DER VORRAT DER KARTE (`vorrat`) ist erreichbar. `isFetching()`/`isMutating()` sind die
+//      Abschlussmeldung der Karte selbst — die einzige Auskunft darüber, dass wirklich nichts mehr
+//      offen ist. Sie trägt die Bedingung `karteRuht()`.
+//   4. RUNDE 2 — DIE KARTE MELDET IHRE ZUSTÄNDE ERST EINEN MAKROTASK SPÄTER. Das ist der Befund,
+//      an dem Runde 1 rot wurde, und er ist gemessen, nicht vermutet: React Query stellt JEDE
+//      Benachrichtigung an seine Beobachter über `notifyManager` zu, und dessen Zeitgeber ist
+//      `defaultScheduler = systemSetTimeoutZero`
+//      (`apps/web/node_modules/@tanstack/query-core/build/modern/notifyManager.js:2-3`,
+//      `timeoutManager.js:13` → der echte Zeitgeber mit Verzögerung 0). Ein `act`, das nur
+//      Mikrotasks leert, sieht deshalb NIE, dass ein Schreiben BEGONNEN hat — `isPending` ist im
+//      Vorrat gesetzt, aber noch nicht gerendert.
+//      FOLGE FÜR DIESE BÜHNE, und sie hat zwei Hälften:
+//        · `warteBis` schließt mit einem ECHTEN Takt ab (Übergabe an die Makrotask-Warteschlange),
+//          nicht mit einem leeren `act`. Vorher hing jede Zusicherung über die FLÄCHE, die einer
+//          rein transportseitigen Bedingung folgte, am Zufall — und wo die Bedingung schon beim
+//          Eintritt galt, lief die Schleife null Mal und der Zufall ging verloren.
+//        · Wichtiger noch: wer über die FLÄCHE urteilen will, wartet auf eine Bedingung DER FLÄCHE
+//          (`karteSperrt`, `karteZeigt`, `ki-ungespeichert`), nicht auf einen Zähler der Brücke.
+//          Ein Zähler der Brücke sagt, was der Transport getan hat, nicht, was die Karte davon
+//          weiß. Genau diese Verwechslung war der rote Fall aus Runde 1.
 import { expect } from "vitest";
 
 import {
@@ -133,6 +170,15 @@ function brueckeAufbauen(): void {
       bruecke.putRuempfe.push(JSON.parse(init.body ?? "{}") as PutRumpf);
       if (bruecke.gestoertesPut) {
         // Vor dem Server: der Schreibvorgang findet gar nicht statt, die Karte bekommt einen Fehler.
+        //
+        // JOB 3943: diese Antwort durchläuft DASSELBE Haltetor wie die erfolgreiche
+        // (`haltPut`, freigegeben über `oeffnePut()`). Die Semantik bleibt Zeile für Zeile
+        // dieselbe — der Server sieht den Rumpf weiterhin nie, `angekommenePuts` steigt NICHT,
+        // die Karte bekommt weiterhin 503. Steuerbar ist allein der ZEITPUNKT der Antwort. Vorher
+        // kehrte sie sofort zurück, und ein überlappender Schreibfehler war nicht herstellbar.
+        if (bruecke.haltPut) {
+          await new Promise<void>((frei) => bruecke.wartendePut.push(frei));
+        }
         return {
           ok: false,
           status: 503,
@@ -142,6 +188,14 @@ function brueckeAufbauen(): void {
       }
     }
     if (istKonfig && methode === "GET" && bruecke.gestoertesGet) {
+      // JOB 3943: dasselbe für den Nachladeweg. Der Server liefert weiterhin nichts; die
+      // Fehlerantwort lässt sich jetzt festhalten (`haltGet`, freigegeben über `oeffneTor()`).
+      // `beantworteteGets` zählt seitdem erst NACH dem Tor — genau wie auf dem Erfolgsweg unten:
+      // „beantwortet" heißt beantwortet, nicht „abgeschickt". Ohne diese Verschiebung wäre der
+      // Zähler auf dem Fehlerweg keine Abschlussmeldung und als Wartebedingung wertlos.
+      if (bruecke.haltGet) {
+        await new Promise<void>((frei) => bruecke.wartende.push(frei));
+      }
       bruecke.beantworteteGets += 1;
       return {
         ok: false,
@@ -293,14 +347,177 @@ export function erteilteSchalter(stand: Freigabestand | undefined): string[] {
     .sort();
 }
 
+// ---- Warten auf ZUSTAND, nie auf die Uhr (JOB 3943, Lieferung 1) --------------------------------
+/**
+ * EINE BENANNTE, BEOBACHTBARE BEDINGUNG.
+ *
+ * Der Name ist kein Schmuck: er ist das, was die Fehlermeldung nennt, wenn die Bedingung ausbleibt.
+ * Ein Warten, das still weiterläuft, ist schlimmer als gar keines — es verschiebt den Fehler auf
+ * eine spätere Zusicherung, die dann über einen Zwischenstand urteilt.
+ */
+export interface Bedingung {
+  /** Wofür gewartet wird — wörtlich in der Abbruchmeldung. */
+  readonly name: string;
+  /** Gilt die Bedingung JETZT? Wird bei jedem Durchgang neu gelesen. */
+  readonly erfuellt: () => boolean;
+  /** Der zuletzt gesehene Zustand — wird NUR im Fehlerfall gelesen. */
+  readonly lage: () => string;
+}
+
+/**
+ * Die Abbruchschwelle ist KEINE Messgröße. Kein Fall dieses Ordners behauptet, dass etwas schnell
+ * geschieht — nur, dass es überhaupt geschieht. Dieselbe Bauform wie
+ * `tests/admin-ki-oberflaeche/freigabe-durchstich.test.tsx:304-315` (JOB 3813 Runde 2).
+ */
+const ABBRUCH_MS = 15_000;
+
+/**
+ * WARTEN, BIS DIE BEDINGUNG GILT — der Ersatz für die 30 Nulltakte von JOB 3827.
+ *
+ * Der Unterschied ist nicht die Wartezeit, sondern die AUSWERTUNG: hier wird bei jedem Durchgang
+ * die Bedingung selbst gelesen. Eine Antwort, die länger unterwegs ist, verlängert das Warten;
+ * eine, die nie kommt, bricht MIT NAMEN ab.
+ */
+export async function warteBis(bis: Bedingung): Promise<void> {
+  // DER EINZIGE TAKT DIESES ORDNERS — und er ist KEINE Wartezeit, sondern eine ÜBERGABE an die
+  // Makrotask-Warteschlange. Ohne sie kommt die Karte gar nicht zu Wort: React Query stellt jede
+  // Zustandsmeldung über einen Zeitgeber mit Verzögerung 0 zu (Dateikopf, Punkt 4). Die 5 ms sind
+  // die Pause ZWISCHEN zwei Abfragen der Bedingung, nicht die Dauer, auf die gewartet wird —
+  // ausgewertet wird bei JEDEM Durchgang die Bedingung selbst.
+  const takt = async (): Promise<void> => {
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 5));
+    });
+  };
+  const start = Date.now();
+  while (!bis.erfuellt()) {
+    if (Date.now() - start > ABBRUCH_MS) {
+      throw new Error(
+        `Bedingung „${bis.name}" wurde nach ${ABBRUCH_MS} ms nicht erreicht — zuletzt gesehen: ${bis.lage()}`,
+      );
+    }
+    await takt();
+  }
+  // Die Bedingung gilt. Ein ECHTER Abschlusstakt gibt der Karte die Gelegenheit, eine im selben
+  // Augenblick angestoßene Meldung noch zuzustellen und zu zeichnen. Ein LEERES `act` leistete das
+  // nicht — es leert nur Mikrotasks, und die Meldung der Karte liegt in der Makrotask-Warteschlange
+  // (Dateikopf, Punkt 4). Genau daran wurde Runde 1 rot: die Bedingung („ein Rumpf ist draußen, seine
+  // Antwort hängt am Tor") galt schon beim Eintritt, die Schleife lief null Mal, und die Zusicherung
+  // über die Fläche urteilte über ein Bild, das die Karte noch gar nicht gezeichnet hatte.
+  // Der Takt ist damit die UNTERE Absicherung, nicht die Zusage: eine Aussage über die Fläche hängt
+  // an einer Bedingung DER FLÄCHE, nie an diesem einen Takt.
+  await takt();
+}
+
+/** Eine Bedingung von Hand — für alles, wofür es unten keinen fertigen Baustein gibt. */
+export function bedingung(name: string, erfuellt: () => boolean, lage: () => string): Bedingung {
+  return { name, erfuellt, lage };
+}
+
+/** Mehrere Bedingungen zugleich — die Lage nennt, welche davon offen ist. */
+export function und(...teile: Bedingung[]): Bedingung {
+  return {
+    name: teile.map((t) => t.name).join(" UND "),
+    erfuellt: () => teile.every((t) => t.erfuellt()),
+    lage: () =>
+      teile
+        .map((t) => (t.erfuellt() ? `[erfüllt] ${t.name}` : `[OFFEN] ${t.name} (${t.lage()})`))
+        .join(" · "),
+  };
+}
+
+/** „So viele PUTs haben den ECHTEN Server erreicht" — der harte Abschluss des Schreibwegs. */
+export const putsAngekommen = (n: number): Bedingung =>
+  bedingung(
+    `angekommenePuts hat ${n} erreicht`,
+    () => bruecke.angekommenePuts >= n,
+    () => `angekommenePuts=${bruecke.angekommenePuts}`,
+  );
+
+/** „So viele Rümpfe hat die Karte abgeschickt" — gilt auch, wenn der Server sie nie sieht. */
+export const ruempfeAbgeschickt = (n: number): Bedingung =>
+  bedingung(
+    `putRuempfe hat ${n} erreicht`,
+    () => bruecke.putRuempfe.length >= n,
+    () => `putRuempfe=${bruecke.putRuempfe.length}`,
+  );
+
+/** „So viele GETs sind VOLLSTÄNDIG beantwortet" — Erfolg und 503 zählen gleich. */
+export const getsBeantwortet = (n: number): Bedingung =>
+  bedingung(
+    `beantworteteGets hat ${n} erreicht`,
+    () => bruecke.beantworteteGets >= n,
+    () => `beantworteteGets=${bruecke.beantworteteGets}`,
+  );
+
+/** „So viele PUT-Antworten hängen gerade am Haltetor" — der Beleg, dass die Überlappung STEHT. */
+export const putAntwortenFestgehalten = (n: number): Bedingung =>
+  bedingung(
+    `wartendePut hat ${n} erreicht`,
+    () => bruecke.wartendePut.length >= n,
+    () => `wartendePut=${bruecke.wartendePut.length}`,
+  );
+
+/** Dasselbe für den Nachladeweg. */
+export const getAntwortenFestgehalten = (n: number): Bedingung =>
+  bedingung(
+    `wartende (GET) hat ${n} erreicht`,
+    () => bruecke.wartende.length >= n,
+    () => `wartende=${bruecke.wartende.length}`,
+  );
+
+/** Der Vorrat der gemounteten Karte — Grundlage von `karteRuht()`, gesetzt in `karteMounten`. */
+let vorrat: QueryClient | null = null;
+
+/**
+ * DIE KARTE HAT NICHTS MEHR OFFEN — gelesen an ihrem EIGENEN Vorrat, nicht an einer Zeitspanne.
+ *
+ * Das ist zugleich der Grund, warum eine Bedienung, die nichts auslösen DARF, hier trotzdem sauber
+ * gemessen werden kann: `mutate()` trägt die Mutation SYNCHRON in den Vorrat ein. Wäre eine Sperre
+ * durchlässig, stünde `isMutating()` unmittelbar nach dem Klick auf 1, und diese Bedingung wartete
+ * den Vorgang ab, statt ihn zu übersehen.
+ */
+export const karteRuht = (): Bedingung =>
+  bedingung(
+    "die Karte hat keinen Vorgang mehr offen (isFetching=0, isMutating=0)",
+    () => vorrat !== null && vorrat.isFetching() === 0 && vorrat.isMutating() === 0,
+    () => `isFetching=${vorrat?.isFetching() ?? "?"}, isMutating=${vorrat?.isMutating() ?? "?"}`,
+  );
+
+/** Die Karte zeigt ein bestimmtes Element. */
+export const karteZeigt = (c: HTMLDivElement, id: string): Bedingung =>
+  bedingung(
+    `die Karte zeigt „${id}"`,
+    () => sichtbar(c, id),
+    () => `„${id}" ist nicht da`,
+  );
+
+/**
+ * DIE KARTE HAT EIN BEDIENELEMENT ZUGEMACHT — ihre EIGENE Meldung, dass sie einen Vorgang
+ * übernommen hat.
+ *
+ * Sie ist der Gegenpol zu den Zählern der Brücke (`ruempfeAbgeschickt`, `putAntwortenFestgehalten`):
+ * die sagen, was der TRANSPORT getan hat, diese sagt, was die KARTE davon weiß. Wer über die Fläche
+ * urteilt, wartet auf diese — und bekommt bei Ausbleiben den Namen der Bedingung statt eines
+ * nackten „expected false to be true" (Dateikopf, Punkt 4).
+ */
+export const karteSperrt = (c: HTMLDivElement, id: string): Bedingung =>
+  bedingung(
+    `die Karte hat „${id}" gesperrt`,
+    () => c.querySelector<HTMLInputElement>(`[data-testid="${id}"]`)?.disabled === true,
+    () => (sichtbar(c, id) ? `„${id}" steht offen` : `„${id}" ist gar nicht da`),
+  );
+
+/** Die Karte zeigt ein bestimmtes Element NICHT mehr. */
+export const karteZeigtNicht = (c: HTMLDivElement, id: string): Bedingung =>
+  bedingung(
+    `die Karte zeigt „${id}" nicht mehr`,
+    () => !sichtbar(c, id),
+    () => `„${id}" steht noch da`,
+  );
+
 // ---- Die echte Karte ---------------------------------------------------------------------------
 const gemountet: Array<{ root: ReturnType<typeof createRoot>; container: HTMLDivElement }> = [];
-
-const durchlaufen = async (): Promise<void> => {
-  for (let i = 0; i < 30; i++) {
-    await new Promise((r) => setTimeout(r, 0));
-  }
-};
 
 export async function karteMounten(): Promise<HTMLDivElement> {
   await i18n.changeLanguage("de");
@@ -311,6 +528,7 @@ export async function karteMounten(): Promise<HTMLDivElement> {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
+  vorrat = qc;
   await act(async () => {
     root.render(
       createElement(
@@ -319,9 +537,20 @@ export async function karteMounten(): Promise<HTMLDivElement> {
         createElement(ToastProvider, null, createElement(KiDetail, { onZurueck: () => {} })),
       ),
     );
-    await durchlaufen();
   });
-  await act(durchlaufen);
+  // Der Aufbau ist fertig, wenn der erste Abruf beantwortet IST, die Karte ihr Auswahlfeld zeigt
+  // und nichts mehr läuft — drei beobachtbare Größen statt einer Anzahl Durchläufe.
+  await warteBis(
+    und(
+      getsBeantwortet(1),
+      bedingung(
+        "die Karte zeigt das globale Auswahlfeld",
+        () => container.querySelector('[data-testid="ki-wahl-global"]') !== null,
+        () => `Karteninhalt: „${(container.textContent ?? "").slice(0, 120)}"`,
+      ),
+      karteRuht(),
+    ),
+  );
   return container;
 }
 
@@ -333,6 +562,7 @@ export function abraeumen(): void {
     act(() => root.unmount());
     container.remove();
   }
+  vorrat = null;
 }
 
 export function kaestchen(c: HTMLDivElement, id: string): HTMLInputElement {
@@ -353,18 +583,41 @@ export const text = (c: HTMLDivElement, id: string): string =>
  * `disabled` (wie jeder Browser), ein von Hand versandtes Ereignis nicht. Eine Sperre, die nur
  * deshalb nichts schreibt, weil der Test sie umgeht, wäre ungemessen.
  */
-export async function klick(el: Element | null | undefined, was: string): Promise<void> {
+export async function klick(
+  el: Element | null | undefined,
+  was: string,
+  bis: Bedingung,
+): Promise<void> {
   expect(el, `${was} nicht gefunden`).toBeTruthy();
   await act(async () => {
     (el as HTMLElement).click();
-    await durchlaufen();
   });
-  await act(durchlaufen);
+  await warteBis(bis);
+}
+
+/**
+ * EINE BEDIENUNG, DIE NICHTS AUSLÖSEN DARF — und deshalb keine eigene Wartebedingung hat.
+ *
+ * Das ist die einzige Stelle dieser Bühne ohne beobachtbaren Abschluss, und der Grund ist kein
+ * Versäumnis: ein Vorgang, der gar nicht entsteht, hat keinen. Statt hier eine Frist abzusitzen,
+ * wird der Griff ABGERECHNET, wenn der nächste WIRKLICHE Abschluss beobachtet ist — bis dahin
+ * stünde ein doch entstandener Rumpf längst in `putRuempfe`, denn die Brücke schreibt ihn beim
+ * EINTRITT in `fetch` fort, und `karteRuht()` sähe die Mutation im Vorrat.
+ *
+ * Wo die Karte NICHT festgehalten ist, braucht es diesen Griff nicht: dort trägt `karteRuht()`
+ * dieselbe Aussage und ist eine echte Bedingung. Er ist ausschließlich für den Fall da, dass eine
+ * Antwort absichtlich am Haltetor hängt und `karteRuht()` deshalb nie gelten kann.
+ */
+export async function griffOhneWirkung(el: Element | null | undefined, was: string): Promise<void> {
+  expect(el, `${was} nicht gefunden`).toBeTruthy();
+  await act(async () => {
+    (el as HTMLElement).click();
+  });
 }
 
 /** Ein Kästchen umlegen — wie im Browser: Klick auf das Kästchen. */
-export async function umlegen(c: HTMLDivElement, id: string): Promise<void> {
-  await klick(kaestchen(c, id), `Schalter ${id}`);
+export async function umlegen(c: HTMLDivElement, id: string, bis: Bedingung): Promise<void> {
+  await klick(kaestchen(c, id), `Schalter ${id}`, bis);
 }
 
 /** Das globale Auswahlfeld stellen — der ZUORDNUNGSENTWURF, der hier stehen bleiben muss. */
@@ -374,8 +627,22 @@ export async function zuordnungWaehlen(c: HTMLDivElement, wert: string): Promise
   await act(async () => {
     (wahl as HTMLSelectElement).value = wert;
     (wahl as HTMLSelectElement).dispatchEvent(new Event("change", { bubbles: true }));
-    await durchlaufen();
   });
+  // Der Entwurf ist gestellt, wenn die KARTE ihn übernommen hat — und das sagt sie selbst: der
+  // Hinweis „noch nicht übernommen" (`ki-ungespeichert`) hängt an ihrem eigenen Entwurfszustand
+  // (`AdminKiDetails.tsx:1092`, `aiGlobal !== null`). RUNDE 2: der Feldwert allein trug diese
+  // Aussage NICHT — wir haben ihn eine Zeile zuvor selbst hineingeschrieben, die Bedingung wäre
+  // also auch dann erfüllt, wenn die Karte den Wechsel nie bemerkt hätte.
+  await warteBis(
+    und(
+      bedingung(
+        `das globale Auswahlfeld steht auf „${wert}"`,
+        () => wahlWert(c) === wert,
+        () => `Auswahlfeld=„${wahlWert(c)}"`,
+      ),
+      karteZeigt(c, "ki-ungespeichert"),
+    ),
+  );
 }
 
 /** Was im globalen Auswahlfeld STEHT — der Entwurf, so wie der Administrator ihn sieht. */
