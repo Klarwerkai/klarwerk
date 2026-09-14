@@ -292,6 +292,13 @@ describe("aistate-fix4 (bens V5): insertIfVersionsCurrent gegen echtes Postgres"
   // `save()` (:638-641), und `save()` ruft ausschliesslich `repo.update()` — also genau das
   // Vollobjekt-UPDATE aus repo-pg.ts:108-113, um das es hier geht. Damit rötet auch eine
   // Verstellung IM DIENST (etwa ein erfundener Notiztext) diese Fälle, statt an ihnen vorbeizugehen.
+  //
+  // JEDER Fall, der hierüber einen Datensatz ZURÜCKLIEST, prüft alle vier Felder einer menschlichen
+  // Entscheidung — `status`, `decidedBy`, `decision`, `resolutionReason`. Drei von vier genügen
+  // nicht: ohne `status` bliebe ein Fall grün, während die Entscheidung nach dem Neustart unwirksam
+  // wäre (BEN zu JOB 3914, Prüfpunkt 6). Diese Zusage wird nicht nur hier eingehalten, sondern IM
+  // TOR festgehalten — ohne Docker und ohne Datenbank, am Quelltext dieser Datei:
+  // `tests/konflikt-vermerk-postgres/integrationsfaelle-lesen-alle-vier-felder.test.ts` (JOB 3940).
   async function mitNeuemPool<T>(
     p: Pool,
     fn: (repo: PgConflictRepo, dienst: ConflictService) => Promise<T>,
@@ -342,10 +349,15 @@ describe("aistate-fix4 (bens V5): insertIfVersionsCurrent gegen echtes Postgres"
       ohne: await repo.findById("ohne"),
       mit: await repo.findById("mit"),
     }));
-    // Weder "" noch fehlend: die Ablage erfindet keinen Text und verliert auch keinen.
+    // Weder "" noch fehlend: die Ablage erfindet keinen Text und verliert auch keinen. Und der
+    // STATUS steht dabei (JOB 3940): fiele er im Adapter weg, stünde der Konflikt nach dem
+    // Neustart wieder auf "offen" — die Entscheidung wäre getroffen und trotzdem unwirksam, und
+    // dieser Fall hätte es mit drei von vier Feldern nicht gemerkt.
+    expect(gelesen.ohne?.status).toBe("geloest");
     expect(gelesen.ohne?.decision).toBeNull();
     expect(gelesen.ohne?.decidedBy).toBe("controller-1");
     expect(gelesen.ohne?.resolutionReason).toBe("dismissed");
+    expect(gelesen.mit?.status).toBe("geloest");
     expect(gelesen.mit?.decision).toBe("Quelle B gilt.");
     expect(gelesen.mit?.decidedBy).toBe("controller-1");
     expect(gelesen.mit?.resolutionReason).toBe("decided");
