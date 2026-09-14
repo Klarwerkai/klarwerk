@@ -34,6 +34,7 @@
 // M3    der Weg von der Startseite bei 390 px: der Link liegt im Fenster, führt hin, Liste offen.
 // K     KALIBRIERUNG: wird der gemessene Ausgleich in der Seite zurückgenommen, MUSS die Messung
 //       rot werden — sonst misst sie nichts.
+// K2    DER WÄCHTER ÜBER K: dieselbe Messung, während das Produkt im selben Augenblick einpasst.
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { extname, join, resolve } from "node:path";
@@ -149,6 +150,100 @@ interface Masse {
   fenster: number;
   flaeche: { links: number; rechts: number; breite: number; text: string } | null;
   zeilen: { links: number; rechts: number; breite: number; text: string }[];
+}
+
+// ================================================================================================
+// JOB 3908 — DIE KALIBRIERUNG MISST IN EINEM BROWSER-AUFRUF, NICHT IN ZWEIEN.
+// ================================================================================================
+//
+// VORHER standen Verstellung, Messung und Rücknahme in DREI `evaluate`-Aufrufen. Zwischen zweien
+// davon läuft die Seite weiter — und das Produkt rechnet dort seinen Ausgleich neu
+// (`components/erfassen/Menue.tsx:216-261`, `einpassen`, ausgelöst von `resize` `:262` und vom
+// `ResizeObserver` `:290-295`). Die Kalibrierung mass dann den REPARIERTEN Zustand und wurde rot,
+// obwohl am Produkt nichts fehlte: `jobs/3894/runde-1/tor.1.out:2691`
+// „expected 8 to be less than 0" — und 8 ist genau `rand` aus `Menue.tsx:225`.
+//
+// AUFGEZEICHNET, NICHT VERMUTET (JOB 3908, Lieferung 1, ein `MutationObserver` auf dem
+// `style`-Attribut der Fläche, Arbeitsprüfung `1b1a904c86284626af8f8095a5c6b233`, Cloud-Lauf
+// `b4102a34632d45bf2a61f2cb`, Exit 1, 390 px / de):
+//   t=240,8 ms  `transform = 'none'` gesetzt, `left` = −250          (Verstellung)
+//   t=241,0 ms  Observer sieht `none`, `left` = −250
+//   t=242,8 ms  `dispatchEvent('resize')` und `left` im SELBEN Block: −250 — unverändert
+//   t=243,7 ms  Observer sieht `translate(302px, -218.5px)`, `left` = +52   ← das Produkt rechnete
+//   danach      der zweite `evaluate` misst +52 statt −250 → „expected 52 to be less than 0"
+// Der reguläre Wert am 390-px-Fenster ist `translate(258px, -109.25px)`, Fläche links 8, rechts 338,
+// breit 330; ohne Verschiebung liegt sie bei links −250.
+//
+// DASS DIE ZAHL HIER 52 IST UND IM TOR 8 WAR, ist kein anderer Fehler, sondern derselbe an einer
+// anderen Stelle seines Ablaufs: erzwungen fällt die Messung in den ZWISCHENSTAND
+// `translate(302px, -218.5px)` (links 52), im Tor lag sie hinter dem eingeschwungenen Stand
+// `translate(258px, -109.25px)` (links 8, genau `rand` aus `Menue.tsx:225`). Beide Male misst der
+// Prüfstand den REPARIERTEN Zustand statt der Verstellung — und beide Male ist die Aussage
+// „ohne Ausgleich läge die Fläche im Fenster" falsch herum gemessen. Im selben Lauf war `K` OHNE
+// Störung grün (links −250): das Zeitfenster ist schmal, nicht geschlossen — genau das Flackern.
+//
+// DIE ZUSAGE, DIE DARAUS FOLGT und die diese Bauform trägt: innerhalb EINES synchronen
+// Browser-Aufrufs kann weder ein React-Rendervorgang noch ein `ResizeObserver`-Rückruf
+// dazwischentreten — beides wird erst nach dem Ende des synchronen Blocks abgearbeitet. Die Zeile
+// t=242,8 ms oben ist der Beleg: der `resize`-Hörer läuft synchron, `einpassen` rechnet synchron,
+// und `left` ist im selben Block trotzdem noch −250. Erst der Rendervorgang danach schreibt.
+//
+// DIE RÜCKNAHME STEHT IM `finally`, damit ein geworfener Fehler die Seite nicht verstellt
+// zurücklässt — sonst misst jeder folgende Fall auf einem Zustand, den nicht das Produkt gemacht hat.
+//
+// `${MASSE}` WIRD HIER EINGEBETTET, NICHT NACHGEBAUT: die Zeichenkette enthält `\s+`, und ein
+// zweites Mal getippt wäre die Maskierung schnell kaputt, ohne dass es auffiele. Dass der im
+// Browser ankommende Quelltext derselbe ist, prüfen die Fälle unten ausdrücklich.
+const ohneAusgleich = (stoerung: string): string => `() => {
+  const el = document.querySelector('[data-testid="blatt-menue-mehr"]');
+  const alt = el.style.transform;
+  let mass = null;
+  try {
+    el.style.transform = 'none';
+    ${stoerung}
+    mass = (${MASSE})();
+  } finally {
+    el.style.transform = alt;
+  }
+  return { mass: mass, alt: alt, zurueck: el.style.transform };
+}`;
+
+interface Kalibrierung {
+  mass: Masse;
+  /** Der Wert, den das Produkt gesetzt hatte. */
+  alt: string;
+  /** Der Wert nach dem `finally` — er MUSS `alt` sein, sonst bliebe die Seite verstellt. */
+  zurueck: string;
+}
+
+// ------------------------------------------------------------------------------------------------
+// LIEFERUNG 6: DASS `${MASSE}` DIE EINBETTUNG HEIL ÜBERSTEHT, WIRD GEMESSEN — ZWEIMAL.
+// ------------------------------------------------------------------------------------------------
+// Eine stillschweigend zerstörte Maskierung von `\s+` fiele sonst erst auf, wenn irgendwann ein
+// Titel mit Zeilenumbruch nicht mehr wiedererkannt wird. Deshalb: einmal am QUELLTEXT (kommt
+// derselbe Text im Browser an?) und einmal am ERGEBNIS (normalisiert er dort wirklich?).
+
+/** Der eingebettete Quelltext trägt `MASSE` unverändert — Zeichen für Zeichen. */
+function masseUnveraendert(quelle: string, lage: string): void {
+  expect(
+    quelle.includes(MASSE),
+    `${lage}: der eingebettete Quelltext ist nicht mehr zeichengleich mit MASSE`,
+  ).toBe(true);
+  // Unabhängig davon noch einmal ausgeschrieben: `includes(MASSE)` bliebe auch dann grün, wenn
+  // jemand die Maskierung in MASSE SELBST zerstörte. Diese Zeile fällt dann.
+  expect(
+    quelle,
+    `${lage}: die Maskierung von \\s+ ist bei der Einbettung verlorengegangen`,
+  ).toContain("(el.textContent || '').replace(/\\s+/g, ' ')");
+}
+
+/** Und die Probe aufs Exempel: im Browser sind die gemessenen Texte wirklich normalisiert. */
+function masseNormalisiert(m: Masse, lage: string): void {
+  const erwartet = ALLE_TITEL.map((t) => t.replace(/\s+/g, " ").trim().slice(0, 40)).sort();
+  expect(
+    m.zeilen.map((z) => z.text).sort(),
+    `${lage}: die Normalisierung in MASSE greift nach der Einbettung nicht mehr`,
+  ).toEqual(erwartet);
 }
 
 // ================================================================================================
@@ -627,45 +722,64 @@ describe("JOB 3266 R2 · der Zugang zu den eigenen Entwürfen im echten Chromium
       { timeout: 20_000 },
     );
     // Der Zustand von Runde 1, in der laufenden Seite wiederhergestellt: die Fläche hängt wieder
-    // nur an `right-0` des umgebrochenen Werkzeugs.
-    //
-    // ============================================================================================
-    // JOB 3778 · WARUM ENTFERNEN, MESSEN UND ZURÜCKSETZEN IN *EINER* AUSWERTUNG GESCHEHEN.
-    // ============================================================================================
-    // Bis hierher waren es DREI Playwright-Aufrufe: Ausgleich entfernen, dann messen, dann
-    // zurücksetzen. Zwischen zwei Aufrufen läuft die Seite aber weiter — und genau dort wohnt der
-    // Ausgleich: `components/erfassen/Menue.tsx` misst die Fläche, verschiebt sie und misst erneut
-    // (drei Anläufe je Öffnung, `:144-151`). Nimmt man die Verschiebung von aussen weg, ist das für
-    // diesen Effekt eine neue Lage: er rechnet nach und setzt sie WIEDER. Wer danach misst, misst
-    // die ausgeglichene Fläche — und der Fall wird rot, obwohl das Produkt genau das Richtige tut.
-    //
-    // GEMESSEN (JOB 3778, Nachzug 2, Cloud-Lauf 8c54fda4c948ce7127005b96, 390 px, DE): der
-    // Ausgleich ist `translate(258px, -109.25px)`; der Knopf „Mehr" endet bei x=80, die Fläche ist
-    // 330 px breit, ohne Ausgleich liegt sie also bei 80 − 330 = −250. Mit Ausgleich: −250 + 258 =
-    // 8. Genau diese 8 meldete das Tor zweimal („expected 8 to be less than 0"), während derselbe
-    // Fall einzeln grün war — ein Wettlauf, kein Zahlenfehler und keine Verhaltensänderung.
-    // Zum Beleg stand der Ausgleich beim Nachmessen schon wieder am Knoten (Fläche bei x=52).
-    //
-    // IN EINER AUSWERTUNG kann zwischen Entfernen und Messen kein Neuanstrich liegen: der Block
-    // unten ist EINE synchrone Aufgabe im Browser, `getBoundingClientRect()` liest das Layout
-    // darin sofort, und die Verschiebung ist am Ende derselben Aufgabe wieder da. Die Zusage des
-    // Falls bleibt Wort für Wort dieselbe (`links` muss unter 0 liegen) — sie ist nur nicht mehr
-    // vom Zufall abhängig. Die Seite bleibt, wie sie war; kein Zustand tritt nach aussen.
-    const ohne = await s.evaluate<Masse>(
-      fn(`() => {
-        const el = document.querySelector('[data-testid="blatt-menue-mehr"]');
-        const alt = el.style.transform;
-        el.style.transform = 'none';
-        const mass = (${MASSE})();
-        el.style.transform = alt;
-        return mass;
-      }`),
-    );
+    // nur an `right-0` des umgebrochenen Werkzeugs. Verstellung, Messung und Rücknahme liegen in
+    // EINEM synchronen Browser-Aufruf — die Begründung steht oben bei `ohneAusgleich`.
+    const quelle = ohneAusgleich("");
+    masseUnveraendert(quelle, "K");
+    const k = await s.evaluate<Kalibrierung>(fn(quelle));
     expect(
-      (ohne.flaeche as NonNullable<Masse["flaeche"]>).links,
+      k.zurueck,
+      "K: die Rücknahme im `finally` hat den alten Wert nicht wiederhergestellt",
+    ).toBe(k.alt);
+    masseNormalisiert(k.mass, "K · ohne Ausgleich");
+    expect(
+      (k.mass.flaeche as NonNullable<Masse["flaeche"]>).links,
       "ohne Ausgleich läge die Fläche im Fenster — dann misst dieser Prüfstand nichts",
     ).toBeLessThan(0);
     imFenster(await s.evaluate<Masse>(fn(MASSE)), "390 · nach Rücknahme der Kalibrierung");
+  }, 120_000);
+
+  // ==============================================================================================
+  // K2 — DER WÄCHTER ÜBER K SELBST (JOB 3908, Lieferung 3).
+  // ==============================================================================================
+  //
+  // K allein kann nicht zeigen, dass die Lücke ZU ist: er geht auch dann grün aus, wenn das
+  // Zeitfenster bloss schmal ist — GEMESSEN im selben Lauf, in dem die zweigeteilte Form rot
+  // wurde (`1b1a904c…`: K grün bei links −250, die zweigeteilte Form rot bei links 52).
+  //
+  // K2 wartet deshalb nicht darauf, dass das Produkt rechnet, sondern LÄSST es rechnen: das
+  // `resize`-Ereignis läuft synchron über `Menue.tsx:262` → `beiGroesse` (`:258-261`, setzt
+  // `versuche.current = 0` zurück) → `einpassen` (`:216-255`). Der React-Zustand wird dabei
+  // wirklich gesetzt; nur ANWENDEN (`:398-402`) kann ihn der Rendervorgang erst, wenn dieser
+  // synchrone Block zu Ende ist. Deshalb steht hier dieselbe Grenze wie in K, und sie hält —
+  // bei jedem Lauf gleich, ohne Wartezeit, ohne Wiederholung.
+  //
+  // WÜRDE JEMAND DIE DREI AUFRUFE WIEDER TRENNEN, fiele genau dieser Fall: in der alten Form
+  // gemessen „expected 52 to be less than 0" (Lauf `b4102a34632d45bf2a61f2cb`).
+  it("K2 · die Kalibrierung hält, auch wenn das Produkt im selben Augenblick einpasst", async () => {
+    expect(fehler, "Prüfstand nicht aufgebaut").toBeNull();
+    const s = seite as Seite;
+    await stelle(390, "de", "/erfassen?entwuerfe=1");
+    await s.waitForFunction(
+      fn(`() => document.querySelectorAll('[data-testid="blatt-entwurf-eintrag"]').length === 3`),
+      undefined,
+      { timeout: 20_000 },
+    );
+    const quelle = ohneAusgleich("window.dispatchEvent(new Event('resize'));");
+    masseUnveraendert(quelle, "K2");
+    const k = await s.evaluate<Kalibrierung>(fn(quelle));
+    expect(
+      k.zurueck,
+      "K2: die Rücknahme im `finally` hat den alten Wert nicht wiederhergestellt",
+    ).toBe(k.alt);
+    masseNormalisiert(k.mass, "K2 · ohne Ausgleich");
+    expect(
+      (k.mass.flaeche as NonNullable<Masse["flaeche"]>).links,
+      "die Einpassung des Produkts ist zwischen Verstellung und Messung getreten — dann misst dieser Prüfstand nichts",
+    ).toBeLessThan(0);
+    // Dieselbe Produktkontrolle wie in K: `dispatchEvent` löst echtes Produktverhalten aus, und der
+    // nächste Fall muss auf dem Zustand messen, den das PRODUKT gemacht hat.
+    imFenster(await s.evaluate<Masse>(fn(MASSE)), "390 · nach Rücknahme der Kalibrierung (K2)");
   }, 120_000);
 
   it("P · die Seite hat während aller Messungen nichts geworfen", () => {
