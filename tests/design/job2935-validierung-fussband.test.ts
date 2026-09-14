@@ -470,6 +470,16 @@ const MENUE_OEFFNEN = `(kartenAnker) => {
 
 const BLATT_DA = `() => document.querySelector('[data-testid="pruefen-menue-panel-karte"]') !== null`;
 
+/**
+ * JOB 3938 · und der Gegenschritt: dass das Blatt wirklich wieder ZU ist.
+ *
+ * Gebraucht wird er in `aufwaertsMessen`: die Lage rechnet das Produkt EINMAL, im Klick
+ * (`PruefenMenue.tsx:272`). Ein Blatt, das über die Fensteränderung hinweg offen bliebe, trüge
+ * seine Abwärtsrechnung mit — der Aufwärtszweig käme nie an die Reihe. Gewartet wird deshalb auf
+ * den geschlossenen Zustand und nicht auf eine geratene Frist.
+ */
+const BLATT_WEG = `() => document.querySelector('[data-testid="pruefen-menue-panel-karte"]') === null`;
+
 interface Teil {
   name: string;
   da: boolean;
@@ -1087,6 +1097,26 @@ const SPALTEN_PROBE = `([kartenAnker, an]) => {
  * „vollständig sichtbar UND bedienbar": neun Punkte über die Höhe des Blatts, jeder mit
  * `elementFromPoint` geprüft (derselbe Weg wie `ERREICHBAR_HELFER` in D1/D2). Ein abgeschnittener
  * oder verdeckter Bereich trifft das Blatt nicht — egal, ob die Klammer ihn gefunden hat.
+ *
+ * JOB 3938 · UND AN WELCHER KANTE DAS BLATT HÄNGT — GEMESSEN, NICHT GERECHNET.
+ * Das Produkt kennt zwei Orte (`PruefenMenue.tsx:151-153`, `:185-188`): unter dem Auslöser oder
+ * über ihm. Welcher gilt, stand bisher in keinem Messwert — und eine Elle, die beide Orte
+ * gleichzeitig erlaubt, kann ein falsch gerichtetes Blatt gar nicht erkennen. Erhoben wird das
+ * hier auf dem einzigen Weg, der ohne eigene Rechnung auskommt:
+ *
+ *   DIE SONDE. Der Ort steht im Produkt als AUSDRUCK in einer eigenen Eigenschaft
+ *   (`--kw-blatt-ort` = `clamp(8px, …, calc(100% - 72px))`, `:192`) und wird von EINER von zwei
+ *   festen Klassen gelesen (`[top:…]` oder `[bottom:…]`, `:312`). Ein 0 px hoher, fest
+ *   positionierter Kasten IM Blatt erbt diese Eigenschaft und lässt den BROWSER den Ausdruck
+ *   auflösen (`top: var(--kw-blatt-ort)`); sein `top` ist der Ort in Pixeln. Passt er auf die
+ *   Oberkante des Blatts, hängt das Blatt an `top` — also nach unten aufgeklappt. Passt er auf den
+ *   Abstand der UNTERkante zum Fensterboden, hängt es an `bottom` — nach oben aufgeklappt. Die
+ *   Sonde wird sofort wieder entfernt; sie steht ausserhalb des Flusses und ändert am Blatt nichts.
+ *
+ *   WARUM NICHT „WELCHE KANTE IST `auto`": `getComputedStyle` gibt für ein positioniertes Element
+ *   den BENUTZTEN Wert beider Kanten zurück, auch für die nicht gesetzte. Beide Rohwerte stehen
+ *   deshalb im Befund — als Beleg dafür, dass sie hier nichts entscheiden, und nicht als Elle.
+ *   Der Klassenname steht aus demselben Grund daneben: er sagt, was gemeint war, nicht, was wirkt.
  */
 const MENUE_LAGE = `([kartenAnker, kennung]) => {
   const karte = document.querySelector(kartenAnker);
@@ -1096,7 +1126,21 @@ const MENUE_LAGE = `([kartenAnker, kennung]) => {
   const kasten = (el) => { const r = el.getBoundingClientRect(); return { oben: r.top, unten: r.bottom }; };
   const fensterHoehe = document.documentElement.clientHeight;
   const br = blatt.getBoundingClientRect();
-  const position = getComputedStyle(blatt).position;
+  const blattStil = getComputedStyle(blatt);
+  const position = blattStil.position;
+  const rund = (w) => Math.round(w * 100) / 100;
+  const sonde = document.createElement('div');
+  sonde.style.position = 'fixed';
+  sonde.style.left = '0px';
+  sonde.style.width = '1px';
+  sonde.style.height = '0px';
+  sonde.style.top = 'var(--kw-blatt-ort)';
+  blatt.appendChild(sonde);
+  const ortPx = sonde.getBoundingClientRect().top;
+  sonde.remove();
+  const abstandAbwaerts = rund(Math.abs(br.top - ortPx));
+  const abstandAufwaerts = rund(Math.abs(fensterHoehe - br.bottom - ortPx));
+  const klassen = blatt.className.toString();
   let oben = 0;
   let unten = fensterHoehe;
   const namen = [];
@@ -1154,6 +1198,22 @@ const MENUE_LAGE = `([kartenAnker, kennung]) => {
     // JOB 3812 R3: die BREITE gehört mit erhoben — L18c ändert sie, und ohne diesen Wert wäre
     // „die Fensterbreite hat sich wirklich geändert" eine Behauptung statt einer Messung.
     fensterBreite: window.innerWidth,
+    // JOB 3938: die gemessene Kante. nachOben ist der Vergleich der beiden Abstaende und sonst
+    // nichts — keine nachgebaute Produktrechnung, keine Annahme ueber den Klassennamen.
+    kante: {
+      nachOben: abstandAufwaerts < abstandAbwaerts,
+      ortPx: rund(ortPx),
+      abstandAbwaerts: abstandAbwaerts,
+      abstandAufwaerts: abstandAufwaerts,
+      top: blattStil.top,
+      bottom: blattStil.bottom,
+      ort: blattStil.getPropertyValue('--kw-blatt-ort').trim(),
+      deckel: blattStil.getPropertyValue('--kw-blatt-deckel').trim(),
+      maxHoehe: blattStil.maxHeight,
+      klasse: klassen.indexOf('[bottom:var(--kw-blatt-ort)]') >= 0
+        ? 'bottom'
+        : (klassen.indexOf('[top:var(--kw-blatt-ort)]') >= 0 ? 'top' : 'keine'),
+    },
   };
 }`;
 
@@ -1509,6 +1569,33 @@ interface Menuebefund {
   fensterHoehe: number;
   /** JOB 3812 R3: `window.innerWidth` zur Zeit der Messung — die Elle von L18c. */
   fensterBreite: number;
+  /** JOB 3938: an welcher Kante das Blatt WIRKLICH hängt (Begründung an `MENUE_LAGE`). */
+  kante: Menuekante;
+}
+
+/**
+ * JOB 3938 · DIE GEMESSENE RICHTUNG DES BLATTS.
+ *
+ * `nachOben` ist der einzige Wert, auf den eine Zusicherung schaut; alles andere steht daneben,
+ * damit im Protokoll nachzulesen ist, WORAUS er entstand. `top`/`bottom` sind die Rohwerte aus
+ * `getComputedStyle` (beide in Pixeln, auch die nicht gesetzte Kante — deshalb entscheiden sie
+ * nichts), `klasse` ist der Klassenname, also die Absicht, und `ort`/`deckel`/`maxHoehe` sagen,
+ * ob und wo die Klemme des Produkts (`PruefenMenue.tsx:192-193`) gegriffen hat.
+ */
+interface Menuekante {
+  nachOben: boolean;
+  /** Der vom BROWSER aufgelöste `--kw-blatt-ort`, in Pixeln (Sondenmessung). */
+  ortPx: number;
+  /** Abstand des Ortswerts zur OBERkante des Blatts — 0, wenn es nach unten aufklappt. */
+  abstandAbwaerts: number;
+  /** Abstand des Ortswerts zum Fensterboden-Abstand der UNTERkante — 0 bei Aufwärtszweig. */
+  abstandAufwaerts: number;
+  top: string;
+  bottom: string;
+  ort: string;
+  deckel: string;
+  maxHoehe: string;
+  klasse: string;
 }
 
 /**
@@ -1534,6 +1621,28 @@ interface Wechselstand {
   auswahl: Sichtkasten;
   ausschnitt: Sichtausschnitt;
   fensterHoehe: number;
+}
+
+/**
+ * JOB 3938 · L18d: der Weg in den Aufwärtszweig, mit allem, woraus er entstanden ist.
+ *
+ * Die Herleitung steht als MESSWERT im Ergebnis und nicht nur im Protokoll: `schwelle` und
+ * `zielHoehe` sind aus `ausloeserObenFlach` gerechnet, und `vorher` belegt, dass dieselbe Karte in
+ * der bekannten flachen Lage noch nach UNTEN aufklappte. Ohne diesen zweiten Befund hiesse „es
+ * klappt nach oben" nur, dass irgendwo etwas nach oben klappt — nicht, dass die Weiche greift.
+ */
+interface Aufwaertslauf {
+  /** `ausloeser.oben` in der bekannten flachen Lage — die einzige Eingangszahl der Herleitung. */
+  ausloeserObenFlach: number;
+  fensterHoeheFlach: number;
+  /** `2 · ausloeserObenFlach + 28`: darunter rechnet `PruefenMenue.tsx:187` `nachOben`. */
+  schwelle: number;
+  /** Die daraus gesetzte Fensterhöhe (`AUFWAERTS_ABSTAND_PX` unter der Schwelle). */
+  zielHoehe: number;
+  /** Der Befund in der bekannten flachen Lage: dasselbe Menü, noch abwärts aufgeklappt. */
+  vorher: Menuebefund;
+  /** Der Befund im wirklich flachen Fenster — der Zweig, den bis heute kein Browser gemessen hat. */
+  befund: Menuebefund;
 }
 
 interface Artikelwechsel {
@@ -1612,6 +1721,26 @@ const FLACH = { width: 1280, height: 420 };
 const SCHMALER = { width: 1200, height: FLACH.height };
 
 /**
+ * JOB 3938 · DIE SECHSTE LAGE: SO FLACH, DASS DAS BLATT NACH OBEN AUFKLAPPEN MUSS.
+ *
+ * Ihre Höhe steht hier NICHT als Zahl, weil sie keine ist: sie hängt am gemessenen Ort des
+ * Auslösers. Aus `PruefenMenue.tsx` (`:174`, `:185`, `:186`, `:187`) folgt
+ *   platzUnten = fensterHoehe - (ausloeserTop + 32) - 8 · platzOben = ausloeserTop - 4 - 8
+ *   nachOben   ⇔ platzUnten < platzOben ⇔ fensterHoehe < 2 · ausloeserTop + 28,
+ * also eine SCHWELLE, die `aufwaertsMessen` aus seiner eigenen Messung rechnet.
+ *
+ * Die zwei Zahlen hier sind der Rand um diese Schwelle:
+ *   · ABSTAND — so weit unter die Schwelle wird gefahren. Beim Verkleinern kann der Auslöser ein
+ *     Stück wandern; ohne Rand entschiede eine Zahl, die aus dem Fenster VORHER stammt. Dass der
+ *     Zweig wirklich genommen wurde, bleibt trotzdem eine MESSUNG (L18d, erste Zusicherung) und
+ *     keine Folgerung aus dieser Rechnung.
+ *   · MINDEST — darunter wird nicht gegangen. Ein Fenster von wenigen Dutzend Pixeln misst nicht
+ *     mehr die Fläche, sondern ihren Zusammenbruch.
+ */
+const AUFWAERTS_ABSTAND_PX = 60;
+const AUFWAERTS_MINDEST_PX = 240;
+
+/**
  * Wie weit sich die HÜLLE (`MAIN[flex-1 overflow-y-auto …]`, der Bereich, in dem die Karte liegt)
  * über die dreissig Schritte hinweg überhaupt noch bewegen darf.
  *
@@ -1660,6 +1789,8 @@ const tastaturwege: Tastaturweg[] = [];
 const menuewandel: Menuewandel[] = [];
 /** JOB 3812 · RUNDE 2, L19: ein Artikelwechsel aus heruntergerollter Karte. */
 let artikelwechsel: Artikelwechsel | null = null;
+/** JOB 3938 · L18d: der Aufwärtszweig, auf eigener Seite und mit eigener Ergebnisliste. */
+let aufwaerts: Aufwaertslauf | null = null;
 
 /**
  * Die zwei Höhen der Kopfprobe. Zwei statt einer, damit L14 eine REGEL misst und keinen Zufall:
@@ -2106,6 +2237,79 @@ describe("JOB 3593 · L · lange Warteschlange — Auswahl UND Artikel im Fenste
       };
 
       /**
+       * JOB 3938 · DER ZWEITE ORT DES BLATTS — der Zweig, den noch kein Browser betreten hat.
+       *
+       * DIE LÜCKE (BEN an JOB 3812 R3, Prüfpunkt 6: „nach oben öffnende Menüs gesondert im Browser
+       * prüfen"): Das Produkt klappt das Blatt über dem Auslöser auf, wenn unten weniger Platz ist
+       * als oben (`PruefenMenue.tsx:187-188`). Alle bisherigen Browserfälle — L16, L18, L18b, L18c
+       * — messen Fenster, in denen unten reichlich Platz ist; `:188` war unbetreten.
+       *
+       * EIGENE SEITE, EIGENE ERGEBNISLISTE. `menuewandel` behält seine fünf Einträge: L18 und L18b
+       * zählen sie ausdrücklich, und ein sechster Eintrag hiesse „ein Schritt desselben Weges",
+       * was dieser Fall nicht ist. Er hat einen anderen Ausgangspunkt und einen anderen Zweck.
+       *
+       * VIER SCHRITTE, und der dritte ist der Grund für den zweiten:
+       *   a. In der bekannten flachen Lage öffnen und MESSEN — daher kommt `ausloeser.oben`.
+       *   b. Aus dieser Zahl die Fensterhöhe herleiten, bei der `:187` umschlägt (Rechnung an
+       *      `AUFWAERTS_ABSTAND_PX`), und darauf warten, dass das Fenster wirklich steht.
+       *   c. Das Blatt ZWISCHENDURCH schliessen. Die Lage wird einmal im Klick gerechnet; ein
+       *      offen gebliebenes Blatt brächte seine Abwärtsrechnung mit, und der Zweig bliebe
+       *      wieder unbetreten. Dieser Schritt ist der Unterschied zu L18, nicht ein Detail.
+       *   d. Neu öffnen und messen.
+       */
+      const aufwaertsMessen = async (): Promise<Aufwaertslauf> => {
+        const s = await seiteOeffnen(FLACH);
+        const messen = async (was: string, marke: string): Promise<Menuebefund> => {
+          const m = await s.evaluate<Omit<Menuebefund, "lage" | "probe"> | null>(fn(MENUE_LAGE), [
+            KARTE_ANKER,
+            "karte",
+          ]);
+          if (!m) {
+            throw new Error(`Aufwaerts ${was}: das Blatt war nicht zu messen`);
+          }
+          return { ...m, lage: marke, probe: false };
+        };
+        const oeffnen = async (was: string): Promise<void> => {
+          const geklickt = await s.evaluate<boolean>(fn(MENUE_OEFFNEN), KARTE_ANKER);
+          if (!geklickt) {
+            throw new Error(`Aufwaerts ${was}: das „···"-Menü der Karte war nicht zu finden`);
+          }
+        };
+        // a. Die Ausgangslage — gemessen mit demselben einen Messkopf. Ein zweiter Leser nur für
+        //    das Rechteck des Auslösers wäre ein zweiter Messstab für dieselbe Frage.
+        await oeffnen("Ausgangslage");
+        await s.waitForFunction(fn(BLATT_DA), undefined, { timeout: 30_000 });
+        const vorher = await messen("Ausgangslage", `${FLACH.width}x${FLACH.height}`);
+        // b. Die Herleitung. Die Zahl ist gerechnet, ihre Eingangsgrösse gemessen — und ob der
+        //    Zweig dann wirklich genommen wurde, misst L18d noch einmal am Ergebnis.
+        const schwelle = 2 * vorher.ausloeser.oben + 28;
+        const zielHoehe = Math.max(
+          AUFWAERTS_MINDEST_PX,
+          Math.floor(schwelle) - AUFWAERTS_ABSTAND_PX,
+        );
+        // c. Zumachen, Fenster setzen, warten.
+        await oeffnen("Schliessen");
+        await s.waitForFunction(fn(BLATT_WEG), undefined, { timeout: 30_000 });
+        await s.evaluate<boolean>(fn(FENSTER_ZURUECK));
+        await s.setViewportSize({ width: FLACH.width, height: zielHoehe });
+        await s.waitForFunction(fn(FENSTER_STEHT), [FLACH.width, zielHoehe], { timeout: 30_000 });
+        // d. Und erst jetzt öffnen.
+        await oeffnen("flaches Fenster");
+        await s.waitForFunction(fn(BLATT_DA), undefined, { timeout: 30_000 });
+        const befund = await messen("flaches Fenster", `${FLACH.width}x${zielHoehe}`);
+        const lauf: Aufwaertslauf = {
+          ausloeserObenFlach: vorher.ausloeser.oben,
+          fensterHoeheFlach: vorher.fensterHoehe,
+          schwelle,
+          zielHoehe,
+          vorher,
+          befund,
+        };
+        console.info(`JOB 3938 L18d · ${JSON.stringify(lauf)}`);
+        return lauf;
+      };
+
+      /**
        * JOB 3812 · RUNDE 2 — EIN ANDERER ARTIKEL FÄNGT OBEN AN.
        *
        * Die zweite Prüflücke des Berichts: „Artikelwechsel nach heruntergerollter Karte". Gemessen
@@ -2222,6 +2426,7 @@ describe("JOB 3593 · L · lange Warteschlange — Auswahl UND Artikel im Fenste
         tastaturwege.push(await tastaturMessen(lage));
       }
       await wandelMessen();
+      aufwaerts = await aufwaertsMessen();
       await wechselMessen();
     } catch (e) {
       fehler3 = String(e).split("\n").slice(0, 3).join(" | ");
@@ -2810,13 +3015,29 @@ describe("JOB 3593 · L · lange Warteschlange — Auswahl UND Artikel im Fenste
   // Die zwei erlaubten Orte stehen in `PruefenMenue.tsx` (`BLATT_ABSTAND_PX` = 32 px unter dessen
   // Oberkante, oder `BLATT_LUFT_PX` = 4 px darüber, wenn es nach oben aufklappt); ein Blatt, das
   // nach dem Verkleinern zwar im Fenster liegt, aber irgendwo, hat die Zusage nicht erfüllt.
+  //
+  // JOB 3938 · DIESE ELLE URTEILT SEIT HEUTE GERICHTET — und das ist kein Feinschliff.
+  //
+  // BIS HIERHER stand hier `Math.min` über BEIDE erlaubten Orte. Damit sagte sie „das Blatt steht
+  // an EINEM der zwei erlaubten Orte" und nicht „am richtigen": ein Blatt, für das das Produkt
+  // `nachOben` gerechnet hat, das aber am Abwärts-Ort steht (oder umgekehrt), bestand sie
+  // unbemerkt. Der Kommentar oben nannte die zwei Orte schon; WELCHER wann gilt, prüfte niemand.
+  //
+  // GERICHTET HEISST: die Richtung kommt aus der MESSUNG (`b.kante.nachOben`, Sondenmessung in
+  // `MENUE_LAGE`) und entscheidet, gegen welchen der beiden Orte gemessen wird. Nicht aus der
+  // Fensterhöhe und nicht aus einer hier nachgebauten Fassung von `PruefenMenue.tsx:187` — eine
+  // Elle, die die Regel des Geprüften nachrechnet, prüft nur sich selbst.
+  //
+  // Dass sie taugt — und zwar in beide Richtungen, nicht bloss streng ist —, misst L5b ohne
+  // Browser; den Aufwärts-Ort am lebenden Produkt misst L18d.
   const BLATT_ABSTAND_PX = 32;
   const BLATT_LUFT_PX = 4;
   const amAusloeser = (b: Menuebefund): number =>
     Math.round(
-      Math.min(
-        Math.abs(b.blatt.oben - (b.ausloeser.oben + BLATT_ABSTAND_PX)),
-        Math.abs(b.blatt.unten - (b.ausloeser.oben - BLATT_LUFT_PX)),
+      Math.abs(
+        b.kante.nachOben
+          ? b.blatt.unten - (b.ausloeser.oben - BLATT_LUFT_PX)
+          : b.blatt.oben - (b.ausloeser.oben + BLATT_ABSTAND_PX),
       ) * 100,
     ) / 100;
 
@@ -2829,7 +3050,7 @@ describe("JOB 3593 · L · lange Warteschlange — Auswahl UND Artikel im Fenste
       const ab = amAusloeser(w.befund);
       expect(
         ab,
-        `${w.schritt}: das Blatt steht ${ab} px neben seinem erlaubten Ort (Blatt ${w.befund.blatt.oben}–${w.befund.blatt.unten}, Ausloeser ab ${w.befund.ausloeser.oben}, Fenster ${w.befund.fensterHoehe} px hoch)`,
+        `${w.schritt}: das Blatt steht ${ab} px neben seinem ${w.befund.kante.nachOben ? "Aufwaerts" : "Abwaerts"}-Ort (Blatt ${w.befund.blatt.oben}–${w.befund.blatt.unten}, Ausloeser ab ${w.befund.ausloeser.oben}, Fenster ${w.befund.fensterHoehe} px hoch, gemessene Kante ${w.befund.kante.klasse} bei ${w.befund.kante.ortPx} px)`,
       ).toBeLessThanOrEqual(SICHT_TOLERANZ_PX);
     }
     // Und der Deckel ist WIRKLICH nachgerechnet und nicht bloss zufällig gross genug: im flachen
@@ -2881,9 +3102,13 @@ describe("JOB 3593 · L · lange Warteschlange — Auswahl UND Artikel im Fenste
     menueVollSichtbar(w.befund);
     // Und der Abstand zum Auslöser als offene Zahl: er ist jetzt gross, weil der Auslöser
     // weggerollt ist. Diese Zeile sagt nur, dass die Zahl gemessen wurde und nicht behauptet ist.
+    //
+    // JOB 3938: die Zahl kommt seit heute aus der GERICHTETEN Elle — die Aussage bleibt dieselbe
+    // (hier gehört die Richtung bauartbedingt nicht dazu, denn es gibt keinen richtigen Ort an
+    // einem weggerollten Auslöser), nur ihr Wert ist jetzt der gegen die gemessene Kante.
     expect(
       Number.isFinite(amAusloeser(w.befund)),
-      `der Abstand zum Ausloeser (${amAusloeser(w.befund)} px) ist keine Zahl`,
+      `der Abstand zum ${w.befund.kante.nachOben ? "Aufwaerts" : "Abwaerts"}-Ort des Ausloesers (${amAusloeser(w.befund)} px) ist keine Zahl`,
     ).toBe(true);
   });
 
@@ -2936,6 +3161,63 @@ describe("JOB 3593 · L · lange Warteschlange — Auswahl UND Artikel im Fenste
       versprung,
       `das Blatt ist durch die Fensteraenderung ${versprung} px gewandert (vorher ${vor.befund.blatt.oben}–${vor.befund.blatt.unten}, nachher ${nach.befund.blatt.oben}–${nach.befund.blatt.unten}, Ausloeser bei ${nach.befund.ausloeser.oben}, Fenster ${nach.befund.fensterBreite}x${nach.befund.fensterHoehe})`,
     ).toBeLessThanOrEqual(SICHT_TOLERANZ_PX);
+  });
+
+  // ------------------------------------------------------------------------------------------
+  // L18d · UND DER ZWEITE ORT — das Blatt, das nach OBEN aufklappt (JOB 3938).
+  // ------------------------------------------------------------------------------------------
+  // DIE LÜCKE, WÖRTLICH (BEN an JOB 3812 R3, Prüfpunkt 6): „Weitere Menüorte bei Größenänderung
+  // und nach oben öffnende Menüs gesondert im Browser prüfen." Das Produkt kann den zweiten Ort
+  // seit JOB 3812 (`PruefenMenue.tsx:187-188`) — gemessen hatte ihn niemand: L16, L18, L18b und
+  // L18c öffnen das Menü ausschliesslich in Fenstern, in denen unter dem Auslöser genug Platz ist.
+  //
+  // DIE VIER ZUSICHERUNGEN, und warum die erste die wichtigste ist: Ohne den Nachweis, dass das
+  // Blatt WIRKLICH aufwärts hängt, wäre dieser Fall auch dann grün, wenn das Fenster gar nicht
+  // flach genug war — er prüfte dann zum vierten Mal den Abwärtszweig. Die Richtung kommt deshalb
+  // aus der Sondenmessung (`MENUE_LAGE`, Feld `kante`) und nicht aus der Fensterhöhe.
+  //
+  // Die Elle ist dieselbe eine (`menueVollSichtbar`, `amAusloeser`, `SICHT_TOLERANZ_PX`); neu ist
+  // allein, dass `amAusloeser` seit diesem Job GERICHTET urteilt.
+  it("L18d · im wirklich flachen Fenster klappt das Blatt nach OBEN auf — ganz im Bild, ganz bedienbar, am Aufwaerts-Ort seines Ausloesers", () => {
+    expect(fehler3).toBeNull();
+    expect(aufwaerts, "der Aufwaertszweig wurde nicht gemessen").not.toBeNull();
+    const a = aufwaerts;
+    if (!a) return;
+    const k = a.befund.kante;
+    // 0. Die Bühne steht wirklich so flach, wie sie hergeleitet wurde.
+    expect(
+      a.befund.fensterHoehe,
+      `gemessen wurde bei ${a.befund.fensterHoehe} px statt bei den hergeleiteten ${a.zielHoehe} px (Ausloeser oben ${a.ausloeserObenFlach}, Schwelle ${a.schwelle})`,
+    ).toBe(a.zielHoehe);
+    // 1. Das Blatt hängt WIRKLICH aufwärts — sonst misst dieser Fall den Abwärtszweig ein
+    //    viertes Mal. Und dieselbe Karte tat es in der bekannten flachen Lage noch NICHT: erst
+    //    beides zusammen sagt, dass die Weiche `:187` greift und nicht bloss etwas nach oben steht.
+    expect(
+      k.nachOben,
+      `das Blatt haengt nicht aufwaerts: Ort ${k.ortPx} px, Abstand zur Oberkante ${k.abstandAbwaerts} px, zur Unterkante ${k.abstandAufwaerts} px (Blatt ${a.befund.blatt.oben}–${a.befund.blatt.unten}, Ausloeser ab ${a.befund.ausloeser.oben}, Fenster ${a.befund.fensterHoehe} px, Klasse ${k.klasse}, top ${k.top}, bottom ${k.bottom}, ort ${k.ort})`,
+    ).toBe(true);
+    expect(
+      a.vorher.kante.nachOben,
+      `schon bei ${a.vorher.fensterHoehe} px haengt das Blatt aufwaerts (Ort ${a.vorher.kante.ortPx}, Blatt ${a.vorher.blatt.oben}–${a.vorher.blatt.unten}, Ausloeser ab ${a.vorher.ausloeser.oben}) — dann sagt L18d nichts ueber die Weiche`,
+    ).toBe(false);
+    // 2. Ganz im Fenster und an allen neun Punkten bedienbar — dieselbe Elle wie L16/L18/L18b.
+    menueVollSichtbar(a.befund);
+    // 3. Am AUFWÄRTS-Ort seines Auslösers, mit der gerichteten Elle.
+    const ab = amAusloeser(a.befund);
+    expect(
+      ab,
+      `das Blatt steht ${ab} px neben seinem Aufwaerts-Ort (Unterkante ${a.befund.blatt.unten}, erwartet ${a.befund.ausloeser.oben - BLATT_LUFT_PX}; Blatt ${a.befund.blatt.oben}–${a.befund.blatt.unten}, Ausloeser ab ${a.befund.ausloeser.oben}, Fenster ${a.befund.fensterHoehe} px hoch)`,
+    ).toBeLessThanOrEqual(SICHT_TOLERANZ_PX);
+    // 4. Und der Deckel ist nachgerechnet, nicht zufällig gross genug — dieselbe Frage wie in L18,
+    //    nur auf der anderen Seite des Auslösers. Welche der beiden Grenzen dabei gegriffen hat
+    //    (`min(…)` gegen den freien Platz oder die Klemme `clamp(…)` mit `BLATT_MINDEST_PX`),
+    //    steht als gemessener Wert in der Meldung und im Protokoll — verschwiegen wird nichts.
+    const hoch = menuewandel[0];
+    if (!hoch) return;
+    expect(
+      a.befund.hoehe,
+      `im ${a.befund.fensterHoehe} px hohen Fenster ist das Blatt ${a.befund.hoehe} px hoch wie im ${hoch.befund.fensterHoehe} px hohen (${hoch.befund.hoehe} px) — es wurde nicht nachgerechnet (Ort ${k.ort} → ${k.ortPx} px, Deckel ${k.deckel} → max-height ${k.maxHoehe})`,
+    ).toBeLessThan(hoch.befund.hoehe);
   });
 
   // ------------------------------------------------------------------------------------------
@@ -3002,6 +3284,96 @@ describe("JOB 3593 · L · lange Warteschlange — Auswahl UND Artikel im Fenste
       sichtbar,
       `${w.lage}: von der neuen Auswahl (${w.nachher.auswahl.oben}–${w.nachher.auswahl.unten}) ist in der Liste (${w.nachher.schlange.oben}–${w.nachher.schlange.unten}) nichts zu sehen`,
     ).toBeGreaterThan(0);
+  });
+
+  /**
+   * JOB 3938 · EIN BEFUND VON HAND — für die Kalibrierung der gerichteten Elle (L5b).
+   *
+   * Nur vier Grössen tragen hier Bedeutung: die gemessene Richtung, der Kasten des Blatts, die
+   * Oberkante des Auslösers und die Fensterhöhe. Der Rest ist Bühne und steht da, weil ein
+   * `Menuebefund` der GANZE Messwert ist und ein halber keiner wäre. `ortPx` wird aus der
+   * behaupteten Richtung abgeleitet — genau so, wie die Sonde in `MENUE_LAGE` es gemessen hätte:
+   * bei `nachOben` der Abstand der Unterkante zum Fensterboden, sonst die Oberkante.
+   */
+  const handbefund = (
+    nachOben: boolean,
+    blatt: Sichtkasten,
+    ausloeserOben: number,
+    fensterHoehe: number,
+  ): Menuebefund => {
+    const ortPx = nachOben ? fensterHoehe - blatt.unten : blatt.oben;
+    const rund = (w: number): number => Math.round(w * 100) / 100;
+    return {
+      lage: `von Hand · ${fensterHoehe} px · ${nachOben ? "aufwaerts" : "abwaerts"}`,
+      probe: false,
+      position: "fixed",
+      blatt,
+      hoehe: rund(blatt.unten - blatt.oben),
+      breite: 256,
+      ausloeser: { oben: ausloeserOben, unten: ausloeserOben + 29 },
+      klammer: { oben: 0, unten: fensterHoehe },
+      klammerNamen: [],
+      spalte: { oben: 138.5, unten: fensterHoehe },
+      spalteOverflow: "auto",
+      spalteRollt: true,
+      punkte: 9,
+      fehlstellen: [],
+      fensterHoehe,
+      fensterBreite: 1280,
+      kante: {
+        nachOben,
+        ortPx: rund(ortPx),
+        abstandAbwaerts: rund(Math.abs(blatt.oben - ortPx)),
+        abstandAufwaerts: rund(Math.abs(fensterHoehe - blatt.unten - ortPx)),
+        top: `${rund(blatt.oben)}px`,
+        bottom: `${rund(fensterHoehe - blatt.unten)}px`,
+        ort: `${rund(ortPx)}px`,
+        deckel: `${rund(blatt.unten - blatt.oben)}px`,
+        maxHoehe: `${rund(blatt.unten - blatt.oben)}px`,
+        klasse: nachOben ? "bottom" : "top",
+      },
+    };
+  };
+
+  it("L5b · die GERICHTETE Elle taugt: sie erkennt ein Blatt, das am falschen der zwei erlaubten Orte steht", () => {
+    // DIE LÜCKE, DIE DIESER FALL SCHLIESST (JOB 3938 §2). Bis heute stand hier `Math.min` über
+    // BEIDE erlaubten Orte. Damit sagte die Elle „an EINEM der zwei Orte" — ein Blatt, für das
+    // das Produkt `nachOben` gerechnet hat, das aber am Abwärts-Ort steht (oder umgekehrt), war
+    // von einem richtigen nicht zu unterscheiden. Genau dieser Fehler ist unten der dritte und
+    // vierte Fall; mit `Math.min` gäben beide 0 zurück.
+    //
+    // Die Zahlen sind gemessene Lagen und keine erfundenen: 163,5 px ist die Oberkante des
+    // Auslösers in der flachen Lage, 195,5–443,5 der Abwärts-Ort im hohen Fenster (beides
+    // JOB 3812, Kopf von `PruefenMenue.tsx`), 8–159,5 der Aufwärts-Ort in einem 320 px hohen.
+    const ausloeserOben = 163.5;
+    const abwaertsOrt = { oben: 195.5, unten: 443.5 };
+    const aufwaertsOrt = { oben: 8, unten: 159.5 };
+    // 1. RICHTIG GERICHTET, beide Richtungen — sonst misst dieser Fall nur Strenge statt
+    //    Richtigkeit, und die Elle könnte einfach alles beanstanden.
+    expect(amAusloeser(handbefund(false, abwaertsOrt, ausloeserOben, 900))).toBe(0);
+    expect(amAusloeser(handbefund(true, aufwaertsOrt, ausloeserOben, 320))).toBe(0);
+    // 2. FALSCH GERICHTET — der Fehler, den die ungerichtete Fassung durchwinkte. Die Zahlen sind
+    //    die wirklichen Abstände zum jeweils RICHTIGEN Ort: 443,5 statt 159,5 und 8 statt 195,5.
+    expect(amAusloeser(handbefund(true, abwaertsOrt, ausloeserOben, 320))).toBe(284);
+    expect(amAusloeser(handbefund(false, aufwaertsOrt, ausloeserOben, 320))).toBe(187.5);
+    // 3. Und die Toleranz ist dieselbe eine: ein halber Pixel daneben bleibt ein Treffer, zwei
+    //    Toleranzen daneben nicht. Ohne diese zwei Zeilen wäre offen, ob die Elle überhaupt misst
+    //    oder nur zwei Sollwerte auf Gleichheit prüft.
+    expect(
+      amAusloeser(
+        handbefund(true, { oben: 8, unten: 159.5 + SICHT_TOLERANZ_PX }, ausloeserOben, 320),
+      ),
+    ).toBe(SICHT_TOLERANZ_PX);
+    expect(
+      amAusloeser(
+        handbefund(
+          false,
+          { oben: 195.5 + 2 * SICHT_TOLERANZ_PX, unten: 443.5 },
+          ausloeserOben,
+          900,
+        ),
+      ),
+    ).toBe(2 * SICHT_TOLERANZ_PX);
   });
 
   it("L5 · die Regel selbst taugt: sie erkennt einen Kasten, der nachweislich ausserhalb liegt", () => {
