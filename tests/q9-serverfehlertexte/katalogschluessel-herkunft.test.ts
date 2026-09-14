@@ -710,6 +710,23 @@ const NUR_UEBER_EINE_VARIABLE = ["OIDC_UNREACHABLE"];
 const AUS_DEM_RECHTETOR = ["PERMISSION_MISSING"];
 
 /**
+ * JOB 3956 · Die drei Schlüssel, die WEDER aus `services/auth/src` NOCH aus dem Rechtetor kommen:
+ *
+ *   `DRAFT_NOT_FOUND` / `DRAFT_NOT_VISIBLE`  `services/app/src/routes/capture-routes.ts`
+ *                                            (`requireVisibleDraft` und der Fortsetzen-Zweig)
+ *   `PERMISSION_DENIED`                      `services/rbac/src/guard.ts`
+ *
+ * Dieselbe Lage und dieselbe benannte Prüflücke wie bei `AUS_DEM_RECHTETOR`: H2 und H3 tasten
+ * ausschliesslich `services/auth/src` ab, sehen diese Sendestellen also nicht, und H5 kann für sie
+ * nicht bürgen — ein Tippfehler in `meldung("DRAFT_NOT_FOND", …)` fiele hier nicht auf. Er fällt
+ * am DRAHT auf: `tests/q9-entwurfsfehler/entwurfsfehler-sprachfaelle.test.ts` hält alle drei Sätze
+ * in allen drei Sprachen gegen echte Antworten, und ein Rückfall auf „Unerwarteter Fehler." macht
+ * E1 bis G4 rot (gemessen als Mutation M1 in JOB 3956). Diese Liste hält die Deckung von H3.2
+ * vollständig — kein toter Schlüssel —, ohne so zu tun, als sei die Stelle abgetastet worden.
+ */
+const AUS_DEN_ENTWURFSROUTEN = ["DRAFT_NOT_FOUND", "DRAFT_NOT_VISIBLE", "PERMISSION_DENIED"];
+
+/**
  * Was sich zwischen gepinnter und gemessener Liste verschoben hat — namentlich. Ohne diesen Satz
  * meldet Vitest nur `expected [ 'ACCOUNT_NOT_FOUND', …(11) ] to deeply equal [ … ]`, und der
  * Mensch, der die Liste nachführen soll, muss selbst suchen, welcher Schlüssel gewandert ist.
@@ -757,7 +774,13 @@ it("H3.2 Wurf, Route und die beiden Sonderwege decken zusammen den ganzen Katalo
   // Quelle ist übersehen. Ohne sie könnte H2 oder H3 beliebig schrumpfen, solange nur die Pins
   // mitschrumpfen.
   const gedeckt = [
-    ...new Set([...GEWORFEN, ...AUS_DER_ROUTE, ...NUR_UEBER_EINE_VARIABLE, ...AUS_DEM_RECHTETOR]),
+    ...new Set([
+      ...GEWORFEN,
+      ...AUS_DER_ROUTE,
+      ...NUR_UEBER_EINE_VARIABLE,
+      ...AUS_DEM_RECHTETOR,
+      ...AUS_DEN_ENTWURFSROUTEN,
+    ]),
   ].sort();
   expect(
     gedeckt,
@@ -1374,12 +1397,16 @@ function routenfall(schluessel: string, sprache: Fremdsprache): string[] {
 }
 
 /**
- * DIE LISTE. 15 von 29 Schlüsseln zeigen heute nirgends einen englischen oder niederländischen Satz
+ * DIE LISTE. 15 von 32 Schlüsseln zeigen heute nirgends einen englischen oder niederländischen Satz
  * an einem echten Draht. Gemessen, nicht abgeschrieben.
  *
  * JOB 3792: der Katalog ist um `PERMISSION_MISSING` gewachsen, diese Liste NICHT — der neue
  * Schlüssel bringt seine Messung mit (s. `GEMESSEN_VON`). Verschoben hat sich sonst nichts; die
  * fünfzehn Namen sind dieselben wie nach JOB 3785.
+ *
+ * JOB 3956: dasselbe noch einmal, dreifach. `DRAFT_NOT_FOUND`, `DRAFT_NOT_VISIBLE` und
+ * `PERMISSION_DENIED` sind dazugekommen und bringen ihre Messung mit
+ * (`tests/q9-entwurfsfehler/`); die fünfzehn Namen hier sind unverändert dieselben.
  *
  * „OHNE ROUTENFALL" HEISST SEIT JOB 3785 GENAU: kein aktiver Prüffall einer Datei, die die App über
  * `app.inject(` fährt, hält den EN- oder NL-Satz dieses Schlüssels gegen eine echte Antwort —
@@ -1425,6 +1452,18 @@ const GEMESSEN_VON = {
   ACCESS_EXPIRED: [
     "tests/demo-zugang-gaeste-meldung/ablauf-meldung.test.ts · M3 dieselbe Lage auf Englisch und Niederländisch",
   ],
+  // JOB 3956 · die zwei Sätze des Entwurfs-Ladewegs. Beide hängen an EINEM Fall je Sprache, und
+  // beide Fälle halten den Satz doppelt: wörtlich (ein schiefes Katalogfeld fällt auf) UND gegen
+  // `MELDUNGEN.<SCHLUESSEL>.<sprache>` (ein zweites Literal im Code oder ein verstellter Schlüssel
+  // fällt auf). Der deutsche Fall (E3/F3) zählt hier nicht mit — H4 fragt nach EN und NL.
+  DRAFT_NOT_FOUND: [
+    "tests/q9-entwurfsfehler/entwurfsfehler-sprachfaelle.test.ts · E1 EN · unbekannte Entwurfskennung: 404 NOT_FOUND mit englischem Satz",
+    "tests/q9-entwurfsfehler/entwurfsfehler-sprachfaelle.test.ts · E2 NL · unbekannte Entwurfskennung: 404 NOT_FOUND mit niederländischem Satz",
+  ],
+  DRAFT_NOT_VISIBLE: [
+    "tests/q9-entwurfsfehler/entwurfsfehler-sprachfaelle.test.ts · F1 EN · fremder Entwurf: 403 FORBIDDEN mit englischem Satz",
+    "tests/q9-entwurfsfehler/entwurfsfehler-sprachfaelle.test.ts · F2 NL · fremder Entwurf: 403 FORBIDDEN mit niederländischem Satz",
+  ],
   /**
    * EHRLICH GELESEN: nur R12 hält den INTERNAL-Satz POSITIV gegen eine Antwort. Die vier anderen
    * Einträge sind AUSSCHLÜSSE — sie prüfen, dass eine Route NICHT still auf `INTERNAL`
@@ -1467,6 +1506,16 @@ const GEMESSEN_VON = {
   // deshalb sah der Wächter es bis K5 nicht.
   OIDC_UNREACHABLE: [
     "tests/q9-oidc-literalquelle/jeder-fehler-traegt-einen-katalogschluessel.test.ts · E.1 der echte Callback liefert in %s den OIDC_UNREACHABLE-Satz, nicht INTERNAL",
+  ],
+  // JOB 3956 · der Satz des RBAC-Wächters. DREI Fälle und nicht zwei: G4 fährt den
+  // zusammengesetzten Sprachkopf („en-GB,en;q=0.9" und zwei weitere) und holt seine Erwartung über
+  // `MELDUNGEN.PERMISSION_DENIED.en` aus dem Katalog — der Katalogzugang aus K5, deshalb sieht der
+  // Wächter ihn. Fiele G1 weg, bliebe die EN-Deckung an G4 hängen; das steht hier, damit niemand
+  // die drei Zeilen für eine Dopplung hält.
+  PERMISSION_DENIED: [
+    "tests/q9-entwurfsfehler/entwurfsfehler-sprachfaelle.test.ts · G1 EN · der RBAC-Wächter: 403 FORBIDDEN mit englischem Satz",
+    "tests/q9-entwurfsfehler/entwurfsfehler-sprachfaelle.test.ts · G2 NL · der RBAC-Wächter: 403 FORBIDDEN mit niederländischem Satz",
+    "tests/q9-entwurfsfehler/entwurfsfehler-sprachfaelle.test.ts · G4 · der zusammengesetzte Sprachkopf wird beachtet",
   ],
   // JOB 3792 · der 29. Schlüssel, gemessen am Tag seiner Einführung. Vier Fälle, weil zwei
   // verschiedene RECHTE an zwei verschiedenen Routen gemessen werden (`users.manage` am

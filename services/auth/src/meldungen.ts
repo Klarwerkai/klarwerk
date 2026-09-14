@@ -105,6 +105,37 @@ export const MELDUNGEN = {
     en: "Missing permission: %s",
     nl: "Ontbrekend recht: %s",
   },
+  // JOB 3956: der Nachbar von PERMISSION_MISSING und ausdrücklich nicht dasselbe. Dort FEHLT ein
+  // bestimmtes Recht, und der Satz nennt es; hier sagt der RBAC-Wächter (`services/rbac/src/guard.ts`)
+  // nur, dass die Rolle nicht reicht — er kennt den Rechtenamen zwar, gibt ihn aber seit jeher nicht
+  // heraus. Der deutsche Wortlaut ist zeichengleich mit dem Literal, das bis JOB 3956 in `guard.ts`
+  // stand; gemessen in `tests/q9-entwurfsfehler/` (G3) und in `tests/q9-fremde-flaechen/`.
+  PERMISSION_DENIED: {
+    de: "Keine Berechtigung.",
+    en: "You do not have permission.",
+    nl: "Je hebt geen toestemming.",
+  },
+  // JOB 3956 · DIE ZWEI SÄTZE DES ENTWURFS-LADEWEGS (`services/app/src/routes/capture-routes.ts`).
+  // Sie sind ZWEI und nicht einer: „gibt es nicht" und „gehört jemand anderem" sind zwei Lagen mit
+  // zwei verschiedenen Wegen zurück, und ein gemeinsamer Satz schickte die Hälfte der Betroffenen in
+  // die falsche Richtung (gehalten von F4 in `tests/q9-entwurfsfehler/`).
+  //
+  // DIE ASCII-SCHREIBWEISE „verfuegbar" IST ABSICHT UND EIN BEFUND, kein Versehen: mehrere
+  // Bestandstests pinnen den deutschen Satz wörtlich (u. a.
+  // `tests/entwurf-fortsetzen-fehlersatz/serversatz-bis-blatt.test.tsx:174`). Sie zu berichtigen wäre
+  // eine Wortlautänderung und ein zweiter Zweck; die deutsche Fassung bleibt deshalb zeichengleich
+  // mit dem früheren Literal. EN und NL erben den fehlenden Umlaut NICHT — sie sind richtig
+  // geschrieben.
+  DRAFT_NOT_FOUND: {
+    de: "Entwurf nicht gefunden.",
+    en: "Draft not found.",
+    nl: "Concept niet gevonden.",
+  },
+  DRAFT_NOT_VISIBLE: {
+    de: "Entwurf nicht verfuegbar.",
+    en: "This draft is not available to you.",
+    nl: "Dit concept is niet voor jou beschikbaar.",
+  },
   REGISTRATION_DISABLED: {
     de: "Registrierung nur per Einladung.",
     en: "Registration is by invitation only.",

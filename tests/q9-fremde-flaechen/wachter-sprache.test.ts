@@ -165,11 +165,13 @@ describe("R2 · der RBAC-Guard von services/rbac antwortet in der gewählten Spr
     },
   );
 
-  // AUSDRÜCKLICH OFFEN GELASSEN (Auftrag §10.1): für „Keine Berechtigung." gibt es keinen
-  // passenden Katalogschlüssel, und `services/auth/src/meldungen.ts` gehört JOB 3562. Der Satz
-  // bleibt deutsch — festgehalten, damit die Halbheit sichtbar ist und nicht behauptet wird,
-  // dieser Auftrag habe die Fläche vollständig übersetzt.
-  it("die 403 bleibt in dieser Runde bewusst deutsch — Folgezeile, nicht Nutzen", async () => {
+  // JOB 3956 · DIE FOLGEZEILE IST EINGELÖST. Bis hierher hielt dieser Fall fest, dass die 403
+  // dieses Wächters BEWUSST deutsch bleibt: für „Keine Berechtigung." gab es keinen
+  // Katalogschlüssel, und `services/auth/src/meldungen.ts` gehörte JOB 3562. Beides ist überholt —
+  // `PERMISSION_DENIED` steht im Katalog, `guard.ts` löst darüber auf. Der Fall wird deshalb auf
+  // den ERREICHTEN Zustand gesetzt und nicht gelöscht: was er vorher als Halbheit festhielt, hält
+  // er jetzt als Zusage. Der DEUTSCHE Rückfall steht eine Zeile tiefer, zeichengleich wie zuvor.
+  it("die 403 antwortet auf Englisch — die Folgezeile aus JOB 3568 ist eingelöst", async () => {
     const res = await draht((instanz) => {
       instanz.get("/probe", {
         preHandler: requirePermission("users.manage", () => "viewer"),
@@ -177,6 +179,23 @@ describe("R2 · der RBAC-Guard von services/rbac antwortet in der gewählten Spr
       });
     }, "en");
     expect(res.status).toBe(403);
-    expect(res.koerper).toEqual({ error: "FORBIDDEN", message: "Keine Berechtigung." });
+    expect(res.koerper.error).toBe("FORBIDDEN");
+    sprachvertrag(res.koerper.message, "You do not have permission.");
   });
+
+  it.each([undefined, "de", "fr"])(
+    "die 403 fällt bei %s auf den unveränderten deutschen Wortlaut zurück",
+    async (sprache) => {
+      // Der Wächter gegen die eigene Ablösung: der deutsche Satz ist zeichengleich mit dem Literal,
+      // das bis JOB 3956 in `guard.ts` stand — Fehlercode und Status ebenso.
+      const res = await draht((instanz) => {
+        instanz.get("/probe", {
+          preHandler: requirePermission("users.manage", () => "viewer"),
+          handler: async (_request, reply) => reply.send({ durchgelassen: true }),
+        });
+      }, sprache);
+      expect(res.status).toBe(403);
+      expect(res.koerper).toEqual({ error: "FORBIDDEN", message: "Keine Berechtigung." });
+    },
+  );
 });

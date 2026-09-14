@@ -71,13 +71,35 @@
 // WAS DIESER WÄCHTER AUSDRÜCKLICH NICHT LEISTET: Ein deutscher Satz, der WEDER unter `message:`
 // steht NOCH in einem `send(…)`-Argument — etwa in einer Hilfsfunktion, die ihn erst später
 // weiterreicht — fällt durch. Das ist die Prüflücke dieser Datei, hier benannt und nicht
-// verschwiegen. Beide überwachten Dateien sind heute klein und haben keine solche Zwischenstufe.
+// verschwiegen.
+//
+// JOB 3956 · DIESE LÜCKE IST MIT `capture-routes.ts` VON EINER MÖGLICHKEIT ZU EINER TATSACHE
+// GEWORDEN, und sie steht hier gemessen statt geraten: die Datei baut ihre Ablehnungssätze der
+// .docx-Übernahme in Hilfsfunktionen (`docxZuGrossMessage`, `docxVerhaeltnisMessage`) und in
+// Modulkonstanten (`DOCX_UNLESBAR_MESSAGE`, `DOCX_BUSY_MESSAGE`, `DRAFT_BODY_TOO_LARGE_MESSAGE`,
+// `DOCX_DRAFT_TOO_LARGE_MESSAGE`) und gibt nur noch den BEZEICHNER an `message:` weiter. Dieser
+// Wächter sieht keinen davon. Das ist kein Versehen dieses Auftrags, sondern sein bewusster
+// Zuschnitt: er erweitert die FLÄCHE, nicht die REGEL. Wer die Regel erweitert, muss zuerst
+// entscheiden, was mit `message: gestalt.message` geschieht (ein durchgereichter Fremdtext, der
+// ausdrücklich erlaubt bleiben soll, s. REGEL 1) — das ist eine eigene Zeile der Q9-Kette.
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { type Quelle, ladeQuelle, quelleAus, zeileVon } from "../../tools/modalgrenze";
 
-/** Die überwachte Fläche — die zwei modulübergreifenden Wächter dieses Auftrags. */
-const DATEIEN = ["services/app/src/http.ts", "services/rbac/src/guard.ts"] as const;
+/**
+ * Die überwachte Fläche.
+ *
+ * JOB 3956 HAT SIE UM DIE DATEI ERWEITERT, DIE SIE NIE GESEHEN HAT. Bis hierher standen hier nur
+ * die zwei modulübergreifenden Wächter aus JOB 3568. `capture-routes.ts` trug drei deutsche Sätze
+ * des Entwurfs-Ladewegs, und kein Wächter verbot sie — genau die Lage, die der Kopf dieser Datei
+ * für JOB 3449 beschreibt. Die drei sind übersetzt; die fünf verbleibenden Meldungsstellen der
+ * Datei stehen namentlich in AUSNAHMEN, damit die vierte, die morgen jemand dazuschreibt, auffällt.
+ */
+const DATEIEN = [
+  "services/app/src/http.ts",
+  "services/app/src/routes/capture-routes.ts",
+  "services/rbac/src/guard.ts",
+] as const;
 
 /**
  * BEWUSST STEHENGELASSEN — jede Zeile mit Grund, geprüft am Code.
@@ -88,9 +110,17 @@ const DATEIEN = ["services/app/src/http.ts", "services/rbac/src/guard.ts"] as co
  * das Literal ist weg, und mit ihm die Zeile, die es begründete. Der deutsche Wortlaut ist dabei
  * zeichengleich geblieben (`tests/q9-rechtefehler/rechtetor-sprachfaelle.test.ts` Q3).
  *
- * Was bleibt, ist die EINE Stelle in `services/rbac/src/guard.ts`: „Keine Berechtigung." ist ein
- * anderer Satz an einem anderen Wächter, für den es weiterhin keinen Schlüssel gibt. Sie ist
- * Folgezeile, nicht „mit erledigt" — festgehalten, damit die Halbheit sichtbar bleibt.
+ * JOB 3956 HAT DIE LETZTE ALTE AUSNAHME ABGERÄUMT UND FÜNF NEUE EINGETRAGEN. Für
+ * „Keine Berechtigung." in `services/rbac/src/guard.ts` gibt es jetzt `PERMISSION_DENIED`; das
+ * Literal ist weg, und mit ihm die Zeile, die es begründete. Dafür ist
+ * `services/app/src/routes/capture-routes.ts` in die überwachte Fläche gekommen — mit fünf
+ * Meldungsstellen, die dieser Auftrag ausdrücklich NICHT übersetzt (er trägt drei Schlüssel ein,
+ * nicht acht). Jede der fünf steht unten mit ihrem eigenen Grund; keine ist „mit erledigt".
+ *
+ * DASS DIE LISTE HIER WÄCHST, IST DER PREIS DAFÜR, DASS DIE FLÄCHE WÄCHST — und der bessere Handel:
+ * ohne die Erweiterung stünde morgen die nächste deutsche Zeile in dieser Datei, ohne dass irgendwer
+ * es merkte. Jede dieser fünf Zeilen ist eine Folgezeile der Q9-Kette und verschwindet, sobald ihr
+ * Satz einen Katalogschlüssel bekommt.
  *
  * JEDE AUSNAHME DECKT GENAU EINE STELLE (Runde 2, Korrekturpflicht 1). Verschwindet das Literal,
  * ohne dass diese Zeile mitverschwindet, wird `beurteile` rot; kommt ein ZWEITES Vorkommen
@@ -105,13 +135,49 @@ interface Ausnahme {
   readonly grund: string;
 }
 
+const ENTWURFSROUTEN = "services/app/src/routes/capture-routes.ts";
+
 const AUSNAHMEN: readonly Ausnahme[] = [
   {
-    datei: "services/rbac/src/guard.ts",
-    literal: '"Keine Berechtigung."',
+    datei: ENTWURFSROUTEN,
+    literal: '"Entwurf nicht im Papierkorb."',
     grund:
-      "403 FORBIDDEN. Kein Katalogschlüssel für „keine Berechtigung“ vorhanden; ein neuer Schlüssel " +
-      "hiesse services/auth/src/meldungen.ts anfassen, und die Datei gehört JOB 3562 (Auftrag §10.1).",
+      "404 NOT_FOUND aus requireVisibleTrashedDraft — der PAPIERKORB-Weg (JOB 3668), nicht der " +
+      "Entwurfs-Ladeweg. Eigene Lage, eigener Satz, kein Katalogschlüssel. JOB 3956 trägt drei " +
+      "Schlüssel ein (DRAFT_NOT_FOUND, DRAFT_NOT_VISIBLE, PERMISSION_DENIED) und ist damit fertig; " +
+      "dieser Satz ist Folgezeile der Q9-Kette.",
+  },
+  {
+    datei: ENTWURFSROUTEN,
+    literal: '"Der Entwurf wurde inzwischen an anderer Stelle geändert. Bitte neu laden."',
+    grund:
+      "409 DRAFT_STALE aus antwortBeiVeraltetemStand (JOB 2684 D1) — der Konfliktweg, nicht der " +
+      "Ladeweg. Der Satz ist ausserdem nur der RÜCKFALL: vorrangig reicht der Zweig die Meldung des " +
+      "Dienstes durch, und die käme aus services/capture. Kein Katalogschlüssel; Folgezeile.",
+  },
+  {
+    datei: ENTWURFSROUTEN,
+    literal: '"Verbindung abgebrochen."',
+    grund:
+      "408 CLIENT_ABORTED im onRequest der .docx-Route: der Aufrufer hat die Verbindung schon " +
+      "fallen lassen, der Satz erreicht praktisch niemanden mehr. Kein Katalogschlüssel; " +
+      "Folgezeile der Q9-Kette, nicht Rest dieses Auftrags.",
+  },
+  {
+    datei: ENTWURFSROUTEN,
+    literal: '"Es wurden keine Dokumentbytes uebergeben."',
+    grund:
+      "400 BAD_REQUEST der .docx-Übernahme (JOB 2613 D3) — der Dokument-Importweg, nicht der " +
+      "Entwurfs-Ladeweg. Er trägt eine ganze Familie eigener Sätze (Grenzen, Formatabsage, " +
+      "Unlesbarkeit) und gehört als Ganzes übersetzt, nicht satzweise. Kein Katalogschlüssel.",
+  },
+  {
+    datei: ENTWURFSROUTEN,
+    literal: '"Nur .docx wird uebernommen. Es wurde kein Entwurf angelegt."',
+    grund:
+      "415 UNSUPPORTED_MEDIA_TYPE derselben .docx-Übernahme wie die Zeile darüber, und aus demselben " +
+      "Grund offen: der Importweg ist eine eigene Fläche der Q9-Kette. Kein Katalogschlüssel; " +
+      "Folgezeile, festgehalten damit die Halbheit sichtbar bleibt.",
   },
 ];
 
@@ -299,8 +365,8 @@ const ERHEBUNG = DATEIEN.map((d) => erhebeAus(ladeQuelle(d)));
 const ALLE_FUNDE = ERHEBUNG.flatMap((e) => e.funde);
 const URTEIL = beurteile(ALLE_FUNDE, AUSNAHMEN);
 
-describe("R5 · kein neues deutsches Meldungsliteral an den zwei modulübergreifenden Wächtern", () => {
-  it("jede Meldung kommt aus dem Katalog — ausser den zwei namentlich begründeten Stellen", () => {
+describe("R5 · kein neues deutsches Meldungsliteral auf der überwachten Fläche", () => {
+  it("jede Meldung kommt aus dem Katalog — ausser den namentlich begründeten Stellen", () => {
     expect(
       URTEIL.unerlaubt,
       "Meldungstexte gehören in services/auth/src/meldungen.ts und werden über " +
@@ -337,9 +403,9 @@ describe("R5 · kein neues deutsches Meldungsliteral an den zwei modulübergreif
 // lautlos auf null schrumpfen." Ohne diese Fälle wäre ein Wächter, der aus Versehen keine Datei
 // mehr liest, ein GRÜNER Wächter.
 describe("R6 · die Prüfmenge kann nicht lautlos auf null schrumpfen", () => {
-  it("genau zwei Dateien werden geprüft, und beide sind wirklich gelesen worden", () => {
-    expect(DATEIEN).toHaveLength(2);
-    expect(ERHEBUNG).toHaveLength(2);
+  it("genau drei Dateien werden geprüft, und alle drei sind wirklich gelesen worden", () => {
+    expect(DATEIEN).toHaveLength(3);
+    expect(ERHEBUNG).toHaveLength(3);
     for (const e of ERHEBUNG) {
       expect(e.leseFehler, e.datei).toEqual([]);
       // Eine leere oder unlesbare Datei hätte keine Anweisungen — und fände nie etwas.
@@ -347,8 +413,8 @@ describe("R6 · die Prüfmenge kann nicht lautlos auf null schrumpfen", () => {
     }
   });
 
-  it("die Ausnahmeliste hat genau einen Eintrag", () => {
-    expect(AUSNAHMEN).toHaveLength(1);
+  it("die Ausnahmeliste hat genau fünf Einträge", () => {
+    expect(AUSNAHMEN).toHaveLength(5);
   });
 
   // JOB 3792: bis hierher stand hier „je Datei mindestens ein Fund". Seit das 403-Literal in
@@ -357,10 +423,16 @@ describe("R6 · die Prüfmenge kann nicht lautlos auf null schrumpfen", () => {
   // Meldungsstelle dazukommt (auch eine, die eine Ausnahme deckt), und ebenso, wenn eine
   // verschwindet. Dass der Sammler ÜBERHAUPT etwas findet, sichert die Kalibrierung an einem
   // eigenen Baum (unten) — sie hängt nicht an der überwachten Fläche und kann nicht mitschrumpfen.
-  it("je überwachter Datei steht die Fundzahl fest — 1 in guard.ts, 0 in http.ts", () => {
+  //
+  // JOB 3956: `guard.ts` fällt auf 0 (der Satz kommt aus dem Katalog), `capture-routes.ts` kommt mit
+  // 5 dazu — den fünf Stellen, die dieser Auftrag nicht übersetzt und die unten je eine Ausnahme
+  // tragen. Die drei übersetzten Stellen des Ladewegs sind in dieser Zahl NICHT mehr enthalten;
+  // wären sie es, stünde hier 8.
+  it("je überwachter Datei steht die Fundzahl fest — 5 in capture-routes.ts, 0 sonst", () => {
     const erwartet: Record<string, number> = {
-      "services/rbac/src/guard.ts": 1,
+      "services/rbac/src/guard.ts": 0,
       "services/app/src/http.ts": 0,
+      "services/app/src/routes/capture-routes.ts": 5,
     };
     for (const e of ERHEBUNG) {
       expect(e.funde.length, `${e.datei} → ${e.funde.map(zeigeFund).join(" · ") || "nichts"}`).toBe(

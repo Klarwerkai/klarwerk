@@ -24,11 +24,16 @@ export function requirePermission(permission: Permission, resolveRole: RoleResol
       return;
     }
     if (!can(role, permission)) {
-      // BEWUSST NOCH DEUTSCH: für „keine Berechtigung" gibt es keinen Katalogschlüssel, und einen
-      // anzulegen hiesse `services/auth/src/meldungen.ts` anzufassen — die Datei gehört JOB 3562.
-      // Die Stelle steht namentlich in der Ausnahmeliste von
-      // `tests/q9-fremde-flaechen/keine-deutschen-literale.test.ts` und ist Folgezeile, nicht Rest.
-      reply.code(403).send({ error: "FORBIDDEN", message: "Keine Berechtigung." });
+      // JOB 3956 (Q9): der Text aus dem Katalog, der Draht unverändert — Code `FORBIDDEN` und
+      // Status 403 bleiben buchstäblich stehen. Der deutsche Wortlaut ist zeichengleich mit dem
+      // früheren Literal; `tests/q9-entwurfsfehler/entwurfsfehler-sprachfaelle.test.ts` misst ihn in
+      // allen drei Sprachen am Draht. Der Rechtename geht — anders als beim Rechtetor in
+      // `services/app/src/http.ts` — NICHT mit hinaus: diese Stelle hat ihn noch nie genannt, und
+      // ihn jetzt hinzuzufügen wäre eine neue Auskunft und nicht eine Übersetzung.
+      reply.code(403).send({
+        error: "FORBIDDEN",
+        message: meldung("PERMISSION_DENIED", sprache(request)),
+      });
     }
   };
 }

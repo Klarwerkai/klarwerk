@@ -53,7 +53,8 @@
 //   A · der Satz am ECHTEN Draht (`buildApp(buildServices())`, `app.inject`) — Status, Kennung und
 //       Wortlaut werden ALLE DREI gelesen.
 //   B · derselbe Abruf auf Englisch und Niederländisch — die Sprachfrage wird gemessen, nicht
-//       behauptet.
+//       behauptet. (JOB 3956: seit der Server übersetzt, ist das keine BEFUND-Zeile mehr, sondern
+//       eine Zusage — drei Sprachen, drei Sätze.)
 //   C · was ein Mensch liest, wenn genau diese Antwort ankommt — an der ECHTEN Kette: echte
 //       Oberfläche, echter Client, echte Fastify-Anwendung (`fetch → app.inject`, dieselbe Brücke
 //       wie `tests/capture/mega23-vordertuer-vorgang-mounted.test.tsx:98-129`).
@@ -515,19 +516,50 @@ describe("JOB 3921 A · was der Server auf eine unbekannte und auf eine fremde K
 // also nicht, ob der Server die Sprache ERFÄHRT, sondern ob er sie BENUTZT. Gemessen wird sie,
 // nicht vermutet — und was dabei herauskommt, steht als Zusicherung fest.
 describe("JOB 3921 B · derselbe Abruf auf Deutsch, Englisch und Niederländisch", () => {
-  it("B1 · BEFUND: der Server antwortet in allen drei Sprachen mit DEMSELBEN deutschen Satz", async () => {
-    // EIN BEFUND FÜR PEDI UND CODEX, KEIN AUFTRAG: Die Behebung gehört zur Q9-Kette
-    // (`services/auth/src/meldungen.ts` und die Wächter darum) und ist hier ausdrücklich
-    // ausgeschlossen. Was diese Datei leistet, ist, dass der Zustand ab jetzt DASTEHT: ein Server,
-    // der eines Tages übersetzt, macht diesen Fall rot — und dann wird er auf die Übersetzung
-    // gesetzt, statt dass die Fläche still einen deutschen Satz in eine englische Sitzung schreibt.
+  // JOB 3956 · GENAU DIESER SCHRITT IST EINGETRETEN. B1 hielt bis hierher den BEFUND fest, dass der
+  // Server in allen drei Sprachen denselben deutschen Satz schickt, und sagte über sich selbst:
+  // „Wird dieser Fall rot, weil der Server jetzt übersetzt: gut — dann gehört er auf den neuen
+  // Wortlaut gesetzt (Q9-Kette, nicht dieser Auftrag)." Die Q9-Kette hat geliefert
+  // (`DRAFT_NOT_FOUND`, `DRAFT_NOT_VISIBLE` im Meldungskatalog). Der Fall ist deshalb auf den
+  // erreichten Zustand gesetzt und NICHT gelöscht — er misst dieselbe Stelle, nur mit der
+  // umgekehrten Zusage.
+  //
+  // WARUM HIER KEIN WORTLAUT STEHT, obwohl es der naheliegende Reflex wäre: Der EN- und NL-Wortlaut
+  // ist in `tests/q9-entwurfsfehler/entwurfsfehler-sprachfaelle.test.ts` gepinnt, wörtlich und gegen
+  // den Katalog. Ihn hier ein zweites Mal zu tippen wäre genau der dritte getippte Satz, den BEN an
+  // dieser Datei beanstandet hat (E1). Was dieser Ordner zu sagen hat, ist die AUSSAGE: es sind drei
+  // verschiedene Sätze, und der deutsche ist der aus `ERWARTET`.
+  it("B1 · der Server antwortet in drei Sprachen mit DREI VERSCHIEDENEN Sätzen", async () => {
     const m = await messung();
-    expect(
-      `en=${m.sprachen.unbekannt.en} · nl=${m.sprachen.unbekannt.nl}`,
-      "Wird dieser Fall rot, weil der Server jetzt übersetzt: gut — dann gehört er auf den neuen Wortlaut gesetzt (Q9-Kette, nicht dieser Auftrag).",
-    ).toBe(`en=${m.unbekannt.message} · nl=${m.unbekannt.message}`);
-    expect(`en=${m.sprachen.fremd.en} · nl=${m.sprachen.fremd.nl}`).toBe(
-      `en=${m.fremd.message} · nl=${m.fremd.message}`,
+    for (const [lage, deutsch, fremdsprachig] of [
+      ["unbekannt", m.unbekannt.message, m.sprachen.unbekannt],
+      ["fremd", m.fremd.message, m.sprachen.fremd],
+    ] as const) {
+      // FEHLT EINE MESSUNG, steht das im Wert und fällt auf — derselbe Grundsatz wie in `feld()`
+      // oben: ein `undefined`, das als „undefined" durch den Vergleich liefe, sähe aus wie ein
+      // gemessener Satz.
+      const en = fremdsprachig.en ?? `KEINE MESSUNG (${lage}.en)`;
+      const nl = fremdsprachig.nl ?? `KEINE MESSUNG (${lage}.nl)`;
+      // Drei Sätze, paarweise verschieden — in EINER Zusicherung, damit die rote Meldung alle drei
+      // nennt und nicht nur den ersten, der kippt.
+      expect(
+        new Set([deutsch, en, nl]).size,
+        `${lage}: de=„${deutsch}“ · en=„${en}“ · nl=„${nl}“ — erwartet werden DREI verschiedene Sätze. Sind zwei gleich, antwortet der Server für eine Sprache wieder auf Deutsch (oder EN und NL teilen sich eine Fassung).`,
+      ).toBe(3);
+      // Und keiner von ihnen ist leer: eine stille Leerung wäre schlimmer als der deutsche Satz.
+      expect(typeof fremdsprachig.en, `${lage}: kein en-Satz gemessen`).toBe("string");
+      expect(typeof fremdsprachig.nl, `${lage}: kein nl-Satz gemessen`).toBe("string");
+      expect(en.trim().length, lage).toBeGreaterThan(0);
+      expect(nl.trim().length, lage).toBeGreaterThan(0);
+    }
+  });
+
+  it("B2 · der deutsche Satz ist der aus ERWARTET — die Übersetzung hat ihn nicht verschoben", async () => {
+    // Die Gegenrichtung zu B1: drei VERSCHIEDENE Sätze wären auch dann da, wenn der deutsche
+    // nebenbei umformuliert worden wäre. Der Pin steht in `ERWARTET` und nur dort.
+    const m = await messung();
+    expect(`${m.unbekannt.message} / ${m.fremd.message}`).toBe(
+      `${ERWARTET.unbekannt} / ${ERWARTET.fremd}`,
     );
   });
 });

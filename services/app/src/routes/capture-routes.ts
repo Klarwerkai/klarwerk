@@ -10,6 +10,10 @@ import JSZip from "jszip";
 // Wurzelpaket fehlt es — gemessen in JOB 2613 D3). Eine Kopie hier wäre ein zweiter
 // Extraktionsweg und damit genau der Ablösefall, den Weg B vermeidet.
 import { extractDocxRich, isDocxDocumentLike } from "../../../../apps/web/src/lib/docx";
+// JOB 3956 (Q9): der Meldungskatalog und die EINE Lesestelle des Sprachkopfes — derselbe Zugang,
+// den `services/app/src/http.ts:2` und `services/rbac/src/guard.ts:2` schon nehmen. Kein zweiter
+// Katalog und keine eigene Sprachermittlung in diesem Modul.
+import { meldung, sprache } from "../../../auth";
 import {
   type CaptureService,
   type Draft,
@@ -106,19 +110,38 @@ function visibleDraftsFor(user: SessionUser, drafts: Draft[]): Draft[] {
     : lebende.filter((draft) => draft.originalAuthor === user.id);
 }
 
+/**
+ * JOB 3956 (Q9) — DIE SÄTZE KOMMEN AUS DEM KATALOG, DER DRAHT BLEIBT UNANGETASTET.
+ *
+ * `error` und Status stehen buchstäblich, wie sie standen (`NOT_FOUND`/404, `FORBIDDEN`/403) — eine
+ * Codeänderung wäre eine Vertragsänderung nach aussen und braucht eine eigene Erhebung der
+ * Verbraucher. Nur `message` wechselt die Quelle.
+ *
+ * `request` KOMMT ALS PARAMETER HEREIN und wird nicht aus `reply` gezogen (`reply.request` gäbe es):
+ * Fastify füllt `reply.request` zwar, aber der Weg über den ausdrücklichen Parameter macht an JEDER
+ * der fünf Aufrufstellen sichtbar, dass diese Funktion den Sprachkopf der ANFRAGE liest. Ein
+ * verstecktes Feld auf dem Antwortobjekt wäre dieselbe Auskunft ohne diese Sichtbarkeit.
+ * `sprache` ist die EINE Lesestelle des Kopfes (`services/auth/src/routes.ts`) — keine zweite
+ * Sprachermittlung in `services/app`.
+ */
 async function requireVisibleDraft(
   capture: CaptureService,
   id: string,
   user: SessionUser,
   reply: FastifyReply,
+  request: FastifyRequest,
 ): Promise<Draft | undefined> {
   const draft = await capture.getDraft(id);
   if (!draft) {
-    reply.code(404).send({ error: "NOT_FOUND", message: "Entwurf nicht gefunden." });
+    reply
+      .code(404)
+      .send({ error: "NOT_FOUND", message: meldung("DRAFT_NOT_FOUND", sprache(request)) });
     return undefined;
   }
   if (!canSeeDraft(user, draft)) {
-    reply.code(403).send({ error: "FORBIDDEN", message: "Entwurf nicht verfuegbar." });
+    reply
+      .code(403)
+      .send({ error: "FORBIDDEN", message: meldung("DRAFT_NOT_VISIBLE", sprache(request)) });
     return undefined;
   }
   return draft;
@@ -1140,7 +1163,7 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
       if (!user) {
         return;
       }
-      const draft = await requireVisibleDraft(capture, request.params.id, user, reply);
+      const draft = await requireVisibleDraft(capture, request.params.id, user, reply, request);
       if (!draft) {
         return;
       }
@@ -1154,7 +1177,14 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
       // ausgeschriebene Abwägung steht in capture/src/service.ts bei `resumeDraft`.
       const fortsetzung = await capture.resumeDraft(request.params.id);
       if (!fortsetzung) {
-        reply.code(404).send({ error: "NOT_FOUND", message: "Entwurf nicht gefunden." });
+        // JOB 3956 (Q9): DIESELBE LAGE WIE `requireVisibleDraft` OBEN, also derselbe Schlüssel —
+        // zwischen dem Sichtbarkeitstor und hier kann der Entwurf verschwunden sein, und der Mensch
+        // liest dann denselben Satz wie dort. Diese dritte Stelle desselben Ladewegs stand im
+        // Auftrag nicht; sie stehen zu lassen hiesse, die englische Sitzung an einer von zwei
+        // Zeilen derselben Route weiter deutsch zu bedienen (in der Rückgabe als ABWEICHUNG).
+        reply
+          .code(404)
+          .send({ error: "NOT_FOUND", message: meldung("DRAFT_NOT_FOUND", sprache(request)) });
         return;
       }
       reply
@@ -1192,7 +1222,7 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
         if (!user) {
           return;
         }
-        if (!(await requireVisibleDraft(capture, request.params.id, user, reply))) {
+        if (!(await requireVisibleDraft(capture, request.params.id, user, reply, request))) {
           return;
         }
         const schritt = await capture.naechsterSchrittFuerEntwurf(request.params.id);
@@ -1226,7 +1256,7 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           return;
         }
         try {
-          if (!(await requireVisibleDraft(capture, request.params.id, user, reply))) {
+          if (!(await requireVisibleDraft(capture, request.params.id, user, reply, request))) {
             return;
           }
           // JOB 2684 D1 (Review R2-17): `expectedUpdatedAt` ist KEIN Entwurfsfeld — es wird vor dem
@@ -1340,7 +1370,7 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
         return;
       }
       try {
-        if (!(await requireVisibleDraft(capture, request.params.id, user, reply))) {
+        if (!(await requireVisibleDraft(capture, request.params.id, user, reply, request))) {
           return;
         }
         // JOB 3668: DERSELBE ENDPUNKT, NEUE BEDEUTUNG — er legt den Entwurf in den Papierkorb,
@@ -1486,7 +1516,7 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
               return;
             }
           }
-          if (!(await requireVisibleDraft(capture, request.params.id, user, reply))) {
+          if (!(await requireVisibleDraft(capture, request.params.id, user, reply, request))) {
             return;
           }
           // AUFTRAG-mega22 Block H: liegt ein Stand bei, wird er HIER geschrieben — im selben
