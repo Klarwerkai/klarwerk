@@ -4932,20 +4932,36 @@ const de = {
     "Hier sammelt die Qualitätssicherung konkrete Hinweise aus dem Bestand: Dinge, die auffällig sind und einen Blick verdienen — etwa dünn belegte Objekte oder verwaiste Themen. Jeder Hinweis nennt den Fundort, damit du direkt hinspringen und die Ursache beheben kannst.",
   "shelp.evFresh.title":
     "Belege altern genauso wie Wissen. Diese Sicht zeigt, wie frisch die Nachweise hinter euren Wissensobjekten sind und wo alte Belege eine Auffrischung brauchen. So erkennst du Einträge, die formal belegt, aber inhaltlich womöglich überholt sind.",
-  // SCRUM-305: kompakte Pilot-Checkliste für den ersten echten Nutzerlauf (Stage-1, ehrlich).
-  "pilot.title": "Pilot-Checkliste: erster Nutzerlauf",
-  "pilot.subtitle":
-    "Worauf im ersten echten Lauf achten — Stage-1, ehrlich. Jeder Punkt führt in den passenden Bereich.",
+  // SCRUM-305: kompakte Einstiegsführung für den ersten echten Nutzerlauf.
+  //
+  // JOB 4022 (Steuerungs-Nachführung 14.09. 18:16, Codex' Bedienbefund 17:45): Die Karte sprach
+  // Systemsprache — „Stage-1, ehrlich", „Review/Entscheidung", „Peers", „Revalidierung". Pedi
+  // (16:49): „Es ist ein Unterschied, als wenn ein Anwender daran arbeitet oder du als System."
+  // Alle Sätze dieser Karte stehen deshalb in Alltagssprache; die ZUSAGEN bleiben dieselben
+  // (offen gespeichert, nichts automatisch freigegeben, nichts erfunden) — es ist eine
+  // Übersetzung, keine neue Behauptung. Der alte Titel `pilot.title` ist damit fort.
+  "pilot.access.title": "Der erste Arbeitsweg: so fängst du an",
+  "pilot.access.subtitle":
+    "Die sieben Schritte eines ersten Durchlaufs. Jeder Schritt führt in seinen Bereich oder nennt die Rolle, die er verlangt.",
+  "pilot.access.summary":
+    "Deine Rolle ({{rolle}}) kann {{offen}} von {{gesamt}} Schritten selbst gehen. Die übrigen stehen hier, damit du den ganzen Weg kennst.",
+  "pilot.access.locked": "Nur mit der Rolle {{rolle}}",
+  "pilot.access.roleUnknown":
+    "Deine Rolle steht noch nicht fest. Welche Schritte für dich offen sind, steht hier, sobald sie bekannt ist.",
+  "pilot.check.start":
+    "Der Einstieg zeigt, was gerade ansteht — von hier aus beginnt jeder Arbeitsweg.",
+  "pilot.check.library":
+    "Die Bibliothek zeigt, was schon da ist: mit Quelle, Stand und Verlauf — Lesen steht jeder Rolle offen.",
   "pilot.check.capture":
-    "Erfassen speichert offen: frisch erfasstes Wissen ist noch nicht validiert.",
+    "Was du erfasst, wird zunächst offen gespeichert: es ist noch nicht geprüft.",
   "pilot.check.validation":
-    "Validierung ist Review/Entscheidung: Peers bewerten, bis es gesichert ist — keine automatische Freigabe.",
+    "Beim Prüfen bewerten Kolleginnen und Kollegen deinen Eintrag, bis er als gesichert gilt — nichts wird automatisch freigegeben.",
   "pilot.check.use":
-    "Fragen/Bibliothek nutzen Wissen quellen- und statusbewusst: eine Antwort ist nur so belastbar wie ihre Quelle.",
+    "Fragen und Bibliothek zeigen zu jeder Antwort ihre Quelle und deren Stand — eine Antwort ist nur so verlässlich wie ihre Quelle.",
   "pilot.check.gap":
-    "Keine Grundlage? Die Lücke wird ehrlich benannt und führt in die Erfassung — kein erfundenes Wissen.",
+    "Fehlt die Grundlage, sagt die Antwort das ehrlich und führt zum Erfassen — es wird nichts erfunden.",
   "pilot.check.maintain":
-    "Revalidierung ist „Aktuell halten“: fällige Objekte erneut prüfen, keine automatische Dauergültigkeit.",
+    "„Aktuell halten“ heißt: Einträge, deren Prüfung fällig ist, werden erneut angesehen — nichts bleibt automatisch für immer gültig.",
   // SCRUM-306: Next-Steps nach dem Demodaten-/Pilot-Start (nur sichtbar, keine Auto-Weiterleitung).
   "pilot.next.title": "Nächster Schritt",
   "pilot.next.hint":
@@ -10418,18 +10434,29 @@ const en: typeof de = {
   "shelp.evFresh.title":
     "Evidence ages just like knowledge. This view shows how fresh the records behind your knowledge objects are and where old evidence needs a refresh. That way you spot entries that are formally evidenced but possibly outdated in substance.",
   // SCRUM-305: compact pilot checklist for the first real user run (Stage-1, honest).
-  "pilot.title": "Pilot checklist: first user run",
-  "pilot.subtitle":
-    "What to watch in the first real run — Stage-1, honest. Each point opens the matching area.",
-  "pilot.check.capture": "Capture saves open: freshly captured knowledge is not yet validated.",
+  // JOB 4022: see the German block — the old promise „each point opens the matching area" was
+  // wrong for four of five steps (they need a higher role), and the wording was system language
+  // („Stage-1", „review/decision", „peers"). Same promises, everyday words.
+  "pilot.access.title": "Your first working path: how to start",
+  "pilot.access.subtitle":
+    "The seven steps of a first run. Each step either opens its area or names the role it requires.",
+  "pilot.access.summary":
+    "Your role ({{rolle}}) can walk {{offen}} of {{gesamt}} steps. The others stay listed so you know the whole path.",
+  "pilot.access.locked": "Requires the {{rolle}} role",
+  "pilot.access.roleUnknown":
+    "Your role is not settled yet. Which steps are open to you appears here as soon as it is known.",
+  "pilot.check.start": "The entry page shows what is due — every working path starts here.",
+  "pilot.check.library":
+    "The library shows what is already there: with source, state and history — reading is open to every role.",
+  "pilot.check.capture": "What you capture is saved as open: it has not been checked yet.",
   "pilot.check.validation":
-    "Validation is review/decision: peers rate until it is secured — no automatic approval.",
+    "When checking, colleagues rate your entry until it counts as secured — nothing is approved automatically.",
   "pilot.check.use":
-    "Ask/Library use knowledge source- and status-aware: an answer is only as reliable as its source.",
+    "Ask and library show the source behind every answer and its state — an answer is only as reliable as its source.",
   "pilot.check.gap":
-    "No basis? The gap is named honestly and leads into capture — no invented knowledge.",
+    "If the basis is missing, the answer says so honestly and leads to capturing it — nothing is invented.",
   "pilot.check.maintain":
-    "Revalidation is “keep current”: re-check due objects, no automatic permanent validity.",
+    "“Keep current” means: entries whose check is due are looked at again — nothing stays valid forever automatically.",
   // SCRUM-306: next steps after loading demo data / starting the pilot (visible only, no auto-redirect).
   "pilot.next.title": "Next step",
   "pilot.next.hint":
@@ -15477,19 +15504,30 @@ const nl: typeof de = {
     "Hier verzamelt de kwaliteitsborging concrete aanwijzingen uit de voorraad: dingen die opvallen en een blik verdienen — bijvoorbeeld dun onderbouwde objecten of verweesde thema's. Elke aanwijzing noemt de vindplaats, zodat je er direct naartoe kunt springen en de oorzaak kunt verhelpen.",
   "shelp.evFresh.title":
     "Onderbouwing veroudert net als kennis. Deze weergave toont hoe vers het bewijs achter jullie kennisobjecten is en waar oude onderbouwing een opfrissing nodig heeft. Zo herken je items die formeel onderbouwd zijn, maar inhoudelijk mogelijk achterhaald.",
-  "pilot.title": "Pilot-checklist: eerste gebruikersrun",
-  "pilot.subtitle":
-    "Waarop letten bij de eerste echte run — Stage-1, eerlijk. Elk punt leidt naar het passende gedeelte.",
+  // JOB 4022: zie het Duitse blok — de oude belofte gold voor vier van de vijf stappen niet, en de
+  // woorden waren systeemtaal („Stage-1", „review/beslissing", „peers"). Dezelfde toezeggingen,
+  // gewone woorden.
+  "pilot.access.title": "Jouw eerste werkweg: zo begin je",
+  "pilot.access.subtitle":
+    "De zeven stappen van een eerste ronde. Elke stap leidt naar zijn gedeelte of noemt de rol die hij vraagt.",
+  "pilot.access.summary":
+    "Jouw rol ({{rolle}}) kan {{offen}} van de {{gesamt}} stappen zelf lopen. De overige blijven staan, zodat je het hele pad kent.",
+  "pilot.access.locked": "Alleen met de rol {{rolle}}",
+  "pilot.access.roleUnknown":
+    "Jouw rol staat nog niet vast. Welke stappen voor jou open zijn, staat hier zodra die bekend is.",
+  "pilot.check.start": "De instap toont wat er nu ligt — vanaf hier begint elke werkweg.",
+  "pilot.check.library":
+    "De bibliotheek toont wat er al is: met bron, stand en verloop — lezen staat voor elke rol open.",
   "pilot.check.capture":
-    "Vastleggen slaat open op: net vastgelegde kennis is nog niet gevalideerd.",
+    "Wat je vastlegt wordt eerst open opgeslagen: het is nog niet gecontroleerd.",
   "pilot.check.validation":
-    "Validatie is review/beslissing: peers beoordelen tot het geborgd is — geen automatische goedkeuring.",
+    "Bij het controleren beoordelen collega's jouw item tot het als geborgd geldt — er wordt niets automatisch vrijgegeven.",
   "pilot.check.use":
-    "Vragen/bibliotheek gebruiken kennis bron- en statusbewust: een antwoord is niet steviger dan zijn bron.",
+    "Vragen en bibliotheek tonen bij elk antwoord de bron en haar stand — een antwoord is niet betrouwbaarder dan zijn bron.",
   "pilot.check.gap":
-    "Geen basis? Het hiaat wordt eerlijk benoemd en leidt naar het vastleggen — geen verzonnen kennis.",
+    "Ontbreekt de basis, dan zegt het antwoord dat eerlijk en leidt het naar het vastleggen — er wordt niets verzonnen.",
   "pilot.check.maintain":
-    "Hervalidatie is „actueel houden“: verlopen objecten opnieuw controleren, geen automatische blijvende geldigheid.",
+    "„Actueel houden“ betekent: items waarvan de controle verloopt, worden opnieuw bekeken — niets blijft automatisch voor altijd geldig.",
   "pilot.next.title": "Volgende stap",
   "pilot.next.hint":
     "Demodata zijn voorbeelden, geen productief bewijs. Bekijk nu Stage-1 of open de pilot-checklist.",

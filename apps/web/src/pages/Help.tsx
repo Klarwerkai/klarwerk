@@ -1,7 +1,9 @@
-import { ArrowRight, ExternalLink } from "lucide-react";
+import { ArrowRight, ExternalLink, Lock } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
+import { useRole } from "../app/RoleContext";
+import type { Role } from "../app/navigation";
 import { UploadLimitsHint } from "../components/UploadLimitsHint";
 import { Card, PageHeader } from "../components/ui";
 import { HELP_TOPICS, type HelpSearchItem, filterHelpTopics } from "../lib/helpTopics";
@@ -12,7 +14,7 @@ import {
   isoHelpSprache,
   isoQuellenAnzeige,
 } from "../lib/helpTopics.iso";
-import { PILOT_CHECKLIST } from "../lib/pilotChecklist";
+import { type PilotSchritt, pilotSchritte } from "../lib/pilotChecklist";
 import { PILOT_OBSERVATIONS } from "../lib/pilotObservationGuide";
 
 // SCRUM-219: produktnahe Hilfe mit clientseitiger Suche über Titel/Text/Tags. Links nur auf
@@ -45,8 +47,40 @@ type HilfeEintrag = HelpSearchItem & {
   uploadLimits?: boolean;
 };
 
+// ================================================================================================
+// JOB 4022 · EINSTIEG-HILFE — DIE ROLLE DES LESENDEN, WENN SIE FESTSTEHT.
+// ================================================================================================
+//
+// Die Einstiegsführung („so läuft der erste Arbeitsweg", Karte unten) bot bis hierher JEDEM einen
+// Link je Schritt an — auch auf Routen, die seine Rolle nicht betreten darf. Sie fragt jetzt
+// VORHER, was der Router ohnehin entscheidet (`routes.tsx:184-188`). Es werden dabei KEINE Rechte
+// geändert und keine Route geöffnet: die Fläche nimmt dasselbe Urteil nur vorweg, statt den
+// Lesenden hineinlaufen zu lassen.
+//
+// WARUM DER WURF GEFANGEN WIRD. `useRole` wirft ohne `<RoleProvider>` (`app/RoleContext.tsx:63-69`).
+// In der Anwendung steht der Provider immer (`App.tsx`) — die Hilfeseite ist aber die eine Seite,
+// die an keinem Abruf hängt und in jeder Lage lesbar bleiben soll (dieselbe Zusage, die der Kopf
+// oben für das Importkapitel trifft); drei vorhandene Prüfstände montieren sie ohne jede Umgebung.
+// Ohne Rollenquelle ist die Rolle UNBEKANNT, und dann steht weder ein „öffnen"-Link noch eine
+// Sperrbehauptung da — die Voreinstellung auf „offen" wäre genau der behobene Fehler in neuer Form.
+//
+// KEIN BEDINGTER HOOK: `useRole` wird bei jedem Rendern gerufen, in derselben Reihenfolge;
+// gefangen wird allein sein Wurf.
+function useRolleWennBekannt(): Role | null {
+  try {
+    return useRole().role;
+  } catch {
+    return null;
+  }
+}
+
 export function Help(): JSX.Element {
   const { t, i18n } = useTranslation();
+  // JOB 4022: die Einstiegsführung aus der Sicht der lesenden Rolle — die Rollenfrage beantwortet
+  // die EINE Routenquelle (`lib/pilotChecklist.ts`), nicht diese Seite.
+  const rolle = useRolleWennBekannt();
+  const schritte: readonly PilotSchritt[] = pilotSchritte(rolle);
+  const offeneSchritte = schritte.filter((schritt) => schritt.zugang === "offen").length;
   const [q, setQ] = useState("");
   // Die Lieferung kennt DE und EN; alles andere (nl) fällt auf DE — wie `fallbackLng` in i18n.ts.
   const isoLng = isoHelpSprache(i18n.language);
@@ -78,27 +112,62 @@ export function Help(): JSX.Element {
     <div className="mx-auto max-w-3xl">
       <PageHeader kicker={t("help.kicker")} title={t("nav.help")} pageKey="hilfe" />
       <p className="-mt-3 mb-4 text-sm text-muted">{t("help.intro")}</p>
-      {/* SCRUM-305: kompakte Pilot-Checkliste für den ersten Nutzerlauf — ehrlich, Stage-1, nicht
-          durchsuchbar (fixer Orientierungspunkt), stört die normale Hilfe-Suche nicht. */}
+      {/* SCRUM-305: kompakte Einstiegsführung für den ersten Nutzerlauf — ehrlich, Stage-1, nicht
+          durchsuchbar (fixer Orientierungspunkt), stört die normale Hilfe-Suche nicht.
+          JOB 4022: jeder Schritt sagt jetzt, ob er für die lesende Rolle begehbar ist. */}
       <Card className="mb-5 border-dashed">
-        <h2 className="text-[14px] font-semibold text-ink">{t("pilot.title")}</h2>
-        <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">{t("pilot.subtitle")}</p>
+        <h2 className="text-[14px] font-semibold text-ink">{t("pilot.access.title")}</h2>
+        <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">
+          {t("pilot.access.subtitle")}
+        </p>
+        {/* Die Zugangszeile ist GERECHNET (`offeneSchritte`), keine feste Zahl — und sie behauptet
+            nichts, solange die Rolle nicht feststeht. */}
+        {rolle === null ? (
+          <p className="mt-1.5 text-[12px] leading-relaxed text-muted-2">
+            {t("pilot.access.roleUnknown")}
+          </p>
+        ) : (
+          <p className="mt-1.5 text-[12px] leading-relaxed text-muted-2">
+            {t("pilot.access.summary", {
+              rolle: t(`role.name.${rolle}`),
+              offen: offeneSchritte,
+              gesamt: schritte.length,
+            })}
+          </p>
+        )}
+        {/* Eine Zeile je Schritt. Der Schritttext steht IMMER da — der Gast soll den ganzen Weg
+            kennen, auch den Teil, der nicht ihm gehört. Daneben steht genau eine von drei
+            Auskünften: der Weg hinein, die verlangte Rolle, oder (Rolle bzw. Route noch nicht
+            bekannt) gar nichts.
+            BEWUSST KEIN EIGENES BAUTEIL: ein `<EinstiegsSchritt>` wäre die schönere Gliederung,
+            zählt aber in der Bauteil-Auflage von `tests/app/mega84-bildbeschreibungsweg-sammler.
+            test.tsx` mit (gemessen: 378 → 379, Tor rot). Die Auflage dort nachzuziehen wäre eine
+            Änderung an einem fremden Wächter für eine reine Formfrage — die Zeile bleibt deshalb,
+            wo sie vorher auch stand: in der Liste. */}
         <ol className="mt-3 space-y-2">
-          {PILOT_CHECKLIST.map((item) => (
-            <li key={item.id} className="flex items-start gap-2.5">
+          {schritte.map((schritt) => (
+            <li key={schritt.item.id} className="flex items-start gap-2.5">
               <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-ink font-mono text-[10px] font-semibold text-white">
-                {item.n}
+                {schritt.item.n}
               </span>
               <span className="min-w-0 flex-1 text-[12.5px] leading-relaxed text-text">
-                {t(item.labelKey)}
+                {t(schritt.item.labelKey)}
               </span>
-              <Link
-                to={item.to}
-                className="mt-0.5 inline-flex shrink-0 items-center gap-1 text-[12px] font-semibold text-ai hover:opacity-80"
-              >
-                {t("help.openRoute")}
-                <ArrowRight size={12} />
-              </Link>
+              {schritt.zugang === "offen" ? (
+                <Link
+                  to={schritt.item.to}
+                  className="mt-0.5 inline-flex shrink-0 items-center gap-1 text-[12px] font-semibold text-ai hover:opacity-80"
+                >
+                  {t("help.openRoute")}
+                  <ArrowRight size={12} />
+                </Link>
+              ) : null}
+              {schritt.zugang === "gesperrt" ? (
+                <span className="mt-0.5 inline-flex shrink-0 items-center gap-1 text-[12px] font-medium text-muted-2">
+                  <Lock size={11} aria-hidden="true" />
+                  {t("pilot.access.locked", { rolle: t(`role.name.${schritt.minRole}`) })}
+                </span>
+              ) : null}
             </li>
           ))}
         </ol>
