@@ -133,6 +133,31 @@
 // darf sie nicht aufnehmen, weil sie kein Browserpaket importieren darf (serielle Browsergruppe,
 // `tests/tor-inventar/browser-gruppe.ts`). Ihr Ort wäre `kopfband-messung.ts` — der lag ausserhalb
 // der Zielpfade dieses Auftrags (§4/§10). Gemeldet, nicht still geändert.
+//
+// ================================================================================================
+// JOB 3945 · DIE ZWEITE HÄLFTE DES LADENACHWEISES IST SEIT DEM 14.09.2026 GEMESSEN.
+// ================================================================================================
+//
+// Urteil 3 oben hat zwei Hälften, und bis JOB 3945 lief nur die erste. Die zweite — „wo der Punkt
+// ‚Prüfen' gezeichnet ist, steht sein Zähler danach auf der Zahl der Route" — hängt an `soll > 0`,
+// und das Prüfbrett dieser Bühne war in jedem Lauf leer. CI9 legt deshalb über den echten
+// Schreibweg (`POST /api/kos`) einen Prüfauftrag an und bremst dann die ÜBERGABE der Antwort an die
+// Oberfläche, NICHT ihre Ankunft: die Antwort ist belegt da, der Zähler steht trotzdem noch nicht
+// auf `soll`. Verlangt wird, dass der Nachweis in dieser Zeit NICHT zurückkehrt und erst zurückkommt,
+// wenn der Zähler wirklich aktualisiert ist. CI9-R lässt den echten Bestand weiterziehen, während der
+// gezeichnete Zähler stehen bleibt, und verlangt den Abbruch MIT GRUND statt eines still gemessenen
+// Zwischenstands.
+//
+// NACHGEFÜHRT NACH BEN, RUNDE 2 (14.09.2026): bis dahin hielt CI9 die Antwort am SERVER zurück. Das
+// misst den falschen Halbsatz — `ladeNachweis` wartete dann im Ankunftsnachweis, und beim Eintritt
+// in den Zählerzweig stand die richtige Zahl schon da. Eine einmalige Prüfung mit sofortigem Abbruch
+// wäre durchgekommen (BENs Mutation BEN-EINMAL). Die Begründung der neuen Bremse steht bei
+// `ZAEHLER_BREMSE` weiter unten.
+//
+// WAS CI9/CI9-R AUSDRÜCKLICH NICHT MESSEN: keinen anderen Browser als Chromium, keine andere Breite
+// als die eine, an der der Punkt gezeichnet ist (in der schmalen Bauform steht seit JOB 3605 gar
+// keiner), und keinen Prüfbestand mit mehr als zwei Einträgen. Ein neues sichtbares
+// Produktverhalten entsteht durch sie nicht — sie schärfen den Prüfstand, nicht die Oberfläche.
 import { readFileSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
@@ -380,8 +405,18 @@ const ZAEHLER_PUNKT = "validierung";
  */
 const NACHWEIS_FRIST_MS = 20_000;
 let nachweisFristMs = NACHWEIS_FRIST_MS;
-/** Wie lange danach auf den gezeichneten Zähler gewartet wird. */
+/**
+ * Wie lange danach auf den gezeichneten Zähler gewartet wird.
+ *
+ * Veränderlich aus DEMSELBEN Grund und mit DERSELBEN Begründung wie `nachweisFristMs` darüber: Fall
+ * CI9-R misst den Abbruch dieses Zweigs selbst. Er lässt den gezeichneten Zähler dauerhaft auf einem
+ * anderen Stand stehen und stellt die Frist kurz, statt den Lauf 10 s lang anzuhalten. Ausserhalb
+ * von CI9-R steht hier immer `ZAEHLER_FRIST_MS`, und der Wert wird im `finally` jenes Falls
+ * bytegleich zurückgestellt. ABGESCHWÄCHT WIRD DAMIT NICHTS: der Zweig wartet unverändert, er wartet
+ * in genau EINEM Fall nur kürzer — und dieser eine Fall VERLANGT den Abbruch, statt ihn zu dulden.
+ */
 const ZAEHLER_FRIST_MS = 10_000;
+let zaehlerFristMs = ZAEHLER_FRIST_MS;
 /** Die Ruhemessung: höchstens zwölf Stichproben im Abstand von 250 ms. */
 const RUHE_VERSUCHE = 12;
 const RUHE_PAUSE_MS = 250;
@@ -457,6 +492,75 @@ async function zaehlerSollwert(): Promise<number> {
   }
   zaehlerSoll = (antwort.json() as unknown[]).length;
   return zaehlerSoll;
+}
+
+/**
+ * DEN SOLLWERT FRISCH ERHEBEN — der Cache gilt nach einer Änderung am Prüfbestand nicht mehr.
+ *
+ * `zaehlerSollwert()` liest die Route genau EINMAL je Lauf (`zaehlerSoll`, oben). Für die 22 Fälle
+ * vor CI9 ist das richtig: der Bestand ändert sich dort nicht. Legt ein Fall einen Prüfauftrag an,
+ * wäre derselbe Cache die Falle — der Zählerzweig rechnete weiter mit der 0 der früheren Fälle, der
+ * Zweig bliebe erneut ungefahren, und der Fall wäre STILL GRÜN. Genau das beseitigen CI9/CI9-R.
+ */
+async function frischerSollwert(): Promise<number> {
+  zaehlerSoll = null;
+  return await zaehlerSollwert();
+}
+
+/**
+ * EINEN ECHTEN PRÜFAUFTRAG ANLEGEN — über den öffentlichen Schreibweg, nicht an der Ablage vorbei.
+ *
+ * `GET /api/validation/board` gibt aus, was `validation.board()` liefert, und das sind die
+ * Wissensobjekte im Status „offen" (`services/validation/src/service.ts:496-497`,
+ * `this.koService.list({ ...filter, status: "offen" })`). Ein solches Objekt entsteht auf dem
+ * öffentlichen Schreibweg `POST /api/kos` (`services/app/src/routes/ko-routes.ts:1010-1011`, Recht
+ * `ko.create`); die Erstanlage antwortet mit HTTP 201 und `status: "offen"`. Denselben Weg geht
+ * `services/app/src/validation-routes.test.ts:50-72`.
+ *
+ * KEINE ATTRAPPE: kein Eingriff in die Ablage hinter der Route, kein vorgetäuschter Board-Körper,
+ * kein von aussen gesetzter Zählerwert im Browser. Die Zahl, die der Zähler zeigen muss, kommt
+ * danach wie immer aus der echten Route.
+ */
+async function legePruefauftragAn(nr: number): Promise<string> {
+  const app = stand.app;
+  if (!app) {
+    throw new Error("keine App an der Bühne");
+  }
+  const antwort = await app.inject({
+    method: "POST",
+    url: "/api/kos",
+    headers: { authorization: `Bearer ${bearer}` },
+    payload: {
+      confidentiality: "intern",
+      title: `JOB 3945 · Prüfbestand ${nr} für den Zählerzweig`,
+      statement: `Dieses Objekt steht offen, damit der Zähler am Punkt „${ZAEHLER_PUNKT}“ eine Zahl trägt.`,
+      type: "best_practice",
+      category: "Anlage 1",
+      neededValidations: 2,
+    },
+  });
+  if (antwort.statusCode !== 201) {
+    throw new Error(`POST /api/kos: HTTP ${antwort.statusCode} — ${antwort.body.slice(0, 160)}`);
+  }
+  const ko = antwort.json() as { id: string; status: string };
+  if (ko.status !== "offen") {
+    throw new Error(`das angelegte Objekt steht nicht offen, sondern „${ko.status}“`);
+  }
+  return ko.id;
+}
+
+/** Den angelegten Prüfauftrag wieder entfernen (`ko-routes.ts:1761`) und den Statuscode melden. */
+async function entfernePruefauftrag(id: string): Promise<number> {
+  const app = stand.app;
+  if (!app) {
+    return 0;
+  }
+  const antwort = await app.inject({
+    method: "DELETE",
+    url: `/api/kos/${id}`,
+    headers: { authorization: `Bearer ${bearer}` },
+  });
+  return antwort.statusCode;
 }
 
 /**
@@ -561,7 +665,7 @@ async function ladeNachweis(breite: number): Promise<void> {
       await seite.waitForFunction(
         ZAEHLER_STEHT,
         { punkt: ZAEHLER_PUNKT, soll: String(soll) },
-        { timeout: ZAEHLER_FRIST_MS },
+        { timeout: zaehlerFristMs },
       );
     } catch (e) {
       const spaeter = await seite.evaluate<ZaehlerStand>(ZAEHLER_STAND, ZAEHLER_PUNKT);
@@ -1269,4 +1373,349 @@ describe("JOB 3571 · CI5 · der ehemalige Befund, nachgeführt: es steht nichts
       ).toBeLessThanOrEqual(1);
     }, 120_000);
   }
+});
+
+// ================================================================================================
+// CI9 / CI9-R · JOB 3945 — DIE ZWEITE HÄLFTE DES LADENACHWEISES WIRD ZUM ERSTEN MAL GEFAHREN.
+// ================================================================================================
+//
+// DER LADENACHWEIS VERSPRICHT ZWEI DINGE (`ladeNachweis`, oben): die Antwort auf
+// `/api/validation/board` ist im Browser angekommen — UND wo der Punkt „Prüfen" gezeichnet ist,
+// steht sein Zähler danach wirklich auf der Zahl, die die Route hergibt. Bis JOB 3945 war die zweite
+// Hälfte eine Zusage OHNE Messung: sie steht hinter `soll > 0`, und an der Bühne dieser Datei ist
+// das Prüfbrett leer — `soll` war in jedem Lauf 0, der Zweig ungefahren, der Satz „gemessen würde
+// sonst ein Zwischenstand" toter Text. Bestellt hat das der Prüfer selbst (`archiv/3778/runde-2/
+// ben.md`, PRÜFLÜCKEN 6).
+//
+// CI9 MISST, DASS DER ZWEIG TRÄGT: ein echter Prüfauftrag über `POST /api/kos`, die Zähler-Antwort
+// mit dem vorhandenen Griff angehalten, und der Nachweis läuft erst durch, NACHDEM der Zähler
+// gezeichnet ist — messbar später als die erste Ablesung.
+// CI9-R MISST, DASS DER ZWEIG AUCH URTEILT: der echte Bestand zieht weiter (ein zweiter Prüfauftrag),
+// der gezeichnete Zähler nicht mit — und der Nachweis bricht MIT GRUND ab, statt still einen
+// Zwischenstand zu messen.
+//
+// WAS BEIDE AUSDRÜCKLICH NICHT MESSEN: keinen anderen Browser als Chromium, keine andere Breite als
+// die eine hier gemessene (in der schmalen Bauform steht seit JOB 3605 gar kein Punkt), und keinen
+// Prüfbestand mit mehr als zwei Einträgen. Neues sichtbares Produktverhalten entsteht nicht — CI9
+// und CI9-R schärfen den Prüfstand, nicht die Oberfläche.
+//
+// SIE STEHEN ZULETZT, weil sie als einzige Fälle den Bestand HINTER der Route verändern. Beide
+// räumen im `finally` auf; CI9-R belegt das Aufräumen am Ende selbst — frisch erhobener Sollwert
+// zurück auf den Ausgangswert, und dieselbe Breite misst danach unverändert.
+
+/** Die Breite, an der der Punkt „Prüfen" gezeichnet ist — dieselbe, an der CI8 den Halt misst. */
+const ZAEHLER_BREITE = ANKUNFT_BREITE;
+/** Wie lange der Zähler in CI9 NACH belegter Ankunft noch unpassend stehen bleibt. */
+const HALT_MS = 600;
+/** Der Schlüssel der Bremse in der Seite — im `sessionStorage`, damit er die Navigation übersteht. */
+const BREMSE_SCHLUESSEL = "kwZaehlerBremse";
+
+// ================================================================================================
+// DIE BREMSE SITZT AN DER DARSTELLUNG, NICHT AM NETZ — UND DAS IST DER GANZE PUNKT (BEN, R2).
+// ================================================================================================
+//
+// Die erste Fassung von CI9 hielt die Zähler-ANTWORT am Server zurück (`halteZaehlerAntwortAn`, wie
+// CI8). Das misst den falschen Halbsatz: `ladeNachweis` wartet dann in seiner ERSTEN Hälfte, dem
+// Ankunftsnachweis. Ist die Antwort da, ist auch der Zähler schon gezeichnet — beim Eintritt in den
+// Zählerzweig steht die richtige Zahl bereits, `waitForFunction` trifft sie beim ersten Blick, und
+// eine EINMALIGE Prüfung mit sofortigem Abbruch käme genauso durch. Genau das hat BEN in Runde 2
+// nachgewiesen (Mutation BEN-EINMAL: „soll=1, erster Text=1, sofort=true", 24 Fälle grün).
+//
+// GEBREMST WIRD DESHALB HIER, WO DIE ANTWORT IN DIE OBERFLÄCHE ÜBERGEHT: `window.fetch` gibt den
+// Körper erst frei, wenn die Bremse gelöst ist. Der Körper wird dabei VOLLSTÄNDIG gelesen
+// (`await antwort.text()`), BEVOR gewartet wird — damit steht der Eintrag der Ressourcen-Zeitleiste
+// (`responseEnd`) schon, der Ankunftsnachweis ist ERFÜLLT, und trotzdem hat die Oberfläche die Zahl
+// noch nicht. Das ist der Zustand „laden" aus §9 des Auftrags, und er ist der einzige, in dem sich
+// das NACHWARTEN überhaupt messen lässt.
+//
+// KEINE ATTRAPPE: Der Körper wird nicht angefasst — Status, Statustext und Inhaltstyp werden
+// unverändert weitergereicht, die Zahl bleibt die der echten Route. Es wird nichts gezählt und
+// nichts gesetzt; verschoben wird allein der Zeitpunkt der Übergabe. Dieselbe Trennung, die
+// `zapfeAuslieferungAn` am Server zieht (BEN, JOB 3616 R1, Korrekturpflicht 1), gilt hier am
+// Browser.
+//
+// WARUM `sessionStorage` UND NICHT EINE VARIABLE: `addInitScript` läuft bei JEDER Navigation neu,
+// eine Variable wäre also bei jedem Seitenaufbau wieder gesetzt. Die Bremse muss aber genau EINEN
+// Seitenaufbau lang gelten und danach für CI9-R und alle folgenden Läufe gelöst bleiben. Der
+// `sessionStorage` übersteht die Navigation, und `STELLE_BREMSE` löst sie im `finally`.
+const ZAEHLER_BREMSE = `
+  (() => {
+    const echt = window.fetch;
+    window.fetch = async function (...args) {
+      const antwort = await echt.apply(this, args);
+      let gebremst = false;
+      try { gebremst = sessionStorage.getItem(${JSON.stringify(BREMSE_SCHLUESSEL)}) === 'an'; } catch (e) { gebremst = false; }
+      if (!gebremst) return antwort;
+      let pfad = '';
+      try {
+        const roh = typeof args[0] === 'string' ? args[0] : (args[0] && args[0].url) || '';
+        pfad = new URL(roh, location.href).pathname;
+      } catch (e) { pfad = ''; }
+      if (pfad !== ${JSON.stringify(ZAEHLER_PFAD)}) return antwort;
+      const text = await antwort.text();
+      for (;;) {
+        let weiter = true;
+        try { weiter = sessionStorage.getItem(${JSON.stringify(BREMSE_SCHLUESSEL)}) !== 'an'; } catch (e) { weiter = true; }
+        if (weiter) break;
+        await new Promise((f) => setTimeout(f, 20));
+      }
+      return new Response(text, {
+        status: antwort.status,
+        statusText: antwort.statusText,
+        headers: { 'content-type': antwort.headers.get('content-type') || 'application/json' },
+      });
+    };
+  })();
+`;
+
+/** Die Bremse stellen (`true`) oder lösen (`false`) — meldet zurück, ob es gelungen ist. */
+const STELLE_BREMSE = fn(`(an) => {
+  try {
+    sessionStorage.setItem(${JSON.stringify(BREMSE_SCHLUESSEL)}, an ? 'an' : 'aus');
+    return sessionStorage.getItem(${JSON.stringify(BREMSE_SCHLUESSEL)}) === (an ? 'an' : 'aus');
+  } catch (e) {
+    return false;
+  }
+}`);
+
+describe("JOB 3945 · CI9 · der positive Zählerzweig läuft, und der Lauf beweist es", () => {
+  it(`CI9 · ${ZAEHLER_BREITE} px: der Nachweis kehrt erst zurück, wenn der Zähler wirklich steht`, async () => {
+    const basis = await frischerSollwert();
+    const id = await legePruefauftragAn(1);
+    let geloescht = 0;
+    try {
+      // §5.2 — DER SOLLWERT WIRD NACH DEM ANLEGEN FRISCH ERHOBEN. Eine still gemessene 0 ist genau
+      // der Fehler, den dieser Fall beseitigt, und darf nicht als Erfolg durchgehen.
+      const soll = await frischerSollwert();
+      expect(
+        soll,
+        `der Prüfbestand ist nach dem Anlegen nicht gewachsen (vorher ${basis}, jetzt ${soll}) — dann misst dieser Fall den Zweig nicht`,
+      ).toBeGreaterThan(0);
+
+      // §5.3 — DIE BREITE WIRD GEMESSEN, NICHT ANGENOMMEN. Steht der Punkt hier nicht, bricht der
+      // Fall ab, statt eine andere Breite zu suchen.
+      neuerSeitenaufbau();
+      await messe(stand, ZAEHLER_BREITE, HOEHE);
+      const vorab = await seiteRoh(stand).evaluate<ZaehlerStand>(ZAEHLER_STAND, ZAEHLER_PUNKT);
+      console.log(
+        `${KENNUNG_3778} · CI9 · Breitenprobe · ${ZAEHLER_BREITE}px · Punkt „${ZAEHLER_PUNKT}“ ` +
+          `${vorab.punktDa ? "gezeichnet" : "NICHT gezeichnet"} · Sollwert aus der Route: ${soll} (vorher ${basis})`,
+      );
+      expect(
+        vorab.punktDa,
+        `${ZAEHLER_BREITE}px: der Punkt „${ZAEHLER_PUNKT}“ ist hier nicht gezeichnet — dann ist der Zählerzweig an dieser Breite nicht erreichbar`,
+      ).toBe(true);
+
+      // DIE EIGENTLICHE MESSUNG. Die Bremse wird an der STEHENDEN Seite gestellt und wirkt ab dem
+      // nächsten Seitenaufbau: die Antwort kommt dann vollständig an (Zeitleiste, `responseEnd`),
+      // die Oberfläche bekommt sie aber noch nicht.
+      const seite = seiteRoh(stand);
+      await seite.addInitScript(ZAEHLER_BREMSE);
+      expect(
+        await seite.evaluate<boolean>(STELLE_BREMSE, true),
+        `${ZAEHLER_BREITE}px: die Bremse liess sich nicht stellen — dann misst dieser Fall kein Nachwarten`,
+      ).toBe(true);
+
+      neuerSeitenaufbau();
+      await messe(stand, ZAEHLER_BREITE, HOEHE);
+
+      // DER ZUSTAND, AUF DEN ES ANKOMMT: die Antwort ist BELEGT angekommen, der Zähler steht
+      // trotzdem noch nicht auf `soll`. Erst hier ist der Zählerzweig überhaupt prüfbar.
+      const ankunft = beurteileAnkunft(await liesAnkunft());
+      const vorLauf = await seite.evaluate<ZaehlerStand>(ZAEHLER_STAND, ZAEHLER_PUNKT);
+      expect(
+        ankunft.art,
+        `${ZAEHLER_BREITE}px: die Antwort ist bei gestellter Bremse nicht angekommen — ${ankunft.meldung}`,
+      ).toBe("angekommen");
+      expect(
+        vorLauf.punktDa,
+        `${ZAEHLER_BREITE}px: der Punkt „${ZAEHLER_PUNKT}“ ist im gebremsten Aufbau nicht gezeichnet`,
+      ).toBe(true);
+      expect(
+        vorLauf.text,
+        `${ZAEHLER_BREITE}px: der Zähler steht schon auf ${soll}, obwohl die Bremse gestellt ist — dann gibt es nichts nachzuwarten`,
+      ).not.toBe(String(soll));
+
+      // DER NACHWEIS LÄUFT — und darf jetzt NICHT zurückkehren. Rückkehrzeitpunkt und Zustand
+      // werden DIREKT am Abschluss des Versprechens genommen, nicht danach.
+      const begonnen = Date.now();
+      let rueckkehr = -1;
+      let beiRueckkehr: ZaehlerStand = { punktDa: false, zaehlerDa: false, text: "" };
+      const lauf = ladeNachweis(ZAEHLER_BREITE).then(async () => {
+        rueckkehr = Date.now();
+        beiRueckkehr = await seite.evaluate<ZaehlerStand>(ZAEHLER_STAND, ZAEHLER_PUNKT);
+      });
+      await pause(HALT_MS);
+      const waehrend = await seite.evaluate<ZaehlerStand>(ZAEHLER_STAND, ZAEHLER_PUNKT);
+      const nochOffen = rueckkehr < 0;
+      const geloest = Date.now();
+      expect(
+        await seite.evaluate<boolean>(STELLE_BREMSE, false),
+        `${ZAEHLER_BREITE}px: die Bremse liess sich nicht lösen`,
+      ).toBe(true);
+      await lauf;
+      const nachher = await seite.evaluate<ZaehlerStand>(ZAEHLER_STAND, ZAEHLER_PUNKT);
+
+      console.log(
+        `${KENNUNG_3778} · CI9 · ${ZAEHLER_BREITE}px · Zähler soll ${soll} sein · Ankunft belegt (${ankunft.meldung}) · ` +
+          `bei Eintritt ${vorLauf.zaehlerDa ? `„${vorLauf.text}“` : "kein Zähler"} · nach ${HALT_MS} ms Bremse ` +
+          `${waehrend.zaehlerDa ? `„${waehrend.text}“` : "kein Zähler"}, Nachweis ${nochOffen ? "NOCH NICHT zurück" : "schon zurück"} · ` +
+          `bei Rückkehr ${beiRueckkehr.zaehlerDa ? `„${beiRueckkehr.text}“` : "kein Zähler"} nach ${rueckkehr - begonnen} ms ` +
+          `(${rueckkehr - geloest} ms nach dem Lösen) · danach ${nachher.zaehlerDa ? `„${nachher.text}“` : "kein Zähler"}`,
+      );
+
+      // 1. SOLANGE DER ZÄHLER FALSCH STAND, WAR DER NACHWEIS NICHT ZURÜCK. Das ist der Satz, den
+      //    eine einmalige Prüfung mit sofortigem Abbruch nicht bestehen kann (BEN-EINMAL).
+      expect(
+        waehrend.text,
+        `${ZAEHLER_BREITE}px: der Zähler stand trotz gestellter Bremse schon auf ${soll}`,
+      ).not.toBe(String(soll));
+      expect(
+        nochOffen,
+        `${ZAEHLER_BREITE}px: der Ladenachweis war nach ${HALT_MS} ms schon zurück, obwohl der Zähler ${waehrend.zaehlerDa ? `„${waehrend.text}“` : "gar nichts"} statt ${soll} zeigte — dann prüft er den Zähler nur EINMAL, statt auf ihn zu warten`,
+      ).toBe(true);
+      // 2. ER KAM ERST NACH DEM LÖSEN ZURÜCK — die Aktualisierung ist die Ursache, nicht die Uhr.
+      expect(
+        rueckkehr,
+        `${ZAEHLER_BREITE}px: der Ladenachweis kehrte ${geloest - rueckkehr} ms VOR dem Lösen der Bremse zurück`,
+      ).toBeGreaterThanOrEqual(geloest);
+      // 3. UND BEI SEINER RÜCKKEHR STAND DER ZÄHLER WIRKLICH AUF DER ZAHL DER ROUTE.
+      expect(
+        beiRueckkehr.text,
+        `${ZAEHLER_BREITE}px: bei der Rückkehr des Nachweises trug der Zähler nicht ${soll}, sondern ${beiRueckkehr.zaehlerDa ? `„${beiRueckkehr.text}“` : "gar nichts"}`,
+      ).toBe(String(soll));
+      // 4. Er hat dafür wirklich gewartet, nicht bloss einmal geblinzelt.
+      expect(
+        rueckkehr - begonnen,
+        `${ZAEHLER_BREITE}px: der Ladenachweis war nach ${rueckkehr - begonnen} ms fertig, obwohl der Zähler ${HALT_MS} ms falsch stand`,
+      ).toBeGreaterThanOrEqual(HALT_MS);
+
+      // Und danach wird auch wirklich gemessen — der Nachweis ist kein Selbstzweck.
+      const m = await beruhige(ZAEHLER_BREITE);
+      expect(
+        m.kaesten.length,
+        `${ZAEHLER_BREITE}px: nach dem Nachweis wurde nichts gemessen`,
+      ).toBeGreaterThan(2);
+    } finally {
+      try {
+        await seiteRoh(stand).evaluate<boolean>(STELLE_BREMSE, false);
+      } catch (e) {
+        console.log(
+          `${KENNUNG_3778} · CI9 · Bremse liess sich nicht lösen: ${String(e).split("\n")[0]}`,
+        );
+      }
+      geloescht = await entfernePruefauftrag(id);
+      zaehlerSoll = null;
+      neuerSeitenaufbau();
+    }
+
+    // §5.6 — DER RÜCKBAU WIRD GEPRÜFT, NICHT NUR PROTOKOLLIERT (BEN, R2, Prüflücke 6).
+    const zurueck = await frischerSollwert();
+    console.log(
+      `${KENNUNG_3778} · CI9 · Rückbau · DELETE /api/kos/${id} → HTTP ${geloescht} · ` +
+        `Sollwert zurück auf ${zurueck} (Ausgangswert ${basis})`,
+    );
+    expect(
+      geloescht,
+      `der angelegte Prüfauftrag liess sich nicht entfernen (HTTP ${geloescht}) — der nächste Fall liefe auf verändertem Grund`,
+    ).toBe(204);
+    expect(
+      zurueck,
+      `der Prüfbestand steht nach dem Rückbau auf ${zurueck} statt auf ${basis}`,
+    ).toBe(basis);
+  }, 180_000);
+});
+
+describe("JOB 3945 · CI9-R · ein dauerhaft falscher Zähler bricht MIT GRUND ab", () => {
+  it(`CI9-R · ${ZAEHLER_BREITE} px: der stehengebliebene Zähler ist kein Messwert`, async () => {
+    const basis = await frischerSollwert();
+    const ersterId = await legePruefauftragAn(1);
+    let zweiterId: string | null = null;
+    let fehler: unknown = null;
+    let stehengeblieben: ZaehlerStand = { punktDa: false, zaehlerDa: false, text: "" };
+    try {
+      const soll1 = await frischerSollwert();
+      expect(soll1, "der Prüfbestand ist nach dem Anlegen nicht gewachsen").toBeGreaterThan(basis);
+
+      // 1. Der Zähler steht sauber auf der Zahl der Route — der positive Zweig läuft grün durch.
+      neuerSeitenaufbau();
+      await messe(stand, ZAEHLER_BREITE, HOEHE);
+      await ladeNachweis(ZAEHLER_BREITE);
+      const gezeichnet = await seiteRoh(stand).evaluate<ZaehlerStand>(ZAEHLER_STAND, ZAEHLER_PUNKT);
+      expect(
+        gezeichnet.punktDa,
+        `${ZAEHLER_BREITE}px: der Punkt „${ZAEHLER_PUNKT}“ ist hier nicht gezeichnet`,
+      ).toBe(true);
+      expect(
+        gezeichnet.text,
+        `${ZAEHLER_BREITE}px: der Zähler steht nicht auf ${soll1} — dann ist die Ausgangslage dieses Falls nicht hergestellt`,
+      ).toBe(String(soll1));
+
+      // 2. DER ECHTE BESTAND ZIEHT WEITER, DER GEZEICHNETE ZÄHLER NICHT MIT. Der Browser fragt von
+      // sich aus nicht nach (`app/useNavBadges.ts` hält kein Intervall, `main.tsx:44` führt die
+      // Abfrage 30 s lang als frisch) — genau der Zustand „Cache mit gescheiterter Auffrischung".
+      zweiterId = await legePruefauftragAn(2);
+      const soll2 = await frischerSollwert();
+      expect(soll2, "der zweite Prüfauftrag ist nicht auf dem Brett angekommen").toBe(soll1 + 1);
+
+      // 3. Derselbe Nachweis, dieselbe stehende Seite — der Nachweis des vorigen Durchgangs gilt
+      // nicht mehr, die Ankunft aus diesem Seitenaufbau steht weiter in der Zeitleiste.
+      zaehlerFristMs = ABBRUCH_FRIST_MS;
+      neuerSeitenaufbau();
+      try {
+        await ladeNachweis(ZAEHLER_BREITE);
+      } catch (e) {
+        fehler = e;
+      }
+      stehengeblieben = await seiteRoh(stand).evaluate<ZaehlerStand>(ZAEHLER_STAND, ZAEHLER_PUNKT);
+
+      console.log(
+        `${KENNUNG_3778} · CI9-R · ${ZAEHLER_BREITE}px · Route sagt ${soll2}, gezeichnet ist ` +
+          `${stehengeblieben.zaehlerDa ? `„${stehengeblieben.text}“` : "kein Zähler"} · Frist ${ABBRUCH_FRIST_MS} ms · ` +
+          `Abbruch: ${fehler === null ? "KEINER" : String(fehler).split("\n")[0]}`,
+      );
+
+      // DIE AUSSAGE: kein stilles Grün, sondern ein Abbruch, der seinen Grund nennt.
+      expect(
+        fehler,
+        `${ZAEHLER_BREITE}px: es wurde gemessen, obwohl der Zähler auf ${stehengeblieben.text} stehen blieb, während die Route ${soll2} sagt — genau das darf nicht sein`,
+      ).not.toBeNull();
+      expect(String(fehler), "der Abbruch nennt den Punkt nicht").toContain(ZAEHLER_PUNKT);
+      expect(String(fehler), "der Abbruch nennt den Sollwert nicht").toContain(
+        `nicht auf ${soll2}`,
+      );
+      expect(String(fehler), "der Abbruch nennt seinen Grund nicht").toContain(
+        "gemessen würde sonst ein Zwischenstand",
+      );
+    } finally {
+      zaehlerFristMs = ZAEHLER_FRIST_MS;
+      const weg1 = await entfernePruefauftrag(ersterId);
+      const weg2 = zweiterId === null ? 0 : await entfernePruefauftrag(zweiterId);
+      zaehlerSoll = null;
+      neuerSeitenaufbau();
+      console.log(
+        `${KENNUNG_3778} · CI9-R · Rückbau · DELETE /api/kos/${ersterId} → HTTP ${weg1}` +
+          `${zweiterId === null ? "" : ` · DELETE /api/kos/${zweiterId} → HTTP ${weg2}`}`,
+      );
+    }
+
+    // §5.6 — DER RÜCKBAU WIRD BELEGT, NICHT BEHAUPTET: der frisch erhobene Sollwert steht wieder auf
+    // dem Ausgangswert, und dieselbe Breite misst danach unverändert über den Bestandsweg
+    // (`messeRuhig` → `ladeNachweis` → `beruhige`).
+    const zurueck = await frischerSollwert();
+    const m = await messeRuhig(ZAEHLER_BREITE);
+    console.log(
+      `${KENNUNG_3778} · CI9-R · Nachlauf · Sollwert zurück auf ${zurueck} (Ausgangswert ${basis}) · ` +
+        `${m.kaesten.length} Kästen bei ${ZAEHLER_BREITE}px gemessen · Frist wieder ${zaehlerFristMs} ms`,
+    );
+    expect(
+      zurueck,
+      `der Prüfbestand ist nach dem Rückbau nicht wieder auf ${basis}, sondern auf ${zurueck} — die folgenden Fälle liefen auf verändertem Grund`,
+    ).toBe(basis);
+    expect(zaehlerFristMs, "die Zählerfrist wurde nicht zurückgestellt").toBe(ZAEHLER_FRIST_MS);
+    expect(
+      m.kaesten.length,
+      `${ZAEHLER_BREITE}px: nach dem Rückbau wurde nichts mehr gemessen`,
+    ).toBeGreaterThan(2);
+  }, 180_000);
 });
