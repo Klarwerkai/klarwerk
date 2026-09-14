@@ -40,6 +40,13 @@
 //
 // GEMESSEN, NICHT BEHAUPTET: entfernt man `setVerworfeneEingrenzung([])` aus `keimVerbrauchen()`,
 // werden B10 und B11 rot und die fünfzehn Bestandsfälle bleiben grün (JOB 3913, Gegenprobe V1).
+//
+// JOB 3935 · B10–B12 LAUFEN JETZT IN de, en UND nl. Bis dahin waren beide Bedienwege nur auf
+// Deutsch gemessen, und die Suche nach dem Rücksetzweg war sogar FEST deutsch — in EN/NL hätte sie
+// nie einen Eintrag gefunden, und die Abschlusszusicherung `.toBeUndefined()` wäre ein Scheinbeleg
+// gewesen (sie bliebe grün, auch wenn der Weg zurück sichtbar stehen bliebe). Die Sprache ist
+// deshalb ein Argument von `ruecksetzEintrag()` geworden, aus DERSELBEN Ressource; K1/K2 halten
+// fest, dass diese Parametrisierung nicht ins Leere läuft.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { KnowledgeObject } from "../../apps/web/src/api/types";
@@ -194,6 +201,8 @@ const leersatz = (): string | null => {
 // Ein Fall, der gegen `t()` prüft, bliebe also grün, während der Niederländer Deutsch liest.
 // Deshalb liest B8 die SPRACHRESSOURCE selbst; fehlt sie, fliegt der Fall mit Schlüssel UND Sprache.
 type Sprache = "de" | "en" | "nl";
+/** Die drei geführten Sprachen, in der Reihenfolge, in der die Fälle sie fahren (JOB 3935). */
+const SPRACHEN = ["de", "en", "nl"] as const;
 function ressource(sprache: Sprache, schluessel: string): string {
   const wert: unknown = i18n.getResource(sprache, "translation", schluessel);
   if (typeof wert !== "string" || wert.trim() === "") {
@@ -222,10 +231,17 @@ function element<T extends HTMLElement>(selektor: string): T {
  * Beschriftung und nicht über `menueEintrag`, weil hier auch die ABWESENHEIT gemessen wird
  * (`menueEintrag` wirft dann) — der Eintrag hängt an `anyFilterActive`
  * (`BibliothekFlaeche.tsx:1815`), also an genau der Größe, um die es in B10/B11 geht.
+ *
+ * JOB 3935 · WARUM DIE SPRACHE HIER EIN ARGUMENT IST und keine feste Zeile: bis dahin stand hier
+ * `ressource("de", …)`. In einem englischen Menü kommt „Alle zurücksetzen" nicht vor — die Suche
+ * hätte NIE etwas gefunden. Die Ausgangslagenprüfung (`toBeTruthy`) wäre rot gewesen, und schlimmer:
+ * die Abschlussprüfung (`toBeUndefined`) wäre grün geblieben, auch wenn der Weg zurück in Wahrheit
+ * sichtbar stehen bliebe. Es gibt genau EINEN Weg zur Beschriftung — dieselbe `ressource()`; eine
+ * zweite Übersetzungsliste im Test wäre der Anfang zweier Fassungen.
  */
-function ruecksetzEintrag(): HTMLButtonElement | undefined {
+function ruecksetzEintrag(sprache: Sprache = "de"): HTMLButtonElement | undefined {
   const menue = menueOeffnen(container, "bib-menue-filter");
-  const label = ressource("de", "facet.reset");
+  const label = ressource(sprache, "facet.reset");
   return [...menue.querySelectorAll('[role="menuitem"]')].find((b) => eintragText(b) === label) as
     | HTMLButtonElement
     | undefined;
@@ -485,91 +501,168 @@ describe("JOB 3788 · der Leersatz sagt die Wahrheit über den Bestand", () => {
   // Zurücksetzen) — nicht durch Schreiben in den `localStorage` und einen zweiten Mount: der misst
   // den Mount, nicht das Anwenden, und bliebe grün, selbst wenn `keimVerbrauchen()` den Befund
   // stehen liesse.
-  it("B10 · JOB 3913 (a): eine gemerkte NEUTRALE Sicht bringt den Satz über den BESTAND zurück", () => {
-    // Ausgangslage wie B7c: leerer Bestand, ein Wert in der Adresse, den auch ein gefüllter Bestand
-    // nicht kennt — der geteilte Link auf der frisch aufgesetzten Instanz.
+  //
+  // JOB 3935 · UND ZWAR IN JEDER GEFÜHRTEN SPRACHE. Die drei Fälle liefen bis dahin nur auf
+  // Deutsch; K1 und K2 darunter kalibrieren, dass die Sprachschleife wirklich etwas misst.
+
+  // ----------------------------------------------------------------------------------------------
+  // JOB 3935 · K1/K2 — DIE ZWEI KALIBRIERUNGEN DER SPRACHSCHLEIFE.
+  // ----------------------------------------------------------------------------------------------
+  it("K1 · JOB 3935: die drei gemessenen Zeilen lauten in de, en und nl PAARWEISE VERSCHIEDEN", () => {
+    // OHNE DIESEN FALL MISST DIE SPRACHSCHLEIFE MÖGLICHERWEISE NICHTS: wären zwei Sprachfassungen
+    // wortgleich, bliebe ein „englischer" Fall auch dann grün, wenn die Fläche (oder der Helfer
+    // darüber) in Wahrheit die deutsche Zeile benutzte. Der Fall nennt bei Gleichheit Schlüssel und
+    // Sprachenpaar, damit die Meldung sagt, WELCHE Messung ihre Kraft verloren hat.
+    const paare = [
+      ["de", "en"],
+      ["de", "nl"],
+      ["en", "nl"],
+    ] as const;
+    for (const schluessel of ["lib.liste.leer", "lib.liste.leerSuche", "facet.reset"]) {
+      for (const [a, b] of paare) {
+        expect(
+          ressource(a, schluessel),
+          `${schluessel}: ${a} und ${b} lauten gleich — ein „${b}“-Fall wäre auch mit der ${a}-Fassung grün`,
+        ).not.toBe(ressource(b, schluessel));
+      }
+    }
+  });
+
+  it("K2 · JOB 3935: die Sprachumschaltung kommt an der gemounteten Fläche an — Satz UND Menü", async () => {
+    // OHNE DIESEN FALL WÄRE ALLES GRÜN, WENN `changeLanguage` still wirkungslos bliebe: die Fälle
+    // vergleichen dann die deutsche Fläche mit der deutschen Ressource und bestätigen sich selbst.
+    // Gemessen werden BEIDE Orte, an denen B10–B12 hängen — der gerenderte Leersatz und die
+    // Beschriftung im Filtermenü, über die `ruecksetzEintrag()` den Weg zurück sucht.
+    await i18n.changeLanguage("en");
     lage.bestand = abfrage([]);
     lage.suche = abfrage([]);
-    mount("/bibliothek?tag=gibtesnicht");
-    expect(leersatz(), "Ausgangslage: die Eingrenzung ist verworfen, gilt aber").toBe(
-      AUSWAHLSATZ(),
+    mount();
+    expect(leersatz(), "der Leersatz steht nicht in der englischen Fassung").toBe(
+      BESTANDSSATZ("en"),
     );
-    // GEMESSEN, NICHT GERATEN (Lieferung 3): der Rücksetzweg hängt an derselben Größe wie der Satz
-    // (`anyFilterActive`), wird bei verworfener Eingrenzung also ANGEBOTEN. Der Mensch liest hier
-    // „Nichts gefunden." und hat einen Weg zurück — kein Produktbefund zu melden.
-    expect(ruecksetzEintrag(), "bei verworfener Eingrenzung fehlt der Weg zurück").toBeTruthy();
-    // WARUM DIESE SICHT NEUTRAL IST, und warum sie genau hier entsteht: gespeichert wird
-    // `currentViewState` (`BibliothekFlaeche.tsx:522`) mit q, facetSel, range, groupBy, segment und
-    // scope — in dieser Lage stehen alle sechs auf Standard, denn die Wertprüfung hat die Facette
-    // weggeräumt. Der Befund `verworfeneEingrenzung` gehört NICHT zum Zustand einer Sicht; genau
-    // deshalb lässt sich die neutrale Sicht hier über den echten Bedienweg merken (das Untermenü
-    // „Sicht speichern" steht überhaupt nur bei `anyFilterActive`, `:1595`).
-    sichtSpeichern("Ganzer Bestand");
-    expect(leersatz(), "das blosse Merken ändert die Lage nicht").toBe(AUSWAHLSATZ());
-    sichtAnwenden("Ganzer Bestand");
-    // `applyView` → `keimVerbrauchen()` (`:717`, `:649-655`): der Befund ist weg, also ist nichts
-    // mehr eingegrenzt — und über den leeren Bestand ist „Noch keine Einträge." wieder wahr.
+    expect(leersatz(), "die Fläche zeigt trotz en den deutschen Satz").not.toBe(BESTANDSSATZ("de"));
+    abbauen();
+
+    // Dasselbe im Menü: bei verworfener Eingrenzung (wie B7c) steht der Rücksetzweg da — und er
+    // trägt die ENGLISCHE Beschriftung. Die zweite Zeile ist die eigentliche Aussage: mit der
+    // deutschen Beschriftung ist er NICHT zu finden. Genau deshalb braucht der Helfer die Sprache.
+    mount("/bibliothek?tag=gibtesnicht");
+    expect(ruecksetzEintrag("en"), "der Rücksetzweg fehlt in der englischen Fläche").toBeTruthy();
     expect(
-      leersatz(),
-      "nach der gemerkten Sicht behauptet die Fläche weiter eine Eingrenzung",
-    ).toBe(BESTANDSSATZ());
-    expect(
-      ruecksetzEintrag(),
-      "nichts ist mehr eingegrenzt — ein Rücksetzweg zeigte auf nichts",
+      ruecksetzEintrag("de"),
+      "das englische Menü trägt weiterhin die deutsche Beschriftung — dann misst B10/B11 in en nichts",
     ).toBeUndefined();
   });
 
-  it("B11 · JOB 3913 (b): „Filter zurücksetzen“ bringt den Satz über den BESTAND zurück", () => {
-    lage.bestand = abfrage([]);
-    lage.suche = abfrage([]);
-    mount("/bibliothek?tag=gibtesnicht");
-    expect(leersatz(), "Ausgangslage: die Eingrenzung ist verworfen, gilt aber").toBe(
-      AUSWAHLSATZ(),
-    );
-    const knopf = ruecksetzEintrag();
-    expect(knopf, "bei verworfener Eingrenzung fehlt der Weg zurück").toBeTruthy();
-    act(() => {
-      knopf?.click();
+  for (const s of SPRACHEN) {
+    it(`B10 · ${s} · JOB 3913 (a): eine gemerkte NEUTRALE Sicht bringt den Satz über den BESTAND zurück`, async () => {
+      await i18n.changeLanguage(s);
+      // Ausgangslage wie B7c: leerer Bestand, ein Wert in der Adresse, den auch ein gefüllter
+      // Bestand nicht kennt — der geteilte Link auf der frisch aufgesetzten Instanz.
+      lage.bestand = abfrage([]);
+      lage.suche = abfrage([]);
+      mount("/bibliothek?tag=gibtesnicht");
+      expect(leersatz(), `${s}: Ausgangslage: die Eingrenzung ist verworfen, gilt aber`).toBe(
+        AUSWAHLSATZ(s),
+      );
+      // GEMESSEN, NICHT GERATEN (Lieferung 3): der Rücksetzweg hängt an derselben Größe wie der Satz
+      // (`anyFilterActive`), wird bei verworfener Eingrenzung also ANGEBOTEN. Der Mensch liest hier
+      // „Nichts gefunden." und hat einen Weg zurück — kein Produktbefund zu melden.
+      expect(
+        ruecksetzEintrag(s),
+        `${s}: bei verworfener Eingrenzung fehlt der Weg zurück`,
+      ).toBeTruthy();
+      // WARUM DIESE SICHT NEUTRAL IST, und warum sie genau hier entsteht: gespeichert wird
+      // `currentViewState` (`BibliothekFlaeche.tsx:522`) mit q, facetSel, range, groupBy, segment und
+      // scope — in dieser Lage stehen alle sechs auf Standard, denn die Wertprüfung hat die Facette
+      // weggeräumt. Der Befund `verworfeneEingrenzung` gehört NICHT zum Zustand einer Sicht; genau
+      // deshalb lässt sich die neutrale Sicht hier über den echten Bedienweg merken (das Untermenü
+      // „Sicht speichern" steht überhaupt nur bei `anyFilterActive`, `:1595`).
+      // Der Sichtname ist EINGABE des Menschen und bleibt deshalb in jeder Sprache derselbe; über
+      // ihn findet `sichtAnwenden` den Eintrag, nicht über eine übersetzte Beschriftung.
+      sichtSpeichern("Ganzer Bestand");
+      expect(leersatz(), `${s}: das blosse Merken ändert die Lage nicht`).toBe(AUSWAHLSATZ(s));
+      sichtAnwenden("Ganzer Bestand");
+      // `applyView` → `keimVerbrauchen()` (`:717`, `:649-655`): der Befund ist weg, also ist nichts
+      // mehr eingegrenzt — und über den leeren Bestand ist „Noch keine Einträge." wieder wahr.
+      expect(
+        leersatz(),
+        `${s}: nach der gemerkten Sicht behauptet die Fläche weiter eine Eingrenzung`,
+      ).toBe(BESTANDSSATZ(s));
+      expect(
+        ruecksetzEintrag(s),
+        `${s}: nichts ist mehr eingegrenzt — ein Rücksetzweg zeigte auf nichts`,
+      ).toBeUndefined();
     });
-    // `onResetFilters` (`:691-698`) geht über DENSELBEN Griff `keimVerbrauchen()` wie die Sicht —
-    // der Kommentar `:651-653` nennt beide Wege, und beide werden hier gefahren.
-    expect(leersatz(), "nach dem Zurücksetzen behauptet die Fläche weiter eine Eingrenzung").toBe(
-      BESTANDSSATZ(),
-    );
-    expect(
-      ruecksetzEintrag(),
-      "nichts ist mehr eingegrenzt — ein Rücksetzweg zeigte auf nichts",
-    ).toBeUndefined();
-  });
+  }
 
-  it("B12 · JOB 3913 (c): eine Sicht, die SELBST eingrenzt, lässt den Satz über die AUSWAHL stehen", async () => {
-    // DIE GEGENRICHTUNG ZU B10/B11, und sie trägt deren Beweislast mit: ohne sie wären beide auch
-    // dann grün, wenn nach JEDER Bedienung der Bestandssatz käme. Hier ist der Befund aus der
-    // Adresse nach dem Anwenden ebenfalls gelöscht — aber die Sicht bringt ihre EIGENE Eingrenzung
-    // mit (ein Suchwort), und die trägt den Satz über die Auswahl weiter.
-    lage.bestand = abfrage([]);
-    lage.suche = abfrage([]);
-    mount("/bibliothek?tag=gibtesnicht");
-    suche(container, "ventil");
-    await entprellung();
-    sichtSpeichern("Nur Ventile");
-    // Zurück auf die Ausgangslage: ohne Suchwort steht der Auswahlsatz allein wegen der verworfenen
-    // Eingrenzung da (wie B7c). Das Suchfeld ist leer — die Sicht bringt ihr Wort gleich selbst mit.
-    suche(container, "");
-    await entprellung();
-    expect(element<HTMLInputElement>('[data-testid="bib-suche"]').value).toBe("");
-    expect(leersatz()).toBe(AUSWAHLSATZ());
-    sichtAnwenden("Nur Ventile");
-    await entprellung();
-    expect(
-      element<HTMLInputElement>('[data-testid="bib-suche"]').value,
-      "die Sicht hat ihr Suchwort nicht mitgebracht — dann misst dieser Fall nichts",
-    ).toBe("ventil");
-    expect(leersatz(), "eine eingrenzende Sicht darf den Bestandssatz nicht herbeiführen").toBe(
-      AUSWAHLSATZ(),
-    );
-    expect(ruecksetzEintrag(), "die Sicht grenzt ein — der Weg zurück gehört dazu").toBeTruthy();
-  });
+  for (const s of SPRACHEN) {
+    it(`B11 · ${s} · JOB 3913 (b): „Filter zurücksetzen“ bringt den Satz über den BESTAND zurück`, async () => {
+      await i18n.changeLanguage(s);
+      lage.bestand = abfrage([]);
+      lage.suche = abfrage([]);
+      mount("/bibliothek?tag=gibtesnicht");
+      expect(leersatz(), `${s}: Ausgangslage: die Eingrenzung ist verworfen, gilt aber`).toBe(
+        AUSWAHLSATZ(s),
+      );
+      // Der Weg zurück wird über die Beschriftung SEINER Sprache gesucht und auch dort geklickt —
+      // ein Fall, der nur den Satz vergliche, erfüllte den Wortlaut und nicht den Zweck.
+      const knopf = ruecksetzEintrag(s);
+      expect(knopf, `${s}: bei verworfener Eingrenzung fehlt der Weg zurück`).toBeTruthy();
+      act(() => {
+        knopf?.click();
+      });
+      // `onResetFilters` (`:691-698`) geht über DENSELBEN Griff `keimVerbrauchen()` wie die Sicht —
+      // der Kommentar `:651-653` nennt beide Wege, und beide werden hier gefahren.
+      expect(
+        leersatz(),
+        `${s}: nach dem Zurücksetzen behauptet die Fläche weiter eine Eingrenzung`,
+      ).toBe(BESTANDSSATZ(s));
+      expect(
+        ruecksetzEintrag(s),
+        `${s}: nichts ist mehr eingegrenzt — ein Rücksetzweg zeigte auf nichts`,
+      ).toBeUndefined();
+    });
+  }
+
+  for (const s of SPRACHEN) {
+    it(`B12 · ${s} · JOB 3913 (c): eine Sicht, die SELBST eingrenzt, lässt den Satz über die AUSWAHL stehen`, async () => {
+      // DIE GEGENRICHTUNG ZU B10/B11, und sie trägt deren Beweislast mit: ohne sie wären beide auch
+      // dann grün, wenn nach JEDER Bedienung der Bestandssatz käme. Hier ist der Befund aus der
+      // Adresse nach dem Anwenden ebenfalls gelöscht — aber die Sicht bringt ihre EIGENE Eingrenzung
+      // mit (ein Suchwort), und die trägt den Satz über die Auswahl weiter. In jeder Sprache: sonst
+      // bliebe offen, ob die fremdsprachige Fläche nach JEDER Bedienung den Bestandssatz zeigt.
+      await i18n.changeLanguage(s);
+      lage.bestand = abfrage([]);
+      lage.suche = abfrage([]);
+      mount("/bibliothek?tag=gibtesnicht");
+      suche(container, "ventil");
+      await entprellung();
+      sichtSpeichern("Nur Ventile");
+      // Zurück auf die Ausgangslage: ohne Suchwort steht der Auswahlsatz allein wegen der verworfenen
+      // Eingrenzung da (wie B7c). Das Suchfeld ist leer — die Sicht bringt ihr Wort gleich selbst mit.
+      suche(container, "");
+      await entprellung();
+      expect(element<HTMLInputElement>('[data-testid="bib-suche"]').value).toBe("");
+      expect(leersatz(), `${s}: ohne Suchwort trägt die verworfene Eingrenzung den Satz`).toBe(
+        AUSWAHLSATZ(s),
+      );
+      sichtAnwenden("Nur Ventile");
+      await entprellung();
+      expect(
+        element<HTMLInputElement>('[data-testid="bib-suche"]').value,
+        `${s}: die Sicht hat ihr Suchwort nicht mitgebracht — dann misst dieser Fall nichts`,
+      ).toBe("ventil");
+      expect(
+        leersatz(),
+        `${s}: eine eingrenzende Sicht darf den Bestandssatz nicht herbeiführen`,
+      ).toBe(AUSWAHLSATZ(s));
+      expect(
+        ruecksetzEintrag(s),
+        `${s}: die Sicht grenzt ein — der Weg zurück gehört dazu`,
+      ).toBeTruthy();
+    });
+  }
 
   it("KALIBRIERUNG · mit sichtbaren Treffern steht überhaupt kein Leersatz da", () => {
     // Ohne diesen Fall wären alle oberen grün, wenn IMMER ein Satz dastünde.
