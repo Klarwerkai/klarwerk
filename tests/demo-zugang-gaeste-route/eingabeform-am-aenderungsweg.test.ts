@@ -288,6 +288,102 @@ describe("JOB 3780 · der Änderungsweg prüft die Form von role, approve und pa
   });
 
   // ==============================================================================================
+  // F7 · DIE DRITTE WACHE — die einzige, die bis hierher niemand an ihrer STELLUNG festhielt
+  // ==============================================================================================
+  //
+  // DIE WACHENKARTE, am Stand `205d343` selbst aufgeschlagen (`services/auth/src/routes.ts`).
+  // Vier Prüfungen stehen vor dem ersten Schreibaufruf (`approveUser` :822, `changeRole` :825,
+  // `resetPassword` :831, `setAccessExpiry` :837); die Antwort fällt :843-847:
+  //
+  //   Wache 1 · :789     `role` kein bekannter Name  → 400 UNKNOWN_ROLE   — gehalten von F6
+  //   Wache 2 · :799     `password` kein String      → 400 WEAK_PASSWORD  — gehalten von F6b
+  //   Wache 3 · :810-812 `approve` kein Boolean      → 403 INTERNAL       — gehalten von F7 (hier)
+  //   Wache 4 · :813-819 `accessExpiresAt` fremd     → 403 INTERNAL       — gehalten von R9b
+  //                                                    (`befristung-ueber-die-schnittstelle.test.ts`)
+  //
+  // WARUM F5 DIE LÜCKE NICHT SCHLIESST, und das ist der ganze Grund für diesen Abschnitt: F5 (:210)
+  // schickt AUSSCHLIESSLICH `{ approve: <fremder Wert> }`. Keiner der fünf Werte ist `true`, also
+  // trifft `approve === true` (:821) nicht, und `role`, `password`, `accessExpiresAt` sind
+  // `undefined` — es gibt überhaupt nichts zu schreiben. Verschöbe jemand Wache 3 hinter :842,
+  // bliebe F5 zeichengleich grün: 403, `FORBIDDEN`, „Unerwarteter Fehler.", `approved:false`, kein
+  // Vermerk. F6 und F6b brechen vorher an Wache 1 bzw. 2 ab und sehen Wache 3 nie. Erst ein Rumpf,
+  // in dem AUSSER `approve` alles GÜLTIG ist, macht die Stellung messbar — eine Eingabe, die ein
+  // Häkchen nie erzeugt, ein Formular mit String-Werten sehr wohl.
+  //
+  // DIE KALIBRIERUNG STEHT SCHON DA UND WIRD NICHT ABGESCHRIEBEN: K7 (:399 vor diesem Abschnitt,
+  // weiter unten) schickt DIESELBEN vier Felder an DASSELBE Konto, nur mit `approve: true` → 200
+  // und alle vier Vermerke auf 1. Ohne K7 wäre F7 auch von einer Route erfüllt, die jede Freigabe
+  // abweist; F7 allein bewacht die Route also nicht, das Paar tut es.
+  //
+  // Bestellt hat den Fall BEN im GRÜN-Urteil zu JOB 3780 (Prüflücken): „F5 prüft ungültiges
+  // `approve` isoliert … ungültiges `approve` mit gültiger Rolle, Passwort und Befristung
+  // kombinieren und vollständigen Konto-/Auditgleichstand prüfen."
+
+  for (const { name, wert } of FREMDE_FREIGABEN) {
+    it(`F7 — Freigabe als ${name} neben gültiger Rolle, Passwort und Befristung: nichts geschrieben`, async () => {
+      const { k, app } = await baueDraht();
+      await adminUndGast(k);
+      const neuling = await nochNichtFrei(k);
+      const sitzung = await token(app, "admin@x.de");
+
+      const antwort = await verwalte(app, sitzung, neuling.id, {
+        approve: wert,
+        role: "controller",
+        password: "achtzeichen",
+        accessExpiresAt: new Date(k.jetzt() + STUNDE).toISOString(),
+      });
+
+      expect(antwort.statusCode, antwort.body).toBe(403);
+      expect(antwort.json().error).toBe("FORBIDDEN");
+      // Derselbe schwächere Satz wie in F5 und R7, aus demselben Grund: ein eigener Schlüssel
+      // „Freigabe muss ja oder nein sein." wäre eine Änderung an `meldungen.ts` (JOB 3756). Offener
+      // Punkt, kein Zielzustand.
+      expect(antwort.json().message).toBe(MELDUNGEN.INTERNAL.de);
+      // Der Stand kommt aus der NUTZERLISTE und nicht aus der Antwort von eben (wie F1, `draht.ts:79`).
+      const gelistet = await ausDerListe(app, sitzung, neuling.id);
+      expect(
+        gelistet?.approved,
+        "das Konto wurde freigegeben, obwohl die Freigabe abgewiesen wurde",
+      ).toBe(false);
+      expect(gelistet?.role, "die Rolle wurde trotz abgewiesener Freigabe geändert").toBe(
+        "experte",
+      );
+      expect(gelistet?.accessExpiresAt).toBeUndefined();
+      expect(await vermerke(k, neuling.id)).toEqual({
+        "user.role-change": 0,
+        "user.approve": 0,
+        "user.password-reset": 0,
+        "user.access-expiry-set": 0,
+      });
+    });
+  }
+
+  it("F7b — der Verhaltensbeleg: der Gast meldet sich weiterhin mit seinem alten Passwort an", async () => {
+    // Nicht Zähler, sondern Wirkung (Muster von F4 und K4). Ohne diesen Fall wäre „nichts
+    // geschrieben" eine Aussage über ein Prüfprotokoll; mit ihm ist es eine Aussage über einen
+    // Menschen, der hereinkommt. Stünde Wache 3 hinter den Schreibaufrufen, wäre das Passwort des
+    // Gastes auf „achtzeichen" zurückgesetzt — der Admin läse „Unerwarteter Fehler." und hielte das
+    // Konto für unberührt, während der Gast ausgesperrt wäre.
+    const { k, app } = await baueDraht();
+    const { gast } = await adminUndGast(k);
+    const sitzung = await token(app, "admin@x.de");
+    expect((await anmelden(app, "gast@x.de")).statusCode, "der Gast kam von Anfang an nicht").toBe(
+      200,
+    );
+
+    const antwort = await verwalte(app, sitzung, gast.id, {
+      approve: "true",
+      role: "controller",
+      password: "achtzeichen",
+      accessExpiresAt: new Date(k.jetzt() + STUNDE).toISOString(),
+    });
+
+    expect(antwort.statusCode, antwort.body).toBe(403);
+    expect((await anmelden(app, "gast@x.de")).statusCode).toBe(200);
+    expect((await ausDerListe(app, sitzung, gast.id))?.role).toBe("experte");
+  });
+
+  // ==============================================================================================
   // K1–K7 · DIE GEGENRICHTUNG — eine Route, die ALLES abweist, ist hier NICHT grün
   // ==============================================================================================
 
