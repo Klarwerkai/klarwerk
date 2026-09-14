@@ -31,7 +31,8 @@
 // DIE DREI LAGEN, jede einzeln festgenagelt (`aenderungsangabe-an-der-karte.test.tsx`, Abschnitt U):
 //   nie aufgebaut / schon abgebaut → folgenlos, der `body` bleibt unangetastet      (U1, U2)
 //   aufgebaut                      → vollständig geräumt, samt `qc.clear()`         (jeder Fall)
-//   Abbau scheitert wirklich       → Wurf mit Grund, nichts verschluckt             (U3)
+//   Abbau scheitert wirklich       → Wurf mit Grund, nichts verschluckt — und zwar an
+//                                    JEDEM der drei Handgriffe einzeln (JOB 3883)   (U3, U4, U5)
 // Eine vierte Lage gibt es nicht. `try { … } catch {}` um den Rumpf ist ausdrücklich NICHT der Weg:
 // es machte jeden künftigen Abbaufehler unsichtbar und diesen Ordner, der gegen Falschaussagen
 // antritt, in seiner eigenen Vorrichtung unehrlich.
@@ -42,7 +43,14 @@
 // hinter dem Rendern, bliebe genau dann ein Behälter im `body` liegen und der nächste Fall erbte ihn.
 //
 // SEINE EINE GRENZE: `montiert` ist Modulzustand und gilt deshalb je Testdatei — ein Fall, der die
-// Fläche in einem `beforeAll` aufbaute, wäre davon nicht gedeckt (im Ordner gibt es heute keinen).
+// Fläche in einem `beforeAll` aufbaute, wäre davon nicht gedeckt. JOB 3883 hat diese Lage hergestellt
+// und GEMESSEN, statt sie weiter zu behaupten (U6 in `aenderungsangabe-an-der-karte.test.tsx`): der
+// gemeinsame `afterEach` eines solchen Ordners räumt die im `beforeAll` aufgebaute Fläche nach dem
+// ERSTEN Fall ab und setzt `montiert` auf `false`; jeder weitere Fall läuft danach gegen einen leeren
+// `body`, und sein `abbauen()` kehrt STILL zurück (`:156-158`) — die Vorrichtung sagt kein Wort dazu.
+// Ein Ordner, der so aufbaut, misst ab dem zweiten Fall an einer Fläche, die nicht mehr da ist.
+// Im Ordner baut heute kein Fall so auf (ausser U6 selbst, der genau das festnagelt); ob `abbauen()`
+// diese Lage künftig selbst melden soll, ist gemeldet und nicht gebaut (JOB 3883 §10).
 import {
   QueryClient,
   QueryClientProvider,
@@ -164,9 +172,22 @@ export function abbauen(): void {
   // Er steht hinter dem Abbau des Baums: solange React noch abräumt, laufen die `useQuery`-Abrufe
   // dieses Clients — erst danach ist sein Zwischenspeicher folgenlos zu leeren.
   qc.clear();
-  // Erst NACH dem gelungenen Abbau. Wirft eine der drei Zeilen darüber, bleibt der Zustand auf
-  // „montiert" stehen — der `afterEach` räumt dann wirklich noch einmal auf, statt eine halb
-  // abgebaute Fläche in den nächsten Fall zu tragen.
+  // Erst NACH dem gelungenen Abbau. Wirft eine der DREI Zeilen darüber, bleibt der Zustand auf
+  // „montiert" stehen — und JOB 3883 hat für jede der drei einen Fall, der sie einzeln wirft und
+  // MISST, was der `afterEach` danach wirklich vorfindet. Die Zusage trägt für zwei der drei Zeilen,
+  // und für die dritte steht hier das Gemessene und nicht mehr die Zusage:
+  //
+  //   Zeile              wirft in       Behälter danach   zweiter Aufruf (`afterEach`)        Fall
+  //   `root.unmount()`   der Baumphase  hängt im Dokument räumt wirklich ab                   U3
+  //   `container.remove()` Behälterphase hängt im Dokument räumt wirklich ab                  U4
+  //   `qc.clear()`       Speicherphase  ist schon FORT    WIRFT, mit falsch benannter Ursache U5
+  //
+  // Für `qc.clear()` gilt der zweite Halbsatz also NICHT: der Behälter ist hier bereits entfernt,
+  // `container.isConnected` ist falsch, und der zweite Aufruf läuft in die Meldung `:163-167` — die
+  // zwei Ursachen nennt, von denen KEINE zutrifft („zweimal auf dieselbe Fläche" / „an flaeche.tsx
+  // vorbei entfernt"), obwohl in Wahrheit flaeche.tsx selbst entfernt und danach gestolpert ist.
+  // U5 nagelt diesen Befund samt Meldungstext fest. Repariert wird er hier bewusst NICHT (JOB 3883
+  // §10: eine Verhaltensänderung an `abbauen()` braucht ihre eigene Zeile) — er ist gemeldet.
   montiert = false;
 }
 
