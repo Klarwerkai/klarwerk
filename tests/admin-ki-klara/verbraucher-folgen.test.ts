@@ -62,6 +62,30 @@
 // Prüfung vergleicht denselben Übergang zusätzlich am Empfänger. Die Begründung samt Messung steht
 // im Fall selbst.
 //
+// ------------------------------------------------------------------------------------------------
+// NACHGEFÜHRT DURCH JOB 3942 — DIE POLICYVERSION WIRD ZUM ERSTEN MAL ALLEIN GEMESSEN
+// ------------------------------------------------------------------------------------------------
+//
+// BENs Urteil zu JOB 3823 liess einen Nachweis offen (Prüfpunkt 6): „ausschliesslich die
+// Policyversion abweichen lassen und die übrigen Bindungen konstant halten". Er ist jetzt geführt —
+// und er sieht anders aus, als der Auftrag erwartet hat, weil die Messung etwas anderes ergab:
+//
+//   · AM VERBRAUCHER bleibt die Bindung `policyVersion` (`klara-session-service.ts:323`)
+//     UNERREICHBAR, und nicht bloss überdeckt: `laden` entwertet die Zustimmung schon beim
+//     `versionsbruch` (`:1101-1116`), bevor die Bindungsliste läuft. V10 liest das am
+//     Deckungsbefund des Tores ab (`nicht_erteilt`, LEERE Abweichungsliste) — gemessen, nicht
+//     geschlossen. (NACHGELESEN und nicht eigens gemessen: `aufloesen` bindet die Sitzung bei
+//     jedem Versionswechsel auf eine neue `resolutionId`, `:459-473`, womit ohnehin schon die
+//     erste Bindung abwiche.)
+//   · GETRENNT BEOBACHTBAR ist die Zeile deshalb nur an der Prüfung selbst. V9 befragt
+//     `pruefeConsentDeckung` unmittelbar, mit ECHTEN Bestandswerten aus diesem Aufbau und genau
+//     einer verstellten Bindung, und verlangt die Abweichungsliste `["policyVersion"]`.
+//
+// V10 misst denselben Wechsel dort, wo ein Mensch ihn merkt: nur die HERKUNFT der Policy wechselt
+// (`db` → `env`, beide Kennungen enden auf `:frei`), die Zustimmung verfällt, beide Wege schliessen
+// — und nach erneuter Zustimmung öffnen BEIDE wieder. Denselben Rückweg hat BEN auch für V7
+// bestellt; dort fehlte bis jetzt der Word-Weg.
+//
 // DIE BEOBACHTUNGSKANTE der drei neuen Fälle ist `getSession(sessionId, bindung)` — die
 // `KlaraSessionView` mit `policyVersion`, `configurationVersion` und `consentState`. Sie ist die
 // öffentliche Auskunft des Dienstes über die Sitzung; „die Zustimmung trägt nicht mehr" wird dort
@@ -77,8 +101,10 @@
 // DIE FÄLLE IM ÜBERBLICK. V1 ohne Freigabe · V2 mit Freigabe und Zustimmung · V3 mit Freigabe ohne
 // Zustimmung · V4 Widerruf, Wirkung · V5 Feld auf `undefined` · V6 Feld FEHLT ganz, beide Wege zu
 // und die Sitzung trägt `…:gesperrt`, ununterscheidbar vom ausdrücklichen NEIN · V7 Widerruf
-// ENTWERTET die Zustimmung, gemessen am Sitzungszustand, mit Rückweg · V8 die nachgetragene Zeile
-// heilt die alte Zustimmung nicht. S1–S4 binden die Bauform.
+// ENTWERTET die Zustimmung, gemessen am Sitzungszustand, mit Rückweg über BEIDE Verbraucher · V8
+// die nachgetragene Zeile heilt die alte Zustimmung nicht · V9 die Bindung `policyVersion` allein,
+// an der Deckungsprüfung selbst · V10 der Herkunftswechsel an beiden Verbrauchern, mit Rückweg.
+// S1–S4 binden die Bauform.
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -86,8 +112,13 @@ import { ka4Freigabe } from "../../services/app/src/routes/ask-routes";
 import {
   type KlaraPolicyQuelle,
   KlaraSessionService,
+  pruefeConsentDeckung,
 } from "../../services/app/src/services/klara-session-service";
-import { InMemoryKlaraSessionRepo } from "../../services/reasoner";
+import {
+  InMemoryKlaraSessionRepo,
+  type ReasonerPolicySource,
+  klaraPolicyVersion,
+} from "../../services/reasoner";
 
 const JETZT = Date.parse("2026-09-10T09:00:00.000Z");
 
@@ -112,8 +143,29 @@ interface Aufbau {
    * darin unterscheidet sich eine vergessene Wurzel von einem ausdrücklichen `undefined`.
    */
   quelle: KlaraPolicyQuelle;
+  /**
+   * JOB 3942 · die Ablage dieses Aufbaus — für den EINEN Fall, der die Deckungsprüfung direkt
+   * befragt (V9).
+   *
+   * `KlaraConsent` und `KlaraSession` sind Bestandszeilen; keine öffentliche Methode des Dienstes
+   * gibt sie heraus (`KlaraSessionView` ist bewusst die Sicht OHNE sie). Wer die Deckungsprüfung
+   * mit ECHTEN Werten befragen will statt mit nachgebauten, muss sie deshalb aus der Ablage lesen.
+   * Genau das ist der Unterschied zwischen einer isolierten Messung und einer erfundenen Lage.
+   */
+  repo: InMemoryKlaraSessionRepo;
   /** Die zentrale Freigabe zur Laufzeit umlegen — wie ein Administrator es täte. */
   setzeFreigabe: (f: boolean | undefined) => void;
+  /**
+   * JOB 3942 · die HERKUNFT der aktiven Policy zur Laufzeit umlegen (`env` | `db` | `default`).
+   *
+   * Sie ist der einzige Hebel dieser Bühne, der GENAU EINE der zehn Bindungen der Deckungsprüfung
+   * bewegt: `source` geht ausschliesslich in `klaraPolicyVersion` ein (`klara-policy.ts:566`, im
+   * Kopf der Funktion benannt als „Ändert sich die Admin-Wahl oder die Herkunft der Policy, ändert
+   * sich `policyVersion`", `:558`), wird in `resolveKlaraPolicy` an keiner anderen Stelle gelesen
+   * (`:541`) und kommt im `Pick` von `klaraConfigurationVersion` nicht vor (`:597-606`). Dass die
+   * übrigen Werte dabei wirklich stehen bleiben, wird in V10 gemessen und nicht daraus geschlossen.
+   */
+  setzeHerkunft: (h: ReasonerPolicySource) => void;
   /** Was `ka4Freigabe` protokolliert hat — Entscheidung und Grund, sonst nichts. */
   protokoll: Array<{ entscheidung: string; grund?: string }>;
 }
@@ -140,8 +192,9 @@ function grundlage(): Omit<KlaraPolicyQuelle, "zentralFreigegeben"> {
 }
 
 async function ausQuelle(quelle: KlaraPolicyQuelle): Promise<Aufbau> {
+  const repo = new InMemoryKlaraSessionRepo();
   const dienst = new KlaraSessionService({
-    repo: new InMemoryKlaraSessionRepo(),
+    repo,
     policy: () => quelle,
     now: () => JETZT,
   });
@@ -153,6 +206,7 @@ async function ausQuelle(quelle: KlaraPolicyQuelle): Promise<Aufbau> {
   return {
     dienst,
     quelle,
+    repo,
     sitzung: sicht.sessionId,
     bindung: {
       actorId: AKTEUR,
@@ -166,6 +220,9 @@ async function ausQuelle(quelle: KlaraPolicyQuelle): Promise<Aufbau> {
     },
     setzeFreigabe: (f) => {
       quelle.zentralFreigegeben = f;
+    },
+    setzeHerkunft: (h) => {
+      quelle.source = h;
     },
     protokoll,
   };
@@ -373,9 +430,16 @@ describe("JOB 3502 · V — beide Verbraucher folgen der einen zentralen Freigab
     // (`klara-session-service.ts`: die Hälfte in `laden` UND die Bindung `policyVersion` in
     // `pruefeConsentDeckung`), bleibt diese Zeile grün — gemessen, alle 25 Fälle der Gruppe grün.
     // Der Grund steht in derselben Prüfung: sie vergleicht auch den EMPFÄNGER (Bindung `provider`),
-    // und der wechselt bei gesperrter Auflösung ohnehin auf den deterministischen Ersatzwert. Am
-    // Verbraucher ist die Policyversions-Hälfte der Deckungsprüfung damit nicht getrennt
-    // beobachtbar; wer sie einzeln pinnen will, muss das an der Prüfung selbst tun, nicht hier.
+    // und der wechselt bei gesperrter Auflösung ohnehin auf den deterministischen Ersatzwert.
+    //
+    // BERICHTIGT DURCH JOB 3942 — hier stand bis dahin: „Am Verbraucher ist die
+    // Policyversions-Hälfte der Deckungsprüfung damit nicht getrennt beobachtbar; wer sie einzeln
+    // pinnen will, muss das an der Prüfung selbst tun, nicht hier." Der erste Halbsatz gilt
+    // weiterhin und ist in V10 nachgemessen (dort steht, WAS am Verbraucher die Entwertung
+    // wirklich trägt: der Versionsbruch in `laden`, nicht die Bindungsliste). Der zweite Halbsatz
+    // ist eingelöst, und zwar in DIESER Datei: V9 befragt `pruefeConsentDeckung` unmittelbar, mit
+    // echten Bestandswerten und genau einer verstellten Bindung. Seither ist die Zeile
+    // `klara-session-service.ts:323` einzeln gepinnt — sie zu entfernen rötet V9 und sonst nichts.
     //
     // WAS DIESER FALL DAGEGEN WIRKLICH BINDET, sind die drei Zeilen darunter: dass die SITZUNG
     // ihre Grundlage als gewechselt ausweist und die Kennung das Freigabesegment führt. Sie werden
@@ -402,6 +466,13 @@ describe("JOB 3502 · V — beide Verbraucher folgen der einen zentralen Freigab
     a.setzeFreigabe(true);
     await a.dienst.grantConsent(a.sitzung, a.bindung);
     expect(await klaraWeg(a)).toEqual({ erlaubt: true, grund: null });
+    // ERGÄNZT DURCH JOB 3942 (BEN zu 3823, Prüfpunkt 6, wörtlich: „Zusätzlich den erfolgreichen
+    // Word-Rückweg nach erneuter Zustimmung ergänzen"). Bis hierher endete die Gegenrichtung am
+    // Klara-Weg — für den ZWEITEN Verbraucher blieb offen, ob er nach der erneuten Zustimmung
+    // wirklich wieder hinausgeht. Er wird jetzt GEZÄHLT, in derselben Bauform wie `:356` und
+    // `:394`: eine Erfolgsmeldung im Protokoll, nicht ein ausbleibender Misserfolg.
+    expect(await wordWeg(a)).toBe(true);
+    expect(a.protokoll[2]).toEqual({ entscheidung: "freigegeben", grund: undefined });
     expect((await a.dienst.getSession(a.sitzung, a.bindung)).consentState).toBe("granted");
   });
 
@@ -448,6 +519,176 @@ describe("JOB 3502 · V — beide Verbraucher folgen der einen zentralen Freigab
     // auch dann grün, wenn die Reparatur überhaupt nichts mehr freischaltete.
     await a.dienst.grantConsent(a.sitzung, a.bindung);
     expect(await klaraWeg(a)).toEqual({ erlaubt: true, grund: null });
+  });
+
+  it("V9 · die Bindung `policyVersion` ALLEIN — eine einzige abweichende Bindung, und die Deckung fällt", async () => {
+    // ============================================================================================
+    // JOB 3942 · DER ISOLIERTE NACHWEIS, den BEN zu JOB 3823 bestellt hat (Prüfpunkt 6, wörtlich:
+    // „ausschliesslich die Policyversion abweichen lassen und die übrigen Bindungen konstant
+    // halten"; Promptverbesserung: „Unterscheide Zustandsentwertung, Versionswechsel und isolierte
+    // Kausalität eines Vergleichs").
+    // ============================================================================================
+    //
+    // WARUM DIESER EINE FALL DIE PRÜFUNG DIREKT BEFRAGT und nicht über die beiden Verbraucher
+    // läuft: über einen Verbraucher ist die Zeile `klara-session-service.ts:323` GAR NICHT
+    // erreichbar, wenn sich die Policyversion ändert. Vor der Bindungsliste liegen zwei Stellen,
+    // die denselben Wechsel schon abfangen:
+    //   1. `laden` (`:1101-1116`) entwertet die Zustimmung bei `versionsbruch`, BEVOR
+    //      `pruefeConsentDeckung` sie je zu sehen bekommt — danach lautet der Deckungsgrund
+    //      `nicht_erteilt` mit LEERER Abweichungsliste. DAS IST GEMESSEN: V10 liest genau diesen
+    //      Befund am Tor ab.
+    //   2. `aufloesen` (`:459-473`) bindet die Sitzung bei jedem Versionswechsel kontrolliert auf
+    //      eine NEUE `resolutionId` — damit wiche ohnehin auch die erste Bindung ab (`:322`). Das
+    //      ist im Produkt NACHGELESEN und hier nicht eigens gemessen; für die Begründung dieses
+    //      Falls trägt schon Punkt 1.
+    // Beides ist richtig so und wird hier nicht angetastet. Es heisst nur: der Vergleich `:323`
+    // ist am Verbraucher überdeckt, und wer ihn einzeln pinnen will, muss die Prüfung selbst
+    // fragen. `pruefeConsentDeckung` ist dafür gebaut — eine exportierte, reine Funktion.
+    //
+    // ES WIRD NICHTS NACHGEBAUT. Zustimmung und Sitzung kommen aus der Ablage dieses Aufbaus, die
+    // Auflösung aus der Sicht des Dienstes; verstellt wird GENAU EIN Feld. Eine handgeschriebene
+    // `KlaraConsent` wäre eine erfundene Lage und könnte an neun Bindungen still vorbeilaufen.
+    const a = await aufbauen(true);
+    await a.dienst.grantConsent(a.sitzung, a.bindung);
+    const sicht = await a.dienst.getSession(a.sitzung, a.bindung);
+    expect(sicht.consentState).toBe("granted");
+
+    const sitzung = await a.repo.findSession(a.sitzung);
+    const zustimmung = await a.repo.findConsent(a.sitzung);
+    if (!sitzung || !zustimmung) {
+      throw new Error("Bestand unvollständig: Sitzung oder Zustimmung fehlt");
+    }
+
+    // DIE KALIBRIERUNG: unverstellt DECKT die Zustimmung. Ohne sie wäre die Zeile darunter auch
+    // dann grün, wenn die Prüfung aus einem ganz anderen Grund nie deckte.
+    expect(pruefeConsentDeckung(zustimmung, sitzung, sicht.resolution, JETZT)).toEqual({
+      gedeckt: true,
+      consentId: zustimmung.consentId,
+    });
+
+    // DIE EINE VERSTELLUNG. Der Sollwert ist nicht erfunden, sondern von derselben Funktion
+    // gebildet, die ihn im Betrieb bildet — nur mit der anderen HERKUNFT (`env` statt `db`). Beide
+    // Kennungen enden auf `:frei`: damit ist ausgeschlossen, dass in Wahrheit wieder das
+    // Freigabesegment wirkt (das ist der Wechsel, den V7 und V8 schon messen).
+    const andereHerkunft = klaraPolicyVersion({
+      ...grundlage(),
+      source: "env",
+      zentralFreigegeben: true,
+    });
+    expect(sicht.policyVersion).toBe("policy:db:cloud:frei");
+    expect(andereHerkunft).toBe("policy:env:cloud:frei");
+
+    // GENAU EINE BINDUNG WEICHT AB — und die Prüfung nennt sie beim Namen. Die Abweichungsliste ist
+    // hier die eigentliche Zusicherung: stünde ein zweiter Name darin, wäre der Nachweis nicht
+    // isoliert. Entfernt man `klara-session-service.ts:323`, meldet diese Zeile `gedeckt: true`.
+    expect(
+      pruefeConsentDeckung(
+        zustimmung,
+        sitzung,
+        { ...sicht.resolution, policyVersion: andereHerkunft },
+        JETZT,
+      ),
+    ).toEqual({
+      gedeckt: false,
+      grund: "bindung_abweichend",
+      abweichungen: ["policyVersion"],
+    });
+  });
+
+  it("V10 · nur die HERKUNFT der Policy wechselt: beide Wege zu — und nach erneuter Zustimmung beide wieder offen", async () => {
+    // ============================================================================================
+    // JOB 3942 · DERSELBE WECHSEL AN DEN BEIDEN VERBRAUCHERN — und die Messung, WAS ihn dort trägt.
+    // ============================================================================================
+    //
+    // Jeder bisherige Fall verstellt die Policyversion über die zentrale Freigabe. Die sperrt
+    // zugleich die Auflösung, wodurch auch der EMPFÄNGER auf den deterministischen Ersatzwert
+    // fällt — es weichen also immer mehrere Grundlagen zugleich ab. Hier wechselt ausschliesslich
+    // die HERKUNFT der aktiven Policy (`db` → `env`), also genau die Achse, die nur in die
+    // Policyversion eingeht. Für den Menschen ist das der Administrator, der die Grundlage seiner
+    // Zustimmung austauscht: sein „Ja" darf das nicht überleben.
+    const a = await aufbauen(true);
+    await a.dienst.grantConsent(a.sitzung, a.bindung);
+    expect(await klaraWeg(a)).toEqual({ erlaubt: true, grund: null });
+    expect(await wordWeg(a)).toBe(true);
+    expect(a.protokoll[0]).toEqual({ entscheidung: "freigegeben", grund: undefined });
+
+    const vorher = await a.dienst.getSession(a.sitzung, a.bindung);
+    expect(vorher.consentState).toBe("granted");
+    expect(vorher.policyVersion).toBe("policy:db:cloud:frei");
+
+    // DIE ISOLATION WIRD GEMESSEN, NICHT BEHAUPTET — und zwar an zwei Sitzungen OHNE Zustimmung.
+    // An der Sitzung von oben ginge es nicht: sobald die Zustimmung fällt, meldet die Sicht die
+    // Auflösung OHNE Zustimmung, und deren `provider`/`model` sind per Bauform die
+    // deterministischen Ersatzwerte („angezeigt wird, was rechnet"). Ein Vorher/Nachher an DIESEN
+    // Feldern würde die Wirkung der Entwertung messen und nicht die Ursache. Zustimmungsfrei sind
+    // beide Sitzungen dagegen in genau demselben Zustand und unterscheiden sich nur in `source`.
+    const db = await aufbauen(true);
+    const env = await ausQuelle({ ...grundlage(), source: "env", zentralFreigegeben: true });
+    const sDb = await db.dienst.getSession(db.sitzung, db.bindung);
+    const sEnv = await env.dienst.getSession(env.sitzung, env.bindung);
+    expect(sDb.policyVersion).toBe("policy:db:cloud:frei");
+    expect(sEnv.policyVersion).toBe("policy:env:cloud:frei");
+    // Alles andere, was die Sicht über die Grundlage führt, bleibt Zeichen für Zeichen gleich.
+    // (`resolutionId`, `sessionId` und die Zeitfelder gehören NICHT dazu: sie sind je Sitzung
+    // eigen und würden sich auch bei völlig gleicher Lage unterscheiden.)
+    expect(sEnv.configurationVersion).toBe(sDb.configurationVersion);
+    expect(sEnv.consentState).toBe(sDb.consentState);
+    expect(sEnv.resolution.provider).toBe(sDb.resolution.provider);
+    expect(sEnv.resolution.model).toBe(sDb.resolution.model);
+    expect(sEnv.resolution.effectiveMode).toBe(sDb.resolution.effectiveMode);
+    expect(sEnv.resolution.adminConfiguredMode).toBe(sDb.resolution.adminConfiguredMode);
+    expect(sEnv.resolution.blockedReason).toBe(sDb.resolution.blockedReason);
+    expect(sEnv.resolution.executionAllowed).toBe(sDb.resolution.executionAllowed);
+    expect(sEnv.resolution.externalConsentProvider).toBe(sDb.resolution.externalConsentProvider);
+    expect(sEnv.resolution.effectivePayloadClasses).toEqual(sDb.resolution.effectivePayloadClasses);
+
+    // DER WECHSEL — sonst nichts. Keine Freigabe wird angefasst, keine Wahl, kein Label.
+    a.setzeHerkunft("env");
+
+    const nachher = await a.dienst.getSession(a.sitzung, a.bindung);
+    expect(nachher.policyVersion).toBe("policy:env:cloud:frei");
+    expect(nachher.configurationVersion).toBe(vorher.configurationVersion);
+    // Die Entwertung, abgelesen und nicht aus einem ausbleibenden Erfolg geschlossen.
+    expect(nachher.consentState).toBe("invalidated");
+
+    expect(await klaraWeg(a)).toEqual({
+      erlaubt: false,
+      grund: "CONSENT_RECONFIRMATION_REQUIRED",
+    });
+    expect(await wordWeg(a)).toBe(false);
+    expect(a.protokoll[1]).toEqual({
+      entscheidung: "blockiert",
+      grund: "CONSENT_RECONFIRMATION_REQUIRED",
+    });
+
+    // WELCHE STELLE DIE ENTWERTUNG WIRKLICH TRÄGT — gemessen am Deckungsbefund, den das Tor selbst
+    // herausgibt (`KlaraAusfuehrungsfreigabe.deckung`). Er lautet `nicht_erteilt` mit LEERER
+    // Abweichungsliste: die Zustimmung war schon entwertet, als die Bindungsliste lief — durch den
+    // `versionsbruch` in `laden` (`klara-session-service.ts:1101-1116`). Die Bindung
+    // `policyVersion` (`:323`) kommt auf diesem Weg also gar nicht zum Zug; ihren isolierten
+    // Nachweis führt V9. Stünde hier `bindung_abweichend`, hätte jemand die vordere Entwertung
+    // entfernt — dann ist die Zusicherung dieses Falls zu prüfen, nicht diese Zeile anzupassen.
+    const freigabe = await a.dienst.pruefeExterneAusfuehrung(a.sitzung, a.bindung);
+    if (freigabe.erlaubt) {
+      throw new Error("das Tor hat nach dem Herkunftswechsel freigegeben");
+    }
+    expect(freigabe.deckung).toEqual({
+      gedeckt: false,
+      grund: "nicht_erteilt",
+      abweichungen: [],
+    });
+
+    // DIE GEGENRICHTUNG MIT BEIDEN VERBRAUCHERN: ohne sie wäre dieser Fall auch an einem
+    // vollständig zugemauerten Produkt grün. Zurück auf die alte Herkunft, erneut zugestimmt —
+    // und die Sitzung trägt wieder Zeichen für Zeichen dieselbe Kennung wie am Anfang.
+    a.setzeHerkunft("db");
+    await a.dienst.grantConsent(a.sitzung, a.bindung);
+    expect(await klaraWeg(a)).toEqual({ erlaubt: true, grund: null });
+    expect(await wordWeg(a)).toBe(true);
+    expect(a.protokoll[2]).toEqual({ entscheidung: "freigegeben", grund: undefined });
+    const zurueck = await a.dienst.getSession(a.sitzung, a.bindung);
+    expect(zurueck.consentState).toBe("granted");
+    expect(zurueck.policyVersion).toBe("policy:db:cloud:frei");
   });
 });
 
