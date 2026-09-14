@@ -24,11 +24,24 @@
 // als ein Wort („nicht", „nie", „niemals", „keineswegs", „keinerlei", „kein(e/m/n/r/s)", dazu „ohne"
 // in derselben Rolle), und sie wirkt nur innerhalb IHRER Teilaussage — ein ehrlicher Satz mit
 // benachbarter Verneinung („Beide bleiben bestehen und werden nicht gelöscht") wird nicht mehr
-// beanstandet. AUSDRÜCKLICH NICHT GEMESSEN: sprachliche Allgemeingültigkeit über die zwölf Sätze in
-// `KALIBRIERUNG` hinaus — der Wächter kennt Wörter und Abstände, keine Grammatik; die EN/NL-Fassungen
-// der FAQ (dieser Wächter liest nur `FAQ_CONTENT`, also DE); und jede Verneinung, die über die
-// Grenze ihrer Teilaussage hinaus wirkt („Es stimmt nicht, dass beide bleiben." bleibt unerkannt —
-// das Komma beendet das Fenster). Wer diese Grenze verschiebt, kalibriert sie dort neu.
+// beanstandet. AUSDRÜCKLICH NICHT GEMESSEN: sprachliche Allgemeingültigkeit über die Sätze in
+// `KALIBRIERUNG` hinaus (zum Stand JOB 3916: zwölf) — der Wächter kennt Wörter und Abstände, keine
+// Grammatik; die EN/NL-Fassungen der FAQ (dieser Wächter liest nur `FAQ_CONTENT`, also DE); und jede
+// Verneinung, die über die Grenze ihrer Teilaussage hinaus wirkt („Es stimmt nicht, dass beide
+// bleiben." bleibt unerkannt — das Komma beendet das Fenster). Wer diese Grenze verschiebt,
+// kalibriert sie dort neu.
+//
+// JOB 3939 — DIE GRENZE DER TEILAUSSAGE TRENNTE ZU VIEL, UND AN EINER STELLE ZU WENIG. BEN hat den
+// kalibrierten Stand nachgemessen (`archiv/3916/runde-1/ben.md:29`) und drei Sätze gefunden, an
+// denen der Wächter falsch urteilte. ZUSÄTZLICH GEMESSEN ist ab jetzt: eine adversative Partikel
+// („aber", „doch", „jedoch") INNERHALB desselben Prädikats beendet die Teilaussage nicht mehr —
+// „beide bleiben aber nicht bestehen" und „beide bleiben doch keineswegs erhalten" werden
+// beanstandet (V8, V9); und „nicht nur …, sondern …" gilt als das, was es ist — eine Steigerung,
+// die X behauptet, keine Verneinung von X (E6 an „beide bleiben", E9 an „festgehaltener Grund").
+// Die Grenzen `und`, `oder`, `sondern` und die Satzzeichen bleiben unverändert Grenze (E1–E3, E7,
+// E8). WEITERHIN NICHT GEMESSEN, wörtlich wie oben: jede Verneinung über die Grenze ihrer
+// Teilaussage hinaus („Es stimmt nicht, dass beide bleiben."), die EN/NL-Fassungen der FAQ, und
+// jede sprachliche Allgemeingültigkeit über die jetzt achtzehn Sätze in `KALIBRIERUNG` hinaus.
 //
 // WAS DIESER WÄCHTER NICHT IST: eine Doppelung der drei vorhandenen `FAQ_CONTENT`-Leser.
 // `tests/app/chain-claims.test.ts` prüft absolute Ketten-Behauptungen, `faq-anzeigeweg.test.tsx`
@@ -133,10 +146,36 @@ function verbotsfunde(text: string): string[] {
 // Bestand, dessen Antwort dieselbe Bauform hat („schreibt keinen um — beide bleiben unverändert
 // bestehen", `faqContent.ts:395`). Kalibriert ist beides in der Tabelle `KALIBRIERUNG` (V1–V7
 // verkehrt, E1–E5 ehrlich), E3 mit genau dieser Bauform des Bestandes.
-const VERNEINUNG = String.raw`\b(?:nicht|niemals|nie|keineswegs|keinerlei|kein(?:e|em|en|er|es)?)\b`;
+//
+// JOB 3939 — DIESELBEN ZWEI BAUSTEINE, AN DER VON BEN GEMESSENEN STELLE GENAUER. Keine dritte
+// Konstante, keine zweite Wortliste: beide Änderungen sitzen dort, wo die alte Regel stand, und
+// wirken dadurch weiter über ALLE VIER Umkehrmuster.
+//
+//   WELCHES WORT EINE NEUE TEILAUSSAGE EINLEITET. `und`, `oder` und `sondern` ordnen zwei Aussagen
+//   mit je eigenem Prädikat nebeneinander — was dahinter verneint wird, gehört zu einer ANDEREN
+//   Behauptung („Beide bleiben bestehen und werden nicht gelöscht", E1). `aber`, `doch` und
+//   `jedoch` können dagegen als Partikel MITTEN im selben Prädikat stehen und verneinen dann genau
+//   das Pflichtwort davor: „beide bleiben aber nicht bestehen" (V8), „beide bleiben doch keineswegs
+//   erhalten" (V9). Die alte Liste behandelte beides gleich und liess damit zwei Löschzusagen
+//   durch. Die drei Partikel sind deshalb KEINE Grenze mehr. Leiten sie doch eine zweite
+//   Teilaussage ein, steht davor ein Komma („…, gelöscht wird aber nie etwas", E7; dasselbe an der
+//   Pflicht „Grund bleibt nachlesbar", E8) — und das Komma bleibt Grenze. Daran, und nur daran,
+//   hängt die Lockerung.
+//
+//   WARUM „NICHT NUR" KEINE VERNEINUNG IST. „nicht nur X" verneint X nicht, es BEHAUPTET X und
+//   steigert darüber hinaus: „Beide bleiben nicht nur sichtbar, sondern unverändert bestehen" (E6)
+//   sagt genau das, was `close` tut — und wurde trotzdem beanstandet, weil „nicht" unmittelbar
+//   hinter dem Pflichtwort stand. `VERNEINUNG` erkennt „nicht" daher nicht mehr, wenn direkt „nur"
+//   folgt. Die Ausnahme sitzt in der EINEN Wortliste; E9 misst sie an einer zweiten Pflicht
+//   („Du schließt den Fund nicht nur mit einem Grund ab, sondern …").
+const VERNEINUNG = String.raw`\b(?:nicht(?!\s+nur\b)|niemals|nie|keineswegs|keinerlei|kein(?:e|em|en|er|es)?)\b`;
 
-/** Ein Zeichen, das noch zur SELBEN Teilaussage gehört — Satzzeichen und „und" beenden sie. */
-const SELBE_AUSSAGE = String.raw`(?:(?!\b(?:und|oder|aber|sondern|doch|jedoch)\b)[^.,;:!?—–])`;
+/**
+ * Ein Zeichen, das noch zur SELBEN Teilaussage gehört. Beendet wird sie von den Satzzeichen und von
+ * den nebenordnenden Konjunktionen `und`/`oder`/`sondern` — NICHT von „aber"/„doch"/„jedoch"
+ * (JOB 3939: Partikel im selben Prädikat, siehe Begründung oben).
+ */
+const SELBE_AUSSAGE = String.raw`(?:(?!\b(?:und|oder|sondern)\b)[^.,;:!?—–])`;
 
 /** Ein Fenster von höchstens `zeichen` Zeichen INNERHALB derselben Teilaussage. */
 const nah = (zeichen: number): string => `${SELBE_AUSSAGE}{0,${zeichen}}`;
@@ -352,8 +391,22 @@ describe("JOB 3844: die Bedeutungsumkehr wird beanstandet — vier Bauformen", (
 
   // LIEFERUNG 5 — die schärfere Prüfung darf den echten Bestand nicht röten, und das wird EINZELN
   // gezeigt: nicht „die Antwort ist grün", sondern „kein einziges neues Muster schlägt an".
+  //
+  // JOB 3939 ZIEHT DIESEN FALL AUF DIE GEÄNDERTEN MUSTER: die vier Umkehrmuster werden aus
+  // `VERNEINUNG` und `SELBE_AUSSAGE` gebaut, also misst die Schleife unten die gelockerte Grenze
+  // und die „nicht nur"-Ausnahme am echten Bestand mit — einzeln, Pflicht für Pflicht. Damit die
+  // Messung nicht leer läuft, steht davor der Nachweis, dass die ausgelieferten Antworten überhaupt
+  // Verneinungen tragen (`faqContent.ts:395`: „nie", dreimal „keinen"). Ohne ihn wäre „kein Muster
+  // schlägt an" auch dann wahr, wenn gar nichts zu treffen da wäre.
   it("der echte Bestand besteht jede neue Prüfung einzeln", () => {
     const neu = U2_SYNONYME.map((s) => s.stamm);
+    const verneinungenImBestand = DUBLETTEN_FAQ.flatMap((item) => [
+      ...item.answer.matchAll(new RegExp(VERNEINUNG, "gi")),
+    ]).length;
+    expect(
+      verneinungenImBestand,
+      "ohne eine einzige Verneinung im Bestand misst dieser Fall nichts",
+    ).toBeGreaterThan(0);
     for (const item of DUBLETTEN_FAQ) {
       const ganz = `${item.question} ${item.answer}`;
       for (const stamm of neu) {
@@ -383,6 +436,10 @@ describe("JOB 3844: die Bedeutungsumkehr wird beanstandet — vier Bauformen", (
 //
 // Jeder Satz steht hier EINZELN mit seinem erwarteten Befund. Alle sind über `umkehrtext` gebaut:
 // allein der ausgetauschte Satz macht den Unterschied, der Rahmen bleibt derselbe.
+//
+// JOB 3939 SETZT DIE TABELLE FORT (V8, V9, E6–E9) — BENs drei nachgemessene Sätze aus
+// `archiv/3916/runde-1/ben.md:29` und die ehrlichen Gegenstücke über getrennte Prädikate. Die
+// Begründung zu beiden Bausteinen steht oben bei `VERNEINUNG`/`SELBE_AUSSAGE`.
 const KALIBRIERUNG: readonly {
   readonly name: string;
   readonly text: string;
@@ -489,9 +546,66 @@ const KALIBRIERUNG: readonly {
   },
   // E5 · der unveränderte Rahmen. Ohne ihn misst die Tabelle womöglich den Rahmen statt den Satz.
   { name: "E5 ehrlich · der unveränderte Rahmen", text: umkehrtext({}), erwartet: [] },
+  // ------------------------------------------------------------------------------------------
+  // JOB 3939 — BENs drei Sätze aus `archiv/3916/runde-1/ben.md:29`, einzeln.
+  // ------------------------------------------------------------------------------------------
+  // V8 · die adversative Partikel steht MITTEN im Prädikat („bleiben aber nicht bestehen").
+  // Vor JOB 3939 brach das Fenster an „aber" ab und erreichte das „nicht" nie — die Lüge passierte.
+  {
+    name: "V8 verkehrt · „beide bleiben aber nicht bestehen“",
+    text: umkehrtext({
+      bestand:
+        "Aus zwei Einträgen wird am Ende einer: beide bleiben aber nicht bestehen, der schwächere Eintrag fällt weg.",
+    }),
+    erwartet: ["beide Einträge bleiben — umgekehrt: „beide bleiben aber nicht“"],
+  },
+  // V9 · derselbe Mechanismus über „doch", dazu eine Verneinung ohne das Wort „nicht".
+  {
+    name: "V9 verkehrt · „beide bleiben doch keineswegs erhalten“",
+    text: umkehrtext({
+      bestand:
+        "Aus zwei Einträgen wird am Ende einer: beide bleiben doch keineswegs erhalten, der schwächere Eintrag fällt weg.",
+    }),
+    erwartet: ["beide Einträge bleiben — umgekehrt: „beide bleiben doch keineswegs“"],
+  },
+  // E6 · die Steigerungsform: „nicht nur X" BEHAUPTET X. Vor JOB 3939 schlug die erste
+  // Musterhälfte auf „beide bleiben nicht" an und beanstandete einen ehrlichen Satz.
+  {
+    name: "E6 ehrlich · „Beide bleiben nicht nur sichtbar, sondern unverändert bestehen.“",
+    text: umkehrtext({
+      bestand: "Beide bleiben nicht nur sichtbar, sondern unverändert bestehen.",
+    }),
+    erwartet: [],
+  },
+  // E7 · die Gegenrichtung zu V8: „aber" steht in der ZWEITEN Teilaussage, die Verneinung gehört
+  // zu deren eigenem Prädikat. Das Komma bleibt Grenze — die Lockerung darf sie nicht mitnehmen.
+  {
+    name: "E7 ehrlich · „Beide bleiben bestehen, gelöscht wird aber nie etwas.“",
+    text: umkehrtext({ bestand: "Beide bleiben bestehen, gelöscht wird aber nie etwas." }),
+    erwartet: [],
+  },
+  // E8 · dasselbe an einer ZWEITEN Pflicht („Grund bleibt nachlesbar"): die gelockerte Grenze wird
+  // nicht nur an „beide bleiben" gemessen.
+  {
+    name: "E8 ehrlich · „… bleibt im Prüfprotokoll stehen, gelöscht wird er aber nie.“",
+    text: umkehrtext({
+      protokoll: "Dieser Grund bleibt im Prüfprotokoll stehen, gelöscht wird er aber nie.",
+    }),
+    erwartet: [],
+  },
+  // E9 · die „nicht nur"-Ausnahme an einer ZWEITEN Pflicht („festgehaltener Grund"). Vor JOB 3939
+  // meldete `(?:ohne|VERNEINUNG){nah(20)}grund` hier „nicht nur mit einem Grund“.
+  {
+    name: "E9 ehrlich · „Du schließt den Fund nicht nur mit einem Grund ab, sondern …“",
+    text: umkehrtext({
+      abschluss:
+        "Du schließt den Fund nicht nur mit einem Grund ab, sondern wählst dabei zwischen bewusst getrennt gelassen, als verwandt vermerkt und Fehlalarm.",
+    }),
+    erwartet: [],
+  },
 ];
 
-describe("JOB 3916: der Umkehrwächter ist in beide Richtungen kalibriert", () => {
+describe("JOB 3916/3939: der Umkehrwächter ist in beide Richtungen kalibriert", () => {
   for (const fall of KALIBRIERUNG) {
     it(fall.name, () => {
       // Keiner dieser Sätze trägt einen Verbotsstamm: sie messen allein die Umkehrerkennung.
