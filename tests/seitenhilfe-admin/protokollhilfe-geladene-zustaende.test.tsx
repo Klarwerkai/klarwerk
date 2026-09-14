@@ -599,6 +599,37 @@ describe("JOB 3670 R2 · G4 · die Kontohilfe steht auch im geladenen Zweig", ()
 // BENs Prüflücke 6 zu JOB 3670 R2, im Dateikopf im Wortlaut. Die Fälle unten stellen die zwei
 // Stände her, die `AdminSicherheitDetails.tsx:152` aus der Query-Lage ableitet — mit sichtbarem
 // Bestand, was sie von G2 trennt.
+//
+// JOB 3917 — WAS DIE SECHS SPRACHFÄLLE SEIT HEUTE MESSEN, UND WAS SIE AUSDRÜCKLICH NICHT MESSEN.
+//
+// DIE BESTELLUNG (Prüfer BEN, GRÜN-Urteil zu JOB 3853, `archiv/3853/runde-1/ben.md:29`, Prüfpunkt 6):
+// „Die Sprachfälle bleiben bei falschem `accountGone` grün, wie ausdrücklich offengelegt. Ergänzung:
+// auch dort den erwarteten schwachen Hinweis und dessen Nichtleere prüfen." Und `:37`: „In jedem
+// Sprachfall zusätzlich den erwarteten schwachen Hinweis prüfen und anschließend denselben
+// abgelesenen Text in der geöffneten Seitenhilfe nachweisen."
+//
+// DIE LÜCKE, DIE ER GEMESSEN HAT: die Sprachfälle verglichen den abgelesenen Hinweis mit NICHTS. Sie
+// suchten ihn nur im Hilfetext — und der erklärt alle vier Zustände (Dateikopf `:22-25`). Behauptete
+// die Karte in diesen zwei Lagen fälschlich „Konto nicht mehr vorhanden", fand der Fall auch DAS im
+// Hilfetext und blieb grün. Gezählt: `AdminSicherheitDetails.tsx:152` auf `"frisch"` genagelt ergab
+// `Tests 3 failed | 42 passed (45)` — rot wurden die zwei Hauptfälle und der Offline-Fall, die sechs
+// Sprachfälle nicht (BENs V3, `ben.md:12`; am heutigen Stand nachgemessen).
+//
+// GEMESSEN WIRD SEITHER, je Lage und Sprache EINZELN:
+//   · der Hinweis IST der erwartete schwache Hinweis SEINER Sprache (`lage.erwartetKey` aus
+//     `sprachressource(sprache, …)`, nicht aus `i18n.t` — Begründung an der Stelle selbst),
+//   · er ist NICHT die Löschbehauptung `audit.detail.accountGone` derselben Sprache,
+//   · er ist nicht leer, und der Text, in dem gesucht wird, ist es auch nicht (ein `toContain("")`
+//     wäre immer wahr — LEHREN JOB 3891 R1),
+//   · und er steht in der TATSÄCHLICH GEÖFFNETEN Seitenhilfe, nicht nur in der Sprachressource
+//     (LEHREN JOB 3889 R1/R2). Beides bleibt nebeneinander stehen: die Ressource belegt die QUELLE,
+//     der DOM-Nachweis die ANZEIGE.
+//
+// AUSDRÜCKLICH NICHT GEMESSEN: ein echter Browser und reale Bildschirmbreiten (diese Datei ist
+// jsdom, `:1`), die HTTP- und Persistenzkette (der Endpunkt-Mock antwortet, kein Server läuft) und
+// ein separat pausierter Abruf ohne `onlineManager` — den hat schon JOB 3853 offengelassen
+// (`archiv/3853/runde-1/ben.md:29`), er führt auf denselben Zweig `zeilenWert.ts:64` wie der
+// Offline-Fall unten. Der Offline-Fall selbst bleibt einsprachig; die Sprachfälle decken ihn nicht.
 
 /** Der Name, den die Akteurzeile aus dem BESTAND trägt — der Beweis, dass ein Bestand da ist. */
 const BESTANDSNAME = "Pia Admin";
@@ -691,6 +722,40 @@ describe("JOB 3853 · G5 · Bestand sichtbar, Auffrischung unterwegs oder kaputt
           gestrafft(zeile(1, "audit.detail.actor")?.textContent),
           `${lage.key}/${sprache}: ohne sichtbaren Bestand ist der abgelesene Hinweis der von G2`,
         ).toContain(BESTANDSNAME);
+
+        // JOB 3917 · DER SOLLWERT KOMMT AUS DERSELBEN SPRACHE WIE DIE OBERFLÄCHE.
+        //
+        // Warum `sprachressource(sprache, …)` und nicht `i18n.t(…)`: `t` fällt bei einem fehlenden
+        // Schlüssel auf „de" zurück. Fehlte die englische Übersetzung, stünde deutscher Text auf der
+        // Karte UND im Sollwert — der Vergleich wäre still grün und hätte die Lücke zugedeckt. Die
+        // Ressource DIESER Sprache kennt keinen Rückfall: fehlt sie, ist sie leer, und die
+        // Nichtleere darunter schlägt an.
+        const sollwert = sprachressource(sprache, lage.erwartetKey);
+        const loeschbehauptung = sprachressource(sprache, "audit.detail.accountGone");
+        expect(
+          sollwert.length,
+          `${lage.key}/${sprache}: der erwartete schwache Hinweis (${lage.erwartetKey}) fehlt in der Ressource dieser Sprache — ohne Sollwert misst dieser Fall nichts`,
+        ).toBeGreaterThan(0);
+        expect(
+          loeschbehauptung.length,
+          `${lage.key}/${sprache}: die Löschbehauptung (audit.detail.accountGone) fehlt in der Ressource dieser Sprache — der Vergleich darunter wäre wertlos`,
+        ).toBeGreaterThan(0);
+        // Ein leerer Hinweis darf keinen Fall retten: `toContain("")` ist immer wahr, der Fall wäre
+        // grün, ohne irgendetwas gemessen zu haben (LEHREN JOB 3891 R1). Der vierte Zustand liefert
+        // wirklich einen leeren Hinweis — G3 misst ihn (`:540-544`).
+        expect(
+          hinweis.length,
+          `${lage.key}/${sprache}: neben der Kennung steht gar kein Hinweis — jede Suche nach ihm wäre leer und damit immer erfüllt`,
+        ).toBeGreaterThan(0);
+        expect(
+          hinweis,
+          `${lage.key}/${sprache}: die Karte zeigt „${hinweis}" statt des erwarteten schwachen Hinweises „${sollwert}"`,
+        ).toBe(sollwert);
+        expect(
+          hinweis,
+          `${lage.key}/${sprache}: die Karte behauptet eine Kontolöschung („${loeschbehauptung}"), obwohl ${lage.warum}`,
+        ).not.toBe(loeschbehauptung);
+
         const hilfe = sprachressource(sprache, "seitenhilfe.admin.protokoll.text");
         expect(
           hilfe.length,
@@ -699,6 +764,21 @@ describe("JOB 3853 · G5 · Bestand sichtbar, Auffrischung unterwegs oder kaputt
         expect(
           hilfe,
           `${lage.key}/${sprache}: die Karte zeigt „${hinweis}", die Hilfe erklärt diesen Zustand nicht`,
+        ).toContain(hinweis);
+
+        // JOB 3917 · UND JETZT DER BILDSCHIRM STATT DES SPRACHBÜNDELS (BENs zweiter Satz, `:37`).
+        // Die Ressourcenprüfung darüber belegt die QUELLE; erst hier ist belegt, dass die geöffnete
+        // Seitenhilfe denselben abgelesenen Satz auch ZEIGT. Geöffnet wird über den einen
+        // vorhandenen Weg (`seitenhilfeOeffnen`), gelesen über den einen vorhandenen `listentext`.
+        await seitenhilfeOeffnen();
+        const angezeigt = listentext();
+        expect(
+          angezeigt.length,
+          `${lage.key}/${sprache}: die Seitenhilfe-Liste ist leer — sie wurde gar nicht geöffnet, und jede Suche darin wäre wertlos`,
+        ).toBeGreaterThan(0);
+        expect(
+          angezeigt,
+          `${lage.key}/${sprache}: die geöffnete Seitenhilfe zeigt „${hinweis}" nicht — die Sprachressource trägt den Satz, der Bildschirm nicht`,
         ).toContain(hinweis);
       });
     }
