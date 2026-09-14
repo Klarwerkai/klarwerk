@@ -17,6 +17,12 @@
 // jede URL und jeden regulären Ausdruck. Der Abtaster kennt deshalb drei Zustände, die ein `/`
 // harmlos machen — Zeichenkette, Vorlagenzeichenkette (samt `${…}`) und Regex-Literal. Die Fälle
 // W0.* in `katalog-ist-die-einzige-quelle.test.ts` kalibrieren ihn an genau diesen Fallen.
+//
+// DER ABTASTER TRÄGT SEIT JOB 3846 NUR NOCH DIESE FRAGE. Der zweite Abschnitt dieser Datei (Wächter
+// D: wo entsteht ein `AuthError`?) liest den Syntaxbaum; die Begründung steht dort. Hier ändert das
+// nichts: ein Wächter, der ganze Sätze in fremden Dateien sucht, braucht einen längentreuen Schnitt
+// des Rohtexts und keinen Baum.
+import ts from "typescript";
 
 /**
  * Ende einer Zeichenkette, die bei `start` mit `"`, `'` oder `` ` `` beginnt (Index HINTER dem
@@ -226,6 +232,7 @@ export function importe(ohneKommentareQuelle: string): { spezifizierer: string; 
 
 // ================================================================================================
 // JOB 3580 · WERKZEUG: WO ENTSTEHT EIN AuthError, UND WAS TRÄGT ER ALS MELDUNG?
+// JOB 3846 · RUNDE 4 — DIESER ABSCHNITT LIEST DEN SYNTAXBAUM STATT ZU TASTEN.
 // ================================================================================================
 //
 // Wächter D fragt: trägt jede Stelle, an der ein `AuthError` entsteht, eine Meldung, die der
@@ -233,11 +240,38 @@ export function importe(ohneKommentareQuelle: string): { spezifizierer: string; 
 // Menge der Klassen, die überhaupt als `AuthError` durchgereicht werden, und die Erzeugungsstellen
 // samt dem Rohtext ihrer Argumente. Kalibriert wird beides einzeln durch D.0.
 //
-// WARUM ÜBER `nurStruktur` UND NICHT ÜBER DEN ROHTEXT: `new AuthError("X", "y")` steht in diesem
-// Baum auch in Kommentaren, in Zeichenketten und in Regex-Literalen. Eine Suche im Rohtext zählt
-// alle drei als Aufruf; eine Suche, die nur `new AuthError(` in genau einer Schreibweise kennt,
-// findet umgekehrt KEINE der 18 echten Stellen dieses Bestands — die stehen als
-// `"KEY" satisfies Meldungsschluessel`, sechs davon über mehrere Zeilen.
+// WARUM ÜBER `ts.createSourceFile` UND NICHT MEHR ÜBER `nurStruktur`: Bis JOB 3846 suchten beide
+// Funktionen unten mit Mustern und Klammerarithmetik im maskierten Quelltext. Das löste zwar das
+// eigentliche Problem (`new AuthError("X", "y")` steht in diesem Baum auch in Kommentaren, in
+// Zeichenketten und in Regex-Literalen, und die echten Stellen stehen als
+// `"KEY" satisfies Meldungsschluessel`, mehrere davon über mehrere Zeilen) — aber es trug DREI
+// GEMESSENE blinde Flecken, auf denen ein freier Fehlersatz am Katalog vorbeilief, ohne dass ein
+// Test rot wurde. Die liefernde Bahn von JOB 3580 hat sie selbst benannt und offen gelassen
+// (`archiv/3580/runde-3/RUECKGABE.md:57`); gemessen am 13.09.2026 lieferte der Abtaster bei allen
+// drei Formen `[]`:
+//
+//   1 LAUFZEIT-KLASSENWAHL     `new (b ? AuthError : Error)("FORBIDDEN", "…")` — hinter `new` stand
+//                              kein blosser Name, also wurde die Stelle verworfen.
+//   2 VORLAGEN-EINSETZUNG      `` `${new AuthError("FORBIDDEN", "…")}` `` — `nurStruktur` maskiert
+//                              ALLES zwischen den Begrenzern einer Vorlage. Für eine Zeichenkette
+//                              und für ein Regex-Literal ist das richtig (ein Aufruf in einem Text
+//                              ist keiner); in einer Einsetzung steht aber echter Code.
+//   3 ERBEN ÜBER EINEN AUFRUF  `class StummError extends mischung(AuthError) {}` — das Muster
+//                              verlangte hinter `extends` einen NAMEN, also entstand keine Kante.
+//
+// Der Syntaxbaum kennt diese drei Fälle von Haus aus: ein Kommentar kommt darin gar nicht vor, eine
+// Zeichenkette ist ein Literalknoten und kein Aufruf, eine Vorlagen-Einsetzung trägt ihre eigenen
+// Knoten, und `new` trägt seinen Konstruktorausdruck als Knoten statt als Zeichenkette. `typescript`
+// ist dafür kein neues Werkzeug, sondern der Hausweg (`package.json:36`; ebenso
+// `tests/q9-fremde-flaechen/keine-deutschen-literale.test.ts` und
+// `tests/capture/aufrufer-waechter.test.ts`).
+//
+// WAS DIESER ABSCHNITT DAMIT NICHT MEHR BENUTZT: `nurStruktur` und die Klammer-, Komma- und
+// Namensarithmetik darüber. Der Abtaster selbst bleibt unangetastet — `ohneKommentare` trägt die
+// Wächter A/B/C in `katalog-ist-die-einzige-quelle.test.ts` (dort kalibriert von W0.*), und
+// `alsLiteral` weiter unten benutzt `nurStruktur` für eine andere Frage: nicht „wo steht ein
+// Aufruf", sondern „ist dieses eine Argument ein Literal". Ein zweiter Erkennungsweg für die Frage
+// dieses Abschnitts entsteht dadurch nicht.
 
 /** Eine Klasse, deren Objekte `routes.ts` als `AuthError` an den Menschen durchreicht. */
 export interface Fehlerklasse {
@@ -256,25 +290,184 @@ export interface Erzeugungsstelle {
   argumente: string[];
 }
 
-// Die fünf Wege, auf denen ein neuer Name zu einer Fehlerklasse wird. Die letzten drei sind keine
-// Spitzfindigkeit: Lehre JOB 3579 R1 (11.09.) — „der AST-Wächter übersieht zwei gemessene
-// Aliasformen". Ein Name, der nur umbenannt wurde, ist dieselbe Klasse.
-//
-// RUNDE 2, KORREKTURPFLICHT 1 DES PRÜFERS: `ZUGEWIESEN` kannte bis hierher nur die UNTYPISIERTE
-// Zuweisung. BEN setzte an dieselbe Stelle wie die Pflichtgegenprobe
-// `const Fehler: typeof AuthError = AuthError; throw new Fehler("FORBIDDEN", "Nur Admins duerfen
-// das.");` — und alle 71 Fälle blieben grün (BEN, Runde 1: „→ `Tests  71 passed (71)`"). Eine
-// gewöhnliche Typannotation genügte also, damit der freie Fehlersatz unbemerkt blieb. Zwei
-// Änderungen: `ZUGEWIESEN` erlaubt die Annotation, und `TYPISIERT` bindet den Namen jetzt an der
-// ANNOTATION selbst — `let X: typeof AuthError;` ist ein AuthError-Konstruktor, gleichgültig,
-// woher der Wert später kommt. Das trifft auch Parameter und Felder, nicht nur `const`.
-const ERBT = /\bclass\s+([A-Za-z_$][\w$]*)[^{;]*?\bextends\s+([A-Za-z_$][\w$.]*)/g;
-const ERBT_ALS_AUSDRUCK =
-  /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*class\b[^{;]*?\bextends\s+([A-Za-z_$][\w$.]*)/g;
-const UMBENANNT = /\b([A-Za-z_$][\w$]*)\s+as\s+([A-Za-z_$][\w$]*)/g;
-const ZUGEWIESEN =
-  /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::[^=;{}]+)?=\s*([A-Za-z_$][\w$]*)\s*[;,\n]/g;
-const TYPISIERT = /\b([A-Za-z_$][\w$]*)\s*:\s*typeof\s+([A-Za-z_$][\w$.]*)/g;
+/** Der eine Parser dieses Abschnitts — eine Quelle, ein Baum, keine zweite Lesart. */
+function baum(quelle: string): ts.SourceFile {
+  return ts.createSourceFile("quelle.ts", quelle, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+}
+
+/**
+ * Der GESCHRIEBENE Name eines Ausdrucks, wenn er eine reine Namenskette ist (`AuthError`,
+ * `t.AuthError`, `this.Fehler`, `deps.Fehler`) — sonst `undefined`. Der Name kommt aus dem Baum und
+ * nicht aus dem Rohtext: Leerzeichen und Zeilenumbrüche zwischen den Teilen fallen dabei von selbst
+ * weg, statt weggerechnet werden zu müssen.
+ */
+function namensKette(n: ts.Node): string | undefined {
+  if (ts.isIdentifier(n)) {
+    return n.text;
+  }
+  if (n.kind === ts.SyntaxKind.ThisKeyword) {
+    return "this";
+  }
+  if (ts.isPropertyAccessExpression(n)) {
+    const vorne = namensKette(n.expression);
+    return vorne === undefined ? undefined : `${vorne}.${n.name.text}`;
+  }
+  return undefined;
+}
+
+/**
+ * Jede Namenskette, die in `wurzel` vorkommt — in Quelltextreihenfolge. Eine gefundene Kette wird
+ * NICHT weiter zerlegt: `joseErrors.JWKSTimeout` ist ein Name und nicht zusätzlich `joseErrors`.
+ *
+ * NUR FÜR DIE `extends`-SEITE. Dort ist „jeder genannte Name" die richtige Frage: bei
+ * `class X extends mischung(AuthError) {}` wird `AuthError` wirklich zur Basis, obwohl es als
+ * ARGUMENT dasteht. Für den Konstruktorausdruck hinter `new` wäre dieselbe Frage falsch — dort
+ * zählt der WERT des Ausdrucks, und `konstruktorklassen` wertet ihn aus, statt Namen einzusammeln
+ * (Runde 2, Korrekturpflicht 1: genau diese Verwechslung war der Rückschritt aus Runde 1).
+ */
+function namenIn(wurzel: ts.Node, gefunden: string[] = []): string[] {
+  const kette = namensKette(wurzel);
+  if (kette !== undefined) {
+    gefunden.push(kette);
+    return gefunden;
+  }
+  ts.forEachChild(wurzel, (kind) => {
+    namenIn(kind, gefunden);
+  });
+  return gefunden;
+}
+
+/** Klammern und Typzusagen abtragen — `(AuthError)`, `AuthError as typeof AuthError`, `x!`. */
+function ohneHuellen(n: ts.Expression): ts.Expression {
+  let rest = n;
+  while (
+    ts.isParenthesizedExpression(rest) ||
+    ts.isAsExpression(rest) ||
+    ts.isSatisfiesExpression(rest) ||
+    ts.isNonNullExpression(rest) ||
+    ts.isTypeAssertionExpression(rest)
+  ) {
+    rest = rest.expression;
+  }
+  return rest;
+}
+
+/** Ein qualifizierter Typname als geschriebener Text: `typeof t.AuthError` → `t.AuthError`. */
+function entitaetsname(n: ts.EntityName): string {
+  return ts.isIdentifier(n) ? n.text : `${entitaetsname(n.left)}.${n.right.text}`;
+}
+
+interface Kante {
+  neu: string;
+  basis: string;
+  erbt: boolean;
+}
+
+/**
+ * Eine Kante — und bei einem QUALIFIZIERTEN Basisnamen zusätzlich die über seinen letzten Teil.
+ * `const F = t.AuthError;` bindet `F` an `AuthError`; die alte Musterliste tat das (ihr `\b` fing
+ * den letzten Teil mit), und die Ablösung darf nicht schwächer sein als das Abgelöste.
+ */
+function kante(kanten: Kante[], neu: string, basis: string, erbt: boolean): void {
+  kanten.push({ neu, basis, erbt });
+  const punkt = basis.lastIndexOf(".");
+  if (punkt >= 0) {
+    kanten.push({ neu, basis: basis.slice(punkt + 1), erbt });
+  }
+}
+
+/**
+ * Die Namen, von denen eine Klasse ERBT — aus dem `extends`-Ausdruck, nicht aus einem Namen.
+ *
+ * JOB 3846, FLECK 3: `class StummError extends mischung(AuthError) {}` ist gültiges TypeScript und
+ * erzeugt eine echte AuthError-Unterklasse; das alte Muster verlangte hinter `extends` einen
+ * Bezeichner und legte deshalb gar keine Kante an. Jetzt zählt JEDER im Ausdruck genannte Name als
+ * Basis — bei `mischung(AuthError)` also `mischung` (unbekannt) UND `AuthError` (Wurzel).
+ * Die TYPARGUMENTE bleiben aussen vor: `class X extends Basis<AuthError> {}` erbt von `Basis`, ein
+ * Typargument entsteht zur Laufzeit nicht.
+ */
+function erbschaftsnamen(k: ts.ClassLikeDeclaration): string[] {
+  const namen: string[] = [];
+  for (const klausel of k.heritageClauses ?? []) {
+    if (klausel.token !== ts.SyntaxKind.ExtendsKeyword) {
+      continue;
+    }
+    for (const typ of klausel.types) {
+      namen.push(...namenIn(typ.expression));
+    }
+  }
+  return namen;
+}
+
+/**
+ * Die WEGE, auf denen ein neuer Name zu einer Fehlerklasse wird — einzeln benannt, weil jeder
+ * einzeln in D.0 kalibriert ist. Sie sind keine Spitzfindigkeit: Lehre JOB 3579 R1 (11.09.) — „der
+ * AST-Wächter übersieht zwei gemessene Aliasformen". Ein Name, der nur umbenannt wurde, ist
+ * dieselbe Klasse.
+ *
+ *   1 `extends <Name>`      `class OidcUnreachableError extends AuthError {}`        (erbt)
+ *   2 KLASSENAUSDRUCK       `const StummError = class extends AuthError {};`         (erbt)
+ *   3 EINFUHR-ALIAS         `import { AuthError as Fehler } from "./types";`
+ *   4 ZUWEISUNG             `const Fehler = AuthError;` — auch typisiert, auch ohne Deklaration
+ *   5 TYPANNOTATION         `let X: typeof AuthError;` — auch an Parametern und Feldern
+ *   6 `extends <Ausdruck>`  `class StummError extends mischung(AuthError) {}`        (erbt)
+ *
+ * RUNDE 2, KORREKTURPFLICHT 1 DES PRÜFERS (sie gilt weiter, nur trägt sie jetzt der Baum): Weg 4
+ * kannte bis dahin nur die UNTYPISIERTE Zuweisung. BEN setzte an dieselbe Stelle wie die
+ * Pflichtgegenprobe `const Fehler: typeof AuthError = AuthError; throw new Fehler("FORBIDDEN", "Nur
+ * Admins duerfen das.");` — und alle 71 Fälle blieben grün (BEN, Runde 1: „→ `Tests  71 passed
+ * (71)`"). Eine gewöhnliche Typannotation genügte also, damit der freie Fehlersatz unbemerkt blieb.
+ * Deshalb bindet Weg 5 den Namen an der ANNOTATION selbst: `let X: typeof AuthError;` ist ein
+ * AuthError-Konstruktor, gleichgültig, woher der Wert später kommt.
+ *
+ * Weg 3 hängt jetzt an der Einfuhr statt an den zwei Wörtern `X as Y` irgendwo im Text. Das ist
+ * enger und zugleich stärker: eine Typzusage (`schluessel as Meldungsschluessel`) legt keine Kante
+ * mehr an, dafür trägt Weg 4 über `ohneHuellen` auch `const F = AuthError as typeof AuthError;`,
+ * was die alte Musterliste nicht traf.
+ */
+function sammleKanten(n: ts.Node, kanten: Kante[]): void {
+  if (ts.isClassDeclaration(n) || ts.isClassExpression(n)) {
+    const eigener = n.name?.text;
+    if (eigener !== undefined) {
+      for (const basis of erbschaftsnamen(n)) {
+        kante(kanten, eigener, basis, true);
+      }
+    }
+  }
+  if (ts.isVariableDeclaration(n) && ts.isIdentifier(n.name) && n.initializer) {
+    const wert = ohneHuellen(n.initializer);
+    if (ts.isClassExpression(wert)) {
+      for (const basis of erbschaftsnamen(wert)) {
+        kante(kanten, n.name.text, basis, true);
+      }
+    }
+    const herkunft = namensKette(wert);
+    if (herkunft !== undefined) {
+      kante(kanten, n.name.text, herkunft, false);
+    }
+  }
+  if (ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+    const ziel = namensKette(n.left);
+    const herkunft = namensKette(ohneHuellen(n.right));
+    if (ziel !== undefined && herkunft !== undefined) {
+      kante(kanten, ziel, herkunft, false);
+    }
+  }
+  if ((ts.isImportSpecifier(n) || ts.isExportSpecifier(n)) && n.propertyName) {
+    kante(kanten, n.name.text, n.propertyName.text, false);
+  }
+  // `: typeof X` an allem, was einen Namen und eine Typangabe trägt — Variable, Parameter, Feld,
+  // Feldsignatur. Ein Sonderfall je Knotenart wäre vier Wege für eine Aussage.
+  const typisiert = n as ts.Node & { name?: ts.Node; type?: ts.TypeNode };
+  if (
+    typisiert.type !== undefined &&
+    ts.isTypeQueryNode(typisiert.type) &&
+    typisiert.name !== undefined &&
+    ts.isIdentifier(typisiert.name)
+  ) {
+    kante(kanten, typisiert.name.text, entitaetsname(typisiert.type.exprName), false);
+  }
+}
 
 /**
  * Alle Klassen, die (auch über mehrere Stufen, auch unter einem anderen Namen) auf `wurzeln`
@@ -285,30 +478,14 @@ export function fehlerklassen(
   quellen: readonly string[],
   wurzeln: readonly string[] = ["AuthError"],
 ): Fehlerklasse[] {
-  const kanten: { neu: string; basis: string; erbt: boolean }[] = [];
+  const kanten: Kante[] = [];
   for (const quelle of quellen) {
-    const struktur = nurStruktur(quelle);
-    for (const [muster, erbt] of [
-      [ERBT, true],
-      [ERBT_ALS_AUSDRUCK, true],
-      [UMBENANNT, false],
-      [ZUGEWIESEN, false],
-      [TYPISIERT, false],
-    ] as const) {
-      muster.lastIndex = 0;
-      for (const treffer of struktur.matchAll(muster)) {
-        const [, eins, zwei] = treffer;
-        if (!eins || !zwei) {
-          continue;
-        }
-        // Bei `X as Y` ist die BASIS der erste Name, bei allen anderen der zweite.
-        kanten.push(
-          muster === UMBENANNT
-            ? { neu: zwei, basis: eins, erbt: false }
-            : { neu: eins, basis: zwei, erbt },
-        );
-      }
-    }
+    const sf = baum(quelle);
+    const gehe = (n: ts.Node): void => {
+      sammleKanten(n, kanten);
+      ts.forEachChild(n, gehe);
+    };
+    ts.forEachChild(sf, gehe);
   }
   const gefunden = new Map<string, Fehlerklasse["art"]>(
     wurzeln.map((name) => [name, "wurzel" as const]),
@@ -330,85 +507,10 @@ export function fehlerklassen(
   return [...gefunden].map(([name, art]) => ({ name, art }));
 }
 
-function leerzeichenUeberspringen(text: string, ab: number): number {
-  let i = ab;
-  while (i < text.length && /\s/.test(text[i] ?? "")) {
-    i += 1;
-  }
-  return i;
-}
-
-const NAME_AB = /[A-Za-z_$][\w$]*(?:\s*\.\s*[A-Za-z_$][\w$]*)*/y;
-const NAME_GANZ = /^[A-Za-z_$][\w$]*(?:\s*\.\s*[A-Za-z_$][\w$]*)*$/;
-const AUF = new Set(["(", "[", "{"]);
-const ZU = new Set([")", "]", "}"]);
-
-/** Index der schliessenden Klammer zu der bei `auf`, oder -1. Erwartet Struktur-Text. */
-function passendeKlammer(struktur: string, auf: number): number {
-  let tiefe = 0;
-  for (let i = auf; i < struktur.length; i += 1) {
-    const c = struktur[i] ?? "";
-    if (AUF.has(c)) {
-      tiefe += 1;
-    } else if (ZU.has(c)) {
-      tiefe -= 1;
-      if (tiefe === 0) {
-        return i;
-      }
-    }
-  }
-  return -1;
-}
-
-function letztesFreiesKomma(struktur: string): number {
-  let tiefe = 0;
-  let letztes = -1;
-  for (let i = 0; i < struktur.length; i += 1) {
-    const c = struktur[i] ?? "";
-    if (AUF.has(c)) {
-      tiefe += 1;
-    } else if (ZU.has(c)) {
-      tiefe -= 1;
-    } else if (c === "," && tiefe === 0) {
-      letztes = i;
-    }
-  }
-  return letztes;
-}
-
-/**
- * Der Klassenname aus dem Konstruktorausdruck zwischen `new` und der Argumentliste — oder
- * `undefined`, wenn dort kein blosser Name steht.
- *
- * RUNDE 2, KORREKTURPFLICHT 1 DES PRÜFERS: bis hierher wurde hinter `new` stur ein Bezeichner
- * gelesen. `new (AuthError)("FORBIDDEN", "text")` — gültiges TypeScript, das dieselbe Klasse
- * erzeugt — lieferte deshalb gemessen `[]`. Klammern werden jetzt abgetragen, und hinter einem
- * Kommaoperator (`new (0, AuthError)(…)`) zählt der letzte Teilausdruck. Steht dort kein blosser
- * Name (`new (bedingung ? A : B)(…)`), ist die Klasse aus dem Quelltext ehrlich nicht ablesbar;
- * dieser Fall ist in `D.0` als bewusste, gemessene Grenze festgehalten.
- */
-function klassenname(struktur: string): string | undefined {
-  let rest = struktur.trim();
-  for (let runde = 0; runde < 8 && rest !== ""; runde += 1) {
-    const vorher = rest;
-    if (rest.startsWith("(") && passendeKlammer(rest, 0) === rest.length - 1) {
-      rest = rest.slice(1, -1).trim();
-    }
-    const komma = letztesFreiesKomma(rest);
-    if (komma >= 0) {
-      rest = rest.slice(komma + 1).trim();
-    }
-    if (rest === vorher) {
-      break;
-    }
-  }
-  return NAME_GANZ.test(rest) ? rest.replace(/\s+/g, "") : undefined;
-}
-
 /**
  * Die Art einer Klasse hinter dem geschriebenen Namen — auch dann, wenn der Name QUALIFIZIERT ist.
  *
- * RUNDE 3, KORREKTURPFLICHT DES PRÜFERS: `TYPISIERT` (oben) erkannte das Feld
+ * RUNDE 3, KORREKTURPFLICHT DES PRÜFERS: Weg 5 erkannte das Feld
  * `private readonly Fehler: typeof AuthError = AuthError;` korrekt als Fehlerklasse — aber die
  * VERWENDUNG heisst `new this.Fehler(…)`, und dieser Name stand so in keiner Liste. BEN warf damit
  * in `service.ts:149` einen freien Satz, und alle 81 Faelle blieben gruen (BEN, Runde 2:
@@ -423,7 +525,7 @@ function klassenname(struktur: string): string | undefined {
  * entscheidet. `joseErrors.JWKSTimeout` bleibt unberuehrt — `JWKSTimeout` ist keine Fehlerklasse
  * dieses Moduls, und `D.0` haelt genau das fest.
  */
-function artVon(
+function artFuer(
   name: string,
   nachArt: ReadonlyMap<string, Fehlerklasse["art"]>,
 ): Fehlerklasse["art"] | undefined {
@@ -436,93 +538,124 @@ function artVon(
 }
 
 /**
- * Jede Stelle in `quelle`, an der eine der `klassen` mit `new` erzeugt wird. Gesucht wird in
- * `nurStruktur(quelle)`, ausgeschnitten wird aus `ohneKommentare(quelle)` — beide sind längentreu
- * zur Quelle, die Indizes passen also aufeinander. Dadurch zerlegt weder ein Komma in einem Text
- * noch eine Klammer in einem Regex die Argumentliste, und ein Kommentar mitten in der Liste
- * verschwindet aus dem Argumenttext, statt ihn unlesbar zu machen.
+ * Die Klassen, die ein Konstruktorausdruck erzeugen KANN — ausgewertet nach seinem WERT, nicht nach
+ * den Namen, die irgendwo in ihm vorkommen. Jede erreichbare Alternative steht einzeln in der
+ * Liste; ein Name, der nur in einem verworfenen Teilausdruck steht, steht gar nicht darin.
+ *
+ * JOB 3846, FLECK 1: `new (b ? AuthError : Error)(…)` hatte hinter `new` keinen blossen Namen und
+ * lieferte deshalb gemessen `[]` — als „Laufzeit-Klassenwahl" ausdrücklich als Grenze festgehalten.
+ * Sie ist keine: im Quelltext STEHT, dass hier ein `AuthError` entstehen KANN, und ein Wächter, der
+ * erst dann etwas sagt, wenn nur noch eine Klasse in Frage kommt, schweigt genau bei dem Fall, den
+ * jemand einbaut, um ihn zum Schweigen zu bringen. Gemeldet wird der geschriebene Name — der
+ * Mensch soll lesen, was dasteht.
+ *
+ * RUNDE 2, KORREKTURPFLICHT 1 DES PRÜFERS — WARUM NICHT „DER ERSTE BEKANNTE NAME IM AUSDRUCK":
+ * Genau so las Runde 1, und BEN hat das mit zwei Zeilen widerlegt. `throw new (void AuthError,
+ * BenError)("FORBIDDEN", "USER_NOT_FOUND");` erzeugt `BenError`; der Kommaoperator VERWIRFT seinen
+ * linken Teil. Runde 1 meldete `AuthError`/`wurzel`, stufte damit eine unerlaubte Unterklasse zur
+ * Wurzel herab, und weil das zweite Argument ein gültiger Katalogschlüssel ist, blieb D grün —
+ * gemessen ein RÜCKSCHRITT gegenüber dem abgelösten Abtaster, der den letzten freien Kommateil las.
+ * Die Gegenrichtung ebenso: `new (void AuthError, Error)("Nur Admins duerfen das.")` erzeugt einen
+ * gewöhnlichen `Error`, und Runde 1 meldete den Fehlalarm `AuthError ohne Meldung erzeugt`.
+ * Beide Formen stehen seither als dauerhafte D.0-Fälle im Lauf.
+ *
+ * DIE DREI REGELN, die daraus folgen — jede einzeln in D.0 kalibriert:
+ *   KOMMA (`a, b`) und `&&`      → nur der RECHTE Operand; der linke ist verworfen bzw. unbrauchbar.
+ *   `?:`, `??`, `||`            → BEIDE Zweige; beide sind erreichbar, und nur den ersten zu melden
+ *                                 hiesse, die Unterklassenregel über die Zweigreihenfolge
+ *                                 abschaltbar zu machen (BEN, Prüflücke 6).
+ *   alles andere                → nur, wenn der Ausdruck SELBST eine Namenskette ist.
+ *
+ * DIE KOSTEN, offen benannt: ein Konstruktorausdruck, dessen Wert erst zur Laufzeit entsteht
+ * (`new (registrierung[schluessel])(…)`, `new (mischung(AuthError))(…)`), liefert KEINE Stelle —
+ * dort steht im Quelltext wirklich nicht, was gebaut wird, und ein geratener Name wäre ein
+ * Fehlalarm ohne Fundstelle. Das ist dieselbe Grenze, die der abgelöste Abtaster hatte; sie wird
+ * hier nicht enger, aber auch nicht stillschweigend weiter.
+ */
+function konstruktorklassen(
+  ausdruck: ts.Expression,
+  nachArt: ReadonlyMap<string, Fehlerklasse["art"]>,
+): { name: string; art: Fehlerklasse["art"] }[] {
+  const treffer: { name: string; art: Fehlerklasse["art"] }[] = [];
+  const gesehen = new Set<string>();
+  const sammle = (n: ts.Expression): void => {
+    const kern = ohneHuellen(n);
+    if (ts.isBinaryExpression(kern)) {
+      const zeichen = kern.operatorToken.kind;
+      if (
+        zeichen === ts.SyntaxKind.CommaToken ||
+        zeichen === ts.SyntaxKind.AmpersandAmpersandToken
+      ) {
+        sammle(kern.right);
+        return;
+      }
+      if (
+        zeichen === ts.SyntaxKind.QuestionQuestionToken ||
+        zeichen === ts.SyntaxKind.BarBarToken
+      ) {
+        sammle(kern.left);
+        sammle(kern.right);
+        return;
+      }
+      return;
+    }
+    if (ts.isConditionalExpression(kern)) {
+      sammle(kern.whenTrue);
+      sammle(kern.whenFalse);
+      return;
+    }
+    const name = namensKette(kern);
+    if (name === undefined) {
+      return;
+    }
+    const art = artFuer(name, nachArt);
+    if (art === undefined || gesehen.has(name)) {
+      return;
+    }
+    gesehen.add(name);
+    treffer.push({ name, art });
+  };
+  sammle(ausdruck);
+  return treffer;
+}
+
+/**
+ * Jede Stelle in `quelle`, an der eine der `klassen` mit `new` erzeugt wird — jeder
+ * `NewExpression`-Knoten des Syntaxbaums, in Quelltextreihenfolge.
+ *
+ * Was der Baum dabei ohne eigenes Zutun richtig macht und die abgelöste Klammer-, Komma- und
+ * Namensarithmetik einzeln erkämpfen musste: ein Kommentar mitten in der Argumentliste gehört nicht
+ * zum Argument (`getStart` überspringt ihn), ein Komma IN einer Zeichenkette zerlegt die Liste
+ * nicht, `new Foo<Bar>()` trägt seine Typargumente getrennt von den Argumenten, und ein `new` in
+ * einem Kommentar, einer Zeichenkette oder einem Regex-Literal ist gar kein Knoten.
+ *
+ * `argumente` ist bewusst ROHTEXT und nicht der ausgewertete Wert: Wächter D entscheidet mit
+ * `alsLiteral`, ob dieser Text ein Literal IST, und meldet den Text, wenn nicht. Ein fehlendes
+ * Argument ist kein Eintrag, nicht `undefined`.
  */
 export function erzeugungsstellen(
   quelle: string,
   klassen: readonly Fehlerklasse[],
 ): Erzeugungsstelle[] {
-  const struktur = nurStruktur(quelle);
-  const rein = ohneKommentare(quelle);
+  const sf = baum(quelle);
   const nachArt = new Map(klassen.map((k) => [k.name, k.art]));
   const stellen: Erzeugungsstelle[] = [];
-  for (const treffer of struktur.matchAll(/\bnew\b/g)) {
-    const beginn = treffer.index ?? 0;
-    const ausdruckAb = leerzeichenUeberspringen(struktur, beginn + 3);
-    let ausdruckBis: number;
-    if (struktur[ausdruckAb] === "(") {
-      // `new (…)(args)`: die erste Klammergruppe IST der Konstruktorausdruck, die zweite die
-      // Argumentliste. Ohne diese Unterscheidung hielte die Suche unten die Klasse für die Argumente.
-      const zu = passendeKlammer(struktur, ausdruckAb);
-      if (zu < 0) {
-        continue;
-      }
-      ausdruckBis = zu + 1;
-    } else {
-      NAME_AB.lastIndex = ausdruckAb;
-      if (!NAME_AB.exec(struktur)) {
-        continue;
-      }
-      ausdruckBis = NAME_AB.lastIndex;
-    }
-    const klasse = klassenname(struktur.slice(ausdruckAb, ausdruckBis));
-    if (klasse === undefined) {
-      continue;
-    }
-    const art = artVon(klasse, nachArt);
-    if (art === undefined) {
-      continue;
-    }
-    let i = leerzeichenUeberspringen(struktur, ausdruckBis);
-    if (struktur[i] === "<") {
-      // Typargumente (`new Foo<Bar>()`) überspringen — sonst bräche die Klammersuche darunter ab.
-      let tiefe = 0;
-      while (i < struktur.length) {
-        if (struktur[i] === "<") {
-          tiefe += 1;
-        } else if (struktur[i] === ">") {
-          tiefe -= 1;
-          if (tiefe === 0) {
-            i += 1;
-            break;
-          }
-        }
-        i += 1;
-      }
-      i = leerzeichenUeberspringen(struktur, i);
-    }
-    const argumente: string[] = [];
-    if (struktur[i] === "(") {
-      let tiefe = 1;
-      let start = i + 1;
-      let j = i + 1;
-      while (j < struktur.length && tiefe > 0) {
-        const c = struktur[j] ?? "";
-        if (AUF.has(c)) {
-          tiefe += 1;
-        } else if (ZU.has(c)) {
-          tiefe -= 1;
-          if (tiefe === 0) {
-            argumente.push(rein.slice(start, j).trim());
-            break;
-          }
-        } else if (c === "," && tiefe === 1) {
-          argumente.push(rein.slice(start, j).trim());
-          start = j + 1;
-        }
-        j += 1;
-      }
-      // `new X()` liefert ein leeres Argument, `new X("a",)` ein leeres letztes — beide weg.
-      while (argumente.length > 0 && argumente[argumente.length - 1] === "") {
-        argumente.pop();
+  const gehe = (n: ts.Node): void => {
+    if (ts.isNewExpression(n)) {
+      // Eine Laufzeitwahl kann MEHRERE Klassen erzeugen; dann steht jede mit derselben Zeile und
+      // denselben Argumenten da. Nur die erste zu melden hiesse, die zweite zu verschenken.
+      for (const treffer of konstruktorklassen(n.expression, nachArt)) {
+        stellen.push({
+          klasse: treffer.name,
+          art: treffer.art,
+          zeile: sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1,
+          argumente: (n.arguments ?? []).map((a) => a.getText(sf).trim()),
+        });
       }
     }
-    stellen.push({ klasse, art, zeile: zeileVon(rein, beginn), argumente });
-  }
+    ts.forEachChild(n, gehe);
+  };
+  ts.forEachChild(sf, gehe);
   return stellen;
 }
 

@@ -52,21 +52,53 @@
 //                                                   macht und die Kennung durchreicht, wird hier rot
 //                                                   — und wer sie laut macht, nimmt D den Grund.
 //
-// D.0 kalibriert vorher das WERKZEUG, auf dem D steht. Ein Extraktor, der nur
-// `new AuthError("X", "Y")` in genau dieser Schreibweise kennt, waere gruen und wertlos: die 17
-// direkten Stellen dieses Bestands stehen als `"KEY" satisfies Meldungsschluessel`, drei davon
-// mehrzeilig. D.0 misst deshalb jede Form EINZELN und in BEIDE Richtungen (gesehen / nicht
-// gesehen) — die Lehre aus 3562 R1, wo ein `import "./types";` ohne Bindung fuenfzehn Faelle gruen
-// liess, obwohl die verbotene Abhaengigkeit dastand.
+// D.0 kalibriert vorher das WERKZEUG, auf dem D steht — den Extraktor in `quelltext.ts`, der seit
+// JOB 3846 den TypeScript-Syntaxbaum liest. D.0 misst jede Form EINZELN und in BEIDE Richtungen
+// (gesehen / nicht gesehen); die Lehre aus 3562 R1, wo ein `import "./types";` ohne Bindung
+// fuenfzehn Faelle gruen liess, obwohl die verbotene Abhaengigkeit dastand.
 //
-// DREI RUNDEN, DREI MAL DIESELBE LEHRE, jedes Mal eine Stufe tiefer — die Faelle unten tragen die
-// Rundennummer, damit niemand sie fuer Spitzfindigkeit haelt:
+// WARUM D.0 AUCH UEBER DEM SYNTAXBAUM BLEIBT — und zwar in vollem Umfang: Ein Baum-Extraktor liegt
+// nicht seltener falsch als ein Abtaster, er liegt an ANDEREN Stellen falsch. Er zerbricht nicht
+// mehr an einer Klammer oder einem Komma in einem Text, dafuer entscheidet jetzt die AUSWAHL der
+// Knotenarten, was er sieht: welcher Teilausdruck hinter `new` als Klassenname zaehlt, welche
+// Deklarationsform einen Namen bindet, was in einer Vorlage ein Knoten ist und was Text. Keine
+// dieser Entscheidungen faellt beim Bauen auf, keine beim Typpruefen, und `meldung()` schweigt zu
+// allen. Die Kalibrierung ist die einzige Stelle, an der eine falsche Entscheidung sichtbar wird —
+// und die neun `UEBERSEHEN`-Faelle sind es fuer die Gegenrichtung: ein Waechter, der bei Harmlosem
+// rot wird, wird abgeschaltet, und dann ist auch die echte Zusage weg.
+//
+// FUENF RUNDEN, FUENF MAL DIESELBE LEHRE, jedes Mal eine Stufe tiefer — die Faelle unten tragen
+// die Rundennummer, damit niemand sie fuer Spitzfindigkeit haelt:
 //   R1 → der freie Satz selbst          (`new AuthError("FORBIDDEN", "Nur Admins duerfen das.")`)
 //   R2 → die TYPISIERTE Deklaration     (`const Fehler: typeof AuthError = AuthError`)
 //        und der GEKLAMMERTE Konstruktor (`new (AuthError)(…)`)
 //   R3 → die VERWENDUNG der Deklaration (`new this.Fehler(…)` an einem Klassenfeld)
+//   R4 → die DREI blinden Flecken des Abtasters, einzeln und namentlich, jeder vor dem Umbau mit
+//        gemessener Ausgabe `[]`:
+//          (i)   LAUFZEIT-KLASSENWAHL    `new (b ? AuthError : Error)("FORBIDDEN", "…")`
+//          (ii)  VORLAGEN-EINSETZUNG     `` `${new AuthError("FORBIDDEN", "…")}` ``
+//          (iii) ERBEN UEBER EINEN AUFRUF `class StummError extends mischung(AuthError) {}`
+//   R5 → der WERT des Konstruktorausdrucks statt des ersten Namens darin
+//        (`new (void AuthError, BenError)(…)` und `new (void AuthError, Error)(…)`)
 // R3 ist die schaerfste: die Deklaration wurde bereits erkannt — nur ihr Gebrauch fiel durch. Wer
 // eine Aliasform ergaenzt, ergaenzt deshalb IMMER beides: wie sie entsteht und wie sie gerufen wird.
+// R4 nimmt eine frueher als unverschiebbar notierte GRENZE zurueck: (i) stand vom 11.09. bis zum
+// 14.09.2026 als eigener Fall `D.0 GRENZE` da und nagelte dieselbe Quelle auf `[]` fest. Das war
+// eine Grenze des Werkzeugs, nicht des Quelltexts — sie ist ersatzlos entfallen, statt neben ihrer
+// Ablösung stehen zu bleiben.
+// R5 IST DIE WARNUNG AN DEN NAECHSTEN, DER DIESES WERKZEUG ANFASST: der Umbau auf den Syntaxbaum in
+// R4 hat einen Fall VERLOREN, den der abgeloeste Abtaster noch fing — `new (void AuthError,
+// BenError)(…)` wurde von `BenError`/`abgeleitet` zu `AuthError`/`wurzel` und damit gruen. Eine
+// Ablösung ist erst dann eine, wenn sie eine OBERMENGE des Abgeloesten ist; wer hier eine Regel
+// ersetzt, misst beide Richtungen gegen den alten Stand und nicht nur die neu gewonnenen Faelle.
+//
+// R6 (JOB 3846 R3) · ZWEI ARBEITEN AN DERSELBEN DATEI, zusammengefuehrt statt nebeneinandergelegt:
+// Waehrend R4/R5 liefen, kam JOB 3839 (cd9b81c) auf main und stellte drei neue Faelle daneben —
+// `D.0 GRENZE G1/G2/G3`, der PREIS der Aufloesung ueber den letzten Punktteil. Sie stehen weiter im
+// Lauf, jetzt ueber dem Syntaxbaum neu gemessen. Der VIERTE Fall, den JOB 3839 unberuehrt stehen
+// liess — `D.0 GRENZE: eine Klasse, die erst zur Laufzeit feststeht, ist nicht ablesbar` —, ist
+// dagegen die Grenze aus R4 (i) und ist mit ihr ersatzlos entfallen; ihn neben R4 (i) stehen zu
+// lassen hiesse, dieselbe Form zugleich auf `[]` und auf eine Fundstelle festzunageln.
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import Fastify from "fastify";
@@ -154,7 +186,8 @@ describe("D.0 · der Extraktor sieht jede Form, in der ein AuthError entstehen k
       erwartet: ['1 wurzel AuthError("FORBIDDEN" | "text")'],
     },
     {
-      // Die Form, in der dieser Bestand seine 18 Stellen schreibt. Ein Extraktor, der sie nicht
+      // Die Form, in der dieser Bestand seine 23 direkten Stellen schreibt (gemessen am 13.09.2026
+      // auf 172001e, dieselbe Messung wie D.1 weiter unten). Ein Extraktor, der sie nicht
       // kennt, faende am heutigen main NICHTS und waere gruen, ohne je etwas geprueft zu haben.
       form: "Literal mit satisfies — die Schreibweise dieses Bestands",
       quelle: 'throw new AuthError("NOT_FOUND", "USER_NOT_FOUND" satisfies Meldungsschluessel);\n',
@@ -324,6 +357,91 @@ describe("D.0 · der Extraktor sieht jede Form, in der ein AuthError entstehen k
       quelle: 'f(new AuthError("A", "a"), new AuthError("B", "b"));\n',
       erwartet: ['1 wurzel AuthError("A" | "a")', '1 wurzel AuthError("B" | "b")'],
     },
+    // ------------------------------------------------------------------------------------------
+    // RUNDE 4 (JOB 3846) · DIE DREI GEMESSENEN BLINDEN FLECKEN DES ABTASTERS.
+    // Die liefernde Bahn von JOB 3580 hat sie selbst benannt und offen gelassen
+    // (archiv/3580/runde-3/RUECKGABE.md:57, woertlich: „Die drei gemessenen Grenzen des Extraktors
+    // (Laufzeit-Klassenwahl, Vorlagen-Einsetzung, Erben ueber einen Aufruf) sind heute unbesetzt,
+    // aber echt. Sie zu schliessen hiesse, den Syntaxbaum statt des Abtasters zu benutzen").
+    // Auf jedem der drei konnte ein freier Fehlersatz am Katalog vorbeilaufen, ohne dass ein Test
+    // rot wurde. Die drei Faelle stehen hier, WEIL sie vor dem Umbau rot waren — gemessen am
+    // unveraenderten Abtaster: (i) `[]`, (ii) `[]`, (iii) `[]`.
+    //
+    // DER ERSTE FALL LOEST EINE FRUEHERE GRENZBEHAUPTUNG AB. Vom 11.09.2026 (JOB 3580 R1) bis zum
+    // 14.09.2026 stand weiter unten der Fall „D.0 GRENZE: eine Klasse, die erst zur Laufzeit
+    // feststeht, ist nicht ablesbar" und nagelte dasselbe Beispiel auf `[]` fest — richtig
+    // gemessen, aber es war eine Grenze DES ABTASTERS und keine des Quelltexts. Mit dem Syntaxbaum
+    // ist sie gefallen: im Quelltext steht, dass hier ein `AuthError` entstehen KANN, und genau das
+    // meldet der Extraktor jetzt. Zwei Behauptungen ueber dieselbe Form waeren eine zu viel,
+    // deshalb ist der Grenzfall ersatzlos weg und nicht neben diesen hier gestellt. Nicht betroffen
+    // sind die gleichnamigen Faelle `D.0 GRENZE G1/G2/G3` (JOB 3839): die messen eine ANDERE Grenze
+    // — den Preis der Aufloesung ueber den letzten Punktteil — und stehen unverändert im Lauf.
+    {
+      form: "ueber eine Laufzeit-Klassenwahl",
+      quelle: 'throw new (b ? AuthError : Error)("FORBIDDEN", "Nur Admins duerfen das.");\n',
+      erwartet: ['1 wurzel AuthError("FORBIDDEN" | "Nur Admins duerfen das.")'],
+    },
+    {
+      form: "ueber eine Einsetzung in einer Vorlage",
+      quelle: 'const s = `${new AuthError("FORBIDDEN", "Nur Admins duerfen das.")}`;\n',
+      erwartet: ['1 wurzel AuthError("FORBIDDEN" | "Nur Admins duerfen das.")'],
+    },
+    {
+      form: "eine Klasse, die ueber einen Aufruf erbt",
+      quelle:
+        "class StummError extends mischung(AuthError) {}\n" +
+        'throw new StummError("Nur Admins duerfen das.");\n',
+      erwartet: ['2 abgeleitet StummError("Nur Admins duerfen das.")'],
+    },
+    // ------------------------------------------------------------------------------------------
+    // RUNDE 5 (JOB 3846 R2) · EIN KONSTRUKTORAUSDRUCK WIRD NACH SEINEM WERT GELESEN, NICHT NACH
+    // DEM ERSTEN NAMEN, DER DARIN VORKOMMT.
+    // BENs Gegenbeweis zu Runde 1, woertlich: `throw new (void AuthError, BenError)("FORBIDDEN",
+    // "USER_NOT_FOUND");` — „alter Extraktor → `BenError`, `abgeleitet`; neuer Extraktor →
+    // `AuthError`, `wurzel`. Die D-Urteilslogik liefert `errors: []`". Tatsaechlich entsteht
+    // `BenError` mit freiem Fehlersatz. Runde 1 nahm den ERSTEN bekannten Namen im Ausdruck; beim
+    // Kommaoperator ist das der VERWORFENE Operand. Damit stufte der Waechter eine unerlaubte
+    // Unterklasse zur Wurzel herab und sah an ihr vorbei — ein RUECKSCHRITT gegenueber dem
+    // abgeloesten Abtaster, der den letzten freien Kommateil las und BenError meldete.
+    // Diese Faelle halten beide Richtungen fest: der Wert entscheidet, UND eine Laufzeitwahl
+    // verdeckt ihre zweite Alternative nicht.
+    {
+      form: "ein Kommaoperator mit einer Unterklasse rechts (BEN, Runde 1)",
+      quelle:
+        "class BenError extends AuthError {}\n" +
+        'throw new (void AuthError, BenError)("FORBIDDEN", "USER_NOT_FOUND");\n',
+      erwartet: ['2 abgeleitet BenError("FORBIDDEN" | "USER_NOT_FOUND")'],
+    },
+    {
+      // Beide Alternativen sind erreichbar, also stehen beide da. Nur die erste zu melden hiesse,
+      // die Unterklassenregel ueber die Reihenfolge der Zweige abschaltbar zu machen.
+      form: "eine Laufzeitwahl zwischen Wurzel und Unterklasse — Wurzel zuerst",
+      quelle:
+        "class BenError extends AuthError {}\n" +
+        'throw new (b ? AuthError : BenError)("FORBIDDEN", "USER_NOT_FOUND");\n',
+      erwartet: [
+        '2 wurzel AuthError("FORBIDDEN" | "USER_NOT_FOUND")',
+        '2 abgeleitet BenError("FORBIDDEN" | "USER_NOT_FOUND")',
+      ],
+    },
+    {
+      form: "eine Laufzeitwahl zwischen Wurzel und Unterklasse — Unterklasse zuerst",
+      quelle:
+        "class BenError extends AuthError {}\n" +
+        'throw new (b ? BenError : AuthError)("FORBIDDEN", "USER_NOT_FOUND");\n',
+      erwartet: [
+        '2 abgeleitet BenError("FORBIDDEN" | "USER_NOT_FOUND")',
+        '2 wurzel AuthError("FORBIDDEN" | "USER_NOT_FOUND")',
+      ],
+    },
+    {
+      // Die dritte Laufzeitwahl-Form neben `?:` — sie war schon in Runde 1 gruen und steht hier,
+      // damit die Auswertung nach dem WERT sie nicht versehentlich auf den rechten Operanden
+      // verkuerzt: bei `??` sind BEIDE Seiten erreichbar, beim Komma nur die rechte.
+      form: "eine Laufzeitwahl ueber ??",
+      quelle: 'throw new (Eigen ?? AuthError)("FORBIDDEN", "USER_NOT_FOUND");\n',
+      erwartet: ['1 wurzel AuthError("FORBIDDEN" | "USER_NOT_FOUND")'],
+    },
   ];
 
   for (const { form, quelle, erwartet } of GESEHEN) {
@@ -352,6 +470,15 @@ describe("D.0 · der Extraktor sieht jede Form, in der ein AuthError entstehen k
     {
       form: "ein new Error, das nichts mit AuthError zu tun hat",
       quelle: 'throw new Error("x");\n',
+    },
+    {
+      // BENs ZWEITE Gegenprobe zu Runde 1, die Gegenrichtung zum Kommaoperator oben: „`throw new
+      // (void AuthError, Error)("Nur Admins duerfen das.");` erzeugt den falschen Verstoss
+      // `AuthError ohne Meldung erzeugt`". Erzeugt wird ein gewoehnlicher `Error`; der Name
+      // `AuthError` steht nur im VERWORFENEN Operanden. Ein Waechter, der daraus einen AuthError
+      // macht, meldet eine Stelle, an der nichts ist — und wird beim ersten Fehlalarm abgeschaltet.
+      form: "ein Kommaoperator mit einem gewoehnlichen Error rechts (BEN, Runde 1)",
+      quelle: 'throw new (void AuthError, Error)("Nur Admins duerfen das.");\n',
     },
     {
       form: "eine fremde Klasse mit Error im Namen",
@@ -389,24 +516,21 @@ describe("D.0 · der Extraktor sieht jede Form, in der ein AuthError entstehen k
     });
   }
 
-  it("D.0 GRENZE: eine Klasse, die erst zur Laufzeit feststeht, ist nicht ablesbar", () => {
-    // KEIN „schlaegt nicht an" im Sinne von harmlos, sondern eine GEMESSENE GRENZE, hier
-    // festgehalten statt verschwiegen: bei `new (b ? AuthError : Error)(…)` steht im Quelltext
-    // nicht, welche Klasse entsteht. Der Extraktor erfindet nichts. Dieser Fall haelt fest, was
-    // heute gilt — wird die Grenze eines Tages verschoben, wird er rot und verlangt eine
-    // Entscheidung, statt die Luecke still wachsen zu lassen.
-    expect(stellenVon('throw new (b ? AuthError : Error)("FORBIDDEN", "text");\n')).toEqual([]);
-  });
-
   // G1/G2/G3 · DER PREIS DER AUFLOESUNG UEBER DEN LETZTEN PUNKTTEIL — gemessen statt verschwiegen.
-  // Die Grosszuegigkeit ist eine ENTSCHEIDUNG, woertlich in quelltext.ts:418-424: „Die Richtung ist
+  // Die Grosszuegigkeit ist eine ENTSCHEIDUNG, woertlich in quelltext.ts:522-525: „Die Richtung ist
   // bewusst gewaehlt: ein Waechter, der beim qualifizierten Namen wegsieht, ist genau dort blind, wo
   // er gebraucht wird; meldet er dagegen einmal zu viel, steht die Stelle mit Datei und Zeile da und
-  // ein Mensch entscheidet." Ihr Preis, bewusst dem Blindsein vorgezogen: `nachArt` kennt Namen,
-  // keine Traeger — heisst IRGENDWO eine Fehlerklasse `Fehler`, meldet quelltext.ts:434-435 auch
+  // ein Mensch entscheidet." Ihr Preis, bewusst dem Blindsein vorgezogen: `artFuer` kennt Namen,
+  // keine Traeger — heisst IRGENDWO eine Fehlerklasse `Fehler`, meldet quelltext.ts:536-537 auch
   // `new this.Fehler(…)` eines FREMDEN Objekts, ueber das gemeinsame `fehlerklassen(quellen)` in D
-  // (Zeile 580) sogar aus einer anderen Datei. WER G1-G3 ROT SIEHT, hat diese Entscheidung
+  // (Zeile 704) sogar aus einer anderen Datei. WER G1-G3 ROT SIEHT, hat diese Entscheidung
   // verschoben und muss sie NEU TREFFEN, nicht die Erwartung anpassen (bestellt: ben.md:30, 3580/R3).
+  //
+  // JOB 3846 R3: Diese drei Faelle kamen mit JOB 3839 (cd9b81c) ueber dem ABTASTER auf main. Der
+  // Syntaxbaum hat sie GEERBT, nicht bestaetigt bekommen — die Erwartungen unten sind an ihm neu
+  // gemessen (Zeilen und Reihenfolge stammen aus dem Lauf, nicht aus der uebernommenen Fassung).
+  // Die Aussage bleibt dieselbe, weil `artFuer` dieselbe zweite Stufe hat wie das abgeloeste
+  // `artVon`: erst der ganze geschriebene Name, dann sein letzter Punktteil.
 
   // Ein und dieselbe fremde Stelle fuer alle drei Faelle — als Konstante, damit G1, G2 und G3
   // nachweislich dasselbe messen und nicht drei aehnliche Quellen.
@@ -422,8 +546,8 @@ describe("D.0 · der Extraktor sieht jede Form, in der ein AuthError entstehen k
     "class Pool { private readonly Fehler: typeof Verbindungsfehler … } mit new this.Fehler(…), " +
     "neben dem echten Alias const Fehler: typeof AuthError = AuthError.";
   const GESCHUETZTE_STELLE =
-    "Geschuetzte Stelle: quelltext.ts:434-435 — dort wird der letzte Teil eines Punktnamens " +
-    "nachgeschlagen, der Traeger nicht. Das ist die bewusst gewaehlte Grenze (quelltext.ts:418-424), " +
+    "Geschuetzte Stelle: quelltext.ts:536-537 — dort wird der letzte Teil eines Punktnamens " +
+    "nachgeschlagen, der Traeger nicht. Das ist die bewusst gewaehlte Grenze (quelltext.ts:522-525), " +
     "kein Fehler dieses Tests: wer sie verschiebt, trifft eine neue Entscheidung.";
 
   /** Geliefert UND erwartet — beides, damit die Diagnose nicht nur die halbe Wahrheit zeigt. */
@@ -442,7 +566,7 @@ Erwartet (${erwartet.length}):\n${erwartet.join("\n") || "(keine Fundstelle)"}`;
       gefunden,
       `${GEMESSENE_FORM}\n${GESCHUETZTE_STELLE}
 Erwartet werden ZWEI Eintraege, nicht null: Pool.Fehler hat mit AuthError nichts zu tun und wird
-trotzdem gemeldet. Faellt der erste Eintrag weg, ist die zweite Stufe von artVon abgeschaltet —
+trotzdem gemeldet. Faellt der erste Eintrag weg, ist die zweite Stufe von artFuer abgeschaltet —
 dann sind auch this.Fehler, deps.Fehler und t.AuthError wieder unsichtbar (JOB 3580 R3).
 ${befund(gefunden, erwartet)}`,
     ).toEqual(erwartet);
@@ -455,14 +579,14 @@ ${befund(gefunden, erwartet)}`,
       `${GEMESSENE_FORM}\n${GESCHUETZTE_STELLE}
 G2 ist die Gegenprobe zu G1 und erst mit ihm zusammen ein Beleg: dieselbe fremde Stelle, aber OHNE
 den echten Alias in der Quelle. Der Fund in G1 haengt also an der Anwesenheit des Namens Fehler,
-nicht an der Form des fremden Traegers. Wird G2 rot, meldet artVon jeden Punktnamen — dann ist die
+nicht an der Form des fremden Traegers. Wird G2 rot, meldet artFuer jeden Punktnamen — dann ist die
 Gegengrenze (D.0 schlaegt NICHT an bei: ein typisiertes Feld …) nur noch zufaellig gruen.
 ${befund(gefunden, [])}`,
     ).toEqual([]);
   });
 
   it("D.0 GRENZE G3: der echte Name in Datei A macht die fremde Stelle in Datei B sichtbar", () => {
-    // Kein zweiter Extraktor: genau die zwei Funktionen, die auch D benutzt (Zeile 580).
+    // Kein zweiter Extraktor: genau die zwei Funktionen, die auch D benutzt (Zeile 704).
     const a = ECHTER_ALIAS + ECHTE_STELLE;
     const b = FREMDER_TRAEGER;
     const gemeinsam = erzeugungsstellen(b, fehlerklassen([a, b])).map(alsZeile);
@@ -470,8 +594,8 @@ ${befund(gefunden, [])}`,
     const erwartet = ['3 wurzel this.Fehler("Zeitueberschreitung")'];
     const reichweite =
       "Geschuetzte Stelle: das gemeinsame fehlerklassen(quellen) in D " +
-      "(jeder-fehler-traegt-einen-katalogschluessel.test.ts:580) zusammen mit " +
-      "quelltext.ts:434-435. D sammelt die Klassen EINMAL ueber ALLE Dateien.";
+      "(jeder-fehler-traegt-einen-katalogschluessel.test.ts:704) zusammen mit " +
+      "quelltext.ts:536-537. D sammelt die Klassen EINMAL ueber ALLE Dateien.";
     expect(
       gemeinsam,
       `${GEMESSENE_FORM}\n${reichweite}
@@ -594,14 +718,19 @@ ${verstoesse.join("\n")}`,
 
 it("D.1 der Waechter hat ueberhaupt etwas gefunden — sonst prueft er die leere Menge", () => {
   // Ohne diesen Fall waere D dadurch stumm zu machen, dass der Extraktor an einer Umformulierung
-  // vorbeisieht: keine Fundstelle, keine Verstoesse, gruen. Gemessen am 11.09.2026 auf b5539ff:
-  // 19 Stellen — 17 direkte `new AuthError(...)` in service.ts (drei davon mehrzeilig) und
-  // 2 `new OidcUnreachableError()` in oidc.ts:225,317. Dieselbe Menge, die der TypeScript-
-  // Syntaxbaum unabhaengig meldet. Die Zahl darf wachsen, aber nicht unter den Bestand fallen.
+  // vorbeisieht: keine Fundstelle, keine Verstoesse, gruen.
+  //
+  // GEMESSEN AM 13.09.2026, zuerst auf 172001e und nach dem Rebase erneut auf cd5de26 — beide Male
+  // 25 Stellen: 23 direkte `new AuthError(...)` (service.ts und routes.ts) und 2
+  // `new OidcUnreachableError()` in oidc.ts:225,317. Unabhaengig nachgezaehlt mit
+  // `grep -rn "new AuthError(" services/auth/src` (23, ohne Testdateien) plus denselben zwei
+  // Oidc-Stellen. Die vorige Schranke stand auf 19 und war am 11.09.2026 auf b5539ff gemessen; sie
+  // waere heute stumpf — sechs Stellen koennten verschwinden, ohne dass etwas rot wird.
+  // Die Zahl darf wachsen, aber nicht unter den Bestand fallen.
   const quellen = authQuellen().map((pfad) => readFileSync(pfad, "utf8"));
   const klassen = fehlerklassen(quellen);
   const stellen = quellen.flatMap((q) => erzeugungsstellen(q, klassen));
-  expect(stellen.length).toBeGreaterThanOrEqual(19);
+  expect(stellen.length).toBeGreaterThanOrEqual(25);
   expect(stellen.filter((s) => s.art === "abgeleitet").map((s) => s.klasse)).toEqual([
     "OidcUnreachableError",
     "OidcUnreachableError",
