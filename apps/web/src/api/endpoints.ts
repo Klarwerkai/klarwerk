@@ -986,5 +986,22 @@ export const endpoints = {
     // SCRUM-148: Admin-Passwort-Reset (eigener Pfad; invalidiert Sitzungen serverseitig).
     resetPassword: (id: string, password: string) =>
       api.post<void>(`/auth/users/${id}/reset`, { password }),
+    // JOB 4021 (ERSTEINRICHTUNG-GAST T2): DER EINE WEG, EINE BEFRISTUNG ZU SETZEN UND ZU NEHMEN.
+    //
+    // Derselbe Endpunkt wie `setRole` — der Server führt Rolle, Freigabe, Passwort und Befristung
+    // an EINER Route (`services/auth/src/routes.ts:764-769`). Zwei Dinge sind hier Vertrag und
+    // keine Feinheit:
+    //
+    //   · `null` NIMMT die Befristung, `undefined` sagt gar nichts. `JSON.stringify` lässt ein
+    //     `undefined` spurlos verschwinden, und der Server geht über ein fehlendes Feld
+    //     ausdrücklich hinweg (`routes.ts:836/839`) — das „Beenden" wäre dann ein Klick, der
+    //     nichts tut und Erfolg meldet. Deshalb `string | null` und kein optionales Argument.
+    //
+    //   · `put<PublicUser>` und nicht `put<void>` wie `setRole`: die Route antwortet mit dem
+    //     vollen Konto MIT der soeben geschriebenen Befristung, und sie schreibt sie eigens
+    //     ZULETZT, damit genau das stimmt (`routes.ts:833-847`). Wer diese Antwort wegwirft,
+    //     zeigt nach dem Speichern den Stand von davor.
+    setAccessExpiry: (id: string, accessExpiresAt: string | null) =>
+      api.put<PublicUser>(`/users/${id}`, { accessExpiresAt }),
   },
 };

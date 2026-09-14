@@ -982,6 +982,18 @@ export interface PublicUser {
   role: Role;
   approved: boolean;
   createdAt: string;
+  // JOB 4021 (ERSTEINRICHTUNG-GAST T2): DER ABLAUF DES ZUGANGS — er kam schon immer mit.
+  //
+  // Der Server führt das Feld am Konto (`services/auth/src/types.ts:51`) und gibt es über
+  // `PublicUser` (`services/auth/src/types.ts:60`) mit JEDER Nutzerantwort heraus, auch über
+  // `GET /api/users` (`services/auth/src/routes.ts:623-629`). Dieser Typ kannte es nicht — der
+  // Client warf es damit schon vor der Oberfläche weg, und die Kontenverwaltung konnte nicht
+  // einmal ANZEIGEN, bis wann ein Zugang gilt.
+  //
+  // OPTIONAL, und das ist keine Bequemlichkeit: „kein Ablauf" ist der gültige NORMALZUSTAND jedes
+  // regulären Kontos (`services/auth/src/types.ts:42-45`). Das fehlende Feld bedeutet
+  // „unbefristet" — es ist keine fehlende Auskunft, sondern eine.
+  accessExpiresAt?: string;
 }
 
 // SCRUM-116/108: Import-/Source-Review-Kandidaten (JSON-Re-Import).

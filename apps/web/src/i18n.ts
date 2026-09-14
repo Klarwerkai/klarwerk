@@ -4673,6 +4673,37 @@ const de = {
   "adm.resetConfirm": "Zurücksetzen",
   "adm.resetCancel": "Abbrechen",
   "adm.resetDone": "Passwort zurückgesetzt; alle Sitzungen beendet.",
+  // JOB 4021 (ERSTEINRICHTUNG-GAST T2): die Befristung eines Zugangs — sehen, setzen, verlängern,
+  // beenden. Eigenes Präfix, eigene Schlüssel; kein bestehender Satz wird umgewidmet.
+  "adm.gastfrist.titel": "Zugang gültig bis",
+  "adm.gastfrist.unbefristet": "Unbefristet — dieser Zugang endet nicht von selbst.",
+  "adm.gastfrist.gueltigBis": "Gültig bis {{datum}}.",
+  "adm.gastfrist.abgelaufen": "Abgelaufen am {{datum}} — dieser Zugang gilt nicht mehr.",
+  "adm.gastfrist.unlesbar":
+    "Der gespeicherte Ablaufwert ist nicht lesbar; er beendet den Zugang nicht.",
+  // WORTLAUT MIT GRUND: hier stand „…und ersetzt sie nicht". Der Autonomiewächter
+  // (`tests/app/learning-claim-guard.test.ts:111`, Regel C) bindet an die Phrase „ersetzt sie" und
+  // kennt die Verneinung nicht — er war damit rot. Aufgeweicht wird der Wächter dafür NICHT: er
+  // hütet Pedis Zusage, dass die Oberfläche keine Ersetzung verspricht, und eine Ausnahme für
+  // diesen Satz risse das Loch für den nächsten. Gesagt wird dasselbe, ohne die Phrase.
+  "adm.gastfrist.hinweis":
+    "Die Befristung gilt zusätzlich zur Freigabe — beide Bedingungen müssen erfüllt sein.",
+  "adm.gastfrist.setzen": "Befristung setzen",
+  "adm.gastfrist.verlaengern": "Befristung ändern oder verlängern",
+  "adm.gastfrist.beenden": "Befristung beenden",
+  "adm.gastfrist.datum": "Zugang endet am Ende dieses Tages",
+  "adm.gastfrist.speichern": "Befristung speichern",
+  "adm.gastfrist.abbrechen": "Abbrechen",
+  "adm.gastfrist.gespeichert": "Befristung gespeichert.",
+  "adm.gastfrist.beendet": "Befristung beendet; der Zugang ist wieder unbefristet.",
+  "adm.gastfrist.datumFehlt": "Bitte zuerst einen Tag wählen.",
+  // ZWEI AUSGÄNGE, ZWEI SÄTZE (JOB 4021 R2, BEN-Korrekturpflicht 1). `fehlerHilfe` behauptet, dass
+  // nichts geändert wurde — das darf nur dastehen, wenn der Server ABGELEHNT hat. Blieb der
+  // Ausgang offen (verlorene Antwort, abgebrochenes Netz), gilt `fehlerOffen`: dort wird nichts
+  // über die Daten behauptet, sondern gesagt, dass der Stand neu geholt wird.
+  "adm.gastfrist.fehlerHilfe": "Nichts wurde geändert. Wähle einen Tag und speichere erneut.",
+  "adm.gastfrist.fehlerOffen":
+    "Ob die Befristung gespeichert wurde, ist nicht bestätigt. Der Stand oben wird neu geholt — lies ihn, bevor du erneut speicherst.",
   "adm.seedTitle": "Demodaten laden",
   "adm.seedHint":
     "Lädt einen kleinen, echten Demo-Bestand (KOs, Validierung, Lücke, Konflikt, Duplikat, Anhang) — auch neben vorhandenen Daten. Dein echter Bestand bleibt unberührt und wird nie überschrieben. Über „Demodaten entfernen“ gezielt wieder entfernbar. (Konflikt-/Duplikat-Befund erscheint mit aktivem KI-Reasoner.)",
@@ -10203,6 +10234,25 @@ const en: typeof de = {
   "adm.resetConfirm": "Reset",
   "adm.resetCancel": "Cancel",
   "adm.resetDone": "Password reset; all sessions ended.",
+  "adm.gastfrist.titel": "Access valid until",
+  "adm.gastfrist.unbefristet": "No end date — this access does not expire on its own.",
+  "adm.gastfrist.gueltigBis": "Valid until {{datum}}.",
+  "adm.gastfrist.abgelaufen": "Expired on {{datum}} — this access is no longer valid.",
+  "adm.gastfrist.unlesbar": "The stored expiry value is unreadable; it does not end the access.",
+  "adm.gastfrist.hinweis":
+    "The time limit applies in addition to approval — both conditions must be met.",
+  "adm.gastfrist.setzen": "Set time limit",
+  "adm.gastfrist.verlaengern": "Change or extend time limit",
+  "adm.gastfrist.beenden": "End time limit",
+  "adm.gastfrist.datum": "Access ends at the end of this day",
+  "adm.gastfrist.speichern": "Save time limit",
+  "adm.gastfrist.abbrechen": "Cancel",
+  "adm.gastfrist.gespeichert": "Time limit saved.",
+  "adm.gastfrist.beendet": "Time limit ended; the access has no end date again.",
+  "adm.gastfrist.datumFehlt": "Please choose a day first.",
+  "adm.gastfrist.fehlerHilfe": "Nothing was changed. Choose a day and save again.",
+  "adm.gastfrist.fehlerOffen":
+    "Whether the time limit was saved is not confirmed. The state above is being fetched again — read it before you save once more.",
   "adm.seedTitle": "Load demo data",
   "adm.seedHint":
     "Loads a small, real demo set (KOs, validation, gap, conflict, duplicate, attachment) — also alongside existing data. Your real content stays untouched and is never overwritten. Removable on demand via “Remove demo data”. (Conflict/duplicate findings appear with an active AI reasoner.)",
@@ -15272,6 +15322,26 @@ const nl: typeof de = {
   "adm.resetConfirm": "Resetten",
   "adm.resetCancel": "Annuleren",
   "adm.resetDone": "Wachtwoord gereset; alle sessies beëindigd.",
+  "adm.gastfrist.titel": "Toegang geldig tot",
+  "adm.gastfrist.unbefristet": "Onbeperkt — deze toegang verloopt niet vanzelf.",
+  "adm.gastfrist.gueltigBis": "Geldig tot {{datum}}.",
+  "adm.gastfrist.abgelaufen": "Verlopen op {{datum}} — deze toegang geldt niet meer.",
+  "adm.gastfrist.unlesbar":
+    "De opgeslagen vervalwaarde is onleesbaar; ze beëindigt de toegang niet.",
+  "adm.gastfrist.hinweis":
+    "De beperking geldt naast de goedkeuring — aan beide voorwaarden moet zijn voldaan.",
+  "adm.gastfrist.setzen": "Beperking instellen",
+  "adm.gastfrist.verlaengern": "Beperking wijzigen of verlengen",
+  "adm.gastfrist.beenden": "Beperking beëindigen",
+  "adm.gastfrist.datum": "Toegang eindigt aan het eind van deze dag",
+  "adm.gastfrist.speichern": "Beperking opslaan",
+  "adm.gastfrist.abbrechen": "Annuleren",
+  "adm.gastfrist.gespeichert": "Beperking opgeslagen.",
+  "adm.gastfrist.beendet": "Beperking beëindigd; de toegang is weer onbeperkt.",
+  "adm.gastfrist.datumFehlt": "Kies eerst een dag.",
+  "adm.gastfrist.fehlerHilfe": "Er is niets gewijzigd. Kies een dag en sla opnieuw op.",
+  "adm.gastfrist.fehlerOffen":
+    "Of de beperking is opgeslagen, is niet bevestigd. De stand hierboven wordt opnieuw opgehaald — lees die voordat je nogmaals opslaat.",
   "adm.seedTitle": "Demogegevens laden",
   "adm.seedHint":
     "Laadt een kleine, echte demovoorraad (KO's, validatie, hiaat, conflict, duplicaat, bijlage) — ook naast bestaande gegevens. Je echte bestand blijft onaangeroerd en wordt nooit overschreven. Gericht te verwijderen via „Demogegevens verwijderen“. (Conflict-/duplicaatbevinding verschijnt met een actieve AI-reasoner.)",
