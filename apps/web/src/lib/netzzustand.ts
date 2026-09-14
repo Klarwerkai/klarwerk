@@ -22,12 +22,16 @@
 // darf nichts auslösen: sie soll sagen, was sie weiß, und nicht durch das Hinsehen Schreibvorgänge
 // starten. Deshalb ist er hier bewusst nicht die Quelle, und deshalb bleibt er unangetastet.
 //
-// RESTSCHULD, ehrlich benannt: `shell/Meldungen.tsx:30` (`useOnline`),
-// `components/einstellungen/zeilenWert.ts:133` (`useIstOnline`) und `pages/Stufe2.tsx:1024-1025`
-// lesen denselben `onlineManager` mit eigener Verdrahtung. Sie liegen außerhalb der Zielpfade
-// dieses Auftrags und werden deshalb nicht angefasst; sie lesen dieselbe Quelle, erzeugen also
-// keine zweite Wahrheit, wohl aber eine dritte Verdrahtung. `tests/kollision-netztrennung/
-// eine-quelle-waechter.test.ts` hält den Bestand fest, damit er nicht unbemerkt wächst.
+// DIE EINZIGE VERDRAHTUNG, seit JOB 3879: `shell/Meldungen.tsx` (`useOnline`),
+// `components/einstellungen/zeilenWert.ts` (`useIstOnline`) und `pages/Stufe2.tsx` haben den
+// `onlineManager` bis dahin je selbst verdrahtet — die Restschuld, die JOB 3084 hier benennen
+// musste, weil sie außerhalb seiner Zielpfade lag. Sie ist abgetragen: die beiden Namen bestehen
+// weiter (ihre Aufrufstellen in `shell/KopfbandPunkte.tsx` und `pages/Admin.tsx` bleiben
+// unverändert) und reichen jetzt diesen Hook durch; `Stufe2.tsx` ruft ihn unmittelbar.
+// `tests/kollision-netztrennung/eine-quelle-waechter.test.ts` (W-4) hält fest, dass es bei EINER
+// Verdrahtung bleibt, `eine-verdrahtung-je-hook.test.tsx` misst, dass je Hookinstanz genau einmal
+// abonniert wird. Offen bleibt allein `navigator.onLine` in `app/AuthContext.tsx` und
+// `app/useOfflineQueue.ts` — das sind Handlungen und keine Auskünfte (W-5 hält sie auf zwei fest).
 import { onlineManager } from "@tanstack/react-query";
 import { useSyncExternalStore } from "react";
 

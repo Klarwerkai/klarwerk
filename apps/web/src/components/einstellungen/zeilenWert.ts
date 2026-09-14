@@ -20,8 +20,7 @@
 // `fetchStatus === "paused"` allein ist zu wenig — ein Verbindungsabbruch ohne laufende Abfrage
 // bliebe sonst unbemerkt; und ein wegen `focusManager` pausierter Wiederholungsversuch ist NICHT
 // offline).
-import { onlineManager } from "@tanstack/react-query";
-import { useCallback, useSyncExternalStore } from "react";
+import { useNetzOnline } from "../../lib/netzzustand";
 
 /** Die Minimalsicht auf ein react-query-Ergebnis, die für den Zeilenwert nötig ist. */
 export interface Abfragelage {
@@ -134,18 +133,12 @@ export function gruppenlage(lagen: readonly Abfragelage[]): Abfragelage {
 }
 
 /**
- * Der echte Online-Zustand, reaktiv. `onlineManager` ist dieselbe Quelle, die react-query selbst
- * für `fetchStatus: "paused"` verwendet — hier direkt beobachtet, damit ein Verbindungsabbruch OHNE
- * laufende Abfrage die Zeile ebenfalls erreicht.
+ * Der echte Online-Zustand, reaktiv — durchgereicht aus `lib/netzzustand.ts`, wo die EINE
+ * Verdrahtung des `onlineManager` steht. Das ist dieselbe Quelle, die react-query selbst für
+ * `fetchStatus: "paused"` liest; beobachtet wird sie seit JOB 3879 nicht mehr hier, sondern dort.
+ * Am Verhalten der Zeile ändert das nichts: ein Verbindungsabbruch OHNE laufende Abfrage erreicht
+ * sie weiterhin, denn abonniert wird derselbe Manager (nur einmal statt an vier Stellen).
  */
 export function useIstOnline(): boolean {
-  const abonnieren = useCallback(
-    (melden: () => void) => onlineManager.subscribe(() => melden()),
-    [],
-  );
-  return useSyncExternalStore(
-    abonnieren,
-    () => onlineManager.isOnline(),
-    () => true,
-  );
+  return useNetzOnline();
 }

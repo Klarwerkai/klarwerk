@@ -116,20 +116,28 @@ describe("JOB 3084/3098 · die drei Flächen reichen den Zustand, sie deuten ihn
   });
 });
 
-describe("JOB 3084 · der Bestand an Onlinezustand-Verdrahtungen wächst nicht unbemerkt", () => {
-  // WAS HIER FESTGEHALTEN WIRD, ist absichtlich der EHRLICHE Bestand und nicht ein Wunschbild:
-  // drei Verdrahtungen bestanden vor diesem Auftrag und liegen außerhalb seiner Zielpfade, eine
-  // kommt neu hinzu. Alle vier lesen DIESELBE Quelle (`onlineManager`), es gibt also keine zweite
-  // Wahrheit — wohl aber vier Stellen, an denen sie verdrahtet ist. Wächst die Zahl, wird dieser
-  // Fall rot und die Entscheidung fällt bewusst statt nebenbei.
+describe("JOB 3084/3879 · der Onlinezustand ist genau EINMAL verdrahtet", () => {
+  // WAS HIER FESTGEHALTEN WIRD: bis JOB 3879 standen hier VIER Dateien — der ehrliche Bestand, den
+  // JOB 3084 vorfand und nicht abtragen durfte (drei lagen außerhalb seiner Zielpfade). JOB 3879
+  // hat sie abgetragen: `shell/Meldungen.tsx` (`useOnline`),
+  // `components/einstellungen/zeilenWert.ts` (`useIstOnline`) und `pages/Stufe2.tsx` reichen seither
+  // `useNetzOnline()` durch, statt selbst zu abonnieren. Übrig bleibt die eine Verdrahtung in
+  // `lib/netzzustand.ts`.
+  //
+  // WARUM GENAU EINE UND NICHT „HÖCHSTENS VIER": eine zweite Verdrahtung erzeugt zwar keine zweite
+  // Wahrheit (die Quelle bleibt derselbe `onlineManager`), wohl aber eine zweite Stelle, an der die
+  // Identitätsfrage von `useSyncExternalStore` neu und womöglich falsch beantwortet wird — genau
+  // der Fehler, den `Meldungen.tsx` bis hierher machte (Anmeldung je Bild statt je Hookinstanz,
+  // gemessen in `eine-verdrahtung-je-hook.test.tsx`). Wächst die Zahl wieder, wird dieser Fall rot,
+  // und die Entscheidung fällt bewusst statt nebenbei.
+  //
+  // Die Liste ist eine GLEICHHEIT, keine Obergrenze: verschwände auch `lib/netzzustand.ts`, läse
+  // niemand mehr den `onlineManager` — auch das wäre ein Befund und nicht stillschweigend erlaubt.
   const ERWARTET: readonly string[] = [
-    "components/einstellungen/zeilenWert.ts", // useIstOnline (vorbestehend)
-    "lib/netzzustand.ts", // useNetzOnline (JOB 3084 — die Quelle für die Kollisionsauskunft)
-    "pages/Stufe2.tsx", // abonniereOnline/leseOnline (vorbestehend)
-    "shell/Meldungen.tsx", // useOnline (vorbestehend)
+    "lib/netzzustand.ts", // useNetzOnline — die eine Quelle (JOB 3084, alleinig seit JOB 3879)
   ];
 
-  it("W-4 · genau vier Dateien verdrahten `onlineManager.subscribe`", () => {
+  it("W-4 · genau eine Datei verdrahtet `onlineManager.subscribe`", () => {
     const gefunden = alleQuelldateien()
       .filter((f) => liesCode(f).includes("onlineManager.subscribe"))
       .sort();

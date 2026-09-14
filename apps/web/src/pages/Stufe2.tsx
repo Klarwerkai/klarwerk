@@ -1,4 +1,4 @@
-import { onlineManager, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowDown,
   ArrowUp,
@@ -11,7 +11,7 @@ import {
   Printer,
   X,
 } from "lucide-react";
-import { type ChangeEvent, type DragEvent, useEffect, useState, useSyncExternalStore } from "react";
+import { type ChangeEvent, type DragEvent, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
@@ -109,6 +109,7 @@ import {
   modelRunVerbrauch,
   summarizeModelRuns,
 } from "../lib/modelRuns";
+import { useNetzOnline } from "../lib/netzzustand";
 import { buildCompositionPreview, moveInOrder, sanitizeOrder } from "../lib/outputComposition";
 import { OUTPUT_KIND_OPTIONS, downloadFilename } from "../lib/outputDoc";
 import { buildProvenanceIndex } from "../lib/provenanceIndex";
@@ -1319,17 +1320,6 @@ function WindowNote({
   );
 }
 
-// JOB 3044 R3: der Netzzustand als abonnierte Größe. Beide Funktionen stehen ausserhalb der
-// Komponente, damit ihre Identität stabil bleibt und `useSyncExternalStore` nicht bei jedem Render
-// neu abonniert. Der dritte Parameter ist der Serverwert: ohne Browser ist kein Netzzustand
-// messbar, also wird auch keine Offline-Behauptung aufgestellt.
-const abonniereOnline = (aendert: () => void): (() => void) => onlineManager.subscribe(aendert);
-const leseOnline = (): boolean => onlineManager.isOnline();
-
-function useIstOnline(): boolean {
-  return useSyncExternalStore(abonniereOnline, leseOnline, () => true);
-}
-
 // SCRUM-165: kompakte, read-only Sicht auf die jüngsten Reasoner-/ModelRuns (nur Metadaten).
 //
 // ══ JOB 3044 · DER ZUSTANDS-KURZSCHLUSS IST HIER RAUS ═══════════════════════════════════════════
@@ -1352,12 +1342,14 @@ function useIstOnline(): boolean {
 // (`fetchStatus: "idle"`), dann fällt die Verbindung weg. `idle` wird nicht zu `paused`, also blieb
 // `isPaused` false und die Karte sagte kein Wort — sie zeigte einen nicht mehr überprüfbaren
 // Bestand, als wäre nichts geschehen. `isPaused` ist eben eine Aussage über die ABFRAGE, nicht über
-// das NETZ. Gebraucht wird das Netz, also wird es abonniert (`useIstOnline`) — und `isPaused`
-// entfällt ersatzlos, denn ohne Netz ist es nur eine Folge desselben Umstands.
+// das NETZ. Gebraucht wird das Netz, also wird es abonniert (`useNetzOnline` aus
+// `lib/netzzustand.ts`, seit JOB 3879 die eine Verdrahtung des `onlineManager`; davor stand hier
+// eine eigene) — und `isPaused` entfällt ersatzlos, denn ohne Netz ist es nur eine Folge desselben
+// Umstands.
 function ReasonerRunsCard(): JSX.Element {
   const { t } = useTranslation();
   const runs = useModelRuns(50);
-  const online = useIstOnline();
+  const online = useNetzOnline();
   const stoerung: "keine" | "offline" | "fehler" = !online
     ? "offline"
     : runs.isError

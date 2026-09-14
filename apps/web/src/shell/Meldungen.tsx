@@ -1,11 +1,12 @@
-import { onlineManager, useQueryClient } from "@tanstack/react-query";
-import { useRef, useState, useSyncExternalStore } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import { useNotifications } from "../api/hooks";
 import { useGuardedNavigate } from "../app/NavGuardContext";
 import { useToast } from "../app/ToastContext";
+import { useNetzOnline } from "../lib/netzzustand";
 import { notificationTarget } from "../lib/notificationTarget";
 import { MenueAufklapp } from "./Menue";
 
@@ -26,13 +27,17 @@ import { MenueAufklapp } from "./Menue";
 // ist. Deshalb hält `useMeldungenZustand` (im Konto-Kreis, der immer im Kopfband steht) die drei
 // Mengen, und `Meldungen` bekommt sie gereicht.
 
-/** Ist der Browser online? (react-query's onlineManager — dieselbe Quelle, die Abrufe pausiert.) */
+/**
+ * Ist der Browser online? Der Wert kommt aus `lib/netzzustand.ts` — dort steht die EINE Verdrahtung
+ * des `onlineManager` (derselben Quelle, die react-query für `fetchStatus: "paused"` liest).
+ *
+ * JOB 3879: bis hierher verdrahtete diese Stelle den `onlineManager` selbst, und zwar mit einer im
+ * Rumpf angelegten Abonnierfunktion — gemessen 5 Anmeldungen bei 5 Rendervorgängen
+ * (`tests/kollision-netztrennung/eine-verdrahtung-je-hook.test.tsx`, V-2). Der Name bleibt, weil
+ * `KopfbandPunkte.tsx` ihn ruft; verschwunden ist die eigene Verdrahtung.
+ */
 export function useOnline(): boolean {
-  return useSyncExternalStore(
-    (listener) => onlineManager.subscribe(listener),
-    () => onlineManager.isOnline(),
-    () => true,
-  );
+  return useNetzOnline();
 }
 
 /**
