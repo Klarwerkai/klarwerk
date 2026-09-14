@@ -120,10 +120,23 @@ function webAliase(): ts.CompilerOptions {
  *     Der Grund ist der Sache nach einleuchtend: die Produktdateien holen die React-Typen selbst
  *     herein, und mit ihnen die globale `JSX`-Auskunft — das Programm braucht die Zusage dafür nicht.
  *
- *     WAS DAMIT GEMESSEN IST UND WAS NICHT: gemessen ist der Typ der JSX-STELLEN (der Gegenstand
- *     dieses Wächters) und das Ergebnis der Erhebung. NICHT gemessen ist, ob andere Typen derselben
- *     Dateien ohne die DOM-Bibliothek zerfallen (`HTMLDivElement` und Verwandte) — deshalb bleiben
- *     beide Zusätze stehen, statt auf eine Messung hin entfernt zu werden, die sie nicht deckt.
+ *     JOB 3948 — HIER STAND EINE GRENZE, DIE NIEMAND GEMESSEN HAT, und sie ist jetzt gemessen. Der
+ *     Satz lautete: „NICHT gemessen ist, ob andere Typen derselben Dateien ohne die DOM-Bibliothek
+ *     zerfallen (`HTMLDivElement` und Verwandte) — deshalb bleiben beide Zusätze stehen, statt auf
+ *     eine Messung hin entfernt zu werden, die sie nicht deckt." Er ist ERSETZT, nicht ergänzt.
+ *
+ *     GEMESSEN (Fall „JOB 3948 · Lieferung 5" in `toter-kandidatenweg.test.ts`, Lauf
+ *     a808872853bc46cea48314d86cba5a21): EINE gestellte `.tsx`-Quelle, drei Programme, je zwei
+ *     Fragen — der Typ der JSX-Stelle und ein DOM-Typ AUSSERHALB davon:
+ *
+ *         beide Zusätze   `<section>` → Element   `document.createElement("div")` → HTMLDivElement
+ *         ohne DOM-Bibl.  `<section>` → Element   `document.createElement("div")` → any
+ *         ohne `jsx`      `<section>` → any       `document.createElement("div")` → HTMLDivElement
+ *
+ *     Die beiden Zusätze tragen GETRENNTE Dinge, und keiner trägt das des anderen: `jsx` trägt
+ *     allein die JSX-Auskunft, die DOM-Bibliothek allein die Typen daneben. Beide bleiben stehen —
+ *     jetzt auf eine Messung hin und nicht mehr mangels einer. Die Messung ist gebunden: sie leitet
+ *     ihre Zusätze aus `FLAECHEN_ZUSATZ` unten ab, wer dort etwas herausnimmt, rötet sie.
  *
  *     IN DER KALIBRIERUNG unten trägt `jsx` sehr wohl, und DAS ist gemessen und gebunden: die
  *     gestellten Quellen holen keine React-Typen herein, also kommt die JSX-Auskunft dort allein aus
@@ -146,6 +159,24 @@ function optionen(zusatz: ts.CompilerOptions): ts.CompilerOptions {
     ...zusatz,
   };
 }
+
+/**
+ * DIE ZWEI ZUSÄTZE DER FLÄCHE, an EINER Stelle — `jsx` und die DOM-Bibliothek.
+ *
+ * JOB 3948: bis hierher standen sie zeichengleich zweimal da (einmal in `produktprogramm`, einmal in
+ * `gestelltesProgramm`). Zwei Stellen für dieselbe Zusage laufen auseinander, und Lieferung 5
+ * braucht sie ausserdem als Gegenstand: sie nimmt genau diese Zusätze EINZELN heraus und misst, was
+ * dabei zerfällt. Ein zweites Optionsobjekt entsteht dabei nicht — beide Programme und die Messung
+ * gehen weiter durch `optionen(…)`.
+ */
+// `satisfies` statt einer Typangabe, und das ist kein Geschmack: `ts.CompilerOptions` erklärt jedes
+// Feld als optional, unter `exactOptionalPropertyTypes` wäre `FLAECHEN_ZUSATZ.jsx` damit
+// `JsxEmit | undefined` — und genau diese beiden Felder liest die Messung unten EINZELN heraus.
+export const FLAECHEN_ZUSATZ = {
+  jsx: ts.JsxEmit.ReactJSX,
+  lib: ["lib.es2022.d.ts", "lib.dom.d.ts", "lib.dom.iterable.d.ts"],
+  skipLibCheck: true,
+} satisfies ts.CompilerOptions;
 
 function umgebungAus(programm: ts.Program, beginn: number): Typumgebung {
   return {
@@ -211,6 +242,32 @@ let produkt: Typumgebung | undefined;
  * `gestelltesProgramm` ist NICHT nachweisbar: das gestellte Programm ist klein, und die vier neuen
  * Fälle zusammen laufen in unter einer halben Sekunde.
  *
+ * WAS JOB 3948 DAZU KOSTET — GEMESSEN (14.09.2026, dieselbe Befehlszeile über die drei Gruppen
+ * `tests/live-check-*`, dieselben 759 Produktdateien, beide Läufe auf dem Arbeitsprüfplatz der Cloud):
+ *
+ *     VORHER    Datei 5864 ms (Fall 5252 ms; Aufbau 3402 + Erhebung 1677 + Deckung 157) · 29 Fälle
+ *               · Gruppe 9,75 s (Lauf 68329376bc114e5a9a56e18ed2798a02)
+ *     NACHHER   Datei 8142 ms (Fall 5589 ms; Aufbau 3766 + Erhebung 1647 + Deckung 162) · 32 Fälle
+ *               · Gruppe 12,16 s (Lauf a808872853bc46cea48314d86cba5a21)
+ *     ENDSTAND  Aufbau 2600 + Erhebung 982 · 32 Fälle · Gruppe 8,87 s
+ *               (Lauf d110a15db6ec4543964accb3829809f7)
+ *
+ * DAS PAAR SAGT WIEDER NICHTS, und diesmal war es vorher bekannt: der bytegleiche ENDSTAND lief auf
+ * einem freien Platz in 8,87 s — SCHNELLER als der VORHER-Lauf mit 9,75 s. „+2,4 s" wäre aus diesem
+ * Paar nicht zu belegen, genau wie schon bei JOB 3895.
+ *
+ * WAS SICH BELEGEN LÄSST, weil es sich selbst misst — und was deshalb die einzigen Zahlen sind, auf
+ * die sich hier eine Aussage stützt:
+ *
+ *     Lieferung 5 (drei Programme über EINE gestellte `.tsx`-Quelle)   1459 ms · 1200 ms (zwei Läufe)
+ *     Lieferung 6 (der echte Produkttyp zieht `repo.ts`/`service.ts` samt ihrer Abhängigkeiten in
+ *       das gestellte Programm; Fall „JOB 3840")                       441 ms → 919 ms (ein Paar)
+ *
+ * Lieferung 5 kostet damit BELEGT über eine Sekunde im Tor — über der Schwelle, die der Auftrag als
+ * meldepflichtig setzt; sie steht als BEFUND in der Rückgabe. Die Zahl zu Lieferung 6 ist EIN Paar
+ * und trägt nach dem Massstab dieses Blocks keine Aussage über die Gruppe. Der Preis ist der dafür,
+ * dass drei Zusagen dieser Kette nicht mehr behauptet, sondern gemessen sind.
+ *
  * DER PLATZ STREUT STÄRKER ALS DER EFFEKT, und auch das ist gemessen statt geschätzt: dieselben 25
  * Fälle liefen im selben Fenster fünfmal, zwischen Datei 2658 ms (Aufbau 1807 ms) und Datei 4026 ms
  * (Aufbau 2738 ms) — OHNE Alias-Auskunft ebenso wie mit. Die schärfste Paarung ist die Rückbauprobe:
@@ -227,11 +284,7 @@ export function produktprogramm(dateien: readonly string[]): Typumgebung {
   const beginn = Date.now();
   const programm = ts.createProgram({
     rootNames: dateien.map((datei) => join(WURZEL, datei)),
-    options: optionen({
-      jsx: ts.JsxEmit.ReactJSX,
-      lib: ["lib.es2022.d.ts", "lib.dom.d.ts", "lib.dom.iterable.d.ts"],
-      skipLibCheck: true,
-    }),
+    options: optionen(FLAECHEN_ZUSATZ),
   });
   produkt = umgebungAus(programm, beginn);
   return produkt;
@@ -271,6 +324,23 @@ export function gestelltesProgramm(quellen: ReadonlyMap<string, string>): Typumg
   if (bekannt !== undefined) {
     return bekannt;
   }
+  const umgebung = gestelltesProgrammMit(quellen, FLAECHEN_ZUSATZ);
+  gestellte.set(quellen, umgebung);
+  return umgebung;
+}
+
+/**
+ * DASSELBE GESTELLTE PROGRAMM, ABER MIT WÄHLBAREM ZUSATZ — JOB 3948, Lieferung 5.
+ *
+ * `gestelltesProgramm` oben ist der eine gespeicherte Aufrufer mit `FLAECHEN_ZUSATZ`; die Messung
+ * der Zusätze ruft dieselbe Vorrichtung mit einem beschnittenen Zusatz. Es gibt damit weiterhin EINEN
+ * Wirt, EINE Optionsquelle und EINEN Programmbau — nur die zwei Zusätze sind beweglich, und genau sie
+ * sind der Gegenstand der Messung. Kein Zwischenspeicher hier: jede Messung will ein eigenes Programm.
+ */
+export function gestelltesProgrammMit(
+  quellen: ReadonlyMap<string, string>,
+  zusatz: ts.CompilerOptions,
+): Typumgebung {
   const beginn = Date.now();
   const inhalte = new Map(
     [...quellen].map(([datei, text]) => [posix(join(WURZEL, datei)), text] as const),
@@ -295,11 +365,7 @@ export function gestelltesProgramm(quellen: ReadonlyMap<string, string>): Typumg
   // Kalibrierung eine ANDERE Frage als `produktprogramm` oben — sie konnte die Zusage dort also
   // grundsätzlich nicht prüfen. Beide Zusätze laufen durch dasselbe `optionen(…)`; eine zweite
   // Optionsquelle entsteht nicht.
-  const eigene = optionen({
-    jsx: ts.JsxEmit.ReactJSX,
-    lib: ["lib.es2022.d.ts", "lib.dom.d.ts", "lib.dom.iterable.d.ts"],
-    skipLibCheck: true,
-  });
+  const eigene = optionen(zusatz);
   const basis = ts.createCompilerHost(eigene, true);
   const wirt: ts.CompilerHost = {
     ...basis,
@@ -318,7 +384,5 @@ export function gestelltesProgramm(quellen: ReadonlyMap<string, string>): Typumg
     options: eigene,
     host: wirt,
   });
-  const umgebung = umgebungAus(programm, beginn);
-  gestellte.set(quellen, umgebung);
-  return umgebung;
+  return umgebungAus(programm, beginn);
 }

@@ -88,14 +88,30 @@
 // und hebt sie nicht auf: eine `.tsx`-Quelle wird jetzt als TSX gelesen und ihr JSX typisiert, aber
 // ein Empfänger ohne Auskunft bleibt ungesehen, gleich in welcher Datei er steht.
 //
-// WAS AUCH NACH JOB 3895 OFFEN IST und deshalb hier steht statt als erledigt zu gelten: ob auf der
-// echten `.tsx`-Fläche überhaupt ein Repository-Träger vorkommt, ist NICHT gezeigt — die Erhebung
-// sagt allein, dass keine der gelesenen Produktdateien `findCandidates` eines Repository-Typs ruft.
-// Und die Zahl der aufgelösten `@/…`-Importe gibt der Fall weiterhin nicht aus (JOB 3867, REST).
-// Eine Auskunft, die der Prüfer nicht hat, darf sie nicht erfinden. Der Fall steht unten als
-// Kalibrierung „bleibt ungesehen". Ausdrücklich KEINE Lücke, sondern die Gegenrichtung: ein FREMDER
-// Typ mit derselben Gestalt (`KoService` trägt dieselbe Methode) bleibt grün — auch das steht unten
-// als Fall, denn ein Wächter, der den echten Produktweg beanstandet, wäre wertlos.
+// WAS JOB 3895 HIER OFFEN LIESS, IST SEIT JOB 3948 GEMESSEN. Der Satz lautete: „ob auf der echten
+// `.tsx`-Fläche überhaupt ein Repository-Träger vorkommt, ist NICHT gezeigt — die Erhebung sagt
+// allein, dass keine der gelesenen Produktdateien `findCandidates` eines Repository-Typs ruft." Er
+// ist ERSETZT, nicht ergänzt: die Kalibrierung stellt jetzt eine `.tsx`-Quelle unter
+// `apps/web/src/**`, die den ECHTEN Typ `KoRepo` aus `services/knowledge-object/src/repo.ts`
+// IMPORTIERT und `findCandidates` darauf ruft — der Typprüfer nennt ihn (Fall „JOB 3948 ·
+// Lieferung 6"). Die Erhebung SIEHT einen solchen Ruf auf der Web-Fläche also; ihr Grün über die
+// Produktdateien ist ein Befund und kein Schweigen. Die Gegenrichtung steht daneben und ebenfalls am
+// ECHTEN Produkttyp: `KoService` aus `service.ts` trägt dieselbe Methode und bleibt grün — ein
+// Wächter, der den echten Produktweg beanstandet, wäre wertlos.
+//
+// RUNDE 2 (BEN, Korrekturpflicht 1) — DIESES GRÜN IST JETZT EINE AUSSAGE UND NICHT MEHR EIN
+// SCHWEIGEN. Eine leere Beanstandungsliste bleibt auch dann leer, wenn der Prüfer den Empfänger gar
+// nicht kennt; BEN hat das gemessen (Dienstimport auf `src/ben-fehlt` verbogen → alle 32 Fälle
+// weiter grün). Vor der Gegenrichtung steht deshalb jetzt ihre Voraussetzung: `empfaengertyp` belegt
+// für den Träger einen benannten Typ ohne `any`/`unknown`/Fehlertyp, DIE DATEI, IN DER ER ERKLÄRT
+// IST, und `findCandidates` an ihm. Dass der Typname allein nicht genügt, ist selbst gemessen: zeigt
+// der Repo-Import auf die gleichnamige GESTELLTE Nachbardatei, bleibt der Name `KoRepo` und allein
+// die Herkunft rötet den Fall.
+//
+// WAS WEITERHIN OFFEN BLEIBT und deshalb hier steht statt als erledigt zu gelten: die Zahl der
+// aufgelösten `@/…`-Importe gibt der Fall nicht aus (JOB 3867, REST). Eine Auskunft, die der Prüfer
+// nicht hat, darf sie nicht erfinden. Die eine verbliebene Grenze — ein Empfänger, dessen Typ auch
+// der Typprüfer nicht kennt — steht unten als Kalibrierung „bleibt ungesehen".
 //
 // SIE STEHT NEBEN `rangfolge-waechter.test.ts`, NICHT AN DESSEN STELLE: der dort prüft die GESTALT
 // der Abfrage (führt das `ORDER BY` die Term-Trefferzahl?), diese hier die Frage „wer ruft, und was
@@ -113,7 +129,13 @@ import {
   quelldateien,
   quelleAus,
 } from "../../tools/modalgrenze";
-import { type Typumgebung, gestelltesProgramm, produktprogramm } from "./typprogramm";
+import {
+  FLAECHEN_ZUSATZ,
+  type Typumgebung,
+  gestelltesProgramm,
+  gestelltesProgrammMit,
+  produktprogramm,
+} from "./typprogramm";
 
 const REPO = "services/knowledge-object/src/repo.ts";
 const REPO_PG = "services/knowledge-object/src/repo-pg.ts";
@@ -651,6 +673,94 @@ function jsxStellen(ast: ts.SourceFile, nurErste = false): JsxStelle[] {
   return raus;
 }
 
+/**
+ * JOB 3948, Lieferung 5: welchen Typ der Prüfer für EINE benannte Deklaration nennt.
+ *
+ * Sie steht neben `jsxGestalten` und misst das Gegenstück: einen Typ AUSSERHALB der JSX-Ausdrücke.
+ * Genau der war die von `typprogramm.ts` selbst benannte ungemessene Stelle („ob andere Typen
+ * derselben Dateien ohne die DOM-Bibliothek zerfallen"). Keine oder mehrere Deklarationen sind ROT:
+ * eine Auskunft über nichts ist keine Auskunft (Lehre JOB 3489).
+ */
+function typDerDeklaration(umgebung: Typumgebung, datei: string, name: string): string {
+  return umgebung.pruefer.typeToString(
+    umgebung.pruefer.getTypeAtLocation(eineDeklaration(umgebung, datei, name)),
+  );
+}
+
+/** Die GENAU EINE Deklaration eines Namens im Baum des Programms — keine und mehrere sind rot. */
+function eineDeklaration(umgebung: Typumgebung, datei: string, name: string): ts.Identifier {
+  const ast = baumImProgramm(umgebung, datei);
+  const treffer: ts.Identifier[] = [];
+  const besuche = (knoten: ts.Node): void => {
+    if (
+      ts.isVariableDeclaration(knoten) &&
+      ts.isIdentifier(knoten.name) &&
+      knoten.name.text === name
+    ) {
+      treffer.push(knoten.name);
+    }
+    ts.forEachChild(knoten, besuche);
+  };
+  ts.forEachChild(ast, besuche);
+  const eine = treffer[0];
+  if (treffer.length !== 1 || eine === undefined) {
+    throw new Error(
+      `${datei}: nicht genau eine Deklaration von „${name}"; gefunden: ${treffer.length}`,
+    );
+  }
+  return eine;
+}
+
+/**
+ * JOB 3948, RUNDE 2 (BEN, Korrekturpflicht 1): WAS der Prüfer über einen Träger wirklich weiss.
+ *
+ * WARUM DIE ZEICHENKETTE VON `typDerDeklaration` HIER NICHT GENÜGT — und das ist gemessen, nicht
+ * bedacht: die Gegenproben unten sichern eine LEERE Beanstandungsliste zu, und leer bleibt sie auch
+ * dann, wenn der Prüfer gar nichts weiss. Ein unaufgelöster Import liefert den FEHLERTYP (intern
+ * `any`), `repoTypname` verwirft ihn ausdrücklich — das Grün hiesse dann „ich weiss es nicht" statt
+ * „das ist der Dienst". BEN hat genau das in Runde 1 gemessen (Lauf
+ * 97967d996a0348d9b9cffeee497adfdd): den Dienstimport auf `src/ben-fehlt` verbogen, und alle 32
+ * Fälle blieben grün. Vor der Aussage steht deshalb jetzt ihre Voraussetzung, und die besteht aus
+ * VIER Angaben, von denen keine eine blosse Namenszeichenkette ist:
+ *   · `any`/`unknown`/Fehlertyp werden VORAB ausgeschieden — dieselbe Regel wie in `repoTypname`;
+ *   · der Name kommt aus dem SYMBOL des Typs, nicht aus seiner Ausgabeform;
+ *   · `erklaertIn` nennt die Datei, in der dieser Typ WIRKLICH erklärt ist — sie belegt, dass der
+ *     Typ aus der Produktquelle stammt und nicht aus einer gleichnamigen gestellten Nachbardatei;
+ *   · `traegtMethode` belegt, dass es der Typ mit `findCandidates` ist und nicht irgendeiner.
+ */
+interface Empfaengertyp {
+  /** Der Name, den das Symbol des Typs trägt — `OHNE_AUSKUNFT`, wenn der Prüfer keinen nennt. */
+  readonly name: string;
+  /** Die Datei, in der dieser Typ erklärt ist, relativ zur Wurzel — `—`, wenn es keine gibt. */
+  readonly erklaertIn: string;
+  /** Trägt der genannte Typ `findCandidates`? Eine Gestalt ohne sie wäre der falsche Typ. */
+  readonly traegtMethode: boolean;
+}
+
+/** Was in `Empfaengertyp.name` steht, wenn der Prüfer nichts weiss — nie ein echter Typname. */
+const OHNE_AUSKUNFT = "ohne Auskunft (any/unknown/Fehlertyp)";
+
+/** Ein Dateiname des Programms, auf die Wurzel bezogen — dieselbe Form wie die Probenpfade. */
+function inDerWurzel(pfad: string): string {
+  const wurzel = `${posix(WURZEL)}/`;
+  const gesetzt = posix(pfad);
+  return gesetzt.startsWith(wurzel) ? gesetzt.slice(wurzel.length) : gesetzt;
+}
+
+function empfaengertyp(umgebung: Typumgebung, datei: string, name: string): Empfaengertyp {
+  const typ = umgebung.pruefer.getTypeAtLocation(eineDeklaration(umgebung, datei, name));
+  if ((typ.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) {
+    return { name: OHNE_AUSKUNFT, erklaertIn: "—", traegtMethode: false };
+  }
+  const symbol = typ.aliasSymbol ?? typ.getSymbol();
+  const erklaerung = symbol?.getDeclarations()?.[0]?.getSourceFile().fileName;
+  return {
+    name: symbol?.getName() ?? OHNE_AUSKUNFT,
+    erklaertIn: erklaerung === undefined ? "—" : inDerWurzel(erklaerung),
+    traegtMethode: umgebung.pruefer.getPropertyOfType(typ, "findCandidates") !== undefined,
+  };
+}
+
 /** Welchen Typ der Prüfer für JEDE JSX-Stelle EINER Datei nennt — `<tag>:<zeile> → <Typ>`. */
 function jsxGestalten(umgebung: Typumgebung, datei: string): string[] {
   return jsxStellen(baumImProgramm(umgebung, datei)).map(
@@ -969,7 +1079,14 @@ describe("JOB 3607 · (a) der Kandidatenweg der Adapter hat im Produkt keinen Au
   // Modalgrenze der Shell, die `tools/modalgrenze.ts` als `GRENZE_MODUL` führt — sie verschwindet
   // nicht nebenbei. Sie trägt genau zwei JSX-Stellen, und zwar die beiden Bauformen, auf die es
   // ankommt: ein BAUTEIL (`ModalBoundaryCtx.Provider`, dessen Typ aus der Nachbardatei kommt) und
-  // ein eingebautes DOM-Element (`div`, das ohne die DOM-Bibliothek keinen Typ hätte).
+  // ein eingebautes DOM-Element (`div`).
+  //
+  // JOB 3948 — HIER STAND „(`div`, das ohne die DOM-Bibliothek keinen Typ hätte)", UND DAS IST
+  // WIDERLEGT. Lieferung 5 misst: ohne die DOM-Bibliothek bleibt die JSX-Stelle `Element` — die
+  // JSX-Auskunft hängt an `jsx`, nicht an ihr. Was ohne sie zerfällt, ist ein DOM-Typ NEBEN dem
+  // JSX (`document.createElement("div")` → `any`), nicht der des Elements selbst. BEN hatte denselben
+  // Befund schon an der Produktfläche (R3, Lauf df19a4517685c1ed414c5137: beide Zusätze heraus,
+  // Deckung 177/177 unverändert); der Satz ist ersetzt und nicht danebengelassen.
   //
   // ZEILEN UND ETIKETTEN STEHEN MIT IN DER ERWARTUNG, mit Absicht: wird die Datei umgebaut, wird
   // dieser Fall ROT und jemand liest ihn — statt dass er still zu einer Zusicherung über nichts
@@ -1067,6 +1184,21 @@ const FLAECHE =
   "  const y = hol();\n" +
   '  return <section className="probe">{y.findCandidates({}).length}</section>;\n' +
   "}\n";
+/**
+ * JOB 3948: dieselbe Gestalt wie `FLAECHE`, aber für einen Träger, dessen Typ aus der ECHTEN
+ * Produktquelle kommt.
+ *
+ * Der Träger heisst `y`, sein Erzeuger `hol` — beide absichtlich ohne repo-ähnlichen Namen und ohne
+ * Typangabe an der Bindung: `istRepoName` und `sammleTraeger` können hier nichts finden, die Auskunft
+ * kommt allein vom Typprüfer über die Modulkante. Der Aufruf steht im JSX, wie bei `FLAECHE`.
+ */
+const ECHTE_FLAECHE = (typ: string, marke: string): string =>
+  `export function Flaeche${typ}({ hol }: { hol: () => ${typ} }) {
+  const y = hol();
+  return <section className="${marke}">{y.findCandidates({ terms: [], limit: 1 }).length}</section>;
+}
+`;
+
 const PROBEN: ReadonlyMap<string, string> = new Map([
   [
     "services/probe/src/nachbar-repo.ts",
@@ -1108,6 +1240,56 @@ const PROBEN: ReadonlyMap<string, string> = new Map([
   [
     `${WEB_PROBE}/flaeche-alias-dienst.tsx`,
     `import { hol } from '@/probe/nachbar-dienst';\n${FLAECHE}`,
+  ],
+  // JOB 3948 — DER ECHTE, IMPORTIERTE REPOSITORY-TRÄGER AUF DER `.tsx`-FLÄCHE.
+  //
+  // Bestellung wörtlich (`archiv/3895/runde-2/ben.md:26`): „echten importierten Repository-Träger in
+  // eine temporäre Produktquelle einspeisen." Alle Proben oben tragen einen NACHGEBAUTEN Typ: die
+  // Nachbardatei erklärt selbst eine Schnittstelle namens `KoRepo`. Damit ist gemessen, dass der
+  // Prüfer über eine Modulkante hinweg antwortet — NICHT, dass er den Typ des PRODUKTS dort
+  // wiedererkennt. Genau das war die Frage, die `:91-94` offen liess: ob ein Repository-Träger auf
+  // der `.tsx`-Fläche überhaupt gefunden WÜRDE.
+  //
+  // Diese zwei Proben holen den Typ aus der ECHTEN Produktdatei (`services/knowledge-object/src/…`,
+  // relativ, über vier Ebenen aus `apps/web/src/probe`) — keine Datei wird dafür geschrieben, der
+  // Wirt liest sie von der Platte. Sie liegen im BESTEHENDEN Quellensatz und nicht in einem eigenen:
+  // ein zweites Programm wäre reine Wartezeit im Tor.
+  [
+    `${WEB_PROBE}/flaeche-echt-repo.tsx`,
+    `import type { KoRepo } from '../../../../services/knowledge-object/src/repo';\n${ECHTE_FLAECHE(
+      "KoRepo",
+      "echt-repo",
+    )}`,
+  ],
+  [
+    `${WEB_PROBE}/flaeche-echt-dienst.tsx`,
+    `import type { KoService } from '../../../../services/knowledge-object/src/service';\n${ECHTE_FLAECHE(
+      "KoService",
+      "echt-dienst",
+    )}`,
+  ],
+]);
+
+// ------------------------------------------------------------------------------------------------
+// JOB 3948, Lieferung 5 — DIE ZWEI ZUSÄTZE EINZELN VERSTELLT.
+// ------------------------------------------------------------------------------------------------
+//
+// Bestellung wörtlich (`archiv/3895/runde-2/ben.md:26`, Prüfpunkt 6): „Offen bleiben DOM-Typen
+// außerhalb der JSX-Ausdrücke … Folgeprüfungen: DOM-Typ separat verstellen."
+//
+// `typprogramm.ts` sagte bis JOB 3948 über seine beiden Zusätze: gemessen ist der Typ der
+// JSX-STELLEN, „NICHT gemessen ist, ob andere Typen derselben Dateien ohne die DOM-Bibliothek
+// zerfallen (`HTMLDivElement` und Verwandte)". Diese Probe trägt BEIDES in einer Datei: eine
+// JSX-Stelle und einen DOM-Typ ausserhalb davon. Der Fall nimmt die Zusätze einzeln heraus und
+// schreibt das ERGEBNIS auf — nicht die Erwartung (Lehre JOB 3895 R2).
+const DOM_PROBE = `${WEB_PROBE}/dom-und-jsx.tsx`;
+const DOM_PROBEN: ReadonlyMap<string, string> = new Map([
+  [
+    DOM_PROBE,
+    "export function DomProbe() {\n" +
+      '  const knoten = document.createElement("div");\n' +
+      '  return <section className="dom">{knoten.tagName}</section>;\n' +
+      "}\n",
   ],
 ]);
 
@@ -1379,6 +1561,75 @@ describe("JOB 3607 · Kalibrierung (a): was als Aufrufer zählt und was nicht", 
 
   it("bleibt ungesehen: ein Träger, dessen Typ auch der Typprüfer nicht kennt", () => {
     expect(imProgramm("services/probe/src/traeger-unbekannt.ts")).toEqual([]);
+  });
+
+  // ==============================================================================================
+  // JOB 3948 — DIE ZWEI GRENZEN, DIE DIESE DATEI UND `typprogramm.ts` SELBST BENANNT HABEN.
+  // ==============================================================================================
+
+  it("JOB 3948 · Lieferung 6 · ein ECHTER, importierter Repository-Träger auf der `.tsx`-Fläche wird gefunden", () => {
+    // Die Frage, die `:91-94` bis hierher offen liess: die Erhebung sagt „keine gelesene
+    // Produktdatei ruft `findCandidates` eines Repository-Typs" — ob sie einen solchen Ruf auf der
+    // `.tsx`-Fläche überhaupt SEHEN könnte, war nicht gezeigt. Der Unterschied zu den Proben oben
+    // ist der TYP: dort erklärt eine gestellte Nachbardatei selbst ein `KoRepo`, hier kommt er aus
+    // `services/knowledge-object/src/repo.ts` — derselbe Typ, den `REPO_TYPEN` meint.
+    //
+    // RUNDE 2 (BEN, Korrekturpflicht 1): dass es der ECHTE Typ ist, stand bis hierher nur im
+    // Importpfad der Probe und in diesem Kommentar — die Zusicherung darunter nennt bloss den NAMEN
+    // `KoRepo`, und den trägt auch die gestellte Nachbardatei zwei Proben weiter oben. Erst
+    // `erklaertIn` belegt die Herkunft aus der Produktquelle.
+    expect(
+      empfaengertyp(gestelltesProgramm(PROBEN), `${WEB_PROBE}/flaeche-echt-repo.tsx`, "y"),
+    ).toEqual({ name: "KoRepo", erklaertIn: REPO, traegtMethode: true });
+    expect(imProgramm(`${WEB_PROBE}/flaeche-echt-repo.tsx`)).toEqual(["typpruefer:y:KoRepo"]);
+  });
+
+  it("JOB 3948 · Lieferung 6 · Gegenrichtung mit dem ECHTEN Dienst: derselbe Bau bleibt grün", () => {
+    // Scharf, nicht nur streng — und diesmal am echten Produkttyp gemessen: `KoService` aus
+    // `services/knowledge-object/src/service.ts` trägt dieselbe Methode und ist der ECHTE
+    // Produktweg. Ohne diesen Fall bliebe offen, ob der Fund oben am Typ hing oder an der Gestalt.
+    //
+    // RUNDE 2 (BEN, Korrekturpflicht 1) — DIE VORAUSSETZUNG VOR DER AUSSAGE, und sie fehlte hier.
+    // Bis hierher sicherte dieser Fall ALLEIN die leere Beanstandungsliste zu. Die bleibt aber auch
+    // dann leer, wenn der Prüfer den Empfänger gar nicht kennt: ein unaufgelöster Import gibt den
+    // Fehlertyp, `repoTypname` verwirft ihn wie `any`, und das Grün bedeutete „ich weiss es nicht".
+    // GEMESSEN von BEN (Lauf 97967d996a0348d9b9cffeee497adfdd): Dienstimport auf `src/ben-fehlt`
+    // verbogen → weiterhin 32 von 32 grün, dieser Fall mit. Das ist genau die stille Falsch-
+    // entwarnung, gegen die diese Datei an drei anderen Stellen schon gebaut ist. Jetzt steht die
+    // Typauskunft zuerst da und trägt die Gegenrichtung: ein benannter `KoService`, erklärt in der
+    // ECHTEN Produktquelle, mit `findCandidates` an sich — kein `any`, kein `unknown`, kein
+    // Fehlertyp und keine blosse Namenszeichenkette.
+    expect(
+      empfaengertyp(gestelltesProgramm(PROBEN), `${WEB_PROBE}/flaeche-echt-dienst.tsx`, "y"),
+    ).toEqual({ name: "KoService", erklaertIn: SERVICE, traegtMethode: true });
+    expect(imProgramm(`${WEB_PROBE}/flaeche-echt-dienst.tsx`)).toEqual([]);
+  });
+
+  it("JOB 3948 · Lieferung 5 · `jsx` und die DOM-Bibliothek einzeln herausgenommen — gemessen", () => {
+    // Die Zusage, die `typprogramm.ts` bis JOB 3948 ausdrücklich NICHT gemessen hatte. Drei
+    // Programme über DIESELBE gestellte Quelle, je eine Antwort auf zwei Fragen: was sagt der
+    // Prüfer an der JSX-Stelle, und was sagt er über einen DOM-Typ AUSSERHALB davon.
+    const messung = (zusatz: Parameters<typeof gestelltesProgrammMit>[1]): string[] => {
+      const umgebung = gestelltesProgrammMit(DOM_PROBEN, zusatz);
+      return [
+        jsxGestalten(umgebung, DOM_PROBE).join(" | "),
+        typDerDeklaration(umgebung, DOM_PROBE, "knoten"),
+      ];
+    };
+    // Die drei Zusätze werden aus `FLAECHEN_ZUSATZ` ABGELEITET und nicht danebengeschrieben: wer
+    // dort etwas herausnimmt, verstellt damit auch diese Messung — sonst prüfte sie eine Kopie.
+    const beide = messung(FLAECHEN_ZUSATZ);
+    const ohneDom = messung({ jsx: FLAECHEN_ZUSATZ.jsx, skipLibCheck: true });
+    const ohneJsx = messung({ lib: FLAECHEN_ZUSATZ.lib, skipLibCheck: true });
+    // Erst „ich habe eine Auskunft", dann das Urteil darüber: eine leere JSX-Liste wäre keine.
+    expect(
+      jsxGestalten(gestelltesProgrammMit(DOM_PROBEN, FLAECHEN_ZUSATZ), DOM_PROBE),
+    ).toHaveLength(1);
+    expect([beide, ohneDom, ohneJsx]).toEqual([
+      ["section:3 → Element", "HTMLDivElement"],
+      ["section:3 → Element", "any"],
+      ["section:3 → any", "HTMLDivElement"],
+    ]);
   });
 });
 

@@ -1,5 +1,6 @@
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -17,6 +18,8 @@ import { afterAll, expect, it } from "vitest";
 const PFAD = "tests/live-check-verdrahtung/hook-schluessel.test.tsx";
 const WURZEL = resolve(".");
 const TESTWURZEL = resolve("tests");
+/** Diese Datei selbst — W8 schlägt in ihr den Aufräumweg nach, den er misst. */
+const SELBST = "tests/live-check-haken-wettlauf/wartebauart.test.ts";
 
 // ==================================================================================================
 // JOB 3882 · WAS „HIER WIRD NIE MIT EINER ECHTEN UHR GEWARTET" HEISST — UND WIE WEIT ES REICHT.
@@ -691,4 +694,85 @@ it("W7 · eine symbolisch verlinkte Wurzel liefert zeichengleich dieselbe Erhebu
   // Start UND Grenze über den Linkweg, ohne vorheriges `realpath`. EINE Zusicherung über das ganze
   // Objekt: ein neues Feld, das über den Linkweg auseinanderliefe, rutschte sonst durch.
   expect(erhebe(join(ueberLink, "start.test.ts"), ueberLink)).toEqual(kanonisch);
+});
+
+// --------------------------------------------------------------------------------------------------
+// W8 · DIE WEGWERF-BÜHNEN SIND NACH DEM AUFRÄUMEN WIRKLICH WEG — Prüfer BEN, JOB 3920 R1,
+// Prüfpunkt 6 und PROMPTVERBESSERUNG: „Belege die Temp-Bereinigung durch Abwesenheitsprüfung der
+// registrierten Bühnen und Linkeinträge nach dem Aufräumen; Git-Status dient nur dem Nachweis eines
+// sauberen Arbeitsbaums." Dazu sein Hinweis (`archiv/3920/runde-1/ben.md:33`): „Ein sauberer
+// Git-Status allein belegt keine Temp-Bereinigung."
+//
+// WARUM NICHT DIE NAHELIEGENDE BAUFORM. Ein Fall, der NACH dem `afterAll` (`:467-469`) nachsieht, ist
+// nicht baubar: `afterAll` läuft nach allen Fällen dieser Datei. Gemessen wird deshalb dieselbe
+// Aufräumform an einer EIGENEN Bühne, und der Aufräumweg des `afterAll` wird daneben am Baum
+// nachgeschlagen — nicht im Rohtext gesucht, denn dort stünde die Erwartung dieses Falls selbst und
+// die Suche fände sich selbst.
+//
+// WARUM `lstat` UND NICHT `stat`, und warum das der ganze Punkt ist: ein GEBROCHENER Verweis ist ein
+// Verzeichniseintrag, dessen Ziel fehlt. `stat` folgt ihm und scheitert — es könnte den Eintrag gar
+// nicht erst sehen und hielte ihn schon vor dem Aufräumen für abwesend. `lstat` sieht den Eintrag.
+// Beide Richtungen stehen unten: der Eintrag ist VORHER da (und sein Ziel nicht), NACHHER ist er fort.
+// --------------------------------------------------------------------------------------------------
+
+it("W8 · nach dem Aufräumen ist die Bühne fort — samt ihres gebrochenen Verweiseintrags", () => {
+  const wurzel = buehne({ "start.test.ts": "import './link';\n" });
+  const verweis = join(wurzel, "link.ts");
+  symlinkSync(join(wurzel, "gibt-es-nicht.ts"), verweis);
+  const wege = [wurzel, join(wurzel, "start.test.ts"), verweis];
+
+  // VORHER — hier entscheidet sich, ob dieser Fall überhaupt etwas misst.
+  for (const weg of wege) {
+    expect(
+      lstatSync(weg, { throwIfNoEntry: false }),
+      `vor dem Aufräumen fehlt ${weg}`,
+    ).toBeDefined();
+  }
+  expect(lstatSync(verweis).isSymbolicLink()).toBe(true);
+  // Und er ist wirklich GEBROCHEN: `stat` folgt dem Verweis und findet das Ziel nicht.
+  expect(statSync(verweis, { throwIfNoEntry: false })).toBeUndefined();
+
+  // DIESELBE FORM WIE IM `afterAll`, am Baum dieser Datei nachgeschlagen statt behauptet.
+  const quelle = ts.createSourceFile(
+    SELBST,
+    readFileSync(join(WURZEL, SELBST), "utf8"),
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  );
+  let aufraeumweg: string | undefined;
+  const sucheAfterAll = (node: ts.Node): void => {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === "afterAll"
+    ) {
+      aufraeumweg = node.arguments[0]?.getText(quelle);
+    }
+    ts.forEachChild(node, sucheAfterAll);
+  };
+  ts.forEachChild(quelle, sucheAfterAll);
+  expect(aufraeumweg, "diese Datei führt kein afterAll mehr").toBeDefined();
+  expect(aufraeumweg ?? "").toContain("rmSync(weg, { recursive: true, force: true })");
+
+  rmSync(wurzel, { recursive: true, force: true });
+
+  // NACHHER — jeder Weg ist fort, der gebrochene Eintrag eingeschlossen.
+  for (const weg of wege) {
+    expect(
+      lstatSync(weg, { throwIfNoEntry: false }),
+      `nach dem Aufräumen blieb ${weg} zurück`,
+    ).toBeUndefined();
+  }
+});
+
+it("W8 · das Register ist vollständig: jede von `buehne` angelegte Wurzel steht darin", () => {
+  // Der Abwesenheitsnachweis darüber trägt nur so weit, wie das Register reicht: eine Wurzel, die
+  // `buehnen` nicht kennt, räumt das `afterAll` nie ab und bliebe im Temp-Verzeichnis liegen.
+  const vorher = buehnen.length;
+  const eine = buehne({ "start.test.ts": "import './helfer';\n", "helfer.ts": HELFER });
+  const zwei = buehne({});
+  expect(buehnen.slice(vorher)).toEqual([eine, zwei]);
+  // Und sie sind wirklich angelegt — ein Register über nichts wäre keine Zusicherung.
+  expect([lstatSync(eine).isDirectory(), lstatSync(zwei).isDirectory()]).toEqual([true, true]);
 });

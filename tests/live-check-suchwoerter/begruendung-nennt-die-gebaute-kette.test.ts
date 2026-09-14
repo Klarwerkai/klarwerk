@@ -898,6 +898,105 @@ export async function nieGerufen(deps: {
 /** Die Marke, über die Fall H4 die Zeile des unbesuchten Aufrufers zur Laufzeit findet. */
 const UNBESUCHT_MARKE = "H4c";
 
+// ================================================================================================
+// JOB 3948 — DIE VIER RANDFÄLLE, DIE BEN AN JOB 3931 GEMESSEN UND NICHT HINTERLASSEN HAT.
+// ================================================================================================
+//
+// BESTELLUNG, wörtlich (`archiv/3931/runde-1/ben.md:31`, Prüfpunkt 6): „Dauerhafte Kalibrierungen
+// für freie Aufrufe, Intervallgrenzen und ‚keine' fehlen noch (WÄCHTER:381, :704, :712).
+// Testvorschlag: die vier erfolgreichen temporären Randfallprüfungen dauerhaft aufnehmen." BEN hat
+// sie in seinem Lauf `a4910aaf74294a5ebb0d5c37231662dd` grün gesehen und danach weggeworfen; L1a bis
+// L4 unten sind sie, dauerhaft und an derselben Vorrichtung gemessen.
+//
+// EINE BÜHNE FÜR DREI DER VIER: ein ANHANG an die übergebene Fassung von `knowledge-check.ts`.
+// Angehängt und nicht eingefügt, aus demselben Grund wie bei `mitVerweis`: eine eingefügte Zeile
+// verschöbe das Zeilenbild des Produkts, und jeder Fall wäre aus einem zweiten Grund rot.
+//
+// WARUM DIE RÜMPFE KEINEN AUFRUFER HABEN. Genau das ist ihr Zweck. Sie tragen denselben Namen in
+// ausführbarem Code, im selben Pfad — der Codefilter aus JOB 3911 lässt sie also durch — und der
+// Baumgang betritt sie nie. Damit ist messbar, was `belegt` an der ORTSBINDUNG (:704-710) entscheidet
+// und nicht schon am Codefilter; dieselbe Bauform wie beim `UNBESUCHTER_AUFRUFER` von H4(b), und
+// dieselbe, die BEN als Promptverbesserung zu JOB 3931 verlangt hat („gleichnamiger ausführbarer
+// Aufruf im selben Pfad ausserhalb der besuchten Kette").
+//
+//   `terms`           steht als FREIER Aufruf (Identifier, kein Empfänger) in `checkKnowledge` und
+//                     läuft deshalb durch den Zweig :379-381 und nur durch ihn (L1a, L3).
+//   `nurHierGerufen`  wird NUR hier gerufen: der Baumgang liest keine einzige Stelle dieses Namens,
+//                     und `belegt` muss das wörtlich sagen (L4).
+const UNBESUCHTE_PROBEN = `
+export function nieGerufenFrei(entwurf: string): string[] {
+  const eins = terms(entwurf); // L1a-unbesucht
+  const zwei = terms(entwurf); // L3-unbesucht
+  const drei = nurHierGerufen(entwurf); // L4-ohne-ort
+  return [...eins, ...zwei, ...drei];
+}
+
+export function nurHierGerufen(wort: string): string[] {
+  return [wort];
+}
+`;
+
+/** Die 1-basierte Zeile, auf der `marke` zum ersten Mal steht. Fehlt sie, ist der Fall rot. */
+function zeileMit(text: string, marke: string): number {
+  const nr = text.split("\n").findIndex((z) => z.includes(marke));
+  if (nr < 0) {
+    throw new Error(`die Marke „${marke}" steht nicht im übergebenen Text`);
+  }
+  return nr + 1;
+}
+
+/**
+ * Die EINE verzeichnete Aufrufstelle dieses Namens in `knowledge-check.ts`.
+ *
+ * Keine oder mehrere sind ROT und nicht still grün (Lehre JOB 3489): eine Zusicherung über eine
+ * leere Liste sagt nichts. `genauEins` nennt dabei die gefundene Zahl.
+ */
+function ortIn(kette: Kette, name: string): Aufrufort {
+  return genauEins(
+    kette.orte.filter((o) => o.name === name && o.pfad === KC),
+    `${KC}: das Ortsverzeichnis führt nicht genau eine Aufrufstelle von „${name}"`,
+  );
+}
+
+interface Intervallbuehne {
+  /** Die übergebene Fassung samt Anhang. */
+  readonly text: string;
+  /** Die verzeichnete Aufrufstelle von `terms` — der Punkt, den die Intervallgrenzen umschliessen. */
+  readonly ort: number;
+  /** Eine Zeile VOR dem Ort, die den Namen in Code trägt: der Deklarationskopf von `terms`. */
+  readonly davor: number;
+  /** Eine Zeile NACH dem Ort, die den Namen in Code trägt: der unbesuchte Anhang. */
+  readonly danach: number;
+}
+
+/**
+ * DIE BÜHNE DER INTERVALLFÄLLE (Lieferung 3) — mit dem Beleg, dass hier der Codefilter NICHT
+ * entscheidet.
+ *
+ * H4(c) misst heute ±1 Zeile und sagt in seinem eigenen Kommentar (:1157-1159) ehrlich, dass dort
+ * schon der Codefilter aus JOB 3911 abweist: die Nachbarzeile trägt den Namen überhaupt nicht. Die
+ * Grenzen `von` und `bis` selbst bleiben damit ungemessen. Hier tragen BEIDE Nachbarzeilen den Namen
+ * in AUSFÜHRBAREM Code — die eine als Deklarationskopf (`function terms(`), die andere als
+ * unbesuchter Aufruf. Was ein Fall dieser Bühne rot macht, kann deshalb nur die Ortsbindung sein.
+ */
+function intervallbuehne(): Intervallbuehne {
+  const text = kc + UNBESUCHTE_PROBEN;
+  const kette = ketteZu(text);
+  expect(kette.orte.length, "leeres Ortsverzeichnis — dann misst hier nichts").toBeGreaterThan(0);
+  const ort = ortIn(kette, "terms").zeile;
+  const davor = zeileMit(text, "function terms(text: string): string[] {");
+  const danach = zeileMit(text, "L3-unbesucht");
+  expect([davor < ort, danach > ort], "die Nachbarzeilen liegen nicht beidseits des Ortes").toEqual(
+    [true, true],
+  );
+  // DER BELEG, dass der Codefilter beide Nachbarzeilen durchlässt: in der Code-Sicht steht der Name
+  // dort wirklich. Ohne ihn misst Lieferung 3 wieder nur, was H4(c) schon als ungemessen ausweist.
+  const codesicht = nurCode(KC, text).split("\n");
+  expect(codesicht[davor - 1] ?? "").toContain("terms(");
+  expect(codesicht[danach - 1] ?? "").toContain("terms(");
+  return { text, ort, davor, danach };
+}
+
 describe("JOB 3881: die Begründung der Suchwortregel nennt die gebaute Kette", () => {
   it("B1 · die Kette wird aus dem Quelltext gebaut: findCandidates → findSearchHits → findActive", () => {
     const kette = gebauteKette(quellenAus(kc));
@@ -1166,5 +1265,169 @@ describe("JOB 3881: die Begründung der Suchwortregel nennt die gebaute Kette", 
         expect(fehler).toContain("keinen ausführbaren Aufruf");
       }
     }
+  });
+
+  // ==============================================================================================
+  // JOB 3948 — DIE VIER RANDFÄLLE AUS BENS BESTELLUNG (`archiv/3931/runde-1/ben.md:31`).
+  // ==============================================================================================
+
+  it("L1a · ein FREIER Aufruf (Identifier, kein Empfänger) steht im Ortsverzeichnis", () => {
+    // Bis hierher war der Zweig :379-381 von keinem Fall berührt: alle vier `· AUFRUF`-Verweise der
+    // echten Liste zeigen auf METHODEN-Aufrufe (:387-389). Ein `vermerken`, das im freien Zweig
+    // fehlte, wäre also nirgends aufgefallen.
+    const text = kc + UNBESUCHTE_PROBEN;
+    const kette = ketteZu(text);
+    expect(kette.orte.length, "leeres Ortsverzeichnis — dann misst hier nichts").toBeGreaterThan(0);
+    const ort = ortIn(kette, "terms");
+    // Die verzeichnete Stelle ist die WIRKLICHE: der freie Aufruf in `checkKnowledge`.
+    expect(ort.zeile).toBe(zeileMit(text, "terms: terms(clean)"));
+
+    // (a) DER VERWEIS AUF SIE IST BELEGT — und der Anhang allein ändert am Urteil nichts.
+    expect(befund(pruefeFundstellen, text)).toBe("GRÜN");
+    expect(befund(pruefeFundstellen, mitVerweis(text, `AUFRUF terms — ${KC}:${ort.zeile}`))).toBe(
+      "GRÜN",
+    );
+
+    // (b) DIESELBE DATEI, DERSELBE NAME, AUSFÜHRBARER CODE — aber eine Stelle, die der Gang nie
+    //     gelesen hat. Der Codefilter lässt sie durch, die Ortsbindung nicht, und die Meldung nennt
+    //     die Stelle, die er WIRKLICH gelesen hat.
+    const unbesucht = zeileMit(text, "L1a-unbesucht");
+    const fehler = abgewiesen(() =>
+      pruefeFundstellen(mitVerweis(text, `AUFRUF terms — ${KC}:${unbesucht}`)),
+    );
+    expect(fehler).toContain("B3 Fundstellen");
+    expect(fehler).toContain(`${KC}:${unbesucht}`);
+    expect(fehler).toContain("nicht den, den die Kette betreten hat");
+    expect(fehler).toContain(`gelesen an: ${KC}:${ort.zeile};`);
+    // Ausdrücklich NICHT der Codefilter: die Zeile IST Code.
+    expect(fehler).not.toContain("nur in einem Kommentar");
+    // Trennschärfe wie bei H2/H3/H4: die Kettentreue bleibt Wort für Wort beim alten Urteil.
+    expect(befund(pruefeKettentreue, text)).toBe(befund(pruefeKettentreue, kc));
+  });
+
+  it("L1b · ein MEHRZEILIGER Aufruf zählt an der Zeile des NAMENS, nicht an der der Klammer", () => {
+    // Die Zusage steht im Kopfkommentar von `vermerken` (:342-346) und war bis hierher nur eine
+    // Zusage: jeder gemessene Aufruf der echten Liste steht auf EINER Zeile, dort fallen Name und
+    // Klammer zusammen. `dropConfidential` in `checkKnowledge` fällt auseinander.
+    const kette = ketteZu(kc);
+    const ort = ortIn(kette, "dropConfidential");
+    const datei = ast(kc, KC);
+    const rufe: ts.CallExpression[] = [];
+    const gehe = (k: ts.Node): void => {
+      if (
+        ts.isCallExpression(k) &&
+        ts.isIdentifier(k.expression) &&
+        k.expression.text === "dropConfidential"
+      ) {
+        rufe.push(k);
+      }
+      ts.forEachChild(k, gehe);
+    };
+    ts.forEachChild(datei, gehe);
+    const ruf = genauEins(rufe, `${KC}: nicht genau ein Aufruf von dropConfidential`);
+    const zeileVonName =
+      datei.getLineAndCharacterOfPosition(ruf.expression.getStart(datei)).line + 1;
+    const zeileVonKlammer = datei.getLineAndCharacterOfPosition(ruf.getEnd() - 1).line + 1;
+    // Ohne diese Zusicherung misst der Fall nichts: fällt der Aufruf wieder auf eine Zeile
+    // zusammen, sind Name und Klammer dieselbe Zeile und beide Richtungen unterscheiden nichts.
+    expect(
+      zeileVonKlammer,
+      `der Aufruf in ${KC} steht wieder auf EINER Zeile — dieser Fall misst dann nichts`,
+    ).toBeGreaterThan(zeileVonName);
+    expect(ort.zeile).toBe(zeileVonName);
+
+    // (a) Der Verweis auf die Zeile des NAMENS ist belegt.
+    expect(
+      befund(pruefeFundstellen, mitVerweis(kc, `AUFRUF dropConfidential — ${KC}:${zeileVonName}`)),
+    ).toBe("GRÜN");
+    // (b) Der Verweis auf die Zeile der KLAMMER ist es nicht. EHRLICH DAZU: hier weist schon der
+    //     Codefilter ab, denn die Klammerzeile trägt den Namen gar nicht — die Bindung an die
+    //     Zeile des Ortsverzeichnisses misst Teil (a), und rot wird er, sobald `vermerken` statt
+    //     des Namens das Ende des Aufrufs zählt.
+    const fehler = abgewiesen(() =>
+      pruefeFundstellen(mitVerweis(kc, `AUFRUF dropConfidential — ${KC}:${zeileVonKlammer}`)),
+    );
+    expect(fehler).toContain("B3 Fundstellen");
+    expect(fehler).toContain(`${KC}:${zeileVonKlammer}`);
+    expect(fehler).toContain("keinen ausführbaren Aufruf");
+  });
+
+  it("L2 · der Code-Speicher trennt zwei Fassungen DESSELBEN Pfades", () => {
+    // Die Begründung steht seit JOB 3931 im Kommentar über `NUR_CODE` (:605-611) — gemessen war sie
+    // nie. Derselbe Pfad, zwei Texte: die zweite Fassung muss ihre EIGENE Code-Sicht bekommen.
+    // Bekäme sie die der ersten, hielte `belegt` einen Aufruf für einen Zeichenkettenwert.
+    const pfad = "tests/live-check-suchwoerter/l2-cache-probe.ts";
+    const alsZeichenkette = 'const hinweis = "ruf(1)";\n';
+    const alsAufruf = "const wert = ruf(1);\n";
+    const ersteSicht = nurCode(pfad, alsZeichenkette);
+    const zweiteSicht = nurCode(pfad, alsAufruf);
+    // Erst „ich habe etwas gelesen", dann das Urteil darüber (§9): eine leere Sicht sagt nichts.
+    expect(ersteSicht.length).toBe(alsZeichenkette.length);
+    expect(zweiteSicht.length).toBe(alsAufruf.length);
+    expect(ersteSicht).not.toContain("ruf(");
+    expect(zweiteSicht).toContain("ruf(");
+    // Und der Speicher TRÄGT trotzdem: je Fassung dieselbe Sicht beim zweiten Mal.
+    expect(nurCode(pfad, alsZeichenkette)).toBe(ersteSicht);
+    expect(nurCode(pfad, alsAufruf)).toBe(zweiteSicht);
+  });
+
+  it("L3a · die Grenze `von` ist EINGESCHLOSSEN: der Verweis beginnt genau am Ort", () => {
+    const b = intervallbuehne();
+    expect(
+      befund(pruefeFundstellen, mitVerweis(b.text, `AUFRUF terms — ${KC}:${b.ort}-${b.danach}`)),
+    ).toBe("GRÜN");
+  });
+
+  it("L3b · die Grenze `bis` ist EINGESCHLOSSEN: der Verweis endet genau am Ort", () => {
+    const b = intervallbuehne();
+    expect(
+      befund(pruefeFundstellen, mitVerweis(b.text, `AUFRUF terms — ${KC}:${b.davor}-${b.ort}`)),
+    ).toBe("GRÜN");
+  });
+
+  it("L3c · `von` um eins zu gross: rot an der ORTSBINDUNG, nicht am Codefilter", () => {
+    const b = intervallbuehne();
+    const bereichAls = `${KC}:${b.ort + 1}-${b.danach}`;
+    const fehler = abgewiesen(() =>
+      pruefeFundstellen(mitVerweis(b.text, `AUFRUF terms — ${bereichAls}`)),
+    );
+    expect(fehler).toContain("B3 Fundstellen");
+    expect(fehler).toContain(bereichAls);
+    expect(fehler).toContain("nicht den, den die Kette betreten hat");
+    expect(fehler).toContain(`gelesen an: ${KC}:${b.ort};`);
+    expect(fehler).not.toContain("keinen ausführbaren Aufruf");
+  });
+
+  it("L3d · `bis` um eins zu klein: rot an der ORTSBINDUNG, nicht am Codefilter", () => {
+    const b = intervallbuehne();
+    const bereichAls = `${KC}:${b.davor}-${b.ort - 1}`;
+    const fehler = abgewiesen(() =>
+      pruefeFundstellen(mitVerweis(b.text, `AUFRUF terms — ${bereichAls}`)),
+    );
+    expect(fehler).toContain("B3 Fundstellen");
+    expect(fehler).toContain(bereichAls);
+    expect(fehler).toContain("nicht den, den die Kette betreten hat");
+    expect(fehler).toContain(`gelesen an: ${KC}:${b.ort};`);
+    expect(fehler).not.toContain("keinen ausführbaren Aufruf");
+  });
+
+  it('L4 · gar keine gelesene Fundstelle: die Meldung sagt wörtlich „keine"', () => {
+    // Der Zweig :711-712 hat zwei Ausgänge; beide vorhandenen Gegenbeweisfälle (H4(a), H4(b))
+    // prüfen den mit einem ECHTEN Ort. Der Ausgang „keine" war toter Text — und er ist der einzige,
+    // der jemandem sagt: dieser Name kommt auf der Kette überhaupt nicht vor.
+    const text = kc + UNBESUCHTE_PROBEN;
+    const kette = ketteZu(text);
+    expect(kette.orte.length, "leeres Ortsverzeichnis — dann misst hier nichts").toBeGreaterThan(0);
+    expect(kette.orte.some((o) => o.name === "nurHierGerufen")).toBe(false);
+    expect(kette.namen.has("nurHierGerufen")).toBe(false);
+    const zeile = zeileMit(text, "L4-ohne-ort");
+    const fehler = abgewiesen(() =>
+      pruefeFundstellen(mitVerweis(text, `AUFRUF nurHierGerufen — ${KC}:${zeile}`)),
+    );
+    expect(fehler).toContain("B3 Fundstellen");
+    expect(fehler).toContain(`${KC}:${zeile}`);
+    expect(fehler).toContain("nicht den, den die Kette betreten hat");
+    expect(fehler).toContain("gelesen an: keine;");
+    expect(fehler).not.toContain("nur in einem Kommentar");
   });
 });
