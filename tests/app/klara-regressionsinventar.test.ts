@@ -950,6 +950,16 @@ const INVENTAR: readonly string[] = [
   // (13.09.2026, 1920 Testdateien, Menge 187): 12 Dateien — die Zahlen im K4-Kommentar sind der
   // Stand vom 12.09. und werden hier nicht nachgezogen; K4 sichert keine von ihnen zu.
   "tests/seitenhilfe-navkapitel/duplikate-am-seitenverhalten.test.tsx",
+  // JOB 3852 (13.09.2026): der Waechter „kein offener Zugang". Er kommt ueber die Inhaltsachse
+  // `taskpane` herein, und zwar zu Recht statt bloss formal: seit dieser Runde prueft er die
+  // oeffentlichen Wege AUCH mit gesetztem `KLARWERK_ADDON_API` und belegt vor jeder Messung, dass
+  // der Add-in-Namensraum wirklich ausliefert — `GET /addin/taskpane.html` muss 200 antworten,
+  // sonst haette er an eine Tuer geklopft, die es nicht gibt. Damit haengt die Taskpane-Auslieferung
+  // an seiner Aussage: faellt sie aus, wird DIESE Datei rot. „klara" steht nicht in ihrem Pfad, K5
+  // bleibt deshalb unveraendert (`nurName` = 58). GEMESSEN, NICHT GESETZT: K2 meldete vor dieser
+  // Zeile `neu im Baum, aber nicht im gepinnten Inventar … + "tests/demo-zugang-gaeste/
+  // kein-offener-zugang.test.ts"`.
+  "tests/demo-zugang-gaeste/kein-offener-zugang.test.ts",
 ];
 
 // ------------------------------------------------------------------------------------------------
