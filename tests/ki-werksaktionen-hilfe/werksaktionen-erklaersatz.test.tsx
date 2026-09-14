@@ -12,11 +12,33 @@
 // der aktuellen Seite unter „Seitenhilfe" (`ZahnradMenue.tsx:51-72`). OB ein Mensch den Satz dort
 // je zu fassen bekommt, hat bis hierher niemand gemessen. Diese Datei misst es.
 //
-// SIE MISST, SIE REPARIERT NICHT. Keine Produktdatei wird angefasst; `AiAssistBox.tsx` und
-// `erfassen/Menue.tsx` gehören JOB 3769 (Auftrag §10). Was hier festgehalten wird, ist der HEUTE
-// gemessene Zustand — KEINE Zusage, dass er so bleiben soll. Neben jeder Befundzeile steht der
-// Sollzustand. Wird der Mangel behoben, schlagen die Befundfälle an und sind dann UMZUDREHEN; genau
-// das ist ihr Zweck (Gegenprobe (c) unten belegt, dass sie das tun).
+// SIE MASS, SIE REPARIERTE NICHT — IN RUNDE 1 (JOB 3831). Keine Produktdatei wurde angefasst;
+// `AiAssistBox.tsx` und `erfassen/Menue.tsx` gehören JOB 3769 (Auftrag §10). Festgehalten wurde der
+// damals gemessene Zustand, mit dem Sollzustand daneben: wird der Mangel behoben, schlagen die
+// Befundfälle an und sind dann UMZUDREHEN. Genau das ist ihr Zweck — und genau das ist eingetreten.
+//
+// ------------------------------------------------------------------------------------------------
+// JOB 3880 — DREI DER VIER BEFUNDE SIND UMGEDREHT. AUS „GEMESSEN" WURDE „ZUGESICHERT".
+// ------------------------------------------------------------------------------------------------
+// `components/erfassen/hilfe.ts` meldet die fünf Werksaktionen seither im Hilferegister des Blattes
+// an (`EIGENE_SCHLUESSEL`, abgeleitet aus `ASSIST_ACTIONS`). Damit trägt die Kette auch auf dem
+// Blatt, und W1, W2a und W2b sagen das Gegenteil von vorher:
+//   · W1  BEFUND „keiner der fünf Sätze steht in der Zahnrad-Liste"
+//         → ZUSICHERUNG „alle fünf stehen darin, mit Titel UND Text, bei GESCHLOSSENER Palette".
+//   · W2a BEFUND (erste Ablesung) „auch vor dem Öffnen der Palette steht keiner darin"
+//         → ZUSICHERUNG „alle fünf stehen schon vor dem Öffnen darin". Die ZWEITE Ablesung von W2a
+//         (offene Palette ⇒ gar kein Zahnrad-Menü) ist ein ANDERER Befund und bleibt Befund: er
+//         gehört einer eigenen Zeile (JOB 3880 Auftrag §10) und wurde von dieser Änderung nicht
+//         berührt — nachgemessen, nicht angenommen.
+//   · W2b BEFUND „nach dem Weg Palette auf → Zahnrad → Seitenhilfe fehlen die fünf Sätze"
+//         → ZUSICHERUNG „nach demselben Weg stehen sie da".
+// W3 und W4 wurden ebenfalls nachgemessen und NICHT umgedreht: W3 misst den Ausschluss der beiden
+// Flächen (unverändert), W4 das Expertenformular (war schon zugesichert und blieb grün).
+// W5 ist neu: er bewacht, dass die Anmeldung aus `ASSIST_ACTIONS` ABGELEITET ist. Eine handgetippte
+// Fünferliste im Produkt schwiege beim sechsten Werkzeug; W5 fordert es ein.
+//
+// KEINE ZUSAGE ÜBER DEN ALTEN WORTLAUT: die alten Erwartungen und die alten „BEFUND UMGEDREHT"-
+// Meldungstexte sind ERSETZT, nicht danebengestellt (Auftrag §8.7).
 //
 // ------------------------------------------------------------------------------------------------
 // DER FUND DIESER RUNDE — ER WEICHT VON DER AUSGANGSLAGE DES AUFTRAGS AB.
@@ -119,6 +141,7 @@ import { AuthProvider } from "../../apps/web/src/app/AuthContext";
 import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
+import { BLATT_HILFE_THEMEN } from "../../apps/web/src/components/erfassen/hilfe";
 import i18n from "../../apps/web/src/i18n";
 import {
   ASSIST_ACTIONS,
@@ -288,6 +311,28 @@ function vorhandeneErklaersaetze(text: string): string[] {
 }
 
 /**
+ * JOB 3880 — WAS JE AKTION FEHLT, TITEL UND TEXT GETRENNT.
+ *
+ * Die naheliegende Halbheit einer Anmeldung ist, die fünf Titel einzutragen und die Erklärsätze
+ * wegzulassen (oder umgekehrt). Eine Zeile „Strukturieren" ohne Satz erklärt nichts, ein Satz ohne
+ * Überschrift ist keiner Aktion zuzuordnen. Diese Funktion fordert deshalb BEIDES je Aktion ein und
+ * nennt jedes fehlende Stück EINZELN mit seinem Schlüssel und seinem Wortlaut — nicht „irgendetwas
+ * fehlt" (Auftrag §8.2b, §8.4).
+ */
+function fehlendeAnmeldungen(text: string): string[] {
+  const fehlt: string[] = [];
+  for (const w of WERKSAKTIONEN) {
+    if (!text.includes(i18n.t(w.labelKey))) {
+      fehlt.push(`Titel ${w.labelKey} („${i18n.t(w.labelKey)}“)`);
+    }
+    if (!text.includes(i18n.t(w.hilfeKey))) {
+      fehlt.push(`Text ${w.hilfeKey} („${i18n.t(w.hilfeKey)}“)`);
+    }
+  }
+  return fehlt;
+}
+
+/**
  * Der gelesene Listentext für den Fehlertext — gekürzt und mit seiner Länge.
  *
  * Die Seitenhilfe von `/erfassen` ist LANG (das Hilferegister des Blattes zählt über 30 Themen). Der
@@ -368,13 +413,15 @@ describe("JOB 3831 · W0 · fünf Werksaktionen, fünf auflösende Erklärsätze
 // ------------------------------------------------------------------------------------------------
 // W1 — PALETTE GESCHLOSSEN, ZAHNRAD AUF.
 // ------------------------------------------------------------------------------------------------
-// BEFUND (Basisstand 702b701, gemessen — KEINE Zusicherung): Die Liste steht, sie ist nicht leer
-// (das Blatt meldet sein Hilferegister `BLATT_HILFE_THEMEN` dauerhaft an, `Blatt.tsx:2061-2063`) —
-// aber KEINER der fünf Erklärsätze steht darin.
-// SOLLZUSTAND: Wer wissen will, was „Strukturieren" tut, findet den Satz im Zahnrad, ohne vorher die
-// Palette geöffnet zu haben. Wird das erreicht, wird dieser Fall ROT und ist UMZUDREHEN.
-describe("JOB 3831 · W1 · Palette zu, Zahnrad auf — steht der Erklärsatz da?", () => {
-  it("BEFUND: die gezeichnete Seitenhilfe-Liste nennt keinen der fünf Erklärsätze", async () => {
+// BIS JOB 3880 — BEFUND (Basisstand 702b701, gemessen): Die Liste stand, sie war nicht leer (das
+// Blatt meldet sein Hilferegister `BLATT_HILFE_THEMEN` dauerhaft an, `Blatt.tsx:2061-2063`) — aber
+// KEINER der fünf Erklärsätze stand darin.
+// SEIT JOB 3880 — ZUSICHERUNG, und sie ist der Sollzustand von damals: Wer wissen will, was
+// „Strukturieren" tut, findet Überschrift UND Satz im Zahnrad, OHNE vorher die Palette geöffnet zu
+// haben. Bricht die Anmeldung in `components/erfassen/hilfe.ts` weg, wird dieser Fall rot und nennt
+// jedes fehlende Stück einzeln.
+describe("JOB 3831 · W1 (JOB 3880 umgedreht) · Palette zu, Zahnrad auf — der Erklärsatz steht da", () => {
+  it("ZUSICHERUNG: die gezeichnete Seitenhilfe-Liste nennt alle fünf Werksaktionen mit Titel und Erklärsatz", async () => {
     await mount("/erfassen");
     expect(
       kiPalette(),
@@ -384,17 +431,27 @@ describe("JOB 3831 · W1 · Palette zu, Zahnrad auf — steht der Erklärsatz da
     await seitenhilfeOeffnen();
     const text = gelesenerListentext("W1 · Palette zu, Zahnrad auf");
 
-    const fehlt = fehlendeErklaersaetze(text);
+    const fehlt = fehlendeAnmeldungen(text);
     expect(
       fehlt.length,
-      `W1 · BEFUND UMGEDREHT: bei geschlossener Palette stehen jetzt Erklärsätze der Werksaktionen in der Zahnrad-Liste — nämlich ${vorhandeneErklaersaetze(text).join(" · ")}. Das ist der SOLLZUSTAND; dieser Fall ist damit erledigt und umzudrehen (aus „keiner steht da" wird „alle fünf stehen da"). Es fehlen noch: ${fehlt.join(" · ") || "keiner"}. Gelesene Liste: ${leseprobe(text)}`,
-    ).toBe(5);
-    // Und die Liste war wirklich eine Liste mit Inhalt, keine Leermeldung: das Hilferegister des
-    // Blattes steht darin. Ohne diese Kalibrierung wäre „nichts gefunden" nichts wert.
+      `W1 · ZUSICHERUNG VERLETZT: bei geschlossener Palette fehlen ${fehlt.length} Stücke der fünf Werksaktionen in der gezeichneten Zahnrad-Liste — einzeln: ${fehlt.join(" · ")}. Gefunden wurden nur: ${vorhandeneErklaersaetze(text).join(" · ") || "keiner der fünf Erklärsätze"}. Damit ist der Erklärsatz wieder nur über die geöffnete KI-Palette zu holen (JOB 3831 BEFUND). Gelesene Liste: ${leseprobe(text)}`,
+    ).toBe(0);
+    // ============================================================================================
+    // DIE KALIBRIERUNG BLEIBT (JOB 3880 Auftrag §5.5) — SIE TRÄGT JETZT MEHR GEWICHT ALS VORHER.
+    // ============================================================================================
+    // Solange W1 ein BEFUND war, verhinderte sie falsches Grün aus einer ungelesenen Liste. Jetzt,
+    // als Zusicherung, verhindert sie falsches Grün aus einer LEEREN Liste: `fehlt.length === 0`
+    // wäre sonst auch dann erfüllt, wenn `.textContent` alles enthielte, was man hineinliest —
+    // deshalb muss hier nachweislich das Hilferegister des Blattes stehen, mit einem Wortlaut, den
+    // KEINE der fünf Werksaktionen beisteuert (`conf.help`, die Vertraulichkeits-Hilfe).
     expect(
       text,
       "W1: die Liste enthält nicht einmal das Hilferegister des Blattes — hier wurde die falsche Fläche gelesen",
     ).toContain(i18n.t("conf.help"));
+    expect(
+      text.length,
+      "W1: die gelesene Liste ist kürzer als das Hilferegister des Blattes sein kann — sie wurde nicht vollständig gezeichnet",
+    ).toBeGreaterThan(i18n.t("conf.help").length);
   });
 });
 
@@ -402,16 +459,25 @@ describe("JOB 3831 · W1 · Palette zu, Zahnrad auf — steht der Erklärsatz da
 // W2 — PALETTE OFFEN, DANN ZUM ZAHNRAD. ZWEI ABLESUNGEN, GETRENNT FESTGEHALTEN.
 // ------------------------------------------------------------------------------------------------
 // Der Unterschied zwischen (a) und (b) IST der Befund, den der Auftrag sucht (§8.4).
+//
+// JOB 3880 — IN (a) STECKEN ZWEI AUSSAGEN, UND NUR EINE IST UMGEDREHT:
+//   · die ERSTE Ablesung („vor dem Öffnen der Palette") sagte, dass auch dort kein Erklärsatz steht
+//     — sie ist umgedreht und fordert jetzt alle fünf mit Titel und Text ein;
+//   · die ZWEITE Ablesung (offene Palette ⇒ gar kein gezeichnetes Zahnrad-Menü) ist der ANDERE
+//     Befund von JOB 3831 („Palette und Zahnrad-Liste können nie gleichzeitig stehen"). Er gehört
+//     einer eigenen Zeile (JOB 3880 §10), wurde von der Anmeldung im Hilferegister nicht berührt und
+//     bleibt deshalb unverändert Befund — nachgemessen in dieser Runde, nicht angenommen.
 describe("JOB 3831 · W2 · Palette offen — und dann der Weg zum Zahnrad", () => {
-  it("(a) BEFUND: solange die Palette offen ist, zeichnet das Zahnrad-Menü gar keine Liste mehr", async () => {
+  it("(a) der Satz steht schon vor dem Öffnen (ZUSICHERUNG) — und solange die Palette offen ist, zeichnet das Zahnrad-Menü gar keine Liste (BEFUND)", async () => {
     await mount("/erfassen");
     // Erst die Liste aufschlagen — sie steht und ist lesbar.
     await seitenhilfeOeffnen();
     const vorher = gelesenerListentext("W2a · vor dem Öffnen der Palette");
+    const fehltVorher = fehlendeAnmeldungen(vorher);
     expect(
-      fehlendeErklaersaetze(vorher).length,
-      `W2a: schon vor dem Öffnen der Palette stehen Erklärsätze in der Liste — nämlich ${vorhandeneErklaersaetze(vorher).join(" · ")}. Dann misst (a) nicht mehr den Unterschied zwischen „Palette zu" und „Palette offen". Gelesene Liste: ${leseprobe(vorher)}`,
-    ).toBe(5);
+      fehltVorher.length,
+      `W2a · ZUSICHERUNG VERLETZT: schon vor dem Öffnen der Palette fehlen ${fehltVorher.length} Stücke der fünf Werksaktionen in der Liste — einzeln: ${fehltVorher.join(" · ")}. Gefunden wurden nur: ${vorhandeneErklaersaetze(vorher).join(" · ") || "keiner der fünf Erklärsätze"}. Gelesene Liste: ${leseprobe(vorher)}`,
+    ).toBe(0);
 
     // Dann die Palette öffnen — mit einem echten Klick, der den Aussenklick-Hörer des Zahnrad-Menüs
     // (`shell/Menue.tsx:76-88`) wirklich auslöst.
@@ -421,13 +487,13 @@ describe("JOB 3831 · W2 · Palette offen — und dann der Weg zum Zahnrad", () 
     const nachher = ablesung();
     expect(
       nachher.lage,
-      `W2a · BEFUND UMGEDREHT: mit offener Palette steht das Zahnrad-Menü jetzt noch (Lage „${nachher.lage}“). Bisher schloss der Klick auf das Werkzeug es weg. Das ist der halbe SOLLZUSTAND — dieser Fall ist umzudrehen und muss ab dann statt der Lage die fünf Erklärsätze prüfen; gerade fehlen davon: ${fehlendeErklaersaetze(nachher.text).join(" · ") || "keiner"}. Gelesen: ${leseprobe(nachher.text)}`,
+      `W2a · BEFUND UMGEDREHT (der ZWEITE Befund, der von JOB 3880 nicht angefasst wurde): mit offener Palette steht das Zahnrad-Menü jetzt noch (Lage „${nachher.lage}“). Bisher schloss der Klick auf das Werkzeug es weg. Dann können Palette und Seitenhilfe-Liste nebeneinander stehen — diese Ablesung ist umzudrehen und muss ab dann statt der Lage die fünf Erklärsätze prüfen; gerade fehlen davon: ${fehlendeErklaersaetze(nachher.text).join(" · ") || "keiner"}. Gelesen: ${leseprobe(nachher.text)}`,
     ).toBe("kein-menue");
     // Deshalb steht hier KEINE Aussage über die Anmeldung: Es gibt in diesem Augenblick keine
     // gezeichnete Liste, also gibt es nichts zu lesen. Genau das ist die Auskunft von (a).
   });
 
-  it("(b) BEFUND: nach dem echten Klick auf das Zahnrad steht die Liste wieder — ohne die fünf Erklärsätze", async () => {
+  it("(b) ZUSICHERUNG: nach dem echten Klick auf das Zahnrad steht die Liste wieder — mit allen fünf Werksaktionen", async () => {
     await mount("/erfassen");
     await menschKlick(kiWerkzeug(), "Werkzeug „KI ▾“ des Blattes");
     expect(kiPalette(), "W2b: die Palette ist nicht aufgegangen").not.toBeNull();
@@ -436,11 +502,11 @@ describe("JOB 3831 · W2 · Palette offen — und dann der Weg zum Zahnrad", () 
     await seitenhilfeOeffnen();
     const text = gelesenerListentext("W2b · nach dem Klick auf das Zahnrad");
 
-    const fehlt = fehlendeErklaersaetze(text);
+    const fehlt = fehlendeAnmeldungen(text);
     expect(
       fehlt.length,
-      `W2b · BEFUND UMGEDREHT: nach dem Weg „Palette auf → Zahnrad → Seitenhilfe“ stehen jetzt Erklärsätze der Werksaktionen in der Liste — nämlich ${vorhandeneErklaersaetze(text).join(" · ")}. Das ist der SOLLZUSTAND; dieser Fall ist umzudrehen. Es fehlen noch: ${fehlt.join(" · ") || "keiner"}. Gelesene Liste: ${leseprobe(text)}`,
-    ).toBe(5);
+      `W2b · ZUSICHERUNG VERLETZT: nach dem Weg „Palette auf → Zahnrad → Seitenhilfe“ fehlen ${fehlt.length} Stücke der fünf Werksaktionen in der Liste — einzeln: ${fehlt.join(" · ")}. Gefunden wurden nur: ${vorhandeneErklaersaetze(text).join(" · ") || "keiner der fünf Erklärsätze"}. Wer die Palette geöffnet hat und dann wissen will, was ein Knopf tut, steht damit wieder ohne Auskunft da (JOB 3831 BEFUND). Gelesene Liste: ${leseprobe(text)}`,
+    ).toBe(0);
   });
 });
 
@@ -507,5 +573,66 @@ describe("JOB 3831 · W4 · im Expertenformular trägt die Kette — und nur dor
       fehlt.length,
       `W4: im Expertenformular fehlen ${fehlt.length} der fünf Erklärsätze in der gezeichneten Zahnrad-Liste — einzeln: ${fehlt.join(" · ")}. Damit trägt die Kette HelpTip → Seitenhilfe → Zahnrad auch dort nicht mehr, wo die Anmeldung überhaupt stattfindet (AiAssistBox.tsx:117). Gelesene Liste: ${leseprobe(text)}`,
     ).toBe(0);
+  });
+});
+
+// ------------------------------------------------------------------------------------------------
+// W5 (JOB 3880) — DIE ANMELDUNG IST ABGELEITET, NICHT ABGESCHRIEBEN.
+// ------------------------------------------------------------------------------------------------
+// W1/W2 messen die gezeichnete Fläche und wären auch dann grün, wenn im Hilferegister fünf von Hand
+// getippte Schlüsselpaare stünden. Das wäre ein ZWEITER Bestand neben `ASSIST_ACTIONS`: käme eine
+// sechste Werksaktion dazu, zeichnete die Palette sechs Knöpfe, und die Seitenhilfe erklärte still
+// weiter nur fünf. Dieser Fall fordert die Ableitung ein — er nennt KEINE Fünf, sondern misst gegen
+// `ASSIST_ACTIONS.length` (Auftrag §5.6).
+//
+// GEMESSEN WIRD AM REGISTER, NICHT AM DOM: die Frage ist nicht „steht es da?" (das ist W1), sondern
+// „stammt es aus der einen Quelle?". Der Namensraum der Erklärsätze wird dafür ebenfalls abgeleitet
+// (aus dem Schlüssel der ersten Aktion), damit auch ein stehengebliebener Eintrag einer entfernten
+// Aktion auffällt und nicht bloss ein fehlender.
+describe("JOB 3880 · W5 · das Hilferegister leitet die Werksaktionen ab, statt sie abzuschreiben", () => {
+  it("je Aktion aus ASSIST_ACTIONS genau ein Eintrag mit dessen Label- und Hilfe-Schlüssel — und keiner mehr", () => {
+    const ersteAktion = ASSIST_ACTIONS[0];
+    expect(ersteAktion, "ASSIST_ACTIONS ist leer — dann misst W5 nichts").toBeDefined();
+    if (ersteAktion === undefined) {
+      return;
+    }
+    // `capture.ai.help.` — aus dem Schlüssel der ersten Aktion gewonnen, nicht hier getippt.
+    const namensraum = assistActionHelpKey(ersteAktion).slice(
+      0,
+      assistActionHelpKey(ersteAktion).length - ersteAktion.length,
+    );
+    expect(
+      namensraum.length,
+      "der Namensraum der Erklärsätze liess sich nicht ableiten",
+    ).toBeGreaterThan(0);
+
+    const angemeldet = BLATT_HILFE_THEMEN.filter((thema) => thema.bodyKey.startsWith(namensraum));
+    const erwartet = ASSIST_ACTIONS.map((aktion) => assistActionHelpKey(aktion));
+    expect(
+      angemeldet.map((thema) => thema.bodyKey).sort(),
+      `W5: das Hilferegister des Blattes meldet ${angemeldet.length} Erklärsätze im Namensraum „${namensraum}“ an, ASSIST_ACTIONS führt aber ${ASSIST_ACTIONS.length} Werksaktionen. Angemeldet: ${angemeldet.map((t) => t.bodyKey).join(" · ") || "keiner"}. Erwartet: ${erwartet.join(" · ")}. Eine abgeschriebene Liste erklärt die neue Aktion nicht mit.`,
+    ).toEqual([...erwartet].sort());
+
+    for (const aktion of ASSIST_ACTIONS) {
+      const treffer = angemeldet.filter((thema) => thema.bodyKey === assistActionHelpKey(aktion));
+      expect(
+        treffer.length,
+        `W5: zur Werksaktion „${aktion}“ steht ${treffer.length}-mal ein Eintrag im Hilferegister; genau einer gehört dorthin.`,
+      ).toBe(1);
+      expect(
+        treffer[0]?.titleKey,
+        `W5: der Eintrag zu „${aktion}“ trägt nicht den Label-Schlüssel des Knopfes — dann erklärt die Seitenhilfe unter einer anderen Überschrift als die Palette anbietet.`,
+      ).toBe(assistActionLabelKey(aktion));
+    }
+
+    // Kennungen kollidieren nicht — weder untereinander noch mit den neun Nachbarn oder der
+    // Hilfekarte. Eine doppelte Kennung wäre ein doppelter React-Schlüssel und ein doppelter
+    // Testanker `blatt-hilfe-<id>` (`Blatt.tsx:2573`); geprüft, nicht angenommen (Auftrag §5.1).
+    const kennungen = BLATT_HILFE_THEMEN.map((thema) => thema.id);
+    const doppelt = kennungen.filter((id, i) => kennungen.indexOf(id) !== i);
+    expect(
+      doppelt,
+      `W5: doppelte Kennungen im Hilferegister des Blattes: ${doppelt.join(" · ")}`,
+    ).toEqual([]);
   });
 });

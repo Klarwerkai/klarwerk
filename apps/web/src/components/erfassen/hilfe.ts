@@ -24,6 +24,11 @@
 // Der Nachweis ist `tests/design/h3-funktionsinventar.test.ts` (Fall „Hilfe-Tipps"): Er hält die
 // Kennungen des BASISSTANDES als eigene Liste und sucht jeden Titel und jeden Text im geöffneten
 // „?"-Menü der gebauten Seite. Eine Mindestanzahl genügt dort ausdrücklich nicht mehr.
+import {
+  ASSIST_ACTIONS,
+  assistActionHelpKey,
+  assistActionLabelKey,
+} from "../../lib/captureAiAssist";
 import { CAPTURE_FILE_TEXT } from "../../lib/captureFromFile";
 import { CAPTURE_HELP_TOPICS } from "../../lib/captureHelp";
 import { CAPTURE_WIZARD_TEXT } from "../../lib/captureWizard";
@@ -37,9 +42,11 @@ export interface HilfeThema {
 }
 
 /**
- * Die Themen, die am Basisstand ihre Schlüssel unmittelbar am `HelpTip` trugen — mit der
- * Fundstelle, an der sie standen. Die Reihenfolge ist die des alten Weges: erst das Blatt selbst
- * (Bilder, Vertraulichkeit), dann die Erfassungsformulare, zuletzt der Dateiweg.
+ * Die Themen, die ihre Schlüssel selbst mitbringen statt aus der Hilfekarte zu kommen — jedes mit
+ * der Fundstelle, an der es steht. Die Reihenfolge ist die des alten Weges: erst das Blatt selbst
+ * (Bilder, Vertraulichkeit), dann die Erfassungsformulare, zuletzt der Dateiweg. Seit JOB 3880
+ * folgen die fünf KI-Werksaktionen — sie trugen ihren Schlüssel am Basisstand NICHT am `HelpTip`
+ * des Blattes (genau das war der Befund von JOB 3831), bringen ihn aber ebenso selbst mit.
  */
 const EIGENE_SCHLUESSEL: readonly HilfeThema[] = [
   // Der Ablagehinweis des Editors (Fussleiste des `RichTextEditor`, JOB 2610 D3). Bewusst der
@@ -86,12 +93,34 @@ const EIGENE_SCHLUESSEL: readonly HilfeThema[] = [
     titleKey: CAPTURE_FILE_TEXT.langHelpTitle,
     bodyKey: CAPTURE_FILE_TEXT.langHelpBody,
   },
+  // ==============================================================================================
+  // JOB 3880 — DIE FÜNF KI-WERKSAKTIONEN (`lib/captureAiAssist.ts:11-17`, SCRUM-404).
+  // ==============================================================================================
+  // Zu jeder Werksaktion der KI-Palette gibt es seit SCRUM-404 einen Erklärsatz
+  // (`assistActionHelpKey`, `captureAiAssist.ts:30-34`: „für das ?-HelpTip am Button, damit klar
+  // ist, was die jeweilige KI-Aktion tut, BEVOR man sie auslöst"). JOB 3831 hat gemessen, dass er
+  // auf dem Blatt niemanden erreicht: „auf dem Erfassungsblatt steht keiner der fünf Sätze in der
+  // gezeichneten Zahnrad-Liste, in keinem Zustand der Palette" (`jobs/3831/runde-1/RUECKGABE.md:2`;
+  // Prüfstand `tests/ki-werksaktionen-hilfe/werksaktionen-erklaersatz.test.tsx`). Grund: das Blatt
+  // zeichnet die fünf Knöpfe selbst als `MenueEintrag` (`Blatt.tsx:2141-2152`), ohne `HelpTip` —
+  // anders als `AiAssistBox.tsx:117` an den übrigen Flächen.
+  //
+  // ABGELEITET, NICHT ABGESCHRIEBEN: Die Einträge entstehen aus `ASSIST_ACTIONS` selbst. Eine hier
+  // getippte Fünferliste wäre ein zweiter Bestand neben der Palette und schwiege, sobald eine
+  // sechste Werksaktion dazukäme; die Palette zeigte sechs Knöpfe, die Seitenhilfe erklärte fünf.
+  // Der Wächter dazu ist W5 in `tests/ki-werksaktionen-hilfe/werksaktionen-erklaersatz.test.tsx`.
+  ...ASSIST_ACTIONS.map((aktion) => ({
+    id: `ki-${aktion}`,
+    titleKey: assistActionLabelKey(aktion),
+    bodyKey: assistActionHelpKey(aktion),
+  })),
 ];
 
 /**
- * ALLE Hilfen des Blattes an EINEM Ort — die Hilfekarte des Erfassungsweges plus die Themen, deren
- * Schlüssel am `HelpTip` selbst standen. Doppelte Kennungen kann es nicht geben: die Hilfekarte
- * führt ihren eigenen Namensraum (`chelp.<id>.*`), diese Liste ihren.
+ * ALLE Hilfen des Blattes an EINEM Ort — die Hilfekarte des Erfassungsweges plus die Themen, die
+ * ihre Schlüssel selbst mitbringen. Doppelte Kennungen kann es nicht geben: die Hilfekarte
+ * führt ihren eigenen Namensraum (`chelp.<id>.*`), diese Liste ihren (seit JOB 3880 zusätzlich
+ * `ki-<aktion>`); W5 im Prüfstand der KI-Werksaktionen misst das nach.
  */
 export const BLATT_HILFE_THEMEN: readonly HilfeThema[] = [
   ...EIGENE_SCHLUESSEL,

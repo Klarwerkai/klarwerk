@@ -237,11 +237,13 @@ describe.runIf(mockupDa)("JOB 3062 · H3 · Textmesser — auf dem Blatt steht k
       fn(`() => document.querySelectorAll('[data-testid="blatt-menue-hilfe"] details').length`),
     );
     // Zu = keine Themen; offen = das ganze Register (`components/erfassen/hilfe.ts`): die 23 Themen
-    // der Hilfekarte, die acht Themen mit eigenen Schlüsseln und der Ablagehinweis = 32.
+    // der Hilfekarte, die acht Themen mit eigenen Schlüsseln und der Ablagehinweis = 32; seit
+    // JOB 3880 zusätzlich die fünf KI-Werksaktionen aus `ASSIST_ACTIONS` = 37. Dieser Fall hielt
+    // die 32 fest und wurde beim Nachtragen rot: „expected 37 to be 32“.
     // WELCHE Themen es sind, misst `h3-funktionsinventar.test.ts` einzeln gegen die Kennungen des
     // Basisstandes; hier steht nur, dass das Menü die Hilfe erst auf Klick zeigt.
     expect(themenVorher).toBe(0);
-    expect(themenNachher).toBe(32);
+    expect(themenNachher).toBe(37);
     // Wieder schliessen, damit die übrigen Fälle die Ruhelage messen.
     await leer.seite.evaluate(
       fn(`() => document.querySelector('[data-testid="blatt-werkzeug-hilfe"]').click()`),
