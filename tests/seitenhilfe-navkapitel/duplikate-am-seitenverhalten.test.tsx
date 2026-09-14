@@ -116,6 +116,21 @@ const d = vi.hoisted(() => {
    * stehen bleiben kann.
    */
   const z = { koStart: 0, koFertig: 0, dupStart: 0, dupFertig: 0 };
+  /**
+   * JOB 3949 — DIE ANFRAGEKOERPER, DIE KLARA WIRKLICH AN `POST /api/help/explain` SCHICKT.
+   *
+   * DU5g liest die Schnittgrenze aus dem QUELLTEXT und vergleicht sie mit der LAENGE der Ressource.
+   * DU5i unten liest stattdessen, was tatsaechlich hinausgeht. Dafuer braucht die Endpunktattrappe
+   * an zwei Stellen eine echte Antwort statt der leeren Liste:
+   *   `help.explain`     — sonst gibt es keinen Koerper zu lesen,
+   *   `reasoner.status`  — sonst ist der KI-Knopf hart ausgegraut (`useAiAvailable("answer")`,
+   *                        `lib/aiAvailability.ts:35-55`) und die Handlung laeuft gar nicht erst.
+   */
+  const erklaerAnfragen: Array<{
+    question: string;
+    snippets: { id: string; title: string; body: string }[];
+    locale?: string;
+  }> = [];
   /** Die angehaltenen Objektabrufe der Bremse — `loeseKoBremse()` gibt sie frei. */
   const wartende: Array<() => void> = [];
   const kopie = (l: readonly Satz[]): Satz[] => l.map((x) => ({ ...x }));
@@ -165,6 +180,7 @@ const d = vi.hoisted(() => {
         },
       );
       Object.assign(z, { koStart: 0, koFertig: 0, dupStart: 0, dupFertig: 0 });
+      erklaerAnfragen.splice(0);
     },
     lies: (): { kos: Satz[]; duplikate: Satz[] } => ({
       kos: kopie(s.kos),
@@ -226,6 +242,43 @@ const d = vi.hoisted(() => {
     ),
     /** `POST /api/duplicates/:id/dismiss`. */
     dismiss: vi.fn(async (id: string, note?: string) => schliesse(id, "dismissed", note ?? null)),
+    /** Die bisher abgeschickten Anfragekoerper von `POST /api/help/explain`, in Reihenfolge. */
+    erklaerAnfragen: (): typeof erklaerAnfragen => [...erklaerAnfragen],
+    /**
+     * `POST /api/help/explain`. Die Antwort ist bewusst die EHRLICHE LUECKE (`answered: false`):
+     * dieser Prueffall misst, was HINAUSGEHT, nicht was zurueckkommt — eine erfundene Antwort waere
+     * eine Behauptung ueber ein Modell, das hier gar nicht laeuft.
+     */
+    helpExplain: vi.fn(async (koerper: (typeof erklaerAnfragen)[number]) => {
+      erklaerAnfragen.push(koerper);
+      return {
+        answered: false,
+        answer: null,
+        knowledgeClass: "unbekannt",
+        trust: 0,
+        sources: [],
+        citedSources: [],
+        steps: [],
+        demo: true,
+      };
+    }),
+    /** `GET /api/reasoner/status` — ein nutzbares Modell, sonst ist der KI-Knopf ausgegraut. */
+    reasonerStatus: vi.fn(async () => ({
+      active: true,
+      mode: "cloud",
+      reachable: "reachable",
+      tasks: { answer: true },
+    })),
+    /**
+     * `GET /api/reasoner/config` — die Blase neben dem KI-Knopf (`AiModelInfo`) liest sie. Der
+     * leere Rueckfall der Attrappe (`[]`) ist hier NICHT gleichgueltig: `aiTaskInfo`
+     * (`lib/reasonerTaskInfo.ts:54`) greift dann auf `config.effectiveProvider[task]` einer Liste
+     * zu und die Montage stuerzt ab, bevor eine Frage hinausgeht.
+     */
+    reasonerConfig: vi.fn(async () => ({
+      effectiveProvider: { answer: "cloud" },
+      model: "Pruefstand-Modell",
+    })),
   };
 });
 
@@ -270,6 +323,9 @@ vi.mock("../../apps/web/src/api/endpoints", () => {
         keepSeparate: d.keepSeparate,
         dismiss: d.dismiss,
       }),
+      // JOB 3949 (DU5i): Klaras Weg zur Modellkante — beide Enden echt, s. `erklaerAnfragen` oben.
+      help: mit({ explain: d.helpExplain }),
+      reasoner: mit({ status: d.reasonerStatus, config: d.reasonerConfig }),
       // Der KI-Deckel-Vorbehalt im „?"-Menue liest ein OBJEKT, keine Liste.
       aiCheck: mit({
         coverageSummary: vi.fn(async () => ({
@@ -1136,14 +1192,62 @@ describe("JOB 3804 DU4 · was nach der Entscheidung wirklich dasteht", () => {
 //   DU5d  `dup.help.detection.body`           „?" neben der Ueberschrift (`:218-220`)
 //   DU5e  `dup.intro`                         „?" neben der Ueberschrift (`:221-226`)
 describe("JOB 3804 DU5 · der Vierfachtext derselben Flaeche", () => {
-  /** Die geoeffnete Seitenhilfe der gemounteten Seite, als EIN gelesener Fliesstext. */
-  async function seitenhilfe(): Promise<string> {
+  /**
+   * Die geoeffnete Seitenhilfe der gemounteten Seite, als EIN gelesener Fliesstext.
+   *
+   * JOB 3949: der EINE vorhandene Oeffnungsweg, jetzt in JEDER Sprache begehbar — kein zweiter
+   * entsteht. Ohne Angabe bleibt es bei Deutsch, also bei dem, was `beforeEach` (`:607-608`)
+   * ohnehin gesetzt hat: jeder Bestandsfall laeuft unveraendert weiter.
+   */
+  async function seitenhilfe(lng: (typeof SPRACHEN)[number] = "de"): Promise<string> {
+    await i18n.changeLanguage(lng);
     await montiereMitHuelle();
     await klicke(marke("kopfband-zahnrad"));
     await klicke(marke("zahnrad-seitenhilfe"));
     const liste = marke("seitenhilfe-liste");
     expect(liste, "/duplikate: die Seitenhilfe zeigt keine Liste").not.toBeNull();
     return (liste?.textContent ?? "").replace(/\s+/g, " ");
+  }
+
+  /**
+   * Klaras Weg zur Modellkante, EINMAL begangen: Panel oeffnen, Frage tippen, „Mit
+   * KI-Unterstuetzung suchen" druecken.
+   *
+   * Montiert wird ueber `montiereMitHuelle()` — dieselbe eine Huelle wie bei `seitenhilfe()`
+   * (`AppShell` traegt `KlaraAssistant`, `AppShell.tsx:113,154`). Es entsteht kein zweiter
+   * Oeffnungsweg und keine zweite Klara-Strecke: gelesen wird allein der Anfragekoerper, den die
+   * Endpunktattrappe ohnehin entgegennimmt.
+   *
+   * Der Wert des Suchfeldes wird ueber den PROTOTYP-Setter gesetzt und mit einem `input`-Ereignis
+   * gemeldet: React haengt seinen eigenen Setter an das Element, ein blosses `feld.value = …` liefe
+   * an seinem Zustand vorbei und die Frage bliebe leer.
+   */
+  async function klaraFragt(lng: (typeof SPRACHEN)[number], frage: string): Promise<void> {
+    await i18n.changeLanguage(lng);
+    await montiereMitHuelle();
+    const oeffner = container.querySelector<HTMLButtonElement>("button[data-klara='1']");
+    expect(oeffner, "/duplikate: die Huelle traegt gar keinen Klara-Knopf").not.toBeNull();
+    await klicke(oeffner);
+    const feld = container.querySelector<HTMLInputElement>("section[data-klara='1'] input");
+    expect(feld, "/duplikate: Klaras Panel ist nicht offen — es gibt kein Suchfeld").not.toBeNull();
+    await act(async () => {
+      const setzer = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+      setzer?.call(feld, frage);
+      feld?.dispatchEvent(new Event("input", { bubbles: true }));
+      await flush();
+    });
+    const kiKnopf = [
+      ...container.querySelectorAll<HTMLButtonElement>("section[data-klara='1'] button"),
+    ].find((b) => (b.textContent ?? "").includes(i18n.t("klara.aiSearch")));
+    expect(
+      kiKnopf,
+      "/duplikate: Klaras Panel hat keinen Knopf „Mit KI-Unterstützung suchen“",
+    ).toBeDefined();
+    expect(
+      kiKnopf?.disabled,
+      "/duplikate: der KI-Knopf ist ausgegraut — die Frage geht gar nicht hinaus, und der Fall misst nichts",
+    ).toBe(false);
+    await klicke(kiKnopf);
   }
 
   /** Das geoeffnete „?"-Menue der gemounteten Seite, als EIN gelesener Fliesstext. */
@@ -1364,6 +1468,188 @@ describe("JOB 3804 DU5 · der Vierfachtext derselben Flaeche", () => {
       ).toBeLessThanOrEqual(schnitt);
     }
   });
+
+  // ----------------------------------------------------------------------------------------------
+  // DU5i (JOB 3949) — WAS WIRKLICH HINAUSGEHT, WENN EIN NIEDERLAENDER KLARA FRAGT.
+  // ----------------------------------------------------------------------------------------------
+  //
+  // DIE BESTELLUNG (Pruefer BEN, `archiv/3890/runde-3/ben.md:30`, Pruefpunkt 6, woertlich): „DU5g
+  // prueft eine Quelltextgrenze; ergaenzend sollte die tatsaechliche NL-Uebertragung geprueft
+  // werden."
+  //
+  // DER UNTERSCHIED ZU DU5g DARUEBER: DU5g liest die Grenze aus dem Quelltext und haelt die LAENGE
+  // DER RESSOURCE dagegen — er schliesst also, dass der Text ungekuerzt ankommt. Hier wird er
+  // GELESEN: der Anfragekoerper, den `endpoints.help.explain` wirklich bekommt. Und er wird nicht
+  // gegen eine im Test wiederholte Zahl gehalten (das war JOB 3830s Ruege, s. DU5g), sondern gegen
+  // die Ressource selbst: zeichengleich heisst ungekuerzt, ganz ohne Konstante.
+  //
+  // ================================================================================================
+  // UND DABEI STEHT EIN BEFUND AUF DEM TISCH, DEN DIESER AUFTRAG NICHT REPARIEREN DARF.
+  // ================================================================================================
+  //
+  // Die Oberflaeche steht auf `nl`, der mitgereichte Schnipsel ist niederlaendisch — und das
+  // Etikett, unter dem er hinausgeht, ist `"de"`. Zwei Stellen tragen dazu bei, und BEIDE kennen
+  // genau zwei Sprachen:
+  //
+  //   `apps/web/src/components/KlaraAssistant.tsx:312`
+  //       `locale: i18n.language.startsWith("en") ? "en" : "de"` — alles ausser Englisch faellt auf
+  //       Deutsch. Das allein waere eine Zeile.
+  //   `services/app/src/routes/help-routes.ts:13-15`
+  //       `normalizeLocale(value) { return value === "en" ? "en" : "de"; }` — der EMPFAENGER kennt
+  //       ebenfalls nur zwei Werte. Schickte der Client `"nl"`, machte der Server `"de"` daraus.
+  //
+  // DESHALB WIRD `:312` HIER NICHT ANGEFASST. Eine Aenderung allein am Client bewegte kein
+  // einziges Zeichen am Modell und saehe nur so aus, als waere etwas besser — genau die Sorte
+  // Scheinfunktion, die das Regelwerk (§7 „Ehrlichkeit vor Optik") ausschliesst. Der Vertrag traegt
+  // `nl` nicht; ihn zu erweitern ist ein eigener Schnitt (Serverkorrektur) und braucht Codex' Reihung.
+  //
+  // DARUM IST DIE ZEILE UNTEN EIN NACHFUEHR-PIN, kein Wunschbild: sie haelt fest, was HEUTE
+  // hinausgeht. Wird der Weg repariert — an beiden Stellen —, wird GENAU sie rot und sagt, was dann
+  // zu tun ist. Dieselbe Bauform wie DU4b (`:1079`).
+  //
+  // Nicht behauptet wird hier: dass die Modellkante mit `"nl"` etwas Besseres antwortete. Gemessen
+  // ist allein das Etikett und der Text, der es traegt.
+  it("DU5i: die Frage eines Niederlaenders geht mit niederlaendischem Text hinaus — und heute mit deutschem Etikett", async () => {
+    // Die Frage traegt vier Woerter aus dem niederlaendischen Kapitel, damit `rankKlara`
+    // (`klaraRegistry.ts:289-311`, Wortdeckung ueber Titel + Text) es unter die zwoelf Schnipsel
+    // hebt. Bleibt es aus, misst der Fall nichts — und sagt das unten, statt still gruen zu sein.
+    await klaraFragt("nl", "duplicaat verwant genoteerd tabblad");
+
+    const anfragen = d.erklaerAnfragen();
+    expect(
+      anfragen.length,
+      "/duplikate (nl): es ist gar keine Anfrage an `POST /api/help/explain` hinausgegangen — die Handlung lief nicht, und der Fall misst nichts",
+    ).toBe(1);
+    const koerper = anfragen[0];
+    if (koerper === undefined) {
+      throw new Error(
+        "/duplikate (nl): der gezaehlte Anfragekoerper laesst sich nicht lesen — die Vorrichtung ist kaputt",
+      );
+    }
+
+    const kapitelId = `topic:${kapitelSchluessel().bodyKey.split(".")[1]}`;
+    const uebertragen = koerper.snippets.find((s) => s.id === kapitelId);
+    expect(
+      uebertragen,
+      `/duplikate (nl): das Kapitel (\`${kapitelId}\`) ist unter den ${koerper.snippets.length} mitgereichten Schnipseln gar nicht dabei — dann sagt dieser Fall nichts ueber seine Uebertragung. Mitgereicht wurden: ${koerper.snippets.map((s) => s.id).join(", ")}`,
+    ).toBeDefined();
+
+    // 1. UNGEKUERZT — zeichengleich mit der Ressource DIESER Sprache, ohne wiederholte Konstante.
+    const quelle = kapitel("nl");
+    expect(
+      quelle.length,
+      "/duplikate (nl): das Kapitel ist in der niederlaendischen Ressource leer — dann waere jeder Vergleich darunter wertlos",
+    ).toBeGreaterThan(40);
+    expect(
+      uebertragen?.body,
+      `/duplikate (nl): der uebertragene Text ist ${uebertragen?.body.length} Zeichen lang, das Kapitel ${quelle.length} — auf dem Weg zur Modellkante geht sein Schluss still verloren (Schnitt in KlaraAssistant.tsx, s. DU5g)`,
+    ).toBe(quelle);
+    // 2. UND ES IST WIRKLICH DER NIEDERLAENDISCHE Text, nicht der deutsche Rueckfall.
+    expect(
+      uebertragen?.body,
+      "/duplikate (nl): es geht der DEUTSCHE Kapiteltext hinaus — der Mensch hat Niederlaendisch eingestellt",
+    ).not.toBe(kapitel("de"));
+
+    // 3. DER NACHFUEHR-PIN auf dem Etikett. Begruendung im Block darueber.
+    expect(
+      koerper.locale,
+      "/duplikate (nl): das Etikett der Anfrage ist nicht mehr „de“. Ist der Weg jetzt an BEIDEN Stellen repariert (`KlaraAssistant.tsx:312` UND `services/app/src/routes/help-routes.ts:13-15`), dann diesen Pin auf „nl“ umstellen und den Befundblock darueber loeschen.",
+    ).toBe("de");
+  });
+
+  // ----------------------------------------------------------------------------------------------
+  // DU5h (JOB 3949) — DIE GEOEFFNETE SEITENHILFE IN SEINER SPRACHE, NICHT NUR IN DER RESSOURCE.
+  // ----------------------------------------------------------------------------------------------
+  //
+  // DIE BESTELLUNG (Pruefer BEN, `archiv/3890/runde-3/ben.md:30`, Pruefpunkt 6, woertlich — und
+  // unerledigt schon seit Runde 1, `archiv/3890/runde-1/ben.md:29`): „EN/NL werden ueberwiegend als
+  // Ressourcen geprueft; die Zieltests montieren Deutsch (`Testdatei:616`). Ergaenzender
+  // Testvorschlag: geoeffnete Duplikate-Seitenhilfe nach Sprachwechsel lesen."
+  //
+  // WAS HIER NEU IST UND WAS NICHT — das ist die ganze Luecke in einem Satz. Die Tabelle
+  // `UEBEREINSTIMMUNG` (`:351-429`) misst EN und NL seit JOB 3890, aber gegen die RESSOURCE
+  // (`wert(key, lng)`); ihr eigener Kopfkommentar (`:348-349`) sagt den Grund, „weil der Mensch die
+  // Sprache liest, die er eingestellt hat, und nicht den deutschen Rueckfall". Auf den BILDSCHIRM
+  // schaut sie in zwei von drei Sprachen nie. DU5a/DU5b/DU5c schauen auf den Bildschirm — aber nur
+  // auf Deutsch (`beforeEach`, `:607-608`). Die sechs Faelle hier schliessen genau dieses Kreuz.
+  //
+  // ERGAENZT, NICHT VERDOPPELT: der Ressourcenvergleich bleibt, wo er ist. Die Ressource belegt
+  // weiter die QUELLE, neu ist die ANZEIGE — dieselbe Aufteilung, die
+  // `tests/seitenhilfe-admin/protokollhilfe-geladene-zustaende.test.tsx` schon fuehrt. Benutzt wird
+  // der EINE vorhandene Oeffnungsweg `seitenhilfe()` (`:1139-1147`), jetzt mit Sprachangabe; ein
+  // zweiter entsteht nirgends, und Deutsch bleibt bei DU5a/DU5b/DU5c.
+  //
+  // EINZELN BEISSEND, JE SPRACHE (Lehre JOB 3587 R4 und der Dateikopf `:1127-1131`): je Schluessel
+  // UND Sprache ein eigener Fall. Faellt der Text EINER Sprache aus, wird GENAU ihr Fall rot und die
+  // Meldung nennt Route, Schluessel und Sprache. Kein Mengenwaechter, und kein `toContain("")`: was
+  // erwartet wird, muss vorher nachweislich nicht leer sein (Lehre JOB 3891 R1).
+  const ANGEZEIGT = [
+    {
+      schluessel: "help.duplikate.body",
+      /** Das Kapitel der Route, wie DU5a es auf Deutsch liest. */
+      text: (lng: (typeof SPRACHEN)[number]): string => kapitel(lng),
+      fehlt: "das Kapitel erreicht den Menschen auf dieser Flaeche gar nicht",
+    },
+    {
+      schluessel: "dup.seitenhilfe.flaeche.text",
+      /** Der Zahnradtext zur Flaeche — mit dem Aufklapper-Namen DIESER Sprache eingesetzt. */
+      text: (lng: (typeof SPRACHEN)[number]): string =>
+        wert("dup.seitenhilfe.flaeche.text", lng).replace("{{mehr}}", wert("pruefen.more", lng)),
+      fehlt: "seine HelpTip-Anmeldung (`Duplicates.tsx:248-251`) fehlt",
+    },
+    {
+      schluessel: "dup.seitenhilfe.entscheidung.text",
+      /** Der Zahnradtext zur Entscheidung — mit dem Ortsnamen DIESER Sprache eingesetzt. */
+      text: (lng: (typeof SPRACHEN)[number]): string =>
+        wert("dup.seitenhilfe.entscheidung.text", lng).replace(
+          "{{bibliothek}}",
+          wert("nav.library", lng),
+        ),
+      fehlt: "seine HelpTip-Anmeldung (`Duplicates.tsx:252-255`) fehlt",
+    },
+  ] as const;
+
+  for (const eintrag of ANGEZEIGT) {
+    // Deutsch steht bei DU5a/DU5b/DU5c und wird hier nicht wiederholt.
+    for (const lng of ["en", "nl"] as const) {
+      it(`DU5h: \`${eintrag.schluessel}\` steht in der geoeffneten Seitenhilfe — ${lng}, nicht der deutsche Rueckfall`, async () => {
+        const erwartet = eintrag.text(lng);
+        const deutsch = eintrag.text("de");
+        // 1. Ohne Sollwert misst der Fall nichts: `toContain("")` waere immer erfuellt. Genau so
+        //    faellt dieser Fall aus, wenn der Schluessel in DIESER Sprache fehlt — `wert()` liest
+        //    die Ressource ohne Rueckfall auf Deutsch (`:311-314`).
+        expect(
+          erwartet.length,
+          `/duplikate (${lng}): \`${eintrag.schluessel}\` fehlt in der Ressource dieser Sprache — der Mensch bekaeme hier den deutschen Rueckfall, und jede Suche nach dem Sollwert waere leer`,
+        ).toBeGreaterThan(0);
+        // 2. Und er muss sich von Deutsch unterscheiden, sonst kann kein DOM-Nachweis der Welt den
+        //    Rueckfall von der Uebersetzung trennen.
+        expect(
+          erwartet,
+          `/duplikate (${lng}): \`${eintrag.schluessel}\` traegt woertlich den deutschen Text — dann ist an der Anzeige nicht zu erkennen, ob die Uebersetzung oder der Rueckfall dasteht`,
+        ).not.toBe(deutsch);
+
+        const gelesen = await seitenhilfe(lng);
+
+        // 3. Die Liste muss ueberhaupt Text tragen — sonst ist jede Suche darin wertlos.
+        expect(
+          gelesen.length,
+          `/duplikate (${lng}): die Seitenhilfe-Liste ist leer — sie wurde gar nicht geoeffnet`,
+        ).toBeGreaterThan(0);
+        // 4. DER NACHWEIS: der Satz SEINER Sprache steht auf dem Bildschirm.
+        expect(
+          gelesen,
+          `/duplikate (${lng}): \`${eintrag.schluessel}\` steht nicht in der geoeffneten Seitenhilfe — ${eintrag.fehlt}`,
+        ).toContain(erwartet);
+        // 5. Und der deutsche Satz steht dort NICHT daneben: waere er es, laege der Rueckfall vor
+        //    und nicht die eingestellte Sprache.
+        expect(
+          gelesen,
+          `/duplikate (${lng}): die geoeffnete Seitenhilfe zeigt den DEUTSCHEN Text von \`${eintrag.schluessel}\` — der Mensch liest den Rueckfall statt seiner Sprache`,
+        ).not.toContain(deutsch);
+      });
+    }
+  }
 });
 
 // ================================================================================================

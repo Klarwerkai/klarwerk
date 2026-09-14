@@ -295,6 +295,39 @@ async function netzSchalten(an: boolean): Promise<void> {
   });
 }
 
+/**
+ * JOB 3949: den Abruf des Verzeichnisses PAUSIEREN — die zweite Hälfte von `zeilenWert.ts:63`
+ * (`q.fetchStatus === "paused"`), ohne den `onlineManager` anzufassen. Begründung im Kopfblock von
+ * G6. INNERHALB von `act`, wie jede Zustandsänderung hier (LEHREN JOB 3044 R4).
+ */
+async function abrufPausieren(): Promise<void> {
+  const client = queryClient;
+  if (client === null) {
+    throw new Error(
+      "die Vorrichtung kann keinen Abruf pausieren: mount() hat keinen QueryClient hinterlegt",
+    );
+  }
+  const abfrage = client.getQueryCache().find({ queryKey: ["directory"] });
+  if (abfrage === undefined) {
+    throw new Error(
+      "die Abfrage `directory` steht gar nicht im Zwischenspeicher — dann pausiert dieser Schritt nichts",
+    );
+  }
+  await act(async () => {
+    abfrage.setState({ fetchStatus: "paused" });
+    await flush();
+  });
+}
+
+/** Die Abfrage des Verzeichnisses, wie sie JETZT im Zwischenspeicher steht — für die Kalibrierung. */
+function verzeichnisAbfrage(): { status: string; fetchStatus: string } {
+  const abfrage = queryClient?.getQueryCache().find({ queryKey: ["directory"] });
+  if (abfrage === undefined) {
+    throw new Error("die Abfrage `directory` steht gar nicht im Zwischenspeicher");
+  }
+  return { status: abfrage.state.status, fetchStatus: abfrage.state.fetchStatus };
+}
+
 async function click(el: Element | null | undefined, was: string): Promise<void> {
   if (!(el instanceof HTMLElement)) {
     throw new Error(`Element zum Klicken fehlt: ${was}`);
@@ -626,10 +659,35 @@ describe("JOB 3670 R2 · G4 · die Kontohilfe steht auch im geladenen Zweig", ()
 //     der DOM-Nachweis die ANZEIGE.
 //
 // AUSDRÜCKLICH NICHT GEMESSEN: ein echter Browser und reale Bildschirmbreiten (diese Datei ist
-// jsdom, `:1`), die HTTP- und Persistenzkette (der Endpunkt-Mock antwortet, kein Server läuft) und
-// ein separat pausierter Abruf ohne `onlineManager` — den hat schon JOB 3853 offengelassen
-// (`archiv/3853/runde-1/ben.md:29`), er führt auf denselben Zweig `zeilenWert.ts:64` wie der
-// Offline-Fall unten. Der Offline-Fall selbst bleibt einsprachig; die Sprachfälle decken ihn nicht.
+// jsdom, `:1`) und die HTTP- und Persistenzkette (der Endpunkt-Mock antwortet, kein Server läuft).
+//
+// ================================================================================================
+// JOB 3949 · G6 — DER SEPARAT PAUSIERTE ABRUF IST SEIT HEUTE GEMESSEN, JE SPRACHE.
+// ================================================================================================
+//
+// DIE BESTELLUNG (Prüfer BEN, GRÜN-Urteil zu JOB 3917, `archiv/3917/runde-1/ben.md:25`,
+// Prüfpunkt 6): „Bei späterer Erweiterung: pausierten Abruf mit vorhandenem Cache separat
+// herstellen und Hinweis samt Hilfe prüfen."
+//
+// AN DIESER STELLE STAND BIS HEUTE, dieser Abruf sei „AUSDRÜCKLICH NICHT GEMESSEN" — offengelassen
+// schon von JOB 3853 (`archiv/3853/runde-1/ben.md:29`), danach von JOB 3917. Der Satz ist weg, weil
+// G6 unten ihn misst; was weiterhin offen bleibt, steht unverändert im Absatz darüber.
+//
+// WARUM ER NICHT DER OFFLINE-FALL UNTER ANDEREM NAMEN IST. `zeilenWert.ts:63` liest zwei Hälften:
+// `pausiert: !online || q.fetchStatus === "paused"`. Der Offline-Fall ganz unten stellt die ERSTE
+// her (`onlineManager.setOnline(false)`); die ZWEITE hat noch nie ein Fall betreten. G6 stellt genau
+// sie her — der `onlineManager` bleibt dabei nachweislich auf ONLINE, und jeder Fall von G6 belegt
+// das, sonst misst er wieder nur den Fall unten.
+//
+// EHRLICH ZUR VORRICHTUNG: `fetchStatus: "paused"` wird hier an der Abfrage SELBST gesetzt
+// (`abrufPausieren()`), nicht von react-query abgeleitet. Das ist kein Kunstgriff, sondern die
+// einzige Möglichkeit: react-query leitet diesen Stand ausschließlich aus dem `onlineManager` ab
+// (`canFetch(networkMode)`), und genau dessen Umweg soll dieser Fall NICHT nehmen. Ab der Abfrage
+// läuft die Kette vollständig und unverändert: `useDirectory` → `abfragelage`/`wertBefund` →
+// `AdminSicherheitDetails.tsx:152` → `kontoZeile` → gezeichnete `<dd>`-Zeile → geöffnete
+// Seitenhilfe.
+//
+// Der Offline-Fall selbst bleibt einsprachig; die Sprachfälle von G5 decken ihn nicht.
 
 /** Der Name, den die Akteurzeile aus dem BESTAND trägt — der Beweis, dass ein Bestand da ist. */
 const BESTANDSNAME = "Pia Admin";
@@ -810,4 +868,130 @@ describe("JOB 3853 · G5 · Bestand sichtbar, Auffrischung unterwegs oder kaputt
       await netzSchalten(true);
     }
   });
+});
+
+// ------------------------------------------------------------------------------------------------
+// G6 — DER PAUSIERTE ABRUF MIT VORHANDENEM CACHE, JE SPRACHE (JOB 3949).
+// ------------------------------------------------------------------------------------------------
+// Bestellung: `archiv/3917/runde-1/ben.md:25`, Prüfpunkt 6 — im Wortlaut im Kopfblock von G5.
+// Die Begründung, warum das NICHT der Offline-Fall unter anderem Namen ist, steht ebendort.
+describe("JOB 3949 · G6 · Bestand sichtbar, Abruf pausiert — und der `onlineManager` steht auf ONLINE", () => {
+  /**
+   * KALIBRIERUNG. Ohne sie wäre jeder Fall darunter wertlos: griffe `abrufPausieren()` nicht, stünde
+   * die Karte weiter in „frisch", und die Sprachfälle läsen den Hinweis von G1 statt den schwachen.
+   */
+  it("Kalibrierung · der Stand ist wirklich „pausiert bei Online“ und kein Fehler und kein Offline", async () => {
+    await mitBestandMontieren();
+    const vorher = verzeichnisAbfrage();
+    expect(
+      vorher.fetchStatus,
+      `vor dem Pausieren steht die Abfrage schon auf „${vorher.fetchStatus}" — dann stellt dieser Fall nichts her`,
+    ).not.toBe("paused");
+
+    await abrufPausieren();
+
+    const nachher = verzeichnisAbfrage();
+    expect(nachher.fetchStatus, "der Abruf ist gar nicht pausiert").toBe("paused");
+    // KEIN Fehler: die zweite Ursache von `veraltet` (`lage.fehler`) ist hier ausdrücklich nicht im
+    // Spiel — sonst misst G6 nur die Lage `veraltet` von G5 noch einmal.
+    expect(
+      nachher.status,
+      "die Abfrage steht auf Fehler — dann misst G6 die Lage `veraltet` aus G5 und nicht den pausierten Abruf",
+    ).toBe("success");
+    // UND KEIN OFFLINE: das ist der Trennnachweis zum Offline-Fall in G5.
+    expect(
+      onlineManager.isOnline(),
+      "der `onlineManager` steht auf offline — dann ist dies der Offline-Fall unter anderem Namen (`zeilenWert.ts:63`, erste Hälfte)",
+    ).toBe(true);
+    // Der Bestand bleibt SICHTBAR (REGELN §7) — ohne ihn misst der Fall die Lage von G2.
+    expect(
+      gestrafft(zeile(1, "audit.detail.actor")?.textContent),
+      "im pausierten Abruf ist der Bestand verschwunden — ein alter Bestand wird nie geleert (REGELN §7)",
+    ).toContain(BESTANDSNAME);
+    // Und die Karte zieht daraus die SCHWACHE Aussage, nicht die Löschbehauptung.
+    const hinweis = hinweisNeben(1, "audit.detail.target", GELOESCHT_ID);
+    expect(hinweis, "pausiert: falscher Hinweis neben der Kennung").toBe(
+      i18n.t("audit.detail.nameUnavailable"),
+    );
+    expect(
+      hinweis,
+      "pausiert: die Karte behauptet eine Kontolöschung, obwohl seit dem Pausieren nichts mehr nachgeholt wurde",
+    ).not.toBe(i18n.t("audit.detail.accountGone"));
+  });
+
+  for (const sprache of ["de", "en", "nl"] as const) {
+    it(`pausiert · ${sprache}: der schwache Hinweis steht da und die geöffnete Seitenhilfe erklärt ihn`, async () => {
+      await i18n.changeLanguage(sprache);
+      await mitBestandMontieren();
+      await abrufPausieren();
+
+      // Die drei Voraussetzungen dieses Falls, jede einzeln benannt — ohne sie misst er etwas
+      // anderes: den Offline-Fall (G5), die Lage `veraltet` (G5) oder die Lage von G2.
+      expect(
+        onlineManager.isOnline(),
+        `${sprache}: der \`onlineManager\` steht auf offline — dann ist dies der Offline-Fall unter anderem Namen`,
+      ).toBe(true);
+      expect(
+        verzeichnisAbfrage().fetchStatus,
+        `${sprache}: der Abruf ist gar nicht pausiert — dann misst dieser Fall die frische Lage`,
+      ).toBe("paused");
+      expect(
+        gestrafft(zeile(1, "audit.detail.actor")?.textContent),
+        `${sprache}: ohne sichtbaren Bestand ist der abgelesene Hinweis der von G2`,
+      ).toContain(BESTANDSNAME);
+
+      const hinweis = hinweisNeben(1, "audit.detail.target", GELOESCHT_ID);
+
+      // Sollwert und Löschbehauptung aus der Ressource DIESER Sprache — Begründung bei G5
+      // (`i18n.t` fiele bei fehlendem Schlüssel auf „de" zurück und deckte die Lücke zu).
+      const sollwert = sprachressource(sprache, "audit.detail.nameUnavailable");
+      const loeschbehauptung = sprachressource(sprache, "audit.detail.accountGone");
+      expect(
+        sollwert.length,
+        `pausiert/${sprache}: der erwartete schwache Hinweis (audit.detail.nameUnavailable) fehlt in der Ressource dieser Sprache — ohne Sollwert misst dieser Fall nichts`,
+      ).toBeGreaterThan(0);
+      expect(
+        loeschbehauptung.length,
+        `pausiert/${sprache}: die Löschbehauptung (audit.detail.accountGone) fehlt in der Ressource dieser Sprache — der Vergleich darunter wäre wertlos`,
+      ).toBeGreaterThan(0);
+      // Drei Stufen, absichtlich in DIESER Reihenfolge — so nennt jede Verstellung ihre eigene
+      // Zeile: erst „überhaupt ein Hinweis" (ein leerer rettete sonst jeden Fall, LEHREN JOB 3891
+      // R1), dann die Abgrenzung gegen die Löschbehauptung, dann der genaue Sollwert.
+      expect(
+        hinweis.length,
+        `pausiert/${sprache}: neben der Kennung steht gar kein Hinweis — jede Suche nach ihm wäre leer und damit immer erfüllt`,
+      ).toBeGreaterThan(0);
+      expect(
+        hinweis,
+        `pausiert/${sprache}: die Karte behauptet eine Kontolöschung („${loeschbehauptung}"), obwohl der Abruf nur pausiert ist — das Konto ist damit unbekannt, nicht abwesend`,
+      ).not.toBe(loeschbehauptung);
+      expect(
+        hinweis,
+        `pausiert/${sprache}: die Karte zeigt „${hinweis}" statt des erwarteten schwachen Hinweises „${sollwert}"`,
+      ).toBe(sollwert);
+
+      const hilfe = sprachressource(sprache, "seitenhilfe.admin.protokoll.text");
+      expect(
+        hilfe.length,
+        `pausiert/${sprache}: die Prüfprotokollhilfe fehlt in dieser Ressource`,
+      ).toBeGreaterThan(0);
+      expect(
+        hilfe,
+        `pausiert/${sprache}: die Karte zeigt „${hinweis}", die Hilfe erklärt diesen Zustand nicht`,
+      ).toContain(hinweis);
+
+      // UND DER BILDSCHIRM STATT DES SPRACHBÜNDELS — dieselbe Aufteilung wie in G5: die Ressource
+      // belegt die QUELLE, der DOM-Nachweis die ANZEIGE (LEHREN JOB 3889 R1/R2).
+      await seitenhilfeOeffnen();
+      const angezeigt = listentext();
+      expect(
+        angezeigt.length,
+        `pausiert/${sprache}: die Seitenhilfe-Liste ist leer — sie wurde gar nicht geöffnet, und jede Suche darin wäre wertlos`,
+      ).toBeGreaterThan(0);
+      expect(
+        angezeigt,
+        `pausiert/${sprache}: die geöffnete Seitenhilfe zeigt „${hinweis}" nicht — die Sprachressource trägt den Satz, der Bildschirm nicht`,
+      ).toContain(hinweis);
+    });
+  }
 });
