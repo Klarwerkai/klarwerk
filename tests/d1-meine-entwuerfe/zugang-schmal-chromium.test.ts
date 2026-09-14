@@ -35,6 +35,9 @@
 // K     KALIBRIERUNG: wird der gemessene Ausgleich in der Seite zurückgenommen, MUSS die Messung
 //       rot werden — sonst misst sie nichts.
 // K2    DER WÄCHTER ÜBER K: dieselbe Messung, während das Produkt im selben Augenblick einpasst.
+// K3    DIE VORRICHTUNG SELBST: wirft der Block, stellt das `finally` die Fläche wieder her.
+// K4    DIE VORRICHTUNG SELBST: die Normalisierung in `MASSE` zieht Tabulator, Doppel-Leerzeichen
+//       und Zeilenumbruch wirklich zusammen — an einer Probe, die alle drei trägt.
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { extname, join, resolve } from "node:path";
@@ -217,6 +220,35 @@ interface Kalibrierung {
 }
 
 // ------------------------------------------------------------------------------------------------
+// JOB 3951 — WER DEN AUSGLEICH ÜBER ZWEI AUFRUFE HINWEG VERGLEICHT, MUSS IHN ERST ZUR RUHE KOMMEN
+// LASSEN.
+// ------------------------------------------------------------------------------------------------
+// K (:803) und K2 (:844) sehen das nicht: sie lesen `alt` und `zurueck` im SELBEN synchronen Block.
+// K3 unten vergleicht den Wert VOR und NACH einem geworfenen Fehler, also über zwei Aufrufe — und
+// dazwischen rechnet das Produkt nach. GEMESSEN im Cloud-Lauf `d4784eb6c7a0bfb75377c140`:
+// `translate(258px, 0px)` beim ersten Lesen, `translate(258px, -109.25px)` wenige Aufrufe später.
+// Die Ursache steht im Produkt beschrieben (`Menue.tsx:263-289`): die eigenen KI-Vorlagen kommen aus
+// einem ABRUF und machen die Fläche danach höher, der `ResizeObserver` (`:290-295`) feuert, und
+// `einpassen` (`:216-255`) setzt den senkrechten Versatz nach. Wann das geschieht, hängt am Abruf —
+// das ist genau das Flackern, das dieser Prüfstand nicht selbst haben darf.
+// GELESEN WIRD DESHALB ERST, wenn `transform` UND Höhe der Fläche zwanzig Takte lang gleich bleiben.
+// Kommt sie nicht zur Ruhe, gibt die Funktion `null` zurück und K3 wird rot MIT GRUND — statt
+// zufällig an einer Zahl zu fallen, die niemand erklären kann.
+const RUHIG = `async () => {
+  const el = document.querySelector('[data-testid="blatt-menue-mehr"]');
+  if (!el) { return null; }
+  let letzter = null;
+  let gleich = 0;
+  for (let i = 0; i < 600 && gleich < 20; i++) {
+    await new Promise((f) => setTimeout(f, 16));
+    const jetzt = el.style.transform + '|' + el.offsetHeight;
+    gleich = jetzt === letzter ? gleich + 1 : 0;
+    letzter = jetzt;
+  }
+  return gleich >= 20 ? el.style.transform : null;
+}`;
+
+// ------------------------------------------------------------------------------------------------
 // LIEFERUNG 6: DASS `${MASSE}` DIE EINBETTUNG HEIL ÜBERSTEHT, WIRD GEMESSEN — ZWEIMAL.
 // ------------------------------------------------------------------------------------------------
 // Eine stillschweigend zerstörte Maskierung von `\s+` fiele sonst erst auf, wenn irgendwann ein
@@ -244,6 +276,49 @@ function masseNormalisiert(m: Masse, lage: string): void {
     m.zeilen.map((z) => z.text).sort(),
     `${lage}: die Normalisierung in MASSE greift nach der Einbettung nicht mehr`,
   ).toEqual(erwartet);
+}
+
+// ================================================================================================
+// JOB 3951 — `masseNormalisiert` OBEN IST HEUTE EIN LEERLAUF, UND DESHALB STEHT K4 UNTEN.
+// ================================================================================================
+//
+// Die Zeile darüber rechnet `t.replace(/\s+/g, " ")` auf beiden Seiten des Vergleichs — und die drei
+// Titel, mit denen sie gefüttert wird, tragen gar keinen Leerraum, den diese Regel zusammenzöge:
+// `ANFANG` (:122) und daraus `TITEL_1`/`TITEL_2` (:123-124) haben ausschliesslich einfache
+// Leerzeichen, `TITEL_3` (:130) ist ein Dateiname ohne jedes Leerzeichen. Auf keinem der drei ändert
+// `replace(/\s+/g, ' ')` ein Zeichen; der Vergleich bliebe also auch dann grün, wenn `MASSE` (:144)
+// nur noch Leerzeichen zusammenzöge oder gar nicht mehr normalisierte. Und `masseUnveraendert`
+// (:259) deckt das nicht ab: die Funktion liest den QUELLTEXT, nicht sein Ergebnis.
+// DESHALB TRÄGT DIE PROBE ALLE DREI LEERRAUMARTEN auf einmal — Tabulator, mehrfache Leerzeichen und
+// Zeilenumbruch, dazu führenden und abschliessenden Leerraum für `trim()`.
+const PROBE_ROH = "  K4\tProbe   mit\nLeerraum  ";
+
+// Derselbe Bau wie `ohneAusgleich` (:200): EIN synchroner Aufruf, Rücknahme im `finally`, `${MASSE}`
+// eingebettet statt nachgebaut. Verstellt wird hier aber nicht der `transform`, sondern der Bestand
+// der Liste — ein zusätzlicher Knoten. Ein bestehender Knoten wird NICHT umgeschrieben: er gehört
+// React, und der nächste Rendervorgang nähme die Änderung entweder zurück oder trüge sie in die
+// folgenden Fälle weiter. Ein eigener, im `finally` wieder entfernter Knoten tut beides nicht.
+const mitProbeknoten = (probe: string): string => `() => {
+  const behaelter = document.querySelector('[data-testid="blatt-entwurf-eintrag"]').parentElement;
+  const knoten = document.createElement('div');
+  knoten.setAttribute('data-testid', 'blatt-entwurf-eintrag');
+  knoten.textContent = ${JSON.stringify(probe)};
+  let mass = null;
+  let roh = null;
+  try {
+    behaelter.appendChild(knoten);
+    roh = knoten.textContent;
+    mass = (${MASSE})();
+  } finally {
+    knoten.remove();
+  }
+  return { mass: mass, roh: roh };
+}`;
+
+interface Normalisierungsprobe {
+  mass: Masse;
+  /** Der rohe `textContent` des Probeknotens — er MUSS den Leerraum noch tragen. */
+  roh: string;
 }
 
 // ================================================================================================
@@ -780,6 +855,147 @@ describe("JOB 3266 R2 · der Zugang zu den eigenen Entwürfen im echten Chromium
     // Dieselbe Produktkontrolle wie in K: `dispatchEvent` löst echtes Produktverhalten aus, und der
     // nächste Fall muss auf dem Zustand messen, den das PRODUKT gemacht hat.
     imFenster(await s.evaluate<Masse>(fn(MASSE)), "390 · nach Rücknahme der Kalibrierung (K2)");
+  }, 120_000);
+
+  // ==============================================================================================
+  // K3 — DER ERFOLGSWEG BELEGT DIE RÜCKNAHME IM FEHLERFALL GERADE NICHT (JOB 3951).
+  // ==============================================================================================
+  //
+  // K (:803) und K2 (:844) lesen die Rücknahme über `zurueck`. Dieser Wert entsteht in `:211` —
+  // NACH dem `try/finally`, auf dem Erfolgsweg. Wirft der Block, wird `:211` nie erreicht, und die
+  // einzige Behauptung über die Rücknahme fällt genau dann weg, wenn sie gebraucht würde: bis heute
+  // hat keiner der beiden Aufrufer geworfen (`ohneAusgleich("")` und das synchrone `resize`), das
+  // `finally` (:208-210) hat also noch nie gearbeitet. Verschöbe jemand `el.style.transform = alt;`
+  // hinter `mass = …`, bliebe alles grün — und die Seite bliebe nach dem ersten Fehler auf
+  // `transform: none` stehen (GEMESSEN, Cloud-Lauf `0d0577a13cf56d03d561bd78`: „expected 'none' not
+  // to be 'none'"). K3 misst deshalb NACH einem erzwungenen Wurf in einem eigenen `evaluate`, was an
+  // der Fläche steht, und danach mit `imFenster`, dass der folgende Fall wieder auf dem Zustand
+  // misst, den das PRODUKT gemacht hat — die Zusage aus :194-195.
+  it("K3 · ein geworfener Fehler lässt die Fläche nicht verstellt zurück", async () => {
+    expect(fehler, "Prüfstand nicht aufgebaut").toBeNull();
+    const s = seite as Seite;
+    await stelle(390, "de", "/erfassen?entwuerfe=1");
+    await s.waitForFunction(
+      fn(`() => document.querySelectorAll('[data-testid="blatt-entwurf-eintrag"]').length === 3`),
+      undefined,
+      { timeout: 20_000 },
+    );
+
+    // (a) Die eigene Kalibrierung des Falls: es steht überhaupt ein Ausgleich da — und er steht
+    // STILL (`RUHIG` oben). Ohne die erste Behauptung wäre K3 auch dann grün, wenn das Produkt nie
+    // etwas gesetzt hätte; ohne die zweite verglichen (a) und (d) zwei verschiedene Produktstände.
+    const vorher = await s.evaluate<string | null>(fn(RUHIG));
+    expect(
+      vorher,
+      "K3: der Ausgleich der Fläche kam in zehn Sekunden nicht zur Ruhe — (a) und (d) messen dann verschiedene Produktstände",
+    ).not.toBeNull();
+    expect(
+      vorher,
+      "K3: das Produkt hat gar keinen Ausgleich gesetzt — dann misst die Rücknahme nichts",
+    ).not.toBe("");
+    expect(
+      vorher,
+      "K3: der Ausgleich steht schon auf `none` — dann misst die Rücknahme nichts",
+    ).not.toBe("none");
+
+    // (b) Dieselbe Vorrichtung wie K und K2, nur mit einem Wurf als Störung.
+    const quelle = ohneAusgleich("throw new Error('K3 · absichtlich geworfen');");
+    masseUnveraendert(quelle, "K3");
+
+    // (c) Der Aufruf MUSS scheitern. Ein stillschweigend gelungener Aufruf hiesse, dass die
+    // Vorrichtung den Fehler geschluckt hat — dann bewiese (d) nichts mehr.
+    let geworfen: unknown = null;
+    try {
+      await s.evaluate<Kalibrierung>(fn(quelle));
+    } catch (e) {
+      geworfen = e;
+    }
+    expect(
+      geworfen,
+      "K3: der `evaluate` hätte scheitern müssen — die Vorrichtung hat den Wurf geschluckt",
+    ).not.toBeNull();
+    expect(String(geworfen), "K3: die Ablehnung trägt einen anderen Text").toContain(
+      "K3 · absichtlich geworfen",
+    );
+
+    // (d) Und jetzt die eigentliche Frage, in einem EIGENEN Aufruf: was steht an der Fläche?
+    const nachher = await s.evaluate<string>(
+      fn(`() => document.querySelector('[data-testid="blatt-menue-mehr"]').style.transform`),
+    );
+    expect(
+      nachher,
+      "K3: nach dem geworfenen Fehler steht die Fläche noch auf `none` — das `finally` hat nicht gearbeitet",
+    ).not.toBe("none");
+    expect(
+      nachher,
+      "K3: nach dem geworfenen Fehler blieb die Fläche verstellt — das `finally` hat nicht gearbeitet",
+    ).toBe(vorher);
+
+    // (e) Dieselbe Produktkontrolle wie in K (:814) und K2 (:857).
+    imFenster(await s.evaluate<Masse>(fn(MASSE)), "390 · nach dem geworfenen Fehler (K3)");
+  }, 120_000);
+
+  it("K4 · die Normalisierung in MASSE wird mit Tabulator, Doppel-Leerzeichen und Umbruch gefordert", async () => {
+    expect(fehler, "Prüfstand nicht aufgebaut").toBeNull();
+    const s = seite as Seite;
+    await stelle(390, "de", "/erfassen?entwuerfe=1");
+    await s.waitForFunction(
+      fn(`() => document.querySelectorAll('[data-testid="blatt-entwurf-eintrag"]').length === 3`),
+      undefined,
+      { timeout: 20_000 },
+    );
+    const quelle = mitProbeknoten(PROBE_ROH);
+    masseUnveraendert(quelle, "K4");
+    const k = await s.evaluate<Normalisierungsprobe>(fn(quelle));
+
+    // (i) Die eigene Kalibrierung des Falls: der ROHE Text trägt den Leerraum noch. Hätte der
+    // Browser ihn schon entfernt, bewiese alles Weitere nichts über `MASSE`.
+    expect(k.roh, "K4: der rohe Text trägt keinen Tabulator mehr").toContain("\t");
+    expect(k.roh, "K4: der rohe Text trägt keine mehrfachen Leerzeichen mehr").toContain("   ");
+    expect(k.roh, "K4: der rohe Text trägt keinen Zeilenumbruch mehr").toContain("\n");
+
+    // Der Probeknoten ist wirklich mitgemessen worden — und er ist genau die eine Zeile, deren Text
+    // nicht zu einem der drei echten Titel gehört.
+    expect(k.mass.zeilen.length, "K4: der Probeknoten wurde nicht mitgemessen").toBe(
+      ALLE_TITEL.length + 1,
+    );
+    const echte = new Set(ALLE_TITEL.map((t) => t.replace(/\s+/g, " ").trim().slice(0, 40)));
+    const fremde = k.mass.zeilen.map((z) => z.text).filter((t) => !echte.has(t));
+    expect(
+      fremde.length,
+      `K4: der Probeknoten ist nicht genau einmal gemessen (${fremde.join(" | ")})`,
+    ).toBe(1);
+    const gemessen = fremde[0] as string;
+
+    // (iii) DER EIGENTLICHE NACHWEIS, und er steht VOR (ii): fiele zuerst der Textvergleich, nennte
+    // die rote Meldung nur die Wirkung. So nennt sie die Ursache — das Zeichen, das noch dasteht.
+    expect(
+      gemessen,
+      `K4: der gemessene Text trägt noch einen Tabulator — die Normalisierung in MASSE greift nicht („${gemessen}")`,
+    ).not.toContain("\t");
+    expect(
+      gemessen,
+      `K4: der gemessene Text trägt noch einen Zeilenumbruch („${gemessen}")`,
+    ).not.toContain("\n");
+    expect(
+      gemessen,
+      `K4: der gemessene Text trägt noch zwei Leerzeichen nebeneinander („${gemessen}")`,
+    ).not.toContain("  ");
+
+    // (ii) Und er ist genau das, was die Regel aus ihm macht.
+    expect(gemessen, "K4: der gemessene Text ist nicht die normalisierte Probe").toBe(
+      PROBE_ROH.replace(/\s+/g, " ").trim().slice(0, 40),
+    );
+
+    // (c) Die Rücknahme im `finally` wird gemessen, nicht gehofft: in einem EIGENEN Aufruf.
+    const wieder = await s.evaluate<number>(
+      fn(`() => document.querySelectorAll('[data-testid="blatt-entwurf-eintrag"]').length`),
+    );
+    expect(
+      wieder,
+      "K4: der Probeknoten steht noch in der Liste — das `finally` hat ihn nicht entfernt",
+    ).toBe(ALLE_TITEL.length);
+    imFenster(await s.evaluate<Masse>(fn(MASSE)), "390 · nach der Normalisierungsprobe (K4)");
   }, 120_000);
 
   it("P · die Seite hat während aller Messungen nichts geworfen", () => {
