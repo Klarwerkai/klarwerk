@@ -983,6 +983,13 @@ const INVENTAR: readonly string[] = [
   // Zeile `neu im Baum, aber nicht im gepinnten Inventar … + "tests/demo-zugang-gaeste/
   // kein-offener-zugang.test.ts"`.
   "tests/demo-zugang-gaeste/kein-offener-zugang.test.ts",
+  // JOB 3810 (12.09.2026) KI-PALETTE 320 px: die Browsermessung derselben KI-Palette des Blattes,
+  // nur im schmalsten Fenster (320×568). Sie kommt auf demselben Weg herein wie ihr 390-px-Vorbild
+  // vier Zeilen weiter oben: ueber die Inhaltsachse `palette`, wegen des WORTES — die Datei nennt
+  // die KI-Palette in jeder zweiten Zeile. „klara" steht nicht in ihrem Pfad, K5 bleibt deshalb
+  // unveraendert. GEMESSEN, NICHT GESETZT: der Waechterlauf meldete vor dieser Zeile `neu im Baum,
+  // aber nicht im gepinnten Inventar … + "tests/ki-palette-320/palette-320-chromium.test.ts"`.
+  "tests/ki-palette-320/palette-320-chromium.test.ts",
 ];
 
 // ------------------------------------------------------------------------------------------------
