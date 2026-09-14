@@ -114,15 +114,30 @@ class Buehne implements Seite {
   }
 
   async waitForTimeout(ms: number): Promise<void> {
+    this.handgriffe.push("warten");
     await schlaf(Math.min(ms, 20));
   }
 
-  async route(): Promise<void> {}
-  async addInitScript(): Promise<void> {}
+  // ---- JOB 3946 · die vier stummen Wege führen jetzt ebenfalls Buch ------------------------------
+  //
+  // Ihre Rückgabewerte sind unverändert (`waitForFunction` gibt weiter `null`); neu ist allein der
+  // Eintrag in der Handgriffsliste. Ohne ihn war die ZWEITE Hälfte des Satzes von `nichtGestellt`
+  // unbelegt: ein `setzeSprache`, das zusätzlich `route`, `addInitScript`, `waitForFunction` oder
+  // `on` riefe, wäre hier stillschweigend durchgelaufen, obwohl der Satz „benutzt nur `evaluate`,
+  // `goto` und `waitForTimeout`" genau das ausschliesst. Fall B5 liest die Liste und misst es.
+  async route(): Promise<void> {
+    this.handgriffe.push("route");
+  }
+  async addInitScript(): Promise<void> {
+    this.handgriffe.push("addInitScript");
+  }
   async waitForFunction(): Promise<unknown> {
+    this.handgriffe.push("waitForFunction");
     return null;
   }
-  on(): void {}
+  on(): void {
+    this.handgriffe.push("on");
+  }
 
   // ---- JOB 3819 · was `setzeSprache` NICHT anfasst, aber `implements Seite` verlangt -------------
   //
@@ -354,5 +369,143 @@ describe("JOB 3587 · A · der Sprachschritt wartet auf den Zustand und sagt, wa
     const stand = machStand(null, "Chromium kam nicht hoch: BEN_KEIN_BROWSER");
     const text = await fehlerVon(setzeSprache(stand, "nl"));
     expect(text).toContain("BEN_KEIN_BROWSER");
+  });
+});
+
+// ==================================================================================================
+// JOB 3946 · B · DIE VIER UNGESTELLTEN WEGE, ZUM ERSTEN MAL ANGEFAHREN.
+// ==================================================================================================
+//
+// WARUM ES DIESEN BLOCK GIBT. Der Kopfkommentar bei `:127` gibt ein Versprechen ab: wer `goBack`,
+// `locator`, `getByTestId` oder `mouse.click` künftig in `setzeSprache` hineinzieht, bekommt einen
+// SATZ und kein stilles `undefined`, das die Messung verfälscht. Bis hierher war das Versprechen
+// unbelegt — keiner der Fälle A1–A8 fährt einen der vier Wege an, also blieben die vier Wurfkörper
+// (`:139-152`) und `nichtGestellt()` toter Code: wer sie durch stille Rückgaben ersetzte, liess alle
+// acht Fälle grün. Bestellt hat diese Lücke BEN in JOB 3819 („für die vier neuen
+// Stellvertretermethoden direkte Ablehnungstests ergänzen", `archiv/3819/runde-2/ben.md`,
+// Prüfpunkt 6).
+//
+// GEPRÜFT WIRD NICHT, DASS GEWORFEN WIRD, SONDERN WAS GESAGT WIRD. Ein blosses `.toThrow()` bliebe
+// grün, wenn der Satz zu „Fehler" verkäme — und dann wäre beim nächsten Umbau wieder niemand
+// aufgeklärt. B1–B4 sichern deshalb den Namen des angefahrenen Weges UND die drei Wege zu, die
+// erlaubt bleiben. B5 nimmt die zweite Hälfte desselben Satzes („benutzt nur `evaluate`, `goto` und
+// `waitForTimeout`") und misst sie an der Handgriffsliste.
+//
+// ANGEFAHREN WIRD DURCH `Seite`, NICHT ÜBER DIE KLASSE. Ein echter Verbraucher hält `stand.seite`
+// und ruft `goBack({ waitUntil: "load" })` (`tests/m6-import-erklaerweg/rundweg-tastatur-chromium.test.ts:177`)
+// oder `mouse.click(x, y)` (`tests/review26-pruefen-schmal/pruefen-schmal-chromium.test.ts:106`).
+// Die Stellvertreterseite deklariert ihre Wurfkörper ohne Argumente — zuweisbar ist das, aber nur
+// der Blick durch `Seite` fährt sie so an, wie das Produkt sie anführe.
+
+/** Der Satz eines abgelehnten Weges — kommt der Weg DURCH, ist genau das der Befund. */
+async function satzVonAblehnung(lauf: Promise<unknown>): Promise<string> {
+  const ergebnis = await lauf.then(
+    (wert) => ({ art: "durch" as const, wert }),
+    (e: unknown) => ({ art: "geworfen" as const, text: String(e) }),
+  );
+  if (ergebnis.art === "durch") {
+    throw new Error(
+      `der Weg kam DURCH und gab ${JSON.stringify(ergebnis.wert) ?? "undefined"} zurück — genau das stille Ergebnis, das der Kopfkommentar ausschliesst`,
+    );
+  }
+  return ergebnis.text;
+}
+
+/** Dasselbe für einen Weg, der SYNCHRON wirft (`never`), nicht als abgelehntes Versprechen. */
+function satzVonWurf(lauf: () => unknown): string {
+  let wert: unknown;
+  try {
+    wert = lauf();
+  } catch (e) {
+    return String(e);
+  }
+  throw new Error(
+    `der Weg kam DURCH und gab ${JSON.stringify(wert) ?? "undefined"} zurück — genau das stille Ergebnis, das der Kopfkommentar ausschliesst`,
+  );
+}
+
+/** Der Satz muss den angefahrenen Weg nennen UND die drei, die erlaubt bleiben. */
+function pruefeSatz(satz: string, weg: string): void {
+  expect(satz, `der Satz nennt den angefahrenen Weg „${weg}" nicht`).toContain(weg);
+  for (const erlaubt of ["evaluate", "goto", "waitForTimeout"]) {
+    expect(satz, `der Satz nennt den erlaubten Weg „${erlaubt}" nicht`).toContain(erlaubt);
+  }
+}
+
+describe("JOB 3946 · B · die Stellvertreterseite sagt einen Satz statt eines stillen undefined", () => {
+  // ==============================================================================================
+  // B1 — `goBack` WIRFT UND NENNT SICH SELBST.
+  // ==============================================================================================
+  it("B1 · `goBack` wirft den Satz, der `goBack` und die drei erlaubten Wege nennt", async () => {
+    const seite: Seite = new Buehne(stets("nl", "Vastleggen"));
+    const lauf = seite.goBack({ waitUntil: "load" });
+    await expect(lauf).rejects.toThrow(/goBack/);
+    const satz = await satzVonAblehnung(lauf);
+    pruefeSatz(satz, "goBack");
+    // eslint-disable-next-line no-console -- der wörtlich gemessene Satz ist der Beleg
+    console.log(`JOB 3946 · B1 · ${satz}`);
+  });
+
+  // ==============================================================================================
+  // B2 — `locator` WIRFT SYNCHRON, nicht als abgelehntes Versprechen: es ist `never` (`:142`).
+  // ==============================================================================================
+  it("B2 · `locator` wirft synchron und nennt sich selbst", () => {
+    const seite: Seite = new Buehne(stets("nl", "Vastleggen"));
+    expect(() => seite.locator('header[data-testid="kopfband"]')).toThrow(/locator/);
+    const satz = satzVonWurf(() => seite.locator('header[data-testid="kopfband"]'));
+    pruefeSatz(satz, "locator");
+    // eslint-disable-next-line no-console -- der wörtlich gemessene Satz ist der Beleg
+    console.log(`JOB 3946 · B2 · ${satz}`);
+  });
+
+  // ==============================================================================================
+  // B3 — `getByTestId` EBENSO.
+  // ==============================================================================================
+  it("B3 · `getByTestId` wirft synchron und nennt sich selbst", () => {
+    const seite: Seite = new Buehne(stets("nl", "Vastleggen"));
+    expect(() => seite.getByTestId("kopfband")).toThrow(/getByTestId/);
+    const satz = satzVonWurf(() => seite.getByTestId("kopfband"));
+    pruefeSatz(satz, "getByTestId");
+    // eslint-disable-next-line no-console -- der wörtlich gemessene Satz ist der Beleg
+    console.log(`JOB 3946 · B3 · ${satz}`);
+  });
+
+  // ==============================================================================================
+  // B4 — `mouse.click(x, y)`, MIT ZWEI ZAHLEN wie beim echten Verbraucher.
+  // ==============================================================================================
+  it("B4 · `mouse.click` wirft und nennt sich mit dem Punkt seines Feldes", async () => {
+    const seite: Seite = new Buehne(stets("nl", "Vastleggen"));
+    const lauf = seite.mouse.click(12, 34);
+    await expect(lauf).rejects.toThrow(/mouse\.click/);
+    const satz = await satzVonAblehnung(lauf);
+    pruefeSatz(satz, "mouse.click");
+    // eslint-disable-next-line no-console -- der wörtlich gemessene Satz ist der Beleg
+    console.log(`JOB 3946 · B4 · ${satz}`);
+  });
+
+  // ==============================================================================================
+  // B5 — DIE ZWEITE HÄLFTE DES SATZES: „benutzt NUR `evaluate`, `goto` und `waitForTimeout`".
+  // ==============================================================================================
+  //
+  // Gelesen wird die VOLLSTÄNDIGE Liste, nicht `slice(0, 3)` wie in A6: A6 misst die REIHENFOLGE der
+  // ersten drei Schritte, B5 die ABWESENHEIT fremder. Zwei Aussagen, zwei Fälle — A6 bleibt, wie es
+  // ist. Zugesichert wird eine Mengenaussage über die vier stummen Wege und keine Gleichheit gegen
+  // eine erratene Liste: ein längerer Lauf (etwa mit „warten") ist kein Fehler.
+  it("B5 · ein vollständiger Lauf bucht keinen der vier stummen Wege", async () => {
+    const buehne = new Buehne(stets("nl", "Vastleggen"));
+    const stand = machStand(buehne);
+    await setzeSprache(stand, "nl", "/start", "header");
+    // eslint-disable-next-line no-console -- die wörtlich gemessene Liste ist der Beleg
+    console.log(`JOB 3946 · B5 · vollständige Handgriffsliste: ${buehne.handgriffe.join(" · ")}`);
+    expect(
+      buehne.handgriffe,
+      "der Lauf hat gar nichts gebucht — dann liest dieser Fall eine leere Liste und misst nichts",
+    ).not.toHaveLength(0);
+    for (const stumm of ["route", "addInitScript", "waitForFunction", "on"]) {
+      expect(
+        buehne.handgriffe,
+        `\`setzeSprache\` hat \`${stumm}\` gerufen — der Satz in \`nichtGestellt\` behauptet das Gegenteil`,
+      ).not.toContain(stumm);
+    }
   });
 });
