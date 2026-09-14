@@ -845,6 +845,20 @@ const INVENTAR: readonly string[] = [
   // meldete vor dieser Zeile `neu im Baum, aber nicht im gepinnten Inventar … +
   // "tests/ki-freie-anweisung/standardeditor-mounted.test.tsx"`.
   "tests/ki-freie-anweisung/standardeditor-mounted.test.tsx",
+  // JOB 3831 (13.09.2026) KI-WERKSAKTIONEN-HILFE: die Messung des Wegs von den fuenf
+  // KI-Werksaktionen zu ihrem Erklaersatz im Zahnrad. Sie kommt ueber dieselbe Inhaltsachse
+  // `palette` herein wie die Zeile darueber und aus demselben Grund — nicht wegen einer Farbe,
+  // sondern wegen des WORTES: die Datei nennt die KI-PALETTE des Erfassungsblatts in fast jedem
+  // Absatz. „klara" steht nicht in ihrem Pfad, sie startet kein Aufgabenfenster und prueft nichts
+  // an Word; K5 (`nurName`) bleibt deshalb unveraendert bei 58.
+  // DER EINTRAG STEHT TROTZDEM HIER UND WIRD NICHT WEGDEFINIERT, mit derselben Begruendung, die
+  // JOB 3584 oben aufgeschrieben hat: dieses Inventar pinnt die ABGELEITETE Menge, nicht eine
+  // Auswahl. Die Achse enger zu stellen waere eine Aenderung an einem fremden Waechter.
+  // GEMESSEN, NICHT GESETZT: mit der neuen Datei und noch unveraendertem Inventar meldete der
+  // Waechterlauf (Cloud-Lauf 652768c895c643a9b4049eddb18d6a79) `neu im Baum, aber nicht im
+  // gepinnten Inventar — Inventar nachfuehren: expected [ Array(1) ] to deeply equal []`; erst
+  // danach wurde diese Zeile angefasst.
+  "tests/ki-werksaktionen-hilfe/werksaktionen-erklaersatz.test.tsx",
   // JOB 3609 (11.09.2026) BIBLIOTHEK-VORSCHAU-AUFKLAPPER REST 2: der Seiten-Typ-Waechter der
   // Design-Vorrichtung. Er ist AUSDRUECKLICH KEIN Klara-Test — er liest Quelltext und startet
   // nichts, „klara" steht nicht in seinem Pfad, K5 bleibt deshalb unveraendert (`nurName` = 51).
