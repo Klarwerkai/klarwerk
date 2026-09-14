@@ -1534,29 +1534,67 @@ describe("JOB 3799 · der Haken, den die Fläche erlaubt, überlebt das Nachlade
     }
   });
 
-  // JOB 3836: dieselbe Folge wie im deutschen Fall weiter oben, in den beiden anderen Sprachen —
-  // und hier bei den Sprachfällen, nicht dort, weil sie deren Bauform teilt (`changeLanguage`,
-  // `try/finally` mit `useRealTimers`, `unmount`, Rücksetzen auf `de`). Gemessen wird der GANZE
-  // gezeichnete Satz: „geht analog" ist keine Messung, und eine fehlende Mehrzahlfassung fiele in
-  // einem Teilstück-Vergleich nicht auf.
-  it("EN und NL: die Mehrzahl bei hängender Folgeanfrage steht in allen drei Sprachen da", async () => {
-    const FASSUNGEN = [
-      {
-        sprache: "en",
-        stark:
-          "2 ticks you had set have fallen away: their entries no longer belong to the current narrowing. Nothing is missing from the hit list itself.",
-        schwach:
-          "2 ticks you had set have fallen away: their entries no longer belonged to the narrowing the list below was fetched with. That says nothing about the narrowing set now — its preview is still outstanding.",
-      },
-      {
-        sprache: "nl",
-        stark:
-          "2 gezette vinkjes zijn vervallen: de bijbehorende pagina's horen niet meer bij de huidige afbakening. Aan de trefferlijst zelf ontbreekt niets.",
-        schwach:
-          "2 gezette vinkjes zijn vervallen: de bijbehorende pagina's hoorden niet meer bij de afbakening waarmee de lijst hieronder is opgehaald. Over de nu ingestelde afbakening zegt dat niets — het voorbeeld daarvoor ontbreekt nog.",
-      },
-    ] as const;
-    for (const fassung of FASSUNGEN) {
+  // ==============================================================================================
+  // JOB 3933 · DIE SPRACHFOLGE ENDETE VOR DER BEDIENUNG — AB HIER NICHT MEHR.
+  // ==============================================================================================
+  //
+  // BESTELLT VOM PRÜFER im GRÜN-Urteil zu JOB 3836 Runde 1 (Prüfpunkt 6), wörtlich: „EN/NL enden
+  // nach Hinweis- und Hakenprüfung (`:1582`); Übernahmeklick und anschließende Freigabe werden in
+  // dieser neuen Folge nur auf Deutsch geprüft. Ergänzungsvorschlag: dieselben Bedienprüfungen samt
+  // Antwortauflösung in die Sprachschleife aufnehmen." (`archiv/3836/runde-1/ben.md:34`)
+  //
+  // WAS JE SPRACHE BISHER GEMESSEN WURDE: die ANZEIGE — welcher Satz mit welcher Zahl und in welcher
+  // Fassung dasteht (`:1476`, `:1515`) — und, eine Beschreibung weiter oben, der Sperr-TEXT samt
+  // einem folgenlosen Übernahmeklick (`:906`). Ungemessen blieb in EN/NL alles, was DANACH kommt:
+  // der aufgebaute Gruppenschritt, der Riegel als eigener Befund (`eingrenzung-gruppen-gesperrt`),
+  // der Unterschied „grauer Knopf" gegen „gar kein Knopf", die Auflösung der hängenden Antwort, das
+  // Fortfallen von Satz, Wechsel und Sperre — und der WIRKLICH gesendete Körper.
+  //
+  // WAS AB JETZT GEMESSEN WIRD, ist genau das und nichts darüber hinaus: die vier Fälle darunter
+  // führen diese Kette je Sprache aus, für BEIDE möglichen Ausgänge der hängenden Antwort (frische
+  // Antwort ohne eigenen Wegfall → Befund abgelöst; frische Antwort mit eigenem Wegfall → wieder
+  // die starke Fassung mit der neuen Zahl). Ungemessen bleiben weiterhin Browser, echtes HTTP,
+  // Persistenz und Offline sowie die erfolgreich LEERE Antwort in EN/NL — die deckt `:1451` nur auf
+  // Deutsch ab.
+  //
+  // JE SPRACHE EIN EIGENER FALL (`it.each`) STATT EINER SCHLEIFE IN EINEM FALL: eine Schleife bricht
+  // beim ersten Fehler ab und liesse die zweite Sprache ungemessen — eine Verstellung, die nur EN
+  // trifft, dürfte NL nicht verdecken (Lehre JOB 3889 R1/R2). So nennt schon der Fallname die
+  // betroffene Sprache. Die Bauform des Rumpfes bleibt die bisherige: `changeLanguage`, dann
+  // `try/finally` mit `useRealTimers`, `unmount` und Rücksetzen auf `de`.
+  //
+  // GEMESSEN WIRD DER GANZE GEZEICHNETE SATZ (`toBe`, nie `toContain` auf einen Halbsatz): fiele
+  // i18next bei einem fehlenden `_other`-Schlüssel auf die Einzahl zurück, liesse ein Teilstück-
+  // Vergleich das durch — die Begründung steht ausführlich bei `:1326`.
+  const SPRACHFASSUNGEN: {
+    sprache: string;
+    starkEins: string;
+    stark: string;
+    schwach: string;
+  }[] = [
+    {
+      sprache: "en",
+      starkEins:
+        "1 tick you had set has fallen away: its entry no longer belongs to the current narrowing. Nothing is missing from the hit list itself.",
+      stark:
+        "2 ticks you had set have fallen away: their entries no longer belong to the current narrowing. Nothing is missing from the hit list itself.",
+      schwach:
+        "2 ticks you had set have fallen away: their entries no longer belonged to the narrowing the list below was fetched with. That says nothing about the narrowing set now — its preview is still outstanding.",
+    },
+    {
+      sprache: "nl",
+      starkEins:
+        "1 gezet vinkje is vervallen: de bijbehorende pagina hoort niet meer bij de huidige afbakening. Aan de trefferlijst zelf ontbreekt niets.",
+      stark:
+        "2 gezette vinkjes zijn vervallen: de bijbehorende pagina's horen niet meer bij de huidige afbakening. Aan de trefferlijst zelf ontbreekt niets.",
+      schwach:
+        "2 gezette vinkjes zijn vervallen: de bijbehorende pagina's hoorden niet meer bij de afbakening waarmee de lijst hieronder is opgehaald. Over de nu ingestelde afbakening zegt dat niets — het voorbeeld daarvoor ontbreekt nog.",
+    },
+  ];
+
+  it.each(SPRACHFASSUNGEN)(
+    "$sprache · MEHRZAHL BEI HÄNGENDER FOLGEANFRAGE: die Zahl bleibt, die starke Aussage fällt, die Übernahme ist gesperrt — und nach der Antwort schickt sie wirklich ab",
+    async (fassung) => {
       await i18n.changeLanguage(fassung.sprache);
       try {
         await vorschauOffen([SEITE_ZWEIT, SEITE_DRITT, SEITE_FRISCH], [SEITE_ZWEIT]);
@@ -1567,6 +1605,12 @@ describe("JOB 3799 · der Haken, den die Fläche erlaubt, überlebt das Nachlade
         expect(container.querySelector('[data-testid="haken-weggefallen"]')?.textContent).toBe(
           fassung.stark,
         );
+
+        // GRUPPIEREN, SOLANGE DIE ANTWORT PASST — dieselbe Voraussetzung wie im deutschen Fall
+        // (`:1351`): ohne aufgebauten Gruppen-Schritt gibt es keinen Übernahme-Knopf, und „es wurde
+        // nichts abgeschickt" wäre auch bei FEHLENDER Sperre wahr. Der Riegel steht hier noch nicht.
+        await gruppieren();
+        expect(container.querySelector('[data-testid="eingrenzung-gruppen-gesperrt"]')).toBeNull();
 
         // Der zweite Wechsel, dessen Anfrage wirklich losläuft und hängt.
         const unterwegs = offen<Record<string, unknown>>();
@@ -1584,11 +1628,110 @@ describe("JOB 3799 · der Haken, den die Fläche erlaubt, überlebt das Nachlade
         // Auch hier bleibt die Auswahl bedienbar und das Absenden gesperrt.
         expect(zeilenHaken(SEITE_ZWEIT.title).checked).toBe(true);
         expect(container.querySelector('[data-testid="eingrenzung-gewechselt"]')).not.toBeNull();
+
+        // JOB 3933 · DIE SPERRE IST KEINE DEUTSCHE BESONDERHEIT. Der Riegel steht als eigener
+        // Befund, und der Knopf ist DA — ausgegraut, nicht ausgebaut. Der Rückgabewert `true` ist
+        // der Unterschied, den eine blosse Leerprobe auf `applyMock` durchgehen liesse: ohne ihn
+        // wäre „nichts abgeschickt" auch bei einem ganz fehlenden Knopf wahr.
+        expect(
+          container.querySelector('[data-testid="eingrenzung-gruppen-gesperrt"]'),
+        ).not.toBeNull();
+        expect(await uebernahmeDruecken()).toBe(true);
+        expect(applyMock.mock.calls).toEqual([]);
+
+        // KEINE SACKGASSE: die hängende Antwort kommt an. Sie bringt den überlebenden Eintrag mit,
+        // verliert also keinen Haken — nach der Regel des Produkts (`ImportSelect.tsx:690`) ist der
+        // Befund damit ABGELÖST und der Kasten fort.
+        await act(async () => {
+          unterwegs.aufloesen({
+            matched: 2,
+            limited: false,
+            truncated: false,
+            criteria: { themes: [THEMA], yearFrom: 2024 },
+            preview: [SEITE_ZWEIT, SEITE_FRISCH],
+          });
+          await flush();
+        });
+        await act(flush);
+
+        expect(container.querySelector('[data-testid="haken-weggefallen"]')).toBeNull();
+        expect(container.querySelector('[data-testid="eingrenzung-gewechselt"]')).toBeNull();
+        expect(container.querySelector('[data-testid="eingrenzung-gruppen-gesperrt"]')).toBeNull();
+        expect(zeilenHaken(SEITE_ZWEIT.title).checked).toBe(true);
+        // Der wieder aufgetauchte Eintrag ist für die Fläche ein NEUER Treffer — er bekommt die
+        // Vorgabe, nicht seinen alten Haken zurück.
+        expect(zeilenHaken(SEITE_FRISCH.title).checked).toBe(true);
+        // Und die Freigabe ist keine Behauptung am DOM: der freigegebene Weg schickt WIRKLICH ab.
+        expect(await abgeschickteIds()).toEqual([SEITE_ZWEIT.id, SEITE_FRISCH.id]);
       } finally {
         vi.useRealTimers();
         await unmount();
         await i18n.changeLanguage("de");
       }
-    }
-  });
+    },
+  );
+
+  it.each(SPRACHFASSUNGEN)(
+    "$sprache · MEHRZAHL WIRD ABGELÖST: die frische Antwort bringt ihren eigenen Wegfall — wieder stark, und das Absenden geht wieder",
+    async (fassung) => {
+      // Der ZWEITE mögliche Ausgang derselben hängenden Antwort, ebenfalls gemessen statt
+      // angenommen. Die Zahl läuft dabei von 1 auf 2: eine Anzeige, die den alten Befund stehen
+      // liesse oder die beiden addierte, fiele hier — je Sprache.
+      await i18n.changeLanguage(fassung.sprache);
+      try {
+        await vorschauOffen([SEITE_ZWEIT, SEITE_DRITT, SEITE_FRISCH], [SEITE_ZWEIT, SEITE_DRITT]);
+        vi.useFakeTimers();
+        await chipKlicken(THEMA);
+        await nachDemNachladen();
+        // Einer weg, und stark behauptet — der ganze Satz, damit die EINZAHL-Beugung mit festhängt.
+        expect(container.querySelector('[data-testid="haken-weggefallen"]')?.textContent).toBe(
+          fassung.starkEins,
+        );
+
+        await gruppieren();
+        expect(container.querySelector('[data-testid="eingrenzung-gruppen-gesperrt"]')).toBeNull();
+
+        const unterwegs = offen<Record<string, unknown>>();
+        selectMock.mockImplementationOnce(async () => unterwegs.versprechen);
+        const aufrufeVorher = selectMock.mock.calls.length;
+        setValue(zahlenFeld(i18n.t("imp.select.yearFrom")), "2024");
+        await act(flush);
+        await nachDemNachladen();
+        expect(selectMock.mock.calls.length).toBe(aufrufeVorher + 1);
+
+        // Gesperrt und folgenlos, auch auf diesem Ast — sonst hinge die Sperre am Ausgang.
+        expect(
+          container.querySelector('[data-testid="eingrenzung-gruppen-gesperrt"]'),
+        ).not.toBeNull();
+        expect(await uebernahmeDruecken()).toBe(true);
+        expect(applyMock.mock.calls).toEqual([]);
+
+        // Die hängende Antwort bringt KEINEN der beiden verbliebenen Haken zurück — zwei fallen weg.
+        await act(async () => {
+          unterwegs.aufloesen({
+            matched: 1,
+            limited: false,
+            truncated: false,
+            criteria: { themes: [THEMA], yearFrom: 2024 },
+            preview: [SEITE_FRISCH],
+          });
+          await flush();
+        });
+        await act(flush);
+
+        expect(container.querySelector('[data-testid="haken-weggefallen"]')?.textContent).toBe(
+          fassung.stark,
+        );
+        expect(container.querySelector('[data-testid="eingrenzung-gewechselt"]')).toBeNull();
+        expect(container.querySelector('[data-testid="eingrenzung-gruppen-gesperrt"]')).toBeNull();
+        // An der Trefferliste selbst fehlt nichts: der frische Eintrag steht da und trägt die Vorgabe.
+        expect(zeilenHaken(SEITE_FRISCH.title).checked).toBe(true);
+        expect(await abgeschickteIds()).toEqual([SEITE_FRISCH.id]);
+      } finally {
+        vi.useRealTimers();
+        await unmount();
+        await i18n.changeLanguage("de");
+      }
+    },
+  );
 });
