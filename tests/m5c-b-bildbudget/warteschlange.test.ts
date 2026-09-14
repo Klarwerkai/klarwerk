@@ -54,8 +54,23 @@ describe("JOB 3400 R2 · Laufzeit und Parallelität, an der nativen Arbeit gemes
 
   it("Q1 · die Zeitgrenze beendet das Warten — den Platz gibt erst die fertige Arbeit zurück", async () => {
     // Referenzmass: was EINE Ableitung wirklich kostet, ohne Zeitgrenze.
+    //
+    // JOB 3863 (Nachzug 14.09.): DIE FIXTURE-ERZEUGUNG LIEGT JETZT VOR DER MESSUNG — genau wie bei
+    // den sechs Quellen unten. Vorher stand `grossesBild(1)` INNERHALB von `dauer(...)`. `einzeln`
+    // trug damit `grossesPng(1400, 1050)` mit — rund 4,4 MB Rauschen, byteweise gerechnet und
+    // anschliessend deflate-gepackt —, `gebraucht` dagegen nur die Ableitungen. Die beiden Zahlen
+    // verglichen also Verschiedenes, und unter Last kippte der Vergleich: Tor auf main am 14.09.,
+    // wörtlich „Der Platz wurde nach der Zeitgrenze freigegeben (einzeln=729 ms, sechs=683 ms)".
+    //
+    // DIE ZUSAGE STAND DABEI NIE IN FRAGE, nur ihre Messung. Dass der Platz an der ARBEIT hängt und
+    // nicht am Warten, prüft `gleichzeitigMax` unten ohne jede Uhr: gäbe die Zeitgrenze den Platz
+    // frei, stünden sechs native Arbeiten gleichzeitig an, und diese Erwartung wäre rot. Der
+    // Zeitvergleich ist der zweite Zeuge dafür — er bleibt, er misst jetzt nur Gleiches mit Gleichem
+    // (Ableitung gegen Ableitung), und der Abstand ist wieder der, den der Kopf dieser Datei nennt:
+    // der Fehler aus Runde 1 wäre nach ~1 ms zurück, hier sind es mehrere Runden.
     const referenz = bildVerkleinerung();
-    const einzeln = await dauer(() => referenz.mapImage(grossesBild(1)));
+    const referenzquelle = grossesBild(1);
+    const einzeln = await dauer(() => referenz.mapImage(referenzquelle));
     expect(referenz.bericht.verkleinert, "Das Referenzbild wurde gar nicht abgeleitet").toBe(1);
 
     // Kein Leeren nötig: die Referenzarbeit ist settled, und der Platz hängt genau daran.
@@ -101,8 +116,14 @@ describe("JOB 3400 R2 · Laufzeit und Parallelität, an der nativen Arbeit gemes
   });
 
   it("Q3 · begrenzte Laufzeit: der Import wartet nicht länger als seine Grenze", async () => {
+    // JOB 3863 (Nachzug 14.09.): dieselbe Asymmetrie wie in Q1, hier mit umgekehrtem Vorzeichen.
+    // `grossesBild(31)` stand IM gemessenen Bereich, die Vergleichsquelle `grossesBild(32)` davor —
+    // die Fixture-Kosten haben `einzeln` aufgebläht und die Erwartung `gewartet < einzeln` damit
+    // LEICHTER gemacht. Hochgezogen ist sie strenger, nicht schwächer: verglichen wird jetzt die
+    // reine Ableitung gegen die reine Wartezeit.
     const referenz = bildVerkleinerung();
-    const einzeln = await dauer(() => referenz.mapImage(grossesBild(31)));
+    const referenzquelle = grossesBild(31);
+    const einzeln = await dauer(() => referenz.mapImage(referenzquelle));
 
     const v = bildVerkleinerung({ zeitgrenzeMs: 1 });
     const quelle = grossesBild(32);

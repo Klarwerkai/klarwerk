@@ -6359,6 +6359,85 @@ const de = {
   "seitenhilfe.mobil.titel": "Unterwegs erfassen, fragen und nachschlagen",
   "seitenhilfe.mobil.text":
     "Diese Fläche zeigt KLARWERK in Telefonbreite und hat drei Reiter: „Erfassen“ legt aus einem Titel und einem Text einen Entwurf an — dafür braucht man die Berechtigung zum Anlegen, ein Betrachter kann hier nur lesen; „Fragen“ und „Suchen“ stehen jeder Rolle offen und führen von einer Antwort oder einem Treffer in das Wissensobjekt. Ohne Verbindung wird allein das Speichern eines Entwurfs vorgemerkt und später nachgetragen; Fragen und Suchen sagen dann, dass sie eine Verbindung brauchen. Prüfen, Freigeben, Widersprüche klären und Textgestaltung mit Bildern und Tabellen gibt es hier NICHT — ein fortgesetzter Entwurf zeigt seine festen Blöcke nur als nummerierte Platzhalter. Nächster Schritt: einen Reiter antippen; für alles Übrige führt oben „Zur Vollversion“ zurück an das grosse Fenster.",
+  // ============================================================================================
+  // JOB 3863 — DIE SEITENHILFE DER KI-FREIGABE (Karte `detail-ki`, zwei Einträge).
+  // ============================================================================================
+  //
+  // Seit JOB 3783 (LIVE 1.0.0-beta.1.360) trägt die KI-Karte die zentrale Freigabe mit zwei
+  // Schaltern; im Zahnrad stand dazu nichts, weil JOB 3670 genau diese Datei ausgelassen hat.
+  // Der Weg ist derselbe wie dort: `HelpTip` meldet Titel und Text bei der Seitenhilfe an. Das
+  // „?"-Menü der Karte (`hilfe`-Prop der `Detailkarte`) bleibt unangetastet — zwei Orte mit zwei
+  // Umfängen, keine zweite Mechanik (die Begründung steht in `AdminKontenDetails.tsx:279-284`).
+  //
+  // JEDE ZUSAGE IST NACHGESEHEN, nicht erinnert:
+  //   SCHALTER    „nur `true` zählt, ‚fehlt' sperrt wie ‚nein'" — `oeffentlicheKiErlaubt`
+  //               (`services/reasoner/src/service.ts:658-664`), wortgleich in der Karte
+  //               (`AdminKiDetails.tsx:400-408`). Der zweite Schalter erweitert den ersten und
+  //               ersetzt ihn nie (`service.ts:663`).
+  //   WIRKUNGSLOS Ohne Grundfreigabe schreibt die Karte es unter den zweiten Schalter
+  //               (`AdminKiDetails.tsx:956-963`, `ki-freigabe-wirkungslos`).
+  //   RÜCKFRAGE   Einschalten fragt (`:940-945` mit dem Kasten `:964-992`), Zurücknehmen nicht
+  //               (`:946-949`) — die Rücknahme führt in die sichere Richtung.
+  //   ROLLE       Geschrieben wird mit `users.manage` (`reasoner-routes.ts:753`), und das hat nur
+  //               `admin` (`services/rbac/src/policy.ts:17`). `/admin` sieht ohnehin nur er
+  //               (`app/navigation.ts:282-289`, `minRole: "admin"`).
+  //   PROTOKOLL   Die Hilfe sagt hier DREI Dinge, und jedes hat seinen eigenen gemessenen Fall in
+  //               `tests/seitenhilfe-ki-freigabe/…`, Gruppe P — am ECHTEN Adminweg, mit dem Rumpf,
+  //               den die echte Karte selbst geschrieben hat:
+  //                 (1) Eine ERWEITERUNG wird nur erteilt, wenn sie sich protokollieren lässt —
+  //                     sonst 503 und NICHTS erteilt (Route `reasoner-routes.ts:766-791`; P1).
+  //                 (2) Eine RÜCKNAHME braucht keinen Beleg im Voraus: die Fail-closed-Prüfung
+  //                     oben läuft NUR `if (erweiterung)` (`:767`), der Rücknahmezweig hat keinen
+  //                     503-Ausgang (`:845-861`) — gemessen in P2.
+  //                 (3) Scheitert die Protokollierung NACH einer erfolgreichen Rücknahme, bleibt
+  //                     die Rücknahme TROTZDEM wirksam — ihr `audit?.record` hängt in einem
+  //                     `.catch()`, das nur noch ins Log schreibt (`:849-861`), und die Antwort
+  //                     danach ist 200 (`:863`); P2 zählt die Protokolleinträge vorher/nachher.
+  //                 (4) Lässt sich die Rücknahme GAR NICHT SPEICHERN, wird sie abgewiesen und der
+  //                     bisherige Stand gilt weiter: `setTaskConfig` schreibt ZUERST ins Repo und
+  //                     setzt die Laufzeit erst nach Erfolg (`service.ts:1032-1033`, WRITE-THEN-
+  //                     RUNTIME); die Route fängt den Wurf (`:803`) und antwortet 409 bei
+  //                     ENV-Sperre (`:821-822`) bzw. sonst 400 (`:825-829`) — gemessen in P4.
+  //               DREI VORGÄNGER-IRRTÜMER STEHEN HIER ALS MAHNUNG, alle drei derselbe Fehler: eine
+  //               Zusage, die WEITER reicht als die Stelle, die sie tragen soll.
+  //                 Runde 1: „jede Änderung geht ins Prüfprotokoll — eine Freigabe, die sich nicht
+  //                 protokollieren lässt, wird abgelehnt" — gilt nur für die Erweiterung (BEN_ROT
+  //                 R1, Pflicht 2).
+  //                 Runde 3: „eine Rücknahme wird ebenso protokolliert" — schwächer, aber immer
+  //                 noch eine Garantie, die der `.catch()` nicht hergibt (BEN_ROT R3, Pflicht 1:
+  //                 „Rücknahme HTTP 200; Freigabe entfernt; Audit vorher=1 nachher=1").
+  //                 Runde 4: „eine Rücknahme wird NIE abgewiesen und gilt sofort" — belegt war nur
+  //                 der AUDIT-Ausfall (P2/P3); den Fehler der PERSISTENZ SELBST deckte kein Fall,
+  //                 und dort ist „nie" falsch (BEN_ROT R4, Pflicht 1+3, mit `:795-829` als
+  //                 Gegenbeispiel). Seither trennt der Text die beiden Fälle, und P4 misst den
+  //                 zweiten. „Nie abgewiesen" ist in allen drei Sprachen verboten (F4b).
+  //   STANDZEILE  Sie liest den bestätigten Stand, nicht das Kästchen (`AdminKiDetails.tsx:993-1003`).
+  //   OHNE        Web — KORREKTUR AUS RUNDE 1 (BEN_ROT, Pflicht 1): dort stand „die Knöpfe bleiben
+  //               bedienbar". Falsch, wenn NUR die öffentliche KI eingerichtet ist. Ohne Freigabe
+  //               fällt die Cloud aus der Kette (`service.ts:680-686`); bleibt danach kein
+  //               Modell-Glied übrig, meldet `taskModelUsable` false (`service.ts:1464-1470`),
+  //               `publicStatus().tasks[task]` trägt dieses false, `deriveAiAvailable` gibt false
+  //               (`lib/aiAvailability.ts:44-47`) und der Knopf ist AUSGEGRAUT mit
+  //               `ai.unavailable.hint` (`components/AiAssistBox.tsx:63-64,121`). Ist dagegen ein
+  //               interner Secondary verbunden, bleibt er in der Kette (`service.ts:694-700`) und
+  //               die Knöpfe bleiben bedienbar. Beide Fälle stehen so im Text und werden in
+  //               `tests/seitenhilfe-ki-freigabe/…` (Gruppe V) am echten `publicStatus()` einer
+  //               echten `Reasoner`-Verdrahtung und an der montierten Fläche gemessen.
+  //               Klara im Word-Fenster: `zentralFreigegeben` false ⇒ `blockedReason:
+  //               "policy_incomplete"`, `executionAllowed: false`
+  //               (`services/reasoner/src/klara-policy.ts:453-468`) — der eine Grund, den keine
+  //               Zustimmung wegklickt; das Aufgabenfenster nennt ihn
+  //               (`apps/web/public/word-addin/taskpane.html:2817`).
+  //   ENV         `policySource === "env"` sperrt JEDEN Schreibweg (`service.ts:1026`, Route 409)
+  //               und die ENV-Zuordnung trägt selbst keine Freigabe (`service.ts:1057`) — deshalb
+  //               ist die öffentliche KI dann gesperrt UND hier nicht freizugeben. Ohne die
+  //               Variable gilt wieder die persistierte Wahl (`service.ts:1068-1069`).
+  "seitenhilfe.admin.kiFreigabe.titel": "Die zwei Schalter der KI-Freigabe",
+  "seitenhilfe.admin.kiFreigabe.text":
+    "Zwei Schalter, und der zweite hängt am ersten. „Öffentliche KI erlauben“ ist die Grundfreigabe: erst sie lässt überhaupt Text an einen externen Anbieter gehen, und es zählt nur ein ausdrückliches Ja — „nicht gesetzt“ sperrt genauso wie Nein. „Auch vertrauliche Inhalte an die öffentliche KI“ erweitert sie um Texte, die als vertraulich eingestuft sind; ohne die Grundfreigabe bleibt dieser zweite Schalter wirkungslos, und die Karte schreibt das dann auch unter ihn. Vor dem Einschalten fragt die Fläche einmal ausdrücklich nach, weil damit vertrauliche Texte an den externen Anbieter gehen; das Zurücknehmen führt in die sichere Richtung und fragt nicht. Schalten darf nur ein Administrator. Eine Erweiterung wird nur erteilt, wenn sie sich auch protokollieren lässt — sonst weist der Server sie ab, statt sie still zu erteilen. Eine Rücknahme braucht keinen Beleg im Voraus: scheitert nach einer erfolgreichen Rücknahme deren Protokollierung, bleibt die Rücknahme trotzdem wirksam. Lässt sich die Rücknahme dagegen gar nicht speichern, meldet der Server den Fehler, und der bisher gespeicherte Stand gilt weiter. Was gilt, steht in der Zeile unter den Schaltern: sie zeigt den vom Server bestätigten Stand, nicht das eben angeklickte Kästchen.",
+  "seitenhilfe.admin.kiOhneFreigabe.titel": "Solange nichts freigegeben ist",
+  "seitenhilfe.admin.kiOhneFreigabe.text":
+    "Auf der Web-Fläche hängt es daran, ob ein eigenes internes Modell verbunden ist. Ist eines verbunden, rechnet es weiter, und die KI-Knöpfe bleiben bedienbar. Ist nur die öffentliche KI eingerichtet, fällt sie ohne Freigabe aus der Kette, und für die Aufgabe bleibt kein Modell übrig: die KI-Knöpfe sind dann ausgegraut und tragen den Satz „KI nicht verfügbar — für diese Aufgabe ist kein Modell aktiv.“ Kein stiller Ersatzlauf täuscht ein Modell vor. Klara im Word-Fenster geht den externen Weg gar nicht erst: sie meldet die Sperre als unvollständig hinterlegte Regel, und keine Zustimmung des Nutzers hebt sie auf — eine Entscheidung des Administrators kann niemand wegklicken. Ist die KI-Zuordnung per Deploy-Konfiguration (KLARWERK_REASONER_POLICY) festgelegt, sind auch diese beiden Schalter ohne Wirkung: sie sind gesperrt, ein Speichern würde der Server abweisen, und weil die Deploy-Zuordnung selbst keine Freigabe trägt, bleibt die öffentliche KI so lange gesperrt. Der nächste Schritt führt dann nicht über diese Karte, sondern über die Deploy-Konfiguration des Servers; ohne die Variable gilt wieder die hier gespeicherte Wahl.",
 };
 
 const en: typeof de = {
@@ -11426,6 +11505,13 @@ const en: typeof de = {
   "seitenhilfe.mobil.titel": "Capture, ask and look things up while you are out",
   "seitenhilfe.mobil.text":
     "This surface shows KLARWERK at phone width and has three tabs: “Capture” turns a title and a text into a draft — that needs the permission to create, a viewer can only read here; “Ask” and “Search” are open to every role and lead from an answer or a hit into the knowledge object. Without a connection only saving a draft is held back and sent on later; ask and search then tell you that they need a connection. Reviewing, releasing, resolving contradictions and text formatting with images and tables are NOT available here — a resumed draft shows its fixed blocks only as numbered placeholders. Next step: tap one of the tabs; for everything else “To full version” at the top takes you back to the big window.",
+  // JOB 3863: die Seitenhilfe der KI-Freigabe. Belege je Zusage stehen im deutschen Block.
+  "seitenhilfe.admin.kiFreigabe.titel": "The two switches of the AI clearance",
+  "seitenhilfe.admin.kiFreigabe.text":
+    "Two switches, and the second one depends on the first. “Allow public AI” is the basic clearance: only it lets any text go to an external provider at all, and only an explicit yes counts — “not set” blocks just as much as no. “Also send confidential content to the public AI” extends it to text classified as confidential; without the basic clearance this second switch has no effect, and the card says so underneath it. Before you switch it on the screen asks once, explicitly, because confidential text then goes to the external provider; taking it back leads in the safe direction and asks nothing. Only an administrator may switch. An extension is granted only if it can also be logged — otherwise the server refuses it instead of granting it silently. A withdrawal needs no record in advance: if logging fails after a withdrawal has gone through, the withdrawal still takes effect. If the withdrawal cannot be saved at all, the server reports the error and the state stored so far continues to apply. What applies is in the line below the switches: it shows the state confirmed by the server, not the box you just ticked.",
+  "seitenhilfe.admin.kiOhneFreigabe.titel": "As long as nothing is cleared",
+  "seitenhilfe.admin.kiOhneFreigabe.text":
+    "On the web surface it depends on whether your own internal model is connected. If one is connected, it carries the work on, and the AI buttons stay usable. If only the public AI is set up, it drops out of the chain without clearance and no model is left for the task: the AI buttons are then greyed out and carry the sentence “AI unavailable — no model is active for this task.” No silent substitute run fakes a model. Klara in the Word pane does not even take the external route: it reports the block as an incompletely stored rule, and no user consent lifts it — nobody can click away a decision of the administrator. If the AI mapping is fixed by the deployment configuration (KLARWERK_REASONER_POLICY), these two switches have no effect either: they are locked, the server would refuse a save, and because the deployment mapping carries no clearance of its own, public AI stays blocked for as long as it applies. The next step then does not run through this card but through the server's deployment configuration; without the variable the choice stored here applies again.",
 };
 
 const nl: typeof de = {
@@ -16488,6 +16574,13 @@ const nl: typeof de = {
   "seitenhilfe.mobil.titel": "Onderweg vastleggen, vragen en opzoeken",
   "seitenhilfe.mobil.text":
     "Dit scherm toont KLARWERK op telefoonbreedte en heeft drie tabbladen: „Vastleggen“ maakt van een titel en een tekst een concept — daarvoor heb je het recht om aan te maken nodig, een kijker kan hier alleen lezen; „Vragen“ en „Zoeken“ staan voor elke rol open en leiden van een antwoord of een treffer naar het kennisobject. Zonder verbinding wordt alleen het opslaan van een concept in de wachtrij gezet en later nagestuurd; vragen en zoeken zeggen dan dat ze een verbinding nodig hebben. Toetsen, vrijgeven, tegenstrijdigheden oplossen en tekstopmaak met afbeeldingen en tabellen zijn hier NIET mogelijk — een voortgezet concept toont zijn vaste blokken alleen als genummerde plaatsaanduidingen. Volgende stap: tik op een tabblad; voor al het andere ga je bovenaan via „Naar volledige versie“ terug naar het grote venster.",
+  // JOB 3863: die Seitenhilfe der KI-Freigabe. Belege je Zusage stehen im deutschen Block.
+  "seitenhilfe.admin.kiFreigabe.titel": "De twee schakelaars van de AI-vrijgave",
+  "seitenhilfe.admin.kiFreigabe.text":
+    "Twee schakelaars, en de tweede hangt aan de eerste. „Openbare AI toestaan“ is de basisvrijgave: pas die laat toe dat er tekst naar een externe aanbieder gaat, en alleen een uitdrukkelijk ja telt — „niet ingesteld“ blokkeert net zo goed als nee. „Ook vertrouwelijke inhoud naar de openbare AI“ breidt haar uit met teksten die als vertrouwelijk zijn aangemerkt; zonder de basisvrijgave heeft deze tweede schakelaar geen effect, en de kaart schrijft dat er dan ook onder. Vóór het inschakelen vraagt het scherm één keer uitdrukkelijk na, omdat er dan vertrouwelijke teksten naar de externe aanbieder gaan; het terugnemen gaat de veilige kant op en vraagt niets. Alleen een beheerder mag schakelen. Een uitbreiding wordt alleen verleend als zij ook kan worden vastgelegd — anders wijst de server haar af in plaats van haar stilzwijgend te verlenen. Een terugname heeft vooraf geen vastlegging nodig: mislukt na een geslaagde terugname het vastleggen ervan, dan blijft de terugname toch van kracht. Kan de terugname helemaal niet worden opgeslagen, dan meldt de server de fout en blijft de tot dan opgeslagen stand gelden. Wat geldt, staat in de regel onder de schakelaars: die toont de door de server bevestigde stand, niet het zojuist aangevinkte vakje.",
+  "seitenhilfe.admin.kiOhneFreigabe.titel": "Zolang er niets is vrijgegeven",
+  "seitenhilfe.admin.kiOhneFreigabe.text":
+    "Op het webscherm hangt het ervan af of een eigen intern model is verbonden. Is er een verbonden, dan rekent dat verder en blijven de AI-knoppen bedienbaar. Is alleen de openbare AI ingericht, dan valt die zonder vrijgave uit de keten en blijft er voor de taak geen model over: de AI-knoppen zijn dan grijs en dragen de zin „AI niet beschikbaar — voor deze taak is geen model actief.“ Geen stille vervangingsrun wendt een model voor. Klara in het Word-venster neemt de externe weg helemaal niet: zij meldt de blokkade als een onvolledig vastgelegde regel, en geen enkele toestemming van de gebruiker heft die op — een beslissing van de beheerder kan niemand wegklikken. Is de AI-toewijzing vastgelegd via de deploy-configuratie (KLARWERK_REASONER_POLICY), dan hebben ook deze twee schakelaars geen effect: ze zijn geblokkeerd, de server zou een opslag weigeren, en omdat de deploy-toewijzing zelf geen vrijgave draagt, blijft de openbare AI zolang geblokkeerd. De volgende stap loopt dan niet via deze kaart, maar via de deploy-configuratie van de server; zonder de variabele geldt weer de hier opgeslagen keuze.",
 };
 
 void i18n.use(initReactI18next).init({

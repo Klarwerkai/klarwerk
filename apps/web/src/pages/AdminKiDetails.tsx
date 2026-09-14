@@ -17,6 +17,10 @@ import type {
   ReasonerProbeResult,
 } from "../api/types";
 import { useToast } from "../app/ToastContext";
+// JOB 3863: der EINE Weg in die Seitenhilfe des Zahnrads — `HelpTip` rendert nichts, er meldet
+// Titel und Text beim Sammler an (`shell/SeitenhilfeContext.tsx`). Derselbe Weg wie bei den vier
+// Karten aus JOB 3670; das „?"-Menü der Karte (`hilfe`-Prop unten) bleibt davon unberührt.
+import { HelpTip } from "../components/HelpTip";
 import { Abfragehuelle } from "../components/einstellungen/Abfragehuelle";
 import { Detailkarte } from "../components/einstellungen/Detailkarte";
 import { Button, Field, TextInput } from "../components/ui";
@@ -723,6 +727,27 @@ export function KiDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element 
         { titel: t("adm.ai.title"), text: t("adm.ai.internExtern") },
       ]}
     >
+      {/* ==========================================================================================
+        JOB 3863 · DIE SEITENHILFE DER FREIGABE — und warum sie HIER steht und nicht drinnen.
+
+        Sie beschreibt den BILDSCHIRM, nicht seinen Inhalt: was die zwei Schalter bewirken, was
+        geschieht, solange nichts freigegeben ist, und warum sie im ENV-Fall ohne Wirkung sind.
+        Deshalb steht sie VOR der `Abfragehuelle` und nicht in ihrem Rumpf — hinge sie am geladenen
+        Stand, stünde im Zahnrad genau dann die Leermeldung, wenn jemand wissen will, wo er ist
+        (die Lehre, die JOB 3670 in `AdminKontenDetails.tsx:84-95` aufgeschrieben hat).
+
+        ZWEI EINTRÄGE, KEINE ZWEITE MECHANIK: `HelpTip` ist der eine Weg in die Seitenhilfe; das
+        „?"-Menü der Karte (`hilfe` oben, seit JOB 3065) erklärt die FELDER und bleibt unangetastet
+        — zwei Orte mit zwei Umfängen, wie in `AdminKontenDetails.tsx:279-284` begründet.
+        ========================================================================================== */}
+      <HelpTip
+        title={t("seitenhilfe.admin.kiFreigabe.titel")}
+        body={t("seitenhilfe.admin.kiFreigabe.text")}
+      />
+      <HelpTip
+        title={t("seitenhilfe.admin.kiOhneFreigabe.titel")}
+        body={t("seitenhilfe.admin.kiOhneFreigabe.text")}
+      />
       <Abfragehuelle abfrage={aiConfig}>
         {(konfig) => (
           <>
