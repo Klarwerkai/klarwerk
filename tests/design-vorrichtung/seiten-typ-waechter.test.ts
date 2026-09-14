@@ -52,15 +52,47 @@
 //
 // DIE GRENZE, AUSDRÜCKLICH BENANNT: gesehen wird, wer eine Bühne SELBST importiert. Wer die Seite
 // aus dritter Hand bezieht — über einen Helfer, der seinerseits eine Bühne benutzt —, fällt nicht in
-// die Menge. Im heutigen Bestand ist das `tests/profil-schmal/schmal-buehne.ts`: sie holt aus h6 nur
-// `BrowserFn`, `DIST`, `ORIGIN` und `fn` und deklariert ein EIGENES `export interface Seite` (:47);
-// ihre Verbraucher (`ux13-profil-320.test.ts`) messen gegen diesen eigenen Typ. Genau deshalb hängt
-// dieser Wächter an der IMPORTBINDUNG und nicht am Namen „Seite" — sonst zählte er dort eine Schuld,
-// die es nicht gibt. Eine vierte Bühne dieser Art gehört ins Register oben, nicht in eine Ausnahme.
-// Seit Runde 3 ist diese Grenze GEMESSEN und nicht mehr nur behauptet: V6 fährt sie als Fallpaar —
-// der Verbraucher aus dritter Hand bleibt still, derselbe Rumpf mit direktem Bühnenimport meldet.
-// Der re-exportierende Helfer selbst fällt sehr wohl in die Menge; die Grenze verliert also den
-// Verbraucher zweiter Hand, nicht den, der die Aufweitung wirklich schreibt.
+// die Prüfmenge. Das ist eine Entscheidung und bleibt eine: wer Re-Exporte verfolgte, zählte bei
+// `tests/profil-schmal/schmal-buehne.ts` eine Schuld, die es nicht gibt (sie holt aus h6 nur
+// `BrowserFn`, `DIST`, `ORIGIN` und `fn` und deklariert ein EIGENES `export interface Seite` (:47),
+// weil h6 ein fest verdrahtetes Konto anmeldet). Deshalb hängt dieser Wächter an der IMPORTBINDUNG
+// und nicht am Namen „Seite".
+//
+// SEIT JOB 3947 HAT DIESE GRENZE EINEN GEZÄHLTEN PREIS (BEN zu JOB 3819 Runde 2, Prüfpunkt 6: „für
+// indirekte Verbraucher über Modulgrenzen einen echten Re-Export-Fall ergänzen"). Ein Wächter, der
+// seine eigene blinde Stelle nicht beziffert, ist grün und nutzlos — also wird erhoben, was heute
+// tatsächlich über eine Modulgrenze an den Verbrauchern vorbeigereicht wird:
+//   · V11 misst die HELFER ZWEITER HAND in zwei Bauformen — den echten Re-Export
+//     (`export type { Seite } from "<Bühne>"`, auch `export *` und mit Umbenennung) und die
+//     NEUDEKLARATION (die Datei importiert die Bühne, deklariert aber ein eigenes `Seite`) — und
+//     vergleicht sie feldweise mit dem Register `GRENZFAELLE`. Es wird in beide Richtungen rot,
+//     genau wie V2 beim `ALTBESTAND`.
+//   · V12 ZÄHLT DIE VERBRAUCHER ZWEITER HAND AUF, statt sie zu verbieten: die Grenze bleibt, aber
+//     sie steht mit Namen im Torprotokoll. Eine Registerzeile ohne Verbraucher ist ein Gespenst.
+//   · V13 kalibriert das an ZWEI synthetischen Quellen (R1–R10): ein Modulübergang lässt sich mit
+//     einer einzigen Quelle nicht messen, und ein erfundener Modulname (V6/G2) belegt nur die
+//     Bauart des Auflösers, keine Zeile des Bestands.
+//
+// UND DER PREIS HÄNGT AN DER SACHE, NICHT AN DER SCHREIBWEISE (Prüfer BEN zu Runde 1, neun eigene
+// Gegenproben). Runde 1 las den eigenen Seitentyp nur da, wo seine Mitglieder unmittelbar dastanden;
+// derselbe Typ als lokaler Alias, als Schnittmenge oder über lokale Vererbung fiel durch — zweimal
+// ganz aus der Helfermenge, einmal mit dem Preis NULL, was wie „kostet nichts" aussieht und „nicht
+// nachgesehen" heisst. `eigeneTypisierung` löst deshalb durch alle drei hindurch auf, und was sich
+// NICHT auflösen lässt (ein Name aus einem fremden Modul), trägt `<nicht auflösbar: …>` als Preis
+// statt still zu verschwinden. R7–R10 halten genau diese vier Lagen je Bühne fest, und V13 misst
+// zusätzlich nach, dass ein so gefundener Helfer OHNE Registerzeile V11 wirklich rot macht — mit
+// derselben Funktion, die V11 fährt.
+// WAS DIE GRENZE HEUTE KOSTET, steht in `GRENZFAELLE` und in der Konsolenzeile von V11: genau ein
+// Feld, `setViewportSize`, aus `tests/profil-schmal/schmal-buehne.ts` (h6) an
+// `tests/profil-schmal/ux13-profil-320.test.ts`. Der zweite Fall, `gast-buehne.ts`, reicht die
+// Typisierung von h6 UNVERÄNDERT weiter und kostet deshalb nichts.
+//
+// UND DIE ASYMMETRIE, DIE DAHINTERSTECKT: ein reiner Re-Exporteur fällt sehr wohl in die
+// Verbrauchermenge — `buehnenVon` zählt auch eine `ExportDeclaration` mit Modulspezifizierer —, aber
+// er trägt KEINE Bindung bei, denn `bindungenVon` steigt bei allem aus, was kein Import ist. Er
+// erhöht also die Zahl in V3 und ist strukturell unprüfbar. R1 hält genau das fest, statt es dem
+// Code zu überlassen. Der Helfer, der die Bühne SELBST importiert und aufweitet, bleibt dagegen voll
+// in der Prüfmenge (V6, Fall „Helfer selbst importiert").
 //
 // KEIN BROWSER, KEINE NEUE STARTSTELLE. Diese Datei liest Quelltext und startet nichts. Sie
 // importiert KEINE der drei Bühnen, sondern liest sie als Text: ein Import zöge sie über die
@@ -370,6 +402,98 @@ const ALTBESTAND: ReadonlyMap<string, Altzeile> = new Map<string, Altzeile>([
         "Das Warten auf den Ladezustand, über einen Cast (:114). Die drei schmalen Breiten " +
         "(320/360/390) standen bis Runde 2 als `setViewportSize` daneben — seit JOB 3584 kennt " +
         "`h3-blatt-buehne.ts` das Feld selbst, also ist nur noch `waitForLoadState` offen.",
+    },
+  ],
+]);
+
+// ==================================================================================================
+// DIE GRENZFÄLLE — WAS ÜBER EINE MODULGRENZE WEITERGEREICHT WIRD (JOB 3947).
+// ==================================================================================================
+//
+// DIESES REGISTER BESCHREIBT EINE ANDERE SACHE ALS `ALTBESTAND` OBEN, und der Unterschied ist der
+// ganze Punkt: `ALTBESTAND` führt AUFWEITUNGEN — eine Datei, die eine Bühne selbst importiert und
+// sich ein Feld nachreicht, das deren `Seite` nicht kennt. `GRENZFAELLE` führt WEITERREICHUNGEN —
+// eine Datei, die eine Seitentypisierung über eine Modulgrenze an andere Dateien abgibt, sodass
+// deren Verbraucher von V1 gar nicht gesehen werden. Das eine ist eine Schuld, die abgetragen
+// gehört; das andere ist der PREIS einer bewusst gezogenen Grenze. Eine Datei kann in beiden
+// Registern stehen (`gast-buehne.ts` tut es), und das ist kein Widerspruch.
+//
+// ZWEI BAUFORMEN, BEIDE GEMESSEN (V11, kalibriert in V13):
+//   (i)  DER ECHTE RE-EXPORT — `export type { Seite } from "<Bühne>"`, auch `export * from` und auch
+//        mit Umbenennung. Er reicht die Typisierung der Bühne UNVERÄNDERT weiter; sein Preis ist
+//        deshalb null, und das wird gerechnet (`ueberschuss` gegen dieselbe Feldmenge), nicht
+//        behauptet. Bestandsfall: `tests/demo-firmen-ci-anmeldung/gast-buehne.ts:45`.
+//   (ii) DIE NEUDEKLARATION — die Datei importiert eine Bühne, exportiert aber einen EIGENEN Typ
+//        unter dem Namen von deren `seitentyp`, ohne ihn aus ihr abzuleiten. Nur hier entsteht
+//        wirklich ein Preis, weil der eigene Typ Felder führen kann, die die Bühne nicht kennt.
+//        Bestandsfall: `tests/profil-schmal/schmal-buehne.ts:47`. In WELCHER Schreibweise dieser
+//        eigene Typ dasteht, ist gleichgültig — unmittelbare Mitglieder, lokaler Alias,
+//        Schnittmenge oder lokale Vererbung sind für TypeScript dasselbe und müssen denselben Preis
+//        liefern (`eigeneTypisierung`; R7–R9 in V13 halten es je Bühne fest).
+//
+// DIE GRENZE WIRD DAMIT BEZIFFERT UND NICHT GESCHLOSSEN. Die Verbraucher zweiter Hand werden von V12
+// AUFGEZÄHLT, nicht verboten — R2 in V13 misst ausdrücklich nach, dass der Erheber sie NICHT
+// einsammelt. Wer eine Zeile hier loswerden will, trägt das Feld in `export interface Seite` der
+// genannten Bühne ein; dann fällt die Weiterreichung von selbst auf null, und V11 verlangt die
+// Löschung der Zeile (Gespenst).
+interface Grenzzeile {
+  /** Die Bühne, deren Seitentypisierung weitergereicht wird — muss mit dem Befund übereinstimmen. */
+  readonly buehne: string;
+  /** Wie sie hinausgeht. Steht hier, weil der Weg zur Abhilfe je Bauform ein anderer ist. */
+  readonly art: Weitergabe["art"];
+  /**
+   * Genau die Felder, die der weitergereichte Typ führt und die `Seite` der Bühne NICHT kennt.
+   * Leer heisst: unverändert weitergereicht, kein Preis — nicht „ungemessen". Ein Eintrag der Form
+   * `<nicht auflösbar: X>` heisst das Gegenteil: hier konnte NICHTS gemessen werden, und die Zeile
+   * sagt es, statt eine Null hinzuschreiben, die wie Unschuld aussieht.
+   */
+  readonly felder: readonly string[];
+  /**
+   * Die Verbraucher zweiter Hand, die heute sicher an dieser Zeile hängen — die festgenagelte
+   * UNTERGRENZE von V12, nach derselben Doktrin wie `ERWARTETE_VERBRAUCHER` unten: die gemessene
+   * Liste muss sie enthalten, darf aber wachsen.
+   */
+  readonly verbraucher: readonly string[];
+  /** Wer die Felder bezieht und warum die Grenze hier bewusst gilt — ein Satz, kein Freibrief. */
+  readonly grund: string;
+}
+
+// GEMESSEN AM BASISSTAND `cc82ae0` — zwei Helfer, nicht einer. Beide hängen an h6; an h4 und h3
+// reicht heute niemand eine Seitentypisierung über eine Modulgrenze weiter. Der ganze Preis der
+// Grenze ist damit EIN Feld: `setViewportSize` aus `schmal-buehne.ts`.
+const GRENZFAELLE: ReadonlyMap<string, Grenzzeile> = new Map<string, Grenzzeile>([
+  [
+    "tests/demo-firmen-ci-anmeldung/gast-buehne.ts",
+    {
+      buehne: "h6",
+      art: "re-export",
+      felder: [],
+      verbraucher: ["tests/demo-firmen-ci-anmeldung/anmeldemaske-marke-chromium.test.ts"],
+      grund:
+        '`export type { BrowserFn, Seite } from "../design/h6-chromium"` (:45) — der einzige echte ' +
+        "Re-Export über eine Modulgrenze im Baum. `anmeldemaske-marke-chromium.test.ts` bezieht die " +
+        "Seite daraus über `GastSeite` (abgeleitet, :70) und `GastStand` (Behälter, :97). Die " +
+        "Typisierung geht UNVERÄNDERT hinaus, also kostet die Grenze hier nichts: die Felder, die " +
+        "diese Datei zusätzlich braucht (`setViewportSize`, `reload`), stehen als AUFWEITUNG im " +
+        "`ALTBESTAND` oben und werden dort abgetragen, nicht hier.",
+    },
+  ],
+  [
+    "tests/profil-schmal/schmal-buehne.ts",
+    {
+      buehne: "h6",
+      art: "neudeklaration",
+      felder: ["setViewportSize"],
+      verbraucher: ["tests/profil-schmal/ux13-profil-320.test.ts"],
+      grund:
+        "Sie holt aus h6 nur `BrowserFn`, `DIST`, `ORIGIN` und `fn` und deklariert ein EIGENES " +
+        "`export interface Seite` (:47) mit sieben Feldern; genau eines davon kennt h6 nicht. " +
+        "`ux13-profil-320.test.ts` bezieht es über `Buehne` (`seite: Seite | null`, :67) — die Datei " +
+        "steht zwar selbst in der h6-Verbraucherliste (sie holt `fn` direkt), aber die Seite, die " +
+        "sie wirklich bedient, kommt an V1 vorbei. Die Grenze gilt hier bewusst: h6 meldet ein FEST " +
+        "VERDRAHTETES Konto an, an dem der Schaden von UX-13 unsichtbar wäre (:5-11). Abtragen liesse " +
+        "sie sich nur mit einem Eintrag von `setViewportSize` in `Seite` von h6 — den JOB 3819 " +
+        "bewusst gelassen hat, weil er fremde Zielpfaddateien mitrisse.",
     },
   ],
 ]);
@@ -1187,6 +1311,449 @@ function aufweitungenAusBaum(sf: ts.SourceFile, datei: string): Aufweitung[] {
   return [...gefunden.values()];
 }
 
+// ---- Helfer zweiter Hand: was über eine Modulgrenze weitergereicht wird (JOB 3947) ---------------
+
+interface Weitergabe {
+  /** Die Datei des Helfers, in der Schreibweise von `ALLE_DATEIEN`. */
+  datei: string;
+  /** Kurzname der Bühne, deren Seitentypisierung hier hinausgeht. */
+  buehne: string;
+  art: "re-export" | "neudeklaration";
+  /** Der EXPORTIERTE Name, unter dem sie den Helfer verlässt. */
+  name: string;
+  zeile: number;
+  /** Was der weitergereichte Typ führt und die `Seite` der Bühne NICHT kennt — der PREIS. */
+  fehlt: string[];
+  /** Alle exportierten Namen, über die ein Verbraucher diese Seite aus dem Helfer bezieht. */
+  zugaenge: string[];
+}
+
+/** Ist diese Deklaration exportiert? Ohne `export` verlässt nichts das Modul. */
+function istExportiert(n: ts.Node): boolean {
+  const mods = ts.canHaveModifiers(n) ? ts.getModifiers(n) : undefined;
+  return (mods ?? []).some((m) => m.kind === ts.SyntaxKind.ExportKeyword);
+}
+
+/** Der Name einer Typdeklaration (`interface X`, `type X = …`) — sonst `undefined`. */
+function typName(n: ts.Node): string | undefined {
+  return ts.isInterfaceDeclaration(n) || ts.isTypeAliasDeclaration(n) ? n.name.text : undefined;
+}
+
+/** Die Mitglieder einer Typdeklaration, soweit sie unmittelbar dastehen. */
+function mitgliederVon(n: ts.Node): readonly ts.TypeElement[] | undefined {
+  if (ts.isInterfaceDeclaration(n)) {
+    return n.members;
+  }
+  if (ts.isTypeAliasDeclaration(n)) {
+    const kern = ohneKlammern(n.type);
+    return ts.isTypeLiteralNode(kern) ? kern.members : undefined;
+  }
+  return undefined;
+}
+
+// ---- Die Felder eines EIGENEN Seitentyps — durch die Schreibweise hindurch (Runde 2) -------------
+//
+// KORREKTURPFLICHT 1 (Prüfer BEN zu Runde 1, neun eigene Gegenproben, je drei an jeder Bühne). Runde 1
+// las den eigenen Seitentyp nur da, wo seine Mitglieder UNMITTELBAR dastanden (`mitgliederVon`). Drei
+// alltägliche Schreibweisen derselben Sache fielen damit durch — an allen drei Bühnen, gemessen mit
+// dem Probefeld `dragAndDrop`:
+//   · der LOKALE ALIAS      — `type Eigen = { dragAndDrop: … }; export type Seite = Eigen;`
+//     `mitgliederVon` gab `undefined`, die Datei fiel schon aus der KANDIDATENMENGE: kein Helfer,
+//     kein Preis, kein Wort. Die teuerste Art, einen Wächter zu verlieren.
+//   · die SCHNITTMENGE      — `export type Seite = TeilA & { dragAndDrop: … };` — dasselbe.
+//   · die LOKALE VERERBUNG  — `export interface Seite extends Eigen {}`. Hier blieb der Helfer sogar
+//     sichtbar, aber sein Preis wurde als LEER gemessen: `n.members` ist leer, das Geerbte stand
+//     nebenan. Eine Null, die wie „kostet nichts" aussieht und „nicht nachgesehen" heisst.
+// Es ist derselbe Fehler, den BEN schon an JOB 3564 gemessen hat („löste ein Cast-Ziel nur auf, wenn
+// es ein `interface` war"): der Wächter hing an der SCHREIBWEISE statt an der Sache. Deshalb wird hier
+// nicht mehr gefragt, WIE der Typ geschrieben ist, sondern was am Ende der Kette steht.
+//
+// UND WAS SICH NICHT AUFLÖSEN LÄSST, WIRD GESAGT. `type Seite = Fremd`, wobei `Fremd` aus einem
+// anderen Modul kommt, ist nicht „leer" — es ist UNBEKANNT. Ein solcher Typ darf nicht still aus der
+// Helfermenge fallen (BEN, Prüfpunkt 6), sondern trägt `<nicht auflösbar: Fremd>` als Preis: die Zeile
+// muss dann registriert werden, und wer sie liest, sieht sofort, dass hier nichts gemessen werden
+// konnte. Fail-closed, dieselbe Doktrin wie `NICHT_AUFLOESBAR` bei den Unterfeldern.
+/** Ein Teil der Typisierung, der aus dieser Datei hinausführt — im Zweifel melden, nie schweigen. */
+function nichtAufloesbar(was: string): string {
+  return `<nicht auflösbar: ${was}>`;
+}
+
+/**
+ * Typen, die sicher KEIN Objekt mit Feldern sind. `any`, `unknown` und `object` stehen bewusst NICHT
+ * hier: hinter ihnen kann alles stecken, also gelten sie als unbekannt und nicht als leer.
+ */
+const OHNE_FELDER: ReadonlySet<ts.SyntaxKind> = new Set([
+  ts.SyntaxKind.StringKeyword,
+  ts.SyntaxKind.NumberKeyword,
+  ts.SyntaxKind.BooleanKeyword,
+  ts.SyntaxKind.BigIntKeyword,
+  ts.SyntaxKind.SymbolKeyword,
+  ts.SyntaxKind.VoidKeyword,
+  ts.SyntaxKind.UndefinedKeyword,
+  ts.SyntaxKind.NeverKeyword,
+]);
+
+function istOhneFelder(t: ts.TypeNode): boolean {
+  const kern = ohneKlammern(t);
+  return OHNE_FELDER.has(kern.kind) || ts.isLiteralTypeNode(kern);
+}
+
+/**
+ * Name → die DEKLARATION selbst, nicht nur ihr Rumpf. `lokaleTypen` oben legt für ein Interface nur
+ * `n.members` ab und verliert damit die `extends`-Klausel — für die Unterfelder reicht das, für den
+ * Preis eines Helfers nicht (genau die lokale Vererbung war eine der neun Gegenproben). Mehrere
+ * Deklarationen unter einem Namen (Interface-Verschmelzung) werden ALLE geführt und alle gelesen.
+ */
+function lokaleDeklarationen(alle: readonly ts.Node[]): Map<string, ts.Node[]> {
+  const nach = new Map<string, ts.Node[]>();
+  for (const n of alle) {
+    const name = typName(n);
+    if (name === undefined) {
+      continue;
+    }
+    const liste = nach.get(name);
+    if (liste === undefined) {
+      nach.set(name, [n]);
+    } else {
+      liste.push(n);
+    }
+  }
+  return nach;
+}
+
+interface EigenTypisierung {
+  /** Was der Typ nachweislich führt — durch Aliase, Schnittmengen und lokale Vererbung hindurch. */
+  readonly felder: Felder;
+  /** Die Teile, die aus dieser Datei hinausführen. Nicht leer heisst: hier wurde NICHTS gemessen. */
+  readonly offen: readonly string[];
+}
+
+function eigeneTypisierung(
+  start: ts.Node,
+  sf: ts.SourceFile,
+  lokal: ReadonlyMap<string, ts.TypeNode | readonly ts.TypeElement[]>,
+  deklarationen: ReadonlyMap<string, readonly ts.Node[]>,
+): EigenTypisierung {
+  const felder: Felder = new Map();
+  const offen = new Set<string>();
+  const gesehen = new Set<ts.Node>();
+
+  const nimm = (mitglieder: readonly ts.TypeElement[]): void => {
+    for (const m of mitglieder) {
+      const name = namenVon(m, sf);
+      if (name === null || felder.has(name)) {
+        continue;
+      }
+      felder.set(name, unterfelder(m, sf, lokal));
+    }
+  };
+
+  const ausName = (name: string): void => {
+    const ziele = deklarationen.get(name);
+    if (ziele === undefined || ziele.length === 0) {
+      offen.add(name); // Der Name führt aus dieser Datei hinaus — unbekannt, nicht leer.
+      return;
+    }
+    for (const z of ziele) {
+      ausDeklaration(z);
+    }
+  };
+
+  const ausTeil = (t: ts.TypeNode): void => {
+    if (ts.isTypeLiteralNode(t)) {
+      nimm(t.members);
+      return;
+    }
+    if (ts.isTypeReferenceNode(t) && ts.isIdentifier(t.typeName) && t.typeArguments === undefined) {
+      ausName(t.typeName.text);
+      return;
+    }
+    if (istOhneFelder(t)) {
+      return;
+    }
+    // `Omit<X, "a">`, `Stand["seite"]` mit unbekanntem Behälter, bedingte und abgebildete Typen:
+    // TypeScript löst das auf, dieser Wächter nicht. Also wird es gesagt und nicht verschwiegen.
+    offen.add(t.getText(sf));
+  };
+
+  /** Ein Ringschluss (`type A = A`) endet über `gesehen`, nicht über eine geratene Tiefe. */
+  function ausDeklaration(n: ts.Node): void {
+    if (gesehen.has(n)) {
+      return;
+    }
+    gesehen.add(n);
+    if (ts.isInterfaceDeclaration(n)) {
+      nimm(n.members);
+      for (const h of n.heritageClauses ?? []) {
+        for (const t of h.types) {
+          if (ts.isIdentifier(t.expression) && t.typeArguments === undefined) {
+            ausName(t.expression.text);
+          } else {
+            offen.add(t.getText(sf));
+          }
+        }
+      }
+      return;
+    }
+    if (ts.isTypeAliasDeclaration(n)) {
+      for (const t of schnittTeile(n.type)) {
+        ausTeil(t);
+      }
+      return;
+    }
+    offen.add(typName(n) ?? n.getText(sf));
+  }
+
+  ausDeklaration(start);
+  return { felder, offen: [...offen].sort() };
+}
+
+/** Nennt dieser Typausdruck irgendwo einen dieser Namen? (`Seite | null` nennt `Seite`.) */
+function nenntNamen(typ: ts.TypeNode, menge: ReadonlySet<string>): boolean {
+  return knoten(typ).some(
+    (k) => ts.isTypeReferenceNode(k) && ts.isIdentifier(k.typeName) && menge.has(k.typeName.text),
+  );
+}
+
+/**
+ * ÜBER WELCHE EXPORTIERTEN NAMEN ERREICHT EIN VERBRAUCHER DIE WEITERGEREICHTE SEITE?
+ *
+ * Nicht nur über den Namen selbst. `tests/profil-schmal/ux13-profil-320.test.ts` importiert aus
+ * `schmal-buehne.ts` gar kein `Seite`, sondern `Buehne` — und kommt über `buehne.seite` an genau
+ * dieselbe Typisierung. Dasselbe an `gast-buehne.ts`: dort geht es über `GastSeite` (abgeleitet) und
+ * `GastStand` (Behälter). Wer nur den nackten Namen zählte, fände für beide Bestandsfälle NULL
+ * Verbraucher und löschte die Registerzeilen als Gespenster — also wächst die Menge über zwei Wege,
+ * dieselben zwei, die auch `seitenTypen`/`standTypen` oben gehen:
+ *   (a) ABGELEITET — `export interface G extends Seite`, `export type G = Seite & { … }`.
+ *   (b) BEHÄLTER — ein exportierter Typ mit einem Mitglied `seite`, dessen Typ einen der Namen nennt.
+ * Beides nur EXPORTIERT: was das Modul nicht verlässt, erreicht kein Verbraucher.
+ */
+function zugangsNamen(sf: ts.SourceFile, alle: readonly ts.Node[], start: string): string[] {
+  const menge = new Set<string>([start]);
+  bisZumFixpunkt(deklarationsZahl(alle), () => {
+    let gewachsen = false;
+    for (const n of alle) {
+      const name = typName(n);
+      if (name === undefined || menge.has(name) || !istExportiert(n)) {
+        continue;
+      }
+      if (ts.isInterfaceDeclaration(n)) {
+        for (const h of n.heritageClauses ?? []) {
+          for (const t of h.types) {
+            if (ts.isIdentifier(t.expression) && menge.has(t.expression.text)) {
+              menge.add(name);
+              gewachsen = true;
+            }
+          }
+        }
+      }
+      if (ts.isTypeAliasDeclaration(n)) {
+        for (const t of schnittTeile(n.type)) {
+          if (
+            ts.isTypeReferenceNode(t) &&
+            ts.isIdentifier(t.typeName) &&
+            menge.has(t.typeName.text)
+          ) {
+            menge.add(name);
+            gewachsen = true;
+          }
+        }
+      }
+      for (const m of mitgliederVon(n) ?? []) {
+        if (
+          namenVon(m, sf) === "seite" &&
+          ts.isPropertySignature(m) &&
+          m.type !== undefined &&
+          nenntNamen(m.type, menge)
+        ) {
+          menge.add(name);
+          gewachsen = true;
+        }
+      }
+    }
+    return gewachsen;
+  });
+  return [...menge].sort();
+}
+
+/**
+ * DER ERHEBER DER HELFER ZWEITER HAND — über den Syntaxbaum, nie über den Rohtext und nie über
+ * blosse Namensgleichheit (Doktrin oben; Lehre JOB 3489 „nur in CODEZEILEN, nicht in Kommentaren";
+ * Lehre JOB 3931 „Der Fundstellenwächter glaubt dem Rohtext und dem blossen Namen").
+ *
+ * Er läuft in der EINEN Erhebungsschleife unten mit — kein zweiter Gang über den Baum (V8). Die
+ * teure Auflösung (`standTypen`/`seitenTypen`) wird nur angeworfen, wenn die Datei überhaupt einen
+ * Typ unter dem Namen eines `seitentyp` exportiert; für die weit über tausend anderen Dateien kostet
+ * der Erheber einen Durchgang durch `sf.statements`.
+ */
+function weitergabenAusBaum(sf: ts.SourceFile, datei: string): Weitergabe[] {
+  const dateiBuehnen = buehnenVon(sf);
+  if (dateiBuehnen.length === 0) {
+    return [];
+  }
+  const alle = knoten(sf);
+  const lokal = lokaleTypen(sf);
+  const deklarationen = lokaleDeklarationen(alle);
+  const gefunden: Weitergabe[] = [];
+  const melde = (
+    b: Buehne,
+    art: Weitergabe["art"],
+    name: string,
+    n: ts.Node,
+    eigen: EigenTypisierung,
+  ): void => {
+    if (gefunden.some((w) => w.name === name && w.buehne === b.kurz)) {
+      return;
+    }
+    gefunden.push({
+      datei,
+      buehne: b.kurz,
+      art,
+      name,
+      zeile: sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1,
+      // Der Preis ist beides: was die Bühne nicht kennt UND was sich gar nicht auflösen liess. Das
+      // zweite ist kein Nebenfall — ein Helfer, dessen Typisierung ins Unbekannte zeigt, ist die
+      // Lage, in der Schweigen am teuersten wäre.
+      fehlt: [
+        ...ueberschuss(eigen.felder, felderVon(b.kurz)),
+        ...eigen.offen.map((o) => nichtAufloesbar(o)),
+      ],
+      zugaenge: zugangsNamen(sf, alle, name),
+    });
+  };
+  /** Der Re-Export gibt die Typisierung der Bühne UNVERÄNDERT weiter — nichts bleibt offen. */
+  const wieDieBuehne = (b: Buehne): EigenTypisierung => ({
+    felder: felderVon(b.kurz),
+    offen: [],
+  });
+
+  // ---- Bauform (i): der ECHTE Re-Export, also eine `ExportDeclaration` MIT Modulspezifizierer ----
+  //
+  // `modulSpezifizierer` behandelt Import und Export gleich; nur hier zählt der Unterschied. Ein
+  // LOKALER Re-Export (`export type { Seite };` ohne `from`) ist kein Modulübergang — er gibt weiter,
+  // was die Datei sich selbst importiert hat, und die Datei steht dann ohnehin voll in der Prüfmenge.
+  // Weitergereicht wird die Typisierung der Bühne UNVERÄNDERT, also ist die Feldmenge ihre eigene und
+  // der Überschuss rechnerisch leer. Das wird gerechnet und nicht gesetzt: trüge die Bühne morgen
+  // einen anderen Typ, liefe dieselbe Rechnung mit.
+  for (const n of alle) {
+    if (!ts.isExportDeclaration(n)) {
+      continue;
+    }
+    const spez = modulSpezifizierer(n);
+    if (spez === undefined) {
+      continue;
+    }
+    const b = BUEHNEN.find((x) => x.muster.test(spez));
+    if (b === undefined) {
+      continue;
+    }
+    const klausel = n.exportClause;
+    if (klausel === undefined) {
+      // `export * from "<Bühne>"` — alles, also auch `Seite` und der Behälter, unter ihrem Namen.
+      melde(b, "re-export", b.seitentyp, n, wieDieBuehne(b));
+      melde(b, "re-export", b.standtyp, n, wieDieBuehne(b));
+    } else if (ts.isNamespaceExport(klausel)) {
+      // `export * as X from "<Bühne>"` — erreichbar als `X.Seite`; der Zugang ist der Namensraum.
+      melde(b, "re-export", klausel.name.text, n, wieDieBuehne(b));
+    } else {
+      for (const spec of klausel.elements) {
+        const inDerBuehne = (spec.propertyName ?? spec.name).text;
+        if (inDerBuehne === b.seitentyp || inDerBuehne === b.standtyp) {
+          melde(b, "re-export", spec.name.text, spec, wieDieBuehne(b));
+        }
+      }
+    }
+  }
+
+  // ---- Bauform (ii): die NEUDEKLARATION — die Bauart von `schmal-buehne.ts` ----------------------
+  //
+  // Die Datei importiert eine Bühne (steht also in `VERBRAUCHER`), exportiert aber einen EIGENEN Typ
+  // unter dem Namen von deren `seitentyp`, ohne ihn aus ihr abzuleiten. Wäre er abgeleitet, stünde er
+  // in `seitenTypen` und V1 hätte ihn längst als Aufweitung gemeldet — genau das wird hier geprüft
+  // und nicht angenommen, sonst zählte dieselbe Sache zweimal.
+  //
+  // KANDIDAT IST JEDE EXPORTIERTE TYPDEKLARATION UNTER DIESEM NAMEN, gleichgültig wie sie geschrieben
+  // ist. Runde 1 verlangte hier zusätzlich `mitgliederVon(n) !== undefined` und liess damit den
+  // lokalen Alias und die Schnittmenge lautlos durch (BEN, Korrekturpflicht 1). Was der Typ führt,
+  // entscheidet `eigeneTypisierung` und nicht diese Stelle — eine Schreibweise mehr darf keine
+  // Prüflücke mehr sein (dieselbe Lehre wie beim Cast-Ziel in JOB 3564).
+  const kandidaten = alle.filter(
+    (n) => istExportiert(n) && dateiBuehnen.some((b) => typName(n) === b.seitentyp),
+  );
+  if (kandidaten.length > 0) {
+    const bindungen = bindungenVon(sf);
+    const staende = standTypen(sf, bindungen);
+    const typen = seitenTypen(sf, bindungen, staende);
+    for (const n of kandidaten) {
+      const name = typName(n);
+      if (name === undefined || typen.has(name)) {
+        continue;
+      }
+      for (const b of dateiBuehnen) {
+        if (b.seitentyp === name) {
+          melde(b, "neudeklaration", name, n, eigeneTypisierung(n, sf, lokal, deklarationen));
+        }
+      }
+    }
+  }
+  return gefunden;
+}
+
+// ---- Die Importkanten des Baums: wer holt WELCHE Namen aus WELCHER Datei? ------------------------
+//
+// Gebraucht von V12, um die Verbraucher zweiter Hand zu benennen — über die Importbindung, nicht über
+// den Dateinamen. Erhoben wird über `sf.statements` statt über den ganzen Baum: Importe stehen auf
+// oberster Ebene, und der Gang kostet so auch für die Dateien nichts, die keine Bühne anfassen.
+interface Importkante {
+  /** Der aufgelöste Zielpfad OHNE Endung, in der Schreibweise von `ALLE_DATEIEN`. */
+  readonly ziel: string;
+  /** Die Namen, wie sie IM ZIEL heissen (`propertyName ?? name`). */
+  readonly namen: readonly string[];
+}
+
+/** `tests/a/b` + `../c/d` → `tests/c/d`. Reiner Pfadausdruck, ohne Plattformtrennzeichen. */
+function posixNormal(pfad: string): string {
+  const teile: string[] = [];
+  for (const t of pfad.split("/")) {
+    if (t === "" || t === ".") {
+      continue;
+    }
+    if (t === "..") {
+      teile.pop();
+      continue;
+    }
+    teile.push(t);
+  }
+  return teile.join("/");
+}
+
+function ohneEndung(pfad: string): string {
+  return pfad.replace(/\.(tsx?|jsx?)$/, "");
+}
+
+function importKantenVon(sf: ts.SourceFile, datei: string): Importkante[] {
+  const ordner = datei.split("/").slice(0, -1).join("/");
+  const kanten: Importkante[] = [];
+  for (const n of sf.statements) {
+    if (!ts.isImportDeclaration(n) || n.importClause === undefined) {
+      continue;
+    }
+    const spez = modulSpezifizierer(n);
+    if (spez === undefined || !spez.startsWith(".")) {
+      continue;
+    }
+    const bindung = n.importClause.namedBindings;
+    const namen: string[] = [];
+    if (bindung !== undefined && ts.isNamedImports(bindung)) {
+      for (const spec of bindung.elements) {
+        namen.push((spec.propertyName ?? spec.name).text);
+      }
+    }
+    kanten.push({ ziel: ohneEndung(posixNormal(`${ordner}/${spez}`)), namen });
+  }
+  return kanten;
+}
+
 // ---- Die Erhebung, EINMAL je Lauf ----------------------------------------------------------------
 //
 // Ein Gang über `tests/`, nicht drei: je Datei wird einmal geparst und dann zugeordnet. Die gemessene
@@ -1196,19 +1763,178 @@ const ALLE_DATEIEN = gehe(TESTS, []).map(alsPosix);
 /** Verbraucherdatei → die Bühnen, die sie importiert. EINE Zeile je Datei, auch bei zwei Bühnen. */
 const VERBRAUCHER = new Map<string, Buehne[]>();
 const BEFUND: Aufweitung[] = [];
+/** Was über eine Modulgrenze weitergereicht wird (JOB 3947) — aus DERSELBEN Schleife. */
+const WEITERGABEN: Weitergabe[] = [];
+/** Datei → ihre Importkanten in den Baum. Auch für Dateien OHNE Bühne: V12 misst die Bezieher. */
+const IMPORTKANTEN = new Map<string, Importkante[]>();
 for (const datei of ALLE_DATEIEN.sort()) {
   if (datei === SELBST) {
     continue;
   }
   const sf = baum(join(WURZEL, datei));
+  IMPORTKANTEN.set(datei, importKantenVon(sf, datei));
   const buehnen = buehnenVon(sf);
   if (buehnen.length === 0) {
     continue;
   }
   VERBRAUCHER.set(datei, buehnen);
   BEFUND.push(...aufweitungenAusBaum(sf, datei));
+  WEITERGABEN.push(...weitergabenAusBaum(sf, datei));
 }
 const ERHEBUNG_MS = Date.now() - BEGINN;
+
+/**
+ * Die Verbraucher ZWEITER HAND einer Helferdatei: wer holt aus ihr einen der Namen, über die ihre
+ * weitergereichte Seite erreichbar ist? Gemessen über die Importbindung und den aufgelösten
+ * Modulpfad — nie über den Dateinamen.
+ */
+function verbraucherZweiterHand(helfer: string): string[] {
+  const zugaenge = new Set(
+    WEITERGABEN.filter((w) => w.datei === helfer).flatMap((w) => w.zugaenge),
+  );
+  if (zugaenge.size === 0) {
+    return [];
+  }
+  const ziel = ohneEndung(helfer);
+  return [...IMPORTKANTEN.entries()]
+    .filter(
+      ([d, kanten]) =>
+        d !== helfer &&
+        kanten.some((k) => k.ziel === ziel && k.namen.some((nm) => zugaenge.has(nm))),
+    )
+    .map(([d]) => d)
+    .sort();
+}
+
+/** Die gemessenen Weitergaben EINER Datei, zusammengefasst — die Grundlage jeder Meldung in V11/V12. */
+interface Grenzbefund {
+  readonly datei: string;
+  readonly weitergaben: readonly Weitergabe[];
+  readonly buehnen: readonly string[];
+  readonly arten: readonly string[];
+  /** Die Vereinigung der Preise — genau das, was in der Registerzeile stehen muss. */
+  readonly felder: readonly string[];
+  readonly verbraucher: readonly string[];
+}
+
+/**
+ * Aus gemessenen Weitergaben einen Befund. Steht getrennt vom Baum, damit V13 denselben Weg mit
+ * SYNTHETISCHEN Quellen gehen kann: nur so lässt sich zeigen, dass ein neuer Helfer ohne
+ * Registerzeile V11 wirklich rot macht, statt es zu behaupten (BEN, Korrekturpflicht 1).
+ */
+function befundAus(
+  datei: string,
+  weitergaben: readonly Weitergabe[],
+  verbraucher: readonly string[],
+): Grenzbefund {
+  return {
+    datei,
+    weitergaben,
+    buehnen: [...new Set(weitergaben.map((w) => w.buehne))].sort(),
+    arten: [...new Set(weitergaben.map((w) => w.art))].sort(),
+    felder: [...new Set(weitergaben.flatMap((w) => w.fehlt))].sort(),
+    verbraucher: [...verbraucher],
+  };
+}
+
+function grenzBefund(datei: string): Grenzbefund {
+  return befundAus(
+    datei,
+    WEITERGABEN.filter((w) => w.datei === datei),
+    verbraucherZweiterHand(datei),
+  );
+}
+
+/** Die gemessenen Helferdateien, jede einmal. */
+function gemesseneHelfer(): string[] {
+  return [...new Set(WEITERGABEN.map((w) => w.datei))].sort();
+}
+
+/** „`setViewportSize`" oder, wenn nichts dazukommt, der ehrliche Satz dafür. */
+function preisText(felder: readonly string[]): string {
+  return felder.length > 0
+    ? `\`${felder.join("`, `")}\``
+    : "die Seitentypisierung unverändert (kein Preis)";
+}
+
+function beziehertext(verbraucher: readonly string[]): string {
+  const kurz = verbraucher.map((d) => d.split("/").pop() ?? d);
+  return kurz.length > 0 ? `\`${kurz.join("`, `")}\`` : "niemanden";
+}
+
+/** Die Zeile, die im Torprotokoll steht — Datei, Bauform, Bühne, Feld und Bezieher, nie nur eine Zahl. */
+function grenzZeile(bef: Grenzbefund): string {
+  const wie = bef.weitergaben.map((w) => `${w.art} \`${w.name}\`:${w.zeile}`).join(", ");
+  return (
+    `[${bef.buehnen.join("+")}] \`${bef.datei}\` (${wie}) reicht ${preisText(bef.felder)} ` +
+    `über die Modulgrenze an ${beziehertext(bef.verbraucher)} weiter`
+  );
+}
+
+/**
+ * DER VERGLEICH VON MESSUNG UND REGISTER — der Rumpf von V11, als reine Funktion.
+ *
+ * Er steht hier und nicht im `it`, weil er sonst nur mit dem echten Baum liefe und damit nur mit den
+ * beiden Zeilen, die heute im Register stehen. Ein Fall, der NIE rot gesehen wurde, ist kein Beleg
+ * (Lehre JOB 3489): V13 fährt dieselbe Funktion unten mit synthetischen Befunden und einem LEEREN
+ * Register und misst nach, dass ein neu gebauter Helfer zweiter Hand sie wirklich rot macht.
+ *
+ * Rot in BEIDE Richtungen, dieselbe Doktrin wie V2 beim `ALTBESTAND`.
+ */
+function grenzMeldungen(
+  befunde: ReadonlyMap<string, Grenzbefund>,
+  register: ReadonlyMap<string, Grenzzeile>,
+): string[] {
+  const meldungen: string[] = [];
+  for (const [datei, bef] of befunde) {
+    if (register.has(datei)) {
+      continue;
+    }
+    const buehne = BUEHNEN.find((x) => x.kurz === bef.buehnen[0]);
+    const ort = `\`export interface ${buehne?.seitentyp ?? "Seite"}\` von \`${buehne?.pfad ?? bef.buehnen.join("+")}\``;
+    meldungen.push(
+      `\`${datei}\` reicht ${preisText(bef.felder)} über die Modulgrenze an ` +
+        `${beziehertext(bef.verbraucher)} weiter und ist nicht registriert — trage das Feld in ` +
+        `${ort} ein, oder registriere die Grenze hier`,
+    );
+  }
+  for (const [datei, eintrag] of register) {
+    const bef = befunde.get(datei) ?? befundAus(datei, [], []);
+    if (bef.weitergaben.length === 0) {
+      meldungen.push(
+        `${datei}: nichts wird mehr über eine Modulgrenze weitergereicht — der Eintrag gehört gelöscht`,
+      );
+      continue;
+    }
+    for (const feld of eintrag.felder) {
+      if (!bef.felder.includes(feld)) {
+        meldungen.push(
+          `${datei}: „${feld}" wird nicht mehr über die Modulgrenze weitergereicht — Karteileiche in der Zeile`,
+        );
+      }
+    }
+    for (const feld of bef.felder) {
+      if (!eintrag.felder.includes(feld)) {
+        meldungen.push(
+          `${datei}: „${feld}" wird zusätzlich über die Modulgrenze an ` +
+            `${beziehertext(bef.verbraucher)} weitergereicht und steht nicht in der Zeile — trage ` +
+            `das Feld in \`Seite\` von \`${bef.buehnen.join("+")}\` ein, oder ergänze es hier`,
+        );
+      }
+    }
+    if (!bef.buehnen.includes(eintrag.buehne)) {
+      meldungen.push(
+        `${datei}: die Zeile sagt Bühne „${eintrag.buehne}", gemessen wurde [${bef.buehnen.join(", ")}]`,
+      );
+    }
+    if (!bef.arten.includes(eintrag.art)) {
+      meldungen.push(
+        `${datei}: die Zeile sagt Bauform „${eintrag.art}", gemessen wurde [${bef.arten.join(", ")}]`,
+      );
+    }
+  }
+  return meldungen;
+}
 
 /** Die Verbraucher EINER Bühne. */
 function verbraucherVon(kurz: string): string[] {
@@ -1380,6 +2106,11 @@ function kalibrierfaelle(): Kalibrierfall[] {
     // dort eine Schuld, die es nicht gibt. Also wird die Grenze GEMESSEN statt geschlossen — und
     // damit sie nicht bloß „der Testkörper sagt nichts" heisst, steht direkt daneben der GEGENPOL:
     // derselbe Rumpf, Zeichen für Zeichen, nur mit direktem Bühnenimport. Er MUSS melden.
+    //
+    // WAS DIESER FALL NICHT KANN (JOB 3947): sein Modulspezifizierer ist ERFUNDEN — das Modul
+    // `./ein-helfer-der-die-buehne-benutzt` gibt es im Baum nicht. Er belegt damit die Bauart des
+    // Auflösers, aber keine Zeile des Bestands. Dieselbe Grenze an einem echten MODULPAAR misst
+    // V13 (R2/R3), und was sie heute kostet, zählt V11.
     const rumpfAusDritterHand = `interface KZieh extends ${b.seitentyp} { ${UNGEDECKT}: ${ZIEHEN} }\nasync function probe(): Promise<void> { await (seite() as unknown as KZieh).${UNGEDECKT}.starten("a", "b"); }`;
     faelle.push({
       name: `${b.kurz} · Grenze: Verbraucher AUS DRITTER HAND (über einen re-exportierenden Helfer) wird nicht gesehen`,
@@ -1395,11 +2126,18 @@ function kalibrierfaelle(): Kalibrierfall[] {
     });
 
     // (G3) …aber der HELFER SELBST wird sehr wohl gesehen: er importiert die Bühne, also fällt er in
-    // die Menge. Genau so sind `tests/navigation-schmal/kopfband-messung.ts` und
-    // `tests/profil-schmal/schmal-buehne.ts` gebaut. Die Grenze aus G2 ist damit scharf gezogen: sie
-    // verliert den Verbraucher zweiter Hand, nicht den Helfer, der die Aufweitung wirklich schreibt.
+    // die Menge. Genau so ist `tests/navigation-schmal/kopfband-messung.ts` gebaut. Die Grenze aus G2
+    // ist damit scharf gezogen: sie verliert den Verbraucher zweiter Hand, nicht den Helfer, der die
+    // Aufweitung wirklich schreibt.
+    //
+    // WIE DIESER FALL HEISST, IST SEIT JOB 3947 GENAUER (Lieferung 7). Er hiess „der
+    // re-exportierende Helfer", gemessen hat er aber den DIREKTEN IMPORTEUR: seine Quelle beginnt mit
+    // `kopf`, also mit `import type { Seite, Stand } from "<Bühne>"`, und die Zeile
+    // `export type { Seite };` darunter ist ein LOKALER Re-Export ohne Modulspezifizierer — kein
+    // Modulübergang. Der Name versprach mehr, als der Fall hielt; die Sache selbst bleibt
+    // unverändert, denn sie ist richtig. Der ECHTE Re-Export über eine Modulgrenze steht in V13 (R1).
     faelle.push({
-      name: `${b.kurz} · der re-exportierende Helfer selbst importiert die Bühne — und wird gesehen`,
+      name: `${b.kurz} · der Helfer selbst importiert die Bühne und weitet sie auf — und wird gesehen`,
       quelle: `${kopf}export type SeiteMitZiehen = ${b.seitentyp} & { ${UNGEDECKT}: ${ZIEHEN} };\nexport type { ${b.seitentyp} };\n`,
       erwartet: [UNGEDECKT],
       buehne: b.kurz,
@@ -1482,6 +2220,242 @@ function kalibriere(fall: Kalibrierfall): Aufweitung[] {
     ts.ScriptKind.TS,
   );
   return aufweitungenAusBaum(sf, KALIBRIER_DATEI);
+}
+
+// ---- Die Kalibrierung über die MODULGRENZE: zwei Quellen statt einer (JOB 3947) ------------------
+//
+// `kalibriere` oben baut EINE synthetische Datei. Ein Modulübergang lässt sich damit nicht messen:
+// G2 behilft sich deshalb mit einem ERFUNDENEN Modulspezifizierer, und G3 misst in Wahrheit den
+// direkten Importeur. Hier stehen dagegen ZWEI Quellen — Helfer A und Verbraucher B, B importiert aus
+// A —, und darauf laufen die ECHTEN Erheber: `buehnenVon`, `bindungenVon`, `weitergabenAusBaum` und
+// `aufweitungenAusBaum`. Keine Datei wird dafür angelegt; beides ist Quelltext im Speicher.
+const KAL_A_NAME = "<kalibrier-helfer>";
+const KAL_A = `tests/design-vorrichtung/${KAL_A_NAME}.ts`;
+const KAL_B = "tests/design-vorrichtung/<kalibrier-verbraucher>.test.ts";
+
+interface Modulfall {
+  readonly name: string;
+  /** Quelle des Helfers A. */
+  readonly a: string;
+  /** Quelle des Verbrauchers B — er importiert aus A oder, im Gegenpol, direkt aus der Bühne. */
+  readonly b: string;
+  /** Die Bühnen, die A importiert ODER re-exportiert (`buehnenVon` zählt beides). */
+  readonly aBuehnen: readonly string[];
+  /** Wie viele Seiten-/Behälterbindungen `bindungenVon(A)` liefert — bei reinem Re-Export NULL. */
+  readonly aBindungen: number;
+  /** Gilt A als Helfer zweiter Hand, und zu welchem Preis? Leerer Kurzname heisst: kein Helfer. */
+  readonly aHelferBuehne: string;
+  /** Die Bauform, unter der A gemeldet werden muss — leer, wenn A kein Helfer ist. */
+  readonly aArt: Weitergabe["art"] | "";
+  readonly aPreis: readonly string[];
+  /** Was `aufweitungenAusBaum(A)` melden muss — Weiterreichung ist KEINE Aufweitung. */
+  readonly aAufweitungen: readonly string[];
+  /** Was `aufweitungenAusBaum(B)` melden muss, und an welcher Bühne. */
+  readonly bFund: readonly string[];
+  readonly bBuehne: string;
+}
+
+function modulfaelle(): Modulfall[] {
+  const faelle: Modulfall[] = [];
+  for (const b of BUEHNEN) {
+    const pfad = importPfad(b);
+    /** A als reiner Re-Exporteur: eine `ExportDeclaration` MIT Modulspezifizierer, sonst nichts. */
+    const aReExport = `export type { ${b.seitentyp}, ${b.standtyp} } from "${pfad}";\n`;
+    /**
+     * Der Rumpf von B — Zeichen für Zeichen derselbe in R2 und R3. Nur die Importzeile darüber
+     * unterscheidet sich, und genau das ist die Aussage: ohne den Gegenpol hiesse R2 bloss „der
+     * Testkörper sagt nichts" (dieselbe Begründung wie bei G2).
+     */
+    const rumpf = `declare function seite(): ${b.seitentyp};\ninterface KZieh extends ${b.seitentyp} { ${UNGEDECKT}: ${ZIEHEN} }\nasync function probe(): Promise<void> { await (seite() as unknown as KZieh).${UNGEDECKT}.starten("a", "b"); }`;
+    const ausA = `import type { ${b.seitentyp} } from "./${KAL_A_NAME}";\n`;
+    const ausBuehne = `import type { ${b.seitentyp} } from "${pfad}";\n`;
+
+    // R1 — DIE ASYMMETRIE, ZUM ERSTEN MAL FESTGEHALTEN. A re-exportiert nur; `buehnenVon` zählt ihn
+    // trotzdem in die Verbrauchermenge (und damit in die Zahl, die V3 festnagelt), `bindungenVon`
+    // liefert aber LEERE Mengen — A ist strukturell unprüfbar. Bisher stand das nur im Code.
+    faelle.push({
+      name: `${b.kurz} · R1: der echte Re-Export über die Modulgrenze — Helfer zweiter Hand, aber ohne jede Bindung`,
+      a: aReExport,
+      b: `${ausA}export const nichtsR1: ${b.seitentyp} | null = null;\n`,
+      aBuehnen: [b.kurz],
+      aBindungen: 0,
+      aHelferBuehne: b.kurz,
+      aArt: "re-export",
+      aPreis: [],
+      aAufweitungen: [],
+      bFund: [],
+      bBuehne: "",
+    });
+
+    // R2 — DIE GRENZE, an einem echten Modulpaar statt am erfundenen Spezifizierer aus G2.
+    faelle.push({
+      name: `${b.kurz} · R2: der Verbraucher zweiter Hand weitet auf — und wird NICHT gesehen (die Grenze)`,
+      a: aReExport,
+      b: `${ausA}${rumpf}`,
+      aBuehnen: [b.kurz],
+      aBindungen: 0,
+      aHelferBuehne: b.kurz,
+      aArt: "re-export",
+      aPreis: [],
+      aAufweitungen: [],
+      bFund: [],
+      bBuehne: "",
+    });
+
+    // R3 — DER GEGENPOL: derselbe Rumpf, nur direkt an der Bühne. Er MUSS melden.
+    faelle.push({
+      name: `${b.kurz} · R3: Gegenpol zu R2 — derselbe Rumpf, nur direkt an der Bühne, meldet`,
+      a: aReExport,
+      b: `${ausBuehne}${rumpf}`,
+      aBuehnen: [b.kurz],
+      aBindungen: 0,
+      aHelferBuehne: b.kurz,
+      aArt: "re-export",
+      aPreis: [],
+      aAufweitungen: [],
+      bFund: [UNGEDECKT],
+      bBuehne: b.kurz,
+    });
+
+    // R4 — DIE BAUFORM VON `schmal-buehne.ts`, synthetisch: A holt aus der Bühne nur einen Baustein
+    // und deklariert ein EIGENES `Seite`. Beide Aussagen stehen in EINEM Fall: A ist ein Helfer
+    // zweiter Hand MIT Preis, erzeugt aber keine Aufweitung — sein `Seite` ist nicht aus der Bühne
+    // abgeleitet, also hat V1 dort zu Recht nichts zu melden.
+    faelle.push({
+      name: `${b.kurz} · R4: die Neudeklaration (Bauform von \`schmal-buehne.ts\`) — Preis ja, Aufweitung nein`,
+      a: `import { fn } from "${pfad}";\nexport interface ${b.seitentyp} { ${UNGEDECKT}: ${ZIEHEN} }\nexport const nutzR4 = fn;\n`,
+      b: `${ausA}export const nichtsR4: ${b.seitentyp} | null = null;\n`,
+      aBuehnen: [b.kurz],
+      aBindungen: 0,
+      aHelferBuehne: b.kurz,
+      aArt: "neudeklaration",
+      aPreis: [UNGEDECKT],
+      aAufweitungen: [],
+      bFund: [],
+      bBuehne: "",
+    });
+
+    // R5 — DAS GEGENSTÜCK, DAS NICHT ANSCHLAGEN DARF: A holt aus der Bühne nur `fn` und reicht keine
+    // Typisierung weiter. Ohne diesen Fall hiesse „Helfer zweiter Hand" bloss „importiert eine Bühne".
+    faelle.push({
+      name: `${b.kurz} · R5: Gegenstück — A holt nur \`fn\` und reicht nichts weiter, also kein Helfer`,
+      a: `import { fn } from "${pfad}";\nexport const nutzR5 = fn;\n`,
+      b: `import { nutzR5 } from "./${KAL_A_NAME}";\nexport const wiederR5 = nutzR5;\n`,
+      aBuehnen: [b.kurz],
+      aBindungen: 0,
+      aHelferBuehne: "",
+      aArt: "",
+      aPreis: [],
+      aAufweitungen: [],
+      bFund: [],
+      bBuehne: "",
+    });
+
+    // R6 — DERSELBE WORTLAUT ALS KOMMENTAR. Kommentare kommen im AST nicht vor; der Erheber darf sie
+    // also nicht sehen (Lehre JOB 3489, und JOB 3931: „glaubt dem Rohtext und dem blossen Namen").
+    faelle.push({
+      name: `${b.kurz} · R6: Gegenstück — der Re-Export und die Neudeklaration als KOMMENTAR`,
+      a: `import { fn } from "${pfad}";\n// export type { ${b.seitentyp} } from "${pfad}";\n// export interface ${b.seitentyp} { ${UNGEDECKT}: ${ZIEHEN} }\nexport const nutzR6 = fn;\n`,
+      b: `import { nutzR6 } from "./${KAL_A_NAME}";\nexport const wiederR6 = nutzR6;\n`,
+      aBuehnen: [b.kurz],
+      aBindungen: 0,
+      aHelferBuehne: "",
+      aArt: "",
+      aPreis: [],
+      aAufweitungen: [],
+      bFund: [],
+      bBuehne: "",
+    });
+
+    // ---- R7–R9: DIESELBE NEUDEKLARATION IN DREI ANDEREN SCHREIBWEISEN (Runde 2) -----------------
+    //
+    // Das sind die NEUN GEGENPROBEN des Prüfers, drei je Bühne, dauerhaft in den Lauf gestellt. Alle
+    // drei sind für TypeScript dasselbe wie R4 — und alle drei kamen in Runde 1 durch: R7 und R8
+    // fielen ganz aus der Helfermenge (`mitgliederVon` gab `undefined`), R9 blieb sichtbar, wurde
+    // aber mit dem Preis NULL gemessen, weil `n.members` leer ist und das Feld nebenan stand.
+    // Derselbe Typ muss denselben Preis liefern; sonst hängt der Wächter wieder an der Schreibweise.
+    const nutz = (nr: string): string => `export const nutz${nr} = fn;\n`;
+    const holeFn = `import { fn } from "${pfad}";\n`;
+    const bNimmtSeite = (nr: string): string =>
+      `import type { ${b.seitentyp} } from "./${KAL_A_NAME}";\nexport const nichts${nr}: ${b.seitentyp} | null = null;\n`;
+
+    faelle.push({
+      name: `${b.kurz} · R7: Neudeklaration über einen LOKALEN ALIAS — derselbe Preis wie R4`,
+      a: `${holeFn}type EigenR7 = { ${UNGEDECKT}: ${ZIEHEN} };\nexport type ${b.seitentyp} = EigenR7;\n${nutz("R7")}`,
+      b: bNimmtSeite("R7"),
+      aBuehnen: [b.kurz],
+      aBindungen: 0,
+      aHelferBuehne: b.kurz,
+      aArt: "neudeklaration",
+      aPreis: [UNGEDECKT],
+      aAufweitungen: [],
+      bFund: [],
+      bBuehne: "",
+    });
+
+    // R8 — die SCHNITTMENGE. Sie sagt zwei Dinge in einem Fall: das ungedeckte Feld wird gefunden,
+    // UND der andere Teil (`route`, das jede der drei Bühnen selbst führt) wird aufgelöst und
+    // richtigerweise NICHT als Preis gezählt. Ein Auflöser, der die Schnittmenge nur überspringt,
+    // wäre hier grün und in der ersten Hälfte trotzdem blind.
+    faelle.push({
+      name: `${b.kurz} · R8: Neudeklaration als SCHNITTMENGE — der Preis ist das ungedeckte Feld, nicht \`route\``,
+      a: `${holeFn}interface TeilR8 { route(url: string): Promise<void> }\nexport type ${b.seitentyp} = TeilR8 & { ${UNGEDECKT}: ${ZIEHEN} };\n${nutz("R8")}`,
+      b: bNimmtSeite("R8"),
+      aBuehnen: [b.kurz],
+      aBindungen: 0,
+      aHelferBuehne: b.kurz,
+      aArt: "neudeklaration",
+      aPreis: [UNGEDECKT],
+      aAufweitungen: [],
+      bFund: [],
+      bBuehne: "",
+    });
+
+    faelle.push({
+      name: `${b.kurz} · R9: Neudeklaration über LOKALE VERERBUNG — ein leeres \`{}\` ist kein Preis von null`,
+      a: `${holeFn}interface EigenR9 { ${UNGEDECKT}: ${ZIEHEN} }\nexport interface ${b.seitentyp} extends EigenR9 {}\n${nutz("R9")}`,
+      b: bNimmtSeite("R9"),
+      aBuehnen: [b.kurz],
+      aBindungen: 0,
+      aHelferBuehne: b.kurz,
+      aArt: "neudeklaration",
+      aPreis: [UNGEDECKT],
+      aAufweitungen: [],
+      bFund: [],
+      bBuehne: "",
+    });
+
+    // R10 — DER NICHT AUFLÖSBARE EIGENE SEITENTYP (BEN, Prüfpunkt 6). `Fremd` kommt aus einem anderen
+    // Modul; dieser Wächter kann nicht sagen, was dahintersteckt. Er darf dann nicht schweigen und
+    // auch nicht „keine Felder" behaupten, sondern meldet den Helfer MIT dem Vermerk. Fail-closed,
+    // dieselbe Doktrin wie `NICHT_AUFLOESBAR` bei den Unterfeldern.
+    faelle.push({
+      name: `${b.kurz} · R10: der eigene Seitentyp ist NICHT AUFLÖSBAR — er meldet unbekannt statt zu verschwinden`,
+      a: `${holeFn}import type { Fremd } from "./<ein-fremdes-modul>";\nexport type ${b.seitentyp} = Fremd;\n${nutz("R10")}`,
+      b: bNimmtSeite("R10"),
+      aBuehnen: [b.kurz],
+      aBindungen: 0,
+      aHelferBuehne: b.kurz,
+      aArt: "neudeklaration",
+      aPreis: [nichtAufloesbar("Fremd")],
+      aAufweitungen: [],
+      bFund: [],
+      bBuehne: "",
+    });
+  }
+  return faelle;
+}
+
+const MODULFAELLE = modulfaelle();
+
+function quelle(pfad: string, text: string): ts.SourceFile {
+  return ts.createSourceFile(
+    pfad,
+    text,
+    ts.ScriptTarget.Latest,
+    /* setParentNodes */ true,
+    ts.ScriptKind.TS,
+  );
 }
 
 describe("JOB 3609 · die Seiten-Typisierung wohnt in der Vorrichtung — an JEDER der drei Bühnen", () => {
@@ -1656,6 +2630,11 @@ describe("JOB 3609 · die Seiten-Typisierung wohnt in der Vorrichtung — an JED
     // Seit Runde 3 SECHZEHN je Bühne: die elf von Runde 2 plus die fünf Fälle zu den drei Grenzen,
     // die BEN benannt hat (lange rückwärts deklarierte Kette, Ringschluss, Verbraucher aus dritter
     // Hand samt Gegenpol und dem Helfer, der die Bühne selbst importiert).
+    // JOB 3947 HAT DIESE ZAHL NACHGERECHNET UND NICHT ANGERÜHRT: seine vier Modulfälle (R1–R4) und
+    // ihre zwei Gegenstücke brauchen ZWEI Quellen und stehen deshalb in einer eigenen Liste
+    // (`MODULFAELLE`), mit eigener festgenagelter Zahl in V13. Hier kam kein Fall dazu; G3 wurde nur
+    // umbenannt, und sein Namensbestandteil „Helfer selbst importiert" steht unverändert unten in der
+    // Formenliste — die Umbenennung darf diese Prüfung nicht ins Leere laufen lassen.
     const JE_BUEHNE = 16;
     expect(KALIBRIERFAELLE.length).toBe(BUEHNEN.length * JE_BUEHNE + 5);
     // Und die Balance: eine Kalibrierung, in der je Bühne nur noch Gegenstücke stünden, prüfte bloß
@@ -1785,5 +2764,203 @@ describe("JOB 3609 · die Seiten-Typisierung wohnt in der Vorrichtung — an JED
       rueckfall,
       `Für diese Bühnen gibt es keinen Altbestand mehr: ${ABGERAEUMT.join(", ")}`,
     ).toEqual([]);
+  });
+
+  it("V11 · der Preis der Grenze ist GEZÄHLT, nicht behauptet — jeder Helfer zweiter Hand steht im Register", () => {
+    // Dieselbe Doktrin wie V2 beim `ALTBESTAND`, nur für die andere Sache: nicht die Aufweitung, die
+    // eine Datei sich selbst nachreicht, sondern die Typisierung, die sie über eine MODULGRENZE
+    // abgibt. In beide Richtungen rot — sonst verwaltet auch dieses Register irgendwann Gespenster.
+    const helfer = gemesseneHelfer();
+    for (const datei of helfer) {
+      console.info(`JOB 3947 · V11 Grenze: ${grenzZeile(grenzBefund(datei))}`);
+    }
+    if (helfer.length === 0) {
+      // Kein stiller Erfolg: die Aussage „die Grenze kostet heute nichts" wird ausgesprochen.
+      console.info(
+        "JOB 3947 · V11: kein Helfer zweiter Hand im Baum gemessen — die Grenze kostet heute nichts.",
+      );
+    }
+    const meldungen = grenzMeldungen(
+      new Map(helfer.map((datei) => [datei, grenzBefund(datei)])),
+      GRENZFAELLE,
+    );
+    expect(
+      meldungen,
+      "Die Grenze zum Verbraucher zweiter Hand bleibt — aber ihr Preis gehört gezählt und nicht " +
+        "verschwiegen (BEN zu JOB 3819 R2, Prüfpunkt 6)",
+    ).toEqual([]);
+  });
+
+  it("V12 · die Verbraucher zweiter Hand werden BENANNT — aufgezählt, nicht verboten", () => {
+    // Die Grenze bleibt (R2 misst das nach). Was sich ändert, ist die Sichtbarkeit: wer die Seite
+    // aus zweiter Hand bezieht, steht mit Namen im Torprotokoll. Und eine Registerzeile, an der
+    // niemand mehr hängt, ist genauso ein Gespenst wie eine ohne Messung.
+    const meldungen: string[] = [];
+    for (const [datei, eintrag] of GRENZFAELLE) {
+      const bezieher = verbraucherZweiterHand(datei);
+      console.info(
+        `JOB 3947 · V12 zweite Hand: \`${datei}\` [${eintrag.buehne}, ${eintrag.art}] · ` +
+          `Preis: ${preisText(eintrag.felder)} · Bezieher: ${bezieher.join(", ") || "(niemand)"}`,
+      );
+      if (bezieher.length === 0) {
+        meldungen.push(
+          `${datei}: reicht an niemanden weiter — der Helfer hat keinen Verbraucher zweiter Hand mehr, die Registerzeile gehört gelöscht`,
+        );
+      }
+      for (const pflicht of eintrag.verbraucher) {
+        if (!bezieher.includes(pflicht)) {
+          meldungen.push(
+            `${datei}: „${pflicht}" bezieht die Seite nicht mehr aus diesem Helfer — die festgenagelte Untergrenze der Zeile stimmt nicht mehr`,
+          );
+        }
+      }
+    }
+    expect(
+      meldungen,
+      "Jede Zeile in `GRENZFAELLE` muss einen Bezieher haben — sonst reicht der Helfer ins Leere",
+    ).toEqual([]);
+  });
+
+  it("V13 · kalibriert über die MODULGRENZE: zwei Quellen statt einer (R1–R10)", () => {
+    const rest: string[] = [];
+    const gleich = (ist: readonly string[], soll: readonly string[]): boolean =>
+      [...ist].sort().join("|") === [...soll].sort().join("|");
+    for (const fall of MODULFAELLE) {
+      const a = quelle(KAL_A, fall.a);
+      const b = quelle(KAL_B, fall.b);
+
+      // (1) A steht in der Verbrauchermenge — auch als REINER Re-Exporteur (`buehnenVon` zählt die
+      //     `ExportDeclaration` mit), …
+      const aBuehnen = buehnenVon(a).map((x) => x.kurz);
+      if (!gleich(aBuehnen, fall.aBuehnen)) {
+        rest.push(
+          `${fall.name}: A gehört zu [${aBuehnen.join(", ")}], erwartet [${fall.aBuehnen.join(", ")}]`,
+        );
+      }
+      // (2) … trägt aber keine Bindung bei: `bindungenVon` steigt bei allem aus, was kein Import ist.
+      //     Genau diese Asymmetrie war bisher nirgends gemessen.
+      const bindungen = bindungenVon(a);
+      const zahl = bindungen.seiten.size + bindungen.staende.size;
+      if (zahl !== fall.aBindungen) {
+        rest.push(
+          `${fall.name}: \`bindungenVon(A)\` liefert ${zahl} Bindungen, erwartet ${fall.aBindungen}`,
+        );
+      }
+      // (3) Der Erheber der Helfer zweiter Hand — Bauform, Bühne und PREIS.
+      const weiter = weitergabenAusBaum(a, KAL_A);
+      const helferBuehnen = [...new Set(weiter.map((w) => w.buehne))];
+      const erwarteteBuehnen = fall.aHelferBuehne === "" ? [] : [fall.aHelferBuehne];
+      if (!gleich(helferBuehnen, erwarteteBuehnen)) {
+        rest.push(
+          `${fall.name}: A gilt als Helfer zweiter Hand von [${helferBuehnen.join(", ")}], erwartet [${erwarteteBuehnen.join(", ")}]`,
+        );
+      }
+      const preis = weiter.flatMap((w) => w.fehlt);
+      if (!gleich(preis, fall.aPreis)) {
+        rest.push(
+          `${fall.name}: A reicht [${preis.join(", ")}] weiter, erwartet [${fall.aPreis.join(", ")}]`,
+        );
+      }
+      const arten = [...new Set(weiter.map((w) => w.art))];
+      const erwarteteArten = fall.aArt === "" ? [] : [fall.aArt];
+      if (!gleich(arten, erwarteteArten)) {
+        rest.push(
+          `${fall.name}: A wird als [${arten.join(", ")}] gemeldet, erwartet [${erwarteteArten.join(", ")}]`,
+        );
+      }
+      // (3b) UND DER BEFUND KOMMT AUCH BEI V11 AN. Ein Erheber, der misst, und ein Register, das
+      //      nichts davon erfährt, wären zwei Wächter, die einander decken — genau die Lage, in der
+      //      Runde 1 grün war, obwohl drei Schreibweisen durchfielen. Deshalb läuft hier DIESELBE
+      //      Funktion, die V11 fährt: einmal mit LEEREM Register (muss rot werden und Datei, Preis
+      //      und den Weg zur Abhilfe nennen) und einmal mit der passenden Zeile (muss schweigen).
+      if (fall.aHelferBuehne !== "" && fall.aArt !== "") {
+        const bef = befundAus(KAL_A, weiter, [KAL_B]);
+        const ohneZeile = grenzMeldungen(new Map([[KAL_A, bef]]), new Map());
+        if (!ohneZeile.some((m) => m.includes(KAL_A) && m.includes("nicht registriert"))) {
+          rest.push(
+            `${fall.name}: ein neuer Helfer zweiter Hand ohne Registerzeile macht V11 NICHT rot — gemeldet wurde [${ohneZeile.join(" | ")}]`,
+          );
+        }
+        for (const feld of fall.aPreis) {
+          if (!ohneZeile.some((m) => m.includes(feld))) {
+            rest.push(
+              `${fall.name}: die V11-Meldung nennt „${feld}" nicht — eine Zahl ohne Feld ist keine Meldung`,
+            );
+          }
+        }
+        const mitZeile = grenzMeldungen(
+          new Map([[KAL_A, bef]]),
+          new Map([
+            [
+              KAL_A,
+              {
+                buehne: fall.aHelferBuehne,
+                art: fall.aArt,
+                felder: fall.aPreis,
+                verbraucher: [KAL_B],
+                grund: "Kalibrierung: die Zeile, die zu diesem Befund gehört.",
+              },
+            ],
+          ]),
+        );
+        if (mitZeile.length > 0) {
+          rest.push(
+            `${fall.name}: die passende Registerzeile beruhigt V11 nicht — [${mitZeile.join(" | ")}]`,
+          );
+        }
+      }
+      // (4) Weiterreichung ist KEINE Aufweitung — sonst zählte dieselbe Sache in beiden Registern.
+      const aAuf = aufweitungenAusBaum(a, KAL_A).flatMap((x) => x.fehlt);
+      if (!gleich(aAuf, fall.aAufweitungen)) {
+        rest.push(
+          `${fall.name}: A meldet die Aufweitungen [${aAuf.join(", ")}], erwartet [${fall.aAufweitungen.join(", ")}]`,
+        );
+      }
+      // (5) B, der Verbraucher: die Grenze. Er wird von V1 nicht gesehen, wenn er aus A bezieht —
+      //     und sehr wohl, wenn er dieselbe Sache direkt an der Bühne schreibt (R3).
+      const bBefund = aufweitungenAusBaum(b, KAL_B);
+      const bFund = bBefund.flatMap((x) => x.fehlt);
+      if (!gleich(bFund, fall.bFund)) {
+        rest.push(
+          `${fall.name}: B meldet [${bFund.join(", ")}], erwartet [${fall.bFund.join(", ")}]`,
+        );
+      }
+      for (const x of bBefund) {
+        if (x.buehne !== fall.bBuehne) {
+          rest.push(`${fall.name}: B meldet Bühne „${x.buehne}", erwartet „${fall.bBuehne}"`);
+        }
+      }
+      // (6) UND DIE GRENZE BLEIBT EINE GRENZE: B ist NIE ein Helfer zweiter Hand. Wer den Erheber so
+      //     verstellt, dass er Re-Exporte weiterverfolgt und den Verbraucher einsammelt, wird hier rot.
+      const bWeiter = weitergabenAusBaum(b, KAL_B);
+      if (bWeiter.length > 0) {
+        rest.push(
+          `${fall.name}: B wurde als Helfer zweiter Hand eingesammelt (${bWeiter.map((w) => w.name).join(", ")}) — die Grenze ist heimlich geschlossen worden`,
+        );
+      }
+    }
+    expect(
+      rest,
+      "Der Modulübergang lässt sich nur an ZWEI Quellen messen: der echte Re-Export trägt keine " +
+        "Bindung (R1), die Grenze hält (R2), ihr Gegenpol meldet (R3), und die Neudeklaration hat " +
+        "einen Preis, aber keine Aufweitung (R4) — in JEDER Schreibweise: Alias (R7), Schnittmenge " +
+        "(R8), lokale Vererbung (R9) und, wenn sich nichts auflösen lässt, ausdrücklich unbekannt (R10)",
+    ).toEqual([]);
+    // Die Fallzahl wird MITGEFÜHRT, nicht stehen gelassen: ZEHN je Bühne, und sie setzt sich so
+    // zusammen — vier Fälle mit Aussage aus Runde 1 (R1 Asymmetrie, R2 Grenze, R3 Gegenpol,
+    // R4 Neudeklaration), zwei Gegenstücke ohne Aussage (R5 `fn` allein, R6 derselbe Wortlaut als
+    // Kommentar) und vier aus Runde 2 (R7 lokaler Alias, R8 Schnittmenge, R9 lokale Vererbung,
+    // R10 nicht auflösbar). R7–R9 sind die neun Gegenproben des Prüfers, drei je Bühne. Sie stehen
+    // in EINER eigenen Liste, deshalb rührt sich `JE_BUEHNE` in V6 nicht.
+    const JE_BUEHNE_MODUL = 10;
+    expect(MODULFAELLE.length).toBe(BUEHNEN.length * JE_BUEHNE_MODUL);
+    for (const b of BUEHNEN) {
+      for (const form of ["R1:", "R2:", "R3:", "R4:", "R5:", "R6:", "R7:", "R8:", "R9:", "R10:"]) {
+        expect(
+          MODULFAELLE.some((f) => f.name.startsWith(`${b.kurz} · ${form}`)),
+          `Bühne ${b.kurz}: der Modulfall „${form}" fehlt`,
+        ).toBe(true);
+      }
+    }
   });
 });
