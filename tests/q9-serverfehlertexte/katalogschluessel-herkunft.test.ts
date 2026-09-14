@@ -2,14 +2,16 @@
 // JOB 3612 · Q9-KATALOGSPRACHE — WOHER JEDER SCHLÜSSEL KOMMT UND WELCHER DAVON GEMESSEN WIRD.
 // ================================================================================================
 //
-// WOZU DIESE DATEI NEBEN `katalog.test.ts` STEHT. S1 dort verlangt von jedem der 28 Schlüssel drei
+// WOZU DIESE DATEI NEBEN `katalog.test.ts` STEHT. S1 dort verlangt von jedem der 29 Schlüssel drei
 // verschiedene Sprachfassungen. Damit ist die Lücke GESCHLOSSEN — hier wird sie BENANNT: welcher
 // Schlüssel kommt überhaupt woher, und welcher wird heute über eine echte Route gemessen? Ohne
-// diese Antwort bleibt „ist übersetzt" eine Zusage ohne Umfang, und niemand sieht, dass 15 von 28
+// diese Antwort bleibt „ist übersetzt" eine Zusage ohne Umfang, und niemand sieht, dass 15 von 29
 // Schlüsseln nie einen englischen oder niederländischen Satz an einem echten Draht zeigen.
 // (JOB 3612: 19 von 28. JOB 3785 hat den SSO-Weg gemessen — drei neue Fälle in
 // `sso-sprachfaelle.test.ts` — und eine falsche Auskunft berichtigt: `OIDC_UNREACHABLE` war nie
-// ungemessen, der Wächter konnte die Form nur nicht lesen, siehe K5.)
+// ungemessen, der Wächter konnte die Form nur nicht lesen, siehe K5. JOB 3792 hat den 29. Schlüssel
+// gebracht — `PERMISSION_MISSING`, der einzige mit einer Einsetzstelle — und ihn am Tag seiner
+// Einführung gemessen, siehe `AUS_DEM_RECHTETOR` und `GEMESSEN_VON`.)
 //
 // Codex hat die drei auffälligsten selbst genannt — `OIDC_STATE_INVALID`, `ALREADY_SETUP`,
 // `UNKNOWN_ROLE` (`archiv/3449/runde-2/ben.md`, HINWEIS 2). Die Listen unten sind NACHGEMESSEN,
@@ -692,6 +694,22 @@ const AUS_DER_ROUTE = [
 const NUR_UEBER_EINE_VARIABLE = ["OIDC_UNREACHABLE"];
 
 /**
+ * JOB 3792 · Die Schlüssel, die NICHT aus `services/auth/src` gesendet werden, sondern aus dem
+ * App-Modul. `PERMISSION_MISSING` steht in `services/app/src/http.ts:200` — dem Rechtetor, das vor
+ * jeder rechtegeschützten Route liegt. H2 und H3 sehen die Stelle nicht: beide suchen ausschliesslich
+ * unter `services/auth/src` (`authQuellen`), und das bleibt so — dort liegen die Wurfstellen des
+ * Dienstes, um die es H2/H3 geht.
+ *
+ * WAS DAS ALS PRÜFLÜCKE HEISST, benannt statt verschwiegen: H5 kann für diesen Schlüssel nicht
+ * bürgen. Ein Tippfehler in `meldung("PERMISSION_MISSNG", …)` fiele diesem Wächter nicht auf,
+ * sondern erst dem Draht — und dort tut er es: `tests/q9-rechtefehler/rechtetor-sprachfaelle.test.ts`
+ * hält den Satz in allen drei Sprachen gegen eine echte 403-Antwort, ein Rückfall auf
+ * „Unerwarteter Fehler." macht Q1 bis Q4 rot. Die Liste hier hält die Deckung von H3.2 vollständig
+ * (kein toter Schlüssel), ohne so zu tun, als sei die Stelle abgetastet worden.
+ */
+const AUS_DEM_RECHTETOR = ["PERMISSION_MISSING"];
+
+/**
  * Was sich zwischen gepinnter und gemessener Liste verschoben hat — namentlich. Ohne diesen Satz
  * meldet Vitest nur `expected [ 'ACCOUNT_NOT_FOUND', …(11) ] to deeply equal [ … ]`, und der
  * Mensch, der die Liste nachführen soll, muss selbst suchen, welcher Schlüssel gewandert ist.
@@ -734,11 +752,13 @@ Verschoben hat sich: ${verschiebung(gemessen, AUS_DER_ROUTE)}`,
   ).toEqual([...AUS_DER_ROUTE].sort());
 });
 
-it("H3.2 Wurf, Route und der eine Sonderweg decken zusammen den ganzen Katalog", () => {
+it("H3.2 Wurf, Route und die beiden Sonderwege decken zusammen den ganzen Katalog", () => {
   // Zwei Aussagen in einer: kein Katalogschlüssel ist tot (niemand sendet ihn mehr), und keine
   // Quelle ist übersehen. Ohne sie könnte H2 oder H3 beliebig schrumpfen, solange nur die Pins
   // mitschrumpfen.
-  const gedeckt = [...new Set([...GEWORFEN, ...AUS_DER_ROUTE, ...NUR_UEBER_EINE_VARIABLE])].sort();
+  const gedeckt = [
+    ...new Set([...GEWORFEN, ...AUS_DER_ROUTE, ...NUR_UEBER_EINE_VARIABLE, ...AUS_DEM_RECHTETOR]),
+  ].sort();
   expect(
     gedeckt,
     `Jeder Schlüssel im Katalog braucht eine Stelle, die ihn sendet — sonst steht dort ein Text,
@@ -1354,8 +1374,12 @@ function routenfall(schluessel: string, sprache: Fremdsprache): string[] {
 }
 
 /**
- * DIE LISTE. 15 von 28 Schlüsseln zeigen heute nirgends einen englischen oder niederländischen Satz
+ * DIE LISTE. 15 von 29 Schlüsseln zeigen heute nirgends einen englischen oder niederländischen Satz
  * an einem echten Draht. Gemessen, nicht abgeschrieben.
+ *
+ * JOB 3792: der Katalog ist um `PERMISSION_MISSING` gewachsen, diese Liste NICHT — der neue
+ * Schlüssel bringt seine Messung mit (s. `GEMESSEN_VON`). Verschoben hat sich sonst nichts; die
+ * fünfzehn Namen sind dieselben wie nach JOB 3785.
  *
  * „OHNE ROUTENFALL" HEISST SEIT JOB 3785 GENAU: kein aktiver Prüffall einer Datei, die die App über
  * `app.inject(` fährt, hält den EN- oder NL-Satz dieses Schlüssels gegen eine echte Antwort —
@@ -1443,6 +1467,18 @@ const GEMESSEN_VON = {
   // deshalb sah der Wächter es bis K5 nicht.
   OIDC_UNREACHABLE: [
     "tests/q9-oidc-literalquelle/jeder-fehler-traegt-einen-katalogschluessel.test.ts · E.1 der echte Callback liefert in %s den OIDC_UNREACHABLE-Satz, nicht INTERNAL",
+  ],
+  // JOB 3792 · der 29. Schlüssel, gemessen am Tag seiner Einführung. Vier Fälle, weil zwei
+  // verschiedene RECHTE an zwei verschiedenen Routen gemessen werden (`users.manage` am
+  // Verwaltungstor, `ko.create` am Entwurfstor): ein einziges Recht liesse einen Katalogsatz
+  // durchgehen, der den Rechtenamen fest eingebacken hat statt ihn einzusetzen. Gesehen werden die
+  // vier über den KATALOGZUGANG (K5) — sie holen den Satz aus `MELDUNGEN.PERMISSION_MISSING.<en|nl>`
+  // und setzen den Rechtenamen selbst ein, statt den Satz samt `%s` abzuschreiben.
+  PERMISSION_MISSING: [
+    "tests/q9-rechtefehler/rechtetor-sprachfaelle.test.ts · Q1 EN · 403 FORBIDDEN mit englischem Satz und dem fehlenden Recht",
+    "tests/q9-rechtefehler/rechtetor-sprachfaelle.test.ts · Q2 NL · 403 FORBIDDEN mit niederländischem Satz und dem fehlenden Recht",
+    "tests/q9-rechtefehler/rechtetor-sprachfaelle.test.ts · Q4 EN · dasselbe Tor an einer anderen Route nennt ko.create",
+    "tests/q9-rechtefehler/rechtetor-sprachfaelle.test.ts · Q4b NL · dasselbe Tor an einer anderen Route nennt ko.create",
   ],
   RESET_RATE_LIMITED: [
     "tests/q9-serverfehlertexte/server.test.ts · R5b Zurücksetzen 429 EN: eigener Zähler",

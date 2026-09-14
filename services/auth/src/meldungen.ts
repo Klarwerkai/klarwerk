@@ -91,6 +91,20 @@ export const MELDUNGEN = {
     en: "Administrator access is required.",
     nl: "Beheerdersrechten zijn vereist.",
   },
+  // JOB 3792: der Nachbar von ADMIN_REQUIRED und ausdrücklich nicht dasselbe. „Adminrecht
+  // erforderlich" nennt EINE Rolle; hier fehlt ein bestimmtes Recht, und welches, ist die einzige
+  // Auskunft darüber, was dem Konto fehlt — sie bleibt deshalb im Satz. Der Rechtename wird in
+  // KEINER Sprache übersetzt: `ko.create` ist eine Kennung des Systems, kein Wort.
+  //
+  // DER EINZIGE EINTRAG MIT EINER EINSETZSTELLE. `%s` nimmt den Rechtenamen auf, den
+  // `services/app/src/http.ts` mitgibt; ohne Wert bleibt `%s` sichtbar stehen (siehe `meldung()`).
+  // Der deutsche Wortlaut ist zeichengleich mit dem Literal, das bis JOB 3792 in `http.ts` stand —
+  // fünf Bestandstests pinnen ihn wörtlich, und `tests/q9-rechtefehler/` misst ihn am Draht.
+  PERMISSION_MISSING: {
+    de: "Recht fehlt: %s",
+    en: "Missing permission: %s",
+    nl: "Ontbrekend recht: %s",
+  },
   REGISTRATION_DISABLED: {
     de: "Registrierung nur per Einladung.",
     en: "Registration is by invitation only.",
@@ -155,10 +169,32 @@ export const MELDUNGEN = {
 
 export type Meldungsschluessel = keyof typeof MELDUNGEN;
 
-/** Unbekannte Schlüssel geben weder Diagnosen noch interne Kennungen nach außen. */
-export function meldung(schluessel: string, sprache?: string): string {
+/**
+ * Unbekannte Schlüssel geben weder Diagnosen noch interne Kennungen nach außen.
+ *
+ * JOB 3792 · DIE EINSETZSTELLE. `werte` füllt die `%s` des Satzes, von links nach rechts. Der
+ * Parameter ist OPTIONAL und die Signatur damit abwärtskompatibel: jeder heutige Aufruf liefert
+ * denselben Satz wie zuvor, und kein Bestandstext trägt ein `%s` (gemessen in
+ * `tests/q9-rechtefehler/rechtetor-sprachfaelle.test.ts` Q5e).
+ *
+ * VIER REGELN, jede einzeln gemessen (Q5a–Q5d):
+ *   · Ohne Werte bleibt `%s` STEHEN. Keine stille Leerung — ein Satz, dem der Wert fehlt, soll
+ *     auffallen und nicht so aussehen, als sei er vollständig.
+ *   · Überzählige Werte werden ignoriert; zu wenige lassen die restlichen `%s` stehen.
+ *   · Ersetzt wird von links nach rechts.
+ *   · Ein eingesetzter Wert wird NICHT erneut nach `%s` durchsucht. Das leistet `replace` mit
+ *     globalem Muster von selbst: es läuft über die VORLAGE, nicht über das Ergebnis. Und weil der
+ *     Ersatz aus einer FUNKTION kommt, ist `$&` im Wert ein Zeichen und kein Sonderzeichen.
+ */
+export function meldung(
+  schluessel: string,
+  sprache?: string,
+  werte: readonly string[] = [],
+): string {
   const key = Object.hasOwn(MELDUNGEN, schluessel)
     ? (schluessel as Meldungsschluessel)
     : "INTERNAL";
-  return MELDUNGEN[key][sprache === "en" || sprache === "nl" ? sprache : "de"];
+  const text = MELDUNGEN[key][sprache === "en" || sprache === "nl" ? sprache : "de"];
+  let naechster = 0;
+  return text.replace(/%s/g, (stelle) => werte[naechster++] ?? stelle);
 }

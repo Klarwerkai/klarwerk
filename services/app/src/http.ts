@@ -192,12 +192,18 @@ export function makeGuards(auth: AuthService): Guards {
       return undefined;
     }
     if (!can(user.role, permission)) {
-      // BEWUSST NOCH DEUTSCH: der Satz trägt einen dynamischen Rechtenamen, für den es im Katalog
-      // weder einen Schlüssel noch eine Einsetzstelle gibt; einen anzulegen hiesse
-      // `services/auth/src/meldungen.ts` anzufassen (JOB 3562). Zusätzlich pinnt
-      // `tests/app/i-834-ab-r1-r5-guardvertrag.test.ts:170` den Wortlaut. Die Stelle steht namentlich
-      // in der Ausnahmeliste von `tests/q9-fremde-flaechen/keine-deutschen-literale.test.ts`.
-      reply.code(403).send({ error: "FORBIDDEN", message: `Recht fehlt: ${permission}` });
+      // JOB 3792 (Q9): der Text aus dem Katalog, der Draht unverändert — Code `FORBIDDEN` und
+      // Status 403 bleiben buchstäblich stehen. Der Rechtename geht als Einsetzwert mit und wird
+      // NICHT übersetzt: er ist eine Kennung und zugleich die einzige Auskunft darüber, was dem
+      // Konto fehlt. Der deutsche Wortlaut ist zeichengleich mit dem früheren Literal — fünf
+      // Bestandstests pinnen ihn wörtlich (u. a. `tests/app/i-834-ab-r1-r5-guardvertrag.test.ts:170`),
+      // `tests/q9-rechtefehler/rechtetor-sprachfaelle.test.ts` misst ihn in allen drei Sprachen am
+      // Draht. Diese Stelle brauchte bis hierher eine Ausnahme in
+      // `tests/q9-fremde-flaechen/keine-deutschen-literale.test.ts`; sie ist damit abgeräumt.
+      reply.code(403).send({
+        error: "FORBIDDEN",
+        message: meldung("PERMISSION_MISSING", sprache(request), [permission]),
+      });
       return undefined;
     }
     return user;

@@ -82,11 +82,15 @@ const DATEIEN = ["services/app/src/http.ts", "services/rbac/src/guard.ts"] as co
 /**
  * BEWUSST STEHENGELASSEN — jede Zeile mit Grund, geprüft am Code.
  *
- * Auftrag §10.1: Für beide Sätze gibt es KEINEN passenden Katalogschlüssel. `MELDUNGEN`
- * (`services/auth/src/meldungen.ts`) kennt `ADMIN_REQUIRED`, aber nichts Allgemeines für „ein Recht
- * fehlt"; `http.ts` setzt zusätzlich einen dynamischen Wert in den Satz. Einen Schlüssel anzulegen
- * hiesse `meldungen.ts` anzufassen — die Datei gehört JOB 3562. Beide Stellen sind Folgezeile,
- * nicht „mit erledigt".
+ * JOB 3792 HAT DIE ZWEITE AUSNAHME ABGERÄUMT. `http.ts` trug den Satz `Recht fehlt: ${permission}`
+ * als Literal, weil der Katalog weder einen Schlüssel dafür noch eine Einsetzstelle für den
+ * dynamischen Rechtenamen kannte. Beides gibt es jetzt (`PERMISSION_MISSING`, `meldung(…, werte)`),
+ * das Literal ist weg, und mit ihm die Zeile, die es begründete. Der deutsche Wortlaut ist dabei
+ * zeichengleich geblieben (`tests/q9-rechtefehler/rechtetor-sprachfaelle.test.ts` Q3).
+ *
+ * Was bleibt, ist die EINE Stelle in `services/rbac/src/guard.ts`: „Keine Berechtigung." ist ein
+ * anderer Satz an einem anderen Wächter, für den es weiterhin keinen Schlüssel gibt. Sie ist
+ * Folgezeile, nicht „mit erledigt" — festgehalten, damit die Halbheit sichtbar bleibt.
  *
  * JEDE AUSNAHME DECKT GENAU EINE STELLE (Runde 2, Korrekturpflicht 1). Verschwindet das Literal,
  * ohne dass diese Zeile mitverschwindet, wird `beurteile` rot; kommt ein ZWEITES Vorkommen
@@ -108,14 +112,6 @@ const AUSNAHMEN: readonly Ausnahme[] = [
     grund:
       "403 FORBIDDEN. Kein Katalogschlüssel für „keine Berechtigung“ vorhanden; ein neuer Schlüssel " +
       "hiesse services/auth/src/meldungen.ts anfassen, und die Datei gehört JOB 3562 (Auftrag §10.1).",
-  },
-  {
-    datei: "services/app/src/http.ts",
-    literal: "`Recht fehlt: ${permission}`",
-    grund:
-      "403 FORBIDDEN mit dynamischem Rechtenamen im Satz — dafür gibt es im Katalog weder einen " +
-      "Schlüssel noch eine Einsetzstelle. Zusätzlich pinnt tests/app/i-834-ab-r1-r5-guardvertrag.test.ts:170 " +
-      'den Satz "Recht fehlt: users.manage" wörtlich (Auftrag §10.1).',
   },
 ];
 
@@ -351,13 +347,25 @@ describe("R6 · die Prüfmenge kann nicht lautlos auf null schrumpfen", () => {
     }
   });
 
-  it("die Ausnahmeliste hat genau zwei Einträge", () => {
-    expect(AUSNAHMEN).toHaveLength(2);
+  it("die Ausnahmeliste hat genau einen Eintrag", () => {
+    expect(AUSNAHMEN).toHaveLength(1);
   });
 
-  it("der Sammler findet überhaupt etwas — je Datei mindestens einen Fund", () => {
+  // JOB 3792: bis hierher stand hier „je Datei mindestens ein Fund". Seit das 403-Literal in
+  // `http.ts` aus dem Katalog kommt, hat diese Datei KEINEN Fund mehr — der Fall wäre für den
+  // Erfolg rot geworden. Die gepinnte Zahl je Datei sagt dasselbe schärfer: sie fällt auf, wenn eine
+  // Meldungsstelle dazukommt (auch eine, die eine Ausnahme deckt), und ebenso, wenn eine
+  // verschwindet. Dass der Sammler ÜBERHAUPT etwas findet, sichert die Kalibrierung an einem
+  // eigenen Baum (unten) — sie hängt nicht an der überwachten Fläche und kann nicht mitschrumpfen.
+  it("je überwachter Datei steht die Fundzahl fest — 1 in guard.ts, 0 in http.ts", () => {
+    const erwartet: Record<string, number> = {
+      "services/rbac/src/guard.ts": 1,
+      "services/app/src/http.ts": 0,
+    };
     for (const e of ERHEBUNG) {
-      expect(e.funde.length, e.datei).toBeGreaterThan(0);
+      expect(e.funde.length, `${e.datei} → ${e.funde.map(zeigeFund).join(" · ") || "nichts"}`).toBe(
+        erwartet[e.datei],
+      );
     }
   });
 
