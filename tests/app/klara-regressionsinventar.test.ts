@@ -432,6 +432,14 @@ const INVENTAR: readonly string[] = [
   "tests/app/word-addin-taskpane-cache.test.ts",
   "tests/app/word-addin-taskpane-version-contract.test.ts",
   "tests/app/word-addin.test.ts",
+  // JOB 4016 (Office-Web, Teil 1): die zwei neuen Dateien zu Word im Browser. Beide werden von der
+  // Achse `taskpane` gefunden — die eine misst die ausgelieferte Einbettungs-Erlaubnis des
+  // Taskpane-Pfads am Draht (Zeichengleichheit ueber die Abloesung nach `office-host.ts` hinweg,
+  // Fehlfreigaben, exakte Hostpruefung), die andere haelt Manifest und die zwei Sideload-
+  // Anleitungen aneinander. Sachlich Klara-Regression; K2 hat sie gemeldet, das Inventar nimmt sie
+  // nicht still auf.
+  "tests/office-web-anmeldung/einbettung-am-draht.test.ts",
+  "tests/office-web-anmeldung/manifest-passt-zur-anleitung.test.ts",
   "tests/ask/g27-klara-volltext.test.ts",
   // JOB 2694 D1: neu im Baum, von der Erhebung ueber die Achsen `komponente` und `taskpane`
   // gefunden — der Kopfkommentar der Datei nennt die zwei Nachbarflaechen (Klara-Panel, Word-

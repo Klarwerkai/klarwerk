@@ -1,5 +1,6 @@
 import fastifyHelmet from "@fastify/helmet";
 import type { FastifyInstance, FastifyRequest } from "fastify";
+import { WORD_ADDIN_FRAME_ANCESTORS } from "./office-host";
 
 // WP-KLARA-1b (bens Sicherheits-Befunde K1/K2): Security-Header als EXPORTIERTE Produktionsfunktion —
 // server.ts verdrahtet exakt diese Registrierung, und der Header-Matrix-Test (tests/app/
@@ -13,14 +14,11 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 // strikte globale CSP. Jede weitere Ausnahme muss hier BEWUSST eingetragen werden.
 export const WORD_ADDIN_CSP_PATHS: readonly string[] = ["/word-addin/taskpane.html"];
 
-// K2: frame-ancestors ENG und belegt. Microsofts Add-in-Doku („Domains used by Office web add-ins" /
-// CSP-Guidance für Add-ins, learn.microsoft.com) nennt als Web-Hosts der Office-Runtime office.com und
-// officeapps.live.com — Word Online lädt Taskpanes aus diesen Origins. BEWUSST NICHT dabei:
-// *.live.com und *.microsoft.com (ganze Plattformfamilien — jede beliebige Seite dieser Konzerne dürfte
-// die App framen; genau bens ROT-Befund). Word für Mac lädt das Taskpane als NATIVER WKWebView
-// top-level — frame-ancestors greift dort gar nicht (der Sideload-Smoke-Test belegt das separat);
-// Word Online wird erst behauptet, wenn es real belegt ist — fehlt ein Host, wird er nach Beleg
-// GEZIELT ergänzt, nicht vorsorglich breit freigegeben.
+// K2: die Einbettungs-Erlaubnis (`frame-ancestors`) steht seit JOB 4016 NICHT mehr hier. Sie ist
+// eine Kenntnis über Microsofts Office-Runtime und keine Eigenschaft dieser CSP-Konstante; ihr Ort
+// ist `office-host.ts` — dort stehen die belegten Hosts, ihre Herkunft, die bewusst NICHT
+// freigegebenen Plattformfamilien und die exakte Prüfung samt Gegenprobe. Diese Datei setzt nur
+// noch ein, was von dort kommt (`WORD_ADDIN_FRAME_ANCESTORS`).
 // Cookie-Hinweis (bens explizite Warnung): das Session-Cookie bleibt SameSite=Lax — NICHT auf None
 // ändern, um Word-Online-iframe-Sessions zu „reparieren"; das wäre eine eigene, bewusste
 // CSRF-Risiko-Entscheidung und ist NICHT Teil dieser Ausnahme.
@@ -33,7 +31,7 @@ export const WORD_ADDIN_CSP = [
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",
-  "frame-ancestors 'self' https://*.office.com https://*.officeapps.live.com",
+  WORD_ADDIN_FRAME_ANCESTORS,
 ].join("; ");
 
 // AUFTRAG-mega15 Block C (bens SB-3) — `upgrade-insecure-requests` NUR auf echten HTTPS-Antworten.

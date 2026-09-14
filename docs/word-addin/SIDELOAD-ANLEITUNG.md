@@ -11,6 +11,10 @@
 > nicht auf). Das Manifest ist bewusst OHNE Kommentar-Header vor `<OfficeApp>` — ein solcher Header
 > war vermutlich Mitursache, dass das Add-in zunächst nicht erschien.
 
+> **Word im Browser (Chrome)?** Dafür gilt eine eigene Anleitung: `SIDELOAD-CHROME.md` in diesem
+> Ordner — dieselbe Manifestdatei, anderer Weg, und mit einem Abschnitt darüber, was dort noch
+> nicht belegt ist.
+
 ## Voraussetzungen
 
 1. Word für Mac (Microsoft 365).

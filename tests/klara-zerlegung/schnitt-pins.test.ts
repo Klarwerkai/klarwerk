@@ -366,6 +366,21 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // Gegenteil. A2 hat sie gemeldet („neu im Baum, aber nicht gepinnt — Verzeichnis nachfuehren"),
   // das Verzeichnis nimmt sie nicht still auf.
   "tests/vorrichtung-sicherer-kontext/sicherer-kontext-der-buehnen.test.ts": "pfad",
+  // JOB 4016 (14.09.2026, Office-Web Teil 1): die zwei neuen Dateien zu Word im Browser. Beide
+  // greift der Griff `pfad`, und sie tun es aus verschiedenen Gründen:
+  //   · `einbettung-am-draht.test.ts` fordert `/word-addin/taskpane.html` wirklich an (echte
+  //     Fastify-Instanz, `inject`) und misst die ausgelieferte Einbettungs-Erlaubnis. Wandert der
+  //     Taskpane-Pfad bei einem Schnitt, misst sie eine Antwort, die niemand mehr ausliefert —
+  //     der Eintrag gehört also sachlich hierher.
+  //   · `manifest-passt-zur-anleitung.test.ts` nennt das Pfadliteral NUR in ihrem
+  //     Kalibrierungsfall C5 (eine erfundene Fremdadresse, an der die Domain-Erhebung geprüft
+  //     wird); sie greift `taskpane.html` nicht an. Der Eintrag steht trotzdem hier — aus dem
+  //     Grund, den der Griff `pfad` selbst ausschreibt: er ist bewusst textbreit. Die Prüfzeile
+  //     umzuschreiben, damit die Datei am Sensor vorbeikommt, wäre das Gegenteil davon.
+  // A2 hat beide gemeldet („neu im Baum, aber nicht gepinnt"), das Verzeichnis nimmt sie nicht
+  // still auf.
+  "tests/office-web-anmeldung/einbettung-am-draht.test.ts": "pfad",
+  "tests/office-web-anmeldung/manifest-passt-zur-anleitung.test.ts": "pfad",
 };
 
 // ------------------------------------------------------------------------------------------------
