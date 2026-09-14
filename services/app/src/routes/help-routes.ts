@@ -9,9 +9,24 @@ import type { Guards } from "../http";
 // Folgern/Kombinieren erlaubt — das Frontend kennzeichnet jede Antwort als „KI-generiert,
 // nicht zu 100 % geprüft". Ohne Modell greift ehrlich die strikte Zitierlogik des Fallbacks.
 // Es fließt nur Hilfe-Inhalt + die Nutzerfrage zum Modell — keine Wissensobjekte, keine Kundendaten.
+// Normalisiert wird hier, weil der Rumpf FREMDEINGABE aus dem Netz ist: Was als `locale` ankommt,
+// ist nicht der Client, dem wir vertrauen, sondern irgendein Wert — nur die Sprachen, für die ein
+// Prompt geschrieben ist, dürfen weiter (`normalizeLocale`).
 
+// JOB 3980 — NIEDERLÄNDISCH KOMMT AN. Hier stand `value === "en" ? "en" : "de"`: Selbst wenn der
+// Client `"nl"` schickte, machte diese Zeile `"de"` daraus — die Reparatur am Client allein bewegte
+// also kein Zeichen am Modell. Die Reihenfolge ist dieselbe wie in
+// `apps/web/src/lib/reasonerLocale.ts:10-13` und aus demselben Grund: bekannte Sprache zuerst,
+// Deutsch zuletzt, damit eine vierte Oberflächensprache weiterhin auf dem sicheren Default landet
+// und nicht auf einem Prompt, den niemand geschrieben hat.
 function normalizeLocale(value: unknown): ReasonerLocale {
-  return value === "en" ? "en" : "de";
+  if (value === "en") {
+    return "en";
+  }
+  if (value === "nl") {
+    return "nl";
+  }
+  return "de";
 }
 
 interface HelpSnippet {

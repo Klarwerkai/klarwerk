@@ -1483,33 +1483,18 @@ describe("JOB 3804 DU5 · der Vierfachtext derselben Flaeche", () => {
   // gegen eine im Test wiederholte Zahl gehalten (das war JOB 3830s Ruege, s. DU5g), sondern gegen
   // die Ressource selbst: zeichengleich heisst ungekuerzt, ganz ohne Konstante.
   //
-  // ================================================================================================
-  // UND DABEI STEHT EIN BEFUND AUF DEM TISCH, DEN DIESER AUFTRAG NICHT REPARIEREN DARF.
-  // ================================================================================================
-  //
-  // Die Oberflaeche steht auf `nl`, der mitgereichte Schnipsel ist niederlaendisch — und das
-  // Etikett, unter dem er hinausgeht, ist `"de"`. Zwei Stellen tragen dazu bei, und BEIDE kennen
-  // genau zwei Sprachen:
-  //
-  //   `apps/web/src/components/KlaraAssistant.tsx:312`
-  //       `locale: i18n.language.startsWith("en") ? "en" : "de"` — alles ausser Englisch faellt auf
-  //       Deutsch. Das allein waere eine Zeile.
-  //   `services/app/src/routes/help-routes.ts:13-15`
-  //       `normalizeLocale(value) { return value === "en" ? "en" : "de"; }` — der EMPFAENGER kennt
-  //       ebenfalls nur zwei Werte. Schickte der Client `"nl"`, machte der Server `"de"` daraus.
-  //
-  // DESHALB WIRD `:312` HIER NICHT ANGEFASST. Eine Aenderung allein am Client bewegte kein
-  // einziges Zeichen am Modell und saehe nur so aus, als waere etwas besser — genau die Sorte
-  // Scheinfunktion, die das Regelwerk (§7 „Ehrlichkeit vor Optik") ausschliesst. Der Vertrag traegt
-  // `nl` nicht; ihn zu erweitern ist ein eigener Schnitt (Serverkorrektur) und braucht Codex' Reihung.
-  //
-  // DARUM IST DIE ZEILE UNTEN EIN NACHFUEHR-PIN, kein Wunschbild: sie haelt fest, was HEUTE
-  // hinausgeht. Wird der Weg repariert — an beiden Stellen —, wird GENAU sie rot und sagt, was dann
-  // zu tun ist. Dieselbe Bauform wie DU4b (`:1079`).
+  // REPARIERT AM 14.09.2026 IN JOB 3980, an beiden Stellen: `KlaraAssistant.tsx` benutzt jetzt den
+  // Helfer `toReasonerLocale` statt einer eigenen Zuordnung, und `normalizeLocale` in
+  // `services/app/src/routes/help-routes.ts` nimmt `"nl"` an — die Abbildung von UI-Sprache auf
+  // Reasoner-Sprache lebt im Web damit an GENAU EINER Stelle, `apps/web/src/lib/reasonerLocale.ts`.
+  // Die Zeile unten ist deshalb kein Nachfuehr-Pin mehr, sondern die Zusicherung des reparierten
+  // Zustands; dass die Sprache bis ans Argument von `reasoner.helpAnswer` durchreist — also hinter
+  // BEIDE Stellen —, misst `tests/klara-hilfe-niederlaendisch/nl-erreicht-die-hilfe-ki.test.tsx`
+  // (NL1), denn dieser Fall hier liest die Endpunktattrappe und sieht den Server gar nicht.
   //
   // Nicht behauptet wird hier: dass die Modellkante mit `"nl"` etwas Besseres antwortete. Gemessen
   // ist allein das Etikett und der Text, der es traegt.
-  it("DU5i: die Frage eines Niederlaenders geht mit niederlaendischem Text hinaus — und heute mit deutschem Etikett", async () => {
+  it("DU5i: die Frage eines Niederlaenders geht mit niederlaendischem Text UND niederlaendischem Etikett hinaus", async () => {
     // Die Frage traegt vier Woerter aus dem niederlaendischen Kapitel, damit `rankKlara`
     // (`klaraRegistry.ts:289-311`, Wortdeckung ueber Titel + Text) es unter die zwoelf Schnipsel
     // hebt. Bleibt es aus, misst der Fall nichts — und sagt das unten, statt still gruen zu sein.
@@ -1550,11 +1535,11 @@ describe("JOB 3804 DU5 · der Vierfachtext derselben Flaeche", () => {
       "/duplikate (nl): es geht der DEUTSCHE Kapiteltext hinaus — der Mensch hat Niederlaendisch eingestellt",
     ).not.toBe(kapitel("de"));
 
-    // 3. DER NACHFUEHR-PIN auf dem Etikett. Begruendung im Block darueber.
+    // 3. DAS ETIKETT der Anfrage. Begruendung im Block darueber (JOB 3980).
     expect(
       koerper.locale,
-      "/duplikate (nl): das Etikett der Anfrage ist nicht mehr „de“. Ist der Weg jetzt an BEIDEN Stellen repariert (`KlaraAssistant.tsx:312` UND `services/app/src/routes/help-routes.ts:13-15`), dann diesen Pin auf „nl“ umstellen und den Befundblock darueber loeschen.",
-    ).toBe("de");
+      "/duplikate (nl): der Mensch hat Niederlaendisch eingestellt, die Anfrage traegt aber ein anderes Sprachetikett — die Abbildung in `apps/web/src/lib/reasonerLocale.ts` wird von `KlaraAssistant.tsx` nicht mehr benutzt oder ist selbst verstellt",
+    ).toBe("nl");
   });
 
   // ----------------------------------------------------------------------------------------------

@@ -1005,6 +1005,20 @@ const INVENTAR: readonly string[] = [
   // gepinnten Inventar … expected [ Array(1) ] to deeply equal []"), das Inventar nimmt sie nicht
   // still auf.
   "tests/vorrichtung-sicherer-kontext/sicherer-kontext-der-buehnen.test.ts",
+  // JOB 3980 (14.09.2026) SEITENHILFE-LUECKEN: die eingestellte Oberflaechensprache reist bis an
+  // das Argument von `reasoner.helpAnswer` — der Nutzerweg durch die ECHTE Komponente
+  // `KlaraAssistant`, den echten Clientabruf, die echte Route und den echten Reasoner. Sachlich
+  // Klara-Regression im engsten Sinn: faellt eine der beiden Zuordnungen zurueck, fragt Klaras
+  // Hilfe-KI wieder auf Deutsch, gleich was der Mensch eingestellt hat.
+  // GEFUNDEN VON ZWEI ACHSEN, und das ist gemessen, nicht vermutet: `komponente` (die Datei nennt
+  // und montiert `KlaraAssistant`) UND `name` — „klara" steht in ihrem PFAD, der Verzeichnisname
+  // war im Auftrag §4 abschliessend vorgegeben. Deshalb waechst K5 (`nurName`) mit, 61 -> 62.
+  // GEMESSEN, NICHT GESETZT: mit der neuen Datei und noch unveraendertem Inventar meldete der Lauf
+  // (Arbeitspruefung ffa304f8dbe34fe6879d35f60fce17b9, Cloud-Lauf 2b67e84360e7547b6f318083) K2
+  // `neu im Baum, aber nicht im gepinnten Inventar — Inventar nachfuehren: expected [ Array(1) ] to
+  // deeply equal []` und K5 `expected 62 to be 61`; erst danach wurden diese Zeile und der Zaehler
+  // unten angefasst.
+  "tests/klara-hilfe-niederlaendisch/nl-erreicht-die-hilfe-ki.test.tsx",
 ];
 
 // ------------------------------------------------------------------------------------------------
@@ -1311,7 +1325,11 @@ describe("JOB 920 · K — das Klara-Regressionsinventar ist ableitbar, nicht be
     // hinzu, deshalb 60 -> 61. GEMESSEN, NICHT GESETZT: mit dem Inventareintrag und noch auf 60
     // stehendem Zähler meldete der Cloud-Lauf 0fd7c5f0 `expected 61 to be 60`; erst danach wurde
     // diese Zeile angefasst.
-    expect(nurName.length).toBe(61);
+    // JOB 3980 (14.09.2026): `tests/klara-hilfe-niederlaendisch/nl-erreicht-die-hilfe-ki.test.tsx`
+    // traegt „klara" im PFAD (Verzeichnisname im Auftrag §4 abschliessend vorgegeben) und faellt
+    // damit auch unter die Namensachse — 61 -> 62. GEMESSEN, NICHT GESETZT: Beleg am Inventar-
+    // eintrag oben (K5 meldete `expected 62 to be 61`).
+    expect(nurName.length).toBe(62);
     expect(verfehlt.length).toBeGreaterThanOrEqual(25);
     expect(verfehlt.length + nurName.length).toBe(GEFUNDEN.length);
   });

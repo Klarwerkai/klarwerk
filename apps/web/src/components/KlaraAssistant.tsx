@@ -22,7 +22,9 @@ import {
 } from "../lib/klaraRegistry";
 // JOB 2660 D2: dieselbe Einstufungs-Beschriftung wie in der Wissenssuche (SCRUM-137).
 import { knowledgeClassMeta } from "../lib/knowledgeClass";
-import type { ReasonerLocale } from "../lib/reasonerLocale";
+// JOB 3980: EINE Quelle für die Abbildung UI-Sprache → Reasoner-Sprache. Die Zuordnung von Hand,
+// die hier bis heute in `askAi()` stand, ist abgelöst (s. dort).
+import { type ReasonerLocale, toReasonerLocale } from "../lib/reasonerLocale";
 import { useAiAvailable } from "../lib/useAiAvailable";
 import { AiModelInfo } from "./AiModelInfo";
 import { AiUnavailableHint } from "./AiUnavailableHint";
@@ -309,7 +311,11 @@ export function KlaraAssistant(): JSX.Element {
         title: e.title.slice(0, 160),
         body: e.body.slice(0, 700),
       })),
-      locale: i18n.language.startsWith("en") ? "en" : "de",
+      // JOB 3980: Hier stand eine ZWEITE Zuordnung von Hand — `startsWith("en") ? "en" : "de"`,
+      // genau das Muster, das AUFTRAG-mega52 D1 in `reasonerLocale.ts:6-9` als Pedis Befund vom
+      // 28.07. beschreibt: alles Nicht-Englische fiel auf Deutsch, Niederländisch erreichte das
+      // Modell nie. Sie ist ersatzlos weg; es gilt der eine Helfer.
+      locale: toReasonerLocale(i18n.language),
     });
   };
 
