@@ -76,6 +76,56 @@
 //     grün. `istServerfehler()` unten macht daraus ab jetzt ein Rot mit Methode, URL, Datei und
 //     gemessenem Status. (D2c war davon nie betroffen: `istAblehnung()` kennt nur 401/403/404 und
 //     ist bei 5xx immer schon rot gewesen.)
+//
+// ================================================================================================
+// JOB 3953 · (C) EIN 4xx AUS DER ANFRAGE SELBST IST GENAUSO BLIND WIE EIN 5xx.
+// ================================================================================================
+//
+// Codex' Bestellung, wörtlich (`archiv/3852/runde-2/ben.md:28`, Prüfpunkt 6): „Die generische
+// Nutzlast (`:326`) garantiert für zukünftige Routen keine gültige Anfrage: Auch 400 kann vor der
+// relevanten Verarbeitung entstehen. Ergänzen: routenspezifische positive Kontrollaufrufe. Die
+// 5xx-Kontrolle allein schließt diese bereits bekannte Grenze nicht." Und als Promptverbesserung
+// (`ebd.:36`): „Belege für jede neue öffentliche Route mit einem positiven Kontrollaufruf, dass die
+// Testnutzlast den vorgesehenen Pfad erreicht."
+//
+// DIE LÜCKE, an der Fläche nachgezählt: der Vorfall aus (A) endete zufällig in einem 500 und wird
+// deshalb heute von `istServerfehler()` gefangen. Eine Nutzlast, die stattdessen an einer Schema-
+// oder Längenprüfung scheitert, endet in einem 4xx — und wurde von NICHTS gefangen. Beispiel aus
+// dem Produkt: `POST /api/auth/register` antwortet bei `password.length < 8` mit
+// `400 WEAK_PASSWORD` (`services/auth/src/routes.ts:271-275`), also VOR jeder Bestandsberührung.
+// `istAblehnung()` (`:89`) kennt nur 401/403/404 und wird auf dieser Strecke gar nicht aufgerufen;
+// D2f-3 prüft nur `not.toContain(titel)`, und ein 400-Rumpf trägt selbstverständlich keinen
+// Demotitel. Der Fall war still grün, obwohl über die Dichtheit dieses Handlers nichts gesagt war.
+//
+// DIE REGEL AB JETZT, zweigeteilt, weil die zwei Hälften verschiedene Dinge sagen:
+//   (1) `istNutzlastfehler()` (`400`/`415`/`422`) macht jeden öffentlichen Weg rot, dessen Anfrage
+//       am Rumpfparser, am Schema oder an der Eingabeprüfung gescheitert ist. AUSNAHMEN werden
+//       GESCHLOSSEN geführt (`BERECHTIGTE_NUTZLASTABLEHNUNG`), nie als aufgeweichte Schwelle.
+//       Ein 401/403/404 bleibt ausdrücklich IN ORDNUNG: das ist die erwünschte Ablehnung eines
+//       ERREICHTEN Handlers, keine gescheiterte Anfrage.
+//   (2) `HANDLERKONTAKT` hält je Weg den GEMESSENEN Vertragsstatus fest (D2f-7). Damit ist nicht
+//       nur „nicht gescheitert" geprüft, sondern positiv, welchen Pfad die Nutzlast erreicht.
+//
+// RUNDE 2 · DER FEHLERSCHLÜSSEL WIRD AM FELD GELESEN, NICHT IM ROHTEXT GESUCHT. Runde 1 verglich den
+// Schlüssel mit `e.body.includes('"ALREADY_SETUP"')`. Codex hat daran vorbeigezielt: ein
+// vorgeschalteter `preHandler`, der die Setup-Sonde mit
+// `409 {"error":"FORBIDDEN","message":"ALREADY_SETUP"}` beantwortet, trägt den erwarteten TEXT — aber
+// in einem anderen Feld, und der vertragliche Schlüssel ist ein ganz anderer. Alle Fälle blieben grün
+// (`archiv/3953/runde-1/ben.md`, Korrekturpflicht 1: „D2f-7 muss bei geführtem Fehlerschlüssel das
+// JSON-Feld `error` exakt vergleichen. Fehlendes Feld oder unlesbarer JSON-Rumpf müssen eine
+// Abweichung ergeben."). Der Schlüssel kommt deshalb ab jetzt aus `fehlerschluessel()`: geparstes
+// JSON, Feld `error`, exakter Vergleich — und „kein `error`-Feld" wie „kein lesbares JSON" sind
+// eigene, in der Meldung benannte Abweichungen statt stiller Grünfärbung. Dieselbe Bauform sass an
+// der 501-Ausnahme in `istServerfehler()` (Textfund `"OIDC_DISABLED"` im Rumpf); die
+// Bestandsfunktion bleibt nach Auftrag §7 unverändert, D2f-10 verankert die Ausnahme daneben am
+// Feld `error` und deckt dabei auch `GET /api/auth/oidc/start`, den `HANDLERKONTAKT` nicht führt.
+//
+// WAS AUCH DANACH NICHT GEMESSEN IST, und zwar wörtlich benannt statt vorgetäuscht: der AKTIVE
+// SSO-Weg. Codex bestellt ihn in derselben Zeile (`archiv/3852/runde-2/ben.md:28`: „Für aktive
+// SSO-Wege fehlt weiterhin ein verbundener Nachweis; ergänzen: konfigurierte SSO-Testinstanz mit
+// kontrolliertem Anbieter"). Er braucht eine konfigurierte Instanz mit kontrolliertem Anbieter und
+// ist hier nicht ehrlich fahrbar. Die 501-Ausnahme unten bleibt deshalb, was sie ist: der Beleg
+// einer ABGESCHALTETEN Funktion, KEIN geprüfter aktiver Verarbeitungspfad.
 import { beforeAll, describe, expect, it } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 import { scanAllRoutes } from "../security/routeGuardAudit";
@@ -267,6 +317,49 @@ function serverfehlerZeile(e: Klopfergebnis): string {
   return `${e.method} ${e.aufgerufen} (${e.datei}) antwortete unangemeldet mit Status ${e.status} — ${e.body.slice(0, 160)}`;
 }
 
+/**
+ * JOB 3953 · Lieferung 3 — DIE GESCHLOSSENE AUSNAHMELISTE ZU `istNutzlastfehler()`.
+ *
+ * Hier steht namentlich jeder öffentliche Weg, der AUCH MIT vertragsgemässem Rumpf berechtigt mit
+ * 400/415/422 antwortet. Gemessen am 14.09.2026 gibt es keinen: von den 16 öffentlichen Wegen
+ * antwortet keiner mit einem dieser Status (register 201 · login 403 · logout 204 · forgot 204 ·
+ * reset 401 · oidc 501 · setup 409 · die neun GET-Wege 200 bzw. 404/501, s. `HANDLERKONTAKT`).
+ * Die Liste ist deshalb LEER und bleibt es, bis eine Messung etwas anderes zeigt — sie ist die
+ * Alternative zu einer aufgeweichten Schwelle, genau wie `AUSGESCHALTET_501` oben.
+ */
+const BERECHTIGTE_NUTZLASTABLEHNUNG: readonly string[] = [];
+
+/** Die drei Status, an denen eine Anfrage scheitert, BEVOR sie den Verarbeitungspfad erreicht. */
+const NUTZLASTFEHLER_STATUS: readonly number[] = [
+  400, // Rumpfparser oder Eingabeprüfung (z. B. `WEAK_PASSWORD`, routes.ts:271-275)
+  415, // Fastify: Content-Type nicht verarbeitbar — der Rumpf wurde nie gelesen
+  422, // Schemaprüfung: gelesen, aber verworfen
+];
+
+/**
+ * JOB 3953 · Lieferung 3 — DERSELBE SATZ WIE BEI `istServerfehler()`, EINE STATUSKLASSE TIEFER.
+ *
+ * Eine Antwort mit 400/415/422 auf einen öffentlichen Weg heisst: die ANFRAGE ist gescheitert, nicht
+ * der Handler hat abgelehnt. Sie hat die Leckfläche nie berührt, über deren Dichtheit ist damit
+ * NICHTS gesagt — und ein solcher Rumpf trägt selbstverständlich keinen Demotitel. Genau so war die
+ * kaputte Sonde aus Kopf (A) still grün, nur endete die zufällig in einem 500.
+ *
+ * DER UNTERSCHIED ZU 401/403/404, und er ist der ganze Punkt: dort hat der Handler die Anfrage
+ * GELESEN, BEURTEILT und abgewiesen (`istAblehnung()`, `:89`). Das ist die erwünschte Antwort und
+ * bleibt grün. Hier dagegen ist die Anfrage vor der Beurteilung liegen geblieben.
+ */
+function istNutzlastfehler(e: Klopfergebnis): boolean {
+  if (!NUTZLASTFEHLER_STATUS.includes(e.status)) {
+    return false;
+  }
+  return !BERECHTIGTE_NUTZLASTABLEHNUNG.includes(`${e.method} ${e.url}`);
+}
+
+/** Dieselben Angaben wie `serverfehlerZeile()`; nur der Befund heisst anders. */
+function nutzlastfehlerZeile(e: Klopfergebnis): string {
+  return `${e.method} ${e.aufgerufen} (${e.datei}) wies die Testnutzlast mit Status ${e.status} ab — die Anfrage erreichte den Verarbeitungspfad nicht: ${e.body.slice(0, 160)}`;
+}
+
 // ================================================================================================
 // JOB 3852 · Lieferung 3 — DIE METHODEN STEHEN NAMENTLICH DA, NICHT ALS „ALLE ANDEREN".
 // ================================================================================================
@@ -289,9 +382,9 @@ const OEFFENTLICHE_METHODEN = ["GET", "POST"] as const;
  * `istServerfehler()`: eine Sonde, die den Prüfpfad nicht erreicht, endet im 5xx und ist ab jetzt
  * rot, statt sich als bestandener Lecknachweis auszugeben.
  *
- * GEMESSENE STATUS (13.09.2026, unangemeldet, mit genau diesen Rümpfen): register 201 · login 403
- * NOT_APPROVED · logout 204 · forgot 204 · reset 401 INVALID_CREDENTIALS · oidc 501 OIDC_DISABLED ·
- * setup 409 ALREADY_SETUP. Jeder Weg erreicht damit seinen Handler.
+ * JOB 3953: DIE GEMESSENEN STATUS STANDEN HIER ALS PROSA und stehen jetzt als Tabelle in
+ * `HANDLERKONTAKT` unten — an EINER Stelle, ausführbar, in D2f-7 geprüft. Zwei Wahrheiten an zwei
+ * Stellen laufen auseinander; eine Prosazeile altert still.
  */
 const NUTZLAST_JE_WEG: Record<string, Record<string, unknown>> = {
   "POST /api/auth/register": {
@@ -311,6 +404,110 @@ const NUTZLAST_JE_WEG: Record<string, Record<string, unknown>> = {
   },
 };
 
+/** Der positive Kontrollaufruf je Weg: der Status, mit dem sein Handler wirklich antwortet. */
+interface Handlerkontakt {
+  status: number;
+  /** Der Fehlerschlüssel im Antwortkörper — nur dort, wo die Antwort einen trägt. */
+  schluessel?: string;
+}
+
+/**
+ * JOB 3953 · Lieferung 1 — DER POSITIVE KONTROLLAUFRUF JE WEG, AUS DER PROSA IN DIE MESSUNG.
+ *
+ * Je öffentlichem Nicht-GET-Weg steht hier, mit welchem Status er unangemeldet und mit GENAU seinem
+ * Vertragsrumpf aus `NUTZLAST_JE_WEG` antwortet. Damit ist nicht bloss „nicht abgestürzt" geprüft,
+ * sondern positiv, WELCHEN Verarbeitungspfad die Testnutzlast erreicht (D2f-7).
+ *
+ * HERKUNFT JEDES EINTRAGS — dieselbe Regel wie über `NUTZLAST_JE_WEG`: die Nutzlast kommt aus der
+ * `Body:`-Signatur am `app.post`, der Status aus der Zeile des Handlers, die ihn sendet, und der
+ * hier eingetragene WERT aus dem eigenen Lauf (Messung 14.09.2026, unangemeldet, mit genau diesen
+ * Rümpfen; sie bestätigt die frühere Prosamessung vom 13.09.2026 Wert für Wert):
+ *   register `routes.ts:228` `Body: { name?; email?; password? }` → 201, `:283` `reply.code(201)`
+ *   login    `routes.ts:290` `Body: { email; password }`          → 403 NOT_APPROVED, `service.ts:245`
+ *   logout   `routes.ts:329` (ohne `Body:`, liest nur das Token)  → 204, `:335` `reply.code(204)`
+ *   forgot   `routes.ts:410` `Body: { email }`                    → 204, `:418` (immer 204, keine Enumeration)
+ *   reset    `routes.ts:441` `Body: { token; newPassword }`       → 401 INVALID_CREDENTIALS, `service.ts:932`
+ *   oidc     `routes.ts:493` `Body: { code; state }`              → 501 OIDC_DISABLED, `:498` (SSO nicht konfiguriert)
+ *   setup    `routes.ts:599` `Body: { name; email; password }`    → 409 ALREADY_SETUP, `:604`
+ *
+ * KEIN WERT IST ABGESCHRIEBEN. Wich eine Messung von der alten Prosa ab, gälte die Messung; sie tat
+ * es bei keinem der sieben Wege.
+ */
+const HANDLERKONTAKT: Record<string, Handlerkontakt> = {
+  "POST /api/auth/register": { status: 201 },
+  "POST /api/auth/login": { status: 403, schluessel: "NOT_APPROVED" },
+  "POST /api/auth/logout": { status: 204 },
+  "POST /api/auth/forgot": { status: 204 },
+  "POST /api/auth/reset": { status: 401, schluessel: "INVALID_CREDENTIALS" },
+  "POST /api/auth/oidc": { status: 501, schluessel: "OIDC_DISABLED" },
+  "POST /api/auth/setup": { status: 409, schluessel: "ALREADY_SETUP" },
+};
+
+/**
+ * JOB 3953 · RUNDE 2, Korrekturpflicht 1 — DER SCHLÜSSEL WIRD AM VERTRAGLICHEN FELD GELESEN.
+ *
+ * Ein `body.includes('"ALREADY_SETUP"')` findet den Text ÜBERALL im Rumpf — auch in `message`, auch
+ * in einem Freitext. Codex hat genau daran vorbeigezielt (s. Kopf, Runde 2): eine Antwort
+ * `409 {"error":"FORBIDDEN","message":"ALREADY_SETUP"}` hat den alten Vergleich bestanden, obwohl der
+ * vertragliche Schlüssel `FORBIDDEN` lautet und der Weg damit einen ANDEREN Zweig erreicht hat.
+ *
+ * Der Befund ist DREIWERTIG, weil die drei Fälle verschiedene Dinge sagen und in der Meldung
+ * auseinandergehalten gehören: der Schlüssel steht da (`gelesen`), das Feld fehlt (`feld-fehlt`, z. B.
+ * `204` ohne Rumpf oder eine Antwort mit nur `message`), oder der Rumpf ist gar kein JSON-Objekt
+ * (`kein-json`). Die beiden letzten sind ABWEICHUNGEN, wo ein Schlüssel geführt ist — sonst wäre
+ * „kein lesbarer Rumpf" wieder still grün, also genau der Fehler eine Ebene tiefer.
+ */
+type Schluesselbefund = { art: "gelesen"; wert: string } | { art: "feld-fehlt" | "kein-json" };
+
+function fehlerschluessel(body: string): Schluesselbefund {
+  let geparst: unknown;
+  try {
+    geparst = JSON.parse(body);
+  } catch {
+    return { art: "kein-json" };
+  }
+  if (typeof geparst !== "object" || geparst === null || Array.isArray(geparst)) {
+    return { art: "kein-json" };
+  }
+  const wert = (geparst as { error?: unknown }).error;
+  return typeof wert === "string" ? { art: "gelesen", wert } : { art: "feld-fehlt" };
+}
+
+/** Der GEMESSENE Schlüssel als Meldetext — die zwei stummen Fälle bekommen hier ihren Namen. */
+function schluesselText(befund: Schluesselbefund): string {
+  if (befund.art === "gelesen") {
+    return `error="${befund.wert}"`;
+  }
+  if (befund.art === "feld-fehlt") {
+    return "ohne Feld `error` im Rumpf";
+  }
+  return "ohne lesbares JSON-Objekt im Rumpf";
+}
+
+/** Trägt die Antwort GENAU den vertraglich geführten Schlüssel im Feld `error`? */
+function schluesselStimmt(body: string, erwartet: string): boolean {
+  const befund = fehlerschluessel(body);
+  return befund.art === "gelesen" && befund.wert === erwartet;
+}
+
+/** Dieselben Angaben wie `serverfehlerZeile()`, zusätzlich der erwartete Vertragsstatus. */
+function handlerkontaktZeile(e: Klopfergebnis, soll: Handlerkontakt): string {
+  const erwartet = soll.schluessel
+    ? `Status ${soll.status} und error="${soll.schluessel}"`
+    : `Status ${soll.status}`;
+  const gemessen = soll.schluessel
+    ? `mit Status ${e.status} und ${schluesselText(fehlerschluessel(e.body))}`
+    : `mit Status ${e.status}`;
+  return `${e.method} ${e.aufgerufen} (${e.datei}) antwortete unangemeldet ${gemessen}, laut HANDLERKONTAKT erwartet ${erwartet} — ${e.body.slice(0, 160)}`;
+}
+
+/** Die öffentlichen Wege, für die ein Vertragsrumpf und ein Kontaktbeleg geführt werden müssen. */
+function gefuehrtePflichtwege(): string[] {
+  return scanAllRoutes()
+    .filter((r) => r.protection === "public" && r.method !== "GET")
+    .map((r) => `${r.method} ${r.url}`);
+}
+
 /**
  * Der Rumpf für JEDEN nicht namentlich geführten öffentlichen Nicht-GET-Weg — also für jede Route,
  * die künftig öffentlich WIRD. Er trägt die ECHTE Objektkennung in allen gebräuchlichen Feldnamen
@@ -323,7 +520,15 @@ const NUTZLAST_JE_WEG: Record<string, Record<string, unknown>> = {
  * enthalten, aber eine Suche findet mit ihr den ganzen. D2f prüft diese Zusage ausdrücklich nach,
  * statt sie zu behaupten.
  */
+/**
+ * JOB 3953 · Lieferung 5(c): GEZÄHLT, NICHT BEHAUPTET. Der Zähler wird in D2f-9c um den Klopflauf
+ * herum abgelesen und belegt mit einer ZAHL, dass die generische Nutzlast auf der öffentlichen
+ * Fläche derzeit gar nicht zum Einsatz kommt — statt es aus der Tabelle zu erschliessen.
+ */
+const generischGezaehlt = { aufrufe: 0 };
+
 function generischeNutzlast(u: Pick<Umgebung, "koIds" | "demoTitel">): Record<string, unknown> {
+  generischGezaehlt.aufrufe += 1;
   const koId = u.koIds[0] ?? "";
   const sonde = (u.demoTitel[0] ?? "").slice(0, 11);
   return {
@@ -549,11 +754,15 @@ describe("JOB 3852 · D2f · jeder öffentliche Weg JEDER Methode, unangemeldet,
   let ergebnisse: Klopfergebnis[];
   let vorher: Awaited<ReturnType<typeof standAufnehmen>>;
   let nachher: Awaited<ReturnType<typeof standAufnehmen>>;
+  /** JOB 3953 · Lieferung 5(c): der Zählerstand GENAU um den Klopflauf herum, nicht über die Datei. */
+  let generischImKlopflauf = -1;
 
   beforeAll(async () => {
     umgebung = await aufbauMitDemobestand();
     vorher = await standAufnehmen(umgebung.app, umgebung.admin);
+    const zaehlerVorher = generischGezaehlt.aufrufe;
     ergebnisse = await oeffentlicheWegeKlopfen(umgebung);
+    generischImKlopflauf = generischGezaehlt.aufrufe - zaehlerVorher;
     nachher = await standAufnehmen(umgebung.app, umgebung.admin);
   });
 
@@ -608,6 +817,97 @@ describe("JOB 3852 · D2f · jeder öffentliche Weg JEDER Methode, unangemeldet,
         .sort(),
       "die Menge der mit 501 antwortenden öffentlichen Wege weicht von AUSGESCHALTET_501 ab — entweder ist ein neuer Weg still in die Ausnahme gerutscht, oder ein geführter antwortet nicht mehr so; beides macht die Ausnahme unbelegt",
     ).toEqual([...AUSGESCHALTET_501].sort());
+  });
+
+  // ==============================================================================================
+  // JOB 3953 · Lieferung 2 — DER POSITIVE KONTROLLAUFRUF, GEMESSEN STATT KOMMENTIERT.
+  // ==============================================================================================
+  // Ohne diesen Fall sagt D2f-5 nur „kein 5xx". Dass die Sonde den VORGESEHENEN Pfad erreicht, stand
+  // bis hierher als Prosa über `NUTZLAST_JE_WEG` und lief in keinem Tor mit. Er liest dieselben
+  // `ergebnisse` — kein zweiter Klopflauf, keine zweite Instanz.
+  it("D2f-7 · jeder geführte Weg erreicht seinen Handler: gemessener Status wie im HANDLERKONTAKT", () => {
+    const abweichungen: string[] = [];
+    for (const e of ergebnisse) {
+      const soll = HANDLERKONTAKT[`${e.method} ${e.url}`];
+      if (!soll) {
+        continue;
+      }
+      // JOB 3953 · RUNDE 2: EXAKTER VERGLEICH AM FELD `error`, kein Textfund im Rohrumpf. Ein
+      // fehlendes Feld und ein unlesbarer Rumpf sind hier ABWEICHUNGEN, nicht „nichts gefunden,
+      // also in Ordnung" — sonst könnte sich ein Weg mit jedem beliebigen Rumpf durchmogeln.
+      const schluesselWeichtAb =
+        soll.schluessel !== undefined && !schluesselStimmt(e.body, soll.schluessel);
+      if (e.status !== soll.status || schluesselWeichtAb) {
+        abweichungen.push(handlerkontaktZeile(e, soll));
+      }
+    }
+    expect(
+      abweichungen,
+      "ein öffentlicher Weg antwortet unangemeldet anders als sein geführter Vertrag (Status und, wo geführt, das Feld `error`) — entweder erreicht die Testnutzlast seinen Verarbeitungspfad nicht mehr, oder der Handler hat seinen Vertrag geändert; in beiden Fällen sagt D2f-3 über diesen Weg NICHTS aus",
+    ).toEqual([]);
+  });
+
+  // JOB 3953 · Lieferung 3: derselbe Satz wie D2f-5, eine Statusklasse tiefer. 401/403/404 bleiben
+  // grün — das ist die Ablehnung eines ERREICHTEN Handlers, keine gescheiterte Anfrage.
+  it("D2f-8 · keine Sonde scheitert an Rumpfparser, Schema oder Eingabeprüfung (400/415/422)", () => {
+    expect(
+      ergebnisse.filter(istNutzlastfehler).map(nutzlastfehlerZeile),
+      "ein öffentlicher Weg weist die Testnutzlast mit 400/415/422 ab — die Anfrage hat die Leckfläche nicht erreicht, D2f-3 sagt über diesen Weg deshalb NICHTS aus (ein titelfreier 4xx aus der Anfrage selbst ist so wenig ein bestandener Lecknachweis wie ein titelfreier 5xx)",
+    ).toEqual([]);
+  });
+
+  // ==============================================================================================
+  // JOB 3953 · Lieferung 5 — DIE KALIBRIERUNG IN BEIDE RICHTUNGEN, wie D2f-1 und D2f-6 sie führen.
+  // ==============================================================================================
+  // (a) ist die Antwort auf Codex' „für zukünftige Routen": das Risiko wird SICHTBAR, wo es
+  // entsteht, statt sich still auf eine geratene Nutzlast zu verlassen.
+  it("D2f-9a · jeder öffentliche Nicht-GET-Weg hat einen abgelesenen Vertragsrumpf UND einen Kontaktbeleg", () => {
+    const ohneVertrag = gefuehrtePflichtwege().filter(
+      (schluessel) => !(schluessel in NUTZLAST_JE_WEG) || !(schluessel in HANDLERKONTAKT),
+    );
+    expect(
+      ohneVertrag,
+      "ein öffentlicher Nicht-GET-Weg steht nicht in NUTZLAST_JE_WEG und/oder nicht in HANDLERKONTAKT — er fiele auf generischeNutzlast() zurück, also auf einen GERATENEN Rumpf, und niemand hätte gemessen, ob dessen Anfrage den Verarbeitungspfad überhaupt erreicht; er braucht einen aus der `Body:`-Signatur abgelesenen Rumpf und einen gemessenen Vertragsstatus",
+    ).toEqual([]);
+  });
+
+  it("D2f-9b · kein Eintrag zeigt auf einen Weg, den es nicht mehr gibt", () => {
+    const gefuehrt = new Set(gefuehrtePflichtwege());
+    const tot = [...Object.keys(NUTZLAST_JE_WEG), ...Object.keys(HANDLERKONTAKT)]
+      .filter((schluessel) => !gefuehrt.has(schluessel))
+      .sort();
+    expect(
+      [...new Set(tot)],
+      "ein Eintrag in NUTZLAST_JE_WEG oder HANDLERKONTAKT zeigt auf einen Weg, den der Scanner nicht mehr als öffentlich findet — ein toter Eintrag ist ein stiller Prüfverlust: er täuscht Deckung vor, wo nichts mehr geklopft wird",
+    ).toEqual([]);
+  });
+
+  it("D2f-9c · GEZÄHLT: die generische Nutzlast kommt auf der öffentlichen Fläche derzeit nicht zum Einsatz", () => {
+    expect(
+      generischImKlopflauf,
+      `generischeNutzlast() wurde im Klopflauf ${generischImKlopflauf}× aufgerufen — jeder Aufruf ist ein öffentlicher Weg mit GERATENEM Rumpf; D2f-9a nennt ihn beim Namen`,
+    ).toBe(0);
+  });
+
+  // JOB 3953 · RUNDE 2 — DERSELBE GRIFF WIE IN D2f-7, AN DER ZWEITEN STELLE MIT EINEM SCHLÜSSEL.
+  // `istServerfehler()` (oben) lässt die 501-Ausnahme gelten, wenn `"OIDC_DISABLED"` IRGENDWO im
+  // Rumpf steht — dieselbe Bauform, die Codex an D2f-7 aufgebrochen hat: ein
+  // `501 {"error":"INTERNAL","message":"… OIDC_DISABLED …"}` wäre ein echter Absturz, würde aber
+  // entschuldigt, und D2f-6 sieht nur den Status. Die Bestandsfunktion bleibt nach Auftrag §7
+  // unverändert stehen; der Riegel steht deshalb DANEBEN statt in ihr. Er deckt auch
+  // `GET /api/auth/oidc/start`, den D2f-7 nicht erreicht (`HANDLERKONTAKT` führt nur Nicht-GET-Wege).
+  it("D2f-10 · KALIBRIERUNG: die 501-Ausnahme hängt am Feld `error`, nicht an einem Textfund im Rumpf", () => {
+    const unbelegt = ergebnisse
+      .filter((e) => AUSGESCHALTET_501.includes(`${e.method} ${e.url}`))
+      .filter((e) => e.status !== 501 || !schluesselStimmt(e.body, "OIDC_DISABLED"))
+      .map(
+        (e) =>
+          `${e.method} ${e.aufgerufen} (${e.datei}) antwortete unangemeldet mit Status ${e.status} und ${schluesselText(fehlerschluessel(e.body))} — ${e.body.slice(0, 160)}`,
+      );
+    expect(
+      unbelegt,
+      'ein Weg aus AUSGESCHALTET_501 belegt seine Ausnahme nicht mehr am Feld `error`: nur ein 501 mit error="OIDC_DISABLED" ist die bewusste Antwort einer abgeschalteten Funktion — alles andere ist ein Absturz, der von istServerfehler() nur wegen eines Textfundes im Rumpf entschuldigt würde',
+    ).toEqual([]);
   });
 
   it("D2f-4 · und der Bestand bleibt: gleiche Anzahl, gleiche Titelmenge", () => {
@@ -672,6 +972,14 @@ describe("JOB 3852 · D2g · öffentliche Wege hinter einem Schalter: eingebaut 
         expect(
           ergebnisse.filter(istServerfehler).map(serverfehlerZeile),
           `mit ${weg.variable}=${weg.wert} antwortet ein öffentlicher Weg unangemeldet mit 5xx — der Aufruf hat den Handler nicht durchlaufen, die Titelprüfung unten sagt über diesen Weg deshalb NICHTS aus`,
+        ).toEqual([]);
+        // JOB 3953 · Lieferung 4: derselbe Riegel wie D2f-8, wörtlich in derselben Form wie die
+        // 5xx-Kontrolle darüber — auch die EINGESCHALTETE Fläche darf sich nicht mit einer
+        // GESCHEITERTEN ANFRAGE aus der Leckfrage stehlen. 401/403/404 bleiben hier ebenso in
+        // Ordnung wie in D2f-8: sie sind die Ablehnung eines erreichten Handlers.
+        expect(
+          ergebnisse.filter(istNutzlastfehler).map(nutzlastfehlerZeile),
+          `mit ${weg.variable}=${weg.wert} weist ein öffentlicher Weg die Testnutzlast mit 400/415/422 ab — die Anfrage hat die Leckfläche nicht erreicht, die Titelprüfung unten sagt über diesen Weg deshalb NICHTS aus`,
         ).toEqual([]);
         for (const e of ergebnisse) {
           for (const titel of u.demoTitel) {
