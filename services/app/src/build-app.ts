@@ -60,11 +60,14 @@ import {
 import { gatedPool, withPgTx } from "../../db-tx";
 import { InMemoryEmbeddingStore, createEmbeddingProviderFromEnv } from "../../embedding";
 import {
+  DEFAULT_EXTERNAL_KNOWLEDGE_STAGE,
   type ExternalKnowledgePolicyRepo,
   type ExternalSearchService,
   InMemoryExternalKnowledgePolicyRepo,
   PgExternalKnowledgePolicyRepo,
+  classifySourceReach,
   createExternalSearchFromEnv,
+  decideExternalAttach,
   parseInternalSourceOrigins,
 } from "../../external-search";
 import { I18nService } from "../../i18n";
@@ -460,6 +463,92 @@ export interface AppRepos {
 // Verdrahtet aus den Repos die vollständige Service-Landschaft. Ein gemeinsames
 // Audit-Log und ein KO-Repository für alle Module, die auf denselben Bestand wirken.
 // SCRUM-387: exportiert für die Dev-Persistenz (identische Verdrahtung über journalierte Repos).
+// ================================================================================================
+// JOB 3934 RUNDE 3 — DIE ABWEISUNG EINER GESPERRTEN BELEGSTELLE, an EINER Stelle gebaut.
+// ================================================================================================
+//
+// SIE ENTSTEHT HIER UND NICHT IN `capture`, und das ist kein Stilentscheid: der Name dieser
+// Abweisung ist `EXTERNAL_ATTACH_BLOCKED` und gehört der Quellensperre — `add-source` antwortet
+// wörtlich damit (routes/ko-routes.ts:2056-2064). In `CaptureErrorCode`
+// (capture/src/types.ts:214-239) steht er nicht. Ihn dort zu ERFINDEN hiesse, demselben Versäumnis
+// einen zweiten Namen zu geben, je nachdem, durch welche Tür man kommt — genau der Fehler, den
+// JOB 3618 (Q3 c) für die Vertraulichkeitsstufe abgeschafft hat. Also trägt die Abweisung DENSELBEN
+// Namen wie an der Route, und sie entsteht dort, wo dieser Name schon zu Hause ist.
+//
+// `sendError` (app/src/http.ts:129-159) reicht jeden Code aus `/^[A-Z_]+$/` samt Meldung nach
+// aussen und wählt den Status aus `STATUS_BY_CODE[code] ?? 400`.
+//
+// DAMIT IST HIER EIN REST OFFEN, und er wird nicht verschwiegen: `EXTERNAL_ATTACH_BLOCKED` steht
+// NICHT in `STATUS_BY_CODE`, weil `add-source` seinen 403 selbst setzt (`reply.code(403)`). Der
+// Promote antwortet deshalb mit demselben Namen und derselben Meldung, aber mit **400** statt 403.
+// Die Sperre GREIFT (kein Wissensobjekt, der Entwurf bleibt) — nur der Status ist noch nicht
+// derselbe. Der fehlende Eintrag ist eine Zeile in `services/app/src/http.ts`
+// (`EXTERNAL_ATTACH_BLOCKED: 403,`), und diese Datei steht nicht in den Zielpfaden dieses Auftrags;
+// sie ist in der Rückgabe unter ABWEICHUNGEN benannt.
+//
+// DIE ZWEI MELDUNGEN sind WÖRTLICH die der Route (ko-routes.ts:2058-2063). Dass sie hier ein
+// zweites Mal im Quelltext stehen, ist ein benannter Mangel und keine Absicht: sie gehörten in eine
+// gemeinsame Quelle neben `decideExternalAttach`. Das Herausziehen berührt `ko-routes.ts` und
+// `external-search`, beide ausserhalb der Zielpfade — steht als REST in der Rückgabe.
+function quellensperre(
+  stufe: string,
+  grund: "public-source" | "unanchored-source" | undefined,
+): Error {
+  return Object.assign(
+    new Error(
+      grund === "public-source"
+        ? "Auf der eingestellten Stufe darf keine Quelle mit öffentlicher Web-Adresse an ein Wissensobjekt angehängt werden — Suchen bleibt erlaubt, Anhängen nicht. Ein Administrator kann die Stufe unter Verwaltung → Externes Wissen ändern."
+        : "Auf der eingestellten Stufe darf nur eine Quelle angehängt werden, die nachweislich aus dem eigenen Haus stammt: eine Belegstelle aus einem an diesem Wissensobjekt hinterlegten Dokument oder eine Adresse aus dem konfigurierten internen Netz. Eine Quelle ohne Adresse lässt sich nicht von einem externen Treffer unterscheiden, dem die Adresse fehlt. Ein Administrator kann die Stufe unter Verwaltung → Externes Wissen ändern.",
+    ),
+    { code: "EXTERNAL_ATTACH_BLOCKED", stage: stufe, reason: grund },
+  );
+}
+
+// ================================================================================================
+// JOB 3934 RUNDE 4 — EINE FREMDE OBJEKTKENNUNG IST KEIN BERECHTIGUNGSNACHWEIS.
+// ================================================================================================
+//
+// DER BEFUND, GEMESSEN (BEN, Urteil zu Runde 3, Cloud-Lauf `5fe381495c62762c947b56b7`). Runde 3
+// setzte `anchoredToOwnAttachment` auf die blosse EXISTENZ des Objekts: `capture` rechnete
+// `anker.checked && quelle.objectId !== undefined`, und die Existenzprüfung dahinter war
+// `objects.metadata(id) !== undefined` — eine Frage, die NICHT nach dem Eigentümer fragt. Ein
+// Angreifer, der die Kennung eines fremden Originals kennt, schrieb sie in die `pendingSources`
+// SEINES Entwurfs und hob damit die Quellensperre auf: dasselbe Original lieferte ihm auf
+// `GET /api/objects/:id` ein 404 und auf `add-source` ein 403, der Promote aber antwortete 201.
+// Die Verlustprüfung aus mega20 („hängt der Anker noch?") wurde so zum Berechtigungsbeleg
+// umgedeutet, der sie nie war.
+//
+// DIE REGEL IST NICHT NEU ERFUNDEN, sondern die des Hauses, wörtlich aus `sichtbarkeit.ts:600`:
+// WER EIN OBJEKT HOCHLÄDT, BESTIMMT, WO ES HÄNGT — eine Zuordnung zählt nur, wenn ihr URHEBER der
+// Hochladende ist. Der Nachweis ist `ObjectRef.lifecycle.owner`; er kommt serverseitig aus der
+// Anmeldung (`object-routes.ts` POST, `owner: user.id`) und NIE aus einem Body. Und die
+// Gegenseite — „die Menschen, denen der Entwurf gehört" — ist dieselbe Paarung, die
+// `sichtbarkeit.ts:609` dafür führt: `Draft.originalAuthor` / `lastEditor`. Zwei Auffassungen
+// davon, wem ein Entwurf gehört, wären eine zu viel.
+//
+// IM ZWEIFEL KEIN ANKER, und der Zweifel hat drei Gestalten, die hier alle dasselbe Nein ergeben:
+//   · die Belegstelle beruft sich auf kein Original            → nichts zu binden,
+//   · das Original ist nicht (mehr) da oder wurde nicht geprüft → nichts Belegtes zu binden,
+//   · das Original trägt KEINEN Hochladenden (Altbestand ohne `lifecycle`, object-store/src/
+//     types.ts:86-88 ordnet ausdrücklich an, das Fehlen maximal konservativ zu behandeln)
+//                                                              → niemand, der es binden dürfte.
+// Diese Richtung ist Absicht: ein falsch positiver Anker ÖFFNET (er hebt die Sperre auf), ein
+// falsch negativer kostet nur eine Abweisung auf einer restriktiven Stufe.
+//
+// WAS DAMIT BELEGT IST, ehrlich und nicht mehr: dass das gebundene Original von einem Menschen
+// hochgeladen wurde, dem dieser Entwurf gehört. NICHT belegt ist, dass der Auszug wirklich aus
+// diesem Dokument stammt — dieselbe benannte Grenze, die `decideExternalAttach`
+// (external-search/src/attach-policy.ts:188-195) für den `add-source`-Weg schon offen ausweist.
+function ankerGehoertDemEntwurf(
+  hochladender: string | undefined,
+  entwurf: { originalAuthor: string; lastEditor: string },
+): boolean {
+  if (!hochladender) {
+    return false;
+  }
+  return hochladender === entwurf.originalAuthor || hochladender === entwurf.lastEditor;
+}
+
 // SCRUM-523 P.3 (WP-A2): `opts.withTx` ist NUR gesetzt, wenn der Aufrufer wirklich einen echten
 // Pg-Pool hat (buildPgServices unten) — Dev-Persistenz/InMemory rufen ohne opts, KoService fällt dann
 // auf den sequentiellen purgeKo-Pfad zurück (s. Kommentar dort).
@@ -697,6 +786,80 @@ export function assembleServices(
     capture: new CaptureService({
       repo: repos.drafts,
       objectExists: async (objectId) => (await objects.metadata(objectId)) !== undefined,
+      // ==========================================================================================
+      // JOB 3934 RUNDE 3 — DIE QUELLENSPERRE GILT AUCH FÜR DEN PROMOTE.
+      // ==========================================================================================
+      //
+      // BEFUND (BEN zu Runde 2, selbst gemessen): auf `blocked` und auf der Werksvorgabe
+      // `search_on_click` weist `PUT /api/kos/:id` (`action: "add-source"`) eine Quelle mit
+      // öffentlicher Adresse UND eine adresslose Quelle ohne Hausbezug mit 403
+      // `EXTERNAL_ATTACH_BLOCKED` ab — `POST /api/drafts/:id/promote` speicherte dieselbe Quelle
+      // mit 201. „Speichern und einreichen" war damit ein Weg um eine geltende Admin-Entscheidung
+      // herum: derselbe semantische Bypass, den mega16 Block A an `add-source` geschlossen hat.
+      //
+      // HIER VERDRAHTET und nicht in `capture` importiert — dieselbe Bewegung wie `objectExists`
+      // eine Zeile darüber: `capture` darf `external-search` nicht kennen (Modulgrenze,
+      // dependency-cruiser), die Composition-Root kennt beide.
+      //
+      // DIE TATSACHEN KOMMEN AUS DENSELBEN QUELLEN WIE AN DER ROUTE (ko-routes.ts:2043-2055), und
+      // keine davon kann ein Client beeinflussen:
+      //   · die Stufe aus dem Admin-Bestand (`repos.externalKnowledge` — DASSELBE Repo, das
+      //     external-routes und ko-routes lesen; ein zweiter Speicher wäre eine zweite Wahrheit),
+      //   · die Reichweite aus der Adresse gegen die KONFIGURIERTE Origin-Allowlist (ohne
+      //     Konfiguration ist sie leer, und dann ist jede Adresse öffentlich — der fail-closed
+      //     Auslieferungszustand),
+      //   · der Anker aus der GEPRÜFTEN Ankerlage des Entwurfs, nicht aus dem Feld selbst.
+      //
+      // WO DIESER WEG VON `add-source` ABWEICHT, ausdrücklich: dort ist „verankert" = „das Dokument
+      // hängt an DIESEM Wissensobjekt" (`ko.get(id).attachments`). Hier gibt es das Wissensobjekt
+      // noch nicht, und `ko.create` legt keine Anhänge an — die entsprechende serverseitige
+      // Tatsache ist deshalb das Original DES ENTWURFS, aus dem dieses Objekt gerade wird. Was
+      // dadurch NICHT belegt ist und auch nicht behauptet wird: dass das entstandene Wissensobjekt
+      // hinterher auf das Dokument zeigt — es trägt keinen Anhang. Das steht als REST in der
+      // Rückgabe.
+      //
+      // ==========================================================================================
+      // JOB 3934 RUNDE 4 — HIER WIRD DAS ORIGINAL GELADEN, UND HIER SITZT DIE SPERRE.
+      // ==========================================================================================
+      //
+      // In Runde 3 stand an dieser Stelle `anchoredToOwnAttachment: ankerGeprueft` — ein von
+      // `capture` durchgereichter Wahrheitswert über die blosse EXISTENZ des Objekts. BEN hat
+      // gemessen, dass damit die Kennung eines FREMDEN, für den Einreichenden nicht lesbaren
+      // Originals die Quellensperre aufhob (Begründung an `ankerGehoertDemEntwurf` oben).
+      //
+      // JETZT WIRD DAS ORIGINAL WIRKLICH GELADEN, bevor irgendetwas gespeichert wird, und sein
+      // HOCHLADENDER entscheidet. Die Stelle ist genau richtig: sie liegt vor `ko.create` und vor
+      // `entwurfVerbraucht`, also ist eine Abweisung folgenlos — kein Wissensobjekt, der Entwurf
+      // bleibt. Und sie liegt DORT, WO DER OBJEKTSPEICHER IST: `capture` kennt ihn nicht
+      // (Modulgrenze), kann die Frage also gar nicht stellen; die Composition-Root kennt beide.
+      //
+      // DER ZWEITE `objects.metadata`-AUFRUF neben `objectExists` ist bewusst in Kauf genommen. Die
+      // zwei Fragen sind VERSCHIEDEN — „gibt es das Original noch?" entscheidet über
+      // `MISSING_DRAFT_ANCHOR` und über das Fortsetzen eines Entwurfs, „wem gehört es?" über die
+      // Quellensperre. Sie in eine Antwort zu ziehen hiesse, aus der Verlustprüfung wieder einen
+      // Berechtigungsbeleg zu machen — genau der Fehler, der hier behoben wird. Er kostet einen
+      // Metadatenabruf je Belegstelle MIT Kennung, und nur auf dem Einreich-Weg.
+      pruefeBelegstelle: async ({ url, objectId, ankerVorhanden, entwurf }) => {
+        const stufe =
+          (await repos.externalKnowledge.getStage()) ?? DEFAULT_EXTERNAL_KNOWLEDGE_STAGE;
+        const reichweite = classifySourceReach(
+          url,
+          parseInternalSourceOrigins(process.env.KLARWERK_INTERNAL_SOURCE_ORIGINS),
+        );
+        // Geladen wird NUR, wenn die Existenzprüfung gelaufen ist und die Belegstelle sich
+        // überhaupt auf ein Original beruft — sonst gibt es nichts zu binden, und das Nein steht
+        // ohne Abruf fest.
+        const original =
+          ankerVorhanden && objectId !== undefined ? await objects.metadata(objectId) : undefined;
+        const urteil = decideExternalAttach({
+          stage: stufe,
+          reach: reichweite,
+          anchoredToOwnAttachment: ankerGehoertDemEntwurf(original?.lifecycle?.owner, entwurf),
+        });
+        if (!urteil.allowed) {
+          throw quellensperre(stufe, urteil.denial);
+        }
+      },
     }),
     ask,
     // W3-C (JOB 541 D3): der Belegspeicher wird durchgereicht, weil der Erklaer-Lesepfad ihn
@@ -1267,6 +1430,13 @@ export const ERLAUBTE_FEHLERCODES: ReadonlySet<string> = new Set([
   "EMAIL_TAKEN",
   "EMPTY_DRAFT",
   "ENGINE_FAILED",
+  // JOB 3934 R3 — ENTSCHEIDUNG: darf ins Protokoll. Der Wächter unten
+  // (`build-app.test.ts:696-736`) hat diesen Code eingesammelt, weil die Quellensperre des Promote
+  // ihn jetzt als `code:` setzt (`quellensperre`, oben in dieser Datei). Er trägt KEINE Nutzerdaten
+  // und keine Kennung — er sagt, welcher Zweig entschieden hat, und genau dafür ist die Liste da.
+  // Nach aussen geht er ohnehin als Antwortcode (`sendError`, app/src/http.ts) und an
+  // `add-source` seit mega16 Block A (routes/ko-routes.ts).
+  "EXTERNAL_ATTACH_BLOCKED",
   "EXTERNAL_SEARCH_FAILED",
   "FORBIDDEN",
   "IDEMPOTENCY_PAYLOAD_MISMATCH",
@@ -2169,7 +2339,47 @@ export function buildApp(
               //     (lib/createOperation.ts: 4xx gilt als eindeutige Ablehnung).
               throw error;
             }
-            const input = await services.capture.toKoInput(draftId);
+            // ==================================================================================
+            // JOB 3934 — DIE BELEGSTELLEN DES ENTWURFS KOMMEN AUF DIESEM WEG NICHT MIT.
+            // ==================================================================================
+            //
+            // Seit JOB 3934 trägt `toKoInput` die `pendingSources` des Entwurfs als `sources` an
+            // den `CreateKoInput` — damit der PROMOTE (`POST /api/drafts/:id/promote`,
+            // routes/capture-routes.ts:1519) die Herkunft nicht mehr verliert. Diese Funktion hier
+            // ist der ZWEITE Aufrufer derselben Brücke und gehört dem DOKUMENTWEG
+            // (`POST /api/kos/from-document`, ihr einziger Aufrufer ist ko-routes.ts:1278).
+            //
+            // DER DOKUMENTWEG BRINGT SEINE BELEGSTELLEN SELBST MIT: er baut sie aus
+            // `documents[].points` des Requests (ko-routes.ts:1465-1471) und übergibt sie als
+            // `extras.sources` an `createWithDocuments`. Dort werden beide Listen ADDIERT
+            // (`sources: sanitizeSources([...(input.sources ?? []), ...(extras?.sources ?? [])])`,
+            // knowledge-object/src/service.ts:1823). Ohne diese Zeile stünde deshalb jede
+            // Belegstelle eines gespeicherten Entwurfs ZWEIMAL am Wissensobjekt und ZWEIMAL in der
+            // append-only Belegkette — gemessen in Runde 1 dieses Jobs: vier Bestandstests rot,
+            // u. a. `tests/capture/mega20-entwurf-referenz.test.ts:321` („expected […] to have a
+            // length of 1 but got 2") und `tests/capture/mega21-capture-mounted.test.tsx:536`
+            // („… to have a length of 2 but got 3").
+            //
+            // WARUM HIER UND NICHT IN `createWithDocuments` ENTDOPPELT: eine Entdopplung dort
+            // müsste raten, welche zwei Belegstellen „dieselbe" sind, und sie träfe auch den
+            // Import-Pfad, für den `CreateKoInput.sources` ausdrücklich gebaut ist („Nur der
+            // Import-Pfad setzt es", knowledge-object/src/service.ts:328-330). Hier dagegen ist die
+            // Entscheidung eindeutig und ohne Ratespiel: DIESER Aufrufer hat seine eigene,
+            // vollständige Quelle für Belegstellen. Der Dokumentweg verhält sich dadurch exakt wie
+            // vor JOB 3934 — kein Feld mehr, kein Feld weniger.
+            //
+            // UND ES IST FAIL-CLOSED: die Belegstellen des Requests laufen auf diesem Weg durch die
+            // Stufenregel (`decideExternalAttach`, ko-routes.ts:1395-1415), die des Entwurfs nicht.
+            // Sie hier durchzureichen hiesse, an dieser Prüfung vorbeizuschreiben.
+            //
+            // JOB 3934 RUNDE 3 — ES IST EIN SCHALTER GEWORDEN, kein Wegwerfen der Rückgabe mehr.
+            // Runde 2 hat das Feld hier abgestreift (`const { sources: _…, ...input }`). Das war für
+            // die Dopplung richtig und für die neue STUFENPRÜFUNG falsch: die Prüfung sitzt jetzt
+            // IN `toKoInput`, und sie wäre auf diesem Weg über Belegstellen gelaufen, die er gar
+            // nicht verwendet — der Dokumentweg hätte Anfragen abgewiesen, die nichts Verbotenes
+            // tun (und seine eigenen `points` sind oben schon geprüft). Mit `belegstellen: false`
+            // sind „nimm sie nicht mit" und „prüfe sie nicht" EINE Entscheidung an EINER Stelle.
+            const input = await services.capture.toKoInput(draftId, { belegstellen: false });
             // Dieselbe Autorregel wie in `load` (WP-RETEST7 R6) — der Entwurfsautor bleibt der
             // Autor des Wissensobjekts, auch wenn ein Admin einreicht. Der EIGENTÜMER des
             // Vorgangs ist davon getrennt und ist der einreichende Nutzer (mega21 Block A).

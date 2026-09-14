@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import {
   type CreateKoInput,
+  type KoSource,
   createOperationFingerprint,
   isValidConfidentiality,
 } from "../../knowledge-object";
@@ -31,6 +32,80 @@ export interface CaptureServiceDeps {
    * dann ehrlich, dass es nichts geprüft hat.
    */
   objectExists?: (objectId: string) => Promise<boolean>;
+  /**
+   * JOB 3934 RUNDE 3 — DIE STUFENREGEL FÜR BELEGSTELLEN, injiziert wie `objectExists`.
+   *
+   * DER BEFUND (BEN, Urteil zu Runde 2): der Promote übernahm die Belegstellen des Entwurfs, ohne
+   * die Admin-Stufe „externes Wissen" zu befragen. Gemessen wurde, was daraus folgt: auf `blocked`
+   * UND auf der WERKSVORGABE `search_on_click` weist `PUT /api/kos/:id` (`action: "add-source"`)
+   * dieselbe Quelle mit 403 `EXTERNAL_ATTACH_BLOCKED` ab, während der Promote sie mit 201
+   * speicherte. Mein Gegenargument aus Runde 2 — „die Adresse reist nicht mit, also ist es
+   * fail-closed" — WAR FALSCH: die Regel verbietet auf restriktiven Stufen auch die ADRESSLOSE
+   * Quelle, wenn sie nicht nachweislich auf ein Dokument des Hauses zeigt
+   * (`decideExternalAttach`, external-search/src/attach-policy.ts:197-211, Zweig
+   * `unanchored-source`). Eine Adresse weglassen war also keine Absicherung, sondern genau der
+   * Weg, den bens Auflage an `add-source` schon einmal geschlossen hat.
+   *
+   * INJIZIERT und nicht importiert, aus demselben Grund wie `objectExists`: `capture` darf
+   * `external-search` nicht kennen (Modulgrenze, dependency-cruiser). Die Composition-Root kennt
+   * beide und beschafft die TATSACHEN — Stufe aus dem Admin-Bestand, Reichweite aus der Adresse
+   * gegen die konfigurierte Origin-Allowlist. Keine dieser Angaben stammt aus dem Client-Body.
+   *
+   * SIE WIRFT, statt eine Entscheidung zurückzugeben: der Fehlername dieser Abweisung
+   * (`EXTERNAL_ATTACH_BLOCKED`) gehört `knowledge-object`/der Route und steht nicht in
+   * `CaptureErrorCode` — ihn hier zu erfinden hiesse, demselben Versäumnis einen zweiten Namen zu
+   * geben (der Fehler, den JOB 3618 abgeschafft hat). Deshalb entsteht der Fehler dort, wo sein
+   * Name zu Hause ist, und diese Funktion reicht ihn nur durch.
+   *
+   * FEHLT die Verdrahtung, findet KEINE Prüfung statt — dieselbe ehrliche Lücke wie bei
+   * `objectExists` und aus demselben Grund: ein Dienst, der ohne Composition-Root gebaut wird
+   * (Modultests), soll nicht an einer Stufe scheitern, die es in seinem Aufbau gar nicht gibt.
+   * Produktiv gibt es genau eine Composition-Root (`assembleServices`), und die verdrahtet sie.
+   */
+  /**
+   * JOB 3934 RUNDE 4 — DIESE TATSACHEN SIND ROH, WEIL DIE ABGELEITETE EIN LOCH WAR.
+   *
+   * DER BEFUND (BEN, Urteil zu Runde 3, Abschnitt EIGENE MESSUNG, Cloud-Lauf
+   * `5fe381495c62762c947b56b7`): Runde 3 reichte hier einen FERTIG GERECHNETEN Wahrheitswert
+   * `ankerGeprueft` herein — `anker.checked && quelle.objectId !== undefined`. Der sagte nur, dass
+   * IRGENDEIN Objekt unter dieser Kennung existiert, nie WEM es gehört. Gemessen wurde, was daraus
+   * folgt: die Kennung eines FREMDEN Originals, dessen `GET /api/objects/:id` dem Einreichenden
+   * 404 liefert und das `add-source` mit 403 abweist, machte aus einer auf `blocked` und
+   * `search_on_click` verbotenen Belegstelle eine erlaubte — der Promote antwortete 201, und es
+   * entstanden zwei Wissensobjekte statt eines. Eine fremde Kennung war damit ein
+   * Berechtigungsnachweis, und genau das darf sie nicht sein (bens Maßstab, wörtlich in
+   * app/src/sichtbarkeit.ts:578: „Exakte UUIDs sind kein Berechtigungsnachweis; ihre
+   * Unerratbarkeit darf eine fehlende Autorisierung nicht ersetzen.").
+   *
+   * DESHALB RECHNET `capture` DIESE FRAGE NICHT MEHR AUS. Sie ist nicht beantwortbar, ohne das
+   * Original zu LADEN und seinen Hochladenden anzusehen — und der Objektspeicher liegt hinter der
+   * Modulgrenze (`objectExists` liefert bewusst nur ja/nein). Was hier hinausgeht, sind deshalb nur
+   * noch Tatsachen, die `capture` wirklich hat: die Adresse, die Kennung, das Ergebnis der
+   * Existenzprüfung und die Menschen, denen der Entwurf gehört. Die ENTSCHEIDUNG fällt in der
+   * Composition-Root, die das Original lädt (`assembleServices`, app/src/build-app.ts).
+   */
+  pruefeBelegstelle?: (fakten: {
+    /** Die Adresse der Belegstelle, wie der Entwurf sie trägt (`undefined` = adresslos). */
+    url: string | undefined;
+    /**
+     * Die Objektkennung, auf die sich diese Belegstelle beruft (`undefined` = beruft sich auf
+     * keins). SIE IST EINE BEHAUPTUNG DES ENTWURFS und für sich genommen kein Nachweis — wer sie
+     * liest, muss das Original laden und seinen Hochladenden prüfen.
+     */
+    objectId: string | undefined;
+    /**
+     * Hat die Existenzprüfung wirklich stattgefunden und das Original vorhanden gefunden?
+     * Nur `true`, wenn `DraftAnchorCheck.checked` gilt — ein „konnte nicht geprüft werden" ist hier
+     * NICHT in Ordnung, sondern ein Nein. Sagt NICHTS darüber, wem das Original gehört.
+     */
+    ankerVorhanden: boolean;
+    /**
+     * Die Menschen, denen der Entwurf gehört. Beide Angaben stehen serverseitig am Entwurf und sind
+     * vom Client nicht setzbar; dieselbe Paarung, die das Haus schon als „die Menschen, denen der
+     * Entwurf gehört" führt (app/src/sichtbarkeit.ts:609).
+     */
+    entwurf: { id: string; originalAuthor: string; lastEditor: string };
+  }) => Promise<void>;
 }
 
 /**
@@ -463,6 +538,9 @@ export class CaptureService {
   // AUFTRAG-mega20 Block D: injizierte Existenzprüfung des Objektspeichers (s. Deps).
   private readonly objectExists: ((objectId: string) => Promise<boolean>) | undefined;
 
+  // JOB 3934 R3: die injizierte Stufenregel für Belegstellen (s. Deps) — sie wirft bei Sperre.
+  private readonly pruefeBelegstelle: CaptureServiceDeps["pruefeBelegstelle"];
+
   // JOB 2684 D2 (R2-17, BENs Korrekturpflicht 2): EIN Schreibweg je Entwurf IM PROZESS. D1 prüfte
   // den Stand und schrieb danach — zwei Aufrufer, die sich zwischen Prüfung und Schreiben
   // überlappen, kamen BEIDE durch, und der zweite überschrieb den ersten trotz richtigem Stand.
@@ -478,6 +556,7 @@ export class CaptureService {
     this.now = deps.now ?? (() => Date.now());
     this.genId = deps.genId ?? (() => randomUUID());
     this.objectExists = deps.objectExists;
+    this.pruefeBelegstelle = deps.pruefeBelegstelle;
   }
 
   // `protected`, nicht `private`: die Kalibrierung des Überlappungstests schaltet die Sperre in einer
@@ -941,8 +1020,28 @@ export class CaptureService {
     }
   }
 
-  // Brücke zu knowledge-object: Autor = Originalautor des Entwurfs (FR-CAP-07).
-  async toKoInput(id: string): Promise<CreateKoInput> {
+  /**
+   * Brücke zu knowledge-object: Autor = Originalautor des Entwurfs (FR-CAP-07).
+   *
+   * JOB 3934 RUNDE 3 — `belegstellen` TRENNT DIE ZWEI TÜREN, die diese Brücke benutzen.
+   *
+   * Es gibt zwei Aufrufer, und sie brauchen Verschiedenes:
+   *   · DER PROMOTE (`POST /api/drafts/:id/promote`, app/src/routes/capture-routes.ts) ist die
+   *     Tür, für die JOB 3934 gebaut ist: die Belegstellen des Entwurfs sollen mitreisen. Er ruft
+   *     ohne Angabe auf und bekommt sie — samt Stufenprüfung.
+   *   · DER DOKUMENTWEG (`POST /api/kos/from-document`, über `applyAndLoad` in
+   *     app/src/build-app.ts) bringt seine Belegstellen SELBST aus `documents[].points` mit und
+   *     hat sie dort schon durch dieselbe Stufenregel geschickt. Er ruft mit
+   *     `{ belegstellen: false }` auf.
+   *
+   * WARUM EIN SCHALTER UND NICHT DAS WEGWERFEN BEIM AUFRUFER (so war es in Runde 2): weil sonst
+   * auch die PRÜFUNG am falschen Weg liefe. Der Dokumentweg schickt Entwürfe, deren
+   * `pendingSources` er gar nicht verwendet; eine Stufenprüfung darüber würde Anfragen abweisen,
+   * die nichts Verbotenes tun. Der Schalter macht aus „nimm sie nicht mit" und „prüfe sie nicht"
+   * EINE Entscheidung an EINER Stelle, statt zwei, die auseinanderlaufen können.
+   */
+  async toKoInput(id: string, opts?: { belegstellen?: boolean }): Promise<CreateKoInput> {
+    const mitBelegstellen = opts?.belegstellen !== false;
     const draft = await this.require(id);
     // AUFTRAG-mega20 Block D: DIE ZWEITE PRÜFSTELLE — beim EINREICHEN, nicht nur beim Fortsetzen.
     //
@@ -1040,6 +1139,29 @@ export class CaptureService {
         "Entwurf hat noch keine vollständigen KO-Pflichtfelder.",
       );
     }
+    // ============================================================================================
+    // JOB 3934 R3 — DIE STUFENREGEL STEHT VOR DER ÜBERNAHME, NICHT DANEBEN.
+    // ============================================================================================
+    //
+    // bens Befund zu Runde 2, gemessen: auf `blocked` und auf der Werksvorgabe `search_on_click`
+    // weist `add-source` eine Quelle mit öffentlicher Adresse UND eine adresslose Quelle ohne
+    // Hausbezug mit 403 `EXTERNAL_ATTACH_BLOCKED` ab — der Promote nahm beide mit 201 an. Damit war
+    // „speichern und einreichen" ein Weg um eine geltende Regel herum, und mein Runde-2-Argument
+    // („die Adresse reist nicht mit") war keine Absicherung: die Regel verbietet die adresslose
+    // Quelle ebenso, solange sie nicht nachweislich auf ein Dokument des Hauses zeigt.
+    //
+    // HIER, und nicht beim Aufrufer: an dieser Stelle entscheidet sich, ob die Belegstelle ans
+    // Wissensobjekt geht. Die Prüfung läuft je Belegstelle und VOR dem ersten Schreibvorgang —
+    // wirft sie, entsteht kein Wissensobjekt, und der Entwurf bleibt unangetastet (der Promote
+    // verbraucht ihn erst NACH `ko.create`, app/src/routes/capture-routes.ts).
+    //
+    // FAIL-CLOSED AN DER EINEN STELLE, an der geraten werden könnte: `ankerGeprueft` ist nur dann
+    // `true`, wenn die Ankerprüfung wirklich gelaufen ist (`anker.checked`) UND die Belegstelle
+    // eine Objektkennung trägt. Ist die Auflösung nicht verdrahtet, gilt die Belegstelle als NICHT
+    // verankert — „konnte nicht geprüft werden" ist nicht „in Ordnung" (derselbe Unterschied, den
+    // `DraftAnchorCheck` im Typ festhält).
+    const belegstellen =
+      mitBelegstellen && p.pendingSources?.length ? await this.belegstellen(draft, anker) : [];
     return {
       title: p.title,
       statement: p.statement,
@@ -1069,7 +1191,128 @@ export class CaptureService {
       // VERWIRFT statt sie zu `frontdoor` oder `word_addin` zu normalisieren. Was hier ankommt, ist
       // entschieden; hier wird nichts nachgeprüft und nichts erfunden.
       ...(p.origin !== undefined ? { origin: p.origin } : {}),
+      // ==========================================================================================
+      // JOB 3934 — DIE BELEGSTELLEN REISEN MIT. Genau hier ging die Herkunft bis heute verloren.
+      // ==========================================================================================
+      //
+      // DER BEFUND, gemessen und in einer Testdatei festgenagelt (JOB 3801,
+      // `tests/demo-erster-nutzerweg/befund-promote-verliert-die-herkunft.test.ts`): ein Entwurf,
+      // der einen Satz aus einem hochgeladenen Originaldokument übernommen hat, wurde über
+      // `POST /api/drafts/:id/promote` zu einem Wissensobjekt mit dem Dokumenttext und
+      // `sources: []`. Die Feldliste dieser Rückgabe zählt einzeln auf, was mitreist —
+      // `pendingSources` war nicht darunter und wurde nirgends gelesen. Die Ankerprüfung ein paar
+      // Zeilen darüber (`:954-960`) greift nur, wenn das Original FEHLT; war es vorhanden, lief der
+      // Weg durch und der Beleg fiel eine Zeile später still weg. Der fail-closed-Fall war gebaut,
+      // der fail-quiet-Fall nicht.
+      //
+      // DIESELBE BAUFORM wie `confidentiality` und `origin` darüber, und aus demselben Grund:
+      // gesetzt wird NUR, wenn der Entwurf wirklich Belegstellen trägt. KEIN Vorgabewert und keine
+      // leere Liste als Ersatz für „keine Belegstelle" — sonst trüge jedes promotete Objekt eine
+      // leere Quellenliste, und „nie eine Quelle gehabt" wäre von „Quelle verloren" nicht mehr zu
+      // unterscheiden. Gepinnt am Vertrag selbst (H6 in `promote-traegt-die-herkunft.test.ts`), weil
+      // `buildCreatedKo` (knowledge-object/src/service.ts:1823) in beiden Fällen `sources: []`
+      // schreibt und der Unterschied an der Antwort deshalb nicht sichtbar ist.
+      //
+      // NICHTS WIRD GEFILTERT. Alle Einträge, die die Stufenregel oben durchgelassen hat, reisen in
+      // unveränderter Reihenfolge — auch die ohne `objectId`, denn eine Belegstelle ohne gesichertes
+      // Original ist eine gültige TEXTQUELLE (ein Buch, eine Norm, ein Gespräch), und sie fallen zu
+      // lassen wäre derselbe Herkunftsverlust, nur kleiner (H3). Und es wird auch nichts STILL
+      // weggelassen: eine gesperrte Belegstelle bricht den Weg ab (`pruefeBelegstelle` oben), statt
+      // unauffällig aus der Liste zu verschwinden.
+      ...(belegstellen.length ? { sources: belegstellen } : {}),
     };
+  }
+
+  /**
+   * JOB 3934 — DIE BELEGSTELLEN DES ENTWURFS ALS `KoSource`.
+   *
+   * DIE FORM IST ÜBERNOMMEN, NICHT ERFUNDEN: zeichengleich zu der Stelle, an der die ANDERE Tür
+   * ihre Belegstellen baut (`createWithDocumentsLocked`, knowledge-object/src/service.ts:2105-2119)
+   * — `kind: "external"`, `peerValidated: false`, eigene Kennung, ein Zeitpunkt, Autor = Autor des
+   * Objekts. Zwei Auffassungen davon, wie eine Belegstelle aussieht, wären eine zu viel.
+   *
+   * DREI FELDER DES ENTWURFS REISEN NICHT MIT, jedes aus einem eigenen Grund:
+   *
+   * 1. `objectId` und `anchorKey` — WEIL `KoSource` sie nicht hat (knowledge-object/src/types.ts:
+   *    151-169). Die Belegstelle am Wissensobjekt zeigt also NICHT auf das gesicherte Original.
+   *    Die stärkste Aussage, die dieser Weg wirklich trägt, ist deshalb: das Original war im
+   *    Augenblick des Einreichens nachweislich vorhanden (`verifyDraftAnchors` darüber), und die
+   *    Belegstelle trägt seinen Namen und den übernommenen Satz. Ein Feld dafür zu ERFINDEN hiesse,
+   *    `services/knowledge-object` anzufassen; das ist ein eigener Vorgang und nicht dieser.
+   *
+   * 2. `sourceProvider` — WEIL der Anbieter im ganzen Haus serverseitig ABGELEITET und nie vom
+   *    Client übernommen wird (`attributeExternalSource`, app/src/routes/ko-routes.ts:1470;
+   *    Vertrag in knowledge-object/src/service.ts:447). Ein aus dem Entwurfs-Body durchgereichter
+   *    Anbietername wäre genau die Client-Behauptung, die mega15 Block B abgeschafft hat. Ableiten
+   *    kann `capture` ihn nicht (die Ableitung liegt in `external-search`, Modulgrenze); das Feld
+   *    bleibt deshalb LEER statt geraten. Folge, ehrlich: eine über den Promote übernommene Quelle
+   *    trägt keinen Anbieternamen, eine über `add-source` angehängte schon. Steht als REST.
+   *
+   * JOB 3934 RUNDE 3 — `url` REIST JETZT MIT, UND DAS IST DIE KORREKTUR.
+   *
+   * In Runde 2 habe ich die Adresse verworfen und das „fail-closed" genannt. BEN hat gemessen, dass
+   * das keine Absicherung war: `decideExternalAttach`
+   * (external-search/src/attach-policy.ts:197-211) verbietet auf `blocked`/`search_on_click` NICHT
+   * NUR die öffentliche Adresse (`public-source`), sondern ebenso die ADRESSLOSE Quelle ohne
+   * Hausbezug (`unanchored-source`) — „Adresse weglassen" darf ausdrücklich keine Umgehung sein
+   * (bens Auflage, dort im Kommentar). Wer die Adresse entfernt, macht die Quelle also nicht
+   * erlaubt, sondern nur unkenntlich.
+   *
+   * DIE ABSICHERUNG IST JETZT DIE ECHTE PRÜFUNG, eine Ebene höher: `pruefeBelegstelle` befragt
+   * dieselbe Stufe und dieselbe Entscheidungsfunktion wie `add-source` und der Dokumentweg. Was
+   * hier ankommt, ist bereits freigegeben — und dann gibt es keinen Grund mehr, dem Nutzer die
+   * Adresse zu nehmen, die er selbst eingetragen hat. Sie wegzulassen wäre ab jetzt genau der
+   * Herkunftsverlust, gegen den dieser ganze Job gebaut ist: dieselbe Quelle trüge über den Promote
+   * weniger als über `add-source`.
+   *
+   * WAS DAS FÜR DEN NUTZER HEISST, ehrlich: Label, Auszug und Adresse sind da — man sieht, WORAUS
+   * der Satz stammt, und kann der Adresse folgen, falls es eine gibt. Die Bindung an das gesicherte
+   * Original ist weiterhin keine maschinelle, sondern der Dateiname (Punkt 1). Steht als REST.
+   */
+  private async belegstellen(draft: Draft, anker: DraftAnchorCheck): Promise<KoSource[]> {
+    const at = new Date(this.now()).toISOString();
+    const gebaut: KoSource[] = [];
+    for (const quelle of draft.payload.pendingSources ?? []) {
+      // DIE PRÜFUNG JE BELEGSTELLE, vor dem Bauen. Sie wirft bei Sperre; nichts wird still
+      // übersprungen. Fehlt die Verdrahtung, prüft niemand — s. `pruefeBelegstelle` in den Deps.
+      //
+      // JOB 3934 RUNDE 4: HIER WIRD NICHTS MEHR ABGELEITET. Bis Runde 3 stand an dieser Stelle
+      // `ankerGeprueft: anker.checked && quelle.objectId !== undefined` — eine Rechnung über die
+      // blosse EXISTENZ eines Objekts, die BEN als Rechteumgehung gemessen hat (Begründung am
+      // Vertrag `pruefeBelegstelle` oben). Die Kennung reist jetzt ROH mit, zusammen mit den
+      // Menschen, denen der Entwurf gehört; wer sie beurteilt, lädt das Original und sieht seinen
+      // Hochladenden an. `capture` kann das nicht und behauptet es deshalb auch nicht mehr.
+      await this.pruefeBelegstelle?.({
+        url: quelle.url,
+        objectId: quelle.objectId,
+        ankerVorhanden: anker.checked && quelle.objectId !== undefined,
+        entwurf: {
+          id: draft.id,
+          originalAuthor: draft.originalAuthor,
+          lastEditor: draft.lastEditor,
+        },
+      });
+      gebaut.push({
+        id: this.genId(),
+        // `label` ist an der Entwurfsgrenze schon Pflicht und getrimmt (`normalizePendingSources`)
+        // — hier wird kein Ersatzwert erfunden und kein Name aus `anchorDocuments` zusammengesetzt.
+        label: quelle.label,
+        // `url` ist an derselben Grenze schon durch `safeHttpUrl` gegangen (nur absolute
+        // http/https) und wird in `knowledge-object` von `sanitizeSources` erneut gesäubert —
+        // hier wird nichts nachgeprüft und nichts erfunden. `undefined` wird `null`: „keine
+        // Adresse" ist ein Wert, kein fehlendes Feld (dieselbe Form wie `add-source`,
+        // ko-routes.ts:2073 `url: body.source.url ?? null`).
+        url: quelle.url ?? null,
+        excerpt: quelle.excerpt?.trim() ? quelle.excerpt.trim() : null,
+        kind: "external" as const,
+        peerValidated: false,
+        // Derselbe Autor wie das Objekt selbst (`author: draft.originalAuthor` oben) — eine zweite
+        // Auffassung davon, wem diese Angabe gehört, wäre eine zu viel.
+        author: draft.originalAuthor,
+        at,
+      });
+    }
+    return gebaut;
   }
 
   private async require(id: string): Promise<Draft> {

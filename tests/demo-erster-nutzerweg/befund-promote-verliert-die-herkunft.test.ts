@@ -1,50 +1,67 @@
 // ================================================================================================
-// JOB 3801 · BEFUND AUF DEM ÜBERGANG 4→5 — DER PROMOTE NIMMT DEN INHALT MIT UND DIE HERKUNFT NICHT.
+// JOB 3801 → JOB 3934 · DER ÜBERGANG 4→5 — DER PROMOTE NIMMT DEN INHALT MIT UND JETZT AUCH DIE
+// HERKUNFT.
 // ================================================================================================
 //
-// DIESE DATEI SICHERT KEINE EIGENSCHAFT ZU. Sie hält einen MANGEL fest, den die Strecke dieses
-// Auftrags gefunden hat. SOLANGE SIE GRÜN IST, BESTEHT DER MANGEL. Wird sie rot, ist er behoben —
-// dann gehört diese Datei GELÖSCHT und nicht angepasst.
+// DIESE DATEI WAR EIN BEFUND UND IST JETZT EIN DAUERHAFTER TEST. Sie ist GEDREHT, nicht ersetzt:
+// dieselbe Strecke, dieselben drei Schlusszeilen, umgekehrter Befund. Was sie bis JOB 3934 festhielt
+// — „solange sie grün ist, besteht der Mangel" — ist behoben; sie sichert seit JOB 3934 die
+// Eigenschaft zu, deren Fehlen sie vorher gepinnt hat.
 //
-// Reparieren darf dieser Auftrag ihn nicht: seine Zielpfade sind `tests/demo-erster-nutzerweg/**`,
-// und der Mangel sitzt im Produkt (Auftrag §5).
+// DER NAME DER DATEI IST HISTORISCH und bleibt es: er benennt den Befund, den sie gefunden hat.
+// Umbenennen hiesse hier einen weiteren Pfad anzufassen; der Kopf sagt stattdessen ausdrücklich, was
+// die Datei heute zusichert (JOB 3934, Runde 2, Steuerungsauftrag „wird zum dauerhaften Test
+// gedreht").
 //
 // ------------------------------------------------------------------------------------------------
-// WAS GEMESSEN WURDE (12.09.2026, Basisstand 56d2995)
+// WAS DER BEFUND WAR (12.09.2026, Basisstand 56d2995)
 // ------------------------------------------------------------------------------------------------
 // Ein Entwurf, der ein GESICHERTES Originaldokument trägt (`anchorDocuments` + `pendingSources` mit
-// gültiger `objectId`), wird über `POST /api/drafts/:id/promote` befördert. Ergebnis:
+// gültiger `objectId`), wurde über `POST /api/drafts/:id/promote` befördert. Ergebnis damals:
 //
 //     201 · Wissensobjekt entsteht
 //     bodyHtml  = "<p>Ventil bei Überdruck schließen.</p>"   ← der Satz AUS sample.docx
-//     sources   = []
+//     sources   = []                                         ← DER MANGEL
 //     evidence  = []   (GET /api/kos/:id/evidence → 200, leere Liste)
 //
 // Also genau der Zustand, den AUFTRAG-mega18 bis mega20 an jeder anderen Stelle geschlossen haben:
-// DOKUMENTINHALT OHNE HERKUNFT. Niemand kann hinterher sagen, woher der Satz stammt; das gesicherte
-// Original bleibt im Objektspeicher liegen, ohne dass etwas auf es zeigt.
+// DOKUMENTINHALT OHNE HERKUNFT. Niemand konnte hinterher sagen, woher der Satz stammt; das
+// gesicherte Original blieb im Objektspeicher liegen, ohne dass etwas auf es zeigte.
 //
 // DIE URSACHE, gelesen und nicht geraten: `CaptureService.toKoInput`
-// (services/capture/src/service.ts:989-1018) zählt die Felder des Wissensobjekts EINZELN auf —
-// `anchorDocuments` und `pendingSources` sind nicht darunter. Die Ankerprüfung eine Zeile darüber
-// (`:954-960`) greift nur, wenn das Original FEHLT; ist es vorhanden, fällt der Anker still weg.
+// (services/capture/src/service.ts) zählt die Felder des Wissensobjekts EINZELN auf — `sources` war
+// nicht darunter, `pendingSources` wurde nirgends gelesen. Die Ankerprüfung eine Zeile darüber
+// (`:954-960`) greift nur, wenn das Original FEHLT; war es vorhanden, fiel der Anker still weg.
 //
-// WAS STATTDESSEN RICHTIG WÄRE — eines von beiden, nicht beides:
-//   (a) der Promote trägt die geprüften Anker als Belegstellen ans Wissensobjekt, wie es
-//       `POST /api/kos/from-document` tut, ODER
-//   (b) der Promote WEIST einen Entwurf mit Ankerdokumenten AB und verweist auf den Dokumentweg —
-//       dann gibt es für übernommenen Dokumentinhalt genau eine Tür.
+// ZWEI WEGE STANDEN ZUR WAHL — es ist (a) geworden:
+//   (a) der Promote trägt die geprüften Belegstellen ans Wissensobjekt, wie es
+//       `POST /api/kos/from-document` tut  ← GEBAUT in JOB 3934
+//   (b) der Promote WEIST einen Entwurf mit Ankerdokumenten AB und verweist auf den Dokumentweg.
+//       Nicht gebaut: sie bräuchte einen neuen Fehlernamen und nähme dem Promote einen Weg, den
+//       ein Client heute legitim geht (Auftrag JOB 3934 §10).
 //
-// „ES GIBT KEINEN AUFRUFER" IST KEINE ENTLASTUNG, und das ist in diesem Haus entschieden: die
+// ------------------------------------------------------------------------------------------------
+// WAS DIESE DATEI HEUTE ZUSICHERT (JOB 3934)
+// ------------------------------------------------------------------------------------------------
+// Dieselben drei Schlusszeilen, gedreht:
+//   1. Das Wissensobjekt entsteht (201)                                  — unverändert.
+//   2. Es trägt den Text AUS DER DATEI                                   — unverändert.
+//   3. Es trägt die Belegstelle des Entwurfs, mit dem Namen der Datei    — GEDREHT (war `[]`).
+//   4. Die append-only Belegkette bleibt LEER                            — GEMESSEN, nicht behauptet:
+//      `ko.create` → `finishCreated` (services/knowledge-object/src/service.ts:1929-1947) schreibt
+//      keinen `EvidenceRecord`; das tut nur `createWithDocumentsLocked` (`:2166-2195`). Die
+//      Belegkette DIESES Weges ist damit noch NICHT geschlossen. Wird Zeile 4 rot, hat jemand einen
+//      Schreibweg ergänzt — dann gehört die neue Zahl samt ihren `kind`-Werten hierher.
+//
+// Die FELDGENAUE Prüfung der Belegstelle (Anzahl, Auszug, Reihenfolge, Adressverzicht, kein
+// Vorgabewert) steht nicht hier, sondern in `promote-traegt-die-herkunft.test.ts` (H1–H6). Diese
+// Datei hält den ÜBERGANG als Ganzes: Inhalt UND Herkunft in einem Zug.
+//
+// „ES GIBT KEINEN AUFRUFER" WAR KEINE ENTLASTUNG, und das ist in diesem Haus entschieden: die
 // heutige Oberfläche wählt bei vorhandenen Ankern wirklich `from-document` (`Capture.tsx:1729`), der
-// Browser-Nutzer läuft also nicht hinein. Genau dieses Argument hat BEN in AUFTRAG-mega22 Block C
+// Browser-Nutzer lief also nicht hinein. Genau dieses Argument hat BEN in AUFTRAG-mega22 Block C
 // aber bereits verworfen (nachzulesen in `services/app/src/routes/ko-routes.ts:1172-1176`):
 // *„Unbenutztheit ist kein Schutz für einen weiterhin authentifiziert erreichbaren API-Vertrag."*
-//
-// ZUSTÄNDIGKEIT: Von den Jobs, die der Auftrag §4 als Halter demo-relevanter Produktdateien nennt
-// (3761, 3762, 3776, 3780, 3782, 3784, 3797), hält KEINER `services/capture/src/service.ts` oder
-// `services/app/src/routes/capture-routes.ts` — geprüft an den `zielpfade:`-Blöcken der
-// Auftragsdateien; `lage.json` führt keine Zielpfade.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -53,8 +70,8 @@ import { QUELLSATZ } from "./strecke";
 
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
-describe("JOB 3801 · BEFUND (kein Versprechen): der Promote verliert die geprüfte Herkunft", () => {
-  it("BEFUND · ein Entwurf mit gesichertem Original wird zum Wissensobjekt OHNE jede Belegstelle", async () => {
+describe("JOB 3801/3934 · ZUSAGE: der Promote trägt die geprüfte Herkunft mit", () => {
+  it("ÜBERGANG 4→5 · ein Entwurf mit gesichertem Original wird zum Wissensobjekt MIT seiner Belegstelle", async () => {
     const services = buildServices();
     const app = buildApp(services);
     await app.ready();
@@ -143,21 +160,28 @@ describe("JOB 3801 · BEFUND (kein Versprechen): der Promote verliert die geprü
         },
       });
 
-      // ---- DER BEFUND, in drei Zeilen ---------------------------------------------------------
+      // ---- DIE ZUSAGE, in vier Zeilen (vormals: der Befund in drei) ---------------------------
       // 1. Das Wissensobjekt ENTSTEHT.
       expect(befoerdert.statusCode, befoerdert.body).toBe(201);
       const ko = befoerdert.json() as {
         id: string;
         bodyHtml?: string | null;
-        sources?: unknown[];
+        sources?: { label: string; excerpt: string | null }[];
       };
       // 2. Es trägt den Text AUS DER DATEI.
       expect(ko.bodyHtml ?? "").toContain(QUELLSATZ);
-      // 3. Und keine einzige Belegstelle — weder am Objekt noch in der append-only Belegkette.
+      // 3. UND SEINE HERKUNFT. Genau hier stand bis JOB 3934 `toEqual([])` — Dokumentinhalt ohne
+      //    Beleg. Jetzt steht die Belegstelle des Entwurfs am Objekt, mit dem Namen der Datei und
+      //    dem Satz, der aus ihr übernommen wurde.
       expect(
-        ko.sources,
-        "WENN DIESE ZEILE ROT IST, ist der Befund behoben: der Promote trägt die Herkunft jetzt mit.",
-      ).toEqual([]);
+        (ko.sources ?? []).map((q) => q.label),
+        "WENN DIESE ZEILE ROT IST, fällt die Herkunft beim Einreichen wieder weg (der Befund aus JOB 3801 ist zurück).",
+      ).toEqual(["sample.docx"]);
+      expect(ko.sources?.[0]?.excerpt).toBe(QUELLSATZ);
+      // 4. DIE BELEGKETTE BLEIBT LEER — gemessen, nicht behauptet. Der Promote läuft über
+      //    `ko.create`, und dieser Weg schreibt keinen `EvidenceRecord` (Begründung im Kopf dieser
+      //    Datei). Die append-only Belegkette dieses Weges ist NOCH NICHT geschlossen; das steht
+      //    hier als Tatsache und nicht als Versprechen.
       const belege = await app.inject({
         method: "GET",
         url: `/api/kos/${ko.id}/evidence`,
@@ -166,12 +190,13 @@ describe("JOB 3801 · BEFUND (kein Versprechen): der Promote verliert die geprü
       expect(belege.statusCode).toBe(200);
       expect(
         belege.json(),
-        "WENN DIESE ZEILE ROT IST, ist der Befund behoben: die Belegkette kennt das Original jetzt.",
+        "GEMESSEN: der Promote schreibt nichts in die Belegkette. Wird diese Zeile rot, hat jemand einen Schreibweg ergänzt — dann gehört die neue Zahl samt kind-Werten hierher.",
       ).toEqual([]);
-      // DASS ES ANDERS GEHT, steht nicht hier, sondern wird gefahren: dieselbe Datei, dieselbe
-      // Quelle, die andere Tür (`POST /api/kos/from-document`) — dort entsteht die Belegstelle, und
-      // `durchstich.test.ts` D1 prüft sie bis zurück auf die Bytes des Originals. Der Mangel ist
-      // also kein Naturgesetz des Bestands, sondern ein Unterschied zwischen zwei Türen.
+      // DIE ANDERE TÜR bleibt, wie sie war: dieselbe Datei, dieselbe Quelle über
+      // `POST /api/kos/from-document` — dort entsteht die Belegstelle MIT Belegkette, und
+      // `durchstich.test.ts` D1 prüft sie bis zurück auf die Bytes des Originals. Der Unterschied
+      // zwischen den beiden Türen ist damit nicht mehr „Herkunft oder keine", sondern nur noch
+      // „mit Belegkette oder ohne".
     } finally {
       await app.close();
     }
