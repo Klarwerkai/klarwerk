@@ -82,18 +82,52 @@
 // unsichtbar; (2) jede Variablenanweisung galt als reine Deklaration, `const services =
 // buildServices()` blieb damit unsichtbar. Beides ist behoben und in R2/8 belegt.
 //
-// WAS AUCH JETZT NICHT GEMESSEN WIRD — damit diese Datei nicht mehr behauptet, als sie prüft:
+// ------------------------------------------------------------------------------------------------
+// JOB 3937 — DAS ENUM MIT BERECHNETEM GLIED LÄUFT BEIM LADEN, UND JETZT WIRD ES AUCH SO GEZÄHLT.
+// ------------------------------------------------------------------------------------------------
+//
+// DER BEFUND (BEN im GRÜN-Urteil von JOB 3828, Prüfpunkt 6): eine `enum`-Deklaration fiel in
+// `hatAusfuehrbareModulanweisung` in denselben Topf wie `interface` und `type` und galt pauschal als
+// reine Deklaration. Für `interface` und `type` stimmt das — sie verschwinden bei der Übersetzung
+// restlos. Für `enum X { A = f() }` stimmt es NICHT: daraus wird eine Zuweisung, die `f()` beim
+// Laden des Moduls ruft. Ein Werkzeug, dessen einzige ausführende Anweisung so aussieht, blieb dem
+// Inventar unsichtbar und hätte den Startvertrag verletzen können, ohne dass etwas rot wird.
+//
+// WAS JETZT GILT: ein Enum zählt genau dann als ausführende Modulanweisung, wenn mindestens EIN
+// Glied einen Initialisierer hat, für den `wirktBeimLaden` wahr ist — dieselbe EINE Stelle, die das
+// auch für Variablenanweisung, Klasse und `export default` entscheidet. Es gibt also keine zweite
+// Auffassung von „läuft beim Laden" in dieser Datei. WEITERHIN NICHT gezählt: ein rein konstantes
+// Enum (`enum S { Eins = 1, Zwei = Eins + 1 }` führt nichts aus), ein `declare enum` (umgebend, gibt
+// keinen Code aus) und ein `const enum` (wird eingesetzt; berechnete Glieder sind dort gar nicht
+// übersetzbar). Und die ERSTE Hälfte der Aufnahmeregel bleibt Bedingung: ein berechnetes Enum ohne
+// `build-app`-Bezug macht seine Datei nicht zum Einstiegspunkt. Alle drei Richtungen misst R2/8
+// (`tools/kp3-enum-berechnet.ts`, `tools/kp3-enum-konstant.ts`, `tools/kp3-enum-ohne-buildapp.ts`).
+//
+// WAS AUCH JETZT NICHT GEMESSEN WIRD — damit diese Datei nicht mehr behauptet, als sie prüft. Was
+// hier steht, ist eine SYNTAKTISCHE Inventarerkennung am Quelltext und ausdrücklich KEINE
+// vollständige Laufzeitanalyse: entschieden wird an der Form der Anweisung, nicht daran, was ein
+// Ausdruck zur Laufzeit wirklich täte. Jede Grenze nennt deshalb, WER sie sonst deckt:
 //   (a) EINE INDIREKTE LADEKETTE. Aufgenommen wird nur, wer `build-app` SELBST als Modul nennt.
 //       Eine Datei, die X lädt, und X lädt `build-app`, bleibt unsichtbar (bewusst, JOB 3828 §10).
 //       Ebenso unsichtbar bleibt ein Bezeichner, der erst zur Laufzeit entsteht
-//       (`import(`./${name}`)`) — kein heutiger Pfad tut das.
+//       (`import(`./${name}`)`) — kein heutiger Pfad tut das. WER DECKT ES SONST: niemand. Weder
+//       Lint noch dependency-cruiser fragen nach dem Startvertrag; eine solche Datei fiele erst im
+//       Betrieb auf, und genau dort mit der Stapelspur, gegen die diese Datei antritt.
 //   (b) OB EIN EINSTIEGSPUNKT DEN VERTRAG TRÄGT. R2/7 prüft nur, ob er BEKANNT ist. Das ist
 //       Absicht und keine Nachlässigkeit: `tools/bodytext-nachziehen.ts` steht in der Menge, und ob
 //       es `pruefeStartvertrag` ruft, entscheidet JOB 3797 — R2/7 bleibt in BEIDE Richtungen
 //       unberührt davon und wird durch dessen Einbau weder rot noch grün.
 //   (c) EIN EINSTIEGSPUNKT AUSSERHALB VON `services/**` UND `tools/**` — etwa unter `apps/`.
+//       WER DECKT ES SONST: niemand; der Suchraum steht in `SUCHORDNER` und wird dort begründet.
 //   (d) DIE LAUFZEIT. Ort und Menge sind Eigenschaften des Quelltextes; die WIRKUNG am laufenden
 //       Prozess misst `echter-serverstart.test.ts`.
+//   (e) DER RUMPF EINES `namespace` (JOB 3937). Ein Namensraum mit ausführbaren Anweisungen im
+//       Rumpf läuft beim Laden genauso wie ein berechnetes Enum-Glied, wird hier aber weiterhin
+//       pauschal verworfen (`ts.isModuleDeclaration`). Das ist eine BEKANNTE Lücke derselben Art,
+//       bewusst nicht mitrepariert (JOB 3937 §10), und WER DECKT SIE SONST: niemand. Gemessen am
+//       Stand dieser Runde steht unter `services/**` und `tools/**` überhaupt kein `namespace` —
+//       und übrigens auch kein einziges `enum`: die Reparatur oben ändert die MENGE am echten Baum
+//       darum nicht, sie verbreitert nur die Regel für den Tag, an dem eines dazukommt.
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import ts from "typescript";
@@ -466,10 +500,32 @@ function hatAusfuehrbareModulanweisung(datei: ts.SourceFile): boolean {
     if (ts.isFunctionDeclaration(anweisung)) {
       return false;
     }
+    // JOB 3937 · BENs Prüflücke aus dem GRÜN-Urteil von JOB 3828: ein Enum ist NICHT immer eine
+    // reine Deklaration. `enum X { A = f() }` übersetzt sich in eine Zuweisung, die `f()` beim
+    // Laden des Moduls RUFT — dieselbe Wirkung wie `const x = f()`, und deshalb gilt hier dieselbe
+    // Regel wie bei der Variablenanweisung darüber: entschieden wird die Wirkung, nicht die
+    // Anweisungsart, und entschieden wird sie von `wirktBeimLaden` und von nichts anderem.
+    if (ts.isEnumDeclaration(anweisung)) {
+      // ZWEI FORMEN ZÄHLEN NIE, und das ist keine Vorsicht, sondern die Übersetzung:
+      //   `declare enum` ist umgebend (ambient) — der Übersetzer gibt dafür ÜBERHAUPT keinen Code
+      //       aus, es gibt beim Laden also nichts, was laufen könnte.
+      //   `const enum` wird an der Verwendungsstelle eingesetzt; seine Glieder MÜSSEN konstante
+      //       Ausdrücke sein (TS2474 — ein Aufruf ist dort gar nicht übersetzbar), und selbst mit
+      //       `preserveConstEnums` entsteht nur eine Werteliste ohne fremden Code.
+      const nurZurUebersetzungszeit =
+        anweisung.modifiers?.some(
+          (m) => m.kind === ts.SyntaxKind.DeclareKeyword || m.kind === ts.SyntaxKind.ConstKeyword,
+        ) === true;
+      if (nurZurUebersetzungszeit) {
+        return false;
+      }
+      return anweisung.members.some(
+        (glied) => glied.initializer !== undefined && wirktBeimLaden(glied.initializer),
+      );
+    }
     if (
       ts.isInterfaceDeclaration(anweisung) ||
       ts.isTypeAliasDeclaration(anweisung) ||
-      ts.isEnumDeclaration(anweisung) ||
       ts.isModuleDeclaration(anweisung)
     ) {
       return false;
@@ -849,6 +905,66 @@ const AUFNAHMEPROBEN: Aufnahmeprobe[] = [
       "export class Huelle {",
       "  dienste = buildServices();",
       "}",
+    ].join("\n"),
+  },
+  // ---------------------------------------------------------------------------------------------
+  // JOB 3937 — DAS ENUM MIT BERECHNETEM GLIED, GEGEN DAS KONSTANTE ENUM UND GEGEN DEN FREMDLADER.
+  //
+  // BENS PRÜFLÜCKE AUS DEM GRÜN-URTEIL VON JOB 3828 (`archiv/3828/runde-2/ben.md:35`, Prüfpunkt 6):
+  // „Berechnete Enum-Initialisierer bleiben durch Zeile 472 ausgeschlossen; die Rückgabe benennt
+  // dies. Folgeprobe: `enum X { A = f() }` gegen eine konstante Enum-Deklaration."
+  // ---------------------------------------------------------------------------------------------
+  {
+    pfad: "tools/kp3-enum-berechnet.ts",
+    soll: true,
+    warum:
+      "berechnetes Enum-Glied (`Start = zahl()`) ist die EINZIGE beim Laden wirkende Anweisung — " +
+      "`zahl` daneben ist eine blosse Funktionsdeklaration und führt für sich nichts aus",
+    quelle: [
+      'import { buildServices } from "../services/app/src/build-app.js";',
+      "",
+      "function zahl(): number {",
+      "  return 1;",
+      "}",
+      "",
+      "enum Rolle {",
+      "  Start = zahl(),",
+      "}",
+      "",
+      "export { Rolle, buildServices };",
+    ].join("\n"),
+  },
+  {
+    pfad: "tools/kp3-enum-konstant.ts",
+    soll: false,
+    warum:
+      "GEGENRICHTUNG: ein rein konstantes Enum führt beim Laden nichts aus — wer `isEnumDeclaration` " +
+      "einfach aus der Ausschlussliste streicht, nimmt auch diese Datei auf",
+    quelle: [
+      'import { buildServices } from "../services/app/src/build-app.js";',
+      "",
+      "enum Stufe {",
+      "  Eins = 1,",
+      "  Zwei = Eins + 1,",
+      "}",
+      "",
+      "export { Stufe, buildServices };",
+    ].join("\n"),
+  },
+  {
+    pfad: "tools/kp3-enum-ohne-buildapp.ts",
+    soll: false,
+    warum:
+      "ZWEITE GEGENRICHTUNG: berechnetes Enum-Glied, aber ohne jeden Bezug auf `build-app` — die " +
+      "ERSTE Hälfte der Aufnahmeregel (Korrekturpflicht 1) bleibt Bedingung, nicht Zierde",
+    quelle: [
+      'import { hostname } from "node:os";',
+      "",
+      "enum Rechner {",
+      "  Laenge = hostname().length,",
+      "}",
+      "",
+      "export { Rechner };",
     ].join("\n"),
   },
 ];
