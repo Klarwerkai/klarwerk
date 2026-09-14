@@ -93,8 +93,21 @@ const DUBLETTE = {
 
 let panel: KlaraPanel | null = null;
 
-function dokument(optionen: { haelteSync?: number } = {}): WordBuehne {
-  return createWordBuehne([{ text: A1 }, { text: A2 }, { text: A3 }], optionen);
+/**
+ * Die EINE Aufbaufunktion dieser Datei. `fremdfarbe` legt eine Hervorhebung eines MENSCHEN auf den
+ * dritten Absatz — damit ist messbar, dass die Ruecknahme ihn gar nicht erst anfasst (Z6b). Ohne
+ * Angabe traegt er wie bisher keine Farbe.
+ */
+function dokument({
+  haelteSync,
+  fremdfarbe,
+}: { haelteSync?: number; fremdfarbe?: string | null } = {}): WordBuehne {
+  return createWordBuehne(
+    [{ text: A1 }, { text: A2 }, { text: A3, highlightColor: fremdfarbe ?? null }],
+    // `exactOptionalPropertyTypes` verbietet ein ausdrueckliches `undefined` — ohne Angabe faellt
+    // der Schluessel weg, und die Buehne haelt wie bisher keinen `sync` fest.
+    haelteSync === undefined ? {} : { haelteSync },
+  );
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -337,6 +350,18 @@ describe("JOB 3281 · Z · der Schreiblauf eines fertigen Laufs und der naechste
     // MUSS in die Merkliste — sonst stuenden Klaras Farben im Dokument, und „Markierungen
     // entfernen" boete sie nicht mehr an. Der Lauf ist ueberholt, die Farbe im Dokument ist es
     // nicht.
+    //
+    // BIS 13.09. ENDETE DIESER FALL BEIM SICHTBAREN KNOPF (Ben, Pruefung JOB 3281 R4 vom 08.09.,
+    // Pruefpunkt 6: „Der eingecheckte Z6 endet weiterhin beim sichtbaren Knopf"). Der Klick dahinter
+    // war ungemessen — und ein angebotener Knopf ist keine zurueckgenommene Farbe.
+    //
+    // EIGENE MESSUNG (13.09., an Stand e0cdc2e8):
+    //   vor dem Klick : farben ["Turquoise","Turquoise","Turquoise"] · #wv-entfernen "ghost"
+    //                   · #wv-stand „Absatz 1 von 3 …" (B fragt noch)
+    //   nach dem Klick: farben [null,null,null] · #wv-entfernen "ghost hidden"
+    //                   · #wv-stand „3 Markierungen zurückgenommen; 0 Absätze haben sich seither
+    //                     verändert und blieben unangetastet."
+    // Das deckt sich mit Bens damaliger Zusatzprobe (`archiv/3281/runde-4/ben.md:14`).
     const buehne = dokument({ haelteSync: 4 });
     const p = starte(buehne);
     await p.flush();
@@ -357,6 +382,71 @@ describe("JOB 3281 · Z · der Schreiblauf eines fertigen Laufs und der naechste
       p.q("#wv-entfernen")?.className,
       "die Farben stehen im Dokument, aber das Fenster bietet keine Ruecknahme an",
     ).not.toContain("hidden");
+
+    // UND JETZT WIRD ER GEKLICKT. Bis hierher war nur belegt, dass der Knopf DA ist — ein Knopf,
+    // der angeboten wird und nichts bewirkt, ist dieselbe unwahre Behauptung, die Z4 oben fuer
+    // „Abbrechen" ausschliesst. Was Word wirklich ins Dokument geschrieben hat, muss bis zum Ende
+    // zuruecknehmbar sein.
+    klick(p, "#wv-entfernen");
+    await ruhe(p);
+
+    expect(
+      buehne.farben(),
+      "die Ruecknahme hat die Ursprungsfarben nicht wiederhergestellt",
+    ).toEqual([null, null, null]);
+    expect(p.text("#wv-stand")).toContain("3 Markierungen zurückgenommen");
+  });
+
+  it("Z6b · die Ruecknahme laesst auch im Ueberholfenster die FREMDE Hervorhebung stehen", async () => {
+    // Dieselbe Lage wie Z6, ein Unterschied: der dritte Absatz traegt vor dem Lauf die Hervorhebung
+    // eines Menschen. Klara faerbt ihn deshalb nicht und merkt ihn nicht vor — und die Ruecknahme
+    // fasst nur ihre EIGENEN Posten an, nicht das ganze Dokument. Diese Regel misst
+    // `merkliste-und-ruecknahme.test.ts` D1/D2 nur im ruhigen Zustand: dort haelt nie ein `sync`
+    // fest und laeuft nie ein zweiter Lauf. Hier steht sie zum ersten Mal im Ueberholfenster.
+    //
+    // WIE DIE REGEL WIRKLICH TRAEGT (gemessen 13.09., Verstellung V2 des Auftrags): setzt man in
+    // `wvEntfernen` `highlightColor = null` statt `posten.vorher`, bleibt ALLES gruen — auch D1–D6.
+    // Grund: `taskpane.html:12876` stuft jeden Absatz mit Ursprungsfarbe als `fremdeFarbe` ein, und
+    // `:12898` haelt ihn aus dem Faerbeauftrag heraus. Ein Posten mit `vorher !== null` entsteht
+    // also nie, und `posten.vorher` ist auf jedem erreichbaren Weg `null`. Die fremde Farbe
+    // ueberlebt nicht, weil sie wiederhergestellt wird, sondern weil sie nie angefasst wird — und
+    // genau DAS haelt dieser Fall fest. Wirksam gebrochen wird er von einer Ruecknahme, die blind
+    // ueber alle Absaetze laeuft (V2b): dann faellt Z6b, waehrend Z6 stehen bleibt.
+    //
+    // EIGENE MESSUNG (13.09., an Stand e0cdc2e8):
+    //   vor dem Klick : farben ["Turquoise","Turquoise","Pink"] · #wv-entfernen "ghost"
+    //   nach dem Klick: farben [null,null,"Pink"] · #wv-entfernen "ghost hidden"
+    //                   · #wv-stand „2 Markierungen zurückgenommen; 0 Absätze haben sich seither
+    //                     verändert und blieben unangetastet."
+    // Das deckt sich mit Bens damaliger Zusatzprobe (`archiv/3281/runde-4/ben.md:14`).
+    const buehne = dokument({ haelteSync: 4, fremdfarbe: "Pink" });
+    const p = starte(buehne);
+    await p.flush();
+    const tor = torwaechter();
+    await aFertigSchreiblaufHaengt(p, tor);
+
+    klick(p, "#wv-btn"); // B laeuft
+    await ruhe(p);
+    buehne.syncFreigeben(true); // A's Farben sind jetzt wirklich im Dokument
+    await ruhe(p);
+
+    expect(
+      buehne.farben(),
+      "A hat die fremde Hervorhebung ueberfaerbt — sie ist Arbeit eines Menschen",
+    ).toEqual(["Turquoise", "Turquoise", "Pink"]);
+    expect(
+      p.q("#wv-entfernen")?.className,
+      "die Farben stehen im Dokument, aber das Fenster bietet keine Ruecknahme an",
+    ).not.toContain("hidden");
+
+    klick(p, "#wv-entfernen");
+    await ruhe(p);
+
+    expect(
+      buehne.farben(),
+      "die Ruecknahme ist ueber das ganze Dokument gelaufen statt nur ueber Klaras eigene Posten",
+    ).toEqual([null, null, "Pink"]);
+    expect(p.text("#wv-stand")).toContain("2 Markierungen zurückgenommen");
   });
 });
 
