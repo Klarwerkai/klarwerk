@@ -29,6 +29,30 @@
 // deshalb gezielt fällig gestellt werden kann.
 //
 // ------------------------------------------------------------------------------------------------
+// JOB 3936 · W19–W21: WAS NACH EINEM GESCHEITERTEN FRISTBLICK PASSIERT.
+// ------------------------------------------------------------------------------------------------
+// W14–W18 fahren den ereignislosen Weg ausschliesslich mit GELUNGENEN Antworten; ein Fehlschlag war
+// bis hierher nur am EREIGNISweg gemessen (W5 über `sichtbarWerden`, W6 beim Laden). Genau dort
+// fängt aber das Risiko der Vorführung an: das Fenster steht stundenlang offen, niemand fasst es an,
+// und EIN Minutenblick geht daneben. Dann muss zweierlei gelten — der zuletzt bekannte Look bleibt
+// stehen, UND der nächste Blick kommt trotzdem. Ein Fenster, dessen Fristenkette am ersten
+// Fehlschlag abreisst, bliebe bis zum nächsten Fokuswechsel auf dem alten Stand.
+//
+// Beides hängt an zwei Zeilen des Markenblocks, und beide waren ungemessen: am FEHLERZWEIG von
+// `.then(fn, fertig)` (`taskpane.html:13434` — ohne ihn bliebe `kwMarkeLaeuft` nach einem Fehlschlag
+// dauerhaft `true`, und `kwMarkeHolen` kehrte danach bei `:13426` bei jedem weiteren Anlass sofort
+// zurück) und an der Wiederstellung der Frist im Rückruf (`:13441`).
+//
+// Die drei Fehlerarten stehen als drei Fälle da, weil sie im Produkt an DREI verschiedenen Wächtern
+// hängen: der Netzfehler (W19) am abgewiesenen Abruf, die HTTP-Fehlerantwort (W20) an `antwort.ok`
+// (`:13433`) und der Unsinn mit Status 200 (W21) am Vertragsmerkmal `typeof stand.version` in
+// `kwMarkeUebernehmen` (`:13417`) — dessen Zusage im Produkt wörtlich dasteht (`:13412-13414`) und
+// bis hierher kein Fall gehalten hat. Bestellt hat den Weg der Prüfer in `archiv/3845/runde-2/ben.md`
+// (Prüfpunkt 6): „Fehlerantwort beim Fristablauf mit anschliessend erfolgreicher Wiederholung
+// prüfen". Der zweite Teil jener Bestellung — berechnete Farben und geladenes Logo IM BROWSER — ist
+// hier ausdrücklich NICHT eingelöst (Auftrag §10) und wird unten auch nicht behauptet.
+//
+// ------------------------------------------------------------------------------------------------
 // EINE SCHREIBREGEL FÜR DIE KOMMENTARE DIESER DATEI — bitte beim Weiterschreiben beachten.
 // ------------------------------------------------------------------------------------------------
 // In der Prosa steht der Pfad des Aufgabenfensters NIE als Schrägstrich-Literal (Ordnername, `/`,
@@ -105,6 +129,16 @@ const AN = (version: number): Stand => ({
 });
 const AUS = (version: number): Stand => ({ profil: null, aktiv: false, version, marke: null });
 
+/**
+ * JOB 3936 · zwei Antworten, die wie ein Stand AUSSEHEN und keiner sind: einmal `version` als
+ * Zeichenkette, einmal gar keine. Sonst tragen sie die Form von AUS — würde eine von ihnen
+ * übernommen, ginge der Look sichtbar aus, und genau daran erkennt W21 den Durchrutscher. Sie sind
+ * bewusst KEIN `Stand`: der Drahtvertrag verlangt eine Zahl, und eine Leitung, die Unsinn liefert,
+ * hält sich an keinen Typ.
+ */
+const UNSINN_VERSION_ALS_TEXT = { profil: null, aktiv: false, version: "7", marke: null };
+const UNSINN_OHNE_VERSION = { profil: null, aktiv: false, marke: null };
+
 /** Die fünf Stellen, an denen die Firmen-CI im Aufgabenfenster wirkt — und sonst keine. */
 const MARKEN_TOKEN = ["--brand", "--brand-deep", "--brand-text", "--ink", "--shadow-primary"];
 /** Die Signalfarben. Sie sind KEINE Marke und dürfen nie überschrieben werden (Auftrag L2). */
@@ -117,13 +151,38 @@ const SIGNAL_TOKEN = ["--pos-bg", "--pos-text", "--warn-bg", "--warn-text"];
  */
 const KW_MARKE_ABSTAND_MS = 60_000;
 
+/**
+ * JOB 3936: ein Folgeeintrag, der einen STATUS trägt — beantwortet über denselben `antwort()`-Bauer
+ * wie ein `Stand`, nur eben mit einem anderen Status und einem frei gewählten Körper.
+ *
+ * Ohne ihn war der Zweig `antwort && antwort.ok ? … : null` (`taskpane.html:13433`) baulich
+ * unbetretbar: `null` heisst Netzfehler (der Abruf kommt gar nicht bis zur Antwort), `"haengt"`
+ * heisst „nie beantwortet", und jeder `Stand` ist eine 200er. Die Bedeutung dieser drei bleibt
+ * unverändert; das hier ist der vierte Fall, nicht die Umdeutung eines der drei.
+ *
+ * WARUM DER KÖRPER FREI STEHT und bei einer Fehlerantwort ein formal GÜLTIGER Stand ist: sonst
+ * hielten zwei Wächter hintereinander dieselbe Antwort auf (erst der Status, dann `version`), und
+ * ein grüner Fall bewiese nicht mehr, WELCHER von beiden das getan hat. Mit gültigem Körper steht
+ * nur noch die Statusprüfung dazwischen — und genau sie wird gemessen.
+ */
+interface RohAntwort {
+  status: number;
+  koerper: unknown;
+}
+/** `Stand` trägt kein `status`; die Unterscheidung ist deshalb trennscharf und braucht kein Feld. */
+function istRohAntwort(eintrag: Stand | RohAntwort): eintrag is RohAntwort {
+  return typeof (eintrag as RohAntwort).status === "number";
+}
+type Folge = (Stand | RohAntwort | null | "haengt")[];
+
 let brandingAbrufe: string[] = [];
 /**
  * Was `GET /api/branding` nacheinander antwortet. Ein `null`-Eintrag heisst „Abruf scheitert",
  * `"haengt"` heisst „der Abruf bleibt offen" — die Antwort kommt in diesem Fall nie. Damit wird der
- * Augenblick messbar, in dem ein Abruf unterwegs ist (W8).
+ * Augenblick messbar, in dem ein Abruf unterwegs ist (W8). Ein `RohAntwort`-Eintrag ist die vierte
+ * Möglichkeit: eine Antwort, die WIRKLICH eintrifft, aber keine 200er mit gültigem Stand ist (W20/W21).
  */
-let brandingFolge: (Stand | null | "haengt")[] = [];
+let brandingFolge: Folge = [];
 let jetzt = 1_700_000_000_000;
 
 function antwort(koerper: unknown, status = 200): unknown {
@@ -145,6 +204,10 @@ function router(url: string): Promise<unknown> {
     }
     if (naechste === null || naechste === undefined) {
       return Promise.reject(new TypeError("Failed to fetch"));
+    }
+    if (istRohAntwort(naechste)) {
+      // DIESELBE Stelle, derselbe Antwortbauer — nur trägt der Eintrag seinen Status selbst.
+      return Promise.resolve(antwort(naechste.koerper, naechste.status));
     }
     return Promise.resolve(antwort(naechste));
   }
@@ -198,7 +261,7 @@ const fristen: Frist[] = [];
  */
 let markenFrist: Frist | null = null;
 
-async function ladeFenster(folge: (Stand | null | "haengt")[]): Promise<void> {
+async function ladeFenster(folge: Folge): Promise<void> {
   brandingFolge = [...folge];
   vi.stubGlobal("fetch", (url: string) => router(String(url)));
   vi.spyOn(Date, "now").mockImplementation(() => jetzt);
@@ -315,6 +378,47 @@ function logo(): El {
 
 function logoSichtbar(): boolean {
   return !logo().className.split(/\s+/).includes("hidden");
+}
+
+/**
+ * JOB 3936 · K1 — der Look steht WIRKLICH, bevor ein Blick danebengeht.
+ *
+ * Ohne diese Behauptung wäre „nach dem Fehlschlag wurde nichts geleert" auch dann grün, wenn nie
+ * etwas dagestanden hätte. Gemessen wird in der Bauform von W10 (dieselbe Filterzeile, damit es
+ * nicht zwei Auffassungen davon gibt, was „gesetzt" heisst) und zusätzlich am Logo, das W10 nicht
+ * anfasst — der Fehlschlag soll ja beides unberührt lassen.
+ */
+function derLookStehtWirklich(wo: string): void {
+  expect(
+    MARKEN_TOKEN.filter((t) => wurzel(t) !== ""),
+    `${wo}: es stehen nicht alle fünf Markenvariablen — der Fall misst nichts`,
+  ).toEqual(MARKEN_TOKEN);
+  expect(logoSichtbar(), `${wo}: das Logo ist gar nicht sichtbar`).toBe(true);
+  expect(logo().getAttribute("src"), `${wo}: das Logo zeigt nicht die Markendatei`).toBe(
+    ADVISOR.logo,
+  );
+}
+
+/**
+ * Die Abschrift des aufgetragenen Looks. Verglichen wird danach Zeile für Zeile: „nichts geleert"
+ * allein wäre zu schwach — ein Fehlschlag darf den Look auch nicht VERSTELLEN.
+ */
+function lookAbschrift(): string[] {
+  return MARKEN_TOKEN.map((t) => `${t}=${wurzel(t)}`);
+}
+
+/**
+ * JOB 3936: nach einem Blick steht wieder eine Markenfrist — ausdrücklich behauptet und nicht bloss
+ * als Nebenwirkung des nächsten `markenFristFaellig()` mitgeprüft. Die Kette des Markenblocks
+ * (`taskpane.html:13441`) ist die Zusage; wer sie nur mittelbar prüft, meldet ihren Abriss erst eine
+ * Stufe später und dann mit der falschen Meldung.
+ */
+function dieKetteLebtWeiter(wo: string): void {
+  expect(markenFrist, `${wo}: keine neue Markenfrist — die Kette ist abgerissen`).not.toBeNull();
+  expect(
+    (markenFrist as Frist).ms,
+    `${wo}: die neue Frist steht nicht auf der Minute des Markenblocks`,
+  ).toBe(KW_MARKE_ABSTAND_MS);
 }
 
 beforeEach(() => {
@@ -616,5 +720,135 @@ describe("JOB 3512 W · Klara im Word übernimmt die Firmen-CI", () => {
     expect(brandingAbrufe.length, "das zurückgeholte Fenster hat nicht nachgesehen").toBe(2);
     expect(wurzel("--brand")).toBe("");
     expect(logoSichtbar()).toBe(false);
+  });
+
+  // ================================================================================================
+  // JOB 3936 · W19–W21 — DER GESCHEITERTE FRISTBLICK. Der Kopf dieser Datei sagt, warum.
+  // ================================================================================================
+  // Kein Ereignis in diesen drei Fällen: nur die Uhr, die Frist und eine Antwort, die danebengeht.
+  // Die Abrufzahl steht an JEDER Stufe als eigene Behauptung (Auftrag, Kalibrierung K2) — ein Fall,
+  // der nur die Farben liest, wäre auch dann grün, wenn der zweite Blick gar nicht stattgefunden
+  // hätte. Und vor jedem Fehlschlag steht K1: der Look ist wirklich aufgetragen.
+
+  it("W19 · der gescheiterte Fristblick (Netz weg) leert nichts — und der nächste Blick kommt", async () => {
+    await ladeFenster([AN(4), null, AUS(6)]);
+    expect(brandingAbrufe.length, "der erzwungene erste Blick fand nicht statt").toBe(1);
+    derLookStehtWirklich("vor dem Fehlschlag"); // ── K1
+    const vorher = lookAbschrift();
+
+    // ── Der Minutenblick geht daneben. Niemand fasst das Fenster an.
+    await markenFristFaellig();
+
+    // (a) Er hat wirklich stattgefunden — sonst misst alles Folgende nur den alten Zustand.
+    expect(brandingAbrufe.length, "die Frist hat keinen zweiten Blick ausgelöst").toBe(2);
+    // (b) LEHREN §7: eine gescheiterte Auffrischung lässt den zuletzt bekannten Stand SICHTBAR. Sie
+    // leert ihn nicht, und sie verstellt ihn auch nicht.
+    expect(lookAbschrift(), "der gescheiterte Blick hat die Markenvariablen angefasst").toEqual(
+      vorher,
+    );
+    expect(logoSichtbar(), "das Logo verschwand nach dem Fehlschlag").toBe(true);
+    expect(logo().getAttribute("src"), "das Logo wechselte nach dem Fehlschlag").toBe(ADVISOR.logo);
+    // (c) Die Kette lebt: `kwMarkeFristStellen` steht im Rückruf VOR jeder Antwort und ist deshalb
+    // vom Ausgang des Blicks unabhängig.
+    dieKetteLebtWeiter("nach dem gescheiterten Blick");
+
+    // (d) Und sie trägt wirklich. Genau hier hängt es zusätzlich am Fehlerzweig von
+    // `taskpane.html:13434`: ohne ihn bliebe `kwMarkeLaeuft` auf `true`, die Frist käme zwar, aber
+    // `kwMarkeHolen` kehrte sofort wieder um — das Fenster sähe nie wieder nach.
+    await markenFristFaellig();
+    expect(brandingAbrufe.length, "nach dem Fehlschlag kam kein weiterer Blick mehr").toBe(3);
+    for (const token of MARKEN_TOKEN) {
+      expect(wurzel(token), `${token} blieb stehen, obwohl die Firmen-CI aus ist`).toBe("");
+    }
+    expect(logoSichtbar()).toBe(false);
+    expect(logo().hasAttribute("src")).toBe(false);
+  });
+
+  it("W20 · dasselbe mit einer HTTP-Fehlerantwort — und der Fehlerkörper kommt nicht an", async () => {
+    // Der Unterschied zu W19 ist der Weg, auf dem der Blick scheitert: hier ANTWORTET der Server, nur
+    // eben mit 503. Die Antwort trägt einen formal gültigen Stand (siehe `RohAntwort`), also hält sie
+    // allein `antwort.ok` in `taskpane.html:13433` auf. Fiele diese Prüfung weg, käme der Fehlerkörper
+    // durch und schaltete die Marke aus — sichtbar, ohne dass der Server das je gemeint hat.
+    await ladeFenster([AN(4), { status: 503, koerper: AUS(6) }, AUS(6)]);
+    expect(brandingAbrufe.length, "der erzwungene erste Blick fand nicht statt").toBe(1);
+    derLookStehtWirklich("vor der Fehlerantwort"); // ── K1
+    const vorher = lookAbschrift();
+
+    // Schärfer als der blosse Wertevergleich: während des Fehlblicks darf an der Wurzel überhaupt
+    // NICHTS geschrieben und nichts gelöscht werden (Bauform aus W13).
+    const stil = umgebung.document.documentElement.style as unknown as {
+      setProperty(name: string, wert: string): void;
+      removeProperty(name: string): void;
+    };
+    const schreibt = vi.spyOn(stil, "setProperty");
+    const loescht = vi.spyOn(stil, "removeProperty");
+
+    await markenFristFaellig();
+
+    expect(brandingAbrufe.length, "die Frist hat keinen zweiten Blick ausgelöst").toBe(2);
+    expect(
+      schreibt.mock.calls.length + loescht.mock.calls.length,
+      "die Fehlerantwort hat die Wurzel angefasst — ihr Körper wurde übernommen",
+    ).toBe(0);
+    schreibt.mockRestore();
+    loescht.mockRestore();
+    expect(lookAbschrift(), "der Look nach der Fehlerantwort").toEqual(vorher);
+    expect(logoSichtbar(), "das Logo verschwand nach der Fehlerantwort").toBe(true);
+    expect(logo().getAttribute("src"), "das Logo wechselte nach der Fehlerantwort").toBe(
+      ADVISOR.logo,
+    );
+    dieKetteLebtWeiter("nach der Fehlerantwort");
+
+    await markenFristFaellig();
+    expect(brandingAbrufe.length, "nach der Fehlerantwort kam kein weiterer Blick mehr").toBe(3);
+    for (const token of MARKEN_TOKEN) {
+      expect(wurzel(token), `${token} blieb stehen, obwohl die Firmen-CI aus ist`).toBe("");
+    }
+    expect(logoSichtbar()).toBe(false);
+    expect(logo().hasAttribute("src")).toBe(false);
+  });
+
+  it("W21 · eine 200er-Antwort ohne numerische `version` ist keine Auskunft über die Marke", async () => {
+    // Die dritte Fehlerart, und die einzige, die AUSSIEHT wie eine Auskunft: Status 200, Körper in
+    // Standform — nur ohne die Zahl, die der Vertrag verlangt. Das Produkt sagt dazu wörtlich, so eine
+    // Antwort sei „Unsinn auf der Leitung", werde verworfen, und der zuletzt bekannte Look bleibe
+    // stehen (`taskpane.html:13412-13414`, umgesetzt in `:13417`). Gehalten hat diese Zusage bis hier
+    // kein Fall: W9 misst `marke: null` bei GÜLTIGER `version`, also die Auskunft „aus", nicht den
+    // Unsinn. Beide Spielarten werden gefahren, weil beide im Wortlaut der Zusage stehen.
+    await ladeFenster([
+      AN(4),
+      { status: 200, koerper: UNSINN_VERSION_ALS_TEXT },
+      { status: 200, koerper: UNSINN_OHNE_VERSION },
+      AUS(7),
+    ]);
+    expect(brandingAbrufe.length, "der erzwungene erste Blick fand nicht statt").toBe(1);
+    derLookStehtWirklich("vor dem Unsinn"); // ── K1
+    const vorher = lookAbschrift();
+
+    await markenFristFaellig(); // ── `version` ist eine Zeichenkette
+    expect(brandingAbrufe.length, "die Frist hat keinen zweiten Blick ausgelöst").toBe(2);
+    expect(lookAbschrift(), "`version` als Zeichenkette hat den Look verstellt").toEqual(vorher);
+    expect(logoSichtbar(), "das Logo verschwand am Unsinn").toBe(true);
+    dieKetteLebtWeiter("nach der Antwort mit textueller `version`");
+
+    await markenFristFaellig(); // ── `version` fehlt ganz
+    expect(brandingAbrufe.length, "nach dem ersten Unsinn kam kein dritter Blick").toBe(3);
+    expect(lookAbschrift(), "eine fehlende `version` hat den Look verstellt").toEqual(vorher);
+    expect(logoSichtbar(), "das Logo verschwand an der fehlenden `version`").toBe(true);
+    dieKetteLebtWeiter("nach der Antwort ohne `version`");
+
+    // Und jetzt die eigentliche Frage dieses Falls: hat der Unsinn die Vergleichskennung vergiftet?
+    // Wer `kwMarkeAussehen` setzt, BEVOR er den Vertrag prüft, merkt sich hier „aus" — und würde die
+    // echte Auskunft „aus" danach als „nichts Neues" verwerfen. Der Look bliebe dauerhaft blau,
+    // obwohl der Server längst umgeschaltet hat. Genau das schliesst der letzte Blick aus.
+    await markenFristFaellig(); // ── AUS(7), die erste echte Auskunft seit dem Einschalten
+    expect(brandingAbrufe.length, "nach dem zweiten Unsinn kam kein vierter Blick").toBe(4);
+    for (const token of MARKEN_TOKEN) {
+      expect(wurzel(token), `${token} blieb stehen — der Unsinn hat die Kennung vergiftet`).toBe(
+        "",
+      );
+    }
+    expect(logoSichtbar()).toBe(false);
+    expect(logo().hasAttribute("src")).toBe(false);
   });
 });
