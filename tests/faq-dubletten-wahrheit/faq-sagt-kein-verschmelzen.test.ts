@@ -24,12 +24,12 @@
 // als ein Wort („nicht", „nie", „niemals", „keineswegs", „keinerlei", „kein(e/m/n/r/s)", dazu „ohne"
 // in derselben Rolle), und sie wirkt nur innerhalb IHRER Teilaussage — ein ehrlicher Satz mit
 // benachbarter Verneinung („Beide bleiben bestehen und werden nicht gelöscht") wird nicht mehr
-// beanstandet. AUSDRÜCKLICH NICHT GEMESSEN: sprachliche Allgemeingültigkeit über die Sätze in
-// `KALIBRIERUNG` hinaus (zum Stand JOB 3916: zwölf) — der Wächter kennt Wörter und Abstände, keine
+// beanstandet. NICHT GEMESSEN ZUM STAND JOB 3916: sprachliche Allgemeingültigkeit über die Sätze in
+// `KALIBRIERUNG` hinaus (damals: zwölf) — der Wächter kennt Wörter und Abstände, keine
 // Grammatik; die EN/NL-Fassungen der FAQ (dieser Wächter liest nur `FAQ_CONTENT`, also DE); und jede
-// Verneinung, die über die Grenze ihrer Teilaussage hinaus wirkt („Es stimmt nicht, dass beide
-// bleiben." bleibt unerkannt — das Komma beendet das Fenster). Wer diese Grenze verschiebt,
-// kalibriert sie dort neu.
+// Verneinung, die über die Grenze ihrer Teilaussage hinaus wirkt. Die dritte dieser Grenzen ist für
+// den `dass`-Satz seit JOB 3952 aufgehoben und dort neu kalibriert; die beiden anderen gelten
+// unverändert weiter.
 //
 // JOB 3939 — DIE GRENZE DER TEILAUSSAGE TRENNTE ZU VIEL, UND AN EINER STELLE ZU WENIG. BEN hat den
 // kalibrierten Stand nachgemessen (`archiv/3916/runde-1/ben.md:29`) und drei Sätze gefunden, an
@@ -39,9 +39,30 @@
 // beanstandet (V8, V9); und „nicht nur …, sondern …" gilt als das, was es ist — eine Steigerung,
 // die X behauptet, keine Verneinung von X (E6 an „beide bleiben", E9 an „festgehaltener Grund").
 // Die Grenzen `und`, `oder`, `sondern` und die Satzzeichen bleiben unverändert Grenze (E1–E3, E7,
-// E8). WEITERHIN NICHT GEMESSEN, wörtlich wie oben: jede Verneinung über die Grenze ihrer
-// Teilaussage hinaus („Es stimmt nicht, dass beide bleiben."), die EN/NL-Fassungen der FAQ, und
-// jede sprachliche Allgemeingültigkeit über die jetzt achtzehn Sätze in `KALIBRIERUNG` hinaus.
+// E8). NICHT GEMESSEN ZUM STAND JOB 3939 (achtzehn Sätze in `KALIBRIERUNG`): jede Verneinung über
+// die Grenze ihrer Teilaussage hinaus, die EN/NL-Fassungen der FAQ, und jede sprachliche
+// Allgemeingültigkeit über die aufgezählten Sätze hinaus. Den ersten Punkt löst JOB 3952 ein.
+//
+// JOB 3952 — DIE VERNEINUNG DES HAUPTSATZES REICHT IN DEN `dass`-SATZ HINEIN. BEN hat den Stand aus
+// JOB 3939 nachgemessen und die Grenze, die dieser Kopf seit JOB 3916 selbst benannte, als Auftrag
+// zurückgegeben (`archiv/3939/runde-1/ben.md:29`): „Es stimmt nicht, dass beide bleiben." passierte,
+// weil das Fenster am Komma endet. ZUSÄTZLICH GEMESSEN ist ab jetzt: ein Fenster, das VON einer
+// Verneinung ZU ihrem Pflichtwort läuft, überschreitet GENAU EIN Komma — aber nur, wenn unmittelbar
+// dahinter `dass` steht (`nahMitDassSatz`, Begründung dort; kein zweiter Prüfweg, keine zweite
+// Wortliste). V10 („beide bleiben") und V11 („festgehaltener Grund") messen die Regel an zwei
+// Pflichten; E10–E13 messen, dass sie nichts anderes mitnimmt: der Gedankenstrich bleibt Grenze
+// (E10), `dass` allein ohne Verneinung löst nichts aus (E11), und wo kein `dass` folgt, bleibt das
+// Komma Grenze (E12, E13). „jedoch" steht seit diesem Job als eigener Tabellenfall (V12) statt nur
+// in der Wortliste, und die „nicht nur"-Ausnahme ist nach beiden Seiten kalibriert (E6/E9
+// durchlässig, V13 nicht).
+//
+// WEITERHIN NICHT GEMESSEN: die EN/NL-Fassungen der FAQ (dieser Wächter liest nur `FAQ_CONTENT`,
+// also DE); jede sprachliche Allgemeingültigkeit über die jetzt sechsundzwanzig Sätze in
+// `KALIBRIERUNG` hinaus. NEU BENANNT, weil beim Bauen aufgefallen: die Regel hängt allein am Wort
+// `dass`. Jede ANDERE Einleitung derselben Bauform bleibt unerkannt — `ob` („Es ist nicht belegt, ob
+// beide bleiben."), der Relativsatz („… ein Eintrag, der nicht bleibt"), die indirekte Rede und der
+// Fragesatz; ebenso eine Verneinung, die über ZWEI Kommata hinweg wirkt. Wer eine dieser Grenzen
+// verschiebt, kalibriert sie hier neu.
 //
 // WAS DIESER WÄCHTER NICHT IST: eine Doppelung der drei vorhandenen `FAQ_CONTENT`-Leser.
 // `tests/app/chain-claims.test.ts` prüft absolute Ketten-Behauptungen, `faq-anzeigeweg.test.tsx`
@@ -180,6 +201,32 @@ const SELBE_AUSSAGE = String.raw`(?:(?!\b(?:und|oder|sondern)\b)[^.,;:!?—–])
 /** Ein Fenster von höchstens `zeichen` Zeichen INNERHALB derselben Teilaussage. */
 const nah = (zeichen: number): string => `${SELBE_AUSSAGE}{0,${zeichen}}`;
 
+/**
+ * JOB 3952 — DASSELBE FENSTER, das zusätzlich GENAU EIN Komma überschreiten darf: dann und nur dann,
+ * wenn unmittelbar dahinter der Nebensatzeinleiter `dass` steht. Gebaut aus denselben Teilen wie
+ * `nah`, daneben statt darin — `SELBE_AUSSAGE` bleibt unangetastet, und alle Grenzen (`und`, `oder`,
+ * `sondern`, Punkt, Semikolon, Doppelpunkt, Frage- und Ausrufezeichen, Gedankenstrich) gelten
+ * unverändert weiter.
+ *
+ * WARUM ÜBERHAUPT. „Es stimmt nicht, dass beide bleiben." ist EINE Behauptung: der Hauptsatz verneint
+ * genau den `dass`-Satz, der ihm folgt. Das Komma trennt hier keine zweite Aussage ab, es ist die
+ * Naht INNERHALB derselben. Bis JOB 3939 endete das Fenster trotzdem dort, das zweite Umkehrmuster
+ * erreichte das Pflichtwort nie, und `fehlendePflicht` hielt den Satz für ehrlich (V10, V11).
+ *
+ * WARUM NUR IN DER MUSTERHÄLFTE „VERNEINUNG VOR DEM PFLICHTWORT". Der Hauptsatz steht VOR seinem
+ * Nebensatz; die Verneinung reicht nach RECHTS hinein, nie nach links. Ein Fenster, das umgekehrt vom
+ * Pflichtwort aus nach rechts eine Verneinung sucht (`beide bleiben${nah(40)}${VERNEINUNG}`), behält
+ * das Komma deshalb als harte Grenze — sonst würde „Beide bleiben bestehen, gelöscht wird nie etwas."
+ * rot (E2, E7, E13), und mit ihr die Bauform des ausgelieferten Bestandes. E12 misst genau diese
+ * Asymmetrie an einem Satz, der beides zugleich trägt.
+ *
+ * `\bdass\b` und nicht `dass`: „dasselbe" steht im Erkennungssatz des echten Bestandes
+ * (`faqContent.ts:395`) und dürfte das Fenster nicht öffnen. Ein ZWEITES Komma bleibt Grenze — die
+ * Regel überschreitet eines, nicht beliebig viele.
+ */
+const nahMitDassSatz = (zeichen: number): string =>
+  `${nah(zeichen)}(?:,\\s*dass\\b${nah(zeichen)})?`;
+
 const POSITIV_PFLICHT: readonly {
   readonly was: string;
   readonly muster: RegExp;
@@ -191,7 +238,7 @@ const POSITIV_PFLICHT: readonly {
     was: "automatische Erkennung",
     muster: /erkennt[^.]*automatisch/i,
     umkehr: new RegExp(
-      `erkennt${nah(40)}${VERNEINUNG}${nah(20)}automatisch|${VERNEINUNG}${nah(20)}automatisch${nah(20)}erkann`,
+      `erkennt${nah(40)}${VERNEINUNG}${nahMitDassSatz(20)}automatisch|${VERNEINUNG}${nahMitDassSatz(20)}automatisch${nah(20)}erkann`,
       "i",
     ),
   },
@@ -206,7 +253,7 @@ const POSITIV_PFLICHT: readonly {
     was: "beide Einträge bleiben",
     muster: /beide bleiben/i,
     umkehr: new RegExp(
-      `beide bleiben${nah(40)}${VERNEINUNG}|${VERNEINUNG}${nah(20)}beide bleiben`,
+      `beide bleiben${nah(40)}${VERNEINUNG}|${VERNEINUNG}${nahMitDassSatz(20)}beide bleiben`,
       "i",
     ),
   },
@@ -216,7 +263,7 @@ const POSITIV_PFLICHT: readonly {
   {
     was: "festgehaltener Grund",
     muster: /grund/i,
-    umkehr: new RegExp(`(?:\\bohne\\b|${VERNEINUNG})${nah(20)}grund`, "i"),
+    umkehr: new RegExp(`(?:\\bohne\\b|${VERNEINUNG})${nahMitDassSatz(20)}grund`, "i"),
   },
   // Die drei Ausgänge von `resolve`, in der Sprache der Fläche.
   { was: "die drei Abschlüsse", muster: /getrennt[\s\S]*verwandt[\s\S]*fehlalarm/i },
@@ -226,7 +273,7 @@ const POSITIV_PFLICHT: readonly {
     was: "Grund bleibt nachlesbar",
     muster: /protokoll/i,
     umkehr: new RegExp(
-      `protokoll${nah(40)}${VERNEINUNG}|(?:\\bohne\\b|${VERNEINUNG})${nah(20)}protokoll`,
+      `protokoll${nah(40)}${VERNEINUNG}|(?:\\bohne\\b|${VERNEINUNG})${nahMitDassSatz(20)}protokoll`,
       "i",
     ),
   },
@@ -398,6 +445,12 @@ describe("JOB 3844: die Bedeutungsumkehr wird beanstandet — vier Bauformen", (
   // Messung nicht leer läuft, steht davor der Nachweis, dass die ausgelieferten Antworten überhaupt
   // Verneinungen tragen (`faqContent.ts:395`: „nie", dreimal „keinen"). Ohne ihn wäre „kein Muster
   // schlägt an" auch dann wahr, wenn gar nichts zu treffen da wäre.
+  //
+  // JOB 3952 KOMMT OHNE ZUTUN MIT: `nahMitDassSatz` sitzt in denselben vier Umkehrmustern, also
+  // misst diese Schleife auch die neue `dass`-Regel am echten Bestand — Pflicht für Pflicht, ohne
+  // eine Zeile Code hier. Das ist der Riegel gegen die teuerste Art, recht zu haben: eine zu breite
+  // Regel würde die ausgelieferte Antwort selbst röten. Sie trägt „dass" nur als Teil von
+  // „dasselbe" und nirgends hinter einem Komma — genau darauf zielt `\bdass\b` im Baustein.
   it("der echte Bestand besteht jede neue Prüfung einzeln", () => {
     const neu = U2_SYNONYME.map((s) => s.stamm);
     const verneinungenImBestand = DUBLETTEN_FAQ.flatMap((item) => [
@@ -601,6 +654,95 @@ const KALIBRIERUNG: readonly {
       abschluss:
         "Du schließt den Fund nicht nur mit einem Grund ab, sondern wählst dabei zwischen bewusst getrennt gelassen, als verwandt vermerkt und Fehlalarm.",
     }),
+    erwartet: [],
+  },
+  // ------------------------------------------------------------------------------------------
+  // JOB 3952 — DIE VERNEINUNG DES HAUPTSATZES REICHT IN DEN `dass`-SATZ (BEN an JOB 3939, `:29`).
+  // ------------------------------------------------------------------------------------------
+  // V10 · genau der Satz, den der Kopf dieser Datei seit JOB 3916 selbst als ungemessen führte.
+  // Vor JOB 3952 gab `fehlendePflicht` dafür `[]` zurück: zwischen „nicht" und dem Pflichtwort
+  // steht das Komma, an dem das Fenster endete — die Lüge passierte unbeanstandet ins Klara-Wissen.
+  {
+    name: "V10 verkehrt · „Es stimmt nicht, dass beide bleiben.“",
+    text: umkehrtext({
+      bestand:
+        "Es stimmt nicht, dass beide bleiben. Der schwächere Eintrag fällt beim Abschluss weg.",
+    }),
+    erwartet: ["beide Einträge bleiben — umgekehrt: „nicht, dass beide bleiben“"],
+  },
+  // V11 · DIESELBE Bauform an einer ZWEITEN Pflicht („festgehaltener Grund"). Eine Regel, die nur
+  // an „beide bleiben" wirkt, ist keine Regel, sondern ein Sonderfall — dieselbe Begründung trägt
+  // schon E4 und E8. Der Rest des Rahmensatzes bleibt stehen, damit allein die Umkehr den
+  // Unterschied macht und nicht ein nebenher weggefallenes Pflichtwort (die drei Abschlüsse).
+  {
+    name: "V11 verkehrt · „Es stimmt nicht, dass ein Grund festgehalten wird.“",
+    text: umkehrtext({
+      abschluss:
+        "Es stimmt nicht, dass ein Grund festgehalten wird: ob bewusst getrennt gelassen, als verwandt vermerkt oder Fehlalarm, bleibt offen.",
+    }),
+    erwartet: ["festgehaltener Grund — umgekehrt: „nicht, dass ein Grund“"],
+  },
+  // V12 · „jedoch" als EIGENER Tabellenfall (BENs Zusatzprobe, `archiv/3939/runde-1/ben.md:12`).
+  // Dieser Fall ist seit JOB 3939 grün und deshalb kein Rotnachweis, sondern ein Riegel: „jedoch"
+  // hing bis heute allein an der Wortliste in `SELBE_AUSSAGE` und am Kommentar darüber, gemessen
+  // hatte es nur ein Prüfer von Hand. Nimmt jemand „jedoch" in die Grenzliste zurück, wird genau
+  // dieser Satz rot — V8 („aber") und V9 („doch") merken davon nichts.
+  {
+    name: "V12 verkehrt · „beide bleiben jedoch nicht bestehen“",
+    text: umkehrtext({
+      bestand:
+        "Aus zwei Einträgen wird am Ende einer: beide bleiben jedoch nicht bestehen, der schwächere Eintrag fällt weg.",
+    }),
+    erwartet: ["beide Einträge bleiben — umgekehrt: „beide bleiben jedoch nicht“"],
+  },
+  // V13 · BENs zweite Zusatzprobe (`ben.md:12`): die Lüge mit DOPPELTER Verneinung. „nicht nur nicht
+  // sichtbar, sondern verschwinden" steigert nichts, es kündigt das Verschwinden an. Damit ist die
+  // „nicht nur"-Ausnahme nach BEIDEN Seiten kalibriert: E6/E9 zeigen, was sie durchlässt, V13 zeigt,
+  // was sie NICHT durchlassen darf. WICHTIG beim Gegenproben: V13 ist auch OHNE die Ausnahme
+  // beanstandet — den Fund trägt das ZWEITE „nicht" —, er ist deshalb KEIN Zeuge für sie.
+  {
+    name: "V13 verkehrt · „Beide bleiben nicht nur nicht sichtbar, sondern verschwinden.“",
+    text: umkehrtext({ bestand: "Beide bleiben nicht nur nicht sichtbar, sondern verschwinden." }),
+    erwartet: ["beide Einträge bleiben — umgekehrt: „Beide bleiben nicht nur nicht“"],
+  },
+  // E10 · die Verneinung steckt im `dass`-Satz, das Pflichtwort steht HINTER dem Gedankenstrich, also
+  // in einem anderen Satzteil. Der Gedankenstrich bleibt Grenze. Ehrlich gemessen: hier sperren ZWEI
+  // Dinge zugleich — der Gedankenstrich UND die Fensterweite (vom `dass` bis „beide" sind es 26
+  // Zeichen, `nah(20)` reicht zwanzig). Der Fall belegt die Grenze also gemeinsam mit der Weite,
+  // nicht die Grenze allein; deshalb bleibt er auch dann grün, wenn das Komma pauschal fällt.
+  {
+    name: "E10 ehrlich · „Es stimmt nicht, dass ein Eintrag verschwindet — beide bleiben …“",
+    text: umkehrtext({
+      bestand:
+        "Es stimmt nicht, dass ein Eintrag verschwindet — beide bleiben unverändert bestehen.",
+    }),
+    erwartet: [],
+  },
+  // E11 · `dass` OHNE Verneinung davor. Pinnt, dass allein das Wort `dass` nichts auslöst: die Regel
+  // hängt an der Verneinung, die in den Nebensatz hineinreicht, nicht am Nebensatz. Die Verneinung
+  // im Satz danach („nie") gehört zu ihrem eigenen Prädikat und darf nicht herangezogen werden.
+  {
+    name: "E11 ehrlich · „Es stimmt, dass beide bleiben. Gelöscht wird nie etwas.“",
+    text: umkehrtext({ bestand: "Es stimmt, dass beide bleiben. Gelöscht wird nie etwas." }),
+    erwartet: [],
+  },
+  // E12 · das Pflichtwort steht IM `dass`-Satz, die Verneinung folgt in einer eigenen Teilaussage
+  // hinter dem NÄCHSTEN Komma. Dieser Fall fordert die ERSTE Musterhälfte heraus
+  // (`beide bleiben` → Verneinung): sie sucht nach rechts und darf das Komma weiterhin nicht
+  // überschreiten. Gäbe jemand das Komma pauschal als Grenze auf, wäre dieser ehrliche Satz rot.
+  {
+    name: "E12 ehrlich · „KLARWERK sorgt dafür, dass beide bleiben, gelöscht wird nie etwas.“",
+    text: umkehrtext({
+      bestand: "KLARWERK sorgt dafür, dass beide bleiben, gelöscht wird nie etwas.",
+    }),
+    erwartet: [],
+  },
+  // E13 · „jedoch" ehrlich — das Gegenstück zu V12 und die dritte Partikel neben E7 („aber") und
+  // V9/E8. Sie leitet hier eine ZWEITE Teilaussage ein, davor steht ein Komma, und das Komma bleibt
+  // Grenze. BEN hat genau diesen Satz gemessen (`archiv/3939/runde-1/ben.md:12`).
+  {
+    name: "E13 ehrlich · „Beide bleiben bestehen, gelöscht wird jedoch nie etwas.“",
+    text: umkehrtext({ bestand: "Beide bleiben bestehen, gelöscht wird jedoch nie etwas." }),
     erwartet: [],
   },
 ];
