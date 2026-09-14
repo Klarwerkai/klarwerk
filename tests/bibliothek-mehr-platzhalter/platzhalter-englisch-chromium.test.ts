@@ -24,6 +24,14 @@
 // FÜNF Abschnitten, die heute überhaupt eines tragen (`quellen`, `extern`, `beitrag`, `kopplung`,
 // `kommentare` — acht Felder, Tabelle unten), und zwar ENGLISCH gegen DEUTSCH.
 //
+// GEDECKT SEIT JOB 3944 — UND GENAU SO WEIT, WAS BEWIESEN IST: P4 belegt, dass die Klickwiederholung
+// in `mehrAufklappen` einen VERSCHLUCKTEN ersten Klick übersteht — ein Abfang in der Capture-Phase am
+// `document` nimmt den ersten Klick weg, und der zweite Versuch öffnet die Fläche wieder vollständig
+// (Abschnitte gezeichnet, alle acht Platzhalter da). WAS ANGENOMMEN BLEIBT: dass ein Neuzeichnen der
+// React-Fläche den Knopf im Betrieb je zurückstellt — die Begründung der Schleife weiter unten
+// (`MEHR_KLICK`, „ein Neuzeichnen der React-Fläche kann ihn zurückstellen") — ist damit NICHT
+// gemessen; P4 stellt den Fehlschlag künstlich her und sagt nichts darüber, ob er von selbst eintritt.
+//
 // NICHT GEDECKT, und deshalb hier benannt statt stillschweigend weggelassen:
 //   · Niederländisch (NL) — die dritte Sprache des Katalogs steht nicht in der Tabelle.
 //   · Die Attribute `title` und `aria-label` — sie sind ebenso unsichtbar für `innerText`, brauchen
@@ -35,6 +43,8 @@
 //   · Die schmalen Lagen (320/390 px) — gemessen wird an der 1620-px-Bühne der Vorrichtung.
 //   · Ein Platzhalter, der erst nach einer Serverantwort erscheint — die drei Fälle lesen EINEN
 //     Stand, nicht den Verlauf dorthin.
+//   · Das Zurückstellen des Knopfes durch ein React-Neuzeichnen (s. o., JOB 3944): der Fall, gegen
+//     den die Schleife gebaut ist, wird von P4 künstlich hergestellt und nie im Betrieb beobachtet.
 //
 // ------------------------------------------------------------------------------------------------
 // DIESER FALL ERSETZT NICHTS (Prüfpunkt 7).
@@ -316,7 +326,14 @@ const MEHR_KLICK = `() => {
 
 const ABSCHNITTE_ZAEHLEN = `() => document.querySelectorAll('[data-bib-abschnitt]').length`;
 
-async function mehrAufklappen(seite: H4Stand["seite"], wo: string): Promise<void> {
+/**
+ * JOB 3944: die Versuchszahl wird ZURÜCKGEGEBEN statt nur protokolliert. Am Verhalten ändert das
+ * nichts (gleiche Fristen, gleiche Meldungen, dieselbe Protokollzeile unten); die zwei bestehenden
+ * Aufrufe im `beforeAll` lassen den Wert liegen. Gebraucht wird er von der Folgeprobe P4, die den
+ * ersten Klick verschluckt und den erfolgreichen ZWEITEN Versuch belegen muss — als Behauptung im
+ * Protokoll war die Zahl bis hierher für keinen Fall greifbar.
+ */
+async function mehrAufklappen(seite: H4Stand["seite"], wo: string): Promise<number> {
   await flaecheBereit(seite, wo);
   const beginn = Date.now();
   let versuche = 0;
@@ -346,6 +363,140 @@ async function mehrAufklappen(seite: H4Stand["seite"], wo: string): Promise<void
     ),
   );
   await seite.waitForTimeout(2500);
+  return versuche;
+}
+
+// ================================================================================================
+// JOB 3944 · DIE FOLGEPROBE — DER ZWEITE KLICK, DEN NOCH NIE JEMAND GEBRAUCHT HAT.
+// ================================================================================================
+//
+// BENs Prüfpunkt 6 zu Runde 2 (`archiv/3815/runde-2/ben.md:25`): „Die Klickwiederholung ab Zeile 325
+// wurde nicht als notwendig ausgelöst. Folgeprobe: ersten Klick gezielt verschlucken und
+// erfolgreichen zweiten Versuch nachweisen." Gemessen, nicht vermutet: in 114 Protokollzeilen aus
+// `archiv/` und `jobs/` steht ausnahmslos „aufgeklappt nach 1 Klickversuch(en)"; die Suche nach einer
+// Zahl über 1 liefert null Treffer. Der zweite Durchlauf der Schleife oben war damit ungemessener
+// Code — eine Vorkehrung, die nie ausgelöst wurde, ist eine Behauptung und kein Nachweis.
+//
+// P4 stellt den Fehlschlag her, gegen den die Schleife gebaut ist: Fläche zuklappen, einen Abfang
+// einbauen, der GENAU EINEN Klick auf „Mehr" verschluckt, aufklappen. Grün ist der Fall nur, wenn
+// alle vier Aussagen zugleich gelten — zu vorher, genau ein verschluckter Klick, mindestens zwei
+// Versuche, danach vollständig offen. Was er NICHT belegt, steht in der Deckungsgrenze im Kopf.
+
+/** Wie lange auf die zugeklappte Fläche gewartet wird — dieselbe Größenordnung wie beim Aufklappen. */
+const ZUKLAPP_FRIST_MS = 30_000;
+
+/**
+ * Der Gegenklick. Bedingt wie `MEHR_KLICK` und aus demselben Grund wiederholbar: steht der Knopf
+ * schon auf `false`, tut er nichts, und ein zweiter Durchlauf schaltet nicht versehentlich zurück.
+ */
+const MEHR_ZUKLAPP_KLICK = `() => {
+  const b = document.querySelector('[data-testid="bib-mehr"]');
+  if (b === null) return false;
+  if (b.getAttribute('aria-expanded') !== 'false') b.click();
+  return true;
+}`;
+
+/** Knopfzustand und Abschnittszahl in EINEM Blick — die zwei Werte, die „zu" ausmachen. */
+const KNOPF_STAND = `() => {
+  const b = document.querySelector('[data-testid="bib-mehr"]');
+  return {
+    knopf: b === null ? '(KEIN KNOPF)' : (b.getAttribute('aria-expanded') || '(ohne aria-expanded)'),
+    abschnitte: document.querySelectorAll('[data-bib-abschnitt]').length,
+  };
+}`;
+
+interface Knopfstand {
+  knopf: string;
+  abschnitte: number;
+}
+
+/**
+ * Die Fläche zuklappen, bis sie NACHWEISLICH zu ist: `aria-expanded="false"` UND null Abschnitte.
+ * Beides, weil beides gebraucht wird — der Knopf trägt den Zustand (`BibliothekLesen.tsx:1347`), und
+ * die Abschnitte verschwinden erst mit dem Neuzeichnen restlos aus dem DOM (`:1356-1360`); nur wenn
+ * sie weg sind, läuft die Schleife im Aufklappen wirklich, statt sofort abzubrechen.
+ *
+ * Läuft die Frist ab, wirft dieser Schritt mit der gemessenen Lage und dem Wort `NICHT GEMESSEN`. Er
+ * kehrt NIE still zurück (§9 der Datei): eine Vorbedingung, die nicht hergestellt wurde, darf keine
+ * grüne Messung tragen — P4 misst sie zusätzlich selbst, damit auch ein übersprungener Aufruf auffällt.
+ */
+async function mehrZuklappen(seite: H4Stand["seite"], wo: string): Promise<number> {
+  const beginn = Date.now();
+  let versuche = 0;
+  for (;;) {
+    const knopfDa = await seite.evaluate<boolean>(fn(MEHR_ZUKLAPP_KLICK));
+    versuche += 1;
+    const s = await seite.evaluate<Knopfstand>(fn(KNOPF_STAND));
+    if (s.knopf === "false" && s.abschnitte === 0) {
+      break;
+    }
+    if (Date.now() - beginn >= ZUKLAPP_FRIST_MS) {
+      throw new Error(
+        `${wo}: „Mehr" ist in ${Date.now() - beginn} ms und ${versuche} Klickversuchen nicht zugegangen (Knopf ${knopfDa ? s.knopf : "beim letzten Versuch NICHT MEHR DA"}, noch ${s.abschnitte} Abschnitte) — ${await lage(seite)} — NICHT GEMESSEN`,
+      );
+    }
+    await seite.waitForTimeout(100);
+  }
+  console.info(
+    `JOB 3944 · ${wo}: zugeklappt nach ${versuche} Klickversuch(en) in ${Date.now() - beginn} ms`,
+  );
+  return versuche;
+}
+
+/**
+ * DER EINMALIGE KLICKABFANG.
+ *
+ * CAPTURE-PHASE AM `document` und nicht am Knopf: React führt seine `onClick`-Handler am
+ * Wurzelknoten der Anwendung: nur OBERHALB davon ist sicher, dass `stopImmediatePropagation()` den
+ * Klick vom Produkt-Handler fernhält. Der Weg eines Klicks läuft von `window` abwärts, also sieht
+ * dieser Listener ihn vor jedem Handler weiter unten.
+ *
+ * EINMALIG UND BEOBACHTBAR: nach dem ersten passenden Klick entschärft er sich selbst (der zweite
+ * Versuch muss durchkommen, sonst wäre nichts bewiesen) und hinterlässt einen ZÄHLER. Ohne den
+ * Zähler wäre nicht messbar, ob überhaupt etwas abgefangen wurde — ein Fall, der nur „zwei Versuche"
+ * sieht, könnte auf einem zufälligen zweiten Klick beruhen.
+ */
+const ABFANG_EINBAUEN = `() => {
+  const w = window;
+  w.__job3944Verschluckt = 0;
+  w.__job3944Eingebaut = true;
+  w.__job3944Scharf = true;
+  const abfang = (e) => {
+    const ziel = e.target;
+    if (!ziel || typeof ziel.closest !== 'function') return;
+    if (ziel.closest('[data-testid="bib-mehr"]') === null) return;
+    w.__job3944Verschluckt += 1;
+    w.__job3944Scharf = false;
+    document.removeEventListener('click', abfang, true);
+    e.stopImmediatePropagation();
+    e.preventDefault();
+  };
+  document.addEventListener('click', abfang, true);
+  w.__job3944Abbau = () => { document.removeEventListener('click', abfang, true); w.__job3944Scharf = false; };
+  return true;
+}`;
+
+/**
+ * Was der Abfang gemessen hat. `eingebaut` steht neben `verschluckt`, weil die zwei Lagen „gar nicht
+ * eingebaut" und „eingebaut, aber nie ausgelöst" verschiedene Befunde sind und die Meldung sie
+ * auseinanderhalten muss. `verschluckt: -1` heisst: es gab keinen Zähler zu lesen.
+ */
+const ABFANG_LESEN = `() => ({
+  eingebaut: window.__job3944Eingebaut === true,
+  scharf: window.__job3944Scharf === true,
+  verschluckt: typeof window.__job3944Verschluckt === 'number' ? window.__job3944Verschluckt : -1,
+})`;
+
+/** Den Abfang abräumen, falls er nie ausgelöst hat — sonst ist er durch die Einmaligkeit erschöpft. */
+const ABFANG_ABBAUEN = `() => {
+  if (typeof window.__job3944Abbau === 'function') { window.__job3944Abbau(); return true; }
+  return false;
+}`;
+
+interface Abfangstand {
+  eingebaut: boolean;
+  scharf: boolean;
+  verschluckt: number;
 }
 
 let stand: H4Stand | null = null;
@@ -353,6 +504,29 @@ let fehler: string | null = null;
 /** Die Lesung auf Deutsch (der Ausgangszustand der Bühne) und die auf Englisch. */
 let de: Platzhalterfund[] | null = null;
 let en: Platzhalterfund[] | null = null;
+
+/**
+ * Was die Folgeprobe (P4, JOB 3944) gemessen hat — alle fünf Zahlen aus EINEM Durchgang, damit die
+ * Meldung des Falls die ganze Lage nennen kann und nicht nur den einen verglichenen Wert.
+ */
+interface Folgeprobe {
+  /** Abschnitte VOR dem Versuch. Soll 0 — sonst war die Fläche nicht zu und die Schleife bricht sofort ab. */
+  abschnitteVorher: number;
+  knopfVorher: string;
+  /** Klickversuche, die `mehrAufklappen` gebraucht hat. Soll ≥ 2 — der erste ist verschluckt. */
+  versuche: number;
+  eingebaut: boolean;
+  verschluckt: number;
+  abschnitteNachher: number;
+  platzhalterNachher: number;
+}
+let probe: Folgeprobe | null = null;
+/**
+ * EIGENE Fehlervariable, EIGENER `try`-Block im Aufbau: ein Scheitern der Folgeprobe darf P1/P2/P3
+ * nicht röten (deren Werte stehen vorher fest), und umgekehrt sagt P4 ausdrücklich, dass NICHTS
+ * gemessen wurde, statt still zu bestehen.
+ */
+let probefehler: string | null = null;
 
 /**
  * Die Meldung, mit der die drei Fälle einen gescheiterten Aufbau anzeigen.
@@ -366,6 +540,18 @@ const aufbaumeldung = (): string =>
   fehler === null
     ? "der Aufbau der Bühne ist gelungen"
     : `die Bühne ist nicht messbereit geworden — kein Fall dieser Datei hat gemessen: ${fehler}`;
+
+/** Dasselbe für die Folgeprobe, getrennt von `aufbaumeldung` — sie hat ihren eigenen Ausgang. */
+const probemeldung = (): string =>
+  probefehler === null
+    ? "die Folgeprobe ist durchgelaufen"
+    : `die Folgeprobe hat NICHT GEMESSEN — über die Klickwiederholung ist damit nichts gesagt: ${probefehler}`;
+
+/** Die gemessene Lage der Folgeprobe als eine Zeile; sie steht an JEDER Zusicherung von P4. */
+const probezeile = (): string =>
+  probe === null
+    ? "NICHT GEMESSEN — die Folgeprobe ist nicht bis zur Messung gekommen"
+    : `vorher ${probe.abschnitteVorher} Abschnitte (Knopf ${probe.knopfVorher}) · Abfang ${probe.eingebaut ? "eingebaut" : "NICHT EINGEBAUT"}, ${probe.verschluckt} Klick(s) verschluckt · ${probe.versuche} Klickversuch(e) · danach ${probe.abschnitteNachher} Abschnitte und ${probe.platzhalterNachher} Platzhalter`;
 
 /** Der Fund einer Sollzeile, über Abschnitt und Rang — `null`, wenn dort kein Feld steht. */
 const fundZu = (funde: Platzhalterfund[], i: number): Platzhalterfund | null => {
@@ -451,6 +637,46 @@ describe("JOB 3815 · die Platzhalter unter „Mehr“ — der zweite Leser (Att
     } catch (e) {
       fehler = String(e).split("\n").slice(0, 4).join(" | ");
     }
+
+    // ------------------------------------------------------------------------------------------
+    // DIE FOLGEPROBE (JOB 3944) — ZULETZT, damit sie die zwei Lesungen weder verzögert noch stört.
+    // ------------------------------------------------------------------------------------------
+    // `de` und `en` sind zu diesem Zeitpunkt gelesen und liegen in ihren Variablen; was hier noch an
+    // der Fläche geschieht, kann P1/P2/P3 nicht mehr erreichen. Umgekehrt gilt: ist die Bühne schon
+    // vorher gescheitert, misst auch diese Probe nichts — und sagt es, statt zu behaupten.
+    try {
+      if (fehler !== null || stand === null) {
+        throw new Error(`die Bühne war nicht messbereit: ${fehler ?? "kein Stand"}`);
+      }
+      const seite = stand.seite;
+      await mehrZuklappen(seite, "P4 (Folgeprobe)");
+      const vorher = await seite.evaluate<Knopfstand>(fn(KNOPF_STAND));
+      await seite.evaluate<boolean>(fn(ABFANG_EINBAUEN));
+      const versuche = await mehrAufklappen(seite, "P4 (Folgeprobe)");
+      const abfang = await seite.evaluate<Abfangstand>(fn(ABFANG_LESEN));
+      const nachher = await seite.evaluate<Flaechenlage>(fn(FLAECHE_LESEN));
+      probe = {
+        abschnitteVorher: vorher.abschnitte,
+        knopfVorher: vorher.knopf,
+        versuche,
+        eingebaut: abfang.eingebaut,
+        verschluckt: abfang.verschluckt,
+        abschnitteNachher: nachher.abschnitte,
+        platzhalterNachher: nachher.platzhalter,
+      };
+      console.info(
+        `JOB 3944 · Folgeprobe — ${probezeile()} · Abfang danach ${abfang.scharf ? "NOCH SCHARF" : "erschöpft"}`,
+      );
+    } catch (e) {
+      probefehler = String(e).split("\n").slice(0, 4).join(" | ");
+    }
+    // Der Abfang ist nach dem ersten Treffer erschöpft; hat er nie ausgelöst (gescheiterte Probe),
+    // wird er hier abgeräumt. Das Abräumen darf den Befund oben nicht überschreiben.
+    try {
+      await stand?.seite.evaluate<boolean>(fn(ABFANG_ABBAUEN));
+    } catch (e) {
+      console.info(`JOB 3944 · der Abfang liess sich nicht abräumen — ${erste(e)}`);
+    }
   }, 300_000);
 
   afterAll(async () => {
@@ -515,6 +741,40 @@ describe("JOB 3815 · die Platzhalter unter „Mehr“ — der zweite Leser (Att
         `„kopplung“ trägt in ${sprache} weder die deutsche noch die englische Fassung — dort steht die Anlagenkennung aus ko.asset (MehrAbschnitte.tsx:1117), dieser Fall ist an dieser Stelle NICHT ANWENDBAR und misst die Übersetzung nicht`,
       ).toBe(kopplungSoll[spalte]);
     }
+    expect(stand?.seitenfehler ?? ["nicht gemessen"]).toEqual([]);
+  }, 60_000);
+
+  it("P4 · ein verschluckter erster Klick — und der ZWEITE öffnet die Fläche trotzdem vollständig (JOB 3944)", () => {
+    expect(probefehler, probemeldung()).toBeNull();
+    const p = probe as Folgeprobe;
+    // (i) DIE VORBEDINGUNG. Ohne zugeklappte Fläche zählt `ABSCHNITTE_ZAEHLEN` schon beim ersten
+    // Blick über 0, die Schleife bricht sofort ab und hat NICHTS wiederholt.
+    expect(
+      p?.abschnitteVorher ?? -1,
+      `die Vorbedingung „Fläche zu“ war nicht hergestellt — über die Klickwiederholung ist damit nichts gesagt: ${probezeile()}`,
+    ).toBe(0);
+    // (ii) DER ABFANG HAT GEGRIFFEN. Genau einer, nicht keiner (dann beruhte ein zweiter Versuch auf
+    // Zufall) und nicht mehrere (dann hätte er sich nicht entschärft).
+    expect(
+      p?.verschluckt ?? -1,
+      `der Abfang hat keinen Klick verschluckt (erwartet genau einen) — ein zweiter Versuch belegt dann nichts: ${probezeile()}`,
+    ).toBe(1);
+    // (iii) DIE WIEDERHOLUNG WAR NÖTIG — die Zahl, die in 114 Protokollzeilen nie über 1 stand.
+    expect(
+      p?.versuche ?? 0,
+      `die Klickwiederholung wurde nicht gebraucht — mit einem einzigen Versuch ist die Zeile in der Schleife ungemessen geblieben: ${probezeile()}`,
+    ).toBeGreaterThanOrEqual(2);
+    // (iv) DANACH IST DIE FLÄCHE WIRKLICH OFFEN. Ein zweiter Klick, der nur den Rahmen zeichnet,
+    // genügt nicht: es müssen alle acht Platzhalter der Sollwerttabelle wieder dastehen.
+    expect(
+      p?.abschnitteNachher ?? 0,
+      `nach dem zweiten Klick stand kein einziger Abschnitt da — die Schleife hat die Fläche nicht geöffnet: ${probezeile()}`,
+    ).toBeGreaterThan(0);
+    expect(
+      p?.platzhalterNachher ?? -1,
+      `nach dem zweiten Klick ist die Fläche nicht vollständig offen — erwartet ${SOLLWERTE.length} Platzhalter wie in P3: ${probezeile()}`,
+    ).toBe(SOLLWERTE.length);
+    // Ein `preventDefault()` an einem Knopf darf keinen Seitenfehler erzeugen — hier gemessen.
     expect(stand?.seitenfehler ?? ["nicht gemessen"]).toEqual([]);
   }, 60_000);
 });
