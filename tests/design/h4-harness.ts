@@ -6,9 +6,10 @@
 // Grund: „Die Chromium-Pruefung muss die ECHTE Seite mounten und deren reale Elemente messen; ein
 // separat erzeugtes Element mit derselben Klassenkette ist kein UI-Beleg." (ben an D4).
 //
-//   · `apps/web/dist` — das Ergebnis von `./tools/build` — wird unter `http://klarwerk.test/`
+//   · `apps/web/dist` — das Ergebnis von `./tools/build` — wird unter `https://klarwerk.test/`
 //     geladen; JEDER `/api/*`-Aufruf geht an die ECHTE Fastify-App (`buildApp`, echte Dienste,
 //     echter Bestand) mit dem Bearer einer echten Anmeldung. Kein Mock, kein Nachbau.
+//     Warum `https` und nicht `http`: die Begründung steht bei `ORIGIN` weiter unten.
 //   · Das THEME wird ausdrücklich gesetzt (`localStorage["kw.designTheme"] = "modern"`, der Schalter
 //     des Produkts) und in der Seite nachgemessen. Das Mockup ist die Werkbank-Palette.
 //   · DAS FENSTER IST BEWUSST 1620 px BREIT, nicht die 1280 des Mockups — und das ist keine
@@ -29,7 +30,45 @@ import { ORTSZEILE_WORTE, type OrtszeileSprache } from "../support/ortszeileWort
 export const WURZEL = resolve(process.cwd());
 export const DIST = resolve(WURZEL, "apps/web/dist");
 export const MOCKUP = "/Users/peterkohnert/klarwerk_steuerung/design/klarwerk/Bibliothek.dc.html";
-export const ORIGIN = "http://klarwerk.test";
+/**
+ * JOB 3818 — WARUM `https` UND NICHT `http`: DIESE VORRICHTUNG HAT JAHRELANG EINE GANZE
+ * FEHLERKLASSE NICHT MESSEN KÖNNEN.
+ *
+ * Bis JOB 3818 stand hier `http://klarwerk.test`. Der Name ist frei erfunden — die Seite kommt
+ * ohnehin aus `dist`, das Netz wird nie gefragt, Playwright bedient jede Anfrage über `route`
+ * unten. Das Schema ist trotzdem nicht gleichgültig: Chromium führt `http://` auf einem anderen
+ * Host als `localhost` als NICHT SICHEREN KONTEXT, und in einem unsicheren Kontext gibt es
+ * `crypto.randomUUID` nicht.
+ *
+ * GEMESSEN, NICHT VERMUTET. JOB 3777 hat auf der laufenden Seite dieser Vorrichtung gesondet
+ * (`archiv/3777/runde-1/RUECKGABE.md:54`), wörtlich:
+ *     {"uuid":"undefined","sicher":false,"ursprung":"http://klarwerk.test","outputs":0}
+ * `window.isSecureContext` war FALSCH, `crypto.randomUUID` war `undefined`, und auf der Fläche
+ * stand kein einziger Toast.
+ *
+ * DIE FOLGE WAR GROSS UND STILL: JEDE Meldung des Produkts starb hier. `ToastProvider.push` holt
+ * sich als ERSTES eine Kennung über `crypto.randomUUID()` (`apps/web/src/app/ToastContext.tsx:36`);
+ * der Aufruf warf `TypeError: crypto.randomUUID is not a function` und brach den restlichen Zweig
+ * ab. In dieser Vorrichtung ist deshalb NIE eine Erfolgs- oder Fehlermeldung erschienen — auch
+ * nicht auf den Erfolgswegen, die grün aussahen. Dass sie grün waren, lag an der Reihenfolge: die
+ * Ausnahme erreicht `seitenfehler` erst NACH der Zusicherung. Ein Wächter, der so knapp
+ * danebenliegt, ist keiner.
+ *
+ * WARUM DER KONTEXT UMGESTELLT WIRD UND NICHT `randomUUID` ERSETZT: ein örtlicher Ersatz für
+ * `crypto.randomUUID` ist eine Umgehung, die die Vorrichtung dauerhaft vom Betrieb entfernt. Im
+ * Betrieb läuft Klarwerk über `https` (Coolify) und in der Entwicklung über `localhost` — beides
+ * sichere Kontexte. Die beiden Nachbarbühnen haben diesen Schritt längst gemacht, aus demselben
+ * gemessenen Anlass und mit derselben Begründung: `h6-chromium.ts:29-38` („Statt ihn zu umgehen,
+ * misst dieser Prüfstand jetzt in derselben Art von Kontext wie der Betrieb") und
+ * `h3-blatt-buehne.ts:35-49`, das auf `http://localhost` ging. h4 war die letzte, die es nicht tat.
+ *
+ * WAS SICH SONST NICHT ÄNDERT: die Routenbedienung hängt am Ursprung, nicht am Schema
+ * (`seite.route(`${ORIGIN}/**`)` unten fängt JEDE Anfrage ab, bevor Chromium überhaupt ein
+ * Zertifikat sehen könnte — genau wie bei h6). `localStorage` und der Anmeldezustand hängen am
+ * Ursprung als Ganzem; sie werden über `addInitScript` gesetzt, nicht über einen festen Namen.
+ * Kein Verbraucher schreibt den Ursprung selbst hin: alle importieren `ORIGIN` von hier.
+ */
+export const ORIGIN = "https://klarwerk.test";
 
 // ---- Sollwerte aus dem Mockup LESEN (nicht abschreiben) -----------------------------------------
 /** Der `style`-Wert des ersten Elements, dessen Stil `anker` enthält. */

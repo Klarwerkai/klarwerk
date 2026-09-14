@@ -301,22 +301,30 @@ describe("JOB 3133 · UX-22 — die Belegstelle in Chromium: anhängen, neu lade
     await frischUndAufgeklappt("de");
   });
 
-  it("C5 · Chromium meldete keinen Seitenfehler außer der bekannten Grenze DIESER Vorrichtung", async () => {
+  it("C5 · Chromium meldete GAR KEINEN Seitenfehler — die Grenze dieser Vorrichtung ist weg", async () => {
     expect(fehler).toBeNull();
-    // GEMESSEN, NICHT ANGENOMMEN: die Vorrichtung liefert die Seite unter `http://klarwerk.test`
-    // aus. Das ist KEIN sicherer Kontext, und Chromium stellt `crypto.randomUUID` dort nicht
-    // bereit. Der Erfolgs-Toast nach dem Anhängen ruft sie (`app/ToastContext.tsx:36`) und wirft
-    // deshalb HIER — nicht im Produkt, das über https bzw. localhost läuft. Die Wirkung ist am
-    // Ergebnis nachgemessen: die Quelle steht (C2) und überlebt das Neuladen (C3).
+    // BIS JOB 3818 STAND HIER DAS GEGENTEIL, und es war damals richtig: die Vorrichtung lieferte
+    // die Seite unter `http://klarwerk.test` aus — kein sicherer Kontext, also kein
+    // `crypto.randomUUID`, also warf der Erfolgs-Toast nach dem Anhängen
+    // (`app/ToastContext.tsx:36`) zuverlässig. Dieser Fall verlangte deshalb den unsicheren Kontext
+    // und nahm den einen Seitenfehler ausdrücklich aus.
     //
-    // Der Fall bleibt fail-closed: JEDER andere Seitenfehler macht ihn rot.
-    const unsicher = await (stand as H4Stand).seite.evaluate<boolean>(
-      fn(`() => typeof crypto.randomUUID !== 'function' && !window.isSecureContext`),
+    // JOB 3818 hat die Vorrichtung umgestellt (`tests/design/h4-harness.ts:71`, jetzt
+    // `https://klarwerk.test`). Die Ausnahme ist damit gegenstandslos, und ein Fall, der eine
+    // erledigte Grenze weiter behauptet, verwaltet ein Gespenst — er wäre grün und falsch. Die
+    // Zusicherung wird also nicht ersetzt, sondern STRENGER: der Kontext ist sicher UND es gibt
+    // keinen einzigen Seitenfehler, auch keinen ausgenommenen.
+    const sicher = await (stand as H4Stand).seite.evaluate<boolean>(
+      fn(`() => typeof crypto.randomUUID === 'function' && window.isSecureContext`),
     );
-    expect(unsicher, "sicherer Kontext — dann ist der Fehler unten KEINE Prüfstandsgrenze").toBe(
-      true,
-    );
-    const fremde = (stand as H4Stand).seitenfehler.filter((f) => !f.includes("crypto.randomUUID"));
-    expect(fremde, `Seitenfehler: ${JSON.stringify((stand as H4Stand).seitenfehler)}`).toEqual([]);
+    expect(
+      sicher,
+      "unsicherer Kontext — dann kann diese Vorrichtung keine Produktmeldung messen; " +
+        "tests/vorrichtung-sicherer-kontext/ sagt, was zu tun ist",
+    ).toBe(true);
+    expect(
+      (stand as H4Stand).seitenfehler,
+      `Seitenfehler: ${JSON.stringify((stand as H4Stand).seitenfehler)}`,
+    ).toEqual([]);
   });
 });

@@ -210,48 +210,21 @@ const lage = (): Promise<Lage> => seite().evaluate<Lage>(fn(LAGE_FN));
 const liste = (): Promise<string[]> => seite().evaluate<string[]>(fn(LISTE_FN));
 
 // ==================================================================================================
-// JOB 3777 · DIE LÜCKE DER VORRICHTUNG, DIE DIESER FALL AUFGEDECKT HAT — UND WARUM SIE HIER STEHT.
+// JOB 3818 · DER ÖRTLICHE UUID-ERSATZ IST WEG — DIE VORRICHTUNG MISST JETZT SELBST RICHTIG.
 // ==================================================================================================
 //
-// GEMESSEN, nicht vermutet (Sonde in dieser Runde, auf der laufenden Seite):
-//     {"uuid":"undefined","sicher":false,"ursprung":"http://klarwerk.test","outputs":0}
-// `window.isSecureContext` ist FALSCH, und `crypto.randomUUID` gibt es in Chromium nur im sicheren
-// Kontext. Die Vorrichtung bedient die gebaute Seite unter `http://klarwerk.test` (`h4-harness.ts:32`)
-// — also unter einem Ursprung, der weder `https` noch `localhost` ist.
+// Hier stand bis JOB 3818 ein örtlicher Ersatz für `crypto.randomUUID` (aus `getRandomValues`
+// gebaut, einmal per `evaluate` und einmal per `addInitScript` eingespielt), weil die Vorrichtung
+// die gebaute Seite unter `http://klarwerk.test` auslieferte — kein sicherer Kontext, also kein
+// `crypto.randomUUID`, also starb JEDE Meldung der App in `ToastProvider.push`
+// (`apps/web/src/app/ToastContext.tsx:36`). JOB 3777 hat diesen Ersatz selbst als Notlösung
+// benannt und seine Ablösung bestellt (`archiv/3777/runde-1/RUECKGABE.md:55,60`).
 //
-// DIE FOLGE: JEDE Meldung der App stirbt dort. `ToastProvider.push` holt sich als Erstes eine
-// Kennung über `crypto.randomUUID()` (`apps/web/src/app/ToastContext.tsx:36`); der Aufruf wirft
-// „TypeError: crypto.randomUUID is not a function", und der Rest des Zweigs läuft nicht mehr.
-// Kein Toast erschien je in dieser Vorrichtung — auch der Erfolgsweg von B4 hat nie einen gezeigt.
-// Dass B4 trotzdem grün war, lag an der Reihenfolge: die Ausnahme erreicht `seitenfehler` erst
-// NACH der Zusicherung. Ein Wächter, der so knapp danebenliegt, ist keiner.
-//
-// WARUM EIN ERSATZ UND KEIN AUSKLAMMERN: die Lücke gehört der VORRICHTUNG, nicht dem Produkt. Im
-// echten Betrieb läuft Klarwerk über `https` (Coolify) und in der Entwicklung über `localhost` —
-// beides sichere Kontexte, beide haben `crypto.randomUUID`. Ein Fall, der die Meldung deshalb
-// ungemessen liesse, verschöbe eine Zusicherung des Auftrags auf niemanden.
-//
-// DER ERSATZ IST KEIN PLATZHALTER: er baut die Kennung aus `crypto.getRandomValues` (das es auch
-// im unsicheren Kontext gibt) und liefert eine echte UUID der Fassung 4 — dasselbe Format, das die
-// Norm zusagt. Die Fläche bekommt also keine Sonderbehandlung, nur den Browserdienst, den ihr der
-// Ursprung dieser Vorrichtung vorenthält.
-//
-// GRENZE, ausdrücklich benannt: dieselbe Lücke trifft jeden anderen Browserfall über
-// `tests/design/h4-harness.ts`, der eine Meldung messen will. Dort gehört der Ersatz eigentlich hin
-// — die Datei steht nicht in den Zielpfaden dieser Runde. In der Rückgabe benannt, nicht behoben.
-const UUID_ERSATZ_FN = `() => {
-  if (typeof crypto.randomUUID === "function") { return; }
-  crypto.randomUUID = () => {
-    const b = crypto.getRandomValues(new Uint8Array(16));
-    b[6] = (b[6] & 0x0f) | 0x40;
-    b[8] = (b[8] & 0x3f) | 0x80;
-    const h = [...b].map((x) => x.toString(16).padStart(2, "0"));
-    return [
-      h.slice(0, 4).join(""), h.slice(4, 6).join(""), h.slice(6, 8).join(""),
-      h.slice(8, 10).join(""), h.slice(10, 16).join(""),
-    ].join("-");
-  };
-}`;
+// DIE ABLÖSUNG IST DA: `tests/design/h4-harness.ts:71` bedient die Seite unter
+// `https://klarwerk.test` — dieselbe Art von Kontext wie der Betrieb. Der Ersatz ist deshalb
+// GELÖSCHT, nicht auskommentiert und nicht „für den Fall der Fälle" behalten. Dass B1–B4 ohne ihn
+// grün sind, ist der Beweis, dass die Umstellung trägt: B3 misst die Erfolgsmeldung
+// (`ko.deleteAlreadyGone`), und B4 verlangt `seitenfehler` leer.
 
 describe("JOB 3637 R2 · Löschen im echten Browser (gebaute Seite, echtes Backend)", () => {
   beforeAll(async () => {
@@ -276,10 +249,6 @@ describe("JOB 3637 R2 · Löschen im echten Browser (gebaute Seite, echtes Backe
         idA = a.id;
         idB = b.id;
       });
-      // Zweimal, und beide Male sind nötig: `evaluate` versorgt das SCHON GELADENE Dokument, in dem
-      // B1–B3 arbeiten; `addInitScript` jedes spätere (B4 lädt über `oeffnen` neu).
-      await stand.seite.evaluate(fn(UUID_ERSATZ_FN));
-      await stand.seite.addInitScript(`(${UUID_ERSATZ_FN})();`);
     } catch (e) {
       fehler = String(e).split("\n").slice(0, 4).join(" | ");
     }

@@ -990,6 +990,21 @@ const INVENTAR: readonly string[] = [
   // unveraendert. GEMESSEN, NICHT GESETZT: der Waechterlauf meldete vor dieser Zeile `neu im Baum,
   // aber nicht im gepinnten Inventar … + "tests/ki-palette-320/palette-320-chromium.test.ts"`.
   "tests/ki-palette-320/palette-320-chromium.test.ts",
+  // JOB 3818 (13.09.2026): der Waechter ueber den sicheren Kontext der Chromium-Buehnen unter
+  // `tests/design/`. Gefunden hat ihn die INHALTSACHSE `taskpane`, und zwar an zwei Stellen seines
+  // Buehnenregisters: `tests/design/k1-messung.ts` und `tests/design/zielbild-keinwissen.test.ts`
+  // bedienen beide die Klara-Auslieferung `/word-addin/taskpane.html`, und der Waechter nennt
+  // genau diesen Pfad als Grund ihrer Zeile. „klara" steht nicht in seinem Pfad, `nurName` bleibt
+  // deshalb bei 58 (K5 unveraendert).
+  // DERSELBE FALL WIE `seiten-typ-waechter.test.ts` oben, und dieselbe Entscheidung: die Achse
+  // trifft hier weiter, als sie zielt — das Wort steht in einem DATEIPFAD, nicht in einer Aussage
+  // ueber die Word-Flaeche. Die Achse dafuer zu verengen hiesse, einen fremden Waechter zu
+  // schwaechen, um die eigene Datei hindurchzulassen. Sachlich schadet der Eintrag nicht: der Fall
+  // laeuft ohne Browser in 40 ms und haelt fuer die BEIDEN Klara-Buehnen fest, dass ihre
+  // Kontextschuld gezaehlt bleibt. K2 hat die Datei gemeldet („neu im Baum, aber nicht im
+  // gepinnten Inventar … expected [ Array(1) ] to deeply equal []"), das Inventar nimmt sie nicht
+  // still auf.
+  "tests/vorrichtung-sicherer-kontext/sicherer-kontext-der-buehnen.test.ts",
 ];
 
 // ------------------------------------------------------------------------------------------------

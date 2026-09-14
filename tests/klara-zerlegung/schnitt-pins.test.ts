@@ -355,6 +355,17 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // A2 hat beide gemeldet, das Verzeichnis nimmt sie nicht still auf.
   "tests/demo-firmen-ci-verbraucher/marke-quelle.test.ts": "pfad",
   "tests/demo-firmen-ci-verbraucher/word-marke.test.ts": "zusammengesetzt",
+  // JOB 3818 (13.09.2026): der Wächter über den sicheren Kontext der Chromium-Bühnen unter
+  // `tests/design/`. Er greift `taskpane.html` NICHT an — er nennt das Pfadliteral zweimal als
+  // BEGRÜNDUNG in seinem Bühnenregister: `tests/design/k1-messung.ts` und
+  // `tests/design/zielbild-keinwissen.test.ts` bedienen beide `/word-addin/taskpane.html` und
+  // stehen deshalb mit genau diesem Satz im ALTBESTAND. Der Eintrag steht trotzdem hier, und zwar
+  // aus dem Grund, den der Griff `pfad` selbst ausschreibt: er ist bewusst textbreit, „ein
+  // Treffer, der die Datei nur im Kommentar nennt, ist ein billiger Fehlalarm; eine übersehene
+  // Datei ist teuer". Den Griff zu verengen, damit die eigene Datei durchkommt, wäre das
+  // Gegenteil. A2 hat sie gemeldet („neu im Baum, aber nicht gepinnt — Verzeichnis nachfuehren"),
+  // das Verzeichnis nimmt sie nicht still auf.
+  "tests/vorrichtung-sicherer-kontext/sicherer-kontext-der-buehnen.test.ts": "pfad",
 };
 
 // ------------------------------------------------------------------------------------------------
