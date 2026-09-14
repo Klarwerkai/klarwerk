@@ -237,6 +237,12 @@ const INVENTAR: readonly string[] = [
   // den Pfad (Achse `name`, `flaeche-klara-panel`); die zwei Geschwisterdateien desselben Jobs
   // (Vertrag, Web-Flächen) tragen „klara" nicht und gehören folgerichtig nicht in diese Menge.
   "tests/ki-fragment-sichtbar/flaeche-klara-panel.test.ts",
+  // JOB 3919: der Browserwächter der Klara-Antwort — sie ist im gebauten Produkt nicht nur
+  // unausgeblendet, sondern hat Fläche und liegt frei (errechnete Kaskade, Kästchen, Überdeckung),
+  // und ihr TEXT steht in dieser Fläche, statt hinter einer harten Kante abgeschnitten zu sein (S5).
+  // Er trägt „klara" im PFAD (Achse `name`, das Verzeichnis war im Auftrag §4 abschließend
+  // vorgegeben) und nennt `KlaraAssistant` im Belegtext (Achse `komponente`).
+  "tests/klara-antwort-sichtbarkeit/antwortblock-ist-sichtbar-chromium.test.ts",
   // JOB 3144 UX-16: Webhilfe-Geometrie und erreichbarer Weg aus der Word-Vorschau.
   // K2 meldete beide neuen Dateien; Namensachse (beide), Komponente (gemounteter Test).
   "tests/klara-webhilfe-schmal/klara-hilfe-chromium.test.ts",
@@ -1276,7 +1282,14 @@ describe("JOB 920 · K — das Klara-Regressionsinventar ist ableitbar, nicht be
     // KONFLIKTRUNDE 2 (JOB 3898, 14.09.2026): beide Nachfuehrungen (JOB 3918 und JOB 3898) kamen aus
     // getrennten Basen mit demselben Ausgangswert 58 und wurden hier vereinigt — beide Dateien stehen
     // jetzt im Inventar, der Zaehler wird nach dieser Zusammenfuehrung neu gemessen, nicht geschaetzt.
-    expect(nurName.length).toBe(60);
+    // JOB 3919 KONFLIKTRUNDE 2 (14.09.2026, Rebase auf die gelandete JOB-3918/3898-Kette):
+    // `tests/klara-antwort-sichtbarkeit/antwortblock-ist-sichtbar-chromium.test.ts` trägt „klara“
+    // im PFAD — das Verzeichnis war im Auftrag §4 abschließend vorgegeben. Auf dem Rebase-Stand
+    // (359bab0, bereits mit JOB 3918 UND JOB 3898 vereinigt, Zähler 60) kommt dieser Eintrag on top
+    // hinzu, deshalb 60 -> 61. GEMESSEN, NICHT GESETZT: mit dem Inventareintrag und noch auf 60
+    // stehendem Zähler meldete der Cloud-Lauf 0fd7c5f0 `expected 61 to be 60`; erst danach wurde
+    // diese Zeile angefasst.
+    expect(nurName.length).toBe(61);
     expect(verfehlt.length).toBeGreaterThanOrEqual(25);
     expect(verfehlt.length + nurName.length).toBe(GEFUNDEN.length);
   });
