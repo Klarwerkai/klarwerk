@@ -53,6 +53,27 @@
 // hier ausdrücklich NICHT eingelöst (Auftrag §10) und wird unten auch nicht behauptet.
 //
 // ------------------------------------------------------------------------------------------------
+// JOB 3950 · W22/W23: NACH EINEM FEHLSCHLAG GILT DIE DROSSELUNG WEITER.
+// ------------------------------------------------------------------------------------------------
+// W19–W21 fahren den Fehlschlag ausschliesslich über die Frist weiter; kein einziger von ihnen
+// schickt danach ein Ereignis. Damit war der Drosselzweig (`taskpane.html:13428`) für ALLE drei
+// Fehlerarten ungemessen: W17 misst die Fokusdrosselung nach einem GELUNGENEN Abruf, und die
+// Fristfälle zählen nur an fälligen Fristen, nie an einem zu frühen Ereignis.
+//
+// Die Zusage hängt an EINER Zeile: `kwMarkeLetzterAbruf = jetzt` steht in `taskpane.html:13430`,
+// also VOR dem Abruf und nicht in dessen Erfolgszweig. Der Zeitstempel gilt deshalb auch für einen
+// Blick, der danebengeht. Wer ihn in den Erfolgszweig verschöbe („wir zählen nur gelungene
+// Blicke"), bekäme bei dauerhaft gestörtem Server einen Abruf JE Fokuswechsel — ein stundenlang
+// offenes Aufgabenfenster fragte den ohnehin gestörten Server sturmreif. W17 bliebe dabei grün.
+// Bestellt hat den Fall der Prüfer in `archiv/3936/runde-1/ben.md` (Prüfpunkt 6): „Drosselung
+// unmittelbar nach einem Fehler separat prüfen: Fokus nach einer Sekunde darf keinen Abruf
+// erzeugen". Aus derselben Bestellung stammen die zwei zusätzlichen Zeilen in W21.
+//
+// Zwei Fälle und nicht einer, weil es ZWEI Wege zurück in den Ruhezustand gibt: der Netzfehler
+// (W22) landet im Ablehnungszweig von `taskpane.html:13434`, die HTTP-Fehlerantwort (W23) im
+// Erfüllungszweig. Nur wenn beide gemessen sind, trägt die Aussage „nach jedem Fehlschlag".
+//
+// ------------------------------------------------------------------------------------------------
 // EINE SCHREIBREGEL FÜR DIE KOMMENTARE DIESER DATEI — bitte beim Weiterschreiben beachten.
 // ------------------------------------------------------------------------------------------------
 // In der Prosa steht der Pfad des Aufgabenfensters NIE als Schrägstrich-Literal (Ordnername, `/`,
@@ -829,12 +850,22 @@ describe("JOB 3512 W · Klara im Word übernimmt die Firmen-CI", () => {
     expect(brandingAbrufe.length, "die Frist hat keinen zweiten Blick ausgelöst").toBe(2);
     expect(lookAbschrift(), "`version` als Zeichenkette hat den Look verstellt").toEqual(vorher);
     expect(logoSichtbar(), "das Logo verschwand am Unsinn").toBe(true);
+    // Sichtbarkeit und Adresse sind zwei Aussagen: `logoSichtbar()` liest nur die Klassenliste, und
+    // `lookAbschrift()` liest nur die fünf Variablen. Ein durchgerutschter Unsinn-Körper könnte das
+    // Bild also AUSTAUSCHEN, ohne dass es eine der beiden Zeilen merkte (W19/W20 prüfen das längst).
+    expect(
+      logo().getAttribute("src"),
+      "`version` als Zeichenkette: das Logo wechselte am Unsinn",
+    ).toBe(ADVISOR.logo);
     dieKetteLebtWeiter("nach der Antwort mit textueller `version`");
 
     await markenFristFaellig(); // ── `version` fehlt ganz
     expect(brandingAbrufe.length, "nach dem ersten Unsinn kam kein dritter Blick").toBe(3);
     expect(lookAbschrift(), "eine fehlende `version` hat den Look verstellt").toEqual(vorher);
     expect(logoSichtbar(), "das Logo verschwand an der fehlenden `version`").toBe(true);
+    expect(logo().getAttribute("src"), "fehlende `version`: das Logo wechselte am Unsinn").toBe(
+      ADVISOR.logo,
+    );
     dieKetteLebtWeiter("nach der Antwort ohne `version`");
 
     // Und jetzt die eigentliche Frage dieses Falls: hat der Unsinn die Vergleichskennung vergiftet?
@@ -847,6 +878,93 @@ describe("JOB 3512 W · Klara im Word übernimmt die Firmen-CI", () => {
       expect(wurzel(token), `${token} blieb stehen — der Unsinn hat die Kennung vergiftet`).toBe(
         "",
       );
+    }
+    expect(logoSichtbar()).toBe(false);
+    expect(logo().hasAttribute("src")).toBe(false);
+  });
+
+  // ================================================================================================
+  // JOB 3950 · W22/W23 — DIE DROSSELUNG UNMITTELBAR NACH EINEM FEHLSCHLAG.
+  // ================================================================================================
+  // Der Unterschied zu W17 (`:704`) in zwei Sätzen: W17 misst den Fokus nach einem GELUNGENEN Abruf,
+  // W22/W23 messen ihn nach einem gescheiterten. Die gemeinsame Zeile ist `taskpane.html:13430` —
+  // sie steht bewusst VOR dem `fetch` (`:13432`) und nicht in dessen Erfolgszweig, und genau deshalb
+  // bremst die Drosselung auch einen Server aus, der gar nichts mehr beantwortet.
+  //
+  // Beide Fälle haben zwei Hälften. Die erste („weiterhin 2 Abrufe") ist die Drosselung. Die zweite
+  // („3 Abrufe nach der vollen Minute") ist die Gegenrichtung — ohne sie wäre der Fall auch dann
+  // grün, wenn die Drosselung nie wieder aufmachte, und ein Fenster, das nach einer Störung nie mehr
+  // fragt, wäre schlimmer als eines, das zu oft fragt.
+
+  it("W22 · nach dem Netzfehler bremst die Drosselung weiter — und sie macht wieder auf", async () => {
+    await ladeFenster([AN(4), null, AUS(6)]);
+    expect(brandingAbrufe.length, "der erzwungene erste Blick fand nicht statt").toBe(1);
+    derLookStehtWirklich("vor dem Fehlschlag"); // ── K1
+    const vorher = lookAbschrift();
+
+    // ── Der Minutenblick geht daneben: das Netz ist weg, der Abruf wird abgewiesen.
+    await markenFristFaellig();
+    expect(brandingAbrufe.length, "die Frist hat keinen zweiten Blick ausgelöst").toBe(2);
+    dieKetteLebtWeiter("nach dem gescheiterten Blick");
+
+    // ── (a) Eine Sekunde später schaltet jemand ins Fenster. Der letzte Blick ist danebengegangen —
+    // gefragt wird trotzdem nicht, weil der Zeitstempel schon vor dem Abruf gesetzt wurde.
+    jetzt += 1_000;
+    umgebung.window.dispatchEvent(new umgebung.window.Event("focus"));
+    await leerlauf();
+    expect(brandingAbrufe.length, "nach dem Fehlschlag bremst die Drosselung nicht mehr").toBe(2);
+    expect(lookAbschrift(), "der abgewiesene Fokus hat den Look angefasst").toEqual(vorher);
+
+    // ── (b) Nach der vollen Minute MUSS sie wieder aufmachen. Dieselbe Zahl trägt hier zwei
+    // Zusagen: sie belegt zugleich, dass `kwMarkeLaeuft` nach dem Fehlschlag zurückgesetzt wurde
+    // (der Ablehnungszweig von `taskpane.html:13434`) — sonst wiese `:13426` jeden weiteren Anlass
+    // sofort ab, und das Fenster sähe nie wieder nach, egal wie viel Zeit vergeht.
+    jetzt += KW_MARKE_ABSTAND_MS;
+    umgebung.window.dispatchEvent(new umgebung.window.Event("focus"));
+    await leerlauf();
+    expect(brandingAbrufe.length, "nach der vollen Minute kam kein Blick mehr").toBe(3);
+    for (const token of MARKEN_TOKEN) {
+      expect(wurzel(token), `${token} blieb stehen, obwohl die Firmen-CI aus ist`).toBe("");
+    }
+    expect(logoSichtbar()).toBe(false);
+    expect(logo().hasAttribute("src")).toBe(false);
+  });
+
+  it("W23 · dasselbe nach der HTTP-Fehlerantwort — der andere Weg zurück in den Ruhezustand", async () => {
+    // Keine Wiederholung von W22: der Netzfehler landet im Ablehnungszweig von `taskpane.html:13434`
+    // (zweites Argument `fertig`), die 503er im Erfüllungszweig — `:13433` liefert `null`,
+    // `kwMarkeUebernehmen(null)` kehrt an `:13417` sofort um, dann erst läuft `fertig()`. Es sind
+    // zwei verschiedene Wege zu `kwMarkeLaeuft = false`; M3 trennt sie nachweislich.
+    //
+    // Die dritte Fehlerart (200er ohne numerische `version`, W21) bekommt bewusst KEINEN dritten
+    // Drosselfall: sie läuft durch denselben Erfüllungszweig wie die 503er und misst dieselbe Zeile
+    // ein zweites Mal.
+    await ladeFenster([AN(4), { status: 503, koerper: AUS(6) }, AUS(6)]);
+    expect(brandingAbrufe.length, "der erzwungene erste Blick fand nicht statt").toBe(1);
+    derLookStehtWirklich("vor der Fehlerantwort"); // ── K1
+    const vorher = lookAbschrift();
+
+    await markenFristFaellig();
+    expect(brandingAbrufe.length, "die Frist hat keinen zweiten Blick ausgelöst").toBe(2);
+    dieKetteLebtWeiter("nach der Fehlerantwort");
+
+    // ── (a) Die Drosselung gilt auch nach einer Antwort, die keine Auskunft war.
+    jetzt += 1_000;
+    umgebung.window.dispatchEvent(new umgebung.window.Event("focus"));
+    await leerlauf();
+    expect(brandingAbrufe.length, "nach der Fehlerantwort bremst die Drosselung nicht mehr").toBe(
+      2,
+    );
+    expect(lookAbschrift(), "der abgewiesene Fokus hat den Look angefasst").toEqual(vorher);
+
+    // ── (b) Und sie macht wieder auf — zugleich der Nachweis, dass `kwMarkeLaeuft` auch auf dem
+    // Erfüllungsweg zurückgesetzt wurde.
+    jetzt += KW_MARKE_ABSTAND_MS;
+    umgebung.window.dispatchEvent(new umgebung.window.Event("focus"));
+    await leerlauf();
+    expect(brandingAbrufe.length, "nach der vollen Minute kam kein Blick mehr").toBe(3);
+    for (const token of MARKEN_TOKEN) {
+      expect(wurzel(token), `${token} blieb stehen, obwohl die Firmen-CI aus ist`).toBe("");
     }
     expect(logoSichtbar()).toBe(false);
     expect(logo().hasAttribute("src")).toBe(false);
