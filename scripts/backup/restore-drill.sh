@@ -8,9 +8,15 @@
 # mit `npx tsx services/app/src/server.ts` dagegen,
 # meldet sich mit einem Konto AUS DEM DUMP an und fragt die Auditkette ab. Erst das ist ein
 # Wiederherstellungsbeleg. Danach raeumt er den identifizierten Prozess wieder ab.
-# OFFENE GRENZE: Echtes npx/tsx erzeugt eine andere Server-PID als $!. Die unveraenderte
-# Identitaetspruefung lehnt dies mit Exit 80 ab; der volle Drill ist damit noch nicht abnahmefaehig.
-# Beleg: tests/backup-drill/start-identitaet.test.ts; Einzelheiten in docs/operations/restore-drill.md.
+#
+# ZUORDNUNG UEBER DIE PROZESSGRUPPE, NICHT UEBER PID-GLEICHHEIT (JOB 4010): Zwischen Drill und
+# Server steht der npx-Launcher, dessen PID nachweislich eine andere ist als die, die der Server
+# in die PID-Datei schreibt. Der Drill startet deshalb in einer EIGENEN PROZESSGRUPPE und erkennt
+# daran seine eigene Nachkommenschaft; die PID-Datei wird gegen genau diese Gruppe gehalten und
+# nicht geglaubt. Ein fremder Prozess bekommt nie ein Signal (Exit 80, fail-closed).
+# Belege: tests/backup-drill/prozesszuordnung.test.ts (echtes npx/tsx, ohne Datenbank),
+# tests/backup-drill/echter-wiederanlauf.integration.test.ts (echter Dump gegen echte PostgreSQL);
+# Einzelheiten in docs/operations/restore-drill.md.
 #
 # WAS DIESER DRILL NICHT TUT: Er fasst KEINE Produktionsdatenbank an. `RESTORE_DB` muss ein
 # eigener, leerer Zielname sein; der Drill legt ihn an und weigert sich, in eine nicht leere
@@ -67,9 +73,14 @@ fi
 DRILL_PORT="${DRILL_PORT:-3097}"
 ARBEIT="${DRILL_WORKDIR:-$(dirname "$DUMP")}"
 PID_FILE="${ARBEIT}/klarwerk-drill.pid"
+# Ablage der Jobliste fuer die Abstammungspruefung (s. `eigene_gruppe`). `jobs` schreibt sie mit
+# einer Umlenkung der laufenden Shell; eine Ersetzung `$(jobs)` liefe in einer Subshell.
+JOBS_DATEI="${ARBEIT}/klarwerk-drill.jobs"
 WURZEL="$(cd "$(dirname "$0")/../.." && pwd)"
 
-for werkzeug in pg_restore createdb psql; do
+# `ps` gehoert zu den Pflichtwerkzeugen: ohne die Prozessgruppe eines PID laesst sich die
+# Abstammung des Serverprozesses nicht feststellen, und der Drill duerfte dann kein Signal senden.
+for werkzeug in pg_restore createdb psql ps; do
   if ! command -v "$werkzeug" >/dev/null 2>&1; then
     echo "[drill] ABBRUCH: $werkzeug nicht gefunden (postgresql-client installieren)." >&2
     exit 1
@@ -115,46 +126,96 @@ echo "[drill] Glied 1 — Sidecar geprueft: $ERWARTET"
 # GLIED 8 vorbereitet — REAPING. Der Trap raeumt auch bei jedem Abbruch weiter unten auf.
 # ------------------------------------------------------------------------------------------------
 #
-# `reap` beendet AUSSCHLIESSLICH den Prozess, den dieser Drill selbst gestartet hat. Die PID
-# allein genuegt dafuer nicht: PIDs werden wiederverwendet. Deshalb wird die gemerkte PID gegen
-# die PID-Datei gehalten und die Lebendigkeit mit `kill -0` geprueft, bevor irgendein Signal
-# faellt. Eine fremde oder wiederverwendete PID wird fail-closed abgelehnt, statt sie zu treffen.
+# `reap` beendet AUSSCHLIESSLICH, was dieser Drill selbst gestartet hat. Die PID allein genuegt
+# dafuer nicht — PIDs werden wiederverwendet —, und ein Vergleich der Launcher-PID mit der
+# PID-Datei genuegt ebenfalls nicht: zwischen beiden steht der npx-Launcher, beide Zahlen sind
+# verschieden (gemessen in tests/backup-drill/start-identitaet.test.ts). Dieser Vergleich konnte
+# deshalb nur scheitern und liess Launcher und Server als Waisen zurueck.
+#
+# DIE ZUORDNUNG IST EINE ABSTAMMUNGSFRAGE. Der Drill startet den Launcher in einer EIGENEN
+# PROZESSGRUPPE (Job Control, `set -m`); jeder Nachkomme — npx, tsx, der Serverprozess — erbt sie.
+#
+#   `eigene_gruppe`      belegt, dass diese Gruppe DIESEM Drill gehoert, aus zwei unabhaengigen
+#                        Tatsachen: (1) die Shell fuehrt den Launcher noch als eigenen, nicht
+#                        abgeholten Job — solange kann sein PID nicht neu vergeben werden;
+#                        (2) zu diesem PID existiert wirklich eine Prozessgruppe. Ohne (2) haette
+#                        Job Control keine angelegt, und `-$GESTARTETE_PID` waere die Gruppe
+#                        DIESER Shell gewesen. Einmal belegt bleibt es belegt, solange die Gruppe
+#                        nicht leer ist: eine Gruppen-Id wird erst danach wieder vergeben.
+#   `gehoert_zur_gruppe` haelt die PID AUS DER PID-DATEI gegen genau diese Gruppe. Die Datei wird
+#                        also nicht geglaubt, sondern gegen die Abstammung vom eigenen Start
+#                        geprueft.
+#
+# FAIL-CLOSED: Laesst sich eines von beiden nicht feststellen, faellt KEIN Signal und es bleibt bei
+# Exit 80. Eine fremde oder wiederverwendete PID wird niemals getroffen — auch dann nicht, wenn sie
+# in der PID-Datei steht.
 GESTARTETE_PID=""
+GRUPPE_BESTAETIGT=""
+SERVER_PID=""
+
+eigene_gruppe() {
+  [ -n "$GESTARTETE_PID" ] || return 1
+  if [ "$GRUPPE_BESTAETIGT" = "1" ]; then
+    kill -0 -"$GESTARTETE_PID" 2>/dev/null || return 1
+    return 0
+  fi
+  jobs -pr > "$JOBS_DATEI" 2>/dev/null || return 1
+  grep -qE "^[[:space:]]*${GESTARTETE_PID}[[:space:]]*$" "$JOBS_DATEI" || return 1
+  kill -0 -"$GESTARTETE_PID" 2>/dev/null || return 1
+  GRUPPE_BESTAETIGT=1
+  return 0
+}
+
+gehoert_zur_gruppe() {
+  local pid="$1"
+  local pgid
+  case "$pid" in "" | *[!0-9]*) return 1 ;; esac
+  pgid="$(ps -o pgid= -p "$pid" 2>/dev/null | tr -d '[:space:]')" || return 1
+  [ -n "$pgid" ] || return 1
+  [ "$pgid" = "$GESTARTETE_PID" ]
+}
+
 reap() {
   local rc=$?
   if [ -z "$GESTARTETE_PID" ]; then
-    rm -f "$PID_FILE"
+    rm -f "$PID_FILE" "$JOBS_DATEI"
     return $rc
   fi
-  if [ ! -f "$PID_FILE" ]; then
-    echo "[drill] REAPING (80): PID-Datei fehlt — der gestartete Prozess ist nicht identifizierbar." >&2
-    return 80
-  fi
-  local datei_pid
-  datei_pid="$(tr -d '[:space:]' < "$PID_FILE")"
-  if [ "$datei_pid" != "$GESTARTETE_PID" ]; then
-    echo "[drill] REAPING (80): PID-Datei nennt $datei_pid, gestartet wurde $GESTARTETE_PID —" >&2
-    echo "[drill] fremder Prozess, es wird KEIN Signal gesendet." >&2
-    return 80
-  fi
-  if ! kill -0 "$GESTARTETE_PID" 2>/dev/null; then
-    echo "[drill] REAPING: Prozess $GESTARTETE_PID lebt nicht mehr; nur die PID-Datei wird geraeumt."
-    rm -f "$PID_FILE"
+  if ! kill -0 -"$GESTARTETE_PID" 2>/dev/null; then
+    echo "[drill] Glied 8 — Reaping: die eigene Prozessgruppe $GESTARTETE_PID lebt nicht mehr;"
+    echo "[drill] nur die PID-Datei wird geraeumt."
+    rm -f "$PID_FILE" "$JOBS_DATEI"
     return $rc
   fi
-  kill -TERM "$GESTARTETE_PID" 2>/dev/null || true
+  if ! eigene_gruppe; then
+    echo "[drill] REAPING (80): die Prozessgruppe $GESTARTETE_PID ist nicht als die eigene" >&2
+    echo "[drill] belegbar — es wird KEIN Signal gesendet." >&2
+    rm -f "$JOBS_DATEI"
+    return 80
+  fi
+  kill -TERM -"$GESTARTETE_PID" 2>/dev/null || true
   for _ in 1 2 3 4 5 6 7 8 9 10; do
-    if ! kill -0 "$GESTARTETE_PID" 2>/dev/null; then
-      break
-    fi
+    kill -0 -"$GESTARTETE_PID" 2>/dev/null || break
     sleep 1
   done
-  if kill -0 "$GESTARTETE_PID" 2>/dev/null; then
-    echo "[drill] REAPING (80): Prozess $GESTARTETE_PID hat SIGTERM ueberlebt." >&2
+  if kill -0 -"$GESTARTETE_PID" 2>/dev/null; then
+    # Zweite Stufe an DIESELBE, nachweislich eigene Gruppe: solange sie nicht leer ist, kann ihre
+    # Id nicht neu vergeben worden sein — der Nachweis von oben gilt also weiter.
+    echo "[drill] REAPING: SIGTERM hat nicht gereicht — SIGKILL an die eigene Gruppe $GESTARTETE_PID." >&2
+    kill -KILL -"$GESTARTETE_PID" 2>/dev/null || true
+    for _ in 1 2 3 4 5; do
+      kill -0 -"$GESTARTETE_PID" 2>/dev/null || break
+      sleep 1
+    done
+  fi
+  if kill -0 -"$GESTARTETE_PID" 2>/dev/null; then
+    echo "[drill] REAPING (80): Prozessgruppe $GESTARTETE_PID hat SIGKILL ueberlebt." >&2
+    rm -f "$JOBS_DATEI"
     return 80
   fi
-  rm -f "$PID_FILE"
-  echo "[drill] Glied 8 — Reaping: Prozess $GESTARTETE_PID beendet, PID-Datei geraeumt."
+  wait "$GESTARTETE_PID" 2>/dev/null || true
+  rm -f "$PID_FILE" "$JOBS_DATEI"
+  echo "[drill] Glied 8 — Reaping: Prozessgruppe $GESTARTETE_PID restlos beendet (Serverprozess ${SERVER_PID:-nicht zugeordnet}), PID-Datei geraeumt."
   return $rc
 }
 trap reap EXIT
@@ -248,10 +309,14 @@ if ! command -v node >/dev/null 2>&1 || ! command -v npx >/dev/null 2>&1 ||
   echo "[drill] ABBRUCH (31): Startwerkzeug node/npx/lokales tsx fehlt oder ist nicht ausfuehrbar." >&2
   exit 31
 fi
-rm -f "$PID_FILE"
-# `exec` entfernt die Subshell: $! identifiziert den gestarteten Launcher.
-# Es entfernt NICHT die Kindprozesse von npx/tsx. Deren Server-PID weicht nachweislich ab;
-# die unveraenderte Identitaetspruefung unten verweigert dann mit Exit 80 ein Signal.
+rm -f "$PID_FILE" "$JOBS_DATEI"
+# EIGENE PROZESSGRUPPE. `set -m` schaltet Job Control ein: bash legt fuer diesen Hintergrundjob eine
+# neue Prozessgruppe an, deren Id genau `$!` ist. `exec` entfernt zusaetzlich die Subshell, sodass
+# der Launcher selbst der Gruppenfuehrer ist. npx, tsx und der Serverprozess erben diese Gruppe —
+# genau daran erkennt der Drill unten seine eigene Nachkommenschaft, ohne eine PID zu glauben.
+# `set +m` direkt danach haelt Jobmeldungen aus dem Drillprotokoll heraus; Gruppe und Jobeintrag
+# bleiben davon unberuehrt.
+set -m
 (
   cd "$WURZEL"
   exec env \
@@ -262,6 +327,7 @@ rm -f "$PID_FILE"
     npx tsx services/app/src/server.ts
 ) &
 GESTARTETE_PID=$!
+set +m
 
 for _ in $(seq 1 60); do
   if [ -f "$PID_FILE" ]; then
@@ -274,17 +340,24 @@ if [ ! -f "$PID_FILE" ]; then
   exit 30
 fi
 
-# DIE IDENTITAETSPRUEFUNG. Sie ist der Grund, warum dieser Block existiert: Die PID-Datei wird
-# NICHT geglaubt, sondern gegen den tatsaechlich gestarteten Prozess gehalten. Nennt sie etwas
-# anderes, ist der Drill in einer Lage, die er nicht aufloesen kann — er beendet dann NICHTS.
-# Eine wiederverwendete PID darf niemals dazu fuehren, dass ein fremder Prozess getroffen wird.
+# DIE ZUORDNUNG. Sie ist der Grund, warum dieser Block existiert: Die PID-Datei wird NICHT
+# geglaubt, sondern gegen die Abstammung vom eigenen Start gehalten (Begruendung oben bei `reap`).
+# Nennt sie einen Prozess ausserhalb der eigenen Prozessgruppe, ist der Drill in einer Lage, die er
+# nicht aufloesen kann — an diesen Prozess geht dann niemals ein Signal.
 DATEI_PID="$(tr -d '[:space:]' < "$PID_FILE")"
-if [ "$DATEI_PID" != "$GESTARTETE_PID" ]; then
-  echo "[drill] ABBRUCH (80): PID-Datei nennt $DATEI_PID, gestartet wurde $GESTARTETE_PID —" >&2
-  echo "[drill] fremder oder wiederverwendeter Prozess. Es wird KEIN Signal gesendet." >&2
+if ! eigene_gruppe; then
+  echo "[drill] ABBRUCH (80): die eigene Prozessgruppe $GESTARTETE_PID ist nicht feststellbar —" >&2
+  echo "[drill] die Abstammung des Serverprozesses bleibt unbelegt. Es wird KEIN Signal gesendet." >&2
   exit 80
 fi
-echo "[drill] Glied 4 — Anwendung laeuft, PID $GESTARTETE_PID, Port $DRILL_PORT"
+if ! gehoert_zur_gruppe "$DATEI_PID"; then
+  echo "[drill] ABBRUCH (80): PID-Datei nennt $DATEI_PID; dieser Prozess gehoert NICHT zur" >&2
+  echo "[drill] Prozessgruppe $GESTARTETE_PID dieses Drills — fremder oder wiederverwendeter" >&2
+  echo "[drill] Prozess. Es wird KEIN Signal an ihn gesendet." >&2
+  exit 80
+fi
+SERVER_PID="$DATEI_PID"
+echo "[drill] Glied 4 — Anwendung laeuft, Serverprozess $SERVER_PID in der eigenen Prozessgruppe $GESTARTETE_PID, Port $DRILL_PORT"
 
 # ------------------------------------------------------------------------------------------------
 # GLIED 5 — /health IST LEBENDIGKEIT, NICHT MEHR

@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -44,7 +44,7 @@ if (name === 'pg_restore') {
 if (name === 'npx' || name === 'node') {
   if (args.includes('--version')) process.exit(mode === 'tool-missing' ? 1 : 0);
   fs.writeFileSync(path.join(dir, 'start'), JSON.stringify([name, ...args]));
-  fs.writeFileSync(process.env.KLARWERK_PID_FILE, String(mode === 'foreign-pid' ? process.ppid : process.pid));
+  fs.writeFileSync(process.env.KLARWERK_PID_FILE, String(mode === 'foreign-pid' ? process.env.FREMD_PID : process.pid));
   fs.writeFileSync(path.join(dir, 'actual-pid'), String(process.pid));
   process.on('SIGTERM', () => { fs.writeFileSync(path.join(dir, 'terminated'), 'yes'); process.exit(0); });
   setTimeout(() => process.exit(0), 15000);
@@ -56,7 +56,7 @@ if (name === 'npx' || name === 'node') {
 } else if (name !== 'npx' && name !== 'node') process.exit(96);
 `;
 
-function run(mode = "complete") {
+function run(mode = "complete", fremdPid?: number) {
   const dir = mkdtempSync(join(root, "tests/backup-drill/.probe-"));
   const bin = join(dir, "bin");
   mkdirSync(bin);
@@ -88,6 +88,7 @@ function run(mode = "complete") {
         DRILL_WORKDIR: dir,
         DRILL_LOGIN_EMAIL: "fixture@example.test",
         DRILL_LOGIN_PASSWORT: "fixture",
+        ...(fremdPid === undefined ? {} : { FREMD_PID: String(fremdPid) }),
       },
       encoding: "utf8",
       timeout: 25000,
@@ -183,10 +184,40 @@ describe("Restore-Drill: Schema, Dumpabgleich und Aufrufdisziplin", () => {
     const r = run(mode);
     expect(r.code, r.output).toBe(code);
   });
-  it("Reaping lehnt eine fremde PID ohne Signal ab", () => {
-    const r = run("foreign-pid");
-    expect(r.code, r.output).toBe(80);
-    expect(r.output).toContain("KEIN Signal");
-    expect(r.terminated).toBe("");
+  // JOB 4010: DIESELBE ZUSAGE, SCHÄRFER GEMESSEN. Vorher stand in der PID-Datei die PID der
+  // Drill-Shell selbst, und belegt wurde nur „die Attrappe bekam kein SIGTERM". Das war schwächer
+  // als die Zusage: Seit der Zuordnung über die Prozessgruppe gehört die Attrappe ja zur EIGENEN
+  // Nachkommenschaft — sie MUSS abgeräumt werden, sonst bliebe eine Waise auf dem Drill-Port
+  // zurück. Gemessen wird jetzt, worauf es ankommt: ein WIRKLICH fremder Prozess in eigener
+  // Prozessgruppe lebt danach nachweislich noch, der Drill endet mit 80, und trotzdem läuft von
+  // seinem eigenen Start nichts weiter.
+  it("Reaping lehnt eine fremde PID ab, ohne sie anzufassen — und räumt die eigene trotzdem ab", () => {
+    const fremd = spawn(process.execPath, ["-e", "setTimeout(() => {}, 60000)"], {
+      detached: true,
+      stdio: "ignore",
+    });
+    fremd.unref();
+    const fremdPid = fremd.pid as number;
+    try {
+      const r = run("foreign-pid", fremdPid);
+      expect(r.code, r.output).toBe(80);
+      expect(r.output).toContain("Es wird KEIN Signal an ihn gesendet.");
+      expect(r.output).toContain(`PID-Datei nennt ${fremdPid}`);
+      let fremdLebt = true;
+      try {
+        process.kill(fremdPid, 0);
+      } catch {
+        fremdLebt = false;
+      }
+      expect(fremdLebt).toBe(true);
+      expect(r.terminated).toBe("yes");
+      expect(r.pidRemains).toBe(false);
+    } finally {
+      try {
+        process.kill(fremdPid, "SIGKILL");
+      } catch {
+        /* Already exited. */
+      }
+    }
   });
 });
