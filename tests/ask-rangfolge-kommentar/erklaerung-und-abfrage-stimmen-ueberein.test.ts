@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { relative, resolve } from "node:path";
 import { runInNewContext } from "node:vm";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
@@ -16,6 +16,13 @@ const PG = "services/knowledge-object/src/repo-pg.ts";
 const ASK = "services/ask/src/service.ts";
 const VERTRAG = "tests/ask/ask-retrieval-topk-scaling-contract.test.ts";
 const WURZEL = resolve(__dirname, "../..");
+/**
+ * JOB 3894 — DER EIGENE PFAD WIRD ABGELEITET, NICHT AUFGESCHRIEBEN. W7 liest den Quelltext DIESER
+ * Datei; eine Konstante mit ihrem Namen wäre beim nächsten Verschieben still falsch. `__dirname`
+ * kennt die Datei schon (`:18`) — `__filename` ist dieselbe Selbstbezugsform, und `relative` bringt
+ * sie in dieselbe wurzelrelative Schreibweise wie `PG`, `ASK` und `VERTRAG`.
+ */
+const SELBST = relative(WURZEL, __filename);
 
 function lesen(pfad: string): string {
   try {
@@ -427,6 +434,8 @@ async function pruefeVertrag(text: string, pg: string): Promise<void> {
 const pg = lesen(PG);
 const service = lesen(ASK);
 const vertrag = lesen(VERTRAG);
+/** Der eigene Quelltext, über denselben Leser wie jede fremde Quelle — W7 urteilt über ihn. */
+const selbst = lesen(SELBST);
 
 function ersetzen(text: string, alt: string, neu: string): string {
   if (!text.includes(alt)) throw new Error(`Kalibrierung erreicht Quelle nicht: ${alt}`);
@@ -522,7 +531,7 @@ interface Doppelgaenger {
 // JOB 3850 · DIE FRIST DES ASYNCHRONEN ZWEIGS — DAS vm-ZEITLIMIT GREIFT NUR SYNCHRON.
 // ================================================================================================
 //
-// GEMESSEN, NICHT ANGENOMMEN: `runInNewContext(..., { timeout: 1_000 })` (`:62`) bricht
+// GEMESSEN, NICHT ANGENOMMEN: `runInNewContext(..., { timeout: 1_000 })` (`:69`) bricht
 // ausschliesslich eine synchron laufende Anweisung ab. Liefert die Attrappe ein Promise, das nie
 // auflöst, greift es überhaupt nicht — gewartet wird danach im TESTPROZESS, und dort gab es kein
 // Zeitlimit. Der Fall „ASYNCHRON hängende Attrappe" unten lief am Stand VOR dieser Frist 60007 ms
@@ -555,9 +564,13 @@ interface Doppelgaenger {
 // DIE FRIST IST ECHT LÄNGER als das vm-Zeitlimit (3000 gegen 1000 ms) und wird ERST NACH dessen
 // Ablauf scharf: `fuehreGelesenAus(…)` läuft synchron in die VM, bevor `mitFrist` den Zeitgeber
 // anlegt. Der synchrone Fall behält seinen eigenen Grund `Script execution timed out`; der
-// asynchrone Fall prüft ausdrücklich, dass seine Meldung diesen Wortlaut NICHT trägt. Der
-// Zeitgeber hält den Vitest-Prozess nicht am Leben: `unref` beim Anlegen, `clearTimeout` in jedem
-// Ausgang (gemessen an der Suite: kein Hinweis auf offene Handles).
+// asynchrone Fall prüft ausdrücklich, dass seine Meldung diesen Wortlaut NICHT trägt.
+//
+// DASS DER ZEITGEBER DEN VITEST-PROZESS NICHT AM LEBEN HÄLT, STEHT HIER NICHT MEHR ALS ZUSAGE: er
+// bekommt `unref` beim Anlegen (`:595`) und `clearTimeout` in jedem Ausgang (`:597`), und dass das
+// so BLEIBT, misst W7 am Syntaxbaum dieser Datei (Kopf bei `W7_ZEITGEBER`) — samt dem dort
+// eingetragenen Befund der einmal wirklich gefahrenen Handle-Diagnose. Der frühere Beleg war das
+// Ausbleiben einer Warnung; das ist kein Messwert (BEN, `archiv/3868/runde-1/ben.md:29`).
 const W6_FRIST_MS = 3_000;
 const W6_FRIST_GRUND = `die Attrappe kam nicht zurück: ihre Kandidatenabfrage blieb nach ${W6_FRIST_MS} ms offen (asynchrones Hängen — das vm-Zeitlimit greift nur synchron)`;
 
@@ -604,10 +617,12 @@ function mitFrist<T>(lauf: Promise<T>, dauer = W6_FRIST_MS, grund = W6_FRIST_GRU
 // ERST DANACH ab. Kalibriert ist das mit R4 der Rückgabe: ohne `aufloesen(wert)` ist genau dieser
 // Fall rot, und zwar mit `W6_NACHFRIST_GRUND`.
 //
-// PROZESSHYGIENE: der Zeitgeber läuft im Testprozess und ist `unref`'t (hält Vitest nicht am Leben).
-// Solange er läuft, zählt ihn `offeneVerzoegerungen()`; feuert er, trägt er sich selbst aus. Der Fall
-// belegt beide Zahlen — 1 offen bei Fristablauf, 0 nach der Antwort — und `raeumeVerzoegerungen()`
-// findet am Ende nichts mehr vor.
+// PROZESSHYGIENE: der Zeitgeber läuft im Testprozess. Dass er `unref`'t ist und damit Vitest nicht
+// am Leben hält, wird nicht mehr hier behauptet, sondern von W7 aus dem Quelltext gelesen (Kopf bei
+// `W7_ZEITGEBER`, mit dem gemessenen Befund der Handle-Diagnose). Was DIESER Fall belegt, sind die zwei Zahlen des
+// Laufs: solange der Zeitgeber läuft, zählt ihn `offeneVerzoegerungen()` (1 bei Fristablauf); feuert
+// er, trägt er sich selbst aus (0 nach der Antwort), und `raeumeVerzoegerungen()` findet am Ende
+// nichts mehr vor.
 const W6_VERSPAETUNG_MS = W6_FRIST_MS + 1_000;
 /**
  * Obergrenze für das Abwarten der verspäteten Antwort NACH dem Fristfehler. Zu diesem Zeitpunkt
@@ -691,6 +706,554 @@ function raeumeVerzoegerungen(): number {
   w6Hergang.length = 0;
   return offen;
 }
+
+// ================================================================================================
+// JOB 3894 · W7 — DIE PROZESSHYGIENE DIESER DATEI WIRD GELESEN, NICHT ZUGESAGT.
+// ================================================================================================
+//
+// WARUM ES DIESEN FALL GIBT. Bis hierher stand die Zusage „der Zeitgeber hält den Vitest-Prozess
+// nicht am Leben" ZWEIMAL als Prosa im Kopf dieser Datei, und ihr Beleg war das AUSBLEIBEN einer
+// Warnung — BEN hat das in `archiv/3868/runde-1/ben.md:29` als das benannt, was es ist: gegengesucht
+// wurde auf `hanging`, `open handle`, `prevents`, `close timed out` → 0 Treffer. Ein nicht
+// erschienener Warntext ist kein Messwert. Nahm jemand ein `unref()` heraus, blieben alle 51 Fälle
+// grün, und auffallen wäre es erst an einem hängenden Torlauf — der teuersten Stelle der Maschine
+// (Median 1157 s, `gespraech/pruefstau-20260913/tor-main-zeiten.json`). W7 kostet Millisekunden.
+//
+// AM SYNTAXBAUM, NICHT AM TEXT. Gesucht wird jeder AUSFÜHRBARE `setTimeout`/`setInterval`-Aufruf
+// dieser Datei — auch als `globalThis.setTimeout(…)` —, und zwar mit seiner BINDUNG: der
+// zurückgegebene Zeitgeber muss VOR SEINER ERSTEN VERWENDUNG `unref()` bekommen. Eine
+// Zeichenkettensuche nach `.unref()` wüsste nichts über diese Zuordnung (ein `unref` an der falschen
+// Variablen wäre grün), kippte beim ersten Umbenennen und zählte jeden Kommentar mit. Dass der Text
+// `setTimeout(` in dieser Datei öfter dasteht, als es Anlegestellen gibt, misst die Kalibrierung
+// „blinder Text" ausdrücklich mit.
+//
+// GLEICHER NAME IST NOCH KEINE GLEICHE BINDUNG — RUNDE 2 WAR GENAU HIER FALSCH GRÜN, und das ist
+// gemessen, nicht eingeräumt. BEN hat in Runde 2 (`ben.md`, „Entscheidende Gegenprobe", Cloud-Lauf
+// `a91faad9fdd675bbbf26e27c`) die echte `unref`-Zeile in `verzoegere` durch
+// `{ const uhr = { unref() {} }; uhr.unref(); }` ersetzt: der Zeitgeber bekam KEIN `unref()` mehr,
+// ein gleichnamiges fremdes Objekt in einem INNEREN Block bekam eines — und W7 meldete
+// `0 Beanstandungen`, alle 57 Fälle grün. Der Grund war, dass die Suche nach der ersten Verwendung
+// Bezeichner nur nach ihrem TEXT verglich. Seitdem liest W7 den GÜLTIGKEITSBEREICH: zuerst wird der
+// Bereich bestimmt, in dem der Name wirklich DEKLARIERT ist (`bindungsbereich` — bei
+// `const uhr = setTimeout(…)` der Block der Deklaration, bei `uhr = setTimeout(…)` der Rumpf mit dem
+// `let uhr`, nicht der Promise-Rückruf); dann wird nur in diesem Bereich gesucht, und jeder INNERE
+// Bereich, der denselben Namen neu bindet (Deklaration, Parameter, Rückrufparameter), wird NICHT
+// betreten, sondern als Überschattung in der Beanstandung genannt. Beide Formen von BENs Gegenprobe
+// stehen jetzt als eigene Fälle da, ebenso die Gegenrichtung: ein korrekt UMBENANNTER Zeitgeber
+// (`wecker` statt `uhr`) muss grün bleiben, sonst wäre der Wächter nur auf den Namen `uhr` geeicht.
+//
+// RUNDE 3 WAR AN DERSELBEN STELLE NOCH EINMAL FALSCH GRÜN, UND ZWAR AUS EINEM ANNAHMEFEHLER — das
+// ist die eigentliche Lehre dieses Jobs und steht deshalb hier, nicht nur im Protokoll. Die
+// Bindungsauflösung las `var` wie eine Blockbindung und begründete das damit, eine strengere Lesart
+// als die der Sprache könne „höchstens falsch ROT" sein. Sie kann es nicht. BEN hat gemessen
+// (Runde 3, Cloud-Lauf `c8feae2b4303d5505fdcb997`): mit
+// `(() => { if (true) { var uhr = { unref() {} }; } uhr.unref(); })();` anstelle der echten
+// `unref`-Zeile blieben BEIDE echten Stellen unbeanstandet — `Tests 2 failed | 62 passed (64)`, und
+// rot waren nur seine zwei eigenen Proben. Der Grund: `var uhr` gehört der ganzen inneren Funktion.
+// Wer es dem `if`-Block zurechnet, hält die innere Funktion für bindungsfrei, steigt in sie hinein
+// und rechnet ihr `uhr.unref()` dem ÄUSSEREN Zeitgeber zu. Eine falsche Bindungsauflösung wirkt in
+// BEIDE Richtungen; „vorsichtshalber strenger" gibt es hier nicht.
+//
+// SEITDEM WIRD GEBUNDEN, WIE DIE SPRACHE BINDET, und nicht näherungsweise: blockweit sind
+// `let`/`const`/`using`, Klassen, Enums, Importe, Funktionsdeklarationen (diese Datei ist ein Modul,
+// also strikt), Parameter und die `catch`-Variable; `var` zieht `varNamenIn` in die umschliessende
+// Funktion (bzw. Datei, Modulrumpf, statischen Klassenblock) hoch und hält dabei an jeder
+// Funktionsgrenze an. Kalibriert ist das in BEIDE Richtungen — BENs Probe als dritter Eintrag in
+// `W7_FREMDE_BINDUNGEN` (falsch grün), und `W7_VAR_GRUEN`: ein mit `var` in einem inneren Block
+// angelegter Zeitgeber, der weiter unten in derselben Funktion sein `unref()` bekommt, muss GRÜN
+// bleiben (falsch rot). Wäre nur beanstandet worden, was unklar ist, bestünde dieser zweite Fall nicht.
+//
+// DIE ZAHL DER GELESENEN ANLEGESTELLEN STEHT IN DER AUSGABE DES FALLS. Eine Erhebung, die nichts
+// gelesen hat, ist keine Entwarnung — dieselbe Regel wie in `toter-kandidatenweg.test.ts:794`.
+//
+// DIE HANDLE-DIAGNOSE, WIRKLICH GEFAHREN (JOB 3894, Lieferung 3) — und ihr Befund ist ein anderer
+// als erwartet. Zuletzt am 13.09.2026 auf dem Cloud-Prüfplatz (Lauf `402c969715a5cd18ec7b18fd`):
+//   npx vitest run --reporter=default --reporter=hanging-process --pool=forks
+//     --poolOptions.forks.maxForks=4 --poolOptions.forks.minForks=1 tests/ask-rangfolge-kommentar
+//     tests/ask/ask-retrieval-topk-scaling-contract.test.ts
+//   → Exit 0 · `Tests 69 passed (69)` · Laufzeit 13,50 s, davon DIESE Datei 12408 ms (66 Fälle)
+//   → der `hanging-process`-Reporter gab NULL Zeilen aus, stderr war leer.
+// Der gemessene Stand ist der DIESER Datei ohne genau diese sieben Zeilen: eine Messung kann ihre
+// eigene Laufkennung nicht enthalten. Die Zahlen des abschliessenden Laufs samt Wächterlauf stehen
+// in der Rückgabe des Jobs, nicht hier — dieser Kommentar behauptet über das Tor nichts.
+//
+// WAS DIESE NULL WIRKLICH SAGT, und das wird hier nicht geglättet: sie ist WENIGER als eine
+// Handle-Zählung. In Vitest 2.1.9 hat dieser Reporter genau eine wirksame Stelle
+// (`node_modules/vitest/dist/chunks/index.DsZFoqi9.js:4284-4293`): `onInit` lädt `why-is-node-running`,
+// gefragt wird es ausschliesslich in `onProcessTimeout` — also erst, wenn der Prozess beim Abräumen
+// nicht endet. „Null Zeilen" heisst deshalb „kein Abräum-Zeitlimit", NICHT „null offene Handles
+// gezählt". Genau darum kann diese Diagnose der Wächter nicht sein: sie schwiege auch bei fehlendem
+// `unref`, solange der Zeitgeber ohnehin vorher abgeräumt wird oder von selbst feuert. Der Wächter
+// ist W7; diese Messung ist der einmalige Befund des Ausgangszustands.
+//
+// OFFEN BLEIBT und wird nicht behauptet: (i) ob dieser Reporter auf jeder Maschine dasselbe liefert
+// — gemessen ist die Cloud-Prüfmaschine dieses Jobs, nicht die Torstrecke; (ii) ob FREMDE
+// Vorrichtungen dieser Suite eigene Handles halten — W7 liest ausschliesslich DIESE Datei, eine
+// allgemeine `unref`-Regel über alle Testdateien wäre eine eigene Zeile mit eigener Kostenmessung.
+//
+// WAS W7 IM TOR KOSTET, gemessen und nicht geschätzt: im Torlauf der Runde 1 (JOB 3894, `tor.out:6036`)
+// stand `Erhebung 120 ms` — auf der Torstrecke laufen sechs Forks nebeneinander, lokal waren es 25-38 ms.
+// Der Grund waren ZWEI Parsedurchläufe über dieselben ~1700 Zeilen: der Fall ruft erst
+// `zeitgeberstellen(selbst)` für die Zahl und dann `w7Befund(selbst)` für die Beanstandungen. Seit
+// `W7_ERHEBUNGEN` ist es einer je Quelltext; gemessen am Cloud-Prüfplatz (13.09.2026, Lauf
+// `feeb90a9095ad4ed957cb8a1`) sind daraus `Erhebung 24 ms` geworden. Die Auflösung der
+// Gültigkeitsbereiche bleibt in derselben Grössenordnung, streut aber sichtbar: gemessen wurden
+// `Erhebung 15 ms` (Lauf `7f02b865033f6a9f48008f40`), `21 ms` (`dae4d6dcf83f2e716bd0332e`) und
+// `36 ms` (`402c969715a5cd18ec7b18fd`) — dieselbe Vorrichtung, dieselbe Datei, verschiedene
+// Maschinenlast. Das Hochziehen der `var`-Namen (`varNamenIn`) läuft je var-Bereich EINMAL und wird
+// wie jeder Bereich in `W7_BINDUNGEN` behalten; die Rümpfe dieser Datei sind klein. Die Zahl in der
+// Ausgabe des Falls bleibt die Messung DIESES Laufs — was im nächsten Tor steht, sagt das Tor, nicht
+// dieser Kommentar. Bleibt sie über 100 ms, gehört das in die nächste Rückgabe.
+const W7_ZEITGEBER: ReadonlySet<string> = new Set(["setTimeout", "setInterval"]);
+
+interface Zeitgeberstelle {
+  /** `<pfad>:<zeile> „<Rohzeile>"` des Aufrufs — der Ort, den jede Beanstandung nennt. */
+  readonly ort: string;
+  /** Die benannte Funktion, in der er steht; `<Dateiebene>`, wenn es keine gibt. */
+  readonly traeger: string;
+  /** Der Name, unter dem der Zeitgeber gebunden wird; `undefined`, wenn er nicht gebunden wird. */
+  readonly name: string | undefined;
+  /**
+   * Der GELESENE Bindungsbereich dieses Namens (`<pfad>:<zeile>`); `undefined`, wenn es keinen Namen
+   * gibt ODER seine Deklaration im Quelltext nicht auffindbar war — der zweite Fall ist eine
+   * Beanstandung, keine Entwarnung.
+   */
+  readonly bindungsort: string | undefined;
+  /** Die erste Verwendung danach, GEFUNDEN und wörtlich — nicht der gesuchte Sollwert. */
+  readonly ersteVerwendung: string | undefined;
+  /**
+   * Innere Bereiche NACH der Anlegestelle, die denselben Namen NEU binden. Ihr `unref()` gehört
+   * einem anderen Ding; genau daran war Runde 2 falsch grün (Kopf oben).
+   */
+  readonly ueberschattung: readonly string[];
+  /** Ist genau diese erste Verwendung ein `unref()`-Aufruf auf dem Zeitgeber? */
+  readonly unref: boolean;
+}
+
+/** Ist `knoten` der `x.unref`-Zugriff eines WIRKLICHEN Aufrufs `x.unref()`? */
+function istUnrefAufruf(knoten: ts.Node): boolean {
+  return (
+    ts.isPropertyAccessExpression(knoten) &&
+    knoten.name.text === "unref" &&
+    ts.isCallExpression(knoten.parent) &&
+    knoten.parent.expression === knoten
+  );
+}
+
+/** Ein echter VERWEIS auf den Namen — nicht die Benennung einer Eigenschaft oder Deklaration. */
+function istVerweis(k: ts.Identifier): boolean {
+  const eltern = k.parent;
+  if (ts.isPropertyAccessExpression(eltern)) {
+    return eltern.name !== k; // `eintrag.uhr` benennt eine Eigenschaft, es verweist nicht auf `uhr`.
+  }
+  if (
+    ts.isVariableDeclaration(eltern) ||
+    ts.isParameter(eltern) ||
+    ts.isBindingElement(eltern) ||
+    ts.isPropertyAssignment(eltern) ||
+    ts.isPropertySignature(eltern) ||
+    ts.isPropertyDeclaration(eltern)
+  ) {
+    return eltern.name !== k;
+  }
+  return true;
+}
+
+/** Jeder Name, den diese Bindungsform einführt — `{a, b: c}` und `[x, , y]` eingeschlossen. */
+function namenIn(bindung: ts.BindingName, hinein: Set<string>): void {
+  if (ts.isIdentifier(bindung)) {
+    hinein.add(bindung.text);
+    return;
+  }
+  for (const teil of bindung.elements) {
+    if (ts.isBindingElement(teil)) {
+      namenIn(teil.name, hinein);
+    }
+  }
+}
+
+/** Ein Gültigkeitsbereich: hier können Namen NEU gebunden werden und einen äusseren überschatten. */
+function istBereich(k: ts.Node): boolean {
+  return (
+    ts.isSourceFile(k) ||
+    ts.isBlock(k) ||
+    ts.isModuleBlock(k) ||
+    ts.isCaseBlock(k) ||
+    ts.isForStatement(k) ||
+    ts.isForInStatement(k) ||
+    ts.isForOfStatement(k) ||
+    ts.isCatchClause(k) ||
+    ts.isClassLike(k) ||
+    ts.isClassStaticBlockDeclaration(k) ||
+    ts.isFunctionLike(k)
+  );
+}
+
+/**
+ * Ein Bereich, der `var` AUFNIMMT: Datei, Modulrumpf, statischer Klassenblock, jede Funktion. `var`
+ * gilt für die ganze umschliessende FUNKTION und ist in dem Block, in dem es dasteht, NICHT gebunden.
+ * Genau diese Unterscheidung fehlte bis Runde 3 (Kopf oben bei `W7_ZEITGEBER`).
+ */
+function istVarBereich(k: ts.Node): boolean {
+  return (
+    ts.isSourceFile(k) ||
+    ts.isModuleBlock(k) ||
+    ts.isClassStaticBlockDeclaration(k) ||
+    ts.isFunctionLike(k)
+  );
+}
+
+/** Ist diese Deklarationsliste `let`/`const`/`using` (blockweit) — im Gegensatz zu `var`? */
+function istBlockweit(liste: ts.VariableDeclarationList): boolean {
+  return (liste.flags & ts.NodeFlags.BlockScoped) !== 0;
+}
+
+/**
+ * Die `var`-Namen DIESES var-Bereichs, aus allen inneren BLÖCKEN hochgezogen (`if`, `for`, `try`, …)
+ * — aber niemals über eine Funktionsgrenze hinweg: ein `var` in einer inneren Funktion gehört ihr.
+ */
+function varNamenIn(bereich: ts.Node, namen: Set<string>): void {
+  const gehe = (k: ts.Node): void => {
+    if (istVarBereich(k)) {
+      return; // eigener var-Bereich: seine `var` gehören ihm, nicht uns.
+    }
+    if (ts.isVariableDeclarationList(k) && !istBlockweit(k)) {
+      for (const d of k.declarations) {
+        namenIn(d.name, namen);
+      }
+    }
+    ts.forEachChild(k, gehe);
+  };
+  ts.forEachChild(bereich, gehe);
+}
+
+const W7_BINDUNGEN = new WeakMap<ts.Node, ReadonlySet<string>>();
+
+/**
+ * Die Namen, die DIESER Bereich selbst bindet — nicht die seiner inneren Bereiche. Blockweit sind
+ * `let`/`const`/`using`, Klassen, Enums, Importe, Funktionsdeklarationen (diese Datei ist ein Modul,
+ * also strikt), Parameter und die `catch`-Variable; `var` dagegen wird nach den Regeln der Sprache
+ * in die umschliessende FUNKTION hochgezogen (`varNamenIn`).
+ *
+ * BIS RUNDE 3 GALT HIER `var` ALS BLOCKBINDUNG, mit der Begründung, das sei „strenger als die
+ * Sprache und höchstens falsch ROT". DIESE BEGRÜNDUNG WAR FALSCH, und BEN hat sie gemessen widerlegt
+ * (Runde 3, Cloud-Lauf `c8feae2b4303d5505fdcb997`): sie wirkt in BEIDE Richtungen. Wird ein `var`
+ * dem Block statt der Funktion zugerechnet, FEHLT es der Funktion — deren Bereich überschattet dann
+ * nicht mehr, die Suche steigt in sie hinein und rechnet ihr `uhr.unref()` dem ÄUSSEREN Zeitgeber
+ * zu. Das ist die stille Entwarnung, gegen die W7 gebaut ist. Dauerhaft kalibriert ist beides:
+ * `W7_FREMDE_BINDUNGEN` (falsch grün) und `W7_VAR_GRUEN` (falsch rot).
+ */
+function eigeneBindungen(bereich: ts.Node): ReadonlySet<string> {
+  const bekannt = W7_BINDUNGEN.get(bereich);
+  if (bekannt !== undefined) {
+    return bekannt;
+  }
+  const namen = new Set<string>();
+  const ausListe = (liste: ts.VariableDeclarationList): void => {
+    for (const d of liste.declarations) {
+      namenIn(d.name, namen);
+    }
+  };
+  const ausAnweisungen = (anweisungen: readonly ts.Statement[]): void => {
+    for (const a of anweisungen) {
+      if (ts.isVariableStatement(a)) {
+        // Nur blockweite Deklarationen; `var` holt `varNamenIn` am Ende in den var-Bereich.
+        if (istBlockweit(a.declarationList)) {
+          ausListe(a.declarationList);
+        }
+      } else if (
+        (ts.isFunctionDeclaration(a) || ts.isClassDeclaration(a) || ts.isEnumDeclaration(a)) &&
+        a.name !== undefined
+      ) {
+        namen.add(a.name.text);
+      } else if (ts.isImportDeclaration(a) && a.importClause !== undefined) {
+        const klausel = a.importClause;
+        if (klausel.name !== undefined) {
+          namen.add(klausel.name.text);
+        }
+        if (klausel.namedBindings !== undefined) {
+          if (ts.isNamespaceImport(klausel.namedBindings)) {
+            namen.add(klausel.namedBindings.name.text);
+          } else {
+            for (const e of klausel.namedBindings.elements) {
+              namen.add(e.name.text);
+            }
+          }
+        }
+      }
+    }
+  };
+  if (ts.isFunctionLike(bereich)) {
+    for (const p of bereich.parameters) {
+      namenIn(p.name, namen);
+    }
+    if (
+      (ts.isFunctionExpression(bereich) || ts.isFunctionDeclaration(bereich)) &&
+      bereich.name !== undefined
+    ) {
+      namen.add(bereich.name.text);
+    }
+  } else if (ts.isCatchClause(bereich)) {
+    if (bereich.variableDeclaration !== undefined) {
+      namenIn(bereich.variableDeclaration.name, namen);
+    }
+  } else if (ts.isClassLike(bereich)) {
+    if (bereich.name !== undefined) {
+      namen.add(bereich.name.text);
+    }
+  } else if (ts.isSourceFile(bereich) || ts.isBlock(bereich) || ts.isModuleBlock(bereich)) {
+    ausAnweisungen(bereich.statements);
+  } else if (ts.isCaseBlock(bereich)) {
+    for (const klausel of bereich.clauses) {
+      ausAnweisungen(klausel.statements);
+    }
+  } else if (
+    ts.isForStatement(bereich) ||
+    ts.isForInStatement(bereich) ||
+    ts.isForOfStatement(bereich)
+  ) {
+    const start = bereich.initializer;
+    if (start !== undefined && ts.isVariableDeclarationList(start) && istBlockweit(start)) {
+      ausListe(start);
+    }
+  }
+  // `var` ZULETZT und nur hier: es gehört der umschliessenden Funktion, nicht dem Block.
+  if (istVarBereich(bereich)) {
+    varNamenIn(bereich, namen);
+  }
+  W7_BINDUNGEN.set(bereich, namen);
+  return namen;
+}
+
+/**
+ * Der Bereich, in dem der Zeitgebername WIRKLICH deklariert ist — gelesen, nicht geraten. Bei
+ * `const uhr = setTimeout(…)` ist das der Block der Deklaration, bei `uhr = setTimeout(…)` der
+ * Bereich mit dem `let uhr` (in `mitFrist` der Funktionsrumpf, nicht der Promise-Rückruf).
+ * `undefined` heisst: keine Deklaration gefunden — dann urteilt W7 nicht grün, sondern beanstandet.
+ */
+function bindungsbereich(knoten: ts.Node, name: string): ts.Node | undefined {
+  for (let p: ts.Node | undefined = knoten; p !== undefined; p = p.parent) {
+    if (istBereich(p) && eigeneBindungen(p).has(name)) {
+      return p;
+    }
+  }
+  return undefined;
+}
+
+/** Die nächste umgebende benannte Funktion — sie steht in der Beanstandung statt einer nackten Zeile. */
+function traegerVon(knoten: ts.Node): string {
+  for (let p: ts.Node | undefined = knoten.parent; p !== undefined; p = p.parent) {
+    if (ts.isFunctionDeclaration(p) && p.name !== undefined) {
+      return p.name.text;
+    }
+  }
+  return "<Dateiebene>";
+}
+
+function istZeitgeberaufruf(aufruf: ts.CallExpression): boolean {
+  const ziel = aufruf.expression;
+  const name = ts.isIdentifier(ziel)
+    ? ziel.text
+    : ts.isPropertyAccessExpression(ziel)
+      ? ziel.name.text
+      : undefined;
+  return name !== undefined && W7_ZEITGEBER.has(name);
+}
+
+/**
+ * Das Ergebnis je Quelltext, EINMAL erhoben. Der Schlüssel ist der vollständige Text samt Pfad — eine
+ * veränderte Quelle ist ein anderer Schlüssel, keine Kalibrierung kann sich hier also an einem alten
+ * Ergebnis vorbeimogeln (R1/R2/R3 sind mit dem Zwischenspeicher gemessen, nicht ohne ihn). Gehalten
+ * werden nur die kleinen Fundlisten; der Syntaxbaum ist nach der Erhebung wieder frei.
+ */
+const W7_ERHEBUNGEN = new Map<string, readonly Zeitgeberstelle[]>();
+
+function zeitgeberstellen(text: string, pfad = SELBST): readonly Zeitgeberstelle[] {
+  // Längenpräfix statt Trennzeichen: ein Pfad, der zufällig wie der Anfang eines fremden
+  // Quelltexts aussieht, kann so keinen fremden Schlüssel treffen.
+  const schluessel = `${pfad.length}:${pfad}${text}`;
+  const bekannt = W7_ERHEBUNGEN.get(schluessel);
+  if (bekannt !== undefined) {
+    return bekannt;
+  }
+  const funde = erhebeZeitgeberstellen(text, pfad);
+  W7_ERHEBUNGEN.set(schluessel, funde);
+  return funde;
+}
+
+function erhebeZeitgeberstellen(text: string, pfad: string): readonly Zeitgeberstelle[] {
+  const datei = ast(text, pfad);
+  const zeilen = text.split("\n");
+  const stelle = (pos: number): string => {
+    const nr = datei.getLineAndCharacterOfPosition(pos).line + 1;
+    return `${pfad}:${nr} „${(zeilen[nr - 1] ?? "").trim()}"`;
+  };
+  const funde: Zeitgeberstelle[] = [];
+  const gehe = (k: ts.Node): void => {
+    if (ts.isCallExpression(k) && istZeitgeberaufruf(k)) {
+      funde.push(bewerteZeitgeber(datei, k, stelle));
+    }
+    ts.forEachChild(k, gehe);
+  };
+  ts.forEachChild(datei, gehe);
+  return funde;
+}
+
+function bewerteZeitgeber(
+  datei: ts.SourceFile,
+  aufruf: ts.CallExpression,
+  stelle: (pos: number) => string,
+): Zeitgeberstelle {
+  const ort = stelle(aufruf.getStart(datei));
+  const traeger = traegerVon(aufruf);
+  const eltern = aufruf.parent;
+  const leer = { bindungsort: undefined, ueberschattung: [] } as const;
+  // (a) `setTimeout(…).unref()`: gar nicht erst gebunden, aber unmittelbar abgemeldet.
+  if (istUnrefAufruf(eltern)) {
+    return { ort, traeger, name: undefined, ersteVerwendung: ort, unref: true, ...leer };
+  }
+  // (b) `const uhr = setTimeout(…)` oder `uhr = setTimeout(…)`.
+  const gebunden =
+    ts.isVariableDeclaration(eltern) && ts.isIdentifier(eltern.name)
+      ? eltern.name
+      : ts.isBinaryExpression(eltern) &&
+          eltern.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+          ts.isIdentifier(eltern.left)
+        ? eltern.left
+        : undefined;
+  if (gebunden === undefined) {
+    return { ort, traeger, name: undefined, ersteVerwendung: undefined, unref: false, ...leer };
+  }
+  const name = gebunden.text;
+  // DIE BINDUNG, NICHT DER NAME. Gesucht wird ausschliesslich im Bereich, der `name` deklariert;
+  // ohne diesen Schritt wäre ein gleichnamiges fremdes Objekt ein gültiges `unref` (Runde 2).
+  const bereich = bindungsbereich(aufruf, name);
+  if (bereich === undefined) {
+    return { ort, traeger, name, ersteVerwendung: undefined, unref: false, ...leer };
+  }
+  const ab = aufruf.getEnd();
+  let erste: ts.Identifier | undefined;
+  const ueberschattung: string[] = [];
+  const suche = (k: ts.Node): void => {
+    // Ein INNERER Bereich, der denselben Namen neu bindet, gehört einem anderen Ding: er wird nicht
+    // betreten, sondern gemeldet — sonst zählte sein `unref()` für den Zeitgeber.
+    if (k !== bereich && istBereich(k) && eigeneBindungen(k).has(name)) {
+      if (k.getStart(datei) >= ab) {
+        ueberschattung.push(stelle(k.getStart(datei)));
+      }
+      return;
+    }
+    if (
+      ts.isIdentifier(k) &&
+      k.text === name &&
+      k.getStart(datei) >= ab &&
+      istVerweis(k) &&
+      (erste === undefined || k.getStart(datei) < erste.getStart(datei))
+    ) {
+      erste = k;
+    }
+    ts.forEachChild(k, suche);
+  };
+  suche(bereich);
+  return {
+    ort,
+    traeger,
+    name,
+    bindungsort: stelle(bereich.getStart(datei)),
+    ersteVerwendung: erste === undefined ? undefined : stelle(erste.getStart(datei)),
+    ueberschattung,
+    unref: erste !== undefined && istUnrefAufruf(erste.parent),
+  };
+}
+
+/**
+ * Die Beanstandungen, eine Zeile je Anlegestelle ohne `unref`. Jede nennt Träger, Datei, Zeile und
+ * den GEFUNDENEN Text — nicht den gesuchten (Lehre JOB 3826 R1, hier wie in
+ * `toter-kandidatenweg.test.ts:140-142`).
+ */
+function w7Befund(text: string, pfad = SELBST): readonly string[] {
+  return zeitgeberstellen(text, pfad).flatMap((s) => {
+    if (s.unref) {
+      return [];
+    }
+    if (s.name === undefined) {
+      return [
+        `W7: ${s.traeger}: der Zeitgeber wird weder gebunden noch unmittelbar abgemeldet — angelegt ${s.ort}`,
+      ];
+    }
+    if (s.bindungsort === undefined) {
+      return [
+        `W7: ${s.traeger}: die Deklaration von \`${s.name}\` ist im Quelltext nicht auffindbar — angelegt ${s.ort}; ohne gelesene Bindung wird hier nicht grün geurteilt`,
+      ];
+    }
+    // Die Überschattung gehört in die MELDUNG: ohne sie liest man „kein `unref()`" neben einem
+    // dastehenden `uhr.unref()` und hält den Wächter für kaputt statt den Quelltext.
+    const fremd = s.ueberschattung[0];
+    const nachtrag =
+      fremd === undefined
+        ? ""
+        : `; der Name wird in einem inneren Bereich NEU gebunden (${s.ueberschattung.length}×), zuerst ${fremd} — dessen \`unref()\` gilt nicht dem Zeitgeber`;
+    return [
+      `W7: ${s.traeger}: \`${s.name}\` bekommt vor seiner ersten Verwendung kein \`unref()\` — angelegt ${s.ort}; erste Verwendung ${s.ersteVerwendung ?? "<keine im Bindungsbereich>"}${nachtrag}`,
+    ];
+  });
+}
+
+/**
+ * Die zwei heutigen Anlegestellen. Die Zahl ist die Untergrenze der Erhebung, keine Aufzählung: eine
+ * DRITTE Anlegestelle macht W7 nicht grün, sondern muss ihr eigenes `unref` mitbringen.
+ */
+const W7_TRAEGER = ["mitFrist", "verzoegere"] as const;
+
+/** Die gestellte dritte Anlegestelle — einzeilig, damit `FREMDTEXT` sie auch als `//` blind hält. */
+const W7_DRITTE =
+  "function dritterZeitgeber() { const spaet = setTimeout(() => {}, 1); clearTimeout(spaet); }";
+
+/**
+ * DIE ZWEI ECHTEN `unref`-ZEILEN ALS ANKER, jede mit ihrer Folgezeile, damit sie im Quelltext
+ * EINDEUTIG sind. Sie stehen hier als Literal mit `\n` und können deshalb nicht sich selbst treffen;
+ * die erste Fundstelle ist immer der echte Quelltext (`mitFrist` bzw. `verzoegere`).
+ */
+const W7_ECHT_MITFRIST = "    uhr.unref();\n  });";
+const W7_ECHT_VERZOEGERE = "  uhr.unref();\n  eintrag.uhr = uhr;";
+const W7_ECHTE_STELLEN = [
+  ["mitFrist", W7_ECHT_MITFRIST],
+  ["verzoegere", W7_ECHT_VERZOEGERE],
+] as const;
+
+/**
+ * BENs Gegenprobe aus Runde 2, dauerhaft und in zwei Formen: DERSELBE Name, eine ANDERE Bindung.
+ * Beide Formen schreiben `uhr.unref()` in den Quelltext, keine von beiden meldet den Zeitgeber ab.
+ * Eine Zeichenkettensuche und jede Namensgleichheit sind hier grün; W7 muss rot sein.
+ */
+const W7_FREMDE_BINDUNGEN = [
+  ["innerer Block", "{ const uhr = { unref() {} }; uhr.unref(); }"],
+  ["Rückrufparameter", "[{ unref() {} }].forEach((uhr) => uhr.unref());"],
+  // BENs Gegenprobe aus Runde 3, wörtlich übernommen (Cloud-Lauf `c8feae2b4303d5505fdcb997`):
+  // damals `Tests 2 failed | 62 passed (64)` mit `expected [] to have a length of 1 but got +0` —
+  // W7 lieferte für BEIDE defekten Quellen keine Beanstandung. Das `var` steht in einem inneren
+  // BLOCK, gilt aber für die ganze innere Funktion; wer es dem Block zurechnet, hält die innere
+  // Funktion für bindungsfrei, steigt in sie hinein und schreibt ihr `uhr.unref()` dem ÄUSSEREN
+  // Zeitgeber gut.
+  [
+    "`var` im Block einer inneren Funktion",
+    "(() => { if (true) { var uhr = { unref() {} }; } uhr.unref(); })();",
+  ],
+] as const;
+
+/**
+ * DIE GEGENRICHTUNG ZUM `var`-FALL, und sie ist der Grund, warum hier wirklich der Bindungsbereich
+ * aufgelöst wird statt jedes `var` vorsichtshalber zu beanstanden: ein Zeitgeber, der mit `var` in
+ * einem inneren Block angelegt und WEITER UNTEN in derselben Funktion abgemeldet wird, ist korrekt —
+ * `spaetVar` ist funktionsweit gebunden. Eine Auflösung, die `var` als Blockbindung liest, findet
+ * die erste Verwendung nicht mehr und ist hier falsch ROT; eine falsch rote Wache wird abgeschaltet.
+ */
+const W7_VAR_GRUEN =
+  "function varZeitgeber() { if (true) { var spaetVar = setTimeout(() => {}, 1); } spaetVar.unref(); }";
+
+/** Und dass das Hochziehen keine neue blinde Stelle aufmacht: dieselbe Form OHNE `unref` ist ROT. */
+const W7_VAR_ROT =
+  "function varZeitgeberOhne() { if (true) { var ohneVar = setTimeout(() => {}, 1); } clearTimeout(ohneVar); }";
 
 interface W6Lauf {
   /**
@@ -815,6 +1378,17 @@ const TREFFERZAHL_ZUERST = `${[
 ].join(" - ")} || `;
 const SORT_ANKER = "const sortiert = [...treffer].sort(";
 const NACHGEZOGEN = () => ersetzen(vertrag, REINE_RANGFOLGE, TREFFERZAHL_ZUERST + REINE_RANGFOLGE);
+
+/**
+ * JOB 3894 — DER EINE ANKER FÜR DIE RÜCKGABEZEILE DER ATTRAPPE.
+ *
+ * Fall A („mit NEUTRALEM Abschluss …") und Fall B („eine VERSPÄTET antwortende Attrappe …")
+ * verstellen dieselbe Zeile des Vertrags. Bis JOB 3868 stand ihr Wortlaut ZWEIMAL im Falltext, und
+ * eine Verstellung traf dann nur je einen Fall — aufgefallen, aber nicht gebaut
+ * (`archiv/3868/runde-2/RUECKGABE.md:62`). Jetzt lesen beide diese EINE Konstante: wer sie
+ * verstellt, macht BEIDE Fälle rot. Ein zweiter Verstellweg daneben entsteht dabei nicht.
+ */
+const W6_RUECKGABE_ZEILE = "return Promise.resolve(seite);";
 
 // Dieselbe Trefferzahl als BLINDER TEXT. W6 muss dabei GRÜN bleiben, denn das Verhalten ist
 // unverändert; ein Wächter, der hier rot wird, ist ein Wörterbuch und kein Messgerät (3570 R3,
@@ -1200,7 +1774,7 @@ describe("JOB 3601: Erklärung und Abfrage stimmen überein", () => {
   });
 
   it("W6 Zustandsmodell: eine UMBENANNTE Attrappe bleibt sehend — neuer Name, neue Zeile", async () => {
-    // Die Zusage aus dem Kopf von `attrappe()` (`:248`): „eine Umbenennung macht ihn nicht blind,
+    // Die Zusage aus dem Kopf von `attrappe()` (`:255`): „eine Umbenennung macht ihn nicht blind,
     // sondern lässt ihn weiter dieselbe Stelle prüfen." Der Bestand misst nur die VERBOTENE
     // Umbenennung (W5, `pgAehnlicherKoService`); ein harmloser neuer Name war ungemessen.
     const alt = attrappe(vertrag).name?.text ?? "";
@@ -1269,17 +1843,15 @@ describe("JOB 3601: Erklärung und Abfrage stimmen überein", () => {
 
   it("W6 Zustandsmodell: mit NEUTRALEM Abschluss greift die ZWEITE Wartestelle (`await aufzeichnung.lauf`)", async () => {
     // JOB 3868 — BENs Prüfpunkt 6 zu 3850 (`archiv/3850/runde-1/ben.md:33`), wörtlich bestellt:
-    // „Die zweite Wartestelle (`:600`) wird beim heutigen VM-Rückgabeverhalten nicht isoliert
+    // „Die zweite Wartestelle (`:993`) wird beim heutigen VM-Rückgabeverhalten nicht isoliert
     // kalibriert. Folgeprobe: VM-Rumpf mit neutralem Abschluss versehen und weiterhin ein offenes
     // Kandidaten-Promise erwarten." Dieselbe Verstellung wie im Fall darüber, nur der Rumpf endet
     // neutral: `runInNewContext` gibt dann nicht mehr das Kandidaten-Promise zurück, die erste
     // Wartestelle ist sofort durch, und allein die zweite kann noch warten. GEMESSEN: ohne die
     // Frist an dieser zweiten Stelle ist genau DIESER Fall rot und sonst keiner.
-    const defekt = ersetzen(
-      vertrag,
-      "return Promise.resolve(seite);",
-      "return new Promise(() => {});",
-    );
+    // JOB 3894: die verstellte Zeile kommt aus `W6_RUECKGABE_ZEILE` — demselben Anker, den Fall B
+    // liest. Eine Verstellung dort macht ab jetzt BEIDE Fälle rot statt nur einen.
+    const defekt = ersetzen(vertrag, W6_RUECKGABE_ZEILE, "return new Promise(() => {});");
     const name = attrappe(defekt).name?.text ?? "";
     const fehler = await abgewiesen(pruefeAttrappe(defekt, VERTRAG, { neutralerAbschluss: true }));
     expect(fehler).toMatch(/^W6: tests\/ask\/ask-retrieval-topk-scaling-contract\.test\.ts: /);
@@ -1302,7 +1874,7 @@ describe("JOB 3601: Erklärung und Abfrage stimmen überein", () => {
     // Hier wird er abgewartet — erst der Fristfehler, dann die echte Antwort mit korrektem Ergebnis.
     const defekt = ersetzen(
       vertrag,
-      "return Promise.resolve(seite);",
+      W6_RUECKGABE_ZEILE,
       `return verzoegere(seite, ${W6_VERSPAETUNG_MS});`,
     );
     const name = attrappe(defekt).name?.text ?? "";
@@ -1346,6 +1918,175 @@ describe("JOB 3601: Erklärung und Abfrage stimmen überein", () => {
     expect(offeneVerzoegerungen(), "W6: nach der Antwort darf kein Zeitgeber mehr laufen").toBe(0);
     expect(raeumeVerzoegerungen(), "W6: das Abräumen findet nichts mehr vor").toBe(0);
   });
+
+  // ==============================================================================================
+  // JOB 3894 · W7 — DIE FÄLLE. Der Kopf dieser Wache steht oben bei `W7_ZEITGEBER`.
+  // ==============================================================================================
+
+  it("W7: jeder Zeitgeber DIESER Datei bekommt vor seiner ersten Verwendung `unref()`", () => {
+    const beginn = Date.now();
+    const stellen = zeitgeberstellen(selbst);
+    // Eine Erhebung, die nichts gelesen hat, ist keine Entwarnung (`toter-kandidatenweg.test.ts:794`).
+    expect(
+      stellen.length,
+      `W7: ${SELBST}: keine Zeitgeber-Anlegestelle gelesen — dieses Grün sagte dann nichts`,
+    ).toBeGreaterThanOrEqual(W7_TRAEGER.length);
+    // Beide heutigen Stellen sind wirklich darunter, und zwar als ENTHALTEN statt als Aufzählung:
+    // eine dritte Anlegestelle soll W7 nicht hier scheitern lassen, sondern an ihrem fehlenden `unref`.
+    expect(
+      stellen.map((s) => s.traeger),
+      `W7: ${SELBST}: eine der bewachten Anlegestellen ist nicht mehr da`,
+    ).toEqual(expect.arrayContaining([...W7_TRAEGER]));
+    expect(w7Befund(selbst), `W7: ${SELBST}: Zeitgeber ohne \`unref()\``).toEqual([]);
+    // Jede Anlegestelle mit Namen muss ihre Deklaration wirklich gefunden haben — sonst urteilte W7
+    // über eine Bindung, die es gar nicht gelesen hat.
+    expect(
+      stellen.filter((s) => s.name !== undefined && s.bindungsort === undefined),
+      `W7: ${SELBST}: Zeitgeber ohne gelesenen Bindungsbereich`,
+    ).toEqual([]);
+    // Die Zahlen gehören in die Ausgabe: sonst ist nicht nachlesbar, WIE VIEL dieses Grün gedeckt hat.
+    const aufgeloest = stellen.filter((s) => s.bindungsort !== undefined).length;
+    const gelesen = stellen.map((s) => `${s.traeger}/${s.name ?? "ungebunden"}`).join(", ");
+    process.stdout.write(
+      `\nJOB 3894 — W7 gelesen: ${stellen.length} Zeitgeber-Anlegestellen in ${SELBST}, ` +
+        `${aufgeloest} davon mit aufgelöster Bindung, 0 Beanstandungen (${gelesen})` +
+        ` — Syntaxbaum mit Gültigkeitsbereichen, Erhebung ${Date.now() - beginn} ms.\n`,
+    );
+  });
+
+  it("W7 Kalibrierung: eine DRITTE Anlegestelle ohne `unref` wird nicht durchgewunken", () => {
+    // Ein Wächter, der nur die zwei ihm bekannten Zeilen kennt, ist eine Aufzählung und kein
+    // Wächter. Die dritte Stelle gibt es heute nicht — sie wird gestellt, im Speicher.
+    const mitDritter = `${selbst}\n${W7_DRITTE}\n`;
+    expect(zeitgeberstellen(mitDritter).map((s) => s.traeger)).toEqual([
+      ...W7_TRAEGER,
+      "dritterZeitgeber",
+    ]);
+    const befund = w7Befund(mitDritter);
+    expect(befund).toHaveLength(1);
+    expect(befund[0]).toContain(
+      "W7: dritterZeitgeber: `spaet` bekommt vor seiner ersten Verwendung kein `unref()`",
+    );
+    expect(befund[0]).toContain(`angelegt ${SELBST}:`);
+    // Die Meldung nennt den GEFUNDENEN Text (hier das `clearTimeout`), nicht den gesuchten.
+    expect(befund[0]).toContain("erste Verwendung");
+    expect(befund[0]).toContain("clearTimeout(spaet)");
+  });
+
+  it("W7 Kalibrierung: ein umbenanntes `unref` an den ECHTEN Stellen macht beide rot", () => {
+    // Die zweite Hälfte von R3: nicht eine fremde Stelle dazu, sondern die Zuordnung an den zwei
+    // vorhandenen aufgelöst. Eine Zeichenkettensuche nach `.unref()` bliebe hier ebenso rot — aber
+    // sie wäre es auch, wenn das `unref` auf der FALSCHEN Variablen stünde. W7 liest die Bindung.
+    const umbenannt = selbst.replaceAll(".unref();", ".abmelden();");
+    expect(umbenannt, "W7: die Kalibrierung erreicht den eigenen Quelltext nicht").not.toBe(selbst);
+    const befund = w7Befund(umbenannt);
+    expect(befund).toHaveLength(W7_TRAEGER.length);
+    for (const [i, traeger] of W7_TRAEGER.entries()) {
+      expect(befund[i]).toContain(
+        `W7: ${traeger}: \`uhr\` bekommt vor seiner ersten Verwendung kein \`unref()\``,
+      );
+      expect(befund[i]).toContain("uhr.abmelden();");
+    }
+  });
+
+  // BENs entscheidende Gegenprobe aus Runde 2 (Cloud-Lauf `a91faad9fdd675bbbf26e27c`), dauerhaft:
+  // damals `Tests 57 passed (57)` und `0 Beanstandungen`, obwohl der Zeitgeber sein `unref()`
+  // verloren hatte. Beide Überschattungsformen, an beiden echten Stellen — vier Verstellungen.
+  for (const [form, fremd] of W7_FREMDE_BINDUNGEN) {
+    for (const [traeger, anker] of W7_ECHTE_STELLEN) {
+      it(`W7 Kalibrierung: gleicher Name, fremde Bindung (${form}) in \`${traeger}\` ist ROT`, () => {
+        const verstellt = ersetzen(selbst, anker, anker.replace("uhr.unref();", fremd));
+        // Der TEXT `.unref(` wird durch die Verstellung NICHT seltener: eine Zeichenkettensuche
+        // sähe hier nichts und bliebe grün. Nur die gelesene Bindung trennt die beiden Fälle.
+        expect(
+          verstellt.split(".unref(").length,
+          "W7: die Kalibrierung entfernt den Text `.unref(` — dann wäre schon eine Suche rot",
+        ).toBeGreaterThanOrEqual(selbst.split(".unref(").length);
+        const befund = w7Befund(verstellt);
+        expect(befund, `W7: ${traeger}: die überschattete Bindung blieb unbemerkt`).toHaveLength(1);
+        expect(befund[0]).toContain(
+          `W7: ${traeger}: \`uhr\` bekommt vor seiner ersten Verwendung kein \`unref()\``,
+        );
+        expect(befund[0]).toContain(`angelegt ${SELBST}:`);
+        // Die Meldung nennt die überschattende Stelle mit Datei und Zeile, nicht nur ein Fehlen.
+        expect(befund[0]).toContain("der Name wird in einem inneren Bereich NEU gebunden");
+        expect(befund[0]).toContain(fremd.slice(0, 24));
+      });
+    }
+  }
+
+  it("W7 Kalibrierung: ein `var`-Zeitgeber aus einem inneren Block bleibt GRÜN — `var` gilt funktionsweit", () => {
+    // Die Gegenrichtung zu BENs `var`-Gegenprobe: hier gehört das spätere `unref()` dem Zeitgeber
+    // WIRKLICH, weil `var spaetVar` für die ganze Funktion gilt. Wer `var` als Blockbindung liest,
+    // sucht nur im `if`-Block, findet dort keine Verwendung und ist falsch rot.
+    const mitVar = `${selbst}\n${W7_VAR_GRUEN}\n`;
+    const stellen = zeitgeberstellen(mitVar);
+    expect(stellen.map((s) => `${s.traeger}/${s.name}`)).toEqual([
+      "mitFrist/uhr",
+      "verzoegere/uhr",
+      "varZeitgeber/spaetVar",
+    ]);
+    // Der gelesene Bindungsbereich ist die FUNKTION, nicht der `if`-Block — das ist der Kern.
+    const varStelle = genauEins(
+      stellen.filter((s) => s.name === "spaetVar"),
+      "W7: die gestellte `var`-Anlegestelle wurde nicht gelesen",
+    );
+    expect(varStelle.bindungsort, "W7: `var` wurde nicht funktionsweit aufgelöst").toContain(
+      "function varZeitgeber()",
+    );
+    expect(varStelle.ueberschattung, "W7: der eigene `var`-Block gilt als fremde Bindung").toEqual(
+      [],
+    );
+    expect(
+      w7Befund(mitVar),
+      "W7: der funktionsweite `var`-Zeitgeber wurde falsch beanstandet",
+    ).toEqual([]);
+  });
+
+  it("W7 Kalibrierung: ein `var`-Zeitgeber OHNE `unref` ist ROT — das Hochziehen macht keine blinde Stelle", () => {
+    const mitVar = `${selbst}\n${W7_VAR_ROT}\n`;
+    const befund = w7Befund(mitVar);
+    expect(befund).toHaveLength(1);
+    expect(befund[0]).toContain(
+      "W7: varZeitgeberOhne: `ohneVar` bekommt vor seiner ersten Verwendung kein `unref()`",
+    );
+    // Der GEFUNDENE Text, nicht der gesuchte (Lehre JOB 3826 R1).
+    expect(befund[0]).toContain("clearTimeout(ohneVar)");
+  });
+
+  it("W7 Kalibrierung: ein korrekt UMBENANNTER Zeitgeber bleibt GRÜN — geeicht ist die Bindung, nicht der Name `uhr`", () => {
+    // Die Gegenrichtung zur Überschattung: ein Wächter, der nur den Namen `uhr` kennt, wäre hier
+    // falsch rot — und eine falsch rote Wache wird abgeschaltet, nicht befolgt.
+    const umbenannt = ersetzen(
+      ersetzen(selbst, "const uhr = setTimeout(() => {", "const wecker = setTimeout(() => {"),
+      W7_ECHT_VERZOEGERE,
+      "  wecker.unref();\n  eintrag.uhr = wecker;",
+    );
+    const stellen = zeitgeberstellen(umbenannt);
+    expect(stellen.map((s) => `${s.traeger}/${s.name}`)).toEqual([
+      "mitFrist/uhr",
+      "verzoegere/wecker",
+    ]);
+    expect(w7Befund(umbenannt), "W7: der umbenannte Zeitgeber wurde falsch beanstandet").toEqual(
+      [],
+    );
+  });
+
+  for (const [name, einbetten] of FREMDTEXT) {
+    it(`W7 Kalibrierung: die dritte Anlegestelle als ${name} lässt W7 GRÜN — gelesen wird Struktur`, () => {
+      const blind = selbst + einbetten(W7_DRITTE);
+      expect(blind, "W7: die Kalibrierung erreicht den eigenen Quelltext nicht").not.toBe(selbst);
+      const stellen = zeitgeberstellen(blind);
+      // Der TEXT `setTimeout(` steht jetzt öfter da, als es Anlegestellen gibt — eine
+      // Zeichenkettensuche zählte ihn mit und wäre hier falsch rot.
+      expect(
+        blind.split("setTimeout(").length - 1,
+        "W7: die Kalibrierung braucht mehr Textfunde als Anlegestellen",
+      ).toBeGreaterThan(stellen.length);
+      expect(stellen.map((s) => s.traeger)).toEqual([...W7_TRAEGER]);
+      expect(w7Befund(blind)).toEqual([]);
+    });
+  }
 
   // Beide Wortformen, und das ist kein Fleiß: mit `Produktionsadapters?` OHNE Wortgrenze nimmt der
   // Regexmotor beim Zurückgehen die Form ohne „s" und hält die EHRLICHE Stelle für offen — der
