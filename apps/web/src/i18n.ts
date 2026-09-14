@@ -5082,8 +5082,13 @@ const de = {
   "help.import.body":
     "Hier läuft der Import fremder Quellen: oben wählst du eine Quelle, siehst nach, was in ihr steht, und legst daraus Vorschläge an — hineingelesen wird nur, was du auswählst. Die Vorschläge selbst liegen darunter im zugeklappten Bereich „Review-Verlauf“, dessen Zähler nennt, wie viele davon offen sind; klapp ihn auf und entscheide einen mit „Annehmen“ oder „Ablehnen“, oder hinterlege eine Notiz. Entschiedene Vorschläge verschwinden nicht und schieben nichts nach — sie bleiben mit ihrem Stand in der Liste stehen, den nächsten offenen suchst du dir selbst.",
   "help.graph.title": "Wissensgraph",
+  // JOB 3889, Korrektur (Bestellung: `archiv/3795/runde-5/RUECKGABE.md:67`): der mittlere Satz
+  // versprach Klick und Tastatur OHNE Bedingung, während die Seitenhilfe derselben Seite
+  // (`seitenhilfe.graph.text`) sie nennt — im Zahnrad standen beide untereinander. Navigierbar ist
+  // ein Knoten nur, wenn sein Objekt im Bestand liegt (`lib/graphNav.ts:12`); sonst trägt er weder
+  // Rolle noch Tabstopp (`pages/Stufe2.tsx:2157`, `:2159`). DE/EN/NL gemessen in GF3d und GF3g.
   "help.graph.body":
-    "Der Wissensgraph zeichnet die einzelnen Wissensobjekte und ihre Verbindungen als Netz — näher am Objekt als die Themenkarte, die nach Themen zusammenfasst. Ein Klick auf einen Knoten führt zu dem Wissensobjekt dahinter, und mit der Tastatur springst du von Knoten zu Knoten. Fang bei einem Objekt an, das du kennst, und folge seinen Linien.",
+    "Der Wissensgraph zeichnet die einzelnen Wissensobjekte und ihre Verbindungen als Netz — näher am Objekt als die Themenkarte, die nach Themen zusammenfasst. Gehört ein Knoten zu einem Objekt aus dem Bestand, führt ein Klick auf ihn zu diesem Wissensobjekt, und mit der Tastatur erreichst du ihn ebenso; ein Knoten ohne solches Objekt ist kein Link und liegt nicht in der Tastatur-Reihenfolge. Fang bei einem Objekt an, das du kennst, und folge seinen Linien.",
   "help.hilfe.title": "Hilfe",
   "help.hilfe.body":
     "Auf dieser Seite stehen alle Hilfekapitel beieinander, mit einem Suchfeld darüber; jedes Kapitel trägt einen Link auf die Seite, um die es geht. Gesucht wird in Titel, Text und Schlagwörtern der Kapitel — tipp also ruhig das Wort ein, mit dem du dein Problem beschreiben würdest. Gibt es dazu nichts, sagt die Seite das offen, statt ein unpassendes Kapitel zu zeigen.",
@@ -10522,8 +10527,10 @@ const en: typeof de = {
   "help.import.body":
     "This is where importing from outside sources happens: at the top you choose a source, look at what is in it and turn that into proposals — only what you select gets read in. The proposals themselves sit below in the collapsed “Review history” section, whose counter says how many of them are open; open it up and decide one with “Accept” or “Reject”, or attach a note. Decided proposals do not disappear and push nothing up — they stay in the list with their state, and you pick the next open one yourself.",
   "help.graph.title": "Knowledge Graph",
+  // JOB 3889 — siehe den Kommentar an der deutschen Fassung: die Bedingung aus `graphNav.ts:12`
+  // steht jetzt auch hier, mit derselben Wendung, die die Schwesterhilfe „in the holdings" benutzt.
   "help.graph.body":
-    "The knowledge graph draws the individual knowledge objects and their connections as a net — closer to the object than the topic map, which groups by topic. A click on a node leads to the knowledge object behind it, and with the keyboard you jump from node to node. Start at an object you know and follow its lines.",
+    "The knowledge graph draws the individual knowledge objects and their connections as a net — closer to the object than the topic map, which groups by topic. If a node belongs to an object in the holdings, a click on it leads to that knowledge object, and the keyboard reaches it just as well; a node without such an object is not a link and is not in the keyboard order. Start at an object you know and follow its lines.",
   "help.hilfe.title": "Help",
   "help.hilfe.body":
     "This page keeps every help chapter together, with a search field above it; each chapter carries a link to the page it is about. The search covers title, text and keywords of the chapters — so type in the word you would use to describe your problem. If there is nothing on it, the page says so openly instead of showing an unrelated chapter.",
@@ -15578,8 +15585,10 @@ const nl: typeof de = {
   "help.import.body":
     "Hier loopt het importeren van externe bronnen: bovenaan kies je een bron, kijk je wat erin staat en maak je daar voorstellen van — alleen wat jij selecteert wordt ingelezen. De voorstellen zelf liggen daaronder in het dichtgeklapte gedeelte „Review-geschiedenis“, waarvan de teller zegt hoeveel ervan openstaan; klap het open en beslis er een met „Aannemen“ of „Afwijzen“, of zet er een notitie bij. Besliste voorstellen verdwijnen niet en schuiven niets door — ze blijven met hun stand in de lijst staan, en het volgende openstaande zoek je zelf uit.",
   "help.graph.title": "Kennisgraaf",
+  // JOB 3889 — siehe den Kommentar an der deutschen Fassung: die Bedingung aus `graphNav.ts:12`
+  // steht jetzt auch hier, mit derselben Wendung, die die Schwesterhilfe „uit het bestand" benutzt.
   "help.graph.body":
-    "De kennisgraaf tekent de afzonderlijke kennisobjecten en hun verbindingen als een net — dichter bij het object dan de themakaart, die per thema groepeert. Een klik op een knooppunt leidt naar het kennisobject erachter, en met het toetsenbord spring je van knooppunt naar knooppunt. Begin bij een object dat je kent en volg zijn lijnen.",
+    "De kennisgraaf tekent de afzonderlijke kennisobjecten en hun verbindingen als een net — dichter bij het object dan de themakaart, die per thema groepeert. Hoort een knooppunt bij een object uit het bestand, dan leidt een klik erop naar dat kennisobject, en met het toetsenbord bereik je het net zo goed; een knooppunt zonder zo’n object is geen link en ligt niet in de toetsenbordvolgorde. Begin bij een object dat je kent en volg zijn lijnen.",
   "help.hilfe.title": "Help",
   "help.hilfe.body":
     "Op deze pagina staan alle helphoofdstukken bij elkaar, met een zoekveld erboven; elk hoofdstuk heeft een link naar de pagina waar het over gaat. Er wordt gezocht in titel, tekst en trefwoorden van de hoofdstukken — typ dus gerust het woord in waarmee je je probleem zou omschrijven. Is er niets over, dan zegt de pagina dat eerlijk in plaats van een onpassend hoofdstuk te tonen.",

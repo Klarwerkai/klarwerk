@@ -27,17 +27,118 @@
 //     fuer sich (eindeutige Beschriftungen, Trefferflaechen, Ladezustaende). Neu ist hier allein die
 //     BINDUNG dieses Verhaltens an `help.graph.body`.
 //
-// DREI SAETZE STIMMEN NICHT OHNE BEDINGUNG — sie werden hier gemessen und als Nachfuehr-Pin
-// festgehalten, NICHT repariert (`i18n.ts` ist in diesem Takt von anderen Auftraegen gehalten):
-// KF1d (die dritte Wahl gibt es nur am automatisch erkannten Konflikt), KF1e (das entschiedene Paar
-// verschwindet vom Brett) und GF3d (Klick und Tastatur fuehren nur zu BEKANNTEN Objekten).
+// ZWEI SAETZE STIMMEN NICHT OHNE BEDINGUNG — sie werden hier gemessen und als Nachfuehr-Pin
+// festgehalten, NICHT repariert (sie brauchen eine Entscheidung ueber das PRODUKT, nicht ueber den
+// Text allein): KF1d (die dritte Wahl gibt es nur am automatisch erkannten Konflikt) und KF1e (das
+// entschiedene Paar verschwindet vom Brett).
 //
-// RUNDE 2 · KORREKTURPFLICHT 1 (BEN): GF3b und GF3c verglichen die angekommene Adresse gegen
-// `koDetailPath(<id>)` — gegen dieselbe Produktfunktion also, aus der die Seite ihr Ziel baut. BEN
-// hat `lib/graphNav.ts:8` auf `/wissen/falsches-objekt` umgebogen: beide Seiten des Vergleichs
-// bewegten sich mit, die Faelle blieben gruen, JEDER Knoten fuehrte zum falschen Objekt. Seit
-// dieser Runde kommt der Sollwert allein aus dem Pruefstand (`kennungImBestand`), das Produkt wird
-// dafuer nicht mehr importiert.
+// ================================================================================================
+// JOB 3889 — DER DRITTE PIN IST EINGELOEST: GF3d MISST DIE BEDINGUNG, STATT SIE ZU VERMISSEN.
+// ================================================================================================
+// DIE BESTELLUNG steht woertlich in `archiv/3795/runde-5/RUECKGABE.md:67`: „`help.graph.body`
+// (`apps/web/src/i18n.ts:5063-5064`): ‚Ein Klick auf einen Knoten fuehrt zu dem Wissensobjekt
+// dahinter, und mit der Tastatur springst du von Knoten zu Knoten.' Beides gilt NUR fuer Knoten,
+// deren Objekt im aktuellen Bestand liegt (`isNavigableNode`, `apps/web/src/lib/graphNav.ts:12`) …
+// Bemerkenswert: die zweite Seitenhilfe DERSELBEN Seite nennt die Bedingung bereits
+// (`seitenhilfe.graph.text`) — im Zahnrad stehen beide Saetze untereinander, der eine mit Bedingung,
+// der andere ohne. Gemessen in GF3d."
+//
+// SEIT JOB 3889 nennt `help.graph.body` die Bedingung, in DE, EN und NL. Der alte GF3d war ein
+// NACHFUEHR-PIN: er hielt mit einer Schleife `.not.toContain(["bestand", "bekannt"])` fest, dass der
+// Satz sie NICHT nennt, und bestellte in seiner eigenen Fehlermeldung seine Ablesung. Diese Schleife
+// ist WEG — ERSETZT, nicht ergaenzt. An ihrer Stelle stehen GF3d und GF3g-DE/EN/NL (siehe unten).
+//
+// ================================================================================================
+// JOB 3889 · RUNDE 2 — DIE BEIDEN KORREKTURPFLICHTEN VON BEN, UND WAS SIE AN DER BAUFORM AENDERN.
+// ================================================================================================
+//
+// (1) GELESEN WIRD, WAS DASTEHT — NICHT, WAS HINTERLEGT IST. Der GF3d der Runde 1 las den Satz ueber
+//     `wert()`/`i18n.getResource`, also neben der Oberflaeche vorbei. BEN hat das gemessen: friert
+//     man DEN Testhelfer auf den heutigen deutschen Satz ein und setzt zugleich den ECHTEN deutschen
+//     Produkttext auf seine alte, bedingungslose Fassung zurueck, bleibt die ganze Datei gruen
+//     (`Tests 20 passed`) — ein Rueckfall genau des Satzes, um den es geht, faellt nicht auf.
+//     Seit dieser Runde montieren GF3d und GF3g das ECHTE Zahnrad-Menue neben die Seite, oeffnen
+//     „Seitenhilfe" und lesen `[data-testid="seitenhilfe-liste"]`. In dieser Liste stehen BEIDE
+//     Saetze untereinander — der Nav-Erklaersatz `help.graph.body` und der `HelpTip` der Seite,
+//     `seitenhilfe.graph.text` (`pages/Stufe2.tsx:2061`). Das ist der Ort, an dem Pedi den
+//     Widerspruch gesehen hat, und jetzt der Ort, an dem er gemessen wird.
+//
+//     NACHGEFUEHRT IN RUNDE 3: „aus der Liste lesen" reichte noch nicht — siehe (4).
+//
+// (2) DIE FEINEN KANTEN GEHOEREN DEM NACHBARN, NICHT DIESER DATEI. Der GF3d der Runde 1 baute
+//     Tabstopp-, Enter- und Klickmessungen des unbekannten Knotens erneut auf, die U1–U3 in
+//     `tests/wissensgraph-lesbarkeit/unbekannter-knoten-ist-kein-link.test.tsx` bereits enthalten
+//     (dazu U4 Fokusring und U5 Zeigerkreuz). Sie sind hier ENTFERNT. GF3d liest von der Flaeche nur
+//     noch den Unterschied, den der Satz behauptet — welche Knoten ein Link sind und welche nicht —
+//     und sieht seinem Eigentuemer nach, dass es ihn noch gibt; der Sprung des BEKANNTEN Knotens an
+//     sein Objekt steht unveraendert in GF3b und GF3c.
+//
+// (4) RUNDE 3 · EIN LISTENTEXT IST KEIN SATZ. Die Runde 2 las die geoeffnete Liste als EINEN Text
+//     (`textContent` des `<ul>`) und suchte darin die Wendung „aus dem Bestand". Diese Wendung steht
+//     aber in BEIDEN Eintraegen — der Erklaersatz konnte seine Bedingung verlieren, ohne dass etwas
+//     rot wurde, weil die Schwesterhilfe sie weiter trug. BEN hat genau das gemessen: „Gehoert ein
+//     Knoten zu einem Objekt aus dem Bestand, fuehrt ein Klick …" durch „Bei jedem Knoten fuehrt ein
+//     Klick …" ersetzt, Negativsatz und Schwesterhilfe unveraendert, keine Teste geaendert —
+//     `Tests 20 passed (20)`. Der Satz versprach dem Leser wieder mehr, als die Seite haelt, und der
+//     Waechter schwieg. Seit dieser Runde liest `seitenhilfeEintraege()` je `<li>` Titel und Text
+//     getrennt, und `beideEintraegeTragenDieBedingung()` prueft JEDEN Eintrag fuer sich — auch die
+//     Schwesterhilfe, damit auch SIE ihre Bedingung nicht unbemerkt verlieren kann.
+//
+// (5) RUNDE 4 · EINE VORHANDENE BEDINGUNG IST KEINE FEHLENDE ZUSAGE. Die Runde 3 prueft je Eintrag,
+//     ob die Bedingung DA IST (`.toContain`). Damit faellt auf, wenn ein Satz sie VERLIERT — aber
+//     nicht, wenn er sie behaelt und daneben eine zweite, unbedingte Zusage DAZUSAGT. Gemessen in
+//     dieser Runde, bevor etwas gebaut wurde: in den deutschen Erklaersatz wurde vor dem
+//     Negativsatz „; ein Klick auf jeden Knoten oeffnet sein Wissensobjekt" EINGEFUEGT — Bedingung,
+//     Negativsatz und Schwesterhilfe unveraendert, kein Test angefasst. Ergebnis
+//     `Tests 20 passed (20)` (Arbeitspruefung b1bdaef5…, Exit 0). Der Leser bekam damit wieder eine
+//     Zusage, die die Flaeche nicht haelt — „Filterwechsel Werk 3" ist im selben DOM KEIN Link —,
+//     und der Waechter schwieg.
+//
+//     SEIT DIESER RUNDE prueft `keineUnbedingteZusage()` die Saetze nicht mehr nur auf Anwesenheit
+//     einer Wendung, sondern GLIEDWEISE: der gezeichnete Satz wird an `.` und `;` zerlegt, und JEDES
+//     Glied, das von Klick oder Tastatur spricht, muss entweder die Bedingung tragen oder eine
+//     Verneinung sein. Ein Glied, das die Zusage ueber „jeden Knoten" ausspricht, ist immer rot.
+//     Das beisst in BEIDE Richtungen, und es beisst auch am ALTEN Mangel dieses Auftrags: der
+//     bedingungslose Satz von vor JOB 3889 endete auf „mit der Tastatur springst du von Knoten zu
+//     Knoten" — ein Glied mit Tastatur-Wort, ohne Bedingung, mit Allaussage.
+//
+//     GEBUNDEN AN DIE FLAECHE, NICHT AN DEN GESCHMACK: die Pruefung laeuft nur, weil DIESELBE
+//     gemountete Seite ein Gegenbeispiel zeichnet (`gegenbeispielAufDerFlaeche()` liest die Knoten
+//     ohne `role="link"` aus DEM DOM und wird rot, wenn es keines gibt). Die Fehlermeldung nennt das
+//     Gegenbeispiel beim Namen: die Zusage ist nicht „zu forsch formuliert", sie ist an diesem
+//     Knoten nachweislich falsch.
+//
+// (6) RUNDE 5 · EINE VORHANDENE BEDINGUNG IST NOCH KEINE RICHTIGE BEDINGUNG. Die Runde 4 prueft je
+//     Eintrag, ob die Wendung DA IST, und gliedweise, ob eine Zusage OHNE sie dasteht. Beides sagt
+//     nichts darueber, in WELCHE RICHTUNG die Voraussetzung zeigt. BEN hat genau dort gemessen: in
+//     `apps/web/src/i18n.ts:5069` wurde EIN Wort eingesetzt — „Gehoert ein Knoten NICHT zu einem
+//     Objekt aus dem Bestand, fuehrt ein Klick auf ihn zu diesem Wissensobjekt …" —, Zusage,
+//     Negativsatz und Schwesterhilfe unveraendert, kein Test angefasst. Ergebnis
+//     `Tests 20 passed (20)`, Exit 0 (BENs Cloud-Auftrag `bbb2555af4584bc2b7b9afbdbab68333`,
+//     ben-antwort.md der Runde 4). Der Satz versprach den Sprung damit GERADE fuer den Knoten OHNE
+//     Objekt im Bestand — das genaue Gegenteil von `lib/graphNav.ts:12` — und blieb gruen: „aus dem
+//     Bestand" stand ja noch da, und das Glied trug die Wendung, also fiel es der Gliedpruefung
+//     nicht auf.
+//
+//     SEIT DIESER RUNDE liest `bedingungStehtUnverneint()` den TEILSATZ, in dem die Wendung steht,
+//     und verlangt, dass er unverneint ist. Zerlegt wird dafuer feiner als bei der Gliedpruefung —
+//     an `.` `;` `:` `,` und am Gedankenstrich —, weil die Voraussetzung in allen drei Sprachen ein
+//     eigener Teilsatz ist („Gehoert ein Knoten zu einem Objekt aus dem Bestand" · „If a node
+//     belongs to an object in the holdings" · „Hoort een knooppunt bij een object uit het bestand",
+//     und ebenso in der Schwesterhilfe hinter ihrem Gedankenstrich). Geprueft werden BEIDE
+//     Eintraege in allen drei Sprachen, also GF3d und GF3g-DE/EN/NL.
+//
+//     WAS DAS NICHT MISST, ehrlich benannt: eine Verneinung in der ZUSAGE statt in der
+//     Voraussetzung („… fuehrt ein Klick NICHT zu diesem Wissensobjekt"). Dieser Halbsatz hat in den
+//     drei Sprachen keine gemeinsame Bauform, an der er sicher von der Voraussetzung zu trennen
+//     waere; die Umkehr der Voraussetzung ist die, die BEN gemessen hat und die hier beisst.
+//
+// (3) Aeltere Korrekturpflicht, unveraendert gueltig (BEN 3795 R1): GF3b und GF3c verglichen die
+//     angekommene Adresse gegen `koDetailPath(<id>)` — gegen dieselbe Produktfunktion also, aus der
+//     die Seite ihr Ziel baut. Der Sollwert kommt deshalb allein aus dem Pruefstand
+//     (`kennungImBestand`), das Produkt wird dafuer nicht importiert.
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // ------------------------------------------------------------------------------------------------
@@ -190,6 +291,7 @@ import {
   useParams,
 } from "../../apps/web/node_modules/react-router-dom";
 import { AuthProvider } from "../../apps/web/src/app/AuthContext";
+import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import { ALL_ITEMS, type NavItem, canSee, roleAllows } from "../../apps/web/src/app/navigation";
@@ -199,6 +301,8 @@ import i18n from "../../apps/web/src/i18n";
 import { OUTPUT_KIND_OPTIONS } from "../../apps/web/src/lib/outputDoc";
 import { Conflicts } from "../../apps/web/src/pages/Conflicts";
 import { GraphView, Output } from "../../apps/web/src/pages/Stufe2";
+import { SeitenhilfeProvider } from "../../apps/web/src/shell/SeitenhilfeContext";
+import { ZahnradMenue } from "../../apps/web/src/shell/ZahnradMenue";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 Element.prototype.scrollIntoView = () => {};
@@ -209,9 +313,13 @@ const STUFE2_KEY = "kw.stufe2.v1";
 
 type KapitelId = "konflikte" | "output" | "graph";
 
-/** Der hinterlegte deutsche Wert EINER Zeichenkette — gelesen, nicht abgeschrieben. */
-function wert(key: string): string {
-  return String(i18n.getResource("de", "translation", key) ?? "");
+/**
+ * Der hinterlegte Wert EINER Zeichenkette in EINER Sprache — gelesen, nicht abgeschrieben.
+ * Vorgabe ist Deutsch; GF3g liest damit auch die englische und die niederlaendische Fassung aus
+ * DEMSELBEN Bestand (`i18n.ts`), aus dem die Oberflaeche sie nimmt.
+ */
+function wert(key: string, sprache = "de"): string {
+  return String(i18n.getResource(sprache, "translation", key) ?? "");
 }
 
 /** Der Kapiteltext, wie er HEUTE hinterlegt ist. */
@@ -259,14 +367,26 @@ function Sonde(): JSX.Element {
 /**
  * Die ECHTE Seite mit den Anbietern, die sie braucht — Attrappe ist allein die Endpunktgrenze.
  * `mitZiel` haengt die Detailroute daneben, damit ein Klick ein MESSBARES Ziel hat.
+ *
+ * `mitZahnrad` (JOB 3889 Runde 2, Korrekturpflicht 1 von BEN) stellt das ECHTE Zahnrad-Menue
+ * (`shell/ZahnradMenue.tsx`) neben die Seite und den ECHTEN Sammler (`SeitenhilfeProvider`)
+ * darueber. Erst damit steht das, was der Mensch wirklich vor sich hat, im SELBEN DOM wie das
+ * Verhalten: die Seitenhilfe-Liste zeigt dann den Nav-Erklaersatz `help.graph.body`
+ * (`ZahnradMenue.tsx:38-47`) UND darunter den `HelpTip` der Seite, `seitenhilfe.graph.text`
+ * (`pages/Stufe2.tsx:2061`) — genau die zwei Saetze untereinander, um die es in diesem Auftrag geht.
  */
-async function montiere(seite: () => JSX.Element, pfad: string, mitZiel = false): Promise<void> {
+async function montiere(
+  seite: () => JSX.Element,
+  pfad: string,
+  mitZiel = false,
+  mitZahnrad = false,
+): Promise<void> {
   abbauen();
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  const inhalt = mitZiel
+  const seiteOderRouten = mitZiel
     ? createElement(
         Routes,
         null,
@@ -274,6 +394,18 @@ async function montiere(seite: () => JSX.Element, pfad: string, mitZiel = false)
         createElement(Route, { path: "/wissen/:id", element: createElement(Sonde) }),
       )
     : createElement(seite);
+  const inhalt = mitZahnrad
+    ? createElement(
+        NavGuardProvider,
+        null,
+        createElement(
+          SeitenhilfeProvider,
+          null,
+          createElement(ZahnradMenue, null),
+          seiteOderRouten,
+        ),
+      )
+    : seiteOderRouten;
   await act(async () => {
     root.render(
       createElement(
@@ -924,8 +1056,11 @@ describe("JOB 3795 GF3 · /graph — was das Kapitel verspricht, tut die Seite",
     );
   });
 
-  it("GF3b: ein Klick auf einen Knoten fuehrt zu dem Wissensobjekt dahinter — die Ziel-Adresse gemessen", async () => {
-    behauptung("/graph", "graph", "Ein Klick auf einen Knoten führt zu dem Wissensobjekt dahinter");
+  it("GF3b: ein Klick auf einen Knoten mit Objekt im Bestand fuehrt zu diesem Wissensobjekt — die Ziel-Adresse gemessen", async () => {
+    // JOB 3889: der Satz nennt seit heute die Bedingung, unter der das gilt. Dieser Fall misst den
+    // Zweig, in dem sie erfuellt ist (alle drei Knoten haben ihr Objekt im Bestand); der andere
+    // Zweig und die Bedingung selbst stehen in GF3d.
+    behauptung("/graph", "graph", "führt ein Klick auf ihn zu diesem Wissensobjekt");
     await mitBestand();
     // Der Sollwert steht VOR der Bedienhandlung fest und stammt aus dem Pruefstand, nicht aus dem
     // Produkt (siehe `kennungImBestand`) — sonst prueft der Fall das Produkt gegen sich selbst.
@@ -952,7 +1087,7 @@ describe("JOB 3795 GF3 · /graph — was das Kapitel verspricht, tut die Seite",
   });
 
   it("GF3c: mit der Tastatur ist JEDER Knoten einzeln erreichbar — mit echten Tastenereignissen", async () => {
-    behauptung("/graph", "graph", "mit der Tastatur springst du von Knoten zu Knoten");
+    behauptung("/graph", "graph", "mit der Tastatur erreichst du ihn ebenso");
     // WAS HIER GEMESSEN WIRD und was nicht: die Wanderung von Knoten zu Knoten selbst ist die
     // Tabulator-Reihenfolge des BROWSERS; jsdom fuehrt sie nicht aus (ein echtes `keydown` mit
     // „Tab" bewegt dort nichts). Das Produkt steuert dazu zwei Dinge bei, und nur die sind hier
@@ -994,41 +1129,414 @@ describe("JOB 3795 GF3 · /graph — was das Kapitel verspricht, tut die Seite",
     ).toBe(KNOTEN.length);
   });
 
-  it("GF3d · NACHFUEHR-PIN: Klick UND Tastatur fuehren nur zu Objekten, die im Bestand bekannt sind", async () => {
-    // GEMESSEN, nicht vermutet: `isNavigableNode` (`lib/graphNav.ts:12-14`) macht einen Knoten nur
-    // dann zum Link, wenn sein Objekt im Bestand liegt. `help.graph.body` verspricht beides ohne
-    // jede Bedingung — die Seitenhilfe DERSELBEN Seite (`seitenhilfe.graph.text`) nennt sie.
-    await mitBestand(
-      KOS.filter((k) => k.id !== "ko-c"),
-      KNOTEN,
-    );
-    const fremd = gruppeVon(TITEL_C);
+  // ----------------------------------------------------------------------------------------------
+  // DIE SEITENHILFE, WIE SIE DER MENSCH OEFFNET — Korrekturpflicht 1 von BEN (Runde 1)
+  // ----------------------------------------------------------------------------------------------
+  // Zahnrad anklicken, „Seitenhilfe" anklicken, lesen. Genau der Handgriff aus dem Auftrag §1, und
+  // genau der Weg, den `zahnrad-zeigt-den-erklaersatz.test.tsx:174-176` schon geht.
+  async function seitenhilfeOeffnen(): Promise<void> {
+    await klicke(marke("kopfband-zahnrad"));
+    await klicke(marke("zahnrad-seitenhilfe"));
+  }
+
+  /**
+   * DIE EINTRAEGE der geoeffneten Seitenhilfe, EINZELN — je Eintrag Titel und Text getrennt.
+   *
+   * ZWEI GRUENDE FUER DIESE BAUFORM, BEIDE VON BEN GEMESSEN:
+   *
+   * (a) Gelesen wird der GEZEICHNETE Text, nicht `wert()`/`i18n.getResource` (Runde 1). Friert
+   *     jemand den Testhelfer auf den heutigen deutschen Satz ein und faellt zugleich der ECHTE
+   *     deutsche Produkttext auf seine alte, bedingungslose Fassung zurueck, blieb der alte Fall
+   *     gruen. Aus dem DOM gelesen kann das nicht passieren.
+   *
+   * (b) Gelesen wird JEDER EINTRAG FUER SICH, nicht der zusammengelaufene Text der ganzen Liste
+   *     (Runde 2). Der Fall der Runde 2 suchte „aus dem Bestand" im `textContent` des `<ul>` — und
+   *     diese Wendung steht auch in der SCHWESTERHILFE. BEN hat im Erklaersatz „Gehoert ein Knoten
+   *     zu einem Objekt aus dem Bestand, fuehrt ein Klick …" durch „Bei jedem Knoten fuehrt ein
+   *     Klick …" ersetzt, Negativsatz und Schwesterhilfe unveraendert gelassen, nichts am Test
+   *     geaendert — `Tests 20 passed (20)`. Die Schwesterhilfe deckte den Verlust des anderen
+   *     Satzes zu. Seit dieser Runde traegt jeder Eintrag seine Bedingung selbst.
+   *
+   * Bauform der Liste: `ZahnradMenue.tsx:64-68` — ein `<li>` je Eintrag, darin ein `<div>` mit dem
+   * Titel und ein `<p>` mit dem Text.
+   */
+  function seitenhilfeEintraege(): { titel: string; text: string }[] {
+    const liste = container.querySelector('[data-testid="seitenhilfe-liste"]');
+    if (liste === null) {
+      throw new Error(
+        "/graph: die geoeffnete Seitenhilfe zeigt gar keine Liste — der Fall liest nichts und misst nichts",
+      );
+    }
+    const glatt = (s: string | null | undefined): string => (s ?? "").replace(/\s+/g, " ").trim();
+    return [...liste.querySelectorAll(":scope > li")].map((li) => ({
+      titel: glatt(li.querySelector(":scope > div")?.textContent),
+      text: glatt(li.querySelector(":scope > p")?.textContent),
+    }));
+  }
+
+  /**
+   * Der Text GENAU DES Eintrags mit diesem Titel — der Titel ist die Kennung, an der die beiden
+   * Saetze auseinandergehalten werden. Fehlt der Eintrag, sagt die Meldung das mit allen Titeln,
+   * die statt seiner dastehen; ein Fall, der den falschen Eintrag liest, misst nichts.
+   */
+  function eintragsText(titel: string, sprache: string): string {
+    const alle = seitenhilfeEintraege();
+    const treffer = alle.filter((e) => e.titel === titel);
     expect(
-      fremd.getAttribute("role"),
-      "/graph: der Knoten ohne Objekt im Bestand ist jetzt ein Link. Jetzt GF3d loeschen und die Bedingung am Verhalten neu belegen.",
-    ).toBeNull();
+      treffer.length,
+      `/graph (${sprache}): in der geoeffneten Seitenhilfe steht nicht genau EIN Eintrag „${titel}“ — gefunden: ${JSON.stringify(alle.map((e) => e.titel))}`,
+    ).toBe(1);
+    return treffer[0]?.text ?? "";
+  }
+
+  // Die drei Fassungen, je Sprache mit den Wendungen, an denen sie haengen.
+  //   `erklaerTitel`/`schwesterTitel` — die Ueberschriften, an denen die beiden Eintraege in der
+  //     geoeffneten Liste auseinandergehalten werden (`help.graph.title`, `seitenhilfe.graph.titel`).
+  //   `bedingung` — die Wendung, mit der die SCHWESTERHILFE die Bedingung in DIESER Sprache schon
+  //     vor JOB 3889 nannte. Sie ist nicht frei gewaehlt: dass BEIDE Saetze sie tragen, ist der
+  //     Gegenstand des Auftrags. Geprueft wird sie im Erklaersatz-Eintrag FUER SICH.
+  //   `ohne` — die zweite Haelfte, die der Erklaersatz seit JOB 3889 dazusagt.
+  //   `schwester` — die Bedingung im Wortlaut der Schwesterhilfe, in IHREM Eintrag geprueft. Ohne
+  //     sie gaebe es keinen Vergleichspunkt, und ihr Verlust bliebe unbemerkt (BEN, Runde 2).
+  //
+  // DIE VIER WORTLISTEN DER RUNDE 4 (fuer `keineUnbedingteZusage`, siehe Dateikopf (5)). Sie sind
+  // nicht der Wortlaut der Saetze, sondern ihre GRAMMATIK — deshalb ueberlebt die Pruefung eine
+  // Umformulierung, und deshalb faellt eine hinzugefuegte Allaussage auf:
+  //   `bedien` — woran ein Satzglied erkennbar von Klick oder Tastatur spricht. Nur solche Glieder
+  //     werden geprueft; „zeichnet … als Netz" und „folge seinen Linien" sagen nichts zu.
+  //   `negation` — woran ein Glied als VERNEINUNG erkennbar ist (der Negativsatz darf und soll von
+  //     der Tastatur sprechen, ohne die Bedingung zu wiederholen). DIESELBE Liste traegt seit
+  //     Runde 5 die Richtungspruefung `bedingungStehtUnverneint()`, dort mit umgekehrtem Vorzeichen:
+  //     im Teilsatz der Voraussetzung darf keines dieser Woerter stehen (Dateikopf (6)).
+  //   `alleKnoten` — die Allaussagen. Ein Bedien-Glied, das eine davon traegt, ist IMMER rot: die
+  //     Flaeche hat einen Knoten, fuer den es nicht gilt. Hier haengt der alte Mangel dieses
+  //     Auftrags („von Knoten zu Knoten", „from node to node", „van knooppunt naar knooppunt").
+  const FASSUNGEN = [
+    {
+      sprache: "de",
+      name: "deutsche",
+      erklaerTitel: "Wissensgraph",
+      schwesterTitel: "Vom Punkt zum Wissensobjekt springen",
+      bedingung: "aus dem Bestand",
+      ohne: "ein Knoten ohne solches Objekt ist kein Link und liegt nicht in der Tastatur-Reihenfolge",
+      schwester: "gehört er zu einem Objekt aus dem Bestand",
+      bedien: ["klick", "tastatur"],
+      negation: ["kein", "nicht", "ohne"],
+      alleKnoten: [
+        "jeder knoten",
+        "jeden knoten",
+        "jedem knoten",
+        "alle knoten",
+        "allen knoten",
+        "von knoten zu knoten",
+      ],
+    },
+    {
+      sprache: "en",
+      name: "englische",
+      erklaerTitel: "Knowledge Graph",
+      schwesterTitel: "Jump from a dot to the knowledge object",
+      bedingung: "in the holdings",
+      ohne: "a node without such an object is not a link and is not in the keyboard order",
+      schwester: "if it belongs to an object in the holdings",
+      bedien: ["click", "keyboard"],
+      negation: ["not", "without"],
+      alleKnoten: ["every node", "each node", "any node", "all nodes", "from node to node"],
+    },
+    {
+      sprache: "nl",
+      name: "niederlaendische",
+      erklaerTitel: "Kennisgraaf",
+      schwesterTitel: "Van een punt naar het kennisobject springen",
+      bedingung: "uit het bestand",
+      ohne: "een knooppunt zonder zo’n object is geen link en ligt niet in de toetsenbordvolgorde",
+      schwester: "hoort het bij een object uit het bestand",
+      bedien: ["klik", "toetsenbord"],
+      negation: ["geen", "niet", "zonder"],
+      alleKnoten: [
+        "elk knooppunt",
+        "ieder knooppunt",
+        "elke knoop",
+        "alle knooppunten",
+        "van knooppunt naar knooppunt",
+      ],
+    },
+  ] as const;
+
+  /**
+   * DIE SATZGLIEDER, DIE ETWAS ZUSAGEN, WAS DIE FLAECHE NICHT FUER JEDEN KNOTEN HAELT.
+   *
+   * Zerlegt wird an `.` und `;` — NICHT am Gedankenstrich: die Schwesterhilfe traegt ihre Bedingung
+   * hinter einem Gedankenstrich („einen Punkt anklicken — gehoert er zu einem Objekt aus dem
+   * Bestand, fuehrt er dich dorthin"), und ein Schnitt dort wuerde sie von ihrer Zusage trennen.
+   *
+   * Geprueft wird nur, was von Klick oder Tastatur spricht (`bedien`). So ein Glied ist in Ordnung,
+   * wenn es die Bedingung nennt ODER eine Verneinung ist — und NIE, wenn es eine Allaussage traegt
+   * (`alleKnoten`). Zurueck kommen die beanstandeten Glieder im Wortlaut, damit die Meldung zeigt,
+   * welcher Halbsatz zu viel verspricht, statt nur „der Satz ist falsch" zu sagen.
+   */
+  function unbedingteZusagen(satz: string, f: (typeof FASSUNGEN)[number]): string[] {
+    // Die drei Listen werden auf `readonly string[]` verbreitert: `FASSUNGEN` ist `as const`, und
+    // ein Aufruf von `.some` auf der Vereinigung dreier Literal-Tupel ist unnoetig heikel.
+    const bedien: readonly string[] = f.bedien;
+    const negation: readonly string[] = f.negation;
+    const alleKnoten: readonly string[] = f.alleKnoten;
+    const bedingung = f.bedingung.toLowerCase();
+    return satz
+      .split(/[.;]+/)
+      .map((glied) => glied.trim())
+      .filter((glied) => glied.length > 0)
+      .filter((glied) => {
+        const g = glied.toLowerCase();
+        if (!bedien.some((w) => g.includes(w))) {
+          return false;
+        }
+        if (alleKnoten.some((w) => g.includes(w))) {
+          return true;
+        }
+        return !g.includes(bedingung) && !negation.some((w) => g.includes(w));
+      });
+  }
+
+  /**
+   * DIE BINDUNG, DIE RUNDE 4 NACHTRAEGT (Dateikopf (5)): kein Glied des GEZEICHNETEN Satzes sagt
+   * Klick oder Tastatur ohne Bedingung zu — und die Meldung nennt den Knoten, an dem die Zusage auf
+   * DIESER Flaeche nachweislich nicht stimmt. `ohneObjekt` kommt aus dem DOM desselben Mounts.
+   */
+  function keineUnbedingteZusage(
+    f: (typeof FASSUNGEN)[number],
+    titel: string,
+    satz: string,
+    ohneObjekt: readonly string[],
+  ): void {
+    const offen = unbedingteZusagen(satz, f);
     expect(
-      fremd.getAttribute("tabindex"),
-      "/graph: der Knoten ohne Objekt liegt jetzt in der Tastatur-Reihenfolge. Jetzt GF3d loeschen.",
-    ).toBeNull();
-    await act(async () => {
-      fremd.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      fremd.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
-      await flush();
-    });
+      offen,
+      `/graph (${f.sprache}): der Eintrag „${titel}“ sagt Klick oder Tastatur OHNE Bedingung zu — beanstandet ist ${offen.map((s) => `„${s}“`).join(" · ")}. Auf DERSELBEN gezeichneten Flaeche ist ${ohneObjekt.map((t) => `„${t}“`).join(", ")} kein Link: dort trifft diese Zusage nicht zu. Entweder traegt das Satzglied die Bedingung „${f.bedingung}“, oder es ist eine Verneinung — eine Allaussage ueber alle Knoten ist sie nie.`,
+    ).toEqual([]);
+  }
+
+  /**
+   * DIE RICHTUNG DER VORAUSSETZUNG — Korrekturpflicht 1 von BEN (Runde 4), siehe Dateikopf (6).
+   *
+   * Gelesen wird der TEILSATZ, in dem die Bedingungswendung steht: er ist die Voraussetzung, unter
+   * der die Zusage daneben gilt. Traegt er eine Verneinung, ist die Voraussetzung umgedreht, und der
+   * Satz verspricht Klick und Tastatur gerade fuer den Knoten OHNE Objekt im Bestand — das Gegenteil
+   * von `lib/graphNav.ts:12` und das Gegenteil dessen, was dieselbe Flaeche darunter zeichnet.
+   *
+   * Zerlegt wird an `.` `;` `:` `,` und am Gedanken-/Halbgeviertstrich. Der Gedankenstrich gehoert
+   * hier — anders als bei `unbedingteZusagen()` — ausdruecklich dazu: die Schwesterhilfe fuehrt ihre
+   * Voraussetzung hinter ihm ein („einen Punkt anklicken — gehoert er zu einem Objekt aus dem
+   * Bestand, fuehrt er dich dorthin"), und ohne den Schnitt stuende das Klick-Wort im selben Stueck
+   * wie die Voraussetzung.
+   *
+   * Erkannt wird eine Verneinung am WORTANFANG (`\bkein` trifft „kein", „keine", „keinen"): die
+   * Verneinungswoerter der drei Sprachen werden gebeugt, ein Wortende-Anker wuerde sie verfehlen.
+   */
+  function bedingungStehtUnverneint(
+    f: (typeof FASSUNGEN)[number],
+    titel: string,
+    satz: string,
+  ): void {
+    const negation: readonly string[] = f.negation;
+    const bedingung = f.bedingung.toLowerCase();
+    const voraussetzungen = satz
+      .split(/[.;:,—–]+/)
+      .map((teil) => teil.trim())
+      .filter((teil) => teil.length > 0 && teil.toLowerCase().includes(bedingung));
     expect(
-      marke("sonde"),
-      "/graph: Klick oder Taste fuehren jetzt AUCH zu einem unbekannten Objekt. Jetzt GF3b/GF3c auf die neue Lage stellen und diesen Pin loeschen.",
-    ).toBeNull();
-    // Und der Satz nennt die Bedingung bis heute nicht.
-    const t = kapitel("graph").toLowerCase();
-    for (const wort of ["bestand", "bekannt"]) {
+      voraussetzungen,
+      `/graph (${f.sprache}): im Eintrag „${titel}“ steht die Wendung „${f.bedingung}“ in keinem eigenen Teilsatz — dann kann dieser Fall ihre RICHTUNG nicht lesen und misst nichts. Gelesen: „${satz}“`,
+    ).not.toEqual([]);
+    for (const voraussetzung of voraussetzungen) {
+      const verneint = negation.filter((wort) =>
+        new RegExp(`\\b${wort}`, "u").test(voraussetzung.toLowerCase()),
+      );
       expect(
-        t,
-        `/graph: der Kapitelsatz nennt jetzt die Bedingung („${wort}“). Jetzt GF3d durch einen Fall ersetzen, der sie am Verhalten belegt, und diesen Pin loeschen.`,
-      ).not.toContain(wort);
+        verneint,
+        `/graph (${f.sprache}): im Eintrag „${titel}“ ist die Voraussetzung UMGEDREHT — der Teilsatz „${voraussetzung}“ traegt ${verneint.map((w) => `„${w}…“`).join(", ")}. So gelesen gilt die Zusage gerade fuer den Knoten OHNE Objekt im Bestand; die Flaeche darunter haelt das Gegenteil (lib/graphNav.ts:12, und „${f.ohne}“ steht zwei Halbsaetze weiter). Die Wendung „${f.bedingung}“ allein genuegt nicht — sie muss in einer BEJAHTEN Voraussetzung stehen.`,
+      ).toEqual([]);
+    }
+  }
+
+  /**
+   * BEIDE SAETZE DIESER SPRACHE, JEDER IN SEINEM EIGENEN EINTRAG — das ist die Korrekturpflicht aus
+   * Runde 2. Die Zusicherungen beissen einzeln und nennen je den Eintrag, um den es geht:
+   * fehlt die Bedingung im Erklaersatz, faellt der Erklaersatz auf; verliert die Schwesterhilfe die
+   * ihre, faellt die Schwesterhilfe auf. Keiner der beiden kann den anderen mehr zudecken.
+   *
+   * Runde 4: dazu tritt fuer BEIDE Eintraege die Gliedpruefung. Die Anwesenheit der Bedingung allein
+   * genuegte nicht — ein Satz konnte sie behalten und daneben eine unbedingte Zusage dazusagen.
+   *
+   * Runde 5: und davor die Richtungspruefung. Auch die Gliedpruefung genuegte nicht — ein Satz
+   * konnte die Wendung behalten und ihre Voraussetzung ins Gegenteil drehen (Dateikopf (6)).
+   */
+  function beideEintraegeTragenDieBedingung(
+    f: (typeof FASSUNGEN)[number],
+    ohneObjekt: readonly string[],
+  ): void {
+    const erklaer = eintragsText(f.erklaerTitel, f.sprache);
+    const schwester = eintragsText(f.schwesterTitel, f.sprache);
+    expect(
+      erklaer,
+      `/graph (${f.sprache}): der Erklaersatz „${f.erklaerTitel}“ nennt in seinem EIGENEN Eintrag die Bedingung „${f.bedingung}“ nicht — dass sie in der Schwesterhilfe darunter steht, hilft dem Leser dieses Satzes nicht. Gelesen: „${erklaer}“`,
+    ).toContain(f.bedingung);
+    expect(
+      erklaer,
+      `/graph (${f.sprache}): der Erklaersatz „${f.erklaerTitel}“ sagt nicht, was am Knoten OHNE Objekt gilt („${f.ohne}“) — dann verspricht er dem Leser DIESER Sprache mehr, als die Flaeche haelt`,
+    ).toContain(f.ohne);
+    expect(
+      schwester,
+      `/graph (${f.sprache}): die Schwesterhilfe „${f.schwesterTitel}“ nennt ihre Bedingung „${f.schwester}“ nicht mehr — dann sagen die beiden Saetze im Zahnrad wieder Verschiedenes, nur andersherum als vor JOB 3889. Gelesen: „${schwester}“`,
+    ).toContain(f.schwester);
+    bedingungStehtUnverneint(f, f.erklaerTitel, erklaer);
+    bedingungStehtUnverneint(f, f.schwesterTitel, schwester);
+    keineUnbedingteZusage(f, f.erklaerTitel, erklaer, ohneObjekt);
+    keineUnbedingteZusage(f, f.schwesterTitel, schwester, ohneObjekt);
+  }
+
+  /** Der Bestand, in dem GENAU ein gezeichneter Knoten kein Wissensobjekt hat: `ko-c` fehlt. */
+  const BESTAND_OHNE_KO_C = KOS.filter((k) => k.id !== "ko-c");
+
+  /** Die Titel der Knoten, deren Objekt in DIESEM Bestand liegt — aus dem Pruefstand, nicht aus dem Produkt. */
+  const NAVIGIERBAR_LAUT_PRUEFSTAND = KNOTEN.filter((k) =>
+    BESTAND_OHNE_KO_C.some((x) => x.id === k.id),
+  ).map((k) => k.title);
+
+  /** Die Titel der Knoten, die auf der gezeichneten Flaeche wirklich ein Link sind. */
+  function alsLinkGezeichnet(): string[] {
+    return knotenGruppen()
+      .filter((g) => g.getAttribute("role") === "link")
+      .map((g) => g.querySelector(":scope > title")?.textContent ?? "?")
+      .sort();
+  }
+
+  /**
+   * DAS GEGENBEISPIEL AUS DEM DOM — die gezeichneten Knoten, die KEIN Link sind. Sie sind der Grund,
+   * aus dem eine unbedingte Zusage im Satz darueber falsch ist; ohne sie waere die Gliedpruefung
+   * eine Geschmacksfrage. Gibt die Flaeche kein Gegenbeispiel her, ist der Fall rot statt still
+   * gruen: dann trifft der Negativsatz der Seitenhilfe („… ist kein Link") auf keinen Knoten zu.
+   * Das ist die Richtung, in der die Verstellung von `lib/graphNav.ts:13` auf `return true` beisst.
+   */
+  function gegenbeispielAufDerFlaeche(sprache: string): string[] {
+    const ohneObjekt = knotenGruppen()
+      .filter((g) => g.getAttribute("role") !== "link")
+      .map((g) => g.querySelector(":scope > title")?.textContent ?? "?")
+      .sort();
+    expect(
+      ohneObjekt,
+      `/graph (${sprache}): auf dieser Flaeche ist JEDER gezeichnete Knoten ein Link — dann ist der Negativsatz der Seitenhilfe („ein Knoten ohne solches Objekt ist kein Link“) an keinem Knoten mehr wahr, und die Gliedpruefung der Zusage haette kein Gegenbeispiel`,
+    ).not.toEqual([]);
+    return ohneObjekt;
+  }
+
+  it("GF3d: der Satz, den die geoeffnete Seitenhilfe zeigt, ist die Bedingung, nach der DIESELBE Flaeche ihre Knoten zeichnet", async () => {
+    // JOB 3889, Ablesung des alten Nachfuehr-Pins (siehe Dateikopf). Runde 2, Korrekturpflicht 1
+    // von BEN: gebunden wird an die WIRKLICH GEOEFFNETE Seitenhilfe, nicht an `i18n.getResource`.
+    //
+    // EIN Mount, EIN DOM, zwei Ablesungen: oben der Text, den der Mensch im Zahnrad liest, unten
+    // die Knoten, die dieselbe Seite gerade zeichnet. `ko-c` faellt aus dem Bestand, gezeichnet
+    // wird er trotzdem (der Graph kommt aus der Analytik, nicht aus dem Bestand) — so stehen beide
+    // Seiten der Bedingung nebeneinander, statt in zwei Listen dieses Tests.
+    d.setze({ kos: BESTAND_OHNE_KO_C, knoten: KNOTEN, kanten: KANTEN });
+    await montiere(GraphView, "/graph", true, true);
+
+    // (0) Kalibrierung: die Buehne traegt beide Seiten der Bedingung. Ohne sie waere alles Weitere
+    // auch auf einer toten Buehne still gruen.
+    expect(
+      knotenGruppen()
+        .map((g) => g.querySelector(":scope > title")?.textContent)
+        .sort(),
+      "/graph: es sind nicht alle Knoten gezeichnet — der Fall misst nichts",
+    ).toEqual([...KNOTEN.map((k) => k.title)].sort());
+    expect(
+      NAVIGIERBAR_LAUT_PRUEFSTAND,
+      "/graph: im Bestand dieses Laufs hat KEIN gezeichneter Knoten ein Objekt — dann hat die Bedingung keine zwei Seiten",
+    ).toEqual([TITEL_A, TITEL_B]);
+
+    await seitenhilfeOeffnen();
+
+    // (1) Was DASTEHT. In der geoeffneten Liste stehen GENAU zwei Eintraege untereinander — der
+    // Erklaersatz und die Schwesterhilfe —, und JEDER wird fuer sich gelesen. Genau daran ist die
+    // Runde 2 gescheitert: im zusammengelaufenen Text der Liste deckte die Schwesterhilfe den
+    // Verlust der Bedingung im Erklaersatz zu (BEN: 20 von 20 gruen trotz „Bei jedem Knoten fuehrt
+    // ein Klick …").
+    const deutsch = FASSUNGEN[0];
+    expect(
+      seitenhilfeEintraege().map((e) => e.titel),
+      "/graph: im Zahnrad stehen nicht die zwei Saetze dieser Seite untereinander — dann misst der Fall nicht mehr das, worum es geht",
+    ).toEqual([deutsch.erklaerTitel, deutsch.schwesterTitel]);
+    // Das Gegenbeispiel wird VOR den Saetzen aus dem DOM gelesen: erst damit ist die Gliedpruefung
+    // in `beideEintraegeTragenDieBedingung` eine Aussage ueber DIESE Flaeche (Dateikopf (5)).
+    beideEintraegeTragenDieBedingung(deutsch, gegenbeispielAufDerFlaeche(deutsch.sprache));
+
+    // (2) Was die Flaeche darunter TUT. Die Menge der Knoten, die wirklich ein Link sind, ist genau
+    // die Menge derer, deren Objekt im Bestand liegt — abgelesen an DIESEM DOM. Beide Richtungen
+    // beissen einzeln und nennen den Knoten beim Namen (Lehre JOB 3587 R4).
+    const sindLink = alsLinkGezeichnet();
+    const sollten = [...NAVIGIERBAR_LAUT_PRUEFSTAND].sort();
+    const zuviel = sindLink.filter((t) => !sollten.includes(t));
+    const zuwenig = sollten.filter((t) => !sindLink.includes(t));
+    expect(
+      zuviel,
+      `/graph: der Knoten ${zuviel.map((t) => `„${t}“`).join(", ")} hat KEIN Objekt im Bestand und ist trotzdem ein Link — die Seitenhilfe darueber sagt „${deutsch.ohne}“`,
+    ).toEqual([]);
+    expect(
+      zuwenig,
+      `/graph: der Knoten ${zuwenig.map((t) => `„${t}“`).join(", ")} hat sein Objekt im Bestand und ist trotzdem kein Link — die Seitenhilfe darueber verspricht ihm den Sprung zum Wissensobjekt`,
+    ).toEqual([]);
+
+    // (3) WAS DIESER FALL NICHT NOCH EINMAL BAUT (BEN, Runde 1, Korrekturpflicht 2): die feinen
+    // Kanten des unbekannten Knotens — kein Tabstopp, keine angenommene Taste, kein wirkender
+    // Klick, kein Fokusring, kein Zeigerkreuz — gehoeren U1–U5 in
+    // `tests/wissensgraph-lesbarkeit/unbekannter-knoten-ist-kein-link.test.tsx`, und der Sprung des
+    // BEKANNTEN Knotens an sein Objekt steht in GF3b und GF3c oben. Hier steht allein die Bindung.
+    // Damit diese Zuordnung kein blosser Kommentar bleibt, wird ihr Eigentuemer nachgesehen: faellt
+    // er weg, ist die zweite Haelfte des Satzes unbelegt und muss hier wieder aufgebaut werden.
+    // Das belegt NICHT, dass jene Faelle gruen sind — nur, dass es sie noch gibt.
+    const nachbar = readFileSync(
+      join(__dirname, "..", "wissensgraph-lesbarkeit", "unbekannter-knoten-ist-kein-link.test.tsx"),
+      "utf8",
+    );
+    for (const fall of ["U1 · kein Tabstopp", "U2 · keine Taste", "U3 · kein Klickziel"]) {
+      expect(
+        nachbar,
+        `/graph: „${fall}“ steht nicht mehr in tests/wissensgraph-lesbarkeit/unbekannter-knoten-ist-kein-link.test.tsx — dieser Fall hat die Kante an ihn abgegeben und muesste sie jetzt selbst wieder messen`,
+      ).toContain(fall);
     }
   });
+
+  // ----------------------------------------------------------------------------------------------
+  // GF3g · DIE DREI FASSUNGEN SAGEN DASSELBE (JOB 3889)
+  // ----------------------------------------------------------------------------------------------
+  // Der Demo-Zugang wird dreisprachig ausgehaendigt: eine Bedingung, die nur im Deutschen steht,
+  // waere fuer den englischen und den niederlaendischen Leser genau der alte Mangel. Je Sprache
+  // ein eigener Fall mit eigener Meldung — eine Mengenpruefung ueber alle drei wuerde den Rueckfall
+  // EINER Fassung verschlucken (Lehre JOB 3587 R4: einzeln beissend, nicht als Menge).
+  //
+  // AUCH HIER WIRD GEOEFFNET UND GELESEN, nicht nachgeschlagen (Korrekturpflicht 1 von BEN gilt
+  // fuer alle drei Sprachen): die Seite wird in der jeweiligen Sprache montiert, das Zahnrad
+  // geoeffnet, und geprueft wird der Text, der DORT steht — je Eintrag einzeln
+  // (Korrekturpflicht aus Runde 2, siehe `seitenhilfeEintraege`).
+  for (const f of FASSUNGEN) {
+    it(`GF3g-${f.sprache.toUpperCase()}: in der geoeffneten Seitenhilfe (${f.sprache}) traegt JEDER der beiden Saetze die Bedingung selbst`, async () => {
+      await i18n.changeLanguage(f.sprache);
+      d.setze({ kos: BESTAND_OHNE_KO_C, knoten: KNOTEN, kanten: KANTEN });
+      await montiere(GraphView, "/graph", true, true);
+      await seitenhilfeOeffnen();
+      expect(
+        seitenhilfeEintraege().map((e) => e.titel),
+        `/graph (${f.sprache}): im Zahnrad stehen nicht die zwei Saetze dieser Seite untereinander — dann misst der Fall in dieser Sprache nichts`,
+      ).toEqual([f.erklaerTitel, f.schwesterTitel]);
+      beideEintraegeTragenDieBedingung(f, gegenbeispielAufDerFlaeche(f.sprache));
+      // Und dass die Flaeche darunter sich in dieser Sprache genauso verhaelt: derselbe Bestand,
+      // dieselben zwei Links. Ein Satz, der nur in einer Sprache zur Flaeche passt, waere keiner.
+      expect(
+        alsLinkGezeichnet(),
+        `/graph (${f.sprache}): in dieser Sprache sind andere Knoten ein Link als in den uebrigen — die Bedingung des Satzes gilt dort nicht`,
+      ).toEqual([...NAVIGIERBAR_LAUT_PRUEFSTAND].sort());
+    });
+  }
 
   it("GF3e · L4: der Graph hat nur EINE Darstellung — auf schmalem Fenster dieselbe wie auf breitem", async () => {
     // Genau daran ist die Themenkarte in JOB 3741 R1 gescheitert: sie gibt es unter 900 px gar
