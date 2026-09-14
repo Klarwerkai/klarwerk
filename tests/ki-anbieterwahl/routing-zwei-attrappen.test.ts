@@ -2827,21 +2827,35 @@ describe("JOB 3550 F: der Freigabe-Wächter — die KI-Freigabe bleibt eine name
       "while (false) expect(imTotenWhile).toBe(10);",
       "false && expect(imTotenUnd).toBe(11);",
       "true ? 0 : expect(imTotenZweigWahl).toBe(12);",
+      // KALIBRIERUNG JOB 3791: die drei Formen, die JOB 3586 in seiner Rückgabe als offenen Rest
+      // benannt hatte („Konstanten über einen Namen, `switch` mit konstantem Verteiler,
+      // `for (const x of [])"). Jede von ihnen war bis dahin ein Weg, eine geführte Erwartung still
+      // abzuschalten — an genau diesem Wächter gemessen (F4 und F7 wurden mit jeder einzeln rot).
+      "const KAL_AUS = false; if (KAL_AUS) expect(imBenanntenSchalter).toBe(13);",
+      "switch (false) { case true: expect(imTotenVerteiler).toBe(14); break; }",
+      "for (const x of []) expect(imLeerenDurchlauf).toBe(15);",
+      // KALIBRIERUNG JOB 3791 RUNDE 2 (Korrekturpflicht 1, Prüfer BEN): die GEGENRICHTUNG zur
+      // Zeile darüber. Ein `break` in einer Gruppe mit unbekanntem Sprungwert beendet nur deren
+      // eigenen Durchfall — der `default` dahinter läuft, sobald sie nicht trifft, und zählt
+      // deshalb MIT. Runde 1 erklärte ihn für tot; ein Wächter, der Lebendes tötet, meldet künftig
+      // gelöschte Erwartungen nicht mehr und wäre schlimmer als die Lücke, die er schließt.
+      "switch (false) { case wahl: break; default: expect(imErreichbarenDefault).toBe(16); }",
       "expect(echt).toBe(7);",
       "void `Vorlage mit ${expect(inEinbettung).toBe(8)} darin`;",
       "expect(zeichen).toMatch(/expect(imMuster)/);",
     ].join("\n");
     const ganzesMuster = { von: 0, bis: muster.length };
     const gemessen = erwartungsstellen(muster, "KALIBRIERUNG.ts");
-    // DREI laufen: die offene Erwartung, die in der Einbettung (die läuft wirklich) und die
-    // `toMatch`-Prüfung. Der WORTLAUT steht vierzehnmal da — diese Spreizung ist die ganze Aussage
-    // des Auftrags, und sie wird gemessen und nicht behauptet.
-    expect((muster.match(/expect\(/g) ?? []).length).toBe(14);
-    expect(gemessen.stellen).toHaveLength(3);
+    // VIER laufen: die offene Erwartung, die in der Einbettung (die läuft wirklich), die
+    // `toMatch`-Prüfung und der erreichbare `default`. Der WORTLAUT steht achtzehnmal da — diese
+    // Spreizung ist die ganze Aussage des Auftrags, und sie wird gemessen und nicht behauptet.
+    expect((muster.match(/expect\(/g) ?? []).length).toBe(18);
+    expect(gemessen.stellen).toHaveLength(4);
     for (const laeuft of [
       "expect(echt).toBe(7);",
       "expect(inEinbettung).toBe(8)",
       "expect(zeichen).toMatch(",
+      "expect(imErreichbarenDefault).toBe(16);",
     ]) {
       expect([laeuft, erwartungLaeuft(muster, gemessen, laeuft, ganzesMuster)]).toEqual([
         laeuft,
@@ -2859,6 +2873,9 @@ describe("JOB 3550 F: der Freigabe-Wächter — die KI-Freigabe bleibt eine name
       "expect(imTotenWhile).toBe(10)",
       "expect(imTotenUnd).toBe(11)",
       "expect(imTotenZweigWahl).toBe(12)",
+      "expect(imBenanntenSchalter).toBe(13)",
+      "expect(imTotenVerteiler).toBe(14)",
+      "expect(imLeerenDurchlauf).toBe(15)",
       "expect(imMuster)",
     ]) {
       // Der Wortlaut IST da — er läuft nur nicht. Beides wird gemessen, sonst bewiese die zweite

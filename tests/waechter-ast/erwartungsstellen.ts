@@ -55,7 +55,14 @@ export interface Erwartungsbefund {
  *   3. der Rumpf einer Schleife mit konstant falscher Bedingung — `while (false)` UND
  *      `for (…; false; …)`,
  *   4. der tote Teil eines konstanten Kurzschlusses (`false && …`, `true || …`) und der nie
- *      genommene Zweig einer konstanten Auswahl (`true ? … : hier`).
+ *      genommene Zweig einer konstanten Auswahl (`true ? … : hier`),
+ *   5. eine Bedingung, die erst über einen NAMEN konstant ist (`const AUS = false; if (AUS) …`),
+ *   6. jede `case`-Gruppe eines `switch` mit konstantem Verteiler, die von KEINEM möglichen
+ *      Einstieg aus erreichbar ist (`switch (false) { case true: hier }`),
+ *   7. der Rumpf eines `for (const x of [])` über einem LEEREN Feldliteral,
+ *   8. jeder SPRUNGWERT eines `switch` mit konstantem Verteiler, der hinter einem sicher passenden
+ *      `case` steht (`switch (false) { case false: … case hier: … }`) — verglichen wird der Reihe
+ *      nach und nur bis zum ersten Treffer, was danach kommt, wertet kein Lauf mehr aus.
  *
  * PUNKT 3 UND 4 SIND DIE KORREKTURPFLICHT AUS RUNDE 1 (Prüfer BEN, JOB 3586). Runde 1 behandelte
  * `if` und `while`; der `for`-Rumpf lief über den allgemeinen Baumgang mit. BEN hat das an echtem
@@ -63,21 +70,55 @@ export interface Erwartungsbefund {
  * blieb grün — die teuerste Erwartung der Fläche war damit still abzuschalten. Die Verstellung steht
  * seitdem dauerhaft in `./vier-proben.test.ts` (P5b), zusammen mit den Formen aus Punkt 4.
  *
- * WAS DABEI WEITERLÄUFT und deshalb weiter zählt — die Gegenrichtung ist in P5b genauso gemessen:
- * der KOPF einer `for`-Schleife (`for (let i = expect(…); false; )` wertet den Anfangsteil aus),
- * `for (;;)` ohne Bedingung, `while (true)` und `do … while (false)` (läuft genau einmal).
+ * PUNKT 5 BIS 7 SIND DER REST, DEN JOB 3586 SELBST BENANNT UND OFFEN GELASSEN HAT (dessen Rückgabe,
+ * Abschnitt REST: „Nicht abgedeckt und nicht zugesagt: Konstanten über einen Namen
+ * (`const AUS = false`), `switch` mit konstantem Verteiler, `for (const x of [])`"). JOB 3791 holt
+ * sie nach; sie stehen als P8, P9 und P10 in `./vier-proben.test.ts` an derselben echten Datei, an
+ * der BEN gemessen hat. Die Namensauflösung hinter Punkt 5 ist eine reine BINDUNG im Baum und keine
+ * Auswertung: `konstantenTafel` unten nimmt nur Namen an, die in dieser Quelle GENAU EINMAL als
+ * `const` an ein `true`/`false`-Literal gebunden und nie wieder angefasst werden.
  *
- * Was hier AUSDRÜCKLICH NICHT erkannt wird: eine Bedingung, die erst zur Laufzeit falsch ist
- * (`if (schalter)`), eine Funktion, die niemand ruft, ein `it.skip`. Das erste ist keine
- * Parserfrage; das dritte bewacht der Freigabe-Wächter längst an anderer Stelle (er verbietet
- * `.skip(`, `.only(`, `.todo(`, `.fails(` in den geführten Dateien). Ebenso wenig erkannt wird eine
- * Konstante, die erst über einen Namen konstant ist (`const AUS = false; if (AUS) …`) — das
- * verlangte eine Namensauflösung, die dieser Wächter nicht hat. Diese Aufzählung ist die ganze
- * Zusicherung — mehr steht hier nicht, damit niemand aus ihr mehr liest, als sie trägt.
+ * PUNKT 8 IST DIE KORREKTURPFLICHT AUS RUNDE 2 (Prüfer BEN, JOB 3791). Runde 2 trennte richtig,
+ * welche GRUPPE ein Lauf betritt, besuchte die SPRUNGWERTE aber alle vorweg — „sie werden
+ * verglichen, also ausgewertet". BEN hat gemessen, dass das zu weit ist:
+ * `switch (false) { case false: break; case expect(1): break; }` ruft NULLMAL, Runde 2 zählte eins,
+ * und damit war eine geführte Erwartung wieder still abzuschalten. Beide Richtungen stehen seitdem
+ * in `./vier-proben.test.ts` (P13), Lauf gegen Baum gemessen.
  *
- * Die vier Punkte stehen unten im Baumgang: `istEndgueltig` (1), `ts.isIfStatement` (2),
- * `ts.isWhileStatement`/`ts.isForStatement` (3), `ts.isBinaryExpression`/`ts.isConditionalExpression`
- * (4).
+ * WAS DABEI WEITERLÄUFT und deshalb weiter zählt — die Gegenrichtung ist in P5b, P8, P9, P10, P11,
+ * P12 und P13 genauso gemessen: der VERTEILER eines `switch` (er wird immer ausgewertet) und jeder
+ * Sprungwert VOR dem Treffer (`switch (false) { case expect(…): … case false: … }` vergleicht den
+ * ersten sehr wohl), der KOPF einer `for`-Schleife (`for (let i = expect(…); false; )` wertet
+ * den Anfangsteil aus) und der durchlaufene Ausdruck eines `for … of`, `for (;;)` ohne Bedingung,
+ * `while (true)`, `do … while (false)` (läuft genau einmal), jede Gruppe eines `switch` mit
+ * unbekanntem Verteiler, der Durchfall ab jeder erreichten Gruppe (`case` ohne `break`) und — das
+ * ist die KORREKTURPFLICHT 1 von Prüfer BEN aus JOB 3791 Runde 1 — alles, was von IRGENDEINEM
+ * möglichen Einstieg aus erreichbar ist: ein `case` mit unbekanntem Sprungwert kann treffen oder
+ * nicht, sein `break` beendet deshalb nur seinen eigenen Durchfall und nicht den des `default` oder
+ * eines späteren, sicher passenden `case`. Weiter zählt außerdem jeder Name, der mehrfach gebunden,
+ * neu zugewiesen (auch über eine Zerlegung `[AUS] = …` oder den Kopf `for (AUS of …)`), als
+ * `let`/`var` geführt, eingeführt, zerlegt, als Parameter übergeben oder von einem benannten
+ * Funktions- oder Klassenausdruck beschattet wird (KORREKTURPFLICHTEN 2 und 3) — der ist UNBEKANNT,
+ * und unbekannt heißt lebend.
+ *
+ * Was hier AUSDRÜCKLICH NICHT erkannt wird:
+ *   · eine Bedingung, die erst zur Laufzeit falsch ist (`if (schalter)`) — keine Parserfrage,
+ *   · `for (const k in {})` — die Aufzählung eines leeren Objektliterals läuft nie und zählt
+ *     trotzdem mit (gemessen in P10, damit die Grenze dasteht statt behauptet zu werden),
+ *   · eine Funktion, die niemand ruft,
+ *   · ein `it.skip` — das bewacht der Freigabe-Wächter längst an anderer Stelle (er verbietet
+ *     `.skip(`, `.only(`, `.todo(`, `.fails(` in den geführten Dateien),
+ *   · jeder Wert außer `true`/`false`: `if (0)`, `switch (1) { case 2: … }`, `while ("")` bleiben
+ *     lebend, und eine Konstante, die erst über eine andere Konstante konstant wird
+ *     (`const A = false; const B = A;`), ebenso.
+ * Diese Aufzählung ist die ganze Zusicherung — mehr steht hier nicht, damit niemand aus ihr mehr
+ * liest, als sie trägt.
+ *
+ * Die acht Punkte stehen unten in DEMSELBEN Baumgang, nicht in einem zweiten Abtaster:
+ * `istEndgueltig` (1), `ts.isIfStatement` (2), `ts.isWhileStatement`/`ts.isForStatement` (3),
+ * `ts.isBinaryExpression`/`ts.isConditionalExpression` (4), `konstantenTafel` in
+ * `konstanteBedingung` (5), `ts.isSwitchStatement` (6 und 8 — dieselbe Schleife entscheidet beides,
+ * weil es dieselbe Reihenfolge ist), `ts.isForOfStatement` (7).
  */
 function istEndgueltig(anweisung: ts.Statement): boolean {
   return (
@@ -88,19 +129,168 @@ function istEndgueltig(anweisung: ts.Statement): boolean {
   );
 }
 
-/** `true`/`false` als Bedingung — auch über eine Kette von `!`. Alles andere: unbekannt. */
-function konstanteBedingung(ausdruck: ts.Expression): boolean | undefined {
+/** Welcher Name steht für welchen festen Wahrheitswert — siehe `konstantenTafel`. */
+type Konstantentafel = ReadonlyMap<string, boolean>;
+
+/**
+ * `true`/`false` als Bedingung — auch über eine Kette von `!`. Alles andere: unbekannt.
+ *
+ * Mit `tafel` zählt zusätzlich ein NAME, der dort steht (Punkt 5 in TOTER_ZWEIG). OHNE `tafel`
+ * bleibt es bei den Literalen — genau so wird die Tafel selbst gebaut, damit kein Name auf einem
+ * anderen Namen ruht und die Auflösung eine einzige Stufe tief bleibt.
+ */
+function konstanteBedingung(ausdruck: ts.Expression, tafel?: Konstantentafel): boolean | undefined {
   if (ausdruck.kind === ts.SyntaxKind.TrueKeyword) return true;
   if (ausdruck.kind === ts.SyntaxKind.FalseKeyword) return false;
-  if (ts.isParenthesizedExpression(ausdruck)) return konstanteBedingung(ausdruck.expression);
+  if (ts.isParenthesizedExpression(ausdruck)) {
+    return konstanteBedingung(ausdruck.expression, tafel);
+  }
   if (
     ts.isPrefixUnaryExpression(ausdruck) &&
     ausdruck.operator === ts.SyntaxKind.ExclamationToken
   ) {
-    const innen = konstanteBedingung(ausdruck.operand);
+    const innen = konstanteBedingung(ausdruck.operand, tafel);
     return innen === undefined ? undefined : !innen;
   }
+  if (ts.isIdentifier(ausdruck)) return tafel?.get(ausdruck.text);
   return undefined;
+}
+
+/**
+ * Ist dieser Ausdruck das LEERE Feldliteral `[]` — auch in Klammern?
+ *
+ * Mehr nicht: `[] as string[]`, `[...leer]`, `leer`, `""`, ein Aufruf. Jede dieser Formen kann
+ * tragen oder ist ohne Auswertung nicht zu entscheiden, und dieser Wächter wertet nichts aus.
+ */
+function istLeeresFeld(ausdruck: ts.Expression): boolean {
+  if (ts.isParenthesizedExpression(ausdruck)) return istLeeresFeld(ausdruck.expression);
+  return ts.isArrayLiteralExpression(ausdruck) && ausdruck.elements.length === 0;
+}
+
+/**
+ * Jeder Name, den diese ZUWEISUNGSSEITE treffen kann — auch aus `[AUS] = …`, `({AUS} = …)`,
+ * `[...rest] = …` und `for (AUS of …)`.
+ *
+ * Bewusst grob: genommen wird JEDER Bezeichner, der links steht, auch der Eigenschaftsname in
+ * `({ a: b } = …)` und das Objekt in `[o.p] = …`. Zu viele Namen zu verderben kostet nur Strenge
+ * (verdorben heißt unbekannt heißt lebend heißt gezählt); einen zu übersehen kostete die Richtung —
+ * genau das hat Prüfer BEN in Runde 1 an `[AUS] = [true]` gemessen, wo nur ein blanker Bezeichner
+ * links erkannt wurde und die Zerlegung durchrutschte.
+ */
+function zuweisungsziele(ziel: ts.Expression): string[] {
+  const gefunden: string[] = [];
+  const sammle = (k: ts.Node): void => {
+    if (ts.isIdentifier(k)) gefunden.push(k.text);
+    ts.forEachChild(k, sammle);
+  };
+  sammle(ziel);
+  return gefunden;
+}
+
+/** Jeder Bezeichner, den diese Bindung einführt — auch aus `{ a }` und `[b]` heraus. */
+function gebundeneNamen(name: ts.BindingName): string[] {
+  if (ts.isIdentifier(name)) return [name.text];
+  const gefunden: string[] = [];
+  for (const element of name.elements) {
+    if (ts.isBindingElement(element)) gefunden.push(...gebundeneNamen(element.name));
+  }
+  return gefunden;
+}
+
+/**
+ * Welche Namen in dieser Quelle NACHWEISLICH für `true` oder `false` stehen.
+ *
+ * Aufgenommen wird ein Name nur, wenn er GENAU EINMAL in der ganzen Quelle vorkommt und dort als
+ * `const` an ein `true`/`false`-Literal gebunden ist (Klammern und `!`-Kette eingeschlossen). Jede
+ * andere Berührung verdirbt ihn dauerhaft: ein zweites `const` gleichen Namens in einem anderen
+ * Geltungsbereich, `let`/`var`, eine Neuzuweisung (auch `||=`, `++`, die Zerlegung `[AUS] = …` und
+ * der Kopf `for (AUS of …)`), eine Zerlegung bei der Bindung, eine Einfuhr (auch
+ * `import AUS = require(…)`), ein Parameter, eine Funktion, eine Klasse, ein `enum`, ein
+ * Namensraum — und der NAME EINES FUNKTIONS- ODER KLASSENAUSDRUCKS (`const f = function AUS() {…}`,
+ * `class AUS {…}` als Ausdruck): der beschattet in seinem eigenen Rumpf die äußere Konstante und
+ * steht dort für sich selbst, also für etwas Wahres. Die letzten beiden Formen sind die
+ * Korrekturpflichten 2 und 3 von Prüfer BEN aus Runde 1, an ausführbaren Gegenbeispielen gemessen.
+ *
+ * WARUM SO GROB: dieser Wächter hat keine Geltungsbereiche und soll auch keine bekommen — eine
+ * halbe Namensauflösung, die Schattierung falsch rät, machte unschuldige Bestandsdateien rot. Die
+ * grobe Regel hat nur EINE Richtung: im Zweifel unbekannt, unbekannt heißt lebend, lebend heißt
+ * gezählt. Gemessen steht diese Richtung in `./vier-proben.test.ts` (P11).
+ */
+function konstantenTafel(ast: ts.SourceFile): Konstantentafel {
+  const wert = new Map<string, boolean>();
+  const verdorben = new Set<string>();
+  const verdirb = (name: string): void => {
+    wert.delete(name);
+    verdorben.add(name);
+  };
+  const binde = (name: string, fest: boolean | undefined): void => {
+    if (verdorben.has(name)) return;
+    // Zweite Bindung desselben Namens oder kein Literal dahinter: ab jetzt unbekannt.
+    if (fest === undefined || wert.has(name)) {
+      verdirb(name);
+      return;
+    }
+    wert.set(name, fest);
+  };
+
+  const besuche = (n: ts.Node): void => {
+    if (ts.isVariableDeclaration(n)) {
+      const liste = n.parent;
+      const istConst =
+        ts.isVariableDeclarationList(liste) && (liste.flags & ts.NodeFlags.Const) !== 0;
+      for (const name of gebundeneNamen(n.name)) {
+        // Nur die schlichte Form `const NAME = <Literal>` trägt; `const { NAME } = …` nicht.
+        const fest =
+          istConst && ts.isIdentifier(n.name) && n.initializer !== undefined
+            ? konstanteBedingung(n.initializer)
+            : undefined;
+        binde(name, fest);
+      }
+    } else if (ts.isParameter(n)) {
+      for (const name of gebundeneNamen(n.name)) verdirb(name);
+    } else if (
+      ts.isImportSpecifier(n) ||
+      ts.isImportClause(n) ||
+      ts.isNamespaceImport(n) ||
+      ts.isImportEqualsDeclaration(n)
+    ) {
+      if (n.name !== undefined) verdirb(n.name.text);
+    } else if (
+      ts.isFunctionDeclaration(n) ||
+      ts.isClassDeclaration(n) ||
+      ts.isEnumDeclaration(n) ||
+      ts.isModuleDeclaration(n) ||
+      // KORREKTURPFLICHT 2 (Prüfer BEN, Runde 1): der Name eines Funktions- oder Klassenausdrucks
+      // bindet NUR im eigenen Rumpf — und dort steht er für die Funktion, also für etwas Wahres.
+      // `const AUS = false; (function AUS() { if (AUS) expect(…); })();` LÄUFT.
+      ts.isFunctionExpression(n) ||
+      ts.isClassExpression(n)
+    ) {
+      if (n.name !== undefined && ts.isIdentifier(n.name)) verdirb(n.name.text);
+    } else if (ts.isBinaryExpression(n)) {
+      // Jede Zuweisung, auch `=`, `||=`, `&&=`: der Wert von vorhin gilt dann nicht mehr.
+      // KORREKTURPFLICHT 3 (Prüfer BEN, Runde 1): das gilt auch für die ZERLEGUNG links —
+      // `[AUS] = [true]` und `({ AUS } = quelle)` sind Neuzuweisungen ohne blanken Bezeichner.
+      const art = n.operatorToken.kind;
+      if (art >= ts.SyntaxKind.FirstAssignment && art <= ts.SyntaxKind.LastAssignment) {
+        for (const name of zuweisungsziele(n.left)) verdirb(name);
+      }
+    } else if (
+      (ts.isPrefixUnaryExpression(n) || ts.isPostfixUnaryExpression(n)) &&
+      (n.operator === ts.SyntaxKind.PlusPlusToken || n.operator === ts.SyntaxKind.MinusMinusToken)
+    ) {
+      for (const name of zuweisungsziele(n.operand)) verdirb(name);
+    } else if (
+      (ts.isForOfStatement(n) || ts.isForInStatement(n)) &&
+      !ts.isVariableDeclarationList(n.initializer)
+    ) {
+      // `for (AUS of [true])` bindet keinen neuen Namen, sondern weist dem vorhandenen zu.
+      for (const name of zuweisungsziele(n.initializer)) verdirb(name);
+    }
+    ts.forEachChild(n, besuche);
+  };
+  ts.forEachChild(ast, besuche);
+  return wert;
 }
 
 /** Der Eigenschaftsname einer Zerlegung: `{ expect: pruefe }` → `expect`. */
@@ -195,6 +385,10 @@ export function erwartungsstellen(quelle: string, dateiname: string): Erwartungs
     dateiname.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
   );
   const namen = mitAliasen(ast, eingefuehrteNamen(ast));
+  const tafel = konstantenTafel(ast);
+  /** Fester Wahrheitswert dieses Ausdrucks — Literale UND aufgelöste Namen (TOTER_ZWEIG 5). */
+  const fest = (ausdruck: ts.Expression): boolean | undefined =>
+    konstanteBedingung(ausdruck, tafel);
   const stellen: number[] = [];
 
   const besuche = (n: ts.Node): void => {
@@ -202,15 +396,15 @@ export function erwartungsstellen(quelle: string, dateiname: string): Erwartungs
       stellen.push(n.expression.getStart(ast));
     }
     if (ts.isIfStatement(n)) {
-      const fest = konstanteBedingung(n.expression);
+      const bedingung = fest(n.expression);
       besuche(n.expression);
-      if (fest !== false) besuche(n.thenStatement);
-      if (fest !== true && n.elseStatement !== undefined) besuche(n.elseStatement);
+      if (bedingung !== false) besuche(n.thenStatement);
+      if (bedingung !== true && n.elseStatement !== undefined) besuche(n.elseStatement);
       return;
     }
     if (ts.isWhileStatement(n)) {
       besuche(n.expression);
-      if (konstanteBedingung(n.expression) !== false) besuche(n.statement);
+      if (fest(n.expression) !== false) besuche(n.statement);
       return;
     }
     if (ts.isForStatement(n)) {
@@ -219,16 +413,94 @@ export function erwartungsstellen(quelle: string, dateiname: string): Erwartungs
       if (n.condition !== undefined) besuche(n.condition);
       // Ohne Bedingung (`for (;;)`) läuft der Rumpf; mit konstant falscher Bedingung nie — und dann
       // läuft auch der Fortschaltteil nicht, denn der kommt erst nach dem ersten Durchlauf.
-      if (n.condition !== undefined && konstanteBedingung(n.condition) === false) return;
+      if (n.condition !== undefined && fest(n.condition) === false) return;
       if (n.incrementor !== undefined) besuche(n.incrementor);
       besuche(n.statement);
       return;
     }
+    if (ts.isForOfStatement(n)) {
+      // TOTER_ZWEIG 7. Der KOPF läuft in jedem Fall: die Bindung links und der durchlaufene
+      // Ausdruck rechts werden ausgewertet, bevor der erste Durchlauf überhaupt entschieden ist.
+      besuche(n.initializer);
+      besuche(n.expression);
+      // Nur das LEERE Feldliteral ist syntaktisch leer. Alles andere — eine Variable, ein Aufruf,
+      // ein gefülltes Literal, ein Spread, eine Zeichenkette, ein `as`-Ausdruck — kann tragen und
+      // bleibt lebend, auch wenn es zur Laufzeit leer wäre. `for (const k in {})` ist NICHT gedeckt.
+      if (istLeeresFeld(n.expression)) return;
+      besuche(n.statement);
+      return;
+    }
+    if (ts.isSwitchStatement(n)) {
+      besuche(n.expression);
+      const klauseln = n.caseBlock.clauses;
+      const verteiler = fest(n.expression);
+      // EINE SCHLEIFE FÜR BEIDES, weil es dieselbe Reihenfolge ist: welcher Sprungwert noch
+      // VERGLICHEN wird, und welche Gruppe der Lauf betreten kann.
+      //
+      // KORREKTURPFLICHT 1 (Prüfer BEN, JOB 3791 Runde 2). Runde 2 besuchte alle Sprungwerte
+      // vorweg, mit dem Satz „sie werden verglichen, also ausgewertet — sie zählen immer mit".
+      // Das ist zu weit: JavaScript vergleicht sie NACHEINANDER und hört beim ersten Treffer auf.
+      // BEN hat es gemessen — `switch (false) { case false: break; case expect(1): break; }` ruft
+      // NULLMAL, Runde 2 zählte eins. Damit war eine geführte Erwartung erneut still abzuschalten,
+      // diesmal im Sprungwert hinter dem Treffer. `default` hat keinen Sprungwert und wird beim
+      // Vergleich übersprungen, ganz gleich wo er steht.
+      //
+      // JEDER MÖGLICHE EINSTIEG, nicht nur der erste — KORREKTURPFLICHT 1 aus Runde 1. Runde 1
+      // folgte dem frühesten Einstieg und brach am ersten `break` ab. Bei
+      // `switch (false) { case sprung(): break; default: expect(…); }` ist der früheste Einstieg
+      // der UNBEKANNTE `case`; sein `break` erklärte den `default` für tot — der aber läuft, sobald
+      // `sprung()` nicht trifft. Ein unbekannter Sprungwert sagt eben NICHTS, also müssen beide
+      // Möglichkeiten offen bleiben: tot ist nur, was von KEINEM Einstieg aus erreichbar ist.
+      const einstiege: number[] = [];
+      let sichererTreffer = false;
+      for (const [i, klausel] of klauseln.entries()) {
+        if (!ts.isCaseClause(klausel)) continue;
+        // Bis hierher wird verglichen — also wird DIESER Sprungwert ausgewertet und zählt mit.
+        besuche(klausel.expression);
+        const sprung = fest(klausel.expression);
+        // Bei unbekanntem Verteiler kann jeder Sprungwert treffen und jeder nicht: dann wird
+        // WEITER verglichen (im Zweifel lebend) und die Gruppenfrage unten gar nicht gestellt.
+        if (verteiler === undefined) continue;
+        if (sprung === undefined || sprung === verteiler) einstiege.push(i);
+        if (sprung === verteiler) {
+          // Ab dem ersten SICHER passenden Sprungwert wird nicht mehr verglichen: kein späterer
+          // Sprungwert läuft, und kein späterer `case` kommt als Einstieg in Frage.
+          sichererTreffer = true;
+          break;
+        }
+      }
+      if (verteiler === undefined) {
+        // TOTER_ZWEIG 6 greift nur bei konstantem Verteiler. Sonst kann JEDE Gruppe die getroffene
+        // sein; ein `break` in der einen sagt nichts über die andere, deshalb je Gruppe für sich.
+        for (const klausel of klauseln) besuche(klausel);
+        return;
+      }
+      // `default` läuft, sobald KEIN `case` trifft; ausgeschlossen ist das nur, wenn einer sicher
+      // trifft. Wo `default` steht, ist dabei gleich — er ist ein eigener Einstieg wie jeder andere.
+      const standard = klauseln.findIndex((klausel) => ts.isDefaultClause(klausel));
+      if (!sichererTreffer && standard >= 0) einstiege.push(standard);
+      // AB JEDEM EINSTIEG FÄLLT ES DURCH: ohne `break` läuft die nächste Gruppe mit; steht ein
+      // Abbruch in der Anweisungsliste, endet der Durchfall AB DIESEM Einstieg — und nur dort.
+      const lebend = new Set<number>();
+      for (const einstieg of einstiege) {
+        for (let i = einstieg; i < klauseln.length; i += 1) {
+          const klausel = klauseln[i];
+          if (klausel === undefined) break;
+          lebend.add(i);
+          if (klausel.statements.some(istEndgueltig)) break;
+        }
+      }
+      // Derselbe Gang durch die Anweisungsliste wie überall (unten bei `ts.isCaseClause`).
+      for (const [i, klausel] of klauseln.entries()) {
+        if (lebend.has(i)) besuche(klausel);
+      }
+      return;
+    }
     if (ts.isConditionalExpression(n)) {
-      const fest = konstanteBedingung(n.condition);
+      const bedingung = fest(n.condition);
       besuche(n.condition);
-      if (fest !== false) besuche(n.whenTrue);
-      if (fest !== true) besuche(n.whenFalse);
+      if (bedingung !== false) besuche(n.whenTrue);
+      if (bedingung !== true) besuche(n.whenFalse);
       return;
     }
     if (ts.isBinaryExpression(n)) {
@@ -237,10 +509,10 @@ export function erwartungsstellen(quelle: string, dateiname: string): Erwartungs
         art === ts.SyntaxKind.AmpersandAmpersandToken || art === ts.SyntaxKind.BarBarToken;
       if (kurzschluss) {
         besuche(n.left);
-        const fest = konstanteBedingung(n.left);
+        const links = fest(n.left);
         const totRechts =
-          (art === ts.SyntaxKind.AmpersandAmpersandToken && fest === false) ||
-          (art === ts.SyntaxKind.BarBarToken && fest === true);
+          (art === ts.SyntaxKind.AmpersandAmpersandToken && links === false) ||
+          (art === ts.SyntaxKind.BarBarToken && links === true);
         if (!totRechts) besuche(n.right);
         return;
       }
