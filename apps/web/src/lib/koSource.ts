@@ -1,6 +1,7 @@
 // Reine, DOM-freie Logik für externe Quellen am KO (SCRUM-129 / FE-KO-07).
 import type { KoSource } from "../api/types";
 import { DRAFT_LIMITS } from "./draftLimits";
+import { formatKoTimestamp } from "./koDates";
 
 // JOB 3133 · UX-22: `objectId` ist der ANKER einer adresslosen Belegstelle — die `objectId` eines
 // Anhangs, den DIESES Wissensobjekt trägt. Ausdrücklich OPTIONAL: `pages/Capture.tsx` benutzt
@@ -64,6 +65,13 @@ export function isSavableSourceUrl(url: string): boolean {
 // Für die Anzeige gekürzt — eine sehr lange Adresse soll den Grenzen-Dialog nicht sprengen.
 const URL_ECHO_LEN = 80;
 
+// JOB 4013: DIE EINE Kürzungsregel des Hauses für eine angezeigte Adresse. Sie stand bis hierher
+// als Ausdruck IN `unsavableSourceUrls`; seit der Quellennachweis dieselbe Anzeige braucht, hat sie
+// einen Namen — zwei Kürzungsausdrücke wären zwei Regeln, die auseinanderlaufen können.
+function kuerzeAdresse(url: string): string {
+  return url.length > URL_ECHO_LEN ? `${url.slice(0, URL_ECHO_LEN)}…` : url;
+}
+
 // Alle nicht speicherbaren Adressen aus Quellenformular UND Warteliste, dedupliziert und
 // anzeigefertig. Strukturell typisiert (kein Import aus captureSources → kein Zyklus).
 export function unsavableSourceUrls(
@@ -73,9 +81,55 @@ export function unsavableSourceUrls(
   const candidates = [form.url, ...pending.map((p) => p.url ?? "")]
     .map((u) => u.trim())
     .filter((u) => u.length > 0 && !isSavableSourceUrl(u));
-  return [...new Set(candidates)].map((u) =>
-    u.length > URL_ECHO_LEN ? `${u.slice(0, URL_ECHO_LEN)}…` : u,
-  );
+  return [...new Set(candidates)].map(kuerzeAdresse);
+}
+
+// ================================================================================================
+// JOB 4013 — DER NACHWEIS EINER QUELLE: Zeitpunkt, Adresse, Belegstelle
+// ================================================================================================
+//
+// Wer auf `/pruefen` freigibt oder ablehnt, entschied bis hierher über Wissen, dessen Herkunft er
+// nicht sehen konnte: die Quelle stand als Namensschildchen da (`Validation.tsx:1487` zeichnete
+// ausschliesslich `q.label`). Die drei Angaben lagen die ganze Zeit am Draht — `KoSource` führt
+// `at`, `url` und `excerpt` (`api/types.ts:46-56`), und die Board-Route reicht `sources`
+// unbeschnitten durch (`services/validation/src/board-herkunft.ts:122-135`). Sie wurden nur
+// weggeworfen. NEU ist deshalb allein diese Ableitung und ihre Anzeige — kein Feld, keine Route.
+//
+// FEHLEN HEISST FEHLEN. `url` und `excerpt` sind `string | null`; ein fehlender, leerer oder
+// blanker Wert ergibt `null` und die Fläche lässt ihn WEG — kein „—", kein „unbekannt", keine
+// Ersatzzeile. Ein Platzhalter wäre eine Behauptung über eine Quelle, an der nichts steht.
+//
+// `verlinkbar` trennt „Adresse" von „Referenz": das Feld heisst am Formular „URL / Referenz"
+// (`i18n` `ko.sourceUrl`) und darf auch eine Papierfundstelle tragen. Nur eine echte
+// http/https-Adresse wird zum Link — beurteilt von `isSavableSourceUrl`, derselben Allowlist, die
+// der Server anlegt (`services/capture/src/service.ts`). Alles andere bleibt SICHTBAR, aber als
+// Text: ein `href` auf ein fremdes Schema (`javascript:` aus einem Altbestand) wäre eine aktive
+// Fläche, die niemand geprüft hat, und ein toter Link wäre ein Versprechen ohne Deckung.
+export interface Quellennachweis {
+  /** Formatierter Zeitpunkt aus `at` — `null`, wenn `at` fehlt oder unlesbar ist (kein „Invalid Date"). */
+  zeit: string | null;
+  /** Die Adresse: `voll` fürs `href`, `kurz` für die Anzeige. `null`, wenn keine angegeben ist. */
+  adresse: { voll: string; kurz: string; verlinkbar: boolean } | null;
+  /** Die belegte Stelle im Wortlaut der Quelle — `null`, wenn keine angegeben ist. */
+  auszug: string | null;
+}
+
+export function quellennachweis(
+  source: Pick<KoSource, "at" | "url" | "excerpt">,
+  sprache: string,
+): Quellennachweis {
+  const roh = (source.url ?? "").trim();
+  const auszug = (source.excerpt ?? "").trim();
+  return {
+    // Dieselbe Zeitregel wie das Objektdatum auf derselben Karte (`formatKoTimestamp`): Datum +
+    // Uhrzeit ohne Sekunden, in der aktiven Sprache — und `null` statt eines geratenen Datums.
+    zeit: formatKoTimestamp(source.at, sprache),
+    adresse:
+      roh.length > 0
+        ? { voll: roh, kurz: kuerzeAdresse(roh), verlinkbar: isSavableSourceUrl(roh) }
+        : null,
+    auszug: auszug.length > 0 ? auszug : null,
+  };
 }
 
 // AUFTRAG-mega15 Block B (bens SB-4): DER Vertrag der add-source-Aktion, wie ihn

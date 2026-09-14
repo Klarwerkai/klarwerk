@@ -96,6 +96,7 @@ import {
 } from "../lib/facets";
 import { koAuthorParts } from "../lib/koAuthor";
 import { formatKoTimestamp } from "../lib/koDates";
+import { quellennachweis, sourceBadgeKey } from "../lib/koSource";
 import {
   REVIEW_DECISIONS,
   type ReviewVerdict,
@@ -1474,19 +1475,35 @@ export function Validation(): JSX.Element {
           >
             {k.statement}
           </p>
+          {/* JOB 4013: DER CHIP TRÄGT JETZT DEN ZEITPUNKT. Bis hierher stand hier ausschliesslich
+              `q.label` — ein Namensschildchen, an dem niemand ablesen konnte, WANN diese Quelle ans
+              Objekt kam. Der Zeitpunkt steht am Draht (`KoSource.at`) und wurde weggeworfen.
+              Formatiert von `quellennachweis` über dieselbe Zeitregel, mit der die Karte wenige
+              Zeilen höher das Objektdatum formatiert (`formatKoTimestamp`, `:1303`) — ein
+              unlesbares `at` ergibt `null`, und dann steht KEINE Zeitangabe da statt „Invalid Date".
+              Adresse und Belegstelle liegen im „Mehr" darunter (dieselbe Ableitung): in der
+              Chip-Reihe würden sie bei mehreren Quellen die Zeile sprengen. */}
           {quellen.length > 0 || bilder.length > 0 ? (
             <div className="flex flex-wrap gap-[8px]">
-              {quellen.map((q) => (
-                <span
-                  key={q.id}
-                  data-text="chip"
-                  data-testid="pruefen-chip"
-                  className="inline-flex items-center gap-[6px] rounded-[8px] border border-hairline bg-page px-[10px] py-[5px]"
-                >
-                  <FileText size={13} aria-hidden="true" className="text-muted" />
-                  <span className="text-[12px] font-semibold text-text">{q.label}</span>
-                </span>
-              ))}
+              {quellen.map((q) => {
+                const zeit = quellennachweis(q, i18n.language).zeit;
+                return (
+                  <span
+                    key={q.id}
+                    data-text="chip"
+                    data-testid="pruefen-chip"
+                    className="inline-flex items-center gap-[6px] rounded-[8px] border border-hairline bg-page px-[10px] py-[5px]"
+                  >
+                    <FileText size={13} aria-hidden="true" className="text-muted" />
+                    <span className="text-[12px] font-semibold text-text">{q.label}</span>
+                    {zeit ? (
+                      <span data-testid="pruefen-quelle-zeit" className="text-[12px] text-muted">
+                        {zeit}
+                      </span>
+                    ) : null}
+                  </span>
+                );
+              })}
               {bilder.length > 0 ? (
                 <span
                   data-text="chip"
@@ -1545,6 +1562,74 @@ export function Validation(): JSX.Element {
             >
               {t(k.auskunft.herkunft.labelKey)}
             </PruefenMehrZeile>
+            {/* ---- JOB 4013: DER NACHWEIS JE QUELLE — Adresse und Belegstelle --------------- */}
+            {/* Er steht neben dem Erfassungsweg, weil er dieselbe Frage beantwortet: woher stammt
+                das? Der Erfassungsweg sagt es über das OBJEKT, dieser Block über jede einzelne
+                Quelle daran.
+
+                KEINE NEUEN WÖRTER (Lieferung 6): die Blocküberschrift ist der Bestandstext
+                `ko.sourcesTitle`, die Stufe die bestehende Markierung aus `sourceBadgeKey` — nicht
+                nachgebaut. Adresse und Auszug tragen GAR KEINE Beschriftung: ein Link ist als Link
+                erkennbar, ein `<blockquote>` als Zitat, und ein nur auf Deutsch existierendes Wort
+                wäre schlimmer als keines. `apps/web/src/i18n.ts` bleibt deshalb unberührt (sie ist
+                Zielpfad des laufenden JOB 3667).
+
+                DER BLOCK ERSCHEINT NUR BEI BELEGTER QUELLE. Kein Satz „keine Quellen" bei leerer
+                Liste (§9): die Board-Antwort sichert keine Vollständigkeit zu, eine Entwarnung wäre
+                eine Aussage über einen Bestand, den sie nicht abbildet.
+
+                DER LINK BRICHT DEN KLICKWEG DER KARTE NICHT: `cardClickOpens` (`:1332`) hält jedes
+                `a` zurück — ein zweiter Mechanismus wäre eine zweite Wahrheit über denselben Klick. */}
+            {quellen.length > 0 ? (
+              <PruefenMehrBlock beschriftung={t("ko.sourcesTitle")}>
+                {quellen.map((q) => {
+                  const nachweis = quellennachweis(q, i18n.language);
+                  return (
+                    <div
+                      key={q.id}
+                      data-testid="pruefen-quellennachweis"
+                      className="border-b border-hairline-soft py-1.5 last:border-b-0"
+                    >
+                      <div className="flex flex-wrap items-baseline gap-x-2">
+                        <span className="font-semibold text-text">{q.label}</span>
+                        <span className="text-muted-2">{t(sourceBadgeKey(q))}</span>
+                      </div>
+                      {nachweis.adresse ? (
+                        nachweis.adresse.verlinkbar ? (
+                          <a
+                            data-testid="pruefen-quelle-adresse"
+                            href={nachweis.adresse.voll}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="mt-0.5 block break-all text-ai underline-offset-4 hover:underline"
+                          >
+                            {nachweis.adresse.kurz}
+                          </a>
+                        ) : (
+                          // Eine Fundstelle ohne Web-Adresse (das Feld heisst „URL / Referenz")
+                          // bleibt SICHTBAR, aber ohne `href`: ein Link ins Nichts wäre ein
+                          // Versprechen ohne Deckung, ein fremdes Schema eine ungeprüfte Fläche.
+                          <span
+                            data-testid="pruefen-quelle-adresse"
+                            className="mt-0.5 block break-all text-muted"
+                          >
+                            {nachweis.adresse.kurz}
+                          </span>
+                        )
+                      ) : null}
+                      {nachweis.auszug ? (
+                        <blockquote
+                          data-testid="pruefen-quelle-auszug"
+                          className="mt-1 border-l-2 border-hairline pl-2 italic text-muted"
+                        >
+                          {nachweis.auszug}
+                        </blockquote>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </PruefenMehrBlock>
+            ) : null}
             <PruefenMehrZeile beschriftung={t("lib.facet.category")}>
               <span className="inline-flex flex-wrap items-center justify-end gap-1.5">
                 {k.category}
