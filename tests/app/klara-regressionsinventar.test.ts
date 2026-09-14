@@ -241,6 +241,12 @@ const INVENTAR: readonly string[] = [
   // K2 meldete beide neuen Dateien; Namensachse (beide), Komponente (gemounteter Test).
   "tests/klara-webhilfe-schmal/klara-hilfe-chromium.test.ts",
   "tests/klara-webhilfe-schmal/word-weg-naechster-schritt.test.tsx",
+  // JOB 3918: der angezeigte Klara-Antworttext gegen den gelieferten, auch wenn er Markdown trägt.
+  // Die Datei trägt „klara" im PFAD (`tests/klara-antwort-formatierung/`, im Auftrag §4
+  // abschliessend vorgegeben) und zusätzlich die Inhaltsachse `komponente` (`KlaraAssistant`).
+  // GEMESSEN, NICHT GESETZT: K2 hat sie gemeldet („expected [ Array(1) ] to deeply equal []",
+  // Cloud-Lauf 92e789b3…), erst danach wurde diese Zeile angefasst.
+  "tests/klara-antwort-formatierung/angezeigt-ist-geliefert-auch-formatiert.test.tsx",
   // JOB 3138: eigenständiger Import-Erklärweg; keine Abnahme eines echten Jira-Imports.
   "tests/m6-import-erklaerweg/klara-importwege-dom.test.tsx",
   "tests/m6-import-erklaerweg/klara-importwege-browser.test.tsx",
@@ -1246,7 +1252,12 @@ describe("JOB 920 · K — das Klara-Regressionsinventar ist ableitbar, nicht be
     // sechs Pfade, die sie hereinholt, traegt „klara". Sie alle fallen in `verfehlt`, der damit von
     // 119 auf 125 steigt (Gesamtmenge 177 -> 183). Der methodische Kern dieses Falls wird dadurch
     // nicht schwaecher, sondern staerker: die Dateinamenssuche verfehlt jetzt noch mehr.
-    expect(nurName.length).toBe(58);
+    // JOB 3918 (13.09.2026): `tests/klara-antwort-formatierung/angezeigt-ist-geliefert-auch-
+    // formatiert.test.tsx` trägt „klara" im PFAD — das Verzeichnis war im Auftrag §4 abschliessend
+    // vorgegeben, die Nachführung ist die Folge des Pfades, nicht einer Wahl. GEMESSEN, NICHT
+    // GESETZT: mit dem Inventareintrag und noch unverändertem Zähler meldete der Lauf
+    // `expected 59 to be 58` (Cloud-Lauf 92e789b3…); erst danach wurde diese Zeile angefasst.
+    expect(nurName.length).toBe(59);
     expect(verfehlt.length).toBeGreaterThanOrEqual(25);
     expect(verfehlt.length + nurName.length).toBe(GEFUNDEN.length);
   });
