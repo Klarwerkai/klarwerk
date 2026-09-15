@@ -35,6 +35,19 @@ export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Elemen
   // Einmalig beim ersten Rendern gelesen UND gelöscht (`useState`-Initialisierer), damit der Satz
   // nicht bei jedem späteren Zustandswechsel wieder auftaucht.
   const [declined] = useState(takeDeclineMarker);
+  // ==============================================================================================
+  // JOB 4081 — DER MERKER, DER DIE ABSAGE DIESES BESUCHS FESTHÄLT.
+  // ==============================================================================================
+  //
+  // Er behauptet NICHTS über den Serverschalter. Er hält genau eine Tatsache fest: In diesem Besuch
+  // hat der Server einen Registrierversuch mit `REGISTRATION_DISABLED` abgewiesen. Ohne ihn stand
+  // die Maske nach dem Fehlversuch wieder im Anfangszustand (`go()` löscht `err`) und bot denselben
+  // Weg erneut an — die Absage war eine Sackgasse mit Vergessen.
+  //
+  // BEWUSST NUR IN DER KOMPONENTE, kein Speicher im Browser: Der Merker soll ein Neuladen NICHT
+  // überdauern. Danach ist unbekannt, was der Server heute antwortet, und eine Fläche, die aus
+  // einem alten Merker heraus behauptet „Zugänge werden vergeben", behauptete mehr, als sie weiß.
+  const [registrierungGeschlossen, setRegistrierungGeschlossen] = useState(false);
 
   const onError = (e: unknown): void =>
     setErr(e instanceof ApiError ? e.message : t("state.error"));
@@ -49,10 +62,24 @@ export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Elemen
     onSuccess: () => setMode("waiting"),
     // WP-VIP2-GATE (bens P1): abgeschaltete Selbstregistrierung (Server-Schalter, 403) wird
     // lokalisiert erklärt statt die rohe Server-Meldung zu zeigen.
-    onError: (e: unknown) =>
-      e instanceof ApiError && e.code === "REGISTRATION_DISABLED"
-        ? setErr(t("auth.registrationDisabled"))
-        : onError(e),
+    //
+    // JOB 4081 — ABLÖSUNG, NICHT ERGÄNZUNG. Bis hierher stand die Absage als `setErr(…)` im
+    // ALLGEMEINEN Fehlerkasten, derselben Fläche wie ein Vertipper im Passwort. Sie steht jetzt auf
+    // einer eigenen Fläche (`auth-registration-closed`) mit dem Ausweg. `setErr` bleibt deshalb
+    // ausdrücklich AUS — sonst stünde dieselbe Absage zweimal auf dem Schirm.
+    //
+    // Kein selbsttätiger Moduswechsel: Wer im Formular steht, bleibt dort stehen, und die
+    // eingetippte E-Mail bleibt erhalten. Geleert wird nur das Passwortpaar — es liegt nach einer
+    // abgewiesenen Anlage im Klartext im Formular und wird hier nicht mehr gebraucht.
+    onError: (e: unknown) => {
+      if (e instanceof ApiError && e.code === "REGISTRATION_DISABLED") {
+        setRegistrierungGeschlossen(true);
+        setPw("");
+        setPw2("");
+        return;
+      }
+      onError(e);
+    },
   });
   const setup = useMutation({
     mutationFn: () => authApi.setup(name, email, pw),
@@ -66,11 +93,41 @@ export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Elemen
   });
 
   const busy = login.isPending || register.isPending || setup.isPending || forgot.isPending;
+  // ==============================================================================================
+  // JOB 4081 RUNDE 3 — DER KÜRZERE WEG IN DIESELBE ABSAGE (BENs Gegenprobe B1 aus Runde 2).
+  // ==============================================================================================
+  //
+  // Runde 2 schloss den Weg „Anmelden → Registrieren". Offen blieb der kürzere: Lieferung 4 sagt
+  // ausdrücklich zu, dass das Formular STEHEN BLEIBT — und dort stand weiter ein Absendeknopf, der
+  // `register.mutate()` ein zweites Mal rief. Gemessen: `authApi.register` zweimal statt einmal.
+  //
+  // Der Merker allein genügt also nicht; er muss auch das Absenden selbst sperren. Beides zusammen
+  // gehört hierher, weil beides an derselben Tatsache hängt: Der Server hat diesen Weg in diesem
+  // Besuch abgelehnt. `mode === "register"` steht daneben, damit die Sperre NUR den Registrierweg
+  // trifft — Anmelden, Passwort vergessen und Ersteinrichtung teilen sich dieses Formular.
+  const registrierwegZu = mode === "register" && registrierungGeschlossen;
+  // JOB 4081: `registrierungGeschlossen` wird hier ABSICHTLICH nicht zurückgesetzt. Genau daran
+  // hing der Kreis: `err` verschwand bei jedem Moduswechsel, und damit war nach zwei Klicks jede
+  // Spur der Absage weg. Eine Tatsache, die der Server berichtet hat, hört durch einen Klick auf
+  // „Zurück zur Anmeldung" nicht auf zu gelten.
   const go = (m: Mode): void => {
     setErr(null);
     setPw2("");
     setMode(m);
   };
+
+  // Die Auskunft selbst — an EINER Stelle formuliert und an zwei Stellen gezeigt (im Formular, wo
+  // der Versuch gescheitert ist, und danach an der Stelle des Verweises „Noch kein Konto?").
+  // Beide Orte schließen sich über den Modus gegenseitig aus; die Testmarke steht nie doppelt.
+  const absageFlaeche = (
+    <div
+      data-testid="auth-registration-closed"
+      className="rounded-card border border-trust-warn-fill/30 bg-trust-warn-bg p-3 text-left text-[12.5px] text-trust-warn-text"
+    >
+      <p>{t("auth.registrationClosed.fact")}</p>
+      <p className="mt-1">{t("auth.registrationClosed.next")}</p>
+    </div>
+  );
 
   // JOB 1097 / D-026: die Längenregel gilt überall dort, wo ein NEUES Passwort gesetzt wird — bei
   // der Anmeldung gilt sie nicht, und dort steht sie deshalb auch nicht.
@@ -118,6 +175,13 @@ export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Elemen
               onSubmit={(e) => {
                 e.preventDefault();
                 setErr(null);
+                // JOB 4081 RUNDE 3: Hier und nicht nur am Knopf. Die Eingabetaste gibt ein
+                // Formular ab, ohne den Absendeknopf zu berühren — ein gesperrter Knopf allein
+                // ließe diesen Weg offen. Es wird auch KEIN Fehler gesetzt: die Auskunft steht
+                // bereits über dem Formular, ein zweiter Satz daneben sagte dasselbe noch einmal.
+                if (registrierwegZu) {
+                  return;
+                }
                 // Passwort-Bestätigung erzwingen, bevor ein Konto angelegt wird.
                 if ((mode === "register" || mode === "setup") && pw !== pw2) {
                   setErr(t("auth.passwordMismatch"));
@@ -202,13 +266,28 @@ export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Elemen
                 </div>
               ) : null}
 
+              {/* JOB 4081: die abgewiesene Registrierung hat ihre eigene Fläche, GENAU HIER — dort,
+                  wo der Versuch gerade gescheitert ist, und nicht erst nach einem Moduswechsel. Der
+                  allgemeine Kasten darunter bleibt für alles andere zuständig und ist in diesem
+                  Fall leer (`register.onError` setzt `err` nicht mehr). */}
+              {registrierungGeschlossen && mode === "register" ? absageFlaeche : null}
+
               {err ? (
                 <div className="rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text">
                   {err}
                 </div>
               ) : null}
 
-              <Button type="submit" variant="primary" disabled={busy} className="w-full">
+              {/* JOB 4081 RUNDE 3: gesperrt, sobald der Server diesen Weg abgelehnt hat. Ein Knopf,
+                  der nachweislich nichts mehr auslöst, darf nicht bedienbar aussehen — sonst drückt
+                  die Person ihn weiter und hält das Ausbleiben jeder Reaktion für einen Fehler der
+                  Maske. Die Begründung steht in der Auskunft direkt darüber. */}
+              <Button
+                type="submit"
+                variant="primary"
+                disabled={busy || registrierwegZu}
+                className="w-full"
+              >
                 {t(`auth.submit.${mode}`)}
               </Button>
             </form>
@@ -244,14 +323,22 @@ export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Elemen
               <button type="button" className="font-semibold text-ink" onClick={() => go("forgot")}>
                 {t("auth.toForgot")}
               </button>
+              {/* JOB 4081: Hat der Server die Selbstregistrierung in diesem Besuch abgelehnt, steht
+                  hier die Auskunft statt des Knopfes. Ein Knopf, der nachweislich in dieselbe
+                  Absage führt, ist kein Weg. „Passwort vergessen?" darüber bleibt unberührt — das
+                  ist der Alltagsfall und hat mit dem Registrierweg nichts zu tun. */}
               <div>
-                <button
-                  type="button"
-                  className="text-muted hover:text-ink"
-                  onClick={() => go("register")}
-                >
-                  {t("auth.toRegister")}
-                </button>
+                {registrierungGeschlossen ? (
+                  absageFlaeche
+                ) : (
+                  <button
+                    type="button"
+                    className="text-muted hover:text-ink"
+                    onClick={() => go("register")}
+                  >
+                    {t("auth.toRegister")}
+                  </button>
+                )}
               </div>
             </div>
           ) : null}

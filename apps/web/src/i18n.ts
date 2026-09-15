@@ -649,6 +649,15 @@ const de = {
   // WP-VIP2-GATE (bens P1): Selbstregistrierung serverseitig abgeschaltet (Einladungs-Betrieb).
   "auth.registrationDisabled":
     "Registrierung nur per Einladung — bitte wende dich an deinen Admin.",
+  // JOB 4081: DIE ABSAGE ALS AUSKUNFT STATT ALS SACKGASSE. `auth.registrationDisabled` stand im
+  // allgemeinen Fehlerkasten — neben Tippfehlermeldungen, ohne eigene Kennzeichnung, und beim
+  // nächsten Moduswechsel war er weg. Diese zwei Sätze stehen auf einer eigenen Fläche und bleiben
+  // für den Besuch stehen: erst die Tatsache, dann der Weg. Zwei Schlüssel und nicht einer, weil
+  // die Fläche beides getrennt zeigt — was gilt, und was die Person tun soll.
+  "auth.registrationClosed.fact":
+    "Zugänge werden in dieser Installation vergeben. Ein Konto selbst anzulegen ist hier nicht vorgesehen.",
+  "auth.registrationClosed.next":
+    "Bitte eine Person mit Administratorrecht in deinem Unternehmen um eine Einladung — sie richtet dir den Zugang ein.",
   "auth.submit.login": "Anmelden",
   "auth.submit.register": "Registrieren",
   "auth.submit.setup": "Admin anlegen & starten",
@@ -7044,6 +7053,11 @@ const en: typeof de = {
   "auth.passwordMismatch": "The passwords do not match.",
   // WP-VIP2-GATE: self-registration disabled server-side (invite-only operation).
   "auth.registrationDisabled": "Registration is invite-only — please contact your admin.",
+  // JOB 4081: the refusal as information instead of a dead end (reasoning at the German entry).
+  "auth.registrationClosed.fact":
+    "In this installation, access is granted to you. Creating an account yourself is not available here.",
+  "auth.registrationClosed.next":
+    "Ask someone with administrator rights at your company for an invitation — they will set up your access.",
   "auth.submit.login": "Sign in",
   "auth.submit.register": "Register",
   "auth.submit.setup": "Create admin & start",
@@ -12199,6 +12213,11 @@ const nl: typeof de = {
   // WP-VIP2-GATE: zelfregistratie server-side uitgeschakeld (alleen op uitnodiging).
   "auth.registrationDisabled":
     "Registreren kan alleen op uitnodiging — neem contact op met je admin.",
+  // JOB 4081: de afwijzing als informatie in plaats van een doodlopende weg (zie de Duitse tekst).
+  "auth.registrationClosed.fact":
+    "In deze installatie wordt toegang toegekend. Zelf een account aanmaken kan hier niet.",
+  "auth.registrationClosed.next":
+    "Vraag iemand met beheerdersrechten binnen je bedrijf om een uitnodiging — die richt je toegang in.",
   "auth.submit.login": "Aanmelden",
   "auth.submit.register": "Registreren",
   "auth.submit.setup": "Admin aanmaken & starten",
