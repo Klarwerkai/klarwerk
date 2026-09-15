@@ -56,6 +56,7 @@ import {
   EMPTY_SOURCE_FORM,
   type SourceFormInput,
   isSourceFormValid,
+  quellennachweis,
   sourceBadgeKey,
   toAddSourceRequest,
   toSourcePayload,
@@ -759,41 +760,80 @@ export function MehrAbschnitte({
           <p className="text-[12.5px] text-muted">{t("ko.sourcesEmpty")}</p>
         ) : (
           <ul className="space-y-2">
-            {(ko.sources ?? []).map((s) => (
-              <li key={s.id} className="rounded-input bg-page p-2.5">
-                <div className="flex items-start gap-2">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <span className="text-[13.5px] font-medium text-text">{s.label}</span>
-                      <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-warn-text">
-                        {t(sourceBadgeKey(s))}
-                      </span>
-                      {s.provider ? (
-                        <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted">
-                          {s.provider}
+            {(ko.sources ?? []).map((s) => {
+              // JOB 4095: DIESELBE ABLEITUNG WIE AUF DER PRÜFKARTE (`Validation.tsx:1590`) — die
+              // Autorin, die hier liest, soll an der Quelle nicht WENIGER erfahren als der Prüfer.
+              // Sie wird GERUFEN, nicht nachgebaut: keine zweite Zeitformatierung, keine zweite
+              // Anker-Auflösung. Die Anhangsliste kommt aus dem BEREITS geladenen Objekt — keine
+              // zweite Abfrage, und offline bleibt die Aussage tragfähig (dieselbe Hausregel wie am
+              // Belegabschnitt weiter unten).
+              const nachweis = quellennachweis(s, ko.attachments ?? [], i18n.language);
+              return (
+                <li key={s.id} className="rounded-input bg-page p-2.5">
+                  <div className="flex items-start gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-[13.5px] font-medium text-text">{s.label}</span>
+                        <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-warn-text">
+                          {t(sourceBadgeKey(s))}
+                        </span>
+                        {s.provider ? (
+                          <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted">
+                            {s.provider}
+                          </span>
+                        ) : null}
+                        {/* WANN die Quelle ans Objekt kam — in der Kopfzeile, wie am Prüfchip.
+                            KEINE NEUE BESCHRIFTUNG: ein Datum ist als Datum erkennbar, und ein nur
+                            auf Deutsch existierendes Wort wäre schlimmer als keines.
+                            Ohne lesbares `at` steht hier NICHTS (kein „Invalid Date", kein „—"). */}
+                        {nachweis.zeit ? (
+                          <span
+                            data-testid="bib-quelle-zeit"
+                            className="font-mono text-[10px] text-muted-2"
+                          >
+                            {nachweis.zeit}
+                          </span>
+                        ) : null}
+                      </div>
+                      {/* DIE DATEI, AUS DER DIE BELEGSTELLE STAMMT — unter dem Namen und damit
+                          unmittelbar über der Adresse, dieselbe Reihenfolge wie an der Prüfkarte
+                          (`Validation.tsx:1612-1619`). Der Name wird AUFGELÖST, nie an die Quelle
+                          kopiert; ein kopierter Name würde durch eine Umbenennung des Anhangs zur
+                          Lüge. FEHLEN HEISST FEHLEN: ohne Anker, ohne passenden Anhang oder ohne
+                          brauchbaren Namen steht hier keine Zeile.
+                          `break-all` statt `truncate`: ein Dateiname ist lang, und bei 360 px soll
+                          er umbrechen statt abgeschnitten zu werden. */}
+                      {nachweis.datei ? (
+                        <span
+                          data-testid="bib-quelle-datei"
+                          className="mt-0.5 block break-all text-[11px] text-muted"
+                        >
+                          {nachweis.datei}
                         </span>
                       ) : null}
+                      <ExternalUrlText
+                        url={s.url}
+                        className="block truncate font-mono text-[11px] text-ai hover:underline"
+                      />
+                      {s.excerpt ? (
+                        <p className="mt-1 text-[12px] text-muted">{s.excerpt}</p>
+                      ) : null}
                     </div>
-                    <ExternalUrlText
-                      url={s.url}
-                      className="block truncate font-mono text-[11px] text-ai hover:underline"
-                    />
-                    {s.excerpt ? <p className="mt-1 text-[12px] text-muted">{s.excerpt}</p> : null}
+                    {canEdit ? (
+                      <button
+                        type="button"
+                        title={t("ko.sourceRemove")}
+                        disabled={removeSource.isPending}
+                        onClick={() => removeSource.mutate(s.id)}
+                        className="grid h-7 w-7 shrink-0 place-items-center rounded-btn text-muted hover:bg-trust-crit-bg hover:text-trust-crit-text"
+                      >
+                        <X size={14} />
+                      </button>
+                    ) : null}
                   </div>
-                  {canEdit ? (
-                    <button
-                      type="button"
-                      title={t("ko.sourceRemove")}
-                      disabled={removeSource.isPending}
-                      onClick={() => removeSource.mutate(s.id)}
-                      className="grid h-7 w-7 shrink-0 place-items-center rounded-btn text-muted hover:bg-trust-crit-bg hover:text-trust-crit-text"
-                    >
-                      <X size={14} />
-                    </button>
-                  ) : null}
-                </div>
-              </li>
-            ))}
+                </li>
+              );
+            })}
           </ul>
         )}
         {canEdit ? (
