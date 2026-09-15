@@ -21,7 +21,7 @@ type Mode = "login" | "register" | "waiting" | "setup" | "forgot" | "forgotSent"
 // Panel links, Formular rechts. Sub-Zustände inkl. Ersteinrichtung.
 export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Element {
   const { t } = useTranslation();
-  const { refresh, oidcEnabled } = useSession();
+  const { refresh, oidcEnabled, selfRegistrationEnabled } = useSession();
   const [mode, setMode] = useState<Mode>(needsSetup ? "setup" : "login");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -45,8 +45,18 @@ export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Elemen
   // Weg erneut an — die Absage war eine Sackgasse mit Vergessen.
   //
   // BEWUSST NUR IN DER KOMPONENTE, kein Speicher im Browser: Der Merker soll ein Neuladen NICHT
-  // überdauern. Danach ist unbekannt, was der Server heute antwortet, und eine Fläche, die aus
+  // überdauern — was der Server heute antwortet, hat er heute zu sagen, und eine Fläche, die aus
   // einem alten Merker heraus behauptet „Zugänge werden vergeben", behauptete mehr, als sie weiß.
+  //
+  // JOB 4105 — BERICHTIGUNG DER BEGRÜNDUNG, NICHT NUR EINE ERGÄNZUNG. Hier stand bis JOB 4081:
+  // „Danach ist unbekannt, was der Server heute antwortet." Das war richtig, solange die Maske den
+  // Schalter nur aus einem gescheiterten Versuch erschließen konnte. Seit JOB 4105 ist es das nicht
+  // mehr: `selfRegistrationEnabled` kommt aus einer FRISCHEN Statusantwort dieser Sitzung, und die
+  // steht nach einem Neuladen sofort wieder zur Verfügung. Der Merker bleibt trotzdem ungespeichert
+  // und behauptet weiterhin nichts über den Schalter — er hält die zweite, unabhängige Tatsache
+  // fest: In DIESEM Besuch hat der Server einen Versuch abgewiesen. Das deckt den Fall ab, dass der
+  // Schalter zwischen Statusabruf und Versuch umgelegt wurde; die Statusantwort ist dann älter als
+  // die Absage.
   const [registrierungGeschlossen, setRegistrierungGeschlossen] = useState(false);
 
   const onError = (e: unknown): void =>
@@ -105,7 +115,24 @@ export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Elemen
   // gehört hierher, weil beides an derselben Tatsache hängt: Der Server hat diesen Weg in diesem
   // Besuch abgelehnt. `mode === "register"` steht daneben, damit die Sperre NUR den Registrierweg
   // trifft — Anmelden, Passwort vergessen und Ersteinrichtung teilen sich dieses Formular.
-  const registrierwegZu = mode === "register" && registrierungGeschlossen;
+  //
+  // ==============================================================================================
+  // JOB 4105 — DIE ZWEITE, FRÜHERE QUELLE DERSELBEN TATSACHE: DER SERVER SAGT ES VORHER.
+  // ==============================================================================================
+  //
+  // `selfRegistrationEnabled === false` ist die AUSDRÜCKLICHE Auskunft des Servers aus dieser
+  // Sitzung (`GET /api/auth/status`). Der Vergleich auf `false` ist kein Stilmittel: Der Wert ist
+  // dreiwertig, und `undefined` heißt UNBEKANNT (Antwort steht aus, Backend nicht erreichbar,
+  // älterer Server ohne das Feld). Ein `!selfRegistrationEnabled` machte aus jedem Unwissen eine
+  // Behauptung — genau das, was diese Maske nicht tun darf.
+  //
+  // ODER-Verknüpfung, nicht Ersetzung: Die beiden Quellen decken verschiedene Zeitpunkte ab. Der
+  // Status ist die frühere (vor jedem Tippen), der Merker die spätere (der Schalter kann zwischen
+  // Abruf und Versuch umgelegt worden sein). Es gibt danach nur noch DIESE eine Stelle, an der die
+  // Entscheidung fällt — die Fläche im Formular und die Fläche an der Stelle des Verweises hängen
+  // beide daran.
+  const registrierungZu = registrierungGeschlossen || selfRegistrationEnabled === false;
+  const registrierwegZu = mode === "register" && registrierungZu;
   // JOB 4081: `registrierungGeschlossen` wird hier ABSICHTLICH nicht zurückgesetzt. Genau daran
   // hing der Kreis: `err` verschwand bei jedem Moduswechsel, und damit war nach zwei Klicks jede
   // Spur der Absage weg. Eine Tatsache, die der Server berichtet hat, hört durch einen Klick auf
@@ -117,15 +144,34 @@ export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Elemen
   };
 
   // Die Auskunft selbst — an EINER Stelle formuliert und an zwei Stellen gezeigt (im Formular, wo
-  // der Versuch gescheitert ist, und danach an der Stelle des Verweises „Noch kein Konto?").
+  // der Versuch gescheitert ist, und an der Stelle des Verweises „Noch kein Konto?").
   // Beide Orte schließen sich über den Modus gegenseitig aus; die Testmarke steht nie doppelt.
+  //
+  // JOB 4105: ZWEI ANLÄSSE, ZWEI SÄTZE. Der Unterschied ist inhaltlich und nicht kosmetisch.
+  // `.fact` (JOB 4081) berichtet über einen soeben abgewiesenen VERSUCH — „Ihre Anlage wurde nicht
+  // angenommen". Steht die Auskunft dagegen von vornherein da, hat es keinen Versuch gegeben, über
+  // den zu berichten wäre; gesagt wird dann der ZUSTAND der Installation. Ein Satz über einen
+  // Versuch, den niemand unternommen hat, wäre eine kleine Unwahrheit an der Stelle, an der diese
+  // Maske gerade Vertrauen aufbauen soll.
   const absageFlaeche = (
     <div
       data-testid="auth-registration-closed"
       className="rounded-card border border-trust-warn-fill/30 bg-trust-warn-bg p-3 text-left text-[12.5px] text-trust-warn-text"
     >
-      <p>{t("auth.registrationClosed.fact")}</p>
-      <p className="mt-1">{t("auth.registrationClosed.next")}</p>
+      <p>
+        {t(
+          registrierungGeschlossen
+            ? "auth.registrationClosed.fact"
+            : "auth.registrationClosed.upfrontFact",
+        )}
+      </p>
+      <p className="mt-1">
+        {t(
+          registrierungGeschlossen
+            ? "auth.registrationClosed.next"
+            : "auth.registrationClosed.upfrontNext",
+        )}
+      </p>
     </div>
   );
 
@@ -270,7 +316,10 @@ export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Elemen
                   wo der Versuch gerade gescheitert ist, und nicht erst nach einem Moduswechsel. Der
                   allgemeine Kasten darunter bleibt für alles andere zuständig und ist in diesem
                   Fall leer (`register.onError` setzt `err` nicht mehr). */}
-              {registrierungGeschlossen && mode === "register" ? absageFlaeche : null}
+              {/* JOB 4105: dieselbe Bedingung, die das Absenden sperrt — die Fläche und die Sperre
+                  können nicht mehr auseinanderlaufen. Sie greift jetzt auch ohne Fehlversuch, für
+                  den, der bei noch unbeantworteter Statusabfrage ins Formular gegangen ist. */}
+              {registrierwegZu ? absageFlaeche : null}
 
               {err ? (
                 <div className="rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text">
@@ -326,9 +375,16 @@ export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Elemen
               {/* JOB 4081: Hat der Server die Selbstregistrierung in diesem Besuch abgelehnt, steht
                   hier die Auskunft statt des Knopfes. Ein Knopf, der nachweislich in dieselbe
                   Absage führt, ist kein Weg. „Passwort vergessen?" darüber bleibt unberührt — das
-                  ist der Alltagsfall und hat mit dem Registrierweg nichts zu tun. */}
+                  ist der Alltagsfall und hat mit dem Registrierweg nichts zu tun.
+
+                  JOB 4105: Und er führte auch VOR jedem Versuch schon dorthin, sobald der Server
+                  die Selbstregistrierung abgeschaltet hat — nur wusste die Maske es nicht. Jetzt
+                  fragt sie vorher (`registrierungZu`). Wer kein Konto hat, liest hier von Anfang an
+                  den Ausweg, statt ihn sich über vier Felder zu erarbeiten. Bleibt die Antwort aus
+                  oder kennt der Server das Feld nicht, steht der Knopf wie bisher: Die Maske
+                  behauptet nichts, was sie nicht weiß. */}
               <div>
-                {registrierungGeschlossen ? (
+                {registrierungZu ? (
                   absageFlaeche
                 ) : (
                   <button

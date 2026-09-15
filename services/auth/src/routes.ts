@@ -797,10 +797,23 @@ export function authRoutes(
 
     // FR-AUTH-01: Status der Instanz — Ersteinrichtung nötig? Und ist SSO konfiguriert
     // (FR-AUTH-07: oidcEnabled steuert die ehrliche Sichtbarkeit des SSO-Logins im UI)?
+    //
+    // JOB 4105: dazu die Selbstregistrierung. Ohne sie erfuhr eine neue Person erst NACH vier
+    // ausgefüllten Feldern, dass diese Instanz keine Konten annimmt — der Schalter war der Maske
+    // unbekannt. Es ist DERSELBE Aufruf, der oben (`:351`) über den Registrierweg entscheidet: eine
+    // zweite Auslegung des Schalters an dieser Stelle (eigenes `process.env`-Lesen, eine beim Aufbau
+    // eingefrorene Konstante) wäre eine zweite Wahrheit, und die auseinanderlaufende wäre immer die,
+    // die der Browser anzeigt. Zur LAUFZEIT ausgewertet, je Anfrage.
+    //
+    // Kein Informationsabfluss: Der Schalter ist heute schon für jeden Unangemeldeten messbar —
+    // `POST /api/auth/register` antwortet ihm mit 403 `REGISTRATION_DISABLED`. Über den
+    // Kontenbestand sagt das Feld nichts.
     app.get("/api/auth/status", async (_request, reply) => {
-      reply
-        .code(200)
-        .send({ needsSetup: await service.needsSetup(), oidcEnabled: Boolean(options.oidc) });
+      reply.code(200).send({
+        needsSetup: await service.needsSetup(),
+        oidcEnabled: Boolean(options.oidc),
+        selfRegistrationEnabled: selfRegistrationEnabled(),
+      });
     });
 
     // FR-AUTH-01: Ersteinrichtung — legt das erste Konto (Admin) an und startet die Sitzung.

@@ -13,6 +13,11 @@ export interface AuthStatus {
   needsSetup: boolean;
   // FR-AUTH-07: SSO nur anbieten, wenn der Server OIDC vollständig konfiguriert hat.
   oidcEnabled?: boolean;
+  // JOB 4105: Nimmt diese Instanz selbst angelegte Konten an? OPTIONAL, und das ist keine
+  // Bequemlichkeit: Ein älterer Server antwortet ohne dieses Feld, und `undefined` heißt dann
+  // UNBEKANNT — nicht „aus". Wer es zu `false` verrechnet, lässt die Maske über eine Instanz
+  // urteilen, die dazu nichts gesagt hat (s. `AuthContext`).
+  selfRegistrationEnabled?: boolean;
 }
 
 // AUFTRAG-mega61 Block C: der Vermerk am Konto. `due` entscheidet der SERVER — die Oberfläche

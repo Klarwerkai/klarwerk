@@ -20,6 +20,18 @@ interface AuthState {
   needsSetup: boolean;
   /** FR-AUTH-07: SSO im Server konfiguriert? Steuert die ehrliche SSO-UI. */
   oidcEnabled: boolean;
+  /**
+   * JOB 4105: Nimmt diese Instanz selbst angelegte Konten an? DREIWERTIG — `true`, `false` und
+   * `undefined` (der Server hat es noch nicht oder nicht mehr gesagt).
+   *
+   * WARUM NICHT `?? false` WIE BEI `oidcEnabled`: Dort bedeutet „unbekannt" das Verstecken einer
+   * Nicht-Funktion — im Zweifel steht eine Fläche weniger da, und niemand erfährt etwas Falsches.
+   * Hier wäre es umgekehrt eine BEHAUPTUNG („auf dieser Instanz werden Zugänge vergeben") über
+   * einen Server, der noch gar nicht geantwortet hat. Wissenslücke statt Erfindung: Solange der
+   * Wert `undefined` ist, sagt die Maske nichts und verhält sich wie bisher — das Netz aus JOB 4081
+   * (die Absage NACH dem Versuch) liegt darunter.
+   */
+  selfRegistrationEnabled: boolean | undefined;
   isLoading: boolean;
   /** Status-Abfrage fehlgeschlagen (z. B. Backend im Dev nicht erreichbar). */
   error: boolean;
@@ -225,6 +237,14 @@ export function AuthProvider({ children }: { children: ReactNode }): JSX.Element
     user: resolveSessionUser({ data: me.data ?? null, isError: me.isError }),
     needsSetup,
     oidcEnabled: status.data?.oidcEnabled ?? false,
+    // JOB 4105: BEWUSST an den DATEN und nicht an `status.isSuccess`. Scheitert eine
+    // AUFFRISCHUNG, setzt react-query den Zustand auf „error", BEHÄLT aber die zuletzt erfolgreich
+    // geholte Antwort. An `isSuccess` gehängt, kippte die Auskunft bei jedem Netzwackler von
+    // „aus" zurück auf „unbekannt" — und damit stünde wieder der Knopf da, der in die Absage
+    // führt. Ein Netzfehler ist keine Aussage über den Schalter; dieselbe Unterscheidung trifft
+    // der 401-Fall oben ausdrücklich. Ohne Daten (erster Aufbau, Fehler vor der ersten Antwort,
+    // älterer Server ohne das Feld) bleibt es `undefined` — unbekannt.
+    selfRegistrationEnabled: status.data?.selfRegistrationEnabled,
     isLoading: status.isLoading || (status.isSuccess && !needsSetup && me.isLoading),
     error: status.isError,
     refresh: () => {

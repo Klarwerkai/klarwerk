@@ -658,6 +658,12 @@ const de = {
     "Zugänge werden in dieser Installation vergeben. Ein Konto selbst anzulegen ist hier nicht vorgesehen.",
   "auth.registrationClosed.next":
     "Bitte eine Person mit Administratorrecht in deinem Unternehmen um eine Einladung — sie richtet dir den Zugang ein.",
+  // JOB 4105: dieselbe Lage, aber OHNE vorangegangenen Versuch — hier ist nichts abgewiesen worden,
+  // über das zu berichten wäre. Gesagt wird der Zustand der Installation und der Ausweg.
+  "auth.registrationClosed.upfrontFact":
+    "Auf dieser Installation werden Zugänge vergeben, nicht selbst angelegt. Eine Registrierung ist hier nicht möglich.",
+  "auth.registrationClosed.upfrontNext":
+    "Wende dich an eine Person mit Administratorrecht in deinem Unternehmen — sie legt dein Konto an und lädt dich ein.",
   "auth.submit.login": "Anmelden",
   "auth.submit.register": "Registrieren",
   "auth.submit.setup": "Admin anlegen & starten",
@@ -7123,6 +7129,11 @@ const en: typeof de = {
     "In this installation, access is granted to you. Creating an account yourself is not available here.",
   "auth.registrationClosed.next":
     "Ask someone with administrator rights at your company for an invitation — they will set up your access.",
+  // JOB 4105: same situation, but with NO attempt behind it.
+  "auth.registrationClosed.upfrontFact":
+    "On this installation, access is granted to you rather than created by you. Signing up is not possible here.",
+  "auth.registrationClosed.upfrontNext":
+    "Contact someone with administrator rights at your company — they will create your account and invite you.",
   "auth.submit.login": "Sign in",
   "auth.submit.register": "Register",
   "auth.submit.setup": "Create admin & start",
@@ -12315,6 +12326,11 @@ const nl: typeof de = {
     "In deze installatie wordt toegang toegekend. Zelf een account aanmaken kan hier niet.",
   "auth.registrationClosed.next":
     "Vraag iemand met beheerdersrechten binnen je bedrijf om een uitnodiging — die richt je toegang in.",
+  // JOB 4105: dezelfde situatie, maar ZONDER voorafgaande poging.
+  "auth.registrationClosed.upfrontFact":
+    "Op deze installatie wordt toegang toegekend en niet zelf aangemaakt. Registreren kan hier niet.",
+  "auth.registrationClosed.upfrontNext":
+    "Neem contact op met iemand met beheerdersrechten binnen je bedrijf — die maakt je account aan en nodigt je uit.",
   "auth.submit.login": "Aanmelden",
   "auth.submit.register": "Registreren",
   "auth.submit.setup": "Admin aanmaken & starten",
