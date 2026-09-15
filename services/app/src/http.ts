@@ -67,6 +67,21 @@ const STATUS_BY_CODE: Record<string, number> = {
   // einem Zustand, nicht ein Serverfehler dieser Anfrage — der Aufrufer bekommt eine wahre
   // Auskunft samt Objektkennung und keinen nichtssagenden 500.
   CREATE_REPAIR_REQUIRED: 409,
+  // JOB 4137: DIESELBE ABLEHNUNG HEISST NICHT ZWEIMAL VERSCHIEDEN — die Lehre von JOB 3618.
+  //
+  // Die Quellensperre der Stufe „externes Wissen" (`decideExternalAttach`,
+  // services/external-search/src/attach-policy.ts) spricht an ZWEI Türen dasselbe Nein:
+  // `PUT /api/kos/:id` mit `action: "add-source"` setzt seinen 403 selbst (ko-routes.ts), der
+  // Entwurfs-Promote (`POST /api/drafts/:id/promote`) läuft über `sendError` — und weil dieser
+  // Name hier fehlte, fiel er in den Auffangwert `?? 400`. Gemessen in
+  // `tests/demo-erster-nutzerweg/promote-traegt-die-herkunft.test.ts` (H5/H8, je im selben Lauf
+  // gegen `add-source` verglichen): gleicher Fehlername, verschiedener Status.
+  //
+  // 403 UND NICHT 400, weil der Aufrufer nichts falsch gemacht hat: seine Anfrage ist wohlgeformt,
+  // sie ist auf der eingestellten Stufe nur nicht erlaubt. Genau EIN Eintrag, kein Präfix- und kein
+  // Sammelmuster — aus demselben Grund, aus dem `INTERNAL_ONLY_CODES` unten eine MENGE ist und kein
+  // Regex: eine Musterfreigabe entscheidet über Namen, die noch niemand geprüft hat.
+  EXTERNAL_ATTACH_BLOCKED: 403,
 };
 
 // G27 R1 (KW-ARCH-G27-HTTP-MASKIERUNG-07 §1): Fehlercodes, die REIN INTERN sind — technische

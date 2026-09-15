@@ -38,23 +38,41 @@
 //     (verdrahtet in `services/app/src/build-app.ts`, `pruefeBelegstelle`). Folge: was die Stufe
 //     verbietet, bricht den Weg ab (H5 — vier Fälle, je gegen `add-source` verglichen); was sie
 //     erlaubt, reist VOLLSTÄNDIG mit, Adresse inbegriffen (H3).
-//     EHRLICHE GRENZE: der Promote antwortet mit demselben Fehlernamen, aber mit 400 statt 403 —
-//     `STATUS_BY_CODE` in `services/app/src/http.ts` kennt den Namen nicht, und diese Datei liegt
-//     ausserhalb der Zielpfade. In H5 gepinnt und in der Rückgabe als ABWEICHUNG benannt.
+//     JOB 4137: DIE EHRLICHE GRENZE VON RUNDE 3 IST WEG. Bis dahin stand hier „derselbe
+//     Fehlername, aber 400 statt 403, weil `STATUS_BY_CODE` (services/app/src/http.ts) den Namen
+//     nicht kennt — und die Datei liegt ausserhalb der Zielpfade". Sie liegt jetzt drin, der
+//     Eintrag `EXTERNAL_ATTACH_BLOCKED: 403` ist ergänzt, und H5/H8 erwarten 403 — DENSELBEN
+//     Status wie `add-source`. Dasselbe Versäumnis heisst nicht mehr zweimal verschieden.
 //
-// (3) DIE BELEGKETTE BLEIBT LEER. `ko.create` → `finishCreated`
-//     (`services/knowledge-object/src/service.ts:1929-1947`) schreibt KEINEN `EvidenceRecord`; das
-//     tut nur `createWithDocumentsLocked` (`:2166-2195`). H1 MISST das und pinnt es als Tatsache:
-//     die append-only Belegkette dieses Weges ist damit noch NICHT geschlossen. Sie zu schliessen
-//     bräuchte einen Schreibweg in `services/knowledge-object/**` und ist in JOB 3934
-//     ausdrücklich nicht bestellt (Auftrag §10).
+// (3) JOB 4137: DIE BELEGKETTE IST GESCHLOSSEN. Bis dahin stand hier „sie bleibt LEER": `ko.create`
+//     → `finishCreated` schrieb KEINEN `EvidenceRecord`, das tat nur `createWithDocumentsLocked`.
+//     `finishCreated` schreibt jetzt je Anhang und je Belegstelle DES OBJEKTS eine Zeile, über
+//     denselben Baustein wie der Dokumentweg (`erstanlageBelege`) — kein zweiter Schreibweg.
+//     H1 misst die Kette dieses Weges Feld für Feld; H9 hält sie gegen den Dokumentweg.
+//     WAS DABEI UNTERSCHIEDLICH BLEIBT, und zwar gemessen statt verschwiegen: der Promote bindet
+//     kein Original als ANHANG ans Objekt (`CreateKoInput` hat kein `attachments`-Feld). Sein
+//     Objekt trägt eine Belegstelle und keinen Anhang, seine Kette deshalb eine `source`-Zeile und
+//     keine `attachment`-Zeile. Die REGEL ist auf beiden Wegen dieselbe — die Kette bildet ab, was
+//     das Objekt trägt —, und genau diese Regel prüft H9 auf beiden Wegen.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { buildApp, buildServices } from "../../services/app/src/build-app";
+import {
+  assembleServices,
+  buildApp,
+  buildServices,
+  inMemoryRepos,
+} from "../../services/app/src/build-app";
 import { QUELLSATZ } from "./strecke";
 
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+/**
+ * JOB 4137 R3 — DIE ZWEITE BELEGSTELLE. Sie unterscheidet sich von `QUELLSATZ` in ihrem Auszug und
+ * NUR darin: H11 und H13 binden dasselbe Original zweimal, und die beiden Belegstellen müssen
+ * auseinanderzuhalten sein, ohne sich auf eine Reihenfolge in der Belegkette zu verlassen.
+ */
+const ZWEITER_AUSZUG = "Der Druck wird am Schauglas abgelesen.";
 
 /** Die Pflichtfelder, ohne die `toKoInput` mit INCOMPLETE bzw. MISSING_CONFIDENTIALITY abbricht. */
 const PFLICHT = {
@@ -80,22 +98,103 @@ type Belegstelle = {
 type Wissensobjekt = {
   id: string;
   author: string;
+  version: number;
   bodyHtml?: string | null;
   sources?: Belegstelle[];
+  attachments?: { id: string; name: string; mime: string; objectId?: string }[];
 };
 
-async function buehne() {
-  const services = buildServices();
-  const app = buildApp(services);
-  await app.ready();
+/** Eine Zeile der append-only Belegkette, so wie `GET /api/kos/:id/evidence` sie sendet. */
+type Belegzeile = {
+  id: string;
+  koId: string;
+  koVersion: number;
+  kind: string;
+  sourceId?: string;
+  attachmentId?: string;
+  objectId?: string;
+  label: string;
+  mime?: string;
+  url?: string | null;
+  excerpt?: string;
+  createdBy: string;
+  createdAt: string;
+};
+
+async function belegkette(
+  app: Awaited<ReturnType<typeof buehne>>["app"],
+  kopf: Record<string, string>,
+  koId: string,
+): Promise<Belegzeile[]> {
+  const belege = await app.inject({
+    method: "GET",
+    url: `/api/kos/${koId}/evidence`,
+    headers: kopf,
+  });
+  expect(belege.statusCode, belege.body).toBe(200);
+  return belege.json() as Belegzeile[];
+}
+
+/** Das erste Konto dieser Bühne — es darf anlegen, einreichen und lesen. */
+async function erstesKonto(
+  app: Awaited<ReturnType<typeof buildApp>>,
+): Promise<Record<string, string>> {
   const einrichten = await app.inject({
     method: "POST",
     url: "/api/auth/setup",
     payload: { name: "Demo", email: "herkunft@job3934.test", password: "vorfuehrung12345" },
   });
   expect(einrichten.statusCode, einrichten.body).toBe(201);
-  const kopf = { cookie: String(einrichten.headers["set-cookie"] ?? "").split(";")[0] ?? "" };
-  return { services, app, kopf };
+  return { cookie: String(einrichten.headers["set-cookie"] ?? "").split(";")[0] ?? "" };
+}
+
+async function buehne() {
+  const services = buildServices();
+  const app = buildApp(services);
+  await app.ready();
+  return { services, app, kopf: await erstesKonto(app) };
+}
+
+// ================================================================================================
+// JOB 4137 R3 — DIESELBE BÜHNE, MIT EINEM GRIFF AN DIE BELEGABLAGE.
+// ================================================================================================
+//
+// H12 und H13 brauchen einen Zustand, den der gesunde Weg nicht herstellt: das Wissensobjekt steht
+// im Bestand, und eine Zeile SEINER Belegkette fehlt. Genau den hinterlässt `finishCreated`, wenn
+// nach dem Insert etwas wirft — der Ablauf ist dort bewusst untransaktional (WP-SHIP8-CLOSE-5), und
+// genau dafür gibt es den idempotenten Nachzug `ensureCreatedSideEffects`. BEN hat diesen Fall in
+// Runde 2 gemessen; hier steht er dauerhaft.
+//
+// HERGESTELLT AN DER STELLE, AN DER ER ECHT ENTSTEHT: der Belegablage. Verdrahtet wird über
+// dieselben öffentlichen Repos wie in `buildServices` (`inMemoryRepos` + `assembleServices`) — kein
+// Griff in Service-Interna, kein Nachbau des Dienstes.
+//
+// ZWEI ARTEN VON STÖRUNG, und beide braucht es wirklich:
+//   · `werfen` — die Ablage bricht. Das ist der echte Teilpersistenz-Fall des EINREICHWEGS (H12):
+//     das Objekt bleibt, der Vorgang scheitert.
+//   · `verschlucken` — die Zeile kommt nicht an, ohne Wurf. Für den DOKUMENTWEG (H13) ist das der
+//     einzig gangbare Weg: er nimmt bei JEDEM Fehler das ganze Objekt zurück (Rücknahmeklammer in
+//     `createWithDocumentsLocked`), und dann gäbe es nichts mehr nachzuziehen. Was hier gemessen
+//     wird, ist deshalb nicht der Wurf, sondern der ZUSTAND danach: Objekt da, Zeile fehlt.
+type Belegstoerung = (record: Belegzeile) => "durchlassen" | "verschlucken" | "werfen";
+
+async function buehneMitBelegstoerung(stoerung: Belegstoerung) {
+  const repos = inMemoryRepos();
+  const echtesAppend = repos.evidence.append.bind(repos.evidence);
+  repos.evidence.append = async (record) => {
+    const wahl = stoerung(record);
+    if (wahl === "werfen") {
+      throw new Error("Belegablage bricht (Testaufbau JOB 4137 R3)");
+    }
+    if (wahl === "verschlucken") {
+      return;
+    }
+    await echtesAppend(record);
+  };
+  const services = assembleServices(repos);
+  const app = buildApp(services);
+  await app.ready();
+  return { services, app, kopf: await erstesKonto(app) };
 }
 
 /** Die echte Datei herein — derselbe Weg wie in der Strecke und in der Befunddatei. */
@@ -192,6 +291,46 @@ async function einreichen(
     url: `/api/drafts/${entwurfId}/promote`,
     headers: kopf,
     payload: { operationId: vorgang, draftPayload: stand },
+  });
+}
+
+/**
+ * JOB 4137 R3 — DER DOKUMENTWEG, mit beliebig vielen Bündeln. Wortgleich zu dem Aufruf, den H9
+ * ausgeschrieben fährt; herausgezogen, weil H11 und H13 ZWEI Bündel brauchen und zwei Kopien dieser
+ * Ladung zwei Gelegenheiten wären, sie auseinanderlaufen zu lassen.
+ *
+ * Der Zeitstempel wird frisch nachgelesen und nicht mitgereicht: `expectedUpdatedAt` ist die
+ * Bedingung, unter der die Route den Entwurf abräumt — ein geratener Wert prüfte etwas anderes.
+ */
+async function ausDokumenten(
+  app: Awaited<ReturnType<typeof buehne>>["app"],
+  kopf: Record<string, string>,
+  entwurfId: string,
+  stand: Record<string, unknown>,
+  vorgang: string,
+  buendel: { objectId: string; auszug: string }[],
+) {
+  const gelesen = await app.inject({
+    method: "GET",
+    url: `/api/drafts/${entwurfId}`,
+    headers: kopf,
+  });
+  expect(gelesen.statusCode, gelesen.body).toBe(200);
+  const stempel = (gelesen.json() as { updatedAt: string }).updatedAt;
+  return app.inject({
+    method: "POST",
+    url: "/api/kos/from-document",
+    headers: kopf,
+    payload: {
+      operationId: vorgang,
+      draftId: entwurfId,
+      expectedUpdatedAt: stempel,
+      draftPayload: stand,
+      documents: buendel.map((b) => ({
+        anchor: { objectId: b.objectId, name: "sample.docx", mime: DOCX_MIME },
+        points: [{ label: "sample.docx", excerpt: b.auszug }],
+      })),
+    },
   });
 }
 
@@ -360,21 +499,34 @@ describe("JOB 3934 · der Promote trägt die Herkunft des Entwurfs ans Wissensob
       // (services/app/src/routes/object-routes.ts:305, `send(obj)`).
       expect((original.json() as { ref?: { id?: string } }).ref?.id).toBe(objektId);
 
-      // ---- GEMESSEN, NICHT BEHAUPTET: die Belegkette (Auftrag §5 Lieferung 6) ---------------
-      // Dieser Weg schreibt KEINEN Belegketten-Datensatz. Das ist hier als Tatsache gepinnt und
-      // nicht als Versprechen: die append-only Belegkette des Promote-Weges ist NICHT geschlossen
-      // (Grund in Grenze 3 im Kopf dieser Datei). Wird diese Zeile rot, hat jemand einen
-      // Schreibweg ergänzt — dann gehört die neue Zahl hierher, mit ihren `kind`-Werten.
-      const belege = await app.inject({
-        method: "GET",
-        url: `/api/kos/${ko.id}/evidence`,
-        headers: kopf,
-      });
-      expect(belege.statusCode).toBe(200);
+      // ---- GEMESSEN, NICHT BEHAUPTET: die Belegkette (JOB 4137) -----------------------------
+      // Bis JOB 4137 stand hier `toEqual([])` als gemessene Tatsache: dieser Weg schrieb keine
+      // Zeile. Jetzt schreibt `finishCreated` je Anhang und je Belegstelle DES OBJEKTS eine — und
+      // deshalb steht die Erwartung nicht als nackte Zahl da, sondern wird aus dem Objekt
+      // abgeleitet: dieses trägt eine Belegstelle und keinen Anhang (Grenze 3 im Kopf).
       expect(
-        belege.json(),
-        "GEMESSEN: der Promote schreibt nichts in die Belegkette — die Kette dieses Weges ist noch offen.",
+        ko.attachments ?? [],
+        "GEMESSEN: der Promote bindet kein Original als ANHANG — deshalb keine attachment-Zeile.",
       ).toEqual([]);
+      const kette = await belegkette(app, kopf, ko.id);
+      expect(
+        kette.map((zeile) => zeile.kind),
+        "WENN DIESE ZEILE ROT IST, schreibt der Promote seine Belegkette nicht mehr — oder er schreibt mehr, als sein Objekt trägt.",
+      ).toEqual(["source"]);
+      expect(kette).toHaveLength((ko.attachments ?? []).length + quellen.length);
+      const belegzeile = kette[0] as Belegzeile;
+      expect(belegzeile.koId).toBe(ko.id);
+      expect(belegzeile.koVersion).toBe(ko.version);
+      expect(belegzeile.sourceId).toBe(quelle.id);
+      expect(belegzeile.label).toBe("sample.docx");
+      expect(belegzeile.excerpt).toBe(QUELLSATZ);
+      expect(belegzeile.createdBy).toBe(ko.author);
+      expect(belegzeile.id.length).toBeGreaterThan(0);
+      expect(Number.isNaN(Date.parse(belegzeile.createdAt))).toBe(false);
+      // LEERE OPTIONALFELDER WERDEN WEGGELASSEN, nicht mit "" belegt — dieselbe Regel wie auf dem
+      // Dokumentweg. Dieses Objekt hat keinen Anhang und diese Belegstelle keine Adresse.
+      expect(Object.hasOwn(belegzeile, "attachmentId")).toBe(false);
+      expect(Object.hasOwn(belegzeile, "url")).toBe(false);
     } finally {
       await app.close();
     }
@@ -585,14 +737,14 @@ describe("JOB 3934 · der Promote trägt die Herkunft des Entwurfs ans Wissensob
           // DERSELBE NAME wie an `add-source` — dasselbe Versäumnis heisst nicht zweimal
           // verschieden (die Lehre von JOB 3618).
           expect((befoerdert.json() as { error?: string }).error).toBe("EXTERNAL_ATTACH_BLOCKED");
-          // DER STATUS IST 400 UND NICHT 403, und das ist GEMESSEN, nicht gewollt: `add-source`
-          // setzt seinen 403 selbst (ko-routes.ts:2056), der Promote läuft über `sendError`, und
-          // dort fehlt `EXTERNAL_ATTACH_BLOCKED` in `STATUS_BY_CODE` (app/src/http.ts:43-70) —
-          // also `?? 400`. Die eine Zeile, die das gleichzieht, liegt in `services/app/src/http.ts`
-          // und damit AUSSERHALB der Zielpfade dieses Auftrags; sie steht in der Rückgabe unter
-          // ABWEICHUNGEN. Diese Zeile pinnt den heutigen Stand ehrlich; wird sie rot, weil jemand
-          // den Eintrag ergänzt hat, gehört hier 403 hin.
-          expect(befoerdert.statusCode, befoerdert.body).toBe(400);
+          // UND SEIT JOB 4137 AUCH DERSELBE STATUS. Bis dahin stand hier 400: `add-source` setzt
+          // seinen 403 selbst (ko-routes.ts), der Promote läuft über `sendError`, und dort fehlte
+          // `EXTERNAL_ATTACH_BLOCKED` in `STATUS_BY_CODE` (app/src/http.ts) — also `?? 400`. Der
+          // Eintrag ist ergänzt; die Ablehnung heisst jetzt überall 403. Dieselbe Zeile steht im
+          // Vergleichsmassstab (1) elf Zeilen höher — die beiden Türen werden HIER verglichen,
+          // nicht aus dem Gedächtnis zitiert.
+          expect(befoerdert.statusCode, befoerdert.body).toBe(direkt.statusCode);
+          expect(befoerdert.statusCode, befoerdert.body).toBe(403);
 
           // (3) UND ES IST NICHTS ENTSTANDEN. Das ist der Kern der Auflage: kein Wissensobjekt aus
           //     diesem Entwurf, und der Entwurf ist auch nicht verbraucht worden.
@@ -817,10 +969,10 @@ describe("JOB 3934 · der Promote trägt die Herkunft des Entwurfs ans Wissensob
           (abgewiesen.json() as { error?: string }).error,
           "Die Kennung eines fremden Originals darf die Quellensperre NICHT aufheben.",
         ).toBe("EXTERNAL_ATTACH_BLOCKED");
-        // Der Status ist 400 und nicht 403 — gemessen, nicht gewollt, aus demselben Grund wie in H5
-        // (`STATUS_BY_CODE` in `services/app/src/http.ts` kennt den Namen nicht; die Datei liegt
-        // ausserhalb der Zielpfade und steht in der Rückgabe unter ABWEICHUNGEN).
-        expect(abgewiesen.statusCode, abgewiesen.body).toBe(400);
+        // UND DERSELBE STATUS wie an `add-source` — seit JOB 4137 kennt `STATUS_BY_CODE`
+        // (services/app/src/http.ts) den Namen, also 403 statt des früheren 400.
+        expect(abgewiesen.statusCode, abgewiesen.body).toBe(ueberAddSource.statusCode);
+        expect(abgewiesen.statusCode, abgewiesen.body).toBe(403);
 
         // UND ES IST NICHTS ENTSTANDEN — bens Satz „anschliessend zwei Wissensobjekte statt eines"
         // ist genau diese Zeile. Sichtbar ist für den Einreichenden GENAU EINS: das aus dem
@@ -893,4 +1045,462 @@ describe("JOB 3934 · der Promote trägt die Herkunft des Entwurfs ans Wissensob
       }
     }, 120_000);
   }
+
+  // ==============================================================================================
+  // H9 · JOB 4137 — EINE FRAGE, EINE ANTWORT: BEIDE TÜREN FÜHREN DIESELBE BELEGKETTE.
+  // ==============================================================================================
+  //
+  // DIE FRAGE, um die es geht, ist die eines Menschen vor der Belegsicht: „woher stammt dieser Satz,
+  // und wann kam der Beleg dazu?" Bis JOB 4137 hing die Antwort davon ab, durch WELCHE Tür das
+  // Objekt entstanden war: über `POST /api/kos/from-document` stand sie vollständig in der
+  // append-only Belegkette, über „speichern und einreichen" war die Kette LEER. Derselbe Satz aus
+  // derselben Datei, zwei verschiedene Antworten.
+  //
+  // DIESER FALL VERGLEICHT DIE BEIDEN TÜREN IM SELBEN LAUF, mit derselben `sample.docx` und
+  // demselben Satz — nicht aus dem Gedächtnis, sondern gemessen. Geprüft wird DIE REGEL, die auf
+  // beiden Wegen dieselbe sein muss:
+  //
+  //     Die Belegkette bildet ab, WAS DAS OBJEKT TRÄGT — je Anhang eine `attachment`-Zeile,
+  //     je Belegstelle eine `source`-Zeile, nicht mehr und nicht weniger.
+  //
+  // Die Erwartung wird deshalb JE OBJEKT aus dem Objekt abgeleitet und nicht als Zahl hingeschrieben
+  // (und als MENGE verglichen: die Kette ist nach `createdAt` sortiert, und beide Zeilen einer
+  // Erstanlage tragen denselben Zeitpunkt — eine Reihenfolge zu behaupten wäre unbelegt).
+  //
+  // WAS DABEI UNTERSCHIEDLICH BLEIBT, ehrlich benannt statt weggelassen: der Dokumentweg bindet das
+  // Original als ANHANG ans Objekt, der Promote nicht (`CreateKoInput` hat kein `attachments`-Feld).
+  // Deshalb trägt der Dokumentweg eine `attachment`-Zeile mehr — und zwar nachweislich, WEIL sein
+  // Objekt einen Anhang trägt und das andere nicht. Genau das steht unten als eigene Messung da:
+  // die Differenz der beiden Ketten ist die Differenz der beiden Objekte, und nichts sonst.
+  it("H9 · Einreichweg und Dokumentweg: die Belegkette bildet auf BEIDEN Wegen genau das Objekt ab", async () => {
+    const { app, kopf } = await buehne();
+    try {
+      // ---- TÜR 1: „speichern und einreichen" ------------------------------------------------
+      const entwurfA = await entwurfAusDocx(app, kopf);
+      const objektA = await originalSichern(app, kopf, entwurfA);
+      const standA = {
+        ...PFLICHT,
+        pendingSources: [
+          { label: "sample.docx", excerpt: QUELLSATZ, anchorKey: "anker-1", objectId: objektA },
+        ],
+        anchorDocuments: [
+          { key: "anker-1", objectId: objektA, name: "sample.docx", mime: DOCX_MIME },
+        ],
+      };
+      await speichernUndKalibrieren(app, kopf, entwurfA, standA, objektA);
+      const befoerdert = await einreichen(
+        app,
+        kopf,
+        entwurfA,
+        standA,
+        "4137glch-0000-4000-8000-000000000001",
+      );
+      expect(befoerdert.statusCode, befoerdert.body).toBe(201);
+      const einreichKo = befoerdert.json() as Wissensobjekt;
+
+      // ---- TÜR 2: der Dokumentweg, mit DEMSELBEN Inhalt aus DERSELBEN Datei ------------------
+      const entwurfB = await entwurfAusDocx(app, kopf);
+      const objektB = await originalSichern(app, kopf, entwurfB);
+      // DERSELBE ENTWURFSSTAND wie bei Tür 1, mit EINEM Unterschied: keine `pendingSources`. Der
+      // Dokumentweg verwendet sie gar nicht (H7) — seine Belegstellen kommen aus `documents[].points`
+      // und stehen zwei Dutzend Zeilen tiefer, mit demselben Label und demselben Auszug.
+      const standB = {
+        ...PFLICHT,
+        anchorDocuments: [
+          { key: "anker-1", objectId: objektB, name: "sample.docx", mime: DOCX_MIME },
+        ],
+      };
+      await speichernUndKalibrieren(app, kopf, entwurfB, standB, objektB);
+      const gelesen = await app.inject({
+        method: "GET",
+        url: `/api/drafts/${entwurfB}`,
+        headers: kopf,
+      });
+      const stempel = (gelesen.json() as { updatedAt: string }).updatedAt;
+      const erzeugt = await app.inject({
+        method: "POST",
+        url: "/api/kos/from-document",
+        headers: kopf,
+        payload: {
+          operationId: "4137glch-0000-4000-8000-000000000002",
+          draftId: entwurfB,
+          expectedUpdatedAt: stempel,
+          draftPayload: standB,
+          documents: [
+            {
+              anchor: { objectId: objektB, name: "sample.docx", mime: DOCX_MIME },
+              points: [{ label: "sample.docx", excerpt: QUELLSATZ }],
+            },
+          ],
+        },
+      });
+      expect(erzeugt.statusCode, erzeugt.body).toBe(201);
+      const dokumentKo = erzeugt.json() as Wissensobjekt;
+
+      // ---- DIE REGEL, auf BEIDEN Wegen dieselbe ---------------------------------------------
+      /** Was die Kette dieses Objekts tragen MUSS, abgeleitet aus dem Objekt selbst. */
+      const erwartet = (ko: Wissensobjekt): string[] =>
+        [
+          ...(ko.attachments ?? []).map(() => "attachment"),
+          ...(ko.sources ?? []).map(() => "source"),
+        ].sort();
+      const gemessen = (kette: Belegzeile[]): string[] => kette.map((z) => z.kind).sort();
+
+      const einreichKette = await belegkette(app, kopf, einreichKo.id);
+      const dokumentKette = await belegkette(app, kopf, dokumentKo.id);
+
+      expect(
+        gemessen(einreichKette),
+        "WENN DIESE ZEILE ROT IST, läuft der Einreichweg wieder aus der Regel — seine Kette bildet sein Objekt nicht mehr ab (JOB 4137).",
+      ).toEqual(erwartet(einreichKo));
+      expect(
+        gemessen(dokumentKette),
+        "WENN DIESE ZEILE ROT IST, läuft der Dokumentweg aus der Regel — oder er schreibt seine Zeilen doppelt.",
+      ).toEqual(erwartet(dokumentKo));
+
+      // KALIBRIERUNG: eine Regel über zwei leere Ketten wäre trivial erfüllt. Beide tragen etwas.
+      expect(einreichKette.length).toBeGreaterThan(0);
+      expect(dokumentKette.length).toBeGreaterThan(0);
+
+      // ---- DIESELBE ANTWORT AUF DIESELBE FRAGE ----------------------------------------------
+      // Die `source`-Zeilen beider Türen sagen dasselbe über denselben Satz: derselbe Dateiname,
+      // derselbe übernommene Auszug, dieselbe Anzahl. DAS ist „eine Frage, eine Antwort".
+      const quellzeilen = (kette: Belegzeile[]) => kette.filter((z) => z.kind === "source");
+      expect(quellzeilen(einreichKette)).toHaveLength(1);
+      expect(quellzeilen(dokumentKette)).toHaveLength(1);
+      const ausEinreichen = quellzeilen(einreichKette)[0] as Belegzeile;
+      const ausDokument = quellzeilen(dokumentKette)[0] as Belegzeile;
+      expect(ausEinreichen.label).toBe(ausDokument.label);
+      expect(ausEinreichen.excerpt).toBe(ausDokument.excerpt);
+      expect(ausEinreichen.label).toBe("sample.docx");
+      expect(ausEinreichen.excerpt).toBe(QUELLSATZ);
+      // Und beide zeigen auf die Belegstelle IHRES Objekts, nicht auf eine fremde.
+      expect(ausEinreichen.sourceId).toBe((einreichKo.sources ?? [])[0]?.id);
+      expect(ausDokument.sourceId).toBe((dokumentKo.sources ?? [])[0]?.id);
+
+      // ---- DER VERBLIEBENE UNTERSCHIED, gemessen und benannt --------------------------------
+      // Er liegt nicht an der Belegkette, sondern an den OBJEKTEN: nur der Dokumentweg bindet das
+      // Original als Anhang. Die Kette folgt dem — sie erfindet keinen Anhang, den es nicht gibt,
+      // und lässt keinen weg, den es gibt.
+      expect(einreichKo.attachments ?? []).toEqual([]);
+      expect(dokumentKo.attachments ?? []).toHaveLength(1);
+      const anhangzeilen = (kette: Belegzeile[]) => kette.filter((z) => z.kind === "attachment");
+      expect(anhangzeilen(einreichKette)).toHaveLength(0);
+      expect(anhangzeilen(dokumentKette)).toHaveLength(1);
+      expect((anhangzeilen(dokumentKette)[0] as Belegzeile).attachmentId).toBe(
+        (dokumentKo.attachments ?? [])[0]?.id,
+      );
+      // Die Differenz der Ketten IST die Differenz der Objekte — keine zweite Ursache.
+      expect(dokumentKette.length - einreichKette.length).toBe(
+        (dokumentKo.attachments ?? []).length - (einreichKo.attachments ?? []).length,
+      );
+    } finally {
+      await app.close();
+    }
+  }, 120_000);
+
+  // ==============================================================================================
+  // H10 · JOB 4137 — DER NACHZUG SCHREIBT KEINE ZWEITE ZEILE.
+  // ==============================================================================================
+  //
+  // DAS RISIKO, das dieser Fall ausschliesst. `finishCreated` bleibt nach dem Insert bewusst
+  // untransaktional (WP-SHIP8-CLOSE-5): wirft dort etwas, existiert das Wissensobjekt, aber ein
+  // Beleg fehlt. Der Auffang ist `ensureCreatedSideEffects` — der idempotente Nachzug, den der
+  // Import-Accept vor dem Abschliessen fährt. Seit JOB 4137 gehört die BELEGKETTE zu den Belegen,
+  // die dort nachzuziehen sind, und damit entsteht genau die Gefahr, gegen die dieser Fall steht:
+  // dieselbe Belegstelle zweimal in einer append-only Kette, die niemand mehr bereinigen kann.
+  //
+  // GEMESSEN WIRD AM ECHTEN OBJEKT, nicht an einem gebauten: dasselbe eingereichte Objekt wie in
+  // H1, und danach der Nachzug — zweimal. Die Kette muss danach Zeile für Zeile dieselbe sein.
+  it("H10 · der idempotente Nachzug ergänzt die Belegkette eines eingereichten Objekts nicht doppelt", async () => {
+    const { app, kopf, services } = await buehne();
+    try {
+      const entwurfId = await entwurfAusDocx(app, kopf);
+      const objektId = await originalSichern(app, kopf, entwurfId);
+      const stand = {
+        ...PFLICHT,
+        pendingSources: [
+          { label: "sample.docx", excerpt: QUELLSATZ, anchorKey: "anker-1", objectId: objektId },
+        ],
+        anchorDocuments: [
+          { key: "anker-1", objectId: objektId, name: "sample.docx", mime: DOCX_MIME },
+        ],
+      };
+      await speichernUndKalibrieren(app, kopf, entwurfId, stand, objektId);
+      const befoerdert = await einreichen(
+        app,
+        kopf,
+        entwurfId,
+        stand,
+        "4137nach-0000-4000-8000-000000000001",
+      );
+      expect(befoerdert.statusCode, befoerdert.body).toBe(201);
+      const ko = befoerdert.json() as Wissensobjekt;
+
+      const vorher = await belegkette(app, kopf, ko.id);
+      // KALIBRIERUNG: ein Nachzug über eine leere Kette wäre trivial doppelfrei.
+      expect(vorher.map((z) => z.kind)).toEqual(["source"]);
+
+      const gespeichertesKo = await services.ko.get(ko.id);
+      if (!gespeichertesKo) {
+        throw new Error("Testaufbau: das eingereichte Wissensobjekt fehlt im Bestand");
+      }
+      await services.ko.ensureCreatedSideEffects(gespeichertesKo);
+      await services.ko.ensureCreatedSideEffects(gespeichertesKo);
+
+      const nachher = await belegkette(app, kopf, ko.id);
+      expect(
+        nachher,
+        "WENN DIESE ZEILE ROT IST, schreibt der Nachzug Zeilen, die es schon gibt — eine append-only Kette mit Dubletten bekommt niemand mehr sauber.",
+      ).toEqual(vorher);
+    } finally {
+      await app.close();
+    }
+  }, 120_000);
+
+  // ==============================================================================================
+  // H11 · JOB 4137 R3 — DASSELBE ORIGINAL ZWEIMAL GEBUNDEN. BENS FALL AUS RUNDE 2, DAUERHAFT.
+  // ==============================================================================================
+  //
+  // WAS BEN GEMESSEN HAT. Zwei Dokumentbündel mit DERSELBEN Originalkennung ergeben zwei Anhänge
+  // mit gleichem `objectId` und verschiedener Id. Der Dokumentweg kennt die Zuordnung je Bündel
+  // (`bySource`) und schreibt sie richtig: vier Records. Der Nachzug leitete sie dagegen aus dem
+  // Anker ab und traf für BEIDE Belegstellen den ERSTEN Anhang — verschiedener Schlüssel, also
+  // hielt er die zweite Zeile für fehlend und schrieb sie ein zweites Mal: fünf Records, mit zwei
+  // verschiedenen Herkunftsbehauptungen über dieselbe Belegstelle, in einer append-only Kette.
+  //
+  // WAS DIESER FALL FESTHÄLT. Nicht „der Nachzug schreibt nichts", sondern: er lässt die Kette
+  // Zeile für Zeile, wie sie ist — samt der Zuordnungen, die der schreibende Vorgang GEWUSST hat.
+  // Deshalb wird vorher gemessen, dass die beiden Belegstellen wirklich auf VERSCHIEDENE Anhänge
+  // zeigen; ohne diese Kalibrierung wäre die Zusage danach wertlos.
+  it("H11 · zwei Bündel DESSELBEN Originals: der Nachzug lässt Zeilen und Zuordnungen, wie sie sind", async () => {
+    const { app, kopf, services } = await buehne();
+    try {
+      const entwurfId = await entwurfAusDocx(app, kopf);
+      const objektId = await originalSichern(app, kopf, entwurfId);
+      const stand = {
+        ...PFLICHT,
+        anchorDocuments: [
+          { key: "anker-1", objectId: objektId, name: "sample.docx", mime: DOCX_MIME },
+        ],
+      };
+      await speichernUndKalibrieren(app, kopf, entwurfId, stand, objektId);
+      const erzeugt = await ausDokumenten(
+        app,
+        kopf,
+        entwurfId,
+        stand,
+        "4137zwei-0000-4000-8000-000000000001",
+        [
+          { objectId: objektId, auszug: QUELLSATZ },
+          { objectId: objektId, auszug: ZWEITER_AUSZUG },
+        ],
+      );
+      expect(erzeugt.statusCode, erzeugt.body).toBe(201);
+      const ko = erzeugt.json() as Wissensobjekt;
+
+      // ---- KALIBRIERUNG: der Fall ist wirklich hergestellt ----------------------------------
+      const anhaenge = ko.attachments ?? [];
+      const quellen = ko.sources ?? [];
+      expect(anhaenge).toHaveLength(2);
+      expect(quellen).toHaveLength(2);
+      // DASSELBE Original, ZWEI Anhänge — genau die Mehrdeutigkeit, um die es geht.
+      expect(anhaenge.map((a) => a.objectId)).toEqual([objektId, objektId]);
+      expect(anhaenge[0]?.id).not.toBe(anhaenge[1]?.id);
+      // Die Reihenfolge der Bündel steht am Objekt und wird nicht angenommen, sondern gelesen.
+      expect(quellen[0]?.excerpt).toBe(QUELLSATZ);
+      expect(quellen[1]?.excerpt).toBe(ZWEITER_AUSZUG);
+
+      const vorher = await belegkette(app, kopf, ko.id);
+      expect(vorher.map((z) => z.kind).sort()).toEqual([
+        "attachment",
+        "attachment",
+        "source",
+        "source",
+      ]);
+      const zuordnung = (sourceId?: string): string | undefined =>
+        vorher.find((z) => z.kind === "source" && z.sourceId === sourceId)?.attachmentId;
+      // JEDE Belegstelle zeigt auf den Anhang IHRES Bündels. Das weiß nur der schreibende Vorgang.
+      expect(zuordnung(quellen[0]?.id)).toBe(anhaenge[0]?.id);
+      expect(zuordnung(quellen[1]?.id)).toBe(anhaenge[1]?.id);
+
+      // ---- DER NACHZUG, zweimal --------------------------------------------------------------
+      const gespeichertesKo = await services.ko.get(ko.id);
+      if (!gespeichertesKo) {
+        throw new Error("Testaufbau: das erzeugte Wissensobjekt fehlt im Bestand");
+      }
+      await services.ko.ensureCreatedSideEffects(gespeichertesKo);
+      await services.ko.ensureCreatedSideEffects(gespeichertesKo);
+
+      const nachher = await belegkette(app, kopf, ko.id);
+      expect(
+        nachher,
+        "WENN DIESE ZEILE ROT IST, erkennt der Nachzug eine belegte Quelle nicht mehr, sobald er ihre Herkunft anders ableitet als der Vorgang, der sie geschrieben hat (BEN, Runde 2: vier Records vorher, fünf danach).",
+      ).toEqual(vorher);
+    } finally {
+      await app.close();
+    }
+  }, 120_000);
+
+  // ==============================================================================================
+  // H12 · JOB 4137 R3 — BRICHT DIE BELEGABLAGE BEIM EINREICHEN, SCHLIESST DER NACHZUG DIE LÜCKE.
+  // ==============================================================================================
+  //
+  // H10 und H11 fahren den Nachzug über eine VOLLSTÄNDIGE Kette — sie zeigen, dass er nichts
+  // doppelt. Hier steht die andere Hälfte derselben Zusage, und ohne sie wäre die erste wertlos:
+  // ein Nachzug, der gar nichts schreibt, wäre trivial doppelfrei und nutzlos. Gemessen wird der
+  // Zustand, für den es ihn gibt — das Objekt ist im Bestand, seine Belegzeile fehlt.
+  it("H12 · bricht die Belegablage beim Einreichen, zieht der Nachzug GENAU die fehlende Zeile nach", async () => {
+    let gestoerteKennung: string | null = null;
+    const { app, kopf, services } = await buehneMitBelegstoerung((record) => {
+      if (record.kind === "source" && gestoerteKennung === null) {
+        gestoerteKennung = record.koId;
+        return "werfen";
+      }
+      return "durchlassen";
+    });
+    try {
+      const entwurfId = await entwurfAusDocx(app, kopf);
+      const objektId = await originalSichern(app, kopf, entwurfId);
+      const stand = {
+        ...PFLICHT,
+        pendingSources: [
+          { label: "sample.docx", excerpt: QUELLSATZ, anchorKey: "anker-1", objectId: objektId },
+        ],
+        anchorDocuments: [
+          { key: "anker-1", objectId: objektId, name: "sample.docx", mime: DOCX_MIME },
+        ],
+      };
+      await speichernUndKalibrieren(app, kopf, entwurfId, stand, objektId);
+      const befoerdert = await einreichen(
+        app,
+        kopf,
+        entwurfId,
+        stand,
+        "4137luck-0000-4000-8000-000000000001",
+      );
+      // DER BRUCH IST ECHT: der Vorgang scheitert, und zwar NICHT still.
+      expect(befoerdert.statusCode, befoerdert.body).not.toBe(201);
+      const kennung = gestoerteKennung;
+      if (!kennung) {
+        throw new Error("Testaufbau: die Belegablage wurde gar nicht erst gerufen");
+      }
+
+      // ---- WAS DER BRUCH HINTERLÄSST, gemessen statt behauptet -------------------------------
+      const halbes = await services.ko.get(kennung);
+      if (!halbes) {
+        throw new Error("Testaufbau: das Wissensobjekt ist gar nicht erst entstanden");
+      }
+      expect(halbes.sources ?? []).toHaveLength(1);
+      expect(
+        await belegkette(app, kopf, kennung),
+        "WENN DIESE ZEILE ROT IST, ist die Lücke gar nicht entstanden — dann misst der Rest dieses Falls nichts.",
+      ).toEqual([]);
+
+      // ---- DER NACHZUG schliesst sie, und zwar EINMAL ----------------------------------------
+      await services.ko.ensureCreatedSideEffects(halbes);
+      const geschlossen = await belegkette(app, kopf, kennung);
+      expect(geschlossen.map((z) => z.kind)).toEqual(["source"]);
+      expect(geschlossen[0]?.sourceId).toBe((halbes.sources ?? [])[0]?.id);
+      expect(geschlossen[0]?.excerpt).toBe(QUELLSATZ);
+
+      await services.ko.ensureCreatedSideEffects(halbes);
+      expect(
+        await belegkette(app, kopf, kennung),
+        "WENN DIESE ZEILE ROT IST, schreibt der zweite Nachzug die eben nachgezogene Zeile noch einmal.",
+      ).toEqual(geschlossen);
+    } finally {
+      await app.close();
+    }
+  }, 120_000);
+
+  // ==============================================================================================
+  // H13 · JOB 4137 R3 — DIE LÜCKE AM MEHRFACH GEBUNDENEN ORIGINAL: DIE SCHWÄCHERE, WAHRE AUSSAGE.
+  // ==============================================================================================
+  //
+  // DER HÄRTESTE FALL, und BENS Prüflücke aus Runde 2: eine FEHLENDE `source`-Zeile an einem Objekt,
+  // dessen Anker MEHRDEUTIG ist (zwei Anhänge, dasselbe Original). Der Nachzug muss diese eine Zeile
+  // schreiben — aber er WEISS nicht, aus welchem der beiden Anhänge die Belegstelle stammt: das
+  // wusste nur das Bündel, und das ist vorbei. Er darf deshalb nicht raten.
+  //
+  // WAS DABEI HERAUSKOMMT, ist eine Zeile OHNE `attachmentId`: „diese Belegstelle gehört zu diesem
+  // Objekt" — wahr — statt „sie stammt aus genau diesem Anhang" — vielleicht falsch. Das ist
+  // dieselbe Regel wie überall im Produkt: fehlt die Voraussetzung, steht die schwächere Aussage da.
+  // Und die drei Zeilen, die schon dastehen, bleiben unangetastet.
+  it("H13 · fehlt eine Zeile am mehrfach gebundenen Original, zieht der Nachzug sie OHNE geratene Herkunft nach", async () => {
+    let verschluckt = 0;
+    const { app, kopf, services } = await buehneMitBelegstoerung((record) => {
+      // Die LETZTE der vier Zeilen kommt nicht an: zwei `attachment`, dann zwei `source`.
+      if (record.kind === "source" && verschluckt === 0 && record.excerpt === ZWEITER_AUSZUG) {
+        verschluckt += 1;
+        return "verschlucken";
+      }
+      return "durchlassen";
+    });
+    try {
+      const entwurfId = await entwurfAusDocx(app, kopf);
+      const objektId = await originalSichern(app, kopf, entwurfId);
+      const stand = {
+        ...PFLICHT,
+        anchorDocuments: [
+          { key: "anker-1", objectId: objektId, name: "sample.docx", mime: DOCX_MIME },
+        ],
+      };
+      await speichernUndKalibrieren(app, kopf, entwurfId, stand, objektId);
+      const erzeugt = await ausDokumenten(
+        app,
+        kopf,
+        entwurfId,
+        stand,
+        "4137luck-0000-4000-8000-000000000002",
+        [
+          { objectId: objektId, auszug: QUELLSATZ },
+          { objectId: objektId, auszug: ZWEITER_AUSZUG },
+        ],
+      );
+      expect(erzeugt.statusCode, erzeugt.body).toBe(201);
+      const ko = erzeugt.json() as Wissensobjekt;
+      const anhaenge = ko.attachments ?? [];
+      const quellen = ko.sources ?? [];
+      expect(anhaenge).toHaveLength(2);
+      expect(quellen).toHaveLength(2);
+
+      // ---- KALIBRIERUNG: die Lücke ist da, und es ist die richtige ---------------------------
+      const mitLuecke = await belegkette(app, kopf, ko.id);
+      // Als MENGE, nicht als Reihenfolge: die Zeilen einer Erstanlage tragen denselben Zeitpunkt,
+      // die Kette sortiert dann nach Kennung — eine Reihenfolge zu behaupten wäre unbelegt (H9).
+      expect(
+        mitLuecke.map((z) => z.kind).sort(),
+        "WENN DIESE ZEILE ROT IST, ist die Lücke nicht entstanden — dann misst der Rest nichts.",
+      ).toEqual(["attachment", "attachment", "source"]);
+      expect(mitLuecke.some((z) => z.sourceId === quellen[1]?.id)).toBe(false);
+
+      // ---- DER NACHZUG -----------------------------------------------------------------------
+      const gespeichertesKo = await services.ko.get(ko.id);
+      if (!gespeichertesKo) {
+        throw new Error("Testaufbau: das erzeugte Wissensobjekt fehlt im Bestand");
+      }
+      await services.ko.ensureCreatedSideEffects(gespeichertesKo);
+      const geschlossen = await belegkette(app, kopf, ko.id);
+      expect(geschlossen).toHaveLength(4);
+      // Die drei vorhandenen Zeilen sind unverändert — auch ihre Zuordnungen.
+      expect(
+        geschlossen.filter((z) => mitLuecke.some((alt) => alt.id === z.id)),
+        "WENN DIESE ZEILE ROT IST, hat der Nachzug bestehende Zeilen angefasst — die Kette ist append-only.",
+      ).toEqual(mitLuecke);
+      const nachgezogen = geschlossen.find((z) => z.sourceId === quellen[1]?.id);
+      expect(nachgezogen?.kind).toBe("source");
+      expect(nachgezogen?.excerpt).toBe(ZWEITER_AUSZUG);
+      expect(
+        nachgezogen?.attachmentId,
+        "WENN DIESE ZEILE ROT IST, hat der Nachzug bei mehrdeutigem Anker eine Herkunft GERATEN, statt sie wegzulassen.",
+      ).toBeUndefined();
+
+      // Und ein zweiter Nachzug lässt auch diese Zeile in Ruhe.
+      await services.ko.ensureCreatedSideEffects(gespeichertesKo);
+      expect(await belegkette(app, kopf, ko.id)).toEqual(geschlossen);
+    } finally {
+      await app.close();
+    }
+  }, 120_000);
 });

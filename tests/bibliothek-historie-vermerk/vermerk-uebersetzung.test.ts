@@ -75,7 +75,7 @@
 //         und als Nachbarargument eines echten Aufrufs (Fall (H)). Beides hat BEN an R2 gemessen,
 //         beides steht jetzt als dauerhafter Fall in (e);
 //       · aus `this.snapshot(…)` zählt AUSSCHLIESSLICH das dritte Argument, weil genau dort die
-//         Unterschrift des Dienstes den Vermerk führt (`service.ts:760` `snapshot(ko, author, note,
+//         Unterschrift des Dienstes den Vermerk führt (`service.ts:820` `snapshot(ko, author, note,
 //         tx?)`). Ein Literal in einem Nachbarargument ist der Mandant, der Titel, die Transaktion —
 //         nicht der Vermerk (Fälle (F)/(G) in (e); beide wurden an R1 fälschlich gemeldet).
 //
@@ -115,6 +115,13 @@ const uebersetzer = (lng: string): ((key: string) => string) => i18n.getFixedT(l
  * eingefügt; alle zehn Fundstellen sind verrutscht. Die Wortlaute sind unverändert — es sind
  * weiterhin dieselben FÜNF Vermerke, und ihre Zahl prüft der Fall darüber ohnehin gegen den Code.
  *
+ * JOB 4137 (15.09.2026) · UND NOCH EINMAL NEU GEMESSEN, aus demselben Grund: die Belegkette der
+ * Erstanlage hat oberhalb (`belegSchluessel` vor der Klasse) und im Dienst (`erstanlageBelege`,
+ * `anhangJeQuelleAusAnker`, der Schreibschritt in `finishCreated` und der Nachzug in
+ * `ensureCreatedSideEffects`) eingefügt; alle zehn Fundstellen sind verrutscht. Die Wortlaute sind
+ * UNVERÄNDERT — es sind weiterhin dieselben FÜNF Vermerke. Gemessen mit
+ * `grep -n '"erstellt"' …` am heutigen Dienst, nicht fortgeschrieben.
+ *
  * JOB 3843 · `en` und `nl` sind die am Katalog GEMESSENEN Solltexte (Stand 172001e, 13.09.2026,
  * gelesen über `alleSprachbestaende()`); `wort` ist zugleich der deutsche Solltext, weil der Dienst
  * sein Literal schreibt und der deutsche Katalogblock genau dieses Literal trägt. DIESELBE TABELLE
@@ -133,21 +140,21 @@ const DIENST_VERMERKE = [
     schluessel: "ko.historyNote.created",
     en: "created",
     nl: "aangemaakt",
-    fundstellen: [1863, 1982],
+    fundstellen: [2012, 2138],
   },
   {
     wort: "erstellt (Dokumentinhalt übernommen)",
     schluessel: "ko.historyNote.createdFromDocument",
     en: "created (document content adopted)",
     nl: "aangemaakt (documentinhoud overgenomen)",
-    fundstellen: [2210],
+    fundstellen: [2383],
   },
   {
     wort: "erstellt (nachgezogen)",
     schluessel: "ko.historyNote.createdBackfilled",
     en: "created (backfilled)",
     nl: "aangemaakt (nagetrokken)",
-    fundstellen: [2638],
+    fundstellen: [2792],
   },
   {
     wort: "überarbeitet",
@@ -161,14 +168,14 @@ const DIENST_VERMERKE = [
     // Überarbeitung. Dass dabei zugleich freigegeben wurde, steht nicht im Vermerk, sondern im
     // Datensatz (`status`, `ownership.validators`) und in zwei Audit-Belegen; die Begründung dafür
     // steht bei `naechsteFassung` im Dienst.
-    fundstellen: [3682, 3766, 3839, 4028],
+    fundstellen: [3870, 3954, 4027, 4216],
   },
   {
     wort: "überarbeitet (Dokumentinhalt übernommen)",
     schluessel: "ko.historyNote.revisedFromDocument",
     en: "revised (document content adopted)",
     nl: "herzien (documentinhoud overgenomen)",
-    fundstellen: [4251, 4269],
+    fundstellen: [4439, 4457],
   },
 ] as const;
 
@@ -373,7 +380,7 @@ const argumenteVon = (code: string, maske: string, aufruf: string): string[][] =
   return raus;
 };
 
-/** Das Argument, das der Dienst als Vermerk führt: `snapshot(ko, author, note, tx?)`, service.ts:760. */
+/** Das Argument, das der Dienst als Vermerk führt: `snapshot(ko, author, note, tx?)`, service.ts:820. */
 const VERMERK_ARGUMENT = 2;
 
 /**
@@ -459,7 +466,7 @@ describe("JOB 3627 · die Liste der festen Dienst-Vermerke ist gemessen, nicht b
     // JOB 3667 RUNDE 7 · DREI ERZEUGER STATT EINEM — die Zusage dieses Falls ist unverändert und
     // wird hier NICHT gelockert: jeder Erzeuger muss ein LITERAL sein, und die Liste steht weiterhin
     // wörtlich da. Dass sie gewachsen ist, ist die Nachführpflicht dieses Auftrags: `revise`
-    // (service.ts:3650), `reviseUndFreigeben` (:3807) und `decideProposal` (:3996) schreiben je eine
+    // (service.ts:3807), `reviseUndFreigeben` (:3970) und `decideProposal` (:4090) schreiben je eine
     // neue Inhaltsfassung und damit je einen Schnappschuss. Alle drei tragen DASSELBE Literal — käme
     // hier je ein Wert von aussen an, wäre die offene Grenze in `koHistoryNote.ts` erreichbar, und
     // genau das meldete dieser Fall dann.

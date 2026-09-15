@@ -581,6 +581,34 @@ function describeFailure(err: unknown): string {
   return "unknown";
 }
 
+/**
+ * JOB 4137 — WOFÜR eine Zeile der Belegkette der Beleg ist: die Gattung und die Kennung DESSEN, was
+ * sie belegt — bei `attachment` der Anhang, bei `source` die Belegstelle.
+ *
+ * OHNE die Version, und das ist die Aussage: „diese Belegstelle hat schon eine Zeile" gilt
+ * unabhängig davon, in welcher Fassung des Objekts sie geschrieben wurde. Nur so unterscheidet der
+ * idempotente Nachzug der Erstanlage (`ensureCreatedSideEffects`) eine FEHLENDE Zeile von einer,
+ * die ein anderer Vorgang (z. B. `add-source`) längst geschrieben hat.
+ *
+ * JOB 4137 R3 — UND OHNE DIE ANHANGSZUORDNUNG AN DER `source`-ZEILE, aus demselben Grund. BEN hat
+ * in Runde 2 gemessen, was der frühere Schlüssel (`kind:attachmentId:sourceId`) anrichtet: bei zwei
+ * Dokumentbündeln DESSELBEN Originals trägt die zweite Belegstelle am Objekt die Zuordnung zum
+ * zweiten Anhang, der Nachzug leitet aus dem Anker aber den ersten ab (`anhangJeQuelleAusAnker`) —
+ * verschiedener Schlüssel, also hielt er seine eigene, abweichend rekonstruierte Zuordnung für eine
+ * FEHLENDE Zeile und schrieb sie: vier Records vor dem Nachzug, fünf danach, in einer append-only
+ * Kette, die niemand mehr bereinigt.
+ *
+ * `attachmentId` ist an einer `source`-Zeile eine EIGENSCHAFT und nicht ihre Identität: die Zeile
+ * belegt die Belegstelle, nicht das Paar aus Belegstelle und Anhang. Eine Belegstelle hat genau
+ * eine Herkunft — wer schon eine Zeile hat, bekommt keine zweite mit einer anderen Behauptung
+ * darüber, woher sie stammt.
+ */
+function belegSchluessel(record: Omit<EvidenceRecord, "id">): string {
+  return record.kind === "source"
+    ? `source:${record.sourceId ?? ""}`
+    : `attachment:${record.attachmentId ?? ""}`;
+}
+
 export class KoService {
   private readonly repo: KoRepo;
   private readonly audit: AuditService | undefined;
@@ -1727,6 +1755,127 @@ export class KoService {
   }
 
   /**
+   * JOB 4137 — DIE ZEILEN DER BELEGKETTE EINER ERSTANLAGE, an EINER Stelle für BEIDE Türen.
+   *
+   * DER BEFUND, den dieser Baustein schliesst: `createWithDocumentsLocked` schrieb die Belegkette
+   * vollständig, `finishCreated` (und damit `create` und der Entwurfs-Promote) gar nicht. Dasselbe
+   * Objekt, durch zwei Türen angelegt, beantwortete die Frage „woher stammt dieser Satz, und wann
+   * kam der Beleg dazu?" einmal vollständig und einmal mit einer leeren Liste.
+   *
+   * HERAUSGEZOGEN UND NICHT KOPIERT, aus demselben Grund wie `buildCreatedKo` und `finishCreated`:
+   * zwei Kopien dieser Feldliste wären zwei Gelegenheiten, sie auseinanderlaufen zu lassen — und
+   * die zweite hätte niemand geprüft. Der Dokumentweg schreibt seine Zeilen weiterhin SELBST (er
+   * ruft `finishCreated` nicht auf, s. dort), aber er BILDET sie hier; es gibt keinen zweiten
+   * Record-Bau.
+   *
+   * SIE SCHREIBT NICHT, sie BILDET nur — das Schreiben bleibt beim Aufrufer, weil die beiden Wege
+   * verschiedene Fehlerverträge haben: der Dokumentweg nimmt bei einem Fehler das ganze Objekt
+   * zurück, `create` bleibt nach dem Insert bewusst untransaktional (WP-SHIP8-CLOSE-5).
+   *
+   * GEBILDET WIRD AUSSCHLIESSLICH AUS DEM OBJEKT: je Anhang eine Zeile, je Belegstelle eine Zeile,
+   * nicht mehr und nicht weniger. Kein Vorgabewert; leere Optionalfelder werden WEGGELASSEN und nie
+   * mit `""` belegt — eine Belegkette, die etwas behauptet, das nicht am Objekt steht, wäre keine.
+   *
+   * `anhangJeQuelle` ist die ZUORDNUNG Belegstelle → Anhang, und sie kommt vom Aufrufer, weil nur
+   * er sie mit Gewissheit kennt: der Dokumentweg hat sie beim Bauen in der Hand (`bySource`, je
+   * Bündel), die Erstanlage leitet sie aus dem bestätigten Anker der Belegstelle ab
+   * (`anhangJeQuelleAusAnker`). Ein fehlender Eintrag lässt das Feld WEG — kein Ratewert und keine
+   * Reihenfolgeannahme.
+   */
+  private erstanlageBelege(
+    ko: KnowledgeObject,
+    author: string,
+    at: string,
+    anhangJeQuelle: ReadonlyMap<string, string>,
+  ): Omit<EvidenceRecord, "id">[] {
+    const zeilen: Omit<EvidenceRecord, "id">[] = [];
+    for (const attachment of ko.attachments) {
+      zeilen.push({
+        koId: ko.id,
+        koVersion: ko.version,
+        kind: "attachment",
+        attachmentId: attachment.id,
+        ...(attachment.objectId ? { objectId: attachment.objectId } : {}),
+        label: attachment.name,
+        mime: attachment.mime,
+        createdBy: author,
+        createdAt: at,
+      });
+    }
+    for (const source of ko.sources) {
+      const attachmentId = anhangJeQuelle.get(source.id);
+      zeilen.push({
+        koId: ko.id,
+        koVersion: ko.version,
+        kind: "source",
+        sourceId: source.id,
+        ...(attachmentId ? { attachmentId } : {}),
+        label: source.label,
+        ...(source.url ? { url: source.url } : {}),
+        // mega26 Block B: der Grund der Verknüpfung — die Belegstelle, die diese Quelle trägt.
+        // `source.excerpt` ist zu diesem Zeitpunkt bereits getrimmt/normalisiert.
+        ...(source.excerpt ? { excerpt: source.excerpt } : {}),
+        createdBy: author,
+        createdAt: at,
+      });
+    }
+    return zeilen;
+  }
+
+  /**
+   * JOB 4137 — DIE ZUORDNUNG BELEGSTELLE → ANHANG, gelesen und nicht geraten.
+   *
+   * Trägt eine Belegstelle den ANKER, den JOB 4077 an ihr eingeführt hat (`KoSource.objectId`: die
+   * vom Server gegen die eigene Anhangsliste bestätigte Kennung), dann wird der Anhang DESSELBEN
+   * Objekts mit dieser Kennung gesucht und seine Id an der `source`-Zeile vermerkt. Findet sich
+   * keiner, bleibt das Feld WEG.
+   *
+   * KEINE REIHENFOLGEANNAHME: es wird über den Anker verbunden, nicht über „der n-te Anhang gehört
+   * zur n-ten Quelle". Und keine Rückfallkette über den Dateinamen — ein Name ist kein Anker (s.
+   * die Begründung an `KoSource.objectId` in types.ts).
+   *
+   * JOB 4137 R3 — UND KEIN ERSTER-GEWINNT. Bis Runde 2 stand hier: „der ERSTE Anhang je Anker
+   * gewinnt … eine Wahl zwischen ihnen wäre geraten, also wird die stabile getroffen". Das war eine
+   * Wahl zwischen zwei Möglichkeiten, von denen genau eine stimmt — also geraten, nur verlässlich
+   * gleich geraten. BEN hat den Fall in Runde 2 hergestellt: ZWEI Dokumentbündel mit DERSELBEN
+   * Originalkennung ergeben zwei Anhänge mit gleichem `objectId` und verschiedener Id; die
+   * Belegstelle des zweiten Bündels gehört zum ZWEITEN Anhang, und der Anker allein sagt nicht,
+   * zu welchem.
+   *
+   * Ist der Anker MEHRDEUTIG (mehr als ein Anhang desselben Objekts trägt ihn), bleibt die
+   * Zuordnung deshalb WEG — `erstanlageBelege` lässt das Feld dann aus. Das ist die schwächere und
+   * wahre Aussage („diese Belegstelle gehört zu diesem Objekt") statt der starken und womöglich
+   * falschen („sie stammt aus genau diesem Anhang"). Der Weg, der es WEISS, ist der Dokumentweg:
+   * `createWithDocumentsLocked` bildet die Zuordnung je Bündel (`bySource`) und gibt sie hier
+   * hinein, statt sie ableiten zu lassen.
+   */
+  private anhangJeQuelleAusAnker(ko: KnowledgeObject): Map<string, string> {
+    const anhangJeAnker = new Map<string, string>();
+    const mehrdeutig = new Set<string>();
+    for (const attachment of ko.attachments) {
+      if (!attachment.objectId) {
+        continue;
+      }
+      if (anhangJeAnker.has(attachment.objectId)) {
+        mehrdeutig.add(attachment.objectId);
+        continue;
+      }
+      anhangJeAnker.set(attachment.objectId, attachment.id);
+    }
+    const zuordnung = new Map<string, string>();
+    for (const source of ko.sources) {
+      if (!source.objectId || mehrdeutig.has(source.objectId)) {
+        continue;
+      }
+      const attachmentId = anhangJeAnker.get(source.objectId);
+      if (attachmentId) {
+        zuordnung.set(source.id, attachmentId);
+      }
+    }
+    return zuordnung;
+  }
+
+  /**
    * AUFTRAG-mega19 Block B — DIE GESTALT EINES NEUEN WISSENSOBJEKTS, an EINER Stelle.
    *
    * Herausgezogen aus `create`, weil es jetzt ZWEI Wege in die Erstanlage gibt: den allgemeinen
@@ -1967,11 +2116,18 @@ export class KoService {
   }
 
   /**
-   * Die BELEGE der Erstanlage, an EINER Stelle — Snapshot und `ko.created`.
+   * Die BELEGE der Erstanlage, an EINER Stelle — Snapshot, Projektion, BELEGKETTE und `ko.created`.
    *
    * AUFTRAG-mega22 Block H: herausgezogen, weil es jetzt zwei Wege in `create` gibt (mit und ohne
    * Vorgang). Zwei Kopien dieser Folge wären zwei Gelegenheiten, sie auseinanderlaufen zu lassen —
    * und die zweite hätte niemand geprüft.
+   *
+   * JOB 4137: DIE BELEGKETTE IST DAZUGEKOMMEN. Bis hierher schrieb diese Stelle drei Dinge und
+   * KEINEN `EvidenceRecord` — das tat allein `createWithDocumentsLocked`. Ein über „speichern und
+   * einreichen" entstandenes Wissensobjekt trug seine Belegstelle am Objekt (JOB 3934), in der
+   * append-only Belegkette aber stand nichts: `GET /api/kos/:id/evidence` antwortete mit `[]`,
+   * gemessen in `tests/demo-erster-nutzerweg/befund-promote-verliert-die-herkunft.test.ts`. Damit
+   * hing die Antwort auf „woher stammt dieser Satz?" an der Tür, durch die das Objekt gekommen war.
    */
   private async finishCreated(ko: KnowledgeObject, author: string): Promise<void> {
     // SCRUM-159: Version-1-Snapshot persistieren (Foundation; aktuelles KO bleibt canonical).
@@ -1983,6 +2139,23 @@ export class KoService {
     // G27: die Suchprojektion der Version 1 entsteht im selben Belegschritt wie der Snapshot —
     // ein frisch angelegtes Objekt ist ab diesem Moment auffindbar, mit seinem VOLLEN Text.
     await this.persistSearchProjection(ko);
+    // JOB 4137: DIE BELEGKETTE, an derselben Stelle wie Snapshot und Projektion und aus denselben
+    // Tatsachen wie der Dokumentweg (`erstanlageBelege`). `ko.createdAt` und nicht `this.now()`:
+    // die Zeile gehört zur ANLAGE dieses Objekts und trägt deren Zeitpunkt — genau wie die Zeilen
+    // des Dokumentwegs, die dort denselben `at` bekommen wie das Objekt selbst. Ein zweiter,
+    // späterer Zeitstempel wäre eine zweite Auskunft darüber, wann der Beleg dazukam.
+    //
+    // OHNE EVIDENCE-ABLAGE ist das ein No-op (`appendEvidence`), und ein Objekt ohne Anhänge und
+    // ohne Belegstellen erzeugt KEINE Zeile: eine leere Belegkette bleibt die wahre Antwort für ein
+    // Objekt, das nichts zu belegen hat, und wird nicht zu einer Ersatzzeile.
+    for (const zeile of this.erstanlageBelege(
+      ko,
+      author,
+      ko.createdAt,
+      this.anhangJeQuelleAusAnker(ko),
+    )) {
+      await this.appendEvidence(zeile);
+    }
     // WP-SHIP8-CLOSE-6 (bens ROT-1): auch die ERSTANLAGE schreibt ihren Beleg exactly-once über
     // dieselbe stabile Event-Id wie der Nachzieh-Pfad — ein Race zwischen create und einem
     // parallelen Nachzug kann nie zwei ko.created-Einträge erzeugen.
@@ -2216,35 +2389,16 @@ export class KoService {
       await this.persistSearchProjection(ko, (geschrieben) => {
         projectionWritten = geschrieben;
       });
-      for (const attachment of attachments) {
-        await this.appendEvidence({
-          koId: ko.id,
-          koVersion: ko.version,
-          kind: "attachment",
-          attachmentId: attachment.id,
-          objectId: attachment.objectId as string,
-          label: attachment.name,
-          mime: attachment.mime,
-          createdBy: input.author,
-          createdAt: at,
-        });
-      }
-      for (const source of ko.sources) {
-        const attachmentId = bySource.get(source.id);
-        await this.appendEvidence({
-          koId: ko.id,
-          koVersion: ko.version,
-          kind: "source",
-          sourceId: source.id,
-          ...(attachmentId ? { attachmentId } : {}),
-          label: source.label,
-          ...(source.url ? { url: source.url } : {}),
-          // mega26 Block B: der Grund der Verknüpfung — die Belegstelle, die diese Quelle trägt.
-          // `source.excerpt` ist hier bereits getrimmt/normalisiert (s. o.).
-          ...(source.excerpt ? { excerpt: source.excerpt } : {}),
-          createdBy: input.author,
-          createdAt: at,
-        });
+      // JOB 4137: DIESELBE BILDUNG WIE DIE ALLGEMEINE ERSTANLAGE. Hier standen bis dahin zwei
+      // ausgeschriebene Schleifen; sie sind nach `erstanlageBelege` gewandert, weil `finishCreated`
+      // seit diesem Auftrag dieselben Zeilen schreibt und zwei Kopien der Feldliste zwei
+      // Gelegenheiten wären, sie auseinanderlaufen zu lassen. GESCHRIEBEN wird weiterhin HIER —
+      // innerhalb der Rücknahmeklammer, denn dieser Weg nimmt bei einem Fehler das ganze Objekt
+      // zurück. `bySource` bleibt die Zuordnung dieses Weges: sie steht je BÜNDEL fest und ist
+      // damit genauer als jede Ableitung aus dem fertigen Objekt (zwei Bündel können dasselbe
+      // Original anhängen).
+      for (const zeile of this.erstanlageBelege(ko, input.author, at, bySource)) {
+        await this.appendEvidence(zeile);
       }
       await this.audit?.recordOnce(`ko.created:${ko.id}`, {
         actor: input.author,
@@ -2653,6 +2807,40 @@ export class KoService {
           action: "ko.created",
           target: ko.id,
         });
+      }
+    }
+    // JOB 4137: DIE BELEGKETTE GEHÖRT SEIT DIESEM AUFTRAG ZU DEN BELEGEN DER ERSTANLAGE — also auch
+    // hierher. `finishCreated` schreibt sie; scheitert etwas NACH dem Insert, fehlt sie genauso wie
+    // Snapshot und Audit, und dieser Pfad ist der Auffang (Kopf dieser Methode).
+    //
+    // IDEMPOTENT ÜBER DEN BESTAND, nicht über einen Merker: gefragt wird, welche Anhänge und
+    // Belegstellen des Objekts SCHON eine Zeile haben — geschrieben wird nur, was fehlt. Der
+    // Schlüssel ist bewusst die IDENTITÄT des Belegten (Gattung + Anhang- bzw. Quellen-Id, s.
+    // `belegSchluessel`), ohne Version und ohne die Anhangszuordnung der `source`-Zeile: eine
+    // Belegstelle, die später über `add-source` dazukam, trägt ihre Zeile aus jenem Vorgang, und
+    // der Nachzug der ERSTANLAGE darf sie nicht ein zweites Mal schreiben — auch dann nicht, wenn
+    // er ihre Herkunft aus dem Anker anders ableiten würde als der Vorgang, der sie geschrieben hat
+    // (JOB 4137 R3, BENs Messung an zwei Bündeln desselben Originals: sonst fünf Zeilen statt vier).
+    //
+    // EHRLICHE GRENZE, gemessen am Mechanismus und nicht behauptet: das ist ein Query-then-Write.
+    // Zwei Nachzüge, die BEIDE die leere Kette lesen, bevor einer schreibt, erzeugen zwei Zeilen —
+    // dieselbe Lücke, die `recordOnce` für das Audit über eine stabile Ereignis-Id schliesst. Für
+    // die Belegkette gäbe es diese Id nur als neue Form der Record-Kennung, und die ist ein
+    // Modellanteil (JOB 4137 §10: `types.ts`/`repo.ts`/`repo-pg.ts` bleiben unberührt). Steht als
+    // REST. Der praktisch auftretende Fall — Nachzug nach einem gescheiterten `finishCreated`, und
+    // ein zweiter Nachzug danach — ist geschlossen und in H10 gemessen.
+    if (this.evidence) {
+      const vorhanden = await this.evidence.listByKo(ko.id);
+      const schonBelegt = new Set(vorhanden.map(belegSchluessel));
+      for (const zeile of this.erstanlageBelege(
+        ko,
+        ko.author,
+        ko.createdAt,
+        this.anhangJeQuelleAusAnker(ko),
+      )) {
+        if (!schonBelegt.has(belegSchluessel(zeile))) {
+          await this.appendEvidence(zeile);
+        }
       }
     }
     // G27: die Suchprojektion gehört zu den Belegen, die der Nachzug herstellen muss — sonst wäre

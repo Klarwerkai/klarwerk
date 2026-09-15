@@ -41,17 +41,27 @@
 //       ein Client heute legitim geht (Auftrag JOB 3934 §10).
 //
 // ------------------------------------------------------------------------------------------------
-// WAS DIESE DATEI HEUTE ZUSICHERT (JOB 3934)
+// WAS DIESE DATEI HEUTE ZUSICHERT (JOB 3934, Zeile 4 seit JOB 4137)
 // ------------------------------------------------------------------------------------------------
-// Dieselben drei Schlusszeilen, gedreht:
+// Dieselben drei Schlusszeilen, gedreht — und seit JOB 4137 ist auch die vierte gedreht:
 //   1. Das Wissensobjekt entsteht (201)                                  — unverändert.
 //   2. Es trägt den Text AUS DER DATEI                                   — unverändert.
 //   3. Es trägt die Belegstelle des Entwurfs, mit dem Namen der Datei    — GEDREHT (war `[]`).
-//   4. Die append-only Belegkette bleibt LEER                            — GEMESSEN, nicht behauptet:
-//      `ko.create` → `finishCreated` (services/knowledge-object/src/service.ts:1929-1947) schreibt
-//      keinen `EvidenceRecord`; das tut nur `createWithDocumentsLocked` (`:2166-2195`). Die
-//      Belegkette DIESES Weges ist damit noch NICHT geschlossen. Wird Zeile 4 rot, hat jemand einen
-//      Schreibweg ergänzt — dann gehört die neue Zahl samt ihren `kind`-Werten hierher.
+//   4. Die append-only Belegkette TRÄGT GENAU EINE ZEILE, `kind: "source"` — GEDREHT (war `[]`).
+//
+// ZU ZEILE 4, JOB 4137. Bis hierher stand hier die gemessene Tatsache „die Belegkette bleibt LEER",
+// samt Bestellung: „Wird Zeile 4 rot, hat jemand einen Schreibweg ergänzt — dann gehört die neue
+// Zahl samt ihren `kind`-Werten hierher." Genau das ist geschehen. `finishCreated`
+// (services/knowledge-object/src/service.ts) schreibt jetzt für JEDEN Anhang und JEDE Belegstelle
+// des frisch angelegten Objekts eine Zeile — über denselben Baustein wie
+// `createWithDocumentsLocked`, nicht über einen zweiten Schreibweg.
+//
+// DIE ZAHL IST EINS UND NICHT ZWEI, und das ist keine Halbheit, sondern die gemessene Gestalt
+// DIESES Weges: der Promote bindet kein Original als ANHANG ans Wissensobjekt (`CreateKoInput` hat
+// kein `attachments`-Feld; `buildCreatedKo` setzt für diesen Weg `attachments: []`). Das Objekt
+// trägt also eine Belegstelle und keinen Anhang — und die Kette bildet genau das ab, nicht mehr.
+// Dass die Kette dem Objekt folgt und nicht einer Erwartung, wird hier an `attachments` MITGEMESSEN
+// und in `promote-traegt-die-herkunft.test.ts` (H9) gegen den Dokumentweg gehalten.
 //
 // Die FELDGENAUE Prüfung der Belegstelle (Anzahl, Auszug, Reihenfolge, Adressverzicht, kein
 // Vorgabewert) steht nicht hier, sondern in `promote-traegt-die-herkunft.test.ts` (H1–H6). Diese
@@ -165,8 +175,11 @@ describe("JOB 3801/3934 · ZUSAGE: der Promote trägt die geprüfte Herkunft mit
       expect(befoerdert.statusCode, befoerdert.body).toBe(201);
       const ko = befoerdert.json() as {
         id: string;
+        author: string;
+        version: number;
         bodyHtml?: string | null;
-        sources?: { label: string; excerpt: string | null }[];
+        sources?: { id: string; label: string; excerpt: string | null }[];
+        attachments?: { id: string }[];
       };
       // 2. Es trägt den Text AUS DER DATEI.
       expect(ko.bodyHtml ?? "").toContain(QUELLSATZ);
@@ -178,25 +191,63 @@ describe("JOB 3801/3934 · ZUSAGE: der Promote trägt die geprüfte Herkunft mit
         "WENN DIESE ZEILE ROT IST, fällt die Herkunft beim Einreichen wieder weg (der Befund aus JOB 3801 ist zurück).",
       ).toEqual(["sample.docx"]);
       expect(ko.sources?.[0]?.excerpt).toBe(QUELLSATZ);
-      // 4. DIE BELEGKETTE BLEIBT LEER — gemessen, nicht behauptet. Der Promote läuft über
-      //    `ko.create`, und dieser Weg schreibt keinen `EvidenceRecord` (Begründung im Kopf dieser
-      //    Datei). Die append-only Belegkette dieses Weges ist NOCH NICHT geschlossen; das steht
-      //    hier als Tatsache und nicht als Versprechen.
+      // 4. DIE BELEGKETTE IST GESCHLOSSEN — gemessen, nicht behauptet (JOB 4137; bis dahin stand
+      //    hier `toEqual([])`). Der Promote läuft über `ko.create` → `finishCreated`, und diese
+      //    Stelle schreibt jetzt für jeden Anhang und jede Belegstelle des Objekts eine Zeile.
+      //
+      //    DIE ERWARTUNG STEHT NICHT ALS NACKTE ZAHL DA, sondern wird aus dem Objekt ABGELEITET:
+      //    die Kette bildet ab, was das Objekt WIRKLICH trägt. Dieses hier trägt eine Belegstelle
+      //    und keinen Anhang — der Promote bindet kein Original als Anhang (Kopf dieser Datei).
+      const anhaenge = ko.attachments ?? [];
+      const quellen = ko.sources ?? [];
+      expect(
+        anhaenge.length,
+        "GEMESSEN: der Promote bindet kein Original als ANHANG ans Wissensobjekt — deshalb steht in der Kette keine attachment-Zeile.",
+      ).toBe(0);
+      expect(quellen).toHaveLength(1);
       const belege = await app.inject({
         method: "GET",
         url: `/api/kos/${ko.id}/evidence`,
         headers: kopf,
       });
       expect(belege.statusCode).toBe(200);
+      const kette = belege.json() as {
+        koId: string;
+        koVersion: number;
+        kind: string;
+        sourceId?: string;
+        attachmentId?: string;
+        label: string;
+        url?: string | null;
+        excerpt?: string;
+        createdBy: string;
+        createdAt: string;
+      }[];
       expect(
-        belege.json(),
-        "GEMESSEN: der Promote schreibt nichts in die Belegkette. Wird diese Zeile rot, hat jemand einen Schreibweg ergänzt — dann gehört die neue Zahl samt kind-Werten hierher.",
-      ).toEqual([]);
+        kette.map((zeile) => zeile.kind),
+        "WENN DIESE ZEILE ROT IST, schreibt der Promote seine Belegkette nicht mehr (der Zustand vor JOB 4137 ist zurück) — oder er schreibt mehr, als das Objekt trägt.",
+      ).toEqual(["source"]);
+      expect(kette).toHaveLength(anhaenge.length + quellen.length);
+      const zeile = kette[0] as (typeof kette)[number];
+      expect(zeile.koId).toBe(ko.id);
+      expect(zeile.koVersion).toBe(ko.version);
+      // DIE ZEILE ZEIGT AUF DIE BELEGSTELLE DES OBJEKTS — nicht auf eine erfundene Kennung.
+      expect(zeile.sourceId).toBe(quellen[0]?.id);
+      expect(zeile.label).toBe("sample.docx");
+      expect(zeile.excerpt).toBe(QUELLSATZ);
+      expect(zeile.createdBy).toBe(ko.author);
+      // Kein Anhang am Objekt ⇒ kein `attachmentId` an der Zeile. Weggelassen, nicht leer gesetzt.
+      expect(Object.hasOwn(zeile, "attachmentId")).toBe(false);
+      // Dieser Entwurf trug keine Adresse — also steht auch keine in der Kette (kein `""`).
+      expect(Object.hasOwn(zeile, "url")).toBe(false);
+      expect(Number.isNaN(Date.parse(zeile.createdAt))).toBe(false);
       // DIE ANDERE TÜR bleibt, wie sie war: dieselbe Datei, dieselbe Quelle über
       // `POST /api/kos/from-document` — dort entsteht die Belegstelle MIT Belegkette, und
-      // `durchstich.test.ts` D1 prüft sie bis zurück auf die Bytes des Originals. Der Unterschied
-      // zwischen den beiden Türen ist damit nicht mehr „Herkunft oder keine", sondern nur noch
-      // „mit Belegkette oder ohne".
+      // `durchstich.test.ts` D1 prüft sie bis zurück auf die Bytes des Originals. Seit JOB 4137 ist
+      // der Unterschied zwischen den beiden Türen nicht mehr „mit Belegkette oder ohne": BEIDE
+      // Türen schreiben, und beide schreiben genau das, was ihr Objekt trägt. Der verbliebene
+      // Unterschied ist der ANHANG, den nur der Dokumentweg bindet — gemessen in H9 von
+      // `promote-traegt-die-herkunft.test.ts`.
     } finally {
       await app.close();
     }

@@ -280,9 +280,9 @@ const CANDIDATE_LIMIT = 40;
 // FUNDSTELLEN — der Wächter schlägt jede dieser Zeilen nach; ausserhalb dieser Liste steht in
 // diesem Block bewusst KEIN Datei-Zeilen-Verweis, damit keine zweite, ungeprüfte Wahrheit entsteht:
 //   · AUFRUF findCandidates — services/app/src/knowledge-check.ts:389
-//   · RUMPF findCandidates — services/knowledge-object/src/service.ts:3320-3344
-//   · AUFRUF findSearchHits — services/knowledge-object/src/service.ts:3331
-//   · RUMPF findSearchHits — services/knowledge-object/src/service.ts:1716-1718
+//   · RUMPF findCandidates — services/knowledge-object/src/service.ts:3508-3532
+//   · AUFRUF findSearchHits — services/knowledge-object/src/service.ts:3519
+//   · RUMPF findSearchHits — services/knowledge-object/src/service.ts:1744-1746
 //   · RUMPF findActive — services/knowledge-object/src/search-projection-repo.ts:708-807
 //   · RUMPF normalizeSearchTerms — services/knowledge-object/src/search-projection.ts:967-979
 //   · RUMPF expandSearchTerms — services/knowledge-object/src/search-projection.ts:1107-1127
