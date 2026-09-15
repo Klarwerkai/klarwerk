@@ -664,6 +664,30 @@ function anzeigestatusDeckelGrund(sichtbare: number): string {
   return `Diese Liste fuehrt ${sichtbare} sichtbare Eintraege und liegt damit ueber dem Deckel von ${ANZEIGESTATUS_LISTE_DECKEL}: fuer KEINEN Eintrag wurde die Pruefstandslage abgefragt. Der Anzeigestatus steht hier allein auf dem gespeicherten Status.`;
 }
 
+// ================================================================================================
+// JOB 4115 — DIE TÜR, AN DIE WORD SCHREIBT, WAR ZU SCHMAL.
+// ================================================================================================
+//
+// DER BEFUND, gemessen und nicht vermutet (Prüfer zu JOB 4085 Runde 1): `PUT /api/kos/:id` trug
+// KEIN eigenes `bodyLimit`, es galt Fastifys Vorgabe von 1 MiB. Der Word-Rückweg schreibt aber
+// genau hierher — eine Bildlast von 1.520.700 Bytes kam als `413 FST_ERR_CTP_BODY_TOO_LARGE`
+// zurück, und der Mensch las „Einreichen fehlgeschlagen". Das Aufgabenfenster schnitt die Bilder
+// deshalb vorher weg und sagte es ehrlich; ehrlich, aber für einen Absatz mit Fotos unbrauchbar:
+// abzüglich der Reserve blieben rund 1.032.192 Bytes für die ganze Nutzlast, base64 kostet ein
+// Drittel — rund 750 KiB Bilddaten.
+//
+// WARUM 5 MiB UND NICHT 30 (dieselbe Abwägung wie `capture-routes.ts:180-186`, DRAFTS_BODY_LIMIT):
+// Es ist DIESELBE Zahl wie am Entwurfsweg, an dem eine Dokumentübernahme mit vielen Bildern längst
+// durchgeht — zwei Türen desselben Hauses für denselben Stoff sollen nicht verschieden weit offen
+// stehen. Sie ist bewusst KLEIN (kleine Pre-Auth-Parser-Fläche) und später erhöbar, wenn eine
+// gemessene Last sie sprengt. Über dem Cap bleibt es beim kontrollierten 413.
+//
+// UND SIE IST KEIN LOCH: die vergrösserte Parser-Fläche steht hinter einem AUTH-RIEGEL VOR dem
+// Body-Parsing (`requireAuthedBeforeParse` in `koRoutes`, Muster `POST /api/drafts` und
+// `POST /api/objects`). Die Begründung, warum das hier ohne fachlichen Rechteverlust geht, steht
+// dort — sie musste erhoben werden, nicht angenommen.
+export const KOS_BODY_LIMIT = 5 * 1024 * 1024; // 5 MiB
+
 export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync {
   const {
     ko,
@@ -690,6 +714,38 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
   // vertraulichen Objekt ist schon die Existenz eine Auskunft — die Kennung eines Objekts erfährt
   // man aus einem Konflikt, einer Benachrichtigung oder schlicht durch Raten. „Nicht sichtbar"
   // muss deshalb genauso aussehen wie „gibt es nicht", bis hin zur Meldung.
+  // ============================================================================================
+  // JOB 4115 · DER RIEGEL VOR DEM PARSEN — UND DIE ERHEBUNG, DIE IHN ERST ERLAUBT.
+  // ============================================================================================
+  //
+  // ERHOBEN, NICHT ANGENOMMEN: `PUT /api/kos/:id` verzweigt per `{action}`. Das Tor oben im Handler
+  // ruft `guards.requireUser` nur für Aktionen mit Torurteil `"tor"`. Zwei Aktionen tragen
+  // `"kein-zielobjekt"` (ZIELOBJEKT_TOR, s. dort): `conflict` und `resolve-conflict`. Sie laufen am
+  // Tor vorbei — aber NICHT an der Anmeldung: ihr eigener `case` verlangt
+  // `requirePermission("ko.validate")` bzw. `requirePermission("conflict.resolve")`, und jede
+  // andere der 20 Aktionen verlangt ebenfalls ein Recht (gemessen an allen `case`-Zweigen).
+  // Es gibt also KEINE Aktion dieser Route, die ohne angemeldeten Absender durchkommt. Damit nimmt
+  // dieser Hook niemandem ein fachliches Recht — er verschiebt nur den Zeitpunkt der Absage.
+  //
+  // WAS SICH SICHTBAR ÄNDERT, und es steht hier statt in einer Fussnote: ein ANONYMER Aufruf mit
+  // unbekannter Aktion oder kaputtem JSON bekommt jetzt 401 statt 400. Das ist die richtige
+  // Reihenfolge — wer nicht angemeldet ist, hat kein Recht auf eine Formkritik seines Körpers.
+  // Für jeden ANGEMELDETEN Aufruf bleibt alles Zeichen für Zeichen: 400 bei unbekannter Aktion,
+  // 404 bei unsichtbarem Objekt, 413 über KOS_BODY_LIMIT.
+  //
+  // WARUM ÜBERHAUPT (Muster WP-D1d, `capture-routes.ts:782`, und JOB 2657 D1, `object-routes.ts:219`):
+  // Fastify parst den Körper NACH den `onRequest`-Hooks. Ohne diesen Hook stünde die mit JOB 4115
+  // auf 5 MiB vergrösserte Parser-Fläche jedem Anonymen offen; `requireUser` sendet 401, und
+  // Fastify bricht den Lifecycle daraufhin anhand `reply.sent` VOR dem Parsing ab. Die fachliche
+  // Prüfung im Handler (Torurteil, `sichtbaresKoOder404`, `requirePermission` je `case`) bleibt
+  // unverändert bestehen — Defense-in-Depth, kein Ersatz.
+  const requireAuthedBeforeParse = async (
+    request: Parameters<Guards["requireUser"]>[0],
+    reply: Parameters<Guards["requireUser"]>[1],
+  ): Promise<void> => {
+    await guards.requireUser(request, reply);
+  };
+
   async function sichtbaresKoOder404(user: SessionUser, id: string, reply: FastifyReply) {
     const item = await ko.get(id);
     if (!item || !darfSehen(user, item)) {
@@ -1905,7 +1961,25 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
     });
 
     // PUT /api/kos/:id — ein Mutations-Endpunkt, per {action} verzweigt (§2.3).
-    app.put<{ Params: { id: string }; Body: PutBody }>("/api/kos/:id", async (request, reply) => {
+    //
+    // JOB 4115: eigene Annahmegrenze (KOS_BODY_LIMIT, Begründung am Kopf dieser Datei) UND der
+    // Auth-Riegel VOR dem Parsen. Beides gehört zusammen: die Grenze allein wäre eine 5-MiB-
+    // Parserfläche, die jeder Anonyme füllen darf.
+    //
+    // WARUM DIESE ZEILE NICHT UMGEBROCHEN WIRD, obwohl sie über 100 Zeichen lang ist: ein fremder
+    // Wächter verankert an ihrem Wortlaut. `tests/security/mega80-kennung-ist-kein-leserecht.test.ts:229`
+    // sucht die Registrierung dieses Endpunkts als EINE Zeichenkette — Methodenaufruf, Typparameter
+    // und Pfadliteral in einem Stück — und erhebt daraus die Aktionen des Switch. Biomes Umbruch
+    // (Pfad und Optionen je in eine eigene Zeile) zerreisst sie; der Wächter fällt dann mit „Der
+    // Mutations-Endpunkt wurde im Quelltext nicht gefunden" aus. Gemessen, nicht vermutet.
+    //
+    // UND DESHALB STEHT SIE HIER AUCH NICHT NOCH EINMAL ABGESCHRIEBEN: zwei Quelltext-Erhebungen
+    // dieses Hauses lesen Routen aus dem Dateitext (der Wächter oben und
+    // `tests/security/routeGuardAudit.ts`). Eine Kopie der Registrierungszeile in einem Kommentar
+    // ist für sie eine ZWEITE Route — eine ohne Rechteprüfung. Auch das ist gemessen: der
+    // RBAC-Audit meldete prompt „PUT /api/kos/:id" als öffentlich.
+    // biome-ignore format: der Wächter mega80 verankert am Wortlaut dieser Registrierungszeile (s. o.)
+    app.put<{ Params: { id: string }; Body: PutBody }>("/api/kos/:id", { bodyLimit: KOS_BODY_LIMIT, onRequest: requireAuthedBeforeParse }, async (request, reply) => {
       const { id } = request.params;
       const body = request.body;
       const badRequest = (message: string): void => {

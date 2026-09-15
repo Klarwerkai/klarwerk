@@ -524,17 +524,19 @@
     }
 
     // ============================================================================================
-    // DIE GRENZE, DIE WIRKLICH ZAEHLT, IST DIE DER ROUTE — NICHT DIE DES ENTWURFSWEGS (JOB 4085 R2).
+    // DAS BUDGET IST DER KLEINERE VON FENSTERBUDGET UND ROUTENGRENZE (JOB 4085 R2, JOB 4115).
     // ============================================================================================
     //
-    // DER BEFUND (BEN, Runde 1): der Rueckweg mass seine Nutzlast an
+    // DER BEFUND (BEN, Runde 1) — GESCHICHTE, weil JOB 4115 ihn behoben hat; er steht hier, weil
+    // er die Bauart dieser Stelle erklaert: der Rueckweg mass seine Nutzlast an
     // `WORD_ADDIN_BODY_BUDGET_BYTES` (3.500.000). Diese Zahl gehoert dem ENTWURFSWEG — dessen Route
     // `POST /api/drafts` traegt ein ausdruecklich angehobenes `bodyLimit` (DRAFTS_BODY_LIMIT,
     // 5 MiB, capture-routes.ts). Der Rueckweg schreibt aber an `PUT /api/kos/:id`, und die Route
-    // hat KEIN eigenes `bodyLimit`; es gilt Fastifys Vorgabe von 1 MiB. Gemessen wurde genau das:
-    // eine Bildlast von 1.520.700 Bytes lag unter 3.500.000, wurde also nicht beschnitten — und kam
-    // als `413 FST_ERR_CTP_BODY_TOO_LARGE` zurueck. Der Mensch las „Einreichen fehlgeschlagen",
-    // seine Bilder waren nicht zu gross, sondern an der falschen Zahl gemessen.
+    // hatte damals KEIN eigenes `bodyLimit`; es galt Fastifys Vorgabe von 1 MiB. Gemessen wurde
+    // genau das: eine Bildlast von 1.520.700 Bytes lag unter 3.500.000, wurde also nicht
+    // beschnitten — und kam als `413 FST_ERR_CTP_BODY_TOO_LARGE` zurueck. Der Mensch las
+    // „Einreichen fehlgeschlagen", seine Bilder waren nicht zu gross, sondern an der falschen Zahl
+    // gemessen.
     //
     // DESHALB RECHNET DIESER WEG AB HIER GEGEN DIE ROUTE, an die er wirklich schreibt. Das Budget
     // ist der KLEINERE der beiden Werte: sinkt das Fensterbudget einmal unter die Routengrenze,
@@ -542,13 +544,22 @@
     // (`trimWordImagesToBudget`) greifen, BEVOR der Server ablehnt — und die Bilderbilanz sagt dem
     // Menschen, was weggefallen ist, statt ihn vor einem Serverfehler stehen zu lassen.
     //
-    // WAS DIESE ZAHL NICHT LOEST, und das gehoert hierher statt in eine Rueckgabe allein: 1 MiB ist
-    // fuer einen Word-Absatz mit Fotos knapp. Abzueglich der Reserve bleiben rund 1.032.192 Bytes
-    // fuer die ganze Nutzlast; base64 kostet ein Drittel, also passen rund 750 KiB Bilddaten hinein.
-    // Ein Handyfoto sprengt das allein. Die Folge ist EHRLICH (Bilder fallen weg und werden genannt),
-    // aber sie ist eine Folge der ROUTENGRENZE, nicht des Fensters. Sie anzuheben heisst
-    // `services/app/src/routes/ko-routes.ts` anzufassen — ein eigener Auftrag, kein Zielpfad hier.
-    var RW_ROUTE_BODY_LIMIT_BYTES = 1048576;
+    // DIE ROUTENGRENZE IST SEIT JOB 4115 DIE BREITERE VON BEIDEN — und deshalb nicht mehr das Mass.
+    // Bis dahin stand hier 1048576: 1 MiB, Fastifys Vorgabe, weil die Route keine eigene Grenze
+    // trug. Abzueglich der Reserve blieben rund 1.032.192 Bytes fuer die ganze Nutzlast, base64
+    // kostet ein Drittel — rund 750 KiB Bilddaten. Fuer einen Word-Absatz mit Fotos war das zu
+    // knapp: die Folge war EHRLICH (Bilder fielen weg und wurden genannt), aber unbrauchbar. Die
+    // Route traegt jetzt eine eigene, benannte Annahmegrenze (`KOS_BODY_LIMIT` in
+    // `services/app/src/routes/ko-routes.ts`, 5 MiB — dieselbe Zahl wie der Entwurfsweg), und diese
+    // Zahl hier ist ihr Spiegel. Sie wird an der echten Route nachgemessen, nicht geglaubt
+    // (`tests/office-pg-abnahme/echte-worddatei-am-rueckweg.test.ts`, A0d).
+    //
+    // AB JETZT GEWINNT DAS FENSTERBUDGET (3.500.000), UND DAS IST SO GEWOLLT: die Min-Regel unten
+    // bleibt unveraendert, nur die groessere der beiden Zahlen hat gewechselt. Das Fenster schneidet
+    // also weiterhin SELBST, bevor der Server ablehnt — der Mensch liest, was nicht mitkonnte,
+    // statt in einen Serverfehler zu laufen. Sinkt eine der beiden Zahlen unter die andere, dreht
+    // sich das ohne weiteres Zutun; geprueft wird die REGEL, nicht die Konstellation von heute.
+    var RW_ROUTE_BODY_LIMIT_BYTES = 5242880;
     // Die Reserve ist kein Sicherheitsgefuehl, sondern der Abstand zur Kante: gemessen wird hier die
     // Zeichenkette, die `fetch` als Koerper bekommt; gezaehlt wird am Server, was ankommt. Beides ist
     // heute deckungsgleich (UTF-8), aber ein Rueckweg, der auf das letzte Byte an die Grenze faehrt,

@@ -2664,7 +2664,44 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // WAS DIESE ZAHL NICHT LOEST, und es steht in der RUECKGABE als Folgeschritt: 1 MiB traegt rund
     // 750 KiB Bilddaten (base64 kostet ein Drittel). Ein Handyfoto sprengt das allein. Die Grenze
     // anzuheben heisst `services/app/src/routes/ko-routes.ts` anzufassen — kein Zielpfad hier.
-    const PIN = "8bf066b59d488005f76c0557cf9b306c55d322e269c0ef06ed01bb4880a46f58";
+    //
+    // ============================================================================================
+    // JOB 4115 (15.09.2026) — DIE TUER IST JETZT BREIT GENUG; DIE ZAHL HIER IST IHR SPIEGEL.
+    // ============================================================================================
+    // VORHERHASH (Stand JOB 4085 R2): `8bf066b59d488005f76c0557cf9b306c55d322e269c0ef06ed01bb4880a46f58`.
+    //
+    // ANLASS: der Folgeschritt aus dem Absatz darueber, jetzt gemacht. `PUT /api/kos/:id` traegt
+    // seit JOB 4115 eine eigene, benannte Annahmegrenze (`KOS_BODY_LIMIT`, 5 MiB — dieselbe Zahl
+    // wie der Entwurfsweg), abgesichert durch einen Auth-Riegel VOR dem Body-Parsing.
+    //
+    // GEAENDERT wurde in DIESER Datei: (1) `RW_ROUTE_BODY_LIMIT_BYTES` von 1048576 auf 5242880;
+    // (2) der Kopfkommentar — der Befund bleibt als Geschichte stehen, die Folgerung „ein Handyfoto
+    // sprengt das allein" ist nicht mehr wahr und ist deshalb weg. `RW_ROUTE_RESERVE_BYTES` und die
+    // Min-Regel in `rwBudgetBytes` sind Zeichen fuer Zeichen unveraendert. KEIN Markup, KEIN Stil,
+    // KEIN neuer Textschluessel, KEINE neue Route, KEINE neue Funktion.
+    //
+    // WAS SICH AM VERHALTEN AENDERT: das Budget steigt von 1.032.192 auf 3.500.000 Bytes — ab jetzt
+    // gewinnt das FENSTERBUDGET die Min-Regel, die Routengrenze ist die breitere der beiden Zahlen.
+    // Eine Word-Auswahl mit Fotos zwischen 1 MiB und 3,5 MB reist damit VOLLSTAENDIG mit, und der
+    // Erfolgssatz traegt keine Bilderbilanz mehr. Ueber 3,5 MB bleibt alles, wie es war: erst fallen
+    // Bilder, dann greift der Klartext-Rueckfall, und beides wird gesagt.
+    //
+    // DIE AUSLIEFERUNGSFRAGEN, einzeln:
+    //   · Abrufziel:  UNVERAENDERT 16. Keine neue Route, kein neuer Aufruf.
+    //   · CSP:        unveraendert; kein `innerHTML`, kein neuer Sink.
+    //   · Recht:      KEINES zusaetzlich. Der Riegel an der Route ruft dieselbe Wache, die der
+    //                 Handler fuer jede Aktion ohnehin ruft; anonym kam dort nie jemand durch
+    //                 (erhoben in `tests/security/kos-auth-vor-parsing.test.ts`).
+    //   · Manifest:   unveraendert, KEINE neue Office-API, KEIN Sideload.
+    //   · Nutzlast:   GROESSER (bis 3.500.000 statt 1.032.192 Bytes) — und genau dafuer ist die
+    //                 neue Annahmegrenze da. `clearBody` geht weiterhin NIE hinaus.
+    //   · Alter Server: einer OHNE `KOS_BODY_LIMIT` (Fastify-Vorgabe 1 MiB) wuerde eine Auswahl ueber
+    //                 1 MiB mit 413 abweisen. Genau diesen Fall meldet A0d, der die Kante an der
+    //                 echten Route nachmisst — Fenster und Route werden zusammen ausgeliefert.
+    //   · Bestehende Flaechen: unberuehrt (der Kasten bleibt ohne Kandidaten `hidden`).
+    // GEMESSEN: s. RUECKGABE (tests/office-pg-abnahme, tests/security, tests/word-rueckweg und der
+    // Waechterlauf, alle in der Cloud).
+    const PIN = "4932af255de7670adce6527dfbf7b5f8c1b374e235547eccc5f624a21b5aee7e";
     const ist = createHash("sha256").update(readFileSync(RUECKWEG)).digest("hex");
     expect(
       ist,

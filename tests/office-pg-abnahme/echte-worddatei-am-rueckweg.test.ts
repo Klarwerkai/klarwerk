@@ -44,6 +44,7 @@ import {
   ECHTE_DATEI,
   MARKIERTER_ABSATZ,
   MARKIERTE_UEBERSCHRIFT,
+  type WordAuswahl,
   bilderDerBestandsdatei,
   echteWordAuswahl,
 } from "./echte-word-auswahl";
@@ -96,6 +97,31 @@ const ROUTE_RESERVE_BYTES = zahlAus(RUECKWEG_QUELLE, RUECKWEG_DATEI, "RW_ROUTE_R
 
 /** Das Budget, gegen das der Rückweg wirklich rechnet (`rwBudgetBytes`): der kleinere der beiden. */
 const BUDGET_BYTES = Math.min(FENSTER_BUDGET_BYTES, ROUTE_LIMIT_BYTES - ROUTE_RESERVE_BYTES);
+
+/**
+ * Die AUSGELIEFERTE `rwBudgetBytes` selbst, mit wechselnden Konstanten fahrbar (JOB 4115, A0c).
+ *
+ * Nicht nachgebaut: der Funktionsrumpf wird aus `rueckweg.js` geholt und ausgeführt. Eine Kopie der
+ * Min-Regel im Prüfstand könnte grün sein, während die ausgelieferte Datei etwas anderes rechnet —
+ * genau der Fehler, den `rumpf-faelle.ts` in seinem Kopf beschreibt.
+ */
+function budgetRegelAus(
+  quelle: string,
+): (fenster: number, route: number, reserve: number) => number {
+  const treffer = /function rwBudgetBytes\(\) \{[\s\S]*?\n {4}\}/.exec(quelle);
+  if (!treffer) {
+    throw new Error(
+      `${RUECKWEG_DATEI}: rwBudgetBytes steht dort nicht mehr als Funktion — diese Abnahme prüft
+      eine Regel, die sie nicht mehr lesen kann.`,
+    );
+  }
+  return new Function(
+    "WORD_ADDIN_BODY_BUDGET_BYTES",
+    "RW_ROUTE_BODY_LIMIT_BYTES",
+    "RW_ROUTE_RESERVE_BYTES",
+    `${treffer[0]}\nreturn rwBudgetBytes();`,
+  ) as (fenster: number, route: number, reserve: number) => number;
+}
 
 // ------------------------------------------------------------------------------------------------
 // DIE BRÜCKE: DER FETCH DES FENSTERS GEHT AN DIE ECHTE ROUTE.
@@ -399,19 +425,40 @@ describe("JOB 4085 · A0 · die Vorrichtung misst wirklich eine echte Word-Datei
     expect(auswahl.html).toContain(`<h2>${MARKIERTE_UEBERSCHRIFT}</h2>`);
   });
 
-  it("A0c: der Rückweg rechnet gegen die Grenze SEINER Route, nicht gegen die des Entwurfswegs", () => {
-    // Der Befund der Runde 1 als Zahl: das Fensterbudget liegt ÜBER der Annahmegrenze der Route.
-    // Genau diese Lücke war der 413 — alles dazwischen ging unbeschnitten hinaus und kam zurück.
-    expect(
-      FENSTER_BUDGET_BYTES,
-      "ohne diese Lücke gäbe es den Befund nicht mehr, und der Deckel wäre wirkungslos",
-    ).toBeGreaterThan(ROUTE_LIMIT_BYTES);
-    // Der Deckel greift also wirklich: gerechnet wird mit der kleineren Zahl.
-    expect(BUDGET_BYTES).toBeLessThan(FENSTER_BUDGET_BYTES);
-    expect(BUDGET_BYTES).toBe(ROUTE_LIMIT_BYTES - ROUTE_RESERVE_BYTES);
+  it("A0c: der Rückweg nimmt IMMER den kleineren von Fensterbudget und Routengrenze — die Regel, nicht die Zahlen von heute", () => {
+    // ==========================================================================================
+    // UMGEBAUT IN JOB 4115, UND NICHT GELOCKERT — DER GRUND STEHT HIER.
+    // ==========================================================================================
+    // Bis hierher prüfte dieser Fall die KONSTELLATION von damals: `FENSTER_BUDGET_BYTES >
+    // ROUTE_LIMIT_BYTES`, weil die Route keine eigene Annahmegrenze trug und Fastifys 1 MiB galt.
+    // Seit die Route ihre eigene, breitere Grenze hat (`KOS_BODY_LIMIT`, 5 MiB), ist diese
+    // Ungleichung UMGEKEHRT — der Fall wäre rot geworden, und zwar aus dem falschen Grund. Ihn zu
+    // streichen hiesse, die Min-Regel ungeprüft zu lassen; sie an die neuen Tageswerte anzupassen
+    // hiesse, denselben Fehler noch einmal zu machen. Geprüft wird deshalb ab jetzt die REGEL, in
+    // BEIDEN Richtungen, gefahren an der AUSGELIEFERTEN Funktion selbst.
+    const budget = budgetRegelAus(RUECKWEG_QUELLE);
+    // Richtung 1 — das Fenster ist kleiner: das Fenster gewinnt. (Die Lage von heute.)
+    expect(budget(1_000_000, 5_242_880, 16_384)).toBe(1_000_000);
+    // Richtung 2 — die Route ist kleiner: die Route gewinnt, abzüglich der Reserve. (Die Lage vor
+    // JOB 4115; sie bleibt gedeckt, damit ein Rückbau der Grenze nicht unbemerkt durchginge.)
+    expect(budget(3_500_000, 1_048_576, 16_384)).toBe(1_048_576 - 16_384);
+    // Gleichstand: kein Sonderweg, kein Aufschlag.
+    expect(budget(1_000_000, 1_016_384, 16_384)).toBe(1_000_000);
+    // Und mit den Zahlen von HEUTE liefert dieselbe Funktion genau das, womit diese Datei rechnet.
+    expect(budget(FENSTER_BUDGET_BYTES, ROUTE_LIMIT_BYTES, ROUTE_RESERVE_BYTES)).toBe(BUDGET_BYTES);
     // Und die Ladung misst wirklich gegen dieses Budget — nicht gegen die Konstante des Fensters.
     expect(RUECKWEG_QUELLE).toContain("var budget = rwBudgetBytes();");
     expect(RUECKWEG_QUELLE).toContain("wordHtmlUtf8Bytes(bauen(kandidat)) <= budget");
+  });
+
+  it("A0c2: heute ist das FENSTERBUDGET die bindende Zahl — und das Fenster schneidet weiter selbst", () => {
+    // Die Tatsache der Stunde, festgehalten statt behauptet: die Route nimmt mehr an, als das
+    // Fenster schickt. Das ist gewollt — der Rückweg läuft nie in einen Serverfehler, sondern
+    // schneidet vorher selbst und sagt, was fehlt (A2/A3).
+    expect(FENSTER_BUDGET_BYTES).toBeLessThan(ROUTE_LIMIT_BYTES - ROUTE_RESERVE_BYTES);
+    expect(BUDGET_BYTES).toBe(FENSTER_BUDGET_BYTES);
+    // Der beschneidende Weg steht und wird weiter gerufen — die breitere Tür legt ihn nicht still.
+    expect(RUECKWEG_QUELLE).toContain("trimWordImagesToBudget(inner, passt)");
   });
 
   it("A0d: diese Grenze ist die der ECHTEN Route — an ihr selbst gemessen, nicht behauptet", async () => {
@@ -520,8 +567,10 @@ describe("JOB 4085 · A1 · der Vorschlag aus Word trägt die Bilder der echten 
 // DIE DREI BÄNDER, in denen sich eine Word-Auswahl bewegen kann:
 //   · A4 knapp UNTER dem Budget → nichts wird beschnitten, die Bilder kommen an, kein Bilanzsatz.
 //   · A2 knapp ÜBER dem Budget → erst fallen Bilder, der Rest kommt an, die Bilanz nennt sie.
-//   · A3 weit darüber (das Band, das bis Runde 1 den 413 erzeugte) → auch die Bilder reichen nicht,
-//     der Klartext-Rückfall greift, und auch DAS wird gesagt. Nie ein Serverfehler.
+//   · A3 weit darüber → auch die Bilder reichen nicht, der Klartext-Rückfall greift, und auch DAS
+//     wird gesagt. Nie ein Serverfehler.
+// Dazu seit JOB 4115 das Band, um das es dem Menschen wirklich geht:
+//   · A5 über 1 MiB, aber unter dem Budget → alles kommt an, nichts fehlt, kein Bilanzsatz.
 
 /**
  * Die Nutzlast, an der die Füllung bemessen wird — in DERSELBEN Form, die das Fenster absetzt.
@@ -569,16 +618,21 @@ function knappUnterBudget(html: string, aussage: string, version: number): strin
 }
 
 /**
- * DAS BAND, DAS BIS RUNDE 1 DEN 413 ERZEUGTE: über der Annahmegrenze der Route, unter dem
- * Fensterbudget des Entwurfswegs. Alles hier drin ging unbeschnitten hinaus und kam zurück.
+ * DAS BAND, IN DEM AUCH DAS WEGLASSEN ALLER BILDER NICHT REICHT — über dem Budget UND über der
+ * Annahmegrenze der Route.
+ *
+ * JOB 4115: bis hierher hiess diese Funktion `imBandDesServerfehlers` und zielte zwischen
+ * Routengrenze (damals 1 MiB) und Fensterbudget. Dieses Band gibt es nicht mehr — die Route ist
+ * jetzt die breitere der beiden Zahlen. Der Fall bleibt aber der wichtigste des Weges, und deshalb
+ * zielt er ab jetzt über BEIDE: eine Last, die auch die Route mit 413 abweisen würde, wenn das
+ * Fenster sie hinausliesse. Genau das tut es nicht — es schneidet erst die Bilder und fällt dann
+ * auf den Klartext zurück. Der Mensch bekommt einen Satz, nie einen Serverfehler.
  */
-function imBandDesServerfehlers(html: string, aussage: string, version: number): string {
-  const ziel = Math.min(FENSTER_BUDGET_BYTES - 100_000, ROUTE_LIMIT_BYTES + 400_000);
+function weitUeberDemBudget(html: string, aussage: string, version: number): string {
+  const ziel = ROUTE_LIMIT_BYTES + 400_000;
   const grundlast = nutzlastBytes(`<p></p>${html}`, aussage, version);
   const luecke = ziel - grundlast;
-  expect(luecke, "zwischen Routengrenze und Fensterbudget liegt kein Platz mehr").toBeGreaterThan(
-    0,
-  );
+  expect(luecke, "die echte Datei liegt allein schon über der Zielgrösse").toBeGreaterThan(0);
   return `<p>${"a".repeat(luecke)}</p>${html}`;
 }
 
@@ -662,18 +716,19 @@ describe("JOB 4085 · A2 · was nicht mitkonnte, steht auch am Einreichweg da", 
 // ================================================================================================
 
 describe("JOB 4085 · A3 · eine Bildlast über der Annahmegrenze endet nicht im Serverfehler", () => {
-  it("A3: eine Auswahl zwischen Routengrenze und Fensterbudget wird eingereicht — kein 413, und der Satz sagt warum sie nicht ganz mitkonnte", async () => {
+  it("A3: eine Auswahl über Fensterbudget UND Routengrenze wird eingereicht — kein 413, und der Satz sagt warum sie nicht ganz mitkonnte", async () => {
     const auswahl = await echteWordAuswahl();
     const { app, admin, id, cookie, me } = await buehne();
     const version = (await stand(app, admin, id)).version;
     const aussage = auswahl.text.trim();
-    const gefuellt = imBandDesServerfehlers(auswahl.html, aussage, version);
+    const gefuellt = weitUeberDemBudget(auswahl.html, aussage, version);
 
-    // DAS BAND, in Zahlen festgehalten statt behauptet: die ungeschnittene Nutzlast liegt über dem,
-    // was die Route nimmt, und unter dem, was das Fensterbudget des Entwurfswegs erlaubt hätte.
+    // DAS BAND, in Zahlen festgehalten statt behauptet: die ungeschnittene Nutzlast liegt über dem
+    // Budget des Fensters UND über dem, was die Route annimmt. Ginge sie ungeschnitten hinaus,
+    // käme sie als 413 zurück — das ist die Lage, gegen die dieser Fall steht.
     const roh = nutzlastBytes(gefuellt, aussage, version);
+    expect(roh).toBeGreaterThan(BUDGET_BYTES);
     expect(roh).toBeGreaterThan(ROUTE_LIMIT_BYTES);
-    expect(roh).toBeLessThan(FENSTER_BUDGET_BYTES);
 
     const { p, buch } = await fensterAnDerEchtenRoute(
       app,
@@ -739,6 +794,144 @@ describe("JOB 4085 · A4 · eine grosse, aber tragbare Auswahl kommt vollständi
     expect(put.bytes).toBeGreaterThan(BUDGET_BYTES - 8192);
     expect(put.bytes).toBeLessThanOrEqual(BUDGET_BYTES);
     expect(put.status, "eine Nutzlast knapp unter dem Budget muss die Route nehmen").toBe(200);
+    expect(put.bodyHtml).toContain("<img");
+
+    const vorschlag = await offenerVorschlag(app, admin, id);
+    const nachher = await uebernehmen(app, admin, id, vorschlag.id);
+    const rumpf = nachher.bodyHtml ?? "";
+    for (const quelle of auswahl.bildQuellen) {
+      expect(rumpf, "ein Bild der echten Word-Datei fehlt im Fließtext des Eintrags").toContain(
+        quelle,
+      );
+    }
+  });
+});
+
+// ================================================================================================
+// A5 · DIE ZAHL DES BEFUNDS — 1.520.700 BYTES BILDLAST GEHEN DURCH (JOB 4115).
+// ================================================================================================
+//
+// WARUM DIESER FALL DAZUKOMMT, obwohl A1–A4 grün waren: sie alle messen gegen ein Budget, das der
+// Rückweg SELBST errechnet. Genau deshalb waren sie auch mit der 1-MiB-Vorgabe der Route grün — das
+// Fenster schnitt eben vorher weg. Der Mensch bekam trotzdem nicht, was er markiert hatte. Der
+// Prüfer zu JOB 4085 hat das wörtlich bestellt (`LEHREN.md:5236`): „Fahre mindestens einen
+// Bildkörper oberhalb 1 MiB, aber unterhalb des Add-in-Budgets, sowie einen beschneidungs-
+// bedürftigen Körper. Miss Erfolg, Persistenz und Bilanz gemeinsam; eine gemockte 200-Antwort
+// genügt nicht." Der beschneidungsbedürftige Körper ist A2/A3; hier steht der andere.
+//
+// DIE ZAHL IST NICHT GEWÄHLT, SIE IST GEMESSEN: 1.520.700 Bytes ist der Körper, den der Prüfer zu
+// JOB 4085 Runde 1 abgesetzt hat und der als `413 FST_ERR_CTP_BODY_TOO_LARGE` zurückkam
+// (`rueckweg.js`, Kopf über `RW_ROUTE_BODY_LIMIT_BYTES`). Sie liegt über 1 MiB (der alten
+// Routengrenze) und unter dem Fensterbudget — also in genau dem Band, in dem nichts beschnitten
+// wird und der Server trotzdem ablehnte.
+//
+// UND ES IST WIRKLICH BILDLAST: die zwei echten Bilder der Bestandsdatei reisen so oft mit, bis die
+// reine Bildmenge 1 MiB übersteigt — so sieht ein Word-Absatz mit mehreren Fotos aus. Der Rest bis
+// zur Zahl des Befunds ist Fülltext, und das steht hier, statt „ein Absatz mit einem Handyfoto" zu
+// behaupten: die Bestandsdatei trägt kleine PNG, ein einzelnes Foto wäre eine erfundene Vorlage.
+
+/** Die gemessene Nutzlast aus dem Befund zu JOB 4085 Runde 1 — auf das Byte. */
+const BEFUND_BYTES = 1_520_700;
+
+/** Die zwei echten Bildmarken, wiederholt, bis die reine Bildlast über 1 MiB liegt. */
+function bildlastUeberEinemMiB(auswahl: WordAuswahl): string {
+  expect(auswahl.bildMarken.length, "die echte Auswahl trägt keine Bilder").toBeGreaterThan(0);
+  const eineRunde = auswahl.bildMarken.join("");
+  let html = "";
+  while (new TextEncoder().encode(html).length <= 1024 * 1024) {
+    html += eineRunde;
+  }
+  return html;
+}
+
+/** Ein `propose`-Rumpf von GENAU `BEFUND_BYTES` Nutzlast, dessen Bildanteil über 1 MiB liegt. */
+function rumpfMitDerBildlastDesBefunds(
+  auswahl: WordAuswahl,
+  aussage: string,
+  version: number,
+): string {
+  const bilder = bildlastUeberEinemMiB(auswahl);
+  const fest = `<p>${MARKIERTER_ABSATZ}</p>${bilder}`;
+  const grundlast = nutzlastBytes(`<p></p>${fest}`, aussage, version);
+  const luecke = BEFUND_BYTES - grundlast;
+  expect(luecke, "die Bildlast allein sprengt schon die Zahl des Befunds").toBeGreaterThan(0);
+  return `<p>${"a".repeat(luecke)}</p>${fest}`;
+}
+
+describe("JOB 4115 · A5 · eine Bildlast über 1 MiB kommt vollständig an", () => {
+  it("A5a: der Körper des Befunds (1.520.700 Bytes, Bildanteil über 1 MiB) wird von der ECHTEN Route angenommen und steht danach vollständig im Eintrag", async () => {
+    const auswahl = await echteWordAuswahl();
+    // Dieselbe Bühne wie A2–A4: das einreichende Konto ist NICHT der Autor — ein Vorschlag auf das
+    // eigene Objekt wäre `PROPOSAL_OWN` (403) und damit ein Fall über etwas anderes.
+    const { app, admin, id, cookie } = await buehne();
+    const version = (await stand(app, admin, id)).version;
+    const aussage = auswahl.text.trim();
+    const koerper = JSON.stringify({
+      action: "propose",
+      proposal: {
+        statement: aussage,
+        bodyHtml: rumpfMitDerBildlastDesBefunds(auswahl, aussage, version),
+        baseVersion: version,
+        origin: "word_addin",
+      },
+    });
+    // Die Zahl des Befunds, auf das Byte — sonst redet dieser Fall über eine andere Last.
+    expect(new TextEncoder().encode(koerper).length).toBe(BEFUND_BYTES);
+    expect(BEFUND_BYTES).toBeGreaterThan(1024 * 1024);
+
+    const antwort = await app.inject({
+      method: "PUT",
+      url: `/api/kos/${id}`,
+      headers: { cookie, "content-type": "application/json" },
+      payload: koerper,
+    });
+    // BIS JOB 4115: `413 FST_ERR_CTP_BODY_TOO_LARGE`. Der Mensch las „Einreichen fehlgeschlagen".
+    expect(
+      antwort.statusCode,
+      "die Route nimmt die gemessene Bildlast des Befunds nicht an — die Annahmegrenze ist zu schmal",
+    ).toBe(200);
+
+    // GESPEICHERT und VOLLSTÄNDIG, am zurückgelesenen Objekt gemessen — nicht am Aufruf.
+    const vorschlag = await offenerVorschlag(app, admin, id);
+    const nachher = await uebernehmen(app, admin, id, vorschlag.id);
+    const rumpf = nachher.bodyHtml ?? "";
+    for (const quelle of auswahl.bildQuellen) {
+      expect(rumpf, "ein Bild der echten Word-Datei fehlt nach der Übernahme im Eintrag").toContain(
+        quelle,
+      );
+    }
+    expect(rumpf).toContain(MARKIERTER_ABSATZ);
+  });
+
+  it("A5b: dieselbe Last durch das AUSGELIEFERTE Fenster — nichts wird beschnitten, und der Satz trägt keine Bilanz", async () => {
+    const auswahl = await echteWordAuswahl();
+    const { app, admin, id, cookie, me } = await buehne();
+    const version = (await stand(app, admin, id)).version;
+    const aussage = auswahl.text.trim();
+    const gefuellt = rumpfMitDerBildlastDesBefunds(auswahl, aussage, version);
+
+    const { p, buch } = await fensterAnDerEchtenRoute(
+      app,
+      cookie,
+      me,
+      id,
+      "Ventil X schließt bei Überdruck",
+      auswahl.text,
+      gefuellt,
+    );
+    p.q("#rw-btn")?.click();
+    await p.flush();
+
+    // DER SICHTBARE BEWEIS DER REPARATUR: kein Bilanzsatz. Bis JOB 4115 stand hier „2 von … Bildern
+    // konnten nicht übernommen werden" — ehrlich, aber unnötig: die Last passt.
+    expect(p.text("#rw-status")).toBe(p.t("rwEingereicht"));
+
+    const put = derEinePut(buch);
+    expect(put.bytes, "das Fenster hat die Last beschnitten — sie passt aber").toBeGreaterThan(
+      1024 * 1024,
+    );
+    expect(put.bytes).toBeLessThanOrEqual(BUDGET_BYTES);
+    expect(put.status, "die echte Route hat die Bildlast nicht angenommen").toBe(200);
     expect(put.bodyHtml).toContain("<img");
 
     const vorschlag = await offenerVorschlag(app, admin, id);
