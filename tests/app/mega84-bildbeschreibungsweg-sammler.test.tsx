@@ -1781,8 +1781,33 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // denen Stufe 2 wirklich hängt, bleiben unverändert: `anbieter` 1 und `traeger` 2. Die
     // Markierung zeigt kein Bild, bietet keine Bildbeschreibung an (kein `ANGEBOT_MUSTER`) und
     // trägt keinen eigenen Titel (kein `documentTitle`-Prop) — sie erscheint nur in der Grundmenge.
+    //
+    // JOB 4025 (KUNDENBETRIEB-BACKUP): `komponenten` von 378 auf 381 NACHGEZOGEN — am Lauf DIESES
+    // Arbeitsbaums gemessen, nicht gerechnet (der Sammler meldete `gemessen: 381 Komponenten ·
+    // 1 Anbieter · 2 Traeger`); der wörtliche Fund steht unter PRUEFUNGEN in der Rückgabe. Die drei
+    // neuen Bauteile stehen zusammen in EINER neuen Datei, `pages/AdminBetriebDetails.tsx` — die
+    // Fläche, auf der ein Betreiber ohne Terminal sieht, ob eine Sicherung vorliegt:
+    //
+    //     + `Eintragszeile` — eine Sicherung als Zeile: Datei, Zeitpunkt, Alter, Größe, Marke.
+    //     + `Befund`        — die Weiche zwischen Liste, belegter Negativaussage („keine Sicherung
+    //                         im Verzeichnis …") und „nicht feststellbar" mit Grund.
+    //     + `SicherungDetail` — die Detailkarte selbst, verdrahtet im Switch von `pages/Admin.tsx`.
+    //
+    // Es ist eine NEUE Fläche und keine Herauslösung: die Aussage „hier liegt (k)eine Sicherung"
+    // gab es im Produkt vorher an keiner Stelle — weder als Route noch als Karte noch als Zeile.
+    // Die Auflage verbietet, dass eine UMSTELLUNG die Erhebung verschiebt, nicht, dass der
+    // Quellbaum wächst. Die zwei Zahlen, an denen Stufe 2 wirklich hängt, bleiben unverändert:
+    // `anbieter` 1 und `traeger` 2. Keines der drei Bauteile zeigt ein Bild, bietet eine
+    // Bildbeschreibung an (kein `ANGEBOT_MUSTER`) oder trägt einen eigenen Titel (kein
+    // `documentTitle`-Prop) — sie erscheinen nur in der Grundmenge.
+    //
+    // GEGENPROBE dazu, gemessen statt behauptet: mit allen drei Deklarationen UND ihren
+    // Einbindungen kleingeschrieben meldet dieser Fall wieder `gemessen: 378 Komponenten` und wird
+    // gegen den NEUEN Pin rot — `alsKomponente` (oben, :453) verlangt einen Großbuchstaben am
+    // Namensanfang; die +3 sind damit genau diese drei Bauteile und kein vierter Fund hinter
+    // derselben Zahl. Danach hashgleich zurückgenommen.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 378,
+      komponenten: 381,
       anbieter: 1,
       traeger: 2,
     });

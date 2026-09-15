@@ -1253,6 +1253,20 @@ export const TABELLE: Zeile[] = [
     erwartet: NUR_ADMIN,
   },
   {
+    // JOB 4025 — die Auskunft über die Sicherungen des Betreibers. Eine reine Lesetür: sie zählt
+    // auf, was im Sicherungsverzeichnis liegt, und schreibt nichts. Sie hängt an demselben Tor wie
+    // die übrigen Admin-Auskünfte (`users.manage`), deshalb dasselbe Muster — geschrieben, nicht
+    // aus der Rechtematrix gerechnet. Ob im Prüfaufbau ein Sicherungsverzeichnis existiert, ändert
+    // an dieser Zeile nichts: gemessen wird die TÜR, und der Handler antwortet in beiden Lagen 200
+    // (`zustand: "gelesen"` bzw. `"kein_verzeichnis"`).
+    gruppe: "adminRoutes",
+    methode: "GET",
+    pfad: "/api/admin/sicherungen",
+    belegstelle: "services/app/src/routes/admin-routes.ts:443",
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
+  },
+  {
     gruppe: "askRoutes",
     methode: "GET",
     pfad: "/api/gaps/summary",

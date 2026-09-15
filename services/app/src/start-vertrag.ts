@@ -315,6 +315,23 @@ const GRUNDWERTE: readonly Startwert[] = [
     wofuer: "Hebt die Produktionssperre des CLI-Seeds (npm run seed:demo) bewusst auf.",
     ohneIhn: "Der CLI-Seed verweigert in Produktion den Dienst.",
   },
+  // JOB 4025: KEIN neuer Umgebungswert — `scripts/backup/backup.sh:35` liest ihn seit JOB 943, und
+  // `scripts/backup/RESTORE.md:40` weist den Betreiber an, ihn zu setzen. Neu ist nur, dass ihn jetzt
+  // auch PRODUKTIONSCODE liest (`routes/admin-routes.ts`, Auskunft „System → Sicherung"). Damit fällt
+  // er unter die Erhebung von `tests/demo-zugang-start/vertrag-vollstaendig.test.ts` D1 und gehört in
+  // den Katalog. Der Katalog LIEST ihn nicht und setzt keinen Vorgabewert — die eine Auflösung steht
+  // weiterhin in der Route und spiegelt `backup.sh:35`.
+  {
+    name: "BACKUP_DIR",
+    bereich: "Betrieb",
+    pflicht: { art: "nie" },
+    geheim: false,
+    vorgabe: "<repo>/backups",
+    wofuer:
+      "Das Verzeichnis, in das scripts/backup/backup.sh Dump und Prüfsumme legt und aus dem die Admin-Auskunft unter System → Sicherung liest.",
+    ohneIhn:
+      "Beide nehmen <Repo-Wurzel>/backups. Wer seine Sicherungen woanders ablegt und diesen Wert nicht setzt, liest im Admin eine belegte Aussage über das FALSCHE Verzeichnis.",
+  },
   // -------------------------------------------------------------------------------- Datenhaltung
   {
     name: "DATABASE_URL",

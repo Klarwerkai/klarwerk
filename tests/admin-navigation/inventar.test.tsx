@@ -102,11 +102,16 @@ function alleZiele(): ReturnType<typeof direktzugangZiele> {
 }
 
 describe("JOB 3337 · A · der Bestand ist vollständig und adressierbar", () => {
-  it("A0 · KALIBRIERUNG: der Griff in den Quelltext greift die 17 Kennungen der Vorlage", () => {
+  it("A0 · KALIBRIERUNG: der Griff in den Quelltext greift die 18 Kennungen der Vorlage", () => {
     const kennungen = kennungenAusQuelltext();
-    // Die Vorlage nennt 17. Weniger hieße: der Griff hat den Switch verfehlt (und alles Folgende
+    // Die Vorlage nannte 17. Weniger hieße: der Griff hat den Switch verfehlt (und alles Folgende
     // wäre über einer zu kleinen Menge trivial grün).
-    expect(kennungen, `gefunden: ${kennungen.join(" · ")}`).toHaveLength(17);
+    //
+    // JOB 4025 (KUNDENBETRIEB-BACKUP): 17 → 18. Die eine neue Kennung ist `sicherung` — die
+    // Auskunft über das Sicherungsverzeichnis unter „System" (`lib/adminSections.ts`,
+    // `pages/AdminBetriebDetails.tsx`). Sie ist damit auch im Direktzugang und über die Adresse
+    // erreichbar; A1/A3 messen das gleich mit.
+    expect(kennungen, `gefunden: ${kennungen.join(" · ")}`).toHaveLength(18);
     for (const pflicht of ["nutzer:", "rolle:", "ki", "demo", "werk", "papierkorb", "audit"]) {
       expect(kennungen).toContain(pflicht);
     }
@@ -138,7 +143,8 @@ describe("JOB 3337 · A · der Bestand ist vollständig und adressierbar", () =>
     const ziele = alleZiele();
     const statisch = kennungenAusQuelltext().filter((k) => !k.endsWith(":"));
     const fehlend = statisch.filter((k) => !ziele.some((z) => z.path === adminHref(sekt(k), k)));
-    expect(statisch, "der Griff fand keine statische Kennung").toHaveLength(15);
+    // JOB 4025: 15 → 16 (die neue Kennung `sicherung`, siehe A0).
+    expect(statisch, "der Griff fand keine statische Kennung").toHaveLength(16);
     expect(fehlend, `kein direktes Ziel: ${fehlend.join(" · ")}`).toEqual([]);
   });
 

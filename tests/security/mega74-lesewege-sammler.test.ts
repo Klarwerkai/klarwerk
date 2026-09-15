@@ -321,6 +321,19 @@ const REGISTER: Record<string, Eintrag> = {
     recht: "users.manage",
     grund: "Admin.",
   },
+  // JOB 4025 (KUNDENBETRIEB-BACKUP): die Sicherungsauskunft. Sie gibt Dateinamen, Zeitstempel,
+  // Größen und Prüfsummen aus dem Sicherungsverzeichnis heraus — KEINEN Inhalt eines
+  // Wissensobjekts: der Dump wird nie geöffnet, nur `readdir` und `stat` laufen darüber
+  // (`admin-routes.ts`, `befundFuer`). Das Urteil ist trotzdem `KURATORENTOR` und nicht
+  // `KEIN_KO_INHALT`, und zwar ausdrücklich: es ist das STÄRKERE und nachgeprüfte Urteil — die
+  // Route fordert `users.manage`, und der Sammler misst das nach, statt es mir zu glauben. Was sie
+  // herausgibt, ist Wissen über die Betriebsumgebung (absoluter Pfad, Sicherungsstand), und das
+  // gehört ohnehin nur in Admin-Hände.
+  "GET /api/admin/sicherungen": {
+    urteil: "KURATORENTOR",
+    recht: "users.manage",
+    grund: "Admin; Dateinamen und Prüfsummen des Sicherungsverzeichnisses, kein KO-Inhalt.",
+  },
   "GET /api/import/confluence/zugang": {
     urteil: "KURATORENTOR",
     recht: "users.manage",

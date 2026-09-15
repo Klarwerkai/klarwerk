@@ -81,6 +81,7 @@ import type {
   ReasonerStatus,
   ReviewAction,
   Role,
+  SicherungenAuskunft,
   Sichtmetrik,
   SlideConvertResponse,
   StructureResult,
@@ -900,6 +901,10 @@ export const endpoints = {
     // Pedi 05.07. (Beta): Werksreset — Verfügbarkeit (nur Desktop/Dev) + Ausführen (löscht alles,
     // beendet das Programm; nächster Start = Ersteinrichtung).
     factoryResetStatus: () => api.get<{ available: boolean }>("/admin/factory-reset"),
+    // JOB 4025 (KUNDENBETRIEB-BACKUP): die LESENDE Auskunft über das Sicherungsverzeichnis. Sie
+    // löst nichts aus, löscht nichts und lädt nichts herunter — sie sagt nur, was dort liegt und
+    // ob es seine Prüfsumme trägt (`scripts/backup/backup.sh:55-57/:82`).
+    sicherungen: () => api.get<SicherungenAuskunft>("/admin/sicherungen"),
     // SCRUM-450: Werksreset erst nach Passwort-Bestätigung des Admins (Re-Authentifizierung).
     factoryReset: (password: string) =>
       api.post<{ ok: boolean }>("/admin/factory-reset", { password }),

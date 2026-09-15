@@ -1193,6 +1193,67 @@ const de = {
   "adm.ready.ext.searchOnClick": "Suche auf Klick",
   "adm.ready.ext.searchAttach": "Suchen & anhängen",
   "adm.ready.ext.open": "Offen",
+  // ==============================================================================================
+  // JOB 4025 · KUNDENBETRIEB-BACKUP — DIE SICHERUNG BEKOMMT WORTE.
+  // ==============================================================================================
+  //
+  // Ein Beta-Kunde betreibt KLARWERK selbst; sein Backup läuft per Cron über
+  // `scripts/backup/backup.sh`. Bis hierher konnte er in der Anwendung nicht nachsehen, ob es je
+  // gelaufen ist. Diese Texte sind das sichtbare Ergebnis (Pedi, Startauftrag 14.09., Punkt 3).
+  //
+  // DREI AUSSAGEN, DIE NIE VERTAUSCHT WERDEN DÜRFEN — daran hängt der ganze Nutzen:
+  //   `none`     eine BELEGTE Negativaussage: erfolgreich gelesen, das Verzeichnis ist leer.
+  //   `unknown`  nicht feststellbar: kein Verzeichnis oder nicht lesbar. NIEMALS „keine".
+  //   `honesty`  was diese Anzeige NICHT tut. Er steht in JEDER Lage da — auch im Leerfall und im
+  //              Fehlerfall — und darf deshalb NICHTS voraussetzen, was nur manchmal gilt.
+  //
+  // RUNDE 6 — DER WORTLAUT SAGT NUR NOCH, WAS GEMESSEN WURDE. Hier stand „beglaubigt" (en: „checksum
+  // verified"). Der Prüfer hat dagegengehalten und es gemessen: die Route öffnet den Dump nie, sie
+  // sieht nur, ob die Prüfsummendatei danebenliegt und auf genau diesen Namen lautet
+  // (`services/app/src/routes/admin-routes.ts`, `pruefsummeAus`). Bei einer formgerechten Sidecar mit
+  // FALSCHEM Hash stand deshalb „verified" an einer Datei, deren Prüfsumme niemand verglichen hatte.
+  // Seitdem nennen `certified`/`uncertified` in allen drei Sprachen gleichlautend die DATEI, nicht
+  // ihren Abgleich. Kein „verified/geprüft" ohne echten Vergleich.
+  //
+  // RUNDE 7 — DERSELBE FEHLER, EINE ZEILE WEITER, UND DESHALB STEHT DIE REGEL JETZT HIER. Runde 6
+  // hatte den fehlenden Abgleich in den FESTEN Satz geschrieben: „… dass Dateien vorliegen UND dass
+  // die Prüfsummendatei danebenliegt". Der Prüfer hat einen Eintrag OHNE Sidecar gemountet — und der
+  // feste Satz behauptete die Datei trotzdem. Ein Satz, der immer dasteht, darf nur sagen, was immer
+  // gilt. Deshalb: `honesty` beschreibt nur noch, WAS DIESE ANZEIGE TUT und was sie nicht tut
+  // (kein Hashvergleich, keine Wiederherstellung); jede Aussage über eine EINZELNE Sicherung steht
+  // am Eintrag selbst, mit dem gemessenen Zustand — `certified` ODER `uncertified`, nie beides und
+  // nie vorweggenommen. Gemessen wird das in `tests/kundenbetrieb-sicherung/
+  // admin-sicherung-mounted.test.tsx` (U8) über vier Lagen und drei Sprachen.
+  "adm.backup.title": "Sicherung",
+  "adm.backup.help":
+    "Was liegt im Sicherungsverzeichnis dieser Anlage? Die Karte liest es, sobald du sie öffnest: je Datei ihr Zeitpunkt, ihre Größe und ob die Prüfsummendatei daneben liegt, die das Backup-Skript mitschreibt. Sie startet keine Sicherung, löscht keine und lädt keine herunter — sie sagt nur, was da ist.",
+  "adm.backup.honesty":
+    "Diese Anzeige nennt je gefundene Sicherungsdatei ihren Prüfsummenstand. Ein Hashvergleich und eine Wiederherstellung finden hier nicht statt — beides prüft der Restore-Drill.",
+  "adm.backup.none": "Keine Sicherung im Verzeichnis {{verzeichnis}} gefunden.",
+  "adm.backup.unknown": "Nicht feststellbar, ob eine Sicherung vorliegt.",
+  "adm.backup.reason.missing": "Das Sicherungsverzeichnis gibt es nicht.",
+  "adm.backup.reason.unreadable": "Das Sicherungsverzeichnis war nicht lesbar ({{grund}}).",
+  "adm.backup.certified": "Prüfsummendatei vorhanden",
+  // „keine GÜLTIGE" und nicht „fehlt": `beglaubigt: false` trifft auch die Sidecar, die sehr wohl
+  // danebenliegt, aber leer ist, keine 64 Hex trägt oder auf einen FREMDEN Endnamen lautet
+  // (`sicherungen-auskunft.test.ts`, S3/S3b). „fehlt" wäre dort falsch — und damit derselbe Fehler
+  // wie in Runde 5 und 6, nur in die andere Richtung.
+  "adm.backup.uncertified": "keine gültige Prüfsummendatei — Wiederherstellung nicht belegt",
+  "adm.backup.dir": "Verzeichnis: {{verzeichnis}}",
+  "adm.backup.readAt": "Gelesen am {{zeit}}",
+  "adm.backup.time.unknown": "Zeitpunkt unbekannt",
+  "adm.backup.size.unknown": "Größe nicht messbar",
+  "adm.backup.size.b": "{{n}} Bytes",
+  "adm.backup.size.kb": "{{n}} KB",
+  "adm.backup.size.mb": "{{n}} MB",
+  "adm.backup.age.now": "vor unter einer Stunde",
+  "adm.backup.age.hours_one": "vor {{count}} Stunde",
+  "adm.backup.age.hours_other": "vor {{count}} Stunden",
+  "adm.backup.age.days_one": "vor {{count}} Tag",
+  "adm.backup.age.days_other": "vor {{count}} Tagen",
+  // Die Zeile im Reiter „System". Sie trägt die Zahl nur, wenn wirklich gelesen wurde.
+  "adm.backup.row.none": "keine",
+  "adm.backup.row.unknown": "nicht feststellbar",
   // SCRUM-432 (Pedi 03.07., VIP-Investor): Vertrauen & Sicherheit.
   // AUFTRAG-mega15 Block A (bens SB-1, zweiter Durchgang): „manipulationssicher" ist eine STÄRKERE
   // Aussage als „Abweichung erkannt" — sie behauptet, es KÖNNE nichts passieren. Die Kette hat
@@ -6512,6 +6573,10 @@ const de = {
   "seitenhilfe.admin.bereitschaft.titel": "Bereitschaft",
   "seitenhilfe.admin.bereitschaft.text":
     "Die Checkliste vor einer Vorführung: KI, validierte Objekte, offene Prüfungen, Uploadgrenzen, externe Recherche und Demodaten — je Zeile eine Ampel aus echten Zahlen. Sie stellt nichts ein, sie liest sechs Quellen und sagt, was fehlt. Fällt eine davon aus, steht statt einer geratenen Null „nicht abrufbar“ mit einem Knopf, der alle sechs neu abruft. Die Zeile „Demodaten“ führt direkt auf die Karte, auf der du sie lädst.",
+  // JOB 4025 — die Seitenhilfe der Sicherungskarte.
+  "seitenhilfe.admin.sicherung.titel": "Sicherung",
+  "seitenhilfe.admin.sicherung.text":
+    "Die Auskunft über das Sicherungsverzeichnis dieser Anlage: welche Dumps dort liegen, wann sie entstanden, wie groß sie sind und ob die Prüfsummendatei danebenliegt, die das Backup-Skript mitschreibt. Nur eine Auskunft — hier wird keine Sicherung gestartet, gelöscht oder heruntergeladen. Fehlt das Verzeichnis oder ist es nicht lesbar, steht „nicht feststellbar“ mit dem Grund; das ist ausdrücklich etwas anderes als „keine Sicherung“. Und auch eine volle Liste sagt nichts darüber, ob sich daraus wiederherstellen lässt: das prüft allein der Restore-Drill.",
   // ==============================================================================================
   // JOB 3786 — DIE SEITENHILFE DER HANDYFLÄCHE (/mobile).
   // ==============================================================================================
@@ -7533,6 +7598,34 @@ const en: typeof de = {
   "adm.ready.ext.searchOnClick": "Search on click",
   "adm.ready.ext.searchAttach": "Search & attach",
   "adm.ready.ext.open": "Open",
+  // JOB 4025 — the backup information card (mirror of the DE keys). `none` is a PROVEN negative
+  // statement (read succeeded, directory empty); `unknown` is “cannot be determined” and must never
+  // be worded like `none`; `honesty` names what the list does not prove.
+  "adm.backup.title": "Backup",
+  "adm.backup.help":
+    "What is in this installation's backup directory? The card reads it when you open it: per file its timestamp, its size and whether the checksum file written by the backup script sits next to it. It starts no backup, deletes none and downloads none — it only reports what is there.",
+  "adm.backup.honesty":
+    "This display shows, for each backup file found, its checksum status. No hash comparison and no restore take place here — the restore drill checks both.",
+  "adm.backup.none": "No backup found in directory {{verzeichnis}}.",
+  "adm.backup.unknown": "Cannot determine whether a backup exists.",
+  "adm.backup.reason.missing": "The backup directory does not exist.",
+  "adm.backup.reason.unreadable": "The backup directory was not readable ({{grund}}).",
+  "adm.backup.certified": "checksum file present",
+  "adm.backup.uncertified": "no valid checksum file — restore not proven",
+  "adm.backup.dir": "Directory: {{verzeichnis}}",
+  "adm.backup.readAt": "Read at {{zeit}}",
+  "adm.backup.time.unknown": "Timestamp unknown",
+  "adm.backup.size.unknown": "Size not measurable",
+  "adm.backup.size.b": "{{n}} bytes",
+  "adm.backup.size.kb": "{{n}} KB",
+  "adm.backup.size.mb": "{{n}} MB",
+  "adm.backup.age.now": "less than an hour ago",
+  "adm.backup.age.hours_one": "{{count}} hour ago",
+  "adm.backup.age.hours_other": "{{count}} hours ago",
+  "adm.backup.age.days_one": "{{count}} day ago",
+  "adm.backup.age.days_other": "{{count}} days ago",
+  "adm.backup.row.none": "none",
+  "adm.backup.row.unknown": "cannot be determined",
   // SCRUM-432 (Pedi 03.07., VIP investor): Trust & Security.
   "adm.sich.auditTitle": "Audit trail — hash-chained, deviations verifiable",
   "adm.sich.auditHelp":
@@ -11772,6 +11865,10 @@ const en: typeof de = {
   "seitenhilfe.admin.bereitschaft.titel": "Readiness",
   "seitenhilfe.admin.bereitschaft.text":
     "The checklist before a demo: AI, validated objects, open reviews, upload limits, external research and demo data — one indicator per row, built from real numbers. It sets nothing; it reads six sources and says what is missing. If one of them fails, you get “not retrievable” with a button that refetches all six instead of a guessed zero. The “Demo data” row leads straight to the card where you load it.",
+  // JOB 4025 — page help for the backup card.
+  "seitenhilfe.admin.sicherung.titel": "Backup",
+  "seitenhilfe.admin.sicherung.text":
+    "The information about this installation's backup directory: which dumps are there, when they were created, how large they are and whether the checksum file written by the backup script sits next to them. Information only — nothing is started, deleted or downloaded here. If the directory is missing or not readable, you read “cannot be determined” with the reason; that is explicitly something other than “no backup”. And even a full list says nothing about whether it can be restored: only the restore drill checks that.",
   // JOB 3786 — page help for the phone surface (/mobile); mirror of the DE keys. The three checked
   // facts behind this text are documented at the DE block: the route carries no role guard but the
   // three tabs need different permissions (drafts `ko.create`, ask and search `ko.read`), the
@@ -12680,6 +12777,34 @@ const nl: typeof de = {
   "adm.ready.ext.searchOnClick": "Zoeken op klik",
   "adm.ready.ext.searchAttach": "Zoeken & bijvoegen",
   "adm.ready.ext.open": "Open",
+  // JOB 4025 — de kaart met de back-upinformatie (spiegel van de DE-sleutels). `none` is een
+  // AANGETOONDE negatieve uitspraak (met succes gelezen, map leeg); `unknown` betekent „niet vast
+  // te stellen" en mag nooit klinken als `none`; `honesty` benoemt wat de lijst niet bewijst.
+  "adm.backup.title": "Back-up",
+  "adm.backup.help":
+    "Wat ligt er in de back-upmap van deze installatie? De kaart leest die zodra je haar opent: per bestand het tijdstip, de grootte en of het controlesombestand ernaast ligt dat het back-upscript meeschrijft. Ze start geen back-up, verwijdert er geen en downloadt er geen — ze zegt alleen wat er is.",
+  "adm.backup.honesty":
+    "Dit overzicht toont per gevonden back-upbestand de controlesomstatus. Een controlesomvergelijking en een herstel vinden hier niet plaats — dat controleert de herstelproef allebei.",
+  "adm.backup.none": "Geen back-up gevonden in de map {{verzeichnis}}.",
+  "adm.backup.unknown": "Niet vast te stellen of er een back-up is.",
+  "adm.backup.reason.missing": "De back-upmap bestaat niet.",
+  "adm.backup.reason.unreadable": "De back-upmap was niet leesbaar ({{grund}}).",
+  "adm.backup.certified": "controlesombestand aanwezig",
+  "adm.backup.uncertified": "geen geldig controlesombestand — herstel niet aangetoond",
+  "adm.backup.dir": "Map: {{verzeichnis}}",
+  "adm.backup.readAt": "Gelezen op {{zeit}}",
+  "adm.backup.time.unknown": "Tijdstip onbekend",
+  "adm.backup.size.unknown": "Grootte niet meetbaar",
+  "adm.backup.size.b": "{{n}} bytes",
+  "adm.backup.size.kb": "{{n}} KB",
+  "adm.backup.size.mb": "{{n}} MB",
+  "adm.backup.age.now": "minder dan een uur geleden",
+  "adm.backup.age.hours_one": "{{count}} uur geleden",
+  "adm.backup.age.hours_other": "{{count}} uur geleden",
+  "adm.backup.age.days_one": "{{count}} dag geleden",
+  "adm.backup.age.days_other": "{{count}} dagen geleden",
+  "adm.backup.row.none": "geen",
+  "adm.backup.row.unknown": "niet vast te stellen",
   "adm.sich.auditTitle": "Auditlog — hash-geschakeld, afwijkingen aantoonbaar",
   "adm.sich.auditHelp":
     "Elke beveiligingsrelevante actie wordt alleen toegevoegd en via een hashketen aan de vorige vermelding gekoppeld. Wordt een vermelding achteraf gewijzigd of verwijderd, dan klopt de hash niet meer — de afwijking is rekenkundig vast te stellen en wordt bij de integriteitscontrole met nummer, datum en actie benoemd. De keten heeft daarbij geen extern verankerd begin: wie volledige schrijftoegang tot de database heeft, kan een vermelding samen met alle volgende hashes opnieuw opbouwen. Het log is dus verifieerbaar (tamper-evident) — de keten houdt een wijziging niet tegen, ze maakt die opvallend.",
@@ -16928,6 +17053,10 @@ const nl: typeof de = {
   "seitenhilfe.admin.bereitschaft.titel": "Gereedheid",
   "seitenhilfe.admin.bereitschaft.text":
     "De checklist vóór een demonstratie: AI, gevalideerde objecten, openstaande toetsingen, uploadgrenzen, extern onderzoek en demogegevens — per regel een stoplicht uit echte getallen. Ze stelt niets in; ze leest zes bronnen en zegt wat ontbreekt. Valt er één uit, dan staat er „niet opvraagbaar“ met een knop die alle zes opnieuw ophaalt, in plaats van een geraden nul. De regel „Demogegevens“ leidt rechtstreeks naar de kaart waar je ze laadt.",
+  // JOB 4025 — paginahulp van de back-upkaart.
+  "seitenhilfe.admin.sicherung.titel": "Back-up",
+  "seitenhilfe.admin.sicherung.text":
+    "De informatie over de back-upmap van deze installatie: welke dumps daar liggen, wanneer ze zijn ontstaan, hoe groot ze zijn en of het controlesombestand ernaast ligt dat het back-upscript meeschrijft. Alleen informatie — er wordt hier niets gestart, verwijderd of gedownload. Ontbreekt de map of is ze niet leesbaar, dan lees je „niet vast te stellen“ met de reden; dat is uitdrukkelijk iets anders dan „geen back-up“. En ook een volle lijst zegt niets over de vraag of er uit hersteld kan worden: dat controleert alleen de herstelproef.",
   // JOB 3786 — paginahulp van het telefoonscherm (/mobile); spiegel van de DE-sleutels. De drie
   // nagekeken feiten staan bij het DE-blok: de route heeft geen rolbewaking, maar de drie
   // tabbladen vragen verschillende rechten (concepten `ko.create`, vragen en zoeken `ko.read`);

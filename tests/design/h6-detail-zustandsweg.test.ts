@@ -186,6 +186,27 @@ function matrixAdmin(): Quelle[] {
       inhalt: t("adm.factory.unavailable"),
     },
     {
+      // JOB 4025 (KUNDENBETRIEB-BACKUP): die Sicherungsauskunft unter „System", neben der
+      // Werkseinstellung. Sie ist TRAGEND: wer wissen will, ob eine Sicherung vorliegt, darf bei
+      // einer gestörten Leitung nicht „keine Sicherung" lesen — das wäre die gefährlichste aller
+      // falschen Beruhigungen. Fällt die Quelle aus, sagt die Karte „nicht abrufbar" und bietet den
+      // Ausweg, wie jede andere auch.
+      //
+      // `inhalt` ist der VERZEICHNIS-Vorspann und kein ganzer Satz, aus zwei Gründen. Erstens hängt
+      // der Pfad dahinter an der Maschine, auf der dieser Prüfstand läuft — er ist nicht vorhersagbar.
+      // Zweitens, und das ist der tragende Grund: die Zeile „Verzeichnis: …" steht AUSSCHLIESSLICH
+      // im Erfolgszweig der `Abfragehuelle`, also nur mit einer echten Antwort. Sie unterscheidet
+      // damit wirklich zwischen Störung und Erholung. Der Ehrlichkeitssatz der Karte taugt dafür
+      // ausdrücklich NICHT: er steht bewusst AUSSERHALB der Hülle und ist auch im Fehlerfall da —
+      // als Fortschrittsbeleg wäre er trivial wahr.
+      id: "Sicherung · /api/admin/sicherungen",
+      pfad: "/api/admin/sicherungen",
+      reiter: t("adm.sec.system"),
+      zeile: '[data-testid="zeile-sicherung"]',
+      behaelter: "detail-sicherung",
+      inhalt: i18n.t("adm.backup.dir", { verzeichnis: "" }).trim(),
+    },
+    {
       id: "Papierkorb · /api/kos/trash",
       pfad: "/api/kos/trash",
       // JOB 3337: Papierkorb unter „Quellen und Daten".
@@ -700,6 +721,10 @@ describe("JOB 3065 H6 R3 · Endpunkt-Matrix der Detailkarten — 503 am gebauten
     // damit dieser Matrix-Fall seinen Fehlerzustand samt „Erneut versuchen" behält.
     holeMarkeFuerFlaeche: "/api/branding",
     "endpoints.admin.factoryResetStatus": "/api/admin/factory-reset",
+    // JOB 4025 (KUNDENBETRIEB-BACKUP): die Sicherungsauskunft. Die Zeile im Reiter „System" und die
+    // Karte dahinter fahren DENSELBEN Abfrageschlüssel (`SICHERUNGEN_KEY`) — ein Abruf, eine
+    // Wahrheit. Gestört wird deshalb genau ein Pfad, und er trägt beide.
+    "endpoints.admin.sicherungen": "/api/admin/sicherungen",
     "endpoints.ko.trash": "/api/kos/trash",
     useUsers: "/api/users",
     useAudit: "/api/audit",

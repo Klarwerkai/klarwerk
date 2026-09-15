@@ -1,3 +1,7 @@
+import type { Dirent } from "node:fs";
+import { readFile, readdir, stat } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { FastifyPluginAsync } from "fastify";
 import type { AuditService } from "../../../audit";
 import { type ExampleLoadServices, examplePackage, loadExamplePackage } from "../example-packages";
@@ -20,6 +24,119 @@ import { type DemoSeedServices, purgeDemoSeed, seedDemoForAdmin } from "../seed-
 // SCRUM-501 (nacht24): Demo-/Simulationskorpus DE/EN/NL — NICHT automatisch, nur über diesen
 // Admin-Weg (bzw. tools/seed-sim-corpus); Entfernen über den bestehenden Demo-Purge (demoSeed).
 import { loadSimCorpus } from "../sim-corpus";
+
+// ==================================================================================================
+// JOB 4025 · KUNDENBETRIEB-BACKUP TEIL 2 — DIE SICHERUNG BEKOMMT EINE AUSKUNFT.
+// ==================================================================================================
+//
+// Ein Beta-Kunde betreibt KLARWERK auf eigener Infrastruktur. Sein Backup läuft per Cron oder von
+// Hand über `scripts/backup/backup.sh` — und bis hierher konnte NIEMAND in der Anwendung nachsehen,
+// ob es je gelaufen ist. Drei Messungen am Stand `b0315de` belegten die Lücke: keine Route, kein
+// Client-Endpunkt, keine Zeile im Reiter „System".
+//
+// DIESE ROUTE ERFINDET KEINEN ZWEITEN VERTRAG, sie LIEST den, den `backup.sh` schreibt:
+//
+//   :34-36  `WURZEL="$(cd "$(dirname "$0")/../.." && pwd)"` · `DEST="${1:-${BACKUP_DIR:-$WURZEL/backups}}"`
+//   :39-40  `STAMP="$(date -u +%Y%m%dT%H%M%SZ)"` · `OUT="$DEST/klarwerk-${STAMP}.dump"`
+//   :82     Sidecar wie `shasum -a 256`: 64 Hex, ZWEI Leerzeichen, DER ENDNAME
+//   :55-57  „Sidecar zuerst, Dump zuletzt" — ein `*.dump` OHNE Sidecar ist kein regulär
+//           entstandenes Backup dieses Skripts
+//   :62-63  Arbeitsstände heißen `*.dump.partial` und sind KEINE Sicherungen
+//
+// Das Skript selbst bleibt unverändert (Auftrag §10). Geschrieben wird hier nichts: kein Löschen,
+// kein Auslösen, kein Herunterladen — eine reine Auskunft, und zwar ausschließlich lokal.
+//
+// FAIL-CLOSED (Lehre JOB 3948 R1): `beglaubigt` wird NUR wahr, wenn die Sidecar-Datei WIRKLICH
+// gelesen wurde und ihre Zeile die Form trägt UND auf genau diesen Endnamen lautet. Fehlend, leer,
+// unlesbar oder auf einen fremden Namen lautend heißt `false` — „unbekannt" wird nie zu „in Ordnung".
+//
+// UND DIE GRENZE DIESER AUSSAGE, SEIT RUNDE 6 AUSGESCHRIEBEN (Prüferbefund Runde 5): geprüft wird
+// die SIDECAR, nie der Dump. Diese Route öffnet die Sicherungsdatei nicht, bildet keinen Hash und
+// vergleicht nichts — eine formgerechte Sidecar mit falschem Hash ergibt `beglaubigt: true`
+// (festgehalten in `tests/kundenbetrieb-sicherung/sicherungen-auskunft.test.ts`, S9).
+//
+// WARUM NICHT WIRKLICH VERGLICHEN: die Auskunft listet ALLE Dumps des Verzeichnisses, und ein Dump
+// ist ein vollständiger Datenbankabzug. Ein Abgleich läse bei jedem Aufruf jede dieser Dateien
+// vollständig — die Zeile im Reiter „System" fragt schon beim Öffnen des Reiters, die Karte frischt
+// auf. Aus einer Auskunft würde damit ein Lastwerkzeug gegen die eigene Anlage. Der Abgleich gehört
+// dorthin, wo eine Entscheidung an ihm hängt: in den Restore-Drill (JOB 4010). Was hier NICHT
+// gemessen wird, behauptet deshalb auch die Fläche nicht — sie sagt „Prüfsummendatei vorhanden".
+
+/** Ein Eintrag der Auskunft. Was nicht bekannt ist, steht als `null` — nie als 0 und nie als "". */
+interface SicherungsEintrag {
+  datei: string;
+  zeitpunktUtc: string | null;
+  groesseBytes: number | null;
+  beglaubigt: boolean;
+  pruefsumme: string | null;
+}
+
+/**
+ * Die Wurzel wird aus dem MODULPFAD abgeleitet, nicht aus `process.cwd()` — dieselbe Entscheidung
+ * und derselbe Grund wie in `backup.sh:27-33` (CWD-Vertrag, JOB 943): wer den Server aus einem
+ * anderen Verzeichnis startet, bekäme sonst eine Auskunft über ein ganz anderes Verzeichnis und
+ * glaubte, ein Backup zu haben. Vier Ebenen: `routes` → `src` → `app` → `services` → Wurzel.
+ */
+const REPO_WURZEL = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+
+/** Dieselbe Auflösung wie `backup.sh:34-36`; eine leere Variable gilt wie eine ungesetzte (`${VAR:-…}`). */
+function sicherungsVerzeichnis(): string {
+  const gesetzt = process.env.BACKUP_DIR;
+  return gesetzt !== undefined && gesetzt !== ""
+    ? resolve(gesetzt)
+    : resolve(join(REPO_WURZEL, "backups"));
+}
+
+/** `klarwerk-20260914T093000Z.dump` → ISO-Zeitpunkt. Nicht parsebar oder kein echtes Datum → `null`. */
+function zeitpunktAusName(datei: string): string | null {
+  const treffer = /^klarwerk-(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z\.dump$/.exec(datei);
+  if (!treffer) {
+    return null;
+  }
+  const [, jahr, monat, tag, stunde, minute, sekunde] = treffer;
+  const iso = `${jahr}-${monat}-${tag}T${stunde}:${minute}:${sekunde}.000Z`;
+  const zeit = new Date(iso);
+  // `new Date("2026-02-31T…")` liefert den 3. März. Ein Datum, das es nicht gibt, wird NICHT auf
+  // einen anderen Tag gebogen — dann ist der Name eben nicht parsebar.
+  return Number.isNaN(zeit.getTime()) || zeit.toISOString() !== iso ? null : iso;
+}
+
+/** Die Prüfsumme aus der Sidecar — nur, wenn Form UND Endname stimmen. Sonst `null` (fail-closed). */
+async function pruefsummeAus(ort: string, datei: string): Promise<string | null> {
+  let roh: string;
+  try {
+    roh = await readFile(join(ort, `${datei}.sha256`), "utf8");
+  } catch {
+    return null;
+  }
+  // `backup.sh:82` schreibt GENAU eine Zeile: 64 Hex, zwei Leerzeichen, der Endname.
+  const zeile = roh.split("\n")[0] ?? "";
+  const treffer = /^([0-9a-fA-F]{64}) {2}(.+)$/.exec(zeile);
+  if (!treffer || treffer[2] !== datei) {
+    return null;
+  }
+  return (treffer[1] ?? "").toLowerCase();
+}
+
+/** Ein Verzeichniseintrag wird zum Befund — was nicht lesbar ist, bleibt `null`. */
+async function befundFuer(ort: string, datei: string): Promise<SicherungsEintrag> {
+  let groesseBytes: number | null = null;
+  try {
+    groesseBytes = (await stat(join(ort, datei))).size;
+  } catch {
+    // Ein Verweis ins Leere oder eine Datei, die zwischen Auflistung und Messung verschwand: eine
+    // `0` wäre hier eine Behauptung über etwas, das niemand gelesen hat.
+    groesseBytes = null;
+  }
+  const pruefsumme = await pruefsummeAus(ort, datei);
+  return {
+    datei,
+    zeitpunktUtc: zeitpunktAusName(datei),
+    groesseBytes,
+    beglaubigt: pruefsumme !== null,
+    pruefsumme,
+  };
+}
 
 // SCRUM-181: admin-geschützte Aktion, um eine LEERE Instanz mit Demodaten sichtbar zu machen.
 // Kein Auto-Seed, kein anonymer Zugriff. Idempotent über den Empty-Guard im Seed selbst.
@@ -317,6 +434,67 @@ export function adminRoutes(
       // den Prozess beenden. Der Reset läuft bewusst NACH dem Flush der Antwort.
       reply.code(200).send({ ok: true });
       void factoryReset.run();
+    });
+
+    // ==========================================================================================
+    // JOB 4025 — GET /api/admin/sicherungen: liegt hier eine Sicherung, und trägt sie ihr Zeugnis?
+    // ==========================================================================================
+    //
+    // Bauform wörtlich wie die lesende Werksreset-Auskunft ein paar Zeilen höher: `requirePermission`
+    // als erste Anweisung, bei `null` sofort zurück (dann hat der Guard bereits geantwortet — die
+    // Verweigerung trägt deshalb weder `sicherungen` noch `verzeichnis`).
+    //
+    // DREI ZUSTÄNDE, und „unbekannt" sieht in KEINEM davon aus wie „keine":
+    //   `gelesen`           Verzeichnis da und lesbar → `sicherungen: [...]`, auch leer
+    //   `kein_verzeichnis`  das aufgelöste Verzeichnis existiert nicht → GAR KEIN Feld `sicherungen`
+    //   `unlesbar`          existiert, war aber nicht lesbar → `grund` als KENNUNG (errno), kein Satz
+    //
+    // Der `grund` ist bewusst eine technische Kennung und kein Text: Sätze wohnen im Wörterbuch der
+    // Oberfläche (drei Sprachen), und ein Fehlertext des Betriebssystems könnte Pfadinhalte fremder
+    // Dateien tragen. Herausgereicht wird ausschließlich, was diese Route selbst gebildet hat.
+    app.get("/api/admin/sicherungen", async (request, reply) => {
+      const user = await guards.requirePermission("users.manage", request, reply);
+      if (!user) {
+        return;
+      }
+      const verzeichnis = sicherungsVerzeichnis();
+      const gelesenUtc = new Date().toISOString();
+
+      // `Dirent<string>`, nicht `Awaited<ReturnType<typeof readdir>>`: `readdir` ist überladen, und
+      // die Ableitung greift dort die Puffer-Überladung — `e.name` wäre dann ein `Buffer`.
+      let eintraege: Dirent<string>[];
+      try {
+        eintraege = await readdir(verzeichnis, { withFileTypes: true });
+      } catch (fehler) {
+        const code = (fehler as NodeJS.ErrnoException).code;
+        if (code === "ENOENT") {
+          reply.code(200).send({ zustand: "kein_verzeichnis", verzeichnis, gelesenUtc });
+          return;
+        }
+        reply.code(200).send({
+          zustand: "unlesbar",
+          verzeichnis,
+          gelesenUtc,
+          grund: code ?? "UNBEKANNT",
+        });
+        return;
+      }
+
+      // `*.dump.partial` (backup.sh:62) fällt schon über die Endung heraus; Verzeichnisse und
+      // Sockets sind keine Sicherungen. Ein Verweis bleibt drin — ob er trägt, sagt seine Größe.
+      const namen = eintraege
+        .filter((e) => (e.isFile() || e.isSymbolicLink()) && e.name.endsWith(".dump"))
+        .map((e) => e.name);
+      const sicherungen = await Promise.all(namen.map((n) => befundFuer(verzeichnis, n)));
+      // Jüngste zuerst. Ein Name ohne Stempel trägt kein Datum und kann deshalb nicht behaupten,
+      // der jüngste zu sein — er steht hinten. Der Dateiname bricht den Gleichstand, damit zwei
+      // Aufrufe am selben Bestand dieselbe Reihenfolge liefern.
+      sicherungen.sort((a, b) => {
+        const za = a.zeitpunktUtc ?? "";
+        const zb = b.zeitpunktUtc ?? "";
+        return za === zb ? b.datei.localeCompare(a.datei) : zb > za ? 1 : -1;
+      });
+      reply.code(200).send({ zustand: "gelesen", verzeichnis, gelesenUtc, sicherungen });
     });
   };
 }

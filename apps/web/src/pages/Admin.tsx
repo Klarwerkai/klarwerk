@@ -83,6 +83,10 @@ import { aiAccessRows, anbieterUndModell } from "../lib/aiOverview";
 import { ANALYTICS_AUDIT_PATH } from "../lib/analyticsSections";
 import { SECURITY_POINTS } from "../lib/securityStatements";
 import { readinessRows } from "../lib/vipReadiness";
+// JOB 4025 (KUNDENBETRIEB-BACKUP): die Betriebs-Auskünfte des Reiters „System" — bisher genau eine,
+// die Sicherung. Eigene Datei statt eines Anbaus an `AdminSicherheitDetails`: die Sicherung ist eine
+// Betriebsfrage („liegt hier ein Backup?"), keine Sicherheits- oder Nachweisfrage.
+import { SICHERUNGEN_KEY, SicherungDetail } from "./AdminBetriebDetails";
 import {
   AuditDetail,
   DemodatenDetail,
@@ -259,6 +263,13 @@ export function Admin(): JSX.Element {
     queryFn: endpoints.admin.factoryResetStatus,
   });
   const trash = useQuery({ queryKey: ["kos", "trash"], queryFn: endpoints.ko.trash });
+  // JOB 4025 (KUNDENBETRIEB-BACKUP): DERSELBE Abfrageschlüssel, den auch `SicherungDetail` fährt.
+  // Zeile und Karte teilen sich damit EINEN Abruf — es entsteht kein zweiter Weg zu derselben
+  // Auskunft, und das Öffnen der Karte fragt den Server nicht noch einmal.
+  const sicherungen = useQuery({
+    queryKey: SICHERUNGEN_KEY,
+    queryFn: endpoints.admin.sicherungen,
+  });
 
   /** Der sichtbare Wert einer Zeile aus einer Abfrage — das Zustandsmodell in einer Zeile Code. */
   function wert(
@@ -340,6 +351,23 @@ export function Admin(): JSX.Element {
     ),
   );
 
+  // ---- Sicherung (JOB 4025) ----------------------------------------------------------------------
+  //
+  // Der Zeilenwert läuft durch dasselbe Zustandsmodell wie jede andere Zeile. Eigen ist hier genau
+  // eines: `kein_verzeichnis` und `unlesbar` sind ERFOLGREICHE Abrufe — der Server hat geantwortet,
+  // er konnte nur nichts feststellen. Für `wertBefund` wäre das ein „Wert", und ohne diese Weiche
+  // stünde dort eine Zahl oder „keine". Beides wäre gelogen; die Zeile sagt stattdessen ausdrücklich
+  // „nicht feststellbar" und schickt zur Karte, wo der Grund steht (Auftrag §9).
+  const sicherungsstand = sicherungen.data;
+  const sicherungAnzahl =
+    sicherungsstand?.zustand === "gelesen" ? sicherungsstand.sicherungen.length : null;
+  const sicherungWert = wert(
+    sicherungen,
+    sicherungAnzahl === null ? t("adm.backup.row.unknown") : String(sicherungAnzahl),
+    sicherungAnzahl === 0,
+    t("adm.backup.row.none"),
+  );
+
   const auditNutzer = audit.data?.filter((e) => isUserAuditAction(e.action)) ?? [];
   const letzterEintrag = audit.data?.[audit.data.length - 1];
 
@@ -391,6 +419,10 @@ export function Admin(): JSX.Element {
         return <PruefprotokollDetail onZurueck={zurueck} />;
       case "datenschutz":
         return <DatenschutzDetail onZurueck={zurueck} />;
+      // JOB 4025: die Sicherungsauskunft. Sie liest nur — auslösen, löschen oder herunterladen tut
+      // sie nichts (Auftrag §10), deshalb braucht sie hier keinen Rückruf außer dem Weg zurück.
+      case "sicherung":
+        return <SicherungDetail onZurueck={zurueck} />;
       case "bereitschaft":
         return (
           <BereitschaftDetail
@@ -729,6 +761,16 @@ export function Admin(): JSX.Element {
                   wert={bereitschaftWert}
                   onOeffnen={() => geheZu("system", "bereitschaft")}
                   testId="zeile-bereitschaft"
+                />
+                {/* JOB 4025 (KUNDENBETRIEB-BACKUP): die Sicherung wohnt neben der Bereitschaft —
+                    beides sind Auskünfte über den Zustand des Hauses, keine Handlungen. Bis hierher
+                    konnte ein Betreiber ohne Terminal nicht erfahren, ob seine Sicherung je gelaufen
+                    ist; ab hier steht die Antwort hinter dieser Zeile. */}
+                <Zeile
+                  label={t("adm.backup.title")}
+                  wert={sicherungWert}
+                  onOeffnen={() => geheZu("system", "sicherung")}
+                  testId="zeile-sicherung"
                 />
                 {/* Bis JOB 3060 saß das Stufe-2-Häkchen in der Seitenleiste, bis JOB 3337 unter
                     „Konten". Hier ist sein Ort: die Vorlage führt „Erweiterte Module" unter System,

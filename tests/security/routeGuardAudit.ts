@@ -645,4 +645,11 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // Pedi 05.07. (Beta): Werksreset — Verfügbarkeit lesen + ausführen, beides nur Nutzerverwaltung.
   "GET /api/admin/factory-reset": { protection: "users.manage" },
   "POST /api/admin/factory-reset": { protection: "users.manage" },
+  // JOB 4025 (KUNDENBETRIEB-BACKUP): die LESENDE Sicherungsauskunft. Dieselbe Schranke wie jeder
+  // andere Weg in `admin-routes.ts`, und das ist hier keine Formsache: die Antwort nennt den
+  // ABSOLUTEN Pfad des Sicherungsverzeichnisses, die Namen der Dumps samt Zeitstempel und ihre
+  // Prüfsummen. Das ist Wissen über die Betriebsumgebung — wer es lesen darf, verwaltet die
+  // Instanz. Geschrieben wird über diesen Weg nichts (kein Auslösen, kein Löschen, kein
+  // Herunterladen, Auftrag §10), deshalb steht hier nur GET und keine mutierende Zwillingszeile.
+  "GET /api/admin/sicherungen": { protection: "users.manage" },
 };

@@ -3913,8 +3913,22 @@ describe("JOB 1181 · Klassenbindungen: aufgelöst oder gemeldet, kein dritter Z
     // Bindungen AUFLÖSEN konnte — wären hier drei Abschriften desselben Satzbaus samt der Griffe
     // darin; die drei Zustände teilen sich denselben Knoten, weil sie dieselbe Aussage in
     // verschiedenen Tönen sind. Keine Bindung ist weggefallen.
+    //
+    // JOB 4025 (KUNDENBETRIEB-BACKUP) NACH DEM REBASE auf JOB 3667: von 218 auf 219. GENAU EINE
+    // Bindung kommt dazu, wieder von der Bauform aus JOB 3135 — flache Konstanten, offen bleibt
+    // allein die Entscheidung dazwischen. Gemessen an diesem Arbeitsbaum nach der Konfliktauflösung,
+    // nicht gerechnet:
+    //
+    //     + pages/AdminBetriebDetails.tsx — `cx(MARKE, eintrag.beglaubigt ? MARKE_BEGLAUBIGT
+    //           : MARKE_OHNE)` (die Marke am Ende einer Sicherungszeile: „beglaubigt" in der
+    //       Positivfarbe, „ohne Prüfsumme" in der Warnfarbe)
+    //
+    // WARUM NICHT AUFLÖSBAR GESCHRIEBEN (Auflage aus JOB 3267): ein berechneter Klassenname wäre
+    // hier ein zweites Gehirn für eine Ja/Nein-Entscheidung; die beiden Ketten sind flache
+    // Konstanten und werden vom Sammler gelesen. Die Datei ist NEU — es fällt nichts weg, und keine
+    // bestehende Bindung ist verschoben.
     expect(UNAUFGELOEST.length, "es gibt heute unauflösbare Bindungen — das ist der Befund").toBe(
-      218,
+      219,
     );
     for (const b of UNAUFGELOEST) {
       expect(b.datei, "Meldung ohne Datei").toMatch(/^apps\/web\/src\/.+\.tsx?$/);

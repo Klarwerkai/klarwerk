@@ -2139,3 +2139,43 @@ export interface ImportAccessStatus {
   blocker: "missing" | "insecure-base-url" | null;
   lastConnectedAt: string | null;
 }
+
+// ================================================================================================
+// JOB 4025 · KUNDENBETRIEB-BACKUP — DIE SICHERUNGSAUSKUNFT ALS CLIENT-TYP.
+// ================================================================================================
+//
+// Zeichengleicher Spiegel dessen, was `GET /api/admin/sicherungen` sendet
+// (`services/app/src/routes/admin-routes.ts`). Die drei Zustände stehen bewusst als VEREINIGUNG und
+// nicht als ein Objekt mit optionalen Feldern: nur so kann `sicherungen` im Fehlerfall gar nicht
+// erst gelesen werden. „Unbekannt" darf nie wie „keine" aussehen — und was der Typ im Fehlerfall
+// nicht trägt, kann die Fläche auch nicht versehentlich als leere Liste zeichnen.
+export interface SicherungsEintrag {
+  /** Der Basisname, wie `backup.sh:40` ihn schreibt (`klarwerk-<STAMP>.dump`). */
+  datei: string;
+  /** Aus dem Namen geparst (`backup.sh:39`, UTC). `null` = der Name trägt keinen gültigen Stempel. */
+  zeitpunktUtc: string | null;
+  /** `null` = die Größe war nicht messbar (etwa ein Verweis ins Leere) — ausdrücklich nicht 0. */
+  groesseBytes: number | null;
+  /**
+   * Sidecar vorhanden UND formgerecht UND auf genau diesen Endnamen lautend (`backup.sh:82`).
+   *
+   * DAS IST DIE GANZE AUSSAGE — und sie ist schwächer, als der Name vermuten lässt: der Dump wird
+   * nicht gelesen, sein Hash nicht gebildet, nichts verglichen. Eine formgerechte Sidecar mit
+   * FALSCHEM Hash ergibt hier `true` (Prüferbefund Runde 5, festgehalten in
+   * `tests/kundenbetrieb-sicherung/sicherungen-auskunft.test.ts`, S9). Die Fläche sagt deshalb
+   * „Prüfsummendatei vorhanden" und nirgends „geprüft"/„verified".
+   */
+  beglaubigt: boolean;
+  /** Nur bei `beglaubigt`; sonst `null`. Der Wert AUS der Sidecar, kein nachgerechneter. */
+  pruefsumme: string | null;
+}
+
+export type SicherungenAuskunft =
+  | {
+      zustand: "gelesen";
+      verzeichnis: string;
+      gelesenUtc: string;
+      sicherungen: SicherungsEintrag[];
+    }
+  | { zustand: "kein_verzeichnis"; verzeichnis: string; gelesenUtc: string }
+  | { zustand: "unlesbar"; verzeichnis: string; gelesenUtc: string; grund: string };

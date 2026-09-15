@@ -97,6 +97,11 @@ export const ADMIN_DETAILS: readonly AdminDetailZiel[] = [
   { id: "audit", section: "sicherheit", labelKey: "adm.auditTitle" },
   { id: "werk", section: "system", labelKey: "adm.factory.title" },
   { id: "bereitschaft", section: "system", labelKey: "adm.ready.title" },
+  // JOB 4025 (KUNDENBETRIEB-BACKUP): die Sicherungsauskunft. Sie wohnt unter „System", neben der
+  // Bereitschaft — beides sind Auskünfte über den Zustand des Hauses, keine Handlungen. Der Name
+  // des ZIELS ist „Sicherung", nicht „Sicherung anlegen": eine Navigation sichert nichts, und
+  // diese Karte tut es auch nicht (Auslösen ist ausdrücklich ein eigenes Paket, Auftrag §10).
+  { id: "sicherung", section: "system", labelKey: "adm.backup.title" },
 ];
 
 /** Das Thema, unter dem diese Detailkarte wohnt — oder `null` für eine unbekannte Kennung. */
