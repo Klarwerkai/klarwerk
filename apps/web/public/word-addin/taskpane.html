@@ -1229,6 +1229,48 @@
   <script>
     "use strict";
 
+    // JOB 4076 · DER ZUGANGSSCHLUESSEL AUS DER SITZUNGSUEBERGABE — EINE STELLE SETZT DEN KOPF.
+    // In Word fuer das Web liegt dieses Fenster in einem Rahmen FREMDER Herkunft; das Sitzungscookie
+    // erreicht es dort nicht. Der Anmeldedialog (`word-addin/anmeldung.html`) uebergibt einen
+    // einmaligen Code, das Fenster loest ihn ein (`loginUebergabeEinloesen`) und haelt den Schluessel
+    // NUR HIER: kein localStorage, kein sessionStorage, kein Cookie, keine Adresse. EIN UMSCHLAG UM
+    // `fetch` STATT SECHZEHN GEAENDERTER ABRUFSTELLEN, weil der Kopf an JEDEM Abruf haengen muss —
+    // sonst klappt die Anmeldung scheinbar und der erste echte Griff wird 401. Er ist KEINE neue
+    // Abrufstelle (er ruft `fetch` nicht, er IST es) und umgeht keine Buendelung; `credentials:
+    // "include"` bleibt ueberall stehen (M10). Mehr: tests/office-web-anmeldung/.
+    var officeSchluessel = null;
+
+    function officeSchluesselPruefen(res) {
+      if (res && res.status === 401) { officeSchluessel = null; }
+      return res;
+    }
+
+    (function () {
+      var roh = typeof fetch === "function" ? fetch.bind(window) : null;
+      if (roh === null) { return; }
+      window.fetch = function (pfad, init) {
+        // OHNE Schluessel ein reiner DURCHREICHER — dieselbe Zeitfolge wie vor JOB 4076, kein
+        // zusaetzlicher Mikrotask je Abruf (ein `.then` ueberall verschob die Reihenfolge und liess
+        // Antworten NACH dem Abbau landen; im Tor als unbehandelte Zurueckweisung gemessen).
+        if (officeSchluessel === null) { return roh(pfad, init); }
+        if (typeof pfad !== "string" || pfad.indexOf("/api/") !== 0) {
+          return roh(pfad, init).then(officeSchluesselPruefen);
+        }
+        // KOPIERT: ein wiederverwendetes Anfrageobjekt truege den Kopf sonst weiter, auch nachdem
+        // der Schluessel gefallen ist.
+        var hat = Object.prototype.hasOwnProperty;
+        var eigen = {};
+        var koepfe = {};
+        var name;
+        for (name in init) { if (hat.call(init, name)) { eigen[name] = init[name]; } }
+        var alt = eigen.headers || {};
+        for (name in alt) { if (hat.call(alt, name)) { koepfe[name] = alt[name]; } }
+        koepfe.authorization = "Bearer " + officeSchluessel;
+        eigen.headers = koepfe;
+        return roh(pfad, eigen).then(officeSchluesselPruefen);
+      };
+    })();
+
     // KW-WORDADDIN-HELPERS-START (Spiegel von apps/web/src/lib/wordAddin.ts — Äquivalenz per Test gepinnt)
     var WORD_ADDIN_FALLBACK_TITLE = "Wissens-Entwurf aus Word";
     var WORD_ADDIN_TITLE_MAX = 60;
@@ -2633,6 +2675,8 @@
         loginWaiting: "Warte auf die Anmeldung im Anmelde-Fenster ...",
         loginCancel: "Warten abbrechen",
         loginTimeout: "Keine Anmeldung erkannt. Bitte erneut versuchen.",
+        loginHandoverBlocked: "Die Anmeldung erreicht dieses Fenster nicht: Word zeigt Klara hier in einem Rahmen einer anderen Herkunft. Bitte das Anmelde-Fenster erneut öffnen oder dieses Seitenfenster neu laden.",
+        loginHandoverRejected: "Die Übergabe der Anmeldung wurde abgelehnt — der Übergabecode gilt nicht mehr. Ob die Anmeldung selbst geklappt hat, ist damit nicht gesagt. Bitte erneut anmelden.",
         loginPopupBlocked: "Das Anmelde-Fenster wurde blockiert (Popup-Blocker). Bitte Popups für diese Seite erlauben und erneut versuchen.",
         loginOtherContext: "Hinweis: Das Anmelde-Fenster kann in einem anderen Browser-Kontext laufen. Wird die Anmeldung hier nicht erkannt, bitte erneut versuchen.",
         sendTitle: "An KLARWERK senden",
@@ -3092,6 +3136,8 @@
         loginWaiting: "Waiting for the sign-in in the sign-in window ...",
         loginCancel: "Stop waiting",
         loginTimeout: "No sign-in detected. Please try again.",
+        loginHandoverBlocked: "The sign-in does not reach this pane: Word shows Klara here inside a frame of a different origin. Please open the sign-in window again, or reload this task pane.",
+        loginHandoverRejected: "The handover of the sign-in was declined — the handover code is no longer valid. That does not say whether the sign-in itself worked. Please sign in again.",
         loginPopupBlocked: "The sign-in window was blocked (popup blocker). Please allow popups for this page and try again.",
         loginOtherContext: "Note: the sign-in window may run in a different browser context. If the sign-in is not detected here, please try again.",
         sendTitle: "Send to KLARWERK",
@@ -3424,6 +3470,8 @@
         loginWaiting: "Wachten op de aanmelding in het aanmeldvenster ...",
         loginCancel: "Stoppen met wachten",
         loginTimeout: "Geen aanmelding herkend. Probeer het opnieuw.",
+        loginHandoverBlocked: "De aanmelding bereikt dit venster niet: Word toont Klara hier in een kader van een andere herkomst. Open het aanmeldvenster opnieuw of laad dit taakvenster opnieuw.",
+        loginHandoverRejected: "De overdracht van de aanmelding is afgewezen — de overdrachtscode geldt niet meer. Daarmee is niet gezegd of de aanmelding zelf is gelukt. Meld je opnieuw aan.",
         loginPopupBlocked: "Het aanmeldvenster is geblokkeerd (pop-upblokkering). Sta pop-ups voor deze pagina toe en probeer het opnieuw.",
         loginOtherContext: "Let op: het aanmeldvenster kan in een andere browsercontext draaien. Wordt de aanmelding hier niet herkend, probeer het dan opnieuw.",
         sendTitle: "Naar KLARWERK sturen",
@@ -4954,6 +5002,8 @@
         .then(function (bestaetigt) {
           knopf.disabled = false;
           if (bestaetigt) {
+            // JOB 4076: der uebergebene Zugangsschluessel gehoert DIESER Sitzung — mit ihr faellt er.
+            officeSchluessel = null;
             klaraS4Verwerfen();
             // JOB 3093 Runde 3: derselbe Moment fuer den Bestandsstand — ein bestaetigter Logout
             // verwirft Treffer und laufende Antwort, ein unbestaetigter nichts.
@@ -5738,6 +5788,62 @@
       document.getElementById("login-btn").disabled = false; // (e)
     }
 
+    // JOB 4076: die Kennung der Dialognachricht. Sie steht als Literal auch in `anmeldung.html` —
+    // zwei buildlose Seiten teilen keine Konstante; der Vertrag ist gemessen statt behauptet
+    // (tests/office-web-anmeldung/dialogseite.test.ts + seitenfenster-empfang).
+    var WORD_ADDIN_UEBERGABE_ART = "kw-office-handover";
+
+    // Liegt dieses Fenster in einem Rahmen FREMDER Herkunft? NUR dann kann das Sitzungscookie
+    // ausbleiben (ITP). Gemessen wird der Zugriff selbst: bei gleicher Herkunft ist die Adresse des
+    // Rahmens lesbar, bei fremder wirft die Policy. Top-level (Mac-Word, Browsertab): `false`.
+    function loginImFremdenRahmen() {
+      var oben;
+      try { oben = window.parent; } catch (err) { return true; }
+      if (!oben || oben === window) { return false; }
+      try { return String(oben.location.origin) !== String(window.location.origin); }
+      catch (err) { return true; }
+    }
+
+    // Der ehrliche Ausgang: kam KEINE Uebergabe an und liegt das Fenster im fremden Rahmen, ist
+    // „Zeit abgelaufen" die falsche Auskunft. Ohne Rahmenlage bleibt der bisherige Satz — dann hat
+    // der Mensch den Dialog schlicht nicht zu Ende gefuehrt.
+    function loginAusgangSatz() {
+      return loginImFremdenRahmen() ? t("loginHandoverBlocked") : t("loginTimeout");
+    }
+
+    // Der Code aus der Dialognachricht — oder null. Streng: was nicht genau die vereinbarte Form
+    // traegt, ist keine Uebergabe und wird nicht geraten.
+    function loginUebergabeCode(nachricht) {
+      try {
+        var k = JSON.parse(String(nachricht));
+        return k && k.art === WORD_ADDIN_UEBERGABE_ART && typeof k.code === "string"
+          && k.code.length > 0 ? k.code : null;
+      } catch (err) { return null; }
+    }
+
+    function loginUebergabeEinloesen(generation, code) {
+      fetch("/api/auth/office-handover/redeem", {
+        method: "POST", credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ code: code })
+      })
+        .then(function (res) { return res && res.ok ? res.json() : null; }, function () { return null; })
+        .then(function (koerper) {
+          if (generation !== loginPollGeneration) { return; } // (d) alter Lauf — nichts anfassen
+          var schluessel = koerper && typeof koerper.token === "string" ? koerper.token : "";
+          if (schluessel.length === 0) {
+            // Abgelehnt: NICHT „Anmeldung fehlgeschlagen" — sie kann geklappt haben, nur die
+            // Uebergabe nicht. Genau das steht da.
+            stopLoginPolling();
+            setSessionWarn(t("loginHandoverRejected"));
+            return;
+          }
+          officeSchluessel = schluessel;
+          stopLoginPolling();
+          checkSession(); // die Identitaet kommt aus einem FRISCHEN Abruf, nicht aus der Nachricht
+        });
+    }
+
     function runLoginPoll(generation) {
       if (generation !== loginPollGeneration) { return; }
       // (b) eigener AbortController + eigene Frist je Fetch — ein haengender Request blockiert die
@@ -5760,7 +5866,7 @@
             checkSession(); // rendert den angemeldeten Zustand — OHNE Navigation
           } else if (step === "timeout") {
             stopLoginPolling();
-            setSessionWarn(t("loginTimeout"));
+            setSessionWarn(loginAusgangSatz());
           } else {
             // (a) "schedule": der NAECHSTE Versuch wird erst jetzt geplant — nie ueberlappend.
             loginPollTimer = setTimeout(function () {
@@ -5782,7 +5888,7 @@
       loginDeadlineTimer = setTimeout(function () {
         if (generation !== loginPollGeneration) { return; }
         stopLoginPolling();
-        setSessionWarn(t("loginTimeout"));
+        setSessionWarn(loginAusgangSatz());
       }, WORD_ADDIN_LOGIN_POLL_MAX_MS);
       loginPollTimer = setTimeout(function () {
         loginPollTimer = null;
@@ -5806,7 +5912,10 @@
     }
 
     function openLoginWindow(generation) {
-      var url = window.location.origin + "/";
+      // JOB 4076: DIE EINE OEFFNUNGSSTELLE, Ziel jetzt die Dialogseite statt der Anwendung
+      // (`origin + "/"`) — die kann `messageParent` nicht rufen. Auch das Rueckfallfenster nimmt
+      // dieses Ziel: dort ist kein fremder Rahmen, das Cookie wird gesetzt, der Poll findet es.
+      var url = window.location.origin + "/word-addin/anmeldung.html";
       var ui = window.Office && Office.context && Office.context.ui;
       if (ui && typeof ui.displayDialogAsync === "function") {
         // Offizieller Office-Weg: eigener Dialog-Webview, TOP-LEVEL (kein iframe → kein
@@ -5824,6 +5933,16 @@
             }
             if (dialog) {
               loginDialog = dialog;
+              // JOB 4076: der RUECKWEG, gegen die LAUFENDE Generation geprueft — hier UND im
+              // Einloesen (zwischen beiden kann ein Abbruch liegen). Host ohne `addEventHandler`:
+              // der Cookie-Poll bleibt der Weg, wie bisher.
+              try {
+                dialog.addEventHandler(Office.EventType.DialogMessageReceived, function (arg) {
+                  if (generation !== loginPollGeneration) { return; }
+                  var code = loginUebergabeCode(arg && arg.message);
+                  if (code !== null) { loginUebergabeEinloesen(generation, code); }
+                });
+              } catch (err) { /* Host ohne addEventHandler — der Cookie-Poll traegt weiter */ }
               return;
             }
             // Dialog abgelehnt/fehlgeschlagen → Fallback-Fenster (mit Popup-/Kontext-Behandlung).

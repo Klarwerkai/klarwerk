@@ -51,6 +51,13 @@ const WURZEL = join(__dirname, "..", "..");
 const TASKPANE = join(WURZEL, "apps", "web", "public", "word-addin", "taskpane.html");
 /** JOB 3667 R8: die zweite ausgelieferte Datei des Fensters (Abschnitt KW-RUECKWEG). */
 const RUECKWEG = join(WURZEL, "apps", "web", "public", "word-addin", "rueckweg.js");
+/**
+ * JOB 4076: die DRITTE ausgelieferte Datei — die Dialogseite der Office-Web-Anmeldung. Sie steht
+ * unter derselben Pflicht wie die zwei anderen: was ausgeliefert wird, wird gepinnt. Ohne diesen
+ * Eintrag könnte sich die Seite still ändern, die im Office-Dialog die Anmeldung entgegennimmt und
+ * weitergibt — und niemand müsste die Auslieferungsfragen dazu beantworten.
+ */
+const ANMELDUNG = join(WURZEL, "apps", "web", "public", "word-addin", "anmeldung.html");
 
 function quelle(): string {
   return readFileSync(TASKPANE, "utf8");
@@ -2514,8 +2521,39 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     //                 und das Fenster bricht sichtbar. Genau das ist gewollt: ein halb
     //                 ausgeliefertes Fenster darf nicht so tun, als haette es einen Rueckweg.
     //   · Bestehende Flaechen: unberuehrt (der Kasten bleibt ohne Kandidaten `hidden`).
+    // JOB 4076 (OFFICE-WEB-ANMELDUNG, 15.09.2026) — PIN BEWUSST AKTUALISIERT
+    // (82ec10c4… -> 65ae30a5…). Auslieferungsfolgen, jede geprüft, bevor der Pin wanderte:
+    //   · Abrufziel: EIN neues — `POST /api/auth/office-handover/redeem`, das Einlösen des
+    //                Übergabecodes aus dem Anmeldedialog. Die bewusste Antwort auf die sechs Fragen
+    //                (CSP, Recht, Manifest, Nutzlast, Frequenz, Auslieferungsfolge) steht am
+    //                Zähler in `mega69-klara-merkmale.test.ts` (16 → 17).
+    //   · Manifest:  UNVERÄNDERT. Die Dialogseite liegt unter DERSELBEN AppDomain wie dieses
+    //                Fenster; keine neue Domain, keine neue Berechtigung, kein neues
+    //                Requirement-Set. `Dialog.addEventHandler`/`Office.EventType` gehören zur
+    //                Dialog-API, die das Fenster mit `displayDialogAsync` längst benutzt.
+    //   · CSP:       für DIESES Fenster unverändert (Header-Matrix in `word-addin-csp.test.ts`).
+    //                Ein ZWEITER Pfad steht jetzt in `WORD_ADDIN_CSP_PATHS` — für die Dialogseite,
+    //                die `office.js` laden muss; die exakte, fail-closed Pfadprüfung bleibt.
+    //   · Recht:     keines zusätzlich. Das Einlösen ist bewusst öffentlich (der Code IST der
+    //                Nachweis), Eintrag samt Begründung im Routen-Audit.
+    //   · Nutzlast:  hinaus geht der Übergabecode, sonst nichts. NEU: ein `Authorization`-Kopf an
+    //                jedem Abruf, gesetzt von EINER Stelle (Umschlag um `fetch`);
+    //                `credentials: "include"` bleibt überall stehen — im Mac-Word trägt das Cookie,
+    //                im Browser der Schlüssel.
+    //   · Ablösung:  `displayDialogAsync` öffnet nicht mehr die Anwendung (`origin + "/"`), sondern
+    //                `word-addin/anmeldung.html`. Der Cookie-Poll bleibt UNVERÄNDERT der tragende
+    //                Weg im Mac-Word und im normalen Browser; abgelöst ist genau eine Aussage, der
+    //                pauschale `loginTimeout` im Rahmenfall.
+    //   · Sideload:  KEIN erneutes Sideload. Neu ausgeliefert werden muss die Dialogseite; fehlt
+    //                sie, öffnet der Dialog eine 404, und das ist sichtbar statt still.
+    //   · Zeitfolge: der Umschlag ist OHNE Schluessel ein reiner Durchreicher (`return roh(...)`).
+    //                Ein `.then` an JEDEM Abruf hatte einen zusaetzlichen Mikrotask eingeschoben und
+    //                Antworten erst NACH dem Abbau des Fensters landen lassen — im vollen Tor als
+    //                unbehandelte Zurueckweisung (`Cannot set properties of null`) sichtbar. Im
+    //                Mac-Word und im Browsertab (kein Schluessel) ist die Reihenfolge damit exakt
+    //                die von vor JOB 4076.
     // GEMESSEN: s. RUECKGABE dieser Runde.
-    const PIN = "82ec10c4ec0b1c49de3480eb4d213241be31074fd29da8ef3e8f9a6688d85e8f";
+    const PIN = "6d61b8505a6ede48ada440bd5fdea9747b7d0da706f65e0874e3cf416c3d34ca";
     const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
     expect(
       ist,
@@ -2541,6 +2579,55 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     expect(
       ist,
       "rueckweg.js wurde geändert — Auslieferungsfolgen bewusst prüfen (Kommentar oben), dann den Pin aktualisieren.",
+    ).toBe(PIN);
+  });
+
+  // ==============================================================================================
+  // JOB 4076 — DIE DRITTE AUSGELIEFERTE DATEI STEHT UNTER DEMSELBEN PIN.
+  // ==============================================================================================
+  //
+  // `anmeldung.html` ist die Seite, die der Office-Dialog öffnet: sie nimmt die Anmeldung
+  // entgegen und gibt sie über einen einmaligen Übergabecode an das Seitenfenster weiter. Sie ist
+  // damit ein Stück des ausgelieferten Fensters und keine Nebensache — eine stille Änderung an ihr
+  // ändert, WIE eine Anmeldung in Klara hineinkommt. Dieselbe Regel, dieselbe Pflicht zur bewussten
+  // Antwort auf die Auslieferungsfragen wie bei den zwei Dateien darüber.
+  it("INHALTS-PIN: eine Änderung an anmeldung.html wird rot, bevor sie still ausgeliefert wird", () => {
+    // ERSTEINTRAG (JOB 4076, 15.09.2026): die Datei entsteht in dieser Runde. Ein VORHERHASH
+    // existiert nicht. Auslieferungsfolgen:
+    //   · CSP:       sie braucht die Taskpane-Ausnahme, weil sie `office.js` lädt — deshalb der
+    //                zweite Eintrag in `WORD_ADDIN_CSP_PATHS` (`security-headers.ts`), begründet an
+    //                Ort und Stelle und gemessen in `word-addin-csp.test.ts`.
+    //   · Manifest:  unverändert. Sie liegt unter DERSELBEN AppDomain wie das Taskpane; das
+    //                Manifest braucht dafür keinen Eintrag.
+    //   · Recht:     keines. Sie ruft ausschliesslich bestehende Wege (`/api/auth/status`,
+    //                `/api/auth/me`, `/api/auth/login`, `/api/auth/oidc/start`) plus die neue
+    //                Code-Ausgabe, die eine Sitzung verlangt.
+    //   · Fassung:   sie trägt KEINEN Fassungs- und keinen Stand-Platzhalter — die stempeln nur die
+    //                eigene Taskpane-Route bzw. der Build. Ein Platzhalter bliebe hier stehen.
+    //   · Alter Server: eine Auslieferung OHNE diese Datei liefert 404 — dann sieht der Mensch im
+    //                Anmelde-Fenster eine leere Seite statt eines vorgetäuschten Anmeldewegs.
+    //
+    // JOB 4076 RUNDE 4 — PIN BEWUSST AKTUALISIERT (2b76d027… -> 4ae060ee…), BENs ROT behoben.
+    // Auslieferungsfolgen, jede geprüft, bevor der Pin wanderte:
+    //   · Ablauf:      die Seite startet ihre Sitzungsprüfung jetzt ERST nach `Office.onReady` —
+    //                  mit FRIST, in derselben Bauart wie `markOfficeChecked` im Seitenfenster, und
+    //                  ein spätes `onReady` nach der Frist holt die Übergabe nach. Bis dahin steht
+    //                  „Verbindung zu Word wird hergestellt …". Vorher beendete eine 200er-Antwort
+    //                  VOR der Bereitschaft den Übergabeweg endgültig (BENs Messung zu Runde 3).
+    //   · Ehrlichkeit: der Satz für „keine Dialog-Schnittstelle" behauptet nicht mehr, Klara erkenne
+    //                  die Anmeldung von selbst. Er sagt: angemeldet ja, übergeben NEIN, und was der
+    //                  Mensch tun kann — in drei Sprachen, und er wandert beim Sprachwechsel mit.
+    //   · Abrufziel:   KEINES neu. Dieselben vier Wege (`status`, `me`, `login`, `office-handover`);
+    //                  nur ihre Reihenfolge hängt jetzt an der Bereitschaft.
+    //   · Manifest/CSP: unverändert. Keine neue Domain, kein neues Recht; `office.js` wird wie
+    //                  bisher geladen, nur endlich auch ABGEWARTET.
+    //   · Sideload:    KEIN erneutes Sideload — die Datei wird wie jede andere unter `public/` neu
+    //                  ausgeliefert.
+    const PIN = "4ae060ee0a4b832ce0c8d93ba1cb1fa9b9b83bd1d2076429208b84603cddf7e2";
+    const ist = createHash("sha256").update(readFileSync(ANMELDUNG)).digest("hex");
+    expect(
+      ist,
+      "anmeldung.html wurde geändert — Auslieferungsfolgen bewusst prüfen (Kommentar oben), dann den Pin aktualisieren.",
     ).toBe(PIN);
   });
 });

@@ -456,6 +456,21 @@ const INVENTAR: readonly string[] = [
   // nicht still auf.
   "tests/office-web-anmeldung/einbettung-am-draht.test.ts",
   "tests/office-web-anmeldung/manifest-passt-zur-anleitung.test.ts",
+  // JOB 4076 (Office-Web, Teil 2 — die Sitzungsuebergabe aus dem Anmeldedialog ins Seitenfenster):
+  // sieben weitere Dateien, alle von der Achse `taskpane` gefunden und keine von der Namensachse
+  // (keine traegt „klara" im Pfad — K5 bleibt deshalb bei 62). Drei messen die beiden neuen Routen
+  // am echten Fastify-Draht, eine die neue ausgelieferte Dialogseite (`anmeldung.html`) im jsdom,
+  // drei das laufende Seitenfenster (Empfang der Dialognachricht, ehrlicher Ausgang statt
+  // „Zeit abgelaufen", fallender Zugangsschluessel). Die zwei Helferdateien des Verzeichnisses
+  // (`uebergabe.ts`, `seitenfenster.ts`) stehen hier NICHT: dieser Sammler sucht `*.test.ts(x)`.
+  // K2 hat alle sieben gemeldet, das Inventar nimmt sie nicht still auf.
+  "tests/office-web-anmeldung/dialogseite.test.ts",
+  "tests/office-web-anmeldung/schluessel-faellt-bei-abmeldung.test.tsx",
+  "tests/office-web-anmeldung/seitenfenster-ehrlicher-ausgang.test.tsx",
+  "tests/office-web-anmeldung/seitenfenster-empfang.test.tsx",
+  "tests/office-web-anmeldung/uebergabe-keine-auskunft.test.ts",
+  "tests/office-web-anmeldung/uebergabe-ohne-cookie.test.ts",
+  "tests/office-web-anmeldung/uebergabe-vertrag.test.ts",
   "tests/ask/g27-klara-volltext.test.ts",
   // JOB 2694 D1: neu im Baum, von der Erhebung ueber die Achsen `komponente` und `taskpane`
   // gefunden — der Kopfkommentar der Datei nennt die zwei Nachbarflaechen (Klara-Panel, Word-

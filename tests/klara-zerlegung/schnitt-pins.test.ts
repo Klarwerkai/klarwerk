@@ -407,6 +407,31 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // still auf.
   "tests/office-web-anmeldung/einbettung-am-draht.test.ts": "pfad",
   "tests/office-web-anmeldung/manifest-passt-zur-anleitung.test.ts": "pfad",
+  // JOB 4076 (15.09.2026, Office-Web Teil 2 — die Sitzungsübergabe aus dem Anmeldedialog): acht
+  // weitere Dateien, alle über den Griff `pfad`. Sie zerfallen in drei Sorten, und der Griff greift
+  // bei jeder aus einem eigenen Grund:
+  //   · die drei `uebergabe-*`-Fälle messen die zwei neuen Routen am echten Fastify-Draht und
+  //     nennen das Pfadliteral in ihrer Begründung (WO das Fenster liegt, ist der ganze Grund für
+  //     diesen Weg). Sie greifen `taskpane.html` nicht an — der Eintrag steht trotzdem hier, aus
+  //     demselben Grund wie bei `manifest-passt-zur-anleitung.test.ts` oben: der Griff ist bewusst
+  //     textbreit, und eine Zeile umzuschreiben, damit die Datei am Sensor vorbeikommt, wäre das
+  //     Gegenteil seines Zwecks.
+  //   · `dialogseite.test.ts` fährt die NEUE ausgelieferte Datei (`anmeldung.html`) und nennt
+  //     `taskpane.html` als ihre Gegenstelle.
+  //   · die drei `seitenfenster-*`/`schluessel-*`-Fälle fahren das ausgelieferte Fenster WIRKLICH —
+  //     mittelbar über `seitenfenster.ts`, das die Fixture lädt. Deshalb trägt genau diese eine
+  //     Datei den Griff `fixture`: sie ist der Fahrstand, die drei sind seine Nutzer. Ein `fixture`
+  //     an den drei Fällen wäre ein erfundener Griff (sie importieren die Fixture nicht).
+  // A2 hat alle acht gemeldet („neu im Baum, aber nicht gepinnt"); das Verzeichnis nimmt sie nicht
+  // still auf.
+  "tests/office-web-anmeldung/dialogseite.test.ts": "pfad",
+  "tests/office-web-anmeldung/schluessel-faellt-bei-abmeldung.test.tsx": "pfad",
+  "tests/office-web-anmeldung/seitenfenster-ehrlicher-ausgang.test.tsx": "pfad",
+  "tests/office-web-anmeldung/seitenfenster-empfang.test.tsx": "pfad",
+  "tests/office-web-anmeldung/seitenfenster.ts": "pfad,fixture",
+  "tests/office-web-anmeldung/uebergabe-keine-auskunft.test.ts": "pfad",
+  "tests/office-web-anmeldung/uebergabe-ohne-cookie.test.ts": "pfad",
+  "tests/office-web-anmeldung/uebergabe-vertrag.test.ts": "pfad",
   // JOB 3667 WORD-RÜCKWEG (14.09.2026): der Rückweg aus Word auf DASSELBE Wissensobjekt wohnt im
   // Inline-Skript von `taskpane.html` (Block KW-RUECKWEG). Drei seiner Prüfstände greifen die Datei
   // an, mit drei verschiedenen Griffen — GEMESSEN an denselben Mustern, die dieser Fall benutzt,

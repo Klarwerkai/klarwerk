@@ -157,6 +157,24 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "GET /api/auth/notice": { protection: "auth" },
   "POST /api/auth/notice": { protection: "auth" },
   "POST /api/auth/password": { protection: "auth" },
+  // JOB 4076 (OFFICE-WEB-ANMELDUNG): die Sitzungsübergabe aus dem Anmeldedialog ins Word-
+  // Seitenfenster. ZWEI Routen mit ABSICHTLICH verschiedener Schutzart — das ist der Kern des Wegs:
+  //   · Ausgeben verlangt eine SITZUNG. Nur wer angemeldet ist, kann einen Verweis auf seine eigene
+  //     Sitzung erzeugen; der Code entsteht also nie ohne vorherige Anmeldung.
+  //   · Einlösen ist BEWUSST öffentlich, denn genau das ist sein Zweck: das Seitenfenster liegt in
+  //     Word für das Web in einem Rahmen fremder Herkunft und bekommt dort kein Cookie mit. Ein
+  //     Aufruf OHNE Sitzungsnachweis muss durchkommen — der Nachweis IST der Code.
+  // Der Code ist dafür 32 zufällige Bytes, 120 s gültig, GENAU EINMAL einlösbar und an seine
+  // erzeugende Sitzung gebunden (abgemeldet ⇒ tot); unbekannt/abgelaufen/verbraucht bekommen
+  // dieselbe, nicht unterscheidbare 401. Begründung und Grenzen im Kopf von
+  // `services/auth/src/routes.ts` (Abschnitt JOB 4076), gemessen in `tests/office-web-anmeldung/`.
+  "POST /api/auth/office-handover": { protection: "auth" },
+  "POST /api/auth/office-handover/redeem": {
+    protection: "public",
+    reason:
+      "Einlösen eines einmaligen, 120-s-Übergabecodes aus dem Anmeldedialog — der Code IST der " +
+      "Nachweis; ein Cookie kann hier nicht mitreisen (Office-Web-Rahmen, ITP).",
+  },
   "POST /api/auth/forgot": {
     protection: "public",
     reason: "Reset-Anforderung; antwortet immer 204 (keine Enumeration), SCRUM-367 rate-limitiert.",

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
 import type { Mailer } from "../../notifications";
 import { type Meldungsschluessel, type Sprache, meldung } from "./meldungen";
@@ -226,6 +227,56 @@ export function selfRegistrationEnabled(
 export const REGISTER_MAX_ATTEMPTS_PER_MINUTE = 5;
 const REGISTER_WINDOW_MS = 60 * 1000;
 
+// ================================================================================================
+// JOB 4076 · DIE SITZUNGSÜBERGABE AUS DEM ANMELDEDIALOG INS SEITENFENSTER (OFFICE-WEB-ANMELDUNG).
+// ================================================================================================
+//
+// DAS PROBLEM, das diese beiden Routen lösen — und nur dieses: Word für das Web lädt Klara in einem
+// Rahmen FREMDER Herkunft. Das Sitzungscookie bleibt dort aus (Drittanbieter-Kontext, ITP;
+// Microsofts Originaldoku: https://learn.microsoft.com/en-us/office/dev/add-ins/develop/
+// itp-and-third-party-cookies). Der Anmeldedialog dagegen ist ein TOP-LEVEL-Fenster auf der
+// eigenen Herkunft — dort ist das Cookie erstklassig, dort ENTSTEHT die Anmeldung. Sie muss nur
+// herüberkommen.
+//
+// DER WEG NICHT ÜBER `SameSite=None`: das Sitzungscookie bleibt `SameSite=Lax`. Diese Entscheidung
+// gehört Pedi (`services/app/src/security-headers.ts`, Cookie-Hinweis; `docs/word-addin/
+// SIDELOAD-CHROME.md`, Punkt 2) und wird hier weder getroffen noch vorbereitet. Nichts an
+// `sessionCookie` / `clearSessionCookie` oben ist angefasst.
+//
+// WAS DER ÜBERGABECODE IST — und was er NICHT ist: Der Dialog kann das Cookie nicht lesen (es ist
+// `HttpOnly`), und die Nachricht an das Seitenfenster läuft durch die postMessage-Leitung des
+// Office-Hosts. Deshalb reist NICHT das Geheimnis, sondern ein EINMALIGER, kurzlebiger Verweis
+// darauf; das Geheimnis holt das Seitenfenster in einem eigenen, direkten Aufruf.
+//
+// WAS DAS EINLÖSEN HERAUSGIBT, EHRLICH BENANNT: das Sitzungsmerkmal DERSELBEN Sitzung — kein
+// zweites, kürzer lebendes Geheimnis. Es ist genau der Wert, den `POST /api/auth/login` ohnehin im
+// Rumpf zurückgibt (dokumentierter Bearer-Vertrag für cookielose Clients, s. dort); neu ist allein,
+// dass der SSO-Weg und eine BESTEHENDE Sitzung ihn auch ohne Kennwort erreichen. Ein wirklich
+// kurzlebiger, eigenständig widerrufbarer Zugangsschlüssel bräuchte die Sitzungsverwaltung in
+// `services/auth/src/service.ts` (dort entstehen Sitzungen, dort liegt ihre Frist) — die ist kein
+// Zielpfad dieses Auftrags und bleibt als offener Punkt benannt, nicht als erledigt behauptet.
+// KURZLEBIG IST DER CODE, nicht der Schlüssel: 120 s, einmalig, an seine Sitzung gebunden.
+//
+// KEINE DROSSELUNG AN DIESEM PFAD, und das ist eine Entscheidung mit Begründung: der Code sind 32
+// zufällige Bytes (256 bit) mit 120 s Frist und genau einer Einlösung. Raten ist damit nicht
+// beschränkt-machbar, sondern unmöglich; eine IP-Drosselung wäre eine zweite Aussperrfläche ohne
+// messbaren Gewinn. Was den Weg trägt, sind die vier Eigenschaften: Einmaligkeit, Frist,
+// Sitzungsbindung und die nicht unterscheidbare Absage.
+const OFFICE_HANDOVER_TTL_MS = 120_000;
+
+/**
+ * Der Code steht NUR als Hash in der Ablage. Zweck ist nicht Kryptografie um ihrer selbst willen:
+ * ein Speicherabbild, ein Debugger oder eine versehentlich ausgegebene Ablage gibt damit keinen
+ * einlösbaren Code her. Dieselbe Regel, die `service.ts` für Sitzungsmerkmale fährt
+ * (`hashTokenAtRest`) — hier lokal, weil jene Funktion nicht exportiert ist.
+ *
+ * Der Vergleich läuft über den Ablageschlüssel und nicht über einen Zeichenvergleich: eine
+ * Map-Suche über dem Hash gibt keine Laufzeitauskunft über die Zahl übereinstimmender Zeichen.
+ */
+function officeHandoverSchluessel(code: string): string {
+  return createHash("sha256").update(code).digest("hex");
+}
+
 export function authRoutes(
   service: AuthService,
   options: {
@@ -408,6 +459,96 @@ export function authRoutes(
         reply.code(200).send(user);
       }
     });
+
+    // ============================================================================================
+    // JOB 4076 — DER ÜBERGABECODE UND SEIN EINLÖSEN. Siehe den Kopfkommentar zu
+    // `OFFICE_HANDOVER_TTL_MS` für das Warum; hier steht das Wie.
+    // ============================================================================================
+    //
+    // JE APP-INSTANZ EINE ABLAGE, im Arbeitsspeicher — wie die drei Limiter darüber. Ein Neustart
+    // des Servers verwirft offene Codes; das ist richtig und nicht ein Mangel: ein Code lebt 120 s,
+    // und ein Mensch, dessen Übergabe genau in einen Neustart fällt, liest im Seitenfenster den
+    // ehrlichen Satz „Übergabe abgelehnt" und drückt erneut auf Anmelden. Ein geteilter Speicher
+    // wäre eine eigene Betriebsentscheidung (mehrere Instanzen hinter einem Verteiler) und ist hier
+    // ausdrücklich NICHT mitgebaut — er ist als offener Punkt benannt.
+    const officeHandover = new Map<string, { token: string; expiresAt: number }>();
+
+    app.post("/api/auth/office-handover", async (request, reply) => {
+      const user = await requireUser(request, reply);
+      if (!user) {
+        return;
+      }
+      // `requireUser` hat die Sitzung schon aufgelöst; das Merkmal selbst holt dieselbe eine
+      // Lesestelle, die jede Route hier benutzt. Ohne Merkmal käme `requireUser` nie hierher — der
+      // Zweig ist die fail-closed Absicherung dieser Annahme, keine erwartete Lage.
+      const token = tokenFromRequest(request);
+      if (!token) {
+        reply.code(401).send({
+          error: "INVALID_CREDENTIALS",
+          message: meldung("NOT_SIGNED_IN", sprache(request)),
+        });
+        return;
+      }
+      const jetzt = Date.now();
+      // Abgelaufene Einträge fallen beim Ausgeben, nicht in einem Timer: eine Ablage, die nur
+      // wächst, wäre ein Leck, und ein eigener Zeitgeber wäre ein Prozess, den niemand beendet.
+      for (const [schluessel, eintrag] of officeHandover) {
+        if (eintrag.expiresAt <= jetzt) {
+          officeHandover.delete(schluessel);
+        }
+      }
+      const code = randomToken(32);
+      officeHandover.set(officeHandoverSchluessel(code), {
+        token,
+        expiresAt: jetzt + OFFICE_HANDOVER_TTL_MS,
+      });
+      // KEINE Protokollzeile an diesem Weg. Weder der Code noch sein Hash noch das Sitzungsmerkmal
+      // gehen ins Log — ein Geheimnis, das einmal in einer Zeile stand, ist kein Geheimnis mehr.
+      reply.code(201).send({ code, expiresInMs: OFFICE_HANDOVER_TTL_MS });
+    });
+
+    app.post<{ Body: { code?: unknown } }>(
+      "/api/auth/office-handover/redeem",
+      async (request, reply) => {
+        // DIE EINE ABSAGE — und sie ist byte-gleich der 401, die `requireUser` für „nicht
+        // angemeldet" schickt. Genau das ist die Zusage: unbekannt, abgelaufen und verbraucht sind
+        // von außen NICHT unterscheidbar, und sie sind auch von „gar kein Code" nicht
+        // unterscheidbar. Ein eigener Satz je Fall wäre ein Orakel, das dem Ratenden sagt, wie
+        // nahe er ist.
+        const absage = (): void => {
+          reply.code(401).send({
+            error: "INVALID_CREDENTIALS",
+            message: meldung("NOT_SIGNED_IN", sprache(request)),
+          });
+        };
+        const body = (request.body ?? {}) as { code?: unknown };
+        if (typeof body.code !== "string" || body.code.length === 0) {
+          absage();
+          return;
+        }
+        const schluessel = officeHandoverSchluessel(body.code);
+        const eintrag = officeHandover.get(schluessel);
+        // EINMALIGKEIT, UND SIE FÄLLT VOR JEDER PRÜFUNG: der Eintrag ist ab hier weg, gleich wie
+        // es weitergeht. Stünde das Löschen erst im Erfolgszweig, wäre ein Code nach einem
+        // gescheiterten Einlösen weiter einlösbar — und zwei gleichzeitige Versuche bekämen beide
+        // ein Ja.
+        officeHandover.delete(schluessel);
+        if (!eintrag || eintrag.expiresAt <= Date.now()) {
+          absage();
+          return;
+        }
+        // DIE SITZUNGSBINDUNG, und sie ist geerbt statt nachgebaut: gefragt wird dieselbe
+        // Auflösung, die jede geschützte Route fährt. Ist die erzeugende Sitzung abgemeldet,
+        // abgelaufen oder ihr Zugang befristet-beendet, antwortet sie `undefined` — und der Code
+        // ist damit tot, ohne dass dieser Weg eine zweite Auslegung von „Sitzung gilt" führt.
+        const user = await service.authenticate(eintrag.token);
+        if (!user) {
+          absage();
+          return;
+        }
+        reply.code(200).send({ token: eintrag.token, user });
+      },
+    );
 
     // ============================================================================================
     // AUFTRAG-mega61 BLOCK C — LESEN UND SETZEN DER KENNTNISNAHME.

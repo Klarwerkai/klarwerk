@@ -12,7 +12,20 @@ import { WORD_ADDIN_FRAME_ANCESTORS } from "./office-host";
 // die beiden Manifest-Icons (icon-32/80.png) sind statische Bilder, die der Office-Host per <img>/HTTP
 // lädt; weder frame-ancestors noch die Skript-/CDN-Direktiven spielen dort eine Rolle → sie behalten die
 // strikte globale CSP. Jede weitere Ausnahme muss hier BEWUSST eingetragen werden.
-export const WORD_ADDIN_CSP_PATHS: readonly string[] = ["/word-addin/taskpane.html"];
+// JOB 4076 (OFFICE-WEB-ANMELDUNG): DER ZWEITE EINTRAG, UND WARUM ER EINER SEIN MUSS.
+// `/word-addin/anmeldung.html` ist die Dialogseite, die der Anmeldeknopf des Taskpane im
+// Office-Dialog oeffnet. Sie laedt `office.js` von derselben Microsoft-CDN wie das Taskpane, weil
+// sie `Office.context.ui.messageParent` braucht — ohne diese Ausnahme blockiert die strikte globale
+// CSP (`script-src 'self'`) das Skript, und der Dialog koennte seine Anmeldung nicht weitergeben.
+// Sie ist TOP-LEVEL und wird nie eingebettet; `frame-ancestors` spielt fuer sie keine Rolle und
+// wird ihr auch nicht gebraucht — sie faehrt die GEMEINSAME Ausnahme (WORD_ADDIN_CSP unten), weil
+// eine zweite CSP-Konstante fuer eine Direktive Unterschied die Fassung waere, die als Erste
+// veraltet. Die exakte, fail-closed Pfadpruefung darunter bleibt unveraendert; alles, was nicht
+// byte-genau einem dieser zwei Strings entspricht, behaelt die strikte globale CSP.
+export const WORD_ADDIN_CSP_PATHS: readonly string[] = [
+  "/word-addin/taskpane.html",
+  "/word-addin/anmeldung.html",
+];
 
 // K2: die Einbettungs-Erlaubnis (`frame-ancestors`) steht seit JOB 4016 NICHT mehr hier. Sie ist
 // eine Kenntnis über Microsofts Office-Runtime und keine Eigenschaft dieser CSP-Konstante; ihr Ort

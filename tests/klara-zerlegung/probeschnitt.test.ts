@@ -248,8 +248,19 @@ describe("JOB 3014 · C — was HTML, JS und CSS an Kopfzeilen tragen", () => {
     expect(html.headers["content-security-policy"]).toBe(WORD_ADDIN_CSP);
     expect(html.headers["x-frame-options"]).toBeUndefined();
 
-    // Der gemessene Befund: `WORD_ADDIN_CSP_PATHS` enthält AUSSCHLIESSLICH die HTML-Adresse.
-    expect(WORD_ADDIN_CSP_PATHS).toEqual([KLARA_TASKPANE_PFAD]);
+    // Der gemessene Befund: `WORD_ADDIN_CSP_PATHS` enthält NUR HTML-Adressen — keine der
+    // Geschwisterdateien (JS/CSS) des Probeschnitts steht darin. Das ist die Aussage dieses
+    // Falls, und sie ist der Grund, warum C2 gleich danach kommt.
+    // JOB 4076 (15.09.2026): die Menge hat einen ZWEITEN Eintrag bekommen — `anmeldung.html`, die
+    // Dialogseite der Office-Web-Anmeldung. Sie ist wieder eine HTML-Adresse und ändert an der
+    // Aussage dieses Falls nichts; gemessen wird deshalb ab hier, dass die HTML-Adresse des
+    // Taskpane enthalten ist UND dass die Geschwisterdateien es nicht sind (die Schleife darunter).
+    // Die vollständige, exakte Menge pinnt `tests/app/word-addin-csp.test.ts` — ein zweiter Pin
+    // hier wäre die Fassung, die als Erste veraltet.
+    expect(WORD_ADDIN_CSP_PATHS).toContain(KLARA_TASKPANE_PFAD);
+    for (const pfad of [JS_PFAD, CSS_PFAD]) {
+      expect(WORD_ADDIN_CSP_PATHS, pfad).not.toContain(pfad);
+    }
     for (const pfad of [JS_PFAD, CSS_PFAD]) {
       const res = await app.inject({ method: "GET", url: pfad });
       const csp = String(res.headers["content-security-policy"] ?? "");

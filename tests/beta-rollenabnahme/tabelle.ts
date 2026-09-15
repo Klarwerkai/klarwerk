@@ -252,6 +252,12 @@ export const NICHT_ABGENOMMEN: Nichtabnahme[] = [
   },
   {
     methode: "POST",
+    pfad: "/api/auth/office-handover/redeem",
+    grund:
+      "Löst den EINMALIGEN Übergabecode aus dem Word-Anmeldedialog ein (JOB 4076) und ist bewusst öffentlich: der Aufruf kommt aus einem Rahmen fremder Herkunft und kann kein Sitzungscookie mitbringen — der Code IST der Nachweis, nicht die Rolle. Eine Rollenzeile ist hier baulich unmöglich, und zwar in beiden Richtungen: ohne gültigen Code antwortet die Route ALLEN fünf Akteuren gleich mit 401, und dieser 401 kommt aus der Codeprüfung, nicht aus einem Rechtetor — er als `erlaubt` oder als Sperre zu führen wäre in beiden Fällen eine Unwahrheit über den Grund; ein GÜLTIGER Code lässt sich nicht als feste Nutzlast (`payload`) führen, weil er genau einmal gilt und die fünf Messungen ihn nacheinander verbrauchen würden. Abgenommen ist diese Tür deshalb am echten Fastify-Draht in `tests/office-web-anmeldung/uebergabe-vertrag.test.ts` (Ausgabe nur mit Sitzung, Einlösen genau einmal, Frist 120 s, Bindung an die erzeugende Sitzung), in `uebergabe-ohne-cookie.test.ts` (der Schlüssel öffnet `GET /api/auth/me` OHNE jedes Cookie) und in `uebergabe-keine-auskunft.test.ts` (unbekannt, abgelaufen und verbraucht sind von aussen nicht unterscheidbar). Der öffentliche Leckweg steht zusätzlich in `tests/demo-zugang-gaeste/kein-offener-zugang.test.ts` (D2f) mit abgelesenem Vertragsrumpf und gemessenem Kontaktstatus.",
+  },
+  {
+    methode: "POST",
     pfad: "/api/auth/users/:id/approve",
     grund:
       "Gibt ein Konto frei. Der Vorgang verändert die Freigabe der Prüfkonten, auf der jede Messung dieser Tabelle beruht (`rollen-am-draht.test.ts` D0).",
@@ -818,16 +824,16 @@ export const TABELLE: Zeile[] = [
     gruppe: "authRoutes",
     methode: "GET",
     pfad: "/api/users",
-    belegstelle: "services/auth/src/routes.ts:623",
-    tor: "requireAdmin (eigener Guard des auth-Moduls, `routes.ts:211-226`)",
+    belegstelle: "services/auth/src/routes.ts:831",
+    tor: "requireAdmin (eigener Guard des auth-Moduls, `routes.ts:329-344`)",
     erwartet: NUR_ADMIN,
     // ============================================================================================
     // DER BEFUND DIESER ZEILE: DAS auth-MODUL HAT SEIN EIGENES TOR, UND ES NENNT SICH ANDERS.
     // ============================================================================================
     //
-    // `authRoutes` läuft NICHT über `makeGuards`. Es baut in `routes.ts:194-226` ein eigenes
+    // `authRoutes` läuft NICHT über `makeGuards`. Es baut in `routes.ts:312-344` ein eigenes
     // `requireUser`/`requireAdmin` — und dessen 401 trägt den Schlüssel `INVALID_CREDENTIALS`
-    // (`routes.ts:201-204`), nicht `UNAUTHENTICATED` wie das zentrale Tor (`http.ts:177-180`).
+    // (`routes.ts:319-322`), nicht `UNAUTHENTICATED` wie das zentrale Tor (`http.ts:177-180`).
     // Derselbe Zustand („nicht angemeldet") heisst am Draht also je nach Tür anders.
     //
     // ES IST KEIN LOCH: die Sperre greift, und `requireAdmin` vergleicht `user.role !== "admin"`
@@ -1264,7 +1270,7 @@ export const TABELLE: Zeile[] = [
   },
   // ----------------------------------------------------------------------------------------------
   // `authRoutes` läuft nicht über `makeGuards`, sondern über sein eigenes `requireUser`
-  // (`services/auth/src/routes.ts:194-208`). Dessen 401 trägt `INVALID_CREDENTIALS` statt
+  // (`services/auth/src/routes.ts:312-326`). Dessen 401 trägt `INVALID_CREDENTIALS` statt
   // `UNAUTHENTICATED` — derselbe Befund wie bei `GET /api/users` oben, hier für jede weitere Tür des
   // Moduls einzeln gemessen statt einmal behauptet.
   // ----------------------------------------------------------------------------------------------
@@ -1272,8 +1278,8 @@ export const TABELLE: Zeile[] = [
     gruppe: "authRoutes",
     methode: "GET",
     pfad: "/api/auth/me",
-    belegstelle: "services/auth/src/routes.ts:338",
-    tor: "requireUser (eigener Guard des auth-Moduls, `routes.ts:194-208`)",
+    belegstelle: "services/auth/src/routes.ts:456",
+    tor: "requireUser (eigener Guard des auth-Moduls, `routes.ts:312-326`)",
     erwartet: ANGEMELDET,
     codes: { "401": "INVALID_CREDENTIALS" },
   },
@@ -1281,8 +1287,8 @@ export const TABELLE: Zeile[] = [
     gruppe: "authRoutes",
     methode: "GET",
     pfad: "/api/auth/notice",
-    belegstelle: "services/auth/src/routes.ts:355",
-    tor: "requireUser (eigener Guard des auth-Moduls, `routes.ts:194-208`)",
+    belegstelle: "services/auth/src/routes.ts:563",
+    tor: "requireUser (eigener Guard des auth-Moduls, `routes.ts:312-326`)",
     erwartet: ANGEMELDET,
     codes: { "401": "INVALID_CREDENTIALS" },
   },
@@ -1290,8 +1296,8 @@ export const TABELLE: Zeile[] = [
     gruppe: "authRoutes",
     methode: "GET",
     pfad: "/api/directory",
-    belegstelle: "services/auth/src/routes.ts:633",
-    tor: "requireUser (eigener Guard des auth-Moduls, `routes.ts:194-208`)",
+    belegstelle: "services/auth/src/routes.ts:841",
+    tor: "requireUser (eigener Guard des auth-Moduls, `routes.ts:312-326`)",
     erwartet: ANGEMELDET,
     codes: { "401": "INVALID_CREDENTIALS" },
   },
@@ -1299,7 +1305,7 @@ export const TABELLE: Zeile[] = [
     gruppe: "authRoutes",
     methode: "GET",
     pfad: "/api/auth/status",
-    belegstelle: "services/auth/src/routes.ts:592",
+    belegstelle: "services/auth/src/routes.ts:800",
     tor: "keines — der Zustand VOR der Anmeldung",
     erwartet: OEFFENTLICH(
       "Die Anmeldemaske muss wissen, ob diese Instanz überhaupt schon eingerichtet ist und ob SSO angeboten wird — beides, bevor es eine Sitzung geben kann. Sie nennt keine Kontodaten und keinen Bestand.",
@@ -1309,11 +1315,39 @@ export const TABELLE: Zeile[] = [
     gruppe: "authRoutes",
     methode: "GET",
     pfad: "/api/auth/oidc/start",
-    belegstelle: "services/auth/src/routes.ts:472",
+    belegstelle: "services/auth/src/routes.ts:680",
     tor: "keines — der Einstieg in den SSO-Ablauf",
     erwartet: OEFFENTLICH(
-      "Der Authorization-Code-Ablauf beginnt notwendig unangemeldet. Ohne konfiguriertes OIDC antwortet die Route allen fünf Akteuren gleich mit 501 `OIDC_DISABLED` (`routes.ts:473-478`) — gemessen ist damit, dass an dieser Tür weder 401 noch 403 steht.",
+      "Der Authorization-Code-Ablauf beginnt notwendig unangemeldet. Ohne konfiguriertes OIDC antwortet die Route allen fünf Akteuren gleich mit 501 `OIDC_DISABLED` (`routes.ts:681-686`) — gemessen ist damit, dass an dieser Tür weder 401 noch 403 steht.",
     ),
+  },
+  // ----------------------------------------------------------------------------------------------
+  // JOB 4076 (OFFICE-WEB-ANMELDUNG) — DIE AUSGABE DES ÜBERGABECODES, UND WARUM JEDE ROLLE DARF.
+  // ----------------------------------------------------------------------------------------------
+  //
+  // Word für das Web lädt das Klara-Seitenfenster in einem Rahmen FREMDER Herkunft; das
+  // Sitzungscookie erreicht es dort nicht. Der Anmeldedialog ist dagegen top-level auf der eigenen
+  // Herkunft — dort entsteht die Anmeldung, und von dort gibt DIESE Tür einen einmaligen,
+  // 120 s gültigen Verweis auf die EIGENE Sitzung heraus, den das Seitenfenster einlöst.
+  //
+  // DAS SOLL IST `ANGEMELDET`, und das ist die tragende Aussage dieser Zeile: der Code entsteht NIE
+  // ohne vorherige Anmeldung (unangemeldet 401), und er ist an KEIN Recht gebunden — auch die
+  // Betrachterin darf ihre eigene Sitzung in das Word-Fenster übergeben. Eine Rollenstufe hier wäre
+  // falsch: die Tür verteilt keine Befugnis, sie reicht die bestehende weiter. Was der Code danach
+  // öffnet, ist genau die Sitzung, die ihn erzeugt hat, mit deren Rechten und deren Frist.
+  //
+  // ZUSTANDSFREI wie jede Zeile dieser Tabelle: die vier Messungen legen vier Einträge in eine
+  // Ablage im Arbeitsspeicher, die nach 120 s verfällt und die niemand einlöst. Keine Sitzung wird
+  // entwertet, kein Konto verändert.
+  {
+    gruppe: "authRoutes",
+    methode: "POST",
+    pfad: "/api/auth/office-handover",
+    belegstelle: "services/auth/src/routes.ts:476",
+    tor: "requireUser (eigener Guard des auth-Moduls, `routes.ts:312-326`)",
+    payload: {},
+    erwartet: ANGEMELDET,
+    codes: { "401": "INVALID_CREDENTIALS" },
   },
   {
     gruppe: "captureRoutes",

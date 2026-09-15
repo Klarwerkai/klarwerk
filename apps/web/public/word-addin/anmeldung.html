@@ -1,0 +1,487 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>KLARWERK · Anmeldung</title>
+  <!--
+    ============================================================================================
+    JOB 4076 · DIE DIALOGSEITE — HIER ENTSTEHT DIE ANMELDUNG, UND VON HIER GEHT SIE HINUEBER.
+    ============================================================================================
+
+    WARUM DIESE SEITE UEBERHAUPT EXISTIERT. Word fuer das Web laedt das Klara-Seitenfenster
+    (word-addin/taskpane.html) in einem Rahmen FREMDER Herkunft; das Sitzungscookie erreicht es
+    dort nicht (Drittanbieter-Kontext, ITP — Microsofts Originaldoku:
+    https://learn.microsoft.com/en-us/office/dev/add-ins/develop/itp-and-third-party-cookies).
+    Bis JOB 4076 oeffnete der Anmeldeknopf des Fensters die ANWENDUNG im Office-Dialog und wartete
+    danach fuenf Minuten auf einen Cookie-Poll, der in dieser Lage nie gruen werden konnte.
+
+    DER DIALOG IST TOP-LEVEL auf der eigenen Herkunft (kein iframe, die App-Domain steht in den
+    AppDomains des Manifests). Dort ist das Cookie erstklassig — dort ENTSTEHT die Anmeldung. Diese
+    Seite gibt sie AKTIV weiter: ueber `Office.context.ui.messageParent` reist ein EINMALIGER,
+    120 s gueltiger Uebergabecode, und das Seitenfenster loest ihn in einem eigenen, direkten
+    Aufruf ein. Das Geheimnis selbst reist NICHT durch die postMessage-Leitung des Hosts.
+
+    WARUM SIE DIE ANWENDUNG ERSETZT und nicht neben ihr steht: der Dialog oeffnete bisher `origin
+    + "/"`, also die ganze SPA. Die kann `messageParent` nicht rufen (apps/web/src ist nicht
+    Zielpfad dieses Auftrags und soll es nicht sein — eine Web-Anwendung, die Office-APIs anfasst,
+    waere der falsche Ort). Diese Seite ist deshalb klein und ohne Anwendungsrumpf: kein React,
+    kein Bundle, ES5, genau die Wege, die das Haus schon hat.
+
+    KEINE ZWEITE FEHLERSPRACHE. Was der Mensch bei einer abgelehnten Anmeldung liest, ist
+    WOERTLICH die Meldung des Servers (`{ error, message }` aus POST /api/auth/login) — dieselbe
+    Zeichenkette, die die Vordertuer zeigt, in der Sprache des `accept-language`-Kopfes. Eigene
+    Saetze stehen hier nur fuer Lagen, die der Server nicht kennt: kein Netz, kein Office-Dialog,
+    Uebergabe abgelehnt.
+
+    WAS HIER NIE PASSIERT: Der Code wird in KEINEN Speicher geschrieben (localStorage,
+    sessionStorage, Cookie) und steht in KEINER Adresse. Er lebt in einer Variablen, geht durch
+    `messageParent` und ist danach vergessen. Gemessen: tests/office-web-anmeldung/dialogseite.test.ts.
+
+    KEIN FASSUNGS- UND KEIN STAND-PLATZHALTER: die beiden Platzhalter des Seitenfensters stempelt
+    nur dessen eigene Route bzw. der Build (services/app/src/web-static.ts, apps/web/vite.config.ts).
+    Diese Datei wird vom Static-Plugin ausgeliefert; ein Platzhalter bliebe darin stehen und
+    behauptete eine Fassung, die niemand gesetzt hat. Gemessen: S4a in dialogseite.test.ts.
+  -->
+  <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+  <style>
+    :root { color-scheme: light dark; }
+    body {
+      margin: 0; padding: 28px 22px; font-family: "Segoe UI", system-ui, sans-serif;
+      font-size: 14px; line-height: 1.5; color: #1f2430; background: #fff;
+    }
+    h1 { margin: 0 0 4px; font-size: 18px; }
+    p { margin: 0 0 14px; }
+    .muted { color: #5a6270; font-size: 13px; }
+    label { display: block; margin: 0 0 4px; font-weight: 600; font-size: 13px; }
+    input {
+      width: 100%; box-sizing: border-box; padding: 9px 10px; margin: 0 0 12px;
+      border: 1px solid #c3c9d4; border-radius: 8px; font-size: 14px; background: #fff;
+      color: #1f2430;
+    }
+    button {
+      padding: 10px 18px; border: 0; border-radius: 10px; font-size: 13.5px; cursor: pointer;
+      background: #2f5bd7; color: #fff; font-weight: 600;
+    }
+    button.ghost { background: transparent; color: #2f5bd7; border: 1px solid #2f5bd7; }
+    button[disabled] { opacity: .55; cursor: default; }
+    .status { margin: 0 0 14px; padding: 10px 12px; border-radius: 8px; font-size: 13px; }
+    .status.warn { background: #fdf3e3; color: #6b4a08; }
+    .status.err { background: #fdecec; color: #7a1f1f; }
+    .status.ok { background: #e9f6ec; color: #17512a; }
+    .hidden { display: none; }
+    .sprachen { margin-top: 18px; }
+    .sprachen button { background: transparent; color: #5a6270; border: 0; padding: 4px 6px; font-weight: 400; }
+  </style>
+</head>
+<body>
+  <h1 id="titel"></h1>
+  <p class="muted" id="zweck"></p>
+  <p class="status hidden" id="lage"></p>
+  <div id="formular" class="hidden">
+    <label for="email" id="email-label"></label>
+    <input type="email" id="email" autocomplete="username" />
+    <label for="kennwort" id="kennwort-label"></label>
+    <input type="password" id="kennwort" autocomplete="current-password" />
+    <button type="button" id="anmelden"></button>
+    <button type="button" class="ghost hidden" id="sso"></button>
+    <p class="muted hidden" id="sso-hinweis"></p>
+  </div>
+  <div class="sprachen">
+    <button type="button" id="lang-de">Deutsch</button>
+    <button type="button" id="lang-en">English</button>
+    <button type="button" id="lang-nl">Nederlands</button>
+  </div>
+  <script>
+    "use strict";
+
+    // Das eigene kleine Woerterbuch — dieselbe Bauform wie im Seitenfenster (ein Objekt je
+    // Sprache, ein `t()`), bewusst NICHT aus der App importiert: diese Seite hat keinen Build.
+    var TEXTE = {
+      de: {
+        titel: "Bei KLARWERK anmelden",
+        zweck: "Diese Anmeldung gilt fuer Klara im Word-Seitenfenster. Nach dem Anmelden wird sie an das Seitenfenster uebergeben; dieses Fenster schliesst sich dann von selbst.",
+        email: "E-Mail",
+        kennwort: "Kennwort",
+        anmelden: "Anmelden",
+        sso: "Mit SSO anmelden",
+        ssoHinweis: "Nach der SSO-Anmeldung dieses Fenster schliessen und in Klara erneut auf »Anmelden« druecken — die Uebergabe laeuft dann ohne Formular.",
+        laeuft: "Anmeldung laeuft …",
+        wartetAufWord: "Verbindung zu Word wird hergestellt …",
+        pruefe: "Bestehende Anmeldung wird geprueft …",
+        uebergabe: "Anmeldung erkannt. Sie wird an das Seitenfenster uebergeben …",
+        fertig: "Uebergeben. Dieses Fenster kann geschlossen werden.",
+        ohneUebergabe: "Angemeldet — die Uebergabe an das Seitenfenster war in diesem Fenster nicht moeglich: Word stellt hier keine Dialog-Schnittstelle bereit. Dieses Fenster schliessen. Zeigt Klara weiterhin »nicht angemeldet«, dort erneut auf »Anmelden« druecken.",
+        eingabeFehlt: "Bitte E-Mail und Kennwort eingeben.",
+        netz: "Der Server ist nicht erreichbar. Die Anmeldung wurde nicht abgeschickt.",
+        uebergabeFehler: "Die Anmeldung hat geklappt, die Uebergabe an das Seitenfenster nicht. Bitte dieses Fenster schliessen und in Klara erneut auf »Anmelden« druecken."
+      },
+      en: {
+        titel: "Sign in to KLARWERK",
+        zweck: "This sign-in is for Klara in the Word task pane. After signing in it is handed over to the task pane; this window then closes by itself.",
+        email: "Email",
+        kennwort: "Password",
+        anmelden: "Sign in",
+        sso: "Sign in with SSO",
+        ssoHinweis: "After the SSO sign-in, close this window and press »Sign in« in Klara again — the handover then runs without a form.",
+        laeuft: "Signing in …",
+        wartetAufWord: "Connecting to Word …",
+        pruefe: "Checking for an existing sign-in …",
+        uebergabe: "Sign-in detected. Handing it over to the task pane …",
+        fertig: "Handed over. You can close this window.",
+        ohneUebergabe: "Signed in — the handover to the task pane was not possible in this window: Word provides no dialog interface here. Close this window. If Klara still shows »not signed in«, press »Sign in« there again.",
+        eingabeFehlt: "Please enter email and password.",
+        netz: "The server cannot be reached. The sign-in was not sent.",
+        uebergabeFehler: "The sign-in worked, the handover to the task pane did not. Please close this window and press »Sign in« in Klara again."
+      },
+      nl: {
+        titel: "Aanmelden bij KLARWERK",
+        zweck: "Deze aanmelding geldt voor Klara in het Word-taakvenster. Na het aanmelden wordt zij aan het taakvenster overgedragen; dit venster sluit daarna vanzelf.",
+        email: "E-mail",
+        kennwort: "Wachtwoord",
+        anmelden: "Aanmelden",
+        sso: "Aanmelden met SSO",
+        ssoHinweis: "Sluit dit venster na de SSO-aanmelding en druk in Klara opnieuw op »Aanmelden« — de overdracht loopt dan zonder formulier.",
+        laeuft: "Aanmelden …",
+        wartetAufWord: "Verbinding met Word wordt gemaakt …",
+        pruefe: "Bestaande aanmelding wordt gecontroleerd …",
+        uebergabe: "Aanmelding herkend. Zij wordt aan het taakvenster overgedragen …",
+        fertig: "Overgedragen. Dit venster kan worden gesloten.",
+        ohneUebergabe: "Aangemeld — de overdracht naar het taakvenster was in dit venster niet mogelijk: Word biedt hier geen dialooginterface. Sluit dit venster. Toont Klara nog »niet aangemeld«, druk daar opnieuw op »Aanmelden«.",
+        eingabeFehlt: "Voer e-mail en wachtwoord in.",
+        netz: "De server is niet bereikbaar. De aanmelding is niet verzonden.",
+        uebergabeFehler: "De aanmelding is gelukt, de overdracht naar het taakvenster niet. Sluit dit venster en druk in Klara opnieuw op »Aanmelden«."
+      }
+    };
+
+    // Dieselbe Kennung, die das Seitenfenster erwartet. Sie steht in BEIDEN Dateien als Literal —
+    // eine geteilte Konstante gibt es zwischen zwei buildlosen Seiten nicht; der Vertrag ist
+    // gemessen (tests/office-web-anmeldung/dialogseite.test.ts) statt behauptet.
+    var UEBERGABE_ART = "kw-office-handover";
+
+    var lang = "de";
+    var oidcErlaubt = false;
+    var laeuft = false;
+
+    function t(key) {
+      var tabelle = TEXTE[lang] || TEXTE.de;
+      return tabelle[key] !== undefined ? tabelle[key] : TEXTE.de[key];
+    }
+
+    function el(id) { return document.getElementById(id); }
+
+    // ------------------------------------------------------------------------------------------
+    // DIE LAGEZEILE IST EIN GEHALTENER ZUSTAND, KEIN EINMAL GESCHRIEBENER TEXT.
+    // ------------------------------------------------------------------------------------------
+    // RUNDE 4: Bis hierher schrieb `zeigeLage` einmal in die Zeile, und ein Sprachwechsel danach
+    // liess sie in der alten Sprache stehen. Ein Satz in drei Sprachen, der nach dem Umschalten
+    // einsprachig bleibt, ist nur halb in drei Sprachen da. Dieselbe Bauart wie im Seitenfenster
+    // (gehaltener Zustand, neuer Text): gemerkt wird, WAS gilt, gezeichnet wird in der Sprache,
+    // die JETZT steht. Eine woertliche SERVERMELDUNG wandert bewusst NICHT mit — sie kommt in der
+    // Sprache des `accept-language`-Kopfes und wuerde durch eine Uebersetzung eine andere Aussage.
+    var lageArt = "hidden";
+    var lageSchluessel = null; // Woerterbuchschluessel — dann wandert der Satz mit der Sprache
+    var lageText = "";         // woertlicher Text (Servermeldung) — bleibt, wie er kam
+
+    function lageZeichnen() {
+      var box = el("lage");
+      box.className = lageArt === "hidden" ? "status hidden" : "status " + lageArt;
+      box.textContent = lageSchluessel === null ? lageText : t(lageSchluessel);
+    }
+
+    /** Eine woertliche Meldung (Server) — sie wird nicht uebersetzt. */
+    function zeigeLage(art, text) {
+      lageArt = art;
+      lageSchluessel = null;
+      lageText = text;
+      lageZeichnen();
+    }
+
+    /** Ein eigener Satz aus dem Woerterbuch — er folgt der Sprache. */
+    function zeigeLageSatz(art, key) {
+      lageArt = art;
+      lageSchluessel = key;
+      lageText = "";
+      lageZeichnen();
+    }
+
+    function verbergeLage() {
+      lageArt = "hidden";
+      lageSchluessel = null;
+      lageText = "";
+      lageZeichnen();
+    }
+
+    function zeichne() {
+      document.documentElement.lang = lang;
+      lageZeichnen();
+      el("titel").textContent = t("titel");
+      el("zweck").textContent = t("zweck");
+      el("email-label").textContent = t("email");
+      el("kennwort-label").textContent = t("kennwort");
+      el("anmelden").textContent = t("anmelden");
+      el("sso").textContent = t("sso");
+      el("sso-hinweis").textContent = t("ssoHinweis");
+    }
+
+    function setLang(code) {
+      lang = TEXTE[code] ? code : "de";
+      zeichne();
+    }
+
+    // Der Sprachwunsch des Browsers, auf die drei gefuehrten Sprachen abgebildet. Dieselbe Regel
+    // wie im Seitenfenster: was nicht gefuehrt wird, ist Deutsch.
+    function spracheAusBrowser() {
+      var roh = String((navigator && navigator.language) || "de").toLowerCase();
+      var kurz = roh.split("-")[0];
+      return TEXTE[kurz] ? kurz : "de";
+    }
+
+    /**
+     * Der Abruf dieser Seite. `credentials: "include"` an JEDEM Aufruf — die Seite ist top-level
+     * auf der eigenen Herkunft, das Cookie traegt hier. Ein `Authorization`-Kopf entsteht hier
+     * NIE: diese Seite haelt keinen Schluessel, sie gibt einen Verweis weiter.
+     */
+    function ruf(pfad, init) {
+      var eigen = init || {};
+      eigen.credentials = "include";
+      return fetch(pfad, eigen);
+    }
+
+    /** Die Meldung des Servers, woertlich — oder `null`, wenn er keine geschickt hat. */
+    function serverMeldung(res) {
+      return res.json().then(
+        function (k) {
+          return k && typeof k.message === "string" && k.message.length > 0 ? k.message : null;
+        },
+        function () { return null; }
+      );
+    }
+
+    // ============================================================================================
+    // JOB 4076 RUNDE 4 (BENs ROT) — DIE BEREITSCHAFT VON OFFICE IST EIN ZUSTAND, KEINE ANNAHME.
+    // ============================================================================================
+    //
+    // DER FEHLER, gemessen von BEN mit verzoegerter Schnittstelle: `office.js` laedt asynchron, und
+    // `Office.context.ui` gibt es erst nach `Office.onReady`. Runde 3 hat die Sitzungspruefung
+    // SOFORT gestartet; antwortete `/api/auth/me` mit 200, BEVOR Office bereit war, sah die
+    // Uebergabe kein `messageParent`, meldete den Nicht-Office-Satz — und der Weg war endgueltig
+    // beendet. Eine spaetere Bereitschaft holte NICHTS nach, und der Dialog behauptete trotzdem
+    // Erfolg. Genau die zugesagte automatische Uebergabe einer bestehenden Sitzung fiel damit aus.
+    // Microsofts Vertrag verlangt die Initialisierung VOR `messageParent`:
+    // https://learn.microsoft.com/en-us/office/dev/add-ins/develop/dialog-api-in-office-add-ins
+    //
+    // DIESELBE BAUART WIE IM SEITENFENSTER (`taskpane.html`, `markOfficeChecked`): `Office.onReady`
+    // MIT FRIST. Laedt `office.js` nicht (Blocker, offline, Direktaufruf im Browser) oder wird
+    // Office nie bereit, kippt der Zustand nach der Frist EHRLICH auf „keine Dialog-Schnittstelle" —
+    // und ein SPAETES `onReady` nach der Frist gewinnt trotzdem und holt die Uebergabe nach
+    // (ehrliche Erholung statt Dauer-Sperre). Der Wert ist derselbe wie dort.
+    var OFFICE_BEREIT_FRIST_MS = 4000;
+    var officeGeklaert = false;   // Erkennung abgeschlossen: onReady ODER Frist
+    var officeUebergabe = null;   // `messageParent`, sobald es sie gibt — sonst null
+    var uebergabeOffen = false;   // eine erkannte Sitzung wartet auf die Uebergabe
+    var uebergabeLaeuft = false;  // der Code wird gerade geholt (kein zweiter Aufruf)
+
+    /** Die Schnittstelle, wenn Office sie JETZT hergibt. Kein Zwischenspeichern von `null`. */
+    function messageParentJetzt() {
+      return window.Office && Office.context && Office.context.ui &&
+        typeof Office.context.ui.messageParent === "function"
+        ? Office.context.ui.messageParent
+        : null;
+    }
+
+    /**
+     * Die Erkennung ist durch (oder die Frist ist abgelaufen). Sie darf ZWEIMAL laufen: zuerst die
+     * Frist ohne Schnittstelle, danach ein spaetes `onReady` MIT. Beim zweiten Mal wird nachgeholt.
+     */
+    function officeGeklaertMelden() {
+      var jetzt = messageParentJetzt();
+      var erstmals = !officeGeklaert;
+      officeGeklaert = true;
+      if (jetzt !== null) { officeUebergabe = jetzt; }
+      // BEIM ERSTEN MAL beginnt der Ablauf der Seite: Sitzungspruefung und, wenn eine Sitzung da
+      // ist, die Uebergabe. Vorher ist beides nicht entscheidbar — genau daran ist Runde 3
+      // gescheitert.
+      if (erstmals) {
+        startePruefung();
+        return;
+      }
+      // EIN SPAETES `onReady` nach der Frist: es holt eine wartende Uebergabe nach, aber es startet
+      // die Pruefung nicht ein zweites Mal. Ohne neue Schnittstelle gibt es nichts nachzuholen.
+      if (uebergabeOffen && jetzt !== null) { uebergabeAusfuehren(); }
+    }
+
+    function officeErkennen() {
+      if (window.Office && typeof Office.onReady === "function") {
+        var frist = setTimeout(officeGeklaertMelden, OFFICE_BEREIT_FRIST_MS);
+        Office.onReady(function () {
+          clearTimeout(frist);
+          officeGeklaertMelden();
+        });
+        return;
+      }
+      // `office.js` gar nicht geladen: sofort ehrlich, ohne vier Sekunden Wartezeit fuer nichts.
+      officeGeklaertMelden();
+    }
+
+    /**
+     * Die Uebergabe — der EINE Einstieg. Sie wartet, solange die Bereitschaft nicht geklaert ist,
+     * statt den Weg zu beenden: „Verbindung zu Word wird hergestellt …" ist wahr und sagt nichts
+     * ueber einen Erfolg, den es noch nicht gibt.
+     */
+    function uebergeben() {
+      uebergabeOffen = true;
+      if (!officeGeklaert) {
+        zeigeLageSatz("warn", "wartetAufWord");
+        el("formular").className = "hidden";
+        return;
+      }
+      uebergabeAusfuehren();
+    }
+
+    /**
+     * Sie holt den EINMALIGEN Code und schickt ihn an das Seitenfenster.
+     *
+     * OHNE Dialog-Schnittstelle — und das heisst seit Runde 4: auch nach geklaerter Bereitschaft
+     * keine — steht der ehrliche Satz da: angemeldet ja, uebergeben NEIN, und was der Mensch jetzt
+     * tun kann. KEIN „Klara erkennt die Anmeldung von selbst": das gilt nur im Rueckfallfenster
+     * eines normalen Browsers und ist im Office-Web-Rahmen falsch — niemand hat es dort gemessen.
+     */
+    function uebergabeAusfuehren() {
+      if (uebergabeLaeuft) { return; }
+      if (officeUebergabe === null) {
+        zeigeLageSatz("warn", "ohneUebergabe");
+        el("formular").className = "hidden";
+        return;
+      }
+      var messageParent = officeUebergabe;
+      uebergabeLaeuft = true;
+      zeigeLageSatz("warn", "uebergabe");
+      ruf("/api/auth/office-handover", { method: "POST" })
+        .then(function (res) {
+          if (!res.ok) { throw new Error("HTTP " + res.status); }
+          return res.json();
+        })
+        .then(function (koerper) {
+          var code = koerper && typeof koerper.code === "string" ? koerper.code : "";
+          if (code.length === 0) { throw new Error("kein Code"); }
+          el("formular").className = "hidden";
+          zeigeLageSatz("ok", "fertig");
+          // ERST JETZT ist nichts mehr offen: `uebergabeOffen` faellt, damit ein spaetes `onReady`
+          // keine ZWEITE Uebergabe anstoesst (der Code gilt genau einmal — eine zweite waere eine
+          // Absage, die der Mensch als Fehlschlag lesen muesste).
+          uebergabeOffen = false;
+          // Der Code geht HIER hinaus und nirgends sonst hin: kein Speicher, kein Cookie, keine
+          // Adresse. `messageParent` erwartet eine Zeichenkette.
+          messageParent(JSON.stringify({ art: UEBERGABE_ART, code: code }));
+        })
+        .catch(function () {
+          // Der Weg ist frei fuer einen neuen Versuch — aber die Sitzung bleibt „offen", damit ein
+          // spaetes `onReady` sie noch abholen kann.
+          uebergabeLaeuft = false;
+          zeigeLageSatz("err", "uebergabeFehler");
+          el("formular").className = "";
+          el("anmelden").disabled = false;
+          laeuft = false;
+        });
+    }
+
+    function anmelden() {
+      if (laeuft) { return; }
+      var email = el("email").value;
+      var kennwort = el("kennwort").value;
+      if (email.length === 0 || kennwort.length === 0) {
+        zeigeLageSatz("err", "eingabeFehlt");
+        return;
+      }
+      laeuft = true;
+      el("anmelden").disabled = true;
+      zeigeLageSatz("warn", "laeuft");
+      ruf("/api/auth/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: email, password: kennwort })
+      })
+        .then(
+          function (res) {
+            if (res.ok) { return null; }
+            // DIE MELDUNG DES SERVERS GILT. Kein eigener Satz fuer falsche Zugangsdaten, fuer ein
+            // nicht freigegebenes Konto, fuer einen abgelaufenen Zugang oder fuer die Drosselung —
+            // alle vier kennt `services/auth/src/meldungen.ts`, und alle vier stehen woertlich da.
+            return serverMeldung(res).then(function (satz) {
+              return { fehler: satz === null ? "HTTP " + res.status : satz };
+            });
+          },
+          function () { return { fehler: t("netz") }; }
+        )
+        .then(function (ergebnis) {
+          if (ergebnis === null) {
+            // Der Rumpf-Token wird bewusst NICHT gelesen: das Geheimnis soll diese Seite nicht
+            // anfassen, und der Weg muss auch fuer SSO und eine bestehende Sitzung tragen.
+            uebergeben();
+            return;
+          }
+          laeuft = false;
+          el("anmelden").disabled = false;
+          zeigeLage("err", ergebnis.fehler);
+        });
+    }
+
+    el("anmelden").addEventListener("click", anmelden);
+    el("kennwort").addEventListener("keydown", function (ev) {
+      if (ev.key === "Enter") { anmelden(); }
+    });
+    el("sso").addEventListener("click", function () {
+      // Der BESTEHENDE SSO-Start. Der Ruecksprung des Anbieters landet dort, wo die Serverseite
+      // ihn hinlenkt (`redirect_uri` der OIDC-Einrichtung) — also in der Anwendung, nicht auf
+      // dieser Seite. Danach traegt das Cookie im Dialog, und ein zweiter Druck auf »Anmelden«
+      // in Klara uebergibt OHNE Formular (der Zweig darunter). Ein Ruecksprung direkt hierher
+      // braeuchte die OIDC-Einrichtung; die ist nicht Zielpfad und bleibt offener Punkt.
+      window.location.href = "/api/auth/oidc/start";
+    });
+    el("lang-de").addEventListener("click", function () { setLang("de"); });
+    el("lang-en").addEventListener("click", function () { setLang("en"); });
+    el("lang-nl").addEventListener("click", function () { setLang("nl"); });
+
+    setLang(spracheAusBrowser());
+
+    /**
+     * IST SCHON EINE SITZUNG DA? Top-level traegt das Cookie, also ist diese Frage hier
+     * beantwortbar — und dann braucht es kein Formular. Genau dieser Zweig traegt den SSO-Weg und
+     * den Fall „im Browser angemeldet, in Word nicht“.
+     *
+     * JOB 4076 RUNDE 4: Dieser Start laeuft ERST NACH der geklaerten Office-Bereitschaft. Vorher
+     * gestartet, war er der Fehler, den BEN gemessen hat — eine 200er-Antwort vor `onReady` beendete
+     * den Uebergabeweg endgueltig. Bis zur Klaerung steht `wartetAufWord`.
+     */
+    function startePruefung() {
+      zeigeLageSatz("warn", "pruefe");
+      ruf("/api/auth/me")
+      .then(function (res) { return res.ok; }, function () { return false; })
+      .then(function (angemeldet) {
+        if (angemeldet) {
+          uebergeben();
+          return;
+        }
+        el("formular").className = "";
+        verbergeLage();
+        // Der SSO-Knopf steht NUR da, wenn der Server SSO meldet — ein Knopf, der 501 antwortet,
+        // waere eine Scheinfunktion (`oidcEnabled` aus GET /api/auth/status, FR-AUTH-07).
+        return ruf("/api/auth/status")
+          .then(function (res) { return res.ok ? res.json() : null; }, function () { return null; })
+          .then(function (stand) {
+            oidcErlaubt = Boolean(stand && stand.oidcEnabled === true);
+            el("sso").className = oidcErlaubt ? "ghost" : "ghost hidden";
+            el("sso-hinweis").className = oidcErlaubt ? "muted" : "muted hidden";
+          });
+      });
+    }
+
+    // DIE REIHENFOLGE IST DIE KORREKTUR: erst die Bereitschaft klaeren, dann pruefen und uebergeben.
+    // Bis dahin sagt die Seite, worauf sie wartet — und nichts sonst. `startePruefung` haengt an
+    // `officeGeklaertMelden` (oben) und wird von dort GENAU EINMAL gerufen.
+    zeigeLageSatz("warn", "wartetAufWord");
+    officeErkennen();
+  </script>
+</body>
+</html>

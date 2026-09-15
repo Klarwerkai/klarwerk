@@ -402,6 +402,13 @@ const NUTZLAST_JE_WEG: Record<string, Record<string, unknown>> = {
     email: "sonde2@job3852.test",
     password: "geheim12345",
   },
+  // JOB 4076 (OFFICE-WEB-ANMELDUNG): das Einlösen des Übergabecodes aus dem Anmeldedialog. Der Weg
+  // ist BEWUSST öffentlich — er kommt aus einem Rahmen fremder Herkunft und kann kein Cookie
+  // mitbringen; der einmalige, 120 s gültige Code IST sein Nachweis (Begründung im Routen-Audit).
+  // Die Nutzlast ist aus der `Body:`-Signatur abgelesen (`Body: { code?: unknown }`), nicht
+  // geraten; der Wert ist bewusst KEIN echter Code, denn geprüft wird der Leckweg, nicht das
+  // Einlösen.
+  "POST /api/auth/office-handover/redeem": { code: "kein-echter-uebergabecode" },
 };
 
 /** Der positive Kontrollaufruf je Weg: der Status, mit dem sein Handler wirklich antwortet. */
@@ -441,6 +448,13 @@ const HANDLERKONTAKT: Record<string, Handlerkontakt> = {
   "POST /api/auth/reset": { status: 401, schluessel: "INVALID_CREDENTIALS" },
   "POST /api/auth/oidc": { status: 501, schluessel: "OIDC_DISABLED" },
   "POST /api/auth/setup": { status: 409, schluessel: "ALREADY_SETUP" },
+  // JOB 4076: gemessen, nicht abgeschrieben. Ein unbekannter Code bekommt dieselbe 401
+  // `INVALID_CREDENTIALS`, die `requireUser` für „nicht angemeldet" schickt — und zwar mit
+  // DEMSELBEN Rumpf wie ein abgelaufener und ein verbrauchter Code; genau das ist die Zusage des
+  // Wegs (kein Orakel über die Lage des Codes). Belegt in
+  // `tests/office-web-anmeldung/uebergabe-keine-auskunft.test.ts` S3/S3b und
+  // `uebergabe-vertrag.test.ts` S1e, beides am echten Fastify-Draht.
+  "POST /api/auth/office-handover/redeem": { status: 401, schluessel: "INVALID_CREDENTIALS" },
 };
 
 /**

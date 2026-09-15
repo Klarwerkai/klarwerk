@@ -47,9 +47,15 @@ describe("WP-KLARA-1b K1: Header-Matrix gegen die reale Registrierung (inject)",
     app = await buildRealApp();
   });
 
-  it("(a) NUR der kanonische Taskpane-Pfad → Ersatz-CSP, KEIN X-Frame-Options", async () => {
-    // WP-D10b: die kanonische Menge ist bewusst auf das Taskpane reduziert.
-    expect(WORD_ADDIN_CSP_PATHS).toEqual(["/word-addin/taskpane.html"]);
+  it("(a) NUR die kanonischen Add-in-Seiten → Ersatz-CSP, KEIN X-Frame-Options", async () => {
+    // WP-D10b: die kanonische Menge ist bewusst eng — die Icons stehen ausdruecklich NICHT darin.
+    // JOB 4076: sie umfasst jetzt ZWEI Seiten. Die zweite ist die Dialogseite der
+    // Office-Web-Anmeldung; sie laedt `office.js` fuer `messageParent` und braucht deshalb dieselbe
+    // `script-src`-Ausnahme wie das Taskpane. Begruendung an Ort und Stelle in `security-headers.ts`.
+    expect(WORD_ADDIN_CSP_PATHS).toEqual([
+      "/word-addin/taskpane.html",
+      "/word-addin/anmeldung.html",
+    ]);
     for (const path of WORD_ADDIN_CSP_PATHS) {
       const res = await app.inject({ method: "GET", url: path });
       expect(res.statusCode, path).toBe(200);
@@ -104,10 +110,15 @@ describe("WP-KLARA-1b K1: Header-Matrix gegen die reale Registrierung (inject)",
 // vorab normalisieren würde (inject/Browser lösen z. B. „..“ teils clientseitig auf; der Hook muss
 // TROTZDEM exakt bleiben, falls ein Rohsocket sie durchreicht).
 describe("WP-KLARA-1b K1: isWordAddinCspPath — exakter Vergleich, fail-closed", () => {
-  it("nur der kanonische Taskpane-Pfad matcht (Query/Fragment gestrippt)", () => {
+  it("nur die kanonischen Pfade matchen (Query/Fragment gestrippt)", () => {
     expect(isWordAddinCspPath("/word-addin/taskpane.html")).toBe(true);
     expect(isWordAddinCspPath("/word-addin/taskpane.html?x=1")).toBe(true);
     expect(isWordAddinCspPath("/word-addin/taskpane.html#frag")).toBe(true);
+    // JOB 4076: die Dialogseite der Office-Web-Anmeldung — derselbe exakte Vergleich, keine
+    // Aufweichung zu einem Praefix.
+    expect(isWordAddinCspPath("/word-addin/anmeldung.html")).toBe(true);
+    expect(isWordAddinCspPath("/word-addin/anmeldung.html?v=1")).toBe(true);
+    expect(isWordAddinCspPath("/word-addin/anmeldung.html#frag")).toBe(true);
   });
 
   it("Präfix-Tricks, Traversal, Encoding, Casing, Slashes, Icons → false (globale CSP)", () => {
@@ -121,6 +132,12 @@ describe("WP-KLARA-1b K1: isWordAddinCspPath — exakter Vergleich, fail-closed"
       "//word-addin/taskpane.html",
       "/word-addin//taskpane.html",
       "/word-addin/taskpane.html/",
+      // JOB 4076: die zweite Seite weicht die Pruefung NICHT auf — dieselben Varianten fallen.
+      "/word-addin/anmeldung.html/",
+      "/word-addin/anmeldung.htmlx",
+      "/word-addinX/anmeldung.html",
+      "/word-addin/ANMELDUNG.HTML",
+      "/word-addin/anmeldung.html%00",
       "/Word-Addin/taskpane.html",
       "/word-addin/TASKPANE.HTML",
       "/word-addin/taskpane%2Ehtml",

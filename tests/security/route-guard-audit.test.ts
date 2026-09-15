@@ -59,6 +59,11 @@ describe("SCRUM-367: RBAC route guard audit", () => {
       "POST /api/auth/reset",
       "POST /api/auth/oidc",
       "POST /api/auth/setup",
+      // JOB 4076 (OFFICE-WEB-ANMELDUNG): das Einlösen des Übergabecodes IST ein Auth-Einstieg —
+      // derselbe Grund, aus dem `POST /api/auth/reset` hier steht: der Aufruf bringt seinen
+      // Nachweis mit (einmaliger, 120-s-Code aus einer angemeldeten Sitzung) und kann keinen
+      // Sitzungsnachweis mitbringen, weil er aus einem Rahmen fremder Herkunft kommt.
+      "POST /api/auth/office-handover/redeem",
     ]);
     const unexpected = publicMutating.filter((k) => !allowed.has(k));
     expect(unexpected).toEqual([]);

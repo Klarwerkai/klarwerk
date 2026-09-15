@@ -354,7 +354,57 @@ function m6FremdeZiele(src: string): string[] {
 // den bedingten Schreibzugriff ignoriert `expectedVersion` und schreibt unbedingt — deshalb ist der
 // Schutz auch SERVERSEITIG eingebaut (ko-routes.ts, 409 `KO_STALE`) und nicht nur im Fenster; das
 // Fenster kann ihn nicht allein herstellen.
-const BEKANNTE_ABRUFZIELE = 16;
+//
+// ================================================================================================
+// JOB 4076 (15.09.2026) — DIE BEWUSSTE ANTWORT ZUM SIEBZEHNTEN ABRUFZIEL (16 → 17).
+// ================================================================================================
+//
+// Auch diese Zahl wird nicht „nachgezogen", weil ein Test rot war. M7 stellt die Frage, für die er
+// gebaut ist — „CSP? Recht? Manifest?" —, und hier steht die Antwort, bevor die Zahl steigt.
+//
+// DAS NEUE ZIEL: `POST /api/auth/office-handover/redeem` (`loginUebergabeEinloesen`), das Einlösen
+// des Übergabecodes aus dem Anmeldedialog. Es gibt in Word für das Web erstmals einen Weg, der
+// überhaupt eine Sitzung in dieses Fenster bringt: das Fenster liegt dort in einem Rahmen fremder
+// Herkunft, und das Sitzungscookie reist nicht mit (ITP). Der Code kommt über
+// `Office.EventType.DialogMessageReceived` aus `word-addin/anmeldung.html`; zurück kommt ein
+// Sitzungsmerkmal, das das Fenster NUR im Arbeitsspeicher hält.
+//
+//   · CSP:      unverändert. `connect-src 'self'` deckt den Pfad — dieselbe Herkunft, die das
+//               Fenster für `/api/auth/me` ohnehin nutzt. Kein neuer Ursprung (M6 bleibt leer).
+//               NEU ist ein zweiter Eintrag in `WORD_ADDIN_CSP_PATHS` — aber für die DIALOGSEITE,
+//               nicht für dieses Fenster; die Ausnahme dieses Fensters ist unverändert
+//               (`tests/app/word-addin-csp.test.ts`, Header-Matrix).
+//   · Recht:    KEINES. Die Route ist bewusst öffentlich, und das ist ihr Zweck: ein Aufruf aus dem
+//               fremden Rahmen kann keinen Sitzungsnachweis mitbringen — der Code IST der Nachweis.
+//               Er ist 32 zufällige Bytes, 120 s gültig, GENAU EINMAL einlösbar und an seine
+//               erzeugende Sitzung gebunden; unbekannt/abgelaufen/verbraucht bekommen dieselbe,
+//               nicht unterscheidbare 401. Eingetragen im Routen-Audit
+//               (`tests/security/routeGuardAudit.ts`) samt Begründung.
+//   · Manifest: unverändert. Keine neue Domain und keine neue Berechtigung — die Dialogseite liegt
+//               unter DERSELBEN AppDomain wie dieses Fenster. Office-seitig kommen
+//               `Dialog.addEventHandler` und `Office.EventType` hinzu; beide gehören zur
+//               Dialog-API, die das Fenster mit `displayDialogAsync` längst benutzt (kein neues
+//               Requirement-Set, kein erneutes Sideload).
+//   · Nutzlast: hinaus geht GENAU der Übergabecode (`{ code }`) — kein Dokumenttext, keine
+//               Kennung, kein Konto. Herein kommt das Sitzungsmerkmal und die Identität; geglaubt
+//               wird die Identität NICHT, das Fenster holt sie über `checkSession` frisch.
+//   · Frequenz: einmal je eingegangener Dialognachricht. Kein Intervall, kein Autostart; ohne
+//               Druck auf „Anmelden" wird kein Dialog geöffnet und keine Nachricht empfangen.
+//
+// UND EIN ZWEITES, DAS KEIN ZIEL IST: der `Authorization`-Kopf hängt ab jetzt an JEDEM Abruf des
+// Fensters, gesetzt von EINER Stelle — einem Umschlag um `fetch` (oben im Skript). Er ist bewusst
+// keine `fetch(`-Stelle: er ruft `fetch` nicht, er IST es. Sechzehn geänderte Abrufstellen wären
+// sechzehn Gelegenheiten, eine zu vergessen, und die siebzehnte trüge den Kopf gar nicht erst.
+// `credentials: "include"` bleibt an jeder Stelle stehen (M10, unverändert): im Mac-Word trägt das
+// Cookie, im Browser der Schlüssel.
+//
+// AUSLIEFERUNGSFOLGE für ein installiertes Add-in: KEIN erneutes Sideload. Ein älterer Server ohne
+// die Route antwortet 404 → das Fenster liest „Übergabe abgelehnt" (`loginHandoverRejected`) und
+// lässt den Anmeldeknopf frei; es behauptet NICHT, die Anmeldung sei fehlgeschlagen. Neu
+// ausgeliefert werden muss `word-addin/anmeldung.html`; fehlt sie, öffnet der Dialog eine 404, und
+// der Mensch sieht das sofort — ein halb ausgeliefertes Fenster tut nicht so, als hätte es einen
+// Anmeldeweg.
+const BEKANNTE_ABRUFZIELE = 17;
 function m7Abrufmenge(src: string): number {
   return abrufziele(src).length;
 }
