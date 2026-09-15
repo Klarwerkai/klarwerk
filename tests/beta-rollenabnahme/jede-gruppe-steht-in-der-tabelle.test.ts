@@ -11,14 +11,49 @@
 // ER PRÜFT IN BEIDE RICHTUNGEN. Eine Gruppe ohne Tabellenzeile ist eine ungeprüfte Tür; eine
 // Tabellenzeile ohne Gruppe ist eine Behauptung über etwas, das es nicht mehr gibt — und die wäre
 // die gefährlichere von beiden, weil sie grün aussieht.
+//
+// JOB 4113 · RUNDE 2 — DIESER WÄCHTER SIEHT SEIT JETZT BEIDE TEILE DER TABELLE.
+//
+// DER BEFUND DES PRÜFERS: Runde 1 hat die neue `SCHREIB_TABELLE` in die ABDECKUNGSZÄHLUNG
+// aufgenommen, aber nicht in diesen Begründungs- und Vollständigkeitswächter. W5, W6 und W8 lasen
+// weiter nur `TABELLE` — deshalb blieb selbst die unbegründete Auslassung des Gasts in einer
+// Schreibzeile hier grün. Zwei Tabellen, ein Wächter: `ALLE_ZEILEN` unten ist die Menge, über die
+// die drei Ehrlichkeitsregeln gelten, und sie umfasst beide.
 import { describe, expect, it } from "vitest";
 import { AKTEURE } from "./buehne";
 import { AUSGENOMMEN, erhebeRoutengruppen } from "./routengruppen";
+import { SCHREIB_TABELLE } from "./schreibende-tueren";
 import { DIREKT, TABELLE, eintrag } from "./tabelle";
 
 const erhebung = erhebeRoutengruppen();
-const gruppenInDerTabelle = new Set(TABELLE.map((z) => z.gruppe).filter((g) => g !== DIREKT));
+const gruppenInDerTabelle = new Set(
+  [...TABELLE.map((z) => z.gruppe), ...SCHREIB_TABELLE.map((z) => z.gruppe)].filter(
+    (g) => g !== DIREKT,
+  ),
+);
 const registrare = erhebung.gruppen.map((g) => g.registrar);
+
+/**
+ * Jede abgenommene Zeile, lesend wie schreibend, auf die eine Form gebracht, die W5/W6/W8 brauchen.
+ *
+ * Die Lesezeile führt eine gefahrene URL (`pfad`), die Schreibzeile ihr registriertes Muster
+ * (`route`) — für die Ehrlichkeitsregeln ist beides nur der Name, unter dem der Mensch die Tür
+ * wiederfindet.
+ */
+const ALLE_ZEILEN = [
+  ...TABELLE.map((z) => ({
+    gruppe: z.gruppe,
+    name: `${z.methode} ${z.pfad}`,
+    belegstelle: z.belegstelle,
+    erwartet: z.erwartet,
+  })),
+  ...SCHREIB_TABELLE.map((z) => ({
+    gruppe: z.gruppe,
+    name: `${z.methode} ${z.route} (schreibend)`,
+    belegstelle: z.belegstelle,
+    erwartet: z.erwartet,
+  })),
+];
 
 describe("JOB 4015 · jede Routengruppe steht in der Abnahmetabelle", () => {
   it("W1: die Erhebung findet überhaupt etwas — und zwar die Gruppen, nicht die Erweiterungen", () => {
@@ -67,10 +102,10 @@ describe("JOB 4015 · jede Routengruppe steht in der Abnahmetabelle", () => {
 
   it("W5: jede Zeile sagt für JEDEN Akteur etwas — auch für den Unangemeldeten", () => {
     const luecken: string[] = [];
-    for (const zeile of TABELLE) {
+    for (const zeile of ALLE_ZEILEN) {
       for (const akteur of AKTEURE) {
         if (!(akteur in zeile.erwartet)) {
-          luecken.push(`${zeile.methode} ${zeile.pfad}: ${akteur} fehlt`);
+          luecken.push(`${zeile.name}: ${akteur} fehlt`);
         }
       }
     }
@@ -82,11 +117,11 @@ describe("JOB 4015 · jede Routengruppe steht in der Abnahmetabelle", () => {
     // `nicht-geprueft` wäre dem Wortlaut nach erfüllt und der Sache nach wertlos. Dasselbe gilt für
     // einen weggeschriebenen Befund und für ein anonymes „erlaubt".
     const ohneGrund: string[] = [];
-    for (const zeile of TABELLE) {
+    for (const zeile of ALLE_ZEILEN) {
       for (const akteur of AKTEURE) {
         const e = eintrag(zeile.erwartet[akteur]);
         const grund = e.grund?.trim() ?? "";
-        const wo = `${zeile.gruppe} ${zeile.methode} ${zeile.pfad} · ${akteur}`;
+        const wo = `${zeile.gruppe} ${zeile.name} · ${akteur}`;
         if (e.soll === "nicht-geprueft" && grund.length === 0) {
           ohneGrund.push(`${wo}: nicht-geprueft ohne Grund`);
         }
@@ -109,8 +144,8 @@ describe("JOB 4015 · jede Routengruppe steht in der Abnahmetabelle", () => {
   });
 
   it("W8: jede Zeile nennt ihre Belegstelle mit Datei und Zeilennummer", () => {
-    const ohneBeleg = TABELLE.filter((z) => !/^[\w./-]+\.ts:\d+$/.test(z.belegstelle)).map(
-      (z) => `${z.methode} ${z.pfad}: "${z.belegstelle}"`,
+    const ohneBeleg = ALLE_ZEILEN.filter((z) => !/^[\w./-]+\.ts:\d+$/.test(z.belegstelle)).map(
+      (z) => `${z.name}: "${z.belegstelle}"`,
     );
     expect(
       ohneBeleg,

@@ -47,7 +47,14 @@ export type Rolle = (typeof ROLLEN)[number];
 export const AKTEURE = ["anonym", ...ROLLEN] as const;
 export type Akteur = (typeof AKTEURE)[number];
 
-const PASSWORT = "Rollenabnahme-2026!";
+/**
+ * Das Passwort aller vier Prüfkonten.
+ *
+ * JOB 4113: seit den schreibenden Messungen ist es EXPORTIERT — `POST /api/auth/password` verlangt
+ * das ALTE Passwort als Nutzlast, und ein zweiter, abgeschriebener Wert wäre genau die Stelle, an
+ * der eine Abnahme eines Tages am eigenen Tippfehler scheitert statt an der Tür.
+ */
+export const PASSWORT = "Rollenabnahme-2026!";
 
 /**
  * Die Schalter, die über die ANWESENHEIT einer Routengruppe entscheiden. Werte wie im Betrieb
@@ -89,19 +96,38 @@ export interface Buehne {
   mitschrift: Routenmitschrift;
 }
 
-const offen: Array<{ app: FastifyInstance; vorher: Record<string, string | undefined> }> = [];
+interface OffeneInstanz {
+  app: FastifyInstance;
+  vorher: Record<string, string | undefined>;
+}
+
+const offen: OffeneInstanz[] = [];
+
+async function schliesse(eintrag: OffeneInstanz): Promise<void> {
+  const stelle = offen.indexOf(eintrag);
+  if (stelle < 0) {
+    // Schon geschlossen. Ein zweiter `close()` auf derselben Instanz wäre kein Fehler, das
+    // Zurückstellen der Schalter aus einem veralteten Abzug aber sehr wohl.
+    return;
+  }
+  offen.splice(stelle, 1);
+  await eintrag.app.close();
+  for (const [name, wert] of Object.entries(eintrag.vorher)) {
+    if (wert === undefined) {
+      delete process.env[name];
+    } else {
+      process.env[name] = wert;
+    }
+  }
+}
 
 /** Schliesst die Instanzen dieses Falls und stellt die Schalter zurück. Gehört in jedes `afterEach`. */
 export async function schliesseBuehnen(): Promise<void> {
-  for (const eintrag of offen.splice(0)) {
-    await eintrag.app.close();
-    for (const [name, wert] of Object.entries(eintrag.vorher)) {
-      if (wert === undefined) {
-        delete process.env[name];
-      } else {
-        process.env[name] = wert;
-      }
-    }
+  // Rückwärts: die zuletzt geöffnete Instanz stellt den Schalterstand wieder her, den sie
+  // vorgefunden hat — bei geschachtelten Bühnen ist das die einzige Reihenfolge, die den
+  // Ausgangsstand wirklich trifft.
+  for (const eintrag of [...offen].reverse()) {
+    await schliesse(eintrag);
   }
 }
 
@@ -132,6 +158,43 @@ export async function anmelden(app: FastifyInstance, email: string): Promise<str
  * die Abnahme gegen einen Zustand fahren, den das Produkt selbst nie herstellt.
  */
 export async function baueBuehne(): Promise<Buehne> {
+  return (await baueInstanz()).buehne;
+}
+
+// ================================================================================================
+// JOB 4113 · LIEFERUNG 1 — DIE ZWEITE ART BÜHNE: EINE EIGENE JE SCHREIBENDER MESSUNG.
+// ================================================================================================
+//
+// WARUM ES SIE GEBEN MUSS. `tabelle.ts` (Restlistengrund zu `POST /api/auth/logout`) sagt den Grund
+// selbst: „die Messungen dieser Tabelle sind deshalb bewusst zustandsfrei". Solange alle Zeilen
+// gegen EINEN Bestand messen, schliesst jeder schreibende Vorgang die folgenden Zeilen aus — ein
+// abgemeldeter Token, ein freigegebenes Konto, ein angelegtes Wissensobjekt verschieben die
+// Grundlage, auf der die nächste Zeile ihr Urteil fällt. Genau deshalb standen die Schreibwege bis
+// hierher gezählt und begründet, aber ungefahren in `NICHT_ABGENOMMEN`.
+//
+// WAS SICH GEGENÜBER `baueBuehne()` UNTERSCHEIDET — und was NICHT. Der AUFBAU ist derselbe (dieselbe
+// `buildApp`-Wurzel, dieselben vier Prüfkonten, dieselbe Anmeldung am Draht): eine zweite Art, eine
+// App zu bauen, wäre eine zweite Wahrheit darüber, wie das Produkt aussieht. Verschieden ist die
+// LEBENSDAUER, und das ist der ganze Punkt: `baueBuehne()` steht einmal je Prüfdatei (`beforeAll`)
+// und wird erst am Ende geschlossen; eine frische Bühne entsteht VOR einer einzelnen Messung und
+// wird unmittelbar DANACH über ihr eigenes `schliesse()` wieder abgeräumt. Was eine Messung
+// hinterlässt, sieht deshalb keine zweite.
+//
+// DASS DAS WIRKLICH SO IST, WIRD GEMESSEN, NICHT BEHAUPTET: der Frische-Nachweis in
+// `schreibende-tueren-am-draht.test.ts` (F1) fährt denselben schreibenden Vorgang an zwei
+// nacheinander gebauten frischen Bühnen und verlangt dasselbe Ergebnis. An der gemeinsamen Bühne
+// ist derselbe Nachweis rot — der zweite Durchlauf trifft dort den Bestand des ersten.
+export interface FrischeBuehne extends Buehne {
+  /** Schliesst GENAU DIESE Instanz und stellt die Schalter zurück, die sie gesetzt hat. */
+  schliesse(): Promise<void>;
+}
+
+export async function baueFrischeBuehne(): Promise<FrischeBuehne> {
+  const { buehne, eintrag } = await baueInstanz();
+  return { ...buehne, schliesse: () => schliesse(eintrag) };
+}
+
+async function baueInstanz(): Promise<{ buehne: Buehne; eintrag: OffeneInstanz }> {
   const vorher: Record<string, string | undefined> = {};
   for (const [name, wert] of Object.entries(SCHALTER)) {
     vorher[name] = process.env[name];
@@ -145,7 +208,8 @@ export async function baueBuehne(): Promise<Buehne> {
   // Begründung im Kopf von `registrierte-routen.ts`.
   const mitschrift = schreibeRouterentscheidungMit(app);
   await app.ready();
-  offen.push({ app, vorher });
+  const eintrag: OffeneInstanz = { app, vorher };
+  offen.push(eintrag);
 
   const admin = await services.auth.register({
     name: "Abnahme Admin",
@@ -170,7 +234,7 @@ export async function baueBuehne(): Promise<Buehne> {
   for (const rolle of ROLLEN) {
     sitzung[rolle] = await anmelden(app, konto[rolle].email);
   }
-  return { app, services, repos, konto, sitzung, mitschrift };
+  return { buehne: { app, services, repos, konto, sitzung, mitschrift }, eintrag };
 }
 
 /** Die Kopfzeilen eines Akteurs: ein Bearer-Token — oder gar nichts. */

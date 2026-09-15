@@ -114,8 +114,18 @@ export const CODE_401 = "UNAUTHENTICATED";
 /** Was `requirePermission` sendet, wenn das Recht fehlt (`http.ts:203-206`). */
 export const CODE_403 = "FORBIDDEN";
 
-/** Der Fehlerschlüssel, den diese Zeile für dieses Ergebnis erwartet — oder `undefined`. */
-export function erwarteterCode(zeile: Zeile, ergebnis: Erwartung): string | undefined {
+/**
+ * Der Fehlerschlüssel, den diese Zeile für dieses Ergebnis erwartet — oder `undefined`.
+ *
+ * JOB 4113: die Signatur nimmt nur noch das Feld, das sie wirklich liest (`codes`), statt eine ganze
+ * `Zeile`. So können die LESENDEN Zeilen (`Zeile`) und die SCHREIBENDEN (`Schreibzeile`) dieselbe
+ * eine Stelle benutzen — eine zweite Auslegung von „welcher Schlüssel gehört zu welcher Sperre"
+ * wäre genau der Doppelvertrag, gegen den die Lehre aus JOB 3953 geschrieben ist.
+ */
+export function erwarteterCode(
+  zeile: Pick<Zeile, "codes">,
+  ergebnis: Erwartung,
+): string | undefined {
   if (ergebnis === "401") {
     return zeile.codes?.["401"] ?? CODE_401;
   }
@@ -179,10 +189,34 @@ export function gemessen(status: number, registriert: boolean): Messung {
 // die sehr wohl gemessen werden. Der Wächter erzwingt beides (E4/E5): kein Eintrag ohne Grund, und
 // kein Eintrag auf eine Route, die es gar nicht gibt.
 
+// ------------------------------------------------------------------------------------------------
+// JOB 4113 · LIEFERUNG 2 — DIE RESTLISTE SAGT, WELCHE ART VON GRUND SIE FÜHRT.
+// ------------------------------------------------------------------------------------------------
+//
+// Bis hierher stand in dieser Liste zweierlei nebeneinander, ohne dass die Maschine es
+// unterscheiden konnte: eine Tür, an der eine Rollenzeile BAULICH unmöglich ist (der Anmeldeweg,
+// über den die Abnahme selbst misst; ein Code, der genau einmal gilt), und eine Tür, deren Messung
+// nur AUFGESCHOBEN war (sie brauchte einen frischen Bestand oder eine echte Nutzlast). `E5` prüft
+// bis heute nur, dass ein Grund länger als 20 Zeichen ist — eine Prüfschuld war damit von einer
+// Unmöglichkeit nicht zu unterscheiden, und die Restliste konnte still wachsen.
+//
+// `art` trennt beides, und zwar so, dass der Unterschied Folgen hat: `zurueckgestellt` ist eine
+// SCHULD und wird von `E9` gegen eine Obergrenze gehalten; `baulich` ist ein Beweis und bleibt.
+export type Nichtabnahmeart = "baulich" | "zurueckgestellt";
+
 export interface Nichtabnahme {
   methode: string;
   /** Das registrierte Muster, so wie es die Aufzählung führt. */
   pfad: string;
+  /**
+   * `baulich`: an dieser Tür ist eine Rollenzeile unmöglich — zirkulär (der Anmeldeweg, mit dem
+   * gemessen wird), ein Einmalcode, der sich nicht als feste Nutzlast führen lässt, eine Antwort,
+   * über die gar kein Rechtetor entscheidet, oder eine serverseitig unerreichbare Tür.
+   *
+   * `zurueckgestellt`: eine Prüfschuld, die eingelöst werden KANN. Wer eine Tür so führt, sagt
+   * damit, dass sie eines Tages gemessen wird — und `E9` hält die Gesamtzahl dieser Zusagen fest.
+   */
+  art: Nichtabnahmeart;
   grund: string;
 }
 
@@ -191,6 +225,7 @@ export const NICHT_ABGENOMMEN: Nichtabnahme[] = [
   {
     methode: "OPTIONS",
     pfad: "/*",
+    art: "baulich",
     grund:
       "Der CORS-Vorflug von `@fastify/cors` (`build-app.ts:1904-1921`), nicht von einer Routengruppe angelegt. Was er antwortet, entscheidet die Ursprungsregel des Add-in-Pfads, nicht das Rechtetor — eine Rollenmessung daran sagte über Rechte nichts. Er ist zugleich der Beleg, dass `cors` ENTGEGEN dem Vermerk in `routengruppen.ts` sehr wohl eine Route registriert; die eigene Abnahme des Ursprungsvertrags ist ein eigener Auftrag.",
   },
@@ -199,96 +234,77 @@ export const NICHT_ABGENOMMEN: Nichtabnahme[] = [
   {
     methode: "POST",
     pfad: "/api/auth/register",
+    art: "zurueckgestellt",
     grund:
-      "Legt ein Konto an. Der Vorgang braucht eine gültige Selbstregistrierung samt Schalterlage und verändert den Bestand der Bühne, gegen den alle anderen Zeilen messen.",
+      "Legt ein Konto an. JOB 4113 hat die eine Hälfte dieses Grundes eingelöst — an einer frischen Bühne verändert die Anlage keinen Bestand mehr, gegen den andere Zeilen messen. Was bleibt, ist die SCHALTERLAGE: `routes.ts:351` prüft `selfRegistrationEnabled()` VOR allem anderen und antwortet bei ausgeschaltetem Schalter allen fünf Akteuren gleich mit 403 `REGISTRATION_DISABLED` — ein 403, der nicht aus dem Rechtetor kommt. Die Bühne dieses Auftrags setzt den Schalter bewusst nicht (sie setzt vier Schalter über der ANWESENHEIT von Routen, keinen über dem Verhalten einer einzelnen); ihn hier zu setzen wäre eine fünfte Schalterlage, die alle anderen Zeilen mitträfen.",
   },
   {
     methode: "POST",
     pfad: "/api/auth/login",
+    art: "baulich",
     grund:
       "Erzeugt die Sitzung, mit der diese Abnahme überhaupt misst (`buehne.ts:94-108`). Eine Rollenzeile darüber wäre zirkulär; die Route ist durch den Aufbau der Bühne bereits jede Runde gefahren.",
   },
   {
     methode: "POST",
-    pfad: "/api/auth/logout",
-    grund:
-      "Beendet die Sitzung und löscht das Cookie. Ein Aufruf in der Abnahme entwertete den Token, mit dem die folgenden Zeilen messen — die Messungen dieser Tabelle sind deshalb bewusst zustandsfrei.",
-  },
-  {
-    methode: "POST",
-    pfad: "/api/auth/notice",
-    grund:
-      "Quittiert die Kenntnisnahme des Pflichthinweises am EIGENEN Konto. Braucht die aktuelle Textfassung als Nutzlast und schreibt an den Prüfkonten, gegen die gemessen wird.",
-  },
-  {
-    methode: "POST",
-    pfad: "/api/auth/password",
-    grund:
-      "Ändert das eigene Passwort. Ein Durchlauf machte die Sitzungen der Bühne ungültig und alle folgenden Zeilen unlesbar.",
-  },
-  {
-    methode: "POST",
     pfad: "/api/auth/forgot",
+    art: "zurueckgestellt",
     grund:
       "Fordert eine Zurücksetzung an und antwortet absichtlich immer gleich (keine Kontoerkennung). Die Aussage dieser Route ist die Gleichförmigkeit, nicht die Rolle — ein eigener Prüfgegenstand.",
   },
   {
     methode: "POST",
     pfad: "/api/auth/reset",
+    art: "zurueckgestellt",
     grund:
       "Setzt ein Passwort per Einmal-Token. Ohne echtes Token misst sie nur die Tokenprüfung; ein echtes Token herzustellen ist ein Fachvorgang.",
   },
   {
     methode: "POST",
     pfad: "/api/auth/oidc",
+    art: "zurueckgestellt",
     grund:
       "Der SSO-Rückweg. Er prüft state, nonce und PKCE gegen kurzlebige Cookies aus `GET /api/auth/oidc/start`; ohne diesen Ablauf misst er keine Rechte, sondern die Ablaufprüfung.",
   },
   {
     methode: "POST",
     pfad: "/api/auth/setup",
+    art: "baulich",
     grund:
       "Die Ersteinrichtung des ersten Admins. Sie ist serverseitig durch `needsSetup()` abgeriegelt und an einer Bühne, die bereits vier Konten trägt, gar nicht mehr erreichbar.",
   },
   {
     methode: "POST",
     pfad: "/api/auth/office-handover/redeem",
+    art: "baulich",
     grund:
       "Löst den EINMALIGEN Übergabecode aus dem Word-Anmeldedialog ein (JOB 4076) und ist bewusst öffentlich: der Aufruf kommt aus einem Rahmen fremder Herkunft und kann kein Sitzungscookie mitbringen — der Code IST der Nachweis, nicht die Rolle. Eine Rollenzeile ist hier baulich unmöglich, und zwar in beiden Richtungen: ohne gültigen Code antwortet die Route ALLEN fünf Akteuren gleich mit 401, und dieser 401 kommt aus der Codeprüfung, nicht aus einem Rechtetor — er als `erlaubt` oder als Sperre zu führen wäre in beiden Fällen eine Unwahrheit über den Grund; ein GÜLTIGER Code lässt sich nicht als feste Nutzlast (`payload`) führen, weil er genau einmal gilt und die fünf Messungen ihn nacheinander verbrauchen würden. Abgenommen ist diese Tür deshalb am echten Fastify-Draht in `tests/office-web-anmeldung/uebergabe-vertrag.test.ts` (Ausgabe nur mit Sitzung, Einlösen genau einmal, Frist 120 s, Bindung an die erzeugende Sitzung), in `uebergabe-ohne-cookie.test.ts` (der Schlüssel öffnet `GET /api/auth/me` OHNE jedes Cookie) und in `uebergabe-keine-auskunft.test.ts` (unbekannt, abgelaufen und verbraucht sind von aussen nicht unterscheidbar). Der öffentliche Leckweg steht zusätzlich in `tests/demo-zugang-gaeste/kein-offener-zugang.test.ts` (D2f) mit abgelesenem Vertragsrumpf und gemessenem Kontaktstatus.",
   },
   {
-    methode: "POST",
-    pfad: "/api/auth/users/:id/approve",
-    grund:
-      "Gibt ein Konto frei. Der Vorgang verändert die Freigabe der Prüfkonten, auf der jede Messung dieser Tabelle beruht (`rollen-am-draht.test.ts` D0).",
-  },
-  {
-    methode: "POST",
-    pfad: "/api/auth/users/:id/reset",
-    grund:
-      "Setzt das Passwort eines fremden Kontos. Ein Durchlauf entwertete die Sitzung des betroffenen Prüfkontos mitten in der Abnahme.",
-  },
-  {
     methode: "DELETE",
     pfad: "/api/auth/users/:id",
+    art: "zurueckgestellt",
     grund:
       "Löscht ein Konto. Die einzige sinnvolle Nutzlast wäre eine Kennung aus der Bühne selbst — und danach fehlte die Rolle, die geprüft werden sollte.",
   },
   {
     methode: "POST",
     pfad: "/api/users",
+    art: "zurueckgestellt",
     grund:
       "Legt ein Konto mit gewählter Rolle an. Der Fachvorgang ist die Rollenvergabe; er gehört zu der Abnahme, die JOB 4015 über `canChangeRole` bereits am Dienst führt.",
   },
   {
     methode: "PUT",
     pfad: "/api/users/:id",
+    art: "zurueckgestellt",
     grund:
       "Ändert Rolle oder Stammdaten eines Kontos. Ein Aufruf verstellte die Rolle eines Prüfkontos — genau die Grösse, die diese Abnahme misst.",
   },
   {
     methode: "DELETE",
     pfad: "/api/users/:id",
+    art: "zurueckgestellt",
     grund:
       "Löscht ein Konto über den Verwaltungsweg. Dieselbe Lage wie `DELETE /api/auth/users/:id`: die Nutzlast ist eine Kennung aus der Bühne.",
   },
@@ -296,161 +312,68 @@ export const NICHT_ABGENOMMEN: Nichtabnahme[] = [
   // --- Wissensobjekte (koRoutes) -----------------------------------------------------------------
   {
     methode: "POST",
-    pfad: "/api/kos",
-    grund:
-      "Legt ein Wissensobjekt an. Verlangt Titel, Inhalt, Kategorie und Prüferzuordnung als vollständige Nutzlast; ein leerer Rumpf misst die Rumpfprüfung, nicht das Tor.",
-  },
-  {
-    methode: "POST",
     pfad: "/api/kos/from-document",
+    art: "zurueckgestellt",
     grund:
-      "Erstanlage AUS einem Dokument — Inhalt, Anker und Belegstellen in einem Vorgang. Die Nutzlast ist ein vollständiges Dokumentmodell.",
-  },
-  {
-    methode: "POST",
-    pfad: "/api/kos/:id/ai-check",
-    grund:
-      "Stösst die Hintergrund-KI-Prüfung eines bestehenden Objekts erneut an. Braucht ein echtes Objekt und einen laufenden Prüf-Arbeiter.",
-  },
-  {
-    methode: "PUT",
-    pfad: "/api/kos/:id",
-    grund:
-      "Der Mehrfachweg: je Aktion im Rumpf eine eigene Rechteprüfung (`action-dispatched`). Eine einzelne Zeile könnte immer nur EINE dieser Aktionen messen und behauptete dabei, die Tür beurteilt zu haben.",
-  },
-  {
-    methode: "DELETE",
-    pfad: "/api/kos/:id",
-    grund:
-      "Löscht ein Objekt in den Papierkorb und entscheidet zusätzlich über die Autorschaft. Braucht ein echtes, sichtbares Objekt, um mehr als die Existenzprüfung zu messen.",
-  },
-  {
-    methode: "POST",
-    pfad: "/api/kos/:id/restore",
-    grund:
-      "Holt ein Objekt aus dem Papierkorb zurück. Setzt ein zuvor gelöschtes Objekt voraus — also einen vorgeschalteten Schreibvorgang.",
-  },
-  {
-    methode: "DELETE",
-    pfad: "/api/kos/trash/:id",
-    grund:
-      "Endgültige Löschung aus dem Papierkorb. Derselbe vorgeschaltete Schreibvorgang wie beim Zurückholen, mit unumkehrbarem Ausgang.",
-  },
-  {
-    methode: "PUT",
-    pfad: "/api/upload-limits",
-    grund:
-      "Setzt die Anhanggrenzen der Instanz. Die Nutzlast sind zwei Zahlen, deren Wirkung andere Prüfungen (Uploadgrenzen) trägt; eine Rollenzeile hier verstellte den Betrieb der Bühne.",
+      "Erstanlage AUS einem Dokument — Inhalt, Anker und Belegstellen in einem Vorgang. Die Nutzlast ist ein vollständiges Dokumentmodell samt eines zuvor über `POST /api/objects` hochgeladenen Ankerdokuments; JOB 4113 hat den einfachen Anlageweg (`POST /api/kos`) gemessen und diesen bewusst nicht mitgenommen, weil `POST /api/objects` selbst zurückgestellt ist.",
   },
 
   // --- Entwürfe (captureRoutes) ------------------------------------------------------------------
   {
     methode: "POST",
-    pfad: "/api/drafts",
-    grund:
-      "Legt einen Entwurf an. Der Auth-Riegel läuft hier VOR dem Rumpfparsen (`onRequest`), was eine eigene Prüffläche ist — die Nutzlast ist ein vollständiger Entwurf.",
-  },
-  {
-    methode: "POST",
     pfad: "/api/drafts/from-docx",
+    art: "zurueckgestellt",
     grund:
       "Übernimmt eine .docx-Datei als Entwurf. Die Nutzlast ist ein echtes Dokument von bis zu 30 MiB; ohne sie misst die Zeile die Parserprüfung.",
-  },
-  {
-    methode: "PUT",
-    pfad: "/api/drafts/:id",
-    grund:
-      "Speichert einen Entwurf weiter. Braucht einen vorhandenen Entwurf und dessen Änderungsstempel für die Konfliktprüfung.",
-  },
-  {
-    methode: "DELETE",
-    pfad: "/api/drafts/:id",
-    grund:
-      "Legt einen Entwurf in den Entwurfs-Papierkorb. Setzt einen vorhandenen, sichtbaren Entwurf voraus.",
-  },
-  {
-    methode: "POST",
-    pfad: "/api/drafts/:id/promote",
-    grund:
-      "Macht aus einem Entwurf ein Wissensobjekt. Der Vorgang kettet Entwurfs- und Objektanlage und ist damit ein Fachablauf, kein Türtest.",
-  },
-  {
-    methode: "POST",
-    pfad: "/api/drafts/:id/restore",
-    grund:
-      "Holt einen eigenen Entwurf aus dem Papierkorb zurück. Setzt einen zuvor gelöschten Entwurf voraus.",
-  },
-  {
-    methode: "DELETE",
-    pfad: "/api/drafts/trash/:id",
-    grund:
-      "Löscht einen Entwurf endgültig aus dem Papierkorb. Derselbe vorgeschaltete Schreibvorgang, unumkehrbar.",
   },
 
   // --- Fragen, Lücken, Prüfung (askRoutes, validationRoutes, conflictRoutes, overlapRoutes) -------
   {
     methode: "POST",
     pfad: "/api/ask",
+    art: "zurueckgestellt",
     grund:
-      "Die Frage an den Bestand. Sie hat zwei Zweige (Sitzung und Add-on-Schlüssel) mit unterschiedlichem Rechteweg; eine Zeile könnte nur einen messen und verschwiege den anderen.",
-  },
-  {
-    methode: "POST",
-    pfad: "/api/ask/helpful",
-    grund:
-      "Quittiert eine Antwort als hilfreich und schreibt in die Wirkungskette, aus der `GET /api/livewall` und `GET /api/me/impact` ihre Zahlen ziehen.",
-  },
-  {
-    methode: "PUT",
-    pfad: "/api/gaps/:id",
-    grund:
-      "Weist eine Wissenslücke zu (`ko.assign`). Braucht eine echte Lücke und eine gültige Zielperson als Nutzlast.",
-  },
-  {
-    methode: "DELETE",
-    pfad: "/api/gaps/:id",
-    grund:
-      "Schliesst eine Wissenslücke endgültig und verlangt eine ausdrückliche Bestätigung in der Abfrage.",
-  },
-  {
-    methode: "PUT",
-    pfad: "/api/validation/settings",
-    grund:
-      "Setzt die Standard-Prüferanzahl der Instanz. Der Wert steuert, wann ein Objekt als geprüft gilt — eine Verstellung veränderte den Bestand, gegen den andere Zeilen messen.",
+      "Die Frage an den Bestand. Sie hat zwei Zweige (Sitzung und Add-on-Schlüssel) mit unterschiedlichem Rechteweg; eine Zeile könnte nur einen messen und verschwiege den anderen. (Gefahren wird sie in JOB 4113 sehr wohl — als Vorbereitung der Zeilen zu `POST /api/ask/helpful` und `PUT|DELETE /api/gaps/:id`; abgenommen ist damit nicht sie, sondern was aus ihr entsteht.)",
   },
   {
     methode: "POST",
     pfad: "/api/conflicts/:id/dismiss",
+    art: "zurueckgestellt",
     grund:
       "Verwirft einen Widerspruch als unbegründet. Setzt ein echtes Widerspruchspaar voraus, das erst aus zwei angelegten Objekten entsteht.",
   },
   {
     methode: "POST",
     pfad: "/api/conflicts/:id/second-opinion",
+    art: "zurueckgestellt",
     grund:
       "Holt eine Zweitmeinung zu einem Widerspruch ein (`ko.validate`, nicht `conflict.resolve`). Braucht dasselbe echte Paar und einen Meinungstext.",
   },
   {
     methode: "POST",
     pfad: "/api/duplicates/:id/dismiss",
+    art: "zurueckgestellt",
     grund:
       "Schliesst ein Dublettenpaar mit dem Abschlussgrund `kein Duplikat`. Setzt ein erkanntes Paar voraus, das erst die Überschneidungserkennung erzeugt.",
   },
   {
     methode: "POST",
     pfad: "/api/duplicates/:id/keep-separate",
+    art: "zurueckgestellt",
     grund:
       "Schliesst dasselbe Paar mit dem Abschlussgrund `bewusst getrennt`. Eigener Grund, gleiche Voraussetzung: ein echtes Paar.",
   },
   {
     methode: "POST",
     pfad: "/api/duplicates/:id/link-related",
+    art: "zurueckgestellt",
     grund:
       "Verknüpft zwei Objekte als verwandt statt sie zusammenzuführen. Schreibt an beiden Objekten und braucht deshalb beide echt.",
   },
   {
     methode: "POST",
     pfad: "/api/duplicates/:id/status",
+    art: "zurueckgestellt",
     grund:
       "Setzt Bearbeitungsstand und Abschlussgrund eines Paares frei wählbar. Die Nutzlast ist der gewählte Grund; ohne ihn misst die Zeile die Rumpfprüfung.",
   },
@@ -459,30 +382,35 @@ export const NICHT_ABGENOMMEN: Nichtabnahme[] = [
   {
     methode: "POST",
     pfad: "/api/klara/sessions",
+    art: "zurueckgestellt",
     grund:
       "Registriert die Zuordnung von Add-in-Instanz und Dokument und vergibt die opake Dokumentkennung. Alle übrigen Klara-Wege setzen genau diese Zuordnung voraus.",
   },
   {
     methode: "POST",
     pfad: "/api/klara/sessions/:sessionId/document-context",
+    art: "zurueckgestellt",
     grund:
       "Hängt den Dokumentkontext um (temporär → gespeichert) und entwertet dabei eine bestehende Zustimmung. Braucht eine echte Sitzung aus dem Weg darüber.",
   },
   {
     methode: "POST",
     pfad: "/api/klara/sessions/:sessionId/consent",
+    art: "zurueckgestellt",
     grund:
       "Erteilt die Zustimmung zur externen KI. Ihre Wirkung ist die Aufhebung einer Sperre, deren Zustand nur an einer echten Sitzung sichtbar wird.",
   },
   {
     methode: "DELETE",
     pfad: "/api/klara/sessions/:sessionId/consent",
+    art: "zurueckgestellt",
     grund:
       "Widerruft dieselbe Zustimmung sofort. Der Prüfgegenstand ist die Sofortwirkung des Widerrufs, nicht die Rolle.",
   },
   {
     methode: "POST",
     pfad: "/api/klara/sessions/:sessionId/close",
+    art: "zurueckgestellt",
     grund:
       "Schliesst die eigene Sitzung; jeder Folgeaufruf ist danach ein Konflikt. Setzt eine offene, echte Sitzung voraus.",
   },
@@ -490,73 +418,64 @@ export const NICHT_ABGENOMMEN: Nichtabnahme[] = [
   // --- Bibliothek, Import, Lebenszyklus, Ausgabe -------------------------------------------------
   {
     methode: "POST",
-    pfad: "/api/library/import",
-    grund:
-      "Übernimmt eine Liste fertiger Einträge in den Bestand. Die Nutzlast ist der Bestand selbst — ein Aufruf veränderte die Grundmenge aller Lesezeilen.",
-  },
-  {
-    methode: "POST",
-    pfad: "/api/library/import/candidates",
-    grund:
-      "Legt dieselben Einträge als Prüfkandidaten in die Warteschlange. Gleiche Nutzlast, anderer Zielspeicher.",
-  },
-  {
-    methode: "PUT",
-    pfad: "/api/library/import/candidates/:id",
-    grund:
-      "Entscheidet über einen Kandidaten (annehmen, ablehnen, zurückstellen). Braucht einen echten Kandidaten aus dem Weg darüber und die gewählte Aktion.",
-  },
-  {
-    methode: "POST",
     pfad: "/api/lifecycle/couple",
+    art: "zurueckgestellt",
     grund:
       "Koppelt ein Wissensobjekt an ein Betriebsmittel. Braucht beide Kennungen echt, sonst misst die Zeile die Existenzprüfung.",
   },
   {
     methode: "POST",
     pfad: "/api/lifecycle/asset-changed",
+    art: "zurueckgestellt",
     grund:
       "Meldet die Änderung eines Betriebsmittels und stösst die Neuprüfung aller gekoppelten Objekte an — ein Vorgang mit Breitenwirkung auf den Bestand der Bühne.",
   },
   {
     methode: "POST",
     pfad: "/api/learning-paths",
+    art: "zurueckgestellt",
     grund:
       "Legt einen Lernpfad mit Schritten an. Die Nutzlast ist der Pfad selbst; ohne ihn misst die Zeile die Rumpfprüfung.",
   },
   {
     methode: "POST",
     pfad: "/api/learning-paths/:pathId/complete",
+    art: "zurueckgestellt",
     grund:
       "Hakt einen Schritt eines Lernpfads ab. Setzt einen angelegten Pfad und eine gültige Schrittkennung voraus.",
   },
   {
     methode: "POST",
     pfad: "/api/output/generate",
+    art: "zurueckgestellt",
     grund:
       "Erzeugt ein Ausgabedokument aus ausgewählten Quellen. Die Nutzlast ist die Quellenauswahl; der Vorgang ist ein Erzeugungslauf, kein Türtest.",
   },
   {
     methode: "POST",
     pfad: "/api/capture/slides",
+    art: "zurueckgestellt",
     grund:
       "Wandelt eine hochgeladene PPTX-Datei um. Die Nutzlast ist eine echte Präsentationsdatei; der Auth-Riegel läuft vor dem Rumpfparsen und ist eine eigene Prüffläche.",
   },
   {
     methode: "POST",
     pfad: "/api/objects",
+    art: "zurueckgestellt",
     grund:
       "Legt einen Anhang an. Die anonyme Parserfläche dieser Route hat eine eigene Abnahme (`tests/security/objects-auth-vor-parsing.test.ts`), die mehr misst als eine Rollenzeile.",
   },
   {
     methode: "POST",
     pfad: "/api/media/analyze",
+    art: "zurueckgestellt",
     grund:
       "Lässt einen vorhandenen Anhang durch die Medienanalyse laufen. Braucht einen echten Anhang, sonst ist die Antwort eine Existenzauskunft.",
   },
   {
     methode: "POST",
     pfad: "/api/notifications/seen",
+    art: "zurueckgestellt",
     grund:
       "Markiert den eigenen Meldungsstand als gelesen. Der Vorgang schreibt an der Sicht des Prüfkontos, gegen das die nächste Zeile misst.",
   },
@@ -565,54 +484,63 @@ export const NICHT_ABGENOMMEN: Nichtabnahme[] = [
   {
     methode: "POST",
     pfad: "/api/reasoner",
+    art: "zurueckgestellt",
     grund:
       "Der Text-Verteiler der KI-Unterstützung. Er ruft echte Modelle auf; eine Rollenzeile darüber löste bei jedem Lauf einen Modellaufruf aus.",
   },
   {
     methode: "POST",
     pfad: "/api/reasoner/describe",
+    art: "zurueckgestellt",
     grund:
       "Erzeugt eine Bildbeschreibung. Die Nutzlast ist ein Bild mit grossem Rumpflimit, und der Vorgang ist ein Modellaufruf.",
   },
   {
     methode: "POST",
     pfad: "/api/reasoner/enrich",
+    art: "zurueckgestellt",
     grund:
       "Reichert ein Objekt öffentlich an und prüft zusätzlich die Vertraulichkeitsstufe — zwei Entscheidungen in einem Vorgang.",
   },
   {
     methode: "POST",
     pfad: "/api/reasoner/test",
+    art: "zurueckgestellt",
     grund:
       "Der Schlüsseltest gegen den konfigurierten Anbieter. Er ist ein echter, kostenpflichtiger Mini-Aufruf nach aussen.",
   },
   {
     methode: "POST",
     pfad: "/api/reasoner/test-local",
+    art: "zurueckgestellt",
     grund:
       "Derselbe Test gegen das lokale Modell. Er braucht einen erreichbaren lokalen Dienst, den die Prüfbühne nicht stellt.",
   },
   {
     methode: "POST",
     pfad: "/api/reasoner/conflict-self-test",
+    art: "zurueckgestellt",
     grund:
       "Fährt die vollständige Widerspruchserkennung als Selbsttest — ein Ablauf über den ganzen Bestand, nicht eine Tür.",
   },
   {
     methode: "POST",
     pfad: "/api/reasoner/duplicate-self-test",
+    art: "zurueckgestellt",
     grund:
       "Dasselbe für die Dublettenerkennung: ein Erkennungslauf über den Bestand mit eigener Laufzeit.",
   },
   {
     methode: "PUT",
     pfad: "/api/reasoner/config",
+    art: "zurueckgestellt",
     grund:
       "Setzt Anbieter, Modell und Schlüssel der Instanz. Eine Verstellung veränderte den KI-Status, den `GET /api/reasoner/status` und `GET /api/ai-status` in dieser Tabelle messen.",
   },
   {
     methode: "PUT",
     pfad: "/api/reasoner/assist-presets",
+    art: "zurueckgestellt",
     grund:
       "Pflegt die Vorlagen der KI-Unterstützung. Die Nutzlast ist die vollständige Vorlagenliste; sie ersetzt den bisherigen Stand.",
   },
@@ -621,90 +549,105 @@ export const NICHT_ABGENOMMEN: Nichtabnahme[] = [
   {
     methode: "POST",
     pfad: "/api/admin/demo-seed",
+    art: "zurueckgestellt",
     grund:
       "Lädt Demodaten in die Instanz. Der Vorgang füllt genau den Bestand, gegen den die Lesezeilen dieser Tabelle messen.",
   },
   {
     methode: "DELETE",
     pfad: "/api/admin/demo-seed",
+    art: "zurueckgestellt",
     grund:
       "Entfernt dieselben Demodaten wieder. Unumkehrbar für alles, was zwischenzeitlich daran hängt.",
   },
   {
     methode: "POST",
     pfad: "/api/admin/demo-packages/:id/load",
+    art: "zurueckgestellt",
     grund:
       "Lädt ein einzelnes kuratiertes Demopaket. Setzt eine gültige Paketkennung voraus und schreibt in den Bestand.",
   },
   {
     methode: "POST",
     pfad: "/api/admin/demo-packages/:id/reset",
+    art: "zurueckgestellt",
     grund:
       "Setzt die Bausteine eines Demopakets auf den Auslieferungsstand zurück und verwirft dabei Bearbeitungen.",
   },
   {
     methode: "DELETE",
     pfad: "/api/admin/demo-packages/:id",
+    art: "zurueckgestellt",
     grund:
       "Entfernt ein Demopaket samt seiner Bausteine. Derselbe Bestandseingriff, nur in die andere Richtung.",
   },
   {
     methode: "POST",
     pfad: "/api/admin/examples/load",
+    art: "zurueckgestellt",
     grund:
       "Lädt ein kuratiertes Beispielpaket für die Testerinnen. Die Nutzlast ist der Paketname; der Vorgang schreibt in den Bestand.",
   },
   {
     methode: "POST",
     pfad: "/api/admin/sim-corpus",
+    art: "zurueckgestellt",
     grund:
       "Lädt einen Simulationskorpus. Er ist ausdrücklich nie automatisch zu fahren und erzeugt eine grosse Datenmenge.",
   },
   {
     methode: "POST",
     pfad: "/api/admin/factory-reset",
+    art: "zurueckgestellt",
     grund:
       "Der Werksreset. Er löscht die gesamte Instanz — an einer Bühne, die vier angemeldete Prüfkonten trägt, wäre jede folgende Zeile danach bedeutungslos.",
   },
   {
     methode: "POST",
     pfad: "/api/admin/lesevarianten/laden",
+    art: "zurueckgestellt",
     grund:
       "Lädt Übersetzungen für ein Paket und liest dafür den ganzen Bestand, um Anker zuzuordnen. Ein Ladelauf, kein Türtest.",
   },
   {
     methode: "POST",
     pfad: "/api/admin/import/cleanup",
+    art: "zurueckgestellt",
     grund:
       "Räumt Testdaten zweistufig auf (Vorschau, dann Bestätigung). Die zweite Stufe ist unumkehrbar und braucht den Prüfsummenwert aus der ersten.",
   },
   {
     methode: "POST",
     pfad: "/api/admin/import/confluence",
+    art: "zurueckgestellt",
     grund:
       "Startet den Confluence-Import. Er spricht einen externen Dienst an, den die Prüfbühne nicht stellt.",
   },
   {
     methode: "POST",
     pfad: "/api/admin/import/confluence/select",
+    art: "zurueckgestellt",
     grund:
       "Erzeugt die gefilterte Auswahlvorschau aus einem Erkundungslauf. Setzt genau dessen Ergebnis als Nutzlast voraus.",
   },
   {
     methode: "POST",
     pfad: "/api/admin/import/confluence/group",
+    art: "zurueckgestellt",
     grund:
       "Gruppiert die ausgewählten Seiten mit KI-Hilfe. Braucht die Auswahl aus dem Weg darüber und einen erreichbaren Modellanbieter.",
   },
   {
     methode: "POST",
     pfad: "/api/admin/import/confluence/apply",
+    art: "zurueckgestellt",
     grund:
       "Übernimmt die Gruppierung in die Prüf-Warteschlange und braucht dafür den Momentaufnahme-Schlüssel aus dem Gruppierungslauf.",
   },
   {
     methode: "PUT",
     pfad: "/api/external/policy",
+    art: "zurueckgestellt",
     grund:
       "Setzt den Regler für die externe Wissensabfrage. Sein Wert entscheidet, was `GET /api/external/policy` in dieser Tabelle meldet.",
   },
@@ -714,8 +657,12 @@ export const NICHT_ABGENOMMEN: Nichtabnahme[] = [
 // DIE MUSTER — von Hand aus dem Rollenmodell geschrieben, nicht aus `ROLE_PERMISSIONS` gerechnet.
 // ------------------------------------------------------------------------------------------------
 
+// JOB 4113: die sechs Muster sind EXPORTIERT, seit die schreibenden Türen in einer zweiten Datei
+// gemessen werden (`schreibende-tueren.ts`). Sie dort abzuschreiben hiesse, zwei Auffassungen vom
+// Rollenmodell zu führen — und die zweite ist die, die eines Tages nicht nachgezogen wird.
+
 /** `requireUser`: jede Anmeldung genügt, keine Anmeldung nicht. */
-const ANGEMELDET: Erwartungen = {
+export const ANGEMELDET: Erwartungen = {
   anonym: "401",
   viewer: "erlaubt",
   experte: "erlaubt",
@@ -724,7 +671,7 @@ const ANGEMELDET: Erwartungen = {
 };
 
 /** `ko.read` — das Recht, das alle vier Rollen tragen. */
-const NUR_LESEN: Erwartungen = {
+export const NUR_LESEN: Erwartungen = {
   anonym: "401",
   viewer: "erlaubt",
   experte: "erlaubt",
@@ -733,7 +680,7 @@ const NUR_LESEN: Erwartungen = {
 };
 
 /** `ko.create` — der Gast (viewer) darf lesen, nicht anlegen. Das ist Pedis „begrenzte Rechte". */
-const AB_EXPERTE: Erwartungen = {
+export const AB_EXPERTE: Erwartungen = {
   anonym: "401",
   viewer: "403",
   experte: "erlaubt",
@@ -742,7 +689,7 @@ const AB_EXPERTE: Erwartungen = {
 };
 
 /** `ko.validate`, `ko.assign`, `conflict.resolve` — Prüf- und Zuweisungsrechte. */
-const AB_CONTROLLER: Erwartungen = {
+export const AB_CONTROLLER: Erwartungen = {
   anonym: "401",
   viewer: "403",
   experte: "403",
@@ -751,7 +698,7 @@ const AB_CONTROLLER: Erwartungen = {
 };
 
 /** `users.manage` — allein der Admin. */
-const NUR_ADMIN: Erwartungen = {
+export const NUR_ADMIN: Erwartungen = {
   anonym: "401",
   viewer: "403",
   experte: "403",
@@ -763,7 +710,7 @@ const NUR_ADMIN: Erwartungen = {
  * Eine Tür ohne Tor. Sie ist erlaubt — aber nur mit ausgeschriebenem Grund: eine öffentliche Route
  * ist genau das, was eine Abnahme benennen muss, statt sie unter „grün" zu verbuchen.
  */
-function OEFFENTLICH(grund: string): Erwartungen {
+export function OEFFENTLICH(grund: string): Erwartungen {
   return {
     anonym: { soll: "erlaubt", grund },
     viewer: "erlaubt",
