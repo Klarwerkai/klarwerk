@@ -1043,6 +1043,19 @@ const INVENTAR: readonly string[] = [
   // deeply equal []` und K5 `expected 62 to be 61`; erst danach wurden diese Zeile und der Zaehler
   // unten angefasst.
   "tests/klara-hilfe-niederlaendisch/nl-erreicht-die-hilfe-ki.test.tsx",
+  // JOB 4071 (15.09.2026) ALTKAPITEL-ANWENDERSPRACHE: der Laengenwaechter der zehn Hilfekapitel.
+  // Sachlich Klara-Regression: `KlaraAssistant.tsx:310` reicht jeden Hilfetext bei 700 Zeichen
+  // BESCHNITTEN an die Modellkante (`body: e.body.slice(0, 700)`); waechst ein Kapiteltext darueber
+  // hinaus, steht die KI-Antwort auf einem Rumpf. Genau diese Grenze misst Fall C1 der Datei, und
+  // deshalb nennt sie `KlaraAssistant` im Kommentar — sie faellt damit unter die Achse `komponente`.
+  // GEFUNDEN VON GENAU EINER ACHSE: „klara" steht NICHT in ihrem Pfad (das Verzeichnis war im
+  // Auftrag §4 abschliessend vorgegeben), die Datei faellt also in `verfehlt` und NICHT in
+  // `nurName` — K5 (`nurName.length`) bleibt deshalb bei 62 und wird hier nicht angefasst.
+  // GEMESSEN, NICHT GESETZT: mit der neuen Datei und noch unveraendertem Inventar meldete der Lauf
+  // (Arbeitspruefung c7f719dc2c764a6cb5da82db7d0da5ef) K2 `neu im Baum, aber nicht im gepinnten
+  // Inventar — Inventar nachfuehren: expected [ Array(1) ] to deeply equal []`, und K5 war dabei
+  // gruen; erst danach wurde diese Zeile angefasst.
+  "tests/hilfe-altkapitel-anwendersprache/altkapitel-sprechen-anwendersprache.test.ts",
 ];
 
 // ------------------------------------------------------------------------------------------------

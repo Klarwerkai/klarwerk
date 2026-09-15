@@ -5081,33 +5081,77 @@ const de = {
   "pilot.obs.uxnote.map":
     "Kein Bereich — das notierst du außerhalb; es wird nicht im Produkt gespeichert und löst keinen Vorgang aus.",
   "pilot.obs.openFlow": "Bereich öffnen",
+  // ================================================================================================
+  // JOB 4071 · DIE ZEHN ALTKAPITEL SPRECHEN ANWENDERSPRACHE (SCRUM-219/JOB 3468 abgelöst).
+  // ================================================================================================
+  //
+  // Bis hierher stand hier „Bus-Faktor und Single-Source-Bereiche", „Evidence- und Provenance-Index,
+  // ModelRun-Protokoll", „fällige Revalidierungen (z. B. nach Asset-Änderungen)" und „Nach dem
+  // Demo-Seed" — Wörter, die nur die Bauleute kennen, auf einer Fläche, die Pedi als Demo-Zugang
+  // aushändigt. Die Texte sind ERSETZT, nicht ergänzt; die Schlüssel bleiben, damit keine Fläche
+  // ihren Erklärsatz verliert (`shell/ZahnradMenue.tsx:39-48` holt denselben Satz je Seite).
+  //
+  // DER MASSSTAB IST DER DER JOB-3741-KAPITEL WEITER UNTEN (`:5073-5076`): was ist das hier, was
+  // kann ich tun, was ist der nächste Schritt — ohne Fachwort, ohne Zahl und ohne eine Aussage über
+  // den Datenstand. Die Kapitel sind statische Sätze ohne Abruf und ohne Cache; in JEDEM Zustand
+  // (laden, leer, Fehler, alter Cache, offline) steht dasselbe da, und genau deshalb darf keiner
+  // von ihnen behaupten, was gerade im Bestand liegt.
+  //
+  // JEDE GENANNTE BESCHRIFTUNG IST DIE ECHTE: „Demodaten laden"/„Demodaten entfernen"
+  // (`adm.seedButton` `:4710`, `adm.purgeButton` `:1011`), „Rohwissen erfassen"/„Prüfen & einreichen"
+  // (`capture.flow.step.raw.label` `:957`, `capture.submit` `:2412`), „Freigeben"/„Rückfrage"/
+  // „Ablehnen" (`val.actionApprove`/`.actionQuery`/`.actionReject` `:3395-3397`), „Wissen erfassen"
+  // (`risk.gapCapture` `:4584`), „Anlage geändert …"/„Noch gültig → neue Version"/„Als erledigt
+  // markieren" (`lcy.assetToggle` `:4592`, `lcy.stillValid` `:4589`, `lcy.stepComplete` `:4612`),
+  // „Erweiterte Module" (`role.stage2` `:197`), „Auswertungen" (`nav.output` `:188`), die drei
+  // Reiter der Handyfläche (`mob.tabCapture`/`.tabAsk`/`.tabLookup` `:5173-5175`) und „Zur
+  // Vollversion" (`topbar.toDesktop` `:323`).
+  //
+  // WAS `help.risk.body` NICHT MEHR SAGT, und warum (Prüfer BEN, Runde 1). Dort stand „rot bedeutet
+  // Einzelquelle: fällt dieser eine Mensch aus, ist das Wissen weg". Das ist mehr, als die Rechnung
+  // hergibt: `LibraryService.busFactor` (`services/library-analytics/src/service.ts:2072-2087`)
+  // zählt je Kategorie die verschiedenen `originalAuthor`-Werte der sichtbaren Wissensobjekte und
+  // setzt `singleSource: true` bei `authors.size <= 1`. Belegt ist damit „alles kam von einer
+  // einzigen Person" — eine ABHÄNGIGKEIT. Ob mit dieser Person Wissen verschwände, sagt die Zahl
+  // nicht; das Festgehaltene bleibt ja stehen. Der Text nennt jetzt genau die Abhängigkeit und
+  // verweist für die Gegenmaßnahmen auf die rote Zeile selbst, wo sie stehen
+  // (`risk.singleSourceExplain` `:4557`). Diese Fläche behauptet weiterhin mehr; sie zu ändern ist
+  // ein eigener Schnitt und liegt ausserhalb der Zielpfade dieses Auftrags.
+  //
+  // DER WÄCHTER dazu ist `tests/hilfe-altkapitel-anwendersprache/altkapitel-sprechen-anwendersprache.test.ts`:
+  // er erhebt die Kapitelmenge aus `HELP_TOPICS`, hält Titel und Text aller drei Sprachen gegen die
+  // erhobene Fachwortliste, misst die Länge gegen den Schnitt der Klara-Kante (700 Zeichen,
+  // `components/KlaraAssistant.tsx:310` — siehe auch den Block bei `:5108-5111`) und pinnt in
+  // Gruppe D mit der echten `filterHelpTopics`, dass die Umformulierung keinen Suchweg gekostet
+  // hat. Die abgelösten Fachwörter leben als Suchmerkmale in `lib/helpTopics.ts` weiter; der Block
+  // dort schreibt aus, was das kostet (die Merkmale sind auf der Karte SICHTBAR).
   "help.firststart.title": "Erststart & Demodaten",
   "help.firststart.body":
-    "Frische Instanzen sind zunächst leer. Als Admin kannst du unter Admin 'Demodaten laden', um Beispiel-Wissen, Validierung, Lücken und Konflikte sichtbar zu machen — ideal für Review und Einarbeitung.",
+    "Eine frisch aufgesetzte Installation bringt kein Wissen mit — es gibt dann nichts zu lesen, nichts zu prüfen und nichts zu finden. Damit trotzdem sichtbar wird, wie KLARWERK arbeitet, legt „Demodaten laden“ unter Admin einen Beispielbestand an: Wissensobjekte, offene Prüfungen auf der Validierung, Wissenslücken und Widersprüche, an denen sich jeder Bereich gefahrlos ausprobieren lässt. „Demodaten entfernen“ nimmt ihn wieder weg; dein echter Bestand bleibt unberührt. Beides kann nur, wer Verwaltungsrechte hat. Nächster Schritt: Admin öffnen, „Demodaten laden“ anklicken und danach mit „Wissen erfassen“ weitermachen.",
   "help.library.title": "Bibliothek & Wissensobjekt",
   "help.library.body":
-    "Die Bibliothek durchsucht und filtert den Bestand (Art, Status, Kategorie, Tag). Ein Klick öffnet das Wissensobjekt mit Aussage, Quellen/Anhängen, Versionen und Evidenz.",
+    "Die Bibliothek ist der gesamte Wissensbestand an einem Ort. Über das Suchfeld oben findest du einen Eintrag; Filter, Sortierung, gespeicherte Sichten und Export liegen im Menü „…“ über der Liste. Ein Klick öffnet das Wissensobjekt: seine Aussage, sein Stand und seine Quelle stehen sofort da; Quellen und Anhänge, Versionen, Historie, Kommentare und gemeldete Widersprüche liegen hinter „Mehr“. Auf einem schmalen Gerät trägt immer nur eines von beiden die Fläche — entweder die Liste oder der Eintrag. Nächster Schritt: einen Eintrag anklicken, die Aussage lesen und „Mehr“ öffnen.",
   "help.tasks.title": "Meine Aufgaben",
   "help.tasks.body":
-    "Hier sammeln sich die dir zugewiesenen Validierungs- und Rückfrage-Aufgaben. Von dort springst du direkt ins jeweilige Wissensobjekt zur Bearbeitung.",
-  "help.risk.title": "Risiko, Lücken & Konflikte",
+    "Hier steht deine eigene Arbeit an einer Stelle: Objekte, die auf deine Prüfung in der Validierung warten, Rückfragen an dich, gemeldete Widersprüche, offene Wissenslücken und Objekte, die nach einer Anlagenänderung noch einmal bestätigt werden sollen. Ein farbiger Punkt zeigt die Dringlichkeit, die Knopfreihe darüber grenzt die Liste auf eine Art ein, und das „i“ an einer Zeile sagt, was dort zu tun ist. Jede Zeile führt genau dorthin, wo die Sache erledigt wird — sofern deine Rolle diesen Bereich sehen darf. Nächster Schritt: die oberste Zeile anklicken und sie abarbeiten.",
+  "help.risk.title": "Risiko & Lücken",
   "help.risk.body":
-    "Risiko zeigt Wissenslücken, Bus-Faktor und Single-Source-Bereiche. Lücken lassen sich priorisieren, zuweisen oder schließen; Widersprüche werden als Konflikte geführt aufgelöst.",
+    "Diese Seite zeigt, wo Wissen fehlt und wo es an einem einzigen Menschen hängt. Zu jeder offenen Wissenslücke steht der nächste Schritt dabei: die Dringlichkeit einschätzen, sie einer Fachperson zuweisen oder sie mit „Wissen erfassen“ schließen. Daneben sind die Fachgebiete danach eingefärbt, von wie vielen Personen das dort festgehaltene Wissen stammt — rot heißt: alles kam von einer einzigen Person, niemand sonst hat bisher dazu beigetragen. Was dagegen hilft, steht an der roten Zeile selbst. Nächster Schritt: eine rote Zeile ansehen, ihre Objekte öffnen und die dringendste Lücke jemandem zuweisen.",
   "help.lifecycle.title": "Lebenszyklus & Lernpfade",
   "help.lifecycle.body":
-    "Lebenszyklus zeigt fällige Revalidierungen (z. B. nach Asset-Änderungen) und rollenspezifische Lernpfade zum Abhaken. Nach dem Demo-Seed ist ein Beispiel-Lernpfad sichtbar.",
+    "Wissen veraltet, wenn sich die Anlage ändert. Mit „Anlage geändert …“ meldest du eine solche Änderung und nennst die Anlagen- oder Prozess-Referenz; alle Objekte, die daran hängen, werden zur erneuten Prüfung markiert und erscheinen in der Liste der anstehenden Prüfungen. Wer sie durchgeht, entscheidet je Objekt: „Noch gültig → neue Version“ — oder es geht in die Nacharbeit; ist ein Objekt noch gar nicht freigegeben, führt der Weg zuerst zur Validierung. Daneben steht der Lernpfad deiner Rolle: Schritte zum Einarbeiten, die du mit „Als erledigt markieren“ abhakst. Nächster Schritt: eine Anlagenänderung melden oder den obersten Punkt deines Lernpfads abhaken.",
   "help.validation.title": "Validierung",
   "help.validation.body":
-    "Bewerte Objekte grün/gelb/rot. Ab der Schwelle gilt ein Objekt als validiert; gelb/rot erfordern einen Kommentar und gehen an den Autor zurück.",
-  "help.stufe2.title": "Stufe 2: QM, Kapital & Output",
+    "Hier liegen die Wissensobjekte, die auf eine Prüfung warten. Du liest die Aussage und entscheidest: „Freigeben“, „Rückfrage“ oder „Ablehnen“ — die letzten beiden verlangen eine Begründung, und das Objekt geht zurück in die Nacharbeit, statt freigegeben zu werden. Validiert ist ein Objekt erst, wenn genug grüne Bewertungen zusammengekommen sind und keine rote dagegensteht; wie viele noch fehlen, steht an jeder Karte. Nächster Schritt: das oberste Objekt öffnen, die Aussage lesen und dich entscheiden — bist du unsicher, ist die Rückfrage der richtige Weg.",
+  "help.stufe2.title": "Erweiterte Module (Stufe 2): Kapital-Sichten & Auswertungen",
   "help.stufe2.body":
-    "Die erweiterten QM-Sichten (Kapital/Management, Evidence- und Provenance-Index, ModelRun-Protokoll) sind read-only und fensterbasiert. Output erzeugt Dokumente nur aus validiertem Wissen.",
+    "Über den Kernablauf hinaus gibt es zusätzliche Bereiche. Eine Admin-Person schaltet sie mit „Erweiterte Module“ frei; ohne diesen Schalter bleiben sie auch dann unsichtbar, wenn deine Rolle reichen würde. Die Kapital-Sichten lesen den Bestand als Zahlen: wie viel Wissen da ist, wie viel davon geprüft wurde, was offen ist — dazu eine Schätzung des Werts, deren Annahmen du selbst einträgst. Die Zahlen zeigen nur an; am Wissen ändert sich dadurch nichts. Unter „Auswertungen“ entsteht aus validierten Wissensobjekten ein Dokument. Nächster Schritt: eine Kennzahl ansehen oder eine Dokumentart wählen.",
   "help.mobile.title": "Mobil & Offline",
   "help.mobile.body":
-    "Die mobile Ansicht bündelt Erfassen, Fragen und Nachschlagen. Entwürfe lassen sich offline anlegen und werden synchronisiert, sobald wieder Verbindung besteht.",
+    "Die mobile Ansicht zeigt KLARWERK in Telefonbreite, mit den Reitern „Erfassen“, „Fragen“ und „Suchen“: unterwegs etwas festhalten, etwas wissen wollen, etwas nachschlagen. Einen Entwurf anlegen darf nur, wer die Berechtigung dazu hat; wer lesen darf, kann hier fragen und suchen. Ohne Verbindung wird allein das Speichern eines Entwurfs vorgemerkt und später nachgetragen — Fragen und Suchen sagen dann offen, dass sie eine Verbindung brauchen. Prüfen, Freigeben und Widersprüche klären gibt es hier nicht; dafür führt oben „Zur Vollversion“ zurück. Nächster Schritt: einen Reiter antippen.",
   "help.capture.title": "Wissen erfassen",
   "help.capture.body":
-    "Halte Erfahrungswissen formlos fest — per Text, Diktat oder Foto. Die KI strukturiert es, du prüfst und reichst ein.",
+    "Hier hältst du fest, was du weißt: tippen, diktieren, fotografieren oder eine vorhandene Datei mitbringen. Die KI bringt das Rohe in Form — sie schlägt vor, du entscheidest, und gespeichert wird nichts von allein. Der Weg führt in Schritten von „Rohwissen erfassen“ über das Strukturieren bis zu „Prüfen & einreichen“; fertige Schritte kannst du wieder anklicken, ohne etwas zu verlieren. Was du einreichst, wird ein Wissensobjekt, das Kollegen prüfen — bis dahin bleibt es dein Entwurf. Nächster Schritt: „Wissen erfassen“ öffnen und in eigenen Worten anfangen; Stichpunkte reichen.",
   // JOB 3468 (REVIEW26-HILFE-IMPORT): Die Hilfesuche „import" blieb leer, obwohl der Weg existiert.
   // Der Text ist eine ANLEITUNG und nennt Fläche, Modus und Knopf mit ihren echten Beschriftungen
   // (`nav.capture`, `erfassen.weg.datei`, `capture.file.pick`, `capture.file.importMode.*`) — wer
@@ -5123,7 +5167,7 @@ const de = {
     "Bewerte Objekte grün/gelb/rot. Ab der Schwelle gilt ein Objekt als validiert; rote Bewertungen gehen zurück an den Autor.",
   "help.ask.title": "Fragen stellen",
   "help.ask.body":
-    "Antworten sind quellengebunden und zeigen, welche Quellen sie getragen haben und in welchem Zustand diese sind. Ohne Grundlage entsteht eine Wissenslücke.",
+    "Stell deine Frage in eigenen Worten. Die Antwort wird aus dem vorhandenen Wissen zusammengestellt und nennt die Wissensobjekte, auf die sie sich stützt. An jedem steht sein Stand, du siehst also, wie belastbar die Grundlage ist. Fehlt eine Grundlage, wird nichts erfunden: es entsteht eine Wissenslücke, die unter „Risiko & Lücken“ auftaucht und dort jemandem zugewiesen werden kann. Nächster Schritt: eine Frage eintippen und von der Antwort aus in eines der genannten Wissensobjekte springen.",
   "help.conflict.title": "Konflikte",
   "help.conflict.body":
     "Widersprüche werden sichtbar gemacht und geführt aufgelöst. Nur Wahrheitskonflikte eskalieren an einen Menschen.",
@@ -10633,33 +10677,38 @@ const en: typeof de = {
   "pilot.obs.uxnote.map":
     "No area — note that outside; it is not stored in the product and triggers no process.",
   "pilot.obs.openFlow": "Open area",
+  // JOB 4071 (ALTKAPITEL-ANWENDERSPRACHE) — see the German block for the reasoning. Two words of
+  // the English page are deliberately NOT quoted here, because they are themselves on the word list
+  // this job removes: the lifecycle page calls a machine an „asset" (`lcy.assetTitle`), and the last
+  // capture step is labelled „Review & submit" (`capture.submit`). Both are described instead of
+  // quoted; no invented label stands in their place.
   "help.firststart.title": "First run & demo data",
   "help.firststart.body":
-    "Fresh instances start empty. As admin you can use 'Load demo data' under Admin to make example knowledge, validation, gaps and conflicts visible — ideal for review and onboarding.",
+    "A freshly set-up installation brings no knowledge with it — nothing to read, nothing to check, nothing to find. So that you can still see how KLARWERK works, “Load demo data” under Admin creates an example stock: knowledge objects, open checks waiting on Validation, knowledge gaps and contradictions you can try every area on without risk. “Remove demo data” takes it away again, and your real stock stays untouched. Both need administration rights. Next step: open Admin, click “Load demo data”, then carry on with “Capture Knowledge”.",
   "help.library.title": "Library & knowledge object",
   "help.library.body":
-    "The library searches and filters the stock (type, status, category, tag). One click opens the knowledge object with statement, sources/attachments, versions and evidence.",
+    "The library is the whole body of knowledge in one place. The search field above finds an entry; filters, sorting, saved views and export sit in the “…” menu above the list. One click opens the knowledge object: its statement, its state and its source stand there straight away; sources and attachments, versions, history, comments and reported contradictions sit behind “More”. On a narrow device only one of the two fills the surface — either the list or the entry. Next step: click an entry, read the statement and open “More”.",
   "help.tasks.title": "My tasks",
   "help.tasks.body":
-    "Your assigned validation and follow-up tasks collect here. From there you jump straight into the relevant knowledge object to act.",
-  "help.risk.title": "Risk, gaps & conflicts",
+    "Your own work stands here in one place: objects waiting for you to check them on Validation, queries directed at you, reported contradictions, open knowledge gaps and objects that should be confirmed once more after a change to a machine or process. A coloured dot shows the urgency, the row of buttons above narrows the list down to one kind, and the “i” on a row tells you what is to be done there. Every row leads exactly to where the matter gets settled — as far as your role is allowed to see that area. Next step: click the top row and work it off.",
+  "help.risk.title": "Risk & Gaps",
   "help.risk.body":
-    "Risk shows knowledge gaps, bus factor and single-source areas. Gaps can be prioritised, assigned or closed; contradictions are resolved as guided conflicts.",
+    "This page shows where knowledge is missing and where it hangs on one person alone. Every open knowledge gap carries its next step with it: judge the urgency, assign it to a specialist, or close it with “Capture knowledge”. Alongside that, the domains are coloured by how many people the knowledge recorded there came from — red means: all of it came from one person, nobody else has contributed to it so far. What helps against that is written on the red row itself. Next step: look at a red row, open its objects and assign the most urgent gap to someone.",
   "help.lifecycle.title": "Lifecycle & learning paths",
   "help.lifecycle.body":
-    "Lifecycle shows due revalidations (e.g. after asset changes) and role-specific learning paths to tick off. After the demo seed an example learning path is visible.",
+    "Knowledge goes stale when the machine or the process changes. You report such a change and name the machine or process it concerns; every object that hangs on it is then marked for a fresh check and appears in the list of pending checks. Whoever works through that list decides per object: “Still valid → new version” — or it goes into rework; if an object has not been released at all yet, the way leads to Validation first. Next to it stands the learning path for your role: steps for getting started that you tick off with “Mark as done”. Next step: report a change, or tick off the top item of your learning path.",
   "help.validation.title": "Validation",
   "help.validation.body":
-    "Rate objects green/yellow/red. At the threshold an object counts as validated; yellow/red require a comment and return to the author.",
-  "help.stufe2.title": "Stage 2: QA, capital & output",
+    "This is where the knowledge objects wait that need checking. You read the statement and decide: “Approve”, “Query” or “Reject” — the last two require a reason, and the object goes back into rework instead of being released. An object counts as validated only once enough green ratings have come together and no red one stands against it; how many are still missing is shown on each card. Next step: open the top object, read the statement and decide — if you are unsure, “Query” is the right way.",
+  "help.stufe2.title": "Advanced modules (Stage 2): capital views & reports",
   "help.stufe2.body":
-    "The advanced QA views (capital/management, evidence and provenance index, ModelRun protocol) are read-only and window-based. Output generates documents only from validated knowledge.",
+    "Beyond the core flow there are additional areas. An administrator unlocks them with “Advanced modules”; without that switch they stay invisible even when your role would be enough. The capital views read the stock as figures: how much knowledge is there, how much of it has been checked, what is still open — plus an estimate of the value, whose assumptions you enter yourself. The figures only display; nothing about the knowledge changes through them. Under “Reports” a document is built from validated knowledge objects. Next step: look at one figure, or choose a kind of document.",
   "help.mobile.title": "Mobile & offline",
   "help.mobile.body":
-    "The mobile view bundles capture, ask and lookup. Drafts can be created offline and sync once a connection is available.",
+    "The mobile view shows KLARWERK at phone width, with the tabs “Capture”, “Ask” and “Search”: note something down on the move, ask something, look something up. Creating a draft needs the permission for it; whoever may read can ask and search here. Without a connection only the saving of a draft is queued and handed in later — asking and searching then say openly that they need a connection. Checking, releasing and settling contradictions do not exist here; for those, “To full version” at the top leads back. Next step: tap a tab.",
   "help.capture.title": "Capture knowledge",
   "help.capture.body":
-    "Capture experience knowledge informally — via text, dictation or photo. The AI structures it, you review and submit.",
+    "This is where you write down what you know: type it, dictate it, photograph it or bring along a file you already have. The AI puts the raw material into shape — it suggests, you decide, and nothing is saved on its own. The way leads in steps from “Capture raw knowledge” through structuring to the final check; finished steps stay clickable, so you can go back without losing anything. What you submit becomes a knowledge object for colleagues to check — until then it stays your draft. Next step: open “Capture Knowledge” and start in your own words.",
   "help.fileimport.title": "Import a file: Word, PDF, PowerPoint, text and images",
   "help.fileimport.body":
     "The path starts under “Capture Knowledge”: in the “File” tool pick the entry “Import file”, then open a document with “Choose file” — or drag it onto the drop area.\n\nNext you decide what becomes of it: “Analyze into points” proposes individual knowledge points with a source excerpt, and you select what gets taken over; “Take over whole document” creates exactly one complete draft. Nothing is saved without your action, and a created draft is unreviewed and not submitted.\n\nAccepted are text files (.txt, .md, .markdown, .csv, .log, .json), Word (.docx), PDF, PowerPoint (.pptx) and images.",
@@ -10668,7 +10717,7 @@ const en: typeof de = {
     "Rate objects green/amber/red. At the threshold an object is validated; red ratings go back to the author.",
   "help.ask.title": "Ask questions",
   "help.ask.body":
-    "Answers are source-bound and show which sources carried them and what state those are in. Without a basis, a knowledge gap is created.",
+    "Ask your question in your own words. The answer is put together from the knowledge that exists and names the knowledge objects it rests on. Each of them shows its state, so you can see how solid the ground is. If there is no ground for it, nothing is invented: a knowledge gap is recorded, shows up under “Risk & Gaps” and can be assigned to someone there. Next step: type a question and jump from the answer into one of the named knowledge objects.",
   "help.conflict.title": "Conflicts",
   "help.conflict.body":
     "Contradictions are surfaced and resolved in a guided way. Only truth conflicts escalate to a human.",
@@ -15756,33 +15805,41 @@ const nl: typeof de = {
   "pilot.obs.uxnote.map":
     "Geen onderdeel — dat noteer je erbuiten; het wordt niet in het product opgeslagen en start geen proces.",
   "pilot.obs.openFlow": "Onderdeel openen",
+  // JOB 4071 (ALTKAPITEL-ANWENDERSPRACHE) — zie het Duitse blok voor de onderbouwing. De
+  // beschrijvingen dragen de echte opschriften van deze taal: „Demogegevens laden"/„Demogegevens
+  // verwijderen" (`adm.seedButton`/`adm.purgeButton`), „Ruwe kennis vastleggen"/„Controleren &
+  // indienen" (`capture.flow.step.raw.label`/`capture.submit`), „Goedkeuren"/„Terugvraag"/
+  // „Afwijzen" (`val.action*`), „Kennis vastleggen" (`risk.gapCapture`), „Installatie gewijzigd
+  // …"/„Nog geldig → nieuwe versie"/„Als afgehandeld markeren" (`lcy.assetToggle`/`lcy.stillValid`/
+  // `lcy.stepComplete`), „Uitgebreide modules" (`role.stage2`), „Rapportages" (`nav.output`), de
+  // tabbladen `mob.tab*` en „Naar volledige versie" (`topbar.toDesktop`).
   "help.firststart.title": "Eerste start & demodata",
   "help.firststart.body":
-    "Verse instanties zijn eerst leeg. Als admin kun je onder Admin 'Demodata laden' om voorbeeldkennis, validatie, hiaten en conflicten zichtbaar te maken — ideaal voor review en inwerken.",
+    "Een pas opgezette installatie brengt geen kennis mee — er is dan niets te lezen, niets te controleren en niets te vinden. Om toch te laten zien hoe KLARWERK werkt, maakt „Demogegevens laden“ onder Admin een voorbeeldvoorraad aan: kennisobjecten, openstaande controles op de Validatie, kennishiaten en tegenstrijdigheden waarop je elk onderdeel rustig kunt uitproberen. „Demogegevens verwijderen“ haalt die er weer af; je echte voorraad blijft onaangeroerd. Voor beide heb je beheerrechten nodig. Volgende stap: Admin openen, „Demogegevens laden“ aanklikken en daarna verder met „Kennis vastleggen“.",
   "help.library.title": "Bibliotheek & kennisobject",
   "help.library.body":
-    "De bibliotheek doorzoekt en filtert de voorraad (soort, status, categorie, tag). Een klik opent het kennisobject met uitspraak, bronnen/bijlagen, versies en bewijs.",
+    "De bibliotheek is de volledige kennisvoorraad op één plek. Met het zoekveld erboven vind je een item; filters, sortering, opgeslagen weergaven en export zitten in het menu „…“ boven de lijst. Eén klik opent het kennisobject: de uitspraak, de stand en de bron staan er meteen; bronnen en bijlagen, versies, historie, opmerkingen en gemelde tegenstrijdigheden zitten achter „Meer“. Op een smal apparaat draagt steeds maar één van beide het scherm — of de lijst, of het item. Volgende stap: een item aanklikken, de uitspraak lezen en „Meer“ openen.",
   "help.tasks.title": "Mijn taken",
   "help.tasks.body":
-    "Hier verzamelen zich de aan jou toegewezen validatie- en navraagtaken. Van daaruit spring je direct naar het betreffende kennisobject om het te bewerken.",
-  "help.risk.title": "Risico, hiaten & conflicten",
+    "Hier staat je eigen werk op één plek: objecten die op jouw controle in de Validatie wachten, terugvragen aan jou, gemelde tegenstrijdigheden, open kennishiaten en objecten die na een wijziging aan een installatie of proces nog eens bevestigd moeten worden. Een gekleurde stip toont de urgentie, de knoppenrij erboven perkt de lijst in tot één soort, en de „i“ bij een regel zegt wat daar te doen is. Elke regel leidt precies naar de plek waar de zaak wordt afgehandeld — voor zover jouw rol dat onderdeel mag zien. Volgende stap: de bovenste regel aanklikken en afwerken.",
+  "help.risk.title": "Risico & hiaten",
   "help.risk.body":
-    "Risico toont kennishiaten, busfactor en single-source-gebieden. Hiaten laten zich prioriteren, toewijzen of sluiten; tegenstrijdigheden worden als conflicten begeleid opgelost.",
+    "Deze pagina laat zien waar kennis ontbreekt en waar zij aan één mens hangt. Bij elk open kennishiaat staat de volgende stap erbij: de urgentie inschatten, het aan een vakgenoot toewijzen of het met „Kennis vastleggen“ sluiten. Daarnaast zijn de vakgebieden gekleurd naar van hoeveel personen de daar vastgelegde kennis komt — rood betekent: alles komt van één enkele persoon, niemand anders heeft er tot nu toe aan bijgedragen. Wat daartegen helpt, staat bij de rode regel zelf. Volgende stap: een rode regel bekijken, de bijbehorende objecten openen en het dringendste hiaat aan iemand toewijzen.",
   "help.lifecycle.title": "Levenscyclus & leerpaden",
   "help.lifecycle.body":
-    "Levenscyclus toont verlopen hervalidaties (bijv. na assetwijzigingen) en rolspecifieke leerpaden om af te vinken. Na de demo-seed is een voorbeeldleerpad zichtbaar.",
+    "Kennis veroudert wanneer de installatie verandert. Met „Installatie gewijzigd …“ meld je zo’n wijziging en noem je de installatie- of procesverwijzing; alle objecten die eraan hangen worden voor een nieuwe controle gemarkeerd en verschijnen in de lijst met openstaande controles. Wie die doorloopt, beslist per object: „Nog geldig → nieuwe versie“ — of het gaat de nabewerking in; is een object nog helemaal niet goedgekeurd, dan leidt de weg eerst naar de Validatie. Daarnaast staat het leertraject van jouw rol: stappen om in te werken die je met „Als afgehandeld markeren“ afvinkt. Volgende stap: een installatiewijziging melden of het bovenste punt van je leertraject afvinken.",
   "help.validation.title": "Validatie",
   "help.validation.body":
-    "Beoordeel objecten groen/geel/rood. Vanaf de drempel geldt een object als gevalideerd; geel/rood vereisen een opmerking en gaan terug naar de auteur.",
-  "help.stufe2.title": "Niveau 2: KM, kapitaal & output",
+    "Hier liggen de kennisobjecten die op een controle wachten. Je leest de uitspraak en beslist: „Goedkeuren“, „Terugvraag“ of „Afwijzen“ — de laatste twee vragen om een toelichting, en het object gaat terug in de nabewerking in plaats van te worden vrijgegeven. Gevalideerd is een object pas als er genoeg groene beoordelingen zijn en geen rode ertegenin staat; hoeveel er nog ontbreken, staat op elke kaart. Volgende stap: het bovenste object openen, de uitspraak lezen en beslissen — twijfel je, dan is de terugvraag de juiste weg.",
+  "help.stufe2.title": "Uitgebreide modules (Fase 2): kapitaalweergaven & rapportages",
   "help.stufe2.body":
-    "De uitgebreide KM-weergaven (kapitaal/management, bewijs- en herkomstindex, ModelRun-protocol) zijn read-only en venstergebaseerd. Output genereert documenten alleen uit gevalideerde kennis.",
+    "Naast de kernstroom zijn er extra onderdelen. Een beheerder zet ze vrij met „Uitgebreide modules“; zonder die schakelaar blijven ze onzichtbaar, ook als jouw rol zou volstaan. De kapitaalweergaven lezen de voorraad als cijfers: hoeveel kennis er is, hoeveel daarvan gecontroleerd is, wat nog openstaat — plus een schatting van de waarde, waarvan je de aannames zelf invult. De cijfers tonen alleen; aan de kennis zelf verandert er daardoor niets. Onder „Rapportages“ ontstaat uit gevalideerde kennisobjecten een document. Volgende stap: een kengetal bekijken of een documentsoort kiezen.",
   "help.mobile.title": "Mobiel & offline",
   "help.mobile.body":
-    "De mobiele weergave bundelt vastleggen, vragen en opzoeken. Concepten laten zich offline aanmaken en worden gesynchroniseerd zodra er weer verbinding is.",
+    "De mobiele weergave toont KLARWERK op telefoonbreedte, met de tabbladen „Vastleggen“, „Vragen“ en „Zoeken“: onderweg iets noteren, iets vragen, iets opzoeken. Een concept aanmaken mag alleen wie daar de rechten voor heeft; wie mag lezen, kan hier vragen en zoeken. Zonder verbinding wordt alleen het opslaan van een concept in de wachtrij gezet en later nagestuurd — vragen en zoeken zeggen dan open dat zij een verbinding nodig hebben. Controleren, vrijgeven en tegenstrijdigheden uitklaren bestaan hier niet; daarvoor leidt „Naar volledige versie“ bovenaan terug. Volgende stap: een tabblad aantikken.",
   "help.capture.title": "Kennis vastleggen",
   "help.capture.body":
-    "Leg ervaringskennis vormvrij vast — via tekst, dictaat of foto. De KI structureert het, jij controleert en dient in.",
+    "Hier leg je vast wat je weet: typen, dicteren, fotograferen of een bestand meebrengen dat je al hebt. De KI brengt het ruwe materiaal in vorm — zij stelt voor, jij beslist, en er wordt niets vanzelf opgeslagen. De weg loopt in stappen van „Ruwe kennis vastleggen“ via het structureren naar „Controleren & indienen“; afgeronde stappen blijven aanklikbaar, dus je kunt terug zonder iets kwijt te raken. Wat je indient, wordt een kennisobject dat collega’s controleren — tot dan blijft het jouw concept. Volgende stap: „Kennis vastleggen“ openen en in eigen woorden beginnen.",
   "help.fileimport.title": "Bestand importeren: Word, PDF, PowerPoint, tekst en afbeeldingen",
   "help.fileimport.body":
     "De weg begint onder „Kennis vastleggen“: kies in het gereedschap „Bestand“ het item „Bestand importeren“ en open daar met „Bestand kiezen“ een document — of sleep het naar het neerzetvlak.\n\nDaarna beslis je wat ervan wordt: „In punten analyseren“ stelt afzonderlijke kennispunten met bronfragment voor en jij selecteert wat wordt overgenomen; „Hele document overnemen“ maakt precies één volledig concept aan. Er wordt niets opgeslagen zonder jouw toedoen; een aangemaakt concept is ongecontroleerd en niet ingediend.\n\nGeaccepteerd worden tekstbestanden (.txt, .md, .markdown, .csv, .log, .json), Word (.docx), PDF, PowerPoint (.pptx) en afbeeldingen.",
@@ -15791,7 +15848,7 @@ const nl: typeof de = {
     "Beoordeel objecten groen/geel/rood. Vanaf de drempel geldt een object als gevalideerd; rode beoordelingen gaan terug naar de auteur.",
   "help.ask.title": "Vragen stellen",
   "help.ask.body":
-    "Antwoorden zijn brongebonden en tonen welke bronnen ze gedragen hebben en in welke staat die zijn. Zonder basis ontstaat een kennishiaat.",
+    "Stel je vraag in je eigen woorden. Het antwoord wordt samengesteld uit de aanwezige kennis en noemt de kennisobjecten waarop het steunt. Bij elk daarvan staat de stand, zodat je ziet hoe stevig de basis is. Ontbreekt die basis, dan wordt er niets verzonnen: er ontstaat een kennishiaat, dat onder „Risico & hiaten“ verschijnt en daar aan iemand kan worden toegewezen. Volgende stap: een vraag typen en vanuit het antwoord doorspringen naar een van de genoemde kennisobjecten.",
   "help.conflict.title": "Conflicten",
   "help.conflict.body":
     "Tegenstrijdigheden worden zichtbaar gemaakt en begeleid opgelost. Alleen waarheidsconflicten escaleren naar een mens.",

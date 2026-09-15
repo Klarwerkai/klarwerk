@@ -24,6 +24,51 @@ export interface HelpTopicDef {
   uploadLimits?: boolean;
 }
 
+// ================================================================================================
+// JOB 4071 · WARUM DIE MERKMALE DER ZEHN ALTKAPITEL GEWACHSEN SIND — SUCHERHALT.
+// ================================================================================================
+//
+// DER BEFUND (Prüfer BEN, Runde 1, mit der echten `filterHelpTopics` vor und nach der Änderung
+// gemessen): Die Umformulierung der zehn Altkapitel hat die Fachwörter aus den TEXTEN genommen —
+// und damit auch aus dem HEUHAUFEN, den `filterHelpTopics` durchsucht (`:327`: Titel + Text +
+// Merkmale). Wer „single-source", „modelrun", „bus factor", „demo-seed" oder „revalidierungen"
+// eintippte, fand danach nichts mehr. Das ist eine stille Verschlechterung: der Text wurde besser,
+// die Auffindbarkeit schlechter.
+//
+// DIE TRENNUNG, DIE DAS LÖST:
+//   · TITEL UND TEXT sind, was ein Mensch LIEST, um die Seite zu verstehen. Dort ist das Fachwort
+//     verboten; der Wächter
+//     `tests/hilfe-altkapitel-anwendersprache/altkapitel-sprechen-anwendersprache.test.ts` (B1)
+//     prüft ausschliesslich diese beiden Felder.
+//   · MERKMALE sind die Suchbegriffsliste des Kapitels — was ein Mensch TIPPT. Hier gehört das
+//     abgelöste Fachwort hin: Wer es aus einer älteren Unterlage, aus dem Gespräch oder aus der
+//     Oberfläche einer Nachbarseite kennt, landet weiter beim richtigen Kapitel und liest DORT den
+//     Satz in Anwendersprache.
+//
+// WAS DAS SICHTBAR KOSTET — ehrlich, weil GEMESSEN und nicht angenommen: Die Merkmale sind NICHT
+// unsichtbar. `pages/Help.tsx:222-229` zeichnet sie unter jeder Karte als kleine Pillenreihe
+// (`:268` für die Kapitel hier, `:261-266` mit Überschrift für die ISO-Kapitel). Die Fachwörter
+// stehen also weiter auf `/hilfe` — als Suchbegriffe unter der Karte, nicht mehr als Erklärung IM
+// Text. Das war schon vor diesem Auftrag so: `bus-faktor`, `qm`, `evidence`, `provenance`, `asset`,
+// `peer` und `seed` standen am Basisstand als Merkmale in genau dieser Reihe. Dieser Auftrag ändert
+// den Charakter der Reihe nicht, er verlängert sie. Ob die Pillenreihe auf einer Fläche, die als
+// Demo-Zugang ausgehändigt wird, überhaupt Bauleutewörter zeigen soll, ist eine Frage an
+// `pages/Help.tsx` — ein eigener Schnitt, nicht dieser (die Datei ist hier gesperrt).
+//
+// WAS HIER NICHT NACHGEFÜHRT WIRD, und warum das kein Versäumnis ist: Eine Umformulierung ändert
+// zwangsläufig Wortformen („zeigt" → „zeigen", „sind" → „ist"). Wollte man jede verlorene Wortform
+// erhalten, dürfte kein Text je umgeschrieben werden. Nachgeführt sind deshalb genau zwei Klassen,
+// beide gemessen und in `altkapitel-sprechen-anwendersprache.test.ts` (Gruppe D) einzeln gepinnt:
+//   (1) die von diesem Auftrag ABGELÖSTEN FACHWÖRTER — sie sind absichtlich aus dem Text
+//       verschwunden, also müssen sie hier stehen;
+//   (2) die SACHWÖRTER des Kapitels (Substantive seines Gegenstands), die die neue Fassung nicht
+//       mehr wörtlich trägt.
+// Füllwörter und gebeugte Verbformen sind BEWUSST nicht dabei.
+//
+// EINE GRENZE BLEIBT GEPINNT: „bibliothek" muss GENAU `library` treffen
+// (`tests/review26-hilfe-import/hilfe-findet-dateiimport.test.ts:311`), „pwa" genau `mobile`
+// (`:312`). Kein Merkmal unten trägt eines dieser beiden Wörter in ein fremdes Kapitel.
+
 // Reihenfolge = Anzeigereihenfolge. `to` ist bewusst nur eine vorhandene interne Route.
 export const HELP_TOPICS: readonly HelpTopicDef[] = [
   {
@@ -31,14 +76,56 @@ export const HELP_TOPICS: readonly HelpTopicDef[] = [
     titleKey: "help.firststart.title",
     bodyKey: "help.firststart.body",
     to: "/admin",
-    tags: ["admin", "demodaten", "seed", "erststart", "onboarding", "setup"],
+    tags: [
+      "admin",
+      "demodaten",
+      "seed",
+      "erststart",
+      "onboarding",
+      "setup",
+      // JOB 4071 · Sucherhalt: „Review" war das abgelöste Fachwort dieses Kapitels (de/nl
+      // `help.firststart.body` am Basisstand), „Einarbeitung"/„inwerken" sein Sachwort.
+      "review",
+      "einarbeitung",
+      "inwerken",
+      "demo data",
+      "demodata",
+      // Der Beispielbestand legt auch Widersprüche an — am Basisstand fand „konflikte" deshalb
+      // `firststart` UND `risk`.
+      "konflikte",
+      "conflicts",
+      "conflicten",
+    ],
   },
   {
     id: "capture",
     titleKey: "help.capture.title",
     bodyKey: "help.capture.body",
     to: "/erfassen",
-    tags: ["erfassen", "wissen", "entwurf", "draft", "interview", "diktat", "ko"],
+    tags: [
+      "erfassen",
+      "wissen",
+      "entwurf",
+      "draft",
+      "interview",
+      "diktat",
+      "ko",
+      // JOB 4071 · Sucherhalt: Sachwörter, die die neue Fassung nicht mehr wörtlich trägt —
+      // „Diktat" nur auf Deutsch, „Erfahrungswissen" und „Text" in allen drei Sprachen.
+      // „review" stand am Basisstand im englischen Text („the AI structures it, you review it") —
+      // der Schritt „Prüfen & einreichen" dieses Kapitels ist genau das.
+      "review",
+      "dictation",
+      "dictaat",
+      "text",
+      "tekst",
+      "erfahrungswissen",
+      "experience",
+      "ervaringskennis",
+      "strukturieren",
+      "structure",
+      "structureren",
+    ],
   },
   // ==============================================================================================
   // JOB 3468 · REVIEW26-HILFE-IMPORT — DER DATEIIMPORT WAR GEBAUT UND IN DER HILFE UNSICHTBAR.
@@ -102,56 +189,228 @@ export const HELP_TOPICS: readonly HelpTopicDef[] = [
     titleKey: "help.ask.title",
     bodyKey: "help.ask.body",
     to: "/fragen",
-    tags: ["fragen", "ask", "antwort", "wissenslücke", "gap"],
+    tags: [
+      "fragen",
+      "ask",
+      "antwort",
+      "wissenslücke",
+      "gap",
+      // JOB 4071 · Sucherhalt: die Mehrzahlform („antworten" trifft das Merkmal „antwort" NICHT —
+      // der Filter vergleicht die ganze Anfrage als Teilstring) und die Quellenbindung der Antwort.
+      "antworten",
+      "answers",
+      "antwoorden",
+      "quellen",
+      "sources",
+      "bronnen",
+      "quellengebunden",
+      "source-bound",
+      "brongebonden",
+    ],
   },
   {
     id: "library",
     titleKey: "help.library.title",
     bodyKey: "help.library.body",
     to: "/bibliothek",
-    tags: ["bibliothek", "library", "suche", "filter", "ko-detail", "wissensobjekt"],
+    tags: [
+      "bibliothek",
+      "library",
+      "suche",
+      "filter",
+      "ko-detail",
+      "wissensobjekt",
+      // JOB 4071 · Sucherhalt: „Evidenz"/„evidence"/„bewijs" war das abgelöste Fachwort dieses
+      // Kapitels; Kategorie, Status und Anhänge sind seine Sachwörter.
+      "evidenz",
+      "evidence",
+      "bewijs",
+      "kategorie",
+      "category",
+      "categorie",
+      "status",
+      "anhänge",
+      "attachments",
+      "bijlagen",
+      "durchsuchen",
+      "doorzoeken",
+    ],
   },
   {
     id: "validation",
     titleKey: "help.validation.title",
     bodyKey: "help.validation.body",
     to: "/validierung",
-    tags: ["validierung", "peer", "bewerten", "freigabe", "vertrauen"],
+    tags: [
+      "validierung",
+      "peer",
+      "bewerten",
+      "freigabe",
+      "vertrauen",
+      // JOB 4071 · Sucherhalt: „Schwelle"/„threshold"/„drempel" und die Bewertungsfarben standen
+      // wörtlich in der Altfassung; „Review" ist das abgelöste Fachwort für genau diese Tätigkeit.
+      "review",
+      "schwelle",
+      "threshold",
+      "drempel",
+      "gelb",
+      "yellow",
+      "geel",
+      "rood",
+      "autor",
+      "author",
+      "auteur",
+      "kommentar",
+      "comment",
+      "opmerking",
+    ],
   },
   {
     id: "tasks",
     titleKey: "help.tasks.title",
     bodyKey: "help.tasks.body",
     to: "/aufgaben",
-    tags: ["aufgaben", "mytasks", "zuweisung", "todo"],
+    tags: [
+      "aufgaben",
+      "mytasks",
+      "zuweisung",
+      "todo",
+      // JOB 4071 · Sucherhalt: „Rückfrage-Aufgaben", „zugewiesen" und „Wissensobjekt" standen
+      // wörtlich in der Altfassung dieses Kapitels.
+      "rückfrage",
+      "rückfragen",
+      "follow-up",
+      "navraag",
+      "zugewiesen",
+      "assigned",
+      "toegewezen",
+      "tasks",
+      "taken",
+      "wissensobjekt",
+      "kennisobject",
+    ],
   },
   {
     id: "risk",
     titleKey: "help.risk.title",
     bodyKey: "help.risk.body",
     to: "/risiko",
-    tags: ["risiko", "lücken", "gaps", "konflikte", "bus-faktor", "priorität"],
+    tags: [
+      "risiko",
+      "lücken",
+      "gaps",
+      "konflikte",
+      "bus-faktor",
+      "priorität",
+      // JOB 4071 · Sucherhalt: „Bus-Faktor" und „Single-Source" sind die abgelösten Fachwörter
+      // dieses Kapitels — in jeder Sprache in ihrer eigenen Gestalt. „conflicts"/„conflicten" fand
+      // am Basisstand kein anderes Kapitel mehr; die Widersprüche gehören sachlich hierher.
+      "single-source",
+      "bus factor",
+      "busfactor",
+      "einzelquelle",
+      "enkele bron",
+      "wissenslücken",
+      "kennishiaten",
+      "knowledge gaps",
+      "widersprüche",
+      "contradictions",
+      "tegenstrijdigheden",
+      "conflicts",
+      "conflicten",
+      "priorisieren",
+      "prioritise",
+      "prioriteren",
+      "assigned",
+    ],
   },
   {
     id: "lifecycle",
     titleKey: "help.lifecycle.title",
     bodyKey: "help.lifecycle.body",
     to: "/lebenszyklus",
-    tags: ["lebenszyklus", "lernpfad", "revalidierung", "asset", "reife"],
+    tags: [
+      "lebenszyklus",
+      "lernpfad",
+      "revalidierung",
+      "asset",
+      "reife",
+      // JOB 4071 · Sucherhalt: „Revalidierungen", „Asset-Änderungen" und „Demo-Seed" sind die
+      // abgelösten Fachwörter. Die Mehrzahl- und Zusammensetzungsformen stehen EINZELN da, weil der
+      // Filter die ganze Anfrage als Teilstring sucht: „revalidierungen" trifft „revalidierung"
+      // nicht.
+      "revalidierungen",
+      "revalidation",
+      "revalidations",
+      "hervalidatie",
+      "hervalidaties",
+      "asset-änderungen",
+      "assetwijzigingen",
+      "demo-seed",
+      "beispiel-lernpfad",
+      "example learning path",
+      "voorbeeldleerpad",
+      "lernpfade",
+      "leerpad",
+      "rollenspezifisch",
+      "role-specific",
+      "rolspecifiek",
+    ],
   },
   {
     id: "stufe2",
     titleKey: "help.stufe2.title",
     bodyKey: "help.stufe2.body",
     to: "/kapital",
-    tags: ["stufe 2", "qm", "kapital", "management", "output", "evidence", "provenance"],
+    tags: [
+      "stufe 2",
+      "qm",
+      "kapital",
+      "management",
+      "output",
+      "evidence",
+      "provenance",
+      // JOB 4071 · Sucherhalt: der ganze Fachwortsatz dieses Kapitels — „ModelRun", „read-only",
+      // „fensterbasiert" und die Kürzel, unter denen die Altfassung es je Sprache führte (QM/QA/KM).
+      "modelrun",
+      "read-only",
+      "fensterbasiert",
+      "window-based",
+      "venstergebaseerd",
+      "herkomstindex",
+      "bewijs",
+      "qa",
+      "km",
+      "index",
+      "dokumente",
+      "documents",
+      "documenten",
+      "auswertungen",
+      "reports",
+      "rapportages",
+    ],
   },
   {
     id: "mobile",
     titleKey: "help.mobile.title",
     bodyKey: "help.mobile.body",
     to: "/mobile",
-    tags: ["mobile", "offline", "pwa", "unterwegs"],
+    tags: [
+      "mobile",
+      "offline",
+      "pwa",
+      "unterwegs",
+      // JOB 4071 · Sucherhalt: „Entwürfe", das Nachtragen ohne Verbindung und das Nachschlagen
+      // standen wörtlich in der Altfassung.
+      "entwürfe",
+      "drafts",
+      "concepten",
+      "synchronisieren",
+      "sync",
+      "synchroniseren",
+      "lookup",
+      "opzoeken",
+    ],
   },
   // ==============================================================================================
   // JOB 3741 · SEITENHILFE-LÜCKEN — ZEHN MENÜPUNKTE HATTEN KEINEN ERKLÄRSATZ.

@@ -344,18 +344,38 @@ type Rangbefund = {
 // überall dabei: wer WÖRTLICH nach seinem eigenen Navigationsnamen fragt, wird in jeder Sprache
 // bedient. Schmal wird es erst daneben — und genau das misst L2 (die Synonyme tragen außerhalb von
 // DE null) und L5 (77 FAQ-Einträge fehlen).
+//
+// NACHGEFÜHRT VON JOB 4071 (15.09.2026, ALTKAPITEL-ANWENDERSPRACHE), gemessen, nicht gesetzt.
+// Die zehn Altkapitel der Hilfeseite sind in de/en/nl neu formuliert worden; sie sind Teil DIESES
+// Korpus (`klaraRegistry.ts:168-174`: je Kapitel ein Eintrag `topic:<id>` aus Titel + Text). Der
+// Korpus selbst ist unverändert 135 Einträge — was sich geändert hat, ist ihr WORTLAUT, und damit
+// die Zahl derer, die die Frage überhaupt berühren.
+//
+// DIE BEWEGUNG GING IN JEDER SPRACHE IN DIESELBE RICHTUNG — die Auswahl ist GEWACHSEN, nicht
+// geschrumpft: de 118 → 120, en 41 → 42, nl 39 → 40 punktende Einträge. `ungeschnitten` (die
+// Untergrenze) steigt deshalb mit; `abgelehnt` ist die Kehrseite derselben Messung und fällt
+// zwangsläufig um genau denselben Betrag: de 17 → 15, en 94 → 93, nl 96 → 95. Der Punktfilter
+// selbst ist unangetastet (`klaraRegistry.ts:308`), und er wirft weiter zwei- bis dreistellig viel
+// weg — die Gefahr, gegen die diese Zahl gebaut ist („bei 0 ist der Filter gefallen"), ist nicht
+// eingetreten.
+// GEMESSEN, NICHT GESETZT: Arbeitsprüfung 212444b5d55f43d6b89ec20ca48b5085, L3a-Protokoll
+// „de: … 6 von 120 punktenden Einträgen (Korpus 135, abgelehnt 15)", „en: … 6 von 42 … abgelehnt
+// 93", „nl: … 6 von 40 … abgelehnt 95"; erst danach wurden diese Zeilen angefasst.
+// NICHT ANGEFASST, weil grün geblieben: `ABSTAND` (gemessen en -78 gegen Pin 77, nl -80 gegen 79 —
+// der Sprachabstand ist um je einen Eintrag GEWACHSEN, die Untergrenze trägt weiter) und
+// `hatValidierung` (in allen drei Sprachen unverändert DABEI).
 const RANG: ReadonlyMap<string, Rangbefund> = new Map<string, Rangbefund>([
   [
     "de",
     {
       treffer: 6,
-      ungeschnitten: 118,
-      abgelehnt: 17,
+      ungeschnitten: 120,
+      abgelehnt: 15,
       hatValidierung: true,
       satz:
-        "Der Maßstab: 118 der 135 Registry-Einträge holen für die Validierungsfrage mindestens " +
+        "Der Maßstab: 120 der 135 Registry-Einträge holen für die Validierungsfrage mindestens " +
         "einen Punkt, die besten 6 gehen in der Funktionsmessung weiter, `/validierung` ist " +
-        "darunter. Der Punktfilter wirft hier nur 17 Einträge weg — die deutsche Frage ist voller " +
+        "darunter. Der Punktfilter wirft hier nur 15 Einträge weg — die deutsche Frage ist voller " +
         "Füllwörter, die fast überall vorkommen; genau dafür ist `rankKlara` gebaut " +
         "(`klaraRegistry.ts:285-288`), und genau deshalb entscheidet in Deutsch die REIHENFOLGE " +
         "und nicht der Filter.",
@@ -365,12 +385,12 @@ const RANG: ReadonlyMap<string, Rangbefund> = new Map<string, Rangbefund>([
     "en",
     {
       treffer: 6,
-      ungeschnitten: 41,
-      abgelehnt: 94,
+      ungeschnitten: 42,
+      abgelehnt: 93,
       hatValidierung: true,
       satz:
         "Gedeckelt sieht Englisch aus wie Deutsch (6 Treffer, `/validierung` dabei) — ungedeckelt " +
-        "punkten nur 41 statt 118 Einträge. Die Auswahl, aus der Klara die besten sechs zieht, ist " +
+        "punkten nur 42 statt 120 Einträge. Die Auswahl, aus der Klara die besten sechs zieht, ist " +
         "hier gut ein Drittel so breit. Für den Nutzer: bei einer wörtlich passenden Frage merkt " +
         "er nichts, bei einer schief formulierten fehlt ihm die Ausweichmasse.",
     },
@@ -379,11 +399,11 @@ const RANG: ReadonlyMap<string, Rangbefund> = new Map<string, Rangbefund>([
     "nl",
     {
       treffer: 6,
-      ungeschnitten: 39,
-      abgelehnt: 96,
+      ungeschnitten: 40,
+      abgelehnt: 95,
       hatValidierung: true,
       satz:
-        "Dasselbe Bild wie in Englisch, eine Spur enger: 39 punktende Einträge gegen 118 in " +
+        "Dasselbe Bild wie in Englisch, eine Spur enger: 40 punktende Einträge gegen 120 in " +
         "Deutsch, `/validierung` trotzdem in den besten sechs.",
     },
   ],
@@ -458,26 +478,43 @@ type Panelbefund = {
 // FAQ. Das heißt: knapp die Hälfte der Antwortgrundlage, die ein deutscher Nutzer für diese Frage
 // bekommt, existiert außerhalb von Deutsch überhaupt nicht. Die FAQ-Lücke aus L5 ist damit nicht
 // bloß eine Zahl im Katalog, sondern schlägt bis in die konkrete Auswahl durch.
+//
+// NACHGEFÜHRT VON JOB 4071 (15.09.2026), gemessen, nicht gesetzt — und hier steckt der EINZIGE
+// Befund dieser Nachführung, der nicht bloß eine größere Auswahl ist:
+//   · `ungeschnitten` wächst mit dem neuen Wortlaut der Hilfekapitel (de 194 → 196, en 41 → 42,
+//     nl 39 → 40) — dieselbe Bewegung wie in RANG, die Untergrenze steigt.
+//   · `ausFaq` in DEUTSCH FÄLLT von 5 auf 3. Der Korpus der FAQ ist unverändert (77 Einträge, L5
+//     bleibt grün); was sich verschoben hat, ist die REIHENFOLGE: die neu formulierten Kapitel
+//     `topic:validation` und `topic:tasks` sagen jetzt selbst, was auf der Validierung geschieht
+//     („genug grüne Bewertungen … keine rote dagegen"), punkten für genau diese Frage höher als
+//     zuvor und verdrängen zwei FAQ-Einträge aus den besten zwölf. Die Antwortgrundlage ist
+//     dadurch nicht dünner (weiterhin zwölf Einträge) und inhaltlich näher an der Frage; was
+//     schrumpft, ist der ANTEIL, den nur Deutsch bekommt — also genau der Sprachvorsprung, den
+//     dieser Pin beziffert. Er wird hier auf den gemessenen Wert gesetzt, NICHT gelöscht: die
+//     FAQ-Lücke der anderen Sprachen (L5) besteht unverändert fort.
+// GEMESSEN, NICHT GESETZT: Arbeitsprüfung 212444b5d55f43d6b89ec20ca48b5085, L3c-Protokoll
+// „de: Korpus 212 (davon 77 FAQ) → 12 von 196 punktenden Einträgen gehen an die KI, davon 3 aus
+// der FAQ", „en: … 12 von 42 … davon 0", „nl: … 12 von 40 … davon 0".
 const PANEL: ReadonlyMap<string, Panelbefund> = new Map<string, Panelbefund>([
   [
     "de",
     {
       treffer: 12,
-      ungeschnitten: 194,
-      ausFaq: 5,
+      ungeschnitten: 196,
+      ausFaq: 3,
       satz:
-        "Aus 212 Einträgen (135 Registry + 77 FAQ) punkten 194; die besten 12 gehen an die KI, " +
-        "5 davon aus der FAQ.",
+        "Aus 212 Einträgen (135 Registry + 77 FAQ) punkten 196; die besten 12 gehen an die KI, " +
+        "3 davon aus der FAQ.",
     },
   ],
   [
     "en",
     {
       treffer: 12,
-      ungeschnitten: 41,
+      ungeschnitten: 42,
       ausFaq: 0,
       satz:
-        "Derselbe Deckel, dieselbe Trefferzahl (12) — aber aus 41 statt 194 punktenden Einträgen " +
+        "Derselbe Deckel, dieselbe Trefferzahl (12) — aber aus 42 statt 196 punktenden Einträgen " +
         "gewählt, und keiner davon aus der FAQ: das Sprach-Gate hält sie draußen.",
     },
   ],
@@ -485,10 +522,10 @@ const PANEL: ReadonlyMap<string, Panelbefund> = new Map<string, Panelbefund>([
     "nl",
     {
       treffer: 12,
-      ungeschnitten: 39,
+      ungeschnitten: 40,
       ausFaq: 0,
       satz:
-        "Wie in Englisch, aus 39 punktenden Einträgen gewählt, ohne jeden FAQ-Anteil an der " +
+        "Wie in Englisch, aus 40 punktenden Einträgen gewählt, ohne jeden FAQ-Anteil an der " +
         "KI-Grundlage.",
     },
   ],
