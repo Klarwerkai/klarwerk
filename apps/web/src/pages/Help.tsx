@@ -172,8 +172,13 @@ export function Help(): JSX.Element {
           ))}
         </ol>
       </Card>
-      {/* SCRUM-307: beobachtete Pilot-Reibung in einen bestehenden Flow einordnen — kein Backend,
-          keine Speicherung; UX-Notiz bewusst ohne Produktlink. Nicht durchsuchbar, nicht überladen. */}
+      {/* SCRUM-307: was im Alltag hakt, in einen BESTEHENDEN Bereich einordnen — kein Backend, keine
+          Speicherung; der Eintrag zur Bedienung bewusst ohne Produktlink (`pilotObservationGuide.ts`
+          `to: null`). Nicht durchsuchbar (fester Orientierungspunkt), nicht überladen.
+          JOB 4067: umgestellt sind allein die TEXTE (`pilot.obs.*` in `i18n.ts`, de/en/nl) — sie
+          sprechen jetzt dieselbe Sprache wie die Karte darüber. Die SCHLÜSSELNAMEN heissen weiter
+          `pilot.obs.*`, und das ist kein vergessener Rest: ein Schlüsselname ist kein angezeigter
+          Text, und ein Umbenennen wäre eine Änderung an `lib/pilotObservationGuide.ts`. */}
       <Card className="mb-5 border-dashed">
         <h2 className="text-[14px] font-semibold text-ink">{t("pilot.obs.title")}</h2>
         <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">{t("pilot.obs.subtitle")}</p>

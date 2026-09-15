@@ -541,7 +541,14 @@ export function DemodatenDetail({ onZurueck }: { onZurueck: () => void }): JSX.E
             deshalb in seiner Karte. Bis hierher standen sie unterhalb des Entfernen-Blocks — mit
             zwei Ladewegen auf der Fläche wäre dort nicht mehr zu sehen, welcher von beiden sie
             erzeugt hat. An den Blöcken selbst ändert sich nichts. */}
-        {/* SCRUM-306: nach erfolgreichem Seed sichtbare Next-Steps — keine automatische Weiterleitung. */}
+        {/* SCRUM-306: nach erfolgreichem Seed sichtbare nächste Schritte — keine automatische
+            Weiterleitung, keine neue Route.
+            JOB 4067: die drei Schaltflächen benennen ihr Ziel so, wie die Oberfläche es nennt.
+            Vorher stand hier ein „Stage-1-Lauf", den es auf keiner Fläche gibt, und ein Link auf
+            eine „Pilot-Checkliste", die seit JOB 4022 „Der erste Arbeitsweg: so fängst du an"
+            heisst. Geändert sind allein die TEXTE (`pilot.next.*` in `i18n.ts`, de/en/nl); die
+            SCHLÜSSELNAMEN bleiben `pilot.next.*` — sie stehen nicht auf dem Bildschirm, und ein
+            Umbenennen wäre eine Änderung an `lib/pilotNextSteps.ts`. */}
         {demoSeed.isSuccess && demoSeed.data?.skipped ? (
           <div className="mt-2 rounded-btn bg-trust-warn-bg px-3 py-2 text-[12.5px] text-trust-warn-text">
             <p>{t("adm.seedSkippedInline")}</p>

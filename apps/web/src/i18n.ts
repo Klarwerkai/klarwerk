@@ -5040,31 +5040,47 @@ const de = {
     "Fehlt die Grundlage, sagt die Antwort das ehrlich und führt zum Erfassen — es wird nichts erfunden.",
   "pilot.check.maintain":
     "„Aktuell halten“ heißt: Einträge, deren Prüfung fällig ist, werden erneut angesehen — nichts bleibt automatisch für immer gültig.",
-  // SCRUM-306: Next-Steps nach dem Demodaten-/Pilot-Start (nur sichtbar, keine Auto-Weiterleitung).
+  // SCRUM-306: der sichtbare nächste Schritt nach dem Demodaten-Start (keine Auto-Weiterleitung).
+  //
+  // JOB 4067 (Bedienbefund 14.09. 18:16, Rest von JOB 4022): die Karte sagte „Jetzt Stage-1 ansehen
+  // oder die Pilot-Checkliste öffnen". „Stage-1" steht nirgends in der Oberfläche, und die Karte auf
+  // `/hilfe` heisst seit JOB 4022 `pilot.access.title` — der Link nannte ein Ziel, das es unter
+  // diesem Namen nicht gibt. Beides benennt jetzt, was die Fläche selbst zeigt: `nav.start` und den
+  // heutigen Kartennamen. Der Ehrlichkeitssatz über Demodaten bleibt Wort für Wort.
+  // DIE SCHLÜSSEL HEISSEN WEITER `pilot.next.*` — nur die Texte sind umgestellt. Ein Schlüsselname
+  // ist kein angezeigter Text, und ein Umbenennen wäre eine Änderung an `lib/pilotNextSteps.ts`.
   "pilot.next.title": "Nächster Schritt",
   "pilot.next.hint":
-    "Demodaten sind Beispiele, kein produktiver Beweis. Jetzt Stage-1 ansehen oder die Pilot-Checkliste öffnen.",
-  "pilot.next.start": "Stage-1 starten (Start öffnen)",
-  "pilot.next.checklist": "Pilot-Checkliste öffnen",
+    "Demodaten sind Beispiele, kein produktiver Beweis. Sieh dir jetzt den Start an oder öffne in der Hilfe den ersten Arbeitsweg.",
+  "pilot.next.start": "Start öffnen",
+  "pilot.next.checklist": "„Der erste Arbeitsweg: so fängst du an“ öffnen",
   "pilot.next.ask": "Beispiel-Frage öffnen",
-  // SCRUM-307: beobachtete Pilot-Reibungen in bestehende Knowledge-OS-Flows einordnen (kein Backend,
-  // keine Speicherung, keine Jira-/Task-Automatik). UX-Notiz bewusst ohne Produktlink.
-  "pilot.obs.title": "Pilot-Befund einordnen",
+  // SCRUM-307: einordnen, was im Alltag hakt — in die BESTEHENDEN Bereiche (kein Backend, keine
+  // Speicherung, keine Jira-/Task-Automatik). Der Eintrag zur Bedienung bleibt bewusst ohne Link.
+  //
+  // JOB 4067: dieselbe Zuordnung, in denselben Worten, die die Oberfläche selbst benutzt (die
+  // Navigationsnamen `nav.*` sind die Quelle, nicht die eigene Wortwahl). Die drei Zusagen der
+  // Karte stehen unverändert: nichts wird gespeichert · kein Vorgang wird ausgelöst · reine
+  // Bedienhinweise gehören nicht ins Produkt. Auch hier bleiben die SCHLÜSSELNAMEN `pilot.obs.*`.
+  "pilot.obs.title": "Wenn etwas hakt: hier steht, wo es hingehört",
   "pilot.obs.subtitle":
-    "Beobachtete Reibung schnell dem passenden bestehenden Klarwerk-Fluss zuordnen. Nichts wird gespeichert; reine UX-Notizen gehören außerhalb des Produkts.",
+    "Fünf Fälle aus dem Alltag — daneben steht, in welchem Bereich du weiterkommst. Nichts wird gespeichert, kein Vorgang wird ausgelöst; reine Bedienhinweise gehören nicht ins Produkt.",
   "pilot.obs.mapLabel": "Gehört in",
-  "pilot.obs.missing.label": "Wissen fehlt ganz (keine Grundlage zur Frage).",
-  "pilot.obs.missing.map": "Risiko/Lücke — priorisieren und erfassen.",
-  "pilot.obs.unverified.label": "Wissen ist unfertig oder noch nicht geprüft.",
-  "pilot.obs.unverified.map": "Validierung — bewerten, bis es gesichert ist.",
-  "pilot.obs.outdated.label": "Wissen wirkt veraltet oder nicht mehr gültig.",
-  "pilot.obs.outdated.map": "Lebenszyklus — Revalidierung, „Aktuell halten“.",
-  "pilot.obs.source.label": "Quelle, Vertrauen oder Nutzbarkeit ist unklar.",
-  "pilot.obs.source.map": "Bibliothek/KO-Detail — Status, Vertrauen, Version, Quelle prüfen.",
-  "pilot.obs.uxnote.label": "Reine UX-/Pilotnotiz (Bedienung, Wording, Ablauf).",
+  "pilot.obs.missing.label": "Es fehlt ganz: zu der Frage gibt es noch keinen Eintrag.",
+  "pilot.obs.missing.map":
+    "Risiko & Lücken — dort steht, was fehlt und wie dringend es ist; danach erfassen.",
+  "pilot.obs.unverified.label": "Ein Eintrag ist noch nicht fertig oder noch nicht geprüft.",
+  "pilot.obs.unverified.map": "Validierung — dort wird er bewertet, bis er als gesichert gilt.",
+  "pilot.obs.outdated.label": "Ein Eintrag wirkt veraltet oder gilt so nicht mehr.",
+  "pilot.obs.outdated.map": "Lebenszyklus — dort wird er erneut angesehen („Aktuell halten“).",
+  "pilot.obs.source.label":
+    "Bei einem Eintrag ist unklar, woher er stammt oder wie verlässlich er ist.",
+  "pilot.obs.source.map":
+    "Bibliothek — dort stehen zu jedem Eintrag Quelle, Stand, Version und Status.",
+  "pilot.obs.uxnote.label": "Es geht um die Bedienung selbst: Wortwahl, Ablauf, Weg.",
   "pilot.obs.uxnote.map":
-    "Organisatorisch notieren — wird nicht im Produkt gespeichert, kein Workflow.",
-  "pilot.obs.openFlow": "Fluss öffnen",
+    "Kein Bereich — das notierst du außerhalb; es wird nicht im Produkt gespeichert und löst keinen Vorgang aus.",
+  "pilot.obs.openFlow": "Bereich öffnen",
   "help.firststart.title": "Erststart & Demodaten",
   "help.firststart.body":
     "Frische Instanzen sind zunächst leer. Als Admin kannst du unter Admin 'Demodaten laden', um Beispiel-Wissen, Validierung, Lücken und Konflikte sichtbar zu machen — ideal für Review und Einarbeitung.",
@@ -10585,30 +10601,38 @@ const en: typeof de = {
     "If the basis is missing, the answer says so honestly and leads to capturing it — nothing is invented.",
   "pilot.check.maintain":
     "“Keep current” means: entries whose check is due are looked at again — nothing stays valid forever automatically.",
-  // SCRUM-306: next steps after loading demo data / starting the pilot (visible only, no auto-redirect).
+  // SCRUM-306 / JOB 4067: the visible next step after loading demo data (no auto-redirect). The
+  // labels name what the surface itself shows — `nav.start` and the card's current name on `/hilfe`
+  // (`pilot.access.title`). The honest sentence about demo data stays word for word.
   "pilot.next.title": "Next step",
   "pilot.next.hint":
-    "Demo data are examples, not production proof. Now view Stage-1 or open the pilot checklist.",
-  "pilot.next.start": "Start Stage-1 (open Start)",
-  "pilot.next.checklist": "Open pilot checklist",
+    "Demo data are examples, not production proof. Now look at Home or open your first working path in the help.",
+  "pilot.next.start": "Open Home",
+  "pilot.next.checklist": "Open “Your first working path: how to start”",
   "pilot.next.ask": "Open example question",
-  // SCRUM-307: map observed pilot frictions to existing Knowledge-OS flows (no backend, no storage,
-  // no Jira/task automation). UX note deliberately has no product link.
-  "pilot.obs.title": "Map a pilot observation",
+  // SCRUM-307 / JOB 4067: where to carry on when something gets stuck — into the EXISTING areas (no
+  // backend, no storage, no Jira/task automation). The entry about operating the software
+  // deliberately has no product link. The three promises stay: nothing is stored · no process is
+  // triggered · plain notes about operating the software belong outside the product.
+  "pilot.obs.title": "If something gets stuck: here is where it belongs",
   "pilot.obs.subtitle":
-    "Quickly map an observed friction to the matching existing Klarwerk flow. Nothing is stored; pure UX notes belong outside the product.",
+    "Five situations from everyday work — next to each one is the area where you carry on. Nothing is stored, no process is triggered; plain notes about operating the software belong outside the product.",
   "pilot.obs.mapLabel": "Belongs in",
-  "pilot.obs.missing.label": "Knowledge is missing entirely (no basis for the question).",
-  "pilot.obs.missing.map": "Risk/gap — prioritize and capture.",
-  "pilot.obs.unverified.label": "Knowledge is unfinished or not yet reviewed.",
-  "pilot.obs.unverified.map": "Validation — rate until it is secured.",
-  "pilot.obs.outdated.label": "Knowledge looks outdated or no longer valid.",
-  "pilot.obs.outdated.map": "Lifecycle — revalidation, “keep current”.",
-  "pilot.obs.source.label": "Source, trust or usability is unclear.",
-  "pilot.obs.source.map": "Library/KO detail — check status, trust, version, source.",
-  "pilot.obs.uxnote.label": "Pure UX/pilot note (usability, wording, flow).",
-  "pilot.obs.uxnote.map": "Note it organizationally — not stored in the product, no workflow.",
-  "pilot.obs.openFlow": "Open flow",
+  "pilot.obs.missing.label": "It is missing entirely: there is no entry on the question yet.",
+  "pilot.obs.missing.map":
+    "Risk & Gaps — note what is missing and how urgent it is; then capture it.",
+  "pilot.obs.unverified.label": "An entry is unfinished or has not been checked yet.",
+  "pilot.obs.unverified.map": "Validation — colleagues rate it there until it counts as secured.",
+  "pilot.obs.outdated.label": "An entry looks outdated or no longer applies.",
+  "pilot.obs.outdated.map": "Lifecycle — it is looked at again there (“keep current”).",
+  "pilot.obs.source.label":
+    "With an entry it is unclear where it comes from or how reliable it is.",
+  "pilot.obs.source.map":
+    "Library — source, date, version and status are shown there for every entry.",
+  "pilot.obs.uxnote.label": "It is about operating the software itself: wording, sequence, path.",
+  "pilot.obs.uxnote.map":
+    "No area — note that outside; it is not stored in the product and triggers no process.",
+  "pilot.obs.openFlow": "Open area",
   "help.firststart.title": "First run & demo data",
   "help.firststart.body":
     "Fresh instances start empty. As admin you can use 'Load demo data' under Admin to make example knowledge, validation, gaps and conflicts visible — ideal for review and onboarding.",
@@ -15706,28 +15730,32 @@ const nl: typeof de = {
     "Ontbreekt de basis, dan zegt het antwoord dat eerlijk en leidt het naar het vastleggen — er wordt niets verzonnen.",
   "pilot.check.maintain":
     "„Actueel houden“ betekent: items waarvan de controle verloopt, worden opnieuw bekeken — niets blijft automatisch voor altijd geldig.",
+  // SCRUM-306/307 / JOB 4067: dezelfde toezeggingen, in de woorden die de gebruiker op het scherm
+  // ziet (`nav.*`, `pilot.access.title`). De sleutelnamen blijven `pilot.next.*`/`pilot.obs.*`.
   "pilot.next.title": "Volgende stap",
   "pilot.next.hint":
-    "Demodata zijn voorbeelden, geen productief bewijs. Bekijk nu Stage-1 of open de pilot-checklist.",
-  "pilot.next.start": "Stage-1 starten (start openen)",
-  "pilot.next.checklist": "Pilot-checklist openen",
+    "Demodata zijn voorbeelden, geen productief bewijs. Bekijk nu Start of open in de help de eerste werkweg.",
+  "pilot.next.start": "Start openen",
+  "pilot.next.checklist": "„Jouw eerste werkweg: zo begin je“ openen",
   "pilot.next.ask": "Voorbeeldvraag openen",
-  "pilot.obs.title": "Pilot-bevinding plaatsen",
+  "pilot.obs.title": "Loopt iets vast? Hier staat waar het thuishoort",
   "pilot.obs.subtitle":
-    "Waargenomen wrijving snel toewijzen aan de passende bestaande Klarwerk-flow. Er wordt niets opgeslagen; pure UX-notities horen buiten het product.",
+    "Vijf situaties uit het dagelijks werk — ernaast staat in welk onderdeel je verder komt. Er wordt niets opgeslagen, er wordt geen proces gestart; pure opmerkingen over de bediening horen niet in het product.",
   "pilot.obs.mapLabel": "Hoort in",
-  "pilot.obs.missing.label": "Kennis ontbreekt volledig (geen basis voor de vraag).",
-  "pilot.obs.missing.map": "Risico/hiaat — prioriteren en vastleggen.",
-  "pilot.obs.unverified.label": "Kennis is onaf of nog niet gecontroleerd.",
-  "pilot.obs.unverified.map": "Validatie — beoordelen tot het geborgd is.",
-  "pilot.obs.outdated.label": "Kennis lijkt verouderd of niet meer geldig.",
-  "pilot.obs.outdated.map": "Levenscyclus — hervalidatie, „actueel houden“.",
-  "pilot.obs.source.label": "Bron, vertrouwen of bruikbaarheid is onduidelijk.",
-  "pilot.obs.source.map": "Bibliotheek/KO-detail — status, vertrouwen, versie, bron controleren.",
-  "pilot.obs.uxnote.label": "Pure UX-/pilotnotitie (bediening, wording, verloop).",
+  "pilot.obs.missing.label": "Het ontbreekt volledig: over de vraag is nog geen item.",
+  "pilot.obs.missing.map":
+    "Risico & hiaten — noteer wat ontbreekt en hoe dringend het is; leg het daarna vast.",
+  "pilot.obs.unverified.label": "Een item is onaf of nog niet gecontroleerd.",
+  "pilot.obs.unverified.map": "Validatie — collega's beoordelen het daar tot het geborgd is.",
+  "pilot.obs.outdated.label": "Een item lijkt verouderd of geldt zo niet meer.",
+  "pilot.obs.outdated.map": "Levenscyclus — daar wordt het opnieuw bekeken („actueel houden“).",
+  "pilot.obs.source.label":
+    "Bij een item is onduidelijk waar het vandaan komt of hoe betrouwbaar het is.",
+  "pilot.obs.source.map": "Bibliotheek — daar staan bron, stand, versie en status van elk item.",
+  "pilot.obs.uxnote.label": "Het gaat om de bediening zelf: woordkeuze, verloop, route.",
   "pilot.obs.uxnote.map":
-    "Organisatorisch noteren — wordt niet in het product opgeslagen, geen workflow.",
-  "pilot.obs.openFlow": "Flow openen",
+    "Geen onderdeel — dat noteer je erbuiten; het wordt niet in het product opgeslagen en start geen proces.",
+  "pilot.obs.openFlow": "Onderdeel openen",
   "help.firststart.title": "Eerste start & demodata",
   "help.firststart.body":
     "Verse instanties zijn eerst leeg. Als admin kun je onder Admin 'Demodata laden' om voorbeeldkennis, validatie, hiaten en conflicten zichtbaar te maken — ideaal voor review en inwerken.",

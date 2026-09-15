@@ -169,7 +169,17 @@ describe("mega51 G2 · Trust — die Scheibe ist in mega52 geschnitten", () => {
     // niederländischen Fassungen desselben Kapitels sagen „Vertrauen" bzw. „vertrouwen", genau wie
     // die Kacheln dort (`ana.avgTrust` = „Ø Vertrauen"/„Ø vertrouwen"). Den Beweis über die WERTE
     // führt weiterhin `tests/app/mega52-vertrauenswert-sammler.test.ts`.
-    expect(zaehlung).toEqual(["de: 27", "en: 90", "nl: 28"]);
+    //
+    // JOB 4067 (HILFE-ANWENDERSPRACHE): en 90 → 88, de und nl UNVERÄNDERT. Die zwei Nennungen
+    // fielen mit der Umstellung der Beobachtungskarte auf `/hilfe` weg: `pilot.obs.source.label`
+    // hiess „Source, trust or usability is unclear.", `pilot.obs.source.map` „Library/KO detail —
+    // check status, trust, version, source." Beide sagen jetzt, was die Fläche sagt („how reliable
+    // it is", „Library — source, date, version and status"). Das ist eine SENKUNG in derselben
+    // Richtung, die dieser Wächter beschreibt — kein deutscher oder niederländischer Anzeigewert ist
+    // zurückgekommen, und es wurde kein Bezeichner angefasst (die Schlüssel heissen weiter
+    // `pilot.obs.source.*`). Dass DE und NL unverändert bleiben, ist der Gegenbeleg: dort stand
+    // „Vertrauen"/„vertrouwen" schon vorher und steht es weiter.
+    expect(zaehlung).toEqual(["de: 27", "en: 88", "nl: 28"]);
   });
 });
 
