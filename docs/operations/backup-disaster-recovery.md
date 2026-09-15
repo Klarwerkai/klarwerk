@@ -49,7 +49,41 @@
 
 ## 3. Aufbewahrung / Offsite / Verschlüsselung
 
-- **Aufbewahrung (Vorschlag):** täglich 7–14 Tage, wöchentlich 4–8 Wochen, monatlich 6–12 Monate (DSGVO-Löschfristen beachten, `gdpr-compliance-runbook.md`).
+**Was das Skript durchsetzt** (`scripts/backup/backup.sh`, Details in `scripts/backup/RESTORE.md`):
+
+- **Aufbewahrung im Zielverzeichnis:** `BACKUP_KEEP=<n≥1>` behält höchstens `n` **vollständige**
+  Sicherungen (Dump **mit** Sidecar) und entfernt die ältesten darüber hinaus — Reihung nach dem
+  Dateinamen (UTC), Dump und Sidecar immer gemeinsam, die soeben erzeugte Sicherung nie. `*.dump`
+  ohne Sidecar und `*.partial` bleiben unberührt. **`BACKUP_KEEP` nicht gesetzt = es wird nichts
+  gelöscht** (Standard). Die Zahl wird **dezimal** gelesen, auch mit führender Null (`08` = acht).
+  `BACKUP_KEEP=0`, leer oder nicht-numerisch: Abbruch mit Exit 1, ohne zu löschen und ohne zu
+  sichern.
+- **Lesbarkeit vor Veröffentlichung, mit dem Werkzeug das da ist:** Ist `pg_restore` installiert,
+  läuft `pg_restore --list` gegen den Arbeitsstand — das belegt ein lesbares **Archiv**. Fehlt es,
+  läuft eine **Ersatzprüfung**, die die Datei vollständig liest (nicht leer, von Anfang bis Ende
+  lesbar) — das belegt nur eine lesbare **Datei**, nichts über das Archivformat. Scheitert die
+  jeweilige Prüfung, wird nichts veröffentlicht (Exit 4); ein **fehlendes** `pg_restore` ist
+  dagegen **kein** Abbruchgrund, sonst nähme die Prüfung dem Betreiber genau das Backup weg, das sie
+  schützen soll. Welche Stufe lief, steht im Protokoll und im `grund` der `letzter-lauf.json`
+  (`Lesepruefung: pg_restore --list` bzw. `Lesepruefung: Ersatz (pg_restore fehlt)`); die volle
+  Prüfung bekommt der Betreiber mit `apt-get install -y postgresql-client` (weitere Systeme:
+  `scripts/backup/RESTORE.md`). **Keine** der beiden Stufen belegt einen gelungenen Restore — dafür
+  steht der Drill (§7, `docs/operations/restore-drill.md`).
+- **Ein Fehlschlag beschädigt nie die letzte gültige Sicherung:** Vorhandene Dumps und Prüfsummen
+  werden weder überschrieben noch gelöscht — egal, an welcher Stelle ein Lauf abbricht. Treffen
+  zwei Läufe dieselbe Sekunde und damit denselben Namen, weicht der zweite auf
+  `klarwerk-<ZEITSTEMPEL>_02.dump` aus; beide Sicherungen bleiben. Nach jedem Fehlschlag ist der
+  vorhandene Bestand byte-gleich und seine Prüfsumme passt weiterhin.
+- **Ergebnisspur:** jeder Lauf hinterlegt `<ZIEL>/letzter-lauf.json` (auch und zuerst der
+  gescheiterte) — einschließlich unerwarteter Werkzeugfehler und einschließlich des Falls, dass das
+  Werkzeug der Spur selbst ausfällt, damit nie die Erfolgsmeldung des Vortags stehen bleibt. Kommt
+  der Fehler **nach** der Veröffentlichung, ist der Lauf gescheitert (`"fehler"`), die Sicherung
+  aber gültig — die Spur nennt sie dann in `datei`/`bytes`/`sha256`, statt sie zu bestreiten. Fehlt
+  die Datei, hat nie ein Lauf ein Ergebnis hinterlegt — das ist **nicht** „alles in Ordnung".
+
+**Was Betreiberpflicht bleibt** (das Skript liefert es nicht, siehe §12):
+
+- **Aufbewahrungsstufen über ein Zielverzeichnis hinaus (Vorschlag):** täglich 7–14 Tage, wöchentlich 4–8 Wochen, monatlich 6–12 Monate (DSGVO-Löschfristen beachten, `gdpr-compliance-runbook.md`). `BACKUP_KEEP` kennt nur EINE Stufe je Verzeichnis; gestufte Aufbewahrung heißt: mehrere Ziele mit je eigener Kadenz und eigenem `BACKUP_KEEP`.
 - **Offsite:** Backups an einen vom Produktionsserver **getrennten** Ort kopieren (anderes Volume/Provider/Region) — Schutz gegen Server-Totalausfall.
 - **Verschlüsselung:** Dumps **verschlüsselt** ablegen; Schlüssel im Passwort-Manager/Secret-Store, **nicht** neben dem Backup.
 
