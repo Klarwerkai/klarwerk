@@ -18,6 +18,10 @@ import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const TASKPANE = "apps/web/public/word-addin/taskpane.html";
+// JOB 3667 R8 (14.09.2026): das Fenster wird aus ZWEI Dateien ausgeliefert. Wer nur das
+// Inline-Skript ausfuehrt, laesst `rwZeichnen` fehlen — `renderCapture` bricht dann mit
+// ReferenceError, und der Fall misst ein Fenster, das es so nicht gibt.
+const RUECKWEG = "apps/web/public/word-addin/rueckweg.js";
 
 function read(rel: string): string {
   return readFileSync(resolve(process.cwd(), rel), "utf8");
@@ -117,7 +121,7 @@ async function ladeFenster(abbruch: unknown): Promise<void> {
   const skriptStart = quelle.lastIndexOf("<script>");
   const skriptEnde = quelle.lastIndexOf("</script>");
   expect(skriptStart, `${TASKPANE}: Inline-Skript nicht gefunden`).toBeGreaterThan(0);
-  const skript = quelle.slice(skriptStart + "<script>".length, skriptEnde);
+  const skript = `${read(RUECKWEG)}\n${quelle.slice(skriptStart + "<script>".length, skriptEnde)}`;
   const bodyStart = quelle.indexOf("<body>");
   expect(bodyStart).toBeGreaterThan(0);
   umgebung.document.body.innerHTML = quelle.slice(bodyStart + "<body>".length, skriptStart);

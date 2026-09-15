@@ -61,6 +61,8 @@ import { WERTE_FRAGEWEG_LUECKE } from "../../tools/design-vergleich/werte";
 
 const WURZEL = resolve(process.cwd());
 const PANEL_DATEI = join(WURZEL, "apps/web/public/word-addin/taskpane.html");
+/** JOB 3667: die zweite Skriptdatei derselben Auslieferung (Block KW-RUECKWEG). */
+const RUECKWEG_DATEI = join(WURZEL, "apps/web/public/word-addin/rueckweg.js");
 const ZIELBILD =
   "/Users/peterkohnert/Documents/Projekt_klarwerk/DESIGN_ZIELBILD_20260827/KeinWissen.dc.html";
 const ORIGIN = "http://klarwerk.test";
@@ -540,6 +542,16 @@ describe.runIf(zielbildDa)(
               status: 200,
               body: req.method() === "HEAD" ? "" : panelHtml,
               contentType: "text/html; charset=utf-8",
+            });
+            return;
+          }
+          // JOB 3667: die zweite ausgelieferte Skriptdatei des Fensters — aus der Quelle, damit hier
+          // dasselbe laeuft wie beim Anwender (ohne sie fehlt `rwZeichnen` und `setLang` wirft).
+          if (url.pathname === "/word-addin/rueckweg.js") {
+            await route.fulfill({
+              status: 200,
+              body: req.method() === "HEAD" ? "" : readFileSync(RUECKWEG_DATEI),
+              contentType: "application/javascript; charset=utf-8",
             });
             return;
           }

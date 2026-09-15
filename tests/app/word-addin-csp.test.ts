@@ -185,10 +185,22 @@ describe("AUFTRAG-JOB507-D4: CSP und Panelverhalten sind konsistent", () => {
     expect(WORD_ADDIN_CSP).toContain("connect-src 'self'");
   });
 
-  it("die einzige externe Ressource ist office.js — und genau sie steht in script-src", () => {
+  it("die einzige FREMDE Ressource ist office.js — und genau sie steht in script-src", () => {
     const html = taskpaneSource();
     const externeScripts = [...html.matchAll(/<script\s+src="([^"]+)"/g)].map((m) => m[1] ?? "");
-    expect(externeScripts).toEqual(["https://appsforoffice.microsoft.com/lib/1/hosted/office.js"]);
+    // JOB 3667 R8 (14.09.2026): seit dem Schnitt steht eine ZWEITE Quelle hier — der Abschnitt
+    // KW-RUECKWEG wohnt in `rueckweg.js` (Grund: die bewachte Groessengrenze des Inline-Skripts,
+    // `tests/klara-zerlegung/schnittflaechen.test.ts` B3, die NICHT angehoben werden durfte).
+    // Fuer die Angriffsflaeche aendert das nichts, und genau das misst dieser Fall ab hier
+    // getrennt: FREMD bleibt office.js allein, und nur dafuer steht ein Fremd-Ursprung in der CSP.
+    // Jede weitere Quelle muss RELATIV und damit gleichherkuenftig sein — `script-src 'self'`
+    // deckt sie ohne neue Erlaubnis. Ein absoluter oder protokollrelativer Eintrag faellt hier auf.
+    expect(externeScripts).toEqual([
+      "https://appsforoffice.microsoft.com/lib/1/hosted/office.js",
+      "rueckweg.js?v=__KW_FASSUNG__",
+    ]);
+    const fremde = externeScripts.filter((s) => /^[a-z]+:|^\/\//.test(s));
+    expect(fremde).toEqual(["https://appsforoffice.microsoft.com/lib/1/hosted/office.js"]);
     expect(WORD_ADDIN_CSP).toContain(
       "script-src 'self' 'unsafe-inline' https://appsforoffice.microsoft.com",
     );

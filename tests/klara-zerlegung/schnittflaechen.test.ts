@@ -101,16 +101,27 @@ describe("JOB 3014 · A — die Messung hat überhaupt etwas in der Hand", () =>
 // ------------------------------------------------------------------------------------------------
 
 describe("JOB 3014 · B — die Grobstruktur der ausgelieferten Seite", () => {
-  it("B1 · genau EIN Inline-Stil, genau EIN Inline-Skript, genau EINE externe Quelle", () => {
+  it("B1 · genau EIN Inline-Stil, EIN Inline-Skript, EINE fremde und EINE eigene Quelle", () => {
     const stile = inline(bloecke, "style");
     const skripte = inline(bloecke, "script");
     const extern = bloecke.filter((b) => b.extern !== null).map((b) => b.extern);
     expect(stile).toHaveLength(1);
     expect(skripte).toHaveLength(1);
-    // Office.js vom Microsoft-CDN — die einzige Fremdressource, und genau sie steht in der
-    // Ersatz-CSP (`security-headers.ts`, `script-src`). Ein zweiter Eintrag hier wäre eine
+    // Office.js vom Microsoft-CDN — die einzige FREMDE Ressource, und genau sie steht in der
+    // Ersatz-CSP (`security-headers.ts`, `script-src`). Ein zweiter fremder Eintrag hier wäre eine
     // Erweiterung der Angriffsfläche und muss auffallen.
-    expect(extern).toEqual(["https://appsforoffice.microsoft.com/lib/1/hosted/office.js"]);
+    //
+    // JOB 3667 (14.09.2026): dazu kommt EINE eigene Quelle. Der Block KW-RUECKWEG (811 Zeilen)
+    // wohnt seither in `rueckweg.js` — nicht aus Geschmack, sondern weil B3 unten sonst reißt und
+    // die Schranke NICHT angehoben werden durfte. Für die Angriffsfläche ändert das nichts:
+    // relative Adresse, gleicher Ursprung, von `script-src 'self'` schon gedeckt; die Cachekennung
+    // ist derselbe Fassungsplatzhalter, den der Server auch ins Meta stempelt (`stempleFassung`),
+    // also genau die Zahl des Manifests. Ein Eintrag ohne diese zwei Eigenschaften — fremder
+    // Ursprung oder absolute Adresse — fällt hier weiterhin auf.
+    expect(extern).toEqual([
+      "https://appsforoffice.microsoft.com/lib/1/hosted/office.js",
+      `rueckweg.js?v=${FASSUNG}`,
+    ]);
   });
 
   it("B2 · die Verteilung: das Skript trägt den weit überwiegenden Teil der Seite", () => {
@@ -224,6 +235,19 @@ describe("JOB 3014 · B — die Grobstruktur der ausgelieferten Seite", () => {
     // die Schranke nach derselben Regel wie in JOB 3094/3438 um EINEN Soll-Block (500) auf 12500 —
     // nicht weiter, kein Blankoscheck. Die Lücke ist damit wieder gewachsen: dieser Job hat nichts
     // geschnitten, er hat angebaut, und JOB 3227 (P11) wartet unverändert.
+    // JOB 3667 (WORD-RÜCKWEG, 14.09.2026): ZUM ERSTEN MAL RÜCKT DIESE SCHRANKE NICHT. Der Rückweg
+    // aus Word hatte sie mit 13182 gerissen („expected 13182 to be less than 12500"), und die
+    // Steuerung hat das Anheben ausdrücklich verboten. Gemessen wurde zuerst das Kürzen: der eigene
+    // Anbau ist 911 Zeilen, ohne JEDEN Kommentar und JEDE Leerzeile des Blocks blieben 12974 — die
+    // Grenze war mit Kürzen nicht erreichbar, nur mit dem Löschen gelieferter Funktion. Also der
+    // andere Weg: der Abschnitt KW-RUECKWEG (811 Zeilen) ist Zeile für Zeile nach
+    // `apps/web/public/word-addin/rueckweg.js` gewandert, das `taskpane.html` als klassisches
+    // Skript unmittelbar vor dem Inline-Skript lädt (B1 oben sieht die zweite Quelle). Der erste
+    // Schnitt an dieser Datei ist damit gemacht — ein kleiner, aber ein echter: das Inline-Skript
+    // ist von 13182 auf 12380 gefallen, die Schranke steht unverändert auf 12500. WER ALS NÄCHSTER
+    // ANBAUT, hat wieder rund 120 Zeilen Luft und danach dieselbe Wahl wie dieser Job: schneiden
+    // oder melden. P11 (JOB 3227) ist damit NICHT erledigt — die Seite trägt weiterhin 12380 Zeilen
+    // in EINEM Block; erledigt ist nur, dass ein Anbau sie nicht weiter hat wachsen lassen.
     expect(zeilenzahl).toBeLessThan(12500);
     expect(SOLL_ZEILEN_JE_SKRIPT).toBe(500);
   });

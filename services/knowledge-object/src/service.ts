@@ -98,6 +98,8 @@ import {
   type KoComment,
   type KoCreateOperation,
   KoError,
+  // JOB 3667 R2: der gebundene Änderungsvorschlag (Fall 2 der Accountregel).
+  type KoProposal,
   type KoRepairNote,
   type KoSource,
   type KoStatus,
@@ -513,6 +515,48 @@ function cleanBody(bodyHtml: string | null | undefined): string | null {
     return null;
   }
   return sanitizeHtml(bodyHtml);
+}
+
+// ================================================================================================
+// JOB 3667 (WORD-RÜCKWEG, Runde 5) — AUSGELASSEN IST NICHT GELÖSCHT. EINE REGEL, EINE STELLE.
+// ================================================================================================
+//
+// DER FEHLER, DEN DIESE RUNDE BEHEBT: `decideProposal` übergab `bodyHtml: vorschlag.bodyHtml ?? null`
+// und `naechsteFassung` las `null` als „leeren". Ein aus Word eingereichter Vorschlag trägt nur Text
+// (`taskpane.html`, `rwEinreichen` schickt statement/baseVersion/origin) — seine Übernahme hätte also
+// den ganzen Fließtext des Wissensobjekts ENTFERNT. Das ist kein Rückweg, das ist ein Datenverlust.
+//
+// DIE REGEL, DIE BEIDE STELLEN JETZT SPRECHEN, steht in diesen zwei Funktionen und nirgends sonst:
+//   · das Feld kam NICHT mit (`undefined`)          → der bestehende Fließtext BLEIBT,
+//   · ein Text kam mit                              → er ERSETZT,
+//   · `null` kommt nur aus einer AUSDRÜCKLICHEN Absicht (`clearBody`) → das Feld wird GELEERT.
+// `rumpfDerFassung` ist die Schreibseite (was in die neue Fassung geht), `rumpfAusVorschlag` die
+// Leseseite (was ein Vorschlag überhaupt verlangt). Zwei Richtungen, ein Satz.
+
+/** Der Fließtext der nächsten Fassung — `undefined` erhält, ein Text ersetzt, `null` leert. */
+function rumpfDerFassung(
+  gewuenscht: string | null | undefined,
+  bestehend: string | null | undefined,
+): string | null {
+  if (gewuenscht === undefined) {
+    return bestehend ?? null;
+  }
+  return cleanBody(gewuenscht);
+}
+
+/**
+ * Was ein Vorschlag am Fließtext VERLANGT — als Änderungsfeld, das `rumpfDerFassung` versteht.
+ *
+ * Ein Vorschlag ohne Rumpf liefert `{}` (das Feld fehlt, also bleibt der bestehende stehen). Nur
+ * `clearBody === true` liefert `{ bodyHtml: null }` — die Löschung, die jemand gewollt hat.
+ */
+function rumpfAusVorschlag(vorschlag: KoProposal): { bodyHtml?: string | null } {
+  if (vorschlag.clearBody === true) {
+    return { bodyHtml: null };
+  }
+  return typeof vorschlag.bodyHtml === "string" && vorschlag.bodyHtml.trim().length > 0
+    ? { bodyHtml: vorschlag.bodyHtml }
+    : {};
 }
 
 /**
@@ -3555,8 +3599,36 @@ export class KoService {
     return this.evidence?.recent(normalizeEvidenceLimit(limit)) ?? [];
   }
 
+  // ==============================================================================================
+  // JOB 3667 (WORD-RÜCKWEG, Runde 2) — DER BEDINGTE SCHREIBZUGRIFF, IM DIENST STATT AN DER ROUTE.
+  // ==============================================================================================
+  //
+  // Runde 1 hat die Version an der ROUTE verglichen, vor dem Dienstaufruf. Das war ein Zeitfenster
+  // und kein Compare-and-Set: zwischen Lesen und Schreiben konnte ein zweiter Schreiber liegen.
+  // HIER ist es ein CAS — die Prüfung läuft IM `build` von `mutateKoTx`, also innerhalb desselben
+  // per-KO serialisierten Abschnitts (`withKoLock`), in dem auch geschrieben wird. Wirft sie, ist
+  // nichts geschrieben: kein Stand, kein Snapshot, keine Projektion, kein Beleg.
+  //
+  // OHNE `expectedVersion` ändert sich NICHTS am Altverhalten — jeder heutige Aufrufer (Web-Editor,
+  // Import, Dokumentübernahme) ruft weiter unbedingt.
+  private pruefeErwarteteVersion(ko: KnowledgeObject, erwartet: number | undefined): void {
+    if (erwartet !== undefined && ko.version !== erwartet) {
+      throw new KoError(
+        "KO_STALE",
+        `Das Wissensobjekt wurde inzwischen geändert (jetzt Version ${ko.version}, erwartet ${erwartet}). Es wurde nichts überschrieben.`,
+      );
+    }
+  }
+
   // FR-KO-04: Überarbeiten erhöht Version, setzt Bewertungen zurück, erzeugt History-Eintrag.
-  async revise(id: string, changes: ReviseKoInput, author: string): Promise<KnowledgeObject> {
+  //
+  // JOB 3667 R2: `opts.expectedVersion` macht daraus einen BEDINGTEN Schreibzugriff (s. o.).
+  async revise(
+    id: string,
+    changes: ReviseKoInput,
+    author: string,
+    opts: { expectedVersion?: number } = {},
+  ): Promise<KnowledgeObject> {
     if (changes.type && !KNOWLEDGE_TYPES.includes(changes.type)) {
       throw new KoError("INVALID_TYPE", "Unbekannte Wissensart.");
     }
@@ -3567,56 +3639,10 @@ export class KoService {
     // geschriebener Snapshot entfernt — kein Teilzustand, keine unauditierte Änderung. Die Bewertungen
     // werden NICHT gelöscht: sie tragen ihre koVersion und sind ab der neuen Version implizit „stale".
     return this.mutateKoTx(id, (ko) => {
-      const version = ko.version + 1;
-      const at = new Date(this.now()).toISOString();
-      // KW-STR: neuer Body wird sanitisiert; statement ggf. daraus abgeleitet.
-      const nextBody =
-        changes.bodyHtml !== undefined ? cleanBody(changes.bodyHtml) : (ko.bodyHtml ?? null);
-      const nextStatement =
-        changes.statement ??
-        (changes.bodyHtml !== undefined && nextBody ? htmlToPlainText(nextBody) : ko.statement);
-      const revised: KnowledgeObject = {
-        ...ko,
-        title: changes.title ?? ko.title,
-        statement: nextStatement,
-        bodyHtml: nextBody,
-        // WP-BILD-1g: Fußnoten-Suchfeld beim Überarbeiten mitführen — eine Caption-Änderung im
-        // Editor aktualisiert das Feld; unveränderte Bodies backfillen Legacy-KOs nebenbei.
-        captionTexts: searchCaptionTexts(nextBody),
-        // JOB 3111 · B1b: die Benennungen ziehen beim Überarbeiten mit — ein umbenanntes oder
-        // ausgetauschtes Bild ändert das Suchfeld, unveränderte Rümpfe heilen Legacy-KOs nebenbei.
-        imageNames: searchImageNames(nextBody),
-        type: changes.type ?? ko.type,
-        conditions: changes.conditions ?? ko.conditions,
-        measures: changes.measures ?? ko.measures,
-        version,
-        trust: 0, // Bewertungen der Vorversion zählen nicht mehr (versionsgebunden, R2)
-        status: "offen", // muss neu validiert werden
-        history: [...ko.history, { version, at, author, note: "überarbeitet" }],
-        // SCRUM-129: Quellen über Revisionen erhalten; SCRUM-470: optional fortschreiben (Re-Sync-Anker).
-        // SCRUM-527 (WP2): Allowlist auf jede Quell-URL — säubert auch Altbestand beim nächsten Revise.
-        sources: sanitizeSources(changes.sources ?? ko.sources ?? []),
-        // JOB 593 / D9 — DER KORREKTURWEG UND DER ALTBESTANDSVERTRAG IN EINER ZEILE.
-        //
-        // KORREKTUR (BEN-Auflage 1): eine mitgelieferte Kennung ersetzt die bisherige — durch
-        // DIESELBE `normalizeAsset` wie beim Anlegen. Eine zweite Normalform am zweiten
-        // Schreibrand wäre genau die zweite Wahrheit zurück, die Option A beseitigt.
-        //
-        // ALTBESTAND (BEN-Auflage 2): kommt KEINE Kennung mit, wird die bestehende trotzdem durch
-        // die Normalform geführt. Damit heilt jedes Objekt bei seiner nächsten Revision, ohne
-        // Massenlauf und ohne Datenberührung ohne Anlass. Das ist kein neues Verfahren, sondern
-        // das Hausmuster der Zeile direkt darüber: `sanitizeSources` „säubert auch Altbestand
-        // beim nächsten Revise" (SCRUM-527/WP2). Zwei Wanderungswege für dieselbe Sorte
-        // Altlast wären eine Regel zu viel.
-        //
-        // VERLUSTSCHUTZ: Die Heilung wirkt nur auf den LEBENDEN Stand und schreibt die Historie
-        // nicht um. Die Vorversion hält den rohen Wert fest, wie er geschrieben wurde — ihr
-        // Snapshot entsteht beim Anlegen (`snapshot(ko, author, "erstellt")`, s. u.) und wird
-        // von `append` nie ersetzt (repo.ts:468). Der einzige Fall, in dem überhaupt Zeichen
-        // verschwinden, ist eine Kennung aus reinem Leerraum — sie konnte nie eine Information
-        // tragen.
-        asset: normalizeAsset(changes.asset !== undefined ? changes.asset : ko.asset),
-      };
+      // JOB 3667 R2: der bedingte Schreibzugriff, INNERHALB des serialisierten Abschnitts.
+      this.pruefeErwarteteVersion(ko, opts.expectedVersion);
+      const revised = this.naechsteFassung(ko, changes, author);
+      const version = revised.version;
       return {
         updated: revised,
         value: revised,
@@ -3631,6 +3657,359 @@ export class KoService {
               action: "ko.revised",
               target: id,
               payload: { version },
+            },
+            tx,
+          );
+        },
+      };
+    });
+  }
+
+  // ==============================================================================================
+  // JOB 3667 (WORD-RÜCKWEG, Runde 2) — DIE NÄCHSTE FASSUNG, AN GENAU EINER STELLE GEBAUT.
+  // ==============================================================================================
+  //
+  // Dieser Block stand bis hierher INLINE in `revise`. Er ist herausgezogen, weil ihn jetzt DREI
+  // Wege brauchen — `revise`, `reviseUndFreigeben` und die Übernahme eines Vorschlags — und weil
+  // eine zweite Abschrift der Fassungslogik (captionTexts, imageNames, Quellen-Allowlist,
+  // Kennungs-Normalform) genau die zweite Wahrheit wäre, die bei der nächsten Änderung auseinander
+  // läuft. Gemessen wird das nicht an dieser Methode, sondern an den Wegen, die sie benutzen.
+  //
+  // `freigabe` IST DER EINZIGE UNTERSCHIED zwischen „überarbeitet" und „überarbeitet und
+  // freigegeben": Prüfstand, Vertrauenswert, Historienvermerk und die tragende Identität
+  // (`ownership.validators`) — alles andere ist Zeichen für Zeichen dasselbe. Der Vertrauenswert
+  // kommt VON AUSSEN (die Route reicht `TRUST_MAX` aus dem validation-Modul durch): dieser Dienst
+  // darf die Trust-Skala nicht kennen, und eine 99 an dieser Stelle wäre eine Abschrift.
+  private naechsteFassung(
+    ko: KnowledgeObject,
+    changes: ReviseKoInput,
+    author: string,
+    freigabe?: { actor: string; trust: number },
+  ): KnowledgeObject {
+    const version = ko.version + 1;
+    const at = new Date(this.now()).toISOString();
+    // KW-STR: neuer Body wird sanitisiert; statement ggf. daraus abgeleitet.
+    //
+    // JOB 3667 R5: die Fallunterscheidung steht in `rumpfDerFassung` (s. dort) — dieselbe Regel,
+    // die auch die Übernahme eines Vorschlags spricht. Zwei Abschriften davon wären genau die
+    // zweite Wahrheit, an der diese Runde gescheitert ist.
+    const nextBody = rumpfDerFassung(changes.bodyHtml, ko.bodyHtml);
+    const nextStatement =
+      changes.statement ??
+      (changes.bodyHtml !== undefined && nextBody ? htmlToPlainText(nextBody) : ko.statement);
+    const fassung: KnowledgeObject = {
+      ...ko,
+      title: changes.title ?? ko.title,
+      statement: nextStatement,
+      bodyHtml: nextBody,
+      // WP-BILD-1g: Fußnoten-Suchfeld beim Überarbeiten mitführen — eine Caption-Änderung im
+      // Editor aktualisiert das Feld; unveränderte Bodies backfillen Legacy-KOs nebenbei.
+      captionTexts: searchCaptionTexts(nextBody),
+      // JOB 3111 · B1b: die Benennungen ziehen beim Überarbeiten mit — ein umbenanntes oder
+      // ausgetauschtes Bild ändert das Suchfeld, unveränderte Rümpfe heilen Legacy-KOs nebenbei.
+      imageNames: searchImageNames(nextBody),
+      type: changes.type ?? ko.type,
+      conditions: changes.conditions ?? ko.conditions,
+      measures: changes.measures ?? ko.measures,
+      version,
+      // Ohne Freigabe: Bewertungen der Vorversion zählen nicht mehr (versionsgebunden, R2) und das
+      // Objekt muss neu validiert werden. MIT Freigabe entscheidet der freigabeberechtigte Mensch
+      // in DEMSELBEN Vorgang — es gibt keinen Augenblick, in dem der neue Text ungeprüft dasteht.
+      trust: freigabe ? freigabe.trust : 0,
+      status: freigabe ? "validiert" : "offen",
+      // JOB 3667 RUNDE 7 · DER VERMERK BLEIBT „überarbeitet", AUCH MIT FREIGABE — und das ist eine
+      // Entscheidung, keine Nachlässigkeit. Runde 5/6 schrieb hier und an den beiden Schnappschüssen
+      // unten einen SECHSTEN festen Vermerk („überarbeitet und freigegeben"). Ein fester Vermerk des
+      // Dienstes ist aber nur halb geliefert, solange er nicht übersetzt wird: die Anzeige bildet ihn
+      // über `apps/web/src/lib/koHistoryNote.ts` auf einen Katalogschlüssel ab, und OHNE Eintrag dort
+      // stünde das deutsche Wort mitten im englischen und niederländischen Text — genau der Befund,
+      // gegen den JOB 3627 steht. Diese Datei liegt nicht in den Zielpfaden dieses Auftrags; sie ist
+      // in der Rückgabe namentlich gemeldet.
+      //
+      // ES GEHT DABEI NICHTS VERLOREN, und das ist der Grund, warum das kein Notbehelf ist: WAS
+      // geschah, sagt der Vermerk (überarbeitet); DASS es zugleich freigegeben wurde, sagt der
+      // Datensatz selbst — `status: "validiert"`, der Vertrauenswert, die tragende Identität in
+      // `ownership.validators` (s. u.) und zwei Belege (`ko.revised` UND `ko.admin-validated`).
+      // Der Vermerk war die einzige Stelle, die das ein zweites Mal behauptet hätte.
+      history: [...ko.history, { version, at, author, note: "überarbeitet" }],
+      // SCRUM-129: Quellen über Revisionen erhalten; SCRUM-470: optional fortschreiben (Re-Sync-Anker).
+      // SCRUM-527 (WP2): Allowlist auf jede Quell-URL — säubert auch Altbestand beim nächsten Revise.
+      sources: sanitizeSources(changes.sources ?? ko.sources ?? []),
+      // JOB 593 / D9 — DER KORREKTURWEG UND DER ALTBESTANDSVERTRAG IN EINER ZEILE.
+      //
+      // KORREKTUR (BEN-Auflage 1): eine mitgelieferte Kennung ersetzt die bisherige — durch
+      // DIESELBE `normalizeAsset` wie beim Anlegen. Eine zweite Normalform am zweiten
+      // Schreibrand wäre genau die zweite Wahrheit zurück, die Option A beseitigt.
+      //
+      // ALTBESTAND (BEN-Auflage 2): kommt KEINE Kennung mit, wird die bestehende trotzdem durch
+      // die Normalform geführt. Damit heilt jedes Objekt bei seiner nächsten Revision, ohne
+      // Massenlauf und ohne Datenberührung ohne Anlass. Das ist kein neues Verfahren, sondern
+      // das Hausmuster der Zeile direkt darüber: `sanitizeSources` „säubert auch Altbestand
+      // beim nächsten Revise" (SCRUM-527/WP2). Zwei Wanderungswege für dieselbe Sorte
+      // Altlast wären eine Regel zu viel.
+      //
+      // VERLUSTSCHUTZ: Die Heilung wirkt nur auf den LEBENDEN Stand und schreibt die Historie
+      // nicht um. Die Vorversion hält den rohen Wert fest, wie er geschrieben wurde — ihr
+      // Snapshot entsteht beim Anlegen (`snapshot(ko, author, "erstellt")`, s. u.) und wird
+      // von `append` nie ersetzt (repo.ts:468). Der einzige Fall, in dem überhaupt Zeichen
+      // verschwinden, ist eine Kennung aus reinem Leerraum — sie konnte nie eine Information
+      // tragen.
+      asset: normalizeAsset(changes.asset !== undefined ? changes.asset : ko.asset),
+    };
+    if (!freigabe) {
+      return fassung;
+    }
+    // JOB 557: eine abgeschlossene Validierung schreibt fort, WER sie getragen hat. Dieselbe
+    // Rollenfolge wie am Bewertungsweg (`recordOwnershipRole`), nur HIER im selben Objekt — ein
+    // zweiter Schreibvorgang wäre ein zweiter Zustand und (über `withKoLock`) nicht einmal möglich.
+    const ownership = withRole(ownershipOf(fassung), "validators", [freigabe.actor]);
+    return ownership === null ? fassung : { ...fassung, ownership };
+  }
+
+  // ==============================================================================================
+  // JOB 3667 (WORD-RÜCKWEG, Runde 2) — FALL 1: ÜBERARBEITEN UND FREIGEBEN ALS EIN VORGANG.
+  // ==============================================================================================
+  //
+  // PEDIS REGEL (SICHTBARES-GESPRAECH.jsonl:693): wer die Freigabe hat, legt die Änderung „gleich
+  // als geprüft" ab. Runde 1 hat das aus ZWEI Aufrufen gebaut — `revise`, dann `admin-validate` —
+  // und der Prüfer hat genau die Lücke dazwischen benannt: fremder Text, der in dieser Spanne
+  // geschrieben wird, wäre mitfreigegeben worden, weil die Freigabe an keiner Version hing.
+  //
+  // HIER GIBT ES DIE SPANNE NICHT MEHR. Neue Fassung, Prüfstand, Vertrauenswert und die tragende
+  // Identität entstehen in DEMSELBEN `mutateKoTx` — derselbe per-KO serialisierte Abschnitt,
+  // dieselbe Transaktion, derselbe Rollback. Freigegeben wird damit ausschliesslich die Fassung,
+  // die dieser Aufruf selbst geschrieben hat; eine andere kann es gar nicht sein.
+  //
+  // ZWEI BELEGE, NICHT EINER: der Vorgang ist eine Überarbeitung UND eine Freigabe, und beide
+  // Auswertungen sollen ihn finden. Eine neue, dritte Audit-Vokabel hätte jeden Leser, der nach
+  // `ko.admin-validated` sucht, an diesem Vorgang vorbeilaufen lassen.
+  //
+  // WER DAS DARF, entscheidet die Route (`users.manage`, wie bei `ValidationService.adminValidate`).
+  // Dieser Dienst kennt keine Rechte — er bekommt den Akteur und den Vertrauenswert gereicht.
+  async reviseUndFreigeben(
+    id: string,
+    changes: ReviseKoInput,
+    actor: string,
+    opts: { trust: number; expectedVersion?: number },
+  ): Promise<KnowledgeObject> {
+    if (changes.type && !KNOWLEDGE_TYPES.includes(changes.type)) {
+      throw new KoError("INVALID_TYPE", "Unbekannte Wissensart.");
+    }
+    return this.mutateKoTx(id, (ko) => {
+      this.pruefeErwarteteVersion(ko, opts.expectedVersion);
+      const fassung = this.naechsteFassung(ko, changes, actor, { actor, trust: opts.trust });
+      const version = fassung.version;
+      return {
+        updated: fassung,
+        value: fassung,
+        // Derselbe Vermerk wie an jeder anderen Überarbeitung — die Begründung steht bei
+        // `naechsteFassung` (JOB 3667 Runde 7). Die Freigabe belegen die zwei Einträge unten.
+        snapshot: { author: actor, note: "überarbeitet" },
+        audit: async (tx) => {
+          await this.audit?.record(
+            { actor, action: "ko.revised", target: id, payload: { version } },
+            tx,
+          );
+          await this.audit?.record(
+            { actor, action: "ko.admin-validated", target: id, payload: { koVersion: version } },
+            tx,
+          );
+        },
+      };
+    });
+  }
+
+  // ==============================================================================================
+  // JOB 3667 (WORD-RÜCKWEG, Runde 2) — FALL 2: DEN VORSCHLAG EINREICHEN.
+  // ==============================================================================================
+  //
+  // ER ÄNDERT AM OBJEKT NICHTS ausser seiner eigenen Liste: kein Versionssprung, kein neuer
+  // Inhalt, kein Prüfstandswechsel, kein Snapshot. Genau das ist die Zusage „bis dahin liest das
+  // Objekt weiterhin den alten geprüften Stand" — sie ist hier kein Versprechen der Oberfläche,
+  // sondern die Bauform des Schreibvorgangs.
+  //
+  // MIT CAS AUF DIE GRUNDLAGE: `baseVersion` ist die Fassung, die der Einreicher gesehen hat. Hat
+  // sich das Objekt inzwischen bewegt, wird der Vorschlag ABGEWIESEN (`KO_STALE`) statt an eine
+  // Fassung gehängt, die es nicht mehr gibt. Der Mensch lädt neu und entscheidet selbst.
+  //
+  // JOB 3667 R5 — WAS DER VORSCHLAG AM FLIESSTEXT WILL, STEHT IM VORSCHLAG UND WIRD NICHT GERATEN.
+  // Ein mitgeschickter Rumpf wird gesäubert abgelegt. KEIN Rumpf heisst „nicht eingereicht": das
+  // Feld fehlt dann, und die Übernahme lässt den bestehenden stehen. Die Löschung ist ein eigenes
+  // Feld (`clearBody`) — sie kann nicht als Nebenwirkung eines leeren Rumpfes entstehen.
+  async addProposal(
+    id: string,
+    author: string,
+    input: {
+      statement: string;
+      bodyHtml?: string | null;
+      clearBody?: boolean;
+      baseVersion: number;
+      origin?: string;
+    },
+  ): Promise<{ ko: KnowledgeObject; proposal: KoProposal }> {
+    const statement = input.statement.trim();
+    if (statement.length === 0) {
+      // Ein leerer Vorschlag ist kein Vorschlag — und als Übernahme wäre er eine Löschung.
+      throw new KoError("INVALID_SOURCE", "Ein Änderungsvorschlag braucht einen Text.");
+    }
+    const rumpf = cleanBody(input.bodyHtml);
+    if (input.clearBody === true && rumpf !== null) {
+      // Beides zugleich wäre zwei Absichten in einem Vorschlag — welche gölte, wäre geraten.
+      throw new KoError(
+        "INVALID_SOURCE",
+        "Ein Änderungsvorschlag kann den Fließtext ersetzen ODER löschen, nicht beides.",
+      );
+    }
+    return this.mutateKo(id, (ko) => {
+      this.pruefeErwarteteVersion(ko, input.baseVersion);
+      const proposal: KoProposal = {
+        id: this.genId(),
+        author,
+        at: new Date(this.now()).toISOString(),
+        baseVersion: ko.version,
+        statement,
+        // Kein Rumpf und keine Löschabsicht → das Feld steht gar nicht erst da.
+        ...(rumpf !== null ? { bodyHtml: rumpf } : {}),
+        ...(input.clearBody === true ? { clearBody: true } : {}),
+        status: "offen",
+        ...(input.origin ? { origin: input.origin } : {}),
+      };
+      const updated: KnowledgeObject = { ...ko, proposals: [...(ko.proposals ?? []), proposal] };
+      return {
+        updated,
+        value: { ko: updated, proposal },
+        audit: async () => {
+          await this.audit?.record({
+            actor: author,
+            action: "ko.proposed",
+            target: id,
+            payload: { proposalId: proposal.id, baseVersion: proposal.baseVersion },
+          });
+        },
+      };
+    });
+  }
+
+  // ==============================================================================================
+  // JOB 3667 (WORD-RÜCKWEG, Runde 2) — DIE ENTSCHEIDUNG ÜBER EINEN VORSCHLAG.
+  // ==============================================================================================
+  //
+  // DREI REGELN, UND SIE STEHEN HIER UND NICHT IN DER OBERFLÄCHE:
+  //  1. Der Vorschlag muss OFFEN sein. Ein zweites Mal wirkt er nicht (`PROPOSAL_DECIDED`) — die
+  //     Wiederholung, die es beim Kommentar-Träger von Runde 1 gar nicht geben konnte.
+  //  2. Der Entscheider darf NICHT der Einreicher sein (`PROPOSAL_OWN`). „Dies muss nochmal von
+  //     jemand anders überprüft werden" heisst genau das; ein Fenster, das den Knopf ausblendet,
+  //     hält diese Regel nicht — die Route ist offen, und sie wird direkt aufgerufen werden.
+  //  3. Bei der Übernahme entsteht die neue Fassung MIT der Freigabe in einem Zug (s.
+  //     `reviseUndFreigeben`), und der Vorschlag trägt danach, wer wann entschied und welche
+  //     Fassung daraus wurde.
+  //
+  // DIE ABLEHNUNG SCHREIBT KEINEN INHALT: sie setzt den Zustand und hält die Begründung fest. Ohne
+  // sie wäre „abgelehnt" eine Tatsache ohne Auskunft.
+  async decideProposal(
+    id: string,
+    proposalId: string,
+    actor: string,
+    entscheidung: "uebernehmen" | "ablehnen",
+    opts: { trust: number; expectedVersion?: number; note?: string },
+  ): Promise<{ ko: KnowledgeObject; proposal: KoProposal }> {
+    return this.mutateKoTx(id, (ko) => {
+      this.pruefeErwarteteVersion(ko, opts.expectedVersion);
+      const offen = ko.proposals ?? [];
+      const vorschlag = offen.find((p) => p.id === proposalId);
+      if (!vorschlag) {
+        throw new KoError(
+          "PROPOSAL_NOT_FOUND",
+          "Dieser Änderungsvorschlag gehört nicht zu diesem Wissensobjekt.",
+        );
+      }
+      if (vorschlag.status !== "offen") {
+        throw new KoError(
+          "PROPOSAL_DECIDED",
+          `Über diesen Änderungsvorschlag ist bereits entschieden (${vorschlag.status}).`,
+        );
+      }
+      if (vorschlag.author === actor) {
+        throw new KoError(
+          "PROPOSAL_OWN",
+          "Den eigenen Änderungsvorschlag gibt niemand selbst frei — er muss von jemand anders geprüft werden.",
+        );
+      }
+      const entschiedenAm = new Date(this.now()).toISOString();
+      if (entscheidung === "ablehnen") {
+        const abgelehnt: KoProposal = {
+          ...vorschlag,
+          status: "abgelehnt",
+          decidedBy: actor,
+          decidedAt: entschiedenAm,
+          ...(opts.note ? { note: opts.note } : {}),
+        };
+        const updated: KnowledgeObject = {
+          ...ko,
+          proposals: offen.map((p) => (p.id === proposalId ? abgelehnt : p)),
+        };
+        return {
+          updated,
+          value: { ko: updated, proposal: abgelehnt },
+          // KEIN Snapshot: es ist keine neue Inhaltsfassung entstanden.
+          audit: async (tx) => {
+            await this.audit?.record(
+              {
+                actor,
+                action: "ko.proposal-rejected",
+                target: id,
+                payload: { proposalId, baseVersion: vorschlag.baseVersion },
+              },
+              tx,
+            );
+          },
+        };
+      }
+      // JOB 3667 R5: `rumpfAusVorschlag` statt `?? null` — ein Vorschlag OHNE Fließtext (so reicht
+      // Word ein) lässt den bestehenden stehen; geleert wird nur auf `clearBody`. Die frühere Zeile
+      // hätte bei jeder reinen Textänderung aus Word das ganze Dokument des Objekts entfernt.
+      const fassung = this.naechsteFassung(
+        ko,
+        { statement: vorschlag.statement, ...rumpfAusVorschlag(vorschlag) },
+        vorschlag.author,
+        { actor, trust: opts.trust },
+      );
+      const uebernommen: KoProposal = {
+        ...vorschlag,
+        status: "uebernommen",
+        decidedBy: actor,
+        decidedAt: entschiedenAm,
+        resultVersion: fassung.version,
+        ...(opts.note ? { note: opts.note } : {}),
+      };
+      const updated: KnowledgeObject = {
+        ...fassung,
+        proposals: offen.map((p) => (p.id === proposalId ? uebernommen : p)),
+      };
+      return {
+        updated,
+        value: { ko: updated, proposal: uebernommen },
+        // Der Snapshot nennt den EINREICHER als Urheber der Fassung (er hat den Text geschrieben);
+        // wer sie freigegeben hat, steht im Beleg und in `ownership.validators`.
+        // Wie oben: der Vermerk nennt die Überarbeitung, die Freigabe belegen `status`, die
+        // Validator-Identität und die zwei Audit-Einträge (JOB 3667 Runde 7).
+        snapshot: { author: vorschlag.author, note: "überarbeitet" },
+        audit: async (tx) => {
+          await this.audit?.record(
+            {
+              actor: vorschlag.author,
+              action: "ko.revised",
+              target: id,
+              payload: { version: fassung.version, proposalId },
+            },
+            tx,
+          );
+          await this.audit?.record(
+            {
+              actor,
+              action: "ko.admin-validated",
+              target: id,
+              payload: { koVersion: fassung.version, proposalId },
             },
             tx,
           );

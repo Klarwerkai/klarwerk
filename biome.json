@@ -46,6 +46,7 @@
       "**/*.timestamp-*.mjs",
       "scripts",
       "services/app/addin-static",
+      "apps/web/public/word-addin/rueckweg.js",
       "_relay/spikes",
       ".local",
       "**/.claude",

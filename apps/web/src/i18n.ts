@@ -2944,6 +2944,53 @@ const de = {
   "ko.rework.step.back": "Zurück in den Validation-Fokus „überarbeitet“",
   "ko.saveEdit": "Speichern",
   "ko.cancelEdit": "Abbrechen",
+  // JOB 3667 R3 · DER EINREICHWEG IM BROWSER. Jeder Satz sagt die FOLGE, nicht bloss den Vorgang:
+  // was mit dem eigenen Text geschieht, was mit dem freigegebenen Stand, und wer als Nächster
+  // handelt. „Eingereicht" allein liesse offen, ob der Eintrag jetzt schon anders lautet.
+  "ko.propose.mustReview":
+    "Dieses Wissensobjekt ist freigegeben. Deine Änderung wird als Vorschlag eingereicht und gilt erst, wenn jemand anderes sie übernimmt.",
+  "ko.propose.optIn": "Erst jemand anderen ansehen lassen, statt gleich freizugeben",
+  "ko.propose.submit": "Änderung einreichen",
+  "ko.propose.done":
+    "Eingereicht. Der Eintrag trägt weiter den freigegebenen Stand, bis jemand anderes deinen Vorschlag übernimmt.",
+  "ko.propose.stale":
+    "Der Eintrag hat sich geändert, während du geschrieben hast — eingereicht wurde nichts. Dein Text steht unverändert hier.",
+  "ko.propose.staleVersion":
+    "Der Eintrag steht jetzt auf Version {{n}} — eingereicht wurde nichts. Dein Text steht unverändert hier.",
+  "ko.propose.reload": "Eintrag neu lesen",
+  "ko.propose.again": "Auf dem jetzigen Stand einreichen",
+  "ko.propose.openTitle": "Offene Änderungsvorschläge ({{n}})",
+  "ko.propose.fromVersion": "aus Version {{n}}",
+  "ko.propose.take": "Übernehmen und freigeben",
+  "ko.propose.reject": "Ablehnen",
+  "ko.propose.rejectReason": "Warum abgelehnt?",
+  "ko.propose.rejectConfirm": "Ablehnung speichern",
+  "ko.propose.own":
+    "Dein eigener Vorschlag — er muss von jemand anders geprüft werden, nicht von dir.",
+  // JOB 3667 R4 · BEFUND 1: WAS DIE ÜBERNAHME MIT DEM INHALT TUT — vier Lagen, jede mit ihrer
+  // FOLGE. „Der Vorschlag hat einen Inhalt" wäre ein Befund; hier steht, was daraus wird.
+  //
+  // DIE WÖRTER SIND DIE DES FORMULARS, nicht die des Quelltexts: das Feld `bodyHtml` heisst auf der
+  // Fläche „Ausführlicher Inhalt" (`capture.fBody`), `statement` heisst „Aussage", und „Kernaussage"
+  // ist der TITEL (`capture.fTitle`). Ein Satz, der hier „Fließtext" oder „Titel" sagte, benennte
+  // Felder, die der Mensch unter diesen Namen nirgends sieht.
+  "ko.propose.body.neu":
+    "Ausführlicher Inhalt des Vorschlags — die Übernahme ersetzt damit den jetzigen:",
+  "ko.propose.body.gleich": "Ausführlicher Inhalt des Vorschlags — er gleicht dem jetzigen:",
+  // JOB 3667 R5 · AUSGELASSEN IST NICHT GELÖSCHT — und die zwei Fälle heissen jetzt verschieden.
+  // „bleibt": der Vorschlag ändert nur die Aussage (so kommt er aus Word); der ausführliche Inhalt
+  // des Eintrags steht darunter, weil GENAU ER nach der Übernahme dort steht.
+  "ko.propose.body.bleibt":
+    "Der Vorschlag ändert nur die Aussage. Der ausführliche Inhalt des Eintrags bleibt unverändert bestehen:",
+  // „entfernt": jemand hat den ausführlichen Inhalt AUSDRÜCKLICH geleert — nur dann verschwindet er.
+  "ko.propose.body.entfernt":
+    "Der Vorschlag LÖSCHT den ausführlichen Inhalt: der Einreicher hat ihn geleert. Die Übernahme entfernt den jetzigen; es bleibt die Aussage.",
+  "ko.propose.body.keiner": "Kein ausführlicher Inhalt — weder im Vorschlag noch im Eintrag.",
+  // JOB 3667 R4 · BEFUND 2: was dieser Weg trägt, und was er nicht trägt.
+  "ko.propose.onlyFields":
+    "Eingereicht werden Aussage und ausführlicher Inhalt. Kernaussage, Wissensart, Domäne/Kategorie, Bedingungen, Maßnahmen und Tags lassen sich auf diesem Weg nicht ändern — sie bleiben, wie sie sind.",
+  "ko.propose.droppedFields":
+    "Diese Änderungen gehen NICHT mit hinaus und bleiben unverändert: {{felder}}.",
   "ko.editNote":
     "Speichern erhöht die Version, setzt die Bewertung zurück und schickt das Objekt erneut in die Prüfung.",
   "ko.revision.title": "Änderungsüberblick",
@@ -8820,6 +8867,37 @@ const en: typeof de = {
   "ko.rework.step.back": "Back to the “revised” validation focus",
   "ko.saveEdit": "Save",
   "ko.cancelEdit": "Cancel",
+  // JOB 3667 R3 — see the German block for the reasoning behind each sentence.
+  "ko.propose.mustReview":
+    "This knowledge object is released. Your change is submitted as a proposal and only takes effect once somebody else accepts it.",
+  "ko.propose.optIn": "Have somebody else look at it first instead of releasing it right away",
+  "ko.propose.submit": "Submit change",
+  "ko.propose.done":
+    "Submitted. The entry still carries the released version until somebody else accepts your proposal.",
+  "ko.propose.stale":
+    "The entry changed while you were writing — nothing was submitted. Your text is still here, unchanged.",
+  "ko.propose.staleVersion":
+    "The entry is now at version {{n}} — nothing was submitted. Your text is still here, unchanged.",
+  "ko.propose.reload": "Re-read entry",
+  "ko.propose.again": "Submit against the current version",
+  "ko.propose.openTitle": "Open change proposals ({{n}})",
+  "ko.propose.fromVersion": "from version {{n}}",
+  "ko.propose.take": "Accept and release",
+  "ko.propose.reject": "Reject",
+  "ko.propose.rejectReason": "Why rejected?",
+  "ko.propose.rejectConfirm": "Save rejection",
+  "ko.propose.own": "Your own proposal — somebody else has to review it, not you.",
+  "ko.propose.body.neu":
+    "Detailed content of the proposal — accepting it replaces the current one:",
+  "ko.propose.body.gleich": "Detailed content of the proposal — identical to the current one:",
+  "ko.propose.body.bleibt":
+    "The proposal only changes the statement. The entry's detailed content stays unchanged:",
+  "ko.propose.body.entfernt":
+    "The proposal DELETES the detailed content: the author cleared it. Accepting it removes the current one; the statement remains.",
+  "ko.propose.body.keiner": "No detailed content — neither in the proposal nor in the entry.",
+  "ko.propose.onlyFields":
+    "Statement and detailed content are submitted. Core statement, knowledge type, domain/category, conditions, measures and tags cannot be changed on this path — they stay as they are.",
+  "ko.propose.droppedFields": "These changes are NOT sent along and stay unchanged: {{felder}}.",
   "ko.editNote":
     "Saving bumps the version, resets the rating and sends the object back into review.",
   "ko.revision.title": "Change overview",
@@ -13913,6 +13991,36 @@ const nl: typeof de = {
   "ko.rework.step.back": "Terug in de validatiefocus „herzien”",
   "ko.saveEdit": "Opslaan",
   "ko.cancelEdit": "Annuleren",
+  // JOB 3667 R3 — de onderbouwing per zin staat in het Duitse blok.
+  "ko.propose.mustReview":
+    "Dit kennisobject is vrijgegeven. Je wijziging wordt als voorstel ingediend en geldt pas wanneer iemand anders haar overneemt.",
+  "ko.propose.optIn": "Eerst iemand anders laten meekijken in plaats van direct vrijgeven",
+  "ko.propose.submit": "Wijziging indienen",
+  "ko.propose.done":
+    "Ingediend. Het item houdt de vrijgegeven versie totdat iemand anders je voorstel overneemt.",
+  "ko.propose.stale":
+    "Het item is gewijzigd terwijl je schreef — er is niets ingediend. Je tekst staat hier onveranderd.",
+  "ko.propose.staleVersion":
+    "Het item staat nu op versie {{n}} — er is niets ingediend. Je tekst staat hier onveranderd.",
+  "ko.propose.reload": "Item opnieuw lezen",
+  "ko.propose.again": "Indienen op de huidige versie",
+  "ko.propose.openTitle": "Open wijzigingsvoorstellen ({{n}})",
+  "ko.propose.fromVersion": "uit versie {{n}}",
+  "ko.propose.take": "Overnemen en vrijgeven",
+  "ko.propose.reject": "Afwijzen",
+  "ko.propose.rejectReason": "Waarom afgewezen?",
+  "ko.propose.rejectConfirm": "Afwijzing opslaan",
+  "ko.propose.own": "Je eigen voorstel — iemand anders moet het beoordelen, niet jij.",
+  "ko.propose.body.neu": "Uitgebreide inhoud van het voorstel — overnemen vervangt de huidige:",
+  "ko.propose.body.gleich": "Uitgebreide inhoud van het voorstel — gelijk aan de huidige:",
+  "ko.propose.body.bleibt":
+    "Het voorstel wijzigt alleen de uitspraak. De uitgebreide inhoud van het item blijft ongewijzigd bestaan:",
+  "ko.propose.body.entfernt":
+    "Het voorstel WIST de uitgebreide inhoud: de indiener heeft die leeggemaakt. Overnemen verwijdert de huidige; de uitspraak blijft.",
+  "ko.propose.body.keiner": "Geen uitgebreide inhoud — niet in het voorstel en niet in het item.",
+  "ko.propose.onlyFields":
+    "Ingediend worden uitspraak en uitgebreide inhoud. Kernuitspraak, kennissoort, domein/categorie, voorwaarden, maatregelen en trefwoorden zijn op deze weg niet te wijzigen — ze blijven zoals ze zijn.",
+  "ko.propose.droppedFields": "Deze wijzigingen gaan NIET mee en blijven ongewijzigd: {{felder}}.",
   "ko.editNote":
     "Opslaan verhoogt de versie, zet de beoordeling terug en stuurt het object opnieuw in de beoordeling.",
   "ko.revision.title": "Wijzigingsoverzicht",

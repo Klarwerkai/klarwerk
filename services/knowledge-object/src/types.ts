@@ -123,6 +123,61 @@ export interface KoComment {
   at: string;
 }
 
+// ================================================================================================
+// JOB 3667 (WORD-RÜCKWEG, Runde 2) — DER GEBUNDENE ÄNDERUNGSVORSCHLAG.
+// ================================================================================================
+//
+// EIN VORSCHLAG IST KEIN WISSEN. Er hängt an genau einem Wissensobjekt, er ersetzt nichts, und er
+// wird nie ausgegeben, als sei er der Stand des Objekts. Erst eine ENTSCHEIDUNG durch einen
+// freigabeberechtigten Menschen — der NICHT der Einreicher ist — macht seinen Inhalt zur neuen,
+// freigegebenen Fassung (`KoService.decideProposal`).
+//
+// JEDES FELD HAT EINEN GRUND:
+//   · `baseVersion` — die Inhaltsversion, die der Einreicher gesehen hat. Ohne sie liesse sich
+//     später nicht sagen, WORAUF sich der Vorschlag bezog; mit ihr sagt die Fläche „stammt aus
+//     Version 3, der Eintrag steht auf 5", statt es zu verschweigen.
+//   · `status` — DER entschiedene Zustand, der in Runde 1 gefehlt hat (Kommentare kennen keinen).
+//     Ein entschiedener Vorschlag ist nicht mehr offen und kann nicht zweimal wirken.
+//   · `decidedBy`/`decidedAt`/`resultVersion`/`note` — wer wann wie entschieden hat, und welche
+//     Fassung daraus entstand. `note` trägt die Begründung einer Ablehnung; ohne sie wäre
+//     „abgelehnt" eine Tatsache ohne Auskunft.
+//   · `origin` — woher der Vorschlag kam (`word_addin` für diesen Weg). Dieselbe feste Herkunft,
+//     die `POST /api/drafts` seit JOB 660 trägt: wer ihn in KLARWERK öffnet, sieht, wo er entstand.
+export interface KoProposal {
+  id: string;
+  author: string;
+  at: string;
+  /** Die Inhaltsversion des Objekts, auf der dieser Vorschlag beruht. */
+  baseVersion: number;
+  statement: string;
+  /**
+   * Der gesäuberte Rumpf, sofern der Einreicher einen mitgeschickt hat.
+   *
+   * JOB 3667 R5 — AUSGELASSEN IST NICHT GELÖSCHT: fehlt das Feld (oder steht es auf `null`), hat
+   * der Vorschlag KEINEN Fließtext mitgebracht. Die Übernahme lässt dann den bestehenden Fließtext
+   * der Grundfassung stehen. Geleert wird nur auf das ausdrückliche Signal `clearBody` (s. u.) —
+   * ein Vorschlag aus Word trägt nur Text, und er darf kein Dokument mit ausradieren.
+   */
+  bodyHtml?: string | null;
+  /**
+   * JOB 3667 R5 — DIE AUSDRÜCKLICH BEABSICHTIGTE LÖSCHUNG DES FLIESSTEXTES.
+   *
+   * Ein eigenes, eindeutiges Signal, kein `null` als Nebenwirkung: nur wenn der Einreicher den
+   * Fließtext WIRKLICH entfernen wollte (er hat ihn im Formular geleert), steht hier `true`, und
+   * nur dann leert die Übernahme das Feld. Ohne dieses Feld ist ein fehlender Rumpf schlicht ein
+   * nicht eingereichter Rumpf.
+   */
+  clearBody?: boolean;
+  status: "offen" | "uebernommen" | "abgelehnt";
+  origin?: string;
+  decidedBy?: string;
+  decidedAt?: string;
+  /** Die Version, die aus der Übernahme entstanden ist (nur bei „uebernommen"). */
+  resultVersion?: number;
+  /** Begründung der Entscheidung — bei einer Ablehnung die Auskunft, warum. */
+  note?: string;
+}
+
 // FR-CAP-05: Anhang/Foto am Objekt. Pilot: client-seitig verkleinertes Thumbnail
 // als Daten-URL (keine Objektspeicher-Infrastruktur nötig, größenbegrenzt).
 // SCRUM-121: Anhang rückwärtskompatibel. Alt-Anhänge tragen `dataUrl` (Inline-Original);
@@ -294,6 +349,21 @@ export interface KnowledgeObject {
   createdAt: string;
   history: HistoryEntry[];
   comments: KoComment[];
+  // ============================================================================================
+  // JOB 3667 (WORD-RÜCKWEG, Runde 2) — DIE EINGEREICHTEN ÄNDERUNGSVORSCHLÄGE DIESES OBJEKTS.
+  // ============================================================================================
+  //
+  // OPTIONAL UND OHNE MIGRATION, dieselbe Bauform wie `ownership` darüber: das KO liegt als
+  // Voll-JSONB (`kos.data`, repo-pg.ts), ein zusätzliches optionales Feld landet im Dokument.
+  // Altbestand hat den Schlüssel schlicht nicht; kein DDL, kein Backfill, kein Repo-Umbau.
+  //
+  // WARUM ES DAS BRAUCHT (Pedis Accountregel, SICHTBARES-GESPRAECH.jsonl:693): wer nicht
+  // freigabeberechtigt ist, darf den freigegebenen Stand NICHT ersetzen — seine Änderung „muss
+  // nochmal von jemand anders überprüft werden". Sie braucht also eine Form, die AN DIESES Objekt
+  // gebunden ist, ohne sein Wissen zu sein: nicht ein zweites Wissensobjekt daneben, nicht ein
+  // Kommentar (der trägt keinen entschiedenen Zustand), sondern ein eigener Datensatz mit
+  // Urheber, Grundlage, Zustand und Entscheidung.
+  proposals?: KoProposal[];
   attachments: KoAttachment[];
   sources: KoSource[];
   // Demodaten-Merker (Pedi 02.07.): vom Seed gesetzt, überlebt Bearbeitungen/Versionen —
@@ -476,6 +546,23 @@ export type KoErrorCode =
   | "DOWNGRADE_FORBIDDEN"
   // SCRUM-509 R3: optimistische Concurrency — der Voll-Objekt-Write war veraltet (rowVersion-Konflikt).
   | "STALE_WRITE"
+  // ============================================================================================
+  // JOB 3667 (WORD-RÜCKWEG, Runde 2) — DIE VIER FEHLER DES RÜCKWEGS.
+  // ============================================================================================
+  // `KO_STALE`: der Aufrufer hat eine Inhaltsversion mitgeschickt, die das Objekt nicht (mehr)
+  //   trägt. Geschrieben wird NICHTS — das ist der Unterschied zu „letzter gewinnt". Die Prüfung
+  //   sitzt IM Dienst (in derselben per-KO serialisierten Transaktion wie der Schreibvorgang) und
+  //   nicht an der Route: an der Route wäre sie ein Zeitfenster, hier ist sie ein CAS.
+  // `PROPOSAL_NOT_FOUND`: die Vorschlagskennung gehört nicht zu diesem Objekt.
+  // `PROPOSAL_DECIDED`: der Vorschlag ist bereits entschieden. Eine Wiederholung wirkt NICHT ein
+  //   zweites Mal — genau daran fehlte es, solange ein Kommentar den Vorschlag trug.
+  // `PROPOSAL_OWN`: der Entscheider IST der Einreicher. Eine Prüfung durch sich selbst ist keine
+  //   Prüfung („dies muss nochmal von jemand anders überprüft werden"); die Regel steht im Dienst,
+  //   weil eine Oberflächenregel sie nicht halten kann.
+  | "KO_STALE"
+  | "PROPOSAL_NOT_FOUND"
+  | "PROPOSAL_DECIDED"
+  | "PROPOSAL_OWN"
   // WP-SHIP8-CLOSE-4 (bens ROT-1B): der Kandidaten-Anker (importCandidateId) ist bereits vergeben —
   // ein zweites KO desselben Import-Kandidaten wird DB-seitig abgelehnt (Pg: partieller Unique-Index,
   // InMemory: Insert-Guard). Der Import-Accept adoptiert dann das bestehende KO statt zu duplizieren.

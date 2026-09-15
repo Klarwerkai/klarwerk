@@ -6,7 +6,7 @@ import { useSearchParams } from "react-router-dom";
 import { ApiError } from "../../api/client";
 import { type KoAction, endpoints } from "../../api/endpoints";
 import { useAudit, useConflicts, useEigeneBefunde, useKo, useKos } from "../../api/hooks";
-import type { ExtractedPoint, KnowledgeObject, KnowledgeType } from "../../api/types";
+import type { ExtractedPoint, KnowledgeObject, KnowledgeType, KoProposal } from "../../api/types";
 import { useSession } from "../../app/AuthContext";
 import { ImageDescribeProvider } from "../../app/ImageDescribeContext";
 import { useRole } from "../../app/RoleContext";
@@ -36,6 +36,7 @@ import { studioSaveConfidence } from "../../lib/editorApplySafety";
 import { EDITOR_BLOCKS } from "../../lib/editorBlocks";
 import { eigeneKollisionDetail } from "../../lib/eigeneKollision";
 import { formatKoTimestamp } from "../../lib/koDates";
+import { type KoRevisionItemId, koRevisionSummary } from "../../lib/koRevisionSummary";
 import { sprachcode, useFrischeLesevariante } from "../../lib/lesevariante";
 import type { MatchField } from "../../lib/librarySearch";
 import { useNetzOnline } from "../../lib/netzzustand";
@@ -142,6 +143,128 @@ interface EditState {
 const textareaCls =
   "w-full resize-y rounded-input border border-hairline bg-surface p-2.5 text-sm text-text outline-none focus:border-ink/30";
 
+// ==================================================================================================
+// JOB 3667 R3 · DER EINREICHWEG IM BROWSER — WAS RUNDE 2 OFFEN GELASSEN HAT.
+// ==================================================================================================
+//
+// DIE LAGE, DIE DIESE ZEILEN SCHLIESSEN. Runde 2 hat Pedis Accountregel am SERVER durchgesetzt: wer
+// ein FREIGEGEBENES Wissensobjekt nicht auch freigeben darf, kann seinen Text dort nicht mehr
+// ersetzen — `ko-routes.ts:2062` antwortet 403 `PROPOSAL_REQUIRED`. Das Word-Fenster bietet für
+// diesen Fall seit Runde 2 den Einreichweg an. DIESE Fläche bot ihn NICHT: wer im Browser arbeitete,
+// bekam eine Sperre ohne Ausweg. Eine Regel mit Sackgasse ist keine Regel, sondern ein Defekt.
+//
+// DIE DREI FÄLLE, UND SIE SIND NICHT GLEICH (Pedi, SICHTBARES-GESPRAECH.jsonl:693):
+//   1. BERECHTIGT, LEGT DIREKT AB — unverändert der bisherige Weg dieser Fläche (`revise`, und für
+//      ein freigegebenes Objekt lässt der Server ihn genau diesem Konto durch).
+//   2. NICHT BERECHTIGT — sein Text wird als an DASSELBE Objekt GEBUNDENER Vorschlag eingereicht und
+//      gilt erst nach fremder Freigabe. HIER IST DIE PRÜFUNG PFLICHT, keine Wahl: es gibt keinen
+//      Haken, mit dem er sie abwählen könnte, und der Speichern-Knopf wird ihm nicht angeboten —
+//      er könnte nur zu einer Absage führen, und ein Knopf, der nur absagen kann, ist eine
+//      Scheinfunktion.
+//   3. BERECHTIGT, WÄHLT FALL 2 FREIWILLIG — der Haken „erst jemand anderen ansehen lassen".
+//      NUR HIER ist etwas freiwillig.
+//
+// WAS DIESE FLÄCHE NICHT ENTSCHEIDET: ob es gilt. Sie wählt den WEG; der Server hält die Regel. Liegt
+// sie falsch (das Objekt wurde freigegeben, während jemand tippte), antwortet die Route 403 — und
+// dann führt `save.onError` in denselben Einreichweg, statt den Menschen stehen zu lassen. Deshalb
+// gibt es beide Wege: den vorausgewählten UND den nachträglichen. Geschrieben wird in keinem Fall
+// etwas, das der Mensch nicht angetippt hat.
+
+/**
+ * Spiegel von `ROLE_PERMISSIONS[...].includes("users.manage")` (`services/rbac/src/policy.ts`) —
+ * genau die Rollen, die eine Änderung GLEICH als geprüft ablegen dürfen.
+ *
+ * WARUM ÜBERHAUPT EINE LISTE IM CLIENT: die Fläche muss VOR dem Aufruf wissen, welchen Weg der Griff
+ * geht, und `can()` liegt im rbac-Modul hinter einer Modulgrenze, die `apps/web` nicht überschreitet.
+ * WARUM DAS TROTZDEM KEINE ZWEITE WAHRHEIT IST: `tests/word-rueckweg/accountregel-spiegel.test.ts`
+ * LIEST diese Zeile und hält sie gegen die Matrix. Wer die Rechte ändert, wird dort rot und
+ * entscheidet bewusst — dieselbe Bauform wie `KW_RW_FREIGABE_ROLLEN` im Word-Fenster.
+ *
+ * NICHT `canReview` (`controller` + `admin`) WIEDERVERWENDET: das ist das Recht zu BEWERTEN
+ * (`ko.validate`, eine Stimme von `neededValidations`), nicht das Recht, sofort gültig zu machen.
+ * Wer die beiden hier zusammenlegte, gäbe einem `controller` einen Knopf, den die Route ihm verwehrt.
+ */
+const RW_FREIGABE_ROLLEN = ["admin"];
+
+/**
+ * Der EINE Satz, den die Fläche über den Einreichweg sagt — oder keiner.
+ *
+ * `art` trägt die LAGE, nicht die Formulierung: so kann ein Prüfstand den Fall festhalten, ohne an
+ * einem Wortlaut zu hängen, und die Fläche kann je Lage entscheiden, welche Griffe daneben stehen.
+ * `version` steht NUR bei `stale` und ist dort die Fassung, die beim Nachlesen wirklich da war —
+ * keine aus der Fehlerantwort geratene Zahl (s. „DIE GRENZE DES 409" unten).
+ */
+type EinreichLage =
+  | { art: "pflicht"; text: string }
+  | { art: "eingereicht" }
+  | { art: "stale"; version: number | null }
+  | { art: "fehler"; text: string };
+
+// Die drei Töne des Einreich-Satzes als FLACHE Konstanten — dieselbe Bauform wie `LAGE_SPALTE` &c.
+// in `BibliothekListe.tsx` (JOB 3335). Der Sammler `tests/app/mega47-modale-flaechen-sammler.test.tsx`
+// liest sie damit; offen bleibt allein die Entscheidung dazwischen, und die gehört an den einen
+// Knoten, der den Satz trägt — nicht in drei Abschriften desselben Markups.
+const EINREICH_ZEILE = "rounded-btn px-3 py-2 text-[12.5px] leading-relaxed";
+const EINREICH_GUT = "bg-trust-pos-bg text-trust-pos-text";
+const EINREICH_WARN = "bg-trust-warn-bg text-trust-warn-text";
+const EINREICH_SCHLECHT = "bg-trust-crit-bg text-trust-crit-text";
+
+// ================================================================================================
+// JOB 3667 R4 · BEFUND 1 — WAS ÜBERNOMMEN WIRD, STEHT VORHER LESBAR DA.
+// ================================================================================================
+//
+// DER FEHLER, DEN DIESE RUNDE BEHEBT (Prüferbefund 13.09.): die Vorschlagsanzeige zeigte allein
+// `v.statement`. Der Übernehmen-Knopf genehmigte aber den GANZEN Vorschlag, und
+// `KoService.decideProposal` (`service.ts:3891`) schreibt daraus `statement` UND `bodyHtml` in die
+// neue Fassung. Ein Fließtext, den niemand gesehen hat, wurde also mitfreigegeben — genau das
+// verbietet „Sichtbarkeit ist Pflicht".
+//
+// DIE ZWEITE FOLGE STAND IN DERSELBEN ZEILE DES DIENSTES, und sie war die grössere: er übergab
+// `bodyHtml: vorschlag.bodyHtml ?? null` — AUSDRÜCKLICH `null`, nicht `undefined`. In
+// `naechsteFassung` heisst `null` „leeren". Ein Vorschlag OHNE Fließtext — und genau so reicht das
+// Word-Fenster ein — hätte bei der Übernahme den Fließtext des Eintrags ENTFERNT.
+//
+// RUNDE 5 ÄNDERT DIE WIRKUNG, NICHT NUR IHRE ANZEIGE (Steuerung 14.09.): ausgelassen ist nicht
+// gelöscht. Der Dienst lässt den bestehenden Fließtext stehen, wenn der Vorschlag keinen mitbringt
+// (`service.ts`, `rumpfAusVorschlag`), und leert ihn nur auf das ausdrückliche `clearBody`. Diese
+// Fläche rechnet DIESELBE Regel — was hier als Ergebnis steht, ist, was die Übernahme schreibt.
+type RumpfLage = "neu" | "gleich" | "bleibt" | "entfernt" | "keiner";
+
+/**
+ * Was die Übernahme dieses Vorschlags mit dem Fließtext des Eintrags TUT — aus dem Vorschlag und
+ * dem jetzigen Stand gerechnet, nicht behauptet. Getrimmt verglichen, wie überall sonst im Produkt
+ * (`koRevisionSummary`): Leerraum am Rand ist keine Änderung.
+ *
+ * DIE FÜNF LAGEN SIND DIE DREI ZWEIGE DES DIENSTES, je aufgeteilt nach dem, was der Eintrag hat:
+ * `clearBody` → „entfernt" (oder „keiner", wenn es nichts zu entfernen gibt); ein Rumpf im
+ * Vorschlag → „neu"/„gleich"; kein Rumpf → „bleibt" (oder „keiner").
+ */
+function rumpfLage(vorschlag: KoProposal, stand: string | null | undefined): RumpfLage {
+  const v = (vorschlag.bodyHtml ?? "").trim();
+  const s = (stand ?? "").trim();
+  if (vorschlag.clearBody === true) {
+    return s.length === 0 ? "keiner" : "entfernt";
+  }
+  if (v.length === 0) {
+    return s.length === 0 ? "keiner" : "bleibt";
+  }
+  return v === s ? "gleich" : "neu";
+}
+
+// ================================================================================================
+// JOB 3667 R4 · BEFUND 2 — WAS DER PRÜFWEG NICHT TRÄGT, BIETET ER AUCH NICHT AN.
+// ================================================================================================
+//
+// Ein `KoProposal` trägt `statement` und `bodyHtml`, sonst nichts (`api/types.ts:61`), und die
+// Übernahme schreibt auch nur diese beiden (`service.ts:3891`). Titel, Art, Kategorie, Bedingungen,
+// Maßnahmen und Schlagworte gingen auf diesem Weg NIE hinaus — der direkte Speicherweg schickt sie
+// (`revise` plus `tags`/`category`), der Einreich-Aufruf nicht. Ein Formular, das sie im Prüfweg als
+// bearbeitbar anbietet, verspricht ein „eingereicht", das der Server nie bekommen hat.
+//
+// DIE KENNUNGEN SIND DIE VON `koRevisionSummary` — dieselbe Vergleichslogik, die der
+// Änderungsüberblick schon benutzt. Eine zweite Abschrift wäre die zweite Wahrheit.
+const EINGEREICHTE_FELDER: readonly KoRevisionItemId[] = ["statement", "body"];
+
 export function BibliothekLesen({
   koId,
   suchtext,
@@ -199,6 +322,8 @@ export function BibliothekLesen({
   const nameOf = useAuthorName();
   const canEdit = role !== "viewer";
   const canReview = role === "controller" || role === "admin";
+  // JOB 3667 R3: „darf gleich als geprüft ablegen" — der Spiegel von `users.manage`, s. oben.
+  const darfFreigeben = RW_FREIGABE_ROLLEN.includes(role);
   const reviewReworkContext = isReviewReworkContext(params);
 
   const [edit, setEdit] = useState<EditState | null>(null);
@@ -220,6 +345,26 @@ export function BibliothekLesen({
   const [detailFeedback, setDetailFeedback] = useState<FeedbackVerdict | null>(null);
   const [detailFeedbackText, setDetailFeedbackText] = useState("");
   const [appendUnclear, setAppendUnclear] = useState(false);
+  // ================================================================================================
+  // JOB 3667 R3 · DER ZUSTAND DES EINREICHWEGS. VIER GRÖSSEN, JEDE MIT EINEM GRUND.
+  // ================================================================================================
+  //
+  // `pruefwegHaken`  — FALL 3, und nur er: der Berechtigte wählt die fremde Prüfung freiwillig. Beim
+  //                    nicht Berechtigten wird der Haken gar nicht gezeichnet; dort ist die Prüfung
+  //                    Pflicht, und ein abwählbarer Haken wäre die Unwahrheit.
+  // `einreichLage`   — der EINE Satz über den letzten Einreichversuch (`EinreichLage` oben). Er steht
+  //                    getrennt von `err`, weil `err` das Speichern betrifft: „eingereicht" ist kein
+  //                    Fehler, und „gesperrt" ist keine gescheiterte Eingabe.
+  // `sperreGemeldet` — die Route hat 403 `PROPOSAL_REQUIRED` geantwortet. Dann steht der Einreichweg
+  //                    auch dann zur Verfügung, wenn die Fläche ihn NICHT vorausgewählt hatte (das
+  //                    Objekt wurde freigegeben, während jemand tippte). Das ist der Riegel gegen die
+  //                    Sackgasse — und er reicht NICHT von selbst ein: der Mensch greift noch einmal.
+  // `ablehnung`      — über welchen Vorschlag gerade eine Ablehnung geschrieben wird, samt Begründung.
+  //                    Ohne sie wäre „abgelehnt" eine Tatsache ohne Auskunft.
+  const [pruefwegHaken, setPruefwegHaken] = useState(false);
+  const [einreichLage, setEinreichLage] = useState<EinreichLage | null>(null);
+  const [sperreGemeldet, setSperreGemeldet] = useState(false);
+  const [ablehnung, setAblehnung] = useState<{ id: string; grund: string } | null>(null);
   const appendOriginalRef = useRef<OriginalRefCache>({ ref: null });
   const [captionRequest, setCaptionRequest] = useState<{
     imageId: string;
@@ -389,6 +534,18 @@ export function BibliothekLesen({
       removeKo.reset();
     }
   };
+  /**
+   * JOB 3667 R3: das Bearbeiten verlassen — und dabei ALLES zurücknehmen, was zum vorigen Versuch
+   * gehörte. Ein „eingereicht" oder eine gemeldete Sperre, die über dem nächsten, frisch geöffneten
+   * Formular stehenbliebe, wäre eine Auskunft über einen Vorgang, den es nicht mehr gibt.
+   */
+  const bearbeitenBeenden = (): void => {
+    setEdit(null);
+    setEinreichLage(null);
+    setSperreGemeldet(false);
+    setPruefwegHaken(false);
+  };
+
   const save = useMutation({
     mutationFn: async () => {
       if (!edit) {
@@ -412,11 +569,167 @@ export function BibliothekLesen({
     },
     onSuccess: () => {
       invalidate();
-      setEdit(null);
+      bearbeitenBeenden();
       setErr(null);
       if (reviewReworkContext) {
         setReworkSavedFor(koId);
       }
+    },
+    // ==============================================================================================
+    // JOB 3667 R3 · KEINE SACKGASSE: DER 403 FÜHRT IN DEN EINREICHWEG, NICHT IN EINE ABSAGE.
+    // ==============================================================================================
+    //
+    // `PROPOSAL_REQUIRED` ist die Antwort der Route, wenn dieses Konto ein FREIGEGEBENES Objekt nicht
+    // direkt ersetzen darf (`ko-routes.ts:2064`). Er entsteht auch dann, wenn die Fläche den
+    // Einreichweg NICHT vorausgewählt hatte — das Objekt kann freigegeben worden sein, während jemand
+    // tippte, oder die Rolle hat sich geändert. Ohne diesen Zweig stünde dort ein roter Satz und
+    // sonst nichts.
+    //
+    // ER REICHT NICHTS VON SELBST EIN. Einreichen ist ein bewusster Schritt (Lieferung 5): hier wird
+    // nur der Weg SICHTBAR gemacht, gegriffen wird noch einmal. Ein `save`, das bei einem 403
+    // stillschweigend etwas anderes täte als der Knopf verspricht, wäre genau die Nebenwirkung, die
+    // dieser Auftrag verbietet.
+    //
+    // UND DER TEXT BLEIBT STEHEN: `setEdit(null)` steht ALLEIN im Erfolgszweig. Das Formular behält
+    // seinen Inhalt, unverändert und weiter bearbeitbar — bei diesem 403 wie bei jedem anderen Fehler.
+    onError: (e) => {
+      if (e instanceof ApiError && e.code === "PROPOSAL_REQUIRED") {
+        setSperreGemeldet(true);
+        setEinreichLage({ art: "pflicht", text: e.message });
+        return;
+      }
+      setErr(e instanceof ApiError ? e.message : t("state.error"));
+    },
+  });
+
+  // ================================================================================================
+  // JOB 3667 R3 · FALL 2 UND 3 — DEN ÄNDERUNGSVORSCHLAG EINREICHEN.
+  // ================================================================================================
+  //
+  // AM OBJEKT ÄNDERT DAS NICHTS. `action: "propose"` legt einen an DIESES Objekt gebundenen
+  // `KoProposal` an; Inhalt, Version und Prüfstand bleiben, wie sie sind (`service.ts:3798`). Wer das
+  // Objekt liest, sieht weiter den freigegebenen Stand — das ist keine Zusage dieser Fläche, sondern
+  // die Bauform des Schreibvorgangs, und genau deshalb ist es belegbar.
+  //
+  // `baseVersion` KOMMT ALS ARGUMENT, NICHT AUS DEM ABSCHLUSS: `ko` steht erst unterhalb der
+  // Abbruchzweige zur Verfügung (`abfrageMitBestand`), Haken dürfen dort nicht mehr stehen. Der
+  // Aufrufer übergibt die Fassung, die er IM BILD hatte — und genau die soll der Server prüfen.
+  //
+  // `bodyHtml` REIST NUR MIT, WENN ES EINEN RUMPF GIBT — und ein LEERES Feld ist seit R5 kein
+  // Zufall mehr, sondern eine Frage mit zwei verschiedenen Antworten:
+  //   · der Eintrag hatte keinen Fließtext  → es liegt schlicht keiner bei, nichts reist mit;
+  //   · der Eintrag HATTE einen und der Mensch hat ihn geleert → das ist eine ABSICHT, und sie geht
+  //     als `clearBody` hinaus. Ohne dieses Feld würde der Server die Löschung nicht ausführen
+  //     (ausgelassen ist nicht gelöscht) — der Mensch sähe seine Arbeit wirkungslos verpuffen.
+  // `bestehenderRumpf` kommt deshalb vom Aufrufer: erst er kennt den geladenen Stand (`ko` steht
+  // hier oben noch nicht zur Verfügung, s. `baseVersion`).
+  const einreichen = useMutation({
+    mutationFn: (v: {
+      baseVersion: number;
+      statement: string;
+      bodyHtml: string;
+      bestehenderRumpf: string | null;
+    }) =>
+      endpoints.ko.act(koId, {
+        action: "propose",
+        proposal: {
+          statement: v.statement,
+          ...(v.bodyHtml.trim().length > 0
+            ? { bodyHtml: v.bodyHtml }
+            : (v.bestehenderRumpf ?? "").trim().length > 0
+              ? { clearBody: true as const }
+              : {}),
+          baseVersion: v.baseVersion,
+          // Dieselbe Stelle, an der der Word-Weg `word_addin` trägt. Wer den Vorschlag später
+          // ansieht, erfährt, wo er entstand — statt es aus dem Namen zu raten.
+          origin: "klarwerk_web",
+        },
+      }),
+    onSuccess: () => {
+      // DAS FORMULAR BLEIBT OFFEN UND BEHÄLT DEN TEXT. Eingereicht ist nicht übernommen: der Mensch
+      // soll sehen, was er geschickt hat, und der Eintrag darunter trägt weiter den alten Stand.
+      // `invalidate()` holt das Objekt samt der jetzt eingereichten Fassung nach.
+      invalidate();
+      setErr(null);
+      setSperreGemeldet(false);
+      setEinreichLage({ art: "eingereicht" });
+    },
+    // ==============================================================================================
+    // DIE GRENZE DES 409 — HIER STEHT KEINE ZAHL, DIE WIR NICHT HABEN.
+    // ==============================================================================================
+    //
+    // Der Server sendet zum `KO_STALE` die jetzt gültige Version MIT (`ko-routes.ts:1922`,
+    // `currentVersion`). Diese Oberfläche bekommt sie NICHT zu sehen: `ApiError` trägt nur `status`,
+    // `code` und `message` — der übrige Antwortkörper wird in `api/client.ts:38-43` verworfen, und
+    // `client.ts` ist kein Zielpfad dieses Auftrags (namentlich gemeldet, s. RUECKGABE).
+    //
+    // WAS STATT DESSEN GESCHIEHT, und es ist ehrlich statt geraten: die Fläche LIEST NACH
+    // (`invalidate()`) und nennt die Fassung, die sie dabei wirklich gesehen hat. Bis sie da ist,
+    // steht `version: null` — „der Stand hat sich bewegt" ohne Zahl ist wahr; eine erfundene Zahl
+    // wäre es nicht.
+    //
+    // DER TEXT ÜBERLEBT AUCH DAS. Ein 409, der die Arbeit verschluckt, wäre schlimmer als ein stilles
+    // Überschreiben: `setEdit` wird hier nicht angefasst, und die Griffe daneben lassen den Menschen
+    // entscheiden — neu lesen, anpassen, oder auf der jetzt gültigen Fassung erneut einreichen.
+    onError: (e) => {
+      if (e instanceof ApiError && e.status === 409) {
+        // Erst die WAHRE, noch zahlenlose Aussage — sie gilt sofort und ist nicht falsch.
+        setEinreichLage({ art: "stale", version: null });
+        invalidate();
+        // Und dann, wenn der Nachlesevorgang etwas gebracht hat, die Fassung, die dabei WIRKLICH
+        // dastand. Der Rückruf überschreibt nur eine noch offene Stale-Lage: wer inzwischen erneut
+        // eingereicht hat, soll seine neue Auskunft nicht von einer alten Antwort verlieren.
+        void query.refetch().then((r) => {
+          const jetzt = r.data?.version;
+          setEinreichLage((vorher) =>
+            vorher?.art === "stale" && typeof jetzt === "number"
+              ? { art: "stale", version: jetzt }
+              : vorher,
+          );
+        });
+        return;
+      }
+      setEinreichLage({
+        art: "fehler",
+        text: e instanceof ApiError ? e.message : t("state.error"),
+      });
+    },
+  });
+
+  // ================================================================================================
+  // JOB 3667 R3 · DIE FREMDE ENTSCHEIDUNG — ÜBERNEHMEN ODER ABLEHNEN.
+  // ================================================================================================
+  //
+  // ES GEHT KEIN INHALT HINAUS, NUR DIE KENNUNG DES VORSCHLAGS. Übernommen wird, was IM VORSCHLAG
+  // steht — der Dienst liest `vorschlag.statement`/`vorschlag.bodyHtml` (`service.ts:3891`). Damit
+  // kann eine Entscheidung gar nicht einen zwischenzeitlich veränderten Entwurf, einen nachgeladenen
+  // Stand oder den aktuellen Inhalt des Objekts treffen (Lieferung 8). Der Client trägt diese Zusage
+  // nicht, er kann sie nicht einmal brechen: der Vertrag hat kein Inhaltsfeld.
+  //
+  // `expectedVersion` IST DIE FASSUNG, DIE DER ENTSCHEIDER IM BILD HATTE. Hat ein Fremder dazwischen
+  // geschrieben, gilt die Freigabe nicht (409) — das war der dritte der vier gemessenen Defekte.
+  //
+  // DASS DER EINREICHER NICHT SEIN EIGENER PRÜFER SEIN DARF, HÄLT DER SERVER (`PROPOSAL_OWN`,
+  // `service.ts:3855`). Diese Fläche bietet den Knopf am eigenen Vorschlag nur nicht an — sie macht
+  // die Regel SICHTBAR, sie ist nicht die Regel. Wer die Route direkt aufruft, läuft in dieselbe 403.
+  const entscheiden = useMutation({
+    mutationFn: (v: {
+      proposalId: string;
+      decision: "uebernehmen" | "ablehnen";
+      expectedVersion: number;
+      note?: string;
+    }) =>
+      endpoints.ko.act(koId, {
+        action: "decide-proposal",
+        proposalId: v.proposalId,
+        decision: v.decision,
+        expectedVersion: v.expectedVersion,
+        ...(v.note && v.note.trim().length > 0 ? { note: v.note.trim() } : {}),
+      }),
+    onSuccess: () => {
+      invalidate();
+      setAblehnung(null);
+      setErr(null);
     },
     onError: (e) => setErr(e instanceof ApiError ? e.message : t("state.error")),
   });
@@ -527,6 +840,9 @@ export function BibliothekLesen({
 
   const startEdit = (ko: KnowledgeObject): void => {
     setErr(null);
+    setEinreichLage(null);
+    setSperreGemeldet(false);
+    setPruefwegHaken(false);
     setCaptionRequest(null);
     setEdit({
       title: ko.title,
@@ -580,6 +896,38 @@ export function BibliothekLesen({
   // Titel und Fließtext gemeinsam gelesen; `undefined` heisst „das Original". Der Leser hat mit
   // „Original anzeigen" das letzte Wort, und ohne Variante gibt es diese Frage gar nicht.
   const gelesen = zeigtOriginal ? undefined : lesevariante;
+
+  // ================================================================================================
+  // JOB 3667 R3 · WELCHER DER DREI WEGE HIER GILT — DREI ABLEITUNGEN, KEINE VIERTE.
+  // ================================================================================================
+  //
+  // `einreichPflicht` (FALL 2) IST BEWUSST ENG: nur ein FREIGEGEBENES Objekt (`status === "validiert"`)
+  // ist geschützt. Genau so steht es an der Route (`ko-routes.ts:2062`) — ein Objekt, das nie
+  // freigegeben wurde oder nach einer Revision wieder offen steht, bearbeitet die Expertin weiter wie
+  // bisher. Eine breitere Regel hier als dort hiesse: die Fläche verweigert etwas, das der Server
+  // erlaubt, und nähme dem Erfassungs- und Nacharbeitsweg die Grundlage.
+  //
+  // `sperreGemeldet` STEHT MIT IN `pruefwegAktiv`, DAMIT DIE ABLEITUNG NICHT LÜGT: die Route hat den
+  // direkten Weg gerade abgewiesen. Was diese Fläche vorher glaubte, ist damit widerlegt — der
+  // Einreichweg ist der einzige, der noch offensteht.
+  //
+  // `offeneVorschlaege` LIEST `status`, NICHT DIE LISTENLÄNGE. Ein übernommener oder abgelehnter
+  // Vorschlag ist entschieden und steht nicht mehr zur Entscheidung an; er verschwindet aus dem Bild,
+  // sobald er es ist. Fehlt das Feld ganz (Lesewege, die es nicht mitschicken — s. `api/types.ts`),
+  // ist die Liste leer und die Fläche sagt NICHTS über Vorschläge, statt „keine" zu behaupten.
+  const einreichPflicht = ko.status === "validiert" && !darfFreigeben;
+  const pruefwegAktiv = einreichPflicht || sperreGemeldet || (darfFreigeben && pruefwegHaken);
+  const offeneVorschlaege = (ko.proposals ?? []).filter((p) => p.status === "offen");
+  // JOB 3667 R4 · BEFUND 2 — DER FALL, IN DEM DAS VERSTECKEN ALLEIN NICHT REICHT.
+  //
+  // Der Prüfweg kann MITTEN IM BEARBEITEN gelten: der Berechtigte setzt den Haken (Fall 3), oder die
+  // Route meldet 403 `PROPOSAL_REQUIRED`, nachdem jemand längst am Titel gearbeitet hat. Dann stehen
+  // Änderungen im Zustand, die der Einreich-Aufruf nicht mitnimmt. Sie wortlos verschwinden zu
+  // lassen wäre dasselbe irreführende „eingereicht" in Grün. Also werden sie BENANNT — mit denselben
+  // Feldnamen, die der Änderungsüberblick verwendet.
+  const nichtEingereichteAenderungen = koRevisionSummary(ko, edit).items.filter(
+    (i) => !EINGEREICHTE_FELDER.includes(i.id),
+  );
 
   const impact =
     conflicts.data === undefined
@@ -980,12 +1328,44 @@ export function BibliothekLesen({
         {edit ? (
           // ---- Bearbeiten: dasselbe Formular wie bisher, an derselben Stelle -------------------
           <div className="space-y-3">
-            <Field label={t("capture.fTitle")}>
-              <TextInput
-                value={edit.title}
-                onChange={(e) => setEdit({ ...edit, title: e.target.value })}
-              />
-            </Field>
+            {/* ==========================================================================
+                JOB 3667 R4 · BEFUND 2 — DAS FORMULAR SAGT, WAS DIESER WEG TRÄGT.
+                ==========================================================================
+
+                Im Prüfweg geht ein `KoProposal` hinaus, und der trägt `statement` und `bodyHtml`,
+                sonst nichts. Deshalb stehen die übrigen Felder hier NICHT als Eingabe: ein Titelfeld,
+                dessen Inhalt nie beim Server ankommt, wäre eine Scheinfunktion, und der Satz
+                „Eingereicht" darüber eine Unwahrheit über Felder, die der Server nie bekam.
+
+                DER ZWEITE SATZ nennt die Änderungen, die beim Umschalten schon im Zustand standen
+                (s. `nichtEingereichteAenderungen`) — sonst verschwänden sie wortlos mit ihren
+                Feldern. */}
+            {pruefwegAktiv ? (
+              <div
+                data-testid="bib-pruefweg-felder"
+                className="rounded-btn bg-hairline-soft px-3 py-2 text-[12.5px] leading-relaxed text-muted"
+              >
+                {t("ko.propose.onlyFields")}
+                {nichtEingereichteAenderungen.length > 0 ? (
+                  <span
+                    data-testid="bib-pruefweg-felder-verworfen"
+                    className="mt-1 block text-text"
+                  >
+                    {t("ko.propose.droppedFields", {
+                      felder: nichtEingereichteAenderungen.map((i) => t(i.labelKey)).join(", "),
+                    })}
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
+            {pruefwegAktiv ? null : (
+              <Field label={t("capture.fTitle")}>
+                <TextInput
+                  value={edit.title}
+                  onChange={(e) => setEdit({ ...edit, title: e.target.value })}
+                />
+              </Field>
+            )}
             <Field label={t("capture.fStatement")}>
               <textarea
                 value={edit.statement}
@@ -1064,38 +1444,44 @@ export function BibliothekLesen({
               />
               <BodyExtractPanel koId={koId} onAppend={runDocumentAppend} />
             </Field>
-            <ListEditor
-              label={t("capture.fConditions")}
-              items={edit.conditions}
-              onChange={(conditions) => setEdit({ ...edit, conditions })}
-            />
-            <ListEditor
-              label={t("capture.fMeasures")}
-              items={edit.measures}
-              onChange={(measures) => setEdit({ ...edit, measures })}
-            />
-            <TagEditor tags={edit.tags} onChange={(tags) => setEdit({ ...edit, tags })} />
-            <div className="grid grid-cols-2 gap-3">
-              <Field label={t("capture.fType")}>
-                <select
-                  value={edit.type}
-                  onChange={(e) => setEdit({ ...edit, type: e.target.value as KnowledgeType })}
-                  className="h-10 w-full rounded-input border border-hairline bg-surface px-2 text-sm"
-                >
-                  {KNOWLEDGE_TYPES.map((k) => (
-                    <option key={k} value={k}>
-                      {t(`ktype.${k}`)}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label={t("capture.fCategory")}>
-                <TextInput
-                  value={edit.category}
-                  onChange={(e) => setEdit({ ...edit, category: e.target.value })}
+            {/* Bedingungen, Maßnahmen, Schlagworte, Art und Kategorie: derselbe Grund wie beim
+                Titel — der Einreich-Aufruf trägt sie nicht, die Übernahme schreibt sie nicht. */}
+            {pruefwegAktiv ? null : (
+              <>
+                <ListEditor
+                  label={t("capture.fConditions")}
+                  items={edit.conditions}
+                  onChange={(conditions) => setEdit({ ...edit, conditions })}
                 />
-              </Field>
-            </div>
+                <ListEditor
+                  label={t("capture.fMeasures")}
+                  items={edit.measures}
+                  onChange={(measures) => setEdit({ ...edit, measures })}
+                />
+                <TagEditor tags={edit.tags} onChange={(tags) => setEdit({ ...edit, tags })} />
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label={t("capture.fType")}>
+                    <select
+                      value={edit.type}
+                      onChange={(e) => setEdit({ ...edit, type: e.target.value as KnowledgeType })}
+                      className="h-10 w-full rounded-input border border-hairline bg-surface px-2 text-sm"
+                    >
+                      {KNOWLEDGE_TYPES.map((k) => (
+                        <option key={k} value={k}>
+                          {t(`ktype.${k}`)}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label={t("capture.fCategory")}>
+                    <TextInput
+                      value={edit.category}
+                      onChange={(e) => setEdit({ ...edit, category: e.target.value })}
+                    />
+                  </Field>
+                </div>
+              </>
+            )}
             <KoRevisionSummary original={ko} edit={edit} />
             {/* SCRUM-344: nach einer Übernahme aus dem Studio ehrlich klarmachen, dass der Inhalt
                 im Revisionsentwurf liegt — Speichern erzeugt eine neue Version und eine erneute
@@ -1128,20 +1514,145 @@ export function BibliothekLesen({
                 {err}
               </div>
             ) : null}
-            <div className="flex gap-2">
-              <Button
-                variant="primary"
-                disabled={
-                  save.isPending ||
-                  appendDocument.isPending ||
-                  appendUnclear ||
-                  edit.title.trim().length === 0
-                }
-                onClick={() => save.mutate()}
+            {/* ==========================================================================
+                JOB 3667 R3 · DIE ACCOUNTREGEL AM BEDIENORT — DREI FÄLLE, DREI BILDER.
+                ==========================================================================
+
+                FALL 2 (`einreichPflicht`) und die nachträglich gemeldete Sperre: der Satz steht, und
+                er sagt die Folge, nicht bloss das Verbot — der Text wird eingereicht und gilt erst
+                nach fremder Freigabe. KEIN HAKEN daneben: hier ist die Prüfung Pflicht, und ein
+                abwählbarer Haken wäre die Unwahrheit.
+
+                FALL 3 (`darfFreigeben`): der Haken. NUR hier ist etwas freiwillig. */}
+            {einreichPflicht || sperreGemeldet ? (
+              <p
+                data-testid="bib-einreichen-pflicht"
+                className="rounded-btn bg-trust-warn-bg px-3 py-2 text-[12.5px] leading-relaxed text-trust-warn-text"
               >
-                {t("ko.saveEdit")}
-              </Button>
-              <Button variant="ghost" onClick={() => setEdit(null)}>
+                {t("ko.propose.mustReview")}
+              </p>
+            ) : darfFreigeben ? (
+              <label
+                data-testid="bib-pruefweg-haken"
+                className="flex items-center gap-2 text-[12.5px] text-muted"
+              >
+                <input
+                  type="checkbox"
+                  checked={pruefwegHaken}
+                  onChange={(e) => {
+                    setPruefwegHaken(e.target.checked);
+                    // Die Auskunft des vorigen Versuchs gehört nicht zum neu gewählten Weg.
+                    setEinreichLage(null);
+                  }}
+                />
+                {t("ko.propose.optIn")}
+              </label>
+            ) : null}
+            {/* Der EINE Satz über den letzten Einreichversuch — samt der Griffe, die zu seiner Lage
+                gehören. Er steht GETRENNT von `err` oben: „eingereicht" ist kein Fehler, und eine
+                Sperre ist keine gescheiterte Eingabe. */}
+            {einreichLage && einreichLage.art !== "pflicht" ? (
+              <div
+                data-testid="bib-einreichen-lage"
+                data-lage={einreichLage.art}
+                className={cx(
+                  EINREICH_ZEILE,
+                  einreichLage.art === "eingereicht"
+                    ? EINREICH_GUT
+                    : einreichLage.art === "stale"
+                      ? EINREICH_WARN
+                      : EINREICH_SCHLECHT,
+                )}
+              >
+                {einreichLage.art === "eingereicht"
+                  ? t("ko.propose.done")
+                  : einreichLage.art === "stale"
+                    ? einreichLage.version === null
+                      ? t("ko.propose.stale")
+                      : t("ko.propose.staleVersion", { n: String(einreichLage.version) })
+                    : einreichLage.text}
+                {/* LIEFERUNG 7: ein 409 verschluckt die Arbeit nicht. Der Text steht unverändert im
+                    Formular darüber; hier stehen die beiden Wege, die der Mensch WÄHLEN kann —
+                    nachlesen, oder auf der jetzt gültigen Fassung erneut einreichen. Anpassen
+                    braucht keinen Knopf: er tippt einfach weiter. */}
+                {einreichLage.art === "stale" ? (
+                  <span className="mt-1.5 flex gap-2">
+                    <button
+                      type="button"
+                      data-testid="bib-einreichen-neu-lesen"
+                      onClick={() => {
+                        void query.refetch();
+                        setEinreichLage(null);
+                      }}
+                      className="rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-text hover:bg-hairline-soft"
+                    >
+                      {t("ko.propose.reload")}
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="bib-einreichen-trotzdem"
+                      disabled={einreichen.isPending}
+                      onClick={() =>
+                        einreichen.mutate({
+                          // Die Fassung, die JETZT im Bild steht — nicht die, auf der der
+                          // gescheiterte Versuch beruhte.
+                          baseVersion: ko.version,
+                          statement: edit.statement,
+                          bodyHtml: edit.bodyHtml,
+                          bestehenderRumpf: ko.bodyHtml ?? null,
+                        })
+                      }
+                      className="rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-text hover:bg-hairline-soft"
+                    >
+                      {t("ko.propose.again")}
+                    </button>
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
+            <div className="flex gap-2">
+              {/* DER GRIFF WECHSELT MIT DEM WEG, UND ES GIBT IMMER GENAU EINEN.
+
+                  Wo der Einreichweg gilt, wird „Speichern" NICHT angeboten: der Server würde ihn
+                  abweisen (403 `PROPOSAL_REQUIRED`), und ein Knopf, der nur zu einer Absage führen
+                  kann, ist eine Scheinfunktion. Umgekehrt steht „Einreichen" nicht daneben, wo direkt
+                  gespeichert werden darf — sonst wäre die Pflicht aus Fall 2 eine Auswahl. */}
+              {pruefwegAktiv ? (
+                <Button
+                  variant="primary"
+                  data-testid="bib-einreichen"
+                  disabled={
+                    einreichen.isPending ||
+                    appendDocument.isPending ||
+                    appendUnclear ||
+                    edit.statement.trim().length === 0
+                  }
+                  onClick={() =>
+                    einreichen.mutate({
+                      baseVersion: ko.version,
+                      statement: edit.statement,
+                      bodyHtml: edit.bodyHtml,
+                      bestehenderRumpf: ko.bodyHtml ?? null,
+                    })
+                  }
+                >
+                  {t("ko.propose.submit")}
+                </Button>
+              ) : (
+                <Button
+                  variant="primary"
+                  disabled={
+                    save.isPending ||
+                    appendDocument.isPending ||
+                    appendUnclear ||
+                    edit.title.trim().length === 0
+                  }
+                  onClick={() => save.mutate()}
+                >
+                  {t("ko.saveEdit")}
+                </Button>
+              )}
+              <Button variant="ghost" onClick={bearbeitenBeenden}>
                 {t("ko.cancelEdit")}
               </Button>
             </div>
@@ -1168,6 +1679,170 @@ export function BibliothekLesen({
               >
                 {t("lesevariante.abrufFehler")}
               </p>
+            ) : null}
+            {/* ==========================================================================
+                JOB 3667 R3 · DER KREIS VON FALL 2 — DER BERECHTIGTE ENTSCHEIDET IM BROWSER.
+                ==========================================================================
+
+                ER STEHT NUR, WO ES ETWAS ZU ENTSCHEIDEN GIBT: ohne Freigaberecht und ohne offenen
+                Vorschlag steht hier NICHTS. Kein „keine Vorschläge" — das wäre eine Auskunft über
+                eine Liste, die manche Lesewege gar nicht mitschicken (s. `api/types.ts`).
+
+                WAS ENTSCHIEDEN WIRD, IST DER EINGEREICHTE TEXT. Hier steht `v.statement` aus dem
+                Vorschlag, und der Aufruf trägt NUR dessen Kennung — den Inhalt nimmt der Dienst aus
+                dem gespeicherten Vorschlag. Was man liest, ist deshalb genau das, was gilt, wenn man
+                übernimmt (Lieferung 8).
+
+                AM EIGENEN VORSCHLAG STEHT KEIN KNOPF, sondern der Grund. Die Regel selbst hält der
+                Server (`PROPOSAL_OWN`); diese Fläche bietet nur nichts an, was sicher abgewiesen
+                würde. Ein ausgegrauter Knopf wäre die Scheinfunktion, ein fehlender ohne Satz ein
+                stilles Verschwinden. */}
+            {darfFreigeben && offeneVorschlaege.length > 0 ? (
+              <section
+                data-testid="bib-vorschlaege"
+                className="rounded-card border border-hairline bg-hairline-soft/40 p-3"
+              >
+                <h3 className="text-[12.5px] font-semibold text-text">
+                  {t("ko.propose.openTitle", { n: String(offeneVorschlaege.length) })}
+                </h3>
+                <ul className="mt-2 space-y-2.5">
+                  {offeneVorschlaege.map((v) => {
+                    const eigen = Boolean(user?.id) && v.author === user?.id;
+                    // Was die Übernahme mit dem Fließtext TUT — gerechnet, bevor ein Knopf steht.
+                    const rumpf = rumpfLage(v, ko.bodyHtml);
+                    // Und WELCHER Fließtext danach im Eintrag stünde. „bleibt" zeigt den jetzigen:
+                    // er ist das Ergebnis der Übernahme, nicht bloss der Stand davor (Lieferung 2).
+                    const rumpfErgebnis =
+                      rumpf === "neu" || rumpf === "gleich"
+                        ? (v.bodyHtml ?? "")
+                        : rumpf === "bleibt"
+                          ? (ko.bodyHtml ?? "")
+                          : null;
+                    return (
+                      <li
+                        key={v.id}
+                        data-testid="bib-vorschlag"
+                        data-vorschlag-id={v.id}
+                        data-eigen={eigen ? "ja" : "nein"}
+                        className="border-hairline border-t pt-2.5 first:border-t-0 first:pt-0"
+                      >
+                        <p className="text-[11.5px] text-muted">
+                          {nameOf(v.author)} ·{" "}
+                          {t("ko.propose.fromVersion", { n: String(v.baseVersion) })}
+                          {v.origin ? ` · ${v.origin}` : ""}
+                        </p>
+                        <p
+                          data-testid="bib-vorschlag-text"
+                          className="mt-1 whitespace-pre-wrap text-[13px] leading-relaxed text-text"
+                        >
+                          {v.statement}
+                        </p>
+                        {/* DER FLIESSTEXT NACH DER ÜBERNAHME — DAS ZWEITE, WAS SIE SCHREIBT.
+
+                            Er steht IMMER da, in jeder der fünf Lagen, und der Satz sagt die Folge
+                            statt nur den Befund: „ersetzt den jetzigen", „gleicht dem jetzigen",
+                            „der jetzige bleibt", „entfernt den jetzigen", „es gibt keinen". Ohne
+                            diesen Block genehmigte der Knopf darunter etwas, das niemand gesehen hat.
+
+                            GEZEIGT WIRD DAS ERGEBNIS, NICHT DER VORSCHLAG (R5, Lieferung 2): bei
+                            „bleibt" bringt der Vorschlag keinen Rumpf mit, und der Eintrag behält
+                            seinen — also steht genau dieser da. Vorschau und Übernahme sagen
+                            denselben Satz, weil sie dieselbe Regel rechnen.
+
+                            GEZEICHNET WIRD MIT `SanitizedHtml` — derselbe Baustein, der den
+                            Fließtext des Eintrags zeichnet. Benannte Prüflücke: die Säuberung der
+                            Fläche und die des Servers (`cleanBody`) sind zwei Verfahren; was der
+                            Server behielte und diese Fläche verwirft, stünde hier nicht. */}
+                        <div
+                          data-testid="bib-vorschlag-rumpf"
+                          data-rumpf={rumpf}
+                          className="mt-1.5"
+                        >
+                          <p className="text-[11.5px] leading-relaxed text-muted">
+                            {t(`ko.propose.body.${rumpf}`)}
+                          </p>
+                          {rumpfErgebnis === null ? null : (
+                            <SanitizedHtml
+                              html={rumpfErgebnis}
+                              className="prose-kw mt-1 rounded-card border border-hairline bg-surface p-2 text-[12.5px]"
+                            />
+                          )}
+                        </div>
+                        {eigen ? (
+                          <p
+                            data-testid="bib-vorschlag-eigen"
+                            className="mt-1.5 text-[11.5px] leading-relaxed text-muted"
+                          >
+                            {t("ko.propose.own")}
+                          </p>
+                        ) : ablehnung?.id === v.id ? (
+                          // Die Ablehnung SCHREIBT IHREN GRUND. Ohne ihn wäre „abgelehnt" eine
+                          // Tatsache ohne Auskunft — und der Einreicher erführe nie, warum.
+                          <div className="mt-1.5 space-y-1.5">
+                            <textarea
+                              data-testid="bib-vorschlag-grund"
+                              value={ablehnung.grund}
+                              onChange={(e) => setAblehnung({ id: v.id, grund: e.target.value })}
+                              rows={2}
+                              className={textareaCls}
+                              placeholder={t("ko.propose.rejectReason")}
+                            />
+                            <div className="flex gap-2">
+                              <Button
+                                variant="ghost"
+                                data-testid="bib-vorschlag-ablehnen-ab"
+                                disabled={
+                                  entscheiden.isPending || ablehnung.grund.trim().length === 0
+                                }
+                                onClick={() =>
+                                  entscheiden.mutate({
+                                    proposalId: v.id,
+                                    decision: "ablehnen",
+                                    expectedVersion: ko.version,
+                                    note: ablehnung.grund,
+                                  })
+                                }
+                              >
+                                {t("ko.propose.rejectConfirm")}
+                              </Button>
+                              <Button variant="ghost" onClick={() => setAblehnung(null)}>
+                                {t("ko.cancelEdit")}
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="mt-1.5 flex gap-2">
+                            <Button
+                              variant="primary"
+                              data-testid="bib-vorschlag-uebernehmen"
+                              disabled={entscheiden.isPending}
+                              onClick={() =>
+                                entscheiden.mutate({
+                                  proposalId: v.id,
+                                  decision: "uebernehmen",
+                                  // Die Fassung, die dieser Mensch im Bild hat. Hat ein Fremder
+                                  // dazwischen geschrieben, gilt die Freigabe nicht (409).
+                                  expectedVersion: ko.version,
+                                })
+                              }
+                            >
+                              {t("ko.propose.take")}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              data-testid="bib-vorschlag-ablehnen"
+                              disabled={entscheiden.isPending}
+                              onClick={() => setAblehnung({ id: v.id, grund: "" })}
+                            >
+                              {t("ko.propose.reject")}
+                            </Button>
+                          </div>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </section>
             ) : null}
             {/* JOB 3108 · UX-03 — DER KOPF SAGT, WO QUELLEN UND ANHÄNGE LIEGEN, UND FÜHRT HIN.
                 Zwei echte `<button>`: damit wirken Tabulator, Eingabe- und Leertaste ohne

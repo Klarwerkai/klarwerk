@@ -57,9 +57,11 @@ import {
   CSS_DATEI,
   JS_DATEI,
   type Probeschnitt,
+  RUECKWEG_DATEI,
   bloeckeVon,
   bytes,
   inline,
+  rueckwegQuelle,
   schneideDrei,
   taskpaneQuelle,
   zeilen,
@@ -68,8 +70,11 @@ import {
 const FASSUNG = "1.0.0.1";
 const CSS_PFAD = `/word-addin/${CSS_DATEI}`;
 const JS_PFAD = `/word-addin/${JS_DATEI}`;
+/** JOB 3667 R8: die zweite Datei der ECHTEN Auslieferung — kein Ergebnis dieses Probeschnitts. */
+const RUECKWEG_PFAD = `/word-addin/${RUECKWEG_DATEI}`;
 
 const QUELLE = taskpaneQuelle();
+const RUECKWEG_QUELLE = rueckwegQuelle();
 const SCHNITT: Probeschnitt = schneideDrei(QUELLE);
 
 const aufraeumenDirs: string[] = [];
@@ -79,19 +84,30 @@ afterAll(() => {
   }
 });
 
-/** Ein `dist`-Abbild wie aus `vite build` — genau die Dateien, die der Fall stellen will. */
+/**
+ * Ein `dist`-Abbild wie aus `vite build` — genau die Dateien, die der Fall stellen will.
+ *
+ * JOB 3667 (14.09.2026): `rueckweg.js` liegt IMMER dabei, vor den Dateien des Falls (ein
+ * gleichnamiger Eintrag gewinnt also weiterhin). Sie ist kein Ergebnis dieses Probeschnitts,
+ * sondern eine Datei der echten Auslieferung — `taskpane.html` lädt sie in beiden Fassungen
+ * gleich. Fehlte sie, verglichen die Fälle unten zwei Fenster OHNE Rückweg, und der Unterschied,
+ * den sie messen wollen, wäre von einem ReferenceError überdeckt.
+ */
 function dist(dateien: Record<string, string>): string {
   const dir = mkdtempSync(join(tmpdir(), "kw-probeschnitt-"));
   aufraeumenDirs.push(dir);
   mkdirSync(join(dir, "word-addin"), { recursive: true });
   writeFileSync(join(dir, "index.html"), "<!doctype html><title>SPA</title>");
-  for (const [name, inhalt] of Object.entries(dateien)) {
+  for (const [name, inhalt] of Object.entries({
+    [RUECKWEG_DATEI]: RUECKWEG_QUELLE,
+    ...dateien,
+  })) {
     writeFileSync(join(dir, "word-addin", name), inhalt);
   }
   return dir;
 }
 
-/** Die vollständige Drei-Datei-Fassung. */
+/** Die vollständige Fassung nach dem Probeschnitt. */
 function distMitSchnitt(schnitt: Probeschnitt = SCHNITT): string {
   return dist({
     "taskpane.html": schnitt.html,
@@ -133,11 +149,16 @@ describe("JOB 3014 · A — der Probeschnitt ist eine reine Textoperation", () =
     expect(wiederEingesetzt).toBe(QUELLE);
   });
 
-  it("A2 · die Rest-Seite ist um Größenordnungen kleiner und trägt genau zwei Verweise", () => {
+  it("A2 · die Rest-Seite ist um Größenordnungen kleiner und trägt die Verweise des Schnitts", () => {
     expect(zeilen(SCHNITT.html)).toBeLessThan(500);
     expect(bytes(SCHNITT.html)).toBeLessThan(bytes(QUELLE) / 5);
     expect(SCHNITT.html).toContain(`<link rel="stylesheet" href="${CSS_DATEI}" />`);
     expect(SCHNITT.html).toContain(`<script src="${JS_DATEI}"></script>`);
+    // JOB 3667 (14.09.2026): ein DRITTER Verweis, und er stammt nicht aus diesem Probeschnitt —
+    // `rueckweg.js` steht schon in der Quelle, weil der Abschnitt KW-RUECKWEG dorthin gewandert
+    // ist (s. schnittflaechen.test.ts B3). Er steht hier, damit die Zahl der Verweise nicht
+    // unbemerkt wächst: wer einen vierten anlegt, sieht diese Stelle.
+    expect(SCHNITT.html).toContain(`<script src="${RUECKWEG_DATEI}?v=`);
     // Kein Inline-Code mehr in der Seite — und office.js steht unverändert davor.
     expect(SCHNITT.html).not.toContain("<style>");
     expect(SCHNITT.html.indexOf("appsforoffice.microsoft.com")).toBeGreaterThan(0);
@@ -147,9 +168,16 @@ describe("JOB 3014 · A — der Probeschnitt ist eine reine Textoperation", () =
   });
 
   it("A3 · der Fassungsplatzhalter bleibt in der HTML-Datei und wandert NICHT mit", () => {
-    expect(SCHNITT.html.split(KLARA_FASSUNG_PLATZHALTER)).toHaveLength(2);
+    // ZWEI Vorkommen, beide benannt: das Meta `kw-loaded-version` (JOB 1077, „ist meine Seite noch
+    // die, die ausgeliefert wird") und seit JOB 3667 die Cachekennung am Verweis auf `rueckweg.js`.
+    // Beide stempelt derselbe `stempleFassung`-Lauf; keiner darf in die geschnittenen Dateien
+    // wandern, denn die gehen NICHT durch die Stempelroute (sie kämen roh beim Browser an).
+    expect(SCHNITT.html.split(KLARA_FASSUNG_PLATZHALTER)).toHaveLength(3);
+    expect(SCHNITT.html).toContain(`content="${KLARA_FASSUNG_PLATZHALTER}"`);
+    expect(SCHNITT.html).toContain(`${RUECKWEG_DATEI}?v=${KLARA_FASSUNG_PLATZHALTER}`);
     expect(SCHNITT.js).not.toContain(KLARA_FASSUNG_PLATZHALTER);
     expect(SCHNITT.css).not.toContain(KLARA_FASSUNG_PLATZHALTER);
+    expect(RUECKWEG_QUELLE).not.toContain(KLARA_FASSUNG_PLATZHALTER);
   });
 });
 
@@ -251,16 +279,19 @@ describe("JOB 3014 · C — was HTML, JS und CSS an Kopfzeilen tragen", () => {
     // Beide Geschwister sind same-origin und RELATIV verlinkt — 'self' deckt sie. Gemessen an den
     // wirklichen Verweisen der geschnittenen Seite, nicht an einer Textprobe: die einzige absolute
     // Skriptquelle bleibt office.js, und sie steht bereits in der CSP oben.
+    // JOB 3667 R8: `rueckweg.js` steht als DRITTE Quelle mit dazwischen — sie kommt nicht aus
+    // diesem Probeschnitt, sondern schon aus der Quelle, und sie ist ebenfalls relativ.
     const skriptquellen = [...SCHNITT.html.matchAll(/<script\s+src="([^"]+)"/g)].map((m) => m[1]);
     expect(skriptquellen).toEqual([
       "https://appsforoffice.microsoft.com/lib/1/hosted/office.js",
+      `${RUECKWEG_DATEI}?v=${KLARA_FASSUNG_PLATZHALTER}`,
       JS_DATEI,
     ]);
     const stilquellen = [
       ...SCHNITT.html.matchAll(/<link\s+rel="stylesheet"\s+href="([^"]+)"/g),
     ].map((m) => m[1]);
     expect(stilquellen).toEqual([CSS_DATEI]);
-    for (const ref of [JS_DATEI, CSS_DATEI]) {
+    for (const ref of [JS_DATEI, CSS_DATEI, RUECKWEG_DATEI]) {
       expect(ref, `${ref} ist nicht relativ`).not.toMatch(/^[a-z]+:|^\/\//);
     }
   });
@@ -362,15 +393,28 @@ describe("JOB 3014 · D — derselbe Startzustand, geschnitten wie ungeschnitten
     const original = await laufAus(DIST_ORIGINAL());
     const geschnitten = await laufAus(distMitSchnitt());
 
-    // DER UNTERSCHIED, DEN ES GEBEN MUSS: der Probeschnitt lädt zwei Dateien nach, das Original
-    // nicht. Ohne diesen Fall wäre nicht belegt, dass hier überhaupt zwei verschiedene Seiten
-    // laufen — genau BENs Befund an Runde 1.
-    expect(original.geholt).toEqual(["https://appsforoffice.microsoft.com/lib/1/hosted/office.js"]);
-    expect(geschnitten.geholt).toEqual([
-      `http://localhost${CSS_PFAD}`,
-      `http://localhost${JS_PFAD}`,
-      "https://appsforoffice.microsoft.com/lib/1/hosted/office.js",
-    ]);
+    // DER UNTERSCHIED, DEN ES GEBEN MUSS: der Probeschnitt lädt ZWEI WEITERE Dateien nach, das
+    // Original nicht. Ohne diesen Fall wäre nicht belegt, dass hier überhaupt zwei verschiedene
+    // Seiten laufen — genau BENs Befund an Runde 1.
+    // JOB 3667 R8: `rueckweg.js` holen BEIDE Fassungen, denn sie steht schon in der Quelle — sie
+    // ist gerade KEIN Unterschied und darf deshalb auf beiden Seiten stehen. Verglichen wird ab
+    // hier die SORTIERTE Menge: die Reihenfolge, in der jsdom seine Ressourcen anfordert, ist keine
+    // Zusage dieses Falls (sie war es auch vorher nicht — sie stand nur zufällig fest), und ein
+    // Pin auf sie hätte hier eine Wahrheit behauptet, die niemand gemessen hat.
+    expect([...original.geholt].sort()).toEqual(
+      [
+        `http://localhost${RUECKWEG_PFAD}?v=${FASSUNG}`,
+        "https://appsforoffice.microsoft.com/lib/1/hosted/office.js",
+      ].sort(),
+    );
+    expect([...geschnitten.geholt].sort()).toEqual(
+      [
+        `http://localhost${CSS_PFAD}`,
+        `http://localhost${RUECKWEG_PFAD}?v=${FASSUNG}`,
+        `http://localhost${JS_PFAD}`,
+        "https://appsforoffice.microsoft.com/lib/1/hosted/office.js",
+      ].sort(),
+    );
 
     // DER UNTERSCHIED, DEN ES NICHT GEBEN DARF: alles, was ein Mensch am Panel sieht und tut.
     expect(anders(original.abdruck, geschnitten.abdruck)).toEqual([]);

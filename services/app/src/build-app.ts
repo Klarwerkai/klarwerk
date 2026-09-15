@@ -1457,6 +1457,15 @@ export const ERLAUBTE_FEHLERCODES: ReadonlySet<string> = new Set([
   "INVALID_STATUS",
   "INVALID_TYPE",
   "INVALID_UPLOAD_LIMITS",
+  // JOB 3667 (WORD-RÜCKWEG): der Code des BEDINGTEN Schreibzugriffs auf ein Wissensobjekt
+  // (`KoService.pruefeErwarteteVersion`, services/knowledge-object/src/service.ts:3616). Er darf ins
+  // Protokoll: er trägt keine Nutzertexte und keine Kennung, nur zwei Versionszahlen, und er geht
+  // über `http.ts` als 409 ohnehin an den Client.
+  // WAS DER NUTZER SIEHT, und der nächste Schritt steht darin: „Das Wissensobjekt wurde inzwischen
+  // geändert (jetzt Version <n>, erwartet <m>). Es wurde nichts überschrieben." — der Mensch liest
+  // neu und entscheidet, ob er anpasst oder trotzdem einreicht; sein geschriebener Text bleibt dabei
+  // stehen (Lieferung 7).
+  "KO_STALE",
   // JOB 3618: ENTSCHEIDUNG — darf ins Protokoll (keine Nutzertexte, keine Kennung, geht über
   // `http.ts` ohnehin als Antwortcode hinaus). Vom Wächter unten (`build-app.test.ts`) verlangt;
   // Befund und Begründung stehen im Kommentarblock in `services/capture/src/service.ts`.
@@ -1471,6 +1480,22 @@ export const ERLAUBTE_FEHLERCODES: ReadonlySet<string> = new Set([
   "NO_FORMULIERER",
   "NO_INPUT",
   "NO_SOURCES",
+  // JOB 3667 (WORD-RÜCKWEG) · die drei Codes des Entscheidungswegs über einen an ein Wissensobjekt
+  // GEBUNDENEN Änderungsvorschlag (`KoService.decideProposal`, service.ts:3908, :3914, :3920). Alle
+  // drei dürfen ins Protokoll: sie nennen den Zweig, nicht den Inhalt — kein Vorschlagstext, keine
+  // Kennung des Einreichers —, und sie gehen über `http.ts` ohnehin als Antwortcode hinaus.
+  //
+  // JEDER TRÄGT DEN NÄCHSTEN SCHRITT, weil der Nutzer genau diesen Satz zu sehen bekommt:
+  //   · PROPOSAL_DECIDED   „Über diesen Änderungsvorschlag ist bereits entschieden (<Stand>)."
+  //                        → die Liste neu laden; ein zweites Mal wirkt derselbe Griff nicht.
+  //   · PROPOSAL_NOT_FOUND „Dieser Änderungsvorschlag gehört nicht zu diesem Wissensobjekt."
+  //                        → das richtige Objekt öffnen; entschieden wird nur am gebundenen Objekt.
+  //   · PROPOSAL_OWN       „Den eigenen Änderungsvorschlag gibt niemand selbst frei — er muss von
+  //                        jemand anders geprüft werden." → jemand anderen bitten. Das ist Pedis
+  //                        Regel, nicht eine Einstellung: die Zweitprüfung ist eine FREMDE Prüfung.
+  "PROPOSAL_DECIDED",
+  "PROPOSAL_NOT_FOUND",
+  "PROPOSAL_OWN",
   // JOB 3655 R2: der Code, mit dem der Schreibweg der KI-Zuordnung antwortet, solange
   // KLARWERK_REASONER_POLICY gesetzt ist (reasoner-routes.ts:699). Er stand bisher nur als
   // Antwortfeld im Quelltext und wurde vom Sammler nicht erhoben; der Startbericht führt ihn jetzt

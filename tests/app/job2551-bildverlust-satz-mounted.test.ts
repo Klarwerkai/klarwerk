@@ -62,6 +62,25 @@ import { describe, expect, it } from "vitest";
 const WURZEL = resolve(__dirname, "..", "..");
 const TASKPANE = resolve(WURZEL, "apps/web/public/word-addin/taskpane.html");
 const HTML = readFileSync(TASKPANE, "utf8");
+/**
+ * JOB 3667 R8 (14.09.2026): das Fenster wird aus ZWEI Dateien ausgeliefert — `taskpane.html` laedt
+ * `rueckweg.js` als klassisches Skript unmittelbar vor seinem Inline-Skript. Dieses jsdom laeuft
+ * mit `runScripts: "dangerously"`, aber OHNE `resources: "usable"`; ein `<script src>` bliebe
+ * deshalb stumm, `rwZeichnen` fehlte, und `renderCapture` braeche mit ReferenceError ab.
+ *
+ * Statt die Ressourcenladung einzuschalten (das zoege auch office.js aus dem Netz nach) wird der
+ * Verweis durch den INHALT derselben Datei ersetzt: gleiche Stelle, gleiche Reihenfolge, kein
+ * Egress. Die Datei enthaelt nachweislich kein `</script`, der Ersatz kann die Seite also nicht
+ * vorzeitig schliessen (gemessen: 0 Treffer).
+ */
+const RUECKWEG = resolve(WURZEL, "apps/web/public/word-addin/rueckweg.js");
+const SEITE = HTML.replace(
+  /<script src="rueckweg\.js[^"]*"><\/script>/,
+  () => `<script>${readFileSync(RUECKWEG, "utf8")}</script>`,
+);
+if (SEITE === HTML) {
+  throw new Error("taskpane.html: der Verweis auf rueckweg.js ist nicht auffindbar");
+}
 
 // Der Gate-tsc laeuft ohne DOM-lib (`tsconfig.json`: `lib: ["ES2022"]`), und `@types/jsdom` gibt es
 // hier nicht. Deshalb jsdom und die Knoten ueber schmale Struktur-Typen — dasselbe Muster wie
@@ -141,7 +160,7 @@ interface Notiz {
  * Sprachverschiedenheit mit und haette einen geleerten Schluessel verdeckt.
  */
 async function notizen(sprache: Sprache, zahlen: number[]): Promise<Notiz[]> {
-  const dom = new JSDOM(HTML, {
+  const dom = new JSDOM(SEITE, {
     runScripts: "dangerously",
     url: "https://app.klarwerk.ai/word-addin/taskpane.html",
     beforeParse(window) {
@@ -298,7 +317,7 @@ describe("JOB 2551 · der Bildverlust-Satz am laufenden Panel", () => {
   it("B3a · nichts fehlt → KEIN Satz: `bilderSatz(0, 0)` ist null, die Zeile bleibt leer", async () => {
     // JOB 3057 K2 (§5.5): der Satz erscheint NUR im Fall. Ohne Verlust darf die Karte keinen
     // Bilder-Satz zeigen — sonst waere die Ergebniszeile eine Dauerwarnung.
-    const dom = new JSDOM(HTML, {
+    const dom = new JSDOM(SEITE, {
       runScripts: "dangerously",
       url: "https://app.klarwerk.ai/word-addin/taskpane.html",
       beforeParse(window) {
@@ -329,7 +348,7 @@ describe("JOB 2551 · der Bildverlust-Satz am laufenden Panel", () => {
     // `prepared.usedHtml && prepared.undeliveredImages > 0`. Faellt Word auf reinen Text zurueck,
     // ist NICHT dieser Satz zustaendig, sondern `sendPlainFallback`. Wer den einen aendert, aendert
     // also nicht den anderen.
-    const dom = new JSDOM(HTML, {
+    const dom = new JSDOM(SEITE, {
       runScripts: "dangerously",
       url: "https://app.klarwerk.ai/word-addin/taskpane.html",
       beforeParse(window) {

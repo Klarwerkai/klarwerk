@@ -49,6 +49,8 @@ import { describe, expect, it } from "vitest";
 
 const WURZEL = join(__dirname, "..", "..");
 const TASKPANE = join(WURZEL, "apps", "web", "public", "word-addin", "taskpane.html");
+/** JOB 3667 R8: die zweite ausgelieferte Datei des Fensters (Abschnitt KW-RUECKWEG). */
+const RUECKWEG = join(WURZEL, "apps", "web", "public", "word-addin", "rueckweg.js");
 
 function quelle(): string {
   return readFileSync(TASKPANE, "utf8");
@@ -2265,11 +2267,280 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // GEMESSEN: tests/k2b-nebenlauf (15 Faelle, A1 auf dem Basisstand rot; A3b und N5 neu in
     // Runde 2), I17 im Funktionsinventar, die Abnahmepfade des Auftrags und der Waechterlauf.
     // ZWISCHENHASH (Stand Runde 1): `5809612dca9295f9e15304c71e697dc1e8a88ba4a8ceeac51fbb6eca32685794`.
-    const PIN = "c1f5a9fc50b27e77a43cc946dff43dc57cfdcc9b2d4d1d70fdc6bad06958b53a";
+    // ============================================================================================
+    // JOB 3667 · WORD-RUECKWEG (12.09.2026) — AUSLIEFERUNGSFOLGEN GEPRUEFT, BEVOR DER PIN WANDERTE.
+    // ============================================================================================
+    // VORHERHASH taskpane.html (Stand JOB 3594 K2b):
+    // `c1f5a9fc50b27e77a43cc946dff43dc57cfdcc9b2d4d1d70fdc6bad06958b53a`.
+    //
+    // ANLASS: wer in Word etwas aenderte und zurueckgab, erzeugte ein ZWEITES Wissensobjekt — jeder
+    // Weg aus dem Fenster legte Neues an, die Zahl der PUT-Aufrufe des Add-ins war null. Dieser Job
+    // baut den Rueckweg auf DASSELBE Objekt.
+    //
+    // GEAENDERT wurde an vier Stellen: (1) Stilregeln fuer den neuen Kasten (#rw-*), (2) sein Markup
+    // in #section-capture zwischen Markierungskarte und Feldblock, (3) 23 Woerterbuch-Schluessel je
+    // Sprache (rw*), (4) EIN neuer Skriptblock KW-RUECKWEG-START/-END samt vier Anschlusszeilen
+    // (renderCapture, renderCaptureDubletten, setLang, checkSession).
+    //
+    // DIE AUSLIEFERUNGSFRAGEN, einzeln beantwortet:
+    //   · Abrufziel:  EINES NEU (15 → 16). `/api/kos/:id` ueber EINE `fetch(`-Stelle (`rwRuf`) fuer
+    //                 alle drei Aufrufe des Wegs. Die ausfuehrliche Antwort (CSP/Recht/Manifest/
+    //                 Nutzlast/Frequenz) steht bei BEKANNTE_ABRUFZIELE in
+    //                 tests/app/mega69-klara-merkmale.test.ts — dort, wo M7 die Frage stellt.
+    //   · CSP:        unveraendert. `connect-src 'self'` deckt den eigenen Ursprung; kein fremder.
+    //   · Recht:      KEINES zusaetzlich. `revise` verlangt `ko.create` wie `POST /api/drafts`,
+    //                 `comment` nur eine Sitzung (FR-KO-06), der GET `ko.read` wie der Fragen-Weg,
+    //                 und `admin-validate` `users.manage` — alle vier Rechte gibt es seit langem,
+    //                 keines kommt hinzu. WELCHEN der Wege das Fenster anbietet, entscheidet die
+    //                 Accountregel (`KW_RW_FREIGABE_ROLLEN`, gespiegelt gegen ROLE_PERMISSIONS in
+    //                 tests/word-rueckweg/accountregel-spiegel.test.ts); die Route bleibt Autoritaet.
+    //   · Manifest:   unveraendert. Keine neue Office-API — gelesen wird die Markierung ueber
+    //                 `getSelectedDataAsync`, genau wie am Sendeweg. KEIN Sideload noetig.
+    //   · Nutzlast:   neu ist der Revise-Koerper (bodyHtml, statement, expectedVersion) unter
+    //                 DEMSELBEN Budget wie der Entwurfsweg (WORD_ADDIN_BODY_BUDGET_BYTES, mit
+    //                 Bilder-Rueckfall). Die Nutzlast des Entwurfswegs ist unberuehrt.
+    //   · Alter Server: einer ohne `expectedVersion` ignoriert das Feld und schreibt unbedingt —
+    //                 deshalb sitzt der Schutz SERVERSEITIG (ko-routes.ts, 409 `KO_STALE`) und nicht
+    //                 nur im Fenster. Das Fenster kann ihn nicht allein herstellen.
+    //   · Bestehende Flaechen: unberuehrt. Der Kasten steht NUR im Bild, wenn die Dublettenpruefung
+    //                 derselben Markierung Kandidaten gefunden hat; ohne sie ist er `hidden` — die
+    //                 Chromium-Messungen der Erfassen-Flaeche (zielbild-k2-erfassen, k2-funktions-
+    //                 inventar, zielbild-k2-kein-erklaertext) liefen unveraendert gruen, und der
+    //                 EINE primaere Knopf der Flaeche bleibt #send-btn (der Rueckweg nutzt `ghost`).
+    //
+    // ============================================================================================
+    // JOB 3667 · RUNDE 2 (12.09.2026) — DIE VIER BEFUNDE DES PRUEFERS, UND WAS SIE AN DER DATEI
+    // AENDERN. AUSLIEFERUNGSFOLGEN ERNEUT GEPRUEFT, BEVOR DER PIN WANDERTE.
+    // ============================================================================================
+    // VORHERHASH (Stand Runde 1): `86f2e3e3ad4246a01b7e991258e58bfe90467c3b0ac4dc0b35606ff82ca1daba`.
+    //
+    // ANLASS, in einem Satz: Runde 1 hat Pedis Accountregel im FENSTER durchgesetzt. Der Pruefer hat
+    // gezeigt, dass derselbe Serverweg daran vorbeifuehrt — und drei weitere Luecken benannt.
+    //
+    // GEAENDERT an dieser Datei wurde: (1) drei Stilregeln fuer die Vorschlagsliste, (2) Markup fuer
+    // Vorschlagsliste, Pflichthinweis und den beschriftungslosen Knopf, (3) das Woerterbuch (25
+    // Schluessel je Sprache; `rwFreigabeFehler` ist entfallen, weil es den Zwischenzustand nicht mehr
+    // gibt), (4) der Skriptblock KW-RUECKWEG.
+    //
+    // WAS SICH AM VERHALTEN AENDERT — und warum es weniger behauptet als vorher:
+    //   · Fall 1 ist EIN Aufruf (`revise-release`) statt zwei (`revise` + `admin-validate`). Damit
+    //     verschwindet die Spanne, in der fremder Text mitfreigegeben werden konnte, UND der
+    //     Zwischensatz „Freigabe steht noch aus" — es gibt keinen Zwischenzustand mehr.
+    //   · Fall 2 schickt `action: "propose"` statt eines markierten Kommentars. Der Vorschlag ist
+    //     ein getypter Datensatz am Objekt (`KoProposal`) mit entschiedenem Zustand.
+    //   · Die Vorschlagsliste liest `ko.proposals` (nur `status === "offen"`) und bietet am EIGENEN
+    //     Vorschlag keinen Knopf an — die Regel dahinter haelt der Server (`PROPOSAL_OWN`).
+    //
+    // DIE AUSLIEFERUNGSFRAGEN, erneut einzeln:
+    //   · Abrufziel:  UNVERAENDERT 16. Alle Aufrufe gehen weiter durch die EINE Stelle `rwRuf` auf
+    //                 `/api/kos/:id`; es kommen nur andere `action`-Werte hinein.
+    //   · CSP:        unveraendert (eigener Ursprung).
+    //   · Recht:      KEINES zusaetzlich. `revise-release` und `decide-proposal` verlangen
+    //                 `users.manage` (wie der Admin-Override), `propose` `ko.create` (wie
+    //                 `POST /api/drafts`). Neu ist, dass die ROUTE die Regel durchsetzt statt des
+    //                 Fensters: ein `revise` auf ein FREIGEGEBENES Objekt ohne `users.manage` ist
+    //                 jetzt 403 `PROPOSAL_REQUIRED` — das betrifft auch die Web-Flaeche und ist
+    //                 genau die Wirkung, die Pedis Regel verlangt.
+    //   · Manifest:   unveraendert, keine neue Office-API, KEIN Sideload.
+    //   · Nutzlast:   `propose` schickt Klartext + Grundlage + Herkunft; `decide-proposal` schickt
+    //                 Kennung, Entscheidung und den gesehenen Stand. Beide sind kleiner als der
+    //                 Revise-Koerper; das Budget bleibt, wo es war.
+    //   · Alter Server: einer ohne die drei Aktionen antwortet 400 „Unbekannte Aktion" — das Fenster
+    //                 zeigt den Fehlersatz und behauptet KEINEN Erfolg. Es kann den Schutz nicht
+    //                 allein herstellen, und es tut auch nicht so.
+    //   · Bestehende Flaechen: unveraendert unberuehrt (der Kasten bleibt ohne Kandidaten `hidden`).
+    // GEMESSEN: tests/word-rueckweg (36 Faelle, davon 30 auf dem Basisstand a597e3c rot), die drei
+    // K2-Design-Dateien, tests/s6-belegte-antwort, tests/k2b-*, tests/n1-bestand-im-panel,
+    // tests/word-vergleich, services/knowledge-object, services/app/src/routes, tests/security und
+    // der Waechterlauf.
+    //
+    // ============================================================================================
+    // JOB 3667 · RUNDE 4 (13.09.2026) — BEFUND 1 DES PRUEFERS: FREIGEGEBEN WIRD NUR, WAS ANGEZEIGT
+    // WURDE. AUSLIEFERUNGSFOLGEN ERNEUT GEPRUEFT, BEVOR DER PIN WANDERTE.
+    // ============================================================================================
+    // VORHERHASH (Stand Runde 2/3): `299d9173385f0b568b5d730cdb32433cb392944dfc86eb55aefae07fd27cf922`.
+    //
+    // ANLASS: die Uebernahme eines Vorschlags schreibt `statement` UND `bodyHtml` in die neue Fassung
+    // (`services/knowledge-object/src/service.ts:3891`). Dieses Fenster zeigte nur `statement` — ein
+    // Fliesstext waere also mitfreigegeben worden, ohne dass ihn jemand gesehen haette. Und weil der
+    // Dienst `bodyHtml: vorschlag.bodyHtml ?? null` uebergibt (`null` heisst „leeren"), ENTFERNT die
+    // Freigabe eines Vorschlags OHNE Fliesstext den Fliesstext des Eintrags — auch das stand nirgends.
+    //
+    // GEAENDERT an dieser Datei wurde: (1) zwei Woerterbuch-Schluessel je Sprache
+    // (`rwVorschlagRumpf`, `rwVorschlagRumpfWeg`), (2) im Skriptblock KW-RUECKWEG: `rwVorschlaegeAus`
+    // fuehrt die TATSACHE `rumpf` mit (kein HTML — dieses Fenster setzt nirgends fremdes HTML in den
+    // Baum), die neue Lesefunktion `rwHatRumpf(ko)`, der Satz in `rwVorschlaegeZeichnen`, das
+    // Auslassen des Freigabeknopfes bei Vorschlaegen mit Fliesstext und derselbe Riegel am Weg
+    // (`rwVorschlagEntscheiden`), sowie `rumpf` in den vier `rwZiel`-Bauten. KEIN Markup, KEIN Stil.
+    //
+    // WAS SICH AM VERHALTEN AENDERT: ein Vorschlag MIT Fliesstext bekommt hier keinen Freigabeknopf
+    // mehr, sondern den Satz mit dem Weg nach KLARWERK; Ablehnen bleibt (sie schreibt keinen Inhalt).
+    // Ein Vorschlag OHNE Fliesstext an einem Eintrag MIT Fliesstext traegt jetzt den Warnsatz ueber
+    // die Loeschung. Alles andere ist unveraendert.
+    //
+    // DIE AUSLIEFERUNGSFRAGEN, erneut einzeln:
+    //   · Abrufziel:  UNVERAENDERT 16 — es kommt kein Aufruf hinzu und keiner faellt weg.
+    //   · CSP:        unveraendert (eigener Ursprung); kein `innerHTML`, kein neuer Sink.
+    //   · Recht:      KEINES zusaetzlich; die gelesenen Felder stehen in derselben Antwort wie bisher.
+    //   · Manifest:   unveraendert, keine neue Office-API, KEIN Sideload.
+    //   · Nutzlast:   unveraendert — `decide-proposal` schickt weiterhin Kennung, Entscheidung und
+    //                 den gesehenen Stand; es wird nur MEHR aus der ohnehin empfangenen Antwort
+    //                 gelesen (`proposals[].bodyHtml`, `bodyHtml`).
+    //   · Alter Server: einer ohne `bodyHtml` am Vorschlag liefert `undefined` — dann ist `rumpf`
+    //                 falsch und das Fenster verhaelt sich wie bisher. Kein Fehlerfall.
+    //   · Bestehende Flaechen: unberuehrt (der Kasten bleibt ohne Kandidaten `hidden`).
+    // GEMESSEN: s. RUECKGABE (tests/word-rueckweg und der Waechterlauf, in der Cloud).
+    //
+    // ============================================================================================
+    // JOB 3667 · RUNDE 5 (14.09.2026) — AUSGELASSEN IST NICHT GELOESCHT. AUSLIEFERUNGSFOLGEN ERNEUT
+    // GEPRUEFT, BEVOR DER PIN WANDERTE.
+    // ============================================================================================
+    // VORHERHASH (Stand Runde 4): `3062fb573d4e45cbbd8dba6301ce87b02fdc9f10e267067e195c55fbaf8f92a7`.
+    //
+    // ANLASS: dieses Fenster reicht eine reine Textaenderung ein (`rwEinreichen` schickt statement,
+    // baseVersion, origin — KEINEN Rumpf). `decideProposal` machte daraus `bodyHtml ?? null`, und
+    // `null` heisst in `naechsteFassung` „leeren": die Uebernahme eines Wortlaut-Vorschlags aus Word
+    // haette den ganzen ausfuehrlichen Inhalt des Wissensobjekts ENTFERNT. Runde 4 hat die Folge nur
+    // ANGEZEIGT; Runde 5 aendert die Wirkung im Dienst (`rumpfAusVorschlag`: ausgelassen erhaelt,
+    // geleert wird nur auf das ausdrueckliche `clearBody`). Dieses Fenster muss deshalb den neuen
+    // Satz sagen — der alte warnte vor einer Loeschung, die nicht mehr stattfindet.
+    //
+    // GEAENDERT an dieser Datei wurde: (1) je Sprache der Wortlaut von `rwVorschlagRumpfWeg` (er
+    // gehoert jetzt dem Vorschlag, der WIRKLICH loescht) und der neue Schluessel
+    // `rwVorschlagRumpfBleibt`; (2) im Skriptblock KW-RUECKWEG: `rwVorschlaegeAus` fuehrt zusaetzlich
+    // die TATSACHE `rumpfWeg` (`p.clearBody === true`) mit, und `rwVorschlaegeZeichnen` unterscheidet
+    // drei Lagen statt zwei (`data-rumpf`: „nicht-lesbar" | „entfernt" | „bleibt"); (3) Kommentare.
+    // KEIN Markup, KEIN Stil, KEIN neuer Aufruf, KEIN HTML in den Baum.
+    //
+    // WAS SICH AM VERHALTEN AENDERT: ein Vorschlag ohne Fliesstext an einem Eintrag MIT Fliesstext
+    // traegt jetzt den ruhigen Satz „der ausfuehrliche Inhalt bleibt bestehen" statt der Warnung vor
+    // einer Loeschung; die Warnung steht nur noch am Vorschlag mit `clearBody`. Freigeben und
+    // Ablehnen bleiben unveraendert erreichbar; der Riegel fuer Vorschlaege MIT Fliesstext (R4)
+    // bleibt unangetastet.
+    //
+    // DIE AUSLIEFERUNGSFRAGEN, erneut einzeln:
+    //   · Abrufziel:  UNVERAENDERT 16 — kein Aufruf kommt hinzu, keiner faellt weg.
+    //   · CSP:        unveraendert (eigener Ursprung); kein `innerHTML`, kein neuer Sink.
+    //   · Recht:      KEINES zusaetzlich; `clearBody` steht in derselben Antwort wie bisher.
+    //   · Manifest:   unveraendert, keine neue Office-API, KEIN Sideload.
+    //   · Nutzlast:   unveraendert — dieses Fenster schickt weiterhin statement/baseVersion/origin
+    //                 und NIE ein `clearBody`; gelesen wird nur mehr aus der ohnehin empfangenen
+    //                 Antwort (`proposals[].clearBody`).
+    //   · Alter Server: einer ohne `clearBody` am Vorschlag liefert `undefined` — dann ist `rumpfWeg`
+    //                 falsch, und das Fenster sagt „bleibt". Das ist gegenueber einem alten Server
+    //                 die SCHWAECHERE Aussage und kein Fehlerfall.
+    //   · Bestehende Flaechen: unberuehrt (der Kasten bleibt ohne Kandidaten `hidden`).
+    // GEMESSEN: s. RUECKGABE (tests/word-rueckweg und der Waechterlauf, in der Cloud).
+    //
+    // ============================================================================================
+    // VORHERHASH (Stand Runde 6): `7589fe26782f674dec4aebfc7e972e6c5e03e41e0b165645bc4fab739ea60bb9`.
+    //
+    // ANLASS, und er ist diesmal KEIN Fachbefund: das Tor der Runde 6 ist an zwei GROESSENGRENZEN
+    // rot geworden, die dieser Auftrag mit seinem Anbau gerissen hat — `probeschnitt.test.ts` A2
+    // (Rest-Seite 516 >= 500 Zeilen) und `schnittflaechen.test.ts` B3 (Inline-Skript 13182 >= 12500).
+    // Beide sind Riegel gegen weiteres Anbauen an dieser Datei (JOB 3227/P11 wartet auf den Schnitt),
+    // und die Steuerung hat ausdruecklich verboten, sie anzuheben. Runde 7 kuerzt deshalb den EIGENEN
+    // Anbau, statt die Grenze zu verschieben.
+    //
+    // GEAENDERT an dieser Datei wurde AUSSCHLIESSLICH MARKUP, und zwar nur im Block `#rw-block`:
+    // die beiden Kommentare sind gekuerzt (13+3 → 3+1 Zeilen) und sieben Elementzeilen sind zu
+    // Sammelzeilen zusammengezogen (dieselbe Schreibweise, die diese Datei ohnehin fuehrt, z. B. an
+    // `capture-zeile`). 35 Zeilen → 17. KEIN Skript, KEIN Stil, KEIN Element kommt hinzu oder faellt
+    // weg, keine Kennung (`id`), kein `data-t`, kein `class`, kein `aria-live` aendert sich.
+    //
+    // WAS SICH AM VERHALTEN AENDERT: NICHTS. Das ist hier die ganze Zusage, und sie ist gemessen und
+    // nicht behauptet: `tests/word-rueckweg` ist mit dieser Fassung vollstaendig grün gelaufen (144
+    // Faelle, Cloud-Lauf 7976c80f9320494db85f77bc694733d6), darunter der gemountete Fall
+    // `panel-rueckweg-mounted.test.ts`, der den Rumpf dieser Datei ins jsdom baut und bedient.
+    // Zeilenumbrueche zwischen Elementen sind in HTML Leerraum; die Fläche ist Zeichen fuer Zeichen
+    // dieselbe.
+    //
+    // DIE AUSLIEFERUNGSFRAGEN, erneut einzeln:
+    //   · Abrufziel:  UNVERAENDERT 16 — es ist keine Zeile Skript angefasst worden.
+    //   · CSP:        unveraendert; kein neuer Sink, kein `innerHTML`, keine neue Quelle.
+    //   · Recht:      KEINES zusaetzlich.
+    //   · Manifest:   unveraendert, keine neue Office-API, KEIN Sideload.
+    //   · Nutzlast:   unveraendert — es ist nichts am Sendeweg angefasst.
+    //   · Alter Server: keine Beruehrung; diese Runde liest und schickt nichts Neues.
+    //   · Bestehende Flaechen: unberuehrt.
+    // OFFEN UND AUSDRUECKLICH GEMELDET: A2 haelt jetzt wieder (497 < 500), B3 NICHT (13182 >= 12500).
+    // Das Inline-Skript laesst sich mit den Zielpfaden dieses Auftrags nicht unter die Grenze
+    // kuerzen — die Begruendung samt Messung steht in der RUECKGABE dieser Runde.
+    //
+    // ============================================================================================
+    // JOB 3667 · RUNDE 8 (14.09.2026) — DAS FENSTER WIRD AB HIER AUS ZWEI DATEIEN AUSGELIEFERT.
+    // ============================================================================================
+    // VORHERHASH (Stand Runde 7): `c86da874d5bf1c89a91346d75b5335f75213cd7f3d6c2dab90f52f6c9f1f68d7`.
+    //
+    // ANLASS, und er ist wie in Runde 7 kein Fachbefund: B3 blieb rot (13182 >= 12500), Kuerzen
+    // reichte nachweislich nicht (12974 ohne JEDEN Kommentar des Blocks), und die Steuerung hat das
+    // Anheben der Schranke verboten. Ihre Entscheidung vom 14.09. 19:36: AUSLAGERN.
+    //
+    // GEAENDERT an DIESER Datei wurde zweierlei, und beides ist eine Verschiebung, keine Neuschrift:
+    //   (1) Der Abschnitt mit dem Block KW-RUECKWEG (811 Zeilen, vormals 5390–6200) ist Zeile fuer
+    //       Zeile in die neue Geschwisterdatei `apps/web/public/word-addin/rueckweg.js` gewandert;
+    //       an seiner Stelle stehen sechs Zeilen Kommentar, die sagen wohin und warum.
+    //   (2) EINE Zeile kommt hinzu: `<script src="rueckweg.js?v=__KW_FASSUNG__"></script>`,
+    //       unmittelbar vor dem Inline-Skript (also nach dem Rumpf — die letzte Anweisung des
+    //       Blocks bindet Ereignisse an `#rw-btn` und braucht den Rumpf).
+    // Das Inline-Skript faellt damit von 13182 auf 12380 Zeilen, die Rest-Seite steigt von 497 auf
+    // 498 (`probeschnitt.test.ts` A2, Grenze < 500). KEINE Zeile Logik ist umgeschrieben worden.
+    //
+    // WAS SICH AM VERHALTEN AENDERT: NICHTS, und das ist hier die ganze Zusage. `"use strict"` steht
+    // in beiden Dateien; die Ladereihenfolge bildet genau die alte Reihenfolge ab (erst der Block,
+    // dann das Inline-Skript), und die vier Anschlusszeilen im Fenster (`setLang` :3986,
+    // `checkSession` :4905, Markierung :5100, Dublettenstand :5387) rufen `rwZeichnen`/
+    // `rwRolleMelden` weiterhin UNGESCHUETZT — bewusst: faellt die Datei aus, ist das ein
+    // Auslieferungsfehler und soll laut sein. Die Pruefstaende, die das Fenster wirklich laufen
+    // lassen, fuegen beide Dateien in der Reihenfolge der Auslieferung zusammen (`splitTaskpane`).
+    //
+    // DIE AUSLIEFERUNGSFRAGEN, einzeln:
+    //   · Abrufziel:  UNVERAENDERT 16. Sie verteilen sich nur auf zwei Dateien; `mega69-klara-
+    //                 merkmale.test.ts` zaehlt deshalb ab jetzt ueber BEIDE (sonst meldete der
+    //                 Waechter eine Verbesserung, wo nur verschoben wurde).
+    //   · CSP:        unveraendert. `script-src 'self'` deckt die relative, gleichherkuenftige
+    //                 Adresse bereits (`security-headers.ts`); kein neuer Fremd-Ursprung.
+    //   · Recht:      KEINES zusaetzlich.
+    //   · Manifest:   unveraendert — es zeigt auf `taskpane.html`, und die liegt, wo sie lag. KEIN
+    //                 Sideload noetig. Die Cachekennung `?v=__KW_FASSUNG__` ist DERSELBE
+    //                 Platzhalter, den der Server ins Meta stempelt (`stempleFassung`), also genau
+    //                 die Zahl des Manifests — eine dritte, von Hand gepflegte Zahl entsteht nicht.
+    //   · Auslieferung: die Datei liegt in `apps/web/public/` und wird vom Build wie jede andere
+    //                 Datei dort nach `dist/word-addin/` kopiert; ausgeliefert wird sie ueber
+    //                 dieselbe Static-Route wie die Icons, mit `Cache-Control: no-cache` aus dem
+    //                 onSend-Hook fuer `/word-addin/*`.
+    //   · Nutzlast:   unveraendert. Zwei Anfragen statt einer beim Oeffnen; beide gleicher Ursprung.
+    //   · Alter Server: eine Auslieferung OHNE die neue Datei liefert 404 — dann fehlt `rwZeichnen`
+    //                 und das Fenster bricht sichtbar. Genau das ist gewollt: ein halb
+    //                 ausgeliefertes Fenster darf nicht so tun, als haette es einen Rueckweg.
+    //   · Bestehende Flaechen: unberuehrt (der Kasten bleibt ohne Kandidaten `hidden`).
+    // GEMESSEN: s. RUECKGABE dieser Runde.
+    const PIN = "82ec10c4ec0b1c49de3480eb4d213241be31074fd29da8ef3e8f9a6688d85e8f";
     const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
     expect(
       ist,
       "taskpane.html wurde geändert — Auslieferungsfolgen bewusst prüfen (Kommentar oben), dann den Pin aktualisieren.",
+    ).toBe(PIN);
+  });
+
+  // ==============================================================================================
+  // JOB 3667 RUNDE 8 — DIE ZWEITE AUSGELIEFERTE DATEI STEHT UNTER DEMSELBEN PIN.
+  // ==============================================================================================
+  //
+  // OHNE DIESEN FALL WAERE DER SCHNITT EINE SCHWAECHUNG GEWESEN: 811 der 13191 gepinnten Zeilen
+  // waeren aus der Bewachung gefallen, und der Pin oben haette weiter „taskpane.html ist
+  // unveraendert" gemeldet, waehrend der halbe Rueckweg sich still haette aendern koennen. Was
+  // ausgeliefert wird, wird gepinnt — beide Dateien, nach derselben Regel und mit derselben Pflicht
+  // zur bewussten Antwort auf die Auslieferungsfragen.
+  it("INHALTS-PIN: eine Änderung an rueckweg.js wird rot, bevor sie still ausgeliefert wird", () => {
+    // ERSTEINTRAG (JOB 3667 Runde 8, 14.09.2026): die Datei entsteht in dieser Runde und traegt
+    // Zeile fuer Zeile den Abschnitt, der bis dahin in `taskpane.html` stand — plus einen Kopf, der
+    // Grund, Ladereihenfolge und die Lint-Ausnahme begruendet. Ein VORHERHASH existiert nicht.
+    const PIN = "906f8ac017afb5450334da62303ee48246eb85bebc0c31a89c5f50d8e91abf3c";
+    const ist = createHash("sha256").update(readFileSync(RUECKWEG)).digest("hex");
+    expect(
+      ist,
+      "rueckweg.js wurde geändert — Auslieferungsfolgen bewusst prüfen (Kommentar oben), dann den Pin aktualisieren.",
     ).toBe(PIN);
   });
 });

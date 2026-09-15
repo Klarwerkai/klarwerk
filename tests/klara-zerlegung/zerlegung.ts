@@ -28,6 +28,21 @@ export function taskpaneQuelle(): string {
   return readFileSync(repoPfad(TASKPANE_RELATIV), "utf8");
 }
 
+/**
+ * JOB 3667 (14.09.2026) — DIE ZWEITE AUSGELIEFERTE DATEI DES FENSTERS.
+ *
+ * `taskpane.html` lädt sie als klassisches Skript unmittelbar vor ihrem Inline-Skript; sie trägt
+ * den Abschnitt KW-RUECKWEG Zeile für Zeile. Sie steht hier, damit jeder Prüfstand, der das
+ * Fenster WIRKLICH laufen lässt, sie mitliefern kann — ein Fenster ohne sie ist keines.
+ */
+export const RUECKWEG_RELATIV = "apps/web/public/word-addin/rueckweg.js";
+/** Der Dateiname, unter dem sie neben `taskpane.html` liegt (und so auch im `src` steht). */
+export const RUECKWEG_DATEI = "rueckweg.js";
+
+export function rueckwegQuelle(): string {
+  return readFileSync(repoPfad(RUECKWEG_RELATIV), "utf8");
+}
+
 // ------------------------------------------------------------------------------------------------
 // 1. Die Blöcke: Inline-Stil, Inline-Skript, externe Quellen
 // ------------------------------------------------------------------------------------------------

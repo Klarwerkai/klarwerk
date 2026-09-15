@@ -44,9 +44,21 @@ import { describe, expect, it } from "vitest";
 
 const WURZEL = join(__dirname, "..", "..");
 const TASKPANE = join(WURZEL, "apps", "web", "public", "word-addin", "taskpane.html");
+/**
+ * JOB 3667 R8 (14.09.2026): das Fenster wird aus ZWEI Dateien ausgeliefert. Der Abschnitt
+ * KW-RUECKWEG wohnt seit dem Schnitt in `rueckweg.js`, die `taskpane.html` unmittelbar vor ihrem
+ * Inline-Skript lädt.
+ */
+const RUECKWEG = join(WURZEL, "apps", "web", "public", "word-addin", "rueckweg.js");
 
+/**
+ * Die Quelle, über die die zehn Merkmale reden: DAS AUSGELIEFERTE FENSTER, nicht eine seiner zwei
+ * Dateien. Beides zählt zusammen — sonst verschwänden Abrufziele und Herkunftsangaben aus dem
+ * Bestand, sobald jemand Code verschiebt, und der Wächter meldete eine Verbesserung, wo nichts
+ * besser geworden ist. Die Reihenfolge ist die der Auslieferung.
+ */
 function quelle(): string {
-  return readFileSync(TASKPANE, "utf8");
+  return `${readFileSync(TASKPANE, "utf8")}\n${readFileSync(RUECKWEG, "utf8")}`;
 }
 
 /**
@@ -106,8 +118,14 @@ function m3StrikteFreigabe(src: string): boolean {
   return /executionAllowed\s*===\s*true/.test(ausfuehrbar(src));
 }
 
-/** M4/M5 · Beide Sendestellen tragen die Herkunft `word_addin` (JOB 660 K1.1). Ohne sie sähe ein
- *  Entwurf aus dem Word-Fenster aus wie einer aus der Web-Vordertür. */
+/** M4/M5 · Jede Sendestelle trägt die Herkunft `word_addin` (JOB 660 K1.1). Ohne sie sähe ein
+ *  Entwurf aus dem Word-Fenster aus wie einer aus der Web-Vordertür.
+ *
+ *  JOB 3667 R2 (2 → 3): eine DRITTE Stelle kommt hinzu, und sie ist von derselben Art. Der
+ *  eingereichte Änderungsvorschlag (`action: "propose"`) trägt `origin: "word_addin"` in seiner
+ *  Nutzlast; der Server hält sie am Vorschlag fest (`KoProposal.origin`). Wer ihn später in
+ *  KLARWERK liest, sieht, WO er entstand — genau die Zusage, die diese Zahl seit JOB 660 schützt.
+ *  Die Zahl wird deshalb angehoben und nicht das Muster aufgeweicht. */
 function m4Herkunft(src: string): number {
   return (ausfuehrbar(src).match(/origin:\s*"word_addin"/g) ?? []).length;
 }
@@ -300,7 +318,43 @@ function m6FremdeZiele(src: string): string[] {
 // AUSLIEFERUNGSFOLGE für ein installiertes Add-in: KEIN erneutes Sideload. Ein älterer Server ohne
 // die Route antwortet 404 → das Fenster übernimmt nichts und bleibt beim normalen Look; gemessen in
 // derselben Datei (W6/W7). Ein Abruffehler leert nie den zuletzt bekannten Stand (W5).
-const BEKANNTE_ABRUFZIELE = 15;
+//
+// ================================================================================================
+// JOB 3667 (12.09.2026) — DIE BEWUSSTE ANTWORT ZUM SECHZEHNTEN ABRUFZIEL (15 → 16).
+// ================================================================================================
+//
+// Auch diese Zahl wird nicht „nachgezogen", weil ein Test rot war. M7 stellt die Frage, für die er
+// gebaut ist — „CSP? Recht? Manifest?" —, und hier steht die Antwort, bevor die Zahl steigt.
+//
+// DAS NEUE ZIEL: `rwRuf` (Block KW-RUECKWEG, der Weg aus Word ZURÜCK auf dasselbe Wissensobjekt),
+// EINE `fetch(`-Stelle für EINEN Pfad: `/api/kos/:id`. Bewusst eine einzige Stelle für alle drei
+// Aufrufe dieses Wegs — das Ziel LESEN (`GET`), es überarbeiten (`PUT action:"revise"`) und die
+// freiwillige Bitte um eine Zweitprüfung (`PUT action:"comment"`). Ein zweiter Übersetzer mit
+// eigener `fetch(`-Stelle wäre der zweite Weg zur selben Route gewesen (dieselbe Entscheidung wie
+// JOB 3093 M3 oben).
+//
+//   · CSP:      unverändert. `connect-src 'self'` deckt den Pfad; es ist dieselbe Herkunft, die das
+//               Fenster für `/api/drafts` und `/api/check-text` ohnehin nutzt. Kein neuer Ursprung.
+//   · Recht:    KEINES zusätzlich. `PUT /api/kos/:id` mit `action: "revise"` verlangt `ko.create` —
+//               genau das Recht, das `POST /api/drafts` schon verlangt; `comment` verlangt nur eine
+//               Sitzung (FR-KO-06). Der `GET` verlangt `ko.read`, das der Fragen-Weg längst nutzt
+//               (`resolveAskSources`). Keine neue Rolle, kein neuer Eintrag in der RBAC-Matrix.
+//   · Manifest: unverändert. Keine neue Office-API (gelesen wird die Markierung über
+//               `getSelectedDataAsync`, wie am Sendeweg), keine neue Domain, keine Berechtigung.
+//   · Nutzlast: hinaus geht beim Schreiben der Rumpf der Markierung (`bodyHtml`, `statement`) samt
+//               der gesehenen Version (`expectedVersion`) — dieselbe Klasse Inhalt wie am
+//               Entwurfsweg und unter DEMSELBEN Budget (`WORD_ADDIN_BODY_BUDGET_BYTES`, mit
+//               Bilder-Rückfall). Beim Lesen geht nichts hinaus.
+//   · Frequenz: je Klick — einmal je Zielwahl, einmal je „Eintrag aktualisieren", höchstens einmal
+//               zusätzlich für die angehakte Bitte. Kein Intervall, kein Autostart; ohne
+//               ausdrücklichen Griff geht nichts hinaus (gemessen: tests/word-rueckweg/
+//               panel-rueckweg-mounted.test.ts R1/R2).
+//
+// AUSLIEFERUNGSFOLGE für ein installiertes Add-in: KEIN erneutes Sideload. Ein älterer Server ohne
+// den bedingten Schreibzugriff ignoriert `expectedVersion` und schreibt unbedingt — deshalb ist der
+// Schutz auch SERVERSEITIG eingebaut (ko-routes.ts, 409 `KO_STALE`) und nicht nur im Fenster; das
+// Fenster kann ihn nicht allein herstellen.
+const BEKANNTE_ABRUFZIELE = 16;
 function m7Abrufmenge(src: string): number {
   return abrufziele(src).length;
 }
@@ -351,10 +405,11 @@ describe("JOB 537 D4 · Merkmalsvertrag: die tragenden Eigenschaften von taskpan
     ).toBe(true);
   });
 
-  it("M4: beide Sendestellen tragen die Herkunft `word_addin`", () => {
-    expect(m4Herkunft(quelle()), "Entwurf und Wissenslücke müssen BEIDE die Herkunft senden.").toBe(
-      2,
-    );
+  it("M4: jede Sendestelle trägt die Herkunft `word_addin`", () => {
+    expect(
+      m4Herkunft(quelle()),
+      "Entwurf, Wissenslücke UND Änderungsvorschlag müssen die Herkunft senden.",
+    ).toBe(3);
   });
 
   it("M5: die Deep-Link-Routen sind unversehrt geblieben", () => {
@@ -426,7 +481,9 @@ describe("JOB 537 D4 · Kalibrierung: jedes Merkmal wird an seiner eigenen Verf�
   });
 
   it("K4: fällt eine Sendestelle auf `frontdoor` zurück, schlägt M4 an", () => {
-    expect(m4Herkunft(src.replace('origin: "word_addin"', 'origin: "frontdoor"'))).toBe(1);
+    // `String.replace` mit einem Textmuster trifft das ERSTE Vorkommen; von den drei Stellen
+    // (JOB 3667 R2) bleiben danach zwei — M4 erwartet drei und schlägt an.
+    expect(m4Herkunft(src.replace('origin: "word_addin"', 'origin: "frontdoor"'))).toBe(2);
   });
 
   it("K5: zerstört ein Suchen-und-Ersetzen eine Deep-Link-Route, schlägt M5 an", () => {

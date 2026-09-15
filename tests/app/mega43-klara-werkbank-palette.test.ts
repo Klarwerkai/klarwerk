@@ -436,6 +436,17 @@ const REGEL_AUSNAHMEN: RegelAusnahme[] = [
       "liegen in #antwortkarte (--surface, Weiß); Tinte-2 #525B6B darauf = 7,0:1, AA erfüllt.",
   },
   {
+    selektor: "#rw-status.warn",
+    grund:
+      "JOB 3667 (WORD-RÜCKWEG): der Satz des Rückwegs wird erst zur LAUFZEIT gewarnt — `rwSatzSetzen` " +
+      'setzt die Klasse `warn`, im Markup steht `<p id="rw-status" class="hidden">` (Z.1041). Ohne ' +
+      "Markup-Fundstelle rät der Sammler gegen JEDE deckende Fläche des Stilblocks (u. a. --brand-deep " +
+      "und --pos-text) und fällt dort durch. Seine Fläche ist aber eindeutig und steht am DIREKTEN " +
+      "Elternelement: `#rw-block` setzt `background: var(--surface)` (Z.643). --warn-text #8A5A00 auf " +
+      "--surface #FFFFFF = 5,93:1, AA erfüllt — gemessen im Fall „B1b“ unten mit derselben " +
+      "Rechenfunktion, nicht hier behauptet.",
+  },
+  {
     selektor: "#capture-aktion #send-btn:disabled",
     grund:
       "JOB 3057 K2 (Zielbild Erfassen.dc.html, §5.3): der gesperrte Senden-Knopf der Erfassen-" +
@@ -1555,6 +1566,22 @@ describe("mega43 B3 / mega44 B1 · Kontrast der Klara-Paare (WCAG AA, ≥ 4,5:1)
     expect(h2?.vorn.name).toBe("--ink");
     expect(h2?.hinten.name).toBe("--surface");
     expect(messe(h2 as Paar)).toBeGreaterThan(18);
+  });
+
+  // JOB 3667 · DIE AUSNAHME FÜR `#rw-status.warn` TRÄGT EINE ZAHL, KEINE ZUSICHERUNG.
+  //
+  // Die Regel ist von der Erhebung ausgenommen, WEIL der Sammler ihre Fläche nicht aus dem Markup
+  // bestimmen kann (die Klasse `warn` entsteht zur Laufzeit). Ausgenommen heisst hier aber nicht
+  // ungemessen: die Fläche steht am direkten Elternelement `#rw-block` (`background: var(--surface)`),
+  // und dieser Fall rechnet das Paar mit DERSELBEN Funktion nach, mit der der Sammler misst. Wer eines
+  // der beiden Token verschiebt, wird hier rot — und nicht erst im Fenster.
+  it("B1b · #rw-status.warn: --warn-text auf --surface (die wirkliche Fläche) erfüllt AA", () => {
+    const warnText = MODELL.variablen.get("warn-text");
+    const surface = MODELL.variablen.get("surface");
+    expect(warnText?.wert, "--warn-text steht nicht mehr im Stilblock").toBeTruthy();
+    expect(surface?.wert, "--surface steht nicht mehr im Stilblock").toBeTruthy();
+    const wert = kontrast(rgbAusHex(warnText?.wert as string), rgbAusHex(surface?.wert as string));
+    expect(wert, `--warn-text auf --surface = ${wert.toFixed(2)}:1`).toBeGreaterThanOrEqual(4.5);
   });
 
   it("B1 · keine Annahme greift heute still — der Markup-Weg trägt jede Regel", () => {

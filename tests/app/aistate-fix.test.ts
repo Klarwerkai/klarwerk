@@ -194,7 +194,19 @@ describe("PAKET 3.1: revise setzt die Prüfung zurück und reiht sie für die NE
       resolve(process.cwd(), "services/app/src/routes/ko-routes.ts"),
       "utf8",
     );
-    expect(src).toContain("if (aiCheckWorker && revised.aiCheck)");
+    // JOB 3667 R2/R3 · DER PIN ZEIGT AUF DIESELBE ZEILE, SIE HEISST NUR ANDERS.
+    //
+    // Bis JOB 3667 R2 stand dieser Nachlauf DREIMAL gleichlautend im `revise`-Zweig; seit R2 gibt es
+    // drei Schreibwege, die ihn brauchen (`revise`, `revise-release`, die Übernahme eines
+    // Vorschlags), und er ist deshalb in die EINE Stelle `nachNeuerFassung(revidiert)` gewandert
+    // (`ko-routes.ts:1962`). Dabei wurde die Grösse von `revised` in `revidiert` umbenannt — der
+    // Inhalt der Bedingung ist Zeichen für Zeichen derselbe.
+    //
+    // DASS DIE SACHE SELBST NOCH GILT, hängt nicht an diesem Pin: der Fall direkt darüber misst sie
+    // am laufenden Server (neue Version, `aiCheck.koVersion === version`, Status `done`) und ist
+    // grün geblieben. Dieser Pin hält nur fest, dass die Wiedereinreihung nicht STILL aus dem
+    // Quelltext verschwindet — deshalb wird er nachgeführt und nicht gelöscht.
+    expect(src).toContain("if (aiCheckWorker && revidiert.aiCheck)");
     expect(src).toContain("await ko.markAiCheckPending(id)");
   });
 });

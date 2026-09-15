@@ -42,6 +42,48 @@ export interface KoComment {
   at: string;
 }
 
+// ================================================================================================
+// JOB 3667 (WORD-RÜCKWEG, Runde 3) — DER GEBUNDENE ÄNDERUNGSVORSCHLAG, JETZT AUCH FÜR DEN BROWSER.
+// ================================================================================================
+//
+// Spiegel von `services/knowledge-object/src/types.ts` (`KoProposal`, Runde 2). Er steht HIER und
+// nicht in `endpoints.ts`, weil er am `KnowledgeObject` HÄNGT: `GET /api/kos/:id` sendet das volle
+// Objekt (`ko-routes.ts:1011`, `...item`), und die Lesefläche liest die offenen Vorschläge von dort.
+// Ein lokaler Typ in `endpoints.ts` liesse sich an `KnowledgeObject.proposals` gar nicht anhängen.
+//
+// EIN VORSCHLAG IST KEIN WISSEN. Er ersetzt nichts; solange er offen ist, liest das Objekt weiter
+// den freigegebenen Stand. Erst die Entscheidung durch jemand ANDEREN als den Einreicher macht
+// seinen Inhalt zur neuen Fassung (Server: `PROPOSAL_OWN`).
+//
+// WARUM `status` AUCH HIER STEHT und die Fläche nicht einfach jeden Eintrag zeigt: ein entschiedener
+// Vorschlag ist nicht mehr offen. Ohne dieses Feld wäre jeder Vorschlag für immer „offen" — genau
+// der Befund, an dem Runde 1 gescheitert ist.
+export interface KoProposal {
+  id: string;
+  author: string;
+  at: string;
+  /** Die Inhaltsversion des Objekts, auf der dieser Vorschlag beruht. */
+  baseVersion: number;
+  statement: string;
+  /**
+   * JOB 3667 R5: fehlt das Feld, hat der Vorschlag KEINEN Fließtext mitgebracht — die Übernahme
+   * lässt den bestehenden dann stehen (`service.ts`, `rumpfAusVorschlag`). Es ist also kein „leer",
+   * sondern ein „nicht eingereicht", und die Vorschlagsanzeige sagt genau das.
+   */
+  bodyHtml?: string | null;
+  /** JOB 3667 R5: die ausdrücklich gewollte Löschung des Fließtextes — nur sie leert das Feld. */
+  clearBody?: boolean;
+  status: "offen" | "uebernommen" | "abgelehnt";
+  /** Woher er kam — `word_addin` aus Word, `klarwerk_web` aus dieser Oberfläche. */
+  origin?: string;
+  decidedBy?: string;
+  decidedAt?: string;
+  /** Die Version, die aus der Übernahme entstanden ist (nur bei „uebernommen"). */
+  resultVersion?: number;
+  /** Begründung der Entscheidung — bei einer Ablehnung die Auskunft, warum. */
+  note?: string;
+}
+
 // SCRUM-129 / FR-KO-07: echte externe Quelle am Objekt (Stufe 2, nie peer-validiert).
 export interface KoSource {
   id: string;
@@ -400,6 +442,12 @@ export interface KnowledgeObject {
   createdAt: string;
   history: HistoryEntry[];
   comments?: KoComment[];
+  // JOB 3667 R3: OPTIONAL, weil nur die beiden VOLLEN Lesewege sie mitschicken — `GET /api/kos/:id`
+  // (`ko-routes.ts:1011`) und `GET /api/kos` (`:949`), beide über `...item`. Suche und Prüfbrett
+  // liefern sie NICHT, und ein Pflichtfeld wäre dort die Unwahrheit, die der Kommentar zu
+  // `anzeigestatus` weiter unten schon einmal benennt. „Fehlt" heisst deshalb ausdrücklich NICHT
+  // „keine Vorschläge" — wer daraus „nichts offen" ableitet, liest eine Auskunft, die nicht da ist.
+  proposals?: KoProposal[];
   attachments?: KoAttachment[];
   sources?: KoSource[];
   // Demodaten-Merker (Seed) — für DEMO-Badge und Komplett-Entfernung.

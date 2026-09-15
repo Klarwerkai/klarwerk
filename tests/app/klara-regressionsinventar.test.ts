@@ -189,6 +189,22 @@ const INVENTAR: readonly string[] = [
   // (Codex-Vorpruefung R2). Auch diese Datei traegt „klara" nirgends im Pfad und kommt ueber die
   // Achse `taskpane` herein — dieselbe Lage wie die drei darueber.
   "tests/word-vergleich/zwei-laeufe-und-spaete-antworten.test.ts",
+  // JOB 3667 (WORD-RUECKWEG): der Weg aus Word ZURUECK auf dasselbe Wissensobjekt, gemessen am
+  // laufenden Aufgabenfenster. Auch diese Datei traegt „klara" nirgends im Pfad und kommt ueber die
+  // Achse `taskpane` herein — dieselbe Lage wie die vier darueber. Der zweite Beleg desselben Jobs
+  // (tests/word-rueckweg/route-bedingter-schreibzugriff.test.ts) misst die Route und faellt in
+  // keine Achse; er steht deshalb bewusst NICHT hier.
+  "tests/word-rueckweg/panel-rueckweg-mounted.test.ts",
+  // JOB 3667: der Spiegel der Accountregel (welche Rolle im Fenster freigeben darf) liest
+  // taskpane.html und die Rechtematrix gegeneinander — Achse `taskpane`, dieselbe Lage.
+  "tests/word-rueckweg/accountregel-spiegel.test.ts",
+  // JOB 3667 RUNDE 5: die WIRKUNG des Word-Rueckwegs an der echten Route — ein Textvorschlag aus
+  // dem Aufgabenfenster darf den ausfuehrlichen Inhalt des Wissensobjekts nicht ausradieren. Die
+  // Datei misst den Server, nennt aber die einreichende Stelle (taskpane.html) und kommt deshalb
+  // ueber die Achse `taskpane` herein. Anders als
+  // `tests/word-rueckweg/route-bedingter-schreibzugriff.test.ts` faellt sie also in eine Achse und
+  // steht folgerichtig HIER — K2 hat sie gemeldet, das Inventar nimmt sie nicht still auf.
+  "tests/word-rueckweg/rumpf-erhalt.test.ts",
   // JOB 3263: Exportvertrag der FAQ und gemounteter Anzeigeweg; Inhaltsachse komponente.
   // K2 meldete faq-anzeigeweg.test.tsx vor Nachführung. Der Vertrag nennt denselben Anschluss.
   "tests/dok1-export-wahrheit/faq-export-rollenausnahme.test.ts",

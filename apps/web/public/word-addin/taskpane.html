@@ -636,6 +636,30 @@
     #capture-dubletten.hidden { display: none; }
     #capture-dubletten p { margin: 0; }
     #capture-dubletten ul { margin: 4px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
+    /* JOB 3667 (WORD-RUECKWEG): der Rueckweg auf ein BESTEHENDES Wissensobjekt. Eigener Kasten unter
+       der Markierungskarte — er ist eine andere Handlung als „Als Entwurf senden" (das legt Neues an)
+       und darf deshalb nicht wie eine Zeile daneben aussehen. Kein primaerer Knopf: der eine
+       primaere Knopf der Flaeche bleibt #send-btn (Zielbild K2 Z.49). */
+    #rw-block { margin: 10px 16px 0; padding: 12px 14px; background: var(--surface); border: 1px solid var(--hairline); border-radius: 10px; font-size: 12.5px; line-height: 1.45; color: var(--text); display: flex; flex-direction: column; gap: 8px; }
+    #rw-block.hidden { display: none; }
+    #rw-block p { margin: 0; }
+    #rw-liste { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+    #rw-liste button { width: 100%; text-align: left; padding: 8px 10px; font-size: 12.5px; }
+    #rw-liste button[aria-pressed="true"] { border-color: var(--brand-deep); }
+    #rw-ziel.hidden, #rw-status.hidden, #rw-vorschau.hidden { display: none; }
+    #rw-ziel { display: flex; flex-direction: column; gap: 8px; }
+    #rw-ziel-zeile { font-weight: 600; }
+    #rw-vorschau { max-height: 132px; overflow-y: auto; padding: 8px 10px; background: var(--page); border: 1px solid var(--hairline); border-radius: 8px; color: var(--muted); }
+    #rw-vorschau p + p { margin-top: 4px; }
+    #rw-zweit-zeile { display: flex; align-items: center; gap: 8px; color: var(--muted); }
+    #rw-zweit-zeile.hidden, #rw-pflicht.hidden, #rw-vorschlaege.hidden { display: none; }
+    #rw-vorschlaege { border-top: 1px solid var(--hairline); padding-top: 8px; }
+    #rw-vorschlaege-liste { margin: 6px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+    #rw-vorschlaege-liste li { padding: 8px 10px; border: 1px solid var(--hairline); border-radius: 8px; background: var(--page); }
+    #rw-vorschlaege-liste p { margin: 0; }
+    .rw-vorschlag-text { margin-top: 4px; max-height: 88px; overflow-y: auto; }
+    #rw-status { color: var(--muted); }
+    #rw-status.warn { color: var(--warn-text); }
     /* ============================================================================================
        JOB 3056 K1 — EINSTELLUNGEN (Einstellungen.dc.html) UND „WIE KLARA ANTWORTET".
        ============================================================================================
@@ -982,6 +1006,22 @@
       <ul id="capture-dubletten-liste"></ul>
     </div>
   </div>
+  <!-- JOB 3667 (WORD-RUECKWEG): Rueckweg auf ein BESTEHENDES Wissensobjekt (PUT /api/kos/:id) — alles
+       darunter legt NEUES an. Nur im Bild bei Kandidaten DERSELBEN Markierung; vorgewaehlt ist nie
+       etwas (§4.1). Was der Griff tut, entscheidet das KONTO (§4.5) — #rw-btn traegt kein `data-t`. -->
+  <div id="rw-block" class="hidden">
+    <p id="rw-titel" data-t="rwTitel"></p><ul id="rw-liste"></ul>
+    <div id="rw-ziel" class="hidden">
+      <p id="rw-ziel-zeile"></p><p id="rw-vorschau-titel" class="muted" data-t="rwVorschauTitel"></p><div id="rw-vorschau"></div>
+      <label id="rw-zweit-zeile" class="hidden" for="rw-zweit"><input type="checkbox" id="rw-zweit" /><span data-t="rwPruefwegLabel"></span></label>
+      <p id="rw-pflicht" class="muted hidden" data-t="rwPflichtHinweis"></p><button type="button" class="ghost" id="rw-btn"></button><button type="button" class="ghost" id="rw-abwahl" data-t="rwAbwahl"></button>
+      <!-- Offene Vorschlaege DIESES Objekts: sichtbar fuer jeden, Freigabeknopf nur beim Berechtigten. -->
+      <div id="rw-vorschlaege" class="hidden">
+        <p id="rw-vorschlaege-titel" class="muted" data-t="rwVorschlaegeTitel"></p><ul id="rw-vorschlaege-liste"></ul>
+      </div>
+    </div>
+    <p id="rw-status" class="hidden" aria-live="polite"></p><button type="button" class="ghost hidden" id="rw-status-btn"></button>
+  </div>
   <div id="capture-felder">
     <label class="capture-zeile" for="capture-titel"><span data-t="captureTitleLabel"></span><input type="text" id="capture-titel" autocomplete="off" /></label>
     <!-- JOB 3555 K2b (Z.39-45): die Zeile „Bereich". Ihre Eintraege entstehen erst zur Laufzeit aus
@@ -1185,6 +1225,7 @@
       <p class="muted" data-t="loginReturn"></p>
     </div>
   </div>
+  <script src="rueckweg.js?v=__KW_FASSUNG__"></script>
   <script>
     "use strict";
 
@@ -3006,6 +3047,37 @@
         helpCan3: "Fragen quellengebunden aus dem VALIDIERTEN Werkswissen beantworten — und die Antwort mit Quellenangabe ins Dokument einfügen.",
         helpNot1: "Klara ist kein Chatbot: ohne belastbare Grundlage wird NICHTS erfunden — die Frage bleibt ehrlich offen (Wissenslücke).",
         helpNot2: "Noch NICHT: seitenweises Senden — Word gibt Seitengrenzen im Taskpane nicht her; markiere stattdessen den Bereich.",
+        // JOB 3667 (WORD-RUECKWEG): der Weg auf ein BESTEHENDES Objekt. Die Fehlersaetze sind
+        // bewusst die des Sendewegs (sendAuth, sendForbidden, sendError, sendOffline) — ein zweiter
+        // Wortlaut fuer „nicht angemeldet" waere eine zweite Wahrheit.
+        rwTitel: "Welchen Eintrag aktualisieren?",
+        rwVorschauTitel: "Das geht an den Eintrag:",
+        rwPruefwegLabel: "Erst jemand anderen ansehen lassen",
+        rwPflichtHinweis: "Freigabe durch andere ist Pflicht.",
+        rwCtaFrei: "Aktualisieren und freigeben",
+        rwCtaEinreichen: "Zur Freigabe einreichen",
+        rwAbwahl: "Andere Wahl",
+        rwZielZeile: "{titel} · Version {n}",
+        rwLaden: "Eintrag wird geladen …",
+        rwLadeFehler: "Eintrag konnte nicht geladen werden.",
+        rwLaeuft: "Aktualisierung läuft …",
+        rwFertigFrei: "Aktualisiert und freigegeben: Version {n}.",
+        rwFertigOffen: "Aktualisiert: Version {n}. Die Freigabe steht noch aus.",
+        rwVorschlagAblehnenCta: "Ablehnen",
+        rwVorschlagEigen: "Eigener Vorschlag — das prüft jemand anders.",
+        rwAbgelehnt: "Vorschlag abgelehnt. Der Eintrag bleibt unverändert.",
+        rwEingereicht: "Eingereicht. Der Eintrag trägt weiter den freigegebenen Stand.",
+        rwEinreichFehler: "Einreichen fehlgeschlagen — nichts wurde eingereicht.",
+        rwVorschlaegeTitel: "Eingereicht, noch nicht freigegeben:",
+        rwVorschlagZeile: "{wer} · {zeit} · aus Version {n}",
+        rwVorschlagCta: "Vorschlag freigeben",
+        rwVorschlagAelter: "Der Vorschlag stammt aus Version {n}, der Eintrag steht auf {m}.",
+        rwVorschlagRumpf: "Dieser Vorschlag trägt einen ausführlichen Inhalt. Dieses Fenster kann ihn nicht anzeigen — freigegeben wird er deshalb hier nicht. In KLARWERK ansehen und dort entscheiden.",
+        rwVorschlagRumpfWeg: "Achtung: Dieser Vorschlag löscht den ausführlichen Inhalt — der Einreicher hat ihn geleert. Freigeben entfernt ihn aus dem Eintrag.",
+        rwVorschlagRumpfBleibt: "Der Vorschlag ändert nur die Aussage. Der ausführliche Inhalt des Eintrags bleibt unverändert bestehen.",
+        rwStale: "Der Eintrag steht inzwischen auf Version {n}. Es wurde nichts überschrieben.",
+        rwStaleCta: "Stand neu laden",
+        rwMarkierungAnders: "Die Markierung hat sich geändert — nichts gesendet.",
       },
       en: {
         greetTitle: "Hi, I am Klara.",
@@ -3309,6 +3381,35 @@
         helpCan3: "Answer questions source-bound from the VALIDATED knowledge base — and insert the answer with source attribution into the document.",
         helpNot1: "Klara is not a chatbot: without a reliable basis NOTHING is invented — the question honestly stays open (knowledge gap).",
         helpNot2: "NOT yet: page-based sending — Word does not expose page boundaries in the taskpane; select the range instead.",
+        // JOB 3667 (WORD-RUECKWEG), see the German block for the reasoning.
+        rwTitel: "Which entry should be updated?",
+        rwVorschauTitel: "This goes to the entry:",
+        rwPruefwegLabel: "Let someone else look at it first",
+        rwPflichtHinweis: "Release by someone else is required.",
+        rwCtaFrei: "Update and release",
+        rwCtaEinreichen: "Submit for release",
+        rwAbwahl: "Choose another",
+        rwZielZeile: "{titel} · version {n}",
+        rwLaden: "Loading the entry …",
+        rwLadeFehler: "The entry could not be loaded.",
+        rwLaeuft: "Updating …",
+        rwFertigFrei: "Updated and released: version {n}.",
+        rwFertigOffen: "Updated: version {n}. The release is still pending.",
+        rwVorschlagAblehnenCta: "Reject",
+        rwVorschlagEigen: "Your own proposal — someone else reviews it.",
+        rwAbgelehnt: "Proposal rejected. The entry stays unchanged.",
+        rwEingereicht: "Submitted. The entry still carries the released state.",
+        rwEinreichFehler: "Submitting failed — nothing was submitted.",
+        rwVorschlaegeTitel: "Submitted, not released yet:",
+        rwVorschlagZeile: "{wer} · {zeit} · from version {n}",
+        rwVorschlagCta: "Release proposal",
+        rwVorschlagAelter: "The proposal comes from version {n}, the entry is at {m}.",
+        rwVorschlagRumpf: "This proposal carries detailed content. This pane cannot display it — so it is not released here. Open it in KLARWERK and decide there.",
+        rwVorschlagRumpfWeg: "Careful: this proposal deletes the detailed content — the author cleared it. Releasing removes it from the entry.",
+        rwVorschlagRumpfBleibt: "The proposal only changes the statement. The entry's detailed content stays unchanged.",
+        rwStale: "The entry is now at version {n}. Nothing was overwritten.",
+        rwStaleCta: "Reload state",
+        rwMarkierungAnders: "The selection has changed — nothing sent.",
       },
       nl: {
         greetTitle: "Hallo, ik ben Klara.",
@@ -3611,6 +3712,35 @@
         helpCan3: "Vragen bronvast beantwoorden uit de GEVALIDEERDE kennisbasis — en het antwoord met bronvermelding in het document invoegen.",
         helpNot1: "Klara is geen chatbot: zonder betrouwbare basis wordt er NIETS verzonnen — de vraag blijft eerlijk open (kennishiaat).",
         helpNot2: "Nog NIET: per pagina versturen — Word geeft paginagrenzen in het taskpane niet vrij; selecteer in plaats daarvan het bereik.",
+        // JOB 3667 (WORD-RUECKWEG), zie het Duitse blok voor de toelichting.
+        rwTitel: "Welk item bijwerken?",
+        rwVorschauTitel: "Dit gaat naar het item:",
+        rwPruefwegLabel: "Eerst iemand anders laten kijken",
+        rwPflichtHinweis: "Vrijgave door anderen is verplicht.",
+        rwCtaFrei: "Bijwerken en vrijgeven",
+        rwCtaEinreichen: "Ter vrijgave indienen",
+        rwAbwahl: "Andere keuze",
+        rwZielZeile: "{titel} · versie {n}",
+        rwLaden: "Item wordt geladen …",
+        rwLadeFehler: "Het item kon niet worden geladen.",
+        rwLaeuft: "Bijwerken loopt …",
+        rwFertigFrei: "Bijgewerkt en vrijgegeven: versie {n}.",
+        rwFertigOffen: "Bijgewerkt: versie {n}. De vrijgave staat nog open.",
+        rwVorschlagAblehnenCta: "Afwijzen",
+        rwVorschlagEigen: "Je eigen voorstel — iemand anders beoordeelt het.",
+        rwAbgelehnt: "Voorstel afgewezen. Het item blijft ongewijzigd.",
+        rwEingereicht: "Ingediend. Het item draagt nog de vrijgegeven stand.",
+        rwEinreichFehler: "Indienen mislukt — er is niets ingediend.",
+        rwVorschlaegeTitel: "Ingediend, nog niet vrijgegeven:",
+        rwVorschlagZeile: "{wer} · {zeit} · uit versie {n}",
+        rwVorschlagCta: "Voorstel vrijgeven",
+        rwVorschlagAelter: "Het voorstel komt uit versie {n}, het item staat op {m}.",
+        rwVorschlagRumpf: "Dit voorstel bevat uitgebreide inhoud. Dit venster kan die niet tonen — daarom wordt hij hier niet vrijgegeven. Bekijk het in KLARWERK en beslis daar.",
+        rwVorschlagRumpfWeg: "Let op: dit voorstel wist de uitgebreide inhoud — de indiener heeft die leeggemaakt. Vrijgeven verwijdert die uit het item.",
+        rwVorschlagRumpfBleibt: "Het voorstel wijzigt alleen de uitspraak. De uitgebreide inhoud van het item blijft ongewijzigd bestaan.",
+        rwStale: "Het item staat inmiddels op versie {n}. Er is niets overschreven.",
+        rwStaleCta: "Stand opnieuw laden",
+        rwMarkierungAnders: "De selectie is gewijzigd — niets verstuurd.",
       },
     };
 
@@ -3854,6 +3984,7 @@
                               // gehaltener Zustand, neuer Text; die Namen selbst sind Daten und
                               // werden nicht uebersetzt.
       renderCaptureDubletten(); // JOB 3092 S6: die Dublettenauskunft — gehaltener Stand, neuer Text
+      rwZeichnen(); // JOB 3667: Rueckweg-Kasten und sein Satz in der neuen Sprache, Zustand bleibt
       updateSendState(); // K5: Office-Hinweis/Knopf-Grund in der neuen Sprache neu aufbauen
       checkSession(); // Statuszeile in der neuen Sprache neu aufbauen
     }
@@ -4770,6 +4901,9 @@
           // JOB 3093 Runde 3: der Bestandsstand („Haben wir das schon?") haengt an DIESER Sitzung —
           // eine andere oder keine Identitaet verwirft ihn (bestandSitzungMelden).
           if (typeof bestandSitzungMelden === "function") { bestandSitzungMelden(signedIn ? user : null); }
+          // JOB 3667: die ACCOUNTREGEL des Rueckwegs haengt an genau dieser Auskunft — welche Rolle
+          // angemeldet ist, entscheidet, ob der Griff freigibt oder einreicht. Ohne Sitzung: keine.
+          if (typeof rwRolleMelden === "function") { rwRolleMelden(signedIn ? user : null); }
           if (signedIn) {
             box.className = "status ok";
             box.textContent = t("sessionOk", { name: name });
@@ -4961,6 +5095,10 @@
       }
       // JOB 3092 S6 (W6): die Dublettenpruefung folgt der Markierung — vor dem Einreichen.
       captureDublettenPruefen();
+      // JOB 3667: eine ANDERE Markierung nimmt die Zielwahl des Rueckwegs zurueck. Das muss hier
+      // stehen und nicht nur am Dublettenstand: `captureDublettenPruefen` kehrt bei unveraendertem
+      // Text frueh um, und die Vorschau des Rueckwegs zeigt die Absaetze DIESER Karte.
+      rwZeichnen();
     }
 
     // ============================================================================================
@@ -5246,7 +5384,19 @@
           : t("captureDubLeer", { zeit: zeit });
       }
       block.className = "";
+      // JOB 3667: die Kandidaten des Rueckwegs SIND diese Treffer — ein neuer Stand zeichnet ihn mit.
+      rwZeichnen();
     }
+
+    // JOB 3667 · WORD-RUECKWEG: der Abschnitt mit dem Block KW-RUECKWEG (811 Zeilen) stand bis
+    // zum 14.09.2026 HIER und wohnt seither Zeile fuer Zeile in der Geschwisterdatei
+    // `rueckweg.js` — gleicher Ursprung, klassisches Skript, VOR diesem hier geladen; das
+    // Verweis-Tag steht im Rumpf unmittelbar ueber diesem Block. KEIN zweites Tag in einem
+    // Kommentar: der Blocksammler von tests/klara-zerlegung/zerlegung.ts liest die Seite als Text
+    // und haelte es fuer ein weiteres Skript.
+    // Grund und Ladereihenfolge stehen im Kopf jener Datei; die Schranke B3 in
+    // tests/klara-zerlegung/schnittflaechen.test.ts
+    // ist der Anlass, und sie wurde dafuer NICHT angehoben.
 
     // Die Markierung aus Word lesen (nur Text — die Karte zeigt Absaetze, der Sendeweg holt sich
     // das HTML selbst). Ein spaeter Rueckruf eines aelteren Lesens wird verworfen (Laufnummer).

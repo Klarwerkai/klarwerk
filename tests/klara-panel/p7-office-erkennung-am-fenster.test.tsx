@@ -29,7 +29,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { splitTaskpane } from "../app/klara-panel-fixture";
+import { readRueckweg, splitTaskpane } from "../app/klara-panel-fixture";
 
 const TASKPANE = "apps/web/public/word-addin/taskpane.html";
 const HTML = readFileSync(resolve(process.cwd(), TASKPANE), "utf8");
@@ -579,7 +579,12 @@ describe("JOB 3008 · Kalibrierung — die Faelle haengen wirklich am ausgeliefe
 describe("JOB 3008 · der Pruefstand misst ein LEBENDES Fenster", () => {
   it("das Skript stammt aus der ausgelieferten Seite und wird nicht nachgebaut", () => {
     expect(SKRIPT.length).toBeGreaterThan(10_000);
-    expect(HTML).toContain(SKRIPT);
+    // JOB 3667 R8: das Fenster wird aus ZWEI Dateien ausgeliefert, und `splitTaskpane` fügt sie in
+    // der Reihenfolge der Auslieferung zusammen. „Nicht nachgebaut" heisst deshalb ab hier: jedes
+    // Stueck stammt wörtlich aus SEINER Datei, und zusammen sind sie das ganze Skript — geprüft an
+    // beiden Quellen statt an einer, sonst wäre der Fall nach dem Schnitt nur noch halb scharf.
+    expect(HTML).toContain(splitTaskpane(HTML).script.slice(readRueckweg().length + 1));
+    expect(SKRIPT.startsWith(readRueckweg())).toBe(true);
     expect(OFFICE_FRIST).toBeGreaterThan(0);
   });
 

@@ -3897,8 +3897,24 @@ describe("JOB 1181 · Klassenbindungen: aufgelöst oder gemeldet, kein dritter Z
     // NICHT gewählt; die drei Ketten sind flache Konstanten und werden vom Sammler gelesen — offen
     // bleibt allein die Wahl, und die gehört an das eine Wurzelelement der Liste, nicht in drei
     // Abschriften desselben Markups. Keine Bindung ist weggefallen.
+    // JOB 3667 R3 (WORD-RÜCKWEG · DER EINREICHWEG IM BROWSER): von 217 auf 218. GENAU EINE Bindung
+    // kommt dazu, von derselben Bauform wie die aus JOB 3335 darüber — flache Konstanten, und offen
+    // bleibt allein die Entscheidung dazwischen. Gemessen an diesem Arbeitsbaum, nicht gerechnet
+    // (der Sammler meldete `expected 218 to be 217`):
+    //
+    //     + components/bibliothek/BibliothekLesen.tsx — `cx(EINREICH_ZEILE,
+    //           art === "eingereicht" ? EINREICH_GUT : art === "stale" ? EINREICH_WARN
+    //                                                                  : EINREICH_SCHLECHT)`
+    //       (der EINE Satz über den letzten Einreichversuch: eingereicht · Stand bewegt · Fehler)
+    //
+    // WARUM NICHT AUFLÖSBAR GESCHRIEBEN (Auflage aus JOB 3267): ein berechneter Klassenname
+    // (`TABELLE[art]`) ist bewusst NICHT gewählt; die drei Ketten sind flache Konstanten und werden
+    // vom Sammler gelesen. Und drei eigene Knoten statt eines — der Weg, mit dem JOB 3420 zwei
+    // Bindungen AUFLÖSEN konnte — wären hier drei Abschriften desselben Satzbaus samt der Griffe
+    // darin; die drei Zustände teilen sich denselben Knoten, weil sie dieselbe Aussage in
+    // verschiedenen Tönen sind. Keine Bindung ist weggefallen.
     expect(UNAUFGELOEST.length, "es gibt heute unauflösbare Bindungen — das ist der Befund").toBe(
-      217,
+      218,
     );
     for (const b of UNAUFGELOEST) {
       expect(b.datei, "Meldung ohne Datei").toMatch(/^apps\/web\/src\/.+\.tsx?$/);

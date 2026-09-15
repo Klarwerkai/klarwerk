@@ -35,6 +35,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const TASKPANE = "apps/web/public/word-addin/taskpane.html";
 const HTML = readFileSync(resolve(process.cwd(), TASKPANE), "utf8");
+// JOB 3667 R8 (14.09.2026): das Fenster wird aus ZWEI Dateien ausgeliefert. Wer nur das
+// Inline-Skript ausfuehrt, laesst `rwZeichnen` fehlen — `renderCapture` bricht dann mit
+// ReferenceError, und der Fall misst ein Fenster, das es so nicht gibt.
+const RUECKWEG = "apps/web/public/word-addin/rueckweg.js";
+const RUECKWEG_QUELLE = readFileSync(resolve(process.cwd(), RUECKWEG), "utf8");
 
 /**
  * Die Ruhefrist wird AUS dem Aufgabenfenster gelesen, nicht hier abgeschrieben. Waere sie als Zahl
@@ -76,7 +81,7 @@ async function ladeTaskpane(): Promise<void> {
   const skriptStart = HTML.lastIndexOf("<script>");
   const skriptEnde = HTML.lastIndexOf("</script>");
   expect(skriptStart, `${TASKPANE}: Inline-Skript nicht gefunden`).toBeGreaterThan(0);
-  const skript = HTML.slice(skriptStart + "<script>".length, skriptEnde);
+  const skript = `${RUECKWEG_QUELLE}\n${HTML.slice(skriptStart + "<script>".length, skriptEnde)}`;
 
   const bodyStart = HTML.indexOf("<body>");
   expect(bodyStart, `${TASKPANE}: <body> nicht gefunden`).toBeGreaterThan(0);

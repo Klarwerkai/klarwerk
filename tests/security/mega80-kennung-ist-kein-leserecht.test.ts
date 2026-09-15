@@ -201,6 +201,16 @@ function nutzlast(action: string, ctx: { attachmentId: string; koB: string }): o
       return { action, conflictId: "konflikt-mega80", decision: "Entschieden in mega80" };
     case "transfer-author":
       return { action, newAuthor: "irgendwer" };
+    // JOB 3667 R2 (WORD-RÜCKWEG): die drei Aktionen der Accountregel. Fachlich gültige
+    // Mindestnutzlasten — ob der Anfragende sie ausführen DARF (`users.manage` bzw. `ko.create`),
+    // entscheidet der jeweilige Zweig, und genau das soll dieser Wächter nicht vorwegnehmen. Er
+    // prüft ausschliesslich, dass jede von ihnen am fremden vertraulichen Objekt 404 bekommt.
+    case "revise-release":
+      return { action, changes: { title: "Freigegeben durch mega80" } };
+    case "propose":
+      return { action, proposal: { statement: "Vorschlag aus mega80", baseVersion: 1 } };
+    case "decide-proposal":
+      return { action, proposalId: "vorschlag-mega80", decision: "ablehnen" };
     case "revalidate":
       return { action };
     default:

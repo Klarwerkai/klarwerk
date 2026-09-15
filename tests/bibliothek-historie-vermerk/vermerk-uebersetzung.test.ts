@@ -106,6 +106,10 @@ const uebersetzer = (lng: string): ((key: string) => string) => i18n.getFixedT(l
  * `services/knowledge-object/src/service.ts` am Basisstand 96b0e92 und werden unten gegen den
  * heutigen Quelltext gehalten, damit diese Liste nicht vergammeln kann.
  *
+ * JOB 3667 RUNDE 7 (14.09.2026) · DIE ZEILENNUMMERN SIND NEU GEMESSEN, nicht geschätzt: der
+ * Word-Rückweg hat oberhalb und innerhalb des Dienstes eingefügt, und alle acht Fundstellen sind
+ * verrutscht. Die Wortlaute sind unverändert — es sind weiterhin dieselben FÜNF Vermerke.
+ *
  * JOB 3843 · `en` und `nl` sind die am Katalog GEMESSENEN Solltexte (Stand 172001e, 13.09.2026,
  * gelesen über `alleSprachbestaende()`); `wort` ist zugleich der deutsche Solltext, weil der Dienst
  * sein Literal schreibt und der deutsche Katalogblock genau dieses Literal trägt. DIESELBE TABELLE
@@ -124,35 +128,42 @@ const DIENST_VERMERKE = [
     schluessel: "ko.historyNote.created",
     en: "created",
     nl: "aangemaakt",
-    fundstellen: [1816, 1935],
+    fundstellen: [1860, 1979],
   },
   {
     wort: "erstellt (Dokumentinhalt übernommen)",
     schluessel: "ko.historyNote.createdFromDocument",
     en: "created (document content adopted)",
     nl: "aangemaakt (documentinhoud overgenomen)",
-    fundstellen: [2157],
+    fundstellen: [2201],
   },
   {
     wort: "erstellt (nachgezogen)",
     schluessel: "ko.historyNote.createdBackfilled",
     en: "created (backfilled)",
     nl: "aangemaakt (nagetrokken)",
-    fundstellen: [2585],
+    fundstellen: [2629],
   },
   {
     wort: "überarbeitet",
     schluessel: "ko.historyNote.revised",
     en: "revised",
     nl: "herzien",
-    fundstellen: [3595, 3624],
+    // JOB 3667 RUNDE 7 · VIER Fundstellen statt zwei, und das ist die ganze Spur dieses Auftrags in
+    // dieser Tabelle: der Rückweg aus Word hat zwei weitere Schreibwege eröffnet, die eine neue
+    // INHALTSFASSUNG erzeugen — „überarbeiten und gleich freigeben" (:3807) und „einen gebundenen
+    // Änderungsvorschlag übernehmen" (:3996). Beide schreiben DENSELBEN Vermerk wie jede andere
+    // Überarbeitung. Dass dabei zugleich freigegeben wurde, steht nicht im Vermerk, sondern im
+    // Datensatz (`status`, `ownership.validators`) und in zwei Audit-Belegen; die Begründung dafür
+    // steht bei `naechsteFassung` im Dienst.
+    fundstellen: [3650, 3734, 3807, 3996],
   },
   {
     wort: "überarbeitet (Dokumentinhalt übernommen)",
     schluessel: "ko.historyNote.revisedFromDocument",
     en: "revised (document content adopted)",
     nl: "herzien (documentinhoud overgenomen)",
-    fundstellen: [3831, 3849],
+    fundstellen: [4210, 4228],
   },
 ] as const;
 
@@ -440,7 +451,16 @@ describe("JOB 3627 · die Liste der festen Dienst-Vermerke ist gemessen, nicht b
     const erzeuger = [...quelle.matchAll(/snapshot: \{[^}]*note: ([^,}]+)/g)].map((m) =>
       (m[1] as string).trim(),
     );
+    // JOB 3667 RUNDE 7 · DREI ERZEUGER STATT EINEM — die Zusage dieses Falls ist unverändert und
+    // wird hier NICHT gelockert: jeder Erzeuger muss ein LITERAL sein, und die Liste steht weiterhin
+    // wörtlich da. Dass sie gewachsen ist, ist die Nachführpflicht dieses Auftrags: `revise`
+    // (service.ts:3650), `reviseUndFreigeben` (:3807) und `decideProposal` (:3996) schreiben je eine
+    // neue Inhaltsfassung und damit je einen Schnappschuss. Alle drei tragen DASSELBE Literal — käme
+    // hier je ein Wert von aussen an, wäre die offene Grenze in `koHistoryNote.ts` erreichbar, und
+    // genau das meldete dieser Fall dann.
     expect(erzeuger, "die Erzeuger des mutateKoTx-Vermerks — jeder muss ein Literal sein").toEqual([
+      '"überarbeitet"',
+      '"überarbeitet"',
       '"überarbeitet"',
     ]);
   });

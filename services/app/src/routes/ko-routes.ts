@@ -47,7 +47,15 @@ import { can } from "../../../rbac";
 import type { Reasoner } from "../../../reasoner";
 // JOB 3043: `KoPruefstand` kommt ueber DIESELBE Modulfassade wie der Dienst — die Liste greift
 // nirgends an `services/validation/src/**` vorbei.
-import type { KoPruefstand, ValidationService, Verdict } from "../../../validation";
+// JOB 3667 R2: `TRUST_MAX` reist von HIER in den KO-Dienst (er kennt die Trust-Skala nicht und
+// soll sie nicht kennen) — derselbe Deckel, den `ValidationService.adminValidate` setzt. Eine 99
+// im KO-Dienst wäre die Abschrift, die beim nächsten Skalenwechsel auseinanderläuft.
+import {
+  type KoPruefstand,
+  TRUST_MAX,
+  type ValidationService,
+  type Verdict,
+} from "../../../validation";
 // JOB 2009 D2 (H3): der Einstieg, der die PORTS nimmt — nicht das Lesemodell (C1 bleibt gruen).
 import { wissensnetzMetrikFuer } from "../../../wissensnetz";
 import type { AiCheckWorker } from "../ai-check-worker";
@@ -369,6 +377,12 @@ type KoAktion =
   | "conflict"
   | "resolve-conflict"
   | "transfer-author"
+  // JOB 3667 R2 (Accountregel): überarbeiten UND freigeben in einem Vorgang (`users.manage`),
+  // einen gebundenen Änderungsvorschlag einreichen (`ko.create`) und über einen entscheiden
+  // (`users.manage`). Alle drei arbeiten AM Objekt unter `:id` — sie passieren das Tor.
+  | "revise-release"
+  | "propose"
+  | "decide-proposal"
   | "revalidate";
 
 /**
@@ -414,6 +428,10 @@ const ZIELOBJEKT_TOR: Record<KoAktion, Torurteil> = {
   conflict: "kein-zielobjekt",
   "resolve-conflict": "kein-zielobjekt",
   "transfer-author": "tor",
+  // JOB 3667 R2: die drei Aktionen des Rückwegs arbeiten alle AM Objekt unter `:id`.
+  "revise-release": "tor",
+  propose: "tor",
+  "decide-proposal": "tor",
   revalidate: "tor",
 };
 
@@ -425,6 +443,46 @@ interface PutBody {
   verdict?: Verdict;
   userIds?: string[];
   changes?: ReviseKoInput;
+  /**
+   * JOB 3667 (WORD-RÜCKWEG) — DER BEDINGTE SCHREIBZUGRIFF DER ÜBERARBEITUNG.
+   *
+   * Die Inhaltsversion, die der Aufrufer beim Laden des Objekts gesehen hat. Sie wirkt AUSSCHLIESS-
+   * LICH an `action: "revise"` und ausschliesslich als BEDINGUNG: trägt das Objekt inzwischen eine
+   * andere Version, wird nicht geschrieben (409 `KO_STALE`, mit der jetzt gespeicherten Version).
+   *
+   * WARUM DIE VERSION UND NICHT `updatedAt` wie am Entwurfsweg (capture-routes.ts:661): `revise`
+   * zählt die Version selbst hoch (`service.ts:3570`, `ko.version + 1`) und schreibt sie in die
+   * Historie — sie ist der Stand, den `GET /api/kos/:id` und `GET /api/kos/:id/versions` ohnehin
+   * ausgeben und den eine Oberfläche deshalb belegbar in der Hand hat. `updatedAt` trägt das
+   * Wissensobjekt nicht als eigenes Feld.
+   *
+   * OHNE DAS FELD bleibt alles wie bisher (letzter Schreiber gewinnt) — der Web-Editor und jeder
+   * Altaufrufer sind unberührt. `unknown`, weil der Wert aus dem Netz kommt: gelesen wird er von
+   * `erwarteteKoVersion` (eine Ganzzahl ≥ 1 oder ein 400), damit ein Unsinnswert den Schutz nicht
+   * stillschweigend abschaltet.
+   */
+  expectedVersion?: unknown;
+  /**
+   * JOB 3667 R2 — DER EINGEREICHTE ÄNDERUNGSVORSCHLAG (`action: "propose"`).
+   *
+   * `baseVersion` ist PFLICHT und die Fassung, auf die sich der Vorschlag bezieht; `origin` sagt,
+   * woher er kam (`word_addin`). Alles `unknown`, weil es aus dem Netz kommt — gelesen wird es an
+   * der `case`, nicht hier geglaubt.
+   *
+   * JOB 3667 R5: `clearBody` ist die AUSDRÜCKLICHE Löschung des Fließtextes. Ohne sie heisst ein
+   * fehlender `bodyHtml` „nicht eingereicht", und die Übernahme lässt den bestehenden stehen.
+   */
+  proposal?: {
+    statement?: unknown;
+    bodyHtml?: unknown;
+    clearBody?: unknown;
+    baseVersion?: unknown;
+    origin?: unknown;
+  };
+  /** JOB 3667 R2: welcher Vorschlag entschieden wird (`action: "decide-proposal"`). */
+  proposalId?: string;
+  /** JOB 3667 R2: die Begründung einer Entscheidung — ohne sie wäre „abgelehnt" auskunftslos. */
+  note?: string;
   category?: string;
   tags?: string[];
   conflict?: ConflictInput;
@@ -471,6 +529,34 @@ interface PutBody {
     // im selben Vorgang schon committet). Mit `changes` revidiert sie den Inhalt gleich mit.
     changes?: { bodyHtml?: string; statement?: string; title?: string };
   };
+}
+
+/**
+ * JOB 3667 — DIE LESART VON `expectedVersion`: ENTWEDER EINE ECHTE VERSION ODER EIN FEHLER.
+ *
+ * Drei Ausgänge, alle drei gewollt:
+ *   · Feld fehlt (`undefined`)  → `undefined`: kein bedingter Schreibzugriff, Altverhalten.
+ *   · Ganzzahl ≥ 1             → genau diese Zahl ist die Bedingung.
+ *   · alles Übrige             → `"unlesbar"`, die Route antwortet 400.
+ *
+ * WARUM DER DRITTE AUSGANG KEIN `undefined` IST: „nicht lesbar" still wie „nicht mitgeschickt" zu
+ * behandeln, hiesse einen Schutz abzuschalten, den der Aufrufer gerade angefordert hat — dieselbe
+ * Falle, die `null` am Entwurfsweg schon einmal gestellt hat („ein Schutz, den ein Aufrufer
+ * weglassen kann, ist keiner", ko-routes.ts JOB 2684 D4). `null` zählt deshalb ausdrücklich als
+ * unlesbar, nicht als Abwesenheit.
+ *
+ * BEWUSST NICHT EXPORTIERT: die Lesart gehört zu dieser einen Route, und ein Export ohne Aufrufer
+ * ausserhalb der Tests wäre genau das, was `tests/capture/aufrufer-waechter.test.ts` verhindert.
+ * Gemessen wird sie an der Route selbst (tests/word-rueckweg/route-bedingter-schreibzugriff.test.ts).
+ */
+function erwarteteKoVersion(roh: unknown): number | undefined | "unlesbar" {
+  if (roh === undefined) {
+    return undefined;
+  }
+  if (typeof roh !== "number" || !Number.isInteger(roh) || roh < 1) {
+    return "unlesbar";
+  }
+  return roh;
 }
 
 // ================================================================================================
@@ -1822,6 +1908,76 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
       const badRequest = (message: string): void => {
         reply.code(400).send({ error: "BAD_REQUEST", message });
       };
+      // ==========================================================================================
+      // JOB 3667 R2 — DIE VIER FEHLER DES RÜCKWEGS BEKOMMEN IHREN EIGENEN STATUS.
+      // ==========================================================================================
+      // `sendError` mappt unbekannte Domänencodes auf 400 (http.ts, STATUS_BY_CODE — nicht
+      // Zielpfad dieses Auftrags). Ein „409 Konflikt" als 400 zu senden hiesse dem Aufrufer sagen,
+      // er habe etwas falsch gemacht; er hat aber nur einen Stand in der Hand, der sich bewegt hat.
+      // Deshalb entscheidet DIESE Stelle, und zwar für alle drei Schreibwege gleich.
+      const rueckwegFehler = async (error: unknown): Promise<boolean> => {
+        const code =
+          error && typeof error === "object" && "code" in error
+            ? String((error as { code: unknown }).code)
+            : "";
+        const message = error instanceof Error ? error.message : code;
+        if (code === "KO_STALE") {
+          // Die JETZT gespeicherte Version reist mit — ohne sie kann die Oberfläche den Menschen
+          // nicht entscheiden lassen, sondern nur „hat nicht geklappt" sagen.
+          const stand = await ko.get(id);
+          reply.code(409).send({
+            error: "KO_STALE",
+            message,
+            ...(stand ? { currentVersion: stand.version } : {}),
+          });
+          return true;
+        }
+        if (code === "PROPOSAL_OWN") {
+          reply.code(403).send({ error: code, message });
+          return true;
+        }
+        if (code === "PROPOSAL_DECIDED") {
+          reply.code(409).send({ error: code, message });
+          return true;
+        }
+        if (code === "PROPOSAL_NOT_FOUND") {
+          reply.code(404).send({ error: code, message });
+          return true;
+        }
+        return false;
+      };
+      // JOB 3667 R2: was NACH jeder neuen Inhaltsfassung zu tun ist — für alle drei Schreibwege
+      // (revise, revise-release, Übernahme eines Vorschlags) EINE Stelle. Die Kette ist heikel
+      // (D-AISTATE), und drei Abschriften davon wären drei Gelegenheiten, sie auseinanderlaufen zu
+      // lassen. Der Inhalt ist Zeichen für Zeichen der bisherige Nachlauf des `revise`-Zweigs.
+      const nachNeuerFassung = async (revidiert: KnowledgeObject): Promise<KnowledgeObject> => {
+        // D-AISTATE PAKET 4 (bens V5, aistate-fix3): eine Revision macht alle offenen
+        // automatischen Befunde, die eine ÄLTERE Version DIESES KOs gebunden haben, systemisch
+        // gegenstandslos (superseded) — Board/Badges/Benachrichtigungen zeigen keinen
+        // veralteten offenen Fund mehr; der frisch eingereihte Prüf-Job der neuen Version
+        // urteilt eigenständig. Zusammen mit dem CAS-Insert der Services (Nachvalidierung nach
+        // dem Insert) ist auch das Interleaving „alter Judge kehrt zwischen Revision und
+        // Freigabe zurück" abgedeckt.
+        await conflicts.onKoRevised(id, revidiert.version);
+        await overlaps.onKoRevised(id, revidiert.version);
+        // D-AISTATE PAKET 3.1 (Pedi Punkt 6, 23.07.): Eine inhaltliche Überarbeitung ENTWERTET jede
+        // frühere Prüfung — der aiCheck wird auf pending zurückgesetzt und für die NEUE Inhaltsversion
+        // neu eingereiht (statt Bearbeiten während laufender Prüfung zu sperren). Die Versions-Bindung
+        // (aiCheck.koVersion) sorgt dafür, dass ein noch laufender ALTER Lauf das frisch geänderte KO
+        // nicht fälschlich als geprüft markiert. Nur wenn je ein Prüf-Job vermerkt war (revised.aiCheck)
+        // und der Worker verdrahtet ist — sonst kein neuer Job (Altbestand ohne Prüf-Pfad unangetastet).
+        // D-AISTATE PAKET 4.3 (bens V5): die Antwort muss die FRISCH markierte Fassung zeigen (aiCheck
+        // pending), nicht das vor markAiCheckPending gelesene `revised` (das noch den alten aiCheck trägt).
+        if (aiCheckWorker && revidiert.aiCheck) {
+          await ko.markAiCheckPending(id);
+          // Vermerk NACH dem Setzen frisch lesen: er trägt die NEUE Zielversion (revised bumpt version;
+          // markAiCheckPending liest sie). Mit ihr ist der Job hart an die überarbeitete Fassung gebunden.
+          const marked = await ko.get(id);
+          aiCheckWorker.enqueue(id, marked?.aiCheck?.koVersion);
+          return marked ?? revidiert;
+        }
+        return revidiert;
+      };
       try {
         // mega80 A: DAS TOR. Es steht VOR dem Switch und vor jeder fachlichen Berechtigung.
         //
@@ -1841,6 +1997,19 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
           if (!(await sichtbaresKoOder404(anfragender, id, reply))) {
             return;
           }
+        }
+        // JOB 3667: `expectedVersion` wirkt AUSSCHLIESSLICH an den drei Schreibwegen des Rückwegs
+        // (dort steht die Begründung). An jeder anderen Aktion wäre es ein angeforderter Schutz,
+        // der stillschweigend nicht greift — das ist schlimmer als keiner. Deshalb 400.
+        if (
+          body.expectedVersion !== undefined &&
+          body.action !== "revise" &&
+          body.action !== "revise-release" &&
+          body.action !== "decide-proposal"
+        ) {
+          return badRequest(
+            'expectedVersion gilt nur für die Aktionen "revise", "revise-release" und "decide-proposal".',
+          );
         }
         switch (body.action) {
           case "rate": {
@@ -1879,37 +2048,174 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             if (!user) {
               return;
             }
+            // ======================================================================================
+            // JOB 3667 R2 — DER FREIGEGEBENE STAND GEHÖRT DEM, DER FREIGEBEN DARF.
+            // ======================================================================================
+            //
+            // PEDIS REGEL (SICHTBARES-GESPRAECH.jsonl:693, Auftrag §4.5): wer nicht freigabe-
+            // berechtigt ist, gibt seine eigene Änderung NIE selbst frei — sie „muss nochmal von
+            // jemand anders überprüft werden". Runde 1 hat das nur im Word-Fenster durchgesetzt;
+            // der Prüfer hat gezeigt, dass derselbe `experte` mit `ko.create` hier vorbeiläuft und
+            // den freigegebenen Text ersetzt. Eine Regel, die ein direkter Routenaufruf aushebelt,
+            // ist keine Regel.
+            //
+            // DIE REGEL IST SO ENG WIE MÖGLICH GEFASST: geschützt ist der FREIGEGEBENE Stand
+            // (`status === "validiert"`), nicht jedes Objekt. Ein Objekt, das nie freigegeben wurde
+            // oder nach einer Revision wieder offen steht, bearbeitet der Experte weiter wie bisher
+            // — sonst nähme diese Zeile dem Erfassungs- und Nacharbeitsweg die Grundlage, ohne dass
+            // Pedis Satz das verlangt.
+            //
+            // WER NICHT DARF, BEKOMMT DEN WEG GENANNT: 403 mit `PROPOSAL_REQUIRED` und dem Verweis
+            // auf `propose`. Eine Ablehnung ohne Weg wäre eine Sackgasse.
+            const bestand = await ko.get(id);
+            if (bestand?.status === "validiert" && !can(user.role, "users.manage")) {
+              reply.code(403).send({
+                error: "PROPOSAL_REQUIRED",
+                message:
+                  'Dieses Wissensobjekt ist freigegeben. Ohne Freigaberecht wird eine Änderung als Vorschlag eingereicht (action "propose") und gilt erst nach der Freigabe durch jemand anderen.',
+              });
+              return;
+            }
+            // JOB 3667: `expectedVersion` ist der bedingte Schreibzugriff. Gelesen wird er hier,
+            // GEPRÜFT wird er im Dienst — in derselben Transaktion, in der geschrieben wird (R2:
+            // das war in Runde 1 ein Zeitfenster an der Route und ist jetzt ein CAS).
+            const erwartet = erwarteteKoVersion(body.expectedVersion);
+            if (erwartet === "unlesbar") {
+              return badRequest(
+                "expectedVersion muss eine Ganzzahl ab 1 sein (die Version, die beim Laden zu sehen war).",
+              );
+            }
             // SCRUM-470 (ben-Review #1): Client-`sources` auch beim Revise verwerfen — Anker bleiben
             // dem Import-Pfad vorbehalten. Ohne `sources` in den Changes bleiben die bestehenden erhalten.
             const { sources: _ignoredSources, ...changes } = body.changes ?? {};
-            const revised = await ko.revise(id, changes, user.id);
-            // D-AISTATE PAKET 4 (bens V5, aistate-fix3): eine Revision macht alle offenen
-            // automatischen Befunde, die eine ÄLTERE Version DIESES KOs gebunden haben, systemisch
-            // gegenstandslos (superseded) — Board/Badges/Benachrichtigungen zeigen keinen
-            // veralteten offenen Fund mehr; der frisch eingereihte Prüf-Job der neuen Version
-            // urteilt eigenständig. Zusammen mit dem CAS-Insert der Services (Nachvalidierung nach
-            // dem Insert) ist auch das Interleaving „alter Judge kehrt zwischen Revision und
-            // Freigabe zurück" abgedeckt.
-            await conflicts.onKoRevised(id, revised.version);
-            await overlaps.onKoRevised(id, revised.version);
-            // D-AISTATE PAKET 3.1 (Pedi Punkt 6, 23.07.): Eine inhaltliche Überarbeitung ENTWERTET jede
-            // frühere Prüfung — der aiCheck wird auf pending zurückgesetzt und für die NEUE Inhaltsversion
-            // neu eingereiht (statt Bearbeiten während laufender Prüfung zu sperren). Die Versions-Bindung
-            // (aiCheck.koVersion) sorgt dafür, dass ein noch laufender ALTER Lauf das frisch geänderte KO
-            // nicht fälschlich als geprüft markiert. Nur wenn je ein Prüf-Job vermerkt war (revised.aiCheck)
-            // und der Worker verdrahtet ist — sonst kein neuer Job (Altbestand ohne Prüf-Pfad unangetastet).
-            // D-AISTATE PAKET 4.3 (bens V5): die Antwort muss die FRISCH markierte Fassung zeigen (aiCheck
-            // pending), nicht das vor markAiCheckPending gelesene `revised` (das noch den alten aiCheck trägt).
-            let response = revised;
-            if (aiCheckWorker && revised.aiCheck) {
-              await ko.markAiCheckPending(id);
-              // Vermerk NACH dem Setzen frisch lesen: er trägt die NEUE Zielversion (revised bumpt version;
-              // markAiCheckPending liest sie). Mit ihr ist der Job hart an die überarbeitete Fassung gebunden.
-              const marked = await ko.get(id);
-              aiCheckWorker.enqueue(id, marked?.aiCheck?.koVersion);
-              response = marked ?? revised;
+            const revised = await ko.revise(
+              id,
+              changes,
+              user.id,
+              erwartet === undefined ? {} : { expectedVersion: erwartet },
+            );
+            reply.code(200).send(await nachNeuerFassung(revised));
+            return;
+          }
+          // ======================================================================================
+          // JOB 3667 R2 — FALL 1 DER ACCOUNTREGEL: ÜBERARBEITEN UND FREIGEBEN IN EINEM AUFRUF.
+          // ======================================================================================
+          //
+          // WARUM EINE EIGENE AKTION UND NICHT ZWEI AUFRUFE: zwischen `revise` und `admin-validate`
+          // lag in Runde 1 eine Spanne, in der ein fremder Schreiber die Fassung wechseln konnte —
+          // freigegeben worden wäre dann SEIN Text. Der Dienst macht beides jetzt in einer
+          // Transaktion; die Freigabe kann gar keine andere Fassung treffen als die, die dieser
+          // Aufruf selbst geschrieben hat.
+          //
+          // DAS RECHT IST DASSELBE WIE AM ADMIN-OVERRIDE (`users.manage`): „gleich als geprüft
+          // ablegen" kann im Bestand nur, wer auch `admin-validate` darf. Eine Bewertung
+          // (`ko.validate`) ist EINE Stimme von `neededValidations` und macht nichts sofort gültig.
+          case "revise-release": {
+            const user = await guards.requirePermission("users.manage", request, reply);
+            if (!user) {
+              return;
             }
-            reply.code(200).send(response);
+            const erwartet = erwarteteKoVersion(body.expectedVersion);
+            if (erwartet === "unlesbar") {
+              return badRequest(
+                "expectedVersion muss eine Ganzzahl ab 1 sein (die Version, die beim Laden zu sehen war).",
+              );
+            }
+            const { sources: _verworfen, ...changes } = body.changes ?? {};
+            const freigegeben = await ko.reviseUndFreigeben(id, changes, user.id, {
+              trust: TRUST_MAX,
+              ...(erwartet === undefined ? {} : { expectedVersion: erwartet }),
+            });
+            reply.code(200).send(await nachNeuerFassung(freigegeben));
+            return;
+          }
+          // ======================================================================================
+          // JOB 3667 R2 — FALL 2/3: DEN ÄNDERUNGSVORSCHLAG EINREICHEN.
+          // ======================================================================================
+          //
+          // Er ändert am Objekt NICHTS ausser seiner Vorschlagsliste — kein Inhalt, keine Version,
+          // kein Prüfstand. Das Recht ist `ko.create`, also dasselbe, mit dem jemand auch einen
+          // Entwurf einreicht (`POST /api/drafts`): wer Wissen beitragen darf, darf vorschlagen.
+          // `baseVersion` ist PFLICHT — ein Vorschlag ohne die Fassung, auf die er sich bezieht,
+          // wäre später nicht mehr einzuordnen, und die Zusage „stammt aus Version n" wäre geraten.
+          case "propose": {
+            const user = await guards.requirePermission("ko.create", request, reply);
+            if (!user) {
+              return;
+            }
+            const vorschlag = body.proposal;
+            if (!vorschlag || typeof vorschlag.statement !== "string") {
+              return badRequest("proposal {statement} fehlt.");
+            }
+            const basis = erwarteteKoVersion(vorschlag.baseVersion);
+            if (basis === "unlesbar" || basis === undefined) {
+              return badRequest(
+                "proposal.baseVersion muss die Ganzzahl der Version sein, auf der der Vorschlag beruht.",
+              );
+            }
+            const angelegt = await ko.addProposal(id, user.id, {
+              statement: vorschlag.statement,
+              ...(typeof vorschlag.bodyHtml === "string" ? { bodyHtml: vorschlag.bodyHtml } : {}),
+              // JOB 3667 R5: nur das ausdrückliche `true` ist die Löschabsicht. Ein fehlendes Feld
+              // (so reicht Word ein) bleibt ein „nicht eingereicht" und löscht nichts.
+              ...(vorschlag.clearBody === true ? { clearBody: true } : {}),
+              baseVersion: basis,
+              ...(typeof vorschlag.origin === "string" ? { origin: vorschlag.origin } : {}),
+            });
+            reply.code(200).send(angelegt.ko);
+            return;
+          }
+          // ======================================================================================
+          // JOB 3667 R2 — DIE FREMDE FREIGABE: ÜBER EINEN VORSCHLAG ENTSCHEIDEN.
+          // ======================================================================================
+          //
+          // Übernehmen heisst: der Text wird zur neuen Fassung UND ist freigegeben — derselbe
+          // atomare Weg wie `revise-release`. Ablehnen heisst: der Vorschlag ist entschieden, der
+          // Inhalt des Objekts bleibt unberührt.
+          //
+          // DASS DER ENTSCHEIDER NICHT DER EINREICHER SEIN DARF, prüft der DIENST (`PROPOSAL_OWN`)
+          // — hier steht sie bewusst NICHT ein zweites Mal: zwei Stellen für dieselbe Regel sind
+          // eine Stelle zu viel, und die Route ist die, die man umgehen kann.
+          case "decide-proposal": {
+            const user = await guards.requirePermission("users.manage", request, reply);
+            if (!user) {
+              return;
+            }
+            const entscheidung = body.decision;
+            if (entscheidung !== "uebernehmen" && entscheidung !== "ablehnen") {
+              return badRequest('decision muss "uebernehmen" oder "ablehnen" sein.');
+            }
+            if (typeof body.proposalId !== "string" || body.proposalId.trim().length === 0) {
+              return badRequest("proposalId fehlt.");
+            }
+            const erwartet = erwarteteKoVersion(body.expectedVersion);
+            if (erwartet === "unlesbar") {
+              return badRequest(
+                "expectedVersion muss eine Ganzzahl ab 1 sein (die Version, die beim Laden zu sehen war).",
+              );
+            }
+            const entschieden = await ko.decideProposal(
+              id,
+              body.proposalId.trim(),
+              user.id,
+              entscheidung,
+              {
+                trust: TRUST_MAX,
+                ...(erwartet === undefined ? {} : { expectedVersion: erwartet }),
+                ...(typeof body.note === "string" && body.note.trim().length > 0
+                  ? { note: body.note.trim() }
+                  : {}),
+              },
+            );
+            // Nur eine ÜBERNAHME hat eine neue Inhaltsfassung erzeugt; eine Ablehnung nicht — der
+            // Nachlauf (Konflikte, Überschneidungen, KI-Prüfung) hätte dort kein Subjekt.
+            reply
+              .code(200)
+              .send(
+                entscheidung === "uebernehmen"
+                  ? await nachNeuerFassung(entschieden.ko)
+                  : entschieden.ko,
+              );
             return;
           }
           case "comment": {
@@ -2453,6 +2759,12 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             badRequest(`Unbekannte Aktion: ${body.action}`);
         }
       } catch (error) {
+        // JOB 3667 R2: die vier Fehler des Rückwegs zuerst — sie tragen einen eigenen Status und
+        // im Fall `KO_STALE` die jetzt gespeicherte Version. Alles andere geht unverändert an
+        // `sendError`; ein nicht erkannter Code verlässt diese Stelle also genau wie bisher.
+        if (await rueckwegFehler(error)) {
+          return;
+        }
         sendError(reply, error);
       }
     });

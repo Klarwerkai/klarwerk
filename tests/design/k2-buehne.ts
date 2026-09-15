@@ -24,10 +24,14 @@ export const TASKPANE = resolve(WURZEL, "apps/web/public/word-addin/taskpane.htm
 export const ZIELBILD = "/Users/peterkohnert/klarwerk_steuerung/design/klara/Erfassen.dc.html";
 export const ORIGIN = "http://klara.test";
 export const SEITE_PFAD = "/word-addin/taskpane.html";
+/** JOB 3667: die zweite ausgelieferte Datei des Fensters (Block KW-RUECKWEG). */
+export const RUECKWEG_DATEI = resolve(WURZEL, "apps/web/public/word-addin/rueckweg.js");
+export const RUECKWEG_PFAD = "/word-addin/rueckweg.js";
 const OFFICE_JS = "https://appsforoffice.microsoft.com/lib/1/hosted/office.js";
 export const NAME = "Pedi";
 
 export const HTML = readFileSync(TASKPANE, "utf8");
+export const RUECKWEG = readFileSync(RUECKWEG_DATEI, "utf8");
 export const zielbildDa = existsSync(ZIELBILD);
 export const ZIEL = zielbildDa ? readFileSync(ZIELBILD, "utf8") : "";
 const ZIEL_ZEILEN = ZIEL.split("\n");
@@ -315,6 +319,17 @@ export async function buehneBauen(teil: Partial<Plan> = {}): Promise<Buehne> {
         status: 200,
         body: plan.html,
         contentType: "text/html; charset=utf-8",
+      });
+      return;
+    }
+    // JOB 3667 (14.09.2026): das Fenster wird aus ZWEI Skripten ausgeliefert. `rueckweg.js` ist
+    // keine Zutat der Buehne, sondern Teil derselben Auslieferung wie `taskpane.html` — ohne sie
+    // fehlt `rwZeichnen`, und der erste `setLang` wirft. Deshalb aus der Quelle, nicht gestellt.
+    if (url.origin === ORIGIN && url.pathname === RUECKWEG_PFAD && req.method() === "GET") {
+      await route.fulfill({
+        status: 200,
+        body: RUECKWEG,
+        contentType: "application/javascript; charset=utf-8",
       });
       return;
     }

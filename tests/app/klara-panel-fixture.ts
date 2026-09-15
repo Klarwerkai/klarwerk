@@ -25,6 +25,16 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 export const TASKPANE_PATH = "apps/web/public/word-addin/taskpane.html";
+/**
+ * JOB 3667 (14.09.2026): das ausgelieferte Fenster besteht seit dem Schnitt aus ZWEI Skripten —
+ * dem Inline-Skript und dieser Geschwisterdatei, die `taskpane.html` unmittelbar davor als
+ * klassisches Skript laedt. Wer nur eines von beiden ausfuehrt, baut ein Fenster, das es so nicht
+ * gibt: `setLang`, `renderCapture` und `checkSession` rufen `rwZeichnen`/`rwRolleMelden`
+ * UNGESCHUETZT. `splitTaskpane` fuegt deshalb beide in der Reihenfolge der Auslieferung zusammen.
+ */
+export const RUECKWEG_PATH = "apps/web/public/word-addin/rueckweg.js";
+/** Das Verweis-Tag, an dem der Rumpf endet — es steht im Markup, gehoert aber zum Skriptteil. */
+const RUECKWEG_TAG = '<script src="rueckweg.js';
 
 // ---- Schmale Struktur-Typen (Ersatz fuer die fehlende DOM-lib) ---------------------------------
 
@@ -296,17 +306,29 @@ function readTaskpane(): string {
   return readFileSync(resolve(process.cwd(), TASKPANE_PATH), "utf8");
 }
 
-/** Rumpf und Inline-Skript aus der AUSGELIEFERTEN Seite schneiden (kein zweiter Quelltext). */
+export function readRueckweg(): string {
+  return readFileSync(resolve(process.cwd(), RUECKWEG_PATH), "utf8");
+}
+
+/**
+ * Rumpf und Skript aus der AUSGELIEFERTEN Seite schneiden (kein zweiter Quelltext).
+ *
+ * `script` ist das, was der Browser in dieser Reihenfolge ausfuehrt: erst `rueckweg.js`, dann das
+ * Inline-Skript. Der Rumpf endet am Verweis-Tag, nicht erst am Inline-Skript — sonst stuende ein
+ * `<script src>` im `innerHTML`, das im jsdom stumm bliebe und nur verwirrte.
+ */
 export function splitTaskpane(html: string): { markup: string; script: string } {
   const bodyOpen = html.indexOf("<body>");
+  const tagOpen = html.indexOf(RUECKWEG_TAG, bodyOpen);
   const scriptOpen = html.indexOf("<script>", bodyOpen);
   const scriptClose = html.lastIndexOf("</script>");
   if (bodyOpen < 0 || scriptOpen < 0 || scriptClose < scriptOpen) {
     throw new Error("taskpane.html: Rumpf/Skript nicht auffindbar");
   }
+  const rumpfBis = tagOpen >= 0 && tagOpen < scriptOpen ? tagOpen : scriptOpen;
   return {
-    markup: html.slice(bodyOpen + "<body>".length, scriptOpen),
-    script: html.slice(scriptOpen + "<script>".length, scriptClose),
+    markup: html.slice(bodyOpen + "<body>".length, rumpfBis),
+    script: `${readRueckweg()}\n${html.slice(scriptOpen + "<script>".length, scriptClose)}`,
   };
 }
 

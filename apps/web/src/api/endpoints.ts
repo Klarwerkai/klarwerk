@@ -139,7 +139,14 @@ export type KoAction =
   // Pedi 05.07.: Admin-Override „als wahr kennzeichnen" — schließt die Validierung komplett ab.
   | { action: "admin-validate" }
   | { action: "assign"; userIds: string[] }
-  | { action: "revise"; changes: DraftPayload }
+  // ================================================================================================
+  // JOB 3667 R3 — `expectedVersion` AM REVISE: DER BEDINGTE SCHREIBZUGRIFF, VOM CLIENT AUS NUTZBAR.
+  // ================================================================================================
+  // Der Server nimmt ihn seit Runde 2 an (`ko-routes.ts:2073`) und prüft ihn im Dienst, in derselben
+  // Transaktion, in der geschrieben wird. OPTIONAL, weil er es dort auch ist: ohne das Feld bleibt
+  // `revise` unbedingt wie bisher — kein Aufrufer im Haus ändert sein Verhalten, weil dieser Typ
+  // wächst. Wer ihn MITSCHICKT, bekommt statt eines stillen Überschreibers ein 409 `KO_STALE`.
+  | { action: "revise"; changes: DraftPayload; expectedVersion?: number }
   | { action: "comment"; text: string }
   | {
       action: "attach";
@@ -183,6 +190,59 @@ export type KoAction =
   // KnowledgeObject ist, sondern ein COMMIT-ERGEBNIS: sie sagt, was tatsächlich gilt (Version,
   // Anker, Belegstellen) — s. `endpoints.ko.appendDocument`.
   | { action: "append-document"; appendDocument: DocumentAppendRequest }
+  // ================================================================================================
+  // JOB 3667 R3 — DIE ZWEI AKTIONEN DES RÜCKWEGS, DIE DER BROWSER BISHER NICHT AUFRUFEN KONNTE.
+  // ================================================================================================
+  //
+  // Runde 2 hat die Accountregel am SERVER durchgesetzt: wer ein freigegebenes Wissensobjekt nicht
+  // auch freigeben darf, bekommt am direkten `revise` ein 403 `PROPOSAL_REQUIRED` und soll statt
+  // dessen einen an DASSELBE Objekt gebundenen Vorschlag einreichen. Das Word-Fenster tut das seit
+  // Runde 2 — die Web-Fläche stand vor einer Sperre ohne Ausweg, weil dieser Vertrag die beiden
+  // Aktionen nicht kannte. Ohne sie ist der Weg nicht aufrufbar; das ist der ganze Grund dieser Zeilen.
+  //
+  // `propose` — DER EINREICHWEG (Fall 2 und 3 der Accountregel).
+  //   · `baseVersion` ist PFLICHT und ist der bedingte Schreibzugriff dieses Wegs: der Server hängt
+  //     den Vorschlag nur an die Fassung, die der Einreicher wirklich gesehen hat, sonst 409
+  //     `KO_STALE` (`service.ts:3787`). Ein Vorschlag an eine Fassung, die es nicht mehr gibt, wäre
+  //     später nicht einzuordnen.
+  //   · `bodyHtml` ist OPTIONAL und wird NUR mitgeschickt, wo ein Rumpf wirklich vorliegt. Der
+  //     Server säubert ihn (`cleanBody`, `service.ts:3794`) — was ankommt, entscheidet er, nicht wir.
+  //   · `clearBody` (R5) ist die AUSDRÜCKLICHE Löschung des Fließtextes und der einzige Weg dazu.
+  //     Ein fehlendes `bodyHtml` heisst seit R5 „nicht eingereicht": die Übernahme lässt den
+  //     bestehenden Fließtext dann stehen (`service.ts`, `rumpfAusVorschlag`). Genau so reicht Word
+  //     ein — eine reine Textänderung darf das Dokument des Objekts nicht mit ausradieren. Beides
+  //     zugleich weist der Dienst ab (`INVALID_SOURCE`): zwei Absichten in einem Vorschlag.
+  //   · `origin` sagt, WO der Vorschlag entstand. Derselbe Platz, an dem der Word-Weg `word_addin`
+  //     trägt; aus dieser Oberfläche steht dort `klarwerk_web`. Der Server nimmt jede Zeichenkette
+  //     (`ko-routes.ts:2151`) — die Vokabel gehört deshalb dem Aufrufer, und sie ist hier keine
+  //     Vermutung, sondern die Stelle, die den Aufruf absetzt.
+  //
+  // `decide-proposal` — DIE FREMDE ENTSCHEIDUNG (der Kreis von Fall 2).
+  //   · ES GEHT NUR DIE KENNUNG HINAUS, NIE EIN INHALT. Übernommen wird, was IM VORSCHLAG steht
+  //     (`service.ts:3891` liest `vorschlag.statement`/`vorschlag.bodyHtml`) — nicht ein Entwurf,
+  //     den die Fläche zwischenzeitlich verändert hat, und nicht der aktuelle Stand des Objekts.
+  //     Dass der Vertrag hier gar kein Inhaltsfeld anbietet, ist diese Zusage und nicht ihr Beiwerk.
+  //   · `expectedVersion` bindet die Freigabe an die Fassung, die der Entscheider gesehen hat. Ohne
+  //     sie nähme eine Übernahme fremden, zwischenzeitlich geschriebenen Text mit — der dritte der
+  //     vier gemessenen Defekte aus Runde 1.
+  //   · `note` trägt die Begründung. Bei einer Ablehnung ist sie die einzige Auskunft, die bleibt.
+  | {
+      action: "propose";
+      proposal: {
+        statement: string;
+        bodyHtml?: string;
+        clearBody?: true;
+        baseVersion: number;
+        origin?: string;
+      };
+    }
+  | {
+      action: "decide-proposal";
+      proposalId: string;
+      decision: "uebernehmen" | "ablehnen";
+      note?: string;
+      expectedVersion?: number;
+    }
   | { action: "revalidate" };
 
 /**
