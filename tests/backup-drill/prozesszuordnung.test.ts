@@ -13,6 +13,7 @@ import { type AddressInfo, createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { pflichttabellenAusDrill } from "./pflichtsatz";
 
 // ==================================================================================================
 // JOB 4010 — DIE PROZESSZUORDNUNG DES RESTORE-DRILLS, AN EINEM ECHTEN PROZESSBAUM GEMESSEN.
@@ -74,6 +75,26 @@ const server = createServer((req, res) => {
     );
     return;
   }
+  // JOB 4097 · Glied 7b — die zwei Abrufe des Nutzennachweises. Auch sie gehoeren in diese Fixture:
+  // der Drill faehrt sie am ECHTEN curl gegen einen ECHTEN Serverprozess, und genau der Prozessbaum
+  // ist die Frage dieser Datei.
+  if (url.startsWith("/api/kos/") && url.endsWith("/evidence")) {
+    res.writeHead(200, { "content-type": "application/json" });
+    // JOB 4097 R2: der Drill vergleicht den DATENSATZ — dieselbe \`id\` wie in der Datenbank, und an
+    // ihr dieselbe \`objectId\`. Eine Antwort mit irgendeiner Kennung im Text genuegt ihm nicht mehr.
+    res.end(
+      JSON.stringify([
+        { id: "ev-drill-4097", kind: "attachment", objectId: "obj-drill-4097" },
+      ]),
+    );
+    return;
+  }
+  if (url.startsWith("/api/objects/") && url.endsWith("/raw")) {
+    const bytes = Buffer.alloc(64, 7);
+    res.writeHead(200, { "content-type": "application/octet-stream" });
+    res.end(bytes);
+    return;
+  }
   res.writeHead(404, { "content-type": "text/plain" });
   res.end("nein");
 });
@@ -97,16 +118,24 @@ process.on("SIGTERM", () => {
 `;
 
 // Nur die drei externen PostgreSQL-Werkzeuge. Sie antworten wie ein vollstaendiger, leerer
-// Zielbestand mit je zwei Datenzeilen je Kerntabelle — mehr braucht die Prozessfrage nicht.
+// Zielbestand mit je zwei Datenzeilen je Pflichttabelle — mehr braucht die Prozessfrage nicht.
+//
+// JOB 4097: Der Pflichtsatz kommt aus dem Skript selbst (`PFLICHT`), nicht aus einer Abschrift —
+// dieselbe eine Wahrheit, gegen die `tabellensatz.test.ts` ihn haelt.
 const pgStub = String.raw`
 const fs = require('node:fs');
 const path = require('node:path');
 const name = path.basename(process.argv[1]);
 const args = process.argv.slice(2);
+const tabellen = JSON.parse(process.env.PFLICHT);
 if (name === 'createdb') process.exit(0);
 if (name === 'psql') {
   const sql = args.at(-1);
-  if (sql.includes('information_schema.tables')) {
+  if (sql.includes('FROM ko_evidence')) {
+    // JOB 4097 R2: zwei Fragen an denselben Bestand — der Waisen-Scan (keine verwaiste Belegzeile)
+    // und die ungefilterte Kandidatenzeile (Belegzeile, Wissensobjekt, Anhang).
+    console.log(sql.includes('NOT EXISTS') ? '0 -' : 'ev-drill-4097 ko-drill-4097 obj-drill-4097');
+  } else if (sql.includes('information_schema.tables')) {
     console.log(/table_name='([^']+)'/.test(sql) ? 1 : 0);
   } else {
     console.log(2);
@@ -114,6 +143,11 @@ if (name === 'psql') {
   process.exit(0);
 }
 if (name === 'pg_restore') {
+  if (args.includes('--list')) {
+    let nr = 100;
+    for (const t of tabellen) console.log((nr++) + '; 0 16400 TABLE DATA public ' + t + ' eigentuemer');
+    process.exit(0);
+  }
   if (!args.includes('--data-only')) process.exit(0);
   const table = args.find(a => a.startsWith('--table='))?.slice(8);
   console.log('COPY public.' + table + ' (id, body) FROM stdin;');
@@ -219,6 +253,7 @@ async function drillLauf(port: number, fremdPid?: number): Promise<Lauf> {
       DRILL_WORKDIR: arbeit,
       DRILL_LOGIN_EMAIL: "fixture@example.test",
       DRILL_LOGIN_PASSWORT: "fixture",
+      PFLICHT: JSON.stringify(pflichttabellenAusDrill()),
       FIXTURE_ECHTE_PID_DATEI: echtePidDatei,
       ...(fremdPid === undefined ? {} : { FIXTURE_FREMD_PID: String(fremdPid) }),
     },
@@ -260,6 +295,12 @@ describe("JOB 4010 · Prozesszuordnung am echten npx/tsx-Baum", () => {
       expect(lauf.ausgabe).toContain(`Glied ${glied} —`);
     }
     expect(lauf.ausgabe).toContain("DRILL BESTANDEN");
+    // JOB 4097: Glied 7b faehrt am ECHTEN curl gegen den ECHTEN Serverprozess dieser Fixture —
+    // beide Abrufe (Belegliste, Anhangsinhalt) und die Byte-Zahl stehen in der Ausgabe.
+    expect(lauf.ausgabe).toContain(
+      "Glied 7b — Wissensobjekt ko-drill-4097 mit Beleg auf obj-drill-4097",
+    );
+    expect(lauf.ausgabe).toContain("64 Bytes Anhangsinhalt zurueckgelesen");
 
     // DER KERN: der Prozess, den der Drill als Server benannt hat, ist derjenige, der auch wirklich
     // horchte — und er ist tot. Beides zusammen, sonst hiesse „beendet" nur „irgendetwas beendet".

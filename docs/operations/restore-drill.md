@@ -2,9 +2,18 @@
 
 Ein Backup, das nie zurückgespielt wurde, ist eine Vermutung. Dieser Drill macht daraus eine
 Messung: Er prüft die Prüfsumme, spielt in eine **frische, leere** Datenbank zurück,
-prüft die Kerntabellen `kos`, `users`, `audit`, `objects` samt Zeilenzahlen gegen den Dump,
-startet Klara dagegen, meldet sich mit einem Konto **aus dem Dump** an, fragt die Auditkette ab und
-räumt anschließend alles restlos ab, was er selbst gestartet hat — und nur das.
+prüft **jede Tabelle, die das Produkt anlegt**, samt Zeilenzahlen gegen den Dump,
+startet Klara dagegen, meldet sich mit einem Konto **aus dem Dump** an, fragt die Auditkette ab,
+liest **ein wiederhergestelltes Wissensobjekt samt Beleg und Anhangsinhalt** über die laufende
+Anwendung zurück und räumt anschließend alles restlos ab, was er selbst gestartet hat — und nur das.
+
+> **Was sich mit JOB 4097 geändert hat.** Bis dahin prüfte der Drill vier Tabellen (`kos`, `users`,
+> `audit`, `objects`) und konnte mit **Exit 0** enden, während die Entwürfe (`drafts`), die Belege
+> samt Anhangszuordnung (`ko_evidence`), die Validierungen, die Konfliktvermerke, die
+> Import-Kandidaten und die Lesevarianten verloren waren. Besonders `ko_evidence` trifft: dort steht
+> die Zuordnung Datei→Wissensobjekt. Ein Restore, der `objects` vollständig zurückbringt, aber
+> `ko_evidence` verliert, lässt die Dateien in der Ablage liegen und nimmt ihnen jede Zugehörigkeit
+> — und war ein bestandener Drill.
 
 ## Der Befehl
 
@@ -35,20 +44,22 @@ eigenen Exitcode (61).
 | `11` | **Sidecar stimmt nicht** mit dem Dump überein — `pg_restore` wird nicht gestartet |
 | `20` | Zieldatenbank nicht anlegbar oder **nicht leer** |
 | `21` | `pg_restore` gescheitert |
-| `22` | Strukturgate: fehlende Kerntabellen (`kos`, `users`, `audit`, `objects`), alle Namen in einer Meldung |
+| `22` | **Fehlender Bestand**: eine Pflichttabelle fehlt nach dem Restore, oder der Dump führt für sie gar keinen Bestand (kein COPY-Block **und** kein Eintrag im Inhaltsverzeichnis). Alle Namen in einer Meldung |
 | `23` | Zeilenabweichung: Tabellenname, `Dump=<Zahl>` und `Datenbank=<Zahl>` |
-| `24` | Zeilenzählung nicht messbar: Datenextraktion, COPY-Format oder SQL-Abfrage fehlgeschlagen; Tabellenname wird genannt |
+| `24` | Zeilenzählung nicht messbar: Inhaltsverzeichnis, Datenextraktion, COPY-Format oder SQL-Abfrage fehlgeschlagen; Tabellenname wird genannt |
 | `30` | Anwendung wurde nicht lebendig (keine PID-Datei, `/health` ≠ 200) |
 | `31` | Startwerkzeug fehlt oder ist nicht ausführbar: `node`, `npx` oder lokal installiertes `tsx` |
 | `60` | **Login fehlgeschlagen** — Aufbaufehler, *kein* Auditbefund |
 | `61` | **403 bei der Verifikation** — die Fixture hat kein `ko.validate`, Aufbaufehler |
+| `62` | **Wissensnachweis: Aufbaufehler** — der Bestand ließ sich nicht befragen, oder Route/Recht antworteten nicht mit 200. *Kein* Befund am Bestand |
 | `70` | `linkageBreaks ≠ 0` — echter Kettenbruch |
 | `71` | `unresolvedDeviations ≠ 0` — unerklärte Hashabweichung |
 | `72` | `uncheckedDeviations ≠ 0` — ungeprüfte Abweichung (Deckel gerissen) |
+| `73` | **Wissensnachweis: Befund** — eine Belegzeile zeigt auf eine Anhangskennung, zu der `objects` keine Zeile führt, **oder** das Wissensobjekt, sein Beleg oder der Anhangsinhalt kam nach dem Restore nicht zurück, obwohl die Datenbank sie führt |
 | `80` | **Zuordnung oder Reaping fehlgeschlagen** — die PID-Datei nennt einen Prozess außerhalb der eigenen Prozessgruppe, die Abstammung ist nicht feststellbar, oder ein Prozess hat SIGKILL überlebt |
 
-Die Trennung von 60/61 gegen 70/71/72 ist der Kern: **Ein Aufbaufehler darf nicht wie ein
-Auditbefund aussehen.**
+Die Trennung von 60/61/62 gegen 70/71/72/73 ist der Kern: **Ein Aufbaufehler darf nicht wie ein
+Befund am Bestand aussehen.**
 
 ## Was ausdrücklich KEIN Abnahmekriterium ist
 
@@ -70,10 +81,11 @@ jede Abweichung erklärt ist).
 
 | Träger | Was er belegt | Braucht Docker |
 |---|---|---|
-| `tests/backup-drill/restore-drill.test.ts` | PATH-Stubs: Sidecar vor jedem Restore, leeres Ziel, vier Kerntabellen, Dumpabgleich, Startaufruf, Login-/Auditcodes und das Abweisen einer fremden PID | nein |
+| `tests/backup-drill/tabellensatz.test.ts` | Die Bindung des Pflichtsatzes an die Migration: jede Tabelle aus `schemas` steht in `PFLICHTTABELLEN` — und eine simulierte neue Schema-Stufe ohne Eintrag im Drill wird erkannt | nein |
+| `tests/backup-drill/restore-drill.test.ts` | PATH-Stubs: Sidecar vor jedem Restore, leeres Ziel, der volle Pflichtsatz, Dumpabgleich (auch der Fall „kein Bestand für `ko_evidence`" und der Zeilenverlust in `drafts`), Startaufruf, Login-/Audit-/Wissensnachweis-Codes, die drei Antworten mit bloßem Textvorkommen der Kennung, die verwaiste Belegzeile und das Abweisen einer fremden PID | nein |
 | `tests/backup-drill/start-identitaet.test.ts` | Echtes `npx tsx`: Launcher-PID und TypeScript-Prozess-PID sind verschieden | nein |
 | `tests/backup-drill/prozesszuordnung.test.ts` | Echter Prozessbaum (echtes `npx`, `tsx`, `node`, `curl`, `ps`): der Drill trifft den Prozess, der wirklich horchte, räumt die ganze Gruppe ab und gibt den Port frei; eine fremde PID in der PID-Datei endet mit 80, und der fremde Prozess lebt danach noch | nein |
-| `tests/backup-drill/echter-wiederanlauf.integration.test.ts` | Echter Custom-Dump aus `backup.sh` → echte, leere PostgreSQL → laufende Anwendung → dieselbe hochgeladene Datei Byte für Byte zurück | **ja** (oder eine lokale PostgreSQL, s. u.) |
+| `tests/backup-drill/echter-wiederanlauf.integration.test.ts` | Echter Custom-Dump aus `backup.sh` → echte, leere PostgreSQL → laufende Anwendung → dieselbe hochgeladene Datei Byte für Byte zurück; dazu die drei Gegenproben am echten Bestand: Anhang unbrauchbar (73), gar kein Beleg (nicht gemessen), Belegzeile ohne ihren Anhang (73) | **ja** (oder eine lokale PostgreSQL, s. u.) |
 
 Die drei zuvor genannten Dateien unter `tests/operations/` existieren im aktuellen Arbeitsbaum
 nicht; auch die Suche im Testbestand findet keinen umgezogenen Drill-Träger.
@@ -99,20 +111,109 @@ stiller Skip sähe aus wie ein bestandener Lauf. **Stand 14.09.2026: In der Prü
 Auftrags war weder eine PostgreSQL noch eine Container-Laufzeit vorhanden; der PG-Lauf wurde
 NICHT ausgeführt.** Was dort trägt, ist `prozesszuordnung.test.ts`.
 
+## Der Pflichtsatz der Tabellen — eine Wahrheit, kein zweiter Pflegeort
+
+Die Liste steht **einmal**, im Skript selbst: `PFLICHTTABELLEN` in
+`scripts/backup/restore-drill.sh`. Sie ist hier **bewusst nicht abgeschrieben** — eine dritte
+Abschrift von rund vierzig Namen wäre der nächste Pflegeort, der still ausläuft. Stattdessen ist sie
+an die Migration **gebunden**: `tests/backup-drill/tabellensatz.test.ts` liest die
+`CREATE TABLE`-Anweisungen aus den DDL-Stufen, die `migrate()` wirklich fährt
+(`services/app/src/db.ts`, exportierte Liste `schemas`), und hält sie gegen `PFLICHTTABELLEN`.
+
+**Kommt eine Migration dazu und der Drill wird nicht erweitert, ist das Tor rot.** Die Lücke, die
+diesen Abschnitt nötig gemacht hat, kann so kein zweites Mal entstehen.
+
 ## Zeilenabgleich und Anwendungsstart
 
-Nach dem Restore sammelt das Strukturgate alle fehlenden Tabellen aus `kos`, `users`, `audit`,
-`objects` (Exit 22). Für jede vorhandene Kerntabelle extrahiert
+Nach dem Restore sammelt das Strukturgate **alle** fehlenden Pflichttabellen in einer Meldung
+(Exit 22). Für jede vorhandene Tabelle extrahiert
 `pg_restore --data-only --schema=public --table=<tabelle> -f - "$DUMP"` die COPY-Daten aus dem
 Archiv. Der Drill zählt ausschließlich deren Datenzeilen und vergleicht sie mit
 `SELECT count(*) FROM public.<tabelle>` in der Ziel-DB, **vor** dem Anwendungsstart.
 Er gibt jedes gemessene Paar als `<tabelle>: Dump=<Zahl> Datenbank=<Zahl>` aus; auch `0 = 0` gilt.
-Abweichungen enden mit Exit 23 samt beiden Zahlen. Nicht lesbare, fehlende oder unvollständige
+Abweichungen enden mit Exit 23 samt beiden Zahlen. Doppelte, unvollständige oder nicht lesbare
 COPY-Blöcke und fehlgeschlagene SQL-Zählungen sind Exit 24; fehlende Daten werden nie als 0 ausgelegt.
-Der Vergleich gilt für diese vier Kerntabellen, nicht für sämtliche Tabellen des Dumps.
+
+**Kein COPY-Block heißt nicht „leere Tabelle".** Der Drill liest einmal das Inhaltsverzeichnis des
+Archivs (`pg_restore --list`) und entscheidet daran:
+
+* Die Tabelle steht mit einem Datenblock (`TABLE DATA public <name>`) darin → der fehlende
+  COPY-Block ist eine **gemessene 0**.
+* Sie steht **nicht** darin → der Dump führt für sie **überhaupt keinen Bestand**, und das ist
+  **Exit 22**, kein stilles Grün. Dieser Fall entsteht real durch `pg_dump --exclude-table-data`,
+  durch einen Teilverlust oder durch einen Dump aus einer älteren Fassung des Produkts, die die
+  Tabelle noch nicht kannte. Ohne diese Unterscheidung stünde die Tabelle nach dem Restore leer da,
+  die Zählung läse 0 = 0, und der Drill wäre grün.
+
+Ein Dump aus einer älteren Version endet damit **absichtlich** mit Exit 22 und nennt die Tabelle.
 
 Der Startbefehl lautet wie im Produktionsimage `npx tsx services/app/src/server.ts`.
 Der Drill prüft vorher `node`, `npx` und das lokale `tsx` ohne Paketdownload (Exit 31).
+
+## Der Nutzennachweis: ein Objekt, ein Beleg, ein Anhang — durch die laufende Anwendung
+
+Eine gleiche Zeilenzahl ist **kein** Inhaltsbeleg. Eine Tabelle kann vorhanden, gleich lang und
+trotzdem unbrauchbar sein. Nach der Auditkette geht der Drill deshalb zwei Schritte.
+
+**Erst der Bestandsscan über alle Belegzeilen.** Jede Zeile in `ko_evidence`, die zu einem lebenden
+Wissensobjekt gehört und eine `objectId` trägt, muss ihren Anhang in `objects` auch finden. Fehlt
+er, ist das ein **Befund (Exit 73)**; der Drill nennt die Zahl der betroffenen Zeilen und ein
+Beispiel (`<Wissensobjekt> <Anhang>`). Diese Lücke sieht **keine** Zählung: `ko_evidence` und
+`objects` können beide so lang sein wie im Dump, und die Verbindung dazwischen ist trotzdem weg.
+
+> **Was hier nicht gefiltert wird — und warum das der Punkt ist.** Die Auswahl darf verwaiste
+> Belegzeilen nicht überspringen. Täte sie es und wäre eine solche Zeile die einzige, meldete der
+> Drill „kein Wissensobjekt mit Beleg im Bestand — nicht gemessen": Der schlimmste Fall sähe aus wie
+> der harmloseste. **Ehrlichkeitsgrenze:** Trüge schon die *Quelle* des Dumps diese Lücke, endete
+> der Drill ebenso mit 73 — er vergleicht den wiederhergestellten Bestand, nicht die Gesundheit der
+> Quelle. Heute entsteht eine solche Zeile im Produkt nicht von selbst: kein Weg entfernt ein Objekt
+> (`services/object-store/src/service.ts`), und mit einem endgültig gelöschten Wissensobjekt
+> verschwinden seine Belegzeilen mit.
+
+**Dann wird ein Objekt wirklich gelesen.** Der Drill nimmt die erste Belegzeile mit `objectId`
+(ungefiltert) und holt sie über die laufende Anwendung zurück:
+
+1. `GET /api/kos/<id>/evidence` — in der Antwort muss **genau der Belegdatensatz** stehen, den die
+   Datenbank genannt hat (dieselbe `id`), und **sein** Feld `objectId` muss **genau** die Kennung
+   aus der Datenbank sein.
+2. `GET /api/objects/<id>/raw` — der Anhangsinhalt muss mit 200 und **mit Bytes** kommen.
+
+> **Ein Textvorkommen ist keine Zuordnung.** Bis zur Prüfung dieses Auftrags suchte Schritt 1 die
+> Kennung mit `grep` irgendwo in der Antwort. Damit bestanden drei Antworten, die *keine* Zuordnung
+> tragen: die Kennung als Teil einer **anderen** `objectId`, die Kennung nur im `label`, und die
+> Kennung an einem **fremden** Belegdatensatz. Die Antwort wird deshalb als JSON gelesen und Feld
+> für Feld verglichen (Datensatz-`id`, dann `objectId`), nicht durchsucht. Ist sie keine lesbare
+> JSON-Liste, ist das ein **Aufbaufehler (62)** — kein Befund.
+
+Beide Routen verlangen `ko.read`; die Anmeldefixture trägt ohnehin `ko.validate` und damit `ko.read`
+(`services/rbac/src/policy.ts:15-17`) sowie die Sicht auf jede Vertraulichkeitsstufe
+(`services/app/src/sichtbarkeit.ts:71-72`). Ein `404` ist an dieser Stelle deshalb **kein**
+Rechtefall, sondern ein Befund: Die Datenbank führt das Objekt, die Anwendung findet es nicht.
+
+**Führt der Bestand gar kein Wissensobjekt mit Beleg, ist das kein Fehlschlag — und kein Erfolg.**
+Der Drill schreibt dann wörtlich `kein Wissensobjekt mit Beleg im Bestand — dieser Punkt wurde
+NICHT gemessen.`, und die Abschlusszeile `Wissensnachweis: …` trägt denselben Satz. Die starke
+Aussage („Beleg und Anhang zurück") steht nur da, wo sie wirklich gemessen wurde. Dieser Satz
+bedeutet **kein Beleg vorhanden** — ein vorhandener Beleg ohne seinen Anhang ist der Befund
+darüber (73), nicht dieser Fall.
+
+## Was ein bestandener Drill belegt — und was weiterhin nicht
+
+**Er belegt:** Der Dump lässt sich in eine leere PostgreSQL zurückspielen; **jede** Tabelle, die das
+Produkt anlegt, ist danach da und trägt so viele Zeilen wie der Dump; die Anwendung startet
+dagegen; eine Anmeldung mit einem Konto aus dem Dump gelingt; die Auditkette trägt; und — sofern der
+Bestand ein solches Objekt führt — ein Wissensobjekt kam samt Beleg und Anhangsinhalt zurück.
+
+**Er belegt nicht:**
+
+* den **Cloud-/Coolify-Weg**: Umschalten der `DATABASE_URL`, Neustart des Dienstes und das Verhalten
+  der Plattform sind Betrieb und stehen in `docs/operations/maintenance-update-process.md` (U4/U5).
+  Der Drill läuft gegen eine lokale Wegwerf-Datenbank.
+* die **Dateiablage außerhalb der Datenbank**: Klarwerk legt Anhänge heute in `objects` ab, also im
+  Dump. Ein Objektspeicher außerhalb der Datenbank wäre vom `pg_dump` nicht erfasst und von diesem
+  Drill nicht geprüft.
+* **Offsite-Kopie und Verschlüsselung** der Dumps (`docs/operations/backup-disaster-recovery.md`
+  §3/§12) — Betreiberpflicht, die kein Probelauf ersetzt.
 
 ## Wen der Drill beendet — Zuordnung über die Prozessgruppe
 

@@ -49,106 +49,126 @@ export function createPool(connectionString?: string): Pool {
   return new Pool(connectionString ? { connectionString } : {});
 }
 
+// ================================================================================================
+// JOB 4097 — DIE LISTE WIRD EXPORTIERT, DAMIT ES NUR EINE WAHRHEIT ÜBER DEN DATENRAUM GIBT.
+// ================================================================================================
+//
+// Rein additiv: dieselben Konstanten, dieselbe Reihenfolge, dieselbe Ausführung durch `migrate()`.
+// Neu ist allein das `export` davor — und der Grund dafür steht außerhalb dieser Datei: Der
+// Restore-Drill (`scripts/backup/restore-drill.sh`) prüfte bis JOB 4097 nur vier Tabellen
+// (kos, users, audit, objects) und konnte mit Exit 0 enden, während Entwürfe, Belege samt
+// Anhangszuordnung (`ko_evidence`), Validierungen, Konfliktvermerke, Import-Kandidaten und
+// Lesevarianten still verloren waren. Seine Pflichtliste wird jetzt gegen GENAU DIESE Liste
+// gehalten (`tests/backup-drill/tabellensatz.test.ts`): kommt eine Migration dazu und der Drill
+// wird nicht erweitert, ist das Tor rot. Ohne den Export müsste die Prüfung den Quelltext dieser
+// Datei zerlegen — eine zweite Wahrheit, die eines Tages auseinanderläuft.
+//
+// DER NAME BLEIBT KLEINGESCHRIEBEN. Drei statische Prüfungen verankern sich zeichengenau am Text
+// `const schemas = [` — `services/app/src/db.migrate.test.ts:85`, `tests/app/g27-feldvertrag.test.ts:99`
+// und `tests/demo-firmen-ci-server/branding-speicher.test.ts:78`. Die erste liegt außerhalb der
+// Zielpfade dieses Auftrags; eine Umbenennung hätte sie stumm rot gemacht. Der Name ist damit
+// Vertragsbestandteil und keine Stilfrage.
+export const schemas = [
+  AUTH_SCHEMA,
+  KO_SCHEMA,
+  // WP-SHIP8-CLOSE-4 (bens ROT-1B): additive Anker-Migration DIREKT nach KO_SCHEMA —
+  // Generated-Spalte + partieller Unique-Index (hoechstens EIN KO je Import-Kandidat).
+  KO_IMPORT_ANCHOR_SCHEMA,
+  // AUFTRAG-mega20 Block A: additive Anker-Migration der ERSTANLAGE aus Dokumenten —
+  // Generated-Spalte + partieller Unique-Index (hoechstens EIN KO je Erzeugungs-Vorgang).
+  KO_CREATE_OPERATION_SCHEMA,
+  // AUFTRAG-BASIC-380: die drei Sichtbarkeits-Schluesselspalten (confidentiality_key, author_key,
+  // deleted_at_key) plus idx_kos_sichtbarkeit. Ebenfalls DIREKT nach KO_SCHEMA, weil sie an `kos`
+  // ALTERn. Rein additiv und generiert — kein Write auf kos.data, kein DROP, kein TRUNCATE.
+  // Ohne diese Stufe laeuft der SQL-Trim (sichtbarkeit.ts, sqlSichtbarkeitFuer) in einen
+  // Datenbankfehler statt in eine getrimmte Menge; T-M-3 pinnt deshalb ihre Anwesenheit.
+  KO_SICHTBARKEIT_SCHEMA,
+  KO_VERSIONS_SCHEMA,
+  // G27: additive Tabelle der revisionsgebundenen Suchprojektion — NACH KO_SCHEMA, weil sie auf
+  // `kos` joint und die dort angelegte pg_trgm-Extension für ihren GIN-Trigramm-Index braucht.
+  // Rein additiv und wiederholbar: CREATE TABLE/INDEX IF NOT EXISTS PLUS die V1→V2-Stufe
+  // (ALTER TABLE ADD COLUMN IF NOT EXISTS für `body_text`/`classification_snapshot`,
+  // Detailentscheidung J) — kein DROP, kein TRUNCATE, nichts wird entfernt. Die Stufe steht IM
+  // Schema-String und damit garantiert vor jedem V2-Insert.
+  KO_SEARCH_PROJECTION_SCHEMA,
+  // G27 Welle 1 / S2: die VERÄNDERLICHE Metadatenprojektion (Kategorie/Schlagwörter je ko_id mit
+  // eigener metadata_revision). Ebenfalls nach KO_SCHEMA (pg_trgm für ihre beiden GIN-Indizes)
+  // und direkt neben der Inhaltsprojektion — beide Hälften des Suchdokuments, ein Datenraum.
+  KO_METADATA_PROJECTION_SCHEMA,
+  // G27 R1: die instanzweite Steuerzeile der Suchprojektion (aktive Fassung + Readiness). Sie
+  // steht NACH den beiden Projektionstabellen, weil sie über deren Zustand entscheidet — und sie
+  // ist additiv und wiederholbar: CREATE TABLE IF NOT EXISTS plus ein INSERT ... ON CONFLICT DO
+  // NOTHING. Der Seed ist `UNINITIALIZED` und leitet NICHTS aus dem Bestand ab; eine bereits
+  // vorhandene Steuerzeile bleibt unangetastet (eine Migration setzt keinen laufenden Betrieb
+  // zurück).
+  KO_PROJECTION_CONTROL_SCHEMA,
+  KO_EVIDENCE_SCHEMA,
+  AUDIT_SCHEMA,
+  // WP-SHIP8-CLOSE-6 (bens ROT-1): additive Event-Id-Stufe DIREKT nach AUDIT_SCHEMA
+  // (exactly-once-Belege via partiellem Unique-Index auf event_id).
+  AUDIT_EVENT_ID_SCHEMA,
+  // JOB 498 D8: die Hashversion je Eintrag, additiv und DIREKT nach der Event-Id-Stufe. Sie
+  // ALTERt dieselbe Tabelle `audit` und muss deshalb nach AUDIT_SCHEMA laufen; die Nähe zu
+  // AUDIT_EVENT_ID_SCHEMA ist Ordnung, der Vorrang von AUDIT_SCHEMA ist Zwang.
+  AUDIT_HASH_VERSION_SCHEMA,
+  CAPTURE_SCHEMA,
+  // JOB 2697: der Vorgangs-Anker der Entwürfe. Er steht DIREKT nach `CAPTURE_SCHEMA`, und das ist
+  // hier ZWANG, nicht Ordnung: die Stufe ALTERt `drafts` und legt einen Index darauf an — ohne
+  // die Tabelle davor scheitert sie. Additiv und wiederholbar (`ADD COLUMN IF NOT EXISTS`,
+  // `CREATE UNIQUE INDEX IF NOT EXISTS`), und die Datenmigration ist leer: kein Bestandsentwurf
+  // trägt `createOperation`, jede vorhandene Zeile fällt durch das partielle `WHERE`.
+  CAPTURE_CREATE_OPERATION_SCHEMA,
+  ASK_SCHEMA,
+  // W3-A (KW-W3-18): Antwortidentitaet und unveraenderliche Belegrevisionen. Sie stehen DIREKT
+  // nach ASK_SCHEMA, weil sie demselben Modul gehoeren; auch hier gibt es keinen technischen
+  // Zwang, nur eine lesbare Ordnung. Die DDL wird NICHT kopiert — sie kommt als Konstante aus
+  // dem Modul, das sie besitzt.
+  ANSWER_SNAPSHOT_SCHEMA,
+  VALIDATION_SCHEMA,
+  CONFLICTS_SCHEMA,
+  // SCRUM-496: Duplikat-Board (overlaps) + Anzeige-Schwelle (overlap_settings) — beide gehören zum
+  // conflicts-Modul, wurden aber nie migriert → auf Postgres fehlten die Tabellen, /duplikate brach
+  // ab (nur PG; In-Memory braucht kein Schema). CREATE TABLE IF NOT EXISTS → idempotent.
+  OVERLAP_SCHEMA,
+  OVERLAP_SETTINGS_SCHEMA,
+  LIFECYCLE_SCHEMA,
+  OBJECTSTORE_SCHEMA,
+  IMPORT_CANDIDATES_SCHEMA,
+  // W2-A (KW-W2-17): die unveraenderliche Quellrevision. Sie steht DIREKT nach der
+  // Kandidatentabelle, weil beide demselben Modul gehoeren und denselben Datenraum bilden.
+  // Eine Reihenfolgebedingung im technischen Sinn gibt es nicht — kein Fremdschluessel, keine
+  // Extension, keine andere Tabelle (Preflight 39 §5); die Naehe ist Ordnung, nicht Zwang.
+  EXTERNAL_SOURCE_SCHEMA,
+  IMPORT_RUN_SCHEMA,
+  MODEL_RUNS_SCHEMA,
+  NOTIFICATION_SEEN_SCHEMA,
+  ASSIST_PRESETS_SCHEMA,
+  // SCRUM-525 P.5 (WP6): KI-Zuordnung (Policy) persistent.
+  REASONER_POLICY_SCHEMA,
+  // W1 S4 (KW-S4-03 §1.1/§2.1): Klara-Sitzung und die daran gebundene Zustimmung zur externen
+  // KI-Nutzung. Sie stehen NACH der Reasoner-Policy, weil sie deren Policy-/Konfigurationsversion
+  // referenzieren. Additiv und wiederholbar (CREATE TABLE IF NOT EXISTS) wie alles hier; ohne
+  // diese zwei Zeilen faengt `db.migrate.test.ts` die fehlende Migration statisch ab.
+  KLARA_SESSION_SCHEMA,
+  KLARA_CONSENT_SCHEMA,
+  // SCRUM-395: Standard-Prüferanzahl (Validierungs-Einstellungen).
+  VALIDATION_SETTINGS_SCHEMA,
+  // SCRUM-414: Regler „externe Wissensabfrage".
+  EXTERNAL_KNOWLEDGE_SCHEMA,
+  // SCRUM-421: einstellbare Upload-Grenzen.
+  UPLOAD_LIMITS_SCHEMA,
+  // JOB 3326: die Lesevarianten-Tabelle. Additiv und wiederholbar (CREATE TABLE IF NOT EXISTS),
+  // ohne Fremdschlüssel auf `kos` — eine Variante ohne Objekt ist eine verwaiste Lesezeile und
+  // kein Grund, eine Migration scheitern zu lassen; die Leserouten filtern sie ohnehin weg.
+  LESEVARIANTEN_SCHEMA,
+  // JOB 3578: die Markenwahl (Demo-Firmen-CI). Additiv und wiederholbar (CREATE TABLE IF NOT
+  // EXISTS) und OHNE Reihenfolgebedingung: kein Fremdschlüssel, keine Extension, keine andere
+  // Tabelle — die Stufe steht am Ende, weil das die lesbare Ordnung ist, nicht weil sie muss.
+  BRANDING_SETTINGS_SCHEMA,
+];
+
 // Führt die DDL aller Module aus. Jedes Modul liefert seine eigenen Tabellen (Datenhoheit).
 export async function migrate(pool: Pool): Promise<void> {
-  const schemas = [
-    AUTH_SCHEMA,
-    KO_SCHEMA,
-    // WP-SHIP8-CLOSE-4 (bens ROT-1B): additive Anker-Migration DIREKT nach KO_SCHEMA —
-    // Generated-Spalte + partieller Unique-Index (hoechstens EIN KO je Import-Kandidat).
-    KO_IMPORT_ANCHOR_SCHEMA,
-    // AUFTRAG-mega20 Block A: additive Anker-Migration der ERSTANLAGE aus Dokumenten —
-    // Generated-Spalte + partieller Unique-Index (hoechstens EIN KO je Erzeugungs-Vorgang).
-    KO_CREATE_OPERATION_SCHEMA,
-    // AUFTRAG-BASIC-380: die drei Sichtbarkeits-Schluesselspalten (confidentiality_key, author_key,
-    // deleted_at_key) plus idx_kos_sichtbarkeit. Ebenfalls DIREKT nach KO_SCHEMA, weil sie an `kos`
-    // ALTERn. Rein additiv und generiert — kein Write auf kos.data, kein DROP, kein TRUNCATE.
-    // Ohne diese Stufe laeuft der SQL-Trim (sichtbarkeit.ts, sqlSichtbarkeitFuer) in einen
-    // Datenbankfehler statt in eine getrimmte Menge; T-M-3 pinnt deshalb ihre Anwesenheit.
-    KO_SICHTBARKEIT_SCHEMA,
-    KO_VERSIONS_SCHEMA,
-    // G27: additive Tabelle der revisionsgebundenen Suchprojektion — NACH KO_SCHEMA, weil sie auf
-    // `kos` joint und die dort angelegte pg_trgm-Extension für ihren GIN-Trigramm-Index braucht.
-    // Rein additiv und wiederholbar: CREATE TABLE/INDEX IF NOT EXISTS PLUS die V1→V2-Stufe
-    // (ALTER TABLE ADD COLUMN IF NOT EXISTS für `body_text`/`classification_snapshot`,
-    // Detailentscheidung J) — kein DROP, kein TRUNCATE, nichts wird entfernt. Die Stufe steht IM
-    // Schema-String und damit garantiert vor jedem V2-Insert.
-    KO_SEARCH_PROJECTION_SCHEMA,
-    // G27 Welle 1 / S2: die VERÄNDERLICHE Metadatenprojektion (Kategorie/Schlagwörter je ko_id mit
-    // eigener metadata_revision). Ebenfalls nach KO_SCHEMA (pg_trgm für ihre beiden GIN-Indizes)
-    // und direkt neben der Inhaltsprojektion — beide Hälften des Suchdokuments, ein Datenraum.
-    KO_METADATA_PROJECTION_SCHEMA,
-    // G27 R1: die instanzweite Steuerzeile der Suchprojektion (aktive Fassung + Readiness). Sie
-    // steht NACH den beiden Projektionstabellen, weil sie über deren Zustand entscheidet — und sie
-    // ist additiv und wiederholbar: CREATE TABLE IF NOT EXISTS plus ein INSERT ... ON CONFLICT DO
-    // NOTHING. Der Seed ist `UNINITIALIZED` und leitet NICHTS aus dem Bestand ab; eine bereits
-    // vorhandene Steuerzeile bleibt unangetastet (eine Migration setzt keinen laufenden Betrieb
-    // zurück).
-    KO_PROJECTION_CONTROL_SCHEMA,
-    KO_EVIDENCE_SCHEMA,
-    AUDIT_SCHEMA,
-    // WP-SHIP8-CLOSE-6 (bens ROT-1): additive Event-Id-Stufe DIREKT nach AUDIT_SCHEMA
-    // (exactly-once-Belege via partiellem Unique-Index auf event_id).
-    AUDIT_EVENT_ID_SCHEMA,
-    // JOB 498 D8: die Hashversion je Eintrag, additiv und DIREKT nach der Event-Id-Stufe. Sie
-    // ALTERt dieselbe Tabelle `audit` und muss deshalb nach AUDIT_SCHEMA laufen; die Nähe zu
-    // AUDIT_EVENT_ID_SCHEMA ist Ordnung, der Vorrang von AUDIT_SCHEMA ist Zwang.
-    AUDIT_HASH_VERSION_SCHEMA,
-    CAPTURE_SCHEMA,
-    // JOB 2697: der Vorgangs-Anker der Entwürfe. Er steht DIREKT nach `CAPTURE_SCHEMA`, und das ist
-    // hier ZWANG, nicht Ordnung: die Stufe ALTERt `drafts` und legt einen Index darauf an — ohne
-    // die Tabelle davor scheitert sie. Additiv und wiederholbar (`ADD COLUMN IF NOT EXISTS`,
-    // `CREATE UNIQUE INDEX IF NOT EXISTS`), und die Datenmigration ist leer: kein Bestandsentwurf
-    // trägt `createOperation`, jede vorhandene Zeile fällt durch das partielle `WHERE`.
-    CAPTURE_CREATE_OPERATION_SCHEMA,
-    ASK_SCHEMA,
-    // W3-A (KW-W3-18): Antwortidentitaet und unveraenderliche Belegrevisionen. Sie stehen DIREKT
-    // nach ASK_SCHEMA, weil sie demselben Modul gehoeren; auch hier gibt es keinen technischen
-    // Zwang, nur eine lesbare Ordnung. Die DDL wird NICHT kopiert — sie kommt als Konstante aus
-    // dem Modul, das sie besitzt.
-    ANSWER_SNAPSHOT_SCHEMA,
-    VALIDATION_SCHEMA,
-    CONFLICTS_SCHEMA,
-    // SCRUM-496: Duplikat-Board (overlaps) + Anzeige-Schwelle (overlap_settings) — beide gehören zum
-    // conflicts-Modul, wurden aber nie migriert → auf Postgres fehlten die Tabellen, /duplikate brach
-    // ab (nur PG; In-Memory braucht kein Schema). CREATE TABLE IF NOT EXISTS → idempotent.
-    OVERLAP_SCHEMA,
-    OVERLAP_SETTINGS_SCHEMA,
-    LIFECYCLE_SCHEMA,
-    OBJECTSTORE_SCHEMA,
-    IMPORT_CANDIDATES_SCHEMA,
-    // W2-A (KW-W2-17): die unveraenderliche Quellrevision. Sie steht DIREKT nach der
-    // Kandidatentabelle, weil beide demselben Modul gehoeren und denselben Datenraum bilden.
-    // Eine Reihenfolgebedingung im technischen Sinn gibt es nicht — kein Fremdschluessel, keine
-    // Extension, keine andere Tabelle (Preflight 39 §5); die Naehe ist Ordnung, nicht Zwang.
-    EXTERNAL_SOURCE_SCHEMA,
-    IMPORT_RUN_SCHEMA,
-    MODEL_RUNS_SCHEMA,
-    NOTIFICATION_SEEN_SCHEMA,
-    ASSIST_PRESETS_SCHEMA,
-    // SCRUM-525 P.5 (WP6): KI-Zuordnung (Policy) persistent.
-    REASONER_POLICY_SCHEMA,
-    // W1 S4 (KW-S4-03 §1.1/§2.1): Klara-Sitzung und die daran gebundene Zustimmung zur externen
-    // KI-Nutzung. Sie stehen NACH der Reasoner-Policy, weil sie deren Policy-/Konfigurationsversion
-    // referenzieren. Additiv und wiederholbar (CREATE TABLE IF NOT EXISTS) wie alles hier; ohne
-    // diese zwei Zeilen faengt `db.migrate.test.ts` die fehlende Migration statisch ab.
-    KLARA_SESSION_SCHEMA,
-    KLARA_CONSENT_SCHEMA,
-    // SCRUM-395: Standard-Prüferanzahl (Validierungs-Einstellungen).
-    VALIDATION_SETTINGS_SCHEMA,
-    // SCRUM-414: Regler „externe Wissensabfrage".
-    EXTERNAL_KNOWLEDGE_SCHEMA,
-    // SCRUM-421: einstellbare Upload-Grenzen.
-    UPLOAD_LIMITS_SCHEMA,
-    // JOB 3326: die Lesevarianten-Tabelle. Additiv und wiederholbar (CREATE TABLE IF NOT EXISTS),
-    // ohne Fremdschlüssel auf `kos` — eine Variante ohne Objekt ist eine verwaiste Lesezeile und
-    // kein Grund, eine Migration scheitern zu lassen; die Leserouten filtern sie ohnehin weg.
-    LESEVARIANTEN_SCHEMA,
-    // JOB 3578: die Markenwahl (Demo-Firmen-CI). Additiv und wiederholbar (CREATE TABLE IF NOT
-    // EXISTS) und OHNE Reihenfolgebedingung: kein Fremdschlüssel, keine Extension, keine andere
-    // Tabelle — die Stufe steht am Ende, weil das die lesbare Ordnung ist, nicht weil sie muss.
-    BRANDING_SETTINGS_SCHEMA,
-  ];
   for (const ddl of schemas) {
     await pool.query(ddl);
   }

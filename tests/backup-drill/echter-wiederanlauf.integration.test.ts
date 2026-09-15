@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Pool } from "pg";
@@ -127,6 +127,21 @@ describe("JOB 4010 · Wiederanlauf aus einem echten Dump in eine echte PostgreSQ
   const kennung = `${Date.now()}`.slice(-9);
   const quellDb = `klarwerk_quelle_test_${kennung}`;
   const zielDb = `klarwerk_ziel_test_${kennung}`;
+  // JOB 4097: jeder Drill braucht ein EIGENES leeres Ziel — ein zweiter Lauf gegen dasselbe endete
+  // mit Exit 20 („nicht leer"), und das wäre kein Befund, sondern ein Aufbaufehler des Prüfstands.
+  const zielDbBefund = `klarwerk_ziel_test_b_${kennung}`;
+  const zielDbOhneBeleg = `klarwerk_ziel_test_o_${kennung}`;
+  // JOB 4097 R2: das Ziel für W4 — die Belegzeile, deren Anhang in `objects` fehlt.
+  const zielDbWaise = `klarwerk_ziel_test_w_${kennung}`;
+
+  /**
+   * JOB 4097 — DIE KENNUNGEN DES NUTZENNACHWEISES, ÜBER DIE FÄLLE HINWEG.
+   *
+   * W1 legt sie an (Wissensobjekt, hochgeladenes Objekt, Anhang mit Belegkette); W2 und W3 arbeiten
+   * auf demselben Quellbestand weiter und messen, was der Drill daraus macht.
+   */
+  let koId = "";
+  let objektId = "";
 
   beforeAll(async () => {
     const fehlend = ["pg_dump", "pg_restore", "psql", "createdb", "ps"].filter(werkzeugFehlt);
@@ -178,7 +193,7 @@ describe("JOB 4010 · Wiederanlauf aus einem echten Dump in eine echte PostgreSQ
   afterAll(async () => {
     await zielPool?.end();
     if (adminPool) {
-      for (const db of [quellDb, zielDb]) {
+      for (const db of [quellDb, zielDb, zielDbBefund, zielDbOhneBeleg, zielDbWaise]) {
         await adminPool.query(`DROP DATABASE IF EXISTS ${db} WITH (FORCE)`).catch(() => undefined);
       }
       await adminPool.end();
@@ -188,6 +203,63 @@ describe("JOB 4010 · Wiederanlauf aus einem echten Dump in eine echte PostgreSQ
       rmSync(arbeitsordner, { recursive: true, force: true });
     }
   }, 120_000);
+
+  /**
+   * Ein Dump mit dem UNVERÄNDERTEN `backup.sh`, in einem eigenen Ordner je Fall.
+   *
+   * Eigener Ordner, weil die Aufbewahrung am Dateinamen arbeitet und ein zweiter Lauf im selben
+   * Verzeichnis sonst den Dump des ersten Falls mitliest — dann führe der Prüfstand nicht den
+   * Bestand, den er gerade hergestellt hat.
+   */
+  function sichere(v: Verbindung, unterordner: string): string {
+    const ordner = join(arbeitsordner, unterordner);
+    mkdirSync(ordner, { recursive: true });
+    // `backup.sh` bevorzugt KLARWERK_DATABASE_URL vor DATABASE_URL — stünde sie in der Umgebung,
+    // sicherte dieser Lauf eine andere Datenbank als die eben gefüllte.
+    const sicherungsEnv: NodeJS.ProcessEnv = {
+      ...process.env,
+      DATABASE_URL: pgUrl(v, quellDb),
+      BACKUP_DIR: ordner,
+    };
+    sicherungsEnv.KLARWERK_DATABASE_URL = undefined;
+    const backup = spawnSync("bash", [join(root, "scripts/backup/backup.sh")], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 300_000,
+      env: sicherungsEnv,
+    });
+    expect(backup.status, `${backup.stdout}${backup.stderr}`).toBe(0);
+    const dumpName = readdirSync(ordner).find((d) => d.endsWith(".dump"));
+    expect(dumpName, "backup.sh hat keinen Dump veröffentlicht").toBeTruthy();
+    return join(ordner, String(dumpName));
+  }
+
+  /** Der UNVERÄNDERTE Drill, vollständig, gegen ein eigenes leeres Ziel. */
+  function fahreDrill(v: Verbindung, dump: string, ziel: string) {
+    const drillEnv: NodeJS.ProcessEnv = {
+      ...process.env,
+      PGHOST: v.host,
+      PGPORT: v.port,
+      PGUSER: v.user,
+      PGPASSWORD: v.passwort,
+      RESTORE_DB: ziel,
+      DRILL_PORT: "3097",
+      DRILL_WORKDIR: dump.slice(0, dump.lastIndexOf("/")),
+      DRILL_LOGIN_EMAIL: EMAIL,
+      DRILL_LOGIN_PASSWORT: PASSWORT,
+    };
+    // Der Drill setzt DATABASE_URL selbst; KLARWERK_DATABASE_URL hätte in der Anwendung Vorrang
+    // und würde den Server gegen die QUELLE laufen lassen — der Wiederherstellungsbeleg wäre keiner.
+    drillEnv.KLARWERK_DATABASE_URL = undefined;
+    drillEnv.DATABASE_URL = undefined;
+    const drill = spawnSync("bash", [join(root, "scripts/backup/restore-drill.sh"), dump], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 600_000,
+      env: drillEnv,
+    });
+    return { status: drill.status, ausgabe: `${drill.stdout ?? ""}${drill.stderr ?? ""}` };
+  }
 
   it("W1 · Dump → leere Datenbank → laufende Anwendung → dieselbe Datei, Byte für Byte", async (ctx) => {
     if (!verfuegbar || !verbindung) {
@@ -201,7 +273,6 @@ describe("JOB 4010 · Wiederanlauf aus einem echten Dump in eine echte PostgreSQ
     // 1. BESTAND — über die echte Anwendung, nicht per SQL-Handstreich.
     // ---------------------------------------------------------------------------------------------
     const quellPool = createPool(quellUrl);
-    let objektId = "";
     try {
       await migrate(quellPool);
       const app = buildApp(buildPgServices(quellPool));
@@ -236,6 +307,8 @@ describe("JOB 4010 · Wiederanlauf aus einem echten Dump in eine echte PostgreSQ
         },
       });
       expect(ko.statusCode, ko.body).toBe(201);
+      koId = ko.json().id as string;
+      expect(koId).toBeTruthy();
 
       const upload = await app.inject({
         method: "POST",
@@ -251,8 +324,33 @@ describe("JOB 4010 · Wiederanlauf aus einem echten Dump in eine echte PostgreSQ
       objektId = upload.json().id as string;
       expect(objektId).toBeTruthy();
 
-      // Der Bestand muss in allen vier Kerntabellen des Drills stehen, sonst prüft Glied 3 nichts.
-      for (const tabelle of ["kos", "users", "audit", "objects"]) {
+      // ==========================================================================================
+      // JOB 4097 — DER ANHANG WIRD GEBUNDEN, UND DAMIT ENTSTEHT DIE BELEGKETTE.
+      // ==========================================================================================
+      //
+      // Erst dieser Aufruf schreibt eine Zeile nach `ko_evidence` mit `data->>'objectId'`
+      // (service.ts:2851-2862) — also genau die Zuordnung Datei→Wissensobjekt, die vor JOB 4097
+      // still verschwinden konnte. Ohne sie hätte der Drill nichts zu lesen, und Glied 7b liefe in
+      // den ehrlichen Zweig „nicht gemessen" statt in den Nachweis.
+      const gebunden = await app.inject({
+        method: "PUT",
+        url: `/api/kos/${koId}`,
+        headers: kopf,
+        payload: {
+          action: "attach",
+          attachment: { name: "pruefbericht.png", mime: "image/png", objectId: objektId },
+        },
+      });
+      expect(gebunden.statusCode, gebunden.body).toBe(200);
+
+      const belege = await quellPool.query(
+        "SELECT count(*)::int AS n FROM ko_evidence WHERE data->>'objectId' = $1",
+        [objektId],
+      );
+      expect(belege.rows[0].n, "ko_evidence trägt keine Anhangszuordnung").toBeGreaterThan(0);
+
+      // Der Bestand muss in den Tabellen stehen, die Glied 7b braucht — sonst prüfte es nichts.
+      for (const tabelle of ["kos", "users", "audit", "objects", "ko_evidence"]) {
         const zahl = await quellPool.query(`SELECT count(*)::int AS n FROM public."${tabelle}"`);
         expect(zahl.rows[0].n, `${tabelle} ist leer`).toBeGreaterThan(0);
       }
@@ -263,57 +361,27 @@ describe("JOB 4010 · Wiederanlauf aus einem echten Dump in eine echte PostgreSQ
     // ---------------------------------------------------------------------------------------------
     // 2. SICHERUNG — mit dem unveränderten backup.sh.
     // ---------------------------------------------------------------------------------------------
-    // `backup.sh` bevorzugt KLARWERK_DATABASE_URL vor DATABASE_URL — stünde sie in der Umgebung,
-    // sicherte dieser Lauf eine andere Datenbank als die eben gefüllte.
-    const sicherungsEnv: NodeJS.ProcessEnv = {
-      ...process.env,
-      DATABASE_URL: quellUrl,
-      BACKUP_DIR: arbeitsordner,
-    };
-    sicherungsEnv.KLARWERK_DATABASE_URL = undefined;
-    const backup = spawnSync("bash", [join(root, "scripts/backup/backup.sh")], {
-      cwd: root,
-      encoding: "utf8",
-      timeout: 300_000,
-      env: sicherungsEnv,
-    });
-    expect(backup.status, `${backup.stdout}${backup.stderr}`).toBe(0);
-    const dumpName = readdirSync(arbeitsordner).find((d) => d.endsWith(".dump"));
-    expect(dumpName, "backup.sh hat keinen Dump veröffentlicht").toBeTruthy();
-    const dump = join(arbeitsordner, String(dumpName));
+    const dump = sichere(v, "w1");
 
     // ---------------------------------------------------------------------------------------------
-    // 3. DER DRILL — vollständig, Exit 0, alle acht Glieder.
+    // 3. DER DRILL — vollständig, Exit 0, alle acht Glieder UND der Nutzennachweis.
     // ---------------------------------------------------------------------------------------------
-    const drillEnv: NodeJS.ProcessEnv = {
-      ...process.env,
-      PGHOST: v.host,
-      PGPORT: v.port,
-      PGUSER: v.user,
-      PGPASSWORD: v.passwort,
-      RESTORE_DB: zielDb,
-      DRILL_PORT: "3097",
-      DRILL_WORKDIR: arbeitsordner,
-      DRILL_LOGIN_EMAIL: EMAIL,
-      DRILL_LOGIN_PASSWORT: PASSWORT,
-    };
-    // Der Drill setzt DATABASE_URL selbst; KLARWERK_DATABASE_URL hätte in der Anwendung Vorrang
-    // und würde den Server gegen die QUELLE laufen lassen — der Wiederherstellungsbeleg wäre keiner.
-    drillEnv.KLARWERK_DATABASE_URL = undefined;
-    drillEnv.DATABASE_URL = undefined;
-    const drill = spawnSync("bash", [join(root, "scripts/backup/restore-drill.sh"), dump], {
-      cwd: root,
-      encoding: "utf8",
-      timeout: 600_000,
-      env: drillEnv,
-    });
-    const ausgabe = `${drill.stdout ?? ""}${drill.stderr ?? ""}`;
-    expect(drill.status, ausgabe).toBe(0);
+    const { status, ausgabe } = fahreDrill(v, dump, zielDb);
+    expect(status, ausgabe).toBe(0);
     for (const glied of [1, 2, 3, 4, 5, 6, 7, 8]) {
       expect(ausgabe, `Gliedzeile ${glied} fehlt`).toContain(`Glied ${glied} —`);
     }
     expect(ausgabe).toContain("DRILL BESTANDEN");
     expect(ausgabe).toMatch(/objects: Dump=1 Datenbank=1/);
+    // JOB 4097: der ganze Bestand, nicht vier Tabellen — und der Beleg, gelesen statt gezählt.
+    expect(ausgabe).toMatch(/ko_evidence: Dump=1 Datenbank=1/);
+    expect(ausgabe).toMatch(/Pflichttabellen vorhanden und Zeilenzahlen wie im Dump/);
+    expect(ausgabe).toContain(`Glied 7b — Wissensobjekt ${koId} mit Beleg auf ${objektId}`);
+    expect(ausgabe).toMatch(/und \d+ Bytes Anhangsinhalt zurueckgelesen/);
+    // JOB 4097 R2: der Bestandsscan über ALLE Belegzeilen lief und war sauber, und der Nachweis
+    // nennt die Belegzeile, an der er gemessen wurde — nicht nur ein Textvorkommen.
+    expect(ausgabe).toContain("Bestandsscan: keine Belegzeile ohne ihren Anhang in objects");
+    expect(ausgabe).toMatch(/\(Belegzeile [^)]+\)/);
 
     // ---------------------------------------------------------------------------------------------
     // 4. DER INHALTSBELEG — gegen die WIEDERHERGESTELLTE Datenbank, ohne eine Migration.
@@ -350,5 +418,143 @@ describe("JOB 4010 · Wiederanlauf aus einem echten Dump in eine echte PostgreSQ
     expect(Buffer.from(rohVerfaelscht.rawPayload).equals(QUELLBYTES)).toBe(false);
     const zeilen = await zielPool.query("SELECT count(*)::int AS n FROM objects");
     expect(zeilen.rows[0].n).toBe(1);
+  }, 900_000);
+
+  // ================================================================================================
+  // JOB 4097 · W2 — DIE GEGENPROBE ZUR AUSSAGEKRAFT VON GLIED 7b, AN DER ECHTEN ROUTE.
+  // ================================================================================================
+  //
+  // DIE LEHRE AUS JOB 4085 R1 IST HIER EINGEBAUT: Eine gestellte Erfolgsantwort ist kein Beleg. W1
+  // oben zeigt den grünen Ausgang — das allein wäre nicht zu unterscheiden von einem Glied, das
+  // immer „ja" sagt. Deshalb wird hier der Bestand WIRKLICH beschädigt, mit einem Schaden, den die
+  // Zählung nicht sieht: `objects.data` verliert seine Daten-URL. Die Zeilenzahlen bleiben in JEDER
+  // Tabelle gleich, `ko_evidence` führt die Zuordnung weiter, das Wissensobjekt ist da — und der
+  // Anhang ist trotzdem weg.
+  //
+  // VOR JOB 4097 wäre dieser Lauf mit Exit 0 geendet: vier Tabellen, gleiche Zeilenzahlen, fertig.
+  it("W2 · ein Beleg, der ins Leere zeigt, ist ein BEFUND (73) — nicht Exit 0", async (ctx) => {
+    if (!verfuegbar || !verbindung || !koId) {
+      ctx.skip();
+      return;
+    }
+    const v = verbindung;
+    const quellPool = createPool(pgUrl(v, quellDb));
+    try {
+      const verstellt = await quellPool.query(
+        "UPDATE objects SET data='kein-dekodierbarer-inhalt' WHERE id=$1",
+        [objektId],
+      );
+      expect(verstellt.rowCount).toBe(1);
+    } finally {
+      await quellPool.end();
+    }
+
+    const { status, ausgabe } = fahreDrill(v, sichere(v, "w2"), zielDbBefund);
+    expect(status, ausgabe).toBe(73);
+    expect(ausgabe).toContain("ABBRUCH (73)");
+    expect(ausgabe).toContain(objektId);
+    expect(ausgabe).not.toContain("DRILL BESTANDEN");
+    // Und der Beweis, dass die Zählung diesen Schaden NICHT gesehen hätte: sie war grün.
+    expect(ausgabe).toMatch(/objects: Dump=1 Datenbank=1/);
+    expect(ausgabe).toMatch(/ko_evidence: Dump=1 Datenbank=1/);
+    expect(ausgabe).toContain("Pflichttabellen vorhanden und Zeilenzahlen wie im Dump");
+  }, 900_000);
+
+  // ================================================================================================
+  // JOB 4097 · W3 — DER EHRLICHE SONDERFALL, AM ECHTEN BESTAND: NICHT GEMESSEN IST NICHT BESTANDEN.
+  // ================================================================================================
+  //
+  // Wird `ko_evidence` geleert, findet Glied 7b kein Objekt mit Beleg. Das ist WEDER ein Befund
+  // (nichts ist verloren gegangen — es war nie etwas da) NOCH ein Erfolg. Der Auftrag schreibt für
+  // diesen Fall ausdrücklich beides vor: kein Fehlschlag, und trotzdem kein Erfolg. Gemessen wird
+  // deshalb genau das: Exit 0, aber die starke Aussage steht NICHT in der Ausgabe.
+  it("W3 · ohne Beleg im Bestand bleibt der Punkt ausdrücklich NICHT gemessen", async (ctx) => {
+    if (!verfuegbar || !verbindung || !koId) {
+      ctx.skip();
+      return;
+    }
+    const v = verbindung;
+    const quellPool = createPool(pgUrl(v, quellDb));
+    try {
+      // Den Schaden aus W2 zurücknehmen — hier soll allein die fehlende Belegkette wirken.
+      await quellPool.query("UPDATE objects SET data=$1 WHERE id=$2", [
+        `data:image/png;base64,${QUELLBYTES.toString("base64")}`,
+        objektId,
+      ]);
+      await quellPool.query("DELETE FROM ko_evidence");
+      const rest = await quellPool.query("SELECT count(*)::int AS n FROM ko_evidence");
+      expect(rest.rows[0].n).toBe(0);
+    } finally {
+      await quellPool.end();
+    }
+
+    const { status, ausgabe } = fahreDrill(v, sichere(v, "w3"), zielDbOhneBeleg);
+    expect(status, ausgabe).toBe(0);
+    expect(ausgabe).toContain("kein Wissensobjekt mit Beleg im Bestand");
+    expect(ausgabe).toContain("NICHT gemessen");
+    expect(ausgabe).not.toContain("Anhangsinhalt zurueckgelesen");
+    // Die leere Tabelle ist eine GEMESSENE 0 — sie steht im Inhaltsverzeichnis des Dumps.
+    expect(ausgabe).toMatch(/ko_evidence: Dump=0 Datenbank=0/);
+  }, 900_000);
+
+  // ================================================================================================
+  // JOB 4097 · RUNDE 2 · W4 — EIN BELEG OHNE SEINEN ANHANG IST EIN BEFUND, KEINE LEERE.
+  // ================================================================================================
+  //
+  // DER UNTERSCHIED ZU W3, UND WARUM ER DER GEFÄHRLICHERE FALL IST: In W3 war NICHTS da — kein
+  // Beleg, nichts zu messen, ehrlich ausgewiesen. Hier ist ein Beleg da und sein Anhang fehlt;
+  // genau das ist der Schaden, den dieser Auftrag sichtbar machen soll (die Datei liegt ohne
+  // Zugehörigkeit da, oder sie ist weg). Runde 1 filterte diese Zeile mit einem `JOIN objects` aus
+  // der Kandidatensuche und meldete danach „kein Wissensobjekt mit Beleg — NICHT gemessen": der
+  // schlimmste Fall sah aus wie der harmloseste. Gemessen wird deshalb beides — Exit 73 UND die
+  // Abwesenheit des harmlosen Satzes.
+  //
+  // Die Zählung sieht diesen Schaden nicht: `ko_evidence` und `objects` tragen im Ziel exakt so
+  // viele Zeilen wie im Dump. Nur die VERBINDUNG dazwischen fehlt.
+  it("W4 · eine Belegzeile ohne ihren Anhang endet mit 73 — nicht mit „nicht gemessen“", async (ctx) => {
+    if (!verfuegbar || !verbindung || !koId) {
+      ctx.skip();
+      return;
+    }
+    const v = verbindung;
+    const verwaist = "obj-existiert-nicht-4097";
+    const evidenzId = "ev-waise-4097";
+    const quellPool = createPool(pgUrl(v, quellDb));
+    try {
+      const jetzt = new Date().toISOString();
+      const satz = {
+        id: evidenzId,
+        koId,
+        koVersion: 1,
+        kind: "attachment",
+        objectId: verwaist,
+        label: "verlorener-anhang.png",
+        createdBy: "drill-test",
+        createdAt: jetzt,
+      };
+      await quellPool.query(
+        `INSERT INTO ko_evidence(id,ko_id,ko_version,kind,data,created_at)
+         VALUES($1,$2,$3,$4,$5,$6)`,
+        [evidenzId, koId, 1, "attachment", JSON.stringify(satz), jetzt],
+      );
+      // Die Voraussetzung des Falls, gemessen statt angenommen: der Anhang liegt wirklich nicht da.
+      const fehlt = await quellPool.query("SELECT count(*)::int AS n FROM objects WHERE id=$1", [
+        verwaist,
+      ]);
+      expect(fehlt.rows[0].n).toBe(0);
+    } finally {
+      await quellPool.end();
+    }
+
+    const { status, ausgabe } = fahreDrill(v, sichere(v, "w4"), zielDbWaise);
+    expect(status, ausgabe).toBe(73);
+    expect(ausgabe).toContain("ABBRUCH (73)");
+    expect(ausgabe).toContain(verwaist);
+    // Der harmlose Satz darf hier NICHT stehen — das ist der eigentliche Fehler aus Runde 1.
+    expect(ausgabe).not.toContain("kein Wissensobjekt mit Beleg im Bestand");
+    expect(ausgabe).not.toContain("NICHT gemessen");
+    expect(ausgabe).not.toContain("DRILL BESTANDEN");
+    // Und der Beleg, dass die Zählung diesen Schaden NICHT gesehen hätte: sie war grün.
+    expect(ausgabe).toContain("Pflichttabellen vorhanden und Zeilenzahlen wie im Dump");
   }, 900_000);
 });
