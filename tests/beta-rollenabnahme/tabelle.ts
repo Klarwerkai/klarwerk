@@ -18,18 +18,28 @@
 // Pflichtenhefts, und jede Zeile wählt ihr Muster nach dem Recht, das die Route fordert.
 //
 // ================================================================================================
-// WAS „ERLAUBT" HIER BEDEUTET — UND WAS NICHT.
+// WAS „ERLAUBT" HIER BEDEUTET — UND WAS NICHT (JOB 4061 hat diesen Abschnitt angeglichen).
 // ================================================================================================
 //
-// `erlaubt` heisst: DAS RECHTETOR HAT DURCHGELASSEN. Was der Handler danach antwortet (200, 400 mit
-// unvollständigem Rumpf, 404 auf eine erfundene Kennung, 503 ohne konfigurierten Adapter), ist für
-// diese Abnahme dasselbe Ergebnis — sie misst die Tür, nicht den Raum dahinter. Deshalb sind die
-// Nutzlasten unten bewusst dünn: ein vollständiger Fachvorgang je Route wäre ein anderer Auftrag und
-// würde die Aussage über die Tür nicht schärfer machen.
+// `erlaubt` heisst: DIE TÜR GIBT ES, UND DAS RECHTETOR HAT DURCHGELASSEN. Was der Handler danach
+// antwortet (200, 400 mit unvollständigem Rumpf, 404 auf eine erfundene Kennung, 503 ohne
+// konfigurierten Adapter), ist für diese Abnahme dasselbe Ergebnis — sie misst die Tür, nicht den
+// Raum dahinter. Deshalb sind die Nutzlasten unten bewusst dünn: ein vollständiger Fachvorgang je
+// Route wäre ein anderer Auftrag und würde die Aussage über die Tür nicht schärfer machen.
+//
+// DER ERSTE HALBSATZ IST NEU, UND ER SCHLIESST DIE LÜCKE, DIE DER PRÜFER ZU JOB 4015 R2 GEFÜHRT HAT
+// („`tabelle.ts:110` unterscheidet weiterhin fachliche 404 und fehlende Route nicht"). Bis hierher
+// bildete `gemessen` JEDEN nicht ausdrücklich genannten Status auf `erlaubt` ab — auch den 404 einer
+// Route, die es gar nicht gibt. Eine gelöschte, umbenannte oder nie registrierte Tür war damit von
+// einer offenen nicht zu unterscheiden, und ausgerechnet der gefährlichere Fall sah grün aus. Der
+// Unterschied ist NICHT der Status, sondern die REGISTRIERUNG: `gemessen` bekommt sie deshalb als
+// zweites Argument und antwortet mit `nicht-registriert`, das zu keiner Erwartung passt. Die bewusst
+// gemessene fachliche 404 (`/addin` ohne gebautes Bündel, erfundene Kennungen) bleibt `erlaubt` —
+// ihre Tür ist registriert.
 //
 // AUSDRÜCKLICH NICHT „erlaubt" sind **429** und **500**. Ein 500 ist der Absturz, den Lieferung 6
-// dieses Auftrags aus dem Rechtetor entfernt — er darf hier nie als „durchgelassen" durchgehen,
-// sonst verstecke ich genau den Fehler, gegen den ich baue.
+// von JOB 4015 aus dem Rechtetor entfernt hat — er darf hier nie als „durchgelassen" durchgehen,
+// sonst verstecke ich genau den Fehler, gegen den gebaut wurde.
 //
 // ================================================================================================
 // SOLL, IST UND DER BEFUND.
@@ -43,6 +53,12 @@
 import type { Akteur } from "./buehne";
 
 export type Erwartung = "erlaubt" | "401" | "403" | "429" | "500" | "nicht-geprueft";
+
+/**
+ * Was eine Messung ergeben kann. `nicht-registriert` ist bewusst KEINE `Erwartung`: keine Zeile darf
+ * es erwarten, und jede Zeile, die es misst, wird rot.
+ */
+export type Messung = Erwartung | "nicht-registriert";
 
 export interface Eintrag {
   /** Was das Rollenmodell verlangt. */
@@ -62,7 +78,17 @@ export interface Zeile {
    */
   gruppe: string;
   methode: "GET" | "POST" | "PUT" | "DELETE";
+  /** Die URL, die `app.inject` wirklich fährt — mit eingesetzter Kennung, wo die Route eine fordert. */
   pfad: string;
+  /**
+   * Das Muster, unter dem die Tür REGISTRIERT ist (`/api/kos/:id`), wenn es von `pfad` abweicht.
+   *
+   * Ohne diese Angabe liesse sich eine gefahrene URL nicht auf die Aufzählung aus der laufenden App
+   * abbilden: `/api/kos/gibt-es-nicht` steht im Router nicht, `/api/kos/:id` schon. Beide Angaben
+   * werden gegeneinander geprüft (`jede-registrierte-route-ist-abgenommen.test.ts`, E6), damit sie
+   * nicht auseinanderlaufen.
+   */
+  route?: string;
   /** Wo die Route steht: Datei und Zeile, zum Nachschlagen ohne Suche. */
   belegstelle: string;
   /** Das Recht, das die Route fordert — oder wie sie sonst schützt. */
@@ -106,8 +132,28 @@ export function eintrag(wert: Erwartung | Eintrag): Eintrag {
   return typeof wert === "string" ? { soll: wert } : wert;
 }
 
-/** Was gemessen wurde, in der Sprache der Tabelle. */
-export function gemessen(status: number): Erwartung {
+/** Das registrierte Muster dieser Zeile — die eine Stelle, die `route` und `pfad` zusammenführt. */
+export function registrierteRoute(zeile: Zeile): string {
+  return zeile.route ?? zeile.pfad;
+}
+
+/** Die URL, die für diese Zeile wirklich gefahren wird. */
+export function gefahrenerPfad(zeile: Zeile): string {
+  return zeile.pfad;
+}
+
+/**
+ * Was gemessen wurde, in der Sprache der Tabelle — die EINZIGE Stelle, die eine Antwort in ein
+ * Abnahmeergebnis übersetzt.
+ *
+ * `registriert` kommt aus der Aufzählung der laufenden App (`registrierte-routen.ts`). Ist es
+ * `false`, wird gar nicht erst auf den Status geschaut: eine Tür, die es nicht gibt, hat niemanden
+ * durchgelassen, und ihr 404 darf nicht als `erlaubt` durchgehen (siehe Kopfabschnitt).
+ */
+export function gemessen(status: number, registriert: boolean): Messung {
+  if (!registriert) {
+    return "nicht-registriert";
+  }
   if (status === 401) {
     return "401";
   }
@@ -122,6 +168,541 @@ export function gemessen(status: number): Erwartung {
   }
   return "erlaubt";
 }
+
+// ------------------------------------------------------------------------------------------------
+// JOB 4061 · LIEFERUNG 6 — DIE RESTLISTE: WAS DIESE ABNAHME (NOCH) NICHT MISST, UND WARUM.
+// ------------------------------------------------------------------------------------------------
+//
+// Eine Abnahme, die ihre eigene Unvollständigkeit nicht benennt, ist keine Abnahme. Jede registrierte
+// Route ohne Tabellenzeile steht hier — mit Methode, Pfad und einem eigenen, sachlichen Grund. Kein
+// Sammelgrund: „ist ein Schreibweg" erklärt nichts, wenn daneben zwanzig andere Schreibwege stehen,
+// die sehr wohl gemessen werden. Der Wächter erzwingt beides (E4/E5): kein Eintrag ohne Grund, und
+// kein Eintrag auf eine Route, die es gar nicht gibt.
+
+export interface Nichtabnahme {
+  methode: string;
+  /** Das registrierte Muster, so wie es die Aufzählung führt. */
+  pfad: string;
+  grund: string;
+}
+
+export const NICHT_ABGENOMMEN: Nichtabnahme[] = [
+  // --- Eine Route, die keine Routengruppe angelegt hat -------------------------------------------
+  {
+    methode: "OPTIONS",
+    pfad: "/*",
+    grund:
+      "Der CORS-Vorflug von `@fastify/cors` (`build-app.ts:1904-1921`), nicht von einer Routengruppe angelegt. Was er antwortet, entscheidet die Ursprungsregel des Add-in-Pfads, nicht das Rechtetor — eine Rollenmessung daran sagte über Rechte nichts. Er ist zugleich der Beleg, dass `cors` ENTGEGEN dem Vermerk in `routengruppen.ts` sehr wohl eine Route registriert; die eigene Abnahme des Ursprungsvertrags ist ein eigener Auftrag.",
+  },
+
+  // --- Anmeldung, Konto, Nutzerverwaltung (authRoutes) -------------------------------------------
+  {
+    methode: "POST",
+    pfad: "/api/auth/register",
+    grund:
+      "Legt ein Konto an. Der Vorgang braucht eine gültige Selbstregistrierung samt Schalterlage und verändert den Bestand der Bühne, gegen den alle anderen Zeilen messen.",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/auth/login",
+    grund:
+      "Erzeugt die Sitzung, mit der diese Abnahme überhaupt misst (`buehne.ts:94-108`). Eine Rollenzeile darüber wäre zirkulär; die Route ist durch den Aufbau der Bühne bereits jede Runde gefahren.",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/auth/logout",
+    grund:
+      "Beendet die Sitzung und löscht das Cookie. Ein Aufruf in der Abnahme entwertete den Token, mit dem die folgenden Zeilen messen — die Messungen dieser Tabelle sind deshalb bewusst zustandsfrei.",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/auth/notice",
+    grund:
+      "Quittiert die Kenntnisnahme des Pflichthinweises am EIGENEN Konto. Braucht die aktuelle Textfassung als Nutzlast und schreibt an den Prüfkonten, gegen die gemessen wird.",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/auth/password",
+    grund:
+      "Ändert das eigene Passwort. Ein Durchlauf machte die Sitzungen der Bühne ungültig und alle folgenden Zeilen unlesbar.",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/auth/forgot",
+    grund:
+      "Fordert eine Zurücksetzung an und antwortet absichtlich immer gleich (keine Kontoerkennung). Die Aussage dieser Route ist die Gleichförmigkeit, nicht die Rolle — ein eigener Prüfgegenstand.",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/auth/reset",
+    grund:
+      "Setzt ein Passwort per Einmal-Token. Ohne echtes Token misst sie nur die Tokenprüfung; ein echtes Token herzustellen ist ein Fachvorgang.",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/auth/oidc",
+    grund:
+      "Der SSO-Rückweg. Er prüft state, nonce und PKCE gegen kurzlebige Cookies aus `GET /api/auth/oidc/start`; ohne diesen Ablauf misst er keine Rechte, sondern die Ablaufprüfung.",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/auth/setup",
+    grund:
+      "Die Ersteinrichtung des ersten Admins. Sie ist serverseitig durch `needsSetup()` abgeriegelt und an einer Bühne, die bereits vier Konten trägt, gar nicht mehr erreichbar.",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/auth/users/:id/approve",
+    grund:
+      "Gibt ein Konto frei. Der Vorgang verändert die Freigabe der Prüfkonten, auf der jede Messung dieser Tabelle beruht (`rollen-am-draht.test.ts` D0).",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/auth/users/:id/reset",
+    grund:
+      "Setzt das Passwort eines fremden Kontos. Ein Durchlauf entwertete die Sitzung des betroffenen Prüfkontos mitten in der Abnahme.",
+  },
+  {
+    methode: "DELETE",
+    pfad: "/api/auth/users/:id",
+    grund:
+      "Löscht ein Konto. Die einzige sinnvolle Nutzlast wäre eine Kennung aus der Bühne selbst — und danach fehlte die Rolle, die geprüft werden sollte.",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/users",
+    grund:
+      "Legt ein Konto mit gewählter Rolle an. Der Fachvorgang ist die Rollenvergabe; er gehört zu der Abnahme, die JOB 4015 über `canChangeRole` bereits am Dienst führt.",
+  },
+  {
+    methode: "PUT",
+    pfad: "/api/users/:id",
+    grund:
+      "Ändert Rolle oder Stammdaten eines Kontos. Ein Aufruf verstellte die Rolle eines Prüfkontos — genau die Grösse, die diese Abnahme misst.",
+  },
+  {
+    methode: "DELETE",
+    pfad: "/api/users/:id",
+    grund:
+      "Löscht ein Konto über den Verwaltungsweg. Dieselbe Lage wie `DELETE /api/auth/users/:id`: die Nutzlast ist eine Kennung aus der Bühne.",
+  },
+
+  // --- Wissensobjekte (koRoutes) -----------------------------------------------------------------
+  {
+    methode: "POST",
+    pfad: "/api/kos",
+    grund:
+      "Legt ein Wissensobjekt an. Verlangt Titel, Inhalt, Kategorie und Prüferzuordnung als vollständige Nutzlast; ein leerer Rumpf misst die Rumpfprüfung, nicht das Tor.",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/kos/from-document",
+    grund:
+      "Erstanlage AUS einem Dokument — Inhalt, Anker und Belegstellen in einem Vorgang. Die Nutzlast ist ein vollständiges Dokumentmodell.",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/kos/:id/ai-check",
+    grund:
+      "Stösst die Hintergrund-KI-Prüfung eines bestehenden Objekts erneut an. Braucht ein echtes Objekt und einen laufenden Prüf-Arbeiter.",
+  },
+  {
+    methode: "PUT",
+    pfad: "/api/kos/:id",
+    grund:
+      "Der Mehrfachweg: je Aktion im Rumpf eine eigene Rechteprüfung (`action-dispatched`). Eine einzelne Zeile könnte immer nur EINE dieser Aktionen messen und behauptete dabei, die Tür beurteilt zu haben.",
+  },
+  {
+    methode: "DELETE",
+    pfad: "/api/kos/:id",
+    grund:
+      "Löscht ein Objekt in den Papierkorb und entscheidet zusätzlich über die Autorschaft. Braucht ein echtes, sichtbares Objekt, um mehr als die Existenzprüfung zu messen.",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/kos/:id/restore",
+    grund:
+      "Holt ein Objekt aus dem Papierkorb zurück. Setzt ein zuvor gelöschtes Objekt voraus — also einen vorgeschalteten Schreibvorgang.",
+  },
+  {
+    methode: "DELETE",
+    pfad: "/api/kos/trash/:id",
+    grund:
+      "Endgültige Löschung aus dem Papierkorb. Derselbe vorgeschaltete Schreibvorgang wie beim Zurückholen, mit unumkehrbarem Ausgang.",
+  },
+  {
+    methode: "PUT",
+    pfad: "/api/upload-limits",
+    grund:
+      "Setzt die Anhanggrenzen der Instanz. Die Nutzlast sind zwei Zahlen, deren Wirkung andere Prüfungen (Uploadgrenzen) trägt; eine Rollenzeile hier verstellte den Betrieb der Bühne.",
+  },
+
+  // --- Entwürfe (captureRoutes) ------------------------------------------------------------------
+  {
+    methode: "POST",
+    pfad: "/api/drafts",
+    grund:
+      "Legt einen Entwurf an. Der Auth-Riegel läuft hier VOR dem Rumpfparsen (`onRequest`), was eine eigene Prüffläche ist — die Nutzlast ist ein vollständiger Entwurf.",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/drafts/from-docx",
+    grund:
+      "Übernimmt eine .docx-Datei als Entwurf. Die Nutzlast ist ein echtes Dokument von bis zu 30 MiB; ohne sie misst die Zeile die Parserprüfung.",
+  },
+  {
+    methode: "PUT",
+    pfad: "/api/drafts/:id",
+    grund:
+      "Speichert einen Entwurf weiter. Braucht einen vorhandenen Entwurf und dessen Änderungsstempel für die Konfliktprüfung.",
+  },
+  {
+    methode: "DELETE",
+    pfad: "/api/drafts/:id",
+    grund:
+      "Legt einen Entwurf in den Entwurfs-Papierkorb. Setzt einen vorhandenen, sichtbaren Entwurf voraus.",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/drafts/:id/promote",
+    grund:
+      "Macht aus einem Entwurf ein Wissensobjekt. Der Vorgang kettet Entwurfs- und Objektanlage und ist damit ein Fachablauf, kein Türtest.",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/drafts/:id/restore",
+    grund:
+      "Holt einen eigenen Entwurf aus dem Papierkorb zurück. Setzt einen zuvor gelöschten Entwurf voraus.",
+  },
+  {
+    methode: "DELETE",
+    pfad: "/api/drafts/trash/:id",
+    grund:
+      "Löscht einen Entwurf endgültig aus dem Papierkorb. Derselbe vorgeschaltete Schreibvorgang, unumkehrbar.",
+  },
+
+  // --- Fragen, Lücken, Prüfung (askRoutes, validationRoutes, conflictRoutes, overlapRoutes) -------
+  {
+    methode: "POST",
+    pfad: "/api/ask",
+    grund:
+      "Die Frage an den Bestand. Sie hat zwei Zweige (Sitzung und Add-on-Schlüssel) mit unterschiedlichem Rechteweg; eine Zeile könnte nur einen messen und verschwiege den anderen.",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/ask/helpful",
+    grund:
+      "Quittiert eine Antwort als hilfreich und schreibt in die Wirkungskette, aus der `GET /api/livewall` und `GET /api/me/impact` ihre Zahlen ziehen.",
+  },
+  {
+    methode: "PUT",
+    pfad: "/api/gaps/:id",
+    grund:
+      "Weist eine Wissenslücke zu (`ko.assign`). Braucht eine echte Lücke und eine gültige Zielperson als Nutzlast.",
+  },
+  {
+    methode: "DELETE",
+    pfad: "/api/gaps/:id",
+    grund:
+      "Schliesst eine Wissenslücke endgültig und verlangt eine ausdrückliche Bestätigung in der Abfrage.",
+  },
+  {
+    methode: "PUT",
+    pfad: "/api/validation/settings",
+    grund:
+      "Setzt die Standard-Prüferanzahl der Instanz. Der Wert steuert, wann ein Objekt als geprüft gilt — eine Verstellung veränderte den Bestand, gegen den andere Zeilen messen.",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/conflicts/:id/dismiss",
+    grund:
+      "Verwirft einen Widerspruch als unbegründet. Setzt ein echtes Widerspruchspaar voraus, das erst aus zwei angelegten Objekten entsteht.",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/conflicts/:id/second-opinion",
+    grund:
+      "Holt eine Zweitmeinung zu einem Widerspruch ein (`ko.validate`, nicht `conflict.resolve`). Braucht dasselbe echte Paar und einen Meinungstext.",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/duplicates/:id/dismiss",
+    grund:
+      "Schliesst ein Dublettenpaar mit dem Abschlussgrund `kein Duplikat`. Setzt ein erkanntes Paar voraus, das erst die Überschneidungserkennung erzeugt.",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/duplicates/:id/keep-separate",
+    grund:
+      "Schliesst dasselbe Paar mit dem Abschlussgrund `bewusst getrennt`. Eigener Grund, gleiche Voraussetzung: ein echtes Paar.",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/duplicates/:id/link-related",
+    grund:
+      "Verknüpft zwei Objekte als verwandt statt sie zusammenzuführen. Schreibt an beiden Objekten und braucht deshalb beide echt.",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/duplicates/:id/status",
+    grund:
+      "Setzt Bearbeitungsstand und Abschlussgrund eines Paares frei wählbar. Die Nutzlast ist der gewählte Grund; ohne ihn misst die Zeile die Rumpfprüfung.",
+  },
+
+  // --- Klara-Sitzungen (klaraAiRoutes) -----------------------------------------------------------
+  {
+    methode: "POST",
+    pfad: "/api/klara/sessions",
+    grund:
+      "Registriert die Zuordnung von Add-in-Instanz und Dokument und vergibt die opake Dokumentkennung. Alle übrigen Klara-Wege setzen genau diese Zuordnung voraus.",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/klara/sessions/:sessionId/document-context",
+    grund:
+      "Hängt den Dokumentkontext um (temporär → gespeichert) und entwertet dabei eine bestehende Zustimmung. Braucht eine echte Sitzung aus dem Weg darüber.",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/klara/sessions/:sessionId/consent",
+    grund:
+      "Erteilt die Zustimmung zur externen KI. Ihre Wirkung ist die Aufhebung einer Sperre, deren Zustand nur an einer echten Sitzung sichtbar wird.",
+  },
+  {
+    methode: "DELETE",
+    pfad: "/api/klara/sessions/:sessionId/consent",
+    grund:
+      "Widerruft dieselbe Zustimmung sofort. Der Prüfgegenstand ist die Sofortwirkung des Widerrufs, nicht die Rolle.",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/klara/sessions/:sessionId/close",
+    grund:
+      "Schliesst die eigene Sitzung; jeder Folgeaufruf ist danach ein Konflikt. Setzt eine offene, echte Sitzung voraus.",
+  },
+
+  // --- Bibliothek, Import, Lebenszyklus, Ausgabe -------------------------------------------------
+  {
+    methode: "POST",
+    pfad: "/api/library/import",
+    grund:
+      "Übernimmt eine Liste fertiger Einträge in den Bestand. Die Nutzlast ist der Bestand selbst — ein Aufruf veränderte die Grundmenge aller Lesezeilen.",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/library/import/candidates",
+    grund:
+      "Legt dieselben Einträge als Prüfkandidaten in die Warteschlange. Gleiche Nutzlast, anderer Zielspeicher.",
+  },
+  {
+    methode: "PUT",
+    pfad: "/api/library/import/candidates/:id",
+    grund:
+      "Entscheidet über einen Kandidaten (annehmen, ablehnen, zurückstellen). Braucht einen echten Kandidaten aus dem Weg darüber und die gewählte Aktion.",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/lifecycle/couple",
+    grund:
+      "Koppelt ein Wissensobjekt an ein Betriebsmittel. Braucht beide Kennungen echt, sonst misst die Zeile die Existenzprüfung.",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/lifecycle/asset-changed",
+    grund:
+      "Meldet die Änderung eines Betriebsmittels und stösst die Neuprüfung aller gekoppelten Objekte an — ein Vorgang mit Breitenwirkung auf den Bestand der Bühne.",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/learning-paths",
+    grund:
+      "Legt einen Lernpfad mit Schritten an. Die Nutzlast ist der Pfad selbst; ohne ihn misst die Zeile die Rumpfprüfung.",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/learning-paths/:pathId/complete",
+    grund:
+      "Hakt einen Schritt eines Lernpfads ab. Setzt einen angelegten Pfad und eine gültige Schrittkennung voraus.",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/output/generate",
+    grund:
+      "Erzeugt ein Ausgabedokument aus ausgewählten Quellen. Die Nutzlast ist die Quellenauswahl; der Vorgang ist ein Erzeugungslauf, kein Türtest.",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/capture/slides",
+    grund:
+      "Wandelt eine hochgeladene PPTX-Datei um. Die Nutzlast ist eine echte Präsentationsdatei; der Auth-Riegel läuft vor dem Rumpfparsen und ist eine eigene Prüffläche.",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/objects",
+    grund:
+      "Legt einen Anhang an. Die anonyme Parserfläche dieser Route hat eine eigene Abnahme (`tests/security/objects-auth-vor-parsing.test.ts`), die mehr misst als eine Rollenzeile.",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/media/analyze",
+    grund:
+      "Lässt einen vorhandenen Anhang durch die Medienanalyse laufen. Braucht einen echten Anhang, sonst ist die Antwort eine Existenzauskunft.",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/notifications/seen",
+    grund:
+      "Markiert den eigenen Meldungsstand als gelesen. Der Vorgang schreibt an der Sicht des Prüfkontos, gegen das die nächste Zeile misst.",
+  },
+
+  // --- KI-Verdrahtung (reasonerRoutes) -----------------------------------------------------------
+  {
+    methode: "POST",
+    pfad: "/api/reasoner",
+    grund:
+      "Der Text-Verteiler der KI-Unterstützung. Er ruft echte Modelle auf; eine Rollenzeile darüber löste bei jedem Lauf einen Modellaufruf aus.",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/reasoner/describe",
+    grund:
+      "Erzeugt eine Bildbeschreibung. Die Nutzlast ist ein Bild mit grossem Rumpflimit, und der Vorgang ist ein Modellaufruf.",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/reasoner/enrich",
+    grund:
+      "Reichert ein Objekt öffentlich an und prüft zusätzlich die Vertraulichkeitsstufe — zwei Entscheidungen in einem Vorgang.",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/reasoner/test",
+    grund:
+      "Der Schlüsseltest gegen den konfigurierten Anbieter. Er ist ein echter, kostenpflichtiger Mini-Aufruf nach aussen.",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/reasoner/test-local",
+    grund:
+      "Derselbe Test gegen das lokale Modell. Er braucht einen erreichbaren lokalen Dienst, den die Prüfbühne nicht stellt.",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/reasoner/conflict-self-test",
+    grund:
+      "Fährt die vollständige Widerspruchserkennung als Selbsttest — ein Ablauf über den ganzen Bestand, nicht eine Tür.",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/reasoner/duplicate-self-test",
+    grund:
+      "Dasselbe für die Dublettenerkennung: ein Erkennungslauf über den Bestand mit eigener Laufzeit.",
+  },
+  {
+    methode: "PUT",
+    pfad: "/api/reasoner/config",
+    grund:
+      "Setzt Anbieter, Modell und Schlüssel der Instanz. Eine Verstellung veränderte den KI-Status, den `GET /api/reasoner/status` und `GET /api/ai-status` in dieser Tabelle messen.",
+  },
+  {
+    methode: "PUT",
+    pfad: "/api/reasoner/assist-presets",
+    grund:
+      "Pflegt die Vorlagen der KI-Unterstützung. Die Nutzlast ist die vollständige Vorlagenliste; sie ersetzt den bisherigen Stand.",
+  },
+
+  // --- Betrieb und Verwaltung (adminRoutes, confluenceImportRoutes, libraryRoutes, externalRoutes)
+  {
+    methode: "POST",
+    pfad: "/api/admin/demo-seed",
+    grund:
+      "Lädt Demodaten in die Instanz. Der Vorgang füllt genau den Bestand, gegen den die Lesezeilen dieser Tabelle messen.",
+  },
+  {
+    methode: "DELETE",
+    pfad: "/api/admin/demo-seed",
+    grund:
+      "Entfernt dieselben Demodaten wieder. Unumkehrbar für alles, was zwischenzeitlich daran hängt.",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/admin/demo-packages/:id/load",
+    grund:
+      "Lädt ein einzelnes kuratiertes Demopaket. Setzt eine gültige Paketkennung voraus und schreibt in den Bestand.",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/admin/demo-packages/:id/reset",
+    grund:
+      "Setzt die Bausteine eines Demopakets auf den Auslieferungsstand zurück und verwirft dabei Bearbeitungen.",
+  },
+  {
+    methode: "DELETE",
+    pfad: "/api/admin/demo-packages/:id",
+    grund:
+      "Entfernt ein Demopaket samt seiner Bausteine. Derselbe Bestandseingriff, nur in die andere Richtung.",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/admin/examples/load",
+    grund:
+      "Lädt ein kuratiertes Beispielpaket für die Testerinnen. Die Nutzlast ist der Paketname; der Vorgang schreibt in den Bestand.",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/admin/sim-corpus",
+    grund:
+      "Lädt einen Simulationskorpus. Er ist ausdrücklich nie automatisch zu fahren und erzeugt eine grosse Datenmenge.",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/admin/factory-reset",
+    grund:
+      "Der Werksreset. Er löscht die gesamte Instanz — an einer Bühne, die vier angemeldete Prüfkonten trägt, wäre jede folgende Zeile danach bedeutungslos.",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/admin/lesevarianten/laden",
+    grund:
+      "Lädt Übersetzungen für ein Paket und liest dafür den ganzen Bestand, um Anker zuzuordnen. Ein Ladelauf, kein Türtest.",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/admin/import/cleanup",
+    grund:
+      "Räumt Testdaten zweistufig auf (Vorschau, dann Bestätigung). Die zweite Stufe ist unumkehrbar und braucht den Prüfsummenwert aus der ersten.",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/admin/import/confluence",
+    grund:
+      "Startet den Confluence-Import. Er spricht einen externen Dienst an, den die Prüfbühne nicht stellt.",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/admin/import/confluence/select",
+    grund:
+      "Erzeugt die gefilterte Auswahlvorschau aus einem Erkundungslauf. Setzt genau dessen Ergebnis als Nutzlast voraus.",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/admin/import/confluence/group",
+    grund:
+      "Gruppiert die ausgewählten Seiten mit KI-Hilfe. Braucht die Auswahl aus dem Weg darüber und einen erreichbaren Modellanbieter.",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/admin/import/confluence/apply",
+    grund:
+      "Übernimmt die Gruppierung in die Prüf-Warteschlange und braucht dafür den Momentaufnahme-Schlüssel aus dem Gruppierungslauf.",
+  },
+  {
+    methode: "PUT",
+    pfad: "/api/external/policy",
+    grund:
+      "Setzt den Regler für die externe Wissensabfrage. Sein Wert entscheidet, was `GET /api/external/policy` in dieser Tabelle meldet.",
+  },
+];
 
 // ------------------------------------------------------------------------------------------------
 // DIE MUSTER — von Hand aus dem Rollenmodell geschrieben, nicht aus `ROLE_PERMISSIONS` gerechnet.
@@ -313,6 +894,7 @@ export const TABELLE: Zeile[] = [
     gruppe: "conflictRoutes",
     methode: "POST",
     pfad: "/api/conflicts/gibt-es-nicht/escalate",
+    route: "/api/conflicts/:id/escalate",
     belegstelle: "services/app/src/routes/conflicts-routes.ts:260",
     tor: "conflict.resolve",
     payload: {},
@@ -384,6 +966,7 @@ export const TABELLE: Zeile[] = [
     gruppe: "importRunRoutes",
     methode: "GET",
     pfad: "/api/admin/import/runs/gibt-es-nicht",
+    route: "/api/admin/import/runs/:importId",
     belegstelle: "services/app/src/routes/import-run-routes.ts:117",
     tor: "users.manage",
     erwartet: NUR_ADMIN,
@@ -400,6 +983,7 @@ export const TABELLE: Zeile[] = [
     gruppe: "klaraAnswerExplanationRoutes",
     methode: "GET",
     pfad: "/api/klara/answers/gibt-es-nicht/explanation",
+    route: "/api/klara/answers/:answerId/explanation",
     belegstelle: "services/app/src/routes/klara-answer-explanation-routes.ts:87",
     tor: "ko.read",
     erwartet: NUR_LESEN,
@@ -408,6 +992,7 @@ export const TABELLE: Zeile[] = [
     gruppe: "klaraZurufRoutes",
     methode: "POST",
     pfad: "/api/klara/sessions/gibt-es-nicht/zuruf",
+    route: "/api/klara/sessions/:sessionId/zuruf",
     belegstelle: "services/app/src/routes/klara-session-routes.ts:208",
     tor: "ko.read",
     payload: {},
@@ -506,6 +1091,7 @@ export const TABELLE: Zeile[] = [
     gruppe: "objectRoutes",
     methode: "GET",
     pfad: "/api/objects/gibt-es-nicht",
+    route: "/api/objects/:id",
     belegstelle: "services/app/src/routes/object-routes.ts:284",
     tor: "ko.read",
     erwartet: NUR_LESEN,
@@ -539,6 +1125,7 @@ export const TABELLE: Zeile[] = [
     gruppe: "provenanceRoutes",
     methode: "GET",
     pfad: "/api/kos/gibt-es-nicht/provenance",
+    route: "/api/kos/:id/provenance",
     belegstelle: "services/app/src/routes/provenance-routes.ts:89",
     tor: "ko.read",
     erwartet: NUR_LESEN,
@@ -606,6 +1193,425 @@ export const TABELLE: Zeile[] = [
     methode: "GET",
     pfad: "/api/analytics/impact",
     belegstelle: "services/app/src/build-app.ts:2667",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+
+  // ==============================================================================================
+  // JOB 4061 · LIEFERUNG 5 — DIE ÜBRIGEN LESE-TÜREN: JEDE REGISTRIERTE GET-ROUTE WIRD BEFRAGT.
+  // ==============================================================================================
+  //
+  // Bis hierher stand EINE stellvertretende Zeile je Routengruppe (47 Zeilen über 39 Gruppen). Das
+  // war eine vollständige GRUPPENabnahme und ausdrücklich keine Endpunktabnahme
+  // (`archiv/4015/runde-2/RUECKGABE.md:65`). Die Zeilen unten schliessen die Lücke für die LESEWEGE:
+  // jede GET-Route, die die Aufzählung aus der laufenden App findet, wird mit allen fünf Akteuren
+  // gefahren. Die Schreibwege stehen mit Grund in `NICHT_ABGENOMMEN`.
+  //
+  // DIE ERWARTUNGEN SIND AUCH HIER GESCHRIEBEN, NICHT GERECHNET (s. Kopf dieser Datei). Gelesen
+  // wurde je Route ihr Handler; eingetragen ist das Muster, das zum geforderten Recht gehört. Weicht
+  // die Messung ab, kommt die Abweichung als `ist` mit Grund daneben — nie ins `soll`.
+  {
+    gruppe: "addinStaticRoutes",
+    methode: "GET",
+    pfad: "/addin/gibt-es-nicht.js",
+    route: "/addin/*",
+    belegstelle: "services/app/src/routes/addin-static-routes.ts:181",
+    tor: "keines — statischer Namensraum des Klara-Add-ins",
+    erwartet: OEFFENTLICH(
+      "Der Wildcard-Zweig desselben Bündels wie `GET /addin`: Word lädt Taskpane, CSS und Skript, bevor irgendjemand angemeldet ist. Er liefert ausschliesslich aus einer expliziten Datei-Map (traversal-sicher, kein Verzeichnislisting); gemessen wird hier die statische 404 auf einen Namen, der nicht in der Map steht.",
+    ),
+  },
+  {
+    gruppe: "adminRoutes",
+    methode: "GET",
+    pfad: "/api/admin/demo-seed",
+    belegstelle: "services/app/src/routes/admin-routes.ts:87",
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
+  },
+  {
+    gruppe: "adminRoutes",
+    methode: "GET",
+    pfad: "/api/admin/demo-packages",
+    belegstelle: "services/app/src/routes/admin-routes.ts:169",
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
+  },
+  {
+    gruppe: "adminRoutes",
+    methode: "GET",
+    pfad: "/api/admin/demo-packages/gibt-es-nicht/preview",
+    route: "/api/admin/demo-packages/:id/preview",
+    belegstelle: "services/app/src/routes/admin-routes.ts:187",
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
+  },
+  {
+    gruppe: "askRoutes",
+    methode: "GET",
+    pfad: "/api/gaps/summary",
+    belegstelle: "services/app/src/routes/ask-routes.ts:471",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "auditRoutes",
+    methode: "GET",
+    pfad: "/api/audit/verify",
+    belegstelle: "services/app/src/routes/audit-routes.ts:18",
+    tor: "ko.validate",
+    erwartet: AB_CONTROLLER,
+  },
+  // ----------------------------------------------------------------------------------------------
+  // `authRoutes` läuft nicht über `makeGuards`, sondern über sein eigenes `requireUser`
+  // (`services/auth/src/routes.ts:194-208`). Dessen 401 trägt `INVALID_CREDENTIALS` statt
+  // `UNAUTHENTICATED` — derselbe Befund wie bei `GET /api/users` oben, hier für jede weitere Tür des
+  // Moduls einzeln gemessen statt einmal behauptet.
+  // ----------------------------------------------------------------------------------------------
+  {
+    gruppe: "authRoutes",
+    methode: "GET",
+    pfad: "/api/auth/me",
+    belegstelle: "services/auth/src/routes.ts:338",
+    tor: "requireUser (eigener Guard des auth-Moduls, `routes.ts:194-208`)",
+    erwartet: ANGEMELDET,
+    codes: { "401": "INVALID_CREDENTIALS" },
+  },
+  {
+    gruppe: "authRoutes",
+    methode: "GET",
+    pfad: "/api/auth/notice",
+    belegstelle: "services/auth/src/routes.ts:355",
+    tor: "requireUser (eigener Guard des auth-Moduls, `routes.ts:194-208`)",
+    erwartet: ANGEMELDET,
+    codes: { "401": "INVALID_CREDENTIALS" },
+  },
+  {
+    gruppe: "authRoutes",
+    methode: "GET",
+    pfad: "/api/directory",
+    belegstelle: "services/auth/src/routes.ts:633",
+    tor: "requireUser (eigener Guard des auth-Moduls, `routes.ts:194-208`)",
+    erwartet: ANGEMELDET,
+    codes: { "401": "INVALID_CREDENTIALS" },
+  },
+  {
+    gruppe: "authRoutes",
+    methode: "GET",
+    pfad: "/api/auth/status",
+    belegstelle: "services/auth/src/routes.ts:592",
+    tor: "keines — der Zustand VOR der Anmeldung",
+    erwartet: OEFFENTLICH(
+      "Die Anmeldemaske muss wissen, ob diese Instanz überhaupt schon eingerichtet ist und ob SSO angeboten wird — beides, bevor es eine Sitzung geben kann. Sie nennt keine Kontodaten und keinen Bestand.",
+    ),
+  },
+  {
+    gruppe: "authRoutes",
+    methode: "GET",
+    pfad: "/api/auth/oidc/start",
+    belegstelle: "services/auth/src/routes.ts:472",
+    tor: "keines — der Einstieg in den SSO-Ablauf",
+    erwartet: OEFFENTLICH(
+      "Der Authorization-Code-Ablauf beginnt notwendig unangemeldet. Ohne konfiguriertes OIDC antwortet die Route allen fünf Akteuren gleich mit 501 `OIDC_DISABLED` (`routes.ts:473-478`) — gemessen ist damit, dass an dieser Tür weder 401 noch 403 steht.",
+    ),
+  },
+  {
+    gruppe: "captureRoutes",
+    methode: "GET",
+    pfad: "/api/drafts/gibt-es-nicht",
+    route: "/api/drafts/:id",
+    belegstelle: "services/app/src/routes/capture-routes.ts:1161",
+    tor: "ko.create",
+    erwartet: AB_EXPERTE,
+  },
+  {
+    gruppe: "captureRoutes",
+    methode: "GET",
+    pfad: "/api/drafts/gibt-es-nicht/naechster-schritt",
+    route: "/api/drafts/:id/naechster-schritt",
+    belegstelle: "services/app/src/routes/capture-routes.ts:1218",
+    tor: "ko.create",
+    erwartet: AB_EXPERTE,
+  },
+  {
+    gruppe: "captureRoutes",
+    methode: "GET",
+    pfad: "/api/drafts/trash",
+    belegstelle: "services/app/src/routes/capture-routes.ts:1310",
+    tor: "ko.create",
+    erwartet: AB_EXPERTE,
+  },
+  {
+    gruppe: "conflictRoutes",
+    methode: "GET",
+    pfad: "/api/duplicate-signal",
+    belegstelle: "services/app/src/routes/conflicts-routes.ts:189",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "conflictRoutes",
+    methode: "GET",
+    pfad: "/api/conflicts/gibt-es-nicht",
+    route: "/api/conflicts/:id",
+    belegstelle: "services/app/src/routes/conflicts-routes.ts:240",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "externalRoutes",
+    methode: "GET",
+    pfad: "/api/external/search",
+    belegstelle: "services/app/src/routes/external-routes.ts:61",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "i18nRoutes",
+    methode: "GET",
+    pfad: "/api/i18n/de/gibt-es-nicht",
+    route: "/api/i18n/:locale/:key",
+    belegstelle: "services/app/src/routes/i18n-routes.ts:11",
+    tor: "keines — Oberflächentexte",
+    erwartet: OEFFENTLICH(
+      "Der Einzelabruf derselben Oberflächentexte wie `/api/i18n/locales`: die Anmeldemaske braucht sie, bevor es eine Sitzung gibt. Ausgeliefert werden Textbausteine, keine Bestandsdaten.",
+    ),
+  },
+  {
+    gruppe: "importRunRoutes",
+    methode: "GET",
+    pfad: "/api/admin/import/runs/gibt-es-nicht/result",
+    route: "/api/admin/import/runs/:importId/result",
+    belegstelle: "services/app/src/routes/import-run-routes.ts:135",
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
+  },
+  {
+    gruppe: "importRunRoutes",
+    methode: "GET",
+    pfad: "/api/admin/import/source-records/gibt-es-nicht",
+    route: "/api/admin/import/source-records/:sourceRecordId",
+    belegstelle: "services/app/src/routes/import-run-routes.ts:164",
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
+  },
+  {
+    gruppe: "klaraAiRoutes",
+    methode: "GET",
+    pfad: "/api/klara/sessions/gibt-es-nicht",
+    route: "/api/klara/sessions/:sessionId",
+    belegstelle: "services/app/src/routes/klara-ai-routes.ts:169",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "koRoutes",
+    methode: "GET",
+    pfad: "/api/wissensnetz/luecken",
+    belegstelle: "services/app/src/routes/ko-routes.ts:800",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "koRoutes",
+    methode: "GET",
+    pfad: "/api/kos/gibt-es-nicht",
+    route: "/api/kos/:id",
+    belegstelle: "services/app/src/routes/ko-routes.ts:879",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "koRoutes",
+    methode: "GET",
+    pfad: "/api/kos/gibt-es-nicht/versions",
+    route: "/api/kos/:id/versions",
+    belegstelle: "services/app/src/routes/ko-routes.ts:947",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "koRoutes",
+    methode: "GET",
+    pfad: "/api/kos/gibt-es-nicht/evidence",
+    route: "/api/kos/:id/evidence",
+    belegstelle: "services/app/src/routes/ko-routes.ts:964",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "koRoutes",
+    methode: "GET",
+    pfad: "/api/evidence",
+    belegstelle: "services/app/src/routes/ko-routes.ts:982",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "koRoutes",
+    methode: "GET",
+    pfad: "/api/upload-limits",
+    belegstelle: "services/app/src/routes/ko-routes.ts:1675",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "lesevariantenRoutes",
+    methode: "GET",
+    pfad: "/api/kos/gibt-es-nicht/lesevariante/en",
+    route: "/api/kos/:id/lesevariante/:lang",
+    belegstelle: "services/app/src/routes/lesevarianten-routes.ts:67",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "lesevariantenRoutes",
+    methode: "GET",
+    pfad: "/api/library/import/candidates/gibt-es-nicht/lesevariante/en",
+    route: "/api/library/import/candidates/:id/lesevariante/:lang",
+    belegstelle: "services/app/src/routes/lesevarianten-routes.ts:152",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "libraryRoutes",
+    methode: "GET",
+    pfad: "/api/library/search",
+    belegstelle: "services/app/src/routes/library-routes.ts:538",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "libraryRoutes",
+    methode: "GET",
+    pfad: "/api/library/images",
+    belegstelle: "services/app/src/routes/library-routes.ts:587",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "libraryRoutes",
+    methode: "GET",
+    pfad: "/api/library/export",
+    belegstelle: "services/app/src/routes/library-routes.ts:696",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "libraryRoutes",
+    methode: "GET",
+    pfad: "/api/library/import/candidates",
+    belegstelle: "services/app/src/routes/library-routes.ts:772",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "libraryRoutes",
+    methode: "GET",
+    pfad: "/api/analytics",
+    belegstelle: "services/app/src/routes/library-routes.ts:882",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "libraryRoutes",
+    methode: "GET",
+    pfad: "/api/analytics/busfactor",
+    belegstelle: "services/app/src/routes/library-routes.ts:892",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "libraryRoutes",
+    methode: "GET",
+    pfad: "/api/graph",
+    belegstelle: "services/app/src/routes/library-routes.ts:916",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "libraryRoutes",
+    methode: "GET",
+    pfad: "/api/kos/gibt-es-nicht/neighbors",
+    route: "/api/kos/:id/neighbors",
+    belegstelle: "services/app/src/routes/library-routes.ts:943",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "lifecycleRoutes",
+    methode: "GET",
+    pfad: "/api/lifecycle/couplings/gibt-es-nicht",
+    route: "/api/lifecycle/couplings/:koId",
+    belegstelle: "services/app/src/routes/lifecycle-routes.ts:47",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "lifecycleRoutes",
+    methode: "GET",
+    pfad: "/api/learning-paths/gibt-es-nicht",
+    route: "/api/learning-paths/:role",
+    belegstelle: "services/app/src/routes/lifecycle-routes.ts:125",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "lifecycleRoutes",
+    methode: "GET",
+    pfad: "/api/learning-paths/gibt-es-nicht/progress",
+    route: "/api/learning-paths/:pathId/progress",
+    belegstelle: "services/app/src/routes/lifecycle-routes.ts:157",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "objectRoutes",
+    methode: "GET",
+    pfad: "/api/objects/gibt-es-nicht/raw",
+    route: "/api/objects/:id/raw",
+    belegstelle: "services/app/src/routes/object-routes.ts:310",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "overlapRoutes",
+    methode: "GET",
+    pfad: "/api/duplicates/settings",
+    belegstelle: "services/app/src/routes/overlap-routes.ts:77",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "overlapRoutes",
+    methode: "GET",
+    pfad: "/api/duplicates/gibt-es-nicht",
+    route: "/api/duplicates/:id",
+    belegstelle: "services/app/src/routes/overlap-routes.ts:112",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "reasonerRoutes",
+    methode: "GET",
+    pfad: "/api/reasoner/assist-presets",
+    belegstelle: "services/app/src/routes/reasoner-routes.ts:870",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "validationRoutes",
+    methode: "GET",
+    pfad: "/api/validation/overview",
+    belegstelle: "services/app/src/routes/validation-routes.ts:74",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "validationRoutes",
+    methode: "GET",
+    pfad: "/api/validation/settings",
+    belegstelle: "services/app/src/routes/validation-routes.ts:85",
     tor: "ko.read",
     erwartet: NUR_LESEN,
   },

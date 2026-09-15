@@ -31,6 +31,7 @@ import {
   inMemoryRepos,
 } from "../../services/app/src/build-app";
 import type { PublicUser, Role } from "../../services/auth";
+import { type Routenmitschrift, schreibeRouterentscheidungMit } from "./registrierte-routen";
 
 /** Die vier Rollen des Rollenmodells (`services/auth/src/types.ts:1`), in ihrer Reihenfolge. */
 export const ROLLEN = [
@@ -72,6 +73,14 @@ export interface Buehne {
   konto: Record<Rolle, PublicUser>;
   /** Der über `POST /api/auth/login` geholte Sitzungstoken je Rolle. */
   sitzung: Record<Rolle, string>;
+  /**
+   * Welche REGISTRIERTE Route der Router für eine Messung gewählt hat (JOB 4061, Runde 2).
+   *
+   * Der Hook dahinter kann nur VOR `app.ready()` gesetzt werden, deshalb hängt er hier und nicht im
+   * Testfall. Ohne ihn wäre „die Zeile misst die Tür, die sie benennt" eine Behauptung — mit ihm ist
+   * es eine Auskunft des Routers.
+   */
+  mitschrift: Routenmitschrift;
 }
 
 const offen: Array<{ app: FastifyInstance; vorher: Record<string, string | undefined> }> = [];
@@ -125,6 +134,10 @@ export async function baueBuehne(): Promise<Buehne> {
   const repos = inMemoryRepos();
   const services = assembleServices(repos);
   const app = buildApp(services);
+  // VOR `ready()`: Fastify nimmt danach keinen Hook mehr an. Der Mitschreiber liest ausschliesslich
+  // `request.routeOptions.url` mit, reicht die Nutzlast unverändert weiter und läuft synchron —
+  // Begründung im Kopf von `registrierte-routen.ts`.
+  const mitschrift = schreibeRouterentscheidungMit(app);
   await app.ready();
   offen.push({ app, vorher });
 
@@ -151,7 +164,7 @@ export async function baueBuehne(): Promise<Buehne> {
   for (const rolle of ROLLEN) {
     sitzung[rolle] = await anmelden(app, konto[rolle].email);
   }
-  return { app, services, repos, konto, sitzung };
+  return { app, services, repos, konto, sitzung, mitschrift };
 }
 
 /** Die Kopfzeilen eines Akteurs: ein Bearer-Token — oder gar nichts. */

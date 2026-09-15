@@ -28,7 +28,12 @@ export const WURZEL = join(process.cwd(), "services/app/src/build-app.ts");
  * Eintrag ohne Grund ist eine Lücke in der Abnahme und wird vom Wächter benannt.
  */
 export const AUSGENOMMEN: Record<string, string> = {
-  cors: "@fastify/cors — eine Fastify-Erweiterung für Antwortköpfe; sie legt keine Route an.",
+  // JOB 4061, gemessen an der laufenden Instanz: hier stand „sie legt keine Route an", und das war
+  // falsch. `@fastify/cors` registriert die Vorflugroute `OPTIONS /*`. Die Ausnahme bleibt trotzdem
+  // richtig — eine ROUTENGRUPPE des Produkts ist die Erweiterung nicht —, aber sie wird jetzt mit dem
+  // zutreffenden Grund geführt, und die Route selbst fällt der Endpunktaufzählung
+  // (`registrierte-routen.ts`) zu, die sie in `NICHT_ABGENOMMEN` aufführt.
+  cors: "@fastify/cors — eine Fastify-Erweiterung für Ursprungsköpfe; keine Routengruppe des Produkts. Sie legt allerdings die Vorflugroute `OPTIONS /*` an; die Endpunktaufzählung führt sie.",
   rateLimit:
     "@fastify/rate-limit — Drossel über bestehenden Routen (`global: false`); sie legt keine Route an.",
 };
