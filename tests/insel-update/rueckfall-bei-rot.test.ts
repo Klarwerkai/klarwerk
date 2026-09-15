@@ -21,10 +21,14 @@ import {
   fahreUpdate,
   feldAus,
   gesundheit,
+  legeDumpAn,
   legeInselAn,
+  legeInselwegeAn,
   legeJournalAn,
   legePaketAn,
   raeumeAb,
+  rueckfallInKopie,
+  schreibePruefDrill,
   schreibeRelease,
   setzeCurrent,
   standtext,
@@ -203,5 +207,99 @@ describe("JOB 4012 · rueckfall.sh von Hand — derselbe Weg, jederzeit", () => 
 
     expect(zurueck.code, zurueck.ausgabe).toBe(9);
     expect(zurueck.ergebnis).toContain("unbekannte Sicherungsart");
+  });
+});
+
+// ================================================================================================
+// JOB 4107 · RED-FIRST — „AKTIV" IST KEINE AUSSAGE UEBER DIE DATEN.
+// ================================================================================================
+//
+// DER AUSGANGSFEHLER, gemessen am Bestand vor dieser Runde: `--daten-zurueck <x.dump>` uebergab den
+// Dump an `restore-drill.sh` — und der spielt ihn ausdruecklich in eine EIGENE, LEERE
+// Zieldatenbank. Die Produktivdaten blieben unberuehrt, der Weg fiel danach durch bis zur Zeile
+// `Vorversion 1.0.0 aktiv` und endete mit 0: derselbe Satz und derselbe Code wie nach einem
+// Rueckfall OHNE Datenwunsch. Wer im Ernstfall seinen Datenstand zurueckholen wollte, las „aktiv"
+// und hatte nichts zurueck. R11 war auf jenem Stand rot (Exit 0 statt 11).
+describe("JOB 4107 · --daten-zurueck mit einem Postgres-Dump sagt die Wahrheit", () => {
+  /** Die Insel mit den Betriebswegen daneben — dort liegt auch das Prüfskript für den Drill. */
+  async function inselMitWegen(): Promise<{ dort: Insel; weg: string; protokoll: string }> {
+    const dort = await inselMitVorversion();
+    insel = dort;
+    const weg = legeInselwegeAn(dort);
+    const protokoll = join(dort.wurzel, "drill-aufrufe.txt");
+    schreibePruefDrill(weg, protokoll);
+    return { dort, weg, protokoll };
+  }
+
+  it("R11 · Code zurueck, Produktivdatenbank unberuehrt — eigener Ausgang, eigene Zeile", async () => {
+    const { dort, weg, protokoll } = await inselMitWegen();
+
+    const update = fahreUpdate(dort, legePaketAn(dort, { name: NEU, appVersion: "1.1.0" }));
+    expect(update.code, update.ausgabe).toBe(0);
+    expect((await gesundheit(dort))?.version).toBe("1.1.0");
+
+    const dump = legeDumpAn(dort);
+    const zurueck = fahreRueckfall(dort, ["--daten-zurueck", dump], rueckfallInKopie(weg));
+
+    // Der eigene Ausgang ist der Kern: ein Aufrufer muss „Code zurück, Daten unberührt" von
+    // „Code zurück, Daten zurück" (R13, Exit 0) unterscheiden können.
+    expect(zurueck.code, zurueck.ausgabe).toBe(11);
+    expect(zurueck.ergebnis).toContain("Produktivdatenbank");
+    expect(zurueck.ergebnis, "der Mensch braucht den Pfad des geprüften Dumps").toContain(dump);
+    expect(
+      zurueck.ergebnis,
+      "nichts wurde zurückgespielt — das Wort darf hier nicht stehen",
+    ).not.toMatch(/zur[üu]ckgespielt/i);
+    expect(zurueck.ergebnis, "der nächste Schritt gehört in dieselbe Zeile").toContain(
+      "pg_restore",
+    );
+
+    // Der Code-Weg ist trotzdem gefahren: Zeiger, laufende Fassung und `/health` sagen dasselbe.
+    expect(aktivesRelease(dort)).toBe(ALT);
+    expect((await gesundheit(dort))?.version).toBe("1.0.0");
+    // Und der Dump wurde wirklich geprüft, nicht nur behauptet.
+    expect(readFileSync(protokoll, "utf8")).toContain(dump);
+  });
+
+  it("R12 · ohne Pruefsumme wird nichts angehalten: Exit 9, der laufende Server laeuft weiter", async () => {
+    const { dort, weg, protokoll } = await inselMitWegen();
+
+    const update = fahreUpdate(dort, legePaketAn(dort, { name: NEU, appVersion: "1.1.0" }));
+    expect(update.code, update.ausgabe).toBe(0);
+    const vorher = await gesundheit(dort);
+    expect(vorher?.version).toBe("1.1.0");
+
+    const dump = legeDumpAn(dort, false);
+    const zurueck = fahreRueckfall(dort, ["--daten-zurueck", dump], rueckfallInKopie(weg));
+
+    expect(zurueck.code, zurueck.ausgabe).toBe(9);
+    expect(zurueck.ergebnis).toContain("Prüfsumme");
+    // DIE EIGENTLICHE ZUSAGE: Ein Tippfehler im Pfad darf den laufenden Server nicht kosten.
+    // Abgelesen an `/health`, nicht am Text — und an einem Zeiger, der nicht umgebogen wurde.
+    expect(aktivesRelease(dort)).toBe(NEU);
+    expect((await gesundheit(dort))?.version).toBe("1.1.0");
+    expect(existsSync(protokoll), "ohne Prüfsumme wird der Drill gar nicht erst gerufen").toBe(
+      false,
+    );
+  });
+
+  it("R13 · der Journalweg bleibt, was er war: Daten wirklich zurueck, Exit 0", async () => {
+    const { dort, weg, protokoll } = await inselMitWegen();
+    const journal = legeJournalAn(dort, 2);
+
+    const update = fahreUpdate(dort, legePaketAn(dort, { name: NEU, appVersion: "1.1.0" }));
+    expect(update.code, update.ausgabe).toBe(0);
+    const sicherung = /Update auf 1\.1\.0 aktiv, Sicherung (.+)$/.exec(update.ergebnis)?.[1] ?? "";
+    expect(existsSync(sicherung), update.ergebnis).toBe(true);
+    writeFileSync(journal, `${readFileSync(journal, "utf8")}{"nr":99,"wert":"spaeter"}\n`);
+
+    const zurueck = fahreRueckfall(dort, ["--daten-zurueck", sicherung], rueckfallInKopie(weg));
+
+    // Derselbe Schalter, ein anderer Fall, ein anderer Ausgang — genau das ist der Unterschied,
+    // den R11 messbar macht. Hier wurde wirklich zurueckgespielt.
+    expect(zurueck.code, zurueck.ausgabe).toBe(0);
+    expect(zurueck.ergebnis).not.toContain("Produktivdatenbank");
+    expect(readFileSync(journal, "utf8")).toBe(readFileSync(sicherung, "utf8"));
+    expect(existsSync(protokoll), "der Journalweg ruft kein Postgres-Werkzeug").toBe(false);
   });
 });

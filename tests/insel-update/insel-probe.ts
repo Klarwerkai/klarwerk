@@ -391,8 +391,76 @@ export function legeBetriebswegeAb(paket: string): void {
   }
 }
 
-export function fahreRueckfall(insel: Insel, argumente: readonly string[] = []): Lauf {
-  return lauf(RUECKFALL_SH, argumente, umgebung(insel));
+/**
+ * DER RÜCKFALL — aus dem Arbeitsbaum oder aus einer Kopie im Probenbaum (`skript`).
+ *
+ * Gemessen wird in beiden Fällen dieselbe Datei; `legeInselwegeAn` kopiert sie Byte für Byte.
+ */
+export function fahreRueckfall(
+  insel: Insel,
+  argumente: readonly string[] = [],
+  skript: string = RUECKFALL_SH,
+): Lauf {
+  return lauf(skript, argumente, umgebung(insel));
+}
+
+/**
+ * DIE BETRIEBSWEGE ALS KOPIE IM PROBENBAUM — so, wie sie in jedem Release nebeneinander liegen.
+ *
+ * WOZU: `rueckfall.sh` sucht das Werkzeug seines Postgres-Zweigs relativ zu SICH SELBST
+ * (`$WURZEL/scripts/backup/restore-drill.sh`). Aus dem Arbeitsbaum gefahren, ist das der echte
+ * Drill — der braucht eine PostgreSQL und liefe im Tor nie mit. Aus dieser Kopie gefahren, liegt an
+ * genau dieser Stelle ein PRÜFSKRIPT (`schreibePruefDrill`), das nur festhält, womit es gerufen
+ * wurde. `rueckfall.sh`, `insel-betrieb.sh` und `schema-vertrag.mjs` bleiben dabei die
+ * ausgelieferten Dateien, Zeile für Zeile — kopiert, nicht nachgebaut.
+ *
+ * Der Rückgabewert ist die Wurzel der Kopie; das Skript liegt unter `<wurzel>/scripts/insel/…`.
+ */
+export function legeInselwegeAn(insel: Insel): string {
+  const weg = join(insel.wurzel, "weg");
+  legeBetriebswegeAb(weg);
+  return weg;
+}
+
+/** Der Pfad des kopierten Rückfalls unter einer Wurzel aus `legeInselwegeAn`. */
+export function rueckfallInKopie(weg: string): string {
+  return join(weg, "scripts", "insel", "rueckfall.sh");
+}
+
+/**
+ * Ein Prüfskript an genau der Stelle, an der `rueckfall.sh` `restore-drill.sh` erwartet.
+ *
+ * Es schreibt seinen Aufruf nach `protokoll` — daran ist ablesbar, OB und MIT WELCHEM Dump der
+ * Rückfall den Drill überhaupt gerufen hat. `code` ist sein Ausgang (0 = Dump geprüft).
+ */
+export function schreibePruefDrill(weg: string, protokoll: string, code = 0): string {
+  const datei = join(weg, "scripts", "backup", "restore-drill.sh");
+  mkdirSync(dirname(datei), { recursive: true });
+  writeFileSync(
+    datei,
+    `#!/usr/bin/env bash
+printf '%s\\n' "\${1:-}" >> ${JSON.stringify(protokoll)}
+echo "[drill] Probe: Dump gegen eine eigene, leere Zieldatenbank geprueft"
+exit ${code}
+`,
+    { mode: 0o755 },
+  );
+  return datei;
+}
+
+/**
+ * Ein Postgres-Dump samt Sidecar, wie `scripts/backup/backup.sh:559` ihn hinterlässt:
+ * `<sha256>  <dateiname>`. Ohne Sidecar ist der Dump unbeglaubigt — genau der Fall von R12.
+ */
+export function legeDumpAn(insel: Insel, mitSidecar = true): string {
+  const inhalt = "PROBE-DUMP";
+  const datei = join(insel.backups, "klarwerk-probe.dump");
+  schreibeDatei(datei, inhalt);
+  if (mitSidecar) {
+    const summe = createHash("sha256").update(inhalt, "utf8").digest("hex");
+    writeFileSync(`${datei}.sha256`, `${summe}  klarwerk-probe.dump\n`);
+  }
+  return datei;
 }
 
 export function fahreVertrag(argumente: readonly string[]): Lauf {

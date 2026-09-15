@@ -146,6 +146,14 @@ exec bash "$WEG" "$SOURCE" "$@"
  * Die sieben Handgriffe von früher (Zeiger umbiegen, PID lesen, `kill`, `nohup`, `curl`) stehen
  * hier bewusst nicht mehr: Wer sie braucht, hat gerade eine kaputte App vor sich und keine Ruhe
  * zum Abtippen — und ein zweiter Weg heißt, dass im Ernstfall der ungeübte gefahren wird.
+ *
+ * DER ABSCHNITT „DATEN" IST EINE ZUSAGE UND WIRD ALS SOLCHE GEMESSEN (JOB 4107). Bis dahin stand
+ * hier pauschal „Zurueckgespielt wird nur auf Ansage: `rueckfall.sh --daten-zurueck <sicherung>`" —
+ * für das Journal stimmt das, für einen Postgres-Dump nicht: dort PRÜFT `restore-drill.sh` nur, in
+ * einer eigenen leeren Zieldatenbank, und die Produktivdaten bleiben, wie sie sind. Das Release
+ * versprach damit etwas, das sein eigenes Werkzeug nicht tut. Seitdem sagen beide Orte dasselbe,
+ * und `tests/insel-update/rueckweg-vertrag.test.ts` hält sie gegeneinander: der Text nennt je
+ * Datenhaltung den Ausgang, den `rueckfall.sh` wirklich liefert.
  */
 export function rollbackText(version) {
   return `# Rueckfall ${version}
@@ -165,10 +173,25 @@ Die Handgriffe von frueher — den Zeiger von Hand umbiegen, den Serverprozess s
 neu starten — stehen hier bewusst NICHT mehr daneben: zwei Wege zum selben Ziel heisst, dass im
 Ernstfall der ungeuebte gefahren wird.
 
-**Daten.** Der Rueckfall fasst sie nicht an. \`update-einspielen.sh\` sichert VOR jedem Umschalten
-und nennt den Pfad in seiner Ergebniszeile (Journal: \`/Users/Shared/Klarwerk_Insel/backups/<zeitstempel>-<lauf>/state.jsonl\`,
-Postgres: der Dump aus \`scripts/backup/backup.sh\`). Zurueckgespielt wird nur auf Ansage:
-\`rueckfall.sh --daten-zurueck <sicherung>\`.
+**Daten.** Von sich aus fasst der Rueckfall sie nicht an — er ist ein CODE-Weg.
+\`update-einspielen.sh\` sichert VOR jedem Umschalten und nennt den Pfad in seiner Ergebniszeile
+(Journal: \`/Users/Shared/Klarwerk_Insel/backups/<zeitstempel>-<lauf>/state.jsonl\`,
+Postgres: der Dump aus \`scripts/backup/backup.sh\`). An Daten ruehrt nur \`--daten-zurueck\`, und
+die zwei Datenhaltungen tun dabei NICHT dasselbe:
+
+- **Journal** (\`*.jsonl\`): \`rueckfall.sh --daten-zurueck <sicherung>\` spielt den Stand wirklich
+  zurueck — die Journaldatei wird ersetzt, der bisherige Stand davor daneben gesichert. Der Weg
+  endet mit \`Vorversion <version> aktiv\`, **Exit 0**.
+- **Postgres** (\`*.dump\`): \`rueckfall.sh --daten-zurueck <dump>\` spielt NICHTS in die
+  Produktivdatenbank. Der Dump wird von \`scripts/backup/restore-drill.sh\` nur GEPRUEFT, in einer
+  eigenen leeren Zieldatenbank; die Produktivdaten bleiben unveraendert. Der Weg schaltet den Code
+  zurueck und endet mit einer eigenen Zeile („die Produktivdatenbank ist UNVERAENDERT …") und
+  **Exit 11**. Wer diesen Datenstand wirklich haben will, muss ihn von Hand einspielen
+  (\`pg_restore\` in die Produktivdatenbank) — das ist eine eigene Entscheidung, weil es die
+  laufenden Daten ueberschreibt, und dieses Skript trifft sie nicht.
+
+Fehlt zu einem Dump die Pruefsumme (\`<dump>.sha256\`), bricht der Weg VOR dem Anhalten des Servers
+ab (**Exit 9**); die laufende Fassung bleibt dann unberuehrt.
 
 **Jedes Release bleibt liegen.** Releases werden nie ueberschrieben (jeder Baulauf hat seinen
 eigenen Namen). Eine bestimmte aeltere Fassung faehrst du mit ihrem Namen an; \`ls\` auf

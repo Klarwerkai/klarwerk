@@ -14,11 +14,21 @@
 # nicht hochkommt — geübt wird er damit bei jedem Update, nicht nur im Ernstfall.
 #
 # DIE DATEN BLEIBEN UNANGETASTET. Ein Rückfall ist ein CODE-Weg. Nur `--daten-zurueck <sicherung>`
-# spielt eine Sicherung ein, und auch dann nicht mit eigenem Code:
-#   · Postgres-Dump (`*.dump`) → `scripts/backup/restore-drill.sh` (Sidecar-Prüfung, eigene, leere
-#     Zieldatenbank; er fasst die Produktionsdatenbank ausdrücklich NICHT an).
+# rührt überhaupt an Daten — und die zwei Datenhaltungen tun dabei NICHT dasselbe:
 #   · Journal (`*.jsonl`)      → die Sicherung IST die Datei. Es gibt kein Fremdwerkzeug dafür;
 #     der Weg ist ein Zurückkopieren, und der bisherige Stand wird davor selbst gesichert.
+#     Das ist eine echte Rückspielung; der Weg endet mit 0.
+#   · Postgres-Dump (`*.dump`) → `scripts/backup/restore-drill.sh` PRÜFT den Dump in einer eigenen,
+#     leeren Zieldatenbank; die Produktivdatenbank fasst er ausdrücklich NICHT an. Es wird also
+#     NICHTS zurückgespielt, und genau das sagt der Weg jetzt auch: eigene Ergebniszeile, eigener
+#     Ausgang 11 (JOB 4107).
+#
+#     WARUM DAS EIN EIGENER AUSGANG SEIN MUSS (der Fehler, gegen den JOB 4107 steht): Bis dahin fiel
+#     dieser Zweig nach dem Drill durch bis zur Zeile „Vorversion <version> aktiv" und endete mit 0 —
+#     Wortlaut und Code eines Rückfalls OHNE Datenwunsch. Wer im Ernstfall seinen Datenstand
+#     zurückholen wollte, las „aktiv" und hatte nichts zurück. Ein Aufrufer (und `update-einspielen.sh`
+#     ist einer) muss „Code zurück, Daten unberührt" von „Code zurück, Daten zurück" unterscheiden
+#     können, und ein Mensch muss es an der letzten Zeile sehen.
 #
 # EXITCODES — jeder Ausgang hat seinen eigenen, damit ein Aufrufer (und `update-einspielen.sh`)
 # unterscheiden kann, was schiefging:
@@ -27,8 +37,10 @@
 #   6  keine Vorversion ermittelbar
 #   7  Health nach dem Rückfall rot
 #   8  Health grün, aber eine andere Version als erwartet — oder gar keine belegbare
-#   9  Datenrückspielung gescheitert
+#   9  Datenrückspielung gescheitert (auch: Sicherung/Prüfsumme fehlt, unbekannte Sicherungsart)
 #  10  Der Start der Vorversion kam gar nicht erst zustande (Korrektur Runde 3, BEN-R2-2)
+#  11  Vorversion läuft, aber die PRODUKTIVDATENBANK ist unberührt: `--daten-zurueck <x.dump>` hat den
+#      Dump nur prüfen lassen. Kein Fehler — eine andere Lage als 0 (JOB 4107)
 #
 # WOHER DIE ERWARTETE VERSION KOMMT (Korrektur aus Runde 2, Bens Gegenprobe BEN3): aus dem Vertrag
 # des Releases, sonst aus seiner `package.json` — derselben Datei, aus der `/health` seine Version
@@ -54,6 +66,8 @@ LOG_DATEI="$LOGS/server-${PORT}.log"
 ZIEL_NAME=""
 SICHERUNG=""
 GRUND=""
+# Gesetzt, sobald ein `*.dump` geprüft wurde: der Pfad des Dumps, dessen Daten NICHT eingespielt sind.
+DUMP_NUR_GEPRUEFT=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --daten-zurueck)
@@ -135,7 +149,16 @@ if [ -n "$SICHERUNG" ]; then
     exit 9
   fi
   case "$SICHERUNG" in
-    *.dump|*.jsonl) ;;
+    *.dump)
+      # Der Drill weist einen Dump ohne beglaubigte Prüfsumme ohnehin ab (sein Exit 10), aber erst,
+      # nachdem hier der Server steht. `backup.sh:559` legt die Sidecar-Datei zu jedem Dump; fehlt
+      # sie, ist entweder der Pfad falsch getippt oder der Dump unbeglaubigt — beides ist vorher
+      # entscheidbar und kostet dann keinen laufenden Server.
+      if [ ! -f "$SICHERUNG.sha256" ]; then
+        echo "Rückfall gescheitert, Grund: Prüfsumme fehlt ($SICHERUNG.sha256) — ein unbeglaubigter Dump wird nicht angefasst"
+        exit 9
+      fi ;;
+    *.jsonl) ;;
     *)
       echo "Rückfall gescheitert, Grund: unbekannte Sicherungsart ($SICHERUNG)"
       exit 9 ;;
@@ -157,11 +180,15 @@ if [ -n "$SICHERUNG" ]; then
         echo "Rückfall gescheitert, Grund: restore-drill.sh fehlt ($DRILL)"
         exit 9
       fi
-      echo "[rueckfall] Postgres-Sicherung: uebergebe an restore-drill.sh (eigene, leere Zieldatenbank)"
+      echo "[rueckfall] Postgres-Sicherung: $SICHERUNG wird von restore-drill.sh nur GEPRUEFT (eigene, leere Zieldatenbank) — die Produktivdatenbank wird dabei nicht angefasst"
       if ! bash "$DRILL" "$SICHERUNG"; then
         echo "Rückfall gescheitert, Grund: restore-drill.sh rot"
         exit 9
-      fi ;;
+      fi
+      # Ab hier steht fest: der Dump ist geprüft, die Produktivdaten sind unverändert. Das ist die
+      # Lage, die am Ende in EINER Zeile stehen muss — sonst liest der Mensch „aktiv" und meint,
+      # seine Daten seien zurück.
+      DUMP_NUR_GEPRUEFT="$SICHERUNG" ;;
     *.jsonl)
       # Was der Stopp geantwortet hat, zählt hier: Unter launchd läuft der alte Prozess noch (er wird
       # erst beim `kickstart` ersetzt), und dann wird die Journaldatei unter einem schreibenden
@@ -216,5 +243,15 @@ if [ "$GEMESSENE_VERSION" != "$ERWARTETE_VERSION" ]; then
 fi
 
 printf '%s\n' "$ZIEL_NAME" > "$SHARED_ROOT/AKTIV"
+
+# EIN EIGENER AUSGANG FUER „CODE ZURUECK, DATEN UNBERUEHRT" (JOB 4107). Der Code-Weg ist derselbe wie
+# oben — deshalb steht diese Zeile hinter denselben Prüfungen (Health grün, Version belegt). Was sie
+# zusätzlich sagt, ist das, was der Weg NICHT getan hat, samt dem Pfad, mit dem ein Mensch
+# weiterarbeiten kann.
+if [ -n "$DUMP_NUR_GEPRUEFT" ]; then
+  echo "Rückfall geschaltet, Code auf Vorversion $ERWARTETE_VERSION zurück — die Produktivdatenbank ist UNVERÄNDERT: der Dump $DUMP_NUR_GEPRUEFT wurde nur geprüft (eigene, leere Zieldatenbank). Wer diesen Datenstand wirklich haben will, muss ihn von Hand einspielen (pg_restore in die Produktivdatenbank); dieses Skript tut das nicht."
+  exit 11
+fi
+
 echo "Vorversion $ERWARTETE_VERSION aktiv"
 exit 0
