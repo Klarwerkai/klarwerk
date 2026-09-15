@@ -471,6 +471,17 @@ const INVENTAR: readonly string[] = [
   "tests/office-web-anmeldung/uebergabe-keine-auskunft.test.ts",
   "tests/office-web-anmeldung/uebergabe-ohne-cookie.test.ts",
   "tests/office-web-anmeldung/uebergabe-vertrag.test.ts",
+  // JOB 4085 (OFFICE-PG-ABNAHME): die Abnahme des Word-Rueckwegs gegen eine ECHTE `.docx` durch den
+  // produktiven Extraktor — die Word-Auswahl geht durch das ausgelieferte Aufgabenfenster an die
+  // echte Route, gemessen wird am zurueckgelesenen Wissensobjekt. Von der Achse `taskpane`
+  // gefunden (die Datei fuehrt `taskpane.html` ueber `createKlaraPanel` wirklich aus und pinnt
+  // dessen Byte-Budget); sachlich Klara-Regression. K2 hat sie gemeldet („neu im Baum, aber nicht
+  // im gepinnten Inventar … + "tests/office-pg-abnahme/echte-worddatei-am-rueckweg.test.ts""),
+  // erst danach wurde diese Zeile angefasst. Die zweite Datei desselben Jobs
+  // (`tests/office-pg-abnahme/rueckweg-pg.integration.test.ts`) misst Dienst und PG-Ablage, nennt
+  // das Fenster nicht und faellt in KEINE Achse — sie steht deshalb bewusst NICHT hier, dieselbe
+  // Lage wie `tests/word-rueckweg/route-bedingter-schreibzugriff.test.ts`.
+  "tests/office-pg-abnahme/echte-worddatei-am-rueckweg.test.ts",
   "tests/ask/g27-klara-volltext.test.ts",
   // JOB 2694 D1: neu im Baum, von der Erhebung ueber die Achsen `komponente` und `taskpane`
   // gefunden — der Kopfkommentar der Datei nennt die zwei Nachbarflaechen (Klara-Panel, Word-

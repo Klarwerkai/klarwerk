@@ -340,11 +340,39 @@ describe("JOB 3667 · der Rückweg im Aufgabenfenster", () => {
       statement: string;
       baseVersion: number;
       origin: string;
+      bodyHtml: string;
     };
     expect(nutzlast.statement).toBe(MARKIERUNG);
     expect(nutzlast.baseVersion).toBe(2);
     // Die feste Herkunft: wer den Vorschlag in KLARWERK öffnet, sieht, wo er entstand.
     expect(nutzlast.origin).toBe("word_addin");
+    // ==========================================================================================
+    // JOB 4085 — DIE BEWUSSTE NACHFÜHRUNG: DER VORSCHLAG TRÄGT JETZT DEN RUMPF.
+    // ==========================================================================================
+    //
+    // WAS HIER BIS JOB 4085 STAND: drei Felder, und der Kommentar vor R18 nannte das „nur Text".
+    // Das war keine Zusage, sondern eine Ungleichheit — der Word-SCHREIBweg (R3) und der
+    // Einreichweg der Web-Fläche (`web-einreichweg-mounted.test.tsx`, E24: genau vier Felder)
+    // trugen den Rumpf längst, und der Server nimmt ihn am `propose` an (`rumpf-erhalt.test.ts`,
+    // G1/G2). Nur wer NICHT freigeben durfte, verlor Formatierung und Bilder, ohne einen Satz
+    // darüber. Das Feld wandert deshalb hier herein, und zwar als DIESELBEN vier Felder wie im
+    // Browser — mehr trägt ein `KoProposal` nicht, und mehr schreibt die Übernahme nicht.
+    //
+    // WAS DABEI NICHT WANDERT, und R18 misst es unverändert weiter: `clearBody`. Dieses Fenster
+    // schickt es nie — weder gesetzt noch als `false`. Ein Rumpf, der aus Word kommt, ist eine
+    // Ersetzung, keine Löschung.
+    expect(Object.keys(nutzlast).sort()).toEqual([
+      "baseVersion",
+      "bodyHtml",
+      "origin",
+      "statement",
+    ]);
+    // Und der Rumpf ist wirklich einer — nicht ein leeres Feld, das der Dienst als „nicht
+    // eingereicht" läse und das den bestehenden Inhalt stehen liesse. Er stammt aus dem WORD-HTML
+    // der Markierung (`Office.CoercionType.Html`, hier der Vorgabewert der Fixture), nicht aus dem
+    // Klartext: genau darin liegt der Gewinn dieses Wegs — Formatierung und Bilder reisen mit.
+    expect(nutzlast.bodyHtml.length).toBeGreaterThan(0);
+    expect(nutzlast.bodyHtml).toContain("<p>Ventil entlasten vor der Wartung</p>");
     expect(p.text("#rw-status")).toBe(
       "Eingereicht. Der Eintrag trägt weiter den freigegebenen Stand.",
     );
@@ -614,9 +642,15 @@ describe("JOB 3667 · der Rückweg im Aufgabenfenster", () => {
   // RUNDE 5 · AUSGELASSEN IST NICHT GELÖSCHT — UND DIE LÖSCHUNG SAGT ES SELBST.
   // ==============================================================================================
   //
-  // Der Rückweg aus Word schickt nur Text (`rwEinreichen`: statement/baseVersion/origin). Bis R4
-  // hätte seine Übernahme den ausführlichen Inhalt des Eintrags entfernt; seit R5 bleibt er stehen.
-  // Der Warnsatz gehört deshalb allein dem Vorschlag, der WIRKLICH löschen will (`clearBody`).
+  // Der Rückweg aus Word schickte bis JOB 4085 nur Text. Bis R4 hätte seine Übernahme den
+  // ausführlichen Inhalt des Eintrags entfernt; seit R5 bleibt er stehen. Der Warnsatz gehört
+  // deshalb allein dem Vorschlag, der WIRKLICH löschen will (`clearBody`).
+  //
+  // JOB 4085 HAT DIE EINE STELLE GEÄNDERT UND DIE ANDERE AUSDRÜCKLICH NICHT: `rwEinreichen` trägt
+  // den Rumpf jetzt mit (vier Felder, s. R5) — ein `clearBody` schickt dieses Fenster weiterhin
+  // NIE. R18 misst genau das und bleibt unverändert grün: Der Warnsatz hängt am Löschsignal des
+  // Vorschlags, nicht daran, ob der Vorschlag einen Rumpf hat. Ohne diesen Satz hier stünde die
+  // Erwartung gewandert und die Begründung nicht.
 
   it("R18: nur der Vorschlag MIT Löschsignal warnt vor dem Verlust des ausführlichen Inhalts", async () => {
     const p = await erfassenFlaeche({

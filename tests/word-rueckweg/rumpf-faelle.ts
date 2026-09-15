@@ -41,9 +41,16 @@ export const VORSCHLAG_RUMPF = "<p>Ein anderer, eingereichter ausführlicher Inh
 
 export const RUMPF_FAELLE: readonly RumpfFall[] = [
   {
-    // DER FALL DIESER RUNDE: genau so reicht das Word-Fenster ein (`rwEinreichen` schickt
-    // statement/baseVersion/origin). Vor R5 hätte die Übernahme hier den ganzen Inhalt entfernt.
-    name: "Textvorschlag aus Word an einem Eintrag MIT Inhalt — der Inhalt bleibt",
+    // DER FALL DER RUNDE 5: ein Vorschlag OHNE Rumpf. Vor R5 hätte die Übernahme hier den ganzen
+    // Inhalt entfernt.
+    //
+    // JOB 4085 HAT SEINE HERKUNFT GEÄNDERT, NICHT SEINE REGEL: bis dahin reichte das Word-Fenster
+    // genau so ein (`rwEinreichen` schickte statement/baseVersion/origin). Seit JOB 4085 trägt auch
+    // der Vorschlag aus Word den Rumpf mit — dieser Fall gehört jetzt dem Einreichweg der
+    // Web-Fläche, auf dem ein unverändert gelassener Fließtext nicht mitgeschickt wird
+    // (`web-einreichweg-mounted.test.tsx`, E28). Die REGEL dahinter ist dieselbe geblieben und
+    // bleibt gemessen: ausgelassen ist nicht gelöscht.
+    name: "Vorschlag ohne Rumpf an einem Eintrag MIT Inhalt — der Inhalt bleibt",
     bestand: BESTAND_RUMPF,
     vorschlag: {},
     lage: "bleibt",

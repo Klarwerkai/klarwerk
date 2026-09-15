@@ -2574,7 +2574,97 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // ERSTEINTRAG (JOB 3667 Runde 8, 14.09.2026): die Datei entsteht in dieser Runde und traegt
     // Zeile fuer Zeile den Abschnitt, der bis dahin in `taskpane.html` stand — plus einen Kopf, der
     // Grund, Ladereihenfolge und die Lint-Ausnahme begruendet. Ein VORHERHASH existiert nicht.
-    const PIN = "906f8ac017afb5450334da62303ee48246eb85bebc0c31a89c5f50d8e91abf3c";
+    //
+    // ==========================================================================================
+    // JOB 4085 (15.09.2026) — AUCH DER VORSCHLAG TRAEGT DEN RUMPF. AUSLIEFERUNGSFOLGEN GEPRUEFT,
+    // BEVOR DER PIN WANDERTE.
+    // ==========================================================================================
+    // VORHERHASH: `906f8ac017afb5450334da62303ee48246eb85bebc0c31a89c5f50d8e91abf3c`.
+    //
+    // ANLASS: wer in Word einen Absatz mit Formatierung und Bildern aenderte, bekam ZWEI
+    // Ergebnisse. Wer freigeben darf, schrieb die Fassung direkt, und sein Word-HTML reiste mit
+    // (Budget, Bildbeschneidung, Bilderbilanz). Wer NICHT freigeben darf (Fall 2), reichte
+    // denselben Absatz als Vorschlag ein — und `rwEinreichen` baute seine Nutzlast von Hand, mit
+    // drei Feldern und OHNE `bodyHtml`. Formatierung und Bilder verschwanden STILL. Der Server
+    // nimmt einen Rumpf am `propose` laengst an (`rumpf-erhalt.test.ts`, G1/G2), und der
+    // Einreichweg der Web-Flaeche schickt ihn seit JOB 3667 R5 (vier Felder, `web-einreichweg-
+    // mounted.test.tsx` E24). Uebrig blieb allein diese Tuer.
+    //
+    // GEAENDERT wurde: (1) `rwSchreibladung` heisst jetzt `rwLadung` und baut BEIDE Nutzlasten
+    // (`revise-release` mit `changes`, `propose` mit `proposal`) — Budgetpruefung,
+    // `trimWordImagesToBudget` und Klartext-Rueckfall sind zeichengleich DIESELBE Logik, und das
+    // Budget misst die Nutzlast, die wirklich hinausgeht; (2) `rwEinreichen` nimmt eine Ladung
+    // statt eines Textes und haengt die Bilderbilanz an den Erfolgssatz (`rwSatzMitBildern`);
+    // (3) `rwFreigeben` holt das Word-HTML fuer BEIDE Wege und baut die Nutzlast an EINER Stelle;
+    // (4) Kommentare. KEIN Markup, KEIN Stil, KEIN neuer Textschluessel, KEIN HTML in den Baum.
+    //
+    // WAS SICH AM VERHALTEN AENDERT: der Vorschlag aus Word traegt vier Felder (statement,
+    // bodyHtml, baseVersion, origin) statt drei; ueber dem Budget fallen erst Bilder, und was
+    // fehlt, steht im Erfolgssatz — mit DEMSELBEN Wortlaut wie am Schreibweg, kein neuer Satz.
+    // FOLGE, die hier benannt sein muss: ein so eingereichter Vorschlag traegt einen Fliesstext,
+    // also greift der Riegel aus Runde 4 (`rwVorschlaegeZeichnen`) — dieses Fenster zeigt ihn
+    // nicht an und gibt ihn deshalb auch nicht frei, sondern nennt den Weg nach KLARWERK.
+    // Ablehnen bleibt. Das ist die bestehende, bewusste Regel „freigegeben wird nur, was angezeigt
+    // wurde"; entschieden wird der Vorschlag auf der Web-Flaeche, die ihn vollstaendig zeigt.
+    //
+    // DIE AUSLIEFERUNGSFRAGEN, einzeln:
+    //   · Abrufziel:  UNVERAENDERT 16 — kein Aufruf kommt hinzu, keiner faellt weg. Der Pruefweg
+    //                 ruft zusaetzlich `Office.context.document.getSelectedDataAsync(Html)`; das
+    //                 ist eine Office-API, kein Netzabruf, und der Schreibweg ruft sie laengst.
+    //   · CSP:        unveraendert (eigener Ursprung); kein `innerHTML`, kein neuer Sink.
+    //   · Recht:      KEINES zusaetzlich — dieselbe Route, dieselbe Aktion (`propose`).
+    //   · Manifest:   unveraendert, KEINE neue Office-API (`CoercionType.Html` ist seit je in
+    //                 Gebrauch, `rwAuswahlHtml`), KEIN Sideload.
+    //   · Nutzlast:   GROESSER, und genau dafuer ist das Budget da: `propose` traegt jetzt den
+    //                 Rumpf, gemessen am eigenen Koerper (nicht am `revise-release`-Koerper) und
+    //                 gedeckelt auf `WORD_ADDIN_BODY_BUDGET_BYTES`. `clearBody` geht weiterhin NIE
+    //                 hinaus — weder gesetzt noch als `false`.
+    //   · Alter Server: einer ohne `bodyHtml` am `propose` ignoriert das Feld oder weist es ab; der
+    //                 Bestand weist es NICHT ab (G1/G2 an der echten Route gemessen).
+    //   · Bestehende Flaechen: unberuehrt (der Kasten bleibt ohne Kandidaten `hidden`).
+    // GEMESSEN: s. RUECKGABE (tests/office-pg-abnahme, tests/word-rueckweg und der Waechterlauf).
+    //
+    // ============================================================================================
+    // JOB 4085 · RUNDE 2 (15.09.2026) — DAS BUDGET RECHNET GEGEN DIE ROUTE, AN DIE ES SCHREIBT.
+    // ============================================================================================
+    // VORHERHASH (Stand Runde 1): `68c5257d281d83162c5057f0d298da22d20bd6441764255a961176df57485305`.
+    //
+    // ANLASS (Pruefer, Runde 1): der Rumpf reiste jetzt mit — aber gemessen wurde er an
+    // `WORD_ADDIN_BODY_BUDGET_BYTES` (3.500.000). Diese Zahl gehoert dem ENTWURFSWEG, dessen Route
+    // `POST /api/drafts` ein angehobenes `bodyLimit` traegt (DRAFTS_BODY_LIMIT, 5 MiB). Der
+    // Rueckweg schreibt an `PUT /api/kos/:id`, und die Route hat kein eigenes `bodyLimit` — es gilt
+    // Fastifys Vorgabe von 1 MiB. Gemessen: `bytes=1520700 status=413
+    // FST_ERR_CTP_BODY_TOO_LARGE`; im Fenster stand „Einreichen fehlgeschlagen — nichts wurde
+    // eingereicht". Genau die Halbheit aus Auftrag §8.4, nur eine Ebene tiefer.
+    //
+    // GEAENDERT wurde: (1) zwei Konstanten (`RW_ROUTE_BODY_LIMIT_BYTES`, `RW_ROUTE_RESERVE_BYTES`)
+    // und die Funktion `rwBudgetBytes`, die den KLEINEREN von Fensterbudget und Routengrenze
+    // nimmt; (2) `rwLadung` misst gegen dieses Budget statt gegen die Fensterkonstante;
+    // (3) Kommentare. KEIN Markup, KEIN Stil, KEIN neuer Textschluessel, KEINE neue Route.
+    //
+    // WAS SICH AM VERHALTEN AENDERT: eine Word-Auswahl zwischen 1 MiB und 3,5 MB wird jetzt
+    // BESCHNITTEN (erst Bilder, dann Klartext-Rueckfall) statt abgewiesen. Der Mensch liest, was
+    // nicht mitkonnte — mit den bestehenden Worten (`sendImagesDropped` / `sendOverBudget`), nicht
+    // mit einem Serverfehler. Das gilt fuer BEIDE Wege dieser Route, also auch fuer den
+    // Schreibweg (`revise-release`): der lief in dieselbe Kante, nur hat es dort niemand gemessen.
+    //
+    // DIE AUSLIEFERUNGSFRAGEN, einzeln:
+    //   · Abrufziel:  UNVERAENDERT 16. Keine neue Route, kein neuer Aufruf.
+    //   · CSP:        unveraendert; kein `innerHTML`, kein neuer Sink.
+    //   · Recht:      KEINES zusaetzlich — dieselbe Route, dieselben Aktionen.
+    //   · Manifest:   unveraendert, KEINE neue Office-API, KEIN Sideload.
+    //   · Nutzlast:   KLEINER, nie groesser: das Budget sinkt von 3.500.000 auf 1.032.192 Bytes.
+    //                 `clearBody` geht weiterhin NIE hinaus — auch der Klartext-Rueckfall traegt
+    //                 einen Rumpf, keine Leere.
+    //   · Alter Server: einer mit groesserem `bodyLimit` nimmt weiterhin an; das Fenster schickt
+    //                 dann nur weniger, als er koennte. Ein kleineres Limit waere der Fall, den
+    //                 A0d meldet — er misst die Kante an der echten Route nach.
+    //   · Bestehende Flaechen: unberuehrt (der Kasten bleibt ohne Kandidaten `hidden`).
+    //
+    // WAS DIESE ZAHL NICHT LOEST, und es steht in der RUECKGABE als Folgeschritt: 1 MiB traegt rund
+    // 750 KiB Bilddaten (base64 kostet ein Drittel). Ein Handyfoto sprengt das allein. Die Grenze
+    // anzuheben heisst `services/app/src/routes/ko-routes.ts` anzufassen — kein Zielpfad hier.
+    const PIN = "8bf066b59d488005f76c0557cf9b306c55d322e269c0ef06ed01bb4880a46f58";
     const ist = createHash("sha256").update(readFileSync(RUECKWEG)).digest("hex");
     expect(
       ist,

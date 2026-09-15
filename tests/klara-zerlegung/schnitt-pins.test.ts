@@ -452,6 +452,22 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   "tests/word-rueckweg/accountregel-spiegel.test.ts": "rueckweg",
   "tests/word-rueckweg/panel-rueckweg-mounted.test.ts": "pfad,fixture",
   "tests/word-rueckweg/rumpf-erhalt.test.ts": "pfad",
+  // JOB 4085 OFFICE-PG-ABNAHME (15.09.2026): die Abnahme des Word-Rückwegs gegen eine echte
+  // `.docx`. Sie lädt das Fenster über `createKlaraPanel` (Griff `fixture`) und nennt das
+  // Pfadliteral, weil sie das Byte-Budget GEGEN die ausgelieferte Datei pinnt statt es
+  // abzuschreiben (Griff `pfad`) — dieselbe Doppelung wie bei `panel-rueckweg-mounted.test.ts`.
+  // Die zweite Datei desselben Jobs (`rueckweg-pg.integration.test.ts`) fasst weder `taskpane.html`
+  // noch `rueckweg.js` an; sie misst Dienst und PG-Ablage und steht deshalb bewusst nicht hier —
+  // ein Eintrag ohne Griff wäre ein erfundener Mitfahrer. A2 hat die Datei gemeldet („neu im Baum,
+  // aber nicht gepinnt … + "tests/office-pg-abnahme/echte-worddatei-am-rueckweg.test.ts""), erst
+  // danach wurde diese Zeile angefasst.
+  //
+  // RUNDE 2 (15.09.2026) — DER GRIFF `rueckweg` KOMMT HINZU, und zwar bewusst, nicht nachgezogen:
+  // seit der Korrektur des Prüfers rechnet der Rückweg gegen die Annahmegrenze SEINER Route, und
+  // diese Zahl steht in `rueckweg.js` (`RW_ROUTE_BODY_LIMIT_BYTES`). Die Abnahme liest sie dort und
+  // misst sie danach an der echten Route nach (A0d) — sie hängt also ab sofort auch an der zweiten
+  // ausgelieferten Datei. Ohne diesen Eintrag verschwiege das Verzeichnis eine echte Abhängigkeit.
+  "tests/office-pg-abnahme/echte-worddatei-am-rueckweg.test.ts": "pfad,rueckweg,fixture",
 };
 
 // ------------------------------------------------------------------------------------------------

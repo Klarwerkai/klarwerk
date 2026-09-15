@@ -523,14 +523,85 @@
       }
     }
 
+    // ============================================================================================
+    // DIE GRENZE, DIE WIRKLICH ZAEHLT, IST DIE DER ROUTE — NICHT DIE DES ENTWURFSWEGS (JOB 4085 R2).
+    // ============================================================================================
+    //
+    // DER BEFUND (BEN, Runde 1): der Rueckweg mass seine Nutzlast an
+    // `WORD_ADDIN_BODY_BUDGET_BYTES` (3.500.000). Diese Zahl gehoert dem ENTWURFSWEG — dessen Route
+    // `POST /api/drafts` traegt ein ausdruecklich angehobenes `bodyLimit` (DRAFTS_BODY_LIMIT,
+    // 5 MiB, capture-routes.ts). Der Rueckweg schreibt aber an `PUT /api/kos/:id`, und die Route
+    // hat KEIN eigenes `bodyLimit`; es gilt Fastifys Vorgabe von 1 MiB. Gemessen wurde genau das:
+    // eine Bildlast von 1.520.700 Bytes lag unter 3.500.000, wurde also nicht beschnitten — und kam
+    // als `413 FST_ERR_CTP_BODY_TOO_LARGE` zurueck. Der Mensch las „Einreichen fehlgeschlagen",
+    // seine Bilder waren nicht zu gross, sondern an der falschen Zahl gemessen.
+    //
+    // DESHALB RECHNET DIESER WEG AB HIER GEGEN DIE ROUTE, an die er wirklich schreibt. Das Budget
+    // ist der KLEINERE der beiden Werte: sinkt das Fensterbudget einmal unter die Routengrenze,
+    // gilt weiter das Fensterbudget; steigt es, deckelt die Route. So kann die Beschneidung
+    // (`trimWordImagesToBudget`) greifen, BEVOR der Server ablehnt — und die Bilderbilanz sagt dem
+    // Menschen, was weggefallen ist, statt ihn vor einem Serverfehler stehen zu lassen.
+    //
+    // WAS DIESE ZAHL NICHT LOEST, und das gehoert hierher statt in eine Rueckgabe allein: 1 MiB ist
+    // fuer einen Word-Absatz mit Fotos knapp. Abzueglich der Reserve bleiben rund 1.032.192 Bytes
+    // fuer die ganze Nutzlast; base64 kostet ein Drittel, also passen rund 750 KiB Bilddaten hinein.
+    // Ein Handyfoto sprengt das allein. Die Folge ist EHRLICH (Bilder fallen weg und werden genannt),
+    // aber sie ist eine Folge der ROUTENGRENZE, nicht des Fensters. Sie anzuheben heisst
+    // `services/app/src/routes/ko-routes.ts` anzufassen — ein eigener Auftrag, kein Zielpfad hier.
+    var RW_ROUTE_BODY_LIMIT_BYTES = 1048576;
+    // Die Reserve ist kein Sicherheitsgefuehl, sondern der Abstand zur Kante: gemessen wird hier die
+    // Zeichenkette, die `fetch` als Koerper bekommt; gezaehlt wird am Server, was ankommt. Beides ist
+    // heute deckungsgleich (UTF-8), aber ein Rueckweg, der auf das letzte Byte an die Grenze faehrt,
+    // waere von jeder Zwischenstelle abhaengig, die noch etwas anhaengt.
+    var RW_ROUTE_RESERVE_BYTES = 16384;
+
+    /** Das Budget DIESES Weges: Fensterbudget und Routengrenze, der kleinere Wert gewinnt. */
+    function rwBudgetBytes() {
+      var routengrenze = RW_ROUTE_BODY_LIMIT_BYTES - RW_ROUTE_RESERVE_BYTES;
+      return WORD_ADDIN_BODY_BUDGET_BYTES < routengrenze ? WORD_ADDIN_BODY_BUDGET_BYTES : routengrenze;
+    }
+
     /**
-     * Die Schreibladung des Rueckwegs — dieselbe Bauform wie `prepareWordDraftRequest`, aber fuer den
-     * Revise-Koerper: erst das Word-HTML, bei Budgetueberschreitung erst Bilder weglassen, dann der
-     * Klartext. Was dabei verloren geht, steht in der Bilanz und wird gesagt (bilderBilanz).
+     * DIE LADUNG DES RUECKWEGS — EINE FUNKTION FUER BEIDE WEGE (JOB 4085).
+     *
+     * Dieselbe Bauform wie `prepareWordDraftRequest`: erst das Word-HTML, bei Budgetueberschreitung
+     * erst Bilder weglassen, dann der Klartext. Was dabei verloren geht, steht in der Bilanz und
+     * wird gesagt (bilderBilanz).
+     *
+     * WARUM SIE BEIDE NUTZLASTEN BAUT UND NICHT NUR DIE DES SCHREIBERS: bis JOB 4085 baute
+     * `rwEinreichen` seinen Koerper von Hand — ohne `bodyHtml`. Derselbe Mensch, dieselbe
+     * Word-Auswahl, dasselbe Objekt, und doch zwei Ergebnisse: wer freigeben darf, schickte
+     * Formatierung und Bilder mit; wer nicht darf, schickte den nackten Text, ohne einen Satz
+     * darueber. Zwei Kopien dieser Logik waeren genau der Fehler, den `rumpf-faelle.ts` in seinem
+     * Kopf beschreibt — beide Seiten koennten gruen sein und Verschiedenes meinen. Deshalb entsteht
+     * eine Word-Nutzlast ab hier an EINER Stelle.
+     *
+     * DAS BUDGET MISST DIE NUTZLAST, DIE WIRKLICH HINAUSGEHT: `bauen` erzeugt den Koerper der
+     * jeweiligen Aktion, und `passt` zaehlt genau diesen. Ein am `revise-release`-Koerper
+     * gemessenes Budget waere eine Zahl ueber etwas anderes (`propose` traegt andere Felder).
+     * Und es misst gegen die Grenze DIESER Route (`rwBudgetBytes`), nicht gegen die des
+     * Entwurfswegs — s. den Kopf ueber `RW_ROUTE_BODY_LIMIT_BYTES`.
+     *
+     * `clearBody` GEHT HIER NIE HINAUS — weder gesetzt noch berechnet, auch nicht als `false`.
+     * Liefert Word kein verwertbares HTML, greift der Klartext-Rueckfall (`selectionToBodyHtml`);
+     * ein leerer Rumpf, den der Dienst als Loeschsignal lesen koennte, entsteht nicht.
      */
-    function rwSchreibladung(html, text, version) {
+    function rwLadung(aktion, html, text, version) {
       var statement = text.trim();
       var bauen = function (koerper) {
+        if (aktion === "propose") {
+          // Fall 2/3: der Vorschlag traegt DIESELBEN vier Felder wie der Einreichweg der
+          // Web-Flaeche (statement, bodyHtml, baseVersion, origin) — nicht mehr und nicht weniger.
+          return JSON.stringify({
+            action: "propose",
+            proposal: {
+              statement: statement,
+              bodyHtml: koerper,
+              baseVersion: version,
+              origin: "word_addin"
+            }
+          });
+        }
         return JSON.stringify({
           // RUNDE 2: EINE Aktion fuer Fassung UND Freigabe (s. `rwUeberarbeiten`).
           action: "revise-release",
@@ -542,8 +613,9 @@
       if (inner.length === 0) {
         return { payload: bauen(selectionToBodyHtml(text)), usedHtml: false, overBudget: false, undeliveredImages: 0, plainTextFallback: true, droppedImages: 0 };
       }
+      var budget = rwBudgetBytes();
       var passt = function (kandidat) {
-        return wordHtmlUtf8Bytes(bauen(kandidat)) <= WORD_ADDIN_BODY_BUDGET_BYTES;
+        return wordHtmlUtf8Bytes(bauen(kandidat)) <= budget;
       };
       if (!passt(inner)) {
         var getrimmt = trimWordImagesToBudget(inner, passt);
@@ -663,25 +735,29 @@
      * haengen, die es nicht mehr gibt. `origin` sagt, woher er kam — dieselbe feste Herkunft, die
      * der Entwurfsweg seit JOB 660 traegt.
      *
-     * HIER GEHT KEIN `bodyHtml` HINAUS, UND DAS IST SEIT RUNDE 5 EINE AUSSAGE: der Vorschlag aendert
-     * die AUSSAGE, sonst nichts. Der ausfuehrliche Inhalt des Eintrags bleibt bei der Uebernahme
-     * unveraendert stehen (service.ts, `rumpfAusVorschlag`: ausgelassen ist nicht geloescht). Ein
-     * `clearBody` schickt dieses Fenster nie — wer aus Word Text zurueckgibt, will kein Dokument
-     * loeschen, und die Loeschung ist ein eigener, ausdruecklicher Griff in KLARWERK.
+     * SEIT JOB 4085 TRAEGT AUCH DER VORSCHLAG DEN RUMPF, und zwar ueber DIESELBE Ladung wie der
+     * Schreibweg (`rwLadung`): dasselbe Budget, dieselbe Bildbeschneidung, dieselbe Bilderbilanz.
+     * Bis dahin stand hier eine von Hand gebaute Nutzlast mit drei Feldern, und die Begruendung
+     * lautete, der Vorschlag aendere „die AUSSAGE, sonst nichts". Diese Begruendung traegt nicht
+     * mehr: der Server nimmt einen Rumpf am `propose` laengst an (tests/word-rueckweg/rumpf-erhalt.test.ts,
+     * Faelle G1/G2), und der Einreichweg der Web-Flaeche schickt ihn seit JOB 3667 R5 mit. Uebrig
+     * blieb allein diese Tuer, durch die Formatierung und Bilder STILL verschwanden.
+     *
+     * WAS UNVERAENDERT GILT: ein `clearBody` schickt dieses Fenster NIE — wer aus Word Text
+     * zurueckgibt, will kein Dokument loeschen, und die Loeschung ist ein eigener, ausdruecklicher
+     * Griff in KLARWERK. Die Dienstregel dahinter bleibt unberuehrt (service.ts,
+     * `rumpfAusVorschlag`: ausgelassen ist nicht geloescht) — sie gilt jetzt fuer den Fall, dass
+     * Word gar kein HTML hergibt und auch der Klartext-Rueckfall nichts zu tragen haette.
+     *
+     * KEIN FEHLERWEG TRAEGT EINE BILDERBILANZ: nichts ist angekommen, also ist auch nichts
+     * verlorengegangen. Der Bilanzsatz haengt allein am Erfolg.
      */
-    function rwEinreichen(ziel, text, lauf) {
+    function rwEinreichen(ziel, ladung, lauf) {
       rwRuf(ziel.id, {
         method: "PUT",
         credentials: "include",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          action: "propose",
-          proposal: {
-            statement: text,
-            baseVersion: ziel.version,
-            origin: "word_addin"
-          }
-        })
+        body: ladung.payload
       })
         .then(function (res) {
           if (lauf !== rwLauf) { return null; }
@@ -706,9 +782,10 @@
             if (lauf !== rwLauf) { return; }
             // Der eingereichte Vorschlag steht sofort in der Liste — aus der Antwort des Servers.
             rwZiel = { id: ziel.id, title: ziel.title, version: ziel.version, rumpf: rwHatRumpf(ko), vorschlaege: rwVorschlaegeAus(ko) };
-            rwLage = "ruhe";
-            rwSatzSetzen(t("rwEingereicht"), false, null);
-            rwZeichnen();
+            // JOB 4085: derselbe Erfolgssatz wie bisher — und die ehrliche Bilderbilanz dieses
+            // Vorgangs daran, mit denselben Worten wie am Schreibweg. Ist nichts verlorengegangen,
+            // liefert `bilderText` "" und der Satz steht unveraendert da.
+            rwSatzMitBildern(t("rwEingereicht"), ladung, false);
           });
         })
         .catch(function (err) { rwAbbruch(lauf, sendeFehlerText(err)); });
@@ -742,15 +819,17 @@
           captureMarkierungLesen();
           return;
         }
-        if (pruefweg) {
-          // Fall 2/3: KEIN Word-HTML. Der Kommentar traegt Klartext — ein HTML-Rumpf waere hier eine
-          // Formatierung, die beim Freigeben ohnehin nicht wieder entstuende (s. Kopfkommentar).
-          rwEinreichen(ziel, frisch, lauf);
-          return;
-        }
+        // JOB 4085: BEIDE Wege holen dasselbe Word-HTML und bauen ihre Nutzlast an DERSELBEN
+        // Stelle. Bis hierher sprang der Pruefweg vor `rwAuswahlHtml` ab — was der Mensch in Word
+        // markiert hatte, wurde auf diesem Weg nicht verworfen, sondern nie geholt.
         rwAuswahlHtml(function (html) {
           if (lauf !== rwLauf) { return; }
-          rwUeberarbeiten(ziel, rwSchreibladung(html, frisch, ziel.version), lauf);
+          var ladung = rwLadung(pruefweg ? "propose" : "revise-release", html, frisch, ziel.version);
+          if (pruefweg) {
+            rwEinreichen(ziel, ladung, lauf);
+            return;
+          }
+          rwUeberarbeiten(ziel, ladung, lauf);
         });
       });
     }
