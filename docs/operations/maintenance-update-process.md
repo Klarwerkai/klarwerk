@@ -75,6 +75,144 @@
 
 ## 6. Backup- & Rollback-Schritte
 
+Dieser Abschnitt beschreibt **zwei verschiedene Betriebsarten**, und sie sind unterschiedlich belegt.
+Wer sie verwechselt, greift im Ernstfall zum falschen Weg:
+
+| | **6.1 Insel / On-Prem** (Mac Studio, Release-Ordner) | **6.2 Cloud / Coolify** (Hetzner) |
+| --- | --- | --- |
+| Backup | `scripts/insel/update-einspielen.sh` sichert **vor** jedem Umschalten | Snapshot + `pg_dump` (Verfahren beschrieben) |
+| Rollback | `scripts/insel/rueckfall.sh`, automatisch bei rotem Health | Redeploy des vorherigen Stands in Coolify |
+| Stand | **ausführbar und getestet** (`tests/insel-update/`) | **unbestätigt** — siehe U4/U5 unten |
+
+### 6.1 Insel / On-Prem — Update mit Netz (ausführbar)
+
+Ein Update ist **ein** Befehl. Er endet immer mit genau einer Ergebniszeile:
+
+```bash
+bash /Users/Shared/Klarwerk_Insel/current/scripts/insel/update-einspielen.sh <paket.zip|paket-ordner>
+```
+
+Denselben Weg fährt der **Doppelklick**: `install.command` im Paket schaltet seit JOB 4012 nichts
+mehr selbst um, sondern übergibt an `update-einspielen.sh` (mit allen Argumenten). Es gibt damit
+**einen** Einstieg ins Release und keinen zweiten an Sicherung, Vertrag und Rückfall vorbei.
+
+Der Ablauf, in dieser Reihenfolge — jeder Schritt kann den nächsten verhindern:
+
+0. **Release-Identität.** Jeder Baulauf trägt einen eigenen Namen
+   (`klarwerk-insel-<app-version>-<commit8>-<bauzeit>`), und ein **vorhandenes Release-Verzeichnis
+   wird nie überschrieben**. Trifft trotzdem ein gleichnamiges Paket ein (umbenanntes Zip, Paket von
+   Hand gebaut), bricht der Weg ab, bevor er irgendetwas anfasst: Exit 6, Ergebniszeile
+   `… Grund: kollision`. Grund: Das Verzeichnis der Vorversion ist das Netz. Wer es überschreibt,
+   hat beim roten Health nichts mehr, worauf er zurückfallen kann. **Dasselbe gilt für die
+   Wiederholung**: Ein Paket, dessen Release schon unter `releases/` liegt — auch das gerade
+   laufende, auch wenn man genau dieses Verzeichnis als Quelle angibt — wird abgelehnt. Ein Update
+   auf sich selbst gewinnt nichts und würde den Rückfallpunkt kosten, weil der Weg danach die
+   laufende Fassung als Vorversion vermerkt. Eine bereits vorhandene Fassung fährt man mit
+   `rueckfall.sh <release>` an, nicht durch erneutes Einspielen.
+1. **Sicherung.** Jeder Lauf legt zuerst sein **eigenes** Verzeichnis `backups/<zeitstempel>-<lauf>/`
+   an, und **beide** Betriebsarten sichern hinein: Postgres-Betrieb
+   (`DATABASE_URL`/`KLARWERK_DATABASE_URL` gesetzt) → Aufruf von `scripts/backup/backup.sh` mit
+   diesem Verzeichnis als Ziel (Dump **mit** Prüfsummen-Sidecar, daneben das Protokoll
+   `backup.log`); Journalbetrieb → Kopie von `state.jsonl` dorthin, Prüfsumme daneben, Inhalt gegen
+   das Original geprüft. Der Zusatz `<lauf>` ist nicht Zierde: Beide Namen — der des Journalordners
+   wie der des Dumps (`klarwerk-<zeitstempel>.dump`) — haben nur Sekundenauflösung. Zwei Updates in
+   derselben Sekunde hätten sonst die erste Sicherung samt Prüfsumme durch die zweite ersetzt, und
+   zwar genau dann, wenn man sie am nötigsten braucht. **Ohne gelungene Sicherung wird nicht
+   umgeschaltet** (Exit 2, Ergebniszeile
+   `Update abgebrochen, Vorversion <version> läuft weiter, Grund: sicherung`).
+2. **Schema-Vertrag.** Jedes Release trägt seine Migrationsstufen in `SCHEMA-VERTRAG` (erzeugt von
+   `scripts/insel/build-current-release.mjs` aus `services/app/src/migrationsbeleg.ts`); neben den
+   Daten steht der erreichte Stand in `data/SCHEMA-STAND`. Verglichen wird **vor** dem Umschalten:
+   * **Downgrade** (die Daten tragen Stufen, die das Release nicht kennt) → Abbruch, Exit 3.
+   * **neue irreversible Stufe** (`DROP`/`DELETE`/`UPDATE … SET`) → Abbruch, Exit 4. Sie läuft nur
+     nach ausdrücklicher Zustimmung: `--nicht-umkehrbar-einspielen`. Danach trägt der Rückweg nur
+     noch die Sicherung — deshalb ist das eine menschliche Entscheidung und kein Automatismus.
+   * **unbekannter Datenstand** → Abbruch, Exit 10, Ergebniszeile `… Grund: datenstand`. Dieser Fall
+     trifft jede **Altinstallation**: Sie wurde mit dem alten `install.command` eingespielt, ihr
+     Release trägt keinen `SCHEMA-VERTRAG`, und neben den Daten steht kein `SCHEMA-STAND` — welche
+     Stufen an diesen Daten gelaufen sind, ist dann nicht sagbar, und jede Aussage über Downgrade
+     oder Umkehrbarkeit wäre geraten. Der Übergang geht mit `--datenstand-unbekannt-uebernehmen`;
+     ab da gilt **jede** Stufe des Releases als neu, eine irreversible braucht also zusätzlich
+     `--nicht-umkehrbar-einspielen`. Nach dem ersten Update über diesen Weg ist der Stand bekannt
+     und die Zustimmung nicht mehr nötig. Eine **leere** Journaldatei zählt ausdrücklich nicht als
+     Datenbestand — die legt jedes Release beim ersten Start selbst an.
+   * neue additive/transformierende Stufen laufen beim Serverstart in `migrate()` mit und werden
+     in der Ausgabe namentlich genannt.
+3. **Umschalten.** Alten Server beenden, `current` auf das neue Release, `start.command` starten.
+   Der Stopp sagt dabei, was er getan hat (`beendet` · `kein-server` · `launchd-fuehrt`) — das ist
+   keine Kosmetik: im launchd-Fall läuft der alte Prozess noch, und das muss ein Datenrückweg wissen.
+   Hält nämlich ein launchd-Agent den Server (`de.klarwerk.insel`, so startet ihn die AppleScript-
+   Verknüpfung), geschieht der Wechsel stattdessen mit `launchctl kickstart -k` — ein eigenes
+   `kill` würde gegen `KeepAlive` arbeiten und die alte Fassung wiederbeleben. Erkannt wird das an
+   einem wirklich geladenen Agenten. **Scheitert der Startaufruf selbst** (Agent entladen, Label
+   falsch, fremde Sitzung), ist das ein Grund wie jeder andere: Rückfall und Exit 11 — nicht der
+   wortlose Abbruch mitten im Umschalten, den es bis Runde 2 gab.
+4. **Health mit Version.** `GET /health` muss grün sein **und** die Version des neuen Releases
+   melden (`build-app.ts` liefert `version` aus `package.json`). Grün allein genügt nicht: hält der
+   alte Prozess noch den Port, ist `/health` grün und meldet die alte Fassung.
+5. **Rückfall.** Bleibt Health rot (Exit 7), meldet eine andere Version (Exit 8) oder kam der Start
+   gar nicht erst zustande (Exit 11), läuft `scripts/insel/rueckfall.sh` **von selbst**: `current`
+   zurück auf die Vorversion, Neustart, Health-Prüfung, Ergebniszeile
+   `Update abgebrochen, Vorversion <version> läuft wieder, Grund: …` und Exit ungleich 0. Scheitert
+   der Rückfall selbst, endet der Weg mit Exit 9 und sagt genau das
+   (`… Rückfall auf <version> gescheitert, Grund: …`) — `current` zeigt dann wieder auf die
+   Vorversion, es läuft aber nichts, und nichts anderes wird behauptet.
+
+Von Hand geht derselbe Weg jederzeit:
+
+```bash
+bash /Users/Shared/Klarwerk_Insel/current/scripts/insel/rueckfall.sh            # auf die zuletzt aktive Fassung
+bash /Users/Shared/Klarwerk_Insel/current/scripts/insel/rueckfall.sh <release>  # auf eine bestimmte
+```
+
+**Daten fasst der Rückfall nicht an.** Nur `--daten-zurueck <sicherung>` spielt eine Sicherung ein:
+ein `*.dump` geht an `scripts/backup/restore-drill.sh` (Sidecar-Prüfung, eigene leere Zieldatenbank —
+die Produktionsdatenbank wird dabei ausdrücklich nicht angefasst), ein `*.jsonl` wird
+zurückkopiert, nachdem der bisherige Journalstand daneben gesichert wurde. Führt **launchd** den
+Server, sagt der Rückfall dazu, dass der alte Prozess beim Zurückspielen noch lief (er wird erst beim
+`kickstart` ersetzt) — was er nach dieser Zeile noch ins Journal geschrieben hat, stand nicht in der
+Sicherung und ist nach dem Neustart weg.
+
+> **Offen und ausdrücklich benannt · Postgres-Datenrückweg.** Im Journalbetrieb ist
+> `--daten-zurueck` ein vollständiger Rückweg: die Sicherung *ist* die Datei, sie wird
+> zurückkopiert, und die App liest danach aus ihr. Im **Postgres**-Betrieb ist er es **nicht**:
+> `restore-drill.sh` stellt den Dump in einer **eigenen, leeren** Datenbank wieder her und belegt
+> damit, dass die Sicherung trägt (Struktur, Zeilenzahlen, Login, Auditkette) — die laufende App
+> bleibt auf ihrer Produktionsdatenbank. Der letzte Schritt (Produktionsdatenbank durch den
+> wiederhergestellten Stand ersetzen) ist **bewusst kein Skript dieses Jobs**: er gehört zu Paket B3
+> (`scripts/backup/**`), und ein eigener Restore-Pfad daneben wäre genau der zweite, ungeübte Weg,
+> den dieser Job abgeschafft hat. Bis dahin gilt für Postgres: **Rückfall des Codes automatisch,
+> Rückweg der Daten mit Beleg, aber von Hand.**
+
+**Die Datenhaltung überlebt das Update.** `start.command` im Release übernimmt eine gesetzte
+`DATABASE_URL`/`KLARWERK_DATABASE_URL`, statt sie wegzuwerfen; nur ohne sie schaltet es auf das
+Journal. Vorher erzwang es Journalbetrieb — auf einer Postgres-Insel wäre also ein Dump gesichert
+und die App danach gegen ein Journal gestartet worden.
+
+**Der `SCHEMA-STAND` wird vor dem Start mit `bestaetigt=nein` geschrieben und erst nach grünem
+Health auf `ja` gesetzt.** Grund: `migrate()` läuft beim Serverstart, also **bevor** der Health-Check
+antwortet. Nach einem Rückfall bleibt der Stand deshalb beim neuen Release und gilt als
+unbestätigt — ein späterer Versuch, die alte Fassung einzuspielen, wird korrekt als Downgrade
+abgelehnt, statt still durchzugehen.
+
+**Welche Version läuft?** Die Antwort kommt aus dem Release, nicht aus seinem Verzeichnisnamen:
+`SCHEMA-VERTRAG` (`app_version`), sonst `package.json` (`version`) — dieselbe Datei, aus der
+`/health` liest. Trägt ein Release keine von beiden, schaltet der Rückfall trotzdem, behauptet aber
+kein „aktiv", sondern sagt, dass die Version nicht belegbar ist (Exit 8).
+
+Belegt durch `tests/insel-update/` (Update grün, Rückfall bei rotem Health, Rückfall bei falscher
+Version, Downgrade, irreversible Stufe, Sicherung als Vorbedingung, Namenskollision, Wiederholung mit
+erhaltenem Rückfallpunkt, gescheiterter launchd-Start mit Wiederanlauf der Vorversion, Übergang einer
+Altinstallation, Doppelklick über `install.command`). Dass zwei Läufe in **derselben Sekunde**
+einander die Sicherung nicht nehmen, misst `tests/insel-update/sicherung-eindeutig.test.ts` für den
+Postgres-Zweig und `wiederholung-und-startfehler.test.ts` (W3) für den Journalzweig — beide mit
+festgenageltem Zeitstempel, damit der Kollisionsfall wirklich gefahren wird und nicht bloss
+wahrscheinlich ist. Die Postgres-Variante mit echtem `pg_dump` **gegen eine echte Datenbank** steht
+zusätzlich in `tests/insel-update/update-postgres.integration.test.ts`
+(`npm run test:integration`, sichtbarer Skip ohne Datenbank oder ohne `postgresql-client`).
+
+### 6.2 Cloud / Coolify — Verfahren, nicht Zustand
+
 **Backup (vor Update):**
 - Hetzner-**Snapshot** des Servers/Volumes.
 - **`pg_dump`** (Coolify-Scheduled-Task, verschlüsselt ablegen) — zusätzlich manuell vor riskanten Updates.

@@ -12,12 +12,26 @@ import {
 } from "node:fs";
 import { basename, dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  installBefehlText,
+  releaseIdentitaet,
+  rollbackText,
+  startBefehlText,
+} from "./release-texte.mjs";
+import { stufenAusBaum, vertragstext } from "./schema-vertrag.mjs";
 
 const repo = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
-const version = "klarwerk-insel-2026-07-09-current-01";
 const commit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" }).trim();
 const shortCommit = commit.slice(0, 8);
 const builtAt = new Date().toISOString();
+const appVersion = JSON.parse(readFileSync(join(repo, "package.json"), "utf8")).version;
+// JOB 4012 · Runde 2 — JEDER BAULAUF TRAEGT SEINEN EIGENEN NAMEN.
+//
+// Bis hierher stand hier EINE feste Zeichenkette. Zwei Bauläufe hießen damit gleich, und das
+// Einspielen des zweiten überschrieb das Verzeichnis des ersten — also genau die Fassung, auf die
+// der Rückfall gleich zurückgreifen wollte (Ben, Gegenprobe BEN1: danach Exit 9 und HTTP 500).
+// Die Identität wird deshalb erzeugt und geprüft: `tests/insel-update/release-identitaet.test.ts`.
+const version = releaseIdentitaet({ appVersion, commit, gebautAm: builtAt });
 const outDir = join(repo, "dist", "insel");
 const stagingRoot = join(outDir, "staging");
 const releaseDir = join(stagingRoot, version);
@@ -112,146 +126,51 @@ writeFileSync(
   ].join("\n"),
 );
 
-writeExecutable(
-  join(releaseDir, "start.command"),
-  `#!/bin/bash
-set -euo pipefail
+// Der Startbefehl und der Doppelklick kommen aus `release-texte.mjs` — dort sind sie ohne
+// Nebenwirkung erzeugbar und werden deshalb WIRKLICH GEFAHREN geprueft
+// (`tests/insel-update/abloesung.test.ts`). In dieser Datei lagen sie ungeprueft, weil sie beim
+// Laden baut: Genau dort hat Ben den weggeworfenen `DATABASE_URL` und den zweiten Umschaltweg
+// gefunden (Korrekturpflichten 3 und 4).
+writeExecutable(join(releaseDir, "start.command"), startBefehlText());
 
-ROOT="$(cd "$(dirname "$0")" && pwd)"
-SHARED_ROOT="\${KLARWERK_SHARED_ROOT:-/Users/Shared/Klarwerk_Insel}"
-PORT="\${PORT:-3002}"
-STATE_FILE="\${KLARWERK_DEV_PERSIST_FILE:-$SHARED_ROOT/data/state.jsonl}"
+writeExecutable(join(releaseDir, "install.command"), installBefehlText());
 
-mkdir -p "$SHARED_ROOT/data" "$SHARED_ROOT/logs"
-if [ ! -f "$STATE_FILE" ]; then
-  : > "$STATE_FILE"
-fi
+// ==================================================================================================
+// JOB 4012 — DER BETRIEBSWEG FAEHRT MIT DEM RELEASE.
+// ==================================================================================================
+//
+// Bis hierher enthielt ein Release seinen eigenen Rueckweg nur als ABTIPPANLEITUNG (ROLLBACK.md).
+// Wer sie braucht, hat gerade eine kaputte App vor sich. Ab jetzt liegen die ausfuehrbaren Wege
+// IM Release, samt dem Schema-Vertrag, gegen den das Update vor dem Umschalten prueft.
+//
+// `scripts/backup/*` wird MITKOPIERT, nicht veraendert: `update-einspielen.sh` ruft `backup.sh` im
+// Postgres-Betrieb auf, `rueckfall.sh --daten-zurueck` uebergibt an `restore-drill.sh`. Ohne die
+// Kopie haette das Release auf der Insel kein Sicherungswerkzeug — dort liegt kein Repo.
+const betriebsWege = [
+  ["scripts", "insel", "update-einspielen.sh"],
+  ["scripts", "insel", "rueckfall.sh"],
+  ["scripts", "insel", "insel-betrieb.sh"],
+  ["scripts", "insel", "schema-vertrag.mjs"],
+  ["scripts", "backup", "backup.sh"],
+  ["scripts", "backup", "restore-drill.sh"],
+];
+for (const teile of betriebsWege) {
+  const ziel = join(releaseDir, ...teile);
+  mkdirSync(dirname(ziel), { recursive: true });
+  // Der Modus wird AUSDRUECKLICH gesetzt und nicht vom Quellbaum geerbt: ein Klon ohne Ausfuehrrecht
+  // lieferte sonst ein Release, dessen Rueckweg sich nicht starten laesst.
+  writeExecutable(ziel, readFileSync(join(repo, ...teile), "utf8"));
+}
 
-export PORT
-export NODE_ENV=production
-export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
-unset DATABASE_URL
-export KLARWERK_DEV_PERSIST=1
-export KLARWERK_DEV_PERSIST_FILE="$STATE_FILE"
-export KLARWERK_LOCAL_LLM_URL="\${KLARWERK_LOCAL_LLM_URL:-http://127.0.0.1:11434/v1}"
-export KLARWERK_LOCAL_LLM_MODEL="\${KLARWERK_LOCAL_LLM_MODEL:-mistral:latest}"
-export KLARWERK_LOCAL_LLM_KEY="\${KLARWERK_LOCAL_LLM_KEY:-}"
-
-cd "$ROOT"
-NODE_BIN="\${NODE_BIN:-$(command -v node || true)}"
-if [ -z "$NODE_BIN" ]; then
-  echo "node not found; expected Homebrew Node under /opt/homebrew/bin/node" >&2
-  exit 1
-fi
-exec "$NODE_BIN" "$ROOT/node_modules/tsx/dist/cli.mjs" "$ROOT/services/app/src/server.ts"
-`,
-);
-
-writeExecutable(
-  join(releaseDir, "install.command"),
-  `#!/bin/bash
-set -euo pipefail
-
-VERSION="${version}"
-SHARED_ROOT="/Users/Shared/Klarwerk_Insel"
-RELEASES="$SHARED_ROOT/releases"
-TARGET="$RELEASES/$VERSION"
-CURRENT="$SHARED_ROOT/current"
-STAMP="$(date +%Y%m%d-%H%M%S)"
-BACKUP_DIR="$SHARED_ROOT/backups/$STAMP"
-SOURCE="$(cd "$(dirname "$0")" && pwd)"
-PID_FILE="$SHARED_ROOT/logs/server-3002.pid"
-LOG_FILE="$SHARED_ROOT/logs/server-3002.log"
-STATE_FILE="$SHARED_ROOT/data/state.jsonl"
-LAUNCHD_LABEL="de.klarwerk.insel"
-LAUNCHD_SERVICE="gui/$(id -u)/$LAUNCHD_LABEL"
-
-echo "AUF MAC STUDIO: install $VERSION"
-mkdir -p "$RELEASES" "$SHARED_ROOT/backups" "$SHARED_ROOT/logs"
-if [ ! -f "$STATE_FILE" ]; then
-  echo "AUF MAC STUDIO: STOPP - $STATE_FILE fehlt; Daten-Invariante nicht blind erzeugt." >&2
-  exit 1
-fi
-mkdir -p "$BACKUP_DIR"
-cp "$STATE_FILE" "$BACKUP_DIR/state.jsonl"
-echo "AUF MAC STUDIO: backup $BACKUP_DIR/state.jsonl"
-
-rm -rf "$TARGET"
-mkdir -p "$TARGET"
-tar -C "$SOURCE" --exclude "./install.command" -cf - . | tar -C "$TARGET" -xf -
-echo "AUF MAC STUDIO: release entpackt $TARGET"
-
-PREVIOUS=""
-if [ -L "$CURRENT" ]; then
-  PREVIOUS="$(readlink "$CURRENT" || true)"
-fi
-ln -sfn "$TARGET" "$CURRENT"
-echo "AUF MAC STUDIO: current -> $(readlink "$CURRENT")"
-
-if launchctl print "$LAUNCHD_SERVICE" >/dev/null 2>&1; then
-  echo "AUF MAC STUDIO: launchd agent geladen - restart via kickstart $LAUNCHD_SERVICE"
-  launchctl kickstart -k "$LAUNCHD_SERVICE"
-else
-  echo "AUF MAC STUDIO: launchd agent nicht geladen - direkter Fallback-Start"
-  if [ -f "$PID_FILE" ]; then
-    OLD_PID="$(cat "$PID_FILE" 2>/dev/null || true)"
-    if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" >/dev/null 2>&1; then
-      kill "$OLD_PID" || true
-      for _ in $(seq 1 20); do
-        kill -0 "$OLD_PID" >/dev/null 2>&1 || break
-        sleep 0.5
-      done
-    fi
-  fi
-  if lsof -ti tcp:3002 >/dev/null 2>&1; then
-    lsof -ti tcp:3002 | xargs kill || true
-    sleep 1
-  fi
-  nohup "$CURRENT/start.command" >"$LOG_FILE" 2>&1 &
-  NEW_PID="$!"
-  echo "$NEW_PID" > "$PID_FILE"
-  echo "AUF MAC STUDIO: server pid $NEW_PID log $LOG_FILE"
-fi
-
-for _ in $(seq 1 60); do
-  if curl -fsS -m 2 "http://127.0.0.1:3002/health" >/dev/null 2>&1; then
-    echo "AUF MAC STUDIO: health ok"
-    curl -sI "http://127.0.0.1:3002/" | sed -n '1,8p'
-    exit 0
-  fi
-  sleep 1
-done
-
-echo "AUF MAC STUDIO: healthcheck fehlgeschlagen; previous=$PREVIOUS" >&2
-tail -80 "$LOG_FILE" >&2 || true
-exit 1
-`,
-);
-
+// Der Schema-Vertrag: die Migrationsstufen, die GENAU DIESES Release kennt, plus seine App-Version
+// (die `/health` meldet). `update-einspielen.sh` vergleicht ihn mit dem Stand neben den Daten.
+const stufen = stufenAusBaum(repo);
 writeFileSync(
-  join(releaseDir, "ROLLBACK.md"),
-  `# Rollback ${version}
-
-AUF MAC STUDIO:
-
-\`\`\`bash
-SHARED_ROOT=/Users/Shared/Klarwerk_Insel
-readlink "$SHARED_ROOT/current"
-ls -1dt "$SHARED_ROOT/releases"/* | sed -n '1,10p'
-ln -sfn /Users/Shared/Klarwerk_Insel/releases/<VORVERSION> "$SHARED_ROOT/current"
-if [ -f "$SHARED_ROOT/logs/server-3002.pid" ]; then
-  OLD_PID="$(cat "$SHARED_ROOT/logs/server-3002.pid" 2>/dev/null || true)"
-  [ -n "$OLD_PID" ] && kill "$OLD_PID" || true
-fi
-nohup "$SHARED_ROOT/current/start.command" >"$SHARED_ROOT/logs/server-3002.log" 2>&1 &
-echo $! > "$SHARED_ROOT/logs/server-3002.pid"
-curl -sI http://127.0.0.1:3002/ | sed -n '1,8p'
-\`\`\`
-
-Die Daten-Datei bleibt unter \`/Users/Shared/Klarwerk_Insel/data/state.jsonl\`.
-Beim Install wurde zusaetzlich ein Backup unter \`/Users/Shared/Klarwerk_Insel/backups/<zeitstempel>/state.jsonl\` geschrieben.
-`,
+  join(releaseDir, "SCHEMA-VERTRAG"),
+  vertragstext({ release: version, appVersion, commit, stufen }),
 );
+
+writeFileSync(join(releaseDir, "ROLLBACK.md"), rollbackText(version));
 
 run("npm", ["ci", "--omit=dev", "--ignore-scripts"], releaseDir);
 run("zip", ["-qr", zipPath, version], stagingRoot);

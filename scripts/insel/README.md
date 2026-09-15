@@ -12,7 +12,45 @@ Quelle der Wahrheit: **KLLM-61** (App ↔ lokaler LLM), **KLLM-62** (Insel), **K
 | `Insel-App-Desktop-Icon.command` | Legt einmalig eine Doppelklick-App „KLARWERK App" auf den Schreibtisch, die den Launcher startet. |
 | `Insel-inventarisieren.command` | Erfasst den Ist-Zustand des Mac (Homebrew, Ollama-Modelle inkl. bge-m3, MLX-Pins, Node, Ports, Datenpfade) → versioniert unter `docs/operations/` (**ohne Secrets**). |
 | `Insel-aufbauen.command` | Baut aus dem Inventar einen vergleichbaren Rechner (idempotent, Air-Gap-bewusst). |
+| `build-current-release.mjs` | Baut ein Release-Paket (Code + Oberfläche + Startbefehl + **Betriebswege** + `SCHEMA-VERTRAG`). |
+| `update-einspielen.sh` | **Update mit Netz**: sichert, prüft den Schema-Vertrag, schaltet um, prüft Health samt Version — und fällt bei Rot von selbst zurück. |
+| `rueckfall.sh` | Schaltet `current` auf die Vorversion, startet, prüft Health samt Version. Von Hand und als automatischer Rückweg des Updates. |
+| `schema-vertrag.mjs` | Erzeugt und prüft den Schema-Vertrag (Migrationsstufen + Risikoklasse) eines Releases gegen den Stand neben den Daten. |
+| `insel-betrieb.sh` | Gemeinsame Handgriffe beider Wege (Server stoppen/starten — auch über launchd —, `/health` mit Version). Wird gesourct, nicht gestartet. |
+| `release-texte.mjs` | Die Texte, die in jedes Release wandern: Release-**Identität**, `start.command`, `install.command`, `ROLLBACK.md`. Ohne Nebenwirkung, damit sie prüfbar sind. |
 | `LIESMICH.txt` | Ausführliche Bedienung (deutsch). |
+
+## Update und Rückfall
+
+```bash
+bash /Users/Shared/Klarwerk_Insel/current/scripts/insel/update-einspielen.sh <paket.zip|ordner>
+bash /Users/Shared/Klarwerk_Insel/current/scripts/insel/rueckfall.sh [<release>] [--daten-zurueck <sicherung>]
+```
+
+Dasselbe tut der Doppelklick: `install.command` im Paket **übergibt** an `update-einspielen.sh` und
+schaltet nichts mehr selbst um — ein Einstieg, kein zweiter an der Sicherung vorbei.
+
+Beide enden mit **einer** Ergebniszeile — `Update auf <version> aktiv, Sicherung <pfad>`,
+`Update abgebrochen, Vorversion <version> läuft wieder, Grund: …` oder `Vorversion <version> aktiv`.
+Ohne gelungene Sicherung wird nicht umgeschaltet; ein Downgrade oder eine neue **nicht umkehrbare**
+Migration bricht **vor** dem Umschalten ab (letztere lässt sich mit `--nicht-umkehrbar-einspielen`
+ausdrücklich zulassen). Zwei weitere Abbrüche schützen die Vorversion und die Daten:
+
+- **Kollision** (Exit 6): ein vorhandenes Release-Verzeichnis wird nie überschrieben — sonst fehlte
+  beim roten Health genau die Fassung, auf die zurückgefallen werden soll. Jeder Baulauf trägt
+  dafür seinen eigenen Namen (`klarwerk-insel-<app-version>-<commit8>-<bauzeit>`). Darunter fällt
+  auch die **Wiederholung**: ein Release, das schon unter `releases/` liegt (erst recht das
+  laufende), wird nicht noch einmal eingespielt. Es anfahren tut `rueckfall.sh <release>`.
+- **Unbekannter Datenstand** (Exit 10): Es liegen Daten vor, aber keine Fassung sagt, wie weit an
+  ihnen migriert wurde (jede **Altinstallation**). Übergang mit
+  `--datenstand-unbekannt-uebernehmen`; danach gilt jede Stufe als neu.
+
+Kommt der Start des neuen Releases gar nicht erst zustande (etwa weil `launchctl kickstart`
+scheitert), führt derselbe Weg in den Rückfall (**Exit 11**) statt wortlos mitten im Umschalten
+abzubrechen; scheitert auch der Rückfall, sagt die Ergebniszeile das (**Exit 9**).
+
+Der ganze Ablauf steht in `docs/operations/maintenance-update-process.md` §6.1; geprüft wird er in
+`tests/insel-update/`.
 
 ## App starten
 
