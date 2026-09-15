@@ -104,8 +104,15 @@ const ISO_ZEITSTEMPEL =
  *     nirgends geschrieben steht, und eine Sperre, die der Server gar nicht durchsetzt
  *     (BEN-Korrekturpflicht 2 aus dieser Runde). `setUTCFullYear` statt `Date.UTC`, weil letzteres
  *     zweistellige Jahre ins 20. Jahrhundert legt — genau wie im Dienst.
+ *
+ * JOB 4103 R2: EXPORTIERT, weil die KONTENLISTE (`pages/Admin.tsx`) dieselbe Frage stellt — „ist
+ * dieser Wert lesbar, und welcher Zeitpunkt ist es?". Sie bekommt die Antwort von HIER und rechnet
+ * nicht selbst: zwei Auswertungen desselben Drahtfeldes wären zwei Wahrheiten, und die Liste zeigte
+ * eines Tages einen Tag, den die Karte daneben nicht kennt (genau der Fehler, den F10 an der Karte
+ * misst). Die WORTWAHL bleibt getrennt — die Karte urteilt über Gültigkeit, die Liste nennt die
+ * Befristung; gemeinsam ist nur die Lesbarkeitsregel.
  */
-function lesbarerAblauf(wert: string | undefined): number | undefined {
+export function lesbarerAblauf(wert: string | undefined): number | undefined {
   if (wert === undefined) {
     return undefined;
   }
@@ -630,22 +637,76 @@ export function NutzerAnlegenDetail({ onZurueck }: { onZurueck: () => void }): J
   const [newUser, setNewUser] = useState({ ...EMPTY_NEW_USER });
   // Sicherheit: Passwort-Bestätigung bei der Nutzeranlage (Vertipper-Schutz, analog Reset).
   const [newUserPw2, setNewUserPw2] = useState("");
+  // ================================================================================================
+  // JOB 4103 (ERSTEINRICHTUNG-GAST T3) — DIE BEFRISTUNG GEHÖRT IN DEN VORGANG, DER DAS KONTO ANLEGT.
+  // ================================================================================================
+  //
+  // Bis hierher war „einen Gastzugang anlegen, der von selbst endet" für den Admin ein Vorgang in
+  // ZWEI Handgriffen: hier anlegen, dann das Konto in der Liste wiederfinden und in seiner Karte
+  // (`NutzerDetail` oben, JOB 4021) die Befristung setzen. Zwischen beiden stand ein freigegebenes,
+  // UNBEFRISTETES Konto; unterblieb der zweite Handgriff, blieb es für immer dort. Der Server kann
+  // es seit JOB 4011 in EINEM Aufruf — er prüft die Form VOR `register` und legt bei unlesbarem
+  // Wert gar nichts an (`services/auth/src/routes.ts`, Wache 1 und 2).
+  //
+  // DER SCHALTER IST DIE AUSSAGE, NICHT DAS LEERE FELD. „Kein Ablauf" bleibt der gültige
+  // Normalzustand, und ein leeres Datumsfeld kann zweierlei heissen: „ich will keine Befristung"
+  // und „ich wollte eine, mein Tag war nur unbrauchbar". Eine regelkonforme Datumseingabe LÖSCHT
+  // einen unmöglichen Tag nämlich selbst (HTML-Wertbereinigung; nachgemessen: `2026-02-30` und
+  // `2026-13-01` werden zu `""`, `2028-02-29` bleibt stehen). Stünde das Feld ohne Schalter da,
+  // entstünde nach einem solchen Tag still ein Zugang OHNE ENDE — also genau das Konto, gegen das
+  // dieser Weg gebaut ist. Mit dem Schalter ist beides unterscheidbar: geschlossen ⇒ das Feld geht
+  // gar nicht mit; offen ⇒ ohne brauchbaren Tag wird NICHT gesendet. Dieselbe Bauart wie in der
+  // Frist-Karte oben („Befristung setzen" öffnet die Eingabe), derselbe Wortschatz, kein zweiter.
+  const [fristOffen, setFristOffen] = useState(false);
+  const [fristTag, setFristTag] = useState("");
+  /**
+   * Die Auskunft zum zuletzt gescheiterten Anlageversuch — sie bleibt stehen, der Toast nicht.
+   *
+   * `abgewiesen` trägt denselben BELEG wie in `NutzerDetail` (s. `serverHatAbgewiesen`): „Es wurde
+   * kein Konto angelegt." ist eine Tatsachenaussage über fremde Daten und nur nach einer Ablehnung
+   * des Servers (4xx) gedeckt. Bei offenem Ausgang — verlorene Antwort, abgebrochenes Netz, 5xx —
+   * steht der offene Ausgang da, und der Bestand wird geholt statt behauptet.
+   */
+  const [anlageHilfe, setAnlageHilfe] = useState<{ meldung: string; abgewiesen: boolean } | null>(
+    null,
+  );
   const create = useMutation({
-    mutationFn: () =>
+    // Der Ablauf kommt als VARIABLE herein und nicht aus dem Zustand: gesendet wird genau der Wert,
+    // den der Knopf unten geprüft hat. Läse die Mutation `fristTag` selbst, läge zwischen Prüfung
+    // und Senden ein zweiter Zustandsstand.
+    mutationFn: (accessExpiresAt: string | undefined) =>
       endpoints.users.create(
         newUser.name.trim(),
         newUser.email.trim(),
         newUser.password,
         newUser.role,
+        accessExpiresAt,
       ),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["users"] });
       setNewUser({ ...EMPTY_NEW_USER });
       setNewUserPw2("");
+      setFristOffen(false);
+      setFristTag("");
+      setAnlageHilfe(null);
       push("success", t("adm.created"));
       onZurueck();
     },
-    onError: (e) => push("error", e instanceof ApiError ? e.message : t("state.error")),
+    onError: (e) => {
+      // Der Satz des SERVERS (bei unlesbarem Ablaufdatum `ACCESS_EXPIRY_UNREADABLE`,
+      // `services/auth/src/meldungen.ts`), daneben der nächste Schritt — und WELCHER, entscheidet
+      // der Beleg. Die Eingaben bleiben dabei stehen: niemand tippt Name, E-Mail und Passwort
+      // erneut, nur weil ein Tag nicht gelesen werden konnte.
+      const abgewiesen = serverHatAbgewiesen(e);
+      setAnlageHilfe({
+        meldung: e instanceof ApiError ? e.message : t("state.error"),
+        abgewiesen,
+      });
+      if (!abgewiesen) {
+        void qc.invalidateQueries({ queryKey: ["users"] });
+      }
+      push("error", e instanceof ApiError ? e.message : t("state.error"));
+    },
   });
 
   return (
@@ -712,6 +773,42 @@ export function NutzerAnlegenDetail({ onZurueck }: { onZurueck: () => void }): J
           </select>
         </Field>
       </div>
+      {/* ==============================================================================================
+          JOB 4103 · BIS WANN SOLL DIESER ZUGANG GELTEN — GEFRAGT, BEVOR ES IHN GIBT.
+          ==============================================================================================
+          Derselbe Wortschatz wie in der Frist-Karte oben (`adm.gastfrist.*`) und dieselbe Bauart:
+          ein Knopf öffnet dieselbe Datumseingabe, ohne Vorgabedauer. Ein zweiter Weg, eine
+          Befristung zu setzen, entsteht dadurch nicht — dies ist der Weg für die ANLAGE, die Karte
+          oben bleibt der Weg für BESTEHENDE Konten. */}
+      <div className="space-y-2 border-t border-hairline pt-4">
+        <div className="text-[12.5px] font-medium text-muted">{t("adm.gastfrist.titel")}</div>
+        <p className="text-[12px] text-muted-2">{t("adm.gastfrist.anlageHinweis")}</p>
+        {fristOffen ? (
+          <div className="space-y-2 rounded-input bg-page p-2">
+            <Field label={t("adm.gastfrist.datum")}>
+              <TextInput
+                type="date"
+                value={fristTag}
+                onChange={(e) => setFristTag(e.target.value)}
+                className="h-9"
+              />
+            </Field>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setFristOffen(false);
+                setFristTag("");
+              }}
+            >
+              {t("adm.gastfrist.abbrechen")}
+            </Button>
+          </div>
+        ) : (
+          <Button variant="ghost" onClick={() => setFristOffen(true)}>
+            {t("adm.gastfrist.setzen")}
+          </Button>
+        )}
+      </div>
       {/* SCRUM-463: Knopf nicht stumm deaktivieren. Fehlt etwas, sagt ein Klick ehrlich, was —
           sonst „passiert nichts" ohne jede Rückmeldung. Die Auskunft kommt als Meldung mit den
           FEHLENDEN Feldern beim Namen (`adm.createInvalid` + `adm.field.*`), nicht als stehender
@@ -734,13 +831,40 @@ export function NutzerAnlegenDetail({ onZurueck }: { onZurueck: () => void }): J
               push("error", t("adm.passwordMismatch"));
               return;
             }
-            create.mutate();
+            // JOB 4103: BEFRISTET ODER GAR NICHT. Steht die Eingabe zu, geht das Feld gar nicht
+            // mit (`undefined` verschwindet in `JSON.stringify`) und es entsteht ein Zugang ohne
+            // Ende — der gültige Normalzustand. Steht sie offen, MUSS ein Tag da sein, den es im
+            // Kalender gibt: `endeDesTages` rechnet ihn in das Ende dieses Tages um (derselbe
+            // Helfer wie in der Frist-Karte, damit die Liste danach denselben Tag zeigt) und gibt
+            // `null` zurück, wenn dort kein solcher Tag steht. Dann wird nicht gesendet, und es
+            // entsteht kein Konto — statt eines unbefristeten, das niemand wollte.
+            let bis: string | undefined;
+            if (fristOffen) {
+              const ende = endeDesTages(fristTag);
+              if (ende === null) {
+                push("error", t("adm.gastfrist.datumFehlt"));
+                return;
+              }
+              bis = ende;
+            }
+            setAnlageHilfe(null);
+            create.mutate(bis);
           }}
         >
           <UserPlus size={15} />
           {t("adm.create")}
         </Button>
       </div>
+      {anlageHilfe === null ? null : (
+        // ZWEI AUSGÄNGE, ZWEI SÄTZE — und der zweite ist keine schwächere Fassung des ersten,
+        // sondern die einzige, die ohne Beleg zulässig ist (s. `serverHatAbgewiesen`).
+        <p role="alert" className="text-[12px] text-trust-crit-text">
+          {anlageHilfe.meldung}{" "}
+          {anlageHilfe.abgewiesen
+            ? t("adm.gastfrist.anlageFehlerHilfe")
+            : t("adm.gastfrist.anlageFehlerOffen")}
+        </p>
+      )}
     </Detailkarte>
   );
 }

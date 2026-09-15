@@ -312,7 +312,19 @@ describe("JOB 1110 D1 · Konten-Tab: erst der Bestand, dann das Formular", () =>
     await tippe(i18n.t("adm.newPasswordRepeat"), "geheim12345");
     expect(container.textContent).not.toContain(i18n.t("adm.createHint"));
     await klick(knopf(i18n.t("adm.create")));
-    expect(createSpy).toHaveBeenCalledWith("Cara Neu", "cara@neu.de", "geheim12345", "experte");
+    // JOB 4103: `users.create` trägt seit der Anlage-Befristung ein FÜNFTES Argument. Ohne
+    // gewählten Tag ist es `undefined` — und das ist hier die Aussage, nicht eine Formalie:
+    // `undefined` verschwindet in `JSON.stringify` spurlos, der Rumpf des Bestandswegs bleibt
+    // damit unverändert. Ein `null` oder `""` an dieser Stelle liefe am Server in die
+    // Lesbarkeitswache (`services/auth/src/routes.ts`), also in eine Abweisung für einen Vorgang,
+    // der gar keine Befristung wollte.
+    expect(createSpy).toHaveBeenCalledWith(
+      "Cara Neu",
+      "cara@neu.de",
+      "geheim12345",
+      "experte",
+      undefined,
+    );
   });
 
   it("4 TABSTRUKTUR · sieben Themen, Benutzer und Rollen ist der Startbereich", async () => {

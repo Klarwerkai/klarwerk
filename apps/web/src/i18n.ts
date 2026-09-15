@@ -1123,6 +1123,23 @@ const de = {
   "einst.konten.nutzer": "Nutzer",
   "einst.konten.leer": "noch keine Nutzer",
   "einst.konten.wartet": "wartet auf Freigabe",
+  // JOB 4103 R2: die Befristung AM LISTENEINTRAG — damit der Admin sie sieht, ohne die Kontokarte
+  // zu öffnen (BEN-Korrekturpflicht 1 aus Runde 1).
+  //
+  // EIGENE WORTE, NICHT DIE DER KARTE. Die Karte sagt „Gültig bis {{datum}}." — eine Aussage über
+  // die GELTUNG, und die stimmt nur so lange, wie jemand die Uhr im Blick behält (dafür hat die
+  // Karte ihren Wecker, `AdminKontenDetails.tsx`). Die Liste hat keinen Wecker und soll auch keinen
+  // zweiten bekommen; sie sagt deshalb, was ohne Uhr wahr bleibt: WORAUF der Zugang befristet IST.
+  // Verstreicht der Tag, während die Liste offen steht, bleibt „befristet bis 30.09.2026" richtig —
+  // nur die schärfere Auskunft „abgelaufen" kommt später als in der Karte. Keine Zeile behauptet
+  // dabei je etwas Falsches.
+  "einst.konten.befristet": "befristet bis {{datum}}",
+  "einst.konten.abgelaufen": "abgelaufen am {{datum}}",
+  // Ein unlesbarer Wert wird BENANNT und nicht verschwiegen: schwiege die Zeile, läse sich das
+  // neben befristeten Nachbarzeilen als „dieser Zugang endet nicht" — eine Aussage, für die es
+  // keinen Beleg gibt. Der Server sperrt mit einem solchen Wert niemanden aus
+  // (`services/auth/src/service.ts`), deshalb steht hier auch kein Ablauf.
+  "einst.konten.fristUnlesbar": "Ablaufwert unlesbar",
   "einst.konten.hinzufuegen": "Nutzer hinzufügen",
   "einst.konten.ansichtAus": "aus",
   "einst.konten.nutzerWeg": "Dieses Konto gibt es nicht mehr.",
@@ -4901,6 +4918,20 @@ const de = {
   "adm.gastfrist.fehlerHilfe": "Nichts wurde geändert. Wähle einen Tag und speichere erneut.",
   "adm.gastfrist.fehlerOffen":
     "Ob die Befristung gespeichert wurde, ist nicht bestätigt. Der Stand oben wird neu geholt — lies ihn, bevor du erneut speicherst.",
+  // JOB 4103 (ERSTEINRICHTUNG-GAST T3): dieselbe Befristung, aber im ANLEGEFORMULAR. Eigene Sätze
+  // und keine Zweitverwendung der drei darüber: dort ist ein Konto vorhanden und es geht um eine
+  // Änderung daran, hier ist noch gar nichts entstanden — „Nichts wurde geändert." wäre beim
+  // Anlegen keine Auskunft, sondern eine Ausweichung.
+  "adm.gastfrist.anlageHinweis":
+    "Ohne Tag entsteht ein Zugang ohne Ende. Mit Tag entsteht der Zugang befristet — oder, wenn etwas schiefgeht, gar nicht.",
+  // ZWEI AUSGÄNGE, ZWEI SÄTZE — wie oben, und aus demselben Grund (BEN-Korrekturpflicht 1 aus
+  // JOB 4021 R1). „Es wurde kein Konto angelegt." ist eine Tatsachenaussage über fremde Daten; sie
+  // ist nur belegt, wenn der Server ABGELEHNT hat (4xx). Der Dienst prüft die Form VOR `register`
+  // (`services/auth/src/routes.ts`, Wache 1 und 2), deshalb ist sie dort wahr.
+  "adm.gastfrist.anlageFehlerHilfe":
+    "Es wurde kein Konto angelegt. Bitte die Angaben berichtigen und erneut anlegen.",
+  "adm.gastfrist.anlageFehlerOffen":
+    "Ob das Konto angelegt wurde, ist nicht bestätigt. Sieh in der Kontenliste nach, bevor du es erneut anlegst.",
   "adm.seedTitle": "Demodaten laden",
   "adm.seedHint":
     "Lädt einen kleinen, echten Demo-Bestand (KOs, Validierung, Lücke, Konflikt, Duplikat, Anhang) — auch neben vorhandenen Daten. Dein echter Bestand bleibt unberührt und wird nie überschrieben. Über „Demodaten entfernen“ gezielt wieder entfernbar. (Konflikt-/Duplikat-Befund erscheint mit aktivem KI-Reasoner.)",
@@ -7591,6 +7622,9 @@ const en: typeof de = {
   "einst.konten.nutzer": "Users",
   "einst.konten.leer": "no users yet",
   "einst.konten.wartet": "awaiting approval",
+  "einst.konten.befristet": "limited until {{datum}}",
+  "einst.konten.abgelaufen": "expired on {{datum}}",
+  "einst.konten.fristUnlesbar": "expiry value unreadable",
   "einst.konten.hinzufuegen": "Add user",
   "einst.konten.ansichtAus": "off",
   "einst.konten.nutzerWeg": "This account no longer exists.",
@@ -10635,6 +10669,12 @@ const en: typeof de = {
   "adm.gastfrist.fehlerHilfe": "Nothing was changed. Choose a day and save again.",
   "adm.gastfrist.fehlerOffen":
     "Whether the time limit was saved is not confirmed. The state above is being fetched again — read it before you save once more.",
+  "adm.gastfrist.anlageHinweis":
+    "Without a day, the access has no end. With a day, the access is created with that limit — or, if something goes wrong, not at all.",
+  "adm.gastfrist.anlageFehlerHilfe":
+    "No account was created. Please correct the details and create it again.",
+  "adm.gastfrist.anlageFehlerOffen":
+    "Whether the account was created is not confirmed. Check the account list before you create it again.",
   "adm.seedTitle": "Load demo data",
   "adm.seedHint":
     "Loads a small, real demo set (KOs, validation, gap, conflict, duplicate, attachment) — also alongside existing data. Your real content stays untouched and is never overwritten. Removable on demand via “Remove demo data”. (Conflict/duplicate findings appear with an active AI reasoner.)",
@@ -12820,6 +12860,9 @@ const nl: typeof de = {
   "einst.konten.nutzer": "Gebruikers",
   "einst.konten.leer": "nog geen gebruikers",
   "einst.konten.wartet": "wacht op vrijgave",
+  "einst.konten.befristet": "beperkt tot {{datum}}",
+  "einst.konten.abgelaufen": "verlopen op {{datum}}",
+  "einst.konten.fristUnlesbar": "vervalwaarde onleesbaar",
   "einst.konten.hinzufuegen": "Gebruiker toevoegen",
   "einst.konten.ansichtAus": "uit",
   "einst.konten.nutzerWeg": "Dit account bestaat niet meer.",
@@ -15861,6 +15904,12 @@ const nl: typeof de = {
   "adm.gastfrist.fehlerHilfe": "Er is niets gewijzigd. Kies een dag en sla opnieuw op.",
   "adm.gastfrist.fehlerOffen":
     "Of de beperking is opgeslagen, is niet bevestigd. De stand hierboven wordt opnieuw opgehaald — lees die voordat je nogmaals opslaat.",
+  "adm.gastfrist.anlageHinweis":
+    "Zonder dag ontstaat een toegang zonder einde. Met een dag ontstaat de toegang beperkt — of, als er iets misgaat, helemaal niet.",
+  "adm.gastfrist.anlageFehlerHilfe":
+    "Er is geen account aangemaakt. Corrigeer de gegevens en maak het opnieuw aan.",
+  "adm.gastfrist.anlageFehlerOffen":
+    "Of het account is aangemaakt, is niet bevestigd. Kijk in de accountlijst voordat je het opnieuw aanmaakt.",
   "adm.seedTitle": "Demogegevens laden",
   "adm.seedHint":
     "Laadt een kleine, echte demovoorraad (KO's, validatie, hiaat, conflict, duplicaat, bijlage) — ook naast bestaande gegevens. Je echte bestand blijft onaangeroerd en wordt nooit overschreven. Gericht te verwijderen via „Demogegevens verwijderen“. (Conflict-/duplicaatbevinding verschijnt met een actieve AI-reasoner.)",

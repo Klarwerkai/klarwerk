@@ -48,6 +48,7 @@ import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
 import { useAnalytics, useAudit, useUsers, useValidationBoard } from "../api/hooks";
+import type { PublicUser } from "../api/types";
 import { GuardedLink, useGuardedNavigate } from "../app/NavGuardContext";
 import { useRole } from "../app/RoleContext";
 import { ALL_ITEMS, ROLES, type Role, anzeigeNameKey, canSee, roleAllows } from "../app/navigation";
@@ -106,6 +107,7 @@ import {
   NutzerAnlegenDetail,
   NutzerDetail,
   RolleDetail,
+  lesbarerAblauf,
 } from "./AdminKontenDetails";
 import {
   BereitschaftDetail,
@@ -207,7 +209,7 @@ function useModulAusHinweis(ids: readonly string[]): boolean {
 }
 
 export function Admin(): JSX.Element {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const online = useIstOnline();
   const wertText = useWertText();
   const { role, stufe2, setStufe2, canPreview, previewActive } = useRole();
@@ -234,6 +236,52 @@ export function Admin(): JSX.Element {
   // Die Quellen der Zeilenwerte. Es sind dieselben Queries (dieselben Schlüssel), die die
   // Detailkarten verwenden — ein Zwischenspeicher, ein Abruf.
   const users = useUsers();
+  // ================================================================================================
+  // JOB 4103 R2 · DIE BEFRISTUNG STEHT AM LISTENEINTRAG — NICHT ERST IN DER KARTE DAHINTER.
+  // ================================================================================================
+  //
+  // BEN-Korrekturpflicht 1 aus Runde 1, an dieser Zeile gemessen: Das Anlegen konnte den Gast seit
+  // Runde 1 in EINEM Aufruf befristen, aber die Liste zeigte davon nichts — sie trug Name, Rolle
+  // und Freigabestatus, sonst nichts. Wer einen befristeten Zugang angelegt hatte, musste dessen
+  // Karte öffnen, um zu sehen, ob und bis wann er endet; ein Bestand aus zwanzig Konten liess sich
+  // nur durch zwanzig Kartenbesuche prüfen. Das ist die Hälfte, die Lieferung 6 verlangt.
+  //
+  // OHNE UHR, UND DAS IST ABSICHT. Die Kontokarte urteilt über die GELTUNG („Gültig bis …" /
+  // „Abgelaufen am …") und hält dafür einen Wecker, der beim Ablaufzeitpunkt neu zeichnet
+  // (`AdminKontenDetails.tsx`, F11/F13). Diese Liste bekommt keinen zweiten Wecker — 50 Zeilen
+  // wären 50 Wecker. Sie sagt stattdessen, was OHNE laufende Uhr wahr bleibt: worauf der Zugang
+  // befristet IST. Verstreicht der Zeitpunkt, während die Liste offen steht, bleibt „befristet bis
+  // 30.09.2026" eine richtige Aussage; nur die schärfere Auskunft „abgelaufen am …" erscheint erst
+  // beim nächsten Zeichnen. Eine Zeile, die zu lange die mildere WAHRE Aussage zeigt, ist etwas
+  // anderes als eine, die eine falsche zeigt — und nur letzteres wäre der Fehler aus JOB 4021 R1.
+  //
+  // DIE LESBARKEIT wird nicht hier entschieden, sondern von `lesbarerAblauf` aus der Kartendatei —
+  // eine Regel, eine Stelle. Ein unlesbarer Wert wird BENANNT: schwiege die Zeile, läse sich das
+  // neben befristeten Nachbarzeilen als „endet nicht", und dafür gibt es keinen Beleg.
+  const fristKurz = (wert: string | undefined): string | null => {
+    if (wert === undefined) {
+      return null;
+    }
+    const zeitpunkt = lesbarerAblauf(wert);
+    if (zeitpunkt === undefined) {
+      return t("einst.konten.fristUnlesbar");
+    }
+    const datum = new Date(zeitpunkt).toLocaleDateString(i18n.language);
+    return zeitpunkt <= Date.now()
+      ? t("einst.konten.abgelaufen", { datum })
+      : t("einst.konten.befristet", { datum });
+  };
+
+  /** Was rechts an einer Nutzerzeile steht: Rolle · (wartet auf Freigabe) · (Befristung). */
+  const nutzerWert = (u: PublicUser): string =>
+    [
+      t(`role.name.${u.role}`),
+      u.approved ? null : t("einst.konten.wartet"),
+      fristKurz(u.accessExpiresAt),
+    ]
+      .filter((teil): teil is string => teil !== null)
+      .join(" · ");
+
   const audit = useAudit();
   const analytics = useAnalytics();
   const board = useValidationBoard();
@@ -519,11 +567,7 @@ export function Admin(): JSX.Element {
                   <Zeile
                     key={u.id}
                     label={u.name}
-                    wert={
-                      u.approved
-                        ? t(`role.name.${u.role}`)
-                        : `${t(`role.name.${u.role}`)} · ${t("einst.konten.wartet")}`
-                    }
+                    wert={nutzerWert(u)}
                     onOeffnen={() => geheZu("konten", `nutzer:${u.id}`)}
                   />
                 ))}

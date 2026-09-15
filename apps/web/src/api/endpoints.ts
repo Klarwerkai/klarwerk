@@ -1043,8 +1043,30 @@ export const endpoints = {
   },
   users: {
     list: () => api.get<PublicUser[]>("/users"),
-    create: (name: string, email: string, password: string, role?: Role) =>
-      api.post<PublicUser>("/users", { name, email, password, role }),
+    // JOB 4103 (ERSTEINRICHTUNG-GAST T3): DER ABLAUF REIST IM ANLAGEAUFRUF MIT — additiv, als
+    // letztes Argument, und NUR wenn er dasteht.
+    //
+    // Der Server kann es seit JOB 4011 in EINEM Aufruf (`services/auth/src/routes.ts`, „Wache 1 ·
+    // DIE FORM" / „Wache 2 · DIE LESBARKEIT" stehen VOR `register`). Bis hierher rief die
+    // Oberfläche es nur nicht auf: sie legte an und befristete danach über `setAccessExpiry` —
+    // zwischen beiden Aufrufen stand ein freigegebenes, UNBEFRISTETES Konto, und unterblieb der
+    // zweite, blieb es dort.
+    //
+    // `string | undefined` und NICHT `string | null` wie unten bei `setAccessExpiry`: am
+    // Änderungsweg sind `null` („nimm die Befristung") und „fehlt" („ich sage dazu nichts")
+    // verschiedene Aussagen, weil es dort eine Vorgeschichte gibt. Beim Anlegen gibt es nichts zu
+    // nehmen — `null` und „fehlt" heissen beide „unbefristet" (`routes.ts`, „DREI EINGABEN, ZWEI
+    // AUSSAGEN"). Ein `undefined` verschwindet in `JSON.stringify` spurlos; der Rumpf des
+    // Bestandswegs bleibt damit unverändert, genau wie bei `role`. Gemessen von A2 in
+    // `tests/gast-befristung-flaeche/befristung-ist-bedienbar.test.tsx`
+    // (`Object.hasOwn(rumpf, "accessExpiresAt") === false`).
+    create: (
+      name: string,
+      email: string,
+      password: string,
+      role?: Role,
+      accessExpiresAt?: string,
+    ) => api.post<PublicUser>("/users", { name, email, password, role, accessExpiresAt }),
     approve: (id: string) => api.post<void>(`/auth/users/${id}/approve`),
     setRole: (id: string, role: Role) => api.put<void>(`/users/${id}`, { role }),
     remove: (id: string) => api.del<void>(`/users/${id}`),
