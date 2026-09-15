@@ -280,34 +280,13 @@ export const NICHT_ABGENOMMEN: Nichtabnahme[] = [
     grund:
       "Löst den EINMALIGEN Übergabecode aus dem Word-Anmeldedialog ein (JOB 4076) und ist bewusst öffentlich: der Aufruf kommt aus einem Rahmen fremder Herkunft und kann kein Sitzungscookie mitbringen — der Code IST der Nachweis, nicht die Rolle. Eine Rollenzeile ist hier baulich unmöglich, und zwar in beiden Richtungen: ohne gültigen Code antwortet die Route ALLEN fünf Akteuren gleich mit 401, und dieser 401 kommt aus der Codeprüfung, nicht aus einem Rechtetor — er als `erlaubt` oder als Sperre zu führen wäre in beiden Fällen eine Unwahrheit über den Grund; ein GÜLTIGER Code lässt sich nicht als feste Nutzlast (`payload`) führen, weil er genau einmal gilt und die fünf Messungen ihn nacheinander verbrauchen würden. Abgenommen ist diese Tür deshalb am echten Fastify-Draht in `tests/office-web-anmeldung/uebergabe-vertrag.test.ts` (Ausgabe nur mit Sitzung, Einlösen genau einmal, Frist 120 s, Bindung an die erzeugende Sitzung), in `uebergabe-ohne-cookie.test.ts` (der Schlüssel öffnet `GET /api/auth/me` OHNE jedes Cookie) und in `uebergabe-keine-auskunft.test.ts` (unbekannt, abgelaufen und verbraucht sind von aussen nicht unterscheidbar). Der öffentliche Leckweg steht zusätzlich in `tests/demo-zugang-gaeste/kein-offener-zugang.test.ts` (D2f) mit abgelesenem Vertragsrumpf und gemessenem Kontaktstatus.",
   },
-  {
-    methode: "DELETE",
-    pfad: "/api/auth/users/:id",
-    art: "zurueckgestellt",
-    grund:
-      "Löscht ein Konto. Die einzige sinnvolle Nutzlast wäre eine Kennung aus der Bühne selbst — und danach fehlte die Rolle, die geprüft werden sollte.",
-  },
-  {
-    methode: "POST",
-    pfad: "/api/users",
-    art: "zurueckgestellt",
-    grund:
-      "Legt ein Konto mit gewählter Rolle an. Der Fachvorgang ist die Rollenvergabe; er gehört zu der Abnahme, die JOB 4015 über `canChangeRole` bereits am Dienst führt.",
-  },
-  {
-    methode: "PUT",
-    pfad: "/api/users/:id",
-    art: "zurueckgestellt",
-    grund:
-      "Ändert Rolle oder Stammdaten eines Kontos. Ein Aufruf verstellte die Rolle eines Prüfkontos — genau die Grösse, die diese Abnahme misst.",
-  },
-  {
-    methode: "DELETE",
-    pfad: "/api/users/:id",
-    art: "zurueckgestellt",
-    grund:
-      "Löscht ein Konto über den Verwaltungsweg. Dieselbe Lage wie `DELETE /api/auth/users/:id`: die Nutzlast ist eine Kennung aus der Bühne.",
-  },
+  // JOB 4141: die vier Konten-Türen (`DELETE /api/auth/users/:id`, `POST /api/users`,
+  // `PUT /api/users/:id`, `DELETE /api/users/:id`) standen hier mit vier eigenen Gründen, die alle
+  // dasselbe sagten: die Nutzlast wäre eine Kennung aus der Bühne, und der Aufruf verstellte oder
+  // entfernte genau das Konto, mit dem gemessen wird. Sie sind seit diesem Auftrag GEMESSEN
+  // (`schreibende-tueren.ts`) — an einer je Messung frischen Bühne und an einem eigens dafür
+  // angelegten Zielkonto, das keine Messung als Akteur benutzt. Ihre Gründe leben nicht als
+  // Kommentar weiter; was von ihnen bleibt, steht in der Vorbereitung der Zeilen selbst.
 
   // --- Wissensobjekte (koRoutes) -----------------------------------------------------------------
   {
@@ -335,48 +314,13 @@ export const NICHT_ABGENOMMEN: Nichtabnahme[] = [
     grund:
       "Die Frage an den Bestand. Sie hat zwei Zweige (Sitzung und Add-on-Schlüssel) mit unterschiedlichem Rechteweg; eine Zeile könnte nur einen messen und verschwiege den anderen. (Gefahren wird sie in JOB 4113 sehr wohl — als Vorbereitung der Zeilen zu `POST /api/ask/helpful` und `PUT|DELETE /api/gaps/:id`; abgenommen ist damit nicht sie, sondern was aus ihr entsteht.)",
   },
-  {
-    methode: "POST",
-    pfad: "/api/conflicts/:id/dismiss",
-    art: "zurueckgestellt",
-    grund:
-      "Verwirft einen Widerspruch als unbegründet. Setzt ein echtes Widerspruchspaar voraus, das erst aus zwei angelegten Objekten entsteht.",
-  },
-  {
-    methode: "POST",
-    pfad: "/api/conflicts/:id/second-opinion",
-    art: "zurueckgestellt",
-    grund:
-      "Holt eine Zweitmeinung zu einem Widerspruch ein (`ko.validate`, nicht `conflict.resolve`). Braucht dasselbe echte Paar und einen Meinungstext.",
-  },
-  {
-    methode: "POST",
-    pfad: "/api/duplicates/:id/dismiss",
-    art: "zurueckgestellt",
-    grund:
-      "Schliesst ein Dublettenpaar mit dem Abschlussgrund `kein Duplikat`. Setzt ein erkanntes Paar voraus, das erst die Überschneidungserkennung erzeugt.",
-  },
-  {
-    methode: "POST",
-    pfad: "/api/duplicates/:id/keep-separate",
-    art: "zurueckgestellt",
-    grund:
-      "Schliesst dasselbe Paar mit dem Abschlussgrund `bewusst getrennt`. Eigener Grund, gleiche Voraussetzung: ein echtes Paar.",
-  },
-  {
-    methode: "POST",
-    pfad: "/api/duplicates/:id/link-related",
-    art: "zurueckgestellt",
-    grund:
-      "Verknüpft zwei Objekte als verwandt statt sie zusammenzuführen. Schreibt an beiden Objekten und braucht deshalb beide echt.",
-  },
-  {
-    methode: "POST",
-    pfad: "/api/duplicates/:id/status",
-    art: "zurueckgestellt",
-    grund:
-      "Setzt Bearbeitungsstand und Abschlussgrund eines Paares frei wählbar. Die Nutzlast ist der gewählte Grund; ohne ihn misst die Zeile die Rumpfprüfung.",
-  },
+  // JOB 4141: die sechs Urteils-Türen (`POST /api/conflicts/:id/dismiss|second-opinion`,
+  // `POST /api/duplicates/:id/dismiss|keep-separate|link-related|status`) standen hier mit derselben
+  // Voraussetzung: „setzt ein echtes Paar voraus, das erst aus zwei angelegten Objekten entsteht".
+  // Genau das stellt die Vorbereitung dieser Zeilen jetzt her (`schreibende-tueren.ts`) — die
+  // Dubletten am echten Produktweg über die Erkennung, der Widerspruch am Dienst, weil der
+  // Konfliktweg ohne Modell gar nicht erkennt und keine Route ihn von Hand anlegt. Was damit NICHT
+  // gemessen ist, steht dort ausgeschrieben.
 
   // --- Klara-Sitzungen (klaraAiRoutes) -----------------------------------------------------------
   {

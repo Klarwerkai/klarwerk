@@ -143,6 +143,75 @@ export function vollstaendigGemessen(zeile: Pick<Schreibzeile, "erwartet">): boo
 }
 
 // ------------------------------------------------------------------------------------------------
+// RUNDE 2 · KORREKTURPFLICHT 1 — DER BESTANDSVERGLEICH IST DAS URTEIL, NICHT DER STATUSCODE.
+// ------------------------------------------------------------------------------------------------
+//
+// DER BEFUND DES PRÜFERS, wörtlich: er hat vor dem Rechtetor von `POST /api/conflicts/:id/dismiss`
+// den echten Dienst auch für `viewer` und `experte` laufen lassen. Beide LÖSTEN den Widerspruch
+// wirklich („BEN_UNERLAUBTE_WIRKUNG viewer geloest") und bekamen danach 403 — und die Abnahme blieb
+// GRÜN: „Tests 198 passed (198)", Schreibabdeckung 46/94, Exit 0. Das ist die Grünfärbung, die
+// dieser ganze Auftrag ausschliessen sollte.
+//
+// WARUM SIE DURCHKAM, an zwei Stellen zugleich:
+//   1. Der Drahttest hat `messe()` zwar `bestandVorher`/`bestandNachher` zurückgeben lassen, in der
+//      Zeilenschleife aber beide Werte WEGGEWORFEN (Destrukturierung ohne die zwei Felder). Der
+//      Lesegriff lief, sein Ergebnis entschied über nichts.
+//   2. `S1` vergleicht sie — aber nur für die zehn Türen seiner Namensliste, und die fünf
+//      Urteils-Türen (beide Konflikt-Wege, `dismiss`, `keep-separate`, `link-related`) standen nicht
+//      darin. Genau an einer davon hat der Prüfer gemessen.
+//
+// SEITHER IST DER VERGLEICH EINE EINZIGE, BENANNTE, REINE FUNKTION. Sie fällt das Urteil für BEIDE
+// Aufrufer — die Zeilenschleife (jeder gesperrte Akteur JEDER Zeile mit Lesegriff) und `S1` (die
+// zehn namentlich geführten Türen) —, und weil sie ohne Bühne auskommt, lässt sie sich mit
+// gestellten Werten gegenproben: `S7` führt ihr genau den Fall des Prüfers vor. Wer den Vergleich
+// eines Tages wieder ausbaut, wird dort rot und nicht erst beim nächsten Prüfer.
+
+/** Stabile Textform eines Bestandswerts — Schlüsselreihenfolge darf kein Unterschied sein. */
+function bestandsText(wert: unknown): string {
+  if (wert === null || typeof wert !== "object") {
+    return JSON.stringify(wert) ?? "undefined";
+  }
+  if (Array.isArray(wert)) {
+    return `[${wert.map(bestandsText).join(",")}]`;
+  }
+  const paare = Object.entries(wert as Record<string, unknown>)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([schluessel, w]) => `${JSON.stringify(schluessel)}:${bestandsText(w)}`);
+  return `{${paare.join(",")}}`;
+}
+
+/**
+ * Hat die Sperre WIRKLICH gesperrt? Gibt die Abweichungszeile zurück — oder `undefined`, wenn der
+ * Bestand den abgewiesenen Versuch unverändert überstanden hat.
+ *
+ * Zwei Fälle sind eine Abweichung, und beide sind absichtlich hart:
+ *   · DER BESTAND HAT SICH VERÄNDERT. Der Vorgang hat trotz `401`/`403` stattgefunden — der Fall
+ *     des Prüfers. Die Meldung nennt Tür, Akteur, Status und beide Werte.
+ *   · ES WURDE GAR KEIN BESTAND GELESEN, obwohl die Tür einen Lesegriff führen müsste. Eine Zeile
+ *     ohne Lesegriff kann über die WIRKUNG ihrer Sperre nichts sagen; sie darf nicht dadurch grün
+ *     werden, dass sie nicht hinsieht. Diesen Fall verlangt nur, wer ihn anfordert (`mitLesegriff`)
+ *     — die zehn namentlich geführten Türen in `S1` tun das.
+ */
+export function sperrwirkungAbweichung(
+  tuer: string,
+  akteur: Akteur,
+  status: number,
+  vorher: unknown,
+  nachher: unknown,
+  mitLesegriff = false,
+): string | undefined {
+  if (vorher === undefined && nachher === undefined) {
+    return mitLesegriff
+      ? `${tuer}: ${akteur} wurde mit HTTP ${status} abgewiesen, aber diese Zeile liest keinen Bestand — über die WIRKUNG der Sperre sagt sie damit nichts.`
+      : undefined;
+  }
+  if (bestandsText(vorher) === bestandsText(nachher)) {
+    return undefined;
+  }
+  return `${tuer}: ${akteur} wurde mit HTTP ${status} abgewiesen, der Bestand hat sich aber trotzdem verändert (${bestandsText(vorher)} → ${bestandsText(nachher)}) — der Vorgang hat stattgefunden, die Sperre ist nur die Behauptung der Antwort.`;
+}
+
+// ------------------------------------------------------------------------------------------------
 // HANDGRIFFE DER VORBEREITUNG — jeder fährt am echten Draht, keiner am Dienst vorbei.
 // ------------------------------------------------------------------------------------------------
 
@@ -274,6 +343,148 @@ const IMPORT_EINTRAG = {
   category: "Instandhaltung",
   confidentiality: "intern",
 } as const;
+
+// ================================================================================================
+// JOB 4141 · LIEFERUNG 2 — DIE VORBEREITUNG DER ZEHN TÜREN, AN DENEN MENSCHEN UND URTEILE HÄNGEN.
+// ================================================================================================
+//
+// DIE KONTEN-TÜREN: EIN EIGENES PRÜFKONTO, NIE EINES DER VIER BÜHNENKONTEN.
+//
+// Genau daran waren sie zurückgestellt (`tabelle.ts`, alte Gründe): „die einzige sinnvolle Nutzlast
+// wäre eine Kennung aus der Bühne selbst — und danach fehlte die Rolle, die geprüft werden sollte"
+// und „ein Aufruf verstellte die Rolle eines Prüfkontos — genau die Grösse, die diese Abnahme
+// misst". Beides bleibt wahr. Die Lösung ist deshalb NICHT die frische Bühne allein, sondern ein
+// ZUSÄTZLICHES Konto, das nur für diese eine Messung entsteht: `viewer@abnahme.de` behält seine
+// Rolle, `zielkonto@abnahme.de` verliert sie. Entstünde es über einen der gemessenen Wege selbst,
+// mässe die Zeile ihre eigene Vorbereitung — es entsteht darum am Dienst, wie schon das wartende
+// Konto in `POST /api/auth/users/:id/approve`.
+
+/** Die Kennung eines eigens angelegten Prüfkontos — freigegeben ist es nicht, angemeldet nie. */
+async function legeZielkontoAn(buehne: Buehne): Promise<{ id: string }> {
+  return buehne.services.auth.register({
+    name: "Abnahme Zielkonto",
+    email: "zielkonto@abnahme.de",
+    password: PASSWORT,
+  });
+}
+
+/** Wie viele Konten die Instanz führt — der Bestand, den ein gelungenes Löschen/Anlegen verändert. */
+async function zaehleKonten(buehne: Buehne): Promise<number> {
+  const liste = await musterhaft(buehne.app, kopf(buehne, "admin"), "GET", "/api/users");
+  return (liste.json() as unknown[]).length;
+}
+
+/** Die Rolle, die an DIESEM Konto steht — `null`, wenn es die Liste nicht (mehr) führt. */
+async function rolleVon(buehne: Buehne, id: string): Promise<string | null> {
+  const liste = await musterhaft(buehne.app, kopf(buehne, "admin"), "GET", "/api/users");
+  return (liste.json() as { id: string; role?: string }[]).find((k) => k.id === id)?.role ?? null;
+}
+
+// ------------------------------------------------------------------------------------------------
+// DIE URTEILS-TÜREN: EIN ECHTES PAAR, UND ZWAR AUF ZWEI VERSCHIEDENEN WEGEN — WEIL DAS PRODUKT
+// ZWEI VERSCHIEDENE WEGE HAT.
+// ------------------------------------------------------------------------------------------------
+//
+// DUBLETTEN ENTSTEHEN HIER AM ECHTEN PRODUKTWEG. Zwei Beiträge mit demselben Kern gehen über
+// `POST /api/kos` ein; das Einreichen reiht je einen Prüf-Job ein (`ko-routes.ts:1245`), und der
+// Hintergrund-Worker läuft. Die DETERMINISTISCHE Deckungsprüfung braucht kein Modell
+// (`duplicate-detect.ts:48`, Schwelle 0.85) — gemessen an der Bühne dieses Auftrags: ein Eintrag
+// mit `method: "deterministic"`, `lexicalScore: 1`. `worker.idle()` ist der vom Worker selbst
+// angebotene Wartepunkt („aufgelöst, sobald Queue leer und kein Job mehr läuft",
+// `ai-check-worker.ts:182`); ohne ihn mässe die Zeile ein Rennen statt einer Tür.
+//
+// WIDERSPRÜCHE ENTSTEHEN NICHT SO, UND DAS WIRD HIER NICHT VERSCHWIEGEN. Der Konfliktweg hat keine
+// deterministische Hälfte: `detectConflictsForKo` urteilt ausschliesslich über das Modell, und die
+// Bühne dieser Abnahme fährt ohne Modell (gemessen: `conflicts.unresolved() → 0` nach zwei
+// eingereichten Beiträgen, `[KLARWERK] KI-Pruefung … status=failed grund=no-model`). Eine Route,
+// die einen Widerspruch von Hand anlegt, gibt es nicht. Das Paar entsteht deshalb am Dienst —
+// derselbe Griff, den auch `tests/duplicates/job3061-status-route.test.ts` benutzt, und dieselbe
+// Bauart wie das wartende Konto oben. WAS DAMIT NICHT GEMESSEN IST, steht ausdrücklich da: die
+// ERKENNUNG des Widerspruchs. Gemessen ist die Tür, an der ein Mensch über einen bereits erkannten
+// Widerspruch urteilt — und genau das ist die Frage dieser Abnahme.
+
+/** Der zweite Beitrag des Dublettenpaars: derselbe Kern, anderer Titel. */
+const DUBLETTE = { ...KO_INHALT, title: "Dichtungswechsel L4 — zweite Fassung" } as const;
+
+/** Zwei eingereichte Beiträge, die Erkennung gelaufen, ein offenes Paar. Wirft, wenn keines entsteht. */
+async function legeDublettenpaarAn(buehne: Buehne): Promise<{ id: string }> {
+  await musterhaft(buehne.app, kopf(buehne, "admin"), "POST", "/api/kos", { ...KO_INHALT });
+  await musterhaft(buehne.app, kopf(buehne, "admin"), "POST", "/api/kos", { ...DUBLETTE });
+  const worker = buehne.services.aiCheckWorker;
+  if (!worker) {
+    throw new Error(
+      "Vorbereitung fehlgeschlagen: die Bühne hat keinen Prüf-Worker — ohne ihn läuft die Überschneidungserkennung nie, und die Zeile mässe die Existenzprüfung statt des Tors.",
+    );
+  }
+  await worker.idle();
+  const offen = await buehne.services.overlaps.unresolved();
+  const paar = offen[0];
+  if (!paar) {
+    throw new Error(
+      "Vorbereitung fehlgeschlagen: zwei gleichlautende Beiträge haben kein offenes Dublettenpaar erzeugt — ohne echtes Paar misst die Zeile die Existenzprüfung statt des Tors.",
+    );
+  }
+  return paar;
+}
+
+/**
+ * Der Bearbeitungsstand des Paares, am Draht nachgelesen — nicht der, den die Antwort behauptet.
+ *
+ * RUNDE 2 (Prüflücke 6 des Prüfers): NICHT NUR `status`. Die drei Abschlusswege dieser Gruppe
+ * (`dismiss`, `keep-separate`, `link-related`) setzen ALLE denselben Status „geschlossen" und
+ * unterscheiden sich einzig im Abschlussgrund (`overlap-service.ts:665-675` → `close(...)` mit
+ * `resolution.reason`, `:740-745`). Ein Lesegriff auf `status` allein sähe eine Wirkung also nur,
+ * solange das Paar noch offen ist — genau der Fall, in dem an einem schon geschlossenen Paar ein
+ * zweites Urteil vorbeikäme, bliebe unsichtbar. Gelesen wird deshalb das PAAR AUS STAND UND GRUND.
+ */
+async function dublettenStand(buehne: Buehne, id: string): Promise<string> {
+  const stand = await musterhaft(buehne.app, kopf(buehne, "admin"), "GET", `/api/duplicates/${id}`);
+  const gelesen = stand.json() as { status?: string; resolution?: { reason?: string } | null };
+  return `${gelesen.status ?? "ohne Stand"} · ${gelesen.resolution?.reason ?? "ohne Grund"}`;
+}
+
+/** Zwei angelegte Beiträge und ein offener Widerspruch dazwischen (s. Abschnitt darüber). */
+async function legeWiderspruchspaarAn(buehne: Buehne): Promise<{ id: string }> {
+  const a = await legeKoAn(buehne, "admin");
+  const b = await musterhaft(buehne.app, kopf(buehne, "admin"), "POST", "/api/kos", {
+    ...KO_INHALT,
+    title: "Dichtungswechsel L4 — Gegenaussage",
+    statement: "Dichtung erst nach dem Anlauf prüfen.",
+  });
+  return buehne.services.conflicts.createAuto(
+    {
+      koA: a.id,
+      koB: (b.json() as { id: string }).id,
+      type: "truth",
+      description: "Zwei Beiträge sagen Gegensätzliches über denselben Prüfzeitpunkt.",
+    },
+    { trigger: "validation", method: "deterministic" },
+  );
+}
+
+/**
+ * Der Stand des Widerspruchs, am Draht nachgelesen.
+ *
+ * RUNDE 2 (Prüflücke 6 des Prüfers): die ZWEITMEINUNG ist der Grund, warum hier mehr als `status`
+ * steht. `secondOpinion` schreibt den Meinungstext an den Datensatz (`conflicts/src/service.ts:183`)
+ * — DAS ist die Wirkung dieser Tür, der Statuswechsel ist ihre Begleiterscheinung. Ein Lesegriff auf
+ * `status` allein könnte einen überschriebenen Meinungstext nicht von gar keinem unterscheiden.
+ * Gelesen werden deshalb alle drei Grössen, die ein Urteil an diesem Datensatz verändert: Stand,
+ * Abschlussgrund (`dismiss` setzt „dismissed", `:160`) und der Meinungstext selbst.
+ */
+async function widerspruchStand(buehne: Buehne, id: string): Promise<string> {
+  const stand = await musterhaft(buehne.app, kopf(buehne, "admin"), "GET", `/api/conflicts/${id}`);
+  const gelesen = stand.json() as {
+    status?: string;
+    resolutionReason?: string;
+    secondOpinion?: string | null;
+  };
+  return [
+    gelesen.status ?? "ohne Stand",
+    gelesen.resolutionReason ?? "ohne Grund",
+    gelesen.secondOpinion ?? "ohne Zweitmeinung",
+  ].join(" · ");
+}
 
 // ------------------------------------------------------------------------------------------------
 // DIE TABELLE DER SCHREIBENDEN TÜREN. Reihenfolge nach Nutzerweg: zuerst, was den BESTAND ändert.
@@ -824,5 +1035,207 @@ export const SCHREIB_TABELLE: Schreibzeile[] = [
       pfad: `/api/auth/users/${buehne.konto.viewer.id}/reset`,
       payload: { password: "Frisch-gesetzt-2026!" },
     }),
+  },
+
+  // --- JOB 4141 · Konten: wer darf Menschen anlegen, umstellen und entfernen? --------------------
+  {
+    gruppe: "authRoutes",
+    methode: "DELETE",
+    route: "/api/auth/users/:id",
+    belegstelle: "services/auth/src/routes.ts:785",
+    erfolg: [204],
+    tor: "requireAdmin (eigener Guard des auth-Moduls, `routes.ts:329-344`)",
+    erwartet: NUR_ADMIN,
+    codes: { "401": AUTH_401 },
+    ruesten: async (buehne) => {
+      const ziel = await legeZielkontoAn(buehne);
+      return {
+        pfad: `/api/auth/users/${ziel.id}`,
+        bestand: () => zaehleKonten(buehne),
+      };
+    },
+  },
+  {
+    gruppe: "authRoutes",
+    methode: "POST",
+    route: "/api/users",
+    belegstelle: "services/auth/src/routes.ts:899",
+    // NUR 201. Die Route hat drei eigene 400er vor jedem Schreibvorgang (Name, E-Mail, Passwort,
+    // `routes.ts:915-940`) und zwei 403er über der Befristung — jeder davon käme über `gemessen()`
+    // als „durchgelassen" durch, ohne dass ein Konto entstanden wäre.
+    erfolg: [201],
+    tor: "requireAdmin (eigener Guard des auth-Moduls)",
+    erwartet: NUR_ADMIN,
+    codes: { "401": AUTH_401 },
+    ruesten: async (buehne) => ({
+      pfad: "/api/users",
+      // Eine EIGENE Anschrift, keine der vier Bühnen-Anschriften: eine zweite Anlage unter
+      // `viewer@abnahme.de` scheiterte am Bestand und nicht am Tor.
+      payload: {
+        name: "Abnahme Neuzugang",
+        email: "neuzugang@abnahme.de",
+        password: PASSWORT,
+        role: "viewer",
+      },
+      bestand: () => zaehleKonten(buehne),
+    }),
+  },
+  {
+    gruppe: "authRoutes",
+    methode: "PUT",
+    route: "/api/users/:id",
+    belegstelle: "services/auth/src/routes.ts:1148",
+    // 200 und nicht „2xx": derselbe Handler antwortet 204, wenn kein Feld etwas verändert hat
+    // (`routes.ts:1222-1224`) — ein 204 hiesse hier also „durchs Tor, aber nichts getan".
+    erfolg: [200],
+    tor: "requireAdmin (eigener Guard des auth-Moduls)",
+    erwartet: NUR_ADMIN,
+    codes: { "401": AUTH_401 },
+    ruesten: async (buehne) => {
+      const ziel = await legeZielkontoAn(buehne);
+      return {
+        pfad: `/api/users/${ziel.id}`,
+        // Die Rollenvergabe ist der Fachvorgang dieser Tür — und sie trifft das eigens angelegte
+        // Konto, nicht eines der vier, mit denen gemessen wird.
+        payload: { role: "controller" },
+        bestand: () => rolleVon(buehne, ziel.id),
+      };
+    },
+  },
+  {
+    gruppe: "authRoutes",
+    methode: "DELETE",
+    route: "/api/users/:id",
+    belegstelle: "services/auth/src/routes.ts:1231",
+    erfolg: [204],
+    tor: "requireAdmin (eigener Guard des auth-Moduls)",
+    erwartet: NUR_ADMIN,
+    codes: { "401": AUTH_401 },
+    ruesten: async (buehne) => {
+      const ziel = await legeZielkontoAn(buehne);
+      return {
+        pfad: `/api/users/${ziel.id}`,
+        bestand: () => zaehleKonten(buehne),
+      };
+    },
+  },
+
+  // --- JOB 4141 · Urteile über den Bestand: Widersprüche und Dubletten ---------------------------
+  {
+    gruppe: "conflictRoutes",
+    methode: "POST",
+    route: "/api/conflicts/:id/dismiss",
+    belegstelle: "services/app/src/routes/conflicts-routes.ts:275",
+    // 200 und nichts sonst: ein bereits geschlossener Widerspruch antwortet 409 (`ALREADY_RESOLVED`),
+    // eine erfundene Kennung 404 — beide kämen durchs Tor, ohne dass ein Urteil gefällt wurde.
+    erfolg: [200],
+    tor: "conflict.resolve",
+    erwartet: AB_CONTROLLER,
+    ruesten: async (buehne) => {
+      const widerspruch = await legeWiderspruchspaarAn(buehne);
+      return {
+        pfad: `/api/conflicts/${widerspruch.id}/dismiss`,
+        payload: { note: "Fehlalarm — kein Widerspruch (Rollenabnahme)." },
+        bestand: () => widerspruchStand(buehne, widerspruch.id),
+      };
+    },
+  },
+  {
+    gruppe: "conflictRoutes",
+    methode: "POST",
+    route: "/api/conflicts/:id/second-opinion",
+    belegstelle: "services/app/src/routes/conflicts-routes.ts:292",
+    erfolg: [200],
+    // DER BEFUND DIESER ZEILE, am Produkt nachgelesen statt aus der Nachbarschaft geschlossen:
+    // die Zweitmeinung hängt an `ko.validate` (`conflicts-routes.ts:294`), ihre beiden Nachbartüren
+    // `escalate` und `dismiss` an `conflict.resolve` (`:261`, `:277`). Am Rollenmodell fällt das
+    // heute nicht auf — beide Rechte tragen dieselben zwei Rollen (`rbac/src/policy.ts:16-17`).
+    // Genau deshalb steht es hier: fiele eines der beiden Rechte eines Tages auseinander, wäre diese
+    // Zeile die Stelle, an der die Verwechslung auffliegt.
+    tor: "ko.validate — NICHT `conflict.resolve` wie die beiden Nachbartüren derselben Gruppe",
+    erwartet: AB_CONTROLLER,
+    ruesten: async (buehne) => {
+      const widerspruch = await legeWiderspruchspaarAn(buehne);
+      return {
+        pfad: `/api/conflicts/${widerspruch.id}/second-opinion`,
+        // Der Meinungstext ist Pflicht: `secondOpinion` schreibt ihn an den Datensatz
+        // (`conflicts/src/service.ts:183`), und ein leerer Rumpf mässe die Rumpfprüfung.
+        payload: { opinion: "Zweite Lesart: beide Aussagen gelten in verschiedenen Anlaufarten." },
+        bestand: () => widerspruchStand(buehne, widerspruch.id),
+      };
+    },
+  },
+  {
+    gruppe: "overlapRoutes",
+    methode: "POST",
+    route: "/api/duplicates/:id/dismiss",
+    belegstelle: "services/app/src/routes/overlap-routes.ts:154",
+    erfolg: [200],
+    tor: "ko.validate",
+    erwartet: AB_CONTROLLER,
+    ruesten: async (buehne) => {
+      const paar = await legeDublettenpaarAn(buehne);
+      return {
+        pfad: `/api/duplicates/${paar.id}/dismiss`,
+        payload: { note: "Fehlalarm — kein Duplikat (Rollenabnahme)." },
+        bestand: () => dublettenStand(buehne, paar.id),
+      };
+    },
+  },
+  {
+    gruppe: "overlapRoutes",
+    methode: "POST",
+    route: "/api/duplicates/:id/keep-separate",
+    belegstelle: "services/app/src/routes/overlap-routes.ts:172",
+    erfolg: [200],
+    tor: "ko.validate",
+    erwartet: AB_CONTROLLER,
+    ruesten: async (buehne) => {
+      const paar = await legeDublettenpaarAn(buehne);
+      return {
+        pfad: `/api/duplicates/${paar.id}/keep-separate`,
+        payload: { note: "Bewusst getrennt gelassen (Rollenabnahme)." },
+        bestand: () => dublettenStand(buehne, paar.id),
+      };
+    },
+  },
+  {
+    gruppe: "overlapRoutes",
+    methode: "POST",
+    route: "/api/duplicates/:id/link-related",
+    belegstelle: "services/app/src/routes/overlap-routes.ts:252",
+    erfolg: [200],
+    tor: "ko.validate",
+    erwartet: AB_CONTROLLER,
+    ruesten: async (buehne) => {
+      const paar = await legeDublettenpaarAn(buehne);
+      return {
+        pfad: `/api/duplicates/${paar.id}/link-related`,
+        payload: { note: "Verwandt, nicht doppelt (Rollenabnahme)." },
+        bestand: () => dublettenStand(buehne, paar.id),
+      };
+    },
+  },
+  {
+    gruppe: "overlapRoutes",
+    methode: "POST",
+    route: "/api/duplicates/:id/status",
+    belegstelle: "services/app/src/routes/overlap-routes.ts:218",
+    // 200 und nichts sonst: diese Tür hat einen EIGENEN 400 für einen nicht setzbaren Zielzustand
+    // und für einen fehlenden Abschlussgrund (`OverlapError("INVALID_STATUS")`, `:234`, `:244`).
+    erfolg: [200],
+    tor: "ko.validate",
+    erwartet: AB_CONTROLLER,
+    ruesten: async (buehne) => {
+      const paar = await legeDublettenpaarAn(buehne);
+      return {
+        // `in_bearbeitung` und NICHT `geschlossen`: die Frage dieser Zeile ist das Tor, nicht der
+        // Abschluss. Ein Abschluss verlangte zusätzlich einen wählbaren Grund und mässe damit die
+        // Grundprüfung mit — die drei Zeilen darüber decken die Abschlüsse bereits ab.
+        pfad: `/api/duplicates/${paar.id}/status`,
+        payload: { status: "in_bearbeitung", note: "Übernommen (Rollenabnahme)." },
+        bestand: () => dublettenStand(buehne, paar.id),
+      };
+    },
   },
 ];

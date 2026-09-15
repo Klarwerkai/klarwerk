@@ -38,6 +38,7 @@ import {
   SCHREIB_TABELLE,
   type Schreibzeile,
   ausgelasseneAkteure,
+  sperrwirkungAbweichung,
   vollstaendigGemessen,
 } from "./schreibende-tueren";
 import { type Erwartung, eintrag, erwarteterCode, gemessen } from "./tabelle";
@@ -193,7 +194,8 @@ describe("JOB 4113 · die schreibenden Türen am Draht", () => {
           continue;
         }
         const erwartet: Erwartung = e.ist ?? e.soll;
-        const { status, ergebnis, rumpf, getroffen, stimmt } = await messe(zeile, akteur);
+        const { status, ergebnis, rumpf, getroffen, stimmt, bestandVorher, bestandNachher } =
+          await messe(zeile, akteur);
         gemessenerStatus.push(`${akteur}: ${status}`);
         if (!stimmt) {
           gewaehlt.add(getroffen);
@@ -203,6 +205,34 @@ describe("JOB 4113 · die schreibenden Türen am Draht", () => {
             `${akteur}: erwartet ${erwartet}, gemessen ${ergebnis} (HTTP ${status}) — ${rumpf.slice(0, 200)}`,
           );
           continue;
+        }
+        // ==========================================================================================
+        // RUNDE 2 · KORREKTURPFLICHT 1 — HIER WURDEN DIE BESTANDSWERTE BISHER WEGGEWORFEN.
+        // ==========================================================================================
+        //
+        // An dieser Stelle stand `const { status, ergebnis, rumpf, getroffen, stimmt } = ...`: die
+        // beiden Bestandswerte kamen aus `messe()` zurück und wurden nicht einmal entgegengenommen.
+        // Der Lesegriff jeder Zeile lief also bei JEDER Messung — und sein Ergebnis entschied über
+        // nichts. Der Prüfer hat genau das gemessen: Widerspruch durch `viewer` und `experte`
+        // wirklich gelöst, danach 403, Lauf grün („Tests 198 passed (198)", 46/94).
+        //
+        // JETZT FÄLLT DAS URTEIL HIER, für JEDEN gesperrten Akteur JEDER Zeile, die einen Lesegriff
+        // mitbringt — nicht nur für die zehn Türen der Namensliste in `S1`. Das ist der Unterschied,
+        // auf den es ankommt: die fünf Urteils-Türen, an denen der Prüfer gemessen hat, standen
+        // nicht in jener Liste, und keine künftige Zeile muss dort erst eingetragen werden, um ihre
+        // Sperre am Wirkung-Ende geprüft zu bekommen.
+        if (erwartet === "401" || erwartet === "403") {
+          const wirkung = sperrwirkungAbweichung(
+            `${zeile.methode} ${zeile.route}`,
+            akteur,
+            status,
+            bestandVorher,
+            bestandNachher,
+          );
+          if (wirkung) {
+            abweichungen.push(wirkung);
+            continue;
+          }
         }
         // ==========================================================================================
         // DER FACHVORGANG MUSS GELINGEN — die Verschärfung dieses Auftrags, und sie gilt NUR hier.
@@ -268,12 +298,38 @@ describe("JOB 4113 · die schreibenden Türen am Draht", () => {
   //
   // DIESER FALL WAR ZUERST ROT, und zwar gegen eine Tür, die es in dieser Abnahme noch gar nicht
   // gab (`POST /api/kos` stand in `NICHT_ABGENOMMEN`): „keine Zeile für POST /api/kos".
+  //
+  // JOB 4141 · LIEFERUNG 3 — DIE FÜNF NEUEN NAMEN UNTEN SIND DIE TÜREN, AN DENEN EIN VERSCHWIEGENER
+  // VORGANG AM TEUERSTEN WÄRE: zwei Löschwege für Konten, der Anlageweg, der Rollenwechsel und der
+  // Bearbeitungsstand eines Dublettenpaares. An ihnen allen liest die Zeile den Bestand auf der
+  // anderen Seite der Tür (Kontenzahl, Rolle am Zielkonto, Stand des Paares) — ein `403`, nach dem
+  // das Konto trotzdem weg wäre oder die Rolle trotzdem stünde, fällt genau hier auf und nirgends
+  // sonst.
+  //
+  // RUNDE 2 · KORREKTURPFLICHT 1 — DIE FÜNF NAMEN, DIE HIER GEFEHLT HABEN.
+  //
+  // Der Prüfer hat an `POST /api/conflicts/:id/dismiss` gemessen, und genau diese Tür stand nicht in
+  // der Liste: die beiden Konflikt-Wege und die drei Dubletten-Abschlüsse fehlten, weil Runde 1 nur
+  // die Türen aufgenommen hat, an denen ein Konto oder ein Bearbeitungsstand hängt. Ein Urteil über
+  // den Bestand ist aber dasselbe in Gefährlichkeit: wer einen Widerspruch als „Fehlalarm" schliesst,
+  // entfernt ihn aus der Prüfliste jedes anderen Menschen. Alle zehn JOB-4141-Türen stehen jetzt hier
+  // — und `S8` unten hält fest, dass keine von ihnen wieder herausfallen kann.
   const WIRKUNG_GEPRUEFT = [
     "POST /api/kos",
     "DELETE /api/kos/:id",
     "PUT /api/upload-limits",
     "PUT /api/validation/settings",
     "POST /api/drafts",
+    "DELETE /api/auth/users/:id",
+    "POST /api/users",
+    "PUT /api/users/:id",
+    "DELETE /api/users/:id",
+    "POST /api/conflicts/:id/dismiss",
+    "POST /api/conflicts/:id/second-opinion",
+    "POST /api/duplicates/:id/dismiss",
+    "POST /api/duplicates/:id/keep-separate",
+    "POST /api/duplicates/:id/link-related",
+    "POST /api/duplicates/:id/status",
   ];
   for (const name of WIRKUNG_GEPRUEFT) {
     it(`S1: nach dem abgewiesenen Schreibversuch an ${name} ist der Bestand unverändert`, async () => {
@@ -295,18 +351,28 @@ describe("JOB 4113 · die schreibenden Türen am Draht", () => {
         return wert === "401" || wert === "403";
       });
       expect(gesperrte.length, `gesperrte Akteure für ${name}`).toBeGreaterThan(1);
+      // RUNDE 2 · KORREKTURPFLICHT 1: DASSELBE URTEIL WIE IN DER ZEILENSCHLEIFE, aus derselben
+      // Funktion. Vorher stand hier ein eigener `toEqual`-Vergleich — zwei Stellen, die dasselbe
+      // entscheiden, und nur eine davon hat der Prüfer verstellt gefunden. Jetzt ist es eine; `S7`
+      // probt sie gegen, und `mitLesegriff` verlangt für diese zehn Türen zusätzlich, dass überhaupt
+      // ein Bestand gelesen wurde (eine Zeile ohne Lesegriff darf hier nicht still grün werden).
+      const wirkungen: string[] = [];
       for (const gesperrt of gesperrte) {
         const { status, bestandVorher, bestandNachher } = await messe(zeile, gesperrt);
         expect([401, 403], `${name} als ${gesperrt}: HTTP ${status}`).toContain(status);
-        expect(
+        const abweichung = sperrwirkungAbweichung(
+          name,
+          gesperrt,
+          status,
           bestandVorher,
-          "Diese Zeile liest keinen Bestand — dann kann sie über die WIRKUNG der Sperre nichts sagen.",
-        ).toBeDefined();
-        expect(
           bestandNachher,
-          `${name}: ${gesperrt} wurde mit HTTP ${status} abgewiesen, der Bestand hat sich aber trotzdem verändert (${JSON.stringify(bestandVorher)} → ${JSON.stringify(bestandNachher)}).`,
-        ).toEqual(bestandVorher);
+          true,
+        );
+        if (abweichung) {
+          wirkungen.push(abweichung);
+        }
       }
+      expect(wirkungen, `${name}: Wirkung der Sperre je gesperrtem Akteur`).toEqual([]);
     });
   }
 
@@ -537,6 +603,136 @@ describe("JOB 4113 · die schreibenden Türen am Draht", () => {
       expect(zeile.erfolg.includes(echt.statusCode)).toBe(true);
     } finally {
       await buehne.schliesse();
+    }
+  });
+
+  // ----------------------------------------------------------------------------------------------
+  // S7 · RUNDE 2, KORREKTURPFLICHT 2 — DIE GEGENPROBE DES PRÜFERS, DAUERHAFT UND OHNE PRODUKTDIFF.
+  // ----------------------------------------------------------------------------------------------
+  //
+  // WAS DER PRÜFER GETAN HAT: er hat im Produkt, vor dem Rechtetor von
+  // `POST /api/conflicts/:id/dismiss`, den echten Dienst auch für `viewer` und `experte` laufen
+  // lassen. Beide lösten den Widerspruch wirklich und bekamen danach 403 — die Abnahme blieb grün.
+  //
+  // WAS HIER STEHT: dieselbe LAGE, hergestellt ohne einen einzigen Produktdiff. Die Attrappe unten
+  // ist die echte Zeile mit einem einzigen Unterschied — ihr Lesegriff lässt zwischen dem Lesen VOR
+  // und dem Lesen NACH dem Klopfen den Fachvorgang am Dienst wirklich stattfinden. Für die Messung
+  // ist das ununterscheidbar von einem Rechteloch im Produkt: der Gast klopft, bekommt 403, und der
+  // Widerspruch ist trotzdem gelöst.
+  //
+  // WARUM DAS DIE ABSICHERUNG IST, die der Prüfer verlangt hat: die Attrappe läuft durch `messe()`
+  // und durch `sperrwirkungAbweichung()` — durch genau den Weg, den auch die Zeilenschleife und `S1`
+  // gehen. Nimmt jemand den Bestandsvergleich wieder heraus, liefert die Funktion `undefined`, und
+  // dieser Fall wird rot. Die zweite Hälfte (die ECHTE Zeile, derselbe Akteur, keine Abweichung)
+  // steht daneben, damit die Strenge nicht bloss Strenge ist: ein Vergleich, der immer meckert,
+  // wäre ebenso wertlos wie einer, der nie meckert.
+  it("S7: ein Vorgang, der trotz HTTP 403 stattfindet, macht die Abnahme namentlich rot", async () => {
+    const name = "POST /api/conflicts/:id/dismiss";
+    const echte = SCHREIB_TABELLE.find((z) => `${z.methode} ${z.route}` === name);
+    expect(echte, `Zeile ${name} in SCHREIB_TABELLE`).toBeDefined();
+    if (!echte) {
+      return;
+    }
+
+    // (a) DIE ECHTE ZEILE: der Gast wird abgewiesen, und der Widerspruch bleibt, wie er war.
+    const sauber = await messe(echte, "viewer");
+    expect(sauber.status, `${name} als viewer: ${sauber.rumpf.slice(0, 200)}`).toBe(403);
+    expect(
+      sperrwirkungAbweichung(
+        name,
+        "viewer",
+        sauber.status,
+        sauber.bestandVorher,
+        sauber.bestandNachher,
+        true,
+      ),
+      `Am unveränderten Produkt darf diese Tür keine Abweichung melden — sonst prüft der Vergleich nicht, sondern lärmt. Gelesen: ${JSON.stringify(sauber.bestandVorher)} → ${JSON.stringify(sauber.bestandNachher)}`,
+    ).toBeUndefined();
+
+    // (b) DIESELBE TÜR, DERSELBE AKTEUR, ABER DER VORGANG FINDET STATT — die Lage des Prüfers.
+    const attrappe: Schreibzeile = {
+      ...echte,
+      ruesten: async (buehne, akteur) => {
+        const vorgang = await echte.ruesten(buehne, akteur);
+        let gelesen = 0;
+        return {
+          ...vorgang,
+          bestand: async () => {
+            gelesen += 1;
+            // Beim ZWEITEN Lesen — also nach dem abgewiesenen Klopfen — hat der Widerspruch sein
+            // Urteil bekommen. Auf der frischen Bühne gibt es genau einen offener Widerspruch, der
+            // aus `ruesten` dieser Zeile stammt.
+            if (gelesen === 2) {
+              const offen = await buehne.services.conflicts.unresolved();
+              const widerspruch = offen[0];
+              if (!widerspruch) {
+                throw new Error(
+                  "Die Gegenprobe kann ihre Lage nicht herstellen: auf der frischen Bühne steht kein offener Widerspruch, den ein unerlaubter Vorgang lösen könnte.",
+                );
+              }
+              await buehne.services.conflicts.dismiss(widerspruch.id, "gegenprobe-s7");
+            }
+            return vorgang.bestand?.();
+          },
+        };
+      },
+    };
+
+    const verseucht = await messe(attrappe, "viewer");
+    expect(
+      verseucht.status,
+      "Die Gegenprobe ändert das Rechtetor NICHT — der Gast muss weiterhin abgewiesen werden, sonst mässe sie das Tor statt der Wirkung.",
+    ).toBe(403);
+    const abweichung = sperrwirkungAbweichung(
+      name,
+      "viewer",
+      verseucht.status,
+      verseucht.bestandVorher,
+      verseucht.bestandNachher,
+      true,
+    );
+    expect(
+      abweichung,
+      `Der Widerspruch wurde trotz HTTP ${verseucht.status} gelöst (${JSON.stringify(verseucht.bestandVorher)} → ${JSON.stringify(verseucht.bestandNachher)}), und die Abnahme hat es nicht gemerkt — das ist der Befund des Prüfers aus Runde 1, unrepariert.`,
+    ).toBeDefined();
+    expect(
+      abweichung,
+      "Die Meldung muss den Akteur beim Namen nennen — eine anonyme Abweichung schickt niemanden an die richtige Tür.",
+    ).toContain("viewer");
+    expect(abweichung).toContain(name);
+  });
+
+  // ----------------------------------------------------------------------------------------------
+  // S8 — KEINE DER ZEHN URTEILS- UND KONTEN-TÜREN DARF AUS DER WIRKUNGSPRÜFUNG HERAUSFALLEN.
+  // ----------------------------------------------------------------------------------------------
+  //
+  // Der Befund des Prüfers hatte zwei Hälften: der Vergleich fehlte (S7 hält sie), und die Tür stand
+  // nicht in `WIRKUNG_GEPRUEFT` (diese hier). Ein stilles Streichen eines Namens aus jener Liste
+  // nähme `S1` genau den Fall weg, um den es geht — und niemandem fiele es auf, weil ein Test, den
+  // es nicht mehr gibt, auch nicht rot wird.
+  it("S8: alle zehn JOB-4141-Türen stehen in der Wirkungsprüfung und lesen einen Bestand", () => {
+    const zehn = [
+      "DELETE /api/auth/users/:id",
+      "POST /api/users",
+      "PUT /api/users/:id",
+      "DELETE /api/users/:id",
+      "POST /api/conflicts/:id/dismiss",
+      "POST /api/conflicts/:id/second-opinion",
+      "POST /api/duplicates/:id/dismiss",
+      "POST /api/duplicates/:id/keep-separate",
+      "POST /api/duplicates/:id/link-related",
+      "POST /api/duplicates/:id/status",
+    ];
+    const fehlen = zehn.filter((name) => !WIRKUNG_GEPRUEFT.includes(name));
+    expect(
+      fehlen,
+      "Diese Türen ändern Konten oder Urteile über den Bestand. Fällt eine aus der Wirkungsprüfung, misst die Abnahme an ihr wieder nur den Statuscode — genau die Lage, in der der Prüfer den gelösten Widerspruch trotz 403 fand.",
+    ).toEqual([]);
+    for (const name of zehn) {
+      expect(
+        SCHREIB_TABELLE.some((z) => `${z.methode} ${z.route}` === name),
+        `${name} steht in SCHREIB_TABELLE`,
+      ).toBe(true);
     }
   });
 

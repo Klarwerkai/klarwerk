@@ -273,10 +273,12 @@ describe("JOB 4061 · jede registrierte Route ist abgenommen", () => {
     // senkt, muss hier begründen, welche Tür die Abnahme künftig nicht mehr anfasst.
     expect(gruppenGedeckt, "gedeckte Routengruppen").toBeGreaterThanOrEqual(40);
     expect(gemessen, "mit fünf Akteuren gemessene Endpunkte").toBeGreaterThanOrEqual(123);
+    // JOB 4141: von 36 auf 46 — die zehn Türen, an denen ein Gast Konten anlegen oder Urteile über
+    // den Bestand fällen würde. Die Zahl stammt aus DIESEM Lauf, nicht aus dem Auftrag.
     expect(
       schreibendGemessen,
       "mit fünf Akteuren gemessene SCHREIBENDE Endpunkte (POST/PUT/DELETE)",
-    ).toBeGreaterThanOrEqual(36);
+    ).toBeGreaterThanOrEqual(46);
     expect(
       gemessen + rest,
       "Endpunkte mit einem Platz in der Abnahme (gemessen + begründet zurückgestellt)",
@@ -318,6 +320,12 @@ describe("JOB 4061 · jede registrierte Route ist abgenommen", () => {
       `Diese Türen sind als PRÜFSCHULD geführt (art: "zurueckgestellt"), nicht als bauliche Unmöglichkeit. Die Obergrenze ist der in JOB 4113 gemessene Stand; wer sie anhebt, nimmt eine Tür aus der Messung und muss hier sagen, welche und warum. Aktuell zurückgestellt: ${zurueckgestellt
         .map((e) => `${e.methode} ${e.pfad}`)
         .join(", ")}`,
-    ).toBeLessThanOrEqual(55);
+      // JOB 4141: von 55 auf 45. Die zehn Türen, an denen ein unberechtigter Akteur Konten oder
+      // Urteile über den Bestand verändern würde, sind seit diesem Auftrag gemessen statt
+      // zurückgestellt — vier Konten-Türen (`DELETE /api/auth/users/:id`, `POST /api/users`,
+      // `PUT|DELETE /api/users/:id`) und sechs Urteils-Türen (`POST /api/conflicts/:id/dismiss`,
+      // `…/second-opinion`, `POST /api/duplicates/:id/dismiss|keep-separate|link-related|status`).
+      // Die Zahl ist die in DIESEM Lauf gezählte; sie darf weiter fallen und steigt nur mit Namen.
+    ).toBeLessThanOrEqual(45);
   });
 });
