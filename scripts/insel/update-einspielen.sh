@@ -61,6 +61,26 @@
 #               Altinstallation (BEN2). Der Mensch kommt mit
 #               `--datenstand-unbekannt-uebernehmen` darüber hinweg; dann gilt jede Stufe als neu.
 #
+# DREI KORREKTUREN AUS JOB 4127 — alle am ZIP, dem Weg, den der Betreiber wirklich geht (das Paket
+# wird gezippt, weil sich auf den Mac Studio nicht direkt schreiben lässt; Übergabe §1) und der
+# trotzdem bis dahin nur in seinem guten Fall gefahren war:
+#
+#   PAKET       `unzip` lief ungeprüft. Ein beschädigtes oder abgeschnittenes Archiv riss `set -e`
+#               mit — kein Grund, keine Ergebniszeile, nur der rohe Exitcode von `unzip`. Dieselbe
+#               Lehre wie „START", nur eine Zeile früher. Jetzt: Grund „paket", Exit 1.
+#   MEHRDEUTIG  Trug das Zip seinen Vertrag nicht in der Wurzel, nahm eine Schleife wortlos den
+#               ERSTEN Unterordner mit Vertrag. Bei zwei Releases im Paket entschied damit die
+#               Sortierreihenfolge eines Globs, welche Fassung auf der Insel landet. Jetzt: die
+#               Wahl wird ausgesprochen, und zwei Kandidaten sind ein Abbruch (Grund „mehrdeutig",
+#               Exit 1), bevor irgendetwas angefasst ist. NACHTRAG AUS RUNDE 2 (BEN): Die Zählung
+#               lief zuerst über `*` allein und übersah damit jeden VERSTECKTEN Unterordner — mit
+#               `sichtbar/` und `.zweiter/` im Paket meldete der Weg „der einzige mit
+#               SCHEMA-VERTRAG", sicherte und schaltete um. Eine Prüfung, die einen Kandidaten
+#               nicht sieht, ist keine; gezählt werden jetzt alle unmittelbaren Einträge.
+#   PAKETPFAD   Die Abbruchmeldung „trägt keinen SCHEMA-VERTRAG" nannte das Auspackverzeichnis unter
+#               `${TMPDIR}/klarwerk-update-…`, das der Trap im selben Augenblick löscht. Genannt
+#               wird jetzt das Zip, das der Mensch in der Hand hat.
+#
 # EXITCODES:
 #   0  Update aktiv
 #   1  Aufruf-/Umgebungsfehler
@@ -172,6 +192,10 @@ abbruch_ohne_umschalten() {
 # Dateinamen des Pakets: ein umbenanntes Zip darf kein anderes Release werden.
 # ------------------------------------------------------------------------------------------------
 AUSPACK=""
+# Der Pfad des ZIPS, wenn die Quelle eines war — leer beim Ordnerweg. Jede Meldung über „das Paket"
+# nennt ihn statt des Auspackverzeichnisses: das liegt unter `${TMPDIR}/klarwerk-update-…` und ist in
+# dem Augenblick, in dem der Mensch die Meldung liest, vom Trap unten schon gelöscht.
+PAKET=""
 aufraeumen() {
   if [ -n "$AUSPACK" ] && [ -d "$AUSPACK" ]; then
     rm -rf "$AUSPACK"
@@ -185,16 +209,53 @@ case "$QUELLE" in
       echo "[update] ABBRUCH: unzip nicht gefunden — Paket kann nicht geöffnet werden." >&2
       exit 1
     fi
+    PAKET="$QUELLE"
     AUSPACK="$(mktemp -d "${TMPDIR:-/tmp}/klarwerk-update-XXXXXX")"
-    unzip -q "$QUELLE" -d "$AUSPACK"
+    # DIESELBE LEHRE WIE „START" (Kopf :55), nur für das Auspacken nie gezogen: ungeprüft riss
+    # `set -e` den Weg an dieser Zeile mit. Ein beschädigtes, abgeschnittenes oder gar kein Zip
+    # endete mit dem rohen Exitcode von `unzip`, ohne Grund und ohne Ergebniszeile — und das ist der
+    # Regelfall des echten Betriebs, denn das Paket kommt über eine Übertragung. Der geordnete
+    # Ausgang ist `abbruch_ohne_umschalten` (:176, hier schon verwendbar) mit Exit 1
+    # („Aufruf-/Umgebungsfehler", Tabelle :82): es ist nichts gesichert und nichts umgeschaltet.
+    AUSPACK_MELDUNG=""
+    if ! AUSPACK_MELDUNG="$(unzip -q "$QUELLE" -d "$AUSPACK" 2>&1)"; then
+      echo "[update] ABBRUCH: $PAKET liess sich nicht auspacken — kein lesbares Zip-Paket." >&2
+      if [ -n "$AUSPACK_MELDUNG" ]; then
+        printf '%s\n' "$AUSPACK_MELDUNG" | sed -n '1,5p' >&2
+      fi
+      abbruch_ohne_umschalten "paket" 1
+    fi
     NEU_QUELLE="$AUSPACK"
-    if [ ! -f "$NEU_QUELLE/SCHEMA-VERTRAG" ]; then
-      for kandidat in "$AUSPACK"/*; do
-        if [ -f "$kandidat/SCHEMA-VERTRAG" ]; then
-          NEU_QUELLE="$kandidat"
-          break
-        fi
+    if [ ! -f "$AUSPACK/SCHEMA-VERTRAG" ]; then
+      # WELCHES RELEASE EINGESPIELT WIRD, DARF KEINE SORTIERREIHENFOLGE ENTSCHEIDEN. Vorher nahm
+      # diese Stelle wortlos den ERSTEN Unterordner mit Vertrag; lagen zwei Releases im Paket,
+      # entschied das Glob, und der Mensch erfuhr weder das eine noch das andere. Das ist derselbe
+      # Grundsatz, den „KOLLISION" (:35) und „WIEDERHOLUNG" (:44) schon durchsetzen: im Zweifel
+      # abbrechen, BEVOR etwas angefasst wird — und die getroffene Wahl aussprechen.
+      #
+      # DIE DREI MUSTER SIND EINS: alle unmittelbaren Einträge, AUCH die versteckten. `*` allein
+      # übergeht jeden Punkteintrag — und eine Mehrdeutigkeitsprüfung, die einen Kandidaten nicht
+      # sieht, ist keine: sie spielte den sichtbaren Ordner ein und nannte ihn dabei „den einzigen
+      # mit SCHEMA-VERTRAG" (BEN, Runde 1, mit `sichtbar/` und `.zweiter/` gemessen). Was in einem
+      # Paket liegt, das gepackt, übertragen und ausgepackt wurde, bestimmt nicht der Betreiber.
+      # `.[!.]*` fängt `.name`, `..?*` fängt `..name`; `.` und `..` selbst bleiben damit draussen,
+      # anders als bei `shopt -s dotglob`, das sie in älteren bash-Fassungen mitbringt.
+      KANDIDATEN=""
+      ANZAHL=0
+      for kandidat in "$AUSPACK"/* "$AUSPACK"/.[!.]* "$AUSPACK"/..?*; do
+        [ -f "$kandidat/SCHEMA-VERTRAG" ] || continue
+        KANDIDATEN="${KANDIDATEN}${KANDIDATEN:+, }$(basename "$kandidat")"
+        ANZAHL=$((ANZAHL + 1))
+        NEU_QUELLE="$kandidat"
       done
+      if [ "$ANZAHL" -gt 1 ]; then
+        echo "[update] ABBRUCH: $PAKET enthält $ANZAHL Ordner mit SCHEMA-VERTRAG ($KANDIDATEN)." >&2
+        echo "[update]   Welches Release gemeint ist, darf keine Sortierreihenfolge entscheiden — packe genau eines ein." >&2
+        abbruch_ohne_umschalten "mehrdeutig" 1
+      fi
+      if [ "$ANZAHL" -eq 1 ]; then
+        echo "[update] Paketordner gewählt: $KANDIDATEN (der einzige mit SCHEMA-VERTRAG)"
+      fi
     fi ;;
   *)
     NEU_QUELLE="$(cd "$QUELLE" && pwd)" ;;
@@ -202,7 +263,7 @@ esac
 
 NEU_VERTRAG="$NEU_QUELLE/SCHEMA-VERTRAG"
 if [ ! -f "$NEU_VERTRAG" ]; then
-  echo "[update] ABBRUCH: $NEU_QUELLE trägt keinen SCHEMA-VERTRAG — Herkunft und Stufen unbekannt." >&2
+  echo "[update] ABBRUCH: ${PAKET:-$NEU_QUELLE} trägt keinen SCHEMA-VERTRAG — Herkunft und Stufen unbekannt." >&2
   abbruch_ohne_umschalten "vertrag" 5
 fi
 NEU_NAME="$(vertragsfeld "$NEU_VERTRAG" release)"

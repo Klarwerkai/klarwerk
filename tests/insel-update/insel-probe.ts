@@ -175,6 +175,45 @@ export function legePaketAn(insel: Insel, wunsch: ReleaseWunsch): string {
   return schreibeRelease(ordner, wunsch);
 }
 
+function werkzeugVorhanden(werkzeug: string): boolean {
+  return spawnSync("bash", ["-c", `command -v ${werkzeug}`], { encoding: "utf8" }).status === 0;
+}
+
+/**
+ * JOB 4127 — Packt den INHALT eines Verzeichnisses zu einem echten `.zip`.
+ *
+ * Das ist die Verpackung, in der das Paket beim Betreiber wirklich ankommt: `build-current-release`
+ * ruft `zip`, und auf den Mac Studio lässt sich nicht direkt schreiben, deshalb wird alles gezippt
+ * (`docs/operations/UEBERGABE-KLARWERK-Insel.md` §1). Was im Zip liegt, bestimmt der Aufrufer über
+ * `inhalt`: das Releaseverzeichnis selbst ergibt ein Release im WURZELVERZEICHNIS des Zips, sein
+ * Elternverzeichnis eines im UNTERORDNER — und ein Elternverzeichnis mit zwei Releases den
+ * mehrdeutigen Fall. Gepackt wird mit dem Werkzeug des Prüfstandes; eine Nachbildung des
+ * Zip-Formates würde messen, ob diese Datei ein Zip bauen kann, und nicht, ob der Weg eines öffnet.
+ *
+ * `undefined` heisst: dieser Prüfstand hat weder `zip` noch `ditto`. Dann ist der Fall NICHT
+ * messbar, und der Aufrufer überspringt ihn mit Grund auf stderr, statt still grün zu melden.
+ */
+export function packeZip(inhalt: string, ziel: string): string | undefined {
+  if (werkzeugVorhanden("zip")) {
+    const lauf = spawnSync("zip", ["-qr", ziel, "."], { cwd: inhalt, encoding: "utf8" });
+    if (lauf.status !== 0) {
+      throw new Error(`zip endete mit ${lauf.status}: ${lauf.stderr ?? ""}`);
+    }
+    return ziel;
+  }
+  if (werkzeugVorhanden("ditto")) {
+    // `ditto -c -k` legt den INHALT des Quellverzeichnisses ins Zip — dieselbe Aufteilung wie oben.
+    const lauf = spawnSync("ditto", ["-c", "-k", "--norsrc", "--noextattr", inhalt, ziel], {
+      encoding: "utf8",
+    });
+    if (lauf.status !== 0) {
+      throw new Error(`ditto endete mit ${lauf.status}: ${lauf.stderr ?? ""}`);
+    }
+    return ziel;
+  }
+  return undefined;
+}
+
 /**
  * Ein PATH-Vorsatz mit Attrappen für FREMDBINARIES — und nur für die.
  *
