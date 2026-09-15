@@ -647,9 +647,18 @@ neue Aufrufform). H2 bis H5 wären dann still grün: ${leer.join(" · ")}`,
  *  wechselt — H2 liest das zweite Argument, nicht das erste). Anders als bei `INTERNAL` ist das ein
  *  NEUER Katalogschlüssel: er verschiebt H3.2 (die Vereinigung muss ihn decken, und sie tut es über
  *  diese Liste) und H4 (er hat von Anfang an einen Routenfall in EN/NL, s. `GEMESSEN_VON`, und
- *  gehört deshalb NICHT in `OHNE_ROUTENFALL`). */
+ *  gehört deshalb NICHT in `OHNE_ROUTENFALL`).
+ *
+ *  `ACCESS_EXPIRY_UNREADABLE` kam mit JOB 4011 hinzu, und zwar an ZWEI Wurfstellen: der Setzer
+ *  `service.setAccessExpiry` (dort stand bis dahin `INTERNAL`) und die Lesbarkeitswache des
+ *  Anlegewegs in `routes.ts`. Beide werfen denselben Schlüssel, damit Anlegen und Ändern auf
+ *  denselben Tippfehler dieselbe Antwort geben (Prinzip F1b). `INTERNAL` bleibt in dieser Liste:
+ *  die Formwachen beider Wege werfen ihn weiterhin für einen FREMDEN TYP. Wie bei `ACCESS_EXPIRED`
+ *  ist es ein NEUER Katalogschlüssel — er verschiebt H3.2 (gedeckt über diese Liste) und bringt
+ *  seinen Routenfall in EN/NL mit (s. `GEMESSEN_VON`), gehört also NICHT in `OHNE_ROUTENFALL`. */
 const GEWORFEN = [
   "ACCESS_EXPIRED",
+  "ACCESS_EXPIRY_UNREADABLE",
   "ACCOUNT_NOT_FOUND",
   "CURRENT_PASSWORD_INCORRECT",
   "EMAIL_TAKEN",
@@ -1397,8 +1406,12 @@ function routenfall(schluessel: string, sprache: Fremdsprache): string[] {
 }
 
 /**
- * DIE LISTE. 15 von 32 Schlüsseln zeigen heute nirgends einen englischen oder niederländischen Satz
+ * DIE LISTE. 15 von 33 Schlüsseln zeigen heute nirgends einen englischen oder niederländischen Satz
  * an einem echten Draht. Gemessen, nicht abgeschrieben.
+ *
+ * JOB 4011: der Katalog ist um `ACCESS_EXPIRY_UNREADABLE` gewachsen (32 → 33), diese Liste NICHT —
+ * der neue Schlüssel bringt seine Messung mit (s. `GEMESSEN_VON`, zwei Fälle in
+ * `tests/gast-befristung/`). Die fünfzehn Namen sind unverändert dieselben.
  *
  * JOB 3792: der Katalog ist um `PERMISSION_MISSING` gewachsen, diese Liste NICHT — der neue
  * Schlüssel bringt seine Messung mit (s. `GEMESSEN_VON`). Verschoben hat sich sonst nichts; die
@@ -1451,6 +1464,14 @@ const GEMESSEN_VON = {
   // einem Zug nach `OHNE_ROUTENFALL`, und H4 nennt ihn.
   ACCESS_EXPIRED: [
     "tests/demo-zugang-gaeste-meldung/ablauf-meldung.test.ts · M3 dieselbe Lage auf Englisch und Niederländisch",
+  ],
+  // JOB 4011 · der Satz für ein unlesbares Ablaufdatum, gemessen am Tag seiner Einführung. ZWEI
+  // Fälle, einer je Sprache: sie fahren den Anlageweg (`POST /api/users`) mit „morgen" und holen
+  // ihre Erwartung über `MELDUNGEN.ACCESS_EXPIRY_UNREADABLE.<en|nl>` aus dem Katalog (K5). Fällt
+  // einer aus, nennt H4.2 ihn namentlich — und der Schlüssel wandert nach `OHNE_ROUTENFALL`.
+  ACCESS_EXPIRY_UNREADABLE: [
+    "tests/gast-befristung/gast-in-einem-schritt.test.ts · G3b EN — derselbe Tippfehler auf Englisch: 400 mit dem englischen Satz",
+    "tests/gast-befristung/gast-in-einem-schritt.test.ts · G3c NL — und auf Niederländisch: 400 mit dem niederländischen Satz",
   ],
   // JOB 3956 · die zwei Sätze des Entwurfs-Ladewegs. Beide hängen an EINEM Fall je Sprache, und
   // beide Fälle halten den Satz doppelt: wörtlich (ein schiefes Katalogfeld fällt auf) UND gegen

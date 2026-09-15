@@ -4,7 +4,7 @@ import { type Meldungsschluessel, type Sprache, meldung } from "./meldungen";
 import { HINWEIS_TEXT_VERSION, hinweisFaellig } from "./notice";
 import { type OidcProvider, OidcUnreachableError, createPkcePair, randomToken } from "./oidc";
 import { LoginRateLimiter } from "./rate-limit";
-import type { AuthService } from "./service";
+import { type AuthService, istLesbaresAblaufdatum } from "./service";
 import { AuthError, type AuthErrorCode, type PublicUser, type Role } from "./types";
 
 const STATUS_BY_CODE: Record<AuthErrorCode, number> = {
@@ -15,6 +15,31 @@ const STATUS_BY_CODE: Record<AuthErrorCode, number> = {
   FORBIDDEN: 403,
   NOT_FOUND: 404,
 };
+
+/**
+ * JOB 4011 · WAS DER MENSCH GETAN HAT, NICHT WAS DER CODE HEISST.
+ *
+ * `AuthErrorCode` (`types.ts:62`) ist eine kurze, alte Liste; sie kennt kein `BAD_REQUEST`. Ein
+ * unlesbares Ablaufdatum ist aber weder verboten noch ein Serverfehler — es ist ein Tippfehler, und
+ * die Antwort darauf ist dieselbe 400 `BAD_REQUEST`, die jede andere Eingabe bekommt, die ein
+ * Mensch tippen kann (`:720-744`). Diese Tabelle bildet den KATALOGSCHLÜSSEL auf die Antwort ab.
+ *
+ * WARUM DIE ABBILDUNG HIER STEHT UND NICHT AM WURF: `types.ts` ist kein Zielpfad dieses Auftrags,
+ * und eine zweite AuthError-KLASSE wäre der teurere Weg — `sendError` wählt für Klassen per
+ * `instanceof` (`OidcUnreachableError`), und der Wächter D in
+ * `tests/q9-oidc-literalquelle/jeder-fehler-traegt-einen-katalogschluessel.test.ts` lässt bewusst
+ * genau EINE solche Klasse zu. Die Bauart ist dieselbe, die dort seit jeher gilt: der FEHLERCODE
+ * trägt den Status, der SCHLÜSSEL die Bedeutung, und wo beide auseinandergehen, steht es
+ * geschrieben. Als offener Punkt benannt: der saubere Zielzustand wäre ein `BAD_REQUEST` in
+ * `AuthErrorCode`.
+ *
+ * EINE STELLE FÜR BEIDE WEGE. Anlegen und Ändern werfen denselben Schlüssel und laufen durch
+ * dasselbe `sendError` — deshalb sind ihre Antworten nicht bloss ähnlich, sondern dieselben Bytes
+ * (gehalten von G6 in `tests/gast-befristung/`).
+ */
+const ANTWORT_JE_SCHLUESSEL: ReadonlyMap<string, { status: number; error: string }> = new Map([
+  ["ACCESS_EXPIRY_UNREADABLE", { status: 400, error: "BAD_REQUEST" }],
+]);
 
 // JOB 3780: DIE VIER ROLLENNAMEN STEHEN GENAU EINMAL IN DIESER DATEI.
 //
@@ -34,6 +59,46 @@ const ROLLEN: readonly Role[] = ["viewer", "experte", "controller", "admin"];
  */
 function istBekannteRolle(wert: unknown): wert is Role {
   return ROLLEN.includes(wert as Role);
+}
+
+/**
+ * JOB 4011 R4: WAS VON EINEM HALB ANGELEGTEN KONTO WIRKLICH IM BESTAND STEHT.
+ *
+ * Gelesen, nicht geschlossen. Der Anlageweg protokolliert nach einer gescheiterten Rücknahme, was
+ * er zurücklässt; bis Runde 3 leitete er das aus seinem eigenen Ablauf ab und lag damit falsch,
+ * sobald der Bestand etwas anderes hergab (BEN-Befund 5). Diese Stelle sieht nach.
+ *
+ * `"unbekannt"` IST EIN EIGENER ZUSTAND und kein Ersatz für „nein": antwortet die Ablage auch beim
+ * Lesen nicht mehr, weiss dieser Aufruf nichts über den Rest — und dann darf die Zeile weder
+ * Entwarnung geben noch Alarm schlagen. Dasselbe Zustandsmodell wie auf der Fläche: „unbekannt"
+ * unterscheidet sich von „0"/„leer".
+ */
+type RestBefund = {
+  restVorhanden: boolean | "unbekannt";
+  restFreigegeben: boolean | "unbekannt";
+};
+
+async function restBefund(service: AuthService, konto: string): Promise<RestBefund> {
+  try {
+    const rest = (await service.listUsers()).find((u) => u.id === konto);
+    return { restVorhanden: rest !== undefined, restFreigegeben: rest?.approved ?? false };
+  } catch {
+    return { restVorhanden: "unbekannt", restFreigegeben: "unbekannt" };
+  }
+}
+
+/** Der Satz zum Befund — drei Befunde, drei Sätze, keiner beschönigt. */
+function restSatz(befund: RestBefund): string {
+  if (befund.restFreigegeben === "unbekannt") {
+    return "ob und in welchem Zustand ein Konto zurückbleibt, war nicht mehr messbar.";
+  }
+  if (befund.restFreigegeben) {
+    return "im Bestand steht ein FREIGEGEBENES Konto, mit dem man sich anmelden kann.";
+  }
+  if (befund.restVorhanden) {
+    return "der Rest ist nicht freigegeben — mit ihm kommt niemand herein.";
+  }
+  return "im Bestand steht kein Konto aus diesem Aufruf.";
 }
 
 const SESSION_COOKIE = "kw_session";
@@ -134,8 +199,10 @@ export function sprache(request: FastifyRequest): Sprache {
 function sendError(reply: FastifyReply, error: unknown, sprache: Sprache): void {
   if (error instanceof AuthError) {
     const schluessel = error instanceof OidcUnreachableError ? "OIDC_UNREACHABLE" : error.message;
-    reply.code(STATUS_BY_CODE[error.code]).send({
-      error: error.code,
+    // JOB 4011: kennt der Schlüssel eine eigene Antwort, gilt sie — sonst der Fehlercode wie bisher.
+    const eigene = ANTWORT_JE_SCHLUESSEL.get(schluessel);
+    reply.code(eigene?.status ?? STATUS_BY_CODE[error.code]).send({
+      error: eigene?.error ?? error.code,
       message: meldung(schluessel, sprache),
     });
     return;
@@ -639,65 +706,222 @@ export function authRoutes(
       reply.code(200).send(users.map((u) => ({ id: u.id, name: u.name })));
     });
 
-    // Admin legt einen Nutzer direkt an (sofort freigegeben), optional mit Rolle.
-    app.post<{ Body: { name: string; email: string; password: string; role?: Role } }>(
-      "/api/users",
-      async (request, reply) => {
-        const admin = await requireAdmin(request, reply);
-        if (!admin) {
-          return;
+    // Admin legt einen Nutzer direkt an (sofort freigegeben), optional mit Rolle — und seit
+    // JOB 4011 optional BEFRISTET.
+    //
+    // JOB 4011 (ERSTEINRICHTUNG-GAST T1): EIN GAST ENTSTEHT BEFRISTET ODER GAR NICHT.
+    //
+    // Bis hierher war „einen Gastzugang anlegen, der von selbst endet" ein ZWEISTUFIGER Vorgang mit
+    // einer Lücke dazwischen: erst `POST /api/users` (Konto ohne Ende), dann `PUT /api/users/:id`
+    // mit `accessExpiresAt`. Scheiterte der zweite Aufruf oder unterblieb er, blieb ein
+    // UNBEFRISTETER Zugang im Bestand — anmeldbar, unbegrenzt, und nichts wies ihn als unfertig
+    // aus. Der Weg blieb erhalten (bestehende Konten brauchen ihn), er ist nur nicht mehr der
+    // einzige.
+    //
+    // DREI EINGABEN, ZWEI AUSSAGEN — und der Unterschied zum Änderungsweg ist Absicht:
+    //   · ein String  ⇒ „befriste auf diesen Zeitpunkt"
+    //   · `null`      ⇒ „unbefristet"
+    //   · FEHLEND     ⇒ „unbefristet"
+    // Am Änderungsweg sind die letzten beiden VERSCHIEDEN (`null` = „NIMM die Befristung",
+    // fehlend = „ich sage dazu nichts"), weil es dort eine Vorgeschichte gibt, die man
+    // versehentlich löschen könnte. Beim Anlegen gibt es nichts zu nehmen: ein Konto, das gerade
+    // erst entsteht, trägt keine Befristung, die ein Schweigen bewahren müsste.
+    //
+    // GEPRÜFT WIRD, BEVOR ETWAS ENTSTEHT — und das ist die Kernzusage dieses Auftrags, nicht eine
+    // Feinheit der Reihenfolge. Die naheliegende Halbheit wäre, nach `register` einfach
+    // `setAccessExpiry` hinterherzurufen; bei unlesbarer Eingabe bliebe dann genau das unbefristete
+    // Konto zurück, das dieser Weg verhindern soll. Gehalten von G3 in `tests/gast-befristung/`,
+    // das die NICHTENTSTEHUNG an der Nutzerliste misst und nicht den Statuscode.
+    app.post<{
+      // `unknown` für die Befristung und nicht `string | null`: was hier hereinkommt, bestimmt der
+      // Client. EINE TYPANGABE IST KEINE PRÜFUNG (JOB 3755 R2, BEN) — sie wird unten durchgesetzt.
+      Body: {
+        name: string;
+        email: string;
+        password: string;
+        role?: Role;
+        accessExpiresAt?: unknown;
+      };
+    }>("/api/users", async (request, reply) => {
+      const admin = await requireAdmin(request, reply);
+      if (!admin) {
+        return;
+      }
+      // SCRUM-463 (WP4): ehrliche Eingabe-Validierung an der Route, BEVOR register/changeRole laufen.
+      // Vorher führte ein fehlendes password zu `input.password.length` auf undefined → TypeError →
+      // opakes 500 („Unerwarteter Fehler"); und eine ungültige role wurde still übernommen. Jetzt:
+      // klarer 400 mit nutzerlesbarer Meldung (kein Auth-/Rollenmodell-Umbau, nur Route-Guard).
+      const body = (request.body ?? {}) as {
+        name?: unknown;
+        email?: unknown;
+        password?: unknown;
+        role?: unknown;
+        accessExpiresAt?: unknown;
+      };
+      if (typeof body.name !== "string" || body.name.trim().length === 0) {
+        reply
+          .code(400)
+          .send({ error: "BAD_REQUEST", message: meldung("NAME_REQUIRED", sprache(request)) });
+        return;
+      }
+      if (typeof body.email !== "string" || !/.+@.+\..+/.test(body.email.trim())) {
+        reply
+          .code(400)
+          .send({ error: "BAD_REQUEST", message: meldung("EMAIL_REQUIRED", sprache(request)) });
+        return;
+      }
+      if (typeof body.password !== "string" || body.password.length < 8) {
+        reply
+          .code(400)
+          .send({ error: "WEAK_PASSWORD", message: meldung("WEAK_PASSWORD", sprache(request)) });
+        return;
+      }
+      if (body.role !== undefined && !istBekannteRolle(body.role)) {
+        reply
+          .code(400)
+          .send({ error: "BAD_REQUEST", message: meldung("UNKNOWN_ROLE", sprache(request)) });
+        return;
+      }
+      try {
+        // ────────────────────────────────────────────────────────────────────────────────────
+        // DIE BEIDEN WACHEN ÜBER DER BEFRISTUNG — VOR `register`, NICHT ZWISCHEN DEN SCHRITTEN.
+        //
+        // Sie stehen im `try`, damit ihre Antwort durch DASSELBE `sendError` läuft wie die des
+        // Änderungswegs. Zwei Stellen, die denselben Rumpf selbst zusammensetzen, wären zwei
+        // Antworten, die nur heute gleich aussehen (Prinzip F1b, gemessen von G6/G6b).
+        // ────────────────────────────────────────────────────────────────────────────────────
+        //
+        // Wache 1 · DIE FORM. Byte-gleich zum Änderungsweg (`:911-917`): alles ausser String,
+        // `null` und „fehlt" ist ein Rumpf, den keine Oberfläche erzeugen kann — 403 `INTERNAL`.
+        const ablaufEingabe = body.accessExpiresAt;
+        if (
+          ablaufEingabe !== undefined &&
+          ablaufEingabe !== null &&
+          typeof ablaufEingabe !== "string"
+        ) {
+          throw new AuthError("FORBIDDEN", "INTERNAL" satisfies Meldungsschluessel);
         }
-        // SCRUM-463 (WP4): ehrliche Eingabe-Validierung an der Route, BEVOR register/changeRole laufen.
-        // Vorher führte ein fehlendes password zu `input.password.length` auf undefined → TypeError →
-        // opakes 500 („Unerwarteter Fehler"); und eine ungültige role wurde still übernommen. Jetzt:
-        // klarer 400 mit nutzerlesbarer Meldung (kein Auth-/Rollenmodell-Umbau, nur Route-Guard).
-        const body = (request.body ?? {}) as {
-          name?: unknown;
-          email?: unknown;
-          password?: unknown;
-          role?: unknown;
-        };
-        if (typeof body.name !== "string" || body.name.trim().length === 0) {
-          reply
-            .code(400)
-            .send({ error: "BAD_REQUEST", message: meldung("NAME_REQUIRED", sprache(request)) });
-          return;
+        // Wache 2 · DIE LESBARKEIT, und sie ist der Grund, warum dieser Auftrag existiert. Sie
+        // urteilt NICHT selbst: `istLesbaresAblaufdatum` ist dieselbe Regel, die
+        // `service.setAccessExpiry` unten anwendet (`service.ts`). Gefragt werden MUSS sie aber
+        // hier, denn der Setzer braucht eine Kennung, die es vor `register` noch nicht gibt —
+        // und nach `register` wäre das Konto schon da.
+        if (typeof ablaufEingabe === "string" && !istLesbaresAblaufdatum(ablaufEingabe)) {
+          throw new AuthError("FORBIDDEN", "ACCESS_EXPIRY_UNREADABLE" satisfies Meldungsschluessel);
         }
-        if (typeof body.email !== "string" || !/.+@.+\..+/.test(body.email.trim())) {
-          reply
-            .code(400)
-            .send({ error: "BAD_REQUEST", message: meldung("EMAIL_REQUIRED", sprache(request)) });
-          return;
-        }
-        if (typeof body.password !== "string" || body.password.length < 8) {
-          reply
-            .code(400)
-            .send({ error: "WEAK_PASSWORD", message: meldung("WEAK_PASSWORD", sprache(request)) });
-          return;
-        }
-        if (body.role !== undefined && !istBekannteRolle(body.role)) {
-          reply
-            .code(400)
-            .send({ error: "BAD_REQUEST", message: meldung("UNKNOWN_ROLE", sprache(request)) });
-          return;
-        }
+        // ────────────────────────────────────────────────────────────────────────────────────
+        // DIE REIHENFOLGE IST DIE ZUSAGE — UND SIE STEHT SEIT RUNDE 2 AUF DEM KOPF.
+        //
+        // Runde 1 legte an, GAB FREI, setzte die Rolle und befristete ZULETZT. Die beiden Wachen
+        // darüber schliessen den Tippfehler aus, nicht aber den SCHREIBFEHLER. BEN hat in Runde 1
+        // mit gestörtem Ablagenschreiben gemessen, was dann zurückblieb:
+        //
+        //     F1: POST 500 · Konto vorhanden · approved: true · ohne Befristung · ANMELDUNG 200
+        //     F2: POST 201 · Anmeldung MITTEN im Vorgang 200, erst danach 403
+        //
+        // Also genau das unbefristete, anmeldbare Konto, gegen das dieser Auftrag gebaut ist — nur
+        // diesmal innerhalb EINES Aufrufs entstanden. Eine Eingabeprüfung allein erfüllt die Zusage
+        // „befristet oder gar nicht" nicht; sie deckt nur den Fall, in dem der Mensch sich vertippt.
+        //
+        // ZWEI MITTEL, UND BEIDE ZUSAMMEN, NICHT EINS STATT DES ANDEREN — dieselbe Bauart wie
+        // `acknowledgeNotice` (`service.ts`), wo die Schreibreihenfolge trägt, was ohne
+        // Transaktion niemand zurückrollen kann:
+        //
+        //   1. DIE FREIGABE KOMMT ZULETZT. `register` legt UNFREIGEGEBEN an (der Bootstrap-Zweig
+        //      darüber greift an diesem Endpunkt nie: es steht immer mindestens der aufrufende
+        //      Admin im Bestand). Ein unfreigegebenes Konto kommt nicht herein — `login` wirft
+        //      `NOT_APPROVED`, bevor es überhaupt nach einer Befristung fragt. Damit ist JEDER
+        //      Zwischenzustand dieses Aufrufs gesperrt, und der einzige Schritt, der aufsperrt,
+        //      ist der letzte: dann stehen Rolle und Ende bereits am Konto. Gemessen von G8, das
+        //      MITTEN im Befristungsschreiben eine echte Anmeldung versucht.
+        //   2. WAS DIESER AUFRUF ANGELEGT HAT, NIMMT ER BEI SCHEITERN ZURÜCK. Scheitert ein
+        //      Schritt nach `register`, wird das eben entstandene Konto wieder gelöscht und der
+        //      URSPRÜNGLICHE Fehler weitergereicht. Gemessen von G7.
+        //
+        // WAS HIER AUSDRÜCKLICH NICHT BEHAUPTET WIRD: eine Datenbanktransaktion über alle vier
+        // Schreibschritte. Die gäbe es nur über `UserRepo` (`insert` nimmt keinen `TxContext`),
+        // und `repo.ts` ist kein Zielpfad dieses Auftrags. Scheitert die Rücknahme SELBST, bleibt
+        // deshalb ein Konto stehen — dann aber ein UNFREIGEGEBENES, mit dem niemand hereinkommt
+        // (Mittel 1 trägt weiter). Gemessen wird das für JEDEN der drei Schritte einzeln, jeweils
+        // mit ebenfalls scheiternder Rücknahme: G7b (Befristung), G7d (Freigabe), G7f (Rolle).
+        //
+        // JOB 4011 R3 (BEN-Befund 4): MITTEL 1 WAR IN RUNDE 2 NUR FAST WAHR, UND DIE LÜCKE LAG
+        // NICHT HIER, SONDERN IM DIENST. `approveUser` setzte `approved` am GEHALTENEN Konto,
+        // bevor es schrieb; scheiterte danach das Schreiben UND die Rücknahme, stand genau der
+        // freigegebene, anmeldbare Rest da, den der Satz darüber ausschliesst:
+        //
+        //     BEN R2 REST {"post":500,"vorhanden":true,"approved":true,"login":200}
+        //
+        // Behoben ist das an seiner Ursache (`service.approveUser` schreibt eine Kopie), nicht
+        // durch eine zweite Aufräumstelle hier — die hätte denselben Fehler nur später gemacht.
+        // ────────────────────────────────────────────────────────────────────────────────────
+        const created = await service.register({
+          name: body.name.trim(),
+          email: body.email.trim(),
+          password: body.password,
+        });
+        let user: PublicUser = created;
         try {
-          const created = await service.register({
-            name: body.name.trim(),
-            email: body.email.trim(),
-            password: body.password,
-          });
-          let user = await service.approveUser(created.id, admin.id);
+          // `null` und „fehlt" laufen hier gemeinsam vorbei: beide heissen „unbefristet", und für
+          // „unbefristet" gibt es beim Anlegen nichts zu tun — kein Schreibvorgang, und deshalb
+          // auch KEIN `user.access-expiry-set` im Prüfprotokoll (G5/G5b). Ein Vermerk über eine
+          // Entscheidung, die niemand getroffen hat, wäre eine Unwahrheit im Prüfpfad.
+          if (typeof ablaufEingabe === "string") {
+            user = await service.setAccessExpiry(created.id, ablaufEingabe, admin.id);
+          }
+          // Die Rolle wird gegen den Stand VON `register` verglichen (`created.role`), nicht gegen
+          // den einer Freigabe, die es an dieser Stelle noch nicht gibt.
           const role = body.role as Role | undefined;
-          if (role && role !== user.role) {
+          if (role && role !== created.role) {
             user = await service.changeRole(created.id, role, admin.id);
           }
-          reply.code(201).send(user);
-        } catch (error) {
-          sendError(reply, error, sprache(request));
+          // ZULETZT — und `approveUser` liest das Konto frisch. Die 201 trägt deshalb Rolle UND
+          // Ende, die die beiden Schritte davor gesetzt haben (G1/G1b). Käme die Antwort aus einem
+          // früheren Schritt, meldete sie „angelegt" und zeigte ein Konto ohne das, was derselbe
+          // Aufruf gerade daran geschrieben hat.
+          user = await service.approveUser(created.id, admin.id);
+        } catch (fehler) {
+          // Die Rücknahme geht über `service.deleteUser` und nicht an ihm vorbei: dort liegt der
+          // Aussperrschutz, und eine zweite Löschstelle wäre eine zweite Auslegung derselben
+          // Regel. Sie hinterlässt ihren eigenen Vermerk (`user.delete`) — ein Konto, das es kurz
+          // gab, verschwindet nicht lautlos aus dem Prüfpfad.
+          //
+          // IHR SCHEITERN DARF DEN URSPRÜNGLICHEN FEHLER NICHT VERDECKEN: was der Admin liest, ist
+          // der Grund, aus dem das ANLEGEN scheiterte, nicht der Grund, aus dem das Aufräumen
+          // scheiterte. Deshalb wird er protokolliert und nicht geworfen.
+          //
+          // JOB 4011 R4 (BEN-Befund 5 der Runde 3): DIE PROTOKOLLZEILE WIRD GEMESSEN, NICHT
+          // HERGELEITET.
+          //
+          // Runde 2 schrieb hier „es bleibt UNFREIGEGEBEN stehen", Runde 3
+          // `freigabeDurchgelaufen: false`. Beides waren Schlüsse aus dem Kontrollfluss, keine
+          // Blicke in den Bestand — und beide Male waren sie falsch, sobald der Bestand etwas
+          // anderes hergab: BEN mass einen Rest mit `approved: true`, während diese Zeile das
+          // Gegenteil behauptete. Ein Satz über einen Zustand, den der Aufruf nicht nachgesehen
+          // hat, ist eine Vermutung, auch wenn die Herleitung heute stimmt.
+          //
+          // GELESEN WIRD DESHALB DER BESTAND SELBST, und die Zeile sagt genau, was dort steht —
+          // einschliesslich des Falls, in dem auch das Lesen nicht mehr geht („unbekannt"). Der
+          // Satz richtet sich nach dem Befund: ein freigegebener Rest ist ein offener Zugang und
+          // wird als solcher benannt, statt in einer beruhigenden Formel zu verschwinden. Gemessen
+          // von G7j in `tests/gast-befristung/`, das die Zeile selbst liest — auch gegen einen
+          // Rest, der freigegeben ist.
+          try {
+            await service.deleteUser(created.id, admin.id);
+          } catch (aufraeumfehler) {
+            const befund = await restBefund(service, created.id);
+            request.log.error(
+              { err: aufraeumfehler, konto: created.id, ...befund },
+              `JOB 4011: Rücknahme eines halb angelegten Kontos gescheitert — ${restSatz(befund)}`,
+            );
+          }
+          throw fehler;
         }
-      },
-    );
+        reply.code(201).send(user);
+      } catch (error) {
+        sendError(reply, error, sprache(request));
+      }
+    });
 
     // Admin ändert Rolle / gibt frei / setzt Passwort zurück / befristet den Zugang — ein
     // Endpunkt (§2.2).

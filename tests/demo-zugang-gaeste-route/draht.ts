@@ -18,6 +18,7 @@
 // `schliesseOffeneDraehte` in ihrem eigenen `afterEach`.
 import Fastify, { type FastifyInstance, type LightMyRequestResponse } from "fastify";
 import { expect } from "vitest";
+import type { SessionRepo, UserRepo } from "../../services/auth";
 import { authRoutes } from "../../services/auth/src/routes";
 import type { PublicUser } from "../../services/auth/src/types";
 import { GAST_PASSWORT, type Kreis, baueKreis } from "../demo-zugang-gaeste/aufbau";
@@ -36,9 +37,45 @@ export async function schliesseOffeneDraehte(): Promise<void> {
   }
 }
 
-export async function baueDraht(): Promise<Draht> {
-  const k = baueKreis();
-  const app = Fastify();
+/**
+ * JOB 4011 R2: die Ablagen sind DURCHGEREICHT, nicht fest verdrahtet.
+ *
+ * `baueKreis` nimmt sie seit JOB 3665 R2 entgegen (`aufbau.ts`), der Draht darüber gab sie bis
+ * hierher nicht weiter — und damit war am HTTP-Weg kein Fall messbar, in dem ein SCHREIBEN
+ * scheitert. Genau den brauchte BEN in Runde 1, um zu zeigen, was der Anlageweg zurücklässt, wenn
+ * die Ablage mitten im Vorgang nicht antwortet (F1/F2). Ein zweiter Draht daneben wäre der
+ * teurere Weg gewesen: zwei Fastify-Aufbauten über DEMSELBEN Endpunkt sind zwei Aussagen, die nur
+ * heute übereinstimmen.
+ */
+export async function baueDraht(
+  ablagen: {
+    sessions?: SessionRepo;
+    users?: UserRepo;
+    /**
+     * JOB 4011 R4: die Laufzeitzeilen des Servers, mitgelesen.
+     *
+     * `Fastify()` protokolliert ohne Logger in nichts hinein — `request.log.error` ist dann ein
+     * Leerlauf, und WAS der Anlageweg über einen zurückgebliebenen Rest schreibt, wäre nicht
+     * prüfbar. BEN verlangt dafür einen Test des PROTOKOLLINHALTS (Korrekturpflicht 2 der Runde 3);
+     * ohne diesen Hahn bliebe es beim Lesen des Quelltexts, und das ist keine Messung.
+     */
+    protokoll?: (zeile: Record<string, unknown>) => void;
+  } = {},
+): Promise<Draht> {
+  const k = baueKreis(ablagen);
+  const mitlesen = ablagen.protokoll;
+  const app = mitlesen
+    ? Fastify({
+        logger: {
+          level: "error",
+          stream: {
+            write: (zeile: string) => {
+              mitlesen(JSON.parse(zeile) as Record<string, unknown>);
+            },
+          },
+        },
+      })
+    : Fastify();
   await app.register(authRoutes(k.service));
   await app.ready();
   offen.push(app);

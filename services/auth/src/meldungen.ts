@@ -26,6 +26,28 @@ export const MELDUNGEN = {
     en: "Your access has expired.",
     nl: "Je toegang is verlopen.",
   },
+  // JOB 4011: der Nachbar von ACCESS_EXPIRED und ausdrücklich nicht dasselbe. Dort ist eine
+  // Befristung ABGELAUFEN und der Satz steht vor dem Gast; hier hat ein ADMIN einen Zeitpunkt
+  // eingegeben, den das Produkt nicht lesen kann, und es ist noch gar nichts geschehen.
+  //
+  // ER LÖST „Unerwarteter Fehler." AB. Bis hierher warf `setAccessExpiry` für ein unlesbares Datum
+  // `INTERNAL` (`service.ts:427` am Stand b0315de), und `service.ts:402-406` nannte den eigenen
+  // Satz selbst als offenen Auftrag: „Es gibt keinen eigenen Meldungstext für diesen Fall; der
+  // Admin liest ‚Unerwarteter Fehler.'". Ein Tippfehler ist aber kein Serverfehler — und ein Satz,
+  // der nicht sagt, was falsch war, lässt den Admin denselben Fehler noch einmal machen.
+  //
+  // DER SATZ NENNT DIE FORM UND NICHT DIE REGEL. Datum, Uhrzeit und Zeitzone sind genau die drei
+  // Stücke, deren Fehlen `ISO_ZEITSTEMPEL` (`service.ts:47`) abweist — „2026-09-11" (ohne Uhrzeit)
+  // und „2026-09-11T12:00:00" (ohne Zone) sind die beiden Eingaben, die ein Mensch wirklich tippt.
+  // Das Beispiel steht dabei, weil eine Formbeschreibung ohne Beispiel niemanden weiterbringt.
+  //
+  // NICHT für einen fremden TYP (Array, Zahl, Objekt): den kann keine Oberfläche erzeugen, er
+  // behält `INTERNAL` (routes.ts, die Formwachen beider Wege).
+  ACCESS_EXPIRY_UNREADABLE: {
+    de: "Ablaufdatum nicht lesbar. Bitte einen vollständigen Zeitpunkt mit Datum, Uhrzeit und Zeitzone angeben, zum Beispiel 2026-12-31T23:59:00Z.",
+    en: "The expiry date is not readable. Please enter a complete point in time with date, time and time zone, for example 2026-12-31T23:59:00Z.",
+    nl: "De vervaldatum is niet leesbaar. Voer een volledig tijdstip in met datum, tijd en tijdzone, bijvoorbeeld 2026-12-31T23:59:00Z.",
+  },
   WEAK_PASSWORD: {
     de: "Passwort muss mindestens 8 Zeichen haben.",
     en: "Password must be at least 8 characters long.",

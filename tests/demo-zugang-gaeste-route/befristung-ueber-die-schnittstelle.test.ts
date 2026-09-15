@@ -199,20 +199,25 @@ describe("JOB 3755 · der Admin setzt die Befristung über die Schnittstelle", (
     expect(anmeldung.json().error).toBe("NOT_APPROVED");
   });
 
-  it("R7 — ein unlesbares Datum wird nicht geschrieben: 403, und die Liste bleibt leer", async () => {
-    // Es gibt KEINEN eigenen Meldungstext für diesen Fall, und es wird auch keiner erfunden: der
-    // Katalog (`services/auth/src/meldungen.ts`) gehört in diesem Takt JOB 3756. Der Mensch liest
-    // deshalb „Unerwarteter Fehler." — für eine Eingabe, die eine Oberfläche nie erzeugen dürfte,
-    // ist das ehrlich, aber es bleibt ein offener Punkt.
+  it("R7 — ein unlesbares Datum wird nicht geschrieben: 400 mit eigenem Satz", async () => {
+    // NACHGEZOGEN IN JOB 4011, nicht ergänzt. Bis dahin stand hier `403`/`INTERNAL` samt der
+    // Begründung „ein eigener Satz wäre ein neuer Katalogschlüssel, und `meldungen.ts` gehört in
+    // diesem Takt JOB 3756" — der offene Punkt, den `service.ts:402-406` selbst als eigenen
+    // Auftrag notiert hatte. Er ist erledigt: `ACCESS_EXPIRY_UNREADABLE` nennt die Form des
+    // Zeitpunkts, und ein Tippfehler bekommt die 400, die jede menschliche Eingabe bekommt.
+    //
+    // DIE WIRKUNG BLEIBT UNVERÄNDERT und wird weiter gemessen: nichts geschrieben, kein Vermerk.
+    // Geändert hat sich, was der Mensch liest, nicht was das Produkt tut.
     const { k, app } = await baueDraht();
     const { gast } = await adminUndGast(k);
     const sitzung = await token(app, "admin@x.de");
 
     const antwort = await verwalte(app, sitzung, gast.id, { accessExpiresAt: "morgen" });
 
-    expect(antwort.statusCode, antwort.body).toBe(403);
-    expect(antwort.json().error).toBe("FORBIDDEN");
-    expect(antwort.json().message).toBe(MELDUNGEN.INTERNAL.de);
+    expect(antwort.statusCode, antwort.body).toBe(400);
+    expect(antwort.json().error).toBe("BAD_REQUEST");
+    expect(antwort.json().message).toBe(MELDUNGEN.ACCESS_EXPIRY_UNREADABLE.de);
+    expect(antwort.json().message).not.toBe(MELDUNGEN.INTERNAL.de);
     expect((await ausDerListe(app, sitzung, gast.id))?.accessExpiresAt).toBeUndefined();
     expect(await k.audit.list({ action: "user.access-expiry-set", target: gast.id })).toEqual([]);
   });
@@ -239,9 +244,16 @@ describe("JOB 3755 · der Admin setzt die Befristung über die Schnittstelle", (
   // allein der Dienst (`service.ts:ablaufZeitpunkt`), und der Aussperrschutz ebenso. Zwei Fragen,
   // zwei Stellen, keine doppelte Auslegung.
   //
-  // KEIN NEUER FEHLERVERTRAG: dieselbe 403 mit „Unerwarteter Fehler.", die ein unlesbares Datum
-  // schon heute bekommt (R7). Ein eigener Satz für „falscher Typ" wäre ein neuer Katalogschlüssel,
-  // und `meldungen.ts` gehört in diesem Takt JOB 3756.
+  // DER FEHLERVERTRAG DES FREMDEN TYPS BLEIBT, WO ER IST — und seit JOB 4011 ist er NICHT mehr
+  // derselbe wie der eines unlesbaren Datums. Bis dahin stand hier „dieselbe 403 mit ‚Unerwarteter
+  // Fehler.', die ein unlesbares Datum schon heute bekommt (R7)"; dieser Satz ist berichtigt, nicht
+  // ergänzt, denn R7 antwortet jetzt 400 `BAD_REQUEST` mit `ACCESS_EXPIRY_UNREADABLE`.
+  //
+  // DIE GRENZE LÄUFT ZWISCHEN „getippt" UND „so kann kein Formular aussehen": `"morgen"` ist ein
+  // Tippfehler und bekommt einen Satz, der sagt, was fehlt. Ein Array, eine Zahl oder ein Objekt
+  // kann keine Oberfläche erzeugen — dort ist „Unerwarteter Fehler." die ehrliche Auskunft, denn
+  // etwas anderes als ein Fehler im Aufrufer ist es nicht. Ein gemeinsamer Satz für beide hiesse,
+  // einem Menschen eine Eingabeform zu erklären, die er gar nicht getippt hat.
   const FREMDE_TYPEN: { name: string; wert: unknown }[] = [
     // BENs erstes Gegenbeispiel: sieht nach der Umwandlung wie ein gültiger Zeitstempel aus.
     { name: "Array mit gültigem ISO-String", wert: ["2026-09-11T13:00:00.000Z"] },

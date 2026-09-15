@@ -75,6 +75,27 @@ function ablaufZeitpunkt(wert: string): number | undefined {
 }
 
 /**
+ * JOB 4011: IST DIESE ZEICHENKETTE EIN LESBARES ABLAUFDATUM? Dieselbe Regel wie oben, nur ohne den
+ * Zeitpunkt — und von aussen fragbar.
+ *
+ * WARUM SIE EXPORTIERT WIRD UND `ablaufZeitpunkt` NICHT: Der Anlageweg (`POST /api/users`) muss die
+ * Eingabe prüfen, BEVOR ein Konto entsteht — danach ist es zu spät, denn ein abgewiesener Setzer
+ * liesse genau das unbefristete Konto zurück, das dieser Auftrag verhindert. Er kann dafür aber
+ * nicht `setAccessExpiry` rufen: die Kennung, die der Setzer braucht, gibt es noch nicht.
+ *
+ * ES BLEIBT EINE REGEL, und das ist der ganze Punkt. Die Route bekommt die FRAGE, nicht das
+ * URTEIL — sie schreibt keine zweite Formprüfung auf, sondern ruft dieselbe Funktion, die
+ * `setAccessExpiry` und `zugangAbgelaufen` schon lesen. Stünde hier eine Abschrift in `routes.ts`,
+ * liefen zwei Begriffe von „gültiges Ablaufdatum" auseinander, und ein Wert, den der Setzer nie
+ * durchgelassen hätte, käme über den Anlageweg trotzdem herein (BEN-Befund 5, JOB 3665 R2).
+ *
+ * Der ZEITPUNKT bleibt drinnen: wann ein Zugang endet, entscheidet weiterhin allein der Dienst.
+ */
+export function istLesbaresAblaufdatum(wert: string): boolean {
+  return ablaufZeitpunkt(wert) !== undefined;
+}
+
+/**
  * JOB 2686 (R2-8): eigene Sitzungsdauer für SSO-Anmeldungen.
  *
  * VORGABE IST DAS HEUTIGE VERHALTEN (14 Tage) — ausdrücklich, nicht aus Bequemlichkeit. Der
@@ -399,11 +420,19 @@ export class AuthService {
    * auf, wenn niemand mehr hereinkäme, der sie zurücknehmen könnte. Geprüft wird NUR beim Setzen:
    * eine Befristung zu NEHMEN kann niemanden aussperren.
    *
-   * EIN UNLESBARES DATUM KOMMT NICHT HINEIN. Es gibt keinen eigenen Meldungstext für diesen Fall;
-   * der Admin liest „Unerwarteter Fehler." — genau das ist es hier auch: eine Eingabe, die eine
-   * Oberfläche nie erzeugen dürfte. (JOB 3756: der Katalog ist nicht mehr gesperrt, ein eigener
-   * Satz wäre also machbar. Er bleibt ein eigener Auftrag — dieser hier ändert den Satz für den
-   * ABGELAUFENEN GAST, nicht den für den Admin mit einer kaputten Eingabe.)
+   * EIN UNLESBARES DATUM KOMMT NICHT HINEIN — und es bekommt seit JOB 4011 einen eigenen Satz.
+   *
+   * Bis dahin stand hier `INTERNAL`, und der Admin las „Unerwarteter Fehler." für einen Tippfehler.
+   * Das war die schwächere Auskunft: ein falsch geschriebenes Datum ist kein Serverfehler, und ein
+   * Satz, der den Grund nicht nennt, lässt denselben Fehler ein zweites Mal machen.
+   * `ACCESS_EXPIRY_UNREADABLE` nennt die Form (Datum, Uhrzeit, Zeitzone) und ein Beispiel.
+   *
+   * DER FEHLERCODE BLEIBT `FORBIDDEN`, der DRAHT antwortet trotzdem 400 `BAD_REQUEST`:
+   * `AuthErrorCode` (`types.ts:62`) kennt kein `BAD_REQUEST`, und `types.ts` ist kein Zielpfad
+   * dieses Auftrags. `sendError` bildet den SCHLÜSSEL auf die Antwort ab — dieselbe Bauart, mit
+   * der `OidcUnreachableError` seit jeher einen 401-Code trägt und „Anmeldedienst antwortet nicht"
+   * bedeutet. Was der Mensch sieht, ist an BEIDEN Wegen dasselbe (G6); der zu grobe Code darunter
+   * bleibt als offener Punkt benannt, statt still zu einer zweiten Auslegung zu werden.
    */
   async setAccessExpiry(
     userId: string,
@@ -414,32 +443,37 @@ export class AuthService {
     const { accessExpiresAt: _bisher, ...ohneBefristung } = user;
     const aktualisiert: User =
       expiresAt === undefined ? ohneBefristung : { ...user, accessExpiresAt: expiresAt };
+    // JOB 4011 R4: der Vermerk steht in beiden Zweigen VOR dem Schreiben — dieselbe Regel wie in
+    // `approveUser` und `changeRole`, damit an diesem Konto nicht zwei Schritte nach zwei
+    // verschiedenen Ordnungen schreiben. Der Inhalt ist unverändert.
+    const vermerk = expiresAt === undefined ? { entfernt: true } : { expiresAt };
     if (expiresAt === undefined) {
       // Das NEHMEN einer Befristung kann niemanden aussperren (s. oben) — kein Rahmen, keine
-      // Sperre. Eine Sperre ohne Aussperrgefahr wäre reine Bremse.
-      await this.users.update(aktualisiert);
+      // Sperre. Eine Sperre ohne Aussperrgefahr wäre reine Bremse. Die gemeinsame Transaktion
+      // (wo die Wurzel eine hergibt) steht trotzdem darum: sie schützt nicht vor dem Aussperren,
+      // sondern vor dem halben Vorgang.
+      await this.gemeinsamSchreiben(async (tx) => {
+        await this.record(actorId, "user.access-expiry-set", userId, vermerk, tx);
+        await this.users.update(aktualisiert, tx);
+      });
     } else {
       // JOB 3665 R2 (BEN-Befund 4): geprüft wird die FORM, nicht nur die Parsbarkeit. `Date.parse`
       // allein nimmt `"09/12/2026"` an und legt dabei selbst fest, welcher Tag gemeint ist.
       // Sie steht VOR dem Rahmen: eine Eingabe, die eine Oberfläche nie erzeugen dürfte, soll
       // keine Sperre nehmen müssen, um abgewiesen zu werden.
-      if (ablaufZeitpunkt(expiresAt) === undefined) {
-        throw new AuthError("FORBIDDEN", "INTERNAL" satisfies Meldungsschluessel);
+      if (!istLesbaresAblaufdatum(expiresAt)) {
+        throw new AuthError("FORBIDDEN", "ACCESS_EXPIRY_UNREADABLE" satisfies Meldungsschluessel);
       }
       // JOB 3784: Prüfung UND Schreiben in EINEM Rahmen — s. UserRepo.withAdminGuard.
       await this.users.withAdminGuard(async (tx) => {
         if (await this.isLastApprovedAdmin(userId, tx)) {
           throw new AuthError("FORBIDDEN", "LAST_ADMIN_DEMOTION" satisfies Meldungsschluessel);
         }
+        // Nach der Aussperrprüfung, vor dem Schreiben — s. `changeRole`.
+        await this.record(actorId, "user.access-expiry-set", userId, vermerk, tx);
         await this.users.update(aktualisiert, tx);
       });
     }
-    await this.record(
-      actorId,
-      "user.access-expiry-set",
-      userId,
-      expiresAt === undefined ? { entfernt: true } : { expiresAt },
-    );
     return toPublic(aktualisiert);
   }
 
@@ -800,13 +834,89 @@ export class AuthService {
     return verifyPassword(password, user.passwordSalt, user.passwordHash);
   }
 
-  // FR-AUTH-02 / FR-RBAC-02: Admin gibt Konto frei.
+  /**
+   * FR-AUTH-02 / FR-RBAC-02: Admin gibt Konto frei.
+   *
+   * JOB 4011 R3 (BEN-Befund 4): DIE FREIGABE WIRD ERST WIRKLICH, WENN DAS SCHREIBEN DURCH IST.
+   *
+   * Bis hierher standen hier zwei Zeilen in dieser Reihenfolge:
+   *
+   *     user.approved = true;          // ← das GEHALTENE Konto, sofort
+   *     await this.users.update(user); // ← der Versuch, es festzuschreiben
+   *
+   * `requireUser` liefert in der Speicherfassung das Objekt, das die Ablage selbst hält
+   * (`InMemoryUserRepo.findById` gibt den Map-Eintrag heraus). Die erste Zeile war damit schon der
+   * ganze Zustandswechsel, und die zweite nur noch seine Bestätigung. Scheiterte sie, blieb das
+   * Konto FREIGEGEBEN zurück — eine Freigabe, die nie geschrieben wurde.
+   *
+   * BEN hat genau das gemessen (Runde 2, Gegenprobe mit gestörtem Freigabeschreiben UND gestörter
+   * Rücknahme am Anlageweg `POST /api/users`):
+   *
+   *     BEN R2 REST {"post":500,"vorhanden":true,"approved":true,"accessExpiresAt":"…","login":200}
+   *
+   * Der Anlageweg sagt zu, dass ein Rest, den die Rücknahme nicht mehr wegräumt, wenigstens
+   * UNFREIGEGEBEN ist (`routes.ts`, Mittel 1). Diese Zusage hing an dieser Methode, und hier war sie
+   * gebrochen: die 500 kam, das Konto stand da, und die Anmeldung antwortete 200.
+   *
+   * GESCHRIEBEN WIRD DESHALB EINE KOPIE, nach dem Vorbild von `setAccessExpiry` darüber: solange
+   * `update` nicht zurückgekehrt ist, hat niemand etwas gesehen. Das ist zugleich das Verhalten, das
+   * die Datenbankfassung ohnehin hat — dort liefert `findById` eine frisch abgebildete Zeile, und
+   * ein gescheitertes UPDATE ändert nichts. Beide Ablagen sagen jetzt dasselbe, statt dass die
+   * Zusage an der Wahl der Ablage hinge. Gemessen von G7d/G7e in `tests/gast-befristung/`.
+   *
+   * JOB 4011 R4 (BEN-Befund 4/5/6 der Runde 3): DIE TÜR GEHT ERST AUF, WENN IHR VERMERK STEHT.
+   *
+   * Runde 3 schrieb `approved` und vermerkte DANACH. BEN hat den Schnitt dazwischen gemessen — das
+   * Schreiben gelingt, `record` wirft, und die Rücknahme des Anlagewegs scheitert ebenfalls:
+   *
+   *     BEN R3 REST: 500 · Konto vorhanden · approved: true · ANMELDUNG offen
+   *
+   * Also wieder der freigegebene Rest, diesmal über den Umweg des Prüfprotokolls. Die naheliegende
+   * Antwort wäre gewesen, nach einem `record`-Fehler `approved` zurückzuschreiben. Sie hängt die
+   * Zusage an einen WEITEREN gelingenden Schritt — genau die Bauart, die in dieser Sache schon
+   * zweimal gerissen ist (die Rücknahme im Anlageweg ist selbst so ein Schritt, und BEN hat sie
+   * beide Male scheitern lassen). Eine Tür, die zubleibt, solange nichts mehr schreibt, ist die
+   * stärkere Zusage als eine, die aufgeht und auf ihr Zurückschreiben hofft.
+   *
+   * DESHALB DIE REIHENFOLGE AUS `acknowledgeNotice` (mega62 Block B), wörtlich dieselbe Abwägung an
+   * derselben Art Halbzustand:
+   *   · Vermerk ohne Freigabe → im Prüfprotokoll steht ein Schritt, dessen Wirkung ausblieb; die
+   *     Tür ist zu, und im Anlageweg folgt ihm der `user.delete` desselben Aufrufs. Unschön, wahr.
+   *   · Freigabe ohne Vermerk → ein offener Zugang, den niemand veranlasst hat. BENs Befund.
+   * Der zweite ist damit ausgeschlossen, und zwar ohne zweites Schreiben: NACH dieser Methode kann
+   * nichts mehr scheitern, was die Tür offen liesse, denn das Aufsperren ist ihr letzter Schritt.
+   *
+   * UND MIT ECHTER DATENBANK GIBT ES AUCH DEN ERSTEN HALBZUSTAND NICHT: `withTx` ist dieselbe
+   * injizierte Transaktion, die `acknowledgeNotice` schon führt (`build-app.ts`, nur mit echtem
+   * Pg-Pool gesetzt) — Vermerk und Freigabe committen oder rollen gemeinsam zurück. Ohne sie
+   * (Speicher, Dev-Journal) trägt die Reihenfolge allein. Gemessen von G7g in
+   * `tests/gast-befristung/` (Vermerk scheitert, Rücknahme scheitert → Rest UNFREIGEGEBEN, echte
+   * Anmeldung 403).
+   */
   async approveUser(userId: string, actorId: string): Promise<PublicUser> {
     const user = await this.requireUser(userId);
-    user.approved = true;
-    await this.users.update(user);
-    await this.record(actorId, "user.approve", userId);
-    return toPublic(user);
+    const aktualisiert: User = { ...user, approved: true };
+    await this.gemeinsamSchreiben(async (tx) => {
+      await this.record(actorId, "user.approve", userId, undefined, tx);
+      await this.users.update(aktualisiert, tx);
+    });
+    return toPublic(aktualisiert);
+  }
+
+  /**
+   * JOB 4011 R4: Vermerk und Zustandsschreiben in EINEM Rahmen, wo es einen gibt.
+   *
+   * Nur für die Schritte OHNE eigenen Rahmen. `changeRole` und `setAccessExpiry` schreiben innerhalb
+   * von `UserRepo.withAdminGuard` (in Pg eine echte Transaktion, `repo-pg.ts`); dort wird der Vermerk
+   * in DEREN Kontext gelegt, statt eine zweite Transaktion daneben zu öffnen — zwei Rahmen um
+   * dieselbe Zeile wären ein Sperrkonflikt mit sich selbst, kein Schutz.
+   */
+  private async gemeinsamSchreiben(fn: (tx?: TxContext) => Promise<void>): Promise<void> {
+    if (this.withTx) {
+      await this.withTx(fn);
+      return;
+    }
+    await fn();
   }
 
   // FR-RBAC-02 / FR-RBAC-03 + SCRUM-443: Rolle ändern — jetzt serverseitig geprüft.
@@ -828,6 +938,19 @@ export class AuthService {
     // oder umbenannt wird. Nachträglich anreichern lässt sich das nie: der Bestand behält seine
     // Lücke und zeigt sie ehrlich als „nicht gespeichert" (apps/web/src/lib/auditEventDetail.ts).
     const previousRole = user.role;
+    // JOB 4011 R3: DIESELBE KORREKTUR WIE IN `approveUser` — hier stand sie noch aus.
+    //
+    // Der gemessene Anlass steht dort ausführlich (BEN-Befund 4). Kurz: `requireUser` liefert in
+    // der Speicherfassung das Objekt, das die Ablage hält, und `user.role = role` VOR dem Schreiben
+    // war damit der Zustandswechsel selbst. G7f hat das an dieser Methode nachgewiesen — ein
+    // gescheitertes Rollenschreiben liess die neue Rolle trotzdem am Konto stehen, und ein Rest,
+    // den die Rücknahme nicht mehr wegräumte, trug eine Rolle, die nie geschrieben wurde.
+    //
+    // An der Rolle hängt keine Tür, die Anmeldung war also nie offen — diese Zeile ist deshalb
+    // keine Sperrlücke, sondern eine Unwahrheit im Bestand. Sie hier stehen zu lassen hiesse, die
+    // Zusage „befristet oder gar nicht" an der Ablage festzumachen: eine Datenbank hätte nach
+    // demselben Fehler `experte` gezeigt, der Speicher `controller`.
+    const aktualisiert: User = { ...user, role };
     // JOB 3784: Prüfung UND Schreiben in EINEM Rahmen — s. UserRepo.withAdminGuard.
     await this.users.withAdminGuard(async (tx) => {
       // SCRUM-443 (Last-Admin-Schutz): der letzte aktive Admin darf nicht herabgestuft werden —
@@ -839,16 +962,25 @@ export class AuthService {
       ) {
         throw new AuthError("FORBIDDEN", "LAST_ADMIN_DEMOTION" satisfies Meldungsschluessel);
       }
-      user.role = role;
-      await this.users.update(user, tx);
+      // JOB 4011 R4: DER VERMERK STEHT VOR DEM SCHREIBEN — und zwar IN diesem Rahmen.
+      //
+      // Dieselbe Regel wie in `approveUser` (dort ausführlich begründet): kein Zustandsschreiben,
+      // dessen Vermerk noch scheitern kann. Hier kostet sie nichts Zusätzliches, weil der Rahmen
+      // schon steht: in Pg ist `withAdminGuard` eine echte Transaktion (`repo-pg.ts`), der Vermerk
+      // läuft auf demselben Kontext, und beide rollen gemeinsam zurück.
+      //
+      // ER STEHT ABER NACH DER AUSSPERRPRÜFUNG, nicht davor: ein abgewiesener Rollenwechsel darf
+      // keinen Eintrag hinterlassen (gebunden in `eingabeform-am-aenderungsweg.test.ts`).
+      await this.record(
+        actorId,
+        "user.role-change",
+        userId,
+        { role, previousRole, actorName: actor.name, targetName: user.name },
+        tx,
+      );
+      await this.users.update(aktualisiert, tx);
     });
-    await this.record(actorId, "user.role-change", userId, {
-      role,
-      previousRole,
-      actorName: actor.name,
-      targetName: user.name,
-    });
-    return toPublic(user);
+    return toPublic(aktualisiert);
   }
 
   // FR-AUTH-06: Admin-Passwort-Reset; bestehende Sitzungen des Nutzers werden ungültig.

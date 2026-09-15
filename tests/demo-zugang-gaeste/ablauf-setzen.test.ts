@@ -103,9 +103,13 @@ describe("JOB 3665 C · der Admin setzt und nimmt die Befristung", () => {
     const k = baueKreis();
     const { admin, gast } = await adminUndGast(k);
 
+    // JOB 4011: der Schlüssel ist nachgezogen (bis dahin `INTERNAL`). Der Fehlercode bleibt
+    // `FORBIDDEN` — `AuthErrorCode` kennt kein `BAD_REQUEST` —, den Status wählt die Route am
+    // Schlüssel (`routes.ts:ANTWORT_JE_SCHLUESSEL`): 400 statt 403. Gemessen am Draht in
+    // `tests/demo-zugang-gaeste-route/…` R7 und in `tests/gast-befristung/` G3.
     await expect(k.service.setAccessExpiry(gast.id, "morgen", admin.id)).rejects.toMatchObject({
       code: "FORBIDDEN",
-      message: "INTERNAL",
+      message: "ACCESS_EXPIRY_UNREADABLE",
     });
 
     const gespeichert = await k.users.findById(gast.id);
@@ -188,7 +192,9 @@ describe("JOB 3665 C · der Admin setzt und nimmt die Befristung", () => {
       await expect(
         k.service.setAccessExpiry(gast.id, mehrdeutig, admin.id),
         `„${mehrdeutig}" wurde angenommen`,
-      ).rejects.toMatchObject({ code: "FORBIDDEN", message: "INTERNAL" });
+        // JOB 4011: derselbe Nachzug wie in C4 — ein mehrdeutiges Datum ist genau der Tippfehler,
+        // für den der neue Satz da ist.
+      ).rejects.toMatchObject({ code: "FORBIDDEN", message: "ACCESS_EXPIRY_UNREADABLE" });
     }
 
     const gespeichert = await k.users.findById(gast.id);
