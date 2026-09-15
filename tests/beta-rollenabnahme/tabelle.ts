@@ -968,6 +968,38 @@ export const TABELLE: Zeile[] = [
     tor: "users.manage",
     erwartet: NUR_ADMIN,
   },
+  // JOB 4086: dieselbe Auskunft für die zweite Quelle — und dieselbe Tür. Eine weichere Tür für den
+  // Zustand eines admin-gebundenen Imports wäre eine Rechte-Ausweitung durch die Hintertür.
+  {
+    gruppe: "importAccessRoutes",
+    methode: "GET",
+    pfad: "/api/import/sharepoint/zugang",
+    belegstelle: "services/app/src/routes/import-access-routes.ts:93",
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
+  },
+  // JOB 4086 · die zwei Türen des SharePoint-Imports. Sie stehen hier VOLLSTÄNDIG in der Abnahme
+  // und nicht in der Restliste, und das geht, weil beide OHNE hinterlegte Zugangsdaten gar nichts
+  // anrichten: der Adapter kommt nicht zustande, die Antwort ist ein 503 vor jedem Effekt. Die
+  // Bühne misst damit genau das, was sie messen soll — das Rechtetor.
+  {
+    gruppe: "sharepointImportRoutes",
+    methode: "POST",
+    pfad: "/api/admin/import/sharepoint/files",
+    belegstelle: "services/app/src/routes/sharepoint-import-routes.ts:190",
+    tor: "users.manage",
+    payload: {},
+    erwartet: NUR_ADMIN,
+  },
+  {
+    gruppe: "sharepointImportRoutes",
+    methode: "POST",
+    pfad: "/api/admin/import/sharepoint/apply",
+    belegstelle: "services/app/src/routes/sharepoint-import-routes.ts:229",
+    tor: "users.manage",
+    payload: {},
+    erwartet: NUR_ADMIN,
+  },
   {
     gruppe: "importRunRoutes",
     methode: "GET",

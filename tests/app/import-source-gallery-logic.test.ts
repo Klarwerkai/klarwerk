@@ -78,19 +78,26 @@ describe("ic7: Datenmodell Systeme + Dateien", () => {
   // JOB 3235 (UX-18-R2) — NACHGEFÜHRT: `word-sys` und `pdf-sys` heissen nicht mehr „bald".
   // „Bald" heisst „in Arbeit"; gemessen wurde, dass es fuer Word und PDF keine begonnene
   // QUELLENANBINDUNG gibt — kein Modul unter `services/`, kein Eintrag im `SCHALTER_REGISTRY`
-  // (`services/app/src/feature-flags.ts`), keine registrierte Route (`build-app.ts:548`, `:2182`),
+  // (`services/app/src/feature-flags.ts`), keine registrierte Konnektor-Route in `build-app.ts`,
   // keine Routendatei unter `services/app/src/routes/`. Die Belege stehen im Kopfkommentar bei
-  // SYSTEM_SOURCES. JIRA BLEIBT „bald", und zwar belegt: `build-app.ts:548` nennt es ausdruecklich
-  // als naechste Quelle („kuenftig: || jiraEnabled || …"), Word und PDF stehen dort nicht.
-  it("Systeme: Confluence + JSON-Import aktiv; Jira bald; Word-/PDF-Quelle und die uebrigen geplant", () => {
+  // SYSTEM_SOURCES. JIRA BLEIBT „bald": es ist als naechste Quelle benannt, Word und PDF nicht.
+  //
+  // JOB 4086 — NACHGEFÜHRT: SHAREPOINT IST AUS DIESER LISTE HERAUSGEWACHSEN.
+  // Genau die drei Messungen, die Word und PDF hier auf „geplant" halten, fallen fuer SharePoint
+  // seit JOB 4086 anders aus: es GIBT `services/sharepoint/`, es GIBT `sharepointImport` im
+  // Registry, und es GIBT `sharepoint-import-routes.ts`, registriert hinter diesem Schalter.
+  // Dass die Kachel das nicht nur behauptet, misst
+  // `tests/sharepoint-onedrive-import/katalog-sagt-die-wahrheit.test.ts` an allen drei Stellen —
+  // hier steht nur noch der Zustand, den diese Messungen decken.
+  it("Systeme: Confluence, JSON-Import und SharePoint aktiv; Jira bald; Word-/PDF-Quelle und die uebrigen geplant", () => {
     const byId = new Map(SYSTEM_SOURCES.map((s) => [s.id, s.state]));
     expect(byId.get("confluence")).toBe("active");
     expect(byId.get("json")).toBe("active");
+    expect(byId.get("sharepoint"), "sharepoint").toBe("active");
     expect(byId.get("jira"), "jira").toBe("soon");
     for (const id of [
       "word-sys",
       "pdf-sys",
-      "sharepoint",
       "teams",
       "gdrive",
       "dms",

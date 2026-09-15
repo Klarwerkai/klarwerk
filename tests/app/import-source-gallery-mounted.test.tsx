@@ -43,11 +43,16 @@ function expandPlanned(): void {
   }
 }
 
-function tiles(): HTMLButtonElement[] {
-  return [...container.querySelectorAll("button[data-id]")] as HTMLButtonElement[];
+// JOB 4086 — NACHGEFÜHRT: eine Kachel MIT Ziel ist ein `<a>`, keine `<button>` (JOB 3190,
+// `FileTypePicker.tsx`). Seit die SharePoint-Kachel auf den SharePoint-Bereich derselben Seite
+// zeigt, gibt es solche auch in der SYSTEM-Gruppe. Die Erhebung fragt deshalb nach `[data-id]` und
+// nicht mehr nach `button[data-id]` — sonst fiele jede Kachel mit echtem Weg lautlos aus der
+// Messung, und der Ordnungsfall darunter prüfte eine Liste, die es so nicht mehr gibt.
+function tiles(): HTMLElement[] {
+  return [...container.querySelectorAll("[data-id]")] as HTMLElement[];
 }
 
-function tileById(id: string): HTMLButtonElement {
+function tileById(id: string): HTMLElement {
   const tile = tiles().find((b) => b.getAttribute("data-id") === id);
   if (!tile) {
     throw new Error(`Kachel ${id} nicht gefunden`);
@@ -81,7 +86,8 @@ describe("ic7: Galerie rendert alle drei Zustandsklassen in Reihenfolge", () => 
 
     // Zwei Galerien (Systeme + Dateien) — jede fuer sich aktiv→bald→geplant. Da beide hintereinander
     // gerendert werden, pruefen wir die Ordnung je data-id-Gruppe ueber die bekannten Kacheln.
-    const systemIds = ["confluence", "json", "jira", "word-sys", "pdf-sys", "sharepoint"];
+    // JOB 4086: SharePoint steht jetzt bei den aktiven, nicht mehr am Ende bei den geplanten.
+    const systemIds = ["confluence", "json", "sharepoint", "jira", "word-sys", "pdf-sys", "teams"];
     const ranks = systemIds.map((id) => RANK[tileById(id).getAttribute("data-state") ?? ""] ?? 99);
     const sorted = [...ranks].sort((a, b) => a - b);
     expect(ranks).toEqual(sorted);
@@ -91,8 +97,12 @@ describe("ic7: Galerie rendert alle drei Zustandsklassen in Reihenfolge", () => 
     await i18n.changeLanguage("de");
     mount();
     expect(tileById("confluence").textContent).toContain("aktiv");
+    // JOB 4086: SharePoint IST jetzt aktiv — die gedeckte Aussage misst
+    // `tests/sharepoint-onedrive-import/katalog-sagt-die-wahrheit.test.ts` an Schalter, Route und
+    // Modul; hier steht nur, dass das Badge es auch sagt.
+    expect(tileById("sharepoint").textContent).toContain("aktiv");
     expect(tileById("jira").textContent).toContain("bald");
-    expect(tileById("sharepoint").textContent).toContain("geplant");
+    expect(tileById("teams").textContent).toContain("geplant");
   });
 
   it("keine Kachel nutzt bg-ink (schuetzt die Ein-Primaer-CTA-Zaehlung des Fluss-Steppers)", () => {
@@ -108,7 +118,7 @@ describe("ic7: ehrlicher Klick-Zustand — geplant/bald loesen KEINEN Import aus
     await i18n.changeLanguage("de");
     mount();
     act(() => {
-      tileById("sharepoint").click();
+      tileById("teams").click();
     });
     expect(onActivate).not.toHaveBeenCalled();
     expect(fetchSpy).not.toHaveBeenCalled();
@@ -156,11 +166,11 @@ describe("ic7: aktiv loest den echten bestehenden Fluss aus (keine Regression)",
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("Klick auf Confluence (aktiv) ruft onActivate(confluence); der geplante SharePoint-Hinweis verschwindet dabei", () => {
+  it("Klick auf Confluence (aktiv) ruft onActivate(confluence); der geplante Teams-Hinweis verschwindet dabei", () => {
     mount();
     // Erst einen ehrlichen Hinweis oeffnen …
     act(() => {
-      tileById("sharepoint").click();
+      tileById("teams").click();
     });
     expect(container.querySelector("output")).not.toBeNull();
     // … dann eine aktive Kachel: sie zieht den echten Seam und blendet den Hinweis aus.
@@ -192,9 +202,9 @@ describe("ic7: i18n DE/EN/NL — Badge + Hinweis", () => {
       await i18n.changeLanguage(lng);
       mount();
       mounted = true;
-      expect(tileById("sharepoint").textContent, lng).toContain(expected[lng].badge);
+      expect(tileById("teams").textContent, lng).toContain(expected[lng].badge);
       act(() => {
-        tileById("sharepoint").click();
+        tileById("teams").click();
       });
       expect(container.textContent, lng).toContain(expected[lng].hint);
     }

@@ -161,17 +161,22 @@ export const JSON_SOURCE_IDS = ["json", "json-file"] as const;
 //      genau ein Panel-Verzeichnis, `word-addin/`.
 //      DESHALB BEHAUPTET HIER KEINE KACHEL UND KEIN TEXT, es gaebe fuer Word nichts (Lieferung 5).
 //
-//  (c) EIGENSTAENDIGE QUELLENANBINDUNG (Konnektor wie Confluence) — gibt es NICHT, und das ist an
-//      vier benannten Stellen nachgesehen, nicht bloss „nicht gefunden":
+//  (c) EIGENSTAENDIGE QUELLENANBINDUNG (Konnektor wie Confluence) — gibt es fuer Word und PDF
+//      NICHT, und das ist an drei benannten Stellen nachgesehen, nicht bloss „nicht gefunden":
 //        1. `services/` — ein Quellsystem hat ein eigenes Modul. Confluence hat eines
 //           (`services/confluence/src/` mit `adapter.ts`, `rest-client.ts`, `storage.ts`,
 //           `credential-state.ts`). Ein `services/word` oder `services/pdf` existiert nicht.
 //        2. `services/app/src/feature-flags.ts` — das `SCHALTER_REGISTRY` ist die EINE Stelle, an
-//           der eine Quelle geschaltet wird. Einziger Quell-Schalter dort: `confluenceImport`.
-//        3. `services/app/src/build-app.ts:548` und `:2182` — die EINE Stelle, an der
-//           Konnektor-Routen registriert werden. Registriert wird nur `confluenceImportRoutes`.
-//        4. `services/app/src/routes/` — dort liegt genau eine Konnektor-Routendatei,
-//           `confluence-import-routes.ts`.
+//           der eine Quelle geschaltet wird. Es fuehrt keinen `wordImport`/`pdfImport`.
+//        3. `services/app/src/build-app.ts` — die EINE Stelle, an der Konnektor-Routen registriert
+//           werden (`app.register(...)` hinter `schalterAn(...)`), und `services/app/src/routes/` —
+//           dort liegt fuer Word und PDF keine Routendatei.
+//
+//      JOB 4086 — DIESE MESSUNG IST NICHT MEHR DIE MESSUNG „ES GIBT NUR CONFLUENCE".
+//      Die drei Stellen fuehren seit JOB 4086 eine ZWEITE Quelle: `services/sharepoint/`, den
+//      Schalter `sharepointImport` und `services/app/src/routes/sharepoint-import-routes.ts`. Fuer
+//      Word und PDF aendert das nichts — sie stehen dort weiterhin nirgends, und ihre Kacheln
+//      bleiben deshalb `planned`. Was sich geaendert hat, steht bei der SharePoint-Kachel unten.
 //
 // WAS DARAUS FOLGT (Lieferungen 2 und 4).
 //  · NAME: Die Systemkacheln heissen nicht mehr nach einer Datei, sondern nach dem Weg, den sie
@@ -190,17 +195,43 @@ export const JSON_SOURCE_IDS = ["json", "json-file"] as const;
 // Gehalten wird das von `tests/quellenkachel-umfang/` — dort darf kein Name einer Systemkachel
 // denselben Kern haben wie der einer Dateikachel, in JEDER gefuehrten Sprache.
 //
-// PAKET 1 — Systeme. aktiv: Confluence · JSON-Import (bestehend). bald: Jira. geplant: Word- und
-// PDF-Dokumentquelle · SharePoint · MS Teams · Google Drive · DMS · PLM · ServiceNow · SAP ·
-// Notion · Slack · E-Mail.
+// ================================================================================================
+// JOB 4086 — SHAREPOINT VERLAESST „GEPLANT", UND DIE DREI MESSUNGEN TRAGEN ES.
+// ================================================================================================
+//
+// DIE MESSUNGEN, dieselben drei, mit denen JOB 3235 oben die Word-/PDF-Kacheln auf `planned`
+// gesetzt hat — nur diesmal fallen sie anders aus:
+//   1. MODUL:         `services/sharepoint/` mit `index.ts`, `adapter.ts`, `graph-client.ts`,
+//                     `mapper.ts`, `credential-state.ts` — gebaut, gekapselt, geprueft.
+//   2. SCHALTER:      `sharepointImport` → `KLARWERK_SHAREPOINT_IMPORT` im `SCHALTER_REGISTRY`.
+//   3. ROUTE:         `services/app/src/routes/sharepoint-import-routes.ts`, registriert an der
+//                     EINEN Registrierungsstelle in `build-app.ts` hinter genau diesem Schalter.
+//
+// WARUM `active` UND NICHT `unconfigured`. „unconfigured" heisst in diesem Modell: gebaut, aber
+// OHNE hinterlegten Dienst nicht nutzbar (SCRUM-382, das Audio-/Video-Transkript). Diese Kachel
+// koennte das gar nicht wissen: sie ist ein statisches Datenmodell und kennt die Umgebung DIESER
+// Installation nicht. Stuende sie fest auf „unconfigured", waere sie fuer jeden Betrieb MIT
+// Zugangsdaten falsch — genau die zweite Wahrheit, die UX-18 abgeschafft hat.
+//
+// Wer das fuer diese Installation wissen muss, bekommt es an der Stelle, die es WIRKLICH messen
+// kann: die Zugangs-Auskunft `GET /api/import/sharepoint/zugang` und die Karte darueber
+// (`components/sharepoint-import/SharePointZugangKarte.tsx`) sagen „nicht eingeschaltet",
+// „ohne Zugangsdaten" oder „eingeschaltet, Zugangsdaten stehen". Die Kachel behauptet damit
+// nichts, was die Instanz nicht kann: sie sagt, dass es den WEG gibt — und der Weg fuehrt zu der
+// Auskunft, die den Rest sagt. Genau dieselbe Arbeitsteilung traegt die Confluence-Kachel seit
+// mega67, und sie steht aus demselben Grund auf `active`.
+//
+// PAKET 1 — Systeme. aktiv: Confluence · JSON-Import · SharePoint. bald: Jira. geplant: Word- und
+// PDF-Dokumentquelle · MS Teams · Google Drive · DMS · PLM · ServiceNow · SAP · Notion · Slack ·
+// E-Mail.
 export const SYSTEM_SOURCES: readonly GallerySource[] = orderByState([
   { id: "confluence", labelKey: "imp.gallery.src.confluence", state: "active" },
   { id: "json", labelKey: "imp.gallery.src.jsonImport", state: "active" },
+  { id: "sharepoint", labelKey: "imp.gallery.src.sharepoint", state: "active" },
   { id: "jira", labelKey: "imp.gallery.src.jira", state: "soon" },
   // IDs unveraendert: `FileTypePicker.tsx:62/:64` fuehrt Icon-Eintraege unter genau diesen Namen.
   { id: "word-sys", labelKey: "imp.gallery.src.wordSource", state: "planned" },
   { id: "pdf-sys", labelKey: "imp.gallery.src.pdfSource", state: "planned" },
-  { id: "sharepoint", labelKey: "imp.gallery.src.sharepoint", state: "planned" },
   { id: "teams", labelKey: "imp.gallery.src.teams", state: "planned" },
   { id: "gdrive", labelKey: "imp.gallery.src.gdrive", state: "planned" },
   { id: "dms", labelKey: "imp.gallery.src.dms", state: "planned" },

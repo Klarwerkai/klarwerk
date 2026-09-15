@@ -61,6 +61,9 @@ import { LesevarianteHinweis } from "../components/LesevarianteHinweis";
 import { SanitizedHtml } from "../components/SanitizedHtml";
 // F-0140 / K-20: derselbe Zustandsbanner, den der Ergebnis-View schon benutzt — kein zweiter.
 import { RunStateBanner } from "../components/confluence-import/RunStateBanner";
+// JOB 4086: der SharePoint-/OneDrive-Weg. Er haengt an DIESER Seite und nicht an einem eigenen
+// Rahmen — Begruendung an der Einhaengestelle in `ImportReview`.
+import { SharePointImportBereich } from "../components/sharepoint-import/SharePointImportBereich";
 import { Button, Card, PageHeader, QueryState, SectionLabel, cx } from "../components/ui";
 import { CAPITAL_SECTIONS, sectionAnchor, sectionHref } from "../lib/capitalSections";
 import { deriveStatus } from "../lib/displayStatus";
@@ -943,6 +946,21 @@ export function ImportReview(): JSX.Element {
       {/* F-0140 / K-20: der laufende Import steht ueber dem Fluss — er beantwortet „laeuft gerade
           etwas?", und die Frage stellt sich, BEVOR man einen neuen Schritt anfaengt. */}
       <ImportRunPanel />
+
+      {/* JOB 4086: der SharePoint-/OneDrive-Weg — auswaehlen, abrufen, importieren.
+          WARUM HIER UND NICHT IM COCKPIT-PROVIDER: Der gefuehrte Fluss darunter ist der
+          Confluence-/JSON-Fluss (Quelle waehlen → erkunden → eingrenzen → gruppieren → uebernehmen);
+          seine Schrittleiste kennt genau diese Stufen. Der SharePoint-Weg hat sie nicht — er hat
+          Liste, Auswahl, Uebernahme. Ihn in denselben Stepper zu zwaengen hiesse, Haken fuer
+          Schritte zu setzen, die er nie geht. Ein ZWEITER Stepper daneben ist ausdruecklich
+          ausgeschlossen (Auftrag §5.7), und er waere auch die schlechtere Loesung: zwei Erzaehlungen
+          ueber dieselbe Seite.
+          Was er dagegen TEILT, ist das Wesentliche — dieselbe Seite, dieselbe Pruef-Warteschlange
+          darunter, dasselbe Rechtetor, dieselbe Kartensprache. Der Bereich rendert fuer alle, die
+          `users.manage` nicht tragen, gar nichts (kein 403-Rauschen), genau wie der Zugangskasten
+          darueber. Die SharePoint-Kachel der Quellen-Galerie im Cockpit zeigt als echter Link auf
+          seine Kennung. */}
+      <SharePointImportBereich />
 
       <ImportCockpitProvider>
         <ImportStepperBar />

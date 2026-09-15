@@ -193,6 +193,30 @@ const ALTFAELLE: ReadonlyMap<string, string> = new Map([
     "services/app/src/routes/confluence-import-routes.ts",
     "Anker-/Re-Sync-Apply (SCRUM-510 R2b): dieselbe Begründung, dieselbe Zielpfad-Grenze",
   ],
+  // JOB 4086 — DER DRITTE ANKER-WEG, UND WARUM ER HIER STEHT STATT EINEN PORT ZU BEKOMMEN.
+  //
+  // Die Begründung der zwei Einträge darüber trifft auf ihn WÖRTLICH zu, und sie ist hier sogar
+  // strenger belegt: Der SharePoint-Mapper baut ein Item nur MIT `externalId` (ohne Kennung gibt es
+  // gar kein Item, `services/sharepoint/src/mapper.ts`), und die Route existiert überhaupt nur bei
+  // gesetztem `KLARWERK_SHAREPOINT_IMPORT` — genau der Schalter, der den externalId-Upsert-Strang
+  // mit einschaltet (`build-app.ts`, `externalImportEnabled`). Für diesen Aufrufer ist die
+  // Textfrage damit nicht „wird meistens nicht gestellt", sondern strukturell nicht erreichbar.
+  //
+  // WARUM NICHT EINFACH EIN PORT: Die eine Auslegung dieser Frage im Produkt ist
+  // `pruefeReImportDublette` in `services/app/src/routes/library-routes.ts` — dateiintern und
+  // bewusst nicht exportiert („Es gibt weiterhin GENAU EINE Auslegung dieser Frage im Produkt").
+  // Sie von hier aus zu benutzen hiesse, `library-routes.ts` zu öffnen — Zielpfad eines anderen
+  // Auftrags. Und eine EIGENE Dublettenregel für SharePoint zu schreiben wäre die zweite Auslegung
+  // und damit genau der Schaden, den JOB 3050 beseitigt hat.
+  //
+  // KEINE DAUERKARTE, wie bei den zwei Einträgen darüber: Wird `pruefeReImportDublette` eines Tages
+  // exportiert, bekommt dieser Aufrufer sie und der Eintrag MUSS hier verschwinden (W4 wird dann
+  // rot). Bis dahin trägt die zweite Linie: ohne Port fällt eine gestellte Textfrage fail-closed
+  // auf `pruefung_nicht_moeglich` — kein stiller Durchlass, kein doppeltes Wissensobjekt.
+  [
+    "services/app/src/routes/sharepoint-import-routes.ts",
+    "Anker-/Re-Sync-Apply (JOB 4086): Items tragen IMMER eine externalId, und die Route existiert nur bei eingeschaltetem Upsert-Strang; die Textfrage wird nicht gestellt. Die eine Dublettenregel liegt dateiintern in library-routes.ts (Zielpfad eines anderen Auftrags), eine zweite wäre die zweite Auslegung",
+  ],
 ]);
 
 describe("JOB 3050 · W — keine Nennung von createImportCandidates ohne Dublettenport", () => {
@@ -203,15 +227,19 @@ describe("JOB 3050 · W — keine Nennung von createImportCandidates ohne Dublet
       [],
     );
     // Ohne diese Zahl wäre jede Aussage unten auch bei einer leer laufenden Erhebung grün.
+    // JOB 4086 — NACHGEFÜHRT auf vier: der SharePoint-Apply ist der dritte Anker-Weg (Begründung
+    // im Register oben). Die Zahl bleibt hart gepinnt — sie ist der Wächter dagegen, dass ein
+    // vierter Aufrufer still dazukommt.
     expect(
       nennungen.length,
-      "Drei Produktions-Nennungen: die Bibliotheksroute und die zwei Anker-Wege.",
-    ).toBe(3);
+      "Vier Produktions-Nennungen: die Bibliotheksroute und die drei Anker-Wege.",
+    ).toBe(4);
     expect(new Set(nennungen.map((n) => n.datei))).toEqual(
       new Set([
         "services/app/src/routes/library-routes.ts",
         "services/app/src/confluence-import.ts",
         "services/app/src/routes/confluence-import-routes.ts",
+        "services/app/src/routes/sharepoint-import-routes.ts",
       ]),
     );
     expect(

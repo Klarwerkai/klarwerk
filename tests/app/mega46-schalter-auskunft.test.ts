@@ -18,6 +18,10 @@ import { buildApp } from "../../services/app/src/build-app";
 const SCHALTER_VARIABLEN = [
   "KLARWERK_PROVENANCE_ENABLED",
   "KLARWERK_CONFLUENCE_IMPORT",
+  // JOB 4086: die zweite Quelle (SharePoint/OneDrive). Sie MUSS hier stehen — sonst liesse
+  // `schalterLeeren()` sie stehen, und der VORGABE-Fall unten prüfte die Umgebung des Laufs statt
+  // die Vorgabe.
+  "KLARWERK_SHAREPOINT_IMPORT",
   "KLARWERK_EXPERT_MATCHING",
   // AUFTRAG-mega61: die zwei Notausschalter. Sie stehen hier, weil auch ihr Wert nie über den
   // Draht gehen darf — und weil `schalterLeeren()` unten sonst die VORGABE nicht prüfen könnte.
@@ -42,6 +46,9 @@ const SCHALTER_VARIABLEN = [
 const VORGABE = {
   herkunft: false,
   confluenceImport: false,
+  // JOB 4086: eine zweite Quelle, dieselbe Richtung — eine Fähigkeit, die niemand freigegeben hat,
+  // ist AUS. Dass dieser Wert hier `false` steht, ist selbst die Zusage.
+  sharepointImport: false,
   expertMatching: false,
   rechtsseiten: true,
   hinweisbanner: true,
@@ -109,6 +116,7 @@ describe("mega46 F1 · die Auskunft über die gesetzten Schalter", () => {
     // Ausdrücklich: kein Wort über die gebuchten Fähigkeiten dieses Betriebs.
     expect(Object.keys(features)).not.toContain("herkunft");
     expect(Object.keys(features)).not.toContain("confluenceImport");
+    expect(Object.keys(features)).not.toContain("sharepointImport");
     expect(Object.keys(features)).not.toContain("expertMatching");
     // JOB 3761: und kein Wort über die Werkzeuge — `demodaten` bleibt draußen, obwohl der
     // Nachbarschalter `demoInstanz` jetzt drin ist. Zwei „Demo"-Schalter, zwei Zuständigkeiten.

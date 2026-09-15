@@ -216,9 +216,19 @@ describe("M6 · Galerie-Einstieg", () => {
         contentType: String(response.headers["content-type"]),
       });
       windows.push(dom);
-      expect(dom.window.document.querySelector("#import-source-gallery a")?.textContent).toBe(
-        "Jira / Confluence →",
-      );
+      // JOB 4086 — NACHGEFÜHRT: Bis hierher stand hier `#import-source-gallery a`, also „der
+      // ERSTE Link in der Galerie". Das traf den Erklärlink nur, solange er der einzige war. Seit
+      // die SharePoint-Kachel ein echter Link auf den SharePoint-Bereich ist (JOB 4086, dieselbe
+      // Mechanik, die JOB 3190 für die Dateikacheln eingeführt hat), steht vor ihm ein weiterer.
+      //
+      // Gemessen wird deshalb ab jetzt der Link ÜBER SEIN ZIEL und nicht über seine Position: Der
+      // Fall prüft, ob der Name des Erklärlinks das Dekodieren der HTTP-Bytes übersteht — dafür
+      // muss er genau diesen Link treffen, und eine Positionsangabe ist kein Ziel.
+      expect(
+        dom.window.document.querySelector(
+          '#import-source-gallery a[href="/demonstration/importwege.html"]',
+        )?.textContent,
+      ).toBe("Jira / Confluence →");
     } finally {
       await app.close();
     }

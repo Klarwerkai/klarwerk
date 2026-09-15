@@ -9,10 +9,11 @@
 // könnte über die nicht ausgewählten nichts sagen, und genau das ist die Lücke, die dieser Auftrag
 // schliesst.
 //
-// DREI SCHALTER WERDEN AN DER BÜHNE GESETZT (`SCHALTER`), und das ist keine Bequemlichkeit: vier
+// SCHALTER WERDEN AN DER BÜHNE GESETZT (`SCHALTER`), und das ist keine Bequemlichkeit: mehrere
 // Routengruppen registriert `build-app.ts` nur bei aktivem Schalter (`checkTextRoutes` und
 // `addinStaticRoutes` hinter `KLARWERK_ADDON_API`, `confluenceImportRoutes`/`importRunRoutes` hinter
-// `KLARWERK_CONFLUENCE_IMPORT`, `provenanceRoutes` hinter `KLARWERK_PROVENANCE_ENABLED`). Ohne sie
+// `KLARWERK_CONFLUENCE_IMPORT`, `sharepointImportRoutes` hinter `KLARWERK_SHAREPOINT_IMPORT`,
+// `provenanceRoutes` hinter `KLARWERK_PROVENANCE_ENABLED`). Ohne sie
 // wären diese Gruppen in der Abnahme gar nicht vorhanden — und „nicht registriert" sähe von aussen
 // genauso aus wie „gesperrt". Die Schalter werden nach jedem Fall wortgetreu zurückgestellt.
 //
@@ -55,6 +56,11 @@ const PASSWORT = "Rollenabnahme-2026!";
 const SCHALTER: Record<string, string> = {
   KLARWERK_ADDON_API: "1",
   KLARWERK_CONFLUENCE_IMPORT: "1",
+  // JOB 4086: die zwei SharePoint-Import-Routen entstehen nur mit diesem Schalter. Ohne ihn sähe
+  // „nicht registriert" in der Abnahme genauso aus wie „gesperrt" — derselbe Grund wie oben.
+  // Zugangsdaten werden BEWUSST nicht gesetzt: die Abnahme misst das Rechtetor, nicht die Quelle,
+  // und ohne Adapter antwortet die Route vor jedem Effekt.
+  KLARWERK_SHAREPOINT_IMPORT: "1",
   KLARWERK_PROVENANCE_ENABLED: "1",
   // Kein Schalter über einer GRUPPE, sondern über einer einzelnen Route — und gemessen an dieser
   // Bühne: `GET /api/analytics/expertise` prüft den Schalter VOR dem Rechtetor

@@ -3927,8 +3927,29 @@ describe("JOB 1181 · Klassenbindungen: aufgelöst oder gemeldet, kein dritter Z
     // hier ein zweites Gehirn für eine Ja/Nein-Entscheidung; die beiden Ketten sind flache
     // Konstanten und werden vom Sammler gelesen. Die Datei ist NEU — es fällt nichts weg, und keine
     // bestehende Bindung ist verschoben.
+    //
+    // JOB 4086 (SHAREPOINT/ONEDRIVE · DER ZUGANGSKASTEN DER ZWEITEN QUELLE) NACH DEM REBASE auf
+    // JOB 4025: von 219 auf 221. Die ZWEI neuen Bindungen sind an diesem Arbeitsbaum vor dem Rebase
+    // gemessen (der Sammler meldete `expected 220 to be 218`) und stehen beide in derselben Datei:
+    //
+    //     + components/sharepoint-import/SharePointZugangKarte.tsx — `${TONE_CLASS[text.tone]}`
+    //       (der Ton des Zustands-Abzeichens: eingeschaltet · ohne Zugangsdaten · aus)
+    //     + components/sharepoint-import/SharePointZugangKarte.tsx —
+    //       `${c.present ? "text-trust-pos-text" : "text-muted-2"}`
+    //       (je Umgebungsvariable: steht sie, oder steht sie nicht)
+    //
+    // WARUM NICHT AUFLÖSBAR GESCHRIEBEN: Beide sind ZEICHENGLEICH die Bindungen, die
+    // `components/ImportAccessPanel.tsx` für die Confluence-Quelle seit mega67 trägt und die in den
+    // 218 darüber schon enthalten sind. Sie hier anders zu schreiben als dort hiesse, zwei Bauformen
+    // für dieselbe Karte zu führen — und die Alternative (je Zustand ein eigener Knoten mit flacher
+    // Klassenkette) wären drei Abschriften desselben Markups, genau der Fall, den die Auflage aus
+    // JOB 3267 für die Ton-Tabellen ausdrücklich zulässt. Der gemeinsame Baustein für beide Karten
+    // wäre die bessere Form; er scheitert daran, dass `ImportAccessPanel.tsx` Zielpfad eines
+    // anderen Auftrags ist, und steht als REST in der Rückgabe von JOB 4086. Die Rebase-Summe
+    // (219 aus JOB 4025 + diese zwei) ist an diesem Arbeitsbaum nach der Konfliktauflösung gemessen,
+    // nicht gerechnet.
     expect(UNAUFGELOEST.length, "es gibt heute unauflösbare Bindungen — das ist der Befund").toBe(
-      219,
+      221,
     );
     for (const b of UNAUFGELOEST) {
       expect(b.datei, "Meldung ohne Datei").toMatch(/^apps\/web\/src\/.+\.tsx?$/);

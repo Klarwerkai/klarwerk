@@ -73,5 +73,27 @@ export function importAccessRoutes(
       }
       reply.code(200).send(await zugang.zugangsstatus());
     });
+
+    // ==========================================================================================
+    // JOB 4086 — DIESELBE AUSKUNFT FÜR SHAREPOINT/ONEDRIVE.
+    // ==========================================================================================
+    //
+    // Sie steht aus demselben Grund VOR dem Schalter wie ihre Confluence-Schwester darüber: Läge
+    // sie hinter `KLARWERK_SHAREPOINT_IMPORT`, könnte sie den einen Zustand nicht melden, für den
+    // sie gebaut ist — „in dieser Installation nicht eingeschaltet". Die Oberfläche fragte dann
+    // ins Leere und müsste raten oder einen Fehler provozieren.
+    //
+    // EIGENE ADRESSE STATT PARAMETER: `/api/import/:system/zugang` wäre eine Tür, hinter der ein
+    // Aufrufer nach beliebigen Systemnamen fragen kann — und die Antwort auf einen unbekannten
+    // Namen müsste man erfinden. Zwei benannte Adressen kennen genau die zwei Systeme, die es
+    // wirklich gibt. Dieselbe Rechtebindung (`users.manage`), derselbe Vertrag, dieselbe Zusage:
+    // kein Wert, keine Maske, kein Aufruf an die Gegenstelle.
+    app.get("/api/import/sharepoint/zugang", async (request, reply) => {
+      const user = await guards.requirePermission("users.manage", request, reply);
+      if (!user) {
+        return;
+      }
+      reply.code(200).send(await zugang.sharepointZugangsstatus());
+    });
   };
 }

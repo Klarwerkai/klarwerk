@@ -138,7 +138,13 @@ describe("JOB 3235 · die zwei Gruppen der Galerie tragen fuer dasselbe Format z
     ).map((el) => (el.textContent ?? "").trim());
     expect(zeilen[0], "Systemgruppe").toBe(`In Planung (${systemGeplant})`);
     expect(zeilen[1], "Dateigruppe").toBe(`In Planung (${dateiGeplant})`);
-    // Der gemessene Zuwachs von JOB 3235: Word und PDF sind dazugekommen (vorher 10).
-    expect(systemGeplant).toBe(12);
+    // Der gemessene Zuwachs von JOB 3235: Word und PDF sind dazugekommen (vorher 10, dann 12).
+    // JOB 4086 — NACHGEFÜHRT auf 11: SharePoint hat „geplant" verlassen. Nicht weil jemand die
+    // Kachel umgeschrieben hätte, sondern weil die drei Messungen, an denen dieser Zustand hängt,
+    // jetzt anders ausfallen — Modul, Schalter und registrierte Route sind da
+    // (`tests/sharepoint-onedrive-import/katalog-sagt-die-wahrheit.test.ts` misst alle drei).
+    // Die ZAHL bleibt hier trotzdem hart gepinnt: sie ist der Wächter dagegen, dass eine Kachel
+    // still aus der Planungsgruppe verschwindet, ohne dass es jemand begründet.
+    expect(systemGeplant).toBe(11);
   });
 });

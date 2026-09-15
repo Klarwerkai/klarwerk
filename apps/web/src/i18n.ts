@@ -4174,6 +4174,52 @@ const de = {
     "Ein erfolgreich abgeschlossener Import ist bisher nicht festgehalten.",
   "imp.access.lastConnected":
     "Zuletzt erfolgreich abgeschlossener Import: {{date}}. Ob es jetzt funktioniert, sagt dieser Rückblick nicht.",
+  // ================================================================================================
+  // JOB 4086 — SHAREPOINT/ONEDRIVE. DER WEG, UND VIER SÄTZE FÜR DIE VIER FEHLERLAGEN.
+  // ================================================================================================
+  // Die vier Fehlersätze tragen KEINE Zahl und KEIN Serverwort — kein „503", kein Kürzel, keine
+  // englische Durchreiche. Jeder sagt, WAS IST und WAS DER MENSCH TUN KANN, und keiner sagt
+  // dasselbe wie ein anderer (das hält `tests/sharepoint-onedrive-import/` fest).
+  "imp.sharepoint.titel": "SharePoint / OneDrive",
+  "imp.sharepoint.was":
+    "Wähle eine Datei aus der angebundenen Bibliothek. Klarwerk holt sie und stellt sie in die Prüfung unten — mit ihrem Namen, ihrer Originaladresse und ihrem Stand.",
+  "imp.sharepoint.ohneInhalt":
+    "Der Inhalt der Datei wird dabei nicht gelesen. Übernommen werden Name, Adresse und Stand der Quelle; wer den Text braucht, öffnet die Datei über ihre Adresse.",
+  "imp.sharepoint.listeTitel": "Dateien, die du sehen darfst",
+  "imp.sharepoint.neuLaden": "Liste neu laden",
+  "imp.sharepoint.laedt": "Die Dateien werden geladen …",
+  "imp.sharepoint.nichtFrisch":
+    "Diese Liste ist der Stand von vorhin — sie wird gerade aufgefrischt.",
+  "imp.sharepoint.leer": "In dieser Bibliothek liegt gerade keine Datei, die du sehen darfst.",
+  "imp.sharepoint.gedeckelt":
+    "Es gibt mehr Dateien, als hier stehen — diese Liste ist gekürzt. Grenze die Bibliothek ein, wenn die gesuchte fehlt.",
+  "imp.sharepoint.stand": "Stand {{zeit}}",
+  "imp.sharepoint.uebernehmen": "Ausgewählte Dateien importieren",
+  "imp.sharepoint.uebernahmeLaeuft": "Wird geholt …",
+  "imp.sharepoint.ergebnisTitel": "Aus SharePoint geholt",
+  "imp.sharepoint.quelleOeffnen": "Quelle öffnen",
+  "imp.sharepoint.schonVorgemerkt": "Stand in diesem Stand schon in der Prüfung: {{n}}.",
+  "imp.sharepoint.verschwunden": "In SharePoint nicht mehr vorhanden: {{n}}.",
+  "imp.sharepoint.gescheitert": "Nicht übernommen: {{n}}.",
+  "imp.sharepoint.weiterInDerPruefung":
+    "Die Dateien liegen jetzt in der Prüfung weiter unten. Erst wenn ein Mensch sie dort annimmt, entsteht daraus ein Wissensobjekt.",
+  "imp.sharepoint.zugang.ready.titel": "Eingeschaltet, Zugangsdaten hinterlegt",
+  "imp.sharepoint.zugang.ready.text":
+    "Der SharePoint-Import ist für diese Installation eingeschaltet, und alle nötigen Zugangsdaten stehen auf dem Server. Ob sie auch gültig sind, zeigt sich beim ersten Abruf — das lässt sich von hier aus nicht prüfen, ohne SharePoint anzurufen.",
+  "imp.sharepoint.zugang.ohneDaten.titel": "Eingeschaltet, aber ohne Zugangsdaten",
+  "imp.sharepoint.zugang.ohneDaten.text":
+    "Der SharePoint-Import ist eingeschaltet, aber es fehlt noch etwas. Solange das so ist, kann keine Datei geholt werden.",
+  "imp.sharepoint.zugang.aus.titel": "In dieser Installation nicht eingeschaltet",
+  "imp.sharepoint.zugang.aus.text":
+    "Der SharePoint-Import ist hier nicht eingeschaltet. Er wird auf dem Server freigeschaltet; von der Oberfläche aus lässt er sich nicht umlegen.",
+  "imp.sharepoint.fehler.nichtEingerichtet":
+    "Die Verbindung zu SharePoint ist in dieser Installation nicht eingerichtet. Wer Zugang zum Rechner dieser Installation hat, kann sie dort hinterlegen.",
+  "imp.sharepoint.fehler.keineBerechtigung":
+    "Das hinterlegte Konto darf diese Datei oder Bibliothek nicht lesen. Lass die Freigabe in SharePoint prüfen oder wähle eine andere Datei.",
+  "imp.sharepoint.fehler.nichtVorhanden":
+    "Diese Datei gibt es in SharePoint nicht mehr. Lade die Liste neu und wähle eine Datei, die noch da ist.",
+  "imp.sharepoint.fehler.verbindungWeg":
+    "Die Verbindung zu SharePoint gilt nicht mehr — sie ist abgelaufen oder gerade nicht erreichbar. Versuche es später noch einmal; erneuern kann sie, wer Zugang zum Rechner dieser Installation hat.",
   // AUFTRAG-ic7-import-vision: EHRLICHE Quellen-Galerie „wo die Reise hingeht".
   "imp.gallery.planned": "geplant",
   // AUFTRAG-mega32 BLOCK G: EINE aufklappbare Zeile mit ANZAHL. Standard zugeklappt; aufgeklappt
@@ -9939,6 +9985,47 @@ const en: typeof de = {
   "imp.access.lastConnectedUnknown": "No successfully completed import has been recorded yet.",
   "imp.access.lastConnected":
     "Last successfully completed import: {{date}}. Whether it works now, this look back does not say.",
+  // JOB 4086 — SharePoint/OneDrive. Die vier Fehlersätze tragen auch hier keine Zahl und kein
+  // Serverwort: derselbe Vertrag wie im deutschen Block, nicht eine lockerere Übersetzung.
+  "imp.sharepoint.titel": "SharePoint / OneDrive",
+  "imp.sharepoint.was":
+    "Pick a file from the connected library. Klarwerk fetches it and puts it into the review below — with its name, its original address and its state.",
+  "imp.sharepoint.ohneInhalt":
+    "The contents of the file are not read. What is taken over is the name, the address and the state of the source; if you need the text, open the file through its address.",
+  "imp.sharepoint.listeTitel": "Files you are allowed to see",
+  "imp.sharepoint.neuLaden": "Reload list",
+  "imp.sharepoint.laedt": "Loading the files …",
+  "imp.sharepoint.nichtFrisch": "This list is from a moment ago — it is being refreshed right now.",
+  "imp.sharepoint.leer": "Right now there is no file in this library that you are allowed to see.",
+  "imp.sharepoint.gedeckelt":
+    "There are more files than shown here — this list is shortened. Narrow down the library if the one you want is missing.",
+  "imp.sharepoint.stand": "state {{zeit}}",
+  "imp.sharepoint.uebernehmen": "Import selected files",
+  "imp.sharepoint.uebernahmeLaeuft": "Fetching …",
+  "imp.sharepoint.ergebnisTitel": "Fetched from SharePoint",
+  "imp.sharepoint.quelleOeffnen": "Open source",
+  "imp.sharepoint.schonVorgemerkt": "Already in the review in this state: {{n}}.",
+  "imp.sharepoint.verschwunden": "No longer present in SharePoint: {{n}}.",
+  "imp.sharepoint.gescheitert": "Not taken over: {{n}}.",
+  "imp.sharepoint.weiterInDerPruefung":
+    "The files are now in the review further down. Only once a person accepts them there does a knowledge object come out of it.",
+  "imp.sharepoint.zugang.ready.titel": "Switched on, credentials in place",
+  "imp.sharepoint.zugang.ready.text":
+    "The SharePoint import is switched on for this installation, and all required credentials are set on the server. Whether they are also valid shows on the first fetch — that cannot be checked from here without calling SharePoint.",
+  "imp.sharepoint.zugang.ohneDaten.titel": "Switched on, but without credentials",
+  "imp.sharepoint.zugang.ohneDaten.text":
+    "The SharePoint import is switched on, but something is still missing. As long as that is the case, no file can be fetched.",
+  "imp.sharepoint.zugang.aus.titel": "Not switched on in this installation",
+  "imp.sharepoint.zugang.aus.text":
+    "The SharePoint import is not switched on here. It is enabled on the server; it cannot be flipped from the interface.",
+  "imp.sharepoint.fehler.nichtEingerichtet":
+    "The connection to SharePoint has not been set up in this installation. Whoever has access to the machine of this installation can put it in place there.",
+  "imp.sharepoint.fehler.keineBerechtigung":
+    "The stored account is not allowed to read this file or library. Have the sharing checked in SharePoint, or choose a different file.",
+  "imp.sharepoint.fehler.nichtVorhanden":
+    "This file no longer exists in SharePoint. Reload the list and choose a file that is still there.",
+  "imp.sharepoint.fehler.verbindungWeg":
+    "The connection to SharePoint no longer holds — it has expired or cannot be reached right now. Try again later; only someone with access to the machine of this installation can renew it.",
   "imp.gallery.planned": "planned",
   "imp.gallery.plannedGroup": "Planned ({{count}})",
   "imp.gallery.systemsTitle": "Systems",
@@ -15116,6 +15203,47 @@ const nl: typeof de = {
   "imp.access.lastConnectedUnknown": "Er is nog geen succesvol afgeronde import vastgelegd.",
   "imp.access.lastConnected":
     "Laatste succesvol afgeronde import: {{date}}. Of het nu werkt, zegt deze terugblik niet.",
+  // JOB 4086 — SharePoint/OneDrive. Ook hier: vier eigen zinnen, geen getal en geen serverwoord.
+  "imp.sharepoint.titel": "SharePoint / OneDrive",
+  "imp.sharepoint.was":
+    "Kies een bestand uit de gekoppelde bibliotheek. Klarwerk haalt het op en zet het hieronder in de controle — met de naam, het oorspronkelijke adres en de stand ervan.",
+  "imp.sharepoint.ohneInhalt":
+    "De inhoud van het bestand wordt daarbij niet gelezen. Overgenomen worden naam, adres en stand van de bron; wie de tekst nodig heeft, opent het bestand via het adres.",
+  "imp.sharepoint.listeTitel": "Bestanden die je mag zien",
+  "imp.sharepoint.neuLaden": "Lijst opnieuw laden",
+  "imp.sharepoint.laedt": "De bestanden worden geladen …",
+  "imp.sharepoint.nichtFrisch":
+    "Deze lijst is de stand van zojuist — hij wordt op dit moment ververst.",
+  "imp.sharepoint.leer": "In deze bibliotheek staat nu geen bestand dat je mag zien.",
+  "imp.sharepoint.gedeckelt":
+    "Er zijn meer bestanden dan hier staan — deze lijst is ingekort. Baken de bibliotheek af als het gezochte ontbreekt.",
+  "imp.sharepoint.stand": "stand {{zeit}}",
+  "imp.sharepoint.uebernehmen": "Gekozen bestanden importeren",
+  "imp.sharepoint.uebernahmeLaeuft": "Wordt opgehaald …",
+  "imp.sharepoint.ergebnisTitel": "Uit SharePoint opgehaald",
+  "imp.sharepoint.quelleOeffnen": "Bron openen",
+  "imp.sharepoint.schonVorgemerkt": "Stond in deze stand al in de controle: {{n}}.",
+  "imp.sharepoint.verschwunden": "Niet meer aanwezig in SharePoint: {{n}}.",
+  "imp.sharepoint.gescheitert": "Niet overgenomen: {{n}}.",
+  "imp.sharepoint.weiterInDerPruefung":
+    "De bestanden staan nu verderop in de controle. Pas als een mens ze daar aanneemt, ontstaat er een kennisobject uit.",
+  "imp.sharepoint.zugang.ready.titel": "Ingeschakeld, toegangsgegevens aanwezig",
+  "imp.sharepoint.zugang.ready.text":
+    "De SharePoint-import is voor deze installatie ingeschakeld en alle benodigde toegangsgegevens staan op de server. Of ze ook geldig zijn, blijkt bij de eerste ophaalpoging — dat valt van hieruit niet te controleren zonder SharePoint te bellen.",
+  "imp.sharepoint.zugang.ohneDaten.titel": "Ingeschakeld, maar zonder toegangsgegevens",
+  "imp.sharepoint.zugang.ohneDaten.text":
+    "De SharePoint-import is ingeschakeld, maar er ontbreekt nog iets. Zolang dat zo is, kan er geen bestand worden opgehaald.",
+  "imp.sharepoint.zugang.aus.titel": "In deze installatie niet ingeschakeld",
+  "imp.sharepoint.zugang.aus.text":
+    "De SharePoint-import is hier niet ingeschakeld. Hij wordt op de server vrijgegeven; vanuit de interface is hij niet om te zetten.",
+  "imp.sharepoint.fehler.nichtEingerichtet":
+    "De verbinding met SharePoint is in deze installatie niet ingericht. Wie toegang heeft tot de machine van deze installatie, kan hem daar vastleggen.",
+  "imp.sharepoint.fehler.keineBerechtigung":
+    "Het opgeslagen account mag dit bestand of deze bibliotheek niet lezen. Laat de rechten in SharePoint controleren of kies een ander bestand.",
+  "imp.sharepoint.fehler.nichtVorhanden":
+    "Dit bestand bestaat niet meer in SharePoint. Laad de lijst opnieuw en kies een bestand dat er nog is.",
+  "imp.sharepoint.fehler.verbindungWeg":
+    "De verbinding met SharePoint geldt niet meer — hij is verlopen of op dit moment niet bereikbaar. Probeer het later opnieuw; vernieuwen kan alleen wie toegang heeft tot de machine van deze installatie.",
   "imp.gallery.planned": "gepland",
   "imp.gallery.plannedGroup": "Gepland ({{count}})",
   "imp.gallery.systemsTitle": "Systemen",

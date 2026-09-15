@@ -1806,8 +1806,24 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // gegen den NEUEN Pin rot — `alsKomponente` (oben, :453) verlangt einen Großbuchstaben am
     // Namensanfang; die +3 sind damit genau diese drei Bauteile und kein vierter Fund hinter
     // derselben Zahl. Danach hashgleich zurückgenommen.
+    //
+    // JOB 4086 (SHAREPOINT/ONEDRIVE) NACH DEM REBASE auf JOB 4025 — NACHGEFÜHRT von 381 auf 383.
+    // Zwei neue Bauteile, beide unter `components/sharepoint-import/`:
+    //
+    //     + `SharePointImportBereich` — der Weg auswählen → abrufen → importieren
+    //     + `SharePointZugangKarte`   — der Zugangszustand der zweiten Quelle
+    //
+    // Dieselbe Begründung wie bei den Einträgen darüber, und sie trägt hier genauso: Die Auflage
+    // verbietet, dass eine UMSTELLUNG die Erhebung verschiebt — nicht, dass der Quellbaum wächst.
+    // Die zwei Zahlen, an denen Stufe 2 wirklich hängt, bleiben unverändert: `anbieter` 1 und
+    // `traeger` 2. Keines der beiden Bauteile zeigt ein Bild, bietet eine Bildbeschreibung an
+    // (kein `ANGEBOT_MUSTER`) oder trägt einen eigenen Titel — sie erscheinen nur in der
+    // Grundmenge. Das ist keine Behauptung nebenbei: der Bereich zeigt Dateinamen, Adressen und
+    // Stände, und die einzige Bildquelle des Imports (der Bildauszug des Confluence-Snapshots)
+    // wird von ihm nicht berührt. Die Rebase-Summe (381 aus JOB 4025 + diese zwei) ist an diesem
+    // Arbeitsbaum nach der Konfliktauflösung gemessen, nicht gerechnet.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 381,
+      komponenten: 383,
       anbieter: 1,
       traeger: 2,
     });

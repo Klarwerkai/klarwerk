@@ -244,6 +244,8 @@ import { outputRoutes } from "./routes/output-routes";
 import { overlapRoutes } from "./routes/overlap-routes";
 import { provenanceEnabled, provenanceRoutes } from "./routes/provenance-routes";
 import { reasonerRoutes } from "./routes/reasoner-routes";
+// JOB 4086: Adapter #2 des quellneutralen Import-Vertrags — SharePoint/OneDrive.
+import { sharepointImportRoutes } from "./routes/sharepoint-import-routes";
 import { slidesRoutes } from "./routes/slides-routes";
 import { validationRoutes } from "./routes/validation-routes";
 // G27 R2 (Entscheidung 15 §A): der EINE kanonische Startupvertrag der Suchprojektion — von
@@ -715,10 +717,22 @@ export function assembleServices(
   });
   // SCRUM-510 R2b: GENERISCHES Import-Enable (quellneutral). Der externalId-Upsert-/Re-Sync-Strang ist an,
   // sobald IRGENDEINE Quelle aktiv ist; der Confluence-Flag KLARWERK_CONFLUENCE_IMPORT schaltet nur die
-  // EINE Quelle Confluence. Ein Adapter #2 (Jira-TEST) OR-t später sein eigenes Flag ein — ohne dass der
+  // EINE Quelle Confluence. Ein Adapter #2 OR-t sein eigenes Flag ein — ohne dass der
   // Import-Kern Confluence-Begriffe kennt. Aus (Default) = heutiges Bestandsverhalten.
   // AUFTRAG-mega46 Block F: Prüfung aus dem EINEN Schalter-Registry, nicht mehr abgeschrieben.
-  const externalImportEnabled = schalterAn("confluenceImport"); // künftig: || jiraEnabled || …
+  //
+  // JOB 4086 — DER ADAPTER #2 IST DA, UND DIESE ZEILE SAGT ES.
+  //
+  // Hier stand „künftig: || jiraEnabled || …". Der Satz beschrieb einen Plan und ist mit
+  // SharePoint/OneDrive eingelöst; als Kommentar STEHEN ZU BLEIBEN hiesse, dass die Zeile weiter
+  // eine Zukunft ankündigt, die schon Gegenwart ist. Jira bleibt eine mögliche dritte Quelle —
+  // sie OR-t dann genauso ihren eigenen Schalter hinzu.
+  //
+  // WARUM DAS ODER HIER NOTWENDIG IST UND NICHT NUR ORDENTLICH: Ohne es schriebe der Import-Kern
+  // für einen Betrieb, der NUR SharePoint angebunden hat, gar keinen Herkunfts-Anker
+  // (`acceptToKo`: `const externalId = this.externalUpsert ? item.externalId : undefined`). Das
+  // Wissensobjekt entstünde, verlöre aber lautlos seine Quelle.
+  const externalImportEnabled = schalterAn("confluenceImport") || schalterAn("sharepointImport");
   const library = new LibraryService({
     koService: ko,
     audit,
@@ -1374,6 +1388,12 @@ export const ERLAUBTE_FEHLERTYPEN: ReadonlySet<string> = new Set([
   "OverlapError",
   "ReasonerPolicyLockedError",
   "ReceiptSecretError",
+  // JOB 4086: der EINE Fehlertyp des SharePoint-Moduls (`services/sharepoint/src/graph-client.ts`).
+  // ENTSCHEIDUNG: der Name darf ins Protokoll. Er trägt ausschliesslich seinen Klassennamen — die
+  // WELCHE-Lage steckt im Feld `lage`, und seine Meldung ist einer von vier festen Sätzen ohne
+  // Host, ohne Adresse, ohne Zugangsmerkmal (fremder Text wird dort nirgends übernommen). Damit ist
+  // er dieselbe Klasse Betriebsauskunft wie `ConfluenceRequestError` drei Zeilen weiter oben.
+  "SharePointRequestError",
   "SlideConvertError",
   // JOB 3655: der Startvertrag. Der Name darf ins Protokoll — er trägt keine Nutzerdaten und keinen
   // Wert, sondern nur die Auskunft „ein Pflichtwert der Umgebung fehlt" (die Namen selbst stehen in
@@ -2670,6 +2690,21 @@ export function buildApp(
         importRuns: services.importRuns,
         externalSources: services.externalSources,
         guards,
+      }),
+    );
+  }
+
+  // JOB 4086: der SharePoint-/OneDrive-Import — Adapter #2 derselben Kompositionsstelle. Hinter
+  // SEINEM eigenen Schalter, nicht hinter dem von Confluence: ein Betrieb kann die eine Quelle
+  // haben und die andere nicht. Dieselbe Disziplin wie oben — Schalter aus, Route existiert nicht.
+  if (schalterAn("sharepointImport")) {
+    app.register(
+      sharepointImportRoutes({
+        library: services.library,
+        guards,
+        // Der Übernahmelauf bekommt seine Identität VOR dem ersten Effekt (KW-S4-26 §133) — und
+        // erst dadurch kann die Zugangs-Auskunft „zuletzt erfolgreich importiert" belegen.
+        importRuns: services.importRuns,
       }),
     );
   }

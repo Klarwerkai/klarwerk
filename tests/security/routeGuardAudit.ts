@@ -626,6 +626,15 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // den Zustand „ausgeschaltet" melden können, und hinter dem Schalter gäbe es nur einen 404,
   // ununterscheidbar von „kaputt".
   "GET /api/import/confluence/zugang": { protection: "users.manage" },
+  // JOB 4086: dieselbe Auskunft für SharePoint/OneDrive, dieselbe Tür und derselbe Grund, warum
+  // sie VOR ihrem Schalter steht — sie muss „ausgeschaltet" melden können.
+  "GET /api/import/sharepoint/zugang": { protection: "users.manage" },
+  // JOB 4086: die zwei Türen des SharePoint-Imports (Adapter #2 des quellneutralen
+  // Import-Vertrags). `users.manage` wie JEDE Import-Route; nur bei aktivem
+  // `KLARWERK_SHAREPOINT_IMPORT` registriert. `files` ist READ-ONLY (Dateiliste der Bibliothek),
+  // `apply` stellt die gewählten Dateien in die Review-Queue — nie ein Wissensobjekt.
+  "POST /api/admin/import/sharepoint/files": { protection: "users.manage" },
+  "POST /api/admin/import/sharepoint/apply": { protection: "users.manage" },
 
   // --- Admin (admin-routes.ts) ---
   // AUFTRAG-mega14 Block H (SCRUM-437): LESENDER Demodaten-Stand für die Bereitschafts-Zeile.

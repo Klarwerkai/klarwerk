@@ -52,6 +52,7 @@ import { ALL_ITEMS } from "../app/navigation";
 import { FILE_SOURCES, type GallerySource, SYSTEM_SOURCES } from "../lib/importSourceGallery";
 import { FileTypePicker, systemIcon } from "./FileTypePicker";
 import { BLATT_WEG_DATEI, BLATT_WEG_PARAMETER } from "./erfassen/wege";
+import { SHAREPOINT_BEREICH_ANKER } from "./sharepoint-import/anker";
 
 // AUFTRAG-mega32 BLOCK G: der Auf-/Zu-Zustand wird JE BROWSER gemerkt, wie bei „Weitere Filter" in
 // der Bibliothek. Zwei Schlüssel — Systeme und Dateien sind zwei getrennte Gruppen, und wer die eine
@@ -83,6 +84,30 @@ function erfassenZielFuer(source: GallerySource): string | null {
   return source.state === "elsewhere" ? ERFASSEN_DATEI_ZIEL : null;
 }
 
+// ================================================================================================
+// JOB 4086 — DIE SHAREPOINT-KACHEL IST DER WEG, NICHT DIE ANKÜNDIGUNG EINES WEGES.
+// ================================================================================================
+//
+// DAS PROBLEM, DAS SIE SONST HÄTTE: `onActivate` landet bei `ImportExplore.handleActivate`, und
+// das kennt genau zwei Kennungen — `confluence` und die JSON-Kacheln. Eine dritte aktive Kachel
+// ohne Ziel wäre ein Knopf, der GERÄUSCHLOS nichts tut: kein Fehler, keine Konsolenzeile, nur ein
+// Klick ins Leere. Genau diese Klasse Fehler hat AUFTRAG-mega32 Block H3 einmal gekostet.
+//
+// DESHALB EIN ECHTES ZIEL statt eines Rückrufs: Der SharePoint-Bereich liegt auf DERSELBEN Seite
+// (`pages/Stufe2.tsx`, `ImportReview`) und trägt dort seine Kennung. Die Kachel wird damit zum
+// `<a>` — mit Maus, Tab/Enter, Mittelklick und Browser-Rückweg, ohne dass hier irgendetwas davon
+// nachgebaut wird (dieselbe Mechanik, die JOB 3190 für die Dateikacheln eingeführt hat).
+//
+// DIE KENNUNG WIRD GELESEN, NICHT GETIPPT: sie kommt aus dem Bereich selbst
+// (`SHAREPOINT_BEREICH_ANKER`). Ein getippter Anker wäre eine zweite Wahrheit, die beim nächsten
+// Umbenennen ins Leere zeigt.
+const SHAREPOINT_ZIEL = `#${SHAREPOINT_BEREICH_ANKER}`;
+
+/** Das Ziel einer SYSTEM-Kachel. Nur SharePoint hat heute eines; alle anderen behalten ihr Verhalten. */
+function systemZielFuer(source: GallerySource): string | null {
+  return source.id === "sharepoint" ? SHAREPOINT_ZIEL : null;
+}
+
 export function ImportSourceGallery({
   onActivate,
 }: {
@@ -98,6 +123,7 @@ export function ImportSourceGallery({
         sources={SYSTEM_SOURCES}
         onActivate={onActivate}
         iconFor={systemIcon}
+        hrefFor={systemZielFuer}
         collapsePlanned
         plannedStorageKey={GALLERY_SYSTEMS_PLANNED_STORAGE_KEY}
       />

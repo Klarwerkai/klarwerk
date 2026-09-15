@@ -48,6 +48,7 @@ import {
   type ConfluenceCredentialState,
   confluenceCredentialState,
 } from "../../confluence";
+import { SHAREPOINT_CREDENTIAL_VARS } from "../../sharepoint";
 import { SCHALTER_REGISTRY, type SchalterName, schalterAn } from "./feature-flags";
 
 // ================================================================================================
@@ -122,6 +123,13 @@ const SCHALTER_ERKLAERUNG: Record<SchalterName, { wofuer: string; ohneIhn: strin
     wofuer: "Der Confluence-Space-Import (Admin-Auslöser und Erkundungsfluss).",
     ohneIhn: "Die Import-Routen sind nicht registriert. Vorgabe: aus.",
   },
+  // JOB 4086. Eigener Schalter, nicht der von Confluence: ein Betrieb kann die eine Quelle
+  // angebunden haben und die andere nicht.
+  sharepointImport: {
+    wofuer: "Der SharePoint-/OneDrive-Import (Dateiauswahl und Übernahme).",
+    ohneIhn:
+      "Die SharePoint-Import-Routen sind nicht registriert; die Zugangs-Auskunft meldet „nicht eingeschaltet“. Vorgabe: aus.",
+  },
   expertMatching: {
     wofuer: "Thema-zu-Personen-Zuordnung (Consultant-System).",
     ohneIhn: "Die Zuordnung bleibt unsichtbar. Vorgabe: aus.",
@@ -194,6 +202,45 @@ const CONFLUENCE_WERTE: readonly Startwert[] = CONFLUENCE_CREDENTIAL_VARS.map((n
   wofuer: CONFLUENCE_ERKLAERUNG[name].wofuer,
   ohneIhn:
     "Kein Confluence-Client. Der Import meldet den Zustand ehrlich (confluenceCredentialState) statt zu starten.",
+}));
+
+// ================================================================================================
+// JOB 4086 · DER SHAREPOINT-ZUGANG — AUS DEM MODUL, NICHT DANEBEN
+// ================================================================================================
+//
+// Dieselbe Regel wie beim Confluence-Block darüber: Die Liste, WAS ein SharePoint-Zugang braucht,
+// gehört `services/sharepoint` (Begründung in dessen `credential-state.ts`). Dieser Katalog
+// erzeugt seine Einträge daraus und schreibt sie nicht ab.
+const SHAREPOINT_ERKLAERUNG: Record<
+  (typeof SHAREPOINT_CREDENTIAL_VARS)[number],
+  { geheim: boolean; wofuer: string }
+> = {
+  KLARWERK_SHAREPOINT_BASE_URL: {
+    geheim: false,
+    wofuer:
+      "Basisadresse des Microsoft-Graph-Dienstes. MUSS https sein, sonst kommt kein Client zustande.",
+  },
+  KLARWERK_SHAREPOINT_TOKEN: {
+    geheim: true,
+    wofuer: "Das Zugangsmerkmal des lesenden SharePoint-/OneDrive-Zugangs.",
+  },
+  KLARWERK_SHAREPOINT_DRIVE: {
+    geheim: false,
+    wofuer: "Die Bibliothek (das Laufwerk), aus der importiert wird.",
+  },
+};
+
+const SHAREPOINT_WERTE: readonly Startwert[] = SHAREPOINT_CREDENTIAL_VARS.map((name) => ({
+  name,
+  bereich: "SharePoint-Import",
+  // Bewusst KEINE Pflicht, auch nicht bei eingeschaltetem Import — dieselbe Entscheidung wie bei
+  // Confluence (Pedi, 30.07.): ein unvollständiger Zugang ZEIGT seinen Zustand, statt den Start zu
+  // blockieren.
+  pflicht: { art: "nie" } as const,
+  geheim: SHAREPOINT_ERKLAERUNG[name].geheim,
+  wofuer: SHAREPOINT_ERKLAERUNG[name].wofuer,
+  ohneIhn:
+    "Kein SharePoint-Client. Der Import meldet den Zustand ehrlich (sharepointCredentialState) statt zu starten.",
 }));
 
 // ================================================================================================
@@ -900,6 +947,7 @@ const GRUNDWERTE: readonly Startwert[] = [
 export const STARTVERTRAG: readonly Startwert[] = [
   ...GRUNDWERTE,
   ...CONFLUENCE_WERTE,
+  ...SHAREPOINT_WERTE,
   ...SCHALTER_WERTE,
 ];
 

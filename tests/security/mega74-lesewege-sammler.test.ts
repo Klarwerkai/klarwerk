@@ -339,6 +339,14 @@ const REGISTER: Record<string, Eintrag> = {
     recht: "users.manage",
     grund: "Zugangszustand, Admin.",
   },
+  // JOB 4086: dieselbe Auskunft für SharePoint/OneDrive. Sie gibt Schalterzustand, die NAMEN der
+  // Umgebungsvariablen und ja/nein je Variable aus — nie einen Wert, nie eine Maske mit Länge und
+  // keinen Inhalt eines Wissensobjekts (`services/sharepoint/src/credential-state.ts`).
+  "GET /api/import/sharepoint/zugang": {
+    urteil: "KURATORENTOR",
+    recht: "users.manage",
+    grund: "Zugangszustand, Admin.",
+  },
   "GET /api/reasoner/config": { urteil: "KURATORENTOR", recht: "users.manage", grund: "Admin." },
   "GET /api/library/import/candidates": {
     urteil: "KEIN_KO_INHALT",
@@ -576,6 +584,12 @@ const REGISTER: Record<string, Eintrag> = {
     "POST /api/admin/import/confluence/select": "users.manage.",
     "POST /api/admin/import/confluence/group": "users.manage.",
     "POST /api/admin/import/confluence/apply": "users.manage.",
+    // JOB 4086: die zwei Türen des SharePoint-Imports. Wie die Confluence-Zeilen darüber sind sie
+    // POST-Wege mit `users.manage`; `files` liest dabei nur (Dateiliste der Bibliothek), `apply`
+    // stellt Kandidaten in die Prüf-Warteschlange. Beide geben keinen Inhalt eines
+    // Wissensobjekts aus — sie geben Namen, Adressen und Stände von QUELLDATEIEN aus.
+    "POST /api/admin/import/sharepoint/files": "users.manage.",
+    "POST /api/admin/import/sharepoint/apply": "users.manage.",
     "PUT /api/reasoner/config": "users.manage.",
     "PUT /api/reasoner/assist-presets": "users.manage.",
     "POST /api/reasoner/test": "users.manage.",

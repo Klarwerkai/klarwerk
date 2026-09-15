@@ -30,6 +30,20 @@ export const SCHALTER_REGISTRY = {
   herkunft: "KLARWERK_PROVENANCE_ENABLED",
   /** SCRUM-510: der Confluence-Space-Import (Admin-Trigger + Erkundungs-Fluss). */
   confluenceImport: "KLARWERK_CONFLUENCE_IMPORT",
+  /**
+   * JOB 4086: der SharePoint-/OneDrive-Import (Dateiauswahl + Übernahme).
+   *
+   * EIN EIGENER SCHALTER, NICHT DER VON CONFLUENCE — und das ist keine Formsache: Ein Betrieb, der
+   * Confluence anbindet, hat damit über SharePoint nichts gesagt, und umgekehrt. Ein geteilter
+   * Schalter hiesse, dass eine Quelle die andere mitschaltet; die Kachel der einen behauptete dann
+   * etwas über einen Schalter, der der anderen gehört.
+   *
+   * Was er schaltet, ist die ANWESENHEIT der zwei Konnektor-Routen (`build-app.ts`) — nicht ihre
+   * Benutzbarkeit. Ob in diesem Betrieb Zugangsdaten stehen, sagt die Zugangs-Auskunft
+   * (`GET /api/import/sharepoint/zugang`), und sie steht bewusst VOR dem Schalter, damit sie den
+   * Zustand „ausgeschaltet" überhaupt melden kann.
+   */
+  sharepointImport: "KLARWERK_SHAREPOINT_IMPORT",
   /** Consultant-System: Thema→Personen-Matching, vor BR/DSB-Freigabe unsichtbar. */
   expertMatching: "KLARWERK_EXPERT_MATCHING",
   /** AUFTRAG-mega61 Block A: die beiden Rechtsseiten /impressum und /datenschutz. */
