@@ -25,6 +25,9 @@
 //                              Regel wie beim Confluence-Zugangskasten.
 //   ZUGANG UNBEKANNT         → nichts. Eine Fläche, die „unbekannt" anzeigt, ist für jemanden, der
 //                              ohnehin nichts daran ändern kann, nur Rauschen.
+//   ZUGANG NICHT ABRUFBAR    → (JOB 4125) der übersetzte Satz aus `fehlerlagen.ts` UND ein erreich-
+//                              barer erneuter Versuch. Vorher verschwand hier der ganze Bereich —
+//                              das sah aus wie „diesen Import gibt es nicht" und war eine Sackgasse.
 //   ZUGANG NICHT BENUTZBAR   → NUR die Zugangskarte. Kein Abrufversuch, kein 503 als Bedienweg —
 //                              die Auskunft trägt das Bild, BEVOR irgendetwas versucht wird.
 //   LADEN                    → Ladezustand. KEINE Aussage über Anzahl oder Rechte; „keine Dateien"
@@ -61,12 +64,27 @@ function fehlercode(err: unknown): string | null {
   return err instanceof ApiError ? err.code : null;
 }
 
+/**
+ * JOB 4125 — DER ZWEITE AUSGANG DES WIEDERHOLIMPORTS AUF DER LEITUNG.
+ *
+ * Die Übernahme führt seit JOB 4125 zusätzlich `neuerStand`: die Kennungen, die einen NEUEREN Stand
+ * einer Quelle gebracht haben, zu der bereits ein Vorgang in der Prüfung wartet
+ * (`services/app/src/routes/sharepoint-import-routes.ts`, Kopf von `OffeneStaende`).
+ *
+ * WARUM DAS FELD HIER STEHT UND NICHT IN `api.ts`: `api.ts` liegt ausserhalb der Zielpfade dieses
+ * Auftrags (§4) — und ein Diff ausserhalb der Zielpfade ist ungeprüfter Code. Die Drahtform wird
+ * deshalb hier ERWEITERT und nicht verbogen: das Feld ist OPTIONAL, und fehlt es (eine ältere
+ * Antwort, ein anderer Aufrufer), steht die schwächere Aussage da — kein Hinweis, nie eine geratene
+ * Zahl. Sein ehrlicher Platz ist `api.ts`; das steht in der Rückgabe unter REST.
+ */
+type Uebernahmeergebnis = SharePointUebernahme & { readonly neuerStand?: readonly string[] };
+
 export function SharePointImportBereich(): JSX.Element | null {
   const { t, i18n } = useTranslation();
   const { role } = useRole();
   const qc = useQueryClient();
   const [gewaehlt, setGewaehlt] = useState<string[]>([]);
-  const [ergebnis, setErgebnis] = useState<SharePointUebernahme | null>(null);
+  const [ergebnis, setErgebnis] = useState<Uebernahmeergebnis | null>(null);
 
   // Die Routen verlangen `users.manage`. Wer es nicht trägt, fragt gar nicht erst.
   const istVerwalter = role === "admin";
@@ -101,7 +119,59 @@ export function SharePointImportBereich(): JSX.Element | null {
     },
   });
 
-  if (!istVerwalter || !zugang.data) {
+  // OHNE VERWALTERRECHT BLEIBT ES BEI NICHTS. Das ist kein Fehler, sondern eine Zuständigkeit: die
+  // Routen verlangen `users.manage`, und wer es nicht trägt, kann an diesem Zustand ohnehin nichts
+  // ändern. Ein Fehlersatz wäre hier Rauschen.
+  if (!istVerwalter) {
+    return null;
+  }
+
+  // ==============================================================================================
+  // JOB 4125 — SCHEITERT DIE ZUGANGSAUSKUNFT, STEHT DORT EIN SATZ. NICHT NICHTS.
+  // ==============================================================================================
+  //
+  // BIS HIERHER stand an dieser Stelle `if (!istVerwalter || !zugang.data) return null;`. Ein
+  // Fehler der Auskunft lässt `zugang.data` undefiniert — der ganze Bereich verschwand wortlos, und
+  // mit ihm der einzige Weg, die Auskunft neu zu holen. Codex hat genau das an Paket 1 gemessen
+  // („Scheitert die Zugangsauskunft, entsteht ein leeres DOM ohne Fehlersatz", `LEHREN.md:5441`).
+  //
+  // DIE REIHENFOLGE IST DIE EHRLICHKEITSREGEL, dieselbe wie bei der Dateiliste unten: FEHLER VOR
+  // DATEN. react-query hält die alte Antwort bei einer gescheiterten Auffrischung fest; stünde
+  // `zugang.data` zuerst, würde ein alter Zugangszustand als aktueller ausgegeben.
+  //
+  // KEIN ZWEITER FEHLERSATZKATALOG: der Satz kommt aus `fehlerlagen.ts` — derselben Abbildung, aus
+  // der Liste und Übernahme ihre Sätze holen.
+  const zugangFehler = zugang.isError ? t(sharepointFehlertextKey(fehlercode(zugang.error))) : null;
+  if (zugangFehler !== null) {
+    return (
+      <Card id={SHAREPOINT_BEREICH_ANKER} className="mb-5 scroll-mt-4">
+        <SectionLabel>{t("imp.sharepoint.titel")}</SectionLabel>
+        <p
+          data-testid="sharepoint-zugangsfehler"
+          className="mt-2 rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text"
+        >
+          {zugangFehler}
+        </p>
+        {/* EIN SATZ OHNE WEG WÄRE EINE SACKGASSE. Der erneute Versuch holt genau die Auskunft neu,
+            die gescheitert ist — er verspricht nichts über SharePoint selbst. */}
+        <div className="mt-2">
+          <Button
+            variant="outline"
+            data-testid="sharepoint-zugang-erneut"
+            disabled={zugang.isFetching}
+            onClick={() => void zugang.refetch()}
+          >
+            <RefreshCw size={14} />
+            {t("imp.sharepoint.zugangErneut")}
+          </Button>
+        </div>
+      </Card>
+    );
+  }
+
+  // ZUGANG UNBEKANNT (die Auskunft läuft noch, ohne Fehler): nichts. Eine Fläche, die „unbekannt"
+  // anzeigt, ist Rauschen — unverändert die Regel aus JOB 4086.
+  if (!zugang.data) {
     return null;
   }
 
@@ -242,6 +312,16 @@ export function SharePointImportBereich(): JSX.Element | null {
               <span className="block font-mono text-[9.5px] font-semibold uppercase tracking-wide text-muted-2">
                 {t("imp.sharepoint.ergebnisTitel")}
               </span>
+              {/* JOB 4125 — „NICHTS ÜBERNOMMEN" IST EINE AUSSAGE UND KEINE LEERSTELLE. Beim
+                  Wiederholimport einer unveränderten Datei ist `dateien` leer; bis hierher stand
+                  unter der Überschrift „Aus SharePoint geholt" dann einfach nichts, und der Mensch
+                  musste aus dem Fehlen schliessen, was geschehen ist. Die Gründe stehen in den
+                  Zeilen darunter (schon vorgemerkt / verschwunden / nicht übernommen). */}
+              {ergebnis.dateien.length === 0 ? (
+                <p data-testid="sharepoint-nichts-neu" className="mt-1.5 text-[12.5px] text-muted">
+                  {t("imp.sharepoint.nichtsNeu")}
+                </p>
+              ) : null}
               <ul className="mt-1.5 space-y-1">
                 {ergebnis.dateien.map((datei) => {
                   const stand = formatKoTimestamp(datei.geaendertAm, i18n.language);
@@ -271,6 +351,16 @@ export function SharePointImportBereich(): JSX.Element | null {
                   );
                 })}
               </ul>
+              {/* JOB 4125 — DER NEUE STAND EINER SCHON WARTENDEN QUELLE. Er ist kein Erstimport,
+                  auch wenn er wie einer zählt: zu derselben Datei steht ein ÄLTERER Vorgang in der
+                  Prüfung. Der Satz sagt beides, damit niemand die zweite Zeile dort für eine
+                  Dublette hält. Die Zahl kommt aus der Antwort (`neuerStand`) — kein Zähler ohne
+                  Erzeuger; fehlt das Feld, steht hier nichts. */}
+              {(ergebnis.neuerStand?.length ?? 0) > 0 ? (
+                <p data-testid="sharepoint-neuer-stand" className="mt-1.5 text-[12px] text-muted">
+                  {t("imp.sharepoint.neuerStand", { n: ergebnis.neuerStand?.length ?? 0 })}
+                </p>
+              ) : null}
               {ergebnis.alreadyQueued > 0 ? (
                 <p className="mt-1.5 text-[12px] text-muted">
                   {t("imp.sharepoint.schonVorgemerkt", { n: ergebnis.alreadyQueued })}

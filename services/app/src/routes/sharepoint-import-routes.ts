@@ -49,7 +49,11 @@ import type {
   ImportRunStatus,
   LibraryService,
 } from "../../../library-analytics";
-import { sanitizeImportFailureReason } from "../../../library-analytics";
+import {
+  importProviderKey,
+  isOpenReviewStatus,
+  sanitizeImportFailureReason,
+} from "../../../library-analytics";
 import {
   type SharePointFehlerlage,
   type SharePointSourceAdapter,
@@ -156,6 +160,74 @@ interface Uebernahmebilanz {
   readonly nichtGefunden: number;
 }
 
+// ==================================================================================================
+// JOB 4125 — DER ZWEITE WEG DURCH DIESELBE TÜR: WAS „SCHON DA" HEISST UND WAS „NEUER STAND".
+// ==================================================================================================
+//
+// Der Wiederholfall hat zwei Ausgänge, und sie sind aus Sicht des Menschen NICHT dasselbe:
+//
+//   UNVERÄNDERTE QUELLE  → der Import-Kern reiht nichts ein (`insertIfAbsent` findet denselben
+//                          offenen Platz, `library-analytics/src/repo.ts:270-278`). Das zählt
+//                          `bereitsInQueue`, und der Lauf führt es als `itemsSkipped`.
+//   GEÄNDERTE QUELLE     → der Quellstand ist gewachsen (`sharepoint/src/mapper.ts:64-74`), der
+//                          offene Platz ist ein ANDERER, und der neue Stand wird WIRKLICH
+//                          eingereiht. Er zählt als `imported` — und genau das ist die Stelle, an
+//                          der die Antwort bisher schwieg: für den Prüfenden sieht dieser Ausgang
+//                          aus wie eine Erstanlage, obwohl zu derselben Quelle bereits ein ÄLTERER
+//                          Vorgang in der Warteschlange steht.
+//
+// DAS FELD `neuerStand` SAGT GENAU DAS UND NICHTS DARÜBER HINAUS: „zu dieser Quelle stand bereits
+// ein offener Vorgang in der Prüfung, und dieser Aufruf hat einen NEUEREN Stand eingereiht." Es ist
+// gemessen, nicht geraten — die Grundlage ist der Bestand der Warteschlange, VOR dem ersten
+// Schreibeffekt dieses Aufrufs gelesen. Es ist eine TEILMENGE von `imported`; an den vier disjunkten
+// Zählern des Laufs ändert es nichts.
+//
+// EHRLICHE KOSTENGRENZE: `listImportCandidates()` liest die Warteschlange ganz. Der Aufruf geschieht
+// deshalb HÖCHSTENS EINMAL JE ÜBERNAHME — vor der Schleife, nie je Kennung (dieselbe Form wie
+// `trashedSourceAnchors()` im Import-Kern).
+//
+// KEIN SCHLÜSSELSTRING: gesucht wird über eine Karte JE ANBIETERSCHLÜSSEL, darin je Quellkennung.
+// Eine verklebte Zeichenkette aus beiden Feldern wäre nicht injektiv — derselbe Befund, den JOB 3087
+// am Idempotenz-Schlüssel der Warteschlange behoben hat (`repo.ts:155-184`).
+type OffeneStaende = ReadonlyMap<string, ReadonlyMap<string, number>>;
+
+/**
+ * Der höchste Quellstand je offen wartendem Vorgang.
+ *
+ * `sourceVersion ?? 1` ist KEINE geratene Zahl, sondern die Rechnung, mit der die Warteschlange
+ * ihren eigenen Idempotenzraum aufspannt (`repo.ts:230`) — eine zweite Lesart hier würde beim
+ * nächsten Umbau still auseinanderlaufen.
+ *
+ * Scheitert die Lesung, kommt eine LEERE Karte zurück, und die Folge ist die SCHWÄCHERE Aussage:
+ * dieser Lauf behauptet dann über keine Kennung, sie bringe einen neueren Stand. Nie andersherum.
+ */
+async function leseOffeneStaende(
+  library: LibraryService,
+  log: FastifyBaseLogger,
+): Promise<OffeneStaende> {
+  const karte = new Map<string, Map<string, number>>();
+  try {
+    for (const kandidat of await library.listImportCandidates()) {
+      const externalId = kandidat.item.externalId;
+      if (!externalId || !isOpenReviewStatus(kandidat.status)) {
+        continue;
+      }
+      const anbieter = importProviderKey(kandidat.item.provider);
+      const stand = kandidat.item.sourceVersion ?? 1;
+      const jeAnbieter = karte.get(anbieter) ?? new Map<string, number>();
+      const bisher = jeAnbieter.get(externalId);
+      if (bisher === undefined || stand > bisher) {
+        jeAnbieter.set(externalId, stand);
+      }
+      karte.set(anbieter, jeAnbieter);
+    }
+  } catch (err) {
+    warne(log, "Offene Vorgaenge lesen", err);
+    return new Map();
+  }
+  return karte;
+}
+
 /**
  * `PARTIAL`, sobald eine Kennung scheiterte ODER nicht mehr auffindbar war — dieselbe Regel wie
  * beim Confluence-Übernahmelauf (`uebernahmeStatus` dort): beides heisst, dass der Auftrag dieses
@@ -224,7 +296,9 @@ export function sharepointImportRoutes(deps: SharePointImportRouteDeps): Fastify
     // getrennt aus (`failed` mit PII-freiem Grund, `notFound` für die verschwundene Quelle). Was
     // WIRKLICH eingereiht wurde, zählt `imported` — ein idempotenter No-op (derselbe offene
     // Kandidat derselben Version) steht separat unter `alreadyQueued` und wird nie als Import
-    // ausgegeben.
+    // ausgegeben. Seit JOB 4125 ist diese Zusage an DIESER Tür gemessen
+    // (`tests/sharepoint-onedrive-import/wiederholimport-am-draht.test.ts`, W1) und um den zweiten
+    // Ausgang des Wiederholfalls ergänzt: `neuerStand` (s. dort).
     app.post<{ Body: { ids?: unknown } }>(
       "/api/admin/import/sharepoint/apply",
       async (request, reply) => {
@@ -262,7 +336,12 @@ export function sharepointImportRoutes(deps: SharePointImportRouteDeps): Fastify
           let bereitsInQueue = 0;
           const failed: { id: string; reason: string }[] = [];
           const notFound: string[] = [];
+          const neuerStand: string[] = [];
           const dateien: Uebernommen[] = [];
+          // JOB 4125: der Stand der Warteschlange, wie er VOR diesem Aufruf war. Er muss vor dem
+          // ersten eigenen Schreibeffekt gelesen werden — sonst sähe dieser Lauf die Vorgänge, die
+          // er selbst gerade anlegt, und hielte jede Erstanlage für einen „neueren Stand".
+          const offeneStaende = await leseOffeneStaende(deps.library, request.log);
           // DIE KENNUNG VOR DEM ERSTEN SCHREIBEFFEKT (KW-S4-26 §133, wie JOB 3288 es für den
           // Confluence-Weg hält): ab hier kann dieser Aufruf Kandidaten anlegen.
           lauf = await legeLaufAn(deps.importRuns, adapter.driveId, ids.length, request.log);
@@ -276,6 +355,16 @@ export function sharepointImportRoutes(deps: SharePointImportRouteDeps): Fastify
               const angelegt = await deps.library.createImportCandidates([item], user.id);
               if (angelegt.length > 0) {
                 eingereiht += 1;
+                // JOB 4125: Stand dieser Übernahme gegen den Stand des Vorgangs, der zu DERSELBEN
+                // Quelle schon offen wartete. Nur ein WIRKLICH höherer Stand ist ein neuer Stand;
+                // ohne wartenden Vorgang ist es eine Erstanlage und hier ist nichts zu sagen.
+                const vorher =
+                  item.externalId === undefined
+                    ? undefined
+                    : offeneStaende.get(importProviderKey(item.provider))?.get(item.externalId);
+                if (vorher !== undefined && (item.sourceVersion ?? 1) > vorher) {
+                  neuerStand.push(id);
+                }
                 dateien.push({
                   id,
                   name: item.title,
@@ -323,6 +412,10 @@ export function sharepointImportRoutes(deps: SharePointImportRouteDeps): Fastify
           reply.code(200).send({
             imported: eingereiht,
             alreadyQueued: bereitsInQueue,
+            // JOB 4125: die Teilmenge von `imported`, die einen NEUEREN Stand einer bereits
+            // wartenden Quelle gebracht hat. Immer geführt — eine leere Liste ist die Auskunft
+            // „kein solcher Fall", nicht ein fehlendes Feld.
+            neuerStand,
             failed,
             notFound,
             // Name, Originaladresse und Stand der WIRKLICH übernommenen Dateien — das Ergebnisbild

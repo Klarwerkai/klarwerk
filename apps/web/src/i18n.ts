@@ -4228,6 +4228,14 @@ const de = {
   "imp.sharepoint.schonVorgemerkt": "Stand in diesem Stand schon in der Prüfung: {{n}}.",
   "imp.sharepoint.verschwunden": "In SharePoint nicht mehr vorhanden: {{n}}.",
   "imp.sharepoint.gescheitert": "Nicht übernommen: {{n}}.",
+  // JOB 4125 — der zweite Weg durch dieselbe Tür. Drei Sätze, die es vorher nicht gab: „nichts
+  // Neues" ist eine Aussage statt einer Leerstelle, „neuerer Stand" unterscheidet den zweiten
+  // Import einer GEÄNDERTEN Datei vom Erstimport, und der erneute Versuch ist der Weg zurück, wenn
+  // die Zugangsauskunft scheitert.
+  "imp.sharepoint.nichtsNeu": "Aus dieser Auswahl wurde nichts Neues übernommen.",
+  "imp.sharepoint.neuerStand":
+    "Neuerer Stand der Quelle: {{n}}. Der ältere Vorgang steht noch in der Prüfung — nimm den neueren an.",
+  "imp.sharepoint.zugangErneut": "Zugang neu abfragen",
   "imp.sharepoint.weiterInDerPruefung":
     "Die Dateien liegen jetzt in der Prüfung weiter unten. Erst wenn ein Mensch sie dort annimmt, entsteht daraus ein Wissensobjekt.",
   "imp.sharepoint.zugang.ready.titel": "Eingeschaltet, Zugangsdaten hinterlegt",
@@ -10054,6 +10062,10 @@ const en: typeof de = {
   "imp.sharepoint.schonVorgemerkt": "Already in the review in this state: {{n}}.",
   "imp.sharepoint.verschwunden": "No longer present in SharePoint: {{n}}.",
   "imp.sharepoint.gescheitert": "Not taken over: {{n}}.",
+  "imp.sharepoint.nichtsNeu": "Nothing new was taken over from this selection.",
+  "imp.sharepoint.neuerStand":
+    "Newer state of the source: {{n}}. The older entry is still in the review — accept the newer one.",
+  "imp.sharepoint.zugangErneut": "Check access again",
   "imp.sharepoint.weiterInDerPruefung":
     "The files are now in the review further down. Only once a person accepts them there does a knowledge object come out of it.",
   "imp.sharepoint.zugang.ready.titel": "Switched on, credentials in place",
@@ -15284,6 +15296,10 @@ const nl: typeof de = {
   "imp.sharepoint.schonVorgemerkt": "Stond in deze stand al in de controle: {{n}}.",
   "imp.sharepoint.verschwunden": "Niet meer aanwezig in SharePoint: {{n}}.",
   "imp.sharepoint.gescheitert": "Niet overgenomen: {{n}}.",
+  "imp.sharepoint.nichtsNeu": "Uit deze selectie is niets nieuws overgenomen.",
+  "imp.sharepoint.neuerStand":
+    "Nieuwere versie van de bron: {{n}}. Het oudere item staat nog in de controle — neem het nieuwere aan.",
+  "imp.sharepoint.zugangErneut": "Toegang opnieuw opvragen",
   "imp.sharepoint.weiterInDerPruefung":
     "De bestanden staan nu verderop in de controle. Pas als een mens ze daar aanneemt, ontstaat er een kennisobject uit.",
   "imp.sharepoint.zugang.ready.titel": "Ingeschakeld, toegangsgegevens aanwezig",
