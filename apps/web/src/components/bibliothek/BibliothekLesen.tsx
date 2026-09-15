@@ -138,6 +138,18 @@ interface EditState {
   conditions: string[];
   measures: string[];
   tags: string[];
+  // ================================================================================================
+  // JOB 4075 · DIE FASSUNG, DIE BEIM ÖFFNEN AUF DEM BILDSCHIRM STAND.
+  // ================================================================================================
+  //
+  // Sie ist der bedingte Schreibzugriff des Direktwegs: `save` schickt sie als `expectedVersion` mit,
+  // und der Dienst schreibt nur, wenn sie noch gilt (Compare-and-Set, `ko-routes.ts:2079-2096`).
+  // Sie wird während des Tippens NICHT nachgeführt — genau das ist ihr Zweck: sie bezeugt, worauf
+  // dieser Mensch seine Änderung aufgebaut hat.
+  //
+  // `null` heisst „unbekannt", nicht „egal": kommt die Fassung in der Antwort nicht als Zahl an,
+  // wird das Feld weggelassen statt geraten (s. `save`).
+  version: number | null;
 }
 
 const textareaCls =
@@ -199,6 +211,20 @@ type EinreichLage =
   | { art: "eingereicht" }
   | { art: "stale"; version: number | null }
   | { art: "fehler"; text: string };
+
+/**
+ * JOB 4075 · Der EINE Satz über den letzten SPEICHERversuch — und es gibt ihn nur im Konfliktfall.
+ *
+ * EIGENER ZUSTAND, NICHT `einreichLage` MITBENUTZT: die beiden Wege stehen auf derselben Fläche und
+ * dürfen sich nicht gegenseitig überschreiben. Ein „eingereicht" über einem gescheiterten Speichern
+ * (oder umgekehrt) wäre eine Auskunft über einen Vorgang, den es nicht gab.
+ *
+ * WARUM NUR EINE LAGE: Erfolg ist eine Bestätigung über die Toast-Fläche und kein Satz im Formular;
+ * jeder andere Fehler geht unverändert nach `err`. Übrig bleibt der Fall, für den es hier keinen
+ * anderen Ort gibt — und `version` steht darin genauso wie bei `EinreichLage`: `null`, bis das
+ * Nachlesen eine Fassung WIRKLICH gezeigt hat.
+ */
+type SpeicherLage = { art: "stale"; version: number | null };
 
 // Die drei Töne des Einreich-Satzes als FLACHE Konstanten — dieselbe Bauform wie `LAGE_SPALTE` &c.
 // in `BibliothekListe.tsx` (JOB 3335). Der Sammler `tests/app/mega47-modale-flaechen-sammler.test.tsx`
@@ -363,6 +389,8 @@ export function BibliothekLesen({
   //                    Ohne sie wäre „abgelehnt" eine Tatsache ohne Auskunft.
   const [pruefwegHaken, setPruefwegHaken] = useState(false);
   const [einreichLage, setEinreichLage] = useState<EinreichLage | null>(null);
+  // JOB 4075: der Konflikt des DIREKTEN Speicherwegs, getrennt von `einreichLage` (s. `SpeicherLage`).
+  const [speicherLage, setSpeicherLage] = useState<SpeicherLage | null>(null);
   const [sperreGemeldet, setSperreGemeldet] = useState(false);
   const [ablehnung, setAblehnung] = useState<{ id: string; grund: string } | null>(null);
   const appendOriginalRef = useRef<OriginalRefCache>({ ref: null });
@@ -542,12 +570,36 @@ export function BibliothekLesen({
   const bearbeitenBeenden = (): void => {
     setEdit(null);
     setEinreichLage(null);
+    setSpeicherLage(null);
     setSperreGemeldet(false);
     setPruefwegHaken(false);
   };
 
+  // ================================================================================================
+  // JOB 4075 · DER DIREKTWEG SCHREIBT BEDINGT — UND SAGT, WENN JEMAND DAZWISCHENGEKOMMEN IST.
+  // ================================================================================================
+  //
+  // DIE LAGE, DIE DIESE ZEILEN SCHLIESSEN. Der Dienst kann den bedingten Schreibzugriff seit JOB 3667
+  // (Compare-and-Set in `KoService.revise`), die Route nimmt ihn seit Runde 2 an
+  // (`ko-routes.ts:2079-2096`, 409 `KO_STALE`), und der Client-Vertrag führt ihn
+  // (`endpoints.ts`, `expectedVersion?`). NUR diese Fläche benutzte ihn nicht — zwei Fenster, zwei
+  // Bearbeiter, und der Zweite überschrieb den Ersten, ohne dass irgendwo etwas aufschlug. Pedis
+  // Zusage aus JOB 3667 („Hat sich das Objekt zwischenzeitlich geändert, wird NICHT stillschweigend
+  // überschrieben") galt im Word-Fenster und im Einreichweg, hier nicht.
+  //
+  // DIE FASSUNG KOMMT ALS ARGUMENT, NICHT AUS `edit`. Dieselbe Bauform wie `baseVersion` bei
+  // `einreichen`, und aus demselben Grund: der Knopf „Auf dem jetzigen Stand speichern" schickt die
+  // Fassung, die JETZT im Bild steht (`ko.version`) — nicht die, an der der Versuch gescheitert ist.
+  // Über `setEdit` ginge das nicht: der Zustand stünde erst im nächsten Rendern, der Aufruf ginge
+  // mit der alten Zahl hinaus.
+  //
+  // DIE BEIDEN FOLGEAUFRUFE BLEIBEN UNBEDINGT, UND DAS IST GEMESSEN, KEINE NACHLÄSSIGKEIT: die Route
+  // nimmt `expectedVersion` an `tags` und `category` NICHT an — sie antwortet 400, damit ein Schutz,
+  // der dort gar nicht greifen könnte, nicht stillschweigend geschluckt wird
+  // (`tests/word-rueckweg/route-bedingter-schreibzugriff.test.ts`, F5). Sie laufen erst NACH einem
+  // erfolgreichen `revise`; ein Konflikt bricht die Kette vorher ab, es geht also nichts hinaus.
   const save = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (v: { expectedVersion: number | null }) => {
       if (!edit) {
         throw new Error("no edit");
       }
@@ -561,16 +613,31 @@ export function BibliothekLesen({
           conditions: edit.conditions.filter((x) => x.trim()),
           measures: edit.measures.filter((x) => x.trim()),
         },
+        // WISSENSLÜCKE STATT ERFINDUNG: ohne bekannte Fassung wird das Feld WEGGELASSEN, nicht
+        // geraten. Der Aufruf verhält sich dann wie vor diesem Auftrag — eine falsche Zahl wäre
+        // schlimmer als keine: sie schützte vor nichts und wiese dafür rechtmässige Schreibvorgänge
+        // ab (`route-bedingter-schreibzugriff.test.ts` F4 hält fest, was ohne das Feld gilt).
+        ...(typeof v.expectedVersion === "number" ? { expectedVersion: v.expectedVersion } : {}),
       });
       await endpoints.ko.act(koId, { action: "tags", tags: edit.tags.filter((x) => x.trim()) });
       if (edit.category.trim()) {
         await endpoints.ko.act(koId, { action: "category", category: edit.category.trim() });
       }
     },
+    // Solange nichts zurück ist, wird nichts behauptet (§9 „laden"): die Auskunft des VORIGEN
+    // Versuchs gehört nicht über einen laufenden neuen.
+    onMutate: () => {
+      setSpeicherLage(null);
+    },
     onSuccess: () => {
       invalidate();
       bearbeitenBeenden();
       setErr(null);
+      // JOB 4075: bis hierher schloss sich das Formular kommentarlos — der Mensch wusste nicht, ob
+      // etwas angekommen ist. Der Satz kommt über die vorhandene Toast-Fläche, dieselbe, die das
+      // Löschen und das Anhängen schon benutzen; eine zweite Mechanik daneben wäre eine stille
+      // Ablösung.
+      push("success", t("ko.revise.saved"));
       if (reviewReworkContext) {
         setReworkSavedFor(koId);
       }
@@ -592,12 +659,64 @@ export function BibliothekLesen({
     //
     // UND DER TEXT BLEIBT STEHEN: `setEdit(null)` steht ALLEIN im Erfolgszweig. Das Formular behält
     // seinen Inhalt, unverändert und weiter bearbeitbar — bei diesem 403 wie bei jedem anderen Fehler.
+    //
+    // ==============================================================================================
+    // JOB 4075 · DER 409 IST KEIN FEHLER DER EINGABE, SONDERN EINE TATSACHE ÜBER DIE ZEIT.
+    // ==============================================================================================
+    //
+    // ER STEHT VOR DEN BEIDEN ANDEREN ZWEIGEN UND FÄNGT NUR SICH SELBST. Die naheliegende Halbheit
+    // wäre, `expectedVersion` zu schicken und den 409 im allgemeinen `setErr`-Zweig landen zu lassen:
+    // dann stünde dort eine Servermeldung, und aus dem stillen Überschreiber wäre eine Sackgasse
+    // geworden — der Mensch wüsste nicht, was er tun soll.
+    //
+    // DIE ZAHL WIRD NACHGELESEN, NICHT AUS DEM FEHLER GENOMMEN. Der Server sendet sie im
+    // Antwortkörper mit (`currentVersion`), `ApiError` trägt sie nicht (`api/client.ts:7-17`,
+    // `client.ts` ist kein Zielpfad — die Grenze ist in
+    // `tests/word-rueckweg/web-einreichweg-vertrag.test.tsx` W6b eigens festgehalten). Bis das
+    // Nachlesen etwas gebracht hat, steht die zahlenlose Aussage da: sie ist wahr, eine erfundene
+    // Zahl wäre es nicht. Scheitert das Nachlesen, bleibt es dabei.
+    //
+    // DIE ARBEIT ÜBERLEBT: `setEdit` wird nicht angefasst, `bearbeitenBeenden` läuft NICHT. Das
+    // Formular steht mit unverändertem Text da und bleibt bearbeitbar — anpassen braucht keinen
+    // Knopf, die beiden anderen Wege stehen daneben.
     onError: (e) => {
+      if (e instanceof ApiError && e.status === 409) {
+        // Erst die WAHRE, noch zahlenlose Aussage — sie gilt sofort.
+        setSpeicherLage({ art: "stale", version: null });
+        invalidate();
+        // Und dann die Fassung, die das Nachlesen WIRKLICH gezeigt hat. Der Rückruf überschreibt nur
+        // eine noch offene Stale-Lage: wer inzwischen erneut gespeichert hat, soll seine neue
+        // Auskunft nicht von einer alten Antwort zurückgedreht bekommen.
+        void query.refetch().then((r) => {
+          // JOB 4075 R2 · `r.data` IST KEIN BELEG FÜR EIN GELUNGENES NACHLESEN. Scheitert der
+          // Leseversuch, hält react-query den ZULETZT geholten Stand weiter in `data` (genau die
+          // Bauform, auf der `abfrageMitBestand` aufsetzt: der Bestand bleibt sichtbar). Die Zahl
+          // darin ist dann die ALTE — dieselbe, die der Mensch beim Öffnen sah, und über die der
+          // Server soeben mit 409 gesagt hat, dass sie nicht mehr gilt. Sie hier zu nennen wäre die
+          // schlimmste Auskunft von allen: eine Zahl, die aussieht wie nachgelesen und falsch ist
+          // (Prüfbefund R1, Fall B1 — nach 503 stand „er steht jetzt auf Version 1", während der
+          // Server auf 2 stand). §9 sagt es wörtlich: „Konflikt, Nachlesen scheitert: es bleibt beim
+          // zahlenlosen Satz. Keine Zahl aus dem Cache." Also zählt der ERFOLG des Leseversuchs,
+          // nicht das Vorhandensein von Daten.
+          if (!r.isSuccess) {
+            return;
+          }
+          const jetzt = r.data?.version;
+          setSpeicherLage((vorher) =>
+            vorher?.art === "stale" && typeof jetzt === "number"
+              ? { art: "stale", version: jetzt }
+              : vorher,
+          );
+        });
+        return;
+      }
       if (e instanceof ApiError && e.code === "PROPOSAL_REQUIRED") {
         setSperreGemeldet(true);
         setEinreichLage({ art: "pflicht", text: e.message });
         return;
       }
+      // Jeder andere Fehler — auch der Netzausfall — geht unverändert hierher. Ein Netzfehler ist
+      // kein Konflikt, und der Konfliktsatz stünde dort falsch.
       setErr(e instanceof ApiError ? e.message : t("state.error"));
     },
   });
@@ -841,6 +960,7 @@ export function BibliothekLesen({
   const startEdit = (ko: KnowledgeObject): void => {
     setErr(null);
     setEinreichLage(null);
+    setSpeicherLage(null);
     setSperreGemeldet(false);
     setPruefwegHaken(false);
     setCaptionRequest(null);
@@ -853,6 +973,9 @@ export function BibliothekLesen({
       conditions: [...ko.conditions],
       measures: [...ko.measures],
       tags: [...ko.tags],
+      // JOB 4075: die Fassung, die in DIESEM Moment auf dem Bildschirm stand. Sie ist der Bezug des
+      // bedingten Schreibzugriffs (s. `EditState.version`) und wird beim Tippen nicht nachgeführt.
+      version: typeof ko.version === "number" ? ko.version : null,
     });
   };
 
@@ -1548,6 +1671,59 @@ export function BibliothekLesen({
                 {t("ko.propose.optIn")}
               </label>
             ) : null}
+            {/* ==========================================================================
+                JOB 4075 · DER KONFLIKT DES DIREKTEN SPEICHERWEGS — EIN SATZ, ZWEI WEGE.
+                ==========================================================================
+
+                DIESELBE BAUFORM WIE DER EINREICHWEG DARUNTER, und das ist Absicht: es ist dieselbe
+                Tatsache („jemand war schneller") an einem anderen Vorgang. Ein zweites Aussehen für
+                dieselbe Lage wäre eine zweite Auslegung.
+
+                DER SATZ SITZT IN EINEM EIGENEN KNOTEN, damit er ohne die Knopfbeschriftungen
+                messbar ist — sonst liesse sich „steht hier schon eine Zahl?" (§9) nicht von der
+                Zeile darunter trennen.
+
+                DRITTER WEG OHNE KNOPF: anpassen. Der Text steht unverändert im Formular darüber,
+                der Mensch tippt einfach weiter. */}
+            {speicherLage ? (
+              <div
+                data-testid="bib-speichern-lage"
+                data-lage={speicherLage.art}
+                className={cx(EINREICH_ZEILE, EINREICH_WARN)}
+              >
+                <span data-testid="bib-speichern-satz">
+                  {speicherLage.version === null
+                    ? t("ko.revise.stale")
+                    : t("ko.revise.staleVersion", { n: String(speicherLage.version) })}
+                </span>
+                <span className="mt-1.5 flex gap-2">
+                  <button
+                    type="button"
+                    data-testid="bib-speichern-neu-lesen"
+                    onClick={() => {
+                      void query.refetch();
+                      setSpeicherLage(null);
+                    }}
+                    className="rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-text hover:bg-hairline-soft"
+                  >
+                    {t("ko.revise.reload")}
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="bib-speichern-trotzdem"
+                    disabled={save.isPending}
+                    onClick={() =>
+                      // Die Fassung, die JETZT im Bild steht — nicht die, auf der der gescheiterte
+                      // Versuch beruhte. Sonst führte der Knopf zuverlässig in denselben 409.
+                      save.mutate({ expectedVersion: ko.version })
+                    }
+                    className="rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-text hover:bg-hairline-soft"
+                  >
+                    {t("ko.revise.again")}
+                  </button>
+                </span>
+              </div>
+            ) : null}
             {/* Der EINE Satz über den letzten Einreichversuch — samt der Griffe, die zu seiner Lage
                 gehören. Er steht GETRENNT von `err` oben: „eingereicht" ist kein Fehler, und eine
                 Sperre ist keine gescheiterte Eingabe. */}
@@ -1647,7 +1823,10 @@ export function BibliothekLesen({
                     appendUnclear ||
                     edit.title.trim().length === 0
                   }
-                  onClick={() => save.mutate()}
+                  // JOB 4075: die Fassung, die beim Öffnen des Formulars dastand — nicht die, die
+                  // inzwischen geladen wurde. Genau daran erkennt der Dienst, ob jemand
+                  // dazwischengekommen ist.
+                  onClick={() => save.mutate({ expectedVersion: edit.version })}
                 >
                   {t("ko.saveEdit")}
                 </Button>

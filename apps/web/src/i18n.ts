@@ -2944,6 +2944,24 @@ const de = {
   "ko.rework.step.back": "Zurück in den Validation-Fokus „überarbeitet“",
   "ko.saveEdit": "Speichern",
   "ko.cancelEdit": "Abbrechen",
+  // JOB 4075 · DER DIREKTE SPEICHERWEG SAGT, WAS GESCHEHEN IST — ODER WARUM NICHTS GESCHAH.
+  //
+  // EIGENE SCHLÜSSEL NEBEN `ko.propose.*`, KEINE WIEDERVERWENDUNG: dort heisst es „eingereicht",
+  // hier „gespeichert". Zwei verschiedene Vorgänge, zwei Sätze — ein geteilter Wortlaut wäre an
+  // einem der beiden Orte falsch.
+  //
+  // KEINE ZAHL OHNE NACHGELESENEN STAND: `stale` ist der zahlenlose Wortlaut und gilt sofort,
+  // `staleVersion` erst, wenn das Nachlesen eine Fassung WIRKLICH gezeigt hat (`BibliothekLesen.tsx`,
+  // `save.onError`). „Version" steht hier, weil die Nachbarsätze (`ko.propose.staleVersion`,
+  // `ko.propose.fromVersion`) es auch tun — zwei Wörter für dieselbe Zahl auf einer Fläche wären die
+  // grössere Zumutung als das eine bekannte.
+  "ko.revise.saved": "Gespeichert. Der Eintrag trägt jetzt deine Änderung.",
+  "ko.revise.stale":
+    "Jemand anderes hat diesen Eintrag inzwischen geändert — gespeichert wurde nichts. Dein Text steht unverändert hier.",
+  "ko.revise.staleVersion":
+    "Jemand anderes hat diesen Eintrag inzwischen geändert, er steht jetzt auf Version {{n}} — gespeichert wurde nichts. Dein Text steht unverändert hier.",
+  "ko.revise.reload": "Eintrag neu lesen",
+  "ko.revise.again": "Auf dem jetzigen Stand speichern",
   // JOB 3667 R3 · DER EINREICHWEG IM BROWSER. Jeder Satz sagt die FOLGE, nicht bloss den Vorgang:
   // was mit dem eigenen Text geschieht, was mit dem freigegebenen Stand, und wer als Nächster
   // handelt. „Eingereicht" allein liesse offen, ob der Eintrag jetzt schon anders lautet.
@@ -8927,6 +8945,14 @@ const en: typeof de = {
   "ko.rework.step.back": "Back to the “revised” validation focus",
   "ko.saveEdit": "Save",
   "ko.cancelEdit": "Cancel",
+  // JOB 4075 — see the German block for the reasoning behind each sentence.
+  "ko.revise.saved": "Saved. The entry now carries your change.",
+  "ko.revise.stale":
+    "Somebody else has changed this entry in the meantime — nothing was saved. Your text is still here, unchanged.",
+  "ko.revise.staleVersion":
+    "Somebody else has changed this entry in the meantime, it is now at version {{n}} — nothing was saved. Your text is still here, unchanged.",
+  "ko.revise.reload": "Re-read entry",
+  "ko.revise.again": "Save against the current version",
   // JOB 3667 R3 — see the German block for the reasoning behind each sentence.
   "ko.propose.mustReview":
     "This knowledge object is released. Your change is submitted as a proposal and only takes effect once somebody else accepts it.",
@@ -14064,6 +14090,14 @@ const nl: typeof de = {
   "ko.rework.step.back": "Terug in de validatiefocus „herzien”",
   "ko.saveEdit": "Opslaan",
   "ko.cancelEdit": "Annuleren",
+  // JOB 4075 — de onderbouwing per zin staat in het Duitse blok.
+  "ko.revise.saved": "Opgeslagen. Het item draagt nu jouw wijziging.",
+  "ko.revise.stale":
+    "Iemand anders heeft dit item inmiddels gewijzigd — er is niets opgeslagen. Je tekst staat hier onveranderd.",
+  "ko.revise.staleVersion":
+    "Iemand anders heeft dit item inmiddels gewijzigd, het staat nu op versie {{n}} — er is niets opgeslagen. Je tekst staat hier onveranderd.",
+  "ko.revise.reload": "Item opnieuw lezen",
+  "ko.revise.again": "Opslaan op de huidige versie",
   // JOB 3667 R3 — de onderbouwing per zin staat in het Duitse blok.
   "ko.propose.mustReview":
     "Dit kennisobject is vrijgegeven. Je wijziging wordt als voorstel ingediend en geldt pas wanneer iemand anders haar overneemt.",
