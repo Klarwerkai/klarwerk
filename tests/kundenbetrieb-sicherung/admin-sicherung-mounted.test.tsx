@@ -63,6 +63,7 @@ const VOLL: SicherungenAuskunft = {
       groesseBytes: 4_194_304,
       beglaubigt: true,
       pruefsumme: "c".repeat(64),
+      folgeNummer: 1,
     },
     {
       datei: "klarwerk-20260905T030000Z.dump",
@@ -70,6 +71,7 @@ const VOLL: SicherungenAuskunft = {
       groesseBytes: 2048,
       beglaubigt: false,
       pruefsumme: null,
+      folgeNummer: 1,
     },
   ],
 };
@@ -107,6 +109,7 @@ const OHNE_SIDECAR: SicherungenAuskunft = {
       groesseBytes: 8192,
       beglaubigt: false,
       pruefsumme: null,
+      folgeNummer: 1,
     },
   ],
 };
@@ -127,6 +130,45 @@ const FALSCHE_PRUEFSUMME: SicherungenAuskunft = {
       groesseBytes: 1_048_576,
       beglaubigt: true,
       pruefsumme: "b".repeat(64),
+      folgeNummer: 1,
+    },
+  ],
+};
+/**
+ * JOB 4109 · DER FALL DES BETREIBERS: drei Läufe in DERSELBEN SEKUNDE. `backup.sh` weicht dafür auf
+ * `_02`/`_03` aus; die Route datiert sie seither und reicht die Folgenummer als eigenes Feld heraus
+ * (gemessen am echten Dateisystem in `sicherungen-suffixnamen.test.ts`, R1). Hier wird gemessen, was
+ * die FLÄCHE daraus macht: die jüngste steht oben, mit Zeitpunkt, mit Alter — und die Zeile sagt,
+ * die wievielte der Sekunde sie ist. `gelesenUtc` liegt drei Stunden nach den Sicherungen.
+ */
+const SELBE_SEKUNDE: SicherungenAuskunft = {
+  zustand: "gelesen",
+  verzeichnis: "/srv/klarwerk/backups",
+  gelesenUtc: "2026-09-15T12:30:00.000Z",
+  sicherungen: [
+    {
+      datei: "klarwerk-20260915T093000Z_03.dump",
+      zeitpunktUtc: "2026-09-15T09:30:00.000Z",
+      groesseBytes: 4_194_304,
+      beglaubigt: true,
+      pruefsumme: "c".repeat(64),
+      folgeNummer: 3,
+    },
+    {
+      datei: "klarwerk-20260915T093000Z_02.dump",
+      zeitpunktUtc: "2026-09-15T09:30:00.000Z",
+      groesseBytes: 4_194_304,
+      beglaubigt: true,
+      pruefsumme: "d".repeat(64),
+      folgeNummer: 2,
+    },
+    {
+      datei: "klarwerk-20260915T093000Z.dump",
+      zeitpunktUtc: "2026-09-15T09:30:00.000Z",
+      groesseBytes: 4_194_304,
+      beglaubigt: true,
+      pruefsumme: "e".repeat(64),
+      folgeNummer: 1,
     },
   ],
 };
@@ -486,6 +528,48 @@ describe("JOB 4025 · U4 · laden, Fehler, Cache mit laufender und mit gescheite
     // Der Satz von vorhin bleibt sichtbar — er ist aber nicht mehr als frische Wahrheit zu lesen.
     expect(c.querySelector('[data-testid="sicherung-leer"]')).not.toBeNull();
   });
+
+  // JOB 4109 · DIE FOLGEANGABE ALTERT NICHT. Sie ist keine Aussage über die Gegenwart, sondern eine
+  // Eigenschaft des NAMENS aus derselben Lesung, aus der auch die Zeile stammt. Sie darf deshalb
+  // NICHT an `frisch` hängen — das Alter tut es, und genau diesen Unterschied misst dieser Fall.
+  it("U4f · gescheiterte Auffrischung: das Alter geht, die Folgeangabe bleibt", async () => {
+    geber = async () => SELBE_SEKUNDE;
+    const c = await montiereKarte();
+    await bis(() => c.querySelectorAll("[data-sicherung]").length === 3, "der erste Bestand");
+    // Ohne diese beiden Zeilen wäre der Fall trivial: was nie da war, kann nicht verschwinden.
+    expect(
+      c.querySelector('[data-testid="sicherung-alter"]'),
+      "ohne Altersangabe im Gutfall misst der Fall nichts",
+    ).not.toBeNull();
+    expect(
+      c.querySelectorAll('[data-testid="sicherung-folge"]'),
+      "ohne Folgeangabe im Gutfall misst der Fall nichts",
+    ).toHaveLength(2);
+
+    geber = async () => {
+      throw new Error("Auffrischung gescheitert");
+    };
+    act(() => {
+      void qc?.refetchQueries({ queryKey: ["admin", "sicherungen"] });
+    });
+    await bis(
+      () =>
+        (c.querySelector('[data-einst="stand"]')?.textContent ?? "").includes(
+          t("einst.wert.nichtAktualisiert"),
+        ),
+      "die Markierung „nicht aktualisiert“",
+    );
+
+    expect(c.querySelectorAll("[data-sicherung]"), "der Bestand wurde geleert").toHaveLength(3);
+    expect(
+      c.querySelector('[data-testid="sicherung-alter"]'),
+      "„vor n Stunden“ ohne frische Lesung ist eine Behauptung",
+    ).toBeNull();
+    expect(
+      c.querySelectorAll('[data-testid="sicherung-folge"]'),
+      "die Folgeangabe wurde an die Frische gehängt — sie altert aber nicht",
+    ).toHaveLength(2);
+  });
 });
 
 // ================================================================================================
@@ -529,6 +613,167 @@ describe("JOB 4025 · U5 · die Karte spricht Deutsch, Englisch und Niederländi
         expect(String(wert).trim().length, `${lng}/${schluessel} ist leer`).toBeGreaterThan(0);
       }
     }
+  });
+
+  // JOB 4109 · R4 — der neue Satz gehört in alle drei Sprachen, UND er muss die Zahl wirklich
+  // einsetzen: ein Text ohne den Zähler sagte an jeder Zeile dasselbe und wäre damit keine Auskunft.
+  it("U5c · `adm.backup.seq` gibt es in de/en/nl und der ausgefüllte Text trägt die Zahl", () => {
+    const gesehen: Record<string, string> = {};
+    for (const lng of ["de", "en", "nl"] as const) {
+      const fest = i18n.getFixedT(lng);
+      const roh = String(fest("adm.backup.seq"));
+      expect(roh, `${lng}: adm.backup.seq löst nicht auf`).not.toBe("adm.backup.seq");
+      expect(roh.trim().length, `${lng}: adm.backup.seq ist leer`).toBeGreaterThan(0);
+      const gefuellt = String(fest("adm.backup.seq", { n: 7 }));
+      expect(gefuellt, `${lng}: der ausgefüllte Text trägt die Zahl nicht`).toContain("7");
+      expect(gefuellt, `${lng}: der Platzhalter blieb stehen`).not.toContain("{{");
+      gesehen[lng] = gefuellt;
+    }
+    expect(
+      new Set(Object.values(gesehen)).size,
+      `drei gleiche Sätze — eine Sprache ist nicht übersetzt: ${JSON.stringify(gesehen)}`,
+    ).toBe(3);
+  });
+});
+
+// ================================================================================================
+// U9 · JOB 4109 — DIE ZEILE SAGT, DIE WIEVIELTE DER SEKUNDE SIE IST.
+// ================================================================================================
+//
+// DER BEFUND (Prüfer BEN zu JOB 4025 R7): läuft der Cron zweimal in derselben Sekunde, heißt die
+// zweite Sicherung `klarwerk-<STAMP>_02.dump`. Bis JOB 4109 kannte der Datumsparser diese Form
+// nicht — die JÜNGSTE Sicherung stand undatiert ganz unten, ohne Zeitpunkt und ohne Alter. Der
+// Betreiber, der oben nachsah, las ein Datum von gestern und hielt sein Backup für stehengeblieben.
+//
+// GEMESSEN WIRD AM DOM, über den Nutzerweg — nicht am Draht: dass die Route liefert, steht in
+// `sicherungen-suffixnamen.test.ts`. Hier steht, was der Betreiber davon SIEHT.
+describe("JOB 4109 · U9 · mehrere Sicherungen derselben Sekunde", () => {
+  /** Die Zeile einer Datei, samt ihrer Folgeangabe. */
+  function zeile(s: Stand, datei: string): Element {
+    const el = s.container.querySelector(`[data-sicherung="${datei}"]`);
+    expect(el, `die Zeile zu ${datei} fehlt`).not.toBeNull();
+    return el as Element;
+  }
+
+  it("U9a · die jüngste steht oben, jede Zeile trägt Zeitpunkt und Alter", async () => {
+    geber = async () => SELBE_SEKUNDE;
+    const s = await admin(adminHref("system", "sicherung"));
+
+    expect(
+      [...s.container.querySelectorAll("[data-sicherung]")].map(
+        (e) => e.getAttribute("data-sicherung") ?? "",
+      ),
+      "die Reihenfolge der Fläche weicht von der Auskunft ab",
+    ).toEqual([
+      "klarwerk-20260915T093000Z_03.dump",
+      "klarwerk-20260915T093000Z_02.dump",
+      "klarwerk-20260915T093000Z.dump",
+    ]);
+
+    // BIS IN DIE ALTERSANGABE DURCH: früher entfiel sie an Suffixnamen ganz, weil der Zeitpunkt
+    // `null` war. Jetzt trägt JEDE der drei Zeilen ihr Alter — drei Stunden nach `gelesenUtc`.
+    for (const datei of [
+      "klarwerk-20260915T093000Z_03.dump",
+      "klarwerk-20260915T093000Z_02.dump",
+      "klarwerk-20260915T093000Z.dump",
+    ]) {
+      const z = zeile(s, datei);
+      expect(
+        z.querySelector('[data-testid="sicherung-alter"]')?.textContent,
+        `${datei}: die Altersangabe fehlt`,
+      ).toBe(i18n.t("adm.backup.age.hours", { count: 3 }));
+      expect(z.textContent, `${datei}: der Zeitpunkt ist unbekannt`).not.toContain(
+        t("adm.backup.time.unknown"),
+      );
+    }
+  });
+
+  it("U9b · `_02` und `_03` tragen die Folgeangabe mit ihrer Zahl, der Grundname trägt keine", async () => {
+    geber = async () => SELBE_SEKUNDE;
+    const s = await admin(adminHref("system", "sicherung"));
+
+    for (const [datei, n] of [
+      ["klarwerk-20260915T093000Z_02.dump", 2],
+      ["klarwerk-20260915T093000Z_03.dump", 3],
+    ] as const) {
+      const folgen = zeile(s, datei).querySelectorAll('[data-testid="sicherung-folge"]');
+      expect(folgen, `${datei}: genau eine Folgeangabe erwartet`).toHaveLength(1);
+      expect(folgen[0]?.textContent, `${datei}: der Text stammt nicht aus dem Wörterbuch`).toBe(
+        i18n.t("adm.backup.seq", { n }),
+      );
+      expect(folgen[0]?.textContent, `${datei}: die Zahl ${n} fehlt`).toContain(String(n));
+    }
+
+    // Die ERSTE Sicherung der Sekunde sagt nichts: „1. Sicherung dieser Sekunde" an jeder einzelnen
+    // Zeile wäre Lärm — und an den allermeisten Zeilen im Betrieb stünde genau das.
+    expect(
+      zeile(s, "klarwerk-20260915T093000Z.dump").querySelector('[data-testid="sicherung-folge"]'),
+      "die erste Sicherung der Sekunde behauptet eine Folge",
+    ).toBeNull();
+    expect(
+      s.container.querySelectorAll('[data-testid="sicherung-folge"]'),
+      "die Karte zeigt mehr Folgeangaben als Zeilen mit Folge",
+    ).toHaveLength(2);
+  });
+
+  it("U9c · `folgeNummer: null` zeigt nichts — unbekannt wird nicht zu „1“", async () => {
+    geber = async () => ({
+      zustand: "gelesen",
+      verzeichnis: "/srv/klarwerk/backups",
+      gelesenUtc: "2026-09-15T12:30:00.000Z",
+      sicherungen: [
+        {
+          datei: "von-hand-kopiert.dump",
+          zeitpunktUtc: null,
+          groesseBytes: 4096,
+          beglaubigt: false,
+          pruefsumme: null,
+          folgeNummer: null,
+        },
+      ],
+    });
+    const s = await admin(adminHref("system", "sicherung"));
+    const z = zeile(s, "von-hand-kopiert.dump");
+    expect(
+      z.querySelector('[data-testid="sicherung-folge"]'),
+      "eine unbekannte Folge wurde als Angabe gezeigt",
+    ).toBeNull();
+    // Die vorhandene Aussage bleibt, wie sie ist: der Zeitpunkt ist unbekannt, nicht erfunden.
+    expect(z.textContent).toContain(t("adm.backup.time.unknown"));
+    expect(z.querySelector('[data-testid="sicherung-alter"]')).toBeNull();
+  });
+
+  it("U9d · die Folgeangabe steht in de/en/nl auf der Fläche, jede Sprache eigen", async () => {
+    const gesehen: Record<string, string> = {};
+    for (const lng of ["de", "en", "nl"] as const) {
+      await sprache(lng);
+      geber = async () => SELBE_SEKUNDE;
+      const s = await admin(adminHref("system", "sicherung"));
+      const gezeigt = (
+        zeile(s, "klarwerk-20260915T093000Z_02.dump").querySelector(
+          '[data-testid="sicherung-folge"]',
+        )?.textContent ?? ""
+      ).trim();
+      expect(gezeigt.length, `${lng}: die Folgeangabe fehlt auf der Fläche`).toBeGreaterThan(0);
+      expect(gezeigt, `${lng}: ein roher Schlüssel steht auf der Fläche`).not.toContain(
+        "adm.backup.",
+      );
+      expect(gezeigt, `${lng}: die Zahl 2 fehlt`).toContain("2");
+      // KEINE BEWERTUNG: zwei Sicherungen derselben Sekunde sind normaler Cron-Betrieb, kein Fehler.
+      expect(
+        /doppelt|duplicate|dubbel|überzählig|ueberzaehlig|surplus|fehler|error|fout|warn/i.test(
+          gezeigt,
+        ),
+        `${lng}: die Folgeangabe bewertet statt zu beschreiben: „${gezeigt}“`,
+      ).toBe(false);
+      gesehen[lng] = gezeigt;
+      abbauen(s);
+      stand = null;
+    }
+    expect(
+      new Set(Object.values(gesehen)).size,
+      `drei gleiche Sätze: ${JSON.stringify(gesehen)}`,
+    ).toBe(3);
   });
 });
 

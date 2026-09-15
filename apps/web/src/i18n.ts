@@ -1257,6 +1257,16 @@ const de = {
   "adm.backup.age.hours_other": "vor {{count}} Stunden",
   "adm.backup.age.days_one": "vor {{count}} Tag",
   "adm.backup.age.days_other": "vor {{count}} Tagen",
+  // JOB 4109 — mehrere Sicherungen in DERSELBEN SEKUNDE. `backup.sh:413` vergibt dafür `_02`, `_03`;
+  // der Satz benennt die TATSACHE und bewertet nicht: kein „doppelt", kein „überzählig", keine
+  // Warnung. Zwei Läufe in derselben Sekunde sind normaler Cron-Betrieb, kein Fehler.
+  //
+  // WARUM NUR DAS DEUTSCHE DIE ORDNUNGSZAHL FÜHRT: „{{n}}." ist im Deutschen für JEDE Zahl richtig.
+  // Im Englischen (1st/2nd/3rd/4th) und im Niederländischen (2e, aber 20ste) hängt die Endung an
+  // der Zahl; eine feste Endung wäre reihenweise falsch, und i18next-Ordinalformen decken das
+  // Niederländische nicht ab (`Intl.PluralRules("nl", {type:"ordinal"})` kennt nur `other`). Beide
+  // Sprachen nennen die Nummer deshalb als Nummer — dieselbe Tatsache, ohne falsche Grammatik.
+  "adm.backup.seq": "{{n}}. Sicherung derselben Sekunde",
   // Die Zeile im Reiter „System". Sie trägt die Zahl nur, wenn wirklich gelesen wurde.
   "adm.backup.row.none": "keine",
   "adm.backup.row.unknown": "nicht feststellbar",
@@ -7681,6 +7691,9 @@ const en: typeof de = {
   "adm.backup.age.hours_other": "{{count}} hours ago",
   "adm.backup.age.days_one": "{{count}} day ago",
   "adm.backup.age.days_other": "{{count}} days ago",
+  // JOB 4109 — siehe den deutschen Block: die Nummer wird als Nummer genannt, nicht als
+  // Ordnungszahl, weil „1st/2nd/3rd/4th" an der Zahl hängt und eine feste Endung falsch wäre.
+  "adm.backup.seq": "backup no. {{n}} of the same second",
   "adm.backup.row.none": "none",
   "adm.backup.row.unknown": "cannot be determined",
   // SCRUM-432 (Pedi 03.07., VIP investor): Trust & Security.
@@ -12906,6 +12919,9 @@ const nl: typeof de = {
   "adm.backup.age.hours_other": "{{count}} uur geleden",
   "adm.backup.age.days_one": "{{count}} dag geleden",
   "adm.backup.age.days_other": "{{count}} dagen geleden",
+  // JOB 4109 — siehe den deutschen Block: „2e", aber „20ste"; die Endung hängt an der Zahl, deshalb
+  // wird die Nummer als Nummer genannt.
+  "adm.backup.seq": "back-up nr. {{n}} van dezelfde seconde",
   "adm.backup.row.none": "geen",
   "adm.backup.row.unknown": "niet vast te stellen",
   "adm.sich.auditTitle": "Auditlog — hash-geschakeld, afwijkingen aantoonbaar",

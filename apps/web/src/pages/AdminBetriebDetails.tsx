@@ -145,6 +145,28 @@ function Eintragszeile({
     >
       <span className="min-w-0 break-all font-mono text-[12.5px] text-text">{eintrag.datei}</span>
       <span className="text-[12px] text-muted-2">{zeitText(t, eintrag.zeitpunktUtc)}</span>
+      {/* JOB 4109 — DIE WIEVIELTE SICHERUNG DIESER SEKUNDE. Läuft der Cron zweimal in derselben
+          Sekunde, heißt die zweite `klarwerk-<STAMP>_02.dump` (`backup.sh:413`); ohne diese Zeile
+          stünden zwei Einträge mit identischem Zeitpunkt untereinander, ohne dass irgendetwas ihre
+          Reihenfolge erklärte. Der Wert kommt AUS DEM DRAHT (`folgeNummer`) — hier wird kein
+          Dateiname zerlegt.
+
+          NUR bei `> 1`: an der ERSTEN Sicherung jeder Sekunde — also an fast jeder Zeile im
+          Betrieb — wäre „1. Sicherung dieser Sekunde" reiner Lärm. Und bei `null` wäre es eine
+          Behauptung ohne Messung; an einer Zeile, deren Zeitpunkt ohnehin „unbekannt" sagt, ist
+          eine zweite Unbekannt-Meldung keine Auskunft.
+
+          SIE HÄNGT NICHT AN `frisch`, anders als das Alter darunter: sie ist keine Aussage über die
+          Gegenwart, sondern eine Eigenschaft des Namens aus derselben Lesung, aus der die Zeile
+          stammt — sie altert nicht (gemessen in `admin-sicherung-mounted.test.tsx`, U4f).
+
+          Eigene Kennung aus demselben Grund wie `sicherung-marke` unten: ein Wächter soll GENAU
+          diese Worte lesen, nicht den halben Kartentext. */}
+      {eintrag.folgeNummer !== null && eintrag.folgeNummer > 1 ? (
+        <span data-testid="sicherung-folge" className="text-[12px] text-muted-2">
+          {t("adm.backup.seq", { n: eintrag.folgeNummer })}
+        </span>
+      ) : null}
       {alter === null ? null : (
         <span data-testid="sicherung-alter" className="text-[12px] text-muted-2">
           {alter}

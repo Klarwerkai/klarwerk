@@ -2168,6 +2168,18 @@ export interface SicherungsEintrag {
   beglaubigt: boolean;
   /** Nur bei `beglaubigt`; sonst `null`. Der Wert AUS der Sidecar, kein nachgerechneter. */
   pruefsumme: string | null;
+  /**
+   * JOB 4109 — die wievielte Sicherung DIESER SEKUNDE der Name bezeichnet.
+   *
+   * `1` beim Grundnamen, `NN` beim Suffixnamen `klarwerk-<STAMP>_NN.dump`, den `backup.sh:413` bei
+   * mehreren Läufen in derselben Sekunde vergibt. `null` = der Name trägt keinen gültigen Stempel
+   * (`zeitpunktUtc` ist dann ebenfalls `null`): über die Reihenfolge innerhalb der Sekunde ist
+   * nichts bekannt, und Unbekanntes wird nie zu „1".
+   *
+   * DIE FLÄCHE RECHNET NICHTS AUS DEM DATEINAMEN NACH, sie liest dieses Feld — eine zweite
+   * Auslegung derselben Namensregel würde von der ersten wegdriften.
+   */
+  folgeNummer: number | null;
 }
 
 export type SicherungenAuskunft =

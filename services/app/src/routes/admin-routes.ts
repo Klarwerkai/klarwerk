@@ -38,6 +38,10 @@ import { loadSimCorpus } from "../sim-corpus";
 //
 //   :34-36  `WURZEL="$(cd "$(dirname "$0")/../.." && pwd)"` · `DEST="${1:-${BACKUP_DIR:-$WURZEL/backups}}"`
 //   :39-40  `STAMP="$(date -u +%Y%m%dT%H%M%SZ)"` · `OUT="$DEST/klarwerk-${STAMP}.dump"`
+//   :413    `printf '%s_%02d.dump' "$BASISNAME" "$versuch"` — zwei Läufe in DERSELBEN SEKUNDE, und
+//           die zweite heißt `klarwerk-<STAMP>_02.dump` (JOB 4057, seit `1.0.0-beta.1.518` LIVE).
+//           Bis JOB 4109 kannte der Parser diese Form nicht: die JÜNGSTE Sicherung stand undatiert
+//           ganz unten, und der Betreiber las oben ein Datum von gestern.
 //   :82     Sidecar wie `shasum -a 256`: 64 Hex, ZWEI Leerzeichen, DER ENDNAME
 //   :55-57  „Sidecar zuerst, Dump zuletzt" — ein `*.dump` OHNE Sidecar ist kein regulär
 //           entstandenes Backup dieses Skripts
@@ -69,6 +73,17 @@ interface SicherungsEintrag {
   groesseBytes: number | null;
   beglaubigt: boolean;
   pruefsumme: string | null;
+  /**
+   * JOB 4109 — die wievielte Sicherung DIESER SEKUNDE der Name bezeichnet.
+   *
+   * `1` beim Grundnamen, `NN` beim Suffixnamen `_NN`, und `null`, wenn der Name keinen gültigen
+   * Stempel trägt: über eine Reihenfolge innerhalb einer Sekunde ist dann NICHTS bekannt, und
+   * Unbekanntes wird nie zu „1" — dieselbe Regel, die `groesseBytes: null` schon trägt.
+   *
+   * Es ist ein EIGENES FELD, keine Ableitung in der Fläche: wer die Nummer dort aus dem Dateinamen
+   * nachparste, legte eine zweite Auslegung derselben Namensregel an, und zwei Auslegungen driften.
+   */
+  folgeNummer: number | null;
 }
 
 /**
@@ -87,9 +102,24 @@ function sicherungsVerzeichnis(): string {
     : resolve(join(REPO_WURZEL, "backups"));
 }
 
+/**
+ * DER NAME, DEN `backup.sh` WIRKLICH SCHREIBT — beide Formen, aus EINEM Muster gelesen.
+ *
+ * `:39-40` `STAMP="$(date -u +%Y%m%dT%H%M%SZ)"` · `OUT="$DEST/klarwerk-${STAMP}.dump"` — der
+ * Grundname. UND SEIT JOB 4057 zusätzlich `:413` `kandidat="$(printf '%s_%02d.dump' "$BASISNAME"
+ * "$versuch")"`: laufen zwei Sicherungen in DERSELBEN SEKUNDE, weicht die zweite auf
+ * `klarwerk-<STAMP>_02.dump` aus, die dritte auf `_03` — „die Nummer zaehlt weiter und wird nie
+ * wiederverwendet" (`:419`). Genau ZWEI Ziffern, weil `%02d` genau zwei schreibt und `:389` die
+ * vergebenen Nummern als `_[0-9][0-9]` wieder einsammelt.
+ *
+ * Die Gruppe `_NN` ist deshalb OPTIONAL und sonst nichts weiter geöffnet: `_2`, `_002`, `_ab` oder
+ * Text vor/hinter dem Namen kann dieses Skript nicht erzeugen und bleibt unparsbar.
+ */
+const SICHERUNGSNAME = /^klarwerk-(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z(?:_(\d{2}))?\.dump$/;
+
 /** `klarwerk-20260914T093000Z.dump` → ISO-Zeitpunkt. Nicht parsebar oder kein echtes Datum → `null`. */
 function zeitpunktAusName(datei: string): string | null {
-  const treffer = /^klarwerk-(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z\.dump$/.exec(datei);
+  const treffer = SICHERUNGSNAME.exec(datei);
   if (!treffer) {
     return null;
   }
@@ -99,6 +129,23 @@ function zeitpunktAusName(datei: string): string | null {
   // `new Date("2026-02-31T…")` liefert den 3. März. Ein Datum, das es nicht gibt, wird NICHT auf
   // einen anderen Tag gebogen — dann ist der Name eben nicht parsebar.
   return Number.isNaN(zeit.getTime()) || zeit.toISOString() !== iso ? null : iso;
+}
+
+/**
+ * Die wievielte Sicherung dieser Sekunde — aus DEMSELBEN Muster wie der Zeitpunkt.
+ *
+ * Sie hängt ausdrücklich am Zeitpunkt: trägt der Name keinen gültigen Stempel, ist über seine Stelle
+ * innerhalb einer Sekunde nichts bekannt, und `null` ist die ehrliche Antwort. Ohne Suffix ist es
+ * die erste dieser Sekunde (`backup.sh:426-427`: der Grundname ist die Nummer 1).
+ */
+function folgeNummerAusName(datei: string): number | null {
+  if (zeitpunktAusName(datei) === null) {
+    return null;
+  }
+  const treffer = SICHERUNGSNAME.exec(datei);
+  const suffix = treffer?.[7];
+  // Dezimal lesen, wie `backup.sh:392` es mit `$((10#$nummer))` tut — `_08` darf nicht oktal werden.
+  return suffix === undefined ? 1 : Number.parseInt(suffix, 10);
 }
 
 /** Die Prüfsumme aus der Sidecar — nur, wenn Form UND Endname stimmen. Sonst `null` (fail-closed). */
@@ -135,6 +182,7 @@ async function befundFuer(ort: string, datei: string): Promise<SicherungsEintrag
     groesseBytes,
     beglaubigt: pruefsumme !== null,
     pruefsumme,
+    folgeNummer: folgeNummerAusName(datei),
   };
 }
 
@@ -486,13 +534,31 @@ export function adminRoutes(
         .filter((e) => (e.isFile() || e.isSymbolicLink()) && e.name.endsWith(".dump"))
         .map((e) => e.name);
       const sicherungen = await Promise.all(namen.map((n) => befundFuer(verzeichnis, n)));
-      // Jüngste zuerst. Ein Name ohne Stempel trägt kein Datum und kann deshalb nicht behaupten,
-      // der jüngste zu sein — er steht hinten. Der Dateiname bricht den Gleichstand, damit zwei
-      // Aufrufe am selben Bestand dieselbe Reihenfolge liefern.
+      // JÜNGSTE ZUERST, in drei Schlüsseln.
+      //
+      // 1. `zeitpunktUtc` absteigend. Ein Name ohne Stempel trägt kein Datum und kann deshalb nicht
+      //    behaupten, der jüngste zu sein — er steht hinten. Das gilt unverändert.
+      // 2. `folgeNummer` ABSTEIGEND, JOB 4109: bei Sekundengleichheit ist die HÖHERE Nummer die
+      //    spätere Sicherung (`backup.sh:419` „die Nummer zaehlt weiter"), also `_03` vor `_02` vor
+      //    dem Grundnamen. Dieser Schlüssel ist AUSDRÜCKLICH numerisch und steht VOR dem Dateinamen:
+      //    `_` und `.` sind Satzzeichen, und die ICU-Kollation von `localeCompare` ordnet Satzzeichen
+      //    nicht verlässlich — überließe man ihr den Gleichstand, stünde `klarwerk-…Z_02.dump` je
+      //    nach Laufzeit vor oder hinter `klarwerk-…Z.dump`.
+      // 3. Der Dateiname, damit zwei Aufrufe am selben Bestand dieselbe Reihenfolge liefern.
+      //
+      // NICHT MEHR WAHR und deshalb hier gestrichen: die Annahme, ein Dump ohne parsbaren Stempel
+      // sei kein reguläres Backup dieses Skripts. Seit JOB 4057 erzeugt `backup.sh` Suffixnamen —
+      // sie sind reguläre Sicherungen und werden seit JOB 4109 als solche gelesen.
       sicherungen.sort((a, b) => {
         const za = a.zeitpunktUtc ?? "";
         const zb = b.zeitpunktUtc ?? "";
-        return za === zb ? b.datei.localeCompare(a.datei) : zb > za ? 1 : -1;
+        if (za !== zb) {
+          return zb > za ? 1 : -1;
+        }
+        // `null` heißt „unbekannt" und darf keine Stelle vor einer bekannten Nummer beanspruchen.
+        const fa = a.folgeNummer ?? 0;
+        const fb = b.folgeNummer ?? 0;
+        return fa === fb ? b.datei.localeCompare(a.datei) : fb - fa;
       });
       reply.code(200).send({ zustand: "gelesen", verzeichnis, gelesenUtc, sicherungen });
     });
