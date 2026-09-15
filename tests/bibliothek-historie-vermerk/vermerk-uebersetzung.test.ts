@@ -110,6 +110,11 @@ const uebersetzer = (lng: string): ((key: string) => string) => i18n.getFixedT(l
  * Word-Rückweg hat oberhalb und innerhalb des Dienstes eingefügt, und alle acht Fundstellen sind
  * verrutscht. Die Wortlaute sind unverändert — es sind weiterhin dieselben FÜNF Vermerke.
  *
+ * JOB 4077 (15.09.2026) · DIE ZEILENNUMMERN SIND ERNEUT NEU GEMESSEN: der Anker an der Belegstelle
+ * hat oberhalb (Import), in `addSource`, in `createWithDocuments` und in `appendDocumentExtract`
+ * eingefügt; alle zehn Fundstellen sind verrutscht. Die Wortlaute sind unverändert — es sind
+ * weiterhin dieselben FÜNF Vermerke, und ihre Zahl prüft der Fall darüber ohnehin gegen den Code.
+ *
  * JOB 3843 · `en` und `nl` sind die am Katalog GEMESSENEN Solltexte (Stand 172001e, 13.09.2026,
  * gelesen über `alleSprachbestaende()`); `wort` ist zugleich der deutsche Solltext, weil der Dienst
  * sein Literal schreibt und der deutsche Katalogblock genau dieses Literal trägt. DIESELBE TABELLE
@@ -128,21 +133,21 @@ const DIENST_VERMERKE = [
     schluessel: "ko.historyNote.created",
     en: "created",
     nl: "aangemaakt",
-    fundstellen: [1860, 1979],
+    fundstellen: [1863, 1982],
   },
   {
     wort: "erstellt (Dokumentinhalt übernommen)",
     schluessel: "ko.historyNote.createdFromDocument",
     en: "created (document content adopted)",
     nl: "aangemaakt (documentinhoud overgenomen)",
-    fundstellen: [2201],
+    fundstellen: [2210],
   },
   {
     wort: "erstellt (nachgezogen)",
     schluessel: "ko.historyNote.createdBackfilled",
     en: "created (backfilled)",
     nl: "aangemaakt (nagetrokken)",
-    fundstellen: [2629],
+    fundstellen: [2638],
   },
   {
     wort: "überarbeitet",
@@ -151,19 +156,19 @@ const DIENST_VERMERKE = [
     nl: "herzien",
     // JOB 3667 RUNDE 7 · VIER Fundstellen statt zwei, und das ist die ganze Spur dieses Auftrags in
     // dieser Tabelle: der Rückweg aus Word hat zwei weitere Schreibwege eröffnet, die eine neue
-    // INHALTSFASSUNG erzeugen — „überarbeiten und gleich freigeben" (:3807) und „einen gebundenen
-    // Änderungsvorschlag übernehmen" (:3996). Beide schreiben DENSELBEN Vermerk wie jede andere
+    // INHALTSFASSUNG erzeugen — „überarbeiten und gleich freigeben" (:3839) und „einen gebundenen
+    // Änderungsvorschlag übernehmen" (:4028). Beide schreiben DENSELBEN Vermerk wie jede andere
     // Überarbeitung. Dass dabei zugleich freigegeben wurde, steht nicht im Vermerk, sondern im
     // Datensatz (`status`, `ownership.validators`) und in zwei Audit-Belegen; die Begründung dafür
     // steht bei `naechsteFassung` im Dienst.
-    fundstellen: [3650, 3734, 3807, 3996],
+    fundstellen: [3682, 3766, 3839, 4028],
   },
   {
     wort: "überarbeitet (Dokumentinhalt übernommen)",
     schluessel: "ko.historyNote.revisedFromDocument",
     en: "revised (document content adopted)",
     nl: "herzien (documentinhoud overgenomen)",
-    fundstellen: [4210, 4228],
+    fundstellen: [4251, 4269],
   },
 ] as const;
 

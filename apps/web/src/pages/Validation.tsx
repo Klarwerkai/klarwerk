@@ -1305,7 +1305,11 @@ export function Validation(): JSX.Element {
     const createdByName = vonId ? nameOf(vonId).trim() : "";
     const meta = [createdByName, k.category, createdLabel].filter(Boolean).join(" · ");
     const quellen = k.sources ?? [];
-    const bilder = (k.attachments ?? []).filter((a) => a.mime.startsWith("image/"));
+    // JOB 4077: DIESELBE Anhangsliste trägt zwei Auskünfte — die Bild-Zählung im Chip und (neu) den
+    // Dateinamen, den der Nachweis einer verankerten Quelle auflöst. Sie wird deshalb EINMAL
+    // benannt statt zweimal aus `k` geholt.
+    const anhaenge = k.attachments ?? [];
+    const bilder = anhaenge.filter((a) => a.mime.startsWith("image/"));
     const darfLoeschen = role === "admin" || role === "controller" || k.author === user?.id;
     // JOB 3112 · V3: der Paarhinweis und die Frage, ob dieser Betrachter den Vergleich betreten
     // darf. Dieselbe Rollenlesart wie `darfLoeschen` — die Vergleichsfläche selbst trägt
@@ -1486,7 +1490,7 @@ export function Validation(): JSX.Element {
           {quellen.length > 0 || bilder.length > 0 ? (
             <div className="flex flex-wrap gap-[8px]">
               {quellen.map((q) => {
-                const zeit = quellennachweis(q, i18n.language).zeit;
+                const zeit = quellennachweis(q, anhaenge, i18n.language).zeit;
                 return (
                   <span
                     key={q.id}
@@ -1583,7 +1587,7 @@ export function Validation(): JSX.Element {
             {quellen.length > 0 ? (
               <PruefenMehrBlock beschriftung={t("ko.sourcesTitle")}>
                 {quellen.map((q) => {
-                  const nachweis = quellennachweis(q, i18n.language);
+                  const nachweis = quellennachweis(q, anhaenge, i18n.language);
                   return (
                     <div
                       key={q.id}
@@ -1594,6 +1598,25 @@ export function Validation(): JSX.Element {
                         <span className="font-semibold text-text">{q.label}</span>
                         <span className="text-muted-2">{t(sourceBadgeKey(q))}</span>
                       </div>
+                      {/* JOB 4077: DIE DATEI, AUS DER DIESE BELEGSTELLE STAMMT. Sie steht unter dem
+                          Label und damit unmittelbar über der Adresse — die drei Angaben
+                          beantworten dieselbe Frage („woher?") und gehören zusammen.
+
+                          KEINE NEUEN WÖRTER, dieselbe Regel wie oben: ein Dateiname trägt keine
+                          Beschriftung, er ist als Dateiname erkennbar. `i18n.ts` bleibt unberührt.
+
+                          OHNE ANKER KEINE ZEILE (§9): keine Datei, kein „—", kein „unbekannt". Der
+                          Name kommt AUS DEM ANHANG desselben Objekts, nie aus einem Feld an der
+                          Quelle — deshalb kann er auch nichts über einen Anhang behaupten, der
+                          nicht mehr da ist. */}
+                      {nachweis.datei ? (
+                        <span
+                          data-testid="pruefen-quelle-datei"
+                          className="mt-0.5 block break-all text-muted"
+                        >
+                          {nachweis.datei}
+                        </span>
+                      ) : null}
                       {nachweis.adresse ? (
                         nachweis.adresse.verlinkbar ? (
                           <a

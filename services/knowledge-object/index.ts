@@ -37,6 +37,10 @@ export {
   requireDocumentEvidence,
 } from "./src/document-append";
 export type { DocumentEvidenceFacts } from "./src/document-append";
+// JOB 4077: die EINE Antwort auf „hängt dieser Anker an diesem Objekt?" — geteilt zwischen der
+// Stufenentscheidung (die sie als TATSACHE braucht) und dem Speicherweg (der sie festhält).
+export { confirmedSourceAnchor } from "./src/source-anchor";
+export type { AnchorCandidateAttachment } from "./src/source-anchor";
 // AUFTRAG-mega20 Block A: der Vorgangsschlüssel der ERSTANLAGE (DB-weit eindeutig, Adopt-Semantik).
 // AUFTRAG-mega21 Block A: dazu der kanonische Inhaltsabdruck des Vorgangs (Regeln K1–K7 in der Datei).
 // AUFTRAG-mega22 Block A: dazu K8 — die SCHREIBLADUNG als eigener, semantiktreuer Baustein.

@@ -82,6 +82,9 @@ import {
   controlStateLifecycleGueltig,
   integritaetsMarkerFuer,
 } from "./search-projection-repo";
+// JOB 4077: „hängt dieser Anker an DIESEM Objekt?" — dieselbe Antwort, die die Stufenentscheidung
+// als Tatsache beschafft (`ko-routes.ts`); hier entscheidet sie, ob der Anker gespeichert wird.
+import { confirmedSourceAnchor } from "./source-anchor";
 // SCRUM-527 (WP2): Quell-URL-Allowlist an der Persistenzgrenze (nur absolute http/https).
 import { safeSourceUrl, sanitizeSources } from "./source-url";
 import {
@@ -2156,6 +2159,12 @@ export class KoService {
           kind: "external",
           peerValidated: false,
           ...(provider ? { provider } : {}),
+          // JOB 4077: derselbe Anker, den der Anhang zwei Zeilen höher bekommt — und zwar aus
+          // demselben Grund wie dort. `bySource` hielt die Zuordnung bisher NUR für die
+          // Evidence-Records; am Nachweis selbst stand sie nicht, und die Prüfseite liest
+          // Evidence-Records nicht. Ein aus Dokumenten ERZEUGTES Objekt ist der häufigste Fall auf
+          // `/pruefen` — ohne diese Zeile bliebe genau er ohne Dateinamen.
+          objectId: anchorObjectId,
           author: input.author,
           at,
         };
@@ -2872,6 +2881,23 @@ export class KoService {
   }
 
   // SCRUM-129 / FR-KO-07: externe Quelle anfügen. Externe Quellen sind NIE peer-validiert.
+  //
+  // JOB 4077 — DER ANKER WIRD NICHT MEHR WEGGEWORFEN. `input.objectId` ist ein KANDIDAT, keine
+  // Tatsache: er kommt aus dem Rumpf des Clients. Bestätigt wird er HIER, gegen die Anhangsliste
+  // des Objekts, das dieser Aufruf ohnehin schon geladen hat (`this.require(id)`) — also gegen den
+  // FRISCHEN Bestand im selben Read-Modify-Write, nicht gegen eine Momentaufnahme des Aufrufers.
+  //
+  // WARUM DIE BESTÄTIGUNG HIER STEHT UND NICHT BEIM AUFRUFER: der Aufrufer (die Route) beschafft
+  // dieselbe Tatsache für die STUFENENTSCHEIDUNG, und zwar nur dort, wo sie etwas entscheiden kann
+  // (adresslose Quelle auf restriktiver Stufe). Für das SPEICHERN muss sie immer vorliegen. Sie
+  // dort zu verbreitern hiesse, den Eingang der Sicherheitsgrenze anzufassen, um ein Anzeigefeld
+  // zu füllen. Hier ist sie eine Eigenschaft des Schreibvorgangs: wer über diese Methode schreibt,
+  // kann keinen unbestätigten Anker in den Bestand bringen — auch ein künftiger zweiter Aufrufer
+  // nicht. Die Entscheidung selbst (`decideExternalAttach`) sieht davon kein Zeichen.
+  //
+  // Ein nicht bestätigter Anker ist KEIN Fehler: er war schon bisher folgenlos (die Stufenregel
+  // liest ihn als „kein Anker"), und ein neuer 4xx wäre eine Ablehnung, die es vorher nicht gab.
+  // Das Feld bleibt dann schlicht weg — dieselbe Form wie bei `provider`.
   async addSource(
     id: string,
     author: string,
@@ -2880,6 +2906,7 @@ export class KoService {
       url?: string | null;
       excerpt?: string | null;
       provider?: string | null;
+      objectId?: string | null;
     },
   ): Promise<KnowledgeObject> {
     const label = input.label?.trim() ?? "";
@@ -2888,6 +2915,7 @@ export class KoService {
     }
     const ko = await this.require(id);
     const provider = input.provider?.trim() ? input.provider.trim() : null;
+    const anchor = confirmedSourceAnchor(ko.attachments, input.objectId);
     const source: KoSource = {
       id: this.genId(),
       label,
@@ -2899,6 +2927,10 @@ export class KoService {
       peerValidated: false,
       // SCRUM-118: externe Quelle trägt optional ihren Anbieter; bleibt external/nicht peer-validiert.
       ...(provider ? { provider } : {}),
+      // JOB 4077: der BESTÄTIGTE Anker — oder gar nichts. Kein `null`, kein Leerstring: ein
+      // weggelassenes Feld ist dasselbe wie am Altbestand, und die Fläche liest beides als „keine
+      // Datei" (`quellennachweis`).
+      ...(anchor ? { objectId: anchor } : {}),
       author,
       at: new Date(this.now()).toISOString(),
     };
@@ -4154,6 +4186,14 @@ export class KoService {
       // „Seriell und vollständig" heißt hier: alle Belegstellen entstehen gemeinsam, bevor
       // irgendetwas persistiert wird. Ein Teilbestand ist nicht darstellbar. Dieselben Regeln wie
       // `addSource`: Stufe 2, nie peer-validiert, URL durch die Persistenz-Allowlist.
+      //
+      // JOB 4077: und jede von ihnen trägt den ANKER des Anhangs, der eine Zeile höher entsteht.
+      // Hier braucht es KEINE zusätzliche Bestätigung gegen die Anhangsliste — im Gegenteil, sie
+      // wäre falsch: der Anhang liegt in diesem Augenblick noch nicht im Bestand. Er wird von
+      // DIESEM Schreibvorgang gebunden, aus einer Kennung, die der Aufrufer im eigenen
+      // Objektspeicher nachgeschlagen hat (`objects.metadata`, ko-routes.ts) und die
+      // `requireDocumentEvidence` durchlaufen hat. Der Server behauptet also nichts, was er nicht
+      // unmittelbar danach selbst herstellt — derselbe Satz, der an der Route steht.
       const sources: KoSource[] = input.sources.map((source, index) => {
         const provider = source.provider?.trim() ? source.provider.trim() : null;
         return {
@@ -4164,6 +4204,7 @@ export class KoService {
           kind: "external",
           peerValidated: false,
           ...(provider ? { provider } : {}),
+          objectId: anchorObjectId,
           author,
           at,
         };

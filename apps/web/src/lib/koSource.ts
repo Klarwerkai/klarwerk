@@ -105,6 +105,18 @@ export function unsavableSourceUrls(
 // der Server anlegt (`services/capture/src/service.ts`). Alles andere bleibt SICHTBAR, aber als
 // Text: ein `href` auf ein fremdes Schema (`javascript:` aus einem Altbestand) wäre eine aktive
 // Fläche, die niemand geprüft hat, und ein toter Link wäre ein Versprechen ohne Deckung.
+// JOB 4077 — DIE DRITTE ANGABE: DIE DATEI, AUS DER DIE BELEGSTELLE STAMMT.
+//
+// Der Anker (`KoSource.objectId`) steht seit JOB 4077 an der Quelle; der DATEINAME steht dort
+// ausdrücklich NICHT. Er wird HIER aufgelöst, aus der Anhangsliste DESSELBEN Objekts. Der Grund ist
+// dieselbe Ehrlichkeitsregel wie oben: ein an die Quelle kopierter Name würde durch eine
+// Umbenennung des Anhangs zur Lüge — der Nachweis behauptete dann eine Datei, die es so nicht mehr
+// gibt. Aufgelöst heisst: entweder der Anhang liegt am Objekt und nennt seinen Namen, oder es steht
+// nichts da.
+//
+// FEHLEN HEISST FEHLEN, hier in vier Gestalten: kein Anker (jede Quelle von vor diesem Auftrag),
+// leerer Anker, Anhang nicht (mehr) in der Liste, Anhang ohne brauchbaren Namen. Alle vier ergeben
+// `null`, und die Fläche lässt die Zeile WEG — kein „—", kein „unbekannt", keine Ersatzzeile.
 export interface Quellennachweis {
   /** Formatierter Zeitpunkt aus `at` — `null`, wenn `at` fehlt oder unlesbar ist (kein „Invalid Date"). */
   zeit: string | null;
@@ -112,14 +124,33 @@ export interface Quellennachweis {
   adresse: { voll: string; kurz: string; verlinkbar: boolean } | null;
   /** Die belegte Stelle im Wortlaut der Quelle — `null`, wenn keine angegeben ist. */
   auszug: string | null;
+  /** Der Name des angehängten Originals, an dem diese Quelle hängt — `null`, wenn keines auffindbar ist. */
+  datei: string | null;
 }
 
+/**
+ * `anhaenge` ist die Anhangsliste DESSELBEN Wissensobjekts, in dem die Quelle steht — dieselbe
+ * Liste, die die Karte wenige Zeilen weiter oben für die Bild-Zählung liest. Strukturell typisiert
+ * (kein `KoAttachment`-Import nötig) und bewusst nullbar in beiden Feldern: Alt-Anhänge tragen
+ * `dataUrl` statt `objectId` (SCRUM-121), und ein leerer Name ist kein Name.
+ *
+ * Eine LEERE Liste ist ein zulässiger Aufruf und keine Notlage: eine Fläche ohne Anhangsliste
+ * bekommt dann `datei: null` und zeigt schlicht nichts — sie behauptet nicht, es gäbe keine Datei.
+ */
 export function quellennachweis(
-  source: Pick<KoSource, "at" | "url" | "excerpt">,
+  source: Pick<KoSource, "at" | "url" | "excerpt"> & { objectId?: string | null },
+  anhaenge: readonly { objectId?: string | null; name?: string | null }[],
   sprache: string,
 ): Quellennachweis {
   const roh = (source.url ?? "").trim();
   const auszug = (source.excerpt ?? "").trim();
+  const anker = (source.objectId ?? "").trim();
+  // `undefined === undefined` ist KEIN Treffer: ohne die Prüfung auf einen vorhandenen Wert
+  // „passte" eine ankerlose Quelle auf jeden Alt-Anhang, und der Nachweis nennte eine Datei, zu
+  // der er nie gehört hat. Dieselbe Vorsicht wie serverseitig in `confirmedSourceAnchor`.
+  const treffer =
+    anker.length > 0 ? anhaenge.find((a) => a.objectId != null && a.objectId === anker) : undefined;
+  const datei = (treffer?.name ?? "").trim();
   return {
     // Dieselbe Zeitregel wie das Objektdatum auf derselben Karte (`formatKoTimestamp`): Datum +
     // Uhrzeit ohne Sekunden, in der aktiven Sprache — und `null` statt eines geratenen Datums.
@@ -129,6 +160,7 @@ export function quellennachweis(
         ? { voll: roh, kurz: kuerzeAdresse(roh), verlinkbar: isSavableSourceUrl(roh) }
         : null,
     auszug: auszug.length > 0 ? auszug : null,
+    datei: datei.length > 0 ? datei : null,
   };
 }
 

@@ -93,6 +93,12 @@ export interface KoSource {
   kind: "external";
   peerValidated: boolean;
   provider?: string | null; // SCRUM-118: optionaler Anbieter externer Quellen
+  // JOB 4077: der ANKER dieser Belegstelle — die `objectId` eines Anhangs DIESES Objekts, vom
+  // Server gegen dessen eigene Anhangsliste bestätigt (`services/knowledge-object/src/types.ts`).
+  // OPTIONAL und additiv: jede Quelle von vor diesem Auftrag trägt ihn nicht, und „fehlt" heisst
+  // hier ausdrücklich „keine Datei" — nicht „unbekannt". Aufgelöst wird er beim ANZEIGEN
+  // (`lib/koSource.ts`, `quellennachweis`); der Dateiname steht NICHT an der Quelle.
+  objectId?: string;
   author: string;
   at: string;
 }

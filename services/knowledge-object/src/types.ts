@@ -219,6 +219,21 @@ export interface KoSource {
   externalId?: string;
   spaceKey?: string;
   sourceVersion?: number;
+  // JOB 4077: DER ANKER DIESER BELEGSTELLE — die `objectId` eines Anhangs, den DIESES Wissensobjekt
+  // trägt. Additiv, JSON-persistiert → keine Migration; Altquellen ohne das Feld bleiben gültig.
+  //
+  // WAS ES IST: eine vom Server GEGEN DIE EIGENE ANHANGSLISTE bestätigte Kennung. `addSource`
+  // schlägt sie in `ko.attachments` nach und schreibt sie nur, wenn sie dort liegt
+  // (`service.ts`, `confirmedSourceAnchor`); im Übernahmeweg entsteht der Anhang in DERSELBEN
+  // Operation (`appendDocumentExtract`).
+  //
+  // WAS ES NICHT IST: eine Herkunftsbehauptung des Clients — dieselbe Grenze wie bei `provider`
+  // (mega15 Block B). Ein nicht bestätigter Wert wird verworfen, nicht gespeichert.
+  //
+  // WARUM DER ANKER UND NICHT DER DATEINAME: der Name wird beim ANZEIGEN aus dem Anhang aufgelöst
+  // (`apps/web/src/lib/koSource.ts`, `quellennachweis`). Ein an die Quelle kopierter Name würde
+  // durch eine Umbenennung des Anhangs zur Lüge, ohne dass irgendjemand es merkt.
+  objectId?: string;
   author: string;
   at: string;
 }

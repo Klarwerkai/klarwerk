@@ -29,6 +29,9 @@ import {
   type UploadLimitsRepo,
   alsMenge,
   alsSchreibpatch,
+  // JOB 4077: die EINE Antwort auf „hängt dieser Anker an DIESEM Objekt?". Sie kennt weder Stufe
+  // noch Reichweite und kann deshalb keine Erlaubnis erweitern (Begründung: `source-anchor.ts`).
+  confirmedSourceAnchor,
   createOperationFingerprint,
   // JOB 3009: die Stufe als ausdrueckliche Auskunft am Detailabruf — dieselbe Funktion, die das
   // Pruef-Board ueber `mitHerkunft` ruft (die Begruendung steht an der Route).
@@ -2351,12 +2354,18 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             const reach = classifySourceReach(body.source.url, internalSourceOrigins);
             // Der Anker wird nur dort beschafft, wo er zählen kann (adresslose Quelle auf
             // restriktiver Stufe) — sonst spart der häufige Fall den zusätzlichen Lesevorgang.
+            //
+            // JOB 4077: der Vergleich selbst steht seither in `confirmedSourceAnchor`
+            // (knowledge-object) — dieselbe Frage, die der SPEICHERWEG in `ko.addSource` stellt.
+            // Zwei Ausdrücke dafür wären zwei Regeln, die auseinanderlaufen können. Die BEDINGUNG
+            // davor bleibt um kein Zeichen verändert: nach wie vor wird nur dort nachgeschlagen, wo
+            // der Anker die Entscheidung tragen kann, und `decideExternalAttach` bekommt damit
+            // exakt dasselbe `anchoredToOwnAttachment` wie vor diesem Auftrag.
             let anchoredToOwnAttachment = false;
             if (reach === "unaddressed" && !externalAttachAllowed(stage) && body.source.objectId) {
               const target = await ko.get(id);
-              anchoredToOwnAttachment = (target?.attachments ?? []).some(
-                (a) => a.objectId != null && a.objectId === body.source?.objectId,
-              );
+              anchoredToOwnAttachment =
+                confirmedSourceAnchor(target?.attachments, body.source.objectId) !== null;
             }
             const decision = decideExternalAttach({ stage, reach, anchoredToOwnAttachment });
             if (!decision.allowed) {
@@ -2378,6 +2387,12 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
                 excerpt: body.source.excerpt ?? null,
                 // Serverseitig abgeleitet — nie übernommen.
                 provider: attributeExternalSource(body.source.url),
+                // JOB 4077: der ANKER-KANDIDAT. Hier wird er WEITERGEREICHT, nicht geglaubt: der
+                // Dienst schlägt ihn in der Anhangsliste dieses Objekts nach und speichert ihn nur,
+                // wenn er dort liegt (`service.ts`, `addSource`). Bis hierher endete die Kette an
+                // dieser Zeile — der Server hatte die Zugehörigkeit vierzehn Zeilen weiter oben
+                // geprüft und vergaß sie beim Speichern.
+                objectId: body.source.objectId ?? null,
               }),
             );
             return;
