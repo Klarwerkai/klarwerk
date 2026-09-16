@@ -552,6 +552,17 @@ export const endpoints = {
     restore: (id: string) => api.post<KnowledgeObject>(`/kos/${id}/restore`),
     purge: (id: string) => api.del<void>(`/kos/trash/${id}`),
   },
+  // ================================================================================================
+  // JOB 4151 (WG-PERSISTENZ) — DIE BEZIEHUNGSWEGE STEHEN UNTER `ko`, UND ZWAR NUR EINMAL.
+  // ================================================================================================
+  //
+  // HIER STAND BIS R6 EINE ZWEITE FLÄCHE auf dieselben drei Routen (`beziehungen.list/setze/
+  // widerrufe`). Sie war der Vertrag, den dieser Job für die damals noch ungebaute Anzeige
+  // hinterlegt hat — mit dem ausdrücklichen Satz „bis dahin ruft ihn niemand". Inzwischen ist die
+  // Anzeige gebaut und ausgeliefert (JOB 4153), und sie ruft `ko.beziehungen`,
+  // `ko.beziehungSetzen` und `ko.beziehungWiderrufen` weiter oben. Zwei Wege zu denselben drei
+  // Routen sind keine Reserve, sondern zwei Wahrheiten: wer den einen ändert, lässt den anderen
+  // stehen. Der ungenutzte ist deshalb entfernt und nicht danebengelassen.
   validation: {
     // JOB 3027: die Board-Route liefert seit JOB 3003/3009 MEHR als ein Wissensobjekt — Stufe und
     // Herkunft samt Beleglage (services/validation/src/board-herkunft.ts:122-135). Der Typ sagt das

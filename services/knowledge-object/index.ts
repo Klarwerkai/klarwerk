@@ -191,6 +191,90 @@ export {
   matchEffectiveSearchDocument,
   type EffectiveSearchDocument,
 } from "./src/effective-search-document";
+// ================================================================================================
+// JOB 4151 · WG-PERSISTENZ — DIE KURATIERTEN BEZIEHUNGEN. OHNE DIESEN BLOCK GIBT ES SIE NICHT.
+// ================================================================================================
+//
+// DER GEMESSENE ZUSTAND BIS ZU DIESEM AUFTRAG: Aggregat, Kanonisierung, Deduplizierung und der
+// vollständige Lesedienst samt Sichtbarkeitstrimm lagen seit JOB 1140/1495/1543 fertig in
+// `src/kanten-*.ts` — und diese Datei nannte sie mit keinem Wort. Hinter der von
+// `dependency-cruiser` erzwungenen Modulgrenze (Regel `module-boundaries`: „Cross-Modul-Imports
+// nur über die öffentliche index.ts des Zielmoduls") war das für die Anwendung dasselbe wie nicht
+// vorhanden: `services/app` konnte den Dienst nicht erreichen, ohne die Grenze zu brechen. Genau
+// dieser Zustand — gebaut, richtig, unerreichbar — ist der Fehler, den `tests/capture/aufrufer-waechter.test.ts`
+// im Haus benennt („Ein Test ist kein Aufrufer").
+//
+// WAS HERAUSGEHT UND WARUM GERADE DAS:
+//   · die TYPEN, weil Route und Client-Vertrag dieselbe Form beschreiben müssen wie der Dienst;
+//   · BEIDE Bestände plus `KANTEN_SCHEMA`, weil die Kompositionswurzel die Ablage wählt (Speicher
+//     ohne Datenbank, Postgres mit) und `services/app/src/db.ts` die DDL migrieren MUSS
+//     (`db.migrate.test.ts` erzwingt genau das für jede exportierte DDL-Konstante);
+//   · Lese- UND Schreibdienst getrennt, weil die Einmethodigkeit des Lesedienstes eine Zusage ist;
+//   · die KANONISIERUNGSHELFER, damit niemand ausserhalb „dieselbe Beziehung" ein zweites Mal
+//     formuliert — sie sind der Grund, warum „A ergänzt B" und „B ergänzt A" EINE Beziehung sind.
+export { DeduplizierenderKantenBestand } from "./src/kanten-repo";
+export {
+  PgKantenRepo,
+  // Additive DDL der Beziehungstabelle — MUSS in services/app/src/db.ts migriert werden
+  // (db.migrate.test.ts erzwingt genau das für jede exportierte DDL-Konstante).
+  KANTEN_SCHEMA,
+} from "./src/kanten-repo-pg";
+// `SELBSTBEZIEHUNG_MELDUNG` und `pruefeErwarteteVersion` gehen BEWUSST NICHT mit heraus: sie sind
+// die geteilte Innenseite der beiden Bestände, kein Vertrag nach aussen. Wer sie draussen brauchte,
+// baute eine dritte Ablage — und die gehört dann hierher, nicht an die Fassade vorbei.
+export {
+  InMemoryKantenRepo,
+  KantenLeseService,
+  KantenSchreibService,
+  // JOB 4151: WANN diese Fassung entstand — gelesen aus dem Verlauf, nicht geraten. Der
+  // Wissensnetz-Anschluss (`services/library-analytics`) braucht sie, um denselben beurteilten
+  // Stand auszuweisen wie die Detailauskunft; eine zweite Ableitung dort wäre die zweite Wahrheit.
+  fassungszeitVon,
+  netzQualitaet,
+  // JOB 4151 (R6): die Antwortform der SCHREIBWEGE. Sie geht mit heraus, weil die Route sie
+  // braucht — ohne sie gäbe der Schreibweg das Aggregat zurück, und die Anzeige (JOB 4153) liest
+  // von dieser Antwort `gegenstueck.id`. Zwei Formen für dieselbe Kante am Draht wären die zweite
+  // Wahrheit; die Begründung, warum es nicht `alsAnsicht` sein kann, steht an der Funktion.
+  ansichtNachSchreiben,
+} from "./src/kanten-service";
+export type {
+  GesehenerStand,
+  KanteGesetzt,
+  Setzergebnis,
+  KantenAbweichung,
+  KantenAktuell,
+  KantenGegenstueck,
+  KantenKoLeser,
+  KantenLeseServiceDeps,
+  KantenRepo,
+  KantenSchreibServiceDeps,
+  KantenSichtbar,
+  KantenSichtbarkeitsFakten,
+  KanteSetzenEingabe,
+  KuratierteKanteAnsicht,
+  KuratierteKanten,
+  NetzQualitaet,
+  QualitaetKoBestand,
+} from "./src/kanten-service";
+export {
+  KANTEN_ARTEN,
+  KANTEN_RICHTUNGEN,
+  KantenError,
+} from "./src/kanten-types";
+export type {
+  BeurteilterStand,
+  KantenArt,
+  KantenErrorCode,
+  KantenRichtung,
+  KantenStatus,
+  KuratierteKante,
+} from "./src/kanten-types";
+export {
+  beziehungsSchluessel,
+  istSelbstbeziehung,
+  kanonischesPaar,
+  traegtRichtungsaussage,
+} from "./src/kanten-paar";
 export { KoError, KNOWLEDGE_TYPES, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS } from "./src/types";
 // SCRUM-421: einstellbare Upload-Grenzen (persistiert).
 export {

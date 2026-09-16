@@ -179,6 +179,41 @@ const REGISTER: Record<string, Eintrag> = {
       "das Modul VOR dem ersten Lesen — es gibt dann keine leere Sicht, die sich fuer vollstaendig " +
       "erklaert. Ausgegeben werden Zaehler und Themennamen, kein KO-Titel und keine Aussage.",
   },
+  // --- JOB 4151: die kuratierten Beziehungen (kanten-routes.ts) -----------------------------
+  //
+  // WAS HINAUSGEHT UND WARUM DAS URTEIL `PRAEDIKAT` IST: Die Leseauskunft trägt den TITEL des
+  // Gegenendpunkts (`KantenGegenstueck`, kanten-service.ts) — also KO-Inhalt. Sie fährt deshalb
+  // `sichtbarkeitsfilterFuer`, und zwar VOR der Ausgabe: `KantenLeseService.kantenFuer` trimmt die
+  // Grundmenge und zählt `total` danach; ein unsichtbarer oder unauflösbarer Gegenendpunkt erzeugt
+  // WEDER Kante NOCH Kennung, Titel oder Zähler (`alsAnsicht`). Einen Schnittzähler gibt es
+  // ausdrücklich nicht — er wäre selbst die Existenzauskunft.
+  //
+  // DASSELBE PRÄDIKAT LIEGT AM AUSGANGSPUNKT (JOB 4151, BEN R2): Bis zur Korrektur wurde nur das
+  // GEGENSTÜCK geprüft; der ANGEFRAGTE Eintrag ging ungeprüft durch, und ein fremder Experte bekam
+  // für eine vertrauliche Kennung Beziehungen, `total` und Fassungsdaten. Seither beantwortet
+  // `kantenFuer` einen Eintrag, den der Abrufende nicht erreicht, wie einen, den es nicht gibt:
+  // `{ kanten: [], total: 0 }`, ohne eigenen Fehler — ein eigener Fehler wäre die Auskunft selbst.
+  //
+  // DIE BEIDEN SCHREIBWEGE STEHEN HIER MIT DEMSELBEN URTEIL, und das ist kein Versehen des
+  // Sammlers: sie geben das gespeicherte Aggregat zurück (Endpunktkennungen, Urheber, Zeitpunkt)
+  // und prüfen vorher BEIDE Endpunkte gegen dasselbe Prädikat (`KantenSchreibService.erreichbar`).
+  // Ohne diese Prüfung liesse sich über die Antwort — 403 gegen 409 — die Existenz eines
+  // unsichtbaren Objekts erschliessen; mit ihr sind alle Gründe ununterscheidbar.
+  "GET /api/kos/:id/beziehungen": {
+    urteil: "PRAEDIKAT",
+    grund:
+      "JOB 4151 — Titel des Gegenstücks; Trimm VOR der Ausgabe, total zählt danach. BEIDE Enden " +
+      "gehen durch dasselbe Prädikat: ein für den Abrufenden unerreichbarer AUSGANGSPUNKT " +
+      "antwortet wie einer, den es nicht gibt (leer, kein eigener Fehler).",
+  },
+  "POST /api/kos/:id/beziehungen": {
+    urteil: "PRAEDIKAT",
+    grund: "JOB 4151 — beide Endpunkte werden vor dem Schreiben gegen dasselbe Prädikat gehalten.",
+  },
+  "POST /api/beziehungen/:beziehungId/widerruf": {
+    urteil: "PRAEDIKAT",
+    grund: "JOB 4151 — Widerruf, kein Löschen; dieselbe Prüfung beider Endpunkte vor der Antwort.",
+  },
   // --- W2-A/148: die Laufdomäne des Imports -------------------------------------------------
   // Der Lauf selbst trägt AUSSCHLIESSLICH Kennungen, Status, Zeitstempel und Zähler — keine Zeile
   // Fachinhalt. `knowledgeObjectId` ist eine Id, kein Inhalt (import-run-routes.ts:88-99).

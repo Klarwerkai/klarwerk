@@ -294,6 +294,8 @@ PFLICHTTABELLEN=(
   ko_metadata_projections
   ko_projection_control
   ko_evidence
+  ko_kanten
+  ko_kanten_beitrag
   audit
   drafts
   gaps

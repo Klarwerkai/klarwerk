@@ -900,6 +900,51 @@ export const TABELLE: Zeile[] = [
     tor: "users.manage",
     erwartet: NUR_ADMIN,
   },
+  // ------------------------------------------------------------------------------------------------
+  // JOB 4151 (WG-PERSISTENZ) — DIE VIER TÜREN DER KURATIERTEN BEZIEHUNGEN.
+  // ------------------------------------------------------------------------------------------------
+  //
+  // ZWEI RECHTE, EHRLICH GETRENNT: Lesen hängt an `ko.read` (jede angemeldete Rolle trägt es),
+  // Schreiben an `ko.relate` — dem Recht, das dieser Auftrag neu einträgt und das controller und
+  // admin bekommen (`services/rbac/src/policy.ts`). Ein Gast soll sehen, wie das Wissen
+  // zusammenhängt, und nicht darüber urteilen; deshalb steht bei den beiden Schreibzeilen
+  // `AB_CONTROLLER` und nicht `AB_EXPERTE`.
+  //
+  // KEINE ZEILE WIRD ZURÜCKGESTELLT. Alle drei Türen sind hier gemessen; in `NICHT_ABGENOMMEN`
+  // steht keine davon. Die gefahrenen URLs sind bewusst ZUSTANDSFREI (erfundene Kennungen): die
+  // Messungen dieser Tabelle laufen gegen EINE gemeinsame Bühne, und ein wirklich angelegter
+  // Vorgang verschöbe die Grundlage der folgenden Zeilen.
+  {
+    gruppe: "kantenRoutes",
+    methode: "GET",
+    pfad: "/api/kos/gibt-es-nicht/beziehungen",
+    route: "/api/kos/:id/beziehungen",
+    belegstelle: "services/app/src/routes/kanten-routes.ts:128",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "kantenRoutes",
+    methode: "POST",
+    pfad: "/api/kos/gibt-es-nicht/beziehungen",
+    route: "/api/kos/:id/beziehungen",
+    belegstelle: "services/app/src/routes/kanten-routes.ts:155",
+    tor: "ko.relate",
+    // Leere Nutzlast: die Abnahme misst die TÜR, nicht den Raum dahinter. Für controller und admin
+    // endet sie im 400 der Rumpfprüfung — das ist „durchgelassen" und legt nichts an.
+    payload: {},
+    erwartet: AB_CONTROLLER,
+  },
+  {
+    gruppe: "kantenRoutes",
+    methode: "POST",
+    pfad: "/api/beziehungen/gibt-es-nicht/widerruf",
+    route: "/api/beziehungen/:beziehungId/widerruf",
+    belegstelle: "services/app/src/routes/kanten-routes.ts:213",
+    tor: "ko.relate",
+    payload: {},
+    erwartet: AB_CONTROLLER,
+  },
   {
     gruppe: "klaraAiRoutes",
     methode: "GET",

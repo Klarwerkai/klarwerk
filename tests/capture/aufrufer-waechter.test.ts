@@ -891,7 +891,15 @@ const ALTBESTAND: readonly string[] = [
   // JOB 3024 ruft `services/app/src/routes/ko-routes.ts` sie am Detailabruf `GET /api/kos/:id`.
   // Genau dafuer ist dieses Register da: es soll schrumpfen.
   "services/knowledge-object/src/effective-search-document.ts::EFFECTIVE_SEARCH_DOCUMENT_FIELDS",
-  "services/knowledge-object/src/kanten-repo.ts::DeduplizierenderKantenBestand",
+  // JOB 4151 · GESTRICHEN, WEIL BEHOBEN: `DeduplizierenderKantenBestand` stand hier seit dem
+  // 27.08.2026 — der Bestand war gebaut, deduplizierend, getestet und hatte im ganzen Produkt
+  // keinen einzigen Aufrufer. Seit JOB 4151 wählt ihn die Kompositionswurzel
+  // (`services/app/src/build-app.ts`, `assembleServices`) als Kantenablage für den Betrieb ohne
+  // Datenbank. Genau dafür ist dieses Register da: es soll schrumpfen.
+  //
+  // `InMemoryKantenRepo` bleibt stehen, und zwar mit Grund: er ist der PRÜFSTAND des Lesewegs
+  // (`kanten-service.ts:86-90`) und legt je KENNUNG ab statt je Beziehung — als Ablage der
+  // Anwendung wäre er falsch, und die Wurzel nimmt ihn deshalb ausdrücklich nicht.
   "services/knowledge-object/src/kanten-service.ts::InMemoryKantenRepo",
   "services/knowledge-object/src/kanten-service.ts::netzQualitaet",
   "services/knowledge-object/src/metadata-projection.ts::METADATA_PROJECTION_FIELDS",

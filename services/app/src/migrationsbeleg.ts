@@ -181,6 +181,14 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   { stufe: "KO_METADATA_PROJECTION_SCHEMA", risiko: "ADDITIV" },
   { stufe: "KO_PROJECTION_CONTROL_SCHEMA", risiko: "ADDITIV" },
   { stufe: "KO_EVIDENCE_SCHEMA", risiko: "ADDITIV" },
+  // JOB 4151: die kuratierten Beziehungen (`ko_kanten`) und die Bindung ihrer Wiederholschlüssel
+  // (`ko_kanten_beitrag`, BEN R3). ADDITIV, und zwar nachgezählt statt behauptet: von den sechs
+  // RISIKOMARKERN oben trifft KEINER — die Stufe besteht aus ZWEI `CREATE TABLE IF NOT EXISTS`,
+  // einem `ALTER TABLE … ADD COLUMN IF NOT EXISTS` (der Widerrufs-Urheber, BEN R2) und fünf
+  // `CREATE [UNIQUE] INDEX IF NOT EXISTS`, ohne `DROP TABLE`, `TRUNCATE`, `DROP COLUMN`,
+  // `DELETE FROM`, `DROP INDEX` und ohne `UPDATE … SET`. Kein Seed, kein Fremdschlüssel; ein
+  // zweiter Lauf ist folgenlos.
+  { stufe: "KANTEN_SCHEMA", risiko: "ADDITIV" },
   { stufe: "AUDIT_SCHEMA", risiko: "ADDITIV" },
   { stufe: "AUDIT_EVENT_ID_SCHEMA", risiko: "ADDITIV" },
   // JOB 498 D8: die fünfte ALTER-only-Stufe. `ADD COLUMN IF NOT EXISTS ... NOT NULL DEFAULT 1`

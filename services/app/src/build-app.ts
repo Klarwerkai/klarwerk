@@ -72,17 +72,20 @@ import {
 } from "../../external-search";
 import { I18nService } from "../../i18n";
 import {
+  DeduplizierenderKantenBestand,
   type EvidenceRepo,
   InMemoryEvidenceRepo,
   InMemoryKoRepo,
   InMemoryKoVersionRepo,
   InMemoryUploadLimitsRepo,
+  type KantenRepo,
   type KnowledgeObject,
   type KoRepo,
   type KoSearchProjectionRepo,
   KoService,
   type KoVersionRepo,
   PgEvidenceRepo,
+  PgKantenRepo,
   PgKoRepo,
   PgKoSearchProjectionRepo,
   PgKoVersionRepo,
@@ -223,6 +226,7 @@ import { i18nRoutes } from "./routes/i18n-routes";
 import { impactRoutes } from "./routes/impact-routes";
 import { importAccessRoutes } from "./routes/import-access-routes";
 import { importRunRoutes } from "./routes/import-run-routes";
+import { kantenRoutes } from "./routes/kanten-routes";
 import { klaraAiRoutes } from "./routes/klara-ai-routes";
 // W3-C (JOB 541 D3): die kanonische Antwort-Erklaerroute und ihr Lesedienst.
 import { klaraAnswerExplanationRoutes } from "./routes/klara-answer-explanation-routes";
@@ -307,6 +311,23 @@ export interface AppServices {
   // deshalb nicht — nach einem Replay ist sie leer, und die Admin-Aktion „Übersetzungen laden"
   // stellt sie idempotent wieder her (die Lieferung liegt als Datei im Auslieferungsstand).
   lesevarianten: LesevariantenRepo;
+  /**
+   * JOB 4151: der Bestand der KURATIERTEN BEZIEHUNGEN — die Aussage eines Menschen darüber, dass
+   * zwei Wissenseinträge fachlich zusammengehören.
+   *
+   * Er steht als eigenes Feld neben `lesevarianten` und ausdrücklich NICHT in `AppRepos`, und der
+   * Grund ist derselbe, den `brandingSettings` darunter ausschreibt: `AppRepos` ist der Satz, den
+   * die Dev-Persistenz journalierend umhüllt, und `MUTATING_METHODS` (`dev-persist.ts:35`) ist ein
+   * VOLLSTÄNDIGER Record über `keyof AppRepos`. Ein Feld dort hinzuzufügen macht `dev-persist.ts`
+   * rot — und diese Datei liegt ausserhalb der Zielpfade dieses Auftrags.
+   *
+   * WAS DAS EHRLICH BEDEUTET, und es wird nicht verschwiegen: im DEV-JOURNAL-Betrieb überlebt eine
+   * kuratierte Beziehung den Neustart NICHT. Im Postgres-Betrieb tut sie es — dort hängt hier
+   * `PgKantenRepo` (s. `buildPgServices`), und das ist der Betrieb, um den es geht. Ohne Datenbank
+   * (Tests, Dev) bleibt der deduplizierende Speicherbestand: derselbe Vertrag, andere Haltbarkeit,
+   * beide gegen DENSELBEN Fallsatz gefahren (`tests/wissensgraph-integration/bestandsvertrag.ts`).
+   */
+  kanten: KantenRepo;
   /**
    * JOB 3510: die EINE instanzweite Markenwahl (Demo-Firmen-CI) — Web, Word/Klara und das
    * Chrome-Panel lesen sie über `GET /api/branding`.
@@ -571,6 +592,10 @@ export function assembleServices(
     // JOB 3326: gesetzt nur von `buildPgServices` (echter Pool) — ohne Injektion die In-Memory-
     // Ablage. Derselbe Vertrag, andere Haltbarkeit; beide werden getrennt geprüft.
     lesevarianten?: LesevariantenRepo;
+    // JOB 4151: die Einhängestelle des haltbaren Kantenbestands. Gesetzt von `buildPgServices`
+    // (echter Pool); ohne Injektion der deduplizierende Speicherbestand — derselbe Vertrag, andere
+    // Haltbarkeit, beide gegen denselben Fallsatz geprüft.
+    kanten?: KantenRepo;
     // JOB 3510/3578: die Einhängestelle der haltbaren Markenablage. Gesetzt von
     // `buildPgServices` (echter Pool); ohne Injektion die In-Memory-Ablage — derselbe Vertrag,
     // andere Haltbarkeit, beide werden getrennt geprüft.
@@ -773,6 +798,11 @@ export function assembleServices(
     klaraSessions: opts.klaraSessions ?? new InMemoryKlaraSessionRepo(),
     // JOB 3326: die Lesevarianten-Ablage — Postgres, wenn injiziert, sonst im Speicher.
     lesevarianten: opts.lesevarianten ?? new InMemoryLesevariantenRepo(),
+    // JOB 4151: der Kantenbestand — Postgres, wenn injiziert, sonst der DEDUPLIZIERENDE
+    // Speicherbestand. Bewusst nicht `InMemoryKantenRepo`: der legt je Kennung ab und liesse
+    // dieselbe fachliche Beziehung zweimal entstehen. Er ist der Prüfstand des Lesewegs
+    // (`kanten-service.ts:86-90`) und war nie als Ablage der Anwendung gemeint.
+    kanten: opts.kanten ?? new DeduplizierenderKantenBestand(),
     // JOB 3510/3578: die Markenwahl — Postgres, wenn injiziert, sonst im Speicher.
     brandingSettings: opts.brandingSettings ?? new InMemoryBrandingSettingsRepo(),
     // JOB 3110 (M2b): DIE VORHANDENEN gecappten Cloud-Clients, weitergereicht — kein zweiter Aufruf
@@ -1123,6 +1153,11 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // JOB 3326: die Lesevarianten liegen in DERSELBEN Datenbank wie der Bestand (dedizierte
       // Kundeninstanz = ein Datenraum) — kein zweiter Dienst, keine kundenübergreifende Ablage.
       lesevarianten: new PgLesevariantenRepo(pool),
+      // JOB 4151: die kuratierten Beziehungen liegen in DERSELBEN Datenbank wie der Bestand, auf
+      // den sie zeigen. Mit dieser Zeile überlebt eine von Hand gesetzte Verknüpfung Neuladen und
+      // Serverneustart; ohne sie fiele `assembleServices` auch im Postgres-Betrieb auf den
+      // flüchtigen Speicherbestand zurück — und niemand sähe es, weil beide denselben Port füllen.
+      kanten: new PgKantenRepo(pool),
       // JOB 3578: die Markenwahl liegt in DERSELBEN Datenbank wie der Bestand — kein zweiter
       // Dienst, keine Datei auf der Platte, keine kundenübergreifende Ablage. Mit dieser Zeile
       // überlebt die vom Administrator gesetzte Firmen-CI Neustart und Deploy; ohne sie fiele
@@ -1370,6 +1405,12 @@ export const ERLAUBTE_FEHLERTYPEN: ReadonlySet<string> = new Set([
   "ExternalSearchError",
   "FencingVeraltetError",
   "KlaraError",
+  // JOB 4151: aus `services/knowledge-object/src/kanten-types.ts` — der Fachfehler der kuratierten
+  // Beziehungen. ENTSCHEIDUNG: der Name darf ins Protokoll. Er trägt, wie jeder Nachbar hier,
+  // ausschliesslich seinen Klassennamen; Meldung und Stack bleiben unterdrückt. Ohne ihn erschiene
+  // jede fachliche Abweisung des Kuratierungswegs im Log als `UNBEKANNT` und wäre von einem
+  // Infrastrukturfehler nicht zu unterscheiden — genau der Unterschied, für den diese Liste da ist.
+  "KantenError",
   "KoError",
   "LibraryError",
   "LifecycleError",
@@ -1532,7 +1573,19 @@ export const ERLAUBTE_FEHLERCODES: ReadonlySet<string> = new Set([
   "UNKNOWN_ART",
   "UNKNOWN_KIND",
   "UNKNOWN_KO",
+  // JOB 4151: der Konflikt des Kuratierungswegs — der Mensch hat einen älteren Inhaltsstand
+  // beurteilt, als heute gilt. ENTSCHEIDUNG: darf ins Protokoll. Er trägt keinen Nutzertext und
+  // keine Kennung, geht über die Route ohnehin als Antwortcode (409) hinaus und sagt, WELCHER
+  // Zweig lief — genau dafür ist diese Liste da.
+  "STAND_VERALTET",
   "UNSUPPORTED_KIND",
+  // JOB 4151: der Code, mit dem `KantenError` eine wohlgeformte, aber fachlich unmögliche Eingabe
+  // des Kuratierungswegs abweist (unbekannte Art oder Richtung, fehlender Urheber, Beziehung auf
+  // sich selbst, fehlende erwartete Version). ENTSCHEIDUNG: er darf ins Protokoll — er sagt, WELCHER
+  // Zweig lief, und trägt weder Nutzertext noch Kennung. Er geht über `http.ts` ohnehin als
+  // Antwortcode hinaus (dort ohne eigenen Eintrag in `STATUS_BY_CODE` und damit als 400, was die
+  // richtige Auskunft ist: der Aufrufer hat etwas falsch gemacht und kann es besser machen).
+  "VALIDATION",
   "WEAK_PASSWORD",
   // --- Fremdcodes, namentlich ---
   // PostgreSQL: die beiden, an denen im Betrieb wirklich etwas hängt.
@@ -2459,6 +2512,12 @@ export function buildApp(
   // AUFTRAG-mega29 C2: die schmale Abdeckungs-Zusammenfassung, die die LEEREN Konflikt-/Duplikat-
   // Boards brauchen, um nicht als „geprüft und frei" gelesen zu werden.
   app.register(aiCheckCoverageRoutes(services.ko, guards));
+  // JOB 4151 (WG-PERSISTENZ): die kuratierten Beziehungen. Der Bestand kommt aus `services`
+  // (Postgres oder Speicher, s. dort); `services.ko` erfüllt den SCHMALEN Port `KantenKoLeser`
+  // (`kanten-service.ts:178-180`) — die Route kennt den KO-Dienst deshalb nicht als Ganzes. Die
+  // Sichtbarkeitsentscheidung holt sie sich aus derselben EINEN Stelle wie jede andere
+  // (`sichtbarkeit.ts`), nicht aus einem eigenen Prädikat.
+  app.register(kantenRoutes({ kanten: services.kanten, kos: services.ko }, guards));
   // Berater-Konzept Duplikate 04.07. (Stufe D3b): Überschneidungs-API (/api/duplicates) +
   // (Pedi 04.07.) einstellbare Anzeige-Schwelle.
   app.register(

@@ -6,6 +6,7 @@ import { CAPTURE_CREATE_OPERATION_SCHEMA, CAPTURE_SCHEMA } from "../../capture";
 import { CONFLICTS_SCHEMA, OVERLAP_SCHEMA, OVERLAP_SETTINGS_SCHEMA } from "../../conflicts";
 import { EXTERNAL_KNOWLEDGE_SCHEMA } from "../../external-search";
 import {
+  KANTEN_SCHEMA,
   KO_CREATE_OPERATION_SCHEMA,
   KO_EVIDENCE_SCHEMA,
   KO_IMPORT_ANCHOR_SCHEMA,
@@ -103,6 +104,12 @@ export const schemas = [
   // zurück).
   KO_PROJECTION_CONTROL_SCHEMA,
   KO_EVIDENCE_SCHEMA,
+  // JOB 4151: die kuratierten Beziehungen (`ko_kanten`). NACH `KO_SCHEMA`, weil ihre Endpunkte auf
+  // Wissensobjekte zeigen — eine Reihenfolgebedingung im technischen Sinn gibt es nicht (kein
+  // Fremdschlüssel, keine Extension; die Begründung dafür steht an der DDL selbst), die Nähe ist
+  // Ordnung. Rein additiv und wiederholbar: CREATE TABLE/INDEX IF NOT EXISTS, kein DROP, kein
+  // TRUNCATE, kein Schreiben an Bestandsdaten.
+  KANTEN_SCHEMA,
   AUDIT_SCHEMA,
   // WP-SHIP8-CLOSE-6 (bens ROT-1): additive Event-Id-Stufe DIREKT nach AUDIT_SCHEMA
   // (exactly-once-Belege via partiellem Unique-Index auf event_id).

@@ -2,19 +2,44 @@ import type { Role } from "../../auth";
 
 // Rechtematrix (Pflichtenheft §3.2 / Technischer Anhang §4). rbac baut auf dem
 // Rollenmodell des auth-Moduls auf (Import nur über dessen öffentliche index.ts).
+// JOB 4151 — `ko.relate` KOMMT ADDITIV DAZU, an controller und admin.
+//
+// DIE ENTSCHEIDUNG IST NICHT NEU UND WIRD HIER NICHT GETROFFEN. Sie steht seit JOB 1495 im
+// Quelltext des Kantenmoduls (`services/knowledge-object/src/kanten-service.ts:36-39`, wörtlich):
+// „Die Kuratierung selbst ist Scheibe S4 und hängt an der Autorisierung `ko.relate`
+// (controller/admin), die D3 §2.2 entschieden, aber nicht gebaut hat." Gebaut wird sie hier.
+//
+// WARUM AB CONTROLLER UND NICHT AB EXPERTE: Eine kuratierte Beziehung ist eine Aussage ÜBER zwei
+// Einträge — „diese widersprechen sich", „dieser ersetzt jenen". Sie steht damit auf derselben
+// Stufe wie `ko.validate` und `conflict.resolve` und nicht auf der von `ko.create`: wer schreibt,
+// trägt seinen eigenen Beitrag bei; wer verknüpft, urteilt über den Beitrag anderer.
+//
+// KEIN NEUER ROLLENNAME, KEIN BESTEHENDES RECHT WANDERT: die vier Zeilen unten behalten jedes
+// Recht, das sie hatten, in derselben Reihenfolge. Und kein Admin-Bypass am Sichtbarkeitstrimm —
+// `ko.relate` sagt „darf verknüpfen", nicht „darf alles sehen"; die Sichtbarkeit entscheidet
+// weiterhin allein `services/app/src/sichtbarkeit.ts`.
 export type Permission =
   | "ko.read"
   | "ko.create"
   | "ko.validate"
   | "ko.assign"
+  | "ko.relate"
   | "conflict.resolve"
   | "users.manage";
 
 export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   viewer: ["ko.read"],
   experte: ["ko.read", "ko.create"],
-  controller: ["ko.read", "ko.create", "ko.validate", "ko.assign", "conflict.resolve"],
-  admin: ["ko.read", "ko.create", "ko.validate", "ko.assign", "conflict.resolve", "users.manage"],
+  controller: ["ko.read", "ko.create", "ko.validate", "ko.assign", "ko.relate", "conflict.resolve"],
+  admin: [
+    "ko.read",
+    "ko.create",
+    "ko.validate",
+    "ko.assign",
+    "ko.relate",
+    "conflict.resolve",
+    "users.manage",
+  ],
 };
 
 // FR-RBAC-01: Aktionen exakt gemäß Matrix.

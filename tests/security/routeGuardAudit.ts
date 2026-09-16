@@ -24,6 +24,8 @@ export type Protection =
   | "ko.create"
   | "ko.validate"
   | "ko.assign"
+  // JOB 4151: das Recht, zwei Wissenseinträge fachlich zu verbinden (controller/admin).
+  | "ko.relate"
   | "conflict.resolve"
   | "users.manage"
   | "action-dispatched";
@@ -33,6 +35,7 @@ export const KNOWN_PERMISSIONS: readonly Protection[] = [
   "ko.create",
   "ko.validate",
   "ko.assign",
+  "ko.relate",
   "conflict.resolve",
   "users.manage",
 ];
@@ -488,6 +491,34 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // SCRUM-506-Regel (nur ko.validate sieht sie), belegt in tests/app/mega68-nachbarschaft-route.
   "GET /api/kos/:id/neighbors": {
     protection: "ko.read",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
+
+  // --- Kuratierte Beziehungen (JOB 4151, kanten-routes.ts) ---
+  //
+  // ZWEI RECHTE, EIN ZEILENPRÄDIKAT. Lesen hängt an `ko.read`, Schreiben am neuen `ko.relate`
+  // (controller/admin, `services/rbac/src/policy.ts`). ALLE DREI Türen fahren zusätzlich
+  // `sichtbarkeitsfilterFuer` — und zwar nicht nur beim Lesen: wer ein Wissensobjekt nicht sehen
+  // darf, darf es auch nicht verknüpfen, sonst wäre die BEZIEHUNG selbst die Existenzauskunft über
+  // den unsichtbaren Gegenknoten (`kanten-service.ts:17-30`). Der Schreibdienst prüft deshalb
+  // BEIDE Endpunkte vor dem Schreiben (`KantenSchreibService.erreichbar`).
+  //
+  // UND DAS PRÄDIKAT LIEGT AN BEIDEN ENDEN, AUCH BEIM LESEN (JOB 4151, BEN R2): `kantenFuer` prüft
+  // seit der Korrektur zuerst den ANGEFRAGTEN Eintrag und antwortet leer, wenn der Abrufende ihn
+  // nicht erreicht. Vorher genügte die Kennung eines vertraulichen Eintrags, um seine Beziehungen,
+  // `total` und Fassungsdaten zu lesen.
+  "GET /api/kos/:id/beziehungen": {
+    protection: "ko.read",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
+  "POST /api/kos/:id/beziehungen": {
+    protection: "ko.relate",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
+  // Der Widerruf ist ein `POST` und kein `DELETE`: es wird nichts gelöscht, die Beziehung bleibt
+  // mit `status: "widerrufen"` im Bestand (API-Vertrag der Steuerung, G5/G7).
+  "POST /api/beziehungen/:beziehungId/widerruf": {
+    protection: "ko.relate",
     zeilenrecht: ["sichtbarkeitsfilterFuer"],
   },
 

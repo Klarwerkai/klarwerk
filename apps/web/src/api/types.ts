@@ -926,12 +926,23 @@ export interface BeziehungGegenstueck {
   status: KoStatus;
 }
 
-/** Die KO-Fassungen, die der Urheber beim Setzen gesehen hat. Fehlen sie, ist der Bezug unbekannt. */
+/**
+ * Die KO-Fassungen, die der Urheber beim Setzen gesehen hat. Fehlen sie, ist der Bezug unbekannt.
+ *
+ * DIE ZEITPUNKTE SIND NULLBAR, und das ist keine Vorsicht, sondern gemessen (JOB 4151 R6): der
+ * Server liest sie aus dem Verlaufseintrag der jeweiligen Fassung (`fassungszeitVon`,
+ * `services/knowledge-object/src/kanten-service.ts`) und antwortet `null`, wenn der Verlauf zu
+ * dieser Fassungsnummer nichts ausweist — bei Altbestand ohne Verlauf ist das der Normalfall. Ein
+ * hilfsweise eingesetztes Datum wäre eine erfundene Tatsache; ein `string` im Typ wäre die
+ * Behauptung, es gäbe sie immer, und die Fläche dürfte dann ungeprüft formatieren.
+ *
+ * Die FassungsNUMMERN sind dagegen immer da — sie stehen am Objekt selbst, nicht im Verlauf.
+ */
 export interface BeziehungBeurteilt {
   quelleVersion: number;
   zielVersion: number;
-  quelleFassungAm: string;
-  zielFassungAm: string;
+  quelleFassungAm: string | null;
+  zielFassungAm: string | null;
 }
 
 /** Die heutigen Fassungen beider Endpunkte — bei jedem Lesen frisch, nicht gespeichert. */
@@ -958,6 +969,12 @@ export interface KuratierteKanteAnsicht {
   gesetztAm: string;
   /** Nur in der Antwort des Widerrufs belegt — deshalb optional und nicht geraten. */
   geaendertAm?: string;
+  /**
+   * WER ZURÜCKGENOMMEN HAT (JOB 4151 R6) — nur zusammen mit `status: "widerrufen"` belegt, sonst
+   * `null`/fehlend. `urheber` oben bleibt daneben stehen und ist eine ANDERE Aussage: wer die
+   * Beziehung erfunden hat. Eine Fläche, die nur einen der beiden Namen zeigt, nennt den Falschen.
+   */
+  widerrufenVon?: string | null;
   status: KantenStatus;
   /** Reine CAS-Nummer für Widerruf/Änderung. Keine Inhaltsaussage. */
   version: number;
@@ -967,6 +984,23 @@ export interface KuratierteKanteAnsicht {
   abweichung: BeziehungAbweichung;
 }
 
+/**
+ * DIE ANTWORT DES LESEWEGS — und die eine Zusage, die die Oberfläche NICHT erfinden darf.
+ *
+ * `{ kanten: [], total: 0 }` heisst „KEINE SICHTBARE BEZIEHUNG", nicht „keine Beziehung". Der
+ * Server trimmt VOR der Ausgabe und zählt DANACH; es gibt bewusst keinen Schnittzähler und keine
+ * Quote, weil beides selbst die Existenzauskunft wäre, die der Trimm verhindert. Eine Fläche, die
+ * hier „Keine Beziehungen vorhanden" schreibt, behauptet etwas über den Bestand, das diese Antwort
+ * nicht hergibt — richtig ist „keine, die hier angezeigt werden kann".
+ *
+ * ZUSTANDSMODELL, das die Anzeige zu führen hat (JOB 4151 §9):
+ *   · laden       — es gibt noch KEINE Aussage über Beziehungen; kein Zwischenstand reist mit.
+ *   · leer        — siehe oben: „keine sichtbare", nicht „keine".
+ *   · Fehler      — eigener Zustand. Kein leeres Ergebnis, das wie „nichts da" aussieht.
+ *   · alter Stand — `koId` sagt, WORÜBER diese Antwort spricht; ein Ergebnis zu einer anderen
+ *                   Kennung ist ein alter Stand und keine Auskunft über den aktuellen Eintrag.
+ *   · offline     — keine negative Aussage ohne erfolgreiche frische Datengrundlage.
+ */
 export interface KuratierteKanten {
   koId: string;
   kanten: KuratierteKanteAnsicht[];
@@ -1121,6 +1155,27 @@ export interface Neighborhood {
   truncated: boolean;
   excludedTags: string[];
 }
+
+// ==================================================================================================
+// JOB 4151 (WG-PERSISTENZ) — DER CLIENT-VERTRAG STEHT WEITER OBEN, UND ZWAR NUR EINMAL.
+// ==================================================================================================
+//
+// HIER STANDEN BIS JOB 4151 R6 DIESELBEN TYPEN EIN ZWEITES MAL. Das ist keine Kleinigkeit gewesen,
+// sondern hat das Produkt nicht mehr übersetzen lassen: `KantenArt`, `KantenRichtung` und
+// `KantenStatus` waren doppelt deklariert (TS2300), und die beiden `KuratierteKanteAnsicht`
+// verschmolzen zu einer Deklaration mit widersprüchlichem `beurteilt` (TS2717).
+//
+// WIE ES DAZU KAM, ohne dass eine Runde es sah: WG-PERSISTENZ (dieser Job) und WG-ANZEIGE
+// (JOB 4153) wurden aus DEMSELBEN verbindlichen API-Vertrag geschnitten und dann nebeneinander
+// gebaut. Beide haben ihn pflichtgemäss in dieser Gemeinschaftsdatei nachgezeichnet — jeder für
+// sich additiv, jeder für sich grün. Erst der Einbau brachte beide in eine Datei.
+//
+// WARUM DIE OBEREN GEWINNEN und nicht diese: sie sind in Gebrauch. `hooks.ts` und
+// `WissensbeziehungenBereich.tsx` lesen sie, und beide sind ausgeliefert. Die Typen hier hatte
+// niemand aufgerufen — sie waren der Vertrag FÜR die Anzeige, und die Anzeige hat sich inzwischen
+// ihren eigenen geschrieben. Was an ihnen mehr wusste als die oberen, ist nicht verloren, sondern
+// dorthin gewandert: die Nullbarkeit der Fassungszeitpunkte (`BeziehungBeurteilt`), das
+// Zustandsmodell an `KuratierteKanten` und der Widerrufs-Urheber an `KuratierteKanteAnsicht`.
 
 export interface Analytics {
   total: number;

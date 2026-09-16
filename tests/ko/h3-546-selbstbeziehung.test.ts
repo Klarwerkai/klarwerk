@@ -112,8 +112,21 @@ describe("H3/546 · eine Beziehung braucht zwei Enden — der Selbstbezug entste
     // Ein Bestand, der am Eingang vorbei gefüllt wurde — genau das, was Altdaten sind. Bewusst als
     // schmaler Doppelgänger des Ports statt über eine neue Schreibmethode: der Lesedienst muss auch
     // gegen Bestände halten, die diese Regel nie gesehen haben.
+    // JOB 4151: `KantenRepo` trägt seit der Persistenzscheibe auch die Schreibseite. Der
+    // Doppelgänger bleibt ein LESE-Doppelgänger — `setze` und `hole` sind hier ausdrücklich
+    // wirkungslos, weil dieser Fall die Frage stellt, wie der LESEDIENST gegen einen Bestand hält,
+    // der die Eingangsregel nie gesehen hat. Ein Schreibweg würde genau die Regel anwenden, deren
+    // Abwesenheit hier der Prüfgegenstand ist.
     const altbestand: KantenRepo = {
       fuerKo: async () => [kante({ quelleId: eines, zielId: eines })],
+      setze: async (k) => k,
+      // JOB 4151 (BEN R3): auch die gebundene Schreibseite ist hier wirkungslos — aus demselben
+      // Grund wie `setze`. Was sie zurückgibt, wird in diesem Fall nie gelesen.
+      setzeMitBindung: async (k) => ({ kante: k, ergebnis: "angelegt" as const }),
+      hole: async () => undefined,
+      holeNachBeitrag: async () => undefined,
+      fuerKos: async () => [],
+      alleAktiven: async () => [],
     };
     const kanten = new KantenLeseService({ repo: altbestand, kos: ko });
 
