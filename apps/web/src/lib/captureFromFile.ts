@@ -262,8 +262,41 @@ interface WholeSourceLabels {
   fallback: string;
   noteDocx: string;
   notePdf: string;
-  // WP-D5: ehrlicher Verlusthinweis für den PowerPoint-Import (Layout/Animationen/Bilder/Notizen).
+  // ============================================================================================
+  // JOB 4228 — DIE QUITTUNG BEHAUPTETE EINEN BILDERVERLUST, DEN ES SEIT WP-D9 NICHT MEHR GIBT.
+  // ============================================================================================
+  // WP-D5 hat diesen Satz geschrieben, als der PowerPoint-Import wirklich nur Text und Struktur
+  // mitnahm. Seit WP-D9 landen Folienbilder als `<figure>` im Entwurf — der Satz blieb stehen und
+  // erfand fünf Runden lang einen Verlust. Gemeldet wurde er jedes Mal, zuletzt in
+  // `archiv/4203/runde-5/RUECKGABE.md:33`; angefasst wurde er nicht, weil der Wortlaut einer
+  // abgenommenen Quittung eine Eigentümerentscheidung ist. Sie ist am 16.09.2026 gefallen: der
+  // Text muss dem gemessenen tatsächlichen Import entsprechen.
+  //
+  // RUNDE 2 — „VORHANDEN" IST NICHT „ÜBERNOMMEN" (Prüfer BEN, Korrekturpflicht 1).
+  // Runde 1 hat die Verlustbehauptung durch eine Übernahmezusage unter Vorbehalt ersetzt:
+  // „Bilder je Folie übernommen, soweit vorhanden". Der Vorbehalt trennt nur „Datei ohne Bilder"
+  // von „Datei mit Bildern" — er trennt NICHT den Fall, den der Import wirklich kennt: ein Bild
+  // IST da und wird trotzdem verworfen (BMP/EMF und andere nicht erlaubte Formate, Einzelbild-
+  // und Gesamtbudget, defekte Verweise). BEN hat genau das gemessen: `imageCount=1`,
+  // `embeddedImages=0`, `droppedImageFormat=1` — und die Quittung versprach in allen drei
+  // Sprachen die Übernahme. Eine Quittung, die einen Verlust verschweigt, ist so falsch wie eine,
+  // die einen erfindet.
+  //
+  // DESHALB STEHT HIER KEINE PAUSCHALE BILDZUSAGE MEHR. Der Grundsatz spricht nur noch über
+  // Text, Listen und Tabellen; über Bilder sagt die Quittung das, was `bildbilanzSatz` an DIESEM
+  // Entwurf ABZÄHLT (`bilderImEntwurf`) und, wo die Quellzahl bekannt ist, dagegen hält. Ohne
+  // Bilder im Entwurf und ohne bekannte Quellzahl schweigt sie — nichts gemessen, nichts gesagt.
   notePptx: string;
+  // ============================================================================================
+  // JOB 4228 RUNDE 2 — DIE BILDBILANZ ALS EIGENER SATZ, MIT ZAHLEN STATT MIT EINEM VERSPRECHEN.
+  // ============================================================================================
+  // `{n}` = im Entwurf wirklich eingebettete Bilder (gezählt, nicht behauptet), `{k}` = Bilder der
+  // Quelle, die es NICHT in den Entwurf geschafft haben. Zwei Fassungen, weil „0 nicht übernommen"
+  // kein Satz ist, den ein Mensch lesen will: `bilderAlle` wenn nichts fehlt, `bilderTeils` wenn
+  // etwas fehlt. Die Zahl kommt aus derselben Zeichenkette, die gespeichert wird — ein Test kann
+  // sie deshalb gegen das gemessene Importergebnis rechnen statt gegen eine zweite Abschrift.
+  bilderAlle: string;
+  bilderTeils: string;
   // ============================================================================================
   // JOB 4203 D3 — DIE VIERTE ART HATTE KEINEN SATZ, UND DAS WAR DIE GEFÄHRLICHSTE LÜCKE.
   // ============================================================================================
@@ -286,8 +319,16 @@ const SOURCE_LABELS: Record<"de" | "en" | "nl", WholeSourceLabels> = {
     fallback: "Unbenanntes Dokument",
     noteDocx: "Struktur und Bilder übernommen (Best-Effort) — exaktes Layout kann abweichen.",
     notePdf: "Best-Effort-Textimport — Layout und Bilder wurden nicht übernommen.",
+    // JOB 4228 R2: der Grundsatz ist `capture.file.importNote.pptx` OHNE die Bildzusage und mit
+    // dem Vorbehalt „soweit vorhanden". Beides ist Absicht und beides ist der Unterschied zwischen
+    // den zwei Sätzen: der Oberflächensatz ist ein BEDIENHINWEIS vor dem Import und darf sagen,
+    // was dieser Import kann; dieser hier ist ein BELEG an einem bestimmten Entwurf und darf nur
+    // sagen, was an DIESER Datei geschehen ist. Über Bilder sagt er deshalb hier gar nichts —
+    // das tut `bildbilanzSatz` mit gezählten Zahlen.
     notePptx:
-      "Best-Effort-Import aus PowerPoint — Text und Struktur je Folie übernommen; Layout, Animationen, Übergänge, Bilder und Sprechernotizen gehen verloren.",
+      "Best-Effort-Import aus PowerPoint — Text, Listen und Tabellen je Folie übernommen, soweit vorhanden; Layout, Animationen, Übergänge und Sprechernotizen gehen verloren.",
+    bilderAlle: "Folienbilder: {n} übernommen.",
+    bilderTeils: "Folienbilder: {n} übernommen, {k} nicht übernommen.",
     // RUNDE 3: der Satz nennt jetzt auch die LEERZEILEN-GRENZE. Sie ist gemessen, nicht vermutet —
     // eine Überschrift oder Aufzählung, die ohne Leerzeile mitten in einem Absatz steht, bleibt
     // Fliesstext (nur die Tabelle wird auch dort erkannt). Ohne diesen Halbsatz sagte der Hinweis
@@ -301,8 +342,13 @@ const SOURCE_LABELS: Record<"de" | "en" | "nl", WholeSourceLabels> = {
     fallback: "Untitled document",
     noteDocx: "Structure and images imported (best effort) — exact layout may differ.",
     notePdf: "Best-effort text import — layout and images were not carried over.",
+    // JOB 4228 R2: dieselbe Berichtigung wie in „de" — die drei Sprachen werden GEMEINSAM
+    // geändert. Eine berichtigte und zwei stehengebliebene Fassungen wären genau der Fehler, den
+    // der Kommentar über SOURCE_LABELS schon einmal für „nl" beschreibt.
     notePptx:
-      "Best-effort import from PowerPoint — text and structure per slide carried over; layout, animations, transitions, images and speaker notes are lost.",
+      "Best-effort import from PowerPoint — text, lists and tables per slide carried over, where present; layout, animations, transitions and speaker notes are lost.",
+    bilderAlle: "Slide images: {n} carried over.",
+    bilderTeils: "Slide images: {n} carried over, {k} not carried over.",
     noteText:
       "Best-effort text import — headings, bullet lists and simple tables carried over; formatting (bold, italics, code), links and images remain as plain characters. Headings and bullet lists need a blank line above them, otherwise they stay running text.",
   },
@@ -313,8 +359,11 @@ const SOURCE_LABELS: Record<"de" | "en" | "nl", WholeSourceLabels> = {
     noteDocx:
       "Structuur en afbeeldingen overgenomen (best effort) — de exacte layout kan afwijken.",
     notePdf: "Best-effort tekstimport — layout en afbeeldingen zijn niet overgenomen.",
+    // JOB 4228 R2: siehe „de" — Grundsatz ohne Bildzusage, die Bilder stehen im Bilanzsatz.
     notePptx:
-      "Best-effort import uit PowerPoint — tekst en structuur per dia overgenomen; layout, animaties, overgangen, afbeeldingen en notities gaan verloren.",
+      "Best-effort import uit PowerPoint — tekst, lijsten en tabellen per dia overgenomen, voor zover aanwezig; layout, animaties, overgangen en notities gaan verloren.",
+    bilderAlle: "Dia-afbeeldingen: {n} overgenomen.",
+    bilderTeils: "Dia-afbeeldingen: {n} overgenomen, {k} niet overgenomen.",
     noteText:
       "Best-effort tekstimport — koppen, opsommingen en eenvoudige tabellen overgenomen; opmaak (vet, cursief, code), verwijzingen en afbeeldingen blijven als tekens staan. Koppen en opsommingen hebben een lege regel erboven nodig, anders blijven ze lopende tekst.",
   },
@@ -613,6 +662,56 @@ function renderTextBlock(block: string): string {
   return renderZeilen(trimmed.split(/\n/).map((line) => line.trim()));
 }
 
+// ================================================================================================
+// JOB 4228 RUNDE 2 — WIE VIELE BILDER STEHEN WIRKLICH IN DIESEM ENTWURF?
+// ================================================================================================
+//
+// Gezählt wird im HTML, das GLEICH GESPEICHERT WIRD — nicht in einer Bilanz, die jemand nebenher
+// mitgeführt hat. `Capture.tsx:1132` reicht `fileRich.html` durch, und das ist genau das Ergebnis,
+// das der Import (inklusive Bild-Budget und, bei „Folien als Bilder", dem zweiten Budgetlauf)
+// übrig gelassen hat. Was hier gezählt wird, steht danach im Entwurf; was nicht gezählt wird, ist
+// auch nicht da. Eine ehrlichere Grundlage für eine Quittung gibt es an dieser Stelle nicht.
+//
+// Gezählt werden nur EINGEBETTETE Bilder (`src="data:image/…"`). Ein Bild, das als Verweis auf
+// eine fremde Adresse im Rumpf stünde, wäre nicht „übernommen" — es wäre geliehen.
+export function bilderImEntwurf(html: string | undefined): number {
+  if (!html) {
+    return 0;
+  }
+  return (html.match(/<img\b[^>]*\bsrc="data:image\//gu) ?? []).length;
+}
+
+/**
+ * Der Bilanzsatz — oder gar keiner.
+ *
+ * `quellbilder` ist die Zahl der Bilder in der QUELLDATEI vor jedem Abzug (`sourceImageCount`,
+ * JOB 512/R5). `undefined` heisst „unbekannt" und ist etwas anderes als `0`: aus einem fehlenden
+ * Wert auf „keine Bilder" zu schliessen wäre dieselbe Sorte Falschmeldung, gegen die dieser
+ * ganze Auftrag geschrieben ist.
+ *
+ * Die vier Fälle:
+ *  · nichts im Entwurf, nichts bekannt      → KEIN Satz. Es gibt nichts zu sagen.
+ *  · nichts im Entwurf, Quelle hatte keine  → KEIN Satz (derselbe Satz wie oben — eine Datei ohne
+ *                                             Bilder bekommt keine Bilanz, sondern Schweigen).
+ *  · alles angekommen                       → `bilderAlle` mit der gezählten Zahl.
+ *  · etwas fehlt (Format, Budget, Defekt)   → `bilderTeils` mit BEIDEN Zahlen, auch wenn `{n}` 0
+ *                                             ist. Das ist der Fall, den Runde 1 verschwiegen hat.
+ */
+export function bildbilanzSatz(
+  labels: Pick<WholeSourceLabels, "bilderAlle" | "bilderTeils">,
+  imEntwurf: number,
+  quellbilder: number | undefined,
+): string {
+  const fehlend = quellbilder === undefined ? 0 : Math.max(0, quellbilder - imEntwurf);
+  if (fehlend > 0) {
+    return labels.bilderTeils.replace("{n}", String(imEntwurf)).replace("{k}", String(fehlend));
+  }
+  if (imEntwurf > 0) {
+    return labels.bilderAlle.replace("{n}", String(imEntwurf));
+  }
+  return "";
+}
+
 export function wholeDocumentBodyHtml(input: {
   fileName: string;
   text: string;
@@ -622,15 +721,26 @@ export function wholeDocumentBodyHtml(input: {
   // WP-D4: Formatkennung für den ehrlichen Import-Hinweis im Quelle-Blockquote.
   sourceKind?: WholeDocumentSourceKind;
   locale?: string | null;
+  // JOB 4228 R2: die Quellbildzahl, die `wholeDocumentDraftPayload` ohnehin schon bekommt. Sie
+  // wird hier gebraucht, damit die Quittung einen WIRKLICHEN Bildverlust benennen kann statt ihn
+  // zu verschweigen; ohne sie bleibt die Bilanz bei dem, was nachweislich im Entwurf steht.
+  sourceImageCount?: number;
 }): string {
   const labels = SOURCE_LABELS[localeKey(input.locale)];
+  // JOB 4228 R2: die Bildbilanz gilt für den PPTX-Beleg. Für docx/pdf/text bleibt der Satz
+  // unverändert der, den JOB 4203 abgenommen hat (Auftrag §10) — dort wird nichts angehängt.
+  const bilanz =
+    input.sourceKind === "pptx"
+      ? bildbilanzSatz(labels, bilderImEntwurf(input.html), input.sourceImageCount)
+      : "";
+  const pptxNote = bilanz.length > 0 ? `${labels.notePptx} ${bilanz}` : labels.notePptx;
   const note =
     input.sourceKind === "docx"
       ? `<p>${escapeHtml(labels.noteDocx)}</p>`
       : input.sourceKind === "pdf"
         ? `<p>${escapeHtml(labels.notePdf)}</p>`
         : input.sourceKind === "pptx"
-          ? `<p>${escapeHtml(labels.notePptx)}</p>`
+          ? `<p>${escapeHtml(pptxNote)}</p>`
           : // JOB 4203 D3: die vierte Art bekommt ihren Satz. `""` bleibt ausschliesslich für den
             // Fall OHNE angegebene Art — dort ist über das Format nichts bekannt, und eine
             // erfundene Grenze wäre schlimmer als keine.

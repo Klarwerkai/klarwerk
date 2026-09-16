@@ -70,6 +70,46 @@ async function beziehung(): Promise<{ links: string; rechts: string; kante: Ange
   return { links, rechts, kante: antwort.json() as Angelegt };
 }
 
+// ================================================================================================
+// JOB 4228 (NACHZUG) — DIE UHR MUSS WEITERGEGANGEN SEIN, BEVOR MAN ZWEI ZEITEN VERGLEICHT.
+// ================================================================================================
+//
+// DER BEFUND, dreimal gemessen (Tor auf main am 16.09. sowie Arbeitsprüfungen 270fdf52… und
+// df4c3f05…), jedes Mal mit demselben Muster und nur anderer Uhrzeit:
+//
+//     expected '2026-09-16T21:59:31.705Z' not to be '2026-09-16T21:59:31.705Z'
+//
+// DAS PRODUKT IST DABEI IN ORDNUNG, und das ist nachgelesen, nicht vermutet: `widerrufe` setzt
+// `geaendertAm: aenderung.jetzt` (`services/knowledge-object/src/kanten-service.ts:1043`), und
+// `jetzt` ist in beiden Wegen `new Date().toISOString()` aus der Route
+// (`services/app/src/routes/kanten-routes.ts:226` beim Setzen, `:273` beim Widerrufen). Ein
+// ISO-Zeitstempel löst MILLISEKUNDEN auf. Laufen Setzen und Widerrufen auf einer schnellen
+// Maschine innerhalb derselben Millisekunde — bei `app.inject` ohne Netz der Normalfall —, sind
+// beide Zeichenketten gleich, obwohl das Feld korrekt neu geschrieben wurde.
+//
+// DIE ZUSICHERUNG BLEIBT DESHALB WORTGLEICH STEHEN (`not.toBe`, unten unverändert). Hergestellt
+// wird nur ihre VORAUSSETZUNG: dass die Uhr überhaupt einen anderen Wert liefern kann. Der Fall
+// prüft danach genau dieselbe Sache wie vorher — „der Zeitpunkt der Rücknahme ist ein eigener,
+// neuer Zeitstempel" — und zwar deterministisch statt je nach Maschinengeschwindigkeit.
+//
+// KEIN `waitForTimeout`-Ersatz: gewartet wird auf einen ZUSTAND (die Uhr zeigt etwas anderes),
+// nicht auf eine Frist, und die Frist daneben ist nur der ehrliche Abbruch für den Fall, dass die
+// Uhr wirklich stünde — dann sagt der Fall das, statt ewig zu drehen.
+async function uhrWeiterAls(marke: string): Promise<void> {
+  const grenze = Date.now() + 1000;
+  while (new Date().toISOString() === marke) {
+    if (Date.now() > grenze) {
+      throw new Error(
+        [
+          `Die Uhr steht: seit 1000 ms liefert \`new Date().toISOString()\` unverändert «${marke}».`,
+          "Ohne einen Fortschritt der Uhr kann kein zweiter Zeitstempel entstehen.",
+        ].join(" "),
+      );
+    }
+    await new Promise((auf) => setTimeout(auf, 1));
+  }
+}
+
 describe("JOB 4151 · W — der Widerruf nimmt zurück, er löscht nicht", () => {
   it("nach dem Widerruf ist die Beziehung aus der Auskunft weg und im Bestand erhalten", async () => {
     const { links, kante } = await beziehung();
@@ -111,6 +151,10 @@ describe("JOB 4151 · W — der Widerruf nimmt zurück, er löscht nicht", () =>
   it("ZWEI VERANTWORTLICHKEITEN: wer gesetzt hat UND wer zurückgenommen hat, stehen beide im Bestand", async () => {
     const { kante } = await beziehung();
     expect(kante.urheber).toBe(buehne.konto.controller.id);
+
+    // JOB 4228 (Nachzug): erst weitergehen lassen, dann widerrufen — Begründung bei `uhrWeiterAls`.
+    // Ohne diese Zeile hing die Zusicherung unten daran, wie schnell die Maschine gerade ist.
+    await uhrWeiterAls(kante.gesetztAm);
 
     // Ein ANDERER Mensch widerruft — sonst wären beide Namen zufällig derselbe und der Fall blind.
     const weg = await buehne.app.inject({
