@@ -655,9 +655,15 @@ export function CaptureArbeitsraum({
   //
   // Diese Marke trägt die Antwort vom Dialog zum Rückruf. Sie wird an genau zwei Stellen gesetzt:
   // beim Betreten des Verlassen-Wegs auf `false` (kein Wert aus einem früheren Dialog kann
-  // hineinlecken) und im `save`-Rückruf der Wache auf `true`, NACHDEM `saveDraft` tatsächlich
-  // geschrieben hat. Nicht vorher: eine Meldung „gespeichert" vor dem Schreiben wäre derselbe
+  // hineinlecken) und am ENDE des `save`-Rückrufs der Wache auf `true`, NACHDEM dort wirklich
+  // geschrieben wurde. Nicht vorher: eine Meldung „gespeichert" vor dem Schreiben wäre derselbe
   // Fehler mit umgekehrtem Vorzeichen.
+  //
+  // JOB 4231: „geschrieben" heisst dabei JEDER der drei Speicherwege des Rückrufs — der Eintrag
+  // (`saveDraft`), das ganze Dokument (`fileWholeDraft`) und die Punkte (`createPointDrafts`). Bis
+  // dahin zählte nur der erste; die beiden Dateiwege sicherten und schwiegen, und der Mensch las
+  // „verworfen", obwohl seine Datei im Bestand lag. Wie die drei zu EINER Setzung zusammenkommen,
+  // steht am Rückruf selbst.
   const verlassenGespeichertRef = useRef(false);
   const [showHelpers, setShowHelpers] = useState(false);
   // KW-STR / SCRUM-45/46/48: WYSIWYG-Body (sanitisiertes HTML), separat vom Reasoner-Draft.
@@ -3163,6 +3169,28 @@ export function CaptureArbeitsraum({
       // sie benennt sie dann einzeln und bietet KEIN „Speichern und wechseln" an.
       unsavableDirtyReasons: () => unsavableDirtyReasons,
       save: async () => {
+        // ==========================================================================================
+        // JOB 4231 — WAS IST IN DIESEM DURCHLAUF WIRKLICH GESCHRIEBEN WORDEN?
+        // ==========================================================================================
+        //
+        // Dieser Rückruf hat DREI Speicherwege (Eintrag, ganzes Dokument, Punkte), und die Quittung
+        // des Verlassen-Wegs (`entwurfVerlassen` unten) hängt an genau EINER Marke. Bis hierher
+        // setzte nur der Eintrags-Zweig sie (`:3239` alt) — wer eine Datei geladen hatte und
+        // „Entwurf speichern und wechseln" wählte, während der Eintrags-Zweig nichts zu tun hatte,
+        // las danach „verworfen und gewechselt", obwohl seine Datei im Bestand lag.
+        //
+        // WARUM EINE LOKALE WAHRHEIT UND NICHT DREI SETZUNGEN AN DER MARKE: die Marke ist der
+        // Übergabepunkt an den Verlassen-Weg, und sie soll GENAU EINEN Schreiber haben (die Zeile am
+        // Ende dieses Rückrufs). Drei Setzungen an ihr wären drei Orte, an denen die Frage „was ist
+        // geschehen?" beantwortet wird — und beim nächsten neuen Speicherweg hätte jemand zwei davon
+        // nachgeführt und die dritte übersehen. Hier notiert jeder Zweig nur seine eigene Tatsache;
+        // die Antwort formuliert eine Stelle.
+        //
+        // DER FEHLERPFAD ERREICHT SIE NICHT, und zwar bauformbedingt: jeder Fehlerzweig unten
+        // verlässt diesen Rückruf mit `throw new NavGuardSaveError(...)`. Ein Wurf springt über die
+        // Setzung am Ende hinweg, die Wache wechselt nicht und der Dialog bleibt stehen — die Marke
+        // behält den Wert, den `entwurfVerlassen` beim Klick gesetzt hat (`false`).
+        let geschrieben = false;
         // AUFTRAG-mega4/mega5 Block A (bens Blocker + Verlustpfad 1): der Save-Zweig deckt jetzt JEDEN
         // sicherbaren Dirty-Zustand ab — auch das gestartete Interview ohne Antwort (ivStarted) und
         // ein vorliegendes Interview-Ergebnis (ivResult) lösen die Persistenz aus; vorher endete der
@@ -3236,7 +3264,11 @@ export function CaptureArbeitsraum({
           // RUNDE 5, KP1: ab hier IST geschrieben. Wurde dieser Rückruf aus dem Verlassen-Weg
           // heraus ausgelöst („Entwurf speichern und wechseln"), meldet der `proceed`-Zweig unten
           // deshalb „gespeichert" statt „verworfen".
-          verlassenGespeichertRef.current = true;
+          //
+          // JOB 4231: die Setzung der MARKE stand bis hierher genau hier — sie ist in die eine
+          // Stelle am Ende dieses Rückrufs aufgegangen (Begründung dort). Notiert wird jetzt die
+          // Tatsache, nicht die Antwort; der Zeitpunkt ist unverändert: NACH dem `await`, nie davor.
+          geschrieben = true;
         }
         // ==========================================================================================
         // JOB 3770 RUNDE 4 — DIE DATEI GEHT ÜBER IHREN TRÄGER HINAUS, UND ZWAR ÜBER GENAU EINEN.
@@ -3267,6 +3299,10 @@ export function CaptureArbeitsraum({
                 : fehlersatz(e),
             );
           }
+          // JOB 4231: erst HIER, nach dem zurückgekehrten `await`. Der Wurf oben käme nie bis
+          // hierher — und eine Notiz vor dem `await` behauptete eine Sicherung, von der nur
+          // feststeht, dass sie losgeschickt wurde.
+          geschrieben = true;
         }
         if (dateiTraeger?.art === "punkte") {
           // JOB 3600: die Punkte gehen als SIE SELBST hinein, nicht als Abschrift. Bis hierher stand
@@ -3319,6 +3355,10 @@ export function CaptureArbeitsraum({
             // Nicht wechseln: Dialog bleibt offen — und er nennt den Grund selbst (JOB 3572 R2).
             throw new NavGuardSaveError(grund);
           }
+          // JOB 4231: VOLLSTÄNDIG gelungen — der Teilerfolg darüber ist mit seinem Wurf schon aus
+          // diesem Rückruf heraus. Nur diese Lage ist „gespeichert": der zweite Druck nach einem
+          // Teilfehler kommt erneut hier vorbei und notiert dann seinerseits.
+          geschrieben = true;
           push(
             "success",
             t(CAPTURE_FILE_TEXT.draftsSaved, {
@@ -3333,6 +3373,24 @@ export function CaptureArbeitsraum({
           setFileOriginal(null);
           fileOriginalRef.current = { ref: null };
           setFileQuery("");
+        }
+        // ==========================================================================================
+        // JOB 4231 — DIE EINE STELLE, AN DER „WAS IST GESCHEHEN?" BEANTWORTET WIRD.
+        // ==========================================================================================
+        //
+        // Sie steht am ENDE und nicht in den Zweigen: hier ist jeder Weg dieses Rückrufs durch, und
+        // hier — und nur hier — bekommt die Marke ihren Wert, die der Verlassen-Weg gleich darauf
+        // liest. Drei Zweige notieren ihre Tatsache, eine Stelle formuliert daraus die Antwort.
+        //
+        // `if (geschrieben)` und nicht `= geschrieben`: die Marke gehört dem Verlassen-Weg, der sie
+        // beim Klick auf `false` stellt. Dieser Rückruf läuft auch für JEDE andere Navigation (Menü,
+        // Kachel, Browser-Zurück) — dort hat ihn niemand gesetzt, und ein Rückschreiben von `false`
+        // wäre eine Aussage über einen Weg, der hier gar nicht gefragt hat.
+        //
+        // Und sie steht nur, wenn wirklich geschrieben wurde: ist kein Zweig gelaufen (es gab nichts
+        // zu sichern), bleibt es bei „verworfen und gewechselt" — der Wahrheit dieses Durchlaufs.
+        if (geschrieben) {
+          verlassenGespeichertRef.current = true;
         }
       },
     });
