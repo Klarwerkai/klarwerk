@@ -211,6 +211,13 @@ function nutzlast(action: string, ctx: { attachmentId: string; koB: string }): o
       return { action, proposal: { statement: "Vorschlag aus mega80", baseVersion: 1 } };
     case "decide-proposal":
       return { action, proposalId: "vorschlag-mega80", decision: "ablehnen" };
+    // JOB 4146 (WIKI-DISKUSSION): den Faden klären und wieder öffnen. Fachlich gültige
+    // Mindestnutzlasten — die Beitragskennung ist bewusst eine, die es nicht gibt: ob der Beitrag
+    // existiert, entscheidet der Dienst (400), und das Tor davor muss VORHER greifen. Genau das
+    // prüft dieser Wächter: am fremden vertraulichen Objekt darf hier nur 404 stehen.
+    case "comment-resolve":
+    case "comment-reopen":
+      return { action, commentId: "beitrag-mega80" };
     case "revalidate":
       return { action };
     default:

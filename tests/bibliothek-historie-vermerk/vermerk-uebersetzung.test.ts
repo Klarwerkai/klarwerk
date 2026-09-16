@@ -140,21 +140,25 @@ const DIENST_VERMERKE = [
     schluessel: "ko.historyNote.created",
     en: "created",
     nl: "aangemaakt",
-    fundstellen: [2012, 2138],
+    // JOB 4146: um 37 Zeilen verschoben — der Diskussionsfaden hat `fadenWurzel` und den erweiterten
+    // `addComment` in den Dienst gebracht. JOB 4146 R5: um weitere 28 Zeilen, weil `gleicheAbsendung`
+    // vor `fadenWurzel` dazugekommen ist. Die Wortlaute sind UNVERÄNDERT; es sind weiterhin
+    // dieselben fünf Vermerke. Gemessen mit `grep -n '"erstellt"' …`, nicht fortgeschrieben.
+    fundstellen: [2077, 2203],
   },
   {
     wort: "erstellt (Dokumentinhalt übernommen)",
     schluessel: "ko.historyNote.createdFromDocument",
     en: "created (document content adopted)",
     nl: "aangemaakt (documentinhoud overgenomen)",
-    fundstellen: [2383],
+    fundstellen: [2448],
   },
   {
     wort: "erstellt (nachgezogen)",
     schluessel: "ko.historyNote.createdBackfilled",
     en: "created (backfilled)",
     nl: "aangemaakt (nagetrokken)",
-    fundstellen: [2792],
+    fundstellen: [2857],
   },
   {
     wort: "überarbeitet",
@@ -168,14 +172,18 @@ const DIENST_VERMERKE = [
     // Überarbeitung. Dass dabei zugleich freigegeben wurde, steht nicht im Vermerk, sondern im
     // Datensatz (`status`, `ownership.validators`) und in zwei Audit-Belegen; die Begründung dafür
     // steht bei `naechsteFassung` im Dienst.
-    fundstellen: [3870, 3954, 4027, 4216],
+    // JOB 4146: um 149 Zeilen verschoben (`addComment` samt Begründung und `setCommentResolution`
+    // stehen davor). JOB 4146 R5: um weitere 34 Zeilen (28 für `gleicheAbsendung` vor der Klasse,
+    // 6 für die Inhaltsbindung IN `addComment`). Weiterhin dieselben VIER Schreibwege, derselbe
+    // Vermerk.
+    fundstellen: [4053, 4137, 4210, 4399],
   },
   {
     wort: "überarbeitet (Dokumentinhalt übernommen)",
     schluessel: "ko.historyNote.revisedFromDocument",
     en: "revised (document content adopted)",
     nl: "herzien (documentinhoud overgenomen)",
-    fundstellen: [4439, 4457],
+    fundstellen: [4622, 4640],
   },
 ] as const;
 

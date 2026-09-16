@@ -99,6 +99,8 @@ import {
   type KoAppendOp,
   type KoAttachment,
   type KoComment,
+  // JOB 4146: der Klärungsstand eines Diskussionsfadens (geklärt, nicht freigegeben).
+  type KoCommentResolution,
   type KoCreateOperation,
   KoError,
   // JOB 3667 R2: der gebundene Änderungsvorschlag (Fall 2 der Accountregel).
@@ -121,6 +123,69 @@ export interface CreateOperationRequester {
   actor: string;
   /** Der kanonische Inhaltsabdruck der Anfrage (createOperationFingerprint). */
   fingerprint: string;
+}
+
+/**
+ * JOB 4146 R5 — IST DIESER BESTANDSBEITRAG DIESELBE ABSENDUNG WIE DIE GERADE ANKOMMENDE?
+ *
+ * Der Beitragsschlüssel (Vertrag Fall 5) allein reicht dafür NICHT. Er gehört zum Entwurf im Feld
+ * und bleibt derselbe, solange dieser Entwurf offen ist — auch dann, wenn der Mensch seinen Text
+ * inzwischen geändert hat. Ein Vergleich nur über den Schlüssel deutete die zweite, ANDERE Absendung
+ * als Wiederholung der ersten, gab ein HTTP 200 zurück und schrieb nichts: der geänderte Text war
+ * fort, und die Fläche leerte im Vertrauen auf die 200 auch noch das Feld (BEN, Runde 4).
+ *
+ * DIESELBE ABSENDUNG IST DAHER: gleicher Schlüssel · gleicher Verfasser · gleicher Text · gleicher
+ * Antwortbezug. Der Bezug gehört dazu, weil dieselben Worte an einem anderen Faden eine andere
+ * Aussage sind. Fehlender und leerer Bezug sind dabei dasselbe — beides heisst „Wurzelbeitrag".
+ */
+function gleicheAbsendung(
+  vorhanden: KoComment,
+  author: string,
+  text: string,
+  replyTo: string | undefined,
+  clientKey: string,
+): boolean {
+  return (
+    vorhanden.clientKey === clientKey &&
+    vorhanden.author === author &&
+    vorhanden.text === text &&
+    (vorhanden.replyTo ?? "") === (replyTo ?? "")
+  );
+}
+
+/**
+ * JOB 4146 — DER WURZELBEITRAG DES FADENS, ZU DEM `commentId` GEHÖRT.
+ *
+ * Sie steigt `replyTo` aufwärts, bis ein Beitrag ohne Bezug kommt. ZWEI ABBRUCHGRÜNDE, und beide
+ * sind fachlich und nicht defensiv:
+ *
+ *  · Der Bezug zeigt ins Leere (der Beitrag wurde nie geschrieben oder gehört einem anderen Objekt).
+ *    Dann ist DIESER Beitrag der Anfang seines sichtbaren Fadens — genau so zeigt ihn auch die
+ *    Fläche, statt ihn verschwinden zu lassen.
+ *  · Ein Ring (`a → b → a`). Der Dienst kann ihn nicht erzeugen (jedes `replyTo` wird beim Anfügen
+ *    gegen den BESTAND geprüft, und ein Beitrag kann nicht auf einen späteren zeigen), Altdaten aus
+ *    einer anderen Quelle könnten ihn tragen. Eine Endlosschleife im Serverprozess wäre die
+ *    schlechtere Antwort als der erste Beitrag des Rings.
+ *
+ * Ein UNBEKANNTER `commentId` ist etwas anderes als ein ins Leere zeigender Bezug: hier will jemand
+ * einen Faden markieren, den es nicht gibt. Das ist ein Fehler und kein stiller Vorgang.
+ */
+function fadenWurzel(bestand: readonly KoComment[], commentId: string): KoComment {
+  const start = bestand.find((c) => c.id === commentId);
+  if (!start) {
+    throw new KoError("COMMENT_NOT_FOUND", "Dieser Beitrag gehört nicht zu diesem Wissensobjekt.");
+  }
+  let aktuell = start;
+  const gesehen = new Set<string>([aktuell.id]);
+  while (aktuell.replyTo) {
+    const eltern = bestand.find((c) => c.id === aktuell.replyTo);
+    if (!eltern || gesehen.has(eltern.id)) {
+      return aktuell;
+    }
+    gesehen.add(eltern.id);
+    aktuell = eltern;
+  }
+  return aktuell;
 }
 
 const DEFAULT_NEEDED_VALIDATIONS = 3; // FR-CAP-08: 1–5, Standard 3.
@@ -2990,19 +3055,137 @@ export class KoService {
     });
   }
 
-  // FR-KO-06: Kommentar am Objekt anfügen (Diskussion / Revisions-Schleife).
-  async addComment(id: string, author: string, text: string): Promise<KnowledgeObject> {
-    const ko = await this.require(id);
-    const comment: KoComment = {
+  // ==============================================================================================
+  // FR-KO-06 / JOB 4146 — DER BEITRAG ZUM FADEN.
+  // ==============================================================================================
+  //
+  // DREI DINGE SIND SEIT JOB 4146 ANDERS, und jedes hat seinen Grund:
+  //
+  //  1. `replyTo` WIRD GEPRÜFT, NICHT GEGLAUBT. Der Bezug muss auf einen Beitrag DIESES Objekts
+  //     zeigen. Ein erfundener oder fremder Wert erzeugt GAR KEINEN Beitrag (`COMMENT_NOT_FOUND`,
+  //     an der Route ein 400) — sonst hinge eine Antwort an einem Faden, den es hier nicht gibt,
+  //     und die Fläche müsste raten, wohin sie gehört. Vertrag Fall 4: ein Faden eines fremden
+  //     Dokuments ist kein gültiger Bezug, auch wenn der Aufrufer seine Kennung kennt.
+  //
+  //  2. `koVersion` KOMMT AUS DEM GELESENEN OBJEKT. Die Fassung, gegen die dieser Beitrag wirklich
+  //     angefügt wurde — nicht die, die der Aufrufer behauptet.
+  //
+  //  3. EIN `STALE_WRITE` IST KEINE ABSAGE AN DEN MENSCHEN. Der bedingte UPDATE des Repos
+  //     (`repo-pg.ts:412-437`, `repo.ts:443-454`) lehnt einen Schreibversuch ab, dessen gelesener
+  //     Stand überholt ist — das ist eine ABLEHNUNG, kein Datenverlust. ANFÜGEN ist verträglich:
+  //     der Dienst liest deshalb EINMAL frisch und hängt erneut an. Scheitert auch das, kommt die
+  //     Ablehnung heraus; sie wird nicht verschluckt und nicht als Erfolg ausgegeben.
+  //
+  //     EINMAL UND NICHT „BIS ES KLAPPT": eine Schleife ohne Obergrenze wäre unter Last ein
+  //     unbegrenzter Schreibversuch gegen dieselbe Zeile. Der zweite Versuch deckt den Fall ab, für
+  //     den es ihn gibt (ein zweiter Schreiber im selben Augenblick); ein dritter gleichzeitiger
+  //     Schreiber ist ehrlicher abgelehnt als still wiederholt.
+  //
+  // KENNUNG UND ZEITPUNKT ENTSTEHEN EINMAL, VOR DEM ERSTEN VERSUCH: ein Wiederholversuch mit neuer
+  // Kennung könnte denselben Beitrag zweimal in den Bestand legen, wenn der erste Schreibvorgang
+  // doch noch durchging.
+  async addComment(
+    id: string,
+    author: string,
+    text: string,
+    opts: { replyTo?: string; clientKey?: string } = {},
+  ): Promise<KnowledgeObject> {
+    const replyTo = opts.replyTo?.trim();
+    const clientKey = opts.clientKey?.trim();
+    const neu: KoComment = {
       id: this.genId(),
       author,
       text,
       at: new Date(this.now()).toISOString(),
+      ...(replyTo ? { replyTo } : {}),
+      ...(clientKey ? { clientKey } : {}),
     };
-    const updated: KnowledgeObject = { ...ko, comments: [...(ko.comments ?? []), comment] };
-    await this.repo.update(updated);
-    await this.audit?.record({ actor: author, action: "ko.commented", target: id });
-    return updated;
+
+    const versuch = async (): Promise<{ ko: KnowledgeObject; geschrieben: boolean }> => {
+      const ko = await this.require(id);
+      const bestand = ko.comments ?? [];
+      // Vertrag Fall 5: dieselbe Wiederholung ergibt denselben einen Beitrag. Der Schlüssel gilt je
+      // Objekt UND Verfasser — er ist ein Deduplizierer, keine Sperre gegen andere Menschen.
+      //
+      // R5: ER GILT AUSSERDEM JE ABSENDUNG, nicht je Entwurf. Vorher sah diese Zeile nur auf
+      // `clientKey` und `author` — und bestätigte damit eine Absendung, die sie gar nicht schrieb:
+      // wer nach einer verlorenen Antwort seinen Text nachbesserte und erneut sendete, bekam ein
+      // HTTP 200 über den ALTEN Beitrag, während der neue nirgends landete (BEN, Runde 4).
+      // Dieselbe Absendung heisst: derselbe Verfasser, derselbe Text, derselbe Antwortbezug.
+      if (clientKey && bestand.some((c) => gleicheAbsendung(c, author, text, replyTo, clientKey))) {
+        return { ko, geschrieben: false };
+      }
+      if (replyTo && !bestand.some((c) => c.id === replyTo)) {
+        throw new KoError(
+          "COMMENT_NOT_FOUND",
+          "Der Beitrag, auf den geantwortet werden soll, gehört nicht zu diesem Wissensobjekt.",
+        );
+      }
+      const comment: KoComment = { ...neu, koVersion: ko.version };
+      const updated: KnowledgeObject = { ...ko, comments: [...bestand, comment] };
+      await this.repo.update(updated);
+      return { ko: updated, geschrieben: true };
+    };
+
+    let ergebnis: { ko: KnowledgeObject; geschrieben: boolean };
+    try {
+      ergebnis = await versuch();
+    } catch (fehler) {
+      if (!(fehler instanceof KoError) || fehler.code !== "STALE_WRITE") {
+        throw fehler;
+      }
+      // Frisch lesen und EINMAL erneut anfügen. Der Beitrag des anderen Schreibers steht dabei
+      // bereits im Bestand und wird mitgenommen — er verschwindet nicht.
+      ergebnis = await versuch();
+    }
+    if (ergebnis.geschrieben) {
+      await this.audit?.record({ actor: author, action: "ko.commented", target: id });
+    }
+    return ergebnis.ko;
+  }
+
+  // ==============================================================================================
+  // JOB 4146 — DEN FADEN ALS GEKLÄRT MARKIEREN, UND WIEDER ÖFFNEN.
+  // ==============================================================================================
+  //
+  // ERLEDIGT HEISST GEKLÄRT, NICHT FREIGEGEBEN. Diese Fläche fasst `status`, `ownership`, `version`,
+  // `trust` und jeden anderen Freigabeanteil des Wissensobjekts NICHT an — sie setzt genau ein Feld
+  // an genau einem Beitrag. Der Vertrag (HINWEIS Runde 1, Punkt 5) sagt es ausdrücklich: ein als
+  // wesentlich markierter Einwand sperrt nur nach einer ausdrücklich geltenden Freigaberegel, und
+  // dieser Auftrag führt keine ein.
+  //
+  // DER STAND HÄNGT AM WURZELBEITRAG DES FADENS, auch wenn jemand die ANTWORT erledigt: „geklärt"
+  // ist eine Aussage über die SACHE. Zwei Stände in einem Faden wären zwei Wahrheiten über dieselbe
+  // Frage — und die Fläche müsste sich für eine entscheiden.
+  async setCommentResolution(
+    id: string,
+    commentId: string,
+    actor: string,
+    state: KoCommentResolution["state"],
+  ): Promise<KnowledgeObject> {
+    return this.mutateKo(id, (ko) => {
+      const bestand = ko.comments ?? [];
+      const wurzel = fadenWurzel(bestand, commentId);
+      const at = new Date(this.now()).toISOString();
+      const updated: KnowledgeObject = {
+        ...ko,
+        comments: bestand.map((c) =>
+          c.id === wurzel.id ? { ...c, resolution: { state, by: actor, at } } : c,
+        ),
+      };
+      return {
+        updated,
+        value: updated,
+        audit: async () => {
+          await this.audit?.record({
+            actor,
+            action: state === "erledigt" ? "ko.comment-resolved" : "ko.comment-reopened",
+            target: id,
+            payload: { commentId: wurzel.id },
+          });
+        },
+      };
+    });
   }
 
   // FR-CAP-05: Anhang (Thumbnail-Daten-URL) anfügen. Größen-/Anzahlgrenzen prüft die Route.

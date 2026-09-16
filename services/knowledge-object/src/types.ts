@@ -115,12 +115,69 @@ export interface HistoryEntry {
   note: string;
 }
 
+// ================================================================================================
+// JOB 4146 (WIKI-DISKUSSION) — DER KLÄRUNGSSTAND EINES FADENS. GEKLÄRT, NICHT FREIGEGEBEN.
+// ================================================================================================
+//
+// DIE GRENZE IST DER GANZE ZWECK DIESES TYPS: er sagt, ob die SACHE besprochen ist — nicht, ob der
+// Inhalt des Wissensobjekts gelten darf. Die fachliche Freigabe hat ihren eigenen Weg (`status`,
+// `KoProposal`, `reviseUndFreigeben`) und ihre eigenen Rechte; ein erledigter Faden bewegt davon
+// nichts (`KoService.setCommentResolution`, gemessen in `tests/wiki-diskussion/klaerungsstand.test.ts`).
+// Deshalb heissen die Zustände „erledigt"/„offen" und nicht „geprüft"/„freigegeben" — und deshalb
+// prüft `tests/wiki-diskussion/sprachen.test.ts` auch den Wortlaut der Oberfläche.
+//
+// `by`/`at` SIND PFLICHT, sobald es den Stand gibt: „erledigt" ohne Urheber und Zeitpunkt wäre eine
+// Tatsachenbehauptung ohne Auskunft — dieselbe Begründung, aus der `KoProposal.decidedBy/decidedAt`
+// existieren. Ein WIEDER GEÖFFNETER Faden trägt `state: "offen"` MIT `by`/`at`; das unterscheidet
+// ihn von einem Faden, über den noch nie jemand entschieden hat (dort fehlt `resolution` ganz).
+export interface KoCommentResolution {
+  state: "erledigt" | "offen";
+  by: string;
+  at: string;
+}
+
 // FR-KO-06: Diskussion/Kommentare am Objekt (Peer-Austausch, Revisions-Schleife).
+//
+// JOB 4146: VIER OPTIONALE FELDER, KEINE MIGRATION. Ein Bestandsbeitrag ohne sie bleibt gültig, wird
+// unverändert gespeichert und unverändert angezeigt (Vertrag Abnahmefall 1). Das ist keine Höflichkeit
+// gegenüber Altdaten, sondern die Bedingung dafür, dass die ZWEITVERWENDUNG dieser Liste weiterträgt:
+// sie führt heute auch das Prüf-Feedback (`apps/web/src/lib/validationFeedback.ts`) und die
+// Quellenmeldung (`apps/web/src/lib/sourceContribution.ts`), und beide erkennen sich an einem PRÄFIX
+// IM TEXT. Ein neues Pflichtfeld hätte sie leise unlesbar gemacht
+// (`tests/wiki-diskussion/zweitverwendung-bleibt.test.ts`).
 export interface KoComment {
   id: string;
   author: string;
   text: string;
   at: string;
+  /**
+   * JOB 4146 — die Kennung des Beitrags, auf den geantwortet wird. Sie zeigt IMMER auf einen Beitrag
+   * DESSELBEN Wissensobjekts; der Dienst schlägt sie in der eigenen Liste nach und schreibt sie nur,
+   * wenn sie dort liegt (dieselbe Grenze wie `KoSource.objectId` gegen die eigene Anhangsliste).
+   * Fehlt das Feld, ist der Beitrag der Anfang eines Fadens.
+   */
+  replyTo?: string;
+  /**
+   * JOB 4146 — die INHALTSVERSION, die der Verfasser vor sich hatte. Sie setzt der SERVER aus dem
+   * gelesenen Objekt, nicht der Aufrufer: eine mitgeschickte Zahl wäre eine Herkunftsbehauptung ohne
+   * Beleg (mega15 Block B).
+   *
+   * FEHLT SIE, IST SIE UNBEKANNT — und bleibt es. Vertrag Abnahmefall 1: die aktuelle Version darf
+   * einem versionslosen Bestandskommentar nicht nachträglich als Basis untergeschoben werden, weder
+   * beim Lesen noch beim Schreiben.
+   */
+  koVersion?: number;
+  /** JOB 4146 — der Klärungsstand des FADENS. Er steht am Wurzelbeitrag, nie an einer Antwort. */
+  resolution?: KoCommentResolution;
+  /**
+   * JOB 4146 — DER BEITRAGSSCHLÜSSEL DES AUFRUFERS (Vertrag Fall 5, HINWEIS Runde 1).
+   *
+   * Reiner Deduplizierungs-Schlüssel OHNE Autorität, Bauform wie `KoAppendOp.id`: er entscheidet
+   * nichts, er verhindert nur, dass eine WIEDERHOLUNG nach unklarer Übertragung denselben Beitrag ein
+   * zweites Mal anfügt. Der Umfang ist bewusst eng — je Wissensobjekt UND Verfasser: zwei Menschen
+   * dürfen denselben Schlüssel bilden, ohne dass einer von beiden verschluckt wird.
+   */
+  clientKey?: string;
 }
 
 // ================================================================================================
@@ -578,6 +635,13 @@ export type KoErrorCode =
   | "PROPOSAL_NOT_FOUND"
   | "PROPOSAL_DECIDED"
   | "PROPOSAL_OWN"
+  // JOB 4146 (WIKI-DISKUSSION): die Beitragskennung gehört nicht zu diesem Wissensobjekt — als
+  // Bezug einer Antwort (`replyTo`) oder als Gegenstand eines Klärungsstands. Bewusst KEIN
+  // `NOT_FOUND`: das bedeutet an dieser Route „das Wissensobjekt gibt es nicht" (404) und würde die
+  // Auskunft über eine ganz andere Sache geben. Ohne eigenen Eintrag in `STATUS_BY_CODE` (http.ts,
+  // nicht Zielpfad) wird daraus ein 400 mit Grund — und das ist hier die richtige Antwort: der
+  // Aufrufer hat einen Bezug geschickt, den es nicht gibt.
+  | "COMMENT_NOT_FOUND"
   // WP-SHIP8-CLOSE-4 (bens ROT-1B): der Kandidaten-Anker (importCandidateId) ist bereits vergeben —
   // ein zweites KO desselben Import-Kandidaten wird DB-seitig abgelehnt (Pg: partieller Unique-Index,
   // InMemory: Insert-Guard). Der Import-Accept adoptiert dann das bestehende KO statt zu duplizieren.

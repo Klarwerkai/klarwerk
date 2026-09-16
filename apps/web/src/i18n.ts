@@ -497,6 +497,10 @@ const de = {
   "audit.action.ko_author_transferred": "Autor übertragen",
   "audit.action.ko_category_changed": "Kategorie geändert",
   "audit.action.ko_commented": "Kommentiert",
+  // JOB 4146: die zwei Vorgänge am Diskussionsfaden. Sie stehen in der Herkunftskette wie jeder
+  // andere Beleg — und sie heissen dort ebenfalls „geklärt", nicht „freigegeben".
+  "audit.action.ko_comment_resolved": "Diskussion geklärt",
+  "audit.action.ko_comment_reopened": "Diskussion wieder geöffnet",
   "audit.action.ko_confidentiality": "Vertraulichkeit geändert",
   "audit.action.ko_conflict_review": "Konflikt-Review",
   "audit.action.ko_returned_to_author": "An Autor zurückgegeben",
@@ -3021,7 +3025,9 @@ const de = {
   "ko.mehr.historie": "Historie",
   "ko.mehr.belege": "Belege",
   "ko.mehr.schnappschuesse": "Schnappschüsse",
-  "ko.mehr.kommentare": "Kommentare",
+  // JOB 4146: `ko.mehr.kommentare` stand hier und ist ERSATZLOS entfernt — nicht, weil das Wort
+  // falsch geworden wäre, sondern weil der Abschnitt jetzt `ko.diskussion.titel` trägt. Ein
+  // Schlüssel, den niemand mehr ruft, wäre ein zweiter Name für dieselbe Überschrift.
   "ko.mehr.anhaenge": "Anhänge",
   "ko.mehr.nachbarschaft": "Nachbarschaft",
   "ko.returnedBanner":
@@ -3459,6 +3465,34 @@ const de = {
   "ko.commentsEmpty": "Noch keine Kommentare.",
   "ko.commentPlaceholder": "Kommentar schreiben …",
   "ko.commentAdd": "Kommentieren",
+  // JOB 4146 (WIKI-DISKUSSION): der Faden am Dokument. „Geklärt" — NIE „freigegeben" oder
+  // „geprüft": der Klärungsstand sagt, dass die Sache besprochen ist, nicht dass der Inhalt gelten
+  // darf (`tests/wiki-diskussion/sprachen.test.ts` prüft den Wortlaut in allen drei Sprachen).
+  "ko.diskussion.titel": "Diskussion",
+  "ko.diskussion.version": "zu Fassung v{{version}}",
+  "ko.diskussion.versionVeraltet":
+    "zu Fassung v{{version}} · der Eintrag steht inzwischen auf v{{aktuell}}",
+  "ko.diskussion.versionUnbekannt": "Fassungsbezug unbekannt",
+  "ko.diskussion.antworten": "Antworten",
+  "ko.diskussion.antwortAn": "Antwort an {{name}}",
+  "ko.diskussion.antwortSenden": "Antwort senden",
+  "ko.diskussion.antwortAbbrechen": "Abbrechen",
+  "ko.diskussion.erledigtVon": "geklärt · {{name}} · {{datum}}",
+  "ko.diskussion.wiederGeoeffnetVon": "wieder offen · {{name}} · {{datum}}",
+  "ko.diskussion.alsGeklaertMarkieren": "Als geklärt markieren",
+  "ko.diskussion.wiederOeffnen": "Wieder öffnen",
+  // R6: KEIN SATZ SCHICKT MEHR INS NEULADEN. Die Entwürfe liegen im Zustand der Lesefläche; wer der
+  // alten Aufforderung folgte, verlor genau den Text, den derselbe Satz als erhalten bezeichnete.
+  // Der Weg zurück ist jetzt der Knopf „Erneut senden" daneben.
+  "ko.diskussion.sendeFehler":
+    "Der Beitrag wurde nicht gespeichert. Dein Text steht noch im Feld — mit „Erneut senden“ geht er gleich noch einmal hinaus.",
+  "ko.diskussion.sendeFehlerVeraltet":
+    "Jemand anderes hat im selben Moment geschrieben. Dein Text steht noch im Feld — „Erneut senden“ hängt ihn an den neuesten Stand an.",
+  // R5: die Verbindung ist abgebrochen, bevor eine Antwort kam. Ob der Server geschrieben hat, weiss
+  // hier niemand — und was niemand weiss, behauptet dieser Satz auch nicht.
+  "ko.diskussion.sendeFehlerUnklar":
+    "Ob der Beitrag gespeichert wurde, ist unklar — die Verbindung brach ab, bevor eine Antwort kam. Dein Text steht noch im Feld. „Erneut senden“ legt ihn nicht ein zweites Mal ab.",
+  "ko.diskussion.erneutSenden": "Erneut senden",
   "ko.attachments": "Anhänge / Fotos",
   "ko.attachmentsEmpty": "Noch keine Anhänge.",
   "ko.attachmentAdd": "Foto anhängen",
@@ -7346,6 +7380,8 @@ const en: typeof de = {
   "audit.action.ko_author_transferred": "Author transferred",
   "audit.action.ko_category_changed": "Category changed",
   "audit.action.ko_commented": "Commented",
+  "audit.action.ko_comment_resolved": "Discussion resolved",
+  "audit.action.ko_comment_reopened": "Discussion reopened",
   "audit.action.ko_confidentiality": "Confidentiality changed",
   "audit.action.ko_conflict_review": "Conflict review",
   "audit.action.ko_returned_to_author": "Returned to author",
@@ -9374,7 +9410,6 @@ const en: typeof de = {
   "ko.mehr.historie": "History",
   "ko.mehr.belege": "Evidence",
   "ko.mehr.schnappschuesse": "Snapshots",
-  "ko.mehr.kommentare": "Comments",
   "ko.mehr.anhaenge": "Attachments",
   "ko.mehr.nachbarschaft": "Neighbourhood",
   "ko.returnedBanner":
@@ -9714,6 +9749,27 @@ const en: typeof de = {
   "ko.commentsEmpty": "No comments yet.",
   "ko.commentPlaceholder": "Write a comment …",
   "ko.commentAdd": "Comment",
+  // JOB 4146: „resolved" — never „approved"/„released"/„reviewed" (see the German block).
+  "ko.diskussion.titel": "Discussion",
+  "ko.diskussion.version": "on version v{{version}}",
+  "ko.diskussion.versionVeraltet":
+    "on version v{{version}} · the entry has since moved on to v{{aktuell}}",
+  "ko.diskussion.versionUnbekannt": "Version reference unknown",
+  "ko.diskussion.antworten": "Reply",
+  "ko.diskussion.antwortAn": "Reply to {{name}}",
+  "ko.diskussion.antwortSenden": "Send reply",
+  "ko.diskussion.antwortAbbrechen": "Cancel",
+  "ko.diskussion.erledigtVon": "resolved · {{name}} · {{datum}}",
+  "ko.diskussion.wiederGeoeffnetVon": "open again · {{name}} · {{datum}}",
+  "ko.diskussion.alsGeklaertMarkieren": "Mark as resolved",
+  "ko.diskussion.wiederOeffnen": "Open again",
+  "ko.diskussion.sendeFehler":
+    "Your post was not saved. Your text is still in the field — “Send again” sends it straight back out.",
+  "ko.diskussion.sendeFehlerVeraltet":
+    "Someone else wrote at the same moment. Your text is still in the field — “Send again” attaches it to the latest state.",
+  "ko.diskussion.sendeFehlerUnklar":
+    "Whether your post was saved is unclear — the connection broke off before an answer arrived. Your text is still in the field. “Send again” will not file it a second time.",
+  "ko.diskussion.erneutSenden": "Send again",
   "ko.attachments": "Attachments / photos",
   "ko.attachmentsEmpty": "No attachments yet.",
   "ko.attachmentAdd": "Attach photo",
@@ -12797,6 +12853,8 @@ const nl: typeof de = {
   "audit.action.ko_author_transferred": "Auteur overgedragen",
   "audit.action.ko_category_changed": "Categorie gewijzigd",
   "audit.action.ko_commented": "Becommentarieerd",
+  "audit.action.ko_comment_resolved": "Discussie opgelost",
+  "audit.action.ko_comment_reopened": "Discussie heropend",
   "audit.action.ko_confidentiality": "Vertrouwelijkheid gewijzigd",
   "audit.action.ko_conflict_review": "Conflictreview",
   "audit.action.ko_returned_to_author": "Terug naar auteur",
@@ -14815,7 +14873,6 @@ const nl: typeof de = {
   "ko.mehr.historie": "Historie",
   "ko.mehr.belege": "Bewijs",
   "ko.mehr.schnappschuesse": "Momentopnamen",
-  "ko.mehr.kommentare": "Opmerkingen",
   "ko.mehr.anhaenge": "Bijlagen",
   "ko.mehr.nachbarschaft": "Omgeving",
   "ko.returnedBanner":
@@ -15157,6 +15214,27 @@ const nl: typeof de = {
   "ko.commentsEmpty": "Nog geen reacties.",
   "ko.commentPlaceholder": "Reactie schrijven …",
   "ko.commentAdd": "Reageren",
+  // JOB 4146: „opgelost" — nooit „goedgekeurd"/„vrijgegeven"/„gecontroleerd" (zie het Duitse blok).
+  "ko.diskussion.titel": "Discussie",
+  "ko.diskussion.version": "bij versie v{{version}}",
+  "ko.diskussion.versionVeraltet":
+    "bij versie v{{version}} · het item staat inmiddels op v{{aktuell}}",
+  "ko.diskussion.versionUnbekannt": "Versieverwijzing onbekend",
+  "ko.diskussion.antworten": "Antwoorden",
+  "ko.diskussion.antwortAn": "Antwoord aan {{name}}",
+  "ko.diskussion.antwortSenden": "Antwoord versturen",
+  "ko.diskussion.antwortAbbrechen": "Annuleren",
+  "ko.diskussion.erledigtVon": "opgelost · {{name}} · {{datum}}",
+  "ko.diskussion.wiederGeoeffnetVon": "weer open · {{name}} · {{datum}}",
+  "ko.diskussion.alsGeklaertMarkieren": "Als opgelost markeren",
+  "ko.diskussion.wiederOeffnen": "Weer openen",
+  "ko.diskussion.sendeFehler":
+    "Je bijdrage is niet opgeslagen. Je tekst staat nog in het veld — met „Opnieuw versturen“ gaat hij meteen nog eens de deur uit.",
+  "ko.diskussion.sendeFehlerVeraltet":
+    "Iemand anders schreef op hetzelfde moment. Je tekst staat nog in het veld — „Opnieuw versturen“ hangt hem aan de nieuwste stand.",
+  "ko.diskussion.sendeFehlerUnklar":
+    "Of je bijdrage is opgeslagen, is onduidelijk — de verbinding brak af voordat er antwoord kwam. Je tekst staat nog in het veld. „Opnieuw versturen“ legt hem geen tweede keer neer.",
+  "ko.diskussion.erneutSenden": "Opnieuw versturen",
   "ko.attachments": "Bijlagen / foto's",
   "ko.attachmentsEmpty": "Nog geen bijlagen.",
   "ko.attachmentAdd": "Foto toevoegen",

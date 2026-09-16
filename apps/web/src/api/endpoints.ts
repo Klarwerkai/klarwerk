@@ -63,6 +63,7 @@ import type {
   KandidatenLesevariante,
   KnowledgeCheckResult,
   KnowledgeObject,
+  KoComment,
   KoVersionSnapshot,
   KuratierteKanteAnsicht,
   KuratierteKanten,
@@ -144,6 +145,28 @@ function provenanceFields(p: ReasonerProvenance): Record<string, string | true> 
   };
 }
 
+// ================================================================================================
+// JOB 4146 (WIKI-DISKUSSION) — DER BEITRAG, WIE IHN DIE DISKUSSIONSFLÄCHE LIEST.
+// ================================================================================================
+//
+// Spiegel der drei ANZEIGBAREN Ergänzungen aus `services/knowledge-object/src/types.ts` (`KoComment`).
+// Der Beitragsschlüssel (`clientKey`) steht bewusst NICHT darin: er ist ein Deduplizierer des
+// Absendens und keine Auskunft, die eine Fläche zeigen dürfte.
+//
+// WARUM HIER UND NICHT IN `api/types.ts`: ALLE drei Felder sind optional, und `KoComment` bleibt
+// deshalb zuweisbar — die Lesefläche nimmt `ko.comments` unverändert entgegen und liest die Felder,
+// wo sie da sind. Ein Pflichtfeld am gemeinsamen Typ hätte die beiden ANDEREN Träger dieser Liste
+// (Prüf-Feedback, Quellenmeldung) mitgezogen, ohne dass sie etwas davon haben.
+//
+// „FEHLT" HEISST FEHLT, an jedem der drei: kein `koVersion` bedeutet UNBEKANNTER Fassungsbezug (nie
+// „die aktuelle"), kein `replyTo` bedeutet Anfang eines Fadens, kein `resolution` bedeutet, dass
+// über diesen Faden noch nie jemand entschieden hat — nicht „offen entschieden".
+export interface KoDiskussionsbeitrag extends KoComment {
+  replyTo?: string;
+  koVersion?: number;
+  resolution?: { state: "erledigt" | "offen"; by: string; at: string };
+}
+
 // PUT /api/kos/:id — ein Mutations-Endpunkt, per {action} verzweigt.
 export type KoAction =
   | { action: "rate"; verdict: Verdict }
@@ -158,7 +181,25 @@ export type KoAction =
   // `revise` unbedingt wie bisher — kein Aufrufer im Haus ändert sein Verhalten, weil dieser Typ
   // wächst. Wer ihn MITSCHICKT, bekommt statt eines stillen Überschreibers ein 409 `KO_STALE`.
   | { action: "revise"; changes: DraftPayload; expectedVersion?: number }
-  | { action: "comment"; text: string }
+  // ================================================================================================
+  // JOB 4146 (WIKI-DISKUSSION) — DER BEITRAG BEKOMMT ZWEI OPTIONALE BEGLEITER.
+  // ================================================================================================
+  //
+  // `replyTo` — der Beitrag, auf den geantwortet wird. Der Server GLAUBT die Kennung nicht, er
+  //   schlägt sie in der Beitragsliste DIESES Objekts nach (`KoService.addComment`); ein fremder
+  //   oder erfundener Wert erzeugt gar keinen Beitrag, sondern ein 400.
+  // `clientKey` — der Beitragsschlüssel dieses Absendevorgangs (Vertrag Fall 5). Er sorgt dafür,
+  //   dass eine WIEDERHOLUNG nach unklarer Übertragung keinen zweiten Beitrag erzeugt. Reine
+  //   Deduplizierung, keine Autorität — dieselbe Rolle wie `operationId` am Dokumentweg.
+  //
+  // BEIDE OPTIONAL, weil sie es am Server auch sind: ohne sie ist dies Zeichen für Zeichen der
+  // bisherige Kommentarweg, den auch das Prüf-Feedback und die Quellenmeldung benutzen.
+  | { action: "comment"; text: string; replyTo?: string; clientKey?: string }
+  // JOB 4146: den Faden als geklärt markieren und wieder öffnen. GEKLÄRT, NICHT FREIGEGEBEN — am
+  // Freigabestand des Wissensobjekts ändern beide nichts, und sie verlangen kein neues Recht
+  // (dasselbe `requireUser` wie `comment`).
+  | { action: "comment-resolve"; commentId: string }
+  | { action: "comment-reopen"; commentId: string }
   | {
       action: "attach";
       attachment: {

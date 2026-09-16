@@ -1428,6 +1428,11 @@ export const ERLAUBTE_FEHLERCODES: ReadonlySet<string> = new Set([
   "BESTANDSRESET_GESPERRT",
   "BESTANDSRESET_LAEUFT",
   "CLEANUP_DRIFT",
+  // JOB 4146 (WIKI-DISKUSSION): der Bezug einer Antwort bzw. der Gegenstand eines Klärungsstands
+  // gehört nicht zu diesem Wissensobjekt (`KoError`, types.ts). Eingetragen, weil er nach aussen
+  // geht (`http.ts` sendet ihn als 400 mit Grund) — ohne diesen Eintrag stünde im Protokoll
+  // `UNBEKANNT` statt des Codes, und die Zeile gäbe über den Vorfall keine Auskunft mehr.
+  "COMMENT_NOT_FOUND",
   "CONFIDENTIAL",
   "CONFIRM_REQUIRED",
   "CONFLICT",

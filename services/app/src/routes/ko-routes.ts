@@ -386,6 +386,10 @@ type KoAktion =
   | "revise-release"
   | "propose"
   | "decide-proposal"
+  // JOB 4146 (WIKI-DISKUSSION): den Faden als geklärt markieren und wieder öffnen. Beide arbeiten
+  // AM Objekt unter `:id` — sie passieren das Tor, mit demselben Gate wie `comment`.
+  | "comment-resolve"
+  | "comment-reopen"
   | "revalidate";
 
 /**
@@ -435,6 +439,10 @@ const ZIELOBJEKT_TOR: Record<KoAktion, Torurteil> = {
   "revise-release": "tor",
   propose: "tor",
   "decide-proposal": "tor",
+  // JOB 4146: Vertrag Fall 4 — „die Route prüft den Zugriff auf das Dokument, BEVOR sie Fadeninhalt
+  // liefert oder annimmt". Genau das leistet dieser Eintrag; ein eigenes Sonderloch gibt es nicht.
+  "comment-resolve": "tor",
+  "comment-reopen": "tor",
   revalidate: "tor",
 };
 
@@ -493,6 +501,19 @@ interface PutBody {
   decision?: string;
   newAuthor?: string;
   text?: string;
+  /**
+   * JOB 4146 (WIKI-DISKUSSION) — die drei Felder des Fadens. Alle `unknown`, weil sie aus dem Netz
+   * kommen: gelesen werden sie an der `case`, nicht hier geglaubt.
+   *
+   * `replyTo` — die Kennung des Beitrags, auf den geantwortet wird. Die EXISTENZ prüft der Dienst
+   *   (`COMMENT_NOT_FOUND` → 400), nicht diese Stelle; hier fällt nur eine unbrauchbare FORM durch.
+   * `clientKey` — der Beitragsschlüssel des Aufrufers (Vertrag Fall 5): reine Deduplizierung einer
+   *   Wiederholung nach unklarer Übertragung, ohne Autorität über irgendetwas.
+   * `commentId` — welcher Faden geklärt oder wieder geöffnet wird.
+   */
+  replyTo?: unknown;
+  clientKey?: unknown;
+  commentId?: unknown;
   attachment?: {
     name?: string;
     mime?: string;
@@ -2023,6 +2044,67 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
         }
         return false;
       };
+      /**
+       * JOB 4146 — die gemeinsame Hälfte von „geklärt" und „wieder offen": die Beitragskennung
+       * prüfen und den Dienst rufen. Das Rechtegate steht bewusst NICHT hier, sondern sichtbar in
+       * jedem der beiden `case`-Zweige (s. dort).
+       */
+      const klaerungsstand = async (
+        actor: string,
+        state: "erledigt" | "offen",
+      ): Promise<void> => {
+        if (typeof body.commentId !== "string" || body.commentId.trim().length === 0) {
+          return badRequest("commentId fehlt.");
+        }
+        reply
+          .code(200)
+          .send(await ko.setCommentResolution(id, body.commentId.trim(), actor, state));
+      };
+      // ==========================================================================================
+      // JOB 4146 — DIE ABGELEHNTE PARALLELSCHREIBUNG IST EIN KONFLIKT, KEIN EINGABEFEHLER.
+      // ==========================================================================================
+      //
+      // `STALE_WRITE` heisst: ein anderer Mensch hat im selben Augenblick geschrieben, und der
+      // bedingte UPDATE hat den überholten Stand abgelehnt (`repo-pg.ts:412-437`). Der Dienst fängt
+      // das für einen Beitrag selbst auf (er liest frisch und hängt einmal erneut an); kommt die
+      // Ablehnung trotzdem hier an, hat der Aufrufer NICHTS falsch gemacht — ein 400 („du hast
+      // etwas falsch gemacht") wäre die unwahre Auskunft, ein 409 ist die wahre.
+      //
+      // ENG AUF DIE DREI DISKUSSIONSAKTIONEN BEGRENZT, und das ist Absicht: dieselbe Ablehnung an
+      // den übrigen Aktionen dieses Endpunkts über denselben Kamm zu scheren wäre eine
+      // Verhaltensänderung an Wegen, die dieser Auftrag nicht misst. `http.ts` (STATUS_BY_CODE)
+      // bleibt unberührt (Auftrag §10).
+      const diskussionsFehler = (error: unknown): boolean => {
+        if (
+          body.action !== "comment" &&
+          body.action !== "comment-resolve" &&
+          body.action !== "comment-reopen"
+        ) {
+          return false;
+        }
+        const code =
+          error && typeof error === "object" && "code" in error
+            ? String((error as { code: unknown }).code)
+            : "";
+        if (code !== "STALE_WRITE") {
+          return false;
+        }
+        // R7 (BEN, Runde 6): HIER STAND DIE LETZTE NEULADE-AUFFORDERUNG. Die Fläche hängt diesen
+        // Text an ihren eigenen Satz (`MehrAbschnitte.tsx`, `diskussionsFehlerSatz`), also war die
+        // sichtbare Meldung trotz bereinigtem Sprachkatalog weiterhin „bitte den Stand neu laden" —
+        // und wer dem folgte, verlor den Entwurf, den derselbe Satz als erhalten bezeichnete.
+        //
+        // WAS DIESE ZEILE JETZT SAGT UND WAS NICHT: den Grund, den nur der Server kennt. Was als
+        // Nächstes zu tun ist, sagt die Fläche — dort steht der Knopf, und nur dort ist bekannt, dass
+        // der Text noch im Feld liegt. Geprüft wird die ganze Verkettung in
+        // `tests/wiki-diskussion/fehlermeldung-neuladen.test.ts` an der ECHTEN Antwort dieser Route.
+        reply.code(409).send({
+          error: code,
+          message:
+            "Der Beitrag wurde nicht angefügt: der gelesene Stand war beim Schreiben bereits überholt.",
+        });
+        return true;
+      };
       // JOB 3667 R2: was NACH jeder neuen Inhaltsfassung zu tun ist — für alle drei Schreibwege
       // (revise, revise-release, Übernahme eines Vorschlags) EINE Stelle. Die Kette ist heikel
       // (D-AISTATE), und drei Abschriften davon wären drei Gelegenheiten, sie auseinanderlaufen zu
@@ -2297,6 +2379,15 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
           }
           case "comment": {
             // FR-KO-06: jeder angemeldete Nutzer darf kommentieren.
+            //
+            // JOB 4146: DAS RECHTEGATE BLEIBT, WIE ES IST. Antworten und Klären sind Diskussion,
+            // keine Freigabe — wer kommentieren darf, darf beides. Keine neue Berechtigung, keine
+            // Rollenprüfung, keine Vier-Augen-Regel (Auftrag §5.4, HINWEIS Punkt 5).
+            //
+            // GEPRÜFT WIRD HIER DIE FORM, NICHT DIE EXISTENZ: ob es den Bezugsbeitrag gibt, weiss
+            // nur der Dienst — und zwar in derselben per-KO serialisierten Klammer, in der er
+            // schreibt. An dieser Stelle wäre die Existenzprüfung ein Zeitfenster und eine zweite
+            // Stelle für dieselbe Regel (dieselbe Begründung wie an `decide-proposal`).
             const user = await guards.requireUser(request, reply);
             if (!user) {
               return;
@@ -2304,8 +2395,62 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             if (!body.text?.trim()) {
               return badRequest("text fehlt.");
             }
-            reply.code(200).send(await ko.addComment(id, user.id, body.text.trim()));
+            // Ein LEERER Bezug ist ein Formfehler und kein stilles Weglassen: der Aufrufer wollte
+            // antworten, und ein weggeworfenes `replyTo` machte daraus lautlos einen neuen Faden.
+            if (body.replyTo !== undefined) {
+              if (typeof body.replyTo !== "string" || body.replyTo.trim().length === 0) {
+                return badRequest(
+                  "replyTo muss die Kennung des Beitrags sein, auf den geantwortet wird.",
+                );
+              }
+            }
+            // Dasselbe für den Beitragsschlüssel: ein leerer Schlüssel schützt vor nichts, und
+            // stillschweigend ohne Schutz zu schreiben wäre die Umkehrung dessen, wofür er da ist.
+            if (body.clientKey !== undefined) {
+              if (typeof body.clientKey !== "string" || body.clientKey.trim().length === 0) {
+                return badRequest(
+                  "clientKey muss der nicht leere Beitragsschlüssel des Aufrufers sein.",
+                );
+              }
+            }
+            reply.code(200).send(
+              await ko.addComment(id, user.id, body.text.trim(), {
+                ...(typeof body.replyTo === "string" ? { replyTo: body.replyTo.trim() } : {}),
+                ...(typeof body.clientKey === "string"
+                  ? { clientKey: body.clientKey.trim() }
+                  : {}),
+              }),
+            );
             return;
+          }
+          // ======================================================================================
+          // JOB 4146 — DEN FADEN KLÄREN UND WIEDER ÖFFNEN.
+          // ======================================================================================
+          //
+          // ZWEI ZWEIGE, EINE REGEL: „erledigt" und „wieder offen" sind derselbe Vorgang mit
+          // verschiedenem Ziel. Was sie gemeinsam haben — die Prüfung der Beitragskennung und der
+          // Aufruf des Dienstes — steht EINMAL in `klaerungsstand` (oben bei `nachNeuerFassung`);
+          // zwei Abschriften wären zwei Gelegenheiten, sie auseinanderlaufen zu lassen. Die Wache
+          // steht sichtbar in JEDEM Zweig: sie ist das, was ein Leser (und der Wächter in
+          // `tests/security/kos-auth-vor-parsing.test.ts`) dort erwarten darf, und kein Zweig soll
+          // sein Rechtegate von einem anderen borgen.
+          //
+          // DASSELBE GATE WIE `comment` (`requireUser`): wer mitdiskutieren darf, darf auch sagen,
+          // dass eine Sache geklärt ist. Am Freigabestand des Wissensobjekts ändert das nichts —
+          // das setzt der Dienst durch, nicht diese Stelle.
+          case "comment-resolve": {
+            const user = await guards.requireUser(request, reply);
+            if (!user) {
+              return;
+            }
+            return klaerungsstand(user.id, "erledigt");
+          }
+          case "comment-reopen": {
+            const user = await guards.requireUser(request, reply);
+            if (!user) {
+              return;
+            }
+            return klaerungsstand(user.id, "offen");
           }
           case "attach": {
             // FR-CAP-05 / SCRUM-121: Anhang anfügen. Neu: Objekt-Referenz + kleine Vorschau;
@@ -2852,6 +2997,10 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
         // im Fall `KO_STALE` die jetzt gespeicherte Version. Alles andere geht unverändert an
         // `sendError`; ein nicht erkannter Code verlässt diese Stelle also genau wie bisher.
         if (await rueckwegFehler(error)) {
+          return;
+        }
+        // JOB 4146: die abgelehnte Parallelschreibung der Diskussion — 409 statt 400 (s. o.).
+        if (diskussionsFehler(error)) {
           return;
         }
         sendError(reply, error);

@@ -3,7 +3,7 @@ import { Link2, Paperclip, X } from "lucide-react";
 import { type ChangeEvent, type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../../api/client";
-import { endpoints } from "../../api/endpoints";
+import { type KoDiskussionsbeitrag, endpoints } from "../../api/endpoints";
 import {
   useAudit,
   useConflicts,
@@ -283,6 +283,65 @@ const CONFLICT_TYPES: readonly ConflictType[] = [
 const textareaCls =
   "w-full resize-y rounded-input border border-hairline bg-surface p-2.5 text-sm text-text outline-none focus:border-ink/30";
 
+// JOB 4146: die kleinen Handlungen am Faden (antworten, klären, wieder öffnen). Dieselbe Bauform
+// wie der Rückweg an einer Fassungskarte weiter unten — kein zweiter Knopfstil für dieselbe Grösse.
+const diskussionsKnopfCls =
+  "inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-muted transition-colors hover:text-text disabled:cursor-not-allowed disabled:opacity-50";
+
+/** JOB 4146: ein Faden — der Wurzelbeitrag und alles, was daran hängt, in Schreibreihenfolge. */
+interface Diskussionsfaden {
+  wurzel: KoDiskussionsbeitrag;
+  antworten: KoDiskussionsbeitrag[];
+}
+
+// ==================================================================================================
+// JOB 4146 — AUS DER FLACHEN LISTE WIRD DER FADEN.
+// ==================================================================================================
+//
+// ZWEI ENTSCHEIDUNGEN, und beide folgen „Wissenslücke statt Erfindung":
+//
+//  1. EIN BEITRAG, DESSEN BEZUG HIER NICHT LIEGT, VERSCHWINDET NICHT. Er wird als Anfang seines
+//     eigenen sichtbaren Fadens gezeigt. Ihn wegzulassen hiesse, einen geschriebenen Beitrag zu
+//     unterschlagen, weil die Fläche seinen Zusammenhang nicht auflösen kann.
+//  2. EINE ANTWORT AUF EINE ANTWORT landet unter DERSELBEN Wurzel, nicht in einer dritten Ebene.
+//     Der Klärungsstand gehört dem Faden, und eine Verschachtelung ohne Ende wäre eine Gliederung,
+//     die niemand mehr überblickt.
+//
+// DIESELBE REGEL STEHT IM DIENST (`KoService`, `fadenWurzel`) — dort ENTSCHEIDET sie, hier ZEIGT sie.
+// Über die Modulgrenze hinweg ist sie nicht teilbar; dass beide Seiten dieselbe Auskunft geben,
+// misst `tests/wiki-diskussion/diskussion-in-der-flaeche.test.tsx` gegen die Daten des Servers.
+function diskussionsfaeden(beitraege: readonly KoDiskussionsbeitrag[]): Diskussionsfaden[] {
+  const nachId = new Map(beitraege.map((b) => [b.id, b]));
+  const wurzelVon = (b: KoDiskussionsbeitrag): string => {
+    let aktuell = b;
+    const gesehen = new Set<string>([aktuell.id]);
+    while (aktuell.replyTo) {
+      const eltern = nachId.get(aktuell.replyTo);
+      if (!eltern || gesehen.has(eltern.id)) {
+        return aktuell.id;
+      }
+      gesehen.add(eltern.id);
+      aktuell = eltern;
+    }
+    return aktuell.id;
+  };
+  // ZWEI DURCHGÄNGE, damit die Reihenfolge der Fäden die Schreibreihenfolge ihrer WURZELN ist —
+  // und nicht davon abhängt, ob eine Antwort zufällig vor ihrer Wurzel in der Liste steht.
+  const faeden = new Map<string, Diskussionsfaden>();
+  for (const b of beitraege) {
+    if (wurzelVon(b) === b.id) {
+      faeden.set(b.id, { wurzel: b, antworten: [] });
+    }
+  }
+  for (const b of beitraege) {
+    const wurzelId = wurzelVon(b);
+    if (wurzelId !== b.id) {
+      faeden.get(wurzelId)?.antworten.push(b);
+    }
+  }
+  return [...faeden.values()];
+}
+
 export function MehrAbschnitte({
   ko,
   sprungZiel,
@@ -435,16 +494,231 @@ export function MehrAbschnitte({
     onError: fehlerToast,
   });
 
-  // ---- Kommentare ------------------------------------------------------------------------------
+  // ================================================================================================
+  // JOB 4146 · DIE DISKUSSION — FRAGE, ANTWORT, KLÄRUNGSSTAND.
+  // ================================================================================================
+  //
+  // DER EINGEGEBENE TEXT GEHT NIE VERLOREN. Er wird ausschliesslich im ERFOLGSFALL geleert; scheitert
+  // das Absenden (409, Netz, 403), steht er weiter im Feld, und daneben erscheint ein Satz in
+  // Anwendersprache mit dem nächsten Schritt (`diskussionsFehler`).
+  //
+  // DER TOAST IST FÜR DIESEN WEG ABGELÖST, nicht ergänzt: eine Meldung, die nach Sekunden
+  // verschwindet, ist für „dein Text ist noch da, versuch es gleich nochmal" die falsche Bauform —
+  // und zwei Meldungen über denselben Fehlschlag wären zwei Stellen, an denen er anders lautet.
+  //
+  // DER BEITRAGSSCHLÜSSEL (Vertrag Fall 5) GEHÖRT ZUM ENTWURF, nicht zum Absenden: er entsteht mit
+  // dem Feld und bleibt derselbe, solange derselbe Entwurf offen ist. Genau das macht die
+  // WIEDERHOLUNG nach einer unklaren Übertragung idempotent — mit einem je Klick neu gewürfelten
+  // Schlüssel wäre er wirkungslos. Erst der Erfolg holt einen neuen.
+  //
+  // DASS DER SCHLÜSSEL EINEN GEÄNDERTEN TEXT ÜBERLEBT, IST ABSICHT UND KEIN LOCH: der Dienst
+  // vergleicht seit R5 die ganze Absendung (Verfasser, Text, Antwortbezug) und nicht nur den
+  // Schlüssel (`service.ts`, `gleicheAbsendung`). Eine nachgebesserte Absendung ist dort eine eigene
+  // und wird geschrieben; nur die wortgleiche Wiederholung bleibt ein einziger Beitrag.
+  //
+  // DIE ANTWORTENTWÜRFE LIEGEN JE FADEN, nicht in einem gemeinsamen Feld. Ein gemeinsames Feld
+  // gehört keinem der Fäden: es wurde beim Öffnen geleert (und nahm den Entwurf mit) oder es wanderte
+  // beim Fadenwechsel in den fremden Faden. Beides ist verlorene oder verlegte Arbeit eines Menschen.
+  //
+  // DER ERFOLG RÄUMT NUR WEG, WAS ER MITGENOMMEN HAT (R6, BEN-Korrekturpflicht 1). Das Feld bleibt
+  // während des Absendens bearbeitbar — mit Absicht, denn eine hängende Antwort darf niemanden am
+  // Weiterschreiben hindern. Also muss die Bereinigung den ABGESENDETEN Stand kennen und mit dem
+  // heutigen vergleichen; sonst löscht ein spät eintreffender Erfolg Text, den der Server nie gesehen
+  // hat. Deshalb liegt neben jedem Entwurf ein Spiegel als `ref`: `onSuccess` läuft ausserhalb des
+  // Renderns und bekäme aus dem Zustand nur den Stand von vorhin.
   const [commentText, setCommentText] = useState("");
+  const commentTextSpiegel = useRef("");
+  const [commentKey, setCommentKey] = useState(() => crypto.randomUUID());
+  const [antwortAn, setAntwortAn] = useState<string | null>(null);
+  const [antwortEntwuerfe, setAntwortEntwuerfe] = useState<Record<string, string>>({});
+  const antwortEntwuerfeSpiegel = useRef<Record<string, string>>({});
+  const antwortSchluessel = useRef<Record<string, string>>({});
+  const [diskussionsFehler, setDiskussionsFehler] = useState<string | null>(null);
+  // Woran ein „Erneut senden" anknüpft. `null` heisst: nichts ist schiefgegangen, es gibt nichts zu
+  // wiederholen — der Knopf steht dann gar nicht da.
+  const [letzterFehlschlag, setLetzterFehlschlag] = useState<
+    { art: "beitrag" } | { art: "antwort"; bezug: string } | null
+  >(null);
+
+  const antwortEntwurf = (bezug: string): string => antwortEntwuerfe[bezug] ?? "";
+
+  const beitragSetzen = (wert: string): void => {
+    commentTextSpiegel.current = wert;
+    setCommentText(wert);
+  };
+
+  const antwortSetzen = (bezug: string, wert: string): void => {
+    antwortEntwuerfeSpiegel.current = { ...antwortEntwuerfeSpiegel.current, [bezug]: wert };
+    setAntwortEntwuerfe((v) => ({ ...v, [bezug]: wert }));
+  };
+
+  /** Der Schlüssel des Entwurfs zu diesem Faden — einmal gewürfelt, bis dieser Entwurf durch ist. */
+  const antwortSchluesselFuer = (bezug: string): string => {
+    const vorhanden = antwortSchluessel.current[bezug];
+    if (vorhanden) {
+      return vorhanden;
+    }
+    const neu = crypto.randomUUID();
+    antwortSchluessel.current[bezug] = neu;
+    return neu;
+  };
+
+  /**
+   * Der eine Satz, der bei einem gescheiterten Absenden neben dem Feld steht. Er nennt ZUERST den
+   * nächsten Schritt (der Text ist erhalten, erneut senden) und hängt die Auskunft des Servers an,
+   * wo es eine gibt — ein nackter technischer Fehler hilft niemandem, ein verschwiegener auch nicht.
+   *
+   * DREI LAGEN, UND SIE WISSEN VERSCHIEDEN VIEL (R5, BEN-Korrekturpflicht 3):
+   *
+   *  · KEINE ANTWORT ANGEKOMMEN (kein `ApiError`) oder ein Serverfehler ab 500 — dann ist der
+   *    SPEICHERSTAND UNKLAR. Der Server kann geschrieben und nur die Antwort verloren haben; genau
+   *    diese Lage misst `tests/wiki-diskussion/wiederholung-verliert-nichts.test.ts` am Bestand.
+   *    „Der Beitrag wurde nicht gespeichert" wäre hier eine Tatsachenaussage ohne ihre Voraussetzung.
+   *  · 409 — eine gleichzeitige Schreibung wurde ABGELEHNT. Das ist belegt und kein Datenverlust.
+   *  · jede andere beantwortete Ablehnung (400/403/404) — der Server hat geprüft und nicht
+   *    geschrieben. Hier darf der Satz bestimmt sein, denn hier ist er belegt.
+   */
+  const diskussionsFehlerSatz = (e: unknown): string => {
+    if (!(e instanceof ApiError)) {
+      return t("ko.diskussion.sendeFehlerUnklar");
+    }
+    const satz = t(
+      e.status >= 500
+        ? "ko.diskussion.sendeFehlerUnklar"
+        : e.status === 409
+          ? "ko.diskussion.sendeFehlerVeraltet"
+          : "ko.diskussion.sendeFehler",
+    );
+    return e.message ? `${satz} ${e.message}` : satz;
+  };
+
+  // Die abgesendete Fassung reist als Veränderliche mit, damit `onSuccess` sie noch hat. Sie aus dem
+  // Zustand zu lesen wäre genau der Fehler, um den es hier geht.
   const comment = useMutation({
-    mutationFn: () => endpoints.ko.act(id, { action: "comment", text: commentText.trim() }),
+    mutationFn: (gesendet: string) =>
+      endpoints.ko.act(id, {
+        action: "comment",
+        text: gesendet,
+        clientKey: commentKey,
+      }),
+    onSuccess: (_daten, gesendet) => {
+      invalidate();
+      setDiskussionsFehler(null);
+      setLetzterFehlschlag(null);
+      // Steht im Feld noch dasselbe, ist es erledigt und darf weg. Steht etwas anderes da, hat der
+      // Mensch weitergeschrieben — dieser Text war nie unterwegs und bleibt unangetastet stehen.
+      if (commentTextSpiegel.current.trim() !== gesendet) {
+        return;
+      }
+      beitragSetzen("");
+      setCommentKey(crypto.randomUUID());
+    },
+    onError: (e) => {
+      setDiskussionsFehler(diskussionsFehlerSatz(e));
+      setLetzterFehlschlag({ art: "beitrag" });
+    },
+  });
+
+  const antwort = useMutation({
+    mutationFn: (v: { bezug: string; gesendet: string }) =>
+      endpoints.ko.act(id, {
+        action: "comment",
+        text: v.gesendet,
+        replyTo: v.bezug,
+        clientKey: antwortSchluesselFuer(v.bezug),
+      }),
+    // NUR DER ERFOLG RÄUMT AUF, und er räumt genau den einen Entwurf weg, der durchgegangen ist —
+    // und auch den nur, wenn seither niemand weitergeschrieben hat.
+    onSuccess: (_daten, v) => {
+      invalidate();
+      setDiskussionsFehler(null);
+      setLetzterFehlschlag(null);
+      if ((antwortEntwuerfeSpiegel.current[v.bezug] ?? "").trim() !== v.gesendet) {
+        return;
+      }
+      const { [v.bezug]: _durch, ...rest } = antwortEntwuerfeSpiegel.current;
+      antwortEntwuerfeSpiegel.current = rest;
+      setAntwortEntwuerfe(({ [v.bezug]: _erledigt, ...uebrig }) => uebrig);
+      delete antwortSchluessel.current[v.bezug];
+      setAntwortAn(null);
+    },
+    onError: (e, v) => {
+      setDiskussionsFehler(diskussionsFehlerSatz(e));
+      setLetzterFehlschlag({ art: "antwort", bezug: v.bezug });
+    },
+  });
+
+  /**
+   * DER WEG ZURÜCK NACH EINEM FEHLSCHLAG (R6, BEN-Korrekturpflicht 2). Er schickt den Entwurf, wie er
+   * jetzt im Feld steht, mit DEMSELBEN Beitragsschlüssel noch einmal los: die wortgleiche Wiederholung
+   * bleibt beim Dienst ein einziger Beitrag (`service.ts`, `gleicheAbsendung`).
+   *
+   * WARUM ÜBERHAUPT EIN KNOPF: vorher stand in den Fehlersätzen „bitte die Seite neu laden". Die
+   * Entwürfe leben im Zustand dieser Komponente — wer der Aufforderung folgte, verlor genau den Text,
+   * den derselbe Satz als erhalten bezeichnete. Der Knopf ist der Weg, der das nicht kostet.
+   */
+  const erneutSenden = (): void => {
+    if (!letzterFehlschlag) {
+      return;
+    }
+    if (letzterFehlschlag.art === "beitrag") {
+      comment.mutate(commentTextSpiegel.current.trim());
+      return;
+    }
+    const bezug = letzterFehlschlag.bezug;
+    antwort.mutate({
+      bezug,
+      gesendet: (antwortEntwuerfeSpiegel.current[bezug] ?? "").trim(),
+    });
+  };
+
+  const klaerung = useMutation({
+    mutationFn: (eingabe: { commentId: string; erledigt: boolean }) =>
+      endpoints.ko.act(
+        id,
+        eingabe.erledigt
+          ? { action: "comment-resolve", commentId: eingabe.commentId }
+          : { action: "comment-reopen", commentId: eingabe.commentId },
+      ),
     onSuccess: () => {
       invalidate();
-      setCommentText("");
+      setDiskussionsFehler(null);
     },
-    onError: fehlerToast,
+    onError: (e) => setDiskussionsFehler(diskussionsFehlerSatz(e)),
   });
+
+  const diskussionsFaeden = diskussionsfaeden(ko.comments ?? []);
+
+  /**
+   * Der Fassungsbezug EINES Beitrags, in drei ehrlichen Lagen:
+   *   · keine Angabe → „unbekannt". Vertrag Fall 1: die aktuelle Fassung wird NICHT als seine Basis
+   *     erfunden, auch nicht als Anzeigebequemlichkeit.
+   *   · älter als der heutige Stand → beide Zahlen („stammt aus Version 3, der Eintrag steht auf 5",
+   *     `types.ts` zu `KoProposal.baseVersion`). Vertrag Fall 2: der alte Bezug bleibt sichtbar.
+   *   · auf dem heutigen Stand → nur die eine Zahl; eine Abweichung zu behaupten, die es nicht gibt,
+   *     wäre derselbe Fehler in die andere Richtung.
+   */
+  const versionsbezug = (b: KoDiskussionsbeitrag): string => {
+    if (b.koVersion === undefined) {
+      return t("ko.diskussion.versionUnbekannt");
+    }
+    return b.koVersion < ko.version
+      ? t("ko.diskussion.versionVeraltet", { version: b.koVersion, aktuell: ko.version })
+      : t("ko.diskussion.version", { version: b.koVersion });
+  };
+
+  /** Kopf, Fassungsbezug und Text eines Beitrags — für Wurzel und Antwort dieselbe Bauform. */
+  const beitragsInhalt = (b: KoDiskussionsbeitrag): JSX.Element => (
+    <>
+      <div className="font-mono text-[11px] text-muted-2">
+        {nameOf(b.author)} · {new Date(b.at).toLocaleDateString(i18n.language)}
+      </div>
+      <div data-bib-diskussion-version={b.id} className="text-[11px] text-muted-2">
+        {versionsbezug(b)}
+      </div>
+      <div className="text-[13px] text-text">{b.text}</div>
+    </>
+  );
 
   // ---- Anhänge ---------------------------------------------------------------------------------
   const attach = useMutation({
@@ -1717,43 +1991,174 @@ export function MehrAbschnitte({
         })()}
       </Abschnitt>
 
-      {/* 11 — Kommentare */}
+      {/* 11 — Diskussion (bis JOB 4146: eine flache Kommentarliste) */}
       <Abschnitt
         schluessel="kommentare"
-        titel={t("ko.mehr.kommentare")}
+        titel={t("ko.diskussion.titel")}
         offen={offene.has("kommentare")}
         aufWechsel={(o) => abschnittUmschalten("kommentare", o)}
       >
-        {(ko.comments ?? []).length === 0 ? (
+        {diskussionsFaeden.length === 0 ? (
+          // §9: der Leersatz gilt NUR nach einem erfolgreichen Abruf — dieser Abschnitt wird erst
+          // gezeichnet, wenn das Wissensobjekt geladen ist (`BibliothekLesen`), und behauptet
+          // deshalb nie „keine Beiträge", bevor jemand nachgesehen hat.
           <p className="text-[12.5px] text-muted">{t("ko.commentsEmpty")}</p>
         ) : (
-          <ul className="space-y-2.5">
-            {(ko.comments ?? []).map((cm) => (
-              <li key={cm.id} className="border-l-2 border-hairline pl-3">
-                <div className="font-mono text-[11px] text-muted-2">
-                  {nameOf(cm.author)} · {new Date(cm.at).toLocaleDateString(i18n.language)}
-                </div>
-                <div className="text-[13px] text-text">{cm.text}</div>
-              </li>
-            ))}
+          <ul className="space-y-3">
+            {diskussionsFaeden.map((faden) => {
+              const wurzel = faden.wurzel;
+              const erledigt = wurzel.resolution?.state === "erledigt";
+              return (
+                <li
+                  key={wurzel.id}
+                  data-bib-diskussion-beitrag={wurzel.id}
+                  className="border-l-2 border-hairline pl-3"
+                >
+                  {beitragsInhalt(wurzel)}
+                  {wurzel.resolution ? (
+                    <div
+                      data-bib-diskussion-klaerung={wurzel.id}
+                      className="mt-1 text-[11px] font-semibold text-muted"
+                    >
+                      {t(
+                        erledigt ? "ko.diskussion.erledigtVon" : "ko.diskussion.wiederGeoeffnetVon",
+                        {
+                          name: nameOf(wurzel.resolution.by),
+                          datum: new Date(wurzel.resolution.at).toLocaleDateString(i18n.language),
+                        },
+                      )}
+                    </div>
+                  ) : null}
+                  {/* Antworten stehen IM Bezugsbeitrag, nicht daneben: der Faden ist die Struktur,
+                      nicht die Sortierung. */}
+                  {faden.antworten.length > 0 ? (
+                    <ul className="mt-2 space-y-2 border-l border-hairline-soft pl-3">
+                      {faden.antworten.map((a) => (
+                        <li key={a.id} data-bib-diskussion-beitrag={a.id}>
+                          {beitragsInhalt(a)}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  <div className="mt-1.5 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      data-bib-diskussion-antworten={wurzel.id}
+                      // ÖFFNEN IST KEIN AUFRÄUMEN: der Entwurf dieses Fadens bleibt stehen, auch
+                      // beim zweiten Klick und nach einem Ausflug in einen anderen Faden.
+                      onClick={() => {
+                        setAntwortAn(wurzel.id);
+                        setDiskussionsFehler(null);
+                      }}
+                      className={diskussionsKnopfCls}
+                    >
+                      {t("ko.diskussion.antworten")}
+                    </button>
+                    {erledigt ? (
+                      <button
+                        type="button"
+                        data-bib-diskussion-oeffnen={wurzel.id}
+                        disabled={klaerung.isPending}
+                        onClick={() => klaerung.mutate({ commentId: wurzel.id, erledigt: false })}
+                        className={diskussionsKnopfCls}
+                      >
+                        {t("ko.diskussion.wiederOeffnen")}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        data-bib-diskussion-erledigen={wurzel.id}
+                        disabled={klaerung.isPending}
+                        onClick={() => klaerung.mutate({ commentId: wurzel.id, erledigt: true })}
+                        className={diskussionsKnopfCls}
+                      >
+                        {t("ko.diskussion.alsGeklaertMarkieren")}
+                      </button>
+                    )}
+                  </div>
+                  {antwortAn === wurzel.id ? (
+                    <div className="mt-2 space-y-2">
+                      {/* KEIN `placeholder`: die Beschriftung steht als `aria-label` am Feld. Der
+                          Abschnitt trägt genau EINEN Platzhalter — den des neuen Beitrags
+                          (`tests/bibliothek-mehr-platzhalter`), und ein zweiter wäre an dieser
+                          Stelle auch fachlich nur eine flüchtige Beschriftung. */}
+                      <textarea
+                        data-bib-diskussion-antwortfeld={wurzel.id}
+                        aria-label={t("ko.diskussion.antwortAn", { name: nameOf(wurzel.author) })}
+                        value={antwortEntwurf(wurzel.id)}
+                        onChange={(e) => antwortSetzen(wurzel.id, e.target.value)}
+                        rows={2}
+                        className={textareaCls}
+                      />
+                      <div className="flex gap-2">
+                        <Button
+                          variant="primary"
+                          data-bib-diskussion-antwortsenden={wurzel.id}
+                          disabled={
+                            antwort.isPending || antwortEntwurf(wurzel.id).trim().length === 0
+                          }
+                          onClick={() =>
+                            antwort.mutate({
+                              bezug: wurzel.id,
+                              gesendet: antwortEntwurf(wurzel.id).trim(),
+                            })
+                          }
+                        >
+                          {t("ko.diskussion.antwortSenden")}
+                        </Button>
+                        <Button variant="ghost" onClick={() => setAntwortAn(null)}>
+                          {t("ko.diskussion.antwortAbbrechen")}
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
+                </li>
+              );
+            })}
           </ul>
         )}
         <div className="mt-3 space-y-2 border-t border-hairline pt-3">
           <textarea
             value={commentText}
-            onChange={(e) => setCommentText(e.target.value)}
+            onChange={(e) => beitragSetzen(e.target.value)}
             rows={2}
             placeholder={t("ko.commentPlaceholder")}
             className={textareaCls}
           />
           <Button
             variant="primary"
+            data-bib-diskussion-senden=""
             disabled={comment.isPending || commentText.trim().length === 0}
-            onClick={() => comment.mutate()}
+            onClick={() => comment.mutate(commentText.trim())}
           >
             {t("ko.commentAdd")}
           </Button>
         </div>
+        {/* Der Satz steht am ENDE des Abschnitts und bleibt stehen, bis der nächste Versuch
+            gelingt — anders als ein Toast, der verschwindet, während der Text noch im Feld wartet.
+            Der Weg zurück steht DANEBEN und nicht im Satz: eine Handlungsanweisung, die den
+            erhaltenen Text kostet, wäre schlechter als keine (R6). */}
+        {diskussionsFehler ? (
+          <div className="mt-2 space-y-1">
+            <output
+              aria-live="polite"
+              data-testid="bib-diskussion-fehler"
+              className="block text-[12.5px] text-trust-crit-text"
+            >
+              {diskussionsFehler}
+            </output>
+            {letzterFehlschlag ? (
+              <Button
+                variant="ghost"
+                data-bib-diskussion-erneut=""
+                disabled={comment.isPending || antwort.isPending}
+                onClick={() => erneutSenden()}
+              >
+                {t("ko.diskussion.erneutSenden")}
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
       </Abschnitt>
 
       {/* 12 — Anhänge */}
