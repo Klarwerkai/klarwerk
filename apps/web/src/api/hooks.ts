@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 // JOB 577: die kanonische Normalisierung von „nicht vorhanden / nicht sichtbar" (404) in den
 // Datenzustand `null`. Sie steht in einer eigenen Datei, weil sie ein VERTRAG ist und keine
 // Hilfszeile — die Begründung, warum 403 und 5xx ausdrücklich NICHT dazugehören, gehört an genau
@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { importRunStateView } from "../lib/importResultView";
 import { alsAbwesenheit } from "./abwesenheit";
 import { type KoFilter, endpoints } from "./endpoints";
+import type { BeziehungSetzenBody } from "./types";
 
 /** Nachfragetakt für einen laufenden Import — ruhig genug fürs Netz, schnell genug fürs Auge. */
 const IMPORT_RUN_TAKT_MS = 2000;
@@ -14,10 +15,16 @@ const IMPORT_RUN_TAKT_MS = 2000;
 // Screen mit useMutation gebaut (mit Invalidierung der passenden Keys).
 export const useKos = (f?: KoFilter) =>
   useQuery({ queryKey: ["kos", f], queryFn: () => endpoints.ko.list(f) });
-export const useLibrarySearch = (params: KoFilter & { q?: string }) =>
+// JOB 4153: `enabled` kam ADDITIV hinzu und ist standardmässig `true` — jeder bestehende Aufrufer
+// verhält sich Zeichen für Zeichen wie vorher. Die Zielauswahl der Wissensbeziehungen braucht ihn:
+// ohne ihn liefe bei JEDEM Öffnen eines Eintrags eine Suche mit leerem Begriff los und holte den
+// ganzen sichtbaren Bestand, bevor jemand ein Zeichen getippt hat. Ein eigener `useQuery` dort wäre
+// der zweite Ausdruck DESSELBEN Cache-Schlüssels gewesen (LEHREN.md, JOB 3081 R2).
+export const useLibrarySearch = (params: KoFilter & { q?: string }, enabled = true) =>
   useQuery({
     queryKey: ["library", "search", params],
     queryFn: () => endpoints.library.search(params),
+    enabled,
   });
 // FUNKE F1 (nacht24 Paket 6): persönliche Wirkungs-Zähler.
 export const useMyImpact = () =>
@@ -212,6 +219,71 @@ export const useKoNeighbors = (id: string) =>
     queryFn: () => endpoints.ko.neighbors(id),
     enabled: id !== "",
   });
+
+// ================================================================================================
+// JOB 4153 (WG-ANZEIGE) — DIE GESETZTEN FACHBEZIEHUNGEN: EIN LESEWEG, ZWEI SCHREIBWEGE.
+// ================================================================================================
+//
+// WARUM DIE MUTATIONEN HIER STEHEN UND NICHT IM SCHIRM. Der Kommentar oben (Z. 13-14) sagt
+// „Mutationen werden je Screen mit useMutation gebaut" — und das bleibt für Einzelfälle richtig.
+// Diese beiden sind keine Einzelfälle: der Beziehungsbereich hängt am Eintrag (heute in
+// `KnowledgeNeighborhood`), die direkt sichtbare Platzierung in der Eintragsansicht folgt im
+// Integrationsnachfolger WG-LUECKEN, und der Wissensgraph auf Stufe 2 liest dieselben Daten. Ein
+// zweiter, abgeschriebener `useMutation`-Rumpf im nächsten Einbauort wäre der zweite Ausdruck
+// derselben Sache — samt der Gefahr, dass genau dort die Auffrischung des Graphen fehlt. Deshalb:
+// EINE Stelle, die weiß, was nach einem Schreibvorgang nicht mehr stimmt.
+//
+// WAS DIE HOOKS AUSDRÜCKLICH NICHT TUN: kein optimistisches Einfügen. Die Liste kommt nach dem
+// Schreiben wieder vom SERVER — nur so ist die Bestätigung an der Fläche eine Zusage des Servers
+// und nicht eine des Browsers (Auftrag §5 Lieferung 3, R4). Dedup (200 mit der bestehenden Kante)
+// erzeugt damit von selbst keinen zweiten Listeneintrag.
+/** EIN Ausdruck des Schlüssels — Leseweg und Auffrischung nach dem Schreiben nehmen denselben. */
+export const koBeziehungenQueryKey = (koId: string): readonly ["ko-beziehungen", string] => [
+  "ko-beziehungen",
+  koId,
+];
+
+export const useKoBeziehungen = (koId: string) =>
+  useQuery({
+    queryKey: koBeziehungenQueryKey(koId),
+    queryFn: () => endpoints.ko.beziehungen(koId),
+    enabled: koId !== "",
+  });
+
+/**
+ * Nach jedem Schreibvorgang stimmen ZWEI Auskünfte nicht mehr: die Beziehungsliste dieses Eintrags
+ * und der globale Graph (`/api/graph` trägt die kuratierten Kanten mit). Beide werden entwertet;
+ * die Fläche holt sie neu, statt sich selbst etwas auszurechnen.
+ *
+ * `onSettled` UND NICHT `onSuccess` — das ist die Lehre aus BEN1 (Runde 2, gemessen): der Server
+ * kann geschrieben haben, und die ANTWORT geht verloren. Genau dann ist die Liste falsch und der
+ * Mensch braucht sie am dringendsten, denn nur sie kann ihm sagen, was wirklich gesetzt ist. Eine
+ * Auffrischung nur im Erfolgsfall hätte den Bestand ausgerechnet im unklaren Fall alt stehen
+ * lassen. Im eindeutig abgelehnten Fall (403/409) kostet sie eine Abfrage und sagt dasselbe wie
+ * vorher — eine Regel, die immer stimmt, ist besser als zwei, von denen eine trügt.
+ */
+function beziehungenEntwerten(qc: ReturnType<typeof useQueryClient>, koId: string): void {
+  void qc.invalidateQueries({ queryKey: koBeziehungenQueryKey(koId) });
+  void qc.invalidateQueries({ queryKey: ["graph"] });
+}
+
+export const useBeziehungSetzen = (koId: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: BeziehungSetzenBody) => endpoints.ko.beziehungSetzen(koId, body),
+    onSettled: () => beziehungenEntwerten(qc, koId),
+  });
+};
+
+export const useBeziehungWiderrufen = (koId: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ kanteId, version }: { kanteId: string; version: number }) =>
+      endpoints.ko.beziehungWiderrufen(kanteId, { version }),
+    onSettled: () => beziehungenEntwerten(qc, koId),
+  });
+};
+
 export const useNotifications = () =>
   useQuery({ queryKey: ["notifications"], queryFn: endpoints.notifications.list });
 // Audit-P4 (SCRUM-398): Live-Wall („frisch gesichert / hat heute geholfen").

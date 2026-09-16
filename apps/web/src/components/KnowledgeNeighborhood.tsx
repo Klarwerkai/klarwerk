@@ -17,6 +17,23 @@
 // Die Liste unter der Zeichnung ist kein Beiwerk, sondern der zweite Zugang zur selben Auskunft:
 // Tastatur/Screenreader (echte Buttons/Links), Telefon (kleine Fläche), und sie zeigt ALLE
 // geteilten Schlagwörter, wo die Kante nur das erste trägt.
+//
+// ------------------------------------------------------------------------------------------------
+// JOB 4153 (WG-ANZEIGE) — ZWEI HERKÜNFTE, ZWEI BLÖCKE, ZWEI ETIKETTEN.
+// ------------------------------------------------------------------------------------------------
+// Seit diesem Auftrag steht ÜBER der Schlagwort-Zeichnung ein eigener Block mit den ausdrücklich
+// GESETZTEN Fachbeziehungen (`WissensbeziehungenBereich`). Er ist nicht in die Zeichnung gemischt,
+// und er ist auch nicht an ihre Auskunft angehängt: eine geteilte Schlagwortnähe ist keine
+// verantwortete Fachaussage, und wer beides in einer Liste sähe, müsste raten, welche Verbindung
+// ein Mensch verantwortet (durchgängiger Vertrag Nr. 6). Deshalb trägt dieser Block hier das
+// Herkunftsetikett „aus Schlagwörtern abgeleitet" und jede Zeile dort „gesetzt".
+//
+// ALLES ANDERE AN DIESER DATEI BLEIBT, WIE ES WAR: Spur, Rückweg, Mitte, Kanten mit ihrem Warum,
+// die Zähltexte und die Ubiquitätsbegründung. Die Einbindung hier ist ausdrücklich ein
+// ZWISCHENWEG und zählt NICHT als „App-Anzeige geliefert" — dieser Abschnitt hängt zugeklappt
+// hinter der Zeile „Mehr" (`MehrAbschnitte.tsx:1853-1860`, `BibliothekLesen.tsx:89`). Die direkt
+// sichtbare Platzierung in der Eintragsansicht und die Browser-Abnahme gehören zum benannten
+// Integrationsnachfolger WG-LUECKEN (Eingang WISSENSGRAPH-INTEGRATION Nachtrag 2 §2).
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
@@ -24,6 +41,7 @@ import { useKoNeighbors } from "../api/hooks";
 import type { KoStatus, NeighborKo } from "../api/types";
 import { layoutNeighborhood } from "../lib/graphLayout";
 import { koDetailPath } from "../lib/graphNav";
+import { WissensbeziehungenBereich } from "./WissensbeziehungenBereich";
 import { QueryState } from "./ui";
 
 // Dieselbe Status-Farbsprache wie der Stufe-2-Graph (GraphView) und die Legende dort.
@@ -78,6 +96,21 @@ export function KnowledgeNeighborhood({
 
   return (
     <div className="space-y-3" data-testid="knowledge-neighborhood">
+      {/* JOB 4153: die GESETZTEN Fachbeziehungen — ein eigener Block, sprachlich und optisch
+          getrennt, ÜBER der Schlagwort-Zeichnung. Er hängt am gelesenen Beitrag (`koId`) und NICHT
+          an der wandernden Mitte (`centerId`): die Beziehungen und ihre Schreibwege gehören dem
+          Eintrag, den dieser Mensch gerade offen hat — nicht dem Knoten, durch den er sich im Netz
+          gerade durchklickt. */}
+      <WissensbeziehungenBereich koId={koId} />
+      <div className="border-t border-hairline pt-3">
+        {/* Das Herkunftsetikett DIESES Blocks. Es steht hier und nicht an jeder der bis zu acht
+            Kanten: es gilt für alle, und achtmal dasselbe Wort wäre Rauschen. Dass es sich von
+            „gesetzt" unterscheidet, hält
+            `tests/wissensgraph-anzeige/beziehungen-anzeige.test.tsx` (R2) fest. */}
+        <p className="text-[11.5px] text-muted-2" data-testid="nb-herkunft">
+          {t("wb.herkunft.abgeleitet")}
+        </p>
+      </div>
       {trail.length > 0 ? (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <button

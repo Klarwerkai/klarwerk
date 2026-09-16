@@ -18,6 +18,8 @@ import type {
   AssistResult,
   AuditEntry,
   AuditVerifyReport,
+  BeziehungSetzenBody,
+  BeziehungWiderrufBody,
   BusFactorEntry,
   Confidentiality,
   Conflict,
@@ -62,6 +64,8 @@ import type {
   KnowledgeCheckResult,
   KnowledgeObject,
   KoVersionSnapshot,
+  KuratierteKanteAnsicht,
+  KuratierteKanten,
   LearningPath,
   Lesevariante,
   LesevariantenLadeBilanz,
@@ -444,6 +448,23 @@ export const endpoints = {
     evidence: (id: string) => api.get<EvidenceRecord[]>(`/kos/${id}/evidence`),
     // AUFTRAG-mega68: begrenzte Nachbarschaft eines Objekts (Anwendersicht des Wissensnetzes).
     neighbors: (id: string) => api.get<Neighborhood>(`/kos/${id}/neighbors`),
+    // ==========================================================================================
+    // JOB 4153 (WG-ANZEIGE) — DIE AUSDRÜCKLICH GESETZTEN FACHBEZIEHUNGEN.
+    // ==========================================================================================
+    // NICHT dieselbe Auskunft wie `neighbors` darüber: dort zählt das geteilte Schlagwort, hier die
+    // verantwortete Aussage eines Menschen. Deshalb ein eigener Endpunkt und keine Erweiterung —
+    // die beiden Herkünfte dürfen an keiner Stelle zu einer Menge verschmelzen (Vertrag Nr. 6).
+    // Der Vertrag steht wörtlich in `jobs/4151/HINWEIS.md`, Abschnitt „Verbindlicher API-Vertrag".
+    beziehungen: (id: string) => api.get<KuratierteKanten>(`/kos/${id}/beziehungen`),
+    // 201 bei neuer Kante, 200 mit der BESTEHENDEN bei Dedup oder wiederholtem `beitragSchluessel`.
+    // Der Client unterscheidet das nicht: er zeigt in beiden Fällen den Stand des Servers.
+    beziehungSetzen: (id: string, body: BeziehungSetzenBody) =>
+      api.post<KuratierteKanteAnsicht>(`/kos/${id}/beziehungen`, body),
+    // KEIN `DELETE`: der Widerruf ist eine Urheberaussage, nichts wird gelöscht, die Historie
+    // bleibt (Vertrag Nr. 7, `kanten-types.ts:30-36`). Die Kennung ist die der KANTE, nicht die
+    // eines Eintrags — deshalb der eigene Pfad `/beziehungen/:kanteId/widerruf`.
+    beziehungWiderrufen: (kanteId: string, body: BeziehungWiderrufBody) =>
+      api.post<KuratierteKanteAnsicht>(`/beziehungen/${kanteId}/widerruf`, body),
     // SCRUM-395: optionaler Prüfer-Vorschlag direkt beim Einreichen (reviewerIds).
     create: (body: DraftPayload & { reviewerIds?: string[] }) =>
       api.post<KnowledgeObject>("/kos", body),

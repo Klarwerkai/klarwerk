@@ -1844,8 +1844,21 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // Das ist keine Behauptung nebenbei: die Fläche zeigt Titel, Fassungsnummern, Herkunftszeilen
     // und Vergleichsbefunde als TEXT; die Abbildungen eines gebundenen Bausteins nennt sie
     // ausschliesslich beim Namen (`ga.baustein.abbildungen`), sie stellt keine dar.
+    //
+    // JOB 4153 (WG-ANZEIGE) — NACHGEFÜHRT von 391 auf 392: +WissensbeziehungenBereich.tsx.
+    // EIN neues Bauteil, `apps/web/src/components/WissensbeziehungenBereich.tsx` — die Anzeige und
+    // Pflege der ausdrücklich gesetzten Fachbeziehungen eines Wissenseintrags.
+    //
+    // Dieselbe Begründung wie bei den Einträgen darüber, und sie trägt hier genauso: die Auflage
+    // verbietet, dass eine UMSTELLUNG die Erhebung verschiebt — nicht, dass der Quellbaum wächst.
+    // Die zwei Zahlen, an denen Stufe 2 wirklich hängt, bleiben unverändert: `anbieter` 1 und
+    // `traeger` 2. Und das ist keine Behauptung nebenbei, sondern am Bauteil nachgelesen: es zeigt
+    // Titel, Beziehungsart, Richtung, Urheber, Datum und einen Fassungsvermerk — kein Bild, kein
+    // `ANGEBOT_MUSTER`, kein `documentTitle`-Prop. Es berührt keinen Bildweg; es erscheint nur in
+    // der Grundmenge. Die Rebase-Summe (391 aus JOB 4154 + dieses eine) ist an diesem Arbeitsbaum
+    // nach der Konfliktauflösung gemessen, nicht gerechnet.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 391,
+      komponenten: 392,
       anbieter: 1,
       traeger: 2,
     });

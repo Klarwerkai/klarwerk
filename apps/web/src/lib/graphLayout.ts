@@ -1,7 +1,14 @@
 // Reines, DOM-freies, deterministisches Graph-Layout (SCRUM-119 / FR-ANA-03).
 // Kreis-Layout (keine Force-Simulation, keine schwere Lib). Gleiche Eingabe →
 // gleiche Koordinaten (testbar ohne DOM). Knoten/Kanten kommen aus echten Daten.
-import type { Graph, GraphEdge, GraphNode } from "../api/types";
+import type {
+  Graph,
+  GraphEdge,
+  GraphKuratierteKante,
+  GraphNode,
+  KantenArt,
+  KantenRichtung,
+} from "../api/types";
 
 /** Das Rechteck, das eine Beschriftung einnimmt (Koordinaten der viewBox). */
 export interface LabelBox {
@@ -36,6 +43,30 @@ export interface LaidOutEdge {
   y2: number;
 }
 
+/**
+ * JOB 4153 (WG-ANZEIGE) — DIE ZWEITE KANTENMENGE: AUSDRÜCKLICH GESETZTE FACHBEZIEHUNGEN.
+ *
+ * Sie ist eine EIGENE Menge und wird der Schlagwortmenge (`edges`) nicht zugerechnet. Der Grund ist
+ * nicht Ordnungsliebe: eine geteilte Schlagwortnähe ist keine verantwortete Fachaussage, und eine
+ * gemeinsame Liste hätte genau eine Verwechslung erzeugt, die der durchgängige Vertrag Nr. 6
+ * verbietet. `degrees()` weiter unten zählt deshalb weiterhin NUR Schlagwortkanten — die
+ * Anzeigebegrenzung großer Graphen behält damit Knoten für Knoten ihr heutiges Ergebnis.
+ *
+ * Sie trägt `art` und `richtung` mit, damit die Zeichnung an der Kante die ART benennen kann und
+ * nicht ein Schlagwort. Eine Richtungs-SPITZE wird hier bewusst nicht gerechnet: `ungerichtet` und
+ * `symmetrisch` hätten keine, und eine für alle gezeichnete wäre eine erfundene Aussage.
+ */
+export interface LaidOutKuratierteKante {
+  a: string;
+  b: string;
+  art: KantenArt;
+  richtung: KantenRichtung;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}
+
 export interface ConflictPair {
   a: string;
   b: string;
@@ -58,6 +89,10 @@ export interface GraphLayout {
   radius: number;
   nodes: LaidOutNode[];
   edges: LaidOutEdge[];
+  // JOB 4153: leer, wenn die Antwort keine kuratierten Kanten trägt (Server ohne die Erweiterung
+  // aus JOB 4151) ODER wenn keine gesetzt sind. Die Zeichnung darf aus dieser Leere NICHTS
+  // schließen — „keine Kante" heißt nie „geprüft konfliktfrei".
+  kuratierteKanten: LaidOutKuratierteKante[];
   positions: Record<string, { x: number; y: number }>;
   // Schriftgrad der Beschriftung — die Zeichnung nimmt ihn von hier, damit Rechteck und Schrift
   // dasselbe Maß haben.
@@ -406,7 +441,37 @@ export function layoutGraph(graph: Graph, opts: LayoutOptions = {}): GraphLayout
     }
   }
 
-  return { width, height, radius, nodes, edges, positions, labelFontSize: LABEL_GRAD };
+  // JOB 4153: dieselbe Abbildung wie oben, aber eine EIGENE Liste — nur Paare, deren beide Knoten
+  // im (womöglich begrenzten) Bild vorkommen. Das optionale Feld wird hier EINMAL gelesen; fehlt
+  // es, bleibt die Liste leer und die Zeichnung ist Zug um Zug die von vorher.
+  const kuratierteKanten: LaidOutKuratierteKante[] = [];
+  for (const k of graph.kuratierteKanten ?? []) {
+    const pa = positions[k.a];
+    const pb = positions[k.b];
+    if (pa && pb) {
+      kuratierteKanten.push({
+        a: k.a,
+        b: k.b,
+        art: k.art,
+        richtung: k.richtung,
+        x1: pa.x,
+        y1: pa.y,
+        x2: pb.x,
+        y2: pb.y,
+      });
+    }
+  }
+
+  return {
+    width,
+    height,
+    radius,
+    nodes,
+    edges,
+    kuratierteKanten,
+    positions,
+    labelFontSize: LABEL_GRAD,
+  };
 }
 
 // Konfliktkanten auf das Layout abbilden — nur Paare, deren beide Knoten existieren.
@@ -426,6 +491,10 @@ export function layoutConflicts(
 }
 
 // Grad je Knoten (Tag-Kanten), für die ehrliche Anzeige-Begrenzung großer Graphen.
+// JOB 4153, AUSDRÜCKLICH: kuratierte Kanten zählen hier NICHT mit. Täten sie es, bekäme jeder
+// bestehende Graph mit gesetzten Beziehungen einen anderen Ausschnitt — dieselben Daten, ein
+// anderes Bild, ohne dass jemand darum gebeten hätte. Die Begrenzung bleibt damit Zeile für Zeile
+// die von vorher (`tests/wissensgraph-anzeige/graph-kuratierte-kanten.test.tsx`, R10).
 function degrees(graph: Graph): Map<string, number> {
   const deg = new Map<string, number>();
   for (const e of graph.edges) {
@@ -497,5 +566,20 @@ export function limitGraph(graph: Graph, max: number): { graph: Graph; truncated
     .slice(0, max);
   const keptIds = new Set(kept.map((nd) => nd.id));
   const edges: GraphEdge[] = graph.edges.filter((e) => keptIds.has(e.a) && keptIds.has(e.b));
-  return { graph: { nodes: kept, edges }, truncated: true };
+  // JOB 4153: die kuratierte Menge wird MITGETRAGEN und nach derselben Regel beschnitten. Ohne
+  // diese Zeile fiele sie beim Deckel still weg — der Graph zeigte die gesetzten Beziehungen bei
+  // 60 Knoten und bei 61 nicht mehr, ohne ein Wort darüber. Das Feld bleibt ABWESEND, wenn es auch
+  // in der Antwort abwesend war: „nicht geliefert" und „geliefert, aber leer" sind zwei Lagen.
+  const kuratierte = graph.kuratierteKanten;
+  const beschnitten: GraphKuratierteKante[] | undefined = kuratierte
+    ? kuratierte.filter((k) => keptIds.has(k.a) && keptIds.has(k.b))
+    : undefined;
+  return {
+    graph: {
+      nodes: kept,
+      edges,
+      ...(beschnitten ? { kuratierteKanten: beschnitten } : {}),
+    },
+    truncated: true,
+  };
 }

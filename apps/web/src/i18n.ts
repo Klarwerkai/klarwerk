@@ -3231,6 +3231,127 @@ const de = {
   "nb.countTruncated": "Die {{shown}} stärksten von {{total}} Nachbarn",
   "nb.excluded":
     "Ohne Kanten über Allerwelts-Schlagwörter: {{tags}} — mehr als die Hälfte des Bestands trägt sie, die Verbindung sagt nichts.",
+  // ==============================================================================================
+  // JOB 4153 (WG-ANZEIGE) — DIE AUSDRÜCKLICH GESETZTEN FACHBEZIEHUNGEN.
+  // ==============================================================================================
+  // Jeder Satz hier hängt an seiner Voraussetzung. Was NICHT vorkommen darf, steht in
+  // `tests/wissensgraph-anzeige/beziehungen-anzeige.test.tsx` als Verbotsliste: „aktuell geprüft",
+  // „bestätigt", „konfliktfrei" — eine Beziehungsfassung ist keine Inhaltsprüfung (Vertrag Nr. 2).
+  "wb.titel": "Gesetzte Fachbeziehungen",
+  "wb.hinweis":
+    "Von einem Menschen ausdrücklich gesetzt und verantwortet. Nicht aus geteilten Schlagwörtern abgeleitet.",
+  "wb.herkunft.gesetzt": "gesetzt",
+  "wb.herkunft.abgeleitet": "aus Schlagwörtern abgeleitet",
+  "wb.leer": "Für diesen Eintrag sind keine Beziehungen gesetzt.",
+  "wb.leerHinweis":
+    "Das sagt nichts darüber, ob es Widersprüche gibt — es heißt nur, dass niemand eine Beziehung gesetzt hat.",
+  "wb.fehler": "Die gesetzten Beziehungen konnten nicht geladen werden.",
+  // Der Fall „gescheiterte Auffrischung" hat im Haus BEREITS einen Satz und eine Bauform
+  // (`state.staleRefetchFailed` + `AuffrischungHinweis`). Er wird benutzt, nicht abgeschrieben.
+  "wb.standFrisch": "Stand von {{zeit}}",
+  "wb.standAuffrischung": "Stand von {{zeit}} · Auffrischung läuft",
+  "wb.art.gehoert_zu": "gehört zu",
+  "wb.art.ergaenzt": "ergänzt",
+  "wb.art.ersetzt": "ersetzt",
+  "wb.art.widerspricht": "widerspricht",
+  "wb.art.beispiel_fuer": "Beispiel für",
+  "wb.satz.gehoert_zu.quelle": "Dieser Eintrag gehört zu „{{title}}“.",
+  "wb.satz.gehoert_zu.ziel": "„{{title}}“ gehört zu diesem Eintrag.",
+  "wb.satz.ergaenzt.quelle": "Dieser Eintrag ergänzt „{{title}}“.",
+  "wb.satz.ergaenzt.ziel": "„{{title}}“ ergänzt diesen Eintrag.",
+  "wb.satz.ersetzt.quelle": "Dieser Eintrag ersetzt „{{title}}“.",
+  "wb.satz.ersetzt.ziel": "Dieser Eintrag wird ersetzt von „{{title}}“.",
+  "wb.satz.widerspricht.quelle": "Dieser Eintrag widerspricht „{{title}}“.",
+  "wb.satz.widerspricht.ziel": "„{{title}}“ widerspricht diesem Eintrag.",
+  "wb.satz.beispiel_fuer.quelle": "Dieser Eintrag ist ein Beispiel für „{{title}}“.",
+  "wb.satz.beispiel_fuer.ziel": "„{{title}}“ ist ein Beispiel für diesen Eintrag.",
+  // `ungerichtet` und `symmetrisch` tragen keine Richtungsaussage — hier wird keine erfunden.
+  "wb.satz.ohneRichtung": "„{{title}}“ · {{art}} · Beziehung ohne Richtungsangabe",
+  // Gerichtet, aber die Rolle dieses Eintrags steht nicht in der Auskunft: dann steht die
+  // schwächere Aussage da und nicht die starke.
+  "wb.satz.richtungUnbekannt": "„{{title}}“ · {{art}} · Richtung nicht bekannt",
+  "wb.urheber": "gesetzt von {{urheber}}",
+  "wb.gesetztAm": "am {{zeit}}",
+  "wb.gesetztAmUnbekannt": "Zeitpunkt unbekannt",
+  "wb.fassung.geaendert":
+    "Beziehung wurde an Fassung {{beurteiltQuelle}} dieses Eintrags und Fassung {{beurteiltZiel}} des Ziels beurteilt; heute sind es Fassung {{aktuellQuelle}} und Fassung {{aktuellZiel}}.",
+  "wb.fassung.unbekannt": "Bezug zur Fassung unbekannt.",
+  "wb.fassung.unveraendert":
+    "Seit dem Setzen hat sich keine der beiden Fassungen geändert (Fassung {{aktuellQuelle}} und Fassung {{aktuellZiel}}).",
+  "wb.grenze.widerspricht":
+    "„widerspricht“ ist ein verantworteter Vermerk eines Menschen und kein Beweis.",
+  "wb.grenze.ersetzt": "„ersetzt“ ändert keine Freigabe und veröffentlicht keinen Nachfolger.",
+  "wb.widerruf.knopf": "Widerrufen",
+  "wb.widerruf.frage": "Diese Beziehung widerrufen?",
+  "wb.widerruf.frageText":
+    "Die Beziehung bleibt nachvollziehbar erhalten und wird nicht gelöscht. Sie gilt danach als widerrufen.",
+  "wb.widerruf.ja": "Ja, widerrufen",
+  "wb.widerruf.nein": "Abbrechen",
+  "wb.widerruf.laeuft": "Wird gesendet …",
+  "wb.widerruf.erfolg": "Widerrufen. Die Beziehung bleibt nachvollziehbar erhalten.",
+  "wb.setzen.titel": "Beziehung setzen",
+  "wb.setzen.suche": "Ziel suchen",
+  // Ein stehender HINWEIS unter dem Feld, kein `placeholder` (Begründung an der Einbaustelle).
+  "wb.setzen.sucheHinweis": "Suche nach Titel oder einem Wort aus dem Eintrag.",
+  "wb.setzen.sucheLaedt": "Sucht …",
+  "wb.setzen.sucheLeer": "Kein Eintrag gefunden, den du sehen darfst.",
+  "wb.setzen.sucheFehler": "Die Suche konnte nicht ausgeführt werden.",
+  "wb.setzen.zielWaehlen": "„{{title}}“ als Ziel wählen",
+  "wb.setzen.zielGewaehlt": "Ziel: „{{title}}“ · Fassung {{version}}",
+  "wb.setzen.zielAendern": "Anderes Ziel wählen",
+  "wb.setzen.art": "Art der Beziehung",
+  "wb.setzen.richtung": "Richtung",
+  "wb.richtung.gerichtet": "gerichtet — von diesem Eintrag zum Ziel",
+  "wb.richtung.ungerichtet": "ungerichtet — ohne Richtungsangabe",
+  "wb.richtung.symmetrisch": "symmetrisch — in beide Richtungen gleich",
+  "wb.richtungKurz.gerichtet": "gerichtet",
+  "wb.richtungKurz.ungerichtet": "ohne Richtung",
+  "wb.richtungKurz.symmetrisch": "symmetrisch",
+  "wb.setzen.knopf": "Beziehung setzen",
+  "wb.setzen.laeuft": "Wird gesendet …",
+  "wb.setzen.erfolg": "Die Beziehung ist gesetzt — der Server hat sie bestätigt.",
+  "wb.setzen.fassungUnbekannt":
+    "Die Fassung dieses Eintrags ist noch nicht bekannt. Solange sie fehlt, wird nichts gesendet.",
+  "wb.setzen.zielFehlt": "Wähle zuerst ein Ziel.",
+  "wb.fehler.keinRecht":
+    "Du darfst hier nichts setzen, oder einer der beiden Einträge ist für dich nicht sichtbar. Nichts wurde gespeichert, deine Eingabe ist erhalten.",
+  "wb.fehler.standVeraltet":
+    "Der Stand hat sich geändert: dieser Eintrag ist jetzt Fassung {{quelle}}, das Ziel Fassung {{ziel}}. Nichts wurde gesetzt, deine Eingabe ist erhalten.",
+  "wb.fehler.standVeraltetOhneZahlen":
+    "Der Stand hat sich geändert. Der neue Stand wird geholt; nichts wurde gesetzt, deine Eingabe ist erhalten.",
+  "wb.fehler.konflikt":
+    "Die Beziehung wurde zwischenzeitlich verändert. Nichts wurde geschrieben, deine Eingabe ist erhalten.",
+  // Eindeutig abgelehnt (400/401/404): der Server hat geantwortet. Hier DARF „nichts gesetzt" stehen.
+  "wb.fehler.abgelehnt":
+    "Der Server hat den Vorgang abgelehnt. Nichts wurde gesetzt, deine Eingabe ist erhalten.",
+  // UNKLARER AUSGANG — der Satz, der in Runde 2 falsch war. Er behauptet NICHTS über den Bestand:
+  // ein Transportfehler belegt keine Nicht-Speicherung (BEN1, gemessen: der Server hatte gesetzt).
+  // DREI FASSUNGEN, weil auch die Auffrischung ausgehen kann: nur wenn sie ERFOLGREICH zurück war,
+  // darf der Satz auf die Liste zeigen (BEN-R3-F, Runde 3: eine ausgelöste Abfrage ist kein Stand).
+  "wb.fehler.unklar":
+    "Es ist keine Antwort angekommen. Ob die Beziehung gesetzt wurde, ist damit unklar — der Bestand wurde danach neu geladen, die Liste oben zeigt ihn. Deine Eingabe ist erhalten; sendest du sie unverändert erneut, entsteht keine zweite Beziehung.",
+  "wb.fehler.unklarLaedt":
+    "Es ist keine Antwort angekommen. Ob die Beziehung gesetzt wurde, ist damit unklar. Der Bestand wird gerade neu geladen; bis er da ist, zeigt die Liste oben einen älteren Stand. Deine Eingabe ist erhalten; sendest du sie unverändert erneut, entsteht keine zweite Beziehung.",
+  "wb.fehler.unklarNichtGeladen":
+    "Es ist keine Antwort angekommen, und der Bestand konnte nicht neu geladen werden. Ob die Beziehung gesetzt wurde, ist damit unklar; die Liste oben zeigt einen älteren Stand. Deine Eingabe ist erhalten; sendest du sie unverändert erneut, entsteht keine zweite Beziehung.",
+  "wb.widerruf.unklar":
+    "Es ist keine Antwort angekommen. Ob der Widerruf angekommen ist, ist damit unklar — der Bestand wurde danach neu geladen, die Liste oben zeigt ihn.",
+  "wb.widerruf.unklarLaedt":
+    "Es ist keine Antwort angekommen. Ob der Widerruf angekommen ist, ist damit unklar. Der Bestand wird gerade neu geladen; bis er da ist, zeigt die Liste oben einen älteren Stand.",
+  "wb.widerruf.unklarNichtGeladen":
+    "Es ist keine Antwort angekommen, und der Bestand konnte nicht neu geladen werden. Ob der Widerruf angekommen ist, ist damit unklar; die Liste oben zeigt einen älteren Stand.",
+  // Der Server hat geantwortet, aber einen anderen Auftrag bestätigt als den gegebenen (BEN2).
+  "wb.fehler.andereAntwort":
+    "Der Server hat eine andere Beziehung zurückgemeldet als angefordert. Dein Auftrag ist damit NICHT bestätigt. Deine Eingabe ist erhalten; sende erneut, wenn du ihn weiter willst.",
+  // Die Antwort IST der Auftrag — aber sie kommt als widerrufene Beziehung zurück (BEN-R3-W).
+  "wb.fehler.widerrufeneAntwort":
+    "Der Server hat zu diesem Versuch eine widerrufene Beziehung zurückgemeldet. Sie gilt damit nicht als gesetzt. Deine Eingabe ist erhalten; sende erneut, wenn die Beziehung gelten soll.",
+  "wb.widerruf.nichtBestaetigt":
+    "Der Server meldet die Beziehung nach dem Widerruf weiterhin als aktiv. Der Widerruf ist damit nicht bestätigt. Versuche es erneut.",
+  "graph.legendKuratiert": "gesetzte Fachbeziehung",
+  "graph.kuratiertCount_one": "{{count}} gesetzte Fachbeziehung",
+  "graph.kuratiertCount_other": "{{count}} gesetzte Fachbeziehungen",
+  "graph.kuratiertKante": "gesetzt: {{art}} · {{richtung}}",
   "ko.transferTitle": "Autor übergeben",
   "ko.transferOriginal": "Originalautor",
   "ko.author": "Autor",
@@ -9386,6 +9507,106 @@ const en: typeof de = {
   "nb.countTruncated": "The {{shown}} strongest of {{total}} neighbours",
   "nb.excluded":
     "No edges via ubiquitous tags: {{tags}} — more than half of all objects carry them, so the connection says nothing.",
+  // JOB 4153 (WG-ANZEIGE) — the explicitly curated subject-matter relations.
+  "wb.titel": "Curated subject-matter relations",
+  "wb.hinweis": "Explicitly set and owned by a person. Not derived from shared tags.",
+  "wb.herkunft.gesetzt": "curated",
+  "wb.herkunft.abgeleitet": "derived from tags",
+  "wb.leer": "No relations have been set for this entry.",
+  "wb.leerHinweis":
+    "That says nothing about whether contradictions exist — it only means nobody has set a relation.",
+  "wb.fehler": "The curated relations could not be loaded.",
+  "wb.standFrisch": "As of {{zeit}}",
+  "wb.standAuffrischung": "As of {{zeit}} · refreshing",
+  "wb.art.gehoert_zu": "belongs to",
+  "wb.art.ergaenzt": "complements",
+  "wb.art.ersetzt": "replaces",
+  "wb.art.widerspricht": "contradicts",
+  "wb.art.beispiel_fuer": "example of",
+  "wb.satz.gehoert_zu.quelle": "This entry belongs to “{{title}}”.",
+  "wb.satz.gehoert_zu.ziel": "“{{title}}” belongs to this entry.",
+  "wb.satz.ergaenzt.quelle": "This entry complements “{{title}}”.",
+  "wb.satz.ergaenzt.ziel": "“{{title}}” complements this entry.",
+  "wb.satz.ersetzt.quelle": "This entry replaces “{{title}}”.",
+  "wb.satz.ersetzt.ziel": "This entry is replaced by “{{title}}”.",
+  "wb.satz.widerspricht.quelle": "This entry contradicts “{{title}}”.",
+  "wb.satz.widerspricht.ziel": "“{{title}}” contradicts this entry.",
+  "wb.satz.beispiel_fuer.quelle": "This entry is an example of “{{title}}”.",
+  "wb.satz.beispiel_fuer.ziel": "“{{title}}” is an example of this entry.",
+  "wb.satz.ohneRichtung": "“{{title}}” · {{art}} · relation without a direction",
+  "wb.satz.richtungUnbekannt": "“{{title}}” · {{art}} · direction not known",
+  "wb.urheber": "set by {{urheber}}",
+  "wb.gesetztAm": "on {{zeit}}",
+  "wb.gesetztAmUnbekannt": "Time unknown",
+  "wb.fassung.geaendert":
+    "The relation was judged against version {{beurteiltQuelle}} of this entry and version {{beurteiltZiel}} of the target; today they are version {{aktuellQuelle}} and version {{aktuellZiel}}.",
+  "wb.fassung.unbekannt": "Reference to the version is unknown.",
+  "wb.fassung.unveraendert":
+    "Neither version has changed since the relation was set (version {{aktuellQuelle}} and version {{aktuellZiel}}).",
+  "wb.grenze.widerspricht": "“Contradicts” is a note a person is responsible for, not a proof.",
+  "wb.grenze.ersetzt": "“Replaces” changes no approval and publishes no successor.",
+  "wb.widerruf.knopf": "Withdraw",
+  "wb.widerruf.frage": "Withdraw this relation?",
+  "wb.widerruf.frageText":
+    "The relation is kept on the record and is not deleted. It counts as withdrawn afterwards.",
+  "wb.widerruf.ja": "Yes, withdraw",
+  "wb.widerruf.nein": "Cancel",
+  "wb.widerruf.laeuft": "Sending …",
+  "wb.widerruf.erfolg": "Withdrawn. The relation is kept on the record.",
+  "wb.setzen.titel": "Set a relation",
+  "wb.setzen.suche": "Find a target",
+  "wb.setzen.sucheHinweis": "Search by title or by a word from the entry.",
+  "wb.setzen.sucheLaedt": "Searching …",
+  "wb.setzen.sucheLeer": "No entry found that you are allowed to see.",
+  "wb.setzen.sucheFehler": "The search could not be carried out.",
+  "wb.setzen.zielWaehlen": "Choose “{{title}}” as the target",
+  "wb.setzen.zielGewaehlt": "Target: “{{title}}” · version {{version}}",
+  "wb.setzen.zielAendern": "Choose a different target",
+  "wb.setzen.art": "Kind of relation",
+  "wb.setzen.richtung": "Direction",
+  "wb.richtung.gerichtet": "directed — from this entry to the target",
+  "wb.richtung.ungerichtet": "undirected — without a direction",
+  "wb.richtung.symmetrisch": "symmetric — the same in both directions",
+  "wb.richtungKurz.gerichtet": "directed",
+  "wb.richtungKurz.ungerichtet": "no direction",
+  "wb.richtungKurz.symmetrisch": "symmetric",
+  "wb.setzen.knopf": "Set relation",
+  "wb.setzen.laeuft": "Sending …",
+  "wb.setzen.erfolg": "The relation is set — the server confirmed it.",
+  "wb.setzen.fassungUnbekannt":
+    "The version of this entry is not known yet. Nothing is sent while it is missing.",
+  "wb.setzen.zielFehlt": "Choose a target first.",
+  "wb.fehler.keinRecht":
+    "You may not set anything here, or one of the two entries is not visible to you. Nothing was saved, your input is kept.",
+  "wb.fehler.standVeraltet":
+    "The state has changed: this entry is now version {{quelle}}, the target version {{ziel}}. Nothing was set, your input is kept.",
+  "wb.fehler.standVeraltetOhneZahlen":
+    "The state has changed. The new state is being fetched; nothing was set, your input is kept.",
+  "wb.fehler.konflikt":
+    "The relation was changed in the meantime. Nothing was written, your input is kept.",
+  "wb.fehler.abgelehnt": "The server rejected the operation. Nothing was set, your input is kept.",
+  "wb.fehler.unklar":
+    "No answer arrived. Whether the relation was set is therefore unclear — the list was reloaded afterwards and shows that state. Your input is kept; if you send it again unchanged, no second relation is created.",
+  "wb.fehler.unklarLaedt":
+    "No answer arrived. Whether the relation was set is therefore unclear. The list is being reloaded; until it is here, the list above shows an older state. Your input is kept; if you send it again unchanged, no second relation is created.",
+  "wb.fehler.unklarNichtGeladen":
+    "No answer arrived, and the list could not be reloaded. Whether the relation was set is therefore unclear; the list above shows an older state. Your input is kept; if you send it again unchanged, no second relation is created.",
+  "wb.widerruf.unklar":
+    "No answer arrived. Whether the withdrawal arrived is therefore unclear — the list was reloaded afterwards and shows that state.",
+  "wb.widerruf.unklarLaedt":
+    "No answer arrived. Whether the withdrawal arrived is therefore unclear. The list is being reloaded; until it is here, the list above shows an older state.",
+  "wb.widerruf.unklarNichtGeladen":
+    "No answer arrived, and the list could not be reloaded. Whether the withdrawal arrived is therefore unclear; the list above shows an older state.",
+  "wb.fehler.andereAntwort":
+    "The server returned a different relation than the one requested. Your request is therefore NOT confirmed. Your input is kept; send it again if you still want it.",
+  "wb.fehler.widerrufeneAntwort":
+    "For this attempt the server returned a withdrawn relation. It therefore does not count as set. Your input is kept; send it again if the relation should apply.",
+  "wb.widerruf.nichtBestaetigt":
+    "After the withdrawal the server still reports the relation as active. The withdrawal is therefore not confirmed. Please try again.",
+  "graph.legendKuratiert": "curated subject-matter relation",
+  "graph.kuratiertCount_one": "{{count}} curated subject-matter relation",
+  "graph.kuratiertCount_other": "{{count}} curated subject-matter relations",
+  "graph.kuratiertKante": "curated: {{art}} · {{richtung}}",
   "ko.transferTitle": "Transfer author",
   "ko.transferOriginal": "Original author",
   "ko.author": "Author",
@@ -14694,6 +14915,109 @@ const nl: typeof de = {
   "nb.countTruncated": "De {{shown}} sterkste van {{total}} buren",
   "nb.excluded":
     "Geen verbindingen via alledaagse tags: {{tags}} — meer dan de helft van alle objecten draagt ze, dus de verbinding zegt niets.",
+  // JOB 4153 (WG-ANZEIGE) — de uitdrukkelijk gezette vakrelaties.
+  "wb.titel": "Gezette vakrelaties",
+  "wb.hinweis":
+    "Uitdrukkelijk gezet en verantwoord door een mens. Niet afgeleid uit gedeelde tags.",
+  "wb.herkunft.gesetzt": "gezet",
+  "wb.herkunft.abgeleitet": "afgeleid uit tags",
+  "wb.leer": "Voor dit item zijn geen relaties gezet.",
+  "wb.leerHinweis":
+    "Dat zegt niets over de vraag of er tegenspraak bestaat — het betekent alleen dat niemand een relatie heeft gezet.",
+  "wb.fehler": "De gezette relaties konden niet worden geladen.",
+  "wb.standFrisch": "Stand van {{zeit}}",
+  "wb.standAuffrischung": "Stand van {{zeit}} · verversen loopt",
+  "wb.art.gehoert_zu": "hoort bij",
+  "wb.art.ergaenzt": "vult aan",
+  "wb.art.ersetzt": "vervangt",
+  "wb.art.widerspricht": "spreekt tegen",
+  "wb.art.beispiel_fuer": "voorbeeld van",
+  "wb.satz.gehoert_zu.quelle": "Dit item hoort bij „{{title}}”.",
+  "wb.satz.gehoert_zu.ziel": "„{{title}}” hoort bij dit item.",
+  "wb.satz.ergaenzt.quelle": "Dit item vult „{{title}}” aan.",
+  "wb.satz.ergaenzt.ziel": "„{{title}}” vult dit item aan.",
+  "wb.satz.ersetzt.quelle": "Dit item vervangt „{{title}}”.",
+  "wb.satz.ersetzt.ziel": "Dit item wordt vervangen door „{{title}}”.",
+  "wb.satz.widerspricht.quelle": "Dit item spreekt „{{title}}” tegen.",
+  "wb.satz.widerspricht.ziel": "„{{title}}” spreekt dit item tegen.",
+  "wb.satz.beispiel_fuer.quelle": "Dit item is een voorbeeld van „{{title}}”.",
+  "wb.satz.beispiel_fuer.ziel": "„{{title}}” is een voorbeeld van dit item.",
+  "wb.satz.ohneRichtung": "„{{title}}” · {{art}} · relatie zonder richting",
+  "wb.satz.richtungUnbekannt": "„{{title}}” · {{art}} · richting niet bekend",
+  "wb.urheber": "gezet door {{urheber}}",
+  "wb.gesetztAm": "op {{zeit}}",
+  "wb.gesetztAmUnbekannt": "Tijdstip onbekend",
+  "wb.fassung.geaendert":
+    "De relatie is beoordeeld bij versie {{beurteiltQuelle}} van dit item en versie {{beurteiltZiel}} van het doel; vandaag zijn het versie {{aktuellQuelle}} en versie {{aktuellZiel}}.",
+  "wb.fassung.unbekannt": "Verband met de versie onbekend.",
+  "wb.fassung.unveraendert":
+    "Sinds het zetten is geen van beide versies gewijzigd (versie {{aktuellQuelle}} en versie {{aktuellZiel}}).",
+  "wb.grenze.widerspricht":
+    "„Spreekt tegen” is een verantwoorde aantekening van een mens en geen bewijs.",
+  "wb.grenze.ersetzt": "„Vervangt” wijzigt geen vrijgave en publiceert geen opvolger.",
+  "wb.widerruf.knopf": "Intrekken",
+  "wb.widerruf.frage": "Deze relatie intrekken?",
+  "wb.widerruf.frageText":
+    "De relatie blijft navolgbaar bewaard en wordt niet verwijderd. Zij geldt daarna als ingetrokken.",
+  "wb.widerruf.ja": "Ja, intrekken",
+  "wb.widerruf.nein": "Annuleren",
+  "wb.widerruf.laeuft": "Wordt verzonden …",
+  "wb.widerruf.erfolg": "Ingetrokken. De relatie blijft navolgbaar bewaard.",
+  "wb.setzen.titel": "Relatie zetten",
+  "wb.setzen.suche": "Doel zoeken",
+  "wb.setzen.sucheHinweis": "Zoek op titel of op een woord uit het item.",
+  "wb.setzen.sucheLaedt": "Zoekt …",
+  "wb.setzen.sucheLeer": "Geen item gevonden dat je mag zien.",
+  "wb.setzen.sucheFehler": "De zoekopdracht kon niet worden uitgevoerd.",
+  "wb.setzen.zielWaehlen": "„{{title}}” als doel kiezen",
+  "wb.setzen.zielGewaehlt": "Doel: „{{title}}” · versie {{version}}",
+  "wb.setzen.zielAendern": "Een ander doel kiezen",
+  "wb.setzen.art": "Soort relatie",
+  "wb.setzen.richtung": "Richting",
+  "wb.richtung.gerichtet": "gericht — van dit item naar het doel",
+  "wb.richtung.ungerichtet": "ongericht — zonder richting",
+  "wb.richtung.symmetrisch": "symmetrisch — in beide richtingen gelijk",
+  "wb.richtungKurz.gerichtet": "gericht",
+  "wb.richtungKurz.ungerichtet": "zonder richting",
+  "wb.richtungKurz.symmetrisch": "symmetrisch",
+  "wb.setzen.knopf": "Relatie zetten",
+  "wb.setzen.laeuft": "Wordt verzonden …",
+  "wb.setzen.erfolg": "De relatie is gezet — de server heeft haar bevestigd.",
+  "wb.setzen.fassungUnbekannt":
+    "De versie van dit item is nog niet bekend. Zolang zij ontbreekt wordt er niets verzonden.",
+  "wb.setzen.zielFehlt": "Kies eerst een doel.",
+  "wb.fehler.keinRecht":
+    "Je mag hier niets zetten, of een van beide items is voor jou niet zichtbaar. Er is niets opgeslagen, je invoer blijft bewaard.",
+  "wb.fehler.standVeraltet":
+    "De stand is gewijzigd: dit item is nu versie {{quelle}}, het doel versie {{ziel}}. Er is niets gezet, je invoer blijft bewaard.",
+  "wb.fehler.standVeraltetOhneZahlen":
+    "De stand is gewijzigd. De nieuwe stand wordt opgehaald; er is niets gezet, je invoer blijft bewaard.",
+  "wb.fehler.konflikt":
+    "De relatie is intussen gewijzigd. Er is niets geschreven, je invoer blijft bewaard.",
+  "wb.fehler.abgelehnt":
+    "De server heeft de handeling afgewezen. Er is niets gezet, je invoer blijft bewaard.",
+  "wb.fehler.unklar":
+    "Er is geen antwoord aangekomen. Of de relatie is gezet, is daarmee onduidelijk — de lijst is daarna opnieuw geladen en toont die stand. Je invoer blijft bewaard; verzend je die ongewijzigd opnieuw, dan ontstaat er geen tweede relatie.",
+  "wb.fehler.unklarLaedt":
+    "Er is geen antwoord aangekomen. Of de relatie is gezet, is daarmee onduidelijk. De lijst wordt nu opnieuw geladen; tot zij er is, toont de lijst hierboven een oudere stand. Je invoer blijft bewaard; verzend je die ongewijzigd opnieuw, dan ontstaat er geen tweede relatie.",
+  "wb.fehler.unklarNichtGeladen":
+    "Er is geen antwoord aangekomen, en de lijst kon niet opnieuw worden geladen. Of de relatie is gezet, is daarmee onduidelijk; de lijst hierboven toont een oudere stand. Je invoer blijft bewaard; verzend je die ongewijzigd opnieuw, dan ontstaat er geen tweede relatie.",
+  "wb.widerruf.unklar":
+    "Er is geen antwoord aangekomen. Of de intrekking is aangekomen, is daarmee onduidelijk — de lijst is daarna opnieuw geladen en toont die stand.",
+  "wb.widerruf.unklarLaedt":
+    "Er is geen antwoord aangekomen. Of de intrekking is aangekomen, is daarmee onduidelijk. De lijst wordt nu opnieuw geladen; tot zij er is, toont de lijst hierboven een oudere stand.",
+  "wb.widerruf.unklarNichtGeladen":
+    "Er is geen antwoord aangekomen, en de lijst kon niet opnieuw worden geladen. Of de intrekking is aangekomen, is daarmee onduidelijk; de lijst hierboven toont een oudere stand.",
+  "wb.fehler.andereAntwort":
+    "De server heeft een andere relatie teruggemeld dan gevraagd. Je opdracht is daarmee NIET bevestigd. Je invoer blijft bewaard; verzend opnieuw als je haar nog wilt.",
+  "wb.fehler.widerrufeneAntwort":
+    "De server heeft bij deze poging een ingetrokken relatie teruggemeld. Zij geldt daarmee niet als gezet. Je invoer blijft bewaard; verzend opnieuw als de relatie moet gelden.",
+  "wb.widerruf.nichtBestaetigt":
+    "De server meldt de relatie na de intrekking nog steeds als actief. De intrekking is daarmee niet bevestigd. Probeer het opnieuw.",
+  "graph.legendKuratiert": "gezette vakrelatie",
+  "graph.kuratiertCount_one": "{{count}} gezette vakrelatie",
+  "graph.kuratiertCount_other": "{{count}} gezette vakrelaties",
+  "graph.kuratiertKante": "gezet: {{art}} · {{richtung}}",
   "ko.transferTitle": "Auteur overdragen",
   "ko.transferOriginal": "Oorspronkelijke auteur",
   "ko.author": "Auteur",

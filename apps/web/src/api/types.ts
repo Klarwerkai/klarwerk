@@ -869,6 +869,144 @@ export interface GraphEdge {
 export interface Graph {
   nodes: GraphNode[];
   edges: GraphEdge[];
+  /**
+   * JOB 4153 (WG-ANZEIGE) — DIE KURATIERTEN KANTEN DERSELBEN ANTWORT, UND WARUM SIE OPTIONAL SIND.
+   *
+   * Die gesetzten Fachbeziehungen kommen aus DERSELBEN `/api/graph`-Antwort und nicht aus einer
+   * Abfrage je Knoten (Vertrag WISSENSGRAPH-INTEGRATION, Nachtrag 2 §3: „mit EINER Mengenabfrage,
+   * keine Einzelabfragen je Eintrag aus der UI"). Sie stehen in einer EIGENEN Menge und nicht in
+   * `edges`: eine geteilte Schlagwortnähe ist keine verantwortete Fachaussage, und eine gemeinsame
+   * Liste wäre genau die Verwechslung, die Vertrag Nr. 6 verbietet.
+   *
+   * OPTIONAL, weil ein Server ohne die Erweiterung aus JOB 4151 das Feld nicht sendet. Dann
+   * zeichnet die Seite wie bisher — und behauptet ausdrücklich NICHT „keine Beziehungen vorhanden"
+   * (`Stufe2.tsx`, GraphView). Ein Pflichtfeld hier wäre ein Laufzeitfehler an dieser Stelle.
+   */
+  kuratierteKanten?: GraphKuratierteKante[];
+}
+
+// ================================================================================================
+// JOB 4153 (WG-ANZEIGE) — DER CLIENT-VERTRAG DER KURATIERTEN WISSENSBEZIEHUNGEN.
+// ================================================================================================
+//
+// Die Form ist die des Servers (`services/knowledge-object/src/kanten-types.ts`,
+// `kanten-service.ts:149-175`) samt der additiven Felder des verbindlichen API-Vertrags
+// (Steuerung, 15.09. 17:30; `jobs/4151/HINWEIS.md`, Abschnitt „Verbindlicher API-Vertrag").
+// Sie ist hier NACHGEZEICHNET und nicht importiert — dieselbe Begründung wie bei der Themenkarte
+// weiter unten: `apps/web` darf die Modulgrenze von `services/**` nicht überschreiten.
+//
+// WAS DIESE TYPEN NICHT BEHAUPTEN:
+//   · `version` ist eine reine Konfliktnummer (CAS) für Widerruf und Änderung. Sie ist KEINE
+//     Inhaltsaussage und wird dem Menschen nie als „geprüft" angeboten (Vertrag Nr. 2, G6).
+//   · `beurteilt: null` heißt „der beurteilte Inhaltsstand ist unbekannt" und wird NIE rückwirkend
+//     mit der heutigen Fassung aufgefüllt. Genau dafür ist das Feld nullbar und nicht optional.
+//   · Ein unsichtbares oder widerrufenes Gegenstück erscheint gar nicht und wird auch nicht
+//     gezählt (`total` nach dem Trimm) — die Abwesenheit einer Kante ist keine Existenzauskunft.
+
+/** Die fachliche Beziehungsart. Geschlossen wie serverseitig — eine freie Zeichenkette wäre kein Vertrag. */
+export type KantenArt = "gehoert_zu" | "ergaenzt" | "ersetzt" | "widerspricht" | "beispiel_fuer";
+
+/**
+ * `gerichtet` behält die Reihenfolge der Endpunkte (A ersetzt B ist nicht B ersetzt A).
+ * `ungerichtet` und `symmetrisch` tragen KEINE Richtungsaussage — die Fläche darf für sie keine
+ * erfinden (`kanten-types.ts:23-28`).
+ */
+export type KantenRichtung = "gerichtet" | "ungerichtet" | "symmetrisch";
+
+/** `widerrufen` ist eine Urheberaussage, keine Löschung (`kanten-types.ts:30-36`). */
+export type KantenStatus = "aktiv" | "widerrufen";
+
+/** Die Rolle des ANGEFRAGTEN Eintrags. Nur bei `gerichtet` gesetzt; sonst gibt es keine Aussage. */
+export type KantenRolle = "quelle" | "ziel";
+
+/** Der aufgelöste Gegenendpunkt — nur, was die Fläche zum Anzeigen und Verlinken braucht. */
+export interface BeziehungGegenstueck {
+  id: string;
+  title: string;
+  status: KoStatus;
+}
+
+/** Die KO-Fassungen, die der Urheber beim Setzen gesehen hat. Fehlen sie, ist der Bezug unbekannt. */
+export interface BeziehungBeurteilt {
+  quelleVersion: number;
+  zielVersion: number;
+  quelleFassungAm: string;
+  zielFassungAm: string;
+}
+
+/** Die heutigen Fassungen beider Endpunkte — bei jedem Lesen frisch, nicht gespeichert. */
+export interface BeziehungAktuell {
+  quelleVersion: number;
+  zielVersion: number;
+}
+
+/**
+ * `geaendert`, sobald eine der heutigen Fassungen von der beurteilten abweicht; `unbekannt`, wenn
+ * die beurteilte Fassung fehlt. Die Fläche macht daraus einen sichtbaren Vermerk — niemals ein
+ * „aktuell geprüft".
+ */
+export type BeziehungAbweichung = "unveraendert" | "geaendert" | "unbekannt";
+
+export interface KuratierteKanteAnsicht {
+  id: string;
+  art: KantenArt;
+  richtung: KantenRichtung;
+  rolle?: KantenRolle;
+  gegenstueck: BeziehungGegenstueck;
+  /** Der Mensch, der sie gesetzt hat. Nie ein Automat. */
+  urheber: string;
+  gesetztAm: string;
+  /** Nur in der Antwort des Widerrufs belegt — deshalb optional und nicht geraten. */
+  geaendertAm?: string;
+  status: KantenStatus;
+  /** Reine CAS-Nummer für Widerruf/Änderung. Keine Inhaltsaussage. */
+  version: number;
+  herkunft: "kuratiert";
+  beurteilt: BeziehungBeurteilt | null;
+  aktuell: BeziehungAktuell;
+  abweichung: BeziehungAbweichung;
+}
+
+export interface KuratierteKanten {
+  koId: string;
+  kanten: KuratierteKanteAnsicht[];
+  /** Zählt NACH dem Trimm — es gibt keine zweite Zahl, aus der sich der Trimm errechnen ließe. */
+  total: number;
+}
+
+/**
+ * Der Rumpf von `POST /api/kos/:id/beziehungen`.
+ *
+ * `beitragSchluessel` ist die im Formular EINMAL erzeugte Kennung dieses Vorgangs: die Wiederholung
+ * einer unklar ausgegangenen Übertragung bleibt damit idempotent (G3). `gesehen` trägt die
+ * Fassungen, die der Mensch tatsächlich vor sich hatte — weichen sie vom Bestand ab, antwortet der
+ * Server `409 stand_veraltet` und setzt NICHTS still.
+ */
+export interface BeziehungSetzenBody {
+  zielId: string;
+  art: KantenArt;
+  richtung: KantenRichtung;
+  beitragSchluessel: string;
+  gesehen: BeziehungAktuell;
+}
+
+/** Der Rumpf des Widerrufs. `version` ist der Compare-and-Set gegen die gelesene Kante. */
+export interface BeziehungWiderrufBody {
+  version: number;
+}
+
+/**
+ * Eine kuratierte Kante, wie `/api/graph` sie MITLIEFERT: nur `aktiv`, unter demselben
+ * Sichtbarkeitsfilter und derselben Antwortbegrenzung wie die Knoten. `herkunft` steht an der Kante
+ * selbst, damit eine weitergegebene Kante ihre Herkunft nicht verliert.
+ */
+export interface GraphKuratierteKante {
+  a: string;
+  b: string;
+  art: KantenArt;
+  richtung: KantenRichtung;
+  status: "aktiv";
+  herkunft: "kuratiert";
 }
 
 // ================================================================================================

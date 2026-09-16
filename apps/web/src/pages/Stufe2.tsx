@@ -59,6 +59,9 @@ import { KoSummaryDisclosure } from "../components/KoSummaryDisclosure";
 import { LesevarianteHinweis } from "../components/LesevarianteHinweis";
 // JOB 3288: derselbe Allowlist-Renderweg wie die Bibliothek — kein zweiter HTML-Sink.
 import { SanitizedHtml } from "../components/SanitizedHtml";
+// JOB 4153: Art und Richtung in Klartext kommen von DER Stelle, an der die Textdarstellung sie
+// auch nimmt — Bild und Liste dürfen dieselbe Kante nicht verschieden benennen.
+import { beziehungsartText, beziehungsrichtungKurz } from "../components/WissensbeziehungenBereich";
 // F-0140 / K-20: derselbe Zustandsbanner, den der Ergebnis-View schon benutzt — kein zweiter.
 import { RunStateBanner } from "../components/confluence-import/RunStateBanner";
 // JOB 4086: der SharePoint-/OneDrive-Weg. Er haengt an DIESER Seite und nicht an einem eigenen
@@ -2049,6 +2052,30 @@ function LegendDot({ colorClass, label }: { colorClass: string; label: string })
 
 // SCRUM-119 / FR-ANA-03: echter SVG-Wissensgraph aus Live-Daten. Tag-Kanten aus
 // /api/graph, Knotenstatus per FE-Join, Konfliktkanten aus echten Conflict-Daten.
+//
+// ==================================================================================================
+// JOB 4153 (WG-ANZEIGE) — DIE ZWEITE KANTENMENGE: GESETZTE FACHBEZIEHUNGEN.
+// ==================================================================================================
+//
+// Sie kommt aus DERSELBEN `/api/graph`-Antwort (Nachtrag 2 §3: eine Mengenabfrage, keine
+// Einzelabfrage je Knoten) und wird optisch UND sprachlich von den grauen Schlagwortkanten
+// unterschieden: eigene Linienführung, eigener Legendeneintrag, eigene Beschriftung (die ART, nicht
+// ein Schlagwort) und eine EIGENE Zahl im Zählsatz. Eine einzige Summe wäre genau die Verwechslung,
+// die der durchgängige Vertrag Nr. 6 verbietet.
+//
+// WARUM DIE BESCHRIFTUNG IM `<title>` STEHT UND NICHT ALS SICHTBARER TEXT AN DER LINIE: die
+// Beschriftungsgeometrie dieses Bildes ist gerechnet und überlappungsfrei (UX-07, JOB 3103,
+// `lib/graphLayout.ts`) — und sie ist es für die KNOTEN. Eine zweite, ungerechnete Textmenge an
+// beliebigen Kantenmitten hätte diese Zusage aufgehoben, und `tests/wissensgraph-lesbarkeit/
+// graph-treffer-chromium.test.tsx` misst sie an echten Textrechtecken. Die Tag-Kanten tragen ihr
+// Warum seit SCRUM-119 aus demselben Grund im `<title>`; die kuratierte Kante folgt dieser
+// bestehenden Bauform und erfindet keine zweite. Was ein sehender Mensch ohne Zeigergerät braucht,
+// steht als Text daneben: Legende und Zählsatz benennen die Menge ausdrücklich, und die vollständige
+// Textdarstellung je Eintrag ist `WissensbeziehungenBereich`.
+//
+// WAS DIE SEITE NICHT TUT: aus einer FEHLENDEN Menge etwas schließen. Sendet der Server das Feld
+// nicht (Stand ohne die Erweiterung aus JOB 4151), zeichnet sie Knoten für Knoten wie vorher und
+// sagt kein Wort über Beziehungen — nicht „keine vorhanden", nicht „geprüft konfliktfrei".
 export function GraphView(): JSX.Element {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -2096,6 +2123,13 @@ export function GraphView(): JSX.Element {
             <Card>
               <p className="mb-2 text-[13px] text-muted">
                 {t("s2.graphCount", { nodes: raw.nodes.length, edges: raw.edges.length })}
+                {/* JOB 4153: eine EIGENE Zahl, gezählt an der ungetrimmten Antwort wie die zwei
+                    davor. Sie erscheint nur, wenn der Server die Menge auch geschickt hat — ein
+                    „0 gesetzte Fachbeziehungen" ohne gelieferte Menge wäre eine Aussage über
+                    Daten, die niemand gelesen hat. */}
+                {raw.kuratierteKanten
+                  ? ` · ${t("graph.kuratiertCount", { count: raw.kuratierteKanten.length })}`
+                  : ""}
                 {truncated ? ` · ${t("graph.truncated", { n: MAX_GRAPH_NODES })}` : ""}
                 {` · ${t("graph.clickHint")}`}
               </p>
@@ -2119,6 +2153,33 @@ export function GraphView(): JSX.Element {
                     strokeWidth={1}
                   >
                     <title>{e.via}</title>
+                  </line>
+                ))}
+                {/* JOB 4153: gesetzte Fachbeziehungen — eigene Linienführung (dicker, in der
+                    Akzentfarbe, lang gestrichelt), damit sie mit keiner der beiden vorhandenen
+                    Kantenarten zu verwechseln sind: die Schlagwortkante ist dünn und grau, die
+                    Konfliktkante rot und kurz gestrichelt. `data-herkunft` macht die Herkunft auch
+                    im DOM prüfbar, ohne dass sich jemand auf eine Farbe verlassen muss. */}
+                {layout.kuratierteKanten.map((k) => (
+                  <line
+                    key={`kuratiert-${k.a}-${k.art}-${k.b}`}
+                    x1={k.x1}
+                    y1={k.y1}
+                    x2={k.x2}
+                    y2={k.y2}
+                    className="text-ai"
+                    stroke="currentColor"
+                    strokeWidth={2.2}
+                    strokeDasharray="9 3"
+                    data-herkunft="kuratiert"
+                    data-testid="graph-kante-kuratiert"
+                  >
+                    <title>
+                      {t("graph.kuratiertKante", {
+                        art: beziehungsartText(k.art, t),
+                        richtung: beziehungsrichtungKurz(k.richtung, t),
+                      })}
+                    </title>
                   </line>
                 ))}
                 {/* Konfliktkanten (rot, gestrichelt) */}
@@ -2245,6 +2306,11 @@ export function GraphView(): JSX.Element {
                   <span className="h-0 w-5 border-t-2 border-dashed border-trust-crit-fill" />
                   {t("graph.legendConflict")}
                 </span>
+                {/* JOB 4153: der eigene Legendeneintrag der gesetzten Fachbeziehung — über das
+                    vorhandene `LegendDot`, damit hier keine zweite Legendenbauform entsteht. Er
+                    steht IMMER, auch wenn im gezeigten Ausschnitt keine solche Kante liegt: die
+                    Legende erklärt die Sprache des Bildes und ist keine Bestandsaussage. */}
+                <LegendDot colorClass="bg-ai" label={t("graph.legendKuratiert")} />
               </div>
             </Card>
           );
