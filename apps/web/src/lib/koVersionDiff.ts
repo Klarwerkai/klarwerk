@@ -123,3 +123,97 @@ export function diffForVersion(
 ): KoVersionDiff | undefined {
   return versionDiffs(snapshots).find((diff) => diff.toVersion === version);
 }
+
+// ==================================================================================================
+// JOB 4213 · WIKI-NACHVOLLZIEHEN — ZWEI FREI GEWÄHLTE FASSUNGEN, FELD FÜR FELD.
+// ==================================================================================================
+//
+// WAS BIS HIERHER FEHLTE: `versionDiffs` vergleicht jede Fassung ausschliesslich mit ihrem
+// unmittelbaren Vorgänger (`const prev = asc[index - 1]`, oben), und das Ergebnis ist eine Liste von
+// FELDNAMEN. Wer wissen wollte, was sich zwischen v1 und v3 geändert hat, musste zwei Zeilen im Kopf
+// zusammenrechnen — und was in einem Feld anders ist, stand nirgends.
+//
+// DIE VORHANDENE REGEL WIRD BENUTZT, NICHT ABGESCHRIEBEN: ob ein Feld geändert ist, entscheidet
+// weiterhin ALLEIN `changedFields` — samt der Berichtsregel `berichtsSchluessel` mit ihrer
+// Block/Inline-Unterscheidung. Eine zweite Vergleichsregel neben dieser wäre genau die zweite
+// Wahrheit, die bei der nächsten Änderung auseinanderläuft; die eingeordneten Fälle C/D/F
+// (`tests/ux28-fassungen/berichtsaenderung-ist-eine-aenderung.test.ts`) gelten hier deshalb
+// unverändert weiter und werden in `tests/wiki-nachvollziehen` an DIESEM Weg noch einmal gemessen.
+//
+// `versionDiffs` UND `diffForVersion` BLEIBEN. Sie tragen die Änderungszeile der Fassungskarte
+// (`MehrAbschnitte.tsx`) und werden nicht ersetzt, sondern ergänzt.
+
+/** Ein Feld, in dem sich zwei Fassungen unterscheiden — mit BEIDEN Werten, nicht nur dem Namen. */
+export interface KoVersionFeldGegenueber {
+  feld: KoVersionDiffField;
+  /** Der Wert in der ÄLTEREN der beiden Fassungen. */
+  alt: string;
+  /** Der Wert in der JÜNGEREN der beiden Fassungen. */
+  neu: string;
+}
+
+export interface KoVersionPaarDiff {
+  /** Die ältere der beiden gewählten Fassungen. */
+  von: number;
+  /** Die jüngere der beiden gewählten Fassungen. */
+  bis: number;
+  felder: KoVersionFeldGegenueber[];
+}
+
+/**
+ * Der GESPEICHERTE Wert eines Feldes, so wie er in der Fassung steht.
+ *
+ * KEINE ÜBERSETZUNG UND KEINE KÜRZUNG hier: `type` und `status` kommen als SCHLÜSSEL zurück
+ * (`technik`, `validiert`), weil diese Datei die Sprache des Lesers nicht kennt — die Fläche setzt
+ * sie über dieselben Kataloge ein, die die Fassungskarte schon benutzt (`ktype.*`, `status.*`).
+ * `bodyHtml` kommt als ROH-HTML zurück und wird ausschliesslich über `SanitizedHtml` gezeichnet.
+ *
+ * FEHLEND, `null` UND LEER FALLEN AUF `""` ZUSAMMEN — dieselbe Abbildung wie in `norm` oben: „an
+ * dieser Fassung steht dazu nichts" ist EINE Aussage, nicht drei.
+ */
+function feldWert(ko: KnowledgeObject, feld: KoVersionDiffField): string {
+  const wert = ko[feld];
+  if (Array.isArray(wert)) {
+    return wert
+      .map((v) => String(v).trim())
+      .filter(Boolean)
+      .join(" · ");
+  }
+  return String(wert ?? "");
+}
+
+/**
+ * Zwei FREI gewählte Fassungen gegenüberstellen — nicht nur Nachbarn.
+ *
+ * `null`, WENN EINE DER BEIDEN FASSUNGEN NICHT IM BESTAND IST. Das ist die schwächere und damit die
+ * wahre Aussage: eine leere Feldliste hiesse „zwischen diesen beiden hat sich nichts geändert", und
+ * das wäre eine Tatsachenbehauptung über einen Stand, der gar nicht vorliegt (REGELN Punkt 7).
+ *
+ * DIE REIHENFOLGE DER EINGABE IST EGAL: gegenübergestellt wird immer ältere gegen jüngere Fassung,
+ * damit „alt" und „neu" halten, was sie sagen. Zwei gleiche Versionen ergeben eine leere Feldliste —
+ * das ist dann keine Verneinung, sondern dieselbe Fassung.
+ */
+export function paarDiff(
+  snapshots: readonly KoVersionSnapshot[],
+  a: number,
+  b: number,
+): KoVersionPaarDiff | null {
+  const finde = (version: number): KoVersionSnapshot | undefined =>
+    snapshots.find((s) => s.version === version);
+  const von = Math.min(a, b);
+  const bis = Math.max(a, b);
+  const aelter = finde(von);
+  const juenger = finde(bis);
+  if (!aelter || !juenger) {
+    return null;
+  }
+  return {
+    von,
+    bis,
+    felder: changedFields(aelter.snapshot, juenger.snapshot).map((feld) => ({
+      feld,
+      alt: feldWert(aelter.snapshot, feld),
+      neu: feldWert(juenger.snapshot, feld),
+    })),
+  };
+}

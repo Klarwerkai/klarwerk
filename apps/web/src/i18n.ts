@@ -3505,8 +3505,63 @@ const de = {
   "ko.snapshotClose": "Fassung zuklappen",
   "ko.snapshotBodyChars": "{{anzahl}} Zeichen Text",
   "ko.snapshotBodyMissing": "Für diese Fassung ist kein ausführlicher Inhalt gespeichert.",
-  "ko.snapshotReadOnly": "Alte Fassung v{{version}} · nur lesbar",
+  // JOB 4213 · EHRLICHKEIT VOR OPTIK: bis hierher stand hier „nur lesbar". Seit ein Mensch den Stand
+  // zurückholen kann, wäre das eine Behauptung über einen Weg, den es gibt. Wahr bleibt: DIESE
+  // Fassung selbst ändert sich nicht — eine Übernahme kopiert sie, sie bewegt sie nicht.
+  "ko.snapshotReadOnly": "Alte Fassung v{{version}} · sie bleibt unverändert stehen",
   "ko.snapshotBackToCurrent": "Zurück zur aktuellen Fassung",
+  // ================================================================================================
+  // JOB 4213 · WIKI-NACHVOLLZIEHEN — VERGLEICHEN UND ZURÜCKHOLEN.
+  // ================================================================================================
+  //
+  // JEDER SATZ NENNT DIE FOLGE, nicht bloss den Vorgang: was aus dem Klick wird, was mit der alten
+  // Freigabe geschieht, und was bei einem Konflikt mit der eigenen Absicht passiert. „Übernommen"
+  // allein liesse offen, ob der Eintrag damit auch wieder freigegeben ist.
+  "ko.snapshotCompareTitle": "Zwei Fassungen vergleichen",
+  "ko.snapshotCompareFrom": "ältere Fassung",
+  "ko.snapshotCompareTo": "jüngere Fassung",
+  "ko.snapshotCompareNeedsTwo":
+    "Zum Vergleichen braucht es zwei gespeicherte Fassungen — bisher gibt es nur eine.",
+  // NOCH NICHTS GEWÄHLT ist etwas anderes als „die neueste Fassung": ohne diesen leeren Eintrag
+  // stellte der Abschnitt beim blossen Aufklappen ungefragt zwei Fassungsinhalte nebeneinander.
+  "ko.snapshotCompareChoose": "bitte wählen",
+  "ko.snapshotCompareHint":
+    "Wähle zwei Fassungen — dann steht hier Feld für Feld, was sich zwischen ihnen unterscheidet.",
+  "ko.snapshotCompareNone":
+    "In den verglichenen Feldern unterscheiden sich diese beiden Fassungen nicht.",
+  "ko.snapshotCompareSame": "Das ist zweimal dieselbe Fassung — wähle zwei verschiedene.",
+  "ko.snapshotCompareUnknown":
+    "Eine der beiden Fassungen liegt gerade nicht vor — der Vergleich bleibt offen.",
+  "ko.snapshotFieldEmpty": "nichts gespeichert",
+  "ko.snapshotRestore": "Als Arbeitsfassung übernehmen",
+  "ko.snapshotRestoreHint":
+    "erzeugt daraus eine neue, offene Fassung; diese Fassung bleibt unverändert stehen",
+  "ko.snapshotRestoreRunning": "Wird übernommen …",
+  "ko.snapshotRestoreDone":
+    "Übernommen. Der Inhalt von v{{version}} steht jetzt als neueste Fassung — offen und ungeprüft, die frühere Freigabe ist nicht mitgekommen.",
+  // KEIN „NEU LADEN" IN DIESEM SATZ (Korrekturpflicht JOB 4146 R6/R7): wer neu lädt, verliert, was
+  // er gerade tun wollte. Der Satz sagt, dass nichts überschrieben wurde — der Weg steht daneben.
+  "ko.snapshotRestoreStale":
+    "Jemand anderes hat diesen Eintrag inzwischen geändert — übernommen wurde nichts, die fremde Arbeit steht unverändert da.",
+  "ko.snapshotRestoreAgain": "Trotzdem übernehmen, auf dem jetzigen Stand",
+  "ko.snapshotRestoreOffline":
+    "Ohne Verbindung lässt sich nichts übernehmen — deine Auswahl bleibt stehen.",
+  "ko.snapshotRestoreNoRight":
+    "Diese Fassung kannst du lesen, aber nicht zurückholen — dafür fehlt dir das Bearbeitungsrecht.",
+  // JOB 4213 R3: der Satz der Rolle, die zwar bearbeiten darf, aber einen FREIGEGEBENEN Stand nicht
+  // direkt ersetzen kann (die Route antwortet dort 403 `PROPOSAL_REQUIRED`). Er nennt den Grund UND
+  // den Weg, der wirklich offensteht — eine Absage ohne Weg wäre die Sackgasse, die dieser Knopf
+  // vorher war.
+  "ko.snapshotRestoreNeedsRelease":
+    "Dieser Eintrag ist freigegeben — einen früheren Stand kann hier nur zurückholen, wer freigeben darf. Deine Änderung geht als Vorschlag über „Bearbeiten“.",
+  "ko.snapshotRestoreIsCurrent": "Das ist der aktuelle Stand — hier gibt es nichts zurückzuholen.",
+  "ko.snapshotRestoreNoContent":
+    "Zu dieser Fassung liegt kein gespeicherter Stand vor, der übernommen werden könnte.",
+  // DIE HERKUNFT EINER ZURÜCKGEHOLTEN FASSUNG — ein EIGENER Satz und kein Dienst-Vermerk: er trägt
+  // eine Versionszahl, und der Vermerkkatalog (`koHistoryNote.ts`) vergleicht ZEICHENGENAU; ein für
+  // jede Version anderer Vermerk käme dort nie an und stünde deutsch im englischen Text. Er steht
+  // NEBEN dem Vermerk, nicht an seiner Stelle: WAS geschah, sagt weiterhin „überarbeitet".
+  "ko.snapshotRestoredFrom": "aus Fassung v{{version}} übernommen",
   "ko.comments": "Kommentare",
   "ko.commentsEmpty": "Noch keine Kommentare.",
   "ko.commentPlaceholder": "Kommentar schreiben …",
@@ -9809,8 +9864,37 @@ const en: typeof de = {
   "ko.snapshotClose": "Collapse version",
   "ko.snapshotBodyChars": "{{anzahl}} characters of text",
   "ko.snapshotBodyMissing": "No detailed content is stored for this version.",
-  "ko.snapshotReadOnly": "Earlier version v{{version}} · read-only",
+  "ko.snapshotReadOnly": "Earlier version v{{version}} · it stays unchanged",
   "ko.snapshotBackToCurrent": "Back to the current version",
+  "ko.snapshotCompareTitle": "Compare two versions",
+  "ko.snapshotCompareFrom": "earlier version",
+  "ko.snapshotCompareTo": "later version",
+  "ko.snapshotCompareNeedsTwo": "Comparing needs two stored versions — so far there is only one.",
+  "ko.snapshotCompareChoose": "please choose",
+  "ko.snapshotCompareHint":
+    "Pick two versions — then this shows field by field what differs between them.",
+  "ko.snapshotCompareNone": "In the compared fields these two versions do not differ.",
+  "ko.snapshotCompareSame": "That is the same version twice — pick two different ones.",
+  "ko.snapshotCompareUnknown":
+    "One of the two versions is not available right now — the comparison stays open.",
+  "ko.snapshotFieldEmpty": "nothing stored",
+  "ko.snapshotRestore": "Restore as working version",
+  "ko.snapshotRestoreHint": "creates a new, open version from it; this version stays unchanged",
+  "ko.snapshotRestoreRunning": "Restoring …",
+  "ko.snapshotRestoreDone":
+    "Restored. The content of v{{version}} is now the latest version — open and unreviewed; the earlier approval did not come back.",
+  "ko.snapshotRestoreStale":
+    "Someone else has changed this entry in the meantime — nothing was restored, their work stands untouched.",
+  "ko.snapshotRestoreAgain": "Restore anyway, based on the current state",
+  "ko.snapshotRestoreOffline": "Without a connection nothing can be restored — your choice stays.",
+  "ko.snapshotRestoreNoRight":
+    "You can read this version, but not restore it — that needs edit permission.",
+  "ko.snapshotRestoreNeedsRelease":
+    "This entry is approved — only someone who may approve can restore an earlier state here. Your change goes in as a proposal via “Edit”.",
+  "ko.snapshotRestoreIsCurrent": "This is the current state — there is nothing to restore here.",
+  "ko.snapshotRestoreNoContent":
+    "No stored state is available for this version, so there is nothing to restore.",
+  "ko.snapshotRestoredFrom": "restored from version v{{version}}",
   "ko.comments": "Comments",
   "ko.commentsEmpty": "No comments yet.",
   "ko.commentPlaceholder": "Write a comment …",
@@ -15294,8 +15378,40 @@ const nl: typeof de = {
   "ko.snapshotClose": "Versie sluiten",
   "ko.snapshotBodyChars": "{{anzahl}} tekens tekst",
   "ko.snapshotBodyMissing": "Voor deze versie is geen uitgebreide inhoud opgeslagen.",
-  "ko.snapshotReadOnly": "Oudere versie v{{version}} · alleen lezen",
+  "ko.snapshotReadOnly": "Oudere versie v{{version}} · deze blijft ongewijzigd staan",
   "ko.snapshotBackToCurrent": "Terug naar de huidige versie",
+  "ko.snapshotCompareTitle": "Twee versies vergelijken",
+  "ko.snapshotCompareFrom": "oudere versie",
+  "ko.snapshotCompareTo": "nieuwere versie",
+  "ko.snapshotCompareNeedsTwo":
+    "Vergelijken vraagt twee opgeslagen versies — tot nu toe is er maar één.",
+  "ko.snapshotCompareChoose": "kies een versie",
+  "ko.snapshotCompareHint":
+    "Kies twee versies — dan staat hier veld voor veld wat tussen beide verschilt.",
+  "ko.snapshotCompareNone": "In de vergeleken velden verschillen deze twee versies niet.",
+  "ko.snapshotCompareSame": "Dit is twee keer dezelfde versie — kies er twee verschillende.",
+  "ko.snapshotCompareUnknown":
+    "Een van beide versies is nu niet beschikbaar — de vergelijking blijft open.",
+  "ko.snapshotFieldEmpty": "niets opgeslagen",
+  "ko.snapshotRestore": "Als werkversie overnemen",
+  "ko.snapshotRestoreHint":
+    "maakt daaruit een nieuwe, open versie; deze versie blijft ongewijzigd staan",
+  "ko.snapshotRestoreRunning": "Wordt overgenomen …",
+  "ko.snapshotRestoreDone":
+    "Overgenomen. De inhoud van v{{version}} staat nu als nieuwste versie — open en ongecontroleerd; de eerdere vrijgave is niet meegekomen.",
+  "ko.snapshotRestoreStale":
+    "Iemand anders heeft dit item intussen gewijzigd — er is niets overgenomen, hun werk staat ongewijzigd.",
+  "ko.snapshotRestoreAgain": "Toch overnemen, op de huidige stand",
+  "ko.snapshotRestoreOffline":
+    "Zonder verbinding valt er niets over te nemen — je keuze blijft staan.",
+  "ko.snapshotRestoreNoRight":
+    "Je kunt deze versie lezen, maar niet terughalen — daarvoor ontbreekt het bewerkingsrecht.",
+  "ko.snapshotRestoreNeedsRelease":
+    "Dit item is vrijgegeven — een eerdere stand kan hier alleen iemand terughalen die mag vrijgeven. Jouw wijziging gaat als voorstel via „Bewerken”.",
+  "ko.snapshotRestoreIsCurrent": "Dit is de huidige stand — hier valt niets terug te halen.",
+  "ko.snapshotRestoreNoContent":
+    "Voor deze versie is geen opgeslagen stand beschikbaar om over te nemen.",
+  "ko.snapshotRestoredFrom": "overgenomen uit versie v{{version}}",
   "ko.comments": "Reacties",
   "ko.commentsEmpty": "Nog geen reacties.",
   "ko.commentPlaceholder": "Reactie schrijven …",

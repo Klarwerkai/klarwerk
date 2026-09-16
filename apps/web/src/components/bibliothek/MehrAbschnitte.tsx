@@ -61,8 +61,9 @@ import {
   toAddSourceRequest,
   toSourcePayload,
 } from "../../lib/koSource";
-import { diffForVersion } from "../../lib/koVersionDiff";
-import { koVersionRows } from "../../lib/koVersionSnapshots";
+import { diffForVersion, paarDiff } from "../../lib/koVersionDiff";
+import { koVersionRows, uebernahmeHerkunft } from "../../lib/koVersionSnapshots";
+import { useNetzOnline } from "../../lib/netzzustand";
 import {
   type SourceContributionInput,
   formatSourceComment,
@@ -882,6 +883,124 @@ export function MehrAbschnitte({
       ?.focus();
   };
 
+  // ================================================================================================
+  // JOB 4213 · WIKI-NACHVOLLZIEHEN — VERGLEICHEN UND ZURÜCKHOLEN.
+  // ================================================================================================
+  //
+  // ZWEI ZUSTÄNDE, und beide gehören hierher und nicht in die Karte: die Vergleichsauswahl gilt für
+  // den ganzen Abschnitt (sie vergleicht ZWEI Fassungen, keine gehört ihr allein), und die Lage der
+  // Übernahme muss eine Auffrischung der Fassungsliste überleben — sonst verschwände die
+  // Konfliktauskunft in dem Augenblick, in dem sie gebraucht wird.
+  //
+  // `null` HEISST „NOCH NICHTS GEWÄHLT" und nicht „v0": solange der Abruf läuft, gibt es keine
+  // Fassungen, auf die eine Vorauswahl zeigen könnte. Die Vorbelegung entsteht deshalb erst unten
+  // aus dem geladenen Bestand und ist hier ausdrücklich keine Behauptung.
+  const [vergleichVon, setVergleichVon] = useState<number | null>(null);
+  const [vergleichBis, setVergleichBis] = useState<number | null>(null);
+  /**
+   * Was die letzte Übernahme ergeben hat — je Lage ein Satz, und jeder nennt die FOLGE.
+   *
+   * `stale` ist der Konfliktfall: fremde Arbeit wurde NICHT überschrieben. Die Version, die
+   * übernommen werden sollte, bleibt in der Lage stehen — das ist die Absicht des Menschen, und sie
+   * geht durch den Konflikt nicht verloren. KEINE NEULADEAUFFORDERUNG (Korrekturpflicht JOB 4146
+   * R6/R7): wer neu lädt, verliert, was er gerade tun wollte.
+   */
+  const [uebernahmeLage, setUebernahmeLage] = useState<
+    | null
+    | { art: "fertig"; version: number }
+    | { art: "stale"; version: number }
+    | { art: "offline"; version: number }
+    | { art: "fehler"; version: number; text: string }
+  >(null);
+  const netzOnline = useNetzOnline();
+
+  // DER SCHREIBWEG IST DER VORHANDENE `revise` — keine neue Route, keine zweite Schreibtür.
+  //
+  // JOB 4213 R3 · ES GEHT KEIN INHALT MEHR MIT, NUR DIE FASSUNGSNUMMER. Bis hierher schickte diese
+  // Fläche die Felder der alten Fassung selbst mit; der Server hat sie geglaubt und die Herkunft
+  // daneben geschrieben. BEN hat gemessen, was daraus folgt: mit `restoredFromVersion: 1` liess sich
+  // beliebiger Text speichern und wurde danach als „aus Fassung v1 übernommen" gelesen. Jetzt sagt
+  // dieser Aufruf nur noch, WELCHE Fassung gemeint ist — den Inhalt holt der Dienst aus seiner
+  // eigenen Ablage. Damit kann die Herkunftsauskunft gar nicht mehr falsch werden.
+  //
+  // `expectedVersion` ist der Stand, den der Mensch vor sich hatte: hat inzwischen jemand anders
+  // geschrieben, antwortet der Server 409 und es wurde nichts überschrieben.
+  const fassungUebernehmen = useMutation({
+    mutationFn: (v: { version: number; erwartet: number }) =>
+      endpoints.ko.act(id, {
+        action: "revise",
+        changes: { restoredFromVersion: v.version },
+        expectedVersion: v.erwartet,
+      }),
+    // `invalidate()` trifft die Fassungsliste MIT: ihr Schlüssel ist `["ko", id, "versions"]`
+    // (`api/hooks.ts`), und TanStack Query vergleicht Schlüssel als Präfix. Ein zweiter Aufruf
+    // daneben wäre derselbe Griff zweimal.
+    onSuccess: (_daten, v) => {
+      invalidate();
+      setUebernahmeLage({ art: "fertig", version: v.version });
+    },
+    // DER 409 IST KEIN EINGABEFEHLER, SONDERN EINE TATSACHE ÜBER DIE ZEIT (Bauform aus
+    // `BibliothekLesen.tsx`, JOB 4075). Er steht VOR dem Sammelzweig und fängt nur sich selbst —
+    // ein Netzausfall ist kein Konflikt und dürfte den Konfliktsatz nicht auslösen.
+    onError: (e, v) => {
+      if (e instanceof ApiError && e.status === 409) {
+        setUebernahmeLage({ art: "stale", version: v.version });
+        invalidate();
+        return;
+      }
+      setUebernahmeLage({
+        art: "fehler",
+        version: v.version,
+        text: e instanceof ApiError ? e.message : t("state.error"),
+      });
+    },
+  });
+
+  /**
+   * Der eine Ort, an dem eine Übernahme losgeht — vom Knopf an der Karte UND vom Wiederholungsweg
+   * nach einem Konflikt. Zwei Aufrufer, eine Regel; ein zweiter Rumpf liefe unweigerlich an der
+   * Offline-Prüfung oder am `expectedVersion` vorbei.
+   *
+   * OFFLINE WIRD NICHT GESENDET, und zwar bevor etwas losgeht: ein Schreibversuch, den TanStack
+   * Query anhält, sähe für den Menschen aus wie ein Knopf, der nichts tut. Seine Auswahl bleibt
+   * dabei unangetastet stehen.
+   */
+  const uebernahmeStarten = (version: number): void => {
+    if (!netzOnline) {
+      setUebernahmeLage({ art: "offline", version });
+      return;
+    }
+    setUebernahmeLage(null);
+    fassungUebernehmen.mutate({ version, erwartet: ko.version });
+  };
+
+  // ================================================================================================
+  // JOB 4213 R3 · DER ÜBERNAHMEKNOPF STEHT NUR, WO DIE ROUTE IHN AUCH ANNIMMT.
+  // ================================================================================================
+  //
+  // BENs Befund an Runde 2 (`BEN Rechte {"rolle":"experte","http":403,"error":"PROPOSAL_REQUIRED"}`):
+  // an einem FREIGEGEBENEN Wissensobjekt zeichnete die Fläche den Knopf für jede Rolle ausser
+  // `viewer`, obwohl `ko-routes.ts` dort zwingend 403 antwortet. Ein Knopf, der nur zu einer Absage
+  // führen kann, ist eine Sackgasse — dieselbe Klasse Fehler, gegen die UX-25 und UX-26 stehen.
+  //
+  // DIE REGEL DER ROUTE, gespiegelt: `bestand?.status === "validiert" && !can(user.role,
+  // "users.manage")` → 403 `PROPOSAL_REQUIRED`. Gelesen wird `ko.status`, NICHT `deriveStatus(ko)`:
+  // die Route liest den gespeicherten Wert, und eine Anzeigeableitung daneben wäre genau die zweite
+  // Wahrheit, an der Fläche und API auseinanderlaufen.
+  //
+  // WARUM EINE ROLLENLISTE IM CLIENT UND WARUM SIE TROTZDEM KEINE ZWEITE WAHRHEIT IST: `can()` liegt
+  // im rbac-Modul hinter einer Modulgrenze, die `apps/web` nicht überschreitet — dieselbe Lage und
+  // dieselbe Bauform wie `RW_FREIGABE_ROLLEN` in `BibliothekLesen.tsx` (JOB 3667 R3). Gehalten wird
+  // sie nicht von einer Abschrift, sondern von einer MESSUNG: `tests/wiki-nachvollziehen/
+  // uebernahme-folgt-dem-schreibrecht.test.tsx` mountet die Fläche für JEDE Rolle und hält das
+  // Ergebnis gegen `can(rolle, "users.manage")` aus dem echten Modul. Wer die Matrix ändert, wird
+  // dort rot.
+  //
+  // NICHT `canReview` (controller + admin) wiederverwendet: das ist das Recht zu BEWERTEN, nicht das
+  // Recht, einen freigegebenen Stand direkt zu ersetzen.
+  const darfFreigegebenesDirektAendern = role === "admin";
+  const uebernahmeGesperrt = ko.status === "validiert" && !darfFreigegebenesDirektAendern;
+
   // Der Effekt hängt an den WERTEN, nicht an der Kennung des Objekts. Deshalb trägt das Sprungziel
   // einen `nonce`: derselbe Abschnitt muss zweimal hintereinander anspringbar sein (zwischendurch
   // von Hand zugeklappt), und ohne die zweite, wechselnde Angabe liefe der Effekt dann nicht erneut.
@@ -1554,8 +1673,23 @@ export function MehrAbschnitte({
                   (`koHistoryNote.ts`) — feste Dienst-Vermerke über den Katalog, fremder Text
                   wörtlich. Der Rückfall auf den Autornamen bleibt Zeichen für Zeichen: leer
                   kommt leer zurück. */}
-              <div className="text-[12.5px] text-text">
+              {/* JOB 4213 · UND WOHER DIESER STAND KAM, WENN ER ZURÜCKGEHOLT WURDE. Der Vermerk
+                  selbst bleibt unangetastet („überarbeitet", über den Katalog); die Herkunft ist ein
+                  EIGENER Satz mit eigenem Schlüssel, weil sie eine Versionszahl trägt und ein
+                  Vermerk mit Zahl durch den zeichengenauen Vermerkkatalog nicht hindurchkäme. Die
+                  Zahl kommt über den EINEN Draht-Leser (`uebernahmeHerkunft`), denselben, den die
+                  Fassungskarte unten benutzt. Der Rückfall auf den Autornamen bleibt Zeichen für
+                  Zeichen: er gilt dem leeren Vermerk. */}
+              <div data-bib-historie-vermerk={h.version} className="text-[12.5px] text-text">
                 {koHistoryNote(h.note, t) || nameOf(h.author)}
+                {((): JSX.Element | null => {
+                  const herkunft = uebernahmeHerkunft(h);
+                  return herkunft === null ? null : (
+                    <span className="ml-1.5 text-muted">
+                      {t("ko.snapshotRestoredFrom", { version: herkunft })}
+                    </span>
+                  );
+                })()}
               </div>
             </li>
           ))}
@@ -1842,151 +1976,439 @@ export function MehrAbschnitte({
           ) : zeilen.length === 0 ? (
             <p className="text-[12.5px] text-muted">{t("ko.snapshotsEmpty")}</p>
           ) : (
-            <ol className="space-y-3">
-              {zeilen.map((v) => {
-                // ============================================================================
-                // JOB 3475 · UX-28 — DIE FASSUNGSKARTE IST EIN WEG, KEIN STUMMES `<li>` MEHR.
-                // ============================================================================
+            <>
+              {((): JSX.Element => {
+                // ====================================================================================
+                // JOB 4213 · ZWEI FREI GEWÄHLTE FASSUNGEN GEGENÜBERSTELLEN.
+                // ====================================================================================
                 //
-                // Bis hierher war diese Karte ein `<li>` OHNE Knopf, ohne `onClick`, ohne
-                // `tabIndex` — Pedis Befund „Klick öffnet nichts, Tab überspringt die Karten"
-                // (N-0055/N-0057) stand als Code da. Jetzt trägt sie EINEN nativen
-                // `<button type="button" aria-expanded>` in der Bauform dieses Hauses (Muster: der
-                // Belegsprung `:1449-1461`, der Anhangknopf): damit wirken Tabulator, Eingabe- und
-                // Leertaste OHNE `tabIndex`-Nachbau und ohne Tastenbehandlung von Hand.
+                // ER STEHT ÜBER DER LISTE UND NICHT IN DER KARTE: verglichen werden ZWEI Fassungen,
+                // keine von beiden ist der Ort dafür. (Und die geöffnete Karte bleibt damit frei von
+                // Auswahlfeldern — `tests/ux28-fassungen/rueckweg-zur-aktuellen-fassung.test.tsx` C
+                // nagelt fest, dass der historische Inhalt nicht bearbeitbar AUSSIEHT.)
                 //
-                // KEIN `disabled` UND KEIN `aria-disabled`: der Knopf führt in JEDEM Fall zu einer
-                // Aussage — auch die Fassung ohne gespeicherten Bericht hat einen Inhalt zu zeigen
-                // (ihre Felder) und sagt dort ehrlich, dass kein ausführlicher Inhalt gespeichert
-                // ist. Ein gesperrter Knopf wäre hier also keine Sackgassenvermeidung, sondern eine
-                // verschlossene Tür (Muster `:1462-1468`: WO ein Weg ins Leere führt, steht ein
-                // Satz statt eines Knopfes — hier führt er nicht ins Leere).
-                const offen = offeneFassungen.has(v.key);
-                const aktion = offen ? t("ko.snapshotClose") : t("ko.snapshotOpen");
-                // Die GEMESSENE Größe des gespeicherten Berichts — die Angabe, an der sich zwei
-                // Fassungen mit gleicher Kernaussage unterscheiden. Sie steht nur da, wo wirklich
-                // ein Bericht mit Text liegt; „0 Zeichen" wäre eine Aussage über einen Bericht, den
-                // es nicht gibt.
-                const groesse =
-                  v.berichtZeichen > 0
-                    ? t("ko.snapshotBodyChars", {
-                        anzahl: v.berichtZeichen.toLocaleString(i18n.language),
-                      })
-                    : null;
-                // Die gespeicherten Felder DIESER Fassung. Titel und Status stehen schon im Kopf
-                // der Karte; sie hier zu wiederholen wäre dieselbe Aussage zweimal.
-                const felder: [string, string][] = [
-                  ["statement", v.statement],
-                  ["conditions", v.conditions.join(" · ")],
-                  ["measures", v.measures.join(" · ")],
-                  ["type", t(`ktype.${v.type}`)],
-                ];
+                // WENIGER ALS ZWEI FASSUNGEN: ein Satz, kein gesperrter Knopf und keine Auswahl mit
+                // einem einzigen Eintrag (Muster des Belegleerstands `:1794-1800`). Dass es nichts zu
+                // vergleichen gibt, ist hier eine WAHRE Aussage — die Liste ist erfolgreich geladen.
+                if (zeilen.length < 2) {
+                  return (
+                    <p className="mb-3 text-[12.5px] text-muted">
+                      {t("ko.snapshotCompareNeedsTwo")}
+                    </p>
+                  );
+                }
+                // ES GIBT KEINE VORBELEGUNG, und das ist eine Entscheidung gegen die bequemere
+                // Bauform. Eine Vorauswahl (etwa „vorletzte gegen letzte") stellte beim blossen
+                // Aufklappen des Abschnitts ungefragt zwei Fassungsinhalte nebeneinander —
+                // einschliesslich eines alten Berichts, den niemand angefordert hat. Genau das
+                // misst `tests/ux28-fassungen/fassung-per-tastatur-oeffnen.test.tsx` B als Fehler:
+                // „der alte Bericht steht schon vor dem Öffnen da". Solange nicht BEIDE Fassungen
+                // gewählt sind, steht hier deshalb nur, was zu tun ist.
+                const vorhandene = zeilen.map((z) => z.version);
+                const gewaehlt = (wahl: number | null): number | null =>
+                  wahl !== null && vorhandene.includes(wahl) ? wahl : null;
+                const von = gewaehlt(vergleichVon);
+                const bis = gewaehlt(vergleichBis);
+                const gegenueber =
+                  von === null || bis === null ? null : paarDiff(fassungen, von, bis);
+                const auswahl = (
+                  welche: "von" | "bis",
+                  wert: number | null,
+                  setzen: (n: number | null) => void,
+                ): JSX.Element => (
+                  <label className="flex items-center gap-1.5 text-[12px] text-muted">
+                    {t(welche === "von" ? "ko.snapshotCompareFrom" : "ko.snapshotCompareTo")}
+                    {/* Ein natives `<select>`: Tabulator, Pfeiltasten und Eingabetaste wirken ohne
+                        `tabIndex`-Nachbau und ohne Tastenbehandlung von Hand (Lehre `:1847-1863`). */}
+                    <select
+                      data-bib-fassung-vergleich={welche}
+                      value={wert === null ? "" : String(wert)}
+                      onChange={(e: ChangeEvent<HTMLSelectElement>) =>
+                        setzen(e.target.value === "" ? null : Number(e.target.value))
+                      }
+                      className="rounded-btn border border-hairline bg-surface px-1.5 py-1 text-[12px] text-text"
+                    >
+                      {/* Der leere Eintrag ist der EHRLICHE Ausgangszustand: „noch nicht gewählt"
+                          ist etwas anderes als „die neueste Fassung". */}
+                      <option value="">{t("ko.snapshotCompareChoose")}</option>
+                      {zeilen.map((z) => (
+                        <option key={z.key} value={String(z.version)}>
+                          {`v${z.version} · ${new Date(z.at).toLocaleDateString(i18n.language)}`}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                );
                 return (
-                  <li key={v.key} className="rounded-input border border-hairline bg-surface p-2.5">
-                    <div className="font-mono text-[11px] text-muted-2">
-                      v{v.version} · {new Date(v.at).toLocaleDateString(i18n.language)} ·{" "}
-                      {nameOf(v.author)} · {t(`status.${v.status}`)}
+                  <div
+                    data-bib-fassung-vergleich-flaeche
+                    className="mb-3 rounded-input border border-hairline bg-surface p-2.5"
+                  >
+                    <div className="text-[12.5px] font-semibold text-text">
+                      {t("ko.snapshotCompareTitle")}
                     </div>
-                    <div className="mt-1 text-[13px] font-semibold text-text">{v.title}</div>
-                    <p className="mt-1 text-[12.5px] text-muted">{v.excerpt}</p>
-                    {(() => {
-                      // DER EINE ORT FÜR DIE ÄNDERUNGSANGABE (Auftrag 4e). Mit dem siebten Feld aus
-                      // `koVersionDiff.ts` liest sich die Zeile jetzt als „Aussage · Ausführlicher
-                      // Inhalt" — und „Keine Änderung in den Hauptfeldern" steht nur noch da, wenn
-                      // ALLE sieben Felder gleich sind, den Bericht eingeschlossen.
-                      const diff = diffForVersion(fassungen, v.version);
-                      if (!diff || diff.fromVersion === null) {
-                        return (
+                    <div className="mt-1.5 flex flex-wrap items-center gap-3">
+                      {auswahl("von", von, setVergleichVon)}
+                      {auswahl("bis", bis, setVergleichBis)}
+                    </div>
+                    {von === null || bis === null ? (
+                      // NOCH NICHTS GEWÄHLT — und deshalb steht hier auch keine Aussage über
+                      // irgendein Fassungspaar, sondern der nächste Schritt.
+                      <p className="mt-2 text-[12.5px] text-muted">{t("ko.snapshotCompareHint")}</p>
+                    ) : gegenueber === null ? (
+                      // WISSENSLÜCKE STATT ERFINDUNG: „keine Änderung" wäre hier eine Aussage über
+                      // einen Stand, der gar nicht vorliegt. Erreichbar ist der Zweig nur, wenn eine
+                      // gewählte Fassung zwischen Auswahl und Zeichnen aus dem Bestand fällt.
+                      <p className="mt-2 text-[12.5px] text-muted">
+                        {t("ko.snapshotCompareUnknown")}
+                      </p>
+                    ) : gegenueber.von === gegenueber.bis ? (
+                      <p className="mt-2 text-[12.5px] text-muted">{t("ko.snapshotCompareSame")}</p>
+                    ) : gegenueber.felder.length === 0 ? (
+                      <p className="mt-2 text-[12.5px] text-muted">{t("ko.snapshotCompareNone")}</p>
+                    ) : (
+                      <dl className="mt-2 grid gap-2">
+                        {gegenueber.felder.map((f) => {
+                          // Die Werte kommen als GESPEICHERTE Werte aus `koVersionDiff.ts`; Art und
+                          // Prüfstand sind dort Schlüssel. Eingesetzt werden sie über DIESELBEN
+                          // Kataloge, die die Karte oben schon benutzt — kein zweites Verzeichnis.
+                          const lesbar = (wert: string): JSX.Element =>
+                            wert.length === 0 ? (
+                              <span className="text-muted-2">{t("ko.snapshotFieldEmpty")}</span>
+                            ) : f.feld === "type" ? (
+                              <>{t(`ktype.${wert}`)}</>
+                            ) : f.feld === "status" ? (
+                              <>{t(`status.${wert}`)}</>
+                            ) : f.feld === "bodyHtml" ? (
+                              // DERSELBE EINE ZEICHENWEG wie am geöffneten Bericht (`:1962-1966`):
+                              // kein `dangerouslySetInnerHTML`, keine zweite Allowlist.
+                              <SanitizedHtml html={wert} className="prose-kw text-[12.5px]" />
+                            ) : (
+                              <>{wert}</>
+                            );
+                          return (
+                            <div key={f.feld} data-bib-fassung-vergleich-feld={f.feld}>
+                              <dt className="font-mono text-[10.5px] text-muted-2">
+                                {t(`ko.snapshotField.${f.feld}`)}
+                              </dt>
+                              <dd className="mt-0.5 grid gap-1 text-[12.5px] text-text">
+                                <div data-bib-vergleich-alt={f.feld}>
+                                  <span className="mr-1 font-mono text-[10.5px] text-muted-2">
+                                    {`v${gegenueber.von}`}
+                                  </span>
+                                  {lesbar(f.alt)}
+                                </div>
+                                <div data-bib-vergleich-neu={f.feld}>
+                                  <span className="mr-1 font-mono text-[10.5px] text-muted-2">
+                                    {`v${gegenueber.bis}`}
+                                  </span>
+                                  {lesbar(f.neu)}
+                                </div>
+                              </dd>
+                            </div>
+                          );
+                        })}
+                      </dl>
+                    )}
+                  </div>
+                );
+              })()}
+              <ol className="space-y-3">
+                {zeilen.map((v) => {
+                  // ============================================================================
+                  // JOB 3475 · UX-28 — DIE FASSUNGSKARTE IST EIN WEG, KEIN STUMMES `<li>` MEHR.
+                  // ============================================================================
+                  //
+                  // Bis hierher war diese Karte ein `<li>` OHNE Knopf, ohne `onClick`, ohne
+                  // `tabIndex` — Pedis Befund „Klick öffnet nichts, Tab überspringt die Karten"
+                  // (N-0055/N-0057) stand als Code da. Jetzt trägt sie EINEN nativen
+                  // `<button type="button" aria-expanded>` in der Bauform dieses Hauses (Muster: der
+                  // Belegsprung `:1449-1461`, der Anhangknopf): damit wirken Tabulator, Eingabe- und
+                  // Leertaste OHNE `tabIndex`-Nachbau und ohne Tastenbehandlung von Hand.
+                  //
+                  // KEIN `disabled` UND KEIN `aria-disabled`: der Knopf führt in JEDEM Fall zu einer
+                  // Aussage — auch die Fassung ohne gespeicherten Bericht hat einen Inhalt zu zeigen
+                  // (ihre Felder) und sagt dort ehrlich, dass kein ausführlicher Inhalt gespeichert
+                  // ist. Ein gesperrter Knopf wäre hier also keine Sackgassenvermeidung, sondern eine
+                  // verschlossene Tür (Muster `:1462-1468`: WO ein Weg ins Leere führt, steht ein
+                  // Satz statt eines Knopfes — hier führt er nicht ins Leere).
+                  const offen = offeneFassungen.has(v.key);
+                  const aktion = offen ? t("ko.snapshotClose") : t("ko.snapshotOpen");
+                  // Die GEMESSENE Größe des gespeicherten Berichts — die Angabe, an der sich zwei
+                  // Fassungen mit gleicher Kernaussage unterscheiden. Sie steht nur da, wo wirklich
+                  // ein Bericht mit Text liegt; „0 Zeichen" wäre eine Aussage über einen Bericht, den
+                  // es nicht gibt.
+                  const groesse =
+                    v.berichtZeichen > 0
+                      ? t("ko.snapshotBodyChars", {
+                          anzahl: v.berichtZeichen.toLocaleString(i18n.language),
+                        })
+                      : null;
+                  // Die gespeicherten Felder DIESER Fassung. Titel und Status stehen schon im Kopf
+                  // der Karte; sie hier zu wiederholen wäre dieselbe Aussage zweimal.
+                  const felder: [string, string][] = [
+                    ["statement", v.statement],
+                    ["conditions", v.conditions.join(" · ")],
+                    ["measures", v.measures.join(" · ")],
+                    ["type", t(`ktype.${v.type}`)],
+                  ];
+                  return (
+                    <li
+                      key={v.key}
+                      className="rounded-input border border-hairline bg-surface p-2.5"
+                    >
+                      <div className="font-mono text-[11px] text-muted-2">
+                        v{v.version} · {new Date(v.at).toLocaleDateString(i18n.language)} ·{" "}
+                        {nameOf(v.author)} · {t(`status.${v.status}`)}
+                      </div>
+                      <div className="mt-1 text-[13px] font-semibold text-text">{v.title}</div>
+                      <p className="mt-1 text-[12.5px] text-muted">{v.excerpt}</p>
+                      {(() => {
+                        // DER EINE ORT FÜR DIE ÄNDERUNGSANGABE (Auftrag 4e). Mit dem siebten Feld aus
+                        // `koVersionDiff.ts` liest sich die Zeile jetzt als „Aussage · Ausführlicher
+                        // Inhalt" — und „Keine Änderung in den Hauptfeldern" steht nur noch da, wenn
+                        // ALLE sieben Felder gleich sind, den Bericht eingeschlossen.
+                        const diff = diffForVersion(fassungen, v.version);
+                        if (!diff || diff.fromVersion === null) {
+                          return (
+                            <p className="mt-1 font-mono text-[10.5px] text-muted-2">
+                              {t("ko.snapshotInitial")}
+                            </p>
+                          );
+                        }
+                        return diff.changed.length === 0 ? (
                           <p className="mt-1 font-mono text-[10.5px] text-muted-2">
-                            {t("ko.snapshotInitial")}
+                            {t("ko.snapshotNoChanges")}
+                          </p>
+                        ) : (
+                          <p className="mt-1 font-mono text-[10.5px] text-muted-2">
+                            {diff.changed.map((f) => t(`ko.snapshotField.${f}`)).join(" · ")}
                           </p>
                         );
-                      }
-                      return diff.changed.length === 0 ? (
-                        <p className="mt-1 font-mono text-[10.5px] text-muted-2">
-                          {t("ko.snapshotNoChanges")}
-                        </p>
-                      ) : (
-                        <p className="mt-1 font-mono text-[10.5px] text-muted-2">
-                          {diff.changed.map((f) => t(`ko.snapshotField.${f}`)).join(" · ")}
-                        </p>
-                      );
-                    })()}
-                    {/* JOB 3627: derselbe eine Ort wie in der Historie (`:1238`) — keine zweite
+                      })()}
+                      {/* JOB 3627: derselbe eine Ort wie in der Historie (`:1238`) — keine zweite
                         Tabelle, kein zweites `t(…)` daneben. */}
-                    <p className="mt-1 font-mono text-[10.5px] text-muted-2">
-                      {koHistoryNote(v.note, t)}
-                    </p>
-                    <button
-                      type="button"
-                      data-bib-fassung={v.key}
-                      aria-expanded={offen}
-                      // Der zugängliche Name nennt die Fassung, die Handlung UND die gemessene
-                      // Größe — sonst hörte ein Vorleseprogramm bei zehn Karten zehnmal dasselbe
-                      // Wort (Muster `:1452-1453`).
-                      aria-label={`v${v.version} — ${aktion}${groesse ? ` · ${groesse}` : ""}`}
-                      onClick={() => fassungUmschalten(v.key, !offen)}
-                      className="mt-1.5 inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-muted hover:text-text"
-                    >
-                      {aktion}
-                      {groesse ? (
-                        <span className="font-mono text-[10.5px] text-muted-2">· {groesse}</span>
-                      ) : null}
-                    </button>
-                    {offen ? (
-                      <div
-                        data-bib-fassung-inhalt={v.key}
-                        className="mt-2 border-t border-hairline pt-2"
+                      {/* JOB 4213: der Vermerk und — wenn diese Fassung aus einer Übernahme entstand
+                        — die Herkunft, in DEMSELBEN Satz wie in der Historie (`ko.snapshotRestoredFrom`).
+                        Der Vermerk selbst bleibt der des Dienstes über den Katalog; die Herkunft
+                        trägt eine Versionszahl und käme durch den zeichengenauen Vermerkkatalog
+                        nicht hindurch. `v.herkunft` kommt aus `koVersionRows`, also aus demselben
+                        Draht-Leser wie oben. */}
+                      <p
+                        data-bib-fassung-vermerk={v.key}
+                        className="mt-1 font-mono text-[10.5px] text-muted-2"
                       >
-                        {/* WELCHE Fassung hier steht und dass sie nur lesbar ist — kein Erklärkasten,
+                        {koHistoryNote(v.note, t)}
+                        {v.herkunft === null
+                          ? null
+                          : ` · ${t("ko.snapshotRestoredFrom", { version: v.herkunft })}`}
+                      </p>
+                      <button
+                        type="button"
+                        data-bib-fassung={v.key}
+                        aria-expanded={offen}
+                        // Der zugängliche Name nennt die Fassung, die Handlung UND die gemessene
+                        // Größe — sonst hörte ein Vorleseprogramm bei zehn Karten zehnmal dasselbe
+                        // Wort (Muster `:1452-1453`).
+                        aria-label={`v${v.version} — ${aktion}${groesse ? ` · ${groesse}` : ""}`}
+                        onClick={() => fassungUmschalten(v.key, !offen)}
+                        className="mt-1.5 inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-muted hover:text-text"
+                      >
+                        {aktion}
+                        {groesse ? (
+                          <span className="font-mono text-[10.5px] text-muted-2">· {groesse}</span>
+                        ) : null}
+                      </button>
+                      {offen ? (
+                        <div
+                          data-bib-fassung-inhalt={v.key}
+                          className="mt-2 border-t border-hairline pt-2"
+                        >
+                          {/* WELCHE Fassung hier steht und dass sie nur lesbar ist — kein Erklärkasten,
                             eine Zeile in derselben Machart wie die Kopfzeile der Karte. Ohne sie
                             läse jemand einen alten Bericht als aktuellen Stand. */}
-                        <p className="font-mono text-[10.5px] text-muted-2">
-                          {t("ko.snapshotReadOnly", { version: v.version })}
-                        </p>
-                        <dl className="mt-1.5 grid gap-1.5">
-                          {felder
-                            .filter(([, wert]) => wert.trim().length > 0)
-                            .map(([feld, wert]) => (
-                              <div key={feld}>
-                                <dt className="font-mono text-[10.5px] text-muted-2">
-                                  {t(`ko.snapshotField.${feld}`)}
-                                </dt>
-                                <dd className="text-[12.5px] text-text">{wert}</dd>
-                              </div>
-                            ))}
-                        </dl>
-                        {/* Der Bericht dieser Fassung — über den EINEN Zeichenweg des Hauses
+                          {/* JOB 4213 · DER SATZ SAGT JETZT NUR NOCH, WAS WEITERHIN WAHR IST. Bis
+                            hierher stand hier „nur lesbar" — als Auskunft über den ganzen Abschnitt.
+                            Seit dieser Fassung kann ein Mensch den Stand zurückholen; „nur lesbar"
+                            wäre damit eine Behauptung über einen Weg, den es gibt. Wahr bleibt, was
+                            der Satz jetzt sagt: DIESE Fassung selbst ändert sich nicht — eine
+                            Übernahme KOPIERT sie in eine neue, sie bewegt sie nicht. */}
+                          <p className="font-mono text-[10.5px] text-muted-2">
+                            {t("ko.snapshotReadOnly", { version: v.version })}
+                          </p>
+                          <dl className="mt-1.5 grid gap-1.5">
+                            {felder
+                              .filter(([, wert]) => wert.trim().length > 0)
+                              .map(([feld, wert]) => (
+                                <div key={feld}>
+                                  <dt className="font-mono text-[10.5px] text-muted-2">
+                                    {t(`ko.snapshotField.${feld}`)}
+                                  </dt>
+                                  <dd className="text-[12.5px] text-text">{wert}</dd>
+                                </div>
+                              ))}
+                          </dl>
+                          {/* Der Bericht dieser Fassung — über den EINEN Zeichenweg des Hauses
                             (`SanitizedHtml`, dieselbe Bauform wie die Lesefläche selbst). Kein
                             `dangerouslySetInnerHTML` von Hand, keine zweite Allowlist. */}
-                        {v.berichtHtml ? (
-                          <SanitizedHtml
-                            html={v.berichtHtml}
-                            className="prose-kw mt-2 text-[12.5px]"
-                          />
-                        ) : (
-                          // WISSENSLÜCKE STATT ERFINDUNG: der Satz sagt, dass für DIESE Fassung
-                          // nichts gespeichert ist — nicht, dass der Bericht leer WAR, und
-                          // ausdrücklich nichts aus einer anderen Fassung.
-                          <p className="mt-2 text-[12.5px] text-muted">
-                            {t("ko.snapshotBodyMissing")}
-                          </p>
-                        )}
-                        <button
-                          type="button"
-                          data-bib-fassung-zurueck={v.key}
-                          aria-label={`v${v.version} — ${t("ko.snapshotBackToCurrent")}`}
-                          onClick={() => fassungZurueck(v.key)}
-                          className="mt-2 inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-muted hover:text-text"
-                        >
-                          {t("ko.snapshotBackToCurrent")}
-                        </button>
-                      </div>
-                    ) : null}
-                  </li>
-                );
-              })}
-            </ol>
+                          {v.berichtHtml ? (
+                            <SanitizedHtml
+                              html={v.berichtHtml}
+                              className="prose-kw mt-2 text-[12.5px]"
+                            />
+                          ) : (
+                            // WISSENSLÜCKE STATT ERFINDUNG: der Satz sagt, dass für DIESE Fassung
+                            // nichts gespeichert ist — nicht, dass der Bericht leer WAR, und
+                            // ausdrücklich nichts aus einer anderen Fassung.
+                            <p className="mt-2 text-[12.5px] text-muted">
+                              {t("ko.snapshotBodyMissing")}
+                            </p>
+                          )}
+                          <button
+                            type="button"
+                            data-bib-fassung-zurueck={v.key}
+                            aria-label={`v${v.version} — ${t("ko.snapshotBackToCurrent")}`}
+                            onClick={() => fassungZurueck(v.key)}
+                            className="mt-2 inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-muted hover:text-text"
+                          >
+                            {t("ko.snapshotBackToCurrent")}
+                          </button>
+                          {((): JSX.Element | null => {
+                            // ============================================================================
+                            // JOB 4213 · „ALS ARBEITSFASSUNG ÜBERNEHMEN" — DER WEG ZURÜCK.
+                            // ============================================================================
+                            //
+                            // ER STEHT HINTER DEM RÜCKWEG, und das ist kein Schönheitsentscheid: der
+                            // Rückweg muss der ERSTE Tabulatoranschlag hinter seiner Fassungskarte
+                            // bleiben. Das ist am echten Browser gemessen und festgenagelt
+                            // (`tests/ux28-fassungen/tastatur-im-browser-chromium.test.tsx` T4: „wer
+                            // sie aufgemacht hat, tabbt EINEN Anschlag weiter und steht auf dem
+                            // Rückweg"). Ein Übernahmeknopf davor schöbe sich dazwischen.
+                            //
+                            // VIER LAGEN, VIER EHRLICHE AUSKÜNFTE, und KEINE davon ist ein gesperrter
+                            // Knopf ohne Erklärung (Muster `:1794-1800`):
+                            //   · kein Bearbeitungsrecht  → der Satz sagt, warum hier nichts steht.
+                            //   · freigegeben, und dieses Konto darf einen freigegebenen Stand nicht
+                            //     direkt ersetzen → der Satz nennt den Grund UND den Weg, den es
+                            //     gibt (JOB 4213 R3, BENs Korrekturpflicht 3).
+                            //   · es IST der aktuelle Stand → es gibt nichts zurückzuholen, und der
+                            //     Satz sagt genau das, statt einen Knopf anzubieten, der nichts ändert.
+                            //   · der Schnappschuss dieser Fassung liegt nicht vor → kein Knopf, der
+                            //     ins Leere griffe. Erreichbar ist das nicht, solange die Zeile aus
+                            //     eben diesem Schnappschuss entsteht; der Zweig behauptet nichts
+                            //     anderes, als dass ohne Inhalt nichts übernommen wird.
+                            const stand = fassungen.find((f) => f.version === v.version)?.snapshot;
+                            const lage =
+                              uebernahmeLage?.version === v.version ? uebernahmeLage : null;
+                            const laeuft =
+                              fassungUebernehmen.isPending &&
+                              fassungUebernehmen.variables?.version === v.version;
+                            if (!canEdit) {
+                              return (
+                                <p className="mt-2 text-[12.5px] text-muted">
+                                  {t("ko.snapshotRestoreNoRight")}
+                                </p>
+                              );
+                            }
+                            if (uebernahmeGesperrt) {
+                              return (
+                                <p
+                                  data-bib-fassung-uebernahme-gesperrt={v.key}
+                                  className="mt-2 text-[12.5px] text-muted"
+                                >
+                                  {t("ko.snapshotRestoreNeedsRelease")}
+                                </p>
+                              );
+                            }
+                            if (v.version >= ko.version) {
+                              return (
+                                <p className="mt-2 text-[12.5px] text-muted">
+                                  {t("ko.snapshotRestoreIsCurrent")}
+                                </p>
+                              );
+                            }
+                            if (!stand) {
+                              return (
+                                <p className="mt-2 text-[12.5px] text-muted">
+                                  {t("ko.snapshotRestoreNoContent")}
+                                </p>
+                              );
+                            }
+                            return (
+                              <div className="mt-2">
+                                <button
+                                  type="button"
+                                  data-bib-fassung-uebernehmen={v.key}
+                                  // Der zugängliche Name nennt die Fassung UND was aus dem Klick wird —
+                                  // sonst hörte ein Vorleseprogramm bei zehn Karten zehnmal dasselbe
+                                  // Wort (Muster `:1924-1927`).
+                                  aria-label={`v${v.version} — ${t("ko.snapshotRestore")} · ${t("ko.snapshotRestoreHint")}`}
+                                  // GESPERRT NUR, SOLANGE DIESER SCHREIBVORGANG LÄUFT. Es ist die eine
+                                  // Lage, in der ein zweiter Druck wirklich schadet: aus zwei Aufrufen
+                                  // entstünden zwei Fassungen. Der Knopf sagt dabei, was los ist — er
+                                  // steht nicht stumm da.
+                                  disabled={laeuft}
+                                  onClick={() => uebernahmeStarten(v.version)}
+                                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-muted hover:text-text disabled:cursor-default disabled:text-muted-2"
+                                >
+                                  {laeuft
+                                    ? t("ko.snapshotRestoreRunning")
+                                    : t("ko.snapshotRestore")}
+                                </button>
+                                {/* DIE AUSKUNFT STEHT IN EINER LIVE-REGION: wer mit einem
+                                    Vorleseprogramm arbeitet, erführe sonst nichts vom Ausgang. Die
+                                    Bauform ist die des Hauses — ein `<output aria-live="polite">`
+                                    wie am Diskussionsfehler (`:2488`), kein `role="status"` an einem
+                                    `<div>`. */}
+                                {lage === null ? null : (
+                                  <output
+                                    aria-live="polite"
+                                    data-bib-fassung-uebernahme-lage={v.key}
+                                    className={cx(
+                                      "mt-1.5 block text-[12.5px]",
+                                      lage.art === "fertig"
+                                        ? "text-trust-pos-text"
+                                        : lage.art === "offline"
+                                          ? "text-muted"
+                                          : "text-trust-crit-text",
+                                    )}
+                                  >
+                                    {lage.art === "fertig"
+                                      ? t("ko.snapshotRestoreDone", { version: lage.version })
+                                      : lage.art === "offline"
+                                        ? t("ko.snapshotRestoreOffline")
+                                        : lage.art === "stale"
+                                          ? t("ko.snapshotRestoreStale")
+                                          : lage.text}
+                                  </output>
+                                )}
+                                {/* KEIN NEULADEN (Korrekturpflicht JOB 4146 R6/R7): der einzige Weg
+                                    nach einem Konflikt erhält die Absicht — dieselbe Fassung, bezogen
+                                    auf den Stand, der JETZT wirklich gespeichert ist. Er steht
+                                    NEBEN dem Satz und ist ein AUSDRÜCKLICHER zweiter Griff; eine
+                                    frisch gelesene Versionszahl allein rechtfertigt kein
+                                    Überschreiben (Lehre JOB 4163 R1). */}
+                                {lage?.art === "stale" ? (
+                                  <button
+                                    type="button"
+                                    data-bib-fassung-uebernehmen-erneut={v.key}
+                                    aria-label={`v${v.version} — ${t("ko.snapshotRestoreAgain")}`}
+                                    onClick={() => uebernahmeStarten(v.version)}
+                                    className="mt-1.5 inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-muted hover:text-text"
+                                  >
+                                    {t("ko.snapshotRestoreAgain")}
+                                  </button>
+                                ) : null}
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ol>
+            </>
           );
         })()}
       </Abschnitt>

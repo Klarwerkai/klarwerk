@@ -144,6 +144,10 @@ const DIENST_VERMERKE = [
     // `addComment` in den Dienst gebracht. JOB 4146 R5: um weitere 28 Zeilen, weil `gleicheAbsendung`
     // vor `fadenWurzel` dazugekommen ist. Die Wortlaute sind UNVERÄNDERT; es sind weiterhin
     // dieselben fünf Vermerke. Gemessen mit `grep -n '"erstellt"' …`, nicht fortgeschrieben.
+    // JOB 4213: UNVERÄNDERT. Die Fassungsübernahme fügt in `service.ts` ausschliesslich UNTERHALB
+    // von `:3715` ein (Begründung dort bei `pruefeHerkunft`), deshalb bleiben die drei „erstellt"-
+    // Fundstellen und ihre Nachbarn stehen, wo sie standen. Gemessen mit
+    // `grep -n '"erstellt"' services/knowledge-object/src/service.ts`, nicht fortgeschrieben.
     fundstellen: [2077, 2203],
   },
   {
@@ -176,14 +180,24 @@ const DIENST_VERMERKE = [
     // stehen davor). JOB 4146 R5: um weitere 34 Zeilen (28 für `gleicheAbsendung` vor der Klasse,
     // 6 für die Inhaltsbindung IN `addComment`). Weiterhin dieselben VIER Schreibwege, derselbe
     // Vermerk.
-    fundstellen: [4053, 4137, 4210, 4399],
+    // JOB 4213 · NEU GEMESSEN, und es sind weiterhin dieselben VIER Schreibwege mit demselben
+    // Wortlaut: die Fassungsübernahme fügt in `service.ts` UNTERHALB von `:3715` ein (`pruefeHerkunft`,
+    // `ReviseMitHerkunft`) und verschiebt diese vier Fundstellen um 70 bis 110 Zeilen nach unten.
+    //
+    // SIE FÜHRT AUSDRÜCKLICH KEINEN SECHSTEN VERMERK EIN: eine Fassung, die einen früheren Stand
+    // zurückholt, trägt „überarbeitet" wie jede andere Revision. Was sie unterscheidet, steht als
+    // ZAHL im Eintrag (`restoredFrom`) und auf der Fläche als eigener, übersetzter Satz
+    // (`ko.snapshotRestoredFrom`). Ein sechster Vermerk hätte einen Eintrag in `koHistoryNote.ts`
+    // gebraucht — nicht Zielpfad dieses Auftrags —, und ohne ihn stünde das deutsche Wort im
+    // englischen Text. Dieselbe Entscheidung wie in JOB 3667 R7, aus demselben Grund.
+    fundstellen: [4335, 4452, 4548, 4737],
   },
   {
     wort: "überarbeitet (Dokumentinhalt übernommen)",
     schluessel: "ko.historyNote.revisedFromDocument",
     en: "revised (document content adopted)",
     nl: "herzien (documentinhoud overgenomen)",
-    fundstellen: [4622, 4640],
+    fundstellen: [4960, 4978],
   },
 ] as const;
 
@@ -478,6 +492,10 @@ describe("JOB 3627 · die Liste der festen Dienst-Vermerke ist gemessen, nicht b
     // neue Inhaltsfassung und damit je einen Schnappschuss. Alle drei tragen DASSELBE Literal — käme
     // hier je ein Wert von aussen an, wäre die offene Grenze in `koHistoryNote.ts` erreichbar, und
     // genau das meldete dieser Fall dann.
+    // JOB 4213 · UNVERÄNDERT DREI, und das ist der Beleg dafür, dass die Fassungsübernahme hier
+    // nichts aufgeweicht hat: sie schreibt ihren Schnappschuss über denselben `revise`-Weg mit
+    // demselben Literal. Ein vierter Erzeuger oder ein `note: vermerk` wäre der Augenblick, in dem
+    // die offene Grenze in `koHistoryNote.ts` erreichbar würde — und genau das meldete dieser Fall.
     expect(erzeuger, "die Erzeuger des mutateKoTx-Vermerks — jeder muss ein Literal sein").toEqual([
       '"überarbeitet"',
       '"überarbeitet"',

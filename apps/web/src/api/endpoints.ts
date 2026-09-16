@@ -180,7 +180,34 @@ export type KoAction =
   // Transaktion, in der geschrieben wird. OPTIONAL, weil er es dort auch ist: ohne das Feld bleibt
   // `revise` unbedingt wie bisher — kein Aufrufer im Haus ändert sein Verhalten, weil dieser Typ
   // wächst. Wer ihn MITSCHICKT, bekommt statt eines stillen Überschreibers ein 409 `KO_STALE`.
-  | { action: "revise"; changes: DraftPayload; expectedVersion?: number }
+  // ================================================================================================
+  // JOB 4213 (WIKI-NACHVOLLZIEHEN) — `restoredFromVersion`: DIESE REVISION HOLT EINEN STAND ZURÜCK.
+  // ================================================================================================
+  //
+  // KEINE ZWEITE SCHREIBTÜR. Die Übernahme einer alten Fassung ist eine Überarbeitung wie jede
+  // andere — derselbe Endpunkt, dieselbe Aktion, derselbe bedingte Schreibzugriff über
+  // `expectedVersion`. Das Feld sagt dem Dienst nur, WOHER der mitgeschickte Inhalt stammt; er prüft
+  // die Zahl gegen den Bestand und schreibt sie als Herkunft in die Historie
+  // (`services/knowledge-object/src/service.ts`, `pruefeHerkunft` / `naechsteFassung`).
+  //
+  // ES STEHT AN `changes` UND NICHT DANEBEN, weil die Route genau dieses Objekt durchreicht
+  // (`ko-routes.ts`: `const { sources: _ignoredSources, ...changes } = body.changes ?? {}`). Ein
+  // Feld neben `changes` verlangte eine Routenänderung — und die ist hier ausdrücklich nicht der Weg.
+  //
+  // ES ÜBERTRÄGT KEINE FREIGABE: Prüfstand und Vertrauenswert setzt der Dienst, nicht dieser Aufruf.
+  // Eine zurückgeholte Fassung steht auf `offen`, auch wenn die übernommene freigegeben war.
+  //
+  // RUNDE 3 · UND ES ÜBERTRÄGT AUCH KEINEN INHALT MEHR. Eine Übernahme schickt AUSSCHLIESSLICH
+  // `restoredFromVersion` — kommt ein Inhaltsfeld daneben, weist der Dienst den Aufruf mit 400 ab
+  // (`KoService.pruefeUebernahmeEingabe`). Der Inhalt wird aus der abgelegten Fassung geholt, und
+  // damit IST die Herkunftsangabe wahr, statt geglaubt zu werden. Der Typ bleibt trotzdem der
+  // gemeinsame `DraftPayload`-Schnitt: dieselbe Aktion trägt weiterhin jede gewöhnliche Revision,
+  // und zwei Typen für einen Endpunkt wären zwei Verträge für eine Tür.
+  | {
+      action: "revise";
+      changes: DraftPayload & { restoredFromVersion?: number };
+      expectedVersion?: number;
+    }
   // ================================================================================================
   // JOB 4146 (WIKI-DISKUSSION) — DER BEITRAG BEKOMMT ZWEI OPTIONALE BEGLEITER.
   // ================================================================================================

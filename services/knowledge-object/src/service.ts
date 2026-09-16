@@ -4023,18 +4023,280 @@ export class KoService {
     }
   }
 
+  // ==============================================================================================
+  // JOB 4213 (WIKI-NACHVOLLZIEHEN) — DIE HERKUNFTSANGABE EINER ÜBERNAHME, GEPRÜFT STATT GEGLAUBT.
+  // ==============================================================================================
+  //
+  // RUNDE 2 · WARUM DIE ANGABE NICHT IN `ReviseKoInput` OBEN STEHT, sondern hier unten als eigener
+  // Typ: über `ReviseKoInput` (`:427`) läge sie 3.500 Zeilen weiter oben, und JEDE Zeile, die dort
+  // dazukommt, verschiebt `findSearchHits` (`:1809`) und `findCandidates` (`:3691-3715`). Auf genau
+  // diese Zeilen zeigen zwei Wegweiser in `services/knowledge-object/src/repo.ts` und
+  // `services/app/src/knowledge-check.ts` — beide NICHT Zielpfad dieses Auftrags, beide am Quelltext
+  // nachgeschlagen von `tests/live-check-postgres-prefilter/toter-kandidatenweg.test.ts` und
+  // `tests/live-check-suchwoerter/begruendung-nennt-die-gebaute-kette.test.ts`. Runde 1 hat sie
+  // verschoben und die beiden fremden Dateien nachgeführt; das war ein Zielpfad-Verstoß. Diese
+  // Deklaration steht deshalb UNTERHALB von `:3715` — sie erweitert dasselbe Eingabeobjekt,
+  // verschiebt aber keine Zeile, auf die jemand von aussen zeigt.
+  //
+  // FACHLICH IST SIE KEIN ZWEITER SCHREIBWEG, sondern eine ANGABE ÜBER DIESEN: geschrieben wird über
+  // `revise` — dieselbe Transaktion, derselbe Lock, derselbe bedingte Schreibzugriff über
+  // `expectedVersion`.
+  //
+  // RUNDE 3 · DER INHALT KOMMT NICHT MEHR VOM AUFRUFER, SONDERN AUS DER ABGELEGTEN FASSUNG.
+  //
+  // BENs Befund an Runde 2 (`BEN Herkunft {"http":200,"statement":"ERFUNDENER INHALT","herkunft":1}`):
+  // die Zahl wurde gegen den Zahlenbereich geprüft, der INHALT daneben aber geglaubt. Damit liess
+  // sich beliebiger neuer Text mit `restoredFromVersion: 1` speichern, und die Fläche schrieb
+  // anschliessend „aus Fassung v1 übernommen" darüber — eine Auskunft, die im Datensatz steht und
+  // niemand mehr richtigstellen kann.
+  //
+  // JETZT IST DIE HERKUNFT KEINE BEHAUPTUNG MEHR, SONDERN EINE KONSTRUKTION: eine Übernahme schickt
+  // GAR KEINEN Inhalt (`pruefeUebernahmeEingabe` weist einen mitgeschickten ab), und der Dienst holt
+  // die sieben Inhaltsfelder aus dem gespeicherten Schnappschuss (`uebernahmeAusFassung`). Was
+  // gespeichert wird, IST damit die genannte Fassung — es gibt keinen Weg mehr, an dem beides
+  // auseinanderfallen könnte, und keine Ähnlichkeitsheuristik, die man umgehen müsste.
+  //
+  // WAS SIE NICHT ÜBERTRÄGT: Prüfstand, Vertrauenswert und die tragenden Identitäten der alten
+  // Fassung. Die entstehende Fassung ist UNGEPRÜFT — s. `naechsteFassung`.
+  //
+  // Sie wird IM serialisierten Abschnitt geprüft, gegen den dort gelesenen Stand — genau wie
+  // `pruefeErwarteteVersion` daneben und aus demselben Grund: eine Prüfung vor dem Lock wäre ein
+  // Zeitfenster. Wirft sie, ist nichts geschrieben.
+  //
+  // DREI ABWEISUNGEN, jede mit ihrem Grund: keine ganze Zahl, kleiner als 1, oder grösser als die
+  // gerade gespeicherte Version. Der dritte Fall ist der wichtige — eine Fassung aus der Zukunft
+  // gibt es nicht, und „übernommen aus v9" an einem Objekt mit vier Fassungen wäre eine Auskunft,
+  // die niemand mehr richtigstellen kann.
+  private pruefeHerkunft(ko: KnowledgeObject, herkunft: number | undefined): void {
+    if (herkunft === undefined) {
+      return;
+    }
+    if (!Number.isInteger(herkunft) || herkunft < 1 || herkunft > ko.version) {
+      // DER CODE IST DER VORHANDENE ALLGEMEINE EINGABEFEHLER, und das ist eine Entscheidung: ein
+      // eigener Code müsste in `ERLAUBTE_FEHLERCODES` (`services/app/src/build-app.ts`) eingetragen
+      // werden, und diese Datei liegt ausdrücklich nicht in den Zielpfaden dieses Auftrags. `INVALID`
+      // geht über `http.ts` als 400 hinaus — genau die Aussage, die hier gilt: die Anfrage ist
+      // falsch, nicht der Zustand. Was falsch ist, steht im Meldungstext.
+      throw new KoError(
+        "INVALID",
+        `restoredFromVersion muss eine gespeicherte Fassung dieses Wissensobjekts sein (1 bis ${ko.version}), nicht ${String(herkunft)}.`,
+      );
+    }
+  }
+
+  /**
+   * JOB 4213 R3 · EINE ÜBERNAHME BRINGT KEINEN EIGENEN INHALT MIT.
+   *
+   * Der Aufrufer sagt NUR, welche Fassung er zurückholen will. Käme daneben ein Inhaltsfeld an,
+   * wäre die Absicht doppeldeutig — „nimm v1" und „aber mit diesem Text" —, und genau daraus ist in
+   * Runde 2 die falsche Herkunftsauskunft entstanden. Abgewiesen statt still verworfen: ein
+   * verworfener Text wäre ein Verlust, von dem der Mensch nichts erführe.
+   */
+  private pruefeUebernahmeEingabe(changes: ReviseMitHerkunft): void {
+    if (changes.restoredFromVersion === undefined) {
+      return;
+    }
+    const mitgeschickt = (
+      [
+        "title",
+        "statement",
+        "type",
+        "conditions",
+        "measures",
+        "bodyHtml",
+        "asset",
+        "sources",
+      ] as const
+    ).filter((feld) => changes[feld] !== undefined);
+    if (mitgeschickt.length > 0) {
+      throw new KoError(
+        "INVALID",
+        `Eine Übernahme holt den Inhalt aus der genannten Fassung; zusätzliche Inhaltsfelder werden nicht angenommen (mitgeschickt: ${mitgeschickt.join(", ")}).`,
+      );
+    }
+  }
+
+  /**
+   * JOB 4213 R3 · DER INHALT DER FASSUNG, DIE ZURÜCKGEHOLT WIRD — aus der Ablage gelesen.
+   *
+   * VOR dem Lock, und das ist hier richtig: die Schnappschuss-Ablage ist append-only (`repo.ts:468`,
+   * „von `append` nie ersetzt"), eine abgelegte Fassung ändert sich also nicht mehr. Es gibt kein
+   * Zeitfenster, das ein Lock schliessen könnte. Was IM Lock geprüft wird, ist die Beziehung zum
+   * AKTUELLEN Stand — Versionsbereich (`pruefeHerkunft`) und Anhangsfundstellen
+   * (`pruefeUebernahmeAnhaenge`); beides hängt an `ko` und steht deshalb dort.
+   *
+   * OHNE ABLAGE KEINE ÜBERNAHME: `this.versions` ist optional. Fehlt sie oder fehlt die Fassung,
+   * wird abgewiesen — fail-closed. Eine Übernahme „auf gut Glück" gibt es nicht; sie würde den
+   * Inhalt des aktuellen Standes stehen lassen und trotzdem „aus Fassung vN übernommen" behaupten.
+   */
+  private async uebernahmeAusFassung(
+    id: string,
+    version: number,
+  ): Promise<{ inhalt: ReviseKoInput; bekannteKennungen: string[] }> {
+    const abgelegt = (await this.versions?.listByKo(id)) ?? [];
+    const fassung = abgelegt.find((eintrag) => eintrag.version === version)?.snapshot;
+    if (!fassung) {
+      throw new KoError(
+        "INVALID",
+        `Zu Version ${version} dieses Wissensobjekts ist kein Stand gespeichert; es gibt nichts zu übernehmen.`,
+      );
+    }
+    // GENAU DIE INHALTSFELDER, die auch der Fassungsvergleich kennt (`apps/web/src/lib/koVersionDiff.ts`),
+    // ohne `status`: der Prüfstand wird vom Vorgang gesetzt und nie aus einer alten Fassung geerbt.
+    // `asset` reist NICHT mit — die kanonische Anlagenkennung ist die Identität des Objekts, nicht
+    // der Inhalt einer Fassung; `sources` ebenso wenig (sie bleiben über Revisionen erhalten).
+    //
+    // JOB 4213 R5 · DIE ANHANGSKENNUNGEN DER ALTEN FASSUNG REISEN MIT — nicht als Inhalt, sondern als
+    // WISSEN: sie sind die einzigen Objektkennungen, die dieser Dienst OHNE Formerkennung kennt
+    // (`KnowledgeObject.attachments[].objectId`, serverseitig gesetzt). `pruefeUebernahmeAnhaenge`
+    // braucht sie, um auch eine Kennung zu finden, die im alten Bericht als blosser Text steht und
+    // keiner Form folgt. Übernommen werden die Anhänge selbst NICHT — `naechsteFassung` behält die
+    // des aktuellen Standes.
+    return {
+      inhalt: {
+        title: fassung.title,
+        statement: fassung.statement,
+        type: fassung.type,
+        conditions: fassung.conditions ?? [],
+        measures: fassung.measures ?? [],
+        bodyHtml: fassung.bodyHtml ?? null,
+      },
+      // `objectId` ist am Anhang optional (`KoAttachment`) — ein Eintrag ohne Kennung ist keine
+      // Fundstelle und fällt hier heraus, statt als `undefined` weiterzureisen.
+      bekannteKennungen: (fassung.attachments ?? [])
+        .map((a) => a.objectId)
+        .filter((kennung): kennung is string => typeof kennung === "string" && kennung.length > 0),
+    };
+  }
+
+  /**
+   * JOB 4213 R5 · JEDE OBJEKTKENNUNG IM ZURÜCKZUHOLENDEN BERICHT — in JEDER Form, die autorisiert.
+   *
+   * BENs Befund an Runde 4 (`BEN Klartextkennung {"uebernahme":200,"rohbytesDanach":200}`): Runde 3
+   * suchte nur `/api/objects/<id>/raw`. `services/app/src/sichtbarkeit.ts` fragt aber schlicht
+   * `bodyHtml.includes(objectId)` (`zuordnungAmObjekt`) — eine Kennung als blosser Text im Bericht
+   * ist damit GENAUSO autorisierungswirksam, und sie lief durch. Die Fundstellenform war zu eng
+   * gewählt, nicht die Regel.
+   *
+   * DREI QUELLEN, und sie ergänzen einander bewusst:
+   *   (a) DIE PRODUKTIONSFORM EINER KENNUNG: eine UUID. Jede Objektkennung entsteht aus
+   *       `randomUUID()` (`services/object-store/src/service.ts`, `genId`). Dieses Muster fängt die
+   *       Kennung an JEDER Stelle des Berichts — in einer URL, in einem Attribut, in reinem Text.
+   *       Es ist damit deckungsgleich mit dem `includes` der Sichtbarkeitsregel.
+   *   (b) DIE URL-FORM. Sie bleibt, weil sie auch eine Kennung fängt, die KEINE UUID ist — etwa aus
+   *       einem Bestand, dessen `genId` überschrieben war.
+   *   (c) DIE BEKANNTEN ANHÄNGE DER ALTEN FASSUNG, formunabhängig: steht eine dort geführte Kennung
+   *       irgendwo im Bericht, zählt sie. Das ist die einzige Quelle ohne jede Formannahme.
+   *
+   * DIE VERBLEIBENDE GRENZE, benannt statt weggelassen: eine Kennung, die weder UUID-förmig ist noch
+   * in der URL-Form steht noch als Anhang der alten Fassung geführt wird, findet dieser Leser nicht.
+   * Über den Produktionsweg kann sie nicht entstehen (`randomUUID`); ein Bestand mit eigenem `genId`
+   * könnte sie tragen. Vollständig schlösse das nur eine Liste aller Objektkennungen — die liegt im
+   * object-store und damit hinter einer Modulgrenze, die dieser Dienst nicht überschreitet.
+   *
+   * FAIL-CLOSED IN KAUF GENOMMEN: eine UUID-förmige Zeichenfolge, die gar kein Objekt bezeichnet,
+   * blockiert die Übernahme, wenn sie im aktuellen Stand fehlt. Lieber eine Übernahme zu viel
+   * abgewiesen als eine Datei zu viel geöffnet.
+   */
+  private kennungenImBericht(bericht: string, bekannte: readonly string[]): string[] {
+    const gefunden = new Set<string>();
+    for (const treffer of bericht.matchAll(
+      /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi,
+    )) {
+      gefunden.add(treffer[0]);
+    }
+    for (const treffer of bericht.matchAll(/\/api\/objects\/([^/"'\s?#]+)\/raw/g)) {
+      if (treffer[1]) {
+        gefunden.add(treffer[1]);
+      }
+    }
+    for (const kennung of bekannte) {
+      if (kennung.length > 0 && bericht.includes(kennung)) {
+        gefunden.add(kennung);
+      }
+    }
+    return [...gefunden];
+  }
+
+  // ==============================================================================================
+  // JOB 4213 R3 — EINE ÜBERNAHME BELEBT KEINE ANHANGSFUNDSTELLE WIEDER.
+  // ==============================================================================================
+  //
+  // BENs Befund an Runde 2 (`BEN Anhang {"vorher":404,"nachher":200,"version":3}`): eine Bildkennung
+  // steht in v1, wird in v2 aus dem Bericht entfernt, und der HOCHLADENDE holt v1 als v3 zurück.
+  // Danach bekamen Dritte die Rohbytes.
+  //
+  // WARUM: `services/app/src/sichtbarkeit.ts` (`zuordnungInFassung`) misst die Urheberschaft einer
+  // reinen Fliesstext-Fundstelle als DIFFERENZ ZUM UNMITTELBAREN VORGÄNGER — „kannte schon der
+  // Vorgänger diese Kennung, ist sie mitkopiert, und Mitkopieren ist keine Urheberschaft". Gegenüber
+  // v2 ist die Kennung in v3 aber NEU, obwohl sie in Wahrheit aus v1 mitkopiert ist. Die Regel ist
+  // richtig; sie kann diesen Sprung nur nicht sehen.
+  //
+  // WO DAS BEHOBEN WIRD: HIER, nicht dort. `sichtbarkeit.ts` ist nicht Zielpfad dieses Auftrags —
+  // und es ist auch die schwächere Stelle: dort müsste die Regel raten, ob ein Sprung stattfand.
+  // Der Dienst WEISS es. Die Zusage lautet deshalb, und sie ist schärfer als die dortige Messung:
+  //
+  //     NACH EINER ÜBERNAHME NENNT DER BERICHT KEINE OBJEKTKENNUNG, DIE DER AKTUELLE STAND NICHT
+  //     SCHON NENNT.
+  //
+  // Damit ist die Vorgänger-Differenz in `sichtbarkeit.ts` für jede Übernahme LEER — der Fall kann
+  // gar nicht mehr entstehen, und zwar unabhängig davon, wie dort künftig gemessen wird.
+  //
+  // ABGEWIESEN, NICHT STILL BESCHNITTEN: Referenzen aus dem alten Bericht zu löschen wäre ein
+  // Inhaltsverlust, von dem niemand erführe. Der Mensch bekommt gesagt, WELCHE Bilder im Weg stehen,
+  // und kann sie am aktuellen Stand wieder anhängen, bevor er zurückholt.
+  //
+  // WELCHE FUNDSTELLEN GESUCHT WERDEN, steht bei `kennungenImBericht` — RUNDE 5 hat das von der
+  // URL-Form auf JEDE autorisierungswirksame Form geweitet (BENs `BEN Klartextkennung`).
+  //
+  // Und „der aktuelle Stand nennt sie" heisst hier dasselbe wie in `zuordnungAmObjekt`: ein
+  // `attachments`-Eintrag ODER die Kennung im Bericht — ein Anhangseintrag trägt seinen eigenen,
+  // serverseitig gesetzten Urheber und wird von der Vorgänger-Differenz ohnehin nicht angehoben.
+  private pruefeUebernahmeAnhaenge(
+    ko: KnowledgeObject,
+    zurueckgeholt: ReviseKoInput,
+    bekannteKennungen: readonly string[],
+  ): void {
+    const alt = typeof zurueckgeholt.bodyHtml === "string" ? zurueckgeholt.bodyHtml : "";
+    const jetzt = typeof ko.bodyHtml === "string" ? ko.bodyHtml : "";
+    const anhaenge = new Set((ko.attachments ?? []).map((a) => a.objectId));
+    const heimatlos = this.kennungenImBericht(alt, bekannteKennungen).filter(
+      (kennung) => !jetzt.includes(kennung) && !anhaenge.has(kennung),
+    );
+    if (heimatlos.length > 0) {
+      throw new KoError(
+        "INVALID",
+        `Diese Fassung nennt Dateien, die am aktuellen Stand nicht mehr hängen (${heimatlos.join(", ")}). Sie lässt sich so nicht zurückholen — hänge sie zuerst wieder an.`,
+      );
+    }
+  }
+
   // FR-KO-04: Überarbeiten erhöht Version, setzt Bewertungen zurück, erzeugt History-Eintrag.
   //
   // JOB 3667 R2: `opts.expectedVersion` macht daraus einen BEDINGTEN Schreibzugriff (s. o.).
+  //
+  // JOB 4213: `changes.restoredFromVersion` macht daraus die ÜBERNAHME eines früheren Standes. Kein
+  // zweiter Schreibweg, keine zweite Route — dieselbe Transaktion, derselbe Lock, dasselbe CAS.
   async revise(
     id: string,
-    changes: ReviseKoInput,
+    changes: ReviseMitHerkunft,
     author: string,
     opts: { expectedVersion?: number } = {},
   ): Promise<KnowledgeObject> {
     if (changes.type && !KNOWLEDGE_TYPES.includes(changes.type)) {
       throw new KoError("INVALID_TYPE", "Unbekannte Wissensart.");
     }
+    // JOB 4213 R3: eine Übernahme bringt keinen eigenen Inhalt mit, und was geschrieben wird, holt
+    // der Dienst aus der abgelegten Fassung. Beides steht VOR dem Lock — die Eingabeprüfung braucht
+    // keinen Stand, und die Ablage ist append-only (Begründung bei `uebernahmeAusFassung`).
+    this.pruefeUebernahmeEingabe(changes);
+    const herkunft = changes.restoredFromVersion;
+    const zurueckgeholt =
+      herkunft === undefined ? undefined : await this.uebernahmeAusFassung(id, herkunft);
+    const wirksameAenderung: ReviseMitHerkunft =
+      herkunft === undefined || zurueckgeholt === undefined
+        ? changes
+        : { ...zurueckgeholt.inhalt, restoredFromVersion: herkunft };
     // SCRUM-507 R2/R3: die Revision läuft transaktional über mutateKoTx — per-KO serialisiert
     // (withKoLock, atomar gegen eine nebenläufige Bewertung, die denselben Lock + CAS nutzt) UND mit
     // vollständigem Rollback: schlägt der Versions-Snapshot ODER der Audit NACH der Persistenz fehl, wird
@@ -4044,12 +4306,32 @@ export class KoService {
     return this.mutateKoTx(id, (ko) => {
       // JOB 3667 R2: der bedingte Schreibzugriff, INNERHALB des serialisierten Abschnitts.
       this.pruefeErwarteteVersion(ko, opts.expectedVersion);
-      const revised = this.naechsteFassung(ko, changes, author);
+      // JOB 4213: und die Herkunftsangabe, im selben Abschnitt und gegen denselben gelesenen Stand.
+      this.pruefeHerkunft(ko, herkunft);
+      // JOB 4213 R3: und die Anhangsfundstellen — ebenfalls gegen DIESEN gelesenen Stand, weil die
+      // Frage „hängt die Datei noch am Objekt?" nur am aktuellen Stand zu beantworten ist.
+      if (zurueckgeholt !== undefined) {
+        this.pruefeUebernahmeAnhaenge(ko, zurueckgeholt.inhalt, zurueckgeholt.bekannteKennungen);
+      }
+      const revised = this.naechsteFassung(ko, wirksameAenderung, author);
       const version = revised.version;
       return {
         updated: revised,
         value: revised,
         // SCRUM-159: neuen Versions-Snapshot persistieren; frühere Versionen bleiben unverändert.
+        //
+        // JOB 4213 · RUNDE 2 — DER VERMERK BLEIBT „überarbeitet", AUCH BEI EINER ÜBERNAHME, und das
+        // ist eine Entscheidung wie schon in JOB 3667 R7 („überarbeitet und freigegeben"). Ein
+        // SECHSTER fester Dienst-Vermerk ist nur halb geliefert, solange er nicht übersetzt wird:
+        // die Anzeige bildet ihn über `apps/web/src/lib/koHistoryNote.ts` auf einen Katalogschlüssel
+        // ab, und diese Datei ist NICHT Zielpfad dieses Auftrags (Runde 1 hat sie angefasst — das
+        // war der Zielpfad-Verstoß). Ohne Eintrag dort stünde das deutsche Wort mitten im englischen
+        // und niederländischen Text, genau der Befund, gegen den JOB 3627 steht.
+        //
+        // ES GEHT NICHTS VERLOREN: WAS geschah, sagt der Vermerk (überarbeitet); DASS der Inhalt aus
+        // einer früheren Fassung stammt, sagt der Datensatz selbst — `history[].restoredFrom` (s.
+        // `naechsteFassung`), und die Fläche setzt daraus ihren eigenen, übersetzten Satz
+        // (`ko.snapshotRestoredFrom`). Der Vermerk hätte das nur ein zweites Mal behauptet.
         snapshot: { author, note: "überarbeitet" },
         // JOB 2704 D1: der Beleg läuft auf dem Transaktionsclient der Revision (tx aus mutateKoTx,
         // undefined ohne withTx) — er committet und verschwindet mit ihr.
@@ -4085,12 +4367,31 @@ export class KoService {
   // darf die Trust-Skala nicht kennen, und eine 99 an dieser Stelle wäre eine Abschrift.
   private naechsteFassung(
     ko: KnowledgeObject,
-    changes: ReviseKoInput,
+    changes: ReviseMitHerkunft,
     author: string,
     freigabe?: { actor: string; trust: number },
   ): KnowledgeObject {
     const version = ko.version + 1;
     const at = new Date(this.now()).toISOString();
+    // ============================================================================================
+    // JOB 4213 · EINE ZURÜCKGEHOLTE FASSUNG IST UNGEPRÜFT — UND ZWAR SERVERSEITIG.
+    // ============================================================================================
+    //
+    // `uebernahme` ist die Version, aus der der mitgeschickte Inhalt stammt (`undefined` bei jeder
+    // gewöhnlichen Überarbeitung). Geprüft wurde sie im aufrufenden `mutateKoTx`-Abschnitt.
+    //
+    // SIE HEBT EINE GLEICHZEITIGE FREIGABE AUF. Ohne diese Zeile könnte ein Aufruf über
+    // `revise-release` einen alten Stand zurückholen und ihn in derselben Bewegung freigeben — die
+    // Freigabe gälte dann für einen Inhalt, den in dieser Fassung niemand geprüft hat. Sie wäre
+    // nicht einmal eine neue Freigabe, sondern die Wiederauferstehung einer alten. Wer den
+    // zurückgeholten Stand freigeben will, tut es danach, sichtbar, als eigenen Schritt.
+    //
+    // DAMIT IST DIE ZUSAGE EINE SERVERZUSAGE und keine Auslassung im Client: `status` und `trust`
+    // werden HIER gesetzt, aus dem Vorgang und nicht aus der Eingabe. `ReviseMitHerkunft` führt
+    // weder `status` noch `trust` noch `ownership` — ein Aufruf, der sie mitschickt, erreicht diese
+    // Felder gar nicht; und was er nicht erreicht, kann er auch nicht erben.
+    const uebernahme = changes.restoredFromVersion;
+    const wirkendeFreigabe = uebernahme === undefined ? freigabe : undefined;
     // KW-STR: neuer Body wird sanitisiert; statement ggf. daraus abgeleitet.
     //
     // JOB 3667 R5: die Fallunterscheidung steht in `rumpfDerFassung` (s. dort) — dieselbe Regel,
@@ -4118,8 +4419,8 @@ export class KoService {
       // Ohne Freigabe: Bewertungen der Vorversion zählen nicht mehr (versionsgebunden, R2) und das
       // Objekt muss neu validiert werden. MIT Freigabe entscheidet der freigabeberechtigte Mensch
       // in DEMSELBEN Vorgang — es gibt keinen Augenblick, in dem der neue Text ungeprüft dasteht.
-      trust: freigabe ? freigabe.trust : 0,
-      status: freigabe ? "validiert" : "offen",
+      trust: wirkendeFreigabe ? wirkendeFreigabe.trust : 0,
+      status: wirkendeFreigabe ? "validiert" : "offen",
       // JOB 3667 RUNDE 7 · DER VERMERK BLEIBT „überarbeitet", AUCH MIT FREIGABE — und das ist eine
       // Entscheidung, keine Nachlässigkeit. Runde 5/6 schrieb hier und an den beiden Schnappschüssen
       // unten einen SECHSTEN festen Vermerk („überarbeitet und freigegeben"). Ein fester Vermerk des
@@ -4134,7 +4435,24 @@ export class KoService {
       // Datensatz selbst — `status: "validiert"`, der Vertrauenswert, die tragende Identität in
       // `ownership.validators` (s. u.) und zwei Belege (`ko.revised` UND `ko.admin-validated`).
       // Der Vermerk war die einzige Stelle, die das ein zweites Mal behauptet hätte.
-      history: [...ko.history, { version, at, author, note: "überarbeitet" }],
+      //
+      // JOB 4213 · AUS DEMSELBEN GRUND TRÄGT AUCH EINE ÜBERNAHME DEN VERMERK „überarbeitet". Was sie
+      // von einer gewöhnlichen Revision unterscheidet, steht als ZAHL daneben: `restoredFrom` nennt
+      // die Fassung, aus der der Inhalt stammt. Eine Zahl braucht keine Übersetzung — ein Vermerk
+      // „übernommen aus v2" lautete für jede Version anders und käme durch den zeichengenauen
+      // Katalog (`koHistoryNote.ts`) nicht hindurch. Das Feld steht NUR an einer Übernahme; fehlt
+      // es, ist das die ehrliche Aussage „dieser Eintrag entstand nicht aus einer Übernahme" und
+      // nicht „aus Version 0".
+      history: [
+        ...ko.history,
+        {
+          version,
+          at,
+          author,
+          note: "überarbeitet",
+          ...(uebernahme === undefined ? {} : { restoredFrom: uebernahme }),
+        },
+      ],
       // SCRUM-129: Quellen über Revisionen erhalten; SCRUM-470: optional fortschreiben (Re-Sync-Anker).
       // SCRUM-527 (WP2): Allowlist auf jede Quell-URL — säubert auch Altbestand beim nächsten Revise.
       sources: sanitizeSources(changes.sources ?? ko.sources ?? []),
@@ -4159,13 +4477,13 @@ export class KoService {
       // tragen.
       asset: normalizeAsset(changes.asset !== undefined ? changes.asset : ko.asset),
     };
-    if (!freigabe) {
+    if (!wirkendeFreigabe) {
       return fassung;
     }
     // JOB 557: eine abgeschlossene Validierung schreibt fort, WER sie getragen hat. Dieselbe
     // Rollenfolge wie am Bewertungsweg (`recordOwnershipRole`), nur HIER im selben Objekt — ein
     // zweiter Schreibvorgang wäre ein zweiter Zustand und (über `withKoLock`) nicht einmal möglich.
-    const ownership = withRole(ownershipOf(fassung), "validators", [freigabe.actor]);
+    const ownership = withRole(ownershipOf(fassung), "validators", [wirkendeFreigabe.actor]);
     return ownership === null ? fassung : { ...fassung, ownership };
   }
 
@@ -4191,16 +4509,36 @@ export class KoService {
   // Dieser Dienst kennt keine Rechte — er bekommt den Akteur und den Vertrauenswert gereicht.
   async reviseUndFreigeben(
     id: string,
-    changes: ReviseKoInput,
+    changes: ReviseMitHerkunft,
     actor: string,
     opts: { trust: number; expectedVersion?: number },
   ): Promise<KnowledgeObject> {
     if (changes.type && !KNOWLEDGE_TYPES.includes(changes.type)) {
       throw new KoError("INVALID_TYPE", "Unbekannte Wissensart.");
     }
+    // JOB 4213 R3: dieselben drei Zusagen wie an `revise` — dieser Weg ist derselbe Schreibvorgang
+    // mit Freigabe, und eine Übernahme darf sich hier nicht an ihnen vorbeimogeln.
+    this.pruefeUebernahmeEingabe(changes);
+    const herkunft = changes.restoredFromVersion;
+    const zurueckgeholt =
+      herkunft === undefined ? undefined : await this.uebernahmeAusFassung(id, herkunft);
+    const wirksameAenderung: ReviseMitHerkunft =
+      herkunft === undefined || zurueckgeholt === undefined
+        ? changes
+        : { ...zurueckgeholt.inhalt, restoredFromVersion: herkunft };
     return this.mutateKoTx(id, (ko) => {
       this.pruefeErwarteteVersion(ko, opts.expectedVersion);
-      const fassung = this.naechsteFassung(ko, changes, actor, { actor, trust: opts.trust });
+      // JOB 4213: auch hier geprüft, nicht geglaubt. Eine Übernahme über DIESEN Weg bliebe trotzdem
+      // ungeprüft — `naechsteFassung` hebt die gleichzeitige Freigabe auf (s. dort); die Prüfung hier
+      // verhindert bloss, dass eine erfundene Herkunftszahl in den Datensatz läuft.
+      this.pruefeHerkunft(ko, herkunft);
+      if (zurueckgeholt !== undefined) {
+        this.pruefeUebernahmeAnhaenge(ko, zurueckgeholt.inhalt, zurueckgeholt.bekannteKennungen);
+      }
+      const fassung = this.naechsteFassung(ko, wirksameAenderung, actor, {
+        actor,
+        trust: opts.trust,
+      });
       const version = fassung.version;
       return {
         updated: fassung,
@@ -4996,3 +5334,26 @@ export class KoService {
     return ko;
   }
 }
+
+// ==================================================================================================
+// JOB 4213 (WIKI-NACHVOLLZIEHEN) — DIE EINGABE EINER REVISION, DIE EINEN FRÜHEREN STAND ZURÜCKHOLT.
+// ==================================================================================================
+//
+// EIN ORT STATT DREIER ANNOTATIONEN: `revise`, `reviseUndFreigeben` und `naechsteFassung` nehmen
+// dieselbe Eingabe entgegen; dreimal `ReviseKoInput & { restoredFromVersion?: number }` hinzuschreiben
+// wäre dieselbe Aussage dreimal.
+//
+// WARUM AM DATEIENDE UND NICHT BEI `ReviseKoInput` (`:427`): Typdeklarationen gelten in TypeScript
+// unabhängig von ihrer Stelle, und JEDE Zeile, die oben dazukommt, verschiebt `findSearchHits`
+// (`:1809`) und `findCandidates` (`:3691-3715`) — die Ziele zweier Wegweiser in
+// `services/knowledge-object/src/repo.ts` und `services/app/src/knowledge-check.ts`, die NICHT
+// Zielpfad dieses Auftrags sind und von zwei Wächtern am Quelltext nachgeschlagen werden. Die
+// ausführliche Begründung steht bei `pruefeHerkunft`.
+//
+// NICHT EXPORTIERT: ausserhalb dieser Datei braucht ihn niemand. Die Route reicht `body.changes`
+// unverändert durch (`ko-routes.ts`), und der Browser-Vertrag steht in
+// `apps/web/src/api/endpoints.ts`.
+type ReviseMitHerkunft = ReviseKoInput & {
+  /** Die Fassung, aus der der mitgeschickte Inhalt stammt. Fehlt sie, ist es eine gewöhnliche Revision. */
+  restoredFromVersion?: number;
+};

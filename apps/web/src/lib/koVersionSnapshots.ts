@@ -1,5 +1,25 @@
-import type { KnowledgeType, KoVersionSnapshot } from "../api/types";
+import type { HistoryEntry, KnowledgeType, KoVersionSnapshot } from "../api/types";
 import { htmlToPlainText, isEmptyHtml } from "./richText";
+
+// ==================================================================================================
+// JOB 4213 · WIKI-NACHVOLLZIEHEN — DER EINE ORT, AN DEM DIE HERKUNFT VOM DRAHT GELESEN WIRD.
+// ==================================================================================================
+//
+// WAS DER SERVER SCHREIBT: eine Fassung, die einen früheren Stand zurückholt, trägt in ihrem
+// Historieneintrag zusätzlich `restoredFrom` — die Version, aus der ihr Inhalt stammt
+// (`services/knowledge-object/src/types.ts`, `HistoryEntry`; geschrieben in `KoService.naechsteFassung`).
+//
+// WARUM HIER EIN ENGER CAST UND KEIN FELD IM CLIENT-TYP: `apps/web/src/api/types.ts` ist NICHT
+// Zielpfad dieses Auftrags. Der Cast ist deshalb so schmal wie möglich — er behauptet über den
+// Eintrag nichts, ausser dass dort ein Feld dieses Namens STEHEN KANN, und er prüft den Wert, statt
+// ihm zu glauben. Kein `any`: der abgefragte Typ ist `unknown`, und nur eine echte Zahl kommt durch.
+//
+// „FEHLT" UND „KEINE ZAHL" SIND DASSELBE UND HEISSEN `null`: diese Fassung entstand nicht aus einer
+// Übernahme. `0` wäre eine Aussage über eine Version, die es nicht gibt.
+export function uebernahmeHerkunft(eintrag: HistoryEntry | undefined): number | null {
+  const wert = (eintrag as { restoredFrom?: unknown } | undefined)?.restoredFrom;
+  return typeof wert === "number" && Number.isInteger(wert) && wert >= 1 ? wert : null;
+}
 
 // ==================================================================================================
 // JOB 3475 · UX-28 — DIE ZEILE EINER FASSUNG FÜHRT DEN GESPEICHERTEN BERICHT MIT.
@@ -43,6 +63,16 @@ export interface KoVersionSnapshotRow {
    * base64-Daten und keine Aussage über den Bericht.
    */
   berichtZeichen: number;
+  /**
+   * JOB 4213: die Fassung, aus der DIESER Stand zurückgeholt wurde — `null` heisst „diese Fassung
+   * entstand nicht aus einer Übernahme".
+   *
+   * SIE WIRD GELESEN, NICHT GERECHNET: sie steht im Historieneintrag DIESER Version, den der
+   * Schnappschuss mitführt, und kommt über `uebernahmeHerkunft` (oben) herein. Sie aus gleichen
+   * Inhalten zu erraten wäre eine Behauptung — zwei Fassungen dürfen denselben Text tragen, ohne
+   * dass eine aus der anderen stammt.
+   */
+  herkunft: number | null;
 }
 
 export function snapshotExcerpt(text: string, max = 140): string {
@@ -64,6 +94,13 @@ export function koVersionRows(snapshots: readonly KoVersionSnapshot[]): KoVersio
         ? ""
         : (entry.snapshot.bodyHtml ?? "");
       const berichtText = berichtHtml ? htmlToPlainText(berichtHtml) : "";
+      // Der Historieneintrag GENAU DIESER Version. Der Schnappschuss ist das volle Objekt in dem
+      // Augenblick, in dem die Version entstand — sein letzter Historieneintrag ist also ihrer.
+      // Gesucht wird trotzdem über die Versionsnummer und nicht über „der letzte": eine Ablage, die
+      // aus irgendeinem Grund einen anderen Stand mitführte, ergäbe sonst eine falsche Herkunft.
+      const eigenerEintrag = (entry.snapshot.history ?? []).find(
+        (h) => h.version === entry.version,
+      );
       return {
         key: `${entry.koId}:${entry.version}`,
         version: entry.version,
@@ -85,6 +122,9 @@ export function koVersionRows(snapshots: readonly KoVersionSnapshot[]): KoVersio
         ),
         berichtHtml,
         berichtZeichen: berichtText.length,
+        // Über den EINEN Leser oben — dieselbe Funktion, die auch die Historie auf der Lesefläche
+        // benutzt. Ein zweiter Cast daneben wäre eine zweite Wahrheit über dasselbe Drahtfeld.
+        herkunft: uebernahmeHerkunft(eigenerEintrag),
       };
     });
 }

@@ -113,6 +113,20 @@ export interface HistoryEntry {
   at: string;
   author: string;
   note: string;
+  // ============================================================================================
+  // JOB 4213 (WIKI-NACHVOLLZIEHEN) — AUS WELCHER FRÜHEREN FASSUNG DIESER STAND ZURÜCKGEHOLT WURDE.
+  // ============================================================================================
+  //
+  // OPTIONAL, UND „FEHLT" HEISST GENAU EINES: dieser Eintrag entstand nicht aus einer Übernahme.
+  // Jede Fassung, die dieses System bis heute geschrieben hat, trägt das Feld nicht — ein
+  // Pflichtfeld wäre also eine Aussage über Altbestand, die niemand gemessen hat.
+  //
+  // WARUM EINE ZAHL UND NICHT NUR DER VERMERK: der Vermerk (`note`) sagt WAS geschah und wird für
+  // die Anzeige übersetzt (`apps/web/src/lib/koHistoryNote.ts` — ein fester Dienst-Vermerk über den
+  // Katalog). Die Version, aus der der Stand stammt, ist eine ZAHL und keine Beschriftung; sie in
+  // den Vermerktext zu schreiben machte ihn unübersetzbar, weil er dann für jede Version anders
+  // lautete. Beides zusammen liest sich als „aus früherer Fassung übernommen · v2".
+  restoredFrom?: number;
 }
 
 // ================================================================================================
@@ -681,7 +695,23 @@ export type KoErrorCode =
   // Vertragsänderung nach außen. Er existiert, weil die Alternative — `[]` — gelogen hätte: eine
   // leere Treffermenge bedeutet fachlich „nichts gefunden" und darf „Suche nicht verfügbar" nicht
   // verschleiern (Entscheidung 04 §4).
-  | "SEARCH_PROJECTION_NOT_READY";
+  | "SEARCH_PROJECTION_NOT_READY"
+  // ============================================================================================
+  // JOB 4213 (WIKI-NACHVOLLZIEHEN): DER ALLGEMEINE EINGABEFEHLER — bewusst KEIN neuer Name.
+  // ============================================================================================
+  //
+  // Er trägt heute genau einen Fall: `restoredFromVersion` nennt eine Fassung, die es an diesem
+  // Wissensobjekt nicht gibt (`KoService.pruefeHerkunft`). Ohne Eintrag in `STATUS_BY_CODE`
+  // (`services/app/src/http.ts`) wird daraus ein 400 mit Grund — dieselbe Bauform und dieselbe
+  // Begründung wie bei `COMMENT_NOT_FOUND` daneben: der Aufrufer hat etwas geschickt, das es nicht
+  // gibt, und der Zustand ist in Ordnung.
+  //
+  // WARUM NICHT „INVALID_RESTORE_SOURCE": jeder Domänencode muss in `ERLAUBTE_FEHLERCODES`
+  // (`services/app/src/build-app.ts`) stehen, sonst erschiene er im Protokoll als UNBEKANNT — und
+  // diese Datei ist in diesem Auftrag AUSDRÜCKLICH keine Zielpfaddatei (sie gehört dem wartenden
+  // JOB 4155). `INVALID` steht dort seit jeher. Der Preis ist ein unschärferer Code im Protokoll;
+  // der Meldungstext nennt die Sache vollständig.
+  | "INVALID";
 
 export class KoError extends Error {
   readonly code: KoErrorCode;

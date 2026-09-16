@@ -3948,8 +3948,24 @@ describe("JOB 1181 · Klassenbindungen: aufgelöst oder gemeldet, kein dritter Z
     // anderen Auftrags ist, und steht als REST in der Rückgabe von JOB 4086. Die Rebase-Summe
     // (219 aus JOB 4025 + diese zwei) ist an diesem Arbeitsbaum nach der Konfliktauflösung gemessen,
     // nicht gerechnet.
+    // JOB 4213 (WIKI-NACHVOLLZIEHEN · VERGLEICHEN UND ZURÜCKHOLEN): von 221 auf 222. GENAU EINE
+    // Bindung kommt dazu, und sie ist der Bauform aus JOB 3667 R3 weiter oben ZEICHENGLEICH — ein
+    // Satz über den Ausgang eines Schreibversuchs, in drei Tönen. Gemessen an diesem Arbeitsbaum,
+    // nicht gerechnet (der Sammler meldete `expected 222 to be 221`):
+    //
+    //     + components/bibliothek/MehrAbschnitte.tsx — `cx("mt-1.5 block text-[12.5px]",
+    //           lage.art === "fertig" ? "text-trust-pos-text"
+    //             : lage.art === "offline" ? "text-muted" : "text-trust-crit-text")`
+    //       (die Auskunft über die Übernahme einer alten Fassung: übernommen · offline · Konflikt
+    //        oder Fehler)
+    //
+    // WARUM NICHT AUFLÖSBAR GESCHRIEBEN (Auflage aus JOB 3267): dieselbe Begründung wie bei
+    // JOB 3667 R3 — die Ketten sind flache Zeichenketten und werden vom Sammler gelesen; drei eigene
+    // Knoten wären drei Abschriften derselben Live-Region samt ihrer Marke, und die drei Zustände
+    // teilen sich den Knoten, weil sie dieselbe Aussage in verschiedenen Tönen sind. Es fällt keine
+    // bestehende Bindung weg, und keine ist verschoben.
     expect(UNAUFGELOEST.length, "es gibt heute unauflösbare Bindungen — das ist der Befund").toBe(
-      221,
+      222,
     );
     for (const b of UNAUFGELOEST) {
       expect(b.datei, "Meldung ohne Datei").toMatch(/^apps\/web\/src\/.+\.tsx?$/);
