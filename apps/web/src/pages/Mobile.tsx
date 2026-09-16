@@ -12,7 +12,7 @@ import {
   WifiOff,
   X,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -20,10 +20,20 @@ import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import { useConflicts, useDrafts, useKos, useLibrarySearch } from "../api/hooks";
 import type { AnswerResult } from "../api/types";
-import { GuardedLink, useNavGuard, useUnloadGuard } from "../app/NavGuardContext";
+import {
+  GuardedLink,
+  NavGuardSaveError,
+  useNavGuard,
+  useUnloadGuard,
+} from "../app/NavGuardContext";
 import { useToast } from "../app/ToastContext";
 import { HOME_ROUTE } from "../app/navigation";
-import { type SyncResult, useOfflineQueue } from "../app/useOfflineQueue";
+import {
+  type NeuerVorgang,
+  type SyncResult,
+  type VorgangMitStand,
+  useOfflineQueue,
+} from "../app/useOfflineQueue";
 // WP-UX-WOW-1 U1: Antwort-Markdown sicher rendern (React-Subset, kein HTML-Sink).
 import { AnswerMarkdown } from "../components/AnswerMarkdown";
 // JOB 3786: die Seitenhilfe dieser Fläche. `HelpTip` ZEICHNET NICHTS — er meldet Titel und Text
@@ -34,11 +44,14 @@ import { ConfidenceBar, KnowledgeTypeTag, StatusPill } from "../components/trust
 import { selectAnswer } from "../lib/askResponse";
 import { deriveStatus } from "../lib/displayStatus";
 import {
+  type DraftFeld,
   type DraftFormState,
   EMPTY_DRAFT_FORM,
+  abweichendeFelder,
   draftTitle,
   draftToForm,
   formToPayload,
+  formToUpdate,
   isDraftFormChanged,
   isDraftFormFillable,
 } from "../lib/draftForm";
@@ -76,6 +89,59 @@ const QUEUE_TONE: Record<QueueStatus, string> = {
   failed: "bg-trust-crit-bg text-trust-crit-text",
 };
 
+// ================================================================================================
+// JOB 4193 — DER VERALTETE STAND FRAGT NACH, STATT STILL ZU ÜBERSCHREIBEN.
+// ================================================================================================
+//
+// Die LAGE der Rückfrage folgt dem Zustandsmodell und nicht der Bequemlichkeit: solange der
+// Serverstand geholt wird, sagt die Fläche, dass sie ihn holt; scheitert das Holen, behauptet sie
+// den Vergleich NICHT (weder „kein Unterschied" noch eine Rückfrage auf halbem Datenstand);
+// und findet der Vergleich nichts, schweigt sie ganz.
+type StandLage =
+  | { art: "laedt" }
+  | { art: "fehler" }
+  | {
+      art: "unterschied";
+      /** Die Fassung, die JETZT auf dem Server steht — frisch geholt, nicht aus dem Listen-Cache. */
+      server: DraftFormState;
+      /** Ihr Stand. Gegen ihn schreibt der nächste Versuch. */
+      serverStand: string;
+      felder: DraftFeld[];
+    };
+
+interface StandKonflikt {
+  entwurfId: string;
+  /**
+   * `speichern` · der Server hat den Aktualisierungsversuch mit 409 DRAFT_STALE abgewiesen.
+   * `wiedereroeffnen` · für diesen Entwurf liegt noch eine offline gespeicherte Fassung.
+   */
+  quelle: "speichern" | "wiedereroeffnen";
+  /** Der offline liegende Vorgang — nur beim Wiederöffnen, sonst `null`. */
+  opId: string | null;
+  /** Die offline gespeicherte Fassung, damit der Kasten BEIDE nebeneinander zeigen kann. */
+  offline: DraftFormState | null;
+  lage: StandLage;
+}
+
+/** Was im Textfeld steht — dieselbe Unterscheidung wie `bodyMode` (JOB 3377). */
+function formText(form: DraftFormState): string {
+  return form.segments !== undefined ? (form.body ?? "") : form.statement;
+}
+
+/**
+ * JOB 4193 R6: „Dieser Entwurf soll aktualisiert werden, aber es gibt keine Voraussetzung, gegen
+ * die das gelten könnte." Kein Fehler des Servers und keiner des Menschen — ein Zustand, aus dem
+ * heraus nicht geschrieben werden DARF, weil der Schreibvorgang sonst eine fremde Fassung
+ * überschreibt, von der die Fläche nichts weiss. Er endet nicht in einer Meldung, sondern im
+ * Vergleich (s. `speicherfehler`).
+ */
+class StandFehltError extends Error {
+  constructor() {
+    super("Kein gesehener Stand — es wird zuerst verglichen.");
+    this.name = "StandFehltError";
+  }
+}
+
 // SCRUM-113: echte mobile Erfassung (FE-MOB-02/04/06) + Fragen (FE-MOB-03) + Wissenszugriff
 // (FE-MOB-05) + PWA/Offline-Queue (FE-MOB-01/07). Offline werden nur Draft-Saves gequeued;
 // Ask/Library zeigen offline eine ehrliche Meldung (kein Fake-Offline).
@@ -93,6 +159,16 @@ export function Mobile(): JSX.Element {
   const [tab, setTab] = useState<MobileTab>("capture");
 
   const notifySync = (r: SyncResult): void => {
+    // JOB 4193: „durfte nicht überschreiben" ist etwas anderes als „ging nicht raus" — und der
+    // Satz sagt auch, wo es weitergeht (beim Wiederöffnen des Entwurfs).
+    if (r.stale > 0) {
+      push("error", `${t("mob.stand.syncAbgewiesen")} (${r.stale})`);
+    }
+    // JOB 4193 R5: Reste ohne Voraussetzung werden weder gesendet noch gelöscht — und das wird
+    // gesagt, statt sie stumm liegen zu lassen.
+    if (r.ohneVoraussetzung > 0) {
+      push("error", `${t("mob.stand.syncBrauchtStand")} (${r.ohneVoraussetzung})`);
+    }
     if (r.failed > 0) {
       push("error", `${t("mob.syncFail")} (${r.failed})`);
     } else if (r.synced > 0) {
@@ -107,10 +183,23 @@ export function Mobile(): JSX.Element {
   const [baseline, setBaseline] = useState<DraftFormState>({ ...EMPTY_DRAFT_FORM });
   const [editingId, setEditingId] = useState<string | null>(null);
   const isDirty = isDraftFormChanged(form, baseline);
+  // JOB 4193: der Standvergleich läuft ASYNCHRON (er holt den Serverstand nach). Ohne diesen Ref
+  // vergliche er gegen den Formularstand von vor dem Absenden — wer während des Speicherns
+  // weitergetippt hat, bekäme eine Feldangabe über einen Text, der so nicht mehr im Feld steht.
+  const formRef = useRef(form);
+  formRef.current = form;
+  const [konflikt, setKonflikt] = useState<StandKonflikt | null>(null);
+  /**
+   * Die eigene Fassung, die „Neuen Stand holen" aus dem Feld verdrängt hat. Sie bleibt SICHTBAR,
+   * bis der Mensch sie ausdrücklich verwirft — ein Ausweg, der den eigenen Text wegwirft, ist
+   * kein Ausweg.
+   */
+  const [beiseite, setBeiseite] = useState<{ titel: string; text: string } | null>(null);
   const resetForm = (): void => {
     setForm({ ...EMPTY_DRAFT_FORM });
     setBaseline({ ...EMPTY_DRAFT_FORM });
     setEditingId(null);
+    setKonflikt(null);
   };
   const invalidateDrafts = (): void => void qc.invalidateQueries({ queryKey: ["drafts"] });
   const fail = (e: unknown): void =>
@@ -134,48 +223,213 @@ export function Mobile(): JSX.Element {
   // damit es keinen Speicherweg geben kann, der ihn vergisst (s. `formToPayload`).
   const bodyMode = form.segments !== undefined;
 
-  const formTitle = (): string =>
-    form.title.trim() ||
-    (bodyMode ? (form.body ?? "") : form.statement).trim().slice(0, 60) ||
-    t("capture.draftFallbackTitle");
+  // JOB 4193: der Anzeigetitel wird jetzt zu einer ÜBERGEBENEN Fassung gebildet und nicht mehr nur
+  // zum aktuellen Formular — die Auflösung eines Konflikts beschriftet den Warteschlangeneintrag
+  // mit genau der Fassung, die der Mensch gewählt hat.
+  const titelVon = (f: DraftFormState): string =>
+    f.title.trim() || formText(f).trim().slice(0, 60) || t("capture.draftFallbackTitle");
+
+  // ============================================================================================
+  // JOB 4193 — EIN AKTUALISIERUNGSWEG FÜR BEIDE KNÖPFE, UND EIN EHRLICHER AUSGANG.
+  // ============================================================================================
+  //
+  // Der Vorgang wird an genau einer Stelle gebaut (`formToUpdate`) und trägt den gesehenen Stand
+  // NEBEN der Nutzlast. Der Formularstand reist als MUTATIONSVARIABLE mit und wird nicht aus dem
+  // Abschluss gelesen: der Weg „Meine Fassung behalten" schickt eine Fassung mit FRISCHEM Stand
+  // los, und ein `setForm` davor wäre zum Absendezeitpunkt noch nicht angekommen.
+  // ============================================================================================
+  // JOB 4193 R6, BENs Korrekturpflicht 1 — DER ENGPASS SELBST VERWEIGERT DAS UNGESCHÜTZTE SCHREIBEN.
+  // ============================================================================================
+  //
+  // DER BEFUND (BEN R5): die Sperre aus R5 hing am KONFLIKTZUSTAND (`konflikt !== null`). Ein alter
+  // Warteschlangeneintrag OHNE `seenUpdatedAt`, OFFLINE geöffnet, setzt diesen Zustand aber auf
+  // `null` — es gibt ja nichts zu vergleichen, solange keine Verbindung besteht. Wer danach online
+  // ging und speicherte, schrieb ohne Voraussetzung: gemessen `Handy nach Wiederöffnung` statt
+  // `Fassung Desktop`, über den Knopf UND über den Weggeh-Wächter.
+  //
+  // DIE LEHRE: eine Sperre, die einen ZUSTAND DANEBEN abfragt, deckt nur die Wege ab, an die man
+  // gedacht hat. Die Bedingung gehört an die Stelle, an der geschrieben wird. `sendeEntwurf` ist
+  // der EINZIGE Ort, der `drafts.update` ruft — hier kann kein Aufrufer mehr vorbei, auch kein
+  // künftiger. Fehlt die Voraussetzung, wird nicht geschrieben, sondern der Vergleich ANGESTOSSEN
+  // (`speicherfehler` → `konfliktOeffnen`): dieselbe eine Konfliktlogik, kein zweiter Mechanismus.
+  const sendeEntwurf = (f: DraftFormState): Promise<unknown> => {
+    const { payload, expectedUpdatedAt } = formToUpdate(f);
+    if (!editingId) {
+      return endpoints.drafts.create(payload);
+    }
+    if (!expectedUpdatedAt) {
+      return Promise.reject(new StandFehltError());
+    }
+    return endpoints.drafts.update(editingId, payload, { expectedUpdatedAt });
+  };
+
+  /**
+   * Derselbe Vorgang für die Warteschlange — aus DERSELBEN Funktion. Sonst gäbe es zwei Orte, an
+   * denen der gesehene Stand vergessen werden kann, und der offline gespeicherte Vorgang ginge
+   * beim Nachsenden wieder nach „letzter Schreiber gewinnt" raus.
+   */
+  const neuerVorgang = (f: DraftFormState): NeuerVorgang => {
+    const { payload, expectedUpdatedAt } = formToUpdate(f);
+    return {
+      id: crypto.randomUUID(),
+      kind: editingId ? "draft.update" : "draft.create",
+      draftId: editingId,
+      payload,
+      title: titelVon(f),
+      createdAt: new Date().toISOString(),
+      ...(expectedUpdatedAt ? { seenUpdatedAt: expectedUpdatedAt } : {}),
+    };
+  };
+
+  /**
+   * Genau EIN selbsttätiger zweiter Versuch je Klick. Er greift nur im Fall „der Entwurf hat sich
+   * geändert, aber in keinem Feld, das hier zu sehen ist" — eine Rückfrage ohne Unterschied wäre
+   * eine Frage ohne Gegenstand (Zustandsmodell §9), und ein unbegrenzter Nachschlag wäre eine
+   * Schleife.
+   */
+  const wiederholtRef = useRef(false);
 
   const save = useMutation({
-    mutationFn: () => {
-      const payload = formToPayload(form);
-      return editingId
-        ? endpoints.drafts.update(editingId, payload)
-        : endpoints.drafts.create(payload);
-    },
+    mutationFn: sendeEntwurf,
     onSuccess: () => {
       invalidateDrafts();
       push("success", editingId ? t("mob.updated") : t("mob.saved"));
+      setBeiseite(null);
       resetForm();
     },
-    onError: fail,
+    onError: (e: unknown) => void speicherfehler(e),
   });
+
+  /**
+   * JOB 4193 Lieferung 4 (Lehre JOB 4153 R2, 15.09.): DREI Ausgänge, drei verschiedene Sätze.
+   *
+   *   409 DRAFT_STALE      · der Entwurf ist inzwischen woanders geändert → Rückfrage, nichts
+   *                          überschrieben, nichts zurückgesetzt.
+   *   kein ApiError/TIMEOUT · die Antwort fehlt. Ob gespeichert wurde, WEISS die Fläche nicht —
+   *                          also behauptet sie weder das eine noch das andere.
+   *   sonst                 · der Server hat ausdrücklich abgelehnt und gesagt, warum.
+   */
+  const speicherfehler = async (e: unknown): Promise<void> => {
+    const id = editingId;
+    // JOB 4193 R6: FEHLENDE VORAUSSETZUNG ist kein Fehler, sondern ein Auftrag — hole den Stand und
+    // vergleiche. Danach steht entweder die Rückfrage (Unterschied) oder es wird gegen den frischen
+    // Stand gespeichert (kein Unterschied). Geschrieben wird in keinem Fall ungeprüft.
+    // JOB 4193 R6: OHNE VORAUSSETZUNG WIRD GEFRAGT, NICHT GERATEN.
+    //
+    // Ich habe hier zuerst versucht, die Rückfrage zu vermeiden, indem der Stand, mit dem das
+    // Formular geöffnet wurde, gegen den Server gehalten wird — „hat jemand ANDERES geschrieben?".
+    // Das trägt nicht: dieser Fall entsteht nur bei einem Altvorgang, und dessen Nutzlast ist
+    // PARTIELL (sie führt nur die Felder, die das Handy schreibt). Eine daraus gebaute Grundlage
+    // hat dort leere Felder, wo der Entwurf längst Inhalt hat — der Vergleich meldete prompt einen
+    // Unterschied im Titel, den es gar nicht gab. Gemessen im eigenen Lauf 0663f3eb…
+    //
+    // Es gibt für diesen Vorgang also KEINEN verlässlichen Maßstab. Dann wird gefragt: die Fläche
+    // legt beide Fassungen nebeneinander und lässt den Menschen entscheiden, statt eine
+    // Gleichheit zu behaupten, die sie nicht prüfen kann.
+    if (id && e instanceof StandFehltError) {
+      await konfliktOeffnen(id, "speichern", null);
+      return;
+    }
+    if (id && e instanceof ApiError && e.status === 409 && e.code === "DRAFT_STALE") {
+      await konfliktOeffnen(id, "speichern", null);
+      return;
+    }
+    if (!(e instanceof ApiError) || e.code === "TIMEOUT") {
+      push("error", t("mob.ausgangUnklar"));
+      return;
+    }
+    push("error", e.message);
+  };
+
+  /**
+   * Den Serverstand FRISCH holen und gegen die eigene Fassung halten. Der Listen-Cache taugt dafür
+   * nicht: er kann selbst der veraltete Stand sein, gegen den hier gerade abgewiesen wurde.
+   */
+  const konfliktOeffnen = async (
+    id: string,
+    quelle: StandKonflikt["quelle"],
+    op: VorgangMitStand | null,
+  ): Promise<void> => {
+    const offline = op ? draftToForm({ payload: op.payload }) : null;
+    const rumpf = { entwurfId: id, quelle, opId: op?.id ?? null, offline };
+    setKonflikt({ ...rumpf, lage: { art: "laedt" } });
+    let frisch: Awaited<ReturnType<typeof endpoints.drafts.get>>;
+    try {
+      frisch = await endpoints.drafts.get(id);
+    } catch {
+      // Der Vergleich wird NICHT behauptet — weder in die eine noch in die andere Richtung.
+      setKonflikt({ ...rumpf, lage: { art: "fehler" } });
+      return;
+    }
+    const server = draftToForm(frisch);
+    const meins = offline ?? formRef.current;
+    const felder = abweichendeFelder(meins, server);
+    if (felder.length > 0) {
+      setKonflikt({
+        ...rumpf,
+        lage: { art: "unterschied", server, serverStand: frisch.updatedAt, felder },
+      });
+      return;
+    }
+    // KEIN sichtbarer Unterschied. Beim Wiederöffnen heisst das: schweigen und weiterschreiben.
+    setKonflikt(null);
+    const neu: DraftFormState = { ...meins, gesehenerStand: frisch.updatedAt };
+    setForm(neu);
+    setBaseline(neu);
+    setEditingId(id);
+    if (op) {
+      queue.replace(op.id, formToPayload(neu), titelVon(neu), frisch.updatedAt);
+      return;
+    }
+    // Beim SPEICHERN heisst es: der fremde Schreiber hat etwas geändert, das dieses Formular gar
+    // nicht führt (z. B. Schlagworte). Der partielle Merge lässt das stehen — also noch einmal
+    // gegen den frischen Stand senden, statt den Menschen mit einer leeren Frage aufzuhalten.
+    if (wiederholtRef.current) {
+      push("error", t("mob.ausgangUnklar"));
+      return;
+    }
+    wiederholtRef.current = true;
+    save.mutate(neu);
+  };
 
   // FE-MOB-07: offline → in die lokale Queue statt direkter API-Aufruf.
   //
-  // JOB 3377, BENANNTE GRENZE (nicht behauptet, sondern gesagt): die Warteschlange kennt keinen
-  // Standvergleich — ihr Vertrag (lib/offlineQueue.ts) trägt nur die Nutzlast. Ein offline
-  // bearbeiteter Body geht deshalb beim Nachsynchronisieren nach dem bisherigen Vertrag „letzter
-  // Schreiber gewinnt" raus, genau wie jedes andere Feld, das sie heute schon trägt. Das ist die
-  // offene Grenze dieses Auftrags; sie zu schliessen ist ein eigenes Thema (`expectedUpdatedAt`).
+  // JOB 4193: die Warteschlange trägt den gesehenen Stand jetzt MIT (`seenUpdatedAt`,
+  // app/useOfflineQueue.ts) und gibt ihn beim Nachsenden als `expectedUpdatedAt` weiter. Der alte
+  // Satz „letzter Schreiber gewinnt" gilt hier damit nicht mehr; ein inzwischen fremd geänderter
+  // Entwurf weist das Nachsenden ab (409 DRAFT_STALE, der Vorgang bleibt in der Warteschlange
+  // stehen) und wird beim Wiederöffnen dieses Entwurfs mit dem Menschen aufgelöst (`resume`).
+  // ============================================================================================
+  // JOB 4193 R5, BENs Korrekturpflicht 2 — EIN UNGELÖSTER VERGLEICH SPERRT JEDEN SCHREIBWEG.
+  // ============================================================================================
+  //
+  // DER BEFUND (BEN R4): bei sichtbarer Rückfrage blieb der normale Speicherknopf bedienbar. Wer
+  // ihn drückte, schrieb an der Rückfrage VORBEI — gemessen: `Fassung Handy` statt
+  // `Fassung Desktop`, ohne dass ein Konfliktweg gewählt wurde. Dieselbe Lücke gilt für die beiden
+  // Zwischenlagen, in denen noch gar kein Vergleich vorliegt: während der Serverstand GEHOLT wird
+  // (`laedt`) und wenn das Holen GESCHEITERT ist (`fehler`).
+  //
+  // DIE REGEL IST EINE, NICHT DREI: solange ein Konfliktzustand steht, schreibt kein Weg. Der
+  // Mensch entscheidet zuerst — genau das ist die Zusage dieses Auftrags („die Maschine zeigt nur,
+  // was auseinanderläuft"). Die Sperre hängt am Zustand und nicht am Knopf, damit sie für Tastatur,
+  // Klick im selben Tick und den Weggeh-Wächter gleichermassen gilt (Bauform wie `verlassenGesperrt`
+  // in Capture.tsx, JOB 3526/3572).
+  const schreibenGesperrt = konflikt !== null;
+
   const onSave = (): void => {
+    if (schreibenGesperrt) {
+      push("error", t("mob.stand.erstAufloesen"));
+      return;
+    }
+    wiederholtRef.current = false;
     if (!queue.online) {
-      queue.enqueue({
-        id: crypto.randomUUID(),
-        kind: editingId ? "draft.update" : "draft.create",
-        draftId: editingId,
-        payload: formToPayload(form),
-        title: formTitle(),
-        createdAt: new Date().toISOString(),
-      });
+      queue.enqueue(neuerVorgang(form));
       push("info", t("mob.queued"));
+      setBeiseite(null);
       resetForm();
       return;
     }
-    save.mutate();
+    save.mutate(form);
   };
 
   // WP-SAMMEL20-FIX bleibt erhalten: der bestehende NavGuard schützt ungespeicherte Eingaben und
@@ -184,32 +438,49 @@ export function Mobile(): JSX.Element {
   // Verwerfen; deshalb gilt jetzt „verändert gegenüber dem Ausgangsstand“ statt „befüllt“.
   // Neue Eingaben vergleichen gegen das leere Formular und bleiben geschützt.
   // Bewusst OHNE Dep-Array: jeder Render meldet den frischen Stand (setGuard ist ein Ref-Setter).
+  //
+  // JOB 4193 Lieferung 4: DERSELBE Aktualisierungsweg wie am Knopf — `sendeEntwurf` baut den
+  // Vorgang, `speicherfehler` deutet den Ausgang. Zwei Speicherwege, die sich in der Frage „was
+  // ist eigentlich passiert?" unterscheiden, sind genau die Halbheit, gegen die dieser Auftrag
+  // steht. Der Fehler wird danach WEITERGEWORFEN: der Wächterdialog bleibt offen, es wird nicht
+  // gewechselt, und die Rückfrage steht auf der Seite, die man gerade behalten hat.
   useEffect(() => {
     setGuard({
       isDirty: () => isDirty,
       save: async () => {
-        const payload = formToPayload(form);
+        // JOB 4193 R5 (BEN Korrekturpflicht 2): auch der Weggeh-Wächter schreibt nicht an einer
+        // ungelösten Rückfrage vorbei. Der GRUND reist in der Hülle mit (`NavGuardSaveError`,
+        // JOB 3572 R2) — der Dialog liegt über der gesperrten Seite, ein Satz im Fehlerkasten der
+        // Fläche wäre für Tastatur und Vorlesehilfe nicht vorhanden. Der Dialog bleibt offen, es
+        // wird nicht gewechselt, und nichts wird geschrieben.
+        if (schreibenGesperrt) {
+          throw new NavGuardSaveError(t("mob.stand.erstAufloesen"));
+        }
+        wiederholtRef.current = false;
         if (!queue.online) {
           // Vor dem anschließenden Seitenwechsel muss auch der Persistenzeffekt der Queue laufen.
           // Sonst kann React enqueue und Navigation bündeln und Mobile vorher aushängen.
           flushSync(() => {
-            queue.enqueue({
-              id: crypto.randomUUID(),
-              kind: editingId ? "draft.update" : "draft.create",
-              draftId: editingId,
-              payload,
-              title: formTitle(),
-              createdAt: new Date().toISOString(),
-            });
+            queue.enqueue(neuerVorgang(form));
           });
           push("info", t("mob.queued"));
-        } else if (editingId) {
-          await endpoints.drafts.update(editingId, payload);
-          invalidateDrafts();
-        } else {
-          await endpoints.drafts.create(payload);
-          invalidateDrafts();
+          setBeiseite(null);
+          resetForm();
+          return;
         }
+        try {
+          await sendeEntwurf(form);
+        } catch (e) {
+          await speicherfehler(e);
+          // JOB 4193 R6: fehlt die Voraussetzung, steht jetzt der Vergleich auf der Fläche. Der
+          // Dialog sagt das mit demselben Satz wie die Sperre — und wechselt nicht, damit der
+          // Mensch die Rückfrage auch sieht.
+          throw e instanceof StandFehltError
+            ? new NavGuardSaveError(t("mob.stand.erstAufloesen"))
+            : e;
+        }
+        invalidateDrafts();
+        setBeiseite(null);
         resetForm();
       },
     });
@@ -239,14 +510,102 @@ export function Mobile(): JSX.Element {
     },
     onError: fail,
   });
+  // ============================================================================================
+  // JOB 4193 Lieferung 3 — WIEDERÖFFNEN MIT OFFLINE LIEGENDER FASSUNG: erst vergleichen, dann
+  // weiterschreiben.
+  // ============================================================================================
+  //
+  // Liegt für DIESEN Entwurf noch ein Vorgang in der Warteschlange, ist der Listen-Cache die
+  // falsche Quelle: er zeigt weder die offline gespeicherte Fassung noch verlässlich den
+  // Serverstand. Geholt wird deshalb FRISCH — und bis er da ist, steht die eigene, offline
+  // gespeicherte Fassung schon im Feld (verloren geht sie nie).
+  //
+  // OHNE VERBINDUNG wird nicht verglichen, sondern gesagt, dass nicht verglichen werden kann: eine
+  // Rückfrage, die eine Serverantwort voraussetzt, die es gerade nicht gibt, wäre erfunden.
   const resume = (id: string): void => {
+    const op = queue.queue.find(
+      (q) => q.draftId === id && (q.status === "queued" || q.status === "failed"),
+    );
+    if (op) {
+      // ==========================================================================================
+      // JOB 4193 R5, BENs Korrekturpflicht 1 — DER STAND DES VORGANGS REIST MIT INS FORMULAR.
+      // ==========================================================================================
+      //
+      // DER BEFUND (BEN R4, an unverändertem Code gemessen): hier stand `draftToForm({ payload })`
+      // allein. Eine Nutzlast trägt keinen Stand — das Formular kam also OHNE `gesehenerStand`
+      // zurück, obwohl der liegende Vorgang einen hat. Ohne Verbindung gab es auch keinen frischen
+      // Abgleich, der ihn nachgereicht hätte. Wer denselben Entwurf offline ein ZWEITES Mal
+      // speicherte, legte damit einen Vorgang OHNE Voraussetzung an, und `standNachfuehren` strich
+      // den alten Stand am selben Eintrag mit weg. Beim Nachsenden ging er ohne `expectedUpdatedAt`
+      // raus: „letzter Schreiber gewinnt", und die Desktop-Fassung war still weg. BENs Messung:
+      // „BEN vor Sync: Versionsstand FEHLT", danach `Handy zweiter Wurf` statt `Fassung Desktop`.
+      //
+      // DIE VORAUSSETZUNG GEHÖRT ZUM ENTWURF, NICHT ZUM EINZELNEN SPEICHERN. Sie reist deshalb aus
+      // dem Vorgang ins Formular und von dort in jeden weiteren Speicherweg (`formToUpdate`).
+      const offline: DraftFormState = {
+        ...draftToForm({ payload: op.payload }),
+        ...(op.seenUpdatedAt ? { gesehenerStand: op.seenUpdatedAt } : {}),
+      };
+      setForm(offline);
+      setBaseline(offline);
+      setEditingId(id);
+      setBeiseite(null);
+      if (queue.online) {
+        void konfliktOeffnen(id, "wiedereroeffnen", op);
+      } else {
+        setKonflikt(null);
+      }
+      return;
+    }
     const d = (drafts.data ?? []).find((x) => x.id === id);
     if (d) {
       const resumed = draftToForm(d);
       setForm(resumed);
       setBaseline(resumed);
       setEditingId(id);
+      setKonflikt(null);
+      setBeiseite(null);
     }
+  };
+
+  /** „Neuen Stand holen": der Serverstand kommt ins Feld — und die eigene Fassung bleibt sichtbar. */
+  const neuenStandHolen = (): void => {
+    if (konflikt?.lage.art !== "unterschied") {
+      return;
+    }
+    const { server, serverStand } = konflikt.lage;
+    const meins = konflikt.offline ?? form;
+    setBeiseite({ titel: meins.title, text: formText(meins) });
+    const neu: DraftFormState = { ...server, gesehenerStand: serverStand };
+    setForm(neu);
+    setBaseline(neu);
+    setEditingId(konflikt.entwurfId);
+    if (konflikt.opId) {
+      queue.replace(konflikt.opId, formToPayload(neu), titelVon(neu), serverStand);
+    }
+    setKonflikt(null);
+  };
+
+  /** „Meine Fassung behalten": erneut speichern — diesmal gegen den frisch geholten Stand. */
+  const meineFassungBehalten = (): void => {
+    if (konflikt?.lage.art !== "unterschied") {
+      return;
+    }
+    const { serverStand } = konflikt.lage;
+    const neu: DraftFormState = {
+      ...(konflikt.offline ?? form),
+      gesehenerStand: serverStand,
+    };
+    setForm(neu);
+    setKonflikt(null);
+    if (konflikt.opId) {
+      // Die Wahl ERSETZT den Vorgang in der Warteschlange (und seine Voraussetzung); gelöscht
+      // wird er nie — nachgesendet wird er wie bisher, sobald Verbindung besteht.
+      setBaseline(neu);
+      queue.replace(konflikt.opId, formToPayload(neu), titelVon(neu), serverStand);
+      return;
+    }
+    save.mutate(neu);
   };
 
   // --- Fragen (FE-MOB-03) ---
@@ -376,9 +735,14 @@ export function Mobile(): JSX.Element {
                 className="w-full resize-y rounded-input border border-hairline bg-page p-2.5 text-sm outline-none focus:border-ink/30"
               />
               <div className="flex gap-2">
+                {/* JOB 4193 R5 (BEN Korrekturpflicht 2): AN BEIDEN ENDEN gesperrt — sichtbar hier
+                    und wirksam im Handler (`onSave`), aus EINEM Wahrheitsort (`schreibenGesperrt`).
+                    Ein Knopf, der bei offener Rückfrage bedienbar aussieht, ist genau der Weg, auf
+                    dem BEN die fremde Fassung überschrieben hat. */}
                 <button
                   type="button"
-                  disabled={save.isPending || !isDraftFormFillable(form)}
+                  disabled={save.isPending || !isDraftFormFillable(form) || schreibenGesperrt}
+                  title={schreibenGesperrt ? t("mob.stand.erstAufloesen") : undefined}
                   onClick={onSave}
                   className="flex flex-1 items-center justify-center gap-1.5 rounded-btn bg-ink py-2.5 text-[13px] font-semibold text-white disabled:opacity-50"
                 >
@@ -402,7 +766,139 @@ export function Mobile(): JSX.Element {
                   {t("mob.offlineSaveHint")}
                 </p>
               ) : null}
+              {/* JOB 4193, Zustandsmodell „offline": der Serverstand ist unbekannt. Das sagt die
+                  Fläche — statt einen Abgleich zu behaupten oder still zu überschreiben. */}
+              {!queue.online && editingId ? (
+                <p className="text-[11.5px] leading-relaxed text-muted">
+                  {t("mob.stand.offlineHinweis")}
+                </p>
+              ) : null}
             </div>
+
+            {/* ================================================================================
+                JOB 4193 — DIE RÜCKFRAGE BEI VERALTETEM STAND.
+                ================================================================================
+                Sie ersetzt den stummen Fehlerweg (`onError: fail`) für genau diesen einen Fall.
+                Was hier NICHT passiert, ist so wichtig wie das, was passiert: kein
+                „gespeichert", kein roter Sammelfehler, kein `resetForm()`. Der getippte Text
+                steht weiter im Feld darüber. */}
+            {konflikt ? (
+              <div
+                data-testid="mob-stand-konflikt"
+                className="mt-3 rounded-card border border-hairline bg-trust-warn-bg p-2.5"
+              >
+                {konflikt.lage.art === "laedt" ? (
+                  <p className="text-[12px] leading-relaxed text-trust-warn-text">
+                    {t("mob.stand.laedt")}
+                  </p>
+                ) : konflikt.lage.art === "fehler" ? (
+                  <>
+                    <p className="text-[12px] leading-relaxed text-trust-warn-text">
+                      {t("mob.stand.pruefungFehlt")}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const op = queue.queue.find((q) => q.id === konflikt.opId) ?? null;
+                        void konfliktOeffnen(konflikt.entwurfId, konflikt.quelle, op);
+                      }}
+                      className="mt-2 rounded-btn border border-hairline bg-surface px-2.5 py-1.5 text-[12px] font-semibold text-text"
+                    >
+                      {t("mob.stand.erneutPruefen")}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-[12.5px] font-semibold text-trust-warn-text">
+                      {konflikt.quelle === "speichern"
+                        ? t("mob.stand.titelSpeichern")
+                        : t("mob.stand.titelOffline")}
+                    </p>
+                    {/* DER FELDSTEMPEL dieses Auftrags: welches Feld weicht ab, in Worten, die
+                        einem Menschen etwas sagen — nicht „alle Felder". */}
+                    <p
+                      data-testid="mob-stand-felder"
+                      className="mt-1 text-[11.5px] leading-relaxed text-trust-warn-text"
+                    >
+                      {t("mob.stand.felder")}:{" "}
+                      {konflikt.lage.felder.map((f) => t(`mob.stand.feld.${f}`)).join(" · ")}
+                    </p>
+                    {konflikt.offline ? (
+                      <div className="mt-2 space-y-1.5">
+                        <div
+                          data-testid="mob-stand-offline"
+                          className="rounded-input border border-hairline bg-surface p-2"
+                        >
+                          <div className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+                            {t("mob.stand.offlineFassung")}
+                          </div>
+                          <div className="break-words text-[12px] text-text">
+                            {konflikt.offline.title}
+                          </div>
+                          <div className="whitespace-pre-wrap break-words text-[11.5px] text-muted">
+                            {formText(konflikt.offline)}
+                          </div>
+                        </div>
+                        <div
+                          data-testid="mob-stand-server"
+                          className="rounded-input border border-hairline bg-surface p-2"
+                        >
+                          <div className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+                            {t("mob.stand.serverFassung")}
+                          </div>
+                          <div className="break-words text-[12px] text-text">
+                            {konflikt.lage.server.title}
+                          </div>
+                          <div className="whitespace-pre-wrap break-words text-[11.5px] text-muted">
+                            {formText(konflikt.lage.server)}
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={neuenStandHolen}
+                        className="flex-1 rounded-btn border border-hairline bg-surface px-2.5 py-1.5 text-[12px] font-semibold text-text"
+                      >
+                        {t("mob.stand.holen")}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={meineFassungBehalten}
+                        className="flex-1 rounded-btn bg-ink px-2.5 py-1.5 text-[12px] font-semibold text-white"
+                      >
+                        {t("mob.stand.behalten")}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            ) : null}
+
+            {/* Die eigene Fassung, die „Neuen Stand holen" verdrängt hat — sie bleibt lesbar (und
+                kopierbar), bis der Mensch sie selbst verwirft. Nichts wird still weggeworfen. */}
+            {beiseite ? (
+              <div
+                data-testid="mob-stand-meine-fassung"
+                className="mt-3 rounded-card border border-dashed border-hairline p-2.5"
+              >
+                <div className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+                  {t("mob.stand.meineFassung")}
+                </div>
+                <div className="break-words text-[12px] text-text">{beiseite.titel}</div>
+                <div className="whitespace-pre-wrap break-words text-[11.5px] text-muted">
+                  {beiseite.text}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setBeiseite(null)}
+                  className="mt-2 rounded-btn border border-hairline px-2.5 py-1 text-[11.5px] font-semibold text-muted hover:text-text"
+                >
+                  {t("mob.stand.verwerfen")}
+                </button>
+              </div>
+            ) : null}
 
             {/* Offline-Warteschlange (FE-MOB-07) */}
             {queue.queue.length > 0 ? (

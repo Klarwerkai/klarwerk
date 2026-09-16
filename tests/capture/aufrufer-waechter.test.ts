@@ -1415,7 +1415,10 @@ const ALTBESTAND_WEB: readonly string[] = [
   "apps/web/src/lib/loadingState.ts::isGroupLoaded",
   "apps/web/src/lib/mobileConfirm.ts::confirmsDelete",
   "apps/web/src/lib/mobileConfirm.ts::needsConfirmation",
-  "apps/web/src/lib/offlineQueue.ts::replacePayload",
+  // JOB 4193: `offlineQueue.ts::replacePayload` ist hier GESTRICHEN — er hat seit diesem Auftrag
+  // einen Aufrufer: `app/useOfflineQueue.ts` reicht ihn als `replace` heraus, und `pages/Mobile.tsx`
+  // ersetzt damit den liegenden Warteschlangeneintrag mit der Fassung, die der Mensch gewählt hat
+  // (A3 verlangt genau diese Streichung, sobald der Eintrag nicht mehr zutrifft).
   "apps/web/src/lib/oidcCallback.ts::isCompleteCallback",
   "apps/web/src/lib/outputDoc.ts::orderedSelection",
   "apps/web/src/lib/pdf.ts::extractPdfText",

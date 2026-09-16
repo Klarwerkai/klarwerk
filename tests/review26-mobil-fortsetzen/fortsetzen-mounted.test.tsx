@@ -293,10 +293,13 @@ describe("REVIEW26: fortgesetzter Mobilentwurf", () => {
       expect(unloadBlocked()).toBe(false);
       if (mode === "online") {
         expect(endpoints.drafts.update).toHaveBeenCalledTimes(1);
-        expect(endpoints.drafts.update).toHaveBeenCalledWith(DRAFT.id, {
-          title: "Schichtwechsel",
-          bodyHtml: `<p>${TEXT}!</p>`,
-        });
+        // JOB 4193: der beim Laden gesehene Stand reist NEBEN der Nutzlast mit (dritter
+        // Parameter) — ohne ihn bliebe der alte Weg „letzter Schreiber gewinnt".
+        expect(endpoints.drafts.update).toHaveBeenCalledWith(
+          DRAFT.id,
+          { title: "Schichtwechsel", bodyHtml: `<p>${TEXT}!</p>` },
+          { expectedUpdatedAt: DRAFT.updatedAt },
+        );
       } else {
         expect(endpoints.drafts.update).not.toHaveBeenCalled();
         expect(JSON.parse(localStorage.getItem("kw.offlineQueue.v1") ?? "[]")).toMatchObject([
@@ -305,6 +308,8 @@ describe("REVIEW26: fortgesetzter Mobilentwurf", () => {
             draftId: DRAFT.id,
             payload: { bodyHtml: `<p>${TEXT}!</p>` },
             status: "queued",
+            // JOB 4193: und derselbe Stand liegt beim Vorgang in der Warteschlange.
+            seenUpdatedAt: DRAFT.updatedAt,
           },
         ]);
       }
@@ -330,14 +335,23 @@ describe("REVIEW26: fortgesetzter Mobilentwurf", () => {
       expect(unloadBlocked()).toBe(false);
       if (mode === "online") {
         expect(endpoints.drafts.update).toHaveBeenCalledTimes(1);
-        expect(endpoints.drafts.update).toHaveBeenCalledWith(DRAFT.id, {
-          title: "Schichtwechsel",
-          bodyHtml: `<p>${TEXT}!</p>`,
-        });
+        // JOB 4193 Lieferung 4: der Wächter-Weg nimmt DENSELBEN Aktualisierungsvorgang wie der
+        // Knopf — samt gesehenem Stand. Zwei Speicherwege, die sich hier unterscheiden, wären
+        // genau die Halbheit, gegen die der Auftrag steht.
+        expect(endpoints.drafts.update).toHaveBeenCalledWith(
+          DRAFT.id,
+          { title: "Schichtwechsel", bodyHtml: `<p>${TEXT}!</p>` },
+          { expectedUpdatedAt: DRAFT.updatedAt },
+        );
       } else {
         expect(endpoints.drafts.update).not.toHaveBeenCalled();
         expect(JSON.parse(localStorage.getItem("kw.offlineQueue.v1") ?? "[]")).toMatchObject([
-          { draftId: DRAFT.id, payload: { bodyHtml: `<p>${TEXT}!</p>` }, status: "queued" },
+          {
+            draftId: DRAFT.id,
+            payload: { bodyHtml: `<p>${TEXT}!</p>` },
+            status: "queued",
+            seenUpdatedAt: DRAFT.updatedAt,
+          },
         ]);
       }
     },

@@ -25,12 +25,20 @@ describe("SCRUM-113 / FE-CAP-07: draftForm", () => {
     expect(formToPayload({ title: "", statement: "" })).toEqual({});
   });
 
+  // JOB 4193: das Formular trägt jetzt auch den beim Laden GESEHENEN Stand (`Draft.updatedAt`) —
+  // er ist die Voraussetzung des Standvergleichs beim Speichern (`formToUpdate`) und kein
+  // Entwurfsfeld. Hier steht er als `"t"`, weil der Prüfling oben diesen Stand trägt.
   it("draftToForm lädt Payload ins Formular (Resume)", () => {
     expect(draftToForm(draft({ title: "T", statement: "S" }))).toEqual({
       title: "T",
       statement: "S",
+      gesehenerStand: "t",
     });
-    expect(draftToForm(draft({}))).toEqual({ title: "", statement: "" });
+    expect(draftToForm(draft({}))).toEqual({
+      title: "",
+      statement: "",
+      gesehenerStand: "t",
+    });
   });
 
   it("isDraftFormFillable bei beliebigem Inhalt", () => {

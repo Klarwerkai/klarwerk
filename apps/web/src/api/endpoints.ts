@@ -591,7 +591,13 @@ export const endpoints = {
     // SCRUM-113 / FE-CAP-07: Entwurf fortsetzen (continueDraft, Originalautor bleibt).
     // JOB 2684 D1: `expectedUpdatedAt` = der beim Laden gesehene Stand; der Server antwortet 409
     // DRAFT_STALE, wenn inzwischen jemand anders (zweiter Tab, Studio) gespeichert hat. Ohne den
-    // Wert bleibt der alte Weg (Mobil, Offline-Warteschlange).
+    // Wert bleibt der alte Weg.
+    //
+    // JOB 4193: „Mobil, Offline-Warteschlange" stand hier als Beispiel für den alten Weg — das
+    // stimmt nicht mehr. Der mobile Aktualisierungsweg (`pages/Mobile.tsx`) und das Nachsenden aus
+    // der Warteschlange (`app/useOfflineQueue.ts`) schicken den gesehenen Stand jetzt mit; der
+    // Konflikt endet dort in einer Rückfrage mit Feldangabe, nicht in einer stillen Überschreibung.
+    // Ohne den Wert bleibt es beim alten Verhalten — für Vorgänge, die keinen Stand kennen.
     update: (id: string, payload: DraftPayload, opts?: { expectedUpdatedAt?: string }) =>
       api.put<Draft>(`/drafts/${id}`, {
         ...payload,

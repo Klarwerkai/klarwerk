@@ -345,8 +345,22 @@ describe("JOB 3131 T2 · die Browser-Gruppe ist genau die Menge mit Chromium in 
     // Zielpfad des gleichzeitig laufenden JOB 3587, und zwei Bahnen an derselben Datei sind
     // ausgeschlossen. Die Last bleibt klein: EIN Browser, EINE Seite, elf Fälle (der L1-Fall reitet
     // auf h6-chromium und startet keinen eigenen zusätzlichen Dauerbrowser).
-    expect(graph.startdateien.length).toBe(27);
+    // JOB 4193 (ENTWURF-MOBIL-DESKTOP-R): eine weitere eigene Startstelle — der Schmalmesser der
+    // Rückfrage bei veraltetem Stand (`tests/entwurf-mobil-desktop/rueckfrage-schmal-chromium.test.tsx`).
+    // Die Abnahme des Auftrags verlangt sie ausdrücklich („Chromium, schmal (390 px) und breit …
+    // Rückfrage sichtbar und lesbar, nichts abgeschnitten, nichts überlappend"), und jsdom kann sie
+    // nicht geben: dort gibt es keine Textrechtecke, keinen Zeilenumbruch und kein Layout — die
+    // gemounteten Nachbarfälle messen deshalb das Verhalten, nicht die Lesbarkeit. Sie MUSS
+    // Playwright selbst starten, weil sie ihr eigenes Markup mitbringt: die Fläche wird über den
+    // echten Weg (offline gespeichert → Serverstand geändert → wieder geöffnet) IN den Konflikt
+    // gefahren und erst danach gemessen; kein bestehender Prüfstand kann diesen Zustand herstellen,
+    // und `h6-chromium.ts`/`schmal-buehne.ts` verlangen zudem `apps/web/dist`, das der
+    // Arbeitsprüfung ohne vorherigen Bau nicht vorliegt. Die Last bleibt klein: EIN Browser, EINE
+    // Seite, acht Fälle, kein `dist`, im eigenen Lauf 1,595 s, Abbau 218,95 ms (gemessen
+    // 15.09.2026, Cloud-Lauf e755a22db2e88c4d8d2afda7).
+    expect(graph.startdateien.length).toBe(28);
     for (const bekannt of [
+      "tests/entwurf-mobil-desktop/rueckfrage-schmal-chromium.test.tsx",
       "tests/demo-firmen-ci-anmeldung/gast-buehne.ts",
       "tests/ux28-fassungen/tastatur-im-browser-chromium.test.tsx",
       "tests/ladefehler-alter-tab/echter-ladefehler-chromium.test.ts",

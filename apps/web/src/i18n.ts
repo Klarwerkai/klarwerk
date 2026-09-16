@@ -5612,6 +5612,37 @@ const de = {
   "mob.status.pending": "läuft",
   "mob.status.synced": "fertig",
   "mob.status.failed": "Fehler",
+  // JOB 4193 — DIE RÜCKFRAGE BEI VERALTETEM STAND (Mobil). Sie sagt, was los ist, welches FELD
+  // auseinanderläuft und welche zwei Wege es gibt. Keine rohe Servermeldung, kein „gespeichert".
+  "mob.stand.laedt": "Der gespeicherte Stand wird geholt …",
+  "mob.stand.pruefungFehlt":
+    "Der gespeicherte Stand lässt sich gerade nicht prüfen. Dein Text bleibt stehen — versuche es noch einmal, bevor du speicherst.",
+  "mob.stand.erneutPruefen": "Noch einmal prüfen",
+  "mob.stand.titelSpeichern":
+    "Dieser Entwurf wurde inzwischen woanders geändert. Dein Stand wurde NICHT gespeichert, und überschrieben wurde nichts.",
+  "mob.stand.titelOffline":
+    "Von diesem Entwurf liegt eine offline gespeicherte Fassung — und auf dem Server steht inzwischen eine andere.",
+  "mob.stand.felder": "Unterschiedlich",
+  "mob.stand.feld.title": "Titel",
+  "mob.stand.feld.statement": "Kernaussage",
+  "mob.stand.feld.body": "Text",
+  "mob.stand.holen": "Neuen Stand holen",
+  "mob.stand.behalten": "Meine Fassung behalten",
+  "mob.stand.offlineFassung": "Offline gespeichert",
+  "mob.stand.serverFassung": "Aktueller Serverstand",
+  "mob.stand.meineFassung": "Deine vorherige Fassung — nicht gespeichert",
+  "mob.stand.verwerfen": "Verwerfen",
+  "mob.stand.offlineHinweis":
+    "Ohne Verbindung wird nichts abgeglichen. Ob jemand anders diesen Entwurf geändert hat, zeigt sich beim Wiederöffnen mit Verbindung.",
+  "mob.stand.syncAbgewiesen":
+    "Nicht nachgesendet: der Entwurf wurde woanders geändert. Öffne ihn, um zu entscheiden, welche Fassung gilt.",
+  // JOB 4193 R5 (BENs Befund): zwei Sätze für zwei Sperren, die beide Datenverlust verhindern.
+  "mob.stand.erstAufloesen":
+    "Erst die Rückfrage auflösen: für diesen Entwurf steht noch offen, welche Fassung gilt. Wähle „Neuen Stand holen“ oder „Meine Fassung behalten“ — solange wird nichts gespeichert.",
+  "mob.stand.syncBrauchtStand":
+    "Nicht nachgesendet: zu diesem älteren Eintrag fehlt der Stand, gegen den er gelten soll. Er bleibt liegen — öffne den Entwurf, dann wird verglichen und gesendet.",
+  "mob.ausgangUnklar":
+    "Die Antwort ist ausgeblieben — ob gespeichert wurde, ist unklar. Lade die Entwürfe neu und sieh nach, bevor du erneut speicherst.",
   "s2.kicker": "Erweitert · Stufe 2",
   "s2.output":
     "Aus validierten Objekten Arbeitsanweisungen/Checklisten erzeugen — aktiv, sobald die Output-Logik steht.",
@@ -11412,6 +11443,35 @@ const en: typeof de = {
   "mob.status.pending": "pending",
   "mob.status.synced": "synced",
   "mob.status.failed": "failed",
+  // JOB 4193 — the stale-version prompt (mobile).
+  "mob.stand.laedt": "Fetching the saved version …",
+  "mob.stand.pruefungFehlt":
+    "The saved version cannot be checked right now. Your text stays as it is — try again before you save.",
+  "mob.stand.erneutPruefen": "Check again",
+  "mob.stand.titelSpeichern":
+    "This draft has been changed elsewhere in the meantime. Your version was NOT saved, and nothing was overwritten.",
+  "mob.stand.titelOffline":
+    "There is a version of this draft saved offline — and a different one on the server.",
+  "mob.stand.felder": "Differs in",
+  "mob.stand.feld.title": "Title",
+  "mob.stand.feld.statement": "Core statement",
+  "mob.stand.feld.body": "Text",
+  "mob.stand.holen": "Fetch the new version",
+  "mob.stand.behalten": "Keep my version",
+  "mob.stand.offlineFassung": "Saved offline",
+  "mob.stand.serverFassung": "Current server version",
+  "mob.stand.meineFassung": "Your earlier version — not saved",
+  "mob.stand.verwerfen": "Discard",
+  "mob.stand.offlineHinweis":
+    "Nothing is compared while offline. Whether someone else changed this draft shows when you reopen it with a connection.",
+  "mob.stand.syncAbgewiesen":
+    "Not sent: the draft was changed elsewhere. Open it to decide which version applies.",
+  "mob.stand.erstAufloesen":
+    "Resolve the prompt first: it is still open which version of this draft applies. Choose “Fetch the new version” or “Keep my version” — nothing is saved until then.",
+  "mob.stand.syncBrauchtStand":
+    "Not sent: this older entry has no version to check against. It stays queued — open the draft, then it is compared and sent.",
+  "mob.ausgangUnklar":
+    "No answer came back — whether it was saved is unclear. Reload the drafts and check before you save again.",
   "s2.kicker": "Advanced · Stage 2",
   "s2.output":
     "Generate work instructions/checklists from validated objects — active once the output logic is in place.",
@@ -16821,6 +16881,35 @@ const nl: typeof de = {
   "mob.status.pending": "loopt",
   "mob.status.synced": "klaar",
   "mob.status.failed": "Fout",
+  // JOB 4193 — de navraag bij een verouderde versie (mobiel).
+  "mob.stand.laedt": "De opgeslagen versie wordt opgehaald …",
+  "mob.stand.pruefungFehlt":
+    "De opgeslagen versie kan nu niet worden gecontroleerd. Je tekst blijft staan — probeer het opnieuw voordat je opslaat.",
+  "mob.stand.erneutPruefen": "Opnieuw controleren",
+  "mob.stand.titelSpeichern":
+    "Dit concept is intussen elders gewijzigd. Jouw versie is NIET opgeslagen en er is niets overschreven.",
+  "mob.stand.titelOffline":
+    "Van dit concept staat een offline opgeslagen versie klaar — en op de server staat intussen een andere.",
+  "mob.stand.felder": "Verschilt in",
+  "mob.stand.feld.title": "Titel",
+  "mob.stand.feld.statement": "Kernuitspraak",
+  "mob.stand.feld.body": "Tekst",
+  "mob.stand.holen": "Nieuwe versie ophalen",
+  "mob.stand.behalten": "Mijn versie behouden",
+  "mob.stand.offlineFassung": "Offline opgeslagen",
+  "mob.stand.serverFassung": "Huidige serverversie",
+  "mob.stand.meineFassung": "Je vorige versie — niet opgeslagen",
+  "mob.stand.verwerfen": "Verwerpen",
+  "mob.stand.offlineHinweis":
+    "Zonder verbinding wordt er niets vergeleken. Of iemand anders dit concept heeft gewijzigd, blijkt bij het opnieuw openen met verbinding.",
+  "mob.stand.syncAbgewiesen":
+    "Niet nagestuurd: het concept is elders gewijzigd. Open het om te beslissen welke versie geldt.",
+  "mob.stand.erstAufloesen":
+    "Los eerst de navraag op: van dit concept staat nog open welke versie geldt. Kies „Nieuwe versie ophalen“ of „Mijn versie behouden“ — tot dan wordt er niets opgeslagen.",
+  "mob.stand.syncBrauchtStand":
+    "Niet nagestuurd: bij dit oudere item ontbreekt de versie waartegen het moet gelden. Het blijft staan — open het concept, dan wordt het vergeleken en verstuurd.",
+  "mob.ausgangUnklar":
+    "Er kwam geen antwoord — of er is opgeslagen is onduidelijk. Herlaad de concepten en kijk na voordat je opnieuw opslaat.",
   "s2.kicker": "Uitgebreid · Niveau 2",
   "s2.output":
     "Uit gevalideerde objecten werkinstructies/checklists genereren — actief zodra de output-logica staat.",

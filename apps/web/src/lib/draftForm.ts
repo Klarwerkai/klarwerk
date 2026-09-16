@@ -31,6 +31,20 @@ export interface DraftFormState {
    * gibt es keine Aufrufform, die den Body versehentlich weglässt — der Weg ist einer, nicht zwei.
    */
   segments?: readonly DraftBodySegment[];
+  /**
+   * JOB 4193 — DER BEIM LADEN GESEHENE STAND (`Draft.updatedAt`) DES FORTGESETZTEN ENTWURFS.
+   *
+   * Er reist aus demselben Grund im Formularzustand mit wie `segments`: es soll keinen
+   * Speicherweg geben können, der ihn vergisst (Knopf, Wächter, Warteschlange). Ein FRISCH
+   * angelegter Entwurf hat keinen — er kann noch niemandem am Desktop begegnet sein, und dort
+   * bleibt jede Zeile wörtlich wie bisher.
+   *
+   * ER IST KEIN ENTWURFSFELD. `formToPayload` nimmt ihn deshalb NICHT auf; er reist NEBEN der
+   * Nutzlast (`formToUpdate` → `endpoints.drafts.update(id, payload, { expectedUpdatedAt })`),
+   * genau wie der Promote-Weg es seit JOB 2684 D1 tut (`captureFrontDoor.ts`). Gepinnt in
+   * `tests/app/job2684-draft-stale-route.test.ts`: `payload.expectedUpdatedAt` bleibt `undefined`.
+   */
+  gesehenerStand?: string;
 }
 
 export const EMPTY_DRAFT_FORM: DraftFormState = { title: "", statement: "" };
@@ -72,8 +86,15 @@ export function formToPayload(form: DraftFormState): DraftPayload {
  * Server hat ihn dann bewusst ausgedünnt (`withAnchorCheck`, services/capture/src/service.ts) und
  * liefert `bodyHtml: null` — ein Zurückschreiben aus diesem Stand hiesse, den echten Body zu
  * löschen. Dann bleibt es beim Kernaussage-Weg, genau wie bisher.
+ *
+ * JOB 4193: `updatedAt` ist OPTIONAL am Eingang, und das ist keine Bequemlichkeit. Es gibt einen
+ * echten Aufrufer ohne Stand — die offline in der Warteschlange liegende Fassung
+ * (`QueuedOp.payload`, Mobile.tsx). Sie IST eine Nutzlast und kein Entwurf; ihr einen Stand
+ * anzudichten, hiesse eine Voraussetzung zu behaupten, die sie nicht hat.
  */
-export function draftToForm(draft: Pick<Draft, "payload" | "anchorsMissing">): DraftFormState {
+export function draftToForm(
+  draft: Pick<Draft, "payload" | "anchorsMissing"> & Partial<Pick<Draft, "updatedAt">>,
+): DraftFormState {
   const ankerFehlt = (draft.anchorsMissing?.length ?? 0) > 0;
   const segments =
     !ankerFehlt && draft.payload.bodyHtml?.trim() ? splitDraftBody(draft.payload.bodyHtml) : null;
@@ -81,7 +102,63 @@ export function draftToForm(draft: Pick<Draft, "payload" | "anchorsMissing">): D
     title: draft.payload.title ?? "",
     statement: draft.payload.statement ?? "",
     ...(segments ? { body: draftBodyText(segments), segments } : {}),
+    ...(draft.updatedAt ? { gesehenerStand: draft.updatedAt } : {}),
   };
+}
+
+/**
+ * JOB 4193 — EIN AKTUALISIERUNGSVORGANG: die Nutzlast UND der gesehene Stand daneben.
+ *
+ * Es gibt am Handy zwei Speicherwege (der Knopf und der Weggeh-Wächter) und die Warteschlange.
+ * Damit sie nicht auseinanderlaufen können, baut sie alle DIESE eine Funktion — wer sie ruft,
+ * kann den Stand nicht vergessen, und wer ihn nicht hat (neuer Entwurf), sendet ihn auch nicht
+ * als Leerwert.
+ */
+export interface DraftUpdateRequest {
+  payload: DraftPayload;
+  /** Fehlt bei einem NEU angelegten Entwurf — dort gibt es keinen gesehenen Stand. */
+  expectedUpdatedAt?: string;
+}
+
+export function formToUpdate(form: DraftFormState): DraftUpdateRequest {
+  const payload = formToPayload(form);
+  return form.gesehenerStand ? { payload, expectedUpdatedAt: form.gesehenerStand } : { payload };
+}
+
+/** Die Felder, die ein Mensch am Handy wirklich vor sich hat. */
+export type DraftFeld = "title" | "statement" | "body";
+
+/**
+ * Das EINE Textfeld dieser Fläche — und welches es ist, entscheidet allein `segments` (JOB 3377,
+ * s. `bodyMode` in Mobile.tsx). Ein Entwurf mit Body zeigt den Fliesstext, einer ohne die
+ * Kernaussage. Deshalb wird auch nur DAS verglichen, was sichtbar ist: eine Abweichung in einem
+ * Feld, das die Fläche gar nicht zeigt, wäre für den Menschen eine Behauptung ohne Gegenstand.
+ */
+function textfeld(form: DraftFormState): { feld: DraftFeld; wert: string } {
+  return form.segments !== undefined
+    ? { feld: "body", wert: (form.body ?? "").trim() }
+    : { feld: "statement", wert: form.statement.trim() };
+}
+
+/**
+ * JOB 4193 — WELCHES FELD WEICHT AB: die Feldangabe der Rückfrage.
+ *
+ * Verglichen wird getrimmt, wie `isDraftFormChanged` es tut (nur äussere Leerzeichen sind keine
+ * Änderung) — sonst meldete ein angehängter Zeilenumbruch einen Unterschied, den niemand sieht.
+ * Zeigen die beiden Fassungen VERSCHIEDENE Textfelder (die eine hat einen Body, die andere nicht),
+ * ist das ein Unterschied in genau dem Feld, das der Mensch vor sich hat.
+ */
+export function abweichendeFelder(meins: DraftFormState, anderes: DraftFormState): DraftFeld[] {
+  const felder: DraftFeld[] = [];
+  if (meins.title.trim() !== anderes.title.trim()) {
+    felder.push("title");
+  }
+  const a = textfeld(meins);
+  const b = textfeld(anderes);
+  if (a.feld !== b.feld || a.wert !== b.wert) {
+    felder.push(a.feld);
+  }
+  return felder;
 }
 
 // Nur die bearbeitbaren Textfelder zählen; segments ist der unverändert mitreisende Bauplan.
