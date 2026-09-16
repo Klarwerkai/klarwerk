@@ -4200,6 +4200,11 @@ const de = {
   // Originaldatei im Text hängt, spricht er ENGER — über die WEITEREN Anhänge, die es wirklich
   // nicht gibt. Ohne Datei im Text bleibt `anhaengeLeer` unverändert stehen.
   "lib.lesen.sprung.anhaengeLeerNebenDatei": "Weitere Anhänge · keine",
+  // JOB 4145 · WIKI-ORIENTIERUNG: der zugängliche Name der Gliederung in der Lesespalte — der
+  // EINZIGE übersetzte Text dieser Leiste. Die Einträge selbst sind wörtlich die Überschriften des
+  // Dokuments und werden nicht übersetzt. Einen Leersatz gibt es hier bewusst NICHT: ohne
+  // Überschrift erscheint die Leiste gar nicht.
+  "lib.lesen.gliederung.titel": "Gliederung des Dokuments",
   // ==============================================================================================
   // AUFTRAG-BASIC-u2 — DIE SUCHE SAGT, WORIN SIE SUCHT.
   // ==============================================================================================
@@ -10254,6 +10259,8 @@ const en: typeof de = {
   "lib.lesen.sprung.originaldateien": "Original files · {{count}}",
   "lib.lesen.sprung.originaldateienNamen": "Original files · {{count}}: {{names}}",
   "lib.lesen.sprung.anhaengeLeerNebenDatei": "Further attachments · none",
+  // JOB 4145 · WIKI-ORIENTIERUNG — see the German entry for the reasoning.
+  "lib.lesen.gliederung.titel": "Document outline",
   // AUFTRAG-BASIC-u2 — see the German entry for the finding.
   "lib.allStatus": "All statuses",
   "lib.allTypes": "All knowledge types",
@@ -15656,6 +15663,8 @@ const nl: typeof de = {
   "lib.lesen.sprung.originaldateien": "Originele bestanden · {{count}}",
   "lib.lesen.sprung.originaldateienNamen": "Originele bestanden · {{count}}: {{names}}",
   "lib.lesen.sprung.anhaengeLeerNebenDatei": "Overige bijlagen · geen",
+  // JOB 4145 · WIKI-ORIENTIERUNG — zie de Duitse regel voor de toelichting.
+  "lib.lesen.gliederung.titel": "Overzicht van het document",
   // AUFTRAG-BASIC-u2 — zie de Duitse regel voor de bevinding.
   "lib.allStatus": "Alle statussen",
   "lib.allTypes": "Alle kennissoorten",

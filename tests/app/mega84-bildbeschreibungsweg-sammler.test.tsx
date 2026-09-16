@@ -1822,6 +1822,7 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // Stände, und die einzige Bildquelle des Imports (der Bildauszug des Confluence-Snapshots)
     // wird von ihm nicht berührt. Die Rebase-Summe (381 aus JOB 4025 + diese zwei) ist an diesem
     // Arbeitsbaum nach der Konfliktauflösung gemessen, nicht gerechnet.
+    //
     // JOB 4154: +8 Komponenten gesamtanweisung/ — NACHGEFÜHRT von 383 auf 391.
     //
     // GEMESSEN, NICHT GERECHNET: die Diagnosezeile dieses Falls nennt die Zahl selbst („gemessen:
@@ -1857,8 +1858,31 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // `ANGEBOT_MUSTER`, kein `documentTitle`-Prop. Es berührt keinen Bildweg; es erscheint nur in
     // der Grundmenge. Die Rebase-Summe (391 aus JOB 4154 + dieses eine) ist an diesem Arbeitsbaum
     // nach der Konfliktauflösung gemessen, nicht gerechnet.
+    //
+    // JOB 4145 R2 (WIKI-ORIENTIERUNG) — NACHGEFÜHRT von 392 auf 393. EIN neues Bauteil:
+    //
+    //     + `Lesegliederung` — die Gliederung des Fließtexts in der Bibliotheks-Lesespalte,
+    //                          in `components/bibliothek/BibliothekLesen.tsx` (nicht exportiert,
+    //                          genau ein Aufrufer in derselben Datei).
+    //
+    // Dieselbe Begründung wie bei den Einträgen darüber: Die Auflage verbietet, dass eine
+    // UMSTELLUNG die Erhebung verschiebt — nicht, dass der Quellbaum wächst. Die zwei Zahlen, an
+    // denen Stufe 2 wirklich hängt, bleiben unverändert: `anbieter` 1 und `traeger` 2. Das Bauteil
+    // zeigt kein Bild, bietet keine Bildbeschreibung an (kein `ANGEBOT_MUSTER`) und trägt keinen
+    // eigenen Titel (kein `documentTitle`-Prop) — es rendert ein `<nav>` mit Sprungknöpfen, deren
+    // Beschriftung der Überschriftentext des Dokuments ist. Es erscheint nur in der Grundmenge.
+    // Die Bildergalerie derselben Lesefläche (`BodyImageGallery`) ist unberührt; sie steht
+    // weiterhin an ihrem Ort im Fließtext und wird von der Gliederung nicht angefasst.
+    //
+    // GEGENPROBE dazu, gemessen statt behauptet: mit der Deklaration UND ihrer Einbindung
+    // kleingeschrieben meldet dieser Fall wieder `gemessen: 392 Komponenten` und wird gegen den
+    // NEUEN Pin rot — `alsKomponente` (oben, :453) verlangt einen Großbuchstaben am
+    // Namensanfang; die +1 ist damit genau dieses Bauteil und kein zweiter Fund hinter derselben
+    // Zahl. Danach hashgleich zurückgenommen. Die Rebase-Summe (392 aus JOB 4153/4154 + dieses
+    // eine aus JOB 4145 R2) ist an diesem Arbeitsbaum nach der Konfliktauflösung gemessen, nicht
+    // gerechnet.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 392,
+      komponenten: 393,
       anbieter: 1,
       traeger: 2,
     });

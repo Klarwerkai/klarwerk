@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { FileText, Image as ImageIcon, Paperclip, Sparkles } from "lucide-react";
-import { useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 import { ApiError } from "../../api/client";
@@ -70,6 +70,13 @@ import { Modal } from "../Modal";
 import { RichTextEditor } from "../RichTextEditor";
 import { RoleLink } from "../RoleLink";
 import { SanitizedHtml } from "../SanitizedHtml";
+// JOB 4145 R3 · WIKI-ORIENTIERUNG: die ANZEIGE- UND STRUKTURREGELN der Gliederung kommen weiter aus
+// der EINEN Stelle des Hauses und werden nicht nachgebaut — `d44LeisteZeigen` („ohne Überschrift
+// keine Leiste, aber KEINE Mindestzahl") und `d44SichtbareEintraege` („gezählt wird alles, gezeigt
+// wird, was Text hat"). NICHT mehr geholt wird `d44Gliederung`: diese Regex liest HTML als TEXT, und
+// genau daran sind Runde 1 und 2 gescheitert. Die Marken kommen jetzt aus dem gerenderten Baum, das
+// Sprungziel ist die Elementreferenz selbst. `tests/wiki-orientierung/…` (O9) hält beides fest.
+import { type D44Eintrag, d44LeisteZeigen, d44SichtbareEintraege } from "../d44Struktur";
 import { ListEditor, TagEditor } from "../editors";
 import { KNOWLEDGE_TYPES } from "../trust";
 import { Button, Field, TextInput, cx } from "../ui";
@@ -291,6 +298,214 @@ function rumpfLage(vorschlag: KoProposal, stand: string | null | undefined): Rum
 // Änderungsüberblick schon benutzt. Eine zweite Abschrift wäre die zweite Wahrheit.
 const EINGEREICHTE_FELDER: readonly KoRevisionItemId[] = ["statement", "body"];
 
+// ==================================================================================================
+// JOB 4145 R3 · DAS SPRUNGZIEL IST DAS ELEMENT SELBST — ES GIBT KEINE POSITION MEHR.
+// ==================================================================================================
+//
+// ZWEIMAL ROT MIT DEMSELBEN BEFUND, und beide Male war die Angleichung einer TEXT-Auswertung an den
+// Baum die Wette, die verloren ging:
+//
+//   R1  `d44Gliederung(gezeichneterText)` — der HTML-String. BEN:
+//       `<h2>Eins<h2>Zwei</h2><p>Absatz</p><h2>Drei</h2>` → die Regex schliesst am ERSTEN `</h2>`
+//       und zählt ZWEI, der Browser schliesst das offene `<h2>` und hat DREI.
+//   R2  `d44Gliederung(knoten.innerHTML)` — die Rückserialisierung. BEN:
+//       `<h2>Eins<strong><h2>Zwei</h2></strong></h2><p>Absatz</p><h2>Drei</h2>` → hier schliesst der
+//       Browser NICHT (die Regel greift nur, wenn das offene Element selbst eine Überschrift ist;
+//       hier steht `<strong>` dazwischen). Die Verschachtelung BLEIBT im Baum, `innerHTML` gibt sie
+//       so zurück, und die Regex liest wieder „EinsZwei" als EINEN Eintrag — drei Elemente, zwei
+//       Einträge, „Drei" trifft „Zwei".
+//
+// `innerHTML` GARANTIERT ALSO KEINE FLACHE ÜBERSCHRIFTENSTRUKTUR. Jede weitere Angleichung des
+// Textlesens wäre die dritte Wette auf dasselbe Blatt.
+//
+// ==================================================================================================
+// DESHALB WIRD HIER NICHT MEHR GEZÄHLT, SONDERN GEZEIGT.
+// ==================================================================================================
+//
+// Die Marken kommen aus dem GERENDERTEN BAUM: `querySelectorAll` über den Inhaltscontainer liefert
+// die Überschriftenelemente in Dokumentreihenfolge; Ebene aus dem Tag, Text aus `textContent` — und
+// das SPRUNGZIEL IST DIE ELEMENTREFERENZ SELBST. Damit gibt es zwischen „was die Leiste zeigt" und
+// „wohin sie springt" nichts mehr, das auseinanderlaufen könnte: kein Index, keine Position, keine
+// zweite Zählung. Positionsgleichheit durch Konstruktion statt durch Angleichung.
+//
+// KEINE `id` UND KEIN ANKER: die Referenz trägt das Ziel schon. Eine vergebene `id` wäre ein
+// zweiter Schlüssel auf denselben Knoten — und sie müsste in fremdes, sanitisiertes HTML
+// geschrieben werden, genau das, was `d44Struktur.ts:40-41` für die Studio-Leiste vermeidet.
+//
+// DIE GEMEINSAME D44-AUSWERTUNG BLEIBT IN GEBRAUCH — für ANZEIGE und STRUKTUR, nicht mehr für die
+// Ziele (Auftrag der Steuerung, 15.09. 20:08): `d44LeisteZeigen` entscheidet, ob die Leiste
+// überhaupt steht, `d44SichtbareEintraege` hält die Regel „gezählt wird alles, GEZEIGT wird, was
+// Text hat" (`d44Struktur.ts:85-94`). Beide bekommen die aus dem Baum gebauten `D44Eintrag`. Die
+// Zuordnung Eintrag → Element läuft über OBJEKTIDENTITÄT (`Set.has`), nicht über `position` —
+// `d44SichtbareEintraege` filtert und gibt dieselben Objekte zurück. `d44Gliederung`, die
+// Regex-Auswertung, wird hier NICHT mehr gerufen; sie bleibt unverändert und ist weiterhin die
+// Auswertung der Studio-Leiste (`D44Gliederung.tsx:44`).
+//
+// GESAMMELT WIRD `h1…h6` UND NICHT NUR `h2, h3`: der Client-Sanitizer bildet `h1 → h2` und
+// `h4/h5/h6 → h3` ab (`lib/richText.ts:51-57`), im Baum stehen also normalerweise nur h2 und h3 —
+// aber die Lesespalte zeichnet nicht nur sanitisiertes Body-HTML, und eine Überschrift, die dasteht
+// und nicht in der Leiste auftaucht, wäre wieder eine stille Lücke. `[role=heading]` steht
+// ABSICHTLICH NICHT im Selektor: `role` ist in keiner Attribut-Freigabe des Sanitizers
+// (`richText.ts:58-75`), kann aus dem Body also gar nicht kommen — ein Selektor für einen Fall, den
+// kein Test erreichen kann, wäre unbelegter Code.
+//
+// WARUM EIN EIGENES BAUTEIL UND NICHT EIN HOOK IN DER LESEFLÄCHE: `BibliothekLesen` kehrt vorher
+// zurück (Fehler- und Ladezweig); ein Hook an jener Stelle verstiesse gegen die Hook-Regel. Das
+// Bauteil steht in derselben Datei, wird nicht exportiert und hat genau einen Aufrufer.
+
+/** Eine Überschrift der Lesespalte: was sie anzeigt, und der Knoten, zu dem sie führt. */
+interface Sprungmarke {
+  /** Für Anzeige und Struktur — gelesen von `d44SichtbareEintraege`/`d44LeisteZeigen`. */
+  readonly eintrag: D44Eintrag;
+  /** Das Ziel. Kein Index, keine Kennung: der Knoten selbst. */
+  readonly ziel: HTMLElement;
+}
+
+/**
+ * Die Überschriften des gerenderten Inhalts, in Dokumentreihenfolge.
+ *
+ * `position` ist der Index in GENAU DIESER Liste — sie wird nirgends zum Nachschlagen benutzt
+ * (dafür gibt es `ziel`), sondern trägt nur die Zusage von `d44SichtbareEintraege`, dass eine leere
+ * Überschrift mitzählt, ohne angezeigt zu werden. Der Text wird auf einfache Leerzeichen
+ * zusammengezogen — dieselbe Reduktion, die `htmlToPlainText` für die Studio-Leiste leistet
+ * (`d44-gliederung.test.ts` B3: „Erste\n   Zeile" → „Erste Zeile").
+ */
+function sprungmarken(knoten: HTMLElement | null): Sprungmarke[] {
+  if (!knoten) {
+    return [];
+  }
+  const gefunden = knoten.querySelectorAll<HTMLElement>("h1, h2, h3, h4, h5, h6");
+  return [...gefunden].map((ziel, position) => ({
+    ziel,
+    eintrag: {
+      ebene: Number(ziel.tagName.slice(1)) >= 3 ? 3 : 2,
+      text: (ziel.textContent ?? "").replace(/\s+/g, " ").trim(),
+      position,
+    },
+  }));
+}
+
+/**
+ * R4 · Das Ersatzziel, wenn die gespeicherte Referenz nicht mehr am Baum hängt.
+ *
+ * Gesucht wird ZUERST an derselben Position und nur, wenn dort derselbe Text steht — so trifft es
+ * auch bei zwei gleich benannten Abschnitten den richtigen. Steht dort etwas anderes (die Reihe hat
+ * sich verschoben), gilt der Text als zweiter Anker. Findet sich beides nicht, gibt es kein Ziel,
+ * und der Aufrufer tut nichts: lieber ein wirkungsloser Knopf als ein Sprung irgendwohin.
+ */
+function ersatzziel(knoten: HTMLElement | null, eintrag: D44Eintrag): HTMLElement | null {
+  const frisch = sprungmarken(knoten);
+  const anPosition = frisch[eintrag.position];
+  if (anPosition && anPosition.eintrag.text === eintrag.text) {
+    return anPosition.ziel;
+  }
+  return frisch.find((marke) => marke.eintrag.text === eintrag.text)?.ziel ?? null;
+}
+
+/**
+ * Zwei Markenlisten beschreiben denselben Baum.
+ *
+ * Verglichen wird die ELEMENTIDENTITÄT, nicht der Text: genau daran hängt der Befund aus Runde 3.
+ * Beim Wechsel Übersetzung → Original ist das HTML Zeichen für Zeichen dasselbe, aber React baut
+ * den Teilbaum neu — die Texte gleichen sich, die Knoten sind andere. Ein Textvergleich sähe
+ * „unverändert" und liesse die alten, abgehängten Knoten stehen.
+ */
+function markenGleich(a: readonly Sprungmarke[], b: readonly Sprungmarke[]): boolean {
+  return (
+    a.length === b.length &&
+    a.every((marke, i) => marke.ziel === b[i]?.ziel && marke.eintrag.text === b[i]?.eintrag.text)
+  );
+}
+
+function Lesegliederung({
+  flaeche,
+  beschriftung,
+  onSprung,
+}: {
+  /**
+   * Der Knoten, in dem gezeichnet wird. Aus ihm kommen die Marken — und ihre Ziele.
+   *
+   * R5 · DER KNOTEN SELBST, NICHT DAS `ref`-OBJEKT, IN DEM ER IRGENDWANN STEHT. Der Grund steht bei
+   * `textKnotenSetzen` in `BibliothekLesen`: beim ersten Einbau ist das `ref` hier noch leer.
+   */
+  readonly flaeche: HTMLDivElement | null;
+  readonly beschriftung: string;
+  readonly onSprung: (marke: Sprungmarke) => void;
+}): JSX.Element | null {
+  const [marken, setMarken] = useState<Sprungmarke[]>([]);
+  // ================================================================================================
+  // R4 · GESAMMELT WIRD NACH JEDEM RENDER DES INHALTS — OHNE ABHÄNGIGKEIT VOM HTML-STRING.
+  // ================================================================================================
+  //
+  // BENS BEFUND AN RUNDE 3: Übersetzung → Original mit IDENTISCHEM `bodyHtml`. Der String ändert
+  // sich nicht, der Zweig aber schon (`gelesen ? … : …`), und React baut den Teilbaum neu. Die in
+  // Runde 3 gespeicherten Elementreferenzen zeigten danach auf abgehängte Knoten; `isConnected`
+  // machte jeden Knopf wirkungslos — ein stiller Totalausfall der Leiste.
+  //
+  // KEINE ABHÄNGIGKEITSLISTE. Der Effekt läuft nach JEDEM Renderdurchlauf und sammelt neu; geprüft
+  // wird am Ergebnis, nicht an einem Merkmal: nur wenn sich die ELEMENTE unterscheiden, wird der
+  // Zustand gesetzt. Damit endet die Schleife nach höchstens einem zusätzlichen Durchlauf, und es
+  // gibt kein Merkmal mehr, das „unverändert" sagen könnte, während der Baum ein anderer ist.
+  //
+  // `useLayoutEffect` UND NICHT `useEffect`: er läuft nach den DOM-Änderungen, aber VOR dem
+  // Zeichnen. Die Leiste kann deshalb gar nicht erst für einen Bildaufbau mit alten Einträgen neben
+  // neuem Text stehen — die Zusage aus §9 („nie vorab, immer mit dem Text zusammen") hängt seitdem
+  // nicht mehr an einem String-Vergleich, sondern am Renderzyklus selbst.
+  //
+  // R5 · UND DER KNOTEN KOMMT ALS WERT HEREIN, NICHT ALS `ref`-OBJEKT. Warum das kein Geschmack
+  // ist, steht bei `textKnotenSetzen`: als `ref` gelesen war dieser Effekt beim ERSTEN Einbau
+  // regelmässig zu früh dran und fand `null` — und weil er dann nichts setzte, zeichnete auch nichts
+  // nach. Als Wert kann das gar nicht mehr passieren: ein Knoten ist da oder nicht, und wenn er
+  // dazukommt, ist das ein Renderdurchlauf.
+  useLayoutEffect(() => {
+    const frisch = sprungmarken(flaeche);
+    setMarken((vorher) => (markenGleich(vorher, frisch) ? vorher : frisch));
+  });
+  const alle = marken.map((m) => m.eintrag);
+  if (!d44LeisteZeigen(alle)) {
+    // Ohne Überschrift steht hier GAR NICHTS — kein Rahmen, kein Satz „keine Überschriften". Ein
+    // leerer Rahmen wäre eine Zusage ohne Gegenstand, ein Satz wäre Erklärtext in der Lesespalte
+    // (`tests/design/zielbild-h4-kein-erklaertext.test.ts`). Das ist der eine Unterschied zur
+    // Studio-Leiste, die an ihrem Ort den Satz zeigt: dort ist sie das Werkzeug des Prüfers, hier
+    // ist die Spalte der Inhalt.
+    return null;
+  }
+  // Über OBJEKTIDENTITÄT, nicht über `position`: `d44SichtbareEintraege` filtert und liefert
+  // dieselben Objekte zurück. Ein Nachschlagen über eine Zahl wäre wieder die Naht, an der die
+  // letzten zwei Runden gebrochen sind.
+  const sichtbar = new Set(d44SichtbareEintraege(alle));
+  // Die Beschriftungen sind die Überschriften SELBST und werden nicht übersetzt; nur der
+  // zugängliche Name des Bereichs kommt aus `i18n.ts`. Beide `className` sind reine Literale —
+  // `mega47-modale-flaechen-sammler` zählt jede unauflösbare Klassenbindung und pinnt ihre Zahl;
+  // die Einrückung der Unterpunkte trägt deshalb ein Abstandhalter im Kindbereich, kein Ausdruck
+  // in der Klasse (Bauform aus `D44Gliederung.tsx:98-108`).
+  return (
+    <nav
+      aria-label={beschriftung}
+      data-testid="bib-gliederung"
+      className="max-h-40 overflow-y-auto rounded-card border border-hairline bg-page px-2.5 py-2"
+    >
+      <ul className="space-y-0.5 text-[12.5px]">
+        {marken
+          .filter((marke) => sichtbar.has(marke.eintrag))
+          .map((marke) => (
+            <li key={`${marke.eintrag.position}-${marke.eintrag.text}`}>
+              <button
+                type="button"
+                data-testid={`bib-gliederung-sprung-${marke.eintrag.position}`}
+                onClick={() => onSprung(marke)}
+                className="block w-full truncate text-left text-muted hover:text-text"
+              >
+                {marke.eintrag.ebene === 3 ? <span className="inline-block w-4" /> : null}
+                {marke.eintrag.text}
+              </button>
+            </li>
+          ))}
+      </ul>
+    </nav>
+  );
+}
+
 export function BibliothekLesen({
   koId,
   suchtext,
@@ -365,6 +580,41 @@ export function BibliothekLesen({
   // Link (er steht schon im Text) ins Bild und gibt ihm den Fokus. Der Bezug geht über den
   // gezeichneten Baum, nicht über eine zweite Adressrechnung.
   const textRef = useRef<HTMLDivElement | null>(null);
+  // ================================================================================================
+  // JOB 4145 R5 · DER KNOTEN DES FLIESSTEXTS IST EIN ZUSTAND, KEIN STILLES `ref`.
+  // ================================================================================================
+  //
+  // WAS IM TOR VOM 15.09. 23:05 GESCHAH: `gliederung-mit-tastatur-chromium.test.ts` kam über den
+  // Seitenaufbau nicht hinaus — `[data-testid="bib-gliederung"]` stand 30 s lang NICHT im Baum. Die
+  // Leiste war nicht falsch, sie war NICHT DA.
+  //
+  // DIE URSACHE IST DIE REIHENFOLGE DES EINBAUS. `<Lesegliederung>` steht im Baum VOR
+  // `<div ref={textRef}>` — so verlangt es Lieferung 3, damit die Knöpfe in der
+  // Tabulatorreihenfolge vor dem Fliesstext liegen. React geht den Baum beim Einbau EINMAL in
+  // Dokumentreihenfolge durch und erledigt je Knoten das Seine: `ref` anhängen, Layouteffekte
+  // laufen lassen. Das Bauteil kommt in dieser Reihe VOR dem `div`; als es `textRef.current` las,
+  // war die `ref` noch nicht gesetzt. Es sammelte nichts — und weil es nichts sammelte, setzte es
+  // auch keinen Zustand und stiess keinen zweiten Durchlauf an. (Der Kommentar, der bis R4 hier
+  // stand, hat genau das verwechselt: React legt die KNOTEN wirklich alle vorher an, aber die `ref`
+  // wird erst in diesem Durchgang gefüllt.)
+  //
+  // Die Leiste erschien deshalb nur, wenn ZUFÄLLIG etwas anderes noch einmal zeichnete — eine
+  // nachlaufende Abfrage, eine Meldung. Kommen die Antworten aus dem Vorrat (derselbe Eintrag ein
+  // zweites Mal geöffnet), bleibt der Einbau der LETZTE Durchlauf, und die Leiste fehlt dauerhaft:
+  // kein Fehler, keine Meldung, nichts. Gemessen in `tests/wiki-orientierung/…lesespalte.test.tsx`
+  // (Y1) — am Stand vor dieser Zeile stand dort `null`, während der Text schon seine drei
+  // Überschriften trug.
+  //
+  // DER RÜCKRUF SCHLIESST DAS BAULICH. Er läuft, wenn React den Knoten anhängt, und macht daraus
+  // einen ZUSTAND; die Änderung eines Zustands ist ein Renderdurchlauf, und den kann kein Zufall
+  // mehr ausbleiben lassen. `textRef` bleibt daneben stehen: `springeZurUeberschrift` und
+  // `springeZurDatei` brauchen den Knoten ausserhalb des Zeichnens, und ein `ref` ist dafür das
+  // Richtige. Beide zeigen auf denselben Knoten, gesetzt in derselben Zeile.
+  const [textKnoten, setTextKnoten] = useState<HTMLDivElement | null>(null);
+  const textKnotenSetzen = useCallback((knoten: HTMLDivElement | null): void => {
+    textRef.current = knoten;
+    setTextKnoten(knoten);
+  }, []);
   const [loeschenOffen, setLoeschenOffen] = useState(false);
   const [reworkSavedFor, setReworkSavedFor] = useState<string | null>(null);
   const reworkSaved = reviewReworkContext && reworkSavedFor === koId;
@@ -1125,6 +1375,39 @@ export function BibliothekLesen({
   // sonst das Original. Sonst zeigte der Kopf auf einen Link, den die Fläche gerade nicht zeichnet.
   const gezeichneterText = gelesen ? (gelesen.bodyHtml ?? null) : ko.bodyHtml;
   const originalDateien = bodyFileLinksFromHtml(gezeichneterText);
+  /**
+   * JOB 4145 R3: der Sprung an eine Ueberschrift des LESETEXTS.
+   *
+   * ES WIRD NICHTS MEHR GESUCHT. `ziel` IST die Ueberschrift — dieselbe Elementreferenz, die
+   * `Lesegliederung` beim Sammeln in die Marke gelegt hat. Zwei Runden lang stand hier ein
+   * `querySelectorAll(...)[position]`, und zweimal zaehlte die Leiste anders als der Baum; jetzt
+   * gibt es keine Zahl mehr, die falsch sein koennte (s. Kopf von `Lesegliederung`).
+   *
+   * DER FOKUS WANDERT MIT. Ohne ihn landet ein Mensch ohne Maus nach dem Klick wieder am
+   * Seitenanfang und liest die gesuchte Stelle nie. `tabIndex = -1` macht die Ueberschrift
+   * fokussierbar, ohne sie in die Tabulatorreihenfolge zu stellen; der Knoten stammt aus
+   * `dangerouslySetInnerHTML` und wird von React nicht nachgefuehrt, das Attribut bleibt also
+   * stehen, bis der Text selbst ausgetauscht wird.
+   *
+   * R4 · UND WENN DER KNOTEN DOCH ABGEHAENGT IST, WIRD NEU GESAMMELT STATT STILLGEHALTEN.
+   *
+   * Seit R4 sammelt `Lesegliederung` nach jedem Render neu, der Fall sollte also nicht mehr
+   * auftreten. „Sollte nicht" ist aber keine Zusage: aendert sich der Baum OHNE Renderdurchlauf
+   * (fremdes Skript, Browsererweiterung, eine kuenftige Flaeche, die im Lesetext schreibt), zeigt
+   * die Marke auf einen toten Knoten. In Runde 3 blieb der Knopf dann wirkungslos — ein stiller
+   * Ausfall, und genau die Gattung Fehler, gegen die dieser Auftrag steht. Jetzt wird frisch
+   * gesammelt und der Eintrag an DERSELBEN Position mit DEMSELBEN Text angesprungen; nur wenn es
+   * ihn wirklich nicht mehr gibt, geschieht nichts — wie beim Dateisprung daneben.
+   */
+  const springeZurUeberschrift = (marke: Sprungmarke): void => {
+    const ziel = marke.ziel.isConnected ? marke.ziel : ersatzziel(textRef.current, marke.eintrag);
+    if (!ziel) {
+      return;
+    }
+    ziel.tabIndex = -1;
+    ziel.scrollIntoView({ block: "start" });
+    ziel.focus();
+  };
   /**
    * JOB 3474: der Weg vom Kopf zur Originaldatei. Ihr Link steht schon im Fließtext (er kommt aus
    * `fileLinkHtml` und wird von `SanitizedHtml` gezeichnet) — der Knopf holt ihn ins Bild und gibt
@@ -2108,8 +2391,26 @@ export function BibliothekLesen({
             >
               {gelesen ? gelesen.title : ko.title}
             </h1>
+            {/* JOB 4145 · WIKI-ORIENTIERUNG — DIE GLIEDERUNG STEHT VOR DEM TEXT, DEN SIE ERSCHLIESST.
+
+                SIE STEHT IM DOM VOR `bib-text`, damit sie in der Tabulatorreihenfolge VOR dem
+                Fliesstext liegt: wer mit der Tastatur liest, erreicht die Sprungziele, bevor er
+                mehrere Bildschirmhoehen durchlaufen hat.
+
+                R5: GENAU DARAUS kam der Fehler des Torlaufs 23:05 — wer im Baum vorne steht, ist
+                beim Einbau auch zuerst an der Reihe, und da war die `ref` des Fliesstextes noch
+                leer. Das Bauteil bekommt deshalb den KNOTEN (`textKnoten`), den der Rueckruf
+                `textKnotenSetzen` in einen Zustand legt; die Begruendung steht dort.
+
+                R4: das Bauteil bekommt den HTML-String NICHT mehr. Es haengt an nichts als am
+                Knoten und am Renderzyklus — der Grund steht im Kopf von `Lesegliederung`. */}
+            <Lesegliederung
+              flaeche={textKnoten}
+              beschriftung={t("lib.lesen.gliederung.titel")}
+              onSprung={springeZurUeberschrift}
+            />
             <div
-              ref={textRef}
+              ref={textKnotenSetzen}
               data-testid="bib-text"
               data-bib-text="text"
               className="text-[15.5px] leading-[1.7] text-text"
