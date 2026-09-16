@@ -2191,3 +2191,140 @@ export type SicherungenAuskunft =
     }
   | { zustand: "kein_verzeichnis"; verzeichnis: string; gelesenUtc: string }
   | { zustand: "unlesbar"; verzeichnis: string; gelesenUtc: string; grund: string };
+
+// ==================================================================================================
+// JOB 4154 · WIKI-GESAMTANWEISUNG — DER DRAHTVERTRAG DER ANWEISUNG.
+// ==================================================================================================
+//
+// Additiv. Die Gegenstücke stehen in `services/knowledge-object/src/gesamtanweisung-types.ts`; die
+// Begründungen wohnen dort, damit sie nicht zweimal gepflegt werden. HIER stehen nur die Zusagen,
+// die die Oberfläche beim Lesen braucht — insbesondere: WELCHE Felder `null` sein dürfen und was
+// das dann heisst.
+//
+// DIE NULLBAREN FELDER SIND VERTRAG UND KEIN VERSEHEN (Lehre 03.09., JOB 3027/3025/3037): die
+// Fläche muss „unbekannt" von „0"/„leer" unterscheiden können. Wer hier ein `| null` wegnimmt,
+// nimmt der Oberfläche die Möglichkeit, ehrlich zu sein.
+
+/** Der Lebenslauf. `entschieden` entsteht NUR aus einer menschlichen Entscheidung. */
+export type AnweisungStand = "entwurf" | "vorgelegt" | "entschieden" | "abgelehnt";
+
+/**
+ * Das Ergebnis eines Vergleichs.
+ *
+ * `unveraendert` heisst unverändert — nicht richtig, nicht geprüft, nicht freigegeben.
+ * `unbekannt` ist ein eigener Wert und darf in der Anzeige nie mit `unveraendert` zusammenfallen.
+ */
+export type Auswirkung = "unveraendert" | "geaendert" | "unbekannt";
+
+export type VergleichsFeld =
+  | "kopf"
+  | "geltung"
+  | "voraussetzungen"
+  | "bausteinbestand"
+  | "reihenfolge"
+  | "fassung"
+  | "tabellenueberschriften"
+  | "abbildungen";
+
+/** `null` heisst UNBEKANNT. `[]` heisst „keine" — das sind zwei verschiedene Auskünfte. */
+export interface BausteinInhalt {
+  tabellenUeberschriften: string[] | null;
+  abbildungen: string[] | null;
+  geltung: string | null;
+}
+
+export interface BausteinHerkunft {
+  titel: string;
+  autor: string;
+  /** `null` = zu dieser Fassung gibt es kein Datum. Nicht ersatzweise das Anlagedatum. */
+  fassungAm: string | null;
+  status: string;
+}
+
+export interface BausteinLesestand {
+  id: string;
+  position: number;
+  koId: string;
+  /** Die GEBUNDENE Fassung — nicht die heutige. */
+  koVersion: number;
+  nachweisHash: string | null;
+  voraussetzung: string | null;
+  /** `null` = die gebundene Fassung ist nicht auffindbar; es wird nicht ausgewichen. */
+  herkunft: BausteinHerkunft | null;
+  aktuelleKoVersion: number | null;
+  /** Steht DANEBEN, ersetzt nie. `null` = es gibt keine neuere Fassung. */
+  aktualisierungsvorschlag: { aufVersion: number } | null;
+  inhalt: BausteinInhalt;
+}
+
+export interface AnweisungLesestand {
+  id: string;
+  titel: string;
+  zweck: string;
+  geltungsbereich: string;
+  voraussetzungen: string;
+  stand: AnweisungStand;
+  version: number;
+  urheber: string;
+  erstelltAm: string;
+  geaendertAm: string;
+  /** NUR die zugänglichen Bausteine. Ein verborgener steht hier gar nicht, auch nicht leer. */
+  bausteine: BausteinLesestand[];
+  unvollstaendig: boolean;
+  verborgeneBausteine: number;
+  /** Der Lückenvermerk vom Server — die Fläche erfindet keinen grünen Haken. */
+  pruefanbindung: "nicht_angebunden";
+}
+
+export interface VergleichsBefund {
+  feld: VergleichsFeld;
+  /** `null` = die Anweisung selbst. */
+  bausteinId: string | null;
+  auswirkung: Auswirkung;
+  hinweis: string;
+}
+
+export interface AnweisungVergleich {
+  anweisungId: string;
+  vonVersion: number;
+  bisVersion: number;
+  gesamt: Auswirkung;
+  befunde: VergleichsBefund[];
+  /** Wie viele Befunde unbestimmbar blieben. Sie werden nie weggerundet. */
+  unbekannte: number;
+}
+
+export interface AnweisungBaustein {
+  id: string;
+  position: number;
+  koId: string;
+  koVersion: number;
+  nachweisHash: string | null;
+  voraussetzung?: string;
+}
+
+/** Die Antwort jedes SCHREIBENDEN Wegs: der Bestand, wie er jetzt ist — samt neuer `version`. */
+export interface Anweisung {
+  id: string;
+  titel: string;
+  zweck: string;
+  geltungsbereich: string;
+  voraussetzungen: string;
+  bausteine: AnweisungBaustein[];
+  stand: AnweisungStand;
+  version: number;
+  urheber: string;
+  erstelltAm: string;
+  geaendertAm: string;
+}
+
+export interface AnweisungKopfEingabe {
+  titel?: string;
+  zweck?: string;
+  geltungsbereich?: string;
+  voraussetzungen?: string;
+}
+
+export interface AnweisungStaende {
+  staende: number[];
+}

@@ -597,6 +597,68 @@ const REGISTER: Record<string, Eintrag> = {
     "POST /api/reasoner/conflict-self-test": "users.manage.",
     "POST /api/reasoner/duplicate-self-test": "users.manage.",
   }),
+  // ==============================================================================================
+  // JOB 4154 (WIKI-GESAMTANWEISUNG) · zehn Wege, zehn Urteile.
+  // ==============================================================================================
+  //
+  // Eine Anweisung bindet FREMDE Wissenseinträge über `(koId, koVersion, nachweisHash)`. Jeder Weg,
+  // der eine Anweisung ausgibt, kann damit Inhalt eines Wissensobjekts hinaustragen — Titel und
+  // Autor der gebundenen Fassung stehen in der Herkunftszeile je Baustein, Tabellenüberschriften
+  // und Abbildungsnamen im Inhaltsbefund. Deshalb ist das Urteil hier neunmal PRAEDIKAT und nicht
+  // „kein KO-Inhalt": es wird wirklich welcher ausgegeben, und er wird wirklich getrimmt.
+  //
+  // DAS PRÄDIKAT IST `darfSehen`, und es fällt JE BAUSTEIN, nicht einmal an der Anweisung. Die
+  // Route bildet die Entscheidung einmal (`sichtbarFuer(user)` aus `../sichtbarkeit`) und reicht
+  // sie in den Dienst; der wendet sie auf jede gebundene Fassung an. Beim LESEN trimmt er (der
+  // verborgene Baustein erscheint gar nicht, die Antwort sagt `unvollstaendig` und nennt nur die
+  // ANZAHL), beim SCHREIBEN und beim VERGLEICHEN verweigert er mit 403 — ein Vergleich über eine
+  // getrimmte Teilmenge sagte „unverändert", wo der Leser die geänderte Hälfte nur nicht sehen
+  // durfte.
+  "GET /api/gesamtanweisungen/:id": {
+    urteil: "PRAEDIKAT",
+    grund: "JOB 4154 — darfSehen je gebundenem Baustein; verborgene Bausteine fallen ganz weg.",
+  },
+  "PUT /api/gesamtanweisungen/:id": {
+    urteil: "PRAEDIKAT",
+    grund: "JOB 4154 — Schreibweg: darfSehen an JEDEM gebundenen Baustein, sonst 403.",
+  },
+  "POST /api/gesamtanweisungen/:id/bausteine": {
+    urteil: "PRAEDIKAT",
+    grund: "JOB 4154 — darfSehen am Bestand UND zusätzlich an der neu gebundenen Fassung.",
+  },
+  "PUT /api/gesamtanweisungen/:id/reihenfolge": {
+    urteil: "PRAEDIKAT",
+    grund: "JOB 4154 — Schreibweg: darfSehen an JEDEM gebundenen Baustein, sonst 403.",
+  },
+  "PUT /api/gesamtanweisungen/:id/bausteine/:bausteinId/voraussetzung": {
+    urteil: "PRAEDIKAT",
+    grund: "JOB 4154 — Schreibweg: darfSehen an JEDEM gebundenen Baustein, sonst 403.",
+  },
+  "GET /api/gesamtanweisungen/:id/staende": {
+    urteil: "PRAEDIKAT",
+    grund: "JOB 4154 — Versionsnummern erst nach darfSehen an jedem gebundenen Baustein.",
+  },
+  "GET /api/gesamtanweisungen/:id/vergleich": {
+    urteil: "PRAEDIKAT",
+    grund:
+      "JOB 4154 — gibt Tabellenüberschriften und Abbildungsnamen aus; kein getrimmter Vergleich, 403.",
+  },
+  "POST /api/gesamtanweisungen/:id/vorlegen": {
+    urteil: "PRAEDIKAT",
+    grund: "JOB 4154 — Schreibweg: darfSehen an JEDEM gebundenen Baustein, sonst 403.",
+  },
+  "POST /api/gesamtanweisungen/:id/entscheiden": {
+    urteil: "PRAEDIKAT",
+    grund: "JOB 4154 — Schreibweg mit ko.validate UND darfSehen an jedem gebundenen Baustein.",
+  },
+  // Die Anlage gibt NICHTS aus ausser dem gerade selbst eingegebenen Kopf: Titel, Zweck,
+  // Geltungsbereich, Voraussetzungen, leere Bausteinliste. Es gibt in diesem Augenblick keinen
+  // gebundenen Eintrag — deshalb hier kein Prädikat und trotzdem kein Loch. LESEURTEIL, nachlesbar
+  // an `anweisungAnlegen` (`gesamtanweisung-service.ts`): `bausteine: []`.
+  "POST /api/gesamtanweisungen": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "JOB 4154 — legt eine LEERE Anweisung an; die Antwort trägt nur den eigenen Kopf.",
+  },
 };
 
 function schreibwege(paare: Record<string, string>): Record<string, Eintrag> {

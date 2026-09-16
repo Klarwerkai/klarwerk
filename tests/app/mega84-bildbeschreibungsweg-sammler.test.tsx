@@ -1822,8 +1822,30 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // Stände, und die einzige Bildquelle des Imports (der Bildauszug des Confluence-Snapshots)
     // wird von ihm nicht berührt. Die Rebase-Summe (381 aus JOB 4025 + diese zwei) ist an diesem
     // Arbeitsbaum nach der Konfliktauflösung gemessen, nicht gerechnet.
+    // JOB 4154: +8 Komponenten gesamtanweisung/ — NACHGEFÜHRT von 383 auf 391.
+    //
+    // GEMESSEN, NICHT GERECHNET: die Diagnosezeile dieses Falls nennt die Zahl selbst („gemessen:
+    // 391 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 491 Quelldateien"). Sechs neue Dateien
+    // unter `apps/web/src/components/gesamtanweisung/` tragen acht Bauteile — `LesestandAnsicht`
+    // bringt neben sich die beiden dateilokalen `Menge` und `BausteinZeile` mit:
+    //
+    //     + `GesamtanweisungSeite`  die Fläche, die den ganzen Weg hält
+    //     + `BausteinAufnahme`      Eintrag und Fassung wählen
+    //     + `LesestandAnsicht`      (+ `Menge`, + `BausteinZeile`) der Lesestand samt Herkunft
+    //     + `VoraussetzungFeld`     die Voraussetzung eines Bausteins
+    //     + `VergleichAnsicht`      zwei Stände gegenüberstellen
+    //     + `EntscheidungsVorlage`  vorlegen und entscheiden
+    //
+    // Dieselbe Begründung wie bei den Einträgen darüber, und sie trägt hier genauso: Die Auflage
+    // verbietet, dass eine UMSTELLUNG die Erhebung verschiebt — nicht, dass der Quellbaum wächst.
+    // Die zwei Zahlen, an denen Stufe 2 wirklich hängt, bleiben unverändert: `anbieter` 1 und
+    // `traeger` 2. Keines der acht Bauteile zeigt ein Bild, bietet eine Bildbeschreibung an (kein
+    // `ANGEBOT_MUSTER`) oder trägt einen eigenen Titel — sie erscheinen nur in der Grundmenge.
+    // Das ist keine Behauptung nebenbei: die Fläche zeigt Titel, Fassungsnummern, Herkunftszeilen
+    // und Vergleichsbefunde als TEXT; die Abbildungen eines gebundenen Bausteins nennt sie
+    // ausschliesslich beim Namen (`ga.baustein.abbildungen`), sie stellt keine dar.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 383,
+      komponenten: 391,
       anbieter: 1,
       traeger: 2,
     });

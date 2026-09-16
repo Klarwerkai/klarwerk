@@ -6,6 +6,12 @@ import type {
   AiCheckCoverageSummary,
   Analytics,
   AnswerResult,
+  // JOB 4154 (WIKI-GESAMTANWEISUNG): der Drahtvertrag der zusammengesetzten Anweisung.
+  Anweisung,
+  AnweisungKopfEingabe,
+  AnweisungLesestand,
+  AnweisungStaende,
+  AnweisungVergleich,
   AskResponse,
   AssignmentSummary,
   AssistPreset,
@@ -1090,5 +1096,50 @@ export const endpoints = {
     //     zeigt nach dem Speichern den Stand von davor.
     setAccessExpiry: (id: string, accessExpiresAt: string | null) =>
       api.put<PublicUser>(`/users/${id}`, { accessExpiresAt }),
+  },
+  // ==============================================================================================
+  // JOB 4154 · WIKI-GESAMTANWEISUNG — NEUN ADRESSEN, UND JEDE SCHREIBENDE TRÄGT DEN GELESENEN STAND.
+  // ==============================================================================================
+  //
+  // `version` ist bei JEDEM schreibenden Aufruf Pflicht und kein Komfortfeld: der Server bestätigt
+  // nur genau den unverändert vorgelegten Prüfstand, und ohne die gelesene Version könnte er
+  // „zwischenzeitlich geändert" gar nicht feststellen. Ein Aufruf ohne sie bekommt 400, keiner
+  // wird stillschweigend auf den aktuellen Stand gehoben.
+  //
+  // Die Route ist noch NICHT in `build-app.ts` registriert (die Datei gehört dem Nachfolger
+  // WIKI-GESAMTANWEISUNG-ANSCHLUSS). Diese Adressen sind der fertige Draht dorthin; bis der
+  // Nachfolger gelaufen ist, antwortet der Server darauf mit 404, und das ist keine Panne, sondern
+  // der ehrliche Zwischenstand.
+  gesamtanweisung: {
+    get: (id: string) => api.get<AnweisungLesestand>(`/gesamtanweisungen/${id}`),
+    create: (kopf: AnweisungKopfEingabe) => api.post<Anweisung>("/gesamtanweisungen", kopf),
+    updateKopf: (id: string, version: number, kopf: AnweisungKopfEingabe) =>
+      api.put<Anweisung>(`/gesamtanweisungen/${id}`, { ...kopf, version }),
+    addBaustein: (
+      id: string,
+      version: number,
+      baustein: { koId: string; koVersion: number; nachweisHash: string | null },
+    ) => api.post<Anweisung>(`/gesamtanweisungen/${id}/bausteine`, { ...baustein, version }),
+    setReihenfolge: (id: string, version: number, reihenfolge: string[]) =>
+      api.put<Anweisung>(`/gesamtanweisungen/${id}/reihenfolge`, { reihenfolge, version }),
+    // `null` NIMMT die Voraussetzung. `undefined` gäbe es hier nicht: `JSON.stringify` liesse es
+    // spurlos verschwinden, und „Voraussetzung entfernen" wäre ein Klick ohne Wirkung.
+    setVoraussetzung: (
+      id: string,
+      version: number,
+      bausteinId: string,
+      voraussetzung: string | null,
+    ) =>
+      api.put<Anweisung>(`/gesamtanweisungen/${id}/bausteine/${bausteinId}/voraussetzung`, {
+        voraussetzung,
+        version,
+      }),
+    staende: (id: string) => api.get<AnweisungStaende>(`/gesamtanweisungen/${id}/staende`),
+    vergleich: (id: string, von: number, bis: number) =>
+      api.get<AnweisungVergleich>(`/gesamtanweisungen/${id}/vergleich?von=${von}&bis=${bis}`),
+    vorlegen: (id: string, version: number) =>
+      api.post<Anweisung>(`/gesamtanweisungen/${id}/vorlegen`, { version }),
+    entscheiden: (id: string, version: number, entscheidung: "angenommen" | "abgelehnt") =>
+      api.post<Anweisung>(`/gesamtanweisungen/${id}/entscheiden`, { version, entscheidung }),
   },
 };

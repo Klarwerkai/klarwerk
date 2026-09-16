@@ -661,4 +661,56 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // Instanz. Geschrieben wird über diesen Weg nichts (kein Auslösen, kein Löschen, kein
   // Herunterladen, Auftrag §10), deshalb steht hier nur GET und keine mutierende Zwillingszeile.
   "GET /api/admin/sicherungen": { protection: "users.manage" },
+  // ==============================================================================================
+  // JOB 4154 (WIKI-GESAMTANWEISUNG) · die zehn Wege der zusammengesetzten Anweisung.
+  // ==============================================================================================
+  //
+  // DIE RECHTEZUORDNUNG IST DIE BESTEHENDE — keine neue Rolle, keine Vier-Augen-Regel. Sie stammt
+  // wörtlich aus dem Startvertrag, Abschnitt „Entscheidung": „direkte Freigabe durch Berechtigte,
+  // Einreichen ohne Freigaberecht". Also:
+  //   `ko.read`      lesen, Stände auflisten, vergleichen
+  //   `ko.create`    anlegen, Kopf ändern, Baustein aufnehmen, ordnen, Voraussetzung, VORLEGEN
+  //   `ko.validate`  entscheiden — und NUR das. Ein einreichendes Konto entscheidet nicht.
+  //
+  // DAS ZEILENRECHT IST HIER NICHT ZIERRAT, sondern der Kern des Gegenstands: eine Anweisung bindet
+  // FREMDE Wissenseinträge. Das Routenrecht sagt nur, wer die Tür aufbekommt; ob dieser Mensch die
+  // einzelnen gebundenen Fassungen sehen darf, entscheidet `darfSehen` an JEDEM Baustein
+  // (`gesamtanweisung-routes.ts` reicht die Entscheidung als `sichtbarFuer(user)` in den Dienst,
+  // der sie je Baustein anwendet). Lesen trimmt, Schreiben und Vergleichen verweigern.
+  //
+  // `POST /api/gesamtanweisungen` trägt als EINZIGE kein Zeilenrecht, und das ist kein Versehen:
+  // sie legt eine LEERE Anweisung an. Es gibt in diesem Augenblick keinen gebundenen Baustein, an
+  // dem eine Zeilenentscheidung fallen könnte, und ihre Antwort trägt nichts als den eigenen,
+  // gerade selbst eingegebenen Kopf.
+  "POST /api/gesamtanweisungen": { protection: "ko.create" },
+  "GET /api/gesamtanweisungen/:id": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
+  "PUT /api/gesamtanweisungen/:id": { protection: "ko.create", zeilenrecht: ["darfSehen"] },
+  "POST /api/gesamtanweisungen/:id/bausteine": {
+    protection: "ko.create",
+    zeilenrecht: ["darfSehen"],
+  },
+  "PUT /api/gesamtanweisungen/:id/reihenfolge": {
+    protection: "ko.create",
+    zeilenrecht: ["darfSehen"],
+  },
+  "PUT /api/gesamtanweisungen/:id/bausteine/:bausteinId/voraussetzung": {
+    protection: "ko.create",
+    zeilenrecht: ["darfSehen"],
+  },
+  "GET /api/gesamtanweisungen/:id/staende": {
+    protection: "ko.read",
+    zeilenrecht: ["darfSehen"],
+  },
+  "GET /api/gesamtanweisungen/:id/vergleich": {
+    protection: "ko.read",
+    zeilenrecht: ["darfSehen"],
+  },
+  "POST /api/gesamtanweisungen/:id/vorlegen": {
+    protection: "ko.create",
+    zeilenrecht: ["darfSehen"],
+  },
+  "POST /api/gesamtanweisungen/:id/entscheiden": {
+    protection: "ko.validate",
+    zeilenrecht: ["darfSehen"],
+  },
 };
