@@ -65,8 +65,10 @@ Exitcodes von `backup.sh`: **0** veröffentlicht · **1** Aufruf-/Umgebungsfehle
 `pg_dump` fehlt, `BACKUP_KEEP` ungültig, Zielverzeichnis nicht anlegbar) ·
 **3** kein Hashwerkzeug · **4** der erzeugte Dump ist nicht lesbar (je nach Stufe von
 `pg_restore --list` oder der Ersatzprüfung festgestellt) · **5** der Endname und alle Ausweichnamen
-sind belegt, der vorhandene Bestand bleibt unberührt · **sonst** der
-Exitcode des fehlgeschlagenen Werkzeugs (`pg_dump`, `shasum`, `date`, `sort`, `mv`, …). **Jeder**
+liessen sich nicht reservieren, der vorhandene Bestand bleibt unberührt · **sonst** der
+Exitcode des fehlgeschlagenen Werkzeugs (`pg_dump`, `shasum`, `date`, `sort`, `mv`, …). Ein Abbruch
+durch **Signal** (Strg-C, Containerstop, Cron-Timeout) endet nach Konvention mit **130** (SIGINT),
+**143** (SIGTERM) bzw. **129** (SIGHUP) und sagt das ausdrücklich. **Jeder**
 dieser Ausgänge hinterlegt eine Fehlerspur (siehe unten) — auch der unerwartete, und auch der, bei
 dem das Werkzeug der Fehlerspur selbst ausfällt.
 
@@ -98,7 +100,8 @@ stderr. **Beide** Sicherungen bleiben damit erhalten, und es wird **nie** in ein
 oder Prüfsummendatei geschrieben. Der Pfad in der Zeile `[backup] Dump nach: …` ist dabei schon der
 endgültige. Sind ausnahmsweise `_02` bis `_99` derselben Sekunde vergeben, endet der Lauf mit
 **Exit 5**, ohne irgendetwas anzufassen — lieber keine neue Sicherung als eine vorhandene
-beschädigen.
+beschädigen. Wie das bei **gleichzeitig** laufenden Sicherungen zugeht — und warum dabei nie zwei
+Läufe denselben Namen bekommen —, steht unten unter „Zwei Läufe gleichzeitig".
 
 > **Die Nummer zählt weiter, sie füllt keine Lücke.** Hat die Aufbewahrung `klarwerk-<Z>.dump`
 > bereits entfernt und liegt noch `_03` da, heißt die nächste Sicherung derselben Sekunde `_04` —
@@ -108,14 +111,112 @@ beschädigen.
 > wirklich ältesten. Wer im Verzeichnis eine Lücke in der Nummernfolge sieht, sieht also kein
 > fehlendes Backup, sondern eine aufgeräumte ältere Sicherung.
 
-**Ein gescheiterter Lauf räumt nur auf, was er selbst angelegt hat.** Nur ein Sidecar, den dieser
-Lauf selbst unter einen zuvor freien Namen gelegt hat, nimmt er im Fehlerfall wieder weg (der Fall:
-das zweite `mv` der Veröffentlichung scheitert, dann bliebe ein Sidecar ohne Dump liegen). Fremder
-Bestand wird auch beim Aufräumen nicht angefasst — auch nicht ohne `BACKUP_KEEP`.
+**Ein gescheiterter Lauf räumt nur auf, was er selbst angelegt hat.** Genau drei Dinge nimmt er
+wieder weg, und bei jedem kann er zeigen, dass es seines ist: seinen eigenen Arbeitsstand (er liegt
+**im** eigenen Reservierungsverzeichnis, siehe unten), dieses Verzeichnis selbst, und einen Sidecar,
+den er selbst unter einen zuvor freien Namen gelegt hat (der Fall: das zweite `mv` der
+Veröffentlichung scheitert, dann bliebe ein Sidecar ohne Dump liegen). Fremder Bestand, fremde
+`*.partial` im Zielverzeichnis und fremde Reservierungen werden nicht angefasst — auch nicht ohne
+`BACKUP_KEEP`, und auch nicht, wenn der Lauf durch ein **Signal** beendet wird: Strg-C, ein
+Containerstop und ein Cron-Timeout laufen durch dieselbe Aufräumfalle wie ein Werkzeugfehler.
 
 **Bedingung der Atomizitätszusage:** `mv` ist nur *innerhalb eines Dateisystems* atomar
-(`rename(2)`). Deshalb liegt der Arbeitsname im selben Verzeichnis. Zeigt `BACKUP_DIR` auf eine
+(`rename(2)`). Deshalb liegt der Arbeitsname im selben Dateisystem — seit der Namensreservierung
+eine Verzeichnisebene tiefer, im Reservierungsverzeichnis. Zeigt `BACKUP_DIR` auf eine
 Netzfreigabe mit anderer Semantik, gilt die Zusage nicht — einmal am echten Zielverzeichnis prüfen.
+Dasselbe gilt für die Reservierung unten: sie schliesst zwei Läufe gegeneinander nur aus, soweit die
+Freigabe `mkdir` atomar hält.
+
+### Zwei Läufe gleichzeitig
+
+Ein Betreiber darf von Hand sichern, während der Zeitplan gerade selbst eine Sicherung fährt. Damit
+sich die beiden nicht ins Gehege kommen, **reserviert** jeder Lauf seinen Endnamen, bevor er
+überhaupt `pg_dump` startet:
+
+```
+backups/
+  klarwerk-20260916T044455Z.dump.reserviert/            ← Verzeichnis, solange der Lauf läuft
+    klarwerk-20260916T044455Z.dump.partial              ← der Arbeitsstand DIESES Laufs
+    klarwerk-20260916T044455Z.dump.partial.sha256
+```
+
+Das Verzeichnis entsteht mit einem einzigen `mkdir`. Das ist der Kern: `mkdir` gelingt entweder oder
+es gelingt nicht, einen Zwischenzustand gibt es nicht. Von zwei gleichzeitigen Läufen bekommt genau
+einer den Namen; der andere zählt eine Nummer weiter und heisst `…Z_02.dump`.
+
+**Zwei Dinge gehören zusammen, und die Reihenfolge ist nicht beliebig.** Das `mkdir` steht **vor**
+der Frage, ob unter dem Namen schon etwas liegt — nicht danach. Eine Frage, die vor der Sperre
+gestellt wird, ist beantwortet für eine Welt, die es beim Betreten der Sperre nicht mehr gibt: in
+der Zwischenzeit kann ein anderer Lauf fertig geworden sein und seine Reservierung bereits
+freigegeben haben. Deshalb sperrt jeder Lauf zuerst und sieht erst dann nach; findet er dort ein
+Paar, gibt er die soeben erworbene Reservierung sofort wieder frei und zählt eine Nummer weiter.
+**Ein Name, unter dem schon etwas liegt, wird nie übernommen.**
+
+**Und der Arbeitsstand liegt im Reservierungsverzeichnis**, nicht offen daneben. Das ist der einzige
+Ort im Sicherungsverzeichnis, von dem ein Lauf beweisen kann, dass er ihm gehört — er hat ihn selbst
+angelegt. Damit kann dieses Skript eine fremde `*.partial` weder überschreiben noch beim Aufräumen
+mitnehmen: es schreibt gar nicht mehr dorthin.
+
+> **Wovon diese Zusagen abhängen — ausdrücklich, nicht unbedingt.** Sie gelten, solange das
+> Zielverzeichnis `mkdir` atomar hält. Auf einem lokalen Dateisystem tut es das; auf einer
+> Netzfreigabe gilt es nur, soweit die Freigabe es zusichert — dieselbe Bedingung wie beim `mv`
+> weiter oben. Sie gelten ausserdem nur zwischen Läufen **dieses Skripts**: ein anderes Programm,
+> das Dateien in dasselbe Verzeichnis schreibt, kennt die Reservierung nicht.
+
+**Woran der Betreiber Gewinner und Verlierer erkennt.** Jeder Lauf nennt in seiner ersten Zeile den
+Namen, den er *bekommen* hat — nicht den, den er wollte:
+
+```
+[backup] Dump nach: /data/backups/klarwerk-20260916T044455Z.dump          ← Lauf 1
+[backup] HINWEIS: klarwerk-20260916T044455Z.dump ist fuer diese Sekunde schon vergeben
+[backup] Dump nach: /data/backups/klarwerk-20260916T044455Z_02.dump       ← Lauf 2
+```
+
+Im Regelfall gibt es also **keinen Verlierer**: beide sichern, unter verschiedenen Namen, mit je
+eigener Prüfsumme. Zu einem Verlierer kommt es nur, wenn der Grundname **und** `_02` bis `_99`
+derselben Sekunde belegt oder reserviert sind. Dann endet dieser Lauf mit **Exit 5**, veröffentlicht
+nichts, lässt den vorhandenen Bestand bytegleich liegen und schreibt das in `letzter-lauf.json`:
+`"ergebnis": "fehler"`, `"exitcode": 5`, `"datei": null`. **Kein Lauf meldet je Erfolg für eine
+Datei, die ein anderer geschrieben hat.**
+
+**Einen verlorenen Lauf wieder aufnehmen:** ihn einfach noch einmal starten. Eine Sekunde später ist
+der Stempel ein anderer und der Name wieder frei; es gibt nichts aufzuräumen und nichts nachzuholen,
+denn der verlorene Lauf hat nichts hinterlassen.
+
+**Eine liegen gebliebene Reservierung** (`…dump.reserviert` ohne dazugehörigen Lauf) entsteht nur,
+wenn ein Lauf so hart beendet wurde, dass er nicht mehr aufräumen konnte — `kill -9`, Stromausfall,
+OOM-Killer. **Das Skript räumt sie NIE selbst weg.** Es rät weder nach Alter („älter als eine
+Stunde") noch nach Prozesskennung: ein Lauf mit grossem Dump läuft länger als jede Altersschwelle,
+und eine PID ist nach einem Neustart wieder vergeben. Eine falsch aufgelöste Reservierung hiesse,
+zwei Läufe gleichzeitig auf denselben Namen zu lassen — also genau der Schaden, den sie verhindert.
+
+Für den Betrieb ist eine liegen gebliebene Reservierung **kein Notfall**: der nächste Lauf zählt
+eine Nummer weiter und sichert normal. Sie hat nur zwei Wirkungen, und beide werden gesagt:
+
+- Die Aufbewahrung entfernt das Paar unter diesem Namen nicht (`[backup] HINWEIS: … wird NICHT
+  entfernt — zu diesem Namen liegt eine Reservierung`), und der `grund` in `letzter-lauf.json`
+  nennt die Aufbewahrung dann ausdrücklich `unvollstaendig`.
+- Die 99 Namen dieser einen Sekunde können sich erschöpfen (Exit 5).
+
+Dieselbe Lage entsteht, wenn ein Lauf seine **eigene** Reservierung am Ende nicht freigeben kann
+(etwa weil der Datenträger voll ist). Auch das wird gesagt und nicht verschwiegen:
+`[backup] HINWEIS: die eigene Reservierung … liess sich nicht freigeben.`
+
+**Auflösen darf sie nur der Betreiber**, und nur, wenn er nachgesehen hat, dass wirklich kein
+Sicherungslauf mehr läuft:
+
+```bash
+ps -ef | grep '[b]ackup.sh'                                  # Läuft noch einer? Dann NICHTS tun.
+ls -l /data/backups/klarwerk-<ZEITSTEMPEL>.dump.reserviert/  # Was liegt drin?
+rm -f /data/backups/klarwerk-<ZEITSTEMPEL>.dump.reserviert/*.partial*
+rmdir /data/backups/klarwerk-<ZEITSTEMPEL>.dump.reserviert
+```
+
+Darin liegt der **Arbeitsstand des abgestürzten Laufs** — eine halb geschriebene `*.dump.partial`
+und ihre Prüfsumme. Ein `.partial` ist nie eine Sicherung; es kann weg. Das abschliessende `rmdir`
+ist Absicht statt `rm -rf`: es entfernt ein *leeres* Verzeichnis oder gar keines und kann deshalb
+nichts mitnehmen, was ihm nicht gehört. Ein `rm -rf` auf einen Pfad im Sicherungsverzeichnis wäre
+der gefährlichste Handgriff dieser Anleitung; er steht hier bewusst nicht.
 
 ### Coolify / Cron
 Als Scheduled-Task (z. B. täglich) hinterlegen:
@@ -143,14 +244,80 @@ Das Skript räumt selbst auf — nach einer angesagten Regel, nicht nach Bedarf:
   `BACKUP_KEEP=010` heißt **zehn**. (In Shell-Arithmetik wäre eine führende Null eine Basisangabe —
   `010` wäre oktal 8. Der Lauf meldet bei einer führenden Null beide Werte:
   `BACKUP_KEEP=08 (dezimal gelesen: 8)`.)
-- **Vier Zusagen:** (a) die soeben veröffentlichte Sicherung wird nie gelöscht, auch bei
+- **Sieben Zusagen:** (a) die soeben veröffentlichte Sicherung wird nie gelöscht, auch bei
   `BACKUP_KEEP=1` nicht; (b) ein `*.dump` **ohne** Sidecar wird weder mitgezählt noch gelöscht — es
   ist kein regulär entstandenes Backup dieses Skripts; (c) ein `*.partial` eines gleichzeitig
   laufenden Laufs wird nie angefasst; (d) gelöscht wird Dump zuerst, Sidecar zuletzt, damit nie ein
-  Dump ohne seine Prüfsumme dasteht.
+  Dump ohne seine Prüfsumme dasteht; (e) ein Paar, zu dem eine **Reservierung** liegt, bleibt
+  stehen — es gehört einem Lauf, der noch nicht fertig ist; (f) **ab dem eigenen Stand wird nichts
+  mehr entfernt**: was jünger ist als die Sicherung, die dieser Lauf gerade veröffentlicht hat,
+  stammt aus einem späteren Lauf und bleibt liegen; (g) **nur ein nachgerechnetes Paar zählt als
+  Generation.**
+
+### Was „`n` Sicherungen" wirklich heißt — die Nachrechnung (g)
+
+**Ein Dump mit Prüfsummendatei daneben ist noch keine Sicherung.** Bis zu dieser Fassung zählte das
+Skript beides zusammen als Generation, sobald die Datei *existierte*. Was daraus folgt, ist gemessen
+worden: Liegt ein **beschädigtes** Paar im Verzeichnis — Prüfsumme passt nicht zum Dump —, dann
+besetzt es einen der `n` Plätze, und die gute Sicherung darunter fällt heraus. Bei einem nächtlichen
+Cron-Lauf bedeutet das: jede Nacht eine gute Sicherung weniger, jede Nacht dieselbe kaputte behalten,
+und die Meldung sagt bis zuletzt `behalten: n`. Gemerkt hätte man es erst im Ernstfall, wenn
+`restore-drill.sh` mit Exit 11 abbricht — und dann ist die gute Sicherung längst weg.
+
+Deshalb wird **nachgerechnet**, bevor gezählt und gelöscht wird. Ein Paar gilt als beschädigt, wenn
+
+- die Prüfsummendatei nicht lesbar ist,
+- ihr Inhalt nicht die zugesagte Form hat (64 Hex, zwei Leerzeichen, **der eigene** Dateiname) —
+  eine Prüfsumme, die auf einen anderen Namen zeigt, gehört nicht zu diesem Dump,
+- oder der Hash nicht zum Dump passt bzw. der Dump sich nicht lesen lässt.
+
+**Beschädigte Paare zählen nicht mit und werden nicht gelöscht.** Beides gehört zusammen: wer sie
+nicht zählt, aber wegräumt, nimmt dem Betreiber die Reste weg, aus denen vielleicht noch etwas zu
+holen ist. Der Lauf sagt es auf stderr und — wichtiger — in `letzter-lauf.json`:
+
+```
+[backup] HINWEIS: klarwerk-<Z>.dump ist BESCHAEDIGT — die Pruefsumme passt nicht zum Dump. Es
+[backup] zaehlt NICHT als Generation und wird NICHT entfernt.
+[backup] Aufbewahrung BACKUP_KEEP=2 — heile Sicherungen behalten: 2, entfernt: 1 (…) Zusaetzlich
+[backup] liegen 1 BESCHAEDIGTE Paar(e) im Verzeichnis …
+```
+
+Der `grund` der Ergebnisspur nennt es als `Befund am Bestand: <n> beschaedigte(s) Paar(e) …`. Der
+**Lauf** bleibt dabei ein `"erfolg"` — seine eigene Sicherung liegt vollständig da. Der Befund gilt
+dem **Bestand**, und beides wird auseinandergehalten statt vermischt.
+
+> **Was das kostet — und wann es nicht anfällt.** Die Nachrechnung liest jeden Altdump einmal
+> vollständig. Bei `BACKUP_KEEP=14` und großen Dumps ist das spürbar. Sie läuft deshalb **nur**,
+> wenn überhaupt gelöscht werden könnte, also wenn mehr Paare dastehen als `BACKUP_KEEP` erlaubt.
+> Ohne `BACKUP_KEEP` oder unterhalb der Grenze wird **kein** Altdump gelesen.
+
+### „Heil" sagt der Lauf nur, wenn er nachgerechnet hat
+
+Daraus folgt eine Zusage über die **Wortwahl**, und sie ist wichtiger, als sie klingt. Wo nicht
+nachgerechnet wurde, darf auch nicht von heilen Sicherungen die Rede sein — sonst behauptete die
+Meldung eine Eigenschaft, die niemand gemessen hat. Der Lauf schreibt dann:
+
+```
+[backup] Aufbewahrung BACKUP_KEEP=5 — vorhandene Sicherungspaare: 2, nichts zu tun — NICHT
+[backup] nachgerechnet: unterhalb der Aufbewahrungsgrenze wird nichts geloescht, also auch nichts
+[backup] geprueft. Ob diese Paare wiederherstellbar sind, sagt dieser Lauf NICHT …
+```
+
+und dasselbe steht im `grund` der Ergebnisspur. **Zwei Zahlen, zwei Wörter:** „heile Sicherungen"
+ist ein Messergebnis, „vorhandene Sicherungspaare" ist eine Dateizählung. Wer wissen will, ob sein
+Bestand wirklich einspielbar ist, nimmt den Drill (`scripts/backup/restore-drill.sh`) — der belegt
+nicht nur die Prüfsumme, sondern das Einspielen selbst.
+- **Was (e) und (f) im Parallelbetrieb verhindern:** Laufen zwei Sicherungen gleichzeitig und ist
+  `BACKUP_KEEP=1` gesetzt, dann darf Lauf A seinen eigenen Stand nicht löschen (a) — ohne (f) ginge
+  er eine Zeile weiter und nähme den von B, während B spiegelbildlich den von A nimmt. Das Ergebnis
+  wären zwei Erfolgsmeldungen und **keine** Sicherung. Mit (e) und (f) bleiben in diesem Fall
+  vorübergehend mehr als `n` Sicherungen liegen; der Lauf sagt das (`Aufbewahrung unvollstaendig`),
+  und der nächste reguläre Lauf räumt nach. **Eine zu viel ist besser als eine zu wenig.**
 - **`BACKUP_KEEP=0`, leer oder nicht-numerisch: Abbruch mit Exit 1, ohne zu löschen und ohne zu
   sichern.** Ein Tippfehler in einer Coolify-Maske darf niemals den Bestand räumen.
-- Der Lauf meldet auf stdout, wie viele Sicherungen bleiben und welche Dateien er entfernt hat.
+- Der Lauf meldet auf stdout, wie viele Sicherungen bleiben und welche Dateien er entfernt hat —
+  und daneben, wie viele beschädigte er gefunden und stehen gelassen hat. Ob die Zahl **heile**
+  Sicherungen meint oder nur vorhandene Dateipaare, sagt er dazu (siehe unten).
 
 **Offene Betreiberpflicht bleibt:** Offsite-Kopie und Verschlüsselung der Dumps
 (`docs/operations/backup-disaster-recovery.md` §3/§12). Beides liefert dieses Skript nicht.

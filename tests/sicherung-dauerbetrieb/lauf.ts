@@ -47,6 +47,11 @@ const BASISWERKZEUGE = [
   "dirname",
   "pwd",
   "mkdir",
+  // JOB 4227: `rmdir` gibt die eigene Namensreservierung wieder frei (`backup.sh`, `abschluss`).
+  // Fehlt es im isolierten PATH, bliebe nach jedem Lauf ein `*.dump.reserviert` im Zielverzeichnis
+  // liegen — und die Bestandsvergleiche hier („nichts angefasst") würden an der Prüfumgebung
+  // scheitern statt am Skript.
+  "rmdir",
   "mv",
   "rm",
   "basename",
@@ -153,6 +158,20 @@ export interface Optionen {
   readonly altstempel?: readonly string[];
   /** Dumps OHNE Sidecar — stammen nicht aus diesem Skript und sind unantastbar. */
   readonly ohneSidecar?: readonly string[];
+  /**
+   * BESCHÄDIGTE Altpaare (JOB 4227 R3, Befund BEN R2). Dump UND Sidecar liegen da — aber sie
+   * gehören nicht zusammen. Bis Runde 2 zählte das Skript so ein Paar als vollständige Sicherung
+   * und löschte dafür eine gültige ältere.
+   *
+   * Die drei Schadensarten sind die drei Stellen, an denen ein Paar auseinanderfallen kann:
+   *   `hash`    — 64 Hex, richtige Form, falscher Wert (Bitfäule, halbe Kopie);
+   *   `form`    — die Prüfsummendatei ist kein `<64 Hex>  <Endname>` mehr;
+   *   `fremder-name` — formal einwandfrei, aber sie nennt den Dump eines ANDEREN Laufs.
+   */
+  readonly beschaedigt?: ReadonlyArray<{
+    readonly stempel: string;
+    readonly art: "hash" | "form" | "fremder-name";
+  }>;
   /** Arbeitsstände fremder, gleichzeitig laufender Läufe. */
   readonly fremdePartial?: readonly string[];
   /** Attrappen, die NICHT angelegt werden — das Werkzeug fehlt dann wirklich. */
@@ -229,6 +248,27 @@ export function altInhalt(stempel: string): string {
   return `PGDMP altbestand ${stempel}\n`;
 }
 
+/**
+ * Die Prüfsummendatei eines BESCHÄDIGTEN Paars (JOB 4227 R3). Sie sieht in allen drei Fällen so
+ * aus, wie ein Betreiber sie im Verzeichnis vorfände — nicht wie eine offensichtliche Attrappe.
+ */
+export function beschaedigteSidecarzeile(
+  schaden: { readonly stempel: string; readonly art: "hash" | "form" | "fremder-name" },
+  endname: string,
+): string {
+  switch (schaden.art) {
+    // Richtige Form, falscher Wert — 64 Hex, aber von anderen Bytes. So sieht Bitfäule aus.
+    case "hash":
+      return `${sha256(`nicht der inhalt von ${schaden.stempel}`)}  ${endname}\n`;
+    // Abgeschnitten: das klassische Ergebnis eines Schreibvorgangs, der mittendrin endete.
+    case "form":
+      return `${sha256(altInhalt(schaden.stempel)).slice(0, 31)}\n`;
+    // Formal einwandfrei — und sie gehört zu einem anderen Dump. Genau der Schaden aus JOB 4057 R5.
+    default:
+      return `${sha256(altInhalt(schaden.stempel))}  klarwerk-20250101T000000Z.dump\n`;
+  }
+}
+
 export function sidecarZeile(inhalt: string, endname: string): string {
   return `${sha256(inhalt)}  ${endname}\n`;
 }
@@ -280,6 +320,13 @@ function einLauf(sonde: string, optionen: Optionen, marke: string): Lauf {
     for (const stempel of optionen.fremdePartial ?? []) {
       writeFileSync(join(ziel, `klarwerk-${stempel}.dump.partial`), altInhalt(stempel));
     }
+    for (const schaden of optionen.beschaedigt ?? []) {
+      const endname = `klarwerk-${schaden.stempel}.dump`;
+      // Der DUMP ist in allen drei Fällen derselbe und völlig in Ordnung — kaputt ist die
+      // Zuordnung. Genau so sieht Bitfäule oder eine halb geschriebene Kopie im Verzeichnis aus.
+      writeFileSync(join(ziel, endname), altInhalt(schaden.stempel));
+      writeFileSync(join(ziel, `${endname}.sha256`), beschaedigteSidecarzeile(schaden, endname));
+    }
 
     const umgebung: Record<string, string> = {
       PATH: bin,
@@ -316,7 +363,15 @@ function einLauf(sonde: string, optionen: Optionen, marke: string): Lauf {
 
     const dateien = readdirSync(ziel).sort();
     const inhalt: Record<string, string> = {};
-    for (const name of dateien) inhalt[name] = readFileSync(join(ziel, name), "utf8");
+    for (const name of dateien) {
+      // JOB 4227 R2: im Zielverzeichnis kann ein VERZEICHNIS liegen — die Namensreservierung
+      // `<endname>.dump.reserviert`. Im Normalfall ist sie nach dem Lauf wieder weg; bleibt sie
+      // liegen (etwa weil die Attrappe `rm` scheitert), soll der Prüfstand sie in `dateien` SEHEN
+      // und nicht beim Lesen scheitern. Ein EISDIR hier wäre ein Fehler der Vorrichtung, der wie
+      // ein Befund am Skript aussähe.
+      if (!statSync(join(ziel, name)).isFile()) continue;
+      inhalt[name] = readFileSync(join(ziel, name), "utf8");
+    }
     const ergebnisPfad = join(ziel, "letzter-lauf.json");
     const ergebnisRoh = existsSync(ergebnisPfad) ? readFileSync(ergebnisPfad, "utf8") : undefined;
     const sondenpfad = join(sonde, "calls");

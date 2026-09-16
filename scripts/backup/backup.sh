@@ -17,8 +17,10 @@
 #   1  Aufruf-/Umgebungsfehler: keine DB-URL, pg_dump fehlt, BACKUP_KEEP ungueltig,
 #      Zielverzeichnis nicht anlegbar. Ein FEHLENDES pg_restore ist KEIN Abbruchgrund (siehe unten).
 #   3  kein Hashwerkzeug — ohne Pruefsumme wird nichts veroeffentlicht
-#   5  der Endname ist belegt UND kein freier Ausweichname (_02 bis _99) zu haben — dieser Lauf
-#      veroeffentlicht nichts und laesst den vorhandenen Bestand bytegleich liegen
+#   5  der Endname liess sich nicht reservieren UND kein freier Ausweichname (_02 bis _99) — dieser
+#      Lauf veroeffentlicht nichts und laesst den vorhandenen Bestand bytegleich liegen. Belegt ist
+#      ein Name auch durch die RESERVIERUNG eines anderen Laufs (siehe unten); eine liegen
+#      gebliebene Reservierung wird NIE geraten und NIE weggeraeumt.
 #   4  der erzeugte Dump ist nicht lesbar — es wird nichts veroeffentlicht. Geprueft hat das
 #      entweder `pg_restore --list` oder, wo das fehlt, die Ersatzpruefung (zwei vollstaendige
 #      Lesungen). WELCHE von beiden lief, steht in der Ausgabe und in letzter-lauf.json.
@@ -178,10 +180,22 @@ ergebnis_hinterlegen() { # <erfolg|fehler> <grund> <exitcode> <endname|""> <byte
 # Deshalb steht hier kein fester Satz mehr, sondern die Frage nach `VEROEFFENTLICHT`. Die Antwort
 # kommt aus dem Ablauf selbst (Zeile bei der Veroeffentlichung), nicht aus einer Vermutung.
 VEROEFFENTLICHT=nein
+# Der Pfad der EIGENEN Namensreservierung (JOB 4227), leer = dieser Lauf haelt keine. Die Falle
+# raeumt ausschliesslich diesen einen Pfad weg — er ist nicht geraten, sondern von `mkdir` in
+# `reservieren` gesetzt worden, und `mkdir` gelingt nur dem, der den Namen wirklich bekommen hat.
+RESERVIERUNG=""
+# Der Name des Signals, das diesen Lauf beendet hat — sonst leer. Ohne ihn stuende in der Spur
+# „ein Werkzeug ist fehlgeschlagen", und das waere bei einem `kill` schlicht unwahr.
+SIGNALNAME=""
 abschluss() {
   ABGANG=$?
   # Der Arbeitsstand dieses Laufs. Nach der Veroeffentlichung gibt es ihn nicht mehr, `rm -f` ist
   # dann ein Leerlauf; vorher ist er genau das, was nie unter einem Endnamen liegen darf.
+  #
+  # ER GEHOERT DIESEM LAUF NACHWEISLICH (JOB 4227 R2): `STAGE` liegt seit dieser Runde INNERHALB der
+  # eigenen Reservierung und wird erst gesetzt, nachdem `mkdir` sie erworben hat. Vorher hiess er
+  # `${OUT}.partial` und lag offen im Zielverzeichnis — ein vorhersagbarer Name, unter dem auch
+  # fremder Bestand liegen konnte, und `rm -f` nahm ihn mit (BEN R1, Korrekturpflicht 2).
   if [ -n "${STAGE:-}" ]; then
     rm -f "$STAGE" "${STAGE}.sha256" 2>/dev/null || true
   fi
@@ -203,27 +217,74 @@ abschluss() {
   if [ "$VEROEFFENTLICHT" = nein ] && [ "${SIDECAR_DIESER_LAUF:-nein}" = ja ]; then
     rm -f "${OUT}.sha256" 2>/dev/null || true
   fi
+  # ===============================================================================================
+  # JOB 4227 — DIE EIGENE RESERVIERUNG WIRD FREIGEGEBEN. NUR DIE EIGENE, UND IMMER.
+  # ===============================================================================================
+  #
+  # Sie wird bis HIERHER gehalten, nicht nur bis zum `mv`: solange sie liegt, weiss ein gleichzeitig
+  # aufraeumender Lauf, dass dieser Name gerade in Arbeit ist, und fasst das Paar nicht an (siehe
+  # die Aufbewahrung unten). Gaeben wir sie direkt nach der Veroeffentlichung frei, koennte der
+  # andere Lauf die Sicherung loeschen, die dieser hier soeben hingelegt hat.
+  #
+  # `rmdir` statt `rm -rf`: darin liegt nur der eigene Arbeitsstand, und der ist eine Zeile weiter
+  # oben schon weg. `rmdir` nimmt nichts mit — es entfernt ein LEERES Verzeichnis oder gar keines.
+  # Ein `rm -rf` auf einen Pfad im Sicherungsverzeichnis waere die gefaehrlichste Zeile dieses
+  # Skripts; sie steht hier bewusst nicht.
+  #
+  # GELINGT DIE FREIGABE NICHT, WIRD DAS GESAGT. Eine liegen gebliebene Reservierung ist kein
+  # Notfall (der naechste Lauf zaehlt eine Nummer weiter), aber sie haelt ihren Namen dauerhaft
+  # besetzt und schuetzt ihr Paar vor der Aufbewahrung. Wer das nicht erfaehrt, sucht spaeter den
+  # Grund im Falschen.
+  if [ -n "$RESERVIERUNG" ]; then
+    if ! rmdir "$RESERVIERUNG" 2>/dev/null; then
+      echo "[backup] HINWEIS: die eigene Reservierung ${RESERVIERUNG} liess sich nicht" >&2
+      echo "[backup] freigeben. Sie bleibt liegen; der naechste Lauf dieser Sekunde zaehlt eine" >&2
+      echo "[backup] Nummer weiter. Entfernen von Hand: siehe scripts/backup/RESTORE.md." >&2
+    fi
+  fi
   if [ "$ABGANG" -ne 0 ] && [ "$ERGEBNIS_GEMELDET" = nein ]; then
+    # Was diesen Lauf beendet hat, steht im Bericht — und zwar das, was wirklich war. Ein Signal ist
+    # kein fehlgeschlagenes Werkzeug; wer beides gleich benennt, laesst den Betreiber ein Werkzeug
+    # suchen, das nie kaputt war.
+    if [ -n "$SIGNALNAME" ]; then
+      ANLASS="durch Signal ${SIGNALNAME} (Exit ${ABGANG})"
+      ANLASS_LANG="Dieser Lauf wurde durch Signal ${SIGNALNAME} abgebrochen"
+    else
+      ANLASS="an unerwarteter Stelle (Exit ${ABGANG})"
+      ANLASS_LANG="Ein Werkzeug ist fehlgeschlagen"
+    fi
     if [ "$VEROEFFENTLICHT" = ja ]; then
-      echo "[backup] ABBRUCH (Exit ${ABGANG}) an unerwarteter Stelle NACH der Veroeffentlichung —" >&2
-      echo "[backup] ein Werkzeug ist fehlgeschlagen. DIE SICHERUNG ${ENDNAME} LIEGT" >&2
+      echo "[backup] ABBRUCH (Exit ${ABGANG}) ${ANLASS} NACH der Veroeffentlichung." >&2
+      echo "[backup] ${ANLASS_LANG}. DIE SICHERUNG ${ENDNAME} LIEGT" >&2
       echo "[backup] vollstaendig mit ihrer Pruefsumme im Verzeichnis und bleibt dort. Nicht" >&2
       echo "[backup] abgeschlossen wurde, was danach kommt: die Aufbewahrung. Ergebnis: ${ERGEBNIS}" >&2
       ergebnis_hinterlegen fehler \
-        "ABBRUCH an unerwarteter Stelle (Exit ${ABGANG}) NACH der Veroeffentlichung; die Sicherung ${ENDNAME} liegt vollstaendig mit ihrer Pruefsumme im Verzeichnis. Nicht abgeschlossen wurde die Aufbewahrung." \
+        "ABBRUCH ${ANLASS} NACH der Veroeffentlichung; die Sicherung ${ENDNAME} liegt vollstaendig mit ihrer Pruefsumme im Verzeichnis. Nicht abgeschlossen wurde die Aufbewahrung." \
         "$ABGANG" "$ENDNAME" "${SIZE:-}" "${SUM:-}"
     else
-      echo "[backup] ABBRUCH (Exit ${ABGANG}) an unerwarteter Stelle — ein Werkzeug ist" >&2
-      echo "[backup] fehlgeschlagen. Der Arbeitsstand ist verworfen, es wurde nichts" >&2
+      echo "[backup] ABBRUCH (Exit ${ABGANG}) ${ANLASS}. ${ANLASS_LANG}." >&2
+      echo "[backup] Der Arbeitsstand ist verworfen, es wurde nichts" >&2
       echo "[backup] veroeffentlicht. Ergebnis: ${ERGEBNIS}" >&2
       ergebnis_hinterlegen fehler \
-        "ABBRUCH an unerwarteter Stelle (Exit ${ABGANG}); ein Werkzeug ist fehlgeschlagen, es wurde nichts veroeffentlicht." \
+        "ABBRUCH ${ANLASS}; es wurde nichts veroeffentlicht." \
         "$ABGANG" "" "" ""
     fi
   fi
   exit "$ABGANG"
 }
 trap abschluss EXIT
+
+# JOB 4227 — EIN SIGNAL DARF DIE FALLE NICHT UEBERSPRINGEN. Ohne eigenen Handler beendet die Shell
+# sich bei SIGINT/SIGTERM/SIGHUP, OHNE die EXIT-Falle zu fahren: Arbeitsstand und eigene Reservierung
+# blieben liegen, und die letzte Spur waere weiter die des Vortags. Der Handler ruft `exit` — DANN
+# laeuft `abschluss` und raeumt genau das Eigene weg. Exitcode nach Konvention 128 + Signalnummer.
+signalabgang() { # <name> <exitcode>
+  SIGNALNAME="$1"
+  exit "$2"
+}
+trap 'signalabgang SIGINT 130' INT
+trap 'signalabgang SIGTERM 143' TERM
+trap 'signalabgang SIGHUP 129' HUP
 
 # Konsistent zum App-Standard: bevorzugt KLARWERK_DATABASE_URL, sonst DATABASE_URL.
 DB_URL="${KLARWERK_DATABASE_URL:-${DATABASE_URL:-}}"
@@ -368,15 +429,113 @@ ENDNAME="klarwerk-${STAMP}.dump"
 # Die Suche steht VOR dem Dump: der ausgegebene Pfad („Dump nach: …") ist schon der endgueltige.
 # Der Insel-Aufrufer liest genau diese Zeile (`scripts/insel/update-einspielen.sh:295`) und prueft
 # danach Datei und Pruefsumme — er darf nicht einen Namen genannt bekommen und einen anderen finden.
-endname_belegt() { # Rueckgabe 0 = belegt
-  [ -e "$OUT" ] || [ -e "${OUT}.sha256" ]
+#
+# ==================================================================================================
+# JOB 4227 — DER NAME WIRD RESERVIERT, NICHT GEPRUEFT. Die Ablösung der zweistufigen Prüfung.
+# ==================================================================================================
+#
+# WAS HIER VORHER STAND, und warum es nicht reichte: `endname_belegt` fragte mit `[ -e … ]`, ob der
+# Name frei ist, und erst spaeter belegte ihn ein `mv`. Zwischen Frage und Antwort lag ein
+# Augenblick. Der frühere Kommentar an der Veroeffentlichung hat das eingeraeumt („ein dritter Lauf
+# koennte dazwischengehen") und die Loesung ausdruecklich als „ausserhalb dieses Auftrags" beiseite
+# gelegt. Das war eine AUFTRAGSGRENZE, kein Sachurteil — und BEN hat den Punkt als Pruefluecke offen
+# stehen lassen („tatsaechlich parallele Laeufe bleiben ungemessen", 4057 R7).
+#
+# GEMESSEN am Stand davor (`tests/backup-parallel/`): zwei ECHTE, gleichzeitig laufende Prozesse mit
+# derselben namensbildenden Sekunde kommen beide durch die Pruefung, beide schreiben denselben
+# Sidecar und denselben Dump. Der Verlierer meldet Exit 0 fuer eine Datei, die der Gewinner
+# geschrieben hat: Inhalt und Pruefsumme gehoeren dann zu verschiedenen Laeufen.
+#
+# DESHALB SIND FRAGE UND BELEGUNG JETZT EIN SCHRITT: `mkdir "$DEST/<endname>.reserviert"`. `mkdir`
+# ist die klassische portable Sperre — POSIX verlangt, dass es fehlschlaegt, wenn der Name schon
+# existiert, und es gibt keinen Zustand „halb angelegt". Von zwei gleichzeitigen `mkdir` auf denselben
+# Namen gelingt genau eines; der andere bekommt EEXIST und zaehlt eine Nummer weiter.
+#
+# WARUM `mkdir` UND NICHT `set -C` / `ln` / `mv`:
+#   · `set -C` (noclobber) legt mit O_EXCL an und koennte dasselbe — aber es schaltet eine GLOBALE
+#     Shell-Eigenschaft um, die jede weitere Umleitung dieses Skripts mit betraefe (die Ergebnisspur,
+#     der Sidecar). Eine Sperre, die nebenbei das Verhalten anderer Stellen aendert, ist die
+#     schlechtere Sperre.
+#   · `ln` braucht eine Quelldatei und liesse eine zweite Datei im Sicherungsverzeichnis zurueck,
+#     die kein Konsument kennt.
+#   · `mv` kann es gar nicht: `rename(2)` ueberschreibt ein vorhandenes Ziel — genau der Schaden.
+#
+# PORTABILITAETSANNAHME, ausdruecklich: `mkdir` ist POSIX und in jeder unterstuetzten Umgebung da
+# (das Skript ruft es oben schon fuer `$DEST`). Kein GNU-Schalter, keine Erweiterung — nur
+# `mkdir <pfad>` und `rmdir <pfad>`. Die Ausschlusszusage gilt fuer ein lokales Dateisystem; auf
+# einer Netzfreigabe gilt sie nur, soweit diese `mkdir` atomar haelt — dieselbe Bedingung, unter der
+# schon `mv` seine Atomizitaetszusage hat (RESTORE.md, „Bedingung der Atomizitaetszusage").
+#
+# WAS IM VERZEICHNIS LIEGT: ausschliesslich der Arbeitsstand dieses Laufs (`<endname>.partial` und
+# seine Pruefsumme, siehe `STAGE` weiter unten). Keine PID, kein Hostname, kein Zeitstempel — denn
+# nichts davon duerfte je eine Entscheidung tragen (siehe „sicher verwaist" unten), und was keine
+# Entscheidung tragen darf, soll auch nicht so aussehen. Der Zeitpunkt steht ohnehin im Namen.
+#
+# DASS DER ARBEITSSTAND GENAU HIER LIEGT, IST DER ZWEITE ZWECK DIESES VERZEICHNISSES (JOB 4227 R2):
+# es ist der einzige Ort im Sicherungsverzeichnis, von dem dieser Lauf BEWEISEN kann, dass er ihm
+# gehoert — er hat ihn mit `mkdir` selbst erschaffen. Alles, was er darin anlegt und wieder
+# wegraeumt, ist damit nachweislich sein eigenes.
+#
+# WAS „SICHER VERWAIST" HEISST: NICHTS, was dieses Skript beurteilen koennte. Eine liegen gebliebene
+# Reservierung — ein Lauf, den `kill -9` oder ein Stromausfall erwischt hat — wird NIE nach Alter
+# oder PID weggeraeumt. Beides waere geraten: ein Lauf mit grossem Dump laeuft laenger als jede
+# Altersschwelle, und eine PID ist nach einem Neustart wieder vergeben. Stattdessen zaehlt dieser
+# Lauf eine Nummer weiter und sichert; sind alle 99 Nummern der Sekunde belegt, endet er ehrlich mit
+# Exit 5, statt einen fremden Namen an sich zu nehmen. Aufloesen darf die Reservierung nur der
+# Betreiber, von Hand, nach RESTORE.md — er ist der Einzige, der wissen kann, ob noch ein Lauf lebt.
+# ==================================================================================================
+# DIE REIHENFOLGE IN DIESER FUNKTION IST DER GANZE PUNKT — ERST SPERREN, DANN NACHSEHEN.
+# ==================================================================================================
+#
+# RUNDE 1 HATTE ES ANDERSHERUM, und BEN hat den Verlust gemessen (4227 R1, Korrekturpflicht 1). Die
+# Begruendung von damals stand als Kommentar hier und war falsch: „Solange der andere Lauf NICHT
+# fertig ist, liegt seine Reservierung — und dann scheitert das `mkdir`." Das gilt fuer den
+# Augenblick der ABFRAGE. Es gilt nicht fuer den Augenblick des `mkdir`, und dazwischen liegt eine
+# Lebensspanne:
+#
+#   A fragt `[ -e "$OUT" ]`            -> frei, denn B hat noch nichts veroeffentlicht
+#   B reserviert, sichert, gibt frei   -> B's Paar liegt jetzt unter genau diesem Namen
+#   A ruft `mkdir`                     -> gelingt, denn B's Reservierung ist weg
+#   A veroeffentlicht                  -> UEBERSCHREIBT B's Dump und B's Pruefsumme
+#
+# Das atomare `mkdir` allein schliesst dieses Rennen NICHT. Es macht die Reservierung unteilbar,
+# aber es macht die Abfrage davor nicht haltbar: eine Frage, die vor der Sperre gestellt wird, ist
+# beantwortet fuer eine Welt, die es beim Betreten der Sperre nicht mehr gibt.
+#
+# DESHALB WIRD JETZT ZUERST GESPERRT UND DANN NACHGESEHEN. Ab dem gelungenen `mkdir` kann kein
+# anderer Lauf diesen Namen mehr veroeffentlichen — er kaeme an der Reservierung nicht vorbei. Was
+# die Abfrage unter der Sperre sieht, bleibt also wahr, solange die Sperre liegt. Findet sie dort
+# schon ein Paar (oder ein halbes), gibt dieser Lauf die soeben erworbene Reservierung sofort wieder
+# frei und zaehlt eine Nummer weiter. Er nimmt NIE einen Namen an sich, unter dem schon etwas liegt.
+reservieren() { # <endname> — Rueckgabe 0 = dieser Lauf haelt den Namen jetzt exklusiv
+  local kandidat="$1"
+  local marke="$DEST/${kandidat}.reserviert"
+  # DER UNTEILBARE SCHRITT, UND ER STEHT ZUERST. Gelingt er, gehoert der Name diesem Lauf; scheitert
+  # er, gehoert er einem anderen — es gibt keine Reihenfolge, in der zwei Laeufe beide „gelungen"
+  # sehen.
+  mkdir "$marke" 2>/dev/null || return 1
+  # ERST JETZT die Bestandsfrage, unter der eigenen Sperre. Ein veroeffentlichtes Paar (oder ein
+  # halbes) hat den Namen genauso verbraucht wie eine Reservierung — nur ist das hier keine
+  # Vorabfrage mehr, sondern eine Feststellung, die nicht mehr veralten kann.
+  if [ -e "$DEST/$kandidat" ] || [ -e "$DEST/${kandidat}.sha256" ]; then
+    # Die eigene Reservierung, und nur sie: dieser Lauf hat sie eine Zeile weiter oben selbst
+    # angelegt. `RESERVIERUNG` faellt bewusst NICHT — die Falle soll nichts doppelt wegraeumen.
+    rmdir "$marke" 2>/dev/null || true
+    return 1
+  fi
+  RESERVIERUNG="$marke"
+  OUT="$DEST/$kandidat"
+  ENDNAME="$kandidat"
+  return 0
 }
 
 abbruch_endname_belegt() {
-  echo "[backup] ABBRUCH: ${ENDNAME} oder ${ENDNAME}.sha256 liegt bereits im Zielverzeichnis," >&2
-  echo "[backup] und _02 bis _99 dieser Sekunde sind ebenfalls schon vergeben. Dieser Lauf" >&2
-  echo "[backup] veroeffentlicht NICHTS und laesst den vorhandenen Bestand unberuehrt:" >&2
-  echo "[backup] bytegleich, mit seinen Pruefsummen." >&2
+  echo "[backup] ABBRUCH: ${ENDNAME} liess sich nicht reservieren — der Name ist belegt oder" >&2
+  echo "[backup] von einem anderen Lauf reserviert, und _02 bis _99 dieser Sekunde ebenfalls." >&2
+  echo "[backup] Dieser Lauf veroeffentlicht NICHTS und laesst den vorhandenen Bestand" >&2
+  echo "[backup] unberuehrt: bytegleich, mit seinen Pruefsummen. Liegen gebliebene" >&2
+  echo "[backup] *.reserviert-Verzeichnisse raeumt dieses Skript NIE selbst weg — siehe" >&2
+  echo "[backup] scripts/backup/RESTORE.md, Abschnitt „Zwei Laeufe gleichzeitig\"." >&2
   ergebnis_hinterlegen fehler \
     "ABBRUCH: Endname ${ENDNAME} ist belegt und keine freie Nummer dieser Sekunde mehr offen; nichts veroeffentlicht, der vorhandene Bestand bleibt unberuehrt." \
     5 "" "" ""
@@ -384,15 +543,19 @@ abbruch_endname_belegt() {
 }
 
 # Die hoechste fuer DIESEN Stempel bereits vergebene Nummer: 0 = keine, 1 = der Grundname,
-# n = `_0n`. Dump UND Pruefsumme zaehlen — ein halbes Paar hat den Namen genauso verbraucht.
+# n = `_0n`. Dump, Pruefsumme UND Reservierung zaehlen — jedes davon hat den Namen verbraucht.
+# Die Reservierung muss mitzaehlen, sonst liefe ein gleichzeitiger Lauf die Nummernreihe von unten
+# noch einmal ab und produzierte lauter EEXIST, statt gleich ueber dem Bestand anzusetzen.
 hoechste_vergebene_nummer() {
   local hoechste=0
   local pfad name nummer
-  if [ -e "$DEST/${BASISNAME}.dump" ] || [ -e "$DEST/${BASISNAME}.dump.sha256" ]; then
+  if [ -e "$DEST/${BASISNAME}.dump" ] || [ -e "$DEST/${BASISNAME}.dump.sha256" ] ||
+    [ -d "$DEST/${BASISNAME}.dump.reserviert" ]; then
     hoechste=1
   fi
   shopt -s nullglob
-  for pfad in "$DEST/${BASISNAME}"_[0-9][0-9].dump "$DEST/${BASISNAME}"_[0-9][0-9].dump.sha256; do
+  for pfad in "$DEST/${BASISNAME}"_[0-9][0-9].dump "$DEST/${BASISNAME}"_[0-9][0-9].dump.sha256 \
+    "$DEST/${BASISNAME}"_[0-9][0-9].dump.reserviert; do
     name="${pfad##*/}"
     nummer="${name#"${BASISNAME}"_}"
     nummer="${nummer%%.*}"
@@ -404,16 +567,22 @@ hoechste_vergebene_nummer() {
   printf '%s' "$hoechste"
 }
 
-# Ab der uebergebenen Nummer aufwaerts — nie darunter. Die Belegtpruefung bleibt trotzdem drin: sie
-# faengt ab, was von ausserhalb dieses Skripts unter einem solchen Namen liegt.
-freien_endnamen_suchen() {
+# Ab der uebergebenen Nummer aufwaerts — nie darunter. 1 heisst: zuerst den Grundnamen versuchen.
+# Jeder Versuch ist ein `reservieren`, also ein `mkdir`: die Schleife klettert genau so weit, wie
+# gleichzeitige Laeufe sie schieben, und bleibt beim ersten Namen stehen, den sie WIRKLICH bekommen
+# hat — nicht bei einem, den sie nur frei GESEHEN hat.
+endnamen_reservieren() {
   local versuch="$1"
   local kandidat
+  if [ "$versuch" -le 1 ]; then
+    if reservieren "${BASISNAME}.dump"; then
+      return 0
+    fi
+    versuch=2
+  fi
   while [ "$versuch" -le 99 ]; do
     kandidat="$(printf '%s_%02d.dump' "$BASISNAME" "$versuch")"
-    OUT="$DEST/$kandidat"
-    ENDNAME="$kandidat"
-    if ! endname_belegt; then
+    if reservieren "$kandidat"; then
       echo "[backup] HINWEIS: ${BASISNAME}.dump ist fuer diese Sekunde schon vergeben" >&2
       echo "[backup] (mehrere Laeufe in derselben Sekunde). Diese Sicherung heisst deshalb" >&2
       echo "[backup] ${ENDNAME} — die Nummer zaehlt weiter und wird nie wiederverwendet." >&2
@@ -429,9 +598,7 @@ freien_endnamen_suchen() {
 }
 
 VERGEBEN="$(hoechste_vergebene_nummer)"
-if [ "$VERGEBEN" -gt 0 ]; then
-  freien_endnamen_suchen "$((VERGEBEN + 1))"
-fi
+endnamen_reservieren "$((VERGEBEN + 1))"
 
 # JOB 517 — ERZEUGUNG UND VEROEFFENTLICHUNG SIND GETRENNT.
 #
@@ -450,14 +617,39 @@ fi
 # durch Umbenennen, und zwar Sidecar zuerst, Dump zuletzt. So gibt es keinen Zeitpunkt, zu dem
 # ein `*.dump` ohne seine Pruefsumme sichtbar ist — Konsumenten suchen nach genau diesem Muster.
 #
-# Der Arbeitsname liegt im SELBEN Verzeichnis, nicht in /tmp: `mv` ist nur innerhalb eines
+# Der Arbeitsname liegt im SELBEN Dateisystem, nicht in /tmp: `mv` ist nur innerhalb eines
 # Dateisystems atomar (`rename(2)`). Zeigt BACKUP_DIR auf eine Netzfreigabe mit anderer
 # Semantik, gilt die Atomizitaetszusage nicht — das steht so auch in RESTORE.md.
 #
 # Aufgeraeumt wird der Arbeitsstand in `abschluss` weiter oben — die EINE Falle dieses Skripts.
 # (Bis BEN R1 stand hier ein eigenes `trap 'rm -f …' EXIT`; ein zweites `trap … EXIT` ERSETZT das
 # erste, damit haette die Ergebnisspur des Sicherheitsnetzes ab dieser Zeile nicht mehr gegriffen.)
-STAGE="${OUT}.partial"
+#
+# ==================================================================================================
+# JOB 4227 R2 — DER ARBEITSSTAND LIEGT IN DER EIGENEN RESERVIERUNG. Der Befund von BEN R1 (2).
+# ==================================================================================================
+#
+# BIS RUNDE 1 HIESS ER `${OUT}.partial` und lag offen im Zielverzeichnis. Das ist ein VORHERSAGBARER
+# Name ohne Eigentumsnachweis, und BEN hat beide Folgen gemessen:
+#   · `pg_dump --file "$STAGE"` SCHREIBT in eine fremde Datei dieses Namens, ohne zu fragen;
+#   · die Abschlussfalle `rm -f "$STAGE"` LOESCHT sie danach, auch wenn dieser Lauf sie nie
+#     angelegt hat. Gemessen: fremde `.partial` vorab angelegt, `pg_dump` scheitert mit Exit 2 —
+#     hinterher ist die fremde Datei weg.
+# Zusage (c) („`*.partial` wird nie angefasst") galt damit fuer die Aufbewahrung, aber nicht fuer
+# den Lauf selbst. Eine Zusage, die nur an einer von zwei Stellen gilt, ist keine.
+#
+# DAS RESERVIERUNGSVERZEICHNIS IST DER EIGENTUMSNACHWEIS, den es dafuer braucht: dieser Lauf hat es
+# mit `mkdir` selbst angelegt, und genau einer kann das gewesen sein. Was darin liegt, gehoert ihm
+# — per Konstruktion, nicht per Namenskonvention. Fremde `*.partial` im Zielverzeichnis kann dieses
+# Skript ab hier gar nicht mehr treffen: es schreibt nicht mehr dorthin und raeumt nicht mehr dort.
+#
+# DER DATEINAME DARIN BLEIBT `<endname>.partial`. Er ist innerhalb des Verzeichnisses ohnehin
+# eindeutig; er behaelt die Endung, weil das `mv` der Veroeffentlichung und jede Fehlersuche daran
+# ablesen sollen, welcher Endname gemeint ist.
+#
+# `mv` BLEIBT ATOMAR: `$DEST/<name>.reserviert/<name>.partial` und `$DEST/<name>` liegen im selben
+# Dateisystem — dieselbe Bedingung wie vorher, nur eine Verzeichnisebene tiefer.
+STAGE="${RESERVIERUNG}/${ENDNAME}.partial"
 
 echo "[backup] Dump nach: $OUT"
 # -Fc = Custom-Format (komprimiert, für pg_restore). Die URL steht NUR im Argument, nicht im Log.
@@ -541,9 +733,16 @@ else
 fi
 
 # Pruefsumme ist PFLICHT, nicht "best effort": ohne sie wird nichts veroeffentlicht.
+#
+# `HASHWERKZEUG` merkt sich, WELCHES der beiden hier wirklich gelaufen ist. Die Aufbewahrung weiter
+# unten braucht dieselbe Rechnung, um Altpaare nachzupruefen (JOB 4227 R3) — und sie darf dafuer
+# nicht noch einmal raten, welches Werkzeug da ist.
+HASHWERKZEUG=""
 if command -v shasum >/dev/null 2>&1; then
+  HASHWERKZEUG=shasum
   SUM="$(shasum -a 256 "$STAGE" | awk '{print $1}')"
 elif command -v sha256sum >/dev/null 2>&1; then
+  HASHWERKZEUG=sha256sum
   SUM="$(sha256sum "$STAGE" | awk '{print $1}')"
 else
   echo "[backup] ABBRUCH: weder shasum noch sha256sum gefunden — ohne Pruefsumme wird kein" >&2
@@ -560,20 +759,17 @@ echo "${SUM}  ${ENDNAME}" > "${STAGE}.sha256"
 
 # DIE VEROEFFENTLICHUNG. Reihenfolge ist nicht beliebig: Sidecar zuerst, Dump zuletzt.
 #
-# DIE ZWEITE PRUEFUNG AUF DEN BELEGTEN ENDNAMEN, unmittelbar vor dem ersten `mv`. Die erste steht
-# oben vor dem Dump; zwischen beiden kann ein gleichzeitig laufender Lauf veroeffentlicht haben.
-# Diese hier ist die verbindliche: ab ihr liegen nur noch die beiden `mv`.
-#
-# (Ein Restrisiko bleibt und wird nicht verschwiegen: zwischen dieser Pruefung und dem `mv` liegt
-# ein Augenblick, in dem ein dritter Lauf dazwischengehen koennte. `mv` allein kann das nicht
-# ausschliessen — dafuer braeuchte es eine Sperrdatei, und die waere eine Verhaltensaenderung
-# ausserhalb dieses Auftrags. Die Sekundenkollision, die BEN gemessen hat, ist damit zu.)
-if endname_belegt; then
-  abbruch_endname_belegt
-fi
+# HIER STEHT KEINE ZWEITE BELEGTPRUEFUNG MEHR (JOB 4227). Sie waere heute nicht nur ueberfluessig,
+# sondern irrefuehrend: der Endname ist seit `endnamen_reservieren` oben EXKLUSIV reserviert, und
+# zwar durch ein `mkdir`, das nur einem Lauf gelingen kann. Ein zweiter Lauf kann diesen Namen
+# zwischen damals und jetzt gar nicht bekommen haben — es gibt nichts mehr zu pruefen, und der
+# Augenblick zwischen Pruefung und `mv`, den der frühere Kommentar hier einraeumen musste, existiert
+# nicht mehr. Wer beides nebeneinander stehen liesse, haette zwei Veroeffentlichungswege: einen, der
+# traegt, und einen, der nur so aussieht.
 mv "${STAGE}.sha256" "${OUT}.sha256"
-# NACHWEISLICH DER EIGENE: unter dem Endnamen lag nichts, dieses `mv` hat ihn belegt. Nur diesen
-# einen darf das Sicherheitsnetz oben wieder wegnehmen, wenn das `mv` des Dumps scheitert.
+# NACHWEISLICH DER EIGENE: der Name gehoert diesem Lauf (Reservierung), und dieses `mv` hat ihn
+# belegt. Nur diesen einen darf das Sicherheitsnetz oben wieder wegnehmen, wenn das `mv` des Dumps
+# scheitert.
 SIDECAR_DIESER_LAUF=ja
 mv "$STAGE" "$OUT"
 # AB HIER GIBT ES DIESE SICHERUNG. Was danach noch scheitert — die Aufbewahrung, die
@@ -581,8 +777,8 @@ mv "$STAGE" "$OUT"
 VEROEFFENTLICHT=ja
 
 # ==================================================================================================
-# JOB 4057 — DIE AUFBEWAHRUNG. Vier Zusagen, und jede davon ist die Stelle, an der ein naives
-# Aufraeumen den Bestand vernichtet, den es schuetzen soll.
+# JOB 4057 / 4227 — DIE AUFBEWAHRUNG. Sechs Zusagen, und jede davon ist die Stelle, an der ein
+# naives Aufraeumen den Bestand vernichtet, den es schuetzen soll.
 # ==================================================================================================
 #
 #   (a) DIE SOEBEN VEROEFFENTLICHTE SICHERUNG WIRD NIE GELOESCHT, auch bei BACKUP_KEEP=1 nicht.
@@ -590,9 +786,39 @@ VEROEFFENTLICHT=ja
 #       RESTORE.md ist es kein regulaer entstandenes Backup dieses Skripts. Wuerde es mitgezaehlt,
 #       verschoebe sich die Grenze und ein ECHTES Paar fiele zu frueh weg.
 #   (c) `*.partial` wird nie angefasst — das ist der Arbeitsstand eines gleichzeitig laufenden
-#       Laufs. Wer ihn loescht, zerstoert eine Sicherung, die gerade entsteht.
+#       Laufs. Wer ihn loescht, zerstoert eine Sicherung, die gerade entsteht. SEIT JOB 4227 R2
+#       gilt das nicht nur hier, sondern im ganzen Skript: der EIGENE Arbeitsstand liegt in der
+#       eigenen Reservierung, also schreibt und raeumt dieser Lauf ueberhaupt nirgends mehr unter
+#       einem `*.partial` im Zielverzeichnis (BEN R1, Korrekturpflicht 2).
 #   (d) ES ENTSTEHT ZU KEINEM ZEITPUNKT EIN DUMP OHNE SEINEN SIDECAR: geloescht wird Dump zuerst,
 #       Sidecar ZULETZT — spiegelbildlich zur Veroeffentlichung darueber.
+#
+# JOB 4227 — UND ZWEI WEITERE, DIE ERST IM PARALLELBETRIEB SICHTBAR WERDEN:
+#   (e) EIN PAAR, ZU DEM EINE RESERVIERUNG LIEGT, WIRD NICHT ENTFERNT.
+#   (f) AB DEM EIGENEN STAND WIRD NICHTS MEHR ENTFERNT — was juenger ist als die soeben
+#       veroeffentlichte eigene Sicherung, gehoert einem spaeteren Lauf und bleibt liegen.
+#
+# JOB 4227 R3 — UND DIE SIEBTE, ohne die alle anderen auf Sand stehen (Befund BEN R2):
+#   (g) NUR EIN NACHGERECHNETES PAAR ZAEHLT ALS GENERATION. Ein Dump, dessen Sidecar nicht zu ihm
+#       passt, ist keine Sicherung, sondern ein Rest — er zaehlt nicht mit und wird nicht geloescht.
+#       Ohne (g) verdraengt ein beschaedigtes Paar eine gueltige Generation: es besetzt einen der
+#       `n` Plaetze, und die gute Sicherung darunter faellt heraus.
+#
+# GEMESSEN am Stand davor: zwei gleichzeitige Laeufe mit `BACKUP_KEEP=1`. A veroeffentlicht den
+# Grundnamen, B den `_02`. Danach raeumt jeder auf: A darf seinen eigenen Stand nicht loeschen, also
+# nimmt es den von B; B darf seinen eigenen nicht loeschen, also nimmt es den von A. Ergebnis: ZWEI
+# erfolgreich gemeldete Laeufe und KEINE Sicherung mehr im Verzeichnis. Zusage (a) allein reicht
+# nicht — sie schuetzt den eigenen Stand, und genau darum bleibt der fremde ungeschuetzt.
+#
+# Die Reservierung des anderen Laufs liegt genau so lange, wie dieser Lauf laeuft (sie wird erst in
+# `abschluss` freigegeben). Sie ist damit das Zeichen „dieses Paar gehoert einem Lauf, der noch
+# nicht fertig ist". Liegt sie, bleibt das Paar stehen — und das Aufraeumen meldet ehrlich, dass es
+# unvollstaendig blieb, statt eine fremde, frische Sicherung zu entfernen.
+#
+# EINE LIEGEN GEBLIEBENE RESERVIERUNG (abgestuerzter Lauf) SCHUETZT IHR PAAR DAMIT DAUERHAFT. Das
+# ist die bewusst gewaehlte Seite des Irrtums: lieber eine Sicherung zu viel als eine zu wenig, und
+# lieber ein ehrliches „nichts entfernt" als eine Altersheuristik, die im Zweifel loescht. Aufloesen
+# darf der Betreiber, von Hand (RESTORE.md).
 #
 # DIE REIHUNG NACH ALTER KOMMT AUS DEM DATEINAMEN (`klarwerk-<STAMP>`, UTC und sortierbar), NICHT
 # aus der Aenderungszeit: ein Kopiervorgang verstellt mtime, den Namen nicht.
@@ -603,6 +829,7 @@ VEROEFFENTLICHT=ja
 ENTFERNT_NAMEN=""
 ENTFERNT_ANZAHL=0
 BEHALTEN=0
+BESCHAEDIGT_ANZAHL=0
 if [ -n "${BACKUP_KEEP+gesetzt}" ]; then
   # Vollstaendige Sicherungen: Dump MIT Sidecar. Der Rest bleibt unberuehrt.
   PAARE=""
@@ -614,23 +841,185 @@ if [ -n "${BACKUP_KEEP+gesetzt}" ]; then
   done
   shopt -u nullglob
   GEORDNET="$(printf '%s' "$PAARE" | LC_ALL=C sort)"
-  GESAMT=0
+  KANDIDATEN=0
   while IFS= read -r pfad; do
     [ -n "$pfad" ] || continue
-    GESAMT=$((GESAMT + 1))
+    KANDIDATEN=$((KANDIDATEN + 1))
   done <<EOF
 $GEORDNET
 EOF
+
+  # ================================================================================================
+  # JOB 4227 R3 — EIN PAAR IST ERST DANN EINE GENERATION, WENN ES AUCH EINE IST. Befund BEN R2.
+  # ================================================================================================
+  #
+  # BIS RUNDE 2 GALT: Dump da, Sidecar da -> zaehlt als vollstaendige Sicherung. Das Sidecar wurde
+  # nur auf EXISTENZ geprueft, nie auf Inhalt. BEN hat gemessen, was daraus folgt:
+  #
+  #   Bestand: ein GUELTIGES aelteres Paar, ein juengeres Paar mit FALSCHER Pruefsumme, dazu die
+  #   neue Sicherung. `BACKUP_KEEP=2`. Ergebnis: das gueltige aeltere Paar wurde GELOESCHT, das
+  #   beschaedigte behalten — und die Ausgabe meldete „behalten: 2", obwohl nur EINE Generation
+  #   wiederherstellbar war. Exit 0.
+  #
+  # Das ist Datenverlust, und zwar der stillste: `restore-drill.sh` verweigert ein solches Paar mit
+  # Exit 11, der Betreiber erfaehrt es aber erst im Ernstfall — dann, wenn die gute Sicherung, die
+  # es daneben gab, schon weg ist.
+  #
+  # DESHALB WIRD JETZT NACHGERECHNET, und zwar an drei Stellen, an denen ein Paar kaputt sein kann:
+  #   · die Pruefsummendatei ist nicht lesbar;
+  #   · ihr Inhalt hat nicht die zugesagte Form (64 Hex, zwei Leerzeichen, DER EIGENE Endname) —
+  #     ein Sidecar, der auf einen anderen Namen zeigt, gehoert nicht zu diesem Dump;
+  #   · der Hash passt nicht zum Dump, oder der Dump laesst sich gar nicht lesen.
+  # In allen drei Faellen gilt das Paar als BESCHAEDIGT: es zaehlt NICHT als Generation und wird
+  # NICHT entfernt. Beides gehoert zusammen — wer es nicht zaehlt, aber loescht, nimmt dem Betreiber
+  # die Reste weg, aus denen vielleicht noch etwas zu holen ist.
+  #
+  # WAS DAS KOSTET, UND WARUM ES TROTZDEM RICHTIG IST: die Pruefung liest jeden Altdump einmal
+  # vollstaendig. Bei `BACKUP_KEEP=14` und grossen Dumps ist das spuerbar. Sie laeuft deshalb NUR,
+  # wenn ueberhaupt geloescht werden koennte (mehr Kandidaten als `KEEP`) — ohne `BACKUP_KEEP` oder
+  # unterhalb der Grenze wird nichts gelesen und nichts geloescht. Und sie hat einen zweiten Nutzen,
+  # der die Kosten allein schon traegt: sie ist die EINZIGE Stelle, an der eine still verfaulte
+  # Sicherung ueberhaupt auffaellt, bevor jemand sie braucht.
+  #
+  # DER EIGENE STAND WIRD NICHT NOCHMAL GELESEN: seine Pruefsumme ist wenige Zeilen vorher frisch
+  # gemessen worden (`$SUM`), und der Sidecar ist daraus geschrieben. Ein zweites Lesen wuerde
+  # nichts belegen, was nicht schon belegt ist.
+  altpaar_hash() { # <datei> — Hash auf stdout; Rueckgabe 1 = nicht messbar
+    local wert=""
+    case "$HASHWERKZEUG" in
+      shasum) if ! wert="$(shasum -a 256 "$1" 2>/dev/null | awk '{print $1}')"; then wert=""; fi ;;
+      sha256sum) if ! wert="$(sha256sum "$1" 2>/dev/null | awk '{print $1}')"; then wert=""; fi ;;
+      *) wert="" ;;
+    esac
+    [ -n "$wert" ] || return 1
+    printf '%s' "$wert"
+  }
+
+  # Rueckgabe 0 = heil. Bei 1 steht der Grund in PAAR_GRUND — im Klartext, fuer den Betreiber.
+  paar_ist_heil() { # <dumppfad>
+    local pfad="$1"
+    local name="${pfad##*/}"
+    local zeile hex benannt gemessen
+    PAAR_GRUND=""
+    if [ "$pfad" = "$OUT" ]; then
+      return 0
+    fi
+    if ! zeile="$(cat "${pfad}.sha256" 2>/dev/null)"; then
+      PAAR_GRUND="die Pruefsummendatei ist nicht lesbar"
+      return 1
+    fi
+    hex="${zeile%%  *}"
+    benannt="${zeile#*  }"
+    case "$hex" in
+      *[!0-9a-f]* | "") PAAR_GRUND="die Pruefsummendatei hat nicht die zugesagte Form"; return 1 ;;
+    esac
+    if [ "${#hex}" -ne 64 ]; then
+      PAAR_GRUND="die Pruefsummendatei hat nicht die zugesagte Form"
+      return 1
+    fi
+    if [ "$benannt" != "$name" ]; then
+      PAAR_GRUND="die Pruefsummendatei nennt '${benannt}' statt '${name}'"
+      return 1
+    fi
+    if ! gemessen="$(altpaar_hash "$pfad")"; then
+      PAAR_GRUND="der Dump liess sich nicht lesen"
+      return 1
+    fi
+    if [ "$gemessen" != "$hex" ]; then
+      PAAR_GRUND="die Pruefsumme passt nicht zum Dump"
+      return 1
+    fi
+    return 0
+  }
+
+  # Die Liste der HEILEN Paare, in derselben Altersreihung. Nur sie zaehlen, nur sie werden
+  # geloescht. Unterhalb der Grenze wird gar nicht erst nachgerechnet.
+  #
+  # ================================================================================================
+  # JOB 4227 R4 — UND DANN SAGT DER LAUF AUCH, OB ER NACHGERECHNET HAT. Befund BEN R3.
+  # ================================================================================================
+  #
+  # RUNDE 3 HAT DIE KOSTEN GESPART UND DABEI DIE AUSSAGE STEHEN LASSEN. Wurde nicht nachgerechnet
+  # (Kandidaten nicht ueber der Grenze, also ohnehin nichts zu loeschen), meldete der Lauf trotzdem
+  # „heile Sicherungen behalten: N". BEN hat es gemessen: ein beschaedigtes Altpaar plus die neue
+  # Sicherung, `BACKUP_KEEP=2` und `BACKUP_KEEP=5` — beide Male genau EIN wiederherstellbares Paar,
+  # und beide Male der Satz „heile Sicherungen behalten: 2".
+  #
+  # DAS IST DIESELBE SORTE FEHLER wie die, gegen die dieses ganze Paket gebaut ist, nur eine Ebene
+  # hoeher: nicht eine erfundene Sicherung, sondern eine erfundene EIGENSCHAFT von Sicherungen. Der
+  # Betreiber liest „heil" und hat es nicht.
+  #
+  # `GEPRUEFT` haelt deshalb fest, ob dieser Lauf wirklich nachgerechnet hat. Jede Zahl, die er
+  # danach ausgibt, traegt das Wort, das zu ihr gehoert: „heile Sicherungen" nur nach der Rechnung,
+  # sonst „vorhandene Sicherungspaare (nicht nachgerechnet)". Die Kostenentscheidung bleibt — sie
+  # war nicht der Fehler; der Fehler war, sie zu treffen und trotzdem weiterzureden.
+  HEILE=""
+  GESAMT=0
+  GEPRUEFT=nein
+  if [ "$KANDIDATEN" -gt "$KEEP" ]; then
+    GEPRUEFT=ja
+    while IFS= read -r pfad; do
+      [ -n "$pfad" ] || continue
+      if paar_ist_heil "$pfad"; then
+        HEILE="${HEILE}${pfad}
+"
+        GESAMT=$((GESAMT + 1))
+      else
+        BESCHAEDIGT_ANZAHL=$((BESCHAEDIGT_ANZAHL + 1))
+        echo "[backup] HINWEIS: $(basename "$pfad") ist BESCHAEDIGT — ${PAAR_GRUND}. Es zaehlt" >&2
+        echo "[backup] NICHT als Generation und wird NICHT entfernt. Ein Restore darueber" >&2
+        echo "[backup] verweigert scripts/backup/restore-drill.sh (Exit 10/11)." >&2
+      fi
+    done <<EOF
+$GEORDNET
+EOF
+  else
+    HEILE="$GEORDNET"
+    GESAMT=$KANDIDATEN
+  fi
+  GEORDNET="$HEILE"
   # `$KEEP` ist die dezimal gelesene Zahl von oben, NIE `$BACKUP_KEEP` — sonst waere `010` hier
   # wieder oktal (BEN R1).
   UEBERZAHL=$((GESAMT - KEEP))
   BEHALTEN=$GESAMT
   if [ "$UEBERZAHL" -gt 0 ]; then
+    # JOB 4227, Zusage (f): AB DEM EIGENEN STAND WIRD NICHTS MEHR ENTFERNT.
+    #
+    # Die Liste ist nach Alter geordnet, der eigene Stand steht darin. Alles DAHINTER ist juenger
+    # als die Sicherung, die dieser Lauf gerade veroeffentlicht hat — es kann also nur von einem
+    # ANDEREN Lauf stammen, der nach diesem hier dran war. Im Einzelbetrieb tritt der Fall nie ein
+    # (der eigene Stand ist dort immer der juengste); im Parallelbetrieb ist er der Normalfall.
+    #
+    # OHNE DIESE ZEILE FRISST DIE AUFBEWAHRUNG NACH VORN: A haelt den Grundnamen, darf ihn nach
+    # Zusage (a) nicht loeschen, geht eine Zeile weiter — und nimmt `_02`, die gerade erst
+    # veroeffentlichte Sicherung von B. Bei `BACKUP_KEEP=1` traefe es genau die juengste. Aufraeumen
+    # heisst „das Aelteste wegnehmen"; wer dabei nach vorn ausweicht, tut das Gegenteil.
+    EIGENES_ERREICHT=nein
     while IFS= read -r pfad; do
       [ -n "$pfad" ] || continue
       [ "$ENTFERNT_ANZAHL" -lt "$UEBERZAHL" ] || break
       # Zusage (a): der eigene, gerade veroeffentlichte Stand ist unantastbar.
-      [ "$pfad" != "$OUT" ] || continue
+      if [ "$pfad" = "$OUT" ]; then
+        EIGENES_ERREICHT=ja
+        continue
+      fi
+      # Zusage (f): alles juenger als der eigene Stand bleibt liegen.
+      if [ "$EIGENES_ERREICHT" = ja ]; then
+        echo "[backup] HINWEIS: $(basename "$pfad") ist JUENGER als die soeben veroeffentlichte" >&2
+        echo "[backup] Sicherung dieses Laufs und wird nicht entfernt — sie stammt aus einem" >&2
+        echo "[backup] anderen, spaeteren Lauf. Aufgeraeumt wird nur nach hinten." >&2
+        continue
+      fi
+      # Zusage (e): ein Paar mit liegender Reservierung gehoert einem Lauf, der nicht fertig ist —
+      # oder einem, der abgebrochen wurde. WELCHES VON BEIDEN, WEISS DIESER LAUF NICHT, und er tut
+      # auch nicht so: der Satz sagt beides. Was er nicht sicher weiss, loescht er nicht.
+      if [ -d "${pfad}.reserviert" ]; then
+        echo "[backup] HINWEIS: $(basename "$pfad") wird NICHT entfernt — zu diesem Namen liegt" >&2
+        echo "[backup] eine Reservierung ($(basename "$pfad").reserviert). Entweder veroeffentlicht" >&2
+        echo "[backup] ein anderer Lauf gerade darunter, oder ein Lauf ist abgebrochen. Dieses" >&2
+        echo "[backup] Skript entscheidet das nicht und raeumt nichts Fremdes weg." >&2
+        continue
+      fi
       if rm -f "$pfad" 2>/dev/null && rm -f "${pfad}.sha256" 2>/dev/null; then
         ENTFERNT_NAMEN="${ENTFERNT_NAMEN}$(basename "$pfad") $(basename "$pfad").sha256 "
         ENTFERNT_ANZAHL=$((ENTFERNT_ANZAHL + 1))
@@ -645,16 +1034,36 @@ EOF
   # Wie der gelesene Wert heisst: bei `08` steht beides da, damit niemand raten muss.
   KEEP_TEXT="$KEEP"
   [ "$BACKUP_KEEP" = "$KEEP" ] || KEEP_TEXT="${BACKUP_KEEP} (dezimal gelesen: ${KEEP})"
+  # WAS „BEHALTEN" HEISST, IST SEIT JOB 4227 R3 GENAUER: die Zahl nennt die HEILEN Generationen,
+  # nicht die vorhandenen Dateipaare. BEN hat gemessen, dass beides auseinanderfaellt — „behalten: 2"
+  # bei genau einer wiederherstellbaren Sicherung. Beschaedigte stehen daneben, mit eigener Zahl.
+  BESCHAEDIGT_TEXT=""
+  if [ "$BESCHAEDIGT_ANZAHL" -gt 0 ]; then
+    BESCHAEDIGT_TEXT=" Zusaetzlich liegen ${BESCHAEDIGT_ANZAHL} BESCHAEDIGTE Paar(e) im Verzeichnis (siehe Hinweise oben); sie zaehlen nicht als Generation und wurden nicht entfernt."
+  fi
+  # JOB 4227 R4: DAS WORT RICHTET SICH DANACH, OB GERECHNET WURDE. `BESTAND_WORT` ist die eine
+  # Stelle, an der das entschieden wird — damit nicht drei Zweige unabhaengig voneinander in
+  # Versuchung geraten, „heil" zu sagen.
+  if [ "$GEPRUEFT" = ja ]; then
+    BESTAND_WORT="heile Sicherungen behalten"
+    BESTAND_ZUSATZ=""
+  else
+    BESTAND_WORT="vorhandene Sicherungspaare"
+    # Was hier NICHT steht, ist so wichtig wie was dasteht: keine Aussage ueber Heilheit. Der Lauf
+    # hat die Paare nicht gelesen und behauptet deshalb nichts ueber sie.
+    BESTAND_ZUSATZ=" — NICHT nachgerechnet: unterhalb der Aufbewahrungsgrenze wird nichts geloescht, also auch nichts geprueft. Ob diese Paare wiederherstellbar sind, sagt dieser Lauf NICHT (siehe scripts/backup/RESTORE.md)."
+  fi
   if [ "$ENTFERNT_ANZAHL" -gt 0 ]; then
-    echo "[backup] Aufbewahrung BACKUP_KEEP=${KEEP_TEXT} — behalten: ${BEHALTEN}," \
-      "entfernt: ${ENTFERNT_ANZAHL} (${ENTFERNT_NAMEN% })"
+    echo "[backup] Aufbewahrung BACKUP_KEEP=${KEEP_TEXT} — ${BESTAND_WORT}:" \
+      "${BEHALTEN}, entfernt: ${ENTFERNT_ANZAHL} (${ENTFERNT_NAMEN% })${BESTAND_ZUSATZ}${BESCHAEDIGT_TEXT}"
   elif [ "$UEBERZAHL" -gt 0 ]; then
     # EHRLICH STATT BEQUEM: „nichts zu tun" waere hier falsch — es gab etwas zu tun, und es ist
     # nicht gelungen. Der Satz nennt beides, und der `grund` der Ergebnisspur ebenfalls.
     echo "[backup] Aufbewahrung BACKUP_KEEP=${KEEP_TEXT} — ${UEBERZAHL} Sicherung(en) zu viel," \
-      "aber NICHTS entfernt (siehe Hinweise oben). Behalten: ${BEHALTEN}." >&2
+      "aber NICHTS entfernt (siehe Hinweise oben). Behalten: ${BEHALTEN}.${BESCHAEDIGT_TEXT}" >&2
   else
-    echo "[backup] Aufbewahrung BACKUP_KEEP=${KEEP_TEXT} — behalten: ${BEHALTEN}, nichts zu tun."
+    echo "[backup] Aufbewahrung BACKUP_KEEP=${KEEP_TEXT} — ${BESTAND_WORT}:" \
+      "${BEHALTEN}, nichts zu tun.${BESTAND_ZUSATZ}${BESCHAEDIGT_TEXT}"
   fi
 fi
 
@@ -665,6 +1074,18 @@ fi
 GRUND_ERFOLG="Sicherung veroeffentlicht und gelesen (Lesepruefung: ${LESEPRUEFUNG_TEXT})."
 if [ "${UEBERZAHL:-0}" -gt "$ENTFERNT_ANZAHL" ]; then
   GRUND_ERFOLG="${GRUND_ERFOLG} Aufbewahrung unvollstaendig: $((UEBERZAHL - ENTFERNT_ANZAHL)) Sicherung(en) konnten nicht entfernt werden."
+fi
+# EIN BESCHAEDIGTES PAAR GEHOERT IN DIE SPUR, DIE DER BETREIBER LIEST (JOB 4227 R3). Es steht auch
+# auf stderr — aber stderr landet im Cron-Log, das niemand liest, und genau dagegen ist diese Datei
+# gebaut. Der Lauf bleibt ein „erfolg": seine Sicherung liegt vollstaendig da. Was er GEFUNDEN hat,
+# ist ein Befund am BESTAND, nicht an diesem Lauf — und er verschweigt ihn nicht.
+# JOB 4227 R4: Und wenn NICHT nachgerechnet wurde, steht auch das darin. Die Spur ist die Stelle,
+# an der der Betreiber nachsieht; sie darf Ungeprueftes nicht wie Geprueftes aussehen lassen.
+if [ -n "${BACKUP_KEEP+gesetzt}" ] && [ "${GEPRUEFT:-nein}" = nein ]; then
+  GRUND_ERFOLG="${GRUND_ERFOLG} Aufbewahrung: ${BEHALTEN} vorhandene Sicherungspaare, NICHT nachgerechnet (unterhalb der Aufbewahrungsgrenze) — ueber ihre Wiederherstellbarkeit sagt dieser Lauf nichts."
+fi
+if [ "${BESCHAEDIGT_ANZAHL:-0}" -gt 0 ]; then
+  GRUND_ERFOLG="${GRUND_ERFOLG} Befund am Bestand: ${BESCHAEDIGT_ANZAHL} beschaedigte(s) Paar(e) im Zielverzeichnis — nicht als Generation gezaehlt und nicht entfernt."
 fi
 ergebnis_hinterlegen erfolg "$GRUND_ERFOLG" 0 "$ENDNAME" "$SIZE" "$SUM"
 
