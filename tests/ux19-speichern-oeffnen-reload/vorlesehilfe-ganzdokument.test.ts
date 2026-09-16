@@ -353,9 +353,20 @@ describe("JOB 3259 · UX-19-R2 — die Vorlesehilfe am Ganzdokument-Weg (Chromiu
         name: DATEI_NAME,
         chars: DATEI_INHALT.length,
       });
+      // ==========================================================================================
+      // JOB 4203 D3 — NACHGEFÜHRT, UND ZWAR STRENGER.
+      // ==========================================================================================
+      // Bis hierher endete der angesagte Name der Quittung nach der Zeichenzahl. Das war kein
+      // Zufallswert, sondern der Abdruck einer LÜCKE: der Text-/Markdown-Zweig war der einzige der
+      // vier Dateiarten OHNE Format-Quittung (`Capture.tsx`, `formatNotes`), und `DATEI_NAME` ist
+      // eine `.txt`. Für eine `.docx` hätte hier immer schon ein zweiter Satz gestanden.
+      //
+      // Die Zeile wird deshalb nicht gelockert, sondern erweitert: der angesagte Name MUSS jetzt
+      // Umfang UND Grenze nennen. Fiele die Grenze wieder weg, wird V5 rot — genau wie er es soll.
+      const quittungGanz = `${quittungSatz} ${t(CAPTURE_FILE_TEXT.importNoteText)}`;
       const quittung = await befund("div", quittungSatz);
       expect(quittung.gefunden, "die Einlese-Quittung des Ganzdokument-Wegs fehlt").toBe(true);
-      expect(quittung.name).toBe(quittungSatz);
+      expect(quittung.name).toBe(quittungGanz);
       // Ansage: dieselbe Einbahnstrasse wie in V3. Heute liegt die Quittung in keiner Live-Region
       // (`Capture.tsx:5504-5507`/`:6133-6136`, Befund in der Rückgabe unter REST). Kommt eine dazu,
       // bleibt dieser Fall grün — sie muss dann nur höflich sein.

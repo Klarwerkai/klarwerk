@@ -264,6 +264,16 @@ interface WholeSourceLabels {
   notePdf: string;
   // WP-D5: ehrlicher Verlusthinweis für den PowerPoint-Import (Layout/Animationen/Bilder/Notizen).
   notePptx: string;
+  // ============================================================================================
+  // JOB 4203 D3 — DIE VIERTE ART HATTE KEINEN SATZ, UND DAS WAR DIE GEFÄHRLICHSTE LÜCKE.
+  // ============================================================================================
+  // `WholeDocumentSourceKind` kennt vier Arten; hier standen drei Sätze. Für `"text"` (also auch
+  // für jede .md/.markdown) setzte `wholeDocumentBodyHtml` deshalb `""` — der Entwurf sah aus wie
+  // eine verlustfreie Übernahme, entgegen der ausdrücklichen Zusage vier Zeilen weiter oben.
+  // Was `renderTextBlock` WIRKLICH kann, steht dort: Überschriften, Aufzählungen, Pipe-Tabellen
+  // und Absätze. Auszeichnungen, Verweise und Bilder bleiben als Zeichen stehen — genau das sagt
+  // dieser Satz, und nichts darüber hinaus (kein Anhang, keine Speicherzusage).
+  noteText: string;
 }
 
 // WP-D1b (Fix c): NL ergänzt — bisher fiel die persistierte Verlust-Quittung für „nl" auf Deutsch
@@ -278,6 +288,12 @@ const SOURCE_LABELS: Record<"de" | "en" | "nl", WholeSourceLabels> = {
     notePdf: "Best-Effort-Textimport — Layout und Bilder wurden nicht übernommen.",
     notePptx:
       "Best-Effort-Import aus PowerPoint — Text und Struktur je Folie übernommen; Layout, Animationen, Übergänge, Bilder und Sprechernotizen gehen verloren.",
+    // RUNDE 3: der Satz nennt jetzt auch die LEERZEILEN-GRENZE. Sie ist gemessen, nicht vermutet —
+    // eine Überschrift oder Aufzählung, die ohne Leerzeile mitten in einem Absatz steht, bleibt
+    // Fliesstext (nur die Tabelle wird auch dort erkannt). Ohne diesen Halbsatz sagte der Hinweis
+    // „Überschriften übernommen" auch für den Fall zu, in dem es nicht stimmt.
+    noteText:
+      "Best-Effort-Textimport — Überschriften, Aufzählungen und einfache Tabellen übernommen; Auszeichnungen (fett, kursiv, Code), Verweise und Bilder bleiben als Zeichen stehen. Überschriften und Aufzählungen brauchen eine Leerzeile darüber, sonst bleiben sie Fließtext.",
   },
   en: {
     source: "Source",
@@ -287,6 +303,8 @@ const SOURCE_LABELS: Record<"de" | "en" | "nl", WholeSourceLabels> = {
     notePdf: "Best-effort text import — layout and images were not carried over.",
     notePptx:
       "Best-effort import from PowerPoint — text and structure per slide carried over; layout, animations, transitions, images and speaker notes are lost.",
+    noteText:
+      "Best-effort text import — headings, bullet lists and simple tables carried over; formatting (bold, italics, code), links and images remain as plain characters. Headings and bullet lists need a blank line above them, otherwise they stay running text.",
   },
   nl: {
     source: "Bron",
@@ -297,6 +315,8 @@ const SOURCE_LABELS: Record<"de" | "en" | "nl", WholeSourceLabels> = {
     notePdf: "Best-effort tekstimport — layout en afbeeldingen zijn niet overgenomen.",
     notePptx:
       "Best-effort import uit PowerPoint — tekst en structuur per dia overgenomen; layout, animaties, overgangen, afbeeldingen en notities gaan verloren.",
+    noteText:
+      "Best-effort tekstimport — koppen, opsommingen en eenvoudige tabellen overgenomen; opmaak (vet, cursief, code), verwijzingen en afbeeldingen blijven als tekens staan. Koppen en opsommingen hebben een lege regel erboven nodig, anders blijven ze lopende tekst.",
   },
 };
 
@@ -347,6 +367,242 @@ export function wholeDocumentTitle(input: {
   );
 }
 
+// ==================================================================================================
+// JOB 4203 D3 — DIE MARKDOWN-TABELLE WIRD ÜBERNOMMEN, NICHT ALS PIPE-ROHTEXT ABGELEGT.
+// ==================================================================================================
+//
+// BIS HIERHER fiel eine GFM-Tabelle in den `<p>`-Zweig unten und blieb als
+// `<p>| Pruefschritt | Ergebnis |<br>| --- | --- |…</p>` stehen — sichtbarer Rohtext, der wie
+// übernommener Inhalt aussah. Das ist genau die Kombination, die der Zweck des Quelle-Blockquotes
+// ausschliesst (`:255-256`): nicht ausgelesene Inhalte dürfen nicht als vollständig übernommen
+// gelten. Übernehmen ist die ehrlichere der beiden möglichen Antworten, weil die Zellen danach
+// wirklich im Entwurf stehen; der Verlusthinweis (`noteText`) bleibt und benennt, was WIRKLICH
+// nicht übernommen wird.
+//
+// DIE ABGRENZUNG IST TEIL DER ZUSAGE: erkannt wird nur, was eine Trennzeile trägt UND deren
+// Spaltenzahl der Kopfzeile entspricht. Ohne diese Kante würde jeder Absatz mit einem `|` darin zur
+// Tabelle — eine geratene Struktur ist schlimmer als gar keine.
+//
+// Die erzeugten Tags (`table`/`thead`/`tbody`/`tr`/`th`/`td`) stehen alle auf der Erlaubnisliste des
+// autoritativen Server-Sanitizers (`services/structure/src/sanitize.ts:22-27`) — derselbe Satz, den
+// der PPTX-Import für seine Folientabellen nutzt.
+const TABELLEN_TRENNZEILE = /^\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)*\|?$/;
+
+// --------------------------------------------------------------------------------------------
+// JOB 4203 D3 · RUNDE 2 — DER GESCHÜTZTE STRICH. BELEGT, NICHT VERMUTET.
+// --------------------------------------------------------------------------------------------
+// Die erste Fassung hat an JEDEM `|` getrennt. Der Prüfer hat daraus ein Gegenbeispiel gebaut, und
+// es ist das schlimmstmögliche: aus `| Ventil A\|B | bestanden |` wurden DREI Zellen — `Ventil A\`,
+// `B`, `bestanden`. Unter der Überschrift „Ergebnis" stand danach „B" statt „bestanden".
+//
+// Eine Tabelle, die Werte in die falsche Spalte schiebt, ist schlimmer als gar keine Tabelle: sie
+// sieht ordentlich aus und behauptet etwas Falsches. `\|` ist in GFM ein literaler Strich INNERHALB
+// einer Zelle; es ist Auszeichnung, kein Inhalt, und verschwindet deshalb aus dem Zelltext.
+
+// --------------------------------------------------------------------------------------------
+// JOB 4203 D3 · RUNDE 3 — EINE ESCAPE-REGEL, AN EINER STELLE. DIE ZWEITE AUSLEGUNG IST WEG.
+// --------------------------------------------------------------------------------------------
+// WAS IN RUNDE 2 FALSCH WAR, und der Prüfer hat es gemessen statt vermutet: es gab ZWEI
+// Auslegungen derselben Regel im selben Modul. Die Erkennung (`istGeschuetzt`) zählte die
+// Schrägstriche rückwärts und nannte einen Strich mit GERADER Zahl davor frei; die Zellzerlegung
+// verschluckte dagegen stumpf jedes `\|`. Ergebnis: `| C:\\| bestanden |` galt als Tabellenzeile,
+// zerfiel aber in EINE Zelle statt in zwei — „C:\| bestanden".
+//
+// Zwei Stellen, die dieselbe Frage verschieden beantworten, sind schlimmer als eine falsche: man
+// kann keiner von beiden glauben. Es gibt deshalb ab jetzt GENAU EINE Zerlegung, und die Erkennung
+// ist nichts anderes als ihr Ergebnis.
+//
+// DIE REGEL, ausgeschrieben und in `markdown-tabelle.test.ts` (T2r–T2u) Lage für Lage belegt:
+//     `\|`    → literaler Strich IN der Zelle   (ein Schrägstrich schützt den Strich)
+//     `\\`    → literaler Schrägstrich          (der Schrägstrich schützt sich selbst)
+//     `\\|`   → literaler Schrägstrich + TRENNER (der Strich ist frei)
+//     `\\\|`  → literaler Schrägstrich + literaler Strich
+// Das ist die GFM-Regel. Ein Schrägstrich vor irgendetwas anderem bleibt stehen, wie er ist.
+
+/**
+ * Eine Zeile an ihren FREIEN Strichen zerlegen. Geschützte Striche und Schrägstrich-Paare werden
+ * dabei zu ihrem literalen Zeichen. Leerraum je Stück bleibt stehen — das trimmt erst der Aufrufer,
+ * denn für die Randstrich-Erkennung zählt, ob ein Stück WIRKLICH leer war.
+ */
+function zerlegePipeZeile(text: string): string[] {
+  const stuecke: string[] = [];
+  let aktuell = "";
+  for (let i = 0; i < text.length; i += 1) {
+    const zeichen = text[i];
+    if (zeichen === "\\") {
+      const naechstes = text[i + 1];
+      if (naechstes === "|" || naechstes === "\\") {
+        aktuell += naechstes;
+        i += 1;
+        continue;
+      }
+      aktuell += "\\";
+      continue;
+    }
+    if (zeichen === "|") {
+      stuecke.push(aktuell);
+      aktuell = "";
+      continue;
+    }
+    aktuell += zeichen;
+  }
+  stuecke.push(aktuell);
+  return stuecke;
+}
+
+/**
+ * Trägt die Zeile mindestens EINEN freien Strich? Genau dann zerfällt sie in mehr als ein Stück —
+ * die Erkennung ist damit dieselbe Rechnung wie die Zerlegung, nicht eine zweite daneben.
+ */
+function istTabellenzeile(zeile: string): boolean {
+  return zerlegePipeZeile(zeile).length > 1;
+}
+
+/** Die Zellen einer Pipe-Zeile: je EIN Randstrich links und rechts fällt weg, Rest getrimmt. */
+function tabellenZellen(zeile: string): string[] {
+  const stuecke = zerlegePipeZeile(zeile.trim());
+  // GFM: genau EIN führender und EIN abschliessender Randstrich entfällt. Er hinterlässt beim
+  // Zerlegen ein leeres Stück — und nur daran ist er zu erkennen, nicht am Zeichen selbst (ein
+  // geschützter Strich am Rand gehört zur Zelle und hinterlässt kein leeres Stück).
+  if (stuecke.length > 1 && stuecke[0] === "") {
+    stuecke.shift();
+  }
+  if (stuecke.length > 1 && stuecke[stuecke.length - 1] === "") {
+    stuecke.pop();
+  }
+  return stuecke.map((stueck) => stueck.trim());
+}
+
+// --------------------------------------------------------------------------------------------
+// JOB 4203 D3 · RUNDE 3 — EIN NEUER BLOCK BEENDET DIE TABELLE.
+// --------------------------------------------------------------------------------------------
+// DER BEFUND (Prüfer BEN zu Runde 2, am Rumpfbauer gemessen): die Erkennung der Runde 2 setzte die
+// Tabelle bei JEDER weiteren Zeile mit freiem Strich fort. Aus
+//     | Ventilprobe | bestanden |
+//     ## Wartung | Sicherheit
+// wurde eine zusätzliche Tabellenzeile `["## Wartung", "Sicherheit"]` — und damit stand
+// „Sicherheit" unter der Überschrift „Ergebnis". Sein Urteil dazu, und es trifft: „Das ist eine
+// erfundene fachliche Zuordnung, kein bloßer Layoutverlust."
+//
+// GFM bricht eine Tabelle an der ersten Leerzeile ODER am Beginn eines anderen Blocks ab. Genau das
+// steht jetzt hier — und zwar in BEIDE Richtungen: ein Blockanfang beendet nicht nur die Tabelle,
+// er darf auch keine KOPFZEILE sein. Ohne die zweite Hälfte entstünde derselbe Fehler rückwärts.
+
+/**
+ * Beginnt diese Zeile einen neuen Markdown-Block? Überschrift, Aufzählung, nummerierte Liste,
+ * Zitat, Codezaun oder Trennlinie. Sie alle können einen Strich enthalten, ohne Tabellenzeile zu
+ * sein — und genau daran ist die Erkennung der Runde 2 gescheitert.
+ */
+function beginntNeuenBlock(zeile: string): boolean {
+  return /^(?:#{1,6}\s|>|[-*+]\s|\d+[.)]\s|```|~~~|(?:[-*_]\s*){3,}$)/.test(zeile.trim());
+}
+
+// --------------------------------------------------------------------------------------------
+// JOB 4203 D3 · RUNDE 2 — WO DIE TABELLE ANFÄNGT UND WO SIE AUFHÖRT.
+// --------------------------------------------------------------------------------------------
+// Die erste Fassung verlangte einen Strich in JEDER Zeile des Blocks. Der zweite Befund des
+// Prüfers: eine Tabelle, auf die OHNE Leerzeile ein Absatz folgt, erfüllte das nicht — und damit
+// blieb die GANZE Sache Pipe-Rohtext, Tabelle und Absatz zusammen. Der Hinweis „einfache Tabellen
+// übernommen" war in genau diesem Fall unwahr.
+//
+// Ein Block kann also aus mehreren Stücken bestehen. Gesucht wird deshalb die STELLE, an der eine
+// Tabelle beginnt (Kopfzeile + passende Trennzeile), und die Stelle, an der sie endet (die erste
+// Zeile ohne ungeschützten Strich — dieselbe Regel wie in GFM). Was davor und danach steht, geht
+// unverändert durch die bisherige Absatz-/Listenbehandlung.
+
+/** Die Zeile, an der eine Tabelle beginnt — oder `null`, wenn in diesen Zeilen keine steht. */
+function tabellenStart(lines: readonly string[]): number | null {
+  for (let i = 0; i + 1 < lines.length; i += 1) {
+    const kopf = lines[i];
+    const trenner = lines[i + 1];
+    if (kopf === undefined || trenner === undefined || !istTabellenzeile(kopf)) {
+      continue;
+    }
+    // RUNDE 3, die Gegenrichtung von `tabellenEnde`: eine Überschrift, ein Listenpunkt oder ein
+    // Zitat ist kein Tabellenkopf, auch wenn ein Strich darin steht. Ohne diese Zeile entstünde
+    // derselbe Fehler noch einmal, nur rückwärts (T2p).
+    if (beginntNeuenBlock(kopf)) {
+      continue;
+    }
+    if (!TABELLEN_TRENNZEILE.test(trenner)) {
+      continue;
+    }
+    // Die Spaltenzahl muss passen. Ohne diese Kante würde jede Strichzeile unter einem beliebigen
+    // Satz zur Tabelle — eine geratene Struktur ist schlimmer als gar keine.
+    if (tabellenZellen(trenner).length === tabellenZellen(kopf).length) {
+      return i;
+    }
+  }
+  return null;
+}
+
+/**
+ * Die erste Zeile NACH der Tabelle, die bei `start` beginnt.
+ *
+ * Zwei Abbruchgründe, und der zweite ist der in Runde 3 nachgetragene: eine Zeile ohne freien
+ * Strich gehört ohnehin nicht dazu — und eine Zeile, die einen neuen Block BEGINNT, gehört auch
+ * dann nicht dazu, wenn sie einen Strich trägt.
+ */
+function tabellenEnde(lines: readonly string[], start: number): number {
+  let ende = start + 2;
+  while (ende < lines.length) {
+    const zeile = lines[ende] ?? "";
+    if (!istTabellenzeile(zeile) || beginntNeuenBlock(zeile)) {
+      break;
+    }
+    ende += 1;
+  }
+  return ende;
+}
+
+/** Eine GFM-Pipe-Tabelle als HTML. Die Vorbedingung prüft `tabellenStart`. */
+function renderPipeTable(lines: readonly string[]): string {
+  const kopfZellen = tabellenZellen(lines[0] ?? "");
+  const thead = `<thead><tr>${kopfZellen
+    .map((zelle) => `<th>${escapeHtml(zelle)}</th>`)
+    .join("")}</tr></thead>`;
+  // Kein leerer `<tbody>`: eine Tabelle ohne Datenzeilen hat keine, und ein leerer Rumpf täuschte
+  // eine vor. Was nicht da ist, wird nicht behauptet.
+  const zeilen = lines
+    .slice(2)
+    .map(
+      (line) =>
+        `<tr>${tabellenZellen(line)
+          .map((zelle) => `<td>${escapeHtml(zelle)}</td>`)
+          .join("")}</tr>`,
+    )
+    .join("");
+  return `<table>${thead}${zeilen.length > 0 ? `<tbody>${zeilen}</tbody>` : ""}</table>`;
+}
+
+/** Zeilen OHNE Tabelle: unverändert die Behandlung, die es vor diesem Auftrag schon gab. */
+function renderOhneTabelle(lines: readonly string[]): string {
+  if (lines.length === 0) {
+    return "";
+  }
+  const listItems = lines
+    .map((line) => /^[-*]\s+(.+)$/.exec(line)?.[1]?.trim() ?? null)
+    .filter((line): line is string => Boolean(line));
+  if (listItems.length > 0 && listItems.length === lines.length) {
+    return `<ul>${listItems.map((line) => `<li>${escapeHtml(line)}</li>`).join("")}</ul>`;
+  }
+  return `<p>${lines.map(escapeHtml).join("<br>")}</p>`;
+}
+
+/** Zeilen in Tabellen- und Nicht-Tabellen-Stücke zerlegen, in ihrer Reihenfolge. */
+function renderZeilen(lines: readonly string[]): string {
+  const start = tabellenStart(lines);
+  if (start === null) {
+    return renderOhneTabelle(lines);
+  }
+  const ende = tabellenEnde(lines, start);
+  return (
+    renderOhneTabelle(lines.slice(0, start)) +
+    renderPipeTable(lines.slice(start, ende)) +
+    renderZeilen(lines.slice(ende))
+  );
+}
+
 function renderTextBlock(block: string): string {
   const trimmed = block.trim();
   const heading = /^\s{0,3}#{1,3}\s+(.+)$/m.exec(trimmed);
@@ -354,15 +610,7 @@ function renderTextBlock(block: string): string {
     return `<h2>${escapeHtml(heading[1].trim())}</h2>`;
   }
 
-  const lines = trimmed.split(/\n/).map((line) => line.trim());
-  const listItems = lines
-    .map((line) => /^[-*]\s+(.+)$/.exec(line)?.[1]?.trim() ?? null)
-    .filter((line): line is string => Boolean(line));
-  if (listItems.length > 0 && listItems.length === lines.length) {
-    return `<ul>${listItems.map((line) => `<li>${escapeHtml(line)}</li>`).join("")}</ul>`;
-  }
-
-  return `<p>${lines.map(escapeHtml).join("<br>")}</p>`;
+  return renderZeilen(trimmed.split(/\n/).map((line) => line.trim()));
 }
 
 export function wholeDocumentBodyHtml(input: {
@@ -383,7 +631,12 @@ export function wholeDocumentBodyHtml(input: {
         ? `<p>${escapeHtml(labels.notePdf)}</p>`
         : input.sourceKind === "pptx"
           ? `<p>${escapeHtml(labels.notePptx)}</p>`
-          : "";
+          : // JOB 4203 D3: die vierte Art bekommt ihren Satz. `""` bleibt ausschliesslich für den
+            // Fall OHNE angegebene Art — dort ist über das Format nichts bekannt, und eine
+            // erfundene Grenze wäre schlimmer als keine.
+            input.sourceKind === "text"
+            ? `<p>${escapeHtml(labels.noteText)}</p>`
+            : "";
   const source = `<blockquote><p>${labels.source}: ${escapeHtml(input.fileName)}, ${labels.whole}</p>${note}</blockquote>`;
   if (input.html && input.html.trim().length > 0) {
     return `${source}${input.html.trim()}`;
@@ -567,6 +820,9 @@ export const CAPTURE_FILE_TEXT = {
   importNotePdf: "capture.file.importNote.pdf",
   // WP-D5/WP-D9: PowerPoint-Import-Quittung (Text/Struktur/Bilder je Folie; Layout/Animationen/Notizen verloren).
   importNotePptx: "capture.file.importNote.pptx",
+  // JOB 4203 D3: die Quittung des Text-/Markdown-Imports. Sie fehlte als EINZIGE der vier Arten —
+  // wer eine .md wählte, las nach dem Einlesen gar keine Grenze und danach im Entwurf auch keine.
+  importNoteText: "capture.file.importNote.text",
   parseError: "capture.file.parseError",
   unsupported: "capture.file.unsupported",
   ocrCta: "capture.file.ocrCta",

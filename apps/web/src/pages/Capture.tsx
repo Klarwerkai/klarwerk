@@ -1061,6 +1061,23 @@ export function CaptureArbeitsraum({
   const [fileImageTransfer, setFileImageTransfer] = useState<ImageTransferContract | null>(null);
   const [fileImageUrl, setFileImageUrl] = useState<string | null>(null); // OCR-Kandidat (nur auf Klick)
   const [fileBusy, setFileBusy] = useState(false);
+  // ================================================================================================
+  // JOB 4203 D3 · RUNDE 2 — DIE ABWEISUNG WIRD ANGESAGT, NICHT NUR ANGEZEIGT.
+  // ================================================================================================
+  // BEFUND (Prüfer BEN, am gebauten Produkt gemessen): „Nach sichtbarer Abweisung der .bin-Datei sind
+  // ALLE Live-Regionen leer." Die Meldung lief über `setErr`, und `err` wird als gewöhnliches `<div>`
+  // gezeichnet (:6324) — sichtbar, aber für eine Vorlesehilfe nicht vorhanden. Der Auftrag verlangt
+  // genau das Gegenteil (§5.7: „verständliche Meldung in der Live-Region,
+  // `CaptureFileImport.tsx:176-180`").
+  //
+  // Die Meldungen des Datei-Imports gehen deshalb ab jetzt in DIE Live-Region der Dateiauswahl —
+  // dieselbe, die schon die Drop-Ablehnung und die Kachel-Hinweise trägt. Das ist kein zweiter
+  // Träger, sondern der vorhandene: ihr Kommentar sagt wörtlich „EINE Meldung für ALLE
+  // Ablehnungsursachen dieser Fläche" (F-0120/K-27, `CaptureFileImport.tsx:43-53`). Eine Ablehnung
+  // dieser Fläche, die anderswo landet, war genau die Lücke.
+  //
+  // `err` bleibt unberührt und trägt weiterhin alles andere (Speichern, Anhänge, KI-Wege).
+  const [fileImportMeldung, setFileImportMeldung] = useState<string | null>(null);
   // WP-D11 (Pedis Entscheid): Folien zusätzlich als Bilder übernehmen (Server-Konvertierung).
   // Der Toggle gilt für den NÄCHSTEN Import; der Fortschrittstext ist ehrlich (kein Fake-Prozent).
   const [slidesAsImages, setSlidesAsImages] = useState(false);
@@ -3845,6 +3862,9 @@ export function CaptureArbeitsraum({
     // es kein DOCX, darf keine Kennzeichnung des vorigen Laufs stehen bleiben (Lehre JOB 3239).
     merkeMehrdeutigeFussnoten([]);
     setErr(null);
+    // RUNDE 2: die Abweisung der VORIGEN Datei gehört nicht zu dieser. Geräumt wird beim Beginn,
+    // nicht beim Erfolg — sonst stünde nach einem gelungenen Import noch die alte Ablehnung an.
+    setFileImportMeldung(null);
     setFileName(f.name);
     setFileBusy(true);
     setNotice(t(CAPTURE_FILE_TEXT.extracting, { name: f.name }));
@@ -4019,7 +4039,7 @@ export function CaptureArbeitsraum({
       } else {
         setFileName(null);
         setNotice(null);
-        setErr(t(CAPTURE_FILE_TEXT.unsupported, { name: f.name }));
+        setFileImportMeldung(t(CAPTURE_FILE_TEXT.unsupported, { name: f.name }));
         return;
       }
       // WP-D9b/WP-D9c (bens GELB-Fix 2 + ROT-Fix): leerer Klartext allein lehnt nicht mehr ab — ein
@@ -4036,7 +4056,7 @@ export function CaptureArbeitsraum({
             : rich.kind === "pptx"
               ? CAPTURE_FILE_TEXT.emptyPptx
               : CAPTURE_FILE_TEXT.empty;
-        setErr(t(emptyKey, { name: f.name }));
+        setFileImportMeldung(t(emptyKey, { name: f.name }));
         return;
       }
       setFileText(text);
@@ -4063,7 +4083,11 @@ export function CaptureArbeitsraum({
             ? [{ key: CAPTURE_FILE_TEXT.importNotePdf }]
             : rich.kind === "pptx"
               ? [{ key: CAPTURE_FILE_TEXT.importNotePptx }]
-              : [];
+              : // JOB 4203 D3: der Text-/Markdown-Zweig hatte als EINZIGER keine Quittung — ein
+                // Mensch, der eine .md wählte, las nach dem Einlesen gar keine Grenze. Derselbe
+                // Satz steht danach im persistierten Quelle-Blockquote (`noteText`), damit Fläche
+                // und Entwurf dasselbe sagen.
+                [{ key: CAPTURE_FILE_TEXT.importNoteText }];
       // WP-D3/WP-D5: bei Seiten-/Folien-Cap ehrlich anhängen, wie viele Seiten/Folien importiert wurden.
       const truncatedNotes: Textbaustein[] =
         pdfTruncatedPages !== null
@@ -4121,11 +4145,11 @@ export function CaptureArbeitsraum({
       // JOB 2700 D1: zu gross (Kante) und zu lange (Frist) sind eigene, ehrliche Meldungen.
       const pdfText = pdfFehlerText(error, f.name);
       if (pdfText !== null) {
-        setErr(pdfText);
+        setFileImportMeldung(pdfText);
       } else if (error instanceof PptxTooLargeError) {
-        setErr(t(CAPTURE_FILE_TEXT.pptxTooLarge, { name: f.name }));
+        setFileImportMeldung(t(CAPTURE_FILE_TEXT.pptxTooLarge, { name: f.name }));
       } else {
-        setErr(
+        setFileImportMeldung(
           honestParseErrorText(
             error,
             t(STALE_BUNDLE_KEY),
@@ -5428,7 +5452,12 @@ export function CaptureArbeitsraum({
                     inline und nur per Quelltext-Pin prüfbar. Ehrlichkeit unverändert: nur aktive Kacheln
                     öffnen den bestehenden Import typgerecht; kein neuer Egress. onExtractFile bleibt der
                     reale Extraktions-Pfad des Erfassens. */}
-                  <CaptureFileImport onExtractFile={(e) => void onExtractFile(e)} />
+                  {/* RUNDE 2: die Abweisungen des Import-Wegs reisen in DIE eine Live-Region der
+                    Dateiauswahl (Begründung bei `fileImportMeldung`, oben). */}
+                  <CaptureFileImport
+                    onExtractFile={(e) => void onExtractFile(e)}
+                    importMeldung={fileImportMeldung}
+                  />
                   <div className="flex flex-wrap items-center gap-2">
                     <Button
                       variant="ghost"

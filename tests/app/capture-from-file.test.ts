@@ -198,8 +198,16 @@ describe("KW-W2-01: Ganzdokument-Import als bewusster Entwurf", () => {
     // AUFTRAG-uxpol3 (bens Restfund 4.1): der versteckte Datei-Input + onChange leben jetzt in der
     // Produktionskomponente CaptureFileImport; die Reihenfolge-Invariante (Importart-Toggle VOR dem
     // Datei-Picker) prüft weiter denselben Fluss über deren Render-Marker in Capture.tsx.
+    // JOB 4203 D3 · RUNDE 2 — NACHGEFÜHRT, UND ZWAR STRENGER. Der Pin stand auf der exakten
+    // einzeiligen Form `<CaptureFileImport onExtractFile={…} />`. Sie ist nicht mehr die ganze
+    // Wahrheit: die Abweisungen des Import-Wegs reisen seit dieser Scheibe über `importMeldung` in
+    // die Live-Region der Dateiauswahl (Begründung in `CaptureFileImport.tsx` am Prop). Der Pin
+    // verlangt ab jetzt BEIDE Eigenschaften — die Reihenfolge-Invariante bleibt unverändert.
     expect(captureSource.indexOf("CAPTURE_FILE_TEXT.importModeLabel")).toBeLessThan(
-      captureSource.indexOf("<CaptureFileImport onExtractFile={(e) => void onExtractFile(e)} />"),
+      captureSource.indexOf("<CaptureFileImport"),
+    );
+    expect(captureSource).toMatch(
+      /<CaptureFileImport\s+onExtractFile=\{\(e\) => void onExtractFile\(e\)\}\s+importMeldung=\{fileImportMeldung\}\s*\/>/,
     );
     expect(captureSource).not.toContain(
       "fileWholeDraft = useMutation({\n    mutationFn: () => endpoints.ko.create",

@@ -213,6 +213,9 @@ const INVENTAR: readonly Zeile[] = [
   ["importNoteDocx", "NICHT_ERREICHBAR", "Braucht DOCX-Einlesen; keine DOCX-Fixture."],
   ["importNotePdf", "NICHT_ERREICHBAR", "Braucht PDF-Einlesen; keine PDF-Fixture."],
   ["importNotePptx", "NICHT_ERREICHBAR", "Braucht PPTX-Einlesen; keine PPTX-Fixture."],
+  // JOB 4203 D3: die vierte Import-Quittung. Anders als ihre drei Geschwister ist sie hier ERREICHBAR
+  // — der Text-/Markdown-Zweig liest genau die TXT, die diese Bühne ohnehin einliest.
+  ["importNoteText", "FOLGT", "Echte TXT eingelesen; Quittung des Text-/Markdown-Zweigs."],
   ["parseError", "EINGEFROREN", "readTextFile wirft definierten Lesefehler."],
   [
     "unsupported",
@@ -358,6 +361,9 @@ async function ausloesen(key: Key): Promise<void> {
       });
       return;
     case "loadedStats":
+    // JOB 4203 D3: dieselbe Auslösung — die Format-Quittung des Text-Zweigs steht in DERSELBEN
+    // Meldung wie die Umfangsangabe und wird wie sie beim Rendern gebildet (folgt der Sprache).
+    case "importNoteText":
       await dateiEinlesen(PARAMS.name);
       return;
     case "loadedStatsWhole":
@@ -526,9 +532,13 @@ describe("JOB 3379 · vollständiges Meldungsinventar aus CAPTURE_FILE_TEXT", ()
         sourceKind: "text",
       }),
     );
-    expect(gespeichert).toContain(
-      "<blockquote><p>Quelle: SPRACHE.txt, gesamtes Dokument</p></blockquote>",
-    );
+    // JOB 4203 D3 — NACHGEFÜHRT, UND ZWAR STRENGER. Bis hierher endete der Blockquote des
+    // TEXT-Imports unmittelbar nach der Herkunft; diese Zeile hat damit die FEHLENDE Verlustquittung
+    // festgeschrieben (`captureFromFile.ts` kannte `noteDocx`/`notePdf`/`notePptx`, kein `noteText`).
+    // Sie verlangt jetzt beides: die Herkunft UND den Verlusthinweis — genau wie die drei anderen
+    // Arten sieben Zeilen weiter unten (`"gesamtes Dokument</p><p>"`).
+    expect(gespeichert).toContain("<blockquote><p>Quelle: SPRACHE.txt, gesamtes Dokument</p><p>");
+    expect(gespeichert).toContain("</p></blockquote>");
     // SOURCE_LABELS (captureFromFile.ts, localeKey + wholeDocumentBodyHtml) wählt die beim
     // Speichern angegebene Sprache. Der Body ist Inhalt und darf nicht zu UI-Copy werden.
     // Auch die Verlusthinweise sind gespeicherter Inhalt: Serializer separat, keine echten

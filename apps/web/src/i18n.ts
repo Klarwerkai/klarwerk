@@ -1971,6 +1971,10 @@ const de = {
     "Best-Effort-Textimport — Layout und Bilder wurden nicht übernommen.",
   "capture.file.importNote.pptx":
     "Best-Effort-Import aus PowerPoint — Text, Listen, Tabellen und Bilder je Folie übernommen; Layout, Animationen, Übergänge und Sprechernotizen gehen verloren.",
+  // JOB 4203 D3: die vierte Import-Quittung. Sie spiegelt `noteText` aus SOURCE_LABELS
+  // (`lib/captureFromFile.ts`) — Fläche und persistierte Quittung sagen denselben Satz.
+  "capture.file.importNote.text":
+    "Best-Effort-Textimport — Überschriften, Aufzählungen und einfache Tabellen übernommen; Auszeichnungen (fett, kursiv, Code), Verweise und Bilder bleiben als Zeichen stehen. Überschriften und Aufzählungen brauchen eine Leerzeile darüber, sonst bleiben sie Fließtext.",
   "capture.file.parseError": "„{{name}}“ konnte nicht gelesen werden.",
   "capture.file.unsupported":
     "„{{name}}“ wird hier nicht unterstützt — bitte als TXT/MD, DOCX, PDF oder PPTX bereitstellen. Bilder gehen nur über OCR.",
@@ -8627,6 +8631,8 @@ const en: typeof de = {
     "Best-effort text import — layout and images were not carried over.",
   "capture.file.importNote.pptx":
     "Best-effort import from PowerPoint — text, lists, tables and images per slide carried over; layout, animations, transitions and speaker notes are lost.",
+  "capture.file.importNote.text":
+    "Best-effort text import — headings, bullet lists and simple tables carried over; formatting (bold, italics, code), links and images remain as plain characters. Headings and bullet lists need a blank line above them, otherwise they stay running text.",
   "capture.file.parseError": "“{{name}}” could not be read.",
   "capture.file.unsupported":
     "“{{name}}” is not supported here — please provide TXT/MD, DOCX, PDF, or PPTX. Images only work via OCR.",
@@ -14110,6 +14116,8 @@ const nl: typeof de = {
     "Best-effort tekstimport — layout en afbeeldingen zijn niet overgenomen.",
   "capture.file.importNote.pptx":
     "Best-effort import uit PowerPoint — tekst, lijsten, tabellen en afbeeldingen per dia overgenomen; layout, animaties, overgangen en notities gaan verloren.",
+  "capture.file.importNote.text":
+    "Best-effort tekstimport — koppen, opsommingen en eenvoudige tabellen overgenomen; opmaak (vet, cursief, code), verwijzingen en afbeeldingen blijven als tekens staan. Koppen en opsommingen hebben een lege regel erboven nodig, anders blijven ze lopende tekst.",
   "capture.file.parseError": "„{{name}}“ kon niet worden gelezen.",
   "capture.file.unsupported":
     "„{{name}}“ wordt hier niet ondersteund — lever het aan als TXT/MD, DOCX, PDF of PPTX. Afbeeldingen gaan alleen via OCR.",

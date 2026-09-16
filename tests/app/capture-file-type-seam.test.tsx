@@ -204,6 +204,12 @@ describe("uxpol3: Capture-Dateityp-Seam (echte Produktionskomponente gemountet)"
     // Reiner Zusatz zum gemounteten Verhaltensbeweis oben — belegt, dass die getestete Komponente auch
     // wirklich in die Seite eingehängt ist (nicht der alleinige Nachweis).
     const src = readFileSync(resolve(process.cwd(), "apps/web/src/pages/Capture.tsx"), "utf8");
-    expect(src).toContain("<CaptureFileImport onExtractFile={(e) => void onExtractFile(e)} />");
+    // JOB 4203 D3 · RUNDE 2 — NACHGEFÜHRT, UND ZWAR STRENGER. Der Pin stand auf der einzeiligen
+    // Form mit genau EINER Eigenschaft. Seit dieser Scheibe reicht Capture zusätzlich
+    // `importMeldung` durch — der Weg, auf dem eine abgewiesene Datei überhaupt erst ANGESAGT wird
+    // (Befund BEN: „Abweisung fehlt in allen Live-Regionen"). Gepinnt sind jetzt BEIDE.
+    expect(src).toMatch(
+      /<CaptureFileImport\s+onExtractFile=\{\(e\) => void onExtractFile\(e\)\}\s+importMeldung=\{fileImportMeldung\}\s*\/>/,
+    );
   });
 });

@@ -100,7 +100,35 @@ export async function extractPdfDocument(
 ): Promise<PdfDocumentText> {
   const maxPages = opts.maxPages ?? MAX_PDF_PAGES;
   const timeoutMs = opts.timeoutMs ?? PDF_PARSE_TIMEOUT_MS;
-  const task = engine.getDocument({ data: new Uint8Array(buffer) });
+  // ================================================================================================
+  // JOB 4203 D3 — DIE ENGINE BEKOMMT EINE EIGENE KOPIE, UND ZWAR AUS EINEM GEMESSENEN GRUND.
+  // ================================================================================================
+  //
+  // Hier stand `new Uint8Array(buffer)` — eine SICHT auf den Puffer des Aufrufers. pdfjs schickt
+  // diese Daten an seinen Worker und ÜBERTRÄGT den zugrunde liegenden `ArrayBuffer` dabei; danach
+  // ist der Puffer des Aufrufers DETACHED (`byteLength === 0`, jeder weitere Zugriff wirft
+  // `TypeError: Cannot perform Construct on a detached ArrayBuffer`).
+  //
+  // WAS DAS GEKOSTET HAT: `readPdfFileWithOriginal` (`lib/files.ts:338-344`) liest aus GENAU diesem
+  // Puffer anschliessend das Original für den Anhang — das ist der ausdrückliche Zweck jener
+  // Funktion seit JOB 2700 D1 („liest EINMAL und liefert beides aus demselben Puffer"). Auf dem
+  // detachten Puffer scheiterte das, und der Fehler landete als generischer Lesefehler
+  // (`capture.file.parseError`) beim Menschen: „«…» konnte nicht gelesen werden." Der PDF-Import
+  // brach damit im gebauten Bündel ab — gemessen in Chromium am 16.09.2026, Cloud-Lauf
+  // `dc624ada6dbfabda8816377a`, Abbruch nach 303 ms.
+  //
+  // WARUM ES NIE AUFFIEL: jeder Bestandstest gibt eine STUB-Engine herein, und ein Stub überträgt
+  // nichts. In Node fährt auch die echte pdfjs-Engine ihren eingebauten Ersatz-Worker — ebenfalls
+  // ohne Transfer. Der Defekt existiert AUSSCHLIESSLICH dort, wo ein echter Worker läuft: im
+  // Browser, also genau dort, wo Menschen arbeiten. `tests/d3-dateien-durchgaengig/
+  // pdf-puffer-bleibt.test.ts` stellt den Transfer jetzt nach und hält die Zusage fest.
+  //
+  // DIE KOPIE IST DER PREIS UND ER IST BEZIFFERT: einmal die Dateigrösse, und die ist durch die
+  // Kante des Aufrufers gedeckelt (`maxBytes`, `files.ts:306`) — dieselbe Grenze, die ohnehin für
+  // den Original-Anhang gilt. Dafür gehört der Puffer des Aufrufers nach dem Parsen weiterhin ihm.
+  const daten = new Uint8Array(buffer.byteLength);
+  daten.set(new Uint8Array(buffer));
+  const task = engine.getDocument({ data: daten });
   let doc: PdfDocumentProxy | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const frist = new Promise<never>((_, reject) => {

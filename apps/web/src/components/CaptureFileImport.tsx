@@ -32,9 +32,26 @@ export interface CaptureFileImportProps {
   // Der ECHTE Extraktions-Pfad des Erfassens (Capture.onExtractFile). Wird ausgelöst, wenn der
   // bestehende versteckte <input> eine Datei liefert (onChange) — die Kacheln klicken nur diesen Input.
   onExtractFile: (e: ChangeEvent<HTMLInputElement>) => void;
+  /**
+   * JOB 4203 D3 · RUNDE 2 — DIE ABLEHNUNG DES IMPORT-WEGS, DIE HIERHER GEHÖRT.
+   *
+   * BEFUND (Prüfer BEN, am gebauten Produkt): eine über die sichtbare Dateiauswahl abgewiesene
+   * Datei meldete sich in KEINER Live-Region. Die Meldung lief über `Capture.setErr` und wurde als
+   * gewöhnliches `<div>` gezeichnet — sichtbar, aber nicht angesagt.
+   *
+   * Der Weg dorthin ist dieser Prop, und er ist KEIN zweiter Träger: die Region unten trägt seit
+   * F-0120/K-27 ausdrücklich „ALLE Ablehnungsursachen dieser Fläche". Die Ablehnung einer über
+   * `onExtractFile` gewählten Datei IST eine davon; sie hat nur bis hierher den Weg nicht gefunden.
+   *
+   * `null` = keine Ablehnung aus dem Import-Weg.
+   */
+  importMeldung?: string | null;
 }
 
-export function CaptureFileImport({ onExtractFile }: CaptureFileImportProps): JSX.Element {
+export function CaptureFileImport({
+  onExtractFile,
+  importMeldung = null,
+}: CaptureFileImportProps): JSX.Element {
   const { t } = useTranslation();
   // Referenz auf den BESTEHENDEN Datei-Dialog des „Aus Datei"-Imports. Eine aktive Kachel öffnet ihn
   // typgerecht (openCaptureFileDialog); bald/geplant lösen ihn nie aus. Kein neuer Upload-Pfad.
@@ -90,7 +107,13 @@ export function CaptureFileImport({ onExtractFile }: CaptureFileImportProps): JS
         type="file"
         accept={FILE_IMPORT_ACCEPT}
         className="hidden"
-        onChange={onExtractFile}
+        // RUNDE 2: eine neue Dateiwahl räumt die EIGENE Meldung dieser Fläche — damit die
+        // Ablehnung des Import-Wegs (`importMeldung`) die jüngste Ursache ist und gewinnt.
+        // Dieselbe Reihenfolge wie in `handleDrop` (:70), nur für den Dialogweg.
+        onChange={(e) => {
+          setMeldung(null);
+          onExtractFile(e);
+        }}
       />
       {/* AUFTRAG-mega14 Block E (SCRUM-421): die geltenden Grenzen AN der Auswahlstelle,
           aus derselben Quelle, die der Server erzwingt. */}
@@ -173,12 +196,17 @@ export function CaptureFileImport({ onExtractFile }: CaptureFileImportProps): JS
           208 gehoben — gemessen. Alle Live-Regionen dieses Hauses tragen deshalb eine feste
           Klasse (`MobileNavDrawer.tsx:117`, `LoadState.tsx:34`, `FileTypePicker.tsx:216`), und
           diese hier auch. Ohne Inhalt ist das Element leer und nimmt keine Höhe ein. */}
+      {/* RUNDE 2: DIE JÜNGSTE URSACHE GEWINNT, und das ist hier keine Formel, sondern die
+          Reihenfolge der Handgriffe. Eine neue Dateiwahl räumt `meldung` (oben, `onChange` und
+          `handleDrop`); was danach kommt, ist die Antwort des Import-Wegs (`importMeldung`). Eine
+          Kachel-Ablehnung oder ein Drop danach setzt `meldung` neu und steht wieder vorn. */}
       <output
+        data-testid="capture-datei-meldung"
         aria-live="polite"
         aria-atomic="true"
         className="block text-[12px] text-trust-crit-text"
       >
-        {meldung ?? ""}
+        {meldung ?? importMeldung ?? ""}
       </output>
       <FileTypePicker
         sources={fileSourcesForSurface("capture")}

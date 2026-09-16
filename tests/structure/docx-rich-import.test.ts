@@ -92,7 +92,22 @@ describe("WP-D1/WP-D4: Ganzdokument-Entwurf mit DOCX-HTML durch den Server-Sanit
     expect(persisted).toContain("Struktur und Bilder übernommen (Best-Effort)");
   });
 
-  it("PDF-Quelle trägt den ehrlichen Nur-Text-Hinweis; reine Textquellen keinen", () => {
+  // ================================================================================================
+  // JOB 4203 D3 — DIESE ZEILE HAT EINEN DEFEKT FESTGESCHRIEBEN, UND ZWAR DREI MONATE LANG.
+  // ================================================================================================
+  // Der Fallname endete auf „reine Textquellen keinen" und die Zusicherung lautete
+  // `expect(plain).not.toContain("Best-Effort")`. Sie war genau eine Gewohnheit: `SOURCE_LABELS`
+  // kannte `noteDocx`, `notePdf` und `notePptx` — und für die vierte Art (`"text"`, also jede .md)
+  // setzte `wholeDocumentBodyHtml` `""`. Der Test hat diesen Zustand nicht geprüft, sondern
+  // VERTEIDIGT: er wäre rot geworden, sobald jemand den fehlenden Satz nachtrüge.
+  //
+  // Dabei sagt der Dateikopf des Produkts das Gegenteil (`captureFromFile.ts:255-256`): der Hinweis
+  // gehört in den persistierten Quelle-Blockquote, „damit der Entwurf NIE wie eine verlustfreie
+  // Übernahme aussieht". Für Markdown galt bis hierher das Gegenteil dieser Zusage.
+  //
+  // Die Zusicherung wird deshalb nicht gelockert, sondern UMGEDREHT: auch die Textquelle trägt
+  // jetzt ihren Satz, und er muss benennen, was die Heuristik nicht übernimmt.
+  it("PDF- UND Textquelle tragen je ihren ehrlichen Hinweis (JOB 4203: der Text-Satz kam dazu)", () => {
     const pdfDe = wholeDocumentBodyHtml({
       fileName: "anleitung.pdf",
       text: "Inhalt aus dem PDF.",
@@ -113,7 +128,10 @@ describe("WP-D1/WP-D4: Ganzdokument-Entwurf mit DOCX-HTML durch den Server-Sanit
       sourceKind: "text",
       locale: "de",
     });
-    expect(plain).not.toContain("Best-Effort");
+    expect(plain).toContain("Best-Effort-Textimport — Überschriften, Aufzählungen");
+    // Und er benennt die Grenze, statt nur irgendetwas zu sagen.
+    expect(plain).toMatch(/Auszeichnungen/);
+    expect(plain).toMatch(/Bilder bleiben als Zeichen stehen/);
     expect(plain).toContain("<h2>Titel</h2>"); // Markdown-Heuristik für txt/md unverändert
   });
 });
