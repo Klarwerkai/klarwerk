@@ -65,6 +65,33 @@
 // geklickt wird über `element.click()`, denselben Weg, auf dem auch die Palette aufgeht. Auf dieser
 // Fläche hängt nichts an Zeigerereignissen. Steht als REST in der Rückgabe.
 //
+// JOB 4225 — DER MESSZEITPUNKT: WANN DARF MAN EINEN TABSTOPP ÜBERHAUPT MESSEN?
+// Der Fall B4 war bei GLEICHEM Quelltext einmal rot und dreimal grün (`jobs/4151/runde-4/tor.out:1071`
+// gegen `jobs/4151/runde-5/RUECKGABE.md:26/40`, vier Läufe über denselben Baum `tree fd5e71e09550…`).
+// Der rote Lauf meldete wörtlich: „Tabstopp „Eigene KI-Anweisung" bleibt nach dem Fokussieren
+// weggeschnitten — ["MAIN.flex-1 overflow-y-auto px-4 py-5 senkrecht 26px (rollbar)"]". Zwei Ursachen
+// waren möglich, und sie sind NICHT dasselbe:
+//   (a) ein wirklich weggeschnittener Tabstopp — ein Produktfehler, oder
+//   (b) eine zu früh genommene Messung — ein Prüffehler.
+// Bis hierher stand an `fokusLage` der SATZ OHNE BELEG: „Der Browser hat beim Fokussieren schon
+// gerollt, was er rollen kann." Zwischen `keyboard.press("Tab")` und `evaluate(FOKUS)` lag kein
+// einziger Wartepunkt, der das Ende des browsereigenen Heranrollens nachgewiesen hätte.
+// WAS SICH ÄNDERT: gemessen wird ab jetzt ein PAAR (`fokusPaar`) — dieselbe Bedienung, zweimal
+// befragt: SOFORT nach dem Tastendruck und noch einmal, nachdem das Rollen NACHGEWIESEN steht
+// (`STILLSTAND`: die Rollstände aller wegschneidenden Vorfahren UND das Rechteck des fokussierten
+// Knotens über aufeinanderfolgende `requestAnimationFrame`-Takte unverändert). Damit sagt JEDER Lauf
+// selbst, welche der beiden Ursachen vorlag — er vergleicht sie nebeneinander, statt sie zu raten.
+// WAS SICH NICHT ÄNDERT: die Zusage. `fokusLage` bleibt Zeichen für Zeichen so hart wie vorher; was
+// nach dem Stillstand noch weggeschnitten ist, ist rot (K4 belegt es weiterhin). Verändert ist der
+// ZEITPUNKT, nicht die Härte — und kein fester `sleep` steht irgendwo, denn der verschöbe das Rennen
+// nur. Die Frist über dem Warten ist VERBINDLICH: ein ruhiges Bild NACH Fristablauf ist kein
+// Stillstand, sondern ein roter Deckelfehler (K7/K9, Korrekturpflicht 1 aus JOB 4202 R1).
+// UND DIE URSACHE DES HISTORISCHEN ROTLAUFS BLEIBT EINE HYPOTHESE. Diese Datei behauptet NICHT, der
+// Lauf vom 15.09. sei ein Messrennen gewesen — sie kann es nicht wissen, der Lauf ist vorbei.
+// Belegt ist allein, was K6 in dieser Datei fährt: bei nachweislich verzögertem Heranrollen ist
+// DIESELBE Bedienung sofort rot und nach dem Stillstand grün, ohne dass dazwischen eine Geometrie
+// repariert wurde (Korrekturpflicht 3 aus JOB 4202 R1).
+//
 // FÄLLE
 // B1  Maus, 390 px: Palette offen, kein waagerechter Überlauf; jedes Stück senkrecht ERREICHBAR.
 // B2  der lange Name und die lange Anweisung: LAGE und TEXT, waagerecht UND senkrecht (JOB 3266 R2).
@@ -87,6 +114,15 @@
 //     RUNDE 2 grün geblieben ist (Korrekturpflicht 1).
 // K5  KALIBRIERUNG von B6: der doppelte Absatz in der laufenden Seite zurückgeholt → B6 MUSS wieder
 //     rot werden, und die Doppelung selbst MUSS auffallen (JOB 3769).
+// K6  KALIBRIERUNG DES MESSZEITPUNKTS, positiv UND negativ (JOB 4225): das Heranrollen wird in der
+//     laufenden Seite VERZÖGERT (`scroll-behavior: smooth`) → DIESELBE Bedienung MUSS sofort rot und
+//     nach dem Stillstand grün sein, ohne zwischenzeitliche Geometriereparatur.
+// K7  KALIBRIERUNG DES ZEITDECKELS (JOB 4225): verspätete und ganz ausbleibende Bilder MÜSSEN einen
+//     roten Deckelfehler mit Verlauf ergeben — nie stillen Erfolg.
+// K8  KALIBRIERUNG DER DIAGNOSE (JOB 4225): bei dauerhaft beschnittenem Tabstopp MÜSSEN beide
+//     Fokusmessungen samt Lage und beiden Rollständen im Fehlertext stehen.
+// K9  KALIBRIERUNG DER FRISTREIHENFOLGE bei BLOCKIERTEM Ereignisloop (JOB 4225): ein ruhiges Bild,
+//     das erst NACH Fristablauf geliefert wird, MUSS rot bleiben — auch ohne Zeitgeber.
 // P   die Seite hat während aller Messungen nichts geworfen.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -460,6 +496,138 @@ interface Fokus {
   fort: string[];
   ring: string;
 }
+
+// ================================================================================================
+// JOB 4225 · DAS NACHGEWIESENE ENDE DES HERANROLLENS — und eine VERBINDLICHE Frist darüber.
+// ================================================================================================
+//
+// Gewartet wird auf eine gemessene Tatsache, nicht auf eine Zahl: die Rollstände (`scrollTop`/
+// `scrollLeft`) ALLER wegschneidenden Vorfahren des fokussierten Knotens UND sein eigenes Rechteck
+// werden über aufeinanderfolgende `requestAnimationFrame`-Takte gelesen und müssen über mehrere
+// Takte in Folge unverändert sein. Das Rechteck steht mit im Stand, weil sich die Palette nach dem
+// Öffnen auch ohne Rollen noch setzt (`Menue.tsx` rechnet den senkrechten Ausgleich nach, gemessen in
+// `ruheAbwarten`): ein Stillstand, der nur die Rollstände ansieht, hielte eine wandernde Fläche für
+// ruhig.
+//
+// WAS HIER AUSDRÜCKLICH NICHT STEHT: kein `sleep`, kein `waitForTimeout`, keine feste Zahl von
+// Takten ohne Stillstandsprüfung, und keine Vergrösserung der erlaubten Restbeschneidung. Ein festes
+// Warten verschöbe das Rennen nur; eine gelockerte Prüfung nähme die Zusage zurück (K4).
+//
+// DIE FRIST STEHT VOR DEM ERFOLG — und das ist die Korrekturpflicht 1 des Prüfers an JOB 4202 R1,
+// wörtlich: „Nach Fristablauf darf auch ein ruhiger Frame keinen Erfolg liefern." Er hat dort einen
+// nach 5.142 ms gelieferten ruhigen Frame bei 5.000 ms Grenze als `"still":true` zurückbekommen.
+// Deshalb steht die Fristprüfung in `takt` VOR der Auswertung von `gleich` — ein spätes Bild kann
+// keinen Stillstand mehr melden (K9 fährt genau das mit blockiertem Ereignisloop nach).
+// UND EIN EIGENER ZEITGEBER FÄNGT DIE BILDER, DIE GAR NICHT KOMMEN: bleibt `requestAnimationFrame`
+// ganz aus, meldet `takt` nie etwas — dann läuft die Messung ohne diesen `setTimeout` bis in die
+// Zeitgrenze des Falls und stürbe stumm. Gerissene Frist ist ein ROTES Ergebnis mit dem gemessenen
+// Verlauf, nie stilles Weitermessen (K7).
+const STILLSTAND = `(arg) => {
+  const rd = (z) => Math.round(z * 10) / 10;
+  const a = document.activeElement;
+  const flaechen = [];
+  for (let p = a ? a.parentElement : null; p; p = p.parentElement) {
+    const s = getComputedStyle(p);
+    if (s.overflowX !== 'visible' || s.overflowY !== 'visible') { flaechen.push(p); }
+  }
+  const wurzel = document.scrollingElement || document.documentElement;
+  if (wurzel && flaechen.indexOf(wurzel) < 0) { flaechen.push(wurzel); }
+  const marke = (p) => p.getAttribute('data-testid') || (p.tagName + '.' + String(p.className || '').slice(0, 40));
+  const lage = (p) => {
+    const k = p.getBoundingClientRect();
+    return {
+      marke: marke(p), oben: rd(p.scrollTop), links: rd(p.scrollLeft),
+      sicht: p.clientHeight, inhalt: p.scrollHeight,
+      kasten: rd(k.top) + '/' + rd(k.left) + '/' + rd(k.width) + '/' + rd(k.height),
+    };
+  };
+  const rechteck = () => {
+    if (!a) { return 'kein Fokus'; }
+    const b = a.getBoundingClientRect();
+    return rd(b.top) + '/' + rd(b.left) + '/' + rd(b.width) + '/' + rd(b.height);
+  };
+  const stand = () => flaechen.map((p) => rd(p.scrollTop) + '/' + rd(p.scrollLeft)).join(' · ') + ' # ' + rechteck();
+  const anfang = flaechen.map(lage);
+  const t0 = performance.now();
+  return new Promise((fertig) => {
+    let vorher = stand();
+    const verlauf = [vorher];
+    let gleich = 0;
+    let takte = 0;
+    let bewegungen = 0;
+    let beendet = false;
+    const schluss = (still, grund) => {
+      if (beendet) { return; }
+      beendet = true;
+      clearTimeout(wecker);
+      fertig({
+        still: still, grund: grund, takte: takte, bewegungen: bewegungen,
+        ms: rd(performance.now() - t0), grenze: arg.grenze,
+        anfang: anfang, ende: flaechen.map(lage), verlauf: verlauf.slice(-12),
+      });
+    };
+    const wecker = setTimeout(() => {
+      schluss(false, 'Frist gerissen (Zeitgeber, kein ruhiges Bild): ' + rd(performance.now() - t0) + ' ms von ' + arg.grenze + ' ms, ' + takte + ' Bilder von hoechstens ' + arg.hoechstens);
+    }, arg.grenze + 1);
+    const takt = () => {
+      if (beendet) { return; }
+      const ms = performance.now() - t0;
+      if (ms > arg.grenze || takte >= arg.hoechstens) {
+        schluss(false, 'Frist gerissen: ' + rd(ms) + ' ms von ' + arg.grenze + ' ms, ' + takte + ' Bilder von hoechstens ' + arg.hoechstens);
+        return;
+      }
+      takte = takte + 1;
+      const jetzt = stand();
+      verlauf.push(jetzt);
+      if (jetzt === vorher) { gleich = gleich + 1; } else { gleich = 0; bewegungen = bewegungen + 1; }
+      vorher = jetzt;
+      if (gleich >= arg.ruhig) { schluss(true, 'still nach ' + takte + ' Bildern'); return; }
+      requestAnimationFrame(takt);
+    };
+    requestAnimationFrame(takt);
+  });
+}`;
+
+/** Der Rollstand EINER wegschneidenden Fläche — und wie gross sie dabei war. */
+interface Rollstand {
+  marke: string;
+  oben: number;
+  links: number;
+  /** `clientHeight` — steht hier, damit „nur gerollt" von „umgebaut" zu unterscheiden ist (K6). */
+  sicht: number;
+  inhalt: number;
+  /** Ihr eigenes Rechteck (`oben/links/breite/hoehe`) — eine verschobene Fläche wäre ein Umbau. */
+  kasten: string;
+}
+
+/** Was das Warten auf das Ende des Heranrollens selbst gemessen hat. */
+interface Stillstand {
+  /** Nur `true`, wenn der Stand INNERHALB der Frist über mehrere Takte unverändert war. */
+  still: boolean;
+  grund: string;
+  takte: number;
+  /** Wie oft sich der Stand zwischen zwei Takten geändert hat — 0 heisst: es wurde nie gerollt. */
+  bewegungen: number;
+  ms: number;
+  grenze: number;
+  anfang: Rollstand[];
+  ende: Rollstand[];
+  verlauf: string[];
+}
+
+/** Dieselbe Bedienung, zweimal befragt: sofort und nach nachgewiesenem Stillstand (JOB 4225). */
+interface FokusPaar {
+  sofort: Fokus | null;
+  danach: Fokus | null;
+  still: Stillstand;
+}
+
+/** Die Frist über dem Warten. Gerissen heisst ROT, nicht „dann eben messen". */
+const DECKEL_MS = 5_000;
+/** Obergrenze in Bildern — die zweite Reissleine, falls die Uhr der Seite stillsteht. */
+const HOECHSTENS_BILDER = 300;
+/** So viele Takte in Folge muss der Stand unverändert sein, bevor er als still gilt. */
+const RUHIG_TAKTE = 3;
 
 let b: Buehne | null = null;
 /** Jeder ausgehende `POST /api/reasoner` — Rumpf im Wortlaut, nicht das Aussehen der Fläche. */
@@ -933,7 +1101,10 @@ function ohneRollenImFenster(st: Stueck | null, was: string, m: Masse, lage: str
 function fokusLage(f: Fokus, wer: string, fenster: number): void {
   expect(f.links, `${wer} beginnt bei x=${f.links}`).toBeGreaterThanOrEqual(0);
   expect(f.rechts, `${wer} endet bei x=${f.rechts} von ${fenster}`).toBeLessThanOrEqual(fenster);
-  // Der Browser hat beim Fokussieren schon gerollt, was er rollen kann. Was JETZT noch weggeschnitten
+  // JOB 4225: hier stand bis heute „Der Browser hat beim Fokussieren schon gerollt, was er rollen
+  // kann" — ein Satz ohne Beleg, und zwischen Tastendruck und Messung lag kein Wartepunkt, der ihn
+  // gehalten hätte. Belegt ist er jetzt, weil der Aufrufer ihn HERSTELLT: `fokusPaarLage` misst erst,
+  // nachdem der Stillstand des Rollens nachgewiesen ist (`STILLSTAND`). Was DANN noch weggeschnitten
   // ist, bleibt es für den Nutzer — ob der Rand rollbar heisst, ändert daran nichts (Runde 3).
   expect(
     f.fort,
@@ -952,7 +1123,84 @@ function fokusLage(f: Fokus, wer: string, fenster: number): void {
   }
 }
 
-/** Tab drücken, bis `pruefung` im Browser wahr ist. Jeder Zwischenhalt wird auf seine Lage geprüft. */
+/**
+ * JOB 4225 — DAS MESSPAAR: dieselbe Bedienung, sofort und nach nachgewiesenem Stillstand befragt.
+ *
+ * Es gibt ab hier keinen zweiten, regulären Messweg daneben: jede Stelle, die nach einem
+ * Fokuswechsel misst, nimmt dieses Paar (die Tab-Schleife unten UND K4). Der SOFORT-Wert wird nicht
+ * geprüft — er ist der Zeuge: er sagt, was ein zu früh messender Lauf gesehen HÄTTE. Erst beide
+ * Werte nebeneinander trennen den Produktfehler („auch danach weggeschnitten") vom Prüffehler
+ * („nur vorher weggeschnitten"), und genau diese Trennung war an B4 vier Läufe lang nicht zu haben.
+ */
+async function fokusPaar(grenze = DECKEL_MS): Promise<FokusPaar> {
+  const s = seite();
+  const sofort = await s.evaluate<Fokus | null>(fn(FOKUS));
+  const still = await s.evaluate<Stillstand>(fn(STILLSTAND), {
+    grenze,
+    hoechstens: HOECHSTENS_BILDER,
+    ruhig: RUHIG_TAKTE,
+  });
+  const danach = await s.evaluate<Fokus | null>(fn(FOKUS));
+  return { sofort, danach, still };
+}
+
+/** Die Markierung, an der K8 die Diagnose wiedererkennt — fehlt sie, ist K8 rot. */
+const DIAGNOSE = "DIAGNOSE (JOB 4225)";
+
+/**
+ * JOB 4225 — DIE DIAGNOSE WIRD VOR DEM ABBRUCH GESICHERT (Korrekturpflicht 2 aus JOB 4202 R1).
+ *
+ * Der Prüfer hat an Runde 1 gemessen, dass die Meldung im Fehlerfall gerade das verlor, wofür das
+ * Paar da ist: „B4m verliert jedoch gerade im Fehlerfall seine Diagnose … fehlender Sofortwert,
+ * fehlende Lagewerte und fehlende Rollstände". Deshalb hängt hier an JEDER roten Meldung beides:
+ * beide Fokusmessungen mit ihrer vollen Lage (`fort`, `oben`/`unten`, `links`/`rechts`) und der
+ * gemessene Verlauf des Rollens samt ANFÄNGLICHEN und ABSCHLIESSENDEN Ständen jeder Fläche.
+ */
+function diagnose(paar: FokusPaar): string {
+  return ` · ${DIAGNOSE} ${JSON.stringify({
+    sofort: paar.sofort,
+    danach: paar.danach,
+    still: paar.still,
+  })}`;
+}
+
+/**
+ * Die Lage eines Tabstopps, gemessen zum RICHTIGEN Zeitpunkt — die einzige Stelle, die das tut.
+ *
+ * Drei Ausgänge, und sie sind verschieden:
+ *   · Frist gerissen → ROT, mit dem gemessenen Verlauf. Nie „dann messe ich eben trotzdem".
+ *   · Stillstand erreicht, Lage gut → grün.
+ *   · Stillstand erreicht, Lage schlecht → ROT, mit der vollen Diagnose (beide Messungen).
+ */
+function fokusPaarLage(paar: FokusPaar, wer: string, fenster: number): Fokus {
+  if (!paar.still.still) {
+    throw new Error(
+      `${wer}: das Heranrollen kam nicht zur Ruhe — ${paar.still.grund}${diagnose(paar)}`,
+    );
+  }
+  const f = paar.danach;
+  expect(
+    f,
+    `${wer}: nach dem Stillstand trägt nichts mehr den Fokus${diagnose(paar)}`,
+  ).not.toBeNull();
+  try {
+    fokusLage(f as Fokus, wer, fenster);
+  } catch (e) {
+    throw new Error(`${(e as Error).message}${diagnose(paar)}`);
+  }
+  return f as Fokus;
+}
+
+/**
+ * Tab drücken, bis `pruefung` im Browser wahr ist. Jeder Zwischenhalt wird auf seine Lage geprüft.
+ *
+ * JOB 4225 — UND JEDER LAUF SAGT SELBST, OB ZU FRÜH GEMESSEN WORDEN WÄRE. An jedem Tabstopp wird
+ * der Sofortwert mit dem Wert nach dem Stillstand verglichen; unterscheiden sie sich, steht das mit
+ * Zahlen im Protokoll, und am Ende steht die Summe. Das ist die Trennung, um die es in diesem
+ * Auftrag geht: „0 von n zu früh" heisst, dieser Lauf hätte auch ohne das Warten gehalten; jede
+ * Zahl darüber ist ein gefangenes Messrennen — dasselbe, das B4 am 15.09. rot gemacht haben KANN.
+ * Behauptet wird damit nichts über den damaligen Lauf, gezählt wird nur dieser hier.
+ */
 async function tabBis(
   pruefung: string,
   arg: unknown,
@@ -961,21 +1209,52 @@ async function tabBis(
   schritte = 40,
 ): Promise<Fokus> {
   const s = seite();
-  for (let i = 0; i < schritte; i++) {
-    await s.keyboard.press("Tab");
-    const f = await s.evaluate<Fokus | null>(fn(FOKUS));
-    if (f !== null) {
-      // Die Zusage aus §5 B3: der jeweils fokussierte Knoten liegt bei JEDEM Schritt im Fenster —
-      // seit Runde 2 auf BEIDEN Achsen. Senkrecht ist das keine Härte, sondern eine Selbstprüfung
-      // des Browsers: er rollt den fokussierten Knoten selbst heran. Bleibt er danach draussen,
-      // hält ihn ein Rand — dann ist der Tabstopp keiner.
-      fokusLage(f, `${lage}: Tabstopp „${f.marke || f.marke2 || f.text}"`, fenster);
+  let zuFrueh = 0;
+  let halte = 0;
+  // Die Bilanz steht am Ende JEDES Ausgangs — auch am roten. Gerade dort ist sie interessant.
+  const bilanz = (): void => {
+    console.info(
+      `JOB 4225 · ${lage} · ${halte} Tabstopps, davon ${zuFrueh} mit zu früher Sofortmessung`,
+    );
+  };
+  try {
+    for (let i = 0; i < schritte; i++) {
+      await s.keyboard.press("Tab");
+      // JOB 4225: HIER lag der Messfehler. Bis heute stand zwischen diesem Tastendruck und der
+      // Messung nichts — kein Wartepunkt, der das Ende des browsereigenen Heranrollens nachgewiesen
+      // hätte. Jetzt steht das Messpaar da, und es wartet auf eine gemessene Tatsache.
+      const paar = await fokusPaar();
+      const f = paar.danach;
+      if (f !== null) {
+        halte = halte + 1;
+        const vorher = JSON.stringify(paar.sofort?.fort ?? null);
+        if (vorher !== JSON.stringify(f.fort)) {
+          zuFrueh = zuFrueh + 1;
+          console.info(
+            `JOB 4225 · ${lage} · Tabstopp „${f.marke || f.marke2 || f.text}" SOFORT ${vorher} → ` +
+              `NACH STILLSTAND ${JSON.stringify(f.fort)} (${paar.still.bewegungen} Bewegungen, ` +
+              `${paar.still.takte} Bilder, ${paar.still.ms} ms)`,
+          );
+        }
+        // Die Zusage aus §5 B3: der jeweils fokussierte Knoten liegt bei JEDEM Schritt im Fenster —
+        // seit Runde 2 auf BEIDEN Achsen. Senkrecht ist das keine Härte, sondern eine Selbstprüfung
+        // des Browsers: er rollt den fokussierten Knoten selbst heran. Bleibt er danach draussen,
+        // hält ihn ein Rand — dann ist der Tabstopp keiner.
+        fokusPaarLage(paar, `${lage}: Tabstopp „${f.marke || f.marke2 || f.text}"`, fenster);
+      } else if (!paar.still.still) {
+        // Kein Fokus UND gerissene Frist: auch das ist ein roter Deckel und kein Grund weiterzutasten.
+        throw new Error(
+          `${lage}: das Heranrollen kam nicht zur Ruhe — ${paar.still.grund}${diagnose(paar)}`,
+        );
+      }
+      const treffer = await s.evaluate<boolean>(fn(pruefung), arg);
+      if (treffer) {
+        expect(f, `${lage}: der Treffer trägt keinen Fokus`).not.toBeNull();
+        return f as Fokus;
+      }
     }
-    const treffer = await s.evaluate<boolean>(fn(pruefung), arg);
-    if (treffer) {
-      expect(f, `${lage}: der Treffer trägt keinen Fokus`).not.toBeNull();
-      return f as Fokus;
-    }
+  } finally {
+    bilanz();
   }
   throw new Error(`${lage}: Tab erreicht das Ziel in ${schritte} Schritten nicht`);
 }
@@ -983,6 +1262,23 @@ async function tabBis(
 const AM_WERKZEUG = `() => { const a = document.activeElement; return !!a && a.getAttribute('data-testid') === 'blatt-werkzeug-ki'; }`;
 const AM_KNOPF_MIT_TEXT = `(t) => { const a = document.activeElement; return !!a && a.tagName === 'BUTTON' && (a.textContent || '').replace(/\\s+/g, ' ').trim() === t; }`;
 const AM_FREIEN_FELD = `() => { const a = document.activeElement; const p = document.querySelector('[data-testid="blatt-menue-ki"]'); return !!a && !!p && a.tagName === 'INPUT' && p.contains(a); }`;
+
+/**
+ * JOB 4225 — EIN STÜCK DER PALETTE WIRKLICH FOKUSSIEREN (`null` = das freie Feld, sonst der
+ * Vorlagenknopf mit diesem Namen). Gibt zurück, ob es den Fokus AUCH GENOMMEN hat: ein gesperrter
+ * Knopf nimmt keinen, und eine Kalibrierung, die auf `document.body` misst, kalibriert nichts
+ * (`AiAssistBox.tsx:63` — der Ausführen-Knopf ist bei leerem Feld gesperrt, s. K4).
+ */
+const FOKUSSIEREN = `(n) => {
+  const p = document.querySelector('[data-testid="blatt-menue-ki"]');
+  if (!p) { return false; }
+  const ziel = n === null
+    ? p.querySelector('input')
+    : [...p.querySelectorAll('button')].find((x) => (x.textContent || '').replace(/\\s+/g, ' ').trim() === n) || null;
+  if (!ziel) { return false; }
+  ziel.focus();
+  return document.activeElement === ziel;
+}`;
 
 // KEIN `describe.runIf`: fehlt `apps/web/dist` oder startet Chromium nicht, wird dieser Lauf ROT und
 // nennt den Ausfall wörtlich (er steht in `Buehne.fehler`). Ein übersprungener Prüfstand ist grün und
@@ -1679,12 +1975,25 @@ describe("JOB 3584 · die KI-Palette bei 390 px im echten Chromium", () => {
       LANGER_NAME,
     );
     expect(fokussiert, "K4: die lange Vorlage liess sich nicht fokussieren").toBe(true);
-    const f = await s.evaluate<Fokus | null>(fn(FOKUS));
-    expect(f, "K4: die fokussierte Vorlage meldet keine Lage").not.toBeNull();
-    console.info(`JOB 3584 · K4 · Fokus ${JSON.stringify(f)}`);
+    // JOB 4225: GEMESSEN WIRD MIT DEMSELBEN PAAR, das auch die Tab-Schleife fährt — sonst kalibrierte
+    // dieser Fall einen Messweg, den kein regulärer Fall mehr benutzt. Und er ist die WICHTIGSTE
+    // Gegenprobe dieses Auftrags: der Zeitpunkt wurde korrigiert, NICHT die Härte. Bleibt K4 nach der
+    // Änderung grün, wäre die Zusage gelockert statt der Messzeitpunkt gerichtet.
+    const paar = await fokusPaar();
+    expect(paar.danach, "K4: die fokussierte Vorlage meldet keine Lage").not.toBeNull();
+    // Der Stillstand selbst MUSS erreicht sein: sonst wäre die Röte unten ein Deckelfehler und kein
+    // Befund über die Lage — zwei verschiedene Dinge, die nie dasselbe heissen dürfen.
+    expect(paar.still.still, `K4: das Heranrollen kam nicht zur Ruhe — ${paar.still.grund}`).toBe(
+      true,
+    );
+    console.info(`JOB 4225 · K4 · Fokuspaar ${JSON.stringify(paar)}`);
     expect(
-      () => fokusLage(f as Fokus, "K4: Tabstopp lange Vorlage", 390),
-      "K4: `fokusLage` hält einen Knopf in einer 20 px hohen Rollfläche für einen gültigen Tabstopp — dann misst B3/B4 die Tastaturzusage nicht",
+      (paar.danach as Fokus).fort.length,
+      `K4: nach dem nachgewiesenen Stillstand schneidet nichts mehr weg (${JSON.stringify((paar.danach as Fokus).fort)}) — dann ist dies nicht mehr die Gegenprobe des Prüfers`,
+    ).toBeGreaterThan(0);
+    expect(
+      () => fokusPaarLage(paar, "K4: Tabstopp lange Vorlage", 390),
+      "K4: `fokusPaarLage` hält einen Knopf in einer 20 px hohen Rollfläche für einen gültigen Tabstopp — dann misst B3/B4 die Tastaturzusage nicht",
     ).toThrow();
 
     // Zurück auf den echten Produktzustand — und dort hält beides wieder.
@@ -1711,9 +2020,10 @@ describe("JOB 3584 · die KI-Palette bei 390 px im echten Chromium", () => {
       LANGER_NAME,
     );
     expect(wiederFokussiert, "K4: nach der Rücknahme nimmt die Vorlage keinen Fokus").toBe(true);
-    const zurueckFokus = await s.evaluate<Fokus | null>(fn(FOKUS));
-    expect(zurueckFokus, "K4: nach der Rücknahme trägt nichts mehr den Fokus").not.toBeNull();
-    fokusLage(zurueckFokus as Fokus, "K4 · nach Rücknahme: Tabstopp lange Vorlage", 390);
+    const zurueckPaar = await fokusPaar();
+    expect(zurueckPaar.danach, "K4: nach der Rücknahme trägt nichts mehr den Fokus").not.toBeNull();
+    console.info(`JOB 4225 · K4 · nach Rücknahme ${JSON.stringify(zurueckPaar.still)}`);
+    fokusPaarLage(zurueckPaar, "K4 · nach Rücknahme: Tabstopp lange Vorlage", 390);
   }, 180_000);
 
   // ==============================================================================================
@@ -1812,6 +2122,482 @@ describe("JOB 3584 · die KI-Palette bei 390 px im echten Chromium", () => {
       ohneRollenImFenster(st.hol(zurueck), st.was, zurueck, "K5 · nach Rücknahme");
     }
     erklaerungGriffDa(zurueck, "K5 · nach Rücknahme");
+  }, 120_000);
+
+  // ==============================================================================================
+  // K6 · DIE KALIBRIERUNG DES MESSZEITPUNKTS — positiv UND negativ, im SELBEN Vorgang (JOB 4225).
+  // ==============================================================================================
+  //
+  // DIE KORREKTURPFLICHT 3 des Prüfers an JOB 4202 R1, wörtlich: „Derselbe verzögerte Bedienvorgang
+  // muss sofort rot und nach Stillstand grün sein, ohne zwischenzeitliche Geometriereparatur."
+  // Runde 1 hatte dort zwischen den beiden Messungen den Menüversatz wiederhergestellt — damit war
+  // nicht der Zeitpunkt belegt, sondern eine Reparatur.
+  //
+  // WARUM ES DIESEN FALL BRAUCHT. Ein Flackerer ist nicht „vorher rot": bei gleichem Code war B4
+  // dreimal grün und einmal rot. Ein neuer Messstand, der bloss grün läuft, beweist deshalb NICHTS —
+  // er könnte ebenso gut nie warten. Also wird die Röte ERZWUNGEN, in zwei Griffen und beide in der
+  // LAUFENDEN Seite:
+  //   (i)  WEG SCHAFFEN. Gemessen und nicht vermutet: bei 390×844 steht das freie Feld nach dem
+  //        Öffnen schon ganz im Fenster (y=464–500 bei 463 px Sicht in MAIN, `bewegungen: 0`) — das
+  //        ist gerade die Zusage aus B6. Wer dort fokussiert, löst KEIN Heranrollen aus, und was
+  //        nicht rollt, kann auch nicht zu früh gemessen werden. Also wird die Rollfläche zuerst an
+  //        ihr Ende gestellt; dann liegt der lange Vorlagenknopf OBERHALB der Sicht.
+  //   (ii) DAS ROLLEN VERZÖGERN: `scroll-behavior: smooth` auf genau diesen Rollflächen. Der Browser
+  //        holt den Knopf beim Fokussieren dann über mehrere Bilder heran statt in einem Sprung.
+  // Erst danach wird fokussiert — und dann MUSS dieselbe Bedienung sofort rot und nach dem
+  // nachgewiesenen Stillstand grün sein.
+  //
+  // VERSTELLT WIRD NUR DIE ZEIT, NICHT DIE GEOMETRIE — und das wird nicht behauptet, sondern
+  // gemessen: `Stillstand.anfang` und `Stillstand.ende` tragen von jeder Fläche `sicht` (ihre Sicht)
+  // und `kasten` (ihr eigenes Rechteck), und beide müssen gleich sein. Zwischen den zwei Messungen
+  // ruft dieser Fall nichts auf; was sich unterscheidet, ist der Rollstand.
+  it("K6 · 390×844: wird das Heranrollen verzögert, IST dieselbe Bedienung sofort rot und nach dem Stillstand grün", async () => {
+    await paletteOeffnen(390);
+    const s = seite();
+    await nachObenRollen();
+    await ruheAbwarten("K6");
+    // Die Reihenfolge im Griff ist tragend: ERST ans Ende rollen (hart, ohne Verzögerung), DANN
+    // `scroll-behavior` weich stellen. Umgekehrt liefe schon das Wegschaffen als Animation, und der
+    // Fall mässe seinen eigenen Aufbau.
+    const WEICH = `([wie, alt, name]) => {
+      const p = document.querySelector('[data-testid="blatt-menue-ki"]');
+      const ziel = p ? [...p.querySelectorAll('button')].find((x) => (x.textContent || '').replace(/\\s+/g, ' ').trim() === name) : null;
+      if (!ziel) { return JSON.stringify({ fehler: 'KEIN ZIEL' }); }
+      if (wie === 'zurueck') {
+        const gesichert = JSON.parse(alt);
+        const alte = [...document.querySelectorAll('[data-k6-weich]')];
+        for (let i = 0; i < alte.length; i++) {
+          const e = alte[i];
+          if (gesichert[i]) { e.setAttribute('style', gesichert[i]); } else { e.removeAttribute('style'); }
+          e.removeAttribute('data-k6-weich');
+        }
+        return JSON.stringify({ zurueck: alte.length });
+      }
+      const gesichert = [];
+      const flaechen = [];
+      for (let x = ziel.parentElement; x; x = x.parentElement) {
+        const st = getComputedStyle(x);
+        if ((st.overflowY === 'auto' || st.overflowY === 'scroll') && x.scrollHeight > x.clientHeight + 1) {
+          gesichert.push(x.getAttribute('style') || '');
+          x.setAttribute('data-k6-weich', '1');
+          x.scrollTop = x.scrollHeight - x.clientHeight;
+          x.style.scrollBehavior = 'smooth';
+          flaechen.push({
+            marke: x.getAttribute('data-testid') || (x.tagName + '.' + String(x.className || '').slice(0, 40)),
+            rollstand: Math.round(x.scrollTop * 10) / 10,
+            weite: Math.round((x.scrollHeight - x.clientHeight) * 10) / 10,
+          });
+        }
+      }
+      return JSON.stringify({ gesichert: gesichert, flaechen: flaechen });
+    }`;
+    const gesetzt = JSON.parse(
+      await s.evaluate<string>(fn(WEICH), ["setzen", "", LANGER_NAME]),
+    ) as {
+      fehler?: string;
+      gesichert: string[];
+      flaechen: { marke: string; rollstand: number; weite: number }[];
+    };
+    expect(gesetzt.fehler, `K6: ${gesetzt.fehler}`).toBeUndefined();
+    // Die Fläche aus dem Protokoll des Rotlaufs MUSS dabei sein — sonst verzögert dieser Fall etwas
+    // anderes als das, woran B4 gescheitert ist (`tor.out:1071`: „MAIN.flex-1 overflow-y-auto px-4 py-5").
+    console.info(`JOB 4225 · K6 · verzögerte Rollflächen ${JSON.stringify(gesetzt.flaechen)}`);
+    expect(
+      gesetzt.flaechen.map((f) => f.marke).join(" | "),
+      "K6: über dem Vorlagenknopf liegt keine rollbare Fläche mit Rollweg — dann verzögert dieser Fall nichts",
+    ).toContain("overflow-y-auto");
+    // DER WEG IST WIRKLICH DA, bevor irgendetwas rot sein darf: der Knopf liegt jetzt ausserhalb der
+    // Sicht seiner Rollfläche. Ohne diese Zeile könnte (1) unten auch an einem Zufall liegen.
+    const vorher = await messen("K6 · Rollfläche am Ende, vor dem Fokussieren");
+    const knopfVorher = vorher.vorlagen[1] as Stueck;
+    expect(
+      knopfVorher.verluste.length,
+      `K6: der Vorlagenknopf ist auch am Ende der Rollfläche nicht weggeschnitten (y=${knopfVorher.oben}–${knopfVorher.unten}) — dann gibt es nichts heranzurollen`,
+    ).toBeGreaterThan(0);
+
+    const fokussiert = await s.evaluate<boolean>(fn(FOKUSSIEREN), LANGER_NAME);
+    expect(fokussiert, "K6: die lange Vorlage nimmt keinen Fokus").toBe(true);
+    const paar = await fokusPaar();
+    console.info(`JOB 4225 · K6 · Messpaar ${JSON.stringify(paar)}`);
+    const sofort = paar.sofort as Fokus;
+    const danach = paar.danach as Fokus;
+    expect(sofort, "K6: die Sofortmessung meldet keinen Fokus").not.toBeNull();
+    expect(danach, "K6: die Messung nach dem Stillstand meldet keinen Fokus").not.toBeNull();
+    expect(
+      paar.still.still,
+      `K6: das verzögerte Heranrollen kam nicht zur Ruhe — ${paar.still.grund}`,
+    ).toBe(true);
+    // (1) SOFORT ROT: der Tabstopp ist im selben Vorgang zunächst weggeschnitten.
+    expect(
+      sofort.fort.length,
+      `K6: die Sofortmessung sieht trotz verzögertem Heranrollen schon alles — dann kalibriert dieser Fall den Zeitpunkt nicht (${JSON.stringify(sofort)})`,
+    ).toBeGreaterThan(0);
+    expect(
+      () => fokusLage(sofort, "K6 · sofort gemessen", 390),
+      "K6: die Prüfung selbst bleibt an der Sofortmessung grün — dann misst sie den Wegschnitt gar nicht",
+    ).toThrow();
+    // (2) NACH DEM STILLSTAND GRÜN: dieselbe Bedienung, nur später gefragt.
+    expect(
+      danach.fort,
+      `K6: nach dem nachgewiesenen Stillstand bleibt etwas weggeschnitten — dann ist es KEIN Messrennen, sondern ein Produktfehler (${JSON.stringify(danach.fort)})`,
+    ).toEqual([]);
+    fokusPaarLage(paar, "K6 · nach dem Stillstand", 390);
+    // (3) UND DAZWISCHEN WURDE NICHTS REPARIERT: jede Fläche ist vorher und nachher gleich gross und
+    //     steht an derselben Stelle, sie ist nur anders GEROLLT. Ohne diese Zeile wäre (2) auch durch
+    //     einen Umbau zu erklären — genau der Einwand, an dem JOB 4202 R1 gescheitert ist.
+    //
+    //     GEMESSEN WIRD DIE URSACHE, NICHT DER STILLSTAND EINER ZAHL. Die Rechtecke der Flächen
+    //     INNERHALB des Rollers verschieben sich beim Rollen selbstverständlich mit (gemessen: die
+    //     Palettenfläche geht von `-7/57/320/182` auf `6/57/320/182`, also genau um die 13 px des
+    //     Rollwegs) — ihr Vergleich sagt darum nichts. Was etwas sagt, ist die KETTE: die Sicht jeder
+    //     Fläche bleibt gleich gross, der Knoten behält seine Höhe, und er wandert um GENAU den
+    //     Betrag, um den die Rollflächen sich bewegt haben. Dann ist er durch Rollen ins Bild
+    //     gekommen und durch nichts anderes.
+    expect(
+      paar.still.ende.map(
+        (r) => `${r.marke} sicht=${r.sicht} breite/hoehe=${r.kasten.split("/").slice(2).join("/")}`,
+      ),
+      `K6: die Sicht einer Fläche hat sich zwischen den beiden Messungen geändert — dann belegt der Vergleich nicht den Zeitpunkt (${JSON.stringify(paar.still)})`,
+    ).toEqual(
+      paar.still.anfang.map(
+        (r) => `${r.marke} sicht=${r.sicht} breite/hoehe=${r.kasten.split("/").slice(2).join("/")}`,
+      ),
+    );
+    expect(
+      `${danach.hoehe}`,
+      `K6: der fokussierte Knoten selbst hat seine Höhe geändert (${sofort.hoehe} → ${danach.hoehe})`,
+    ).toBe(`${sofort.hoehe}`);
+    // UND ES WURDE WIRKLICH GEROLLT, über mehrere Bilder: ein Sprung in einem einzigen Bild wäre
+    // keine Verzögerung, und dann hätte die Sofortmessung nie etwas anderes sehen können.
+    expect(
+      paar.still.bewegungen,
+      `K6: es wurde überhaupt nicht gerollt (${JSON.stringify(paar.still.verlauf)}) — dann sagt der Vergleich nichts`,
+    ).toBeGreaterThan(1);
+    const gerollt = paar.still.anfang.reduce(
+      (summe, r, i) => summe + (r.oben - (paar.still.ende[i]?.oben ?? r.oben)),
+      0,
+    );
+    const gewandert = danach.oben - sofort.oben;
+    expect(
+      Math.abs(gerollt - gewandert) <= 1 && gewandert > 0,
+      `K6: der Knoten ist um ${gewandert} px gewandert, die Rollflächen haben sich aber um ${gerollt} px bewegt — dann hat ihn etwas anderes als das Rollen ins Bild geholt (${JSON.stringify(paar.still)})`,
+    ).toBe(true);
+    console.info(
+      `JOB 4225 · K6 · sofort weggeschnitten ${JSON.stringify(sofort.fort)} (y=${sofort.oben}–${sofort.unten}) · ` +
+        `danach ${JSON.stringify(danach.fort)} (y=${danach.oben}–${danach.unten}) · ` +
+        `${gerollt} px gerollt = ${gewandert} px gewandert · ` +
+        `${paar.still.bewegungen} Bewegungen in ${paar.still.takte} Bildern, ${paar.still.ms} ms · ` +
+        `Rollstände ${JSON.stringify(paar.still.anfang)} → ${JSON.stringify(paar.still.ende)}`,
+    );
+
+    // Zurück auf den echten Produktzustand — und dort hält derselbe Weg.
+    const weg = JSON.parse(
+      await s.evaluate<string>(fn(WEICH), [
+        "zurueck",
+        JSON.stringify(gesetzt.gesichert),
+        LANGER_NAME,
+      ]),
+    ) as { zurueck?: number };
+    expect(weg.zurueck, "K6: die Verzögerung liess sich nicht zurücknehmen").toBe(
+      gesetzt.flaechen.length,
+    );
+    await nachObenRollen();
+    await ruheAbwarten("K6 · nach Rücknahme");
+    expect(
+      await s.evaluate<boolean>(fn(FOKUSSIEREN), LANGER_NAME),
+      "K6: kein Fokus nach Rücknahme",
+    ).toBe(true);
+    fokusPaarLage(await fokusPaar(), "K6 · nach Rücknahme", 390);
+  }, 120_000);
+
+  // ==============================================================================================
+  // K7 · DIE KALIBRIERUNG DES ZEITDECKELS — verspätete und ausbleibende Bilder (JOB 4225).
+  // ==============================================================================================
+  //
+  // KORREKTURPFLICHT 1 des Prüfers an JOB 4202 R1: „Nach Fristablauf darf auch ein ruhiger Frame
+  // keinen Erfolg liefern. Beleg: verspäteter UND ausbleibender Frame ergeben je einen roten
+  // Deckelfehler mit Verlauf." Er hat dort einen nach 5.142 ms gelieferten ruhigen Frame bei
+  // 5.000 ms Grenze als `"still":true,"takte":4,"ms":5142` zurückbekommen — Erfolg statt Rot.
+  //
+  // GEFAHREN WIRD DAS AN DEMSELBEN `STILLSTAND`, den auch die Tab-Schleife benutzt; verstellt wird
+  // nur die Uhr der Seite, nicht die Messung. Zwei Bruchweisen, weil eine allein durchliesse:
+  //   (a) BILDER KOMMEN ZU SPÄT — `requestAnimationFrame` liefert erst nach der Frist,
+  //   (b) BILDER KOMMEN GAR NICHT — `requestAnimationFrame` ruft nie zurück. Ohne den eigenen
+  //       Zeitgeber bliebe die Messung hier stumm hängen, bis die Zeitgrenze des Falls sie tötet.
+  it("K7 · der Zeitdeckel ist verbindlich: verspätete UND ausbleibende Bilder sind ROT, nie Stillstand", async () => {
+    await paletteOeffnen(390);
+    const s = seite();
+    expect(
+      await s.evaluate<boolean>(fn(FOKUSSIEREN), null),
+      "K7: das freie Feld nimmt keinen Fokus",
+    ).toBe(true);
+    const K7 = `(arg) => {
+      const messen = ${STILLSTAND};
+      const echt = window.requestAnimationFrame;
+      window.requestAnimationFrame = arg.wie === 'aus'
+        ? function () { return 0; }
+        : function (cb) { return window.setTimeout(function () { cb(performance.now()); }, arg.spaet); };
+      const zurueck = () => { window.requestAnimationFrame = echt; };
+      return messen(arg).then(function (r) { zurueck(); return r; }, function (e) { zurueck(); throw e; });
+    }`;
+    const GRENZE = 50;
+    const BRUCHWEISEN: { wie: string; was: string }[] = [
+      { wie: "spaet", was: "die Bilder kommen zu spät" },
+      { wie: "aus", was: "es kommt gar kein Bild mehr" },
+    ];
+    for (const { wie, was } of BRUCHWEISEN) {
+      const still = await s.evaluate<Stillstand>(fn(K7), {
+        wie,
+        spaet: 200,
+        grenze: GRENZE,
+        hoechstens: HOECHSTENS_BILDER,
+        ruhig: RUHIG_TAKTE,
+      });
+      console.info(`JOB 4225 · K7 (${wie}) · ${JSON.stringify(still)}`);
+      expect(
+        still.still,
+        `K7 (${was}): der Messstand meldet Stillstand, obwohl die Frist von ${GRENZE} ms gerissen ist (${still.ms} ms) — genau der Befund des Prüfers an JOB 4202 R1`,
+      ).toBe(false);
+      expect(
+        still.grund,
+        `K7 (${was}): der Fehler nennt die gerissene Frist nicht (${still.grund})`,
+      ).toContain("Frist gerissen");
+      expect(
+        still.ms,
+        `K7 (${was}): gemeldet wird eine Zeit innerhalb der Frist (${still.ms} ms von ${GRENZE} ms)`,
+      ).toBeGreaterThan(GRENZE);
+      // DER VERLAUF STEHT IM FEHLERTEXT, nicht nur im Ergebnis — sonst weiss niemand, was gemessen wurde.
+      const meldung = ((): string => {
+        try {
+          fokusPaarLage({ sofort: null, danach: null, still }, `K7 (${was})`, 390);
+          return "";
+        } catch (e) {
+          return (e as Error).message;
+        }
+      })();
+      expect(
+        meldung,
+        `K7 (${was}): der gerissene Deckel kommt beim Aufrufer nicht als roter Befund an`,
+      ).toContain("Frist gerissen");
+      expect(meldung, `K7 (${was}): im Fehlertext fehlt der gemessene Verlauf`).toContain(
+        JSON.stringify(still.anfang),
+      );
+    }
+    // (b) hat KEIN Bild gesehen — das ist der Fall, den nur der eigene Zeitgeber fängt.
+    const ohneBild = await s.evaluate<Stillstand>(fn(K7), {
+      wie: "aus",
+      spaet: 200,
+      grenze: GRENZE,
+      hoechstens: HOECHSTENS_BILDER,
+      ruhig: RUHIG_TAKTE,
+    });
+    expect(
+      ohneBild.takte,
+      `K7: ohne Bilder wurden trotzdem ${ohneBild.takte} Takte gezählt — dann greift der Griff nicht`,
+    ).toBe(0);
+    expect(
+      ohneBild.grund,
+      "K7: der ausbleibende Frame wird nicht dem eigenen Zeitgeber zugeschrieben",
+    ).toContain("Zeitgeber");
+    // Und die echte Uhr ist zurück: derselbe Messstand kommt am unverstellten Produktzustand zur Ruhe.
+    const heil = await fokusPaar();
+    expect(
+      heil.still.still,
+      `K7: nach der Rücknahme kommt die Messung nicht mehr zur Ruhe — ${heil.still.grund}`,
+    ).toBe(true);
+    fokusPaarLage(heil, "K7 · nach Rücknahme", 390);
+  }, 120_000);
+
+  // ==============================================================================================
+  // K8 · DIE KALIBRIERUNG DER DIAGNOSE — was im Fehlerfall wirklich dasteht (JOB 4225).
+  // ==============================================================================================
+  //
+  // KORREKTURPFLICHT 2 des Prüfers an JOB 4202 R1: „Diagnose vor dem Abbruch sichern. Bei
+  // Restbeschneidung beide Fokusmessungen samt Lage und anfänglichen/abschließenden Rollständen
+  // ausgeben. Beleg: erzwungene Beschneidung zeigt sämtliche Werte im Fehlertext." Dort warf die
+  // Tab-Schleife, BEVOR das Paar ausgewertet war — die Meldung verlor genau das, wofür das Paar da
+  // ist.
+  //
+  // ERZWUNGEN WIRD DIE BESCHNEIDUNG WIE IN K4: eine weiterhin rollbare, aber 20 px hohe Fläche über
+  // einem 46 px hohen Knopf. Sie ist dauerhaft — auch nach jedem Stillstand bleibt etwas fort.
+  it("K8 · bei dauerhaft beschnittenem Tabstopp stehen BEIDE Messungen und BEIDE Rollstände im Fehlertext", async () => {
+    await paletteOeffnen(390);
+    const s = seite();
+    const DECKEL = `([hoehe, alt]) => {
+      if (hoehe === null) {
+        const g = document.querySelector('[data-k8-deckel]');
+        if (!g) { return 'KEIN DECKEL'; }
+        if (alt) { g.setAttribute('style', alt); } else { g.removeAttribute('style'); }
+        g.removeAttribute('data-k8-deckel');
+        return 'ZURUECK';
+      }
+      const p = document.querySelector('[data-testid="blatt-menue-ki"]');
+      const feld = p ? p.querySelector('input') : null;
+      if (!feld) { return 'KEIN FELD'; }
+      let roll = null;
+      for (let x = feld.parentElement; x && p.contains(x); x = x.parentElement) {
+        const wie = getComputedStyle(x).overflowY;
+        if (wie === 'auto' || wie === 'scroll') { roll = x; break; }
+      }
+      if (!roll) { return 'KEINE ROLLFLAECHE'; }
+      const gesichert = roll.getAttribute('style') || '';
+      roll.setAttribute('data-k8-deckel', '1');
+      roll.style.height = hoehe; roll.style.maxHeight = hoehe; roll.style.overflow = 'auto';
+      return gesichert;
+    }`;
+    const vorher = await s.evaluate<string>(fn(DECKEL), ["20px", null]);
+    expect(
+      ["KEIN FELD", "KEINE ROLLFLAECHE"],
+      "K8: die rollbare Fläche der Palette war nicht zu finden — der Griff greift ins Leere",
+    ).not.toContain(vorher);
+    expect(
+      await s.evaluate<boolean>(fn(FOKUSSIEREN), LANGER_NAME),
+      "K8: die lange Vorlage liess sich nicht fokussieren",
+    ).toBe(true);
+    const paar = await fokusPaar();
+    console.info(`JOB 4225 · K8 · Messpaar ${JSON.stringify(paar)}`);
+    expect(paar.still.still, `K8: das Heranrollen kam nicht zur Ruhe — ${paar.still.grund}`).toBe(
+      true,
+    );
+    const meldung = ((): string => {
+      try {
+        fokusPaarLage(paar, "K8: Tabstopp lange Vorlage", 390);
+        return "";
+      } catch (e) {
+        return (e as Error).message;
+      }
+    })();
+    expect(
+      meldung,
+      "K8: ein dauerhaft beschnittener Tabstopp geht durch — dann misst B3/B4 nichts",
+    ).not.toBe("");
+    // DIE MARKIERUNG: ohne sie findet niemand die Diagnose in einem 2000-zeiligen Torprotokoll.
+    expect(meldung, `K8: in der Meldung fehlt „${DIAGNOSE}"`).toContain(DIAGNOSE);
+    // BEIDE MESSUNGEN, VOLLSTÄNDIG — mit `fort`, `oben`/`unten`, `links`/`rechts`.
+    expect(meldung, "K8: die Sofortmessung fehlt im Fehlertext").toContain(
+      JSON.stringify(paar.sofort),
+    );
+    expect(meldung, "K8: die Messung nach dem Stillstand fehlt im Fehlertext").toContain(
+      JSON.stringify(paar.danach),
+    );
+    // BEIDE ROLLSTÄNDE JEDER FLÄCHE — anfänglich UND abschliessend.
+    expect(meldung, "K8: die anfänglichen Rollstände fehlen im Fehlertext").toContain(
+      JSON.stringify(paar.still.anfang),
+    );
+    expect(meldung, "K8: die abschliessenden Rollstände fehlen im Fehlertext").toContain(
+      JSON.stringify(paar.still.ende),
+    );
+    expect(
+      paar.still.anfang.length,
+      "K8: es wurde gar keine rollbare Fläche erfasst — dann sagt die Diagnose nichts",
+    ).toBeGreaterThan(0);
+    console.info(`JOB 4225 · K8 · Meldung ${meldung}`);
+
+    const weg = await s.evaluate<string>(fn(DECKEL), [null, vorher]);
+    expect(weg, "K8: der Deckel liess sich nicht zurücknehmen").toBe("ZURUECK");
+    expect(
+      await s.evaluate<boolean>(fn(FOKUSSIEREN), LANGER_NAME),
+      "K8: nach der Rücknahme nimmt die Vorlage keinen Fokus",
+    ).toBe(true);
+    fokusPaarLage(await fokusPaar(), "K8 · nach Rücknahme: Tabstopp lange Vorlage", 390);
+  }, 120_000);
+
+  // ==============================================================================================
+  // K9 · DIE FRISTREIHENFOLGE BEI BLOCKIERTEM EREIGNISLOOP (JOB 4225).
+  // ==============================================================================================
+  //
+  // DIE PROMPTVERBESSERUNG des Prüfers an JOB 4202 R2, wörtlich: „Kalibriere die Fristreihenfolge
+  // zusätzlich mit blockiertem Ereignisloop: Auch wenn der Zeitgeber noch nicht ausgeführt werden
+  // konnte, muss ein nach Fristablauf gelieferter ruhiger Frame rot bleiben." Er hat diese Probe
+  // einmal von Hand gefahren (ruhiger vierter Frame nach 100,4 ms bei 50-ms-Grenze → `"still":false`);
+  // hier ist sie ein DAUERHAFTER Fall der Datei.
+  //
+  // WO DER BLOCK SITZEN MUSS, UND WARUM NICHT IRGENDWO. Der erste Bau blockierte den Ereignisloop
+  // gleich beim Start der Messung — und blieb wirkungslos: das erste Bild nach dem Block hat erst
+  // EINEN ruhigen Takt gezählt (`gleich = 1`), also hätte auch eine Fassung mit vertauschter
+  // Reihenfolge keinen Erfolg gemeldet, und die Gegenprobe lief grün (gemessen: `"takte":1`,
+  // Cloud-Lauf `d57108cf`). Der Block muss GENAU das Bild treffen, das den Stillstand VOLLENDEN
+  // würde — dann, und nur dann, entscheidet allein die Reihenfolge der zwei Prüfungen. Also wird
+  // `requestAnimationFrame` so umgehängt, dass das `ruhig`-te Bild erst nach dem Block zurückruft:
+  // die Takte davor laufen normal, der entscheidende kommt zu spät und ruhig.
+  //
+  // WARUM DER ZEITGEBER DABEI AUSGESCHALTET WIRD: er ist die zweite Reissleine (K7b). Bliebe er an,
+  // meldete ER das Rot, und die Reihenfolge INNERHALB des Bildtakts bliebe ungeprüft — genau die
+  // Lücke, an der JOB 4202 R1 rot war. Genau das meint der Prüfer mit „auch wenn der Zeitgeber noch
+  // nicht ausgeführt werden konnte": ein blockierter Ereignisloop führt keine Zeitgeber aus.
+  it("K9 · blockierter Ereignisloop: ein ruhiges Bild NACH der Frist bleibt rot, auch ohne Zeitgeber", async () => {
+    await paletteOeffnen(390);
+    const s = seite();
+    expect(
+      await s.evaluate<boolean>(fn(FOKUSSIEREN), null),
+      "K9: das freie Feld nimmt keinen Fokus",
+    ).toBe(true);
+    const K9 = `(arg) => {
+      const messen = ${STILLSTAND};
+      const echtBild = window.requestAnimationFrame.bind(window);
+      const echtZeit = window.setTimeout;
+      let n = 0;
+      window.requestAnimationFrame = function (cb) {
+        n = n + 1;
+        const dran = n === arg.beiBild;
+        return echtBild(function () {
+          if (dran) {
+            const bis = performance.now() + arg.block;
+            while (performance.now() < bis) { /* der Ereignisloop steht */ }
+          }
+          cb(performance.now());
+        });
+      };
+      window.setTimeout = function () { return 0; };
+      const p = messen(arg);
+      window.setTimeout = echtZeit;
+      const zurueck = () => { window.requestAnimationFrame = echtBild; };
+      return p.then(function (r) { zurueck(); return r; }, function (e) { zurueck(); throw e; });
+    }`;
+    const GRENZE = 150;
+    const still = await s.evaluate<Stillstand>(fn(K9), {
+      block: 400,
+      beiBild: RUHIG_TAKTE,
+      grenze: GRENZE,
+      hoechstens: HOECHSTENS_BILDER,
+      ruhig: RUHIG_TAKTE,
+    });
+    console.info(`JOB 4225 · K9 · ${JSON.stringify(still)}`);
+    expect(
+      still.still,
+      `K9: der nach ${still.ms} ms gelieferte ruhige Frame gilt trotz ${GRENZE}-ms-Grenze als Stillstand — die Erfolgsprüfung steht vor der Fristprüfung`,
+    ).toBe(false);
+    expect(still.grund, `K9: die gerissene Frist wird nicht benannt (${still.grund})`).toContain(
+      "Frist gerissen",
+    );
+    expect(
+      still.grund,
+      `K9: geantwortet hat der Zeitgeber, nicht der Bildtakt — dann prüft dieser Fall die Reihenfolge nicht (${still.grund})`,
+    ).not.toContain("Zeitgeber");
+    expect(
+      still.ms,
+      `K9: die gemeldete Zeit liegt innerhalb der Frist (${still.ms} ms von ${GRENZE} ms)`,
+    ).toBeGreaterThan(GRENZE);
+    // Der Ereignisloop lief zwischendurch wirklich nicht: NICHTS ist gerollt, das Bild war ruhig.
+    expect(
+      still.bewegungen,
+      `K9: während des Blocks hat sich etwas bewegt — dann war das Bild nicht ruhig (${JSON.stringify(still.verlauf)})`,
+    ).toBe(0);
+    // UND DER BLOCK HAT DAS ENTSCHEIDENDE BILD GETROFFEN: genau ein ruhiger Takt fehlte noch. Nur in
+    // dieser Lage hängt das Ergebnis an der Reihenfolge — stünde die Erfolgsprüfung vorn, meldete
+    // dieses Bild `still: true`. Steht hier eine andere Zahl, war der Block zu früh oder zu spät und
+    // dieser Fall kalibriert die Reihenfolge NICHT (so ist er im Bau einmal grün geblieben).
+    expect(
+      still.takte,
+      `K9: der Block hat nicht das vollendende Bild getroffen (${still.takte} statt ${RUHIG_TAKTE - 1} gezählte Bilder, ${JSON.stringify(still.verlauf)})`,
+    ).toBe(RUHIG_TAKTE - 1);
+    // Und die Seite ist unbeschädigt: derselbe Messstand kommt danach normal zur Ruhe.
+    const heil = await fokusPaar();
+    expect(
+      heil.still.still,
+      `K9: nach dem Block kommt die Messung nicht mehr zur Ruhe — ${heil.still.grund}`,
+    ).toBe(true);
+    fokusPaarLage(heil, "K9 · nach dem Block", 390);
   }, 120_000);
 
   // ==============================================================================================
