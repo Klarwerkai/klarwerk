@@ -43,6 +43,43 @@
 // 3. „BESTAND LEER" IST EIN BEFUND, KEINE ANNAHME. Scheitert die Abfrage, sagt der Bericht
 //    „unbekannt" mit Grund — nicht „leer". Eine leere Datenhaltung und eine nicht beantwortbare
 //    Frage sind zwei verschiedene Dinge, und nur eines davon darf so aussehen.
+//
+// ------------------------------------------------------------------------------------------------
+// JOB 4201 · DER NEUINSTALLATIONSFALL — WAS DIESER KATALOG UEBER DEN COMPOSE-KUNDENWEG SAGT
+// ------------------------------------------------------------------------------------------------
+//
+// GEMESSEN AM STAND 8f015c4, und der Befund ist angenehmer als erwartet: `CANONICAL_HOST` (unten,
+// Bereich Betrieb) und `COOKIE_SECURE` (ebenda) stehen BEREITS im Katalog, beide als Kannwerte mit
+// Vorgabewert und Folgesatz. Der Neuinstallationsfall brauchte hier also KEINEN neuen Eintrag — er
+// brauchte, dass die Compose-Datei sie ueberhaupt fuehrt, und genau das hat JOB 4201 dort getan.
+// Diese Datei bleibt damit, was Entscheidung 1 oben verspricht: ein Katalog, kein zweiter
+// Konfigurationsweg. Es entsteht keine neue Umgebungsvariable und kein neuer Vorgabewert, und der
+// PFLICHTBEGRIFF wird NICHT erweitert — ein zusaetzlicher Pflichtwert liesse jede bestehende
+// Instanz beim naechsten Start abbrechen. Gehalten von tests/neuinstallation/
+// pflichtkonfiguration.test.ts, Fall F3.
+//
+// DREI DINGE, DIE DER COMPOSE-KUNDENWEG UEBER DIESEN KATALOG HINAUS WISSEN MUSS — hier benannt,
+// damit sie nicht nur in einer Markdown-Datei stehen:
+//
+//   a) `POSTGRES_PASSWORD` gehoert NICHT in diesen Katalog und steht bewusst nicht darin: Die
+//      Anwendung liest ihn nie; ihn liest `docker compose`, um `DATABASE_URL` zusammenzusetzen.
+//      Ein Katalog, der ihn fuehrte, behauptete, die Anwendung frage danach. Den Ein-Befehl-Start
+//      bricht er trotzdem ab — und deshalb prueft Fall D2 der Neuinstallationssuite die
+//      ABBRECHENDEN Werte der Compose-Datei gegen die Betreiberanleitung, nicht diesen Katalog.
+//
+//   b) `APP_BASE_URL` ist Pflicht (unten), aber die Pflicht wirkt nur, wenn der Weg dorthin sie
+//      nicht aufhebt. Bis JOB 4201 trug `docker-compose.prod.yml` einen Vorgabewert auf die
+//      oeffentliche Vorfuehr-Domain; die Variable war damit nie leer, `fehlendePflichtwerte` fand
+//      nie etwas, und die Kundeninstanz startete erfolgreich auf eine fremde Adresse.
+//      LEHRE, die ueber diesen Wert hinausgeht: Eine Pflicht in diesem Katalog ist nur so stark
+//      wie die schwaechste Stelle, an der der Wert gesetzt wird.
+//
+//   c) `CANONICAL_HOST` kennt eine Falle, die sein Folgesatz unten nicht ausdrueckt: `server.ts:20`
+//      liest `process.env.CANONICAL_HOST ?? "klarwerk.ai"`, und `??` greift bei `""` NICHT. Ein
+//      LEER gesetzter Wert schaltet die Umleitung also still ab, statt sie unveraendert zu lassen.
+//      Der Folgesatz selbst bleibt hier unangetastet: er wird woertlich nach `env.demo.beispiel`
+//      gespiegelt (tests/demo-zugang-start/env-beispiel.test.ts C5), und diese Datei liegt nicht in
+//      den Zielpfaden dieses Auftrags. Die Schaerfung ist in der RUECKGABE bestellt.
 import {
   CONFLUENCE_CREDENTIAL_VARS,
   type ConfluenceCredentialState,

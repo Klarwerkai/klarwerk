@@ -6,6 +6,16 @@ per Browser anmelden und testen können (VIP-/Beta-Zugang). Stand: 05.07.2026 (P
 **Rollenteilung:** Pedi führt alle Schritte auf Server/Coolify/DNS aus (Konten, Zugänge,
 Secrets). Paul liefert Repo-Bausteine (Dockerfile, dieses Runbook) und hilft bei Fehlern.
 
+> **Welcher Weg gilt für Sie?** (JOB 4201)
+> Dieses Runbook beschreibt **den Coolify-Betrieb auf dem Hetzner-Server** — also die von Pedi
+> betriebene Instanz. Coolify baut dabei über das `Dockerfile`.
+> Wer eine **eigenständige Kundeninstanz** auf einer leeren Linux-Maschine aufsetzt (Docker
+> Compose, eigene Datenbank, eigene Domain), folgt stattdessen
+> `docs/operations/kundeninstanz-neuinstallation.md`. Dort steht auch, was der Ein-Befehl-Weg
+> zwingend verlangt und woran ein Fehlstart zu erkennen ist.
+> Der Mac-Studio-Weg („Insel", nativ, ohne Docker) ist ein drittes Thema und steht in
+> `scripts/insel/README.md`.
+
 ---
 
 ## 0. Was die App mitbringt (verifiziert am Code)
@@ -15,7 +25,18 @@ Secrets). Paul liefert Repo-Bausteine (Dockerfile, dieses Runbook) und hilft bei
 - Mit `DATABASE_URL` läuft der echte **Postgres-Modus**: Migration beim Start, Dev-Journal aus,
   **Werksreset nicht verfügbar** (gewollt für Produktion).
 - Anmeldung über Bearer-Token → funktioniert hinter TLS-Proxy (Coolify/Traefik) ohne Extras.
-- **Ersteinrichtung:** Bei leerer Instanz wird der ERSTE registrierte Anwender **Admin**.
+- **Ersteinrichtung (berichtigt am 16.09.2026, JOB 4201 — am Code gemessen):** Bei leerer Instanz
+  meldet `GET /api/auth/status` `needsSetup: true`, und **`POST /api/auth/setup`** legt das erste
+  Konto an; dieses erste Konto wird **Admin** (`services/auth/src/service.ts:242-249`). Danach
+  antwortet derselbe Weg mit **409 `ALREADY_SETUP`** — das Fenster schließt sich von selbst.
+  **Der Satz „der erste *registrierte* Anwender wird Admin" galt so nicht:** der öffentliche
+  Registrierweg `POST /api/auth/register` ist per Vorgabe **zu** (403 `REGISTRATION_DISABLED`,
+  `services/auth/src/routes.ts:351`) und öffnet sich nur mit `KLARWERK_SELF_REGISTRATION=1`.
+  Gemessen in `tests/neuinstallation/pflichtkonfiguration.test.ts` (E1/E2) und im echten Lauf
+  `tests/neuinstallation/erstinstallation.integration.test.ts` (N1).
+  **Was das für die Reihenfolge bedeutet, bleibt unverändert scharf:** zwischen dem ersten
+  erfolgreichen Deploy und Ihrer Ersteinrichtung kann **jeder**, der die Adresse erreicht, das
+  Admin-Konto beanspruchen. Ersteinrichtung deshalb sofort und selbst (siehe §3.2).
 - **Kanonik-Falle:** `server.ts` leitet `app.<CANONICAL_HOST>` per 301 auf `<CANONICAL_HOST>`
   um (Standard `klarwerk.ai`). Läuft die App unter `app.klarwerk.ai`, MUSS
   `CANONICAL_HOST=app.klarwerk.ai` gesetzt werden, sonst landet jeder Besucher auf der Website.
@@ -70,9 +91,10 @@ Secrets). Paul liefert Repo-Bausteine (Dockerfile, dieses Runbook) und hilft bei
 ## 3. Nach dem Deploy — Reihenfolge ist sicherheitskritisch
 
 1. **Smoke:** `https://<domain>/health` → `{"status":"ok"}`; danach Startseite laden.
-2. **SOFORT Ersteinrichtung durchführen (Pedi selbst!):** Der erste registrierte Anwender wird
-   Admin. Diesen Schritt NIEMALS dem Externen überlassen — erst wenn dein Admin-Konto steht,
-   darf der Link nach draußen.
+2. **SOFORT Ersteinrichtung durchführen (Pedi selbst!):** Die Anmeldemaske zeigt auf einer leeren
+   Instanz die Ersteinrichtung (`POST /api/auth/setup`); das dort angelegte erste Konto wird Admin,
+   danach ist der Weg zu (409). Diesen Schritt NIEMALS dem Externen überlassen — erst wenn dein
+   Admin-Konto steht, darf der Link nach draußen.
 3. Optional **Demo-Daten** über die Verwaltung laden (nur Demo — keine echten Kundendaten
    auf den Testserver).
 4. **Testnutzer für den Externen** anlegen: eigene Kennung, Rolle **Experte** (erfassen,

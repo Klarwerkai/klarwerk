@@ -46,10 +46,62 @@ services:
       db:
         condition: service_healthy
     environment:
-      PORT: 3000
+      # JOB 4201: DIESER PORT IST DER PORT DES CONTAINERS — GEMESSEN, NICHT GEWAEHLT.
+      # `Dockerfile` setzt `ENV PORT=3001` und `EXPOSE 3001`, sein Healthcheck faellt auf 3001
+      # zurueck, und `services/app/src/server.ts` liest `process.env.PORT ?? "3001"`. Bis JOB 4201
+      # stand hier 3000 — der Bauplan veroeffentlichte damit einen Port, auf dem nichts horchte,
+      # und `docs/operations/deploy-hetzner.md` sagte dem Betreiber dreimal 3001. Wer beide Seiten
+      # las, bekam zwei Wahrheiten. Gehuetet von tests/neuinstallation/pflichtkonfiguration.test.ts
+      # (Faelle C1 bis C3): die Zahl wird dort aus `server.ts` erhoben, nicht abgeschrieben.
+      PORT: 3001
       DATABASE_URL: postgresql://klarwerk:${POSTGRES_PASSWORD}@db:5432/klarwerk_prod
+      # JOB 4201: WAS DIESE ZEILE VERLANGT — UND WAS OHNE TLS PASSIERT.
+      # Der Bauplan setzt `NODE_ENV=production`; dort wird das Secure-Flag am Sitzungsplaetzchen
+      # OHNEHIN erzwungen (services/auth/src/routes.ts:109-116), diese Zeile bestaetigt es nur.
+      # Abschalten laesst es sich NICHT: ein ausdrueckliches COOKIE_SECURE=false bricht den Start
+      # in Produktion ab (`assertCookieSecurityConfig`, ebenda :119-128).
+      # FOLGE, die vor JOB 4201 nirgends stand: Diese Instanz braucht einen TLS-Proxy DAVOR. Wer
+      # sie zunaechst ueber http:// erreicht, bekommt das Anmeldeplaetzchen nicht gesetzt — der
+      # Browser verwirft es stillschweigend, die Anmeldung „funktioniert" und haelt trotzdem nicht.
+      # Die Diagnose dazu steht in docs/operations/kundeninstanz-neuinstallation.md.
       COOKIE_SECURE: "true"
-      APP_BASE_URL: ${APP_BASE_URL:-https://app.klarwerk.ai}
+      # ==========================================================================================
+      # JOB 4201 · PFLICHTANGABE. KEIN VORGABEWERT — UND DAS IST DER KERN DIESES DURCHGANGS.
+      # ==========================================================================================
+      #
+      # Bis hierher stand hier `${APP_BASE_URL:-https://app.klarwerk.ai}`. Der Vorgabewert setzte
+      # die Pflicht AUSSER KRAFT: `services/app/src/start-vertrag.ts:23-27` fuehrt APP_BASE_URL als
+      # einen von nur zwei Werten, die den Start scheitern lassen — aber auf dem Ein-Befehl-Weg war
+      # die Variable NIE leer, `pruefeStartvertrag` konnte also nie greifen, und eine frisch
+      # aufgesetzte Kundeninstanz zeigte still auf die oeffentliche Vorfuehr-Domain. Der Start
+      # GELANG und war trotzdem falsch; gemerkt haette man es erst beim Klicken auf den Link in
+      # einer Kennwort-Mail, die dann zur fremden Instanz fuehrt.
+      #
+      # Jetzt gilt dieselbe Pflichtform, die POSTGRES_PASSWORD oben (Zeile 17) schon benutzt:
+      # fehlt der Wert, bricht `docker compose` mit dem NAMEN des fehlenden Wertes ab — verstaendlich,
+      # VOR dem Start. ACHTUNG beim Ableiten aus `.env.example`: dort steht die Vorfuehr-Adresse als
+      # Beispielwert. Ein ungeaendert uebernommener Wert IST gesetzt und kommt hier durch.
+      APP_BASE_URL: ${APP_BASE_URL:?APP_BASE_URL setzen — die oeffentliche Adresse DIESER Instanz, z. B. https://wissen.kunde.de}
+      # JOB 4201 · DIE KANONIK-FALLE, FUER DEN EIN-BEFEHL-WEG FUEHRBAR GEMACHT.
+      # `server.ts:20` leitet `app.<CANONICAL_HOST>` dauerhaft (301) auf `<CANONICAL_HOST>` um. Bis
+      # JOB 4201 kam der Name in dieser Datei gar nicht vor — der Ein-Befehl-Weg konnte ihn nicht
+      # setzen, obwohl docs/operations/deploy-hetzner.md ihn als Pflicht fuehrt.
+      # DER VORGABEWERT IST DER DES CODES, WOERTLICH (gehuetet von Fall C4): ein LEERER Wert waere
+      # NICHT dasselbe wie ein nicht gesetzter — `??` greift bei `""` nicht, und die Umleitung
+      # waere damit still abgeschaltet statt unveraendert.
+      #
+      # RUNDE 2 — DIE RICHTUNG STAND HIER VERKEHRT, UND SIE IST JETZT GEMESSEN (Faelle H1 bis H4).
+      # Bis zur Runde 2 stand hier und in der Betreiberanleitung, eine Instanz unter
+      # `app.<eigene-domain>` brauche diesen Wert, „sonst" lande jeder Besucher woanders. Das ist
+      # falsch herum: Bei UNVERAENDERTER Vorgabe passiert einer Kundeninstanz GAR NICHTS — ihr
+      # Wirtsname ist nie `app.klarwerk.ai`. Die Umleitung entsteht erst durch das SETZEN. Wer hier
+      # `kunde.de` eintraegt und seine Instanz unter `app.kunde.de` betreibt, schickt jeden Besucher
+      # auf `https://kunde.de` — also auf die Firmenwebsite, wenn dort keine Instanz steht.
+      # REGEL: im Zweifel NICHT setzen. Setzen nur, wenn `<CANONICAL_HOST>` dieselbe Instanz
+      # ausliefert wie `app.<CANONICAL_HOST>`. Die Messtabelle steht in
+      # docs/operations/kundeninstanz-neuinstallation.md §2.2 und wird dort Zeile fuer Zeile gegen
+      # diesen Code ausgefuehrt.
+      CANONICAL_HOST: ${CANONICAL_HOST:-klarwerk.ai}
       # JOB 3097 (N12b): ZWEI KI-ANBIETER, BEIDE OPTIONAL. Gesetzter Schlüssel = aktiver Weg;
       # ohne jeden Schlüssel läuft der deterministische Ersatzmodus. Das `:-` heisst „darf fehlen" —
       # ein fehlender Schlüssel verhindert den Start NICHT (wie bei ANTHROPIC_API_KEY seit je).
@@ -87,7 +139,10 @@ services:
       OIDC_JWKS_URI: ${OIDC_JWKS_URI:-}
       OIDC_AUTOPROVISION: ${OIDC_AUTOPROVISION:-false}
     ports:
-      - "3000:3000"
+      # JOB 4201: containerseitig derselbe Port wie oben — sonst zeigt die Veroeffentlichung auf
+      # einen Port, auf dem nichts horcht. Wirtsseitig bleibt es dieselbe Zahl; wer die Instanz
+      # hinter einem TLS-Proxy betreibt, bindet sie besser nur lokal (`127.0.0.1:3001:3001`).
+      - "3001:3001"
 
 volumes:
   pgdata:
