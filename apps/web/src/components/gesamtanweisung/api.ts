@@ -56,6 +56,41 @@ export function istOhneVerbindung(fehler: unknown): boolean {
   return fehler != null;
 }
 
+/**
+ * JOB 4233 · Die angefragte FASSUNG ist nicht belegt — 400 mit dem Wort `INVALID`.
+ *
+ * ================================================================================================
+ * R2 · HIER STAND `status === 404`, UND DAS WAR EINE ERFINDUNG — BENs Korrekturpflicht 2
+ * ================================================================================================
+ *
+ * Derselbe Endpunkt antwortet aus DREI Gründen ablehnend, und zwei davon sind „gibt es nicht":
+ * die ANWEISUNG (404 `NOT_FOUND`) und die FASSUNG (400 `INVALID`). Runde 1 hat jeden 404 zur
+ * Aussage über die Fassung gemacht; BEN hat gemessen, was daraus wird: verschwindet die Anweisung,
+ * während das Formular offen steht, bekommt der Mensch „Diese Fassung gibt es nicht." über eine
+ * Fassung, die es sehr wohl gibt — eine fachliche Ursache, die der Server nie gemeldet hat.
+ *
+ * Gelesen wird deshalb, WAS DER SERVER SAGT, und zwar beides: Status UND Code. Der Code allein
+ * genügt nicht (die Route sendet bei unbrauchbarem Körper ebenfalls 400, aber mit `VALIDATION`),
+ * der Status allein auch nicht (404 ist die Anweisung). Ein fünftes Fehlerwort gibt es nicht und
+ * darf es hier nicht geben — Begründung im Kopf von `gesamtanweisung-routes.ts`.
+ */
+export function istUnbekannteFassung(fehler: unknown): boolean {
+  return fehler instanceof ApiError && fehler.status === 400 && fehler.code === "INVALID";
+}
+
+/**
+ * Der Schlüssel für die Absage AM AUFNAHMEFORMULAR — und nur dort.
+ *
+ * Getrennt von `fehlerSchluessel`, weil `INVALID` nur auf DIESEM Weg „diese Fassung ist nicht
+ * belegt" heisst; an anderen Wegen des Gegenstands steht dasselbe Wort für andere unbrauchbare
+ * Eingaben (etwa eine Reihenfolge, die nicht jeden Baustein genau einmal nennt). Ein gemeinsamer
+ * Zweig würde dort einen Satz über eine Fassung behaupten, um die es gar nicht geht. Alles andere
+ * gibt diese Funktion unverändert an `fehlerSchluessel` weiter; eine zweite Deutung entsteht nicht.
+ */
+export function aufnahmeFehlerSchluessel(fehler: unknown): string {
+  return istUnbekannteFassung(fehler) ? "ga.aufnahme.fassungUnbekannt" : fehlerSchluessel(fehler);
+}
+
 /** Der i18n-Schlüssel zu einem Fehler dieses Bereichs. Immer ein Satz, nie ein roher Code. */
 export function fehlerSchluessel(fehler: unknown): string {
   if (istStandkonflikt(fehler)) {

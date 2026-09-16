@@ -1881,8 +1881,24 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // Zahl. Danach hashgleich zurückgenommen. Die Rebase-Summe (392 aus JOB 4153/4154 + dieses
     // eine aus JOB 4145 R2) ist an diesem Arbeitsbaum nach der Konfliktauflösung gemessen, nicht
     // gerechnet.
+    //
+    // JOB 4233 (P2-FASSUNG-GESAMTANWEISUNG) — NACHGEFÜHRT von 393 auf 394. EIN neues Bauteil:
+    //
+    //     + `BausteinText` — der Text der GEBUNDENEN Fassung eines Anweisungsbausteins samt seiner
+    //                        Gliederung, in `components/gesamtanweisung/LesestandAnsicht.tsx`
+    //                        (nicht exportiert, genau ein Aufrufer in derselben Datei).
+    //
+    // Dieselbe Begründung wie bei den Einträgen darüber: Die Auflage verbietet, dass eine
+    // UMSTELLUNG die Erhebung verschiebt — nicht, dass der Quellbaum wächst. Die zwei Zahlen, an
+    // denen Stufe 2 wirklich hängt, bleiben unverändert: `anbieter` 1 und `traeger` 2. Das ist am
+    // Bauteil nachgelesen und nicht nebenbei behauptet: es zeichnet Rumpf-HTML über `SanitizedHtml`
+    // und eine `<nav>`-Gliederung aus den D44-Regeln, es zeigt KEIN Bild, bietet KEINE
+    // Bildbeschreibung an (kein `ANGEBOT_MUSTER`) und trägt keinen eigenen Titel (kein
+    // `documentTitle`-Prop). Die Abbildungen eines gebundenen Bausteins nennt die Fläche weiterhin
+    // ausschliesslich beim Namen (`ga.baustein.abbildungen`) — sie stellt keine dar. Es erscheint
+    // nur in der Grundmenge.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 393,
+      komponenten: 394,
       anbieter: 1,
       traeger: 2,
     });

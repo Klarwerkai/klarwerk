@@ -166,6 +166,29 @@ function alsFehler(error: unknown): AnweisungFehlerFakten | null {
  * KEINE GESCHÜTZTEN AUSKÜNFTE: `stand` und `version` gehören der ANWEISUNG, die der Aufrufer
  * gerade bearbeitet. Titel, Kennungen oder Zahlen fremder Einträge stehen in keiner Antwort dieser
  * Datei — die Meldungen des Dienstes sind darauf angelegt (`gesamtanweisung-service.ts`).
+ *
+ * ================================================================================================
+ * JOB 4233 · DREI URSACHEN AN EINEM ENDPUNKT, DREI ANTWORTEN — OHNE EINEN EIGENEN ZWEIG HIER
+ * ================================================================================================
+ *
+ * `POST /api/gesamtanweisungen/:id/bausteine` kann aus drei Gründen ablehnen, und der Aufrufer
+ * MUSS sie auseinanderhalten können — sonst erklärt die Fläche dem Menschen die falsche Ursache
+ * (gemessen von BEN an Runde 1). Die Unterscheidung entsteht im Dienst und reist über `sendError`
+ * (`../http:170`), das jeden Domänencode auf seinen Status abbildet:
+ *
+ *   FORBIDDEN → 403   kein Recht am Eintrag; sagt NICHTS über Existenz.
+ *   NOT_FOUND → 404   die ANWEISUNG gibt es nicht.
+ *   INVALID   → 400   die Anweisung gibt es, aber diese FASSUNG ist nicht belegt.
+ *
+ * KEIN EIGENER ZWEIG und KEIN FÜNFTER CODE, und das ist gemessen, nicht Geschmack:
+ * `AnweisungFehlerCode` (`gesamtanweisung-types.ts`) kennt genau vier, und jeder Domänencode
+ * braucht einen Eintrag in `ERLAUBTE_FEHLERCODES` (`build-app.ts:1422`), sonst steht er im
+ * Protokoll als `UNBEKANNT`. `build-app.ts` gehört JOB 4151/4156 — ein fünfter Code wäre also
+ * entweder ein roter Wächter (`tests/wiki-gesamtanweisung/fehlercodes-auf-der-logliste.test.ts`)
+ * oder eine Umgehung. Beides kommt hier nicht vor.
+ *
+ * Die eigene 400 dieser Datei (`error: "VALIDATION"`, Körper unbrauchbar) bleibt davon getrennt:
+ * gleicher Status, anderes Wort — und die Fläche liest das Wort (`components/gesamtanweisung/api.ts`).
  */
 function antworteMitFehler(reply: FastifyReply, error: unknown): void {
   const fakten = alsFehler(error);

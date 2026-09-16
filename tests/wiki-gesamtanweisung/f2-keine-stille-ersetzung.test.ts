@@ -14,7 +14,16 @@
 // `f.version === baustein.koVersion` suchen, sondern den letzten nehmen (`.at(-1)`). Dann zeigt der
 // Lesestand den neuen Titel, und der erste Fall unten wird namentlich rot.
 import { describe, expect, it } from "vitest";
-import { bauDienst, eintrag, sichtbarAls } from "./pruefstand";
+import { GesamtanweisungDienst } from "../../services/knowledge-object/src/gesamtanweisung-service";
+import {
+  InMemoryAnweisungRepo,
+  bauDienst,
+  eintrag,
+  kennungen,
+  koLeser,
+  sichtbarAls,
+  uhr,
+} from "./pruefstand";
 
 const LESER = sichtbarAls({ id: "anna", darfPruefen: false });
 
@@ -90,18 +99,50 @@ describe("F2 · keine stille Ersetzung einer gebundenen Fassung", () => {
   });
 
   it("fehlt der Fassungssatz, bleibt die Herkunft LEER statt auf die heutige auszuweichen", async () => {
-    // Der Eintrag existiert und ist sichtbar, aber zur gebundenen Fassung 1 gibt es keinen Satz.
+    // ==============================================================================================
+    // JOB 4233 R2 · DER AUFBAU IST NACHGEFÜHRT — DIE ZUSAGE IST DIESELBE GEBLIEBEN.
+    // ==============================================================================================
+    //
+    // BIS HIERHER band dieser Fall die Fassung 1 eines Eintrags, der bei 4 steht und dessen Satz zu
+    // 1 gar nicht vorliegt — über `bausteinAufnehmen`. Seit JOB 4233 ist genau das VERBOTEN: eine
+    // Fassung ohne Beleg wird nicht mehr gebunden (BENs Korrekturpflicht 1 zu jener Runde:
+    // „Fehlender Satz oder gescheiterter Historienabruf dürfen keinen Schreibvorgang auslösen").
+    // Der alte Aufbau hätte die neue Pflicht ausgehebelt; er war der WEG zum Zustand, nicht die
+    // Zusage.
+    //
+    // DIE ZUSAGE DIESES FALLS BLEIBT WORTGLEICH: fehlt der Fassungssatz, bleibt die Herkunft leer,
+    // der Inhalt unbekannt — und es wird NICHT auf die heutige Fassung ausgewichen. Nur entsteht
+    // der Zustand jetzt so, wie er im Betrieb wirklich entsteht: die Fassung wird gebunden, SOLANGE
+    // ES SIE GIBT, und verschwindet später aus dem Bestand (Aufbewahrung, Bereinigung, Ausfall).
+    // Vorgehen wörtlich aus BENs Promptverbesserung zu JOB 4233 R1: „Fassung zunächst vorhanden
+    // aufnehmen, anschließend aus dem Testbestand entfernen und unveränderte Unbekannt-Anzeige
+    // prüfen."
+    const mitSatz = [
+      eintrag({ id: "ko-2", title: "Alter Titel", version: 4 }, [{ version: 1 }, { version: 4 }]),
+    ];
     const ohneSatz = [
       eintrag({ id: "ko-2", title: "Heutiger Titel", version: 4 }, [{ version: 4 }]),
     ];
-    const { dienst } = bauDienst(ohneSatz);
-    const a = await dienst.anlegen({ titel: "Abschaltung" }, "anna");
-    const mit = await dienst.bausteinAufnehmen(
+    const repo = new InMemoryAnweisungRepo();
+    const bauen = (eintraege: typeof mitSatz): GesamtanweisungDienst =>
+      new GesamtanweisungDienst({
+        repo,
+        ko: koLeser(eintraege),
+        jetzt: uhr(),
+        kennung: kennungen("b"),
+      });
+
+    const vorher = bauen(mitSatz);
+    const a = await vorher.anlegen({ titel: "Abschaltung" }, "anna");
+    const mit = await vorher.bausteinAufnehmen(
       a.id,
       a.version,
       { koId: "ko-2", koVersion: 1, nachweisHash: null },
       LESER,
     );
+
+    // Derselbe Bestand, aber der Fassungssatz 1 liegt nicht mehr vor.
+    const dienst = bauen(ohneSatz);
     const stand = await dienst.lesen(mit.id, LESER);
 
     expect(stand.bausteine[0]?.herkunft).toBeNull();

@@ -354,6 +354,10 @@ export function lesestand(
             status: gebunden.status,
           }
         : null,
+      // JOB 4233: der Text der GEBUNDENEN Fassung. Er reist auf demselben Weg wie die Herkunft und
+      // durch dieselbe Trimmung — ein verborgener Baustein ist hier oben schon übersprungen, sein
+      // Rumpf verlässt den Server also nicht (`tests/…/entzogenes-recht-kein-text.test.ts`).
+      rumpfHtml: gebunden ? gebunden.rumpfHtml : null,
       aktuelleKoVersion: lage.aktuelleVersion,
       aktualisierungsvorschlag: aktualisierung,
       inhalt: gebunden ? gebunden.inhalt : INHALT_UNBEKANNT,
@@ -734,12 +738,61 @@ export async function fassungslagenFuer(
             fassungAm: satz.at,
             status: satz.snapshot.status,
             inhalt: inhaltAusFassung(satz.snapshot),
+            // JOB 4233: der Rumpf DIESES Fassungssatzes, unverändert. Nicht `eintrag.bodyHtml` —
+            // das wäre die heutige Fassung und damit genau die stille Ersetzung aus F2.
+            rumpfHtml: typeof satz.snapshot.bodyHtml === "string" ? satz.snapshot.bodyHtml : null,
           }
         : null,
     };
     lagen.set(fassungsSchluessel(baustein.koId, baustein.koVersion), lage);
   }
   return lagen;
+}
+
+// ================================================================================================
+// JOB 4233 R2 · GEBUNDEN WIRD NUR, WAS BELEGT IST — KEIN NUMMERNBEREICH, KEIN GUTER GLAUBE
+// ================================================================================================
+//
+// RUNDE 1 hat hier einen Nummernbereich genügen lassen („die Fassung hat es ja gegeben, nur ihr
+// Abbild fehlt"). BEN hat das mit ROT zurückgewiesen, und die Begründung ist die stärkere:
+//
+//   · Ein Baustein bindet eine Fassung, DAMIT sein Inhalt feststeht. Ohne Fassungssatz steht
+//     nichts fest — weder Titel noch Datum noch Rumpf. Eine solche Bindung ist eine Zusage ohne
+//     Gegenstand, und sie lässt sich später durch nichts mehr einlösen.
+//   · Der zweite Weg in denselben Zustand ist ein AUSFALL: `fassungslagenFuer` fängt einen
+//     gescheiterten `versionsOf`-Abruf ab (`:719`) und arbeitet mit einer leeren Liste weiter.
+//     Über einen Nummernbereich würde aus einem Ausfall ein erfolgreicher Schreibvorgang — genau
+//     die Klasse Fehler, gegen die dieses Modul sonst überall fail-closed steht.
+//
+// Deshalb gilt wieder die bestellte Regel, wörtlich: `lage.gebunden !== null`. Sie steht direkt in
+// `bausteinAufnehmen` — eine eigene Funktion dafür wäre ein Name für einen Vergleich.
+//
+// WAS DAMIT NICHT VERBOTEN IST: eine bereits gebundene Fassung, deren Satz später verschwindet.
+// Sie bleibt im Bestand, und der Lesestand sagt ehrlich „nicht belegt" (F2, Lieferung 6). Die
+// Sperre gilt der NEUEN Bindung, nicht dem Bestand — das ist der Unterschied zwischen „nichts
+// Neues auf ungesichertem Grund" und „Geschichte umschreiben".
+
+/**
+ * Die Absage samt der Fassungen, die sich wirklich binden lassen.
+ *
+ * SIE WIRD ERST GERUFEN, WENN DIE SICHTBARKEIT SCHON GEPRÜFT IST (`bausteinAufnehmen` unten): der
+ * Betrachter darf den Eintrag also ohnehin lesen, und die Fassungsnummern sagen ihm nichts, was
+ * ihm die Eintragsansicht nicht auch sagt. Für jeden anderen endet der Weg vorher bei `FORBIDDEN`.
+ *
+ * AUFGEZÄHLT WERDEN DIE BELEGTEN SÄTZE, nicht ein Bereich: nur sie sind bindbar, und eine Zahl,
+ * die in der Absage steht und beim nächsten Versuch wieder abgelehnt wird, wäre eine Irreführung.
+ * Scheitert der Abruf, steht KEINE Auskunft dabei — dann behauptet die Meldung nicht, es gäbe
+ * keine Fassungen (BENs Fall „Historienausfall").
+ *
+ * Der zusätzliche Abruf steht AUSSCHLIESSLICH auf dem Fehlerweg; der erfolgreiche Fall kostet
+ * keine Abfrage mehr als vorher.
+ */
+async function fassungUnbekanntSatz(koId: string, ko: AnweisungKoLeser): Promise<string> {
+  const saetze = await ko.versionsOf(koId).catch(() => []);
+  const belegt = saetze.map((satz) => satz.version).sort((a, b) => a - b);
+  return belegt.length > 0
+    ? `Diese Fassung gibt es nicht. Belegt: ${belegt.join(", ")}.`
+    : "Diese Fassung gibt es nicht.";
 }
 
 export interface GesamtanweisungDienstDeps {
@@ -851,6 +904,50 @@ export class GesamtanweisungDienst {
    * Der NEUE Baustein wird zusätzlich einzeln geprüft: Wer einen Eintrag nicht sehen darf, darf ihn
    * auch nicht einbinden — sonst stünde fremdes Wissen in der eigenen Anweisung, und die Kennung
    * allein wäre schon die Auskunft.
+   *
+   * ==============================================================================================
+   * JOB 4233 · ZWEI PRÜFUNGEN IN DIESER REIHENFOLGE, UND DIE REIHENFOLGE IST DER SICHERHEITSKERN
+   * ==============================================================================================
+   *
+   * BIS JOB 4233 stand hier NUR die Rechtefrage, und der Befund T-002 (`recherche/pruefung/
+   * BEFUNDE.md:9`) ist ihre Folge: „Gesamtanweisung akzeptiert Version 999 bei einer Quelle mit nur
+   * Version 1/2; Bestand und Anweisungsversion ändern sich." Eine Fassungslage entsteht nämlich
+   * schon, wenn der EINTRAG lesbar ist — die gesuchte Nummer darf fehlen (`fassungslagenFuer`,
+   * oben). Ein Baustein, der auf eine Fassung ohne Beleg zeigt, ist genau der Gegenstand, den der
+   * Startvertrag ausschliesst: eine Bindung ohne Gebundenes.
+   *
+   *   1. SICHTBARKEIT. Wer den Eintrag nicht sehen darf, bekommt `FORBIDDEN` und sonst nichts —
+   *      dieselbe Meldung wie für einen Eintrag, den es gar nicht gibt. Keine Kennung, keine Zahl,
+   *      keine Auskunft über Existenz.
+   *   2. BELEG (`lage.gebunden === null`). Erst danach, und nur für den, der den Eintrag ohnehin
+   *      sehen darf, sagt das Produkt ehrlich, dass es DIESE Fassung nicht gibt — samt der
+   *      Fassungen, die belegt sind.
+   *
+   * Vertauscht man die beiden, verrät der Unterschied zwischen den Antworten einem Fremden, welche
+   * Fassungen ein geschützter Eintrag hat. Ein Leck ohne eine einzige geleakte Zeichenkette;
+   * `tests/wiki-gesamtanweisung-fassungsbindung/absage-verraet-nichts.test.ts` hält es fest.
+   *
+   * ==============================================================================================
+   * WARUM `INVALID` UND NICHT `NOT_FOUND` — DIE ZWEITE KORREKTURPFLICHT AUS RUNDE 1
+   * ==============================================================================================
+   *
+   * DIESER EINE ENDPUNKT KENNT ZWEI „gibt es nicht", und sie sind verschiedene Gegenstände:
+   *
+   *   · die ANWEISUNG gibt es nicht  → `NOT_FOUND` aus `geladen` oben, HTTP 404.
+   *   · die FASSUNG gibt es nicht    → `INVALID` von hier, HTTP 400.
+   *
+   * In Runde 1 trugen beide `NOT_FOUND`. Am Draht waren sie damit ununterscheidbar, und die Fläche
+   * musste raten — BEN hat gemessen, was dabei herauskommt: eine verschwundene Anweisung wurde dem
+   * Menschen als „diese Fassung gibt es nicht" gemeldet, über eine Fassung, die es sehr wohl gibt.
+   * Ein fünfter Fehlercode wäre der bequeme Ausweg und ist hier verboten (`AnweisungFehlerCode`
+   * kennt vier; ein neuer verlangte einen Eintrag in `build-app.ts`, und die Datei gehört JOB
+   * 4151/4156). `INVALID` ist keine Notlösung, sondern die Bestandsvokabel für genau diesen Fall:
+   * „die Eingabe taugt nicht" (`gesamtanweisung-types.ts`, Kopf der Fehlerliste) — der Aufrufer hat
+   * eine Fassungsnummer genannt, die dieser Eintrag nicht hat.
+   *
+   * Eine unbrauchbare Fassungsnummer (0, negativ, gebrochen) hat ebenfalls keinen Fassungssatz und
+   * endet deshalb hier — mit demselben Code, den `mitAufgenommenemBaustein` ihr gäbe. Jene
+   * Formprüfung bleibt stehen: sie gehört der reinen Funktion und ihren eigenen Aufrufern.
    */
   async bausteinAufnehmen(
     id: string,
@@ -864,6 +961,9 @@ export class GesamtanweisungDienst {
     const lage = kandidatLagen.get(fassungsSchluessel(kandidat.koId, kandidat.koVersion));
     if (!lage || !erzwingeSichtbar(sichtbar)(lage)) {
       throw anweisungFehler("FORBIDDEN", "Diese Fassung kann nicht aufgenommen werden.");
+    }
+    if (lage.gebunden === null) {
+      throw anweisungFehler("INVALID", await fassungUnbekanntSatz(kandidat.koId, this.deps.ko));
     }
     const neu = mitAufgenommenemBaustein(
       anweisung,

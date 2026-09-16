@@ -128,6 +128,17 @@ export interface GebundeneFassung {
   readonly fassungAm: string | null;
   readonly status: string;
   readonly inhalt: BausteinInhalt;
+  /**
+   * JOB 4233 · DER RUMPF DIESER FASSUNG — der Text, den ein Mensch lesen will.
+   *
+   * `null` heisst UNBEKANNT (kein Rumpf im Fassungssatz) und ist von „leer" unterschieden, genau
+   * wie bei den Mengen oben. Er steht HIER und NICHT in `BausteinInhalt`, und das ist gemessen,
+   * nicht Geschmack: `BausteinInhalt` fliesst über `standAufnehmen` (`gesamtanweisung-service.ts`)
+   * in den festgehaltenen Prüfstand (`gesamtanweisung_staende.aufnahme`) und über `inhaltsBefunde`
+   * in den Vergleich. Ein Dokumentrumpf dort wäre eine ZWEITE DOKUMENTWAHRHEIT neben dem
+   * Wissenseintrag — und der Vergleich spräche plötzlich über HTML statt über Tatsachen.
+   */
+  readonly rumpfHtml: string | null;
 }
 
 /**
@@ -207,6 +218,14 @@ export interface BausteinLesestand {
   readonly voraussetzung: string | null;
   /** `null`: die gebundene Fassung ist nicht auffindbar — kein Ausweichen auf die heutige. */
   readonly herkunft: BausteinHerkunft | null;
+  /**
+   * JOB 4233 · Der Text GENAU der gebundenen Fassung, neben der Herkunft und aus derselben Quelle.
+   *
+   * `null` heisst UNBEKANNT: entweder ist die gebundene Fassung nicht auffindbar (dann ist auch
+   * `herkunft` null), oder sie trägt keinen Rumpf. In beiden Fällen bleibt es unbekannt — es wird
+   * NIE auf die heutige Fassung ausgewichen, und „unbekannt" wird nie als „leer" gezeigt.
+   */
+  readonly rumpfHtml: string | null;
   readonly aktuelleKoVersion: number | null;
   readonly aktualisierungsvorschlag: Aktualisierungsvorschlag | null;
   readonly inhalt: BausteinInhalt;

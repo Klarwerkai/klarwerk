@@ -19,6 +19,7 @@ export function BausteinAufnahme({
   aufnehmen,
   gesperrt,
   grund,
+  fehler = null,
 }: {
   aufnehmen: (eingabe: {
     koId: string;
@@ -28,6 +29,14 @@ export function BausteinAufnahme({
   gesperrt: boolean;
   /** Der Satz, der die Sperre erklärt. Eine Sperre ohne Grund wäre ein toter Knopf. */
   grund: string | null;
+  /**
+   * JOB 4233 · Der i18n-Schlüssel der letzten Absage dieses Formulars. `null` = keine.
+   *
+   * Er steht in einer Live-Region AM FORMULAR, weil er zur Eingabe gehört und nicht zum Lesestand:
+   * „Diese Fassung gibt es nicht" ist eine Aussage über das, was gerade getippt wurde. Die Eingabe
+   * bleibt dabei stehen (siehe `absenden`) — nichts gilt als gespeichert.
+   */
+  fehler?: string | null;
 }): JSX.Element {
   const { t } = useTranslation();
   const [koId, setKoId] = useState("");
@@ -88,6 +97,11 @@ export function BausteinAufnahme({
         {t("ga.aufnahme.knopf")}
       </button>
       {gesperrt && grund ? <p role="alert">{t(grund)}</p> : null}
+      {fehler ? (
+        <p role="alert" data-testid={`${AUFNAHME_MARKE}-fehler`}>
+          {t(fehler)}
+        </p>
+      ) : null}
     </form>
   );
 }

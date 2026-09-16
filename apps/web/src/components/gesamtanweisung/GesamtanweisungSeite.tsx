@@ -19,7 +19,12 @@ import { BausteinAufnahme } from "./BausteinAufnahme";
 import { EntscheidungsVorlage } from "./EntscheidungsVorlage";
 import { LesestandAnsicht } from "./LesestandAnsicht";
 import { VergleichAnsicht } from "./VergleichAnsicht";
-import { fehlerSchluessel, istOhneVerbindung } from "./api";
+import {
+  aufnahmeFehlerSchluessel,
+  fehlerSchluessel,
+  istOhneVerbindung,
+  istUnbekannteFassung,
+} from "./api";
 import {
   useAnweisung,
   useAnweisungStaende,
@@ -107,12 +112,17 @@ export function GesamtanweisungSeite({
 
   const stand = anweisung.data;
   const version = stand?.version ?? null;
+  // JOB 4233: die Absage „diese Fassung gibt es nicht" gehört ANS FORMULAR und nicht in die
+  // Entscheidungsvorlage — dort stünde sie neben „Vorlegen" und sagte einem Menschen, der gerade
+  // gar nichts vorlegt, etwas über seinen Tippfehler. Jeder andere Aufnahmefehler (403, Konflikt,
+  // offline) bleibt wie bisher auch dort sichtbar.
+  const aufnahmeFehler = aufnehmen.error ?? null;
   const letzterFehler =
     entscheiden.error ??
     vorlegen.error ??
     voraussetzung.error ??
     ordnen.error ??
-    aufnehmen.error ??
+    (istUnbekannteFassung(aufnahmeFehler) ? null : aufnahmeFehler) ??
     null;
 
   return (
@@ -152,6 +162,7 @@ export function GesamtanweisungSeite({
       <BausteinAufnahme
         gesperrt={version === null || bearbeiten.gesperrt}
         grund={bearbeiten.grund}
+        fehler={aufnahmeFehler ? aufnahmeFehlerSchluessel(aufnahmeFehler) : null}
         aufnehmen={async (eingabe) => {
           if (version === null) {
             return false;

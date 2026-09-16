@@ -2444,6 +2444,17 @@ export interface BausteinLesestand {
   voraussetzung: string | null;
   /** `null` = die gebundene Fassung ist nicht auffindbar; es wird nicht ausgewichen. */
   herkunft: BausteinHerkunft | null;
+  /**
+   * JOB 4233 · Der Text GENAU der gebundenen Fassung (Server: `BausteinLesestand.rumpfHtml`).
+   *
+   * `null` = UNBEKANNT: die Fassung ist nicht auffindbar oder trägt keinen Rumpf. Die Fläche zeigt
+   * dafür einen eigenen Satz, nie einen leeren Kasten und nie die heutige Fassung.
+   *
+   * OPTIONAL, und das ist eine Aussage über den Draht und keine Bequemlichkeit: eine Antwort ohne
+   * dieses Feld ist genauso „unbekannt" wie `null` — sie ist nur älter. Die Fläche liest deshalb
+   * `rumpfHtml ?? null` und behandelt beides gleich; „fehlt" wird nie zu „leer".
+   */
+  rumpfHtml?: string | null;
   aktuelleKoVersion: number | null;
   /** Steht DANEBEN, ersetzt nie. `null` = es gibt keine neuere Fassung. */
   aktualisierungsvorschlag: { aufVersion: number } | null;

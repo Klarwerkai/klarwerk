@@ -341,6 +341,38 @@ const FREMDE: readonly Fremdrelation[] = [
       "liegt ausserhalb der Zielpfade von JOB 3062. Eine einseitige Aenderung faellt hier auf, und " +
       "genau dafuer steht der Eintrag.",
   },
+  // ==============================================================================================
+  // JOB 4233 (P2-FASSUNG-GESAMTANWEISUNG): EINE NEUE DRITTE DATEI MIT EINEM 27-KNOTEN-BLOCK.
+  // ==============================================================================================
+  //
+  // Der Block ist der Abgleich einer Gliederung mit dem GERENDERTEN Baum: Ueberschriften einsammeln,
+  // und den Zustand nur setzen, wenn sich die Eintraege wirklich unterscheiden —
+  //
+  //     const frisch = <sammler>(<knoten>);
+  //     set<X>((vorher) => (<gleich>(vorher, frisch) ? vorher : frisch));
+  //
+  // in `BibliothekLesen.tsx:575` (`useLayoutEffect`, Sprungmarken der Lesespalte) und seit JOB 4233
+  // in `components/gesamtanweisung/LesestandAnsicht.tsx:103` (`useEffect`, Gliederung des
+  // gebundenen Bausteintextes). Die Gleichheit ist ABSICHT und sie ist bezahlt: genau dieser
+  // Ergebnisvergleich haelt die Schleife an, und die Lehre dahinter steht ausfuehrlich in
+  // `BibliothekLesen.tsx` (Runde 3/4: ein Merkmalsvergleich sagte „unveraendert", waehrend der Baum
+  // ein anderer war).
+  //
+  // NICHT ZUSAMMENGELEGT, und der Grund ist eine Regel, kein Geschmack: der gemeinsame Ort waere
+  // ein eigener Haken neben beiden Flaechen und damit eine Aenderung an `BibliothekLesen.tsx` —
+  // diese Datei steht NICHT in den Zielpfaden von JOB 4233 (§4 ist abschliessend). Die ANZEIGE- und
+  // STRUKTURREGELN sind ohnehin nicht gedoppelt: beide Seiten importieren `d44LeisteZeigen` und
+  // `d44SichtbareEintraege` aus `components/d44Struktur.ts`. Gedoppelt ist allein der
+  // Zustandsabgleich. Laeuft eine Seite aus, faellt ihre Groesse hier auf — genau dafuer der Eintrag.
+  {
+    dritt: "apps/web/src/components/gesamtanweisung/LesestandAnsicht.tsx",
+    groessen: [27],
+    was:
+      "GELESEN: der Abgleich der Gliederung mit dem gerenderten Baum (sammeln, dann nur bei " +
+      "wirklicher Abweichung setzen), geteilt mit der Lesespalte der Bibliothek " +
+      "(`BibliothekLesen.tsx:575`). Die D44-Regeln selbst sind NICHT gedoppelt — beide Seiten " +
+      "importieren sie aus `components/d44Struktur.ts`.",
+  },
   {
     dritt: "apps/web/src/pages/ExternalKnowledge.tsx",
     groessen: [27],
