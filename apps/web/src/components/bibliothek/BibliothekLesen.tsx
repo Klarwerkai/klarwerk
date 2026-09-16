@@ -231,7 +231,122 @@ type EinreichLage =
  * anderen Ort gibt — und `version` steht darin genauso wie bei `EinreichLage`: `null`, bis das
  * Nachlesen eine Fassung WIRKLICH gezeigt hat.
  */
-type SpeicherLage = { art: "stale"; version: number | null };
+/**
+ * JOB 4163 R2 · WAS VON DIESER BEARBEITUNG SCHON AM SERVER STEHT — DIE BUCHFÜHRUNG.
+ *
+ * Der Speicherweg besteht aus drei nacheinander abgesetzten Schreibaufrufen (s. `save` unten), und
+ * bis zu diesem Auftrag wusste niemand, an welcher Stelle die Kette gerissen war.
+ *
+ * RUNDE 1 FÜHRTE JE SCHRITT NUR „gelungen ja/nein" MIT, UND DAS WAR ZU WENIG — BEN hat drei Fälle
+ * gemessen, in denen es Arbeit verschluckt oder gelogen hat:
+ *   · BEN1: nach einem Kategorieabbruch ein Schlagwort ergänzt → der `tags`-Schritt galt als
+ *     „gelungen" und ging nicht noch einmal hinaus. Die Fläche meldete Erfolg, der Nachtrag fehlte.
+ *   · BEN2/BEN3: ein weiterer Fehlschlag setzte die Buchführung auf `null` zurück — der schon
+ *     gespeicherte Text war damit vergessen, und der nächste Griff lief in einen erfundenen
+ *     Fremdkonflikt.
+ *
+ * DESHALB STEHT HIER JE SCHRITT DER GESCHRIEBENE WERT, nicht sein Erfolg: eine Vergleichsmarke des
+ * Inhalts, den der gelungene Aufruf WIRKLICH abgesetzt hat. Ein Schritt ist genau dann offen, wenn
+ * der Wert im Formular von der Marke abweicht — das umfasst „noch nie geschrieben" (`null`) UND
+ * „inzwischen geändert" in derselben Regel. `null` heisst nie „gelungen"; es heisst „von dieser
+ * Bearbeitung steht dort nichts".
+ *
+ * `fassung` ist die Versionsnummer, die die ANTWORT des eigenen gelungenen `revise` getragen hat.
+ * Sie ist der Bezugspunkt des nächsten bedingten Schreibzugriffs — s. `save`, „DIE FASSUNG".
+ */
+type Teilstand = {
+  text: string | null;
+  tags: string | null;
+  category: string | null;
+  fassung: number | null;
+};
+
+/** Die Marken, die der aktuelle Formularinhalt ergibt — der Vergleichspunkt gegen die Buchführung. */
+type Speichermarken = { text: string; tags: string; category: string; schlagworte: string[] };
+
+/**
+ * Welche Folgeschritte JETZT noch abgesetzt werden müssen. Eine leere Kategorie wird gar nicht erst
+ * geschickt (die Route verlangt einen Wert) — sie ist deshalb kein offener Schritt, und ein Satz
+ * darüber wäre eine Auskunft ohne Gegenstand.
+ */
+function offeneSchritte(buch: Teilstand, marken: Speichermarken): Array<"tags" | "category"> {
+  const offen: Array<"tags" | "category"> = [];
+  if (buch.tags !== marken.tags) {
+    offen.push("tags");
+  }
+  if (marken.category !== "" && buch.category !== marken.category) {
+    offen.push("category");
+  }
+  return offen;
+}
+
+/**
+ * Der Satz zum Teilabbruch — FESTE WORTLAUTE statt einer zusammengesetzten Aufzählung. Eine Liste,
+ * die im Satz gefügt wird, liest sich in einer der drei Sprachen immer falsch; jeder dieser
+ * Schlüssel steht in DE/EN/NL als ganzer Satz da und benennt BEIDE Hälften — was gespeichert ist
+ * und was nicht.
+ *
+ * `textAktuell` IST DER ERSTE SCHNITT, und er ist die Antwort auf BEN2/BEN3: steht am Server ein
+ * FRÜHERER Stand des Textes, dann ist „dein Text ist gespeichert" unwahr. Dieser Fall bekommt einen
+ * eigenen Satz, statt den Menschen in Sicherheit zu wiegen.
+ */
+function teilSatzSchluessel(textAktuell: boolean, offen: Array<"tags" | "category">): string {
+  if (!textAktuell) {
+    return "ko.revise.partialOlder";
+  }
+  if (offen.length === 2) {
+    return "ko.revise.partialTagsCategory";
+  }
+  return offen[0] === "tags" ? "ko.revise.partialTags" : "ko.revise.partialCategory";
+}
+
+/**
+ * JOB 4163 · Der Abbruch MIT SEINEM VERLAUF. `useMutation` reicht an `onError` nur den Fehler
+ * durch; wie weit die Kette gekommen war, stünde sonst nirgends. Die Ursache reist mit und wird in
+ * `onError` ausgepackt — die bestehenden Zweige (409, `PROPOSAL_REQUIRED`) lesen weiter genau den
+ * Fehler, den der Server geschickt hat, nicht diese Hülle.
+ */
+class SpeicherAbbruch extends Error {
+  readonly ursache: unknown;
+  /** Steht der Text, der JETZT im Formular steht, am Server? */
+  readonly textAktuell: boolean;
+  readonly offen: Array<"tags" | "category">;
+
+  constructor(ursache: unknown, textAktuell: boolean, offen: Array<"tags" | "category">) {
+    super("Speichern unterwegs abgebrochen");
+    this.name = "SpeicherAbbruch";
+    this.ursache = ursache;
+    this.textAktuell = textAktuell;
+    this.offen = offen;
+  }
+}
+
+/**
+ * JOB 4163 · DREI LAGEN, DREI TATSACHEN — und keine zweite Aussage über dieselbe.
+ *
+ * `stale`     — jemand ANDERES hat geschrieben (JOB 4075). `teilVorher` sagt, ob von dieser
+ *               Bearbeitung schon ein Stand am Server liegt: dann ist der alte Wortlaut
+ *               („gespeichert wurde nichts") unwahr und ein eigener tritt an seine Stelle. Ohne
+ *               Teilabbruch bleibt alles, wie JOB 4075 es gebaut hat.
+ * `teil`      — der EIGENE Speichervorgang ist zwischen zwei Aufrufen gerissen. `textAktuell`
+ *               unterscheidet „dein Text ist gespeichert" von „ein früherer Stand ist gespeichert".
+ *               `meldung` ist die rohe Servermeldung; sie darf DANEBEN stehen, nie allein.
+ *               `rechtEntzogen` nennt die Ursache, wenn der Server sie mit 403 genannt hat — ohne
+ *               sie stünde dort „drück noch einmal", was nichts bringen würde (BEN, Prüflücke 6).
+ * `keinRecht` — 403 ohne `PROPOSAL_REQUIRED` und ohne dass etwas geschrieben wurde: das
+ *               Schreibrecht ist ganz entzogen. Das ist kein Einreichfall — dort gäbe es einen Weg,
+ *               hier gibt es keinen.
+ */
+type SpeicherLage =
+  | { art: "stale"; version: number | null; teilVorher: boolean }
+  | {
+      art: "teil";
+      textAktuell: boolean;
+      offen: Array<"tags" | "category">;
+      meldung: string;
+      rechtEntzogen: boolean;
+    }
+  | { art: "keinRecht"; meldung: string };
 
 // Die drei Töne des Einreich-Satzes als FLACHE Konstanten — dieselbe Bauform wie `LAGE_SPALTE` &c.
 // in `BibliothekListe.tsx` (JOB 3335). Der Sammler `tests/app/mega47-modale-flaechen-sammler.test.tsx`
@@ -823,6 +938,10 @@ export function BibliothekLesen({
     setSpeicherLage(null);
     setSperreGemeldet(false);
     setPruefwegHaken(false);
+    // JOB 4163: die Buchführung gehört zu DIESEM Formular. Ist es zu — weil alles angekommen ist
+    // oder weil abgebrochen wurde —, gibt es nichts mehr nachzuholen; sie über ein neues Formular
+    // hinweg stehenzulassen, hiesse einen Schritt zu überspringen, den niemand gemacht hat.
+    teilstandRef.current = null;
   };
 
   // ================================================================================================
@@ -848,31 +967,138 @@ export function BibliothekLesen({
   // der dort gar nicht greifen könnte, nicht stillschweigend geschluckt wird
   // (`tests/word-rueckweg/route-bedingter-schreibzugriff.test.ts`, F5). Sie laufen erst NACH einem
   // erfolgreichen `revise`; ein Konflikt bricht die Kette vorher ab, es geht also nichts hinaus.
+  //
+  // ================================================================================================
+  // JOB 4163 · DIE KETTE WEISS, WIE WEIT SIE GEKOMMEN IST — UND DER ZWEITE GRIFF HOLT NUR NACH.
+  // ================================================================================================
+  //
+  // DER FEHLER, DEN DIESE ZEILEN SCHLIESSEN, und er war rechnerisch zwingend: brach die Kette nach
+  // dem gelungenen `revise` ab, lief `onSuccess` nicht, `bearbeitenBeenden()` lief nicht, und
+  // `edit.version` blieb die ALTE Zahl — während das Objekt am Server bereits eine Fassung weiter
+  // war. Der Mensch sah nur die rohe Servermeldung und erfuhr NICHT, dass sein Text schon
+  // gespeichert ist. Drückte er erneut „Speichern", ging die alte Fassung hinaus, der Server
+  // antwortete 409, und die Fläche erzählte ihm von einem FREMDEN Schreiber. Dazwischengekommen war
+  // sein eigener halb gelungener Speichervorgang; der Satz war unwahr.
+  //
+  // `teilstandRef` IST BUCHFÜHRUNG, KEIN ANZEIGEWERT — und deshalb eine `ref` und kein Zustand:
+  // gezeichnet wird aus ihr nichts (dafür steht `speicherLage`), gelesen wird sie im Augenblick des
+  // Aufrufs, und sie darf `onMutate` ÜBERLEBEN. §9 verlangt, dass die Auskunft des vorigen Versuchs
+  // über einem laufenden neuen verschwindet — die TATSACHE, dass der Text schon am Server steht,
+  // verschwindet damit nicht: sie gilt weiter, sonst schickte der nächste Versuch wieder die
+  // überholte Fassung. Genommen wird sie zurück, wenn alles angekommen ist (`onSuccess` über
+  // `bearbeitenBeenden`) oder wenn ein Formular neu aufgeht (`startEdit`).
+  const teilstandRef = useRef<Teilstand | null>(null);
   const save = useMutation({
-    mutationFn: async (v: { expectedVersion: number | null }) => {
+    mutationFn: async (v: { expectedVersion: number | null; ueberschreiben?: boolean }) => {
       if (!edit) {
         throw new Error("no edit");
       }
-      await endpoints.ko.act(koId, {
-        action: "revise",
-        changes: {
-          title: edit.title,
-          statement: edit.statement,
-          bodyHtml: edit.bodyHtml,
-          type: edit.type,
-          conditions: edit.conditions.filter((x) => x.trim()),
-          measures: edit.measures.filter((x) => x.trim()),
-        },
-        // WISSENSLÜCKE STATT ERFINDUNG: ohne bekannte Fassung wird das Feld WEGGELASSEN, nicht
-        // geraten. Der Aufruf verhält sich dann wie vor diesem Auftrag — eine falsche Zahl wäre
-        // schlimmer als keine: sie schützte vor nichts und wiese dafür rechtmässige Schreibvorgänge
-        // ab (`route-bedingter-schreibzugriff.test.ts` F4 hält fest, was ohne das Feld gilt).
-        ...(typeof v.expectedVersion === "number" ? { expectedVersion: v.expectedVersion } : {}),
-      });
-      await endpoints.ko.act(koId, { action: "tags", tags: edit.tags.filter((x) => x.trim()) });
-      if (edit.category.trim()) {
-        await endpoints.ko.act(koId, { action: "category", category: edit.category.trim() });
+      const changes = {
+        title: edit.title,
+        statement: edit.statement,
+        bodyHtml: edit.bodyHtml,
+        type: edit.type,
+        conditions: edit.conditions.filter((x) => x.trim()),
+        measures: edit.measures.filter((x) => x.trim()),
+      };
+      const schlagworte = edit.tags.filter((x) => x.trim());
+      const marken: Speichermarken = {
+        text: JSON.stringify(changes),
+        tags: JSON.stringify(schlagworte),
+        category: edit.category.trim(),
+        schlagworte,
+      };
+      // DIE BUCHFÜHRUNG WIRD FORTGESCHRIEBEN, NIE ZURÜCKGESETZT (BEN2/BEN3). Was am Server steht,
+      // hört durch einen weiteren Fehlschlag nicht auf, dort zu stehen; ein `null` hier hiesse,
+      // dem nächsten Griff eine Tatsache zu verschweigen, die er braucht.
+      const buch: Teilstand = teilstandRef.current
+        ? { ...teilstandRef.current }
+        : { text: null, tags: null, category: null, fassung: null };
+      const buchen = (): void => {
+        teilstandRef.current = buch.text === null ? null : buch;
+      };
+      try {
+        // EIN SCHRITT IST OFFEN, WENN SEIN WERT IM FORMULAR VON DEM ABWEICHT, DER AM SERVER STEHT.
+        // Diese EINE Regel deckt beides ab: „noch nie geschickt" (`null`) und „seither geändert".
+        // Runde 1 fragte stattdessen nach dem Erfolg des letzten Aufrufs — und verschluckte damit
+        // jedes Schlagwort, das nach einem Kategorieabbruch ergänzt wurde (BEN1).
+        //
+        // ============================================================================================
+        // `ueberschreiben` HEBT DIESEN VERGLEICH AUF — UND DAS IST DIE LÜCKE AUS RUNDE 2 (BEN-R2-B).
+        // ============================================================================================
+        //
+        // DIE MARKE SAGT NICHT, WAS AM SERVER STEHT. Sie sagt: „diesen Text habe ICH einmal
+        // hinausgeschickt". Solange nur die eigene Kette läuft, ist das dasselbe. Sobald jemand
+        // FREMDES geschrieben hat, ist es das nicht mehr — und genau dann steht der Konfliktknopf da.
+        //
+        // WAS RUNDE 2 DARAUS MACHTE, war ein stiller Betrug: Stellt der Mensch nach der
+        // Konfliktmeldung seinen Text auf genau den zurück, den er vorhin schon einmal gespeichert
+        // hatte („ich nehme meinen Nachtrag zurück und speichere den Stand von vorhin"), dann
+        // stimmten Formular und Marke wieder überein, der Aufruf wurde übersprungen — und die Fläche
+        // meldete Erfolg über einen Schreibvorgang, den es nie gegeben hat. BEN hat es gemessen:
+        // „Trotz bewusster Konfliktentscheidung wurde der Formulartext nicht gespeichert."
+        //
+        // Der Knopf verspricht, den Text auf dem jetzigen Stand zu speichern. Also geht er hinaus,
+        // ohne Vergleich. Was er NICHT aufhebt, ist die Bedingung: `expectedVersion` reist weiter
+        // mit (s. `eigeneFassung`), damit auch diese Entscheidung einen zwischenzeitlichen zweiten
+        // fremden Schreiber nicht überfährt — gemessen in B15.
+        if (v.ueberschreiben || buch.text !== marken.text) {
+          // ============================================================================
+          // DIE FASSUNG — UND WARUM SIE NACH EINEM TEILABBRUCH NICHT NACHGELESEN WIRD.
+          // ============================================================================
+          //
+          // Beim ERSTEN Versuch ist es die GESEHENE Fassung vom Aufrufer (JOB 4075).
+          //
+          // Nach einem Teilabbruch ist die gesehene durch den eigenen halben Speichervorgang
+          // überholt. Runde 1 las die gültige Fassung nach und schrieb mit ihr — und genau das war
+          // falsch: eine frische Versionsnummer sagt nur, WIE VIELE Fassungen es gibt, nicht, WER
+          // sie geschrieben hat. Hat inzwischen jemand Fremdes geschrieben, überschrieb der zweite
+          // Griff ihn lautlos (BEN4).
+          //
+          // RICHTIG IST DIE FASSUNG, DIE DIE ANTWORT DES EIGENEN `revise` GETRAGEN HAT. Sie ist
+          // gelesen, nicht geraten — und sie ist der einzige Stand, von dem dieser Client WEISS,
+          // dass er sein eigener ist. Kommt jemand Fremdes dazwischen, weist der Server den Aufruf
+          // mit 409 ab, und der Konfliktweg aus JOB 4075 greift: der Mensch entscheidet, nicht die
+          // Fläche. Es entsteht KEINE zweite Konflikterkennung im Browser.
+          //
+          // `ueberschreiben` ist genau diese Entscheidung, wenn sie gefallen ist: der Knopf
+          // „Auf dem jetzigen Stand speichern" schickt die Fassung, die im Bild steht.
+          const eigeneFassung =
+            v.ueberschreiben || buch.text === null ? v.expectedVersion : buch.fassung;
+          if (!v.ueberschreiben && buch.text !== null && typeof eigeneFassung !== "number") {
+            // Die eigene Fassung ist unbekannt. Ohne sie ginge der Aufruf entweder mit einer
+            // geratenen Zahl (falscher Konflikt) oder ganz ohne Schutz (stilles Überschreiben)
+            // hinaus. Also gar nicht — Wissenslücke statt Erfindung.
+            throw new Error("Fassung des eigenen Schreibvorgangs unbekannt");
+          }
+          const geschrieben = await endpoints.ko.act(koId, {
+            action: "revise",
+            changes,
+            // WISSENSLÜCKE STATT ERFINDUNG: ohne bekannte Fassung wird das Feld WEGGELASSEN, nicht
+            // geraten. Der Aufruf verhält sich dann wie vor JOB 4075 — eine falsche Zahl wäre
+            // schlimmer als keine: sie schützte vor nichts und wiese dafür rechtmässige
+            // Schreibvorgänge ab (`route-bedingter-schreibzugriff.test.ts` F4 hält fest, was ohne
+            // das Feld gilt).
+            ...(typeof eigeneFassung === "number" ? { expectedVersion: eigeneFassung } : {}),
+          });
+          buch.text = marken.text;
+          // Die Fassung kommt aus der ANTWORT des Schreibvorgangs, nicht aus einer zweiten Abfrage.
+          buch.fassung = typeof geschrieben?.version === "number" ? geschrieben.version : null;
+        }
+        if (buch.tags !== marken.tags) {
+          await endpoints.ko.act(koId, { action: "tags", tags: marken.schlagworte });
+          buch.tags = marken.tags;
+        }
+        if (marken.category !== "" && buch.category !== marken.category) {
+          await endpoints.ko.act(koId, { action: "category", category: marken.category });
+          buch.category = marken.category;
+        }
+      } catch (e) {
+        buchen();
+        throw new SpeicherAbbruch(e, buch.text === marken.text, offeneSchritte(buch, marken));
       }
+      // Alles angekommen: es gibt nichts mehr nachzuholen.
+      teilstandRef.current = null;
     },
     // Solange nichts zurück ist, wird nichts behauptet (§9 „laden"): die Auskunft des VORIGEN
     // Versuchs gehört nicht über einen laufenden neuen.
@@ -929,10 +1155,37 @@ export function BibliothekLesen({
     // DIE ARBEIT ÜBERLEBT: `setEdit` wird nicht angefasst, `bearbeitenBeenden` läuft NICHT. Das
     // Formular steht mit unverändertem Text da und bleibt bearbeitbar — anpassen braucht keinen
     // Knopf, die beiden anderen Wege stehen daneben.
+    //
+    // ==============================================================================================
+    // JOB 4163 · DER TEILABBRUCH STEHT VOR ALLEN ANDEREN ZWEIGEN — ER IST DIE GRÖSSERE TATSACHE.
+    // ==============================================================================================
+    //
+    // „Dein Text ist gespeichert" muss der Mensch erfahren, bevor irgendetwas über die Ursache des
+    // Abbruchs gesagt wird: sonst sucht er nach seiner Arbeit, die längst am Server liegt. Der
+    // Zweig fängt NUR sich selbst — er greift ausschliesslich, wenn ein `revise` dieser Bearbeitung
+    // gelungen ist UND noch ein Folgeschritt offen steht. Ein 409 am `revise` selbst (B5) und ein
+    // 403 am `revise` selbst (B4) kommen hier gar nicht an: dann steht nichts in der Buchführung.
+    //
+    // UND ES GIBT KEINE ZWEITE AUSSAGE ÜBER DIESELBE TATSACHE: `err` wird ausdrücklich geräumt. Der
+    // Sammelzweig unten ist für diesen Fall abgelöst, nicht ergänzt — stünden beide Sätze da, wäre
+    // aus einer Reparatur ein zweiter Erklärungsweg geworden.
     onError: (e) => {
-      if (e instanceof ApiError && e.status === 409) {
+      const abbruch = e instanceof SpeicherAbbruch ? e : null;
+      const ursache = abbruch ? abbruch.ursache : e;
+      // Von dieser Bearbeitung steht schon etwas am Server — die Buchführung ist der EINE Beleg
+      // dafür, und sie überlebt jeden weiteren Fehlschlag (BEN2/BEN3).
+      const teilVorher = teilstandRef.current !== null;
+      // ============================================================================================
+      // DER 409 STEHT VOR DEM TEILABBRUCH — ER IST DIE STÄRKERE TATSACHE (BEN4).
+      // ============================================================================================
+      //
+      // „Jemand anderes hat geschrieben" muss der Mensch erfahren, BEVOR ihm etwas über den eigenen
+      // halben Vorgang gesagt wird: nur er entscheidet, ob der fremde Stand überschrieben werden
+      // darf. Liegt von dieser Bearbeitung schon etwas am Server, ist der alte Wortlaut
+      // („gespeichert wurde nichts") allerdings unwahr — dafür steht `teilVorher`.
+      if (ursache instanceof ApiError && ursache.status === 409) {
         // Erst die WAHRE, noch zahlenlose Aussage — sie gilt sofort.
-        setSpeicherLage({ art: "stale", version: null });
+        setSpeicherLage({ art: "stale", version: null, teilVorher });
         invalidate();
         // Und dann die Fassung, die das Nachlesen WIRKLICH gezeigt hat. Der Rückruf überschreibt nur
         // eine noch offene Stale-Lage: wer inzwischen erneut gespeichert hat, soll seine neue
@@ -954,20 +1207,66 @@ export function BibliothekLesen({
           const jetzt = r.data?.version;
           setSpeicherLage((vorher) =>
             vorher?.art === "stale" && typeof jetzt === "number"
-              ? { art: "stale", version: jetzt }
+              ? { art: "stale", version: jetzt, teilVorher: vorher.teilVorher }
               : vorher,
           );
         });
         return;
       }
-      if (e instanceof ApiError && e.code === "PROPOSAL_REQUIRED") {
+      if (ursache instanceof ApiError && ursache.code === "PROPOSAL_REQUIRED") {
         setSperreGemeldet(true);
-        setEinreichLage({ art: "pflicht", text: e.message });
+        setEinreichLage({ art: "pflicht", text: ursache.message });
+        return;
+      }
+      // ============================================================================================
+      // JOB 4163 · DER TEILABBRUCH — DIE ZWEITE TATSACHE, UND SIE GILT AUCH NACH WEITEREN FEHLERN.
+      // ============================================================================================
+      //
+      // „Dein Text ist gespeichert" (oder, nach einer weiteren Änderung, „ein früherer Stand deines
+      // Textes") muss der Mensch erfahren, bevor irgendetwas über die Ursache gesagt wird: sonst
+      // sucht er nach Arbeit, die längst am Server liegt. Der Zweig greift, sobald die Buchführung
+      // etwas trägt — auch wenn DIESER Lauf schon am `revise` gescheitert ist (BEN2/BEN3).
+      //
+      // UND ES GIBT KEINE ZWEITE AUSSAGE ÜBER DIESELBE TATSACHE: `err` wird ausdrücklich geräumt.
+      // Der Sammelzweig unten ist für diesen Fall abgelöst, nicht ergänzt.
+      if (abbruch !== null && teilVorher && (!abbruch.textAktuell || abbruch.offen.length > 0)) {
+        setErr(null);
+        setSpeicherLage({
+          art: "teil",
+          textAktuell: abbruch.textAktuell,
+          offen: abbruch.offen,
+          // Die rohe Meldung reist MIT, aber sie trägt den Satz nicht: was der Server sagt, ist
+          // eine Auskunft über seine Lage, nicht über die Arbeit des Menschen.
+          meldung: ursache instanceof ApiError ? ursache.message : "",
+          // BEN, Prüflücke 6: wurde das Recht MITTEN in der Kette entzogen, stünde ohne diesen
+          // Hinweis nur „drück noch einmal" da — eine Zusage, die nichts einlöst.
+          rechtEntzogen:
+            ursache instanceof ApiError &&
+            ursache.status === 403 &&
+            ursache.code !== "PROPOSAL_REQUIRED",
+        });
+        // Am Objekt HAT sich etwas geändert — der Text steht dort. Die Fläche darunter zeigt sonst
+        // weiter den Stand von vorhin.
+        invalidate();
+        return;
+      }
+      // ============================================================================================
+      // JOB 4163 · RECHTEENTZUG IST KEIN EINGABEFEHLER — UND KEIN EINREICHFALL.
+      // ============================================================================================
+      //
+      // ER STEHT NACH `PROPOSAL_REQUIRED` UND FÄNGT NUR DEN REST: dort ist das Objekt freigegeben
+      // und es gibt einen Weg (einreichen); hier ist das Schreibrecht ganz entzogen, und es gibt
+      // keinen. Ein Satz, der trotzdem einen Weg verspräche, wäre die Scheinfunktion; die rohe
+      // Servermeldung allein war die Sackgasse. Also: eigener Satz in Anwendersprache, die Meldung
+      // des Servers daneben — und der Text bleibt unverändert im Formular stehen.
+      if (ursache instanceof ApiError && ursache.status === 403) {
+        setErr(null);
+        setSpeicherLage({ art: "keinRecht", meldung: ursache.message });
         return;
       }
       // Jeder andere Fehler — auch der Netzausfall — geht unverändert hierher. Ein Netzfehler ist
       // kein Konflikt, und der Konfliktsatz stünde dort falsch.
-      setErr(e instanceof ApiError ? e.message : t("state.error"));
+      setErr(ursache instanceof ApiError ? ursache.message : t("state.error"));
     },
   });
 
@@ -1214,6 +1513,9 @@ export function BibliothekLesen({
     setSperreGemeldet(false);
     setPruefwegHaken(false);
     setCaptionRequest(null);
+    // JOB 4163: ein frisch aufgehendes Formular hat nichts nachzuholen — die Buchführung des
+    // vorigen Versuchs gehörte zu einem anderen Text und einer anderen Fassung.
+    teilstandRef.current = null;
     setEdit({
       title: ko.title,
       statement: ko.statement,
@@ -1915,8 +2217,15 @@ export function BibliothekLesen({
                 {t("xtr.append.unclear")}
               </div>
             ) : null}
+            {/* JOB 4163: der SAMMELZWEIG des Speicherwegs, jetzt benennbar. Er bleibt für alles
+                Übrige unverändert (Netzabbruch vor dem ersten Aufruf, 500 am `revise` selbst) —
+                die Marke steht hier, damit ein Prüfstand belegen kann, dass Teilabbruch und
+                entzogenes Recht ihn NICHT mehr benutzen. */}
             {err ? (
-              <div className="rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text">
+              <div
+                data-testid="bib-speichern-fehler"
+                className="rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text"
+              >
                 {err}
               </div>
             ) : null}
@@ -1968,43 +2277,109 @@ export function BibliothekLesen({
 
                 DRITTER WEG OHNE KNOPF: anpassen. Der Text steht unverändert im Formular darüber,
                 der Mensch tippt einfach weiter. */}
+            {/* ==========================================================================
+                JOB 4163 · DIE ZWEI NEUEN LAGEN STEHEN IM SELBEN KNOTEN WIE DER KONFLIKT.
+                ==========================================================================
+
+                EIN ORT FÜR DIE EINE AUSKUNFT ÜBER DEN LETZTEN SPEICHERVERSUCH, unterschieden
+                allein durch `data-lage` — ein zweiter Kasten daneben wäre eine zweite Mechanik
+                für dieselbe Sache, und ein Prüfstand könnte „steht hier schon etwas?" nicht mehr
+                an einer Stelle beantworten.
+
+                KEINE KNÖPFE BEIM TEILABBRUCH. Der Griff, der nachholt, ist der Speicherknopf
+                darunter — er steht schon da und trägt bereits die richtige Beschriftung. Ein
+                zweiter Knopf mit derselben Wirkung wäre die zweite Aussage über dieselbe
+                Tatsache. Beim entzogenen Recht steht gar kein Griff: es gibt keinen Weg, und
+                einen anzubieten wäre die Scheinfunktion. */}
             {speicherLage ? (
               <div
                 data-testid="bib-speichern-lage"
                 data-lage={speicherLage.art}
+                // JOB 4163 · EIN TON FÜR ALLE DREI LAGEN, und das ist eine Entscheidung, keine
+                // Nachlässigkeit: alle drei sagen dieselbe Art von Sache — „etwas ist nicht
+                // durchgekommen, deine Arbeit steht noch hier". Unterschieden werden sie durch
+                // den SATZ, nicht durch die Farbe; eine zweite Farbe wäre eine zweite Auslegung
+                // derselben Lage. Die Kette bleibt damit literal — der Klassenbindungs-Sammler
+                // `tests/app/mega47-modale-flaechen-sammler.test.tsx` zählt sie nicht zu den
+                // unauflösbaren Bindungen, und sein Pin (221) bleibt unberührt.
                 className={cx(EINREICH_ZEILE, EINREICH_WARN)}
               >
-                <span data-testid="bib-speichern-satz">
-                  {speicherLage.version === null
-                    ? t("ko.revise.stale")
-                    : t("ko.revise.staleVersion", { n: String(speicherLage.version) })}
-                </span>
-                <span className="mt-1.5 flex gap-2">
-                  <button
-                    type="button"
-                    data-testid="bib-speichern-neu-lesen"
-                    onClick={() => {
-                      void query.refetch();
-                      setSpeicherLage(null);
-                    }}
-                    className="rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-text hover:bg-hairline-soft"
-                  >
-                    {t("ko.revise.reload")}
-                  </button>
-                  <button
-                    type="button"
-                    data-testid="bib-speichern-trotzdem"
-                    disabled={save.isPending}
-                    onClick={() =>
-                      // Die Fassung, die JETZT im Bild steht — nicht die, auf der der gescheiterte
-                      // Versuch beruhte. Sonst führte der Knopf zuverlässig in denselben 409.
-                      save.mutate({ expectedVersion: ko.version })
-                    }
-                    className="rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-text hover:bg-hairline-soft"
-                  >
-                    {t("ko.revise.again")}
-                  </button>
-                </span>
+                {speicherLage.art === "stale" ? (
+                  <>
+                    {/* JOB 4163 R2 · DER KONFLIKTSATZ KENNT ZWEI LAGEN. Ohne eigenen Teilabbruch
+                        steht der Wortlaut aus JOB 4075 unverändert da. Liegt von dieser
+                        Bearbeitung schon ein Stand am Server, wäre sein Halbsatz „gespeichert
+                        wurde nichts" unwahr — dann tritt ein eigener Satz an seine Stelle, der
+                        beides sagt: der fremde Schreiber UND der eigene frühere Stand. */}
+                    <span data-testid="bib-speichern-satz">
+                      {speicherLage.teilVorher
+                        ? speicherLage.version === null
+                          ? t("ko.revise.stalePartial")
+                          : t("ko.revise.stalePartialVersion", {
+                              n: String(speicherLage.version),
+                            })
+                        : speicherLage.version === null
+                          ? t("ko.revise.stale")
+                          : t("ko.revise.staleVersion", { n: String(speicherLage.version) })}
+                    </span>
+                    <span className="mt-1.5 flex gap-2">
+                      <button
+                        type="button"
+                        data-testid="bib-speichern-neu-lesen"
+                        onClick={() => {
+                          void query.refetch();
+                          setSpeicherLage(null);
+                        }}
+                        className="rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-text hover:bg-hairline-soft"
+                      >
+                        {t("ko.revise.reload")}
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="bib-speichern-trotzdem"
+                        disabled={save.isPending}
+                        onClick={() =>
+                          // Die Fassung, die JETZT im Bild steht — nicht die, auf der der
+                          // gescheiterte Versuch beruhte. Sonst führte der Knopf zuverlässig in
+                          // denselben 409.
+                          //
+                          // JOB 4163 R2 · `ueberschreiben` IST DIE AUSDRÜCKLICHE ENTSCHEIDUNG des
+                          // Menschen, und nur sie hebt den Bezug auf die eigene Fassung auf: nach
+                          // einem Teilabbruch schreibt der Speicherweg sonst gegen die Fassung,
+                          // die sein eigener `revise` erzeugt hat, und liefe hier wieder in
+                          // denselben 409 — ein Knopf, der zuverlässig nichts tut.
+                          save.mutate({ expectedVersion: ko.version, ueberschreiben: true })
+                        }
+                        className="rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-text hover:bg-hairline-soft"
+                      >
+                        {t("ko.revise.again")}
+                      </button>
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span data-testid="bib-speichern-satz">
+                      {speicherLage.art === "teil"
+                        ? t(teilSatzSchluessel(speicherLage.textAktuell, speicherLage.offen))
+                        : t("ko.revise.forbidden")}
+                    </span>
+                    {/* DER HINWEIS SAGT NUR ETWAS ZU, WAS EINZULÖSEN IST. Ist das Recht mitten in
+                        der Kette entzogen worden, hilft ein erneuter Griff nicht — dann steht der
+                        Grund da statt der Aufforderung (BEN, Prüflücke 6). */}
+                    {speicherLage.art === "teil" ? (
+                      <span className="mt-1 block">
+                        {speicherLage.rechtEntzogen
+                          ? t("ko.revise.partialForbidden")
+                          : t("ko.revise.partialAgain", { knopf: t("ko.saveEdit") })}
+                      </span>
+                    ) : null}
+                    {speicherLage.meldung ? (
+                      <span data-testid="bib-speichern-meldung" className="mt-1 block opacity-80">
+                        {t("ko.revise.serverNote", { text: speicherLage.meldung })}
+                      </span>
+                    ) : null}
+                  </>
+                )}
               </div>
             ) : null}
             {/* Der EINE Satz über den letzten Einreichversuch — samt der Griffe, die zu seiner Lage

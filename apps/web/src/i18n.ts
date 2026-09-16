@@ -3071,6 +3071,48 @@ const de = {
     "Jemand anderes hat diesen Eintrag inzwischen geändert, er steht jetzt auf Version {{n}} — gespeichert wurde nichts. Dein Text steht unverändert hier.",
   "ko.revise.reload": "Eintrag neu lesen",
   "ko.revise.again": "Auf dem jetzigen Stand speichern",
+  // JOB 4163 · DER SPEICHERVORGANG, DER UNTERWEGS ABBRICHT, SAGT BEIDE HÄLFTEN.
+  //
+  // Speichern besteht aus drei Schritten (Text, Schlagworte, Kategorie). Reisst die Kette nach dem
+  // ersten, IST der Text gespeichert — und bis zu diesem Auftrag stand darüber nur die rohe
+  // Servermeldung. DREI FESTE SÄTZE statt einer im Satz gefügten Aufzählung: eine Liste, die aus
+  // Einzelteilen zusammengesetzt wird, liest sich in mindestens einer der drei Sprachen falsch.
+  //
+  // KEINE ZAHL, KEINE URSACHE, KEIN VERSPRECHEN. Was der Server gemeldet hat, steht getrennt in
+  // `serverNote` daneben — daneben, nie allein: eine Auskunft über seine Lage ist keine Auskunft
+  // über die Arbeit des Menschen.
+  "ko.revise.partialTags":
+    "Dein Text ist gespeichert. Die Schlagworte sind nicht mehr durchgekommen.",
+  "ko.revise.partialTagsCategory":
+    "Dein Text ist gespeichert. Die Schlagworte und die Kategorie sind nicht mehr durchgekommen.",
+  "ko.revise.partialCategory":
+    "Dein Text und die Schlagworte sind gespeichert. Die Kategorie ist nicht mehr durchgekommen.",
+  "ko.revise.partialAgain":
+    "Drücke noch einmal „{{knopf}}“ — nachgeholt wird nur, was fehlt. Dein Text bleibt, wie er hier steht.",
+  "ko.revise.serverNote": "Meldung des Servers: {{text}}",
+  // JOB 4163 R2 (BEN2/BEN3) · WER NACH DEM TEILABBRUCH WEITERTIPPT, BEKOMMT NICHT DENSELBEN SATZ.
+  // Am Server steht dann ein FRÜHERER Stand des Textes; „dein Text ist gespeichert" wäre unwahr und
+  // wiegte den Menschen in Sicherheit. Dieser Satz nennt beide Hälften genauso — nur die andere
+  // Grenze zwischen ihnen.
+  "ko.revise.partialOlder":
+    "Ein früherer Stand deines Textes ist gespeichert — deine letzte Änderung noch nicht. Dein Text steht unverändert hier.",
+  // JOB 4163 R2 (BEN, Prüflücke 6) · WURDE DAS RECHT MITTEN IN DER KETTE ENTZOGEN, hilft ein
+  // erneuter Griff nicht. Dann steht der Grund da statt der Aufforderung — eine Aufforderung, die
+  // nichts einlöst, ist eine Scheinfunktion.
+  "ko.revise.partialForbidden":
+    "Weiter geht es gerade nicht: du darfst diesen Eintrag nicht mehr ändern. Der Rest wird erst gespeichert, wenn du das Recht wieder hast.",
+  // Der 403 OHNE `PROPOSAL_REQUIRED`: das Schreibrecht ist ganz entzogen. Kein Weg wird versprochen
+  // — es gibt keinen —, aber die Arbeit wird ausdrücklich für unverloren erklärt.
+  "ko.revise.forbidden":
+    "Du darfst diesen Eintrag gerade nicht ändern — gespeichert wurde nichts. Dein Text steht unverändert hier.",
+  // JOB 4163 R2 (BEN4) · DER FREMDE SCHREIBER, NACHDEM SCHON ETWAS EIGENES DRIN STEHT.
+  // `ko.revise.stale` sagt „gespeichert wurde nichts" — nach einem eigenen Teilabbruch ist das
+  // falsch, und der bestehende Wortlaut bleibt deshalb unangetastet: für diese Lage steht ein
+  // eigener Satz da, der BEIDE Tatsachen nennt.
+  "ko.revise.stalePartial":
+    "Jemand anderes hat diesen Eintrag inzwischen geändert — deine letzte Änderung wurde nicht gespeichert. Ein früherer Stand deines Textes von vorhin steht bereits im Eintrag. Dein Text steht unverändert hier.",
+  "ko.revise.stalePartialVersion":
+    "Jemand anderes hat diesen Eintrag inzwischen geändert, er steht jetzt auf Version {{n}} — deine letzte Änderung wurde nicht gespeichert. Ein früherer Stand deines Textes von vorhin steht bereits im Eintrag. Dein Text steht unverändert hier.",
   // JOB 3667 R3 · DER EINREICHWEG IM BROWSER. Jeder Satz sagt die FOLGE, nicht bloss den Vorgang:
   // was mit dem eigenen Text geschieht, was mit dem freigegebenen Stand, und wer als Nächster
   // handelt. „Eingereicht" allein liesse offen, ob der Eintrag jetzt schon anders lautet.
@@ -9443,6 +9485,24 @@ const en: typeof de = {
     "Somebody else has changed this entry in the meantime, it is now at version {{n}} — nothing was saved. Your text is still here, unchanged.",
   "ko.revise.reload": "Re-read entry",
   "ko.revise.again": "Save against the current version",
+  "ko.revise.partialTags": "Your text is saved. The tags did not get through.",
+  "ko.revise.partialTagsCategory":
+    "Your text is saved. The tags and the category did not get through.",
+  "ko.revise.partialCategory":
+    "Your text and the tags are saved. The category did not get through.",
+  "ko.revise.partialAgain":
+    "Press “{{knopf}}” once more — only what is missing goes out again. Your text stays exactly as it is here.",
+  "ko.revise.serverNote": "Server message: {{text}}",
+  "ko.revise.partialOlder":
+    "An earlier state of your text is saved — your latest change is not. Your text is still here, unchanged.",
+  "ko.revise.partialForbidden":
+    "This cannot continue right now: you are no longer allowed to change this entry. The rest will only be saved once you have the right again.",
+  "ko.revise.forbidden":
+    "You are not allowed to change this entry right now — nothing was saved. Your text is still here, unchanged.",
+  "ko.revise.stalePartial":
+    "Someone else has changed this entry in the meantime — your latest change was not saved. An earlier state of your text from before is already in the entry. Your text is still here, unchanged.",
+  "ko.revise.stalePartialVersion":
+    "Someone else has changed this entry in the meantime, it is now at version {{n}} — your latest change was not saved. An earlier state of your text from before is already in the entry. Your text is still here, unchanged.",
   // JOB 3667 R3 — see the German block for the reasoning behind each sentence.
   "ko.propose.mustReview":
     "This knowledge object is released. Your change is submitted as a proposal and only takes effect once somebody else accepts it.",
@@ -14906,6 +14966,24 @@ const nl: typeof de = {
     "Iemand anders heeft dit item inmiddels gewijzigd, het staat nu op versie {{n}} — er is niets opgeslagen. Je tekst staat hier onveranderd.",
   "ko.revise.reload": "Item opnieuw lezen",
   "ko.revise.again": "Opslaan op de huidige versie",
+  "ko.revise.partialTags": "Je tekst is opgeslagen. De trefwoorden zijn niet doorgekomen.",
+  "ko.revise.partialTagsCategory":
+    "Je tekst is opgeslagen. De trefwoorden en de categorie zijn niet doorgekomen.",
+  "ko.revise.partialCategory":
+    "Je tekst en de trefwoorden zijn opgeslagen. De categorie is niet doorgekomen.",
+  "ko.revise.partialAgain":
+    "Druk nog een keer op „{{knopf}}” — alleen wat ontbreekt gaat opnieuw de deur uit. Je tekst blijft precies zoals hij hier staat.",
+  "ko.revise.serverNote": "Melding van de server: {{text}}",
+  "ko.revise.partialOlder":
+    "Een eerdere versie van je tekst is opgeslagen — je laatste wijziging nog niet. Je tekst staat hier onveranderd.",
+  "ko.revise.partialForbidden":
+    "Verder gaat het nu niet: je mag dit item niet meer wijzigen. De rest wordt pas opgeslagen zodra je het recht weer hebt.",
+  "ko.revise.forbidden":
+    "Je mag dit item op dit moment niet wijzigen — er is niets opgeslagen. Je tekst staat hier onveranderd.",
+  "ko.revise.stalePartial":
+    "Iemand anders heeft dit item inmiddels gewijzigd — je laatste wijziging is niet opgeslagen. Een eerdere versie van je tekst van zojuist staat al in het item. Je tekst staat hier onveranderd.",
+  "ko.revise.stalePartialVersion":
+    "Iemand anders heeft dit item inmiddels gewijzigd, het staat nu op versie {{n}} — je laatste wijziging is niet opgeslagen. Een eerdere versie van je tekst van zojuist staat al in het item. Je tekst staat hier onveranderd.",
   // JOB 3667 R3 — de onderbouwing per zin staat in het Duitse blok.
   "ko.propose.mustReview":
     "Dit kennisobject is vrijgegeven. Je wijziging wordt als voorstel ingediend en geldt pas wanneer iemand anders haar overneemt.",
