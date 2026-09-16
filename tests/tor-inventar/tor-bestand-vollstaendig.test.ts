@@ -358,8 +358,29 @@ describe("JOB 3131 T2 · die Browser-Gruppe ist genau die Menge mit Chromium in 
     // Arbeitsprüfung ohne vorherigen Bau nicht vorliegt. Die Last bleibt klein: EIN Browser, EINE
     // Seite, acht Fälle, kein `dist`, im eigenen Lauf 1,595 s, Abbau 218,95 ms (gemessen
     // 15.09.2026, Cloud-Lauf e755a22db2e88c4d8d2afda7).
-    expect(graph.startdateien.length).toBe(28);
+    // JOB 4223 (D1-GASTWEG-VOLLSTAENDIG): eine weitere eigene Startstelle — die Bühne des
+    // Gastdurchlaufs in zwei getrennten Browserprofilen (`tests/gast-nutzerweg/browserweg.ts`).
+    // Sie MUSS Playwright selbst starten, und der Grund ist an keiner bestehenden Bühne zu beheben:
+    // ALLE vorhandenen Bühnen fangen `/api/*` mit `page.route` ab und setzen dabei EINEN festen
+    // Bearer in jede Anfrage (`h1-chromium.ts:239`, `h6-chromium.ts:307`; die Gast-Bühne aus
+    // JOB 3591 lässt ihn bloss weg). Auf einer solchen Bühne trägt nicht die SITZUNG, sondern der
+    // Bearer — ein Auftrag, der vom Anmelden, vom Ablaufen und vom Verlängern einer Sitzung
+    // handelt, ist dort baulich nicht messbar. Sie braucht deshalb zweierlei, das keine Bühne hat:
+    // einen ECHTEN horchenden Server (`app.listen`, damit die Kekse des Browsers wirklich hin- und
+    // zurücklaufen) und ZWEI `browser.newContext()` mit getrennten Keksbeuteln.
+    // `apps/web/dist` verlangt sie wie h4/h6/schmal-buehne — im Tor läuft `./tools/build` davor
+    // (`tools/check:9`); fehlt es, wird sie LAUT rot und überspringt nicht still.
+    //
+    // RUNDE 2: DER EINTRAG IST GEWANDERT, DIE ZAHL IST GEBLIEBEN. In Runde 1 stand der
+    // `require("playwright")` in der Testdatei selbst. Seit BENs Urteil beschreibt `browserweg.ts`
+    // den ganzen Weg genau EINMAL und wird von zwei Dateien mit zwei Ablagen gefahren
+    // (Speicher im Tor · echtes PostgreSQL im Integrationslauf) — der Chromium-Start sitzt jetzt
+    // dort. `gastweg-im-echten-browser.test.ts` bleibt in der Browser-GRUPPE (die Hülle trägt
+    // Playwright weiterhin), ist aber keine STARTdatei mehr; die PostgreSQL-Fassung zählt gar nicht
+    // mit, weil `.integration.test.ts` vom Sammler ausgenommen ist (`browser-gruppe.ts:95`).
+    expect(graph.startdateien.length).toBe(29);
     for (const bekannt of [
+      "tests/gast-nutzerweg/browserweg.ts",
       "tests/entwurf-mobil-desktop/rueckfrage-schmal-chromium.test.tsx",
       "tests/demo-firmen-ci-anmeldung/gast-buehne.ts",
       "tests/ux28-fassungen/tastatur-im-browser-chromium.test.tsx",
