@@ -99,6 +99,21 @@ export interface Kontext {
   newPage(): Promise<Seite>;
   addInitScript(script: string): Promise<void>;
   cookies(): Promise<{ name: string; value: string }[]>;
+  /**
+   * JOB 4322 · DIE VERBINDUNG DIESES BROWSERPROFILS — an oder aus, wie im echten Gerät.
+   *
+   * Playwright schaltet sie am BrowserContext (`BrowserContext.setOffline`): `navigator.onLine`
+   * kippt, `window.online`/`window.offline` feuern, und jede Anfrage dieses Profils scheitert wie
+   * ohne Netz. Das ist etwas anderes als ein abgefangener Aufruf — die Fläche erfährt die Lage über
+   * denselben Weg wie am Handy, und der Dienstarbeiter (`apps/web/public/sw.js`) bedient das
+   * Neuladen aus seinem Zwischenspeicher.
+   *
+   * ADDITIV UND OHNE AUFRUFERZWANG: Die bestehenden Verbraucher dieser Hülle (`fahreDenGanzenWeg`,
+   * `gastweg-*`) rufen sie nicht und bleiben unverändert. Sie steht hier und nicht in einer zweiten
+   * Hülle daneben, weil es genau EINE Typhülle um Playwright geben soll — zwei liefen eines Tages
+   * auseinander (dieselbe Begründung wie im Kopf dieser Datei).
+   */
+  setOffline(offline: boolean): Promise<void>;
   close(): Promise<void>;
 }
 export interface Browser {
