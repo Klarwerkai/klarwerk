@@ -275,10 +275,20 @@ describe("JOB 4061 · jede registrierte Route ist abgenommen", () => {
     expect(gemessen, "mit fünf Akteuren gemessene Endpunkte").toBeGreaterThanOrEqual(123);
     // JOB 4141: von 36 auf 46 — die zehn Türen, an denen ein Gast Konten anlegen oder Urteile über
     // den Bestand fällen würde. Die Zahl stammt aus DIESEM Lauf, nicht aus dem Auftrag.
+    //
+    // JOB 4270: von 46 auf 54 — die sechs Türen, die den DEMOBESTAND laden, zurücksetzen und
+    // löschen (`POST|DELETE /api/admin/demo-seed`, `POST /api/admin/demo-packages/:id/load`,
+    // `…/reset`, `DELETE /api/admin/demo-packages/:id`, `POST /api/admin/examples/load`). Ihr
+    // Zurückstellungsgrund war der Bestandseingriff; das `ruesten` an frischer Bühne nimmt ihn weg.
+    //
+    // 54 IST DIE IN DIESEM LAUF GEMESSENE ZAHL, nicht 46 + 6. Gezählt werden die registrierten
+    // POST/PUT/DELETE-Endpunkte aus BEIDEN Teilen der Tabelle (`gemesseneSchluessel()`), also auch
+    // die schreibenden Türen der LESE-Tabelle — die Zahl ist deshalb nie die Länge von
+    // `SCHREIB_TABELLE`, und eine fortgeschriebene Rechnung wäre hier eine erfundene Zahl.
     expect(
       schreibendGemessen,
       "mit fünf Akteuren gemessene SCHREIBENDE Endpunkte (POST/PUT/DELETE)",
-    ).toBeGreaterThanOrEqual(46);
+    ).toBeGreaterThanOrEqual(54);
     expect(
       gemessen + rest,
       "Endpunkte mit einem Platz in der Abnahme (gemessen + begründet zurückgestellt)",
@@ -326,6 +336,18 @@ describe("JOB 4061 · jede registrierte Route ist abgenommen", () => {
       // `PUT|DELETE /api/users/:id`) und sechs Urteils-Türen (`POST /api/conflicts/:id/dismiss`,
       // `…/second-opinion`, `POST /api/duplicates/:id/dismiss|keep-separate|link-related|status`).
       // Die Zahl ist die in DIESEM Lauf gezählte; sie darf weiter fallen und steigt nur mit Namen.
-    ).toBeLessThanOrEqual(45);
+      //
+      // JOB 4270: von 45 auf 39. Die sechs Türen, die den DEMOBESTAND laden, zurücksetzen und
+      // löschen, sind seit diesem Auftrag gemessen statt zurückgestellt: `POST /api/admin/demo-seed`,
+      // `DELETE /api/admin/demo-seed`, `POST /api/admin/demo-packages/:id/load`, `…/:id/reset`,
+      // `DELETE /api/admin/demo-packages/:id` und `POST /api/admin/examples/load`. IHR
+      // ZURÜCKSTELLUNGSGRUND WAR DER BESTANDSEINGRIFF („der Vorgang füllt genau den Bestand, gegen
+      // den die Lesezeilen dieser Tabelle messen"); das `ruesten` an frischer Bühne nimmt ihn weg,
+      // und die Paketkennung wird aus der laufenden Instanz geholt statt erfunden.
+      //
+      // ZWEI NACHBARN BLEIBEN STEHEN, mit Namen und Grund: `POST /api/admin/sim-corpus` (nie
+      // automatisch zu fahren) und `POST /api/admin/factory-reset` (löscht die Instanz samt der
+      // vier Prüfkonten, mit denen diese Abnahme misst). Das ist eine Entscheidung, kein Vergessen.
+    ).toBeLessThanOrEqual(39);
   });
 });

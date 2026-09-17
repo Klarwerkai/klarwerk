@@ -37,13 +37,38 @@ import { LAUF_KOPF, normalisierePfad } from "./registrierte-routen";
 import {
   SCHREIB_TABELLE,
   type Schreibzeile,
+  type Wirkung,
   ausgelasseneAkteure,
   sperrwirkungAbweichung,
   vollstaendigGemessen,
+  wirkungsAbweichung,
 } from "./schreibende-tueren";
 import { type Erwartung, eintrag, erwarteterCode, gemessen } from "./tabelle";
 
 afterEach(schliesseBuehnen);
+
+// ================================================================================================
+// JOB 4270 · LIEFERUNG 3 — DIE TÜREN, AN DENEN AUCH DER ERFOLGSFALL NACHGELESEN WIRD.
+// ================================================================================================
+//
+// DIE LEHRE DES PRÜFERS ZU JOB 4141 R2 (`archiv/4141/runde-2/ben.md:44`): „Prüfe künftig auch
+// erfolgreiche Schreibvorgänge durch Nachlesen des erwarteten Zielzustands; eine passende
+// HTTP-Antwort allein belegt ihre Wirkung nicht."
+//
+// DIESE SECHS TÜREN SIND DER DEMOBESTAND SELBST — das Einzige, was ein Gast nach Pedis Zeile
+// DEMO-ZUGANG-GAESTE überhaupt sehen soll. Für sie gilt seit JOB 4270 beides zugleich:
+//   · JEDE MUSS EINEN BESTAND LESEN (`mitLesegriff`), auch für die gesperrten Akteure. Eine Zeile,
+//     die nicht hinsieht, darf nicht dadurch grün werden, dass sie über die Sperre schweigt.
+//   · JEDE MUSS EINEN ZIELZUSTAND FÜHREN (`nachlesepflicht`). Wer das `wirkung`-Feld einer dieser
+//     Zeilen wieder entfernt, wird HIER rot und nicht erst beim nächsten Prüfer.
+const WIRKUNG_NACHGELESEN = [
+  "POST /api/admin/demo-seed",
+  "DELETE /api/admin/demo-seed",
+  "POST /api/admin/demo-packages/:id/load",
+  "POST /api/admin/demo-packages/:id/reset",
+  "DELETE /api/admin/demo-packages/:id",
+  "POST /api/admin/examples/load",
+];
 
 let laufende = 0;
 
@@ -72,7 +97,9 @@ interface Messwert {
 async function messe(
   zeile: Schreibzeile,
   akteur: Akteur,
-): Promise<Messwert & { bestandVorher: unknown; bestandNachher: unknown }> {
+): Promise<
+  Messwert & { bestandVorher: unknown; bestandNachher: unknown; wirkung: Wirkung | undefined }
+> {
   const buehne: FrischeBuehne = await baueFrischeBuehne();
   try {
     const vorgang = await zeile.ruesten(buehne, akteur);
@@ -101,6 +128,7 @@ async function messe(
       stimmt,
       bestandVorher,
       bestandNachher,
+      wirkung: vorgang.wirkung,
     };
   } finally {
     await buehne.schliesse();
@@ -170,6 +198,10 @@ describe("JOB 4113 · die schreibenden Türen am Draht", () => {
   // ----------------------------------------------------------------------------------------------
   for (const zeile of SCHREIB_TABELLE) {
     it(`${zeile.gruppe} · ${zeile.methode} ${zeile.route} (${zeile.tor})`, async () => {
+      const tuer = `${zeile.methode} ${zeile.route}`;
+      // JOB 4270: die sechs Demo-Türen schulden beides — einen Lesegriff für die Sperre UND einen
+      // Zielzustand für den Erfolgsfall. Für alle übrigen Zeilen ändert sich nichts.
+      const nachlesepflicht = WIRKUNG_NACHGELESEN.includes(tuer);
       const abweichungen: string[] = [];
       const gewaehlt = new Set<string>();
       const gemessenerStatus: string[] = [];
@@ -194,8 +226,16 @@ describe("JOB 4113 · die schreibenden Türen am Draht", () => {
           continue;
         }
         const erwartet: Erwartung = e.ist ?? e.soll;
-        const { status, ergebnis, rumpf, getroffen, stimmt, bestandVorher, bestandNachher } =
-          await messe(zeile, akteur);
+        const {
+          status,
+          ergebnis,
+          rumpf,
+          getroffen,
+          stimmt,
+          bestandVorher,
+          bestandNachher,
+          wirkung: zielzustand,
+        } = await messe(zeile, akteur);
         gemessenerStatus.push(`${akteur}: ${status}`);
         if (!stimmt) {
           gewaehlt.add(getroffen);
@@ -223,11 +263,12 @@ describe("JOB 4113 · die schreibenden Türen am Draht", () => {
         // Sperre am Wirkung-Ende geprüft zu bekommen.
         if (erwartet === "401" || erwartet === "403") {
           const wirkung = sperrwirkungAbweichung(
-            `${zeile.methode} ${zeile.route}`,
+            tuer,
             akteur,
             status,
             bestandVorher,
             bestandNachher,
+            nachlesepflicht,
           );
           if (wirkung) {
             abweichungen.push(wirkung);
@@ -254,6 +295,34 @@ describe("JOB 4113 · die schreibenden Türen am Draht", () => {
             `${akteur}: kam durchs Tor, aber der Fachvorgang gelang nicht — HTTP ${status}, erwartet wäre ${zeile.erfolg.join(" oder ")}. Die Zeile misst damit nicht den Vorgang, sondern was davor abbricht: ${rumpf.slice(0, 300)}`,
           );
           continue;
+        }
+        // ==========================================================================================
+        // JOB 4270 · LIEFERUNG 3 — UND JETZT DIE GEGENRICHTUNG: HAT DER ERFOLG ETWAS BEWIRKT?
+        // ==========================================================================================
+        //
+        // Bis hierher endete die Prüfung des BERECHTIGTEN Akteurs beim Statuscode. Der Prüfer hat
+        // das an JOB 4141 ausdrücklich als offene Lücke stehen lassen (`ben.md:30`): „Erfolgsfälle
+        // werden weiterhin über HTTP-Erfolgsstatus bewertet … Zielrolle, Meinungstext und
+        // Verknüpfungen zusätzlich nach erfolgreichem Aufruf nachlesen."
+        //
+        // DAS URTEIL FÄLLT EINE STELLE, NICHT SECHS — dieselbe Bauart wie `sperrwirkungAbweichung`
+        // darüber: eine reine Funktion, die sich mit gestellten Werten gegenproben lässt (S10), und
+        // die für die sechs Demo-Türen zusätzlich verlangt, dass überhaupt ein Zielzustand geführt
+        // wird. Ein `200`, nach dem der Demobestand unverändert wäre, fällt genau hier auf.
+        if (erwartet === "erlaubt") {
+          const ausgeblieben = wirkungsAbweichung(
+            tuer,
+            akteur,
+            status,
+            bestandVorher,
+            bestandNachher,
+            zielzustand,
+            nachlesepflicht,
+          );
+          if (ausgeblieben) {
+            abweichungen.push(ausgeblieben);
+            continue;
+          }
         }
         const code = erwarteterCode(zeile, erwartet);
         if (code !== undefined) {
@@ -734,6 +803,201 @@ describe("JOB 4113 · die schreibenden Türen am Draht", () => {
         `${name} steht in SCHREIB_TABELLE`,
       ).toBe(true);
     }
+  });
+
+  // ----------------------------------------------------------------------------------------------
+  // S9 · JOB 4270 — KEINE DER SECHS DEMO-TÜREN DARF AUS DER NACHLESUNG HERAUSFALLEN.
+  // ----------------------------------------------------------------------------------------------
+  //
+  // Dasselbe Muster wie `S8`, und aus demselben Grund: ein stilles Streichen eines Namens aus
+  // `WIRKUNG_NACHGELESEN` nähme der Zeilenschleife genau die Pflicht weg, um die es geht — die
+  // betroffene Tür würde wieder allein am Statuscode gemessen, und niemandem fiele es auf.
+  it("S9: alle sechs Demo-Türen stehen in der Nachlesung und in der Schreibtabelle", () => {
+    const sechs = [
+      "POST /api/admin/demo-seed",
+      "DELETE /api/admin/demo-seed",
+      "POST /api/admin/demo-packages/:id/load",
+      "POST /api/admin/demo-packages/:id/reset",
+      "DELETE /api/admin/demo-packages/:id",
+      "POST /api/admin/examples/load",
+    ];
+    expect(
+      sechs.filter((name) => !WIRKUNG_NACHGELESEN.includes(name)),
+      "Diese Türen laden, setzen zurück und löschen den Demobestand — das Einzige, was ein Gast nach Pedis Zeile DEMO-ZUGANG-GAESTE sehen soll. Fällt eine aus der Nachlesung, gilt an ihr wieder ein 200 als Beleg für einen Vorgang, der nie stattgefunden haben muss.",
+    ).toEqual([]);
+    for (const name of sechs) {
+      expect(
+        SCHREIB_TABELLE.some((z) => `${z.methode} ${z.route}` === name),
+        `${name} steht in SCHREIB_TABELLE`,
+      ).toBe(true);
+    }
+  });
+
+  // ----------------------------------------------------------------------------------------------
+  // S10 · JOB 4270 — DIE GEGENPROBE „ERFOLG OHNE WIRKUNG", AN ECHTEN MESSWERTEN.
+  // ----------------------------------------------------------------------------------------------
+  //
+  // S7 hält die eine Richtung fest (ein Vorgang, der trotz 403 stattfindet). Dies ist die andere:
+  // eine Antwort, die Erfolg meldet, ohne dass etwas geschehen ist. Sie wäre die bequemere
+  // Grünfärbung — niemand sucht hinter einem 200 nach einem Fehler.
+  //
+  // GEMESSEN WIRD AN ECHTEN WERTEN, nicht an gestellten: EINE frische Bühne, der echte Ladevorgang
+  // des Admins, und die drei Fälle danebengehalten. Die drei Attrappen unterscheiden sich von der
+  // Wahrheit in genau einer Angabe — was daran rot wird, wird auch an einem echten Rechteloch rot.
+  it("S10: ein Erfolgsstatus ohne Wirkung am Bestand macht die Abnahme namentlich rot", async () => {
+    const name = "POST /api/admin/demo-seed";
+    const zeile = SCHREIB_TABELLE.find((z) => `${z.methode} ${z.route}` === name);
+    expect(zeile, `Zeile ${name} in SCHREIB_TABELLE`).toBeDefined();
+    if (!zeile) {
+      return;
+    }
+    const echt = await messe(zeile, "admin");
+    expect(echt.status, `${name} als admin: ${echt.rumpf.slice(0, 200)}`).toBe(200);
+
+    // (a) DIE WAHRHEIT: der Demobestand ist danach wirklich da, also keine Abweichung.
+    expect(
+      wirkungsAbweichung(
+        name,
+        "admin",
+        echt.status,
+        echt.bestandVorher,
+        echt.bestandNachher,
+        echt.wirkung,
+        true,
+      ),
+      `Am unveränderten Produkt darf diese Tür keine Abweichung melden — sonst prüft die Nachlesung nicht, sondern lärmt. Gelesen: ${JSON.stringify(echt.bestandVorher)} → ${JSON.stringify(echt.bestandNachher)}`,
+    ).toBeUndefined();
+
+    // (b) DIE LAGE DES PRÜFERS: derselbe 200, aber der Bestand ist derselbe geblieben.
+    const ohneWirkung = wirkungsAbweichung(
+      name,
+      "admin",
+      echt.status,
+      echt.bestandVorher,
+      echt.bestandVorher,
+      echt.wirkung,
+      true,
+    );
+    expect(
+      ohneWirkung,
+      "Ein 200, nach dem der Demobestand unverändert wäre, muss auffallen — das ist die Lücke, die der Prüfer an JOB 4141 offen gelassen hat.",
+    ).toBeDefined();
+    expect(ohneWirkung).toContain(name);
+    expect(ohneWirkung).toContain("admin");
+
+    // (c) DIE NACHLESUNG WIRD AUSGEBAUT: `wirkung` fehlt, die Zeile misst wieder nur den Status.
+    const ohneNachlesung = wirkungsAbweichung(
+      name,
+      "admin",
+      echt.status,
+      echt.bestandVorher,
+      echt.bestandNachher,
+      undefined,
+      true,
+    );
+    expect(
+      ohneNachlesung,
+      "Wer den Zielzustand einer der sechs Demo-Türen entfernt, muss hier rot werden — sonst verschwindet Lieferung 3 wieder still.",
+    ).toBeDefined();
+    expect(ohneNachlesung).toContain(name);
+
+    // (d) EINE ZUSICHERUNG, DIE SCHON VORHER GALT, ist keine Zusicherung. Sie ist die bequemste Art,
+    //     die Nachlesung zu erfüllen, ohne etwas zu prüfen — und sie fällt vor allem anderen auf.
+    const immerWahr = wirkungsAbweichung(
+      name,
+      "admin",
+      echt.status,
+      echt.bestandVorher,
+      echt.bestandNachher,
+      { beschreibung: "gilt immer", eingetreten: () => true },
+      true,
+    );
+    expect(
+      immerWahr,
+      "Ein Zielzustand, der schon vor dem Aufruf zutraf, könnte einen gelungenen Vorgang nicht von einem ausgebliebenen unterscheiden.",
+    ).toBeDefined();
+  });
+
+  // ----------------------------------------------------------------------------------------------
+  // S11 · RUNDE 2, KORREKTURPFLICHT 1 — ZURÜCKSETZEN IST NICHT LÖSCHEN.
+  // ----------------------------------------------------------------------------------------------
+  //
+  // WAS DER PRÜFER GEMESSEN HAT (Runde 1, Gegenprobe): er hat im Produkt den Reset-Dienst durch den
+  // echten Paket-LÖSCHdienst ersetzt — Route und Rechtetor unverändert. Sechs Bausteine waren danach
+  // fort („removed":6), und die Zeile blieb GRÜN. Der Grund stand in der Zusicherung selbst: sie
+  // prüfte nur `bearbeitet === 0`, und nach dem Löschen ist auch nichts mehr bearbeitet. Eine
+  // Nachlesung, die den Verlust des Gegenstands als Erfolg verbucht, ist keine.
+  //
+  // WAS HIER STEHT: dieselbe Lage, ohne einen einzigen Produktdiff. Statt des Zurücksetzens fährt
+  // derselbe Admin an derselben frischen Bühne die ECHTE Löschtür des Pakets
+  // (`DELETE /api/admin/demo-packages/:id`) — für die Nachlesung ist das ununterscheidbar von einem
+  // Reset, der löscht statt herzustellen: Erfolgsstatus 200, Bestand verändert, Bausteine weg.
+  //
+  // WARUM ES DIE DAUERHAFTE ABSICHERUNG IST: das Urteil fällt `wirkungsAbweichung()` mit dem
+  // Zielzustand der ECHTEN Reset-Zeile (`vorgang.wirkung` aus ihrem eigenen `ruesten`). Wer diesen
+  // Zielzustand eines Tages wieder auf eine blosse Zählerzusage zurücknimmt, wird hier rot und nicht
+  // erst beim nächsten Prüfer. Die erste Hälfte (der ECHTE Reset, keine Abweichung) steht daneben,
+  // damit die Strenge nicht bloss Strenge ist.
+  it("S11: ein Reset, der die Bausteine löscht statt sie herzustellen, macht die Abnahme namentlich rot", async () => {
+    const name = "POST /api/admin/demo-packages/:id/reset";
+    const zeile = SCHREIB_TABELLE.find((z) => `${z.methode} ${z.route}` === name);
+    expect(zeile, `Zeile ${name} in SCHREIB_TABELLE`).toBeDefined();
+    if (!zeile) {
+      return;
+    }
+
+    // (a) DIE WAHRHEIT: der echte Reset des Admins stellt den verstellten Baustein wieder her.
+    const echt = await messe(zeile, "admin");
+    expect(echt.status, `${name} als admin: ${echt.rumpf.slice(0, 200)}`).toBe(200);
+    expect(
+      wirkungsAbweichung(
+        name,
+        "admin",
+        echt.status,
+        echt.bestandVorher,
+        echt.bestandNachher,
+        echt.wirkung,
+        true,
+      ),
+      `Am unveränderten Produkt darf der echte Reset keine Abweichung melden — sonst prüft die Nachlesung nicht, sondern lärmt. Gelesen: ${JSON.stringify(echt.bestandVorher)} → ${JSON.stringify(echt.bestandNachher)}`,
+    ).toBeUndefined();
+
+    // (b) DIE LAGE DES PRÜFERS: derselbe Vorbereitungsvorgang, derselbe Akteur, derselbe
+    //     Zielzustand — aber gefahren wird die Löschtür. Sechs Bausteine sind danach fort.
+    const alsLoeschung: Schreibzeile = {
+      ...zeile,
+      methode: "DELETE",
+      route: "/api/admin/demo-packages/:id",
+      ruesten: async (buehne, akteur) => {
+        const vorgang = await zeile.ruesten(buehne, akteur);
+        // Nur der Pfad wechselt: `…/reset` → das Paket selbst. Nutzlast, Lesegriff und Zielzustand
+        // bleiben WÖRTLICH die der echten Reset-Zeile — sonst mässe diese Gegenprobe ihre eigene
+        // Erfindung statt der Zusicherung, um die es geht.
+        return { ...vorgang, pfad: vorgang.pfad.replace(/\/reset$/, "") };
+      },
+    };
+    const geloescht = await messe(alsLoeschung, "admin");
+    expect(
+      geloescht.status,
+      `Die Löschtür muss dem Admin mit Erfolg antworten — sonst mässe diese Gegenprobe einen Fehlschlag statt einer falschen Wirkung: ${geloescht.rumpf.slice(0, 200)}`,
+    ).toBe(200);
+    const verlust = wirkungsAbweichung(
+      name,
+      "admin",
+      geloescht.status,
+      geloescht.bestandVorher,
+      geloescht.bestandNachher,
+      geloescht.wirkung,
+      true,
+    );
+    expect(
+      verlust,
+      `Die sechs Bausteine wurden GELÖSCHT statt zurückgesetzt (${JSON.stringify(geloescht.bestandVorher)} → ${JSON.stringify(geloescht.bestandNachher)}), und die Nachlesung hat es nicht gemerkt — das ist der Befund des Prüfers aus Runde 1, unrepariert: "null bearbeitete Objekte" ist kein wiederhergestellter Auslieferungsstand.`,
+    ).toBeDefined();
+    expect(
+      verlust,
+      "Die Meldung muss die Tür beim Namen nennen — eine anonyme Abweichung schickt niemanden an die richtige Stelle.",
+    ).toContain(name);
   });
 
   // ----------------------------------------------------------------------------------------------

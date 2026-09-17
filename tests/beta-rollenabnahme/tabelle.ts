@@ -490,48 +490,20 @@ export const NICHT_ABGENOMMEN: Nichtabnahme[] = [
   },
 
   // --- Betrieb und Verwaltung (adminRoutes, confluenceImportRoutes, libraryRoutes, externalRoutes)
-  {
-    methode: "POST",
-    pfad: "/api/admin/demo-seed",
-    art: "zurueckgestellt",
-    grund:
-      "Lädt Demodaten in die Instanz. Der Vorgang füllt genau den Bestand, gegen den die Lesezeilen dieser Tabelle messen.",
-  },
-  {
-    methode: "DELETE",
-    pfad: "/api/admin/demo-seed",
-    art: "zurueckgestellt",
-    grund:
-      "Entfernt dieselben Demodaten wieder. Unumkehrbar für alles, was zwischenzeitlich daran hängt.",
-  },
-  {
-    methode: "POST",
-    pfad: "/api/admin/demo-packages/:id/load",
-    art: "zurueckgestellt",
-    grund:
-      "Lädt ein einzelnes kuratiertes Demopaket. Setzt eine gültige Paketkennung voraus und schreibt in den Bestand.",
-  },
-  {
-    methode: "POST",
-    pfad: "/api/admin/demo-packages/:id/reset",
-    art: "zurueckgestellt",
-    grund:
-      "Setzt die Bausteine eines Demopakets auf den Auslieferungsstand zurück und verwirft dabei Bearbeitungen.",
-  },
-  {
-    methode: "DELETE",
-    pfad: "/api/admin/demo-packages/:id",
-    art: "zurueckgestellt",
-    grund:
-      "Entfernt ein Demopaket samt seiner Bausteine. Derselbe Bestandseingriff, nur in die andere Richtung.",
-  },
-  {
-    methode: "POST",
-    pfad: "/api/admin/examples/load",
-    art: "zurueckgestellt",
-    grund:
-      "Lädt ein kuratiertes Beispielpaket für die Testerinnen. Die Nutzlast ist der Paketname; der Vorgang schreibt in den Bestand.",
-  },
+  //
+  // JOB 4270 — HIER STANDEN SECHS DEMO-TÜREN, UND SIE STEHEN JETZT IN `SCHREIB_TABELLE`.
+  //
+  // `POST|DELETE /api/admin/demo-seed`, `POST /api/admin/demo-packages/:id/load|reset`,
+  // `DELETE /api/admin/demo-packages/:id` und `POST /api/admin/examples/load` waren mit zwei
+  // Gründen zurückgestellt: „der Vorgang füllt genau den Bestand, gegen den die Lesezeilen dieser
+  // Tabelle messen" und „setzt eine gültige Paketkennung voraus". Beide sind weggefallen — der
+  // erste durch die frische Bühne je Messung (`schreibende-tueren.ts:14-17`), der zweite durch das
+  // `ruesten`, das die Kennung aus der laufenden Instanz HOLT statt sie zu erfinden. Genau mit
+  // dieser Begründung hat JOB 4141 zehn Türen von hier in die Messung geholt.
+  //
+  // WAS BLEIBT, BLEIBT MIT GRUND: `POST /api/admin/sim-corpus` (ausdrücklich nie automatisch zu
+  // fahren) und `POST /api/admin/factory-reset` (löscht die Instanz samt der vier Prüfkonten, mit
+  // denen gemessen wird). Beide sind eine Entscheidung, kein Vergessen.
   {
     methode: "POST",
     pfad: "/api/admin/sim-corpus",

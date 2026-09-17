@@ -68,6 +68,31 @@ export interface Vorgang {
   pfad: string;
   payload?: Record<string, unknown>;
   bestand?: () => Promise<unknown>;
+  /**
+   * JOB 4270 · LIEFERUNG 3 — DER ZIELZUSTAND NACH EINEM GELUNGENEN AUFRUF.
+   *
+   * DIE LÜCKE, DIE DER PRÜFER AN JOB 4141 BENANNT HAT (`archiv/4141/runde-2/ben.md:30`, `:44`):
+   * „Erfolgsfälle werden weiterhin über HTTP-Erfolgsstatus bewertet … Prüfe künftig auch
+   * erfolgreiche Schreibvorgänge durch Nachlesen des erwarteten Zielzustands; eine passende
+   * HTTP-Antwort allein belegt ihre Wirkung nicht."
+   *
+   * `bestand` war bis hierher NUR die Gegenrichtung: er belegte, dass ein ABGEWIESENER Versuch
+   * nichts verändert hat. Für den BERECHTIGTEN Akteur entschied allein `erfolg` — also die
+   * Behauptung des Servers über sich selbst. Ein Handler, der 200 sendet und nichts tut, wäre
+   * dadurch nicht aufgefallen.
+   *
+   * `wirkung` schliesst das: sie sagt, was `bestand()` NACH dem gelungenen Aufruf liefern muss.
+   * Das Urteil darüber fällt `wirkungsAbweichung()` — eine Stelle für alle Zeilen, nicht eine je
+   * Tür.
+   */
+  wirkung?: Wirkung;
+}
+
+export interface Wirkung {
+  /** Ausgeschrieben, was ein gelungener Aufruf am Bestand ändert. Steht in jeder Meldung. */
+  beschreibung: string;
+  /** Trifft der Zielzustand auf den NACHGELESENEN Bestand zu? */
+  eingetreten(bestand: unknown): boolean;
 }
 
 export interface Schreibzeile {
@@ -209,6 +234,52 @@ export function sperrwirkungAbweichung(
     return undefined;
   }
   return `${tuer}: ${akteur} wurde mit HTTP ${status} abgewiesen, der Bestand hat sich aber trotzdem verändert (${bestandsText(vorher)} → ${bestandsText(nachher)}) — der Vorgang hat stattgefunden, die Sperre ist nur die Behauptung der Antwort.`;
+}
+
+// ------------------------------------------------------------------------------------------------
+// JOB 4270 · LIEFERUNG 3 — DIE GEGENRICHTUNG: HAT DER ERLAUBTE VORGANG WIRKLICH STATTGEFUNDEN?
+// ------------------------------------------------------------------------------------------------
+//
+// `sperrwirkungAbweichung` oben fragt: „hat die Sperre wirklich gesperrt?". Diese Funktion fragt das
+// Gegenstück: „hat das Durchlassen wirklich etwas bewirkt?". Beide Fragen zusammen sind erst die
+// Aussage, die eine Rollenabnahme über eine Schreib-Tür treffen will — wer nur die erste stellt,
+// kann eine Tür als „gemessen" führen, hinter der der Handler gar nichts tut.
+//
+// DREI FÄLLE SIND EINE ABWEICHUNG, und jeder hat einen eigenen Grund:
+//   · DIE ZEILE SAGT NICHTS ÜBER IHREN ZIELZUSTAND. Wie bei `mitLesegriff` verlangt das nur, wer es
+//     anfordert (`nachlesepflicht`) — die sechs Demo-Türen aus JOB 4270 tun das.
+//   · DER ZIELZUSTAND STAND SCHON VORHER. Dann könnte die Nachlesung einen gelungenen Vorgang nicht
+//     von einem ausgebliebenen unterscheiden; sie wäre eine Zusicherung, die nie fallen kann. Das
+//     ist die Selbsttäuschung, gegen die Lieferung 3 gebaut ist, und sie fällt VOR allem anderen auf.
+//   · DER BESTAND IST UNVERÄNDERT ODER DER ZIELZUSTAND FEHLT. Der Server hat einen Erfolgsstatus
+//     gesendet, und der Bestand widerspricht ihm.
+export function wirkungsAbweichung(
+  tuer: string,
+  akteur: Akteur,
+  status: number,
+  vorher: unknown,
+  nachher: unknown,
+  wirkung: Wirkung | undefined,
+  nachlesepflicht = false,
+): string | undefined {
+  if (!wirkung) {
+    return nachlesepflicht
+      ? `${tuer}: ${akteur} kam mit HTTP ${status} durch, aber diese Zeile liest den Erfolgsfall nicht nach — über die WIRKUNG des gelungenen Vorgangs sagt sie nichts, und genau das ist die Lücke, die der Prüfer an JOB 4141 benannt hat (archiv/4141/runde-2/ben.md:30).`
+      : undefined;
+  }
+  if (vorher === undefined && nachher === undefined) {
+    return `${tuer}: ${akteur} kam mit HTTP ${status} durch, und diese Zeile führt einen Zielzustand ("${wirkung.beschreibung}") — aber keinen Lesegriff, mit dem er sich nachlesen liesse.`;
+  }
+  if (wirkung.eingetreten(vorher)) {
+    return `${tuer}: der Zielzustand "${wirkung.beschreibung}" traf schon VOR dem Aufruf zu (gelesen: ${bestandsText(vorher)}) — diese Nachlesung könnte einen gelungenen Vorgang nicht von einem ausgebliebenen unterscheiden.`;
+  }
+  if (bestandsText(vorher) === bestandsText(nachher)) {
+    return `${tuer}: ${akteur} bekam HTTP ${status}, der Bestand ist aber derselbe geblieben (${bestandsText(nachher)}) — der Erfolgsstatus ist die Behauptung der Antwort, "${wirkung.beschreibung}" ist nicht eingetreten.`;
+  }
+  if (!wirkung.eingetreten(nachher)) {
+    return `${tuer}: ${akteur} bekam HTTP ${status}, der Bestand hat sich verändert (${bestandsText(vorher)} → ${bestandsText(nachher)}), aber der Zielzustand "${wirkung.beschreibung}" ist nicht erreicht.`;
+  }
+  return undefined;
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -485,6 +556,231 @@ async function widerspruchStand(buehne: Buehne, id: string): Promise<string> {
     gelesen.secondOpinion ?? "ohne Zweitmeinung",
   ].join(" · ");
 }
+
+// ================================================================================================
+// JOB 4270 · LIEFERUNG 2 — DIE VORBEREITUNG DER SECHS TÜREN, AN DENEN DER DEMOBESTAND HÄNGT.
+// ================================================================================================
+//
+// PEDIS ZEILE (DEMO-ZUGANG-GAESTE): „ein Gast sieht nur den Demobestand, hat begrenzte Rechte …
+// Keine Freigabe an einen Gast ohne Abnahme." Der Demobestand ist das Einzige, was ein Gast sehen
+// soll — und die Türen, die ihn LADEN, ZURÜCKSETZEN und LÖSCHEN, standen bis hierher als
+// Prüfschuld in `NICHT_ABGENOMMEN`.
+//
+// IHR ZURÜCKSTELLUNGSGRUND WAR BEI ALLEN SECHS DERSELBE, wörtlich aus `tabelle.ts`: „Der Vorgang
+// füllt genau den Bestand, gegen den die Lesezeilen dieser Tabelle messen" bzw. „Setzt eine gültige
+// Paketkennung voraus". Beides löst seit JOB 4113 das `ruesten` an der frischen Bühne (Kopf dieser
+// Datei, `:14-17`) — dieselbe Begründung, mit der JOB 4141 zehn Türen aus der Restliste geholt hat.
+//
+// DIE PAKETKENNUNG WIRD GEHOLT, NICHT ERFUNDEN. `POST /api/admin/demo-packages/:id/load|reset` und
+// `DELETE /api/admin/demo-packages/:id` antworten auf eine unbekannte Kennung mit 404
+// (`admin-routes.ts:400`, `:416`, `:436`) — mit einer ausgedachten Kennung mässe die Zeile die
+// Existenzprüfung statt des Tors, genau der Befund, an dem JOB 4113 R2 zerlegt wurde
+// (`schreibende-tueren.ts:87-92`). Gelesen wird sie deshalb aus der laufenden Instanz.
+
+/** Die Kennung eines WIRKLICH geführten Demopakets, aus der laufenden Instanz gelesen. */
+async function echtesDemopaket(buehne: Buehne): Promise<string> {
+  const uebersicht = await musterhaft(
+    buehne.app,
+    kopf(buehne, "admin"),
+    "GET",
+    "/api/admin/demo-packages",
+  );
+  const pakete = (uebersicht.json() as { packages?: { id?: string }[] }).packages ?? [];
+  const erstes = pakete[0]?.id;
+  if (typeof erstes !== "string" || erstes.length === 0) {
+    throw new Error(
+      `Vorbereitung fehlgeschlagen: die Instanz führt kein einziges Demopaket (${uebersicht.body.slice(0, 300)}) — eine erfundene Paketkennung machte aus der Türmessung eine Existenzprüfung.`,
+    );
+  }
+  return erstes;
+}
+
+/** Der Demobestand der Instanz, am Draht nachgelesen (`admin-routes.ts:252-260`). */
+async function demobestand(buehne: Buehne): Promise<unknown> {
+  const stand = await musterhaft(buehne.app, kopf(buehne, "admin"), "GET", "/api/admin/demo-seed");
+  const gelesen = stand.json() as { present?: boolean; count?: number };
+  return { vorhanden: gelesen.present ?? null, anzahl: gelesen.count ?? null };
+}
+
+/**
+ * Der Stand EINES Demopakets: wie viele Bausteine stehen, und wie viele davon sind bearbeitet.
+ *
+ * Beide Zahlen kommen aus `demoPaketUebersicht` (`demo-pakete.ts:915-947`) und sind genau die, die
+ * die drei paketbezogenen Handgriffe verändern: Laden hebt `geladen`, Zurücksetzen senkt
+ * `bearbeitet`, Entfernen setzt `geladen` auf null.
+ */
+async function paketStand(buehne: Buehne, paket: string): Promise<unknown> {
+  const uebersicht = await musterhaft(
+    buehne.app,
+    kopf(buehne, "admin"),
+    "GET",
+    "/api/admin/demo-packages",
+  );
+  const treffer = (
+    uebersicht.json() as { packages?: { id: string; loaded?: number; edited?: number }[] }
+  ).packages?.find((p) => p.id === paket);
+  return { geladen: treffer?.loaded ?? null, bearbeitet: treffer?.edited ?? null };
+}
+
+/** Lädt das Paket über den ECHTEN Weg und belegt am Stand, dass danach Bausteine da sind. */
+async function ladeDemopaket(buehne: Buehne, paket: string): Promise<void> {
+  await musterhaft(
+    buehne.app,
+    kopf(buehne, "admin"),
+    "POST",
+    `/api/admin/demo-packages/${paket}/load`,
+  );
+  const stand = (await paketStand(buehne, paket)) as { geladen: number | null };
+  if (!stand.geladen) {
+    throw new Error(
+      `Vorbereitung fehlgeschlagen: nach dem Laden von "${paket}" steht kein einziger Baustein — ohne geladenes Paket mässe die Zeile eine leere Bühne statt eines Bestandseingriffs.`,
+    );
+  }
+}
+
+/**
+ * RUNDE 2 · KORREKTURPFLICHT 1 — DER STAND EINES EINZELNEN BAUSTEINS, AM TEXT NACHGELESEN.
+ *
+ * DER BEFUND DES PRÜFERS: er hat den Reset-Dienst durch den echten Paket-LÖSCHdienst ersetzt. Sechs
+ * Bausteine waren danach fort (`"removed":6`), und die Zeile blieb GRÜN — denn ihr Zielzustand war
+ * `bearbeitet === 0`, und nach dem Löschen ist nichts mehr bearbeitet. Zwei Zähler aus derselben
+ * Auskunft können den wiederhergestellten Auslieferungsstand nicht vom Verlust des Gegenstands
+ * unterscheiden.
+ *
+ * DESHALB LIEST DIESER GRIFF DEN BAUSTEIN SELBST: ist er überhaupt noch da, und welchen Text trägt
+ * er? Gesucht wird über den BAUSTEINSCHLÜSSEL, nicht über die Kennung — ein Zurücksetzen, das den
+ * Träger neu anlegte statt ihn zu überschreiben, wäre fachlich derselbe Zielzustand und darf nicht
+ * an einer gewechselten Kennung scheitern. Verschwindet der Schlüssel aus der Vorschau, ist der
+ * Baustein weg: `vorhanden: false`, und das ist genau der Fall, den der Prüfer gemessen hat.
+ *
+ * KEIN `musterhaft` AUF DEN ZWEI LESEWEGEN: eine fehlende Vorschau oder ein 404 auf das gelöschte
+ * Objekt ist hier kein kaputter Aufbau, sondern das MESSERGEBNIS. Ein geworfener Fehler machte
+ * daraus einen Vorbereitungsabbruch und verlöre die Aussage.
+ */
+async function bausteinStand(buehne: Buehne, paket: string, schluessel: string): Promise<unknown> {
+  const stand = (await paketStand(buehne, paket)) as {
+    geladen: number | null;
+    bearbeitet: number | null;
+  };
+  const vorschau = await fahre(
+    buehne.app,
+    kopf(buehne, "admin"),
+    "GET",
+    `/api/admin/demo-packages/${paket}/preview?aktion=zuruecksetzen`,
+  );
+  const eintraege =
+    vorschau.statusCode === 200
+      ? ((vorschau.json() as { entries?: { id?: string; key?: string | null }[] }).entries ?? [])
+      : [];
+  const treffer = eintraege.find((e) => e.key === schluessel && typeof e.id === "string");
+  return {
+    ...stand,
+    baustein: schluessel,
+    vorhanden: treffer !== undefined,
+    text: treffer?.id ? await bausteinText(buehne, treffer.id) : null,
+  };
+}
+
+/** Der Aussagesatz eines Wissensobjekts, am Draht gelesen — oder `null`, wenn es das Objekt nicht (mehr) gibt. */
+async function bausteinText(buehne: Buehne, id: string): Promise<string | null> {
+  const antwort = await fahre(buehne.app, kopf(buehne, "admin"), "GET", `/api/kos/${id}`);
+  if (antwort.statusCode !== 200) {
+    return null;
+  }
+  const gelesen = antwort.json() as { statement?: unknown };
+  return typeof gelesen.statement === "string" ? gelesen.statement : null;
+}
+
+/** Der Text, den die Rollenabnahme in den Baustein schreibt — er darf dem Auslieferungsstand nie gleichen. */
+const VERSTELLTER_TEXT = "Von der Rollenabnahme verstellt (JOB 4270).";
+
+/**
+ * Verstellt EINEN Baustein des geladenen Pakets — die Voraussetzung, die `…/reset` überhaupt erst
+ * messbar macht: ohne eine Bearbeitung hätte das Zurücksetzen nichts zurückzusetzen, und die
+ * Nachlesung könnte den gelungenen Vorgang nicht vom ausgebliebenen unterscheiden.
+ *
+ * Der Baustein kommt aus der Vorschau (`GET /api/admin/demo-packages/:id/preview`), also aus
+ * derselben Auskunft, die auch der Betrieb vor dem Eingriff liest — nicht aus einem Titelvergleich.
+ *
+ * RUNDE 2 · KORREKTURPFLICHT 1: ZURÜCKGEGEBEN WIRD JETZT DER AUSLIEFERUNGSTEXT. Er wird VOR dem
+ * Verstellen am Draht gelesen — er ist damit der gemessene Ausgangszustand dieses frisch geladenen
+ * Pakets und nicht ein zweiter, hier abgeschriebener Sollwert. Genau gegen ihn hält die Nachlesung
+ * des Erfolgsfalls; ein gelöschter oder ein anders lautender Baustein fällt dadurch auf.
+ */
+async function verstelleEinenBaustein(
+  buehne: Buehne,
+  paket: string,
+): Promise<{ schluessel: string; auslieferungstext: string }> {
+  const vorschau = await musterhaft(
+    buehne.app,
+    kopf(buehne, "admin"),
+    "GET",
+    `/api/admin/demo-packages/${paket}/preview?aktion=zuruecksetzen`,
+  );
+  const eintraege = (vorschau.json() as { entries?: { id?: string; key?: string | null }[] })
+    .entries;
+  const baustein = eintraege?.find((e) => typeof e.id === "string" && e.key);
+  if (!baustein?.id || !baustein.key) {
+    throw new Error(
+      `Vorbereitung fehlgeschlagen: die Vorschau von "${paket}" führt keinen Baustein mit Kennung (${vorschau.body.slice(0, 300)}).`,
+    );
+  }
+  const auslieferungstext = await bausteinText(buehne, baustein.id);
+  if (typeof auslieferungstext !== "string" || auslieferungstext.length === 0) {
+    throw new Error(
+      `Vorbereitung fehlgeschlagen: der Baustein "${baustein.key}" von "${paket}" gibt keinen Auslieferungstext her — ohne ihn könnte die Nachlesung das Zurücksetzen nicht vom Löschen unterscheiden.`,
+    );
+  }
+  await musterhaft(buehne.app, kopf(buehne, "admin"), "PUT", `/api/kos/${baustein.id}`, {
+    action: "revise",
+    changes: { statement: VERSTELLTER_TEXT },
+  });
+  const stand = (await bausteinStand(buehne, paket, baustein.key)) as {
+    bearbeitet: number | null;
+    vorhanden: boolean;
+    text: string | null;
+  };
+  if (!stand.bearbeitet) {
+    throw new Error(
+      `Vorbereitung fehlgeschlagen: nach der Bearbeitung meldet "${paket}" keinen bearbeiteten Baustein — dann hätte das Zurücksetzen nichts zurückzusetzen, und die Nachlesung wäre wertlos.`,
+    );
+  }
+  // Und die Bearbeitung muss AM TEXT ankommen: steht dort weiter der Auslieferungssatz, wäre der
+  // Zielzustand schon vor dem Aufruf erfüllt — eine Zusicherung, die nie fallen kann.
+  if (!stand.vorhanden || stand.text !== VERSTELLTER_TEXT) {
+    throw new Error(
+      `Vorbereitung fehlgeschlagen: der Baustein "${baustein.key}" von "${paket}" trägt nach der Bearbeitung nicht den verstellten Text (gelesen: ${JSON.stringify(stand.text)}) — die Nachlesung des Zurücksetzens hätte dann nichts zu unterscheiden.`,
+    );
+  }
+  return { schluessel: baustein.key, auslieferungstext };
+}
+
+/** Seedet die Demodaten über den ECHTEN Admin-Weg und belegt, dass danach welche da sind. */
+async function ladeDemodaten(buehne: Buehne): Promise<void> {
+  await musterhaft(buehne.app, kopf(buehne, "admin"), "POST", "/api/admin/demo-seed", {
+    locale: "de",
+  });
+  const stand = (await demobestand(buehne)) as { vorhanden: boolean | null };
+  if (stand.vorhanden !== true) {
+    throw new Error(
+      "Vorbereitung fehlgeschlagen: nach POST /api/admin/demo-seed meldet GET /api/admin/demo-seed keinen Demobestand — ohne geladene Demodaten mässe das Entfernen eine leere Instanz.",
+    );
+  }
+}
+
+/**
+ * Das Beispielpaket, dessen Name als Nutzlast wirklich durchkommt.
+ *
+ * Es gibt keine Route, die die Beispielpakete aufzählt — die Nutzlast ist deshalb ein
+ * ausgeschriebener Name und kein gelesener. Dass er stimmt, ist nicht behauptet, sondern gemessen:
+ * ein unbekannter Name antwortet 400 `UNKNOWN_PACKAGE` (`admin-routes.ts:296-300`), und 400 steht
+ * nicht in `erfolg` dieser Zeile — die Zeile wird dann namentlich rot.
+ *
+ * „qualitaet" und nicht „bilder"/„konflikte": das Bilderpaket legt Bildobjekte an, das
+ * Konfliktpaket zusätzlich Widersprüche. Beides sind Folgewirkungen, die eine ROLLENmessung nicht
+ * braucht; gemessen wird die Tür.
+ */
+const BEISPIELPAKET = "qualitaet";
 
 // ------------------------------------------------------------------------------------------------
 // DIE TABELLE DER SCHREIBENDEN TÜREN. Reihenfolge nach Nutzerweg: zuerst, was den BESTAND ändert.
@@ -1237,5 +1533,165 @@ export const SCHREIB_TABELLE: Schreibzeile[] = [
         bestand: () => dublettenStand(buehne, paar.id),
       };
     },
+  },
+
+  // --- JOB 4270 · Der Demobestand: wer lädt, setzt zurück und löscht ihn? ------------------------
+  //
+  // ALLE SECHS HÄNGEN AN `users.manage` — am Produkt abgelesen, nicht aus der Nachbarschaft
+  // geschlossen (`admin-routes.ts:221`, `:276`, `:290`, `:394`, `:410`, `:430`). Also NUR_ADMIN.
+  // Jede Zeile führt einen Lesegriff auf die Grösse, die ein gelungener Aufruf verändert, UND einen
+  // Zielzustand (`wirkung`): für die vier gesperrten Akteure ist der Bestand danach unverändert,
+  // für den Admin ist die Wirkung nachweislich eingetreten.
+  {
+    gruppe: "adminRoutes",
+    methode: "POST",
+    route: "/api/admin/demo-seed",
+    belegstelle: "services/app/src/routes/admin-routes.ts:220",
+    // 200 und nichts sonst. Die Route antwortet auch dann 200, wenn sie NICHTS tut (Demo schon
+    // vorhanden, ohne `force` → `EMPTY_RESULT`, `seed-demo.ts:208-212`) — genau deshalb entscheidet
+    // hier nicht der Status, sondern `wirkung`.
+    erfolg: [200],
+    // Diese Tür entsteht nur mit gesetztem Schalter `KLARWERK_DEMO_SEED` (`admin-routes.ts:219`).
+    // Er steht für alle Prüfläufe auf „1" (`tests/setup-env.ts:50`); ohne ihn wäre sie gar nicht
+    // registriert, und `gemessen()` meldete `nicht-registriert` statt einer Sperre.
+    tor: "users.manage (hinter dem Schalter `KLARWERK_DEMO_SEED`)",
+    erwartet: NUR_ADMIN,
+    ruesten: async (buehne) => ({
+      pfad: "/api/admin/demo-seed",
+      // `locale` ausgeschrieben statt dem stillen Vorgabewert: die Nutzlast dieser Zeile soll die
+      // sein, die die Fläche wirklich sendet (`admin-routes.ts:228-231`).
+      payload: { locale: "de" },
+      bestand: () => demobestand(buehne),
+      wirkung: {
+        beschreibung: "die Instanz führt danach einen Demobestand",
+        eingetreten: (stand) => (stand as { vorhanden?: unknown }).vorhanden === true,
+      },
+    }),
+  },
+  {
+    gruppe: "adminRoutes",
+    methode: "DELETE",
+    route: "/api/admin/demo-seed",
+    belegstelle: "services/app/src/routes/admin-routes.ts:275",
+    erfolg: [200],
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
+    ruesten: async (buehne) => {
+      // Erst laden, dann löschen: an einer leeren Instanz antwortete der Purge ebenfalls 200 und
+      // hätte nichts entfernt — die Zeile mässe dann die Abwesenheit des Bestands statt des Tors.
+      await ladeDemodaten(buehne);
+      return {
+        pfad: "/api/admin/demo-seed",
+        bestand: () => demobestand(buehne),
+        wirkung: {
+          beschreibung: "der Demobestand ist danach fort",
+          eingetreten: (stand) => (stand as { vorhanden?: unknown }).vorhanden === false,
+        },
+      };
+    },
+  },
+  {
+    gruppe: "adminRoutes",
+    methode: "POST",
+    route: "/api/admin/demo-packages/:id/load",
+    belegstelle: "services/app/src/routes/admin-routes.ts:391",
+    erfolg: [200],
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
+    ruesten: async (buehne) => {
+      const paket = await echtesDemopaket(buehne);
+      return {
+        pfad: `/api/admin/demo-packages/${paket}/load`,
+        bestand: () => paketStand(buehne, paket),
+        wirkung: {
+          beschreibung: `das Paket "${paket}" hat danach Bausteine im Bestand`,
+          eingetreten: (stand) => ((stand as { geladen?: unknown }).geladen ?? 0) !== 0,
+        },
+      };
+    },
+  },
+  {
+    gruppe: "adminRoutes",
+    methode: "POST",
+    route: "/api/admin/demo-packages/:id/reset",
+    belegstelle: "services/app/src/routes/admin-routes.ts:407",
+    erfolg: [200],
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
+    ruesten: async (buehne) => {
+      const paket = await echtesDemopaket(buehne);
+      await ladeDemopaket(buehne, paket);
+      // DIE BEARBEITUNG IST DER FACHVORGANG DIESER TÜR, nicht ihre Kulisse: Zurücksetzen und Laden
+      // unterscheiden sich in genau einer Entscheidung — ob ein BEARBEITETER Baustein angefasst
+      // wird (`admin-routes.ts:376-378`). Ohne Bearbeitung mässe diese Zeile den Ladeweg noch
+      // einmal.
+      const { schluessel, auslieferungstext } = await verstelleEinenBaustein(buehne, paket);
+      return {
+        pfad: `/api/admin/demo-packages/${paket}/reset`,
+        // RUNDE 2 · KORREKTURPFLICHT 1: DER LESEGRIFF LIEST DEN BAUSTEIN, NICHT NUR ZWEI ZÄHLER.
+        // Hier stand `paketStand` — `{geladen, bearbeitet}`. Der Prüfer hat den Reset durch das
+        // echte Löschen ersetzt: `{geladen:6, bearbeitet:1} → {geladen:0, bearbeitet:0}`, und die
+        // Zusicherung „bearbeitet === 0" war erfüllt. `S11` hält diesen Fall dauerhaft fest.
+        bestand: () => bausteinStand(buehne, paket, schluessel),
+        wirkung: {
+          beschreibung: `der verstellte Baustein "${schluessel}" von "${paket}" steht noch und trägt wieder wörtlich seinen Auslieferungstext`,
+          // DREI BEDINGUNGEN, UND JEDE EINZELNE SCHLIESST EINEN ANDEREN FEHLSCHLAG AUS: der Baustein
+          // ist noch da (gegen das Löschen), sein Text ist WÖRTLICH der vor dem Verstellen gelesene
+          // (gegen ein Zurücksetzen, das irgendetwas schreibt), und das Paket führt keinen
+          // bearbeiteten Baustein mehr (gegen ein Zurücksetzen, das nur diesen einen anfasst).
+          eingetreten: (stand) => {
+            const gelesen = stand as { vorhanden?: unknown; text?: unknown; bearbeitet?: unknown };
+            return (
+              gelesen.vorhanden === true &&
+              gelesen.text === auslieferungstext &&
+              gelesen.bearbeitet === 0
+            );
+          },
+        },
+      };
+    },
+  },
+  {
+    gruppe: "adminRoutes",
+    methode: "DELETE",
+    route: "/api/admin/demo-packages/:id",
+    belegstelle: "services/app/src/routes/admin-routes.ts:427",
+    erfolg: [200],
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
+    ruesten: async (buehne) => {
+      const paket = await echtesDemopaket(buehne);
+      await ladeDemopaket(buehne, paket);
+      return {
+        pfad: `/api/admin/demo-packages/${paket}`,
+        bestand: () => paketStand(buehne, paket),
+        wirkung: {
+          beschreibung: `das Paket "${paket}" ist danach aus dem Bestand entfernt`,
+          eingetreten: (stand) => (stand as { geladen?: unknown }).geladen === 0,
+        },
+      };
+    },
+  },
+  {
+    gruppe: "adminRoutes",
+    methode: "POST",
+    route: "/api/admin/examples/load",
+    belegstelle: "services/app/src/routes/admin-routes.ts:287",
+    // 200 und nichts sonst: ein unbekannter Paketname antwortet 400 `UNKNOWN_PACKAGE`
+    // (`admin-routes.ts:296-300`) — er käme durchs Tor, ohne dass ein Beispiel entstanden wäre.
+    erfolg: [200],
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
+    ruesten: async (buehne) => ({
+      pfad: "/api/admin/examples/load",
+      payload: { package: BEISPIELPAKET },
+      // Die Beispiel-Objekte entstehen über `KoService.create` (`admin-routes.ts:283-286`) und
+      // stehen danach in derselben Liste, gegen die auch die übrigen Zeilen dieser Datei messen.
+      bestand: () => zaehleKos(buehne),
+      wirkung: {
+        beschreibung: `das Beispielpaket "${BEISPIELPAKET}" steht danach als Wissen im Bestand`,
+        eingetreten: (anzahl) => typeof anzahl === "number" && anzahl > 0,
+      },
+    }),
   },
 ];
