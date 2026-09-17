@@ -72,7 +72,11 @@ describe("JOB 3756 M · der abgelaufene Zugang sagt, dass er abgelaufen ist", ()
     const res = await anmelden(GAST);
 
     expect(res.statusCode).toBe(403);
-    expect(res.json().message).toBe("Ihr Zugang ist abgelaufen.");
+    // JOB 4265 NACHGEFÜHRT: der Satz nennt seit 4265 nach der Lage auch die Handlung. Der Pin bleibt
+    // wörtlich — er ist der Grund, aus dem diese Datei existiert —, nur sein Wortlaut ist der heutige.
+    expect(res.json().message).toBe(
+      "Ihr Zugang ist abgelaufen. Bitte vom Admin verlängern lassen.",
+    );
   });
 
   it("M2 — wer noch nie freigegeben wurde, liest weiterhin seinen anderen Satz", async () => {
@@ -93,11 +97,17 @@ describe("JOB 3756 M · der abgelaufene Zugang sagt, dass er abgelaufen ist", ()
 
     const en = await anmelden(GAST, "en");
     expect(en.statusCode).toBe(403);
-    expect(en.json().message).toBe("Your access has expired.");
+    // JOB 4265 NACHGEFÜHRT, in allen drei Sprachen zugleich — ein zurückgebliebener Sprachstand
+    // wäre genau die Halbheit, gegen die M3 gebaut ist.
+    expect(en.json().message).toBe(
+      "Your access has expired. Please ask an administrator to extend it.",
+    );
 
     const nl = await anmelden(GAST, "nl");
     expect(nl.statusCode).toBe(403);
-    expect(nl.json().message).toBe("Je toegang is verlopen.");
+    expect(nl.json().message).toBe(
+      "Je toegang is verlopen. Vraag een beheerder om deze te verlengen.",
+    );
   });
 
   it("M4 — der SSO-Eingang trägt denselben Schlüssel", async () => {

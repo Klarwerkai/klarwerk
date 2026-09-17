@@ -125,6 +125,19 @@ describe("JOB 4223 C · der Gastweg im echten Browser, in zwei getrennten Profil
     // austragen und dabei erklären, warum. RUNDE 3: die vier Anmeldemasken und das Namensfeld sind
     // dazugekommen — bis dahin wurden E-Mail-Feld und Namensfeld ANGEKLICKT, und genau daran ist
     // BENs Mutation `tabIndex={-1}` am Namensfeld unbemerkt vorbeigegangen.
+    //
+    // JOB 4265 · RUNDE 3 · VIER STATIONEN KOMMEN DAZU, und die Liste hat das zu Recht erzwungen.
+    // Runde 2 hat in `browserweg.ts` Abschnitt 6d eingezogen: der abgewiesene Gast liest den
+    // Ablaufsatz jetzt auch auf Englisch und Niederländisch, in je einem eigenen frischen Profil.
+    // Jede dieser beiden Anmeldungen geht über DIESELBE Maske und DENSELBEN Tastaturweg wie die
+    // deutsche (`anmelden` in `browserweg.ts`) und meldet deshalb je ein E-Mail- und ein
+    // Passwortfeld — `anmeldungGastNachAblauf_en_*` und `…_nl_*`.
+    //
+    // DASS SIE HIER EINGETRAGEN WERDEN MÜSSEN, IST DER ZWECK DIESER LISTE und keine Förmlichkeit:
+    // Runde 2 hat die beiden Profile eingebaut, ohne sie auszutragen, und genau dieser Fall wurde
+    // im Tor rot (23 gefunden gegen 19 erwartet). Die Liste ist damit der einzige Ort, an dem
+    // ablesbar ist, wie viele Tastaturwege dieser Ablauf wirklich geht. Wer ein Profil wieder
+    // herausnimmt, trägt es hier aus.
     expect(
       Object.keys(befund.tastatur).sort(),
       "die Tastaturstationen des Weges sind nicht vollständig",
@@ -134,6 +147,10 @@ describe("JOB 4223 C · der Gastweg im echten Browser, in zwei getrennten Profil
         "anmeldungAdmin_email",
         "anmeldungAdmin_passwort",
         "anmeldungGastNachAblauf_email",
+        "anmeldungGastNachAblauf_en_email",
+        "anmeldungGastNachAblauf_en_passwort",
+        "anmeldungGastNachAblauf_nl_email",
+        "anmeldungGastNachAblauf_nl_passwort",
         "anmeldungGastNachAblauf_passwort",
         "anmeldungGastVerlaengert_email",
         "anmeldungGastVerlaengert_passwort",

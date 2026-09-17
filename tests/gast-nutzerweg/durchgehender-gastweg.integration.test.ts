@@ -46,6 +46,7 @@ import {
   vergangen,
   wissensobjektAnlegen,
 } from "./strecke";
+import { type Verbindungszeile, alsBefund, warteAufVerbindungsende } from "./verbindungsende";
 
 const JOB = "[KLARWERK] JOB 4223";
 const TITEL = "Wartungsplan aus der Datenbank (JOB 4223)";
@@ -131,13 +132,33 @@ describe("JOB 4223 E · der Gastweg gegen echtes PostgreSQL", () => {
   }, 240_000);
 
   afterAll(async () => {
+    // JOB 4265 · ERST DER NACHWEIS, DANN DER DROP.
+    //
+    // Bis hierher stand hier nur der `DROP … WITH (FORCE)`, und der Lauf endete unter Last mit
+    // „terminating connection due to administrator command" (BEN zu JOB 4223 R3). `WITH (FORCE)`
+    // ruft `pg_terminate_backend` für JEDES Backend auf, das noch an der Zieldatenbank hängt — und
+    // nach `await pool.end()` hängt dort unter Umständen noch eines, weil der Pool sein Ende
+    // meldet, bevor seine Verbindungen es sind (Begründung und Quelltextstellen in
+    // `verbindungsende.ts`, gemessen in `verbindungsende.integration.test.ts` V0).
+    //
+    // Gefragt wird deshalb der SERVER, nicht der Client, und zwar so lange, bis er nichts mehr
+    // führt. Der `DROP` hat danach nichts mehr abzuschiessen. Bleibt doch etwas übrig, ist das ein
+    // Leck und keine Zeitfrage: die Zusicherung ganz unten nennt es mit PID und Abfrage.
+    let rest: Verbindungszeile[] = [];
     if (adminPool) {
+      const befund = await warteAufVerbindungsende(adminPool, gastwegDb);
+      rest = befund.rest;
       await adminPool
         .query(`DROP DATABASE IF EXISTS ${gastwegDb} WITH (FORCE)`)
         .catch(() => undefined);
       await adminPool.end();
     }
     await container?.stop();
+    // Zuletzt, damit das Aufräumen auch dann vollständig läuft, wenn der Nachweis scheitert.
+    expect(
+      rest,
+      `beim DROP DATABASE hingen noch Verbindungen an ${gastwegDb} — genau auf sie schiesst WITH (FORCE):\n  ${alsBefund(rest)}`,
+    ).toEqual([]);
   }, 120_000);
 
   it("E1 — leere Datenbank → Gast anlegen, anmelden, arbeiten, ablaufen, verlängern — alles an einer echten Instanz", async (ctx) => {

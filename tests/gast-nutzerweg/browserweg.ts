@@ -30,23 +30,51 @@
 // nachmessen, dann Enter. Ein Knopf, den kein Tab erreicht, lässt diesen Weg scheitern — und genau
 // das ist die Zusage aus Lieferung 6.
 //
-// DIE EINE AUSNAHME, benannt statt versteckt: der TAG im Datumsfeld wird mit `fill` gesetzt. Eine
-// native Datumseingabe nimmt die Ziffern in der Reihenfolge des GEBIETSSCHEMAS entgegen
-// (TT.MM.JJJJ gegen MM/DD/YYYY); ein getippter Tag maesse die Einstellung des Prüfstands statt das
-// Produkt. Das Feld selbst wird trotzdem per Tab angesteuert und sein Fokus nachgemessen — die
-// Frage „ist es mit der Tastatur erreichbar" bleibt damit beantwortet, nur das Eintippen der
-// Ziffern ist es nicht.
+// JOB 4265 · DIE LETZTE AUSNAHME IST FORT — AUCH DAS DATUM WIRD GETIPPT.
+//
+// Hier stand bis JOB 4265: der TAG im Datumsfeld werde mit `fill` gesetzt, weil eine native
+// Datumseingabe die Ziffern in der Reihenfolge des GEBIETSSCHEMAS entgegennimmt (TT.MM.JJJJ gegen
+// MM/DD/YYYY) und ein getippter Tag deshalb die Einstellung des Prüfstands messe statt das Produkt.
+// Das Argument war richtig — solange das Gebietsschema ungefragt aus der Umgebung kam. BEN hat die
+// Lücke in Runde 3 zu Recht offengelassen benannt: „für einen vollständigen Eingabenachweis Ziffern
+// bei festgelegtem Gebietsschema per Tastatur eingeben."
+//
+// Das Gebietsschema wird jetzt GESETZT (`GEBIETSSCHEMA`, am Browserprofil), genau wie die Sprache
+// der Fläche schon seit jeher gesetzt wird und aus demselben Grund: ein Prüfstand, dessen
+// Reihenfolge von der Umgebung abhängt, misst mal dies, mal das. Damit ist die Reihenfolge bekannt,
+// die Ziffern gehen als echte Tastendrücke hinein — und das Ergebnis wird am `value` des Feldes
+// nachgemessen (`tippeDatumMitTastatur`). Ein Feld, in das man den Tag nicht tippen kann, lässt
+// diesen Weg ab jetzt scheitern; `fill` kommt in dieser Datei nicht mehr vor.
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
 import { expect } from "vitest";
 import { registerWebStatic } from "../../services/app/src/web-static";
-import { MELDUNGEN } from "../../services/auth/src/meldungen";
+import { MELDUNGEN, type Sprache } from "../../services/auth/src/meldungen";
 import { PASSWORT, type Sitzung, type Strecke } from "./strecke";
 
 export const DIST = resolve(process.cwd(), "apps/web/dist");
 /** Das schmalste Gerät der Zielliste — Lieferung 6 misst an dieser Kante. */
 export const SCHMAL = { width: 390, height: 844 };
+/**
+ * JOB 4265 · DAS GEBIETSSCHEMA DER BROWSERPROFILE — festgelegt, nicht geerbt.
+ *
+ * Deutsch, weil auch die Sprache der Fläche und die Sollwerte aus dem Katalog deutsch sind: ein
+ * Prüfstand, der seine Spracheinstellungen aus der Umgebung nimmt, misst mal dies, mal das.
+ *
+ * WAS ES NACHWEISLICH NICHT TUT — und das steht hier, weil der erste Entwurf dieses Auftrags das
+ * Gegenteil behauptet hat. Die Vermutung war, `locale` bestimme die Reihenfolge, in der eine native
+ * Datumseingabe ihre Ziffern annimmt (TT.MM.JJJJ gegen MM/TT/JJJJ). GEMESSEN (Gegenprobe G6,
+ * Arbeitsprüfung `d8ca99fb7eb84287918b063801ba2a52`): mit `en-US` statt `de-DE` bleibt P1 GRÜN —
+ * dieselben acht Ziffern ergeben denselben Tag. Chromium richtet die Abschnittsreihenfolge dieses
+ * Steuerelements also nicht nach dem Gebietsschema des Kontexts.
+ *
+ * Die Reihenfolge ist damit eine ANNAHME dieses Prüfstands und keine von ihm gesetzte Grösse. Sie
+ * wird deshalb nicht geglaubt, sondern nach jeder Eingabe am `value` des Feldes NACHGEMESSEN
+ * (`tippeDatumMitTastatur`). Ordnet ein Browser die Abschnitte eines Tages anders, wird dieser Weg
+ * rot und sagt, was hineingelaufen ist — statt still einen falschen Tag zu speichern.
+ */
+export const GEBIETSSCHEMA = "de-DE";
 
 // ------------------------------------------------------------------------------------------------
 // Die schmale Typhülle um Playwright. `playwright` kommt über `createRequire` und nicht als
@@ -79,6 +107,34 @@ export interface Browser {
 }
 
 export const LIES_TEXT = "() => document.body.innerText";
+
+/**
+ * JOB 4265 · DER HANDLUNGSTEIL EINES MELDUNGSSATZES — alles nach dem ersten Satzende.
+ *
+ * Er wird GESCHNITTEN und nicht abgeschrieben: der Sollwert kommt aus `MELDUNGEN`, sonst stünde in
+ * dieser Datei eine zweite Textquelle, die eines Tages von der ersten abwiche.
+ *
+ * Ein Satz OHNE zweiten Teil liefert die leere Zeichenkette — und nicht etwa den ganzen Satz. Das
+ * ist Absicht: der Aufrufer sichert die Nichtleere eigens zu und merkt so, wenn die Handlung aus
+ * dem Katalog verschwindet. Gäbe es hier einen stillen Rückfall, bliebe der Nachweis grün.
+ */
+export function handlungsteil(satz: string): string {
+  const ende = satz.indexOf(". ");
+  return ende < 0 ? "" : satz.slice(ende + 1).trim();
+}
+
+/**
+ * JOB 4265 · RUNDE 2 · DIE BEIDEN ANDEREN SPRACHEN, die der echte Browser ebenfalls lesen muss.
+ *
+ * BENs Korrekturpflicht 1 der Runde 1: der Handlungssatz war im Browser nur auf Deutsch belegt.
+ * „EN/NL sind durch Socket- und jsdom-Tests belegt, nicht durch den verlangten Browserlauf" —
+ * und ein HTTP-Nachweis sagt nichts darüber, ob der Satz auch durch die gebaute Fläche kommt.
+ *
+ * Deutsch steht NICHT in dieser Liste, weil es den Hauptweg fährt (Abschnitt 6b/6c) und dort mehr
+ * geprüft wird als hier: dort hängt der Satz an einer abgelaufenen Frist, die gerade über die
+ * Fläche des Admins gesetzt wurde. Abschnitt 6d prüft dieselbe Lage in den beiden anderen Sprachen.
+ */
+const ANDERE_SPRACHEN: readonly Sprache[] = ["en", "nl"];
 const AKTIVER_PFAD = `() => {
   const a = document.activeElement;
   if (!a) return "(nichts)";
@@ -273,15 +329,77 @@ export async function tippeMitTastatur(
   );
 }
 
-/** Ein frisches Browserprofil: eigener Keksbeutel, eigener Speicher, Sprache fest auf Deutsch. */
+/**
+ * JOB 4265 · DER TAG WIRD GETIPPT — ECHTE ZIFFERN, BEI FESTGELEGTEM GEBIETSSCHEMA.
+ *
+ * VORBEDINGUNG: Das Feld ist bereits per Tab angesteuert und sein Fokus nachgemessen. Diese
+ * Funktion fasst den Fokus nicht an — sie tippt, wohin er zeigt. Ein eigener Weg zum Feld stünde
+ * neben dem gemessenen, und der nächste Fall nähme den bequemeren (dasselbe Argument wie bei
+ * `tastaturAusloesen`).
+ *
+ * DIE REIHENFOLGE IST TAG, MONAT, JAHR — und sie wird NACHGEMESSEN, nicht gesetzt (die Messung dazu
+ * steht bei `GEBIETSSCHEMA`). Chromium schaltet nach jedem vollständigen Abschnitt von selbst
+ * weiter, deshalb reichen die acht Ziffern am Stück.
+ *
+ * UND DAS ERGEBNIS WIRD NACHGEMESSEN. Der `value` einer Datumseingabe ist IMMER `YYYY-MM-DD`,
+ * unabhängig davon, wie der Browser sie anzeigt — er ist damit der eine Wert, an dem sich
+ * ablesen lässt, ob die Ziffern in den richtigen Abschnitten gelandet sind. Ohne diese Zusicherung
+ * bliebe der Fall grün, wenn Tag und Monat vertauscht hineinliefen, und die Fehlermeldung zeigte
+ * erst zwei Stationen später auf die falsche Stelle.
+ */
+export async function tippeDatumMitTastatur(
+  seite: Seite,
+  selektor: string,
+  tag: string,
+  was: string,
+): Promise<void> {
+  const teile = /^(\d{4})-(\d{2})-(\d{2})$/.exec(tag);
+  if (!teile) {
+    throw new Error(`JOB 4265: „${tag}" ist kein Tag der Form JJJJ-MM-TT (${was}).`);
+  }
+  const [, jahr, monat, tagZahl] = teile;
+  await seite.keyboard.type(`${tagZahl}${monat}${jahr}`);
+  const gesetzt = await seite.evaluate<string>(
+    fn(`(s) => { const e = document.querySelector(s); return e ? e.value : "(kein Feld)"; }`),
+    selektor,
+  );
+  expect(
+    gesetzt,
+    `die getippten Ziffern ${tagZahl}${monat}${jahr} sind im Feld „${was}" nicht als ${tag} angekommen (gelesen: „${gesetzt}") — dieser Browser nimmt die Abschnitte einer Datumseingabe in einer anderen Reihenfolge entgegen als Tag, Monat, Jahr`,
+  ).toBe(tag);
+}
+
+/**
+ * Ein frisches Browserprofil: eigener Keksbeutel, eigener Speicher, Sprache FESTGELEGT.
+ *
+ * JOB 4265 · RUNDE 2, BENs KORREKTURPFLICHT 1: die Sprache ist jetzt ein Parameter statt fest
+ * verdrahtetem „de". Der Grund ist kein Aufräumen, sondern ein fehlender Nachweis — der abgewiesene
+ * Gast wurde bis hierher ausschliesslich auf Deutsch im echten Browser gelesen, obwohl der Auftrag
+ * DE/EN/NL verlangt. Zwei weitere Profile fahren denselben Weg in „en" und „nl" (Abschnitt 6d).
+ *
+ * Das GEBIETSSCHEMA bleibt dabei bei allen Profilen `de-DE` und wandert NICHT mit der Sprache mit.
+ * Das ist Absicht und trägt den Nachweis: Playwrights `locale` setzt auch den `Accept-Language`-
+ * Kopf, den der Browser von sich aus sendet. Ginge er mit, könnte der englische Satz auch dann
+ * ankommen, wenn die Fläche die gespeicherte Wahl gar nicht weiterreichte — der Fall bliebe grün
+ * und bewiese nichts. So sagt die Umgebung „Deutsch" und nur die Wahl der Nutzerin „Englisch":
+ * erscheint der englische Satz, dann WEIL `client.ts:23` `i18n.language` in den Kopf schreibt.
+ */
 export async function profil(
   browser: Browser,
   viewport = SCHMAL,
+  sprache: Sprache = "de",
 ): Promise<{ kontext: Kontext; seite: Seite }> {
-  const kontext = await browser.newContext({ viewport });
-  // Die Sprache wird GESETZT und nicht geraten: die Sollwerte unten stammen aus dem deutschen
-  // Katalog, und ein Prüfstand, dessen Sprache von der Umgebung abhängt, misst mal dies, mal das.
-  await kontext.addInitScript(`try { localStorage.setItem("kw.sprache", "de"); } catch (e) {}`);
+  // JOB 4265: `locale` gehört zum Profil und nicht zu einem einzelnen Schritt. Es legt die
+  // Umgebung dieses Profils fest — was es für die Ziffernreihenfolge einer Datumseingabe
+  // NACHWEISLICH nicht tut, steht bei `GEBIETSSCHEMA` und wird dort nicht geglaubt, sondern
+  // nachgemessen.
+  const kontext = await browser.newContext({ viewport, locale: GEBIETSSCHEMA });
+  // Die Sprache wird GESETZT und nicht geraten: die Sollwerte unten stammen aus dem Katalog, und
+  // ein Prüfstand, dessen Sprache von der Umgebung abhängt, misst mal dies, mal das. Der Schlüssel
+  // ist `sprachwahl.ts:23` (`SPRACHE_STORAGE_KEY`), gelesen beim Start von `i18n.ts`.
+  await kontext.addInitScript(
+    `try { localStorage.setItem("kw.sprache", ${JSON.stringify(sprache)}); } catch (e) {}`,
+  );
   return { kontext, seite: await kontext.newPage() };
 }
 
@@ -421,6 +539,13 @@ export async function fahreDenGanzenWeg(a: WegAufbau): Promise<WegBefund> {
   const adminProfil = await profil(a.browser);
   const gastProfil = await profil(a.browser);
   const spaeterProfil = await profil(a.browser);
+  // JOB 4265 · RUNDE 2: je ein eigenes, frisches Profil für die beiden anderen Sprachen. Sie werden
+  // hier oben angelegt, damit der `finally`-Zweig sie unter allen Umständen wieder schliesst — ein
+  // Kontext, der an einem gescheiterten Fall hängenbliebe, hielte Chromium am Leben.
+  const sprachProfile = new Map<Sprache, { kontext: Kontext; seite: Seite }>();
+  for (const sprache of ANDERE_SPRACHEN) {
+    sprachProfile.set(sprache, await profil(a.browser, SCHMAL, sprache));
+  }
   try {
     // ══ 1. Der Admin meldet sich an seiner Fläche an. ══════════════════════════════════════════
     const adminSeite = adminProfil.seite;
@@ -489,7 +614,12 @@ export async function fahreDenGanzenWeg(a: WegAufbau): Promise<WegBefund> {
       await adminSeite.evaluate<boolean>(fn(FOKUS_SICHTBAR)),
       "das Datumsfeld der Anlage zeigt keinen sichtbaren Fokus",
     ).toBe(true);
-    await adminSeite.fill(`${karte} input[type=date]`, a.fristTag);
+    await tippeDatumMitTastatur(
+      adminSeite,
+      `${karte} input[type=date]`,
+      a.fristTag,
+      "Datumsfeld der Anlage",
+    );
 
     tastatur.anlegen = await tastaturAusloesen(adminSeite, "Anlegen");
 
@@ -635,6 +765,119 @@ export async function fahreDenGanzenWeg(a: WegAufbau): Promise<WegBefund> {
     ).not.toContain(MELDUNGEN.NOT_APPROVED.de);
     expect(maskentext, "und geschützter Inhalt steht auch hier nicht").not.toContain(a.titel);
 
+    // ══ 6c. UND ER LIEST, WAS ER JETZT TUN KANN. ══════════════════════════════════════════════
+    //
+    // JOB 4265: Bis hierher las der Gast die LAGE („Ihr Zugang ist abgelaufen.") und sonst nichts —
+    // er wusste, was ist, und nicht, was er tun kann. Seit 4265 nennt der Katalogsatz beides, und
+    // der Nachweis dafür gehört an DIESE Stelle: nicht an den Katalog, den kein Mensch liest,
+    // sondern an den Seitentext eines echten Browsers, in dem ein abgewiesener Gast steht.
+    //
+    // Der Handlungsteil wird aus dem Katalogsatz GESCHNITTEN und nicht danebengetippt (dieselbe
+    // Regel wie oben). Dass er dabei nicht leer wird, ist eine eigene Zusicherung: ein `includes("")`
+    // wäre immer wahr, und der Nachweis bliebe grün, während die Handlung aus dem Satz verschwände.
+    const handlung = handlungsteil(MELDUNGEN.ACCESS_EXPIRED.de);
+    expect(
+      handlung,
+      "der Ablaufsatz des Katalogs nennt keine Handlung mehr — dann misst dieser Nachweis nichts",
+    ).not.toBe("");
+    expect(
+      maskentext,
+      `der abgewiesene Gast liest die Lage, aber nicht die Handlung „${handlung}"`,
+    ).toContain(handlung);
+    // UNGEKÜRZT: der ganze Satz am Stück, nicht zwei Bruchstücke, die zufällig beide vorkommen.
+    // Eine Maske, die den Serversatz nach dem ersten Punkt abschnitte, käme hier nicht durch.
+    expect(
+      maskentext,
+      "der Satz steht nicht am Stück auf der Seite — er ist gekürzt oder auseinandergerissen",
+    ).toContain(MELDUNGEN.ACCESS_EXPIRED.de);
+    // Und der längere Satz sprengt die schmalste Kante nicht. Ein Text, der bei 390 px seitlich
+    // hinausläuft, ist für den, der ihn braucht, halb unlesbar.
+    expect(
+      await gastSeite.evaluate<number>(
+        fn("() => document.documentElement.scrollWidth - document.documentElement.clientWidth"),
+      ),
+      "die Anmeldemaske läuft mit dem Ablaufsatz bei 390 px seitlich über",
+    ).toBeLessThanOrEqual(0);
+
+    // ══ 6d. UND ER LIEST IHN AUCH AUF ENGLISCH UND NIEDERLÄNDISCH — im echten Browser. ════════
+    //
+    // RUNDE 2, BENs KORREKTURPFLICHT 1: Bis hierher las nur ein DEUTSCHES Profil den Satz im
+    // Browser; EN und NL hingen an Socket- und jsdom-Nachweisen. Die sagen aber nichts über die
+    // letzte Station: ob die gebaute Fläche die Sprachwahl überhaupt an den Server weiterreicht
+    // und den fremdsprachigen Satz ungekürzt anzeigt. Genau das wird hier gemessen.
+    //
+    // DIESELBE LAGE, NICHT EINE NACHGESTELLTE: die Frist dieses Kontos ist oben über die Fläche
+    // des Admins abgelaufen und ist es noch (Abschnitt 7 verlängert erst danach). Jedes Profil
+    // meldet sich mit denselben Zugangsdaten an derselben Instanz an — es ist derselbe Gast,
+    // nur mit einer anderen Spracheinstellung.
+    for (const sprache of ANDERE_SPRACHEN) {
+      const eintrag = sprachProfile.get(sprache);
+      if (!eintrag) {
+        throw new Error(`JOB 4265: kein Browserprofil für die Sprache „${sprache}" angelegt.`);
+      }
+      const satz = MELDUNGEN.ACCESS_EXPIRED[sprache];
+      const handlungFremd = handlungsteil(satz);
+      // Wie oben in 6c: ein leerer Handlungsteil machte jede `toContain`-Zusicherung darunter
+      // wahr, und der Nachweis bliebe grün, während die Handlung aus dem Satz verschwände.
+      expect(
+        handlungFremd,
+        `der Ablaufsatz des Katalogs nennt in „${sprache}" keine Handlung mehr — dann misst dieser Nachweis nichts`,
+      ).not.toBe("");
+      const fremdSeite = eintrag.seite;
+      await anmelden(
+        fremdSeite,
+        basis,
+        a.gastEmail,
+        PASSWORT,
+        `anmeldungGastNachAblauf_${sprache}`,
+        tastatur,
+      );
+      // ERST die Fläche in dieser Sprache, DANN der Satz: steht `<html lang>` falsch, ist nicht der
+      // Satz schuld, sondern die Sprachwahl kam nie an — und die Meldung soll das auch sagen.
+      await warte(
+        fremdSeite,
+        "(s) => document.documentElement.lang === s",
+        `die Fläche des Gastprofils steht auf „${sprache}"`,
+        sprache,
+        45_000,
+      );
+      await warte(
+        fremdSeite,
+        "(t) => document.body.innerText.includes(t)",
+        `der abgewiesene Gast liest in „${sprache}" den ganzen Satz „${satz}"`,
+        satz,
+        45_000,
+      );
+      const fremdText = await fremdSeite.evaluate<string>(fn(LIES_TEXT));
+      // Der Handlungsteil eigens: `satz` oben enthält ihn zwar, aber diese Zusicherung benennt
+      // beim Scheitern GENAU das Stück, das fehlt, statt nur „der Satz stimmt nicht".
+      expect(
+        fremdText,
+        `der abgewiesene Gast liest in „${sprache}" die Lage, aber nicht die Handlung „${handlungFremd}"`,
+      ).toContain(handlungFremd);
+      // Die Abgrenzung gegen den Nachbarn gilt in jeder Sprache: dieses Konto IST freigegeben.
+      expect(
+        fremdText,
+        `die Maske behauptet in „${sprache}", das Konto sei nie freigegeben worden — es ist aber abgelaufen`,
+      ).not.toContain(MELDUNGEN.NOT_APPROVED[sprache]);
+      // Und die Sprache ist wirklich gewechselt, nicht bloss der deutsche Satz mit lang="en" davor.
+      expect(
+        fremdText,
+        `in „${sprache}" steht der DEUTSCHE Ablaufsatz auf der Seite — die Sprachwahl kam nicht bis zum Server`,
+      ).not.toContain(MELDUNGEN.ACCESS_EXPIRED.de);
+      expect(
+        fremdText,
+        `geschützter Inhalt steht in „${sprache}" vor dem gesperrten Gast`,
+      ).not.toContain(a.titel);
+      // Der längere Satz sprengt die schmalste Kante auch in der längsten Übersetzung nicht.
+      expect(
+        await fremdSeite.evaluate<number>(
+          fn("() => document.documentElement.scrollWidth - document.documentElement.clientWidth"),
+        ),
+        `die Anmeldemaske läuft mit dem Ablaufsatz in „${sprache}" bei 390 px seitlich über`,
+      ).toBeLessThanOrEqual(0);
+    }
+
     // ══ 7. Verlängern — über dieselbe Fläche, mit der Tastatur. ════════════════════════════════
     tastatur.fristVerlaengern = await fristSetzen(
       adminSeite,
@@ -681,6 +924,9 @@ export async function fahreDenGanzenWeg(a: WegAufbau): Promise<WegBefund> {
     await adminProfil.kontext.close();
     await gastProfil.kontext.close();
     await spaeterProfil.kontext.close();
+    for (const { kontext } of sprachProfile.values()) {
+      await kontext.close();
+    }
   }
 }
 
@@ -704,7 +950,7 @@ async function fristSetzen(
     await seite.evaluate<boolean>(fn(FOKUS_SICHTBAR)),
     `das Datumsfeld (${marke}) zeigt keinen sichtbaren Fokus`,
   ).toBe(true);
-  await seite.fill("input[type=date]", tag);
+  await tippeDatumMitTastatur(seite, "input[type=date]", tag, `Datumsfeld (${marke})`);
   tastatur[`speichern_${marke}`] = await tastaturAusloesen(seite, "Befristung speichern");
   return schritte;
 }

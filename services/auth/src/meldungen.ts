@@ -18,13 +18,28 @@ export const MELDUNGEN = {
   // JOB 3756: der Nachbar von NOT_APPROVED und ausdrücklich nicht dasselbe. „Noch nicht
   // freigegeben" und „abgelaufen" sind zwei verschiedene Lagen mit zwei verschiedenen Wegen zurück
   // (Freigabe erteilen · Befristung nehmen oder verlängern); ein gemeinsamer Satz schickte die
-  // Hälfte der Betroffenen in die falsche Richtung. Der Text nennt bewusst weder Datum noch Konto
-  // noch einen Zuständigen: er steht vor jedem abgelaufenen Zugang gleich da und weiß von alldem
-  // nichts.
+  // Hälfte der Betroffenen in die falsche Richtung.
+  //
+  // JOB 4265 · ZWEITER SATZTEIL: DIE HANDLUNG. Bis hierher nannte der Text nur die LAGE. Ein Gast
+  // las damit, WAS ist, und nicht, WAS ER TUN KANN — und weil es keinen Selbstbedienungsweg gibt,
+  // blieb ihm nur Raten. Der zweite Teil sagt beides, was er braucht: an wen er sich wendet (den
+  // Admin) und worum er bittet (die Verlängerung der Befristung). Die Lage bleibt dabei VORNE; wer
+  // nur noch „Bitte vom Admin verlängern lassen." läse, wüsste nicht, warum er draussen steht.
+  //
+  // DER TEXT NENNT WEITERHIN WEDER DATUM NOCH KONTO NOCH EINEN NAMENTLICHEN ZUSTÄNDIGEN, und das
+  // ist keine Auslassung, sondern der Grund, aus dem er überhaupt EIN Satz sein kann: er steht vor
+  // jedem abgelaufenen Zugang gleich da und weiss von alldem nichts. „Admin" ist eine Rolle und
+  // kein Name — die kennt der Katalog. Ein Datum, das er nicht kennt, wäre eine Erfindung; ein
+  // Link auf eine Selbstbedienung, die es nicht gibt, eine Sackgasse mit Wegweiser.
+  // Gehalten von D5/D6 in `tests/gast-nutzerweg/gesperrter-gast-liest-seinen-satz.test.ts`.
+  //
+  // DIE BAUFORM IST DIE VON `OIDC_ACCOUNT_MISSING` weiter unten („… Bitte vom Admin anlegen
+  // lassen."): erst die Lage, dann der eine Handgriff, der sie auflöst. Zwei Sätze derselben Form
+  // für zwei Lagen, die derselbe Mensch auflöst.
   ACCESS_EXPIRED: {
-    de: "Ihr Zugang ist abgelaufen.",
-    en: "Your access has expired.",
-    nl: "Je toegang is verlopen.",
+    de: "Ihr Zugang ist abgelaufen. Bitte vom Admin verlängern lassen.",
+    en: "Your access has expired. Please ask an administrator to extend it.",
+    nl: "Je toegang is verlopen. Vraag een beheerder om deze te verlengen.",
   },
   // JOB 4011: der Nachbar von ACCESS_EXPIRED und ausdrücklich nicht dasselbe. Dort ist eine
   // Befristung ABGELAUFEN und der Satz steht vor dem Gast; hier hat ein ADMIN einen Zeitpunkt

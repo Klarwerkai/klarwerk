@@ -22,13 +22,25 @@
 // `Accept-Language`-Kopf über einen ECHTEN Socket durch Fastifys Kopfzeilenverarbeitung — die eine
 // Station, an der eine Sprachaushandlung überhaupt schiefgehen kann.
 //
-// EHRLICHE GRENZE, und sie gehört an dieselbe Stelle wie die Behauptung: Der Katalogsatz benennt
-// die LAGE („Ihr Zugang ist abgelaufen."), nicht die Handlung. Was der Gast TUN kann, steht im
-// Produkt heute nur mittelbar da — dass er sich an den Admin wenden muss, ergibt sich aus dem
-// Unterschied der beiden Sätze und aus dem Umstand, dass es keinen Selbstbedienungsweg gibt. Ein
-// eigener Handlungssatz müsste in `services/auth/src/meldungen.ts` oder
-// `apps/web/src/auth/AuthScreens.tsx` stehen; beide sind kein Zielpfad dieses Auftrags. Der Befund
-// steht in der Rückgabe unter ABWEICHUNGEN, nicht in einem hier eingetippten Wunschtext.
+// ================================================================================================
+// JOB 4265 · DIE GRENZE VON 4223 IST ABGERÄUMT — DER SATZ NENNT JETZT AUCH DIE HANDLUNG.
+// ================================================================================================
+//
+// Hier stand bis JOB 4265 eine „EHRLICHE GRENZE": der Katalogsatz benenne die LAGE („Ihr Zugang ist
+// abgelaufen."), nicht die Handlung; was der Gast TUN könne, stehe im Produkt nur mittelbar da, und
+// ein eigener Handlungssatz müsste in `services/auth/src/meldungen.ts` stehen — der damals kein
+// Zielpfad war. Genau das ist jetzt geschehen, und die Grenzbeschreibung wird deshalb ERSETZT und
+// nicht stehengelassen: eine Beschreibung, die eine behobene Lücke weiter behauptet, ist ab dem Tag
+// ihrer Behebung eine Unwahrheit.
+//
+// WAS D5 UND D6 NEU MESSEN — und warum es zwei Fälle sind:
+//
+//   · D5 verlangt den HANDLUNGSTEIL, in allen drei Sprachen und über denselben echten Socket. Die
+//     naheliegende Halbheit ist „nur das Deutsche geändert"; D5 fragt jede Sprache einzeln.
+//   · D6 verlangt, dass der Satz dabei NICHTS erfindet. Ein Handlungssatz ist die Einladung, mehr
+//     hineinzuschreiben, als der Katalog weiss — ein Datum, ein Konto, einen Namen, einen Link auf
+//     eine Selbstbedienung, die es nicht gibt. Der Katalog steht vor JEDEM abgelaufenen Zugang
+//     gleich da und kennt nichts davon.
 import { afterEach, describe, expect, it } from "vitest";
 import { MELDUNGEN, type Sprache } from "../../services/auth/src/meldungen";
 import type { PublicUser } from "../../services/auth/src/types";
@@ -49,6 +61,24 @@ import {
 const SPRACHEN: Sprache[] = ["de", "en", "nl"];
 const ABGELAUFEN = "abgelaufen@gastweg-4223.test";
 const UNFREIGEGEBEN = "unfreigegeben@gastweg-4223.test";
+
+/**
+ * JOB 4265 · WAS DER HANDLUNGSTEIL JE SPRACHE NENNEN MUSS.
+ *
+ * Nicht der ganze Satz — den hält D1 wörtlich, einmal, auf Deutsch. Hier stehen die beiden Stücke,
+ * ohne die aus einer Handlungsanweisung wieder eine blosse Lagemeldung würde: WER hilft
+ * (`zustaendiger`) und WAS er tut (`tat`). Beides wird gebraucht: „Bitte an den Admin wenden."
+ * nennt niemanden, der verlängert, und „Bitte verlängern lassen." nennt niemanden, an den man sich
+ * wenden könnte.
+ *
+ * Wortstämme statt vollständiger Wörter (`verlänger`, `verleng`), damit eine Umformulierung der
+ * Beugung den Wächter nicht rot macht — gemeint ist die Aussage, nicht die Endung.
+ */
+const HANDLUNG: Record<Sprache, { zustaendiger: string; tat: string }> = {
+  de: { zustaendiger: "Admin", tat: "verlänger" },
+  en: { zustaendiger: "administrator", tat: "extend" },
+  nl: { zustaendiger: "beheerder", tat: "verleng" },
+};
 
 let offen: Strecke | undefined;
 
@@ -90,7 +120,10 @@ describe("JOB 4223 D · der gesperrte Gast liest seinen Satz — DE, EN, NL", ()
   it("D1 — der abgelaufene Zugang bekommt in jeder Sprache SEINEN Satz", async () => {
     const strecke = await beideLagen();
     // Einmal wörtlich, damit die Zusage lesbar ist; die drei Sprachen darunter kommen aus dem Katalog.
-    expect(MELDUNGEN.ACCESS_EXPIRED.de).toBe("Ihr Zugang ist abgelaufen.");
+    // JOB 4265: der Wortlaut ist nachgeführt — der Satz nennt jetzt Lage UND Handlung.
+    expect(MELDUNGEN.ACCESS_EXPIRED.de).toBe(
+      "Ihr Zugang ist abgelaufen. Bitte vom Admin verlängern lassen.",
+    );
 
     for (const sprache of SPRACHEN) {
       const profil = strecke.profil(`abgelaufen-${sprache}`, sprache);
@@ -200,5 +233,55 @@ describe("JOB 4223 D · der gesperrte Gast liest seinen Satz — DE, EN, NL", ()
       .sende("POST", "/api/auth/login", { email: ABGELAUFEN, password: PASSWORT });
     expect(versuch.status).toBe(403);
     expect((await ausDerListe(admin, abgelaufen?.id ?? ""))?.approved).toBe(true);
+  });
+
+  it("D5 — der Satz sagt nicht nur, WAS ist, sondern was der Gast TUN kann — in jeder Sprache", async () => {
+    const strecke = await beideLagen();
+    for (const sprache of SPRACHEN) {
+      const antwort = await strecke
+        .profil(`handlung-${sprache}`, sprache)
+        .sende("POST", "/api/auth/login", { email: ABGELAUFEN, password: PASSWORT });
+      expect(antwort.status, `${sprache}: ${antwort.text}`).toBe(403);
+      const satz = (antwort.json as { message: string }).message;
+      // Der Sollwert kommt weiterhin aus dem Katalog: gemessen wird, was am Draht ankommt.
+      expect(satz, `${sprache}: der Satz am Draht ist nicht der des Katalogs`).toBe(
+        MELDUNGEN.ACCESS_EXPIRED[sprache],
+      );
+
+      const { zustaendiger, tat } = HANDLUNG[sprache];
+      expect(
+        satz,
+        `${sprache}: der Satz sagt nicht, AN WEN sich der Gast wenden muss — „${satz}"`,
+      ).toContain(zustaendiger);
+      expect(
+        satz,
+        `${sprache}: der Satz sagt nicht, WAS geschehen soll (die Befristung verlängern) — „${satz}"`,
+      ).toContain(tat);
+      // Die Lage bleibt VORNE: die Handlung ergänzt sie, sie ersetzt sie nicht. Wer nur noch läse
+      // „Bitte vom Admin verlängern lassen.", wüsste nicht, warum er nicht hereinkommt.
+      expect(
+        satz.indexOf(zustaendiger),
+        `${sprache}: die Handlung steht vor der Lage — „${satz}"`,
+      ).toBeGreaterThan(satz.indexOf("."));
+    }
+  });
+
+  it("D6 — und er erfindet dabei nichts: kein Datum, kein Konto, kein Selbstbedienungsweg", () => {
+    // Die Gefahr eines Handlungssatzes ist, mehr zu versprechen, als der Katalog weiss. Er steht
+    // vor JEDEM abgelaufenen Zugang gleich da (`meldungen.ts`) und kennt weder das Ende noch das
+    // Konto noch den Namen eines Zuständigen — und es gibt keinen Weg, den der Gast selbst gehen
+    // könnte. Ein Satz, der einen nennte, wäre eine Sackgasse mit Wegweiser.
+    for (const sprache of SPRACHEN) {
+      const satz = MELDUNGEN.ACCESS_EXPIRED[sprache];
+      expect(
+        /\d/.test(satz),
+        `${sprache}: im Satz steht eine Ziffer — ein Datum oder eine Frist, die der Katalog nicht kennt: „${satz}"`,
+      ).toBe(false);
+      expect(satz, `${sprache}: der Satz nennt ein Konto — „${satz}"`).not.toContain("@");
+      expect(
+        /https?:\/\/|www\./i.test(satz),
+        `${sprache}: der Satz verweist auf einen Selbstbedienungsweg, den es nicht gibt: „${satz}"`,
+      ).toBe(false);
+    }
   });
 });

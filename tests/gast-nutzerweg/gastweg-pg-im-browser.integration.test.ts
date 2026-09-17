@@ -50,6 +50,7 @@ import { createPool, migrate } from "../../services/app/src/db";
 import { guardedLocalPgTestUrl } from "../../services/db-tx";
 import { type Browser, DIST, fahreDenGanzenWeg, mitFlaeche, starteChromium } from "./browserweg";
 import { type Strecke, ersteinrichtung, starteStrecke, wissensobjektAnlegen } from "./strecke";
+import { type Verbindungszeile, alsBefund, warteAufVerbindungsende } from "./verbindungsende";
 
 const JOB = "[KLARWERK] JOB 4223";
 const ADMIN = "pg-browseradmin@gastweg-4223.test";
@@ -147,12 +148,22 @@ describe("JOB 4223 P · der ganze Gastweg im Browser, gegen echtes PostgreSQL", 
 
   afterAll(async () => {
     await browser?.close();
+    // JOB 4265: erst der Nachweis, dann der DROP — dieselbe Begründung wie in
+    // `durchgehender-gastweg.integration.test.ts`, und derselbe eine Weg dorthin
+    // (`verbindungsende.ts`). Ein zweiter, danebengeschriebener Ablauf liefe eines Tages auseinander.
+    let rest: Verbindungszeile[] = [];
     if (adminPool) {
+      const befund = await warteAufVerbindungsende(adminPool, gastwegDb);
+      rest = befund.rest;
       await adminPool
         .query(`DROP DATABASE IF EXISTS ${gastwegDb} WITH (FORCE)`)
         .catch(() => undefined);
       await adminPool.end();
     }
+    expect(
+      rest,
+      `beim DROP DATABASE hingen noch Verbindungen an ${gastwegDb} — genau auf sie schiesst WITH (FORCE):\n  ${alsBefund(rest)}`,
+    ).toEqual([]);
   }, 120_000);
 
   it("P1 — eine leere Datenbank, zwei Browserprofile: anlegen → arbeiten → Ablauf → verlängern → weiterarbeiten", async (ctx) => {

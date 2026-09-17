@@ -299,12 +299,16 @@ describe("JOB 3821 A1 · der abgelaufene Gast liest seinen Satz im Fehlerkasten"
     }
   });
 
-  it("A1-DE — und dieser Satz lautet wörtlich „Ihr Zugang ist abgelaufen.“", async () => {
+  it("A1-DE — und dieser Satz lautet wörtlich „Ihr Zugang ist abgelaufen. Bitte vom Admin verlängern lassen.“", async () => {
     // Die eine Stelle mit ausgeschriebenem Wortlaut: der Katalogwert allein sagt einem Menschen
     // nicht, WAS zugesichert ist. Dreht jemand den Katalogtext, wird genau dieser Fall rot.
+    //
+    // JOB 4265 NACHGEFÜHRT: Der Satz nennt seit 4265 nach der Lage auch die HANDLUNG — der Gast
+    // liest, an wen er sich wendet. Der Pin bleibt wörtlich und ungekürzt; gerade weil die Maske
+    // den Serversatz unverändert durchreicht, ist er hier der Nachweis, dass sie nichts abschneidet.
     await versuch("de", ABGELAUFENER_GAST);
 
-    expect(fehlersatz()).toBe("Ihr Zugang ist abgelaufen.");
+    expect(fehlersatz()).toBe("Ihr Zugang ist abgelaufen. Bitte vom Admin verlängern lassen.");
   });
 });
 
