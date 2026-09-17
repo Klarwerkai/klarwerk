@@ -2,7 +2,7 @@ import { Pool } from "pg";
 import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { guardedLocalPgTestUrl } from "../../db-tx";
-import { GENESIS, hashEntry } from "./chain";
+import { AUDIT_HASH_VERSION_V2, GENESIS, hashEntry, hashEntryFuerVersion } from "./chain";
 import {
   AUDIT_EVENT_ID_SCHEMA,
   AUDIT_HASH_VERSION_SCHEMA,
@@ -10,6 +10,7 @@ import {
   PgAuditRepo,
 } from "./repo-pg";
 import { AuditService } from "./service";
+import type { AuditEntry } from "./types";
 
 // WP-SHIP8-CLOSE-6 (bens ROT-1): echte Postgres-Belege für den exactly-once-Vertrag des
 // Audit-Belegs — additive event_id-Migration auf Bestand (idempotenter Re-Run, Altzeilen bleiben
@@ -43,6 +44,13 @@ type Laufzustand =
 describe("WP-SHIP8-CLOSE-6 (bens ROT-1): audit_event_id_uq gegen echtes Postgres", () => {
   let container: StartedTestContainer | undefined;
   let pool: Pool | undefined;
+  /**
+   * JOB 4321: die Verbindungszeichenkette der gemessenen Quelle.
+   *
+   * Sie wird gebraucht, weil die beiden Kettenfälle unten über eine FRISCHE Verbindung zurücklesen.
+   * Ein Lesen über denselben Pool könnte einen Wert zeigen, der nie in der Datenbank ankam.
+   */
+  let quelle = "";
   let available = false;
   let laufzustand: Laufzustand | undefined;
   let gemeldet = false;
@@ -75,6 +83,7 @@ describe("WP-SHIP8-CLOSE-6 (bens ROT-1): audit_event_id_uq gegen echtes Postgres
       try {
         pool = new Pool({ connectionString: localUrl });
         await pool.query("SELECT 1");
+        quelle = localUrl;
         available = true;
         laufzustand = { gelaufen: true, quelle: "lokale Testinstanz (KLARWERK_PG_TEST_URL)" };
         return;
@@ -106,9 +115,8 @@ describe("WP-SHIP8-CLOSE-6 (bens ROT-1): audit_event_id_uq gegen echtes Postgres
         .withExposedPorts(5432)
         .withWaitStrategy(Wait.forLogMessage(/database system is ready to accept connections/, 2))
         .start();
-      pool = new Pool({
-        connectionString: `postgresql://postgres:test@${container.getHost()}:${container.getMappedPort(5432)}/klarwerk_test`,
-      });
+      quelle = `postgresql://postgres:test@${container.getHost()}:${container.getMappedPort(5432)}/klarwerk_test`;
+      pool = new Pool({ connectionString: quelle });
       available = true;
       laufzustand = { gelaufen: true, quelle: "Testcontainer postgres:16-alpine" };
     } catch (fehler) {
@@ -353,5 +361,170 @@ describe("WP-SHIP8-CLOSE-6 (bens ROT-1): audit_event_id_uq gegen echtes Postgres
     // Und die Gegenprobe zur Kanonisierung: Arrays wurden NICHT normiert. `bravo` liegt noch so da,
     // wie es geschrieben wurde — sonst hätte V2 eine Inhaltsänderung wegsortiert.
     expect((stored?.payload.mike as { bravo: number[] }).bravo).toEqual([3, 2, 1]);
+  });
+
+  // ================================================================================================
+  // JOB 4321 · DIE HASHKETTE GEGEN ECHTES POSTGRESQL — AUF BEIDEN SCHREIBWEGEN.
+  // ================================================================================================
+  //
+  // WAS HIER FEHLTE. Diese Suite belegte bisher den exactly-once-Vertrag, die additive Migration und
+  // den jsonb-Roundtrip — über die VERKETTUNG stand nichts darin. Der einzige Kettennachweis ist
+  // `repo-pg-hashkette.test.ts`, und er sagt von sich selbst: „Das Doppel ist eine MINI-DATENBANK,
+  // kein PostgreSQL … NICHT bewiesen ist, dass PostgreSQL dieselbe Anweisung ebenso ausfuehrt."
+  // Genau dieser Satz wird hier eingelöst, und zwar an der Stelle, an der die Datenbank schon steht.
+  //
+  // WARUM ZWEI FÄLLE UND NICHT EINER. `repo-pg.ts` bindet `prev_hash`/`hash` in ZWEI getrennten
+  // INSERT-Anweisungen: `append` (Zeile 130-143) und `appendOnce` (149-168). Ein Dreher in nur einem
+  // der beiden bliebe unbemerkt, wenn nur der andere gemessen würde — die historische Gegenmutation
+  // `prev_hash=$7 ↔ hash=$8` war gegen 96 Testdateien blind (`repo-pg-hashkette.test.ts:5-13`).
+  //
+  // WARUM NICHT `hashEntry`. `hashEntry` IST der V1-Hash (`chain.ts:154`), und jeder neue Eintrag ist
+  // seit JOB 498 D8 V2 (`service.ts:49`). Nachgerechnet wird deshalb mit der einen zentralen
+  // Versionswahl `hashEntryFuerVersion`; die Version selbst wird zusätzlich behauptet, damit nicht
+  // eine stillschweigend zurückgefallene V1-Zeile als geprüft durchginge.
+
+  /**
+   * Der ganze Bestand, gelesen über eine FRISCHE Verbindung mit einem FRISCHEN `PgAuditRepo`.
+   *
+   * Der eigene Pool der Suite käme hier nicht in Frage: er könnte einen Wert zeigen, der nie in der
+   * Datenbank ankam (Prozesszustand, offene Transaktion).
+   */
+  async function ketteUeberFrischeVerbindung(): Promise<AuditEntry[]> {
+    expect(
+      quelle.length,
+      "ohne bekannte Verbindungszeichenkette gäbe es keine zweite Verbindung — der Nachweis wäre keiner",
+    ).toBeGreaterThan(0);
+    const zweiter = new Pool({ connectionString: quelle });
+    try {
+      return await new PgAuditRepo(zweiter).all();
+    } finally {
+      await zweiter.end();
+    }
+  }
+
+  /** Die drei Zusicherungen (a) GENESIS, (b) Glied auf Glied, (c) jeder Hash neu nachgerechnet. */
+  function pruefeKette(eintraege: readonly AuditEntry[], erwarteteZahl: number): void {
+    // Ein LEERER Bestand ist hier ein Befund und kein Erfolg: „nichts zu prüfen" wäre sonst grün.
+    expect(
+      eintraege.length,
+      "der zurückgelesene Bestand hat nicht die geschriebene Länge — es wurde nicht gemessen, was geschrieben wurde",
+    ).toBe(erwarteteZahl);
+
+    // (a) Der erste Eintrag hängt am Kettenanfang.
+    expect(
+      (eintraege[0] as AuditEntry).prevHash,
+      "der erste Eintrag beginnt nicht bei GENESIS — genau das wäre die Folge vertauschter Bindungen",
+    ).toBe(GENESIS);
+
+    // (b) Jedes Paar: der Nachfolger trägt den Hash seines Vorgängers.
+    for (let i = 1; i < eintraege.length; i++) {
+      const vorher = eintraege[i - 1] as AuditEntry;
+      const jetzt = eintraege[i] as AuditEntry;
+      expect(
+        jetzt.prevHash,
+        `die Kette ist gebrochen: Eintrag ${jetzt.seq} zeigt nicht auf Eintrag ${vorher.seq}`,
+      ).toBe(vorher.hash);
+    }
+
+    // Und kein Eintrag zeigt auf SICH SELBST — das ist die Gestalt des Drehers.
+    for (const eintrag of eintraege) {
+      expect(
+        eintrag.prevHash,
+        `Eintrag ${eintrag.seq} verweist auf sich selbst: prev_hash und hash sind vertauscht`,
+      ).not.toBe(eintrag.hash);
+    }
+
+    // (c) Jeder gespeicherte Hash wird aus den GESPEICHERTEN Feldern neu berechnet.
+    for (const eintrag of eintraege) {
+      expect(
+        eintrag.hashVersion,
+        `Eintrag ${eintrag.seq} liest nicht als V2 zurück — nachgerechnet würde die falsche Version`,
+      ).toBe(AUDIT_HASH_VERSION_V2);
+      const nachgerechnet = hashEntryFuerVersion({
+        seq: eintrag.seq,
+        at: eintrag.at,
+        actor: eintrag.actor,
+        action: eintrag.action,
+        target: eintrag.target,
+        payload: eintrag.payload,
+        prevHash: eintrag.prevHash,
+        hashVersion: eintrag.hashVersion,
+      });
+      expect(
+        nachgerechnet,
+        `für Eintrag ${eintrag.seq} gibt es kein Hashmaterial — unbekannte Version`,
+      ).toBeDefined();
+      expect(
+        eintrag.hash,
+        `der gespeicherte Hash von Eintrag ${eintrag.seq} stimmt mit dem nachgerechneten nicht überein`,
+      ).toBe(nachgerechnet);
+    }
+  }
+
+  it("JOB 4321 · KETTE über append: drei Einträge, über eine FRISCHE Verbindung Glied für Glied nachgerechnet", async (ctx) => {
+    const pool = requirePool(ctx);
+    await reset(pool);
+    await pool.query(AUDIT_SCHEMA);
+    await pool.query(AUDIT_EVENT_ID_SCHEMA);
+    await pool.query(AUDIT_HASH_VERSION_SCHEMA);
+    const service = new AuditService({ repo: new PgAuditRepo(pool) });
+
+    // Der reguläre Weg: `record` → `PgAuditRepo.append`. Unterscheidbare Nutzdaten, damit zwei
+    // Einträge nicht zufällig dasselbe Material tragen.
+    const geschrieben = [
+      await service.record({ actor: "anna", action: "ko.created", target: "ko-k1" }),
+      await service.record({
+        actor: "bert",
+        action: "ko.updated",
+        target: "ko-k1",
+        payload: { feld: "statement" },
+      }),
+      await service.record({
+        actor: "carla",
+        action: "ko.rated",
+        target: "ko-k1",
+        payload: { verdict: "up" },
+      }),
+    ];
+
+    const gelesen = await ketteUeberFrischeVerbindung();
+    pruefeKette(gelesen, 3);
+    // Und es ist wirklich DIESE Kette: die zurückgelesenen Hashes sind die geschriebenen.
+    expect(gelesen.map((e) => e.hash)).toEqual(geschrieben.map((e) => e.hash));
+    expect(gelesen.map((e) => e.actor)).toEqual(["anna", "bert", "carla"]);
+  });
+
+  it("JOB 4321 · KETTE über appendOnce/recordOnce: derselbe Nachweis auf dem ZWEITEN Bindungspfad", async (ctx) => {
+    // `appendOnce` (`repo-pg.ts:149-168`) führt eine EIGENE INSERT-Anweisung mit eigener
+    // Spaltenliste; `prev_hash` und `hash` sind dort ein zweites Mal gebunden. Ohne diesen Fall
+    // wäre ein Dreher, der nur diesen Pfad trifft, blind — der Fall oben bliebe grün.
+    const pool = requirePool(ctx);
+    await reset(pool);
+    await pool.query(AUDIT_SCHEMA);
+    await pool.query(AUDIT_EVENT_ID_SCHEMA);
+    await pool.query(AUDIT_HASH_VERSION_SCHEMA);
+    const service = new AuditService({ repo: new PgAuditRepo(pool) });
+
+    for (const nr of [1, 2, 3]) {
+      expect(
+        await service.recordOnce(`ko.created:ko-kette-${nr}`, {
+          actor: `anna-${nr}`,
+          action: "ko.created",
+          target: `ko-kette-${nr}`,
+          payload: { lauf: nr },
+        }),
+        `der ${nr}. Nachzug hat nicht geschrieben — die Kette hätte weniger Glieder als behauptet`,
+      ).toBe(true);
+    }
+
+    const gelesen = await ketteUeberFrischeVerbindung();
+    pruefeKette(gelesen, 3);
+    expect(gelesen.map((e) => e.eventId)).toEqual([
+      "ko.created:ko-kette-1",
+      "ko.created:ko-kette-2",
+      "ko.created:ko-kette-3",
+    ]);
+    // Der Dienst rechnet dieselbe Kette nach — über den Pool der Suite, als zweite Blickrichtung.
+    expect(await service.verify()).toBe(true);
   });
 });

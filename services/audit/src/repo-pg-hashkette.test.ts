@@ -32,8 +32,27 @@
 // GRENZE, ausdruecklich: Das Doppel ist eine MINI-DATENBANK, kein PostgreSQL. Es versteht
 // `INSERT INTO <tabelle>(<spalten>) VALUES($n,…)` und ordnet Spalte fuer Spalte zu. Bewiesen ist
 // damit die WIRKUNG DER BINDUNG — welcher Wert in welcher Spalte landet. NICHT bewiesen ist, dass
-// PostgreSQL dieselbe Anweisung ebenso ausfuehrt; dafuer gibt es den Integrationstest, der hier
-// gerade nicht laeuft.
+// PostgreSQL dieselbe Anweisung ebenso ausfuehrt.
+//
+// JOB 4321 — WER DEN POSTGRESQL-TEIL TRAEGT, STEHT JETZT HIER MIT NAMEN.
+//
+// Hier stand „dafuer gibt es den Integrationstest, der hier gerade nicht laeuft". Er laeuft jetzt,
+// und diese Datei bleibt trotzdem unveraendert: sie greift im SCHNELLEN Tor, aus dem
+// `**/*.integration.test.ts` ausgeschlossen ist (`vitest.config.ts`). Zwei Nachweise, zwei Orte,
+// eine Aussage — abgeloest wird nichts.
+//
+//   services/audit/src/repo-pg.integration.test.ts
+//     · „JOB 4321 · KETTE über append: drei Einträge, über eine FRISCHE Verbindung Glied für Glied
+//        nachgerechnet"        — der Bindungspfad von H1/H2 (`repo-pg.ts:130-143`)
+//     · „JOB 4321 · KETTE über appendOnce/recordOnce: derselbe Nachweis auf dem ZWEITEN
+//        Bindungspfad"          — der Bindungspfad von H3 (`repo-pg.ts:149-168`)
+//
+//   tests/office-pg-abnahme/rueckweg-pg.integration.test.ts
+//     · „Q6 · PRÜFPROTOKOLL am echten Rückweg: Einreichung und Entscheidung stehen verkettet in der
+//        Datenbank" — dieselbe Kette am echten HTTP-Weg statt am Adapter
+//
+// Beide lesen ueber eine FRISCHE Verbindung zurueck und rechnen jeden Hash neu; ohne erreichbare
+// Datenbank melden sie sichtbar UEBERSPRUNGEN, statt still gruen zu sein.
 import type { Pool, PoolClient } from "pg";
 import { describe, expect, it } from "vitest";
 import { type AuditEntry, PgAuditRepo } from "../index";

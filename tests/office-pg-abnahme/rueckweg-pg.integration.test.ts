@@ -63,6 +63,7 @@ import { GenericContainer, type StartedTestContainer, Wait } from "testcontainer
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildApp, buildPgServices } from "../../services/app/src/build-app";
 import { migrate } from "../../services/app/src/db";
+import { type AuditEntry, GENESIS, PgAuditRepo, hashEntryFuerVersion } from "../../services/audit";
 import { guardedLocalPgTestUrl } from "../../services/db-tx";
 import { KO_SCHEMA, PgKoRepo } from "../../services/knowledge-object/src/repo-pg";
 import { KoService } from "../../services/knowledge-object/src/service";
@@ -76,12 +77,16 @@ import {
   ENTSCHEIDER,
   Q4,
   Q5,
+  Q6,
   ZWEITER_EINREICHER,
   anmeldung,
+  anmeldungMitKennung,
   bestandsObjekt,
   entscheide,
+  istGleichzeitigeTrgmAnlage,
   reicheVorschlagEin,
   richteKontenEin,
+  stelleTrigrammErweiterungSicher,
   vorschlagAus,
 } from "./rueckweg-erwartung";
 
@@ -137,7 +142,7 @@ describe("JOB 4085 · der Word-Rückweg gegen echtes PostgreSQL", () => {
       );
     } else {
       process.stderr.write(
-        `[KLARWERK][JOB 4299] Word-Rückweg-Pg-Abnahme ÜBERSPRUNGEN — Grund: ${z.grund}. Q1–Q5 wurden NICHT geprüft.\n`,
+        `[KLARWERK][JOB 4299] Word-Rückweg-Pg-Abnahme ÜBERSPRUNGEN — Grund: ${z.grund}. Q1–Q7 wurden NICHT geprüft.\n`,
       );
     }
   }
@@ -229,7 +234,13 @@ describe("JOB 4085 · der Word-Rückweg gegen echtes PostgreSQL", () => {
       // `IF NOT EXISTS` an, und das landet im ERSTEN Schema des `search_path`. Entstünde sie in
       // einem der Wegwerfschemata unten, verschwände sie mit ihm — und ein anderer Lauf derselben
       // Instanz fände `gin_trgm_ops` nicht mehr. Deshalb einmal hier, auf der blanken Verbindung.
-      await pool.query("CREATE EXTENSION IF NOT EXISTS pg_trgm");
+      //
+      // JOB 4321 RUNDE 2: und zwar über den gemeinsamen, konkurrenzfesten Weg. Hier stand
+      // `pool.query("CREATE EXTENSION IF NOT EXISTS pg_trgm")`, und genau daran brach der gemeinsame
+      // Lauf gegen eine frische Instanz ab, weil `tests/ko/trash-tx-pg.integration.test.ts` im selben
+      // Augenblick dasselbe tat (BEN Runde 1). Der Grund und die beiden Schichten stehen bei
+      // `stelleTrigrammErweiterungSicher`; Q7 unten misst beide Richtungen.
+      await stelleTrigrammErweiterungSicher(pool);
       abnahme = await frischesSchema(ABNAHME_SCHEMA);
       await abnahme.query(KO_SCHEMA);
       // Dieselbe Word-Markierung wie ABNAHME 1 — echte `.docx`, produktiver Extraktor, echte Bilder.
@@ -563,4 +574,340 @@ describe("JOB 4085 · der Word-Rückweg gegen echtes PostgreSQL", () => {
       await app.close();
     }
   });
+
+  // ==============================================================================================
+  // JOB 4321 · Q6 — WAS DER RÜCKWEG IM PRÜFPROTOKOLL HINTERLÄSST, STEHT VERKETTET IN DER DATENBANK.
+  // ==============================================================================================
+  //
+  // Q1–Q5 messen den INHALT des Wissensobjekts. Das Prüfprotokoll ist aber das Mittel, mit dem sich
+  // eine Fälschung überhaupt nachweisen lässt — und über es stand in dieser Datei nichts: Q1–Q3
+  // bauen `new KoService({ repo })` OHNE `audit`, Q4/Q5 erzeugen über die echte Route zwar Einträge,
+  // prüften davon aber keinen.
+  //
+  // GEMESSEN WIRD DER GANZE BESTAND DES SCHEMAS, nicht nur die drei Einträge des Rückwegs: `migrate`
+  // legt `audit` mit an, und Registrierung, Kontenanlage und jede Anmeldung schreiben dort ebenfalls
+  // hinein. Genau deshalb ist der ganze Bestand der richtige Gegenstand — eine Kette, die nur in
+  // ihrem selbst geschriebenen Ausschnitt hält, hält nicht.
+  //
+  // UND ER WIRD ÜBER EINE FRISCHE VERBINDUNG GELESEN, wie in Q1–Q5: ein Wert aus Prozesszustand oder
+  // offener Transaktion zählt nicht als gespeichert.
+  async function auditbestandIm(name: string): Promise<AuditEntry[]> {
+    const zweiter = new Pool(imSchema(name));
+    try {
+      return await new PgAuditRepo(zweiter).all();
+    } finally {
+      await zweiter.end();
+    }
+  }
+
+  /** GENESIS am Anfang, Glied auf Glied, jeder Hash aus den GESPEICHERTEN Feldern nachgerechnet. */
+  function pruefeKetteLueckenlos(eintraege: readonly AuditEntry[]): void {
+    // „Nichts gefunden" ist hier ein Befund und kein Erfolg.
+    expect(
+      eintraege.length,
+      "im Schema steht KEIN einziger Protokolleintrag — der Rückweg hat nichts hinterlassen",
+    ).toBeGreaterThan(0);
+    expect(
+      (eintraege[0] as AuditEntry).prevHash,
+      "der erste Eintrag beginnt nicht bei GENESIS",
+    ).toBe(GENESIS);
+    for (let i = 1; i < eintraege.length; i++) {
+      const vorher = eintraege[i - 1] as AuditEntry;
+      const jetzt = eintraege[i] as AuditEntry;
+      expect(
+        jetzt.prevHash,
+        `die Kette ist gebrochen: Eintrag ${jetzt.seq} (${jetzt.action}) zeigt nicht auf Eintrag ${vorher.seq}`,
+      ).toBe(vorher.hash);
+    }
+    for (const eintrag of eintraege) {
+      expect(
+        eintrag.prevHash,
+        `Eintrag ${eintrag.seq} verweist auf sich selbst: prev_hash und hash sind vertauscht`,
+      ).not.toBe(eintrag.hash);
+      const nachgerechnet = hashEntryFuerVersion({
+        seq: eintrag.seq,
+        at: eintrag.at,
+        actor: eintrag.actor,
+        action: eintrag.action,
+        target: eintrag.target,
+        payload: eintrag.payload,
+        prevHash: eintrag.prevHash,
+        hashVersion: eintrag.hashVersion,
+      });
+      expect(
+        nachgerechnet,
+        `für Eintrag ${eintrag.seq} (${eintrag.action}) gibt es kein Hashmaterial — unbekannte Version`,
+      ).toBeDefined();
+      expect(
+        eintrag.hash,
+        `der gespeicherte Hash von Eintrag ${eintrag.seq} (${eintrag.action}) stimmt mit dem nachgerechneten nicht überein`,
+      ).toBe(nachgerechnet);
+    }
+  }
+
+  it("Q6 · PRÜFPROTOKOLL am echten Rückweg: Einreichung und Entscheidung stehen verkettet in der Datenbank", async (ctx) => {
+    if (!verfuegbar || !auswahl) {
+      ctx.skip();
+      return;
+    }
+    const schema = "job4321_q6";
+    const eigen = await frischesAppSchema(schema);
+    await new PgKoRepo(eigen).insert(bestandsObjekt(Q6.kennung, BESTAND_RUMPF));
+    const app = buildApp(buildPgServices(eigen));
+    try {
+      await richteKontenEin(app);
+      const einreicher = await anmeldungMitKennung(app, EINREICHER);
+      const vorschlagId = await reicheVorschlagEin(app, einreicher.kopf, Q6.kennung, {
+        statement: Q6.vorschlagStatement,
+        bodyHtml: auswahl.html,
+        baseVersion: Q6.ausgangsVersion,
+        origin: Q6.herkunft,
+      });
+
+      const entscheider = await anmeldungMitKennung(app, ENTSCHEIDER);
+      const uebernahme = await entscheide(
+        app,
+        entscheider.kopf,
+        Q6.kennung,
+        vorschlagId,
+        Q6.ausgangsVersion,
+      );
+      // Ohne eine WIRKLICH vollzogene Übernahme wäre jede Protokollaussage darunter gegenstandslos.
+      expect(uebernahme.statusCode, uebernahme.body).toBe(Q6.uebernahmeHttp);
+      const nachher = await nachNeuerVerbindungIm(schema, Q6.kennung);
+      expect(nachher?.version).toBe(Q6.versionNachUebernahme);
+      expect(vorschlagAus(nachher, vorschlagId)?.status).toBe(Q6.statusNachUebernahme);
+
+      // (a) DIE EINTRÄGE, DIE DIESER WEG WIRKLICH ERZEUGT HAT — einzeln benannt, nicht gezählt.
+      const bestand = await auditbestandIm(schema);
+      const zumObjekt = bestand.filter((e) => e.target === Q6.kennung);
+      const einreichung = zumObjekt.find((e) => e.action === Q6.einreichungAktion);
+      const ueberarbeitung = zumObjekt.find((e) => e.action === Q6.ueberarbeitungAktion);
+      const entscheidung = zumObjekt.find((e) => e.action === Q6.entscheidungsAktion);
+      expect(
+        einreichung,
+        `kein ${Q6.einreichungAktion}-Eintrag zu ${Q6.kennung} — die Einreichung ist nicht protokolliert`,
+      ).toBeDefined();
+      expect(
+        ueberarbeitung,
+        `kein ${Q6.ueberarbeitungAktion}-Eintrag zu ${Q6.kennung} — die neue Fassung ist nicht protokolliert`,
+      ).toBeDefined();
+      expect(
+        entscheidung,
+        `kein ${Q6.entscheidungsAktion}-Eintrag zu ${Q6.kennung} — die Freigabe ist nicht protokolliert`,
+      ).toBeDefined();
+      // Und sie gehören zu DIESEM Vorschlag, nicht irgendeinem.
+      expect((einreichung?.payload as { proposalId?: string })?.proposalId).toBe(vorschlagId);
+      expect((ueberarbeitung?.payload as { proposalId?: string })?.proposalId).toBe(vorschlagId);
+      expect((entscheidung?.payload as { proposalId?: string })?.proposalId).toBe(vorschlagId);
+      expect((ueberarbeitung?.payload as { version?: number })?.version).toBe(
+        Q6.versionNachUebernahme,
+      );
+
+      // (c) DER HANDELNDE IST DER ANGEMELDETE ENTSCHEIDER — die Kennung aus SEINER Anmeldung.
+      expect(
+        entscheidung?.actor,
+        "der Entscheidungseintrag trägt nicht die Kennung des angemeldeten Entscheiders",
+      ).toBe(entscheider.kennung);
+      expect(
+        entscheidung?.actor,
+        "der Entscheidungseintrag trägt den Einreicher als Entscheider",
+      ).not.toBe(einreicher.kennung);
+      // Die Fassung schrieb der Einreicher — auch das steht so und nicht anders im Protokoll.
+      expect(ueberarbeitung?.actor).toBe(einreicher.kennung);
+
+      // (b) DIE KETTE ÜBER DEN GANZEN BESTAND DES SCHEMAS.
+      pruefeKetteLueckenlos(bestand);
+      expect(
+        bestand.map((e) => e.seq),
+        "die Sequenz hat Lücken oder Sprünge — das Protokoll ist nicht lückenlos",
+      ).toEqual(bestand.map((_e, i) => i + 1));
+    } finally {
+      await app.close();
+    }
+  });
+
+  // ==============================================================================================
+  // JOB 4321 RUNDE 2 · Q7 — DER GEMEINSAME ERSTAUFBAU DER ERWEITERUNG, GEZIELT ÜBERLAPPT.
+  // ==============================================================================================
+  //
+  // WARUM DIESE PRÜFUNG IN DIESER DATEI STEHT. Sie ist die Datei, die den Befund bezahlt hat: in
+  // BENs Runde-1-Messung brach GENAU DIESE SUITE in `beforeAll` ab (`Tests 13 passed | 7 skipped`,
+  // Exit 1), weil `tests/ko/trash-tx-pg.integration.test.ts` im selben Augenblick dieselbe
+  // Erweiterung anlegte. Die Voraussetzung des eigenen Laufs ist damit ein Gegenstand des eigenen
+  // Laufs — nicht eine Annahme, die man einmal von Hand geprüft hat.
+  //
+  // WARUM EINE EIGENE, WEGWERFBARE DATENBANK. Der Wettlauf entsteht NUR beim ERSTAUFBAU: trägt eine
+  // Instanz `pg_trgm` bereits, ist `IF NOT EXISTS` ein folgenloser Griff ins Leere und es gibt nichts
+  // zu messen. Die gemeinsame Prüfinstanz trägt sie nach dem ersten Lauf — `DROP EXTENSION` auf ihr
+  // wäre zudem ein Angriff auf die GIN-Indizes der parallel laufenden Dateien. Eine eigene Datenbank
+  // auf DERSELBEN Instanz gibt den Erstaufbau zurück, ohne irgendetwas Fremdes anzufassen; sie fällt
+  // am Ende wieder weg. Advisory-Sperren sind je Datenbank getrennt, diese Probe hält also auch keine
+  // andere Datei auf.
+  //
+  // UND SIE KALIBRIERT SICH SELBST. „Beide Sitzungen kamen durch" wäre für sich genommen wertlos —
+  // vielleicht hat die Überlappung gar nicht stattgefunden. Deshalb wird ZUERST der ungesicherte Weg
+  // in genau derselben Choreografie gefahren, und er MUSS scheitern; erst danach beweist derselbe
+  // Ablauf über `stelleTrigrammErweiterungSicher`, dass die Reparatur trägt.
+  //
+  // DIE ÜBERLAPPUNG IST NICHT ZUFÄLLIG, SONDERN ERZWUNGEN. Sitzung A legt die Erweiterung in einer
+  // OFFENEN Transaktion an und hält sie. Sitzung B startet dieselbe Anlage und läuft in die
+  // Zeilensperre von A — gewartet wird nachweislich (`pg_stat_activity.wait_event_type = 'Lock'`),
+  // nicht geraten. Erst wenn B wirklich wartet, schreibt A fest. Das ist die Choreografie, mit der
+  // BEN den Fehler reproduziert hat („Konkurrenzprobe mit verlängertem Extension-Transaktionsfenster").
+  const TRGM_PROBE_DB = "klarwerk_test_job4321_trgm";
+
+  /**
+   * Dieselbe Verbindungszeichenkette, nur mit einem anderen Datenbanknamen.
+   *
+   * Bewusst per Muster statt `new URL()`, aus demselben Grund wie in
+   * `services/db-tx/src/pg-test-guard.ts:15-18`: WHATWG-URL lehnt Socket-Verbindungsstrings
+   * (`postgres://user@/klarwerk_test?host=/run/pg` — leerer Host, Datenbankname im Pfad,
+   * Socketpfad im Abfrageteil) ab, und genau die benutzen die Docker-losen Läufe. Ein angehängter
+   * Abfrageteil bleibt erhalten.
+   *
+   * DER NAME IM BEISPIEL IST NICHT FREI: `tests/app/job2354-drei-datenbanknamen.test.ts` liest im
+   * Fall N3 JEDE Verbindungszeichenkette dieser Datei — auch die in einem Kommentar — und verlangt
+   * den Testdatenbanknamen. Ein Platzhalter wie `…/db` färbt das schnelle Tor rot (gemessen JOB
+   * 4321 R2: `expected 'db' to be 'klarwerk_test'`), und zwar zu Recht: eine mehrdeutig benannte
+   * Verbindungszeichenkette in einer Integrationsdatei ist genau der Befund E7.
+   */
+  function mitDatenbank(url: string, name: string): string {
+    const treffer = /^([^:]+:\/\/[^/?#]*\/)([^/?#]*)(.*)$/.exec(url);
+    if (!treffer) {
+      throw new Error(
+        "JOB 4321 Q7: die Verbindungszeichenkette trägt keinen lesbaren Datenbanknamen — ohne ihn gibt es keine Wegwerfdatenbank und keinen Erstaufbau zu messen.",
+      );
+    }
+    return `${treffer[1]}${name}${treffer[3]}`;
+  }
+
+  async function amProbeort<T>(url: string, arbeit: (p: Pool) => Promise<T>): Promise<T> {
+    const probe = new Pool({ connectionString: url, max: 1 });
+    try {
+      return await arbeit(probe);
+    } finally {
+      await probe.end();
+    }
+  }
+
+  async function trgmVorhanden(url: string): Promise<boolean> {
+    return amProbeort(url, async (p) => {
+      const da = await p.query("SELECT 1 FROM pg_extension WHERE extname = 'pg_trgm'");
+      return da.rowCount === 1;
+    });
+  }
+
+  /** Wartet, bis in der Probedatenbank eine ANDERE Sitzung als `ausser` an einer Sperre hängt. */
+  async function warteBisBlockiert(ausser: number): Promise<void> {
+    const basis = pool as Pool;
+    const frist = Date.now() + 20_000;
+    while (Date.now() < frist) {
+      const wartende = await basis.query<{ n: number }>(
+        "SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname = $1 AND pid <> $2 AND wait_event_type = 'Lock'",
+        [TRGM_PROBE_DB, ausser],
+      );
+      if ((wartende.rows[0]?.n ?? 0) > 0) {
+        return;
+      }
+      await new Promise((weiter) => setTimeout(weiter, 50));
+    }
+    throw new Error(
+      "JOB 4321 Q7: die zweite Sitzung hat innerhalb von 20 s nie an einer Sperre gewartet — die Überlappung kam nicht zustande, und ohne sie sagt der Ausgang dieser Probe nichts.",
+    );
+  }
+
+  /**
+   * Die Choreografie: A hält die Anlage offen, B legt gleichzeitig an, A schreibt fest.
+   *
+   * Zurückgegeben wird der Fehler von B — oder `undefined`, wenn B durchkam.
+   */
+  async function ueberlappenderErstaufbau(
+    url: string,
+    art: "ungesichert" | "gesichert",
+  ): Promise<unknown> {
+    const haltend = new Pool({ connectionString: url, max: 1 });
+    const zweite = new Pool({ connectionString: url, max: 1 });
+    try {
+      const a = await haltend.connect();
+      try {
+        const eigen = await a.query<{ pid: number }>("SELECT pg_backend_pid()::int AS pid");
+        const pidA = eigen.rows[0]?.pid as number;
+        await a.query("BEGIN");
+        await a.query("CREATE EXTENSION IF NOT EXISTS pg_trgm");
+
+        // B startet JETZT — und die Fehlerbehandlung hängt sofort daran, damit kein unbehandelter
+        // Abbruch den Lauf an anderer Stelle umwirft.
+        const lauf =
+          art === "gesichert"
+            ? stelleTrigrammErweiterungSicher(zweite)
+            : zweite.query("CREATE EXTENSION IF NOT EXISTS pg_trgm").then(() => undefined);
+        const ausgang = lauf.then(
+          () => undefined,
+          (fehler: unknown) => fehler ?? new Error("Fehler ohne Inhalt"),
+        );
+
+        await warteBisBlockiert(pidA);
+        await a.query("COMMIT");
+        return await ausgang;
+      } finally {
+        a.release();
+      }
+    } finally {
+      await haltend.end();
+      await zweite.end();
+    }
+  }
+
+  it("Q7 · zwei Sitzungen legen die Trigramm-Erweiterung gleichzeitig an: ungesichert bricht es ab, gesichert kommen beide durch", async (ctx) => {
+    if (!verfuegbar) {
+      ctx.skip();
+      return;
+    }
+    const basis = pool as Pool;
+    await basis.query(`DROP DATABASE IF EXISTS ${TRGM_PROBE_DB}`);
+    await basis.query(`CREATE DATABASE ${TRGM_PROBE_DB}`);
+    const probeUrl = mitDatenbank(verbindung, TRGM_PROBE_DB);
+    try {
+      // (0) DER BODEN: eine frische Datenbank trägt die Erweiterung nicht. Ohne diesen Satz wäre
+      //     jede Aussage unten über den ERSTAUFBAU haltlos.
+      expect(
+        await trgmVorhanden(probeUrl),
+        "die Wegwerfdatenbank trägt pg_trgm bereits — dann gibt es keinen Erstaufbau und nichts zu messen",
+      ).toBe(false);
+
+      // (1) KALIBRIERUNG: derselbe Ablauf OHNE die Reparatur muss scheitern, und zwar mit genau
+      //     dem Fehlerbild aus BENs Messung.
+      const ungesichert = await ueberlappenderErstaufbau(probeUrl, "ungesichert");
+      expect(
+        ungesichert,
+        "der ungesicherte Erstaufbau überstand die Überlappung — dann misst diese Probe den Wettlauf nicht, und ihr Grün unten wäre wertlos",
+      ).toBeDefined();
+      expect(
+        istGleichzeitigeTrgmAnlage(ungesichert),
+        `der ungesicherte Erstaufbau scheiterte an etwas anderem als der gleichzeitigen Anlage: ${String(ungesichert)}`,
+      ).toBe(true);
+
+      // Zurück auf Anfang: A hat festgeschrieben, die Erweiterung steht jetzt. Nur in DIESER
+      // Wegwerfdatenbank wird sie wieder entfernt — die gemeinsame Prüfinstanz bleibt unberührt.
+      await amProbeort(probeUrl, (p) => p.query("DROP EXTENSION IF EXISTS pg_trgm"));
+      expect(
+        await trgmVorhanden(probeUrl),
+        "die Erweiterung liess sich nicht zurücknehmen — der zweite Durchgang wäre kein Erstaufbau mehr",
+      ).toBe(false);
+
+      // (2) DER NACHWEIS: derselbe Ablauf über den gemeinsamen Weg. Beide Sitzungen kommen durch.
+      const gesichert = await ueberlappenderErstaufbau(probeUrl, "gesichert");
+      expect(
+        gesichert,
+        `der gesicherte Erstaufbau ist an der Überlappung gescheitert: ${String(gesichert)}`,
+      ).toBeUndefined();
+      expect(
+        await trgmVorhanden(probeUrl),
+        "beide Sitzungen meldeten Erfolg, die Erweiterung steht aber nicht da — ein Erfolg ohne Wirkung",
+      ).toBe(true);
+    } finally {
+      await basis.query(`DROP DATABASE IF EXISTS ${TRGM_PROBE_DB}`);
+    }
+  }, 120_000);
 });

@@ -21,9 +21,92 @@
 // heute trotzdem abgewiesen. Die Konten unten bilden die Matrix ab, WIE SIE STEHT — der Wechsel
 // admin → controller ist Pedis Entscheidung (Auftrag §10) und wird hier nicht vorweggenommen.
 import type { FastifyInstance } from "fastify";
+import type { Pool } from "pg";
 import type { Role } from "../../services/auth";
 import type { KnowledgeObject } from "../../services/knowledge-object/src/types";
 import { TRUST_MAX } from "../../services/validation/src/trust";
+
+// ================================================================================================
+// JOB 4321 RUNDE 2 · DER GEMEINSAME AUFBAU DER TRIGRAMM-ERWEITERUNG — EINMAL, KONKURRENZFEST.
+// ================================================================================================
+//
+// DER GEMESSENE BEFUND (BEN, Runde 1, Cloud-Auftrag 23a4ba1812864adc889f99c0a594a83d). Zwei Dateien
+// des gemeinsamen Integrationslaufs richten sich in `beforeAll` gegen DIESELBE Instanz ein und
+// führten dabei beide `CREATE EXTENSION IF NOT EXISTS pg_trgm` aus:
+// `tests/office-pg-abnahme/rueckweg-pg.integration.test.ts` und `tests/ko/trash-tx-pg.integration.test.ts`.
+// Auf einer Instanz, die die Erweiterung noch NICHT trägt, ist das ein Wettlauf: beide sehen im
+// eigenen Schnappschuss nichts, beide schreiben nach `pg_extension`, und die zweite Sitzung fällt mit
+// `duplicate key value violates unique constraint "pg_extension_name_index"` aus. Die Word-Suite brach
+// dadurch VOR ihren Prüfungen ab — `Tests 13 passed | 7 skipped`, Exit 1.
+//
+// WARUM `IF NOT EXISTS` DAS NICHT LÖST. Es prüft gegen den eigenen Snapshot und unterdrückt nur den
+// Fehler „gibt es schon" für BEREITS FESTGESCHRIEBENE Erweiterungen. Eine gleichzeitig laufende,
+// noch nicht festgeschriebene Anlage ist für es unsichtbar. Eigene Schemata helfen ebenfalls nicht:
+// `pg_extension` ist datenbankweit, nicht schemaweit.
+//
+// WARUM DIESE FUNKTION HIER STEHT UND NICHT ZWEIMAL. Zwei Abschriften desselben Kniffs wären zwei
+// Fassungen, die eines Tages auseinanderlaufen — und dann wäre die Datei, die zurückfällt, wieder
+// die, die den gemeinsamen Lauf abbricht. Die Zielpfade dieses Auftrags sind abschliessend; dies ist
+// das einzige geteilte Nicht-Test-Modul darunter, das beide Läufe schon lesen. Der Import ist
+// typseitig (`import type { Pool }`), der Pool wird übergeben — die Datei bleibt ohne Laufzeitbindung
+// an `pg` und damit für `rueckweg-kalibrierung.test.ts` im schnellen Tor unverändert billig.
+
+/**
+ * Der Schlüssel der datenbankweiten Beratungssperre — dieselbe Zahl in jedem Lauf, sonst sperrt
+ * niemand gegen niemanden.
+ */
+export const TRGM_SPERRSCHLUESSEL = 43_210_001;
+
+/**
+ * Trägt dieser Fehler die Handschrift einer GLEICHZEITIGEN Anlage derselben Erweiterung?
+ *
+ * Nur zwei Fehlerklassen kommen dafür in Frage: `23505` (Eindeutigkeitsverletzung — die andere
+ * Sitzung hat ihre Zeile in `pg_extension` festgeschrieben, während wir warteten) und `42710`
+ * (`extension "pg_trgm" already exists`). Jeder andere Fehler ist eine Aussage über das Produkt oder
+ * die Maschine und wird NICHT hier abgefangen.
+ */
+export function istGleichzeitigeTrgmAnlage(fehler: unknown): boolean {
+  const code = (fehler as { code?: unknown } | null)?.code;
+  return code === "23505" || code === "42710";
+}
+
+/**
+ * Legt `pg_trgm` in `public` an — und übersteht dabei, dass eine ANDERE Sitzung dasselbe tut.
+ *
+ * Zwei Schichten, und beide werden gebraucht:
+ *
+ *  1. DIE BERATUNGSSPERRE reiht die Aufrufer, die diese Funktion benutzen, hintereinander. Sie ist
+ *     datenbankweit und sitzungsübergreifend; wer sie hält, ist mit der Anlage allein. Im Normalfall
+ *     kommt es damit gar nicht erst zum Zusammenstoss.
+ *  2. DIE NACHWEISPFLICHT fängt den Fall, den keine Sperre erfasst: einen Aufrufer, der die
+ *     Erweiterung OHNE diese Funktion anlegt (`KO_SCHEMA` tut das über `migrate()`). Dann kann die
+ *     Anweisung trotzdem an `pg_extension_name_index` scheitern. Der Fehler wird NICHT verschluckt —
+ *     er gilt erst dann als überholt, wenn ein Blick in `pg_extension` die Erweiterung WIRKLICH
+ *     zeigt. Zeigt er sie nicht, fliegt der ursprüngliche Fehler weiter und färbt den Lauf rot.
+ *
+ * Was hier ausdrücklich NICHT passiert: ein Skip. Ein fehlgeschlagener Aufbau bleibt ein Fehler.
+ */
+export async function stelleTrigrammErweiterungSicher(pool: Pool): Promise<void> {
+  const client = await pool.connect();
+  try {
+    await client.query("SELECT pg_advisory_lock($1)", [TRGM_SPERRSCHLUESSEL]);
+    try {
+      await client.query("CREATE EXTENSION IF NOT EXISTS pg_trgm");
+    } catch (fehler) {
+      if (!istGleichzeitigeTrgmAnlage(fehler)) {
+        throw fehler;
+      }
+      const da = await client.query("SELECT 1 FROM pg_extension WHERE extname = 'pg_trgm'");
+      if (da.rowCount !== 1) {
+        throw fehler;
+      }
+    } finally {
+      await client.query("SELECT pg_advisory_unlock($1)", [TRGM_SPERRSCHLUESSEL]);
+    }
+  } finally {
+    client.release();
+  }
+}
 
 /** Der ausführliche Inhalt, den der Eintrag VOR dem Vorschlag trägt — das Vergleichsmass. */
 export const BESTAND_RUMPF = "<p>Der freigegebene ausführliche Inhalt des Eintrags.</p>";
@@ -231,6 +314,35 @@ export const Q5 = {
 } as const;
 
 // ------------------------------------------------------------------------------------------------
+// JOB 4321 · Q6 — DAS PRÜFPROTOKOLL DESSELBEN RÜCKWEGS
+// ------------------------------------------------------------------------------------------------
+//
+// Q6 fährt den Weg von Q4 noch einmal und prüft, was er im PRÜFPROTOKOLL hinterlässt. Die Werte
+// dafür werden aus `Q4` GELESEN und nicht abgeschrieben: eine zweite Abschrift gäbe es nur, damit
+// sie eines Tages auseinanderläuft.
+//
+// DIE DREI HANDLUNGEN SIND AM QUELLTEXT NACHGESCHLAGEN, nicht vermutet
+// (`services/knowledge-object/src/service.ts`): `addProposal` schreibt `ko.proposed` mit dem
+// EINREICHER als Handelndem; die Übernahme schreibt ZWEI Einträge — `ko.revised` ebenfalls mit dem
+// Einreicher (er hat den Text geschrieben) und `ko.admin-validated` mit dem ENTSCHEIDER. Der
+// Entscheidungseintrag ist damit der einzige, der die Kennung des Freigebenden trägt.
+export const Q6 = {
+  kennung: Q4.kennung,
+  ausgangsVersion: Q4.ausgangsVersion,
+  vorschlagStatement: Q4.vorschlagStatement,
+  herkunft: Q4.herkunft,
+  uebernahmeHttp: Q4.uebernahmeHttp,
+  versionNachUebernahme: Q4.versionNachUebernahme,
+  statusNachUebernahme: Q4.statusNachUebernahme,
+  /** Die Einreichung — Handelnder ist der Einreicher. */
+  einreichungAktion: "ko.proposed",
+  /** Die neue Fassung — Handelnder ist der Einreicher, nicht der Freigebende. */
+  ueberarbeitungAktion: "ko.revised",
+  /** Die Freigabe — HIER steht die Kennung des angemeldeten Entscheiders. */
+  entscheidungsAktion: "ko.admin-validated",
+} as const;
+
+// ------------------------------------------------------------------------------------------------
 // DER ANTRIEB DER ECHTEN ROUTE — beide Läufe fahren denselben Weg, nicht zwei ähnliche.
 // ------------------------------------------------------------------------------------------------
 
@@ -290,8 +402,18 @@ export async function richteKontenEin(app: FastifyInstance): Promise<void> {
   }
 }
 
-/** Anmeldung am echten Weg; der Kopf trägt danach den echten Zugangsschlüssel. */
-export async function anmeldung(app: FastifyInstance, konto: Pruefkonto): Promise<Kopf> {
+/**
+ * JOB 4321 · Anmeldung am echten Weg, MIT der Kennung, unter der das Konto im Protokoll steht.
+ *
+ * Warum die Kennung gebraucht wird: das Prüfprotokoll führt `actor` als Benutzerkennung
+ * (`ko-routes.ts` übergibt `user.id`), nicht als E-Mail-Adresse. Eine Prüfung „der Entscheidungs-
+ * eintrag trägt den ANGEMELDETEN Entscheider" braucht deshalb genau den Wert, den die Anmeldung
+ * selbst zurückgegeben hat — geraten oder aus einer Liste gesucht wäre er kein Nachweis.
+ */
+export async function anmeldungMitKennung(
+  app: FastifyInstance,
+  konto: Pruefkonto,
+): Promise<{ kopf: Kopf; kennung: string }> {
   const antwort = await app.inject({
     method: "POST",
     url: "/api/auth/login",
@@ -302,11 +424,23 @@ export async function anmeldung(app: FastifyInstance, konto: Pruefkonto): Promis
       `JOB 4299: Anmeldung ${konto.email} fehlgeschlagen (${antwort.statusCode}) — ${alsText(antwort.body)}`,
     );
   }
-  const token = (antwort.json() as { token?: unknown }).token;
+  const rumpf = antwort.json() as { token?: unknown; user?: { id?: unknown } };
+  const token = rumpf.token;
   if (typeof token !== "string" || token.length === 0) {
     throw new Error(`JOB 4299: Anmeldung ${konto.email} ohne Zugangsschlüssel.`);
   }
-  return { authorization: `Bearer ${token}` };
+  const kennung = rumpf.user?.id;
+  if (typeof kennung !== "string" || kennung.length === 0) {
+    throw new Error(
+      `JOB 4321: Anmeldung ${konto.email} ohne Benutzerkennung — ohne sie ist „der Eintrag trägt den angemeldeten Entscheider" nicht prüfbar.`,
+    );
+  }
+  return { kopf: { authorization: `Bearer ${token}` }, kennung };
+}
+
+/** Anmeldung am echten Weg; der Kopf trägt danach den echten Zugangsschlüssel. */
+export async function anmeldung(app: FastifyInstance, konto: Pruefkonto): Promise<Kopf> {
+  return (await anmeldungMitKennung(app, konto)).kopf;
 }
 
 /**
