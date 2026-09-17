@@ -5005,6 +5005,23 @@ const de = {
     "Passende Datei aus dem Bestand: Bibliothek → „…“ (Weitere Aktionen) → Export → JSON",
   "imp.queueTitle": "Prüfliste der Importe",
   "imp.queueEmpty": "Keine Beiträge zur Prüfung.",
+  // JOB 4293 (§ 9): die Aktualität der Prüfliste — je Karte, und sie sagt AUCH, warum „Annehmen"
+  // gerade nicht geht. Eigene Sätze statt `kollision.lage.*`: jene sprechen von der
+  // Kollisionsprüfung, hier geht es um die Warteschlange und um eine Entscheidung, die geschrieben
+  // wird. `loadstate.stale` („Aktualisierung fehlgeschlagen") passt für den Offlinefall
+  // ausdrücklich nicht — ohne Netz hat es gar keinen Versuch gegeben.
+  "imp.stand.auffrischungLaeuft":
+    "Stand von zuletzt — die Prüfliste wird gerade aufgefrischt. „Annehmen“ ist wieder frei, sobald sie frisch gelesen ist.",
+  "imp.stand.auffrischungGescheitert":
+    "Stand von zuletzt — die Auffrischung ist gescheitert. „Annehmen“ bleibt gesperrt, bis dieser Beitrag frisch gelesen ist.",
+  "imp.stand.pausiert":
+    "Stand von zuletzt — ohne Netzverbindung nicht aktuell prüfbar. „Annehmen“ bleibt gesperrt, bis dieser Beitrag frisch gelesen ist.",
+  "imp.stand.pausiertOhneStand":
+    "Ohne Netzverbindung ist die Prüfliste nicht abrufbar — über offene Beiträge ist damit nichts gesagt.",
+  // JOB 4293 R4: Das Netz ist wieder da — gelesen wurde deshalb noch nichts. Der Satz sagt genau
+  // das und nicht mehr; „aktuell" wäre hier eine Behauptung ohne Antwort.
+  "imp.stand.netzluecke":
+    "Stand von vor der Netzunterbrechung — seither ist keine neue Antwort angekommen. „Annehmen“ bleibt gesperrt, bis dieser Beitrag frisch gelesen ist.",
   "ext.pipeline.title": "Import-Pipeline & Befunde",
   "ext.pipeline.upload": "Hochladen",
   "ext.pipeline.extract": "Extrahieren",
@@ -11177,6 +11194,17 @@ const en: typeof de = {
     "Compatible file from your library: Library → “…” (More actions) → Export → JSON",
   "imp.queueTitle": "Import review list",
   "imp.queueEmpty": "No contributions to review.",
+  // JOB 4293 (§ 9) — see the German block for the reasoning.
+  "imp.stand.auffrischungLaeuft":
+    "Last known state — the review list is being refreshed. “Accept” is available again as soon as it has been read afresh.",
+  "imp.stand.auffrischungGescheitert":
+    "Last known state — the refresh failed. “Accept” stays locked until this contribution has been read afresh.",
+  "imp.stand.pausiert":
+    "Last known state — not currently checkable without a network connection. “Accept” stays locked until this contribution has been read afresh.",
+  "imp.stand.pausiertOhneStand":
+    "Without a network connection the review list cannot be retrieved — this says nothing about open contributions.",
+  "imp.stand.netzluecke":
+    "State from before the network interruption — no new response has arrived since. “Accept” stays locked until this contribution has been read afresh.",
   "ext.pipeline.title": "Import pipeline & findings",
   "ext.pipeline.upload": "Upload",
   "ext.pipeline.extract": "Extract",
@@ -16776,6 +16804,17 @@ const nl: typeof de = {
     "Passend bestand uit de bibliotheek: Bibliotheek → „…“ (Meer acties) → Export → JSON",
   "imp.queueTitle": "Controlelijst van imports",
   "imp.queueEmpty": "Geen bijdragen te controleren.",
+  // JOB 4293 (§ 9) — de toelichting staat in het Duitse blok.
+  "imp.stand.auffrischungLaeuft":
+    "Stand van de laatste keer — de controlelijst wordt ververst. „Aannemen“ is weer vrij zodra ze opnieuw is gelezen.",
+  "imp.stand.auffrischungGescheitert":
+    "Stand van de laatste keer — het verversen is mislukt. „Aannemen“ blijft geblokkeerd tot deze bijdrage opnieuw is gelezen.",
+  "imp.stand.pausiert":
+    "Stand van de laatste keer — zonder netwerkverbinding nu niet controleerbaar. „Aannemen“ blijft geblokkeerd tot deze bijdrage opnieuw is gelezen.",
+  "imp.stand.pausiertOhneStand":
+    "Zonder netwerkverbinding is de controlelijst niet op te halen — daarmee is niets gezegd over openstaande bijdragen.",
+  "imp.stand.netzluecke":
+    "Stand van vóór de netwerkonderbreking — sindsdien is er geen nieuw antwoord binnengekomen. „Aannemen“ blijft geblokkeerd tot deze bijdrage opnieuw is gelezen.",
   "ext.pipeline.title": "Importpijplijn & bevindingen",
   "ext.pipeline.upload": "Uploaden",
   "ext.pipeline.extract": "Extraheren",

@@ -1,4 +1,6 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+// JOB 4293 R5: `onlineManager` ist hier die Quelle der NETZLÜCKENUHR (Begründung an ihr selbst) —
+// der Onlinezustand der Fläche kommt weiterhin ausschliesslich aus `lib/netzzustand.ts`.
+import { onlineManager, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowDown,
   ArrowUp,
@@ -11,7 +13,7 @@ import {
   Printer,
   X,
 } from "lucide-react";
-import { type ChangeEvent, type DragEvent, useEffect, useState } from "react";
+import { type ChangeEvent, type DragEvent, useEffect, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
@@ -70,6 +72,14 @@ import { SharePointImportBereich } from "../components/sharepoint-import/SharePo
 import { Button, Card, PageHeader, QueryState, SectionLabel, cx } from "../components/ui";
 import { CAPITAL_SECTIONS, sectionAnchor, sectionHref } from "../lib/capitalSections";
 import { deriveStatus } from "../lib/displayStatus";
+// JOB 4293 R2 (§ 9): DIE Regel des Hauses darüber, was eine Leseabfrage gerade weiss — dieselbe,
+// die die Kollisionsauskunft seit JOB 3084 trägt. Hier wird sie benutzt, nicht nachgebaut.
+import {
+  type Lage,
+  type Quellenzustand,
+  bestandsaussageErlaubt,
+  quellenlage,
+} from "../lib/eigeneKollision";
 import { analyzeEvidenceFreshness } from "../lib/evidenceFreshness";
 import { buildEvidenceFreshnessIndex } from "../lib/evidenceFreshnessIndex";
 import { evidenceFreshnessLabelKey, evidenceFreshnessTone } from "../lib/evidenceFreshnessView";
@@ -644,6 +654,191 @@ function ImportQuellzeile({ item }: { item: unknown }): JSX.Element {
 }
 
 // ================================================================================================
+// JOB 4293 R2 · § 9 — WIE FRISCH IST DAS, WAS AUF DER PRÜFKARTE STEHT?
+// ================================================================================================
+//
+// DER BEFUND (Ben, Runde 1, an der gemounteten Seite gemessen): Netz weg, Auffrischung `paused` —
+// und „Annehmen" blieb bedienbar, die Karte sagte kein Wort. Wer dort klickt, übernimmt einen
+// Volltext von vorhin in den Bestand und glaubt, er habe den aktuellen übernommen. Gesperrt war der
+// Knopf einzig, solange eine Entscheidung LIEF (`reviewLaeuft`).
+//
+// ES ENTSTEHT KEINE ZWEITE REGEL. Die Lage kommt aus `quellenlage()` (`lib/eigeneKollision.ts`) —
+// derselben Tabelle, die die Kollisionsauskunft und (als Vorbild) die Startkarten tragen, samt dem
+// dort gemessenen Grund, warum `!online` gleich behandelt wird wie `fetchStatus: "paused"`: in der
+// `staleTime` von 30 s (`main.tsx:21`) WILL niemand einen Abruf, es gibt also kein `paused` — die
+// Abfrage steht auf `idle` und sähe sonst frisch aus (Codex' Befund R-1585). Neu ist hier nur, was
+// die Prüfliste daraus macht: ein Satz je Karte und die Sperre des einen Knopfes, der schreibt.
+//
+// WARUM DIE SPERRE AN `bestandsaussageErlaubt()` HÄNGT (also an `frisch` und an sonst nichts):
+// „Annehmen" ist die Zustimmung zu genau dem, was die Karte zeigt. Solange ein Abruf läuft, ist
+// gerade ausgesprochen, dass der Stand von vorhin für JETZT nicht mehr einsteht; ist er gescheitert
+// oder unmöglich (offline), erst recht. Der Ausgang ist dieselbe Funktion, die auch die
+// Kollisionsauskunft zu einer Aussage berechtigt — keine zweite Schwelle daneben.
+//
+// ABLEHNEN und NACHFRAGEN bleiben unverändert an `reviewLaeuft`: sie übernehmen nichts in den
+// Bestand, und § 9 spricht ausdrücklich von „Annehmen".
+//
+// ══ RUNDE 4 · NETZRÜCKKEHR IST KEIN FRISCHENACHWEIS ═════════════════════════════════════════════
+//
+// BENS BEFUND AN RUNDE 3, gemessen an der gemounteten Seite mit der PRODUKTIVEN Frischefrist:
+// „Nach kurzer Netzunterbrechung wird ‚Annehmen‘ ohne erfolgreiche neue Lesung freigegeben"
+// (`dataUpdatedAt` vorher/nachher identisch, `fetchStatus: "idle"`, `standSatz: null`,
+// `annehmenGesperrt: false`).
+//
+// WARUM `quellenlage()` DAS NICHT SEHEN KANN: Sie liest den Onlinezustand und die vier Skalare der
+// Abfrage — und beide sagen nach der Rückkehr dasselbe wie vor der Trennung. Innerhalb der
+// `staleTime` von 30 s (`main.tsx:44`) WILL react-query keinen Abruf; die Abfrage steht auf `idle`,
+// `status` auf `success`, ein Zeitstempel liegt vor. Das ist für die Kollisionsauskunft richtig
+// (dort ist „frisch" eine Aussage über die FRIST), für eine Übernahme in den Bestand aber zu wenig:
+// zwischen dem Zeitstempel und JETZT liegt eine Lücke, in der nachweislich nichts gelesen werden
+// konnte.
+//
+// DIE ERGÄNZUNG IST DESHALB EINE ZUSÄTZLICHE BEDINGUNG, KEINE ZWEITE REGEL: `quellenlage()`
+// entscheidet unverändert; nur ihr `frisch` wird noch einmal gegen die Uhr gehalten — eine Lesung
+// zählt erst als frisch, wenn sie NACH der letzten Netzlücke angekommen ist. Alles andere
+// (`pausiert`, `auffrischung_*`, `laedt`, `erstfehler`) bleibt Zeichen für Zeichen, wie es war.
+// Dieselbe Lehre wie JOB 4249 R6 (`useOfflineQueue.ts`): die Lücke wird im EREIGNIS gemerkt.
+
+/** Die Lagen der Prüfliste: die sechs des Hauses plus die eine, die erst hier entsteht. */
+type Standlage = Lage | "netzluecke";
+
+const IMPORT_STAND_KEY: Record<Standlage, string | null> = {
+  // `frisch` trägt keinen Satz — dort steht die Sache selbst.
+  frisch: null,
+  // Ohne jeden Stand: die beiden bestehenden Sätze des Hauses, nicht zwei neue daneben.
+  laedt: "state.loading",
+  erstfehler: "state.error",
+  auffrischung_laeuft: "imp.stand.auffrischungLaeuft",
+  auffrischung_gescheitert: "imp.stand.auffrischungGescheitert",
+  pausiert: "imp.stand.pausiert",
+  netzluecke: "imp.stand.netzluecke",
+};
+
+// ------------------------------------------------------------------------------------------------
+// DIE NETZLÜCKENUHR — am Verbindungsbeobachter, nicht an dieser Seite
+// ------------------------------------------------------------------------------------------------
+//
+// BENS BEFUND AN RUNDE 4, gemessen: „Ein Modulmerker ist noch keine Ereigniserfassung." Runde 4
+// schrieb den Zeitpunkt in einem `useEffect([online])` — also erst, wenn die Seite ein Bild
+// gezeichnet hatte. Zwei Fälle liefen damit ins Leere, beide von Ben vorgeführt:
+//   (1) Netz weg und wieder da VOR dem nächsten Bild (react fasst beides zusammen) — der Effekt
+//       sah nur den Endzustand „online" und schrieb nichts.
+//   (2) Die Lücke fällt, während die Import-Seite gar nicht eingehängt ist (der Mensch ist kurz
+//       woanders) — es gibt keinen Effekt, der laufen könnte.
+// In beiden Fällen stand danach ein Zwischenspeicher von vor der Lücke als „frisch" da, und
+// „Annehmen" war offen.
+//
+// DESHALB HÄNGT DIE UHR AM EREIGNIS SELBST und am Modul, nicht an der Komponente: EINE Anmeldung
+// beim Laden dieses Moduls, die jede Meldung „nicht mehr online" mit ihrem Zeitpunkt festhält —
+// unabhängig davon, ob gerade gezeichnet wird, und unabhängig davon, ob die Seite eingehängt ist.
+//
+// WARUM AM `onlineManager` UND NICHT AN `window.addEventListener("offline")`: Der `onlineManager`
+// ist DIESELBE Quelle, aus der react-query sein `paused` ableitet und aus der `lib/netzzustand.ts`
+// den Onlinezustand dieser Seite liest (die Begründung dort im Kopf, JOB 3084). Ein eigener
+// Fensterhorcher wäre eine zweite Wahrheit über dasselbe Netz — und er sähe eine Trennung nicht,
+// die der `onlineManager` ohne Fensterereignis meldet.
+//
+// DASS ES EINE ZWEITE ANMELDUNG AM `onlineManager` IST, steht bewusst da und ist in
+// `tests/kollision-netztrennung/eine-quelle-waechter.test.ts` (W-4) als bewusste Entscheidung
+// nachgeführt: `lib/netzzustand.ts` liefert einen HOOK, und ein Hook kann eine Lücke nicht sehen,
+// solange niemand eingehängt ist — genau der Fall (2). Es ist KEINE zweite Wahrheit (dieselbe
+// Quelle) und keine zweite `useSyncExternalStore`-Verdrahtung des Onlinezustands: die Fläche liest
+// ihn weiterhin ausschliesslich über `useNetzOnline()`.
+let netzlueckeSeit = 0;
+const netzlueckeHorcher = new Set<() => void>();
+
+// Die Anmeldung geschieht EINMAL beim Laden des Moduls. Kein Abmelden: die Uhr gilt für die
+// gesamte Sitzung der Anwendung, und ein Neuladen der Seite setzt sie zu Recht zurück (dann wird
+// ohnehin neu gelesen).
+onlineManager.subscribe(() => {
+  if (onlineManager.isOnline()) {
+    return;
+  }
+  netzlueckeSeit = Date.now();
+  for (const melden of netzlueckeHorcher) {
+    melden();
+  }
+});
+
+// Beide Funktionen stehen auf Modulebene und nicht im Haken — dieselbe Begründung wie in
+// `lib/netzzustand.ts`: `useSyncExternalStore` meldet sich sonst bei jedem Bild neu an.
+const netzlueckeAbonnieren = (melden: () => void): (() => void) => {
+  netzlueckeHorcher.add(melden);
+  return () => {
+    netzlueckeHorcher.delete(melden);
+  };
+};
+const netzlueckeLesen = (): number => netzlueckeSeit;
+
+/**
+ * Wann hat das Gerät zuletzt die Verbindung verloren? `0` = seit dem Laden der Anwendung nie.
+ *
+ * Der Haken LIEST nur (und zeichnet neu, wenn sich der Wert ändert). Was daraus folgt, entscheidet
+ * `importStandlage()`; hier wird nichts gedeutet.
+ */
+function useNetzlueckeSeit(): number {
+  return useSyncExternalStore(netzlueckeAbonnieren, netzlueckeLesen, netzlueckeLesen);
+}
+
+/**
+ * Die Lage der Prüfliste — die Regel des Hauses, und danach die Frage nach der Netzlücke.
+ *
+ * `quellenlage()` entscheidet zuerst und allein. Nur wenn sie `frisch` sagt, kommt die zweite Frage:
+ * Stammt dieser Stand aus einer Antwort, die NACH der letzten Netzlücke angekommen ist? Wenn nein,
+ * ist er der Stand von vor der Unterbrechung — sichtbar, aber nicht mehr für JETZT gültig.
+ *
+ * `dataUpdatedAt === 0` (nie beantwortet) kann hier nicht auftreten: `quellenlage()` liefert dann
+ * `laedt` oder `erstfehler` und nie `frisch`.
+ */
+function importStandlage(
+  q: Quellenzustand<unknown>,
+  online: boolean,
+  netzlueckeSeitMs: number,
+): Standlage {
+  const lage = quellenlage(q, online);
+  if (!bestandsaussageErlaubt(lage)) {
+    return lage;
+  }
+  return q.dataUpdatedAt > netzlueckeSeitMs ? "frisch" : "netzluecke";
+}
+
+/**
+ * Der Satz zur Lage — oder keiner.
+ *
+ * `pausiert` ist die einzige Lage, die auch OHNE früheren Stand eintreten kann (`quellenlage()`
+ * beantwortet sie vor der Datenfrage). „Stand von zuletzt" wäre dann ein Stand, den es nie gab —
+ * dieselbe Erfindung aus dem Nichts wie eine Verneinung ohne Grundlage (`eigeneKollision.ts`,
+ * `datenlageKeyFuer`).
+ */
+function importStandKey(lage: Standlage, hatStand: boolean): string | null {
+  if (lage === "pausiert" && !hatStand) {
+    return "imp.stand.pausiertOhneStand";
+  }
+  return IMPORT_STAND_KEY[lage];
+}
+
+/** Die Kennzeichnung auf der Karte. Bei `frisch` steht hier nichts — kein „vollständig"-Siegel. */
+function ImportStandHinweis({ lage }: { lage: Standlage }): JSX.Element | null {
+  const { t } = useTranslation();
+  const key = importStandKey(lage, true);
+  if (key === null) {
+    return null;
+  }
+  return (
+    <p
+      data-testid="imp-stand"
+      data-lage={lage}
+      className={cx(
+        "text-[12px]",
+        lage === "auffrischung_laeuft" ? "text-muted" : "text-trust-warn-text",
+      )}
+    >
+      {t(key)}
+    </p>
+  );
+}
+
+// ================================================================================================
 // JOB 3363 · LESEVARIANTE-PRUEFKARTE — DIE PRÜFKARTE EINES NOCH NICHT ANGENOMMENEN KANDIDATEN.
 // ================================================================================================
 //
@@ -663,6 +858,7 @@ function ImportQuellzeile({ item }: { item: unknown }): JSX.Element {
 //     nichts; der Kandidat bleibt „neu" und ohne KO-Kennung.
 function ImportKandidatKarte({
   c,
+  standLage,
   reviewLaeuft,
   onReview,
   noteOffen,
@@ -671,6 +867,13 @@ function ImportKandidatKarte({
   setNote,
 }: {
   c: ImportCandidate;
+  /**
+   * Die Lage der EINEN Abfrage, aus der diese Karte stammt (§ 9).
+   *
+   * `standLage` und nicht `lage`: `lage` heisst in dieser Funktion bereits die Auskunft über die
+   * LESEVARIANTE (JOB 3363). Zwei Dinge gleich zu nennen wäre die Einladung zur Verwechslung.
+   */
+  standLage: Standlage;
   reviewLaeuft: boolean;
   onReview: (v: { id: string; action: ReviewAction; note?: string }) => void;
   noteOffen: boolean;
@@ -799,6 +1002,10 @@ function ImportKandidatKarte({
         text={kernaussage}
         defaultOpen={isOpenImportCandidate(c.status)}
       />
+      {/* JOB 4293 R2 (§ 9): die Kennzeichnung steht UNMITTELBAR über dem Volltext, den sie
+          betrifft, und über dem Knopf, den sie sperrt. Der Volltext selbst bleibt sichtbar —
+          eine gescheiterte oder ruhende Auffrischung leert nichts (REGELN § 7). */}
+      <ImportStandHinweis lage={standLage} />
       {/* JOB 3288 · Lieferung 1+2: der GANZE importierte Seitentext und die Quelle —
           beides VOR „Annehmen" erreichbar, beides aus dem bereits geladenen
           Kandidaten (kein zweiter Abruf). JOB 3363: beide bleiben das ORIGINAL. */}
@@ -814,7 +1021,10 @@ function ImportKandidatKarte({
         <div className="flex flex-wrap items-center gap-2 border-t border-hairline pt-2">
           <Button
             variant="primary"
-            disabled={reviewLaeuft}
+            data-testid="imp-annehmen"
+            // § 9: die Zustimmung zu dem, was hier steht — nur auf frisch gelesenem Stand.
+            // `standLage` trägt beides: die Regel des Hauses UND die Netzlücke (`importStandlage`).
+            disabled={reviewLaeuft || standLage !== "frisch"}
             onClick={() => onReview({ id: c.id, action: "accept" })}
           >
             {t("imp.accept")}
@@ -855,6 +1065,25 @@ export function ImportReview(): JSX.Element {
   const qc = useQueryClient();
   const { push } = useToast();
   const query = useImportCandidates();
+  // JOB 4293 R2 (§ 9): die Lage der Warteschlange, EINMAL für alle Karten abgeleitet — sie stammen
+  // aus derselben einen Abfrage, also ist es dieselbe eine Auskunft. Der Onlinezustand kommt aus
+  // der EINEN Verdrahtung des `onlineManager` (`lib/netzzustand.ts`), aus derselben Quelle also,
+  // aus der react-query sein `paused` ableitet — zwei Wahrheiten über dasselbe Netz gibt es nicht.
+  const online = useNetzOnline();
+  // Runde 5: die Netzlücke wird am Verbindungsbeobachter mitgeschrieben (Modulebene, ohne Bild und
+  // ohne Einhängung) — die Lage fragt sie hier nur ab.
+  const netzlueckeSeitMs = useNetzlueckeSeit();
+  const lage = importStandlage(
+    {
+      status: query.status,
+      fetchStatus: query.fetchStatus,
+      isError: query.isError,
+      dataUpdatedAt: query.dataUpdatedAt,
+      data: query.data,
+    },
+    online,
+    netzlueckeSeitMs,
+  );
   const [noteId, setNoteId] = useState<string | null>(null);
   const [note, setNote] = useState("");
   const [importDragOver, setImportDragOver] = useState(false);
@@ -1017,33 +1246,55 @@ export function ImportReview(): JSX.Element {
         </Card>
 
         <SectionLabel>{t("imp.queueTitle")}</SectionLabel>
-        <QueryState query={query} emptyText={t("imp.queueEmpty")}>
-          {(candidates) =>
-            candidates.length === 0 ? (
-              <Card className="border-dashed text-center text-sm text-muted">
-                {t("imp.queueEmpty")}
-              </Card>
-            ) : (
-              <div className="space-y-2">
-                {candidates.map((c) => (
-                  <ImportKandidatKarte
-                    key={c.id}
-                    c={c}
-                    reviewLaeuft={review.isPending}
-                    onReview={(v) => review.mutate(v)}
-                    noteOffen={noteId === c.id}
-                    onNoteUmschalten={() => {
-                      setNoteId((id) => (id === c.id ? null : c.id));
-                      setNote("");
-                    }}
-                    note={note}
-                    setNote={setNote}
-                  />
-                ))}
-              </div>
-            )
-          }
-        </QueryState>
+        {/* ══ JOB 4293 R2 (§ 9) · WAS HÄNGT AN `data`, NICHT AN `isError` ═══════════════════════
+            Bis hierher stand hier `QueryState`. Der prüft `isError` VOR den Daten
+            (`components/ui.tsx:225-229`) — eine gescheiterte HINTERGRUND-Auffrischung liess damit
+            die ganze Prüfliste verschwinden und ersetzte sie durch einen Fehlersatz. Das verbietet
+            REGELN § 7 ausdrücklich („Niemals Karte, Stufe, Zahlen oder Herkunft leeren"), und § 9
+            verlangt das Gegenteil: den bisherigen Stand zeigen, gekennzeichnet. Zweitens sagte
+            `QueryState` ohne Daten „Keine Beiträge zur Prüfung." — offline eine Tatsachenaussage
+            über einen Bestand, der gerade gar nicht abgefragt werden kann.
+            `components/ui.tsx` ist NICHT Zielpfad dieses Auftrags; die Reihenfolge wird deshalb
+            hier gedreht, mit demselben Griff wie `ReasonerRunsCard` weiter unten in dieser Datei:
+            der Zustandstext ersetzt die Liste NUR, wenn noch nie erfolgreich gelesen wurde. Dass
+            `QueryState` selbst die Reihenfolge weiterhin falsch herum hat, steht als Grenze in der
+            Rückgabe. ══════════════════════════════════════════════════════════════════════════ */}
+        {query.data === undefined ? (
+          <Card
+            className="border-dashed text-center text-sm text-muted"
+            data-testid="imp-queue-zustand"
+            data-lage={lage}
+          >
+            {/* `frisch` ohne Daten kann `quellenlage()` nicht liefern (es setzt Daten voraus);
+                der Rückfall bleibt trotzdem stehen, damit hier nie eine leere Karte steht. */}
+            {t(importStandKey(lage, false) ?? "state.loading")}
+          </Card>
+        ) : query.data.length === 0 ? (
+          /* ERFOLGREICH LEER — und nur hier ist der Satz wahr: er steht auf einer Antwort, die
+             wirklich kam. Vorher trug ihn auch der Fall „nie gelesen". */
+          <Card className="border-dashed text-center text-sm text-muted">
+            {t("imp.queueEmpty")}
+          </Card>
+        ) : (
+          <div className="space-y-2">
+            {query.data.map((c) => (
+              <ImportKandidatKarte
+                key={c.id}
+                c={c}
+                standLage={lage}
+                reviewLaeuft={review.isPending}
+                onReview={(v) => review.mutate(v)}
+                noteOffen={noteId === c.id}
+                onNoteUmschalten={() => {
+                  setNoteId((id) => (id === c.id ? null : c.id));
+                  setNote("");
+                }}
+                note={note}
+                setNote={setNote}
+              />
+            ))}
+          </div>
+        )}
       </ImportHistorySection>
 
       {/* WP-B6: kuratierte Beispielpakete für die VIP-2-Tester — gezielte Szenarien statt Datenberg. */}

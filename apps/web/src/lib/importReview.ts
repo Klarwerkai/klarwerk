@@ -102,6 +102,30 @@ export function parseImportItems(text: string): ImportItemInput[] {
     if (typeof o.author === "string") {
       item.author = o.author;
     }
+    // ==========================================================================================
+    // JOB 4293 — DER VOLLTEXT REIST MIT, ODER ER FEHLT EHRLICH.
+    // ==========================================================================================
+    //
+    // WAS FALSCH WAR: Diese Funktion baute das Item aus genau sechs Feldern. Ein exportiertes
+    // Wissensobjekt trägt daneben `bodyHtml` — den ganzen Dokumenttext. Er fiel HIER weg, noch
+    // bevor irgendein Dienst ihn sehen konnte; der Nutzer sah eine erfolgreiche Übernahme und
+    // hatte danach nur noch den Anriss. Der Server konnte es die ganze Zeit
+    // (`services/library-analytics/src/types.ts`, `ImportItem.bodyHtml`).
+    //
+    // KEIN PFLICHTFELD: `FIELD_CHECKS` bleibt unangetastet. Eine Datei ohne Volltext ist weiterhin
+    // gültig und wird weiterhin angenommen — die Prüfkarte sagt dann, dass dieser Eintrag keinen
+    // Volltext trägt (`imp.fullText.missing`), statt einen zu behaupten.
+    //
+    // KEINE REKONSTRUKTION AUS `statement`: fehlt der Volltext in der Datei, fehlt er. `statement`
+    // ist seit JOB 2703 der ERSTE ABSATZ (höchstens 500 Zeichen) und nicht der Text; ihn hier
+    // einzusetzen hiesse, eine Vollständigkeit zu behaupten, die niemand geliefert hat.
+    //
+    // NICHT-LEER als Bedingung, wie bei `textfeld` in `importTextVolltext.ts`: ein `""` oder
+    // `"   "` ist kein Volltext, sondern ein leeres Feld — und es würde die Karte dazu bringen,
+    // einen leeren Kasten aufzuklappen, statt die Grenze zu benennen.
+    if (typeof o.bodyHtml === "string" && o.bodyHtml.trim().length > 0) {
+      item.bodyHtml = o.bodyHtml;
+    }
     return item;
   });
 }

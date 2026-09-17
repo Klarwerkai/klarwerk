@@ -3964,8 +3964,30 @@ describe("JOB 1181 · Klassenbindungen: aufgelöst oder gemeldet, kein dritter Z
     // Knoten wären drei Abschriften derselben Live-Region samt ihrer Marke, und die drei Zustände
     // teilen sich den Knoten, weil sie dieselbe Aussage in verschiedenen Tönen sind. Es fällt keine
     // bestehende Bindung weg, und keine ist verschoben.
+    // JOB 4293 R3 (JSON-VOLLTEXT-RUNDLAUF · § 9 ZUSTANDSMODELL): von 222 auf 223. GENAU EINE
+    // Bindung kommt dazu, und sie ist der Bauform aus JOB 4213 direkt darüber ZEICHENGLEICH — ein
+    // Satz über die Aktualität eines Bestands, in zwei Tönen. Gemessen an diesem Arbeitsbaum, nicht
+    // gerechnet (der Sammler meldete `expected 223 to be 222`):
+    //
+    //     + pages/Stufe2.tsx — `cx("text-[12px]",
+    //           lage === "auffrischung_laeuft" ? "text-muted" : "text-trust-warn-text")`
+    //       (der Vorbehalt auf der Prüfkarte: laufende Auffrischung ist ein ruhiger Hinweis,
+    //        gescheiterte Auffrischung und fehlendes Netz sind eine Warnung)
+    //
+    // WARUM NICHT AUFLÖSBAR GESCHRIEBEN (Auflage aus JOB 3267) — hier GEMESSEN statt aus JOB 4213
+    // abgeschrieben: Die naheliegende Alternative ist die flache Bedingung ohne `cx`, also
+    // `className={lage === "auffrischung_laeuft" ? "text-[12px] text-muted" : "text-[12px]
+    // text-trust-warn-text"}`. Sie wurde eingesetzt und gegen diesen Sammler gefahren
+    // (Arbeitsprüfung eb98d9be88d2487a9f07c46364b2fbff): die Zahl blieb 223 — die Bedingung selbst
+    // ist das Unauflösbare, nicht die Schreibweise mit `cx`. Damit bliebe als auflösbare Form nur,
+    // die Lagen auf ZWEI Knoten zu verteilen; das wären zwei Abschriften desselben Satzknotens
+    // samt `data-testid` und `data-lage`, und die Lagen teilen sich den Knoten, weil sie dieselbe
+    // Aussage in verschiedenen Tönen sind. Den Ton wegzulassen ist keine Lösung, sondern eine
+    // Unwahrheit: „wird gerade aufgefrischt" ist keine Warnung, „Auffrischung gescheitert" und
+    // „ohne Netzverbindung" sind eine. Es fällt keine bestehende Bindung weg, und keine ist
+    // verschoben.
     expect(UNAUFGELOEST.length, "es gibt heute unauflösbare Bindungen — das ist der Befund").toBe(
-      222,
+      223,
     );
     for (const b of UNAUFGELOEST) {
       expect(b.datei, "Meldung ohne Datei").toMatch(/^apps\/web\/src\/.+\.tsx?$/);

@@ -133,8 +133,38 @@ describe("JOB 3084/3879 · der Onlinezustand ist genau EINMAL verdrahtet", () =>
   //
   // Die Liste ist eine GLEICHHEIT, keine Obergrenze: verschwände auch `lib/netzzustand.ts`, läse
   // niemand mehr den `onlineManager` — auch das wäre ein Befund und nicht stillschweigend erlaubt.
+  //
+  // ══ JOB 4293 R5 · DIE ZWEITE ANMELDUNG, BEWUSST UND BEGRÜNDET ══════════════════════════════
+  //
+  // Genau das, was der Absatz darüber verlangt: Die Zahl wächst, dieser Fall wird rot, und die
+  // Entscheidung fällt bewusst statt nebenbei. Sie wird hier nachgeführt und nicht weggefiltert.
+  //
+  // WER UND WOZU: `pages/Stufe2.tsx` führt seit JOB 4293 R5 eine NETZLÜCKENUHR — sie hält fest,
+  // WANN die Verbindung zuletzt verloren ging. Die Prüfliste des Imports gibt „Annehmen" erst
+  // wieder frei, wenn eine erfolgreiche Kandidatenlesung NACH dieser Lücke angekommen ist
+  // (Auftrag § 9; Bens Befunde zu R3 und R4).
+  //
+  // WARUM DER HOOK DAS NICHT KANN — und das ist der ganze Grund: `useNetzOnline()` lebt in einer
+  // Komponente. Ben hat an Runde 4 zwei Fälle vorgeführt, in denen es keine gibt, die etwas
+  // merken könnte: (1) Trennung und Rückkehr fallen in DASSELBE Bild, (2) die Lücke fällt,
+  // während die Import-Seite gar nicht eingehängt ist. In beiden stand danach ein
+  // Zwischenspeicher von vor der Lücke als „frisch" da. Eine Uhr, die das sehen soll, muss am
+  // Ereignis hängen und das Modul überdauern.
+  //
+  // WAS SIE NICHT IST: keine zweite Wahrheit über das Netz (dieselbe Quelle — derselbe
+  // `onlineManager`, aus dem auch react-query sein `paused` ableitet) und keine zweite
+  // Verdrahtung des ONLINEZUSTANDS: die Fläche liest ihn unverändert allein über `useNetzOnline()`
+  // (`Stufe2.tsx`, `const online = useNetzOnline()`). Die Anmeldung geschieht EINMAL beim Laden
+  // des Moduls, nicht je Bild und nicht je Hookinstanz — der Fehler, gegen den der Absatz oben
+  // geschrieben ist (`eine-verdrahtung-je-hook.test.tsx`), ist damit baulich ausgeschlossen.
+  //
+  // WAS STATTDESSEN BESSER WÄRE, ehrlich benannt: die Uhr gehörte neben den Onlinezustand in
+  // `lib/netzzustand.ts` — dann bliebe es bei einer Anmeldung. Diese Datei liegt ausserhalb der
+  // Zielpfade von JOB 4293; die Verschiebung ist ein eigener, kleiner Auftrag und steht als REST
+  // in der Rückgabe von R5.
   const ERWARTET: readonly string[] = [
     "lib/netzzustand.ts", // useNetzOnline — die eine Quelle (JOB 3084, alleinig seit JOB 3879)
+    "pages/Stufe2.tsx", // JOB 4293 R5 — die Netzlückenuhr der Import-Prüfliste (Begründung oben)
   ];
 
   it("W-4 · genau eine Datei verdrahtet `onlineManager.subscribe`", () => {

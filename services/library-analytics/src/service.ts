@@ -2090,6 +2090,23 @@ export class LibraryService {
         tags: item.tags ?? [],
         // SCRUM-509 R3: JSON-Import ist ein Bulk-Pfad → konservativ „vertraulich" bei fehlendem Signal.
         confidentiality: item.confidentiality ?? "vertraulich",
+        // ==========================================================================================
+        // JOB 4293 — DER DIREKTE IMPORTWEG VERLOR DEN DOKUMENTTEXT, UND ZWAR ALS EINZIGER.
+        // ==========================================================================================
+        //
+        // `ImportItem` trägt `bodyHtml` (../types.ts), und der Kandidaten-Accept reicht ihn an
+        // BEIDEN Stellen durch — bei der Erstanlage (`acceptToKo`, `...(item.bodyHtml ? …)`) wie
+        // beim Re-Sync-`revise`. NUR hier, auf dem Weg `POST /api/library/import` → `importJson`,
+        // stand das Feld nicht in der Eingabe des `create`. Eine Sicherung, die über diesen Weg
+        // eingespielt wurde, kam also mit Titel, Kernaussage und Tags an — und ohne den Text, den
+        // sie transportieren sollte. Das war keine Regel, sondern eine Lücke: nichts im Bestand
+        // nennt einen Grund, warum derselbe Inhaltsvertrag hier weniger gelten sollte.
+        //
+        // DIESELBE SCHREIBWEISE WIE IM ACCEPT-PFAD, und aus demselben Grund: ein fehlender
+        // Volltext bleibt FEHLEND (kein `bodyHtml: undefined`, kein aus `statement` gebauter
+        // Ersatz). `KoService.create` sanitisiert ihn danach wie jeden anderen Rumpf
+        // (`cleanBody` → `sanitizeHtml`); dieser Weg öffnet also kein zweites, ungefiltertes Tor.
+        ...(item.bodyHtml ? { bodyHtml: item.bodyHtml } : {}),
       });
       exakt.set(key, erzeugt.id);
       bestand.push(erzeugt);

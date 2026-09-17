@@ -1933,8 +1933,23 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // zeigt ein Bild, bietet eine Bildbeschreibung an (kein `ANGEBOT_MUSTER`) oder trägt ein
     // `documentTitle`-Prop — das eine reicht durch, das andere rendert ein Textfeld mit Knopf.
     // Sie erscheinen nur in der Grundmenge und berühren keinen Bildweg.
+    //
+    // JOB 4293 R3 (JSON-VOLLTEXT-RUNDLAUF · § 9 ZUSTANDSMODELL): 398 → 399, und es ist GENAU EIN
+    // Bauteil:
+    //     + `ImportStandHinweis` — der Satz über die Aktualität der Prüfliste („Stand von zuletzt —
+    //                              die Auffrischung ist gescheitert." und die zwei Geschwister), in
+    //                              `pages/Stufe2.tsx` (nicht exportiert, genau ein Aufrufer in
+    //                              derselben Datei: die Prüfkarte `ImportKandidatKarte`).
+    // Dieselbe Begründung wie bei jedem Eintrag darüber: die Auflage verbietet, dass eine
+    // UMSTELLUNG die Erhebung verschiebt — nicht, dass der Quellbaum wächst. `anbieter` 1 und
+    // `traeger` 2 bleiben unverändert, und das ist am Bauteil nachgelesen, nicht nebenbei
+    // behauptet: es rendert ein einziges `<p>` mit einem Satz aus dem Katalog, zeigt KEIN Bild,
+    // bietet KEINE Bildbeschreibung an (kein `ANGEBOT_MUSTER`) und trägt kein `documentTitle`-Prop.
+    // Es erscheint nur in der Grundmenge und berührt keinen Bildweg. Die +1 ist gemessen (der
+    // Sammler meldete `expected { komponenten: 399, … } to deeply equal { komponenten: 398, … }`),
+    // nicht gerechnet.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 398,
+      komponenten: 399,
       anbieter: 1,
       traeger: 2,
     });

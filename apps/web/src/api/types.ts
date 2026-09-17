@@ -1310,6 +1310,19 @@ export interface ImportItemInput {
   category: string;
   author?: string;
   tags?: string[];
+  // JOB 4293: DER DOKUMENTTEXT, den der Server seit jeher kann und dieser Typ nicht kannte.
+  //
+  // `services/library-analytics/src/types.ts` führt `bodyHtml` am `ImportItem` des Servers, der
+  // Kandidatenweg legt ihn ab und gibt ihn unverändert wieder heraus
+  // (`tests/library/job2703-datenweg-review-queue-mounted.test.tsx`, G2/G3). Hier fehlte er — und
+  // damit warf schon der Client weg, was in der gewählten Datei stand. `importTextVolltext.ts:12-20`
+  // hat genau das als benannten Folgeauftrag stehen lassen; er ist dieser.
+  //
+  // OPTIONAL, und das ist kein Nachlassen: ein Eintrag OHNE Volltext ist der gültige Normalfall
+  // (JSON-Mindestvorlage, Snapshot-Import ohne `fetchItem`). Fehlt das Feld, fehlt der Volltext —
+  // er wird NIE aus `statement` nachgebildet (`statement` ist seit JOB 2703 der Anriss, nicht der
+  // Text). Rein additiv; kein bestehender Aufrufer muss etwas mitgeben.
+  bodyHtml?: string;
   // WP-IC-PAKET-1c (ROT-2): Decode-Marker des Server-Kandidaten — "decoded" heisst: Textfelder sind
   // kanonisch dekodiert, die Queue-Karte dekodiert NICHT erneut; fehlt er (Altbestand), defensiv nach.
   textCodec?: "decoded";
