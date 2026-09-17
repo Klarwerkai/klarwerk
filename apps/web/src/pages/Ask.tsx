@@ -1263,6 +1263,35 @@ export function Ask(): JSX.Element {
         {!answerAi.available ? (
           <p className="mt-1.5 text-[12px] text-muted-2">{t(aiHintKey)}</p>
         ) : null}
+        {/* ====================================================================================
+            JOB 4224 · D5, LIEFERUNG 5 — DIE LAGE ZU NENNEN IST NICHT DASSELBE WIE EINEN WEG ZU
+            ZEIGEN.
+            ====================================================================================
+            Bis hierher stand hier GENAU EIN Satz: „KI nicht verfügbar — für diese Aufgabe ist kein
+            Modell aktiv." Er ist wahr und er ist eine Sackgasse; gemessen im Cloud-Lauf
+            dd9ef2e8… (Fall A1: kein einziger erlaubter Weg im Baum). Daneben steht jetzt, was
+            OHNE Modell trotzdem geht — der Bestand durchsuchen und Wissen erfassen.
+
+            ES WIRD NICHTS FREIGEGEBEN UND NICHTS GESENDET: hier stehen zwei Verweise auf
+            vorhandene Seiten, kein Schalter, kein Abruf. Der Sendeknopf bleibt gesperrt (die
+            Bedingung darüber ist unverändert), und der Satz sagt das ausdrücklich — sonst läse
+            sich ein Angebot wie eine stille Ersatzfreigabe.
+
+            ÜBER `RoleLink`, nicht über `Link`: /erfassen verlangt „experte". Ein Ziel, das die
+            Rolle nicht erreicht, wird als Lage gezeigt, nicht als Weg — dasselbe EINE Tor wie
+            überall auf dieser Fläche (AUFTRAG-mega71 Block E). */}
+        {!answerAi.available ? (
+          <p data-testid="ask-ai-alternative" className="mt-1.5 text-[12px] text-muted-2">
+            {t("ask.aiUnavailable.path")}{" "}
+            <RoleLink to="/bibliothek" className="font-semibold text-brand-text">
+              {() => t("ask.aiUnavailable.toLibrary")}
+            </RoleLink>
+            {" · "}
+            <RoleLink to="/erfassen" className="font-semibold text-brand-text">
+              {() => t("ask.aiUnavailable.toCapture")}
+            </RoleLink>
+          </p>
+        ) : null}
       </span>
 
       {/* WP-UX-WOW-1 U2/U3 (statt SCRUM-265-Statik): ehrliche Beispiel-Chips. Antwort-Beispiele
@@ -2025,6 +2054,13 @@ export function Ask(): JSX.Element {
                                       <AnswerSourceDetails
                                         ko={sourceKo}
                                         authorName={authorNameOf(sourceKo.author)}
+                                        // JOB 4224 R3 (Ben-Korrekturpflicht 1): ist die
+                                        // Auffrischung gescheitert, ist der Quellenstand UNBEKANNT
+                                        // (§9). Die Antwort bleibt stehen, das ANGEBOT „öffne das
+                                        // Original" nicht — es wäre eine Aussage über ein Jetzt,
+                                        // das niemand bestätigt hat. Begründung ausgeschrieben am
+                                        // Vertrag der Komponente.
+                                        standBestaetigt={!auffrischungGescheitert}
                                       />
                                     ) : null;
                                   })()}

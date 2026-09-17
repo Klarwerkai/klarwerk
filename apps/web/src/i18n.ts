@@ -2812,6 +2812,25 @@ const de = {
   "answerSource.trust": "Vertrauen {{n}}",
   "answerSource.excerptShow": "Auszug im Dokument-Format anzeigen",
   "answerSource.excerptHide": "Auszug ausblenden",
+  // JOB 4224 D5: der Weg vom Beleg bis zum Original. „Kein Original" ist eine AUSSAGE über diese
+  // Quelle, kein Platzhalter — sie wird nur dann gezeigt, wenn wirklich nichts erreichbar ist.
+  "answerSource.originalsTitle": "Original",
+  "answerSource.noOriginal": "Für diese Quelle liegt kein Original vor.",
+  "answerSource.originalFile": "Hinterlegtes Original öffnen",
+  "answerSource.originalAddress": "Originaladresse öffnen (neues Fenster)",
+  "answerSource.originalReference": "Fundstelle ohne abrufbare Adresse",
+  // JOB 4224 R3: die DRITTE Lage. Sie sagt weder „gesperrt" (das wäre aus einem Fehler erfunden)
+  // noch „kein Original" (das wäre eine ungeprüfte Tatsache) — sie sagt, was zutrifft: niemand hat
+  // den Stand dieser Quelle gerade bestätigt.
+  "answerSource.originalUnconfirmed":
+    "Der Stand dieser Quelle ist gerade nicht bestätigt — der Beleg wird erst wieder angeboten, wenn die Auffrischung durchkommt.",
+  // JOB 4224 D5 (Lieferung 5): ohne Modell nennt die Fläche nicht nur die Lage, sondern auch den
+  // erlaubten Weg. Der zweite Halbsatz ist keine Floskel — er hält fest, dass hier nichts
+  // stillschweigend freigeschaltet wird.
+  "ask.aiUnavailable.path":
+    "Ohne Modell bleibt der Bestand offen — nichts wird dafür automatisch freigegeben:",
+  "ask.aiUnavailable.toLibrary": "Bestand durchsuchen",
+  "ask.aiUnavailable.toCapture": "Wissen erfassen",
   "ask.helpful": "Hat geholfen",
   "ask.thanked": "Danke!",
   "ask.status.verified": "Gesichert",
@@ -9391,6 +9410,20 @@ const en: typeof de = {
   "answerSource.trust": "Trust {{n}}",
   "answerSource.excerptShow": "Show excerpt in document format",
   "answerSource.excerptHide": "Hide excerpt",
+  // JOB 4224 D5: the path from the citation to the original.
+  "answerSource.originalsTitle": "Original",
+  "answerSource.noOriginal": "No original is stored for this source.",
+  "answerSource.originalFile": "Open the stored original",
+  "answerSource.originalAddress": "Open the original address (new window)",
+  "answerSource.originalReference": "Reference without a retrievable address",
+  // JOB 4224 R3: the THIRD state — neither "blocked" nor "no original", but "not confirmed".
+  "answerSource.originalUnconfirmed":
+    "The state of this source is not confirmed right now — the evidence is offered again once the refresh succeeds.",
+  // JOB 4224 D5 (delivery 5): without a model the page names the permitted path, too.
+  "ask.aiUnavailable.path":
+    "Without a model the knowledge base stays open — nothing is enabled automatically for it:",
+  "ask.aiUnavailable.toLibrary": "Search the knowledge base",
+  "ask.aiUnavailable.toCapture": "Capture knowledge",
   "ask.helpful": "This helped",
   "ask.thanked": "Thanks!",
   "ask.status.verified": "Verified",
@@ -14920,6 +14953,20 @@ const nl: typeof de = {
   "answerSource.trust": "Vertrouwen {{n}}",
   "answerSource.excerptShow": "Fragment in documentformaat tonen",
   "answerSource.excerptHide": "Fragment verbergen",
+  // JOB 4224 D5: de weg van het bewijs naar het origineel.
+  "answerSource.originalsTitle": "Origineel",
+  "answerSource.noOriginal": "Voor deze bron is geen origineel opgeslagen.",
+  "answerSource.originalFile": "Opgeslagen origineel openen",
+  "answerSource.originalAddress": "Origineel adres openen (nieuw venster)",
+  "answerSource.originalReference": "Vindplaats zonder opvraagbaar adres",
+  // JOB 4224 R3: de DERDE toestand — niet „geblokkeerd" en niet „geen origineel", maar „niet bevestigd".
+  "answerSource.originalUnconfirmed":
+    "De stand van deze bron is nu niet bevestigd — het bewijs wordt pas weer aangeboden als het vernieuwen lukt.",
+  // JOB 4224 D5 (levering 5): zonder model noemt het scherm ook de toegestane weg.
+  "ask.aiUnavailable.path":
+    "Zonder model blijft de kennisbank open — daarvoor wordt niets automatisch vrijgegeven:",
+  "ask.aiUnavailable.toLibrary": "Kennisbank doorzoeken",
+  "ask.aiUnavailable.toCapture": "Kennis vastleggen",
   "ask.helpful": "Heeft geholpen",
   "ask.thanked": "Bedankt!",
   "ask.status.verified": "Geborgd",

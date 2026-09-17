@@ -280,6 +280,22 @@ const INVENTAR: readonly string[] = [
   // expected [ Array(1) ] to deeply equal []" und K5 „expected 59 to be 58"; erst danach wurden
   // diese Zeile und der Zaehler unten angefasst.
   "tests/klara-ranking-sprachen/ranking-sprachweise.test.ts",
+  // JOB 4224 (16.09.2026, Meilenstein D5): der Nutzerweg von der Frage bis zur Originalquelle und
+  // der Entzug, der sie wirklich sperrt. Fuenf Testdateien in `tests/klara-quellen-nutzerweg/` —
+  // das Verzeichnis war in §4 des Auftrags abschliessend vorgegeben, sie tragen „klara" im PFAD und
+  // kommen damit ueber die NAMENSachse herein (K5: 62 -> 67). Die sechste Datei des Verzeichnisses
+  // (`kette.ts`) ist ein Helfer und keine Testdatei; der Sammler sieht sie nicht.
+  // GEMESSEN, NICHT GESETZT: Belege in der RUECKGABE des Jobs (Cloud-Laeufe dd9ef2e8… und danach).
+  // JOB 4224 RUNDE 3 (Ben-Korrekturpflicht 2): dieselbe Kette gegen echtes PostgreSQL. Sie traegt
+  // „klara" im Pfad und endet auf `.test.ts`, faellt also in die Namensachse (67 -> 68) — auch wenn
+  // sie als `*.integration.test.ts` NICHT im Tor laeuft. Der Sammler fragt nach dem Pfad, nicht nach
+  // der Laufgruppe; ein Eintrag weniger waere hier eine Luecke in der Regressionsmenge.
+  "tests/klara-quellen-nutzerweg/kette-postgres.integration.test.ts",
+  "tests/klara-quellen-nutzerweg/beleg-fuehrt-zum-original.test.ts",
+  "tests/klara-quellen-nutzerweg/entzug-sperrt-die-quelle.test.ts",
+  "tests/klara-quellen-nutzerweg/zwei-quellen-bleiben-zwei.test.ts",
+  "tests/klara-quellen-nutzerweg/flaeche-fuehrt-zum-original.test.tsx",
+  "tests/klara-quellen-nutzerweg/ohne-anbieter-und-nach-fehler.test.tsx",
   // JOB 3138: eigenständiger Import-Erklärweg; keine Abnahme eines echten Jira-Imports.
   "tests/m6-import-erklaerweg/klara-importwege-dom.test.tsx",
   "tests/m6-import-erklaerweg/klara-importwege-browser.test.tsx",
@@ -1392,7 +1408,15 @@ describe("JOB 920 · K — das Klara-Regressionsinventar ist ableitbar, nicht be
     // traegt „klara" im PFAD (Verzeichnisname im Auftrag §4 abschliessend vorgegeben) und faellt
     // damit auch unter die Namensachse — 61 -> 62. GEMESSEN, NICHT GESETZT: Beleg am Inventar-
     // eintrag oben (K5 meldete `expected 62 to be 61`).
-    expect(nurName.length).toBe(62);
+    // JOB 4224 (16.09.2026): fuenf Testdateien in `tests/klara-quellen-nutzerweg/` (Verzeichnis in
+    // §4 des Auftrags abschliessend vorgegeben) tragen „klara" im PFAD und keine der sechs
+    // Inhaltsachsen — 62 -> 67. Keine davon nennt `taskpane`, `SourceLocation`, `Cache-Control`
+    // (die Achse ist gross-/kleinschreibungsempfindlich; die Dateien lesen den Kopf kleingeschrieben),
+    // ein Klara-Bauteil, die Palette oder ein Erweiterungs-Bauteil. GEMESSEN, NICHT GESETZT:
+    // Beleg in der RUECKGABE des Jobs.
+    // JOB 4224 RUNDE 3: dazu `kette-postgres.integration.test.ts` — 67 -> 68. GEMESSEN, NICHT
+    // GESETZT: Beleg in der RUECKGABE des Jobs.
+    expect(nurName.length).toBe(68);
     expect(verfehlt.length).toBeGreaterThanOrEqual(25);
     expect(verfehlt.length + nurName.length).toBe(GEFUNDEN.length);
   });
