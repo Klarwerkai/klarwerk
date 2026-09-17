@@ -40,6 +40,11 @@ import {
   Routes,
   useLocation,
 } from "../../apps/web/node_modules/react-router-dom";
+// JOB 4249: `Mobile` liest seit diesem Auftrag die Sitzung — die Offline-Warteschlange liegt am
+// Gerät, gehört aber einem KONTO. Die Seite braucht damit denselben Rahmen wie im Betrieb
+// (`App.tsx:97`). Ohne abrufbare Sitzung steht die Kontolage auf „unbekannt"; für diesen Fall
+// ändert das nichts.
+import { AuthProvider } from "../../apps/web/src/app/AuthContext";
 import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
@@ -84,7 +89,10 @@ async function mount(): Promise<void> {
               createElement(
                 Routes,
                 null,
-                createElement(Route, { path: "/mobile", element: createElement(Mobile) }),
+                createElement(Route, {
+                  path: "/mobile",
+                  element: createElement(AuthProvider, null, createElement(Mobile)),
+                }),
                 createElement(Route, {
                   path: "/wissen/:id",
                   element: createElement("div", null, "WISSEN-SEITE"),

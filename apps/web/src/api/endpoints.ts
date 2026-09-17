@@ -679,8 +679,18 @@ export const endpoints = {
     // beim Wissensobjekt oben (`:190`, `:204`, `:237`). Derselbe Aufruf mit derselben Kennung führt
     // zu EINEM Entwurf, nicht zu zweien; ohne Kennung bleibt alles wie bisher. Sie reist NEBEN der
     // Nutzlast, nicht in ihr — der Server trennt sie ab, bevor er den Entwurf anlegt.
-    create: (payload: DraftPayload, operationId?: string) =>
-      api.post<Draft>("/drafts", operationId ? { ...payload, operationId } : payload),
+    // JOB 4249 R6: `expectedOwner` ist die VORAUSSETZUNG des Aufrufs — dasselbe Muster wie
+    // `expectedUpdatedAt` beim Aktualisieren darunter. Der Absender nennt das Konto, für das er die
+    // Nutzlast zusammengestellt hat; kommt der Aufruf mit einem anderen an (Kontowechsel zwischen
+    // Zusammenstellen und Absenden), legt der Server NICHTS an und antwortet 409
+    // `DRAFT_OWNER_MISMATCH`. Ohne den Wert bleibt alles wie bisher — die anderen Aufrufer
+    // (`pages/Capture.tsx`, das Panel, der Word-Weg) hängen daran.
+    create: (payload: DraftPayload, operationId?: string, expectedOwner?: string) =>
+      api.post<Draft>("/drafts", {
+        ...payload,
+        ...(operationId ? { operationId } : {}),
+        ...(expectedOwner ? { expectedOwner } : {}),
+      }),
     // SCRUM-113 / FE-CAP-07: Entwurf fortsetzen (continueDraft, Originalautor bleibt).
     // JOB 2684 D1: `expectedUpdatedAt` = der beim Laden gesehene Stand; der Server antwortet 409
     // DRAFT_STALE, wenn inzwischen jemand anders (zweiter Tab, Studio) gespeichert hat. Ohne den

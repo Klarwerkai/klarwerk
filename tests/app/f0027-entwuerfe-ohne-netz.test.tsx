@@ -27,8 +27,27 @@ const draftsApi = vi.hoisted(() => ({
   update: vi.fn(),
 }));
 
+/**
+ * JOB 4249: das angemeldete Konto — und zugleich der Eigentümer der abgelegten Vorgänge.
+ * `vi.hoisted`, weil die Attrappe unten beim IMPORT des Moduls gebaut wird und eine gewöhnliche
+ * Konstante zu diesem Zeitpunkt noch nicht existierte.
+ */
+const { KONTO } = vi.hoisted(() => ({ KONTO: "u1" }));
+
 vi.mock("../../apps/web/src/api/endpoints", () => ({
   endpoints: { drafts: { create: draftsApi.create, update: draftsApi.update } },
+}));
+
+// JOB 4249: Die Warteschlange liegt am Gerät, gehört aber einem KONTO — gesendet wird nur, was dem
+// angemeldeten Menschen gehört. Die Zusage von F-0027 gilt damit ausdrücklich FÜR DIE EIGENEN
+// Vorgänge; der Aufbau hier stellt die Sitzung bereit, die im Betrieb ohnehin steht (`App.tsx`
+// zeigt ohne Nutzer die Anmeldung statt der Fläche).
+vi.mock("../../apps/web/src/api/auth", () => ({
+  authApi: {
+    status: vi.fn(async () => ({ needsSetup: false, oidcEnabled: false })),
+    me: vi.fn(async () => ({ id: KONTO, name: "Pia", email: "p@x.de", role: "editor" })),
+    logout: vi.fn(async () => ({})),
+  },
 }));
 
 import {
@@ -37,6 +56,7 @@ import {
 } from "../../apps/web/node_modules/@tanstack/react-query";
 import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
+import { AuthProvider } from "../../apps/web/src/app/AuthContext";
 import { useOfflineQueue } from "../../apps/web/src/app/useOfflineQueue";
 import type { QueuedOp } from "../../apps/web/src/lib/offlineQueue";
 
@@ -68,6 +88,10 @@ function op(overrides: Partial<QueuedOp>): QueuedOp {
     error: null,
     createdAt: "2026-09-02T05:00:00.000Z",
     title: "Pumpe P-12",
+    // JOB 4249: der Vorgang gehört dem Menschen, der ihn unterwegs erfasst hat. Ohne diese Bindung
+    // wäre er ein ungebundener Rest — der bleibt seit diesem Auftrag ausdrücklich liegen, statt dem
+    // gerade Angemeldeten zugeschlagen zu werden.
+    eigentuemer: KONTO,
     ...overrides,
   };
 }
@@ -96,9 +120,19 @@ async function anwendungOeffnen(): Promise<void> {
   root = createRoot(container);
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   await act(async () => {
-    root?.render(createElement(QueryClientProvider, { client: qc }, createElement(Sonde, null)));
+    root?.render(
+      createElement(
+        QueryClientProvider,
+        { client: qc },
+        createElement(AuthProvider, null, createElement(Sonde, null)),
+      ),
+    );
   });
-  await act(flush);
+  // Der Aufbau ist erst fertig, wenn die Sitzung steht: `/auth/status` und `/auth/me` laufen
+  // nacheinander, und bis die zweite Antwort da ist, sendet die Warteschlange zu Recht nichts.
+  for (let i = 0; i < 5; i++) {
+    await act(flush);
+  }
 }
 
 describe("F-0027 · JOB 2951 D2 — Entwuerfe ohne Netz werden wirklich nachsynchronisiert", () => {
@@ -136,10 +170,19 @@ describe("F-0027 · JOB 2951 D2 — Entwuerfe ohne Netz werden wirklich nachsync
       "Der offline erfasste Entwurf muss beim Start genau einmal gesendet werden — " +
         "sonst liegt er unsichtbar im Browser und der Mensch glaubt, er sei angekommen.",
     ).toBe(1);
-    expect(draftsApi.create).toHaveBeenCalledWith({
-      title: "Pumpe P-12",
-      statement: "Lager laeuft heiss",
-    });
+    // JOB 4249: die Nutzlast UND die Vorgangskennung. Sie ist der Grund, warum ein Antwortverlust
+    // beim Wiederholen keinen zweiten Entwurf mehr erzeugt (JOB 2697 D7), und sie ist `op.id` —
+    // dieselbe über jede Wiederholung, auch über ein Neuladen hinweg.
+    //
+    // JOB 4249 R6: UND DER EIGENTÜMER, als Voraussetzung des Aufrufs (`expectedOwner`). Er ist die
+    // Zusage, die der Client allein nicht halten kann: welches Cookie der Browser anhängt,
+    // entscheidet sich erst beim Absenden. Kommt der Aufruf mit einem anderen Konto an, legt der
+    // Server nichts an (409 `DRAFT_OWNER_MISMATCH`).
+    expect(draftsApi.create).toHaveBeenCalledWith(
+      { title: "Pumpe P-12", statement: "Lager laeuft heiss" },
+      "op-pumpe",
+      KONTO,
+    );
     expect(sicht.queue, "nach erfolgreichem Sync ist die Warteschlange leer").toEqual([]);
     expect(gespeicherteWarteschlange(), "auch im Speicher bleibt nichts liegen").toEqual([]);
   });

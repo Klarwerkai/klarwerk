@@ -173,6 +173,26 @@ export const MELDUNGEN = {
     en: "This draft is not available to you.",
     nl: "Dit concept is niet voor jou beschikbaar.",
   },
+  // JOB 4249 · DER DRITTE SATZ DER ENTWURFSROUTEN, und er gehört zum ANLEGEN, nicht zum Lesen.
+  // `POST /api/drafts` nimmt seit JOB 4249 die Voraussetzung `expectedOwner` entgegen — das Konto,
+  // für das der Absender seine Nutzlast zusammengestellt hat (dieselbe Bauform wie
+  // `expectedUpdatedAt` beim Aktualisieren). Kommt der Aufruf mit einem ANDEREN angemeldeten Konto
+  // an, weil das Konto zwischen Zusammenstellen und Absenden gewechselt hat, wird NICHTS angelegt.
+  //
+  // WARUM NICHT `DRAFT_NOT_VISIBLE` ODER `PERMISSION_DENIED`: Beide sagen etwas Falsches. Es fehlt
+  // kein Recht (das Konto darf Entwürfe anlegen), und es ist kein fremder Entwurf im Spiel — es
+  // gibt noch gar keinen. Die Lage ist: dieser VORGANG gehört jemand anderem. Wer sie mit einem
+  // Rechtesatz beantwortete, schickte die Betroffenen zur Rechteverwaltung statt zur Anmeldung.
+  //
+  // DER SATZ NENNT KEIN KONTO — weder das erwartete noch das angemeldete. Er wird von einem Konto
+  // gelesen, das die fremde Arbeit nichts angeht (Auftrag Lieferung 5: derselbe Schlüssel gibt nie
+  // etwas Fremdes heraus), und eine Kontokennung im Fehlertext wäre ein Leseweg an jeder
+  // Berechtigung vorbei. Er sagt zwei Tatsachen über DIESEN Aufruf und den Weg zurück, sonst nichts.
+  DRAFT_OWNER_MISMATCH: {
+    de: "Dieser Vorgang wurde von einem anderen Konto erfasst. Es wurde nichts angelegt — melde dich mit dem Konto an, von dem er stammt.",
+    en: "This entry was created by a different account. Nothing was saved — sign in with the account it belongs to.",
+    nl: "Dit item is met een ander account gemaakt. Er is niets opgeslagen — meld je aan met het account waar het bij hoort.",
+  },
   REGISTRATION_DISABLED: {
     de: "Registrierung nur per Einladung.",
     en: "Registration is by invitation only.",

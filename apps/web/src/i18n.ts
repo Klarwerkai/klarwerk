@@ -5894,6 +5894,28 @@ const de = {
     "Nicht nachgesendet: zu diesem älteren Eintrag fehlt der Stand, gegen den er gelten soll. Er bleibt liegen — öffne den Entwurf, dann wird verglichen und gesendet.",
   "mob.ausgangUnklar":
     "Die Antwort ist ausgeblieben — ob gespeichert wurde, ist unklar. Lade die Entwürfe neu und sieh nach, bevor du erneut speicherst.",
+  // JOB 4249 — DIE WARTESCHLANGE LIEGT AM GERÄT, SIE GEHÖRT ABER EINEM KONTO.
+  // Sechs Sätze für sechs Lagen. Keiner behauptet etwas über einen Bestand, der gerade nicht
+  // feststeht, und keiner verspricht, dass etwas verschwunden sei.
+  "mob.konto.laedt": "Hier liegen noch Vorgänge. Wem sie gehören, wird gerade geprüft …",
+  "mob.konto.unbekannt":
+    "Hier liegen noch Vorgänge. Wer angemeldet ist, lässt sich gerade nicht feststellen — deshalb wird nichts gesendet und nichts gelöscht. Melde dich neu an, dann geht es weiter.",
+  "mob.konto.eigeneLeer": "Von dir wartet nichts.",
+  "mob.konto.fremdeWarten":
+    "Von einem anderen Konto liegen hier Vorgänge. Sie werden nicht gesendet und nicht gelöscht — sie warten, bis sich dieses Konto wieder anmeldet.",
+  "mob.konto.ohneBindungWarten":
+    "Zu diesen älteren Vorgängen ist kein Konto hinterlegt. Sie werden niemandem zugeordnet und nicht gelöscht — melde dich mit dem Konto an, von dem sie stammen.",
+  "mob.konto.fremdeNichtGesendet": "Nicht gesendet: gehört einem anderen Konto.",
+  "mob.konto.ohneBindungNichtGesendet":
+    "Nicht gesendet: zu diesen älteren Vorgängen ist kein Konto hinterlegt. Sie bleiben liegen.",
+  "mob.konto.syncWartet":
+    "Es wurde nichts gesendet: wer angemeldet ist, steht gerade nicht fest. Alles bleibt liegen.",
+  "mob.konto.speichernWartet":
+    "Noch nicht gespeichert: wer angemeldet ist, steht gerade nicht fest. Dein Text bleibt stehen — versuche es gleich noch einmal.",
+  "mob.konto.laufAngehalten":
+    "Das Senden wurde angehalten, weil das Konto gewechselt hat. Die übrigen Vorgänge bleiben liegen und gehören weiter dem Konto, das sie erfasst hat.",
+  "mob.konto.auffrischung":
+    "Wer angemeldet ist, wird gerade bestätigt. Bis die Antwort da ist, wird nichts gesendet — es geht von selbst weiter.",
   "s2.kicker": "Erweitert · Stufe 2",
   "s2.output":
     "Aus validierten Objekten Arbeitsanweisungen/Checklisten erzeugen — aktiv, sobald die Output-Logik steht.",
@@ -11874,6 +11896,26 @@ const en: typeof de = {
     "Not sent: this older entry has no version to check against. It stays queued — open the draft, then it is compared and sent.",
   "mob.ausgangUnklar":
     "No answer came back — whether it was saved is unclear. Reload the drafts and check before you save again.",
+  // JOB 4249 — the queue sits on the device, but it belongs to an account.
+  "mob.konto.laedt": "There are still queued items. Who they belong to is being checked …",
+  "mob.konto.unbekannt":
+    "There are still queued items. Who is signed in cannot be established right now — so nothing is sent and nothing is deleted. Sign in again to continue.",
+  "mob.konto.eigeneLeer": "Nothing of yours is waiting.",
+  "mob.konto.fremdeWarten":
+    "Items from another account are queued here. They are not sent and not deleted — they wait until that account signs in again.",
+  "mob.konto.ohneBindungWarten":
+    "These older items have no account on record. They are assigned to nobody and deleted for nobody — sign in with the account they came from.",
+  "mob.konto.fremdeNichtGesendet": "Not sent: belongs to another account.",
+  "mob.konto.ohneBindungNichtGesendet":
+    "Not sent: these older items have no account on record. They stay queued.",
+  "mob.konto.syncWartet":
+    "Nothing was sent: who is signed in is not established right now. Everything stays queued.",
+  "mob.konto.speichernWartet":
+    "Not saved yet: who is signed in is not established right now. Your text stays as it is — try again in a moment.",
+  "mob.konto.laufAngehalten":
+    "Sending was stopped because the account changed. The remaining items stay queued and still belong to the account that captured them.",
+  "mob.konto.auffrischung":
+    "Who is signed in is being confirmed right now. Nothing is sent until the answer is back — it continues on its own.",
   "s2.kicker": "Advanced · Stage 2",
   "s2.output":
     "Generate work instructions/checklists from validated objects — active once the output logic is in place.",
@@ -17454,6 +17496,26 @@ const nl: typeof de = {
     "Niet nagestuurd: bij dit oudere item ontbreekt de versie waartegen het moet gelden. Het blijft staan — open het concept, dan wordt het vergeleken en verstuurd.",
   "mob.ausgangUnklar":
     "Er kwam geen antwoord — of er is opgeslagen is onduidelijk. Herlaad de concepten en kijk na voordat je opnieuw opslaat.",
+  // JOB 4249 — de wachtrij staat op het apparaat, maar hoort bij een account.
+  "mob.konto.laedt": "Er staan nog items klaar. Van wie ze zijn, wordt gecontroleerd …",
+  "mob.konto.unbekannt":
+    "Er staan nog items klaar. Wie is aangemeld, is nu niet vast te stellen — daarom wordt er niets verstuurd en niets verwijderd. Meld je opnieuw aan om verder te gaan.",
+  "mob.konto.eigeneLeer": "Van jou wacht er niets.",
+  "mob.konto.fremdeWarten":
+    "Er staan items van een ander account klaar. Ze worden niet verstuurd en niet verwijderd — ze wachten tot dat account zich weer aanmeldt.",
+  "mob.konto.ohneBindungWarten":
+    "Bij deze oudere items is geen account vastgelegd. Ze worden aan niemand toegewezen en niet verwijderd — meld je aan met het account waarvan ze afkomstig zijn.",
+  "mob.konto.fremdeNichtGesendet": "Niet verstuurd: hoort bij een ander account.",
+  "mob.konto.ohneBindungNichtGesendet":
+    "Niet verstuurd: bij deze oudere items is geen account vastgelegd. Ze blijven staan.",
+  "mob.konto.syncWartet":
+    "Er is niets verstuurd: wie is aangemeld, staat nu niet vast. Alles blijft staan.",
+  "mob.konto.speichernWartet":
+    "Nog niet opgeslagen: wie is aangemeld, staat nu niet vast. Je tekst blijft staan — probeer het zo nog eens.",
+  "mob.konto.laufAngehalten":
+    "Het versturen is gestopt omdat het account is gewisseld. De overige items blijven staan en horen nog steeds bij het account dat ze heeft vastgelegd.",
+  "mob.konto.auffrischung":
+    "Wie is aangemeld, wordt op dit moment bevestigd. Tot het antwoord er is, wordt er niets verstuurd — het gaat vanzelf verder.",
   "s2.kicker": "Uitgebreid · Niveau 2",
   "s2.output":
     "Uit gevalideerde objecten werkinstructies/checklists genereren — actief zodra de output-logica staat.",

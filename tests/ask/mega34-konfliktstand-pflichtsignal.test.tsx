@@ -90,6 +90,11 @@ import {
 import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
+// JOB 4249: `Mobile` liest seit diesem Auftrag die Sitzung — die Offline-Warteschlange liegt am
+// Gerät, gehört aber einem KONTO. Die Seite braucht damit denselben Rahmen wie im Betrieb
+// (`App.tsx:97`). Ohne abrufbare Sitzung steht die Kontolage auf „unbekannt"; das Pflichtsignal
+// zum Konfliktstand, um das es hier geht, bleibt davon unberührt.
+import { AuthProvider } from "../../apps/web/src/app/AuthContext";
 import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
@@ -215,7 +220,11 @@ async function mountMobileAndAsk(): Promise<string> {
           createElement(
             NavGuardProvider,
             null,
-            createElement(MemoryRouter, { initialEntries: ["/mobile"] }, createElement(Mobile)),
+            createElement(
+              MemoryRouter,
+              { initialEntries: ["/mobile"] },
+              createElement(AuthProvider, null, createElement(Mobile)),
+            ),
           ),
         ),
       ),

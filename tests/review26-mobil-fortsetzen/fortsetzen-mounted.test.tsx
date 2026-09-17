@@ -2,6 +2,17 @@
 // Echter Mobile-/NavGuard-/Unload-/Queue-Weg; nur die Serverantworten sind kontrolliert.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// JOB 4249: Die Offline-Warteschlange gehört seit diesem Auftrag einem KONTO — ohne bestätigte
+// Sitzung nimmt sie nichts an (und sendet nichts). Im Betrieb kann dieser Fall gar nicht eintreten:
+// `App.tsx` zeigt ohne Nutzer die Anmeldung statt der Fläche. Der Aufbau hier holt das nach.
+vi.mock("../../apps/web/src/api/auth", () => ({
+  authApi: {
+    status: vi.fn(async () => ({ needsSetup: false, oidcEnabled: false })),
+    me: vi.fn(async () => ({ id: "u1", name: "Pia", email: "p@x.de", role: "editor" })),
+    logout: vi.fn(async () => ({})),
+  },
+}));
+
 vi.mock("../../apps/web/src/api/endpoints", () => ({
   endpoints: {
     drafts: { list: vi.fn(), create: vi.fn(), update: vi.fn(), remove: vi.fn() },
@@ -21,6 +32,11 @@ import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter, Route, Routes } from "../../apps/web/node_modules/react-router-dom";
 import { endpoints } from "../../apps/web/src/api/endpoints";
 import type { Draft } from "../../apps/web/src/api/types";
+// JOB 4249: `Mobile` liest seit diesem Auftrag die Sitzung — die Offline-Warteschlange liegt am
+// Gerät, gehört aber einem KONTO. Die Seite braucht damit denselben Rahmen wie im Betrieb
+// (`App.tsx:97`). Ohne abrufbare Sitzung steht die Kontolage auf „unbekannt"; das Fortsetzen eines
+// Entwurfs aus der Liste bleibt davon unberührt.
+import { AuthProvider } from "../../apps/web/src/app/AuthContext";
 import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
@@ -94,7 +110,10 @@ async function mount(): Promise<void> {
               createElement(
                 Routes,
                 null,
-                createElement(Route, { path: "/mobile", element: createElement(Mobile) }),
+                createElement(Route, {
+                  path: "/mobile",
+                  element: createElement(AuthProvider, null, createElement(Mobile)),
+                }),
                 createElement(Route, {
                   path: "/bibliothek",
                   element: createElement("div", null, "BIBLIOTHEK-SEITE"),

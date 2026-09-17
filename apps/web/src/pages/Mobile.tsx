@@ -169,6 +169,25 @@ export function Mobile(): JSX.Element {
     if (r.ohneVoraussetzung > 0) {
       push("error", `${t("mob.stand.syncBrauchtStand")} (${r.ohneVoraussetzung})`);
     }
+    // JOB 4249: die drei neuen Ausgänge. Sie sind bewusst getrennt, weil sie DREI verschiedene
+    // Sätze an den Menschen sind: „es liegt etwas, das dir nicht gehört" (nichts zu tun, nichts
+    // verloren), „es liegt etwas ohne Konto" (ein Rest, der geprüft werden will) und „ich weiss
+    // gerade nicht, wer du bist" (deshalb wurde NICHTS gesendet).
+    if (r.kontoUnbekannt) {
+      push("error", t("mob.konto.syncWartet"));
+    }
+    // JOB 4249 R2: Der Lauf wurde mittendrin angehalten, weil die Bindung nicht mehr galt. Das ist
+    // KEIN Fehler und kein Verlust — es ist die Auskunft, dass hier noch etwas liegt und warum es
+    // gerade nicht weitergeht.
+    if (r.abgebrochen > 0) {
+      push("info", `${t("mob.konto.laufAngehalten")} (${r.abgebrochen})`);
+    }
+    if (r.fremd > 0) {
+      push("info", `${t("mob.konto.fremdeNichtGesendet")} (${r.fremd})`);
+    }
+    if (r.ohneBindung > 0) {
+      push("error", `${t("mob.konto.ohneBindungNichtGesendet")} (${r.ohneBindung})`);
+    }
     if (r.failed > 0) {
       push("error", `${t("mob.syncFail")} (${r.failed})`);
     } else if (r.synced > 0) {
@@ -176,6 +195,13 @@ export function Mobile(): JSX.Element {
     }
   };
   const queue = useOfflineQueue(notifySync);
+  /**
+   * JOB 4249: Was diese Sitzung ANFASSEN darf — die eigenen Vorgänge und die ungebundenen Reste.
+   * Fremde sind hier bewusst NICHT dabei: sie werden weder angezeigt noch geöffnet noch ersetzt.
+   * An genau einer Stelle gebildet, damit `resume` und die Wiederholung des Standvergleichs nicht
+   * auseinanderlaufen können.
+   */
+  const vorgaengeInReichweite = [...queue.queue, ...queue.ungebundene];
 
   // --- Erfassen (FE-MOB-02/04) ---
   const drafts = useDrafts();
@@ -423,7 +449,14 @@ export function Mobile(): JSX.Element {
     }
     wiederholtRef.current = false;
     if (!queue.online) {
-      queue.enqueue(neuerVorgang(form));
+      // JOB 4249: Der offline gespeicherte Vorgang braucht einen Eigentümer — sonst läge er später
+      // als ungebundener Rest da, den niemand mehr senden darf. Steht das Konto nicht fest, wird
+      // NICHT angenommen; der getippte Text bleibt im Feld stehen (kein `resetForm`), und der
+      // Mensch erfährt den Grund. Nichts wird still weggeworfen.
+      if (!queue.enqueue(neuerVorgang(form))) {
+        push("error", t("mob.konto.speichernWartet"));
+        return;
+      }
       push("info", t("mob.queued"));
       setBeiseite(null);
       resetForm();
@@ -460,9 +493,16 @@ export function Mobile(): JSX.Element {
         if (!queue.online) {
           // Vor dem anschließenden Seitenwechsel muss auch der Persistenzeffekt der Queue laufen.
           // Sonst kann React enqueue und Navigation bündeln und Mobile vorher aushängen.
+          // JOB 4249: dieselbe Bedingung wie am Knopf, und sie wirkt hier STRENGER — wird der
+          // Vorgang nicht angenommen, darf auch nicht gewechselt werden, sonst wäre der Text nach
+          // dem Seitenwechsel weg. Der Grund reist im `NavGuardSaveError` mit (JOB 3572 R2).
+          let angenommen = false;
           flushSync(() => {
-            queue.enqueue(neuerVorgang(form));
+            angenommen = queue.enqueue(neuerVorgang(form));
           });
+          if (!angenommen) {
+            throw new NavGuardSaveError(t("mob.konto.speichernWartet"));
+          }
           push("info", t("mob.queued"));
           setBeiseite(null);
           resetForm();
@@ -523,7 +563,12 @@ export function Mobile(): JSX.Element {
   // OHNE VERBINDUNG wird nicht verglichen, sondern gesagt, dass nicht verglichen werden kann: eine
   // Rückfrage, die eine Serverantwort voraussetzt, die es gerade nicht gibt, wäre erfunden.
   const resume = (id: string): void => {
-    const op = queue.queue.find(
+    // JOB 4249: die eigenen Vorgänge UND die ungebundenen Reste. Letztere stehen nicht in der
+    // Liste (dort stünde ihr Titel, und wer hier angemeldet ist, weiss von ihnen nichts) — aber
+    // genau hier ist der Weg, den JOB 4193 R6 für sie vorsieht: der Entwurf wird geöffnet, die
+    // liegende Fassung steht im Feld, und ein Mensch entscheidet. Fremde Vorgänge sind hier NICHT
+    // erreichbar; sie gehören jemand anderem.
+    const op = vorgaengeInReichweite.find(
       (q) => q.draftId === id && (q.status === "queued" || q.status === "failed"),
     );
     if (op) {
@@ -799,7 +844,8 @@ export function Mobile(): JSX.Element {
                     <button
                       type="button"
                       onClick={() => {
-                        const op = queue.queue.find((q) => q.id === konflikt.opId) ?? null;
+                        const op =
+                          vorgaengeInReichweite.find((q) => q.id === konflikt.opId) ?? null;
                         void konfliktOeffnen(konflikt.entwurfId, konflikt.quelle, op);
                       }}
                       className="mt-2 rounded-btn border border-hairline bg-surface px-2.5 py-1.5 text-[12px] font-semibold text-text"
@@ -900,35 +946,110 @@ export function Mobile(): JSX.Element {
               </div>
             ) : null}
 
-            {/* Offline-Warteschlange (FE-MOB-07) */}
-            {queue.queue.length > 0 ? (
-              <div className="mt-4 rounded-card border border-hairline p-2.5">
-                <div className="mb-1.5 flex items-center justify-between">
-                  <span className="font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
-                    {t("mob.queue")} · {queue.pending}
-                  </span>
-                  <button
-                    type="button"
-                    disabled={!queue.online || queue.syncing || queue.pending === 0}
-                    onClick={() => void queue.syncNow().then(notifySync)}
-                    className="flex items-center gap-1 rounded-btn bg-ink px-2 py-1 text-[11px] font-semibold text-white disabled:opacity-40"
-                  >
-                    <RefreshCw size={12} className={queue.syncing ? "animate-spin" : ""} />
-                    {t("mob.syncNow")}
-                  </button>
-                </div>
-                <ul className="space-y-1">
-                  {queue.queue.map((op) => (
-                    <li key={op.id} className="flex items-center gap-2 text-[12px]">
-                      <span className="min-w-0 flex-1 truncate text-text">{op.title}</span>
-                      <span
-                        className={`rounded-pill px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase ${QUEUE_TONE[op.status]}`}
-                      >
-                        {t(`mob.status.${op.status}`)}
+            {/* ================================================================================
+                Offline-Warteschlange (FE-MOB-07)
+                ================================================================================
+                JOB 4249 — SIE LIEGT AM GERÄT, SIE GEHÖRT ABER EINEM KONTO.
+
+                Die Fläche zeigt deshalb DREI verschiedene Dinge und wirft sie nie zusammen: die
+                eigenen Vorgänge (mit Titel und Stand, denn es ist die eigene Arbeit), die Zahl
+                fremder Vorgänge (OHNE Titel — sie gehen den gerade Angemeldeten nichts an) und
+                die Zahl ungebundener Reste.
+
+                UND SIE SAGT ZUERST, OB SIE DAS ÜBERHAUPT WISSEN KANN (Zustandsmodell §9): solange
+                die Sitzung lädt, steht hier ein Ladezustand und KEINE Zahl; ist sie nicht
+                abrufbar, steht der ehrliche Fehler da — und ausdrücklich keine negative Aussage
+                („keine fremden Vorgänge"), denn dafür fehlt die Grundlage. Gesendet wird in
+                beiden Lagen nichts; der Knopf ist dann auch gesperrt. */}
+            {queue.hatBestand || queue.queue.length > 0 ? (
+              <div
+                data-testid="mob-warteschlange"
+                className="mt-4 rounded-card border border-hairline p-2.5"
+              >
+                {queue.kontolage.art === "laedt" ? (
+                  <p data-testid="mob-konto-laedt" className="text-[12px] text-muted">
+                    {t("mob.konto.laedt")}
+                  </p>
+                ) : queue.kontolage.art === "unbekannt" ? (
+                  <p data-testid="mob-konto-unbekannt" className="text-[12px] text-trust-crit-text">
+                    {t("mob.konto.unbekannt")}
+                  </p>
+                ) : (
+                  <>
+                    <div className="mb-1.5 flex items-center justify-between">
+                      <span className="font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
+                        {t("mob.queue")} · {queue.pending}
                       </span>
-                    </li>
-                  ))}
-                </ul>
+                      <button
+                        type="button"
+                        disabled={
+                          !queue.online ||
+                          queue.syncing ||
+                          !queue.hatBestand ||
+                          // JOB 4249 R4: Solange die Kennung geprüft wird, SENDET dieser Knopf
+                          // nichts (s. `useOfflineQueue`). Ein Knopf, der gedrückt werden kann und
+                          // nichts tut, ist eine Behauptung — er ist deshalb gesperrt, und die
+                          // Zeile darunter sagt, warum. Der Lauf wird ohnehin selbst nachgeholt.
+                          queue.kontoAuffrischung
+                        }
+                        onClick={() => void queue.syncNow().then(notifySync)}
+                        className="flex items-center gap-1 rounded-btn bg-ink px-2 py-1 text-[11px] font-semibold text-white disabled:opacity-40"
+                      >
+                        <RefreshCw size={12} className={queue.syncing ? "animate-spin" : ""} />
+                        {t("mob.syncNow")}
+                      </button>
+                    </div>
+                    {/* JOB 4249 R4 · Zustandsmodell §9, „Cache mit laufender Auffrischung": der
+                        letzte bekannte Stand BLEIBT STEHEN (Liste, Zahlen, Titel — nichts wird
+                        geleert), und daneben steht, dass er gerade bestätigt wird. Die Zeile ist
+                        keine Warnung: sie erklärt den gesperrten Knopf und verschwindet mit der
+                        Antwort. */}
+                    {queue.kontoAuffrischung ? (
+                      <p
+                        data-testid="mob-konto-auffrischung"
+                        className="mb-1.5 text-[11.5px] leading-relaxed text-muted"
+                      >
+                        {t("mob.konto.auffrischung")}
+                      </p>
+                    ) : null}
+                    <ul className="space-y-1">
+                      {queue.queue.map((op) => (
+                        <li key={op.id} className="flex items-center gap-2 text-[12px]">
+                          <span className="min-w-0 flex-1 truncate text-text">{op.title}</span>
+                          <span
+                            className={`rounded-pill px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase ${QUEUE_TONE[op.status]}`}
+                          >
+                            {t(`mob.status.${op.status}`)}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                    {queue.queue.length === 0 ? (
+                      <p data-testid="mob-eigene-leer" className="text-[11.5px] text-muted">
+                        {t("mob.konto.eigeneLeer")}
+                      </p>
+                    ) : null}
+                    {/* KEINE TITEL, NUR ZAHLEN. Was ein anderes Konto offline erfasst hat, ist
+                        seine Sache — hier steht nur, DASS etwas liegt und was damit geschieht
+                        (nämlich nichts: es wartet auf seinen Eigentümer). */}
+                    {queue.fremde > 0 ? (
+                      <p
+                        data-testid="mob-fremde-vorgaenge"
+                        className="mt-1.5 text-[11.5px] leading-relaxed text-muted"
+                      >
+                        {t("mob.konto.fremdeWarten")} ({queue.fremde})
+                      </p>
+                    ) : null}
+                    {queue.ohneBindung > 0 ? (
+                      <p
+                        data-testid="mob-ungebundene-vorgaenge"
+                        className="mt-1.5 text-[11.5px] leading-relaxed text-trust-warn-text"
+                      >
+                        {t("mob.konto.ohneBindungWarten")} ({queue.ohneBindung})
+                      </p>
+                    ) : null}
+                  </>
+                )}
               </div>
             ) : null}
 

@@ -7,6 +7,19 @@ import type { DraftPayload } from "../api/types";
 // "offline" ist kein Op-Status, sondern der Verbindungszustand (im Hook/UI).
 export type QueueStatus = "queued" | "pending" | "synced" | "failed";
 
+// ================================================================================================
+// JOB 4249 — DER VORGANG TRÄGT SEINEN EIGENTÜMER.
+// ================================================================================================
+//
+// Bis hierher war die Warteschlange kontoblind: ein Vorgang wusste, WAS geschrieben werden soll,
+// aber nicht, WER ihn angelegt hat. An einem geteilten Gerät ist das der Unterschied zwischen
+// „meine Arbeit" und „die Arbeit eines anderen" — und ohne ihn ging der offline erfasste Entwurf
+// von A nach einem Kontowechsel als B hinaus.
+//
+// DAS FELD IST OPTIONAL, und das ist kein Komfort, sondern die einzige ehrliche Abbildung des
+// Bestands: Vorgänge aus Sitzungen VOR diesem Auftrag haben keinen Eigentümer. „Kein Feld" heisst
+// UNBEKANNT — nicht „gehört dem, der gerade da ist". Wer es zum aktuellen Konto verrechnete,
+// verschenkte fremde Arbeit; wer es löschte, warf sie weg. Beides ist verboten (s. `useOfflineQueue`).
 export interface QueuedOp {
   id: string; // lokale Op-ID (auch temporäre Draft-Kennung vor dem Sync)
   kind: "draft.create" | "draft.update";
@@ -16,6 +29,8 @@ export interface QueuedOp {
   error: string | null;
   createdAt: string;
   title: string; // Anzeigetitel für die Warteschlangen-Liste
+  /** JOB 4249: Kennung des Kontos, das diesen Vorgang angelegt hat. Fehlt bei Altbestand. */
+  eigentuemer?: string;
 }
 
 export interface NewOp {
@@ -25,14 +40,38 @@ export interface NewOp {
   payload: DraftPayload;
   title: string;
   createdAt: string;
+  eigentuemer?: string;
+}
+
+/**
+ * JOB 4249: Gehört dieser Vorgang dem genannten Konto? Ein Vorgang OHNE Eigentümer gehört
+ * niemandem — `undefined === undefined` wäre hier die teuerste Gleichung des Hauses, deshalb
+ * verlangt diese Funktion ein Konto als Text und vergleicht strikt.
+ */
+export function gehoertKonto(op: QueuedOp, konto: string): boolean {
+  return op.eigentuemer === konto;
+}
+
+/** JOB 4249: Vorgänge ohne Eigentümerfeld — Altbestand, der niemandem zugeordnet werden darf. */
+export function ohneEigentuemer(op: QueuedOp): boolean {
+  return op.eigentuemer === undefined;
 }
 
 export function enqueue(queue: readonly QueuedOp[], op: NewOp): QueuedOp[] {
   // Update auf einen bereits gequeueten, noch nicht synchronisierten Op desselben
   // Drafts ersetzt dessen Payload in place (kein doppelter Eintrag).
+  //
+  // JOB 4249: UND DESSELBEN EIGENTÜMERS. Bis hierher entschied allein `draftId` — an einem
+  // geteilten Gerät verschmolzen damit zwei Konten zu EINEM Eintrag: B speicherte denselben
+  // Entwurf, und As wartende Nutzlast war stillschweigend überschrieben. Der Vergleich ist strikt
+  // und deckt auch den Altbestand richtig ab: ein Vorgang ohne Eigentümer wird von einem Vorgang
+  // MIT Eigentümer nie vereinnahmt.
   if (op.kind === "draft.update" && op.draftId) {
     const idx = queue.findIndex(
-      (q) => q.draftId === op.draftId && (q.status === "queued" || q.status === "failed"),
+      (q) =>
+        q.draftId === op.draftId &&
+        q.eigentuemer === op.eigentuemer &&
+        (q.status === "queued" || q.status === "failed"),
     );
     if (idx >= 0) {
       return queue.map((q, i) =>
@@ -53,6 +92,9 @@ export function enqueue(queue: readonly QueuedOp[], op: NewOp): QueuedOp[] {
       error: null,
       createdAt: op.createdAt,
       title: op.title,
+      // `exactOptionalPropertyTypes`: „Schlüssel fehlt" ist etwas anderes als „Schlüssel mit
+      // undefined" — und genau daran hängt hier die Unterscheidung „ungebunden" / „gebunden".
+      ...(op.eigentuemer !== undefined ? { eigentuemer: op.eigentuemer } : {}),
     },
   ];
 }

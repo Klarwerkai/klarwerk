@@ -672,7 +672,40 @@ const DRAFT_BODY_TOO_LARGE_MESSAGE =
 //
 // `operationId` ist OPTIONAL. Ein Aufruf ohne sie verhält sich exakt wie bisher — die anderen
 // Aufrufer der Route (Mobil, Offline-Queue, das Panel) hängen daran.
-export type DraftCreateRequest = DraftPayload & { operationId?: string };
+//
+// ================================================================================================
+// JOB 4249 R6 — `expectedOwner`: DER ABSENDER SAGT, FÜR WEN ER ZU SCHREIBEN GLAUBT.
+// ================================================================================================
+//
+// DER BEFUND, fünf Runden lang: Die Offline-Warteschlange liegt am GERÄT, die Berechtigung am
+// KONTO — und zwischen der Prüfung „wer bin ich?" und dem Absenden des Aufrufs liegt im Client
+// immer eine Lücke, in die ein Kontowechsel passt. BEN hat diese Lücke in R1, R3, R4 und R5 an vier
+// verschiedenen Stellen gemessen; jedes Mal wurde sie im Client geschlossen, und jedes Mal fand die
+// nächste Runde die nächste. Das ist kein Zufall: Ein Client kann über das Cookie, das der Browser
+// beim Absenden anhängt, grundsätzlich keine Zusage machen.
+//
+// DESHALB STEHT DIE ZUSAGE JETZT DORT, WO SIE EINGELÖST WERDEN KANN. `expectedOwner` ist die
+// Voraussetzung des Aufrufs, genau in der Bauform von `expectedUpdatedAt` beim Aktualisieren
+// (JOB 2684 D1/4193): Der Absender nennt den Stand, unter dem sein Aufruf gelten soll; stimmt er
+// nicht mehr, legt der Server NICHTS an und sagt es. Aus einer Frage des richtigen Augenblicks wird
+// damit eine Frage der Daten — und die kann nicht verrutschen.
+//
+// ES IST OPTIONAL UND ES IST TRANSPORT, aus denselben zwei Gründen wie `operationId`: Ein Aufruf
+// ohne das Feld verhält sich exakt wie bisher (`pages/Capture.tsx`, das Panel, der Word-Weg), und
+// ein Feld, das im Dokument landete, trüge `capture.toKoInput` beim Einreichen ins Wissensobjekt.
+// Es wird deshalb an derselben Stelle abgetrennt wie der Vorgangsschlüssel.
+//
+// KEIN ZWEITES RECHTESYSTEM: Es ersetzt keine einzige Prüfung. `requirePermission("ko.create")`
+// entscheidet unverändert, WER schreiben darf; `expectedOwner` entscheidet nur, ob der Absender
+// noch derselbe ist, für den er die Nutzlast zusammengestellt hat.
+export type DraftCreateRequest = DraftPayload & { operationId?: string; expectedOwner?: string };
+
+/**
+ * JOB 4249 R6: Der Aufruf war für ein anderes Konto gedacht als das, mit dem er ankommt — es wurde
+ * NICHTS angelegt. 409 wie beim Standkonflikt (`DRAFT_STALE`): die Voraussetzung des Aufrufs gilt
+ * nicht mehr, der Aufruf selbst war in Ordnung.
+ */
+const DRAFT_OWNER_MISMATCH = "DRAFT_OWNER_MISMATCH";
 
 // Der routen-eigene Fehlerweg von POST /api/drafts — und er ist mit Absicht ENG: er greift
 // AUSSCHLIESSLICH den Cap-Bruch ab (`FST_ERR_CTP_BODY_TOO_LARGE`, den Fastify wirft, wenn der Body
@@ -919,10 +952,44 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
         // `capture.toKoInput` sie beim Einreichen ins Wissensobjekt — der Fehler, an dem D1
         // gescheitert ist. Die Trennung steht deshalb VOR `validateDraftPayloadShape`: was danach
         // geprüft und gespeichert wird, hat den Schlüssel nie gesehen.
-        const { operationId: rohSchluessel, ...nutzlast } = request.body ?? {};
+        const {
+          operationId: rohSchluessel,
+          expectedOwner: rohEigentuemer,
+          ...nutzlast
+        } = request.body ?? {};
         const gestalt = validateDraftPayloadShape(nutzlast);
         if (!gestalt.ok) {
           reply.code(400).send({ error: "BAD_REQUEST", message: gestalt.message });
+          return;
+        }
+        // ==========================================================================================
+        // JOB 4249 R6 — DIE VORAUSSETZUNG WIRD GEPRÜFT, BEVOR IRGENDETWAS ENTSTEHT.
+        // ==========================================================================================
+        //
+        // VOR `createDraftVorgang` und damit vor jedem Schreibzugriff: Trifft die Voraussetzung
+        // nicht zu, hat die Ablage diesen Vorgang nie gesehen — weder als Entwurf noch als
+        // Vorgangsschlüssel. Der Absender kann den Aufruf also unverändert wiederholen, sobald das
+        // richtige Konto angemeldet ist; nichts ist verbraucht und nichts ist verloren.
+        //
+        // DIE ANTWORT VERRÄT NICHTS. Sie nennt weder das tatsächlich angemeldete Konto noch das
+        // erwartete, weder einen Entwurf noch einen Titel — Lieferung 5 des Auftrags („derselbe
+        // Schlüssel gibt nie etwas Fremdes heraus") gilt für den Fehlertext genauso wie für den
+        // Erfolgsfall. Sie sagt eine Tatsache über DIESEN Aufruf und sonst nichts.
+        //
+        // JOB 4249 R7 — UND SIE SPRICHT DIE SPRACHE DER SITZUNG. In Runde 6 stand der Satz hier als
+        // deutsches Literal; der Q9-Wächter (`tests/q9-fremde-flaechen/keine-deutschen-literale.test.ts`)
+        // hat ihn im Tor gefunden und damit genau das getan, wofür er gebaut ist. Er gehört in den
+        // Katalog — es ist derselbe Weg, den `DRAFT_NOT_FOUND` und `DRAFT_NOT_VISIBLE` zwölf Zeilen
+        // weiter oben schon gehen, keine zweite Auslegung und kein Sonderfall.
+        const erwarteterEigentuemer =
+          typeof rohEigentuemer === "string" && rohEigentuemer.trim().length > 0
+            ? rohEigentuemer.trim()
+            : undefined;
+        if (erwarteterEigentuemer !== undefined && erwarteterEigentuemer !== user.id) {
+          reply.code(409).send({
+            error: DRAFT_OWNER_MISMATCH,
+            message: meldung("DRAFT_OWNER_MISMATCH", sprache(request)),
+          });
           return;
         }
         // Ein Schlüssel, der kein nichtleerer Text ist, ist kein Schlüssel — dann läuft der

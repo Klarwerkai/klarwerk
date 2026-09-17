@@ -470,8 +470,15 @@ async function altvorgangOffineGeoeffnetUndBearbeitet(): Promise<string> {
     ]),
   );
   // OHNE VERBINDUNG öffnen: hier entsteht kein Konfliktzustand, den eine Sperre abfragen könnte.
-  Object.defineProperty(navigator, "onLine", { value: false, configurable: true });
+  //
+  // JOB 4249: Die Verbindung fällt jetzt NACH dem Aufbau weg statt davor — der Ablauf, den dieser
+  // Fall misst, ist davon unberührt, die Ausgangslage aber ehrlicher. Grund: die Warteschlange
+  // gehört seit JOB 4249 einem KONTO, und die Sitzung lässt sich nur mit Verbindung bestätigen
+  // (react-query hält Abfragen ohne Netz an). Ein Aufbau OHNE Netz hat also gar keinen
+  // angemeldeten Menschen — im Betrieb zeigt `App.tsx` in dieser Lage die Anmeldung und nicht
+  // diese Fläche. Gemessen wird weiterhin: offline geöffnet, offline bearbeitet, dann online.
   await mount();
+  await netz(false);
   await klick(knopfMitTitel(i18n.t("mob.resume")));
   expect(textfeld().value).toBe("Alter Rest ohne Stand");
   expect(kasten(), "offline wird nichts behauptet").toBeNull();

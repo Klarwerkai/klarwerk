@@ -732,8 +732,20 @@ const AUS_DEM_RECHTETOR = ["PERMISSION_MISSING"];
  * in allen drei Sprachen gegen echte Antworten, und ein Rückfall auf „Unerwarteter Fehler." macht
  * E1 bis G4 rot (gemessen als Mutation M1 in JOB 3956). Diese Liste hält die Deckung von H3.2
  * vollständig — kein toter Schlüssel —, ohne so zu tun, als sei die Stelle abgetastet worden.
+ *
+ * JOB 4249 · `DRAFT_OWNER_MISMATCH` kommt aus DERSELBEN Datei, aber aus dem ANLEGEWEG
+ * (`POST /api/drafts`, die Voraussetzung `expectedOwner`) statt aus dem Ladeweg. Dieselbe Lage,
+ * dieselbe benannte Prüflücke — und dieselbe Deckung am Draht:
+ * `tests/offline-identitaet-anlage/fremder-schluessel-gibt-nichts-heraus.test.ts` hält den Satz in
+ * EN, NL und DE gegen echte 409-Antworten (S6a/S6b/S6c). Er gehört deshalb NICHT in
+ * `OHNE_ROUTENFALL`, sondern mit seinen zwei Fremdsprachfällen in `GEMESSEN_VON`.
  */
-const AUS_DEN_ENTWURFSROUTEN = ["DRAFT_NOT_FOUND", "DRAFT_NOT_VISIBLE", "PERMISSION_DENIED"];
+const AUS_DEN_ENTWURFSROUTEN = [
+  "DRAFT_NOT_FOUND",
+  "DRAFT_NOT_VISIBLE",
+  "DRAFT_OWNER_MISMATCH",
+  "PERMISSION_DENIED",
+];
 
 /**
  * Was sich zwischen gepinnter und gemessener Liste verschoben hat — namentlich. Ohne diesen Satz
@@ -1406,8 +1418,12 @@ function routenfall(schluessel: string, sprache: Fremdsprache): string[] {
 }
 
 /**
- * DIE LISTE. 15 von 33 Schlüsseln zeigen heute nirgends einen englischen oder niederländischen Satz
+ * DIE LISTE. 15 von 34 Schlüsseln zeigen heute nirgends einen englischen oder niederländischen Satz
  * an einem echten Draht. Gemessen, nicht abgeschrieben.
+ *
+ * JOB 4249: der Katalog ist um `DRAFT_OWNER_MISMATCH` gewachsen (33 → 34), diese Liste NICHT — der
+ * neue Schlüssel bringt seine Messung mit (s. `GEMESSEN_VON`, zwei Fälle in
+ * `tests/offline-identitaet-anlage/`). Die fünfzehn Namen sind unverändert dieselben.
  *
  * JOB 4011: der Katalog ist um `ACCESS_EXPIRY_UNREADABLE` gewachsen (32 → 33), diese Liste NICHT —
  * der neue Schlüssel bringt seine Messung mit (s. `GEMESSEN_VON`, zwei Fälle in
@@ -1484,6 +1500,15 @@ const GEMESSEN_VON = {
   DRAFT_NOT_VISIBLE: [
     "tests/q9-entwurfsfehler/entwurfsfehler-sprachfaelle.test.ts · F1 EN · fremder Entwurf: 403 FORBIDDEN mit englischem Satz",
     "tests/q9-entwurfsfehler/entwurfsfehler-sprachfaelle.test.ts · F2 NL · fremder Entwurf: 403 FORBIDDEN mit niederländischem Satz",
+  ],
+  // JOB 4249 · der Satz des ANLEGEWEGS. Er entsteht, wenn das Konto zwischen dem Zusammenstellen
+  // der Nutzlast und dem Absenden gewechselt hat (`expectedOwner`, die Voraussetzung des Aufrufs).
+  // Wie bei den beiden Nachbarn hängt jede Fremdsprache an EINEM Fall, und jeder Fall hält den Satz
+  // doppelt — wörtlich und über `MELDUNGEN.DRAFT_OWNER_MISMATCH.<sprache>`. Der deutsche Fall (S6c)
+  // zählt hier nicht mit; H4 fragt nach EN und NL.
+  DRAFT_OWNER_MISMATCH: [
+    "tests/offline-identitaet-anlage/fremder-schluessel-gibt-nichts-heraus.test.ts · S6a EN · fremdes Konto beim Anlegen: 409 DRAFT_OWNER_MISMATCH mit englischem Satz",
+    "tests/offline-identitaet-anlage/fremder-schluessel-gibt-nichts-heraus.test.ts · S6b NL · fremdes Konto beim Anlegen: 409 DRAFT_OWNER_MISMATCH mit niederländischem Satz",
   ],
   /**
    * EHRLICH GELESEN: nur R12 hält den INTERNAL-Satz POSITIV gegen eine Antwort. Die vier anderen

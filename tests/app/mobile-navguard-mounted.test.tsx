@@ -28,6 +28,11 @@ import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter, Route, Routes } from "../../apps/web/node_modules/react-router-dom";
 import "../../apps/web/src/i18n";
+// JOB 4249: `Mobile` liest seit diesem Auftrag die Sitzung — die Offline-Warteschlange liegt am
+// Gerät, gehört aber einem KONTO. Die Seite braucht damit denselben Rahmen wie im Betrieb, wo
+// `App.tsx:97` alles in den `AuthProvider` stellt. Ohne abrufbare Sitzung steht die Kontolage auf
+// „unbekannt", und genau so verhält sich die Fläche dann auch — für diesen Fall ändert das nichts.
+import { AuthProvider } from "../../apps/web/src/app/AuthContext";
 import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import { Mobile } from "../../apps/web/src/pages/Mobile";
@@ -59,7 +64,10 @@ function mount(initialState: { from?: string } | null): void {
               createElement(
                 Routes,
                 null,
-                createElement(Route, { path: "/mobile", element: createElement(Mobile) }),
+                createElement(Route, {
+                  path: "/mobile",
+                  element: createElement(AuthProvider, null, createElement(Mobile)),
+                }),
                 createElement(Route, {
                   path: "/bibliothek",
                   element: createElement("div", null, "BIBLIOTHEK-SEITE"),
