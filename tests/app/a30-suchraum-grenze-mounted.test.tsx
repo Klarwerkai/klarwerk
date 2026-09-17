@@ -88,6 +88,20 @@ vi.mock("../../apps/web/src/api/hooks", () => {
     // Zeile trägt seit dem Umbau nur Punkt, Titel und „Bereich · Status". Die Lesefläche zeigt den
     // gewählten Eintrag; sie bekommt ihn hier aus derselben Treffermenge.
     useKo: () => ok(lage.treffer[0] ?? null),
+    // JOB 4155 (WG-LUECKEN) · NACHGEFÜHRT. Die Lesespalte fragt seit diesem Auftrag die GESETZTEN
+    // Beziehungen des Eintrags ab (`Beziehungsbereich` in `BibliothekLesen.tsx`); ohne diesen
+    // Eintrag wirft der Modul-Mock „No useKoBeziehungen export is defined".
+    //
+    // ER ANTWORTET ABSICHTLICH NOCH NICHT (`data: undefined`, kein Fehler): dieser Prüfstand misst
+    // den Fundstellengrund und nicht die Beziehungen. Solange keine Antwort da ist, bleibt der
+    // Bereich eine leere Fläche — die gemessenen Zusagen dieser Datei bleiben damit unberührt.
+    useKoBeziehungen: () => ({
+      data: undefined,
+      isLoading: true,
+      isError: false,
+      error: null,
+      refetch: () => Promise.resolve({}),
+    }),
     useAudit: () => ok([]),
     useKoEvidence: () => ok([]),
     useKoNeighbors: () => ok([]),

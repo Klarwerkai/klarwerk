@@ -82,6 +82,21 @@ const STATUS_BY_CODE: Record<string, number> = {
   // Sammelmuster — aus demselben Grund, aus dem `INTERNAL_ONLY_CODES` unten eine MENGE ist und kein
   // Regex: eine Musterfreigabe entscheidet über Namen, die noch niemand geprüft hat.
   EXTERNAL_ATTACH_BLOCKED: 403,
+  // ================================================================================================
+  // JOB 4155 (WG-LUECKEN) — `STAND_VERALTET` IST EIN KONFLIKT UND KEINE FEHLEINGABE.
+  // ================================================================================================
+  //
+  // Der Fachfehler der kuratierten Beziehungen (`KantenError`, JOB 4151) fehlte in dieser Tabelle
+  // und fiel deshalb in den Auffangwert `?? 400`: „du hast etwas falsch gemacht". Das stimmt hier
+  // nicht — die Anfrage ist wohlgeformt, der Mensch hat richtig gehandelt, nur der Text unter ihm
+  // hat sich bewegt. Genau derselbe Sachverhalt wie `CONFLICT` und `DRAFT_STALE`: 409.
+  //
+  // WAS DIESER EINTRAG NICHT ERSETZT: `kanten-routes.ts` sendet `STAND_VERALTET` weiterhin selbst,
+  // weil die Antwort dort die AKTUELLEN Fassungsnummern beider Endpunkte mitträgt (`aktuell`) —
+  // eine Auskunft, die `sendError` nicht kennt und nicht erfinden darf. Dieser Eintrag deckt jeden
+  // ANDEREN Weg, auf dem der Fehler nach aussen geht; er ist die Absicherung gegen die stille 400,
+  // nicht die Ablösung des Sonderzweigs.
+  STAND_VERALTET: 409,
 };
 
 // G27 R1 (KW-ARCH-G27-HTTP-MASKIERUNG-07 §1): Fehlercodes, die REIN INTERN sind — technische

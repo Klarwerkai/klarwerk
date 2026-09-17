@@ -2,6 +2,10 @@ import { createHash, randomUUID } from "node:crypto";
 import type { AuditService } from "../../audit";
 import {
   type Confidentiality,
+  // JOB 4155: die beiden geschlossenen Unions der kuratierten Beziehungen — importiert wie
+  // `KnowledgeObject`, über dieselbe öffentliche `index.ts`. Keine neue Modulkante.
+  type KantenArt,
+  type KantenRichtung,
   type KnowledgeObject,
   KoError,
   type KoFilter,
@@ -34,6 +38,7 @@ import {
   type ExpertiseEntry,
   type Graph,
   type GraphEdge,
+  type GraphKuratierteKante,
   type ImportCandidate,
   type ImportItem,
   type ImportResult,
@@ -361,6 +366,41 @@ export interface LibraryServiceDeps {
   // generischen Import-Enable ab (aktuell durch KLARWERK_CONFLUENCE_IMPORT gesetzt; ein Adapter #2/Jira
   // schaltet denselben Strang über sein eigenes Flag, ohne Confluence-Symbole).
   externalUpsert?: boolean;
+  /**
+   * ================================================================================================
+   * JOB 4155 (WG-LUECKEN) — DIE KURATIERTEN KANTEN IM GLOBALEN GRAPHEN.
+   * ================================================================================================
+   *
+   * Der Vertrag WISSENSGRAPH-INTEGRATION (Nachtrag 2 §3) verlangt die gesetzten Beziehungen als
+   * ZUSÄTZLICHE Kantenmenge derselben `/api/graph`-Antwort, „mit EINER Mengenabfrage, keine
+   * Einzelabfragen je Eintrag aus der UI". Genau dafür ist dieser Port da: EIN Aufruf für den
+   * ganzen Graphen.
+   *
+   * EIN PORT UND KEIN MODULIMPORT: `KantenRepo` lebt in `services/knowledge-object`; ein Import von
+   * dort zöge eine neue Modulkante, die dieses Modul nicht braucht. Die Mindestform hier ist
+   * dieselbe Bauform, mit der `services/wissensnetz/src/lesemodell-ports.ts` seine Quellen
+   * beschreibt — die Kompositionswurzel verdrahtet den echten Bestand, und TypeScript prüft ihn
+   * dort strukturell.
+   *
+   * OPTIONAL: Ohne Verdrahtung trägt die Antwort das Feld GAR NICHT — nicht eine leere Liste. Eine
+   * leere Liste wäre die Behauptung „nachgesehen, keine Beziehungen da", und der Client
+   * unterscheidet genau daran (`apps/web/src/api/types.ts`, `Graph.kuratierteKanten`).
+   */
+  kanten?: KuratierteKantenLeser;
+}
+
+/**
+ * Die Leseseite der kuratierten Kanten, soweit der Graph sie braucht — erfüllt von
+ * `KantenRepo.alleAktiven` (`services/knowledge-object/src/kanten-service.ts:172`).
+ *
+ * Die Kantenform ist bewusst SCHMAL: der Graph liest `quelleId`, `zielId`, `art` und `richtung`.
+ * `status` steht NICHT darin, weil `alleAktiven` per Zusage nur aktive Kanten liefert — ein Feld,
+ * das dieses Modul selbst filtern müsste, wäre die zweite Auffassung davon, was „aktiv" heisst.
+ */
+export interface KuratierteKantenLeser {
+  alleAktiven(): Promise<
+    readonly { quelleId: string; zielId: string; art: string; richtung: string }[]
+  >;
 }
 
 function increment(map: Record<string, number>, key: string): void {
@@ -388,6 +428,9 @@ export class LibraryService {
   private readonly candidates: CandidateRepo;
   // SCRUM-510 R2b: quellneutraler externalId-Upsert-Strang aktiv? Aus = heutiges Bestandsverhalten.
   private readonly externalUpsert: boolean;
+  // JOB 4155 (WG-LUECKEN): der Kantenbestand für `/api/graph`. `undefined` = nicht verdrahtet; die
+  // Antwort trägt das Feld dann GAR NICHT (s. `LibraryServiceDeps.kanten`).
+  private readonly kanten: KuratierteKantenLeser | undefined;
 
   constructor(deps: LibraryServiceDeps) {
     this.koService = deps.koService;
@@ -396,6 +439,7 @@ export class LibraryService {
     this.genId = deps.genId ?? (() => randomUUID());
     this.now = deps.now ?? (() => Date.now());
     this.externalUpsert = deps.externalUpsert ?? false;
+    this.kanten = deps.kanten;
   }
 
   // SCRUM-515: die eine Stelle, an der eine rohe (untrusted) confidentiality in den Import-Kern eintritt.
@@ -2392,6 +2436,84 @@ export class LibraryService {
       truncated: edges.length > GRAPH_EDGE_LIMIT,
       edgeLimit: GRAPH_EDGE_LIMIT,
       excludedTags,
+      // JOB 4155: die gesetzten Beziehungen derselben Antwort. Schlüssel WEG, wenn kein Bestand
+      // verdrahtet ist — nicht eine leere Liste (s. `Graph.kuratierteKanten`).
+      ...(await this.kuratierteKantenFuer(list)),
+    };
+  }
+
+  // ------------------------------------------------------------------------------------------------
+  // JOB 4155 · WG-LUECKEN — DIE KURATIERTEN KANTEN DES GRAPHEN, IN EINER MENGENABFRAGE.
+  // ------------------------------------------------------------------------------------------------
+  //
+  // EINE Abfrage für den ganzen Graphen (`alleAktiven`), nicht eine je Knoten. Der Vertrag verlangt
+  // das ausdrücklich („keine Einzelabfragen je Eintrag aus der UI"), und es ist auch die einzige
+  // Form, die bei mehreren tausend sichtbaren Objekten trägt.
+  //
+  // DER SICHTBARKEITSSCHNITT IST EINE MENGENPRÜFUNG UND KEINE ZWEITE RECHTEENTSCHEIDUNG: `sichtbar`
+  // ist bereits auf `list` angewandt worden, bevor irgendetwas gezählt wurde. Eine Kante zählt genau
+  // dann, wenn BEIDE Endpunkte in dieser getrimmten Menge liegen. Damit kann eine Kante nie die
+  // Existenz eines Objekts verraten, das der Aufrufer nicht sehen darf — dieselbe Zusage, die
+  // `kanten-service.ts` am Einzelweg gibt, hier über die Menge statt über Einzelabfragen.
+  //
+  // DIE ORDNUNG ist deterministisch (`a`, dann `b`, dann `art`), damit zwei Läufe auf demselben
+  // Bestand dieselbe Antwort geben — und damit der Deckel unten eine ABSCHNEIDUNG ist und keine
+  // Zufallsauswahl. Genau dieselbe Begründung gilt bei `edges` eine Ebene höher.
+  //
+  // ------------------------------------------------------------------------------------------------
+  // DER DECKEL — JOB 4155 RUNDE 3, BENs Korrekturpflicht 1. HIER STAND DAS GEGENTEIL.
+  // ------------------------------------------------------------------------------------------------
+  //
+  // Runde 2 liess diese Menge ABSICHTLICH ungedeckelt, mit der Begründung, kuratierte Kanten würden
+  // von Menschen gesetzt und wüchsen nicht quadratisch mit dem Bestand. Diese Begründung war falsch,
+  // und zwar nachweisbar: BEN hat am unveränderten Produkt 102 sichtbare Objekte mit 5.151
+  // verschiedenen aktiven Beziehungen aufgebaut — das vollständige Paarprodukt (102·101/2) — und
+  // bekam `5151 kuratierte Kanten, edgeLimit=5000, truncated=false` zurück. Nichts hindert einen
+  // Bestand daran, quadratisch zu werden; „von Menschen gesetzt" ist keine Schranke, sondern eine
+  // Erwartung. Und der Vertrag sagt es ohnehin wörtlich: die kuratierten Kanten gehen hinaus
+  // „unter demselben Sichtbarkeitsfilter UND DERSELBEN ANTWORTBEGRENZUNG"
+  // (`jobs/4151/HINWEIS.md`, Abschnitt „Mengenabfrage und globaler Graph").
+  //
+  // DERSELBE Wert (`GRAPH_EDGE_LIMIT`), auf DIESE Menge angewandt. Bewusst nicht ein gemeinsames
+  // Budget über beide Mengen: dann nähme die eine der anderen Kanten weg, und wie viele, hinge vom
+  // Bestand ab — zwei Auskünfte, die einander still verfälschen. Zwei Mengen, zwei Deckel, zwei
+  // eigene Grenzauskünfte; `edges`, `totalEdges`, `truncated` und `edgeLimit` sind unberührt.
+  //
+  // UND DIE KÜRZUNG IST SICHTBAR. Ein stiller Deckel wäre hier das Schlimmste: die Fläche zeichnete
+  // 5.000 von 5.151 Beziehungen und behauptete mit derselben Ruhe „das ist der Bestand". Die Antwort
+  // nennt deshalb die Zahl VOR dem Deckel und sagt, ob gekürzt wurde — dieselbe Bauform, die
+  // `totalEdges`/`truncated` für die abgeleiteten Kanten schon haben. Die Zahl ist keine
+  // Existenzauskunft über Verborgenes: sie zählt NACH dem Sichtbarkeitsschnitt.
+  private async kuratierteKantenFuer(sichtbare: readonly KnowledgeObject[]): Promise<{
+    kuratierteKanten?: GraphKuratierteKante[];
+    kuratierteKantenGesamt?: number;
+    kuratierteKantenGekuerzt?: boolean;
+  }> {
+    const bestand = this.kanten;
+    if (!bestand) {
+      return {};
+    }
+    const erlaubt = new Set(sichtbare.map((ko) => ko.id));
+    const roh = await bestand.alleAktiven();
+    const sichtbareKanten = roh
+      .filter((k) => erlaubt.has(k.quelleId) && erlaubt.has(k.zielId))
+      .map((k) => ({
+        // Quelle und Ziel behalten ihre Rollen — bei `gerichtet` ist das die ganze Aussage.
+        a: k.quelleId,
+        b: k.zielId,
+        art: k.art as KantenArt,
+        richtung: k.richtung as KantenRichtung,
+        status: "aktiv" as const,
+        herkunft: "kuratiert" as const,
+      }))
+      .sort(
+        (x, y) => x.a.localeCompare(y.a) || x.b.localeCompare(y.b) || x.art.localeCompare(y.art),
+      );
+    return {
+      kuratierteKanten: sichtbareKanten.slice(0, GRAPH_EDGE_LIMIT),
+      // NACH dem Sichtbarkeitsschnitt, VOR dem Deckel — wortgleich die Zusage von `totalEdges`.
+      kuratierteKantenGesamt: sichtbareKanten.length,
+      kuratierteKantenGekuerzt: sichtbareKanten.length > GRAPH_EDGE_LIMIT,
     };
   }
 

@@ -5,7 +5,14 @@ import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 import { ApiError } from "../../api/client";
 import { type KoAction, endpoints } from "../../api/endpoints";
-import { useAudit, useConflicts, useEigeneBefunde, useKo, useKos } from "../../api/hooks";
+import {
+  useAudit,
+  useConflicts,
+  useEigeneBefunde,
+  useKo,
+  useKoBeziehungen,
+  useKos,
+} from "../../api/hooks";
 import type { ExtractedPoint, KnowledgeObject, KnowledgeType, KoProposal } from "../../api/types";
 import { useSession } from "../../app/AuthContext";
 import { ImageDescribeProvider } from "../../app/ImageDescribeContext";
@@ -70,6 +77,7 @@ import { Modal } from "../Modal";
 import { RichTextEditor } from "../RichTextEditor";
 import { RoleLink } from "../RoleLink";
 import { SanitizedHtml } from "../SanitizedHtml";
+import { WissensbeziehungenBereich } from "../WissensbeziehungenBereich";
 // JOB 4145 R3 · WIKI-ORIENTIERUNG: die ANZEIGE- UND STRUKTURREGELN der Gliederung kommen weiter aus
 // der EINEN Stelle des Hauses und werden nicht nachgebaut — `d44LeisteZeigen` („ohne Überschrift
 // keine Leiste, aber KEINE Mindestzahl") und `d44SichtbareEintraege` („gezählt wird alles, gezeigt
@@ -129,6 +137,176 @@ import { type ZustandsTon, zustandsTon } from "./zustand";
 // ABGELÖST WIRD DER ALTE ORT: `MehrAbschnitte` ruft `useEigeneBefunde`/`eigeneKollisionDetail` nicht
 // mehr. Zwei Flächen, die denselben Befund verschieden auslegen, sind der Fehler, gegen den
 // `eigeneKollision.ts:15-17` steht — nach diesem Umbau gibt es die Auskunft an genau einer Stelle.
+
+// ==================================================================================================
+// JOB 4155 · WG-LUECKEN — DIE GESETZTEN BEZIEHUNGEN STEHEN IN DER LESESPALTE, OHNE EINEN KLICK.
+// ==================================================================================================
+//
+// DER BEFUND, den dieser Auftrag schliesst: Seit JOB 4153 gibt es den `WissensbeziehungenBereich`,
+// und er hing ausschliesslich in `KnowledgeNeighborhood` — also im Abschnitt 13 hinter der
+// zugeklappten Zeile „Mehr" (`MehrAbschnitte.tsx:1853-1860`, `:2869` weiter unten). Codex hat das
+// gemessen (2df61f13) und festgelegt: dieser Einbau zählt NICHT als App-Anzeige. Eine Anwenderin
+// sah ihre eigene, ausdrücklich gesetzte Fachbeziehung nur, wenn sie vorher etwas aufklappte.
+//
+// ABLÖSUNG, NICHT ERGÄNZUNG (Lieferung 6): Der Aufruf in `KnowledgeNeighborhood.tsx` ist mit
+// diesem Auftrag ENTFERNT. Abschnitt 13 zeigt danach ausschliesslich die ABGELEITETE
+// Schlagwort-Nachbarschaft (`herkunft: "abgeleitet"`), die kuratierten Beziehungen stehen hier
+// oben. Zwei Flächen, die dieselben Beziehungen zeigen, wären zwei Stände desselben Bestands —
+// derselbe Fehlertyp, gegen den `eigeneKollision.ts:15-17` steht.
+//
+// ------------------------------------------------------------------------------------------------
+// DAS ZUSTANDSMODELL DIESER STELLE (Auftrag §9) — und warum es HIER steht und nicht im Bereich.
+// ------------------------------------------------------------------------------------------------
+//
+// `WissensbeziehungenBereich` gehört JOB 4153 und wird von diesem Auftrag NICHT umgeschrieben. Was
+// er selbst trägt, bleibt seins: erfolgreich leer (mit dem Satz, was „keine Beziehung" nicht
+// heisst), Cache mit laufender und mit gescheiterter Auffrischung (`AuffrischungHinweis`,
+// dieselbe Bauform wie oben in dieser Datei), die Schreibwege und ihre Fehler.
+//
+// Was die LESESPALTE beisteuert, sind genau die zwei Lagen, in denen ihre Hausform eine andere ist
+// als die des Bereichs — und je Lage steht die Auskunft danach an GENAU EINER Stelle:
+//
+//   · LADEN (noch keine Antwort)  → leere Fläche, kein Wort. Die Hausform dieser Datei
+//                                   (`:1566`, „Ein Wort hier wäre der Erklärtext, den diese Seite
+//                                   abschafft"). Der Bereich wird gar nicht erst gerendert.
+//   · KEINE RECHTE (403)          → der Bereich erscheint NICHT. Kein gesperrter Platzhalter,
+//                                   keine Zahl, kein Fehlersatz: ein Platzhalter wäre eine
+//                                   Existenzauskunft über Beziehungen, die dieser Mensch nicht
+//                                   sehen darf (dieselbe Regel wie `ko-routes.ts`, mega74 B).
+//   · FEHLER OHNE BESTAND         → der Bereich sagt seinen einen Satz; die Lesespalte hängt den
+//                                   ERNEUTEN VERSUCH daneben, den §9 verlangt und den der Bereich
+//                                   nicht hat. Kein zweiter Fehlersatz — der Satz bleibt seiner.
+//
+// OFFLINE ist hier ausdrücklich KEIN eigener Zweig: ein abgebrochener Abruf kommt als Fehler an und
+// geht denselben Weg. Ein eigener Offline-Text wäre ein Urteil über die Ursache ohne Beleg (Lehre
+// JOB 3037 R4/R5) — mit Bestand bleibt der Stand stehen und der Bereich sagt „Auffrischung
+// fehlgeschlagen", ohne Bestand steht der Fehlersatz mit dem Knopf.
+//
+// ES GIBT KEINE ZWEITE ABFRAGE: `useKoBeziehungen` ist derselbe Hook mit demselben Schlüssel
+// (`koBeziehungenQueryKey`), den der Bereich selbst benutzt — React Query liefert beiden dieselbe
+// Beobachtung desselben Eintrags. Eine eigene Abfrage hier wäre ein zweiter Stand desselben
+// Bestands.
+function Beziehungsbereich({ koId }: { koId: string }): JSX.Element | null {
+  const { t } = useTranslation();
+  // ALLE Felder in EINEM Zugriff. React Query merkt sich je Render, WELCHE Felder eine Komponente
+  // gelesen hat, und weckt sie nur bei deren Änderung; eine Komponente, die in einem frühen
+  // Ausgang nur eines liest, verpasst danach die Änderung der anderen.
+  const { data, error: fehler, isError, refetch } = useKoBeziehungen(koId);
+  // KEINE RECHTE: der Server sagt 403. Der Bereich verschwindet ganz — ein Platzhalter „nicht
+  // sichtbar" wäre die Auskunft, dass es hier etwas zu sehen gäbe.
+  const keinRecht = fehler instanceof ApiError && fehler.status === 403;
+  // ================================================================================================
+  // EINE ANTWORT, DIE DIESE FLÄCHE NICHT LESEN KANN, IST EIN FEHLER — UND KEIN ABSTURZ.
+  // ================================================================================================
+  //
+  // `WissensbeziehungenBereich` liest `data.kanten` ohne Rückfrage (JOB 4153) — richtig, denn der
+  // Vertrag sagt `{ koId, kanten, total }` zu. Kommt aber etwas anderes zurück (ein Server ohne
+  // diesen Endpunkt, ein Proxy mit eigener Fehlerseite, eine ältere Fassung), dann wirft die
+  // Komponente WÄHREND DES RENDERNS — und ein Wurf im Render nimmt in React nicht den Bereich mit,
+  // sondern die GANZE Eintragsansicht. Der Mensch sähe statt seines Wissensobjekts eine leere
+  // Seite, und zwar wegen einer Nebenauskunft.
+  //
+  // GEMESSEN, nicht vorsorglich: der erste vollständige Torlauf dieses Auftrags fiel in zwölf
+  // Prüfständen mit `TypeError: Cannot read properties of undefined (reading 'length')` aus
+  // `WissensbeziehungenBereich.tsx` — überall dort, wo die Gegenseite eine leere Liste statt der
+  // Vertragsform liefert. Vor diesem Auftrag fiel das niemandem auf, weil der Bereich zugeklappt
+  // hinter „Mehr" hing und gar nicht erst gerendert wurde.
+  //
+  // DIE ANTWORT DARAUF IST NICHT SCHWEIGEN: eine unlesbare Auskunft wird wie ein Abrufscheitern
+  // behandelt — ein Satz und ein erneuter Versuch. „Keine Beziehungen" wäre die falscheste aller
+  // Antworten, denn darüber ist an dieser Stelle NICHTS bekannt.
+  const lesbar = data !== undefined && Array.isArray((data as { kanten?: unknown }).kanten);
+  const unlesbar = data !== undefined && !lesbar;
+  // Der Server HAT geantwortet — mit lesbaren Daten oder mit einem Fehler. Vorher ist die Fläche
+  // leer. Eine unlesbare Antwort zählt als Fehler, nicht als Antwort.
+  const antwortDa = !keinRecht && (lesbar || isError || unlesbar);
+
+  // ================================================================================================
+  // DER RIEGEL — UND DER WETTLAUF, DEN ER BEENDET (gemessen, nicht vorsorglich).
+  // ================================================================================================
+  //
+  // OHNE IHN LIEF DIESE STELLE IM KREIS, und zwar aus einem Grund, der nur entsteht, weil hier ZWEI
+  // Leser an DERSELBEN Abfrage hängen — dieser Bereich und der `WissensbeziehungenBereich` darin:
+  //
+  //   1. Beim ersten Rendern liegt noch keine Antwort vor → der Bereich gibt nichts aus, der
+  //      Unterbau ist also NICHT eingehängt.
+  //   2. Der Abruf scheitert → der Bereich rendert → der Unterbau wird eingehängt und meldet sich
+  //      als ZWEITER Beobachter an. React Query frischt eine gescheiterte Abfrage beim Anmelden
+  //      eines neuen Beobachters auf (`refetchOnMount`).
+  //   3. Bei dieser Auffrischung setzt React Query den Zustand OHNE Daten auf `pending` zurück
+  //      (`fetchState`: `data === undefined` → `status: "pending"`, `error: null`) → der Bereich
+  //      gibt wieder nichts aus → der Unterbau wird ausgehängt.
+  //   4. Der Abruf scheitert erneut → zurück zu Schritt 2.
+  //
+  // GEMESSEN am 16.09.2026 in `tests/wissensgraph-abnahme/eintragsansicht-direkt.test.tsx`: eine
+  // Kette aus abwechselnd `[true/…/500]` und `[false/…/undefined]`, so lange der Prüfstand lief —
+  // und am Ende stand die Fläche LEER da, obwohl der Server längst geantwortet hatte. Ein Mensch
+  // hätte eine flackernde, dauerhaft ladende Stelle gesehen und nie den Fehlersatz.
+  //
+  // DER RIEGEL BRICHT DEN KREIS AN SCHRITT 3: Hat der Server EINMAL geantwortet, bleibt der Bereich
+  // stehen — auch während einer späteren Auffrischung. Das ist dieselbe Regel, nach der diese Datei
+  // ihren ganzen Bestand hält (`abfrageMitBestand`: ein laufender oder gescheiterter Nachschlag
+  // leert nie, was schon da war), nur eine Ebene höher angewandt.
+  //
+  // ER GILT JE EINTRAG: der Aufrufer setzt `key={ko.id}`, ein anderer Eintrag beginnt also mit einem
+  // frischen Riegel und nicht mit dem Gedächtnis des vorigen.
+  const [antwortWarSchonDa, setAntwortWarSchonDa] = useState(false);
+  useEffect(() => {
+    if (antwortDa && !antwortWarSchonDa) {
+      setAntwortWarSchonDa(true);
+    }
+  }, [antwortDa, antwortWarSchonDa]);
+
+  if (keinRecht) {
+    return null;
+  }
+  // LADEN: noch nie eine Antwort da und auch kein Fehler — leere Fläche, kein „Lädt …".
+  if (!antwortDa && !antwortWarSchonDa) {
+    return null;
+  }
+  return (
+    // `data-bib-text` — DIESELBE Begründung wie an der Kollisionszeile dieser Datei (JOB 3068 N5,
+    // Kopf oben): der Block ist INHALT, nämlich eine Tatsachenaussage über DIESEN Eintrag, die ein
+    // Mensch verantwortet hat — und kein Erklärtext über die Bedienung. Der Textmesser
+    // (`tests/design/zielbild-h4-kein-erklaertext.test.ts`) zieht ihn deshalb ab, wie er die
+    // Meta-Zeile, die Chips und die Kollisionszeile abzieht. Die Marke sitzt an der HÜLLE und nicht
+    // im Bereich selbst: der gehört JOB 4153 und wird hier nicht umgeschrieben.
+    <div data-testid="bib-beziehungen" data-bib-text="beziehungen">
+      {/* Die UNLESBARE Antwort bekommt denselben Satz wie ein gescheiterter Abruf — und der Bereich
+          selbst wird dann gar nicht erst gerendert, weil er an dieser Auskunft zerbräche. */}
+      {unlesbar ? (
+        <p
+          className="rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text"
+          data-testid="bib-beziehungen-unlesbar"
+        >
+          {t("wb.fehler")}
+        </p>
+      ) : (
+        <WissensbeziehungenBereich koId={koId} />
+      )}
+      {/* FEHLER OHNE BESTAND: der Satz steht im Bereich (`wb-fehler`), der Weg zurück hier. Mit
+          Bestand gibt es ihn nicht — dann steht der bekannte Stand und der Bereich sagt selbst,
+          dass die Auffrischung fehlschlug. */}
+      {(isError && data === undefined) || unlesbar ? (
+        <button
+          type="button"
+          onClick={() => void refetch()}
+          data-testid="bib-beziehungen-erneut"
+          className="mt-2 rounded-btn border border-hairline px-2.5 py-1 text-[12.5px] font-semibold text-text hover:bg-hairline-soft"
+        >
+          {/* EIN EIGENER WORTLAUT, und das ist kein Geschmack. Der erste Entwurf nahm
+              `lib.liste.erneut` („Erneut versuchen") — denselben Text, den die Lesefläche für
+              ihren eigenen Wiederholweg benutzt. Auf einer Fläche, auf der beide zugleich stehen
+              können, standen damit ZWEI Knöpfe mit demselben Namen und verschiedener Wirkung: ein
+              Vorleser nennt beide gleich, und wer den falschen drückt, holt den falschen Bestand.
+              Gemessen hat es der Prüfstand `tests/q6d-keim-offline` („genau ein Wiederholknopf",
+              2 statt 1). Dieser Knopf sagt jetzt, WAS er wiederholt. */}
+          {t("wb.erneut")}
+        </button>
+      ) : null}
+    </div>
+  );
+}
 
 const PILLEN_TON: Record<ZustandsTon, string> = {
   pos: "bg-trust-pos-bg text-trust-pos-text",
@@ -2865,6 +3043,12 @@ export function BibliothekLesen({
                 </span>
               ) : null}
             </div>
+
+            {/* JOB 4155 (Lieferung 5): die GESETZTEN Fachbeziehungen — SOFORT sichtbar, oberhalb
+                der Zeile „Mehr", im Maßstab der Lesespalte (720 px, 18 px Abstand über `space-y`
+                der Hülle, s. Kopf dieser Datei). Der Bereich hängt am gelesenen Eintrag; sein
+                Zustandsmodell steht an `Beziehungsbereich` oben. */}
+            <Beziehungsbereich key={ko.id} koId={ko.id} />
 
             {/* Die EINE Zeile „Mehr" — dahinter die dreizehn Abschnitte, zugeklappt als Vorgabe. */}
             <div

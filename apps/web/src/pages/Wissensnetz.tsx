@@ -1143,7 +1143,50 @@ function Sichtzahlen({ metrik }: { metrik: Sichtmetrik }): JSX.Element {
         />
       </div>
       <p className="mt-4 text-micro text-muted-2">{t("wissensnetz.metrik.hinweis")}</p>
+      <Verknuepfungsauskunft metrik={metrik} />
     </Card>
+  );
+}
+
+// ------------------------------------------------------------------------------------------------
+// JOB 4155 · WG-LUECKEN — DIE AUSKUNFT ÜBER DIE GESETZTEN BEZIEHUNGEN, UND IHRE GRENZE.
+// ------------------------------------------------------------------------------------------------
+//
+// DREI LAGEN, DREI TEXTE — und keine davon ist eine Zahl, die der Server nicht gesagt hat:
+//
+//   1. ERHOBEN            → der Grundsatz steht, die Zahlen stehen in den Themenzeilen darunter
+//                           (`Themenzeilen`, ein Satz je Thema). HIER steht ausdrücklich KEINE
+//                           Gesamtzahl: `Sichtmetrik` führt keine, und eine Summe über die Themen
+//                           wäre falsch — seit der einen Themenachse (JOB 3073) zählt ein Objekt
+//                           mit drei Schlagwörtern in DREI Themen, die Summe ist also eine Summe
+//                           von Zuordnungen und keine Objektzahl (`lesemodell-ports.ts:174-190`).
+//                           Eine zweite Rechnung ist hier ausdrücklich verboten.
+//   2. AUSGELASSEN        → der GRUND als Satz, und nirgends eine Verknüpfungszahl. Ein `0` wäre
+//                           hier die gefährlichste Antwort: sie sähe aus wie ein Messergebnis.
+//   3. SERVER SAGT NICHTS → eine ältere Serverfassung kennt das Feld nicht. Dann steht der
+//                           Grundsatz allein; behauptet wird weder „erhoben" noch „ausgelassen".
+//
+// DER GRUNDSATZ SELBST ist keine Verzierung, sondern der fachliche Kern des Vertrags
+// (WISSENSGRAPH-INTEGRATION, „fachliche Grenzen"): **„keine Kante" heisst nie „geprüft
+// konfliktfrei"**. Ohne ihn liest jemand eine niedrige Verknüpfungszahl als Mangel und eine hohe
+// als Prüfsiegel — beides wäre eine Aussage, die diese Ebene nicht treffen darf (`luecken.ts:18-20`).
+function Verknuepfungsauskunft({ metrik }: { metrik: Sichtmetrik }): JSX.Element {
+  const { t } = useTranslation();
+  const grund =
+    metrik.verknuepfungAusgelassen === true ? metrik.verknuepfungAusgelassenGrund : null;
+  return (
+    <div className="mt-3" data-testid="netz-verknuepfung">
+      {/* Der Grundsatz steht in JEDER Lage — auch bei Auslassung. Er spricht über die Bedeutung
+          einer fehlenden Beziehung, nicht über den Erhebungsstand. */}
+      <p data-testid="netz-verknuepfung-grundsatz" className="text-micro text-muted-2">
+        {t("wissensnetz.verknuepfung.grundsatz")}
+      </p>
+      {grund !== null && grund !== undefined ? (
+        <p data-testid="netz-verknuepfung-ausgelassen" className="mt-1 text-micro text-muted-2">
+          {t(`wissensnetz.verknuepfung.ausgelassen.${grund}`)}
+        </p>
+      ) : null}
+    </div>
   );
 }
 
@@ -1185,6 +1228,16 @@ export interface Lesezeile {
    * nichts gefunden" — genau das ist hier nicht der Fall.
    */
   readonly zusammenMit: string[] | null;
+  /**
+   * JOB 4155 (WG-LUECKEN): sichtbare Objekte dieses Themas MIT gesetzter Beziehung — und ohne.
+   *
+   * `null` — NICHT `0` — wenn der Server die Zaehler nicht erhoben hat. Das ist dieselbe
+   * Unterscheidung, die `zusammenMit` eine Zeile hoeher trifft: eine 0 stuende fuer „nachgesehen
+   * und nichts gefunden", und genau das ist dann nicht der Fall. Die Zeile schreibt aus einem
+   * `null` keinen Satz.
+   */
+  readonly verknuepft: number | null;
+  readonly unverknuepft: number | null;
 }
 
 /**
@@ -1231,6 +1284,12 @@ export function leseThemen(metrik: Sichtmetrik): Lesezeile[] {
           k === undefined || k.ohneKanten
             ? null
             : [...(nachbarn.get(m.thema) ?? [])].sort((a, b) => a.localeCompare(b)),
+        // JOB 4155: ABGELESEN, nicht gerechnet. Die beiden Zahlen kommen aus derselben einen
+        // Antwort wie alles andere hier; ein fehlender Schluessel wird zu `null` und nicht zu 0.
+        // Es wird ausdruecklich NICHT die eine aus der anderen und `objekte` abgeleitet: kaeme nur
+        // eine der beiden an, waere die Ableitung eine Zahl, die der Server nie gesagt hat.
+        verknuepft: m.verknuepft ?? null,
+        unverknuepft: m.unverknuepft ?? null,
       };
     });
 }
@@ -1434,6 +1493,19 @@ function Themenzeilen({ metrik }: { metrik: Sichtmetrik }): JSX.Element | null {
               anker: "zusammen",
               // Die Namen als Aufzaehlung IM Satz — das Komma ist hoerbar, ein Flex-Abstand nicht.
               text: t("wissensnetz.lesen.zusammen", { themen: m.zusammenMit.join(", ") }),
+            });
+          }
+          // JOB 4155 (WG-LUECKEN): die gesetzten Beziehungen. GANZ ODER GAR NICHT — nur wenn der
+          // Server BEIDE Zahlen erhoben hat, steht der Satz. Aus einer einzelnen Zahl die andere zu
+          // ergaenzen waere eine Behauptung ueber nicht Erhobenes; ein `null` erzeugt hier
+          // deshalb keinen Satz und erst recht keine 0.
+          if (m.verknuepft !== null && m.unverknuepft !== null) {
+            saetze.push({
+              anker: "verknuepfung",
+              text: t("wissensnetz.lesen.verknuepfung", {
+                verknuepft: m.verknuepft,
+                unverknuepft: m.unverknuepft,
+              }),
             });
           }
           return (

@@ -114,6 +114,15 @@ const WIDERRUFENE_FREIGABEN: readonly string[] = [
   // von `KandidatDublettenbefund` (`wiederverwendet`) — sie darf den neuen Inhalt nicht nachtraeglich
   // decken. Ihre Nachfolgerin steht am Eintrag.
   "FREEZE-144/JOB3081-20260905/types",
+  // JOB 4155 (WG-LUECKEN): verbraucht. Diese Freigabe autorisierte den `types.ts`-Stand VOR der
+  // additiven Erweiterung von `Graph` um `kuratierteKanten` (samt `GraphKuratierteKante`) — sie
+  // darf den neuen Inhalt nicht nachträglich decken. Ihre Nachfolgerin steht am Eintrag.
+  "FREEZE-144/JOB3116-20260906/types",
+  // JOB 4155 RUNDE 3: verbraucht. Diese Freigabe autorisierte den `types.ts`-Stand, in dem die
+  // kuratierte Kantenmenge OHNE Antwortbegrenzung hinausging (BENs Befund: 5.151 Kanten bei
+  // `edgeLimit` 5.000). Sie darf den korrigierten Inhalt nicht nachträglich decken; ihre
+  // Nachfolgerin steht am Eintrag.
+  "FREEZE-144/JOB4155-20260916/types",
   // JOB 3087: verbraucht. Diese beiden Freigaben autorisierten den Stand VOR der Ablösung des
   // nicht injektiven Idempotenz-Schlüssels der Review-Warteschlange (`openCandidateKey` in
   // `repo.ts`, dessen Ausleitung in `index.ts`) — sie dürfen den neuen Inhalt nicht nachträglich
@@ -194,10 +203,56 @@ const FREEZE_MANIFEST: readonly FreezeEintrag[] = [
     // wurde. REIN ADDITIV: keine vorhandene Variante ist geändert, `Dublettentreffer` ist
     // unangetastet, und `nicht_gestellt` heißt ab jetzt genau die Erstanlage. Sollhash UND
     // Freigabe sind in EINEM Änderungssatz neu gesetzt, die alte steht in WIDERRUFENE_FREIGABEN.
-    hash: "a12c64c8bc5655ed5f91b3c9d2b7e48ff454cfce442d885edd21b6e5cfdda888",
+    // ============================================================================================
+    // JOB 4155 · AUSGEWIESENE ÄNDERUNG (WG-LUECKEN) — ADDITIV, UND SCOPE-GENAU.
+    // ============================================================================================
+    //
+    // WAS SICH GEÄNDERT HAT, abschliessend:
+    //   · `Graph` trägt ein ZUSÄTZLICHES OPTIONALES Feld `kuratierteKanten?: GraphKuratierteKante[]`
+    //     — die vom Menschen GESETZTEN Fachbeziehungen als eigene Kantenmenge derselben Antwort
+    //     (Vertrag WISSENSGRAPH-INTEGRATION, Nachtrag 2 §3: EINE Mengenabfrage, keine Abfrage je
+    //     Eintrag aus der UI). `nodes`, `edges`, `totalEdges`, `truncated`, `edgeLimit` und
+    //     `excludedTags` sind UNVERÄNDERT — kein Filter, kein Limit, keine Semantik angefasst.
+    //   · Der neue Ergebnistyp `GraphKuratierteKante` steht daneben, Feld für Feld der
+    //     Client-Vertrag aus JOB 4153 (`apps/web/src/api/types.ts`).
+    //   · Die Typimportzeile am Dateikopf holt zusätzlich `KantenArt` und `KantenRichtung` aus
+    //     derselben öffentlichen `index.ts`, aus der `KnowledgeObject` schon kommt — importiert
+    //     statt nachgebaut, und OHNE neue Modulkante.
+    //
+    // DIE FREIGABE. Sie kommt NICHT aus diesen Zeilen — der Wächter prüft Form, nicht Autorität
+    // (§ GRENZE oben). Sie steht in `jobs/4155/HINWEIS.md`, Nachtrag der Steuerung vom 15.09.2026
+    // 21:37 (Codex 0ae554e2), und sie ist ausdrücklich SCOPE-GENAU: „NUR das zusätzliche optionale
+    // Feld für die kuratierte Kantenmenge, exakt nach dem Clientvertrag aus 4153; `nodes`/`edges`/
+    // Filter/Limit unverändert." Gedeckt ist sie von Pedis Bau-/Integrationsfreigabe für den
+    // Wissensgraphen in der echten App (0a9deb49). Sollhash UND Freigabe sind in EINEM
+    // Änderungssatz neu gesetzt; die alte steht in WIDERRUFENE_FREIGABEN.
+    //
+    // NICHT GEDECKT und deshalb NICHT angefasst: `services/library-analytics/index.ts` — auch ein
+    // eingefrorener Eintrag. `GraphKuratierteKante` wird dort ausdrücklich NICHT ausgeleitet; wer
+    // `Graph` liest, bekommt die Form über das Feld, und ein Export ausserhalb des freigegebenen
+    // Scopes wäre genau das Raten, das der Nachtrag verbietet.
+    //
+    // JOB 4155 RUNDE 3 · AUSGEWIESENE ÄNDERUNG — die Grenze der neuen Menge wird lesbar.
+    //
+    // BEN hat am Stand der Runde 2 gemessen, dass `kuratierteKanten` die Antwortbegrenzung umging:
+    // 102 sichtbare Objekte, 5.151 verschiedene aktive Beziehungen, alle 5.151 ausgeliefert bei
+    // `edgeLimit` 5.000. Der Vertrag verlangt sie „unter demselben Sichtbarkeitsfilter und
+    // derselben Antwortbegrenzung". Der Deckel greift jetzt — und weil ein STILLER Deckel die
+    // schlechtere Antwort wäre (die Fläche zeigte 5.000 von 5.151 und nennte es den Bestand),
+    // kommen ZWEI weitere optionale Felder dazu: `kuratierteKantenGesamt` (nach dem
+    // Sichtbarkeitsschnitt, vor dem Deckel) und `kuratierteKantenGekuerzt`.
+    //
+    // ZUM SCOPE DER FREIGABE, ausdrücklich: Die scoped Übernahmeentscheidung (HINWEIS, 15.09.
+    // 21:37) deckt „NUR das zusätzliche optionale Feld für die kuratierte Kantenmenge". Diese zwei
+    // Felder gehen dem Wortlaut nach darüber hinaus — sie sind aber GENAU das, was BENs
+    // Korrekturpflicht 1 verlangt („Eine Begrenzung muss für den Verbraucher erkennbar bleiben"),
+    // und sie betreffen ausschliesslich dieselbe Menge. `nodes`, `edges`, `totalEdges`,
+    // `truncated`, `edgeLimit` und jeder Filter sind unverändert. Die Erweiterung ist additiv und
+    // optional; ein Leser ohne sie liest die Antwort wie bisher. BEN prüft Typ, Diff und Hash.
+    hash: "8c36b02e6c305a7d492208f82fb375d672428a8cf18d41bd6263b58d7f7181f2",
     freigabe: {
-      id: "FREEZE-144/JOB3116-20260906/types",
-      autorisiertHash: "a12c64c8bc5655ed5f91b3c9d2b7e48ff454cfce442d885edd21b6e5cfdda888",
+      id: "FREEZE-144/JOB4155R3-20260917/types",
+      autorisiertHash: "8c36b02e6c305a7d492208f82fb375d672428a8cf18d41bd6263b58d7f7181f2",
     },
   },
   {

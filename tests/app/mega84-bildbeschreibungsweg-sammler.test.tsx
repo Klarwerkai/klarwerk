@@ -1897,8 +1897,30 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // `documentTitle`-Prop). Die Abbildungen eines gebundenen Bausteins nennt die Fläche weiterhin
     // ausschliesslich beim Namen (`ga.baustein.abbildungen`) — sie stellt keine dar. Es erscheint
     // nur in der Grundmenge.
+    //
+    // JOB 4155 R1 (WG-LUECKEN), NACH DEM REBASE auf JOB 4233 — NACHGEFÜHRT von 394 auf 396. ZWEI
+    // neue Bauteile:
+    //
+    //     + `Beziehungsbereich`       — die Hülle, die den `WissensbeziehungenBereich` in die
+    //                                   Lesespalte einhängt, in
+    //                                   `components/bibliothek/BibliothekLesen.tsx` (nicht
+    //                                   exportiert, genau ein Aufrufer in derselben Datei).
+    //     + `Verknuepfungsauskunft`   — der Grundsatz „keine Beziehung heisst nicht geprüft" und
+    //                                   der Grund einer ausgelassenen Erhebung, in
+    //                                   `pages/Wissensnetz.tsx` (nicht exportiert, genau ein
+    //                                   Aufrufer in derselben Datei).
+    //
+    // Dieselbe Begründung wie bei jedem Eintrag darüber: Die Auflage verbietet, dass eine
+    // UMSTELLUNG die Erhebung verschiebt — nicht, dass der Quellbaum wächst. Die zwei Zahlen, an
+    // denen Stufe 2 wirklich hängt, bleiben unverändert: `anbieter` 1 und `traeger` 2. Beide
+    // Bauteile zeigen KEIN Bild, bieten keine Bildbeschreibung an (kein `ANGEBOT_MUSTER`) und
+    // tragen keinen eigenen Titel (kein `documentTitle`-Prop): das eine rendert ein `<div>` um
+    // einen vorhandenen Bereich samt einem Wiederholknopf, das andere zwei Sätze. Sie erscheinen
+    // nur in der Grundmenge und berühren keinen Bildweg. Die Bildergalerie derselben Lesefläche
+    // (`BodyImageGallery`) ist unberührt. Die Rebase-Summe (394 aus JOB 4233 + diese zwei aus JOB
+    // 4155 R1) ist an diesem Arbeitsbaum nach der Konfliktauflösung gemessen, nicht gerechnet.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 394,
+      komponenten: 396,
       anbieter: 1,
       traeger: 2,
     });

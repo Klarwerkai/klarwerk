@@ -101,6 +101,17 @@ vi.mock("../../apps/web/src/api/hooks", () => {
     useConflicts: () => ok([]),
     useEigeneBefunde: () => ok([]),
     useKo: (id: string) => ok(KOS.find((k) => k.id === id)),
+    // JOB 4155 (WG-LUECKEN) · NACHGEFÜHRT: die Lesespalte fragt jetzt auch die gesetzten
+    // Beziehungen ab. Sie antwortet hier absichtlich noch nicht — dieser Prüfstand misst die
+    // schmale Anordnung samt Auffrischungssatz, und ohne Antwort bleibt der Bereich eine leere
+    // Fläche. So bleibt insbesondere „genau EIN Wiederholknopf" eine Aussage über DIESE Fläche.
+    useKoBeziehungen: () => ({
+      data: undefined,
+      isLoading: true,
+      isError: false,
+      error: null,
+      refetch: () => Promise.resolve({}),
+    }),
     useAudit: () => ok([]),
     useReasonerStatus: () => ok({ active: false, mode: "off" }),
     koQueryKey: (id: string) => ["ko", id],

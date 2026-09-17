@@ -146,6 +146,34 @@ const de = {
   // Die Kante in Worten: zwei Themen in demselben freigegebenen Wissensobjekt. Steht nur, wenn die
   // Karte diesen Knoten führt UND er Nachbarn hat.
   "wissensnetz.lesen.zusammen": "Kommt gemeinsam vor mit {{themen}}.",
+  // ================================================================================================
+  // JOB 4155 · WG-LUECKEN — DIE GESETZTEN BEZIEHUNGEN, UND WAS IHR FEHLEN NICHT HEISST.
+  // ================================================================================================
+  //
+  // Die Zeile nennt BEIDE Zahlen oder keine. „3 von 10" allein liesse offen, ob die anderen sieben
+  // geprüft und unverbunden oder gar nicht angesehen sind — deshalb stehen beide Zahlen da.
+  "wissensnetz.lesen.verknuepfung":
+    "{{verknuepft}} davon haben eine gesetzte Beziehung, {{unverknuepft}} nicht.",
+  // DER GRUNDSATZ. Er steht in jeder Lage und ist der fachliche Kern des Vertrags: dass zu einem
+  // Eintrag keine Beziehung gesetzt ist, ist keine Prüfaussage. Ohne ihn liest jemand eine
+  // niedrige Zahl als Mangel und eine hohe als Prüfsiegel — beides darf diese Fläche nicht
+  // behaupten.
+  //
+  // DER WORTLAUT UMGEHT DREI WÖRTER, UND ZWAR ABSICHTLICH. Der Urteilswächter dieser Seite
+  // (`tests/wissensnetz-sichtmetrik/flaeche.test.tsx`, F4) verbietet „lücke", „fehlt", „fehlend"
+  // und „leer" im sichtbaren Text — er hält die Fessel aus `luecken.ts:13-16` fest, dass diese
+  // Ebene kein Urteil fällen darf. Ein erster Entwurf begann mit „Eine fehlende Beziehung heißt
+  // nicht …" und machte ihn rot. Der Wächter wurde NICHT angepasst: er hat recht, auch wenn der
+  // Satz das Gegenteil eines Urteils sagt — und ein Wächter, den man für den eigenen Satz
+  // aufweicht, hält beim nächsten Mal nichts mehr. Der Satz sagt jetzt dasselbe ohne diese Wörter.
+  "wissensnetz.verknuepfung.grundsatz":
+    "Wenn zu einem Eintrag keine Beziehung gesetzt ist, heißt das nicht, dass er geprüft und widerspruchsfrei ist — es heißt nur, dass niemand eine Beziehung gesetzt hat.",
+  // DIE ZWEI GRÜNDE EINER AUSLASSUNG, jeder mit seiner eigenen Folge. Statt einer 0, die wie ein
+  // Messergebnis aussähe, steht hier, dass nicht gezählt wurde — und warum.
+  "wissensnetz.verknuepfung.ausgelassen.kein-kantenport":
+    "Die gesetzten Beziehungen wurden für diese Übersicht nicht abgefragt; hier steht deshalb keine Zahl dazu.",
+  "wissensnetz.verknuepfung.ausgelassen.zu-viele-objekte":
+    "Für diesen Bestand wurden die gesetzten Beziehungen nicht gezählt, weil zu viele Einträge sichtbar sind; hier steht deshalb keine Zahl dazu.",
   // JOB 3070 D2 · Der SATZRAHMEN um das Zustandswort. `wissensnetz.farbe.<zustand>` ist ein
   // Legendenfragment („freigegeben, ohne Quelle") — allein gelesen sagt es nicht, worüber es
   // spricht. Der Rahmen setzt es ein; das Wort selbst behält genau eine Definition (die Legende).
@@ -3298,6 +3326,10 @@ const de = {
   "wb.leerHinweis":
     "Das sagt nichts darüber, ob es Widersprüche gibt — es heißt nur, dass niemand eine Beziehung gesetzt hat.",
   "wb.fehler": "Die gesetzten Beziehungen konnten nicht geladen werden.",
+  // JOB 4155: der Weg zurück NEBEN dem Fehlersatz. Er nennt ausdrücklich, was er wiederholt —
+  // auf der Lesefläche steht daneben der Wiederholweg des EINTRAGS, und zwei gleich benannte
+  // Knöpfe mit verschiedener Wirkung sind für einen Vorleser nicht unterscheidbar.
+  "wb.erneut": "Beziehungen erneut laden",
   // Der Fall „gescheiterte Auffrischung" hat im Haus BEREITS einen Satz und eine Bauform
   // (`state.staleRefetchFailed` + `AuffrischungHinweis`). Er wird benutzt, nicht abgeschrieben.
   "wb.standFrisch": "Stand von {{zeit}}",
@@ -7254,6 +7286,15 @@ const en: typeof de = {
   "wissensnetz.lesen.ubiquitaer":
     "Appears in the majority of the visible stock; co-occurrence is therefore not reported for it.",
   "wissensnetz.lesen.zusammen": "Appears together with {{themen}}.",
+  // JOB 4155 WG-LUECKEN — mirror of the DE keys; see the reasoning there.
+  "wissensnetz.lesen.verknuepfung":
+    "{{verknuepft}} of them have a set relationship, {{unverknuepft}} do not.",
+  "wissensnetz.verknuepfung.grundsatz":
+    "If no relationship is set for an entry, that does not mean it has been checked and found free of contradictions — it only means that nobody has set a relationship.",
+  "wissensnetz.verknuepfung.ausgelassen.kein-kantenport":
+    "The set relationships were not queried for this overview; no figure for them is shown here.",
+  "wissensnetz.verknuepfung.ausgelassen.zu-viele-objekte":
+    "The set relationships were not counted for this stock because too many entries are visible; no figure for them is shown here.",
   "wissensnetz.lesen.zustand": "State: {{wort}}.",
   "wissensnetz.lesen.nichtInListe":
     "The drawing shows {{count}} topics that this list has no row for.",
@@ -9717,6 +9758,7 @@ const en: typeof de = {
   "wb.leerHinweis":
     "That says nothing about whether contradictions exist — it only means nobody has set a relation.",
   "wb.fehler": "The curated relations could not be loaded.",
+  "wb.erneut": "Reload relations",
   "wb.standFrisch": "As of {{zeit}}",
   "wb.standAuffrischung": "As of {{zeit}} · refreshing",
   "wb.art.gehoert_zu": "belongs to",
@@ -12783,6 +12825,15 @@ const nl: typeof de = {
   "wissensnetz.lesen.ubiquitaer":
     "Komt voor in de meerderheid van de zichtbare verzameling; gezamenlijk voorkomen wordt daarvoor niet vermeld.",
   "wissensnetz.lesen.zusammen": "Komt samen voor met {{themen}}.",
+  // JOB 4155 WG-LUECKEN — spiegel van de DE-sleutels; zie de toelichting daar.
+  "wissensnetz.lesen.verknuepfung":
+    "{{verknuepft}} daarvan hebben een gelegde relatie, {{unverknuepft}} niet.",
+  "wissensnetz.verknuepfung.grundsatz":
+    "Als er voor een item geen relatie is gelegd, betekent dat niet dat het is gecontroleerd en vrij van tegenspraak bevonden — het betekent alleen dat niemand een relatie heeft gelegd.",
+  "wissensnetz.verknuepfung.ausgelassen.kein-kantenport":
+    "De gelegde relaties zijn voor dit overzicht niet opgevraagd; daarom staat hier geen getal daarover.",
+  "wissensnetz.verknuepfung.ausgelassen.zu-viele-objekte":
+    "De gelegde relaties zijn voor deze verzameling niet geteld omdat er te veel items zichtbaar zijn; daarom staat hier geen getal daarover.",
   "wissensnetz.lesen.zustand": "Status: {{wort}}.",
   "wissensnetz.lesen.nichtInListe":
     "De tekening toont {{count}} thema's waarvoor deze lijst geen regel heeft.",
@@ -15231,6 +15282,7 @@ const nl: typeof de = {
   "wb.leerHinweis":
     "Dat zegt niets over de vraag of er tegenspraak bestaat — het betekent alleen dat niemand een relatie heeft gezet.",
   "wb.fehler": "De gezette relaties konden niet worden geladen.",
+  "wb.erneut": "Relaties opnieuw laden",
   "wb.standFrisch": "Stand van {{zeit}}",
   "wb.standAuffrischung": "Stand van {{zeit}} · verversen loopt",
   "wb.art.gehoert_zu": "hoort bij",

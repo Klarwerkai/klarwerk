@@ -1543,12 +1543,26 @@ describe("JOB 3052 · D6 · das Wissensnetz des Zielbilds — die echte Seite, g
       //     am vollstaendigen `textContent` — dem, was ein Vorleser wirklich liest.
       const t = i18n.getFixedT("de");
       const reinigung = b.zeilen.find((z) => z.thema === "Reinigung");
+      // JOB 4155 (WG-LUECKEN) · NACHGEFÜHRT, und zwar um einen SATZ, nicht um eine Ausnahme.
+      //
+      // Die Zeile trägt seit diesem Auftrag einen fünften Satz: wie viele der sichtbaren Objekte
+      // dieses Themas eine GESETZTE Beziehung haben und wie viele nicht. Der Bestand dieses
+      // Prüfstands kennt keine Beziehung, also steht hier „0 … 2 nicht" — und genau das ist der
+      // Beleg, den dieser Pin jetzt zusätzlich führt: die Zahlen kommen im ECHTEN Chromium an der
+      // ECHTEN Seite an, nicht nur im JSON. Vorher fehlten sie dort vollständig (die Route übergab
+      // dem Lesemodell keinen Kantenport).
+      //
+      // DER PIN WIRD NICHT AUFGEWEICHT: er bleibt ein Zeichenvergleich des GANZEN Zeilentexts, und
+      // der Satz kommt aus demselben Wörterbuch wie die vier anderen. Die Zusagen dieses Falls —
+      // ein vorlesbarer Satz, Schlusspunkt, kein Buchstabe direkt an einer Ziffer — gelten für den
+      // neuen Satz unverändert und werden unten für jede Zeile gemessen.
       expect(reinigung?.text, "der ganze Zeilentext von „Reinigung“").toBe(
         [
           `Reinigung: ${t("wissensnetz.metrik.zeile.objekte", { count: 2 })}`,
           `, ${t("wissensnetz.metrik.zeile.beitragende", { count: 1 })}.`,
           ` ${t("wissensnetz.lesen.zustand", { wort: t("wissensnetz.farbe.freigegeben") })}`,
           ` ${t("wissensnetz.lesen.zusammen", { themen: "Dichtungen" })}`,
+          ` ${t("wissensnetz.lesen.verknuepfung", { verknuepft: 0, unverknuepft: 2 })}`,
         ].join(""),
       );
       for (const z of b.zeilen) {

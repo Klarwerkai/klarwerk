@@ -143,6 +143,20 @@ vi.mock("../../apps/web/src/api/hooks", async (importOriginal) => {
   const leer = () => ok([]);
   return {
     ...echt,
+    // JOB 4155 (WG-LUECKEN) · NACHGEFÜHRT: die Lesespalte fragt seit diesem Auftrag auch die
+    // GESETZTEN Beziehungen ab, und dieser Bereich bringt einen ZWEITEN Beobachter auf die
+    // KO-Abfrage mit. Nach einem gescheiterten Detailabruf frischt React Query beim Anmelden eines
+    // neuen Beobachters auf — und dieser Prüfstand zählt genau die Detailrufe (`netz.rufe.detail`).
+    // Die Attrappe antwortet deshalb absichtlich noch nicht: der Bereich bleibt eine leere Fläche,
+    // hängt sich nicht an die KO-Abfrage, und die Zählung misst weiter das, was sie messen will —
+    // den EINEN Ruf, den der Listenknopf auslöst.
+    useKoBeziehungen: () => ({
+      data: undefined,
+      isLoading: true,
+      isError: false,
+      error: null,
+      refetch: () => Promise.resolve({}),
+    }),
     useAudit: leer,
     useConflicts: leer,
     useDirectory: leer,

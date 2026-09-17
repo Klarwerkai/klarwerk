@@ -126,9 +126,20 @@ async function montiere(was: "bereich" | "nachbarschaft" = "bereich"): Promise<B
         createElement(
           QueryClientProvider,
           { client },
+          // JOB 4155 (WG-LUECKEN) · NACHGEFÜHRT: „nachbarschaft" montiert seit der Ablösung BEIDE
+          // Blöcke NEBENEINANDER — den Beziehungsbereich und die abgeleitete Nachbarschaft —
+          // statt den Bereich IN der Nachbarschaft zu erwarten. Genau so steht es jetzt auch im
+          // Produkt: der Bereich in der Lesespalte (`BibliothekLesen.tsx`), die Nachbarschaft in
+          // Abschnitt 13 hinter „Mehr". Was R2 misst, ist unverändert die TRENNUNG der beiden
+          // Herkunftsetiketten; dass sie nicht mehr ineinander stecken, hält R2b fest.
           was === "bereich"
             ? createElement(WissensbeziehungenBereich, { koId: QUELLE_ID })
-            : createElement(KnowledgeNeighborhood, { koId: QUELLE_ID, koTitle: "Filter F3" }),
+            : createElement(
+                "div",
+                null,
+                createElement(WissensbeziehungenBereich, { koId: QUELLE_ID }),
+                createElement(KnowledgeNeighborhood, { koId: QUELLE_ID, koTitle: "Filter F3" }),
+              ),
         ),
       ),
     );
@@ -304,6 +315,32 @@ describe("R2 · Trennung der Herkunft: „gesetzt“ gegen „aus Schlagwörtern
     expect(b.container.querySelector("svg")).not.toBeNull();
     expect(b.text()).toContain("Pumpe P2 schmieren");
     expect(b.text()).toContain("wartung");
+    b.unmount();
+  });
+
+  // ==============================================================================================
+  // R2b · JOB 4155 (WG-LUECKEN) — DIE ABLÖSUNG, ALS FALL.
+  // ==============================================================================================
+  //
+  // Bis JOB 4155 hängte `KnowledgeNeighborhood` den `WissensbeziehungenBereich` selbst ein — ein
+  // ausdrücklich als Zwischenweg bezeichneter Einbau hinter der zugeklappten Zeile „Mehr". Er ist
+  // ERSATZLOS entfernt; der Bereich steht jetzt in der Lesespalte. Ohne diesen Fall könnte der
+  // alte Weg unbemerkt wiederkommen und dieselben Beziehungen ein zweites Mal zeigen.
+  it("R2b · die Nachbarschaft zeigt die kuratierten Beziehungen NICHT mehr selbst", async () => {
+    stand.p.kanten = zweiAktiveKanten();
+    const b = await montiere("nachbarschaft");
+    const nachbarschaft = b.finde("knowledge-neighborhood");
+    expect(nachbarschaft, "die Nachbarschaft steht nicht").not.toBeNull();
+    // Der Beziehungsbereich steht auf der Seite — aber NICHT innerhalb der Nachbarschaft.
+    expect(b.finde("wissensbeziehungen")).not.toBeNull();
+    expect(
+      (nachbarschaft as HTMLElement).querySelector('[data-testid="wissensbeziehungen"]'),
+      "der abgelöste Zwischenweg ist wieder da — die Beziehungen stünden doppelt",
+    ).toBeNull();
+    // Und ihr eigenes Herkunftsetikett trägt sie weiterhin: sie zeigt Abgeleitetes, und sagt es.
+    expect(
+      (nachbarschaft as HTMLElement).querySelector('[data-testid="nb-herkunft"]'),
+    ).not.toBeNull();
     b.unmount();
   });
 });

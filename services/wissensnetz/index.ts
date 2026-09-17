@@ -11,7 +11,19 @@
 // Oeffentlich ist nur der ERGEBNISTYP: aus einer `Sichtmetrik` laesst sich keine Sicht
 // rekonstruieren.
 export { wissensnetzLuecken } from "./src/luecken-einstieg";
-export type { Sichtmetrik, ThemenMetrik } from "./src/luecken";
+// JOB 4155 (WG-LUECKEN) · EIN TYP MEHR, UND KEINER DARUEBER HINAUS.
+//
+// `Sichtmetrik.verknuepfungAusgelassenGrund` traegt seit diesem Auftrag die geschlossene Union
+// `VerknuepfungAusgelassenGrund`. Ohne ihren Namen im Index koennte ein Consumer den Grund zwar
+// LESEN, aber nicht typisiert behandeln — er muesste die beiden Werte abschreiben, und die
+// Abschrift waere die zweite Wahrheit, gegen die die Union geschlossen ist.
+//
+// DIE ENGE OBEN BLEIBT WOERTLICH: Es ist ein ERGEBNISTYP, und zwar eine reine Zeichenketten-Union.
+// Aus ihr laesst sich so wenig eine `WissensnetzSicht` rekonstruieren wie aus einer `Sichtmetrik`
+// oder einem `Themenknoten` — dasselbe Argument, mit dem `Themenfarbe` hier steht. `sichtmetrik`,
+// `LesemodellService` und `WissensnetzSicht` stehen weiterhin NICHT hier; C1 und C2 sind
+// unveraendert gruen und wurden NICHT angefasst.
+export type { Sichtmetrik, ThemenMetrik, VerknuepfungAusgelassenGrund } from "./src/luecken";
 export type { Betrachter } from "./src/policy-naht";
 
 // ================================================================================================

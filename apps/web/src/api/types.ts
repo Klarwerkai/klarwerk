@@ -883,6 +883,19 @@ export interface Graph {
    * (`Stufe2.tsx`, GraphView). Ein Pflichtfeld hier wäre ein Laufzeitfehler an dieser Stelle.
    */
   kuratierteKanten?: GraphKuratierteKante[];
+  /**
+   * JOB 4155 RUNDE 3: die Grenze DIESER Menge, lesbar — die Entsprechung von `totalEdges` und
+   * `truncated` für die kuratierten Kanten (serverseitig `library-analytics/src/types.ts`).
+   *
+   * `kuratierteKantenGesamt` zählt NACH dem Sichtbarkeitsschnitt und VOR dem Deckel. Wer die
+   * Beziehungen zeichnet, darf ohne diese beiden Felder nicht behaupten, den ganzen Bestand zu
+   * zeigen: bis 5.000 Beziehungen stimmt das, darüber nicht mehr.
+   *
+   * OPTIONAL wie `kuratierteKanten` selbst und aus demselben Grund: ein Server ohne die Erweiterung
+   * sendet sie nicht, und ein Pflichtfeld machte daraus hier eine `0`, die niemand gemessen hat.
+   */
+  kuratierteKantenGesamt?: number;
+  kuratierteKantenGekuerzt?: boolean;
 }
 
 // ================================================================================================
@@ -1098,7 +1111,27 @@ export interface ThemenMetrik {
   objekte: number;
   sichtbareBeitragende: number;
   beitragendeAbgeschnitten: boolean;
+  /**
+   * JOB 4155 (WG-LUECKEN): sichtbare Objekte dieses Themas MIT mindestens einer sichtbaren
+   * kuratierten Beziehung — und ohne.
+   *
+   * BEIDE OPTIONAL, und das ist der ganze Punkt: der Schlüssel FEHLT, wenn der Server die Zähler
+   * nicht erhoben hat (`services/wissensnetz/src/luecken.ts`). Eine `0` an dieser Stelle wäre eine
+   * Aussage — „nachgesehen, nichts verknüpft" —, und sie wäre falsch. Die Fläche unterscheidet
+   * deshalb „unbekannt" von „0" (`Wissensnetz.tsx`).
+   */
+  verknuepft?: number;
+  unverknuepft?: number;
 }
+
+/**
+ * JOB 4155: warum die Kantenzähler ausgelassen wurden. Geschlossen wie serverseitig
+ * (`services/wissensnetz/src/lesemodell-ports.ts`) — die beiden Gründe verlangen entgegengesetzte
+ * Reaktionen und dürfen deshalb nicht in einem `true` verschmelzen:
+ *   · `kein-kantenport`  — die Kantenauskunft war nicht verdrahtet (ein Fehler der Verdrahtung),
+ *   · `zu-viele-objekte` — die sichtbare Grundmenge lag über dem Abfragedeckel (erwartet).
+ */
+export type VerknuepfungAusgelassenGrund = "kein-kantenport" | "zu-viele-objekte";
 
 /** Die Antwort von `GET /api/wissensnetz/luecken`. Die Karte fehlt, wenn sie nicht erhoben wurde. */
 // JOB 3095 · M5: ein Bild aus dem Bestand, gefunden über seine Unterschrift — mit Herkunft
@@ -1135,6 +1168,18 @@ export interface Sichtmetrik {
   sichtbareBeitragendeGesamt: number;
   themen: ThemenMetrik[];
   themenkarte?: Themenkarte;
+  /**
+   * JOB 4155 (WG-LUECKEN): `true`, wenn der Server die Kantenzähler ausgelassen hat.
+   *
+   * OPTIONAL IM CLIENT-TYP, obwohl serverseitig Pflichtfeld — und das ist keine Abweichung vom
+   * Vertrag, sondern die Drahtwirklichkeit: eine Antwort eines Servers OHNE diese Erweiterung
+   * trägt das Feld gar nicht. Ein Pflichtfeld hier behauptete `false` („erhoben") für eine Antwort,
+   * die nichts dergleichen sagt. Die Fläche liest deshalb drei Fälle, nicht zwei: erhoben ·
+   * ausdrücklich ausgelassen · der Server sagt nichts dazu.
+   */
+  verknuepfungAusgelassen?: boolean;
+  /** Der Grund — fehlt ohne Auslassung. Die Fläche zeigt ihn als Satz, nie als Zahl. */
+  verknuepfungAusgelassenGrund?: VerknuepfungAusgelassenGrund;
 }
 
 // AUFTRAG-mega68: Nachbarschaft EINES Wissensobjekts (GET /api/kos/:id/neighbors) — begrenzt,

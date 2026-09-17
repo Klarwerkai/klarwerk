@@ -113,7 +113,37 @@ export interface KoRoutesDeps {
   // soll es nicht kennen; die Composition-Root (build-app.ts) verdrahtet beides. Fehlt die
   // Verdrahtung, ist der Entwurfsweg schlicht nicht verfügbar (ehrlicher 400), statt halb zu laufen.
   draftPromotion?: DraftPromotionSource | undefined;
+  // ================================================================================================
+  // JOB 4155 (WG-LUECKEN) — DIE KANTENAUSKUNFT DER NETZROUTE. DER PORT, DEN H3 NIE BEKAM.
+  // ================================================================================================
+  //
+  // DER BEFUND: `luecken-einstieg.ts:37-47` fordert seit JOB 2600 `mitVerknuepfung: true` an — und
+  // die einzige Route dorthin (unten, `/api/wissensnetz/luecken`) uebergab nur `kos`. Das Lesemodell
+  // meldete deshalb bei JEDER Anfrage `verknuepfungAusgelassen: true` mit dem Grund
+  // `"kein-kantenport"` (`lesemodell.ts:216-220`). Die Frage wurde gestellt und nie beantwortet.
+  //
+  // DER GRUND, WARUM ES BISHER NICHT ANDERS GING, IST MIT JOB 4151 WEGGEFALLEN: `KantenLeseService`
+  // stand nicht in `services/knowledge-object/index.ts` (`lesemodell-ports.ts:15-20`, „gemessen:
+  // 0 Treffer") und war deshalb ueber die Modulgrenze unerreichbar. Seit JOB 4151 steht er dort.
+  //
+  // DER TYP IST ABGELEITET, NICHT ABGESCHRIEBEN. `WissensnetzKantenLeser` steht bewusst NICHT im
+  // Paket-Index des Wissensnetzes (dort stehen nur Ergebnistypen, `index.ts:29-35`), und ihn hier
+  // nachzubauen waere die zweite Wahrheit ueber eine Vertragsflaeche. `Parameters<…>` liest die
+  // Form aus der exportierten FUNKTION — weicht der Port drueben ab, ist DIESE Zeile der Typfehler.
+  //
+  // OPTIONAL BLEIBT OPTIONAL: ein direkt konstruierter Routentest ohne Port bekommt weiterhin die
+  // ehrliche Auslassung mit ihrem Grund — keine 0, keine erfundene Verknuepfungszahl.
+  kanten?: WissensnetzDeps["kanten"];
 }
+
+/**
+ * Der Abhaengigkeitsvertrag des Wissensnetz-Einstiegs, AUS DER FUNKTION GELESEN.
+ *
+ * `LesemodellDeps` ist modulintern und bleibt es (JOB 2009 D2: der Export der Porttypen machte C2
+ * rot, weil ueber die Typkette `WissensnetzSicht` wieder importierbar war). Diese Zeile braucht
+ * keinen Export: sie liest die Signatur des einzigen oeffentlichen Weges.
+ */
+type WissensnetzDeps = Parameters<typeof wissensnetzMetrikFuer<KnowledgeObject>>[1];
 
 /**
  * AUFTRAG-mega19 Block B — DER ENTWURF ALS EINGABE EINER DOKUMENTÜBERNAHME.
@@ -727,6 +757,8 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
     aiCheckWorker,
     draftPromotion,
   } = deps;
+  // JOB 4155: NICHT mitdestrukturiert, sondern unten als `deps.kanten` gelesen — so steht an der
+  // Uebergabestelle, aus welchem Bündel der Port kommt, und ein fehlender Port ist dort sichtbar.
 
   // AUFTRAG-mega74 BLOCK B: die EINE Torwache dieses Moduls. Sie holt das Objekt, stellt die
   // Sichtbarkeitsfrage an der EINEN Stelle (../sichtbarkeit) und antwortet fail-closed.
@@ -974,7 +1006,19 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
         try {
           const metrik = await wissensnetzMetrikFuer(
             { id: user.id, role: user.role },
-            { kos: { alle: () => ko.list({}) } },
+            {
+              kos: { alle: () => ko.list({}) },
+              // JOB 4155 (Lieferung 1): die Kantenauskunft. Der Schluessel wird WEGGELASSEN, wenn
+              // kein Port verdrahtet ist — unter `exactOptionalPropertyTypes` ist ein
+              // `kanten: undefined` etwas anderes als „nicht da", und das Lesemodell
+              // unterscheidet genau daran (`lesemodell.ts:216-220`). Die Antwort traegt dann
+              // `verknuepfungAusgelassen: true` mit dem Grund `"kein-kantenport"`, nicht eine 0.
+              //
+              // DIE SICHTBARKEIT REIST NICHT VON HIER MIT: das Lesemodell reicht dem Port sein
+              // eigenes, aus der Naht geholtes Praedikat herein (`lesemodell.ts:254`). Diese
+              // Route uebergibt weiterhin KEIN Praedikat — C3 bleibt gruen.
+              ...(deps.kanten !== undefined ? { kanten: deps.kanten } : {}),
+            },
             roh !== undefined ? { deckel: Number(roh) } : {},
           );
           reply.code(200).send(metrik);

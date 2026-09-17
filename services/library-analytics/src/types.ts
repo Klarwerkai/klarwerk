@@ -1,5 +1,11 @@
 import type {
   Confidentiality,
+  // JOB 4155 (WG-LUECKEN): die beiden geschlossenen Unions der kuratierten Beziehungen. IMPORTIERT
+  // und nicht nachgebaut — eine abgeschriebene Werteliste wäre die zweite Wahrheit, und der Import
+  // läuft über dieselbe öffentliche `index.ts`, aus der dieses Modul schon `KnowledgeObject` holt:
+  // es entsteht KEINE neue Modulkante.
+  KantenArt,
+  KantenRichtung,
   KnowledgeObject,
   KnowledgeType,
   KoStatus,
@@ -372,6 +378,68 @@ export interface Graph {
   // Schlagwörter, die wegen Allgegenwart KEINE Kante erzeugen (z. B. `pilot-demo`), sortiert —
   // dieselbe Regel und dieselbe Ehrlichkeit wie in `Neighborhood.excludedTags`.
   excludedTags: string[];
+  /**
+   * ================================================================================================
+   * JOB 4155 (WG-LUECKEN) — DIE GESETZTEN BEZIEHUNGEN, ADDITIV UND IN EIGENER MENGE.
+   * ================================================================================================
+   *
+   * `nodes`, `edges` und die vier Grenzfelder aus JOB 3022 sind UNVERÄNDERT. Was hinzukommt, ist
+   * eine zweite Kantenmenge — und sie steht bewusst NICHT in `edges`: eine geteilte
+   * Schlagwortnähe ist keine verantwortete Fachaussage, und eine gemeinsame Liste wäre genau die
+   * Verwechslung, die Vertrag Nr. 6 des Themas verbietet (`herkunft` trägt es ausserdem an jeder
+   * Kante mit).
+   *
+   * OPTIONAL, und das ist eine Aussage: Ohne verdrahteten Kantenbestand FEHLT das Feld — es steht
+   * dann nicht als leere Liste da, die „nachgesehen, keine Beziehungen" behauptete. Der Client
+   * unterscheidet genau daran (`apps/web/src/api/types.ts`, JOB 4153).
+   *
+   * DIE SICHTBARKEIT IST DIESELBE wie für `nodes`/`edges`: eine Kante steht nur da, wenn BEIDE
+   * Endpunkte in der getrimmten Grundmenge liegen. Ein unsichtbarer Endpunkt erzeugt keine Kante
+   * und keinen Zähler — die Abwesenheit ist keine Existenzauskunft.
+   */
+  kuratierteKanten?: GraphKuratierteKante[];
+  /**
+   * ================================================================================================
+   * JOB 4155 RUNDE 3 — DIE GRENZE DIESER MENGE, SICHTBAR (BENs Korrekturpflicht 1).
+   * ================================================================================================
+   *
+   * Runde 2 lieferte die kuratierten Kanten UNGEDECKELT aus. Der Vertrag verlangt sie „unter
+   * demselben Sichtbarkeitsfilter und derselben Antwortbegrenzung" — und BEN hat die Lücke am
+   * echten Produkt reproduziert: 102 sichtbare Objekte, 5.151 verschiedene aktive Beziehungen,
+   * ausgeliefert wurden alle 5.151 bei `edgeLimit` 5.000.
+   *
+   * Jetzt greift derselbe Deckel, und diese zwei Felder machen ihn lesbar. Sie sind die exakte
+   * Entsprechung von `totalEdges`/`truncated` für die zweite Menge — bewusst EIGENE Felder: die
+   * bestehenden sprechen über `edges`, und sie mit einer zweiten Bedeutung zu beladen hiesse, zwei
+   * Grenzauskünfte in einer Zahl zu verstecken.
+   *
+   * `kuratierteKantenGesamt` zählt NACH dem Sichtbarkeitsschnitt und VOR dem Deckel — es ist keine
+   * Existenzauskunft über Objekte, die der Aufrufer nicht sehen darf. Beide Felder fehlen genau
+   * dann, wenn auch `kuratierteKanten` fehlt (kein Kantenbestand verdrahtet): eine `0` wäre dann
+   * die Behauptung „nachgesehen, keine Beziehungen".
+   */
+  kuratierteKantenGesamt?: number;
+  kuratierteKantenGekuerzt?: boolean;
+}
+
+/**
+ * Eine gesetzte Fachbeziehung, wie der Graph sie ausweist. Die Form ist der Client-Vertrag aus
+ * JOB 4153 (`apps/web/src/api/types.ts`, `GraphKuratierteKante`), Feld für Feld.
+ *
+ * `a`/`b` heissen wie in `GraphEdge` und tragen dieselbe Bedeutung — aber ausdrücklich NICHT
+ * dieselbe Sortierzusage: bei einer GERICHTETEN Beziehung ist `a` die QUELLE und `b` das ZIEL. Sie
+ * nach Id zu ordnen wie bei den abgeleiteten Kanten hiesse, die Richtungsaussage zu zerstören, die
+ * ein Mensch gesetzt hat.
+ */
+export interface GraphKuratierteKante {
+  a: string;
+  b: string;
+  art: KantenArt;
+  richtung: KantenRichtung;
+  /** Nur aktive Beziehungen erreichen den Graphen; ein widerrufener Vermerk ist keine Kante. */
+  status: "aktiv";
+  /** Das Herkunftsetikett. Es gibt heute genau einen Wert — und genau deshalb steht er da. */
+  herkunft: "kuratiert";
 }
 
 // AUFTRAG-mega68: die Nachbarschaft EINES Wissensobjekts — die Anwendersicht des Wissensnetzes.

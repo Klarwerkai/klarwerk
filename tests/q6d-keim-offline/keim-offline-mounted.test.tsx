@@ -152,9 +152,21 @@ vi.mock("../../apps/web/src/api/hooks", async (importOriginal) => {
         gcTime: Number.POSITIVE_INFINITY,
         staleTime: lage.frist,
       }),
-    useLibrarySearch: (params: { q?: string }) =>
+    // JOB 4155 (WG-LUECKEN) · NACHGEFÜHRT: die Attrappe nimmt jetzt AUCH `enabled` entgegen.
+    //
+    // Der echte Hook hat zwei Parameter (`useLibrarySearch(params, enabled = true)`); diese
+    // Attrappe kannte nur den ersten und schaltete damit JEDE Abfrage scharf. Solange die
+    // Lesefläche die einzige Sucherin war, fiel das nicht auf. Seit JOB 4155 steht der
+    // Beziehungsbereich in der Lesespalte, und der ruft den Hook mit `enabled = false`, solange
+    // niemand einen Suchbegriff getippt hat — die Attrappe machte daraus einen zweiten,
+    // tatsächlich ausgeführten Leerruf, und die Zähler dieses Prüfstands sahen `["", ""]`.
+    //
+    // Nachgeführt ist die ATTRAPPE, nicht die Zusage: die Fälle zählen unverändert genau die Rufe,
+    // die wirklich hinausgehen — sie zählen jetzt nur keine mehr, die das Produkt gar nicht stellt.
+    useLibrarySearch: (params: { q?: string }, enabled = true) =>
       rq.useQuery({
         queryKey: ["library", "search", params],
+        enabled,
         queryFn: async () => {
           const suchtext = params.q ?? "";
           netz.suche.push(suchtext);

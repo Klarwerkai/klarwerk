@@ -1,9 +1,10 @@
 {
-  "version": 6,
-  "erhoben_am": "2026-09-09",
+  "version": 7,
+  "erhoben_am": "2026-09-16",
+  "nachgefuehrt_von": "JOB 4155 (WG-LUECKEN): zwei Faelle je Engine mehr — die Browser-Abnahme G1/G7 der gesetzten Wissensbeziehungen (tests-smoke/wg-luecken-beziehungen-browser.spec.ts). Sonst nichts geaendert.",
   "erhoben_mit": "npx playwright test --config playwright.smoke.config.ts --list --reporter=json (KLARWERK_SMOKE_MODE=gate)",
   "zweck": "Sollmanifest der Smoke-Mengen je Projekt. Drift (Hinzufuegen, Entfernen, Umbenennen) macht die Mengenpruefung rot.",
-  "gesamt_fallinstanzen": 140,
+  "gesamt_fallinstanzen": 146,
   "projekte": {
     "setup-zustand": {
       "soll": 1,
@@ -18,7 +19,7 @@
       ]
     },
     "chromium": {
-      "soll": 43,
+      "soll": 45,
       "titel": [
         "a18-live-region-browser.spec.ts › KALIBRIERUNG A · die generische CDP-Sitzung gibt Rolle, Ignoriert und die drei Live-Felder wirklich aus",
         "a18-live-region-browser.spec.ts › KALIBRIERUNG B · Playwrights ARIA-Repraesentation nennt dieselbe Rolle, fuehrt aber KEINE Live-Eigenschaft",
@@ -57,6 +58,8 @@
         "ui-smoke.spec.ts › mega47: Filterblatt auf schmalem Gerät ist wirklich bedienbar",
         "ui-smoke.spec.ts › mega48: bei offenem Filterblatt ist KEINE Shell-Fläche mehr erreichbar",
         "ui-smoke.spec.ts › mega49: die Datenlage dieses Laufs ist die zugesagte",
+        "wg-luecken-beziehungen-browser.spec.ts › G1: zwei Einträge verknüpfen — Art, Richtung und Herkunft stehen da, und die Bestätigung überlebt das Neuladen",
+        "wg-luecken-beziehungen-browser.spec.ts › G7: dieselbe Beziehung von beiden Seiten — und der Schlagwortgraph bleibt, was er war",
         "wissensraum381-ortszeile-browser.spec.ts › R-17: /bibliothek rendert mit Routenanker UND sichtbarer Ortszeile",
         "wissensraum381-ortszeile-browser.spec.ts › R-18: nur Tastatur — Tab erreicht den Umschalter, Enter schaltet, der Fokus bleibt",
         "wissensraum381-ortszeile-browser.spec.ts › R-19: schmal — die Ortszeile bleibt auf der Seite, das Filterblatt bleibt ortsfrei",
@@ -66,7 +69,7 @@
       ]
     },
     "firefox": {
-      "soll": 43,
+      "soll": 45,
       "titel": [
         "a18-live-region-browser.spec.ts › KALIBRIERUNG A · die generische CDP-Sitzung gibt Rolle, Ignoriert und die drei Live-Felder wirklich aus",
         "a18-live-region-browser.spec.ts › KALIBRIERUNG B · Playwrights ARIA-Repraesentation nennt dieselbe Rolle, fuehrt aber KEINE Live-Eigenschaft",
@@ -105,6 +108,8 @@
         "ui-smoke.spec.ts › mega47: Filterblatt auf schmalem Gerät ist wirklich bedienbar",
         "ui-smoke.spec.ts › mega48: bei offenem Filterblatt ist KEINE Shell-Fläche mehr erreichbar",
         "ui-smoke.spec.ts › mega49: die Datenlage dieses Laufs ist die zugesagte",
+        "wg-luecken-beziehungen-browser.spec.ts › G1: zwei Einträge verknüpfen — Art, Richtung und Herkunft stehen da, und die Bestätigung überlebt das Neuladen",
+        "wg-luecken-beziehungen-browser.spec.ts › G7: dieselbe Beziehung von beiden Seiten — und der Schlagwortgraph bleibt, was er war",
         "wissensraum381-ortszeile-browser.spec.ts › R-17: /bibliothek rendert mit Routenanker UND sichtbarer Ortszeile",
         "wissensraum381-ortszeile-browser.spec.ts › R-18: nur Tastatur — Tab erreicht den Umschalter, Enter schaltet, der Fokus bleibt",
         "wissensraum381-ortszeile-browser.spec.ts › R-19: schmal — die Ortszeile bleibt auf der Seite, das Filterblatt bleibt ortsfrei",
@@ -114,7 +119,7 @@
       ]
     },
     "webkit": {
-      "soll": 43,
+      "soll": 45,
       "titel": [
         "a18-live-region-browser.spec.ts › KALIBRIERUNG A · die generische CDP-Sitzung gibt Rolle, Ignoriert und die drei Live-Felder wirklich aus",
         "a18-live-region-browser.spec.ts › KALIBRIERUNG B · Playwrights ARIA-Repraesentation nennt dieselbe Rolle, fuehrt aber KEINE Live-Eigenschaft",
@@ -153,6 +158,8 @@
         "ui-smoke.spec.ts › mega47: Filterblatt auf schmalem Gerät ist wirklich bedienbar",
         "ui-smoke.spec.ts › mega48: bei offenem Filterblatt ist KEINE Shell-Fläche mehr erreichbar",
         "ui-smoke.spec.ts › mega49: die Datenlage dieses Laufs ist die zugesagte",
+        "wg-luecken-beziehungen-browser.spec.ts › G1: zwei Einträge verknüpfen — Art, Richtung und Herkunft stehen da, und die Bestätigung überlebt das Neuladen",
+        "wg-luecken-beziehungen-browser.spec.ts › G7: dieselbe Beziehung von beiden Seiten — und der Schlagwortgraph bleibt, was er war",
         "wissensraum381-ortszeile-browser.spec.ts › R-17: /bibliothek rendert mit Routenanker UND sichtbarer Ortszeile",
         "wissensraum381-ortszeile-browser.spec.ts › R-18: nur Tastatur — Tab erreicht den Umschalter, Enter schaltet, der Fokus bleibt",
         "wissensraum381-ortszeile-browser.spec.ts › R-19: schmal — die Ortszeile bleibt auf der Seite, das Filterblatt bleibt ortsfrei",

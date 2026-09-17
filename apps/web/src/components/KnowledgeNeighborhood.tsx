@@ -28,12 +28,23 @@
 // ein Mensch verantwortet (durchgängiger Vertrag Nr. 6). Deshalb trägt dieser Block hier das
 // Herkunftsetikett „aus Schlagwörtern abgeleitet" und jede Zeile dort „gesetzt".
 //
+// ------------------------------------------------------------------------------------------------
+// JOB 4155 (WG-LUECKEN) — DER ZWISCHENWEG IST ABGELÖST. HIER STEHT NUR NOCH DAS ABGELEITETE.
+// ------------------------------------------------------------------------------------------------
+// JOB 4153 hatte den `WissensbeziehungenBereich` an dieser Stelle eingehängt und das ausdrücklich
+// als ZWISCHENWEG bezeichnet: dieser Abschnitt hängt zugeklappt hinter der Zeile „Mehr"
+// (`MehrAbschnitte.tsx:1853-1860`), und Codex hat festgelegt (2df61f13), dass der Einbau hier NICHT
+// als App-Anzeige zählt.
+//
+// Der Bereich steht seit JOB 4155 direkt in der Lesespalte, ohne einen Klick
+// (`bibliothek/BibliothekLesen.tsx`, Komponente `Beziehungsbereich`). Der Aufruf hier ist deshalb
+// ERSATZLOS ENTFERNT und läuft nicht daneben weiter: zwei Flächen, die dieselben kuratierten
+// Beziehungen zeigen, wären zwei Stände desselben Bestands — und die zweite läge ausgerechnet dort,
+// wo niemand hinsieht. Was BLEIBT, ist das Herkunftsetikett unten: diese Datei zeigt ab jetzt
+// ausschliesslich die aus SCHLAGWÖRTERN ABGELEITETE Nachbarschaft, und sie sagt das auch.
+//
 // ALLES ANDERE AN DIESER DATEI BLEIBT, WIE ES WAR: Spur, Rückweg, Mitte, Kanten mit ihrem Warum,
-// die Zähltexte und die Ubiquitätsbegründung. Die Einbindung hier ist ausdrücklich ein
-// ZWISCHENWEG und zählt NICHT als „App-Anzeige geliefert" — dieser Abschnitt hängt zugeklappt
-// hinter der Zeile „Mehr" (`MehrAbschnitte.tsx:1853-1860`, `BibliothekLesen.tsx:89`). Die direkt
-// sichtbare Platzierung in der Eintragsansicht und die Browser-Abnahme gehören zum benannten
-// Integrationsnachfolger WG-LUECKEN (Eingang WISSENSGRAPH-INTEGRATION Nachtrag 2 §2).
+// die Zähltexte und die Ubiquitätsbegründung.
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
@@ -41,7 +52,6 @@ import { useKoNeighbors } from "../api/hooks";
 import type { KoStatus, NeighborKo } from "../api/types";
 import { layoutNeighborhood } from "../lib/graphLayout";
 import { koDetailPath } from "../lib/graphNav";
-import { WissensbeziehungenBereich } from "./WissensbeziehungenBereich";
 import { QueryState } from "./ui";
 
 // Dieselbe Status-Farbsprache wie der Stufe-2-Graph (GraphView) und die Legende dort.
@@ -96,12 +106,9 @@ export function KnowledgeNeighborhood({
 
   return (
     <div className="space-y-3" data-testid="knowledge-neighborhood">
-      {/* JOB 4153: die GESETZTEN Fachbeziehungen — ein eigener Block, sprachlich und optisch
-          getrennt, ÜBER der Schlagwort-Zeichnung. Er hängt am gelesenen Beitrag (`koId`) und NICHT
-          an der wandernden Mitte (`centerId`): die Beziehungen und ihre Schreibwege gehören dem
-          Eintrag, den dieser Mensch gerade offen hat — nicht dem Knoten, durch den er sich im Netz
-          gerade durchklickt. */}
-      <WissensbeziehungenBereich koId={koId} />
+      {/* JOB 4155: HIER STAND DER `WissensbeziehungenBereich` (JOB 4153, Zwischenweg). Er ist
+          abgelöst, nicht verschoben — der Einbauort ist jetzt die Lesespalte selbst
+          (`bibliothek/BibliothekLesen.tsx`), sichtbar ohne Aufklappen. Begründung im Dateikopf. */}
       <div className="border-t border-hairline pt-3">
         {/* Das Herkunftsetikett DIESES Blocks. Es steht hier und nicht an jeder der bis zu acht
             Kanten: es gilt für alle, und achtmal dasselbe Wort wäre Rauschen. Dass es sich von

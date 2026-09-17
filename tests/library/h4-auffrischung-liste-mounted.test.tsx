@@ -83,6 +83,18 @@ vi.mock("../../apps/web/src/api/hooks", () => {
     // Auf `/wissen/:id` und bei Vorauswahl scheitert im Netzfall AUCH der Detailabruf. Genau so
     // entsteht die Lage, in der zwei Flächen denselben Satz sagen könnten — Fall 5 misst, dass
     // sie es nicht tun.
+    //
+    // JOB 4155 (WG-LUECKEN) · NACHGEFÜHRT: die Lesespalte fragt seit diesem Auftrag auch die
+    // GESETZTEN Beziehungen ab. Diese Attrappe antwortet darauf absichtlich noch nicht — Fall 5
+    // zählt, wie oft DER AUFFRISCHUNGSSATZ dasteht, und ein Beziehungsbereich mit eigenem Stand
+    // brächte einen zweiten, fremden Satz in dieselbe Zählung. Ohne Antwort bleibt er leer.
+    useKoBeziehungen: () => ({
+      data: undefined,
+      isLoading: true,
+      isError: false,
+      error: null,
+      refetch: () => Promise.resolve({}),
+    }),
     useKo: (id: string) =>
       stand.auffrischungScheitert
         ? {

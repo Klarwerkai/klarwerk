@@ -78,6 +78,12 @@ import {
   InMemoryKoRepo,
   InMemoryKoVersionRepo,
   InMemoryUploadLimitsRepo,
+  // JOB 4155 (WG-LUECKEN): der Lesedienst der kuratierten Kanten — hier, in der
+  // Kompositionswurzel, bekommt die Netzroute ihre Kantenauskunft. Er ist seit JOB 4151 über
+  // `services/knowledge-object/index.ts` erreichbar; genau dieser fehlende Modulexport war der in
+  // `lesemodell-ports.ts:15-20` festgehaltene Grund, warum das Lesemodell bis heute ohne
+  // Kantenport lief.
+  KantenLeseService,
   type KantenRepo,
   type KnowledgeObject,
   type KoRepo,
@@ -758,11 +764,21 @@ export function assembleServices(
   // (`acceptToKo`: `const externalId = this.externalUpsert ? item.externalId : undefined`). Das
   // Wissensobjekt entstünde, verlöre aber lautlos seine Quelle.
   const externalImportEnabled = schalterAn("confluenceImport") || schalterAn("sharepointImport");
+  // JOB 4155 (WG-LUECKEN): DER KANTENBESTAND ENTSTEHT JETZT HIER, EINE STUFE FRÜHER — und zwar
+  // GENAU EINMAL. Er stand bis hierher erst im `return`-Objekt weiter unten (`kanten:` dort), und
+  // damit konnte ihn der `LibraryService` nicht bekommen, der davor gebaut wird. Ihn dort ein
+  // zweites Mal zu erzeugen wären ZWEI Bestände: der Graph zeigte Beziehungen, die die
+  // Beziehungsroute nicht kennt. Die Wahlregel selbst ist UNVERÄNDERT (Postgres, wenn injiziert,
+  // sonst der DEDUPLIZIERENDE Speicherbestand — die Begründung steht unten an der Verwendung).
+  const kantenBestand = opts.kanten ?? new DeduplizierenderKantenBestand();
   const library = new LibraryService({
     koService: ko,
     audit,
     candidates: repos.candidates,
     externalUpsert: externalImportEnabled,
+    // JOB 4155: die kuratierten Kanten für `/api/graph` — EINE Mengenabfrage über `alleAktiven`,
+    // keine Abfrage je Knoten. Derselbe Bestand, den `kantenRoutes` und die Netzroute lesen.
+    kanten: kantenBestand,
   });
   const lifecycle = new LifecycleService({ koService: ko, repo: repos.lifecycleRepo });
   // AUFTRAG-mega20 Block C/D: EINE ObjectStore-Instanz für die Composition-Root. Bis mega19 wurde
@@ -802,7 +818,10 @@ export function assembleServices(
     // Speicherbestand. Bewusst nicht `InMemoryKantenRepo`: der legt je Kennung ab und liesse
     // dieselbe fachliche Beziehung zweimal entstehen. Er ist der Prüfstand des Lesewegs
     // (`kanten-service.ts:86-90`) und war nie als Ablage der Anwendung gemeint.
-    kanten: opts.kanten ?? new DeduplizierenderKantenBestand(),
+    // JOB 4155: DIESELBE Instanz, die oben schon in den `LibraryService` gereicht wurde — die Wahl
+    // fällt dort (`kantenBestand`), hier wird sie nur weitergegeben. Zwei `??`-Ausdrücke wären zwei
+    // Bestände gewesen.
+    kanten: kantenBestand,
     // JOB 3510/3578: die Markenwahl — Postgres, wenn injiziert, sonst im Speicher.
     brandingSettings: opts.brandingSettings ?? new InMemoryBrandingSettingsRepo(),
     // JOB 3110 (M2b): DIE VORHANDENEN gecappten Cloud-Clients, weitergereicht — kein zweiter Aufruf
@@ -2342,6 +2361,20 @@ export function buildApp(
         // Composition-Root, treffen sich Capture und Knowledge-Object — ko-routes importiert das
         // Capture-Modul nicht. Die Sichtbarkeitsregel ist DIESELBE Funktion wie auf den
         // Entwurfs-Routen (canSeeDraft), nicht eine zweite Auffassung davon.
+        // ==========================================================================================
+        // JOB 4155 (WG-LUECKEN) — DIE KANTENAUSKUNFT DER NETZROUTE, ADDITIV VERDRAHTET.
+        // ==========================================================================================
+        //
+        // DERSELBE Bestand und DERSELBE schmale KO-Port, die `kantenRoutes` unten schon benutzt
+        // (`services.kanten`, `services.ko`) — kein zweiter Speicher und keine zweite Auffassung
+        // davon, was eine Kante ist. Der Lesedienst selbst ist zustandslos; eine zweite Instanz auf
+        // demselben Bestand ist deshalb keine zweite Wahrheit, und ihn aus `kantenRoutes`
+        // herauszureichen hiesse, eine Route zur Fabrik einer anderen zu machen.
+        //
+        // DIE SICHTBARKEIT ENTSCHEIDET NICHT DIESE ZEILE: `kantenFuer` bekommt sein Prädikat vom
+        // Lesemodell hereingereicht, das es aus der Policy-Naht holt (`lesemodell.ts:254`,
+        // `policyNahtSchliessen` weiter unten). Hier reist nur der Bestand.
+        kanten: new KantenLeseService({ repo: services.kanten, kos: services.ko }),
         draftPromotion: {
           load: async (draftId, user) => {
             const draft = await services.capture.getDraft(draftId);

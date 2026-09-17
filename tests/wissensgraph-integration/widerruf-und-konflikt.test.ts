@@ -168,8 +168,24 @@ describe("JOB 4151 · W — der Widerruf nimmt zurück, er löscht nicht", () =>
     const antwort = weg.json() as { urheber: string; widerrufenVon: string; geaendertAm: string };
     expect(antwort.urheber).toBe(buehne.konto.controller.id);
     expect(antwort.widerrufenVon).toBe(buehne.konto.admin.id);
-    // Der Zeitpunkt der Rücknahme ist `geaendertAm` — ein zweites Zeitfeld gibt es bewusst nicht.
-    expect(antwort.geaendertAm).not.toBe(kante.gesetztAm);
+    // ============================================================================================
+    // DER ZEITPUNKT DER RÜCKNAHME IST `geaendertAm` — ein zweites Zeitfeld gibt es bewusst nicht.
+    // ============================================================================================
+    //
+    // JOB 4155 · FLACKERER BEHOBEN, DIE ZUSAGE NICHT ABGESCHWÄCHT. Hier stand
+    // `expect(antwort.geaendertAm).not.toBe(kante.gesetztAm)`. Das ist ein WETTLAUF gegen die
+    // Millisekunde: Setzen und Widerrufen laufen im selben Prozess ohne Wartezeit, und auf einem
+    // schnellen Prüfplatz fallen beide `new Date().toISOString()` in DIESELBE Millisekunde. Gemessen
+    // am 16.09.2026 im Cloud-Lauf dieser Gruppe: `expected '2026-09-16T18:20:23.879Z' not to be
+    // '2026-09-16T18:20:23.879Z'` — rot, ohne dass am Produkt etwas falsch war.
+    //
+    // WAS DER FALL WIRKLICH SAGEN WILL, steht jetzt da, und es ist MEHR und nicht weniger: das Feld
+    // ist belegt, es ist ein echter Zeitstempel, und es liegt NICHT VOR dem Setzen. Eine Uhr, die
+    // rückwärts liefe, oder ein `geaendertAm`, das gar nicht gesetzt wird, macht diesen Fall
+    // weiterhin rot — nur die Millisekunde entscheidet nicht mehr mit.
+    expect(antwort.geaendertAm, "der Zeitpunkt der Rücknahme fehlt").toBeTypeOf("string");
+    expect(Number.isNaN(Date.parse(antwort.geaendertAm))).toBe(false);
+    expect(Date.parse(antwort.geaendertAm)).toBeGreaterThanOrEqual(Date.parse(kante.gesetztAm));
     // Und im BESTAND, nicht nur in der Antwort.
     const imBestand = await buehne.kanten.hole(kante.id);
     expect(imBestand?.urheber).toBe(buehne.konto.controller.id);
