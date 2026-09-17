@@ -85,8 +85,11 @@ import {
 adapterUmgebungSetzen();
 
 import {
+  type Abrufbefund,
+  type Bildbefund,
   type Browser,
   type Instanz,
+  type Klickfolge,
   type Kontext,
   MELDUNG_KEINE_DATENBANK,
   type Pruefplatz,
@@ -99,7 +102,9 @@ import {
   belegAdressen,
   belegAnDerQuelle,
   belegLinkBetaetigen,
+  bildinhaltLesen,
   ergebnisAbwarten,
+  fensterSchliessen,
   flaecheBereitstellen,
   fn,
   frageStellen,
@@ -113,9 +118,49 @@ import {
   warte,
 } from "./platz";
 
+// ================================================================================================
+// JOB 4304 · WAS DIESE DATEI SEIT DEM PRÜFURTEIL VON 4281 ZUSÄTZLICH MISST.
+// ================================================================================================
+//
+// Das Urteil `archiv/4281/runde-2/ben.md` ist GRÜN und benennt in Punkt 6 selbst zwei Lücken. Beide
+// sind hier geschlossen, und zwar an den Stellen, an denen sie standen:
+//
+//   1. G6 — DAS BILDORIGINAL AM ECHTEN KLICK. Der bisherige Nachweis deckte ausschliesslich den
+//      DOWNLOAD-Zweig der Rohbyteroute ab (Textdatei → `attachment`). Der INLINE-Zweig (Bild →
+//      eigenes Fenster) war nie betreten. G6 betritt ihn und vergleicht die tatsächlich
+//      DARGESTELLTEN Bildpunkte gegen den Seedwert (`bildquelle.ts`).
+//   2. DIE PREISGABEPROBE STATT DER GLEICHHEITSPROBE. Hier stand `expect(inhalt).not.toBe(
+//      ORIGINALTEXT)` — erfüllt von jedem Auszug und von jedem Dateinamen. Sie ist in G3 ersetzt
+//      (nicht ergänzt) und gilt in G7 zusätzlich für die Bildquelle, für beide Zweige und für den
+//      erneuten Direktabruf (`preisgabe.ts`, kalibriert in `preisgabe.test.ts`).
+//
+// UND EINE ABGRENZUNG, die 4281 offen gelassen hat: „Modell abgeschaltet" und „Leserecht entzogen"
+// sind zwei verschiedene Zustände. G4 heisst seit diesem Auftrag nach dem, was er misst, und ist
+// ausdrücklich KEIN Sperrnachweis; der Sperrnachweis sind G3 (Text) und G7 (Bild).
+import {
+  BILDNAME,
+  BILD_BREITE,
+  BILD_HOEHE,
+  QUELLE_BILD,
+  bildBytes,
+  bildeintragAnlegen,
+  erwartetePunkteRGBA,
+} from "./bildquelle";
+import {
+  type GesperrteQuelle,
+  type VerbotenesStueck,
+  preisgabeImText,
+  preisgabeInBytes,
+  unerhalteneStuecke,
+  verboteneStuecke,
+} from "./preisgabe";
+
 const JOB = "[KLARWERK] JOB 4281";
+const JOB4304 = "[KLARWERK] JOB 4304";
 /** Der Titel trägt die Auftragskennung — eigener Bestand, nicht der eines anderen Laufs. */
 const TITEL = "Zylinderkopfdichtung XQ42 wechseln (JOB 4281)";
+/** Der Titel des Eintrags, dessen Original ein BILD ist — eigener Bestand von JOB 4304. */
+const TITEL_BILD = "Zylinderkopfdichtung XQ42 wechseln (JOB 4304, Bildquelle)";
 /** Eine Kennung, die es nie gegeben hat — der Maßstab für „nicht vorhanden". */
 const ERFUNDEN = "gibt-es-nicht-4281";
 
@@ -282,12 +327,19 @@ async function frageBisAntwort(seite: Seite): Promise<void> {
  * andere Frage („kommt die Person auch ohne die Fläche an das Original?"). Der Bediengriff steht
  * in `belegBetaetigen`.
  */
-async function belegAnsehen(seite: Seite, objectId: string): Promise<string> {
+async function belegAnsehen(
+  seite: Seite,
+  objectId: string,
+  // JOB 4304: Bezeichnung und Dateiname sind Parameter geworden, weil es jetzt ZWEI Quellenarten
+  // gibt (Textdatei und Bild). Die Vorgaben halten jeden bestehenden Aufruf zeichengleich.
+  bezeichnung: string = QUELLENBEZEICHNUNG,
+  dateiname: string = ORIGINALNAME,
+): Promise<string> {
   await mehrOeffnen(seite);
-  const beleg = await belegAnDerQuelle(seite, QUELLENBEZEICHNUNG);
+  const beleg = await belegAnDerQuelle(seite, bezeichnung);
   expect(
     beleg,
-    `die Quelle „${QUELLENBEZEICHNUNG}" bietet keinen Weg zu ihrem Original an: ${(
+    `die Quelle „${bezeichnung}" bietet keinen Weg zu ihrem Original an: ${(
       await seitentext(seite)
     ).slice(0, 800)}`,
   ).not.toBeNull();
@@ -295,7 +347,7 @@ async function belegAnsehen(seite: Seite, objectId: string): Promise<string> {
     (beleg as { href: string }).href,
     "der angebotene Weg zeigt nicht auf das hinterlegte Original",
   ).toBe(`/api/objects/${objectId}/raw`);
-  expect((beleg as { text: string }).text).toContain(ORIGINALNAME);
+  expect((beleg as { text: string }).text).toContain(dateiname);
   return (beleg as { href: string }).href;
 }
 
@@ -334,6 +386,250 @@ async function belegBetaetigen(lage: Fachlage, objectId: string): Promise<void> 
   expect(geladen.inhalt, "der gedrückte Beleg führt nicht zum VOLLSTÄNDIGEN Original").toBe(
     ORIGINALTEXT,
   );
+}
+
+// ================================================================================================
+// JOB 4304 · DER BILDKLICK — DERSELBE BEDIENGRIFF, DER ANDERE ZWEIG DES PRODUKTS.
+// ================================================================================================
+//
+// Warum ein Bild hier nicht als Download ankommt, steht am Kopf von `bildquelle.ts`: die Allowlist
+// der Rohbyteroute liefert `image/png` INLINE aus. Der Klick öffnet also ein Fenster, und der
+// Nachweis führt genau dorthin — nicht zu einem Statuscode und nicht zu einem MIME-Typ.
+//
+// DIE KURZE FRIST IST GEMESSEN UND NICHT GERATEN: im Downloadfall kommt der Download in
+// Millisekunden (der Server steht im selben Prozess). Hier kommt KEINER, also wird die Frist in
+// voller Länge abgewartet — jede Sekunde mehr wäre reine Wartezeit in jedem Bildfall.
+const BILDKLICK_FRIST_MS = 4_000;
+
+/** Der Klick auf die Bildquelle und das Fenster, das er aufgemacht hat. */
+async function bildLinkOeffnen(lage: Fachlage): Promise<Seite> {
+  const folge = await belegLinkBetaetigen(
+    lage.kontext,
+    lage.seite,
+    '[data-testid="answer-source-original"]',
+    BILDKLICK_FRIST_MS,
+  );
+  expect(
+    folge.art,
+    `das Drücken des Bildbelegs hat einen DOWNLOAD ausgelöst statt das Bild zu zeigen: ${
+      folge.art === "download" ? folge.dateiname : ""
+    }`,
+  ).toBe("kein-download");
+  const fenster = folge as Extract<Klickfolge, { art: "kein-download" }>;
+  expect(
+    fenster.neueSeiten.length,
+    `der Klick auf die Bildquelle hat nicht genau ein Fenster geöffnet — geöffnet: ${
+      fenster.neueFenster.join(" | ").slice(0, 600) || "(gar nichts)"
+    }`,
+  ).toBe(1);
+  return fenster.neueSeiten[0] as Seite;
+}
+
+/**
+ * DER INHALTSNACHWEIS: was in diesem Fenster steht, ist GENAU das geseedete Bild.
+ *
+ * Verglichen werden Eigengrösse UND jeder einzelne Bildpunkt gegen `bildquelle.ts`. Ein Vergleich
+ * auf MIME-Typ, Statuscode oder Dateinamen bliebe für jedes andere Bild derselben Grösse grün —
+ * genau diese Halbheit benennt §8.1 des Auftrags.
+ */
+async function bildinhaltMussStimmen(bildfenster: Seite, erwarteteAdresse: string): Promise<void> {
+  await warte(
+    bildfenster,
+    `() => !!document.querySelector("img")`,
+    "das geöffnete Fenster baut ein Bilddokument auf",
+    undefined,
+    30_000,
+  );
+  const befund: Bildbefund = await bildinhaltLesen(bildfenster);
+  // §9: ein ausgefallener Messweg ist KEIN Inhaltsbefund. Er wird zuerst gelesen und als
+  // Maschinenfehler gemeldet, nie als „Inhalt stimmt nicht".
+  expect(
+    befund.fehler,
+    `der Bildinhalt des geöffneten Fensters (${befund.quelle}) war nicht messbar — das ist ein Maschinenfehler und kein Inhaltsbefund`,
+  ).toBeNull();
+  expect(befund.quelle, "das geöffnete Fenster zeigt eine andere Adresse als der Beleg").toContain(
+    erwarteteAdresse,
+  );
+  const erwartet = erwartetePunkteRGBA();
+  expect(
+    [befund.breite, befund.hoehe],
+    "die Zielansicht zeigt ein Bild anderer Grösse als das hinterlegte Original",
+  ).toEqual([BILD_BREITE, BILD_HOEHE]);
+  expect(
+    befund.punkte.length,
+    "die Zielansicht gibt nicht für jeden Bildpunkt vier Werte her",
+  ).toBe(erwartet.length);
+  expect(
+    befund.punkte,
+    "die Zielansicht zeigt ein ANDERES Bild als das hinterlegte Original — die Bildpunkte weichen ab",
+  ).toEqual(erwartet);
+}
+
+// ================================================================================================
+// JOB 4304 · DIE PREISGABEPROBE AM FACHFALL — WAS NACH DEM ENTZUG NICHT ANKOMMEN DARF.
+// ================================================================================================
+//
+// Die Stücke selbst und ihre Begründung stehen in `preisgabe.ts`; kalibriert sind sie ohne
+// Prüfplatz in `preisgabe.test.ts`. Hier stehen nur die zwei Anwendungen und ihre GRENZE:
+//
+//   · `keinePreisgabe…`       — für alles, was NACH dem Entzug geholt oder neu aufgebaut wird.
+//                               Inhalt, Auszug, Dateiname, Titel: nichts davon.
+//   · `keinUnerhaltenesStueck` — für die schon offene Ausgangsseite. Titel und Belegstelle dürfen
+//                               dort stehen bleiben (Lieferung 3, Begründung bei G3); was diese
+//                               Person NIE erhalten hat, darf dort auch jetzt nicht erscheinen.
+
+function textquelle(): GesperrteQuelle {
+  return {
+    name: ORIGINALNAME,
+    titel: TITEL,
+    auszug: BELEGSTELLE,
+    original: Buffer.from(ORIGINALTEXT, "utf8"),
+    // Was vor dem Entzug berechtigt auf der Antwortkarte stand und dort stehen bleiben darf.
+    bereitsErhalten: [QUELLENBEZEICHNUNG],
+  };
+}
+
+function bildquelle(): GesperrteQuelle {
+  return {
+    name: BILDNAME,
+    titel: TITEL_BILD,
+    auszug: BELEGSTELLE,
+    original: bildBytes(),
+    bereitsErhalten: [QUELLE_BILD],
+  };
+}
+
+function nennen(durchgekommen: readonly VerbotenesStueck[]): string {
+  return durchgekommen.map((s) => s.was).join(" · ");
+}
+
+/** Nichts von der gesperrten Quelle — in Bytes gemessen. */
+function keinePreisgabeInBytes(wo: string, geliefert: Buffer, quelle: GesperrteQuelle): void {
+  const durch = preisgabeInBytes(geliefert, verboteneStuecke(quelle));
+  expect(
+    nennen(durch),
+    `${wo}: geschützter Quellinhalt ist durchgekommen (${geliefert.length} Byte, Anfang: ${JSON.stringify(
+      geliefert.subarray(0, 200).toString("latin1"),
+    )})`,
+  ).toBe("");
+}
+
+/** Nichts von der gesperrten Quelle — in etwas, das als Text beim Menschen ankommt. */
+function keinePreisgabeImText(wo: string, text: string, quelle: GesperrteQuelle): void {
+  const durch = preisgabeImText(text, verboteneStuecke(quelle));
+  expect(
+    nennen(durch),
+    `${wo}: geschützter Quellinhalt ist durchgekommen — ${text.slice(0, 300)}`,
+  ).toBe("");
+}
+
+/** Nur das NIE ERHALTENE — die Aussage, die auch für die schon ausgelieferte Seite gilt. */
+function keinUnerhaltenesStueckImText(wo: string, text: string, quelle: GesperrteQuelle): void {
+  const durch = preisgabeImText(text, unerhalteneStuecke(quelle));
+  expect(
+    nennen(durch),
+    `${wo}: ein nie erhaltenes Stück der gesperrten Quelle steht da — ${text.slice(0, 300)}`,
+  ).toBe("");
+}
+
+// ================================================================================================
+// JOB 4304 · RUNDE 3 — DIE SPERRE WIRD AM VERTRAG BESTÄTIGT, NICHT AM LEEREN BILDSCHIRM ABGELESEN.
+// ================================================================================================
+//
+// BENs Korrekturpflicht 2 aus Runde 2, an zwei gemessenen Mutationen belegt:
+//   · Die Route lieferte beim Navigationsklick nach dem Entzug die ersten 16 Byte des Originals
+//     als Download — G3 blieb GRÜN und nannte den Download sogar „ohne Originalinhalt".
+//   · Die Bildroute antwortete beim Navigationsklick mit HTTP 500 — G7 blieb GRÜN, weil im Fenster
+//     kein darstellbares Bild stand.
+// Beide Male war die Aussage „gesperrt" aus einer ABWESENHEIT geschlossen. Ein leeres Fenster kann
+// aber dreierlei heissen: die Sperre griff, der Server fiel um, oder es wurde nie navigiert.
+//
+// AB JETZT WIRD DIE ABSAGE POSITIV NACHGEWIESEN, in dieser Reihenfolge:
+//   1. Der Klick hat überhaupt einen Abruf der Belegadresse ausgelöst — sonst ist nichts gemessen.
+//   2. Dieser Abruf kam zustande (kein Netzfehler, Rumpf lesbar) — sonst Maschinenfehler, §9.
+//   3. Sein Status ist der VERTRAGSSTATUS der Absage (404), nicht 500 und nicht 200.
+//   4. Sein Rumpf ist BYTEGLEICH zur Absage für eine erfundene Kennung — die Absage darf sich nicht
+//      unterscheiden, sonst wird sie zum Existenzorakel.
+//   5. Es ist KEIN Download entstanden. Nach dem Entzug gibt es nichts herunterzuladen; ein
+//      Download ist deshalb für sich genommen der Befund — unabhängig von seinem Inhalt und seiner
+//      Länge. Genau hier rutschten BENs 16 Byte durch.
+//   6. Und erst DANN die Preisgabeprobe über Fenster und Rumpf.
+//
+// Der Vertrag wird nicht abgeschrieben, sondern am selben Lauf GEMESSEN: `vertragsabsage` ist die
+// Antwort, die dieselbe Person unter einer erfundenen Kennung bekommt.
+
+interface Vertragsabsage {
+  status: number;
+  text: string;
+}
+
+/** Die Abrufe dieses Klicks, die wirklich der Belegadresse galten. */
+function abrufeAufBeleg(folge: Klickfolge, belegAdresse: string): Abrufbefund[] {
+  return folge.abrufe.filter((a) => a.url.endsWith(belegAdresse));
+}
+
+/**
+ * Der Klick nach dem Entzug ergibt eine BESTÄTIGTE Rechteabsage — und gibt nichts preis.
+ */
+function sperreAmKlickBestaetigen(
+  folge: Klickfolge,
+  belegAdresse: string,
+  vertrag: Vertragsabsage,
+  quelle: GesperrteQuelle,
+  wo: string,
+): void {
+  // 5. zuerst, weil ein Download alles Weitere erübrigt: es gibt nichts, was hier ankommen dürfte.
+  expect(
+    folge.art === "download"
+      ? `ein Download „${(folge as Extract<Klickfolge, { art: "download" }>).dateiname}" mit ${(folge as Extract<Klickfolge, { art: "download" }>).bytes.length} Byte: ${JSON.stringify(
+          (folge as Extract<Klickfolge, { art: "download" }>).bytes
+            .subarray(0, 120)
+            .toString("latin1"),
+        )}`
+      : "",
+    `${wo}: der Klick auf die gesperrte Quelle hat eine DATEI geliefert. Nach dem Entzug gibt es nichts herunterzuladen — schon der Download ist der Befund, gleich wie kurz er ist`,
+  ).toBe("");
+
+  // 1. Der Abruf hat stattgefunden.
+  const treffer = abrufeAufBeleg(folge, belegAdresse);
+  expect(
+    treffer.length,
+    `${wo}: der Klick hat gar keinen Abruf von ${belegAdresse} ausgelöst — dann ist über die Sperre NICHTS gemessen (beobachtete Abrufe: ${
+      folge.abrufe.map((a) => `${a.status} ${a.url}`).join(" · ") || "(keine)"
+    })`,
+  ).toBeGreaterThan(0);
+
+  for (const abruf of treffer) {
+    // 2. Er kam zustande.
+    expect(
+      abruf.fehler,
+      `${wo}: der Abruf von ${belegAdresse} ist mit einem Maschinenfehler geendet — das ist kein Sperrnachweis (§9)`,
+    ).toBeNull();
+    // 3. Mit dem Vertragsstatus der Absage.
+    expect(
+      abruf.status,
+      `${wo}: der Klickabruf antwortete ${abruf.status} statt ${vertrag.status}. Ein Serverfehler oder eine Auslieferung ist keine Rechteabsage (§9) — Rumpf: ${JSON.stringify(
+        abruf.koerper.subarray(0, 200).toString("latin1"),
+      )}`,
+    ).toBe(vertrag.status);
+    // 4. Und mit genau ihrem Rumpf — nicht erlaubt sieht aus wie nicht vorhanden.
+    expect(
+      abruf.koerper.toString("utf8"),
+      `${wo}: die Absage des Klickabrufs unterscheidet sich von der für eine erfundene Kennung — damit wird sie zum Existenzorakel`,
+    ).toBe(vertrag.text);
+  }
+
+  // 6. Und erst jetzt: es ist auch nichts durchgekommen.
+  const fensterfolge = folge as Extract<Klickfolge, { art: "kein-download" }>;
+  for (const neuesFenster of fensterfolge.neueFenster) {
+    keinePreisgabeImText(`${wo} · neu geöffnetes Fenster`, neuesFenster, quelle);
+  }
+  for (const fenstertext of fensterfolge.alleFenster) {
+    keinUnerhaltenesStueckImText(`${wo} · offenes Fenster`, fenstertext, quelle);
+  }
+  for (const abruf of treffer) {
+    keinePreisgabeInBytes(`${wo} · Rumpf des Klickabrufs`, abruf.koerper, quelle);
+  }
 }
 
 describe("JOB 4281 · D5 · G — der Gesamtweg auf echtem PostgreSQL, im echten Browser", () => {
@@ -538,41 +834,48 @@ describe("JOB 4281 · D5 · G — der Gesamtweg auf echtem PostgreSQL, im echten
       //      ausgeliefert, und eine schon ausgelieferte Kopie holt keine Oberfläche zurück
       //      (dieselbe ehrliche Grenze wie `flaeche-fuehrt-zum-original.test.tsx:330-341`). Dass
       //      sie beim nächsten Aufbau weg ist, misst dieser Fall weiter unten.
+      //
+      //    JOB 4304 — DIE GLEICHHEITSPROBE IST HIER FORT. Bis zu diesem Auftrag stand im
+      //    Downloadzweig `expect(inhalt).not.toBe(ORIGINALTEXT)`: erfüllt von den ersten zweihundert
+      //    Zeichen desselben Dokuments, vom blossen Dateinamen, vom Titel. BEN hat das in seinem
+      //    Urteil zu 4281 (Punkt 6) selbst benannt. An ihrer Stelle steht seit Runde 3 die am
+      //    VERTRAG bestätigte Absage samt Preisgabeprobe (`sperreAmKlickBestaetigen`).
+      //
+      //    DER VERTRAG WIRD VOR DEM KLICK GEMESSEN, nicht abgeschrieben: er ist die Antwort, die
+      //    dieselbe Person unter einer ERFUNDENEN Kennung bekommt. Und er wird selbst kalibriert —
+      //    wäre er ein Serverfehler oder ein leerer Rumpf, vergliche der Nachweis darunter zwei
+      //    Ausfälle miteinander und wäre wertlos.
+      const vertragsAbruf = await abrufAusDerSeite(lage.seite, `/api/objects/${ERFUNDEN}/raw`);
+      expect(
+        vertragsAbruf.status,
+        `Kalibrierung: die Absage für eine erfundene Kennung ist selbst keine gültige Absage (${vertragsAbruf.text.slice(0, 200)})`,
+      ).toBe(404);
+      expect(
+        vertragsAbruf.text.length,
+        "Kalibrierung: die Absage für eine erfundene Kennung hat einen leeren Rumpf",
+      ).toBeGreaterThan(0);
+      const vertrag: Vertragsabsage = { status: 404, text: vertragsAbruf.text };
+
       const nachEntzugGedrueckt = await belegLinkBetaetigen(
         lage.kontext,
         lage.seite,
         '[data-testid="answer-source-original"]',
         5_000,
       );
-      if (nachEntzugGedrueckt.art === "download") {
-        expect(
-          nachEntzugGedrueckt.inhalt,
-          "das Drücken des noch angezeigten Links hat das gesperrte Original geladen",
-        ).not.toBe(ORIGINALTEXT);
-      } else {
-        for (const fenstertext of nachEntzugGedrueckt.alleFenster) {
-          expect(
-            fenstertext,
-            "nach dem Klick steht der gesperrte Originalinhalt in einem offenen Fenster",
-          ).not.toContain(ORIGINALTEXT);
-        }
-        for (const neuesFenster of nachEntzugGedrueckt.neueFenster) {
-          expect(
-            neuesFenster,
-            "der Klick hat ein Fenster aufgemacht, das den Titel der gesperrten Quelle trägt",
-          ).not.toContain(TITEL);
-        }
-      }
+      sperreAmKlickBestaetigen(
+        nachEntzugGedrueckt,
+        belegAdresse,
+        vertrag,
+        textquelle(),
+        "G3 · Klick nach dem Entzug",
+      );
       process.stderr.write(
-        `${JOB} G3 KLICK NACH ENTZUG: ${
-          nachEntzugGedrueckt.art === "download"
-            ? `Download „${nachEntzugGedrueckt.dateiname}" ohne Originalinhalt`
-            : `kein Download · neu geöffnet: ${nachEntzugGedrueckt.neueFenster.length} Fenster${
-                nachEntzugGedrueckt.neueFenster.length > 0
-                  ? ` (${nachEntzugGedrueckt.neueFenster.join(" | ").slice(0, 200)})`
-                  : ""
-              }`
-        }\n`,
+        `${JOB4304} G3 KLICK NACH ENTZUG: bestätigte Absage — ${abrufeAufBeleg(
+          nachEntzugGedrueckt,
+          belegAdresse,
+        )
+          .map((a) => `${a.status} ${JSON.stringify(a.koerper.toString("utf8").slice(0, 120))}`)
+          .join(" · ")}\n`,
       );
 
       // ── UND DERSELBE ORT ÜBER DEN DIREKTABRUF: dieselbe Seite, dieselbe Adresse, kein Neuladen.
@@ -588,18 +891,16 @@ describe("JOB 4281 · D5 · G — der Gesamtweg auf echtem PostgreSQL, im echten
         gesperrt.text,
         "die Absage unterscheidet sich von der für eine erfundene Kennung",
       ).toBe(erfunden.text);
-      expect(gesperrt.text, "der Fehlertext trägt den geschützten Inhalt").not.toContain(
-        ORIGINALTEXT,
-      );
-      expect(gesperrt.text, "der Fehlertext nennt den Titel der gesperrten Quelle").not.toContain(
-        TITEL,
-      );
+      // JOB 4304, Lieferung 2: DIESELBE STRENGE FÜR DEN DIREKTABRUF. Bis hierher standen an dieser
+      // Stelle zwei `not.toContain` (Inhalt, Titel) — ein Fehlertext, der nur den DATEINAMEN oder
+      // einen Auszug genannt hätte, wäre durchgegangen.
+      keinePreisgabeImText("G3 · Direktabruf nach dem Entzug", gesperrt.text, textquelle());
 
       // ── DER ERNEUTE DIREKTABRUF nach einem echten Neuladen — auch der führt nicht zurück.
       await fragenflaecheOeffnen(lage.seite, lage.instanz.basis);
       const nachNeuladen = await abrufAusDerSeite(lage.seite, belegAdresse);
       expect(nachNeuladen.status, "nach dem Neuladen trägt der Direktabruf wieder").toBe(404);
-      expect(nachNeuladen.text).not.toContain(ORIGINALTEXT);
+      keinePreisgabeImText("G3 · Direktabruf nach dem Neuladen", nachNeuladen.text, textquelle());
 
       // ── UND DIE FLÄCHE BIETET DEN WEG NICHT MEHR AN: dieselbe Frage, jetzt eine Wissenslücke.
       expect(await frageStellen(lage.seite, FRAGE)).toBe("gestellt");
@@ -702,11 +1003,27 @@ describe("JOB 4281 · D5 · G — der Gesamtweg auf echtem PostgreSQL, im echten
   // DIE ZWEITE HÄLFTE IST DER EIGENTLICHE PUNKT, und sie ist eine PRODUKTENTSCHEIDUNG, keine
   // Nachlässigkeit: der Entzug der KI nimmt NIEMANDEM sein Leserecht. E6 sagt es wörtlich — „Ein
   // KI-Schalter, der nebenbei Lesezugriffe schliesst, wäre eine stille zweite Wirkung." Dieser Fall
-  // misst beides und wird rot, wenn eine der beiden Richtungen bricht. Dass §5 des Auftrags für G4
-  // „derselben Nachweis wie G3" verlangt (also einen geschlossenen Direktabruf), ist damit am
-  // gebauten Produkt NICHT erfüllbar, ohne E6 zu verletzen; die Rückgabe meldet das als Abweichung,
-  // statt es hier stillschweigend passend zu machen.
-  it("G4 · KI-Freigabeentzug: nichts geht mehr an das Modell — und das Leserecht bleibt unberührt", async (ctx) => {
+  // misst beides und wird rot, wenn eine der beiden Richtungen bricht.
+  //
+  // ==============================================================================================
+  // JOB 4304 · LIEFERUNG 4 UND 5 — DIESER FALL IST KEIN SPERRNACHWEIS, UND SEIN NAME SAGT ES JETZT.
+  // ==============================================================================================
+  //
+  // BENs Promptverbesserung zu 4281, wörtlich: „G4 benennt getrennt die entzogene KI-Berechtigung
+  // und das erwartete Leserecht. Ein grüner Modellabschaltungstest gilt NICHT als Nachweis eines
+  // gesperrten Originalabrufs." Genau das war bis hierher die Lesart dieses Falls, und sie war
+  // falsch: `:767` verlangt einen ERFOLGREICHEN Originalabruf — das Gegenteil einer Sperre.
+  //
+  // ZWEI ZUSTÄNDE, ZWEI FÄLLE, und sie werden nicht mehr verwechselt:
+  //     „Modell abgeschaltet"   → DIESER Fall. Der Originalabruf gelingt weiterhin.
+  //     „Leserecht entzogen"    → G3 (Textquelle) und G7 (Bildquelle). Dort ist nichts mehr zu holen.
+  //
+  // UND DIE BEOBACHTUNG WIRD PROTOKOLLIERT, NICHT BEWERTET (Lieferung 5). Dass ein abgeschaltetes
+  // Modell den Originalabruf offenlässt, ist der gebaute Zustand und folgt aus E6. Ob er so bleiben
+  // soll, ist eine VERTRAGSENTSCHEIDUNG für Pedi und keine, die hier im Code fällt — so schon
+  // `archiv/4281/runde-2/ben.md`, HINWEISE: „G4 benötigt weiterhin eine Vertragsentscheidung."
+  // Dieser Fall stellt den Zustand fest, schreibt ihn auf stderr und wartet nicht darauf.
+  it("G4 · Modell aus, Leserecht besteht: nichts geht mehr an das Modell — der Originalabruf gelingt weiterhin (KEIN Rechteentzugsnachweis)", async (ctx) => {
     if (!platz || !browser) {
       ueberspringen(ctx);
       return;
@@ -773,6 +1090,11 @@ describe("JOB 4281 · D5 · G — der Gesamtweg auf echtem PostgreSQL, im echten
       const bestand = await abrufAusDerSeite(lage.seite, "/api/kos");
       expect(bestand.status).toBe(200);
       expect(bestand.text, "der KI-Entzug hat den Bestand mitgenommen").toContain(eintrag.koId);
+      // JOB 4304, Lieferung 5: der Befund wird AUSGEWIESEN, damit niemand diesen grünen Fall für
+      // einen Sperrnachweis hält — weder beim Lesen des Protokolls noch beim Lesen einer Rückgabe.
+      process.stderr.write(
+        `${JOB4304} G4 BEFUND (offen, Vertragsentscheidung für Pedi): Modell abgeschaltet, Leserecht UNBERÜHRT — der Originalabruf ${belegAdresse} antwortete ${weiterhin.status}. Dieser Fall ist AUSDRÜCKLICH kein Rechteentzugsnachweis; den führen G3 (Textquelle) und G7 (Bildquelle).\n`,
+      );
       process.stderr.write(`${JOB} G4 GRÜN · ${lage.db.name}\n`);
     } finally {
       await lage.abbauen();
@@ -844,6 +1166,227 @@ describe("JOB 4281 · D5 · G — der Gesamtweg auf echtem PostgreSQL, im echten
       // Ein echter Satz, kein roher Programmschlüssel.
       expect(satz as string).not.toContain("answerSource.");
       process.stderr.write(`${JOB} G5 GRÜN · ${lage.db.name}\n`);
+    } finally {
+      await lage.abbauen();
+    }
+  }, 600_000);
+
+  // ==============================================================================================
+  // G6 (JOB 4304) · DAS BILDORIGINAL AM ECHTEN KLICK — UND ZWAR AM BILDINHALT GEMESSEN.
+  // ==============================================================================================
+  //
+  // BENs Prüflücke 6 zu 4281, erster Teil, wörtlich: „Der Downloadnachweis deckt die Textdatei ab;
+  // eine inline dargestellte Bilddatei fehlt. Testvorschlag: Bildoriginal anklicken und Inhalt der
+  // Zielansicht prüfen."
+  //
+  // WAS HIER NICHT GEMESSEN WIRD, weil es die Halbheit dieses Falls wäre (§8.4): nicht der MIME-Typ,
+  // nicht der Statuscode, nicht der Dateiname. Alle drei blieben grün, wenn unter derselben Adresse
+  // ein ANDERES Bild läge. Gemessen werden die Bildpunkte, die dieser Mensch nach seinem Klick vor
+  // sich sieht, gegen den Seedwert aus `bildquelle.ts` — und der Seed ist die einzige Wahrheit über
+  // den Sollwert, keine zweite Abschrift daneben.
+  it("G6 · die Bildquelle wird über die Oberfläche geöffnet und zeigt genau den erwarteten Bildinhalt", async (ctx) => {
+    if (!platz || !browser) {
+      ueberspringen(ctx);
+      return;
+    }
+    const lage = await fachlage("g6");
+    try {
+      const eintrag = await bildeintragAnlegen(
+        lage.instanz.app,
+        lage.admin,
+        TITEL_BILD,
+        BELEGSTELLE,
+      );
+      const vorher = draht.lage.generierungen;
+
+      await fragenflaecheOeffnen(lage.seite, lage.instanz.basis);
+      await frageBisAntwort(lage.seite);
+      expect(
+        draht.lage.generierungen,
+        "der kontrollierte Adapter wurde nicht befragt — dann misst dieser Fall etwas anderes als beschrieben",
+      ).toBeGreaterThan(vorher);
+
+      // ── DER BELEG ZEIGT DIE BILDQUELLE, an ihrer eigenen Zeile und mit ihrem eigenen Dateinamen.
+      const adresse = await belegAnsehen(lage.seite, eintrag.objectId, QUELLE_BILD, BILDNAME);
+      expect(
+        await anzahlAuf(lage.seite, '[data-testid="answer-source-original"]'),
+        "es steht mehr als ein Beleg-Link auf der Fläche — dann ist der Klick nicht mehr eindeutig dem geprüften zugeordnet",
+      ).toBe(1);
+
+      // ── UND JETZT DER BEDIENGRIFF: gedrückt wird der Link, nicht die Adresse abgerufen.
+      const bildfenster = await bildLinkOeffnen(lage);
+      await bildinhaltMussStimmen(bildfenster, adresse);
+      process.stderr.write(
+        `${JOB4304} G6 BILDBELEG: Klick auf ${adresse} öffnete ein Fenster mit ${BILD_BREITE}×${BILD_HOEHE} Bildpunkten, alle gleich dem Seed\n`,
+      );
+      await fensterSchliessen(bildfenster);
+
+      // ── UND DIE ZEILE LIEGT WIRKLICH IN PostgreSQL — nachgesehen, nicht angenommen.
+      const zeile = await lage.db.pool.query<{ anzahl: string }>(
+        "SELECT count(*)::text AS anzahl FROM kos WHERE id = $1",
+        [eintrag.koId],
+      );
+      expect(zeile.rows[0]?.anzahl, "der Bildeintrag steht nicht in der Datenbank").toBe("1");
+      process.stderr.write(`${JOB4304} G6 GRÜN · ${lage.db.name} · ${lage.instanz.basis}\n`);
+    } finally {
+      await lage.abbauen();
+    }
+  }, 600_000);
+
+  // ==============================================================================================
+  // G7 (JOB 4304) · NACH DEM ENTZUG DES LESERECHTS KOMMT AUCH KEIN AUSSCHNITT UND KEIN DATEINAME AN.
+  // ==============================================================================================
+  //
+  // BENs Prüflücke 6 zu 4281, zweiter Teil: „ausschliesslich einen geschützten Auszug oder
+  // Dateinamen ausliefern und dessen Preisgabe ausdrücklich abweisen."
+  //
+  // WARUM DIESER FALL AM BILD HÄNGT UND NICHT AM TEXT: G3 misst die Textquelle und ist seit diesem
+  // Auftrag ebenso scharf (dort steht die Preisgabeprobe an der Stelle der alten Gleichheitsprobe).
+  // Die Bildquelle nimmt dagegen den ANDEREN Zweig der Rohbyteroute — sie wird vor dem Entzug INLINE
+  // in einem Fenster dargestellt, nicht heruntergeladen. Eine Sperre, die nur den Downloadweg
+  // schlösse, bliebe an G3 grün und wäre trotzdem offen. Es entsteht dadurch keine Wiederholung des
+  // Textwegs: G7 fährt die Bildquelle, G3 bleibt unangetastet die Textquelle.
+  //
+  // DER ENTZUG IST DERSELBE ECHTE PRODUKTWEG WIE IN G3 (Höherstufung auf `vertraulich`), nicht ein
+  // KI-Schalter — die beiden Zustände sind getrennt, s. die Begründung an G4.
+  it("G7 · nach dem Entzug des Leserechts kommt auch kein Auszug und kein Dateiname der gesperrten Bildquelle an", async (ctx) => {
+    if (!platz || !browser) {
+      ueberspringen(ctx);
+      return;
+    }
+    const lage = await fachlage("g7");
+    const gesperrt = bildquelle();
+    try {
+      const eintrag = await bildeintragAnlegen(
+        lage.instanz.app,
+        lage.admin,
+        TITEL_BILD,
+        BELEGSTELLE,
+      );
+      await fragenflaecheOeffnen(lage.seite, lage.instanz.basis);
+      await frageBisAntwort(lage.seite);
+
+      // ── KALIBRIERUNG: VORHER trägt der Weg, und zwar bis zum BILDINHALT. Ohne sie wäre „gesperrt"
+      //    auch für eine Fläche grün, die nie ein Bild gezeigt hat (§9: keine negative Aussage ohne
+      //    einen tatsächlich durchgeführten, fehlerfreien Versuch).
+      const belegAdresse = await belegAnsehen(lage.seite, eintrag.objectId, QUELLE_BILD, BILDNAME);
+      const vorFenster = await bildLinkOeffnen(lage);
+      await bildinhaltMussStimmen(vorFenster, belegAdresse);
+      // Das Kalibrierungsfenster wird zugemacht: es wurde VOR dem Entzug ausgeliefert, und über eine
+      // schon ausgehändigte Ansicht sagt dieser Auftrag nichts zu (Lieferung 3). Bliebe es offen,
+      // stünde es gleich in der Messung, ohne dass sie etwas darüber behauptet.
+      await fensterSchliessen(vorFenster);
+      const vorAbruf = await abrufAusDerSeite(lage.seite, belegAdresse);
+      expect(
+        vorAbruf.status,
+        `Kalibrierung: das Bildoriginal ist vor dem Entzug nicht direkt abrufbar (${vorAbruf.text.slice(0, 200)})`,
+      ).toBe(200);
+
+      // ── DER ENTZUG.
+      await alsAdmin(
+        lage,
+        "PUT",
+        `/api/kos/${eintrag.koId}`,
+        { action: "confidentiality", level: "vertraulich" },
+        "Hochstufung auf vertraulich",
+      );
+
+      // ── DER VERTRAG DER ABSAGE, vor dem Klick gemessen und selbst kalibriert (s. G3).
+      const vertragsAbrufBild = await abrufAusDerSeite(lage.seite, `/api/objects/${ERFUNDEN}/raw`);
+      expect(
+        vertragsAbrufBild.status,
+        `Kalibrierung: die Absage für eine erfundene Kennung ist selbst keine gültige Absage (${vertragsAbrufBild.text.slice(0, 200)})`,
+      ).toBe(404);
+      expect(
+        vertragsAbrufBild.text.length,
+        "Kalibrierung: die Absage für eine erfundene Kennung hat einen leeren Rumpf",
+      ).toBeGreaterThan(0);
+      const vertragBild: Vertragsabsage = { status: 404, text: vertragsAbrufBild.text };
+
+      // ── ERSTENS: DER NOCH ANGEZEIGTE LINK WIRD GEDRÜCKT. Beide Zweige sind abgedeckt; welchen das
+      //    Produkt nimmt, entscheidet es selbst, und die Sperre muss in beiden halten.
+      const nachEntzug: Klickfolge = await belegLinkBetaetigen(
+        lage.kontext,
+        lage.seite,
+        '[data-testid="answer-source-original"]',
+        BILDKLICK_FRIST_MS,
+      );
+      sperreAmKlickBestaetigen(
+        nachEntzug,
+        belegAdresse,
+        vertragBild,
+        gesperrt,
+        "G7 · Klick nach dem Entzug",
+      );
+      // UND KEIN BILD. Der Wortlaut eines Bilddokuments ist leer — eine reine Textprobe wäre für ein
+      // durchgereichtes Bild also immer grün. Deshalb wird jedes neu geöffnete Fenster ausdrücklich
+      // daraufhin angesehen, ob dort ein lesbares Bild steht.
+      //
+      // DIESE ZEILEN SIND SEIT RUNDE 3 NICHT MEHR DER SPERRNACHWEIS, sondern seine Ergänzung: dass
+      // hier KEIN Bild steht, war bis dahin die ganze Aussage — und genau daran blieb G7 bei BENs
+      // HTTP-500-Mutation grün. Den Nachweis führt jetzt `sperreAmKlickBestaetigen` am Abruf.
+      if (nachEntzug.art === "kein-download") {
+        for (const neu of nachEntzug.neueSeiten) {
+          const befund: Bildbefund = await bildinhaltLesen(neu);
+          expect(
+            befund.fehler === null ? `${befund.breite}×${befund.hoehe} Bildpunkte` : "",
+            `G7: nach dem Entzug steht in einem neu geöffneten Fenster (${befund.quelle}) trotzdem ein darstellbares Bild`,
+          ).toBe("");
+          expect(befund.punkte, "G7: das neue Fenster gibt Bildpunkte her").toEqual([]);
+        }
+      }
+      process.stderr.write(
+        `${JOB4304} G7 KLICK NACH ENTZUG: bestätigte Absage — ${abrufeAufBeleg(
+          nachEntzug,
+          belegAdresse,
+        )
+          .map((a) => `${a.status} ${JSON.stringify(a.koerper.toString("utf8").slice(0, 120))}`)
+          .join(" · ")}\n`,
+      );
+
+      // ── ZWEITENS: DER ERNEUTE DIREKTABRUF aus derselben offenen Seite. Ein 404 ist nur dann ein
+      //    Sperrnachweis, wenn der Abruf WIRKLICH stattgefunden hat — ein Maschinenfehler meldet
+      //    hier `-1` und wäre damit kein Nachweis, sondern ein Abbruchgrund (§9).
+      const abruf = await abrufAusDerSeite(lage.seite, belegAdresse);
+      const erfunden = await abrufAusDerSeite(lage.seite, `/api/objects/${ERFUNDEN}/raw`);
+      expect(
+        abruf.status,
+        `der erneute Abruf ist gar nicht zustande gekommen — das ist ein Maschinenfehler und kein Sperrnachweis: ${abruf.text.slice(0, 300)}`,
+      ).not.toBe(-1);
+      expect(
+        abruf.status,
+        `das Bildoriginal ist aus der offenen Ansicht noch abrufbar: ${abruf.text.slice(0, 300)}`,
+      ).toBe(404);
+      // Nicht erlaubt sieht aus wie nicht vorhanden — sonst wird die Absage zum Existenzorakel.
+      expect(abruf.status).toBe(erfunden.status);
+      expect(abruf.text, "die Absage unterscheidet sich von der für eine erfundene Kennung").toBe(
+        erfunden.text,
+      );
+      keinePreisgabeImText("G7 · Direktabruf nach dem Entzug", abruf.text, gesperrt);
+
+      // ── DRITTENS: NACH EINEM ECHTEN NEULADEN. Ein Produkt, das die Sperre nur in der bestehenden
+      //    Ansicht anwendete, käme bis hierher durch.
+      await fragenflaecheOeffnen(lage.seite, lage.instanz.basis);
+      const nachNeuladen = await abrufAusDerSeite(lage.seite, belegAdresse);
+      expect(nachNeuladen.status, "nach dem Neuladen trägt der Direktabruf wieder").toBe(404);
+      keinePreisgabeImText("G7 · Direktabruf nach dem Neuladen", nachNeuladen.text, gesperrt);
+
+      // ── UND VIERTENS: DIE FLÄCHE BIETET DEN WEG NICHT MEHR AN, und der Bildschirm verrät nichts.
+      expect(await frageStellen(lage.seite, FRAGE)).toBe("gestellt");
+      await warte(
+        lage.seite,
+        `() => !document.querySelector('[data-testid="ask-pending"]') && !!document.querySelector('[data-testid="ask-gap"]')`,
+        "die Antwort ist eine ehrliche Wissenslücke",
+        undefined,
+        60_000,
+      );
+      await mehrOeffnen(lage.seite);
+      expect(
+        await belegAdressen(lage.seite),
+        "die Fläche bietet das Bildoriginal der gesperrten Quelle weiter an",
+      ).not.toContain(belegAdresse);
+      keinePreisgabeImText("G7 · neu aufgebaute Fläche", await seitentext(lage.seite), gesperrt);
+      process.stderr.write(`${JOB4304} G7 GRÜN · ${lage.db.name}\n`);
     } finally {
       await lage.abbauen();
     }

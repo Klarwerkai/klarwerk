@@ -342,20 +342,80 @@ export interface Download {
   path(): Promise<string | null>;
 }
 
-/** Die zwei Fähigkeiten des Kontexts, die `browserweg.ts` nicht anbietet und dieser Weg braucht. */
+/** Die Fähigkeiten des Kontexts, die `browserweg.ts` nicht anbietet und dieser Weg braucht. */
 interface KontextMitFenstern {
   waitForEvent(ereignis: "download", opts?: { timeout?: number }): Promise<Download>;
   pages(): Seite[];
+  on(ereignis: "response", hoerer: (antwort: RohAntwort) => void): void;
+  off(ereignis: "response", hoerer: (antwort: RohAntwort) => void): void;
+  on(ereignis: "requestfailed", hoerer: (anfrage: RohAnfrage) => void): void;
+  off(ereignis: "requestfailed", hoerer: (anfrage: RohAnfrage) => void): void;
+}
+
+/** Was Playwright von einer Antwort bzw. einer gescheiterten Anfrage hergibt — schmale Hüllen. */
+interface RohAntwort {
+  url(): string;
+  status(): number;
+  body(): Promise<Buffer>;
+}
+interface RohAnfrage {
+  url(): string;
+  failure(): { errorText: string } | null;
+}
+
+// ================================================================================================
+// JOB 4304 · RUNDE 3 — DER KLICK WIRD AM ECHTEN HTTP-ABRUF GEMESSEN, NICHT AM BILDSCHIRM DANACH.
+// ================================================================================================
+//
+// BENs Korrekturpflicht 2 aus Runde 2, gemessen und nicht behauptet: er hat die Bildroute beim
+// Navigationsklick nach dem Entzug auf **HTTP 500** gestellt — und G7 blieb GRÜN. Der Fall prüfte
+// damals nur, ob im neu geöffneten Fenster ein darstellbares Bild steht. Bei einem Serverfehler
+// steht dort keines, also sah ein AUSFALL aus wie eine wirksame Sperre.
+//
+// Das verletzt §9 des Auftrags wörtlich: „Bleibt eine Antwort aus oder scheitert der Abruf mit
+// einem Maschinenfehler, ist das KEIN Sperrnachweis." Und es verletzt die zweite Hälfte ebenso:
+// „keine negative Aussage ohne einen tatsächlich durchgeführten, fehlerfreien Abrufversuch."
+//
+// Ein leeres Fenster kann drei völlig verschiedene Dinge bedeuten — die Sperre griff (404), der
+// Server fiel um (500), oder es wurde überhaupt nicht navigiert. Vom Bildschirm aus sind sie nicht
+// zu unterscheiden. Vom ABRUF aus schon. Deshalb schreibt dieser Helfer ab jetzt jede HTTP-Antwort
+// und jede gescheiterte Anfrage mit, die dieser Klick ausgelöst hat, samt Status und Rumpf — und
+// der Fachfall entscheidet am VERTRAG, ob das eine Absage war.
+export interface Abrufbefund {
+  url: string;
+  /** Der HTTP-Status — `-1`, wenn die Anfrage gar nicht zustande kam. */
+  status: number;
+  /** Der Rumpf, soweit lesbar. Bei `-1` und bei nicht lesbaren Rümpfen leer. */
+  koerper: Buffer;
+  koerperLesbar: boolean;
+  /** Der Grund, wenn die Anfrage scheiterte oder ihr Rumpf nicht zu holen war — sonst `null`. */
+  fehler: string | null;
 }
 
 export type Klickfolge =
-  | { art: "download"; dateiname: string; inhalt: string }
+  /**
+   * JOB 4304: `bytes` tritt NEBEN `inhalt`, es ersetzt es nicht. `inhalt` ist die Textdeutung und
+   * trägt den bestehenden Textnachweis; `bytes` ist das, was wirklich ankam. Für ein Bild gibt es
+   * keine Textdeutung, und die Preisgabeprobe nach einem Rechteentzug vergleicht Bytefolgen — eine
+   * als UTF-8 gelesene Binärdatei hätte dort stillschweigend Ersatzzeichen statt Inhalt.
+   */
+  | { art: "download"; dateiname: string; inhalt: string; bytes: Buffer; abrufe: Abrufbefund[] }
   /**
    * `neueFenster` sind AUSSCHLIESSLICH die Seiten, die dieser Klick geöffnet hat; `alleFenster`
    * zusätzlich die schon offenen. Beide getrennt, weil beide verschiedene Fragen beantworten: was
    * hat der Klick aufgemacht (neu) — und steht der Originalinhalt irgendwo im Browser (alle).
+   *
+   * JOB 4304: `neueSeiten` sind dieselben neuen Fenster als HANDHABEN statt als Wortlaut. Ein Bild
+   * hat keinen Wortlaut — wer seinen Inhalt prüfen will, muss in das Fenster hineinsehen können
+   * (`bildinhaltLesen`). Die Reihenfolge ist die von `neueFenster`.
    */
-  | { art: "kein-download"; neueFenster: string[]; alleFenster: string[] };
+  | {
+      art: "kein-download";
+      neueFenster: string[];
+      alleFenster: string[];
+      neueSeiten: Seite[];
+      abrufe: Abrufbefund[];
+    };
 
 /**
  * Den angezeigten Beleg-Link WIRKLICH betätigen und sagen, was daraufhin geschah.
@@ -380,16 +440,63 @@ export async function belegLinkBetaetigen(
 ): Promise<Klickfolge> {
   const fenster = kontext as unknown as KontextMitFenstern;
   const vorher = new Set(fenster.pages());
+
+  // ── DIE ABRUFE DIESES KLICKS MITSCHREIBEN (Runde 3, BENs Korrekturpflicht 2). Die Hörer sitzen
+  //    am KONTEXT, nicht an der Seite: was der Klick in einem NEUEN Fenster auslöst, liefe an einem
+  //    Seitenhörer vorbei — und genau dort liegt der gesperrte Abruf.
+  const gesammelt: Promise<Abrufbefund>[] = [];
+  const aufAntwort = (antwort: RohAntwort): void => {
+    gesammelt.push(
+      antwort.body().then(
+        (koerper) => ({
+          url: antwort.url(),
+          status: antwort.status(),
+          koerper,
+          koerperLesbar: true,
+          fehler: null,
+        }),
+        (grund: unknown) => ({
+          url: antwort.url(),
+          status: antwort.status(),
+          koerper: Buffer.alloc(0),
+          koerperLesbar: false,
+          fehler: `Rumpf nicht lesbar: ${String(grund)}`,
+        }),
+      ),
+    );
+  };
+  const aufFehlschlag = (anfrage: RohAnfrage): void => {
+    gesammelt.push(
+      Promise.resolve({
+        url: anfrage.url(),
+        status: -1,
+        koerper: Buffer.alloc(0),
+        koerperLesbar: false,
+        fehler: anfrage.failure()?.errorText ?? "die Anfrage kam nicht zustande",
+      }),
+    );
+  };
+  fenster.on("response", aufAntwort);
+  fenster.on("requestfailed", aufFehlschlag);
+
   // Das Warten wird VOR dem Klick aufgesetzt — sonst ginge ein schneller Download verloren.
   const warten = fenster
     .waitForEvent("download", { timeout: frist })
     .then((d) => d)
     .catch(() => null);
-  await seite.click(selektor);
-  const download = await warten;
+  let download: Download | null;
+  try {
+    await seite.click(selektor);
+    download = await warten;
+  } finally {
+    fenster.off("response", aufAntwort);
+    fenster.off("requestfailed", aufFehlschlag);
+  }
+  const abrufe = await Promise.all(gesammelt);
   if (download === null) {
     const neueFenster: string[] = [];
     const alleFenster: string[] = [];
+    const neueSeiten: Seite[] = [];
     for (const offen of fenster.pages()) {
       const zeile = `${offen.url()} :: ${await offen
         .evaluate<string>(fn(LIES_TEXT))
@@ -397,9 +504,10 @@ export async function belegLinkBetaetigen(
       alleFenster.push(zeile);
       if (!vorher.has(offen)) {
         neueFenster.push(zeile);
+        neueSeiten.push(offen);
       }
     }
-    return { art: "kein-download", neueFenster, alleFenster };
+    return { art: "kein-download", neueFenster, alleFenster, neueSeiten, abrufe };
   }
   const pfad = await download.path();
   if (pfad === null) {
@@ -407,11 +515,98 @@ export async function belegLinkBetaetigen(
       `${JOB}: der Klick hat einen Download ausgelöst, aber Playwright hält keine Datei dazu — der Inhalt ist damit nicht prüfbar.`,
     );
   }
+  const bytes = await readFile(pfad);
   return {
     art: "download",
     dateiname: download.suggestedFilename(),
-    inhalt: await readFile(pfad, "utf8"),
+    inhalt: bytes.toString("utf8"),
+    bytes,
+    abrufe,
   };
+}
+
+// ================================================================================================
+// JOB 4304 · WAS IM FENSTER WIRKLICH STEHT, WENN DAS ORIGINAL EIN BILD IST.
+// ================================================================================================
+//
+// DIE LAGE, am Produkt gelesen und nicht angenommen: für `image/png` liefert die Rohbyteroute den
+// echten Typ mit `Content-Disposition: inline` (`object-routes.ts:342-352`). Ein Klick auf einen
+// Link mit `target="_blank"` öffnet damit KEINEN Download, sondern ein Fenster, in dem Chromium ein
+// Bilddokument aufbaut — ein `<img>`, dessen Quelle die Adresse des Fensters selbst ist.
+//
+// WARUM ÜBER DIE LEINWAND UND NICHT ÜBER EINEN ZWEITEN ABRUF. Ein `fetch(location.href)` in jenem
+// Fenster holte die Bytes NOCH EINMAL vom Server; gemessen wäre dann die Route, nicht die
+// Zielansicht. Gefragt ist, was dieser Mensch nach seinem Klick WIRKLICH VOR SICH SIEHT. Also wird
+// das dargestellte `<img>` in unskalierter Grösse auf eine Leinwand gezeichnet und deren Bildpunkte
+// zurückgelesen. Die Leinwand ist dabei nicht „verunreinigt": das Bilddokument und sein Bild haben
+// denselben Ursprung wie die App.
+//
+// DER BEFUND TRÄGT SEINEN EIGENEN FEHLGRUND. Ein leeres Fenster, ein Bilddokument ohne `<img>` und
+// ein Bild, das nicht lädt, sind drei verschiedene Lagen — und keine davon darf als „Inhalt stimmt
+// nicht" erscheinen oder gar stillschweigend als Erfolg durchgehen (§9 des Auftrags: eine
+// ausgebliebene Antwort ist kein Nachweis). Der Fachfall liest `fehler` zuerst.
+
+export interface Bildbefund {
+  /** Die Adresse des Fensters, aus dem gelesen wurde. */
+  quelle: string;
+  breite: number;
+  hoehe: number;
+  /** R, G, B, A je Bildpunkt, zeilenweise — leer, wenn `fehler` gesetzt ist. */
+  punkte: number[];
+  /** Warum nichts gelesen werden konnte — `null`, wenn gelesen wurde. */
+  fehler: string | null;
+}
+
+const BILD_AUF_LEINWAND = `() => new Promise((fertig) => {
+  const bild = document.querySelector("img");
+  if (!bild) {
+    fertig({ quelle: location.href, breite: 0, hoehe: 0, punkte: [], fehler: "das Fenster zeigt kein Bild (kein <img> im Dokument): " + (document.body ? (document.body.innerText || "").slice(0, 300) : "<kein body>") });
+    return;
+  }
+  const lesen = () => {
+    if (!bild.naturalWidth || !bild.naturalHeight) {
+      fertig({ quelle: location.href, breite: 0, hoehe: 0, punkte: [], fehler: "das <img> hat keine Eigengrösse — es ist nicht dekodiert worden" });
+      return;
+    }
+    const leinwand = document.createElement("canvas");
+    leinwand.width = bild.naturalWidth;
+    leinwand.height = bild.naturalHeight;
+    const stift = leinwand.getContext("2d");
+    if (!stift) {
+      fertig({ quelle: location.href, breite: 0, hoehe: 0, punkte: [], fehler: "dieser Browser gibt keinen 2D-Zeichenstift her" });
+      return;
+    }
+    stift.drawImage(bild, 0, 0);
+    try {
+      const daten = stift.getImageData(0, 0, leinwand.width, leinwand.height).data;
+      fertig({ quelle: location.href, breite: leinwand.width, hoehe: leinwand.height, punkte: Array.from(daten), fehler: null });
+    } catch (e) {
+      fertig({ quelle: location.href, breite: leinwand.width, hoehe: leinwand.height, punkte: [], fehler: "die Bildpunkte sind nicht lesbar: " + String(e) });
+    }
+  };
+  if (bild.complete) { lesen(); return; }
+  bild.onload = lesen;
+  bild.onerror = () => fertig({ quelle: location.href, breite: 0, hoehe: 0, punkte: [], fehler: "das Bild des Fensters hat nicht geladen" });
+})`;
+
+/** Den tatsächlich DARGESTELLTEN Bildinhalt eines Fensters lesen. */
+export function bildinhaltLesen(seite: Seite): Promise<Bildbefund> {
+  return seite.evaluate<Bildbefund>(fn(BILD_AUF_LEINWAND));
+}
+
+/**
+ * Ein Fenster schliessen — der Handgriff, mit dem ein Mensch einen Tab wieder zumacht.
+ *
+ * DIE HÜLLE `Seite` AUS `browserweg.ts` KENNT IHN NICHT, und sie zu erweitern ist diesem Auftrag
+ * nicht erlaubt (`tests/gast-nutzerweg/**` steht nicht in den Zielpfaden). Die Umdeutung steht
+ * deshalb GENAU HIER, einmal und benannt, statt an jeder Aufrufstelle.
+ *
+ * WOZU ER GEBRAUCHT WIRD: nach der Kalibrierung eines Bildfalls steht das Fenster mit dem Bild
+ * offen. Bliebe es das, prüfte die Sperrmessung danach auch eine Ansicht, die VOR dem Entzug
+ * ausgeliefert wurde — und über die sagt dieser Auftrag ausdrücklich nichts zu (Lieferung 3).
+ */
+export function fensterSchliessen(seite: Seite): Promise<void> {
+  return (seite as unknown as { close(): Promise<void> }).close();
 }
 
 // ================================================================================================
