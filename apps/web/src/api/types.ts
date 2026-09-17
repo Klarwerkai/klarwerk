@@ -408,6 +408,20 @@ export interface KnowledgeObject {
   // Ableitung in `lib/displayStatus.ts` (`anzeigestatusAus`).
   anzeigestatus?: DisplayStatus;
   anzeigestatusHerkunft?: AnzeigestatusHerkunft;
+  // ================================================================================================
+  // JOB 4251 (WIKI-ZUSAMMENARBEIT) — DER STEMPEL DER EINORDNUNG.
+  // ================================================================================================
+  //
+  // Der Stand von Kategorie UND Schlagwörtern, gegen den `PUT {action:"tags"|"category"}` bedingt
+  // schreibt (`expectedMetadataRevision`). Er ist NICHT `version`: eine Metadatenänderung erhöht die
+  // Inhaltsfassung ausdrücklich nicht (`knowledge-object/src/metadata-projection.ts`), wer also nur
+  // fremde Schlagwörter überschreibt, tut das bei unveränderter `version`.
+  //
+  // WARUM OPTIONAL: das Feld steht an `GET /api/kos/:id` (`ko-routes.ts`) und an der Antwort der
+  // beiden Einordnungsaktionen — sonst nirgends, und für Altbestand ohne Projektionszeile fehlt es
+  // auch dort. „Fehlt" heisst UNBEKANNT, nie „0" und nie „unverändert": wer es liest, lässt die
+  // Bedingung dann weg, statt eine Zahl zu raten.
+  metadataRevision?: number;
   version: number;
   originalAuthor: string;
   author: string;

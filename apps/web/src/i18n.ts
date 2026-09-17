@@ -3164,6 +3164,33 @@ const de = {
     "Jemand anderes hat diesen Eintrag inzwischen geändert — deine letzte Änderung wurde nicht gespeichert. Ein früherer Stand deines Textes von vorhin steht bereits im Eintrag. Dein Text steht unverändert hier.",
   "ko.revise.stalePartialVersion":
     "Jemand anderes hat diesen Eintrag inzwischen geändert, er steht jetzt auf Version {{n}} — deine letzte Änderung wurde nicht gespeichert. Ein früherer Stand deines Textes von vorhin steht bereits im Eintrag. Dein Text steht unverändert hier.",
+  // JOB 4251 (WIKI-ZUSAMMENARBEIT) · DER KONFLIKT AN DER EINORDNUNG IST EIN ANDERER SATZ.
+  //
+  // Abgewiesen wurde der Schlagwort- oder Kategorieaufruf, NICHT der Text — der ist in dieser Lage
+  // schon gespeichert. „Gespeichert wurde nichts" (`ko.revise.stale`) wäre hier die Unwahrheit.
+  //
+  // WARUM DER ERSTE HALBSATZ IMMER STIMMT UND KEINE ANNAHME IST: der Speicherweg setzt seine drei
+  // Aufrufe in fester Reihenfolge ab (`BibliothekLesen.tsx`, `save`), der `revise` steht am Anfang
+  // und läuft bei jedem Griff, solange der Formulartext nicht schon als eigene Marke gebucht ist.
+  // Die beiden Einordnungsaufrufe sind also nur erreichbar, NACHDEM der Text dieses Menschen am
+  // Server steht — ein Inhaltskonflikt bricht die Kette vorher ab und bekommt `ko.revise.stale`.
+  //
+  // KEINE FASSUNGSZAHL: die Einordnung hat keine. Eine Metadatenänderung lässt die Version
+  // ausdrücklich stehen (KW-ARCH-G27) — eine Zahl hier wäre eine Auskunft neben der Sache. Was als
+  // Nächstes zu tun ist, sagen die beiden Knöpfe darunter, nicht dieser Satz.
+  //
+  // RUNDE 2 · ES SIND DREI SÄTZE GEWORDEN, UND DAS IST DIE KORREKTUR, NICHT EINE VERZIERUNG. Bis
+  // dahin stand hier EIN Satz, der „deine Schlagworte und deine Kategorie" pauschal für nicht
+  // durchgekommen erklärte. BEN hat den Fall gemessen, in dem das unwahr ist: die Schlagworte gehen
+  // durch, jemand Fremdes ändert die Kategorie, der Kategorieaufruf wird abgewiesen — und die
+  // Fläche erklärte die soeben gespeicherten Schlagworte für verloren. Jeder dieser drei Sätze
+  // nennt deshalb BEIDE Hälften, genau wie die `partial…`-Sätze des Teilabbruchs darüber.
+  "ko.revise.staleEinordnungTags":
+    "Dein Text ist gespeichert. Jemand anderes hat die Einordnung dieses Eintrags inzwischen geändert — deine Schlagworte sind nicht mehr durchgekommen. Deine Eingabe steht unverändert hier.",
+  "ko.revise.staleEinordnungTagsCategory":
+    "Dein Text ist gespeichert. Jemand anderes hat die Einordnung dieses Eintrags inzwischen geändert — deine Schlagworte und deine Kategorie sind nicht mehr durchgekommen. Deine Eingabe steht unverändert hier.",
+  "ko.revise.staleEinordnungCategory":
+    "Dein Text und deine Schlagworte sind gespeichert. Jemand anderes hat die Einordnung dieses Eintrags inzwischen geändert — deine Kategorie ist nicht mehr durchgekommen. Deine Eingabe steht unverändert hier.",
   // JOB 3667 R3 · DER EINREICHWEG IM BROWSER. Jeder Satz sagt die FOLGE, nicht bloss den Vorgang:
   // was mit dem eigenen Text geschieht, was mit dem freigegebenen Stand, und wer als Nächster
   // handelt. „Eingereicht" allein liesse offen, ob der Eintrag jetzt schon anders lautet.
@@ -9690,6 +9717,13 @@ const en: typeof de = {
     "Someone else has changed this entry in the meantime — your latest change was not saved. An earlier state of your text from before is already in the entry. Your text is still here, unchanged.",
   "ko.revise.stalePartialVersion":
     "Someone else has changed this entry in the meantime, it is now at version {{n}} — your latest change was not saved. An earlier state of your text from before is already in the entry. Your text is still here, unchanged.",
+  // JOB 4251 — see the German block for the reasoning behind these three sentences.
+  "ko.revise.staleEinordnungTags":
+    "Your text is saved. Someone else has changed this entry's classification in the meantime — your tags did not get through. Your input is still here, unchanged.",
+  "ko.revise.staleEinordnungTagsCategory":
+    "Your text is saved. Someone else has changed this entry's classification in the meantime — your tags and your category did not get through. Your input is still here, unchanged.",
+  "ko.revise.staleEinordnungCategory":
+    "Your text and your tags are saved. Someone else has changed this entry's classification in the meantime — your category did not get through. Your input is still here, unchanged.",
   // JOB 3667 R3 — see the German block for the reasoning behind each sentence.
   "ko.propose.mustReview":
     "This knowledge object is released. Your change is submitted as a proposal and only takes effect once somebody else accepts it.",
@@ -15259,6 +15293,13 @@ const nl: typeof de = {
     "Iemand anders heeft dit item inmiddels gewijzigd — je laatste wijziging is niet opgeslagen. Een eerdere versie van je tekst van zojuist staat al in het item. Je tekst staat hier onveranderd.",
   "ko.revise.stalePartialVersion":
     "Iemand anders heeft dit item inmiddels gewijzigd, het staat nu op versie {{n}} — je laatste wijziging is niet opgeslagen. Een eerdere versie van je tekst van zojuist staat al in het item. Je tekst staat hier onveranderd.",
+  // JOB 4251 — de onderbouwing van deze drie zinnen staat in het Duitse blok.
+  "ko.revise.staleEinordnungTags":
+    "Je tekst is opgeslagen. Iemand anders heeft de indeling van dit item inmiddels gewijzigd — je trefwoorden zijn niet doorgekomen. Je invoer staat hier onveranderd.",
+  "ko.revise.staleEinordnungTagsCategory":
+    "Je tekst is opgeslagen. Iemand anders heeft de indeling van dit item inmiddels gewijzigd — je trefwoorden en je categorie zijn niet doorgekomen. Je invoer staat hier onveranderd.",
+  "ko.revise.staleEinordnungCategory":
+    "Je tekst en je trefwoorden zijn opgeslagen. Iemand anders heeft de indeling van dit item inmiddels gewijzigd — je categorie is niet doorgekomen. Je invoer staat hier onveranderd.",
   // JOB 3667 R3 — de onderbouwing per zin staat in het Duitse blok.
   "ko.propose.mustReview":
     "Dit kennisobject is vrijgegeven. Je wijziging wordt als voorstel ingediend en geldt pas wanneer iemand anders haar overneemt.",

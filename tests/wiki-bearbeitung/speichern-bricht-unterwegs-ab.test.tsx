@@ -5,10 +5,13 @@
 //
 // DIE LAGE, DIE DIESE DATEI MISST. Der Speicherweg der Lesefläche ist EINE Mutation mit DREI
 // nacheinander abgesetzten Schreibaufrufen (`BibliothekLesen.tsx`, `save`): `revise`, dann `tags`,
-// dann — bei nicht leerer Kategorie — `category`. Die beiden Folgeaufrufe laufen ohne
-// Fassungsschutz, weil die Route `expectedVersion` dort mit 400 abweist
-// (`tests/word-rueckweg/route-bedingter-schreibzugriff.test.ts`, F5), und sie laufen erst NACH
-// einem gelungenen `revise`.
+// dann — bei nicht leerer Kategorie — `category`. Sie laufen erst NACH einem gelungenen `revise`.
+//
+// JOB 4251 HAT EINE ZEILE DIESER BESCHREIBUNG ÜBERHOLT: bis dahin liefen die beiden Folgeaufrufe
+// ohne jeden Schutz, weil die Route `expectedVersion` dort mit 400 abwies. Seit JOB 4251 schreiben
+// sie BEDINGT — gegen den Stempel der Einordnung (`expectedMetadataRevision`). An den Fällen dieser
+// Datei ändert das nichts: sie messen den Abbruch der Kette, nicht ihre Bedingung. Was der Stempel
+// zusagt, steht in `tests/wiki-einordnung-konflikt/`.
 //
 // DARAUS FOLGT DER FEHLER, UM DEN ES GEHT, UND ER IST RECHNERISCH ZWINGEND: Bricht die Kette nach
 // dem `revise` ab, läuft `onSuccess` nicht, `bearbeitenBeenden()` läuft nicht, `edit.version` bleibt

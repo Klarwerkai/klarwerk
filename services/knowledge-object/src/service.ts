@@ -5094,14 +5094,53 @@ export class KoService {
   // scheitert Projektion oder Beleg, wird der autoritative Stand zurückgerollt UND die Projektion
   // auf diesen Stand zurückgeführt (monoton, also mit erneut kletternder Revision — die Zahl darf
   // nie sinken, auch nicht bei einer Rücknahme).
+  //
+  // ==============================================================================================
+  // JOB 4251 — UND SEIT DIESEM AUFTRAG KANN DERSELBE PFAD BEDINGT SCHREIBEN.
+  // ==============================================================================================
+  //
+  // DER VERGLEICH STEHT IM LOCK UND VOR JEDEM SCHREIBVORGANG — es ist ein Compare-and-Set, kein
+  // Zeitfenster: zwischen dem Lesen des Stempels und `repo.update` kann kein zweiter Schreiber
+  // liegen, weil beides in DEMSELBEN per-KO serialisierten Abschnitt läuft. Wirft er, ist nichts
+  // geschrieben: kein Stand, keine Projektion, kein Beleg, kein Revisions-Bump.
+  //
+  // UND ER STEHT VOR DER IDENTISCHEN WIEDERHOLUNG, nicht dahinter. Das ist eine Entscheidung: der
+  // Stempel klettert AUSSCHLIESSLICH bei einer fachlich wirksamen Änderung. Stimmt er nicht mehr,
+  // hat jemand die Einordnung wirklich bewegt — auch dann, wenn der eigene Wert zufällig derselbe
+  // ist. Ein stiller Erfolg wäre hier die Unwahrheit: der Mensch hielte einen Stand für bestätigt,
+  // den er nie gesehen hat. Die Zeilen der Wiederholung selbst bleiben unangetastet.
+  //
+  // EIN FEHLER, KEIN No-op: `setValidationState` darf schweigen (dort entscheidet eine Bewertung
+  // über eine überholte Fassung, und es gibt niemanden, dem etwas zu sagen wäre). Hier sitzt ein
+  // Mensch davor, dessen Eingabe nicht angekommen ist — er muss es erfahren. Der Code ist
+  // `KO_STALE`, derselbe, den der bedingte Inhaltsweg schon benutzt: eine zweite Vokabel für
+  // dieselbe Tatsache wäre eine zweite Auslegung.
   private async mutateKoMetadata(
     id: string,
     actor: string,
     beleg: { action: string; grund: string },
     apply: (ko: KnowledgeObject) => KnowledgeObject,
+    opts: EinordnungsBedingung = {},
   ): Promise<KnowledgeObject> {
     return this.withKoLock(id, async () => {
       const before = await this.require(id);
+      const stand = await this.searchProjections.metadata.find(id);
+      // GIBT ES KEINE ZEILE, GIBT ES KEINEN STAND: `undefined` ist dann nie gleich einer erwarteten
+      // Zahl, und der Aufruf wird abgewiesen statt stillschweigend durchgelassen. Das ist die
+      // strengere und die wahre Auslegung — wer einen Stand erwartet, den es nicht gibt, hat nicht
+      // gesehen, was jetzt gilt.
+      if (
+        opts.expectedMetadataRevision !== undefined &&
+        stand?.metadataRevision !== opts.expectedMetadataRevision
+      ) {
+        throw new KoError(
+          "KO_STALE",
+          `Die Einordnung dieses Wissensobjekts wurde inzwischen geändert (jetzt Stand ${stand?.metadataRevision ?? "keiner"}, erwartet ${opts.expectedMetadataRevision}). Es wurde nichts überschrieben.`,
+        );
+      }
+      // Die Inhaltsfassung wird NUR betrachtet, wenn der Aufrufer sie mitgibt — über dieselbe eine
+      // Stelle, die auch der Inhaltsweg benutzt (`pruefeErwarteteVersion`).
+      this.pruefeErwarteteVersion(before, opts.expectedVersion);
       const updated = apply(before);
       const vorher = metadataTextsOf(before);
       const nachher = metadataTextsOf(updated);
@@ -5112,7 +5151,11 @@ export class KoService {
       ) {
         // IDENTISCHE WIEDERHOLUNG: kein Write, kein Beleg, kein Revisions-Bump. Nur die Zusicherung,
         // dass die Projektion überhaupt existiert (Altbestand) — und die ist selbst idempotent.
-        await this.projectMetadata(before, new Date(this.now()).toISOString());
+        const unveraendert = await this.projectMetadata(before, new Date(this.now()).toISOString());
+        // JOB 4251: die Quittung gilt auch hier. „Es hat sich nichts geändert" ist ein gültiger
+        // Ausgang, und der Aufrufer braucht danach denselben Stempel wie nach jedem anderen — sonst
+        // liefe sein nächster Schritt gegen einen Stand, den er nicht kennt.
+        opts.meldeMetadatenstand?.(unveraendert.projection.metadataRevision);
         return before;
       }
       await this.repo.update(updated);
@@ -5134,6 +5177,10 @@ export class KoService {
             category: updated.category,
           },
         });
+        // ERST HIER, nach dem Beleg: gemeldet wird nur ein Stand, der auch WIRKLICH gilt. Scheitert
+        // die Projektion oder der Beleg, läuft die Kompensation unten — und der Aufrufer hat dann
+        // keinen Stempel bekommen, den er für bestätigt halten könnte.
+        opts.meldeMetadatenstand?.(ergebnis.projection.metadataRevision);
         return updated;
       } catch (err) {
         // Kompensation: der autoritative Stand geht zurück, und die Projektion wird auf DIESEN
@@ -5147,21 +5194,78 @@ export class KoService {
     });
   }
 
-  async updateCategory(id: string, category: string, actor = "system"): Promise<KnowledgeObject> {
+  // ==============================================================================================
+  // JOB 4251 R2 — DER LESESTAND DER EINORDNUNG: WERT UND STEMPEL AUS EINER KLAMMER.
+  // ==============================================================================================
+  //
+  // DER FEHLER, DEN DIESE METHODE SCHLIESST (BEN, Korrekturpflicht 1). Runde 1 las an der Route
+  // ZWEI Dinge nacheinander und ohne Klammer: erst das Wissensobjekt (mit Kategorie und
+  // Schlagwörtern), dann getrennt die `metadata_revision`. Wer im Fenster dazwischen schrieb,
+  // schickte dem Leser ALTE Werte mit dem NEUEN Stempel — und damit war der Schutz dieses Auftrags
+  // an genau dieser Stelle UMGEDREHT: der Stempel beglaubigte das Überschreiben einer Einordnung,
+  // die der Mensch nie gesehen hatte. BENs Messung wörtlich: `expected 200 to be 409`.
+  //
+  // DIE KLAMMER IST DIESELBE, IN DER AUCH GESCHRIEBEN WIRD (`withKoLock`, per KO serialisiert).
+  // Damit ist „Wert und Stempel gehören zusammen" keine Absprache zwischen zwei Aufrufern mehr,
+  // sondern eine Eigenschaft dieses einen Lesevorgangs. Ein zweiter Leseweg daneben entsteht nicht:
+  // wer den Stempel will, holt ihn hier — und bekommt die Werte, zu denen er gehört, gleich mit.
+  //
+  // SIE GIBT AUSSCHLIESSLICH DIE EINORDNUNG HERAUS, und das ist eine Entscheidung, keine Sparsamkeit:
+  // Kategorie und Schlagwörter sind nach KW-ARCH-G27 ausdrücklich KEINE Sicherheitsmerkmale (die
+  // Metadatenprojektion nimmt keine Einstufung auf). Das Sichtbarkeitsurteil der Route fällt
+  // weiterhin am Objekt, das sie selbst geladen hat; würde diese Methode ein volles, frischeres
+  // Objekt liefern, könnte ein zwischenzeitliches Vertraulichkeits-Upgrade an einem Gate
+  // vorbeilaufen, das über den älteren Stand entschieden hat.
+  //
+  // `undefined` heisst „das Objekt gibt es (nicht mehr)" — nicht „keine Einordnung". Fehlt nur die
+  // Projektionszeile (Altbestand), steht `metadataRevision` nicht darin: dieselbe Regel wie überall
+  // in diesem Auftrag — fehlt heisst fehlt, geraten wird nichts.
+  async einordnungsstandVon(
+    id: string,
+  ): Promise<{ category: string; tags: string[]; metadataRevision?: number } | undefined> {
+    return this.withKoLock(id, async () => {
+      const ko = await this.repo.findById(id);
+      if (!ko || ko.deletedAt) {
+        return undefined;
+      }
+      const projektion = await this.searchProjections.metadata.find(id);
+      return {
+        category: ko.category,
+        tags: [...(ko.tags ?? [])],
+        ...(projektion ? { metadataRevision: projektion.metadataRevision } : {}),
+      };
+    });
+  }
+
+  // JOB 4251: `opts` ist der bedingte Schreibzugriff auf die Einordnung (s. `EinordnungsBedingung`).
+  // Er ist optional, und ohne ihn ist dieser Aufruf Zeichen für Zeichen der bisherige.
+  async updateCategory(
+    id: string,
+    category: string,
+    actor = "system",
+    opts: EinordnungsBedingung = {},
+  ): Promise<KnowledgeObject> {
     return this.mutateKoMetadata(
       id,
       actor,
       { action: "ko.category-changed", grund: "ko.updateCategory" },
       (ko) => ({ ...ko, category }),
+      opts,
     );
   }
 
-  async updateTags(id: string, tags: string[], actor = "system"): Promise<KnowledgeObject> {
+  async updateTags(
+    id: string,
+    tags: string[],
+    actor = "system",
+    opts: EinordnungsBedingung = {},
+  ): Promise<KnowledgeObject> {
     return this.mutateKoMetadata(
       id,
       actor,
       { action: "ko.tags-changed", grund: "ko.updateTags" },
       (ko) => ({ ...ko, tags }),
+      opts,
     );
   }
 
@@ -5356,4 +5460,47 @@ export class KoService {
 type ReviseMitHerkunft = ReviseKoInput & {
   /** Die Fassung, aus der der mitgeschickte Inhalt stammt. Fehlt sie, ist es eine gewöhnliche Revision. */
   restoredFromVersion?: number;
+};
+
+// ==================================================================================================
+// JOB 4251 (WIKI-ZUSAMMENARBEIT) — DIE BEDINGUNG, UNTER DER DIE EINORDNUNG GESCHRIEBEN WIRD.
+// ==================================================================================================
+//
+// AM DATEIENDE, UND ZWAR AUS DEMSELBEN GRUND WIE `ReviseMitHerkunft` DARÜBER: jede Zeile weiter oben
+// verschiebt `findSearchHits` (`:1809`) und `findCandidates` (`:3691-3715`) — die Ziele zweier
+// Wegweiser in `repo.ts` und `services/app/src/knowledge-check.ts` — und die Fundstellen der festen
+// Dienst-Vermerke (`:2077`, `:2203` u. a.), die `tests/bibliothek-historie-vermerk/
+// vermerk-uebersetzung.test.ts` am Quelltext nachschlägt. Alle Änderungen dieses Auftrags an dieser
+// Datei liegen deshalb UNTERHALB von `:3715` (dieselbe Disziplin, die JOB 4213 dort vermerkt hat).
+//
+// WARUM NICHT `expectedVersion` ALLEIN, obwohl der Name danach klänge: eine Metadatenänderung erhöht
+// die Inhaltsversion AUSDRÜCKLICH NICHT (`mutateKoMetadata`, KW-ARCH-G27 Abschnitt 1). Ändert jemand
+// nur die Schlagwörter, steht die Version danach unverändert da — ein Vergleich gegen sie ginge an
+// genau dem Fall vorbei, um den es geht („zwei Menschen ordnen denselben Eintrag ein").
+//
+// DER AUTORITATIVE STEMPEL DER EINORDNUNG IST DIE `metadata_revision` der Mutable Metadata
+// Projection. Sie klettert monoton und GENAU DANN, wenn sich Kategorie oder Schlagwörter fachlich
+// wirklich ändern (`metadata-projection-repo.ts`) — auch bei einer Rücknahme auf den alten Wert.
+// Damit heisst „der Stempel steht noch" belegbar: seit deinem Blick hat niemand die Einordnung
+// bewegt.
+//
+// `expectedVersion` STEHT DANEBEN UND NICHT AN SEINER STELLE: wer ZUSÄTZLICH gegen die
+// Inhaltsfassung schreiben will, gibt sie mit; ohne sie bleibt der Inhalt unbetrachtet. Beide Felder
+// sind optional, und ohne sie verhält sich der Dienst Zeichen für Zeichen wie vor diesem Auftrag —
+// die Altaufrufer (Beispielpakete, Importwege, `actor = "system"`) werden NICHT bedingt gemacht.
+//
+// `meldeMetadatenstand` IST KEINE ZWEITE WAHRHEIT, sondern die Quittung DESSELBEN Schreibvorgangs:
+// der Stand, der NACH ihm gilt — gelesen in DEMSELBEN `withKoLock`, in dem geschrieben wurde. Ohne
+// ihn müsste der Aufrufer nach dem Schreiben nachlesen, und zwischen Schreiben und Nachlesen läge
+// wieder ein Fenster, in dem ein fremder Schreiber unbemerkt in den eigenen Stempel wanderte. Die
+// Bauform ist die von `persistSearchProjection` (`meldeGeschrieben`) und aus demselben Grund
+// gewählt: der Rückgabewert gehört der Domäne, die Quittung dem Vorgang.
+//
+// NICHT EXPORTIERT: ausserhalb dieser Datei braucht ihn niemand. Die Route stellt das Aggregat
+// selbst zusammen (`ko-routes.ts`, `einordnungsBedingung`), und der Browser-Vertrag steht in
+// `apps/web/src/api/endpoints.ts`.
+type EinordnungsBedingung = {
+  expectedMetadataRevision?: number;
+  expectedVersion?: number;
+  meldeMetadatenstand?: (revision: number) => void;
 };

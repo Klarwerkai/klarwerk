@@ -239,8 +239,22 @@ export type KoAction =
       };
     }
   | { action: "detach"; attachmentId: string }
-  | { action: "category"; category: string }
-  | { action: "tags"; tags: string[] }
+  // ================================================================================================
+  // JOB 4251 (WIKI-ZUSAMMENARBEIT) — `expectedMetadataRevision`: DIE EINORDNUNG SCHREIBT BEDINGT.
+  // ================================================================================================
+  //
+  // Der Stand der Einordnung, den der Aufrufer GESEHEN hat (`KnowledgeObject.metadataRevision`).
+  // Der Server nimmt ihn an genau diesen beiden Aktionen an und prüft ihn IM Dienst, in derselben
+  // per-KO serialisierten Klammer, in der geschrieben wird (`knowledge-object/src/service.ts`,
+  // `mutateKoMetadata`). Stimmt er nicht mehr, kommt 409 `KO_STALE` statt eines stillen
+  // Überschreibens der fremden Einordnung.
+  //
+  // OPTIONAL, WEIL ER ES AM SERVER AUCH IST: ohne das Feld sind beide Aktionen Zeichen für Zeichen
+  // die bisherigen — kein Aufrufer im Haus ändert sein Verhalten, weil dieser Typ wächst. Und NICHT
+  // `expectedVersion`: eine Einordnungsänderung erhöht die Inhaltsfassung nicht, ein Vergleich gegen
+  // sie ginge am Fall vorbei (s. `KnowledgeObject.metadataRevision` in `api/types.ts`).
+  | { action: "category"; category: string; expectedMetadataRevision?: number }
+  | { action: "tags"; tags: string[]; expectedMetadataRevision?: number }
   // SCRUM-415: Vertraulichkeitsstufe setzen/ändern (mit Audit).
   | { action: "confidentiality"; level: Confidentiality }
   | {

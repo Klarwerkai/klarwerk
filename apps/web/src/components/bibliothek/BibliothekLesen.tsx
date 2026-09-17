@@ -35,6 +35,7 @@ import { fileSourcePayload } from "../../lib/captureFromFile";
 import {
   CONF_TONE_CLASS,
   abfrageMitBestand,
+  auffrischungGescheitert,
   vertraulichkeitsAuskunft,
 } from "../../lib/confidentiality";
 import { conflictImpact, conflictNotice } from "../../lib/conflictImpact";
@@ -335,6 +336,19 @@ interface EditState {
   // `null` heisst „unbekannt", nicht „egal": kommt die Fassung in der Antwort nicht als Zahl an,
   // wird das Feld weggelassen statt geraten (s. `save`).
   version: number | null;
+  // ================================================================================================
+  // JOB 4251 · DER STAND DER EINORDNUNG, DER BEIM ÖFFNEN AUF DEM BILDSCHIRM STAND.
+  // ================================================================================================
+  //
+  // Dieselbe Rolle wie `version` eine Zeile höher, nur für Kategorie und Schlagwörter: `save`
+  // schickt ihn als `expectedMetadataRevision` mit, und der Dienst schreibt die Einordnung nur,
+  // wenn er noch gilt. Eine EIGENE Zahl ist nötig, weil `version` bei einer Einordnungsänderung
+  // nicht klettert (`api/types.ts`, `KnowledgeObject.metadataRevision`).
+  //
+  // `null` heisst „unbekannt" — und dann geht das Feld nicht hinaus: entweder trägt die Antwort den
+  // Stand nicht (Altbestand ohne Projektionszeile), oder der gezeigte Eintrag stammt aus einer
+  // GESCHEITERTEN Auffrischung. Ohne frische Grundlage wird nichts behauptet.
+  einordnung: number | null;
 }
 
 const textareaCls =
@@ -432,11 +446,48 @@ type EinreichLage =
  * `fassung` ist die Versionsnummer, die die ANTWORT des eigenen gelungenen `revise` getragen hat.
  * Sie ist der Bezugspunkt des nächsten bedingten Schreibzugriffs — s. `save`, „DIE FASSUNG".
  */
+/*
+ * JOB 4251 · `stempel` — DASSELBE FÜR DIE EINORDNUNG, UND AUS DEMSELBEN GRUND.
+ *
+ * Der Stand der Einordnung (`metadataRevision`), den die ANTWORT des eigenen gelungenen `tags`- bzw.
+ * `category`-Aufrufs getragen hat. Er ist der Bezugspunkt des NÄCHSTEN bedingten Einordnungs-
+ * Schreibzugriffs — und er muss mitgeführt werden, weil die beiden Aufrufe NACHEINANDER laufen: der
+ * gelungene `tags`-Aufruf dreht den Stempel weiter, und ein `category`-Aufruf mit dem Stand von
+ * VORHER liefe in einen Konflikt mit dem eigenen Schreibvorgang von einer Zeile zuvor.
+ *
+ * `null` heisst hier wie überall UNBEKANNT, nie „egal": kommt der Stand in der Antwort nicht als
+ * Zahl an, geht der nächste Einordnungsaufruf gar nicht erst hinaus (s. `save`).
+ */
+/*
+ * JOB 4251 R4 · `einordnungGeschrieben` — ZWEI FRAGEN, ZWEI FELDER (BEN, Runde 3).
+ *
+ * DIE VERWECHSLUNG, DIE DIESE ZEILE BEENDET. Runde 3 las die Frage „habe ICH die Einordnung dieser
+ * Bearbeitung schon einmal geschrieben?" aus den Marken `tags`/`category` ab. Die Marken beantworten
+ * aber eine ANDERE Frage: „ist dieser Schritt JETZT noch offen?" — und genau deshalb lässt Runde 3
+ * die Marke des gescheiterten Aufrufs verfallen (s. `save`, `catch`). Mit dem Verfall verschwand
+ * lautlos auch der BEZUGSPUNKT: beide Marken `null` hiess wieder „ich habe hier noch nie
+ * geschrieben", der nächste Griff schickte den Stand vom ÖFFNEN, und der Server wies ihn mit 409 ab.
+ *
+ * BENS MESSUNG (Runde 3, Gegenprobe, `expected 1 to be 2`), ohne jeden fremden Schreiber: Schlagworte
+ * gespeichert (Quittung 2) · Kategorie scheitert am Netz · Schlagwort-Nachtrag scheitert am Netz ·
+ * dritter, gewöhnlicher Griff schickt Stempel 1 → 409, und die Fläche behauptet, jemand anderes habe
+ * eingeordnet. Dazwischengekommen war der eigene Schreibvorgang von vorhin; der Satz war unwahr —
+ * derselbe Fehler, den JOB 4163 (BEN2/BEN3) am TEXT beseitigt hat, hier an der Einordnung.
+ *
+ * DIE TRENNUNG IST DIE GANZE KORREKTUR: die MARKE verfällt (ein gescheiterter Aufruf ist nicht
+ * erledigt, K12), die HERKUNFT der Quittung verfällt NICHT (was am Server steht, hört durch einen
+ * späteren Fehlschlag nicht auf, dort zu stehen, K13). Das Feld sagt nur „in dieser Bearbeitung ist
+ * mindestens ein eigener Einordnungsaufruf durchgegangen" — es sagt NICHTS über den Wert und ersetzt
+ * `stempel` nicht: ist die Quittung trotzdem unbekannt (`stempel === null`, Antwort ohne Stand), geht
+ * der nächste Aufruf gar nicht erst hinaus, statt sich unbedingt durchzuschreiben (K14).
+ */
 type Teilstand = {
   text: string | null;
   tags: string | null;
   category: string | null;
   fassung: number | null;
+  stempel: number | null;
+  einordnungGeschrieben: boolean;
 };
 
 /** Die Marken, die der aktuelle Formularinhalt ergibt — der Vergleichspunkt gegen die Buchführung. */
@@ -479,6 +530,31 @@ function teilSatzSchluessel(textAktuell: boolean, offen: Array<"tags" | "categor
 }
 
 /**
+ * JOB 4251 R2 · DER KONFLIKTSATZ ZUR EINORDNUNG — UND ZWAR DER WAHRE.
+ *
+ * DER FEHLER AUS RUNDE 1 (BEN, Korrekturpflicht 3, Gegenprobe B): es gab EINEN Satz für jede
+ * Einordnungslage, und er erklärte „deine Schlagworte und deine Kategorie" pauschal für nicht
+ * durchgekommen. Wer seine Schlagworte gerade erfolgreich gespeichert hatte und nur an der
+ * Kategorie abgewiesen wurde, las damit eine Unwahrheit über die eigene Arbeit — genau die
+ * Glättung, die „Ehrlichkeit vor Optik" verbietet.
+ *
+ * DIESELBE BAUFORM WIE `teilSatzSchluessel` DARÜBER, und aus demselben Grund: feste Wortlaute statt
+ * einer im Satz gefügten Aufzählung, und jeder nennt BEIDE Hälften — was steht und was nicht.
+ *
+ * DER ERSTE HALBSATZ („dein Text ist gespeichert") STIMMT IMMER: die beiden Einordnungsaufrufe
+ * sind erst NACH einem gelungenen `revise` erreichbar (s. `save`); ein Inhaltskonflikt bricht die
+ * Kette vorher ab und bekommt `ko.revise.stale`.
+ */
+function staleEinordnungSchluessel(offen: Array<"tags" | "category">): string {
+  if (offen.length >= 2) {
+    return "ko.revise.staleEinordnungTagsCategory";
+  }
+  return offen[0] === "category"
+    ? "ko.revise.staleEinordnungCategory"
+    : "ko.revise.staleEinordnungTags";
+}
+
+/**
  * JOB 4163 · Der Abbruch MIT SEINEM VERLAUF. `useMutation` reicht an `onError` nur den Fehler
  * durch; wie weit die Kette gekommen war, stünde sonst nirgends. Die Ursache reist mit und wird in
  * `onError` ausgepackt — die bestehenden Zweige (409, `PROPOSAL_REQUIRED`) lesen weiter genau den
@@ -489,13 +565,28 @@ class SpeicherAbbruch extends Error {
   /** Steht der Text, der JETZT im Formular steht, am Server? */
   readonly textAktuell: boolean;
   readonly offen: Array<"tags" | "category">;
+  /**
+   * JOB 4251 · AN WELCHEM GEGENSTAND die Kette gerissen ist — am Inhalt oder an der Einordnung.
+   *
+   * Ohne diese Angabe wäre der 409 nicht zu unterscheiden, und die Fläche sagte dem Menschen bei
+   * einem Einordnungskonflikt „gespeichert wurde nichts" — obwohl sein Text in genau diesem Fall
+   * gespeichert IST. Sie steht hier und wird nicht aus `offen` erraten: `offen` sagt, was noch
+   * fehlt, nicht, woran es gescheitert ist.
+   */
+  readonly schritt: "text" | "einordnung";
 
-  constructor(ursache: unknown, textAktuell: boolean, offen: Array<"tags" | "category">) {
+  constructor(
+    ursache: unknown,
+    textAktuell: boolean,
+    offen: Array<"tags" | "category">,
+    schritt: "text" | "einordnung",
+  ) {
     super("Speichern unterwegs abgebrochen");
     this.name = "SpeicherAbbruch";
     this.ursache = ursache;
     this.textAktuell = textAktuell;
     this.offen = offen;
+    this.schritt = schritt;
   }
 }
 
@@ -515,8 +606,27 @@ class SpeicherAbbruch extends Error {
  *               Schreibrecht ist ganz entzogen. Das ist kein Einreichfall — dort gäbe es einen Weg,
  *               hier gibt es keinen.
  */
+/*
+ * JOB 4251 · `feld` AN DER STALE-LAGE — WORÜBER der fremde Schreiber dazwischengekommen ist.
+ *
+ * `"text"` ist die Lage aus JOB 4075/4163, Wort für Wort unverändert. `"einordnung"` ist die neue:
+ * der `revise` ist durch, der Text steht am Server, und abgewiesen wurde der Schlagwort- oder
+ * Kategorieaufruf. Ihn mit demselben Satz zu melden („gespeichert wurde nichts") wäre die
+ * Unwahrheit, die dieser Auftrag beseitigt — und die Fassungszahl, die zum Satz über den INHALT
+ * gehört, sagt über die Einordnung ohnehin nichts (sie klettert bei ihr gar nicht).
+ */
 type SpeicherLage =
-  | { art: "stale"; version: number | null; teilVorher: boolean }
+  | {
+      art: "stale";
+      feld: "text" | "einordnung";
+      version: number | null;
+      teilVorher: boolean;
+      /**
+       * RUNDE 2 · WELCHE Einordnungsschritte der fremde Schreiber wirklich abgewiesen hat. Bei
+       * `feld: "text"` ist die Liste ohne Bedeutung — dort ist gar nichts geschrieben worden.
+       */
+      offen: Array<"tags" | "category">;
+    }
   | {
       art: "teil";
       textAktuell: boolean;
@@ -1140,11 +1250,24 @@ export function BibliothekLesen({
   // Über `setEdit` ginge das nicht: der Zustand stünde erst im nächsten Rendern, der Aufruf ginge
   // mit der alten Zahl hinaus.
   //
-  // DIE BEIDEN FOLGEAUFRUFE BLEIBEN UNBEDINGT, UND DAS IST GEMESSEN, KEINE NACHLÄSSIGKEIT: die Route
-  // nimmt `expectedVersion` an `tags` und `category` NICHT an — sie antwortet 400, damit ein Schutz,
-  // der dort gar nicht greifen könnte, nicht stillschweigend geschluckt wird
-  // (`tests/word-rueckweg/route-bedingter-schreibzugriff.test.ts`, F5). Sie laufen erst NACH einem
-  // erfolgreichen `revise`; ein Konflikt bricht die Kette vorher ab, es geht also nichts hinaus.
+  // ================================================================================================
+  // JOB 4251 · UND SEIT DIESEM AUFTRAG SCHREIBEN AUCH DIE BEIDEN FOLGEAUFRUFE BEDINGT.
+  // ================================================================================================
+  //
+  // BIS HIERHER STAND AN DIESER STELLE, sie blieben unbedingt, weil die Route `expectedVersion` an
+  // `tags` und `category` mit 400 abwies. Das stimmte — und die Lücke dahinter war trotzdem offen:
+  // eine zehn Minuten alte Schlagwort- oder Kategorieabsicht ging mit 200 durch und ersetzte die
+  // jüngere Einordnung eines anderen Menschen, ohne dass irgendwo etwas aufschlug.
+  //
+  // `expectedVersion` WÄRE DAFÜR AUCH DER FALSCHE SCHUTZ GEWESEN, und das ist der Kern: eine
+  // Metadatenänderung erhöht die Inhaltsfassung ausdrücklich NICHT (KW-ARCH-G27). Hat der andere
+  // NUR Schlagwörter geändert — genau der Fall, um den es geht —, steht die Version unverändert da,
+  // und ein Vergleich gegen sie liesse den alten Stand anstandslos durch. Der autoritative Stempel
+  // der Einordnung ist die `metadata_revision` der Metadatenprojektion; sie klettert genau dann,
+  // wenn sich Kategorie oder Schlagwörter fachlich wirklich ändern.
+  //
+  // Die Aufrufe laufen weiterhin erst NACH einem erfolgreichen `revise`; ein Inhaltskonflikt bricht
+  // die Kette vorher ab, es geht also nichts hinaus.
   //
   // ================================================================================================
   // JOB 4163 · DIE KETTE WEISS, WIE WEIT SIE GEKOMMEN IST — UND DER ZWEITE GRIFF HOLT NUR NACH.
@@ -1167,7 +1290,12 @@ export function BibliothekLesen({
   // `bearbeitenBeenden`) oder wenn ein Formular neu aufgeht (`startEdit`).
   const teilstandRef = useRef<Teilstand | null>(null);
   const save = useMutation({
-    mutationFn: async (v: { expectedVersion: number | null; ueberschreiben?: boolean }) => {
+    mutationFn: async (v: {
+      expectedVersion: number | null;
+      /** JOB 4251: der Stand der Einordnung, den die Fläche GESEHEN hat (`null` = unbekannt). */
+      einordnung: number | null;
+      ueberschreiben?: boolean;
+    }) => {
       if (!edit) {
         throw new Error("no edit");
       }
@@ -1191,10 +1319,101 @@ export function BibliothekLesen({
       // dem nächsten Griff eine Tatsache zu verschweigen, die er braucht.
       const buch: Teilstand = teilstandRef.current
         ? { ...teilstandRef.current }
-        : { text: null, tags: null, category: null, fassung: null };
+        : {
+            text: null,
+            tags: null,
+            category: null,
+            fassung: null,
+            stempel: null,
+            einordnungGeschrieben: false,
+          };
       const buchen = (): void => {
         teilstandRef.current = buch.text === null ? null : buch;
       };
+      // ==========================================================================================
+      // JOB 4251 · DIE BEDINGUNG DES NÄCHSTEN EINORDNUNGSAUFRUFS — GENAU DIESELBE REGEL WIE BEIM
+      // TEXT (`eigeneFassung`), NUR AM ANDEREN GEGENSTAND.
+      // ==========================================================================================
+      //
+      // DREI LAGEN, IN DIESER RANGFOLGE — und die Reihenfolge ist die ganze Regel:
+      //
+      //   1. IN DIESEM LAUF IST SCHON EIN EIGENER EINORDNUNGSAUFRUF DURCHGEGANGEN → es gilt DESSEN
+      //      Quittung. Sie schlägt alles andere, auch den ausdrücklichen Entscheid: der eigene
+      //      `tags`-Aufruf von einer Zeile zuvor hat den Stempel gerade selbst weitergedreht, und
+      //      der `category`-Aufruf liefe sonst in einen Konflikt mit dem eigenen Schreibvorgang.
+      //   2. DER MENSCH HAT AUSDRÜCKLICH ENTSCHIEDEN (`ueberschreiben`) → es gilt der Stand, den er
+      //      JETZT sieht. Genau das verspricht der Knopf.
+      //   3. SONST: hat eine FRÜHERE Runde dieser Bearbeitung schon eine Einordnung geschrieben,
+      //      gilt deren Quittung (ein nachgelesener Stand wäre falsch — eine frische Zahl sagt nur,
+      //      WIE OFT die Einordnung bewegt wurde, nicht, WER sie bewegt hat; BEN4 am Textweg).
+      //      Sonst der Stand, den der Mensch beim Öffnen gesehen hat.
+      //
+      // WORAN PUNKT 3 „FRÜHER GESCHRIEBEN" ABLIEST, UND DAS WAR DER FEHLER AUS RUNDE 3: an
+      // `einordnungGeschrieben`, NICHT an den Marken `tags`/`category`. Die Marken sagen, ob ein
+      // Schritt JETZT offen ist, und sie verfallen bei jedem gescheiterten Aufruf (s. `catch`) —
+      // wer aus ihnen die HERKUNFT der Quittung ableitet, verliert sie beim zweiten Fehlschlag und
+      // schickt wieder den Stand vom Öffnen. BEN hat genau das gemessen (`expected 1 to be 2`), und
+      // der Mensch las danach von einem fremden Schreiber, den es nicht gab. Zwei Fragen, zwei
+      // Felder (s. `Teilstand`).
+      //
+      // WARUM PUNKT 2 ÜBER PUNKT 3 STEHT, und das war der Fehler aus Runde 1 (BEN, Korrekturpflicht
+      // 2, Gegenprobe A, wörtlich `expected 2 to be 3`): dort galt die Quittung der früheren Runde
+      // IMMER. Wer also seine Schlagworte gespeichert hatte, an der Kategorie in einen fremden
+      // Schreibvorgang lief und danach ausdrücklich „auf dem jetzigen Stand speichern" drückte,
+      // schickte weiter die alte eigene Zahl — und lief zuverlässig in denselben 409. Ein Knopf,
+      // der nichts tun KANN, ist eine Scheinfunktion, und sein Versprechen war unwahr.
+      //
+      // WAS `ueberschreiben` TROTZDEM NICHT TUT, IST DIE BEDINGUNG AUFHEBEN: der gesehene Stand
+      // reist mit. Wer zwischen Meldung und Knopf überholt wird, bekommt denselben ehrlichen
+      // Konflikt noch einmal (dieselbe Zusage wie B15 am Textweg, gemessen in K10b).
+      //
+      // IST DER EIGENE STAND UNBEKANNT, GEHT DER AUFRUF NICHT HINAUS. Eine geratene Zahl schützte
+      // vor nichts und wiese rechtmässige Schreibvorgänge ab; ganz ohne Feld wäre es das stille
+      // Überschreiben, das dieser Auftrag beseitigt. Wissenslücke statt Erfindung.
+      let quittungDiesesLaufs: number | null = null;
+      let eigenerAufrufDiesesLaufs = false;
+      const einordnungsBedingung = (): { expectedMetadataRevision?: number } => {
+        const frueherGeschrieben = buch.einordnungGeschrieben;
+        const stempel = eigenerAufrufDiesesLaufs
+          ? quittungDiesesLaufs
+          : v.ueberschreiben
+            ? v.einordnung
+            : frueherGeschrieben
+              ? buch.stempel
+              : v.einordnung;
+        if (
+          (eigenerAufrufDiesesLaufs || (!v.ueberschreiben && frueherGeschrieben)) &&
+          typeof stempel !== "number"
+        ) {
+          throw new Error("Stand der eigenen Einordnung unbekannt");
+        }
+        return typeof stempel === "number" ? { expectedMetadataRevision: stempel } : {};
+      };
+      /**
+       * Die Quittung des eigenen Einordnungsaufrufs übernehmen — für den nächsten Schritt.
+       *
+       * `einordnungGeschrieben` wird hier gesetzt und NIRGENDS zurückgenommen: dass dieser Mensch
+       * die Einordnung dieses Eintrags schon einmal bewegt hat, ist eine Tatsache, die ein späterer
+       * Fehlschlag nicht ungeschehen macht. Auch dann, wenn die Antwort den Stand NICHT trug
+       * (`stand === null`): dann ist die Quittung unbekannt, und genau deshalb darf der nächste
+       * Aufruf nicht auf den Stand vom Öffnen zurückfallen — er geht gar nicht hinaus (K14).
+       */
+      const quittieren = (geschrieben: { metadataRevision?: number } | undefined): void => {
+        eigenerAufrufDiesesLaufs = true;
+        const stand =
+          typeof geschrieben?.metadataRevision === "number" ? geschrieben.metadataRevision : null;
+        quittungDiesesLaufs = stand;
+        buch.stempel = stand;
+        buch.einordnungGeschrieben = true;
+      };
+      // Woran die Kette gerissen ist. Der `revise` steht am Anfang; ab dem ersten Folgeaufruf geht
+      // es um die Einordnung (s. `SpeicherAbbruch.schritt`).
+      //
+      // RUNDE 3: der Schritt wird FEINER geführt als die Lage, die er später ergibt — nicht nur
+      // „Einordnung", sondern welcher der beiden Aufrufe gerade unterwegs ist. Ohne diese
+      // Unterscheidung lässt sich die Marke des GESCHEITERTEN Aufrufs nicht von der des gelungenen
+      // trennen, und genau daran ist Runde 2 gescheitert (s. `markeVerfaellt`).
+      let laufend: "text" | "tags" | "category" = "text";
       try {
         // EIN SCHRITT IST OFFEN, WENN SEIN WERT IM FORMULAR VON DEM ABWEICHT, DER AM SERVER STEHT.
         // Diese EINE Regel deckt beides ab: „noch nie geschickt" (`null`) und „seither geändert".
@@ -1263,17 +1482,80 @@ export function BibliothekLesen({
           // Die Fassung kommt aus der ANTWORT des Schreibvorgangs, nicht aus einer zweiten Abfrage.
           buch.fassung = typeof geschrieben?.version === "number" ? geschrieben.version : null;
         }
-        if (buch.tags !== marken.tags) {
-          await endpoints.ko.act(koId, { action: "tags", tags: marken.schlagworte });
+        laufend = "tags";
+        // JOB 4251 · `ueberschreiben` GILT AUCH HIER, und aus demselben Grund wie beim Text
+        // (BEN-R2-B): die Marke sagt „diesen Wert habe ICH einmal hinausgeschickt", nicht „er steht
+        // am Server". Nach einem fremden Schreibvorgang fallen die beiden auseinander — wer dann
+        // seine Einordnung auf den Stand von vorhin zurückstellt, träfe die Marke wieder, der
+        // Aufruf würde übersprungen, und die Fläche meldete Erfolg über einen Schreibvorgang, den
+        // es nie gegeben hat. Die BEDINGUNG bleibt trotzdem: der Stempel reist mit.
+        if (v.ueberschreiben || buch.tags !== marken.tags) {
+          const geschrieben = await endpoints.ko.act(koId, {
+            action: "tags",
+            tags: marken.schlagworte,
+            ...einordnungsBedingung(),
+          });
           buch.tags = marken.tags;
+          // Der Stand kommt aus der ANTWORT des eigenen Schreibvorgangs, nicht aus einer zweiten
+          // Abfrage — sonst wanderte ein fremder Schreibvorgang in den eigenen Bezugspunkt.
+          quittieren(geschrieben);
         }
-        if (marken.category !== "" && buch.category !== marken.category) {
-          await endpoints.ko.act(koId, { action: "category", category: marken.category });
+        if (marken.category !== "" && (v.ueberschreiben || buch.category !== marken.category)) {
+          laufend = "category";
+          const geschrieben = await endpoints.ko.act(koId, {
+            action: "category",
+            category: marken.category,
+            ...einordnungsBedingung(),
+          });
           buch.category = marken.category;
+          quittieren(geschrieben);
         }
       } catch (e) {
+        // ==========================================================================================
+        // RUNDE 3 · EINE ALTE QUITTUNG IST KEINE QUITTUNG DIESES VERSUCHS (BEN, Korrekturpflicht 1).
+        // ==========================================================================================
+        //
+        // DER FEHLER, DEN DIESE ZEILEN SCHLIESSEN, gemessen von BEN: A speichert die Schlagworte
+        // erfolgreich, jemand Fremdes ändert die Kategorie, As Kategorieaufruf wird abgewiesen.
+        // Danach überschreibt ein WEITERER Schreiber die Schlagworte, und A entscheidet bewusst
+        // erneut — der Schlagwortaufruf geht hinaus und wird abgewiesen. Die Marke aus dem ERSTEN
+        // Versuch stand aber noch und stimmte mit dem Formular überein; der Schritt galt damit als
+        // erledigt, fiel aus `offeneSchritte` heraus, und die Fläche meldete „deine Schlagworte
+        // sind gespeichert" — während sie soeben abgewiesen worden waren und am Server fremde
+        // Schlagworte standen. BENs Wortlaut: „Tags wurden gerade abgewiesen; Kategorie wurde in
+        // diesem Versuch gar nicht aufgerufen."
+        //
+        // DIE REGEL IST EINE ZEILE UND GILT FÜR BEIDE FEHLERARTEN: was DIESER Versuch abgesetzt hat
+        // und was nicht angekommen ist, ist offen. Beim 409 ist die alte Marke ohnehin verdächtig —
+        // jemand Fremdes hat nachweislich geschrieben. Beim NETZABBRUCH ist sie das nicht: am
+        // Server steht womöglich noch genau das, was sie sagt. Trotzdem verfällt sie, und das ist
+        // die schwächere, WAHRE Aussage: dieser Aufruf ist nicht durchgekommen. „Erledigt" wäre
+        // eine Auskunft über einen Vorgang, den es nicht gegeben hat (K12).
+        //
+        // WAS NICHT VERFÄLLT, ist die Buchführung der GELUNGENEN Schritte — insbesondere `text`
+        // (BEN2/BEN3 aus JOB 4163: was am Server steht, hört durch einen weiteren Fehlschlag nicht
+        // auf, dort zu stehen). Es verfällt AUSSCHLIESSLICH die Marke des einen Aufrufs, der gerade
+        // gescheitert ist.
+        //
+        // RUNDE 4 · UND ES VERFÄLLT NICHT DER BEZUGSPUNKT (`stempel`, `einordnungGeschrieben`).
+        // Runde 3 hat das nicht getrennt — mit der Marke ging die eigene Quittung mit, und der
+        // nächste gewöhnliche Griff lief mit dem Stand vom Öffnen in einen erfundenen Fremdkonflikt
+        // (BEN R3). Eine verfallene Marke heisst „dieser Aufruf ist nicht durchgekommen", sie heisst
+        // NICHT „ich habe hier nie geschrieben". Die beiden Zeilen unten fassen deshalb nur die
+        // Marken an; `stempel` und `einordnungGeschrieben` bleiben unberührt stehen (K13).
+        if (laufend === "tags") {
+          buch.tags = null;
+        }
+        if (laufend === "category") {
+          buch.category = null;
+        }
         buchen();
-        throw new SpeicherAbbruch(e, buch.text === marken.text, offeneSchritte(buch, marken));
+        throw new SpeicherAbbruch(
+          e,
+          buch.text === marken.text,
+          offeneSchritte(buch, marken),
+          laufend === "text" ? "text" : "einordnung",
+        );
       }
       // Alles angekommen: es gibt nichts mehr nachzuholen.
       teilstandRef.current = null;
@@ -1362,9 +1644,34 @@ export function BibliothekLesen({
       // darf. Liegt von dieser Bearbeitung schon etwas am Server, ist der alte Wortlaut
       // („gespeichert wurde nichts") allerdings unwahr — dafür steht `teilVorher`.
       if (ursache instanceof ApiError && ursache.status === 409) {
+        // ==========================================================================================
+        // JOB 4251 · WORÜBER der fremde Schreiber dazwischengekommen ist — Inhalt oder Einordnung.
+        // ==========================================================================================
+        //
+        // Ein 409 am `tags`- oder `category`-Aufruf heisst NICHT „gespeichert wurde nichts": der
+        // `revise` davor ist in diesem Fall durch, der Text des Menschen steht am Server. Der alte
+        // Wortlaut wäre dort die Unwahrheit — und die Fassungszahl, die zu ihm gehört, sagt über
+        // die Einordnung nichts, weil sie bei einer Einordnungsänderung gar nicht klettert.
+        const feld = abbruch?.schritt === "einordnung" ? "einordnung" : "text";
         // Erst die WAHRE, noch zahlenlose Aussage — sie gilt sofort.
-        setSpeicherLage({ art: "stale", version: null, teilVorher });
+        // RUNDE 2: WELCHE Einordnungsschritte wirklich abgewiesen wurden, steht in der Buchführung
+        // des Abbruchs — nicht in einer pauschalen Annahme. Ein Schlagwortaufruf, der VORHER durch
+        // war, ist auch nach dem Konflikt gespeichert, und der Satz darf ihn nicht für verloren
+        // erklären (BEN, Korrekturpflicht 3).
+        setSpeicherLage({
+          art: "stale",
+          feld,
+          version: null,
+          teilVorher,
+          offen: abbruch?.offen ?? [],
+        });
         invalidate();
+        if (feld === "einordnung") {
+          // KEIN NACHLESEN EINER ZAHL, DIE NICHTS ERKLÄRT. `invalidate()` oben holt den Eintrag
+          // ohnehin frisch — damit steht die EINORDNUNG des anderen Menschen gleich auf der Fläche,
+          // und der Knopf „Auf dem jetzigen Stand speichern" hat den Stempel, den er braucht.
+          return;
+        }
         // Und dann die Fassung, die das Nachlesen WIRKLICH gezeigt hat. Der Rückruf überschreibt nur
         // eine noch offene Stale-Lage: wer inzwischen erneut gespeichert hat, soll seine neue
         // Auskunft nicht von einer alten Antwort zurückgedreht bekommen.
@@ -1384,8 +1691,17 @@ export function BibliothekLesen({
           }
           const jetzt = r.data?.version;
           setSpeicherLage((vorher) =>
-            vorher?.art === "stale" && typeof jetzt === "number"
-              ? { art: "stale", version: jetzt, teilVorher: vorher.teilVorher }
+            // JOB 4251: und nur eine Lage über den INHALT bekommt diese Zahl. Wer inzwischen in
+            // einen Einordnungskonflikt gelaufen ist, soll keine Fassungszahl an einen Satz
+            // geheftet bekommen, der von Schlagwörtern handelt.
+            vorher?.art === "stale" && vorher.feld === "text" && typeof jetzt === "number"
+              ? {
+                  art: "stale",
+                  feld: "text",
+                  version: jetzt,
+                  teilVorher: vorher.teilVorher,
+                  offen: vorher.offen,
+                }
               : vorher,
           );
         });
@@ -1684,6 +2000,25 @@ export function BibliothekLesen({
     return false;
   };
 
+  // ================================================================================================
+  // JOB 4251 · DER STEMPEL GEHT NUR HINAUS, WENN ER AUS EINER FRISCHEN ANTWORT STAMMT.
+  // ================================================================================================
+  //
+  // Zwei Lagen lassen ihn WEGFALLEN, und beide sind die ehrliche Auskunft, keine Nachlässigkeit:
+  //   · DER EINTRAG TRÄGT IHN NICHT (Altbestand ohne Projektionszeile, `METADATA_REVISION_NONE`) —
+  //     dann gibt es keinen Stand, den man erwarten könnte.
+  //   · DER GEZEIGTE EINTRAG STEHT AUS EINER GESCHEITERTEN AUFFRISCHUNG DA (`abfrageMitBestand`
+  //     hält den Bestand sichtbar, `auffrischungGescheitert` sagt es). Dann ist die Zahl darin die
+  //     ALTE — dieselbe Falle wie bei der Fassungszahl nach einem 409 (JOB 4075 R2).
+  //
+  // OHNE STEMPEL VERHÄLT SICH DER AUFRUF WIE VOR DIESEM AUFTRAG: unbedingt. Das ist die schwächere
+  // Zusage, aber die WAHRE — eine geratene Zahl wiese rechtmässige Schreibvorgänge ab, ohne je
+  // einen fremden zu schützen.
+  const gesehenerEinordnungsstand = (stand: KnowledgeObject): number | null =>
+    auffrischungGescheitert(query) || typeof stand.metadataRevision !== "number"
+      ? null
+      : stand.metadataRevision;
+
   const startEdit = (ko: KnowledgeObject): void => {
     setErr(null);
     setEinreichLage(null);
@@ -1706,6 +2041,9 @@ export function BibliothekLesen({
       // JOB 4075: die Fassung, die in DIESEM Moment auf dem Bildschirm stand. Sie ist der Bezug des
       // bedingten Schreibzugriffs (s. `EditState.version`) und wird beim Tippen nicht nachgeführt.
       version: typeof ko.version === "number" ? ko.version : null,
+      // JOB 4251: dasselbe für die Einordnung — der Stand, der in DIESEM Moment auf dem Bildschirm
+      // stand (s. `gesehenerEinordnungsstand`).
+      einordnung: gesehenerEinordnungsstand(ko),
     });
   };
 
@@ -2489,16 +2827,34 @@ export function BibliothekLesen({
                         Bearbeitung schon ein Stand am Server, wäre sein Halbsatz „gespeichert
                         wurde nichts" unwahr — dann tritt ein eigener Satz an seine Stelle, der
                         beides sagt: der fremde Schreiber UND der eigene frühere Stand. */}
+                    {/* JOB 4251 · UND DER KONFLIKT AN DER EINORDNUNG BEKOMMT SEINEN EIGENEN SATZ,
+                        nicht den über den Inhalt. Es ist GENAU EIN Satz, und er handelt von der
+                        Einordnung: der Text ist in dieser Lage gespeichert, „gespeichert wurde
+                        nichts" wäre die Unwahrheit. Eine Fassungszahl steht nicht darin — die
+                        Einordnung hat keine (sie klettert bei ihr nicht).
+
+                        RUNDE 2 · UND ER NENNT NUR, WAS WIRKLICH NICHT ANGEKOMMEN IST. Ein
+                        Schlagwortaufruf, der vor dem Konflikt durchging, IST gespeichert; ihn
+                        pauschal mitzuverlieren wäre die Unwahrheit, die BEN gemessen hat
+                        (Korrekturpflicht 3). Welche Schritte offen sind, sagt die Buchführung des
+                        Abbruchs — es wird nicht geraten.
+
+                        KEINE TEILLOSE FASSUNG DANEBEN: die beiden Einordnungsaufrufe sind erst NACH
+                        einem gelungenen `revise` erreichbar (s. `save`), der erste Halbsatz „dein
+                        Text ist gespeichert" stimmt hier also immer. Ein Satz für eine Lage, die es
+                        nicht gibt, wäre die Scheinfunktion. */}
                     <span data-testid="bib-speichern-satz">
-                      {speicherLage.teilVorher
-                        ? speicherLage.version === null
-                          ? t("ko.revise.stalePartial")
-                          : t("ko.revise.stalePartialVersion", {
-                              n: String(speicherLage.version),
-                            })
-                        : speicherLage.version === null
-                          ? t("ko.revise.stale")
-                          : t("ko.revise.staleVersion", { n: String(speicherLage.version) })}
+                      {speicherLage.feld === "einordnung"
+                        ? t(staleEinordnungSchluessel(speicherLage.offen))
+                        : speicherLage.teilVorher
+                          ? speicherLage.version === null
+                            ? t("ko.revise.stalePartial")
+                            : t("ko.revise.stalePartialVersion", {
+                                n: String(speicherLage.version),
+                              })
+                          : speicherLage.version === null
+                            ? t("ko.revise.stale")
+                            : t("ko.revise.staleVersion", { n: String(speicherLage.version) })}
                     </span>
                     <span className="mt-1.5 flex gap-2">
                       <button
@@ -2526,7 +2882,15 @@ export function BibliothekLesen({
                           // einem Teilabbruch schreibt der Speicherweg sonst gegen die Fassung,
                           // die sein eigener `revise` erzeugt hat, und liefe hier wieder in
                           // denselben 409 — ein Knopf, der zuverlässig nichts tut.
-                          save.mutate({ expectedVersion: ko.version, ueberschreiben: true })
+                          // JOB 4251: und der Stand der EINORDNUNG, der jetzt im Bild steht, reist
+                          // genauso mit. Er hebt die Entscheidung nicht auf — er sorgt dafür, dass
+                          // sie nicht einen ZWEITEN fremden Schreiber überfährt, der zwischen
+                          // Meldung und Knopf dazugekommen ist.
+                          save.mutate({
+                            expectedVersion: ko.version,
+                            einordnung: gesehenerEinordnungsstand(ko),
+                            ueberschreiben: true,
+                          })
                         }
                         className="rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-text hover:bg-hairline-soft"
                       >
@@ -2662,7 +3026,9 @@ export function BibliothekLesen({
                   // JOB 4075: die Fassung, die beim Öffnen des Formulars dastand — nicht die, die
                   // inzwischen geladen wurde. Genau daran erkennt der Dienst, ob jemand
                   // dazwischengekommen ist.
-                  onClick={() => save.mutate({ expectedVersion: edit.version })}
+                  onClick={() =>
+                    save.mutate({ expectedVersion: edit.version, einordnung: edit.einordnung })
+                  }
                 >
                   {t("ko.saveEdit")}
                 </Button>

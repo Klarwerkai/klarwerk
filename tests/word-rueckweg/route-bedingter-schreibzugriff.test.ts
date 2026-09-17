@@ -19,6 +19,10 @@
 //   · F5 rot: `expected 200 to be 400` — das Feld wurde an fremden Aktionen stumm geschluckt.
 //   · F1/F4 waren grün: sie halten fest, was sich NICHT ändern durfte.
 //
+// JOB 4251: F5 IST UMGESCHRIEBEN, NICHT ABGESCHWÄCHT — die Begründung steht an ihm selbst. Kurz:
+// `tags` und `category` vergleichen die Fassung seit diesem Auftrag wirklich, sind also keine
+// fremden Aktionen mehr; die 400 an einer wirklich fremden Aktion pinnt jetzt F5b.
+//
 // RUNDE 2: Der bedingte Schreibzugriff wird nicht mehr an der Route verglichen, sondern IM Dienst
 // (`KoService.revise`, in derselben per-KO serialisierten Transaktion, in der geschrieben wird) —
 // aus dem Zeitfenster von Runde 1 ist ein Compare-and-Set geworden. Die Route reicht `expectedVersion`
@@ -163,16 +167,67 @@ describe("JOB 3667 · der Rückweg schreibt bedingt — oder gar nicht", () => {
     expect((ohne.json() as { version: number }).version).toBe(2);
   });
 
-  it("F5: an einer anderen Aktion wäre der Stand ein Schutz, der nicht greift — 400 statt Ignorieren", async () => {
+  // ==============================================================================================
+  // F5 · JOB 4251 — DER VERTRAG IST GEWACHSEN, UND DIESER FALL WIRD DESHALB OFFEN FORTGESCHRIEBEN.
+  // ==============================================================================================
+  //
+  // BIS JOB 4251 STAND HIER: „an fremden Aktionen 400" — und `tags`/`category` waren fremde
+  // Aktionen. Das war richtig, solange der Einordnungsweg die Fassung gar nicht vergleichen KONNTE:
+  // ein angeforderter Schutz, der stillschweigend nicht greift, ist schlimmer als keiner.
+  //
+  // SEIT JOB 4251 VERGLEICHT ER SIE (`knowledge-object/src/service.ts`, `mutateKoMetadata`), und
+  // damit greift er dort. Der Vertrag lautet ab jetzt: BEDINGT SIND `revise`, `revise-release`,
+  // `decide-proposal`, `tags` UND `category`; an allen übrigen Aktionen bleibt es beim 400. Das ist
+  // keine Abschwächung dieses Falls, sondern seine Fortschreibung — F5b darunter pinnt die 400 an
+  // einer WIRKLICH fremden Aktion weiter, und F1 bis F4 stehen unverändert.
+  //
+  // Der Stempel der EINORDNUNG (`expectedMetadataRevision`) ist ein eigenes Feld mit eigener Grenze;
+  // er wird in `tests/wiki-einordnung-konflikt/route-einordnung-konflikt.test.ts` gemessen.
+  it("F5: der Stand gilt jetzt auch an `tags` und `category` — dort greift er wirklich", async () => {
     const { app, headers } = await angemeldeteFlaeche();
     const angelegt = await anlegen(app, headers);
-    const kommentar = await app.inject({
+
+    // Angenommen und WIRKSAM: mit der geltenden Fassung wird geschrieben …
+    const mitGueltiger = await app.inject({
       method: "PUT",
       url: `/api/kos/${angelegt.id}`,
       headers,
-      payload: { action: "comment", text: "Bitte um Zweitprüfung.", expectedVersion: 1 },
+      payload: { action: "tags", tags: ["ventil"], expectedVersion: 1 },
     });
-    expect(kommentar.statusCode).toBe(400);
-    expect((kommentar.json() as { message: string }).message).toContain("expectedVersion");
+    expect(mitGueltiger.statusCode).toBe(200);
+    expect((mitGueltiger.json() as { tags: string[] }).tags).toEqual(["ventil"]);
+
+    // … und mit einer überholten NICHT. Ein 200 hier hiesse, der Schutz werde geschluckt.
+    const fremd = await revise(app, headers, angelegt.id, { statement: "Fremde Änderung." });
+    expect(fremd.statusCode).toBe(200);
+    const mitUeberholter = await app.inject({
+      method: "PUT",
+      url: `/api/kos/${angelegt.id}`,
+      headers,
+      payload: { action: "category", category: "Anlage 9", expectedVersion: 1 },
+    });
+    expect(mitUeberholter.statusCode).toBe(409);
+    expect((mitUeberholter.json() as { error: string }).error).toBe("KO_STALE");
+
+    const jetzt = await app.inject({ method: "GET", url: `/api/kos/${angelegt.id}`, headers });
+    expect((jetzt.json() as { category: string }).category).toBe("Anlage 1");
+  });
+
+  it("F5b: an einer WIRKLICH fremden Aktion wäre der Stand ein Schutz, der nicht greift — 400 statt Ignorieren", async () => {
+    const { app, headers } = await angemeldeteFlaeche();
+    const angelegt = await anlegen(app, headers);
+    for (const payload of [
+      { action: "comment", text: "Bitte um Zweitprüfung.", expectedVersion: 1 },
+      { action: "confidentiality", level: "intern", expectedVersion: 1 },
+    ]) {
+      const antwort = await app.inject({
+        method: "PUT",
+        url: `/api/kos/${angelegt.id}`,
+        headers,
+        payload,
+      });
+      expect(antwort.statusCode, payload.action).toBe(400);
+      expect((antwort.json() as { message: string }).message).toContain("expectedVersion");
+    }
   });
 });

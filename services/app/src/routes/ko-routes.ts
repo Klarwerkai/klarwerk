@@ -504,6 +504,28 @@ interface PutBody {
    */
   expectedVersion?: unknown;
   /**
+   * JOB 4251 (WIKI-ZUSAMMENARBEIT) — DER BEDINGTE SCHREIBZUGRIFF DER EINORDNUNG.
+   *
+   * Der Stand der Einordnung (Kategorie + Schlagwörter), den der Aufrufer beim Laden GESEHEN hat.
+   * Er wirkt AUSSCHLIESSLICH an `action: "tags"` und `action: "category"` und ausschliesslich als
+   * BEDINGUNG: trägt die Einordnung inzwischen einen anderen Stand, wird nicht geschrieben
+   * (409 `KO_STALE`).
+   *
+   * WARUM NICHT `expectedVersion` DAFÜR TAUGT: eine Metadatenänderung erhöht die Inhaltsversion
+   * ausdrücklich NICHT (`knowledge-object/src/service.ts`, `mutateKoMetadata`, KW-ARCH-G27). Wer nur
+   * die Schlagwörter eines anderen überschreibt, tut das bei UNVERÄNDERTER Version — ein Vergleich
+   * gegen sie ginge am Nutzerfall vorbei. Der autoritative Stempel ist die `metadata_revision` der
+   * Mutable Metadata Projection; sie steht additiv an `GET /api/kos/:id` und an der Antwort dieser
+   * beiden Aktionen.
+   *
+   * OHNE DAS FELD bleibt alles wie bisher (letzter Schreiber gewinnt) — Word-Add-in, Importwege und
+   * jede ältere Oberfläche sind unberührt. `unknown`, weil der Wert aus dem Netz kommt: gelesen wird
+   * er von derselben `erwarteteKoVersion`, die auch die Inhaltsfassung liest (eine Ganzzahl ≥ 1 oder
+   * ein 400) — `0` ist ausdrücklich KEIN gültiger Stand, sondern `METADATA_REVISION_NONE`, also „für
+   * dieses Objekt steht noch gar keine Zeile da".
+   */
+  expectedMetadataRevision?: unknown;
+  /**
    * JOB 3667 R2 — DER EINGEREICHTE ÄNDERUNGSVORSCHLAG (`action: "propose"`).
    *
    * `baseVersion` ist PFLICHT und die Fassung, auf die sich der Vorschlag bezieht; `origin` sagt,
@@ -1139,11 +1161,43 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
       // kennt (Word-Add-in, Export, ältere Oberfläche), liest weiter genau das, was er bisher las.
       // Fehlt die Verdrahtung oder gibt es keine Variante, fehlt das Feld ganz — kein leeres
       // Objekt, das sich als „geprüft, nichts da" lesen liesse.
+      //
+      // JOB 4251 (WIKI-ZUSAMMENARBEIT): der STEMPEL DER EINORDNUNG tritt in derselben Bauform
+      // daneben. Er ist kein neues Feld am Wissensobjekt, sondern die `metadata_revision` der
+      // Mutable Metadata Projection — genau der Stand, gegen den `PUT {action:"tags"|"category"}`
+      // bedingt schreibt. Die Fläche kann nur senden, was sie GESEHEN hat; ohne diese Zeile müsste
+      // sie den Stand im Browser ableiten, und das wäre die zweite Wahrheit, die es nicht geben darf.
+      //
+      // GIBT ES KEINE ZEILE (Altbestand, `METADATA_REVISION_NONE`), FEHLT DAS FELD GANZ — kein `0`,
+      // das sich als gültiger Stand lesen liesse. Wer es nicht kennt (Word-Add-in, Export, ältere
+      // Oberfläche), liest weiter genau das, was er bisher las.
+      //
+      // RUNDE 2 · UND ER KOMMT MIT SEINEN WERTEN AUS EINER KLAMMER (BEN, Korrekturpflicht 1).
+      // Runde 1 holte hier nur die Zahl und liess Kategorie und Schlagwörter bei `item` — zwei
+      // Lesevorgänge ohne Klammer. Wer im Fenster dazwischen schrieb, bekam ALTE Werte mit dem
+      // NEUEN Stempel, und der Stempel beglaubigte damit das Überschreiben einer Einordnung, die
+      // niemand gesehen hatte. `einordnungsstandVon` liest beides in DEMSELBEN per-KO
+      // serialisierten Abschnitt, in dem auch geschrieben wird.
+      //
+      // ES WANDERN AUSSCHLIESSLICH KATEGORIE UND SCHLAGWÖRTER NACH — nichts sonst. Das
+      // Sichtbarkeitsurteil oben ist an `item` gefallen; ein rundum frischeres Objekt hier würde
+      // ein zwischenzeitliches Vertraulichkeits-Upgrade an diesem Urteil vorbeitragen. Die beiden
+      // Einordnungsfelder sind nach KW-ARCH-G27 ausdrücklich keine Sicherheitsmerkmale.
+      const einordnung = await ko.einordnungsstandVon(item.id);
       const varianten = (await lesevarianten?.forKo(item.id)) ?? [];
       reply.code(200).send({
         ...item,
         ...discloseConfidentiality(item.confidentiality),
         ...discloseDisplayStatus(item, await anzeigestatusEingaengeFuer(item)),
+        ...(einordnung
+          ? {
+              category: einordnung.category,
+              tags: einordnung.tags,
+              ...(einordnung.metadataRevision === undefined
+                ? {}
+                : { metadataRevision: einordnung.metadataRevision }),
+            }
+          : {}),
         ...(varianten.length > 0
           ? {
               lesevarianten: Object.fromEntries(
@@ -2088,6 +2142,72 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
         }
         return false;
       };
+      // ==========================================================================================
+      // JOB 4251 — DIE BEDINGUNG DER EINORDNUNG: EINMAL GELESEN, AN BEIDEN AKTIONEN DIESELBE.
+      // ==========================================================================================
+      //
+      // `tags` und `category` sind zwei Türen in denselben Schreibpfad (`mutateKoMetadata`). Zwei
+      // Abschriften dieser Lesart wären zwei Auslegungen desselben Vertrags — und die zweite wäre
+      // irgendwann die andere. Gelesen wird mit `erwarteteKoVersion`, derselben Funktion wie am
+      // Inhaltsweg: dieselben drei Ausgänge (fehlt → unbedingt, Ganzzahl ≥ 1 → Bedingung, alles
+      // Übrige → 400), damit ein Unsinnswert auch hier keinen Schutz stillschweigend abschaltet.
+      //
+      // `stand` IST DIE QUITTUNG DES SCHREIBVORGANGS, nicht ein zweiter Nachschlag: der Dienst
+      // meldet aus DEMSELBEN Lock, in dem er geschrieben hat, welcher Stempel danach gilt. Ein
+      // Nachlesen hinter dem Lock könnte einen FREMDEN Schreibvorgang mit einsammeln — und der
+      // Aufrufer hielte ihn dann für seinen eigenen.
+      const einordnungsBedingung = ():
+        | {
+            stand: { wert: number | null };
+            opts: {
+              expectedMetadataRevision?: number;
+              expectedVersion?: number;
+              meldeMetadatenstand: (revision: number) => void;
+            };
+          }
+        | "unlesbar" => {
+        const stempel = erwarteteKoVersion(body.expectedMetadataRevision);
+        if (stempel === "unlesbar") {
+          badRequest(
+            "expectedMetadataRevision muss eine Ganzzahl ab 1 sein (der Stand der Einordnung, der beim Laden zu sehen war).",
+          );
+          return "unlesbar";
+        }
+        const fassung = erwarteteKoVersion(body.expectedVersion);
+        if (fassung === "unlesbar") {
+          badRequest(
+            "expectedVersion muss eine Ganzzahl ab 1 sein (die Version, die beim Laden zu sehen war).",
+          );
+          return "unlesbar";
+        }
+        const stand: { wert: number | null } = { wert: null };
+        return {
+          stand,
+          opts: {
+            ...(stempel === undefined ? {} : { expectedMetadataRevision: stempel }),
+            ...(fassung === undefined ? {} : { expectedVersion: fassung }),
+            meldeMetadatenstand: (revision: number): void => {
+              stand.wert = revision;
+            },
+          },
+        };
+      };
+      /**
+       * Der Stempel, der NACH diesem Schreibvorgang gilt — additiv an der Antwort, damit der
+       * nächste Schritt derselben Kette (erst `tags`, dann `category`) gegen den Stand schreibt, den
+       * der EIGENE Aufruf soeben erzeugt hat. Ohne ihn liefe der zweite Schritt zuverlässig in einen
+       * Konflikt mit dem ersten — gegen sich selbst.
+       *
+       * FEHLT ER, FEHLT ER: hat der Dienst nichts gemeldet, steht kein Feld da. Eine geratene Zahl
+       * wäre die schlechteste Auskunft von allen (Wissenslücke statt Erfindung).
+       */
+      const mitEinordnungsstand = <T extends object>(
+        ergebnis: T,
+        bedingung: { stand: { wert: number | null } },
+      ): T | (T & { metadataRevision: number }) =>
+        bedingung.stand.wert === null
+          ? ergebnis
+          : { ...ergebnis, metadataRevision: bedingung.stand.wert };
       /**
        * JOB 4146 — die gemeinsame Hälfte von „geklärt" und „wieder offen": die Beitragskennung
        * prüfen und den Dienst rufen. Das Rechtegate steht bewusst NICHT hier, sondern sichtbar in
@@ -2201,17 +2321,40 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             return;
           }
         }
-        // JOB 3667: `expectedVersion` wirkt AUSSCHLIESSLICH an den drei Schreibwegen des Rückwegs
-        // (dort steht die Begründung). An jeder anderen Aktion wäre es ein angeforderter Schutz,
-        // der stillschweigend nicht greift — das ist schlimmer als keiner. Deshalb 400.
+        // JOB 3667: `expectedVersion` wirkt AUSSCHLIESSLICH an den Schreibwegen, die es auch
+        // vergleichen (dort steht die Begründung). An jeder anderen Aktion wäre es ein
+        // angeforderter Schutz, der stillschweigend nicht greift — das ist schlimmer als keiner.
+        // Deshalb 400.
+        //
+        // JOB 4251 · DER VERTRAG IST GEWACHSEN, NICHT AUFGEWEICHT. Seit diesem Auftrag vergleicht
+        // auch der Einordnungsweg (`tags`/`category`) die Inhaltsfassung, WENN der Aufrufer sie
+        // mitgibt (`knowledge-object/src/service.ts`, `mutateKoMetadata`). Damit greift der Schutz
+        // dort — und genau das, und nur das, ist der Grund für die zwei neuen Namen in dieser
+        // Liste. An allen übrigen Aktionen bleibt es beim 400
+        // (`tests/word-rueckweg/route-bedingter-schreibzugriff.test.ts`, F5).
         if (
           body.expectedVersion !== undefined &&
           body.action !== "revise" &&
           body.action !== "revise-release" &&
-          body.action !== "decide-proposal"
+          body.action !== "decide-proposal" &&
+          body.action !== "tags" &&
+          body.action !== "category"
         ) {
           return badRequest(
-            'expectedVersion gilt nur für die Aktionen "revise", "revise-release" und "decide-proposal".',
+            'expectedVersion gilt nur für die Aktionen "revise", "revise-release", "decide-proposal", "tags" und "category".',
+          );
+        }
+        // JOB 4251: der Stempel der EINORDNUNG greift nur dort, wo eine Einordnung geschrieben wird.
+        // An `revise` wäre er ein Schutz auf dem falschen Gegenstand — der Inhaltsweg fasst die
+        // Metadatenprojektion gar nicht an —, und stillschweigend geschluckt wäre er schlimmer als
+        // gar keiner. Deshalb auch dort 400.
+        if (
+          body.expectedMetadataRevision !== undefined &&
+          body.action !== "tags" &&
+          body.action !== "category"
+        ) {
+          return badRequest(
+            'expectedMetadataRevision gilt nur für die Aktionen "tags" und "category".',
           );
         }
         switch (body.action) {
@@ -2926,7 +3069,18 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             if (!body.category) {
               return badRequest("category fehlt.");
             }
-            reply.code(200).send(await ko.updateCategory(id, body.category, user.id));
+            const bedingung = einordnungsBedingung();
+            if (bedingung === "unlesbar") {
+              return;
+            }
+            reply
+              .code(200)
+              .send(
+                mitEinordnungsstand(
+                  await ko.updateCategory(id, body.category, user.id, bedingung.opts),
+                  bedingung,
+                ),
+              );
             return;
           }
           case "tags": {
@@ -2934,10 +3088,21 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             if (!user) {
               return;
             }
+            const bedingung = einordnungsBedingung();
+            if (bedingung === "unlesbar") {
+              return;
+            }
             // G27 Welle 1 / S2: der Schlagwortweg ist jetzt auditiert — und ein Beleg mit dem
             // Actor „system" wäre schlechter als keiner. Er bekommt denselben angemeldeten
             // Benutzer wie der Kategorieweg direkt darüber.
-            reply.code(200).send(await ko.updateTags(id, body.tags ?? [], user.id));
+            reply
+              .code(200)
+              .send(
+                mitEinordnungsstand(
+                  await ko.updateTags(id, body.tags ?? [], user.id, bedingung.opts),
+                  bedingung,
+                ),
+              );
             return;
           }
           // SCRUM-415/509: Vertraulichkeitsstufe setzen/ändern. Basisrecht ko.create (wie Bearbeiten).
