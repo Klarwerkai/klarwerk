@@ -18,7 +18,46 @@ Quelle der Wahrheit: **KLLM-61** (App ↔ lokaler LLM), **KLLM-62** (Insel), **K
 | `schema-vertrag.mjs` | Erzeugt und prüft den Schema-Vertrag (Migrationsstufen + Risikoklasse) eines Releases gegen den Stand neben den Daten. |
 | `insel-betrieb.sh` | Gemeinsame Handgriffe beider Wege (Server stoppen/starten — auch über launchd —, `/health` mit Version). Wird gesourct, nicht gestartet. |
 | `release-texte.mjs` | Die Texte, die in jedes Release wandern: Release-**Identität**, `start.command`, `install.command`, `ROLLBACK.md`. Ohne Nebenwirkung, damit sie prüfbar sind. |
+| `paketinhalt.mjs` | Berechnet, welche Quelldateien ein Release **außerhalb** von `services/` mitbringen muss, weil sein Startpfad sie lädt. Ohne Nebenwirkung, damit es prüfbar ist. |
 | `LIESMICH.txt` | Ausführliche Bedienung (deutsch). |
+
+## Was das Paket mitbringt
+
+Auf dem Mac Studio liegt **kein Repo**. Was nicht im Paket steckt, gibt es dort nicht. Ein Release
+von `build-current-release.mjs` enthält deshalb genau drei Sorten Inhalt:
+
+1. **Die zwei Bäume:** `services/**` (ohne `node_modules`, `.git`, `dist` und Testdateien) und das
+   gebaute Bündel `apps/web/dist`.
+2. **Die Betriebswege:** `update-einspielen.sh`, `rueckfall.sh`, `insel-betrieb.sh`,
+   `schema-vertrag.mjs` sowie `scripts/backup/backup.sh` und `restore-drill.sh` — dazu
+   `start.command`, `install.command`, `SCHEMA-VERTRAG`, `BUILD_INFO` und `ROLLBACK.md`.
+3. **Die Fremdquellen:** jede Quelldatei **außerhalb** von `services/`, die der Startpfad wirklich
+   lädt. Heute ist das genau `apps/web/src/lib/docx.ts` — der DOM-freie DOCX-Kern, den
+   `services/app/src/routes/capture-routes.ts` ausdrücklich von dort einführt statt ihn zu kopieren.
+
+Die dritte Liste wird **berechnet, nicht gepflegt** (`paketinhalt.mjs`): sie folgt den relativen
+Import-Angaben ab dem Einstieg aus `start.command` (`services/app/src/server.ts`) durch den
+Quellbaum. Gezählt wird dabei **Import-Syntax, nicht Import-Text**: der Quelltext wird zerlegt, und
+eine Zeichenkette gilt nur dann als Pfad, wenn sie an der Stelle steht, an der die Sprache einen
+erwartet. Ein Importbeispiel *innerhalb* einer Zeichenkette (`const s = "import … from './x'"`)
+erzeugt deshalb keine Kante — sonst verlangte der Bau eine Datei, die niemand lädt. Umgekehrt zählt
+ein dynamischer Import mit **konstantem Backtick** (``import(`./x`)``) genauso wie einer mit
+Anführungszeichen; er ist echte Syntax mit festem Pfad. Ein Schablonenliteral besteht dabei aus
+zwei Sorten Inhalt, und sie werden verschieden behandelt: sein **Text** ist ein Datum, seine
+**Einsetzungen `${…}` sind Code** und werden mitgelesen — ein
+``console.log(`Stand: ${(await import("./x")).wert}`)`` lädt `./x` wirklich, also wandert `./x` mit. Ein **neuer Import aus `apps/web/src`
+wandert dadurch von selbst mit**; findet der Bau eine so gemeldete Datei nicht, **bricht er ab** und
+baut kein halbes Paket. Dasselbe gilt für einen Pfad, der erst zur Laufzeit entsteht
+(``import(`./teil/${name}`)``): welche Datei dafür mitmüsste, ist nicht bestimmbar, also bricht der
+Bau ab, statt sie stillschweigend wegzulassen. Kopiert wird jede Datei
+unter ihrem unveränderten repo-relativen Pfad — kein pauschales `apps/web/src`, kein
+Entwicklerbaum, keine `node_modules`. Was ein Paket mitgebracht hat, steht in seiner `BUILD_INFO`
+(Zeile `fremdquellen=…`). Bibliotheken (`mammoth`, `jszip`, `sharp`, …) sind **keine** Fremdquellen;
+sie kommen über `package.json` und `npm ci --omit=dev` ins Release.
+
+Geprüft wird das in `tests/insel-paketausgabe/`: dort wird ein Paket nachgestellt und **jede**
+relative Einfuhr ab `server.ts` im Zielordner aufgelöst. Der volle Baulauf (`npm ci`, `zip`) ist
+dort nicht fahrbar; ein echtes Auspacken und Starten auf dem Mac Studio bleibt eine Handprobe.
 
 ## Update und Rückfall
 

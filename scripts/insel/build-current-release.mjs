@@ -12,6 +12,7 @@ import {
 } from "node:fs";
 import { basename, dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import { fremdquellen } from "./paketinhalt.mjs";
 import {
   installBefehlText,
   releaseIdentitaet,
@@ -85,6 +86,41 @@ cpSync(join(repo, "apps", "web", "dist"), join(releaseDir, "apps", "web", "dist"
   recursive: true,
 });
 
+// ==================================================================================================
+// JOB 4241 — DAS PAKET BRINGT JEDE DATEI MIT, DIE SEIN EIGENER STARTPFAD LAEDT.
+// ==================================================================================================
+//
+// Bis hierher kopierte dieser Bauer GENAU die zwei Baeume darueber. Der Server laedt aber eine
+// dritte Stelle: `services/app/src/routes/capture-routes.ts:12` fuehrt den DOM-freien DOCX-Kern aus
+// `apps/web/src/lib/docx.ts` ein — ausdruecklich von dort und nicht als Kopie (`capture-routes.ts:7-11`).
+// Auf der Insel liegt kein Repo daneben, das Paket endete deshalb beim ersten `start.command` mit
+// `ERR_MODULE_NOT_FOUND apps/web/src/lib/docx` (Befund T-015).
+//
+// Die Liste wird BERECHNET und nicht gepflegt (`paketinhalt.mjs`): ein neuer Querimport wandert von
+// selbst mit, statt bis zum Kunden unbemerkt zu fehlen. Kopiert wird jede gemeldete Datei unter
+// ihrem UNVERAENDERTEN repo-relativen Pfad — `apps/web/src/lib/docx.ts` landet auf
+// `<release>/apps/web/src/lib/docx.ts`, sonst loest die Einfuhr im Release wieder ins Leere.
+// Kein pauschales `apps/web/src`, kein Entwicklerbaum, keine `node_modules`, keine `.git`.
+const mitgelieferteFremdquellen = fremdquellen(repo);
+for (const pfad of mitgelieferteFremdquellen) {
+  const quelle = join(repo, pfad);
+  if (relative(repo, quelle).startsWith("..")) {
+    throw new Error(`Fremdquelle ${pfad} liegt ausserhalb des Repos (${quelle}) und wird nicht mitgeliefert.`);
+  }
+  if (!existsSync(quelle) || !statSync(quelle).isFile()) {
+    throw new Error(`Fremdquelle ${pfad} fehlt im Baum (${quelle}) — das Paket waere unvollstaendig.`);
+  }
+  const ziel = join(releaseDir, pfad);
+  mkdirSync(dirname(ziel), { recursive: true });
+  // Dieselben Filter wie fuer `services` (`skipNames`, `skipSuffixes`) — Testdateien kommen nicht
+  // mit. Greift ein Filter auf einer WIRKLICH geladenen Datei, ist das kein Grund weiterzubauen:
+  // ein halbes Paket faellt sonst erst beim Betreiber auf.
+  copyFiltered(quelle, ziel);
+  if (!existsSync(ziel)) {
+    throw new Error(`Fremdquelle ${pfad} wurde vom Kopierfilter ausgelassen — das Paket waere unvollstaendig.`);
+  }
+}
+
 const serverPath = join(releaseDir, "services", "app", "src", "server.ts");
 let serverTs = readFileSync(serverPath, "utf8");
 serverTs = serverTs.replace(
@@ -118,6 +154,9 @@ writeFileSync(
     `ui_marker=${marker}`,
     "web_build=apps/web/dist",
     "service_entry=services/app/src/server.ts",
+    // JOB 4241: was dieses Paket AUSSERHALB von `services` und `apps/web/dist` mitbringt, weil sein
+    // Startpfad es laedt. Der Betreiber sieht damit am Paket selbst, was darin steckt.
+    `fremdquellen=${mitgelieferteFremdquellen.join(",")}`,
     "port=3002",
     "llm_url=http://127.0.0.1:11434/v1",
     "llm_model=mistral:latest",
