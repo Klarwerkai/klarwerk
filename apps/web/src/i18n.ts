@@ -1998,7 +1998,7 @@ const de = {
   "capture.file.importNote.pdf":
     "Best-Effort-Textimport — Layout und Bilder wurden nicht übernommen.",
   "capture.file.importNote.pptx":
-    "Best-Effort-Import aus PowerPoint — Text, Listen, Tabellen und Bilder je Folie übernommen; Layout, Animationen, Übergänge und Sprechernotizen gehen verloren.",
+    "Best-Effort-Import aus PowerPoint — Text, Listen und Tabellen je Folie übernommen, soweit vorhanden; Layout, Animationen, Übergänge und Sprechernotizen gehen verloren.",
   // JOB 4203 D3: die vierte Import-Quittung. Sie spiegelt `noteText` aus SOURCE_LABELS
   // (`lib/captureFromFile.ts`) — Fläche und persistierte Quittung sagen denselben Satz.
   "capture.file.importNote.text":
@@ -8754,7 +8754,7 @@ const en: typeof de = {
   "capture.file.importNote.pdf":
     "Best-effort text import — layout and images were not carried over.",
   "capture.file.importNote.pptx":
-    "Best-effort import from PowerPoint — text, lists, tables and images per slide carried over; layout, animations, transitions and speaker notes are lost.",
+    "Best-effort import from PowerPoint — text, lists and tables per slide carried over, where present; layout, animations, transitions and speaker notes are lost.",
   "capture.file.importNote.text":
     "Best-effort text import — headings, bullet lists and simple tables carried over; formatting (bold, italics, code), links and images remain as plain characters. Headings and bullet lists need a blank line above them, otherwise they stay running text.",
   "capture.file.parseError": "“{{name}}” could not be read.",
@@ -14295,7 +14295,7 @@ const nl: typeof de = {
   "capture.file.importNote.pdf":
     "Best-effort tekstimport — layout en afbeeldingen zijn niet overgenomen.",
   "capture.file.importNote.pptx":
-    "Best-effort import uit PowerPoint — tekst, lijsten, tabellen en afbeeldingen per dia overgenomen; layout, animaties, overgangen en notities gaan verloren.",
+    "Best-effort import uit PowerPoint — tekst, lijsten en tabellen per dia overgenomen, voor zover aanwezig; layout, animaties, overgangen en notities gaan verloren.",
   "capture.file.importNote.text":
     "Best-effort tekstimport — koppen, opsommingen en eenvoudige tabellen overgenomen; opmaak (vet, cursief, code), verwijzingen en afbeeldingen blijven als tekens staan. Koppen en opsommingen hebben een lege regel erboven nodig, anders blijven ze lopende tekst.",
   "capture.file.parseError": "„{{name}}“ kon niet worden gelezen.",

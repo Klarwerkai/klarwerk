@@ -295,7 +295,7 @@ const XML_KOPF = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
  * wirklich aufmacht. Nur so ist ihr Fehlen im Ergebnis ein Befund und nicht bloss eine Folge
  * davon, dass niemand hingesehen hat.
  */
-function folieEins(): string {
+function folieEins(bildart: Bildart = "png"): string {
   const titel = xml(
     '<p:sp><p:nvSpPr><p:nvPr><p:ph type="title"/></p:nvPr></p:nvSpPr>',
     `<p:spPr><a:xfrm><a:off x="${MARKE.layout}" y="0"/></a:xfrm>`,
@@ -307,7 +307,12 @@ function folieEins(): string {
     `<a:p><a:pPr><a:buChar char="&#8226;"/></a:pPr><a:r><a:t>${MARKE.listenpunkt}</a:t></a:r></a:p>`,
     "</p:txBody></p:sp>",
   );
-  const bild = '<p:pic><p:blipFill><a:blip r:embed="rId9"/></p:blipFill></p:pic>';
+  // JOB 4269: im Mischfall liegen ZWEI Bilder auf der Folie — eines, das ankommt (PNG), und eines,
+  // das der Import bewusst verwirft (BMP). Nur so gibt es einen Fall, in dem die Bilanz BEIDE
+  // Zahlen ungleich null nennt und in dem am Ende trotzdem ein echtes, dekodierbares Bild dasteht.
+  const zweitbild =
+    bildart === "misch" ? '<p:pic><p:blipFill><a:blip r:embed="rId7"/></p:blipFill></p:pic>' : "";
+  const bild = `<p:pic><p:blipFill><a:blip r:embed="rId9"/></p:blipFill></p:pic>${zweitbild}`;
   const uebergang = `<p:transition spd="${MARKE.uebergang}"><p:fade/></p:transition>`;
   const timing = `<p:timing><p:tnLst><p:par name="${MARKE.animation}"/></p:tnLst></p:timing>`;
   return xml(
@@ -341,13 +346,25 @@ function folieZwei(): string {
  *
  * · `png` — erlaubtes Format, passt ins Budget  → eingebettet.
  * · `bmp` — bekanntes, nicht erlaubtes Format   → `droppedImageFormat = 1`, nichts im Entwurf.
+ *
+ * JOB 4269 · `misch` — BEIDE auf derselben Folie. Die Quelle hat dann zwei Bilder, eines kommt an,
+ * eines nicht (`imageCount = 2`, `embeddedImages = 1`, `droppedImageFormat = 1`). Das ist der Fall,
+ * den BEN als Prüflücke benannt hat: ein WIRKLICHER Bildverlust, bei dem die Bilanz beide Zahlen
+ * nennen muss — und bei dem am Ende trotzdem ein Bild dasteht, das der Browser dekodieren kann.
+ * Ein Verlustfall ohne jedes angekommene Bild würde die Zeile „{n} übernommen" nie auf die Probe
+ * stellen, weil 0 auch dann herauskäme, wenn die Zählung gar nicht liefe.
  */
-export type Bildart = "png" | "bmp";
+export type Bildart = "png" | "bmp" | "misch";
 
 const BILDDATEI: Readonly<Record<Bildart, string>> = {
   png: "bild4228.png",
   bmp: "bild4228.bmp",
+  // Im Mischfall ist das PNG das Bild an `rId9`; das BMP hängt daneben an `rId7`.
+  misch: "bild4228.png",
 };
+
+/** Das zweite Bild des Mischfalls — dasjenige, das der Import verwirft. */
+const ZWEITBILD = "bild4269-verworfen.bmp";
 
 /** Die Einträge des gebauten Decks — offen einsehbar, damit ein Fall belegen kann, was drinstand. */
 export function deckEintraege(bildart: Bildart = "png"): Record<string, Uint8Array> {
@@ -386,18 +403,22 @@ export function deckEintraege(bildart: Bildart = "png"): Record<string, Uint8Arr
     "ppt/_rels/presentation.xml.rels": enc(
       xml(XML_KOPF, `<Relationships xmlns="${URI_PKG_R}">${praesRels}</Relationships>`),
     ),
-    "ppt/slides/slide1.xml": enc(folieEins()),
+    "ppt/slides/slide1.xml": enc(folieEins(bildart)),
     "ppt/slides/slide2.xml": enc(folieZwei()),
     "ppt/slides/_rels/slide1.xml.rels": enc(
       xml(
         XML_KOPF,
         `<Relationships xmlns="${URI_PKG_R}">`,
         `<Relationship Id="rId9" Type="${URI_R}/image" Target="../media/${bildname}"/>`,
+        bildart === "misch"
+          ? `<Relationship Id="rId7" Type="${URI_R}/image" Target="../media/${ZWEITBILD}"/>`
+          : "",
         `<Relationship Id="rId8" Type="${URI_R}/notesSlide" Target="../notesSlides/notesSlide1.xml"/>`,
         "</Relationships>",
       ),
     ),
-    [`ppt/media/${bildname}`]: bildart === "png" ? BILD_BYTES : BMP_BYTES,
+    [`ppt/media/${bildname}`]: bildart === "bmp" ? BMP_BYTES : BILD_BYTES,
+    ...(bildart === "misch" ? { [`ppt/media/${ZWEITBILD}`]: BMP_BYTES } : {}),
     "ppt/notesSlides/notesSlide1.xml": enc(
       xml(
         XML_KOPF,
@@ -419,6 +440,8 @@ export function deckMitInhalt(bildart: Bildart = "png"): Uint8Array {
 
 /** Der Dateiname, unter dem ein Mensch dieses Deck wählt — er ist selbst ein Beleg (Herkunft). */
 export const DECK_DATEINAME = "job4228-folien-mit-bild.pptx";
+/** JOB 4269 · derselbe Bau mit ZWEI Bildern, von denen eines verloren geht — eigener Name. */
+export const MISCH_DATEINAME = "job4269-folien-mit-bildverlust.pptx";
 export const PPTX_MIME =
   "application/vnd.openxmlformats-officedocument.presentationml.presentation";
 
@@ -498,7 +521,15 @@ export async function messeDeckMitInhalt(
       tabellen: zustand(true, ergebnis.tableCount > 0 && imErgebnis(ergebnis, MARKE.tabellenzelle)),
       // Das Bild ist nur dann übernommen, wenn SEINE BYTES im Entwurf stehen — nicht, wenn
       // irgendeine figure entstanden ist.
-      bilder: zustand(ergebnis.imageCount > 0, bildImHtml),
+      //
+      // JOB 4269: „übernommen" gilt erst, wenn ALLE Bilder der Quelle angekommen sind. Im
+      // Mischfall (PNG kommt an, BMP nicht) stünde sonst „uebernommen" an einer Datei, die
+      // nachweislich ein Bild verloren hat — dieselbe Halbwahrheit, gegen die der ganze Auftrag
+      // geschrieben ist. Die genauen Zahlen stehen daneben in `bilanz`.
+      bilder: zustand(
+        ergebnis.imageCount > 0,
+        bildImHtml && ergebnis.embeddedImages === ergebnis.imageCount,
+      ),
       layout: zustand(true, imErgebnis(ergebnis, MARKE.layout)),
       animationen: zustand(true, imErgebnis(ergebnis, MARKE.animation)),
       uebergaenge: zustand(true, imErgebnis(ergebnis, MARKE.uebergang)),

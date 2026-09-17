@@ -63,8 +63,10 @@ import {
   BILD_HOEHE,
   DECK_DATEINAME,
   MARKE,
+  MISCH_DATEINAME,
   PPTX_MIME,
   deckMitInhalt,
+  messeDeckMitInhalt,
 } from "./messung";
 import {
   BILANZ_PRAEFIX,
@@ -105,6 +107,60 @@ function bildDeckAnlage(): DateiAnlage {
     buffer: Buffer.from(deckMitInhalt("png")) as Buffer,
   };
 }
+
+/**
+ * JOB 4269 · Das MISCHDECK als Anlage: ein PNG, das ankommt, und ein BMP, das verworfen wird.
+ * Auch hier keine zweite Fassung — dieselben Bytes, die `messeDeckMitInhalt("misch")` nachrechnet.
+ */
+function mischDeckAnlage(): DateiAnlage {
+  return {
+    name: MISCH_DATEINAME,
+    mimeType: PPTX_MIME,
+    buffer: Buffer.from(deckMitInhalt("misch")) as Buffer,
+  };
+}
+
+/**
+ * JOB 4269 · Die pauschale Bildzusage, die der Bedienhinweis bis zum 17.09.2026 trug. Sie darf im
+ * Browser nirgends mehr auftauchen — weder vor dem Import noch am angenommenen Eintrag.
+ */
+const PAUSCHALE_BILDZUSAGE: Readonly<Record<Sprache, string>> = {
+  de: "und Bilder je Folie übernommen",
+  en: "and images per slide carried over",
+  nl: "en afbeeldingen per dia overgenomen",
+};
+
+/**
+ * JOB 4269 · Die Bilder des WISSENSEINTRAGS, gezählt wie die Quittung sie meint.
+ *
+ * WARUM NICHT EINFACH `<img>`-MARKEN ZÄHLEN, und das ist gemessen, nicht überlegt: am Eintrag gibt
+ * es kein `[data-testid="blatt-text"]`, gezählt wird also über `document.body` — und dort stand das
+ * EINE übernommene Bild zweimal (Torlauf aac29d0d…, „expected 2 to be 1"). Die Seite stellt denselben
+ * Rumpf an mehr als einer Stelle dar; ein zweites `<img>` mit DERSELBEN Quelle ist aber kein zweites
+ * Bild, und die Quittung behauptet auch keines.
+ *
+ * Gezählt werden deshalb VERSCHIEDENE Bildquellen. `kennungen` trägt die Anfänge dieser Quellen mit
+ * heraus: stünden dort wirklich zwei verschiedene Bilder, wäre das in der Fehlermeldung zu sehen und
+ * nicht hinter einer Entschärfung versteckt. `naturalWidth`/`naturalHeight` kommen aus der
+ * Dekodierstufe und werden für JEDES Bild gelesen — ein Bild, das nur im DOM steht, hat 0.
+ */
+const BILDER_AM_EINTRAG = `() => {
+  const wurzel = document.querySelector('[data-testid="blatt-text"]') || document.body;
+  const bilder = Array.prototype.slice.call(wurzel.querySelectorAll('img[src^="data:image/"]'));
+  const quellen = [];
+  for (const b of bilder) {
+    const q = b.getAttribute('src') || '';
+    if (quellen.indexOf(q) === -1) { quellen.push(q); }
+  }
+  return {
+    marken: bilder.length,
+    verschieden: quellen.length,
+    kennungen: quellen.map((q) => q.slice(0, 48)),
+    kleinsteBreite: bilder.length ? Math.min.apply(null, bilder.map((b) => b.naturalWidth)) : 0,
+    kleinsteHoehe: bilder.length ? Math.min.apply(null, bilder.map((b) => b.naturalHeight)) : 0,
+    alleFertig: bilder.length > 0 && bilder.every((b) => b.complete),
+  };
+}`;
 
 /** Zählt die EINGEBETTETEN Bilder in der Schreibfläche — dieselbe Frage wie im Quittungssatz. */
 const DATEN_BILDER_ZAEHLEN = `() => {
@@ -292,6 +348,173 @@ describe("JOB 4228 · Nutzerweg — die berichtigte Quittung in DE, EN und NL", 
           expect(amEintrag, "die Sprechernotiz taucht am Eintrag auf").not.toContain(MARKE.notiz);
           // Die Ablesung liest WIRKLICH diese Seite — sonst wäre die negative Zusicherung
           // („die Sprechernotiz taucht nicht auf") auch bei einer blinden Ablesung grün.
+          await ablesungKalibrieren(seite, INHALTSMARKE, () => flaeche(seite));
+        }
+
+        expect(b.seitenfehler, `Seitenfehler: ${JSON.stringify(b.seitenfehler)}`).toEqual([]);
+      },
+      FALL_RAHMEN_MS,
+    );
+  }
+});
+
+// ================================================================================================
+// JOB 4269 · DER BILDVERLUSTFALL — BIS ZUM ANGENOMMENEN WISSENSEINTRAG, IN DREI SPRACHEN
+// ================================================================================================
+//
+// BENs Prüflücke, wörtlich (`archiv/4228/runde-2/ben.md:24`): „Bildverluste zusätzlich im Browser
+// speichern und neu laden; am angenommenen Eintrag auch Bildbilanz und Dekodierung prüfen."
+//
+// Der Fall oben fährt den ERFOLGSfall: ein Bild, es kommt an. Über den Fall, auf den es ankommt —
+// die Quelle trug Bilder, und nicht alle sind angekommen —, sagt er nichts. Genau dieser Fall wird
+// hier gefahren, mit dem MISCHDECK: ein PNG, das ankommt, und ein BMP, das der Import bewusst
+// verwirft (`pptx.ts:91-97`). Die Quittung muss dann BEIDE Zahlen nennen, und beide müssen stimmen:
+//
+//   · „{n} übernommen"      gegen die Bilder, die der BROWSER wirklich dekodiert hat
+//     (`naturalWidth`/`naturalHeight` — nicht gegen die Zahl der `<img>`-Marken),
+//   · „{k} nicht übernommen" gegen den Verlust, den das Deck nachweislich herstellt.
+//
+// DIE ZAHLEN WERDEN NICHT ABGESCHRIEBEN, sondern am selben Deck gemessen, das durch die sichtbare
+// Dateiauswahl geht (`messeDeckMitInhalt("misch")`, dieselbe Importkette). Stünde hier eine
+// hingeschriebene 1, prüfte der Fall die Quittung gegen eine zweite Abschrift statt gegen den
+// Import.
+describe("JOB 4269 · Nutzerweg — der BILDVERLUST bis zum Wissenseintrag, in DE, EN und NL", () => {
+  for (const sprache of SPRACHEN) {
+    it(
+      `${sprache}: ein Bild kommt an, eines nicht — und die Quittung sagt am Eintrag beides`,
+      async () => {
+        expect(b.fehler, "Bühne nicht aufgebaut").toBeNull();
+
+        // Die Bilanz DIESES Decks, an der echten Importkette gemessen — der Maßstab für alles,
+        // was unten am Eintrag abgelesen wird.
+        const befund = await messeDeckMitInhalt("misch");
+        expect(befund.bilanz, "das Mischdeck stellt keinen Bildverlust her").toEqual({
+          quelle: 2,
+          imEntwurf: 1,
+          fehlend: 1,
+        });
+
+        await spracheSetzen(seite, sprache);
+        await neuLaden(seite);
+
+        await dateiwegOeffnen(seite);
+        await ganzdokumentWaehlen(seite);
+        await dateiUeberSichtbareAuswahl(seite, mischDeckAnlage());
+        await aufEingelesenWarten(seite, MISCH_DATEINAME);
+
+        // ---- Der Bedienhinweis auf der Fläche: da, und OHNE pauschale Bildzusage (JOB 4269) ----
+        {
+          // EINE Ablesung, zwei Zusicherungen — und die POSITIVE trägt die negative: dieselbe
+          // Zeichenkette muss den Bedienhinweis enthalten UND die alte Bildzusage nicht. Eine
+          // blinde Ablesung (leerer Text, falsche Seite) scheitert damit an der ersten Zeile,
+          // bevor die zweite still grün werden kann; das ist hier die Kalibrierung (Lieferung 4).
+          //
+          // NICHT `ablesungKalibrieren`: dieser Ableser ist der Gesamtseitentext der ERFASSUNGS-
+          // seite, und der Inhaltsmarker steht dort zum Messzeitpunkt nachweislich noch nicht
+          // („Kalibrierung: «Aufzaehlungspunkt 4228» steht schon vor dem Ausblenden nicht auf der
+          // Seite", Torlauf 39b2bc34…). Am Wissenseintrag unten, wo er steht, wird kalibriert.
+          const nachEinlesen = await flaeche(seite);
+          expect(nachEinlesen, `kein Formathinweis in «${sprache}»`).toContain(
+            satz(CAPTURE_FILE_TEXT.importNotePptx),
+          );
+          expect(
+            nachEinlesen,
+            `der Bedienhinweis verspricht in «${sprache}» weiterhin pauschal Bilder`,
+          ).not.toContain(PAUSCHALE_BILDZUSAGE[sprache]);
+        }
+
+        // ---- Speichern ------------------------------------------------------------------------
+        const versuch = speicherversuchBeginnen(weiche);
+        expect(await speichernDruecken(seite), "Speichern-Knopf nicht betätigbar").toBe(true);
+        await aufErfolgskastenWarten(seite, versuch);
+        await weiche.warteAufAbschluss(versuch.marke);
+        const kennung = await kennungAusOeffnenLink(seite);
+        expect(kennung, "kein Öffnen-Link mit Entwurfskennung").not.toBe(null);
+
+        const persistiert = persistierterFormathinweis("pptx");
+
+        // ---- Am Entwurf: die Bilanz nennt beide Zahlen --------------------------------------
+        await seite.click(OEFFNEN_LINK_SELEKTOR, { timeout: wartebudget("zeigerklick") });
+        await aufFlaechensatzWarten(seite, INHALTSMARKE);
+        {
+          const beleg = (await quellenanzeige(seite)) ?? "";
+          expect(beleg, "keine Quellenanzeige am Entwurf").toContain(MISCH_DATEINAME);
+          expect(beleg, `kein Bilanzsatz im Beleg (${sprache})`).toContain(BILANZ_PRAEFIX[sprache]);
+          expect(bilanzAussage(beleg, sprache), `Quittung «${beleg}»`).toEqual({
+            imEntwurf: befund.bilanz.imEntwurf,
+            fehlend: befund.bilanz.fehlend,
+          });
+        }
+
+        // ---- Neu laden ------------------------------------------------------------------------
+        await neuLaden(
+          seite,
+          `${CAPTURE_FRONT_DOOR_ROUTE}?draft=${encodeURIComponent(kennung ?? "")}`,
+        );
+        await aufFlaechensatzWarten(seite, INHALTSMARKE);
+        {
+          const belegNachNeuladen = (await quellenanzeige(seite)) ?? "";
+          expect(
+            bilanzAussage(belegNachNeuladen, sprache),
+            "die Bildbilanz hat das Neuladen nicht überlebt",
+          ).toEqual({ imEntwurf: befund.bilanz.imEntwurf, fehlend: befund.bilanz.fehlend });
+        }
+
+        // ---- Einreichen und AM ANGENOMMENEN EINTRAG ablesen ------------------------------------
+        const koId = await einreichenUndKennung(seite);
+        expect(koId.length, "kein Wissenseintrag entstanden").toBeGreaterThan(0);
+        await seite.goto(`${ORIGIN}/wissen/${koId}`, {
+          waitUntil: "load",
+          timeout: wartebudget("neuLadenAdresse"),
+        });
+        await aufFlaechensatzWarten(seite, INHALTSMARKE);
+        {
+          const beleg = (await quellenanzeige(seite)) ?? "";
+          expect(beleg, "keine Quellenanzeige am Wissenseintrag").toContain(MISCH_DATEINAME);
+          expect(beleg, "die Quittung steht nicht am Wissenseintrag").toContain(persistiert);
+
+          // DIE BILANZ UND IHR GEGENSTAND, AM SELBEN ORT UND IM SELBEN ATEMZUG.
+          const aussage = bilanzAussage(beleg, sprache);
+          const bilder = await seite.evaluate<{
+            marken: number;
+            verschieden: number;
+            kennungen: string[];
+            kleinsteBreite: number;
+            kleinsteHoehe: number;
+            alleFertig: boolean;
+          }>(fn(BILDER_AM_EINTRAG));
+          // „{n} übernommen" — gegen die Bilder, die der Browser WIRKLICH dekodiert hat.
+          expect(
+            bilder.verschieden,
+            `Bildquellen am Wissenseintrag: ${JSON.stringify(bilder.kennungen)}`,
+          ).toBe(befund.bilanz.imEntwurf);
+          expect(bilder.alleFertig, "ein Bild wurde nicht fertig geladen").toBe(true);
+          expect(
+            bilder.kleinsteBreite,
+            "der Browser konnte ein Bild nicht dekodieren (Breite 0)",
+          ).toBe(BILD_BREITE);
+          expect(
+            bilder.kleinsteHoehe,
+            "der Browser konnte ein Bild nicht dekodieren (Höhe 0)",
+          ).toBe(BILD_HOEHE);
+          expect(aussage?.imEntwurf, `Quittung «${beleg}»`).toBe(bilder.verschieden);
+          // „{k} nicht übernommen" — gegen den Verlust, den das Deck herstellt.
+          expect(aussage?.fehlend, `Quittung «${beleg}»`).toBe(befund.bilanz.fehlend);
+          expect(aussage?.fehlend, "der Verlustfall verliert nichts").toBeGreaterThan(0);
+
+          // Der Grundsatz sagt über Bilder nach wie vor NICHTS — die Zahlen stehen daneben.
+          expect(anspruch(persistiert, sprache, "bilder"), sprache).toBe("keine");
+          expect(persistiert, `Vorbehalt fehlt in «${sprache}»`).toContain(VORBEHALT[sprache]);
+
+          const amEintrag = await flaeche(seite);
+          expect(amEintrag, "der Inhalt steht nicht am Wissenseintrag").toContain(INHALTSMARKE);
+          expect(amEintrag, "die Sprechernotiz taucht am Eintrag auf").not.toContain(MARKE.notiz);
+          expect(
+            amEintrag,
+            `am Eintrag steht in «${sprache}» noch eine pauschale Bildzusage`,
+          ).not.toContain(PAUSCHALE_BILDZUSAGE[sprache]);
+          // Beide negativen Zusicherungen hängen an einer Ablesung, die nachweislich DIESE Seite
+          // liest (Lieferung 4).
           await ablesungKalibrieren(seite, INHALTSMARKE, () => flaeche(seite));
         }
 

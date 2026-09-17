@@ -35,6 +35,7 @@ import {
   wholeDocumentDraftPayload,
   wholeDraftFitsWithObjectLink,
 } from "../../apps/web/src/lib/captureFromFile";
+import { buildApp, buildServices } from "../../services/app/src/build-app";
 import {
   BILD_BASE64,
   BILD_BYTES,
@@ -87,6 +88,48 @@ function oberflaechensatz(sprache: Sprache): string {
   return String(i18n.getResource(sprache, "translation", CAPTURE_FILE_TEXT.importNotePptx));
 }
 
+/**
+ * JOB 4269 · DER ECHTE SPEICHERWEG — ein Entwurf hin und zurück über die Routen, die die
+ * Oberfläche benutzt (`endpoints.ts:669` / `:660`), mit dem echten Server und seinem Sanitizer.
+ *
+ * Kein Ersatzspeicher, keine Attrappe: `buildApp(buildServices())` ist derselbe Zusammenbau, den
+ * `tests/m5-docx-bildunterschriften/route.test.ts` für den Befund von JOB 3210 gefahren hat. Eine
+ * Datenbank braucht er nicht — der Entwurfsspeicher ist in dieser Prüfumgebung im Arbeitsspeicher;
+ * PostgreSQL wird hier also weder gebraucht noch behauptet.
+ */
+async function entwurfRundlauf(entwurf: DraftPayload): Promise<{ bodyHtml: string }> {
+  const app = buildApp(buildServices());
+  const zugang = {
+    name: "Altbeleg",
+    email: `job4269-${Math.random().toString(36).slice(2)}@klarwerk.test`,
+    password: "secret123",
+  };
+  await app.inject({ method: "POST", url: "/api/auth/register", payload: zugang });
+  const anmeldung = await app.inject({
+    method: "POST",
+    url: "/api/auth/login",
+    payload: { email: zugang.email, password: zugang.password },
+  });
+  const headers = { authorization: `Bearer ${(anmeldung.json() as { token: string }).token}` };
+
+  const angelegt = await app.inject({
+    method: "POST",
+    url: "/api/drafts",
+    headers,
+    payload: entwurf,
+  });
+  expect(angelegt.statusCode, `POST /api/drafts: ${angelegt.body}`).toBeLessThan(300);
+
+  const geladen = await app.inject({
+    method: "GET",
+    url: `/api/drafts/${(angelegt.json() as { id: string }).id}`,
+    headers,
+  });
+  expect(geladen.statusCode, `GET /api/drafts/:id: ${geladen.body}`).toBe(200);
+  const nutzlast = (geladen.json() as { payload: Record<string, unknown> }).payload;
+  return { bodyHtml: (nutzlast.bodyHtml as string | undefined) ?? "" };
+}
+
 /** Der Wortlaut, mit dem die Quittung bis zum 16.09.2026 einen Bilderverlust behauptete. */
 const ALTER_WORTLAUT: Readonly<Record<Sprache, string>> = {
   de: "Best-Effort-Import aus PowerPoint — Text und Struktur je Folie übernommen; Layout, Animationen, Übergänge, Bilder und Sprechernotizen gehen verloren.",
@@ -102,28 +145,24 @@ const WORTLAUT_RUNDE1: Readonly<Record<Sprache, string>> = {
 };
 
 /**
- * Die EINE Stelle, an der sich Beleg und Oberflächensatz unterscheiden — als Ersetzung, damit der
- * Unterschied benannt und nicht bloss behauptet ist. Links steht, was auf der Fläche steht;
- * rechts, was im Beleg steht. Alles andere am Satz muss danach zeichengleich sein.
+ * JOB 4269 · Die pauschale Bildzusage, die der BEDIENHINWEIS auf der Oberfläche bis zum 17.09.2026
+ * trug — je Sprache wörtlich, so wie sie in `i18n.ts` stand.
+ *
+ * Sie ist der Rest, den JOB 4228 offen gemeldet hat (`archiv/4228/runde-2/ben.md:22`): der Beleg am
+ * Entwurf hatte die Bildzusage schon gestrichen, der Satz VOR dem Import versprach sie weiter. Ein
+ * Mensch las damit vor dem Import eine Zusage, die derselbe Import danach zurücknahm.
  */
-const ANGLEICHUNG: Readonly<Record<Sprache, readonly [string, string]>> = {
-  de: [
-    "Listen, Tabellen und Bilder je Folie übernommen",
-    "Listen und Tabellen je Folie übernommen, soweit vorhanden",
-  ],
-  en: [
-    "lists, tables and images per slide carried over",
-    "lists and tables per slide carried over, where present",
-  ],
-  nl: [
-    "lijsten, tabellen en afbeeldingen per dia overgenomen",
-    "lijsten en tabellen per dia overgenomen, voor zover aanwezig",
-  ],
+const PAUSCHALE_BILDZUSAGE: Readonly<Record<Sprache, string>> = {
+  de: "und Bilder je Folie übernommen",
+  en: "and images per slide carried over",
+  nl: "en afbeeldingen per dia overgenomen",
 };
 
 let mitBild: Messbefund;
 let mitBmp: Messbefund;
 let mitBudgetverlust: Messbefund;
+/** JOB 4269 · der Mischfall: ein Bild kommt an, eines geht verloren — beide Zahlen ungleich null. */
+let mitMischverlust: Messbefund;
 let referenz: Messbefund;
 
 /** Eine Grenze, die das 4×4-PNG sicher überschreitet — derselbe Zweig, nur eine kleinere Zahl. */
@@ -133,6 +172,7 @@ beforeAll(async () => {
   mitBild = await messeDeckMitInhalt("png");
   mitBmp = await messeDeckMitInhalt("bmp");
   mitBudgetverlust = await messeDeckMitInhalt("png", WINZIGES_BILDBUDGET);
+  mitMischverlust = await messeDeckMitInhalt("misch");
   referenz = await messeReferenzdeck();
 });
 
@@ -192,6 +232,22 @@ describe("JOB 4228 · 1 — was der PPTX-Import wirklich übernimmt", () => {
     expect(bilanz).toEqual({ quelle: 1, imEntwurf: 0, fehlend: 1 });
   });
 
+  it("FALL E (JOB 4269) — Mischfall: ein Bild kommt an, eines geht verloren", () => {
+    const { ergebnis, messung, bilanz } = mitMischverlust;
+    // Zwei Bildverweise auf derselben Folie, zwei verschiedene Dateien in der Quelle.
+    expect(Object.keys(deckEintraege("misch"))).toContain("ppt/media/bild4228.png");
+    expect(Object.keys(deckEintraege("misch"))).toContain("ppt/media/bild4269-verworfen.bmp");
+    expect(ergebnis.imageCount).toBe(2);
+    expect(ergebnis.embeddedImages).toBe(1);
+    expect(ergebnis.droppedImageFormat).toBe(1);
+    expect(bilanz).toEqual({ quelle: 2, imEntwurf: 1, fehlend: 1 });
+    // Das ANGEKOMMENE Bild ist wirklich da, mit seinen Bytes — sonst prüfte die Zahl „1
+    // übernommen" gegen nichts.
+    expect(ergebnis.html).toContain(`src="data:image/png;base64,${BILD_BASE64}"`);
+    // … und über die Datei als Ganzes wird deshalb NICHT „übernommen" gesagt.
+    expect(messung.bilder).toBe("verloren");
+  });
+
   it("FALL D — die vorhandene Referenzdatei aus JOB 4203 trägt KEIN Bild", () => {
     const { ergebnis, messung, bilanz } = referenz;
     expect(ergebnis.slideCount).toBe(3);
@@ -228,6 +284,7 @@ describe("JOB 4228 · 2 — keine Aussage der Quittung widerspricht dem gemessen
       ["B Formatverlust (BMP)", () => mitBmp],
       ["C Budgetverlust", () => mitBudgetverlust],
       ["D bildlose Referenzdatei", () => referenz],
+      ["E Mischverlust (PNG an, BMP verworfen)", () => mitMischverlust],
     ] as const;
 
   for (const sprache of SPRACHEN) {
@@ -275,6 +332,13 @@ describe("JOB 4228 · 2 — keine Aussage der Quittung widerspricht dem gemessen
           fehlend: 1,
         });
       }
+    }
+  });
+
+  it("E (JOB 4269): der Mischfall nennt BEIDE Zahlen — 1 angekommen, 1 nicht", () => {
+    for (const sprache of SPRACHEN) {
+      const satz = quittungAus(mitMischverlust, sprache);
+      expect(bilanzAussage(satz, sprache), sprache).toEqual({ imEntwurf: 1, fehlend: 1 });
     }
   });
 
@@ -414,18 +478,50 @@ function verschiebeInUebernahme(satz: string, wortlaut: string): string {
 }
 
 // ================================================================================================
-// 4 · KEINE DRITTE SPRACHWAHRHEIT (Lieferung 3)
+// 4 · JOB 4269 · DER BEDIENHINWEIS SAGT DASSELBE WIE DER BELEG — IN DREI SPRACHEN, IN EINEM FALL
 // ================================================================================================
-describe("JOB 4228 · 4 — Beleg und Oberfläche sagen dasselbe, bis auf einen benannten Unterschied", () => {
-  for (const sprache of SPRACHEN) {
-    it(`${sprache}: der Grundsatz ist der Oberflächensatz mit genau EINER benannten Ersetzung`, () => {
-      const [ausFlaeche, imBeleg] = ANGLEICHUNG[sprache];
+//
+// RED-FIRST (Auftrag JOB 4269 §6): Am unveränderten `main` (e475b31) ist der erste Fall unten ROT,
+// und zwar mit ALLEN DREI Sprachnamen in der Fehlermeldung — `capture.file.importNote.pptx` trug
+// in de, en und nl noch die pauschale Bildzusage. Genau EIN Fall prüft alle drei; eine berichtigte
+// und zwei stehengebliebene Fassungen fallen damit auf, statt sich hinter zwei grünen Fällen zu
+// verstecken (Lehre aus 4228 R2: „in allen drei Sprachen ersetzt").
+describe("JOB 4269 · 4 — Bedienhinweis und Beleg sagen über Bilder dasselbe: nichts", () => {
+  it("de, en UND nl in EINEM Fall: keine pauschale Bildzusage, derselbe Vorbehalt, keine Zahlen", () => {
+    const befunde: string[] = [];
+    for (const sprache of SPRACHEN) {
       const flaeche = oberflaechensatz(sprache);
-      expect(flaeche, `Oberflächensatz ${sprache}`).toContain(ausFlaeche);
-      // Wird auf der Fläche die pauschale Bildzusage durch die bedingte Fassung ohne Bilder
-      // ersetzt, steht ZEICHENGLEICH der Grundsatz des Belegs da. Alles andere ist identisch —
-      // weicht künftig einer der beiden Sätze ab, wird das hier rot.
-      expect(flaeche.replace(ausFlaeche, imBeleg)).toBe(
+      if (flaeche.includes(PAUSCHALE_BILDZUSAGE[sprache])) {
+        befunde.push(
+          `${sprache}: der Bedienhinweis verspricht weiterhin pauschal «${PAUSCHALE_BILDZUSAGE[sprache]}»`,
+        );
+      }
+      // Nicht nur die Zeichenkette, sondern die AUSSAGE: der Satz darf über Bilder weder eine
+      // Übernahme zusagen noch einen Verlust behaupten. Beides wäre eine Aussage ohne Datei.
+      const ueberBilder = anspruch(flaeche, sprache, "bilder");
+      if (ueberBilder !== "keine") {
+        befunde.push(
+          `${sprache}: der Bedienhinweis sagt über Bilder «${ueberBilder}» statt nichts`,
+        );
+      }
+      if (!flaeche.includes(VORBEHALT[sprache])) {
+        befunde.push(`${sprache}: der Vorbehalt «${VORBEHALT[sprache]}» fehlt im Bedienhinweis`);
+      }
+      // Die ZAHLEN bleiben allein beim Beleg: ein Bedienhinweis steht vor dem Import und kennt
+      // keine bestimmte Datei — er kann über deren Bilder gar nichts wissen.
+      if (flaeche.includes(BILANZ_PRAEFIX[sprache])) {
+        befunde.push(`${sprache}: der Bedienhinweis nennt Bildzahlen, die ihm nicht zustehen`);
+      }
+    }
+    expect(befunde.join(" · ")).toBe("");
+  });
+
+  for (const sprache of SPRACHEN) {
+    it(`${sprache}: Bedienhinweis und Grundsatz des Belegs sind zeichengleich`, () => {
+      // Seit JOB 4269 gibt es keinen benannten Unterschied mehr: was vor dem Import zugesagt wird,
+      // steht danach wortgleich im Beleg. Die Bildbilanz kommt als EIGENER Satz dahinter und ist
+      // deshalb nicht Teil des Grundsatzes.
+      expect(oberflaechensatz(sprache), `Oberflächensatz ${sprache}`).toBe(
         grundsatz(quittungAus(mitBild, sprache), sprache),
       );
     });
@@ -447,6 +543,18 @@ describe("JOB 4228 · 4 — Beleg und Oberfläche sagen dasselbe, bis auf einen 
       expect(quelle).not.toContain("Bilder und Sprechernotizen gehen verloren");
       expect(quelle).not.toContain("images and speaker notes are lost");
       expect(quelle).not.toContain("afbeeldingen en notities gaan verloren");
+    }
+  });
+
+  // JOB 4269 · Lieferung 5, erste Hälfte: der pauschale Oberflächensatz wird ERSETZT, nicht
+  // ergänzt. Der Katalog darf die Bildzusage danach nirgends mehr tragen — auch nicht in einem
+  // zweiten, vergessenen Schlüssel. Deshalb wird die GANZE Datei gelesen, nicht nur der eine Wert.
+  it("JOB 4269 · der pauschale Oberflächensatz kommt in i18n.ts nicht mehr vor, in keiner Sprache", () => {
+    const i18nQuelle = readFileSync(resolve(process.cwd(), "apps/web/src/i18n.ts"), "utf8");
+    for (const sprache of SPRACHEN) {
+      expect(i18nQuelle, `pauschale Bildzusage steht noch in ${sprache}`).not.toContain(
+        PAUSCHALE_BILDZUSAGE[sprache],
+      );
     }
   });
 });
@@ -483,8 +591,62 @@ describe("JOB 4228 · 5 — ein gespeicherter Beleg wird nicht umgeschrieben", (
 
   it("es gibt keine Migration: der alte Wortlaut kommt im Produktcode nicht mehr vor", () => {
     const lib = readFileSync(resolve(process.cwd(), "apps/web/src/lib/captureFromFile.ts"), "utf8");
-    expect(lib).not.toContain(ALTER_WORTLAUT.de);
-    expect(lib).not.toContain("Text und Struktur je Folie übernommen");
+    const i18nQuelle = readFileSync(resolve(process.cwd(), "apps/web/src/i18n.ts"), "utf8");
+    for (const quelle of [lib, i18nQuelle]) {
+      expect(quelle).not.toContain(ALTER_WORTLAUT.de);
+      expect(quelle).not.toContain("Text und Struktur je Folie übernommen");
+    }
+  });
+
+  // ==============================================================================================
+  // JOB 4269 · LIEFERUNG 2 — DER HISTORISCHE BELEG ÜBERSTEHT DEN ECHTEN SPEICHER-RUNDLAUF.
+  // ==============================================================================================
+  //
+  // BENs Prüflücke, wörtlich (`archiv/4228/runde-2/ben.md:24`): „Der Altbelegtest prüft weiterhin
+  // Größenhelfer statt Persistenz." Der Fall oben ruft `draftPayloadByteLength` &c. auf einem
+  // Objekt im ARBEITSSPEICHER auf — der Entwurf wird nie gespeichert und nie zurückgelesen. Eine
+  // Migration, die beim SPEICHERN oder beim ZURÜCKLESEN zuschlüge, hätte er nie bemerkt.
+  //
+  // Hier läuft deshalb der Weg, den die Oberfläche wirklich benutzt, mit dem echten Server:
+  //
+  //     POST /api/drafts  (endpoints.ts:669, capture-routes.ts)
+  //         → Server-Sanitizer → Ablage
+  //         → GET /api/drafts/:id  (endpoints.ts:660)  → `payload.bodyHtml`
+  //
+  // Verglichen wird ZEICHENGLEICH, nicht „enthält": eine Migration, die nur ein Wort austauschte,
+  // bliebe einem `toContain` verborgen.
+  it("JOB 4269 · gespeichert und zurückgelesen: derselbe Rumpf, Zeichen für Zeichen", async () => {
+    const entwurf = historischerEntwurf();
+    const hingeschickt = entwurf.bodyHtml ?? "";
+    const zurueck = await entwurfRundlauf(entwurf);
+
+    expect(
+      zurueck.bodyHtml,
+      "der Rumpf hat den Speicher-Rundlauf nicht unverändert überstanden",
+    ).toBe(hingeschickt);
+    // … und er trägt noch immer den Wortlaut von damals, nicht den von heute.
+    expect(zurueck.bodyHtml).toContain(ALTER_WORTLAUT.de);
+    expect(zurueck.bodyHtml).not.toContain(VORBEHALT.de);
+    expect(zurueck.bodyHtml).not.toContain(BILANZ_PRAEFIX.de);
+  });
+
+  // Die Kalibrierung zum Fall darüber: WÜRDE der Rundlauf den Rumpf umschreiben, fiele es auf.
+  // Ohne sie wäre der Vergleich auch dann grün, wenn Hin- und Rückweg bloss dieselbe Zeichenkette
+  // durchreichten, ohne sie je zu speichern.
+  it("JOB 4269 · Kalibrierung: ein GEÄNDERTER Rumpf kommt auch geändert zurück", async () => {
+    const entwurf = historischerEntwurf();
+    const verstellt: DraftPayload = {
+      ...entwurf,
+      // Der HEUTIGE Grundsatz, aus dem Produkt abgeleitet statt abgeschrieben.
+      bodyHtml: (entwurf.bodyHtml ?? "").replace(
+        ALTER_WORTLAUT.de,
+        grundsatz(quittungAus(null, "de"), "de"),
+      ),
+    };
+    const zurueck = await entwurfRundlauf(verstellt);
+    expect(zurueck.bodyHtml).not.toBe(entwurf.bodyHtml);
+    expect(zurueck.bodyHtml).toContain(VORBEHALT.de);
+    expect(zurueck.bodyHtml).not.toContain(ALTER_WORTLAUT.de);
   });
 
   it("neue Entwürfe tragen den neuen Satz — der Wechsel wirkt ab jetzt, nicht rückwirkend", () => {
@@ -573,6 +735,7 @@ describe("JOB 4228 · 7 — die Messtabelle, an einem Stück", () => {
       zeile("B bmp", mitBmp),
       zeile("C budget", mitBudgetverlust),
       zeile(`D ${REFERENZ_PPTX}`, referenz),
+      zeile("E misch", mitMischverlust),
     ]).toEqual([
       "A png: Folien=2 Tabellen=1 | Bilder Quelle=1 im Entwurf=1 fehlend=0 (Format=0 Budget=0) | " +
         "text=uebernommen listen=uebernommen tabellen=uebernommen layout=verloren " +
@@ -589,6 +752,10 @@ describe("JOB 4228 · 7 — die Messtabelle, an einem Stück", () => {
         "text=uebernommen listen=uebernommen tabellen=nichtInQuelle layout=nichtInQuelle ",
         "animationen=nichtInQuelle uebergaenge=nichtInQuelle notizen=verloren formen=ungemessen",
       ].join(""),
+      // JOB 4269 · der Mischfall: zwei Bilder in der Quelle, eines angekommen, eines verworfen.
+      "E misch: Folien=2 Tabellen=1 | Bilder Quelle=2 im Entwurf=1 fehlend=1 (Format=1 Budget=0) | " +
+        "text=uebernommen listen=uebernommen tabellen=uebernommen layout=verloren " +
+        "animationen=verloren uebergaenge=verloren notizen=verloren formen=ungemessen",
     ]);
   });
 
@@ -597,10 +764,12 @@ describe("JOB 4228 · 7 — die Messtabelle, an einem Stück", () => {
       quittungAus(mitBild, "de"),
       quittungAus(mitBmp, "de"),
       quittungAus(referenz, "de"),
+      quittungAus(mitMischverlust, "de"),
     ]).toEqual([
       "Best-Effort-Import aus PowerPoint — Text, Listen und Tabellen je Folie übernommen, soweit vorhanden; Layout, Animationen, Übergänge und Sprechernotizen gehen verloren. Folienbilder: 1 übernommen.",
       "Best-Effort-Import aus PowerPoint — Text, Listen und Tabellen je Folie übernommen, soweit vorhanden; Layout, Animationen, Übergänge und Sprechernotizen gehen verloren. Folienbilder: 0 übernommen, 1 nicht übernommen.",
       "Best-Effort-Import aus PowerPoint — Text, Listen und Tabellen je Folie übernommen, soweit vorhanden; Layout, Animationen, Übergänge und Sprechernotizen gehen verloren.",
+      "Best-Effort-Import aus PowerPoint — Text, Listen und Tabellen je Folie übernommen, soweit vorhanden; Layout, Animationen, Übergänge und Sprechernotizen gehen verloren. Folienbilder: 1 übernommen, 1 nicht übernommen.",
     ]);
   });
 

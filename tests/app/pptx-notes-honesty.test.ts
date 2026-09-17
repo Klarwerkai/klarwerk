@@ -59,13 +59,23 @@ describe("WP-D5b: pptxTooLarge ist ein ehrlicher, spezifischer Fehler (DE/EN/NL)
 
 // WP-D9: PPTX-Bild-Import — Ehrlichkeit der neuen Meldungen + Capture-Verdrahtung.
 describe("WP-D9: Bild-Import-Ehrlichkeit (Meldungen + Verdrahtung)", () => {
-  it("importNote.pptx nennt Bilder jetzt als ÜBERNOMMEN, weiter ehrlichen Restverlust, keinen Anhang", () => {
+  // JOB 4269 (17.09.2026) — HIER STAND `expect(de).toMatch(/Bilder je Folie übernommen/)`.
+  // Diese Zusicherung stammt aus WP-D9, als der Bedienhinweis Bilder noch PAUSCHAL zusagte. Seit
+  // JOB 4228 zählt der Beleg am Entwurf die Bilder (`bildbilanzSatz`), statt sie zu versprechen —
+  // ein Deck mit einem verworfenen BMP bekam vom alten Satz trotzdem „Bilder übernommen" zu lesen.
+  // JOB 4269 nimmt die Zusage deshalb auch auf der Oberfläche zurück. Der Pin wird NICHT gelockert,
+  // sondern umgedreht: der Bedienhinweis darf über Bilder gar nichts mehr sagen; wie viele Bilder
+  // WIRKLICH ankamen, steht im Beleg und wird in `tests/pptx-importquittung/` gegen den echten
+  // Import nachgerechnet.
+  it("importNote.pptx sagt über Bilder NICHTS mehr, nennt weiter ehrlichen Restverlust, keinen Anhang", () => {
     for (const lng of LANGS) {
       const note = resource(lng, CAPTURE_FILE_TEXT.importNotePptx);
       expect(note, lng).not.toMatch(ATTACHMENT_CLAIM);
     }
     const de = resource("de", CAPTURE_FILE_TEXT.importNotePptx);
-    expect(de).toMatch(/Bilder je Folie übernommen/);
+    expect(de).not.toMatch(/Bilder je Folie übernommen/);
+    expect(de).not.toMatch(/\bBilder\b/); // weder Zusage noch Verlustbehauptung
+    expect(de).toMatch(/soweit vorhanden/); // derselbe Vorbehalt wie im Beleg
     expect(de).toMatch(/gehen verloren/); // Layout/Animationen/Notizen bleiben ehrlich benannt
     expect(de).not.toMatch(/Bilder und Sprechernotizen gehen verloren/);
   });
