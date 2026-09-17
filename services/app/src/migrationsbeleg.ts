@@ -229,6 +229,12 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   // `DROP COLUMN`, `DELETE FROM`, `DROP INDEX` und ohne `UPDATE … SET`. Kein Seed, kein
   // Fremdschlüssel, keine Extension; ein zweiter Lauf ist folgenlos.
   { stufe: "BRANDING_SETTINGS_SCHEMA", risiko: "ADDITIV" },
+  // JOB 4309: die drei Tabellen der Gesamtanweisung. ADDITIV, und zwar nachgezählt statt
+  // behauptet: von den sechs RISIKOMARKERN oben trifft KEINER — die Stufe besteht aus drei
+  // `CREATE TABLE IF NOT EXISTS` und drei `CREATE INDEX IF NOT EXISTS`, ohne `DROP TABLE`,
+  // `TRUNCATE`, `DROP COLUMN`, `DELETE FROM`, `DROP INDEX` und ohne `UPDATE … SET`. Kein Seed;
+  // die beiden Fremdschlüssel zeigen auf den eigenen Kopf. Ein zweiter Lauf ist folgenlos.
+  { stufe: "GESAMTANWEISUNG_SCHEMA", risiko: "ADDITIV" },
 ];
 
 /**

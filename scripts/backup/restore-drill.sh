@@ -283,6 +283,10 @@ fi
 # `tests/backup-drill/tabellensatz.test.ts` liest die `CREATE TABLE`-Anweisungen aus
 # `services/app/src/db.ts` (`schemas`) und verlangt genau diese Menge. Keine Zeilenkommentare
 # innerhalb der Klammern — der Pruefstand liest die Klammer als reine Namensliste.
+# JOB 4309: die drei Tabellen der Gesamtanweisung stehen am Ende dieser Liste. Sie werden seit
+# JOB 4309 wirklich migriert; ein Restore, der Kopf, Reihenfolge oder die festgehaltenen
+# Pruefstaende verloere, kaeme ohne sie mit Exit 0 durch. KEIN Kommentar INNERHALB der Klammern:
+# tests/backup-drill/pflichtsatz.ts liest den Inhalt als Wortliste bis zur ersten Klammer zu.
 PFLICHTTABELLEN=(
   users
   sessions
@@ -326,6 +330,9 @@ PFLICHTTABELLEN=(
   upload_limits
   lesevarianten
   branding_settings
+  gesamtanweisungen
+  gesamtanweisung_bausteine
+  gesamtanweisung_staende
 )
 FEHLENDE_TABELLEN=()
 for tabelle in "${PFLICHTTABELLEN[@]}"; do

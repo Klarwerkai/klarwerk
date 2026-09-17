@@ -209,9 +209,11 @@ describe("JOB 3338 · A — der Suchbegriff findet die ISO-Erklärung, in beiden
     // einundzwanzig Kapitel (zehn neue für die Menüpunkte ohne Erklärsatz). Die abgeleitete Zeile
     // darüber bleibt der eigentliche Wächter; die getippte Zahl darunter ist der Gegenhalt gegen
     // eine Ableitung, die beide Seiten gleichzeitig verlöre.
+    // JOB 4309 (WIKI-GESAMTANWEISUNG-ANSCHLUSS): von 25 auf 26 — `HELP_TOPICS` führt seit diesem
+    // Job zweiundzwanzig Kapitel (das neue `gesamtanweisungen` zum gleichnamigen Menüpunkt).
     const alle = sichtbareKapitel();
     expect(alle.length).toBe(HELP_TOPICS.length + ISO_HELP_TOPICS.length);
-    expect(alle.length, "der sichtbare Bestand ist nicht mehr fünfundzwanzig Kapitel").toBe(25);
+    expect(alle.length, "der sichtbare Bestand ist nicht mehr sechsundzwanzig Kapitel").toBe(26);
     for (const id of ["firststart", "capture", "ask", "library", "validation", "tasks"]) {
       expect(alle, `${id} fehlt in der ungefilterten Hilfe`).toContain(id);
     }

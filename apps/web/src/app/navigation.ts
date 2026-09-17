@@ -13,6 +13,7 @@ import {
   HelpCircle,
   Home,
   Inbox,
+  ListOrdered,
   type LucideIcon,
   MessageSquare,
   Plus,
@@ -160,6 +161,51 @@ export const NAV_GROUPS: NavGroup[] = [
         minRole: "experte",
         section: "7.3",
         shot: "03",
+      },
+      {
+        // ==========================================================================================
+        // JOB 4309 · DIE GESAMTANWEISUNG BEKOMMT IHREN ORT IM MENÜ.
+        // ==========================================================================================
+        //
+        // JOB 4156 hat die Fläche unter ihrer Adresse erreichbar gemacht und dabei ausgeschrieben,
+        // warum sie KEINEN Menüpunkt bekam: `navigation.ts` lag ausserhalb seiner Zielpfade. Pedis
+        // Zeile verlangt aber „Die Anweisung ist in der echten App erreichbar … Seite/Navigation" —
+        // eine getippte Adresse ist das nicht. Dieser Eintrag ist die Einlösung.
+        //
+        // `minRole: "experte"` IST DIE RECHTELAGE DER ROUTENGRUPPE, nicht eine Schätzung. Was hinter
+        // diesem Punkt liegt, ist der EINSTIEG — und der besteht aus genau einem Formular, das
+        // `POST /api/gesamtanweisungen` ruft. Diese Tür fordert `ko.create`
+        // (`services/app/src/routes/gesamtanweisung-routes.ts:275`), und `ko.create` beginnt bei
+        // „experte"; eine Betrachterin bekäme also einen Menüpunkt, dessen einzige Handlung sie mit
+        // 403 abweist (gemessen in `tests/wiki-gesamtanweisung-abnahme/a1-tuer-in-der-gebauten-app.
+        // test.ts`). Die LESENDEN Türen fordern nur `ko.read` — sie hängen aber an
+        // `/gesamtanweisungen/:id`, und dorthin führt kein Menüpunkt, sondern eine Kennung.
+        //
+        // KEIN `aktivAuchUnter` — UND DAS IST GEMESSEN, NICHT VERGESSEN. Der Auftrag verlangt, dass
+        // die geöffnete Anweisung ihren Ort im Menü behält; genau das leistet schon die
+        // Präfixregel in `istAktiverEintrag` oben: `passt(item.path)` ist auf
+        // `/gesamtanweisungen/a-1` wahr, weil `pathname.startsWith("/gesamtanweisungen/")` gilt.
+        // `aktivAuchUnter: ["/gesamtanweisungen"]` wäre also der EIGENE Pfad ein zweites Mal — eine
+        // zweite Wahrheit über dieselbe Frage. Bei `/wissen` (JOB 562) ist die Angabe nötig, weil
+        // der Pfad dort ein ANDERER ist als der des Menüpunkts (`/bibliothek`); hier ist er
+        // derselbe. Festgehalten als eigener Fall in `a4-navigationsweg.test.tsx`.
+        //
+        // KEIN NEUER TEXTSCHLÜSSEL: `ga.bereich.titel` ist seit JOB 4156 in de/en/nl der Name
+        // dieses Bereichs und steht als Überschrift auf der Seite selbst. Ein zweiter Schlüssel für
+        // denselben Namen wäre genau die Bauform, die JOB 3105 UX-08 hier abgeschafft hat.
+        //
+        // ER BRAUCHT DREI WEITERE EINTRÄGE, sonst fiele er still aus dem Bild oder liesse die
+        // Schnellnavigation werfen — alle drei sind gesetzt und alle drei sind gepinnt:
+        //   · `WEITERE_BEREICHE_IDS` unten      (`tests/app/h1-navigation-orte.test.ts`)
+        //   · `app/navigationGliederung.ts`     (`obergruppeVon` wirft bei einer Lücke)
+        //   · `components/einstellungen/rollenFreiheiten.ts` (`tests/app/h6-rollenfreiheiten.test.ts`)
+        id: "gesamtanweisungen",
+        path: "/gesamtanweisungen",
+        labelKey: "ga.bereich.titel",
+        icon: ListOrdered,
+        minRole: "experte",
+        section: "7.10",
+        shot: "07",
       },
       {
         id: "fragen",
@@ -443,6 +489,11 @@ export function suchNamenKeys(item: NavItem): readonly string[] {
 /** Reihenfolge im Zahnrad-Menü „Weitere Bereiche" (Auftrag JOB 3060, Lieferung 2). */
 const WEITERE_BEREICHE_IDS = [
   "aufgaben",
+  // JOB 4309: die Gesamtanweisung steht NICHT im Kopfband (das trägt die sechs Punkte des Mockups
+  // samt „Meine Entwürfe") und ist auch nicht „Einstellungen" — also gehört sie hierher. Die
+  // Alternative wäre gewesen, sie in keiner der drei Mengen zu führen, und genau das fängt
+  // `tests/app/h1-navigation-orte.test.ts` ab: ein Punkt ohne Ort fiele still aus dem Bild.
+  "gesamtanweisungen",
   "konflikte",
   "duplikate",
   "wissensnetz",

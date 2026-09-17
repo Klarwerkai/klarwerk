@@ -5801,6 +5801,14 @@ const de = {
   // Rolle noch Tabstopp (`pages/Stufe2.tsx:2157`, `:2159`). DE/EN/NL gemessen in GF3d und GF3g.
   "help.graph.body":
     "Der Wissensgraph zeichnet die einzelnen Wissensobjekte und ihre Verbindungen als Netz — näher am Objekt als die Themenkarte, die nach Themen zusammenfasst. Gehört ein Knoten zu einem Objekt aus dem Bestand, führt ein Klick auf ihn zu diesem Wissensobjekt, und mit der Tastatur erreichst du ihn ebenso; ein Knoten ohne solches Objekt ist kein Link und liegt nicht in der Tastatur-Reihenfolge. Fang bei einem Objekt an, das du kennst, und folge seinen Linien.",
+  // JOB 4309: das Kapitel zum neuen Menüpunkt „Gesamtanweisungen". Der Titel trägt den ANGEZEIGTEN
+  // Namen des Punkts (`ga.bereich.titel`), damit die Suche auf `/hilfe` unter genau dem Wort
+  // anschlägt, das im Menü steht. Der Text verspricht NICHTS, was die Seite nicht kann: es gibt
+  // keine Übersicht und keinen Endpunkt, der Anweisungen aufzählt — das steht hier so drin statt
+  // überspielt zu werden.
+  "help.gesamtanweisungen.title": "Gesamtanweisungen zusammenstellen",
+  "help.gesamtanweisungen.body":
+    "Hier legst du eine Gesamtanweisung an und setzt sie aus vorhandenen Fassungen zusammen: Du nimmst einen Eintrag mit seiner Fassungsnummer auf, änderst die Reihenfolge und legst das Ergebnis zur Entscheidung vor. Eine Liste aller Anweisungen gibt es nicht — eine bereits angelegte öffnest du über ihre Adresse. Beim Vergleich zweier Stände wird eine geänderte Reihenfolge anders ausgewiesen als ein geänderter Inhalt, und der Vermerk zur Prüfanbindung bleibt sichtbar, solange sie fehlt.",
   "help.hilfe.title": "Hilfe",
   "help.hilfe.body":
     "Auf dieser Seite stehen alle Hilfekapitel beieinander, mit einem Suchfeld darüber; jedes Kapitel trägt einen Link auf die Seite, um die es geht. Gesucht wird in Titel, Text und Schlagwörtern der Kapitel — tipp also ruhig das Wort ein, mit dem du dein Problem beschreiben würdest. Gibt es dazu nichts, sagt die Seite das offen, statt ein unpassendes Kapitel zu zeigen.",
@@ -11784,6 +11792,9 @@ const en: typeof de = {
   // steht jetzt auch hier, mit derselben Wendung, die die Schwesterhilfe „in the holdings" benutzt.
   "help.graph.body":
     "The knowledge graph draws the individual knowledge objects and their connections as a net — closer to the object than the topic map, which groups by topic. If a node belongs to an object in the holdings, a click on it leads to that knowledge object, and the keyboard reaches it just as well; a node without such an object is not a link and is not in the keyboard order. Start at an object you know and follow its lines.",
+  "help.gesamtanweisungen.title": "Composite instructions, assembled",
+  "help.gesamtanweisungen.body":
+    "Here you create a composite instruction and assemble it from existing versions: you take in an entry with its version number, change the order and submit the result for a decision. There is no list of all instructions — one that already exists is opened through its address. When two states are compared, a changed order is reported differently from changed content, and the note on check integration stays visible for as long as it is missing.",
   "help.hilfe.title": "Help",
   "help.hilfe.body":
     "This page keeps every help chapter together, with a search field above it; each chapter carries a link to the page it is about. The search covers title, text and keywords of the chapters — so type in the word you would use to describe your problem. If there is nothing on it, the page says so openly instead of showing an unrelated chapter.",
@@ -17361,6 +17372,9 @@ const nl: typeof de = {
   // steht jetzt auch hier, mit derselben Wendung, die die Schwesterhilfe „uit het bestand" benutzt.
   "help.graph.body":
     "De kennisgraaf tekent de afzonderlijke kennisobjecten en hun verbindingen als een net — dichter bij het object dan de themakaart, die per thema groepeert. Hoort een knooppunt bij een object uit het bestand, dan leidt een klik erop naar dat kennisobject, en met het toetsenbord bereik je het net zo goed; een knooppunt zonder zo’n object is geen link en ligt niet in de toetsenbordvolgorde. Begin bij een object dat je kent en volg zijn lijnen.",
+  "help.gesamtanweisungen.title": "Samengestelde instructies samenstellen",
+  "help.gesamtanweisungen.body":
+    "Hier maak je een samengestelde instructie aan en stel je die samen uit bestaande versies: je neemt een item met zijn versienummer op, wijzigt de volgorde en legt het resultaat ter beslissing voor. Een lijst van alle instructies is er niet — een reeds aangemaakte open je via het adres ervan. Bij het vergelijken van twee standen wordt een gewijzigde volgorde anders benoemd dan gewijzigde inhoud, en de notitie over de controle-aansluiting blijft zichtbaar zolang die ontbreekt.",
   "help.hilfe.title": "Help",
   "help.hilfe.body":
     "Op deze pagina staan alle helphoofdstukken bij elkaar, met een zoekveld erboven; elk hoofdstuk heeft een link naar de pagina waar het over gaat. Er wordt gezocht in titel, tekst en trefwoorden van de hoofdstukken — typ dus gerust het woord in waarmee je je probleem zou omschrijven. Is er niets over, dan zegt de pagina dat eerlijk in plaats van een onpassend hoofdstuk te tonen.",

@@ -6,6 +6,7 @@ import { CAPTURE_CREATE_OPERATION_SCHEMA, CAPTURE_SCHEMA } from "../../capture";
 import { CONFLICTS_SCHEMA, OVERLAP_SCHEMA, OVERLAP_SETTINGS_SCHEMA } from "../../conflicts";
 import { EXTERNAL_KNOWLEDGE_SCHEMA } from "../../external-search";
 import {
+  GESAMTANWEISUNG_SCHEMA,
   KANTEN_SCHEMA,
   KO_CREATE_OPERATION_SCHEMA,
   KO_EVIDENCE_SCHEMA,
@@ -71,26 +72,27 @@ export function createPool(connectionString?: string): Pool {
 // Vertragsbestandteil und keine Stilfrage.
 //
 // ================================================================================================
-// JOB 4156 R2 — DIE GESAMTANWEISUNG FEHLT IN DIESER LISTE, UND ZWAR ERZWUNGEN.
+// JOB 4309 — DIE LÜCKE DER GESAMTANWEISUNG IST GESCHLOSSEN.
 // ================================================================================================
 //
-// Die DDL ihrer drei Tabellen (`gesamtanweisungen`, `gesamtanweisung_bausteine`,
-// `gesamtanweisung_staende`) steht MODULINTERN in
-// `services/knowledge-object/src/gesamtanweisung-repo-pg.ts` und wird dort allein von
-// `PgAnweisungRepo.migriere()` ausgeführt. Sie kann hier nicht stehen: eine nicht exportierte
-// Konstante lässt sich nicht importieren — und jene Datei ist Bestand von JOB 4154 und liegt
-// ausserhalb der Zielpfade dieses Auftrags. Runde 1 hat sie dort umbenannt und exportiert; der
-// Prüfer hat das als Zielpfad-Verstoss zurückgewiesen, die Umbenennung ist zurückgenommen.
+// Hier stand bis JOB 4309 der ausgeschriebene Befund, die DDL der drei Tabellen
+// (`gesamtanweisungen`, `gesamtanweisung_bausteine`, `gesamtanweisung_staende`) könne in dieser
+// Liste nicht stehen: sie war modulintern in
+// `services/knowledge-object/src/gesamtanweisung-repo-pg.ts` und liess sich nicht importieren.
+// Die Folge war ausgeschrieben und wahr — auf einer frisch migrierten Postgres-Datenbank fehlten
+// die drei Tabellen, bis jemand `PgAnweisungRepo.migriere()` von Hand rief.
 //
-// WAS DAS EHRLICH BEDEUTET: auf einer frisch migrierten Postgres-Datenbank fehlen die drei
-// Tabellen, bis jemand `migriere()` von Hand ruft. Die Gesamtanweisung ist im Postgres-Betrieb
-// damit NICHT einsatzbereit. Das ist die eine offene Stelle dieses Anschlusses; sie braucht einen
-// Auftrag, der diese Datei UND die DDL-Datei zugleich halten darf. Festgehalten als eigener,
-// absichtlich negativer Fall in `tests/wiki-gesamtanweisung/ddl-und-restarbeit.test.ts`.
+// JOB 4309 hält beide Dateien zugleich: die Konstante ist exportiert, geht über die Modulfassade
+// (`services/knowledge-object/index.ts`) und steht unten als letzte Stufe in der Liste.
+// `migrate()` legt die drei Tabellen damit auf jeder frischen Datenbank an; es gibt keinen zweiten
+// Migrationsweg und keinen Handaufruf aus Produktcode mehr.
 //
-// DIESER BLOCK STEHT VOR DER KLAMMER UND NICHT DARIN: `db.migrate.test.ts` liest die Liste als
-// TEXT und zählt jeden `…_SCHEMA`-Namen zwischen den Klammern als ausgeführte Stufe — ein
-// Konstantenname in einem Kommentar dort drin wäre für ihn ein Eintrag. Gemessen in dieser Runde.
+// HIER STEHT KEIN STUFENNAME AUSGESCHRIEBEN, UND DAS IST GEMESSEN (Arbeitsprüfung
+// cd46bb7ceb9b46b5a937f1296b645814): `db.migrate.test.ts` schneidet die Liste ab
+// `src.indexOf("const schemas = [")` — und diese Zeichenfolge steht schon OBEN im Block von JOB
+// 4097, der sie zitiert. Der Schnitt beginnt also bereits dort, und jeder `…_SCHEMA`-Name in einem
+// Kommentar DAZWISCHEN zählt für ihn als ausgeführte Stufe, an genau dieser Stelle der Reihenfolge.
+// Ein erster Entwurf dieses Blocks nannte den Namen und schob die Stufe damit an Position eins.
 export const schemas = [
   AUTH_SCHEMA,
   KO_SCHEMA,
@@ -194,6 +196,12 @@ export const schemas = [
   // EXISTS) und OHNE Reihenfolgebedingung: kein Fremdschlüssel, keine Extension, keine andere
   // Tabelle — die Stufe steht am Ende, weil das die lesbare Ordnung ist, nicht weil sie muss.
   BRANDING_SETTINGS_SCHEMA,
+  // JOB 4309: die drei Tabellen der Gesamtanweisung (Kopf, geordnete Bausteine, festgehaltene
+  // Prüfstände). Sie stehen am Ende, weil das die lesbare Ordnung ist und NICHT, weil sie müssten:
+  // ihre einzigen Fremdschlüssel zeigen auf den eigenen Kopf, keine Extension, keine fremde
+  // Tabelle. Additiv und wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS durchgehend, kein DROP,
+  // kein TRUNCATE, kein Schreiben an Bestandsdaten) — die Stufe darf beliebig oft laufen.
+  GESAMTANWEISUNG_SCHEMA,
 ];
 
 // Führt die DDL aller Module aus. Jedes Modul liefert seine eigenen Tabellen (Datenhoheit).

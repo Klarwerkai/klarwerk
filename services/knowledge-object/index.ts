@@ -307,13 +307,19 @@ export {
 // eine dieser Formen benennt — ein Export ohne Aufrufer ist genau das, was
 // `tests/capture/aufrufer-waechter.test.ts` verbietet. Wer sie braucht, holt sie dann, mit Aufrufer.
 //
-// DIE DDL-KONSTANTE GEHT NICHT MIT HERAUS, und das ist erzwungen: sie steht modulintern als
-// `GESAMTANWEISUNG_TABELLEN_DDL` in `src/gesamtanweisung-repo-pg.ts` und ist dort nicht exportiert.
-// Diese Datei kann nur weiterreichen, was das Modul hergibt; die DDL-Datei gehört JOB 4154 und
-// liegt ausserhalb der Zielpfade dieses Auftrags. Was daraus folgt, steht ausgeschrieben in
-// `services/app/src/db.ts` am Ende der `schemas`-Liste.
+// JOB 4309 · DIE DDL-KONSTANTE GEHT JETZT MIT HERAUS — UND ZWAR GENAU DESWEGEN.
+//
+// Bis hierher stand hier, sie könne nicht mit heraus: sie war modulintern (`GESAMTANWEISUNG_
+// TABELLEN_DDL`), weil `services/app/src/db.ts` in den Durchgängen 4154/4156 anderen Bahnen
+// gehörte. Der Preis war ausgeschrieben und gemessen: auf einer frisch migrierten Datenbank
+// fehlten die drei Tabellen, bis jemand `PgAnweisungRepo.migriere()` von Hand rief.
+//
+// `GESAMTANWEISUNG_SCHEMA` ist deshalb kein Export ohne Aufrufer (`tests/capture/
+// aufrufer-waechter.test.ts`), sondern hat genau EINEN: die `schemas`-Liste in
+// `services/app/src/db.ts`. Damit legt `migrate()` die drei Tabellen an, und der
+// Migrationswächter (`db.migrate.test.ts`) hält diese Stufe wie jede andere.
 export { GesamtanweisungDienst } from "./src/gesamtanweisung-service";
-export { PgAnweisungRepo } from "./src/gesamtanweisung-repo-pg";
+export { GESAMTANWEISUNG_SCHEMA, PgAnweisungRepo } from "./src/gesamtanweisung-repo-pg";
 export { anweisungFehler } from "./src/gesamtanweisung-types";
 export type {
   Anweisung,

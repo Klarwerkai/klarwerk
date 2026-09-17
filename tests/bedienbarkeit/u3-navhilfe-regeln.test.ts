@@ -30,7 +30,9 @@ describe("JOB 3028 U3 · navHilfeFor — Regel 1: genau ein Kapitel auf der Rout
     );
     // Ohne diese Untergrenze wäre der Fall auch dann grün, wenn die Zuordnung gar nichts fände.
     // JOB 3741 (SEITENHILFE-LUECKEN): 8 → 18. Zehn Menüpunkte haben ihr Kapitel bekommen.
-    expect(treffer.length, "kein einziger Menüpunkt mit Kapitel — die Fläche fehlt").toBe(18);
+    // JOB 4309: 18 → 19. Der neue Punkt „Gesamtanweisungen" kommt MIT seinem Kapitel — ein
+    // Menüpunkt ohne Erklärsatz hätte die Lücke wieder aufgerissen, die JOB 3741 geschlossen hat.
+    expect(treffer.length, "kein einziger Menüpunkt mit Kapitel — die Fläche fehlt").toBe(19);
     for (const item of treffer) {
       const kapitel = HELP_TOPICS.find((t) => t.to === item.path);
       expect(navHilfeFor(item.path), `falsches Kapitel an ${item.path}`).toEqual({
@@ -95,7 +97,7 @@ describe("JOB 3028 U3 · navHilfeFor — Regel 4: die eine ausgeschriebene Ausna
 // nicht dass sie „ungefähr passt". Ein Punkt, der in keinen Topf fällt, wäre ein stiller Rest, und
 // genau aus einem stillen Rest entsteht die nächste falsche Zahl.
 describe("JOB 3028 U3 · die Aufteilung der Menüpunkte geht ohne Rest auf", () => {
-  it("21 gesamt = 18 mit Hinweis + 2 ohne Kapitel + 0 mehrdeutig + 1 begründete Ausnahme", () => {
+  it("22 gesamt = 19 mit Hinweis + 2 ohne Kapitel + 0 mehrdeutig + 1 begründete Ausnahme", () => {
     const kapitelZu = (pfad: string): number =>
       HELP_TOPICS.filter((topic) => topic.to === pfad).length;
 
@@ -113,8 +115,12 @@ describe("JOB 3028 U3 · die Aufteilung der Menüpunkte geht ohne Rest auf", () 
     // JOB 3741: die Gesamtzahl bleibt 21 (kein neuer Menüpunkt), ZEHN Punkte wandern aber vom Topf
     // „ohne Kapitel" in den Topf „mit Hinweis": 8 → 18 und 12 → 2. Die Summe geht weiter ohne Rest
     // auf, und die Ausnahme bleibt genau eine.
-    expect(ALL_ITEMS.length, "gesamt").toBe(21);
-    expect(mitHinweis.length, "mit Hinweis").toBe(18);
+    //
+    // JOB 4309: 21 → 22 (der Menüpunkt „Gesamtanweisungen"), und er fällt in den Topf „mit
+    // Hinweis" (18 → 19), weil sein Hilfekapitel im selben Zug entstanden ist. Die Töpfe „ohne
+    // Kapitel", „mehrdeutig" und die eine Ausnahme bleiben unberührt; die Summe geht ohne Rest auf.
+    expect(ALL_ITEMS.length, "gesamt").toBe(22);
+    expect(mitHinweis.length, "mit Hinweis").toBe(19);
     expect(ohneKapitel.length, "ohne Kapitel").toBe(2);
     expect(mehrdeutig.length, "mehrdeutig").toBe(0);
     expect(

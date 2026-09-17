@@ -49,9 +49,13 @@ describe("SCRUM-219: helpTopics", () => {
   // nächsten Fall unverändert VORNE, die zehn neuen dahinter. Dass die Menge der neuen sich aus
   // `app/navigation.ts` ERGIBT und nicht aus dieser Liste, misst
   // `tests/seitenhilfe-navkapitel/jeder-menuepunkt-hat-einen-erklaersatz.test.ts` (E2).
-  it("HELP_TOPICS: 21 Kapitel, eindeutige IDs, nur interne Routen", () => {
-    expect(HELP_TOPICS).toHaveLength(21);
-    expect(new Set(HELP_TOPICS.map((t) => t.id)).size).toBe(21);
+  // JOB 4309 (WIKI-GESAMTANWEISUNG-ANSCHLUSS): von 21 auf 22. GENAU EIN Kapitel kommt dazu —
+  // `gesamtanweisungen`, zum neuen Menüpunkt desselben Namens. Es steht VOR „hilfe"/„profil" und
+  // damit an der Stelle seines Menüpunkts; kein bestehendes Kapitel ist weggefallen oder
+  // umsortiert, was der nächste Fall mit den Kennungen festhält.
+  it("HELP_TOPICS: 22 Kapitel, eindeutige IDs, nur interne Routen", () => {
+    expect(HELP_TOPICS).toHaveLength(22);
+    expect(new Set(HELP_TOPICS.map((t) => t.id)).size).toBe(22);
     for (const topic of HELP_TOPICS) {
       expect(topic.to.startsWith("/")).toBe(true);
       expect(topic.tags.length).toBeGreaterThan(0);
@@ -84,6 +88,9 @@ describe("SCRUM-219: helpTopics", () => {
       "output",
       "import",
       "graph",
+      // JOB 4309: das Kapitel zum neuen Menüpunkt „Gesamtanweisungen". Seine Kennung ist wie bei
+      // den zehn darüber die `id` des Menüpunkts aus `app/navigation.ts` (dort gepinnt, P1).
+      "gesamtanweisungen",
       "hilfe",
       "profil",
     ]);

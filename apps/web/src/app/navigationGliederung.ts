@@ -73,6 +73,12 @@ const OBERGRUPPE_JE_ZIEL: Record<string, ObergruppeId> = {
   // stürzte die Schnellnavigation ab, sobald eine Rolle den neuen Punkt sieht. Mit ihm ist der
   // Bereich zusätzlich über „Gehe zu …" auffindbar — unter „Arbeiten", wo er hingehört.
   entwuerfe: "arbeiten",
+  // JOB 4309: die Gesamtanweisung. „Arbeiten", weil sie aus vorhandenen Fassungen ZUSAMMENGESETZT
+  // wird — das ist Erfassungsarbeit und keine Prüfarbeit; entschieden wird sie zwar von einer
+  // Prüfrolle, aber der Menüpunkt führt zum Anlegen (`minRole: "experte"`). Ohne diesen Eintrag
+  // wirft `obergruppeVon`, sobald eine Rolle den Punkt sieht — die Schnellnavigation „Gehe zu …"
+  // fragt ihn für JEDES Navigationsziel (`direktzugangZiele`).
+  gesamtanweisungen: "arbeiten",
   fragen: "arbeiten",
   bibliothek: "arbeiten",
   wissensnetz: "arbeiten",

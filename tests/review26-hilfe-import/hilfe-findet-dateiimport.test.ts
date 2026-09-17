@@ -296,9 +296,12 @@ describe("JOB 3468 · V — der bestehende Bestand bleibt unberührt", () => {
   // dazugekommen, die im Zahnrad nur die Leermeldung trugen. Der Bestand, um den es HIER geht,
   // bleibt unberührt — dass `fileimport` weiter allein auf `/erfassen?weg=datei` liegt und
   // `/erfassen` seinen eigenen Erklärsatz behält, misst V3 unverändert weiter.
-  it("V1: HELP_TOPICS führt einundzwanzig Kapitel mit eindeutigen IDs und internen Routen", () => {
-    expect(HELP_TOPICS).toHaveLength(21);
-    expect(new Set(HELP_TOPICS.map((t) => t.id)).size).toBe(21);
+  // JOB 4309 (WIKI-GESAMTANWEISUNG-ANSCHLUSS): einundzwanzig → zweiundzwanzig. Ein Kapitel ist für
+  // den neuen Menüpunkt „Gesamtanweisungen" dazugekommen. Der Bestand, um den es HIER geht, bleibt
+  // wieder unberührt — V2 und V3 messen das unverändert weiter.
+  it("V1: HELP_TOPICS führt zweiundzwanzig Kapitel mit eindeutigen IDs und internen Routen", () => {
+    expect(HELP_TOPICS).toHaveLength(22);
+    expect(new Set(HELP_TOPICS.map((t) => t.id)).size).toBe(22);
     for (const topic of HELP_TOPICS) {
       expect(topic.to.startsWith("/"), `${topic.id}: keine interne Route`).toBe(true);
       expect(topic.tags.length, `${topic.id}: ohne Merkmale`).toBeGreaterThan(0);

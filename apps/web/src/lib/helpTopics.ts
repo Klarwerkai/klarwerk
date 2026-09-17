@@ -539,6 +539,30 @@ export const HELP_TOPICS: readonly HelpTopicDef[] = [
     tags: ["wissensgraph", "knowledge graph", "kennisgraaf", "graph", "knoten", "verbindungen"],
   },
   {
+    // JOB 4309: das Kapitel zum neuen Menüpunkt. Ohne es stünde im Zahnrad auf `/gesamtanweisungen`
+    // die Leermeldung `menue.seitenhilfe.leer` — genau die Lücke, gegen die JOB 3741 gebaut hat
+    // (`tests/seitenhilfe-navkapitel/jeder-menuepunkt-hat-einen-erklaersatz.test.ts` erhebt seine
+    // Sollmenge aus `app/navigation.ts` und wird durch einen neuen Punkt ohne Kapitel rot).
+    //
+    // DIE KENNUNG IST DIE DES MENÜPUNKTS (`gesamtanweisungen`), und der Pfad ist seiner — beides
+    // hält der Fall P1 dort gegen `navigation.ts`, damit hier nichts geraten wird.
+    id: "gesamtanweisungen",
+    titleKey: "help.gesamtanweisungen.title",
+    bodyKey: "help.gesamtanweisungen.body",
+    to: "/gesamtanweisungen",
+    tags: [
+      "gesamtanweisung",
+      "gesamtanweisungen",
+      "composite instruction",
+      "samengestelde instructie",
+      "anweisung",
+      "bausteine",
+      "reihenfolge",
+      "vorlegen",
+      "entscheiden",
+    ],
+  },
+  {
     id: "hilfe",
     titleKey: "help.hilfe.title",
     bodyKey: "help.hilfe.body",

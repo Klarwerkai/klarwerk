@@ -7,7 +7,7 @@
 // der bedingte UPDATE über die Version als Compare-and-Set (`repo-pg.ts:412-437`).
 //
 // ================================================================================================
-// WARUM DIE DDL HIER **NICHT** `export const …_SCHEMA` HEISST — BITTE VOR DEM UMBENENNEN LESEN.
+// JOB 4309 · DIE DDL HEISST JETZT `GESAMTANWEISUNG_SCHEMA` UND WIRD WIRKLICH MIGRIERT.
 // ================================================================================================
 //
 // `services/app/src/db.migrate.test.ts:47-60` durchsucht ALLE `.ts`-Quellen unter `services/` mit
@@ -18,19 +18,21 @@
 // `services/app/src/db.ts`. Das ist die Lehre SCRUM-496 und sie ist richtig: eine Tabelle, die
 // niemand migriert, fehlt auf Postgres.
 //
-// `services/app/src/db.ts` gehört in diesem Durchgang JOB 4151. Zwei Bahnen an derselben
-// Produktdatei sind verboten (Nacht 02./03.09.). Eine hier exportierte `*_SCHEMA`-Konstante würde
-// also den Wächter rot machen, ohne dass ihn jemand beheben dürfte.
+// BIS JOB 4309 stand die DDL hier als MODULINTERNE Konstante `GESAMTANWEISUNG_TABELLEN_DDL`, weil
+// `db.ts` in den Durchgängen 4154/4156 anderen Bahnen gehörte und eine exportierte `*_SCHEMA`-
+// Konstante den Wächter rot gemacht hätte, ohne dass ihn jemand beheben durfte. Der Preis dafür
+// stand ausgeschrieben da: auf einer frisch migrierten Datenbank fehlten die drei Tabellen, bis
+// jemand `migriere()` von Hand rief.
 //
-// DESHALB steht die DDL als MODULINTERNE Konstante bereit und wird von `migriere()` unten wirklich
-// ausgeführt. Der benannte Nachfolger **WIKI-GESAMTANWEISUNG-ANSCHLUSS** exportiert sie als
-// `GESAMTANWEISUNG_SCHEMA` und trägt sie in `migrate()` ein — dann greift der Wächter wie bei
-// jeder anderen Stufe.
+// JOB 4309 löst genau das ein — und zwar so, wie es der Kopf dieser Datei selbst verlangt hat
+// („Wer diese Konstante exportiert, MUSS sie im selben Zug in `db.ts` eintragen"):
+//   · sie heisst `GESAMTANWEISUNG_SCHEMA` und ist exportiert (der Wächter sieht sie),
+//   · `services/knowledge-object/index.ts` reicht sie über die Modulgrenze weiter,
+//   · `services/app/src/db.ts` führt sie in `schemas`, also legt `migrate()` die drei Tabellen an.
 //
-// DAS IST EINE AUSDRÜCKLICHE, BEGRÜNDETE ABWEICHUNG vom Wortlaut des Eingangs („additive
-// DDL-Konstante") und steht so in der Rückgabe. Sie ist ausdrücklich NICHT die andere Lösung, die
-// sich anbietet und die hier verboten ist: ein Name, der den Wächter dauerhaft umgeht. Wer diese
-// Konstante exportiert, MUSS sie im selben Zug in `db.ts` eintragen.
+// ES BLEIBT BEI EINER WAHRHEIT. `migriere()` unten führt DIESELBE Konstante aus, die auch
+// `migrate()` fährt — die Methode ist damit kein zweiter Migrationsweg mehr, sondern nur noch der
+// Handgriff, den Prüfstände brauchen, die ohne die Kompositionswurzel arbeiten.
 import type { Pool } from "pg";
 import { type Queryable, pgQueryable, withPgTx } from "../../db-tx";
 import type {
@@ -62,7 +64,7 @@ import { anweisungFehler } from "./gesamtanweisung-types";
 //
 // ADDITIV: kein DROP, kein TRUNCATE, kein UPDATE auf Bestandsdaten. `IF NOT EXISTS` durchgehend,
 // damit die Stufe beliebig oft laufen darf.
-const GESAMTANWEISUNG_TABELLEN_DDL = `
+export const GESAMTANWEISUNG_SCHEMA = `
 CREATE TABLE IF NOT EXISTS gesamtanweisungen (
   id text PRIMARY KEY,
   version int NOT NULL,
@@ -152,13 +154,14 @@ export class PgAnweisungRepo implements AnweisungRepo {
   /**
    * Die Tabellen anlegen.
    *
-   * Sie ist der Aufrufer der DDL oben, solange `db.ts` sie nicht kennt (s. Dateikopf). Der
-   * Nachfolger WIKI-GESAMTANWEISUNG-ANSCHLUSS trägt die Stufe in `migrate()` ein; diese Methode
-   * bleibt danach als idempotenter Selbststart für Prüfstände nutzbar — `IF NOT EXISTS` macht den
+   * SEIT JOB 4309 IST SIE KEIN PRODUKTWEG MEHR: die Anwendung legt die drei Tabellen über
+   * `migrate()` an (`services/app/src/db.ts`, `GESAMTANWEISUNG_SCHEMA`). Diese Methode bleibt als
+   * idempotenter Selbststart für Prüfstände, die ohne die Kompositionswurzel arbeiten — sie führt
+   * DIESELBE Konstante aus, es gibt also keine zweite DDL-Wahrheit, und `IF NOT EXISTS` macht den
    * doppelten Lauf folgenlos.
    */
   async migriere(): Promise<void> {
-    await this.pool.query(GESAMTANWEISUNG_TABELLEN_DDL);
+    await this.pool.query(GESAMTANWEISUNG_SCHEMA);
   }
 
   async get(id: string): Promise<Anweisung | undefined> {

@@ -239,8 +239,12 @@ describe("JOB 3338 R · der bestehende Hilfebestand bleibt unangetastet", () => 
   // JOB 3741 (SEITENHILFE-LUECKEN): von elf auf einundzwanzig. Die zehn neuen liegen ebenfalls in
   // HELP_TOPICS und ebenfalls NICHT bei den ISO-Kapiteln; keines von ihnen zeigt auf `/bibliothek`,
   // `/validierung` oder `/aufgaben` — das hält die Zeile unten weiter fest.
+  //
+  // JOB 4309 (WIKI-GESAMTANWEISUNG-ANSCHLUSS): von einundzwanzig auf zweiundzwanzig. Das neue
+  // Kapitel `gesamtanweisungen` liegt ebenfalls in HELP_TOPICS und ebenfalls NICHT bei den
+  // ISO-Kapiteln; es zeigt auf `/gesamtanweisungen` und damit auf keine der drei Routen unten.
   it("R1: HELP_TOPICS führt weiterhin genau die bekannten Kapitel — kein ISO-Kapitel darin", () => {
-    expect(HELP_TOPICS).toHaveLength(21);
+    expect(HELP_TOPICS).toHaveLength(22);
     const isoIds = new Set(ISO_HELP_TOPICS.map((t) => t.id));
     for (const t of HELP_TOPICS) {
       expect(isoIds.has(t.id), `${t.id} ist in beide Listen geraten`).toBe(false);

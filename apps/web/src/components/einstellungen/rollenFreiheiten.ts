@@ -46,6 +46,13 @@ export const STICHWORT_JE_EINTRAG: Record<string, string | null> = {
   // Stichwort wie „Erfassen": ein eigenes Wort behauptete ein Recht, das die Rolle nicht zusätzlich
   // bekommt, und die Karte zählte eine Freiheit doppelt.
   entwuerfe: "einst.rollen.wort.erfassen",
+  // JOB 4309: die Gesamtanweisung ist KEINE zusätzliche Freiheit. Der Menüpunkt führt zum Anlegen,
+  // und dessen Tür fordert `ko.create` — buchstäblich dasselbe Recht wie „Erfassen"
+  // (`services/app/src/routes/gesamtanweisung-routes.ts:275`). Ein eigenes Wort behauptete ein
+  // Recht, das die Rolle nicht zusätzlich bekommt, und die Karte zählte eine Freiheit doppelt.
+  // Das ENTSCHEIDEN ist ein anderes Recht (`ko.validate`) — es hängt aber an keiner eigenen Route
+  // und damit an keinem Eintrag dieser Tabelle; es steht bereits unter „prüfen" beim Controller.
+  gesamtanweisungen: "einst.rollen.wort.erfassen",
   // Controller — Prüfen, Risiko & Lücken und Lebenszyklus sind dieselbe Prüfarbeit.
   validierung: "einst.rollen.wort.pruefen",
   risiko: "einst.rollen.wort.pruefen",

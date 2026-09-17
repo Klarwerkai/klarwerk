@@ -96,8 +96,8 @@ const Duplicates = lazy(() =>
 const ExternalKnowledge = lazy(() =>
   import("./pages/ExternalKnowledge").then((m) => ({ default: m.ExternalKnowledge })),
 );
-// JOB 4156 (WIKI-GESAMTANWEISUNG-ANSCHLUSS): die Seite der zusammengesetzten Anweisung. Sie wird
-// nachgeladen wie jede andere — die Regel oben kennt keine Ausnahme.
+// JOB 4156/4309 (WIKI-GESAMTANWEISUNG-ANSCHLUSS): die Seite der zusammengesetzten Anweisung. Sie
+// wird nachgeladen wie jede andere — die Regel oben kennt keine Ausnahme.
 //
 // SIE WOHNT IN `components/gesamtanweisung/` UND NICHT IN `pages/`, und das ist gemessen, nicht
 // Geschmack: der Bereich besteht aus sieben Bauteilen, die JOB 4154 als geschlossenen Ordner
@@ -165,6 +165,10 @@ const PAGES: Record<string, ComponentType> = {
   // JOB 3503: der eigene Ort der Entwürfe. Er liest denselben Bestand wie der Editor (`useDrafts`),
   // legt keinen zweiten an.
   entwuerfe: MeineEntwuerfe,
+  // JOB 4309: der Einstieg der Gesamtanweisung, jetzt über den REGULÄREN Weg. Der Schlüssel heisst
+  // wie die `id` des Menüpunkts (`app/navigation.ts`) — `Guarded` schlägt hier genau darunter nach.
+  // Ohne diesen Eintrag fiele die berechtigte Rolle auf `PlaceholderPage` statt auf die Fläche.
+  gesamtanweisungen: GesamtanweisungBereich,
   fragen: Ask,
   bibliothek: Library,
   extern: ExternalKnowledge,
@@ -230,33 +234,27 @@ export function AppRoutes(): JSX.Element {
             Check durch Pedi (noch nicht in der Navigation, um die bestehende Erfassung nicht zu berühren). */}
         <Route path="/erfassen/neu" element={<KnowledgeIntake />} />
         {/* ==========================================================================================
-            JOB 4156 · DIE GESAMTANWEISUNG — ALS ADRESSE, NOCH NICHT ALS MENÜPUNKT.
+            JOB 4309 · DIE GEÖFFNETE ANWEISUNG — DIE EINE ZEILE, DIE NICHT AUS `NAV_GROUPS` KOMMT.
             ==========================================================================================
 
+            `/gesamtanweisungen` steht seit JOB 4309 NICHT mehr hier: der Punkt ist ein Menüpunkt
+            (`app/navigation.ts`), `GUARDED_ITEMS.map(…)` oben legt seine Route an, und `PAGES`
+            unten löst ihn auf. Zwei Definitionen für denselben Pfad hätte der Router beide
+            angenommen und die erste gewonnen — eine stille zweite Wahrheit über das Rollen-Gate.
+
+            `/gesamtanweisungen/:id` BLEIBT eine eigene Zeile, und das ist gewollt: ein zweiter
+            Navigationseintrag für die Detailseite ist ausdrücklich verworfen (JOB 562, dieselbe
+            Lage wie `/wissen/:id` unter der Bibliothek). Ihren Ort im Menü behält sie trotzdem —
+            `istAktiverEintrag` zeichnet den Elternpunkt über die Präfixregel aus.
+
             Beide Adressen zeigen auf DASSELBE Bauteil; welcher Zustand entsteht, entscheidet `:id`
-            (`GesamtanweisungBereich` liest ihn über `useParams`). Ohne die zweite Zeile fiele die
+            (`GesamtanweisungBereich` liest ihn über `useParams`). Ohne diese Zeile fiele die
             geöffnete Anweisung in den `*`-Zweig und würde auf die Startseite umgeleitet.
 
-            SIE STEHEN HIER UND NICHT IN `GUARDED_ITEMS`, und das ist eine Beschränkung und keine
-            Gestaltung: ein Menüpunkt entsteht ausschliesslich in `apps/web/src/app/navigation.ts`,
-            und diese Datei liegt ausserhalb der Zielpfade dieses Auftrags (Runde 1 hat sie angefasst
-            und wurde dafür zu Recht zurückgewiesen). Damit fehlt der Seite AUCH das Rollen-Gate, das
-            `Guarded` sonst davorsetzt.
-
-            WAS DAS EHRLICH HEISST: die Seite ist über eine getippte Adresse erreichbar, nicht über
-            die Navigation — Lieferung 5 des Auftrags ist damit NICHT erfüllt, und der Auftrag sagt
-            ausdrücklich „nicht nur über eine getippte Adresse". Das steht so in der Rückgabe.
-
-            GESCHÜTZT IST DIE SACHE TROTZDEM, nur an einer anderen Stelle: jede der zehn Türen hinter
-            dieser Fläche fordert am Server ihr Recht (`ko.read`/`ko.create`/`ko.validate`,
+            SIE TRÄGT KEIN `Guarded`, und das ist dieselbe Bauform wie bei `/wissen/:id` darüber:
+            die zehn Türen dahinter fordern ihr Recht am Server (`ko.read`/`ko.create`/`ko.validate`,
             `services/app/src/routes/gesamtanweisung-routes.ts`), gemessen in
-            `tests/wiki-gesamtanweisung-abnahme/a1-tuer-in-der-gebauten-app.test.ts`. Eine Betrachterin
-            ohne `ko.create` sieht hier also eine Fläche, deren Schreibwege sie mit 403 abweist — kein
-            Datenleck, aber eine unfreundliche Tür. Genau deshalb gehört der Menüpunkt nachgeliefert.
-
-            Vorbild der Bauform: `/erfassen/neu` darüber — dort steht seit SCRUM-527 aus demselben
-            Grund ein Deep-Link ohne Menüeintrag. */}
-        <Route path="/gesamtanweisungen" element={<GesamtanweisungBereich />} />
+            `tests/wiki-gesamtanweisung-abnahme/a1-tuer-in-der-gebauten-app.test.ts`. */}
         <Route path="/gesamtanweisungen/:id" element={<GesamtanweisungBereich />} />
         <Route path="/mobile" element={<Mobile />} />
         <Route path="/ui-kit" element={<UiKit />} />
