@@ -21,6 +21,40 @@ import {
 } from "./release-texte.mjs";
 import { stufenAusBaum, vertragstext } from "./schema-vertrag.mjs";
 
+// ==================================================================================================
+// JOB 4315 — DIE VERPACKUNG IST EIN BENANNTER SCHRITT, DER STANDARD BLEIBT UNVERAENDERT.
+// ==================================================================================================
+//
+// WARUM ES DIESEN SCHALTER GIBT. Alles bis `npm ci --omit=dev` (unten, letzter Bauschritt)
+// geschieht IM Releaseverzeichnis; danach ist das Release fertig und startfaehig. Erst der Schritt
+// DANACH ruft `zip`. Dieses Werkzeug gibt es auf dem Pruefstand nicht, und deshalb war dieser Bauer
+// dort bis heute GAR NICHT fahrbar: `tests/insel-update/release-inhalt.test.ts:9-14` haelt woertlich
+// fest, dass der volle Baulauf nicht gemessen wird. Gemessen wurde also der QUELLTEXT dieser Datei,
+// nie ihr ERZEUGNIS — und ob das Erzeugnis startet, wusste niemand (Befund T-015).
+//
+// `--ohne-verpackung` beendet den Bau nach `npm ci --omit=dev` und meldet das AUSDRUECKLICH
+// (`verpackt: false`, `zipPath: null`, `grund`). Damit ist der gebaute Stand messbar, ohne dass
+// irgendwo ein unverpacktes Release als Paket durchgeht.
+//
+// OHNE DEN SCHALTER AENDERT SICH NICHTS AN DER SACHE: es wird gezippt, und fehlt `zip`, BRICHT DER
+// BAU AB. Neu ist allein die Meldung — vorher endete `execFileSync` mit einem nackten
+// `Error: spawnSync zip ENOENT` (woertlich gemessen, Cloud-Lauf d86bc9bf) und verschwieg, dass unter
+// `dist/insel/staging/<version>` ein fertiges Release liegt. Ein Mensch stand vor einem
+// Werkzeugfehler und wusste nicht, was fertig war und was nicht.
+//
+// FAIL-CLOSED BEI UNBEKANNTEN ARGUMENTEN: ein stillschweigend ignoriertes `--ohne-verpackkung`
+// (Tippfehler) haette gezippt, waere auf dem Pruefstand mit ENOENT gestorben und haette wie ein
+// kaputter Bauer ausgesehen. Deshalb wird JEDES nicht gekannte Argument benannt und abgelehnt —
+// VOR dem ersten Seiteneffekt, also bevor `stagingRoot` abgeraeumt wird.
+const ARGUMENTE = process.argv.slice(2);
+const OHNE_VERPACKUNG = ARGUMENTE.includes("--ohne-verpackung");
+const UNBEKANNTE_ARGUMENTE = ARGUMENTE.filter((argument) => argument !== "--ohne-verpackung");
+if (UNBEKANNTE_ARGUMENTE.length > 0) {
+  throw new Error(
+    `Paketbau abgebrochen: unbekanntes Argument ${UNBEKANNTE_ARGUMENTE.map((a) => `„${a}"`).join(", ")}. Bekannt ist nur --ohne-verpackung (baut das Release und ueberspringt den zip-Schritt). Es wurde nichts gebaut und nichts geloescht.`,
+  );
+}
+
 const repo = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 const commit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" }).trim();
 const shortCommit = commit.slice(0, 8);
@@ -212,8 +246,56 @@ writeFileSync(
 writeFileSync(join(releaseDir, "ROLLBACK.md"), rollbackText(version));
 
 run("npm", ["ci", "--omit=dev", "--ignore-scripts"], releaseDir);
-run("zip", ["-qr", zipPath, version], stagingRoot);
 
-const size = statSync(zipPath).size;
-const relativeZip = relative(repo, zipPath);
-console.log(JSON.stringify({ version, commit, marker, zipPath, relativeZip, size }, null, 2));
+// ==================================================================================================
+// JOB 4315 — AB HIER IST DAS RELEASE FERTIG. Was folgt, ist nur noch die Verpackung.
+// ==================================================================================================
+//
+// DIE MELDUNG BEI FEHLENDEM WERKZEUG NENNT DREI DINGE, weil ein Mensch genau die drei braucht: was
+// FERTIG ist (das Release, mit Pfad), was NICHT entstanden ist (das Zip, mit Pfad), und WELCHES
+// Werkzeug fehlt. „spawnSync zip ENOENT" nannte keines davon.
+function verpacke() {
+  try {
+    run("zip", ["-qr", zipPath, version], stagingRoot);
+  } catch (fehler) {
+    const werkzeugFehlt = fehler !== null && typeof fehler === "object" && fehler.code === "ENOENT";
+    throw new Error(
+      [
+        werkzeugFehlt
+          ? 'Verpackung abgebrochen: das Werkzeug „zip" ist auf diesem Rechner nicht auffindbar.'
+          : `Verpackung abgebrochen: „zip" endete mit einem Fehler (${String(fehler?.status ?? fehler?.code ?? fehler)}).`,
+        `FERTIG GEBAUT ist das Release trotzdem — es liegt UNVERPACKT unter: ${releaseDir}`,
+        `NICHT ENTSTANDEN ist das Paket: ${zipPath} wurde nicht geschrieben.`,
+        "Wer bewusst ohne Verpackung bauen will, ruft den Bauer mit --ohne-verpackung; er meldet dann verpackt: false und zipPath: null.",
+      ].join("\n"),
+    );
+  }
+}
+
+// EIN UNVERPACKTES PAKET WIRD NIE ALS VERPACKTES GEMELDET. `verpackt` ist das eine Feld, an dem der
+// Unterschied haengt; `zipPath`, `relativeZip` und `size` sind dann `null` und nicht etwa ein Pfad
+// auf eine Datei, die es nicht gibt (`zipPath` ist oben bei `:77` ausdruecklich geloescht worden).
+const verpackt = !OHNE_VERPACKUNG;
+if (verpackt) {
+  verpacke();
+}
+console.log(
+  JSON.stringify(
+    {
+      version,
+      commit,
+      marker,
+      releaseDir,
+      relativeRelease: relative(repo, releaseDir),
+      verpackt,
+      grund: verpackt
+        ? null
+        : "--ohne-verpackung: der Bau endete nach `npm ci --omit=dev`. Das Release ist fertig, ein Paket ist NICHT entstanden.",
+      zipPath: verpackt ? zipPath : null,
+      relativeZip: verpackt ? relative(repo, zipPath) : null,
+      size: verpackt ? statSync(zipPath).size : null,
+    },
+    null,
+    2,
+  ),
+);
