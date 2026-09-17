@@ -62,6 +62,39 @@ export function releaseIdentitaet({ appVersion, commit, gebautAm }) {
  *
  * Die App gäbe Postgres ohnehin den Vorrang (`services/app/src/server.ts:70`); zwei gesetzte
  * Quellen wären trotzdem eine Einladung zum Irrtum beim Lesen der Protokolle.
+ *
+ * ================================================================================================
+ * JOB 4332 — DER STARTBEFEHL ERFÜLLT JETZT DEN STARTVERTRAG, DEN ER SELBST AUSLÖST.
+ * ================================================================================================
+ *
+ * DER BEFUND, GEMESSEN AM ECHTEN PAKET (JOB 4315, Fall B1): Dieser Befehl setzt `NODE_ENV=production`
+ * (unten), und der Startvertrag (`services/app/src/start-vertrag.ts`) verlangt in Produktion
+ * `APP_BASE_URL` und `DATABASE_URL`. Beide setzte er nicht — `DATABASE_URL` wirft er im Journalzweig
+ * sogar ausdrücklich weg. Das Paket brach mit seinem EIGENEN Startbefehl ab: „Serverstart
+ * fehlgeschlagen: StartvertragError: … fehlen — APP_BASE_URL, DATABASE_URL". Wer es auf den Mac
+ * Studio legte und doppelklickte, bekam keine Instanz.
+ *
+ * DER VERTRAG IST NICHT DAS PROBLEM UND WIRD NICHT ANGEFASST. Beide Pflichten sind richtig: ohne
+ * `APP_BASE_URL` verschickt der Kennwort-Zurücksetzen-Weg eine Mail ohne Link, ohne `DATABASE_URL`
+ * liefe Produktion auf nicht dauerhaftem Speicher. Erfüllt werden sie hier auf den zwei dafür
+ * vorgesehenen Wegen, und zwar so, dass keine Zeile mehr behauptet als der Zustand hergibt:
+ *
+ *   APP_BASE_URL — ein VORGABEWERT aus dem tatsächlich verwendeten `PORT`, und nur, wenn der
+ *     Betreiber nichts gesetzt hat (`\${APP_BASE_URL:-…}`). Die verwendete Adresse wird ausgegeben:
+ *     sie landet in den Links der Kennwort-Mails, und wer sie nicht kennt, sucht den Fehler später
+ *     beim Klicken.
+ *   KLARWERK_ALLOW_INMEMORY_PROD — die BENANNTE Ausnahme aus SCRUM-498 B3
+ *     (`services/app/src/storage-guard.ts:6-8`: „erlaubt den In-Memory-Pfad bewusst … dann nur mit
+ *     lauter Warnung"), gesetzt AUSSCHLIESSLICH im Journalzweig. Genau dort ist die Aussage wahr.
+ *     Im Postgres-Zweig bleibt er ungesetzt und, falls von aussen gesetzt, unangetastet: dort ist
+ *     die Pflicht erfüllt, und ein Override wäre eine Lüge über die Datenhaltung.
+ *
+ * DIE LAUTE WARNUNG BLEIBT LAUT. Der Start wird NICHT dadurch erkauft, dass die Warnzeile des
+ * Speicherwächters („KLARWERK WARN: NODE_ENV=production, KLARWERK_ALLOW_INMEMORY_PROD=1, kein
+ * DATABASE_URL → Journal-Speicher …") verschwindet; sie wird hier weder unterdrückt noch
+ * umformuliert noch weggefiltert. Sie ist die massgebliche Aussage über die Datenhaltung dieser
+ * Insel, und `tests/insel-echter-start/paket-startet.integration.test.ts` (B1) weist sie in der
+ * Prozessausgabe des echten Laufs nach.
  */
 export function startBefehlText() {
   return `#!/bin/bash
@@ -77,6 +110,11 @@ export PORT
 export NODE_ENV=production
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 
+# Die oeffentliche Adresse dieser Instanz. Vorgabe aus dem wirklich verwendeten PORT; ein vom
+# Betreiber gesetzter Wert gewinnt. Sie wird ausgegeben, weil sie in Kennwort-Mails landet.
+export APP_BASE_URL="\${APP_BASE_URL:-http://127.0.0.1:$PORT}"
+echo "[start] Adresse (APP_BASE_URL): $APP_BASE_URL - unter dieser Adresse stehen die Links in Kennwort-Mails"
+
 # Postgres oder Journal — eine Entscheidung, an einer Stelle, aus der Umgebung.
 DB_URL="\${KLARWERK_DATABASE_URL:-\${DATABASE_URL:-}}"
 if [ -n "$DB_URL" ]; then
@@ -91,6 +129,9 @@ else
   fi
   export KLARWERK_DEV_PERSIST=1
   export KLARWERK_DEV_PERSIST_FILE="$STATE_FILE"
+  # Die benannte Ausnahme aus SCRUM-498 B3 — NUR hier, wo das Journal wirklich die Datenhaltung ist.
+  # Die laute Warnung des Speicherwaechters bleibt und wird nicht gefiltert.
+  export KLARWERK_ALLOW_INMEMORY_PROD=1
   echo "[start] Datenhaltung: Journal ($STATE_FILE)"
 fi
 

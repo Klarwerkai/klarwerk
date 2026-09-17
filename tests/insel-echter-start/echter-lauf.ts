@@ -165,6 +165,16 @@ export interface Inselstart {
   readonly port: number;
   readonly ausgabe: () => string;
   readonly lebt: () => boolean;
+  /**
+   * DAS REGULÄRE BEENDEN (JOB 4332): SIGTERM an die Prozessgruppe, dann warten, bis der Prozess von
+   * SELBST geht. Gibt `true` zurück, wenn er das innerhalb der Frist tat, sonst `false` — der
+   * Aufrufer soll den Unterschied messen können und nicht raten.
+   *
+   * WARUM NICHT EINFACH `beenden()`: Das schiesst mit SIGKILL ab. Für die Frage „übersteht der
+   * Bestand einen Neustart?" wäre das der günstigere Fall am falschen Ende — der Betreiber beendet
+   * seine Insel regulär, und genau dieser Weg muss den Bestand tragen.
+   */
+  readonly beendeRegulaer: (fristMs: number) => Promise<boolean>;
   readonly beenden: () => Promise<void>;
 }
 
@@ -220,6 +230,35 @@ export function starteInsel(
     port,
     ausgabe: () => teile.join(""),
     lebt: () => !beendet,
+    beendeRegulaer: (fristMs) =>
+      new Promise<boolean>((fertig) => {
+        if (beendet) {
+          fertig(true);
+          return;
+        }
+        if (kind.pid === undefined) {
+          fertig(false);
+          return;
+        }
+        let entschieden = false;
+        const schluss = (vonSelbst: boolean) => {
+          if (!entschieden) {
+            entschieden = true;
+            fertig(vonSelbst);
+          }
+        };
+        kind.on("exit", () => schluss(true));
+        try {
+          process.kill(-kind.pid, "SIGTERM");
+        } catch {
+          try {
+            kind.kill("SIGTERM");
+          } catch {
+            schluss(false);
+          }
+        }
+        setTimeout(() => schluss(false), fristMs).unref?.();
+      }),
     beenden: () =>
       new Promise<void>((fertig) => {
         if (beendet || kind.pid === undefined) {
