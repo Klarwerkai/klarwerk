@@ -68,6 +68,8 @@ vi.mock("../../apps/web/src/components/sharepoint-import/api", async () => {
         neuerStand: [],
         failed: [],
         notFound: [],
+        // JOB 4232: die Antwort führt dieses Feld immer — die Attrappe bildet den echten Vertrag ab.
+        ohneInhalt: [],
         dateien: [],
       }),
     },

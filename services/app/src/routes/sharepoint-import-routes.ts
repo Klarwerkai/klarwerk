@@ -40,6 +40,29 @@
 // KEIN SHAREPOINT-WORT IM IMPORT-KERN. Der Adapter liefert `ImportItem`s; `provider`, `externalId`,
 // `sourceScope` und `sourceVersion` sind die quellneutralen Felder, die SCRUM-510 R2b dafür
 // vorgesehen hat.
+//
+// ================================================================================================
+// JOB 4232 — DER INHALT KOMMT MIT. KEINE NEUE TÜR, KEIN NEUER CODE, KEIN NEUER LAUF-ZÄHLER.
+// ================================================================================================
+//
+// Beide vorhandenen Türen tragen ab hier zusätzlich eine Auskunft über den INHALT der Dateien, und
+// beide bleiben, was sie sind:
+//
+//   TÜR 1 (`files`) → je Zeile `inhaltstyp`: was diese Datei bei einer Übernahme BRINGT
+//                     (`text|leer|nur-merkmale|zu-gross`). Angekündigt aus Medientyp und Grösse
+//                     DIESES Abrufs, nicht aus dem Dateinamen.
+//                     JOB 4232 R2: dieselbe Tür beantwortet mit `ids` zusätzlich die GEMESSENE
+//                     Frage — sie holt dann den Inhalt genau dieser Dateien wirklich und gibt den
+//                     Befund zurück (`befunde`). Ohne `ids` bleibt sie, was sie war, und holt
+//                     weiterhin keinen Inhalt: ein Blick in die Bibliothek darf nicht erst die
+//                     halbe Bibliothek herunterladen. SCHREIBEN tut sie in KEINEM der zwei Fälle.
+//   TÜR 2 (`apply`) → je übernommener Datei `inhalt`: was WIRKLICH ankam. Und `ohneInhalt`: die
+//                     Dateien, deren Inhalt gemessen wurde und nicht trägt (leer, zu gross,
+//                     unlesbar). Die werden NICHT eingereiht — s. `Uebernahmebilanz.ohneInhalt`.
+//
+// ES ENTSTEHT KEIN NEUER FEHLERCODE. Die vier Ausgänge oben bleiben die vier Ausgänge; ein leerer
+// oder unlesbarer Inhalt ist keine Störung der Gegenstelle, sondern eine Tatsache über die Datei,
+// und Tatsachen stehen in der Antwort, nicht im Statuscode.
 
 import { randomUUID } from "node:crypto";
 import type { FastifyBaseLogger, FastifyPluginAsync, FastifyReply } from "fastify";
@@ -56,6 +79,7 @@ import {
 } from "../../../library-analytics";
 import {
   type SharePointFehlerlage,
+  type SharePointInhaltsbefund,
   type SharePointSourceAdapter,
   createSharePointAdapterFromEnv,
   sharepointFehlerlage,
@@ -150,6 +174,16 @@ interface Uebernommen {
   readonly name: string;
   readonly url: string | null;
   readonly geaendertAm: string | null;
+  /**
+   * JOB 4232 — WAS WIRKLICH ÜBERNOMMEN WURDE: der Text der Datei oder nur ihre Merkmale.
+   *
+   * GEMESSEN, NICHT VERSPROCHEN: Das ist der Befund des Abrufs, den DIESE Übernahme gefahren hat,
+   * nicht die Vorschau aus der Liste von vorhin. Beide können auseinanderliegen — eine Datei kann
+   * zwischen Blick und Annahme grösser, leer oder kaputt geworden sein —, und dann gilt, was hier
+   * steht. Hier stehen nur `text` und `nur-merkmale`: die drei übrigen Befunde führen gar nicht erst
+   * zu einer Übernahme (s. die Schleife unten).
+   */
+  readonly inhalt: Extract<SharePointInhaltsbefund, "text" | "nur-merkmale">;
 }
 
 interface Uebernahmebilanz {
@@ -158,6 +192,16 @@ interface Uebernahmebilanz {
   readonly bereitsInQueue: number;
   readonly gescheitert: number;
   readonly nichtGefunden: number;
+  /**
+   * JOB 4232 — die Dateien, deren INHALT versprochen war und nicht ankam: nachweislich leer, über
+   * der Inhaltskante oder nicht als Text dekodierbar.
+   *
+   * SIE WERDEN NICHT ÜBERNOMMEN, und das ist der Kern von Lieferung 4: Wer eine Textdatei wählt,
+   * will ihren Text. Ein Eintrag, der nur den Dateinamen trägt, wäre in genau diesem Moment die
+   * Halbheit, die als Erfolg gemeldet würde. Er zählt deshalb bei `itemsFailed` mit und macht den
+   * Lauf `PARTIAL` — der Mensch sieht, dass sein Auftrag nicht vollständig erfüllt wurde.
+   */
+  readonly ohneInhalt: number;
 }
 
 // ==================================================================================================
@@ -189,7 +233,6 @@ interface Uebernahmebilanz {
 // KEIN SCHLÜSSELSTRING: gesucht wird über eine Karte JE ANBIETERSCHLÜSSEL, darin je Quellkennung.
 // Eine verklebte Zeichenkette aus beiden Feldern wäre nicht injektiv — derselbe Befund, den JOB 3087
 // am Idempotenz-Schlüssel der Warteschlange behoben hat (`repo.ts:155-184`).
-type OffeneStaende = ReadonlyMap<string, ReadonlyMap<string, number>>;
 
 /**
  * Der höchste Quellstand je offen wartendem Vorgang.
@@ -201,31 +244,90 @@ type OffeneStaende = ReadonlyMap<string, ReadonlyMap<string, number>>;
  * Scheitert die Lesung, kommt eine LEERE Karte zurück, und die Folge ist die SCHWÄCHERE Aussage:
  * dieser Lauf behauptet dann über keine Kennung, sie bringe einen neueren Stand. Nie andersherum.
  */
-async function leseOffeneStaende(
+// ==================================================================================================
+// JOB 4232 RUNDE 2 — DER DRITTE STAND: WAS EIN MENSCH BEREITS ANGENOMMEN HAT (bens Pflicht 3).
+// ==================================================================================================
+//
+// DER BEFUND: Die Idempotenz der Warteschlange gilt für OFFENE Vorgänge (`insertIfAbsent`,
+// `library-analytics/src/repo.ts`). Ist der Vorgang ANGENOMMEN, steht kein offener mehr da — und
+// derselbe unveränderte Quellstand wurde bis Runde 1 erneut eingereiht und als `imported` gemeldet.
+// Ben hat es nach Annahme und Neustart gemessen: `{ imported: 1, alreadyQueued: 0 }`, wo
+// „schon vorhanden" die Wahrheit gewesen wäre. Lieferung 7 verlangt ausdrücklich den zweiten Satz.
+//
+// WORAN DIESER LAUF DAS ERKENNT, OHNE DEN IMPORT-KERN ANZUFASSEN (JOB 4151 hält ihn): an derselben
+// Warteschlange, die er ohnehin liest. Ein angenommener Kandidat trägt seinen Status, seinen
+// Quellstand UND die Kennung des erzeugten Wissensobjekts (`koId`, `types.ts:253`). Beides zusammen
+// ist der Beleg „dieser Stand ist bereits im Bestand angekommen" — kein zweiter Leseweg, keine
+// zweite Wahrheit, KEIN zusätzlicher Aufruf: es ist dieselbe eine `listImportCandidates()`-Lesung.
+//
+// DIE GRENZE, EHRLICH BENANNT: Wurde das erzeugte Objekt später in den Papierkorb gelegt, sieht
+// diese Lesung das nicht — der angenommene Kandidat bleibt stehen. Derselbe Stand wird dann als
+// „schon vorhanden" gemeldet, statt einen neuen Vorgang anzulegen. Das ist keine falsche Aussage
+// (ein Objekt im Papierkorb ist wiederherstellbar und damit vorhanden), aber es ist eine ANDERE
+// Aussage als vor dieser Runde; sie steht in der Rückgabe.
+interface KandidatStaende {
+  /** Der höchste Quellstand je OFFEN wartendem Vorgang. */
+  readonly offen: ReadonlyMap<string, ReadonlyMap<string, number>>;
+  /** Der höchste Quellstand, der bereits ANGENOMMEN und zu einem Wissensobjekt geworden ist. */
+  readonly angenommen: ReadonlyMap<string, ReadonlyMap<string, number>>;
+}
+
+/** Trägt den höheren Stand je (Anbieter, Quellkennung) in die Karte ein. */
+function merkeStand(
+  karte: Map<string, Map<string, number>>,
+  anbieter: string,
+  externalId: string,
+  stand: number,
+): void {
+  const jeAnbieter = karte.get(anbieter) ?? new Map<string, number>();
+  const bisher = jeAnbieter.get(externalId);
+  if (bisher === undefined || stand > bisher) {
+    jeAnbieter.set(externalId, stand);
+  }
+  karte.set(anbieter, jeAnbieter);
+}
+
+/**
+ * Die zwei Stände je Quelle, aus EINER Lesung der Warteschlange.
+ *
+ * `sourceVersion ?? 1` ist KEINE geratene Zahl, sondern die Rechnung, mit der die Warteschlange
+ * ihren eigenen Idempotenzraum aufspannt (`repo.ts:230`) — eine zweite Lesart hier würde beim
+ * nächsten Umbau still auseinanderlaufen.
+ *
+ * Scheitert die Lesung, kommen LEERE Karten zurück, und die Folge ist die SCHWÄCHERE Aussage:
+ * dieser Lauf behauptet dann über keine Kennung, sie bringe einen neueren Stand, und er überspringt
+ * auch keine — im Zweifel wird eingereiht und ein Mensch entscheidet. Nie andersherum.
+ */
+async function leseStaende(
   library: LibraryService,
   log: FastifyBaseLogger,
-): Promise<OffeneStaende> {
-  const karte = new Map<string, Map<string, number>>();
+): Promise<KandidatStaende> {
+  const offen = new Map<string, Map<string, number>>();
+  const angenommen = new Map<string, Map<string, number>>();
   try {
     for (const kandidat of await library.listImportCandidates()) {
       const externalId = kandidat.item.externalId;
-      if (!externalId || !isOpenReviewStatus(kandidat.status)) {
+      if (!externalId) {
         continue;
       }
       const anbieter = importProviderKey(kandidat.item.provider);
       const stand = kandidat.item.sourceVersion ?? 1;
-      const jeAnbieter = karte.get(anbieter) ?? new Map<string, number>();
-      const bisher = jeAnbieter.get(externalId);
-      if (bisher === undefined || stand > bisher) {
-        jeAnbieter.set(externalId, stand);
+      if (isOpenReviewStatus(kandidat.status)) {
+        merkeStand(offen, anbieter, externalId, stand);
+        continue;
       }
-      karte.set(anbieter, jeAnbieter);
+      // NUR die WIRKLICH angekommenen: „angenommen" allein genügt nicht — eine als Dublette
+      // angenommene Kennung erzeugt kein Objekt (`kandidatErzeugtWissensobjekt`), und dann ist
+      // dieser Stand auch nicht im Bestand. Die Kennung des Objekts IST der Beleg.
+      if (kandidat.status === "angenommen" && kandidat.koId !== null) {
+        merkeStand(angenommen, anbieter, externalId, stand);
+      }
     }
   } catch (err) {
-    warne(log, "Offene Vorgaenge lesen", err);
-    return new Map();
+    warne(log, "Vorgaenge lesen", err);
+    return { offen: new Map(), angenommen: new Map() };
   }
-  return karte;
+  return { offen, angenommen };
 }
 
 /**
@@ -234,13 +336,20 @@ async function leseOffeneStaende(
  * Aufrufs NICHT vollständig erfüllt wurde.
  */
 function uebernahmeStatus(bilanz: Uebernahmebilanz): ImportRunStatus {
-  return bilanz.gescheitert > 0 || bilanz.nichtGefunden > 0 ? "PARTIAL" : "COMPLETED";
+  return bilanz.gescheitert > 0 || bilanz.nichtGefunden > 0 || bilanz.ohneInhalt > 0
+    ? "PARTIAL"
+    : "COMPLETED";
 }
 
 /**
- * Die vier Ausgänge sind DISJUNKT und decken jede beauftragte Kennung genau einmal ab, deshalb
+ * Die FÜNF Ausgänge sind DISJUNKT und decken jede beauftragte Kennung genau einmal ab, deshalb
  * gilt `itemsCreated + itemsSkipped + itemsFailed === itemsTotal` exakt. `itemsBound` ist belegbar
  * 0: die REVIEW-INVARIANTE lässt den Import nur Kandidaten anlegen, nie ein Objekt binden.
+ *
+ * JOB 4232: Der fünfte Ausgang (`ohneInhalt`) fällt zu `itemsFailed` — wie `nichtGefunden` schon
+ * vorher. Er ist kein eigener Zähler des Laufs, weil der Lauf vier Zähler führt und eine fünfte
+ * Spalte einen Vertrag ändern würde, den auch Confluence und der JSON-Re-Import teilen. Die
+ * FEINERE Auskunft steht in der Antwort dieses Aufrufs, wo sie hingehört.
  */
 function uebernahmeZaehler(bilanz: Uebernahmebilanz): ImportRun["counters"] {
   return {
@@ -248,8 +357,22 @@ function uebernahmeZaehler(bilanz: Uebernahmebilanz): ImportRun["counters"] {
     itemsCreated: bilanz.eingereiht,
     itemsBound: 0,
     itemsSkipped: bilanz.bereitsInQueue,
-    itemsFailed: bilanz.gescheitert + bilanz.nichtGefunden,
+    itemsFailed: bilanz.gescheitert + bilanz.nichtGefunden + bilanz.ohneInhalt,
   };
+}
+
+/**
+ * JOB 4232 — DIE DREI BEFUNDE, DIE EINE ÜBERNAHME EHRLICH ABBRECHEN.
+ *
+ * `leer` · `zu-gross` · `unlesbar`: In allen dreien wurde der Inhalt WIRKLICH gemessen, und in allen
+ * dreien gibt es keinen Text. Die Datei wird deshalb nicht eingereiht, und der Grund reist je
+ * Kennung mit — PII-frei, denn er ist eines von drei festen Wörtern und enthält weder Dateinamen
+ * noch Inhalt.
+ */
+const OHNE_INHALT = ["leer", "zu-gross", "unlesbar"] as const;
+
+function istOhneInhalt(art: SharePointInhaltsbefund): art is (typeof OHNE_INHALT)[number] {
+  return (OHNE_INHALT as readonly string[]).includes(art);
 }
 
 export function sharepointImportRoutes(deps: SharePointImportRouteDeps): FastifyPluginAsync {
@@ -262,7 +385,23 @@ export function sharepointImportRoutes(deps: SharePointImportRouteDeps): Fastify
     // Sie schreibt NICHTS: keinen Kandidaten, kein Objekt, keinen Lauf. Ein Blick in die Quelle ist
     // kein Import — und ein Lauf, der nur „jemand hat geschaut" festhielte, machte die Auskunft
     // „zuletzt erfolgreich importiert" unbrauchbar.
-    app.post<{ Body: { folderId?: unknown } }>(
+    // ------------------------------------------------------------------------------------------
+    // JOB 4232 RUNDE 2 — DIESELBE TÜR BEANTWORTET JETZT ZWEI LESENDE FRAGEN.
+    // ------------------------------------------------------------------------------------------
+    //
+    //   OHNE `ids` → „was liegt in dieser Bibliothek?" (unverändert seit JOB 4086)
+    //   MIT  `ids` → „was steckt WIRKLICH in genau diesen Dateien?" — der gemessene Inhaltsbefund.
+    //
+    // WARUM KEINE DRITTE ADRESSE: Der Auftrag lässt keine neue Route zu (`build-app.ts` ist
+    // Zielpfad eines anderen Jobs), und der Sachverhalt ist derselbe: ein LESENDER Blick in die
+    // Quelle, `users.manage`-gebunden, ohne jeden Schreibeffekt. Eine zweite Adresse für dieselbe
+    // Frage wäre eine zweite Vokabel.
+    //
+    // WARUM DIE ANTWORT BEIDE FELDER IMMER FÜHRT: Ein Feld, das mal da ist und mal nicht, zwingt
+    // jeden Leser zu einer Fallunterscheidung, die er nicht treffen kann. `nurBefunde` sagt
+    // ausdrücklich, WELCHE Frage beantwortet wurde — damit ist `dateien: []` in der Probe kein
+    // „die Bibliothek ist leer", sondern „danach war nicht gefragt".
+    app.post<{ Body: { folderId?: unknown; ids?: unknown } }>(
       "/api/admin/import/sharepoint/files",
       async (request, reply) => {
         const user = await deps.guards.requirePermission("users.manage", request, reply);
@@ -276,11 +415,26 @@ export function sharepointImportRoutes(deps: SharePointImportRouteDeps): Fastify
             .send({ error: "IMPORT_UNAVAILABLE", message: MELDUNG.IMPORT_UNAVAILABLE });
           return reply;
         }
+        const ids = leseIds(request.body?.ids);
+        if (ids.length > MAX_SHAREPOINT_IDS) {
+          // Dieselbe harte Kante wie bei der Übernahme, und aus demselben Grund: jede Kennung
+          // kostet einen Abruf an der Gegenstelle. Ehrlicher 400, kein stilles Kappen.
+          reply.code(400).send({
+            error: "APPLY_TOO_MANY",
+            message: `Zu viele Dateien für eine Prüfung (${ids.length} von max. ${MAX_SHAREPOINT_IDS}).`,
+          });
+          return reply;
+        }
         try {
+          if (ids.length > 0) {
+            const befunde = await adapter.pruefeInhalte(ids);
+            reply.code(200).send({ dateien: [], truncated: false, nurBefunde: true, befunde });
+            return reply;
+          }
           const { dateien, truncated } = await adapter.listeDateien(
             leseOrdnerId(request.body?.folderId),
           );
-          reply.code(200).send({ dateien, truncated });
+          reply.code(200).send({ dateien, truncated, nurBefunde: false, befunde: [] });
           return reply;
         } catch (err) {
           warne(request.log, "Dateiliste", err);
@@ -338,18 +492,46 @@ export function sharepointImportRoutes(deps: SharePointImportRouteDeps): Fastify
           const notFound: string[] = [];
           const neuerStand: string[] = [];
           const dateien: Uebernommen[] = [];
+          // JOB 4232: die Dateien, deren Inhalt gemessen wurde und nicht trägt — je Kennung mit dem
+          // Befund, damit die Fläche den RICHTIGEN Satz zeigt und nicht einen Sammelsatz.
+          const ohneInhalt: { id: string; befund: (typeof OHNE_INHALT)[number] }[] = [];
           // JOB 4125: der Stand der Warteschlange, wie er VOR diesem Aufruf war. Er muss vor dem
           // ersten eigenen Schreibeffekt gelesen werden — sonst sähe dieser Lauf die Vorgänge, die
           // er selbst gerade anlegt, und hielte jede Erstanlage für einen „neueren Stand".
-          const offeneStaende = await leseOffeneStaende(deps.library, request.log);
+          const staende = await leseStaende(deps.library, request.log);
           // DIE KENNUNG VOR DEM ERSTEN SCHREIBEFFEKT (KW-S4-26 §133, wie JOB 3288 es für den
           // Confluence-Weg hält): ab hier kann dieser Aufruf Kandidaten anlegen.
           lauf = await legeLaufAn(deps.importRuns, adapter.driveId, ids.length, request.log);
           for (const id of ids) {
             try {
-              const item = await adapter.holeItem(id);
-              if (!item) {
+              const eintrag = await adapter.holeItem(id);
+              if (!eintrag) {
                 notFound.push(id);
+                continue;
+              }
+              const { item, inhalt } = eintrag;
+              // JOB 4232 — DER EHRLICHE ABBRUCH, VOR DEM SCHREIBEFFEKT. Wer eine Textdatei wählt,
+              // will ihren Text; ist er nachweislich nicht da (leer), passt er nicht (zu gross) oder
+              // liess er sich nicht dekodieren (unlesbar), entsteht KEIN Eintrag. Ein Kandidat, der
+              // nur den Dateinamen trägt, sähe in der Prüfung aus wie ein gelungener Inhaltsimport.
+              if (istOhneInhalt(inhalt.art)) {
+                ohneInhalt.push({ id, befund: inhalt.art });
+                continue;
+              }
+              // JOB 4232 R2 — DERSELBE STAND IST SCHON IM BESTAND (bens Korrekturpflicht 3).
+              // Wurde zu dieser Quelle bereits ein Vorgang ANGENOMMEN und daraus ein Wissensobjekt,
+              // dann bringt dieselbe (oder eine ältere) Version nichts Neues. Sie wird deshalb nicht
+              // noch einmal eingereiht, sondern als „schon vorhanden" gemeldet — genau der Satz, den
+              // Lieferung 7 verlangt. Ein WIRKLICH neuerer Stand läuft unverändert weiter (W3b).
+              const angenommenerStand =
+                item.externalId === undefined
+                  ? undefined
+                  : staende.angenommen.get(importProviderKey(item.provider))?.get(item.externalId);
+              if (
+                angenommenerStand !== undefined &&
+                (item.sourceVersion ?? 1) <= angenommenerStand
+              ) {
+                bereitsInQueue += 1;
                 continue;
               }
               const angelegt = await deps.library.createImportCandidates([item], user.id);
@@ -361,7 +543,7 @@ export function sharepointImportRoutes(deps: SharePointImportRouteDeps): Fastify
                 const vorher =
                   item.externalId === undefined
                     ? undefined
-                    : offeneStaende.get(importProviderKey(item.provider))?.get(item.externalId);
+                    : staende.offen.get(importProviderKey(item.provider))?.get(item.externalId);
                 if (vorher !== undefined && (item.sourceVersion ?? 1) > vorher) {
                   neuerStand.push(id);
                 }
@@ -370,6 +552,9 @@ export function sharepointImportRoutes(deps: SharePointImportRouteDeps): Fastify
                   name: item.title,
                   url: item.url ?? null,
                   geaendertAm: item.updatedAt ?? null,
+                  // Der Befund DIESES Abrufs. `bodyHtml` und er hängen zusammen (mapper.ts), also
+                  // ist das keine zweite Wahrheit über denselben Sachverhalt.
+                  inhalt: inhalt.art,
                 });
               } else {
                 bereitsInQueue += 1;
@@ -398,6 +583,7 @@ export function sharepointImportRoutes(deps: SharePointImportRouteDeps): Fastify
             bereitsInQueue,
             gescheitert: failed.length,
             nichtGefunden: notFound.length,
+            ohneInhalt: ohneInhalt.length,
           };
           await schliesseLauf(
             deps.importRuns,
@@ -418,6 +604,9 @@ export function sharepointImportRoutes(deps: SharePointImportRouteDeps): Fastify
             neuerStand,
             failed,
             notFound,
+            // JOB 4232: Immer geführt — eine leere Liste ist die Auskunft „kein solcher Fall", nicht
+            // ein fehlendes Feld (dieselbe Regel wie bei `neuerStand`).
+            ohneInhalt,
             // Name, Originaladresse und Stand der WIRKLICH übernommenen Dateien — das Ergebnisbild
             // der Oberfläche liest genau das und erfindet nichts dazu.
             dateien,

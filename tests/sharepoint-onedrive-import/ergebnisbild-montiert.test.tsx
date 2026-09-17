@@ -48,7 +48,16 @@ interface Uebernahmeantwort {
   neuerStand: string[];
   failed: { id: string; reason: string }[];
   notFound: string[];
-  dateien: { id: string; name: string; url: string | null; geaendertAm: string | null }[];
+  // JOB 4232: Die Antwort führt beide neuen Angaben IMMER. Die Attrappe bildet deshalb den echten
+  // Vertrag ab und nicht eine bequemere Teilmenge — sonst misst sie eine Fläche, die es nicht gibt.
+  ohneInhalt: { id: string; befund: string }[];
+  dateien: {
+    id: string;
+    name: string;
+    url: string | null;
+    geaendertAm: string | null;
+    inhalt: string;
+  }[];
 }
 
 const d = vi.hoisted(() => ({
@@ -79,11 +88,24 @@ vi.mock("../../apps/web/src/components/sharepoint-import/api", () => ({
             url: DATEI_URL,
             geaendertAm: "2026-09-10T08:30:00Z",
             groesseBytes: 24_576,
+            // JOB 4232: eine .docx — für sie gilt unverändert „nur Merkmale".
+            inhaltstyp: "nur-merkmale",
           },
         ],
         truncated: false,
       };
     },
+    // JOB 4232 R3 — NACHGEFÜHRT, nicht ausgeweitet. Der Übernahmeknopf ist seit JOB 4232 an eine
+    // abgeschlossene Inhaltsmessung gebunden (bens Korrekturpflicht 3); eine Attrappe ohne diesen
+    // Weg liesse ihn für immer gesperrt, und dieser Fall — der das ERGEBNISBILD misst — käme gar
+    // nicht mehr bis dorthin. Der Befund ist `nur-merkmale`: die Datei dieses Falls ist eine `.docx`,
+    // für sie gilt unverändert „kein Volltext".
+    inhalte: async (ids: string[]) => ({
+      dateien: [],
+      truncated: false,
+      nurBefunde: true,
+      befunde: ids.map((id) => ({ id, befund: "nur-merkmale" })),
+    }),
     uebernehmen: async (ids: string[]) => {
       d.gerufenMit.push([...ids]);
       return d.antwort;
@@ -174,12 +196,22 @@ async function uebernimm(antwort: Uebernahmeantwort): Promise<void> {
     (kaestchen as HTMLInputElement).click();
     await flush();
   });
+  // JOB 4232 R3: Nach dem Ankreuzen läuft die Inhaltsmessung, und der Knopf wartet auf sie. Gewartet
+  // wird deshalb auf den ENDZUSTAND, nicht auf eine feste Zeit.
+  for (
+    let i = 0;
+    i < 20 && (knoten("sharepoint-uebernehmen") as HTMLButtonElement | null)?.disabled !== false;
+    i++
+  ) {
+    await act(flush);
+  }
 
   const knopf = knoten("sharepoint-uebernehmen") as HTMLButtonElement | null;
   expect(knopf, "der Übernahmeknopf muss da sein").not.toBeNull();
-  expect((knopf as HTMLButtonElement).disabled, "mit einer Auswahl ist der Knopf freigegeben").toBe(
-    false,
-  );
+  expect(
+    (knopf as HTMLButtonElement).disabled,
+    `mit Auswahl UND abgeschlossener Messung ist der Knopf freigegeben — gesehene Träger: ${traeger().join(", ")}`,
+  ).toBe(false);
   const vorher = d.gerufenMit.length;
   await act(async () => {
     (knopf as HTMLButtonElement).click();
@@ -197,8 +229,15 @@ const ERSTIMPORT: Uebernahmeantwort = {
   neuerStand: [],
   failed: [],
   notFound: [],
+  ohneInhalt: [],
   dateien: [
-    { id: DATEI_ID, name: DATEI_NAME, url: DATEI_URL, geaendertAm: "2026-09-10T08:30:00Z" },
+    {
+      id: DATEI_ID,
+      name: DATEI_NAME,
+      url: DATEI_URL,
+      geaendertAm: "2026-09-10T08:30:00Z",
+      inhalt: "nur-merkmale",
+    },
   ],
 };
 
@@ -209,6 +248,7 @@ const UNVERAENDERT: Uebernahmeantwort = {
   neuerStand: [],
   failed: [],
   notFound: [],
+  ohneInhalt: [],
   dateien: [],
 };
 
@@ -219,7 +259,16 @@ const NEUER_STAND: Uebernahmeantwort = {
   neuerStand: [DATEI_ID],
   failed: [],
   notFound: [],
-  dateien: [{ id: DATEI_ID, name: DATEI_NAME, url: DATEI_URL, geaendertAm: STAND_NEU }],
+  ohneInhalt: [],
+  dateien: [
+    {
+      id: DATEI_ID,
+      name: DATEI_NAME,
+      url: DATEI_URL,
+      geaendertAm: STAND_NEU,
+      inhalt: "nur-merkmale",
+    },
+  ],
 };
 
 beforeEach(async () => {
@@ -296,9 +345,22 @@ describe("JOB 4125 · E — das Ergebnisbild nach der Übernahme", () => {
       neuerStand: [DATEI_ID, "01ZWEITE"],
       failed: [],
       notFound: [],
+      ohneInhalt: [],
       dateien: [
-        { id: DATEI_ID, name: DATEI_NAME, url: DATEI_URL, geaendertAm: STAND_NEU },
-        { id: "01ZWEITE", name: "Pruefplan.docx", url: null, geaendertAm: null },
+        {
+          id: DATEI_ID,
+          name: DATEI_NAME,
+          url: DATEI_URL,
+          geaendertAm: STAND_NEU,
+          inhalt: "nur-merkmale",
+        },
+        {
+          id: "01ZWEITE",
+          name: "Pruefplan.docx",
+          url: null,
+          geaendertAm: null,
+          inhalt: "nur-merkmale",
+        },
       ],
     });
 

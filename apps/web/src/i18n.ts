@@ -4547,6 +4547,36 @@ const de = {
   "imp.sharepoint.nichtsNeu": "Aus dieser Auswahl wurde nichts Neues übernommen.",
   "imp.sharepoint.neuerStand":
     "Neuerer Stand der Quelle: {{n}}. Der ältere Vorgang steht noch in der Prüfung — nimm den neueren an.",
+  // JOB 4232 — INHALT ODER NUR MERKMALE. Zehn Sätze, additiv: die REGEL vor dem Import, die
+  // VORSCHAU je Zeile (vor der Annahme), das ERGEBNIS je übernommener Datei (danach) und die drei
+  // Gründe, aus denen eine gewählte Datei NICHT übernommen wurde. Kein Satz nennt eine Zahl, einen
+  // Statuscode oder ein Serverwort — derselbe Vertrag wie bei den vier Fehlerlagen darunter.
+  "imp.sharepoint.inhaltRegel":
+    "Bei reinen Textdateien (.txt) holt Klarwerk den Text mit. Bei jedem anderen Dateityp werden nur Name, Adresse und Stand übernommen — wer dann den Text braucht, öffnet die Datei über ihre Adresse. Was für welche Datei gilt, steht in der Liste.",
+  // JOB 4232 RUNDE 2 — ANKÜNDIGUNG, MESSUNG, MESSWERT. `vorschau.text` („Inhalt kommt mit") ist ab
+  // dieser Runde eine ZUSAGE und fällt nur nach einem wirklich gefahrenen Inhaltsabruf; solange nur
+  // die Merkmale vorliegen, steht `vorschau.textdatei` da — eine Ankündigung, die nichts verspricht.
+  // JOB 4232 R3: Der Übernahmeknopf bleibt zu, solange keine gültige Messung vorliegt. Ein
+  // gesperrter Knopf ohne Grund wäre eine Sackgasse — diese zwei Sätze sind der Grund.
+  "imp.sharepoint.pruefungLaeuft":
+    "Der Inhalt der gewählten Dateien wird gerade geprüft. Die Übernahme wartet darauf — so wird nichts auf einer Grundlage übernommen, die noch niemand kennt.",
+  "imp.sharepoint.pruefungFehlt":
+    "Zu mindestens einer gewählten Datei liegt kein Prüfergebnis vor. Solange das so ist, wird nichts übernommen. Lade die Liste neu oder wähle eine andere Datei.",
+  "imp.sharepoint.vorschau.textdatei": "Textdatei — Inhalt wird vor dem Import geprüft",
+  "imp.sharepoint.vorschau.laeuft": "Inhalt wird geprüft …",
+  "imp.sharepoint.vorschau.unlesbar": "nicht als Text lesbar",
+  "imp.sharepoint.vorschau.text": "Inhalt kommt mit",
+  "imp.sharepoint.vorschau.leer": "leer",
+  "imp.sharepoint.vorschau.nurMerkmale": "nur Merkmale",
+  "imp.sharepoint.vorschau.zuGross": "zu groß für den Inhalt",
+  "imp.sharepoint.uebernommen.text": "mit Inhalt",
+  "imp.sharepoint.uebernommen.nurMerkmale": "nur Merkmale, kein Volltext",
+  "imp.sharepoint.nichtUebernommen.leer":
+    "Diese Datei ist leer — es gibt nichts zu übernehmen, also wurde nichts angelegt.",
+  "imp.sharepoint.nichtUebernommen.zuGross":
+    "Diese Datei ist zu groß für einen Wissenseintrag. Sie wurde nicht übernommen; teile sie auf oder öffne sie über ihre Adresse.",
+  "imp.sharepoint.nichtUebernommen.unlesbar":
+    "Der Inhalt dieser Datei ließ sich nicht als Text lesen. Sie wurde nicht übernommen — ein halber Text wäre schlimmer als keiner.",
   "imp.sharepoint.zugangErneut": "Zugang neu abfragen",
   "imp.sharepoint.weiterInDerPruefung":
     "Die Dateien liegen jetzt in der Prüfung weiter unten. Erst wenn ein Mensch sie dort annimmt, entsteht daraus ein Wissensobjekt.",
@@ -10693,6 +10723,30 @@ const en: typeof de = {
   "imp.sharepoint.nichtsNeu": "Nothing new was taken over from this selection.",
   "imp.sharepoint.neuerStand":
     "Newer state of the source: {{n}}. The older entry is still in the review — accept the newer one.",
+  // JOB 4232 — dieselben zehn Sätze, derselbe Vertrag: keine Zahl, kein Statuscode, kein Serverwort.
+  "imp.sharepoint.inhaltRegel":
+    "For plain text files (.txt) Klarwerk fetches the text along with it. For every other file type only the name, the address and the state are taken over — if you need the text then, open the file through its address. Which applies to which file is shown in the list.",
+  // JOB 4232 R2 — dieselbe Trennung: Ankündigung vor der Messung, Zusage erst danach.
+  // JOB 4232 R3 — der Grund, warum der Knopf zu ist. Kein gesperrter Knopf ohne Satz.
+  "imp.sharepoint.pruefungLaeuft":
+    "The contents of the selected files are being checked right now. The import waits for that — so nothing is taken over on a basis nobody knows yet.",
+  "imp.sharepoint.pruefungFehlt":
+    "For at least one selected file there is no check result. As long as that is the case, nothing is taken over. Reload the list or choose a different file.",
+  "imp.sharepoint.vorschau.textdatei": "text file — content is checked before the import",
+  "imp.sharepoint.vorschau.laeuft": "checking the content …",
+  "imp.sharepoint.vorschau.unlesbar": "not readable as text",
+  "imp.sharepoint.vorschau.text": "content comes along",
+  "imp.sharepoint.vorschau.leer": "empty",
+  "imp.sharepoint.vorschau.nurMerkmale": "attributes only",
+  "imp.sharepoint.vorschau.zuGross": "too large for the content",
+  "imp.sharepoint.uebernommen.text": "with content",
+  "imp.sharepoint.uebernommen.nurMerkmale": "attributes only, no full text",
+  "imp.sharepoint.nichtUebernommen.leer":
+    "This file is empty — there is nothing to take over, so nothing was created.",
+  "imp.sharepoint.nichtUebernommen.zuGross":
+    "This file is too large for a knowledge entry. It was not taken over; split it up or open it through its address.",
+  "imp.sharepoint.nichtUebernommen.unlesbar":
+    "The contents of this file could not be read as text. It was not taken over — half a text would be worse than none.",
   "imp.sharepoint.zugangErneut": "Check access again",
   "imp.sharepoint.weiterInDerPruefung":
     "The files are now in the review further down. Only once a person accepts them there does a knowledge object come out of it.",
@@ -16228,6 +16282,31 @@ const nl: typeof de = {
   "imp.sharepoint.nichtsNeu": "Uit deze selectie is niets nieuws overgenomen.",
   "imp.sharepoint.neuerStand":
     "Nieuwere versie van de bron: {{n}}. Het oudere item staat nog in de controle — neem het nieuwere aan.",
+  // JOB 4232 — dezelfde tien zinnen, hetzelfde contract: geen getal, geen statuscode, geen servertaal.
+  "imp.sharepoint.inhaltRegel":
+    "Bij zuivere tekstbestanden (.txt) haalt Klarwerk de tekst mee op. Bij elk ander bestandstype worden alleen de naam, het adres en de stand overgenomen — heb je dan de tekst nodig, open het bestand dan via zijn adres. Wat voor welk bestand geldt, staat in de lijst.",
+  // JOB 4232 R2 — dezelfde scheiding: aankondiging vóór de meting, toezegging pas erna.
+  // JOB 4232 R3 — de reden waarom de knop dicht is. Geen dichte knop zonder zin.
+  "imp.sharepoint.pruefungLaeuft":
+    "De inhoud van de gekozen bestanden wordt nu gecontroleerd. Het overnemen wacht daarop — zo wordt niets overgenomen op een grondslag die nog niemand kent.",
+  "imp.sharepoint.pruefungFehlt":
+    "Voor ten minste één gekozen bestand is er geen controleresultaat. Zolang dat zo is, wordt er niets overgenomen. Laad de lijst opnieuw of kies een ander bestand.",
+  "imp.sharepoint.vorschau.textdatei":
+    "tekstbestand — inhoud wordt vóór het importeren gecontroleerd",
+  "imp.sharepoint.vorschau.laeuft": "inhoud wordt gecontroleerd …",
+  "imp.sharepoint.vorschau.unlesbar": "niet als tekst leesbaar",
+  "imp.sharepoint.vorschau.text": "inhoud komt mee",
+  "imp.sharepoint.vorschau.leer": "leeg",
+  "imp.sharepoint.vorschau.nurMerkmale": "alleen kenmerken",
+  "imp.sharepoint.vorschau.zuGross": "te groot voor de inhoud",
+  "imp.sharepoint.uebernommen.text": "met inhoud",
+  "imp.sharepoint.uebernommen.nurMerkmale": "alleen kenmerken, geen volledige tekst",
+  "imp.sharepoint.nichtUebernommen.leer":
+    "Dit bestand is leeg — er is niets over te nemen, dus is er niets aangemaakt.",
+  "imp.sharepoint.nichtUebernommen.zuGross":
+    "Dit bestand is te groot voor een kennisitem. Het is niet overgenomen; splits het op of open het via zijn adres.",
+  "imp.sharepoint.nichtUebernommen.unlesbar":
+    "De inhoud van dit bestand was niet als tekst te lezen. Het is niet overgenomen — een halve tekst zou erger zijn dan geen.",
   "imp.sharepoint.zugangErneut": "Toegang opnieuw opvragen",
   "imp.sharepoint.weiterInDerPruefung":
     "De bestanden staan nu verderop in de controle. Pas als een mens ze daar aanneemt, ontstaat er een kennisobject uit.",

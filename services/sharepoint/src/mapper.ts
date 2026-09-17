@@ -7,17 +7,24 @@
 // `services/confluence/src/mapper.ts` als Adapter #1 füllt — kein zweiter Kern, kein zweiter Weg.
 //
 // ================================================================================================
-// WAS DIESER MAPPER AUSDRÜCKLICH NICHT TUT — UND WARUM DAS EHRLICHER IST ALS DER SCHEIN.
+// JOB 4232 — WAS DIESER MAPPER SEIT HEUTE TUT, UND WAS ER WEITERHIN AUSDRÜCKLICH NICHT TUT.
 // ================================================================================================
 //
-// ER LIEST DEN DATEIINHALT NICHT. Der Auftrag scopet den Adapter auf zwei Dinge: die berechtigte
-// Dateiliste lesen und EINE Datei samt ihrer MERKMALE abrufen. Der Text einer `.docx` läge hinter
-// einem zweiten Abruf (`/content`) und einer Extraktionskette, die dieser Auftrag nicht baut.
+// BIS JOB 4232 STAND HIER: „ER LIEST DEN DATEIINHALT NICHT." Das galt für jeden Typ, und der
+// entstehende Eintrag trug sichtbar „kein Volltext hinterlegt" (`imp.fullText.missing`). Diese
+// Zusage ist jetzt für GENAU EINEN Typ abgelöst und für alle anderen unverändert gültig — ein
+// Kommentar, der das Gegenteil dessen behauptet, was die Datei tut, ist dieselbe Unwahrheit wie ein
+// Text auf der Fläche, der mehr verspricht als der Zustand hergibt.
 //
-// Die Folge wird deshalb BENANNT statt kaschiert: `bodyHtml` fehlt, und das entstehende
-// Wissensobjekt trägt sichtbar „kein Volltext hinterlegt" (`imp.fullText.missing` auf der
-// Prüffläche). Eine erfundene Kernaussage („Dokument aus SharePoint") wäre eine Scheinfunktion —
-// sie sähe nach Inhalt aus und trüge keinen.
+// ER TRÄGT TEXT NUR DANN, WENN TEXT GELESEN WURDE. `bodyHtml` entsteht ausschliesslich aus dem
+// Befund `{ art: "text" }` des Graph-Clients — also aus WIRKLICH geholten, streng als UTF-8
+// dekodierten Bytes einer `text/plain`-Datei. Jeder andere Befund (`nur-merkmale`, `leer`,
+// `zu-gross`, `unlesbar`) lässt das Feld WEG, so wie bisher: kein leerer String, kein Platzhalter,
+// keine geratene Kernaussage. Für diese Dateien bleibt „kein Volltext hinterlegt" die Wahrheit.
+//
+// ER LIEST WEITERHIN KEIN OFFICE-, PDF- ODER MARKDOWN-FORMAT. Deren Text läge hinter einer
+// Extraktionskette, die dieser Auftrag nicht baut; eine erfundene Kernaussage („Dokument aus
+// SharePoint") wäre eine Scheinfunktion — sie sähe nach Inhalt aus und trüge keinen.
 //
 // ER RÄT KEINE VERTRAULICHKEIT. Confluence kann sie messen (Leseeinschränkungen der Seite); der
 // DriveItem-Vertrag trägt ohne einen ZWEITEN Abruf (`/permissions`) kein Governance-Signal.
@@ -39,11 +46,48 @@
 // nicht oder ist er unlesbar, FEHLT das Feld — kein Platzhalter, keine geratene 1.
 
 import type { ImportItem } from "../../library-analytics";
-import type { GraphDriveItem } from "./graph-client";
+import { kernaussageAusKlartext } from "../../structure";
+import type { GraphDriveItem, SharePointInhalt } from "./graph-client";
 
 export interface SharePointMapOptions {
   /** Die Bibliothek/das Laufwerk — landet als Kategorie und als quellneutraler Container-Anker. */
   driveId: string;
+  /**
+   * JOB 4232 — der Befund über den Inhalt dieser Datei, so wie der Client ihn WIRKLICH gemessen hat.
+   *
+   * FEHLT er, entsteht kein Volltext. Das ist Absicht und kein Versehen: ein Aufrufer, der den
+   * Inhalt nicht gemessen hat, kann auch keinen behaupten — und der Mapper rät ihn nicht.
+   */
+  inhalt?: SharePointInhalt;
+}
+
+/**
+ * Klartext → der HTML-Rumpf des Import-Vertrags.
+ *
+ * ZWEI DINGE PASSIEREN HIER, UND BEIDE SIND NÖTIG:
+ *   1. MASKIEREN. `bodyHtml` ist ein HTML-Feld, und der Sanitizer der Persistenz
+ *      (`structure/sanitizeHtml`) wirft alles weg, was wie ein unerlaubtes Tag aussieht. Eine
+ *      Textdatei, die „<Wert> einsetzen" enthält, verlöre ihre spitzen Klammern — aus echtem Inhalt
+ *      würde stillschweigend ein anderer. Maskiert bleibt der Text ZEICHENGLEICH das, was in der
+ *      Datei stand.
+ *   2. ABSÄTZE ERHALTEN. Leerzeile → neuer Absatz, einfacher Umbruch → `<br />`. Das ist die
+ *      Struktur, die eine Textdatei WIRKLICH trägt; mehr wird nicht hineingelesen (keine
+ *      Überschriften, keine Listen, kein Markdown — s. Kopf).
+ */
+function klartextAlsHtml(text: string): string {
+  const maskiere = (s: string): string =>
+    s
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;");
+  return text
+    .replace(/\r\n?/g, "\n")
+    .split(/\n{2,}/)
+    .map((absatz) => absatz.trim())
+    .filter((absatz) => absatz.length > 0)
+    .map((absatz) => `<p>${maskiere(absatz).replaceAll("\n", "<br />")}</p>`)
+    .join("");
 }
 
 /** Der Anbietername am Herkunfts-Anker. Er ist der Schlüsselanteil des Re-Sync (provider+externalId). */
@@ -91,12 +135,21 @@ export function mapDriveItemToImportItem(
   const url = item.webUrl?.trim();
   const stand = sharepointQuellstand(item);
   const geaendert = item.lastModifiedDateTime?.trim();
+  // JOB 4232: Volltext GENAU DANN, wenn welcher gelesen wurde. Jeder andere Befund lässt das Feld
+  // weg — dieselbe Regel wie bisher, nur ist „gelesen" jetzt für `text/plain` erreichbar.
+  const gelesen = opts.inhalt?.art === "text" ? opts.inhalt.text : undefined;
+  const bodyHtml = gelesen ? klartextAlsHtml(gelesen) : undefined;
+  // JOB 4232: die Kernaussage aus dem WIRKLICH gelesenen Text — erster Absatz, an einer Satzgrenze
+  // gekürzt, mit DERSELBEN Hausregel wie der Confluence-Mapper (`structure/kernaussage.ts`). Keine
+  // zweite Kürzungsauslegung, und nichts Geratenes: was hier steht, stand in der Datei.
+  const ausText = gelesen ? kernaussageAusKlartext(gelesen) : "";
   return {
     title: name,
-    // Die Kernaussage ist die Beschreibung der Datei, wenn die Quelle eine führt — sonst der
-    // Dateiname. Der Import-Vertrag verlangt einen nicht-leeren Satz; der Name ist die ehrlichste
-    // Füllung, weil er WIRKLICH aus der Quelle stammt (dieselbe Regel wie im Confluence-Mapper).
-    statement: beschreibung && beschreibung.length > 0 ? beschreibung : name,
+    // Die Kernaussage ist die Beschreibung der Datei, wenn die Quelle eine führt — sonst der erste
+    // Satz des gelesenen Textes, sonst der Dateiname. Der Import-Vertrag verlangt einen nicht-leeren
+    // Satz; jede der drei Füllungen stammt WIRKLICH aus der Quelle (dieselbe Regel wie im
+    // Confluence-Mapper). Die Beschreibung steht vorn, weil ein Mensch sie geschrieben hat.
+    statement: beschreibung && beschreibung.length > 0 ? beschreibung : ausText || name,
     type: "best_practice",
     category: opts.driveId,
     ...(autor ? { author: autor } : {}),
@@ -106,6 +159,7 @@ export function mapDriveItemToImportItem(
     ...(stand !== undefined ? { sourceVersion: stand } : {}),
     ...(url ? { url } : {}),
     provider: SHAREPOINT_PROVIDER,
+    ...(bodyHtml ? { bodyHtml } : {}),
     ...(geaendert ? { updatedAt: geaendert } : {}),
     // Graph liefert JSON mit bereits dekodierten Zeichenketten — kein HTML-Entity-Vertrag wie bei
     // Confluences Storage-XHTML. Der Marker sagt der Anzeige deshalb: NICHT noch einmal dekodieren.

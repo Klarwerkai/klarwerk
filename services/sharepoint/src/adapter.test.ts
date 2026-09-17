@@ -47,6 +47,9 @@ describe("JOB 4086: SharePointSourceAdapter", () => {
         url: "https://contoso.sharepoint.test/sites/technik/Wartungsanweisung.docx",
         geaendertAm: "2026-09-10T08:30:00Z",
         groesseBytes: 24_576,
+        // JOB 4232: Diese Datei nennt keinen Medientyp (`file: {}`) — und aus einem fehlenden Typ
+        // wird nichts geraten, auch nicht aus der Endung. „nur Merkmale" ist hier die Wahrheit.
+        inhaltstyp: "nur-merkmale",
       },
     ]);
     expect(truncated).toBe(false);
@@ -62,6 +65,7 @@ describe("JOB 4086: SharePointSourceAdapter", () => {
       url: null,
       geaendertAm: null,
       groesseBytes: null,
+      inhaltstyp: "nur-merkmale",
     });
   });
 
@@ -77,10 +81,14 @@ describe("JOB 4086: SharePointSourceAdapter", () => {
       expect(String(u)).toContain("/items/01WARTUNG");
       return okJson(DATEI);
     }) as unknown as typeof fetch;
-    const item = await adapterMitDouble(cfg(fetchFn)).holeItem("01WARTUNG");
-    expect(item?.externalId).toBe("01WARTUNG");
-    expect(item?.provider).toBe("SharePoint");
-    expect(item?.url).toBe(DATEI.webUrl);
+    const eintrag = await adapterMitDouble(cfg(fetchFn)).holeItem("01WARTUNG");
+    expect(eintrag?.item.externalId).toBe("01WARTUNG");
+    expect(eintrag?.item.provider).toBe("SharePoint");
+    expect(eintrag?.item.url).toBe(DATEI.webUrl);
+    // JOB 4232: Diese Datei nennt keinen Medientyp — es geht KEIN Inhaltsabruf hinaus, und der
+    // Befund sagt genau das. `bodyHtml` bleibt weg wie bisher.
+    expect(eintrag?.inhalt).toEqual({ art: "nur-merkmale" });
+    expect(eintrag?.item.bodyHtml).toBeUndefined();
   });
 
   it('holeItem auf einen ORDNER ergibt kein Item — das ist etwas anderes als „nicht gefunden"', async () => {

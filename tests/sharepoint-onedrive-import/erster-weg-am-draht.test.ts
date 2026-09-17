@@ -166,6 +166,9 @@ describe("JOB 4086 · S1 — SharePoint-Datei wählen, abrufen, importieren", ()
         name: "Wartungsanweisung.docx",
         url: DATEI_URL,
         geaendertAm: GEAENDERT_AM,
+        // JOB 4232: Eine `.docx` — für sie gilt unverändert „nur Merkmale, kein Volltext". Der
+        // Metadaten-Weg dieses Falls ist von der Inhaltsübernahme nicht berührt.
+        inhalt: "nur-merkmale",
       },
     ]);
 

@@ -43,9 +43,41 @@
 //                              ERFOLGREICHES NACHLESEN (Korrekturpflicht aus JOB 4075 R1). Genau
 //                              dafür steht `liste.isError` VOR `liste.data` in der Verzweigung
 //                              unten; react-query hält die alten Daten nämlich fest.
-//   OFFLINE                  → ein gescheiterter Abruf ohne deutbaren Code fällt auf „Verbindung
-//                              abgelaufen oder nicht erreichbar" (`sharepointFehlertextKey`). Es
-//                              wird NICHTS über den Bestand in SharePoint behauptet.
+//   OFFLINE                  → ZWEI Gestalten, und bis JOB 4232 R4 kannte diese Fläche nur die
+//                              erste: (a) der Abruf LÄUFT und scheitert — ein Fehler ohne deutbaren
+//                              Code, der auf „Verbindung abgelaufen oder nicht erreichbar" fällt;
+//                              (b) der Abruf läuft GAR NICHT, react-query hält ihn auf `paused` und
+//                              der alte Stand bleibt als `data` liegen. In (b) ist weder `isError`
+//                              noch `isFetching` wahr — deshalb wird `fetchStatus` ausdrücklich
+//                              gelesen (s. `probePausiert`). In BEIDEN wird NICHTS über den Bestand
+//                              in SharePoint behauptet und nichts übernommen.
+//
+// ================================================================================================
+// JOB 4232 — DIE NEUE AUSSAGE „INHALT ODER NUR MERKMALE" UND WORAN SIE HÄNGT.
+// ================================================================================================
+//
+// Sie steht je Dateizeile INNERHALB des `liste.data`-Zweigs, und das ist keine Platzierung, sondern
+// die Zusage selbst: Sie erbt damit jeden Zustand der Liste, ohne ihn ein zweites Mal auslegen zu
+// müssen.
+//
+//   LADEN                    → keine Liste, also auch keine Inhaltsaussage. Weder „Inhalt" noch
+//                              „nur Merkmale" steht da, solange die Messung läuft.
+//   ERFOLGREICH LEER         → eine Datei, deren Inhalt nachweislich leer ist, heisst „leer" —
+//                              nicht „übernommen" und nicht „nur Merkmale". Dritter Fall, dritter
+//                              Satz (`imp.sharepoint.vorschau.leer`).
+//   AUFFRISCHUNG LÄUFT       → die Liste ist als NICHT FRISCH gekennzeichnet; aus ihr wird KEINE
+//                              neue Zusage abgeleitet, sie bleibt der Stand von vorhin.
+//   AUFFRISCHUNG GESCHEITERT → `liste.isError` steht VOR `liste.data`: die Liste verschwindet, und
+//                              mit ihr jede Inhaltszusage. Eine gecachte Zeile ist kein
+//                              erfolgreiches Nachlesen — es gibt hier also keine Zusage, die einen
+//                              gescheiterten Abruf überlebt.
+//   FEHLER / OFFLINE         → ein Satz aus den vier Lagen, und die Inhaltsaussage entfällt GANZ.
+//                              Ohne Liste gibt es auch keine Auswahl und keine Annahme.
+//   UNBEKANNTER BEFUND       → gar keine Anzeige. „nur Merkmale" wäre hier geraten (s. `satzKey`).
+//
+// UND NACH DER ÜBERNAHME gilt die MESSUNG, nicht die Vorschau: das Ergebnisbild zeigt je Datei, was
+// wirklich ankam, und listet die Dateien, die wegen ihres Inhalts NICHT übernommen wurden, mit dem
+// Grund. Die Vorschau ist eine Ankündigung; überschrieben wird sie von dem, was gemessen wurde.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ExternalLink, Loader2, RefreshCw } from "lucide-react";
 import { useState } from "react";
@@ -64,27 +96,81 @@ function fehlercode(err: unknown): string | null {
   return err instanceof ApiError ? err.code : null;
 }
 
-/**
- * JOB 4125 — DER ZWEITE AUSGANG DES WIEDERHOLIMPORTS AUF DER LEITUNG.
- *
- * Die Übernahme führt seit JOB 4125 zusätzlich `neuerStand`: die Kennungen, die einen NEUEREN Stand
- * einer Quelle gebracht haben, zu der bereits ein Vorgang in der Prüfung wartet
- * (`services/app/src/routes/sharepoint-import-routes.ts`, Kopf von `OffeneStaende`).
- *
- * WARUM DAS FELD HIER STEHT UND NICHT IN `api.ts`: `api.ts` liegt ausserhalb der Zielpfade dieses
- * Auftrags (§4) — und ein Diff ausserhalb der Zielpfade ist ungeprüfter Code. Die Drahtform wird
- * deshalb hier ERWEITERT und nicht verbogen: das Feld ist OPTIONAL, und fehlt es (eine ältere
- * Antwort, ein anderer Aufrufer), steht die schwächere Aussage da — kein Hinweis, nie eine geratene
- * Zahl. Sein ehrlicher Platz ist `api.ts`; das steht in der Rückgabe unter REST.
- */
-type Uebernahmeergebnis = SharePointUebernahme & { readonly neuerStand?: readonly string[] };
+// ================================================================================================
+// JOB 4232 — FÜNF BEFUNDE ÜBER DEN INHALT, FÜNF SÄTZE. UND FÜR UNBEKANNTES KEINEN.
+// ================================================================================================
+//
+// DIESELBE BAUFORM WIE `fehlerlagen.ts`: Befund hinein, i18n-Schlüssel heraus — ohne DOM, ohne
+// Sprache, übersetzt wird erst dort, wo die Sprache bekannt ist. (Ihr ehrlicher Platz wäre
+// `fehlerlagen.ts` neben der Fehlerabbildung; die Datei liegt ausserhalb der Zielpfade dieses
+// Auftrags, und ein Diff ausserhalb der Zielpfade ist ungeprüfter Code. Das steht in der Rückgabe.)
+//
+// WARUM `null` FÜR UNBEKANNTES UND NICHT EIN AUFFANGSATZ: Bei den vier Fehlerlagen ist „die
+// Verbindung steht gerade nicht" eine Aussage, die für jeden unbekannten Code WAHR bleibt. Hier gibt
+// es keine solche Aussage — wer einen Befund nicht kennt, weiss über den Inhalt GAR NICHTS, und „nur
+// Merkmale" wäre dann eine geratene Zusage. Die ehrliche Anzeige ist deshalb KEINE Anzeige.
+// DREI ABBILDUNGEN UND NICHT EINE, weil ein Satz nicht in zwei Zeitformen zugleich stehen kann:
+// vor der Annahme ist „Inhalt wird übernommen" eine Ankündigung, danach eine Feststellung. Ein
+// gemeinsamer Satz für beides wäre an einer der zwei Stellen falsch — und falsch ist hier teurer
+// als doppelt.
+// ================================================================================================
+// JOB 4232 RUNDE 2 — ANKÜNDIGUNG UND MESSWERT SIND ZWEI VERSCHIEDENE SÄTZE (bens Pflicht 2).
+// ================================================================================================
+//
+// DER BEFUND: In Runde 1 stand an einer `text/plain`-Zeile „Inhalt kommt mit", sobald Medientyp und
+// Grösse passten. Ben hat den Download mit 403 antworten lassen — die Fläche behauptete weiter
+// Inhalt, obwohl nie einer geholt worden war. Eine Zusage ohne Deckung.
+//
+// AB HIER GILT: Der Satz „Inhalt kommt mit" (`vorschau.text`) fällt NUR noch nach einer WIRKLICH
+// erfolgreichen Messung. Solange nur die Merkmale vorliegen, steht die ehrliche Ankündigung da
+// („Textdatei — der Inhalt wird beim Import geprüft"). Gemessen wird für die AUSGEWÄHLTEN Dateien,
+// vor der Annahme, über denselben lesenden Weg.
+const ANKUENDIGUNG_SATZ: Record<string, string> = {
+  // Nur diese eine Zeile ist eine Ankündigung: bei `text` steht die Messung noch aus. Die drei
+  // anderen Befunde sind an den Merkmalen bereits ENTSCHIEDEN — ein anderer Medientyp bleibt ein
+  // anderer, eine 0-Byte-Datei bleibt leer, eine zu grosse bleibt zu gross.
+  text: "imp.sharepoint.vorschau.textdatei",
+  leer: "imp.sharepoint.vorschau.leer",
+  "nur-merkmale": "imp.sharepoint.vorschau.nurMerkmale",
+  "zu-gross": "imp.sharepoint.vorschau.zuGross",
+};
+
+/** Der GEMESSENE Befund. `text` heisst hier: der Inhalt wurde geholt und gelesen. */
+const GEMESSEN_SATZ: Record<string, string> = {
+  text: "imp.sharepoint.vorschau.text",
+  leer: "imp.sharepoint.vorschau.leer",
+  "nur-merkmale": "imp.sharepoint.vorschau.nurMerkmale",
+  "zu-gross": "imp.sharepoint.vorschau.zuGross",
+  unlesbar: "imp.sharepoint.vorschau.unlesbar",
+};
+
+const UEBERNOMMEN_SATZ: Record<string, string> = {
+  text: "imp.sharepoint.uebernommen.text",
+  "nur-merkmale": "imp.sharepoint.uebernommen.nurMerkmale",
+};
+
+const NICHT_UEBERNOMMEN_SATZ: Record<string, string> = {
+  leer: "imp.sharepoint.nichtUebernommen.leer",
+  "zu-gross": "imp.sharepoint.nichtUebernommen.zuGross",
+  unlesbar: "imp.sharepoint.nichtUebernommen.unlesbar",
+};
+
+/** Der Satz zu einem Befund aus der gegebenen Abbildung — oder `null`, wenn es keinen gibt. */
+function satzKey(karte: Record<string, string>, befund: string | null | undefined): string | null {
+  return (befund ? karte[befund] : undefined) ?? null;
+}
+
+// JOB 4232 — HIER STAND EINE LOKALE TYPERWEITERUNG UM `neuerStand`, weil `api.ts` in JOB 4125
+// ausserhalb der Zielpfade lag. Sie ist ABGELÖST und nicht danebengestellt: das Feld steht jetzt in
+// `api.ts` bei den übrigen Feldern der Antwort, und es gibt dafür EINE Stelle statt zwei. Die Fläche
+// liest ab hier direkt `SharePointUebernahme`.
 
 export function SharePointImportBereich(): JSX.Element | null {
   const { t, i18n } = useTranslation();
   const { role } = useRole();
   const qc = useQueryClient();
   const [gewaehlt, setGewaehlt] = useState<string[]>([]);
-  const [ergebnis, setErgebnis] = useState<Uebernahmeergebnis | null>(null);
+  const [ergebnis, setErgebnis] = useState<SharePointUebernahme | null>(null);
 
   // Die Routen verlangen `users.manage`. Wer es nicht trägt, fragt gar nicht erst.
   const istVerwalter = role === "admin";
@@ -102,6 +188,43 @@ export function SharePointImportBereich(): JSX.Element | null {
     // Erst fragen, wenn die Auskunft sagt, dass es etwas zu fragen gibt. Ein Abruf „auf Verdacht"
     // wäre genau der 503 als Bedienweg, den die Zugangs-Auskunft abgelöst hat.
     enabled: istVerwalter && benutzbar,
+    retry: false,
+  });
+
+  // ============================================================================================
+  // JOB 4232 R2 — DIE MESSUNG VOR DER ANNAHME.
+  // ============================================================================================
+  //
+  // Sie läuft für GENAU DIE Dateien, die angekreuzt sind, und für keine andere: ein Blick in die
+  // Liste darf nicht die halbe Bibliothek herunterladen. Der Schlüssel trägt die SORTIERTE Auswahl,
+  // damit dieselbe Menge in anderer Klickreihenfolge dieselbe Messung ist und nicht eine zweite.
+  //
+  // DAS ZUSTANDSMODELL FÄLLT DAMIT VON SELBST RICHTIG (§9): `isPending` ist der Ladezustand (keine
+  // Aussage), `isError` nimmt jede Zusage zurück (Fehler VOR Daten, s. unten), und ohne Auswahl
+  // läuft sie gar nicht.
+  //
+  // ============================================================================================
+  // JOB 4232 R3 — DER BEFUND HÄNGT AM DATEISTAND, NICHT NUR AN DER KENNUNG (bens Pflicht 2).
+  // ============================================================================================
+  //
+  // DER BEFUND: Ben hat gemessen, dass eine erfolgreiche Messung eine spätere ÄNDERUNG der Datei
+  // überlebt — „Neu laden" holte nur die Liste, der Messwert blieb unter demselben Schlüssel liegen
+  // („expected 'Inhalt kommt mit' to be 'nicht als Text lesbar'"). Eine Zusage über einen Stand, den
+  // es nicht mehr gibt, ist genau die Sorte Unwahrheit, gegen die dieser ganze Auftrag steht.
+  //
+  // DIE ANTWORT STEHT IM SCHLÜSSEL: er trägt je gewählter Datei die Kennung UND ihren Quellstand aus
+  // der AKTUELLEN Liste. Bringt eine Auffrischung einen neuen Stand, ist es ein anderer Schlüssel —
+  // und damit zwingend eine neue Messung, ohne dass irgendwo ein Invalidieren vergessen werden kann.
+  // Der Stand kommt aus derselben Liste, die der Mensch vor sich sieht; verschwindet die Liste, gibt
+  // es auch keinen Schlüssel mehr (s. `gemessenerBefund`).
+  const auswahlSchluessel = [...gewaehlt].sort();
+  const standVon = (id: string): string =>
+    liste.data?.dateien.find((d) => d.id === id)?.geaendertAm ?? "";
+  const messSchluessel = auswahlSchluessel.map((id) => `${id}@${standVon(id)}`);
+  const probe = useQuery({
+    queryKey: ["sharepoint-inhalte", messSchluessel],
+    queryFn: () => sharepointApi.inhalte(auswahlSchluessel),
+    enabled: istVerwalter && benutzbar && auswahlSchluessel.length > 0,
     retry: false,
   });
 
@@ -181,6 +304,73 @@ export function SharePointImportBereich(): JSX.Element | null {
     );
 
   const listenFehler = liste.isError ? t(sharepointFehlertextKey(fehlercode(liste.error))) : null;
+  // JOB 4232 R2 — FEHLER VOR DATEN, auch hier: Scheitert die Messung, gilt der Fehlersatz, und es
+  // wird über den Inhalt NICHTS mehr behauptet. react-query hält die alte Antwort bei einer
+  // gescheiterten Auffrischung fest; stünde `probe.data` zuerst, käme ein alter Messwert als
+  // aktueller heraus — genau die Korrekturpflicht aus JOB 4075 R1, eine Ebene tiefer.
+  // ============================================================================================
+  // JOB 4232 R4 — EIN PAUSIERTER ABRUF IST KEIN FEHLER UND TROTZDEM KEINE GRUNDLAGE.
+  // ============================================================================================
+  //
+  // BENS BEFUND AN RUNDE 3, wörtlich: „ein geworfener Netzwerkfehler ersetzt keinen pausierten
+  // Offlineabruf mit Cache." Er hat den Weg gemessen: erfolgreiche Vorschau → offline → auffrischen
+  // → der Übernahmeknopf blieb offen („expected false to be true").
+  //
+  // WARUM RUNDE 3 IHN NICHT SAH: Sie hing die ganze Sperre an `isError` und `isFetching`. Offline
+  // ist BEIDES falsch. react-query fährt den Abruf gar nicht erst — er steht auf `paused`, und der
+  // Befund von vorhin bleibt als `data` liegen. Ein Zustand also, in dem nichts gescheitert ist,
+  // nichts läuft und trotzdem nichts gemessen wurde: genau die Lücke, durch die eine Zusage ohne
+  // frische Grundlage stehen blieb (§9 des Auftrags).
+  //
+  // ER GILT WIE EIN FEHLER, weil er für den Menschen einer ist: Er bekommt den Satz aus denselben
+  // vier Lagen — „die Verbindung steht gerade nicht" —, es gibt keine Inhaltszusage und keine
+  // Übernahme. Kein fünfter Satz, kein neuer Schlüssel, kein Code auf der Fläche.
+  const probePausiert = probe.fetchStatus === "paused";
+  const probeFehler = probe.isError
+    ? t(sharepointFehlertextKey(fehlercode(probe.error)))
+    : probePausiert
+      ? // Kein Servercode, weil kein Server geantwortet hat. `null` fällt auf genau den Satz, der
+        // hier wahr ist (`fehlerlagen.ts:58-62`).
+        t(sharepointFehlertextKey(null))
+      : null;
+  /**
+   * Läuft gerade eine Messung? Dann gilt KEIN alter Messwert mehr.
+   *
+   * JOB 4232 R3: `isFetching` deckt auch die AUFFRISCHUNG einer bereits beantworteten Messung ab —
+   * react-query hält die alte Antwort in dieser Zeit fest, und aus einem festgehaltenen Stand darf
+   * keine Zusage abgeleitet werden (§9). Während der Auffrischung steht deshalb der Ladezustand da,
+   * nicht das Ergebnis von vorhin.
+   */
+  const probeLaeuft = probe.isFetching || (probe.isPending && gewaehlt.length > 0);
+  /** Der GEMESSENE Befund einer Kennung — oder `null`, solange es keinen GÜLTIGEN FRISCHEN gibt. */
+  const gemessenerBefund = (id: string): string | null => {
+    if (probeFehler !== null || probeLaeuft || !probe.data || !gewaehlt.includes(id)) {
+      return null;
+    }
+    return probe.data.befunde.find((b) => b.id === id)?.befund ?? null;
+  };
+  // ============================================================================================
+  // JOB 4232 R3 — OHNE GÜLTIGE MESSUNG KEINE ÜBERNAHME (bens Korrekturpflicht 3).
+  // ============================================================================================
+  //
+  // DER BEFUND: Der Knopf sah bisher nur auf die Auswahl und den laufenden Import. Damit liess sich
+  // übernehmen, WÄHREND die Prüfung lief und NACHDEM sie gescheitert war — die Messung war eine
+  // Anzeige, keine Voraussetzung. Ein Mensch konnte also genau das auslösen, was diese Runde
+  // verhindern soll: eine Übernahme auf einer Grundlage, die niemand kennt.
+  //
+  // AB HIER IST SIE EINE BEDINGUNG. Übernommen wird nur, wenn zu JEDER gewählten Datei ein frischer,
+  // erfolgreicher Befund vorliegt. Fehlt einer, läuft die Messung noch oder ist sie gescheitert,
+  // bleibt der Knopf zu — und daneben steht, WORAUF gewartet wird. Ein gesperrter Knopf ohne Grund
+  // wäre eine Sackgasse.
+  const alleGemessen = gewaehlt.length > 0 && gewaehlt.every((id) => gemessenerBefund(id) !== null);
+  const uebernahmeErlaubt = alleGemessen && !uebernehmen.isPending;
+  /** Warum der Knopf zu ist — oder `null`, wenn er offen ist. Immer ein Satz, nie ein leeres Bild. */
+  const wartegrund =
+    gewaehlt.length === 0 || uebernahmeErlaubt || probeFehler !== null
+      ? null
+      : probeLaeuft
+        ? "imp.sharepoint.pruefungLaeuft"
+        : "imp.sharepoint.pruefungFehlt";
   const uebernahmeFehler = uebernehmen.isError
     ? t(sharepointFehlertextKey(fehlercode(uebernehmen.error)))
     : null;
@@ -189,11 +379,16 @@ export function SharePointImportBereich(): JSX.Element | null {
     <Card id={SHAREPOINT_BEREICH_ANKER} className="mb-5 scroll-mt-4">
       <SectionLabel>{t("imp.sharepoint.titel")}</SectionLabel>
       <p className="mt-1 text-[12.5px] leading-relaxed text-muted">{t("imp.sharepoint.was")}</p>
-      {/* EHRLICHKEIT VOR OPTIK: Der Dateiinhalt wird NICHT gelesen (der Adapter ruft die Merkmale
-          ab, nicht den Text). Wer das nicht weiss, hält das entstehende Objekt für den Inhalt der
-          Datei. Der Satz steht deshalb VOR dem Import und nicht in einer Fussnote danach. */}
+      {/* EHRLICHKEIT VOR OPTIK — UND SEIT JOB 4232 EINE ANDERE WAHRHEIT ALS VORHER. Bis hierher
+          stand hier „Der Inhalt der Datei wird dabei nicht gelesen" (`imp.sharepoint.ohneInhalt`).
+          Für Textdateien ist dieser Satz seit dieser Runde FALSCH — und ein falscher Satz vor dem
+          Import ist genau die Sorte Zusage, gegen die er einmal geschrieben wurde. Er ist deshalb
+          ABGELÖST durch den Satz, der beides sagt: was gelesen wird und was nicht. Wie es je Datei
+          wirklich steht, sagt die Zeile in der Liste — diese hier ist die Regel, nicht die Messung.
+          (Der alte Schlüssel bleibt in `i18n.ts` stehen: die Sprachdatei ist in diesem Auftrag
+          ausdrücklich nur ADDITIV zu ändern, §4 Auflage 1. Das steht in der Rückgabe.) */}
       <p className="mt-1 text-[12px] leading-relaxed text-muted-2">
-        {t("imp.sharepoint.ohneInhalt")}
+        {t("imp.sharepoint.inhaltRegel")}
       </p>
 
       <div className="mt-3">
@@ -206,11 +401,20 @@ export function SharePointImportBereich(): JSX.Element | null {
             <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-2">
               {t("imp.sharepoint.listeTitel")}
             </span>
+            {/* JOB 4232 R3 — „NEU LADEN" FRISCHT BEIDES AUF (bens Pflicht 2). Bis hierher holte der
+                Knopf NUR die Liste; ein Messwert von vorhin blieb daneben stehen und galt weiter,
+                auch wenn die Datei sich inzwischen geändert hatte. Ein Mensch, der auffrischt, will
+                den aktuellen Stand — und zwar den ganzen, nicht die Hälfte davon. Der Schlüssel der
+                Messung trägt zusätzlich den Dateistand (s. oben); beides zusammen heisst: nach einem
+                Auffrischen gibt es keine Zusage mehr, die nicht neu gemessen wurde. */}
             <Button
               variant="outline"
               data-testid="sharepoint-neu-laden"
-              disabled={liste.isFetching}
-              onClick={() => void liste.refetch()}
+              disabled={liste.isFetching || probe.isFetching}
+              onClick={() => {
+                void liste.refetch();
+                void probe.refetch();
+              }}
             >
               <RefreshCw size={14} />
               {t("imp.sharepoint.neuLaden")}
@@ -228,8 +432,12 @@ export function SharePointImportBereich(): JSX.Element | null {
           ) : liste.data ? (
             <>
               {/* Eine Liste, die gerade aufgefrischt wird, ist nicht der aktuelle Stand — sie ist
-                  der letzte, und das steht daneben. */}
-              {liste.isFetching ? (
+                  der letzte, und das steht daneben.
+                  JOB 4232 R4: Der PAUSIERTE Abruf gehört dazu. Offline steht `isFetching` auf
+                  `false`, obwohl die Auffrischung offen ist — ohne diese Zeile sähe die Liste von
+                  vorhin aus wie der frische Stand (§9: „der alte Stand bleibt sichtbar UND ist als
+                  solcher erkennbar"). */}
+              {liste.isFetching || liste.fetchStatus === "paused" ? (
                 <p data-testid="sharepoint-nicht-frisch" className="mt-2 text-[12px] text-muted-2">
                   {t("imp.sharepoint.nichtFrisch")}
                 </p>
@@ -242,6 +450,33 @@ export function SharePointImportBereich(): JSX.Element | null {
                 <ul className="mt-2 space-y-1.5">
                   {liste.data.dateien.map((datei) => {
                     const stand = formatKoTimestamp(datei.geaendertAm, i18n.language);
+                    // JOB 4232 — DIE VORSCHAU JE DATEI: Inhalt oder nur Merkmale, VOR der Annahme.
+                    // Sie hängt an DIESER Liste: Während des Ladens gibt es sie nicht (dann steht
+                    // hier gar keine Liste), und scheitert die Auffrischung, verschwindet die Liste
+                    // samt dieser Zusage — die Verzweigung „Fehler VOR Daten" weiter oben ist genau
+                    // das. Ein unbekannter Befund zeigt NICHTS statt eines geratenen Satzes.
+                    //
+                    // JOB 4232 R2 — DREI STUFEN, IN DIESER REIHENFOLGE (bens Korrekturpflicht 2):
+                    //   1. GEMESSEN  → der Befund des wirklich gefahrenen Inhaltsabrufs. Er schlägt
+                    //                  jede Ankündigung; hier und nur hier darf „Inhalt kommt mit"
+                    //                  stehen.
+                    //   2. MESSUNG LÄUFT → ein Ladezustand, KEINE Aussage über den Inhalt.
+                    //   3. ANKÜNDIGUNG → was die Merkmale hergeben, als Ankündigung formuliert.
+                    // Scheitert die Messung, fällt sie auf Stufe 3 zurück UND der Fehlersatz steht
+                    // unter der Liste — behauptet wird dann nichts Positives mehr.
+                    const gemessen = gemessenerBefund(datei.id);
+                    // JOB 4232 R3: `probeLaeuft` deckt auch die AUFFRISCHUNG ab — während sie läuft,
+                    // steht der Ladezustand da und nicht der Messwert von vorhin.
+                    const misst = gewaehlt.includes(datei.id) && probeLaeuft && !probeFehler;
+                    const inhaltKey =
+                      gemessen !== null
+                        ? satzKey(GEMESSEN_SATZ, gemessen)
+                        : misst
+                          ? "imp.sharepoint.vorschau.laeuft"
+                          : satzKey(ANKUENDIGUNG_SATZ, datei.inhaltstyp);
+                    // Der grüne Ton ist der Ton einer ZUSAGE — er steht deshalb nur da, wo wirklich
+                    // gemessen wurde. Eine Ankündigung bekommt ihn nicht.
+                    const zusage = gemessen === "text";
                     return (
                       <li key={datei.id}>
                         <label className="flex cursor-pointer items-center gap-2.5 rounded-input border border-hairline px-2.5 py-2 hover:bg-hairline-soft">
@@ -254,6 +489,33 @@ export function SharePointImportBereich(): JSX.Element | null {
                           <span className="min-w-0 flex-1 truncate text-[13px] text-text">
                             {datei.name}
                           </span>
+                          {/* ZWEI ABZEICHEN STATT EINER BERECHNETEN KLASSENKETTE. Die naheliegende
+                              Schreibweise wäre ein Ton im Template (`${… ? "bg-trust-pos-bg" : …}`)
+                              — sie kostet den Klassensammler
+                              (`tests/app/mega47-modale-flaechen-sammler.test.tsx`) eine weitere
+                              unauflösbare Bindung, gemessen im Torlauf (222 statt 221). Diese Liste
+                              soll schrumpfen und nicht wachsen. So geschrieben liest der Sammler
+                              BEIDE Klassenketten flach — die Fläche wird von seiner Deckung
+                              wirklich erfasst, statt nur gezählt zu werden. */}
+                          {inhaltKey === null ? null : zusage ? (
+                            <span
+                              data-testid={`sharepoint-inhaltstyp-${datei.id}`}
+                              data-inhaltstyp={datei.inhaltstyp}
+                              data-gemessen={gemessen ?? ""}
+                              className="shrink-0 rounded-btn bg-trust-pos-bg px-1.5 py-0.5 text-[10.5px] text-trust-pos-text"
+                            >
+                              {t(inhaltKey)}
+                            </span>
+                          ) : (
+                            <span
+                              data-testid={`sharepoint-inhaltstyp-${datei.id}`}
+                              data-inhaltstyp={datei.inhaltstyp}
+                              data-gemessen={gemessen ?? ""}
+                              className="shrink-0 rounded-btn bg-hairline-soft px-1.5 py-0.5 text-[10.5px] text-muted-2"
+                            >
+                              {t(inhaltKey)}
+                            </span>
+                          )}
                           {/* Kein Platzhalter-Datum: steht kein lesbarer Stand in der Quelle,
                               steht hier nichts. */}
                           {stand !== null ? (
@@ -272,11 +534,31 @@ export function SharePointImportBereich(): JSX.Element | null {
                   {t("imp.sharepoint.gedeckelt")}
                 </p>
               ) : null}
+              {/* JOB 4232 R2 — SCHEITERT DIE MESSUNG, STEHT DAS DA. Nicht als Inhaltsaussage (die
+                  entfällt ganz, s. `gemessenerBefund`), sondern als der Satz aus den vier Lagen —
+                  derselbe Katalog wie überall. Der Mensch sieht damit, dass er gerade NICHT weiss,
+                  was in den gewählten Dateien steckt, statt es aus dem Ausbleiben zu schliessen. */}
+              {probeFehler !== null ? (
+                <p
+                  data-testid="sharepoint-probefehler"
+                  className="mt-2 rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text"
+                >
+                  {probeFehler}
+                </p>
+              ) : null}
+              {/* WARUM DER KNOPF ZU IST — sonst wäre er eine Sackgasse. Der Fehlersatz der Messung
+                  steht schon darüber; hier steht der Grund für die zwei stillen Fälle: die Messung
+                  läuft noch, oder zu einer gewählten Datei gibt es keinen Befund. */}
+              {wartegrund !== null ? (
+                <p data-testid="sharepoint-wartegrund" className="mt-2 text-[12px] text-muted">
+                  {t(wartegrund)}
+                </p>
+              ) : null}
               <div className="mt-3">
                 <Button
                   variant="primary"
                   data-testid="sharepoint-uebernehmen"
-                  disabled={gewaehlt.length === 0 || uebernehmen.isPending}
+                  disabled={!uebernahmeErlaubt}
                   onClick={() => uebernehmen.mutate(gewaehlt)}
                 >
                   {uebernehmen.isPending ? <Loader2 size={15} className="animate-spin" /> : null}
@@ -325,9 +607,21 @@ export function SharePointImportBereich(): JSX.Element | null {
               <ul className="mt-1.5 space-y-1">
                 {ergebnis.dateien.map((datei) => {
                   const stand = formatKoTimestamp(datei.geaendertAm, i18n.language);
+                  // JOB 4232 — WAS WIRKLICH ANKAM, an DIESER Übernahme gemessen. Nicht die Vorschau
+                  // von vorhin: die beiden können auseinanderliegen, und dann gilt die Messung.
+                  const inhaltKey = satzKey(UEBERNOMMEN_SATZ, datei.inhalt);
                   return (
                     <li key={datei.id} className="text-[12.5px] text-text">
                       <span className="font-semibold">{datei.name}</span>
+                      {inhaltKey !== null ? (
+                        <span
+                          data-testid={`sharepoint-ergebnis-inhalt-${datei.id}`}
+                          data-inhalt={datei.inhalt}
+                          className="ml-2 text-[11.5px] text-muted"
+                        >
+                          {t(inhaltKey)}
+                        </span>
+                      ) : null}
                       {stand !== null ? (
                         <span className="ml-2 font-mono text-[10px] text-muted-2">
                           {t("imp.sharepoint.stand", { zeit: stand })}
@@ -356,10 +650,32 @@ export function SharePointImportBereich(): JSX.Element | null {
                   Prüfung. Der Satz sagt beides, damit niemand die zweite Zeile dort für eine
                   Dublette hält. Die Zahl kommt aus der Antwort (`neuerStand`) — kein Zähler ohne
                   Erzeuger; fehlt das Feld, steht hier nichts. */}
-              {(ergebnis.neuerStand?.length ?? 0) > 0 ? (
+              {ergebnis.neuerStand.length > 0 ? (
                 <p data-testid="sharepoint-neuer-stand" className="mt-1.5 text-[12px] text-muted">
-                  {t("imp.sharepoint.neuerStand", { n: ergebnis.neuerStand?.length ?? 0 })}
+                  {t("imp.sharepoint.neuerStand", { n: ergebnis.neuerStand.length })}
                 </p>
+              ) : null}
+              {/* JOB 4232 — WAS NICHT ÜBERNOMMEN WURDE, WEIL SEIN INHALT NICHT TRÄGT. Jede dieser
+                  Dateien wurde WIRKLICH gelesen, und das Ergebnis war leer, zu gross oder nicht als
+                  Text dekodierbar. Es entstand deshalb KEIN Eintrag — und der Mensch liest je Datei
+                  den Grund, nicht einen Sammelsatz. Ohne diese Zeile sähe „nichts Neues übernommen"
+                  aus wie ein Wiederholimport, obwohl etwas ganz anderes passiert ist. */}
+              {ergebnis.ohneInhalt.length > 0 ? (
+                <ul data-testid="sharepoint-ohne-inhalt" className="mt-1.5 space-y-0.5">
+                  {ergebnis.ohneInhalt.map((eintrag) => {
+                    const key = satzKey(NICHT_UEBERNOMMEN_SATZ, eintrag.befund);
+                    return key === null ? null : (
+                      <li
+                        key={eintrag.id}
+                        data-testid={`sharepoint-ohne-inhalt-${eintrag.id}`}
+                        data-befund={eintrag.befund}
+                        className="text-[12px] text-muted"
+                      >
+                        {t(key)}
+                      </li>
+                    );
+                  })}
+                </ul>
               ) : null}
               {ergebnis.alreadyQueued > 0 ? (
                 <p className="mt-1.5 text-[12px] text-muted">
