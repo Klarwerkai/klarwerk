@@ -80,8 +80,16 @@
 // KEINE PRODUKTIVDATEN: jede angelegte Datenbank traegt `test` im Namen (`guardedLocalPgTestUrl`-
 // Regel, durchgesetzt in `pgUrl`) und wird in `afterAll` wieder entfernt; jeder Fall bekommt einen
 // EIGENEN Dumpordner, damit ein zweiter Lauf nie den Dump des ersten mitliest.
-import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
+//
+// JOB 4305 · WOHER DIE ANLAGE KOMMT. Bis dahin standen Konten, Eintraege, Beziehungen, Sicherung
+// und Drill als lokale Konstanten und Funktionen in DIESER Datei. Seit es einen zweiten Nachweis
+// auf derselben Strecke gibt (`beziehungen-im-browser-nach-restore.integration.test.ts`), wohnen
+// sie in `vorrichtung.ts` — EIN Ort, den beide rufen. Zwei ausgeschriebene Anlagen verglichen
+// jeweils gegen ihren eigenen Vorzustand, und „derselbe Bestand" waere eine Behauptung ueber zwei
+// Texte. Die Zusicherungen dieser Datei sind dabei unveraendert geblieben.
+import { mkdtempSync, rmSync } from "node:fs";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Pool } from "pg";
@@ -89,19 +97,30 @@ import { GenericContainer, type StartedTestContainer, Wait } from "testcontainer
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { guardedLocalPgTestUrl } from "../../services/db-tx";
 import {
+  ADMIN,
   type Abdruck,
+  BEZIEHUNGEN,
+  type Bestand,
+  CONTROLLER,
+  ENTZOGEN,
+  ERWARTETE_SICHT,
+  EXPERTE,
   type Instanz,
   JOB,
+  KOS,
   type Konto,
+  PASSWORT,
   type Rollensicht,
   type Verbindung,
-  WURZEL,
+  baueBestandAuf,
   erhebeAbdruck,
+  fahreDrill,
   kantenVon,
   pgUrl,
   prozessLebt,
   pruefeSicht,
   sende,
+  sichere,
   stabil,
   starteKlarwerk,
   totalVon,
@@ -109,122 +128,6 @@ import {
   werkzeugFehlt,
   zerlege,
 } from "./vorrichtung";
-
-const PASSWORT = "Wiederanlauf-Beziehungen-2026!";
-
-/** Die vier Konten. `entzogen` startet als Controller und verliert das Recht VOR der Sicherung. */
-const ADMIN = { rolle: "admin", name: "Wiederanlauf Admin", email: "bz-admin@wiederanlauf.test" };
-const CONTROLLER = {
-  rolle: "controller",
-  name: "Wiederanlauf Controllerin",
-  email: "bz-controller@wiederanlauf.test",
-};
-const EXPERTE = {
-  rolle: "experte",
-  name: "Wiederanlauf Experte",
-  email: "bz-experte@wiederanlauf.test",
-};
-const ENTZOGEN = {
-  rolle: "entzogen",
-  name: "Wiederanlauf Entzogen",
-  email: "bz-entzogen@wiederanlauf.test",
-};
-
-/**
- * Fuenf Wissensobjekte ueber ALLE drei Vertraulichkeitsstufen (Auftrag §5.1: mindestens vier mit
- * unterschiedlicher Vertraulichkeit). Autor ist durchgehend der Admin — damit greift fuer den
- * Experten die Autor-Ausnahme aus `services/app/src/sichtbarkeit.ts:71-76` NICHT, und die beiden
- * vertraulichen Eintraege sind fuer ihn wirklich unsichtbar.
- */
-const KOS = [
-  { kurz: "alpha", titel: "Wartungsplan Halle 2", stufe: "intern" },
-  { kurz: "beta", titel: "Filterwechsel dokumentiert", stufe: "intern" },
-  { kurz: "gamma", titel: "Dichtung sproede an Pumpe P2", stufe: "intern" },
-  { kurz: "geheim", titel: "Lieferantenpreis Ventile", stufe: "vertraulich" },
-  { kurz: "streng", titel: "Vertragsstrafe Lieferant Nord", stufe: "streng_vertraulich" },
-] as const;
-
-/**
- * Fuenf Beziehungen: zwei ungerichtete, zwei gerichtete, eine symmetrische; fuenf VERSCHIEDENE
- * Arten; zwei verschiedene Urheber; jede mit ihrem EIGENEN, bekannten Wiederholschluessel. Zwei
- * davon haben einen Endpunkt, den Experte und Entzogener nicht sehen duerfen.
- */
-const BEZIEHUNGEN = [
-  {
-    kurz: "alpha-beta",
-    von: "alpha",
-    nach: "beta",
-    art: "ergaenzt",
-    richtung: "ungerichtet",
-    wer: "admin",
-    schluessel: "j4275-alpha-beta-ungerichtet",
-  },
-  {
-    kurz: "gamma-alpha",
-    von: "gamma",
-    nach: "alpha",
-    art: "ersetzt",
-    richtung: "gerichtet",
-    wer: "admin",
-    schluessel: "j4275-gamma-alpha-gerichtet",
-  },
-  {
-    kurz: "beta-gamma",
-    von: "beta",
-    nach: "gamma",
-    art: "widerspricht",
-    richtung: "gerichtet",
-    wer: "controller",
-    schluessel: "j4275-beta-gamma-gerichtet",
-  },
-  {
-    kurz: "alpha-geheim",
-    von: "alpha",
-    nach: "geheim",
-    art: "gehoert_zu",
-    richtung: "ungerichtet",
-    wer: "controller",
-    schluessel: "j4275-alpha-geheim-verborgen",
-  },
-  {
-    kurz: "beta-streng",
-    von: "beta",
-    nach: "streng",
-    art: "beispiel_fuer",
-    richtung: "symmetrisch",
-    wer: "admin",
-    schluessel: "j4275-beta-streng-verborgen",
-  },
-] as const;
-
-/**
- * DER VOLLSTAENDIGE VORZUSTAND ALS ZAHL — jede Rolle, jeder Eintrag, kein „ausgewaehlt".
- *
- * WARUM DIESE TABELLE SEIT RUNDE 2 HIER STEHT (BEN R1, Substanzpunkt 4, woertlich): „Die
- * Vorzustandskalibrierung prueft nur ausgewaehlte Sichten auf ‚alpha'. Damit bleibt der Ausfall
- * anderer erhobener Sichten unentdeckt." Zwei Stichproben belegten den Vorzustand von zwanzig
- * Sichten; faellt eine der uebrigen achtzehn aus, sah es niemand.
- *
- * DIE ZAHLEN SIND ABGELESEN UND NICHT GERATEN. `darfSehen`
- * (`services/app/src/sichtbarkeit.ts:68-79`) laesst `vertraulich` UND `streng_vertraulich` nur fuer
- * `ko.validate` durch — beide Stufen werden bewusst gleich behandelt (`sichtbarkeit.ts:29-31`).
- * `ko.validate` hat laut `services/rbac/src/policy.ts:33,37` genau `controller` und `admin`; Autor
- * aller fuenf Eintraege ist der Admin, die Autor-Ausnahme greift fuer Experte und Entzogenen also
- * nicht. `total` zaehlt NACH dem Trimm (`kanten-service.ts:518-523`). Daraus:
- *
- *   · admin/controller sehen alle fuenf Beziehungen — alpha 3, beta 3, gamma 2, geheim 1, streng 1.
- *   · experte/entzogen verlieren die beiden mit verborgenem Endpunkt und erreichen `geheim` und
- *     `streng` selbst nicht: alpha 2, beta 2, gamma 2, geheim 0, streng 0.
- *
- * `entzogen` steht ausdruecklich in der Spalte des Experten: dieses Konto war bei der Anlage
- * Controller und hat das Recht VOR der Sicherung verloren.
- */
-const ERWARTETE_SICHT: Record<string, Record<string, number>> = {
-  admin: { alpha: 3, beta: 3, gamma: 2, geheim: 1, streng: 1 },
-  controller: { alpha: 3, beta: 3, gamma: 2, geheim: 1, streng: 1 },
-  experte: { alpha: 2, beta: 2, gamma: 2, geheim: 0, streng: 0 },
-  entzogen: { alpha: 2, beta: 2, gamma: 2, geheim: 0, streng: 0 },
-};
 
 describe("JOB 4275 · Wissensbeziehungen ueberleben den echten Produkt-Restore", () => {
   let container: StartedTestContainer | undefined;
@@ -248,13 +151,8 @@ describe("JOB 4275 · Wissensbeziehungen ueberleben den echten Produkt-Restore",
   let pidVorher = 0;
   let pidNachher = 0;
 
-  const koIds = new Map<string, string>();
-  const kantenIds = new Map<string, string>();
-  const konten: Konto[] = [];
-  let adminToken = "";
-  let adminId = "";
-  let controllerId = "";
-  let entzogenId = "";
+  /** Der angelegte Bestand. `null` heisst: B1 ist nicht gelaufen. */
+  let bestand: Bestand | null = null;
   /** Der Stand VOR der Sicherung. `null` heisst: B1 ist nicht gelaufen, es gibt nichts zu vergleichen. */
   let vorzustand: Abdruck | null = null;
   /** Belege fuer die Rueckgabe (§5.7). */
@@ -262,14 +160,16 @@ describe("JOB 4275 · Wissensbeziehungen ueberleben den echten Produkt-Restore",
   let dumpHash = "";
   let dumpBytes = 0;
 
-  const koId = (kurz: string): string => {
-    const id = koIds.get(kurz);
-    if (!id) {
-      throw new Error(`${JOB}: das Wissensobjekt „${kurz}" wurde nie angelegt.`);
+  const dieser = (): Bestand => {
+    if (!bestand) {
+      throw new Error(`${JOB}: B1 ist nicht gelaufen — es gibt keinen Bestand.`);
     }
-    return id;
+    return bestand;
   };
-  const koListe = (): string[] => KOS.map((k) => koId(k.kurz));
+  const koId = (kurz: string): string => dieser().koId(kurz);
+  const kanteId = (kurz: string): string => dieser().kanteId(kurz);
+  const koListe = (): string[] => dieser().koListe();
+  const konten = (): readonly Konto[] => dieser().konten;
 
   const sicht = (abdruck: Abdruck, rolle: string, kurz: string): Rollensicht => {
     const treffer = abdruck.sichten.find((s) => s.rolle === rolle && s.koId === koId(kurz));
@@ -344,87 +244,6 @@ describe("JOB 4275 · Wissensbeziehungen ueberleben den echten Produkt-Restore",
     }
   }, 180_000);
 
-  /** Ein Dump mit dem UNVERAENDERTEN `backup.sh`, in einem EIGENEN Ordner (Auftrag §8.6). */
-  function sichere(v: Verbindung, unterordner: string): string {
-    const ordner = join(arbeitsordner, unterordner);
-    mkdirSync(ordner, { recursive: true });
-    // `backup.sh` bevorzugt KLARWERK_DATABASE_URL vor DATABASE_URL — stuende sie in der Umgebung,
-    // sicherte dieser Lauf eine ANDERE Datenbank als die eben gefuellte.
-    const sicherungsEnv: NodeJS.ProcessEnv = {
-      ...process.env,
-      DATABASE_URL: pgUrl(v, quellDb),
-      BACKUP_DIR: ordner,
-    };
-    sicherungsEnv.KLARWERK_DATABASE_URL = undefined;
-    const backup = spawnSync("bash", [join(WURZEL, "scripts/backup/backup.sh")], {
-      cwd: WURZEL,
-      encoding: "utf8",
-      timeout: 300_000,
-      env: sicherungsEnv,
-    });
-    expect(backup.status, `${backup.stdout}${backup.stderr}`).toBe(0);
-    const datei = readdirSync(ordner).find((d) => d.endsWith(".dump"));
-    expect(datei, "backup.sh hat keinen Dump veroeffentlicht").toBeTruthy();
-    return join(ordner, String(datei));
-  }
-
-  /** Der UNVERAENDERTE Drill, vollstaendig, gegen ein eigenes LEERES Ziel. */
-  function fahreDrill(v: Verbindung, dump: string, ziel: string, port: string) {
-    const drillEnv: NodeJS.ProcessEnv = {
-      ...process.env,
-      PGHOST: v.host,
-      PGPORT: v.port,
-      PGUSER: v.user,
-      PGPASSWORD: v.passwort,
-      RESTORE_DB: ziel,
-      DRILL_PORT: port,
-      DRILL_WORKDIR: dump.slice(0, dump.lastIndexOf("/")),
-      DRILL_LOGIN_EMAIL: ADMIN.email,
-      DRILL_LOGIN_PASSWORT: PASSWORT,
-    };
-    // Der Drill setzt DATABASE_URL selbst; KLARWERK_DATABASE_URL haette in der Anwendung Vorrang
-    // und liesse den Server gegen die QUELLE laufen — der Wiederherstellungsbeleg waere keiner.
-    drillEnv.KLARWERK_DATABASE_URL = undefined;
-    drillEnv.DATABASE_URL = undefined;
-    const drill = spawnSync("bash", [join(WURZEL, "scripts/backup/restore-drill.sh"), dump], {
-      cwd: WURZEL,
-      encoding: "utf8",
-      timeout: 600_000,
-      env: drillEnv,
-    });
-    return { status: drill.status, ausgabe: `${drill.stdout ?? ""}${drill.stderr ?? ""}` };
-  }
-
-  /**
-   * Wartet, bis die Hintergrund-Pruefung ruhig ist.
-   *
-   * Sie ist Teil des echten Produkts (`build-app.ts`, `aiCheckWorker`) und schreibt nach der
-   * 201-Antwort noch am Wissensobjekt weiter. Wuerde der Vorzustand mitten hinein erhoben, bewegte
-   * sich der Bestand ZWISCHEN Abdruck und Dump — der Vergleich unten wuerde rot, ohne dass am
-   * Restore etwas falsch waere. Das ist keine Abschwaechung: gewartet wird auf einen Endzustand,
-   * nicht auf ein Ergebnis.
-   */
-  async function warteAufRuhe(basis: string, token: string, ids: readonly string[]): Promise<void> {
-    const frist = Date.now() + 90_000;
-    while (Date.now() < frist) {
-      let offen = 0;
-      for (const id of ids) {
-        const a = await sende(basis, "GET", `/api/kos/${id}`, token);
-        const ko = a.json as { aiCheck?: { status?: string } } | undefined;
-        if (ko?.aiCheck?.status === "pending") {
-          offen += 1;
-        }
-      }
-      if (offen === 0) {
-        return;
-      }
-      await new Promise((weiter) => setTimeout(weiter, 500));
-    }
-    process.stderr.write(
-      `${JOB} HINWEIS: die Hintergrundpruefung war nach 90 s noch nicht ruhig — der Vorzustand wird trotzdem erhoben.\n`,
-    );
-  }
-
   // ==============================================================================================
   // B1 — DER BEFUELLTE VORZUSTAND, DIE SICHERUNG MIT `backup.sh`, DER WIEDERANLAUF MIT `restore-drill.sh`
   // ==============================================================================================
@@ -442,149 +261,18 @@ describe("JOB 4275 · Wissensbeziehungen ueberleben den echten Produkt-Restore",
     const vor = await starteKlarwerk({ datenbankUrl: quellUrl, was: "Vorzustand" });
     pidVorher = vor.pid;
     try {
-      // Ersteinrichtung: der erste Mensch wird Admin (FR-AUTH-01) und traegt damit `ko.validate`
-      // (das verlangt Glied 6/7 des Drills) und `ko.relate`.
-      const setup = await sende(vor.basis, "POST", "/api/auth/setup", undefined, {
-        name: ADMIN.name,
-        email: ADMIN.email,
-        password: PASSWORT,
-      });
-      expect(setup.status, setup.text).toBe(201);
-      const eingerichtet = setup.json as { token: string; user: { id: string; role: string } };
-      adminToken = eingerichtet.token;
-      adminId = eingerichtet.user.id;
-      expect(eingerichtet.user.role).toBe("admin");
-
-      // Die drei weiteren Konten ueber den ADMINWEG — die oeffentliche Selbstregistrierung ist in
-      // dieser Produktionslage fail-closed ZU, und das ist der Weg einer echten Instanz.
-      // `entzogen` startet als Controller und verliert das Recht weiter unten, VOR der Sicherung.
-      for (const konto of [
-        { ...CONTROLLER, role: "controller" },
-        { ...EXPERTE, role: "experte" },
-        { ...ENTZOGEN, role: "controller" },
-      ]) {
-        const angelegt = await sende(vor.basis, "POST", "/api/users", adminToken, {
-          name: konto.name,
-          email: konto.email,
-          password: PASSWORT,
-          role: konto.role,
-        });
-        expect(angelegt.status, angelegt.text).toBe(201);
-        const id = (angelegt.json as { id: string }).id;
-        if (konto.email === CONTROLLER.email) {
-          controllerId = id;
-        }
-        if (konto.email === ENTZOGEN.email) {
-          entzogenId = id;
-        }
-      }
-      expect(controllerId).toBeTruthy();
-      expect(entzogenId).toBeTruthy();
-
-      const anmelde = async (email: string): Promise<string> => {
-        const a = await sende(vor.basis, "POST", "/api/auth/login", undefined, {
-          email,
-          password: PASSWORT,
-        });
-        expect(a.status, a.text).toBe(200);
-        return (a.json as { token: string }).token;
-      };
-      const controllerToken = await anmelde(CONTROLLER.email);
-      const experteToken = await anmelde(EXPERTE.email);
-      const entzogenToken = await anmelde(ENTZOGEN.email);
-      // Die Sitzungen liegen in der Datenbank — sie reisen mit dem Dump und gelten nach dem
-      // Wiederanlauf weiter. Genau deshalb kann der Vergleich unten DIESELBEN Augen benutzen.
-      konten.push(
-        { rolle: ADMIN.rolle, token: adminToken },
-        { rolle: CONTROLLER.rolle, token: controllerToken },
-        { rolle: EXPERTE.rolle, token: experteToken },
-        { rolle: ENTZOGEN.rolle, token: entzogenToken },
-      );
-
-      // -------------------------------------------------------------------------------------- 2
-      // FUENF WISSENSOBJEKTE UEBER ALLE DREI STUFEN — ueber HTTP, nicht direkt in die Ablage.
-      for (const k of KOS) {
-        const angelegt = await sende(vor.basis, "POST", "/api/kos", adminToken, {
-          title: k.titel,
-          statement: `Belegsatz zu ${k.titel} fuer den Wiederanlauf.`,
-          type: "best_practice",
-          category: "Betrieb",
-          confidentiality: k.stufe,
-          tags: ["wiederanlauf"],
-        });
-        expect(angelegt.status, angelegt.text).toBe(201);
-        koIds.set(k.kurz, (angelegt.json as { id: string }).id);
-      }
-      await warteAufRuhe(vor.basis, adminToken, koListe());
-
-      // -------------------------------------------------------------------------------------- 3
-      // FUENF BEZIEHUNGEN. Der `gesehen`-Stand wird unmittelbar vorher GELESEN und nicht geraten:
-      // `KantenSchreibService.setze` weist einen abweichenden Stand mit 409 STAND_VERALTET ab
-      // (`kanten-service.ts:956-965`), und das waere hier ein Aufbaufehler, kein Befund.
-      const tokenFuer = (wer: string): string => (wer === "admin" ? adminToken : controllerToken);
-      for (const b of BEZIEHUNGEN) {
-        const quelle = await sende(vor.basis, "GET", `/api/kos/${koId(b.von)}`, adminToken);
-        const ziel = await sende(vor.basis, "GET", `/api/kos/${koId(b.nach)}`, adminToken);
-        expect(quelle.status, quelle.text).toBe(200);
-        expect(ziel.status, ziel.text).toBe(200);
-        const gesetzt = await sende(
-          vor.basis,
-          "POST",
-          `/api/kos/${koId(b.von)}/beziehungen`,
-          tokenFuer(b.wer),
-          {
-            zielId: koId(b.nach),
-            art: b.art,
-            richtung: b.richtung,
-            beitragSchluessel: b.schluessel,
-            gesehen: {
-              quelleVersion: (quelle.json as { version: number }).version,
-              zielVersion: (ziel.json as { version: number }).version,
-            },
-          },
-        );
-        // 201 und nicht 200: jede dieser fuenf Beziehungen ENTSTEHT hier zum ersten Mal
-        // (`kanten-routes.ts:242-244`). Ein 200 hiesse, der Bestand haette sie schon gekannt.
-        expect(gesetzt.status, `${b.kurz}: ${gesetzt.text}`).toBe(201);
-        kantenIds.set(b.kurz, (gesetzt.json as { id: string }).id);
-      }
-      expect(new Set(kantenIds.values()).size).toBe(BEZIEHUNGEN.length);
-
-      // -------------------------------------------------------------------------------------- 4
-      // DER RECHTEENTZUG — VOR der Sicherung. Er ist die Voraussetzung fuer §5.4 („keine Freigabe
-      // ueber Altbestand"): erst sieht dieses Konto die verborgene Beziehung, dann nicht mehr, und
-      // der Restore darf sie ihm nicht zurueckgeben.
-      const vorEntzug = await sende(
-        vor.basis,
-        "GET",
-        `/api/kos/${koId("alpha")}/beziehungen`,
-        entzogenToken,
-      );
-      expect(vorEntzug.status, vorEntzug.text).toBe(200);
-      expect(
-        vorEntzug.text,
-        "Das Konto sah die verborgene Beziehung NICHT — dann belegt sein spaeteres Nichtsehen nichts.",
-      ).toContain(koId("geheim"));
-
-      const entzug = await sende(vor.basis, "PUT", `/api/users/${entzogenId}`, adminToken, {
-        role: "experte",
-      });
-      expect(entzug.status, entzug.text).toBe(200);
-      expect((entzug.json as { role: string }).role).toBe("experte");
-      const nachEntzug = await sende(
-        vor.basis,
-        "GET",
-        `/api/kos/${koId("alpha")}/beziehungen`,
-        entzogenToken,
-      );
-      expect(nachEntzug.status, nachEntzug.text).toBe(200);
-      expect(nachEntzug.text).not.toContain(koId("geheim"));
+      // -------------------------------------------------------------------------------------- 2-4
+      // KONTEN, FUENF EINTRAEGE, FUENF BEZIEHUNGEN, RECHTEENTZUG — alles ueber HTTP, und alles an
+      // EINEM Ort beschrieben (`vorrichtung.ts`, `baueBestandAuf`). Der Browsernachweis aus
+      // JOB 4305 ruft dieselbe Funktion; deshalb ist sein Vorzustand wirklich DERSELBE Bestand und
+      // nicht ein zweiter, der heute zufaellig gleich aussieht.
+      bestand = await baueBestandAuf(vor.basis);
 
       // -------------------------------------------------------------------------------------- 5
       // DER VORZUSTAND — je Eintrag, je Richtung, je Schluessel und je Rolle. Nicht vorgezeigt:
       // FESTGEHALTEN, damit B3 bis B5 dagegen halten koennen (Lehre JOB 4141 R1).
       quellPool = new Pool({ connectionString: quellUrl });
-      const erhoben = await erhebeAbdruck(quellPool, vor.basis, konten, koListe());
+      const erhoben = await erhebeAbdruck(quellPool, vor.basis, konten(), koListe());
       vorzustand = erhoben;
       expect(erhoben.kanten.length, "die Beziehungen sind gar nicht in der Ablage").toBe(
         BEZIEHUNGEN.length,
@@ -601,10 +289,10 @@ describe("JOB 4275 · Wissensbeziehungen ueberleben den echten Produkt-Restore",
       // und nicht zwei ausgewaehlte (BEN R1, Substanzpunkt 4): erst der Erfolgs- und Strukturbeleg,
       // dann der Zaehler gegen die abgelesene Tabelle oben.
       expect(erhoben.sichten.length, "es wurden nicht alle Rolle/Eintrag-Paare erhoben").toBe(
-        konten.length * KOS.length,
+        konten().length * KOS.length,
       );
       const gemessen: Record<string, Record<string, number>> = {};
-      for (const konto of konten) {
+      for (const konto of konten()) {
         const zeile: Record<string, number> = {};
         for (const k of KOS) {
           const s = sicht(erhoben, konto.rolle, k.kurz);
@@ -632,17 +320,24 @@ describe("JOB 4275 · Wissensbeziehungen ueberleben den echten Produkt-Restore",
     // -------------------------------------------------------------------------------------- 7
     // DIE SICHERUNG — mit dem UNVERAENDERTEN `scripts/backup/backup.sh`. Kein direkter `pg_dump`:
     // genau das ist der Unterschied zu (a) und der Kern dieses Auftrags.
-    const dump = sichere(v, "b1");
-    dumpName = dump.slice(dump.lastIndexOf("/") + 1);
-    dumpBytes = statSync(dump).size;
+    const beleg = sichere({ verbindung: v, datenbank: quellDb, ordner: join(arbeitsordner, "b1") });
+    dumpName = beleg.name;
+    dumpBytes = beleg.bytes;
     expect(dumpBytes).toBeGreaterThan(0);
-    dumpHash = readFileSync(`${dump}.sha256`, "utf8").trim().split(/\s+/)[0] ?? "";
+    dumpHash = beleg.hash;
     expect(dumpHash, "der Sidecar traegt keine 64-Hex-Pruefsumme").toMatch(/^[0-9a-f]{64}$/);
 
     // -------------------------------------------------------------------------------------- 8
     // DER RESTORE — mit dem UNVERAENDERTEN `scripts/backup/restore-drill.sh`, in eine EIGENE,
     // LEERE Zieldatenbank. Keine SQL-Handkopie, kein Zurueckspielen in dieselbe Datenbank.
-    const { status, ausgabe } = fahreDrill(v, dump, zielDb, "3275");
+    const { status, ausgabe } = fahreDrill({
+      verbindung: v,
+      dump: beleg.dump,
+      ziel: zielDb,
+      port: "3275",
+      loginEmail: ADMIN.email,
+      loginPasswort: PASSWORT,
+    });
     expect(status, ausgabe).toBe(0);
     for (const glied of [1, 2, 3, 4, 5, 6, 7, 8]) {
       expect(ausgabe, `Gliedzeile ${glied} fehlt`).toContain(`Glied ${glied} —`);
@@ -708,11 +403,11 @@ describe("JOB 4275 · Wissensbeziehungen ueberleben den echten Produkt-Restore",
     /** Erhebt den Abdruck einer Kopie ueber einen eigenen Serverprozess und vergleicht. */
     const messe = async (db: string, was: string): Promise<string[]> =>
       await mitInstanz(db, was, async (basis, kopiePool) =>
-        vergleicheAbdruecke(vorher, await erhebeAbdruck(kopiePool, basis, konten, koListe())),
+        vergleicheAbdruecke(vorher, await erhebeAbdruck(kopiePool, basis, konten(), koListe())),
       );
 
     // ------------------------------------------------------------------------------------ K1
-    const opferKante = kantenIds.get("alpha-beta");
+    const opferKante = kanteId("alpha-beta");
     expect(opferKante, "B1 hat die Beziehung alpha-beta nicht angelegt").toBeTruthy();
     await kopiere(kopieKanteDb);
     const kantenPool = new Pool({ connectionString: pgUrl(v, kopieKanteDb) });
@@ -752,7 +447,7 @@ describe("JOB 4275 · Wissensbeziehungen ueberleben den echten Produkt-Restore",
       await mitInstanz(kopieBindungDb, "Kalibrierung K2+K3", async (basis, kopiePool) => {
         const k2 = vergleicheAbdruecke(
           vorher,
-          await erhebeAbdruck(kopiePool, basis, konten, koListe()),
+          await erhebeAbdruck(kopiePool, basis, konten(), koListe()),
         );
 
         // ---------------------------------------------------------------------------------- K3
@@ -769,7 +464,7 @@ describe("JOB 4275 · Wissensbeziehungen ueberleben den echten Produkt-Restore",
         //   (b) der Weg faellt aus — die Abfragen gehen auf eine nicht vorhandene Route. Das ist
         //       genau BENs eigene Gegenprobe, die Runde 1 gruen ueberstand.
         // Beide werden ZWEIMAL erhoben, damit vorher und nachher wirklich identisch sind.
-        const blindeKonten: Konto[] = konten.map((k) => ({
+        const blindeKonten: Konto[] = konten().map((k) => ({
           rolle: k.rolle,
           token: "kein-gueltiges-token-nach-dem-restore",
         }));
@@ -789,8 +484,8 @@ describe("JOB 4275 · Wissensbeziehungen ueberleben den echten Produkt-Restore",
           strengerFehler: fehler,
           rohTokenA: await erhebeAbdruck(kopiePool, basis, blindeKonten, koListe(), ohne),
           rohTokenB: await erhebeAbdruck(kopiePool, basis, blindeKonten, koListe(), ohne),
-          rohPfadA: await erhebeAbdruck(kopiePool, kaputterWeg, konten, koListe(), ohne),
-          rohPfadB: await erhebeAbdruck(kopiePool, kaputterWeg, konten, koListe(), ohne),
+          rohPfadA: await erhebeAbdruck(kopiePool, kaputterWeg, konten(), koListe(), ohne),
+          rohPfadB: await erhebeAbdruck(kopiePool, kaputterWeg, konten(), koListe(), ohne),
         };
       });
     expect(
@@ -814,7 +509,7 @@ describe("JOB 4275 · Wissensbeziehungen ueberleben den echten Produkt-Restore",
       strengerFehler,
       "Die Erhebung hat einen ausgefallenen Leseweg zu einem Abdruck gemacht — Ersatzwerte gelten wieder als Bestand.",
     ).not.toBe("");
-    for (const konto of konten) {
+    for (const konto of konten()) {
       expect(strengerFehler, `die Rolle ${konto.rolle} wird nicht genannt`).toContain(
         `Rolle ${konto.rolle}`,
       );
@@ -837,7 +532,7 @@ describe("JOB 4275 · Wissensbeziehungen ueberleben den echten Produkt-Restore",
       expect(stabil(a.sichten), `${was}: die beiden Erhebungen sind nicht identisch`).toBe(
         stabil(b.sichten),
       );
-      expect(a.sichten.length).toBe(konten.length * KOS.length);
+      expect(a.sichten.length).toBe(konten().length * KOS.length);
       for (const s of a.sichten) {
         expect(
           pruefeSicht(s).length,
@@ -860,7 +555,7 @@ describe("JOB 4275 · Wissensbeziehungen ueberleben den echten Produkt-Restore",
         rot.some((z) => z.includes("(nachher)")),
         `${was}: die Nachher-Seite fehlt`,
       ).toBe(true);
-      for (const konto of konten) {
+      for (const konto of konten()) {
         expect(rot.join("\n"), `${was}: die Rolle ${konto.rolle} fehlt`).toContain(
           `Rolle ${konto.rolle}`,
         );
@@ -882,17 +577,23 @@ describe("JOB 4275 · Wissensbeziehungen ueberleben den echten Produkt-Restore",
     // (BEN R1, Pruefluecke 6: „Zusaetzlich sollten HTTP 200 mit ungueltigem JSON oder fehlenden
     // Pflichtfeldern ausdruecklich scheitern").
     //
-    // EHRLICH BENANNT: diese fuenf Antworten sind GEBAUT und kommen nicht von einem Server. Ein
-    // echter Server, der 200 mit kaputtem Rumpf sendet, waere eine Aenderung an `services/**` — und
-    // die verbietet der Auftrag (§4, §10) ausdruecklich. Geprueft wird deshalb der Beleg selbst,
-    // und zwar an der EINEN Funktion, die auch B3 benutzt; verglichen wird jede verbogene Erhebung
-    // GEGEN SICH SELBST, also mit identischen Seiten — genau BENs Fall.
-    const ersteSicht = vorher.sichten[0] as Rollensicht;
-    const verbiege = (aendere: (s: Rollensicht) => Rollensicht): Abdruck => ({
-      kanten: vorher.kanten,
-      bindungen: vorher.bindungen,
-      sichten: vorher.sichten.map((s, i) => (i === 0 ? aendere(s) : s)),
-    });
+    // JOB 4305 · DER SYNTHETISCHE FALL IST ABGELOEST — die Antworten kommen jetzt ueber den DRAHT.
+    //
+    // BIS JOB 4305 stand hier eine Liste von Hand gebauter `Rollensicht`-Objekte: der Rumpf wurde im
+    // Speicher verbogen und `vergleicheAbdruecke` direkt damit gefuettert. BENs Urteil zu 4275
+    // Runde 3 (Punkt 6 PRUEFLUECKEN) hat das als offene Luecke benannt und den Ersatz gleich
+    // mitgeliefert: „ungueltiges JSON ueber einen Test-HTTP-Server durch `sende` und
+    // `erhebeAbdruck` fuehren." Genau das steht jetzt hier — der alte Weg ist ENTFERNT und laeuft
+    // nicht daneben weiter.
+    //
+    // WAS DER UNTERSCHIED TRAEGT: `sende` parst den Rohtext selbst (`vorrichtung.ts:258-266`), und
+    // `erhebeAbdruck` legt Status, Rumpf und Rohtext ab. Ein im Speicher gesetztes `rumpf: undefined`
+    // umging beide Schritte. Jetzt geht jede dieser fuenf Antworten wirklich durch `fetch`, durch
+    // `JSON.parse` und durch die Erhebung — gemessen wird der Weg und nicht mehr nur die Endstelle.
+    //
+    // KEINE PRODUKTAENDERUNG: der Server hier ist ein `node:http`-Server DIESES Tests, kein
+    // Klarwerk-Prozess. Ein echter Klarwerk-Server, der 200 mit kaputtem Rumpf sendet, waere eine
+    // Aenderung an `services/**`, und die verbietet der Auftrag (§4, §10).
     const halbeKante = {
       id: "irgendeine-kennung",
       art: "ergaenzt",
@@ -903,63 +604,103 @@ describe("JOB 4275 · Wissensbeziehungen ueberleben den echten Produkt-Restore",
       herkunft: "kuratiert",
       version: 1,
     };
+    /** Was der Test-HTTP-Server auf `/api/kos/:id/beziehungen` senden soll — je Fall eine Form. */
     const faelle = [
       {
         was: "HTTP 200, aber kein JSON",
-        bau: (s: Rollensicht): Rollensicht => ({
-          ...s,
-          rumpf: undefined,
-          roh: "<html><body>502 Bad Gateway</body></html>",
-        }),
+        rumpf: () => "<html><body>502 Bad Gateway</body></html>",
+        typ: "text/html",
         erwartet: "kein JSON-Objekt",
       },
       {
         was: "HTTP 200, aber „kanten“ fehlt",
-        bau: (s: Rollensicht): Rollensicht => ({ ...s, rumpf: { koId: s.koId, total: 3 } }),
+        rumpf: (id: string) => JSON.stringify({ koId: id, total: 3 }),
+        typ: "application/json",
         erwartet: "fehlt oder ist keine Liste",
       },
       {
         was: "HTTP 200, aber „total“ passt nicht zur Liste",
-        bau: (s: Rollensicht): Rollensicht => ({
-          ...s,
-          rumpf: { koId: s.koId, total: 3, kanten: [] },
-        }),
+        rumpf: (id: string) => JSON.stringify({ koId: id, total: 3, kanten: [] }),
+        typ: "application/json",
         erwartet: "passt nicht zu 0 gelieferten Beziehungen",
       },
       {
         was: "HTTP 200, aber die Antwort gehoert zu einem anderen Eintrag",
-        bau: (s: Rollensicht): Rollensicht => ({
-          ...s,
-          rumpf: { koId: "ein-ganz-anderes-objekt", total: 0, kanten: [] },
-        }),
+        rumpf: () => JSON.stringify({ koId: "ein-ganz-anderes-objekt", total: 0, kanten: [] }),
+        typ: "application/json",
         erwartet: "nennt das Objekt",
       },
       {
         was: "HTTP 200, aber die Beziehung hat kein Gegenstueck",
-        bau: (s: Rollensicht): Rollensicht => ({
-          ...s,
-          rumpf: { koId: s.koId, total: 1, kanten: [halbeKante] },
-        }),
+        rumpf: (id: string) => JSON.stringify({ koId: id, total: 1, kanten: [halbeKante] }),
+        typ: "application/json",
         erwartet: "hat kein Gegenstueck",
       },
     ] as const;
-    expect(ersteSicht.status, "die erste erhobene Sicht war schon im Vorzustand kein 200").toBe(
-      200,
-    );
-    for (const fall of faelle) {
-      const verbogen = verbiege(fall.bau);
-      // BEIDE Seiten sind DIESELBE verbogene Erhebung — ein reiner Vergleich waere hier gruen.
-      const rot = vergleicheAbdruecke(verbogen, verbogen);
-      expect(
-        rot.length,
-        `${fall.was}: blieb GRUEN — ein 200 ohne Inhalt gilt als Bestand.`,
-      ).toBeGreaterThan(0);
-      expect(rot.join("\n"), fall.was).toContain(fall.erwartet);
-      expect(rot.join("\n"), `${fall.was}: die Rolle fehlt`).toContain(`Rolle ${ersteSicht.rolle}`);
-      expect(rot.join("\n"), `${fall.was}: der Eintrag fehlt`).toContain(`KO ${ersteSicht.koId}`);
+
+    // EIN Server fuer alle fuenf Faelle; `welcher` schaltet seine Antwortform um. Er horcht auf
+    // 127.0.0.1 an einem vom Betriebssystem vergebenen Port und antwortet IMMER mit 200 — genau
+    // das ist die Fehlerklasse: der Statuscode sagt „in Ordnung", der Inhalt traegt nichts.
+    let welcher = 0;
+    const kaputt = createServer((anfrage, antwort) => {
+      const fall = faelle[welcher] ?? faelle[0];
+      const id = /\/api\/kos\/([^/]+)\/beziehungen/.exec(anfrage.url ?? "")?.[1] ?? "";
+      antwort.writeHead(200, { "content-type": fall.typ });
+      antwort.end(fall.rumpf(decodeURIComponent(id)));
+    });
+    await new Promise<void>((fertig) => kaputt.listen(0, "127.0.0.1", () => fertig()));
+    const kaputterPort = (kaputt.address() as AddressInfo).port;
+    const kaputteBasis = `http://127.0.0.1:${kaputterPort}`;
+    // Die Tabellenhaelfte des Abdrucks kommt aus einer der Wegwerfkopien — sie traegt das Schema
+    // und ist auf beiden Seiten dieselbe. Das Rot unten stammt damit AUSSCHLIESSLICH vom Leseweg.
+    const k4Pool = new Pool({ connectionString: pgUrl(v, kopieKanteDb) });
+    try {
+      for (const [nr, fall] of faelle.entries()) {
+        welcher = nr;
+        // 1. DIE STRENGE ERHEBUNG darf aus so einer Antwort gar keinen Abdruck machen.
+        let strenger = "";
+        try {
+          await erhebeAbdruck(k4Pool, kaputteBasis, konten(), koListe());
+        } catch (ausfall) {
+          strenger = ausfall instanceof Error ? ausfall.message : String(ausfall);
+        }
+        expect(
+          strenger,
+          `${fall.was}: die Erhebung hat eine untragbare 200-Antwort zu einem Abdruck gemacht.`,
+        ).not.toBe("");
+        expect(strenger, fall.was).toContain(fall.erwartet);
+
+        // 2. UND DER VERGLEICH sieht es auch, wenn BEIDE Seiten dieselbe 200-Antwort zeigen — der
+        //    Fall, in dem ein reiner Vorher/Nachher-Vergleich gruen bliebe.
+        const ohne = { ohnePruefung: true } as const;
+        const a = await erhebeAbdruck(k4Pool, kaputteBasis, konten(), koListe(), ohne);
+        const b = await erhebeAbdruck(k4Pool, kaputteBasis, konten(), koListe(), ohne);
+        expect(stabil(a.sichten), `${fall.was}: die beiden Erhebungen sind nicht identisch`).toBe(
+          stabil(b.sichten),
+        );
+        // Der Statuscode war wirklich 200 — sonst pruefte dieser Fall wieder nur K3.
+        expect(
+          [...new Set(a.sichten.map((s) => s.status))],
+          `${fall.was}: der Test-HTTP-Server hat nicht mit 200 geantwortet`,
+        ).toEqual([200]);
+        const rot = vergleicheAbdruecke(a, b);
+        expect(
+          rot.length,
+          `${fall.was}: blieb GRUEN — ein 200 ohne Inhalt gilt als Bestand.`,
+        ).toBeGreaterThan(0);
+        expect(rot.join("\n"), fall.was).toContain(fall.erwartet);
+        const ersteSicht = a.sichten[0] as Rollensicht;
+        expect(rot.join("\n"), `${fall.was}: die Rolle fehlt`).toContain(
+          `Rolle ${ersteSicht.rolle}`,
+        );
+        expect(rot.join("\n"), `${fall.was}: der Eintrag fehlt`).toContain(`KO ${ersteSicht.koId}`);
+      }
+    } finally {
+      await k4Pool.end();
+      await new Promise<void>((fertig) => kaputt.close(() => fertig()));
     }
     process.stderr.write(
-      `${JOB} KALIBRIERUNG K4 (rot, erwartet): ${faelle.length} Bauformen mit HTTP 200 und untragbarem Rumpf — alle rot.\n`,
+      `${JOB} KALIBRIERUNG K4 (rot, erwartet): ${faelle.length} Antwortformen mit HTTP 200 und untragbarem Rumpf, ueber einen Test-HTTP-Server auf Port ${kaputterPort} durch sende und erhebeAbdruck gefuehrt — alle rot.\n`,
     );
   }, 1_800_000);
 
@@ -986,7 +727,7 @@ describe("JOB 4275 · Wissensbeziehungen ueberleben den echten Produkt-Restore",
     expect(pidNachher).not.toBe(pidVorher);
 
     zielPool = new Pool({ connectionString: pgUrl(v, zielDb) });
-    const nachher = await erhebeAbdruck(zielPool, nachInstanz.basis, konten, koListe());
+    const nachher = await erhebeAbdruck(zielPool, nachInstanz.basis, konten(), koListe());
 
     // DER VERGLEICH — dieselbe Funktion, die in B2 zweimal rot war.
     const abweichungen = vergleicheAbdruecke(vorher, nachher);
@@ -1004,10 +745,10 @@ describe("JOB 4275 · Wissensbeziehungen ueberleben den echten Produkt-Restore",
     // BEIDE LESERICHTUNGEN, ausdruecklich benannt statt nur mitverglichen: dieselbe gerichtete
     // Beziehung, von beiden Enden gelesen — gespiegelte Rolle, gespiegeltes Gegenstueck.
     const vonGamma = kantenVon(sicht(nachher, "admin", "gamma")).find(
-      (k) => k.id === kantenIds.get("gamma-alpha"),
+      (k) => k.id === kanteId("gamma-alpha"),
     );
     const vonAlpha = kantenVon(sicht(nachher, "admin", "alpha")).find(
-      (k) => k.id === kantenIds.get("gamma-alpha"),
+      (k) => k.id === kanteId("gamma-alpha"),
     );
     expect(vonGamma, "die gerichtete Beziehung fehlt an ihrer Quelle").toBeTruthy();
     expect(vonAlpha, "die gerichtete Beziehung fehlt an ihrem Ziel").toBeTruthy();
@@ -1017,22 +758,22 @@ describe("JOB 4275 · Wissensbeziehungen ueberleben den echten Produkt-Restore",
     expect((vonAlpha?.gegenstueck as { id: string }).id).toBe(koId("gamma"));
     expect(vonGamma?.art).toBe("ersetzt");
     expect(vonGamma?.richtung).toBe("gerichtet");
-    expect(vonGamma?.urheber).toBe(adminId);
+    expect(vonGamma?.urheber).toBe(dieser().adminId);
     expect(vonGamma?.herkunft).toBe("kuratiert");
 
     // Eine UNGERICHTETE Beziehung traegt nach dem Wiederanlauf weiterhin KEINE Rollenaussage — ein
     // erfundenes „quelle" waere eine Aussage, die niemand getroffen hat.
     const ungerichtet = kantenVon(sicht(nachher, "admin", "alpha")).find(
-      (k) => k.id === kantenIds.get("alpha-beta"),
+      (k) => k.id === kanteId("alpha-beta"),
     );
     expect(ungerichtet?.richtung).toBe("ungerichtet");
     expect(ungerichtet?.rolle).toBeUndefined();
 
     // Und der zweite Urheber ist auch zweiter geblieben — der Restore hat die Urheberschaft nicht
     // auf einen Namen zusammengezogen.
-    const vonController = nachher.kanten.filter((k) => k.urheber === controllerId);
+    const vonController = nachher.kanten.filter((k) => k.urheber === dieser().controllerId);
     expect(vonController.map((k) => k.id).sort()).toEqual(
-      [kantenIds.get("beta-gamma"), kantenIds.get("alpha-geheim")].sort(),
+      [kanteId("beta-gamma"), kanteId("alpha-geheim")].sort(),
     );
   }, 1_800_000);
 
@@ -1070,13 +811,13 @@ describe("JOB 4275 · Wissensbeziehungen ueberleben den echten Produkt-Restore",
       return s;
     };
 
-    for (const [rolle, token] of konten
+    for (const [rolle, token] of konten()
       .filter((k) => k.rolle === EXPERTE.rolle || k.rolle === ENTZOGEN.rolle)
       .map((k) => [k.rolle, k.token] as const)) {
       const antwort = await liesGeprueft(rolle, "alpha", token);
       // WEDER KANTE NOCH KENNUNG NOCH TITEL NOCH ZAEHLER — geprueft an der SERIALISIERTEN Antwort,
       // wie es `tests/ko/kanten-lesekette-sichtbarkeit.test.ts:100-102` am InMemory-Weg tut.
-      expect(kantenVon(antwort).map((k) => k.id)).not.toContain(kantenIds.get("alpha-geheim"));
+      expect(kantenVon(antwort).map((k) => k.id)).not.toContain(kanteId("alpha-geheim"));
       expect(antwort.roh, `${rolle}: die Kennung des verborgenen Eintrags reist mit`).not.toContain(
         koId("geheim"),
       );
@@ -1098,14 +839,14 @@ describe("JOB 4275 · Wissensbeziehungen ueberleben den echten Produkt-Restore",
     // KALIBRIERUNG IM SELBEN FALL: fuer die Rolle mit erweiterter Sichtbarkeit ist DIESELBE Kante
     // da. Ohne diesen Gegenfall waere der Negativtest oben auch mit einem Dienst gruen, der
     // schlicht nie etwas liefert.
-    const controller = konten.find((k) => k.rolle === CONTROLLER.rolle);
+    const controller = konten().find((k) => k.rolle === CONTROLLER.rolle);
     expect(
       controller,
       "das Controller-Konto fehlt — die Kalibrierung haette keinen Gegenfall",
     ).toBeTruthy();
     const weit = await liesGeprueft(CONTROLLER.rolle, "alpha", controller?.token ?? "");
     expect(totalVon(weit)).toBe(3);
-    const verborgene = kantenVon(weit).find((k) => k.id === kantenIds.get("alpha-geheim")) as
+    const verborgene = kantenVon(weit).find((k) => k.id === kanteId("alpha-geheim")) as
       | { gegenstueck: { id: string; title: string } }
       | undefined;
     expect(verborgene, "auch die erweiterte Sicht findet die Kante nicht mehr").toBeTruthy();
@@ -1114,10 +855,10 @@ describe("JOB 4275 · Wissensbeziehungen ueberleben den echten Produkt-Restore",
 
     // KEINE FREIGABE UEBER ALTBESTAND: die vor der Sicherung entzogene Rolle ist nach dem Restore
     // nicht wieder da — gelesen am wiederhergestellten Kontenbestand, nicht hergeleitet.
-    const nutzer = await sende(basis, "GET", "/api/users", adminToken);
+    const nutzer = await sende(basis, "GET", "/api/users", dieser().adminToken);
     expect(nutzer.status, nutzer.text).toBe(200);
     const liste = nutzer.json as { id: string; email: string; role: string }[];
-    const wieder = liste.find((u) => u.id === entzogenId);
+    const wieder = liste.find((u) => u.id === dieser().entzogenId);
     expect(wieder, "das Konto mit dem entzogenen Recht fehlt nach dem Restore").toBeTruthy();
     expect(wieder?.role, "Der Restore hat die entzogene Controller-Rolle wieder hergestellt.").toBe(
       "experte",
@@ -1134,6 +875,7 @@ describe("JOB 4275 · Wissensbeziehungen ueberleben den echten Produkt-Restore",
     }
     const basis = nachInstanz.basis;
     const pool = zielPool;
+    const adminToken = dieser().adminToken;
     const zaehle = async (): Promise<number> => {
       const a = await pool.query<{ n: string }>("SELECT count(*)::text AS n FROM ko_kanten");
       return Number(a.rows[0]?.n ?? "-1");
@@ -1169,9 +911,9 @@ describe("JOB 4275 · Wissensbeziehungen ueberleben den echten Produkt-Restore",
     );
     expect(wiederholt.status, wiederholt.text).toBe(200);
     const bestehend = wiederholt.json as { id: string; version: number; urheber: string };
-    expect(bestehend.id).toBe(kantenIds.get("alpha-beta"));
+    expect(bestehend.id).toBe(kanteId("alpha-beta"));
     expect(bestehend.version).toBe(1);
-    expect(bestehend.urheber).toBe(adminId);
+    expect(bestehend.urheber).toBe(dieser().adminId);
     expect(await zaehle(), "die Wiederholung hat eine zweite Beziehung angelegt").toBe(vorherZahl);
     const nachWiederholung = await sende(
       basis,

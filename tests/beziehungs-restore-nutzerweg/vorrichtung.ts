@@ -36,10 +36,21 @@
 //      zurueck und nicht `true`/`false`: „gleich lang" ist kein Inhaltsbeleg (Lehre JOB 4141 R1),
 //      und ein blosses `toEqual` sagte im roten Fall nicht, ob eine Beziehung, ein Feld oder ein
 //      Wiederholschluessel verloren ging.
+//
+//   4. JOB 4305 · `baueBestandAuf`, `sichere`, `fahreDrill`, `warteAufRuhe` — DIE STRECKE SELBST.
+//      Sie standen bis JOB 4305 als lokale Funktionen IN der Testdatei des Restore-Nachweises. Seit
+//      es einen ZWEITEN Nachweis auf derselben Strecke gibt (die Browserhaelfte,
+//      `beziehungen-im-browser-nach-restore.integration.test.ts`), waeren sie dort ein zweites Mal
+//      ausgeschrieben — und zwei Beschreibungen derselben Anlage stimmen nur an dem Tag ueberein,
+//      an dem die zweite entsteht. Sie sind deshalb HIERHER gezogen und nicht kopiert: der alte
+//      Ort ruft ab jetzt dieselbe Funktion (Regel „wenn etwas ersetzt wird, wird der alte Weg
+//      entfernt, nicht danebengelassen").
 import { type ChildProcessWithoutNullStreams, spawn, spawnSync } from "node:child_process";
+import { mkdirSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { createServer } from "node:net";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import type { Pool } from "pg";
+import { expect } from "vitest";
 
 export const JOB = "[KLARWERK] JOB 4275";
 export const WURZEL = resolve(import.meta.dirname, "../..");
@@ -695,4 +706,449 @@ export function vergleicheAbdruecke(vorher: Abdruck, nachher: Abdruck): string[]
     }
   }
   return abweichungen;
+}
+
+// ================================================================================================
+// JOB 4305 · DER BEFUELLTE BESTAND, DIE SICHERUNG UND DER DRILL — EINMAL BESCHRIEBEN, ZWEIMAL GEFAHREN
+// ================================================================================================
+//
+// WARUM DAS HIER UND NICHT IN DER TESTDATEI STEHT: siehe Punkt 4 im Dateikopf. Zwei Nachweise
+// fahren ab JOB 4305 dieselbe Strecke — der HTTP-Nachweis (JOB 4275) und die Browserhaelfte
+// (JOB 4305). Waere die Anlage zweimal ausgeschrieben, verglichen beide gegen ihren EIGENEN
+// Vorzustand, und „derselbe Bestand" waere eine Behauptung ueber zwei Texte.
+
+export const PASSWORT = "Wiederanlauf-Beziehungen-2026!";
+
+export interface Rollenkonto {
+  readonly rolle: string;
+  readonly name: string;
+  readonly email: string;
+}
+
+/** Die vier Konten. `entzogen` startet als Controller und verliert das Recht VOR der Sicherung. */
+export const ADMIN: Rollenkonto = {
+  rolle: "admin",
+  name: "Wiederanlauf Admin",
+  email: "bz-admin@wiederanlauf.test",
+};
+export const CONTROLLER: Rollenkonto = {
+  rolle: "controller",
+  name: "Wiederanlauf Controllerin",
+  email: "bz-controller@wiederanlauf.test",
+};
+export const EXPERTE: Rollenkonto = {
+  rolle: "experte",
+  name: "Wiederanlauf Experte",
+  email: "bz-experte@wiederanlauf.test",
+};
+export const ENTZOGEN: Rollenkonto = {
+  rolle: "entzogen",
+  name: "Wiederanlauf Entzogen",
+  email: "bz-entzogen@wiederanlauf.test",
+};
+
+/**
+ * Fuenf Wissensobjekte ueber ALLE drei Vertraulichkeitsstufen. Autor ist durchgehend der Admin —
+ * damit greift fuer den Experten die Autor-Ausnahme aus `services/app/src/sichtbarkeit.ts:71-76`
+ * NICHT, und die beiden vertraulichen Eintraege sind fuer ihn wirklich unsichtbar.
+ */
+export const KOS = [
+  { kurz: "alpha", titel: "Wartungsplan Halle 2", stufe: "intern" },
+  { kurz: "beta", titel: "Filterwechsel dokumentiert", stufe: "intern" },
+  { kurz: "gamma", titel: "Dichtung sproede an Pumpe P2", stufe: "intern" },
+  { kurz: "geheim", titel: "Lieferantenpreis Ventile", stufe: "vertraulich" },
+  { kurz: "streng", titel: "Vertragsstrafe Lieferant Nord", stufe: "streng_vertraulich" },
+  // JOB 4305 · DER EINTRAG OHNE BEZIEHUNG — und warum er hier steht.
+  //
+  // „Erfolgreich leer" ist ein eigener, unterscheidbarer Zustand und kein Ladefehler (Regel 7 des
+  // Bahnvertrags). Ohne einen Eintrag, zu dem WIRKLICH keine Beziehung gesetzt ist, liesse sich auf
+  // der Flaeche nie pruefen, dass das Produkt diesen Zustand auch als solchen zeigt (`wb-leer` samt
+  // Hinweis, was er NICHT bedeutet) statt als Fehler oder als gar nichts. Er ist `intern`, also fuer
+  // alle vier Rollen sichtbar, und er verschiebt keine der Zahlen unten: er zaehlt ueberall 0.
+  { kurz: "solo", titel: "Ersatzteilliste ohne Bezug", stufe: "intern" },
+] as const;
+
+/** Das gemeinsame Schlagwort aller fuenf Eintraege — es traegt die Themenzeile im Wissensnetz. */
+export const THEMA = "wiederanlauf";
+
+/**
+ * Fuenf Beziehungen: zwei ungerichtete, zwei gerichtete, eine symmetrische; fuenf VERSCHIEDENE
+ * Arten; zwei verschiedene Urheber; jede mit ihrem EIGENEN, bekannten Wiederholschluessel. Zwei
+ * davon haben einen Endpunkt, den Experte und Entzogener nicht sehen duerfen.
+ */
+export const BEZIEHUNGEN = [
+  {
+    kurz: "alpha-beta",
+    von: "alpha",
+    nach: "beta",
+    art: "ergaenzt",
+    richtung: "ungerichtet",
+    wer: "admin",
+    schluessel: "j4275-alpha-beta-ungerichtet",
+  },
+  {
+    kurz: "gamma-alpha",
+    von: "gamma",
+    nach: "alpha",
+    art: "ersetzt",
+    richtung: "gerichtet",
+    wer: "admin",
+    schluessel: "j4275-gamma-alpha-gerichtet",
+  },
+  {
+    kurz: "beta-gamma",
+    von: "beta",
+    nach: "gamma",
+    art: "widerspricht",
+    richtung: "gerichtet",
+    wer: "controller",
+    schluessel: "j4275-beta-gamma-gerichtet",
+  },
+  {
+    kurz: "alpha-geheim",
+    von: "alpha",
+    nach: "geheim",
+    art: "gehoert_zu",
+    richtung: "ungerichtet",
+    wer: "controller",
+    schluessel: "j4275-alpha-geheim-verborgen",
+  },
+  {
+    kurz: "beta-streng",
+    von: "beta",
+    nach: "streng",
+    art: "beispiel_fuer",
+    richtung: "symmetrisch",
+    wer: "admin",
+    schluessel: "j4275-beta-streng-verborgen",
+  },
+] as const;
+
+/**
+ * DER VOLLSTAENDIGE VORZUSTAND ALS ZAHL — jede Rolle, jeder Eintrag, kein „ausgewaehlt".
+ *
+ * DIE ZAHLEN SIND ABGELESEN UND NICHT GERATEN. `darfSehen`
+ * (`services/app/src/sichtbarkeit.ts:68-79`) laesst `vertraulich` UND `streng_vertraulich` nur fuer
+ * `ko.validate` durch; `ko.validate` hat laut `services/rbac/src/policy.ts:33,37` genau `controller`
+ * und `admin`. Autor aller fuenf Eintraege ist der Admin, die Autor-Ausnahme greift fuer Experte
+ * und Entzogenen also nicht. `total` zaehlt NACH dem Trimm (`kanten-service.ts:518-523`).
+ */
+export const ERWARTETE_SICHT: Record<string, Record<string, number>> = {
+  admin: { alpha: 3, beta: 3, gamma: 2, geheim: 1, streng: 1, solo: 0 },
+  controller: { alpha: 3, beta: 3, gamma: 2, geheim: 1, streng: 1, solo: 0 },
+  experte: { alpha: 2, beta: 2, gamma: 2, geheim: 0, streng: 0, solo: 0 },
+  entzogen: { alpha: 2, beta: 2, gamma: 2, geheim: 0, streng: 0, solo: 0 },
+};
+
+/** Die Eintraege, zu denen wirklich eine Beziehung gesetzt ist — gezaehlt, nicht notiert. */
+export const VERKNUEPFTE_KOS = new Set(BEZIEHUNGEN.flatMap((b) => [b.von, b.nach])).size;
+
+/** Der angelegte Bestand, so wie beide Nachweise ihn brauchen. */
+export interface Bestand {
+  readonly koIds: ReadonlyMap<string, string>;
+  readonly kantenIds: ReadonlyMap<string, string>;
+  readonly konten: readonly Konto[];
+  readonly adminToken: string;
+  readonly adminId: string;
+  readonly controllerId: string;
+  readonly entzogenId: string;
+  koId(kurz: string): string;
+  kanteId(kurz: string): string;
+  koListe(): string[];
+  tokenVon(rolle: string): string;
+}
+
+/**
+ * Wartet, bis die Hintergrund-Pruefung ruhig ist.
+ *
+ * Sie ist Teil des echten Produkts (`build-app.ts`, `aiCheckWorker`) und schreibt nach der
+ * 201-Antwort noch am Wissensobjekt weiter. Wuerde der Vorzustand mitten hinein erhoben, bewegte
+ * sich der Bestand ZWISCHEN Abdruck und Dump — der Vergleich wuerde rot, ohne dass am Restore etwas
+ * falsch waere. Das ist keine Abschwaechung: gewartet wird auf einen Endzustand, nicht auf ein
+ * Ergebnis.
+ */
+export async function warteAufRuhe(
+  basis: string,
+  token: string,
+  ids: readonly string[],
+): Promise<void> {
+  const frist = Date.now() + 90_000;
+  while (Date.now() < frist) {
+    let offen = 0;
+    for (const id of ids) {
+      const a = await sende(basis, "GET", `/api/kos/${id}`, token);
+      const ko = a.json as { aiCheck?: { status?: string } } | undefined;
+      if (ko?.aiCheck?.status === "pending") {
+        offen += 1;
+      }
+    }
+    if (offen === 0) {
+      return;
+    }
+    await new Promise((weiter) => setTimeout(weiter, 500));
+  }
+  process.stderr.write(
+    `${JOB} HINWEIS: die Hintergrundpruefung war nach 90 s noch nicht ruhig — der Vorzustand wird trotzdem erhoben.\n`,
+  );
+}
+
+/**
+ * Legt den ganzen befuellten Bestand ueber die LAUFENDE ANWENDUNG an — Konten, fuenf Eintraege,
+ * fuenf Beziehungen, und zum Schluss den Rechteentzug.
+ *
+ * ALLES UEBER HTTP und nichts direkt in die Ablage: gemessen werden soll der Weg einer echten
+ * Kundeninstanz. Die oeffentliche Selbstregistrierung ist in dieser Produktionslage fail-closed ZU,
+ * die drei weiteren Konten entstehen deshalb ueber den ADMINWEG (`POST /api/users`).
+ */
+export async function baueBestandAuf(basis: string): Promise<Bestand> {
+  // Ersteinrichtung: der erste Mensch wird Admin (FR-AUTH-01) und traegt damit `ko.validate`
+  // (das verlangt Glied 6/7 des Drills) und `ko.relate`.
+  const setup = await sende(basis, "POST", "/api/auth/setup", undefined, {
+    name: ADMIN.name,
+    email: ADMIN.email,
+    password: PASSWORT,
+  });
+  expect(setup.status, setup.text).toBe(201);
+  const eingerichtet = setup.json as { token: string; user: { id: string; role: string } };
+  const adminToken = eingerichtet.token;
+  const adminId = eingerichtet.user.id;
+  expect(eingerichtet.user.role).toBe("admin");
+
+  let controllerId = "";
+  let entzogenId = "";
+  for (const konto of [
+    { ...CONTROLLER, role: "controller" },
+    { ...EXPERTE, role: "experte" },
+    { ...ENTZOGEN, role: "controller" },
+  ]) {
+    const angelegt = await sende(basis, "POST", "/api/users", adminToken, {
+      name: konto.name,
+      email: konto.email,
+      password: PASSWORT,
+      role: konto.role,
+    });
+    expect(angelegt.status, angelegt.text).toBe(201);
+    const id = (angelegt.json as { id: string }).id;
+    if (konto.email === CONTROLLER.email) {
+      controllerId = id;
+    }
+    if (konto.email === ENTZOGEN.email) {
+      entzogenId = id;
+    }
+  }
+  expect(controllerId).toBeTruthy();
+  expect(entzogenId).toBeTruthy();
+
+  const anmelde = async (email: string): Promise<string> => {
+    const a = await sende(basis, "POST", "/api/auth/login", undefined, {
+      email,
+      password: PASSWORT,
+    });
+    expect(a.status, a.text).toBe(200);
+    return (a.json as { token: string }).token;
+  };
+  // Die Sitzungen liegen in der Datenbank — sie reisen mit dem Dump und gelten nach dem
+  // Wiederanlauf weiter. Genau deshalb koennen die Vergleiche DIESELBEN Augen benutzen.
+  const konten: Konto[] = [
+    { rolle: ADMIN.rolle, token: adminToken },
+    { rolle: CONTROLLER.rolle, token: await anmelde(CONTROLLER.email) },
+    { rolle: EXPERTE.rolle, token: await anmelde(EXPERTE.email) },
+    { rolle: ENTZOGEN.rolle, token: await anmelde(ENTZOGEN.email) },
+  ];
+
+  const koIds = new Map<string, string>();
+  const kantenIds = new Map<string, string>();
+  const koId = (kurz: string): string => {
+    const id = koIds.get(kurz);
+    if (!id) {
+      throw new Error(`${JOB}: das Wissensobjekt „${kurz}" wurde nie angelegt.`);
+    }
+    return id;
+  };
+  const kanteId = (kurz: string): string => {
+    const id = kantenIds.get(kurz);
+    if (!id) {
+      throw new Error(`${JOB}: die Beziehung „${kurz}" wurde nie angelegt.`);
+    }
+    return id;
+  };
+  const koListe = (): string[] => KOS.map((k) => koId(k.kurz));
+  const tokenVon = (rolle: string): string => {
+    const konto = konten.find((k) => k.rolle === rolle);
+    if (!konto) {
+      throw new Error(`${JOB}: es gibt kein Konto der Rolle „${rolle}".`);
+    }
+    return konto.token;
+  };
+
+  // FUENF WISSENSOBJEKTE UEBER ALLE DREI STUFEN — ueber HTTP, nicht direkt in die Ablage.
+  for (const k of KOS) {
+    const angelegt = await sende(basis, "POST", "/api/kos", adminToken, {
+      title: k.titel,
+      statement: `Belegsatz zu ${k.titel} fuer den Wiederanlauf.`,
+      type: "best_practice",
+      category: "Betrieb",
+      confidentiality: k.stufe,
+      tags: [THEMA],
+    });
+    expect(angelegt.status, angelegt.text).toBe(201);
+    koIds.set(k.kurz, (angelegt.json as { id: string }).id);
+  }
+  await warteAufRuhe(basis, adminToken, koListe());
+
+  // FUENF BEZIEHUNGEN. Der `gesehen`-Stand wird unmittelbar vorher GELESEN und nicht geraten:
+  // `KantenSchreibService.setze` weist einen abweichenden Stand mit 409 STAND_VERALTET ab
+  // (`kanten-service.ts:956-965`), und das waere hier ein Aufbaufehler, kein Befund.
+  for (const b of BEZIEHUNGEN) {
+    const quelle = await sende(basis, "GET", `/api/kos/${koId(b.von)}`, adminToken);
+    const ziel = await sende(basis, "GET", `/api/kos/${koId(b.nach)}`, adminToken);
+    expect(quelle.status, quelle.text).toBe(200);
+    expect(ziel.status, ziel.text).toBe(200);
+    const gesetzt = await sende(
+      basis,
+      "POST",
+      `/api/kos/${koId(b.von)}/beziehungen`,
+      tokenVon(b.wer),
+      {
+        zielId: koId(b.nach),
+        art: b.art,
+        richtung: b.richtung,
+        beitragSchluessel: b.schluessel,
+        gesehen: {
+          quelleVersion: (quelle.json as { version: number }).version,
+          zielVersion: (ziel.json as { version: number }).version,
+        },
+      },
+    );
+    // 201 und nicht 200: jede dieser fuenf Beziehungen ENTSTEHT hier zum ersten Mal
+    // (`kanten-routes.ts:242-244`). Ein 200 hiesse, der Bestand haette sie schon gekannt.
+    expect(gesetzt.status, `${b.kurz}: ${gesetzt.text}`).toBe(201);
+    kantenIds.set(b.kurz, (gesetzt.json as { id: string }).id);
+  }
+  expect(new Set(kantenIds.values()).size).toBe(BEZIEHUNGEN.length);
+
+  // DER RECHTEENTZUG — VOR der Sicherung. Er ist die Voraussetzung fuer „keine Freigabe ueber
+  // Altbestand": erst sieht dieses Konto die verborgene Beziehung, dann nicht mehr, und der Restore
+  // darf sie ihm nicht zurueckgeben.
+  const entzogenToken = tokenVon(ENTZOGEN.rolle);
+  const vorEntzug = await sende(
+    basis,
+    "GET",
+    `/api/kos/${koId("alpha")}/beziehungen`,
+    entzogenToken,
+  );
+  expect(vorEntzug.status, vorEntzug.text).toBe(200);
+  expect(
+    vorEntzug.text,
+    "Das Konto sah die verborgene Beziehung NICHT — dann belegt sein spaeteres Nichtsehen nichts.",
+  ).toContain(koId("geheim"));
+
+  const entzug = await sende(basis, "PUT", `/api/users/${entzogenId}`, adminToken, {
+    role: "experte",
+  });
+  expect(entzug.status, entzug.text).toBe(200);
+  expect((entzug.json as { role: string }).role).toBe("experte");
+  const nachEntzug = await sende(
+    basis,
+    "GET",
+    `/api/kos/${koId("alpha")}/beziehungen`,
+    entzogenToken,
+  );
+  expect(nachEntzug.status, nachEntzug.text).toBe(200);
+  expect(nachEntzug.text).not.toContain(koId("geheim"));
+
+  return {
+    koIds,
+    kantenIds,
+    konten,
+    adminToken,
+    adminId,
+    controllerId,
+    entzogenId,
+    koId,
+    kanteId,
+    koListe,
+    tokenVon,
+  };
+}
+
+/** Der Sicherungsbeleg — gemessen, nicht hergeleitet (er steht in der Rueckgabe). */
+export interface Sicherungsbeleg {
+  /** Der volle Pfad der Dumpdatei. */
+  readonly dump: string;
+  /** Nur der Dateiname — so steht er in der Rueckgabe. */
+  readonly name: string;
+  /** Die sha256-Pruefsumme aus dem Sidecar, den `backup.sh` selbst schreibt. */
+  readonly hash: string;
+  readonly bytes: number;
+}
+
+/**
+ * Ein Dump mit dem UNVERAENDERTEN `scripts/backup/backup.sh`, in einem EIGENEN Ordner.
+ *
+ * Kein direkter `pg_dump`: genau das ist der Unterschied zu
+ * `tests/wissensgraph-abnahme/neustart-und-restore.integration.test.ts`, das den Aufruf nachbaut.
+ */
+export function sichere(opts: {
+  verbindung: Verbindung;
+  datenbank: string;
+  ordner: string;
+}): Sicherungsbeleg {
+  mkdirSync(opts.ordner, { recursive: true });
+  // `backup.sh` bevorzugt KLARWERK_DATABASE_URL vor DATABASE_URL — stuende sie in der Umgebung,
+  // sicherte dieser Lauf eine ANDERE Datenbank als die eben gefuellte.
+  const sicherungsEnv: NodeJS.ProcessEnv = {
+    ...process.env,
+    DATABASE_URL: pgUrl(opts.verbindung, opts.datenbank),
+    BACKUP_DIR: opts.ordner,
+  };
+  sicherungsEnv.KLARWERK_DATABASE_URL = undefined;
+  const backup = spawnSync("bash", [join(WURZEL, "scripts/backup/backup.sh")], {
+    cwd: WURZEL,
+    encoding: "utf8",
+    timeout: 300_000,
+    env: sicherungsEnv,
+  });
+  expect(backup.status, `${backup.stdout}${backup.stderr}`).toBe(0);
+  const datei = readdirSync(opts.ordner).find((d) => d.endsWith(".dump"));
+  expect(datei, "backup.sh hat keinen Dump veroeffentlicht").toBeTruthy();
+  const dump = join(opts.ordner, String(datei));
+  const bytes = statSync(dump).size;
+  const hash = readFileSync(`${dump}.sha256`, "utf8").trim().split(/\s+/)[0] ?? "";
+  return { dump, name: String(datei), hash, bytes };
+}
+
+/** Der UNVERAENDERTE Drill, vollstaendig, gegen ein eigenes LEERES Ziel. */
+export function fahreDrill(opts: {
+  verbindung: Verbindung;
+  dump: string;
+  ziel: string;
+  port: string;
+  loginEmail: string;
+  loginPasswort: string;
+}): { status: number | null; ausgabe: string } {
+  const v = opts.verbindung;
+  const drillEnv: NodeJS.ProcessEnv = {
+    ...process.env,
+    PGHOST: v.host,
+    PGPORT: v.port,
+    PGUSER: v.user,
+    PGPASSWORD: v.passwort,
+    RESTORE_DB: opts.ziel,
+    DRILL_PORT: opts.port,
+    DRILL_WORKDIR: opts.dump.slice(0, opts.dump.lastIndexOf("/")),
+    DRILL_LOGIN_EMAIL: opts.loginEmail,
+    DRILL_LOGIN_PASSWORT: opts.loginPasswort,
+  };
+  // Der Drill setzt DATABASE_URL selbst; KLARWERK_DATABASE_URL haette in der Anwendung Vorrang
+  // und liesse den Server gegen die QUELLE laufen — der Wiederherstellungsbeleg waere keiner.
+  drillEnv.KLARWERK_DATABASE_URL = undefined;
+  drillEnv.DATABASE_URL = undefined;
+  const drill = spawnSync("bash", [join(WURZEL, "scripts/backup/restore-drill.sh"), opts.dump], {
+    cwd: WURZEL,
+    encoding: "utf8",
+    timeout: 600_000,
+    env: drillEnv,
+  });
+  return { status: drill.status, ausgabe: `${drill.stdout ?? ""}${drill.stderr ?? ""}` };
 }
