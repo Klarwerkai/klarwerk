@@ -96,6 +96,20 @@ const Duplicates = lazy(() =>
 const ExternalKnowledge = lazy(() =>
   import("./pages/ExternalKnowledge").then((m) => ({ default: m.ExternalKnowledge })),
 );
+// JOB 4156 (WIKI-GESAMTANWEISUNG-ANSCHLUSS): die Seite der zusammengesetzten Anweisung. Sie wird
+// nachgeladen wie jede andere — die Regel oben kennt keine Ausnahme.
+//
+// SIE WOHNT IN `components/gesamtanweisung/` UND NICHT IN `pages/`, und das ist gemessen, nicht
+// Geschmack: der Bereich besteht aus sieben Bauteilen, die JOB 4154 als geschlossenen Ordner
+// gebaut hat (`GesamtanweisungSeite`, `LesestandAnsicht`, `VergleichAnsicht`, …). Die Hülle
+// daneben in einen zweiten Ordner zu legen hiesse, den Bereich an zwei Orten zu führen. Für die
+// Aufteilung des Bündels ändert das nichts: `tests/erstladezeit/` erhebt seine Sollmenge aus den
+// `lazy`-Zeilen DIESER Datei, nicht aus dem Verzeichnisnamen.
+const GesamtanweisungBereich = lazy(() =>
+  import("./components/gesamtanweisung/GesamtanweisungBereich").then((m) => ({
+    default: m.GesamtanweisungBereich,
+  })),
+);
 const Help = lazy(() => import("./pages/Help").then((m) => ({ default: m.Help })));
 const KnowledgeDetail = lazy(() =>
   import("./pages/KnowledgeDetail").then((m) => ({ default: m.KnowledgeDetail })),
@@ -215,6 +229,35 @@ export function AppRoutes(): JSX.Element {
         {/* SCRUM-527 (Design-Batch B): zuhörende „Wissen erfassen"-Erstversion — Deep-Link zum Browser-
             Check durch Pedi (noch nicht in der Navigation, um die bestehende Erfassung nicht zu berühren). */}
         <Route path="/erfassen/neu" element={<KnowledgeIntake />} />
+        {/* ==========================================================================================
+            JOB 4156 · DIE GESAMTANWEISUNG — ALS ADRESSE, NOCH NICHT ALS MENÜPUNKT.
+            ==========================================================================================
+
+            Beide Adressen zeigen auf DASSELBE Bauteil; welcher Zustand entsteht, entscheidet `:id`
+            (`GesamtanweisungBereich` liest ihn über `useParams`). Ohne die zweite Zeile fiele die
+            geöffnete Anweisung in den `*`-Zweig und würde auf die Startseite umgeleitet.
+
+            SIE STEHEN HIER UND NICHT IN `GUARDED_ITEMS`, und das ist eine Beschränkung und keine
+            Gestaltung: ein Menüpunkt entsteht ausschliesslich in `apps/web/src/app/navigation.ts`,
+            und diese Datei liegt ausserhalb der Zielpfade dieses Auftrags (Runde 1 hat sie angefasst
+            und wurde dafür zu Recht zurückgewiesen). Damit fehlt der Seite AUCH das Rollen-Gate, das
+            `Guarded` sonst davorsetzt.
+
+            WAS DAS EHRLICH HEISST: die Seite ist über eine getippte Adresse erreichbar, nicht über
+            die Navigation — Lieferung 5 des Auftrags ist damit NICHT erfüllt, und der Auftrag sagt
+            ausdrücklich „nicht nur über eine getippte Adresse". Das steht so in der Rückgabe.
+
+            GESCHÜTZT IST DIE SACHE TROTZDEM, nur an einer anderen Stelle: jede der zehn Türen hinter
+            dieser Fläche fordert am Server ihr Recht (`ko.read`/`ko.create`/`ko.validate`,
+            `services/app/src/routes/gesamtanweisung-routes.ts`), gemessen in
+            `tests/wiki-gesamtanweisung-abnahme/a1-tuer-in-der-gebauten-app.test.ts`. Eine Betrachterin
+            ohne `ko.create` sieht hier also eine Fläche, deren Schreibwege sie mit 403 abweist — kein
+            Datenleck, aber eine unfreundliche Tür. Genau deshalb gehört der Menüpunkt nachgeliefert.
+
+            Vorbild der Bauform: `/erfassen/neu` darüber — dort steht seit SCRUM-527 aus demselben
+            Grund ein Deep-Link ohne Menüeintrag. */}
+        <Route path="/gesamtanweisungen" element={<GesamtanweisungBereich />} />
+        <Route path="/gesamtanweisungen/:id" element={<GesamtanweisungBereich />} />
         <Route path="/mobile" element={<Mobile />} />
         <Route path="/ui-kit" element={<UiKit />} />
         <Route path="*" element={<Navigate to={HOME_ROUTE} replace />} />

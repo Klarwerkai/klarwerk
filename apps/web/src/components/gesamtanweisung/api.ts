@@ -91,8 +91,27 @@ export function aufnahmeFehlerSchluessel(fehler: unknown): string {
   return istUnbekannteFassung(fehler) ? "ga.aufnahme.fassungUnbekannt" : fehlerSchluessel(fehler);
 }
 
+/**
+ * JOB 4156 R3 · Diese Instanz kann Gesamtanweisungen nicht dauerhaft ablegen.
+ *
+ * Der Server lehnt den Schreibvorgang ab, statt ihn zu bestätigen und beim nächsten Start zu
+ * verlieren (`ANWEISUNG_ABLAGE_FLUECHTIG`, `services/app/src/build-app.ts`). GELESEN WIRD DER CODE
+ * UND NICHT DER STATUS, und das ist gemessen: die Ablehnung geht heute als 400 heraus, weil die
+ * Statustabelle (`services/app/src/http.ts`) unbekannte Codes auf 400 fallen lässt — derselbe
+ * Status, unter dem auch `VALIDATION` und `INVALID` ankommen. Ein Zweig über den Status allein
+ * behauptete dem Menschen also eine Fehleingabe, wo der Server sagt: ich kann das hier nicht halten.
+ */
+export function istAblageFluechtig(fehler: unknown): boolean {
+  return fehler instanceof ApiError && fehler.code === "ANWEISUNG_ABLAGE_FLUECHTIG";
+}
+
 /** Der i18n-Schlüssel zu einem Fehler dieses Bereichs. Immer ein Satz, nie ein roher Code. */
 export function fehlerSchluessel(fehler: unknown): string {
+  // ZUERST: die Ablehnung wegen fehlender Haltbarkeit sagt etwas über die INSTANZ, nicht über den
+  // Stand, die Rechte oder die Verbindung. Jeder Zweig darunter würde eine falsche Ursache nennen.
+  if (istAblageFluechtig(fehler)) {
+    return "ga.ablageFluechtig";
+  }
   if (istStandkonflikt(fehler)) {
     return "ga.entscheidung.konflikt";
   }

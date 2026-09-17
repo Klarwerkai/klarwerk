@@ -275,6 +275,51 @@ export {
   kanonischesPaar,
   traegtRichtungsaussage,
 } from "./src/kanten-paar";
+// ================================================================================================
+// JOB 4156 · WIKI-GESAMTANWEISUNG-ANSCHLUSS — DIE NAMEN, DIE DIE KOMPOSITIONSWURZEL BRAUCHT.
+// ================================================================================================
+//
+// JOB 4154 hat Dienst, Ablage, DDL, Routen-Plugin und Fläche der Gesamtanweisung fertig gebaut —
+// und diese Datei nannte davon nichts. Hinter der von `dependency-cruiser` erzwungenen Modulgrenze
+// (Regel `module-boundaries`: Cross-Modul-Import nur über die öffentliche `index.ts`) war das für
+// `services/app` dasselbe wie nicht vorhanden: die Kompositionswurzel konnte weder die Ablage
+// bauen noch den Dienst binden noch die Tabellen migrieren, ohne die Grenze zu brechen. Genau das
+// ist der Zustand, den `tests/capture/aufrufer-waechter.test.ts` benennt — gebaut, richtig,
+// unerreichbar.
+//
+// ES STEHT HIER NUR, WAS `services/app/src/build-app.ts` UND `services/app/src/db.ts` WIRKLICH
+// ANFASSEN — die Enge dieses Index ist eine Zusage:
+//   · `GesamtanweisungDienst`  — den bindet die Wurzel an das Routen-Plugin.
+//   · `PgAnweisungRepo`        — die haltbare Ablage, gebaut in `buildPgServices` gegen den Pool.
+//   · `AnweisungRepo`          — der Typ des Einhängefelds in `AppServices`.
+//   · `Anweisung`, `AnweisungStandAufnahme`, `anweisungFehler` — die drei Namen, die der FLÜCHTIGE
+//     Rückfall der Kompositionswurzel braucht (`FluechtigeAnweisungsablage`, build-app.ts). Ohne
+//     Datenbank muss die Wurzel den Port selbst erfüllen, und ein Rückfall, der bei Standkonflikt
+//     einen nackten `Error` wirft, ergäbe am Draht eine 500 statt der 409 mit dem tatsächlichen
+//     Stand — die Fabrik geht deshalb mit heraus, nicht die Fehlerklasse (es gibt keine: der
+//     Gegenstand wirft bewusst `Error`, s. `gesamtanweisung-types.ts`).
+//
+// DIE LESE- UND VERGLEICHSFORMEN (`AnweisungLesestand`, `AnweisungVergleich`, `Baustein` …) GEHEN
+// BEWUSST NICHT MIT HERAUS, und das ist gemessen, nicht Geschmack: das Routen-Plugin nimmt den
+// Dienst über einen eigenen PORT mit `unknown`-Antworten entgegen
+// (`services/app/src/routes/gesamtanweisung-routes.ts`, Kopf), und die Fläche liest ihre Gestalten
+// aus dem Drahtspiegel `apps/web/src/api/types.ts`. Es gibt in `services/app` keinen Aufrufer, der
+// eine dieser Formen benennt — ein Export ohne Aufrufer ist genau das, was
+// `tests/capture/aufrufer-waechter.test.ts` verbietet. Wer sie braucht, holt sie dann, mit Aufrufer.
+//
+// DIE DDL-KONSTANTE GEHT NICHT MIT HERAUS, und das ist erzwungen: sie steht modulintern als
+// `GESAMTANWEISUNG_TABELLEN_DDL` in `src/gesamtanweisung-repo-pg.ts` und ist dort nicht exportiert.
+// Diese Datei kann nur weiterreichen, was das Modul hergibt; die DDL-Datei gehört JOB 4154 und
+// liegt ausserhalb der Zielpfade dieses Auftrags. Was daraus folgt, steht ausgeschrieben in
+// `services/app/src/db.ts` am Ende der `schemas`-Liste.
+export { GesamtanweisungDienst } from "./src/gesamtanweisung-service";
+export { PgAnweisungRepo } from "./src/gesamtanweisung-repo-pg";
+export { anweisungFehler } from "./src/gesamtanweisung-types";
+export type {
+  Anweisung,
+  AnweisungRepo,
+  AnweisungStandAufnahme,
+} from "./src/gesamtanweisung-types";
 export { KoError, KNOWLEDGE_TYPES, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS } from "./src/types";
 // SCRUM-421: einstellbare Upload-Grenzen (persistiert).
 export {

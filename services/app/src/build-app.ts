@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import cors, { type FastifyCorsOptions } from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
@@ -72,8 +73,16 @@ import {
 } from "../../external-search";
 import { I18nService } from "../../i18n";
 import {
+  type Anweisung,
+  type AnweisungRepo,
+  type AnweisungStandAufnahme,
   DeduplizierenderKantenBestand,
   type EvidenceRepo,
+  // JOB 4156 (WIKI-GESAMTANWEISUNG-ANSCHLUSS): der Anweisungsdienst und seine haltbare Ablage.
+  // Beide sind seit diesem Auftrag über `services/knowledge-object/index.ts` erreichbar — genau
+  // dieser fehlende Modulexport war der Grund, warum das seit JOB 4154 fertige Routen-Plugin an
+  // keiner App angemeldet werden konnte (`routes/gesamtanweisung-routes.ts`, Kopf).
+  GesamtanweisungDienst,
   InMemoryEvidenceRepo,
   InMemoryKoRepo,
   InMemoryKoVersionRepo,
@@ -90,6 +99,7 @@ import {
   type KoSearchProjectionRepo,
   KoService,
   type KoVersionRepo,
+  PgAnweisungRepo,
   PgEvidenceRepo,
   PgKantenRepo,
   PgKoRepo,
@@ -99,6 +109,7 @@ import {
   Schreibstand,
   type UploadLimitsRepo,
   type WithTx,
+  anweisungFehler,
 } from "../../knowledge-object";
 import {
   type CandidateRepo,
@@ -227,6 +238,9 @@ import { conflictRoutes } from "./routes/conflicts-routes";
 import { confluenceImportRoutes } from "./routes/confluence-import-routes";
 import { externalRoutes } from "./routes/external-routes";
 import { featuresRoutes } from "./routes/features-routes";
+// JOB 4156 (WIKI-GESAMTANWEISUNG-ANSCHLUSS): das seit JOB 4154 fertige, aber an keiner App
+// angemeldete Routen-Plugin der Gesamtanweisung. Hier — und nur hier — bekommt es seinen Aufrufer.
+import { gesamtanweisungRoutes } from "./routes/gesamtanweisung-routes";
 import { helpRoutes } from "./routes/help-routes";
 import { i18nRoutes } from "./routes/i18n-routes";
 import { impactRoutes } from "./routes/impact-routes";
@@ -334,6 +348,21 @@ export interface AppServices {
    * beide gegen DENSELBEN Fallsatz gefahren (`tests/wissensgraph-integration/bestandsvertrag.ts`).
    */
   kanten: KantenRepo;
+  /**
+   * JOB 4156: die Ablage der GESAMTANWEISUNGEN — zusammengesetzte Anweisungen aus gebundenen
+   * Fassungen vorhandener Wissenseinträge.
+   *
+   * Sie steht aus demselben Grund neben `kanten` und NICHT in `AppRepos`, den die Nachbarn hier
+   * ausschreiben: `AppRepos` ist der Satz, den die Dev-Persistenz journalierend umhüllt, und
+   * `MUTATING_METHODS` (`dev-persist.ts:35`) ist ein VOLLSTÄNDIGER Record über `keyof AppRepos`.
+   * Ein Feld dort machte `dev-persist.ts` rot — und die Datei liegt ausserhalb der Zielpfade
+   * dieses Auftrags.
+   *
+   * EHRLICH GESAGT, WAS DAS HEISST: im Dev-Journal-Betrieb überlebt eine Gesamtanweisung den
+   * Neustart NICHT. Im Postgres-Betrieb tut sie es — dort hängt hier `PgAnweisungRepo`
+   * (s. `buildPgServices`), und das ist der Betrieb, um den es geht.
+   */
+  anweisungen: AnweisungRepo;
   /**
    * JOB 3510: die EINE instanzweite Markenwahl (Demo-Firmen-CI) — Web, Word/Klara und das
    * Chrome-Panel lesen sie über `GET /api/branding`.
@@ -578,6 +607,171 @@ function ankerGehoertDemEntwurf(
   return hochladender === entwurf.originalAuthor || hochladender === entwurf.lastEditor;
 }
 
+// ==================================================================================================
+// JOB 4156 · DIE FLÜCHTIGE ANWEISUNGSABLAGE — UND WARUM SIE AUSGERECHNET HIER STEHT.
+// ==================================================================================================
+//
+// JEDE ROUTENGRUPPE DIESER APP WIRD UNBEDINGT REGISTRIERT, und das ist keine Stilfrage: die
+// Rollenabnahme misst JEDE registrierte Tür gegen die Tabelle
+// (`tests/beta-rollenabnahme/jede-registrierte-route-ist-abgenommen.test.ts`), und ihre Bühne baut
+// die App über `assembleServices(inMemoryRepos())` — ohne Datenbank. Eine Gruppe, die nur mit
+// Postgres entstünde, wäre dort „nicht-registriert" und damit gar nicht abnehmbar; sie müsste als
+// Prüfschuld geführt werden, und „in der App erreichbar" bliebe unbelegt. Genau das ist der
+// Zustand, den dieser Auftrag beendet.
+//
+// `services/knowledge-object/src/gesamtanweisung-types.ts:350` SAGT AUSDRÜCKLICH DAS GEGENTEIL:
+// „Das In-Memory-Gegenstück lebt AUSSCHLIESSLICH im Testordner. Ein Testdouble im Produktmodul wäre
+// eine zweite Ablage, die im Betrieb versehentlich gebunden werden kann." Der Satz ist richtig, und
+// die Sorge dahinter wird hier nicht weggeredet, sondern beantwortet:
+//   · Diese Klasse ist NICHT exportiert und steht NICHT im Modul. Sie ist ausschliesslich der
+//     Rückfall der Kompositionswurzel — dieselbe Stellung, die `DeduplizierenderKantenBestand`
+//     (JOB 4151), `InMemoryLesevariantenRepo` und `InMemoryBrandingSettingsRepo` hier haben.
+//   · Im PRODUKTIVBETRIEB wird sie nie gebunden: `buildPgServices` reicht `PgAnweisungRepo` herein,
+//     und das `??` unten wählt dann die haltbare Ablage.
+//   · WAS DAS EHRLICH KOSTET, und es wird nicht verschwiegen: ohne Datenbank (Tests, Dev, Dev-
+//     Journal) überlebt eine Gesamtanweisung den Neustart NICHT. Der Neustart-Nachweis läuft
+//     deshalb gegen echtes Postgres (`tests/wiki-gesamtanweisung-abnahme/a5-neustart.integration.test.ts`),
+//     nicht gegen diese Klasse.
+//
+// SIE IST DER KLEINSTE VERTRAGSERFÜLLER UND KEIN ZWEITES FACHMODELL: sie kennt keine Regel über
+// Anweisungen, nur Ablage. Compare-and-Set und die Klammer um Bestand + Prüfstand sind beides
+// ZUSAGEN DES PORTS (`AnweisungRepo`), nicht Fachlogik — ohne sie wäre das hier keine Erfüllung,
+// sondern eine Umgehung.
+// ==================================================================================================
+// JOB 4156 RUNDE 3 · DER GEMESSENE DATENVERLUST — UND WARUM DIESE ABLAGE JETZT NEIN SAGEN KANN.
+// ==================================================================================================
+//
+// BEN HAT IN RUNDE 2 GEMESSEN, was der Rückfall oben im DESKTOP-JOURNALBETRIEB anrichtet
+// (`buildDevPersistServices`, dev-persist.ts:309 — derselbe Betrieb, den Pedis Desktop-App fährt):
+//   „BEN WIEDERANLAUF: Anlage 201, Lesen vorher 200, erneute Anmeldung 200, Lesen nachher 404."
+// Der Server hat einen Schreibvorgang BESTÄTIGT, den er nicht halten kann. Das ist genau die
+// Scheinfunktion, die das Regelwerk verbietet („Ehrlichkeit vor Optik … keine Texte, die mehr
+// behaupten als der Zustand hergibt"): der Mensch sieht 201, legt eine Anweisung an, und beim
+// nächsten Start ist sie spurlos weg — ohne Meldung, ohne Spur, ohne Erklärung.
+//
+// WARUM NICHT EINFACH JOURNALIEREN, was die bessere Antwort wäre: das Journal kennt ausschliesslich
+// die Schlüssel von `AppRepos` (`MUTATING_METHODS`, dev-persist.ts:35, ein VOLLSTÄNDIGER Record) —
+// Schreiber (`journaledRepos`) und Wiedereinspieler (`replayJournal`) wohnen BEIDE in
+// `dev-persist.ts`, und die Datei liegt ausserhalb der Zielpfade dieses Auftrags. Ein zweiter
+// Schreiber in dieselbe Datei aus dieser Datei heraus wäre ein zweiter Eigentümer desselben
+// Dateiformats und ein zweiter, aus `server.ts` abgeschriebener Pfad — zwei Wahrheiten über eine
+// Datei. Das ist als Bestellung an den Eigentümer von `dev-persist.ts` in der RUECKGABE benannt.
+//
+// ALSO DIE ZWEITE, EHRLICHE ANTWORT: wo Haltbarkeit ZUGESAGT ist, aber keine haltbare Ablage
+// hereingereicht wurde, wird der Schreibvorgang ABGELEHNT statt falsch bestätigt. Gelesen wird
+// weiter (die Ablage ist dann schlicht leer) — eine Ablehnung des Lesewegs erzeugte eine Fehlerwand
+// über einem Bestand, den es wahrheitsgemäss nicht gibt.
+//
+// DIE ZUSAGE WIRD NICHT GERATEN, SONDERN AM BETRIEBSSCHALTER ABGELESEN: `KLARWERK_DEV_PERSIST=1`
+// ist der EINE Schalter, mit dem der Desktopbetrieb sein Journal einschaltet (`server.ts:73`,
+// `storage-guard.ts:24`, `start-vertrag.ts:1128` — alle drei lesen genau diesen Wert und genau
+// diesen Vergleich). Im reinen Speicherbetrieb (Tests, `buildServices()`) ist er NICHT gesetzt, und
+// dort ist eine flüchtige Anweisung auch keine Lüge: dort überlebt nichts den Neustart, auch kein
+// Konto und kein Wissenseintrag. Im Postgres-Betrieb wird diese Klasse gar nicht gebaut.
+//
+// DER CODE GEHT ALS 400 NACH AUSSEN, und das ist eine BENANNTE SCHWÄCHE, keine Absicht: die
+// Statustabelle `STATUS_BY_CODE` wohnt in `services/app/src/http.ts` (ausserhalb der Zielpfade),
+// unbekannte Codes fallen dort auf `?? 400`. Die Ablehnung ist trotzdem nachvollziehbar — sie
+// trägt einen eigenen, maschinenlesbaren Code UND einen Satz, und die Fläche macht daraus einen
+// eigenen Satz in Anwendersprache (`components/gesamtanweisung/api.ts`, Schlüssel
+// `ga.ablageFluechtig`). Der passende Status wäre 503; der Eintrag ist als Bestellung benannt.
+const ANWEISUNG_ABLAGE_FLUECHTIG = "ANWEISUNG_ABLAGE_FLUECHTIG";
+
+function fluechtigeAblageLehntAb(): Error {
+  const fehler = new Error(
+    "Diese Instanz kann Gesamtanweisungen nicht dauerhaft ablegen — sie wird deshalb nicht angelegt.",
+  ) as Error & { code: string };
+  fehler.code = ANWEISUNG_ABLAGE_FLUECHTIG;
+  return fehler;
+}
+
+class FluechtigeAnweisungsablage implements AnweisungRepo {
+  private readonly bestand = new Map<string, Anweisung>();
+  private readonly staendeBestand = new Map<string, AnweisungStandAufnahme>();
+
+  /**
+   * Wahr, wenn der Betrieb Haltbarkeit ZUSAGT (Desktop-Journal) — dann lehnt diese Ablage jeden
+   * Schreibvorgang ab, statt ihn zu bestätigen und zu verlieren. Der Wert wird EINMAL beim Bau
+   * gelesen und nicht bei jedem Aufruf: eine Ablage, die ihre Zusage mitten im Betrieb ändert,
+   * wäre schlimmer als jede der beiden festen Lagen.
+   */
+  constructor(private readonly haltbarkeitZugesagt: boolean) {}
+
+  private static schluessel(id: string, version: number): string {
+    return `${id}@${version}`;
+  }
+
+  // Kopien in BEIDE Richtungen: sonst hielte der Aufrufer eine Referenz auf den Bestand und könnte
+  // ihn an der Ablage vorbei ändern. Postgres kann das nicht, also darf es diese Ablage auch nicht.
+  async get(id: string): Promise<Anweisung | undefined> {
+    const treffer = this.bestand.get(id);
+    return treffer ? structuredClone(treffer) : undefined;
+  }
+
+  async anlegen(anweisung: Anweisung, aufnahme: AnweisungStandAufnahme): Promise<void> {
+    // VOR der Konfliktprüfung: gäbe es die Anweisung schon, wäre „gibt es bereits" ein Satz über
+    // einen Bestand, den diese Instanz gar nicht führen darf.
+    if (this.haltbarkeitZugesagt) {
+      throw fluechtigeAblageLehntAb();
+    }
+    if (this.bestand.has(anweisung.id)) {
+      throw anweisungFehler("CONFLICT", "Diese Anweisung gibt es bereits.");
+    }
+    this.ablegen(anweisung, aufnahme);
+  }
+
+  async schreiben(
+    anweisung: Anweisung,
+    erwartet: number,
+    aufnahme: AnweisungStandAufnahme,
+  ): Promise<void> {
+    if (this.haltbarkeitZugesagt) {
+      throw fluechtigeAblageLehntAb();
+    }
+    const vorhanden = this.bestand.get(anweisung.id);
+    if (!vorhanden) {
+      throw anweisungFehler("NOT_FOUND", "Diese Anweisung gibt es nicht.");
+    }
+    // Compare-and-Set wie in Postgres: greift NUR auf der erwarteten Version, sonst mit dem
+    // TATSÄCHLICHEN Stand ablehnen — der Aufrufer muss erfahren, worauf er neu aufsetzt (F4).
+    if (vorhanden.version !== erwartet) {
+      throw anweisungFehler(
+        "CONFLICT",
+        "Die Anweisung wurde zwischenzeitlich geändert — bitte erneut lesen.",
+        { stand: vorhanden.stand, version: vorhanden.version },
+      );
+    }
+    this.ablegen(anweisung, aufnahme);
+  }
+
+  /** Bestand und Prüfstand zusammen — synchron, also unteilbar wie die Postgres-Transaktion. */
+  private ablegen(anweisung: Anweisung, aufnahme: AnweisungStandAufnahme): void {
+    this.bestand.set(anweisung.id, structuredClone(anweisung));
+    this.staendeBestand.set(
+      FluechtigeAnweisungsablage.schluessel(anweisung.id, anweisung.version),
+      structuredClone(aufnahme),
+    );
+  }
+
+  async standLesen(
+    anweisungId: string,
+    version: number,
+  ): Promise<AnweisungStandAufnahme | undefined> {
+    const treffer = this.staendeBestand.get(
+      FluechtigeAnweisungsablage.schluessel(anweisungId, version),
+    );
+    return treffer ? structuredClone(treffer) : undefined;
+  }
+
+  async staende(anweisungId: string): Promise<readonly number[]> {
+    const vorsatz = `${anweisungId}@`;
+    return [...this.staendeBestand.keys()]
+      .filter((k) => k.startsWith(vorsatz))
+      .map((k) => Number(k.slice(vorsatz.length)))
+      .sort((a, b) => a - b);
+  }
+}
+
 // SCRUM-523 P.3 (WP-A2): `opts.withTx` ist NUR gesetzt, wenn der Aufrufer wirklich einen echten
 // Pg-Pool hat (buildPgServices unten) — Dev-Persistenz/InMemory rufen ohne opts, KoService fällt dann
 // auf den sequentiellen purgeKo-Pfad zurück (s. Kommentar dort).
@@ -602,6 +796,10 @@ export function assembleServices(
     // (echter Pool); ohne Injektion der deduplizierende Speicherbestand — derselbe Vertrag, andere
     // Haltbarkeit, beide gegen denselben Fallsatz geprüft.
     kanten?: KantenRepo;
+    // JOB 4156: die Einhängestelle der haltbaren Anweisungsablage. Gesetzt von `buildPgServices`
+    // (echter Pool); ohne Injektion der flüchtige Rückfall oben — derselbe Port, andere
+    // Haltbarkeit. Der Neustart-Nachweis läuft deshalb gegen echtes Postgres.
+    anweisungen?: AnweisungRepo;
     // JOB 3510/3578: die Einhängestelle der haltbaren Markenablage. Gesetzt von
     // `buildPgServices` (echter Pool); ohne Injektion die In-Memory-Ablage — derselbe Vertrag,
     // andere Haltbarkeit, beide werden getrennt geprüft.
@@ -822,6 +1020,17 @@ export function assembleServices(
     // fällt dort (`kantenBestand`), hier wird sie nur weitergegeben. Zwei `??`-Ausdrücke wären zwei
     // Bestände gewesen.
     kanten: kantenBestand,
+    // JOB 4156: die Anweisungsablage — Postgres, wenn injiziert, sonst der flüchtige Rückfall
+    // (`FluechtigeAnweisungsablage` oben, samt der dort ausgeschriebenen Begründung).
+    //
+    // RUNDE 3: Der Rückfall erfährt beim Bau, ob der Betrieb Haltbarkeit ZUSAGT. Sagt er sie zu
+    // (Desktop-Journal, `KLARWERK_DEV_PERSIST=1`), lehnt er Schreibvorgänge ab, statt sie zu
+    // bestätigen und beim Wiederanlauf zu verlieren — BENs gemessener Befund aus Runde 2. Der
+    // Schalter wird HIER gelesen und nicht in der Klasse: die Kompositionswurzel ist die Stelle,
+    // die über Betriebslagen entscheidet, und ein Klassenrumpf, der selbst in `process.env` greift,
+    // wäre in Tests nicht mehr stellbar.
+    anweisungen:
+      opts.anweisungen ?? new FluechtigeAnweisungsablage(process.env.KLARWERK_DEV_PERSIST === "1"),
     // JOB 3510/3578: die Markenwahl — Postgres, wenn injiziert, sonst im Speicher.
     brandingSettings: opts.brandingSettings ?? new InMemoryBrandingSettingsRepo(),
     // JOB 3110 (M2b): DIE VORHANDENEN gecappten Cloud-Clients, weitergereicht — kein zweiter Aufruf
@@ -1177,6 +1386,13 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // Serverneustart; ohne sie fiele `assembleServices` auch im Postgres-Betrieb auf den
       // flüchtigen Speicherbestand zurück — und niemand sähe es, weil beide denselben Port füllen.
       kanten: new PgKantenRepo(pool),
+      // JOB 4156: die Gesamtanweisungen liegen in DERSELBEN Datenbank wie die Wissenseinträge, auf
+      // deren Fassungen ihre Bausteine zeigen. Mit dieser Zeile überlebt eine zusammengestellte
+      // Anweisung samt Reihenfolge, Prüfständen und Entscheidung den Serverneustart; ohne sie
+      // fiele `assembleServices` auch im Postgres-Betrieb auf den flüchtigen Rückfall zurück —
+      // und niemand sähe es, weil beide denselben Port füllen. Die drei Tabellen legt `migrate()`
+      // an (`db.ts`, `GESAMTANWEISUNG_SCHEMA`).
+      anweisungen: new PgAnweisungRepo(pool),
       // JOB 3578: die Markenwahl liegt in DERSELBEN Datenbank wie der Bestand — kein zweiter
       // Dienst, keine Datei auf der Platte, keine kundenübergreifende Ablage. Mit dieser Zeile
       // überlebt die vom Administrator gesetzte Firmen-CI Neustart und Deploy; ohne sie fiele
@@ -1484,6 +1700,11 @@ export const ERLAUBTE_FEHLERCODES: ReadonlySet<string> = new Set([
   "ALREADY_CLOSED",
   "ALREADY_RESOLVED",
   "ALREADY_REVIEWED",
+  // JOB 4156 R3: diese Instanz hat keine haltbare Anweisungsablage und lehnt den Schreibvorgang
+  // deshalb ab (`FluechtigeAnweisungsablage` oben). Er gehört auf die Liste, weil er nach aussen
+  // geht (`http.ts` sendet ihn mit Grund) UND weil er im Betriebsprotokoll die eine Zeile ist, an
+  // der ein Betreiber diese Lage erkennt — als `UNBEKANNT` sagte sie über den Vorfall nichts.
+  "ANWEISUNG_ABLAGE_FLUECHTIG",
   "BAD_REQUEST",
   "BESTANDSRESET_GESPERRT",
   "BESTANDSRESET_LAEUFT",
@@ -2551,6 +2772,34 @@ export function buildApp(
   // Sichtbarkeitsentscheidung holt sie sich aus derselben EINEN Stelle wie jede andere
   // (`sichtbarkeit.ts`), nicht aus einem eigenen Prädikat.
   app.register(kantenRoutes({ kanten: services.kanten, kos: services.ko }, guards));
+  // ==============================================================================================
+  // JOB 4156 (WIKI-GESAMTANWEISUNG-ANSCHLUSS) — HIER BEKOMMT DIE GESAMTANWEISUNG IHRE TÜR.
+  // ==============================================================================================
+  //
+  // JOB 4154 hat das Plugin fertig gebaut und selbst festgehalten, dass es „LAUFFÄHIG, aber noch an
+  // keiner App angemeldet" ist (`routes/gesamtanweisung-routes.ts`, Kopf). Ein Plugin ohne
+  // Registrierung hat keine einzige erreichbare Tür — das ist die Lücke, die diese Zeile schliesst.
+  //
+  // DER DIENST ENTSTEHT HIER UND NICHT IM PLUGIN, weil er drei Dinge braucht, die nur die
+  // Kompositionswurzel kennt: die gewählte Ablage (`services.anweisungen` — Postgres oder Rückfall),
+  // den Eintragsbestand und die beiden Umweltfunktionen.
+  //
+  // `services.ko` ERFÜLLT DEN SCHMALEN PORT `AnweisungKoLeser` (`gesamtanweisung-service.ts`:
+  // `get` + `versionsOf`, strukturell) — die Anweisung kennt den KO-Dienst deshalb nicht als
+  // Ganzes und liest ausschliesslich Fassungen, die es wirklich gibt.
+  //
+  // UHR UND KENNUNG WERDEN INJIZIERT und nicht im Gegenstand gebildet: die festgehaltenen
+  // Prüfstände tragen Zeiten, und ein Test, der sie nicht stellen kann, prüft die Uhr statt den
+  // Vertrag. Hier steht die echte Umwelt.
+  app.register(gesamtanweisungRoutes, {
+    dienst: new GesamtanweisungDienst({
+      repo: services.anweisungen,
+      ko: services.ko,
+      jetzt: () => new Date().toISOString(),
+      kennung: () => randomUUID(),
+    }),
+    guards,
+  });
   // Berater-Konzept Duplikate 04.07. (Stufe D3b): Überschneidungs-API (/api/duplicates) +
   // (Pedi 04.07.) einstellbare Anzeige-Schwelle.
   app.register(

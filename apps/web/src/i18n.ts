@@ -7178,6 +7178,11 @@ const de = {
   "ga.laedt": "Lädt …",
   "ga.leer": "Diese Anweisung hat noch keine Bausteine.",
   "ga.fehler": "Die Anweisung konnte nicht geladen werden.",
+  // JOB 4156 R3: der Satz zur abgelehnten Anlage, wenn diese Instanz nichts dauerhaft ablegen kann.
+  // Er sagt, was ist, und verspricht nichts: kein „später erneut versuchen" (der nächste Versuch
+  // scheitert gleich), keine internen Begriffe (Journal, In-Memory, Repo).
+  "ga.ablageFluechtig":
+    "Diese Installation kann Anweisungen nicht dauerhaft speichern. Es wurde nichts angelegt — bitte wenden Sie sich an Ihre Systembetreuung.",
   "ga.offline": "Keine Verbindung. Ihre Eingaben bleiben erhalten; gespeichert ist nichts.",
   "ga.standVon": "Stand von {{zeit}}",
   "ga.auffrischungLaeuft": "Stand von {{zeit}} · wird aufgefrischt",
@@ -7251,6 +7256,14 @@ const de = {
   "ga.kopf.zweck": "Zweck",
   "ga.kopf.geltungsbereich": "Geltungsbereich",
   "ga.kopf.voraussetzungen": "Voraussetzungen",
+  // JOB 4156 — DER EINSTIEG. Die Einleitung sagt AUSDRÜCKLICH NICHT „es ist noch keine
+  // Gesamtanweisung angelegt": es gibt keinen Endpunkt, der die vorhandenen aufzählt, also hat
+  // diese Fläche keine Grundlage für eine Aussage über den Bestand (Begründung ausgeschrieben in
+  // `components/gesamtanweisung/GesamtanweisungBereich.tsx`).
+  "ga.bereich.titel": "Gesamtanweisungen",
+  "ga.bereich.einleitung":
+    "Hier legen Sie eine Gesamtanweisung an und stellen sie aus vorhandenen Fassungen zusammen. Eine bereits angelegte Anweisung öffnen Sie über ihre Adresse.",
+  "ga.bereich.anlegen": "Gesamtanweisung anlegen",
 };
 
 const en: typeof de = {
@@ -12764,6 +12777,8 @@ const en: typeof de = {
   "ga.laedt": "Loading …",
   "ga.leer": "This instruction has no building blocks yet.",
   "ga.fehler": "The instruction could not be loaded.",
+  "ga.ablageFluechtig":
+    "This installation cannot store instructions permanently. Nothing was created — please contact your system administrator.",
   "ga.offline": "No connection. Your entries are kept; nothing has been saved.",
   "ga.standVon": "State as of {{zeit}}",
   "ga.auffrischungLaeuft": "State as of {{zeit}} · refreshing",
@@ -12827,6 +12842,10 @@ const en: typeof de = {
   "ga.kopf.zweck": "Purpose",
   "ga.kopf.geltungsbereich": "Scope",
   "ga.kopf.voraussetzungen": "Preconditions",
+  "ga.bereich.titel": "Composite instructions",
+  "ga.bereich.einleitung":
+    "Here you create a composite instruction and assemble it from existing versions. An instruction that already exists is opened through its address.",
+  "ga.bereich.anlegen": "Create composite instruction",
 };
 
 const nl: typeof de = {
@@ -18341,6 +18360,8 @@ const nl: typeof de = {
   "ga.laedt": "Laadt …",
   "ga.leer": "Deze instructie heeft nog geen bouwstenen.",
   "ga.fehler": "De instructie kon niet worden geladen.",
+  "ga.ablageFluechtig":
+    "Deze installatie kan instructies niet blijvend opslaan. Er is niets aangemaakt — neem contact op met je systeembeheerder.",
   "ga.offline": "Geen verbinding. Je invoer blijft behouden; er is niets opgeslagen.",
   "ga.standVon": "Stand van {{zeit}}",
   "ga.auffrischungLaeuft": "Stand van {{zeit}} · wordt ververst",
@@ -18404,6 +18425,10 @@ const nl: typeof de = {
   "ga.kopf.zweck": "Doel",
   "ga.kopf.geltungsbereich": "Toepassingsgebied",
   "ga.kopf.voraussetzungen": "Voorwaarden",
+  "ga.bereich.titel": "Samengestelde instructies",
+  "ga.bereich.einleitung":
+    "Hier maakt u een samengestelde instructie aan en stelt u die samen uit bestaande versies. Een reeds aangemaakte instructie opent u via het adres ervan.",
+  "ga.bereich.anlegen": "Samengestelde instructie aanmaken",
 };
 
 void i18n.use(initReactI18next).init({

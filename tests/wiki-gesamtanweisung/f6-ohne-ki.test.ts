@@ -49,6 +49,12 @@ const NEUE_DATEIEN = [
   "apps/web/src/components/gesamtanweisung/VergleichAnsicht.tsx",
   "apps/web/src/components/gesamtanweisung/VoraussetzungFeld.tsx",
   "apps/web/src/components/gesamtanweisung/EntscheidungsVorlage.tsx",
+  // JOB 4156 (WIKI-GESAMTANWEISUNG-ANSCHLUSS): die Hülle, die den Bereich in der App verankert.
+  // Sie steht hier, weil der Fall „das Register deckt den Bedienordner vollständig ab" unten
+  // GENAU dafür gebaut ist: eine neue Bedien-Datei, die niemand in dieses Register nimmt, würde
+  // sonst still an der KI-Freiheitsprüfung vorbeilaufen. Der Wächter ist planmässig rot geworden
+  // und wird hier nachgeführt, nicht gelockert.
+  "apps/web/src/components/gesamtanweisung/GesamtanweisungBereich.tsx",
 ] as const;
 
 /**

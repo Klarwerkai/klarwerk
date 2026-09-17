@@ -51,6 +51,23 @@ export function useAnweisungVergleich(id: string | null, von: number | null, bis
   });
 }
 
+/**
+ * JOB 4156 · DIE ERSTANLAGE — die einzige Mutation dieses Bereichs OHNE Kennung.
+ *
+ * Sie läuft deshalb nicht über `useAnweisungsMutation`: es gibt vor dem Erfolg keinen Lesestand,
+ * den man ungültig machen könnte. Der Aufrufer bekommt die angelegte Anweisung zurück und geht mit
+ * ihrer Kennung auf die Seite — der Lesestand entsteht dort zum ersten Mal.
+ *
+ * NUR DER TITEL: `anweisungAnlegen` (`gesamtanweisung-service.ts`) verlangt genau ihn als
+ * Pflichtangabe; Zweck, Geltungsbereich und Voraussetzungen sind Freitext und bleiben leer, bis
+ * jemand sie setzt. Ein vorbelegter Zweck wäre ein Satz, den niemand geschrieben hat.
+ */
+export function useAnweisungAnlegen() {
+  return useMutation({
+    mutationFn: ({ titel }: { titel: string }) => endpoints.gesamtanweisung.create({ titel }),
+  });
+}
+
 function useAnweisungsMutation<TEingabe>(
   id: string | null,
   lauf: (eingabe: TEingabe) => Promise<Anweisung>,

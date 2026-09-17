@@ -69,6 +69,28 @@ export function createPool(connectionString?: string): Pool {
 // und `tests/demo-firmen-ci-server/branding-speicher.test.ts:78`. Die erste liegt außerhalb der
 // Zielpfade dieses Auftrags; eine Umbenennung hätte sie stumm rot gemacht. Der Name ist damit
 // Vertragsbestandteil und keine Stilfrage.
+//
+// ================================================================================================
+// JOB 4156 R2 — DIE GESAMTANWEISUNG FEHLT IN DIESER LISTE, UND ZWAR ERZWUNGEN.
+// ================================================================================================
+//
+// Die DDL ihrer drei Tabellen (`gesamtanweisungen`, `gesamtanweisung_bausteine`,
+// `gesamtanweisung_staende`) steht MODULINTERN in
+// `services/knowledge-object/src/gesamtanweisung-repo-pg.ts` und wird dort allein von
+// `PgAnweisungRepo.migriere()` ausgeführt. Sie kann hier nicht stehen: eine nicht exportierte
+// Konstante lässt sich nicht importieren — und jene Datei ist Bestand von JOB 4154 und liegt
+// ausserhalb der Zielpfade dieses Auftrags. Runde 1 hat sie dort umbenannt und exportiert; der
+// Prüfer hat das als Zielpfad-Verstoss zurückgewiesen, die Umbenennung ist zurückgenommen.
+//
+// WAS DAS EHRLICH BEDEUTET: auf einer frisch migrierten Postgres-Datenbank fehlen die drei
+// Tabellen, bis jemand `migriere()` von Hand ruft. Die Gesamtanweisung ist im Postgres-Betrieb
+// damit NICHT einsatzbereit. Das ist die eine offene Stelle dieses Anschlusses; sie braucht einen
+// Auftrag, der diese Datei UND die DDL-Datei zugleich halten darf. Festgehalten als eigener,
+// absichtlich negativer Fall in `tests/wiki-gesamtanweisung/ddl-und-restarbeit.test.ts`.
+//
+// DIESER BLOCK STEHT VOR DER KLAMMER UND NICHT DARIN: `db.migrate.test.ts` liest die Liste als
+// TEXT und zählt jeden `…_SCHEMA`-Namen zwischen den Klammern als ausgeführte Stufe — ein
+// Konstantenname in einem Kommentar dort drin wäre für ihn ein Eintrag. Gemessen in dieser Runde.
 export const schemas = [
   AUTH_SCHEMA,
   KO_SCHEMA,

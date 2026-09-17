@@ -802,39 +802,16 @@ const BEWUSST: readonly Ausnahme[] = [
   // mehr. Waere sie geblieben, haette A3 sie als „nicht mehr zutreffend" gemeldet.
   //
   // JOB 4154 (WIKI-GESAMTANWEISUNG, 15.09.2026): DREI SELBSTAUSLAUFENDE EINTRAEGE.
-  // Sie sind GENAU nach dem Vorbild der gestrichenen Zeile darueber gebaut: sie benennen den Job,
-  // der sie aufloest, und A3 verlangt ihre Streichung, sobald er gelaufen ist. Der Grund ist in
-  // beiden Faellen derselbe — die Verdrahtung liegt in Dateien, die diese Bahn nicht anfassen darf
-  // (`services/knowledge-object/index.ts`, `services/app/src/db.ts`, `build-app.ts` halten JOB 4151
-  // und der Nachfolger WIKI-GESAMTANWEISUNG-ANSCHLUSS). Zwei Bahnen an derselben Produktdatei sind
-  // verboten; das Paket liefert deshalb Modul, Route und Bedienung, der Nachfolger die Verdrahtung.
-  {
-    schluessel: "services/knowledge-object/src/gesamtanweisung-service.ts::GesamtanweisungDienst",
-    grund:
-      "JOB 4154: der Anweisungsdienst. Sein Aufrufer waere die Kompositionswurzel " +
-      "(`services/app/src/build-app.ts`) — die Datei gehoert JOB 4151 und dem Nachfolger " +
-      "WIKI-GESAMTANWEISUNG-ANSCHLUSS. Er haengt NICHT in der Luft: die Routen- und " +
-      "Oberflaechentests binden ihn echt (`tests/wiki-gesamtanweisung/f8-plugin-registrierung`, " +
-      "`f9-oberflaeche`). SELBSTAUSLAUFEND: sobald der Nachfolger ihn in build-app bindet, hat er " +
-      "einen Aufrufer, und A3 verlangt die Streichung dieser Zeile.",
-  },
-  {
-    schluessel: "services/knowledge-object/src/gesamtanweisung-repo-pg.ts::PgAnweisungRepo",
-    grund:
-      "JOB 4154: die Postgres-Ablage der Anweisung. Gebunden wird sie in der Kompositionswurzel, " +
-      "und ihre DDL traegt der Nachfolger in `migrate()` ein (`services/app/src/db.ts`, gehoert " +
-      "JOB 4151). Dieselbe Bauart und derselbe Grund wie `GesamtanweisungDienst` darueber. " +
-      "SELBSTAUSLAUFEND aus demselben Grund.",
-  },
-  {
-    schluessel: "services/app/src/routes/gesamtanweisung-routes.ts::gesamtanweisungRoutes",
-    grund:
-      "JOB 4154: das Routen-Plugin. WOERTLICH derselbe Fall wie `klaraZurufRoutes` oben, der " +
-      "deshalb gestrichen werden konnte: die Registrierung liegt in `build-app.ts`. Dass das " +
-      "Plugin wirklich laeuft, prueft `tests/wiki-gesamtanweisung/f8-plugin-registrierung.test.ts` " +
-      "auf einer frischen Fastify-Instanz mit jedem Endpunkt. SELBSTAUSLAUFEND: sobald " +
-      "WIKI-GESAMTANWEISUNG-ANSCHLUSS es registriert, verlangt A3 die Streichung dieser Zeile.",
-  },
+  // HIER STANDEN DREI ZEILEN AUS JOB 4154 UND SIND MIT JOB 4156 GESTRICHEN — genau so, wie sie es
+  // selbst angekuendigt hatten („SELBSTAUSLAUFEND: sobald der Nachfolger ihn in build-app bindet,
+  // hat er einen Aufrufer, und A3 verlangt die Streichung dieser Zeile"):
+  //   · `GesamtanweisungDienst`  — gebunden in `services/app/src/build-app.ts` (`app.register(
+  //     gesamtanweisungRoutes, { dienst: new GesamtanweisungDienst({…}) })`).
+  //   · `PgAnweisungRepo`        — gebaut in `buildPgServices` gegen den echten Pool; die DDL steht
+  //     jetzt als `GESAMTANWEISUNG_SCHEMA` in der `schemas`-Liste von `services/app/src/db.ts`.
+  //   · `gesamtanweisungRoutes`  — an derselben Stelle registriert.
+  // A3 hat die Streichung verlangt und erzwungen: solange die Zeilen standen, war dieser Fall rot.
+  // Das ist die Bauform, um die es geht — ein Register, das sich selbst abbaut, statt zu wachsen.
 ];
 
 // ------------------------------------------------------------------------------------------------
@@ -1293,18 +1270,10 @@ const BEWUSST_WEB: readonly Ausnahme[] = [
     schluessel: "apps/web/src/test/render.tsx::makeSource",
     grund: "Dieselbe Bauart und derselbe Grund wie `makeKo`.",
   },
-  // JOB 4154 (WIKI-GESAMTANWEISUNG, 15.09.2026): die Einstiegsflaeche der Anweisung.
-  {
-    schluessel:
-      "apps/web/src/components/gesamtanweisung/GesamtanweisungSeite.tsx::GesamtanweisungSeite",
-    grund:
-      "Ihr Aufrufer waere die Seitenzuordnung (`apps/web/src/routes.tsx`) — die Datei gehoert dem " +
-      "Nachfolger WIKI-GESAMTANWEISUNG-ANSCHLUSS, der die Flaeche in der App erreichbar macht und " +
-      "sie im Browser abnimmt. Sie ist NICHT tot: `tests/wiki-gesamtanweisung/f9-oberflaeche.test.tsx` " +
-      "montiert sie und faehrt den ganzen Weg (aufnehmen, ordnen, Voraussetzung, vergleichen, " +
-      "vorlegen, entscheiden) gegen das echte Routen-Plugin. SELBSTAUSLAUFEND: sobald der " +
-      "Nachfolger sie in `routes.tsx` haengt, verlangt A3 die Streichung dieser Zeile.",
-  },
+  // HIER STAND `GesamtanweisungSeite` (JOB 4154) UND IST MIT JOB 4156 GESTRICHEN — ebenfalls
+  // selbstauslaufend und ebenfalls von A3 erzwungen. Ihr Aufrufer ist jetzt
+  // `apps/web/src/components/gesamtanweisung/GesamtanweisungBereich.tsx`, und der haengt ueber
+  // `apps/web/src/routes.tsx` (`PAGES.gesamtanweisungen`) an einem Menuepunkt.
 ];
 
 // ------------------------------------------------------------------------------------------------

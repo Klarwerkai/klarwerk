@@ -873,6 +873,135 @@ export const TABELLE: Zeile[] = [
     erwartet: NUR_ADMIN,
   },
   // ------------------------------------------------------------------------------------------------
+  // JOB 4156 (WIKI-GESAMTANWEISUNG-ANSCHLUSS) — DIE ZEHN TÜREN DER ZUSAMMENGESETZTEN ANWEISUNG.
+  // ------------------------------------------------------------------------------------------------
+  //
+  // DREI RECHTE, EHRLICH GETRENNT, und die Zuordnung ist nicht gewählt, sondern aus dem
+  // Startvertrag übernommen („direkte Freigabe durch Berechtigte, Einreichen ohne Freigaberecht"):
+  //   · LESEN (Lesestand, Ständeliste, Vergleich)     → `ko.read`     — jede angemeldete Rolle.
+  //   · ANLEGEN, ÄNDERN, AUFNEHMEN, ORDNEN, VORLEGEN  → `ko.create`   — ab experte („einreichen").
+  //   · ENTSCHEIDEN                                   → `ko.validate` — ab controller („freigeben").
+  // Dass Vorlegen und Entscheiden AUSEINANDERFALLEN, ist der Kern: ein Experte darf einreichen und
+  // NICHT entscheiden. Stünde bei `/entscheiden` `AB_EXPERTE`, wäre der Startvertrag gebrochen und
+  // niemand sähe es — deshalb steht die Zeile hier und nicht in der Restliste.
+  //
+  // KEINE ZEILE WIRD ZURÜCKGESTELLT. Alle zehn Türen sind hier gemessen; in `NICHT_ABGENOMMEN`
+  // steht keine davon.
+  //
+  // DIE GEFAHRENEN URLs SIND ZUSTANDSFREI, und das ist bei dieser Gruppe ausdrücklich nachgesehen
+  // und nicht angenommen: die Messungen laufen gegen EINE gemeinsame Bühne, und ein wirklich
+  // angelegter Vorgang verschöbe die Grundlage der folgenden Zeilen.
+  //   · Die neun Zeilen mit Kennung tragen eine erfundene (`gibt-es-nicht`) und enden im 404 des
+  //     Dienstes — er lädt die Anweisung VOR jeder Änderung (`geladen`, gesamtanweisung-service.ts).
+  //   · `POST /api/gesamtanweisungen` hat KEINE Kennung und ist der einzige Weg, der wirklich etwas
+  //     anlegen KÖNNTE. Mit leerer Nutzlast tut er es nicht: `anweisungAnlegen`
+  //     (`gesamtanweisung-service.ts:164`) fordert `titel` über `pflichttext` und wirft `INVALID`,
+  //     BEVOR die Ablage gerufen wird — 400, und der Bestand bleibt unberührt. Für die Abnahme ist
+  //     das „durchgelassen": das Rechtetor hat entschieden, die Rumpfprüfung danach abgelehnt.
+  {
+    gruppe: "gesamtanweisungRoutes",
+    methode: "POST",
+    pfad: "/api/gesamtanweisungen",
+    belegstelle: "services/app/src/routes/gesamtanweisung-routes.ts:274",
+    tor: "ko.create",
+    payload: {},
+    erwartet: AB_EXPERTE,
+  },
+  {
+    gruppe: "gesamtanweisungRoutes",
+    methode: "GET",
+    pfad: "/api/gesamtanweisungen/gibt-es-nicht",
+    route: "/api/gesamtanweisungen/:id",
+    belegstelle: "services/app/src/routes/gesamtanweisung-routes.ts:286",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "gesamtanweisungRoutes",
+    methode: "PUT",
+    pfad: "/api/gesamtanweisungen/gibt-es-nicht",
+    route: "/api/gesamtanweisungen/:id",
+    belegstelle: "services/app/src/routes/gesamtanweisung-routes.ts:300",
+    tor: "ko.create",
+    payload: {},
+    erwartet: AB_EXPERTE,
+  },
+  {
+    gruppe: "gesamtanweisungRoutes",
+    methode: "POST",
+    pfad: "/api/gesamtanweisungen/gibt-es-nicht/bausteine",
+    route: "/api/gesamtanweisungen/:id/bausteine",
+    belegstelle: "services/app/src/routes/gesamtanweisung-routes.ts:322",
+    tor: "ko.create",
+    payload: {},
+    erwartet: AB_EXPERTE,
+  },
+  {
+    gruppe: "gesamtanweisungRoutes",
+    methode: "PUT",
+    pfad: "/api/gesamtanweisungen/gibt-es-nicht/reihenfolge",
+    route: "/api/gesamtanweisungen/:id/reihenfolge",
+    belegstelle: "services/app/src/routes/gesamtanweisung-routes.ts:360",
+    tor: "ko.create",
+    payload: {},
+    erwartet: AB_EXPERTE,
+  },
+  {
+    gruppe: "gesamtanweisungRoutes",
+    methode: "PUT",
+    pfad: "/api/gesamtanweisungen/gibt-es-nicht/bausteine/gibt-es-auch-nicht/voraussetzung",
+    route: "/api/gesamtanweisungen/:id/bausteine/:bausteinId/voraussetzung",
+    belegstelle: "services/app/src/routes/gesamtanweisung-routes.ts:393",
+    tor: "ko.create",
+    payload: {},
+    erwartet: AB_EXPERTE,
+  },
+  {
+    gruppe: "gesamtanweisungRoutes",
+    methode: "GET",
+    pfad: "/api/gesamtanweisungen/gibt-es-nicht/staende",
+    route: "/api/gesamtanweisungen/:id/staende",
+    belegstelle: "services/app/src/routes/gesamtanweisung-routes.ts:423",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "gesamtanweisungRoutes",
+    methode: "GET",
+    // MIT `von`/`bis`: ohne sie antwortet die Route 400 `VALIDATION`, bevor der Dienst überhaupt
+    // gerufen wird (`:449`). Das wäre für die Abnahme ebenfalls „erlaubt" — aber es hätte die
+    // Rumpfprüfung gemessen und nicht den Weg, um den es geht. So endet die Zeile im 404 des
+    // Dienstes, also hinter dem Rechtetor.
+    pfad: "/api/gesamtanweisungen/gibt-es-nicht/vergleich?von=1&bis=2",
+    route: "/api/gesamtanweisungen/:id/vergleich",
+    belegstelle: "services/app/src/routes/gesamtanweisung-routes.ts:440",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "gesamtanweisungRoutes",
+    methode: "POST",
+    pfad: "/api/gesamtanweisungen/gibt-es-nicht/vorlegen",
+    route: "/api/gesamtanweisungen/:id/vorlegen",
+    belegstelle: "services/app/src/routes/gesamtanweisung-routes.ts:465",
+    tor: "ko.create",
+    payload: {},
+    erwartet: AB_EXPERTE,
+  },
+  {
+    gruppe: "gesamtanweisungRoutes",
+    methode: "POST",
+    // DIE ZEILE, DIE DEN STARTVERTRAG HÄLT: `AB_CONTROLLER` und nicht `AB_EXPERTE`. Wer einreichen
+    // darf, darf deshalb noch nicht entscheiden — „Einreichen ohne Freigaberecht" ist wörtlich der
+    // Vertrag, und ohne diese Zeile wäre seine Verletzung unsichtbar.
+    pfad: "/api/gesamtanweisungen/gibt-es-nicht/entscheiden",
+    route: "/api/gesamtanweisungen/:id/entscheiden",
+    belegstelle: "services/app/src/routes/gesamtanweisung-routes.ts:486",
+    tor: "ko.validate",
+    payload: {},
+    erwartet: AB_CONTROLLER,
+  },
+  // ------------------------------------------------------------------------------------------------
   // JOB 4151 (WG-PERSISTENZ) — DIE VIER TÜREN DER KURATIERTEN BEZIEHUNGEN.
   // ------------------------------------------------------------------------------------------------
   //

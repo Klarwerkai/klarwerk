@@ -1919,8 +1919,22 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // nur in der Grundmenge und berühren keinen Bildweg. Die Bildergalerie derselben Lesefläche
     // (`BodyImageGallery`) ist unberührt. Die Rebase-Summe (394 aus JOB 4233 + diese zwei aus JOB
     // 4155 R1) ist an diesem Arbeitsbaum nach der Konfliktauflösung gemessen, nicht gerechnet.
+    //
+    // JOB 4156 (WIKI-GESAMTANWEISUNG-ANSCHLUSS): 396 → 398, und es sind GENAU ZWEI Bauteile, beide
+    // in der neuen Datei `components/gesamtanweisung/GesamtanweisungBereich.tsx`:
+    //     + `GesamtanweisungBereich` — die Hülle, die den Bereich in der App verankert; sie liest
+    //                                  `:id` aus der Adresse und reicht an die Fläche aus JOB 4154
+    //                                  weiter (exportiert, Aufrufer `apps/web/src/routes.tsx`).
+    //     + `Einstieg`               — das Formular „Gesamtanweisung anlegen" (nicht exportiert,
+    //                                  genau ein Aufrufer in derselben Datei).
+    // Dieselbe Begründung wie bei jedem Eintrag darüber: die Auflage verbietet, dass eine
+    // UMSTELLUNG die Erhebung verschiebt — nicht, dass der Quellbaum wächst. `anbieter` 1 und
+    // `traeger` 2 bleiben unverändert, und das ist hier nachgesehen: keines der beiden Bauteile
+    // zeigt ein Bild, bietet eine Bildbeschreibung an (kein `ANGEBOT_MUSTER`) oder trägt ein
+    // `documentTitle`-Prop — das eine reicht durch, das andere rendert ein Textfeld mit Knopf.
+    // Sie erscheinen nur in der Grundmenge und berühren keinen Bildweg.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 396,
+      komponenten: 398,
       anbieter: 1,
       traeger: 2,
     });
