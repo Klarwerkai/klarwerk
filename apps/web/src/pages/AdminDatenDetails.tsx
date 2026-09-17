@@ -882,7 +882,7 @@ export function WerkseinstellungenDetail({ onZurueck }: { onZurueck: () => void 
   );
 }
 
-/** SCRUM-422: Papierkorb — 28 Tage wiederherstellbar, Endlöschung mit ruhiger Inline-Rückfrage. */
+/** SCRUM-422: Papierkorb — 30 Tage (`TRASH_RETENTION_DAYS`) wiederherstellbar, Endlöschung mit ruhiger Inline-Rückfrage. */
 export function PapierkorbDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element {
   const { t } = useTranslation();
   const qc = useQueryClient();

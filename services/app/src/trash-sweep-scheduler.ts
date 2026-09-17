@@ -24,7 +24,7 @@ export interface TrashSweepSchedulerHandle {
   stop: () => void;
 }
 
-// Default: alle 6 Stunden. Bewusst grob — die 28-Tage-Frist braucht keine engmaschige Prüfung; der
+// Default: alle 6 Stunden. Bewusst grob — die Frist aus `TRASH_RETENTION_DAYS` braucht keine engmaschige Prüfung; der
 // Start-Sweep deckt den Neustart-Fall ohnehin ab.
 export const DEFAULT_TRASH_SWEEP_INTERVAL_MS = 6 * 60 * 60 * 1000;
 // Untergrenze gegen versehentliche Dauerläufe (z. B. Fehlkonfiguration „100").

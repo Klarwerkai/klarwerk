@@ -3,7 +3,8 @@
 // ================================================================================================
 //
 // DER BEFUND, gegen den dieser Wächter steht (gemessen, nicht vermutet):
-// Das Produkt sagt dem Nutzer eine Aufbewahrungsfrist zu — „28 Tage" —, und es verhält sich nach
+// Das Produkt sagt dem Nutzer eine Aufbewahrungsfrist zu — damals „28 Tage", seit JOB 4327 „30 Tage"
+// (Pedi 17.09.2026); die Zahl im Text ist austauschbar, der Befund nicht —, und es verhält sich nach
 // `TRASH_RETENTION_DAYS` (`services/knowledge-object/src/service.ts:115`). Beide Seiten sind
 // einzeln festgenagelt, aber NICHT miteinander verbunden:
 //
@@ -34,9 +35,14 @@
 //                        „…final deletion happens only after FOUR WEEKS."          (en :5424)
 //                        „…de definitieve verwijdering gebeurt pas na VIER WEKEN." (nl :9574)
 //
-// Vier Wochen sind 28 Tage — solange `TRASH_RETENTION_DAYS` 28 ist. Wird die Konstante auf 30
-// gesetzt, ist dieser Satz FALSCH, und ein Wächter, der nur nach Ziffern sucht, sieht es nicht.
-// Deshalb prüft die zweite Fallgruppe unten `wochen * 7 === TRASH_RETENTION_DAYS`.
+// Vier Wochen sind 28 Tage — solange `TRASH_RETENTION_DAYS` 28 ist. Genau das ist am 17.09.2026
+// eingetreten (JOB 4327, Pedi: „Papierkorb mit Frist von 30 Tagen, danach endgültig"): 30 Tage sind
+// KEINE ganze Wochenzahl, der Wochensatz war damit unsagbar geworden. Alle drei Sprachfassungen
+// nennen die Frist seither als Ziffer in Tagen, und `adm.sich.trash.b` steht in `TAGES_ZUSAGEN`.
+// Die Wochenmaschinerie (`wochenAusText`, `WOCHENWORT`, die Fallgruppe mit `wochen * 7 ===
+// TRASH_RETENTION_DAYS`) bleibt trotzdem stehen — sie ist der Griff, mit dem der Sammler unten ein
+// zurückgeschriebenes „vier Wochen" sofort als ungebundene Fristangabe meldet, statt es als
+// zahlenlosen Satz durchzulassen. Sie ist also kein Vorrat, sondern aktive Deckung.
 //
 // ────────────────────────────────────────────────────────────────────────────────────────────────
 // DIE BLINDHEITEN DIESES WÄCHTERS — ausdrücklich, weil eine verschwiegene Grenze zur Falle wird:
@@ -63,7 +69,7 @@
 //  2. ER SIEHT NUR DIESE DREI SCHLÜSSEL — plus den Sammler unten, der jede WEITERE Fristangabe
 //     meldet. Eine Zusage ohne Zahl und ohne Zahlwort („bis zum Monatsende") entgeht beiden.
 //  3. ER SIEHT ZIFFERN IN TAGEN UND ZAHLWÖRTER IN WOCHEN. „vierentwintig dagen" oder „28d" nicht.
-//  4. ER BINDET DIE ZAHL, NICHT DIE BEDEUTUNG. Stünde „28 Tage" in einem Satz, der etwas ganz
+//  4. ER BINDET DIE ZAHL, NICHT DIE BEDEUTUNG. Stünde „30 Tage" in einem Satz, der etwas ganz
 //     anderes zusagt, bliebe er grün. Gegen falsche Sätze hilft nur Lesen, nicht Rechnen.
 //  5. ER MACHT `a18-ansagen-ereignisse.test.tsx:513` NICHT ROT. Jener Fall nagelt den Wortlaut fest
 //     (Weg A) und bleibt bei einer Konstantenänderung grün — das ist die in der Vorlage benannte
@@ -114,10 +120,16 @@ function wochenAusText(text: string, lng: Sprache): number | null {
 }
 
 /** Die Zusagen, die die Frist als Ziffer in Tagen nennen. */
-const TAGES_ZUSAGEN = ["ko.deleteQ", "adm.trash.help"] as const;
+const TAGES_ZUSAGEN = ["ko.deleteQ", "adm.trash.help", "adm.sich.trash.b"] as const;
 
-/** Die Zusage, die dieselbe Frist als Zahlwort in Wochen nennt. */
-const WOCHEN_ZUSAGEN = ["adm.sich.trash.b"] as const;
+/**
+ * Die Zusagen, die dieselbe Frist als Zahlwort in Wochen nennen — seit JOB 4327 KEINE mehr (s. Kopf).
+ * Die Liste bleibt leer bestehen, NICHT weil sie Vorrat wäre, sondern weil der Sammler unten sein
+ * Wochenmuster weiter fährt: schriebe jemand „vier Wochen" zurück in einen Text, meldete er die
+ * Stelle als ungebundene Fristangabe. Die Fallgruppe darunter läuft dann über die leere Liste — das
+ * ist gewollt und durch die Kalibrierung abgedeckt, die jeden geprüften Schlüssel einzeln nachweist.
+ */
+const WOCHEN_ZUSAGEN: readonly string[] = [];
 
 /**
  * Schlüssel, die eine Frist tragen, aber NICHTS mit dem Papierkorb zu tun haben. Sie stehen hier

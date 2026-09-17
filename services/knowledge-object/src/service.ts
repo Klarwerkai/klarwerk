@@ -191,7 +191,7 @@ function fadenWurzel(bestand: readonly KoComment[], commentId: string): KoCommen
 const DEFAULT_NEEDED_VALIDATIONS = 3; // FR-CAP-08: 1–5, Standard 3.
 
 // SCRUM-422 (Pedi 03.07.): Aufbewahrungsfrist im Papierkorb — danach automatische Endlöschung.
-export const TRASH_RETENTION_DAYS = 28;
+export const TRASH_RETENTION_DAYS = 30; // JOB 4327 (Pedi 17.09.2026): 28 → 30 Tage, eine Quelle.
 
 // SCRUM-358 / AG-05 / AG-14-SERVER-TRUST: konservative, nachvollziehbare Trust-Strafe, wenn ein offener
 // Wahrheitskonflikt ein validiertes KO zurück in Review holt. Bewusst KLEIN (kein Reset auf 0): ein

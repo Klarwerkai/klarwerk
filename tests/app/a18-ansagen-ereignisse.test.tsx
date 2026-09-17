@@ -516,7 +516,7 @@ const MATRIX: readonly ManuellerFall[] = [
     bedienelement: 'Knopf „Löschen"',
     eingabe: "keine",
     erwartetesTranskript:
-      "Löschen? Der Beitrag wandert in den Papierkorb und ist dort 28 Tage vom Admin wiederherstellbar. Demo-Daten werden sofort endgültig gelöscht.",
+      "Löschen? Der Beitrag wandert in den Papierkorb und ist dort 30 Tage vom Admin wiederherstellbar. Demo-Daten werden sofort endgültig gelöscht.",
     fokusstand: "OFFEN — heute wird der Auslöser unter dem Fokus ausgehängt (D1)",
     cleanup: "Abbrechen, Seite neu laden",
     p1_voiceover: "UNGEPRUEFT",

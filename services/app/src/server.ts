@@ -206,7 +206,7 @@ async function start(): Promise<void> {
   app.log.info(`KLARWERK läuft auf :${port} — Datenhaltung: ${mode}`);
   // SCRUM-523 P.3 (WP2): die abgelaufene-Papierkorb-Endlöschung ist eine EXPLIZITE Operation (nicht mehr
   // lazy beim Lesen — Lesen/Import-Dry-Run bleiben schreibfrei). Einmal beim Start anstoßen, damit die
-  // 28-Tage-Frist ohne Cron greift; ein KO-Fehler bricht den Lauf nicht ab (per-KO onSweepError-Log).
+  // Frist aus `TRASH_RETENTION_DAYS` ohne Cron greift; ein KO-Fehler bricht den Lauf nicht ab (per-KO onSweepError-Log).
   services.ko
     .runTrashSweep("system", (id, error) =>
       app.log.warn(`Papierkorb-Endlöschung von ${id} fehlgeschlagen: ${String(error)}`),

@@ -327,7 +327,7 @@ const de = {
   //   · „Wiederherstellen"/„Endgültig löschen" sind die Wörter, die der Papierkorb wirklich trägt
   //     (`adm.trash.restore`/`adm.trash.purge`) — kein zweites Wort für dieselbe Handlung.
   //   · KEINE Aufbewahrungsfrist: es gibt keine (JOB 3668, Rückgabe R1). „Von selbst leert er sich
-  //     nicht" ist die wahre Auskunft, kein Versprechen über 28 Tage.
+  //     nicht" ist die wahre Auskunft, kein Versprechen über die Frist aus `TRASH_RETENTION_DAYS`.
   //   · KEINE Aussage über den BESTAND (§9): nirgends steht, dass Entwürfe oder gelöschte Entwürfe
   //     da sind — nur, was mit ihnen geschieht und wo man nachsieht.
   "seitenhilfe.entwuerfe.title": "Meine Entwürfe: begonnene Erfassungen fortsetzen",
@@ -1049,7 +1049,7 @@ const de = {
   "ko.couple.title": "Anlagen-Kopplung",
   "ko.deleteButton": "Wissensobjekt löschen",
   "ko.deleteQ":
-    "Löschen? Der Beitrag wandert in den Papierkorb und ist dort 28 Tage vom Admin wiederherstellbar. Demo-Daten werden sofort endgültig gelöscht.",
+    "Löschen? Der Beitrag wandert in den Papierkorb und ist dort 30 Tage vom Admin wiederherstellbar. Demo-Daten werden sofort endgültig gelöscht.",
   "ko.deleteKeep": "Behalten",
   "ko.deleteYes": "Ja, löschen",
   "ko.deleteDone": "Wissensobjekt gelöscht.",
@@ -1365,7 +1365,7 @@ const de = {
     "Alle sicherheitsrelevanten Aktionen werden append-only und hash-verkettet festgehalten. Eine nachträgliche Abweichung an einem Eintrag ist rechnerisch prüfbar und wird beim Integritätslauf benannt (tamper-evident).",
   "adm.sich.trash.t": "Löschen mit Papierkorb",
   "adm.sich.trash.b":
-    "Gelöschtes geht zuerst in den Papierkorb (wiederherstellbar); die endgültige Löschung erfolgt erst nach vier Wochen. Kein stiller Datenverlust.",
+    "Gelöschtes geht zuerst in den Papierkorb (wiederherstellbar); die endgültige Löschung erfolgt erst nach 30 Tagen. Kein stiller Datenverlust.",
   "adm.sich.roles.t": "Rollen & minimale Rechte",
   "adm.sich.roles.b":
     "Vier Rollen (Betrachter, Experte, Controller, Admin). Jede Aktion prüft serverseitig das nötige Recht.",
@@ -1611,7 +1611,7 @@ const de = {
   "enrich.openAdmin": "Zu den Admin-Einstellungen",
   "adm.trash.title": "Papierkorb",
   "adm.trash.help":
-    "Gelöschte Beiträge landen hier und bleiben 28 Tage wiederherstellbar. Danach werden sie automatisch endgültig gelöscht. Demo-Daten erscheinen hier nie — sie werden immer sofort endgültig gelöscht.",
+    "Gelöschte Beiträge landen hier und bleiben 30 Tage wiederherstellbar. Danach werden sie automatisch endgültig gelöscht. Demo-Daten erscheinen hier nie — sie werden immer sofort endgültig gelöscht.",
   "adm.trash.empty": "Der Papierkorb ist leer.",
   "adm.trash.restore": "Wiederherstellen",
   "adm.trash.purge": "Endgültig löschen",
@@ -2207,7 +2207,7 @@ const de = {
   // den Papierkorb legen?") fällt aus der Ernte — die Farbregel gälte für diese Fläche dann
   // stillschweigend nicht mehr. Der Ort heisst „Meine Entwürfe" und nicht „unter der Liste": diese
   // Rückfrage steht auch im Editor und im Arbeitsraum, und dort gibt es den Papierkorb-Abschnitt
-  // nicht. KEINE FRIST wie beim Wissensobjekt („28 Tage") — der Entwurfs-Papierkorb hat keine.
+  // nicht. KEINE FRIST wie beim Wissensobjekt (`TRASH_RETENTION_DAYS`) — der Entwurfs-Papierkorb hat keine.
   "capture.discardDraftQ":
     "Löschen? Der Entwurf wandert in den Papierkorb und ist unter „Meine Entwürfe“ wiederherstellbar.",
   "capture.discardDraftKeep": "Behalten",
@@ -8104,7 +8104,7 @@ const en: typeof de = {
   "ko.couple.title": "Asset coupling",
   "ko.deleteButton": "Delete knowledge object",
   "ko.deleteQ":
-    "Delete? The entry moves to the recycle bin where an admin can restore it for 28 days. Demo data is deleted permanently right away.",
+    "Delete? The entry moves to the recycle bin where an admin can restore it for 30 days. Demo data is deleted permanently right away.",
   "ko.deleteKeep": "Keep",
   "ko.deleteYes": "Yes, delete",
   "ko.deleteDone": "Knowledge object deleted.",
@@ -8332,7 +8332,7 @@ const en: typeof de = {
     "All security-relevant actions are recorded append-only and hash-chained. A later deviation on an entry is detectable by recomputation and is named by the integrity run (tamper-evident).",
   "adm.sich.trash.t": "Deletion with trash",
   "adm.sich.trash.b":
-    "Deleted items go to the trash first (recoverable); final deletion happens only after four weeks. No silent data loss.",
+    "Deleted items go to the trash first (recoverable); final deletion happens only after 30 days. No silent data loss.",
   "adm.sich.roles.t": "Roles & least privilege",
   "adm.sich.roles.b":
     "Four roles (viewer, expert, controller, admin). Every action checks the required permission server-side.",
@@ -8534,7 +8534,7 @@ const en: typeof de = {
   "enrich.openAdmin": "Go to admin settings",
   "adm.trash.title": "Recycle bin",
   "adm.trash.help":
-    "Deleted entries land here and can be restored for 28 days. After that they are permanently deleted automatically. Demo data never appears here — it is always deleted permanently right away.",
+    "Deleted entries land here and can be restored for 30 days. After that they are permanently deleted automatically. Demo data never appears here — it is always deleted permanently right away.",
   "adm.trash.empty": "The recycle bin is empty.",
   "adm.trash.restore": "Restore",
   "adm.trash.purge": "Delete permanently",
@@ -13711,7 +13711,7 @@ const nl: typeof de = {
   "ko.couple.title": "Koppeling met installatie",
   "ko.deleteButton": "Kennisobject verwijderen",
   "ko.deleteQ":
-    "Verwijderen? De bijdrage gaat naar de prullenbak en is daar 28 dagen door de admin te herstellen. Demogegevens worden meteen definitief verwijderd.",
+    "Verwijderen? De bijdrage gaat naar de prullenbak en is daar 30 dagen door de admin te herstellen. Demogegevens worden meteen definitief verwijderd.",
   "ko.deleteKeep": "Behouden",
   "ko.deleteYes": "Ja, verwijderen",
   "ko.deleteDone": "Kennisobject verwijderd.",
@@ -13938,7 +13938,7 @@ const nl: typeof de = {
     "Alle beveiligingsrelevante acties worden append-only en hash-geschakeld vastgelegd. Een latere afwijking op een vermelding is rekenkundig aantoonbaar en wordt bij de integriteitscontrole benoemd (tamper-evident).",
   "adm.sich.trash.t": "Verwijderen met prullenbak",
   "adm.sich.trash.b":
-    "Verwijderde items gaan eerst naar de prullenbak (te herstellen); de definitieve verwijdering gebeurt pas na vier weken. Geen stil gegevensverlies.",
+    "Verwijderde items gaan eerst naar de prullenbak (te herstellen); de definitieve verwijdering gebeurt pas na 30 dagen. Geen stil gegevensverlies.",
   "adm.sich.roles.t": "Rollen & minimale rechten",
   "adm.sich.roles.b":
     "Vier rollen (Kijker, Expert, Controller, Admin). Elke actie controleert aan de serverkant het benodigde recht.",
@@ -14145,7 +14145,7 @@ const nl: typeof de = {
   "enrich.openAdmin": "Naar de admin-instellingen",
   "adm.trash.title": "Prullenbak",
   "adm.trash.help":
-    "Verwijderde bijdragen komen hier terecht en blijven 28 dagen te herstellen. Daarna worden ze automatisch definitief verwijderd. Demogegevens verschijnen hier nooit — die worden altijd meteen definitief verwijderd.",
+    "Verwijderde bijdragen komen hier terecht en blijven 30 dagen te herstellen. Daarna worden ze automatisch definitief verwijderd. Demogegevens verschijnen hier nooit — die worden altijd meteen definitief verwijderd.",
   "adm.trash.empty": "De prullenbak is leeg.",
   "adm.trash.restore": "Herstellen",
   "adm.trash.purge": "Definitief verwijderen",

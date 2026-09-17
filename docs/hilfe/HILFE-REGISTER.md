@@ -1,7 +1,7 @@
 # KLARWERK Hilfe-Register — Überschriften-Abdeckung + Voll-Inventur der Hilfe-Texte
 
 > **Zweck (Pedi 05.07.):** Jede Überschrift (wo möglich) hat eine Erklärung — und dieses Register dokumentiert, WAS wo erklärt wird, damit bei App-Änderungen die Erklärungen nachgezogen werden.
-> **Pflege-Regel:** Dieses Dokument ist AUS DEM CODE GENERIERT (Quellen: alle `pages/*.tsx` + `i18n.ts`). Es wird nicht von Hand editiert — nach jedem UI-Batch, der Überschriften oder Hilfen ändert, generiert Paul es neu und liefert es mit. Stand: 05.07.2026.
+> **Pflege-Regel:** Dieses Dokument ist AUS DEM CODE GENERIERT (Quellen: alle `pages/*.tsx` + `i18n.ts`). Es wird nicht von Hand editiert — nach jedem UI-Batch, der Überschriften oder Hilfen ändert, generiert Paul es neu und liefert es mit. Stand: 05.07.2026. Zeile `adm.trash.help` am 17.09.2026 aus `i18n.ts` nachgeführt (JOB 4327; kein Generator im Repo).
 > **Doppelnutzen:** Teil 2 ist zugleich die vollständige Inventur für den Berater (Lieferung 2: Audit aller Kurzhilfen).
 
 ## Teil 1 · Überschriften-Abdeckung (SectionLabel je Seite)
@@ -105,7 +105,7 @@
 | `adm.ready.help` | Admin | Ein ehrlicher Ein-Blick-Status vor dem Test: was steht, was fehlt. Jede Zeile aus echten Zahlen, nichts geschönt. |
 | `adm.sich.auditHelp` | Admin | Jede sicherheitsrelevante Aktion wird nur angefügt und über eine Hash-Kette verkettet. Nachträglich lässt sich kein Eintrag ändern oder löschen, ohne dass die Kette bricht — das macht das Protokoll überprüfbar (tamper-evident). |
 | `adm.sich.dataHelp` | Admin | Ein ehrlicher Auszug der Systemeigenschaften — keine Versprechen, sondern wie KLARWERK gebaut ist. |
-| `adm.trash.help` | Admin | Gelöschte Beiträge landen hier und bleiben 28 Tage wiederherstellbar. Danach werden sie automatisch endgültig gelöscht. Demo-Daten erscheinen hier nie — sie werden immer sofort endgültig gelöscht. |
+| `adm.trash.help` | Admin | Gelöschte Beiträge landen hier und bleiben 30 Tage wiederherstellbar. Danach werden sie automatisch endgültig gelöscht. Demo-Daten erscheinen hier nie — sie werden immer sofort endgültig gelöscht. |
 | `adm.upload.help` | Admin | Legt fest, wie viele Anhänge ein Objekt haben darf und wie groß ein einzelner Anhang sein darf. Gilt für neue Anhänge; bestehende bleiben. Änderungen landen im Audit-Log. |
 | `adm.val.help` | Admin | Die Standard-Prüferanzahl gilt für neue Einreichungen ohne eigene Angabe. Erlaubt sind 1 bis 5. Bestehende Beiträge bleiben unverändert; Änderungen landen im Audit-Log. |
 | `ana.help.audit` | Analytics | Das Audit-Log hält jede relevante Aktion fest — wer (Actor), was (Aktion) und woran (Ziel). Einträge werden nur angefügt und hash-verkettet; eine nachträgliche Abweichung ist rechnerisch prüfbar. Über die Filter grenzen Sie schnell auf eine Person, eine Aktionsart oder ein Objekt ein. |
