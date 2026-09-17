@@ -33,96 +33,39 @@
 // eine OBERMENGE der Kanten und kann keine uebersehen. Reine Kommentarzeilen bleiben aussen vor —
 // im Bestand stehen Importzeilen IN Kommentaren (`services/wissensnetz/src/policy-naht.ts:20`,
 // `services/reasoner/src/types.ts:622`), und ein Waechter soll milder sein, nie falsch-rot.
+//
+// DER PRÜFSTAND SELBST — Wegwerfordner, Kindprozess-Aufruf, Kopierfilter, echter `node`-Start —
+// steht seit JOB 4285 in `paketprobe.ts` daneben und wird von beiden Testdateien dieses Ordners
+// eingeführt. Zwei Abschriften desselben Standes wären genau die Doppelung, die der Prüfling
+// hinter sich hat (`paketinhalt.mjs:119-139`).
 import { spawnSync } from "node:child_process";
 import {
   cpSync,
   existsSync,
   mkdirSync,
-  mkdtempSync,
   readFileSync,
   readdirSync,
   rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
-import { basename, dirname, join, relative, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
+import {
+  EINSTIEG,
+  MODUL,
+  WURZEL,
+  fahreModul,
+  kopiereGefiltert,
+  modulJson,
+  raeumeAuf,
+  starte,
+  wegwerfordner,
+} from "./paketprobe.js";
 
-const WURZEL = resolve(import.meta.dirname, "../..");
 const BAU = join(WURZEL, "scripts/insel/build-current-release.mjs");
-const MODUL = join(WURZEL, "scripts/insel/paketinhalt.mjs");
-const EINSTIEG = "services/app/src/server.ts";
 
-const arbeitsordner: string[] = [];
-afterAll(() => {
-  for (const ordner of arbeitsordner) {
-    rmSync(ordner, { recursive: true, force: true });
-  }
-});
-
-function wegwerfordner(): string {
-  const ordner = mkdtempSync(join(tmpdir(), "klarwerk-paketausgabe-"));
-  arbeitsordner.push(ordner);
-  return ordner;
-}
-
-// ------------------------------------------------------------------------------------------------
-// Das Modul wird im KINDPROZESS gefahren — genau so, wie `build-current-release.mjs` es laedt.
-// Dieselbe Bauart wie `tests/insel-update/insel-probe.ts:505` und `release-inhalt.test.ts:31`:
-// die Insel-Skripte sind `.mjs` und werden von `node` gefahren, nicht vom TypeScript-Baum.
-// ------------------------------------------------------------------------------------------------
-function imModul(ausdruck: string): { status: number | null; stdout: string; stderr: string } {
-  const lauf = spawnSync(
-    "node",
-    [
-      "--input-type=module",
-      "-e",
-      `import * as m from ${JSON.stringify(MODUL)};
-const WURZEL = ${JSON.stringify(WURZEL)};
-process.stdout.write(JSON.stringify(${ausdruck}));`,
-    ],
-    { encoding: "utf8", timeout: 120_000 },
-  );
-  return { status: lauf.status, stdout: lauf.stdout ?? "", stderr: lauf.stderr ?? "" };
-}
-
-function modulJson<T>(ausdruck: string): T {
-  const lauf = imModul(ausdruck);
-  expect(lauf.status, lauf.stderr).toBe(0);
-  return JSON.parse(lauf.stdout) as T;
-}
-
-/** Wie `imModul`, aber fuer Rumpfe, die scheitern DUERFEN — der Aufrufer wertet den Ausgang. */
-function fahreModul(rumpf: string): { status: number | null; stdout: string; stderr: string } {
-  const lauf = spawnSync(
-    "node",
-    ["--input-type=module", "-e", `import * as m from ${JSON.stringify(MODUL)};\n${rumpf}`],
-    { encoding: "utf8", timeout: 120_000 },
-  );
-  return { status: lauf.status, stdout: lauf.stdout ?? "", stderr: lauf.stderr ?? "" };
-}
-
-// ------------------------------------------------------------------------------------------------
-// Die Kopierfilter des Bauers, woertlich (`build-current-release.mjs:41-42, :48-61`). Sie werden
-// hier nachgebaut und nicht eingefuehrt: der Bauer raeumt beim Laden Verzeichnisse ab.
-// ------------------------------------------------------------------------------------------------
-const SKIP_NAMEN = new Set(["node_modules", ".git", ".localdb", "dist", ".DS_Store"]);
-const SKIP_ENDUNGEN = [".test.ts", ".test.tsx", ".spec.ts", ".spec.tsx", ".log"];
-
-function kopiereGefiltert(quelle: string, ziel: string): void {
-  const name = basename(quelle);
-  if (SKIP_NAMEN.has(name)) return;
-  if (SKIP_ENDUNGEN.some((endung) => name.endsWith(endung))) return;
-  if (statSync(quelle).isDirectory()) {
-    mkdirSync(ziel, { recursive: true });
-    for (const kind of readdirSync(quelle)) {
-      kopiereGefiltert(join(quelle, kind), join(ziel, kind));
-    }
-    return;
-  }
-  cpSync(quelle, ziel);
-}
+afterAll(raeumeAuf);
 
 /**
  * Ein Paket, wie der Bauer es hinterlaesst — `mitFremdquellen: false` ist der Stand VOR diesem
@@ -217,12 +160,6 @@ function legeLaufbaumAn(zeilen: readonly string[]): string {
   return wurzel;
 }
 
-/** Startet ein gebautes Paket wirklich — `node <paket>/<einstieg>`, ohne Umweg. */
-function starte(paket: string, einstieg: string): { status: number | null; aus: string } {
-  const lauf = spawnSync("node", [join(paket, einstieg)], { encoding: "utf8", timeout: 60_000 });
-  return { status: lauf.status, aus: `${lauf.stdout ?? ""}${lauf.stderr ?? ""}` };
-}
-
 /**
  * DIE GANZE KETTE FÜR EINEN EINSTIEG: läuft er überhaupt → wird seine Kante gefunden → startet das
  * gebaute Paket → und fällt das Fehlen der Datei auf?
@@ -280,6 +217,10 @@ function angabenAus(quelltext: string): string[] {
       // Datei uebersehen — also genau die Fehlerklasse, gegen die dieser Auftrag steht.
       /\bimport\s*\(\s*["'`]([^"'`]+)["'`]\s*\)/g,
       /^\s*import\s*["']([^"']+)["']/g,
+      // NACHGEFUEHRT (JOB 4285): `require("./x")` laedt genauso eine Datei. Fehlte das Muster hier,
+      // koennte diese unabhaengige Suche eine wirklich geladene Datei uebersehen — und damit ihre
+      // eigene Zusage („eine OBERMENGE der Kanten") brechen.
+      /\brequire\s*\(\s*["'`]([^"'`]+)["'`]\s*\)/g,
     ]) {
       for (const fund of zeile.matchAll(muster)) {
         treffer.push(fund[1] as string);
@@ -482,7 +423,10 @@ erreichteQuellen(${JSON.stringify(ordner)}, ["services/app/src/server.ts"]);`,
     );
     const berechnet = fahreModul(`m.erreichteQuellen(${JSON.stringify(ordner)}, ["${EINSTIEG}"]);`);
     expect(berechnet.status).not.toBe(0);
-    expect(berechnet.stderr).toContain("berechneten relativen Pfad");
+    // NACHGEFÜHRT (Runde 4): der Grund heisst jetzt für JEDE nicht eingeordnete Ausdrucksform
+    // gleich — es gibt keine Unterscheidung „berechnet relativ" gegen „ohne festen Anfang" mehr,
+    // weil beide auf einer Teilaussage über den Ausdruck beruhten. Genau die ist entfallen.
+    expect(berechnet.stderr).toContain("keine einzelne Zeichenkette");
   });
 
   // ==============================================================================================
