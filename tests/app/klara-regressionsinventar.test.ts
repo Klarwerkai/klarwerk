@@ -1098,6 +1098,22 @@ const INVENTAR: readonly string[] = [
   // Inventar — Inventar nachfuehren: expected [ Array(1) ] to deeply equal []`, und K5 war dabei
   // gruen; erst danach wurde diese Zeile angefasst.
   "tests/hilfe-altkapitel-anwendersprache/altkapitel-sprechen-anwendersprache.test.ts",
+  // JOB 4272 (17.09.2026) PRODUKTIONSABHAENGIGKEITEN: der Waechter ueber `@fastify/static` — genau
+  // eine Registrierung, kein Praefix, keine Rechtepruefung, und eine fehlende Asset-Datei scheitert
+  // weiter LAUT mit 404 statt still als SPA-HTML. Sachlich Klara-Regression, obwohl die Datei aus
+  // der Abhaengigkeitswartung kommt: sie faehrt `registerWebStatic` und damit denselben Aufbau, der
+  // `/word-addin/taskpane.html` ausliefert und dessen Auslieferungszusage (`no-cache` auf
+  // `/word-addin/*`, web-static.ts:140) ueberhaupt erst durchsetzt. Faellt der laute 404 weg, bekommt
+  // ein installiertes Add-in bei fehlendem Buendel HTML unter einem .js-Pfad — die weisse Seite,
+  // gegen die der Stale-Static-Fix gebaut wurde.
+  // GEFUNDEN VON GENAU EINER ACHSE: `version` (die Datei nennt `Cache-Control` im Kopfkommentar).
+  // „klara" steht NICHT in ihrem Pfad, sie faellt also in `verfehlt` und NICHT in `nurName` — K5
+  // (`nurName.length`) bleibt deshalb bei 68 und wird hier nicht angefasst.
+  // GEMESSEN, NICHT GESETZT: mit der geaenderten Datei und noch unveraendertem Inventar meldete der
+  // Lauf (Arbeitspruefung 3febecee318d4ab8b436a805aec857db) K2 `neu im Baum, aber nicht im gepinnten
+  // Inventar — Inventar nachfuehren: expected [ Array(1) ] to deeply equal []`; erst danach wurde
+  // diese Zeile angefasst.
+  "tests/produktionsabhaengigkeiten/statische-auslieferung-bleibt-laut.test.ts",
 ];
 
 // ------------------------------------------------------------------------------------------------
