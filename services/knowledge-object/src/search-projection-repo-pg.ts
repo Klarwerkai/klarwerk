@@ -2,6 +2,7 @@ import type { Pool } from "pg";
 import { type Queryable, type TxContext, pgQueryable } from "../../db-tx";
 import type { KoMetadataProjectionRepo } from "./metadata-projection-repo";
 import { PgKoMetadataProjectionRepo } from "./metadata-projection-repo-pg";
+import type { KoSichtbarkeitstrim } from "./repo";
 import {
   DECKELAUSWAHL_VORGABE,
   type KoSearchHit,
@@ -586,7 +587,7 @@ export class PgKoSearchProjectionRepo implements KoSearchProjectionRepo {
    * NIRGENDS. Er wäre der billige Weg, den äußeren Vertrag zu retten — und zugleich das Ende der
    * Projektionsgrenze, weil dieselbe Suche dann zwei Wahrheiten hätte.
    */
-  async findActive(query: KoSearchQuery): Promise<KoSearchHit[]> {
+  async findActive(query: KoSearchQuery, trim?: KoSichtbarkeitstrim): Promise<KoSearchHit[]> {
     // DER CONTROL-STATE ZUERST — dieselbe Funktion wie im In-Memory-Adapter, damit beide Speicher
     // buchstäblich dieselbe Entscheidung treffen. Sie steht VOR der fachlichen
     // Leermengenentscheidung (04 §4): ein nicht suchbereiter Zustand darf sich nicht hinter „keine
@@ -653,10 +654,29 @@ export class PgKoSearchProjectionRepo implements KoSearchProjectionRepo {
     const spalten = `p.ko_id, p.ko_version, p.projection_version, p.content_hash, p.status, p.language,
              ${flag("title_text")}, ${flag("statement_text")}, ${metaFlag("category_text")},
              ${metaFlag("tag_text")}, ${flag("caption_text")}`;
+    // ============================================================================================
+    // JOB 4303 — DAS SICHTBARKEITSPRÄDIKAT STEHT IM `WHERE`, ALSO VOR JEDEM `LIMIT`.
+    // ============================================================================================
+    //
+    // Es reiht sich in dieselbe Klausel wie Fassung und Begriffe ein — auf der GRUNDMENGE, auf
+    // derselben Stufe, auf der `PgKoRepo.buildListFilter` es seit AUFTRAG-BASIC-380 einreiht. Eine
+    // Nachfilterung der gelieferten Zeilen wäre genau der Fehler, den JOB 4271 gemessen hat: der
+    // Deckel füllte sich mit Einträgen, die der Suchende nie zu sehen bekommt.
+    //
+    // ZULETZT, damit die bereits vergebenen Platzhalter ihre Nummern behalten; der Deckel
+    // (`limit`) wird DANACH vergeben und bleibt der letzte Parameter. Das Prädikat rendert der
+    // Trim selbst — dieser Adapter kennt die Regel nicht und soll sie nicht kennen (G-TRIM-EINS).
+    // Träger ist `k`, die LEBENDE `kos`-Zeile des JOINs, nie ein Projektionsschnappschuss
+    // (G-TRIM-LIVE): eine erhöhte Stufe muss sofort wirken.
+    let trimBedingung = "";
+    if (trim) {
+      trimBedingung = ` AND ${trim.sql("k", params.length + 1)}`;
+      params.push(...trim.params);
+    }
     const rumpf = `FROM ko_search_projections p
         JOIN kos k ON ${AKTIVE_VERSION}
         LEFT JOIN ko_metadata_projections md ON md.ko_id = p.ko_id
-       WHERE ${fassungsBedingung} AND (${orsSearch.join(" OR ")})`;
+       WHERE ${fassungsBedingung} AND (${orsSearch.join(" OR ")})${trimBedingung}`;
     // Die AUSGABEORDNUNG — unverändert seit G27 und die einzige Aussage darüber, in welcher
     // Reihenfolge Treffer diesen Adapter verlassen.
     const ausgabeordnung = `(k.status='validiert') DESC, (k.data->>'trust')::int DESC NULLS LAST, p.ko_id`;

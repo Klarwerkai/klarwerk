@@ -118,8 +118,9 @@ Zwei der drei Suchwege tragen, einer nicht:
   **gleich** der unabhängigen Lesung aus `kos.data` — verglichen wird „ist", nicht „enthält". In
   einem zweiten, frischen Browserkontext dasselbe Ergebnis. ✔
 - **Über die Herkunft** (`Werk-Nord Linie 3`) — gefunden, in 29 Tab-Anschlägen geöffnet. ✔
-- **Über Aufgabe/Inhalt** (`Zwirbelkopplung`) — **nicht gefunden.** Der Fall `G1b` ist deshalb rot,
-  und er bleibt es: er ist die Lieferung, nicht ihr Mangel.
+- **Über Aufgabe/Inhalt** (`Zwirbelkopplung`) — **nicht gefunden.** Der Fall `G1b` war deshalb rot,
+  und er blieb es: er war die Lieferung, nicht ihr Mangel. → **Ursache seit JOB 4303 behoben**, siehe
+  den Nachtrag unter „Gefundene Produktfehler".
 
 Dazu: keiner der 50 fremden vertraulichen Einträge in der Liste, keiner im Rumpf der Suchantwort,
 keiner in einer der 10 aufgeklappten Vorschauen; der Rechteentzug sperrt denselben Bedienweg.
@@ -153,6 +154,20 @@ ist ausgerechnet das gesuchte Dokument.
 weiter; `services/app/src/routes/library-routes.ts:578-580` filtert erst danach.
 Gemessen in `G1a`; dass der Deckel wirklich die Ursache ist, zeigt `KZ3a` an einem Bestand ohne
 einen einzigen vertraulichen Eintrag.
+
+> **NACHTRAG JOB 4303 (18.09.2026) — behoben.** `opts.trim` reist jetzt durch `findSearchHits` bis
+> in die Suchprojektion; beide Adapter (Speicher und PostgreSQL) setzen ihn auf der **Grundmenge**
+> durch, **vor** dem Deckel. Der Deckel füllt sich damit nur noch mit Einträgen, die der Suchende
+> sehen darf. `G1a` ist entsprechend **abgelöst**: er schreibt nicht mehr den Fehlerwert 150 fest,
+> sondern die Zusage der Korrektur (161 sichtbare Anwärter, keiner der 50 fremden Einträge in der
+> Liste). Die Naht selbst wird ohne Browser und ohne 10.000er-Seed von
+> `deckel-auf-sichtbarer-grundmenge.test.ts` bewacht.
+>
+> **Was JOB 4303 dabei NICHT gemessen hat:** den ausgeführten Browserweg. Der Cloud-Prüfplatz trug
+> in dieser Runde kein PostgreSQL 16 („Prüfimage ohne PostgreSQL16; Integrationslauf nicht
+> ausführbar", Arbeitsprüfung `e1fd8f7312a94b25913d0c5d16ec6602`, Exit 78), und ein lokaler
+> Ersatzlauf ist untersagt. `G1a` und `G1b` sind in dieser Runde **weder ausgeführt noch bestanden**;
+> ihr ausgeführter Nachweis steht aus.
 
 **2 · Eine Instanz mit 10.000 Wissensobjekten wird nicht von selbst bereit.** Die Inbetriebnahme der
 Suchprojektion braucht in diesem Lauf 14,1 s. Sie hängt im `onReady`-Hook

@@ -425,28 +425,33 @@ describe("JOB 4271 · der Großbestand-Nutzerweg gegen echte PostgreSQL im echte
   }, 120_000);
 
   // ══════════════════════════════════════════════════════════════════════════════════════════════
-  // G1a — DER BEFUND: FREMDE VERTRAULICHE EINTRÄGE VERDRÄNGEN DAS EIGENE DOKUMENT AUS DEM DECKEL.
+  // G1a — DIE REGRESSION: FREMDE VERTRAULICHE EINTRÄGE BELEGEN KEINEN DECKELPLATZ MEHR.
   // ══════════════════════════════════════════════════════════════════════════════════════════════
   //
-  // ER WIRD HIER GEMESSEN UND NICHT REPARIERT (Auftrag §4). Was der Lauf zeigt, ist eine Rechnung
-  // ohne Lücke:
+  // WAS HIER BIS JOB 4303 STAND, UND WARUM ES WEG IST. Dieser Fall schrieb einen FEHLER fest:
+  // `sichtbareTreffer === LIBRARY_SEARCH_HIT_LIMIT - FREMDE_VERTRAULICHE` (150). Die Rechnung war
+  // richtig und die Ursache benannt — 50 vertrauliche Einträge eines anderen Menschen trugen den
+  // höchsten Trust, besetzten 50 der 200 Deckelplätze und fielen erst an der Route wieder heraus,
+  // weil der Deckel VOR dem Sichtbarkeitsfilter lag. JOB 4271 durfte das nur melden (dortiger
+  // Auftrag §4), JOB 4303 hat es behoben: `opts.trim` reist jetzt durch `findSearchHits` bis in die
+  // Datenquelle und wirkt dort auf der Grundmenge, vor dem Deckel
+  // (`services/library-analytics/src/service.ts`, `services/knowledge-object/src/
+  // search-projection-repo{,-pg}.ts`).
+  //
+  // DER ALTE ERWARTUNGSWERT IST DAMIT FALSCH GEWORDEN und wird ABGELÖST, nicht daneben gestellt.
+  // Was dieser Fall jetzt festhält, ist die Zusage der Korrektur:
   //
   //   211 Einträge tragen den Begriff (161 sichtbare + 50 fremde vertrauliche; G0 zählt sie in der
-  //       Projektionstabelle nach).
-  //   200 Plätze hat der Serverdeckel — `LibraryService.search` fragt mit
-  //       `findSearchHits({ terms: [q], limit: LIBRARY_SEARCH_HIT_LIMIT })`
-  //       (`services/library-analytics/src/service.ts:1789`) und reicht dabei KEINEN
-  //       Sichtbarkeitsfilter mit; `opts.trim` wirkt eine Zeile darüber nur auf `listForSearch`.
-  //   Die Ordnung im Deckel ist `validiert ↓, trust ↓, koId`. Die 50 fremden Einträge tragen den
-  //       höchsten Vertrauenswert und besetzen deshalb die ersten 50 Plätze — obwohl dieser Mensch
-  //       sie nie zu sehen bekommt.
-  //   150 bleiben danach übrig, nachdem die Route sie wegfiltert
-  //       (`services/app/src/routes/library-routes.ts:578-580`, `sichtbareFuer`).
+  //       Projektionstabelle nach) — der Bestand ist UNVERÄNDERT, die 50 liegen weiter darin,
+  //       tragen weiter den höchsten Trust und weiter den Begriff im Titel.
+  //   161 sichtbare Anwärter passen unter die 200 Plätze, weil die 50 keinen mehr verbrauchen.
+  //   161 Treffer nennt die Fläche deshalb — nicht 150, und nicht mehr als die Anwärter.
   //
-  // FOLGE: 50 Dokumente, die dieser Mensch nicht sehen darf, verbrauchen ein Viertel seines
-  // Trefferfensters — und herausgefallen ist ausgerechnet das Dokument, das er sucht. Der Code
-  // benennt die Naht selbst (`service.ts:1785-1787`), zieht daraus aber keine Folge.
-  it("G1a · BEFUND (nicht repariert): 50 fremde vertrauliche Einträge verbrauchen 50 der 200 Deckelplätze", async (ctx) => {
+  // DIE SCHÄRFE LIEGT IM „KEINER VON IHNEN": die Trefferzahl allein könnte auch aus einem erhöhten
+  // Deckel stammen. Geprüft wird deshalb gegen die KENNUNGEN aus dem Seedmanifest, dass kein
+  // einziger der 50 fremden Einträge in der sichtbaren Liste steht — und dass die Zahl exakt die
+  // der sichtbaren Anwärter ist, nicht bloss grösser als vorher.
+  it("G1a · REGRESSION: die 50 fremden vertraulichen Einträge verbrauchen keinen der 200 Deckelplätze", async (ctx) => {
     if (!verfuegbarOderSkip(ctx)) {
       return;
     }
@@ -467,20 +472,46 @@ describe("JOB 4271 · der Großbestand-Nutzerweg gegen echte PostgreSQL im echte
       protokoll.g1SichtbareTreffer = sichtbareTreffer;
       protokoll.g1ZielInDerListe = String(zielInListe);
       process.stderr.write(
-        `${JOB} G1a BEFUND: ${TREFFER_BEGRIFF} sichtbare Anwärter + ${FREMDE_VERTRAULICHE} fremde vertrauliche = ${TREFFER_BEGRIFF + FREMDE_VERTRAULICHE} auf ${LIBRARY_SEARCH_HIT_LIMIT} Deckelplätze; sichtbar bleiben ${sichtbareTreffer}. Ziel in der Liste: ${zielInListe}.\n`,
+        `${JOB} G1a REGRESSION: ${TREFFER_BEGRIFF} sichtbare Anwärter + ${FREMDE_VERTRAULICHE} fremde vertrauliche = ${TREFFER_BEGRIFF + FREMDE_VERTRAULICHE} Begriffsträger auf ${LIBRARY_SEARCH_HIT_LIMIT} Deckelplätze; sichtbar sind ${sichtbareTreffer}. Ziel in der Liste: ${zielInListe}.\n`,
       );
 
       // DIE RECHNUNG, GLIED FÜR GLIED — unabhängig gerechnet, nicht vom Ergebnis abgeschrieben.
+      // Erst die Voraussetzung: die Anwärter passen wirklich unter den Deckel. Täten sie es nicht,
+      // sagte dieser Fall nichts über die Sichtbarkeit aus, sondern nur etwas über den Deckel.
       expect(
-        sichtbareTreffer,
-        "die sichtbare Trefferzahl ist nicht Deckel minus fremde Einträge — dann ist die Ursache eine andere als beschrieben",
-      ).toBe(LIBRARY_SEARCH_HIT_LIMIT - FREMDE_VERTRAULICHE);
+        TREFFER_BEGRIFF,
+        "die sichtbaren Anwärter passen nicht unter den Deckel — dann misst dieser Fall den Deckel, nicht die Sichtbarkeit",
+      ).toBeLessThanOrEqual(LIBRARY_SEARCH_HIT_LIMIT);
       expect(
-        sichtbareTreffer,
-        "es fehlt gar nichts — dann misst dieser Befund nichts",
-      ).toBeLessThan(TREFFER_BEGRIFF);
+        TREFFER_BEGRIFF + FREMDE_VERTRAULICHE,
+        "der Bestand überfüllt den Deckel gar nicht mehr — dann ist die Regression nicht mehr messbar",
+      ).toBeGreaterThan(LIBRARY_SEARCH_HIT_LIMIT);
 
-      // UND DAS DOKUMENT LIEGT WIRKLICH IM BESTAND — der Verlust entsteht am Deckel, nicht am Seed.
+      expect(
+        sichtbareTreffer,
+        "die sichtbare Trefferzahl ist nicht die Zahl der sichtbaren Anwärter — der Deckel greift weiterhin auf der ungefilterten Grundmenge",
+      ).toBe(TREFFER_BEGRIFF);
+      // UND AUSDRÜCKLICH NICHT MEHR der alte Fehlerwert. Er steht hier als das, was er ist: der
+      // abgelöste Zustand, der nie wieder eintreten darf.
+      expect(
+        sichtbareTreffer,
+        "die Fläche zeigt wieder Deckel minus fremde Einträge — der Fehler aus JOB 4271 ist zurück",
+      ).not.toBe(LIBRARY_SEARCH_HIT_LIMIT - FREMDE_VERTRAULICHE);
+
+      // DIE SCHÄRFE: keiner der 50 fremden Einträge steht in der Liste. Die Kennungen stammen aus
+      // dem Seedmanifest, nicht aus der Antwort — sonst prüfte die Antwort sich selbst.
+      const fremdeKennungen = m.kennungenJeGruppe["fremd-vertraulich"];
+      expect(
+        fremdeKennungen,
+        "das Manifest führt die fremden Einträge nicht — dann ist die Abgrenzung nicht prüfbar",
+      ).toHaveLength(FREMDE_VERTRAULICHE);
+      const durchgerutscht = stand.kennungen.filter((id) => fremdeKennungen.includes(id));
+      expect(
+        durchgerutscht,
+        "ein fremder vertraulicher Eintrag steht in der sichtbaren Liste — der Trim erweitert die Sichtbarkeit",
+      ).toEqual([]);
+
+      // UND DAS DOKUMENT LIEGT WIRKLICH IM BESTAND — dieselbe unabhängige Lesung wie bisher.
       const inDerSpalte = await (pool as Pool).query<{ n: string }>(
         "SELECT count(*)::text AS n FROM kos WHERE id = $1",
         [m.zielKoId],
@@ -493,15 +524,17 @@ describe("JOB 4271 · der Großbestand-Nutzerweg gegen echte PostgreSQL im echte
   }, 900_000);
 
   // ══════════════════════════════════════════════════════════════════════════════════════════════
-  // G1b — DIE ZUSAGE DES AUFTRAGS. SIE IST HEUTE NICHT ERFÜLLT, UND DIESER FALL SAGT DAS.
+  // G1b — DIE ZUSAGE DES AUFTRAGS. SEIT JOB 4303 IST SIE EINGELÖST.
   // ══════════════════════════════════════════════════════════════════════════════════════════════
   //
-  // Auftrag §6: „danach grün — ODER ER BLEIBT ROT, WEIL DAS PRODUKT DAS DOKUMENT WIRKLICH NICHT
-  // LIEFERT. Dann greift Abschnitt 4: melden, nicht reparieren. Ein Test, der geschönt wird, damit
-  // er grün wird, ist ein Auftragsverstoß."
+  // JOB 4271 durfte diesen Fall nur ROT stehen lassen (dortiger Auftrag §4: melden, nicht
+  // reparieren) — das Produkt lieferte das Dokument wirklich nicht. JOB 4303 hat die Ursache
+  // behoben, und zwar an der Stelle, die G1a misst: der Deckel hat den Sichtbarkeitsfilter jetzt
+  // VOR sich statt hinter sich.
   //
-  // Er wird grün, sobald der Deckel den Sichtbarkeitsfilter VOR sich hat statt hinter sich. Bis
-  // dahin ist sein Rot die Lieferung. Er wird NICHT gelockert und NICHT übersprungen.
+  // DER FALL SELBST IST UNVERÄNDERT. Weder Zielobjekt noch Suchbegriff noch Kriterium wurden
+  // angefasst; er wird NICHT gelockert und NICHT übersprungen. Was sich geändert hat, steht im
+  // Produkt, nicht hier.
   it("G1b · DIE ZUSAGE: das Zieldokument steht in der sichtbaren Trefferliste und wird per Tastatur geöffnet", async (ctx) => {
     if (!verfuegbarOderSkip(ctx)) {
       return;
@@ -514,7 +547,7 @@ describe("JOB 4271 · der Großbestand-Nutzerweg gegen echte PostgreSQL im echte
         zielKoId: m.zielKoId,
         zielTitel: ZIEL_TITEL,
         gesamtbestand: GESAMT,
-        hinweis: `URSACHE, gemessen in G1a: der Deckel von ${LIBRARY_SEARCH_HIT_LIMIT} greift VOR dem Sichtbarkeitsfilter — services/library-analytics/src/service.ts:1789 reicht keinen Trim an findSearchHits, services/app/src/routes/library-routes.ts:578-580 filtert erst danach. MELDEN, NICHT REPARIEREN (Auftrag §4).`,
+        hinweis: `Fehlt das Ziel, greift der Deckel von ${LIBRARY_SEARCH_HIT_LIMIT} wieder auf der UNGEFILTERTEN Grundmenge: die ${FREMDE_VERTRAULICHE} fremden vertraulichen Einträge verbrauchen dann erneut Deckelplätze (JOB 4271, G1a). Seit JOB 4303 reicht services/library-analytics/src/service.ts den Trim an findSearchHits durch, und beide Suchprojektions-Adapter setzen ihn VOR dem Deckel auf der Grundmenge durch. G1a misst dieselbe Naht als Zahl.`,
       });
       protokoll.g1Tastaturschritte = befund.oeffnungsschritte;
     } finally {

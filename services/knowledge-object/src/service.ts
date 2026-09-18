@@ -1806,8 +1806,8 @@ export class KoService {
    * statt eine unvollständige Teilmenge zu liefern. Der Fehler ist rein intern; Routen, Statuskarte
    * und äußerer Treffervertrag bleiben unverändert.
    */
-  async findSearchHits(query: KoSearchQuery): Promise<KoSearchHit[]> {
-    return this.searchProjections.findActive(query);
+  async findSearchHits(query: KoSearchQuery, trim?: KoSichtbarkeitstrim): Promise<KoSearchHit[]> {
+    return this.searchProjections.findActive(query, trim);
   }
 
   // SCRUM-160: Evidence-Records append-only schreiben. No-op ohne Evidence-Repo;
@@ -5504,3 +5504,30 @@ type EinordnungsBedingung = {
   expectedVersion?: number;
   meldeMetadatenstand?: (revision: number) => void;
 };
+
+// ==================================================================================================
+// JOB 4303 (WIKI-ZUSAMMENARBEIT) — DER DECKEL ZÄHLT NUR NOCH, WAS DER SUCHENDE SEHEN DARF.
+// ==================================================================================================
+//
+// WARUM DIESE BEGRÜNDUNG HIER UNTEN STEHT UND NICHT ÜBER `findSearchHits` (`:1809`): aus demselben
+// Grund wie `ReviseMitHerkunft` und `EinordnungsBedingung` darüber. Auf `:1809-1811` und
+// `:3691-3715` zeigen zwei Wegweiser in `services/knowledge-object/src/repo.ts` und
+// `services/app/src/knowledge-check.ts` — beide NICHT Zielpfad dieses Auftrags, beide am Quelltext
+// nachgeschlagen von `tests/live-check-postgres-prefilter/toter-kandidatenweg.test.ts` und
+// `tests/live-check-suchwoerter/begruendung-nennt-die-gebaute-kette.test.ts`. Runde 1 hat den
+// Kommentar über die Methode gesetzt, damit beide Ziele um 17 Zeilen verschoben und genau diese
+// zwei Wächter rot gemacht. Die Signaturzeile selbst ändert keine Zeilenzahl; jede Erklärung
+// dazu gehört unterhalb von `:3715`.
+//
+// `trim` IST DER OPTIONALE SICHTBARKEITSTRIM aus der Kompositionswurzel — dasselbe injizierte Datum,
+// das `listForSearch` seit AUFTRAG-BASIC-380 trägt (`KoSichtbarkeitstrim`, repo.ts), und derselbe
+// Weg: dieser Dienst legt die Regel NICHT aus, er reicht sie an die Datenquelle weiter. Dort wirkt
+// sie auf der Grundmenge, VOR `limit`.
+//
+// WARUM IM DIENST UND NICHT ERST BEIM AUFRUFER: `limit` schneidet in der Datenquelle. Was der
+// Aufrufer nach dem Schnitt wegfiltert, hat seinen Deckelplatz bereits verbraucht — genau der
+// Verlust, den JOB 4271 am 10.000er-Bestand gemessen hat (G1a).
+//
+// OHNE `trim` ist das Verhalten zeichengleich dem bisherigen (Altvertrag, wie ihn `search` in
+// library-analytics führt); mit `trim` ist das Ergebnis eine TEILmenge davon. Die Autorisierung
+// bleibt an der Route (G-SHADOW) — hier entsteht kein zweiter, weiterer Weg an den Text.

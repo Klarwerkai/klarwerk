@@ -8,7 +8,7 @@ import {
   InMemoryKoMetadataProjectionRepo,
   type KoMetadataProjectionRepo,
 } from "./metadata-projection-repo";
-import type { KoRepo } from "./repo";
+import type { KoRepo, KoSichtbarkeitstrim } from "./repo";
 import {
   DECKELAUSWAHL_VORGABE,
   type KoSearchHit,
@@ -416,8 +416,26 @@ export interface KoSearchProjectionRepo {
    *
    * Historische KO-Versionen werden NIE geliefert (Architekturentscheidung G27, „Aktiver Datensatz").
    * Reihenfolge wie der bestehende Ask-Prefilter: validierte zuerst, dann Trust absteigend.
+   *
+   * ============================================================================================
+   * JOB 4303 — DER OPTIONALE SICHTBARKEITSTRIM WIRKT AUF DER GRUNDMENGE, VOR DEM DECKEL.
+   * ============================================================================================
+   *
+   * Dieselbe Doktrin und derselbe Port wie bei `KoRepo.listForSearch` (AUFTRAG-BASIC-380,
+   * s. `KoSichtbarkeitstrim` in repo.ts): der Trim ist ein DATUM, keine zweite Auslegung der Regel.
+   * Neu ist nur, WO er wirkt — an der gedeckelten Trefferabfrage.
+   *
+   * WARUM DAS NÖTIG IST (JOB 4271, G1a, am 10.000er-Bestand gemessen): `limit` schnitt bis hierher
+   * aus der GESAMTmenge. 50 vertrauliche Einträge eines anderen Menschen belegten damit 50 der 200
+   * Plätze, obwohl der Suchende sie nie zu sehen bekommt — und herausgefallen war ausgerechnet das
+   * Dokument, das er suchte. Ein Deckel ist eine Zusage an den MENSCHEN („so viele Treffer zeige
+   * ich dir"), nicht an die Datenbank; also muss er über der sichtbaren Menge liegen.
+   *
+   * ER ERWEITERT NIE: ohne `trim` ist das Verhalten zeichengleich dem bisherigen (Altvertrag), mit
+   * `trim` ist die Menge eine TEILmenge davon. Die Autorisierung bleibt, wo sie war — an der Route
+   * (`sichtbareFuer`, G-SHADOW: `oldAllowed ∧ newAllowed`).
    */
-  findActive(query: KoSearchQuery): Promise<KoSearchHit[]>;
+  findActive(query: KoSearchQuery, trim?: KoSichtbarkeitstrim): Promise<KoSearchHit[]>;
   /**
    * DIE EINZIGE AUTORITATIVE QUELLE fuer aktive Projektionsfassung und Readiness (04 §1).
    * Fehlt die Zeile, ist die Antwort `UNINITIALIZED` — fail-closed, nie geraten.
@@ -705,7 +723,7 @@ export class InMemoryKoSearchProjectionRepo implements KoSearchProjectionRepo {
     );
   }
 
-  async findActive(query: KoSearchQuery): Promise<KoSearchHit[]> {
+  async findActive(query: KoSearchQuery, trim?: KoSichtbarkeitstrim): Promise<KoSearchHit[]> {
     // DER CONTROL-STATE ZUERST — vor jeder fachlichen Leermengenentscheidung (04 §4). Stünde die
     // Prüfung hinter `terms.length === 0`, meldete eine nicht suchbereite Instanz bei leerer Anfrage
     // ein ehrliches „nichts gefunden" und log damit über ihre Verfügbarkeit.
@@ -740,7 +758,14 @@ export class InMemoryKoSearchProjectionRepo implements KoSearchProjectionRepo {
     // seit der Freigabe ausserhalb dieser Generation entstanden ist, gehört nicht zum geprüften
     // Bestand. Sie still mitzuliefern wäre dieselbe zweite Wahrheit, die die Fassungsgrenze gerade
     // abgeschafft hat. Für den ungenerationierten Legacy-V1-Betrieb entfällt die Bedingung.
-    const kos = new Map((await this.kos.listForSearch({})).map((ko) => [ko.id, ko]));
+    //
+    // JOB 4303: UND — falls der Aufrufer ihn mitgibt — der Sichtbarkeitstrim, auf DERSELBEN Stufe
+    // wie das SQL-Prädikat im Pg-Adapter: an der Grundmenge, vor Auswahl und Deckel. Er reist durch
+    // `listForSearch` und wird damit von genau derselben Zeile durchgesetzt, die ihn für die
+    // Bestandsliste durchsetzt (`InMemoryKoRepo.listForSearch`, repo.ts) — kein zweiter Filter,
+    // keine zweite Auslegung. `trifftZu` liest das volle gespeicherte Objekt (Papierkorb, Stufe,
+    // Autor), nicht die Projektion.
+    const kos = new Map((await this.kos.listForSearch({}, trim)).map((ko) => [ko.id, ko]));
     const aktiv = [...this.items.values()].filter((projection) => {
       const ko = kos.get(projection.koId);
       return Boolean(

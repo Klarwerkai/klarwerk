@@ -1826,13 +1826,36 @@ export class LibraryService {
     // Der Deckel ist die Zahl, die die Fläche ohnehin zeigt (LIBRARY_RESULT_LIMIT der Bibliothek,
     // 200); mehr Treffer hat die Seite nie auf einmal dargestellt. Die Datenquelle sortiert
     // validierte und vertrauenswürdige Objekte nach vorn, also bleiben die wichtigsten unter dem
-    // Deckel. Was der Deckel NICHT löst: die Sichtbarkeitsnachfilterung unten kann aus 200
-    // Treffern weniger machen (library-routes.ts, Kommentar zu BASIC-380) — der Deckel liegt vor
-    // ihr. Das ist ausgesprochen, nicht versteckt.
+    // Deckel.
+    //
+    // ==========================================================================================
+    // JOB 4303 — DER DECKEL IST EINE ZUSAGE AN DEN MENSCHEN, NICHT AN DIE DATENBANK.
+    // ==========================================================================================
+    //
+    // HIER STAND BIS 4303 das Eingeständnis, die Sichtbarkeitsnachfilterung könne „aus 200 Treffern
+    // weniger machen — der Deckel liegt vor ihr". Ausgesprochen war es, gezogen war die Folge
+    // nicht: JOB 4271 hat an 10.000 echten Zeilen gemessen, was daraus wird (G1a). 50 vertrauliche
+    // Einträge eines anderen Menschen trugen den höchsten Trust, besetzten 50 der 200 Plätze und
+    // fielen anschliessend an der Route wieder heraus. Sichtbar blieben 150 Treffer OHNE das
+    // gesuchte Dokument — eine falsche Auskunft, 150 Zeilen lang.
+    //
+    // JETZT REIST `opts.trim` DURCH DENSELBEN AUFRUF, den `listForSearch` eine Zeile darüber schon
+    // benutzt. Das Prädikat wirkt in der Datenquelle auf der Grundmenge, VOR dem Deckel; die 200
+    // Plätze füllen sich nur noch mit Einträgen, die dieser Mensch sehen darf.
+    //
+    // KEIN ZWEITER SUCHWEG und KEINE ZWEITE REGEL: derselbe Vertrag (`findSearchHits`), dasselbe
+    // injizierte Datum (`KoSichtbarkeitstrim`), dieselbe Entscheidung wie an der Route. Ohne
+    // `opts.trim` — jeder Aufrufer, der ihn nicht setzt — ist das Verhalten zeichengleich dem
+    // bisherigen. Die Nachfilterung an der Route (`sichtbareFuer`) bleibt stehen und bleibt
+    // massgeblich: Sichtbarkeit wird hier ausschliesslich ENGER durchgesetzt, nie weiter
+    // (G-SHADOW: `oldAllowed ∧ newAllowed`).
     const treffer = new Map(
-      (await this.koService.findSearchHits({ terms: [q], limit: LIBRARY_SEARCH_HIT_LIMIT })).map(
-        (hit) => [hit.koId, hit],
-      ),
+      (
+        await this.koService.findSearchHits(
+          { terms: [q], limit: LIBRARY_SEARCH_HIT_LIMIT },
+          opts.trim,
+        )
+      ).map((hit) => [hit.koId, hit]),
     );
     const out: KnowledgeObject[] = [];
     for (const ko of list) {
