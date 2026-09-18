@@ -20,6 +20,9 @@ import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import { useConflicts, useDrafts, useKos, useLibrarySearch } from "../api/hooks";
 import type { AnswerResult } from "../api/types";
+// JOB 4333: die Sitzungsfrage, dreiwertig — diese Fläche muss „der Server sagt: keine Sitzung" von
+// „es konnte niemand gefragt werden" unterscheiden, sonst sagt sie das Falsche.
+import { useSession } from "../app/AuthContext";
 import {
   GuardedLink,
   NavGuardSaveError,
@@ -71,6 +74,11 @@ import {
 } from "../lib/mobileConfirm";
 import type { QueueStatus } from "../lib/offlineQueue";
 import { toReasonerLocale } from "../lib/reasonerLocale";
+// JOB 4333: die Zahl der noch nicht übertragenen Vorgänge auf DIESEM Gerät — kontounabhängig und
+// nur lesend. Gebraucht ausschliesslich in der Lage „Sitzungsfrage unbeantwortet", in der
+// `useOfflineQueue` naturgemäss keine eigene Liste führen kann (JOB 4249: ohne bestätigtes Konto
+// ist nichts als eigen erwiesen).
+import { offeneVorgaengeAmGeraet } from "../lib/sessionState";
 import { LIBRARY_SEARCH_DEBOUNCE_MS, useDebouncedValue } from "../lib/useDebouncedValue";
 
 type MobileTab = "capture" | "ask" | "lookup";
@@ -195,6 +203,75 @@ export function Mobile(): JSX.Element {
     }
   };
   const queue = useOfflineQueue(notifySync);
+  // ============================================================================================
+  // JOB 4333 — DIE SITZUNGSFRAGE IST UNBEANTWORTET: GESAGT, NICHT GERATEN.
+  // ============================================================================================
+  //
+  // Seit JOB 4333 steht diese Fläche auch dann, wenn die Sitzungsfrage ohne Antwort geblieben ist
+  // (`App.tsx`, der Zweig nach `needsSetup`) — ohne Netz ist das der Normalfall nach einem
+  // Neuladen. Sie darf dann ZWEI Dinge nicht tun: behaupten, jemand sei angemeldet, und den
+  // Menschen mit dem Satz „Melde dich neu an, dann geht es weiter" (`mob.konto.unbekannt`) an eine
+  // Anmeldung schicken, die ohne Netz gar nicht stattfinden kann. Beides wäre eine Zusage, die der
+  // Zustand nicht hergibt.
+  //
+  // Die Kennung bleibt trotzdem unbekannt, und alles, was daran hängt, bleibt es auch: nichts wird
+  // gesendet, nichts zugeordnet, nichts gelöscht (JOB 4249). Der Zähler unten nennt deshalb
+  // ausschliesslich lokal gezählte Vorgänge und KEINE Titel — was hier liegt, gehört womöglich
+  // jemand anderem.
+  const sitzung = useSession();
+  const sitzungUnbeantwortet = sitzung.sitzungslage === "unbeantwortet";
+  // Nur in dieser Lage gelesen: sonst führt `useOfflineQueue` den Bestand selbst, und zwei Quellen
+  // für dieselbe Zahl wären zwei Wahrheiten.
+  const vorgaengeAmGeraet = sitzungUnbeantwortet ? offeneVorgaengeAmGeraet() : 0;
+  // ============================================================================================
+  // JOB 4333 RUNDE 2 (BENs Korrekturpflicht 1) — OHNE BESTÄTIGTE SITZUNG KOMMT NICHTS VOM SERVER.
+  // ============================================================================================
+  //
+  // DER BEFUND (BEN R1, an dieser Datei gemessen): Die Fläche zeigte bei unbeantworteter
+  // Sitzungsfrage weiter die SERVER-Entwurfsliste — sichtbar im Text: „Meine Entwürfe BEN
+  // VERTRAULICHER SERVERENTWURF". Der Weg dorthin ist keine Abfrage (die scheitert ja), sondern
+  // der ZWISCHENSPEICHER von react-query: `useDrafts()` gibt weiter aus, was zuletzt geholt wurde,
+  // und der lebt den Netzausfall über. Die Rückgabe aus Runde 1 hat das Gegenteil behauptet und
+  // sich dabei auf `public/sw.js` berufen — der Service Worker schützt aber nur vor einem HTTP-
+  // Zwischenspeicher, nicht vor dem Zustand im Browser.
+  //
+  // DIE REGEL IST EINFACH UND STEHT AN EINER STELLE: Solange niemand bestätigt hat, wer hier
+  // angemeldet ist, zeigt diese Fläche AUSSCHLIESSLICH, was auf dem Gerät liegt — das Formular
+  // (lokal getippt), die Zahl der wartenden Vorgänge (lokal gezählt) und die Sätze dazu. Jede
+  // Auskunft, die einmal von einem Server kam, bleibt draussen: Entwurfsliste, Fragen, Suche und
+  // die Serverfassung im Standvergleich.
+  //
+  // WARUM NICHT IN `App.tsx`: Dort ist die Entscheidung „welche Fläche", hier die Entscheidung
+  // „welcher Inhalt". Ein Riegel am Tor hätte die ganze Fläche genommen — samt der eigenen Arbeit,
+  // die sie zeigen soll. Der Riegel gehört an die Stelle, an der die fremden Daten die Fläche
+  // betreten, und das ist hier.
+  //
+  // ER HÄNGT AN DER SITZUNG UND AN NICHTS SONST (Runde 3, BENs Korrekturpflicht 1).
+  //
+  // In Runde 2 stand hier `sitzungUnbeantwortet && vorgaengeAmGeraet > 0` — der Riegel war an den
+  // BESTAND gekoppelt, mit der Begründung, die Fläche stehe ohne liegende Arbeit ohnehin nicht.
+  // Das war falsch, und BEN hat es an der echten Anwendung gemessen: Die Warteschlange kann sich
+  // ändern, WÄHREND die Fläche steht — ein zweiter Tab sendet sie leer (`storage`-Ereignis), und
+  // beim nächsten Rendern las diese Zeile `0`. Danach stand der geschützte Serverentwurf wieder da
+  // (`Warteschlange · 0 … Meine Entwürfe BEN VERTRAULICHER SERVERENTWURF`), obwohl über die Sitzung
+  // weiterhin nichts feststand.
+  //
+  // DIE LEHRE, und sie ist grundsätzlich: Eine Bedingung, die beim EINTRITT geprüft wird, gilt
+  // nicht für die Lebensdauer der Fläche. Der Riegel schützt vor fremden Daten; die Frage, ob
+  // fremde Daten gezeigt werden dürfen, hängt an der Sitzung — nicht daran, wie viel gerade lokal
+  // liegt. Ein leerer Bestand ist kein Grund, Geschütztes zu zeigen.
+  //
+  // EINE EINZIGE AUSNAHME, und sie steht so im Auftrag (§9, Zeile „laden"): Solange die
+  // Sitzungsfrage LÄUFT, ist sie nicht unbeantwortet — sie ist unterwegs. In dieser Lage behauptet
+  // die Fläche nichts, auch nicht „ohne bestätigte Anmeldung": das wäre „ein vorgezogener
+  // Offline-Satz, der sich eine Sekunde später als falsch erweist". Sie kann in dieser Lage auch
+  // nichts Fremdes herausgeben — ein Zwischenspeicher, der noch nie eine Antwort gesehen hat, ist
+  // leer, und eine AUFFRISCHUNG einer bestehenden Sitzung setzt `isLoading` gar nicht (react-query
+  // behält die Daten, `sitzungslage` bleibt dann „bestaetigt").
+  //
+  // BENs Lage bleibt davon unberührt: ohne Netz ist die Abfrage ANGEHALTEN und nicht ladend
+  // (`fetchStatus: "paused"`, `isLoading` false) — gemessen in F1, F8 und F8d.
+  const serverInhalteGesperrt = sitzungUnbeantwortet && !sitzung.isLoading;
   /**
    * JOB 4249: Was diese Sitzung ANFASSEN darf — die eigenen Vorgänge und die ungebundenen Reste.
    * Fremde sind hier bewusst NICHT dabei: sie werden weder angezeigt noch geöffnet noch ersetzt.
@@ -205,6 +282,13 @@ export function Mobile(): JSX.Element {
 
   // --- Erfassen (FE-MOB-02/04) ---
   const drafts = useDrafts();
+  /**
+   * JOB 4333 R2: Die Entwürfe des Servers — oder NICHTS, solange die Sitzungsfrage unbeantwortet
+   * ist. Genau EINE Stelle, an der die Serverliste in diese Fläche eintritt: sie speist die
+   * Anzeige UND `resume`. Zwei getrennte Riegel liefen auseinander, sobald jemand einen dritten
+   * Leser einbaut — und genau so entstand BENs Befund.
+   */
+  const serverEntwuerfe = serverInhalteGesperrt ? [] : (drafts.data ?? []);
   const [form, setForm] = useState<DraftFormState>({ ...EMPTY_DRAFT_FORM });
   const [baseline, setBaseline] = useState<DraftFormState>({ ...EMPTY_DRAFT_FORM });
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -442,6 +526,27 @@ export function Mobile(): JSX.Element {
   // in Capture.tsx, JOB 3526/3572).
   const schreibenGesperrt = konflikt !== null;
 
+  // ============================================================================================
+  // JOB 4333 R2 (BENs Korrekturpflicht 1) — DER STANDVERGLEICH ZEIGT KEINE SERVERFASSUNG MEHR,
+  // SOLANGE NIEMAND DIE SITZUNG BESTÄTIGT HAT.
+  // ============================================================================================
+  //
+  // `lage: "unterschied"` TRÄGT die Fassung des Servers (`endpoints.drafts.get`). Sie entsteht bei
+  // bestehender Verbindung — und bleibt im Zustand stehen, wenn die Verbindung danach abreisst.
+  // Genau dieselbe Bauform wie BENs Befund an der Entwurfsliste, nur eine Ebene tiefer.
+  //
+  // HERUNTERGESTUFT WIRD AUF EINE VORHANDENE, EHRLICHE LAGE und nicht auf eine neue Meldung: „der
+  // Vergleich konnte nicht geholt werden" (`fehler`) ist genau das, was gilt, und sie hat ihren
+  // Ausweg schon („Erneut prüfen"). Nichts geht verloren: der getippte Text bleibt im Feld, die
+  // eigene offline gespeicherte Fassung bleibt im Zustand, und die Schreibsperre behält damit
+  // einen sichtbaren Grund.
+  const standLage: StandLage =
+    konflikt === null
+      ? { art: "laedt" }
+      : serverInhalteGesperrt && konflikt.lage.art === "unterschied"
+        ? { art: "fehler" }
+        : konflikt.lage;
+
   const onSave = (): void => {
     if (schreibenGesperrt) {
       push("error", t("mob.stand.erstAufloesen"));
@@ -602,7 +707,7 @@ export function Mobile(): JSX.Element {
       }
       return;
     }
-    const d = (drafts.data ?? []).find((x) => x.id === id);
+    const d = serverEntwuerfe.find((x) => x.id === id);
     if (d) {
       const resumed = draftToForm(d);
       setForm(resumed);
@@ -729,6 +834,23 @@ export function Mobile(): JSX.Element {
           )}
         </div>
 
+        {/* ================================================================================
+            JOB 4333 — DER EHRLICHE SATZ ZUR SITZUNG.
+            ================================================================================
+            Er steht ÜBER den Reitern und damit auf allen dreien: Es ist eine Aussage über die
+            Sitzung, nicht über das Erfassen. Und er sagt genau das, was gilt — die Anmeldung
+            konnte nicht geprüft werden, die eigene Arbeit liegt weiter hier, gesendet wird
+            nichts, bevor der Server wieder antwortet. Keine Erfolgsanzeige, keine Zusage über
+            eine Übertragung, keine Behauptung, man sei angemeldet. */}
+        {sitzungUnbeantwortet ? (
+          <p
+            data-testid="mob-sitzung-unbeantwortet"
+            className="mb-3 rounded-card border border-hairline bg-trust-warn-bg p-2.5 text-[11.5px] leading-relaxed text-trust-warn-text"
+          >
+            {t("mob.sitzung.unbeantwortet")}
+          </p>
+        ) : null}
+
         {/* Tabs */}
         <div className="mb-3 flex gap-1 rounded-btn bg-page p-1">
           <button
@@ -832,11 +954,11 @@ export function Mobile(): JSX.Element {
                 data-testid="mob-stand-konflikt"
                 className="mt-3 rounded-card border border-hairline bg-trust-warn-bg p-2.5"
               >
-                {konflikt.lage.art === "laedt" ? (
+                {standLage.art === "laedt" ? (
                   <p className="text-[12px] leading-relaxed text-trust-warn-text">
                     {t("mob.stand.laedt")}
                   </p>
-                ) : konflikt.lage.art === "fehler" ? (
+                ) : standLage.art === "fehler" ? (
                   <>
                     <p className="text-[12px] leading-relaxed text-trust-warn-text">
                       {t("mob.stand.pruefungFehlt")}
@@ -867,7 +989,7 @@ export function Mobile(): JSX.Element {
                       className="mt-1 text-[11.5px] leading-relaxed text-trust-warn-text"
                     >
                       {t("mob.stand.felder")}:{" "}
-                      {konflikt.lage.felder.map((f) => t(`mob.stand.feld.${f}`)).join(" · ")}
+                      {standLage.felder.map((f) => t(`mob.stand.feld.${f}`)).join(" · ")}
                     </p>
                     {konflikt.offline ? (
                       <div className="mt-2 space-y-1.5">
@@ -893,10 +1015,10 @@ export function Mobile(): JSX.Element {
                             {t("mob.stand.serverFassung")}
                           </div>
                           <div className="break-words text-[12px] text-text">
-                            {konflikt.lage.server.title}
+                            {standLage.server.title}
                           </div>
                           <div className="whitespace-pre-wrap break-words text-[11.5px] text-muted">
-                            {formText(konflikt.lage.server)}
+                            {formText(standLage.server)}
                           </div>
                         </div>
                       </div>
@@ -971,13 +1093,55 @@ export function Mobile(): JSX.Element {
                     {t("mob.konto.laedt")}
                   </p>
                 ) : queue.kontolage.art === "unbekannt" ? (
-                  <p data-testid="mob-konto-unbekannt" className="text-[12px] text-trust-crit-text">
-                    {t("mob.konto.unbekannt")}
-                  </p>
+                  <>
+                    {/* ==========================================================
+                        JOB 4333 — DER ZÄHLER STEHT AUCH DANN DA, WENN NIEMAND GEANTWORTET HAT.
+                        ==========================================================
+                        Bis hierher stand in dieser Lage NUR der Satz darunter — nach einem
+                        Neuladen ohne Netz war die eigene, noch nicht übertragene Arbeit damit
+                        unsichtbar (JOB 4322, Station (b)).
+
+                        WAS HIER STEHT UND WAS NICHT: eine ZAHL, und kein Titel und keine Liste.
+                        Die Vorgänge liegen auf diesem Gerät; wem sie gehören, ist unbekannt —
+                        ein Titel wäre fremde Arbeit auf einer fremden Fläche. Die Zahl behauptet
+                        auch nichts über den Server: sie ist lokal gezählt
+                        (`lib/sessionState.ts`).
+
+                        KEIN SENDEKNOPF: gesendet werden kann in dieser Lage nichts (JOB 4249 —
+                        `syncNow` bricht ohne bestätigtes Konto ab). Ein Knopf, der gedrückt
+                        werden kann und nichts tut, ist eine Behauptung.
+
+                        NUR BEI UNBEANTWORTETER SITZUNGSFRAGE: Hat der Server geantwortet und es
+                        besteht keine Sitzung, steht diese Fläche im Betrieb gar nicht (der
+                        Torwächter zeigt dann die Anmeldemaske) — eine Zahl dort wäre eine
+                        Auskunft an jemanden, über den nichts feststeht. */}
+                    {sitzungUnbeantwortet ? (
+                      <div className="mb-1.5 flex items-center justify-between">
+                        <span
+                          data-testid="mob-queue-zaehler"
+                          className="font-mono text-[10.5px] uppercase tracking-wider text-muted-2"
+                        >
+                          {t("mob.queue")} · {vorgaengeAmGeraet}
+                        </span>
+                      </div>
+                    ) : null}
+                    <p
+                      data-testid="mob-konto-unbekannt"
+                      className="text-[12px] text-trust-crit-text"
+                    >
+                      {t("mob.konto.unbekannt")}
+                    </p>
+                  </>
                 ) : (
                   <>
                     <div className="mb-1.5 flex items-center justify-between">
-                      <span className="font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
+                      {/* JOB 4333: EINE Marke für EINEN Zähler — der Zweig darüber trägt
+                          dieselbe. Ein Test, der „der Zähler" sucht, findet ihn in jeder
+                          Lage, in der es ihn gibt. */}
+                      <span
+                        data-testid="mob-queue-zaehler"
+                        className="font-mono text-[10.5px] uppercase tracking-wider text-muted-2"
+                      >
                         {t("mob.queue")} · {queue.pending}
                       </span>
                       <button
@@ -1062,15 +1226,25 @@ export function Mobile(): JSX.Element {
                   bei einem dauerhaft gescheiterten Abruf sagt sie das, statt weiter „lädt" zu
                   behaupten (Fehler und Laden bleiben getrennt). Die Reihenfolge ist die Aussage:
                   erst lädt, dann Fehler, dann — und nur dann — die Leerbehauptung. */}
-              {isGroupLoading([drafts]) ? (
+              {/* JOB 4333 R2: VOR jeder Ladeaussage und vor jeder Leerbehauptung. „Keine
+                  Entwürfe" wäre hier genauso falsch wie eine Liste: Der Bestand ist nicht leer,
+                  er ist UNZUGÄNGLICH, solange niemand bestätigt hat, wessen Bestand es ist. */}
+              {serverInhalteGesperrt ? (
+                <p
+                  data-testid="mob-server-gesperrt-entwuerfe"
+                  className="text-[12.5px] leading-relaxed text-muted"
+                >
+                  {t("mob.sitzung.nurLokal")}
+                </p>
+              ) : isGroupLoading([drafts]) ? (
                 <p className="text-[12.5px] text-muted">{t("state.loading")}</p>
               ) : isGroupError([drafts]) ? (
                 <p className="text-[12.5px] text-trust-crit-text">{t("state.error")}</p>
-              ) : (drafts.data ?? []).length === 0 ? (
+              ) : serverEntwuerfe.length === 0 ? (
                 <p className="text-[12.5px] text-muted">{t("mob.draftsEmpty")}</p>
               ) : (
                 <ul className="space-y-1.5">
-                  {(drafts.data ?? []).map((d) => (
+                  {serverEntwuerfe.map((d) => (
                     <li
                       key={d.id}
                       className={`flex items-center gap-2 rounded-input border px-2.5 py-2 ${
@@ -1134,7 +1308,22 @@ export function Mobile(): JSX.Element {
 
         {tab === "ask" ? (
           <div>
-            {!queue.online ? (
+            {/* JOB 4333 R2: Fragen und ihre Quellen kommen vom Server — die Antwortfläche liest
+                zudem den Wissensbestand und die Konflikte aus dem Zwischenspeicher (`useKos`,
+                `useConflicts`). Ohne bestätigte Sitzung bleibt beides draussen. Der Satz steht VOR
+                dem Offline-Zweig darunter, weil er der strengere ist: „kein Netz" erklärt, warum
+                es gerade nicht geht; „niemand hat bestätigt, wer du bist" erklärt, warum es nicht
+                gezeigt werden DARF. */}
+            {serverInhalteGesperrt ? (
+              <div
+                data-testid="mob-server-gesperrt-fragen"
+                className="rounded-card border border-dashed border-hairline p-3"
+              >
+                <p className="text-[12.5px] leading-relaxed text-muted">
+                  {t("mob.sitzung.nurLokal")}
+                </p>
+              </div>
+            ) : !queue.online ? (
               <div className="rounded-card border border-dashed border-hairline p-3">
                 <p className="flex items-center gap-1.5 text-[13px] font-semibold text-text">
                   <WifiOff size={14} />
@@ -1295,7 +1484,18 @@ export function Mobile(): JSX.Element {
 
         {tab === "lookup" ? (
           <div>
-            {!queue.online ? (
+            {/* JOB 4333 R2: dieselbe Regel wie beim Reiter „Fragen" — die Bibliothekstreffer
+                kommen vom Server und liegen nach einem Netzausfall im Zwischenspeicher. */}
+            {serverInhalteGesperrt ? (
+              <div
+                data-testid="mob-server-gesperrt-suche"
+                className="rounded-card border border-dashed border-hairline p-3"
+              >
+                <p className="text-[12.5px] leading-relaxed text-muted">
+                  {t("mob.sitzung.nurLokal")}
+                </p>
+              </div>
+            ) : !queue.online ? (
               <div className="rounded-card border border-dashed border-hairline p-3">
                 <p className="flex items-center gap-1.5 text-[13px] font-semibold text-text">
                   <WifiOff size={14} />

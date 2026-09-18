@@ -7,6 +7,7 @@
 // weil `main.tsx:6` `./i18n` selbst holt; wer aber `App` OHNE `main.tsx` montiert, stand ohne
 // Sprache da. Die Abhängigkeit ist real und gehört an die Wurzel der Anwendung, nicht an eine Seite.
 import "./i18n";
+import { useLocation } from "react-router-dom";
 import { AuthProvider, useSession } from "./app/AuthContext";
 // AUFTRAG-mega50 Block A: der Weg zur Bildbeschreibung für die ganze App. Er steht hier und nicht in
 // der AppShell, weil er — anders als die Modalgrenze — keinen DOM-Anker braucht: `AppShell` hat drei
@@ -32,8 +33,46 @@ import { VersionsHinweis } from "./components/VersionsHinweis";
 import { LegalScreen, legalPageForPath, useRechtsseitenTor } from "./legal/LegalPages";
 // AUFTRAG-mega62 Block C: die Sperrfläche nach einem gescheiterten strengen Abmelden.
 import { SignOutBlocked } from "./legal/SignOutBlocked";
+// JOB 4333: die Zahl der noch nicht übertragenen Vorgänge auf DIESEM Gerät — kontounabhängig,
+// nur lesend. Sie entscheidet, ob es überhaupt einen Grund gibt, die Erfassung ohne beantwortete
+// Sitzungsfrage zu zeigen.
+import { offeneVorgaengeAmGeraet } from "./lib/sessionState";
 import { AppRoutes } from "./routes";
 import { AppShell } from "./shell/AppShell";
+
+// JOB 4333: die shell-lose Erfassungsroute. Dieselbe Zeichenkette entscheidet in
+// `shell/AppShell.tsx` („/mobile OHNE Shell") und in `routes.tsx` über die Route; sie steht hier
+// als benannte Konstante, damit der Zweck an der Torentscheidung lesbar ist.
+const MOBILE_ROUTE = "/mobile";
+
+// ================================================================================================
+// JOB 4333 — DIE ADRESSE MUSS AUS DEM ROUTER KOMMEN, UND DESHALB STEHT SIE IN EINEM EIGENEN BAUTEIL.
+// ================================================================================================
+//
+// WARUM NICHT `window.location.pathname` WIE IN DEN DREI ZWEIGEN OBEN: Jene drei sind
+// Einstiegsadressen — wer dorthin wechselt, lädt ohnehin neu. Dieser Zweig muss den Wechsel WEG
+// von `/mobile` bemerken, und `window.location.pathname` löst kein Rendern aus. `Gate` hängt als
+// unverändertes Element unter `BrowserRouter` (`main.tsx`); React überspringt seinen Teilbaum bei
+// einer Navigation, weil das Element dasselbe bleibt. Die Entscheidung von vorhin bliebe stehen,
+// und `AppRoutes` zeigte die nächste Seite ohne bestätigte Sitzung. `useLocation` rendert bei jedem
+// Wechsel neu — und es ist dieselbe Quelle, aus der `shell/AppShell.tsx` seine shell-lose Route
+// ableitet.
+//
+// WARUM ALS EIGENES BAUTEIL UND NICHT ALS HOOK IN `Gate`: Ein Hook in `Gate` liefe in JEDER Lage,
+// auch dort, wo gar keine Anwendung montiert ist. `apps/web/src/legal/mega61-rechtsseiten.test.tsx`
+// montiert `App` bewusst OHNE Router (die Rechtsseiten liegen vor jeder Route) — ein
+// unbedingtes `useLocation` dort wäre ein Absturz in einem Fall, der mit dieser Zusage nichts zu
+// tun hat. Hier wird die Adresse genau dann gelesen, wenn sie gebraucht wird.
+//
+// Die ANWENDUNG wird durchgereicht und nicht ein zweites Mal aufgebaut: Es ist dieselbe Hülle mit
+// denselben Routen, nicht eine zweite Routentabelle für `/mobile`.
+function OfflineErfassungsTor({ anwendung }: { anwendung: JSX.Element }): JSX.Element {
+  const { pathname } = useLocation();
+  if (pathname !== MOBILE_ROUTE) {
+    return <AuthScreens needsSetup={false} />;
+  }
+  return anwendung;
+}
 
 // Login-Gate: Ersteinrichtung → Login → Shell. Im Dev wird bei nicht
 // erreichbarem Backend die Shell direkt gezeigt (Vorschau ohne Login).
@@ -43,6 +82,13 @@ function Gate(): JSX.Element {
   // Hooks), ausgewertet wird er nur auf den beiden Pfaden unten.
   const rechtsseiten = useRechtsseitenTor();
   const devPreview = import.meta.env.DEV && s.error && !s.user;
+  // JOB 4333: die Anwendung selbst — EINMAL gebildet, damit der neue Zweig unten sie durchreichen
+  // kann, statt eine zweite Hülle daneben aufzubauen.
+  const anwendung = (
+    <AppShell>
+      <AppRoutes />
+    </AppShell>
+  );
 
   // Passwort-Reset (E-Mail-Link) ist ohne Anmeldung erreichbar.
   if (window.location.pathname === "/reset") {
@@ -82,14 +128,43 @@ function Gate(): JSX.Element {
   if (!devPreview && s.needsSetup) {
     return <AuthScreens needsSetup />;
   }
+  // ==============================================================================================
+  // JOB 4333 — „KEIN NUTZER" IST NICHT MEHR GLEICHBEDEUTEND MIT „ABGEMELDET".
+  // ==============================================================================================
+  //
+  // Hier stand `if (!devPreview && !s.user) return <AuthScreens …>` — die zweiwertige Auslegung,
+  // die JOB 4322 im echten Chromium gemessen hat: Nach einem Neuladen OHNE Netz verschwand die
+  // eigene, noch nicht übertragene Arbeit hinter der Anmeldemaske („Station (b) Zähler sichtbar:
+  // nein", `jobs/4322/runde-2/ben.md:20`). Kein Server hatte „keine Sitzung" gesagt — es konnte nur
+  // niemand gefragt werden.
+  //
+  // DER NEUE ZWEIG IST ENG, UND JEDE SEINER DREI BEDINGUNGEN TRÄGT:
+  //   1. `sitzungslage === "unbeantwortet"` — der Server hat NICHT geantwortet. Ein 401/403 (oder
+  //      jeder andere echte HTTP-Status) ist eine Antwort und führt unverändert zur Anmeldemaske.
+  //   2. Es liegt wirklich unübertragene Arbeit auf diesem Gerät. Ohne sie gibt es keinen Grund,
+  //      die Maske zu übergehen — dann bleibt alles wie bisher.
+  //   3. Die Adresse ist GENAU die shell-lose Erfassungsfläche (`OfflineErfassungsTor` oben, dort
+  //      auch die Begründung, warum sie aus dem Router kommen muss). Ihre Route trägt als einzige
+  //      kein Rollen-Gate (`routes.tsx`), und sie zeigt ohne Antwort des Servers auch nichts
+  //      Serverseitiges: geholt wird nichts, aus einem Zwischenspeicher kommt nichts
+  //      (`public/sw.js`: `/api` wird ausdrücklich NIE gecacht).
+  //
+  // WAS DIESER ZWEIG NICHT TUT: Er meldet niemanden an, er stellt keine Kennung wieder her und er
+  // gibt keinen fremden Vorgang heraus. Wem die liegende Arbeit gehört, bleibt unbekannt, solange
+  // niemand geantwortet hat — die Eigentümerbindung aus JOB 4249 gilt unverändert weiter
+  // (`useOfflineQueue`: ohne bestätigtes Konto wird nichts angenommen, nichts gesendet, nichts
+  // zugeordnet, nichts gelöscht). Die Fläche sagt das auch (`pages/Mobile.tsx`).
+  //
+  // Und er steht BEWUSST HINTER `signOutFailed` und `needsSetup`: Wer streng abgemeldet hat und
+  // keine Bestätigung bekam, sieht auch ohne Netz nichts — das ist die Zusage aus AUFTRAG-mega62
+  // Block C und hat Vorrang vor der eigenen Arbeit.
   if (!devPreview && !s.user) {
+    if (s.sitzungslage === "unbeantwortet" && offeneVorgaengeAmGeraet() > 0) {
+      return <OfflineErfassungsTor anwendung={anwendung} />;
+    }
     return <AuthScreens needsSetup={false} />;
   }
-  return (
-    <AppShell>
-      <AppRoutes />
-    </AppShell>
-  );
+  return anwendung;
 }
 
 export default function App(): JSX.Element {

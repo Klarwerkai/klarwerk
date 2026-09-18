@@ -34,6 +34,18 @@ const netz = vi.hoisted(() => ({
 vi.mock("../../apps/web/src/app/RoleContext", () => ({
   useRole: () => ({ role: "experte" }),
 }));
+// JOB 4333 R3: /mobile ist eine angemeldete Fläche und liest seit diesem Job die Sitzung — bei
+// UNBEANTWORTETER Sitzungsfrage zeigt sie keine Serverinhalte mehr (niemand hat bestätigt, wessen
+// Daten das sind). Ohne diesen Mock liefe der `AuthProvider` unten gegen einen `fetch`, den es hier
+// nicht gibt, und die Fläche verweigerte zu Recht die Auskunft („Frage-Eingabe nicht gefunden").
+// Ergänzt ist ausschliesslich die Vorrichtung; keine Zusicherung dieser Datei ist geändert.
+vi.mock("../../apps/web/src/api/auth", () => ({
+  authApi: {
+    status: vi.fn(async () => ({ needsSetup: false, oidcEnabled: false })),
+    me: vi.fn(async () => ({ id: "konto-pruefstand", name: "Prüfstand", role: "experte" })),
+    logout: vi.fn(async () => undefined),
+  },
+}));
 vi.mock("../../apps/web/src/api/endpoints", () => ({
   endpoints: {
     ko: { list: vi.fn(async () => netz.kos) },

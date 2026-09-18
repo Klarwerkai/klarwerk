@@ -1948,8 +1948,24 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // Es erscheint nur in der Grundmenge und berührt keinen Bildweg. Die +1 ist gemessen (der
     // Sammler meldete `expected { komponenten: 399, … } to deeply equal { komponenten: 398, … }`),
     // nicht gerechnet.
+    //
+    // JOB 4333 (ENTWURF-MOBIL-DESKTOP-R · Neuladen ohne Netz): 399 → 400, und es ist GENAU EIN
+    // Bauteil:
+    //     + `OfflineErfassungsTor` — der Zweig des Torwächters, der bei UNBEANTWORTETER
+    //                                Sitzungsfrage genau die shell-lose Erfassungsroute `/mobile`
+    //                                durchlässt und auf jeder anderen Adresse die Anmeldemaske
+    //                                zeigt, in `App.tsx` (nicht exportiert, genau ein Aufrufer in
+    //                                derselben Datei: `Gate`).
+    // Dieselbe Begründung wie bei jedem Eintrag darüber: die Auflage verbietet, dass eine
+    // UMSTELLUNG die Erhebung verschiebt — nicht, dass der Quellbaum wächst. `anbieter` 1 und
+    // `traeger` 2 bleiben unverändert, und das ist am Bauteil nachgelesen, nicht nebenbei
+    // behauptet: es rendert entweder `AuthScreens` oder die durchgereichte Anwendungshülle, zeigt
+    // KEIN Bild, bietet KEINE Bildbeschreibung an (kein `ANGEBOT_MUSTER`) und trägt kein
+    // `documentTitle`-Prop. Es erscheint nur in der Grundmenge und berührt keinen Bildweg. Die +1
+    // ist gemessen (der Sammler meldete `expected { komponenten: 400, … } to deeply equal
+    // { komponenten: 399, … }`, Cloud-Lauf ae5de1e1393e48469652e954c74b8e48), nicht gerechnet.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 399,
+      komponenten: 400,
       anbieter: 1,
       traeger: 2,
     });

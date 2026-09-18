@@ -5949,6 +5949,17 @@ const de = {
     "Das Senden wurde angehalten, weil das Konto gewechselt hat. Die übrigen Vorgänge bleiben liegen und gehören weiter dem Konto, das sie erfasst hat.",
   "mob.konto.auffrischung":
     "Wer angemeldet ist, wird gerade bestätigt. Bis die Antwort da ist, wird nichts gesendet — es geht von selbst weiter.",
+  // JOB 4333 — DIE SITZUNGSFRAGE BLIEB OHNE ANTWORT. Der Satz sagt ausdrücklich NICHT, dass jemand
+  // angemeldet sei, und verspricht keine Übertragung: er nennt den Ort der Arbeit (dieses Gerät)
+  // und die Bedingung, unter der es weitergeht (wieder Netz, wieder eine Antwort). Die Zeile über
+  // die Warteschlange selbst bleibt `mob.konto.unbekannt` — sie sagt schon das Richtige.
+  "mob.sitzung.unbeantwortet":
+    "Ohne Netz — die Anmeldung konnte nicht geprüft werden. Was du hier erfasst hast, liegt weiter auf diesem Gerät. Gesendet wird erst, wenn wieder Netz da ist und feststeht, wer angemeldet ist.",
+  // JOB 4333 R2: Der Satz an jeder Stelle, an der sonst SERVERINHALT stünde. Er behauptet
+  // ausdrücklich NICHT, es gebe nichts („keine Entwürfe" wäre hier gelogen) — er sagt, dass nichts
+  // gezeigt WIRD, und warum.
+  "mob.sitzung.nurLokal":
+    "Ohne bestätigte Anmeldung wird hier nichts vom Server gezeigt — auch nichts aus einem früheren Abruf. Sichtbar ist nur, was auf diesem Gerät liegt.",
   "s2.kicker": "Erweitert · Stufe 2",
   "s2.output":
     "Aus validierten Objekten Arbeitsanweisungen/Checklisten erzeugen — aktiv, sobald die Output-Logik steht.",
@@ -11966,6 +11977,10 @@ const en: typeof de = {
     "Sending was stopped because the account changed. The remaining items stay queued and still belong to the account that captured them.",
   "mob.konto.auffrischung":
     "Who is signed in is being confirmed right now. Nothing is sent until the answer is back — it continues on its own.",
+  "mob.sitzung.unbeantwortet":
+    "No network — your sign-in could not be verified. What you captured here is still on this device. Nothing is sent until the network is back and it is clear who is signed in.",
+  "mob.sitzung.nurLokal":
+    "Without a confirmed sign-in nothing from the server is shown here — not even from an earlier request. You only see what is stored on this device.",
   "s2.kicker": "Advanced · Stage 2",
   "s2.output":
     "Generate work instructions/checklists from validated objects — active once the output logic is in place.",
@@ -17583,6 +17598,10 @@ const nl: typeof de = {
     "Het versturen is gestopt omdat het account is gewisseld. De overige items blijven staan en horen nog steeds bij het account dat ze heeft vastgelegd.",
   "mob.konto.auffrischung":
     "Wie is aangemeld, wordt op dit moment bevestigd. Tot het antwoord er is, wordt er niets verstuurd — het gaat vanzelf verder.",
+  "mob.sitzung.unbeantwortet":
+    "Geen netwerk — uw aanmelding kon niet worden gecontroleerd. Wat u hier hebt vastgelegd, staat nog op dit apparaat. Er wordt pas verzonden als er weer netwerk is en vaststaat wie er is aangemeld.",
+  "mob.sitzung.nurLokal":
+    "Zonder bevestigde aanmelding wordt hier niets van de server getoond — ook niets uit een eerdere aanvraag. U ziet alleen wat op dit apparaat staat.",
   "s2.kicker": "Uitgebreid · Niveau 2",
   "s2.output":
     "Uit gevalideerde objecten werkinstructies/checklists genereren — actief zodra de output-logica staat.",

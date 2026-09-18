@@ -13,6 +13,27 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const bestand = vi.hoisted(() => ({ kos: [] as unknown[] }));
 
+// ================================================================================================
+// JOB 4333 R3 — DIE SITZUNG GEHÖRT ZUR VORRICHTUNG, WEIL /mobile EINE ANGEMELDETE FLÄCHE IST.
+// ================================================================================================
+//
+// Bis JOB 4333 war es gleichgültig, was `AuthContext` hier antwortete: die mobile Fläche hat die
+// Sitzung nicht gelesen. Seit JOB 4333 liest sie sie — und zeigt bei UNBEANTWORTETER Sitzungsfrage
+// keine Serverinhalte mehr (Entwurfsliste, Fragen, Suche), weil dann niemand bestätigt hat, wessen
+// Daten das sind. Ohne diesen Mock läuft der `AuthProvider` unten gegen einen `fetch`, den es in
+// dieser Datei nicht gibt; die Frage bleibt unbeantwortet, und die Fläche verweigert zu Recht die
+// Auskunft — gemessen: „Frage-Eingabe nicht gefunden".
+//
+// ERGÄNZT WIRD AUSSCHLIESSLICH DIE VORRICHTUNG: eine bestätigte Sitzung, wie sie im Betrieb auf
+// dieser Route immer vorliegt. Keine Zusicherung dieser Datei ist geändert.
+vi.mock("../../apps/web/src/api/auth", () => ({
+  authApi: {
+    status: vi.fn(async () => ({ needsSetup: false, oidcEnabled: false })),
+    me: vi.fn(async () => ({ id: "konto-pruefstand", name: "Prüfstand", role: "experte" })),
+    logout: vi.fn(async () => undefined),
+  },
+}));
+
 vi.mock("../../apps/web/src/api/endpoints", () => ({
   endpoints: {
     ko: { list: vi.fn(async () => bestand.kos) },

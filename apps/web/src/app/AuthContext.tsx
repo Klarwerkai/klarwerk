@@ -2,7 +2,12 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, createContext, useCallback, useContext, useEffect, useState } from "react";
 import { type SessionUser, authApi } from "../api/auth";
 import { ApiError } from "../api/client";
-import { SESSION_REFRESH_MS, resolveSessionUser } from "../lib/sessionState";
+import {
+  SESSION_REFRESH_MS,
+  type Sitzungslage,
+  resolveSessionUser,
+  resolveSitzungslage,
+} from "../lib/sessionState";
 // AUFTRAG-mega63 Block A / mega64 Block B: die unbestätigte Abmeldung. mega63 hielt sie tab-gebunden
 // (`sessionStorage`) — sie gehört aber zur SITZUNG, und die teilen alle Tabs. Seit mega64 gilt sie
 // tabübergreifend und löst sich auf, sobald der Server erreichbar ist (s. `app/abmeldeschuld.ts`).
@@ -35,6 +40,27 @@ interface AuthState {
   isLoading: boolean;
   /** Status-Abfrage fehlgeschlagen (z. B. Backend im Dev nicht erreichbar). */
   error: boolean;
+  /**
+   * JOB 4333: DIE SITZUNGSFRAGE, DREIWERTIG — und `user === null` ist deshalb nicht mehr
+   * gleichbedeutend mit „abgemeldet".
+   *
+   * Bis hierher kannte die Anwendung zwei Zustände, und `App.tsx` las den zweiten überall als
+   * „abgemeldet": Anmeldemaske. Ohne Netz ist das falsch — dort hat niemand „keine Sitzung"
+   * gesagt, es konnte nur niemand gefragt werden. Gemessen: JOB 4322, Station (b)
+   * (`jobs/4322/runde-2/ben.md:20` „Station (b) Zähler sichtbar: nein"), im echten Chromium gegen
+   * PostgreSQL.
+   *
+   * WAS GILT ALS ANTWORT (s. `sitzungsfrageBeantwortet`): eine erfolgreiche Antwort und ein 401
+   * oder 403 — nur diese beiden sagen etwas über die SITZUNG. NICHT als Antwort gelten: jeder
+   * andere HTTP-Status (500/502/503 … — ein Dienstausfall ist keine Abmeldung), der Transportfehler
+   * ohne Status, der clientseitige Abbruch (`ApiError`, Code `TIMEOUT` — dieselbe Auslegung wie
+   * `Mobile.tsx` `speicherfehler`) und die von react-query ANGEHALTENE Abfrage
+   * (`fetchStatus: "paused"`, der Normalfall ohne Netz: sie scheitert nie, sie kommt nie los).
+   *
+   * Der dritte Wert ist die Wissenslücke, benannt statt geraten — dieselbe Bauform wie
+   * `selfRegistrationEnabled` darüber.
+   */
+  sitzungslage: Sitzungslage;
   refresh: () => void;
   /**
    * Abmelden: Session serverseitig beenden und den gesamten Query-Cache leeren.
@@ -70,6 +96,58 @@ interface AuthState {
 }
 
 const AuthCtx = createContext<AuthState | null>(null);
+
+// ================================================================================================
+// JOB 4333 — HAT DER SERVER GEANTWORTET? DIE FRAGE HÄNGT AN DER FEHLERART, NICHT AM NETZSYMBOL.
+// ================================================================================================
+//
+// `navigator.onLine === true` heisst nur „irgendein Netz" und sagt nichts darüber, ob jemand am
+// anderen Ende geantwortet hat (derselbe Satz steht seit JOB 4249 R6 in `useOfflineQueue.ts`).
+// Entschieden wird deshalb an dem, was der Abruf ZURÜCKGEBRACHT hat:
+//
+//   · erfolgreich beantwortet                    → ja.
+//   · 401 / 403                                  → ja. Das ist die AUSKUNFT ÜBER DIE SITZUNG: es
+//     besteht keine (oder sie darf hier nichts). Die Anmeldemaske ist dann richtig. Der Auftrag
+//     sagt es wörtlich: unbeantwortet ist „kein HTTP-Status, bzw. kein 401/403" (§5.1).
+//   · jeder ANDERE HTTP-Status (500/502/503/504, 429, 404 …) → NEIN.
+//   · `ApiError` mit Code `TIMEOUT`              → NEIN. Den Status 408 hat sich der Client selbst
+//     gegeben (`api/client.ts` `mitFrist`: „abgebrochen hat der CLIENT"). Dieselbe Auslegung trifft
+//     `Mobile.tsx` `speicherfehler` seit JOB 4193.
+//   · Transportfehler (`TypeError: Failed to fetch`) → NEIN. Kein Status, keine Antwort.
+//   · WEDER erfolgreich NOCH gescheitert         → NEIN, und das ist der HÄUFIGSTE Fall ohne Netz:
+//     react-query HÄLT die Abfrage an (`fetchStatus: "paused"`), statt sie scheitern zu lassen.
+//     Sie steht dann für immer auf `pending` — gemessen im ersten Lauf von
+//     `tests/offline-neuladen-sitzung/`, und genau deshalb greift `devPreview` (das an `error`
+//     hängt) im echten Browser ohne Netz gar nicht.
+//
+// ------------------------------------------------------------------------------------------------
+// JOB 4333 RUNDE 2 (BENs Korrekturpflicht 2) — EIN DIENSTAUSFALL IST KEINE ABMELDUNG.
+// ------------------------------------------------------------------------------------------------
+//
+// Hier stand in Runde 1 `error instanceof ApiError && error.code !== "TIMEOUT"` — JEDER Status galt
+// als Antwort. BEN hat daran gemessen (`503 ist keine Abmeldebestätigung: expected true to be
+// false`): Fällt der Dienst aus, verschwand die eigene, noch nicht übertragene Arbeit hinter der
+// Anmeldemaske — also genau der Befund, gegen den dieser Auftrag steht, nur mit einer anderen
+// Ursache. Ein 503 sagt „ich kann gerade nicht", nicht „du bist nicht angemeldet".
+//
+// DIE GRENZE IST DESHALB NICHT „hat der Server geantwortet", SONDERN „hat er DIE SITZUNGSFRAGE
+// beantwortet". Nur 401 und 403 tun das. Der Funktionsname sagt das jetzt auch.
+function sitzungsfrageBeantwortet(abfrage: {
+  isSuccess: boolean;
+  isError: boolean;
+  error: unknown;
+}): boolean {
+  if (abfrage.isSuccess) {
+    return true;
+  }
+  if (!abfrage.isError) {
+    return false;
+  }
+  if (!(abfrage.error instanceof ApiError)) {
+    return false;
+  }
+  return abfrage.error.status === 401 || abfrage.error.status === 403;
+}
 
 export function AuthProvider({ children }: { children: ReactNode }): JSX.Element {
   const queryClient = useQueryClient();
@@ -230,11 +308,28 @@ export function AuthProvider({ children }: { children: ReactNode }): JSX.Element
     }
   }, [signOutFailed, sitzungBewiesenWeg]);
 
+  // FE-FND-08: bei Abfragefehler (abgelaufene Session/401) kein stale User.
+  // WP-KLARA-2 (typ-neutral): undefined → null VOR dem Aufruf, damit der Generic sauber auf
+  // SessionUser bindet (verhaltensgleich — resolveSessionUser normalisierte ?? null ohnehin).
+  // JOB 4333: aus dem Objektliteral herausgezogen, weil die Lage darunter denselben Wert braucht —
+  // ein zweiter Aufruf wäre eine zweite Ableitung derselben Tatsache.
+  const user = resolveSessionUser({ data: me.data ?? null, isError: me.isError });
+  // ==============================================================================================
+  // JOB 4333 — DIE FRAGE IST ERST BEANTWORTET, WENN AUCH DIE ZWEITE ABFRAGE GEANTWORTET HAT.
+  // ==============================================================================================
+  //
+  // `me` hängt über `enabled` am Erfolg von `status` (:111). Die Bedingung steht hier WÖRTLICH
+  // dieselbe: Nur wenn `me` überhaupt gestellt wurde, kann ihr Ausbleiben die Frage offen lassen.
+  // Steht die Ersteinrichtung an, gibt es keinen Nutzer abzufragen — dann entscheidet `needsSetup`
+  // (und in `App.tsx` steht dieser Zweig weiterhin VOR dem neuen).
+  const meGestellt = status.isSuccess && !needsSetup;
+  const sitzungslage = resolveSitzungslage({
+    user,
+    ohneAntwort: !sitzungsfrageBeantwortet(status) || (meGestellt && !sitzungsfrageBeantwortet(me)),
+  });
+
   const value: AuthState = {
-    // FE-FND-08: bei Abfragefehler (abgelaufene Session/401) kein stale User.
-    // WP-KLARA-2 (typ-neutral): undefined → null VOR dem Aufruf, damit der Generic sauber auf
-    // SessionUser bindet (verhaltensgleich — resolveSessionUser normalisierte ?? null ohnehin).
-    user: resolveSessionUser({ data: me.data ?? null, isError: me.isError }),
+    user,
     needsSetup,
     oidcEnabled: status.data?.oidcEnabled ?? false,
     // JOB 4105: BEWUSST an den DATEN und nicht an `status.isSuccess`. Scheitert eine
@@ -247,6 +342,7 @@ export function AuthProvider({ children }: { children: ReactNode }): JSX.Element
     selfRegistrationEnabled: status.data?.selfRegistrationEnabled,
     isLoading: status.isLoading || (status.isSuccess && !needsSetup && me.isLoading),
     error: status.isError,
+    sitzungslage,
     refresh: () => {
       void queryClient.invalidateQueries({ queryKey: ["auth"] });
       // AUFTRAG-mega61 Block A: die Schalter-Auskunft hängt seit mega61 an der Sitzung — ein

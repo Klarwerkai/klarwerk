@@ -10,6 +10,20 @@
 // Dieser Test treibt genau diesen Weg über echte Klicks.
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+// JOB 4333 R3: Dieselbe Ergänzung wie in `tests/review26-mobil-fortsetzen/fortsetzen-mounted.test.tsx`
+// seit JOB 4249, und aus demselben Grund: `/mobile` ist eine angemeldete Fläche, im Betrieb kann
+// sie ohne Sitzung gar nicht stehen (`App.tsx` zeigt dann die Anmeldung). Seit JOB 4333 liest die
+// Fläche die Sitzung auch — bei UNBEANTWORTETER Frage zeigt sie keine Serverinhalte mehr, und ohne
+// diesen Mock fehlte deshalb das Suchfeld. Ergänzt ist nur die Vorrichtung; keine Zusicherung
+// dieser Datei ist geändert.
+vi.mock("../../apps/web/src/api/auth", () => ({
+  authApi: {
+    status: vi.fn(async () => ({ needsSetup: false, oidcEnabled: false })),
+    me: vi.fn(async () => ({ id: "konto-pruefstand", name: "Prüfstand", role: "experte" })),
+    logout: vi.fn(async () => undefined),
+  },
+}));
+
 vi.mock("../../apps/web/src/api/endpoints", () => ({
   endpoints: {
     drafts: {
