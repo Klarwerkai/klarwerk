@@ -468,6 +468,27 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // misst sie danach an der echten Route nach (A0d) — sie hängt also ab sofort auch an der zweiten
   // ausgelieferten Datei. Ohne diesen Eintrag verschwiege das Verzeichnis eine echte Abhängigkeit.
   "tests/office-pg-abnahme/echte-worddatei-am-rueckweg.test.ts": "pfad,rueckweg,fixture",
+  // JOB 4329 WORD-RUECKWEG (17.09.2026): die gemessene Web-Hälfte des Bildrückwegs. Alle vier
+  // Dateien hängen an `rueckweg.js` und an NICHTS SONST — sie bilden die Nutzlast `rwLadung`
+  // (`apps/web/public/word-addin/rueckweg.js:606-614`) nach und pinnen sie gegen die ausgelieferte
+  // Datei, statt sie abzuschreiben. Kein `fixture`: es wird KEIN Aufgabenfenster geladen (weder
+  // `createKlaraPanel` noch jsdom), und das ist die ausdrückliche Grenze des Auftrags. Kein `pfad`:
+  // `taskpane.html` wird nur als das benannt, was hier NICHT läuft.
+  //   · `pruefbilder.ts`                       — die Nachbildung selbst.
+  //   · `pruefbilder.test.ts`                  — ihre Kalibrierung.
+  //   · `tor-zeuge.test.ts`                    — der Pin gegen die Produktdatei; er wird rot, wenn
+  //                                              das Add-in-Format sich ändert.
+  //   · `…-pg-im-browser.integration.test.ts`  — die gefahrene Strecke.
+  // `bildablesung.ts` (die Browserablesung derselben Runde) fasst weder `taskpane.html` noch
+  // `rueckweg.js` an und steht deshalb bewusst NICHT hier — ein Eintrag ohne Griff wäre ein
+  // erfundener Mitfahrer.
+  // GEMESSEN, NICHT GESETZT: `./tools/check` (Arbeitsprüfung 764503b3302c4ce28a1f7cee1998625d)
+  // meldete A2 `neu im Baum, aber nicht gepinnt — Verzeichnis nachfuehren` mit genau diesen vier
+  // Pfaden; erst danach wurden diese Zeilen angefasst.
+  "tests/rueckweg-bilder-nutzerweg/pruefbilder.test.ts": "rueckweg",
+  "tests/rueckweg-bilder-nutzerweg/pruefbilder.ts": "rueckweg",
+  "tests/rueckweg-bilder-nutzerweg/rueckweg-bilder-pg-im-browser.integration.test.ts": "rueckweg",
+  "tests/rueckweg-bilder-nutzerweg/tor-zeuge.test.ts": "rueckweg",
 };
 
 // ------------------------------------------------------------------------------------------------

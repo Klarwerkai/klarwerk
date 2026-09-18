@@ -1114,6 +1114,25 @@ const INVENTAR: readonly string[] = [
   // Inventar — Inventar nachfuehren: expected [ Array(1) ] to deeply equal []`; erst danach wurde
   // diese Zeile angefasst.
   "tests/produktionsabhaengigkeiten/statische-auslieferung-bleibt-laut.test.ts",
+  // JOB 4329 (17.09.2026) WORD-RUECKWEG: die gemessene Web-Haelfte des Bildrueckwegs — eine
+  // Nutzlast im Format von `rwLadung` (im Add-in-Verzeichnis, `rueckweg.js:606-614`) geht ueber
+  // ABSICHTLICH OHNE DAS PFADLITERAL der Add-in-Datei: `tests/klara-zerlegung/schnitt-pins.test.ts`
+  // liest den Griff `rueckweg` textbreit, und ein Pfad in DIESEM Kommentar machte das Inventar zu
+  // einem Mitfahrer einer Zerlegung, an der es nicht teilnimmt (gemessen, `./tools/check`
+  // Arbeitspruefung 7a14a06306f147fbaca1af09da687263: „der Griff hat sich geaendert").
+  // einen echten Socket nach PostgreSQL, wird uebernommen und in einem echten Chromium
+  // zurueckgelesen: dekodierte Bildpunkte auf der Leinwand UND der gerenderte Innenbereich per
+  // Bildschirmfoto. Sachlich Klara-/Add-in-Regression, obwohl kein Office-Host laeuft: sie bildet
+  // das Nutzlastformat des Aufgabenfensters nach, und wenn jenes Format sich aendert, misst sie
+  // etwas anderes als das Produkt.
+  // GEFUNDEN VON GENAU EINER ACHSE: `taskpane` (die Datei nennt `taskpane.html` in der Abgrenzung
+  // „was hier ausdruecklich NICHT laeuft"). „klara" steht NICHT in ihrem Pfad, sie faellt also in
+  // `verfehlt` und NICHT in `nurName` — K5 (`nurName.length`) bleibt unveraendert.
+  // GEMESSEN, NICHT GESETZT: mit der neuen Datei und noch unveraendertem Inventar meldete der Lauf
+  // (Arbeitspruefung db2d4bb2baf44422ab20321f6a85e960) K2 `neu im Baum, aber nicht im gepinnten
+  // Inventar — Inventar nachfuehren: expected [ Array(1) ] to deeply equal []`; erst danach wurde
+  // diese Zeile angefasst.
+  "tests/rueckweg-bilder-nutzerweg/rueckweg-bilder-pg-im-browser.integration.test.ts",
 ];
 
 // ------------------------------------------------------------------------------------------------
