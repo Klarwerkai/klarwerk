@@ -5,6 +5,8 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useId,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -70,7 +72,17 @@ export interface DirtyGuard {
   // alles sicherbar). Nicht leer ⇒ der Dialog bietet KEIN „Entwurf speichern und wechseln" an —
   // ein Speichern, das erfolgreich wegnavigiert und dabei Benanntes verliert, wäre eine Lüge.
   unsavableDirtyReasons?: () => string[];
+  // JOB 4335 R4: WO IN DER FLÄCHE DIESE WACHE SITZT — und damit, wann sie speichert. Kleiner heisst
+  // früher, also weiter aussen (`WACHE_FLAECHE` vor `WACHE_ARBEITSRAUM`). Fehlt die Angabe, gilt
+  // `WACHE_FLAECHE`; für eine Seite mit nur einer Wache (`pages/Mobile.tsx:481`) ändert sich damit
+  // nichts, und ihre `setGuard`-Signatur bleibt unberührt. Begründung am Verzeichnis unten.
+  reihe?: number;
 }
+
+/** Die äussere Wache einer Fläche — sie speichert zuerst. Vorgabe für Anmelder ohne Angabe. */
+export const WACHE_FLAECHE = 0;
+/** Die innere Wache einer Fläche (der Arbeitsraum in der Fläche) — sie speichert zuletzt. */
+export const WACHE_ARBEITSRAUM = 1;
 
 interface NavGuardValue {
   // Eine Seite registriert (oder entfernt mit null) ihren Ungespeichert-Wächter.
@@ -79,7 +91,130 @@ interface NavGuardValue {
   guard: (proceed: () => void) => void;
 }
 
-const NavGuardCtx = createContext<NavGuardValue | null>(null);
+// ==================================================================================================
+// JOB 4335 RUNDE 2 — EIN PLATZ FÜR ZWEI ANMELDER WAR EIN VERLUSTPFAD.
+// ==================================================================================================
+//
+// DER BEFUND (BEN, JOB 4335 Runde 1, Prüfpunkte 4 und 5; im echten Browser gegen echtes PostgreSQL
+// gemessen). Bis hierher hielt dieser Anbieter GENAU EINEN `DirtyGuard` in einem Ref, und `setGuard`
+// überschrieb ihn. Auf `/erfassen` melden sich aber ZWEI an — das Blatt (`Blatt.tsx:1526`) und der
+// Arbeitsraum (`pages/Capture.tsx:3199`) —, beide in einem Effekt, der an ihrer jeweiligen Mutation
+// hängt und deshalb bei JEDEM Render ihres Bauteils neu läuft. Wer zuletzt lief, gewann; weil der
+// Arbeitsraum im Baum UNTER dem Blatt hängt, gewann bei jedem gemeinsamen Render das Blatt.
+//
+// WAS DAS DEN MENSCHEN KOSTETE: Er lud eine Datei, drückte „Entwurf speichern und wechseln" — und
+// gespeichert wurde der Blattstand, nicht seine Datei. Die Quittung sagte danach „verworfen", und
+// die Datei war weg. Ein Knopf, der eine Sicherung zusagt und eine andere leistet, ist schlimmer als
+// gar kein Knopf: er erzeugt Vertrauen, das nicht gedeckt ist.
+//
+// DIE REGEL AB HIER: der Anbieter führt ein VERZEICHNIS angemeldeter Wachen, nicht einen Platz.
+// Jede Anmeldung hat ihre eigene Kennung (s. `useNavGuard` unten) und überschreibt nur sich selbst;
+// eine Abmeldung nimmt nur die eigene heraus. Gefragt wird, wenn IRGENDEINE etwas zu verlieren hat;
+// benannt werden die nicht sicherbaren Inhalte ALLER; gespeichert wird bei ALLEN, die etwas zu
+// sichern haben.
+//
+// WARUM `isDirty()` VOR DEM SPEICHERN GEFRAGT WIRD — der Unterschied zu vorher, und er ist tragend:
+// bis hierher rief `saveAndGo` den einen Rückruf BEDINGUNGSLOS. Für eine einzelne Wache war das
+// dasselbe (der Dialog geht nur auf, wenn sie schmutzig ist). Bei zweien wäre es ein neuer Schaden:
+// die nicht geänderte Wache schriebe ihren Stand über den gespeicherten Entwurf, den sie gar nicht
+// angefasst hat — genau das tat die Blatt-Wache im gemessenen Browserlauf mit dem offenen Entwurf.
+// Wer nichts zu sichern hat, sichert nichts.
+//
+// DIE REIHENFOLGE IST VON AUSSEN NACH INNEN, und sie ist keine Geschmacksfrage: React meldet die
+// Effekte von innen nach aussen ab, die ZULETZT angemeldete Wache ist also die ÄUSSERE (das Blatt).
+// Gespeichert wird in umgekehrter Anmeldereihenfolge, damit der speziellere Stand des inneren
+// Bauteils zuletzt schreibt und nicht vom allgemeineren des äusseren überschrieben wird.
+// ==================================================================================================
+// JOB 4335 RUNDE 4 — DIE REIHENFOLGE DARF NICHT AM RENDERVERLAUF HÄNGEN.
+// ==================================================================================================
+//
+// DER BEFUND (BEN, Runde 3, Korrekturpflicht 1; eigene Sonde, Cloud-Lauf `eaf7aa00a5747669c72f4073`:
+// `expected ['Arbeitsraum','Blatt'] to deeply equal ['Blatt','Arbeitsraum']`). Runde 2 las die
+// Reihenfolge aus der EINFÜGEREIHENFOLGE der Map und drehte sie um. Das stimmte beim ersten Aufbau
+// und nur dort: jede Anmeldung läuft in einem Effekt, der an einer Mutation hängt und deshalb bei
+// jedem Render seines Bauteils neu läuft — und ihr Aufräumer meldet zuerst ab. `delete` + `set`
+// schiebt den Eintrag ans ENDE der Map. Ein Render, den NUR das innere Bauteil macht, stellte es
+// damit hinter das äussere, und die umgedrehte Liste begann plötzlich innen.
+//
+// DIE ANTWORT: die Position gehört der KENNUNG, nicht ihrem letzten Eintrag. Jede Kennung bekommt
+// bei ihrer ERSTEN Anmeldung eine Ordnungszahl, und die behält sie — auch über Abmeldung und
+// Neuanmeldung hinweg. Damit ist die Reihenfolge eine Eigenschaft des BAUMS (wer zuerst anmeldet,
+// sitzt weiter innen, weil React die Effekte von innen nach aussen abarbeitet) und nicht mehr eine
+// Eigenschaft des Renderverlaufs.
+//
+// GESPEICHERT WIRD VON AUSSEN NACH INNEN — also in FALLENDER Ordnungszahl. Begründung unverändert:
+// der speziellere Stand des inneren Bauteils soll zuletzt schreiben und nicht vom allgemeineren des
+// äusseren überschrieben werden. Auf `/erfassen` heisst das: Blatt vor Arbeitsraum.
+//
+// WAS DAS VERZEICHNIS NICHT VERGISST: die Ordnungszahl einer abgemeldeten Kennung bleibt stehen.
+// Das ist Absicht und kein Leck — `useId` vergibt je Baumstelle EINE Kennung, ein Bauteil bekommt
+// beim Wiedereinhängen an derselben Stelle dieselbe zurück und damit auch seine alte Position. Die
+// Zahl der je Sitzung möglichen Kennungen ist die Zahl der Baumstellen, nicht die der Renders.
+interface AngemeldeteWache {
+  wache: DirtyGuard;
+  /** Vergeben bei der ERSTEN Anmeldung dieser Kennung; überlebt Ab- und Neuanmeldung. */
+  ordnung: number;
+}
+
+type WachenVerzeichnis = {
+  angemeldet: Map<string, AngemeldeteWache>;
+  /** Die einmal vergebenen Ordnungszahlen — auch für gerade abgemeldete Kennungen. */
+  ordnungen: Map<string, number>;
+  naechsteOrdnung: number;
+};
+
+function leeresVerzeichnis(): WachenVerzeichnis {
+  return { angemeldet: new Map(), ordnungen: new Map(), naechsteOrdnung: 0 };
+}
+
+interface NavGuardIntern {
+  // Jede Anmeldung trägt ihre eigene Kennung — `null` meldet genau diese wieder ab.
+  registriereWache: (kennung: string, wache: DirtyGuard | null) => void;
+  guard: (proceed: () => void) => void;
+}
+
+const NavGuardCtx = createContext<NavGuardIntern | null>(null);
+
+/**
+ * Die angemeldeten Wachen in Speicherreihenfolge: von aussen nach innen.
+ *
+ * ZWEI SCHLÜSSEL, und der erste ist der belastbare: die ANGEMELDETE REIHE (`WACHE_FLAECHE` vor
+ * `WACHE_ARBEITSRAUM`). Sie steht im Quelltext des Anmelders und kann von keinem Renderverlauf und
+ * keinem Aus- und Wiedereinhängen bewegt werden — genau das verlangt BENs Korrekturpflicht 1 aus
+ * Runde 3. Auf `/erfassen` ist damit festgeschrieben: das Blatt (`Blatt.tsx`) speichert vor dem
+ * Arbeitsraum (`pages/Capture.tsx`).
+ *
+ * DER ZWEITE SCHLÜSSEL gilt Anmeldern in DERSELBEN Reihe (und damit allen, die keine angeben): die
+ * Ordnungszahl der Kennung, absteigend. React arbeitet die Effekte von innen nach aussen ab, die
+ * zuerst vergebene Ordnungszahl gehört also dem inneren Bauteil — absteigend sortiert steht das
+ * äussere vorn. Weil die Zahl der KENNUNG gehört und nicht ihrem letzten Eintrag, überlebt sie Ab-
+ * und Neuanmeldung (`registriereWache` unten).
+ */
+function wachenVonAussen(verzeichnis: WachenVerzeichnis): DirtyGuard[] {
+  return [...verzeichnis.angemeldet.values()]
+    .sort(
+      (a, b) =>
+        (a.wache.reihe ?? WACHE_FLAECHE) - (b.wache.reihe ?? WACHE_FLAECHE) ||
+        b.ordnung - a.ordnung,
+    )
+    .map((eintrag) => eintrag.wache);
+}
+
+/**
+ * Die nicht sicherbaren Inhalte ALLER angemeldeten Wachen, ohne Dubletten. Ohne die Vereinigung
+ * verschwiege der Dialog die Grenze der einen Wache, sobald eine zweite angemeldet ist — und die
+ * Verlustsperre (`unsavable.length > 0` ⇒ kein Speicherknopf) hinge daran, wer zuletzt gerendert
+ * hat. Genau diese Abhängigkeit ist der Befund, den dieser Block abstellt.
+ */
+function alleUnsicherbaren(verzeichnis: WachenVerzeichnis): string[] {
+  const gesehen = new Set<string>();
+  for (const wache of wachenVonAussen(verzeichnis)) {
+    for (const grund of wache.unsavableDirtyReasons?.() ?? []) {
+      gesehen.add(grund);
+    }
+  }
+  return [...gesehen];
+}
 
 // ── JOB 1850 (A-1265-NAVGUARD): der Dialog gehört in die Modalgrenze ───────────────────────────────
 //
@@ -120,12 +255,32 @@ export function NavGuardModalBoundaryBridge(): null {
   return null;
 }
 
+/**
+ * JOB 4335 RUNDE 2: DIE KENNUNG DER ANMELDUNG ENTSTEHT HIER — und nicht beim Aufrufer.
+ *
+ * Damit bleibt `setGuard(guard | null)` für jeden Aufrufer Zeichen für Zeichen dasselbe (drei gibt
+ * es: `Blatt.tsx:1526`, `pages/Capture.tsx:3199`, `pages/Mobile.tsx:481` — der letzte ist nicht
+ * Zielpfad dieses Auftrags und durfte sich deshalb nicht ändern). `useId` ist je Bauteil-Instanz
+ * stabil und über Renders hinweg dasselbe: dieselbe Instanz überschreibt also ihre eigene Anmeldung,
+ * eine zweite Instanz bekommt ihren eigenen Eintrag, und die Abmeldung im Effekt-Aufräumer trifft
+ * genau den eigenen. Eine Kennung, die der Aufrufer selbst vergeben müsste, wäre eine Gelegenheit,
+ * sie zu vergessen oder zweimal zu vergeben.
+ */
+function mitKennung(intern: NavGuardIntern, kennung: string): NavGuardValue {
+  return {
+    setGuard: (wache) => intern.registriereWache(kennung, wache),
+    guard: intern.guard,
+  };
+}
+
 export function useNavGuard(): NavGuardValue {
   const value = useContext(NavGuardCtx);
-  if (!value) {
+  const kennung = useId();
+  const nachAussen = useMemo(() => (value ? mitKennung(value, kennung) : null), [value, kennung]);
+  if (!nachAussen) {
     throw new Error("useNavGuard must be used within NavGuardProvider");
   }
-  return value;
+  return nachAussen;
 }
 
 // JOB 3390 (LADEFEHLER-ALTER-TAB): DERSELBE Wächter, nur ohne Zusicherung — für die eine Stelle, die
@@ -141,7 +296,9 @@ export function useNavGuard(): NavGuardValue {
 // OHNE ANBIETER GEHT NICHTS VERLOREN: ohne ihn kann sich auch kein `DirtyGuard` angemeldet haben
 // (`setGuard` ist nur über diesen Kontext erreichbar). Der Aufrufer darf dann also direkt handeln.
 export function useNavGuardOptional(): NavGuardValue | null {
-  return useContext(NavGuardCtx);
+  const value = useContext(NavGuardCtx);
+  const kennung = useId();
+  return useMemo(() => (value ? mitKennung(value, kennung) : null), [value, kennung]);
 }
 
 // AUFTRAG-mega11 Block B-1 (bens SB-2): EINE Mechanik für die Warnung beim Neuladen/Tab-Schließen.
@@ -199,7 +356,10 @@ export function NavGuardProvider({ children }: { children: ReactNode }): JSX.Ele
   // Ohne Router gibt es keine POP-Semantik (MemoryRouter-Tests, Provider oberhalb des Routers) —
   // dann meldet sich der Zurück-Wächter bewusst NICHT an, statt ins Blaue zu greifen.
   const inRouter = useInRouterContext();
-  const guardRef = useRef<DirtyGuard | null>(null);
+  // JOB 4335 R2: das VERZEICHNIS der angemeldeten Wachen (Begründung am Typ oben). Ein Ref und kein
+  // State: die Anmeldung geschieht in Effekten und darf keinen Render auslösen, und der POP-Wächter
+  // unten liest sie ausserhalb von React.
+  const wachenRef = useRef<WachenVerzeichnis>(leeresVerzeichnis());
   const [pending, setPending] = useState<PendingNav | null>(null);
   const [saving, setSaving] = useState(false);
   // JOB 3572 Runde 2: der Grund des zuletzt gescheiterten Speicherversuchs AUS DIESEM DIALOG —
@@ -243,20 +403,51 @@ export function NavGuardProvider({ children }: { children: ReactNode }): JSX.Ele
     setSaveError(null);
   }, []);
 
-  const setGuard = useCallback((guard: DirtyGuard | null): void => {
-    guardRef.current = guard;
+  // JOB 4335 R2: ANMELDEN UND ABMELDEN TREFFEN NUR DEN EIGENEN EINTRAG. Das ist der ganze Kern des
+  // Befunds: `guardRef.current = guard` liess die zweite Anmeldung die erste verschlucken, und ein
+  // `setGuard(null)` beim Abbau der einen nahm auch die andere mit.
+  //
+  // JOB 4335 R4: UND DIE POSITION GEHÖRT DER KENNUNG, NICHT DEM EINTRAG (Begründung am Verzeichnis
+  // oben). Eine Neuanmeldung derselben Kennung nimmt ihre alte Ordnungszahl wieder ein; nur eine
+  // Kennung, die es noch nie gab, bekommt eine neue.
+  const registriereWache = useCallback((kennung: string, wache: DirtyGuard | null): void => {
+    const verzeichnis = wachenRef.current;
+    if (wache === null) {
+      verzeichnis.angemeldet.delete(kennung);
+      return;
+    }
+    let ordnung = verzeichnis.ordnungen.get(kennung);
+    if (ordnung === undefined) {
+      ordnung = verzeichnis.naechsteOrdnung;
+      verzeichnis.naechsteOrdnung += 1;
+      verzeichnis.ordnungen.set(kennung, ordnung);
+    }
+    verzeichnis.angemeldet.set(kennung, { wache, ordnung });
   }, []);
+
+  /** Hat IRGENDEINE angemeldete Wache etwas zu verlieren? */
+  const irgendetwasSchmutzig = useCallback(
+    (): boolean => wachenVonAussen(wachenRef.current).some((wache) => wache.isDirty()),
+    [],
+  );
 
   const guard = useCallback(
     (proceed: () => void): void => {
-      if (guardRef.current?.isDirty()) {
-        setUnsavable(guardRef.current.unsavableDirtyReasons?.() ?? []);
+      if (irgendetwasSchmutzig()) {
+        setUnsavable(alleUnsicherbaren(wachenRef.current));
         applyPending({ proceed, cancel: () => {} });
       } else {
         proceed();
       }
     },
-    [applyPending],
+    [applyPending, irgendetwasSchmutzig],
+  );
+
+  // Der Kontextwert als EIN stabiler Begriff: `useNavGuard` hängt ihn in ein `useMemo`, und ein bei
+  // jedem Render neu gebautes Objekt liesse dort jede Anmeldung neu laufen.
+  const kontextwert = useMemo<NavGuardIntern>(
+    () => ({ registriereWache, guard }),
+    [registriereWache, guard],
   );
 
   // ── Der Zurück-Wächter (Kanten 1-10) ────────────────────────────────────────────────────────────
@@ -287,14 +478,14 @@ export function NavGuardProvider({ children }: { children: ReactNode }): JSX.Ele
       // dort wäre die Warnung eine Gängelung ohne Verlust, und die Filterschiene der Bibliothek
       // (mega10) lebt genau davon.
       shouldBlock: (target) =>
-        guardRef.current?.isDirty() === true && target.pathname !== anchorRef.current.pathname,
+        irgendetwasSchmutzig() && target.pathname !== anchorRef.current.pathname,
       go: (delta) => window.history.go(delta),
       showDialog: () => {
         // Es ist bereits ein Dialog offen (Klick auf eine Navigationsquelle): kein zweiter (Kante 3).
         if (pendingRef.current !== null) {
           return false;
         }
-        setUnsavable(guardRef.current?.unsavableDirtyReasons?.() ?? []);
+        setUnsavable(alleUnsicherbaren(wachenRef.current));
         applyPending({
           proceed: () => popGuardRef.current?.proceed(),
           cancel: () => popGuardRef.current?.stay(),
@@ -358,15 +549,24 @@ export function NavGuardProvider({ children }: { children: ReactNode }): JSX.Ele
   };
 
   const saveAndGo = async (): Promise<void> => {
-    const active = guardRef.current;
-    if (!active) {
+    // JOB 4335 R2: ALLE angemeldeten Wachen, von aussen nach innen, und jede nur dann, wenn SIE
+    // etwas zu sichern hat (Begründung am Verzeichnis-Block oben). Scheitert eine, wirft sie — der
+    // Fang unten hält den Dialog offen, die folgenden laufen gar nicht erst an, und es wird nicht
+    // gewechselt. Das ist dieselbe Zusage wie bisher, nur für mehr als einen Anmelder.
+    const wachen = wachenVonAussen(wachenRef.current);
+    if (wachen.length === 0) {
       runPending();
       return;
     }
     setSaving(true);
     setSaveError(null);
     try {
-      await active.save();
+      for (const wache of wachen) {
+        if (!wache.isDirty()) {
+          continue;
+        }
+        await wache.save();
+      }
       runPending();
     } catch (e) {
       // Speichern fehlgeschlagen: Dialog offen lassen, nicht wechseln, damit nichts verloren geht.
@@ -477,7 +677,7 @@ export function NavGuardProvider({ children }: { children: ReactNode }): JSX.Ele
     );
 
   return (
-    <NavGuardCtx.Provider value={{ setGuard, guard }}>
+    <NavGuardCtx.Provider value={kontextwert}>
       <NavGuardBoundaryCtx.Provider value={setBoundary}>
         {/* Nur MIT Router: dort hält er den Anker (Ort + History-Index) für den Zurück-Wächter nach. */}
         {inRouter ? <AnchorTracker onLocation={trackAnchor} /> : null}

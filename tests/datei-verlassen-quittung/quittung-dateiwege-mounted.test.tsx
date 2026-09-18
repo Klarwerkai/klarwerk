@@ -140,6 +140,7 @@ import {
   adresse,
   bestand,
   dateiAblegen,
+  erreichbareStellen,
   feld,
   flaeche,
   flush,
@@ -148,6 +149,7 @@ import {
   grundIstErreichbar,
   grundIstImDialog,
   grundzustand,
+  imWacheDialog,
   klick,
   knopf,
   mount,
@@ -259,11 +261,20 @@ async function alleFundeAbwaehlen(): Promise<void> {
   ]);
 }
 
-/** Schritt 5: zurück ins Formular und über den Verlassen-Knopf hinauswollen. */
-async function verlassenWollen(): Promise<void> {
+/**
+ * Schritt 5, OHNE Erwartung an den Zweig: zurück ins Formular, Verlassen drücken, Dialog steht.
+ * Welchen Zweig die Wache zeigt, ist ab hier der Gegenstand der Messung (B1/B2) und darf deshalb
+ * nicht schon im Aufbauhelfer zugesichert werden.
+ */
+async function verlassenDialogOeffnen(): Promise<void> {
   await modusWechsel("formular");
   await klick(verlassenKnopf() as HTMLButtonElement);
   expect(wacheDialoge()).toBe(1);
+}
+
+/** Schritt 5: zurück ins Formular und über den Verlassen-Knopf hinauswollen. */
+async function verlassenWollen(): Promise<void> {
+  await verlassenDialogOeffnen();
   expect(speichernKnopfDa(), "die Wache bietet gar kein Speichern an").toBe(true);
 }
 
@@ -557,5 +568,191 @@ describe("JOB 4231 · die Quittung des Verlassen-Wegs nach einem Datei-Speicherw
     expect(ablegezone()).not.toBeNull();
     expect(draftsGet).not.toHaveBeenCalled();
     expect(verlassenKnopf()).toBeNull();
+  });
+});
+
+// ================================================================================================
+// JOB 4335 — DIE WACHE DARF KEINEN VERLUST BEHAUPTEN, DEN DER SPEICHERWEG GAR NICHT HÄTTE.
+// ================================================================================================
+//
+// DER BEFUND (JOB 4324 R2, Produktbefund (b), im echten Chromium gegen echtes PostgreSQL gemessen:
+// `tests/import-wiederoeffnen-nutzerweg/import-wiederoeffnen-pg-im-browser.integration.test.ts:611`).
+// Ein Mensch setzt einen Entwurf fort, wechselt in „Aus Datei", lädt eine Datei — und die Auswertung
+// findet nichts oder findet gar nicht statt (in einer Instanz ohne Modell gibt es sie nie). Drückt er
+// „Entwurf verlassen", stand dort bis zu diesem Job der VERLUST-Zweig der Wache: „Nicht alles kann
+// gesichert werden … die hochgeladene Datei — ihre Auswertung ist noch nicht abgeschlossen", und
+// „Entwurf speichern und wechseln" fehlte.
+//
+// DAS WAR EINE FALSCHE VERLUSTBEHAUPTUNG, kein konservativer Schutz: derselbe Speicher-Rückruf trägt
+// diesen Zustand ausdrücklich (`Capture.tsx:3288` `dateiTraeger?.art === "ganzdokument"` →
+// `fileWholeDraft`), und `dateiTraeger` entsteht auch ganz ohne Funde (`Capture.tsx:1171-1179`).
+// Zwei Begriffe über denselben Zustand sagten Gegenteiliges; `hasPendingFileImport` war der falsche.
+//
+// WARUM DIE BESTEHENDEN FÄLLE DAS NICHT FANDEN: A1–A5 oben erreichen den Ganzdokument-Weg nur über
+// `alleFundeAbwaehlen()` — dort hat eine Auswertung stattgefunden, `hasUnsavedFilePoints` ist wahr
+// und nahm `hasPendingFileImport` schon vorher zurück. Der Zustand „Datei da, Auswertung liefert
+// nichts" kam in diesem Ordner nicht vor.
+//
+// B1 misst den reparierten Weg, B2 seine GRENZE: eine Datei, aus der kein Text gelesen wurde
+// (leere Textdatei, PDF ohne Textebene), ist WIRKLICH nicht sicherbar — dort bleibt der Verlust-Zweig
+// samt Grund stehen. Ohne B2 wäre die Reparatur die bequeme Variante „Knopf immer anbieten".
+describe("JOB 4335 · die Verlassen-Wache bei geladener Datei ohne Funde", () => {
+  /** Eine Datei, aus der der Import KEINEN Text lesen kann — der wahre Wartezustand. */
+  const LEERE_DATEI = "ohne-text.txt";
+
+  /** Der Titel des Verlust-Zweigs der Wache (`NavGuardContext.tsx:399`). */
+  const VERLUSTTITEL = (): string => i18n.t("nav.guard.unsavableTitle");
+  /** Der Grund, den der Verlust-Zweig für eine geladene Datei nennt. */
+  const DATEIGRUND = (name: string): string => i18n.t("capture.unsavable.file", { name });
+
+  /**
+   * Ein Satz steht ERREICHBAR im Dialog der Wache — dieselbe Messung wie `grundIstImDialog` der
+   * Hülle, nur ohne dessen Bindung an `[data-navguard-save-error]`: der Verlust-Zweig zeigt seine
+   * Gründe in einer Liste, nicht im Fehlerfeld.
+   */
+  function stehtImWacheDialog(satz: string): void {
+    const offen = erreichbareStellen(satz).filter((el) => imWacheDialog(el));
+    expect(
+      offen.length,
+      `„${satz}" steht nicht erreichbar im Dialog der Wache (Fundstellen gesamt: ${
+        erreichbareStellen(satz).length
+      })`,
+    ).toBeGreaterThan(0);
+  }
+
+  /** Schritt 3–4 ohne Funde: in „Aus Datei" wechseln, Datei ablegen, auswerten lassen — nichts kommt. */
+  async function dateiLadenOhneFunde(): Promise<void> {
+    await modusWechsel("datei");
+    expect(ablegezone(), "der Moduswechsel hat die Ablegezone nicht gebracht").not.toBeNull();
+    await dateiAblegen(new File([DATEITEXT], DATEI, { type: "text/plain" }));
+    await klick(knopf(i18n.t("capture.file.searchCta")));
+    expect(fundzeilen(), "die Auswertung hat wider Erwarten Funde geliefert").toEqual([]);
+  }
+
+  // ==============================================================================================
+  // B1 · DATEI GELADEN, AUSWERTUNG OHNE FUNDE — DIE WACHE BIETET SPEICHERN AN UND SICHERT WIRKLICH.
+  // ==============================================================================================
+  //
+  // DER ROTNACHWEIS DIESES AUFTRAGS. Am Basisstand scheitert dieser Fall an der ersten Zusicherung
+  // („die Wache bietet … NICHT an"), und zwar mit dem Verlusttitel und dem Dateigrund als Befund.
+  it("B1 · keine Funde, Datei da: die Wache bietet Speichern an, sichert das ganze Dokument und quittiert „gespeichert“", async () => {
+    extrakt.punkte = [];
+    await entwurfOffenUndLeer();
+    await dateiLadenOhneFunde();
+    await verlassenDialogOeffnen();
+
+    // ── DIE ZUSAGE: der sicherbare Zustand bekommt seinen Speicherweg. ─────────────────────────
+    expect(
+      speichernKnopfDa(),
+      `PRODUKTBEFUND (b): die Wache bietet «${i18n.t(
+        "nav.guard.save",
+      )}» NICHT an, obwohl der Ganzdokument-Weg (Capture.tsx:3288) diesen Zustand trägt. Was stattdessen dasteht: Titel «${VERLUSTTITEL()}» ${
+        sichtbar().includes(VERLUSTTITEL()) ? "steht" : "steht nicht"
+      } · Grund «${DATEIGRUND(DATEI)}» ${
+        sichtbar().includes(DATEIGRUND(DATEI)) ? "steht" : "steht nicht"
+      }`,
+    ).toBe(true);
+    // Und die falsche Verlustbehauptung ist weg — nicht nur der Knopf zusätzlich da.
+    expect(
+      sichtbar(),
+      "die Wache behauptet weiterhin einen Verlust, den der Speicherweg gar nicht hätte",
+    ).not.toContain(VERLUSTTITEL());
+    expect(sichtbar()).not.toContain(DATEIGRUND(DATEI));
+
+    await speichernUndWechseln();
+
+    // Allein der Dateizweig hat getragen — der Eintrags-Zweig hat an diesem Entwurf nichts zu tun.
+    expect(
+      draftsUpdate,
+      "der Eintrags-Zweig hat mitgespeichert — dann misst B1 nicht den Befund",
+    ).not.toHaveBeenCalled();
+    expect(anlageversucheJeTitel()).toEqual({ [TRAEGER_TITEL]: 1 });
+
+    expect(wacheDialoge()).toBe(0);
+    expect(adresse()).toBe("/start");
+    expect(sichtbar()).toContain(GESPEICHERT());
+    expect(
+      sichtbar(),
+      "die Fläche meldet „verworfen“, obwohl die Datei gesichert ist",
+    ).not.toContain(VERWORFEN());
+
+    // DER BESTAND TRÄGT WIRKLICH DIE DATEI — Volltext als Aussage, Original im Objektspeicher.
+    const nutzlast = nutzlastJeTitel(TRAEGER_TITEL);
+    expect(nutzlast, `kein Entwurf „${TRAEGER_TITEL}" im Bestand`).not.toBeNull();
+    expect(String(nutzlast?.statement)).toContain(P1.sourceExcerpt);
+    expect(String(nutzlast?.statement)).toContain(P2.sourceExcerpt);
+    const objekte = Object.keys(server.objekte);
+    expect(objekte).toHaveLength(1);
+    expect(String(nutzlast?.bodyHtml)).toContain(String(objekte[0]));
+    expect(String(nutzlast?.bodyHtml)).toContain(DATEI);
+  });
+
+  // ==============================================================================================
+  // B3 · DERSELBE WEG, DEN DIE CHROMIUM-STRECKE GEHT: GANZDOKUMENT-MODUS, GAR KEINE AUSWERTUNG.
+  // ==============================================================================================
+  //
+  // B1 lässt die Auswertung laufen und leer zurückkommen; P2 (b) der Chromium-Strecke ruft sie NIE
+  // (in einer Instanz ohne Modell gibt es sie nicht) und arbeitet ausserdem in der Importart
+  // „Ganzes Dokument übernehmen". Dieser Fall bildet genau diese Lage ab — sonst hinge der Nachweis,
+  // dass der Speicherweg auch OHNE jeden Auswertungslauf trägt, allein an der teuren Cloud-Strecke.
+  it("B3 · Ganzdokument-Modus, keine Auswertung: die Wache speichert die Datei und quittiert „gespeichert“", async () => {
+    await entwurfOffenUndLeer();
+    await modusWechsel("datei");
+    expect(ablegezone()).not.toBeNull();
+    await klick(knopf(i18n.t("capture.file.importMode.whole")));
+    await dateiAblegen(new File([DATEITEXT], DATEI, { type: "text/plain" }));
+    // Beleg, dass der Text wirklich gelesen ist (derselbe Satz, auf den die Chromium-Strecke wartet).
+    expect(sichtbar()).toContain(i18n.t("capture.file.wholeSourceNote", { name: DATEI }));
+
+    await verlassenDialogOeffnen();
+    expect(speichernKnopfDa(), "die Wache bietet im Ganzdokument-Modus kein Speichern an").toBe(
+      true,
+    );
+
+    await speichernUndWechseln();
+
+    expect(
+      anlageversucheJeTitel(),
+      "der Speicherweg der Wache hat die Datei nicht angelegt",
+    ).toEqual({ [TRAEGER_TITEL]: 1 });
+    expect(wacheDialoge()).toBe(0);
+    expect(adresse()).toBe("/start");
+    expect(sichtbar()).toContain(GESPEICHERT());
+    expect(sichtbar()).not.toContain(VERWORFEN());
+    expect(nutzlastJeTitel(TRAEGER_TITEL)).not.toBeNull();
+  });
+
+  // ==============================================================================================
+  // B2 · DIE GRENZE: EINE DATEI OHNE GELESENEN TEXT BLEIBT NICHT SICHERBAR.
+  // ==============================================================================================
+  //
+  // `onExtractFile` setzt den Dateinamen VOR dem Lesen (`Capture.tsx:3926`) und kehrt bei leerem
+  // Ergebnis mit einer Ablehnung zurück, OHNE ihn zu räumen (`:4107-4118`). Genau dann gibt es
+  // nichts, was der Ganzdokument-Weg tragen könnte (`ganzdokumentEingabe === null`, `:1132-1143`) —
+  // die Wache muss den Verlust benennen, und zwar weiterhin ohne Speicherknopf. Dieselbe Lage hat
+  // ein PDF ohne Textebene.
+  it("B2 · Datei gewählt, kein Text gelesen: weiterhin Verlust-Dialog mit Grund, ohne Speicherknopf", async () => {
+    extrakt.punkte = [];
+    await entwurfOffenUndLeer();
+    await modusWechsel("datei");
+    expect(ablegezone()).not.toBeNull();
+    await dateiAblegen(new File([""], LEERE_DATEI, { type: "text/plain" }));
+    // Beleg, dass wirklich KEIN Text gelesen wurde: die Fläche lehnt die Datei sichtbar ab.
+    expect(
+      sichtbar(),
+      "der Import hat die leere Datei angenommen — dann misst B2 nicht den Wartezustand",
+    ).toContain(i18n.t("capture.file.empty", { name: LEERE_DATEI }));
+
+    await verlassenDialogOeffnen();
+
+    expect(
+      speichernKnopfDa(),
+      "die Wache bietet Speichern an, obwohl aus der Datei kein Text gelesen wurde",
+    ).toBe(false);
+    stehtImWacheDialog(VERLUSTTITEL());
+    stehtImWacheDialog(DATEIGRUND(LEERE_DATEI));
+    // Und es bleibt bei den zwei Wegen des Verlust-Zweigs.
+    expect(knopf(i18n.t("nav.guard.stay"))).not.toBeNull();
+    expect(knopf(i18n.t("nav.guard.discard"))).not.toBeNull();
   });
 });

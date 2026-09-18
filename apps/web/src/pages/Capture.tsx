@@ -36,6 +36,7 @@ import { ImageDescribeProvider } from "../app/ImageDescribeContext";
 import {
   GuardedLink,
   NavGuardSaveError,
+  WACHE_ARBEITSRAUM,
   useGuardedNavigate,
   useNavGuard,
   useUnloadGuard,
@@ -640,6 +641,9 @@ export function CaptureArbeitsraum({
   //     daran, hängt „gibt es Änderungen seit dem Öffnen?".
   const [verlassenAusstehend, setVerlassenAusstehend] = useState(false);
   const [entwurfBasisAbdruck, setEntwurfBasisAbdruck] = useState<string | null>(null);
+  // JOB 4335 R4: derselbe Ausgangsstand OHNE Titel und ohne Datei — er beantwortet die engere Frage
+  // „hat der Mensch ausser dem Titel noch etwas getan?" (Begründung am Abdruck selbst, unten).
+  const [eintragBasisAbdruck, setEintragBasisAbdruck] = useState<string | null>(null);
   // `loadDraft` schreibt den Ausgangsstand NICHT selbst: seine Setter wirken erst im nächsten
   // Render, ein dort gebildeter Abdruck trüge noch den Stand von VORHER. Es setzt nur diese Marke;
   // der Effekt bei `entwurfGeaendert` nimmt den Abdruck dann aus der fertig gefüllten Fläche — mit
@@ -2832,9 +2836,9 @@ export function CaptureArbeitsraum({
   // Rechnung genommen wie der aktuelle (s. `basisNachtragenRef` unten). Zwei getrennte Ableitungen —
   // eine aus der Nutzlast des geladenen Entwurfs, eine aus der Fläche — wären genau die Stelle, an
   // der ein Feld auseinanderläuft und die Rückfrage schweigt, obwohl es etwas zu verlieren gibt.
-  const flaechenAbdruck = useMemo(
+  const abdruckTeile = useMemo(
     () =>
-      JSON.stringify({
+      ({
         raw,
         bodyHtml,
         titel: draft?.title ?? null,
@@ -2863,7 +2867,7 @@ export function CaptureArbeitsraum({
         datei: fileName,
         dateitext: fileText,
         funde: filePoints?.length ?? null,
-      }),
+      }) as const,
     [
       raw,
       bodyHtml,
@@ -2889,9 +2893,40 @@ export function CaptureArbeitsraum({
       filePoints,
     ],
   );
+  const flaechenAbdruck = useMemo(() => JSON.stringify(abdruckTeile), [abdruckTeile]);
+  // ==============================================================================================
+  // JOB 4335 RUNDE 4 — DERSELBE ABDRUCK OHNE TITEL UND OHNE DATEI: „HAT ER SONST NOCH ETWAS GETAN?"
+  // ==============================================================================================
+  //
+  // Wofür, steht am Eintrags-Zweig der Wache unten (`:3305`). Kurz: um „der Mensch hat NUR den
+  // Titel geleert" von „der Mensch hat etwas eingetragen" zu unterscheiden. Der Titel fehlt hier,
+  // weil genau er die Frage ist; die Datei fehlt, weil sie ihren EIGENEN Träger hat
+  // (`dateiTraeger`, `:1171`) und in der Frage „muss der EINTRAG geschrieben werden?" nichts zu
+  // suchen hat.
+  //
+  // KEIN ZWEITER FELDKATALOG: die Werte kommen aus `abdruckTeile`, damit beide Fragen dieselbe
+  // Quelle haben und beim nächsten neuen Feld nicht eine von beiden nachgeführt wird — dieselbe
+  // Begründung, die über `abdruckTeile` steht.
+  const eintragOhneTitelAbdruck = useMemo(
+    () => JSON.stringify({ ...abdruckTeile, titel: null, datei: null, dateitext: "", funde: null }),
+    [abdruckTeile],
+  );
   // Ohne bekannten Ausgangsstand wird GEFRAGT, nicht geschwiegen: „ich weiss es nicht" darf hier
   // nie zu „es gibt nichts zu verlieren" werden — der teure Fehler wäre das stille Verwerfen.
   const entwurfGeaendert = entwurfBasisAbdruck === null || flaechenAbdruck !== entwurfBasisAbdruck;
+  // ==============================================================================================
+  // JOB 4335 R4 — „ER HAT NUR DEN TITEL GELEERT, SONST NICHTS."
+  // ==============================================================================================
+  //
+  // Die Lage, die der Eintrags-Zweig der Wache unten NICHT schreiben darf (Entscheidung der
+  // Steuerung zum Abnahmevertrag von P2, 18.09.): ein GEÖFFNETER Entwurf, an dem der Mensch den
+  // Titel geleert und sonst nichts angefasst hat. Ohne bekannten Ausgangsstand ist die Antwort
+  // „nein" — dann wird geschrieben wie bisher, nicht geschwiegen.
+  const nurTitelGeleert =
+    draftId !== null &&
+    (draft?.title ?? "").trim().length === 0 &&
+    eintragBasisAbdruck !== null &&
+    eintragOhneTitelAbdruck === eintragBasisAbdruck;
   // Der Ausgangsstand wird im ersten Render NACH dem Öffnen genommen. Bewusst OHNE Abhängigkeits-
   // liste: die Marke soll auch dann eingelöst werden, wenn der Abdruck sich durch das Laden gar
   // nicht geändert hat (ein inhaltlich leerer Entwurf in eine leere Fläche) — eine Liste mit
@@ -2903,16 +2938,53 @@ export function CaptureArbeitsraum({
     }
     basisNachtragenRef.current = false;
     setEntwurfBasisAbdruck(flaechenAbdruck);
+    // JOB 4335 R4: BEIDE Ausgangsstände in DERSELBEN Zeile des Ablaufs. Zwei Effekte wären zwei
+    // Zeitpunkte, und der zweite läge nach einem Render, in dem der erste schon galt.
+    setEintragBasisAbdruck(eintragOhneTitelAbdruck);
   });
   // AUFTRAG-mega5 Block A (bens Ship-Gate 1): die EHRLICHE GRENZE des Speicher-Vertrags. Für jeden
-  // Dirty-Zustand gilt genau eines von beidem: saveDraft sichert ihn vollständig (Text, Metadaten,
-  // Prüfer, Quellenformular, pendingSources, extQuery, Interviewfortschritt — Resume stellt sie
-  // wieder her), ODER er steht hier NAMENTLICH als nicht sicherbar: echte Binärdaten (Bilder,
-  // Dokumente) und flüchtige Laufzeitzustände (Datei vor Extraktionsabschluss, laufende Queue,
+  // Dirty-Zustand gilt genau eines von beidem: er hat in diesem Durchlauf einen Träger, der ihn
+  // vollständig sichert, ODER er steht hier NAMENTLICH als nicht sicherbar: echte Binärdaten
+  // (Bilder, Dokumente) und flüchtige Laufzeitzustände (Datei ohne gelesenen Text, laufende Queue,
   // geladene Trefferliste). Nicht leer ⇒ Navigationswache ohne „Speichern und wechseln" und der
-  // manuelle Save-Knopf verlangt eine ausdrückliche Bestätigung. Einen dritten Weg gibt es nicht.
+  // manuelle Save-Knopf verlangt eine ausdrückliche Bestätigung.
+  //
+  // ==============================================================================================
+  // JOB 4335 — DIE GELADENE DATEI IST NICHT „NICHT SICHERBAR", SOBALD IHR TEXT VORLIEGT.
+  // ==============================================================================================
+  //
+  // DER BEFUND (JOB 4324 R2, Produktbefund (b), im echten Chromium gegen echtes PostgreSQL
+  // gemessen). Bis hierher stand hier `(fileName || fileText) && !hasUnsavedFilePoints &&
+  // !fileQueue` — also: „eine Datei ohne Funde kann niemand sichern". Das war seit JOB 3770 R4
+  // FALSCH und wurde dem Menschen trotzdem gesagt: Wer einen Entwurf fortsetzte, eine Datei lud und
+  // verliess, bevor eine Auswertung Funde brachte (in einer Instanz ohne Modell: immer), las
+  // „Nicht alles kann gesichert werden … ihre Auswertung ist noch nicht abgeschlossen" — und der
+  // Speicherweg fehlte. Er musste seine Datei wegwerfen, um die Seite zu wechseln.
+  //
+  // WARUM DAS EIN WIDERSPRUCH WAR UND NICHT NUR VORSICHT: derselbe Speicher-Rückruf der Wache TRÄGT
+  // genau diesen Zustand, und zwar ausdrücklich (`:3322` `dateiTraeger?.art === "ganzdokument"` →
+  // `fileWholeDraft`). `dateiTraeger` (`:1171-1179`) entsteht ohne jeden Fund, sobald
+  // `ganzdokumentEingabe` da ist. Zwei Begriffe sagten damit Gegenteiliges über DENSELBEN Zustand,
+  // und der falsche von beiden entschied, was der Mensch angeboten bekam. Eine Verlustbehauptung,
+  // die der eigene Speicherweg widerlegt, ist der teure Fehler: sie kostet Arbeit, die es nicht
+  // kosten müsste.
+  //
+  // DIE FRAGE HIER IST DESHALB AB JETZT DIESELBE, DIE DER TRÄGER STELLT — gibt es etwas, das diese
+  // Datei trägt? `ganzdokumentEingabe === null` (`:1132-1143`) heisst genau: kein Dateiname oder
+  // kein gelesener Text. Und DANN bleibt der Satz richtig und steht weiter da: `onExtractFile`
+  // setzt den Namen VOR dem Lesen (`:3960`) und kehrt bei leerem Ergebnis mit einer Ablehnung
+  // zurück, ohne ihn zu räumen (`:4141-4152`) — eine leere Textdatei, ein PDF ohne Textebene, ein
+  // noch laufendes Einlesen. Bewusst am Begriff und nicht an einer zweiten Abschrift der Bedingung
+  // `fileName && fileText.trim()`: eine zweite Abschrift wäre die Stelle, an der die beiden beim
+  // nächsten Feld auseinanderlaufen — und diesmal ist es genau das, was der Befund war.
+  //
+  // Die beiden anderen Glieder bleiben unverändert: Funde trägt der Punkte-Weg (`:3341`), und die
+  // laufende Queue hat ihren EIGENEN Grund direkt darunter (`capture.unsavable.fileQueue`).
   const hasPendingFileImport =
-    (Boolean(fileName) || fileText.trim().length > 0) && !hasUnsavedFilePoints && !fileQueue;
+    (Boolean(fileName) || fileText.trim().length > 0) &&
+    !hasUnsavedFilePoints &&
+    !fileQueue &&
+    ganzdokumentEingabe === null;
   // AUFTRAG-mega6 Block A (bens ROT 1): eine nicht leere, aber nicht speicherbare Web-Adresse im
   // Quellenformular oder an einer wartenden Quelle. Die serverseitige http/https-Allowlist bleibt
   // unverändert — sie ist richtig; nur ihr STILLES Wirken war falsch. Als eigener Grund gehört sie
@@ -3163,6 +3235,11 @@ export function CaptureArbeitsraum({
   // als separate Entwürfe (nichts geht verloren). Teilfehler halten den Dialog offen (kein Wechsel).
   useEffect(() => {
     setGuard({
+      // JOB 4335 R4: DER ARBEITSRAUM IST DIE INNERE WACHE DIESER FLÄCHE und speichert deshalb
+      // ZULETZT — sein Stand ist der speziellere und darf nicht vom Blattstand überschrieben
+      // werden. Die Angabe steht im Quelltext, nicht im Renderverlauf (Begründung in
+      // `app/NavGuardContext.tsx`, Korrekturpflicht 1 aus BENs Runde 3).
+      reihe: WACHE_ARBEITSRAUM,
       // Dasselbe kanonische Prädikat wie der Verwerfen-Knopf — kein Auseinanderlaufen.
       isDirty: () => isCaptureDirty,
       // AUFTRAG-mega5 Block A (bens Ship-Gate 1): nicht sicherbare Inhalte werden der Wache gemeldet —
@@ -3225,11 +3302,38 @@ export function CaptureArbeitsraum({
         // können nebeneinander laufen, und dann tun sie Verschiedenes: dieser sichert den EINTRAG
         // (getippte Domäne, Vertraulichkeit, halbe Quelle — die Zustände, für die die Wache ihr
         // weiteres Dirty-Prädikat hat), der andere die DATEI. Gemessen: A2c.
+        // ==========================================================================================
+        // JOB 4335 RUNDE 4 — EIN GELEERTER TITEL IST KEIN SICHERBARER STAND.
+        // ==========================================================================================
+        //
+        // DER BEFUND, im echten Browser gegen echtes PostgreSQL gemessen (Cloud-Lauf
+        // `499a8dc80a77afe391488dea`, Zeile E2 vorher/nachher). Seit die Wache dieser Seite wieder
+        // antwortet, lief beim Verlassen auch dieser Zweig — an einem geöffneten Entwurf, an dem der
+        // Mensch NUR den Titel geleert hatte. Heraus ging:
+        //
+        //   vorher   `{"title":"Entwurf","origin":"expert","statement":"Entwurf"}`
+        //   nachher  `{…,"title":"Entwurf","origin":"tell","statement":"Entwurf", …}`
+        //
+        // ZWEIMAL ERFINDUNG STATT EINGABE, und beides steht oben im Quelltext: der geleerte Titel
+        // wird beim Bau der Nutzlast durch den Rückfalltitel ersetzt (`:2209`
+        // `draft?.title || raw… || t("capture.draftFallbackTitle")`), und `origin` kommt aus dem
+        // AKTUELLEN Modus der Fläche (`:2258` `originForSave({ expert: isExpertMode(mode) … })`) —
+        // wer im Dateiweg verlässt, macht aus „expert" ein „tell", ohne es je gewählt zu haben.
+        // Der Mensch bekäme einen Titel, den er gelöscht hat, und eine Herkunft, die er nie
+        // angegeben hat. Wissenslücke statt Erfindung: dann wird nicht geschrieben.
+        //
+        // WAS DIESER ZWEIG WEITER TUT — und das ist der Grund für die enge Bedingung: hat der Mensch
+        // AUSSER dem Titel etwas getan (getippt, eine Stufe gewählt, eine Quelle begonnen, das
+        // Interview begonnen), ist das sicherbar und wird gesichert. Nur die Lage „ausschliesslich
+        // den Titel geleert" schweigt, und sie verliert nichts: der gespeicherte Entwurf behält
+        // seinen Titel, die Datei geht über ihren eigenen Träger hinaus (`:3345`).
+        //
+        // DER RÜCKFALL BLEIBT UNGEFILTERT. Trägt die Datei in diesem Durchlauf niemand
+        // (`dateiTraeger === null`), muss dieser Zweig einspringen — sonst wäre aus einer
+        // vermiedenen Erfindung ein stiller Verlust geworden (Zusage aus JOB 3770 Runde 4).
         if (
-          hasUnsavedEntryOhneDatei ||
-          hasUnsavedMeta ||
-          ivStarted ||
-          ivResult ||
+          (!nurTitelGeleert &&
+            (hasUnsavedEntryOhneDatei || hasUnsavedMeta || ivStarted || Boolean(ivResult))) ||
           (dateiTraeger === null && hasUnsavedEntry)
         ) {
           // AUFTRAG-mega22 Block F: DASSELBE Tor wie der sichtbare Knopf. Bis mega21 rief dieser
@@ -3404,6 +3508,8 @@ export function CaptureArbeitsraum({
     hasUnsavedMeta,
     ivStarted,
     ivResult,
+    // JOB 4335 R4: die Lage, in der dieser Zweig bewusst schweigt (Begründung an ihm selbst).
+    nurTitelGeleert,
     unsavableDirtyReasons,
     // JOB 3770: der Begriff, den BEIDE Zweige oben fragen — er gehört in die Liste, sonst bliebe die
     // Wache mit einer überholten Auswahl gesetzt und speicherte einen weggeklickten Fund doch.
@@ -4681,6 +4787,14 @@ export function CaptureArbeitsraum({
     // Bewusst bestätigt: die benannten, nicht sicherbaren Inhalte werden verworfen. Bilder, Dokumente
     // und Trefferliste räumt der Save-Erfolgspfad; den Datei-Import-/Queue-Zustand räumen wir hier
     // explizit, denn er hängt nicht am saveDraft-Erfolg.
+    //
+    // JOB 4335: EINE GELADENE, LESBARE DATEI KOMMT HIER NICHT MEHR VORBEI. Seit
+    // `hasPendingFileImport` (oben) den Ganzdokument-Fall nicht mehr als nicht sicherbar meldet,
+    // steht für ihn kein Grund mehr in `unsavableDirtyReasons` — `requestManualSave` fragt gar nicht
+    // erst nach, und dieser Zweig räumt seinen Dateizustand nicht. Das ist die Reparatur und nicht
+    // ihr Nebenschaden: der Mensch bestätigte bis hierher einen Verlust, den es nicht gab, und
+    // verlor daraufhin seine Datei von der Fläche. Geräumt wird ab jetzt nur noch, was WIRKLICH
+    // nicht sicherbar ist (Datei ohne gelesenen Text) oder eine laufende Queue.
     if (hasPendingFileImport || fileQueue) {
       clearFileImportState();
     }

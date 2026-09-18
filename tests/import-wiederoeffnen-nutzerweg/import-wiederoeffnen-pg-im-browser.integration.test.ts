@@ -472,13 +472,16 @@ describe("JOB 4324 P · der Import-Wiederöffnen-Nutzerweg im Browser, gegen ech
   // P2 · (b) VERLASSEN MIT QUITTUNG — LIEFERUNG 9 AUS JOB 4231. DER SOLLFALL.
   // ══════════════════════════════════════════════════════════════════════════════════════════════
   //
-  // DIESER FALL VERLANGT DAS ZUGESAGTE UND IST HEUTE ROT. Das ist Absicht (BENs Korrekturpflicht 1
-  // zur Runde 1) und es ist das erwartete Ergebnis des Auftrags (§4: „Findet die Strecke einen
-  // Produktfehler, wird er in der Rückgabe mit Datei und Zeile benannt und der Fall bleibt rot").
+  // DIESER FALL VERLANGT DAS ZUGESAGTE UND WAR BIS JOB 4335 ROT. Das war Absicht (BENs
+  // Korrekturpflicht 1 zur Runde 1) und das erwartete Ergebnis von JOB 4324 (§4: „Findet die Strecke
+  // einen Produktfehler, wird er in der Rückgabe mit Datei und Zeile benannt und der Fall bleibt
+  // rot"). Seine Erwartungen sind seither Zeichen für Zeichen dieselben; repariert wurde das
+  // PRODUKT, nicht der Fall.
   //
-  // WAS GEMESSEN IST — nicht vermutet (Runde 1, Cloud-Lauf ca3e6cf2528dec2e180ecf3a: 30 009 ms
+  // WAS GEMESSEN WAR — nicht vermutet (Runde 1, Cloud-Lauf ca3e6cf2528dec2e180ecf3a: 30 009 ms
   // vergeblich gewartet; BENs eigene Sollprobe 677eb7cfe72bec9e1a42910c: „expected false to be
-  // true"). Die Kette des Befunds:
+  // true"; JOB 4335 vor der Reparatur noch einmal: Lauf a2365ab83a0645cc83fb34f8). Die Kette des
+  // Befunds, wie sie bis dahin lief:
   //
   //   `Capture.tsx:2914` `hasPendingFileImport = (Boolean(fileName) || fileText.trim().length > 0)
   //                       && !hasUnsavedFilePoints && !fileQueue`
@@ -489,15 +492,43 @@ describe("JOB 4324 P · der Import-Wiederöffnen-Nutzerweg im Browser, gegen ech
   //
   // `hasUnsavedFilePoints` (`Capture.tsx:2779`) ist NUR wahr, wenn eine Auswertung gelaufen ist und
   // Funde vorliegen; die geht über `POST /api/reasoner` mit `task: "extract"`
-  // (`api/endpoints.ts:844-857`) und braucht ein echtes Modell. Der jsdom-Fall erreicht den
-  // Speicherzweig deshalb nur mit attrappierter Auswertung
-  // (`quittung-dateiwege-mounted.test.tsx:277` `extrakt.punkte = [P1, P2]`).
+  // (`api/endpoints.ts:844-857`) und braucht ein echtes Modell. Der jsdom-Fall erreichte den
+  // Speicherzweig deshalb nur mit attrappierter Auswertung — genau diese Lücke schliesst seit
+  // JOB 4335 der Fall B1 in `quittung-dateiwege-mounted.test.tsx` (Auswertung ohne Funde).
   //
-  // DER WIDERSPRUCH, der die Reparatur zu einem eigenen Auftrag macht: der Speicher-Rückruf der
+  // DER WIDERSPRUCH, der die Reparatur zu einem eigenen Auftrag machte: der Speicher-Rückruf der
   // Wache TRÄGT die Ganzdokument-Datei ausdrücklich (`Capture.tsx:3290`
   // `await fileWholeDraft.mutateAsync(dateiTraeger.eingabe)`, JOB 3770/4231), und `dateiTraeger`
-  // entsteht auch ganz ohne Funde (`Capture.tsx:1171-1179`). Der Zweig KANN die Datei sichern —
-  // `unsavableDirtyReasons` nimmt der Wache nur die Möglichkeit, ihn anzubieten.
+  // entsteht auch ganz ohne Funde (`Capture.tsx:1171-1179`). Der Zweig KONNTE die Datei sichern —
+  // `unsavableDirtyReasons` nahm der Wache nur die Möglichkeit, ihn anzubieten. JOB 4335 stellt
+  // `hasPendingFileImport` deshalb auf denselben Begriff um (`ganzdokumentEingabe === null`).
+  //
+  // ── ZWEITER BEFUND, JOB 4335, GEMESSEN — WARUM DIESER FALL DANACH IMMER NOCH ROT IST ──────────
+  //
+  // Seit der Reparatur steht der Knopf da und ist betätigbar (Zeile unten grün). Was danach
+  // geschieht, gehört einem ANDEREN Fehler, und er liegt tiefer: auf `/erfassen` melden ZWEI
+  // Bauteile eine Wache an denselben EINEN Platz —
+  //
+  //   `Capture.tsx:3199` `setGuard({ … save: Eintrag + Ganzdokument + Punkte … })`
+  //   `components/erfassen/Blatt.tsx:1526` `setGuard({ … save: die eigene Blatt-Mutation … })`
+  //
+  // `NavGuardContext.tsx` hält dafür genau EINEN Platz (`guardRef.current`, `:202`); beide Effekte
+  // hängen an ihrer jeweiligen Mutation und laufen deshalb bei JEDEM Render ihres Bauteils neu. Wer
+  // zuletzt gelaufen ist, gewinnt — und weil `Capture` im Baum UNTER `Blatt` hängt, gewinnt bei
+  // jedem gemeinsamen Render das Blatt. Genau das tritt beim Öffnen des Dialogs ein.
+  //
+  // GEMESSEN (JOB 4335, Cloud-Lauf `1287ff58cd6080c8e332b91f`, Diagnose danach bytegleich
+  // zurückgenommen): unmittelbar nach dem Klick auf „Entwurf speichern und wechseln" stehen die
+  // Quittungen `["Entwurf gespeichert.", "Entwurf verlassen. Die Änderungen seit dem Öffnen sind
+  // verworfen, der gespeicherte Entwurf ist unverändert."]`, die Zahl der `drafts`-Zeilen bleibt 2.
+  // „Entwurf gespeichert." ist `fd.toastSaved` (`Blatt.tsx:1150`) — Capture meldet an einem offenen
+  // Entwurf „Entwurf aktualisiert." (`Capture.tsx:2271`), und ein Anlegen hätte eine dritte Zeile
+  // gemacht. Es hat also die Wache des BLATTS gespeichert: sie schreibt den Blattstand in E2, trägt
+  // die Datei nicht, und die Quittung sagt danach wahrheitsgemäß „verworfen".
+  //
+  // DIESER FALL BLEIBT DESHALB ROT und wird NICHT abgeschwächt: er hält die Zusage fest, bis der
+  // zweite Befund repariert ist (eigener Auftrag — er verlangt `NavGuardContext.tsx` bzw.
+  // `Blatt.tsx`, beide ausserhalb der Zielpfade von JOB 4335).
   //
   // DIE MELDUNG BESCHREIBT, WAS STATTDESSEN DASTEHT. Ein „expected false to be true" ohne den
   // wirklich gerenderten Dialog liesse den nächsten Leser raten.
@@ -596,7 +627,8 @@ describe("JOB 4324 P · der Import-Wiederöffnen-Nutzerweg im Browser, gegen ech
           "Dialog der Wache (Knopf „Hier bleiben“)",
         );
 
-        // ── DIE ZUSAGE DES AUFTRAGS (§5 Lieferung 2b). Heute ROT. ────────────────────────────
+        // ── DIE ZUSAGE DES AUFTRAGS (§5 Lieferung 2b). Diese Zeile ist seit JOB 4335 grün; der
+        //    Fall bleibt danach an der Quittung rot (zweiter Befund, oben ausgeschrieben). ─────
         const wacheSpeichern = satz("nav.guard.save");
         const stattdessen = [
           `Titel «${satz("nav.guard.unsavableTitle")}» ${

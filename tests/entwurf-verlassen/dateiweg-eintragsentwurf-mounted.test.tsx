@@ -235,7 +235,22 @@ describe("JOB 3621 · der Dateiweg legt keinen leeren Eintragsentwurf daneben", 
   // Dann wäre `isCaptureDirty` bei einer bloss geladenen, noch nicht ausgewerteten Datei falsch,
   // die Wache fragte nicht mehr, und Pedis Befund vom 05.07. („Aus Datei: hochgeladene Datei
   // bereits VOR der KI-Auswertung") käme zurück. Dieser Fall misst genau das: es wird gefragt,
-  // nichts wird still gewechselt, und der Dialog benennt die Datei als noch nicht sicherbar.
+  // nichts wird still gewechselt, und wer verwirft, verwirft ausdrücklich.
+  //
+  // ── JOB 4335: WELCHEN ZWEIG DIE WACHE ZEIGT, HAT SICH GEÄNDERT — UND ZWAR ABSICHTLICH ─────────
+  //
+  // Bis JOB 4335 stand hier zusätzlich, der Dialog benenne die Datei als „noch nicht sicherbar" und
+  // biete deshalb kein „Entwurf speichern und wechseln" an. Das war eine falsche Verlustbehauptung
+  // (JOB 4324, Produktbefund (b), im echten Chromium gegen echtes PostgreSQL gemessen): derselbe
+  // Speicher-Rückruf trägt genau diesen Zustand über den Ganzdokument-Weg (`Capture.tsx:3288`), und
+  // `dateiTraeger` entsteht ohne jeden Fund (`Capture.tsx:1171-1179`). Der Mensch musste seine
+  // Datei wegwerfen, um die Seite zu wechseln.
+  //
+  // DER GEGENSTAND DIESES FALLS BLEIBT UNVERÄNDERT: die geladene Datei ist ein Grund zu FRAGEN, und
+  // ohne ausdrückliche Antwort wird weder gewechselt noch geschrieben. Neu ist nur, dass die Frage
+  // jetzt drei ehrliche Antworten hat statt zwei. Dass der Speicherweg auch wirklich sichert (und
+  // wo seine Grenze liegt), messen `tests/datei-verlassen-quittung/quittung-dateiwege-mounted.test.tsx`
+  // B1 und B2 — hier bleibt es beim Verwerfen, damit dieser Fall misst, was sein Titel sagt.
   it("E4 · Datei geladen, keine Punkte: die Wache fragt, nichts wechselt still", async () => {
     await dateiEinlesen();
     await hinauswollen();
@@ -245,10 +260,11 @@ describe("JOB 3621 · der Dateiweg legt keinen leeren Eintragsentwurf daneben", 
     expect(adresse()).toBe("/erfassen");
     // Nichts ist geschrieben worden.
     expect(draftsCreate).not.toHaveBeenCalled();
-    // Und der Dialog sagt, woran es liegt: die Datei ist noch nicht ausgewertet und deshalb noch
-    // nicht sicherbar — er bietet dafür ehrlich kein „Entwurf speichern und wechseln" an.
-    expect(sichtbar()).toContain(i18n.t("capture.unsavable.file", { name: DATEI }));
-    expect(speichernKnopfDa()).toBe(false);
+    // Und der Dialog behauptet keinen Verlust, den es nicht gibt: die gelesene Datei IST sicherbar,
+    // also steht der Speicherweg da — und der Grund „Auswertung noch nicht abgeschlossen" nicht.
+    expect(speichernKnopfDa()).toBe(true);
+    expect(sichtbar()).not.toContain(i18n.t("capture.unsavable.file", { name: DATEI }));
+    expect(sichtbar()).not.toContain(i18n.t("nav.guard.unsavableTitle"));
 
     // Wer ausdrücklich verwirft, kommt weiter — und auch dann entsteht kein Entwurf.
     await klick(knopf(i18n.t("nav.guard.discard")));

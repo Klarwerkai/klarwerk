@@ -15,7 +15,7 @@ import type {
 } from "../../api/types";
 import { useSession } from "../../app/AuthContext";
 import { ImageDescribeProvider } from "../../app/ImageDescribeContext";
-import { useNavGuard, useUnloadGuard } from "../../app/NavGuardContext";
+import { WACHE_FLAECHE, useNavGuard, useUnloadGuard } from "../../app/NavGuardContext";
 import { useToast } from "../../app/ToastContext";
 import { useLiveKnowledgeCheck } from "../../hooks/useLiveKnowledgeCheck";
 import {
@@ -1524,6 +1524,11 @@ export function Blatt({
 
   useEffect(() => {
     setGuard({
+      // JOB 4335 R4: DAS BLATT IST DIE ÄUSSERE WACHE DIESER FLÄCHE und speichert deshalb ZUERST —
+      // der speziellere Stand des Arbeitsraums schreibt danach und gewinnt, falls beide denselben
+      // Entwurf anfassen. Die Angabe steht hier im Quelltext und nicht im Renderverlauf; genau das
+      // war BENs Korrekturpflicht 1 aus Runde 3 (Begründung in `app/NavGuardContext.tsx`).
+      reihe: WACHE_FLAECHE,
       isDirty: () => istSchmutzig,
       unsavableDirtyReasons: () => unsicherbareGruende,
       save: async () => {

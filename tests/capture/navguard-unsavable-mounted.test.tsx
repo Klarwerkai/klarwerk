@@ -345,16 +345,31 @@ describe("Block A: ehrliche Grenze — Navigation blockiert und benennt den nich
     await expectHonestBlock(i18n.t("capture.unsavable.docs", { count: 1 }));
   });
 
-  it("hochgeladene Datei VOR Extraktionsabschluss: die Datei wird beim Namen genannt", async () => {
+  // ==============================================================================================
+  // JOB 4335 — DIE DATEI ZÄHLT HIER NUR NOCH, SOLANGE AUS IHR KEIN TEXT GELESEN IST.
+  // ==============================================================================================
+  //
+  // Bis JOB 4335 stand hier eine Datei MIT Inhalt, und dieser Fall pinnte damit die falsche Hälfte
+  // des Befunds aus JOB 4324 (Produktbefund (b)): eine gelesene Datei galt als „nicht sicherbar",
+  // obwohl der Ganzdokument-Weg der Wache sie ausdrücklich trägt (`Capture.tsx:3288`). Der Mensch
+  // bekam eine Verlustbehauptung, die sein eigenes Produkt widerlegt.
+  //
+  // WAS SICH NICHT ÄNDERT, IST DER GEGENSTAND DIESER DATEI: der ehrliche Block benennt jeden
+  // wirklich nicht sicherbaren Inhalt einzeln und bietet dafür kein Speichern an. Für eine Datei ist
+  // das genau dann wahr, wenn aus ihr KEIN Text gelesen wurde (`ganzdokumentEingabe === null`,
+  // `Capture.tsx:1132-1143`) — eine leere Textdatei hier, im Betrieb ebenso ein PDF ohne Textebene:
+  // `onExtractFile` setzt den Namen VOR dem Lesen (`:3926`) und räumt ihn bei leerem Ergebnis nicht
+  // (`:4107-4118`). Der GELESENE Fall steht seit JOB 4335 als eigener Fall da, mit der Zusage, die
+  // er wirklich verdient: `tests/datei-verlassen-quittung/quittung-dateiwege-mounted.test.tsx` B1
+  // (Speicherweg wird angeboten und sichert) und B2 (diese Grenze hier, am Verlassen-Weg).
+  it("hochgeladene Datei OHNE gelesenen Text: die Datei wird beim Namen genannt", async () => {
     await mount();
     await openWorkspace();
     await waehleModus("datei");
-    await dropFileOnImportZone(
-      new File(["Der Dosierwert ist nach jedem Schichtwechsel zu prüfen."], "bericht.txt", {
-        type: "text/plain",
-      }),
-    );
+    await dropFileOnImportZone(new File([""], "bericht.txt", { type: "text/plain" }));
     expect(pageText()).toContain("bericht.txt");
+    // Beleg, dass wirklich kein Text gelesen wurde — sonst misst der Fall die andere Lage.
+    expect(pageText()).toContain(i18n.t("capture.file.empty", { name: "bericht.txt" }));
 
     await expectHonestBlock(i18n.t("capture.unsavable.file", { name: "bericht.txt" }));
   });
