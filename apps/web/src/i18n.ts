@@ -3491,6 +3491,13 @@ const de = {
   "graph.kuratiertCount_one": "{{count}} gesetzte Fachbeziehung",
   "graph.kuratiertCount_other": "{{count}} gesetzte Fachbeziehungen",
   "graph.kuratiertKante": "gesetzt: {{art}} · {{richtung}}",
+  // JOB 4328: die Kürzung dieser Menge, in Anwendersprache. Er nennt, wie viele Beziehungen
+  // GELADEN wurden — nicht, wie viele Linien im Bild stehen: der Knotendeckel des Graphen zeichnet
+  // über 60 Knoten nur einen Teil der gelieferten Menge (graphLayout.ts:573-575), und eine
+  // Zeichenzahl wäre hier eine dritte Zahl, die niemand zugesagt hat. Der Knotenhinweis
+  // (graph.truncated) bleibt daneben sein eigener Satz.
+  "graph.kuratiertGeladen":
+    "{{geladen}} von {{gesamt}} Fachbeziehungen wurden geladen. Der Graph zeigt einen begrenzten Ausschnitt.",
   "ko.transferTitle": "Autor übergeben",
   "ko.transferOriginal": "Originalautor",
   "ko.author": "Autor",
@@ -10020,6 +10027,8 @@ const en: typeof de = {
   "graph.kuratiertCount_one": "{{count}} curated subject-matter relation",
   "graph.kuratiertCount_other": "{{count}} curated subject-matter relations",
   "graph.kuratiertKante": "curated: {{art}} · {{richtung}}",
+  "graph.kuratiertGeladen":
+    "{{geladen}} of {{gesamt}} subject-matter relations were loaded. The graph shows a limited excerpt.",
   "ko.transferTitle": "Transfer author",
   "ko.transferOriginal": "Original author",
   "ko.author": "Author",
@@ -15635,6 +15644,8 @@ const nl: typeof de = {
   "graph.kuratiertCount_one": "{{count}} gezette vakrelatie",
   "graph.kuratiertCount_other": "{{count}} gezette vakrelaties",
   "graph.kuratiertKante": "gezet: {{art}} · {{richtung}}",
+  "graph.kuratiertGeladen":
+    "{{geladen}} van {{gesamt}} vakrelaties zijn geladen. De graaf toont een beperkte selectie.",
   "ko.transferTitle": "Auteur overdragen",
   "ko.transferOriginal": "Oorspronkelijke auteur",
   "ko.author": "Auteur",

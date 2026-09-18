@@ -2382,6 +2382,36 @@ export function GraphView(): JSX.Element {
                   ? ` · ${t("graph.kuratiertCount", { count: raw.kuratierteKanten.length })}`
                   : ""}
                 {truncated ? ` · ${t("graph.truncated", { n: MAX_GRAPH_NODES })}` : ""}
+                {/* JOB 4328: DIE KÜRZUNG DIESER MENGE, SICHTBAR.
+                    BEN hat den Rest in JOB 4155 R3 benannt (`archiv/4155/runde-3/ben.md:25`): „Die
+                    neue Kürzungsauskunft ist SERVERINTERN/API-seitig … liest weiterhin nur die
+                    ausgelieferte Menge." Der Server sendet sie seit damals
+                    (`library-analytics/src/service.ts:2530-2533`), und `api/types.ts:904-912` sagt,
+                    was ohne sie nicht behauptet werden darf: „Wer die Beziehungen zeichnet, darf
+                    ohne diese beiden Felder nicht behaupten, den ganzen Bestand zu zeigen."
+                    DER SATZ NENNT DIE LIEFERZAHL UND NICHT DIE ZEICHENZAHL. Gezeichnet wird
+                    `layout.kuratierteKanten` — die Menge NACH dem Knotendeckel (`limitGraph`,
+                    `lib/graphLayout.ts:573-575`); `raw.kuratierteKanten.length` ist, was der Server
+                    GELIEFERT hat. Über 60 Knoten sind das zwei verschiedene Zahlen, und
+                    „5.000 gezeichnet" wäre falsch. Deshalb „geladen" plus der Hinweis, dass das
+                    Bild ein Ausschnitt ist; die Zahl der Linien verspricht hier niemand.
+                    BEIDE FELDER ODER KEINES: ohne `kuratierteKantenGesamt` stünde hier eine Zahl,
+                    die niemand gelesen hat — dasselbe Argument wie am Zählsatz darüber. Der
+                    Knotenhinweis bleibt sein eigener Satz und wird nicht mit diesem verschmolzen:
+                    er redet über Knoten, dieser über Beziehungen. */}
+                {raw.kuratierteKanten &&
+                raw.kuratierteKantenGekuerzt === true &&
+                typeof raw.kuratierteKantenGesamt === "number" ? (
+                  <>
+                    {" · "}
+                    <span data-testid="graph-kuratiert-gekuerzt">
+                      {t("graph.kuratiertGeladen", {
+                        geladen: raw.kuratierteKanten.length,
+                        gesamt: raw.kuratierteKantenGesamt,
+                      })}
+                    </span>
+                  </>
+                ) : null}
                 {` · ${t("graph.clickHint")}`}
               </p>
               <svg
