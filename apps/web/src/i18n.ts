@@ -3403,11 +3403,20 @@ const de = {
   "wb.urheber": "gesetzt von {{urheber}}",
   "wb.gesetztAm": "am {{zeit}}",
   "wb.gesetztAmUnbekannt": "Zeitpunkt unbekannt",
+  // JOB 4336: „dieses Eintrags" ist der GEÖFFNETE Eintrag und nicht die Quelle der gespeicherten
+  // Kante — bei `rolle: "ziel"` sind das zwei verschiedene Einträge. Deshalb heißt die zweite Seite
+  // „des Gegenstücks" und nicht mehr „des Ziels": aus der Ziel-Sicht wäre „das Ziel" man selbst.
   "wb.fassung.geaendert":
-    "Beziehung wurde an Fassung {{beurteiltQuelle}} dieses Eintrags und Fassung {{beurteiltZiel}} des Ziels beurteilt; heute sind es Fassung {{aktuellQuelle}} und Fassung {{aktuellZiel}}.",
+    "Beziehung wurde an Fassung {{beurteiltDieser}} dieses Eintrags und Fassung {{beurteiltGegen}} des Gegenstücks beurteilt; heute ist dieser Eintrag bei Fassung {{aktuellDieser}} und das Gegenstück bei Fassung {{aktuellGegen}}.",
+  // Ohne Rolle ist nicht bekannt, welche Fassung zum geöffneten Eintrag gehört (ungerichtete und
+  // symmetrische Kanten tragen keine). Dann werden beide genannt und keine zugeordnet.
+  "wb.fassung.geaendertOhneRolle":
+    "Beziehung wurde an den Fassungen {{beurteiltErste}} und {{beurteiltZweite}} der beiden Einträge beurteilt; heute sind es Fassung {{aktuellErste}} und Fassung {{aktuellZweite}}. Welche Fassung zu welchem der beiden Einträge gehört, steht nicht in der Auskunft.",
   "wb.fassung.unbekannt": "Bezug zur Fassung unbekannt.",
   "wb.fassung.unveraendert":
-    "Seit dem Setzen hat sich keine der beiden Fassungen geändert (Fassung {{aktuellQuelle}} und Fassung {{aktuellZiel}}).",
+    "Seit dem Setzen hat sich keine der beiden Fassungen geändert (Fassung {{aktuellDieser}} dieses Eintrags und Fassung {{aktuellGegen}} des Gegenstücks).",
+  "wb.fassung.unveraendertOhneRolle":
+    "Seit dem Setzen hat sich keine der beiden Fassungen geändert (Fassung {{aktuellErste}} und Fassung {{aktuellZweite}}).",
   "wb.grenze.widerspricht":
     "„widerspricht“ ist ein verantworteter Vermerk eines Menschen und kein Beweis.",
   "wb.grenze.ersetzt": "„ersetzt“ ändert keine Freigabe und veröffentlicht keinen Nachfolger.",
@@ -9939,10 +9948,14 @@ const en: typeof de = {
   "wb.gesetztAm": "on {{zeit}}",
   "wb.gesetztAmUnbekannt": "Time unknown",
   "wb.fassung.geaendert":
-    "The relation was judged against version {{beurteiltQuelle}} of this entry and version {{beurteiltZiel}} of the target; today they are version {{aktuellQuelle}} and version {{aktuellZiel}}.",
+    "The relation was judged against version {{beurteiltDieser}} of this entry and version {{beurteiltGegen}} of the counterpart; today this entry is at version {{aktuellDieser}} and the counterpart at version {{aktuellGegen}}.",
+  "wb.fassung.geaendertOhneRolle":
+    "The relation was judged against versions {{beurteiltErste}} and {{beurteiltZweite}} of the two entries; today they are version {{aktuellErste}} and version {{aktuellZweite}}. Which version belongs to which of the two entries is not part of the information.",
   "wb.fassung.unbekannt": "Reference to the version is unknown.",
   "wb.fassung.unveraendert":
-    "Neither version has changed since the relation was set (version {{aktuellQuelle}} and version {{aktuellZiel}}).",
+    "Neither version has changed since the relation was set (version {{aktuellDieser}} of this entry and version {{aktuellGegen}} of the counterpart).",
+  "wb.fassung.unveraendertOhneRolle":
+    "Neither version has changed since the relation was set (version {{aktuellErste}} and version {{aktuellZweite}}).",
   "wb.grenze.widerspricht": "“Contradicts” is a note a person is responsible for, not a proof.",
   "wb.grenze.ersetzt": "“Replaces” changes no approval and publishes no successor.",
   "wb.widerruf.knopf": "Withdraw",
@@ -15548,10 +15561,14 @@ const nl: typeof de = {
   "wb.gesetztAm": "op {{zeit}}",
   "wb.gesetztAmUnbekannt": "Tijdstip onbekend",
   "wb.fassung.geaendert":
-    "De relatie is beoordeeld bij versie {{beurteiltQuelle}} van dit item en versie {{beurteiltZiel}} van het doel; vandaag zijn het versie {{aktuellQuelle}} en versie {{aktuellZiel}}.",
+    "De relatie is beoordeeld bij versie {{beurteiltDieser}} van dit item en versie {{beurteiltGegen}} van de tegenhanger; vandaag staat dit item op versie {{aktuellDieser}} en de tegenhanger op versie {{aktuellGegen}}.",
+  "wb.fassung.geaendertOhneRolle":
+    "De relatie is beoordeeld bij de versies {{beurteiltErste}} en {{beurteiltZweite}} van de twee items; vandaag zijn het versie {{aktuellErste}} en versie {{aktuellZweite}}. Welke versie bij welk van de twee items hoort, staat niet in de informatie.",
   "wb.fassung.unbekannt": "Verband met de versie onbekend.",
   "wb.fassung.unveraendert":
-    "Sinds het zetten is geen van beide versies gewijzigd (versie {{aktuellQuelle}} en versie {{aktuellZiel}}).",
+    "Sinds het zetten is geen van beide versies gewijzigd (versie {{aktuellDieser}} van dit item en versie {{aktuellGegen}} van de tegenhanger).",
+  "wb.fassung.unveraendertOhneRolle":
+    "Sinds het zetten is geen van beide versies gewijzigd (versie {{aktuellErste}} en versie {{aktuellZweite}}).",
   "wb.grenze.widerspricht":
     "„Spreekt tegen” is een verantwoorde aantekening van een mens en geen bewijs.",
   "wb.grenze.ersetzt": "„Vervangt” wijzigt geen vrijgave en publiceert geen opvolger.",

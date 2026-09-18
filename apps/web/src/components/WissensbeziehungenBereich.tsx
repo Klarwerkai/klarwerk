@@ -188,22 +188,66 @@ export function beziehungssatz(kante: KuratierteKanteAnsicht, t: Uebersetzer): s
  * `unbekannt` nennt gar keine Zahl — die beurteilte Fassung fehlt, und sie wird hier nicht mit der
  * heutigen aufgefüllt (Nachtrag 2 §1: „niemals rückwirkend"). `unveraendert` sagt genau das und
  * nichts darüber hinaus: die Fassungen sind dieselben. Das ist keine Inhaltsprüfung.
+ *
+ * ================================================================================================
+ * „FASSUNG DIESES EINTRAGS" IST DIE FASSUNG DIESES EINTRAGS (JOB 4336).
+ * ================================================================================================
+ *
+ * DER BEFUND (BEN, JOB 4153 Runde 5, `archiv/4153/runde-5/ben.md:29`): hier stand `quelleVersion`
+ * IMMER an der Stelle „dieses Eintrags" — auch bei `rolle: "ziel"`. `quelleVersion`/`zielVersion`
+ * sind aber die Seiten der GESPEICHERTEN Kante und nicht die des geöffneten Eintrags: der Dienst
+ * füllt sie nach der Kante (`kanten-service.ts:598-607`, `aktuellVon`) und sagt über die Rolle
+ * dazu, welche Seite der geöffnete Eintrag ist. Öffnete jemand das ZIEL einer „ersetzt"-Kante,
+ * nannte der Vermerk die Fassung des GEGENSTÜCKS als seine eigene und umgekehrt — in der Hälfte
+ * aller gerichteten Kanten eine falsche Tatsachenaussage, nicht bloss eine unscharfe.
+ *
+ * DIE ROLLE IST DIE EINZIGE AUSKUNFT DARÜBER, WELCHE SEITE MAN SELBST IST. Fehlt sie (der Vertrag
+ * lässt sie weg, wenn es keine Aussage gibt — `kanten-service.ts:570-571`, bei ungerichteten und
+ * symmetrischen Kanten immer), dann ist die Zuordnung UNBEKANNT. Dann nennt der Vermerk beide
+ * Fassungen und ordnet keine zu: dieselbe Doktrin wie der Richtungssatz oben („Richtung nicht
+ * bekannt" statt eines geratenen „quelle") — die schwächere Aussage statt der starken. Eine
+ * geratene Seite wäre hier besonders teuer, weil sie so aussieht wie eine gemessene.
  */
 export function fassungsvermerk(kante: KuratierteKanteAnsicht, t: Uebersetzer): string {
-  if (kante.abweichung === "unbekannt" || kante.beurteilt === null) {
+  const beurteilt = kante.beurteilt;
+  if (kante.abweichung === "unbekannt" || beurteilt === null) {
     return t("wb.fassung.unbekannt", {});
   }
+  const rolle = kante.rolle;
+  if (rolle === undefined) {
+    // Ohne Rolle wird KEINE Seite zu „diesem Eintrag" erklärt. Die Reihenfolge bleibt die der
+    // gespeicherten Kante — sie behauptet nichts, weil der Text sie nicht benennt.
+    if (kante.abweichung === "geaendert") {
+      return t("wb.fassung.geaendertOhneRolle", {
+        beurteiltErste: String(beurteilt.quelleVersion),
+        beurteiltZweite: String(beurteilt.zielVersion),
+        aktuellErste: String(kante.aktuell.quelleVersion),
+        aktuellZweite: String(kante.aktuell.zielVersion),
+      });
+    }
+    return t("wb.fassung.unveraendertOhneRolle", {
+      aktuellErste: String(kante.aktuell.quelleVersion),
+      aktuellZweite: String(kante.aktuell.zielVersion),
+    });
+  }
+  // Die Rolle DIESES Eintrags entscheidet, welche Seite der gespeicherten Kante er ist — eine
+  // Stelle, vier Werte, damit Vermerk und Richtungssatz nicht auseinanderlaufen können.
+  const dieserIstQuelle = rolle === "quelle";
+  const beurteiltDieser = dieserIstQuelle ? beurteilt.quelleVersion : beurteilt.zielVersion;
+  const beurteiltGegen = dieserIstQuelle ? beurteilt.zielVersion : beurteilt.quelleVersion;
+  const aktuellDieser = dieserIstQuelle ? kante.aktuell.quelleVersion : kante.aktuell.zielVersion;
+  const aktuellGegen = dieserIstQuelle ? kante.aktuell.zielVersion : kante.aktuell.quelleVersion;
   if (kante.abweichung === "geaendert") {
     return t("wb.fassung.geaendert", {
-      beurteiltQuelle: String(kante.beurteilt.quelleVersion),
-      beurteiltZiel: String(kante.beurteilt.zielVersion),
-      aktuellQuelle: String(kante.aktuell.quelleVersion),
-      aktuellZiel: String(kante.aktuell.zielVersion),
+      beurteiltDieser: String(beurteiltDieser),
+      beurteiltGegen: String(beurteiltGegen),
+      aktuellDieser: String(aktuellDieser),
+      aktuellGegen: String(aktuellGegen),
     });
   }
   return t("wb.fassung.unveraendert", {
-    aktuellQuelle: String(kante.aktuell.quelleVersion),
-    aktuellZiel: String(kante.aktuell.zielVersion),
+    aktuellDieser: String(aktuellDieser),
+    aktuellGegen: String(aktuellGegen),
   });
 }
 

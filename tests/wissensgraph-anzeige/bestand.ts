@@ -310,10 +310,23 @@ function zielTitel(id: string): string {
   return id === ZIEL_A.id ? ZIEL_A.title : id === ZIEL_B.id ? ZIEL_B.title : id;
 }
 
-/** Die Leseansicht: `aktuell` frisch aus dem Bestand, `abweichung` aus dem Vergleich. */
+/**
+ * Die Leseansicht: `aktuell` frisch aus dem Bestand, `abweichung` aus dem Vergleich.
+ *
+ * JOB 4336 · `aktuell` ist nach der GESPEICHERTEN Kante ausgerichtet und nicht nach dem geöffneten
+ * Eintrag — Zeile für Zeile wie `aktuellVon` im Dienst (`kanten-service.ts:598-607`): trägt die
+ * Kante `rolle: "ziel"`, dann IST der geöffnete Eintrag das Ziel der Kante, seine eigene Fassung
+ * steht in `zielVersion` und die des Gegenstücks in `quelleVersion`. Bis hierher setzte der
+ * Prüfstand `quelleVersion` unbesehen auf die Fassung des geöffneten Eintrags — ein Fall aus der
+ * ZIEL-Sicht war damit in sich widersprüchlich (die Kachel hätte eine andere eigene Fassung
+ * genannt als das Formular darunter), und ein Prüfstand, der die Seiten anders herum füllt als der
+ * Dienst, kann eine Vertauschung an der Fläche gar nicht zeigen.
+ */
 function ansichtVon(p: Pruefstand, k: Kantenbestand): KuratierteKanteAnsicht {
-  const aktuellQuelle = p.quelleVersion;
-  const aktuellZiel = p.zielVersionen.get(k.gegenstueck.id) ?? 1;
+  const eigeneFassung = p.quelleVersion;
+  const gegenFassung = p.zielVersionen.get(k.gegenstueck.id) ?? 1;
+  const aktuellQuelle = k.rolle === "ziel" ? gegenFassung : eigeneFassung;
+  const aktuellZiel = k.rolle === "ziel" ? eigeneFassung : gegenFassung;
   return {
     id: k.id,
     art: k.art,
@@ -395,6 +408,91 @@ export function kanteMitAlterFassung(): Kantenbestand[] {
         zielVersion: 2,
         quelleFassungAm: "2026-09-10T07:00:00.000Z",
         zielFassungAm: "2026-09-10T07:30:00.000Z",
+      },
+    },
+  ];
+}
+
+/**
+ * R3c (JOB 4336): DIESELBE gerichtete Beziehung aus der ZIEL-Sicht — der geöffnete Eintrag ist das
+ * Ziel der Kante, nicht ihre Quelle. Beurteilt wurde an Fassung 3 der Quelle und Fassung 2 des
+ * Ziels; welche Fassungen heute gelten, setzt der Fall selbst (`quelleVersion` = die eigene,
+ * `zielVersionen` = die des Gegenstücks).
+ *
+ * Die Zahlen sind ABSICHTLICH auf beiden Seiten verschieden: mit gleichen Fassungen bliebe eine
+ * Vertauschung der Seiten unsichtbar, und der Test wäre grün, ohne die Zuordnung zu prüfen (BEN,
+ * JOB 4153 R5: „Test mit unterschiedlichen Quell-/Zielfassungen").
+ */
+export function kanteAusZielsicht(): Kantenbestand[] {
+  return [
+    {
+      id: "k-ziel-alt",
+      art: "gehoert_zu",
+      richtung: "gerichtet",
+      rolle: "ziel",
+      gegenstueck: { id: ZIEL_A.id, title: ZIEL_A.title, status: "validiert" },
+      urheber: "Pedi",
+      gesetztAm: "2026-09-11T08:00:00.000Z",
+      version: 1,
+      status: "aktiv",
+      beurteilt: {
+        quelleVersion: 3,
+        zielVersion: 2,
+        quelleFassungAm: "2026-09-11T07:00:00.000Z",
+        zielFassungAm: "2026-09-11T07:30:00.000Z",
+      },
+    },
+  ];
+}
+
+/**
+ * R3c (JOB 4336): die Ziel-Sicht im Fall `unveraendert`, mit UNGLEICHEN Fassungen (Quelle 4,
+ * Ziel 7). Nur so ist prüfbar, ob der Vermerk die eigene Fassung (7) zuerst nennt — bei gleichen
+ * Zahlen wäre jede Reihenfolge richtig.
+ */
+export function kanteAusZielsichtUnveraendert(): Kantenbestand[] {
+  return [
+    {
+      id: "k-ziel-gleich",
+      art: "ersetzt",
+      richtung: "gerichtet",
+      rolle: "ziel",
+      gegenstueck: { id: ZIEL_A.id, title: ZIEL_A.title, status: "validiert" },
+      urheber: "Anna",
+      gesetztAm: "2026-09-12T08:00:00.000Z",
+      version: 1,
+      status: "aktiv",
+      beurteilt: {
+        quelleVersion: 4,
+        zielVersion: 7,
+        quelleFassungAm: "2026-09-12T07:00:00.000Z",
+        zielFassungAm: "2026-09-12T07:30:00.000Z",
+      },
+    },
+  ];
+}
+
+/**
+ * R3c (JOB 4336): eine GERICHTETE Kante, deren `rolle` der Vertrag weglässt (`kanten-service.ts:571`
+ * setzt sie nur, wenn es eine Aussage GIBT). Dann ist unbekannt, welche der beiden Fassungen zum
+ * geöffneten Eintrag gehört — der Vermerk darf keine Seite als „diesen Eintrag" ausgeben.
+ */
+export function kanteGerichtetOhneRolle(): Kantenbestand[] {
+  return [
+    {
+      id: "k-ohne-rolle",
+      art: "gehoert_zu",
+      richtung: "gerichtet",
+      gegenstueck: { id: ZIEL_A.id, title: ZIEL_A.title, status: "validiert" },
+      urheber: "Pedi",
+      gesetztAm: "2026-09-13T08:00:00.000Z",
+      version: 1,
+      status: "aktiv",
+      beurteilt: {
+        quelleVersion: 3,
+        zielVersion: 2,
+        quelleFassungAm: "2026-09-13T07:00:00.000Z",
+        zielFassungAm: "2026-09-13T07:30:00.000Z",
       },
     },
   ];

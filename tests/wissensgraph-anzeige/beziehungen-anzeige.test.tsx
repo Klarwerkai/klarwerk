@@ -19,6 +19,9 @@ import {
   QUELLE_ID,
   ZIEL_A,
   ZIEL_B,
+  kanteAusZielsicht,
+  kanteAusZielsichtUnveraendert,
+  kanteGerichtetOhneRolle,
   kanteMitAlterFassung,
   kanteOhneBeurteilteFassung,
   kanteWiderspricht,
@@ -353,11 +356,13 @@ describe("R3 · Der Fassungsvermerk (G6)", () => {
     const b = await montiere();
     const vermerk = b.finde("wb-fassung")?.textContent ?? "";
     expect(vermerk).toBe(
+      // JOB 4336: dieselbe Aussage, neue Parameternamen — die Kante trägt `rolle: "quelle"`, der
+      // geöffnete Eintrag IST also die Quelle, und 3 → 5 bleibt seine eigene Fassung.
       i18n.t("wb.fassung.geaendert", {
-        beurteiltQuelle: 3,
-        beurteiltZiel: 2,
-        aktuellQuelle: 5,
-        aktuellZiel: 2,
+        beurteiltDieser: 3,
+        beurteiltGegen: 2,
+        aktuellDieser: 5,
+        aktuellGegen: 2,
       }),
     );
     // Beide Zahlen ausdrücklich — der Vergleich, nicht nur ein Feld (Lehre JOB 4141 R1).
@@ -384,8 +389,148 @@ describe("R3 · Der Fassungsvermerk (G6)", () => {
     stand.p.quelleVersion = 3;
     const b = await montiere();
     expect(b.finde("wb-fassung")?.textContent ?? "").toBe(
-      i18n.t("wb.fassung.unveraendert", { aktuellQuelle: 3, aktuellZiel: 2 }),
+      i18n.t("wb.fassung.unveraendert", { aktuellDieser: 3, aktuellGegen: 2 }),
     );
+    expect(verboteneAussage(b.text())).toEqual([]);
+    b.unmount();
+  });
+});
+
+// ================================================================================================
+// R3c · JOB 4336 — „FASSUNG DIESES EINTRAGS" IST DIE FASSUNG DIESES EINTRAGS.
+// ================================================================================================
+//
+// DER BEFUND (BEN, JOB 4153 Runde 5, `archiv/4153/runde-5/ben.md:29`, an unverändertem Code): der
+// Vermerk gab `beurteilt.quelleVersion` IMMER als Fassung „dieses Eintrags" aus — auch bei
+// `rolle: "ziel"`, wenn der geöffnete Eintrag also das ZIEL der Kante ist. Dann stand dort die
+// Fassung des GEGENSTÜCKS, und die eigene stand beim Gegenstück. Der Satz war nicht ungenau,
+// sondern in der Hälfte der gerichteten Kanten falsch.
+//
+// JEDER Fall hier arbeitet mit VERSCHIEDENEN Fassungen auf den beiden Seiten. Mit gleichen Zahlen
+// wäre jede Vertauschung unsichtbar — der Test grün, die Zuordnung ungeprüft (BENs Hinweis).
+// Geprüft wird beides: der Wortlaut des Katalogs (Gleichheit mit `i18n.t`) UND die Zuordnung selbst
+// (welche Zahl an welchem Wort klebt). Die zweite Prüfung überlebt eine Umformulierung des
+// Katalogtextes nicht stillschweigend, und genau das ist gewollt: sie ist die fachliche Aussage.
+describe("R3c · Der Fassungsvermerk ordnet die Fassungen dem GEÖFFNETEN Eintrag zu (JOB 4336)", () => {
+  it("(a) rolle 'ziel': die eigene Fassung 2 steht bei „dieses Eintrags“, 3 → 5 beim Gegenstück", async () => {
+    stand.p.kanten = kanteAusZielsicht();
+    // Der geöffnete Eintrag IST das Ziel der Kante: seine eigene Fassung ist 2 (beurteilt und
+    // heute). Das Gegenstück ist die Quelle — beurteilt 3, heute 5.
+    stand.p.quelleVersion = 2;
+    stand.p.zielVersionen.set(ZIEL_A.id, 5);
+    const b = await montiere();
+    const vermerk = b.finde("wb-fassung")?.textContent ?? "";
+    expect(vermerk).toBe(
+      i18n.t("wb.fassung.geaendert", {
+        beurteiltDieser: 2,
+        beurteiltGegen: 3,
+        aktuellDieser: 2,
+        aktuellGegen: 5,
+      }),
+    );
+    // DIE ZUORDNUNG, unabhängig vom Wortlaut: die 2 klebt an „dieses Eintrags", nicht die 3.
+    // Genau hier war der Fehler (`WissensbeziehungenBereich.tsx:197` vor diesem Job).
+    expect(vermerk, "die eigene Fassung 2 steht nicht bei „dieses Eintrags“").toMatch(
+      /Fassung 2 dieses Eintrags/,
+    );
+    expect(vermerk, "die Fassung des Gegenstücks steht als die eigene da").not.toMatch(
+      /Fassung 3 dieses Eintrags/,
+    );
+    expect(vermerk, "die Fassung 3 des Gegenstücks fehlt oder ist falsch zugeordnet").toMatch(
+      /Fassung 3 des Gegenstücks/,
+    );
+    // PRÜFLÜCKE 6: Richtungssatz und Vermerk lesen DIESELBE Rolle, im selben Render. Ein Satz, der
+    // die Richtung dreht, während der Vermerk sie nicht kennt, wäre zwei Auskünfte über eine Kante.
+    expect(b.text()).toContain(i18n.t("wb.satz.gehoert_zu.ziel", { title: ZIEL_A.title }));
+    expect(verboteneAussage(b.text())).toEqual([]);
+    b.unmount();
+  });
+
+  it("(b) rolle 'quelle': die Aussage bleibt, wie R3 sie hält — 3 → 5 ist die eigene Fassung", async () => {
+    stand.p.kanten = kanteMitAlterFassung();
+    stand.p.quelleVersion = 5;
+    const b = await montiere();
+    const vermerk = b.finde("wb-fassung")?.textContent ?? "";
+    expect(vermerk).toBe(
+      i18n.t("wb.fassung.geaendert", {
+        beurteiltDieser: 3,
+        beurteiltGegen: 2,
+        aktuellDieser: 5,
+        aktuellGegen: 2,
+      }),
+    );
+    // Die Spiegelseite von (a): aus der Quell-Sicht ist 3 → 5 die eigene Bewegung, 2 die des
+    // Gegenstücks. Beide Fälle zusammen schliessen eine Zuordnung aus, die nur einmal stimmt.
+    expect(vermerk).toMatch(/Fassung 3 dieses Eintrags/);
+    expect(vermerk).toMatch(/Fassung 2 des Gegenstücks/);
+    expect(verboteneAussage(b.text())).toEqual([]);
+    b.unmount();
+  });
+
+  it("(c) OHNE rolle: beide Fassungen stehen da, keine wird zu „diesem Eintrag“ erklärt", async () => {
+    stand.p.kanten = kanteGerichtetOhneRolle();
+    stand.p.quelleVersion = 5;
+    const b = await montiere();
+    const vermerk = b.finde("wb-fassung")?.textContent ?? "";
+    expect(vermerk).toBe(
+      i18n.t("wb.fassung.geaendertOhneRolle", {
+        beurteiltErste: 3,
+        beurteiltZweite: 2,
+        aktuellErste: 5,
+        aktuellZweite: 2,
+      }),
+    );
+    // WISSENSLÜCKE STATT ERFINDUNG: der Vertrag liefert die Seite nicht, also behauptet der Vermerk
+    // keine. Weder „dieses Eintrags" noch „des Gegenstücks" darf hier vorkommen.
+    expect(vermerk, "ohne Rolle wird doch eine Seite zugeordnet").not.toMatch(
+      /dieses Eintrags|Gegenstück/,
+    );
+    // Verschwiegen wird dabei nichts: beide beurteilten und beide heutigen Fassungen stehen da.
+    expect(vermerk).toMatch(/\b3\b/);
+    expect(vermerk).toMatch(/\b2\b/);
+    expect(vermerk).toMatch(/\b5\b/);
+    expect(verboteneAussage(b.text())).toEqual([]);
+    b.unmount();
+  });
+
+  it("(d) unverändert bei rolle 'ziel': die eigene Fassung 7 steht vor der 4 des Gegenstücks", async () => {
+    stand.p.kanten = kanteAusZielsichtUnveraendert();
+    // Beide Seiten stehen heute auf ihrer beurteilten Fassung (Quelle 4, Ziel 7) — aber die beiden
+    // Zahlen sind verschieden, und deshalb ist die Reihenfolge prüfbar.
+    stand.p.quelleVersion = 7;
+    stand.p.zielVersionen.set(ZIEL_A.id, 4);
+    const b = await montiere();
+    const vermerk = b.finde("wb-fassung")?.textContent ?? "";
+    expect(vermerk).toBe(i18n.t("wb.fassung.unveraendert", { aktuellDieser: 7, aktuellGegen: 4 }));
+    expect(vermerk, "die eigene Fassung 7 steht nicht bei „dieses Eintrags“").toMatch(
+      /Fassung 7 dieses Eintrags/,
+    );
+    expect(vermerk).toMatch(/Fassung 4 des Gegenstücks/);
+    expect(vermerk.indexOf("7"), "die eigene Fassung steht nicht zuerst").toBeLessThan(
+      vermerk.indexOf("4"),
+    );
+    // Und der Satz sagt weiterhin genau das, was er vorher sagte: nichts hat sich geändert.
+    expect(vermerk).toContain("keine der beiden Fassungen geändert");
+    expect(verboteneAussage(b.text())).toEqual([]);
+    b.unmount();
+  });
+
+  it("(e) ungerichtet, unverändert: zwei Fassungen ohne Zuordnung — und ohne Richtungsaussage", async () => {
+    const ungerichtet = zweiAktiveKanten()[1];
+    if (!ungerichtet) {
+      throw new Error("Prüfstand: die ungerichtete Kante fehlt");
+    }
+    // Der Vertrag lässt `rolle` bei ungerichteten Kanten weg — hier gibt es sie also gar nicht.
+    // Beurteilt 4 und 9, heute 4 und 9: unverändert, mit zwei verschiedenen Zahlen.
+    stand.p.kanten = [ungerichtet];
+    const b = await montiere();
+    const vermerk = b.finde("wb-fassung")?.textContent ?? "";
+    expect(vermerk).toBe(
+      i18n.t("wb.fassung.unveraendertOhneRolle", { aktuellErste: 4, aktuellZweite: 9 }),
+    );
+    expect(vermerk).not.toMatch(/dieses Eintrags|Gegenstück/);
+    expect(vermerk).toMatch(/\b4\b/);
+    expect(vermerk).toMatch(/\b9\b/);
     expect(verboteneAussage(b.text())).toEqual([]);
     b.unmount();
   });

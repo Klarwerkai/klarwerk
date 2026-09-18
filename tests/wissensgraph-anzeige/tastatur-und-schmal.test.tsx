@@ -305,11 +305,13 @@ describe("R11c · Ohne KI — und derselbe Bestand in DE, EN und NL", () => {
     // Vergleichs (beurteilt 4, heute 9) stehen darin.
     expect(text).toContain(i18n.t("wb.satz.ersetzt.quelle", { title: ZIEL_A.title }));
     expect(b.finde("wb-fassung")?.textContent ?? "").toBe(
+      // JOB 4336: dieselben Zahlen, neue Parameternamen — die Kante trägt `rolle: "quelle"`, der
+      // geöffnete Eintrag ist die Quelle, 4 → 9 also seine eigene Fassung.
       i18n.t("wb.fassung.geaendert", {
-        beurteiltQuelle: 4,
-        beurteiltZiel: 2,
-        aktuellQuelle: 9,
-        aktuellZiel: 2,
+        beurteiltDieser: 4,
+        beurteiltGegen: 2,
+        aktuellDieser: 9,
+        aktuellGegen: 2,
       }),
     );
     // Und die Sprachen sind wirklich verschieden: der deutsche Satz steht in EN/NL nicht da.
