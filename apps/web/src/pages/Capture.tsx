@@ -4705,7 +4705,11 @@ export function CaptureArbeitsraum({
       </div>
     ) : null;
 
-  const busy = structure.isPending || saveDraft.isPending;
+  // JOB 4352: `fileWholeDraft.isPending` GEHÖRT HIER DAZU, seit der manuelle Knopf diesen Weg selbst
+  // geht (`manuellSichern` unten). Ohne diese Zeile bliebe er während des laufenden Schreibens
+  // betätigbar, und der zweite Druck legte denselben Dateiinhalt ein zweites Mal an — der sichtbare
+  // Knopf der Ganzdokument-Karte ist aus demselben Grund an ihn gesperrt (`:5794`).
+  const busy = structure.isPending || saveDraft.isPending || fileWholeDraft.isPending;
   // E2E-004: „Als Entwurf speichern" verlangt mind. Aussage ODER Titel — leere/Whitespace-only
   // Entwürfe werden gesperrt (der Server lehnt sie zusätzlich ab). Titel/Aussage stammen aus dem
   // Struktur-Entwurf oder dem Rohtext.
@@ -4746,13 +4750,79 @@ export function CaptureArbeitsraum({
   // Vertraulichkeit, Prüferwahl — und der Server setzt für den Titel ohnehin den Ersatztitel ein,
   // s. `saveDraft`). Es entsteht dabei KEIN zweiter Entwurf: `draftId` ist gesetzt, also
   // aktualisiert `saveDraft` genau den geladenen.
+  //
+  // JOB 4352: DIESE FRAGE GEHÖRT DEM EINTRAG — und sie bleibt Zeichen für Zeichen die bisherige.
+  // Sie steht jetzt als eigener Begriff da, weil `manuellSichern` unten sie ein zweites Mal
+  // braucht: der Knopf trägt ab jetzt zwei Dinge (den Eintrag UND die geladene Datei), und nur der
+  // Eintrags-Anteil hängt an ihr. Eine zweite Abschrift wäre die Stelle, an der Angebot und
+  // Ausführung beim nächsten Feld auseinanderlaufen — dann böte der Knopf etwas an, das er nicht
+  // schreibt, oder schriebe etwas, das er nicht angeboten hat.
+  const eintragSicherbar =
+    raw.trim().length > 0 ||
+    (draft?.statement.trim().length ?? 0) > 0 ||
+    (draft?.title.trim().length ?? 0) > 0 ||
+    hasSavableInterviewProgress ||
+    draftId !== null;
+  // ==============================================================================================
+  // JOB 4352 — DIE GELADENE DATEI IST EBENFALLS ETWAS ZU SPEICHERN.
+  // ==============================================================================================
+  //
+  // DER BEFUND (REST aus JOB 4335 R4). Wer im Dateiweg eine Datei geladen hatte, stand vor einem
+  // GRAUEN „Als Entwurf speichern": `raw` ist dort leer, es gibt keinen `draft` und ohne
+  // fortgesetzten Entwurf auch keine `draftId`. Der Knopf verneinte also die Angebotsfrage, während
+  // der Rückruf der Verlassen-Wache denselben Zustand längst sicherte (`dateiTraeger?.art ===
+  // "ganzdokument"` → `fileWholeDraft`). Zwei Antworten auf dieselbe Frage, und die sichtbare war
+  // die falsche.
+  //
+  // GEFRAGT WIRD DESHALB DERSELBE BEGRIFF, NICHT EINE ZWEITE BEDINGUNG: `dateiTraeger` (`:1171`)
+  // hält die Rangfolge seit JOB 3770 R4 — angehakte Funde tragen die Datei, sonst das ganze
+  // Dokument. Eine eigene Bedingung hier („es gab noch keine Auswertung") wäre ein zweiter Begriff
+  // über denselben Zustand, und genau das war der Fehler, den JOB 4335 eine Ebene höher abgetragen
+  // hat. Der Punkte-Fall bleibt damit unangetastet: für ihn hat die Fundliste ihren eigenen
+  // sichtbaren Knopf, und dieser hier bietet nichts Neues an.
   const canSaveDraft =
-    speicherTor.erlaubt &&
-    (raw.trim().length > 0 ||
-      (draft?.statement.trim().length ?? 0) > 0 ||
-      (draft?.title.trim().length ?? 0) > 0 ||
-      hasSavableInterviewProgress ||
-      draftId !== null);
+    speicherTor.erlaubt && (eintragSicherbar || dateiTraeger?.art === "ganzdokument");
+  // ==============================================================================================
+  // JOB 4352 — WAS DER SICHTBARE KNOPF WIRKLICH SICHERT.
+  // ==============================================================================================
+  //
+  // ER GEHT DENSELBEN WEG WIE DER RÜCKRUF DER VERLASSEN-WACHE (`:3248` oben), in derselben
+  // Reihenfolge und mit derselben Aufteilung: erst der EINTRAG (`saveDraft`, der Stand der Fläche),
+  // dann die DATEI über ihren eigenen Träger (`fileWholeDraft`, Volltext als Aussage,
+  // Quellenvermerk im Rumpf, Original als geprüfte Referenz). Kein zweiter Speicherweg und kein
+  // eigener Payload-Bau: `fileWholeDraft` bleibt der EINE Ort, an dem aus einer geladenen Datei ein
+  // Entwurf wird.
+  //
+  // DER EINTRAGS-ZWEIG HÄNGT AN DER ANGEBOTSFRAGE DES KNOPFES und nicht am Dirty-Prädikat der
+  // Wache: die beiden sind bewusst verschieden (Begründung am `speicherTor` oben). Ohne dieses
+  // Gatter entstünde im Dateiweg neben dem Ganzdokument-Entwurf ein zweiter, leerer Eintrag mit dem
+  // Rückfalltitel — genau der Schaden, den JOB 3770 R4 an der Wache abgetragen hat.
+  //
+  // SCHEITERT DER EINTRAG, WIRD DIE DATEI NICHT GESCHRIEBEN — auch das wie im Wache-Rückruf (dort
+  // hält der Wurf den Dialog offen). `saveDraft.onError` hat den Satz bereits in den Fehlerkasten
+  // gelegt; die Datei bleibt unangetastet auf der Fläche und ist damit nicht verloren, sondern
+  // weiter sicherbar. Ein Weitermachen hiesse, nach einem gemeldeten Fehlschlag die halbe Arbeit
+  // trotzdem zu tun, ohne dass jemand dazu Ja gesagt hätte.
+  const manuellSichern = async (traeger: DateiTraeger | null): Promise<void> => {
+    if (eintragSicherbar) {
+      try {
+        await saveDraft.mutateAsync();
+      } catch {
+        // Der Satz steht schon da (`saveDraft.onError`); hier bleibt nur, nicht weiterzuschreiben.
+        return;
+      }
+    }
+    if (traeger?.art === "ganzdokument") {
+      try {
+        await fileWholeDraft.mutateAsync(traeger.eingabe);
+      } catch {
+        // Auch hier hat `fileWholeDraft.onError` den Grund bereits gemeldet (samt dem eigenen Satz
+        // für „zu groß für den Import"). Der Dateizustand bleibt stehen: ein zweiter Druck ist der
+        // naheliegende Handgriff, und er findet die Datei noch vor.
+        return;
+      }
+    }
+  };
   // AUFTRAG-mega5 Block A (bens Verlustpfad 3): der MANUELLE „Als Entwurf speichern"-Knopf leerte
   // Bilder/Dokumente nach dem Erfolg still (:1274-1275 im geprüften Stand). Jetzt verlangt er bei
   // nicht sicherbaren Inhalten erst die ausdrückliche, namentliche Bestätigung — gespeichert wird
@@ -4771,7 +4841,7 @@ export function CaptureArbeitsraum({
       setConfirmSaveLimit(true);
       return;
     }
-    saveDraft.mutate();
+    void manuellSichern(dateiTraeger);
   };
   const saveDespiteLimits = (): void => {
     setConfirmSaveLimit(false);
@@ -4795,10 +4865,22 @@ export function CaptureArbeitsraum({
     // ihr Nebenschaden: der Mensch bestätigte bis hierher einen Verlust, den es nicht gab, und
     // verlor daraufhin seine Datei von der Fläche. Geräumt wird ab jetzt nur noch, was WIRKLICH
     // nicht sicherbar ist (Datei ohne gelesenen Text) oder eine laufende Queue.
-    if (hasPendingFileImport || fileQueue) {
+    //
+    // JOB 4352: WAS HIER GERÄUMT WIRD, TRÄGT IN DIESEM DURCHLAUF NIEMAND MEHR. Der Mensch hat den
+    // Verlust gerade ausdrücklich und namentlich bestätigt; ein Ganzdokument-Entwurf aus genau dem
+    // eben verworfenen Dateizustand wäre eine Anlage gegen seine Entscheidung. `manuellSichern`
+    // bekommt deshalb `null` statt des Trägers — und nicht etwa den Träger aus dem Abschluss dieses
+    // Renders, der die Räumung noch gar nicht gesehen hat.
+    //
+    // Wird NICHT geräumt, geht die Datei ihren Weg: die Bestätigung galt dann den Bildern,
+    // Dokumenten, der Trefferliste oder einer Quelladresse — nicht ihr. `hasPendingFileImport` und
+    // der Ganzdokument-Träger schliessen einander ohnehin aus (beide fragen `ganzdokumentEingabe`);
+    // was hier wirklich zusammentreffen kann, ist eine laufende Queue.
+    const geraeumt = hasPendingFileImport || fileQueue !== null;
+    if (geraeumt) {
       clearFileImportState();
     }
-    saveDraft.mutate();
+    void manuellSichern(geraeumt ? null : dateiTraeger);
   };
   // WP-D7b (Rot-Fix 1): ehrlicher, mehrstufiger Einreichen-Text — zeigt die aktuelle Phase (mit Upload-Größe),
   // sonst der generische Busy-Text. DE/EN/NL über die i18n-Keys.
