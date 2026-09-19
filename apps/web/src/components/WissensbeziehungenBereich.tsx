@@ -73,7 +73,13 @@ import {
   useKoBeziehungen,
   useLibrarySearch,
 } from "../api/hooks";
-import type { KantenArt, KantenRichtung, KantenRolle, KuratierteKanteAnsicht } from "../api/types";
+import type {
+  KantenArt,
+  KantenRichtung,
+  KantenRolle,
+  KantenStatus,
+  KuratierteKanteAnsicht,
+} from "../api/types";
 import { auffrischungGescheitert } from "../lib/confidentiality";
 import { koDetailPath } from "../lib/graphNav";
 import { formatKoTimestamp } from "../lib/koDates";
@@ -128,6 +134,74 @@ const SATZ: Record<KantenArt, Record<KantenRolle, string>> = {
   widerspricht: { quelle: "wb.satz.widerspricht.quelle", ziel: "wb.satz.widerspricht.ziel" },
   beispiel_fuer: { quelle: "wb.satz.beispiel_fuer.quelle", ziel: "wb.satz.beispiel_fuer.ziel" },
 };
+
+/**
+ * ================================================================================================
+ * DER STATUS DER BEZIEHUNG — EIN WORT, UND ES IST NICHT „GEPRÜFT" (JOB 4353).
+ * ================================================================================================
+ *
+ * DER BEFUND, den dieser Auftrag schliesst, steht in der Strecke von JOB 4328 wörtlich:
+ * „die Flaeche zeigt kein Statuswort" (`tests/wissensnetz-nutzerweg/strecke.ts:24-27`), und als
+ * offene Frage in `archiv/4328/runde-3/RUECKGABE.md:55`. Ein Widerruf war bis hierher ausschliesslich
+ * als ABWESENHEIT zu erkennen: die Kachel verschwand. Wer nur eine Liste vor sich hat, sieht an ihr
+ * nicht, WAS der Bestand über jede einzelne Beziehung sagt.
+ *
+ * ES GIBT GENAU ZWEI GESPEICHERTE WERTE, und dieser Bereich erfindet keinen dritten:
+ * `KantenStatus = "aktiv" | "widerrufen"` (`services/knowledge-object/src/kanten-types.ts:60`).
+ * „geprüft"/„ungeprüft" ist KEIN Status einer Beziehung — das Wort „geprüft" ist an dieser Fläche
+ * ausdrücklich verboten (siehe Kopf dieser Datei), weil es eine Inhaltsaussage wäre, die niemand
+ * getroffen hat. Der Fassungsvermerk daneben bleibt die einzige Auskunft über den Inhaltsbezug.
+ *
+ * ================================================================================================
+ * WARUM DIE ZWEI WÖRTER HIER STEHEN UND NICHT IM SPRACHKATALOG (Steuerung, HINWEIS Runde 2).
+ * ================================================================================================
+ *
+ * Jeder andere Anzeigetext dieses Bereichs kommt aus `i18n.ts`, und das bleibt so. Diese zwei
+ * Wörter nicht: `i18n.ts` gehört nicht zum Umfang dieses Auftrags und bleibt Zeichen für Zeichen
+ * unverändert (HINWEIS JOB 4353, Runde 2, Punkt 1). Die Zuordnung wohnt deshalb bei ihrem einzigen
+ * Verwender — vollständig für alle drei Sprachen, die die Anwendung kann.
+ *
+ * SIE IST IN BEIDE RICHTUNGEN GESCHLOSSEN, und das ist der Grund, warum sie so getippt ist:
+ * `Record<Statussprache, Record<KantenStatus, string>>` lässt weder eine Sprache noch einen Status
+ * weg. Ein neuer Statuswert am Draht oder eine vierte Sprache macht diese Datei beim Übersetzen
+ * rot — nicht den Browser eines Menschen, dem sonst ein Rohbezeichner entgegenstünde.
+ *
+ * DIE SPRACHMENGE IST NICHT GERATEN: `i18n.language` verlässt `de|en|nl` nachweislich nie
+ * (`lib/sprachwahl.ts:12-15`, `ERLAUBTE_SPRACHEN` in `lib/htmlLang.ts:63`). Der Rückfall unten ist
+ * trotzdem da und nennt dieselbe Vorgabe wie `i18n.ts` (`fallbackLng: "de"`) — ein Regionalcode
+ * („de-DE") oder ein fremder Wert darf hier zu einem VERSTÄNDLICHEN Wort führen und nie zu einer
+ * leeren Fläche.
+ */
+type Statussprache = "de" | "en" | "nl";
+
+const STATUS_WORT: Record<Statussprache, Record<KantenStatus, string>> = {
+  de: { aktiv: "Status: gilt", widerrufen: "Status: widerrufen" },
+  en: { aktiv: "Status: in effect", widerrufen: "Status: withdrawn" },
+  nl: { aktiv: "Status: geldt", widerrufen: "Status: ingetrokken" },
+};
+
+function alsStatussprache(sprache: string): Statussprache {
+  const kurz = sprache.split("-")[0] ?? "";
+  return kurz === "en" || kurz === "nl" ? kurz : "de";
+}
+
+/**
+ * Der Status EINER Beziehung, als Wort.
+ *
+ * Bewusst ohne Ableitung aus irgendeiner Handlung: das Wort kommt aus dem `status`, den der Server
+ * zu genau dieser Beziehung gemeldet hat. Ein aus dem Klick auf „Widerrufen" erschlossenes
+ * „widerrufen" wäre die Erfolgsmeldung für einen Vorgang, der nicht stattgefunden haben muss
+ * (dieselbe Lehre wie `widerrufOhneWirkung` weiter unten).
+ *
+ * Exportiert für genau EINEN Zweck: die Abnahme legt diese Abbildung Sprache für Sprache gegen
+ * ihre eigene, ausgeschriebene Sollwerttabelle (`tests/wissensbeziehungen-status/sollwoerter.ts`,
+ * geprüft in `statuswort.test.tsx` S5). Holte der Nachweis seinen Sollwert NUR von hier, prüfte er
+ * bloss, ob eine Zeichenkette durchgereicht wird, und jedes still geänderte Wort bliebe grün.
+ * Beide Seiten zusammen sagen etwas — keine von beiden allein.
+ */
+export function beziehungsstatusText(status: KantenStatus, sprache: string): string {
+  return STATUS_WORT[alsStatussprache(sprache)][status];
+}
 
 const RICHTUNG_KURZ: Record<KantenRichtung, string> = {
   gerichtet: "wb.richtungKurz.gerichtet",
@@ -443,10 +517,21 @@ export function WissensbeziehungenBereich({ koId }: { koId: string }): JSX.Eleme
   // widerrufene Beziehung. Beides ist KEIN Erfolg, und beides bekommt seinen eigenen Satz.
   const [antwortMangel, setAntwortMangel] = useState<Exclude<Antwortbefund, "erfolg"> | null>(null);
   const [widerrufFrage, setWiderrufFrage] = useState<string | null>(null);
-  const [widerrufMeldung, setWiderrufMeldung] = useState(false);
-  // Der Widerruf kam mit 200 zurück — und meldet die Beziehung weiterhin als aktiv. Auch das ist
-  // kein Erfolg: eine erfolgreiche Übertragung ist keine Zustandsänderung.
-  const [widerrufOhneWirkung, setWiderrufOhneWirkung] = useState(false);
+  // ============================================================================================
+  // DIE ANTWORT DES WIDERRUFS — ALS BEZIEHUNG UND NICHT ALS JA/NEIN (JOB 4353).
+  // ============================================================================================
+  //
+  // Hier standen bis JOB 4353 ZWEI Wahrheitswerte: `widerrufMeldung` („erfolgreich") und
+  // `widerrufOhneWirkung` („200 gekommen, nichts geschehen"). Beide wurden aus demselben Feld
+  // abgeleitet — `antwort.status` — und warfen die Antwort danach weg. Damit gab es an der Fläche
+  // keinen Ort mehr, an dem der GESPEICHERTE Status dieser Beziehung noch stand; das Statuswort
+  // hätte aus der Handlung erschlossen werden müssen, und genau das ist die Erfolgsmeldung ohne
+  // Deckung, gegen die dieser Bereich durchgehend gebaut ist.
+  //
+  // Die Antwort selbst bleibt deshalb stehen. Welcher der beiden Sätze erscheint, entscheidet
+  // weiterhin `status` — nur wird er jetzt gelesen, wo er gebraucht wird, statt zweimal in einen
+  // Wahrheitswert übersetzt zu werden. `null` heisst: es gibt keine Widerrufsantwort.
+  const [widerrufAntwort, setWiderrufAntwort] = useState<KuratierteKanteAnsicht | null>(null);
   // Der gemessene Ausgang der Auffrischung, die zu einem unklaren Schreibausgang gehört. `null`
   // heisst „es gibt gerade keinen unklaren Ausgang"; der Satz nimmt dann die vorsichtigste Fassung.
   const [nachladen, setNachladen] = useState<Nachladestand | null>(null);
@@ -532,8 +617,7 @@ export function WissensbeziehungenBereich({ koId }: { koId: string }): JSX.Eleme
     }
     setGesetzt(null);
     setAntwortMangel(null);
-    setWiderrufMeldung(false);
-    setWiderrufOhneWirkung(false);
+    setWiderrufAntwort(null);
     setNachladen(null);
     setzen.mutate(
       { ...auftrag, beitragSchluessel: schluessel, gesehen: { quelleVersion, zielVersion } },
@@ -572,21 +656,17 @@ export function WissensbeziehungenBereich({ koId }: { koId: string }): JSX.Eleme
   const widerrufAusfuehren = (kante: KuratierteKanteAnsicht): void => {
     setGesetzt(null);
     setAntwortMangel(null);
-    setWiderrufOhneWirkung(false);
+    setWiderrufAntwort(null);
     setNachladen(null);
     widerrufen.mutate(
       { kanteId: kante.id, version: kante.version },
       {
         // Auch hier: die Antwort wird GELESEN und nicht nur ihr Eintreffen gefeiert. Meldet der
         // Server die Beziehung weiterhin als aktiv, ist der Widerruf nicht geschehen — dann steht
-        // das da und nicht „Widerrufen".
+        // das da und nicht „Widerrufen". Entschieden wird das unten am `status` DIESER Antwort.
         onSuccess: (antwort) => {
           setWiderrufFrage(null);
-          if (antwort.status !== "widerrufen") {
-            setWiderrufOhneWirkung(true);
-            return;
-          }
-          setWiderrufMeldung(true);
+          setWiderrufAntwort(antwort);
         },
         onSettled: (_antwort, fehler) => bestandNachladen(fehler),
       },
@@ -663,6 +743,18 @@ export function WissensbeziehungenBereich({ koId }: { koId: string }): JSX.Eleme
                     >
                       {t("wb.herkunft.gesetzt")}
                     </span>
+                    {/* DER STATUS DIESER BEZIEHUNG, als Wort und aus der gespeicherten Kante.
+                        Er steht neben der Herkunft und nicht an ihrer Stelle: „gesetzt" sagt,
+                        WOHER diese Verbindung kommt, der Status sagt, WAS der Bestand heute über
+                        sie sagt. Er steht IMMER — auch bei „gilt" —, damit niemand aus seiner
+                        Abwesenheit etwas schliesst, genau wie beim Fassungsvermerk unten. */}
+                    <span
+                      className="rounded-btn bg-hairline-soft px-1.5 py-0.5 text-[10.5px] font-semibold text-muted"
+                      data-testid="wb-status"
+                      data-status={kante.status}
+                    >
+                      {beziehungsstatusText(kante.status, i18n.language)}
+                    </span>
                     <span className="text-[11.5px] text-muted-2">
                       {t("wb.urheber", { urheber: kante.urheber })}
                     </span>
@@ -729,8 +821,7 @@ export function WissensbeziehungenBereich({ koId }: { koId: string }): JSX.Eleme
                         type="button"
                         className="rounded-btn border border-hairline px-2.5 py-1 text-[11.5px] font-semibold text-muted hover:text-text"
                         onClick={() => {
-                          setWiderrufMeldung(false);
-                          setWiderrufOhneWirkung(false);
+                          setWiderrufAntwort(null);
                           setWiderrufFrage(kante.id);
                         }}
                         data-testid="wb-widerruf"
@@ -754,23 +845,45 @@ export function WissensbeziehungenBereich({ koId }: { koId: string }): JSX.Eleme
           {t(widerrufFehlerSchluessel)}
         </p>
       ) : null}
-      {/* 200 gekommen, nichts geschehen: der Server meldet die Beziehung weiterhin als aktiv.
-          Das ist keine Erfolgsmeldung und wird auch nicht als eine dargestellt. */}
-      {widerrufOhneWirkung ? (
-        <p
-          className="rounded-btn bg-trust-warn-bg px-3 py-2 text-[12.5px] text-trust-warn-text"
-          data-testid="wb-widerruf-ohne-wirkung"
-        >
-          {t("wb.widerruf.nichtBestaetigt")}
-        </p>
-      ) : null}
-      {widerrufMeldung ? (
-        <p
-          className="rounded-btn bg-hairline-soft px-3 py-2 text-[12.5px] text-text"
-          data-testid="wb-widerruf-erfolg"
-        >
-          {t("wb.widerruf.erfolg")}
-        </p>
+      {/* ==========================================================================================
+          DIE ANTWORT DES WIDERRUFS — der Satz UND der Status, den sie wirklich trägt (JOB 4353).
+          ==========================================================================================
+
+          Nach einem angenommenen Widerruf verschwindet die Kachel aus der Liste (der Leseweg gibt
+          nur aktive Beziehungen aus, `kanten-service.ts:554`). DIESER Block ist damit der einzige
+          Ort der Fläche, an dem der gespeicherte Status `widerrufen` überhaupt stehen kann — und
+          er steht hier an der Beziehung, über die gerade gesprochen wird, nicht als allgemeine
+          Meldung. Das Wort kommt aus `widerrufAntwort.status` und nicht aus dem Klick: derselbe
+          Klick führt in den beiden Fällen unten zu ZWEI verschiedenen Wörtern. */}
+      {widerrufAntwort !== null ? (
+        <div className="space-y-1" data-testid="wb-widerruf-antwort">
+          {/* 200 gekommen, nichts geschehen: der Server meldet die Beziehung weiterhin als aktiv.
+              Das ist keine Erfolgsmeldung und wird auch nicht als eine dargestellt. */}
+          {widerrufAntwort.status !== "widerrufen" ? (
+            <p
+              className="rounded-btn bg-trust-warn-bg px-3 py-2 text-[12.5px] text-trust-warn-text"
+              data-testid="wb-widerruf-ohne-wirkung"
+            >
+              {t("wb.widerruf.nichtBestaetigt")}
+            </p>
+          ) : (
+            <p
+              className="rounded-btn bg-hairline-soft px-3 py-2 text-[12.5px] text-text"
+              data-testid="wb-widerruf-erfolg"
+            >
+              {t("wb.widerruf.erfolg")}
+            </p>
+          )}
+          <p className="text-[11.5px]">
+            <span
+              className="rounded-btn bg-hairline-soft px-1.5 py-0.5 text-[10.5px] font-semibold text-muted"
+              data-testid="wb-antwort-status"
+              data-status={widerrufAntwort.status}
+            >
+              {beziehungsstatusText(widerrufAntwort.status, i18n.language)}
+            </span>
+          </p>
+        </div>
       ) : null}
 
       {/* ==========================================================================================

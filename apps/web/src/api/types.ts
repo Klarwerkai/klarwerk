@@ -940,7 +940,18 @@ export type KantenArt = "gehoert_zu" | "ergaenzt" | "ersetzt" | "widerspricht" |
  */
 export type KantenRichtung = "gerichtet" | "ungerichtet" | "symmetrisch";
 
-/** `widerrufen` ist eine Urheberaussage, keine Löschung (`kanten-types.ts:30-36`). */
+/**
+ * `widerrufen` ist eine Urheberaussage, keine Löschung (`kanten-types.ts:30-36`).
+ *
+ * JOB 4353 — DIESE ZWEI WERTE SIND SEITHER SICHTBAR, und zwar als Wort an der Beziehung selbst
+ * (`WissensbeziehungenBereich.tsx`, `STATUS_WORT`). Daraus folgt eine Grenze, die hier steht,
+ * damit sie beim Erweitern des Typs nicht übersehen wird: der Status sagt, ob die BEZIEHUNG gilt —
+ * er sagt NICHTS über den Inhalt der beiden Endpunkte. Dafür steht `abweichung` daneben, und ein
+ * drittes Wort wie „geprüft" gibt es an dieser Fläche ausdrücklich nicht. Ein neuer Wert hier
+ * braucht deshalb dort ein eigenes Wort in allen drei Sprachen; ohne es bricht
+ * `Record<Statussprache, Record<KantenStatus, string>>` schon beim Übersetzen — und zwar hier und
+ * nicht im Browser eines Menschen, dem sonst ein Rohbezeichner entgegenstünde.
+ */
 export type KantenStatus = "aktiv" | "widerrufen";
 
 /** Die Rolle des ANGEFRAGTEN Eintrags. Nur bei `gerichtet` gesetzt; sonst gibt es keine Aussage. */
