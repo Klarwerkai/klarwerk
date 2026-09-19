@@ -1178,13 +1178,62 @@ export function Mobile(): JSX.Element {
                     ) : null}
                     <ul className="space-y-1">
                       {queue.queue.map((op) => (
-                        <li key={op.id} className="flex items-center gap-2 text-[12px]">
-                          <span className="min-w-0 flex-1 truncate text-text">{op.title}</span>
-                          <span
-                            className={`rounded-pill px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase ${QUEUE_TONE[op.status]}`}
-                          >
-                            {t(`mob.status.${op.status}`)}
-                          </span>
+                        <li key={op.id} className="text-[12px]">
+                          <div className="flex items-center gap-2">
+                            <span className="min-w-0 flex-1 truncate text-text">{op.title}</span>
+                            <span
+                              className={`rounded-pill px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase ${QUEUE_TONE[op.status]}`}
+                            >
+                              {t(`mob.status.${op.status}`)}
+                            </span>
+                          </div>
+                          {/* ============================================================
+                              JOB 4354 — DER GRUND STEHT AM VORGANG, NICHT NUR IN DER ZAHL.
+                              ============================================================
+                              Bis hierher endete eine Abweisung des Servers in zwei Zeichen:
+                              der Marke „Fehler" am Eintrag und dem Sammel-Toast „Sync
+                              fehlgeschlagen (1)". Der SATZ war längst am Gerät — `op.error`
+                              trägt seit JOB 4193/4249 wörtlich, was der Server geantwortet hat
+                              (`useOfflineQueue.errMsg`, `markFailed`) —, nur sah ihn niemand.
+                              Wer „gehört einem anderen Konto" nicht liest, drückt weiter auf
+                              „Synchronisieren" und kommt nie an.
+
+                              ER KOMMT AUS `op.error` UND AUS NICHTS SONST: kein zweiter
+                              Meldungskatalog im Client, keine Übersetzung hier, keine
+                              Umdeutung. Die Sprache kommt vom Server (`Accept-Language`,
+                              `api/client.ts`), der Wortlaut aus `services/auth/src/meldungen.ts`.
+                              Ein Satz, den der Client selbst formulierte, wäre eine zweite
+                              Wahrheit neben der Antwort — und ginge beim nächsten neuen
+                              Serverfall still daneben.
+
+                              NUR BEI `failed` UND NUR MIT INHALT: `pending` und `queued` haben
+                              keinen Fehler (beide setzen ihn auf `null`), und ein leerer Kasten
+                              behauptete einen Grund, den es nicht gibt.
+
+                              FOKUSSIERBAR UND GEMELDET: `<output>` IST die Meldung — seine
+                              ARIA-Rolle ist `status` (HTML-AAM), sie wird also vorgelesen,
+                              sobald sie erscheint. Das Attribut `role="status"` steht hier
+                              bewusst NICHT daneben: an `<output>` ist es doppelt gemoppelt und
+                              vom Tor verboten (`a11y/noRedundantRoles`); ein `<p role="status">`
+                              wäre der umgekehrte Verstoss (`a11y/useSemanticElements`).
+                              `tabIndex={0}` bringt die Zeile in die Tastaturfolge — ohne das
+                              erreicht sie niemand, der die Fläche ohne Maus bedient, denn Text
+                              allein ist keine Station. Der SICHTBARE Text ist genau der
+                              Serversatz; die Zuordnung zum Vorgang trägt der Name
+                              (`aria-label`), damit sie auch hört, wer die Zeile darüber nicht
+                              sieht. */}
+                          {op.status === "failed" && op.error ? (
+                            <output
+                              data-testid="mob-queue-grund"
+                              data-op={op.id}
+                              // biome-ignore lint/a11y/noNoninteractiveTabindex: die Meldung ist kein Bedienelement — erreichbar sein MUSS sie trotzdem: ohne Maus führt sonst kein Weg zu ihr, und sie ist der einzige Ort, an dem der Grund steht (Abnahme JOB 4354).
+                              tabIndex={0}
+                              aria-label={`${t("mob.vorgang.grund", { titel: op.title })}: ${op.error}`}
+                              className="mt-1 block text-[11.5px] leading-relaxed text-trust-crit-text"
+                            >
+                              {op.error}
+                            </output>
+                          ) : null}
                         </li>
                       ))}
                     </ul>

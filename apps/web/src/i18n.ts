@@ -5896,6 +5896,11 @@ const de = {
   "mob.status.pending": "läuft",
   "mob.status.synced": "fertig",
   "mob.status.failed": "Fehler",
+  // JOB 4354 — NUR DER NAME DER MELDUNG, NICHT IHR INHALT. Der Grund selbst ist der Satz des
+  // Servers (`op.error`, Katalog `services/auth/src/meldungen.ts`); hier steht ausschliesslich,
+  // WOZU er gehört — für alle, die die Titelzeile darüber nicht sehen. Ein übersetzter Grund an
+  // dieser Stelle wäre ein zweiter Meldungskatalog neben der Antwort.
+  "mob.vorgang.grund": "Abgewiesen — {{titel}}",
   // JOB 4193 — DIE RÜCKFRAGE BEI VERALTETEM STAND (Mobil). Sie sagt, was los ist, welches FELD
   // auseinanderläuft und welche zwei Wege es gibt. Keine rohe Servermeldung, kein „gespeichert".
   "mob.stand.laedt": "Der gespeicherte Stand wird geholt …",
@@ -11928,6 +11933,8 @@ const en: typeof de = {
   "mob.status.pending": "pending",
   "mob.status.synced": "synced",
   "mob.status.failed": "failed",
+  // JOB 4354 — only the NAME of the message, never its content (that is the server's sentence).
+  "mob.vorgang.grund": "Rejected — {{titel}}",
   // JOB 4193 — the stale-version prompt (mobile).
   "mob.stand.laedt": "Fetching the saved version …",
   "mob.stand.pruefungFehlt":
@@ -17549,6 +17556,8 @@ const nl: typeof de = {
   "mob.status.pending": "loopt",
   "mob.status.synced": "klaar",
   "mob.status.failed": "Fout",
+  // JOB 4354 — alleen de NAAM van de melding, nooit de inhoud (dat is de zin van de server).
+  "mob.vorgang.grund": "Afgewezen — {{titel}}",
   // JOB 4193 — de navraag bij een verouderde versie (mobiel).
   "mob.stand.laedt": "De opgeslagen versie wordt opgehaald …",
   "mob.stand.pruefungFehlt":
