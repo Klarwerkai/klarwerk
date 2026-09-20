@@ -116,6 +116,40 @@ function qs(params?: Record<string, string | undefined>): string {
 
 export type KoFilter = { type?: string; status?: string; category?: string; tag?: string };
 
+// ================================================================================================
+// JOB 4357 (WIKI-ZUSAMMENARBEIT) — DER DRAHTVERTRAG DER BESTANDSLISTE DER GESAMTANWEISUNGEN.
+// ================================================================================================
+//
+// Zeichengleich zu `AnweisungListeneintrag`/`AnweisungListe` in
+// `services/knowledge-object/src/gesamtanweisung-types.ts`, wo sie begründet stehen. Dass beide
+// Seiten wirklich zusammenpassen, ist nicht geglaubt: die Rollenmatrix der neuen Tür liest genau
+// diese Felder aus der echten Antwort der GEBAUTEN App und vergleicht ihre Zahlen mit denen von
+// `GET /api/gesamtanweisungen/:id` (`tests/wiki-gesamtanweisung-abnahme/a11-liste-rollenmatrix.test.ts`).
+//
+// WARUM HIER UND NICHT IN `api/types.ts`, wo die übrigen neun Anweisungstypen wohnen: jene Datei
+// gehört JOB 4353 und ist in diesem Durchgang gesperrt (Auftrag §3). Das ist eine benannte Grenze
+// und keine Bauentscheidung — der Nachfolger, der `api/types.ts` besitzt, darf beide Formen dorthin
+// ziehen und diese hier ersatzlos entfernen.
+//
+// `sichtbareBausteine` UND `verborgeneBausteine` GETRENNT, nicht summiert: die Fläche muss „0 von 3
+// zugänglich" von „3 von 3 zugänglich" unterscheiden können, und eine Gesamtzahl könnte das nicht.
+export interface AnweisungListeneintrag {
+  id: string;
+  titel: string;
+  stand: "entwurf" | "vorgelegt" | "entschieden" | "abgelehnt";
+  version: number;
+  urheber: string;
+  erstelltAm: string;
+  geaendertAm: string;
+  sichtbareBausteine: number;
+  verborgeneBausteine: number;
+  unvollstaendig: boolean;
+}
+
+export interface AnweisungListe {
+  eintraege: AnweisungListeneintrag[];
+}
+
 // SCRUM-502 Round 4: die Einstufung ist an den VERARBEITETEN Text gebunden. Da die Reasoner-Aktionen
 // immer client-gelieferten Text bearbeiten (Editor/Upload, nie den gespeicherten KO-Body), deklariert
 // der Client die AKTUELLE Stufe des Textes selbst:
@@ -1240,8 +1274,24 @@ export const endpoints = {
   // WIKI-GESAMTANWEISUNG-ANSCHLUSS). Diese Adressen sind der fertige Draht dorthin; bis der
   // Nachfolger gelaufen ist, antwortet der Server darauf mit 404, und das ist keine Panne, sondern
   // der ehrliche Zwischenstand.
+  //
+  // ==============================================================================================
+  // JOB 4357 · DIE ZEHNTE ADRESSE: `list` — DER GESPEICHERTE BESTAND.
+  // ==============================================================================================
+  //
+  // Sie ist die einzige lesende Adresse dieses Bereichs OHNE Kennung, und genau das ist ihr Zweck:
+  // wer die Kennung nicht hat, kam bis hierher an seine eigene Anweisung nicht mehr heran.
+  //
+  // DER ANTWORTTYP WOHNT HIER UND NICHT IN `api/types.ts`, ausdrücklich benannt: jene Datei gehört
+  // JOB 4353 und darf in diesem Durchgang nicht angefasst werden. Ein Typ neben seinem Aufrufer ist
+  // im Haus kein Sonderfall (`DocumentAppendRequest`, `CreateFromDocumentRequest` oben stehen
+  // ebenso hier); dass er zum Server passt, ist nicht geglaubt, sondern am Draht gemessen
+  // (`tests/wiki-gesamtanweisung-abnahme/a11-liste-rollenmatrix.test.ts` liest genau diese Felder
+  // aus der echten Antwort der gebauten App).
   gesamtanweisung: {
     get: (id: string) => api.get<AnweisungLesestand>(`/gesamtanweisungen/${id}`),
+    // JOB 4357: der BESTAND. Additiv — keine der neun Adressen darüber ist angefasst.
+    list: () => api.get<AnweisungListe>("/gesamtanweisungen"),
     create: (kopf: AnweisungKopfEingabe) => api.post<Anweisung>("/gesamtanweisungen", kopf),
     updateKopf: (id: string, version: number, kopf: AnweisungKopfEingabe) =>
       api.put<Anweisung>(`/gesamtanweisungen/${id}`, { ...kopf, version }),

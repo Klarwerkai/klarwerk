@@ -79,6 +79,12 @@ export interface AnweisungBausteinEingabe {
 export interface GesamtanweisungDienstPort {
   anlegen(kopf: AnweisungKopfEingabe, urheber: string): Promise<unknown>;
   lesen(id: string, sichtbar: AnweisungSichtbar): Promise<unknown>;
+  /**
+   * JOB 4357 · der BESTAND. Er nimmt `sichtbar` wie jede andere Methode — und aus demselben Grund:
+   * die Zählung der sichtbaren und verborgenen Bausteine fällt je Betrachter, nicht je Anweisung.
+   * Eine Listenmethode ohne diesen Parameter wäre eine Tür ohne Schloss.
+   */
+  auflisten(sichtbar: AnweisungSichtbar): Promise<unknown>;
   kopfAendern(
     id: string,
     version: number,
@@ -257,7 +263,7 @@ function sichtbarFuer(user: SessionUser): AnweisungSichtbar {
 // ================================================================================================
 //
 // DIE RECHTEZUORDNUNG IST DIE BESTEHENDE — keine neue Rolle, keine Vier-Augen-Regel:
-//   lesen                                   `ko.read`      (wie /api/kos/:id/versions)
+//   lesen, aufzählen (JOB 4357)             `ko.read`      (wie /api/kos/:id/versions)
 //   anlegen, ändern, aufnehmen, ordnen,
 //   vorlegen                                `ko.create`    („Einreichen ohne Freigaberecht")
 //   entscheiden                             `ko.validate`  („direkte Freigabe durch Berechtigte")
@@ -508,4 +514,37 @@ export const gesamtanweisungRoutes: FastifyPluginAsync<GesamtanweisungRoutesOpti
       }
     },
   );
+
+  // ================================================================================================
+  // JOB 4357 · DIE ELFTE TÜR: DER BESTAND. `ko.read`, wie jeder andere Leseweg dieser Datei.
+  // ================================================================================================
+  //
+  // WARUM SIE AM ENDE STEHT UND NICHT OBEN BEI DEN ANDEREN LESEWEGEN, wo sie sachlich hingehörte:
+  // die zehn bestehenden Türen sind in `tests/beta-rollenabnahme/tabelle.ts` mit Datei UND ZEILE
+  // belegt („belegstelle"). Eine Zeile weiter oben hätte alle zehn Belegstellen verschoben — zehn
+  // stillschweigend falsche Zeilennummern für eine Frage der Lesbarkeit. Der Auftrag verlangt
+  // ausdrücklich „nur die Zahl und die Zeile" (Abnahmekriterium 7), und das ist die Bauform, die das
+  // wirklich einhält.
+  //
+  // DASSELBE RECHT WIE `GET /api/gesamtanweisungen/:id`, und das ist keine Bequemlichkeit: die Liste
+  // gibt über jede Anweisung GENAU das heraus, was der Einzelabruf über sie herausgibt (Kopf, Zahl
+  // der sichtbaren und der verborgenen Bausteine) — nur ohne die Bausteine selbst. Ein strengeres
+  // Tor hier würde also eine Auskunft sperren, die über die Nachbartür ohnehin offensteht; ein
+  // milderes gäbe es nicht. Deshalb `ko.read` und keine neue Regel: weder `guards`, noch `policy.ts`,
+  // noch `sichtbarkeit.ts` werden dafür angefasst.
+  //
+  // KEINE KENNUNG, KEIN RUMPF, KEINE ABFRAGEWERTE: dieser Weg nimmt nichts entgegen. Es gibt deshalb
+  // auch keine eigene 400 `VALIDATION` — es gäbe keine Eingabe, die unbrauchbar sein könnte. Was der
+  // Dienst wirft, geht durch denselben einen Fehlerweg wie alles in dieser Datei.
+  app.get("/api/gesamtanweisungen", async (request, reply) => {
+    const user = await guards.requirePermission("ko.read", request, reply);
+    if (!user) {
+      return;
+    }
+    try {
+      reply.code(200).send(await dienst.auflisten(sichtbarFuer(user)));
+    } catch (error) {
+      antworteMitFehler(reply, error);
+    }
+  });
 };

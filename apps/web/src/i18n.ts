@@ -7362,14 +7362,34 @@ const de = {
   "ga.kopf.zweck": "Zweck",
   "ga.kopf.geltungsbereich": "Geltungsbereich",
   "ga.kopf.voraussetzungen": "Voraussetzungen",
-  // JOB 4156 — DER EINSTIEG. Die Einleitung sagt AUSDRÜCKLICH NICHT „es ist noch keine
-  // Gesamtanweisung angelegt": es gibt keinen Endpunkt, der die vorhandenen aufzählt, also hat
-  // diese Fläche keine Grundlage für eine Aussage über den Bestand (Begründung ausgeschrieben in
-  // `components/gesamtanweisung/GesamtanweisungBereich.tsx`).
+  // JOB 4156 — DER EINSTIEG. Die Einleitung sagte bis JOB 4357 ausdrücklich NICHT „es ist noch keine
+  // Gesamtanweisung angelegt": es gab keinen Endpunkt, der die vorhandenen aufzählt, also hatte diese
+  // Fläche keine Grundlage für eine Aussage über den Bestand.
+  //
+  // JOB 4357 · DIE GRUNDLAGE GIBT ES JETZT (`GET /api/gesamtanweisungen`), und die Einleitung ist
+  // NACHGEFÜHRT statt danebengelassen: ihr letzter Satz nannte die Adresse als EINZIGEN Weg zu einer
+  // vorhandenen Anweisung, und das ist seit dieser Lieferung falsch. Ein Satz, der einen abgelösten
+  // Weg als den einzigen ausgibt, schickt den Menschen an die Stelle, an der er vorher nichts fand.
+  // Der Leersatz selbst steht weiterhin NICHT hier, sondern unter `ga.liste.leer` — und er erscheint
+  // nur auf einer erfolgreichen, leeren Antwort (`GesamtanweisungBereich.tsx`).
   "ga.bereich.titel": "Gesamtanweisungen",
   "ga.bereich.einleitung":
-    "Hier legen Sie eine Gesamtanweisung an und stellen sie aus vorhandenen Fassungen zusammen. Eine bereits angelegte Anweisung öffnen Sie über ihre Adresse.",
+    "Oben stehen die gespeicherten Gesamtanweisungen; darunter legen Sie eine neue an und stellen sie aus vorhandenen Fassungen zusammen.",
   "ga.bereich.anlegen": "Gesamtanweisung anlegen",
+  // JOB 4357 — DIE BESTANDSLISTE. Der Leersatz sagt „nichts gespeichert" und NICHT „konnte nicht
+  // nachsehen"; der Fehlersatz sagt das Gegenteil und keines von beiden das andere. Beide Sätze
+  // dürfen nie zusammenfallen (`GesamtanweisungBereich.tsx`, Abschnitt zu den vier Lagen).
+  "ga.liste.titel": "Gespeicherte Gesamtanweisungen",
+  "ga.liste.laedt": "Der gespeicherte Bestand wird geladen …",
+  "ga.liste.fehler": "Der gespeicherte Bestand konnte nicht geladen werden.",
+  "ga.liste.leer": "Es ist bisher nichts gespeichert.",
+  "ga.liste.stand": "Stand",
+  "ga.liste.urheber": "Urheber",
+  "ga.liste.geaendert": "Letzte Änderung",
+  "ga.liste.bausteine": "Bausteine: {{anzahl}}",
+  // DIE ZAHL GEHÖRT IN DEN SATZ: „unvollständig" allein lässt offen, ob ein Satz oder ein halbes
+  // Dokument fehlt. Titel und Kennung des geschützten Eintrags stehen ausdrücklich nicht dabei.
+  "ga.liste.unvollstaendig": "Unvollständig — nicht zugängliche Bausteine: {{anzahl}}",
 };
 
 const en: typeof de = {
@@ -13003,8 +13023,19 @@ const en: typeof de = {
   "ga.kopf.voraussetzungen": "Preconditions",
   "ga.bereich.titel": "Composite instructions",
   "ga.bereich.einleitung":
-    "Here you create a composite instruction and assemble it from existing versions. An instruction that already exists is opened through its address.",
+    "Above you find the stored composite instructions; below you create a new one and assemble it from existing versions.",
   "ga.bereich.anlegen": "Create composite instruction",
+  // JOB 4357 — the stored inventory. „Nothing stored" and „could not look" are two different
+  // statements and never share a sentence (see the DE block for the reasoning).
+  "ga.liste.titel": "Stored composite instructions",
+  "ga.liste.laedt": "Loading the stored inventory …",
+  "ga.liste.fehler": "The stored inventory could not be loaded.",
+  "ga.liste.leer": "Nothing has been stored so far.",
+  "ga.liste.stand": "State",
+  "ga.liste.urheber": "Author",
+  "ga.liste.geaendert": "Last change",
+  "ga.liste.bausteine": "Building blocks: {{anzahl}}",
+  "ga.liste.unvollstaendig": "Incomplete — building blocks you cannot access: {{anzahl}}",
 };
 
 const nl: typeof de = {
@@ -18639,8 +18670,19 @@ const nl: typeof de = {
   "ga.kopf.voraussetzungen": "Voorwaarden",
   "ga.bereich.titel": "Samengestelde instructies",
   "ga.bereich.einleitung":
-    "Hier maakt u een samengestelde instructie aan en stelt u die samen uit bestaande versies. Een reeds aangemaakte instructie opent u via het adres ervan.",
+    "Boven staan de opgeslagen samengestelde instructies; daaronder maakt u een nieuwe aan en stelt u die samen uit bestaande versies.",
   "ga.bereich.anlegen": "Samengestelde instructie aanmaken",
+  // JOB 4357 — de opgeslagen voorraad. „Niets opgeslagen" en „kon niet kijken" zijn twee
+  // verschillende uitspraken en delen nooit één zin (zie het DE-blok voor de onderbouwing).
+  "ga.liste.titel": "Opgeslagen samengestelde instructies",
+  "ga.liste.laedt": "De opgeslagen voorraad wordt geladen …",
+  "ga.liste.fehler": "De opgeslagen voorraad kon niet worden geladen.",
+  "ga.liste.leer": "Er is tot nu toe niets opgeslagen.",
+  "ga.liste.stand": "Status",
+  "ga.liste.urheber": "Auteur",
+  "ga.liste.geaendert": "Laatste wijziging",
+  "ga.liste.bausteine": "Bouwstenen: {{anzahl}}",
+  "ga.liste.unvollstaendig": "Onvolledig — voor u niet toegankelijke bouwstenen: {{anzahl}}",
 };
 
 void i18n.use(initReactI18next).init({

@@ -873,7 +873,7 @@ export const TABELLE: Zeile[] = [
     erwartet: NUR_ADMIN,
   },
   // ------------------------------------------------------------------------------------------------
-  // JOB 4156 (WIKI-GESAMTANWEISUNG-ANSCHLUSS) — DIE ZEHN TÜREN DER ZUSAMMENGESETZTEN ANWEISUNG.
+  // JOB 4156/4357 (WIKI-GESAMTANWEISUNG) — DIE ELF TÜREN DER ZUSAMMENGESETZTEN ANWEISUNG.
   // ------------------------------------------------------------------------------------------------
   //
   // DREI RECHTE, EHRLICH GETRENNT, und die Zuordnung ist nicht gewählt, sondern aus dem
@@ -885,8 +885,20 @@ export const TABELLE: Zeile[] = [
   // NICHT entscheiden. Stünde bei `/entscheiden` `AB_EXPERTE`, wäre der Startvertrag gebrochen und
   // niemand sähe es — deshalb steht die Zeile hier und nicht in der Restliste.
   //
-  // KEINE ZEILE WIRD ZURÜCKGESTELLT. Alle zehn Türen sind hier gemessen; in `NICHT_ABGENOMMEN`
+  // KEINE ZEILE WIRD ZURÜCKGESTELLT. Alle elf Türen sind hier gemessen; in `NICHT_ABGENOMMEN`
   // steht keine davon.
+  //
+  // JOB 4357 · DIE ELFTE TÜR IST `GET /api/gesamtanweisungen` — der gespeicherte BESTAND. Sie steht
+  // als LETZTE Zeile dieser Gruppe, weil die Route selbst als letzte registriert ist; so bleiben die
+  // zehn Belegstellen darüber wahr (Begründung im Quelltext der Route). Ihr Tor ist `ko.read` wie bei
+  // jedem anderen Leseweg — und das ist keine Bequemlichkeit: die Liste gibt über eine Anweisung
+  // GENAU das heraus, was `GET /api/gesamtanweisungen/:id` über sie herausgibt (Kopf, Zahl der
+  // sichtbaren und der verborgenen Bausteine), nur ohne die Bausteine selbst.
+  //
+  // SIE IST ZUSTANDSFREI WIE DIE ÜBRIGEN ZEHN, und das ist hier ausdrücklich nachgesehen: sie ist ein
+  // reiner Leseweg ohne Kennung und ohne Nutzlast. Sie liest, was auf der gemeinsamen Bühne gerade
+  // steht (in der Regel nichts), und ändert daran nichts — die folgenden Zeilen finden denselben
+  // Bestand vor wie ohne sie.
   //
   // DIE GEFAHRENEN URLs SIND ZUSTANDSFREI, und das ist bei dieser Gruppe ausdrücklich nachgesehen
   // und nicht angenommen: die Messungen laufen gegen EINE gemeinsame Bühne, und ein wirklich
@@ -1000,6 +1012,16 @@ export const TABELLE: Zeile[] = [
     tor: "ko.validate",
     payload: {},
     erwartet: AB_CONTROLLER,
+  },
+  {
+    // JOB 4357 · DER BESTAND. Keine Kennung, keine Nutzlast — es gibt an dieser Tür keine Eingabe,
+    // die unbrauchbar sein könnte, und deshalb auch keine eigene 400.
+    gruppe: "gesamtanweisungRoutes",
+    methode: "GET",
+    pfad: "/api/gesamtanweisungen",
+    belegstelle: "services/app/src/routes/gesamtanweisung-routes.ts:539",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
   },
   // ------------------------------------------------------------------------------------------------
   // JOB 4151 (WG-PERSISTENZ) — DIE VIER TÜREN DER KURATIERTEN BEZIEHUNGEN.

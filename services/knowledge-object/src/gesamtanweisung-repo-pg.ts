@@ -315,6 +315,73 @@ export class PgAnweisungRepo implements AnweisungRepo {
     );
     return res.rows.map((row) => row.version);
   }
+
+  /**
+   * ==============================================================================================
+   * JOB 4357 · DER GANZE BESTAND — ZWEI ABFRAGEN, NICHT EINE JE ANWEISUNG.
+   * ==============================================================================================
+   *
+   * ZWEI ABFRAGEN UND KEIN N+1: der Kopfsatz aller Anweisungen, dann ALLE Bausteinzeilen in einem
+   * Zug, danach im Speicher zugeordnet. `get()` oben fährt zwei Abfragen für EINE Anweisung; dieselbe
+   * Form je Zeile wäre bei fünfzig Anweisungen einhunderteine Abfrage für eine Menüansicht.
+   *
+   * KEIN `JOIN`, und das ist eine Entscheidung mit Grund: ein Join über die Bausteine vervielfacht
+   * den Kopf je Baustein, und die Zusammenfassung müsste dann im Anwendungsspeicher dieselbe
+   * Gruppierung leisten wie hier — bei mehr übertragenen Bytes. Zwei schlanke Abfragen sind hier
+   * ehrlicher und billiger.
+   *
+   * KEIN TRIMM UND KEINE SORTIERUNG (Begründung am Port, `AnweisungRepo.liste`). Die `ORDER BY`
+   * unten ist deshalb KEINE Zusage an den Aufrufer, sondern nur eine feste Zeilenfolge: `pos`
+   * ordnet die Bausteine einer Anweisung — die Reihenfolge IST Teil der Gesamtfassung
+   * (`gesamtanweisung-types.ts`, `Baustein.position`) — und `id` macht den Lauf über die Köpfe
+   * wiederholbar, was jede Fehlersuche billiger macht. Wer sich auf sie verlässt, steht in
+   * `GesamtanweisungDienst.auflisten` und sortiert selbst.
+   *
+   * KEIN `LIMIT`: eine stillschweigend abgeschnittene Liste wäre die gefährlichste Antwort dieses
+   * Endpunkts — sie sähe vollständig aus. Eine echte Seitenteilung braucht einen Cursor, eine
+   * Zählauskunft und die Sichtbarkeitsentscheidung VOR dem `LIMIT`
+   * (`services/app/src/sichtbarkeit.ts:113-128`, wörtlich); nichts davon ist Gegenstand dieses
+   * Auftrags, und ein halbes davon wäre schlechter als keins. Die Grenze ist damit benannt und nicht
+   * überspielt: die Liste trägt den ganzen Bestand.
+   */
+  async liste(): Promise<readonly Anweisung[]> {
+    const koepfe = await this.pool.query<KopfZeile>(
+      `SELECT id,version,stand,titel,zweck,geltungsbereich,voraussetzungen,urheber,erstellt_am,geaendert_am
+         FROM gesamtanweisungen ORDER BY id`,
+    );
+    if (koepfe.rows.length === 0) {
+      return [];
+    }
+    const bausteine = await this.pool.query<BausteinZeile & { anweisung_id: string }>(
+      `SELECT anweisung_id,id,pos,ko_id,ko_version,nachweis_hash,voraussetzung
+         FROM gesamtanweisung_bausteine ORDER BY anweisung_id, pos`,
+    );
+    const jeAnweisung = new Map<string, Baustein[]>();
+    for (const zeile of bausteine.rows) {
+      const folge = jeAnweisung.get(zeile.anweisung_id);
+      if (folge) {
+        folge.push(alsBaustein(zeile));
+      } else {
+        jeAnweisung.set(zeile.anweisung_id, [alsBaustein(zeile)]);
+      }
+    }
+    return koepfe.rows.map((zeile) => ({
+      id: zeile.id,
+      titel: zeile.titel,
+      zweck: zeile.zweck,
+      geltungsbereich: zeile.geltungsbereich,
+      voraussetzungen: zeile.voraussetzungen,
+      bausteine: jeAnweisung.get(zeile.id) ?? [],
+      // Dasselbe fail-closed wie in `get()`: ein fremder Stand bricht ab, statt zu „entwurf" zu
+      // werden. Eine LISTE darf das nicht milder auslegen als der Einzelabruf — sonst hinge die
+      // Bewertung derselben Zeile davon ab, über welchen Weg sie gelesen wird.
+      stand: alsStand(zeile.stand),
+      version: zeile.version,
+      urheber: zeile.urheber,
+      erstelltAm: zeile.erstellt_am,
+      geaendertAm: zeile.geaendert_am,
+    }));
+  }
 }
 
 function alsBaustein(zeile: BausteinZeile): Baustein {

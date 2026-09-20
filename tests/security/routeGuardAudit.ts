@@ -714,6 +714,13 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // dem eine Zeilenentscheidung fallen könnte, und ihre Antwort trägt nichts als den eigenen,
   // gerade selbst eingegebenen Kopf.
   "POST /api/gesamtanweisungen": { protection: "ko.create" },
+  // JOB 4357: der gespeicherte BESTAND. Dasselbe Routenrecht und dasselbe Zeilenrecht wie der
+  // Einzelabruf darunter — die Zählung der sichtbaren und der verborgenen Bausteine entsteht in
+  // `lesestand` und damit in derselben `darfSehen`-Entscheidung je gebundener Fassung
+  // (`GesamtanweisungDienst.auflisten` → `listeneintrag` → `lesestand`). Baustein-Titel,
+  // Fassungskennungen und Rümpfe verlassen diesen Weg gar nicht: `AnweisungListeneintrag` hat
+  // dafür kein Feld.
+  "GET /api/gesamtanweisungen": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
   "GET /api/gesamtanweisungen/:id": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
   "PUT /api/gesamtanweisungen/:id": { protection: "ko.create", zeilenrecht: ["darfSehen"] },
   "POST /api/gesamtanweisungen/:id/bausteine": {

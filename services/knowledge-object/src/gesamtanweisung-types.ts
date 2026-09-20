@@ -267,6 +267,61 @@ export interface AnweisungLesestand {
 }
 
 // ================================================================================================
+// JOB 4357 · DER BESTAND ALS LISTE — DER KOPF JEDER ANWEISUNG UND ZWEI ZAHLEN, SONST NICHTS.
+// ================================================================================================
+//
+// WOZU DAS DA IST. Bis JOB 4357 war eine gespeicherte Anweisung ausschliesslich über ihre KENNUNG
+// erreichbar (`AnweisungLesestand` oben, `GET /api/gesamtanweisungen/:id`). Wer sie nicht notiert
+// hatte, fand sie nach einem Neustart nicht wieder — der Menüpunkt führte nur auf ein Formular.
+//
+// WARUM EIN EIGENER GEGENSTAND UND NICHT `readonly AnweisungLesestand[]`, und das ist der Kern:
+// ein Lesestand trägt JEDEN zugänglichen Baustein samt Titel, Fassungskennung und RUMPF der
+// gebundenen Fassung. Eine Liste über zwanzig Anweisungen wäre damit ein vollständiger Abzug des
+// halben Bestands an einem Endpunkt, den die Fläche bei jedem Menüklick ruft. Der Eintrag hier
+// trägt deshalb NUR den Kopf und ZWEI ZAHLEN — kein Baustein-Titel, keine Fassungskennung, kein
+// Rumpf. Was ein Betrachter nicht sehen darf, kann hier gar nicht durchsickern, weil es hier
+// überhaupt keinen Platz hat.
+//
+// DIE ZWEI ZAHLEN SIND DIESELBEN WIE AM EINZELABRUF und werden nicht zweitausgelegt: sie entstehen
+// in `listeneintrag` (`gesamtanweisung-service.ts`) AUS `lesestand` — `sichtbareBausteine` ist
+// dessen `bausteine.length`, `verborgeneBausteine` und `unvollstaendig` sind wörtlich seine Felder.
+// Eine zweite Zählung neben `lesestand` wäre genau die zweite Wahrheit, gegen die `darfSehen` als
+// EINE Stelle gebaut ist (`services/app/src/sichtbarkeit.ts`, Kopf).
+//
+// UND SIE SIND GETRENNT, nicht summiert: „0 sichtbar / 3 verborgen" und „3 sichtbar / 0 verborgen"
+// sind für den Leser zwei völlig verschiedene Lagen. Eine einzige Gesamtzahl würde die erste als
+// die zweite ausgeben — dieselbe Klasse Unwahrheit wie „unbekannt" als „leer" zu zeigen.
+
+export interface AnweisungListeneintrag {
+  readonly id: string;
+  readonly titel: string;
+  readonly stand: AnweisungStand;
+  /** Die CAS-Nummer — sie steht hier, damit die Fläche denselben Stand benennen kann wie der Kopf. */
+  readonly version: number;
+  readonly urheber: string;
+  readonly erstelltAm: string;
+  readonly geaendertAm: string;
+  /** Wie viele Bausteine dieser Betrachter sehen darf — `lesestand(...).bausteine.length`. */
+  readonly sichtbareBausteine: number;
+  /** Wie viele ihm verborgen bleiben. Die Zahl, und sonst nichts über sie. */
+  readonly verborgeneBausteine: number;
+  /** Wahr, sobald auch nur einer verborgen ist — wörtlich `lesestand(...).unvollstaendig`. */
+  readonly unvollstaendig: boolean;
+}
+
+/**
+ * Die Antwort des Listenwegs.
+ *
+ * EIN OBJEKT UM DAS FELD `eintraege` und kein nacktes Feld: dasselbe Muster wie
+ * `{ staende: … }` an `GET /api/gesamtanweisungen/:id/staende` (`gesamtanweisung-routes.ts`). Ein
+ * nacktes Array liesse sich später nicht um eine Auskunft ergänzen, ohne den Drahtvertrag zu
+ * brechen — und eine Fläche, die ein Array erwartet, unterscheidet „leer" nicht von „unbrauchbar".
+ */
+export interface AnweisungListe {
+  readonly eintraege: readonly AnweisungListeneintrag[];
+}
+
+// ================================================================================================
 // DER FESTGEHALTENE PRÜFSTAND UND SEIN VERGLEICH
 // ================================================================================================
 
@@ -387,6 +442,38 @@ export interface AnweisungRepo {
   standLesen(anweisungId: string, version: number): Promise<AnweisungStandAufnahme | undefined>;
   /** Die Versionsnummern der festgehaltenen Stände, aufsteigend. */
   staende(anweisungId: string): Promise<readonly number[]>;
+  /**
+   * ==============================================================================================
+   * JOB 4357 · DER GESAMTE BESTAND — UND WARUM DIESE EINE METHODE OPTIONAL IST.
+   * ==============================================================================================
+   *
+   * Sie liefert die Anweisungen, wie sie gespeichert sind: OHNE Trimm, OHNE Reihenfolgezusage.
+   * Beides gehört bewusst nicht hierher.
+   *   · KEIN TRIMM, weil die Ablage die Rechtefrage nicht stellen darf — die Entscheidung reist als
+   *     `AnweisungSichtbar` in den Dienst (oben, `erzwingeSichtbar`), und eine Ablage, die selbst
+   *     filterte, wäre die zweite Auslegung von „darf sehen".
+   *   · KEINE REIHENFOLGE, weil der Dienst sie setzt (`GesamtanweisungDienst.auflisten`). Stünde sie
+   *     als Zusage hier, müsste jede Ablage sie einhalten — zwei Implementierungen derselben
+   *     Sortierregel, von denen eines Tages eine abweicht.
+   *
+   * WARUM `liste?` UND NICHT `liste`, ausgeschrieben statt stillschweigend: dieser Port hat drei
+   * Erfüller, und zwei davon liegen AUSSERHALB der Zielpfade dieses Auftrags
+   * (`tests/wiki-gesamtanweisung/pruefstand.ts` → `InMemoryAnweisungRepo`,
+   * `tests/wiki-gesamtanweisung-fassungsbindung/flaeche-zwei-ursachen.test.tsx` →
+   * `VergesslicheAblage`). Eine Pflichtmethode würde deren Typprüfung brechen, und dieser Auftrag
+   * darf sie nicht anfassen (Abnahmekriterium 5: an bestehenden Fällen wird nichts verändert).
+   *
+   * WAS DAS EHRLICH KOSTET, und es wird nicht weggeredet: eine künftige Ablage kann diese Methode
+   * typgültig weglassen, und der Compiler sagt dazu nichts. Der Preis ist an genau EINER Stelle
+   * bezahlt und dort auch geprüft: `auflisten` lehnt eine Ablage ohne `liste` mit einem
+   * ausgeschriebenen Fehler AB und liefert NIEMALS eine leere Liste. Eine leere Liste wäre die
+   * Aussage „es ist nichts gespeichert" über einen Bestand, den niemand gelesen hat — genau die
+   * unbelegte Negativaussage, die der Anzeigevertrag verbietet. Fail-closed, wie `erzwingeSichtbar`.
+   *
+   * WER SIE ERFÜLLT: `PgAnweisungRepo` (`gesamtanweisung-repo-pg.ts`) für den Betrieb und die
+   * flüchtige Ablage der Kompositionswurzel (`services/app/src/build-app.ts`) für Tests und Dev.
+   */
+  liste?(): Promise<readonly Anweisung[]>;
 }
 
 // ================================================================================================

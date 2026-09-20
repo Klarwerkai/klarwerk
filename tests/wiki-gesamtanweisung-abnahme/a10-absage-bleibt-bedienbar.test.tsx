@@ -59,6 +59,22 @@ const TITEL = "Anlage anfahren (JOB 4309)";
 /** Die Marke der Zielseite — sie erscheint NUR, wenn wirklich navigiert wurde. */
 const ZIEL_MARKE = "a10-ziel-der-navigation";
 
+/**
+ * JOB 4357 R4 · DIE EINE ADRESSE, DIE DIESER FALL DURCHLÄSST — WÖRTLICH AUS DER FREIGABE.
+ *
+ * Sie ist AUSDRÜCKLICH NICHT aus dem Produkt hergeleitet, und das ist der Kern: würde der Sollwert
+ * aus `endpoints.gesamtanweisung.list` gemessen, wanderte er bei jeder Verstellung am Produkt mit —
+ * und BENs Gegenprobe (`/api/gesamtanweisungen/ben-verbotener-zusatzabruf`) bliebe grün. Ein
+ * Prüfstand, dessen Sollwert dem Prüfling folgt, misst nichts.
+ *
+ * Die Zeichenkette zitiert Pedis Freigabe vom 19.09.2026: „AUSSCHLIESSLICH den neuen lesenden
+ * Listenabruf (GET /api/gesamtanweisungen)". `/api` ist dabei der Stamm aus `api/client.ts:19`
+ * (`BASE`, modulintern), `/gesamtanweisungen` der Pfad der Adresse — zusammen genau die URL, die
+ * `fetch` sieht. Dieselbe Bauart wie die wörtlich geführten Pfade in
+ * `tests/beta-rollenabnahme/tabelle.ts`: der VERTRAG steht im Prüfstand, nicht der Prüfling.
+ */
+const ERLAUBTER_LISTENABRUF = "/api/gesamtanweisungen";
+
 let container: HTMLDivElement;
 let root: Root;
 
@@ -241,19 +257,75 @@ describe("JOB 4309 A10 · eine abgelehnte Speicherung ist sichtbar, bedienbar un
     expect(container.querySelector(`[data-testid="${BEREICH_MARKE}-fehler"]`)).toBeNull();
   });
 
-  it("KALIBRIERUNG: ein leerer Titel löst gar keinen Versuch aus — die Absage kommt nicht von der Eingabe", async () => {
-    let gerufen = 0;
+  // ==============================================================================================
+  // JOB 4357 · DIESER FALL MISST WEITERHIN DASSELBE — ABER DER EINSTIEG LIEST JETZT AUCH.
+  // ==============================================================================================
+  //
+  // BIS JOB 4357 war der Einstieg ein reines Formular: er rief GAR NICHTS, und deshalb genügte hier
+  // ein Zähler über ALLE `fetch`-Aufrufe. Seit JOB 4357 zeigt er zuerst den gespeicherten Bestand
+  // (`GET /api/gesamtanweisungen`) — ein LESENDER Aufruf, der bei jedem Aufbau der Fläche stattfindet
+  // und mit dem leeren Titel nichts zu tun hat.
+  //
+  // DIE ZUSAGE DIESES FALLS BLEIBT WÖRTLICH DIESELBE und wird NICHT gelockert: bei leerem Titel geht
+  // KEIN SCHREIBAUFRUF an den Server.
+  //
+  // Der Rahmen dafür ist Pedis Freigabe vom 19.09.2026 (Quelle fed56202…, im Auftrag zu JOB 4357
+  // wörtlich zitiert): „der bestehende Fall a10-absage-bleibt-bedienbar lässt AUSSCHLIESSLICH den
+  // neuen lesenden Listenabruf (GET /api/gesamtanweisungen) zu; jeder Schreibaufruf bei leerem Titel
+  // bleibt verboten und die Gegenprobe ‚leerer Titel sendet keinen Schreibaufruf' bleibt Pflicht."
+  //
+  // ================================================================================================
+  // RUNDE 4 · „AUSSCHLIESSLICH" HEISST METHODE UND VOLLSTÄNDIGER PFAD — BENs KORREKTURPFLICHT 1.
+  // ================================================================================================
+  //
+  // In Runde 3 stand hier `!a.adresse.includes("/gesamtanweisungen")`. BEN hat gemessen, was das
+  // wert ist: er hat die Listenadresse auf `/api/gesamtanweisungen/ben-verbotener-zusatzabruf`
+  // verstellt, und dieser Fall blieb 5/5 GRÜN (Cloud-Auftrag d4235fe2e6864fba8ce5a1de2727326c). Eine
+  // Teilzeichenkette lässt JEDEN Unterpfad durch — die Freigabe nennt aber EINE Adresse, nicht eine
+  // Adressfamilie. Genau hier hätte ein zusätzlicher, ungewollter Abruf des Einstiegs unbemerkt
+  // hineinwachsen können.
+  //
+  // AB HIER WIRD JEDER DURCHGELASSENE AUFRUF ZEICHENGENAU VERGLICHEN: `GET` UND exakt
+  // `/api/gesamtanweisungen`. Der Sollwert ist nicht abgeschrieben, sondern aus `api/client.ts`
+  // zusammengesetzt (`BASE` + der Pfad, den `endpoints.gesamtanweisung.list` sendet) — eine zweite
+  // Textquelle wiche eines Tages von der ersten ab.
+  //
+  // DER LISTENABRUF SCHEITERT HIER ABSICHTLICH (die Antwort ist ein Wurf). Das ist kein Nebeneffekt,
+  // sondern gewollt: so ist belegt, dass eine fehlgeschlagene Bestandsliste weder die Absage des
+  // Formulars erzeugt noch die Weiterleitung auslöst. Beides wird unten ausdrücklich nachgesehen.
+  it("KALIBRIERUNG: ein leerer Titel löst gar keinen Schreibversuch aus — die Absage kommt nicht von der Eingabe", async () => {
+    const gerufen: { methode: string; adresse: string }[] = [];
     Object.defineProperty(globalThis, "fetch", {
       configurable: true,
       writable: true,
-      value: async () => {
-        gerufen += 1;
-        throw new Error("hier darf gar nichts gerufen werden");
+      value: async (eingabe: unknown, optionen?: { method?: string }) => {
+        gerufen.push({
+          methode: String(optionen?.method ?? "GET").toUpperCase(),
+          adresse: String(eingabe),
+        });
+        throw new Error("hier darf nur der lesende Bestand gerufen werden");
       },
     });
     await zeigeEinstieg();
     await legeAn("   ");
-    expect(gerufen, "ein leerer Titel geht an den Server").toBe(0);
+
+    const schreibend = gerufen.filter((a) => a.methode !== "GET");
+    expect(
+      schreibend.map((a) => `${a.methode} ${a.adresse}`),
+      "ein leerer Titel geht als Schreibaufruf an den Server",
+    ).toEqual([]);
+    // DIE EINE ERLAUBTE ADRESSE, zeichengenau — nicht „enthält", nicht „beginnt mit".
+    const fremd = gerufen.filter((a) => a.methode !== "GET" || a.adresse !== ERLAUBTER_LISTENABRUF);
+    expect(
+      fremd.map((a) => `${a.methode} ${a.adresse}`),
+      `der Einstieg ruft etwas anderes als GET ${ERLAUBTER_LISTENABRUF} — die Freigabe nennt GENAU diese eine Adresse`,
+    ).toEqual([]);
+    // UND ER RUFT SIE WIRKLICH: ohne diesen Satz wäre die Prüfung oben auch dann grün, wenn der
+    // Einstieg gar nichts mehr läse — dann sagte sie über die Ausnahme nichts.
+    expect(
+      gerufen.map((a) => `${a.methode} ${a.adresse}`),
+      "der Einstieg liest den Bestand gar nicht — dann misst dieser Fall die Ausnahme nicht",
+    ).toContain(`GET ${ERLAUBTER_LISTENABRUF}`);
     expect(container.querySelector(`[data-testid="${BEREICH_MARKE}-fehler"]`)).toBeNull();
     expect(container.querySelector(`[data-testid="${ZIEL_MARKE}"]`)).toBeNull();
   });

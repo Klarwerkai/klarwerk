@@ -1964,8 +1964,30 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // `documentTitle`-Prop. Es erscheint nur in der Grundmenge und berührt keinen Bildweg. Die +1
     // ist gemessen (der Sammler meldete `expected { komponenten: 400, … } to deeply equal
     // { komponenten: 399, … }`, Cloud-Lauf ae5de1e1393e48469652e954c74b8e48), nicht gerechnet.
+    //
+    // JOB 4357 (WIKI-ZUSAMMENARBEIT · die Bestandsliste der Gesamtanweisungen): 400 → 402, und es
+    // sind GENAU ZWEI Bauteile, beide in `components/gesamtanweisung/GesamtanweisungBereich.tsx`:
+    //     + `Bestandsliste`  — die Liste des gespeicherten Bestands samt ihren vier Anzeigelagen
+    //                          (laden · leer · Fehler · Stand), nicht exportiert, genau ein
+    //                          Aufrufer in derselben Datei: `Einstieg`.
+    //     + `Listeneintrag`  — EINE Zeile der Liste: der Titel als `<Link>` plus vier Absätze
+    //                          (Stand, Urheber, letzte Änderung, Bausteinzahl), nicht exportiert,
+    //                          genau ein Aufrufer in derselben Datei: `Bestandsliste`.
+    // Dieselbe Begründung wie bei jedem Eintrag darüber: die Auflage verbietet, dass eine
+    // UMSTELLUNG die Erhebung verschiebt — nicht, dass der Quellbaum wächst. `anbieter` 1 und
+    // `traeger` 2 bleiben unverändert, und das ist am Bauteil NACHGELESEN und nicht nebenbei
+    // behauptet: in der ganzen Datei kommt weder `CAPTION_AI_TEXT` (also kein `ANGEBOT_MUSTER`)
+    // noch ein `documentTitle`-Prop noch ein `<img` vor. Die Liste nennt Titel, Stand, Urheber,
+    // Änderungszeit und ZWEI ZAHLEN — sie stellt kein Bild dar und trägt keine Bildbeschreibung.
+    // Beide Bauteile erscheinen nur in der Grundmenge und berühren keinen Bildweg.
+    //
+    // DIE +2 IST GEMESSEN, nicht gerechnet: der Sammler meldete im Tor der Runde 2 wörtlich
+    // „gemessen: 402 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 493 Quelldateien …
+    // expected { komponenten: 402, anbieter: 1, …(1) } to deeply equal { komponenten: 400, … }"
+    // (Cloud-Lauf 036e7ef823af315efb46c458). Dass `anbieter` und `traeger` dabei UNVERÄNDERT
+    // blieben, steht in derselben Meldung — beide Seiten des Vergleichs nennen 1 und 2.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 400,
+      komponenten: 402,
       anbieter: 1,
       traeger: 2,
     });

@@ -770,6 +770,28 @@ class FluechtigeAnweisungsablage implements AnweisungRepo {
       .map((k) => Number(k.slice(vorsatz.length)))
       .sort((a, b) => a - b);
   }
+
+  /**
+   * JOB 4357 · der ganze Bestand — Kopien wie in `get`, kein Trimm, keine Sortierung.
+   *
+   * SIE STEHT HIER, WEIL DIE ROLLENABNAHME OHNE DATENBANK MISST: ihre Bühne baut die App über
+   * `assembleServices(inMemoryRepos())` (`tests/beta-rollenabnahme/buehne.ts`), also gegen genau
+   * diese Ablage. Ohne `liste` wäre `GET /api/gesamtanweisungen` dort nicht abnehmbar — die Tür wäre
+   * registriert und ihre Rollenmatrix unmessbar, und „in der App erreichbar" bliebe unbelegt. Das
+   * ist derselbe Grund, aus dem diese Klasse überhaupt existiert (Kopf oben).
+   *
+   * `structuredClone` je Eintrag aus demselben Grund wie in `get`: sonst hielte der Aufrufer
+   * Referenzen auf den Bestand und könnte ihn an der Ablage vorbei ändern. Postgres kann das nicht,
+   * also darf es diese Ablage auch nicht.
+   *
+   * KEINE HALTBARKEITSPRÜFUNG: `haltbarkeitZugesagt` sperrt ausdrücklich nur SCHREIBWEGE (`anlegen`,
+   * `schreiben`). Gelesen wird weiter — die Ablage ist dann schlicht leer, und eine Fehlerwand über
+   * einem Bestand, den es wahrheitsgemäss nicht gibt, wäre die schlechtere Antwort (Begründung im
+   * Kopf dieser Klasse, wörtlich).
+   */
+  async liste(): Promise<readonly Anweisung[]> {
+    return [...this.bestand.values()].map((eintrag) => structuredClone(eintrag));
+  }
 }
 
 // SCRUM-523 P.3 (WP-A2): `opts.withTx` ist NUR gesetzt, wenn der Aufrufer wirklich einen echten

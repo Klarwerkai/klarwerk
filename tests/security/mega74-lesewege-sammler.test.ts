@@ -649,6 +649,16 @@ const REGISTER: Record<string, Eintrag> = {
   // ANZAHL), beim SCHREIBEN und beim VERGLEICHEN verweigert er mit 403 — ein Vergleich über eine
   // getrimmte Teilmenge sagte „unverändert", wo der Leser die geänderte Hälfte nur nicht sehen
   // durfte.
+  // JOB 4357 · DER BESTAND. Er gibt je Anweisung den Kopf und ZWEI ZAHLEN aus und keinen einzigen
+  // Baustein — die Zahlen entstehen in `lesestand`, also in genau derselben `darfSehen`-Entscheidung
+  // je gebundener Fassung wie beim Einzelabruf darunter (`auflisten` → `listeneintrag` → `lesestand`).
+  // Ein verborgener Baustein zählt dort als verborgen; sein Titel, seine Fassungskennung und sein
+  // Rumpf haben in `AnweisungListeneintrag` überhaupt kein Feld.
+  "GET /api/gesamtanweisungen": {
+    urteil: "PRAEDIKAT",
+    grund:
+      "JOB 4357 — darfSehen je gebundenem Baustein über lesestand; die Liste nennt nur Kopf und zwei Zahlen.",
+  },
   "GET /api/gesamtanweisungen/:id": {
     urteil: "PRAEDIKAT",
     grund: "JOB 4154 — darfSehen je gebundenem Baustein; verborgene Bausteine fallen ganz weg.",

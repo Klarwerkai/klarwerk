@@ -26,6 +26,8 @@ import {
   type Aktualisierungsvorschlag,
   type Anweisung,
   type AnweisungLesestand,
+  type AnweisungListe,
+  type AnweisungListeneintrag,
   type AnweisungRepo,
   type AnweisungSichtbar,
   type AnweisungStand,
@@ -379,6 +381,68 @@ export function lesestand(
     verborgeneBausteine: verborgen,
     pruefanbindung: PRUEFANBINDUNG_OFFEN,
   };
+}
+
+// ================================================================================================
+// JOB 4357 · EIN LISTENEINTRAG — ABGELEITET AUS DEM LESESTAND, NICHT NEBEN IHM GERECHNET.
+// ================================================================================================
+//
+// DIE ENTSCHEIDUNG DIESER FUNKTION IST IHRE ERSTE ZEILE: sie ruft `lesestand` und liest dessen
+// Felder ab. Sie zählt NICHTS selbst.
+//
+// Der naheliegende Entwurf wäre eine eigene Schleife über `anweisung.bausteine` mit demselben
+// `!lage || !darf(lage)` darin. Das wäre ZWEIMAL dieselbe Regel, und die Lehre aus A22 steht
+// wörtlich in `services/app/src/sichtbarkeit.ts:12-15`: „sechs Flächen trugen dieselbe Zeile, und
+// weil niemand entschied, wie viele Zustände diese Zeile kennt, waren alle sechs falsch."
+//
+// Der Auftrag verlangt ausserdem ausdrücklich, dass die Liste „DIESELBEN Werte" nennt, die
+// `GET /api/gesamtanweisungen/:id` für denselben Betrachter liefert (Abnahmekriterium 6). Über eine
+// zweite Zählung wäre das eine Behauptung, die bei jeder künftigen Änderung an `lesestand`
+// auseinanderlaufen könnte; hier ist es eine Folge der Bauart — und deshalb macht dieselbe
+// Verstellung (der `darfSehen`-Filter in `lesestand`) BEIDE Wege rot, was die Gegenprobe des
+// Auftrags erst zu einer Aussage über die Liste macht.
+//
+// WAS DABEI VERWORFEN WIRD, ist der Punkt: Bausteine, Herkünfte, Rümpfe, Inhalte und der
+// Lückenvermerk. Aus dem Lesestand kommt hier nur der KOPF und die ZWEI ZAHLEN heraus. Der Preis
+// ist ein Lesestand, der gebaut und weggeworfen wird — er ist eine reine Funktion über schon
+// geladenen Daten und kostet keine Abfrage.
+export function listeneintrag(
+  anweisung: Anweisung,
+  fassungen: Fassungslagen,
+  sichtbar: AnweisungSichtbar | undefined,
+): AnweisungListeneintrag {
+  const gesehen = lesestand(anweisung, fassungen, sichtbar);
+  return {
+    id: gesehen.id,
+    titel: gesehen.titel,
+    stand: gesehen.stand,
+    version: gesehen.version,
+    urheber: gesehen.urheber,
+    erstelltAm: gesehen.erstelltAm,
+    geaendertAm: gesehen.geaendertAm,
+    sichtbareBausteine: gesehen.bausteine.length,
+    verborgeneBausteine: gesehen.verborgeneBausteine,
+    unvollstaendig: gesehen.unvollstaendig,
+  };
+}
+
+/**
+ * Die Reihenfolge der Liste: die zuletzt geänderte Anweisung zuerst.
+ *
+ * SIE STEHT HIER UND NICHT IN DER ABLAGE (Begründung am Port, `AnweisungRepo.liste`): zwei
+ * Implementierungen derselben Sortierregel laufen irgendwann auseinander, und dann hinge die
+ * Reihenfolge davon ab, ob eine Instanz mit oder ohne Datenbank läuft.
+ *
+ * `id` als zweiter Schlüssel ist kein Zierrat: zwei Anweisungen können im selben Augenblick
+ * entstehen (`geaendertAm` ist ein ISO-Zeitpunkt in Millisekunden, und `anlegen` setzt für Kopf und
+ * Prüfstand denselben Wert). Ohne den zweiten Schlüssel wäre ihre Reihenfolge von der Ablage
+ * abhängig — und ein Tastaturweg, der „den zweiten Eintrag" ansteuert, wäre dann nicht wiederholbar.
+ */
+function nachLetzterAenderung(a: Anweisung, b: Anweisung): number {
+  if (a.geaendertAm !== b.geaendertAm) {
+    return a.geaendertAm < b.geaendertAm ? 1 : -1;
+  }
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
 
 // ================================================================================================
@@ -885,6 +949,54 @@ export class GesamtanweisungDienst {
   async lesen(id: string, sichtbar: AnweisungSichtbar | undefined): Promise<AnweisungLesestand> {
     const { anweisung, lagen } = await this.geladen(id, sichtbar, false);
     return lesestand(anweisung, lagen, sichtbar);
+  }
+
+  /**
+   * ==============================================================================================
+   * JOB 4357 · DEN BESTAND AUFZÄHLEN — GETRIMMT WIE `lesen`, NICHT VERWEIGERT WIE `vergleichen`.
+   * ==============================================================================================
+   *
+   * DIE EINE ENTSCHEIDUNG, DIE HIER FÄLLT, IST DIE DES `streng`-SCHALTERS AUS `geladen` — und sie
+   * fällt auf `false`, also auf TRIMMEN. Der Grund ist derselbe, den `geladen` für `lesen` nennt:
+   * der Betrachter sieht, was er darf, und ERFÄHRT, dass etwas fehlt. Ein `streng: true` würde die
+   * ganze Zeile verschwinden lassen — und dann sähe „für dich verborgen" genauso aus wie „gibt es
+   * nicht". Genau diese Verwechslung soll die Liste beenden: wer eine Anweisung gespeichert hat,
+   * findet sie wieder.
+   *
+   * WAS DAS FÜR EINE VOLLSTÄNDIG VERBORGENE ANWEISUNG HEISST, ausdrücklich benannt: sie STEHT in
+   * der Liste, mit Kopf und „0 sichtbar / N verborgen". Das ist eine Auskunft über ihre Existenz und
+   * über ihren Titel — und sie ist gewollt, denn sie ist genau die Auskunft, die
+   * `GET /api/gesamtanweisungen/:id` heute schon jedem `ko.read`-Inhaber gibt (`lesen` oben:
+   * `geladen(…, false)` wirft nicht, `lesestand` trimmt). Hier entsteht also keine neue
+   * Rechteregel; hier wird die bestehende auf eine zweite Ausgabeform angewandt. Was NICHT
+   * hinausgeht, sind Titel, Fassungskennung und Rumpf der verborgenen Bausteine — dafür hat
+   * `AnweisungListeneintrag` keinen Platz.
+   *
+   * KEINE ABLAGE, KEINE LISTE — UND KEINE LEERE LISTE. Fehlt `repo.liste`, ist der Bestand
+   * UNBEKANNT, nicht leer. Ein `[]` wäre hier die Behauptung „es ist nichts gespeichert" auf
+   * Grundlage von gar keiner Lesung; `INVALID` ist die Bestandsvokabel für „so geht es nicht"
+   * (`AnweisungFehlerCode`, `gesamtanweisung-types.ts`), und ein fünfter Code ist hier verboten.
+   *
+   * EINE FASSUNGSLAGE JE ANWEISUNG, nacheinander: `fassungslagenFuer` fragt den Wissensbestand je
+   * gebundenem Baustein. Das ist der ehrliche Preis dieses Endpunkts, und er ist benannt statt
+   * versteckt — eine Anweisung ohne Bausteine kostet keine einzige Abfrage, weil die Schleife dort
+   * über eine leere Menge läuft.
+   */
+  async auflisten(sichtbar: AnweisungSichtbar | undefined): Promise<AnweisungListe> {
+    const liste = this.deps.repo.liste;
+    if (typeof liste !== "function") {
+      throw anweisungFehler(
+        "INVALID",
+        "Diese Ablage kann den Bestand nicht aufzählen — es wird deshalb kein leerer Bestand gemeldet.",
+      );
+    }
+    const bestand = [...(await liste.call(this.deps.repo))].sort(nachLetzterAenderung);
+    const eintraege: AnweisungListeneintrag[] = [];
+    for (const anweisung of bestand) {
+      const lagen = await fassungslagenFuer(anweisung.bausteine, this.deps.ko);
+      eintraege.push(listeneintrag(anweisung, lagen, sichtbar));
+    }
+    return { eintraege };
   }
 
   async kopfAendern(

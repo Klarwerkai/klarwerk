@@ -4,16 +4,21 @@
 //
 // `tests/beta-rollenabnahme/jede-registrierte-route-ist-abgenommen.test.ts` prüft das für ALLE
 // Türen der App und ist der eigentliche Wächter — er wird von diesem Auftrag NICHT angefasst und
-// NICHT gelockert. Dieser Fall hier ist enger und dafür schärfer: er fragt nur nach den zehn Türen
+// NICHT gelockert. Dieser Fall hier ist enger und dafür schärfer: er fragt nur nach den Türen
 // DIESER Gruppe, und er fragt nach ihrem INHALT, nicht nur nach ihrer Anwesenheit.
 //
-// WARUM DAS NICHT DOPPELT IST. Der grosse Wächter wäre auch dann grün, wenn alle zehn Zeilen
+// JOB 4357: es sind ELF statt zehn. Dazugekommen ist der lesende Bestand
+// (`GET /api/gesamtanweisungen`, `ko.read`, `NUR_LESEN`). NACHGEFÜHRT WIRD NUR DIE ZAHL UNTEN — kein
+// Zweig, keine Ausnahme, keine Lockerung. Die Zahl steht in diesem Fall bewusst ausgeschrieben da
+// (siehe Begründung an der Zusicherung): sie ist eine Entscheidung und soll gesehen werden.
+//
+// WARUM DAS NICHT DOPPELT IST. Der grosse Wächter wäre auch dann grün, wenn alle elf Zeilen
 // `NUR_LESEN` trügen — er misst, dass gemessen wird, nicht WAS erwartet wird. Genau dort läge der
 // teure Fehler: eine Entscheidungstür mit Leserechten sähe abgenommen aus und wäre offen. Deshalb
 // hält dieser Fall die Zuordnung gegen das, was die Route WIRKLICH fordert, gelesen aus ihrem
 // Quelltext — nicht gegen eine zweite abgeschriebene Liste.
 //
-// GEGENPROBE (gefahren, siehe RUECKGABE): eine der zehn Zeilen aus `tabelle.ts` entfernen. Dann
+// GEGENPROBE (gefahren, siehe RUECKGABE): eine der elf Zeilen aus `tabelle.ts` entfernen. Dann
 // wird `jede-registrierte-route-ist-abgenommen.test.ts` rot („Diese Türen sind registriert, aber
 // die Abnahme sagt über sie nichts") UND der erste Fall hier.
 import { readFileSync } from "node:fs";
@@ -36,8 +41,12 @@ const ZEILEN = TABELLE.filter((z) => z.gruppe === GRUPPE);
  * Recht, in der Reihenfolge ihres Auftretens.
  *
  * ERHOBEN UND NICHT ABGESCHRIEBEN: eine hier aufgezählte Erwartung wäre am Tag ihrer Entstehung
- * richtig und ab der elften Tür still falsch. Gelesen wird das `app.<verb>(<pfad>` und das
+ * richtig und ab der nächsten Tür still falsch. Gelesen wird das `app.<verb>(<pfad>` und das
  * `requirePermission("<recht>"` , das ihm als nächstes folgt.
+ *
+ * JOB 4357 hat genau das vorgeführt: die elfte Tür (`GET /api/gesamtanweisungen`) wurde von dieser
+ * Erhebung von selbst gefunden, ohne dass hier eine Zeile über sie steht — nachgeführt werden musste
+ * nur die PIN-Zahl unten.
  */
 function tuerenAusDemQuelltext(): { methode: string; pfad: string; tor: string }[] {
   const muster =
@@ -56,11 +65,12 @@ function tuerenAusDemQuelltext(): { methode: string; pfad: string; tor: string }
   });
 }
 
-describe("A2 · die zehn Türen der Gesamtanweisung in der Rollenabnahme", () => {
+describe("A2 · die elf Türen der Gesamtanweisung in der Rollenabnahme", () => {
   it("jede Tür des Quelltextes hat GENAU EINE Zeile in der Tabelle", () => {
     const tueren = tuerenAusDemQuelltext();
     // Die Zahl steht hier, weil sie sonst still veraltet — und sie ist erhoben, nicht gesetzt.
-    expect(tueren.length, "Türen im Quelltext der Route").toBe(10);
+    // JOB 4357: zehn → elf. Die elfte ist der lesende Bestand `GET /api/gesamtanweisungen`.
+    expect(tueren.length, "Türen im Quelltext der Route").toBe(11);
 
     const ausTabelle = ZEILEN.map((z) => `${z.methode} ${registrierteRoute(z)}`).sort();
     const ausQuelle = tueren.map((t) => `${t.methode} ${t.pfad}`).sort();
