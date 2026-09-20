@@ -90,8 +90,27 @@ export const AUFGELOEST = "93.184.216.34";
 
 export const GEAENDERT_AM = "2026-09-12T09:15:00Z";
 export const QUELLSTAND = Math.floor(Date.parse(GEAENDERT_AM) / 1000);
+/**
+ * JOB 4360 · DIE ZWEITE FASSUNG DERSELBEN DATEI — jemand hat sie in SharePoint überarbeitet.
+ *
+ * SPÄTER heisst hier wirklich später: der Mapper rechnet `lastModifiedDateTime` in Sekunden um
+ * (`services/sharepoint/src/mapper.ts`, `sharepointQuellstand`), und der Re-Sync des Import-Kerns
+ * übernimmt NUR bei `>` (`library-analytics/src/service.ts`, `acceptToKo`). Ein gleicher oder
+ * kleinerer Wert wäre also nicht „ein zweiter Import", sondern gar keiner — und der Fall belegte
+ * nichts.
+ */
+export const GEAENDERT_AM_NEU = "2026-09-19T14:20:00Z";
+export const QUELLSTAND_NEU = Math.floor(Date.parse(GEAENDERT_AM_NEU) / 1000);
 /** Der Text, der am Ende am zurückgelesenen Wissensobjekt stehen MUSS. */
 export const TEXT = "ZEILE EINS AUS DER DATEI\nZEILE ZWEI AUS DER DATEI";
+
+/**
+ * JOB 4360 · DIE DREI SPRACHEN, die das Haus pflegt — und in denen der Quellstand lesbar sein muss.
+ *
+ * Deutsch fährt den Hauptweg (dort hängt der Stand an einem wirklich gefahrenen Import); „en" und
+ * „nl" werden am selben Objekt, im selben Profil und über dieselbe gebaute Fläche nachgelesen.
+ */
+export const SPRACHEN = ["de", "en", "nl"] as const;
 
 export const NOTIZ = {
   id: "01NOTIZTXT",
@@ -138,6 +157,18 @@ export const doppel = {
    */
   leer: false,
   /**
+   * JOB 4360 · „die Datei wurde in SharePoint überarbeitet": dieselbe Kennung, SPÄTER geändert.
+   *
+   * Steht dieser Schalter, meldet das Double für die Notiz `GEAENDERT_AM_NEU` statt `GEAENDERT_AM`
+   * — in der LISTE und beim gezielten Abruf, denn der Übernahmeweg liest den Stand aus dem
+   * gezielten Abruf (`sharepoint-import-routes.ts`, `adapter.holeItem`). Stünde er nur an einer der
+   * beiden Stellen, zeigte die Liste etwas anderes, als der Import übernimmt.
+   *
+   * KEINE ZWEITE DATEI, KEINE ZWEITE KENNUNG: gerade das ist der Fall — dieselbe Quelle in einer
+   * neueren Fassung. Eine zweite Kennung wäre eine Erstanlage und bewiese über den Re-Sync nichts.
+   */
+  neuerStand: false,
+  /**
    * §9 · „Cache mit laufender Auffrischung": hält die LISTENantwort an (nicht den Inhaltsabruf).
    *
    * Nur mit einer angehaltenen Auffrischung ist der Zwischenzustand deterministisch messbar statt
@@ -149,6 +180,22 @@ export const doppel = {
   /** Jeder Aufruf, der weder an das Graph-Double noch an den eigenen Socket ging. Muss leer sein. */
   fremdeAufrufe: [] as string[],
 };
+
+/**
+ * JOB 4360 · Die Datei, wie das Double sie JETZT meldet — mit dem eingestellten Änderungsstand.
+ *
+ * Betroffen ist AUSSCHLIESSLICH die Notiz: die Anweisung (`ANWEISUNG`) bleibt unverändert, damit
+ * der Wiederholimport genau einen neueren Stand bringt und nicht zwei. Die Umstellung geschieht
+ * HIER und an einer Stelle, weil Liste und gezielter Abruf dieselbe Datei zeigen müssen.
+ */
+function mitStand(datei: {
+  id: string;
+  lastModifiedDateTime: string;
+}): Record<string, unknown> {
+  return doppel.neuerStand && datei.id === NOTIZ.id
+    ? { ...datei, lastModifiedDateTime: GEAENDERT_AM_NEU }
+    : { ...datei };
+}
 
 const transportDouble: SharePointInhaltsTransport = async (url, optionen) => {
   doppel.downloadAufrufe.push({ url, adresse: optionen.adresse });
@@ -211,7 +258,7 @@ export function spanneNetzAuf(): void {
       }
       return new Response(
         JSON.stringify({
-          ...datei,
+          ...mitStand(datei),
           // Die vorautorisierte Adresse kommt NUR beim gezielten Abruf mit — die Liste bekommt keine.
           ...(url.includes("downloadUrl")
             ? { "@microsoft.graph.downloadUrl": `${DOWNLOAD}${encodeURIComponent(datei.id)}` }
@@ -227,7 +274,10 @@ export function spanneNetzAuf(): void {
     if (doppel.listenHalt) {
       await doppel.listenHalt;
     }
-    return new Response(JSON.stringify({ value: doppel.leer ? [] : DATEIEN }), { status: 200 });
+    return new Response(
+      JSON.stringify({ value: doppel.leer ? [] : DATEIEN.map((d) => mitStand(d)) }),
+      { status: 200 },
+    );
   }) as unknown as typeof fetch;
 }
 
@@ -580,6 +630,15 @@ const SICHTBARE_KARTEN_MIT_TITEL = `([sel, titel]) => [...document.querySelector
 const SICHTBARE_KARTE_VORHANDEN = `([sel, titel]) => (${SICHTBARE_KARTEN_MIT_TITEL})([sel, titel]) > 0`;
 
 /**
+ * JOB 4360 · Dieselbe Zählung, aber auf eine GENAUE Zahl gewartet.
+ *
+ * Gebraucht für „genau ein Vorgang kam dazu": eine Bedingung `> 0` träte schon vor dem zweiten
+ * Import ein (die entschiedene Karte des ersten steht weiterhin da), und eine feste Zahl wäre eine
+ * Wette auf die Vorgeschichte. Die Zählung selbst wird GERUFEN, nicht abgeschrieben.
+ */
+const KARTENZAHL_ERREICHT = `([sel, titel, n]) => (${SICHTBARE_KARTEN_MIT_TITEL})([sel, titel]) === n`;
+
+/**
  * Die drei Kürzel, die der Server im Feld `error` führt (`sharepoint-import-routes.ts:114-129`) —
  * und die auf der Fläche NIE stehen dürfen: dort steht der Satz, nicht der Code.
  *
@@ -636,7 +695,39 @@ export interface GesamtwegBefund {
   objektseite: Objektseitenbefund;
   /** Die beiden Zustände aus §9, die R2 noch offen gelassen hatte. */
   zustaende: Zustandsbefund;
+  /** JOB 4360 · der Wiederholimport mit NEUERER Fassung — und was danach am Objekt stand. */
+  neueFassung: NeueFassungBefund;
   tastatur: Record<string, number>;
+}
+
+/**
+ * JOB 4360 · DIE ZWEITE FASSUNG, ANGEKOMMEN — was ein Mensch danach am Objekt liest.
+ *
+ * Die Frage dieses Abschnitts ist NICHT „hat der Server die Zahl erhöht" (das misst der Import-Kern
+ * seit 4125/4232 selbst), sondern: SIEHT es jemand? Deshalb steht hier neben dem Bestandswert auch
+ * der SICHTBARE Text, und die Kennung des Objekts steht daneben — eine zweite Kennung wäre ein
+ * zweites Wissensobjekt und damit die Antwort auf eine ganz andere Frage.
+ */
+export interface NeueFassungBefund {
+  /** Die Kennung des Objekts NACH dem zweiten Import — muss dieselbe sein wie vorher. */
+  koId: string;
+  /** Der Quellstand, den `GET /api/kos/:id` danach am Herkunftsanker führt. */
+  standAmBestand: number;
+  /** Der SICHTBARE Quellstand am wieder geöffneten Objekt (`bib-quelle-stand`). */
+  standSichtbar: string;
+  /**
+   * Wie viele Prüfkarten mit dem Dateinamen die zweite Fassung HINZUGEFÜGT hat — genau eine.
+   *
+   * GEMESSEN ALS UNTERSCHIED und nicht als feste Zahl: die Warteschlange führt auch die ENTSCHIEDENE
+   * Karte des ersten Imports weiter (gemessen im Cloud-Lauf 8a6eccae4a928c0e8cee5f5b: zwei Karten,
+   * nicht eine). Eine feste Erwartung hier wäre eine Wette auf alles, was vorher in diesem Lauf
+   * geschah; der Unterschied sagt genau das, was die Zusage meint — ein neuer Vorgang, nicht zwei.
+   */
+  kartenDazu: number;
+  /** Wie viele sichtbare Prüfkarten mit dem Dateinamen danach dastanden — der Rohwert dazu. */
+  kartenNachher: number;
+  /** Der sichtbare Stand je Sprache — de aus dem Hauptweg, en/nl am selben Objekt nachgelesen. */
+  jeSprache: Record<string, string>;
 }
 
 /**
@@ -655,8 +746,17 @@ export interface Objektseitenbefund {
   text: string;
   /** Der sichtbare Quellenabschnitt hinter „Mehr" — Herkunft und Originaladresse. */
   quellen: string;
-  /** Der sichtbare Stand der Quelle (`bib-quelle-zeit`). */
-  quellenStand: string;
+  /** Die sichtbare AUFNAHMEZEIT der Quelle (`bib-quelle-zeit`) — wann sie ans Objekt kam. */
+  quellenZeit: string;
+  /**
+   * JOB 4360 · DER SICHTBARE QUELLSTAND (`bib-quelle-stand`) — WELCHE Fassung angekommen ist.
+   *
+   * Er ist etwas ANDERES als `quellenZeit`, und bis JOB 4360 hiess das Feld hier missverständlich
+   * „quellenStand", obwohl es die Aufnahmezeit trug: die Zeit sagt, wann die Quelle ans Objekt kam,
+   * der Stand sagt, welche Fassung der Datei dabei übernommen wurde. Nach einem Wiederholimport
+   * ändert sich der Stand — die Zeit allein sagte darüber nichts.
+   */
+  quellstand: string;
 }
 
 /** Die §9-Zustände, im echten Browser gestellt statt beschrieben. */
@@ -672,8 +772,15 @@ export interface Zustandsbefund {
 export interface GesamtwegAufbau {
   browser: Browser;
   strecke: Strecke;
-  /** Die SOLLSÄTZE kommen aus `i18n.ts`, nicht aus diesem Test (`…-montiert.test.tsx:10-12`). */
-  t: Uebersetzer;
+  /**
+   * Die SOLLSÄTZE kommen aus `i18n.ts`, nicht aus diesem Test (`…-montiert.test.tsx:10-12`).
+   *
+   * JOB 4360: aus dem einen deutschen Übersetzer ist ein KATALOG JE SPRACHE geworden. Der Grund ist
+   * kein Aufräumen, sondern eine Zusage: der Quellstand trägt eine Beschriftung, und die muss in
+   * de/en/nl stehen. Deutsch bleibt der Hauptweg (`katalog("de")`), „en"/„nl" werden am selben
+   * Objekt nachgelesen — gegen DENSELBEN Katalog und nicht gegen abgeschriebene Wörter.
+   */
+  katalog: (sprache: string) => Uebersetzer;
   adminEmail: string;
 }
 
@@ -698,7 +805,7 @@ export const BREIT = { width: 1280, height: 900 };
  */
 export async function fahreDenGesamtweg(a: GesamtwegAufbau): Promise<GesamtwegBefund> {
   const basis = a.strecke.basis;
-  const t = a.t;
+  const t = a.katalog("de");
   const tastatur: Record<string, number> = {};
   const { kontext, seite } = await profilMitStufe2(a.browser);
   try {
@@ -1008,6 +1115,24 @@ export async function fahreDenGesamtweg(a: GesamtwegAufbau): Promise<GesamtwegBe
     // ══ 12. DAS WISSENSOBJEKT, ÜBER DIE OBERFLÄCHE WIEDER GEÖFFNET (Lieferung 3 e). ═══════════
     const objektseite = await liesDieObjektseite(seite, basis, koId, t, tastatur);
 
+    // ══ 13. JOB 4360 · DIE ZWEITE FASSUNG DERSELBEN DATEI — angekommen und ABLESBAR. ══════════
+    const zweiteFassung = await fahreDieZweiteFassung({ seite, basis, koId, t, tastatur });
+
+    // ══ 14. JOB 4360 · UND DERSELBE QUELLSTAND IN „en" UND „nl". ══════════════════════════════
+    //
+    // ZULETZT, und das ist kein Geschmack: gemessen wird der Stand der ZWEITEN Fassung. Stünde die
+    // Sprachrunde vor Abschnitt 13, prüfte sie den Ausgangswert — und liesse offen, ob die
+    // fremdsprachige Fläche eine Aktualisierung überhaupt mitbekommt.
+    const jeSprache = await liesDenStandInDenAnderenSprachen({
+      kontext,
+      seite,
+      basis,
+      koId,
+      katalog: a.katalog,
+      tastatur,
+      sollStand: QUELLSTAND_NEU,
+    });
+
     return {
       koId,
       kandidatId: (kandidat as { id: string }).id,
@@ -1027,9 +1152,19 @@ export async function fahreDenGesamtweg(a: GesamtwegAufbau): Promise<GesamtwegBe
       fehlerlagen,
       objektseite,
       zustaende,
+      neueFassung: {
+        ...zweiteFassung,
+        // Deutsch kommt aus dem Hauptweg (Abschnitt 13), „en"/„nl" aus Abschnitt 14 — DERSELBE
+        // Wert, dreimal gelesen, nie abgeschrieben.
+        jeSprache: { de: zweiteFassung.standSichtbar, ...jeSprache },
+      },
       tastatur,
     };
   } finally {
+    // JOB 4360: der Schalter des Doubles gehört zu DIESEM Lauf und nicht zum nächsten — beide
+    // Testdateien teilen sich das Modul (`doppel`), und ein stehen gebliebener „neuer Stand" wäre
+    // im nächsten Lauf eine Vorbedingung, die niemand gesetzt hat.
+    doppel.neuerStand = false;
     await kontext.close();
   }
 }
@@ -1191,24 +1326,7 @@ async function liesDieObjektseite(
   }
 
   // HERKUNFT UND STAND liegen hinter „Mehr" → „Quellen und Belege". Beides mit der Tastatur.
-  tastatur.mehrAufklappen = await tastaturAusloesen(seite, t("lib.lesen.mehr"));
-  const quellenAbschnitt = `details[data-bib-abschnitt="quellen"]`;
-  await warteAufSichtbar(
-    seite,
-    `${quellenAbschnitt} > summary`,
-    "der Abschnitt „Quellen und Belege“",
-  );
-  tastatur.quellenAufklappen = await mitLeertaste(
-    seite,
-    `${quellenAbschnitt} > summary`,
-    "Abschnitt „Quellen und Belege“",
-  );
-  await warteAufSichtbar(seite, `${quellenAbschnitt} ul`, "die Quellenliste des Wissensobjekts");
-  const quellen = await sichtbarerText(
-    seite,
-    `${quellenAbschnitt} ul`,
-    "die Quellenliste des Wissensobjekts",
-  );
+  const quellen = await klappeQuellenAuf(seite, t, tastatur, "");
   expect(quellen, "am wieder geöffneten Objekt steht die Herkunft SharePoint nicht").toContain(
     "SharePoint",
   );
@@ -1216,17 +1334,339 @@ async function liesDieObjektseite(
     NOTIZ.webUrl,
   );
 
-  // DER STAND DER QUELLE, sichtbar daneben (`MehrAbschnitte.tsx:1184`). Er wird NICHT nachgerechnet
-  // — eine zweite Zeitformatierung im Test wäre eine zweite Wahrheit. Verlangt ist, dass überhaupt
-  // ein lesbarer Stand dasteht; das Produkt zeigt an dieser Stelle bewusst NICHTS statt eines
-  // geratenen Datums (`koSource.ts:155-157`), und genau dieses Nichts soll auffallen.
-  const quellenStand = await sichtbarerText(
+  // DIE AUFNAHMEZEIT DER QUELLE, sichtbar daneben (`MehrAbschnitte.tsx`). Sie wird NICHT
+  // nachgerechnet — eine zweite Zeitformatierung im Test wäre eine zweite Wahrheit. Verlangt ist,
+  // dass überhaupt eine lesbare Zeit dasteht; das Produkt zeigt an dieser Stelle bewusst NICHTS
+  // statt eines geratenen Datums (`koSource.ts`), und genau dieses Nichts soll auffallen.
+  const quellenZeit = await sichtbarerText(
     seite,
     testid("bib-quelle-zeit"),
-    "der sichtbare Stand der Quelle",
+    "die sichtbare Aufnahmezeit der Quelle",
   );
-  expect(quellenStand, "neben der Herkunft steht kein lesbarer Stand").not.toBe("");
-  return { titel, text, quellen, quellenStand };
+  expect(quellenZeit, "neben der Herkunft steht keine lesbare Aufnahmezeit").not.toBe("");
+
+  // ── JOB 4360 · UND DER QUELLSTAND: WELCHE FASSUNG DER DATEI HIER ANGEKOMMEN IST. ──────────
+  const quellstand = await liesDenQuellstand(seite, t, QUELLSTAND, "erster Import");
+  return { titel, text, quellen, quellenZeit, quellstand };
+}
+
+/** Der Quellenabschnitt, an EINER Stelle — die Schreibweise läuft sonst auseinander. */
+const QUELLEN_ABSCHNITT = `details[data-bib-abschnitt="quellen"]`;
+
+/**
+ * „Mehr" und „Quellen und Belege" mit der TASTATUR öffnen und die Quellenliste sichtbar lesen.
+ *
+ * `marke` unterscheidet die Tastaturstationen der verschiedenen Durchgänge (erster Import, zweite
+ * Fassung, die beiden anderen Sprachen). Sie sind EINZELN gezählt und nicht überschrieben: sonst
+ * bliebe unbemerkt, dass genau einer dieser Wege nicht mehr mit der Tastatur erreichbar ist.
+ *
+ * Beide Klappen stehen nach jedem Seitenaufbau wieder zu (`BibliothekLesen.tsx`, `mehrOffen`, und
+ * `MehrAbschnitte.tsx`, `offene` — beides `useState` ohne Speicher), der Weg ist also nach jedem
+ * `goto` derselbe.
+ */
+async function klappeQuellenAuf(
+  seite: Seite,
+  t: Uebersetzer,
+  tastatur: Record<string, number>,
+  marke: string,
+): Promise<string> {
+  tastatur[`mehrAufklappen${marke}`] = await tastaturAusloesen(seite, t("lib.lesen.mehr"));
+  await warteAufSichtbar(
+    seite,
+    `${QUELLEN_ABSCHNITT} > summary`,
+    "der Abschnitt „Quellen und Belege“",
+  );
+  tastatur[`quellenAufklappen${marke}`] = await mitLeertaste(
+    seite,
+    `${QUELLEN_ABSCHNITT} > summary`,
+    "Abschnitt „Quellen und Belege“",
+  );
+  // GEWARTET WIRD AUF DAS DASEIN, GEPRÜFT WIRD DIE SICHTBARKEIT — und das ist kein Rückschritt.
+  //
+  // Die Zusicherung bleibt Zeichen für Zeichen dieselbe: `sichtbarerText` unten stellt genau die
+  // Fragen, die `warteAufSichtbar` gestellt hätte, samt jedem texttragenden Nachkommen. Verschieden
+  // ist nur die MELDUNG im Fehlerfall. Gemessen in der Ausblend-Gegenprobe dieser Runde
+  // (Arbeitsprüfung `df853724cce8423f83d2156d1d8b3a4e`): mit `display:none` am Quellstand wurde die
+  // ganze `ul` „nicht sichtbar", die Wartebedingung trat nie ein, und der Lauf scheiterte nach
+  // 60 000 ms an der Frist — rot, aber die Meldung zeigte auf die Uhr statt auf das ausgeblendete
+  // Feld. Dieselbe Lehre steht in Abschnitt 8 dieser Datei: die Meldung soll auf die Sache zeigen,
+  // nicht auf ihre Folge.
+  await warte(
+    seite,
+    "(sel) => document.querySelector(sel) !== null",
+    "die Quellenliste des Wissensobjekts steht im Baum",
+    `${QUELLEN_ABSCHNITT} ul`,
+    60_000,
+  );
+  return sichtbarerText(seite, `${QUELLEN_ABSCHNITT} ul`, "die Quellenliste des Wissensobjekts");
+}
+
+/**
+ * JOB 4360 · DER SICHTBARE QUELLSTAND — EXAKT, nicht „enthält".
+ *
+ * ================================================================================================
+ * RUNDE 2, BENs KORREKTURPFLICHT 1 — WARUM `toContain` HIER NICHT GENÜGT.
+ * ================================================================================================
+ *
+ * BEN hat in `koSource.ts` `String(sourceVersion)` durch `String(sourceVersion) + "0"` ersetzt. Die
+ * Fläche zeigte danach „Version 17892045000" statt „Version 1789204500" — ein falscher Quellstand,
+ * und ein Mensch hätte eine Fassung gelesen, die es nie gab. Dieser Nachweis blieb GRÜN (Cloud-Lauf
+ * `c769261f36b41f912ee93a35`, `BEN falsified-browser EXIT=0`), denn „17892045000" ENTHÄLT
+ * „1789204500". Eine Teilzeichenkette ist für eine ZAHL die falsche Frage.
+ *
+ * GEPRÜFT WIRD DESHALB IN ZWEI SCHRITTEN, und beide sind nötig:
+ *   1. DIE ZIFFERNFOLGE FÜR SICH, exakt. Sie fängt genau BENs Fall — eine angehängte, eine
+ *      fehlende oder eine vorangestellte Ziffer macht rot, und die Meldung zeigt auf die Zahl.
+ *   2. DER GANZE SICHTBARE TEXT, exakt gegen „<Beschriftung> <Wert>". Er fängt alles, was die
+ *      Ziffernprüfung nicht sieht: eine fehlende Beschriftung, ein zweiter Wert daneben, eine
+ *      angehängte Einheit, ein Platzhalter hinter der Zahl.
+ * Schritt 2 allein täte es auch, Schritt 1 steht davor, weil seine Meldung die Sache benennt statt
+ * zwei lange Zeichenketten gegeneinanderzustellen.
+ *
+ * DER SOLLWERT WIRD ZUSAMMENGESETZT, NICHT ABGESCHRIEBEN: Beschriftung aus dem Katalog der GERADE
+ * eingestellten Sprache, Wert aus derselben API-Antwort, die wenige Zeilen vorher gelesen wurde.
+ * Damit ist auch die zweite Zusage exakt: ein nur auf Deutsch vorhandenes Wort wäre in „nl" eine
+ * Lücke, die niemand sähe.
+ *
+ * Gelesen wird mit `sichtbarerText`: DOM-Anwesenheit ist kein Nachweis (Lehre 4295 R1–R3).
+ */
+async function liesDenQuellstand(
+  seite: Seite,
+  t: Uebersetzer,
+  sollStand: number,
+  wo: string,
+): Promise<string> {
+  const gelesen = await sichtbarerText(
+    seite,
+    testid("bib-quelle-stand"),
+    `der sichtbare Quellstand der Quelle (${wo})`,
+  );
+  // Die Ziffern des sichtbaren Textes, als eine Zeichenkette. Steht dort mehr als eine Zahl oder
+  // eine Ziffer zu viel, stimmt sie nicht mehr mit dem Bestand überein.
+  const ziffern = gelesen.replace(/\D+/g, "");
+  expect(
+    ziffern,
+    `${JOB}: am Objekt steht als Quellstand nicht GENAU der gespeicherte Wert ${sollStand} (${wo}) — sichtbare Ziffern: „${ziffern}", gelesen: „${gelesen}"`,
+  ).toBe(String(sollStand));
+  const erwartet = `${t("w2.source.version")} ${sollStand}`;
+  expect(
+    gelesen,
+    `${JOB}: der sichtbare Quellstand ist nicht „${erwartet}" (${wo}) — gelesen: „${gelesen}"`,
+  ).toBe(erwartet);
+  return gelesen;
+}
+
+/**
+ * ================================================================================================
+ * JOB 4360 · DIE ZWEITE FASSUNG DERSELBEN DATEI — und ob ein Mensch ihr Ankommen SIEHT.
+ * ================================================================================================
+ *
+ * DER SATZ, DEN DIESER ABSCHNITT MISST: „Jemand überarbeitet die Datei in SharePoint. Dieselbe
+ * Person importiert sie erneut, nimmt sie an — und liest am Wissensobjekt, dass jetzt die NEUE
+ * Fassung dort steht."
+ *
+ * WARUM DAS NICHT SCHON ANDERSWO STEHT. Dass der Import-Kern den höheren Stand übernimmt, misst
+ * `tests/app/import-update-versioning.test.ts` seit WP-IC-6b am Dienst. Dass er ihn danach an
+ * `GET /api/kos/:id` ausliefert, misst Abschnitt 8 dieser Strecke. Was bis JOB 4360 NIRGENDS stand:
+ * dass irgendjemand den Unterschied zwischen erster und zweiter Fassung an der Fläche ABLESEN kann.
+ * Genau das war die offene Bestellung aus 4295 R3/R4.
+ *
+ * DIE ENTSCHEIDENDE ZEILE IST DER VERGLEICH ZWEIER VERSCHIEDENER WERTE: vorher stand
+ * `QUELLSTAND` sichtbar da (Abschnitt 12), nachher `QUELLSTAND_NEU`. Ein Test, der nur „irgendeine
+ * Zahl" verlangte, bliebe auch dann grün, wenn die Fläche den alten Stand einfach stehen liesse —
+ * und das ist genau der Fehler, den dieser Auftrag ausschliesst.
+ *
+ * UND ES ENTSTEHT KEIN ZWEITES WISSENSOBJEKT: dieselbe Kennung vorher wie nachher. Der Re-Sync
+ * schreibt das BESTEHENDE Objekt fort (`library-analytics/src/service.ts`, `acceptToKo`); eine
+ * zweite Kennung wäre eine Dublette und keine neue Fassung.
+ */
+async function fahreDieZweiteFassung(a: {
+  seite: Seite;
+  basis: string;
+  koId: string;
+  t: Uebersetzer;
+  tastatur: Record<string, number>;
+}): Promise<Omit<NeueFassungBefund, "jeSprache">> {
+  const { seite, basis, koId, t, tastatur } = a;
+  // Ab hier meldet die Gegenstelle die Notiz mit einem SPÄTEREN Änderungszeitpunkt — dieselbe
+  // Kennung, dieselbe Adresse, neuer Stand.
+  doppel.neuerStand = true;
+
+  // ── Zurück auf die Importseite, frisch geladen: die Liste holt den neuen Stand selbst. ─────
+  await seite.goto(`${basis}/import`, { waitUntil: "domcontentloaded" });
+  await warteAufSichtbar(
+    seite,
+    testid(`sharepoint-datei-${NOTIZ.id}`),
+    "die SharePoint-Dateiliste vor dem Import der zweiten Fassung",
+  );
+
+  // ── DER BEZUGSWERT: was in der Warteschlange VOR der zweiten Fassung sichtbar stand. ──────
+  // Sie wird dafür zuerst aufgeklappt — eine zugeklappte Liste zeigt niemandem etwas, und gezählt
+  // wird nur, was ein Mensch sieht.
+  tastatur.warteschlangeAufklappenZweiteFassung = await mitLeertaste(
+    seite,
+    "details#import-review-queue > summary",
+    "Verlaufskasten der Prüf-Warteschlange (zweite Fassung)",
+  );
+  await warte(
+    seite,
+    SICHTBARE_KARTE_VORHANDEN,
+    "die Prüf-Warteschlange führt die Datei schon vor der zweiten Fassung SICHTBAR",
+    [testid("imp-kandidat-titel"), NOTIZ.name],
+    60_000,
+  );
+  const kartenVorher = await seite.evaluate<number>(fn(SICHTBARE_KARTEN_MIT_TITEL), [
+    testid("imp-kandidat-titel"),
+    NOTIZ.name,
+  ]);
+
+  tastatur.ankreuzenZweiteFassung = await mitLeertaste(
+    seite,
+    `[data-testid="sharepoint-datei-${NOTIZ.id}"]`,
+    `Ankreuzfeld ${NOTIZ.name} (zweite Fassung)`,
+  );
+  await warte(
+    seite,
+    `(id) => (document.querySelector('[data-testid="sharepoint-inhaltstyp-' + id + '"]') || {}).dataset?.gemessen === "text"`,
+    "der Befund zur zweiten Fassung steht an der Zeile",
+    NOTIZ.id,
+    60_000,
+  );
+  tastatur.uebernehmenZweiteFassung = await tastaturAusloesen(
+    seite,
+    t("imp.sharepoint.uebernehmen"),
+  );
+  await warteAufSichtbar(
+    seite,
+    testid("sharepoint-ergebnis"),
+    "das Ergebnisbild der zweiten Fassung",
+  );
+
+  // ── GENAU EIN NEUER VORGANG — an der Liste im Browser gesehen, nicht an einer Antwortzahl. ─
+  //
+  // Gewartet wird auf `kartenVorher + 1`: die zweite Fassung legt einen Vorgang an, keine zwei.
+  // Bliebe es bei `kartenVorher`, hätte der Import gar nichts eingereiht (dann liefe die Annahme
+  // gleich darauf ins Leere) — beide Abwege fallen hier auf, bevor sie eine Folge haben.
+  const kartenNachher = kartenVorher + 1;
+  await warte(
+    seite,
+    KARTENZAHL_ERREICHT,
+    `die Prüf-Warteschlange führt die Datei ${kartenNachher}-mal SICHTBAR (vorher ${kartenVorher})`,
+    [testid("imp-kandidat-titel"), NOTIZ.name, kartenNachher],
+    60_000,
+  );
+  tastatur.annehmenZweiteFassung = await tastaturAusloesen(seite, t("imp.accept"));
+  await warte(
+    seite,
+    `(soll) => [...document.querySelectorAll('button, a[href], [role="button"]')]
+       .every((k) => !(k.textContent || "").includes(soll))`,
+    "die zweite Fassung ist entschieden — kein Annahmeknopf mehr auf der Seite",
+    t("imp.accept"),
+    60_000,
+  );
+
+  // ── DER BESTAND, aus der Seite heraus gelesen: derselbe Träger, neuer Stand. ───────────────
+  const kandidaten = await ausDerSeite<{ id: string; status: string; koId: string | null }[]>(
+    seite,
+    "/api/library/import/candidates",
+  );
+  const zweite = kandidaten.filter((k) => k.status === "angenommen" && k.koId !== null);
+  expect(
+    [...new Set(zweite.map((k) => k.koId))],
+    "die zweite Fassung ist in ein ANDERES Wissensobjekt gelaufen",
+  ).toEqual([koId]);
+  const ko = await ausDerSeite<{
+    sources: { externalId?: string; sourceVersion?: number }[];
+  }>(seite, `/api/kos/${koId}`);
+  const anker = ko.sources.find((s) => s.externalId === NOTIZ.id);
+  expect(anker, "nach der zweiten Fassung hängt am Objekt kein Herkunfts-Anker mehr").toBeDefined();
+  expect(anker?.sourceVersion, "der Bestand führt nicht den neuen Quellstand").toBe(QUELLSTAND_NEU);
+
+  // ── UND JETZT MIT DEN AUGEN EINES MENSCHEN: das Objekt, wieder geöffnet. ───────────────────
+  await seite.goto(`${basis}/wissen/${koId}`, { waitUntil: "domcontentloaded" });
+  await warteAufSichtbar(seite, testid("bib-titel"), "der Titel nach der zweiten Fassung");
+  await klappeQuellenAuf(seite, t, tastatur, "ZweiteFassung");
+  const standSichtbar = await liesDenQuellstand(seite, t, QUELLSTAND_NEU, "zweite Fassung");
+  // DIE ZEILE, DIE DEN UNTERSCHIED MACHT: der ALTE Stand steht nicht mehr da. Ohne sie bliebe eine
+  // Fläche grün, die beide Stände nebeneinander zeigt oder den alten nie ablöst.
+  expect(
+    standSichtbar,
+    `${JOB}: nach der zweiten Fassung steht immer noch der alte Quellstand ${QUELLSTAND} da`,
+  ).not.toContain(String(QUELLSTAND));
+  return {
+    koId,
+    standAmBestand: Number(anker?.sourceVersion),
+    standSichtbar,
+    kartenDazu: kartenNachher - kartenVorher,
+    kartenNachher,
+  };
+}
+
+/**
+ * ================================================================================================
+ * JOB 4360 · DERSELBE QUELLSTAND IN „en" UND „nl" — im ECHTEN Browser, nicht im Katalogtest.
+ * ================================================================================================
+ *
+ * WARUM ES NICHT REICHT, DEN KATALOG ZU BEFRAGEN (Lehre 4265 R1): dass `w2.source.version` in drei
+ * Sprachen gepflegt ist, sagt nichts darüber, ob das Wort durch die gebaute Fläche bis auf den
+ * Bildschirm kommt. Gemessen wird deshalb dasselbe Objekt, im selben Profil, über dieselbe Fläche —
+ * nur die gespeicherte Sprachwahl wechselt.
+ *
+ * WIE DIE SPRACHE WECHSELT UND WARUM DAS EHRLICH IST: `profil` legt die Wahl als Startskript in den
+ * Endgerätespeicher (`sprachwahl.ts`, `kw.sprache`, gelesen beim Start von `i18n.ts`). Ein WEITERES
+ * Startskript läuft NACH dem ersten und überschreibt den Wert — das ist genau das, was ein Mensch
+ * hinterlässt, der die Sprache umstellt. Das GEBIETSSCHEMA des Profils bleibt dabei `de-DE`
+ * (`browserweg.ts`, `GEBIETSSCHEMA`): erscheint das niederländische Wort, dann WEIL die Fläche die
+ * gespeicherte Wahl liest — und nicht, weil die Umgebung sie verraten hat.
+ *
+ * UND DER WECHSEL WIRD NACHGEMESSEN, nicht angenommen: erst muss `<html lang>` auf der neuen
+ * Sprache stehen. Ohne diese Zeile läse ein fehlgeschlagener Wechsel weiterhin die deutsche Fläche,
+ * und „Version" stünde dort auch auf Englisch — der Fall bliebe grün und bewiese nichts.
+ */
+async function liesDenStandInDenAnderenSprachen(a: {
+  kontext: Kontext;
+  seite: Seite;
+  basis: string;
+  koId: string;
+  katalog: (sprache: string) => Uebersetzer;
+  tastatur: Record<string, number>;
+  sollStand: number;
+}): Promise<Record<string, string>> {
+  const gelesen: Record<string, string> = {};
+  for (const sprache of SPRACHEN) {
+    if (sprache === "de") {
+      continue;
+    }
+    const t = a.katalog(sprache);
+    await a.kontext.addInitScript(
+      `try { localStorage.setItem("kw.sprache", ${JSON.stringify(sprache)}); } catch (e) {}`,
+    );
+    await a.seite.goto(`${a.basis}/wissen/${a.koId}`, { waitUntil: "domcontentloaded" });
+    await warte(
+      a.seite,
+      "(s) => document.documentElement.lang === s",
+      `die Fläche steht auf „${sprache}"`,
+      sprache,
+      60_000,
+    );
+    await warteAufSichtbar(a.seite, testid("bib-titel"), `der Titel in „${sprache}"`);
+    await klappeQuellenAuf(a.seite, t, a.tastatur, `_${sprache}`);
+    const stand = await liesDenQuellstand(a.seite, t, a.sollStand, `Sprache ${sprache}`);
+    // UND ES IST WIRKLICH DIESE SPRACHE: jede ANDERE Beschriftung, die sich von dieser
+    // unterscheidet, darf hier nicht stehen. Wo zwei Kataloge dasselbe Wort führen (de/en:
+    // „Version"), sagt diese Zeile nichts — und behauptet auch nichts.
+    for (const andere of SPRACHEN) {
+      const fremd = a.katalog(andere)("w2.source.version");
+      if (fremd !== t("w2.source.version")) {
+        expect(
+          stand,
+          `${JOB}: in „${sprache}" steht die Beschriftung aus „${andere}" („${fremd}")`,
+        ).not.toContain(fremd);
+      }
+    }
+    gelesen[sprache] = stand;
+  }
+  return gelesen;
 }
 
 /**
@@ -1391,7 +1831,13 @@ export function protokollzeile(a: {
     `text="${a.befund.gelesenerText.slice(0, 48)}"`,
     // SICHTBAR gelesen, am WIEDER GEÖFFNETEN Objekt — die Station, die R1 und R2 gefehlt hat.
     `sichtbar-am-objekt="${a.befund.objektseite.text.replace(/\s+/g, " ").slice(0, 48)}"`,
-    `stand-sichtbar="${a.befund.objektseite.quellenStand}"`,
+    `aufnahmezeit-sichtbar="${a.befund.objektseite.quellenZeit}"`,
+    // JOB 4360: WELCHE FASSUNG — erst nach dem ersten Import, dann nach der zweiten, je Sprache.
+    `quellstand-sichtbar="${a.befund.objektseite.quellstand}"`,
+    `quellstand-nach-zweiter-fassung="${a.befund.neueFassung.standSichtbar}"`,
+    `quellstand-je-sprache=${Object.entries(a.befund.neueFassung.jeSprache)
+      .map(([sprache, wert]) => `${sprache}:"${wert}"`)
+      .join(",")}`,
     `fehlerlagen=${a.befund.fehlerlagen.length}`,
     "zustaende=leer+auffrischung",
   ].join(" · ");

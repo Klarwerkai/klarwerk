@@ -1187,6 +1187,27 @@ export function MehrAbschnitte({
                             {nachweis.zeit}
                           </span>
                         ) : null}
+                        {/* JOB 4360 — WELCHE FASSUNG DER QUELLE HIER ANGEKOMMEN IST.
+                            Neben der Aufnahmezeit, weil beide dieselbe Frage beantworten („wie alt
+                            ist das hier?") und ein Mensch sie zusammen liest: die Zeit sagt, WANN
+                            die Quelle ans Objekt kam, der Stand sagt, WELCHE Fassung dabei
+                            übernommen wurde. Nach einem Wiederholimport ändert sich der Stand, die
+                            Zeit allein sagte darüber nichts.
+                            DIE BESCHRIFTUNG STEHT DABEI, und sie ist die VORHANDENE (`w2.source.version`,
+                            de/en/nl gepflegt): anders als ein Datum ist eine nackte Zahl nicht aus
+                            sich heraus lesbar — „1757668500" ohne Wort davor wäre ein Rätsel. Eine
+                            NEUE Beschriftung gibt es dafür nicht; der Import-Ergebnisbericht nennt
+                            denselben Wert schon unter demselben Schlüssel (`lib/importResultView.ts`).
+                            FEHLEN HEISST FEHLEN: eine Quelle ohne gespeicherten Stand zeigt hier
+                            NICHTS — kein „—", keine geratene 1 (`lib/koSource.ts`, `quellstand`). */}
+                        {nachweis.stand ? (
+                          <span
+                            data-testid="bib-quelle-stand"
+                            className="font-mono text-[10px] text-muted-2"
+                          >
+                            {`${t("w2.source.version")} ${nachweis.stand}`}
+                          </span>
+                        ) : null}
                       </div>
                       {/* DIE DATEI, AUS DER DIE BELEGSTELLE STAMMT — unter dem Namen und damit
                           unmittelbar über der Adresse, dieselbe Reihenfolge wie an der Prüfkarte

@@ -24,17 +24,21 @@
 // Liegt `dist` schon vor, wird nichts gebaut.
 //
 // PRÜFGRENZE, LAUT GEMELDET (Lehre 12.09., JOB 3668): Ohne echte PostgreSQL wird der Grund SICHTBAR
-// auf stderr gemeldet und übersprungen. Ein stiller Skip sähe aus wie ein bestandener Lauf. Auf dem
-// heutigen Prüfplatz ist `KLARWERK_PG_TEST_URL` erfahrungsgemäss NICHT gesetzt
-// (`PRIORITAETEN.md`, Zeile OFFICE-PG-ABNAHME) — deshalb trägt `gesamtweg-im-echten-browser.test.ts`
-// den Nachweis und diese Datei den Beleg, dass dieselbe Strecke auch gegen PG läuft, sobald die
-// Datenbank da ist.
+// auf stderr gemeldet und übersprungen. Ein stiller Skip sähe aus wie ein bestandener Lauf.
+//
+// JOB 4360 RUNDE 2 — UND DER SKIP IST NICHT MEHR DER REGELFALL. Bis hierher hing dieser Lauf ALLEIN
+// an `KLARWERK_PG_TEST_URL`; wo sie fehlte, schwieg er, und der SQL-Nachweis blieb unerbracht (BENs
+// Messung zu Runde 1: „Tests 1 skipped (1)"). Die Datenbank wird jetzt GESUCHT statt vorausgesetzt —
+// angebotene Instanz zuerst, sonst ein Testcontainer, und nur wenn beides fehlt ein benannter Skip
+// (Auswahlreihenfolge unten am `beforeAll`). Der Satz „diese Datei trägt nur den Beleg, sobald die
+// Datenbank da ist" gilt damit nicht mehr; er stand hier und ist ersetzt, nicht danebengelassen.
 //
 // KEINE PRODUKTIVDATEN: ausschliesslich eine Wegwerf-Datenbank mit `test` im Namen, am Ende entfernt.
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { Pool } from "pg";
+import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import i18n from "../../apps/web/src/i18n";
 import { createPool, migrate } from "../../services/app/src/db";
@@ -46,6 +50,8 @@ import {
   JOB,
   NOTIZ,
   QUELLSTAND,
+  QUELLSTAND_NEU,
+  SPRACHEN,
   TEXT,
   type Uebersetzer,
   doppel,
@@ -61,9 +67,13 @@ import {
 
 const ADMIN = "pg-gesamtweg-admin@sharepoint-4295.test";
 
-const katalog = i18n.getFixedT("de");
-const t: Uebersetzer = (schluessel, werte) =>
-  werte === undefined ? katalog(schluessel) : katalog(schluessel, werte);
+/** JOB 4360: je Sprache gebunden — Begründung wörtlich wie in `gesamtweg-im-echten-browser.test.ts`. */
+const uebersetzer = (sprache: string): Uebersetzer => {
+  const katalog = i18n.getFixedT(sprache);
+  return (schluessel, werte) =>
+    werte === undefined ? katalog(schluessel) : katalog(schluessel, werte);
+};
+const t: Uebersetzer = uebersetzer("de");
 
 /** Zusammengesetzt statt ausgeschrieben — s. `tests/neuinstallation/…` (Fall N3 dort). */
 const PG_SCHEMA = "postgresql:";
@@ -119,30 +129,84 @@ function stelleFlaecheBereit(): string {
   return `gebaut in ${Date.now() - begonnen} ms`;
 }
 
+/**
+ * ================================================================================================
+ * JOB 4360 · RUNDE 2 — DIE DATENBANK WIRD GESUCHT, NICHT VORAUSGESETZT (BENs Korrekturpflicht 2).
+ * ================================================================================================
+ *
+ * DER BEFUND. In Runde 1 hing dieser Lauf allein an `KLARWERK_PG_TEST_URL`. Auf dem Cloud-Prüfplatz
+ * ist sie nicht gesetzt; BEN mass deshalb „Tests 1 skipped (1) · keine gesicherte
+ * KLARWERK_PG_TEST_URL" und urteilte zu K1 richtig: der SQL-Nachweis war nicht erbracht. Ein
+ * übersprungener Fall ist kein bestandener.
+ *
+ * DIE AUSWAHLREIHENFOLGE, wörtlich dieselbe wie in `tests/security/suchdeckel-trim-paritaet.
+ * integration.test.ts:363-381` (JOB 4359, von Codex freigegeben) — und in genau dieser Ordnung:
+ *
+ *   1. `guardedLocalPgTestUrl()` — eine angebotene, vom Wächter freigegebene LAUFENDE Instanz. Sie
+ *      hat Vorrang: sie ist da, sie kostet nichts, und sie ist das, was der Prüfplatz zusagt.
+ *   2. `KLARWERK_PG_TEST_URL` gesetzt, aber vom Wächter ABGELEHNT → KEIN Container-Rückfall. Wer
+ *      eine Datenbank anbietet, deren Name kein „test" trägt, bekommt keine zweite Chance hintenrum;
+ *      der Grund steht auf stderr, und dieser Lauf wird übersprungen.
+ *   3. Sonst ein Testcontainer `postgres:16-alpine`. Das ist der Weg, den dieser Auftrag ergänzt:
+ *      wo eine Container-Laufzeit da ist, LÄUFT der Fall, statt zu schweigen.
+ *   4. Weder noch → sichtbarer Skip mit dem Grund, der wirklich zutraf.
+ *
+ * WAS AUSDRÜCKLICH KEIN SKIP IST: alles nach einer erreichbaren Datenbank. Schlägt `CREATE DATABASE`
+ * oder `migrate` fehl, fliegt der Fehler und färbt rot (Lehre 4299 R1: eine kaputte Migration darf
+ * nicht aussehen wie ein fehlender Prüfplatz).
+ *
+ * KEINE PRODUKTIVDATEN: der Wächter `guardedLocalPgTestUrl` bleibt unangetastet, der Container trägt
+ * eine Wegwerfdatenbank, und die hier ANGELEGTE Datenbank prüft `pgUrl` noch einmal auf „test".
+ */
 describe("JOB 4295 P · der SharePoint-Inhaltsweg im Browser, gegen echtes PostgreSQL", () => {
   let adminPool: Pool | undefined;
   let verbindung: Verbindung | undefined;
+  let container: StartedTestContainer | undefined;
   let verfuegbar = false;
   let browser: Browser | undefined;
   let flaeche = "nicht hergestellt";
   let pgVersion = "unbekannt";
+  let quelleDerDatenbank = "keine";
   const gesamtwegDb = `klarwerk_spgesamt_test_${`${Date.now()}`.slice(-9)}`;
 
   beforeAll(async () => {
-    const url = guardedLocalPgTestUrl();
+    let url = "";
+    let grund = "";
+    const lokal = guardedLocalPgTestUrl();
+    if (lokal) {
+      url = lokal;
+      quelleDerDatenbank = "lokale Testinstanz (KLARWERK_PG_TEST_URL)";
+    } else if (process.env.KLARWERK_PG_TEST_URL) {
+      // Die Sicherung hat die URL abgelehnt (ihr Grund steht bereits auf stderr) — KEIN Rückfall
+      // auf einen Container: wer eine fremde Datenbank anbietet, bekommt keinen zweiten Weg.
+      grund = "KLARWERK_PG_TEST_URL wurde von der Testdatenbank-Sicherung abgelehnt";
+    } else {
+      try {
+        container = await new GenericContainer("postgres:16-alpine")
+          .withEnvironment({ POSTGRES_PASSWORD: "test", POSTGRES_DB: "klarwerk_test" })
+          .withExposedPorts(5432)
+          .withWaitStrategy(Wait.forLogMessage(/database system is ready to accept connections/, 2))
+          .start();
+        url = `${PG_SCHEMA}//postgres:test@${container.getHost()}:${container.getMappedPort(5432)}/klarwerk_test`;
+        quelleDerDatenbank = "Testcontainer postgres:16-alpine";
+      } catch (fehler) {
+        grund = `weder KLARWERK_PG_TEST_URL noch eine Container-Laufzeit verfügbar: ${String(fehler)}`;
+      }
+    }
     if (!url) {
       process.stderr.write(
-        `${JOB} P UEBERSPRUNGEN: keine gesicherte KLARWERK_PG_TEST_URL — die gemeinsame Kette aus Browser und echter PostgreSQL ist damit nicht messbar. Der Nachweis derselben Strecke liegt in tests/sharepoint-inhalt-gesamtweg/gesamtweg-im-echten-browser.test.ts (Speicherablagen).\n`,
+        `${JOB} P UEBERSPRUNGEN — Grund: ${grund}. Die gemeinsame Kette aus Browser und echter PostgreSQL ist damit NICHT gemessen; P1 wurde nicht ausgeführt. Der Nachweis derselben Strecke gegen Speicherablagen liegt in tests/sharepoint-inhalt-gesamtweg/gesamtweg-im-echten-browser.test.ts.\n`,
       );
       return;
     }
     verbindung = zerlege(url);
     if (!verbindung) {
       process.stderr.write(
-        `${JOB} P UEBERSPRUNGEN: KLARWERK_PG_TEST_URL nennt keinen Rechnernamen.\n`,
+        `${JOB} P UEBERSPRUNGEN: die Datenbankadresse (${quelleDerDatenbank}) nennt keinen Rechnernamen.\n`,
       );
       return;
     }
+    // AB HIER WIRD NICHTS MEHR GEFANGEN: die Datenbank ist benannt, jeder Fehler ist ein echter.
     adminPool = new Pool({ connectionString: url });
     const version = await adminPool.query<{ version: string }>("SELECT version() AS version");
     pgVersion = (version.rows[0]?.version ?? "unbekannt").split(" ").slice(0, 2).join(" ");
@@ -164,15 +228,19 @@ describe("JOB 4295 P · der SharePoint-Inhaltsweg im Browser, gegen echtes Postg
           .catch(() => undefined);
         await adminPool.end();
       }
+      // Aufräumen darf den Lauf nicht nachträglich rot färben.
+      await container?.stop().catch(() => undefined);
     }
-  }, 120_000);
+  }, 180_000);
 
   it("P1 — dieselbe Strecke, dieselben Schritte: der Text der Datei steht danach WIRKLICH in der Tabelle", async (ctx) => {
     if (!verfuegbar || !verbindung || !browser) {
       ctx.skip();
       return;
     }
-    process.stderr.write(`${JOB} P1 läuft · Fläche: ${flaeche} · PostgreSQL: ${pgVersion}\n`);
+    process.stderr.write(
+      `${JOB} P1 GELAUFEN · Fläche: ${flaeche} · PostgreSQL: ${pgVersion} · Datenbank aus: ${quelleDerDatenbank}\n`,
+    );
     const pool = createPool(pgUrl(verbindung, gesamtwegDb));
     let strecke: Strecke | undefined;
     try {
@@ -191,7 +259,7 @@ describe("JOB 4295 P · der SharePoint-Inhaltsweg im Browser, gegen echtes Postg
       const befund = await fahreDenGesamtweg({
         browser,
         strecke,
-        t,
+        katalog: uebersetzer,
         adminEmail: ADMIN,
       });
       expect(befund.gelesenerText).toBe(TEXT.replace("\n", " "));
@@ -211,6 +279,21 @@ describe("JOB 4295 P · der SharePoint-Inhaltsweg im Browser, gegen echtes Postg
       }
       expect(befund.objektseite.quellen).toContain("SharePoint");
       expect(befund.objektseite.quellen).toContain(NOTIZ.webUrl);
+      // JOB 4360: der Quellstand, sichtbar am Objekt — erst der importierte, dann der der zweiten
+      // Fassung, und beide in de/en/nl. Dieselben Zusagen wie im Tor-Lauf; sie hängen nicht an der
+      // Ablage, und genau deshalb werden sie hier mitgemessen statt vorausgesetzt.
+      // EXAKT, nicht „enthält" (Runde 2, BENs Korrekturpflicht 1) — Begründung wörtlich wie in
+      // `strecke.ts`, `liesDenQuellstand`.
+      expect(befund.objektseite.quellstand).toBe(`${t("w2.source.version")} ${QUELLSTAND}`);
+      expect(befund.neueFassung.koId).toBe(befund.koId);
+      expect(befund.neueFassung.standAmBestand).toBe(QUELLSTAND_NEU);
+      expect(befund.neueFassung.standSichtbar).toBe(`${t("w2.source.version")} ${QUELLSTAND_NEU}`);
+      for (const sprache of SPRACHEN) {
+        expect(
+          befund.neueFassung.jeSprache[sprache],
+          `in „${sprache}" steht nicht genau der Quellstand der zweiten Fassung`,
+        ).toBe(`${uebersetzer(sprache)("w2.source.version")} ${QUELLSTAND_NEU}`);
+      }
       expect(befund.zustaende.leerSatz).toBe(t("imp.sharepoint.leer"));
       expect(befund.zustaende.nichtFrischSatz).toBe(t("imp.sharepoint.nichtFrisch"));
 
@@ -235,7 +318,19 @@ describe("JOB 4295 P · der SharePoint-Inhaltsweg im Browser, gegen echtes Postg
       const anker = quellen.find((q) => q.externalId === NOTIZ.id);
       expect(anker?.provider, "in der Zeile fehlt die Herkunft").toBe("SharePoint");
       expect(anker?.url, "in der Zeile fehlt die Originaladresse").toBe(NOTIZ.webUrl);
-      expect(anker?.sourceVersion, "in der Zeile fehlt der Quellstand").toBe(QUELLSTAND);
+      // JOB 4360: in der TABELLE steht am Ende der Stand der ZWEITEN Fassung — der Re-Sync hat den
+      // Anker derselben Zeile fortgeschrieben (`library-analytics/src/service.ts`, `acceptToKo`),
+      // und genau dieselbe Zahl hat der Browser ein paar Zeilen vorher sichtbar gelesen. Das ist
+      // die Verbindung, die dieser Lauf trägt: nicht die Antwort des Servers noch einmal, sondern
+      // der Bestand, den sie behauptet.
+      expect(anker?.sourceVersion, "in der Zeile fehlt der Quellstand").toBe(QUELLSTAND_NEU);
+      // DIE NAHT SQL ↔ BILDSCHIRM, exakt geschlossen: der sichtbare Text ist Beschriftung und
+      // GENAU die Zahl, die in der Zeile steht — nicht eine, die sie enthält. Der Sollwert kommt
+      // hier ausdrücklich aus der DATENBANKANTWORT und nicht aus einer Konstante des Tests.
+      expect(
+        befund.neueFassung.standSichtbar,
+        "der sichtbare Quellstand und die Zeile in der Datenbank sagen Verschiedenes",
+      ).toBe(`${t("w2.source.version")} ${anker?.sourceVersion}`);
 
       // GENAU EIN Objekt zu dieser Quelle — der Wiederholimport hat auch in der Tabelle nichts
       // verdoppelt, nicht nur in der Liste im Browser.

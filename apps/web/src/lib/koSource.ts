@@ -117,6 +117,15 @@ export function unsavableSourceUrls(
 // FEHLEN HEISST FEHLEN, hier in vier Gestalten: kein Anker (jede Quelle von vor diesem Auftrag),
 // leerer Anker, Anhang nicht (mehr) in der Liste, Anhang ohne brauchbaren Namen. Alle vier ergeben
 // `null`, und die Fläche lässt die Zeile WEG — kein „—", kein „unbekannt", keine Ersatzzeile.
+//
+// JOB 4360 — DIE VIERTE ANGABE: DER STAND, IN DEM DIE QUELLE IMPORTIERT WURDE.
+//
+// Wer ein aus SharePoint/OneDrive importiertes Wissensobjekt liest, sah bis hierher WOHER es kam
+// (Anbieter, Adresse) und WANN die Quelle ans Objekt kam (`zeit`) — aber nicht, WELCHE FASSUNG der
+// Datei angekommen ist. Nach einem Wiederholimport war deshalb von aussen nicht zu erkennen, ob die
+// neue Fassung wirklich da ist. Der Wert liegt seit dem Import am Objekt (`KoSource.sourceVersion`),
+// er wurde nur nirgends gezeigt (4295 R3/R4). NEU ist wieder allein diese Ableitung und ihre
+// Anzeige — kein Feld, keine Route, kein Eingriff in Import oder Re-Sync.
 export interface Quellennachweis {
   /** Formatierter Zeitpunkt aus `at` — `null`, wenn `at` fehlt oder unlesbar ist (kein „Invalid Date"). */
   zeit: string | null;
@@ -126,6 +135,41 @@ export interface Quellennachweis {
   auszug: string | null;
   /** Der Name des angehängten Originals, an dem diese Quelle hängt — `null`, wenn keines auffindbar ist. */
   datei: string | null;
+  /**
+   * JOB 4360 — DER IMPORTIERTE QUELLSTAND, anzeigefertig. `null`, wenn die Quelle keinen trägt.
+   *
+   * Der Wert wird NICHT umgerechnet, NICHT gerundet und NICHT in ein Datum verwandelt: was hier
+   * steht, ist der gespeicherte `sourceVersion` in Ziffern. Der Grund ist die Bedeutung der Zahl —
+   * sie gehört der QUELLE, nicht dieser Fläche: Confluence zählt Seitenfassungen, SharePoint rechnet
+   * den Änderungszeitpunkt in Sekunden um (`services/sharepoint/src/mapper.ts`). Aus der einen ein
+   * Datum zu machen wäre für die andere falsch, und eine Fallunterscheidung nach Anbieter wäre eine
+   * zweite Wahrheit über einen Wert, den der Server längst festgelegt hat.
+   */
+  stand: string | null;
+}
+
+/**
+ * JOB 4360 — WAS ALS QUELLSTAND DURCHGEHT, und warum so streng.
+ *
+ * ZÄHLBAR HEISST: eine ganze Zahl grösser als null. Beide Erzeuger schreiben genau das
+ * (`library-analytics/src/service.ts`, `buildSource`: Seitenfassung bzw. Sekunden seit 1970), und
+ * der Re-Sync vergleicht sie mit `>`.
+ *
+ * ALLES ANDERE IST KEIN STAND, sondern ein Loch — und ein Loch wird WEGGELASSEN, nicht gefüllt:
+ *   · `undefined`/fehlend  — die Quelle kam nicht aus einem Import (Regelfall für Handquellen),
+ *   · `0` und negative Zahlen — im Re-Sync ausdrücklich der Wert „kein Stand bekannt"
+ *     (`services/app/src/confluence-import.ts`, `normalizeSourceVersion`; Anker mit 0 galt dort
+ *     als Fehlfall),
+ *   · `NaN`/`Infinity`/Bruchzahlen — ein beschädigter Wert aus dem Bestand. Ihn als „Version 1.5"
+ *     hinzuschreiben wäre eine Auskunft, für die niemand geradesteht.
+ *
+ * Dieselbe Hausregel wie bei `zeit`, `adresse`, `auszug` und `datei` weiter oben: FEHLEN HEISST
+ * FEHLEN — kein „—", kein „unbekannt", keine geratene 1.
+ */
+function quellstand(sourceVersion: number | undefined): string | null {
+  return typeof sourceVersion === "number" && Number.isInteger(sourceVersion) && sourceVersion > 0
+    ? String(sourceVersion)
+    : null;
 }
 
 /**
@@ -138,7 +182,7 @@ export interface Quellennachweis {
  * bekommt dann `datei: null` und zeigt schlicht nichts — sie behauptet nicht, es gäbe keine Datei.
  */
 export function quellennachweis(
-  source: Pick<KoSource, "at" | "url" | "excerpt"> & { objectId?: string | null },
+  source: Pick<KoSource, "at" | "url" | "excerpt" | "sourceVersion"> & { objectId?: string | null },
   anhaenge: readonly { objectId?: string | null; name?: string | null }[],
   sprache: string,
 ): Quellennachweis {
@@ -161,6 +205,7 @@ export function quellennachweis(
         : null,
     auszug: auszug.length > 0 ? auszug : null,
     datei: datei.length > 0 ? datei : null,
+    stand: quellstand(source.sourceVersion),
   };
 }
 

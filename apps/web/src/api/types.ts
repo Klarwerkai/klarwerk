@@ -93,6 +93,25 @@ export interface KoSource {
   kind: "external";
   peerValidated: boolean;
   provider?: string | null; // SCRUM-118: optionaler Anbieter externer Quellen
+  // JOB 4360: DER QUELLSTAND, MIT DEM DIESE QUELLE IMPORTIERT WURDE.
+  //
+  // Spiegel von `services/knowledge-object/src/types.ts:292` — dasselbe Feld, dieselbe Zahl, vom
+  // Import geschrieben (`library-analytics/src/service.ts`, `buildSource`) und von
+  // `GET /api/kos/:id` unbeschnitten mitgeliefert. NEU ist hier NICHTS am Draht: der Wert lag die
+  // ganze Zeit an, der Client-Typ kannte ihn nur nicht, und deshalb konnte die Lesefläche ihn nicht
+  // zeigen (4295 R3/R4, „OFFENE BESTELLUNG (Produkt)").
+  //
+  // OPTIONAL und additiv: jede von Hand angelegte Quelle und jede Quelle von vor dem Import-Strang
+  // trägt ihn nicht. „Fehlt" heisst ausdrücklich „diese Quelle trägt keinen Stand" — nicht „Stand 0"
+  // und nicht „Stand 1". Wer daraus eine Zahl machte, behauptete eine Fassung, die nie importiert
+  // wurde; die Anzeige leitet er deshalb über `quellennachweis` ab (`lib/koSource.ts`), und die
+  // lässt ihn weg.
+  //
+  // WAS DIE ZAHL BEDEUTET, ENTSCHEIDET DIE QUELLE: Confluence zählt Seitenfassungen (1, 2, 3 …),
+  // SharePoint/OneDrive rechnet den Änderungszeitpunkt in Sekunden um
+  // (`services/sharepoint/src/mapper.ts`, `sharepointQuellstand`). Beide sind monoton wachsend —
+  // mehr wird hier nicht vorausgesetzt und nicht behauptet.
+  sourceVersion?: number;
   // JOB 4077: der ANKER dieser Belegstelle — die `objectId` eines Anhangs DIESES Objekts, vom
   // Server gegen dessen eigene Anhangsliste bestätigt (`services/knowledge-object/src/types.ts`).
   // OPTIONAL und additiv: jede Quelle von vor diesem Auftrag trägt ihn nicht, und „fehlt" heisst

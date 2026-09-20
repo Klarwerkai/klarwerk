@@ -33,6 +33,8 @@ import {
   JOB,
   NOTIZ,
   QUELLSTAND,
+  QUELLSTAND_NEU,
+  SPRACHEN,
   TEXT,
   type Uebersetzer,
   doppel,
@@ -47,10 +49,19 @@ import {
 
 const ADMIN = "gesamtweg-admin@sharepoint-4295.test";
 
-/** Die Sollsätze kommen aus dem WIRKLICHEN Katalog, nicht aus diesem Test. */
-const katalog = i18n.getFixedT("de");
-const t: Uebersetzer = (schluessel, werte) =>
-  werte === undefined ? katalog(schluessel) : katalog(schluessel, werte);
+/**
+ * Die Sollsätze kommen aus dem WIRKLICHEN Katalog, nicht aus diesem Test.
+ *
+ * JOB 4360: je Sprache gebunden statt nur auf Deutsch — der Quellstand trägt eine Beschriftung, und
+ * die muss in de/en/nl im echten Browser stehen. `getFixedT` liest denselben Katalog, den die Fläche
+ * bündelt; ein hier abgeschriebenes Wort wäre eine zweite Textquelle.
+ */
+const uebersetzer = (sprache: string): Uebersetzer => {
+  const katalog = i18n.getFixedT(sprache);
+  return (schluessel, werte) =>
+    werte === undefined ? katalog(schluessel) : katalog(schluessel, werte);
+};
+const t: Uebersetzer = uebersetzer("de");
 
 let browser: Browser | undefined;
 let strecke: Strecke | undefined;
@@ -83,7 +94,12 @@ function zeug(): { browser: Browser; strecke: Strecke } {
 describe("JOB 4295 · G — der SharePoint-Inhaltsweg als eine Strecke im echten Chromium", () => {
   it("G1 — Liste → Kennzeichnung → Tastatur → Annahme → der Text am zurückgelesenen Objekt → kein zweiter Eintrag", async () => {
     const { browser: b, strecke: s } = zeug();
-    const befund = await fahreDenGesamtweg({ browser: b, strecke: s, t, adminEmail: ADMIN });
+    const befund = await fahreDenGesamtweg({
+      browser: b,
+      strecke: s,
+      katalog: uebersetzer,
+      adminEmail: ADMIN,
+    });
 
     // ── Die Belege noch einmal ausdrücklich, damit ein Mensch sie in der Rückgabe wiederfindet.
     expect(befund.ankuendigung[NOTIZ.id]).toBe(t("imp.sharepoint.vorschau.textdatei"));
@@ -104,7 +120,12 @@ describe("JOB 4295 · G — der SharePoint-Inhaltsweg als eine Strecke im echten
     }
     expect(befund.objektseite.quellen).toContain("SharePoint");
     expect(befund.objektseite.quellen).toContain(NOTIZ.webUrl);
-    expect(befund.objektseite.quellenStand).not.toBe("");
+    expect(befund.objektseite.quellenZeit).not.toBe("");
+    // ── JOB 4360 · DER QUELLSTAND, SICHTBAR AM OBJEKT. ───────────────────────────────────────
+    // EXAKT, nicht „enthält" (Runde 2, BENs Korrekturpflicht 1): „Version 17892045000" ENTHÄLT
+    // „1789204500" und wäre trotzdem eine falsche Fassung. Der Sollsatz wird aus Katalog und
+    // Bestandswert ZUSAMMENGESETZT; abgeschrieben ist weder das Wort noch die Zahl.
+    expect(befund.objektseite.quellstand).toBe(`${t("w2.source.version")} ${QUELLSTAND}`);
     // DIE ZWEI §9-ZUSTÄNDE (BENs Pflicht 3): benannter Leersatz, erkennbar laufende Auffrischung.
     expect(befund.zustaende.leerSatz).toBe(t("imp.sharepoint.leer"));
     expect(befund.zustaende.nichtFrischSatz).toBe(t("imp.sharepoint.nichtFrisch"));
@@ -115,6 +136,33 @@ describe("JOB 4295 · G — der SharePoint-Inhaltsweg als eine Strecke im echten
       sourceVersion: QUELLSTAND,
     });
     expect(befund.zweiterImport.kartenMitDemNamen, "der Wiederholimport hat verdoppelt").toBe(1);
+    // ── JOB 4360 · DIE ZWEITE FASSUNG: angekommen, ablesbar, und NICHT als zweites Objekt. ────
+    expect(befund.neueFassung.koId, "die zweite Fassung lief in ein anderes Objekt").toBe(
+      befund.koId,
+    );
+    expect(befund.neueFassung.standAmBestand, "der Bestand führt nicht den neuen Stand").toBe(
+      QUELLSTAND_NEU,
+    );
+    expect(
+      befund.neueFassung.kartenDazu,
+      "die zweite Fassung hat nicht genau einen Vorgang angelegt",
+    ).toBe(1);
+    // DIE ENTSCHEIDENDE ZEILE: der SICHTBARE Wert ist ein ANDERER als vorher — und zwar GENAU der
+    // neue. Ein Nachweis, der nur „irgendein Stand steht da" verlangte, bliebe auch grün, wenn die
+    // Fläche den alten stehen liesse.
+    expect(befund.neueFassung.standSichtbar).toBe(`${t("w2.source.version")} ${QUELLSTAND_NEU}`);
+    expect(befund.neueFassung.standSichtbar).not.toBe(befund.objektseite.quellstand);
+    // ── UND DASSELBE IN DE/EN/NL, jede Sprache mit IHRER Beschriftung aus dem Katalog. ────────
+    expect(
+      Object.keys(befund.neueFassung.jeSprache).sort(),
+      "der Quellstand wurde nicht in allen drei Sprachen gelesen",
+    ).toEqual([...SPRACHEN].sort());
+    for (const sprache of SPRACHEN) {
+      expect(
+        befund.neueFassung.jeSprache[sprache],
+        `in „${sprache}" steht nicht genau der Quellstand der zweiten Fassung`,
+      ).toBe(`${uebersetzer(sprache)("w2.source.version")} ${QUELLSTAND_NEU}`);
+    }
     // Die vier Fehlerlagen sind WIRKLICH gefahren, jede mit ihrem Satz und ohne Zusage daneben.
     expect(befund.fehlerlagen.map((f) => f.satz)).toEqual([
       t("imp.sharepoint.fehler.keineBerechtigung"),
@@ -140,8 +188,16 @@ describe("JOB 4295 · G — der SharePoint-Inhaltsweg als eine Strecke im echten
         "ankreuzen",
         "ankreuzenOffline",
         "ankreuzenZweitesMal",
+        // JOB 4360: der Import der zweiten Fassung und die beiden fremdsprachigen Durchgänge haben
+        // EIGENE Stationen. Sie stehen einzeln hier, damit nicht eine von ihnen still verschwinden
+        // kann — dieselbe Begründung wie für die Liste insgesamt (s. oben).
+        "ankreuzenZweiteFassung",
         "annehmen",
+        "annehmenZweiteFassung",
         "mehrAufklappen",
+        "mehrAufklappenZweiteFassung",
+        "mehrAufklappen_en",
+        "mehrAufklappen_nl",
         "neuLaden_403",
         "neuLaden_404",
         "neuLaden_500",
@@ -150,10 +206,15 @@ describe("JOB 4295 · G — der SharePoint-Inhaltsweg als eine Strecke im echten
         "neuLaden_zurueck",
         "neuLaden_zurueckVonLeer",
         "quellenAufklappen",
+        "quellenAufklappenZweiteFassung",
+        "quellenAufklappen_en",
+        "quellenAufklappen_nl",
         "uebernehmen",
+        "uebernehmenZweiteFassung",
         "uebernehmenZweitesMal",
         "volltextAufklappen",
         "warteschlangeAufklappen",
+        "warteschlangeAufklappenZweiteFassung",
       ].sort(),
     );
 
