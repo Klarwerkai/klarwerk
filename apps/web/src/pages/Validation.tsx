@@ -1640,10 +1640,25 @@ export function Validation(): JSX.Element {
                           </span>
                         )
                       ) : null}
+                      {/* JOB 4361: `[overflow-wrap:anywhere]` — UND AUSDRÜCKLICH NICHT `break-words`.
+                          GEMESSEN am 20.09. in Chromium bei 320 × 568 (Fall K1/K3 in
+                          `tests/pruefen-quellennachweis/lange-quellen-schmal-chromium.test.ts`):
+                          eine Belegstelle mit einer langen Dokumentenkennung („DINENISO1965…", 51
+                          Zeichen) hat KEINEN Umbruchpunkt. Weil die Prüfkarte in der schmalen
+                          Bauform nach Inhalt breit wird (`pruefen-flaeche` trägt `items-start`,
+                          `:1125`), zog dieses eine Wort die GANZE Karte auf 500 px — im 320 px
+                          breiten Fenster lagen Zeitpunkt, Adresse, Belegstelle, Dateiname und der
+                          Knopf „Ablehnen" allesamt hinter der beschneidenden Kante bei 304 px.
+                          Nur `anywhere` geht in die min-content-Breite ein und schrumpft die Karte
+                          wirklich; `break-word` bräche den Text erst INNERHALB der bereits zu
+                          breiten Spalte — dieselbe Begründung steht seit Scheibe D-037 im Haus
+                          (`apps/web/src/index.css:76-81`) und dieselbe Schreibweise benutzt die
+                          Bibliothek (`BibliothekFlaeche.tsx:1541`). Adresse und Dateiname tragen
+                          ihr `break-all` schon. */}
                       {nachweis.auszug ? (
                         <blockquote
                           data-testid="pruefen-quelle-auszug"
-                          className="mt-1 border-l-2 border-hairline pl-2 italic text-muted"
+                          className="mt-1 border-l-2 border-hairline pl-2 italic text-muted [overflow-wrap:anywhere]"
                         >
                           {nachweis.auszug}
                         </blockquote>
