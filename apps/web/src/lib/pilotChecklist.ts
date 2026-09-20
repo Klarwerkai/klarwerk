@@ -78,6 +78,35 @@ export type PilotSchritt =
   | { item: PilotCheckItem; zugang: "routeUnbekannt" };
 
 /**
+ * JOB 4358 · WELCHE ROLLE DIE FÜHRUNG ÜBERHAUPT BEHAUPTEN DARF.
+ *
+ * `RoleProvider` liefert IMMER eine Rolle — auch dann, wenn keine Sitzung feststeht: ohne
+ * Session-Nutzer greift der lokale Vorschauwert, und der steht auf `"experte"`
+ * (`app/RoleContext.tsx:34`, `lib/effectiveRole.ts:6-8`). Für den Router ist das richtig (er
+ * entscheidet über dieselbe effektive Rolle, die Ansicht bleibt in sich stimmig); für eine AUSSAGE
+ * über den Lesenden ist es falsch.
+ *
+ * GEMESSEN, NICHT VERMUTET (`tests/einstieg-gastweg/hilfe-rollenhinweise-sitzung.test.tsx`, Lauf
+ * fb366e66038a51e10b456857): Solange `/auth/me` noch nicht geantwortet hatte — und ebenso nach 401,
+ * 500 und Netzfehler — führte die Karte `/start`, `/bibliothek`, `/erfassen` und `/fragen` als offen
+ * und rechnete „Als Experte stehen dir 4 von 7 offen" vor. `/erfassen` verlangt `experte`: einer
+ * Betrachterin wurde also ein Weg angeboten, den ihr die nächste Antwort wieder wegnimmt, und über
+ * ihre Rolle wurde etwas behauptet, wozu der Server nichts gesagt hat.
+ *
+ * DIE GRENZE IST DESHALB DIE HERKUNFT: Nur eine Rolle AUS EINER SITZUNG (`isSessionRole`, also ein
+ * bestätigter Nutzer) trägt eine Aussage. Alles andere ist `null` — und damit dieselbe ehrliche
+ * Lage wie ohne Rollenquelle (`rolleUnbekannt`, s. unten): weder Link noch Sperrbehauptung noch
+ * Zahl. Die Vorschau eines ANGEMELDETEN Administrators bleibt unberührt: dort steht ein Nutzer
+ * fest, und die gewählte Ansicht ist seine eigene Entscheidung.
+ *
+ * Kein Rechteeingriff: hier wird nichts geöffnet und nichts geschlossen, es wird nur weniger
+ * behauptet.
+ */
+export function pilotRolleAusSitzung(quelle: { role: Role; isSessionRole: boolean }): Role | null {
+  return quelle.isSessionRole ? quelle.role : null;
+}
+
+/**
  * Die Einstiegsführung, gelesen aus der Sicht EINER Rolle.
  *
  * `role === null` heißt „die Rolle steht noch nicht fest" — nicht „keine Rechte".

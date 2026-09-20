@@ -14,7 +14,7 @@ import {
   isoHelpSprache,
   isoQuellenAnzeige,
 } from "../lib/helpTopics.iso";
-import { type PilotSchritt, pilotSchritte } from "../lib/pilotChecklist";
+import { type PilotSchritt, pilotRolleAusSitzung, pilotSchritte } from "../lib/pilotChecklist";
 import { PILOT_OBSERVATIONS } from "../lib/pilotObservationGuide";
 
 // SCRUM-219: produktnahe Hilfe mit clientseitiger Suche über Titel/Text/Tags. Links nur auf
@@ -66,9 +66,14 @@ type HilfeEintrag = HelpSearchItem & {
 //
 // KEIN BEDINGTER HOOK: `useRole` wird bei jedem Rendern gerufen, in derselben Reihenfolge;
 // gefangen wird allein sein Wurf.
+//
+// JOB 4358: „bekannt" heisst seit diesem Job nicht mehr „der Provider steht", sondern „die Rolle
+// stammt aus einer Sitzung". Die Unterscheidung trifft `pilotRolleAusSitzung`
+// (`lib/pilotChecklist.ts`) — dieselbe eine Quelle, die auch über Link und Sperre entscheidet.
+// Ohne sie sprang der Vorschauwert `"experte"` ein, solange `/auth/me` lief oder scheiterte.
 function useRolleWennBekannt(): Role | null {
   try {
-    return useRole().role;
+    return pilotRolleAusSitzung(useRole());
   } catch {
     return null;
   }
