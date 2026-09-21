@@ -1,0 +1,17 @@
+{
+  "basisstand": "737bc5ed4acc66f94c98f13e4d264c0863dd220f",
+  "sprachen": {
+    "de": {
+      "anzahl": 4437,
+      "sha256": "8ae703921366b3e6500efdfc3cca7c0ca19264257298e61d58fee9dac37abb7f"
+    },
+    "en": {
+      "anzahl": 4437,
+      "sha256": "25023b12610b0a96fdef760d3d5b902321b226ed73ef9752b8581cdb146bb7b5"
+    },
+    "nl": {
+      "anzahl": 4437,
+      "sha256": "41c07e3ae75d15b6250df6b2d693dacdf6edc96570750438f7c86e90bb2f7fb9"
+    }
+  }
+}

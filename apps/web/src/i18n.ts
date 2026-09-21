@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
 import { sprachAusEintritt } from "./lib/htmlLang";
@@ -5,6 +6,11 @@ import { sprachAusEintritt } from "./lib/htmlLang";
 // unter dem 1-MiB-Deckel von Biome bleibt. Messung und Begruendung: `lib/lesevariante.ts`.
 import { lesevarianteTexteDe, lesevarianteTexteEn, lesevarianteTexteNl } from "./lib/lesevariante";
 import { gespeicherteSprache } from "./lib/sprachwahl";
+import {
+  type Textmodul,
+  fuehreTextmoduleZusammen,
+  pruefeTextmodule,
+} from "./texte/intern/pruefung";
 
 // Zweisprachigkeit DE/EN (G-8). Strings über Keys; Ressourcen wachsen je Screen.
 const de = {
@@ -1718,8 +1724,7 @@ const de = {
   "capture.sourceMissingTitle": "Übernommener Inhalt ohne Herkunftsvermerk",
   "capture.sourceMissingBody":
     "Dein Wissensobjekt ist gespeichert und enthält den aus dem Dokument übernommenen Text. Der zugehörige Herkunftsvermerk konnte NICHT gesetzt werden ({{count}}): {{names}}. Damit steht dort Inhalt ohne Beleg — genau das, was dieses Produkt nicht stillschweigend hinnimmt.",
-  "capture.sourceMissingNext":
-    "Nächster Schritt: Wissensobjekt öffnen, das Quelldokument dort anhängen und die Quelle erneut vermerken. Erlaubt die eingestellte Stufe „Externes Wissen“ das nicht, kann ein Administrator sie unter Verwaltung → Externes Wissen ändern.",
+  // JOB 4367: `capture.sourceMissingNext` wohnt jetzt in `texte/ux08.ts` — bei seiner Funktion.
   // AUFTRAG-mega18 Block A-3: der DRITTE Ausgang. Er behauptet NICHTS über den Bestand — weder
   // „gespeichert" noch „fehlgeschlagen" —, weil beides eine Lüge wäre, solange der Server nicht
   // geantwortet hat. Die einzige ehrliche Auskunft ist: nachsehen.
@@ -3297,10 +3302,7 @@ const de = {
   "ext.placeholder": "Suchbegriff …",
   "ext.search": "Suchen",
   "ext.attach": "Als Quelle anhängen",
-  // AUFTRAG-mega14 Block D (SCRUM-414): der Knopf ist auf gesperrter Stufe nicht anwählbar — und
-  // sagt WARUM. Ein ausgegrauter Knopf ohne Grund ist eine Sackgasse, keine Erklärung.
-  "ext.attachBlocked":
-    "Auf der eingestellten Stufe darf gesucht, aber nicht angehängt werden. Ein Administrator kann das unter Verwaltung → Externes Wissen ändern.",
+  // JOB 4367: `ext.attachBlocked` und `ext.gate.how` wohnen jetzt in `texte/ux08.ts`.
   // AUFTRAG-mega16 Block A (bens SB-4): die Stufe ist jetzt eine echte Grenze — sie gilt für JEDE
   // öffentliche Web-Adresse, nicht nur für erkannte Anbieter. Der Nutzer muss das VOR dem Absenden
   // wissen, mit Grund und mit dem Weg zur Änderung.
@@ -3308,7 +3310,6 @@ const de = {
     "Auf der eingestellten Stufe kann keine Quelle mit öffentlicher Web-Adresse angehängt werden — das gilt für jede Adresse aus dem Netz, nicht nur für Treffer der Suche.",
   "ext.gate.unanchored":
     "Auf der eingestellten Stufe kann eine Quelle ohne Adresse nur angehängt werden, wenn sie eine Belegstelle aus einem Dokument ist, das an diesem Wissensobjekt hinterlegt ist. Ohne Adresse und ohne hinterlegtes Dokument ist für den Server nicht unterscheidbar, ob es sich um einen externen Treffer handelt.",
-  "ext.gate.how": "Ein Administrator kann die Stufe unter Verwaltung → Externes Wissen ändern.",
   "ext.unavailable": "Externe Suche ist nicht verfügbar.",
   "ext.resumeHint":
     "Die Trefferliste wird im Entwurf nicht mitgespeichert. Deine Suchanfrage ist wieder da — führe die Suche erneut aus, um die Treffer neu zu laden.",
@@ -3557,7 +3558,7 @@ const de = {
   // Original nicht mehr an diesem Objekt hängt (dann steht dort KEIN Knopf, der ins Leere führte).
   "ko.evidenceToOriginal": "Original anzeigen",
   "ko.evidenceToOriginalHint": "Original im Abschnitt „Anhänge“ zeigen",
-  "ko.evidenceOriginalDetached": "Original nicht mehr an diesem Objekt",
+  // JOB 4367: `ko.evidenceOriginalDetached` wohnt jetzt in `texte/ux26.ts`.
   "ko.evCons.title": "Evidence-Konsistenz",
   "ko.evCons.status.ok": "stimmig",
   "ko.evCons.status.warning": "prüfen",
@@ -3567,7 +3568,7 @@ const de = {
   // verloren, nur der Programmbrocken. Die Titelschlüssel darüber (`…title`, `…allOk`) bleiben
   // unverändert: sie werden von keiner Fläche dieses Auftrags gezeichnet.
   "ko.evCons.counts": "Quellen {{sources}} · Anhänge {{attachments}} · Belege {{evidence}}",
-  "ko.evCons.allOk": "Quellen, Anhänge und Evidence sind deckungsgleich.",
+  // JOB 4367: `ko.evCons.allOk` wohnt jetzt in `texte/ux26.ts`.
   "ko.evCons.finding.source-without-evidence": "Quelle ohne Beleg",
   "ko.evCons.finding.attachment-without-evidence": "Anhang ohne Beleg",
   "ko.evCons.finding.evidence-without-source": "Beleg ohne Quelle",
@@ -3581,8 +3582,7 @@ const de = {
   "ko.evFresh.title": "Belegaktualität",
   "ko.evFresh.current": "aktuell belegt",
   "ko.evFresh.outdated": "nur ältere Versionen",
-  "ko.evFresh.missing": "Evidence fehlt",
-  "ko.evFresh.neutral": "kein Evidence-Anlass",
+  // JOB 4367: `ko.evFresh.missing` und `ko.evFresh.neutral` wohnen jetzt in `texte/ux26.ts`.
   "ko.evFresh.counts": "v{{version}} · aktuell {{current}} · älter {{older}}",
   // JOB 3627: die Vermerke, die der DIENST fest in Historie und Schnappschüsse schreibt
   // (`services/knowledge-object/src/service.ts`, Fundstellen an der Tabelle in
@@ -8689,8 +8689,7 @@ const en: typeof de = {
   "capture.sourceMissingTitle": "Imported content without a provenance record",
   "capture.sourceMissingBody":
     "Your knowledge object is saved and contains the text imported from the document. The matching provenance record could NOT be created ({{count}}): {{names}}. That leaves content without evidence — exactly what this product does not accept in silence.",
-  "capture.sourceMissingNext":
-    "Next step: open the knowledge object, attach the source document there and record the source again. If the configured “External knowledge” stage does not allow this, an administrator can change it under Administration → External knowledge.",
+  // JOB 4367: `capture.sourceMissingNext` lives in `texte/ux08.ts` now.
   // AUFTRAG-mega21 Block C-1 / C-2 — see the German block for the reasoning.
   "capture.followUpsFailedTitle": "Saved — but one follow-up step did not run",
   "capture.followUpsFailedBody":
@@ -9916,16 +9915,13 @@ const en: typeof de = {
   "ext.placeholder": "Search term …",
   "ext.search": "Search",
   "ext.attach": "Attach as source",
-  "ext.attachBlocked":
-    "At the configured stage, searching is allowed but attaching is not. An administrator can change this under Administration → External knowledge.",
+  // JOB 4367: `ext.attachBlocked` and `ext.gate.how` live in `texte/ux08.ts` now.
   // AUFTRAG-mega16 Block A (ben's SB-4): the stage is a real boundary now — it covers EVERY public
   // web address, not just recognised providers.
   "ext.gate.publicUrl":
     "At the configured stage, no source with a public web address can be attached — this applies to every address from the internet, not only to search results.",
   "ext.gate.unanchored":
     "At the configured stage, a source without an address can only be attached if it is a passage from a document held with this knowledge object. Without an address and without a stored document, the server cannot tell it apart from an external search result.",
-  "ext.gate.how":
-    "An administrator can change the stage under Administration → External knowledge.",
   "ext.unavailable": "External search is not available.",
   "ext.resumeHint":
     "The results list is not stored with the draft. Your search query is back — run the search again to reload the results.",
@@ -10102,12 +10098,12 @@ const en: typeof de = {
   "ko.evidenceKind.attachment": "Evidence for an attachment",
   "ko.evidenceToOriginal": "Show original",
   "ko.evidenceToOriginalHint": "Show the original in the “Attachments” section",
-  "ko.evidenceOriginalDetached": "Original no longer attached to this object",
+  // JOB 4367: `ko.evidenceOriginalDetached` lives in `texte/ux26.ts` now.
   "ko.evCons.title": "Evidence consistency",
   "ko.evCons.status.ok": "consistent",
   "ko.evCons.status.warning": "review",
   "ko.evCons.counts": "Sources {{sources}} · Attachments {{attachments}} · Evidence {{evidence}}",
-  "ko.evCons.allOk": "Sources, attachments and evidence are aligned.",
+  // JOB 4367: `ko.evCons.allOk` lives in `texte/ux26.ts` now.
   "ko.evCons.finding.source-without-evidence": "Source without evidence",
   "ko.evCons.finding.attachment-without-evidence": "Attachment without evidence",
   "ko.evCons.finding.evidence-without-source": "Evidence without source",
@@ -10121,8 +10117,7 @@ const en: typeof de = {
   "ko.evFresh.title": "Evidence freshness",
   "ko.evFresh.current": "current version backed",
   "ko.evFresh.outdated": "only older versions",
-  "ko.evFresh.missing": "evidence missing",
-  "ko.evFresh.neutral": "no evidence expected",
+  // JOB 4367: `ko.evFresh.missing` and `ko.evFresh.neutral` live in `texte/ux26.ts` now.
   "ko.evFresh.counts": "v{{version}} · current {{current}} · older {{older}}",
   // JOB 3627: die englische Seite der festen Dienst-Vermerke (de `:3038-3042`).
   "ko.historyNote.created": "created",
@@ -14325,8 +14320,7 @@ const nl: typeof de = {
   "capture.sourceMissingTitle": "Overgenomen inhoud zonder herkomstvermelding",
   "capture.sourceMissingBody":
     "Je kennisobject is opgeslagen en bevat de uit het document overgenomen tekst. De bijbehorende herkomstvermelding kon NIET worden vastgelegd ({{count}}): {{names}}. Daarmee staat er inhoud zonder bewijs — precies wat dit product niet stilzwijgend accepteert.",
-  "capture.sourceMissingNext":
-    "Volgende stap: kennisobject openen, het brondocument daar bijvoegen en de bron opnieuw vermelden. Staat het ingestelde niveau „Externe kennis“ dat niet toe, dan kan een beheerder het wijzigen onder Beheer → Externe kennis.",
+  // JOB 4367: `capture.sourceMissingNext` staat nu in `texte/ux08.ts`.
   // AUFTRAG-mega21 Block C-1 / C-2 — zie het Duitse blok voor de onderbouwing.
   "capture.followUpsFailedTitle": "Opgeslagen — maar een vervolgstap liep niet",
   "capture.followUpsFailedBody":
@@ -15553,15 +15547,13 @@ const nl: typeof de = {
   "ext.placeholder": "Zoekterm …",
   "ext.search": "Zoeken",
   "ext.attach": "Als bron toevoegen",
-  "ext.attachBlocked":
-    "Op het ingestelde niveau mag wel worden gezocht, maar niet worden toegevoegd. Een beheerder kan dit wijzigen onder Beheer → Externe kennis.",
+  // JOB 4367: `ext.attachBlocked` en `ext.gate.how` staan nu in `texte/ux08.ts`.
   // AUFTRAG-mega16 Block A (bens SB-4): het niveau is nu een echte grens — het geldt voor ELK
   // openbaar webadres, niet alleen voor herkende aanbieders.
   "ext.gate.publicUrl":
     "Op het ingestelde niveau kan geen bron met een openbaar webadres worden toegevoegd — dat geldt voor elk adres van het internet, niet alleen voor zoekresultaten.",
   "ext.gate.unanchored":
     "Op het ingestelde niveau kan een bron zonder adres alleen worden toegevoegd als het een passage is uit een document dat bij dit kennisobject is opgeslagen. Zonder adres en zonder opgeslagen document kan de server niet vaststellen of het om een extern zoekresultaat gaat.",
-  "ext.gate.how": "Een beheerder kan het niveau wijzigen onder Beheer → Externe kennis.",
   "ext.unavailable": "Externe zoekopdracht is niet beschikbaar.",
   "ext.resumeHint":
     "De trefferlijst wordt niet met het concept opgeslagen. Je zoekopdracht is terug — voer de zoekopdracht opnieuw uit om de treffers opnieuw te laden.",
@@ -15739,14 +15731,14 @@ const nl: typeof de = {
   "ko.evidenceKind.attachment": "Bewijs voor een bijlage",
   "ko.evidenceToOriginal": "Origineel tonen",
   "ko.evidenceToOriginalHint": "Het origineel tonen in het gedeelte ‘Bijlagen’",
-  "ko.evidenceOriginalDetached": "Origineel hangt niet meer aan dit object",
+  // JOB 4367: `ko.evidenceOriginalDetached` staat nu in `texte/ux26.ts`.
   "ko.evCons.title": "Evidence-consistentie",
   "ko.evCons.status.ok": "kloppend",
   "ko.evCons.status.warning": "controleren",
   // JOB 3384 · UX-26: auch hier stand das englische „Evidence" als Hauptaussage — s. den deutschen
   // Block. Gleiche Sache, niederländisches Wort.
   "ko.evCons.counts": "Bronnen {{sources}} · Bijlagen {{attachments}} · Bewijs {{evidence}}",
-  "ko.evCons.allOk": "Bronnen, bijlagen en evidence komen volledig overeen.",
+  // JOB 4367: `ko.evCons.allOk` staat nu in `texte/ux26.ts`.
   "ko.evCons.finding.source-without-evidence": "Bron zonder bewijs",
   "ko.evCons.finding.attachment-without-evidence": "Bijlage zonder bewijs",
   "ko.evCons.finding.evidence-without-source": "Bewijs zonder bron",
@@ -15760,8 +15752,7 @@ const nl: typeof de = {
   "ko.evFresh.title": "Evidence-actualiteit",
   "ko.evFresh.current": "actueel onderbouwd",
   "ko.evFresh.outdated": "alleen oudere versies",
-  "ko.evFresh.missing": "Evidence ontbreekt",
-  "ko.evFresh.neutral": "geen aanleiding voor evidence",
+  // JOB 4367: `ko.evFresh.missing` en `ko.evFresh.neutral` staan nu in `texte/ux26.ts`.
   "ko.evFresh.counts": "v{{version}} · actueel {{current}} · ouder {{older}}",
   // JOB 3627: die niederländische Seite der festen Dienst-Vermerke (de `:3038-3042`).
   "ko.historyNote.created": "aangemaakt",
@@ -18704,8 +18695,41 @@ const nl: typeof de = {
   "ga.liste.unvollstaendig": "Onvolledig — voor u niet toegankelijke bouwstenen: {{anzahl}}",
 };
 
+// ================================================================================================
+// JOB 4367 · DIE TEXTMODULE — jeder Nutzerweg bringt seine eigenen Texte mit.
+// ================================================================================================
+//
+// WAS SICH ÄNDERT UND WAS NICHT. Für einen Anwender: nichts. Jeder Text bleibt Zeichen für Zeichen
+// derselbe; `tests/i18n-textmodule/bestand-unveraendert.test.ts` misst das gegen einen vor dem
+// Umbau erzeugten Schnappschuss des Basisstands. Was sich ändert, ist die Datei, die eine Bahn
+// anfasst: wer an UX08 arbeitet, schreibt in `texte/ux08.ts` — nicht mehr in diese Datei, in die
+// bis heute JEDER Nutzerweg schrieb und an der sich deshalb jede zweite Bahn verklemmte.
+//
+// WIE SIE GEFUNDEN WERDEN. `import.meta.glob` löst Vite beim Bauen STATISCH auf: aus dem Muster
+// wird eine Liste echter Importe. Es gibt also kein dynamisches Nachladen und keinen Pfad, den ein
+// Bündler nicht sieht — eine neue Datei in `texte/` ist nach dem nächsten Bau da, ohne dass jemand
+// diese Zeile anfasst. `*` überschreitet kein `/`: `texte/intern/` (die Werkzeuge) wird nicht
+// eingesammelt.
+//
+// WARUM HIER GEPRÜFT WIRD, OBWOHL TOR UND BUILD ES SCHON TUN. Der Sammler frisst, was da liegt:
+// zwei Module mit demselben Schlüssel überschrieben sich still, und wer gewinnt, entschiede die
+// alphabetische Reihenfolge der Dateinamen. Ein lauter Abbruch ist besser als ein falscher Text.
+// DIESE Prüfung ist aber ausdrücklich die SCHWÄCHSTE der drei — sie meldet erst im Browser, also
+// nach dem Ausliefern. Die tragenden stehen in `tests/i18n-textmodule/` (Tor) und im Plugin
+// `textmodul-vertrag` in `apps/web/vite.config.ts` (Produktbuild).
+const textmodule = import.meta.glob<Textmodul>("./texte/*.ts", { eager: true, import: "default" });
+const textmodulFehler = pruefeTextmodule(textmodule, new Set(Object.keys(de)));
+if (textmodulFehler.length > 0) {
+  throw new Error(`Textmodule verletzen ihren Vertrag:\n${textmodulFehler.join("\n")}`);
+}
+const modulTexte = fuehreTextmoduleZusammen(textmodule);
+
 void i18n.use(initReactI18next).init({
-  resources: { de: { translation: de }, en: { translation: en }, nl: { translation: nl } },
+  resources: {
+    de: { translation: { ...de, ...modulTexte.de } },
+    en: { translation: { ...en, ...modulTexte.en } },
+    nl: { translation: { ...nl, ...modulTexte.nl } },
+  },
   // JOB 3323 (Nachführung aus JOB 3280): DIE ADRESSE SCHLÄGT DIE GESPEICHERTE WAHL — aber nur,
   // wenn sie eine Sprache des LINKVERTRAGS nennt (`EINTRITT_SPRACHEN` = de|en, htmlLang.ts). Der
   // Eintritt aus Klara (`/capture/frontdoor?draft=<id>&lang=en`) bestimmt so die Sprache DIESES

@@ -40,7 +40,8 @@
 //
 // 2. WELCHE FLÄCHE? Die Exporte unter `services/**` — die Fläche, auf der die belegten Fälle
 //    liegen. Gesucht wird der Aufrufer im ganzen Nicht-Test-Baum (`services`, `apps/web/src`,
-//    `tools`, `scripts`): ein Export ist auch dann verdrahtet, wenn ihn die Oberfläche ruft.
+//    `tools`, `scripts` sowie die Einzeldateien in `SUCHDATEIEN`): ein Export ist auch dann
+//    verdrahtet, wenn ihn die Oberfläche oder die Buildkonfiguration ruft.
 //
 // 3. WAS GILT ALS „OHNE AUFRUFER"? Ein Export, der WEDER von aussen NOCH in seiner eigenen Datei
 //    verwendet wird. Gemessen am 27.08.2026 an beiden möglichen Schnitten:
@@ -68,7 +69,7 @@
 // Das macht den Wächter milder, nie falsch-rot — die richtige Richtung für einen Wächter, der im
 // Tor bleiben soll. Eine echte Modulauflösung bräuchte ein `ts.Program` über den ganzen Baum und
 // kostet ein Vielfaches der Laufzeit.
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "typescript";
@@ -92,6 +93,27 @@ const UEBERWACHT = ["services", "apps/web/src"] as const;
 
 /** Wo nach Aufrufern gesucht wird — der ganze Nicht-Test-Baum. */
 const SUCHBAEUME = ["services", "apps/web/src", "tools", "scripts"] as const;
+
+/**
+ * EINZELNE Nicht-Test-Quelldateien, die ausserhalb der Suchbaeume liegen und trotzdem Aufrufer
+ * sind.
+ *
+ * JOB 4367 · DER ANLASS, gemessen: `apps/web/src/texte/intern/sammeln.ts::textmodulVertrag` wurde
+ * hier als „ohne Aufrufer" gemeldet — und hatte einen. Er steht in `apps/web/vite.config.ts`
+ * (`plugins: [react(), klaraStand(), textmodulVertrag()]`), also EINE Ebene ueber `apps/web/src`
+ * und damit ausserhalb jedes Suchbaums. Das ist kein Sonderfall dieses einen Exports: die
+ * Buildkonfiguration ist Produktionscode — sie laeuft in JEDEM `vite build`, auch im Docker-Bau
+ * (`Dockerfile:15`) —, und sie ist der natuerliche Ort, an dem Bau-Werkzeuge verdrahtet werden.
+ *
+ * WARUM EINE DATEILISTE UND NICHT `"apps/web"` ALS BAUM: ein ganzer Baum naehme
+ * `apps/web/public/word-addin/*.js` mit. Dort stehen tausende Zeilen ausgelieferten Codes, und
+ * jede Namensnennung darin wuerde ab dann als Aufruf zaehlen — der Waechter wuerde LEISER, statt
+ * genauer zu werden. Diese Liste erweitert die Suchflaeche um genau eine Datei.
+ *
+ * `existsSync` unten: die Kalibrierungsfaelle A2/A3 fahren `erhebe` gegen EIGENE Wurzeln, in denen
+ * es diese Datei nicht gibt. Sie fehlt dort einfach — kein Lesefehler, keine Sonderbehandlung.
+ */
+const SUCHDATEIEN = ["apps/web/vite.config.ts"] as const;
 
 interface Fund {
   readonly datei: string;
@@ -613,8 +635,12 @@ function erhebe(
   wurzel: string = WURZEL,
   ueberwacht: readonly string[] = UEBERWACHT,
   suchbaeume: readonly string[] = SUCHBAEUME,
+  suchdateien: readonly string[] = SUCHDATEIEN,
 ): Erhebung {
-  const dateien = suchbaeume.flatMap((b) => quelldateien(b, wurzel)).map(posix);
+  const dateien = [
+    ...suchbaeume.flatMap((b) => quelldateien(b, wurzel)),
+    ...suchdateien.filter((datei) => existsSync(join(wurzel, datei))),
+  ].map(posix);
   const bekannt = new Set(dateien);
   const nutzung = new Map<string, Set<string>>();
   const importe = new Map<string, Importkante[]>();
