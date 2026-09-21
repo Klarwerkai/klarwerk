@@ -183,29 +183,72 @@ const SCHALTER_ERKLAERUNG: Record<SchalterName, { wofuer: string; ohneIhn: strin
     wofuer: "Das Laden der Demodaten (POST /api/admin/demo-seed) — legt Konten an.",
     ohneIhn: "Die Route ist nicht registriert. Vorgabe: aus, ohne Ausnahme.",
   },
-  // JOB 3761. Die Selbstauskunft der Instanz — NICHT dasselbe wie `demodaten` eine Zeile darüber:
-  // dort steht das WERKZEUG („darf Demokonten anlegen"), hier die KENNZEICHNUNG („ich bin die
-  // Vorführinstanz"). Wer eine zweite Instanz aufsetzt, schlägt genau hier nach, warum seine Demo
-  // aussieht wie das Echte — und findet den einen Wert, den er setzen muss.
-  demoInstanz: {
-    wofuer:
-      "Die Kennzeichnung dieser Instanz als Vorführ-Instanz (Kopfband auf jeder Seite und Anmeldemaske).",
-    ohneIhn:
-      "Die Instanz gibt sich NICHT als Demo zu erkennen — sie ist von der echten nur an der Adresszeile zu unterscheiden. Vorgabe: aus (nur 1/true schaltet an), damit die ECHTE Instanz nie ein Demo-Etikett trägt.",
-  },
 };
 
-const SCHALTER_WERTE: readonly Startwert[] = (
-  Object.keys(SCHALTER_ERKLAERUNG) as SchalterName[]
-).map((name) => ({
-  name: SCHALTER_REGISTRY[name],
-  bereich: "Schalter",
+// ================================================================================================
+// JOB 4365 · ABGELÖST: `KLARWERK_DEMO_INSTANZ` WIRD NICHT MEHR GELESEN.
+// ================================================================================================
+//
+// IM REGISTRY DARÜBER STAND BIS JOB 4365 EIN ACHTER SCHALTER, `demoInstanz` (JOB 3761): „Die
+// Kennzeichnung dieser Instanz als Vorführ-Instanz". Wer eine zweite Instanz aufsetzte, schlug hier
+// nach, warum seine Demo aussieht wie das Echte — und fand den einen Wert, den er setzen musste.
+//
+// GENAU DAS IST DER GRUND, AUS DEM ER ABGELÖST IST. Die Kennzeichnung hing an einem Wert, den
+// jemand von Hand richtig setzen musste; seit JOB 4365 leitet die Auskunft sie aus dem HOSTNAMEN
+// der Anfrage ab (`feature-flags.ts`, `demoInstanzAusHost`). Wer `demo.klarwerk.io` aufruft, sieht
+// das Etikett; wer die echte Anwendung aufruft, sieht keines — ohne Zutun. Der Umgebungswert
+// bewirkt nichts mehr, gesetzt wie ungesetzt (gemessen: `tests/demo-kennzeichnung/schalter.test.ts`,
+// Fall H1, beide Richtungen).
+//
+// ------------------------------------------------------------------------------------------------
+// WARUM DER EINTRAG TROTZDEM HIER STEHT — UND WARUM SEINE ZWEI SÄTZE VERALTET SIND
+// ------------------------------------------------------------------------------------------------
+//
+// Er gehört eigentlich gestrichen: Dieser Katalog sagt zu, was die ANWENDUNG LIEST, und ein Name,
+// den niemand mehr liest, ist hier eine Unwahrheit. Das Streichen geht aber NICHT allein — es
+// verlangt `env.demo.beispiel` mit, und zwar hart:
+//
+//   · `tests/demo-zugang-start/env-beispiel.test.ts` C2 verlangt, dass die Beispieldatei KEINEN
+//     Namen nennt, den dieser Katalog nicht kennt. Nimmt man den Eintrag hier weg und lässt die
+//     Zeile `# KLARWERK_DEMO_INSTANZ=` dort stehen, wird C2 rot.
+//   · Derselbe Test spiegelt in C5 die beiden Sätze unten WÖRTLICH nach `env.demo.beispiel`. Sie
+//     hier zu korrigieren, ohne die Datei zu korrigieren, macht C5 rot.
+//
+// `env.demo.beispiel` liegt NICHT in den Zielpfaden dieses Auftrags (Runde 1 wurde genau daran rot:
+// ZIELPFAD-VERSTOSS). Deshalb bleiben `wofuer` und `ohneIhn` unten Zeichen für Zeichen die alten —
+// sie sind die Spiegelung der unveränderten Beispieldatei und nicht mehr die Wahrheit über das
+// Produkt. Beides ist GEMEINSAM nachzuführen, in einem Auftrag, der `env.demo.beispiel` mit in den
+// Zielpfaden führt; dann fallen Eintrag und Dateiblock zusammen weg. Bis dahin steht die Ablösung
+// an genau dieser Stelle im Klartext, statt still zu bleiben.
+const ABGELOESTER_DEMO_SCHALTER: Startwert = {
+  name: "KLARWERK_DEMO_INSTANZ",
+  // Der Bereich trägt die Wahrheit, die `wofuer`/`ohneIhn` oben nicht tragen dürfen. Er ist an
+  // keine Zeile der Beispieldatei gebunden.
+  bereich: "Schalter (abgelöst seit JOB 4365 — wird nicht mehr gelesen)",
   pflicht: { art: "nie" } as const,
   geheim: false,
   vorgabe: "aus (1/true schaltet an; Rechtsseiten und Hinweisbanner sind an, 0/false schaltet ab)",
-  wofuer: SCHALTER_ERKLAERUNG[name].wofuer,
-  ohneIhn: SCHALTER_ERKLAERUNG[name].ohneIhn,
-}));
+  // VERALTET, absichtlich wörtlich: gespiegelt aus `env.demo.beispiel` (C5). Die gültige Aussage
+  // steht im Block darüber und in `services/app/src/feature-flags.ts`.
+  wofuer:
+    "Die Kennzeichnung dieser Instanz als Vorführ-Instanz (Kopfband auf jeder Seite und Anmeldemaske).",
+  ohneIhn:
+    "Die Instanz gibt sich NICHT als Demo zu erkennen — sie ist von der echten nur an der Adresszeile zu unterscheiden. Vorgabe: aus (nur 1/true schaltet an), damit die ECHTE Instanz nie ein Demo-Etikett trägt.",
+};
+
+const SCHALTER_WERTE: readonly Startwert[] = [
+  ...(Object.keys(SCHALTER_ERKLAERUNG) as SchalterName[]).map((name) => ({
+    name: SCHALTER_REGISTRY[name],
+    bereich: "Schalter",
+    pflicht: { art: "nie" } as const,
+    geheim: false,
+    vorgabe:
+      "aus (1/true schaltet an; Rechtsseiten und Hinweisbanner sind an, 0/false schaltet ab)",
+    wofuer: SCHALTER_ERKLAERUNG[name].wofuer,
+    ohneIhn: SCHALTER_ERKLAERUNG[name].ohneIhn,
+  })),
+  ABGELOESTER_DEMO_SCHALTER,
+];
 
 // ================================================================================================
 // DER CONFLUENCE-ZUGANG — AUS DEM MODUL, NICHT DANEBEN

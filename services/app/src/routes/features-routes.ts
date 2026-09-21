@@ -50,6 +50,25 @@
 //
 // Der Aufrufer in der Oberfläche schlüsselt seinen Zwischenspeicher nach Sitzung (`useFeatures`),
 // damit die Teilmenge von vor der Anmeldung nicht als vollständige Antwort danach hängenbleibt.
+//
+// ================================================================================================
+// JOB 4365 — EIN FELD DIESER AUSKUNFT HÄNGT AN DER ANFRAGE UND NICHT MEHR AN DER UMGEBUNG.
+// ================================================================================================
+//
+// `demoInstanz` kam bis JOB 4365 aus dem Umgebungsschalter `KLARWERK_DEMO_INSTANZ`; seit JOB 4365
+// leitet die Auskunft es aus dem Hostnamen der Anfrage ab (Entscheidung 1,
+// ENTSCHEIDUNGEN-FACHFRAGEN-20260921.md — die Begründung steht ausgeschrieben in
+// `feature-flags.ts`). Für diese Route heißt das zweierlei:
+//
+//   · Der Host wird hier EINMAL gelesen und in BEIDE Zweige gegeben. Zwei getrennte Lesungen wären
+//     zwei Stellen, an denen jemand eines Tages `request.hostname` schreibt.
+//   · Gelesen wird `request.headers.host`, der ROHE Kopf — ausdrücklich NICHT `request.hostname`.
+//     Fastify zieht dort bei eingeschaltetem `trustProxy` (`build-app.ts`, `resolveTrustProxy`) den
+//     `X-Forwarded-Host` heran, und den kann jeder Aufrufer selbst setzen. Ein Demo-Etikett auf der
+//     ECHTEN Anwendung wäre schlimmer als gar keines.
+//
+// Der VERTRAG über den Draht bleibt Zeichen für Zeichen derselbe: ein Feld `features`, darin je
+// Schalter ein Ja/Nein, darunter `demoInstanz`. Die Adresse selbst geht nicht mit hinaus.
 import type { FastifyPluginAsync } from "fastify";
 import { schalterZustand, schalterZustandVorAnmeldung } from "../feature-flags";
 import { type Guards, tokenFromRequest } from "../http";
@@ -57,19 +76,21 @@ import { type Guards, tokenFromRequest } from "../http";
 export function featuresRoutes(guards: Guards): FastifyPluginAsync {
   return async (app) => {
     app.get("/api/features", async (request, reply) => {
+      // JOB 4365: der rohe Host-Kopf, einmal gelesen, für beide Zweige (Begründung oben).
+      const host = request.headers.host;
       // Ohne mitgereichte Sitzung gar nicht erst nach ihr fragen: `requireUser` würde 401 senden
       // und der Unangemeldete bekäme die Rechtsseiten nicht zu sehen. Wer einen Token mitbringt,
       // durchläuft die unveränderte Prüfung — ein ABGELAUFENER Token ist weiterhin ein 401 und
       // wird nicht stillschweigend zur öffentlichen Teilmenge herabgestuft.
       if (!tokenFromRequest(request)) {
-        reply.code(200).send({ features: schalterZustandVorAnmeldung() });
+        reply.code(200).send({ features: schalterZustandVorAnmeldung(host) });
         return;
       }
       const user = await guards.requireUser(request, reply);
       if (!user) {
         return;
       }
-      reply.code(200).send({ features: schalterZustand() });
+      reply.code(200).send({ features: schalterZustand(host) });
     });
   };
 }

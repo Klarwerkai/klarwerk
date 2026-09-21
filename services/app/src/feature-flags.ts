@@ -77,30 +77,76 @@ export const SCHALTER_REGISTRY = {
    * hat, geht einen Unangemeldeten nichts an, und diese Fläche liegt ohnehin hinter `users.manage`.
    */
   demodaten: "KLARWERK_DEMO_SEED",
-  /**
-   * JOB 3761: DIESE INSTANZ IST EINE VORFÜHR-INSTANZ, UND SIE SAGT ES SELBST.
-   *
-   * Pedis Satz (11.09. 17:20 über Codex, PRIORITAETEN.md/DEMO-ZUGANG-START): „und man muss ihr
-   * ansehen, dass sie die Demo ist und nicht das Echte". Unter `demo.klarwerk.io` steht eine zweite
-   * Anwendung neben der echten — gleiche Version, gleiches Aussehen, womöglich gleiches Firmenlogo.
-   * Ohne diesen Schalter unterscheidet sie nichts als die Adresszeile.
-   *
-   * WARUM NICHT `demodaten` (der Schalter direkt darüber), obwohl beide „Demo" heißen: Das sind zwei
-   * verschiedene Aussagen. `demodaten` ist ein WERKZEUG („dieser Betrieb darf Demokonten anlegen") —
-   * eine echte Instanz kann es eingeschaltet haben, und eine Vorführinstanz muss keine Demodaten
-   * geladen haben. Der eine Schalter für beides hieße: entweder trägt die echte Instanz ein
-   * Demo-Etikett, sobald jemand das Werkzeug freischaltet, oder die Vorführinstanz trägt keines,
-   * solange sie ihre Daten von Hand pflegt. Beides ist falsch, und das erste ist der schlimmere Fall.
-   *
-   * VORGABE AUS, aus demselben Grund wie bei `demodaten` und mit umgekehrter Wirkrichtung zu den
-   * Pflichtangaben in `SCHALTER_VORGABE_AN`: Der Schaden ist die stille ANWESENHEIT des Hinweises.
-   * Ein „Demo"-Etikett auf der ECHTEN Anwendung — nach einem Vertipper, einem kopierten
-   * Umgebungsblock, einem halb übernommenen Startskript — wäre schlimmer als gar keines: es machte
-   * echte Arbeit unglaubwürdig. Nur ein ausdrückliches `1`/`true` schaltet scharf; `"ja"`, `"on"`,
-   * leer und ungesetzt lassen die echte Instanz unbeschriftet.
-   */
-  demoInstanz: "KLARWERK_DEMO_INSTANZ",
 } as const;
+
+// ================================================================================================
+// JOB 4365 — DIE VORFÜHR-INSTANZ ERKENNT SICH AM HOSTNAMEN, NICHT AN EINEM SCHALTER.
+// ================================================================================================
+//
+// HIER STAND BIS JOB 4365 EIN ACHTER REGISTRY-EINTRAG: `demoInstanz: "KLARWERK_DEMO_INSTANZ"`
+// (JOB 3761). Er ist ERSETZT und nicht daneben gestellt — der Umgebungsschalter wird NIRGENDS mehr
+// gelesen. Wer ihn heute setzt, bewirkt nichts, und wer ihn auf `0` setzt, nimmt der Vorführung
+// ihre Kennzeichnung nicht (beide Richtungen gemessen: `tests/demo-kennzeichnung/schalter.test.ts`,
+// Fall H1).
+//
+// EIN REST BLEIBT, UND ZWAR EIN BENANNTER: Der KATALOG `start-vertrag.ts` führt den Namen weiter,
+// ausdrücklich als abgelöst (Bereich „Schalter (abgelöst seit JOB 4365 …)"), und `env.demo.beispiel`
+// nennt ihn unverändert. Der Grund steht dort ausgeschrieben: die Beispieldatei ist über
+// `tests/demo-zugang-start/env-beispiel.test.ts` (C2/C5) hart an den Katalog gebunden und liegt
+// nicht in den Zielpfaden dieses Auftrags. Das ist eine Frage der DOKUMENTATION, nicht der Wirkung —
+// gelesen wird der Wert von keiner Zeile Produktcode mehr.
+//
+// PEDIS ANLASS BLEIBT DERSELBE (11.09. 17:20 über Codex, PRIORITAETEN.md/DEMO-ZUGANG-START): „und
+// man muss ihr ansehen, dass sie die Demo ist und nicht das Echte". Geändert hat sich die QUELLE
+// dieser Aussage. Ein Schalter ist eine BEHAUPTUNG über die Instanz, und sie war nur so richtig wie
+// der Umgebungsblock, den jemand von Hand gepflegt hat: ein kopierter Block, ein halb übernommenes
+// Startskript, ein vergessener Wert — und die Vorführinstanz trug kein Etikett oder die echte eines.
+// Der Hostname ist dagegen keine Behauptung, sondern die TATSACHE, die den Unterschied überhaupt
+// ausmacht: Unter `demo.klarwerk.io` steht die Vorführung, unter jeder anderen Adresse nicht. Wer
+// die Demo aufruft, hat sie damit schon bewiesen; niemand muss mehr etwas richtig setzen
+// (Entscheidung 1, ENTSCHEIDUNGEN-FACHFRAGEN-20260921.md).
+//
+// WARUM ER DAMIT AUS DEM REGISTRY MUSS und nicht als Sonderfall darin bleibt: Das Registry ist die
+// Abbildung „öffentlicher Schaltername → Umgebungsvariable". Ein Eintrag, dessen Wert niemand mehr
+// liest, wäre genau die zweite Wahrheit, die dieses Registry beseitigt hat — `schalterAn(...)`
+// gäbe weiterhin eine Antwort, und die wäre falsch. Über den Draht geht `demoInstanz` unverändert
+// weiter: dieselbe Auskunft, derselbe Fachname, derselbe Ja/Nein-Wert; die Oberfläche
+// (`apps/web/src/auth/BrandPanel.tsx`) bleibt unangetastet.
+
+/**
+ * Der Hostname der Vorführ-Instanz — die EINE Adresse, die ein Demo-Etikett trägt.
+ *
+ * Bewusst ein Literal und keine Umgebungsvariable: Ein Schalter, der sagt, welcher Host die Demo
+ * ist, wäre derselbe von Hand gepflegte Wert, den dieser Auftrag gerade abgeschafft hat. Derselbe
+ * Präzedenzfall steht in `server.ts:20` (`CANONICAL_HOST ?? "klarwerk.ai"`).
+ */
+const DEMO_HOST = "demo.klarwerk.io";
+
+/**
+ * Ist die Anfrage an der Vorführ-Adresse angekommen?
+ *
+ * ERWARTET WIRD DER ROHE `Host`-KOPF der Anfrage, so wie der Browser ihn geschickt hat — also mit
+ * Port, wenn einer im Spiel ist (`demo.klarwerk.io:443`, `demo.klarwerk.io:3000`). Caddy und
+ * Coolify reichen ihn unverändert durch.
+ *
+ * AUSDRÜCKLICH NICHT AUSGEWERTET WIRD `X-Forwarded-Host` (und nichts dergleichen), und der Aufrufer
+ * hält sich daran, indem er `request.headers.host` übergibt statt `request.hostname` — letzteres
+ * zöge bei eingeschaltetem `trustProxy` den Weiterleitungskopf heran. Der Grund ist die
+ * Wirkrichtung: `X-Forwarded-Host` kann jeder Aufrufer selbst setzen. Ein Demo-Etikett auf der
+ * ECHTEN Anwendung wäre schlimmer als gar keines — es machte echte Arbeit unglaubwürdig.
+ *
+ * STRENG UND NUR AUF GLEICHHEIT, in genau dieser Richtung fail-safe: `x.demo.klarwerk.io`,
+ * `demo.klarwerk.io.beispiel.de`, `notdemo.klarwerk.io` und ein abschließender Punkt sind NICHT die
+ * Vorführ-Instanz. Zu streng heißt: die Demo bliebe unbeschriftet (ärgerlich). Zu locker heißt: die
+ * echte Anwendung trüge ein Demo-Etikett (schädlich). Kleinschreibung, weil Hostnamen
+ * schreibweisenunabhängig sind und ein Browser `Demo.Klarwerk.io` schicken darf.
+ */
+export function demoInstanzAusHost(host: string | undefined): boolean {
+  if (typeof host !== "string") {
+    return false;
+  }
+  return host.trim().toLowerCase().replace(/:\d+$/, "") === DEMO_HOST;
+}
 
 export type SchalterName = keyof typeof SCHALTER_REGISTRY;
 
@@ -145,19 +191,19 @@ export function vorgabeAn(name: SchalterName): boolean {
 // antwortet DIESELBE Auskunft ohne Sitzung mit dieser TEILMENGE. Alles andere bleibt hinter der
 // Anmeldung — welche Fähigkeiten ein Betrieb freigeschaltet hat, geht einen Unangemeldeten nichts an.
 //
-// JOB 3761 — UND WARUM DER DEMO-SCHALTER HIER STEHT, obwohl `demodaten` es ausdrücklich nicht tut.
-// Die Begründung dort lautet: „welche WERKZEUGE ein Betrieb freigeschaltet hat, geht einen
-// Unangemeldeten nichts an". Die Selbstauskunft „ich bin die Vorführinstanz" ist kein Werkzeug und
-// kein Fähigkeitszukauf, sondern eine Kennzeichnung, die genau für den Gast gedacht ist — und die
-// Anmeldemaske ist die erste Fläche, die er sieht, und die, auf der er sein Kennwort eintippt. Käme
-// der Hinweis erst nach der Anmeldung, käme er nach der Eingabe. Verraten wird damit nichts, was
-// nicht ohnehin jeder sehen soll: die Antwort bleibt reines Ja/Nein, ohne Variablennamen und ohne
-// Adresse (features-routes.ts:25-29, Sammler mega46-schalter-auskunft).
-const SCHALTER_VOR_ANMELDUNG = new Set<SchalterName>([
-  "rechtsseiten",
-  "hinweisbanner",
-  "demoInstanz",
-]);
+// JOB 3761/4365 — DIE DEMO-KENNZEICHNUNG STEHT EBENFALLS VOR DER ANMELDUNG, aus demselben Grund und
+// obwohl `demodaten` es ausdrücklich nicht tut. Die Begründung dort lautet: „welche WERKZEUGE ein
+// Betrieb freigeschaltet hat, geht einen Unangemeldeten nichts an". Die Selbstauskunft „ich bin die
+// Vorführinstanz" ist kein Werkzeug und kein Fähigkeitszukauf, sondern eine Kennzeichnung, die genau
+// für den Gast gedacht ist — und die Anmeldemaske ist die erste Fläche, die er sieht, und die, auf
+// der er sein Kennwort eintippt. Käme der Hinweis erst nach der Anmeldung, käme er nach der Eingabe.
+// Verraten wird damit nichts, was nicht ohnehin jeder sehen soll: die Antwort bleibt reines Ja/Nein,
+// ohne Variablennamen und ohne Adresse (features-routes.ts, Sammler mega46-schalter-auskunft).
+//
+// Sie steht seit JOB 4365 NICHT mehr in dieser Menge, weil sie kein Registry-Schalter mehr ist —
+// beide Auskunftsfunktionen unten setzen sie AUSDRÜCKLICH aus dem Host der Anfrage. Über den Draht
+// ändert sich dadurch nichts.
+const SCHALTER_VOR_ANMELDUNG = new Set<SchalterName>(["rechtsseiten", "hinweisbanner"]);
 
 /**
  * DIE EINE AUSWERTUNGSREGEL. Zwei Richtungen, je nach Art des Schalters, und beide fail-safe in die
@@ -179,35 +225,59 @@ export function schalterAn(name: SchalterName): boolean {
   return wert === "1" || wert === "true";
 }
 
+// ================================================================================================
+// JOB 4365 — WARUM BEIDE AUSKUNFTSFUNKTIONEN JETZT DEN HOST VERLANGEN.
+// ================================================================================================
+//
+// `host` ist ein PFLICHTPARAMETER und ausdrücklich kein optionaler mit Vorgabewert. Der Unterschied
+// ist der zwischen einem Compilerfehler und einem stillen Fehler: Eine zweite Stelle, die diese
+// Auskunft eines Tages ohne Host aufruft, bekäme mit einem Vorgabewert dauerhaft `demoInstanz:
+// false` — die Vorführinstanz verlöre ihr Etikett, und niemand bemerkte es. So bekommt sie einen
+// Typfehler und muss sagen, welchen Host sie meint.
+//
+// ÜBERGEBEN WIRD DER ROHE `Host`-KOPF (`request.headers.host`), nicht `request.hostname`: Fastify
+// zieht dort bei eingeschaltetem `trustProxy` den `X-Forwarded-Host` heran, und der ist von aussen
+// setzbar. Die Begründung steht ausgeschrieben bei `demoInstanzAusHost` oben.
+
 /**
  * Der Zustand ALLER registrierten Schalter als reine Ja/Nein-Abbildung — die Nutzlast der Auskunft
  * aus F1. Ein nicht gesetzter Schalter erscheint als `false`, nicht als fehlender Schlüssel: Der
  * Vertrag bleibt damit stabil, und „aus" ist von „kenne ich nicht" unterscheidbar, ohne dass
  * irgendetwas über die Umgebung verraten wird.
+ *
+ * JOB 4365: `demoInstanz` kommt daneben aus dem Host der Anfrage — derselbe Fachname und derselbe
+ * Ja/Nein-Wert wie zuvor, nur eine andere Quelle. Die Adresse selbst geht dabei NICHT über den
+ * Draht: der Aufrufer erfährt die Tatsache, nicht die Umgebung.
  */
-export function schalterZustand(): Record<SchalterName, boolean> {
+export function schalterZustand(
+  host: string | undefined,
+): Record<SchalterName, boolean> & { demoInstanz: boolean } {
   const zustand = {} as Record<SchalterName, boolean>;
   for (const name of SCHALTER_NAMEN) {
     zustand[name] = schalterAn(name);
   }
-  return zustand;
+  return { ...zustand, demoInstanz: demoInstanzAusHost(host) };
 }
 
 /**
  * AUFTRAG-mega61 Block A: derselbe Zustand für einen UNANGEMELDETEN Aufrufer — beschränkt auf die
- * Schalter, deren Fläche vor der Anmeldung überhaupt erreichbar ist (SCHALTER_VOR_ANMELDUNG).
+ * Schalter, deren Fläche vor der Anmeldung überhaupt erreichbar ist (SCHALTER_VOR_ANMELDUNG), plus
+ * die Demo-Kennzeichnung aus dem Host (JOB 3761/4365: die Anmeldemaske ist die Fläche, auf der sie
+ * zählt).
  *
  * Bewusst eine TEILMENGE derselben Abbildung und kein eigener Vertrag: Der Leser in der Oberfläche
  * (`FeatureGate`) wertet einen fehlenden Schlüssel wie „aus" aus (`?? false`) — ein Unangemeldeter
  * sieht damit für jede andere Fläche genau das, was er sehen soll, ohne dass hier eine zweite
  * Auswertungsregel entsteht.
  */
-export function schalterZustandVorAnmeldung(): Partial<Record<SchalterName, boolean>> {
+export function schalterZustandVorAnmeldung(
+  host: string | undefined,
+): Partial<Record<SchalterName, boolean>> & { demoInstanz: boolean } {
   const zustand: Partial<Record<SchalterName, boolean>> = {};
   for (const name of SCHALTER_NAMEN) {
     if (SCHALTER_VOR_ANMELDUNG.has(name)) {
       zustand[name] = schalterAn(name);
     }
   }
-  return zustand;
+  return { ...zustand, demoInstanz: demoInstanzAusHost(host) };
 }

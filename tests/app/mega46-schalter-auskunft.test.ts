@@ -32,12 +32,12 @@ const SCHALTER_VARIABLEN = [
   // Eintrag in dieser Liste würde `schalterLeeren()` ihn stehen lassen — der VORGABE-Fall unten
   // prüfte dann nicht die Vorgabe, sondern die Testumgebung.
   "KLARWERK_DEMO_SEED",
-  // JOB 3761: die Selbstauskunft „diese Instanz ist die Vorführinstanz". Sie MUSS hier stehen, und
-  // zwar aus demselben Grund wie der Schalter darüber: `schalterLeeren()` würde sie sonst stehen
-  // lassen, und der VORGABE-Fall unten prüfte dann die Umgebung des Laufs statt die Vorgabe. Genau
-  // diese Vorgabe (aus) ist hier die eigentliche Zusage — ein Demo-Etikett auf der ECHTEN
-  // Anwendung wäre schlimmer als gar keines.
-  "KLARWERK_DEMO_INSTANZ",
+  // JOB 4365: `KLARWERK_DEMO_INSTANZ` stand hier bis zum 21.09.2026 (JOB 3761) und ist
+  // ABGESCHAFFT — die Vorführ-Instanz erkennt sich am Hostnamen der Anfrage, nicht an einem
+  // Umgebungswert. Er gehört deshalb nicht mehr in diese Liste: sie führt die Variablen der
+  // REGISTRIERTEN Schalter, und ein Name ohne Registry-Eintrag wäre hier eine Unwahrheit. Dass er
+  // wirklich keine Wirkung mehr hat, misst `tests/demo-kennzeichnung/schalter.test.ts` (H1) —
+  // gesetzt wie ungesetzt, in beide Richtungen.
 ] as const;
 
 // AUFTRAG-mega61: der erwartete Zustand ohne jede gesetzte Variable. Die drei alten Schalter sind
@@ -56,11 +56,16 @@ const VORGABE = {
   // Dass dieser Wert hier `false` ist, ist selbst die Zusage: wer ihn eines Tages auf `true`
   // ändert, muss diese Zeile anfassen und dabei über die Begründung stolpern.
   demodaten: false,
-  // JOB 3761: eine Instanz behauptet nicht von selbst, die Demo zu sein. Dass dieser Wert hier
-  // `false` steht, ist die Zusage — wer ihn eines Tages auf `true` ändert, muss diese Zeile
-  // anfassen und dabei über die Begründung stolpern.
+  // JOB 3761/4365: eine Instanz behauptet nicht von selbst, die Demo zu sein. Sie ist es genau
+  // dann, wenn die Anfrage unter `demo.klarwerk.io` ankommt — und die Aufrufe dieser Datei kommen
+  // es nicht (`app.inject` setzt `localhost:80`, s. Fall HOST unten, der beide Richtungen misst).
+  // Dass dieser Wert hier `false` steht, ist damit weiterhin die Zusage: die ECHTE Anwendung trägt
+  // kein Demo-Etikett.
   demoInstanz: false,
 } as const;
+
+/** Die Vorführ-Adresse — bewusst als Literal, nicht aus dem Produktionscode abgeschrieben. */
+const DEMO_HOST = "demo.klarwerk.io";
 
 // Jeder Fall setzt die Schalter AUSDRÜCKLICH; die Vorgabe hat unten ihren eigenen Fall.
 function schalterLeeren(): void {
@@ -110,8 +115,9 @@ describe("mega46 F1 · die Auskunft über die gesetzten Schalter", () => {
     const features = (res.json() as { features: Record<string, unknown> }).features;
     // JOB 3761: die Teilmenge hat einen dritten Eintrag bekommen — die Kennzeichnung „Demo". Sie
     // gehört hierher, weil die Anmeldemaske die erste Fläche ist, auf der sie zählt (ein Gast tippt
-    // dort sein Kennwort ein). Sie meldet hier `false`, weil nichts gesetzt ist: die Vorgabe bleibt
-    // auch VOR der Anmeldung „aus".
+    // dort sein Kennwort ein). JOB 4365: sie meldet hier `false`, weil dieser Aufruf nicht unter
+    // der Vorführ-Adresse ankommt — die Kennzeichnung hängt am Host der Anfrage, nicht mehr an
+    // einem Umgebungsschalter.
     expect(features).toEqual({ rechtsseiten: true, hinweisbanner: true, demoInstanz: false });
     // Ausdrücklich: kein Wort über die gebuchten Fähigkeiten dieses Betriebs.
     expect(Object.keys(features)).not.toContain("herkunft");
@@ -143,6 +149,30 @@ describe("mega46 F1 · die Auskunft über die gesetzten Schalter", () => {
     const features = await schalterAbfragen(headers, app);
     // Der Schlüsselsatz ist vollständig und stabil — „aus“ ist von „kenne ich nicht“ unterscheidbar.
     expect(features).toEqual(VORGABE);
+    await app.close();
+  });
+
+  it("HOST: `demoInstanz` folgt der Adresse der Anfrage — und NUR sie folgt ihr", async () => {
+    // JOB 4365. Der Fall steht hier und nicht nur in `tests/demo-kennzeichnung/`, weil er eine
+    // Aussage über DIESE Auskunft macht: Sie hat jetzt zwei Quellen (Umgebung für die Schalter,
+    // Anfrage für die Kennzeichnung) und darf sie nicht vermischen. Gemessen wird beides — dass
+    // der Host das eine Feld umlegt UND dass er kein anderes anfasst.
+    const app = buildApp();
+    const headers = await angemeldet(app);
+
+    const unterDemo = await app.inject({
+      method: "GET",
+      url: "/api/features",
+      headers: { ...headers, host: DEMO_HOST },
+    });
+    expect(unterDemo.statusCode).toBe(200);
+    expect((unterDemo.json() as { features: Record<string, unknown> }).features).toEqual({
+      ...VORGABE,
+      demoInstanz: true,
+    });
+
+    // Dieselbe App, dieselbe Umgebung, ein anderer Host: alles zurück auf die Vorgabe.
+    expect(await schalterAbfragen(headers, app)).toEqual(VORGABE);
     await app.close();
   });
 
