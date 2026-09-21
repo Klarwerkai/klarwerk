@@ -1237,6 +1237,17 @@ const de = {
   "adm.ready.upload.val": "{{n}} Anhänge · {{mb}} MB",
   "adm.ready.unknown": "unbekannt",
   "adm.ready.loading": "wird geladen …",
+  // JOB 4363 (H6-D1b): der Stand der Bereitschaftskarte, wenn die Verbindung unterbrochen war.
+  // Drei Lagen, die bis hierher EINEN Satz teilten (`loadstate.stale`, „Aktualisierung
+  // fehlgeschlagen") — und zwei davon hat es nie gegeben: ohne Netz RUHT der Abruf, es gab keinen
+  // Versuch; nach der Wiederverbindung innerhalb der Frischefrist (30 s, `ZAEHLER_FRISCHE_MS`) holt
+  // react-query nichts nach, es ist seither schlicht keine Antwort angekommen. Der GESCHEITERTE
+  // Abruf behält seinen vorhandenen Satz `loadstate.stale` — ein zweiter Wortlaut für denselben
+  // Zustand wäre die Krankheit, gegen die `Abfragehuelle.tsx:27-35` geschrieben ist. Gerendert wird
+  // das in `components/einstellungen/bereitschaftstandhinweis.tsx`, je hinter „Stand von HH:MM ·".
+  "adm.ready.stand.offline": "ohne Netzverbindung nicht aktualisiert",
+  "adm.ready.stand.netzluecke": "seit der Unterbrechung ist keine neue Antwort angekommen",
+  "adm.ready.stand.laeuft": "wird gerade aufgefrischt",
   // AUFTRAG-mega14 Block H (SCRUM-437): die fehlende Zeile. Sie ZEIGT nur — Laden/Entfernen bleibt
   // im Datenbereich, es gibt genau eine Autorität.
   "adm.ready.demo": "Demodaten",
@@ -8309,6 +8320,10 @@ const en: typeof de = {
   "adm.ready.upload.val": "{{n}} attachments · {{mb}} MB",
   "adm.ready.unknown": "unknown",
   "adm.ready.loading": "loading …",
+  // JOB 4363 (H6-D1b) — see the German block for the reasoning.
+  "adm.ready.stand.offline": "not refreshed — no network connection",
+  "adm.ready.stand.netzluecke": "no new answer has arrived since the interruption",
+  "adm.ready.stand.laeuft": "refreshing now",
   "adm.ready.demo": "Demo data",
   "adm.ready.demo.loaded": "{{n}} loaded — removable under Data",
   "adm.ready.demo.none": "none loaded",
@@ -13939,6 +13954,10 @@ const nl: typeof de = {
   "adm.ready.upload.val": "{{n}} bijlagen · {{mb}} MB",
   "adm.ready.unknown": "onbekend",
   "adm.ready.loading": "wordt geladen …",
+  // JOB 4363 (H6-D1b) — zie het Duitse blok voor de motivering.
+  "adm.ready.stand.offline": "niet bijgewerkt — geen netwerkverbinding",
+  "adm.ready.stand.netzluecke": "sinds de onderbreking is er geen nieuw antwoord binnengekomen",
+  "adm.ready.stand.laeuft": "wordt nu ververst",
   "adm.ready.demo": "Demogegevens",
   "adm.ready.demo.loaded": "{{n}} geladen — te verwijderen onder Gegevens",
   "adm.ready.demo.none": "geen geladen",

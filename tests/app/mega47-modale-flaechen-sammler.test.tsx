@@ -3986,8 +3986,27 @@ describe("JOB 1181 · Klassenbindungen: aufgelöst oder gemeldet, kein dritter Z
     // Unwahrheit: „wird gerade aufgefrischt" ist keine Warnung, „Auffrischung gescheitert" und
     // „ohne Netzverbindung" sind eine. Es fällt keine bestehende Bindung weg, und keine ist
     // verschoben.
+    // JOB 4363 (H6-D1b · DER STAND DER BEREITSCHAFTSKARTE): von 223 auf 224. GENAU EINE Bindung
+    // kommt dazu, und sie ist der Bauform aus JOB 4213 und JOB 4293 direkt darüber ZEICHENGLEICH —
+    // ein Satz über die Aktualität eines Bestands, in zwei Tönen. Gemessen an diesem Arbeitsbaum,
+    // nicht gerechnet (der Sammler meldete `expected 224 to be 223`, Arbeitsprüfung
+    // 624ddc26383645d89df830597f0f6c55):
+    //
+    //     + components/einstellungen/bereitschaftstandhinweis.tsx — `cx(HINWEIS_ZEILE,
+    //           gestoert ? HINWEIS_GESTOERT : HINWEIS_RUHIG)`
+    //       (der Standhinweis der Bereitschaftskarte: eine laufende Auffrischung ist ein ruhiger
+    //        Hinweis, ein ruhender oder gescheiterter Abruf und die Netzlücke sind eine Warnung)
+    //
+    // WARUM NICHT AUFLÖSBAR GESCHRIEBEN (Auflage aus JOB 3267): dieselbe Lage wie bei JOB 4293 R3,
+    // dort GEMESSEN — die Bedingung selbst ist das Unauflösbare, nicht die Schreibweise mit `cx`;
+    // eine flache Bedingung ohne `cx` ändert die Zahl nicht. Auflösbar wäre nur, die Lagen auf zwei
+    // Knoten zu verteilen: das wären zwei Abschriften derselben Statusregion samt `data-einst` und
+    // `data-lage`, und die Lagen teilen sich den Knoten, weil sie dieselbe Aussage in verschiedenen
+    // Tönen sind. Den Ton wegzulassen wäre keine Lösung, sondern eine Unwahrheit: „wird gerade
+    // aufgefrischt" ist keine Warnung, „ohne Netzverbindung nicht aktualisiert" und „Aktualisierung
+    // fehlgeschlagen" sind eine. Es fällt keine bestehende Bindung weg, und keine ist verschoben.
     expect(UNAUFGELOEST.length, "es gibt heute unauflösbare Bindungen — das ist der Befund").toBe(
-      223,
+      224,
     );
     for (const b of UNAUFGELOEST) {
       expect(b.datei, "Meldung ohne Datei").toMatch(/^apps\/web\/src\/.+\.tsx?$/);

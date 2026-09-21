@@ -1986,8 +1986,27 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // expected { komponenten: 402, anbieter: 1, …(1) } to deeply equal { komponenten: 400, … }"
     // (Cloud-Lauf 036e7ef823af315efb46c458). Dass `anbieter` und `traeger` dabei UNVERÄNDERT
     // blieben, steht in derselben Meldung — beide Seiten des Vergleichs nennen 1 und 2.
+    //
+    // JOB 4363 (H6-D1b · DER STAND DER BEREITSCHAFTSKARTE): 402 → 403, und es ist GENAU EIN
+    // Bauteil:
+    //     + `Bereitschaftstandhinweis` — die Standzeile der Bereitschaftskarte
+    //       (`components/einstellungen/bereitschaftstandhinweis.tsx`), exportiert, genau ein
+    //       Aufrufer: `pages/AdminSicherheitDetails.tsx` (`BereitschaftDetail`).
+    // Dieselbe Begründung wie bei jedem Eintrag darüber: die Auflage verbietet, dass eine
+    // UMSTELLUNG die Erhebung verschiebt — nicht, dass der Quellbaum wächst. `anbieter` 1 und
+    // `traeger` 2 bleiben unverändert, und das ist an der Datei NACHGELESEN und nicht nebenbei
+    // behauptet: sie enthält weder `CAPTION_AI_TEXT` (also kein `ANGEBOT_MUSTER`) noch ein
+    // `documentTitle`-Prop noch ein `<img`. Sie rendert eine Statusregion mit Text, einem
+    // Warnsymbol aus `lucide-react` und einem Wiederholen-Knopf — kein Bild, keine
+    // Bildbeschreibung. Das Bauteil erscheint nur in der Grundmenge und berührt keinen Bildweg.
+    //
+    // DIE +1 IST GEMESSEN, nicht gerechnet: der Sammler meldete im Tor dieser Runde wörtlich
+    // „gemessen: 403 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 494 Quelldateien …
+    // expected { komponenten: 403, anbieter: 1, …(1) } to deeply equal { komponenten: 402, … }"
+    // (Arbeitsprüfung 624ddc26383645d89df830597f0f6c55). Dass `anbieter` und `traeger` dabei
+    // UNVERÄNDERT blieben, steht in derselben Meldung — beide Seiten nennen 1 und 2.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 402,
+      komponenten: 403,
       anbieter: 1,
       traeger: 2,
     });

@@ -6,7 +6,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 // Auskunft über den Zustand des Hauses und lebt deshalb als Zeile „Bereitschaft" unter Sicherheit
 // weiter — mit derselben Checkliste, denselben Quellen und demselben Druckknopf.
 import { Printer, ShieldCheck } from "lucide-react";
-import { Fragment, useMemo } from "react";
+import { Fragment, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
@@ -15,9 +15,9 @@ import { useToast } from "../app/ToastContext";
 // JOB 3670: die Seitenhilfe dieser drei Karten — je Karte ein eigener Text, weil es drei
 // Bildschirme sind. `HelpTip` rendert nichts; er meldet beim Sammler an, das Zahnrad listet.
 import { HelpTip } from "../components/HelpTip";
-import { StaleMarker } from "../components/LoadState";
 import { Abfragehuelle, Fehlerbox } from "../components/einstellungen/Abfragehuelle";
 import { Detailkarte } from "../components/einstellungen/Detailkarte";
+import { Bereitschaftstandhinweis } from "../components/einstellungen/bereitschaftstandhinweis";
 import {
   abfragelage,
   gruppenlage,
@@ -376,8 +376,163 @@ export function BereitschaftDetail({
   // `gruppenlage()` auf dieselbe Lage, aus der auch die Zeile ihren Wert zieht: ein Zustandsmodell
   // für Fläche und Karte, keine zweite Auslegung.
   const online = useIstOnline();
-  const befund = wertBefund(gruppenlage(readySources.map((q) => abfragelage(q, online))), null);
+  const lagen = readySources.map((q) => abfragelage(q, online));
+  const gruppe = gruppenlage(lagen);
+
+  // JOB 4363 H6-D1b — DIE STÖRUNG IST ERST VORBEI, WENN EINE NEUE ANTWORT DA IST.
+  //
+  // Bis hierher stand hier `wertBefund(gruppe, null)` ohne viertes Argument, und der Hinweis
+  // verschwand in dem Augenblick, in dem `onlineManager` wieder „online" meldete. Das ist genau
+  // die voreilige Frischmeldung: mit der produktiven Frischefrist (`ZAEHLER_FRISCHE_MS` = 30 s,
+  // zugleich die `staleTime` in `main.tsx:44`) holt react-query nach einer KURZEN Unterbrechung
+  // gar nichts nach — `refetchOnReconnect` findet keine abgelaufene Abfrage. Sichtbar blieben
+  // dieselben sechs Zahlen von vorhin, und über ihnen stand nichts mehr.
+  //
+  // Das Gedächtnis lebt bewusst NUR in dieser Karte und nicht in einem Speicher: eine
+  // Störungshistorie über beliebige Ansichtswechsel ist ausdrücklich Nichtziel dieses Auftrags.
+  //
+  // ================================================================================================
+  // RUNDE 2 · BENs KORREKTURPFLICHT 1 — EINE ZAHL FÜR SECHS QUELLEN WAR ZU WENIG.
+  // ================================================================================================
+  //
+  // Runde 1 merkte sich EINEN Wert: den Gruppenstand bei Störungsbeginn, und die Hülle vergleicht
+  // ihn mit dem Gruppenstand von jetzt (`zeilenWert.ts:94`, `lage.standMs <= standBeiStoerung`).
+  // Der Gruppenstand ist aber das MINIMUM der sechs Quellen (`gruppenlage`, „so frisch wie ihre
+  // ÄLTESTE Zahl"). Antwortet ausgerechnet die ÄLTESTE Quelle, STEIGT dieses Minimum auf den Stand
+  // der zweitältesten — ohne dass irgendeine der anderen fünf etwas Neues geliefert hätte.
+  //
+  // BEN hat genau das gemessen (Runde 1, zwei Gegenproben): Ausgangsstand 09:58, nur die älteste
+  // Quelle antwortet, fünf bleiben `fetching` — sichtbar war „Stand von 09:59 · wird gerade
+  // aufgefrischt". Der alte Stand UND der Netzlückensatz waren fort, obwohl fünf Antworten fehlten.
+  // Ebenso mit einem Teilfehler: „Stand von 09:59 · Veraltet – Aktualisierung fehlgeschlagen",
+  // wo 09:58 hätte stehen müssen. Das ist die voreilige Frischmeldung in ihrer feineren Form.
+  //
+  // DESHALB MERKT SICH DIE KARTE JETZT JE QUELLE IHREN STAND, und die Störung ist erst vorbei,
+  // wenn AUSNAHMSLOS JEDE Quelle seither eine NEUE erfolgreiche Antwort geliefert hat
+  // (`l.standMs > gemerkt[i]`, echt grösser). Bis dahin zeigt die Karte den bestätigten Stand von
+  // damals — das Minimum der GEMERKTEN Zahlen, nicht das der heutigen. Genau das sagt K3 zu:
+  // „Erst erfolgreiche neue Antwort aller tragenden Quellen erneuert den Stand."
+  //
+  // ================================================================================================
+  // RUNDE 3 · BENs KORREKTURPFLICHT — DAS GEDÄCHTNIS BEGINNT MIT DER AUFFRISCHUNG, NICHT MIT DEM
+  // FEHLER.
+  // ================================================================================================
+  //
+  // Runde 2 legte das Gedächtnis erst an, wenn ein Fehler oder eine Pause da WAR. Treffen vorher
+  // schon erfolgreiche Teilantworten ein, stehen deren NEUE Zahlen bereits im Gedächtnis — der
+  // bestätigte Stand ist dann schon vorgezogen, bevor er überhaupt gemerkt wird.
+  //
+  // BEN hat es gemessen (Runde 2): Stände 10:00 (älteste) und 10:01 (fünf), Auffrischung OHNE
+  // vorherige Offlinephase; die älteste antwortet erfolgreich, DANACH scheitert die Kennzahlquelle.
+  // Sichtbar war „Stand von 10:01 · Veraltet – Aktualisierung fehlgeschlagen", richtig wäre 10:00.
+  //
+  // Die Episode beginnt deshalb, sobald ÜBERHAUPT eine Auffrischung läuft (`gruppe.laeuft`) oder
+  // eine Störung ansteht — also zu dem Zeitpunkt, an dem der bestätigte Stand noch unversehrt ist.
+  // Ob daraus eine STÖRUNG wird, ist eine zweite, eigene Frage: `stoerung` im Gedächtnis wird wahr,
+  // sobald zwischendurch ein Fehler oder eine Pause auftritt, und bleibt es bis zum Ende der
+  // Episode. Eine störungsfreie Auffrischung trägt damit weiterhin nur die ruhige Zeile
+  // „Stand von … · wird gerade aufgefrischt" und keinen Warnton.
+  //
+  // `wertBefund` bleibt unverändert und wird weiter für die LADE-/FEHLER-/OFFLINE-Weiche benutzt;
+  // sein viertes Argument (das Ein-Zahl-Gedächtnis) braucht die Karte nicht mehr. `zeilenWert.ts`
+  // ist Nichtziel dieses Auftrags und wird nicht angefasst — die Hülle und die Zeilen behalten
+  // ihren Vertrag, weil sie je EINE Quelle führen und dort eine Zahl auch wirklich genügt.
+  //
+  // WARUM EIN `useRef` UND KEIN `useState` — gemessen, nicht gewählt.
+  //
+  // Der erste Entwurf dieser Runde führte das Gedächtnis wie die Hülle als Zustand mit einer
+  // Nachführung WÄHREND des Renderns (`if (neu !== alt) setStandBeiStoerung(neu)`). Damit blieb
+  // die Karte nach der Wiederverbindung auf „ohne Netzverbindung nicht aktualisiert" stehen,
+  // obwohl das Netz zurück war. Eine Sonde neben der Karte, die dasselbe `useIstOnline()` liest,
+  // meldete zur selben Zeit `true` — die Karte selbst zeichnete also gar nicht neu
+  // (`tests/h6-bereitschaft-stand-nutzerweg/bereitschaftstand-nutzerweg.test.tsx`, Abschnitt K3).
+  //
+  // Die Ursache liegt im Zusammenspiel von `useSyncExternalStore` (das `useIstOnline()` trägt,
+  // `lib/netzzustand.ts`) mit einer Aktualisierung während des Renderns: React verwirft den
+  // begonnenen Renderdurchlauf und führt die Komponente erneut aus. Im zweiten Durchlauf ist der
+  // Abzug des Speichers gegenüber dem ERSTEN Durchlauf unverändert, React legt deshalb keinen
+  // Nachtrag-Effekt mehr an — und der zuletzt FESTGEHALTENE Wert des Speichers bleibt der von
+  // VOR der Störung. Die nächste Meldung („wieder online") vergleicht gegen diesen alten Wert,
+  // findet „unverändert" und zeichnet nicht neu.
+  //
+  // Ein Ref hat dieses Problem baulich nicht: er löst keine Aktualisierung aus, der Renderdurchlauf
+  // bleibt einer, und die Zeichnung hängt weiter allein an den echten Auslösern (Onlinewechsel und
+  // Abfragezustand). Die Nachführung bleibt synchron VOR der Ausgabe — kein Effekt, der die
+  // Störung erst nach einem unmarkierten Bild bemerkt. Sie ist dabei wiederholbar: derselbe
+  // Eingang ergibt denselben Wert, auch beim Doppeldurchlauf unter StrictMode.
+  const laufendeEpisode = useRef<{ staende: readonly number[]; stoerung: boolean } | null>(null);
+  const befund = wertBefund(gruppe, null);
   const ohneBestand = befund.art === "fehler" || befund.art === "offline";
+
+  // Die Störung, wie sie die Abfragen JETZT melden — ohne Gedächtnis.
+  const roheStoerung = gruppe.fehler || gruppe.pausiert;
+  // Ohne sichtbaren Bestand gibt es nichts zu merken: dann trägt der Lade-, Leer- oder Fehlerweg
+  // die Auskunft, und ein „Stand von" ohne Stand wäre ein Verweis auf etwas, das der Mensch
+  // nirgends sieht.
+  const merkenNoetig = (roheStoerung || gruppe.laeuft) && gruppe.hatDaten;
+  const staendeJetzt = lagen.map((l) => l.standMs);
+
+  // ================================================================================================
+  // RUNDE 4 · BENs KORREKTURPFLICHT — DER RUHESTAND WIRD LAUFEND GEFÜHRT, NICHT ERST BEI BEDARF.
+  // ================================================================================================
+  //
+  // Runde 3 nahm beim BEGINN einer Episode die Stände von JETZT. Das setzt voraus, dass React
+  // zwischen „der Abruf läuft los" und „die erste Antwort ist da" überhaupt ein Bild zeichnet.
+  // Tut es das nicht — und bei einer schnell antwortenden Quelle tut es das oft nicht —, dann
+  // steht deren NEUE Zahl schon im allerersten Bild der Episode, und der bestätigte Stand ist
+  // wieder vorgezogen. BEN hat genau das gemessen (Runde 3): ohne erzwungenen Zwischenrender
+  // erschien „Stand von 10:01" statt „Stand von 10:00".
+  //
+  // Eine Komponente sieht nur Momentaufnahmen; einen Zustand, der zwischen zwei Bildern entstand
+  // und verging, kann sie nachträglich nicht erfahren. Sie muss ihn also VORHER festgehalten
+  // haben. Deshalb führt die Karte den zuletzt gesehenen RUHESTAND fortlaufend mit: in jedem
+  // Bild, in dem alle sechs Quellen Daten haben, nichts läuft und nichts gestört ist, sind die
+  // aktuellen Stände der letzte vollständig bestätigte Stand. Beginnt später eine Episode, greift
+  // sie auf diesen Wert zurück — unabhängig davon, was React dazwischen gezeichnet hat.
+  //
+  // Der Rückfall auf `staendeJetzt` bleibt für den einen Fall, in dem es noch keinen ruhigen
+  // Augenblick gab (die Karte geht unmittelbar vom Erstladen in eine Auffrischung über). Dann ist
+  // der aktuelle Stand der beste bekannte — mehr weiss niemand.
+  const letzterRuhestand = useRef<readonly number[] | null>(null);
+  const ruhestandVorher = letzterRuhestand.current;
+  if (gruppe.hatDaten && (!(roheStoerung || gruppe.laeuft) || ruhestandVorher === null)) {
+    letzterRuhestand.current = staendeJetzt;
+  }
+
+  const gemerkt = laufendeEpisode.current;
+  // Erneuert ist die Gruppe erst, wenn JEDE Quelle seit dem Beginn der Episode neu geantwortet hat.
+  const allesErneuert =
+    gemerkt !== null &&
+    lagen.every((l, i) => l.standMs > (gemerkt.staende[i] ?? Number.POSITIVE_INFINITY));
+
+  let episode = gemerkt;
+  if (gemerkt === null) {
+    // Beginn: der zuletzt gesehene RUHESTAND ist der letzte vollständig bestätigte Stand — nicht
+    // der von jetzt, in dem eine schnelle Teilantwort schon stecken könnte.
+    episode = merkenNoetig
+      ? { staende: ruhestandVorher ?? staendeJetzt, stoerung: roheStoerung }
+      : null;
+  } else if (allesErneuert && !roheStoerung) {
+    // Die Runde ist durch: der bestätigte Stand ist jetzt der neue. Läuft schon die nächste
+    // Auffrischung, beginnt mit ihr sofort die nächste Episode — sonst ist nichts mehr zu sagen.
+    episode = gruppe.laeuft ? { staende: staendeJetzt, stoerung: false } : null;
+  } else if (!roheStoerung && !gruppe.laeuft && !gemerkt.stoerung) {
+    // Eine störungsfreie Auffrischung ist beendet, ohne dass alle Quellen geantwortet hätten
+    // (etwa weil nur die abgelaufenen geholt wurden). Es gab keine Störung, also gibt es auch
+    // nichts zu melden — das Gedächtnis wird verworfen.
+    episode = null;
+  } else if (roheStoerung && !gemerkt.stoerung) {
+    // AUS DER AUFFRISCHUNG WIRD EINE STÖRUNG: die Stände von damals bleiben, die Einordnung
+    // wechselt. Genau hier lag BENs Befund aus Runde 2.
+    episode = { staende: gemerkt.staende, stoerung: true };
+  }
+  laufendeEpisode.current = episode;
+
+  const gestoert = episode?.stoerung ?? false;
+  // Der ANGEZEIGTE Stand ist IMMER der zuletzt vollständig bestätigte: das Minimum der GEMERKTEN
+  // Zahlen vom Beginn der Episode. Ohne Episode gibt es nichts zu zeigen (die Karte ist frisch,
+  // oder sie steht im Lade-/Fehlerweg).
+  const bestaetigterStand = episode !== null ? Math.min(...episode.staende) : 0;
 
   return (
     <div className="print-area">
@@ -408,7 +563,18 @@ export function BereitschaftDetail({
           <Fehlerbox offline={befund.art === "offline"} onErneut={retryReady} />
         ) : (
           <>
-            {befund.nichtAktualisiert ? <StaleMarker onRetry={retryReady} /> : null}
+            {/* JOB 4363 H6-D1b: statt des einen `StaleMarker`-Satzes für ALLE Störungen jetzt der
+                Stand mit seiner Zeit und der Satz, der zur tatsächlichen Lage gehört — ruhender
+                Abruf, gescheiterter Abruf oder Netzlücke. Die Karte legt hier nichts aus; was sie
+                übergibt, ist der Befund aus `zeilenWert.ts`. */}
+            <Bereitschaftstandhinweis
+              standMs={bestaetigterStand}
+              gestoert={gestoert}
+              pausiert={gruppe.pausiert}
+              fehler={gruppe.fehler}
+              laeuft={gruppe.laeuft}
+              onErneut={retryReady}
+            />
             <ul className="divide-y divide-hairline">
               {readinessRows({
                 kiBoth:

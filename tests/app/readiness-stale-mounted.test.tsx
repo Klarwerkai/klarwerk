@@ -300,7 +300,21 @@ describe("JOB 3065 R5: Bereitschaft offline — Bestand bleibt, aber nie als fri
     });
     // Die Werte bleiben SICHTBAR (nie leeren), tragen aber den Hinweis.
     expect(container.textContent).toContain(i18n.t("adm.ready.upload"));
-    expect(container.textContent).toContain(i18n.t("loadstate.stale"));
+    // JOB 4363 H6-D1b · DIE EINE ZEILE DIESER DATEI, DIE NACHGEFÜHRT WERDEN MUSSTE — und warum.
+    //
+    // Hier stand `toContain(i18n.t("loadstate.stale"))`, also „Veraltet – Aktualisierung
+    // fehlgeschlagen". OHNE NETZ hat es aber gar keinen Versuch gegeben, der fehlschlagen konnte:
+    // die Abfrage RUHT (`LoadState.tsx:54-59`, JOB 3808; `i18n.ts` bei `imp.stand.*`, JOB 4293).
+    // Genau das ist der Befund, gegen den JOB 4363 gebaut ist (Abnahmekriterium K1: „der Hinweis
+    // bezeichnet den Stand als nicht aktualisiert/offline statt einen gescheiterten Abruf zu
+    // erfinden"). Die Karte sagt in dieser Lage jetzt „Stand von HH:MM · ohne Netzverbindung nicht
+    // aktualisiert" — derselbe Zustand, derselbe sichtbare Bestand, nur die wahre Auskunft.
+    //
+    // ALLES ANDERE DIESER DATEI BLEIBT: der GESCHEITERTE Refetch oben behält `loadstate.stale`
+    // samt Wiederholen-Knopf und wirksamem Neuabruf, die Zeile der Fläche bleibt Wort für Wort,
+    // und die Auffrischung nach der Wiederverbindung wird unverändert am Abrufzähler gemessen.
+    expect(container.textContent).toContain(i18n.t("adm.ready.stand.offline"));
+    expect(container.textContent).not.toContain(i18n.t("loadstate.stale"));
 
     // Und die Zeile der Fläche sagt dasselbe: Bestand, Stand, „nicht aktualisiert".
     await zurueckZurFlaeche();
