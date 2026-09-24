@@ -410,7 +410,7 @@ type KoAktion =
   | "conflict"
   | "resolve-conflict"
   | "transfer-author"
-  // JOB 3667 R2 (Accountregel): überarbeiten UND freigeben in einem Vorgang (`users.manage`),
+  // JOB 3667 R2 (Accountregel): überarbeiten UND freigeben in einem Vorgang (Rolle `admin`),
   // einen gebundenen Änderungsvorschlag einreichen (`ko.create`) und über einen entscheiden
   // (`users.manage`). Alle drei arbeiten AM Objekt unter `:id` — sie passieren das Tor.
   | "revise-release"
@@ -2456,9 +2456,23 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
           // DAS RECHT IST DASSELBE WIE AM ADMIN-OVERRIDE (`users.manage`): „gleich als geprüft
           // ablegen" kann im Bestand nur, wer auch `admin-validate` darf. Eine Bewertung
           // (`ko.validate`) ist EINE Stimme von `neededValidations` und macht nichts sofort gültig.
+          //
+          // ENTSCHEIDUNG 3 (Pedi 11.09.): DIE DIREKTE FREIGABE ERTEILT NUR DIE ROLLE `admin`. Geprüft
+          // wird die ROLLE an genau dieser Stelle — nicht über ein neues Recht und nicht über die
+          // Rechtematrix, die unverändert bleibt. `controller` und `experte` bekommen denselben
+          // verständlichen 403 wie am `revise`-Zweig (`PROPOSAL_REQUIRED`) und damit den Weg genannt:
+          // die Änderung als Vorschlag einreichen (`propose`), über den dann jemand anders entscheidet.
           case "revise-release": {
-            const user = await guards.requirePermission("users.manage", request, reply);
+            const user = await guards.requireUser(request, reply);
             if (!user) {
+              return;
+            }
+            if (user.role !== "admin") {
+              reply.code(403).send({
+                error: "PROPOSAL_REQUIRED",
+                message:
+                  'Direkt freigeben darf nur ein Administrator. Die Änderung wird stattdessen als Vorschlag eingereicht (action "propose") und gilt erst nach der Freigabe durch jemand anderen.',
+              });
               return;
             }
             const erwartet = erwarteteKoVersion(body.expectedVersion);
