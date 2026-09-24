@@ -20,6 +20,9 @@ type App = ReturnType<typeof buildApp>;
 type Antwort = Awaited<ReturnType<App["inject"]>>;
 type Kopf = Record<string, string>;
 
+const ABWEISUNG_DIREKTFREIGABE =
+  'Direkt freigeben darf nur ein Administrator. Die Änderung wurde nicht gespeichert. Bitte reichen Sie sie als Vorschlag ein (action "propose"); sie gilt erst nach der Freigabe durch jemand anderen.';
+
 interface Stand {
   version: number;
   status: string;
@@ -157,14 +160,18 @@ describe("Entscheidung 3 · K1: `revise-release` gelingt nur der Rolle admin", (
       expect(versuch.statusCode).toBe(403);
       const koerper = versuch.json() as { error: string; message: string };
       expect(koerper.error).toBe("PROPOSAL_REQUIRED");
-      expect(koerper.message).toContain("Administrator");
-      expect(koerper.message).toContain("propose");
+      // Der Wortlaut ist gepinnt: er nennt den Grund, sagt wahrheitsgemäss, dass nichts
+      // gespeichert wurde, und FORDERT zur Einreichung auf — er behauptet keine, die nicht stattfindet.
+      expect(koerper.message).toBe(ABWEISUNG_DIREKTFREIGABE);
+      expect(koerper.message).not.toMatch(/wird .*eingereicht|wurde .*eingereicht/);
 
       const jetzt = await stand(app, admin, id);
       expect(jetzt.version).toBe(1);
       expect(jetzt.status).toBe("validiert");
       expect(jetzt.statement).toBe("Bei Überdruck Ventil X manuell schließen.");
       expect(await historie(app, admin, id)).toHaveLength(vorher.length);
+      // Die Abweisung reicht NICHTS ersatzweise ein: die Vorschlagsliste bleibt leer.
+      expect(jetzt.proposals ?? []).toHaveLength(0);
     });
 
     it(`${rolle}: auch an einem NICHT freigegebenen Objekt gibt es keine Direktfreigabe`, async () => {
@@ -178,9 +185,11 @@ describe("Entscheidung 3 · K1: `revise-release` gelingt nur der Rolle admin", (
       });
       expect(versuch.statusCode).toBe(403);
       expect((versuch.json() as { error: string }).error).toBe("PROPOSAL_REQUIRED");
+      expect((versuch.json() as { message: string }).message).toBe(ABWEISUNG_DIREKTFREIGABE);
       const jetzt = await stand(app, admin, id);
       expect(jetzt.version).toBe(1);
       expect(jetzt.status).not.toBe("validiert");
+      expect(jetzt.proposals ?? []).toHaveLength(0);
     });
   }
 

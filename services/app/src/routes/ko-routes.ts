@@ -2462,6 +2462,8 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
           // Rechtematrix, die unverändert bleibt. `controller` und `experte` bekommen denselben
           // verständlichen 403 wie am `revise`-Zweig (`PROPOSAL_REQUIRED`) und damit den Weg genannt:
           // die Änderung als Vorschlag einreichen (`propose`), über den dann jemand anders entscheidet.
+          // Die Abweisung reicht NICHTS ersatzweise ein — die Meldung fordert zum eigenen Schritt auf
+          // und behauptet keinen Vorgang, der nicht stattfindet.
           case "revise-release": {
             const user = await guards.requireUser(request, reply);
             if (!user) {
@@ -2471,7 +2473,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
               reply.code(403).send({
                 error: "PROPOSAL_REQUIRED",
                 message:
-                  'Direkt freigeben darf nur ein Administrator. Die Änderung wird stattdessen als Vorschlag eingereicht (action "propose") und gilt erst nach der Freigabe durch jemand anderen.',
+                  'Direkt freigeben darf nur ein Administrator. Die Änderung wurde nicht gespeichert. Bitte reichen Sie sie als Vorschlag ein (action "propose"); sie gilt erst nach der Freigabe durch jemand anderen.',
               });
               return;
             }
