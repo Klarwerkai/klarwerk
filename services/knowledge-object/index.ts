@@ -327,6 +327,8 @@ export type {
   AnweisungStandAufnahme,
 } from "./src/gesamtanweisung-types";
 export { KoError, KNOWLEDGE_TYPES, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS } from "./src/types";
+// AUFNAHME 20260922 · Prüfbasis-Aktualität: die EINE Regel, wann ein Prüfnachweis überholt ist.
+export { gleichePruefbasis, pruefbasisVon } from "./src/pruefbasis";
 // SCRUM-421: einstellbare Upload-Grenzen (persistiert).
 export {
   type UploadLimits,
@@ -418,4 +420,6 @@ export type {
   AiCheckCoverage,
   // AUFTRAG-mega29 C2: schmale Bestands-Zusammenfassung für die LEEREN Konflikt-/Duplikat-Boards.
   AiCheckCoverageSummary,
+  // AUFNAHME 20260922: die gespeicherte Basisbindung eines Prüfnachweises.
+  AiCheckBasis,
 } from "./src/types";

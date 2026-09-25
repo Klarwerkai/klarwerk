@@ -62,6 +62,29 @@ export function AiCheckBadge({
         .map((key) => t(key, aiCheckCoverageVars(coverage)))
         .join(" ")
     : "";
+  // AUFNAHME 20260922 · Prüfbasis-Aktualität: ein abgeschlossener Nachweis, dessen gespeicherte
+  // Basis nicht mehr zum Objekt passt (Server-Ableitung `ueberholt`), ist NICHT aktuell — weder als
+  // stilles „done" noch als Fehlschlag mit alter Ursache. Der Knopf reiht den neuen Lauf ein.
+  if (aiCheck.ueberholt && aiCheck.status !== "pending") {
+    return (
+      <span className="inline-flex items-center gap-1">
+        <span
+          title={t("pruefbasis.ueberholtHinweis")}
+          className="rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-[10px] font-semibold text-trust-warn-text"
+        >
+          {t("pruefbasis.ueberholt")}
+        </span>
+        <button
+          type="button"
+          onClick={onRetry}
+          disabled={retryBusy}
+          className="rounded-pill border border-hairline px-1.5 py-0.5 font-mono text-[10px] font-semibold text-muted hover:text-text disabled:opacity-50"
+        >
+          {t("val.aiCheck.retry")}
+        </button>
+      </span>
+    );
+  }
   if (aiCheck.status === "done") {
     return coverage ? (
       <span

@@ -279,6 +279,8 @@ export type AiCheckCardState =
   | { kind: "running" }
   | { kind: "done" }
   | { kind: "failed"; reasonKey: string }
+  // AUFNAHME 20260922: der abgeschlossene Nachweis gilt für eine frühere Basis (Server-Ableitung).
+  | { kind: "outdated" }
   // Kein Prüf-Job vermerkt (Altbestand / Deployment ohne Worker): NICHTS behaupten —
   // weder „läuft" noch ein stilles Grün.
   | { kind: "none" };
@@ -290,6 +292,11 @@ export function aiCheckCardState(
 ): AiCheckCardState {
   if (!aiCheck) {
     return { kind: "none" };
+  }
+  // AUFNAHME 20260922 · Prüfbasis-Aktualität: überholt geht vor done UND failed — beide gälten für
+  // einen Stand, den es nicht mehr gibt.
+  if (aiCheck.ueberholt && aiCheck.status !== "pending") {
+    return { kind: "outdated" };
   }
   if (aiCheck.status === "failed") {
     return {

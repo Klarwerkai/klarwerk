@@ -30,7 +30,15 @@ import type { ConflictService } from "../../conflicts";
 //    gegen revise-Loops); danach hilft nur der manuelle Retry-Knopf (bzw. der Lazy-Re-Enqueue
 //    nach der Stale-Frist, der einen FRISCHEN Vermerk mit neuer Version setzt).
 import { mergeCoverage } from "../../conflicts";
-import type { AiCheck, AiCheckCoverage, KoService } from "../../knowledge-object";
+import {
+  type AiCheck,
+  type AiCheckBasis,
+  type AiCheckCoverage,
+  type KnowledgeObject,
+  type KoService,
+  gleichePruefbasis,
+  pruefbasisVon,
+} from "../../knowledge-object";
 import type { Reasoner } from "../../reasoner";
 import { detectConflictsForKo } from "./conflict-detection";
 import { type SemanticPrefilter, detectDuplicatesForKo } from "./duplicate-detection";
@@ -195,7 +203,13 @@ export interface AiCheckWorkerDeps {
 
 // Lazy-Re-Enqueue-Entscheidung (pure): nur pending zählt; ein unlesbares requestedAt (defensiv)
 // gilt als festhängend — lieber einmal zu viel neu einreihen als still liegen lassen.
+// AUFNAHME 20260922 · Prüfbasis-Aktualität: ein ÜBERHOLTER abgeschlossener Nachweis (gelesen über
+// KoService.get/list, s. knowledge-object/src/pruefbasis.ts) braucht einen neuen Lauf — der Abruf
+// reiht ihn ein. Die Dedupe (worker.has + Queue) verhindert den Doppelauftrag.
 export function shouldReEnqueueAiCheck(aiCheck: AiCheck | undefined, nowMs: number): boolean {
+  if (aiCheck?.ueberholt && aiCheck.status !== "pending") {
+    return true;
+  }
   if (!aiCheck || aiCheck.status !== "pending") {
     return false;
   }
@@ -262,7 +276,13 @@ export function createAiCheckWorker(deps: AiCheckWorkerDeps): AiCheckWorker {
   // WP-SHIP8-FINAL: Auto-Retry-Zähler je KO — zählt Re-Enqueues für GENAU EINE Zielversion;
   // eine neue Version setzt den Zähler zurück (der Deckel begrenzt den revise-Loop, nicht den
   // normalen Fluss). Nur im Speicher — wie die Queue selbst (Neustart-Grenze oben).
-  const autoRetries = new Map<string, { version: number; count: number }>();
+  // AUFNAHME 20260922: das Ziel ist die ganze Prüfbasis (Fassung + Basis-Fingerabdruck) — auch ein
+  // Wechsel von Einordnung/Quellen ohne Versionssprung ist ein neues Ziel.
+  const autoRetries = new Map<string, { ziel: string; count: number }>();
+  const zielSchluessel = (ko: KnowledgeObject): string => {
+    const basis = pruefbasisVon(ko);
+    return `${ko.version}:${basis.quelle}:${basis.kontext}`;
+  };
   let active = 0;
   let idleResolvers: (() => void)[] = [];
 
@@ -321,10 +341,10 @@ export function createAiCheckWorker(deps: AiCheckWorkerDeps): AiCheckWorker {
   };
 
   // true = Auto-Re-Enqueue für diese Zielversion ist noch im Deckel (und wird gezählt).
-  const consumeAutoRetry = (koId: string, targetVersion: number): boolean => {
+  const consumeAutoRetry = (koId: string, ziel: string): boolean => {
     const entry = autoRetries.get(koId);
-    if (!entry || entry.version !== targetVersion) {
-      autoRetries.set(koId, { version: targetVersion, count: 1 });
+    if (!entry || entry.ziel !== ziel) {
+      autoRetries.set(koId, { ziel, count: 1 });
       return true;
     }
     if (entry.count >= MAX_AI_CHECK_AUTO_RETRIES) {
@@ -340,46 +360,70 @@ export function createAiCheckWorker(deps: AiCheckWorkerDeps): AiCheckWorker {
     const startedMs = now();
     // WP-SHIP8-FINAL: Versions-Bindung — der Job gilt für GENAU die Version des pending-Vermerks
     // (dort beim Einreihen gespeichert). Altbestand ohne Feld läuft versionsungebunden weiter.
+    // AUFNAHME 20260922 · Prüfbasis-Aktualität: zusätzlich die BASIS beim Laufstart (Fassung,
+    // Quellen, Anhänge, Einordnung, Vertraulichkeit — pruefbasis.ts). An sie wird das Ergebnis gebunden.
     let expectedVersion: number | undefined;
+    let startBasis: AiCheckBasis | undefined;
     try {
-      expectedVersion = (await deps.ko.get(koId))?.aiCheck?.koVersion;
+      const start = await deps.ko.get(koId);
+      expectedVersion = start?.aiCheck?.koVersion;
+      startBasis = start ? pruefbasisVon(start) : undefined;
     } catch {
       expectedVersion = undefined;
+      startBasis = undefined;
     }
     const outcome = await runWithTimeout(deps.run(koId), jobTimeoutMs);
+    // AUFNAHME 20260922: hat sich die Basis WÄHREND des Laufs geändert, wird das Ergebnis NICHT
+    // eingetragen — es gälte für einen Stand, den es nicht mehr gibt. Gleicher Text genügt dafür
+    // nicht: die Fassungsnummer ist Teil der Basis. Das enge Restfenster zwischen dieser Probe und
+    // dem Schreiben deckt die Bindung selbst: der Nachweis trägt `startBasis`, und jeder Leser
+    // leitet daraus „überholt" ab.
+    let basisMoved = false;
+    if (startBasis) {
+      try {
+        const vorher = await deps.ko.get(koId);
+        basisMoved = vorher !== undefined && !gleichePruefbasis(pruefbasisVon(vorher), startBasis);
+      } catch {
+        basisMoved = false;
+      }
+    }
     let resolved = false;
-    try {
-      resolved = await deps.ko.resolveAiCheck(
-        koId,
-        {
-          ok: outcome.ok,
-          ...(outcome.fallbackReason ? { fallbackReason: outcome.fallbackReason } : {}),
-          // AUFTRAG-mega28 A2: die Abdeckung reist mit dem Abschluss ans KO — DORT liest sie die
-          // Oberfläche (Badge/Bestätigungs-Karte), nicht nur ein internes Feld.
-          ...(outcome.coverage ? { coverage: outcome.coverage } : {}),
-        },
-        expectedVersion,
-      );
-    } catch {
-      resolved = false; // Status-Write scheiterte — der Lazy-Re-Enqueue holt den Job später nach.
+    if (!basisMoved) {
+      try {
+        resolved = await deps.ko.resolveAiCheck(
+          koId,
+          {
+            ok: outcome.ok,
+            ...(outcome.fallbackReason ? { fallbackReason: outcome.fallbackReason } : {}),
+            // AUFTRAG-mega28 A2: die Abdeckung reist mit dem Abschluss ans KO — DORT liest sie die
+            // Oberfläche (Badge/Bestätigungs-Karte), nicht nur ein internes Feld.
+            ...(outcome.coverage ? { coverage: outcome.coverage } : {}),
+          },
+          expectedVersion,
+          startBasis,
+        );
+      } catch {
+        resolved = false; // Status-Write scheiterte — der Lazy-Re-Enqueue holt den Job später nach.
+      }
     }
     // PII-frei: nur Id, Status, Dauer — nie Inhalte.
     log(
       `[KLARWERK] KI-Pruefung ko=${koId} status=${outcome.ok ? "done" : "failed"}${
         outcome.fallbackReason ? ` grund=${outcome.fallbackReason}` : ""
-      } dauer=${now() - startedMs}ms geschrieben=${resolved}`,
+      } dauer=${now() - startedMs}ms geschrieben=${resolved}${basisMoved ? " basis-gewandert" : ""}`,
     );
-    if (resolved || expectedVersion === undefined) {
+    if (resolved || (expectedVersion === undefined && !basisMoved)) {
       return null;
     }
-    // Bedingter Write griff nicht: prüfen, ob die INHALTSVERSION gewandert ist (revise während
-    // des Laufs). Dann war dieser Lauf ein ehrlicher No-op — einmalig (gedeckelt) einen frischen
-    // Job für die NEUE Version vermerken und einreihen.
+    // Bedingter Write griff nicht: prüfen, ob die INHALTSVERSION (bzw. die Basis) gewandert ist
+    // (Änderung während des Laufs). Dann war dieser Lauf ein ehrlicher No-op — einmalig (gedeckelt)
+    // einen frischen Job für die NEUE Basis vermerken und einreihen.
     try {
       const current = await deps.ko.get(koId);
       const versionMoved =
-        current?.aiCheck?.status === "pending" && current.version !== expectedVersion;
-      if (versionMoved && consumeAutoRetry(koId, current.version)) {
+        current?.aiCheck?.status === "pending" &&
+        (basisMoved || current.version !== expectedVersion);
+      if (versionMoved && consumeAutoRetry(koId, zielSchluessel(current))) {
         const marked = await deps.ko.markAiCheckPending(koId);
         if (marked) {
           log(

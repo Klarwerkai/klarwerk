@@ -52,6 +52,8 @@ import type { KoMetadataProjectionResult } from "./metadata-projection-repo";
 // JOB 557: das kanonische Eigentümer-Aggregat. Regeln, Rückfallentscheidung und Grenzen stehen in
 // ownership.ts — hier wird nur angewendet, nichts nachgebaut.
 import { normalizeOwnership, ownershipOf, sameOwnership, withRole } from "./ownership";
+// AUFNAHME 20260922: die Basisbindung des Prüfnachweises (Regel und Begründung dort).
+import { mitPruefstand, pruefbasisVon } from "./pruefbasis";
 import type {
   EvidenceRepo,
   KoCandidateQuery,
@@ -88,6 +90,7 @@ import { confirmedSourceAnchor } from "./source-anchor";
 // SCRUM-527 (WP2): Quell-URL-Allowlist an der Persistenzgrenze (nur absolute http/https).
 import { safeSourceUrl, sanitizeSources } from "./source-url";
 import {
+  type AiCheckBasis,
   type AiCheckCoverage,
   type AiCheckCoverageSummary,
   type Confidentiality,
@@ -2812,9 +2815,12 @@ export class KoService {
    * dort ist unverändert (failed + Ursache, Version gebunden, damit der bestehende Wiederhol-Weg
    * greift).
    */
+  // AUFNAHME 20260922: `basis` ist die Basis, unter der der (synchrone) Lauf gestartet ist. Fehlt sie,
+  // wird der jetzige Stand gebunden — derselbe Zeitpunkt, an dem auch `koVersion` gelesen wird.
   async recordAiCheckOutcome(
     id: string,
     outcome: { ok: boolean; fallbackReason?: string; coverage?: AiCheckCoverage },
+    basis?: AiCheckBasis,
   ): Promise<boolean> {
     const ko = await this.repo.findById(id);
     if (!ko || ko.deletedAt) {
@@ -2828,6 +2834,7 @@ export class KoService {
       ...(outcome.fallbackReason ? { fallbackReason: outcome.fallbackReason } : {}),
       ...(outcome.coverage ? { coverage: outcome.coverage } : {}),
       koVersion: ko.version,
+      basis: basis ?? pruefbasisVon(ko),
     });
   }
 
@@ -3336,9 +3343,12 @@ export class KoService {
   }
 
   // SCRUM-422: getrashte KOs wirken überall gelöscht — get/list/findCandidates blenden sie aus.
+  // AUFNAHME 20260922 · Prüfbasis-Aktualität: get/list liefern die LESEFASSUNG des Prüfnachweises —
+  // `aiCheck.ueberholt` ist aus der gespeicherten Basisbindung abgeleitet (pruefbasis.ts). Anzeige,
+  // Neuladen, Abruf und Worker lesen damit dieselbe gespeicherte Bindung.
   async get(id: string): Promise<KnowledgeObject | undefined> {
     const ko = await this.repo.findById(id);
-    return ko && !ko.deletedAt ? ko : undefined;
+    return ko && !ko.deletedAt ? mitPruefstand(ko) : undefined;
   }
 
   // ==============================================================================================
@@ -3383,7 +3393,7 @@ export class KoService {
   // KEIN DEFAULT — siehe KoRepo.list: vier Aufrufer dieses Repos brauchen die getrashten Zeilen
   // zwingend. Nur die normale Listenroute übergibt den Trim.
   async list(filter: KoFilter = {}, trim?: KoSichtbarkeitstrim): Promise<KnowledgeObject[]> {
-    return (await this.repo.list(filter, trim)).filter((k) => !k.deletedAt);
+    return (await this.repo.list(filter, trim)).filter((k) => !k.deletedAt).map(mitPruefstand);
   }
 
   /**
@@ -3425,7 +3435,9 @@ export class KoService {
       //    `failed` ist immer unvollständig, ohne Ausnahme und unabhängig davon, welche Merker die
       //    Abdeckung trägt (bens ROT-2: ein gescheiterter Lauf mit makellosem Protokoll galt als
       //    vollständig). `pending` ist nicht abgeschlossen und damit erst recht nicht vollständig.
-      if (aiCheck.status !== "done") {
+      // AUFNAHME 20260922: ein ÜBERHOLTER Nachweis gilt für eine frühere Basis — für die jetzige ist
+      // er nicht belegt, gleich wie vollständig sein Protokoll damals war.
+      if (aiCheck.status !== "done" || aiCheck.ueberholt) {
         incomplete += 1;
         continue;
       }
@@ -3606,15 +3618,21 @@ export class KoService {
       status: "pending",
       requestedAt: requestedAt ?? new Date(this.now()).toISOString(),
       koVersion: ko.version,
+      // AUFNAHME 20260922: die Basis, für die dieser Lauf angefordert ist (pruefbasis.ts).
+      basis: pruefbasisVon(ko),
     });
   }
 
   // AUFTRAG-mega28 A2: die Abdeckung des Laufs (gedeckelt/übersprungen/abgebrochen) reist mit dem
   // Abschluss mit — additiv, der bedingte Feld-Patch bleibt unverändert schmal.
+  // AUFNAHME 20260922: `basis` ist die Basis, unter der der Lauf GESTARTET ist (der Worker liest sie
+  // beim Start). Der Nachweis wird an sie gebunden — hat sich das Objekt seitdem geändert, liest
+  // jeder Leser ihn als überholt (mitPruefstand), nie als aktuell.
   async resolveAiCheck(
     id: string,
     outcome: { ok: boolean; fallbackReason?: string; coverage?: AiCheckCoverage },
     expectedKoVersion?: number,
+    basis?: AiCheckBasis,
   ): Promise<boolean> {
     return this.repo.resolveAiCheck(
       id,
@@ -3623,6 +3641,7 @@ export class KoService {
         finishedAt: new Date(this.now()).toISOString(),
         ...(outcome.fallbackReason ? { fallbackReason: outcome.fallbackReason } : {}),
         ...(outcome.coverage ? { coverage: outcome.coverage } : {}),
+        ...(basis ? { basis } : {}),
       },
       expectedKoVersion,
     );

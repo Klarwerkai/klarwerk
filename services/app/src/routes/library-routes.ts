@@ -6,7 +6,13 @@ import {
   coreText,
   trigramSimilarity,
 } from "../../../conflicts";
-import type { KnowledgeObject, KoFilter, KoService } from "../../../knowledge-object";
+import {
+  type AiCheckBasis,
+  type KnowledgeObject,
+  type KoFilter,
+  type KoService,
+  pruefbasisVon,
+} from "../../../knowledge-object";
 import type {
   DublettenBefund,
   DublettenPruefung,
@@ -142,13 +148,20 @@ async function recordImportAcceptAiCheck(
   ko: KoService,
   koId: string,
   outcome: AiCheckRunOutcome,
+  // AUFNAHME 20260922: die Basis beim LAUFSTART — eine Änderung während des Laufs macht den
+  // Nachweis sichtbar überholt statt scheinbar aktuell.
+  basis: AiCheckBasis | undefined,
 ): Promise<void> {
   try {
-    await ko.recordAiCheckOutcome(koId, {
-      ok: outcome.ok,
-      ...(outcome.fallbackReason ? { fallbackReason: outcome.fallbackReason } : {}),
-      ...(outcome.coverage ? { coverage: outcome.coverage } : {}),
-    });
+    await ko.recordAiCheckOutcome(
+      koId,
+      {
+        ok: outcome.ok,
+        ...(outcome.fallbackReason ? { fallbackReason: outcome.fallbackReason } : {}),
+        ...(outcome.coverage ? { coverage: outcome.coverage } : {}),
+      },
+      basis,
+    );
   } catch (err) {
     importDetectionLog(`aiCheck-Vermerk für KO ${koId} fehlgeschlagen`, err);
   }
@@ -857,6 +870,7 @@ export function libraryRoutes(
             // ohne Statusabschluss. Nach Fristablauf gewinnt `failed/timeout`; ein spät doch noch
             // eintreffender Ausgang wird verworfen (runWithTimeout settlet genau EINMAL), sodass
             // der Statusschreib unten eindeutig und einmalig bleibt.
+            const startStand = await detection.ko.get(result.koId);
             const outcome = await runWithTimeout(
               createAiCheckRunner({
                 ko: detection.ko,
@@ -868,7 +882,12 @@ export function libraryRoutes(
               })(result.koId),
               AI_CHECK_JOB_TIMEOUT_MS,
             );
-            await recordImportAcceptAiCheck(detection.ko, result.koId, outcome);
+            await recordImportAcceptAiCheck(
+              detection.ko,
+              result.koId,
+              outcome,
+              startStand ? pruefbasisVon(startStand) : undefined,
+            );
           }
           // WP-SHIP8-CLOSE-8 (bens GELB-2): dieselbe DTO-Grenze wie am Queue-Load — die Antwort
           // der Review-Aktion trägt keine Claim-/Beleg-Interna (auditPending nur als Boolean).
