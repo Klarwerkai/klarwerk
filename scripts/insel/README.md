@@ -105,7 +105,9 @@ mit **echten ZIPs** aus diesem Bauer — nicht mit nachgestellten Releases:
    auspacken, Erstinstallation über `install.command` des Vorgängers.
 3. **Browser** (Chromium, eigenes Profil je Anmeldung): Ersteinrichtung an der Maske, DOCX über
    „Erfassen → Datei → Ganzes Dokument übernehmen", speichern, einreichen, am Eintrag Inhalt,
-   Quellenvermerk und die **heruntergeladene Originaldatei** (Abdruck) wiederlesen.
+   Quellenvermerk und die **heruntergeladene Originaldatei** (Abdruck) wiederlesen. Verlangt wird
+   jeder Absatz der Prüfdatei und ein Titel; nach Update, Rückfall und Abbrüchen muss der Eintrag
+   (Titel, vollständiger Rumpftext, Quellenvermerk, Datei) GENAU dem ersten Wiederlesen gleichen.
 4. **Update** mit `…/current/scripts/insel/update-einspielen.sh <zip>`, **Startfehler** mit
    automatischem Rückfall, **Abbrüche** (ohne `unzip`, beschädigtes Zip, nicht umkehrbar,
    Wiederholung) — jeweils mit Prozess, Port, Health-Version, Sicherung und Bestand gemessen.

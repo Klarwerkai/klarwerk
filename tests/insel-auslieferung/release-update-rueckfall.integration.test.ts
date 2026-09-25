@@ -55,10 +55,16 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import i18n from "../../apps/web/src/i18n";
 import {
   type Bestandsbefund,
+  type Bestandserwartung,
   DOKUMENTSATZ,
+  ERSTER_SATZ,
   KENNWORT,
-  type Profil,
   bestandsmaengel,
+  bestandsvergleich,
+} from "./bestand";
+import {
+  type Profil,
+  bestandserwartung,
   hatSitzung,
   importiereUndReicheEin,
   liesBestand,
@@ -78,6 +84,7 @@ import {
   VORGAENGER,
   WURZEL,
   aktuellerStand,
+  arbeitsbaumSha,
   fahreBefehl,
   freierPort,
   fremdverweise,
@@ -143,6 +150,16 @@ const bauzeiten: Record<string, number> = {};
 let journalNachK4 = "";
 /** Die Kennung des in K2 eingereichten Eintrags derselben Strecke. */
 let eintragNachK4 = "";
+/** Der in K2 derselben Strecke festgestellte vollständige Bestand — Referenz der Gegenprobe G1. */
+let referenzNachK4: Bestandsbefund | undefined;
+/** Was das Bestandsurteil erwartet (Quellenzeile, Abdruck der Prüfdatei). */
+let erwartung: Bestandserwartung | undefined;
+/** Die Baum-SHA des geprüften Arbeitsbaums (`arbeitsbaumSha`). */
+let baum = "";
+
+function erwartet(): Bestandserwartung {
+  return brauche(erwartung, "die Bestandserwartung");
+}
 
 function paket(rolle: Rolle): Paket {
   if (baufehler !== undefined) {
@@ -248,6 +265,9 @@ function rueckfallmaengel(
 
 beforeAll(async () => {
   await i18n.changeLanguage("de");
+  erwartung = await bestandserwartung();
+  baum = arbeitsbaumSha();
+  process.stderr.write(`[insel-auslieferung] Arbeitsbaum ${baum} · HEAD ${gitZeile("HEAD")}\n`);
   const platz = new Bauplatz();
   bauplatz = platz;
   try {
@@ -279,6 +299,8 @@ beforeAll(async () => {
     plattform: `${process.platform} ${release()} ${arch()}`,
     node: process.version,
     stand,
+    // Zuordnung zur Revision: gleich `git rev-parse <commit>^{tree}` des festgehaltenen Commits.
+    arbeitsbaum: baum,
     standZeile: stand === undefined ? null : gitZeile(stand.head),
     vorgaenger: { ...VORGAENGER, zeile: gitZeile(VORGAENGER.commit) },
     pakete,
@@ -487,7 +509,9 @@ function strecke(startweg: Startweg): void {
       const imp = await importiereUndReicheEin(k2, basis);
       koId = imp.koId;
       const befund = await liesBestand(k2, basis, koId, join(p().wurzel, "downloads", "k2"));
-      expect(await bestandsmaengel(befund)).toEqual([]);
+      // VOLLSTÄNDIG (Titel, jeder Absatz, Quelle, Datei) — und DIESER Befund ist ab hier die
+      // Referenz: K3, K4 und K5 vergleichen den ganzen Rumpftext mit ihm.
+      expect(bestandsmaengel(befund, erwartet())).toEqual([]);
       expect(befund.inselmarke).toContain(vorg.releaseName);
       ersterBefund = befund;
       await k2.kontext.close();
@@ -555,10 +579,10 @@ function strecke(startweg: Startweg): void {
       await meldeAn(k3, basis);
       expect(await hatSitzung(k3)).toBe(true);
       const befund = await liesBestand(k3, basis, koId, join(p().wurzel, "downloads", "k3"));
-      expect(await bestandsmaengel(befund)).toEqual([]);
-      expect(befund.titel).toBe(erster.titel);
-      expect(befund.quelle).toBe(erster.quelle);
-      expect(befund.download?.sha256).toBe(erster.download?.sha256);
+      expect(bestandsmaengel(befund, erwartet())).toEqual([]);
+      expect(bestandsvergleich(erster, befund), "Bestand nach dem Update ≠ Bestand aus K2").toEqual(
+        [],
+      );
       expect(befund.inselmarke).toContain(korr.releaseName);
       await k3.kontext.close();
       beleg.k3 = {
@@ -625,7 +649,11 @@ function strecke(startweg: Startweg): void {
       const k4 = await profil("k4-frischer-browser");
       await meldeAn(k4, basis);
       const befund = await liesBestand(k4, basis, koId, join(p().wurzel, "downloads", "k4"));
-      expect(await bestandsmaengel(befund)).toEqual([]);
+      expect(bestandsmaengel(befund, erwartet())).toEqual([]);
+      expect(
+        bestandsvergleich(brauche(ersterBefund, "der Bestand aus K2"), befund),
+        "Bestand nach dem Rückfall ≠ Bestand aus K2",
+      ).toEqual([]);
       expect(befund.inselmarke).toContain(korr.releaseName);
       await k4.kontext.close();
 
@@ -633,6 +661,7 @@ function strecke(startweg: Startweg): void {
         journalNachK4 = join(brauche(bauplatz, "der Bauplatz").ordner, "journal-nach-k4.jsonl");
         copyFileSync(p().journal, journalNachK4);
         eintragNachK4 = koId;
+        referenzNachK4 = ersterBefund;
       }
       beleg.k4 = {
         befehl: lauf.befehl,
@@ -704,7 +733,11 @@ function strecke(startweg: Startweg): void {
       const k5 = await profil("k5-nach-den-abbruechen");
       await meldeAn(k5, basis);
       const befund = await liesBestand(k5, basis, koId, join(p().wurzel, "downloads", "k5"));
-      expect(await bestandsmaengel(befund)).toEqual([]);
+      expect(bestandsmaengel(befund, erwartet())).toEqual([]);
+      expect(
+        bestandsvergleich(brauche(ersterBefund, "der Bestand aus K2"), befund),
+        "Bestand nach den Abbrüchen ≠ Bestand aus K2",
+      ).toEqual([]);
       await k5.kontext.close();
       beleg.k5 = {
         ohneUnzip: { exit: a.code, stderr: a.stderr.trim() },
@@ -751,9 +784,10 @@ describe("K7 · Gegenproben in einer eigenen Zielumgebung, mit Rücknahme", () =
     }
   }, 180_000);
 
-  it("G1 · fehlt die Originaldatei im Bestand, meldet die Bestandsprüfung genau das — mit vollem Journal wieder grün", async () => {
+  it("G1 · fehlt die Originaldatei oder ein anderer Absatz im Bestand, schlägt die Bestandsprüfung an — mit vollem Journal wieder grün", async () => {
     const korr = paket("korrektur");
     const voll = brauche(journalNachK4 === "" ? undefined : journalNachK4, "das Journal aus K4");
+    const referenz = brauche(referenzNachK4, "der Bestand aus K2 der Strecke eigenstart");
     const ueb = platz().uebertrage(korr);
     const release = platz().entpacke(ueb.pfad, korr.releaseName);
     const install = await platz().fahre(join(release, "install.command"), []);
@@ -787,7 +821,7 @@ describe("K7 · Gegenproben in einer eigenen Zielumgebung, mit Rücknahme", () =
       eintrag,
       join(platz().wurzel, "downloads", "g1"),
     );
-    const maengelRot = await bestandsmaengel(befundRot);
+    const maengelRot = bestandsmaengel(befundRot, erwartet());
     expect(befundRot.text, "Gegenprobe greift zu weit: auch der Inhalt fehlt").toContain(
       DOKUMENTSATZ,
     );
@@ -798,6 +832,41 @@ describe("K7 · Gegenproben in einer eigenen Zielumgebung, mit Rücknahme", () =
     // Der Grund ist die FEHLENDE Datei, nicht eine fehlende Anmeldung: der Server sagt 404.
     expect(befundRot.downloadFehler).toContain("→ HTTP 404");
     await rot.kontext.close();
+
+    // RUNDE 2 (Bens Befund): ein ANDERER Absatz als `DOKUMENTSATZ` fehlt. Die Prüfung aus Runde 1
+    // sah nur `DOKUMENTSATZ` und hätte diesen Bestand für vollständig gehalten.
+    const vollText = readFileSync(voll, "utf8");
+    expect(vollText.includes(ERSTER_SATZ), "der erste Absatz steht nicht im Journal").toBe(true);
+    const ohneAbsatz = join(platz().eingang, "ohne-ersten-absatz.jsonl");
+    writeFileSync(ohneAbsatz, vollText.split(ERSTER_SATZ).join(""));
+    const rAbsatz = await platz().fahre(platz().rueckfallSkript, [
+      korr.releaseName,
+      "--daten-zurueck",
+      ohneAbsatz,
+    ]);
+    expect(rAbsatz.code, ausgabe(rAbsatz)).toBe(0);
+    const lueckig = await profil("g1-ohne-absatz");
+    await meldeAn(lueckig, basis);
+    const befundAbsatz = await liesBestand(
+      lueckig,
+      basis,
+      eintrag,
+      join(platz().wurzel, "downloads", "g1-absatz"),
+    );
+    await lueckig.kontext.close();
+    expect(befundAbsatz.text, "Gegenprobe greift zu weit: der Dokumentsatz fehlt mit").toContain(
+      DOKUMENTSATZ,
+    );
+    expect(befundAbsatz.text).not.toContain(ERSTER_SATZ);
+    const maengelAbsatz = bestandsmaengel(befundAbsatz, erwartet());
+    expect(maengelAbsatz, "der fehlende erste Absatz blieb unerkannt").toContain(
+      `Inhalt: der Absatz «${ERSTER_SATZ}» fehlt im Rumpf`,
+    );
+    const unterschiedeAbsatz = bestandsvergleich(referenz, befundAbsatz);
+    expect(
+      unterschiedeAbsatz.some((u) => u.startsWith("Rumpftext:")),
+      "der Vergleich mit K2 sah den fehlenden Absatz nicht",
+    ).toBe(true);
 
     const r2 = await platz().fahre(platz().rueckfallSkript, [
       korr.releaseName,
@@ -813,11 +882,17 @@ describe("K7 · Gegenproben in einer eigenen Zielumgebung, mit Rücknahme", () =
       eintrag,
       join(platz().wurzel, "downloads", "g1-ruecknahme"),
     );
-    expect(await bestandsmaengel(befundGruen)).toEqual([]);
+    expect(bestandsmaengel(befundGruen, erwartet())).toEqual([]);
+    expect(bestandsvergleich(referenz, befundGruen)).toEqual([]);
     await gruen.kontext.close();
     beleg.g1 = {
       entfernteZeilen: zeilen.length - ohneDatei.length,
       rot: { ergebnis: r1.ergebnis, maengel: maengelRot },
+      ohneAbsatz: {
+        ergebnis: rAbsatz.ergebnis,
+        maengel: maengelAbsatz,
+        unterschiede: unterschiedeAbsatz,
+      },
       ruecknahme: { ergebnis: r2.ergebnis, maengel: [] },
     };
   }, 900_000);

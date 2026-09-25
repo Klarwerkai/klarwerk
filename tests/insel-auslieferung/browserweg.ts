@@ -12,7 +12,7 @@
 // Dokument übernehmen", Speichern, Einreichen mit Vertraulichkeit). Neu ist hier nur die
 // Ersteinrichtung an der Maske und das Wiederlesen samt Download der Originaldatei.
 //
-// Diese Datei enthält keine Erwartung — sie liefert Befunde; geurteilt wird in der Testdatei
+// Diese Datei enthält keine Erwartung — sie liefert Befunde; geurteilt wird in `bestand.ts`
 // (`bestandsmaengel`), damit dieselbe Prüfung im Hauptlauf und in der Gegenprobe greift.
 import { mkdirSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -30,7 +30,7 @@ import {
   aufSichtbarkeitWarten,
   persistierteQuellenzeile,
 } from "../import-wiederoeffnen-nutzerweg/strecke";
-import { type Absatz, baueDocx } from "../m5-docx-bildunterschriften/docx-bauen";
+import { baueDocx } from "../m5-docx-bildunterschriften/docx-bauen";
 import { anmeldenAnDerMaske } from "../rollen-sichtbar-nutzerweg/flaeche";
 import {
   type DateiAnlage,
@@ -40,6 +40,13 @@ import {
   kennungAusOeffnenLink,
   speichernDruecken,
 } from "../ux19-speichern-oeffnen-reload/ux19-buehne";
+import {
+  ABSAETZE,
+  type Bestandsbefund,
+  type Bestandserwartung,
+  DATEI_NAME,
+  DOKUMENTSATZ,
+} from "./bestand";
 import { sha256Datei, sha256Puffer } from "./pruefplatz";
 
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -50,19 +57,6 @@ export const KONTO = {
   email: "betreiber@inselprobe-b4.invalid",
   passwort: "inselprobe-b4-2026",
 } as const;
-
-/** Die eigene synthetische Prüfdatei: echte .docx-Bytes mit einem Satz, der nur in ihr steht. */
-export const DATEI_NAME = "inselprobe-stellwerk.docx";
-export const ERSTER_SATZ =
-  "Diese Anweisung regelt den Wechsel der Inselanlage auf eine neue Fassung.";
-export const KENNWORT = "Stellwerkprobe4B";
-export const DOKUMENTSATZ = `Vor dem Umschalten sichert das ${KENNWORT} den Bestand mit Pruefsumme.`;
-
-const ABSAETZE: readonly Absatz[] = [
-  { art: "text", text: ERSTER_SATZ },
-  { art: "text", text: "Der Betreiber spielt das Paket ueber den dokumentierten Weg ein." },
-  { art: "text", text: DOKUMENTSATZ },
-];
 
 let anlage: DateiAnlage | undefined;
 /** EINMAL gebaut, dann dieselbe Datei — der Abdruck am Ende wird gegen genau diese Bytes geprüft. */
@@ -194,23 +188,6 @@ export async function importiereUndReicheEin(profil: Profil, basis: string): Pro
   }
 }
 
-/** Was ein Mensch am gespeicherten Eintrag liest — und die Datei, die er herunterlädt. */
-export interface Bestandsbefund {
-  readonly adresse: string;
-  readonly angemeldet: boolean;
-  readonly titel: string;
-  readonly text: string;
-  readonly quelle: string;
-  readonly originalHref: string;
-  readonly download: {
-    readonly name: string;
-    readonly sha256: string;
-    readonly bytes: number;
-  } | null;
-  readonly downloadFehler: string;
-  readonly inselmarke: string;
-}
-
 /**
  * DAS WIEDERLESEN: `/wissen/<id>` öffnen, Titel, Rumpf und Quellenvermerk ablesen, die
  * Originaldatei über den Link im Rumpf HERUNTERLADEN (echtes Download-Ereignis des Browsers) und
@@ -293,28 +270,12 @@ export async function liesBestand(
 }
 
 /**
- * DAS URTEIL ÜBER EINEN BESTANDSBEFUND — EINE Stelle für Hauptlauf und Gegenprobe. Leer heisst:
- * Inhalt, Quellenbezug und Originaldatei sind vollständig da.
+ * Was das Urteil (`bestand.ts`) erwartet: die Quellenzeile aus dem echten Rumpfbauer des Produkts
+ * und der Abdruck genau der Prüfdatei, die hochgeladen wurde.
  */
-export async function bestandsmaengel(befund: Bestandsbefund): Promise<string[]> {
-  const datei = await pruefdatei();
-  const maengel: string[] = [];
-  if (!befund.angemeldet) {
-    maengel.push(`${befund.adresse}: der Eintrag erscheint nicht (kein bib-text)`);
-  }
-  if (!befund.text.includes(DOKUMENTSATZ)) {
-    maengel.push(`Inhalt: der Dokumentsatz «${DOKUMENTSATZ}» fehlt im Rumpf`);
-  }
-  const quellenzeile = persistierteQuellenzeile(DATEI_NAME);
-  if (!befund.quelle.includes(quellenzeile)) {
-    maengel.push(`Quellenbezug: «${quellenzeile}» fehlt (gelesen: «${befund.quelle}»)`);
-  }
-  if (befund.download === null) {
-    maengel.push(`Originaldatei: ${befund.downloadFehler}`);
-  } else if (befund.download.sha256 !== sha256Puffer(datei.buffer)) {
-    maengel.push(
-      `Originaldatei: heruntergeladen ${befund.download.bytes} Bytes mit anderem Abdruck (${befund.download.sha256})`,
-    );
-  }
-  return maengel;
+export async function bestandserwartung(): Promise<Bestandserwartung> {
+  return {
+    quellenzeile: persistierteQuellenzeile(DATEI_NAME),
+    dateiSha256: sha256Puffer((await pruefdatei()).buffer),
+  };
 }

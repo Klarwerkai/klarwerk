@@ -220,6 +220,31 @@ export function aktuellerStand(): Stand {
   return { stand: abbild === "" ? head : abbild, head, arbeitsstand: abbild !== "" };
 }
 
+/**
+ * DIE BAUM-SHA DES GANZEN ARBEITSBAUMS (verfolgte UND neue, nicht ignorierte Dateien) — über einen
+ * EIGENEN, temporären Index, der echte Index bleibt unberührt. Sie ist gleich
+ * `git rev-parse <commit>^{tree}` des Commits, der genau diesen Baum festhält; damit ist ein
+ * Lauf eindeutig einer Revision zuzuordnen, auch wenn er VOR dem Festhalten gefahren wurde.
+ */
+export function arbeitsbaumSha(): string {
+  const ordner = mkdtempSync(join(tmpdir(), "kwi-index-"));
+  try {
+    const env = { ...process.env, GIT_INDEX_FILE: join(ordner, "index") };
+    for (const argumente of [
+      ["read-tree", "HEAD"],
+      ["add", "-A"],
+    ]) {
+      mussGelingen(fahreBefehl("git", argumente, { cwd: WURZEL, env }), `git ${argumente[0]}`);
+    }
+    return mussGelingen(
+      fahreBefehl("git", ["write-tree"], { cwd: WURZEL, env }),
+      "git write-tree",
+    ).trim();
+  } finally {
+    rmSync(ordner, { recursive: true, force: true });
+  }
+}
+
 export interface Paket {
   readonly rolle: string;
   readonly releaseName: string;
